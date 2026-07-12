@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["vite/client"],
+    "noEmit": true
+  },
+  "include": ["src/renderer/**/*"],
+  "extends": "../../tsconfig.base.json"
+}

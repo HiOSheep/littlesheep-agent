@@ -1,0 +1,120 @@
+// @littlesheep/llm — types.ts
+// LLM client types: chat requests, responses, streaming, tool calling.
+
+/** A function tool spec in OpenAI chat.completions format. */
+export interface ToolSpec {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    /** JSON Schema object describing parameters. */
+    parameters: object;
+  };
+}
+
+/** A chat message in OpenAI chat.completions format. */
+export type ChatContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string; detail?: 'auto' | 'low' | 'high' } };
+
+export interface ChatMessage {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string | ChatContentPart[];
+  /** Assistant messages may carry tool_calls. */
+  tool_calls?: {
+    id: string;
+    type: 'function';
+    function: { name: string; arguments: string };
+  }[];
+  /** Tool-role messages reference the call they answer. */
+  tool_call_id?: string;
+  name?: string;
+}
+
+/** Request to chat.completions. */
+export interface ChatRequest {
+  model: string;
+  messages: ChatMessage[];
+  tools?: ToolSpec[];
+  tool_choice?: 'auto' | 'none' | 'required' | { type: 'function'; function: { name: string } };
+  temperature?: number;
+  max_tokens?: number;
+  stream?: boolean;
+  signal?: AbortSignal;
+  /** Override per-request timeout (ms). */
+  timeoutMs?: number;
+}
+
+/** A tool call returned by the model. */
+export interface ToolCall {
+  id: string;
+  type: 'function';
+  function: { name: string; arguments: string };
+}
+
+/** Non-streaming chat response. */
+export interface ChatResponse {
+  /** Text content (empty when only tool_calls returned). */
+  content: string;
+  /** Tool calls requested by the model (empty when finish_reason !== 'tool_calls'). */
+  toolCalls: ToolCall[];
+  finishReason: 'stop' | 'tool_calls' | 'length' | 'content_filter';
+  usage?: { promptTokens: number; completionTokens: number; totalTokens?: number };
+  /** Raw model id echoed back. */
+  model?: string;
+}
+
+/** A single chunk in a stream. */
+export interface StreamChunk {
+  type: 'delta' | 'tool_call_delta' | 'done';
+  /** Text delta (for type: 'delta'). */
+  delta?: string;
+  /** Tool call index (for type: 'tool_call_delta'). */
+  toolCallIndex?: number;
+  toolCallId?: string;
+  toolCallName?: string;
+  toolCallArgsDelta?: string;
+  finishReason?: ChatResponse['finishReason'];
+}
+
+/** Request to the embeddings endpoint. */
+export interface EmbedRequest {
+  model: string;
+  /** Single text or batch of texts (max 2048 per OpenAI limits). */
+  input: string | string[];
+  /** Output dimensions (only supported by some models, e.g. text-embedding-3-*). */
+  dimensions?: number;
+  /** Override per-request timeout (ms). */
+  timeoutMs?: number;
+  signal?: AbortSignal;
+}
+
+/** Response from the embeddings endpoint. */
+export interface EmbedResponse {
+  /** One embedding per input, in input order. */
+  embeddings: number[][];
+  model: string;
+  usage: { promptTokens: number };
+}
+
+/** LLM client contract. Implementations: OpenAIClient. */
+export interface LlmClient {
+  /** Non-streaming chat. */
+  chat(req: ChatRequest): Promise<ChatResponse>;
+  /** Streaming chat. Aggregates chunks and returns final ChatResponse. */
+  chatStream(req: ChatRequest, onDelta: (chunk: StreamChunk) => void): Promise<ChatResponse>;
+  /** Generate text embeddings (vector representations). */
+  embed(req: EmbedRequest): Promise<EmbedResponse>;
+}
+
+/** Error from the LLM API. */
+export class LlmError extends Error {
+  readonly status: number;
+  readonly retryable: boolean;
+  constructor(status: number, message: string, retryable: boolean) {
+    super(message);
+    this.name = 'LlmError';
+    this.status = status;
+    this.retryable = retryable;
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "@littlesheep/runner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@littlesheep/config": "workspace:*",
+    "@littlesheep/experience": "workspace:*",
+    "@littlesheep/session": "workspace:*",
+    "@littlesheep/harness": "workspace:*",
+    "@littlesheep/types": "workspace:*",
+    "@littlesheep/llm": "workspace:*",
+    "@littlesheep/memory-core": "workspace:*",
+    "@littlesheep/memory-tree": "workspace:*",
+    "@littlesheep/prompt": "workspace:*",
+    "@littlesheep/tools": "workspace:*",
+    "@littlesheep/branding": "workspace:*",
+    "@littlesheep/skills": "workspace:*",
+    "@littlesheep/safety": "workspace:*",
+    "@littlesheep/snapshot": "workspace:*",
+    "@littlesheep/vector": "workspace:*"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rimraf dist *.tsbuildinfo"
+  }
+}

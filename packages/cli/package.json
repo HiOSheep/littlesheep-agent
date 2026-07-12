@@ -1,0 +1,32 @@
+{
+  "name": "@littlesheep/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@littlesheep/config": "workspace:*",
+    "@littlesheep/experience": "workspace:*",
+    "@littlesheep/branding": "workspace:*",
+    "@littlesheep/runner": "workspace:*",
+    "@littlesheep/harness": "workspace:*",
+    "@littlesheep/llm": "workspace:*",
+    "@littlesheep/types": "workspace:*",
+    "@littlesheep/tools": "workspace:*",
+    "@littlesheep/memory-core": "workspace:*",
+    "@littlesheep/snapshot": "workspace:*",
+    "@littlesheep/vector": "workspace:*"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rimraf dist *.tsbuildinfo"
+  }
+}

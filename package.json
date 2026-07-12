@@ -1,0 +1,32 @@
+{
+  "name": "littlesheep",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LittleSheep 是一个本地部署、索引优先记忆、硬控制流驱动的桌面 Agent 工作台。",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.9.0",
+  "bin": {
+    "littlesheep": "./packages/cli/dist/bin.js"
+  },
+  "scripts": {
+    "build": "pnpm -r run build",
+    "check:repo": "node scripts/check-repository-hygiene.mjs",
+    "start": "node packages/cli/dist/bin.js",
+    "test": "vitest run",
+    "test:core-eval": "vitest run test/core-agent-contracts.test.ts packages/harness/src/e2e.test.ts packages/harness/src/stages/decide.test.ts packages/harness/src/stages/execute.test.ts packages/harness/src/stages/verify.test.ts packages/harness/src/stages/memory-stages.test.ts packages/app/src/shared/history-activity.test.ts",
+    "test:watch": "vitest",
+    "clean": "pnpm -r run clean && rimraf node_modules",
+    "typecheck": "pnpm -r run typecheck",
+    "verify:app-recovery": "node scripts/verify-app-recovery-sources.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "rimraf": "^5.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "zod": "^3.23.0"
+  }
+}

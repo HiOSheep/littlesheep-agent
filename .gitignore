@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+packages/*/dist/
+packages/channels/*/dist/
+packages/app/out/
+*.tsbuildinfo
+build/
+release/
+
+# Test
+coverage/
+.vitest-cache/
+.vitest/
+
+# User data (runtime)
+.littlesheep/
+sessions/
+memory/*.md.bak
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Caches and temporary files
+.cache/
+.vite/
+.turbo/
+.eslintcache
+tmp/
+temp/
+*.tmp
+*.temp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Env
+.env
+.env.local
+.env.*.local

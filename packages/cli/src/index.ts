@@ -1,0 +1,164 @@
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿// @littlesheep/cli — index.ts
+// CLI orchestrator: parse argv, load config+branding, create runner, dispatch.
+
+import {
+  loadConfig,
+  defaultConfigWithOpenAI,
+  parseModelRef,
+  getProvider,
+  resolveApiKey,
+} from '@littlesheep/config';
+import { loadBranding, dataSubdirs } from '@littlesheep/branding';
+import { createRunner, resolveLlm } from '@littlesheep/runner';
+import { asSessionId } from '@littlesheep/types';
+import { parseArgs, USAGE, VERSION } from './args.js';
+import { startRepl } from './repl.js';
+import { parseMemoryRollbackFlags, runMemoryRollback } from './commands/memory.js';
+import { parseImportRepoFlags, runImportRepo } from './commands/import-repo.js';
+import { parseArchiveFlags, runArchive } from './commands/archive.js';
+import { ExperienceStore } from '@littlesheep/experience';
+import { MemoryStore } from '@littlesheep/memory-core';
+
+/** Run the CLI with the given argv (typically process.argv.slice(2)). */
+export async function runCli(argv: string[]): Promise<void> {
+  const args = parseArgs(argv);
+
+  if (args.help) {
+    process.stdout.write(USAGE + '\n');
+    return;
+  }
+  if (args.version) {
+    process.stdout.write(VERSION + '\n');
+    return;
+  }
+  if (args.unknown.length > 0) {
+    process.stderr.write(`Unknown flags: ${args.unknown.join(', ')}\n\n`);
+    process.stderr.write(USAGE + '\n');
+    process.exitCode = 2;
+    return;
+  }
+
+  // 1. Load branding + config.
+  const branding = await loadBranding();
+  const dataDir = dataSubdirs(branding);
+
+  // Subcommand: 'memory rollback' (needs branding only, not config/providers/LLM).
+  if (args.memoryRollback !== undefined) {
+    const flags = parseMemoryRollbackFlags(args.memoryRollback);
+    await runMemoryRollback({
+      dataRoot: dataDir.root,
+      backupsDir: dataDir.backups,
+      flags,
+    });
+    return;
+  }
+
+  // Subcommand: 'memory experience decay' (needs branding's experience dir only).
+  if (args.memoryExperience !== undefined) {
+    const store = new ExperienceStore({ rootDir: dataDir.experience });
+    const result = await store.decay();
+    process.stdout.write(`Decay: ${result.before} → ${result.after} entries\n`);
+    return;
+  }
+
+  // Subcommand: 'memory import-repo' (needs config + LLM + ExperienceStore).
+  // Reuses the same fail-fast provider/apiKey verification as the main flow
+  // (via resolveLlm), but loads its own config so the main path stays untouched.
+  if (args.memoryImportRepo !== undefined) {
+    const flags = parseImportRepoFlags(args.memoryImportRepo);
+    let config = await loadConfig({ dataDir: dataDir.root });
+    if (config.providers.length === 0) config = defaultConfigWithOpenAI();
+    const model = flags.model ?? config.agents.defaults.model;
+    try {
+      const { llm } = resolveLlm(config, model);
+      const experienceStore = new ExperienceStore({ rootDir: dataDir.experience });
+      await runImportRepo({ flags, llm, model, experienceStore });
+    } catch (e) {
+      process.stderr.write(`${(e as Error).message}\n`);
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  // Subcommand: 'memory archive' (needs config + LLM + MemoryStore + VectorStore).
+  if (args.memoryArchive !== undefined) {
+    const flags = parseArchiveFlags(args.memoryArchive);
+    let config = await loadConfig({ dataDir: dataDir.root });
+    if (config.providers.length === 0) config = defaultConfigWithOpenAI();
+    const model = flags.model ?? config.agents.defaults.model;
+    try {
+      const { llm } = resolveLlm(config, model);
+      const memoryStore = new MemoryStore({ rootDir: dataDir.root });
+      await runArchive({
+        flags,
+        llm,
+        model,
+        memoryStore,
+        archiveDir: dataDir.archive,
+        vectorsDir: dataDir.vectors,
+      });
+    } catch (e) {
+      process.stderr.write(`${(e as Error).message}\n`);
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  let config = await loadConfig({ dataDir: dataDir.root });
+
+  // 2. If no providers configured, synthesize a default OpenAI provider (MVP).
+  if (config.providers.length === 0) {
+    config = defaultConfigWithOpenAI();
+  }
+
+  // 3. Resolve model override.
+  const model = args.model ?? config.agents.defaults.model;
+
+  // 4. Verify provider + API key exist (fail fast with helpful message).
+  const { provider: providerId } = parseModelRef(model);
+  const provider = getProvider(config, providerId);
+  if (!provider) {
+    process.stderr.write(`No provider "${providerId}" configured.\n`);
+    process.stderr.write(`Edit ${dataDir.config}/config.json or pass --model <provider/model>.\n`);
+    process.exitCode = 1;
+    return;
+  }
+  const apiKey = resolveApiKey(provider.apiKey);
+  if (!apiKey) {
+    const envName = provider.apiKey && provider.apiKey.startsWith('$')
+      ? provider.apiKey.slice(1)
+      : 'OPENAI_API_KEY';
+    process.stderr.write(`Provider "${providerId}" has no apiKey.\n`);
+    process.stderr.write(`Set ${envName} env var or edit ${dataDir.config}/config.json.\n`);
+    process.exitCode = 1;
+    return;
+  }
+
+  // 5. Create runner.
+  const runner = await createRunner({ config, branding, model });
+
+  // 6. Dispatch: single-shot or REPL.
+  if (args.text !== undefined) {
+    const result = await runner.run({
+      sessionId: args.session ? asSessionId(args.session) : undefined,
+      text: args.text,
+      origin: 'cli',
+    });
+    process.stdout.write(`${result.reply || '(no reply)'}\n`);
+    if (result.status === 'error') {
+      process.exitCode = 1;
+    }
+    await runner.shutdown();
+  } else {
+    await startRepl({
+      runner,
+      branding,
+      sessionId: args.session ? asSessionId(args.session) : undefined,
+    });
+  }
+}
+
+export { parseArgs, USAGE, VERSION } from './args.js';
+export { startRepl } from './repl.js';
+export type { ParsedArgs } from './args.js';
+export type { ReplOptions } from './repl.js';

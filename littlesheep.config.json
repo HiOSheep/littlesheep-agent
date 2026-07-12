@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "providers": [
+    {
+      "id": "deepseek",
+      "name": "DeepSeek",
+      "baseURL": "https://api.deepseek.com/v1",
+      "apiKey": "$DEEPSEEK_API_KEY",
+      "models": ["deepseek-v4-flash", "deepseek-v4-pro"]
+    }
+  ],
+  "agents": {
+    "defaults": {
+      "model": "deepseek/deepseek-v4-flash"
+    }
+  }
+}

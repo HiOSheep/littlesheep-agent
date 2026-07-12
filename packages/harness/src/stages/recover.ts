@@ -1,0 +1,149 @@
+// @littlesheep/harness — stages/recover.ts
+// RECOVER: LLM decides retry / escalate / abort when a prior stage failed.
+// Increments recoveryAttempts; forces escalate once max is exceeded.
+
+import type {
+  RunContext,
+  StageResult,
+  StageName,
+  PlanStep,
+} from '@littlesheep/types';
+import type { LlmClient, ChatMessage } from '@littlesheep/llm';
+import { toChatMessage, textOf, callLlmForJson } from './_shared.js';
+import { appendSystemPromptAddons } from '../profile-prompt.js';
+
+export interface RecoverStageDeps {
+  llm: LlmClient;
+  model: string;
+}
+
+const SYSTEM_PROMPT = `You are the RECOVER stage of a hard-control-flow agent.
+A prior stage failed. Decide how to proceed.
+
+Return ONLY a JSON object, no markdown:
+{"action":"retry"|"escalate"|"abort","revisedPlan":[{"description":"...","tools":["..."],"requiresApproval":false}],"reason":"short explanation"}
+
+Actions:
+- "retry": try the failing stage again. Optionally provide a revisedPlan (replaces the current plan).
+- "escalate": hand control back to the user (ask for clarification). Use when you cannot auto-recover.
+- "abort": terminate the run entirely. Use only for unrecoverable failures.`;
+
+interface DecodedRecovery {
+  action?: string;
+  revisedPlan?: Array<{ description?: string; tools?: unknown; requiresApproval?: boolean }>;
+  reason?: string;
+}
+
+/** Validate + normalize a revisedPlan decoded from LLM output. */
+function normalizePlan(
+  raw: DecodedRecovery['revisedPlan'],
+  availableToolNames: Set<string>,
+): PlanStep[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const plan: PlanStep[] = [];
+  for (const step of raw) {
+    if (!step || typeof step.description !== 'string' || step.description.trim().length === 0) continue;
+    const tools = Array.isArray(step.tools)
+      ? step.tools.filter((t): t is string => typeof t === 'string' && availableToolNames.has(t))
+      : undefined;
+    plan.push({
+      description: step.description,
+      tools: tools && tools.length > 0 ? tools : undefined,
+      requiresApproval: step.requiresApproval === true ? true : undefined,
+    });
+  }
+  return plan.length > 0 ? plan : undefined;
+}
+
+/** Factory: creates a recover stage. */
+export function createRecoverStage(deps: RecoverStageDeps) {
+  return async function recoverStage(ctx: RunContext): Promise<StageResult> {
+    ctx.recoveryAttempts = (ctx.recoveryAttempts ?? 0) + 1;
+
+    // Force-escalate once we've exhausted retries.
+    if (ctx.recoveryAttempts > ctx.maxRecoveryAttempts) {
+      return {
+        stage: 'recover',
+        next: 'ask_user',
+        ok: true,
+        meta: { forcedEscalate: true, attempts: ctx.recoveryAttempts },
+      };
+    }
+
+    const lastError = ctx.lastError;
+    const availableToolNames = new Set(ctx.tools.map((t) => t.name));
+
+    const recentResults = (ctx.toolResults ?? []).slice(-3).map((r) => ({
+      ok: r.ok,
+      error: r.error,
+    }));
+
+    const userMsg =
+      `Last error: stage=${lastError?.stage ?? 'unknown'}, message=${lastError?.message ?? 'unknown'}\n`
+      + `Recovery attempt: ${ctx.recoveryAttempts}/${ctx.maxRecoveryAttempts}\n`
+      + `Recent tool results: ${JSON.stringify(recentResults)}\n`
+      + `Current plan: ${ctx.plan ? JSON.stringify(ctx.plan.map((p) => p.description)) : '(none)'}\n`
+      + `Inbound: ${textOf(ctx.inbound).slice(0, 500)}`;
+
+    const messages: ChatMessage[] = [
+      { role: 'system', content: appendSystemPromptAddons(SYSTEM_PROMPT, ctx.profilePromptAddon) },
+      ...ctx.history.slice(-3).map(toChatMessage),
+      { role: 'user', content: userMsg },
+    ];
+
+    let parsed: DecodedRecovery | null;
+    try {
+      ({ parsed } = await callLlmForJson<DecodedRecovery>(
+        deps.llm,
+        deps.model,
+        messages,
+        { maxAttempts: 3, maxTokens: 800 },
+      ));
+    } catch (e) {
+      // Transport error during recovery — escalate to the user instead of
+      // propagating to default-harness → exit. RECOVER itself failing must
+      // not silently kill the run.
+      return {
+        stage: 'recover',
+        next: 'ask_user',
+        ok: true,
+        meta: {
+          fallbackEscalate: true,
+          attempts: ctx.recoveryAttempts,
+          transportError: (e as Error).message,
+        },
+      };
+    }
+
+    if (!parsed || (parsed.action !== 'retry' && parsed.action !== 'escalate' && parsed.action !== 'abort')) {
+      // Could not decode → escalate conservatively.
+      return {
+        stage: 'recover',
+        next: 'ask_user',
+        ok: true,
+        meta: { fallbackEscalate: true, attempts: ctx.recoveryAttempts },
+      };
+    }
+
+    let next: StageName;
+    if (parsed.action === 'retry') {
+      const revised = normalizePlan(parsed.revisedPlan, availableToolNames);
+      if (revised) {
+        ctx.plan = revised;
+        ctx.taskBook = undefined;
+      }
+      next = 'execute';
+    } else if (parsed.action === 'escalate') {
+      next = 'ask_user';
+    } else {
+      next = 'finalize';
+    }
+
+    return {
+      stage: 'recover',
+      next,
+      ok: true,
+      meta: { action: parsed.action, attempts: ctx.recoveryAttempts, reason: parsed.reason },
+    };
+  };
+}

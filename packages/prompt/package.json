@@ -1,0 +1,24 @@
+{
+    "scripts":  {
+                    "clean":  "rimraf dist *.tsbuildinfo",
+                    "build":  "tsc -p tsconfig.json",
+                    "typecheck":  "tsc -p tsconfig.json --noEmit"
+                },
+    "type":  "module",
+    "types":  "./dist/index.d.ts",
+    "version":  "0.1.0",
+    "name":  "@littlesheep/prompt",
+    "private":  true,
+    "exports":  {
+                    ".":  {
+                              "types":  "./dist/index.d.ts",
+                              "import":  "./dist/index.js"
+                          }
+                },
+    "main":  "./dist/index.js",
+    "dependencies":  {
+                         "@littlesheep/config":  "workspace:*",
+                         "@littlesheep/branding":  "workspace:*",
+                         "@littlesheep/types":  "workspace:*"
+                     }
+}

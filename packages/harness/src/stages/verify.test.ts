@@ -1,0 +1,345 @@
+// @littlesheep/harness — stages/verify.test.ts
+// Unit tests for the VERIFY stage: verdict routing, bounded replan,
+// optimistic degradation, and feedback propagation.
+
+import { describe, it, expect } from 'vitest';
+import { createVerifyStage } from './verify.js';
+import {
+  createMockLlm,
+  textResponse,
+  makeCtx,
+} from '../tests/helpers.js';
+import { textMessage } from '@littlesheep/types';
+import type { RunContext, TaskStepFailureKind, ToolResult } from '@littlesheep/types';
+
+const deps = { model: 'test' } as const;
+
+function makeVerifyCtx(opts: {
+  reply?: string;
+  toolResults?: ToolResult[];
+  replanAttempts?: number;
+  maxReplanAttempts?: number;
+} = {}) {
+  const ctx = makeCtx({ inbound: textMessage('user', 'read the file and summarize') });
+  ctx.reply = opts.reply ?? 'done';
+  ctx.toolResults = opts.toolResults ?? [];
+  ctx.plan = [{ description: 'read file' }];
+  if (opts.replanAttempts !== undefined) ctx.replanAttempts = opts.replanAttempts;
+  if (opts.maxReplanAttempts !== undefined) ctx.maxReplanAttempts = opts.maxReplanAttempts;
+  return ctx;
+}
+
+function installTaskExecution(
+  ctx: RunContext,
+  steps: Array<{ id: string; status: 'done' | 'failed' | 'blocked'; failureKind?: TaskStepFailureKind }>,
+): void {
+  ctx.taskBook = {
+    assessment: {
+      userNeed: 'read and summarize',
+      complexity: 'standard',
+      goal: 'read and summarize the file',
+      successCriteria: ['summary is accurate'],
+      requiresTaskBook: true,
+      maxExtraScopeRatio: 1.5,
+    },
+    goal: 'read and summarize the file',
+    complexity: 'standard',
+    successCriteria: ['summary is accurate'],
+    steps: [
+      { id: 'step-1', description: 'read the file' },
+      { id: 'step-2', description: 'summarize the file' },
+      { id: 'step-3', description: 'check the summary' },
+    ],
+    overdeliveryPolicy: { maxExtraScopeRatio: 1.5, guidance: 'stay focused' },
+  };
+  ctx.taskExecution = {
+    goal: ctx.taskBook.goal,
+    complexity: 'standard',
+    status: steps.some((step) => step.status !== 'done') ? 'failed' : 'done',
+    startedAt: '2026-07-10T00:00:00.000Z',
+    steps: steps.map((step, index) => ({
+      stepId: step.id,
+      description: ctx.taskBook!.steps.find((item) => item.id === step.id)?.description ?? step.id,
+      status: step.status,
+      startedAt: `2026-07-10T00:00:0${index}.000Z`,
+      endedAt: `2026-07-10T00:00:0${index + 1}.000Z`,
+      output: step.status === 'done' ? `${step.id} output` : undefined,
+      error: step.status === 'done' ? undefined : `${step.id} failed`,
+      failureKind: step.failureKind,
+      attempt: 1,
+      toolCallIds: [],
+      toolResults: [],
+    })),
+  };
+}
+
+describe('verifyStage', () => {
+  it('pass → evolve', async () => {
+    const llm = createMockLlm(textResponse('{"verdict":"pass","reason":"goal achieved"}'));
+    const stage = createVerifyStage({ ...deps, llm });
+    const ctx = makeVerifyCtx();
+
+    const res = await stage(ctx);
+
+    expect(res.next).toBe('evolve');
+    expect(res.ok).toBe(true);
+    expect(res.meta?.verdict).toBe('pass');
+  });
+
+  it('includes the active behavior profile in the verification system prompt', async () => {
+    const systemPrompts: string[] = [];
+    const llm = createMockLlm((request) => {
+      systemPrompts.push(String(request.messages[0]?.content ?? ''));
+      return textResponse('{"verdict":"pass","reason":"goal achieved"}');
+    });
+    const stage = createVerifyStage({ ...deps, llm });
+    const ctx = makeVerifyCtx();
+    ctx.profilePromptAddon = 'PROFILE_SENTINEL_VERIFY';
+
+    await stage(ctx);
+
+    expect(systemPrompts[0]).toContain('PROFILE_SENTINEL_VERIFY');
+  });
+
+  it('verifies against taskBook success criteria when present', async () => {
+    const userPrompts: string[] = [];
+    const llm = createMockLlm((req) => {
+      userPrompts.push(String(req.messages[1]?.content ?? ''));
+      return textResponse('{"verdict":"pass","reason":"criteria satisfied"}');
+    });
+    const stage = createVerifyStage({ ...deps, llm });
+    const ctx = makeVerifyCtx();
+    ctx.taskBook = {
+      assessment: {
+        userNeed: 'review core',
+        complexity: 'standard',
+        goal: 'find core gaps',
+        successCriteria: ['gaps are named'],
+        requiresTaskBook: true,
+        maxExtraScopeRatio: 1.5,
+      },
+      goal: 'find core gaps',
+      complexity: 'standard',
+      successCriteria: ['gaps are named'],
+      steps: [{ id: 'step-1', description: 'inspect state machine', acceptanceCriteria: ['state machine inspected'] }],
+      overdeliveryPolicy: { maxExtraScopeRatio: 1.5, guidance: 'stay focused' },
+    };
+    ctx.taskExecution = {
+      goal: 'find core gaps',
+      complexity: 'standard',
+      status: 'done',
+      startedAt: '2026-07-09T00:00:00.000Z',
+      endedAt: '2026-07-09T00:00:01.000Z',
+      summary: 'core gaps were named',
+      steps: [{
+        stepId: 'step-1',
+        description: 'inspect state machine',
+        status: 'done',
+        startedAt: '2026-07-09T00:00:00.000Z',
+        endedAt: '2026-07-09T00:00:01.000Z',
+        acceptanceCriteria: ['state machine inspected'],
+        output: 'state machine inspected',
+        toolCallIds: [],
+        toolResults: [],
+      }],
+    };
+
+    const res = await stage(ctx);
+
+    expect(res.next).toBe('evolve');
+    expect(userPrompts[0]).toContain('Task book');
+    expect(userPrompts[0]).toContain('Goal: find core gaps');
+    expect(userPrompts[0]).toContain('gaps are named');
+    expect(userPrompts[0]).toContain('state machine inspected');
+    expect(userPrompts[0]).toContain('Step execution results');
+    expect(userPrompts[0]).toContain('Status: done');
+  });
+
+  it('needs_replan → decide, increments replanAttempts, sets verifyFeedback', async () => {
+    const llm = createMockLlm(
+      textResponse('{"verdict":"needs_replan","reason":"incomplete","feedback":"try a different file path"}'),
+    );
+    const stage = createVerifyStage({ ...deps, llm });
+    const ctx = makeVerifyCtx({ replanAttempts: 0 });
+
+    const res = await stage(ctx);
+
+    expect(res.next).toBe('decide');
+    expect(res.ok).toBe(true);
+    expect(res.meta?.verdict).toBe('needs_replan');
+    expect(ctx.replanAttempts).toBe(1);
+    expect(ctx.verifyFeedback).toBe('try a different file path');
+  });
+
+  it('creates a step-scoped partial replan and preserves completed evidence', async () => {
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      verdict: 'needs_replan',
+      reason: 'summary is incomplete',
+      feedback: 'rewrite the summary using the file evidence',
+      failedStepIds: ['step-2'],
+    })));
+    const stage = createVerifyStage({ ...deps, llm });
+    const ctx = makeVerifyCtx({ replanAttempts: 0 });
+    installTaskExecution(ctx, [
+      { id: 'step-1', status: 'done' },
+      { id: 'step-2', status: 'failed', failureKind: 'verification_gap' },
+    ]);
+
+    const res = await stage(ctx);
+
+    expect(res.next).toBe('decide');
+    expect(ctx.partialReplanRequest).toMatchObject({
+      attempt: 1,
+      targetStepIds: ['step-2'],
+      reason: 'summary is incomplete',
+    });
+    expect(ctx.replanHistory?.[0]?.preservedStepIds).toEqual(['step-1']);
+    expect(ctx.taskExecution?.replanHistory).toEqual(ctx.replanHistory);
+  });
+
+  it('converts a recoverable not-found failure into partial re-planning', async () => {
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      verdict: 'fail',
+      reason: 'the selected path does not exist',
+      feedback: 'locate the correct path',
+      failedStepIds: ['step-2'],
+    })));
+    const stage = createVerifyStage({ ...deps, llm });
+    const ctx = makeVerifyCtx();
+    installTaskExecution(ctx, [
+      { id: 'step-1', status: 'done' },
+      { id: 'step-2', status: 'failed', failureKind: 'not_found' },
+    ]);
+
+    const res = await stage(ctx);
+
+    expect(res.next).toBe('decide');
+    expect(res.ok).toBe(true);
+    expect(ctx.partialReplanRequest?.targetStepIds).toEqual(['step-2']);
+  });
+
+  it('fail → recover, sets lastError', async () => {
+    const llm = createMockLlm(
+      textResponse('{"verdict":"fail","reason":"tool returned error"}'),
+    );
+    const stage = createVerifyStage({ ...deps, llm });
+    const ctx = makeVerifyCtx({
+      toolResults: [{ callId: 'c1', ok: false, error: 'file not found' }],
+    });
+
+    const res = await stage(ctx);
+
+    expect(res.next).toBe('recover');
+    expect(res.ok).toBe(false);
+    expect(res.meta?.verdict).toBe('fail');
+    expect(ctx.lastError?.stage).toBe('verify');
+    expect(ctx.lastError?.message).toContain('tool returned error');
+  });
+
+  it('replanAttempts exhausted → asks the user instead of claiming success', async () => {
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      verdict: 'needs_replan',
+      reason: 'still incomplete',
+      failedStepIds: ['step-2'],
+    })));
+    const stage = createVerifyStage({ ...deps, llm });
+    const ctx = makeVerifyCtx({ replanAttempts: 2, maxReplanAttempts: 2 });
+    installTaskExecution(ctx, [
+      { id: 'step-1', status: 'done' },
+      { id: 'step-2', status: 'failed', failureKind: 'verification_gap' },
+    ]);
+
+    const res = await stage(ctx);
+
+    expect(res.next).toBe('ask_user');
+    expect(res.ok).toBe(true);
+    expect(res.meta?.replanExhausted).toBe(true);
+    expect(ctx.clarificationRequest?.sourceStage).toBe('verify');
+    expect(ctx.clarificationRequest?.questions[0]?.options).toHaveLength(3);
+    expect(llm.chat).toHaveBeenCalled();
+  });
+
+  it('LLM transport error → optimistic degrade to pass', async () => {
+    const llm = createMockLlm(textResponse(''));
+    llm.chat.mockRejectedValueOnce(new Error('network down'));
+    const stage = createVerifyStage({ ...deps, llm });
+    const ctx = makeVerifyCtx();
+
+    const res = await stage(ctx);
+
+    expect(res.next).toBe('evolve');
+    expect(res.ok).toBe(true);
+    expect(res.meta?.degradedPass).toBe(true);
+    expect(res.meta?.transportError).toBe('network down');
+  });
+
+  it('LLM transport error with known failed steps → partial replan, not pass', async () => {
+    const llm = createMockLlm(textResponse(''));
+    llm.chat.mockRejectedValueOnce(new Error('network down'));
+    const stage = createVerifyStage({ ...deps, llm });
+    const ctx = makeVerifyCtx();
+    installTaskExecution(ctx, [
+      { id: 'step-1', status: 'done' },
+      { id: 'step-2', status: 'failed', failureKind: 'not_found' },
+    ]);
+
+    const res = await stage(ctx);
+
+    expect(res.next).toBe('decide');
+    expect(res.meta?.degradedReplan).toBe(true);
+    expect(ctx.partialReplanRequest?.targetStepIds).toEqual(['step-2', 'step-3']);
+  });
+
+  it('JSON parse failure → optimistic degrade to pass', async () => {
+    const llm = createMockLlm(textResponse('this is not json at all'));
+    const stage = createVerifyStage({ ...deps, llm });
+    const ctx = makeVerifyCtx();
+
+    const res = await stage(ctx);
+
+    expect(res.next).toBe('evolve');
+    expect(res.ok).toBe(true);
+    expect(res.meta?.degradedPass).toBe(true);
+  });
+
+  it('invalid verdict value → optimistic degrade to pass', async () => {
+    const llm = createMockLlm(textResponse('{"verdict":"maybe","reason":"unsure"}'));
+    const stage = createVerifyStage({ ...deps, llm });
+    const ctx = makeVerifyCtx();
+
+    const res = await stage(ctx);
+
+    expect(res.next).toBe('evolve');
+    expect(res.ok).toBe(true);
+    expect(res.meta?.degradedPass).toBe(true);
+  });
+
+  it('overrides an impossible pass when step evidence is incomplete', async () => {
+    const llm = createMockLlm(textResponse('{"verdict":"pass","reason":"looks fine"}'));
+    const stage = createVerifyStage({ ...deps, llm });
+    const ctx = makeVerifyCtx();
+    installTaskExecution(ctx, [
+      { id: 'step-1', status: 'done' },
+      { id: 'step-2', status: 'failed', failureKind: 'verification_gap' },
+    ]);
+
+    const res = await stage(ctx);
+
+    expect(res.next).toBe('decide');
+    expect(res.meta?.structuralOverride).toBe(true);
+    expect(ctx.partialReplanRequest?.targetStepIds).toEqual(['step-2', 'step-3']);
+  });
+
+  it('needs_replan without feedback → falls back to reason as feedback', async () => {
+    const llm = createMockLlm(
+      textResponse('{"verdict":"needs_replan","reason":"output was empty"}'),
+    );
+    const stage = createVerifyStage({ ...deps, llm });
+    const ctx = makeVerifyCtx();
+
+    const res = await stage(ctx);
+
+    expect(res.next).toBe('decide');
+    expect(ctx.verifyFeedback).toBe('output was empty');
+  });
+});

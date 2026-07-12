@@ -1,0 +1,192 @@
+// @littlesheep/harness — context.ts
+// buildRunContext: assembles a RunContext before the harness runs.
+//
+// Called by the entry layer (gateway/cli/test) BEFORE harness.run(ctx).
+// Loads session history and bootstrap files; constructs the
+// ToolContext. Infrastructure (llm/sessionManager/memoryStore) is NOT put in
+// RunContext — stages capture those via closure in createDefaultHarness.
+
+import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import type {
+  RunContext,
+  Message,
+  AgentTool,
+  ToolContext,
+  SessionId,
+  MemoryStoreLike,
+  ClarificationRequest,
+  ClarificationResponse,
+} from '@littlesheep/types';
+import type { SessionManager } from '@littlesheep/session';
+import type { Config } from '@littlesheep/config';
+import type { BrandingConfig } from '@littlesheep/branding';
+import { applyBootstrapLimits } from '@littlesheep/prompt';
+
+/** Bootstrap file names (in priority order). Read from bootstrapDir. */
+const BOOTSTRAP_FILES = ['AGENTS.md', 'SOUL.md', 'USER.md', 'TOOLS.md'] as const;
+
+function messageText(message: Message): string {
+  return message.content
+    .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
+    .map((block) => block.text)
+    .join('\n');
+}
+
+/** A clarification is pending only when it is the latest conversational turn. */
+function latestPendingClarification(history: Message[]): ClarificationRequest | undefined {
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const message = history[index]!;
+    if (message.role !== 'user' && message.role !== 'assistant') continue;
+    return message.role === 'assistant' ? message.clarificationRequest : undefined;
+  }
+  return undefined;
+}
+
+/** Options for buildRunContext. */
+export interface BuildRunContextOptions {
+  /** Session this run belongs to. */
+  sessionId: SessionId;
+  /** The inbound user message that starts this run. */
+  inbound: Message;
+  /** Session manager (for loading history). */
+  sessionManager: SessionManager;
+  /** Memory store retained for compatibility; runtime recall now uses MemoryTree. */
+  memoryStore: MemoryStoreLike;
+  /** Tools available to EXECUTE stage. */
+  tools: AgentTool[];
+  /** Resolved config. */
+  config: Config;
+  /** Branding (for prompt assembly downstream). */
+  branding: BrandingConfig;
+  /** Model ref (provider/model). */
+  model: string;
+  /** Optional run id (auto-generated if absent). */
+  runId?: string;
+  /** Working directory for file/exec tools (defaults to process.cwd()). */
+  cwd?: string;
+  /** Abort signal for the owning run. */
+  signal?: AbortSignal;
+  /** Approval callback handed to tools. */
+  approve?: ToolContext['approve'];
+  /** Logger sink handed to tools. */
+  log?: ToolContext['log'];
+  /** Optional assistant text delta callback for streaming callers. */
+  onAssistantDelta?: (delta: string) => void;
+  /** Optional tool event callback forwarded to RunContext for real-time streaming. */
+  onToolEvent?: (evt: import('@littlesheep/types').ToolStreamEvent) => void;
+  /** Extra system prompt injected by the active general/coding behavior profile. */
+  profilePromptAddon?: string;
+  /** Prompt guidance for the selected reasoning budget. */
+  reasoningPromptAddon?: string;
+  /** Attachments for this run. */
+  attachments?: import('@littlesheep/types').RunAttachment[];
+  /** Directory containing bootstrap .md files (defaults to cwd). */
+  bootstrapDir?: string;
+}
+
+/**
+ * Read bootstrap files (AGENTS/SOUL/USER/TOOLS/MEMORY.md) from a directory.
+ * Missing files are skipped (not errors). Returns a map keyed by stem
+ * (e.g. "AGENTS" → contents).
+ */
+export async function readBootstrapFiles(dir: string): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (const file of BOOTSTRAP_FILES) {
+    const path = join(dir, file);
+    if (!existsSync(path)) continue;
+    try {
+      const content = await readFile(path, 'utf8');
+      // Key by stem (AGENTS.md → "AGENTS.md" keeps full filename for prompt section).
+      out[file] = content;
+    } catch {
+      // read error → skip (treat as missing)
+    }
+  }
+  return out;
+}
+
+/**
+ * Assemble a fully-resolved RunContext ready to hand to harness.run().
+ *
+ * Loads: recent session history and bootstrap files
+ * (with per-file + total limits applied), and constructs the ToolContext.
+ */
+export async function buildRunContext(opts: BuildRunContextOptions): Promise<RunContext> {
+  const runId = opts.runId ?? randomUUID();
+  const cwd = opts.cwd ?? process.cwd();
+  const bootstrapDir = opts.bootstrapDir ?? cwd;
+
+  // 1. Recent session history (respect compaction keepRecent).
+  const keepRecent = opts.config.sessions.compaction.keepRecent;
+  const rawHistory = await opts.sessionManager.readRecent(opts.sessionId, keepRecent);
+  const pendingClarification = latestPendingClarification(rawHistory);
+  const clarificationResponse: ClarificationResponse | undefined = pendingClarification
+    ? {
+        requestId: pendingClarification.id,
+        answer: messageText(opts.inbound),
+        answeredAt: opts.inbound.timestamp,
+      }
+    : undefined;
+  if (clarificationResponse) {
+    opts.inbound.clarificationResponse = clarificationResponse;
+  }
+  // Filter tool messages: they're persisted to session JSONL for replay/audit
+  // (M3) but must not enter the LLM context — toChatMessage maps 'tool' role to
+  // 'user' and extracts empty text from tool_calls/tool_result blocks, which
+  // would pollute the conversation. EXECUTE rebuilds tool messages each run.
+  const history = rawHistory.filter((m) => {
+    if (m.role === 'tool') return false;
+    return m.content.some((c) => c.type === 'text');
+  });
+
+  // 2. Bootstrap files (MEMORY.md is deliberately excluded; MemoryTree indexes it).
+  const rawBootstrap = await readBootstrapFiles(bootstrapDir);
+  const bootstrap = applyBootstrapLimits(
+    rawBootstrap,
+    opts.config.agents.defaults.bootstrapMaxChars,
+    opts.config.agents.defaults.bootstrapTotalMaxChars,
+  );
+
+  // 3. Tool execution context.
+  const toolContext: ToolContext = {
+    sessionId: opts.sessionId,
+    runId,
+    cwd,
+    approve: opts.approve,
+    signal: opts.signal,
+    log: opts.log,
+  };
+
+  // 4. Assemble RunContext.
+  const ctx: RunContext = {
+    runId,
+    sessionId: opts.sessionId,
+    inbound: opts.inbound,
+    cwd,
+    model: opts.model,
+    tools: opts.tools,
+    toolContext,
+    bootstrap,
+    history,
+    produced: [],
+    maxRecoveryAttempts: opts.config.agents.defaults.maxRecoveryAttempts,
+    recoveryAttempts: 0,
+    // VERIFY bounded iteration: replan budget (default 2). When exhausted,
+    // VERIFY force-passes to EVOLVE to avoid infinite DECIDE↔VERIFY loops.
+    replanAttempts: 0,
+    maxReplanAttempts: 2,
+    clarificationResponse,
+    startedAt: new Date().toISOString(),
+    onAssistantDelta: opts.onAssistantDelta,
+    onToolEvent: opts.onToolEvent,
+    profilePromptAddon: opts.profilePromptAddon,
+    reasoningPromptAddon: opts.reasoningPromptAddon,
+    attachments: opts.attachments,
+    signal: opts.signal,
+  };
+
+  return ctx;
+}

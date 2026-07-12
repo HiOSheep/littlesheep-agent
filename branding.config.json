@@ -1,0 +1,8 @@
+{
+  "name": "LittleSheep",
+  "cliName": "littlesheep",
+  "emoji": "🐑",
+  "tagline": "High-autonomy agent, hard-control-flow loop.",
+  "dataDir": ".littlesheep",
+  "displayName": "LittleSheep"
+}

@@ -1,0 +1,221 @@
+// @littlesheep/harness — e2e.test.ts
+// End-to-end agent loop: real stages + mock infrastructure.
+// Validates the full Core Flow state machine through every branch.
+import { describe, it, expect } from 'vitest';
+import { createDefaultHarness } from './default-harness.js';
+import {
+  createMockLlm,
+  textResponse,
+  makeCtx,
+  createMockSessionManager,
+  createMockMemoryStore,
+  makeTool,
+  toolCallResponse,
+} from './tests/helpers.js';
+import { DEFAULT_CONFIG } from '@littlesheep/config';
+import { DEFAULT_BRANDING } from '@littlesheep/branding';
+import { textMessage, type ToolStreamEvent } from '@littlesheep/types';
+
+function makeHarness(llm: ReturnType<typeof createMockLlm>) {
+  return createDefaultHarness({
+    model: 'test',
+    config: DEFAULT_CONFIG,
+    branding: DEFAULT_BRANDING,
+    llm,
+    sessionManager: createMockSessionManager(),
+    memoryStore: createMockMemoryStore(),
+  });
+}
+
+describe('e2e agent loop', () => {
+  it('chat: "hello" → rules-classify(chat) → reply → finalize', async () => {
+    // 'hello' hits the greeting rule (confidence 0.9) → classify skips LLM.
+    // Only reply stage consumes one LLM call.
+    const llm = createMockLlm(textResponse('Hello! How can I help?'));
+    const h = makeHarness(llm);
+    const ctx = makeCtx({ inbound: textMessage('user', 'hello') });
+    const res = await h.run(ctx);
+    expect(res.ok).toBe(true);
+    expect(res.next).toBe('exit');
+    expect(ctx.reply).toBe('Hello! How can I help?');
+    expect(ctx.produced.length).toBeGreaterThanOrEqual(1);
+    expect(ctx.produced[ctx.produced.length - 1].role).toBe('assistant');
+    const trace = res.meta?.trace as Array<{ name: string }>;
+    expect(trace.map((t) => t.name)).toEqual(['enter', 'classify', 'reply', 'finalize']);
+  });
+
+  it('problem: LLM classifies as problem → full loop through verify/evolve/capture', async () => {
+    // 'solve P vs NP' matches no rule → LLM classify fallback.
+    const llm = createMockLlm([
+      textResponse('{"type":"problem","confidence":0.9,"reason":"math task"}'),
+      textResponse('{"plan":[{"description":"think hard","tools":[]}]}'),
+      textResponse('all done', 'stop'),
+      textResponse('{"verdict":"pass","reason":"goal achieved"}'),
+      textResponse('{"notes":[]}'),
+      textResponse('{"insights":[]}'),
+    ]);
+    const h = makeHarness(llm);
+    const ctx = makeCtx({ inbound: textMessage('user', 'solve P vs NP') });
+    const events: ToolStreamEvent[] = [];
+    const deltas: string[] = [];
+    ctx.onToolEvent = (event) => events.push(event);
+    ctx.onAssistantDelta = (delta) => deltas.push(delta);
+    const res = await h.run(ctx);
+    expect(res.ok).toBe(true);
+    expect(res.next).toBe('exit');
+    const trace = res.meta?.trace as Array<{ name: string }>;
+    expect(trace.map((t) => t.name)).toEqual([
+      'enter', 'classify', 'decide', 'execute', 'verify', 'evolve', 'capture', 'finalize',
+    ]);
+    expect(events.map((event) => event.type)).toEqual([
+      'task_book',
+      'step_start',
+      'step_done',
+      'verification_start',
+      'verification',
+      'final_delta',
+    ]);
+    expect(deltas).toEqual(['all done']);
+  });
+
+  it('does not publish an unverified draft before a partial replan succeeds', async () => {
+    const initialTaskBook = {
+      assessment: {
+        userNeed: 'prepare a verified summary', complexity: 'standard', goal: 'prepare a verified summary',
+        successCriteria: ['summary is verified'], requiresTaskBook: true, maxExtraScopeRatio: 1.5,
+      },
+      taskBook: {
+        goal: 'prepare a verified summary', complexity: 'standard', successCriteria: ['summary is verified'],
+        steps: [{ id: 'summary', description: 'prepare the summary' }],
+      },
+    };
+    const revisedTaskBook = {
+      ...initialTaskBook,
+      taskBook: {
+        ...initialTaskBook.taskBook,
+        steps: [{ id: 'summary', description: 'revise the summary using verification feedback' }],
+      },
+    };
+    const llm = createMockLlm([
+      textResponse('{"type":"problem","confidence":0.9,"reason":"task"}'),
+      textResponse(JSON.stringify(initialTaskBook)),
+      textResponse('unverified draft'),
+      textResponse('{"verdict":"needs_replan","reason":"missing evidence","feedback":"revise it","failedStepIds":["summary"]}'),
+      textResponse(JSON.stringify(revisedTaskBook)),
+      textResponse('verified final answer'),
+      textResponse('{"verdict":"pass","reason":"summary is verified"}'),
+      textResponse('{"notes":[]}'),
+      textResponse('{"insights":[]}'),
+    ]);
+    const h = makeHarness(llm);
+    const ctx = makeCtx({ inbound: textMessage('user', 'prepare a verified summary') });
+    const events: ToolStreamEvent[] = [];
+    const deltas: string[] = [];
+    ctx.onToolEvent = (event) => events.push(event);
+    ctx.onAssistantDelta = (delta) => deltas.push(delta);
+
+    const res = await h.run(ctx);
+
+    expect(res.ok).toBe(true);
+    expect(ctx.reply).toBe('verified final answer');
+    expect(deltas).toEqual(['verified final answer']);
+    expect(events.filter((event) => event.type === 'final_delta')).toHaveLength(1);
+    expect(events.map((event) => event.type)).toEqual([
+      'task_book', 'step_start', 'step_done', 'verification_start', 'verification',
+      'task_book', 'step_start', 'step_done', 'verification_start', 'verification', 'final_delta',
+    ]);
+  });
+
+  it('unclear: LLM classifies as unclear → ask_user → finalize', async () => {
+    // 'xyzzy' matches no rule → LLM classify fallback returns unclear.
+    // Truly meaningless input becomes a persisted clarification request.
+    const llm = createMockLlm([
+      textResponse('{"type":"unclear","confidence":0.4,"reason":"nonsense word"}'),
+      textResponse('Could you clarify what you want?'),
+    ]);
+    const h = makeHarness(llm);
+    const ctx = makeCtx({ inbound: textMessage('user', 'xyzzy') });
+    const res = await h.run(ctx);
+    expect(res.ok).toBe(true);
+    expect(ctx.reply).toContain('What would you like LS to help you accomplish?');
+    const trace = res.meta?.trace as Array<{ name: string }>;
+    expect(trace.map((t) => t.name)).toEqual(['enter', 'classify', 'ask_user', 'finalize']);
+    expect(ctx.clarificationRequest?.kind).toBe('ambiguous_request');
+  });
+
+  it('partially replans a failed step without rerunning completed work', async () => {
+    const read = makeTool('read', { ok: true, output: 'unused' });
+    let toolExecutions = 0;
+    read.execute = async () => {
+      toolExecutions += 1;
+      return toolExecutions === 1
+        ? { callId: '', ok: false, error: 'ENOENT: file not found' }
+        : { callId: '', ok: true, output: 'correct file contents' };
+    };
+    const initialTaskBook = {
+      assessment: {
+        userNeed: 'prepare a summary', complexity: 'standard', goal: 'prepare the summary',
+        successCriteria: ['summary is complete'], requiresTaskBook: true, maxExtraScopeRatio: 1.5,
+      },
+      taskBook: {
+        goal: 'prepare the summary', complexity: 'standard', successCriteria: ['summary is complete'],
+        steps: [
+          { id: 'step-1', description: 'prepare the outline' },
+          { id: 'step-2', description: 'read the file and write the summary', tools: ['read'] },
+        ],
+      },
+    };
+    const revisedTaskBook = {
+      ...initialTaskBook,
+      taskBook: {
+        ...initialTaskBook.taskBook,
+        steps: [
+          { id: 'step-1', description: 'do not replace completed outline' },
+          { id: 'step-2', description: 'locate the corrected path, read it, and write the summary', tools: ['read'] },
+        ],
+      },
+    };
+    const llm = createMockLlm([
+      textResponse('{"type":"problem","confidence":0.9,"reason":"multi-step task"}'),
+      textResponse(JSON.stringify(initialTaskBook)),
+      textResponse('outline evidence'),
+      toolCallResponse([{ id: 'read-1', name: 'read', args: { path: 'missing.txt' } }]),
+      textResponse('could not read the file'),
+      textResponse(JSON.stringify({
+        verdict: 'needs_replan', reason: 'path is wrong', feedback: 'use the corrected path',
+        failedStepIds: ['step-2'],
+      })),
+      textResponse(JSON.stringify(revisedTaskBook)),
+      toolCallResponse([{ id: 'read-2', name: 'read', args: { path: 'correct.txt' } }]),
+      textResponse('summary from the correct file'),
+      textResponse('final summary'),
+      textResponse('{"verdict":"pass","reason":"summary is complete"}'),
+      textResponse('{"notes":[]}'),
+      textResponse('{"insights":[]}'),
+    ]);
+    const h = makeHarness(llm);
+    const ctx = makeCtx({
+      inbound: textMessage('user', 'prepare a summary from the file'),
+      tools: [read],
+    });
+
+    const res = await h.run(ctx);
+
+    expect(res.ok).toBe(true);
+    expect(toolExecutions).toBe(2);
+    expect(ctx.taskExecution?.steps[0]).toMatchObject({
+      stepId: 'step-1', description: 'prepare the outline', output: 'outline evidence', attempt: 1,
+    });
+    expect(ctx.taskExecution?.steps[1]).toMatchObject({
+      stepId: 'step-2', status: 'done', attempt: 2,
+    });
+    expect(ctx.replanHistory?.[0]).toMatchObject({
+      targetStepIds: ['step-2'], preservedStepIds: ['step-1'], revisedStepIds: ['step-2'],
+    });
+    const trace = res.meta?.trace as Array<{ name: string }>;
+    expect(trace.map((item) => item.name)).toEqual([
+      'enter', 'classify', 'decide', 'execute', 'verify',
+      'decide', 'execute', 'verify', 'evolve', 'capture', 'finalize',
+    ]);
+  });
+});
