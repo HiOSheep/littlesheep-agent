@@ -2,7 +2,7 @@
 
 import { spawn } from 'node:child_process'
 import { access } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import { HttpError } from './http.js'
 
 export async function openInVSCode(target: string): Promise<void> {
@@ -32,23 +32,21 @@ export async function openInVSCode(target: string): Promise<void> {
 }
 
 async function resolveVSCodeCommand(): Promise<string> {
-  for (const candidate of vscodeCommandCandidates()) {
-    if (candidate === 'code' || candidate === 'code.cmd') return candidate
+  const candidates = vscodeCommandCandidates()
+  for (const candidate of candidates) {
+    if (!isAbsolute(candidate)) continue
     if (await pathExists(candidate)) return candidate
   }
-  throw new HttpError(501, '未找到 VS Code。请先安装 VS Code，或把 code 命令加入 PATH。')
+  return 'code'
 }
 
 function vscodeCommandCandidates(): string[] {
-  if (process.platform !== 'win32') return ['code']
-  const localAppData = process.env.LOCALAPPDATA ?? ''
-  const programFiles = process.env.ProgramFiles ?? ''
-  const programFilesX86 = process.env['ProgramFiles(x86)'] ?? ''
+  if (process.platform !== 'win32') return ['/usr/local/bin/code', '/opt/homebrew/bin/code', 'code']
   return [
-    localAppData && resolve(localAppData, 'Programs', 'Microsoft VS Code', 'bin', 'code.cmd'),
-    programFiles && resolve(programFiles, 'Microsoft VS Code', 'bin', 'code.cmd'),
-    programFilesX86 && resolve(programFilesX86, 'Microsoft VS Code', 'bin', 'code.cmd'),
-    'code.cmd',
+    process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, 'Programs', 'Microsoft VS Code', 'bin', 'code.cmd') : '',
+    process.env.PROGRAMFILES ? join(process.env.PROGRAMFILES, 'Microsoft VS Code', 'bin', 'code.cmd') : '',
+    process.env['PROGRAMFILES(X86)'] ? join(process.env['PROGRAMFILES(X86)'], 'Microsoft VS Code', 'bin', 'code.cmd') : '',
+    'code',
   ].filter(Boolean)
 }
 

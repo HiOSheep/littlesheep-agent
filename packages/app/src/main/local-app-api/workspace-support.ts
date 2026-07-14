@@ -53,7 +53,7 @@ export async function syncWorkspaceResourceChanges(
   try {
     await runner.infra.memoryService.syncWorkspaceResources(workspacePath, options)
   } catch (error) {
-    console.warn(`[workspace-resources] sync failed for ${workspacePath}: ${(error as Error).message}`)
+    console.error(`[workspace-index] incremental sync degraded: ${(error as Error).message}`)
   }
 }
 
