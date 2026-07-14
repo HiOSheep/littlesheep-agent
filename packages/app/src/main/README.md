@@ -5,7 +5,8 @@
 ## 入口与所有权
 
 - `index.ts`：启动与关闭编排；不得继续吸收领域实现。
-- `local-app-api-server.ts`：现有兼容 facade，后续路由按领域拆分。
+- `local-app-api-server.ts`：兼容 facade，只负责 loopback server、领域路由装配和关闭顺序。
+- `local-app-api/`：HTTP/SSE 基元、公共契约与各领域路由；新增接口必须进入对应领域。
 - `session-index.ts`、`project-index.ts`、`archive-index.ts`：UI 元数据索引。
 - `attachment-cache.ts`、`data-root-*.ts`、`workspace-*.ts`：各自受管数据和资源生命周期。
 

@@ -140,7 +140,8 @@
 | --- | --- |
 | `packages/app/src/main/index.ts` | Electron 主进程启动、用户数据初始化、Runner/PluginHost 装配、窗口和退出流程。 |
 | `packages/app/src/main/builtin-plugins.ts` | 内置插件目录；具体渠道实现仍通过动态 import 按需加载。 |
-| `packages/app/src/main/local-app-api-server.ts` | renderer 与主进程之间的 loopback Local App API、SSE、会话、工作区、终端、插件和设置接口。 |
+| `packages/app/src/main/local-app-api-server.ts` | renderer 与主进程之间的 loopback Local App API 组合入口和生命周期。 |
+| `packages/app/src/main/local-app-api/` | Local App API 的 HTTP 基元、公共契约及 run、项目、会话、Runtime、记忆、工作区、终端和扩展领域路由。 |
 | `packages/app/src/main/attachment-cache.ts`、`attachments.ts` | LS 受管附件缓存的稳定索引、配额/过期清理、安全删除校验，以及 run-scoped 附件解析与所有权分类。 |
 | `packages/app/src/main/data-root-migration.ts`、`data-root-metadata.ts` | 数据根 locator、迁移事务、同级 staging、流式哈希清单、启动前恢复、活动元数据内部路径重绑定和回滚；正式用户数据不得用于故障注入。 |
 | `packages/app/src/main/keychain.ts` | API key 的 Electron 安全存储与环境注入。 |

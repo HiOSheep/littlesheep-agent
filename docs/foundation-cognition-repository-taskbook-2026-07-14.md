@@ -111,7 +111,6 @@ D1 已确认采用该方案。实现安排在稳定仓库边界之后，不能�
 | --- | --- | --- |
 | 大型组合文件 | 38 个非测试生产文件超过 300 行 | 修改冲突、职责漂移、难以并行开发 |
 | Renderer 总控过重 | `App.tsx` 约 9935 行 | UI、导航、会话、设置和工作区相互牵连 |
-| Local App API 过重 | `local-app-api-server.ts` 约 2819 行 | 路由、服务、资源生命周期和协议难以独立验证 |
 | Memory 边界仍大 | `memory-repository.ts` 约 1279 行，`memory-service.ts` 约 1120 行 | 存储、迁移、索引和消费职责难以单独演进 |
 | 说明入口不足 | 26 个 package 根目录中 25 个没有 README | 新任务难以快速找到所有者和入口 |
 | 领域目录说明不足 | 35 个直接包含源码的 `src` 目录没有 README | 目录层级不能承担渐进式披露 |
@@ -222,7 +221,7 @@ D1 已确认采用该方案。实现安排在稳定仓库边界之后，不能�
 
 ### 阶段 3：Electron App 分域
 
-状态：进行中。先完成 3C Renderer API 分域，再拆 3B Main/API，最后在稳定 API 上拆 3A Renderer 组合壳。
+状态：进行中。3B Main/Local App API 与 3C Renderer API 已完成，下一步在稳定 API 上执行 3A Renderer 组合壳拆分。
 
 #### 3A Renderer
 
@@ -240,6 +239,8 @@ D1 已确认采用该方案。实现安排在稳定仓库边界之后，不能�
 
 #### 3B Main 与 Local App API
 
+状态：已完成。`local-app-api-server.ts` 已由 2819 行收敛为 241 行组合入口，领域实现位于 `main/local-app-api/`。
+
 按领域拆分：
 
 - run/stream/approval；
@@ -253,6 +254,14 @@ D1 已确认采用该方案。实现安排在稳定仓库边界之后，不能�
 - HTTP 基础设施、错误和响应 helper。
 
 目标：入口只装配路由和服务；每个领域路由拥有独立测试，现有 URL 和 renderer 行为保持兼容。
+
+完成证据（2026-07-14）：
+
+- HTTP 基元、公共构造契约、run/stream/approval、projects、sessions/archive、runtime/providers/data-root、memory、workspace、terminal、plugins/channels 已按领域分离；
+- 所有领域文件均不超过 300 行，`main/local-app-api/README.md` 明确所有权、路由目录、依赖边界和验证规则；
+- 活动 run controller、审批 timer、终端 session、移除 timer、SSE listener 与命令捕获均归属具体 server/router 实例，并在 `stop()` 中释放；
+- 10 个 Local App API 定向测试文件共 21 项通过；全量 119 个测试文件、992 项通过、1 项跳过，全工作区 typecheck 通过；
+- 现有 URL、状态码、SSE 事件名、会话/项目归属、附件、产物、记忆、终端和数据根语义保持不变。
 
 #### 3C Renderer API
 

@@ -1,0 +1,147 @@
+// Approval UI and request types; authority remains in the main process.
+import { useRef } from 'react'
+import { createPortal } from 'react-dom'
+import {
+type PermissionModeId
+} from '../api'
+import {
+type ApprovalDecision
+} from '../approval-grants'
+import { FadePresence } from '../ui/presence'
+import { PendingApprovalPrompt } from './types'
+
+export const APPROVAL_PROMPT_MOTION_MS = 220
+
+
+export function ApprovalPrompt({
+  prompt,
+  onResolve,
+}: {
+  prompt: PendingApprovalPrompt | null
+  onResolve: (decision: ApprovalDecision) => void
+}) {
+  const lastPromptRef = useRef<PendingApprovalPrompt | null>(prompt)
+  if (prompt) lastPromptRef.current = prompt
+  const displayedPrompt = prompt ?? lastPromptRef.current
+  return createPortal(
+    <FadePresence show={Boolean(prompt)} exitMs={APPROVAL_PROMPT_MOTION_MS} className="approval-presence">
+      {displayedPrompt && (
+        <ApprovalPromptSurface prompt={displayedPrompt} onResolve={onResolve} />
+      )}
+    </FadePresence>,
+    document.body,
+  )
+}
+
+
+export function ApprovalPromptSurface({
+  prompt,
+  onResolve,
+}: {
+  prompt: PendingApprovalPrompt
+  onResolve: (decision: ApprovalDecision) => void
+}) {
+  const { request } = prompt
+  const source = request.source ?? 'agent'
+  return (
+    <div
+      className="approval-layer"
+      role="presentation"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') onResolve('deny')
+      }}
+    >
+      <section className="approval-prompt" role="dialog" aria-modal="true" aria-label="权限确认">
+        <div className="approval-kicker">{source === 'workspace' ? '用户工作区操作' : 'Agent 工具调用'}</div>
+        <h2>{approvalActionTitle(request.action)}</h2>
+        <p>{approvalModeDescription(request.permissionMode)}</p>
+        <p className="approval-risk-note">{approvalActionRiskDescription(request.action, source)}</p>
+        <pre>{formatApprovalDetail(request.detail)}</pre>
+        <p className="approval-session-note">“本对话允许”只授权当前对话中的同来源、同类操作；切换类别或重启应用后仍会重新询问。</p>
+        <div className="approval-actions">
+          <button type="button" className="approval-action" onClick={() => onResolve('deny')}>
+            拒绝
+          </button>
+          <button type="button" className="approval-action session" onClick={() => onResolve('session')}>
+            本对话允许
+          </button>
+          <button type="button" className="approval-action primary" autoFocus onClick={() => onResolve('once')}>
+            仅本次
+          </button>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+
+export function DirtyFileClosePrompt({
+  file,
+  onCancel,
+  onConfirm,
+}: {
+  file: { root: string; path: string } | null
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  if (!file) return null
+  return createPortal(
+    <div className="approval-layer" role="presentation">
+      <section className="approval-prompt dirty-file-prompt" role="dialog" aria-modal="true" aria-label="关闭未保存文件">
+        <div className="approval-kicker">未保存修改</div>
+        <h2>关闭这个文件？</h2>
+        <p>这个文件还有未保存的修改。继续关闭会放弃当前标签里的编辑内容。</p>
+        <pre>{file.path}</pre>
+        <div className="approval-actions">
+          <button type="button" className="approval-action" onClick={onCancel}>
+            返回编辑
+          </button>
+          <button type="button" className="approval-action primary danger" onClick={onConfirm}>
+            继续关闭
+          </button>
+        </div>
+      </section>
+    </div>,
+    document.body,
+  )
+}
+
+
+export function approvalActionTitle(action: string): string {
+  if (action === 'exec') return '允许执行命令？'
+  if (action === 'write') return '允许写入文件？'
+  if (action === 'edit') return '允许修改文件？'
+  if (action === 'write_memory') return '允许写入长期记忆？'
+  if (action === 'create_skill') return '允许创建技能？'
+  if (action === 'record_experience') return '允许记录经验？'
+  if (action === 'save_file') return '允许保存工作区文件？'
+  return `允许执行 ${action}？`
+}
+
+
+export function approvalModeDescription(mode: PermissionModeId): string {
+  if (mode === 'restricted') return '当前为受限权限，所有工具调用都需要你批准后才会继续。'
+  if (mode === 'research') return '当前为研究权限，涉及修改、命令或长期沉淀的动作需要你批准。'
+  return '当前为完全访问权限。'
+}
+
+
+export function approvalActionRiskDescription(action: string, source: 'agent' | 'workspace'): string {
+  const actor = source === 'workspace' ? '你在拓展工作区发起的操作' : 'Agent 为完成当前任务发起的操作'
+  if (action === 'exec') return `${actor}将执行命令，可能修改工作区文件或启动本地进程。`
+  if (action === 'write' || action === 'edit' || action === 'save_file') {
+    return `${actor}将修改所示文件；请确认目标路径和变更范围。`
+  }
+  return `${actor}需要临时使用这项工具能力。`
+}
+
+
+export function formatApprovalDetail(detail: unknown): string {
+  if (detail === undefined || detail === null) return '无额外参数'
+  if (typeof detail === 'string') return detail
+  try {
+    return JSON.stringify(detail, null, 2)
+  } catch {
+    return String(detail)
+  }
+}

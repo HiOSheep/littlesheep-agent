@@ -11,33 +11,19 @@ import { HttpError, json, readJson, writeSse, type LocalAppApiRequest } from './
 import {
   clampTerminalTimeout,
   MAX_TERMINAL_COMMAND_BYTES,
-  MAX_TERMINAL_OUTPUT_BYTES,
   runWorkspaceTerminalCommand,
 } from './terminal-command.js'
 import {
   DEFAULT_TERMINAL_SIZE,
   normalizeTerminalSize,
-  WorkspaceTerminalSession,
   WorkspaceTerminalSessionManager,
 } from './terminal-session.js'
+import { TerminalCommandCaptureStore } from './terminal-capture.js'
 import {
   normalizeOptionalSessionId,
   resolveWorkspaceRoot,
   resolveWorkspaceRootFromValue,
 } from './workspace-support.js'
-
-interface PendingTerminalCommandCapture {
-  terminalSessionId: string
-  command: string
-  cwd: string
-  workspacePath: string
-  appSessionId?: string
-  startedAt: string
-  startedAtMs: number
-  stdout: string
-  stderr: string
-  cleanup: () => void
-}
 
 export interface TerminalRouteContext {
   getConfig: () => Config
@@ -47,7 +33,7 @@ export interface TerminalRouteContext {
 
 export class TerminalRouter {
   private readonly sessions = new WorkspaceTerminalSessionManager()
-  private readonly pendingCaptures = new Map<string, PendingTerminalCommandCapture>()
+  private readonly captures = new TerminalCommandCaptureStore()
 
   async route(request: LocalAppApiRequest, context: TerminalRouteContext): Promise<boolean> {
     const { req, res, url, path, method } = request
@@ -110,12 +96,12 @@ export class TerminalRouter {
         }
         if (command.includes('\u0000')) throw new HttpError(400, 'command contains invalid characters')
         const session = this.sessions.get(terminalSessionId)
-        await this.finalizeCapture(terminalSessionId, activityIndex, { signal: 'next-command' })
-        this.startCapture(session, command, normalizeOptionalSessionId(body.sessionId), activityIndex)
+        await this.captures.finalize(terminalSessionId, activityIndex, { signal: 'next-command' })
+        this.captures.start(session, command, normalizeOptionalSessionId(body.sessionId), activityIndex)
         try {
           session.writeCommand(command)
         } catch (error) {
-          await this.finalizeCapture(terminalSessionId, activityIndex, { signal: 'send-failed' })
+          await this.captures.finalize(terminalSessionId, activityIndex, { signal: 'send-failed' })
           throw error
         }
         json(res, 200, { ok: true })
@@ -134,13 +120,13 @@ export class TerminalRouter {
 
       if (method === 'POST' && action === 'interrupt') {
         this.sessions.get(terminalSessionId).interrupt()
-        await this.finalizeCapture(terminalSessionId, activityIndex, { signal: 'interrupt' })
+        await this.captures.finalize(terminalSessionId, activityIndex, { signal: 'interrupt' })
         json(res, 200, { ok: true })
         return true
       }
 
       if (method === 'DELETE' && !action) {
-        await this.finalizeCapture(terminalSessionId, activityIndex, { signal: 'closed' })
+        await this.captures.finalize(terminalSessionId, activityIndex, { signal: 'closed' })
         this.sessions.close(terminalSessionId)
         res.writeHead(204)
         res.end()
@@ -228,81 +214,7 @@ export class TerminalRouter {
   }
 
   stop(): void {
-    for (const capture of this.pendingCaptures.values()) capture.cleanup()
-    this.pendingCaptures.clear()
+    this.captures.stop()
     this.sessions.closeAll()
   }
-
-  private startCapture(
-    session: WorkspaceTerminalSession,
-    command: string,
-    appSessionId: string | undefined,
-    activityIndex: TerminalActivityIndex,
-  ): void {
-    const terminalSessionId = session.sessionId
-    const startedAtMs = Date.now()
-    const capture: PendingTerminalCommandCapture = {
-      terminalSessionId,
-      command,
-      cwd: session.root,
-      workspacePath: session.root,
-      appSessionId,
-      startedAt: new Date(startedAtMs).toISOString(),
-      startedAtMs,
-      stdout: '',
-      stderr: '',
-      cleanup: () => undefined,
-    }
-    const onStdout = (text: string) => {
-      capture.stdout = appendTerminalCaptureText(capture.stdout, text)
-    }
-    const onStderr = (text: string) => {
-      capture.stderr = appendTerminalCaptureText(capture.stderr, text)
-    }
-    const onExit = (event: { exitCode: number | null; signal: string | null }) => {
-      void this.finalizeCapture(terminalSessionId, activityIndex, event)
-    }
-    capture.cleanup = () => {
-      session.off('stdout', onStdout)
-      session.off('stderr', onStderr)
-      session.off('exit', onExit)
-    }
-    session.on('stdout', onStdout)
-    session.on('stderr', onStderr)
-    session.once('exit', onExit)
-    this.pendingCaptures.set(terminalSessionId, capture)
-  }
-
-  private async finalizeCapture(
-    terminalSessionId: string,
-    activityIndex: TerminalActivityIndex,
-    result: { exitCode?: number | null; signal?: string | null } = {},
-  ): Promise<void> {
-    const capture = this.pendingCaptures.get(terminalSessionId)
-    if (!capture) return
-    this.pendingCaptures.delete(terminalSessionId)
-    capture.cleanup()
-    const endedAtMs = Date.now()
-    await activityIndex.append({
-      command: capture.command,
-      cwd: capture.cwd,
-      workspacePath: capture.workspacePath,
-      sessionId: capture.appSessionId,
-      startedAt: capture.startedAt,
-      endedAt: new Date(endedAtMs).toISOString(),
-      durationMs: endedAtMs - capture.startedAtMs,
-      exitCode: result.exitCode ?? null,
-      signal: result.signal ?? 'captured',
-      timedOut: false,
-      truncated: false,
-      stdout: capture.stdout,
-      stderr: capture.stderr,
-    })
-  }
-}
-
-function appendTerminalCaptureText(current: string, chunk: string): string {
-  const next = current + chunk
-  if (next.length <= MAX_TERMINAL_OUTPUT_BYTES) return next
-  return next.slice(next.length - MAX_TERMINAL_OUTPUT_BYTES)
 }
