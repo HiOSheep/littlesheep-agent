@@ -70,6 +70,7 @@ pnpm.cmd run verify:app-recovery
 - [架构评估与开发决策报告](docs/architecture-decision-report.md)：当前模块评估、主要缺口、推荐演进顺序和待决策事项。
 - [项目状态](docs/project-status.md)：总进度、当前阶段、验证证据和未完成方向。
 - [仓库指南](docs/repository-guide.md)：目录、模块和维护规则。
+- [模块拆分地图](docs/module-split-map.md)：大型生产文件的所有权、目标边界和行为保持型拆分顺序。
 - [总基调、认知架构与仓库基元化任务书 2026-07-14](docs/foundation-cognition-repository-taskbook-2026-07-14.md)：当前仓库整理、认知契约和数据边界的先行任务书。
 - [核心 Agent 能力任务书 2026-07-13](docs/core-agent-capability-taskbook-2026-07-13.md)
 - [Agent 核心与记忆系统任务书 2026-07-14](docs/agent-core-memory-taskbook-2026-07-14.md)：核心收敛与真实场景验收基线。

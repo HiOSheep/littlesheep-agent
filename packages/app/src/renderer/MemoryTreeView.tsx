@@ -1,3 +1,5 @@
+// Memory tree control surface for the authoritative runtime index and resources.
+// The view never creates a renderer-only copy of memory data.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   getMemoryTreeOverview,

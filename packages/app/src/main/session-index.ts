@@ -7,19 +7,11 @@ import { join } from 'node:path'
 import { readFile, mkdir } from 'node:fs/promises'
 import { atomicWrite } from '@littlesheep/memory-core'
 import { isSessionScope, type SessionScope } from '../shared/session-scope.js'
+import type { SessionMeta } from '../shared/session-project-contracts.js'
 import { isRetiredApplicationWorkspace } from './runtime-config.js'
 import { normalizeBoundPath } from './path-rebinding.js'
 
-export interface SessionMeta {
-  id: string
-  title: string
-  createdAt: number
-  lastMessageAt: number
-  mode: string
-  scope: SessionScope
-  projectId?: string
-  workspacePath?: string
-}
+export type { SessionMeta } from '../shared/session-project-contracts.js'
 
 export class SessionIndex {
   private readonly filePath: string

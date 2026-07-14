@@ -4,37 +4,20 @@
 import { mkdir, readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { atomicWrite } from '@littlesheep/memory-core'
+import type {
+  WorkspaceLayoutFileDraft,
+  WorkspaceLayoutOpenRequest,
+  WorkspaceLayoutSnapshot,
+  WorkspaceLayoutTabId,
+} from '../shared/workspace-contracts.js'
 import { rebaseBoundPath, sameBoundPath } from './path-rebinding.js'
 
-export type WorkspaceLayoutTabId = string
-
-export interface WorkspaceLayoutOpenRequest {
-  root: string
-  path: string
-}
-
-export interface WorkspaceLayoutFileDraft {
-  path: string
-  modifiedAt?: number
-  editorText: string
-  savedText: string
-  editing: boolean
-}
-
-export interface WorkspaceLayoutSnapshot {
-  version: 1
-  updatedAt: string
-  workspacePath: string
-  sessionId?: string
-  width: number
-  collapsed: boolean
-  fullscreen: boolean
-  activeTab: WorkspaceLayoutTabId
-  openTabs: WorkspaceLayoutTabId[]
-  openRequest: WorkspaceLayoutOpenRequest | null
-  fileNavigatorCollapsed: boolean
-  drafts: Record<string, WorkspaceLayoutFileDraft>
-}
+export type {
+  WorkspaceLayoutFileDraft,
+  WorkspaceLayoutOpenRequest,
+  WorkspaceLayoutSnapshot,
+  WorkspaceLayoutTabId,
+} from '../shared/workspace-contracts.js'
 
 export class WorkspaceLayoutIndex {
   private readonly filePath: string

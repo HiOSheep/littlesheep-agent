@@ -1,3 +1,5 @@
+// Deterministically budgets and assembles one model request context, producing
+// traceable snapshots without owning the underlying memory or session data.
 import { createHash, randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import {

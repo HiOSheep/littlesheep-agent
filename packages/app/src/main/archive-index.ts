@@ -5,24 +5,23 @@
 import { mkdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { atomicWrite } from '@littlesheep/memory-core'
-import type { ProjectMeta } from './project-index.js'
-import { normalizeSessionMeta, type SessionMeta } from './session-index.js'
+import type {
+  ArchivePayload,
+  ArchivedProjectMeta,
+  ArchivedSessionMeta,
+  ProjectMeta,
+  SessionMeta,
+} from '../shared/session-project-contracts.js'
+import { normalizeSessionMeta } from './session-index.js'
 import { isRetiredApplicationWorkspace } from './runtime-config.js'
 import { sessionBelongsToProject } from '../shared/session-scope.js'
 import { normalizeBoundPath, sameBoundPath } from './path-rebinding.js'
 
-export interface ArchivedProjectMeta extends ProjectMeta {
-  archivedAt: number
-}
-
-export interface ArchivedSessionMeta extends SessionMeta {
-  archivedAt: number
-}
-
-export interface ArchivePayload {
-  projects: ArchivedProjectMeta[]
-  sessions: ArchivedSessionMeta[]
-}
+export type {
+  ArchivePayload,
+  ArchivedProjectMeta,
+  ArchivedSessionMeta,
+} from '../shared/session-project-contracts.js'
 
 const EMPTY_ARCHIVE: ArchivePayload = { projects: [], sessions: [] }
 

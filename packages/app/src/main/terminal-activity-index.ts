@@ -5,24 +5,10 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { atomicWrite } from '@littlesheep/memory-core'
+import type { TerminalActivityRecord } from '../shared/workspace-contracts.js'
 import { rebaseBoundPath, sameBoundPath } from './path-rebinding.js'
 
-export interface TerminalActivityRecord {
-  id: string
-  command: string
-  cwd: string
-  workspacePath: string
-  sessionId?: string
-  startedAt: string
-  endedAt: string
-  durationMs: number
-  exitCode: number | null
-  signal: string | null
-  timedOut: boolean
-  truncated: boolean
-  stdoutPreview: string
-  stderrPreview: string
-}
+export type { TerminalActivityRecord } from '../shared/workspace-contracts.js'
 
 export interface TerminalActivityInput {
   command: string

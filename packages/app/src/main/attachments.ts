@@ -1,7 +1,10 @@
+// Resolves run-scoped attachment metadata and content under explicit ownership
+// rules; payloads are never persisted into execution logs.
 import { readFile, stat } from 'node:fs/promises'
 import { basename, extname, isAbsolute, relative, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { AgentTool, AttachmentOwnership, RunAttachment } from '@littlesheep/types'
+import type { AttachmentRef } from '../shared/attachment-contracts.js'
 import mammoth from 'mammoth'
 import * as XLSX from 'xlsx'
 
@@ -29,16 +32,7 @@ const IMAGE_MIME_BY_EXT: Record<string, string> = {
   '.tiff': 'image/tiff',
   '.svg': 'image/svg+xml',
 }
-export interface AttachmentRef {
-  path: string
-  name?: string
-  kind?: 'image' | 'document' | 'file'
-  mimeType?: string
-  size?: number
-  cacheId?: string
-  contentHash?: string
-  ownership?: AttachmentOwnership
-}
+export type { AttachmentRef } from '../shared/attachment-contracts.js'
 
 export interface ManagedAttachmentResolution extends AttachmentRef {
   cacheId: string

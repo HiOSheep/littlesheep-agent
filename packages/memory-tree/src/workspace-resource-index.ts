@@ -1,3 +1,5 @@
+// Stores bounded workspace metadata indexes and resumable scan state.
+// File contents remain outside this derived index and are read only on demand.
 import { createHash, randomUUID } from 'node:crypto';
 import { copyFile, lstat, mkdir, readFile } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';

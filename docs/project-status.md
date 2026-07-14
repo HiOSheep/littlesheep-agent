@@ -10,13 +10,13 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 它还不是可直接宣称“生产就绪”的发行版。主要原因是当前内置模型尚无已验证的最终请求精确计数器、真实供应商验证未完成、活动 run 重启续跑、MCP、安装包发布和真实用户场景验收仍未闭环。因此本项目不使用一个没有权重定义的百分比来伪装精确进度，而用能力状态和验收证据表示总进度。产品方向已明确为：解放用户生产力，让用户专注于想法，LS 负责将想法可靠落地；执行和输出统一采用渐进式披露。
 
-**当前阶段：先执行仓库基元化与认知契约整理。阶段 0（基线与任务书命名）已完成；阶段 1-2 需要串行建立仓库导航、所有权地图、共享契约和拆分基元，随后再进入阶段 3-4 的行为保持型模块拆分。真实 Provider 校准可在不修改这些热点文件的前提下并行。**
+**当前阶段：仓库基元化阶段 0-2 已完成，正在执行阶段 3 的 Electron App 行为保持型分域。先拆 Renderer API，再拆 Main/Local App API，最后拆 Renderer 组合壳；真实 Provider 校准可在不修改这些热点文件的前提下并行。**
 
 ## 能力总览
 
 | 能力域 | 状态 | 当前结论 | 主要位置 |
 | --- | --- | --- | --- |
-| 架构治理 | 仓库基元化阶段 0 已完成，阶段 1 待执行 | 顶层架构边界和内部 v1 运行契约已经建立；新的仓库基元化任务书已冻结命名与量化基线。当前仍有 33 个超过 300 行的非测试生产文件、25 个缺少 README 的 package 根目录和 35 个缺少 README 的主要源码目录，模块化整理尚未执行，不能写成已经完成 | `docs/foundation-cognition-repository-taskbook-2026-07-14.md`、`docs/repository-guide.md`、`packages/types/src/runtime-contracts.ts`、`packages/context/` |
+| 架构治理 | 仓库基元化阶段 0-2 已完成，阶段 3 进行中 | 26 个 package 与 9 个独立领域目录均有所有权 README，38 个大型生产文件已登记拆分边界；App 跨进程协议与 Local App API 路由已有唯一来源、兼容 re-export 和 SSE/路由特征测试，热点增长已进入质量门。Electron App、Memory 与 Harness 的实现分域尚未完成 | `docs/foundation-cognition-repository-taskbook-2026-07-14.md`、`docs/module-split-map.md`、`packages/app/src/shared/`、`scripts/check-repository-hygiene.mjs` |
 | Context Engine | 阶段 1 主要数据链已实现，供应商验收未闭环 | 支持确定性候选、来源 segment、已知/未知模型窗口、预算淘汰、版本化 Summary Memory、附件清单优先、按需附件工具、压缩阈值设置、Provider usage 绑定和双账本 UI；provider/model tokenizer 能力矩阵已建立，只有模型声明与运行时 `counterId` 一致时才允许生成精确账本。当前内置模型均明确为 unavailable，并已使用不可展示的保守安全估算完成请求前防溢出；真实 Provider 对账尚未完成 | `packages/context/`、`packages/harness/src/context-candidates.ts`、`packages/harness/src/model-observability.ts`、`packages/config/src/model-capabilities.ts` |
 | 附件、workplace 与数据根生命周期 | 阶段 3 工程实现已完成 | 粘贴/浏览器导入进入独立受管缓存，按 30 天、256 项、512 MiB 有界清理；workplace 使用可恢复的有界元数据索引，不读正文。设置页可登记完整数据根迁移，下一次启动会在任何写入者初始化前通过外部 locator、同级 staging、全文件 SHA-256 清单和活动元数据路径重绑定完成原子切换；源目录保留，失败继续使用旧目录，提交中断可恢复，回滚同样在下次启动生效。隔离测试已覆盖这些契约，尚未擅自搬迁正式用户数据 | `packages/app/src/main/attachment-cache.ts`、`packages/app/src/main/data-root-migration.ts`、`packages/app/src/main/data-root-metadata.ts`、`packages/memory-tree/src/workspace-resource-index.ts` |
 | 长会话压缩 | 已实现基础闭环 | 原始 JSONL 不删除；摘要版本化、记录来源范围、支持增量合并，并在下一轮作为独立 `summary_memory` 介入；摘要同时按 session scope 注册到资源目录，正文仍以会话元数据为权威来源并按需解析；真实长会话、失败回退和成本仍待验收 | `packages/session/src/compaction.ts`、`packages/runner/src/runner.ts`、`packages/prompt/src/builder.ts`、`packages/memory-tree/src/memory-service.ts` |
@@ -43,8 +43,8 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 | 检查 | 当前工作树结果 | 证据命令 |
 | --- | --- | --- |
-| 仓库卫生 | 通过：20 项通过，0 项失败 | `pnpm.cmd run check:repo` |
-| 全量测试 | 通过：117 个测试文件；989 passed、1 skipped | `pnpm.cmd test` |
+| 仓库卫生 | 通过：25 项通过，0 项失败 | `pnpm.cmd run check:repo` |
+| 全量测试 | 通过：119 个测试文件；992 passed、1 skipped | `pnpm.cmd test` |
 | 全工作区类型检查 | 通过 | `pnpm.cmd run typecheck` |
 | 全工作区构建 | 通过 | `pnpm.cmd run build` |
 | 应用恢复源检查 | 通过；仍保留旧执行日志缺失、可选 workspace artifact 索引缺失，以及现有用户数据尚未产生 workplace 资源索引的诊断警告 | `pnpm.cmd run verify:app-recovery` |
@@ -94,7 +94,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 - [架构决策报告](architecture-decision-report.md) 已按当前源码记录模块成熟度、主要缺口、推荐顺序和待用户决策事项。
 - 架构文档、项目状态、仓库目录、专项规范和任务书拥有独立职责，避免同一事实在多份报告中重复维护。
 - 文档已明确区分目标架构、当前事实、演进建议和专项任务书；Context Engine 只按“阶段 1 主要数据链已实现、验收未完成”记录，Tool Execution Service、Mode Registry 与 Memory Service 仍不按已完成能力记录。
-- [总基调、认知架构与仓库基元化任务书](foundation-cognition-repository-taskbook-2026-07-14.md) 已建立，并完成历史任务书日期化；任务书中的 package/领域 README、热点拆分和 LLM Call Contract 仍是待执行工作。
+- [总基调、认知架构与仓库基元化任务书](foundation-cognition-repository-taskbook-2026-07-14.md) 已完成阶段 0-2；package/领域 README、需求定位表、大型文件拆分地图、共享契约和特征测试已经落地，Electron/Memory/Harness 分域与 LLM Call Contract 仍待执行。
 
 ## 未完成方向
 
@@ -178,12 +178,11 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 ## 推荐后续顺序
 
-1. 完成仓库基元化任务书阶段 1：package/领域 README、所有权地图、大型文件拆分地图和维护入口。
-2. 串行完成阶段 2：共享契约、兼容 facade 和行为特征测试；在这一步完成前，不让多个分支同时修改 `App.tsx`、Local App API、Renderer API、Memory 或 Harness 热点。
-3. 按所有权边界推进阶段 3-4 的行为保持型拆分，先稳定模块边界，再继续向热点中增加新功能；每个子阶段都单独回归桌面交互和用户数据兼容。
-4. 在不修改上述热点的前提下，可并行完成 OpenAI、DeepSeek、GLM 真实冒烟，用结果校准 Context、reasoning、usage 与当前保守安全估算。
-5. 仓库分域稳定后，收敛统一 Tool Execution Service，并按连续性任务书实现运行中用户事件、TaskBookPatch、有界并行、版本化检查点、重启恢复和后台运行。
-6. 再实现版本化 LLM Call Contract、Mode Registry、daily 到长期记忆的安全蒸馏、插件 API v2 与 MCP；完成真实用户场景验收后规划发布包。
+1. 阶段 0-2 已完成；按 3C → 3B → 3A 的顺序拆 Renderer API、Main/Local App API 和 Renderer 组合壳，每个子阶段单独回归桌面交互与用户数据兼容。
+2. 按所有权边界推进阶段 4 的 Memory、Harness 与 Context 行为保持型拆分，稳定 facade 后再继续向热点中增加新功能。
+3. 在不修改上述热点的前提下，可并行完成 OpenAI、DeepSeek、GLM 真实冒烟，用结果校准 Context、reasoning、usage 与当前保守安全估算。
+4. 仓库分域稳定后，收敛统一 Tool Execution Service，并按连续性任务书实现运行中用户事件、TaskBookPatch、有界并行、版本化检查点、重启恢复和后台运行。
+5. 再实现版本化 LLM Call Contract、Mode Registry、daily 到长期记忆的安全蒸馏、插件 API v2 与 MCP；完成真实用户场景验收后规划发布包。
 
 ## 维护规则
 

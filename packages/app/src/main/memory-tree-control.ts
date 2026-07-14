@@ -1,10 +1,18 @@
+// Adapts MemoryService queries and guarded management commands for Local App API.
+// It does not own a second memory index or bypass repository lifecycle rules.
 import type { Config } from '@littlesheep/config'
 import type { AgentRunner } from '@littlesheep/runner'
+import type {
+  MemoryResourceManagementAction,
+  MemoryTreeManagementAction,
+  MemoryTreeOverview,
+  ProjectMemoryProjectionState,
+} from '../shared/memory-control-contracts.js'
 import type { ProjectIndex } from './project-index.js'
 
 const LEGACY_MEMORY_MIGRATION_ID = 'legacy-user-data-v1'
 const BRANCH_ORDER = ['long-term', 'project', 'daily', 'experience'] as const
-const NODE_ACTION_LABELS: Record<MemoryNodeManagementAction, string> = {
+const NODE_ACTION_LABELS: Record<MemoryTreeManagementAction, string> = {
   archive: '归档',
   restore: '恢复',
   delete: '删除',
@@ -17,8 +25,10 @@ const RESOURCE_ACTION_LABELS: Record<Exclude<MemoryResourceManagementAction, 're
   remove: '移除登记',
 }
 
-export type MemoryNodeManagementAction = 'archive' | 'restore' | 'delete' | 'promote' | 'demote'
-export type MemoryResourceManagementAction = 'disable' | 'restore' | 'remove' | 'rebind'
+export type {
+  MemoryResourceManagementAction,
+  MemoryTreeManagementAction as MemoryNodeManagementAction,
+} from '../shared/memory-control-contracts.js'
 export type ManageRuntimeMemoryNodeResult =
   | { status: 'not_found' }
   | { status: 'invalid'; error: string }
@@ -27,7 +37,7 @@ export type ManageRuntimeMemoryNodeResult =
 export async function manageRuntimeMemoryNode(
   runner: AgentRunner,
   nodeId: string,
-  action: MemoryNodeManagementAction,
+  action: MemoryTreeManagementAction,
   reason?: string,
 ): Promise<ManageRuntimeMemoryNodeResult> {
   const existing = await runner.infra.memoryService.getNode(nodeId)
@@ -82,7 +92,7 @@ export async function buildMemoryTreePayload(
   runner: AgentRunner,
   projectIndex: ProjectIndex,
   config: Config,
-): Promise<Record<string, unknown>> {
+): Promise<MemoryTreeOverview> {
   const projects = await projectIndex.list()
   const projectionStates = await runner.infra.memoryService.listProjectMemoryProjectionStates(
     projects.map((project) => ({ id: project.id, name: project.name, path: project.path })),
@@ -186,7 +196,7 @@ export async function buildMemoryTreePayload(
         sourceRunIds: node.sourceRunIds,
         sourceStages: node.sourceStages,
         sourceRefs: node.sourceRefs ?? [],
-        status: node.status,
+        status: node.status === 'archived' ? 'archived' as const : 'active' as const,
         createdAt: node.createdAt,
         updatedAt: node.updatedAt,
         hitCount: recentHits.length,
@@ -314,7 +324,9 @@ export async function buildMemoryTreePayload(
   }
 }
 
-function publicProjectionState(state: Awaited<ReturnType<AgentRunner['infra']['memoryService']['getProjectMemoryProjectionState']>> | undefined) {
+function publicProjectionState(
+  state: Awaited<ReturnType<AgentRunner['infra']['memoryService']['getProjectMemoryProjectionState']>> | undefined,
+): ProjectMemoryProjectionState | undefined {
   if (!state) return undefined
   return {
     projectId: state.projectId,

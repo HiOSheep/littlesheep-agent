@@ -1,3 +1,5 @@
+// Electron renderer composition shell. Domain UI and state move behind feature
+// controllers while this file preserves top-level navigation and compatibility.
 import { lazy, Suspense, type CSSProperties, type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal, flushSync } from 'react-dom'
 import type { Terminal as XTermTerminal } from '@xterm/xterm'

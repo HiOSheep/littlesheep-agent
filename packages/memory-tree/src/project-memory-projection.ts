@@ -1,3 +1,5 @@
+// Manages private project-memory projections without replacing the user-data
+// authority, including conflict detection, recovery and safe removal.
 import { createHash } from 'node:crypto';
 import { lstat, mkdir, readFile, rm, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';

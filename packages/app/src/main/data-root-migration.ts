@@ -1,3 +1,5 @@
+// Plans and executes restart-time data-root migration with manifests, staging,
+// internal path rebinding, atomic commit and recoverable rollback.
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import {
@@ -24,6 +26,7 @@ import {
   type PendingDataRootRollback,
 } from '@littlesheep/branding'
 import { atomicWrite } from '@littlesheep/memory-core'
+import type { DataRootStatus } from '../shared/runtime-api-contracts.js'
 import { isPathInsideOrSameBound, sameBoundPath } from './path-rebinding.js'
 import { rebindDataRootMetadata, type DataRootMetadataRebindReport } from './data-root-metadata.js'
 
@@ -48,19 +51,7 @@ export interface DataRootMigrationManagerOptions {
   ) => void | Promise<void>
 }
 
-export interface DataRootStatus {
-  managed: boolean
-  currentDataDir: string
-  defaultDataDir: string
-  locatorPath: string
-  environmentOverride?: string
-  previousDataDir?: string
-  pendingMigration?: PendingDataRootMigration
-  pendingRollback?: PendingDataRootRollback
-  lastMigration?: CompletedDataRootMigration
-  requiresRestart: boolean
-  canRollback: boolean
-}
+export type { DataRootStatus } from '../shared/runtime-api-contracts.js'
 
 interface TreeFile {
   relativePath: string

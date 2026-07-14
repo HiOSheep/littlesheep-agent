@@ -6,6 +6,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { atomicWrite } from '@littlesheep/memory-core'
+import type { ProjectMeta } from '../shared/session-project-contracts.js'
 import { isRetiredApplicationWorkspace } from './runtime-config.js'
 import {
   appendBoundPathHistory,
@@ -13,18 +14,7 @@ import {
   sameBoundPath,
 } from './path-rebinding.js'
 
-export interface ProjectMeta {
-  id: string
-  name: string
-  path: string
-  createdAt: string
-  lastActiveAt: string
-  /** Present for path-independent project identities created or rebound by current LS versions. */
-  identityVersion?: 2
-  /** Bounded audit trail used to repair stale path references after a move or rename. */
-  previousPaths?: string[]
-  pathUpdatedAt?: string
-}
+export type { ProjectMeta } from '../shared/session-project-contracts.js'
 
 export class ProjectPathConflictError extends Error {
   constructor(

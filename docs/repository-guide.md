@@ -12,6 +12,7 @@
 | [architecture-decision-report.md](architecture-decision-report.md) | 当前架构评估、演进顺序、风险和用户决策点 | 完成一个架构阶段或证据推翻原建议时 |
 | [project-status.md](project-status.md) | 当前能力状态、真实验证结果和未完成方向 | 重大实现或验证后 |
 | [repository-guide.md](repository-guide.md) | 目录、文件、模块归属、依赖和维护规则 | 仓库结构或模块所有权变化时 |
+| [module-split-map.md](module-split-map.md) | 大型生产文件的所有权、目标边界、分支归属和拆分顺序 | 文件越过阈值、完成拆分或批准例外时 |
 | [core-agent-flow-guidelines.md](core-agent-flow-guidelines.md) | Core Flow、TaskBook、验证、恢复和记忆运行时的专项规范 | 核心流程契约变化时 |
 | [ui-interaction-guidelines.md](ui-interaction-guidelines.md) | UI 视觉与交互专项规范 | 新增或调整交互规则时 |
 | [总基调、认知架构与仓库基元化任务书 2026-07-14](foundation-cognition-repository-taskbook-2026-07-14.md) | 总基调的工程转译、仓库基元化、LLM Call Contract、身份与数据边界 | 仓库整理阶段、认知契约或数据边界发生变化时 |
@@ -106,6 +107,31 @@
 | `packages/channels/feishu/` | 飞书渠道插件。 |
 | `packages/channels/qqbot/` | QQ Bot 渠道插件。 |
 
+## 需求定位表
+
+先从需求类型定位 package，再沿 package README 进入公开入口和同目录测试。不要从搜索结果直接跨包深层 import。
+
+| 需求类型 | 主要所有者 | 首要入口 | 主要测试 |
+| --- | --- | --- | --- |
+| Agent 状态机、TaskBook、验证或恢复 | `packages/harness/` | `src/default-harness.ts`、`src/stages/` | `src/default-harness.test.ts`、`src/stages/*.test.ts` |
+| 单次 run、流式事件、执行日志 | `packages/runner/` | `src/runner.ts`、`src/execution-log.ts` | `src/runner.test.ts`、`src/execution-log.test.ts` |
+| 公共运行契约 | `packages/types/` | `src/index.ts`、`src/runtime-contracts.ts` | `src/runtime-contracts.test.ts`、`test/core-agent-contracts.test.ts` |
+| Context 候选、预算、计数和快照 | `packages/context/` | `src/engine.ts` | `src/engine.test.ts`、Harness Context 测试 |
+| Provider 请求、流式与 usage | `packages/llm/` | `src/client.ts` | `src/client.test.ts`、Provider smoke 脚本 |
+| 配置、Provider/模型能力 | `packages/config/` | `src/schema.ts`、`src/model-capabilities.ts` | `src/schema.test.ts`、App shared capability 测试 |
+| Prompt 与行为 profile | `packages/prompt/` | `src/builder.ts`、`src/profiles.ts` | `src/builder.test.ts`、`src/profiles.test.ts` |
+| 记忆树、资源注册与项目投影 | `packages/memory-tree/` | `src/memory-service.ts`、`src/memory-repository.ts` | `src/memory-*.test.ts`、`src/project-*.test.ts` |
+| 旧文件记忆、写入与归档 | `packages/memory-core/` | `src/write-memory.ts`、`src/archive.ts` | 对应同名测试 |
+| 会话和长会话摘要 | `packages/session/` | `src/manager.ts`、`src/compaction.ts` | 对应同名测试 |
+| 工具注册、审批和内置工具 | `packages/tools/` | `src/registry.ts`、`src/wrapper.ts`、`src/builtin/` | `src/**/*.test.ts` |
+| 插件发现、信任和生命周期 | `packages/plugins/` | `src/host.ts`、`src/manifest.ts` | `src/**/*.test.ts` |
+| 外部渠道协议 | `packages/channels/*` | 各包 `src/plugin.ts` | 各包 `src/plugin.test.ts`、`test/e2e-webhook.test.ts` |
+| Electron 启动、Local App API 和用户数据 adapter | `packages/app/src/main/` | `index.ts`、`local-app-api-server.ts` | `src/main/*.test.ts` |
+| 桌面 UI、导航、设置和工作区 | `packages/app/src/renderer/` | `App.tsx`、`api.ts` | `src/renderer/*.test.ts(x)` 与真实窗口验收 |
+| CLI 与管理命令 | `packages/cli/` | `src/bin.ts`、`src/commands/` | `src/**/*.test.ts`、`test/e2e-cli.test.ts` |
+
+当前大型文件的拆分所有权和顺序见 [模块拆分地图](module-split-map.md)。
+
 ## Electron 应用
 
 `packages/app/` 是本地桌面产品。Local App API 是 renderer 与主进程之间的本地桥接，不属于外部渠道插件。
@@ -130,7 +156,7 @@
 | `packages/app/src/renderer/MemoryTreeView.tsx`、`ArchiveManager.tsx`、`Settings.tsx` | 记忆树、项目记忆投影、归档和设置界面。 |
 | `packages/app/src/renderer/api.ts` | renderer 对 Local App API 的类型化 fetch/SSE 客户端。 |
 | `packages/app/src/renderer/styles.css` | 当前深灰视觉系统、共享浮层/转场 token、折叠和工作区布局样式；后续按 feature 拆分时必须保留共享原语契约。 |
-| `packages/app/src/shared/` | renderer 与主进程共享的纯函数模型和持久化协议。 |
+| `packages/app/src/shared/` | renderer 与主进程共享的纯函数模型、Local App API 路由和跨进程协议；稳定跨 package 契约仍归 `packages/types/`。 |
 
 ## 插件与核心边界
 

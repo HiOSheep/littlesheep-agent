@@ -248,6 +248,68 @@ async function checkWorkspacePackages() {
   )
 }
 
+async function checkRepositoryNavigation() {
+  const packageDirs = await collectPackageDirectories()
+  const missingPackageReadmes = packageDirs
+    .filter((dir) => !existsSync(join(dir, 'README.md')))
+    .map(displayPath)
+  assert(missingPackageReadmes.length === 0, 'workspace package README 完整', missingPackageReadmes.join(', '))
+
+  const requiredDomainReadmes = [
+    'packages/app/src/main',
+    'packages/app/src/preload',
+    'packages/app/src/renderer',
+    'packages/app/src/shared',
+    'packages/cli/src/commands',
+    'packages/harness/src/hooks',
+    'packages/harness/src/stages',
+    'packages/plugins/src/channel',
+    'packages/tools/src/builtin',
+  ]
+  const missingDomainReadmes = requiredDomainReadmes
+    .filter((path) => !existsSync(join(repoRoot, path, 'README.md')))
+  assert(missingDomainReadmes.length === 0, '独立领域 README 完整', missingDomainReadmes.join(', '))
+
+  const sourceFiles = (await collectSourceFiles(join(repoRoot, 'packages')))
+    .filter((file) => !/\.(test|spec)\.[^.]+$/u.test(file))
+  const largeFiles = []
+  const missingHeaders = []
+  for (const file of sourceFiles) {
+    const lines = (await readText(file)).split(/\r?\n/u)
+    if (lines.length - (lines.at(-1) === '' ? 1 : 0) <= 300) continue
+    largeFiles.push({ path: displayPath(file), lines: lines.length - (lines.at(-1) === '' ? 1 : 0) })
+    const firstMeaningful = lines.find((line) => line.trim().length > 0)?.trim() ?? ''
+    if (!firstMeaningful.startsWith('//') && !firstMeaningful.startsWith('/*')) {
+      missingHeaders.push(displayPath(file))
+    }
+  }
+  assert(missingHeaders.length === 0, '大型生产文件有职责头注释', missingHeaders.join(', '))
+
+  // These are the current composition hotspots. A later split may lower a
+  // baseline; adding new responsibilities must never increase it.
+  const hotspotBaselines = {
+    'packages/app/src/renderer/App.tsx': 9935,
+    'packages/app/src/main/local-app-api-server.ts': 2819,
+    'packages/app/src/renderer/api.ts': 1088,
+    'packages/memory-tree/src/memory-repository.ts': 1279,
+    'packages/memory-tree/src/memory-service.ts': 1120,
+    'packages/app/src/renderer/MemoryTreeView.tsx': 1104,
+  }
+  const growth = []
+  for (const [path, baseline] of Object.entries(hotspotBaselines)) {
+    const file = join(repoRoot, path)
+    if (!existsSync(file)) {
+      growth.push(`${path}: 文件不存在`)
+      continue
+    }
+    const lines = (await readText(file)).split(/\r?\n/u)
+    const count = lines.length - (lines.at(-1) === '' ? 1 : 0)
+    if (count > baseline) growth.push(`${path}: ${count} > ${baseline}`)
+  }
+  assert(growth.length === 0, '核心组合热点未继续增长', growth.join(', '))
+  pass('大型生产文件基线', `${largeFiles.length} 个文件超过 300 行；超过 600 行的文件已登记到 docs/module-split-map.md`)
+}
+
 async function checkModuleBoundaries() {
   const packageDirs = await collectPackageDirectories()
   const violations = []
@@ -388,6 +450,7 @@ async function main() {
   await checkCanonicalFiles()
   await checkTaskbookNaming()
   await checkWorkspacePackages()
+  await checkRepositoryNavigation()
   await checkModuleBoundaries()
   await checkExtensionArchitectureNames()
   checkTrackedGeneratedFiles()

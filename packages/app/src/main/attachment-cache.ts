@@ -1,3 +1,5 @@
+// Owns the bounded managed attachment cache, including its stable index,
+// integrity checks, quotas and safe cleanup rules.
 import { createHash, randomUUID } from 'node:crypto'
 import { copyFile, lstat, mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'

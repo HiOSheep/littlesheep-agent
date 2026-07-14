@@ -1,3 +1,5 @@
+// Coordinates scoped memory resources and exposes the stable runtime facade.
+// Storage, projection and resource lifecycles remain delegated to owned modules.
 import { createHash } from 'node:crypto';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { basename, isAbsolute, join, relative, resolve } from 'node:path';

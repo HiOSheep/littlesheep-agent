@@ -1,3 +1,5 @@
+// Owns plugin discovery, trust-gated activation and contribution reconciliation.
+// Core Runner behavior remains available when no plugin is loaded.
 import { mkdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import type { Config } from '@littlesheep/config'

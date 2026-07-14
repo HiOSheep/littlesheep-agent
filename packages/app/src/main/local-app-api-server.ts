@@ -73,6 +73,14 @@ import { EventEmitter } from 'node:events'
 import { access, lstat, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { shell } from 'electron'
+import {
+  LOCAL_APP_API_PREFIXES,
+  LOCAL_APP_API_ROUTES,
+  matchLocalAppApiItemPath,
+} from '../shared/local-app-api-routes.js'
+import type { ProviderInfo, RuntimeState } from '../shared/runtime-api-contracts.js'
+import type { PluginsStatusResponse } from '../shared/plugin-control-contracts.js'
+import type { ChannelConnectionsStatus } from '../shared/channel-control-contracts.js'
 import type { AgentRunner, ExecutionLog, RunInput } from '@littlesheep/runner'
 import { asSessionId, type Message } from '@littlesheep/types'
 import type { Config } from '@littlesheep/config'
@@ -678,8 +686,9 @@ async function route(
   const workspaceArtifactIndex = opts.workspaceArtifactIndex
   const workspaceLayoutIndex = opts.workspaceLayoutIndex
 
-  if (method === 'POST' && path.startsWith('/approvals/')) {
-    const id = decodeURIComponent(path.slice('/approvals/'.length))
+  const approvalId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.approvals)
+  if (method === 'POST' && approvalId !== null) {
+    const id = approvalId
     const body = await readJson(req)
     const pending = pendingApprovals.get(id)
     if (!pending) {
@@ -694,7 +703,7 @@ async function route(
   }
 
   // POST /run/stream — run runner.runStream and emit assistant deltas as SSE.
-  if (method === 'POST' && path === '/run/stream') {
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.runStream) {
     if (activeRunControllers.size >= MAX_ACTIVE_STREAM_RUNS) {
       json(res, 429, { error: 'too many active agent runs' })
       return
@@ -770,7 +779,7 @@ async function route(
   }
 
   // POST /run — run runner.run (origin='app' for local conversations)
-  if (method === 'POST' && path === '/run') {
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.run) {
     const body = await readJson(req)
     const cwd = resolveWorkspace(body, getConfig(), opts)
     const ownership = await resolveRunSessionOwnership(sessionIndex, projectIndex, body)
@@ -810,13 +819,13 @@ async function route(
     return
   }
 
-  if (method === 'GET' && path === '/projects') {
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.projects) {
     const projects = await projectIndex.list()
     json(res, 200, { projects })
     return
   }
 
-  if (method === 'POST' && path === '/projects/register') {
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.projectRegister) {
     const body = await readJson(req)
     const requestedPath = typeof body.path === 'string' ? body.path.trim() : ''
     if (!requestedPath) {
@@ -844,9 +853,9 @@ async function route(
     return
   }
 
-  const projectRebindMatch = path.match(/^\/projects\/([^/]+)\/rebind$/)
-  if (method === 'POST' && projectRebindMatch) {
-    const id = decodeURIComponent(projectRebindMatch[1]!)
+  const projectRebindId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.projects, '/rebind')
+  if (method === 'POST' && projectRebindId !== null) {
+    const id = projectRebindId
     const body = await readJson(req)
     const requestedPath = typeof body.path === 'string' ? body.path.trim() : ''
     if (!requestedPath) {
@@ -877,8 +886,9 @@ async function route(
     return
   }
 
-  if (method === 'DELETE' && path.startsWith('/projects/')) {
-    const id = decodeURIComponent(path.slice('/projects/'.length))
+  const projectDeleteId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.projects)
+  if (method === 'DELETE' && projectDeleteId !== null) {
+    const id = projectDeleteId
     const removed = await projectIndex.remove(id)
     if (!removed) {
       json(res, 404, { error: `project not found: ${id}` })
@@ -907,7 +917,7 @@ async function route(
     return
   }
 
-  if (method === 'POST' && path === '/projects/create-folder') {
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.projectCreateFolder) {
     const body = await readJson(req)
     const parentPath = typeof body.parentPath === 'string' ? body.parentPath.trim() : ''
     const rawName = typeof body.name === 'string' ? body.name.trim() : ''
@@ -950,15 +960,16 @@ async function route(
   }
 
   // GET /sessions — list sessions for sidebar
-  if (method === 'GET' && path === '/sessions') {
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.sessions) {
     const sessions = await sessionIndex.list()
     json(res, 200, { sessions })
     return
   }
 
   // GET /sessions/:id/messages — read session message history
-  if (method === 'GET' && path.startsWith('/sessions/') && path.endsWith('/messages')) {
-    const id = path.slice('/sessions/'.length, -'/messages'.length)
+  const sessionMessagesId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.sessions, '/messages')
+  if (method === 'GET' && sessionMessagesId !== null) {
+    const id = sessionMessagesId
     const messages = await runner.sessionManager.read(asSessionId(id))
     const logsByRunId = await loadExecutionLogsByRunId(runner, messages, id)
     // Transform to UI-friendly format: filter to user/assistant, extract text
@@ -969,8 +980,9 @@ async function route(
   }
 
   // GET /runs/:runId — replay an execution log
-  if (method === 'GET' && path.startsWith('/runs/')) {
-    const runId = path.slice('/runs/'.length)
+  const replayRunId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.runs)
+  if (method === 'GET' && replayRunId !== null) {
+    const runId = replayRunId
     const log = await runner.replay(runId)
     if (!log) {
       json(res, 404, { error: `run not found: ${runId}` })
@@ -981,8 +993,9 @@ async function route(
   }
 
   // DELETE /sessions/:id — archive or hard-delete session from the sidebar.
-  if (method === 'DELETE' && path.startsWith('/sessions/')) {
-    const id = decodeURIComponent(path.slice('/sessions/'.length))
+  const sessionDeleteId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.sessions)
+  if (method === 'DELETE' && sessionDeleteId !== null) {
+    const id = sessionDeleteId
     const removed = await sessionIndex.remove(id)
     if (url.searchParams.get('hard') === '1') {
       await runner.sessionManager.delete(asSessionId(id))
@@ -994,13 +1007,14 @@ async function route(
     return
   }
 
-  if (method === 'GET' && path === '/archive') {
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.archive) {
     json(res, 200, await archiveIndex.list())
     return
   }
 
-  if (method === 'POST' && path.startsWith('/archive/sessions/') && path.endsWith('/restore')) {
-    const id = decodeURIComponent(path.slice('/archive/sessions/'.length, -'/restore'.length))
+  const archivedSessionRestoreId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.archiveSessions, '/restore')
+  if (method === 'POST' && archivedSessionRestoreId !== null) {
+    const id = archivedSessionRestoreId
     const archive = await archiveIndex.list()
     const archivedSession = archive.sessions.find((item) => item.id === id)
     if (!archivedSession) {
@@ -1021,8 +1035,9 @@ async function route(
     return
   }
 
-  if (method === 'POST' && path.startsWith('/archive/projects/') && path.endsWith('/restore')) {
-    const id = decodeURIComponent(path.slice('/archive/projects/'.length, -'/restore'.length))
+  const archivedProjectRestoreId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.archiveProjects, '/restore')
+  if (method === 'POST' && archivedProjectRestoreId !== null) {
+    const id = archivedProjectRestoreId
     const project = await archiveIndex.restoreProject(id)
     if (!project) {
       json(res, 404, { error: `archived project not found: ${id}` })
@@ -1041,8 +1056,9 @@ async function route(
     return
   }
 
-  if (method === 'DELETE' && path.startsWith('/archive/sessions/')) {
-    const id = decodeURIComponent(path.slice('/archive/sessions/'.length))
+  const archivedSessionDeleteId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.archiveSessions)
+  if (method === 'DELETE' && archivedSessionDeleteId !== null) {
+    const id = archivedSessionDeleteId
     const removed = await archiveIndex.removeSession(id)
     if (!removed) {
       json(res, 404, { error: `archived session not found: ${id}` })
@@ -1054,8 +1070,9 @@ async function route(
     return
   }
 
-  if (method === 'DELETE' && path.startsWith('/archive/projects/')) {
-    const id = decodeURIComponent(path.slice('/archive/projects/'.length))
+  const archivedProjectDeleteId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.archiveProjects)
+  if (method === 'DELETE' && archivedProjectDeleteId !== null) {
+    const id = archivedProjectDeleteId
     const project = await archiveIndex.removeProject(id)
     if (!project) {
       json(res, 404, { error: `archived project not found: ${id}` })
@@ -1071,17 +1088,17 @@ async function route(
   }
 
   // GET /state — runner state
-  if (method === 'GET' && path === '/state') {
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.state) {
     json(res, 200, runner.state)
     return
   }
 
-  if (method === 'GET' && path === '/runtime') {
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.runtime) {
     json(res, 200, buildRuntimePayload(getConfig(), opts.workplaceDir))
     return
   }
 
-  if (method === 'POST' && path === '/runtime') {
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.runtime) {
     const body = await readJson(req)
     const current = getConfig()
     const nextDefaults = { ...current.agents.defaults }
@@ -1147,7 +1164,7 @@ async function route(
     return
   }
 
-  if (method === 'GET' && path === '/data-root') {
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.dataRoot) {
     if (!opts.dataRootManager) {
       json(res, 501, { error: 'data-root management is not available' })
       return
@@ -1156,7 +1173,7 @@ async function route(
     return
   }
 
-  if (method === 'POST' && path === '/data-root/select') {
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.dataRootSelect) {
     if (!opts.selectDataRootTarget) {
       json(res, 501, { error: 'data-root picker is not available' })
       return
@@ -1165,7 +1182,7 @@ async function route(
     return
   }
 
-  if (method === 'POST' && path === '/data-root/migration') {
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.dataRootMigration) {
     if (!opts.dataRootManager) {
       json(res, 501, { error: 'data-root management is not available' })
       return
@@ -1176,7 +1193,7 @@ async function route(
     return
   }
 
-  if (method === 'DELETE' && path === '/data-root/migration') {
+  if (method === 'DELETE' && path === LOCAL_APP_API_ROUTES.dataRootMigration) {
     if (!opts.dataRootManager) {
       json(res, 501, { error: 'data-root management is not available' })
       return
@@ -1185,7 +1202,7 @@ async function route(
     return
   }
 
-  if (method === 'POST' && path === '/data-root/rollback') {
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.dataRootRollback) {
     if (!opts.dataRootManager) {
       json(res, 501, { error: 'data-root management is not available' })
       return
@@ -1194,7 +1211,7 @@ async function route(
     return
   }
 
-  if (method === 'POST' && path === '/application/restart') {
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.applicationRestart) {
     if (!opts.restartApplication) {
       json(res, 501, { error: 'application restart is not available' })
       return
@@ -1204,7 +1221,7 @@ async function route(
     return
   }
 
-  if (method === 'POST' && path === '/workspace/select') {
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.workspaceSelect) {
     if (!opts.selectWorkspace) {
       json(res, 501, { error: 'workspace picker is not available' })
       return
@@ -1214,7 +1231,7 @@ async function route(
     return
   }
 
-  if (method === 'POST' && path === '/attachments/select') {
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.attachmentSelect) {
     if (!opts.selectAttachments) {
       json(res, 501, { error: 'attachment picker is not available' })
       return
@@ -1225,14 +1242,14 @@ async function route(
   }
 
   // GET /config/providers — list providers + API key status
-  if (method === 'POST' && path === '/attachments/import') {
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.attachmentImport) {
     const body = await readJson(req, MAX_ATTACHMENT_IMPORT_BODY_BYTES)
     const file = await attachmentCache.importData(body)
     json(res, 200, { file })
     return
   }
 
-  if (method === 'GET' && path === '/workspace/list') {
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.workspaceList) {
     const root = resolveWorkspaceRoot(url, getConfig(), opts)
     const target = resolveWorkspaceTarget(root, url.searchParams.get('path') ?? root)
     const payload = await listWorkspaceDirectory(root, target)
@@ -1240,7 +1257,7 @@ async function route(
     return
   }
 
-  if (method === 'GET' && path === '/workspace/preview') {
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.workspacePreview) {
     const root = resolveWorkspaceRoot(url, getConfig(), opts)
     const target = resolveWorkspaceTarget(root, url.searchParams.get('path') ?? '')
     const payload = await previewWorkspaceFile(root, target)
@@ -1248,7 +1265,7 @@ async function route(
     return
   }
 
-  if (method === 'POST' && path === '/workspace/save') {
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.workspaceSave) {
     const body = await readJson(req, MAX_WORKSPACE_SAVE_BODY_BYTES)
     const root = resolveWorkspaceRootFromValue(body.root, getConfig(), opts)
     const target = resolveWorkspaceTarget(root, typeof body.path === 'string' ? body.path : '')
@@ -1269,19 +1286,19 @@ async function route(
     return
   }
 
-  if (method === 'GET' && path === '/workspace/layout') {
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.workspaceLayout) {
     json(res, 200, { snapshot: await workspaceLayoutIndex.read() })
     return
   }
 
-  if (method === 'POST' && path === '/workspace/layout') {
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.workspaceLayout) {
     const body = await readJson(req)
     const snapshot = await workspaceLayoutIndex.save(body)
     json(res, 200, { snapshot })
     return
   }
 
-  if (method === 'GET' && path === '/workspace/artifacts') {
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.workspaceArtifacts) {
     const root = resolveWorkspaceRoot(url, getConfig(), opts)
     const records = await workspaceArtifactIndex.list({
       workspacePath: root,
@@ -1292,7 +1309,7 @@ async function route(
     return
   }
 
-  if (method === 'POST' && path === '/workspace/open') {
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.workspaceOpen) {
     const body = await readJson(req)
     const root = resolveWorkspaceRootFromValue(body.root, getConfig(), opts)
     const target = resolveWorkspaceTarget(root, typeof body.path === 'string' ? body.path : '')
@@ -1305,7 +1322,7 @@ async function route(
     return
   }
 
-  if (method === 'POST' && path === '/workspace/open-vscode') {
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.workspaceOpenVscode) {
     const body = await readJson(req)
     const root = resolveWorkspaceRootFromValue(body.root, getConfig(), opts)
     const requestedPath = typeof body.path === 'string' && body.path.trim() ? body.path : root
@@ -1315,7 +1332,7 @@ async function route(
     return
   }
 
-  if (method === 'POST' && path === '/workspace/terminal/session') {
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.terminalSession) {
     const body = await readJson(req)
     const root = resolveWorkspaceRootFromValue(body.root, getConfig(), opts)
     const info = await stat(root)
@@ -1325,7 +1342,7 @@ async function route(
     return
   }
 
-  if (path.startsWith('/workspace/terminal/session/')) {
+  if (path.startsWith(LOCAL_APP_API_PREFIXES.terminalSessions)) {
     const rest = path.slice('/workspace/terminal/session/'.length)
     const [encodedSessionId, action = ''] = rest.split('/')
     const terminalSessionId = decodeURIComponent(encodedSessionId ?? '')
@@ -1421,7 +1438,7 @@ async function route(
     }
   }
 
-  if (method === 'POST' && path === '/workspace/terminal/run') {
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.terminalRun) {
     const body = await readJson(req, MAX_TERMINAL_COMMAND_BYTES + 4096)
     const root = resolveWorkspaceRootFromValue(body.root, getConfig(), opts)
     const command = typeof body.command === 'string' ? body.command.trim() : ''
@@ -1440,7 +1457,7 @@ async function route(
     return
   }
 
-  if (method === 'GET' && path === '/workspace/terminal/activity') {
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.terminalActivity) {
     const root = resolveWorkspaceRoot(url, getConfig(), opts)
     const sessionId = normalizeOptionalSessionId(url.searchParams.get('sessionId'))
     const limitRaw = Number(url.searchParams.get('limit') ?? '30')
@@ -1453,7 +1470,7 @@ async function route(
     return
   }
 
-  if (method === 'POST' && path === '/workspace/terminal/stream') {
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.terminalStream) {
     const body = await readJson(req, MAX_TERMINAL_COMMAND_BYTES + 4096)
     const root = resolveWorkspaceRootFromValue(body.root, getConfig(), opts)
     const command = typeof body.command === 'string' ? body.command.trim() : ''
@@ -1498,8 +1515,8 @@ async function route(
     return
   }
 
-  if (method === 'GET' && path === '/config/providers') {
-    const providers = getConfig().providers.map((p) => {
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.configProviders) {
+    const providers: ProviderInfo[] = getConfig().providers.map((p) => {
       const envVar = deriveEnvVarName(p.apiKey)
       const source: 'env' | 'literal' | 'none' = !p.apiKey
         ? 'none'
@@ -1521,7 +1538,7 @@ async function route(
   }
 
   // POST /config/apikey — save API key + rebuild runner
-  if (method === 'POST' && path === '/config/apikey') {
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.configApiKey) {
     const body = await readJson(req)
     const envVar = String(body.envVar ?? '').trim()
     const key = String(body.key ?? '').trim()
@@ -1540,31 +1557,26 @@ async function route(
   }
 
   // GET /plugins - installed manifests, activation state, and discovery errors.
-  if (method === 'GET' && path === '/plugins') {
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.plugins) {
     const host = getPluginHost()
-    json(res, 200, {
+    const payload: PluginsStatusResponse = {
       started: host?.started ?? false,
       allowLocalCode: getConfig().plugins.allowLocalCode,
       plugins: host?.listPlugins() ?? [],
       diagnostics: host?.diagnostics() ?? [],
-    })
+    }
+    json(res, 200, payload)
     return
   }
 
-  const pluginEnabledMatch = path.match(/^\/plugins\/([^/]+)\/enabled$/)
-  if (method === 'POST' && pluginEnabledMatch) {
+  const pluginEnabledId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.plugins, '/enabled')
+  if (method === 'POST' && pluginEnabledId !== null) {
     const host = getPluginHost()
     if (!host) {
       json(res, 503, { error: 'plugin host is not available' })
       return
     }
-    let pluginId: string
-    try {
-      pluginId = decodeURIComponent(pluginEnabledMatch[1]!)
-    } catch {
-      json(res, 400, { error: 'plugin id is not valid URL encoding' })
-      return
-    }
+    const pluginId = pluginEnabledId
     const body = await readJson(req)
     if (typeof body.enabled !== 'boolean') {
       json(res, 400, { error: 'enabled must be a boolean' })
@@ -1594,7 +1606,7 @@ async function route(
     return
   }
 
-  if (method === 'POST' && path === '/plugins/local-code') {
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.pluginsLocalCode) {
     const host = getPluginHost()
     if (!host) {
       json(res, 503, { error: 'plugin host is not available' })
@@ -1621,7 +1633,7 @@ async function route(
     return
   }
 
-  if (method === 'POST' && path === '/plugins/reload') {
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.pluginsReload) {
     const host = getPluginHost()
     if (!host) {
       json(res, 503, { error: 'plugin host is not available' })
@@ -1636,15 +1648,15 @@ async function route(
   }
 
   // GET /channels/status - external connections contributed by active plugins.
-  if (method === 'GET' && path === '/channels/status') {
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.channelsStatus) {
     const host = getPluginHost()
-    const configured = getConfig().channels.channels.map((c) => ({
+    const configured: ChannelConnectionsStatus['configured'] = getConfig().channels.channels.map((c) => ({
       id: c.id,
       type: c.type,
       enabled: c.enabled,
       name: c.name,
     }))
-    json(res, 200, {
+    const payload: ChannelConnectionsStatus = {
       started: host?.started ?? false,
       channels: (host?.listChannels() ?? []).map((p) => ({
         type: p.type,
@@ -1654,12 +1666,13 @@ async function route(
       })),
       configured,
       failures: host?.channelFailures() ?? [],
-    })
+    }
+    json(res, 200, payload)
     return
   }
 
   // POST /channels/reload - rediscover plugins and restart their contributions.
-  if (method === 'POST' && path === '/channels/reload') {
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.channelsReload) {
     const host = getPluginHost()
     if (!host) {
       json(res, 503, { error: 'plugin host is not available' })
@@ -1707,7 +1720,7 @@ async function route(
   }
 
   // GET /skills — list loaded skills
-  if (method === 'GET' && path === '/skills') {
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.skills) {
     const skills = runner.infra.skillLoader.index.skills.map((s) => ({
       name: s.name,
       description: s.description,
@@ -1717,8 +1730,9 @@ async function route(
   }
 
   // GET /skills/:name — read a skill's SKILL.md body
-  if (method === 'GET' && path.startsWith('/skills/')) {
-    const name = path.slice('/skills/'.length)
+  const skillName = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.skills)
+  if (method === 'GET' && skillName !== null) {
+    const name = skillName
     const skill = runner.infra.skillLoader.index.skills.find((s) => s.name === name)
     if (!skill) { json(res, 404, { error: `skill not found: ${name}` }); return }
     const body = await runner.infra.skillLoader.loadBody(name)
@@ -1727,7 +1741,7 @@ async function route(
   }
 
   // GET /memory — list daily memory dates + long-term excerpt
-  if (method === 'POST' && path === '/memory/policy') {
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.memoryPolicy) {
     const body = await readJson(req)
     const threshold = typeof body.experienceWriteThreshold === 'number'
       ? body.experienceWriteThreshold
@@ -1750,9 +1764,9 @@ async function route(
     return
   }
 
-  const memoryNodeManagementMatch = path.match(/^\/memory\/tree\/nodes\/([^/]+)\/manage$/)
-  if (method === 'POST' && memoryNodeManagementMatch) {
-    const nodeId = decodeURIComponent(memoryNodeManagementMatch[1]!)
+  const memoryNodeId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.memoryNodes, '/manage')
+  if (method === 'POST' && memoryNodeId !== null) {
+    const nodeId = memoryNodeId
     const body = await readJson(req)
     const action = typeof body.action === 'string' ? body.action : ''
     if (!MEMORY_NODE_MANAGEMENT_ACTIONS.has(action as MemoryNodeManagementAction)) {
@@ -1777,9 +1791,9 @@ async function route(
     return
   }
 
-  const memoryResourceManagementMatch = path.match(/^\/memory\/tree\/resources\/([^/]+)\/manage$/)
-  if (method === 'POST' && memoryResourceManagementMatch) {
-    const resourceId = decodeURIComponent(memoryResourceManagementMatch[1]!)
+  const memoryResourceId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.memoryResources, '/manage')
+  if (method === 'POST' && memoryResourceId !== null) {
+    const resourceId = memoryResourceId
     const body = await readJson(req)
     const action = typeof body.action === 'string' ? body.action : ''
     if (!MEMORY_RESOURCE_MANAGEMENT_ACTIONS.has(action as MemoryResourceManagementAction)) {
@@ -1819,9 +1833,9 @@ async function route(
     return
   }
 
-  const projectProjectionMatch = path.match(/^\/memory\/projects\/([^/]+)\/projection$/)
-  if (projectProjectionMatch && (method === 'GET' || method === 'POST')) {
-    const projectId = decodeURIComponent(projectProjectionMatch[1]!)
+  const projectProjectionId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.memoryProjects, '/projection')
+  if (projectProjectionId !== null && (method === 'GET' || method === 'POST')) {
+    const projectId = projectProjectionId
     const project = (await projectIndex.list()).find((entry) => entry.id === projectId)
     if (!project) {
       json(res, 404, { error: `project not found: ${projectId}` })
@@ -1874,12 +1888,12 @@ async function route(
     return
   }
 
-  if (method === 'GET' && path === '/memory/tree') {
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.memoryTree) {
     json(res, 200, await buildMemoryTreePayload(runner, projectIndex, getConfig()))
     return
   }
 
-  if (method === 'GET' && path === '/memory') {
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.memory) {
     const store = runner.infra.memoryStore
     const dailyDates = await store.listDailyDates()
     let longTerm = ''
@@ -2610,7 +2624,7 @@ function findArchivedProjectForSession(
   return projects.find((project) => project.id === session.projectId)
 }
 
-function buildRuntimePayload(config: Config, workplaceDir: string) {
+function buildRuntimePayload(config: Config, workplaceDir: string): RuntimeState {
   return {
     model: config.agents.defaults.model,
     reasoning: coerceReasoningForModelRef(config.agents.defaults.reasoning, config.agents.defaults.model),

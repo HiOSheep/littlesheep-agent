@@ -2,8 +2,34 @@
 // The base URL is injected by the preload contextBridge.
 
 import type { RuntimeReasoning } from '../shared/model-capabilities'
-import type { HistoryActivity } from '../shared/history-activity'
+import type { HistoryMessageRecord } from '../shared/history-activity'
 import type { SessionScope } from '../shared/session-scope'
+import type { AttachmentRef } from '../shared/attachment-contracts'
+import type {
+  DataRootStatus,
+  ProviderInfo,
+  RuntimePatch,
+  RuntimeState,
+} from '../shared/runtime-api-contracts'
+import type { PluginsStatusResponse } from '../shared/plugin-control-contracts'
+import type { ChannelConnectionsStatus } from '../shared/channel-control-contracts'
+import {
+  LOCAL_APP_API_PREFIXES,
+  LOCAL_APP_API_ROUTES,
+  localAppApiItemPath,
+} from '../shared/local-app-api-routes'
+import type {
+  ArchivePayload,
+  ArchivedProjectMeta,
+  ArchivedSessionMeta,
+  ProjectMeta,
+  SessionMeta,
+} from '../shared/session-project-contracts'
+import type {
+  TerminalActivityRecord,
+  WorkspaceArtifactRecord,
+  WorkspaceLayoutSnapshot,
+} from '../shared/workspace-contracts'
 import type {
   ContextSnapshot,
   ModelRequestSnapshot,
@@ -16,6 +42,25 @@ import type { PermissionModeId } from '../shared/permission-modes'
 
 export type { AgentProfileId } from '@littlesheep/prompt'
 export type { PermissionModeId } from '../shared/permission-modes'
+export type { AttachmentRef } from '../shared/attachment-contracts'
+export type * from '../shared/memory-control-contracts'
+export type * from '../shared/runtime-api-contracts'
+export type * from '../shared/plugin-control-contracts'
+export type * from '../shared/channel-control-contracts'
+export type { HistoryMessageRecord as HistoryMessage } from '../shared/history-activity'
+export type {
+  ArchivePayload,
+  ArchivedProjectMeta,
+  ArchivedSessionMeta,
+  ProjectMeta,
+  SessionMeta,
+} from '../shared/session-project-contracts'
+export type {
+  TerminalActivityRecord,
+  WorkspaceArtifactRecord,
+  WorkspaceLayoutSnapshot,
+} from '../shared/workspace-contracts'
+export * from './api/memory'
 
 declare global {
   interface Window {
@@ -28,43 +73,12 @@ declare global {
 
 const apiBase: string = window.littlesheep?.apiBase ?? 'http://127.0.0.1:0'
 
+function localApiUrl(path: string): string {
+  return `${apiBase}${path}`
+}
+
 function localApiStatusError(status: number): Error {
   return new Error(`Local app API error: ${status}`)
-}
-
-export interface SessionMeta {
-  id: string
-  title: string
-  createdAt: number
-  lastMessageAt: number
-  mode: string
-  scope: SessionScope
-  projectId?: string
-  workspacePath?: string
-}
-
-export interface ProjectMeta {
-  id: string
-  name: string
-  path: string
-  createdAt: string
-  lastActiveAt: string
-  identityVersion?: 2
-  previousPaths?: string[]
-  pathUpdatedAt?: string
-}
-
-export interface ArchivedSessionMeta extends SessionMeta {
-  archivedAt: number
-}
-
-export interface ArchivedProjectMeta extends ProjectMeta {
-  archivedAt: number
-}
-
-export interface ArchivePayload {
-  projects: ArchivedProjectMeta[]
-  sessions: ArchivedSessionMeta[]
 }
 
 export interface RunResult {
@@ -149,7 +163,7 @@ export async function runAgent(
   permissionMode?: PermissionModeId,
   profile?: AgentProfileId,
 ): Promise<RunResult> {
-  const res = await fetch(`${apiBase}/run`, {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.run), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, sessionId, permissionMode, profile }),
@@ -173,17 +187,6 @@ export interface ApprovalRequest {
   source?: 'agent' | 'workspace'
 }
 
-export interface AttachmentRef {
-  path: string
-  name?: string
-  kind?: 'image' | 'document' | 'file'
-  mimeType?: string
-  size?: number
-  cacheId?: string
-  contentHash?: string
-  ownership?: 'cache' | 'agent_workplace' | 'user_workplace' | 'project' | 'external'
-}
-
 export interface RunOptions {
   workspace?: string
   sessionScope?: SessionScope
@@ -200,7 +203,7 @@ export async function runAgentStream(
   handlers: RunStreamHandlers,
   options: RunOptions = {},
 ): Promise<RunResult> {
-  const res = await fetch(`${apiBase}/run/stream`, {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.runStream), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, sessionId, permissionMode, ...options }),
@@ -265,7 +268,7 @@ export async function runAgentStream(
 }
 
 async function respondApproval(id: string, approved: boolean): Promise<void> {
-  const res = await fetch(`${apiBase}/approvals/${encodeURIComponent(id)}`, {
+  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.approvals, id)), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ approved }),
@@ -288,19 +291,19 @@ function parseSseFrame(frame: string): { name: string; data: unknown } | null {
 }
 
 export async function listSessions(): Promise<{ sessions: SessionMeta[] }> {
-  const res = await fetch(`${apiBase}/sessions`)
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.sessions))
   if (!res.ok) throw localApiStatusError(res.status)
   return res.json() as Promise<{ sessions: SessionMeta[] }>
 }
 
 export async function listProjects(): Promise<{ projects: ProjectMeta[] }> {
-  const res = await fetch(`${apiBase}/projects`)
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.projects))
   if (!res.ok) throw localApiStatusError(res.status)
   return res.json() as Promise<{ projects: ProjectMeta[] }>
 }
 
 export async function createProjectFolder(parentPath: string, name: string): Promise<{ path: string; project: ProjectMeta }> {
-  const res = await fetch(`${apiBase}/projects/create-folder`, {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.projectCreateFolder), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ parentPath, name }),
@@ -313,7 +316,7 @@ export async function createProjectFolder(parentPath: string, name: string): Pro
 }
 
 export async function registerProject(path: string): Promise<{ project: ProjectMeta }> {
-  const res = await fetch(`${apiBase}/projects/register`, {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.projectRegister), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ path }),
@@ -329,7 +332,7 @@ export async function rebindProject(
   id: string,
   path: string,
 ): Promise<{ project: ProjectMeta; sessions: SessionMeta[]; recovered: boolean; runtime: RuntimeState }> {
-  const res = await fetch(`${apiBase}/projects/${encodeURIComponent(id)}/rebind`, {
+  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.projects, id, '/rebind')), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ path }),
@@ -348,155 +351,69 @@ export async function rebindProject(
 
 export async function deleteProject(id: string, opts: { hard?: boolean } = {}): Promise<void> {
   const suffix = opts.hard ? '?hard=1' : ''
-  const res = await fetch(`${apiBase}/projects/${encodeURIComponent(id)}${suffix}`, { method: 'DELETE' })
+  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.projects, id, suffix)), { method: 'DELETE' })
   if (!res.ok) throw localApiStatusError(res.status)
 }
 
 export async function deleteSession(id: string, opts: { hard?: boolean } = {}): Promise<void> {
   const suffix = opts.hard ? '?hard=1' : ''
-  const res = await fetch(`${apiBase}/sessions/${encodeURIComponent(id)}${suffix}`, { method: 'DELETE' })
+  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.sessions, id, suffix)), { method: 'DELETE' })
   if (!res.ok) throw localApiStatusError(res.status)
 }
 
 export async function listArchive(): Promise<ArchivePayload> {
-  const res = await fetch(`${apiBase}/archive`)
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.archive))
   if (!res.ok) throw localApiStatusError(res.status)
   return res.json() as Promise<ArchivePayload>
 }
 
 export async function restoreArchivedSession(id: string): Promise<{ session: SessionMeta; project?: ProjectMeta }> {
-  const res = await fetch(`${apiBase}/archive/sessions/${encodeURIComponent(id)}/restore`, { method: 'POST' })
+  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.archiveSessions, id, '/restore')), { method: 'POST' })
   if (!res.ok) throw localApiStatusError(res.status)
   return res.json() as Promise<{ session: SessionMeta; project?: ProjectMeta }>
 }
 
 export async function restoreArchivedProject(id: string): Promise<{ project: ProjectMeta; sessions: SessionMeta[] }> {
-  const res = await fetch(`${apiBase}/archive/projects/${encodeURIComponent(id)}/restore`, { method: 'POST' })
+  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.archiveProjects, id, '/restore')), { method: 'POST' })
   if (!res.ok) throw localApiStatusError(res.status)
   return res.json() as Promise<{ project: ProjectMeta; sessions: SessionMeta[] }>
 }
 
 export async function deleteArchivedSession(id: string): Promise<void> {
-  const res = await fetch(`${apiBase}/archive/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.archiveSessions, id)), { method: 'DELETE' })
   if (!res.ok) throw localApiStatusError(res.status)
 }
 
 export async function deleteArchivedProject(id: string): Promise<void> {
-  const res = await fetch(`${apiBase}/archive/projects/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.archiveProjects, id)), { method: 'DELETE' })
   if (!res.ok) throw localApiStatusError(res.status)
 }
 
-export interface HistoryMessage {
-  role: 'user' | 'assistant'
-  text: string
-  timestamp: string
-  durationMs?: number
-  activityCollapsed?: boolean
-  activity?: HistoryActivity
-}
-
-export async function getSessionMessages(id: string): Promise<HistoryMessage[]> {
-  const res = await fetch(`${apiBase}/sessions/${id}/messages`)
+export async function getSessionMessages(id: string): Promise<HistoryMessageRecord[]> {
+  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.sessions, id, '/messages')))
   if (!res.ok) throw localApiStatusError(res.status)
-  const data = await res.json() as { messages: HistoryMessage[] }
+  const data = await res.json() as { messages: HistoryMessageRecord[] }
   return data.messages
 }
 
 // ─── Settings / API Key ──────────────────────────────────────────────────
 
-export interface ProviderInfo {
-  id: string
-  name?: string
-  baseURL: string
-  /** Env var name (e.g. "DEEPSEEK_API_KEY"), or null if hardcoded/none. */
-  envVar: string | null
-  /** Whether the key is currently set (env var resolves to a value). */
-  hasKey: boolean
-  /** Where the key comes from: env var reference, literal string, or none. */
-  source: 'env' | 'literal' | 'none'
-}
-
 /** GET /config/providers — list providers + API key status. */
 export async function getProviders(): Promise<ProviderInfo[]> {
-  const res = await fetch(`${apiBase}/config/providers`)
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.configProviders))
   if (!res.ok) throw localApiStatusError(res.status)
   const data = await res.json() as { providers: ProviderInfo[] }
   return data.providers
 }
 
-export interface RuntimeProvider {
-  id: string
-  name: string
-  baseURL: string
-  models: string[]
-  envVar: string | null
-  requiresKey: boolean
-  hasKey: boolean
-}
-
-export interface RuntimeState {
-  model: string
-  reasoning: RuntimeReasoning
-  profile: AgentProfileId
-  contextCompressionThresholdRatio: number
-  workspace: string
-  workplace: string
-  providers: RuntimeProvider[]
-}
-
-export interface DataRootMigrationState {
-  id: string
-  sourceDir: string
-  targetDir: string
-  stageDir: string
-  phase: 'requested' | 'copying' | 'verifying' | 'committing' | 'failed'
-  createdAt: string
-  updatedAt: string
-  attempts: number
-  error?: string
-  fileCount?: number
-  totalBytes?: number
-  manifestHash?: string
-}
-
-export interface DataRootRollbackState {
-  id: string
-  fromDir: string
-  toDir: string
-  createdAt: string
-  error?: string
-}
-
-export interface DataRootStatus {
-  managed: boolean
-  currentDataDir: string
-  defaultDataDir: string
-  locatorPath: string
-  environmentOverride?: string
-  previousDataDir?: string
-  pendingMigration?: DataRootMigrationState
-  pendingRollback?: DataRootRollbackState
-  lastMigration?: {
-    id: string
-    sourceDir: string
-    targetDir: string
-    completedAt: string
-    fileCount: number
-    totalBytes: number
-    manifestHash: string
-  }
-  requiresRestart: boolean
-  canRollback: boolean
-}
-
 export async function getRuntime(): Promise<RuntimeState> {
-  const res = await fetch(`${apiBase}/runtime`)
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.runtime))
   if (!res.ok) throw localApiStatusError(res.status)
   return res.json() as Promise<RuntimeState>
 }
 
-export async function updateRuntime(patch: Partial<Pick<RuntimeState, 'model' | 'reasoning' | 'profile' | 'contextCompressionThresholdRatio' | 'workspace'>>): Promise<RuntimeState> {
-  const res = await fetch(`${apiBase}/runtime`, {
+export async function updateRuntime(patch: RuntimePatch): Promise<RuntimeState> {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.runtime), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(patch),
@@ -509,19 +426,19 @@ export async function updateRuntime(patch: Partial<Pick<RuntimeState, 'model' | 
 }
 
 export async function getDataRootStatus(): Promise<DataRootStatus> {
-  const res = await fetch(`${apiBase}/data-root`)
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.dataRoot))
   return parseDataRootResponse(res)
 }
 
 export async function selectDataRootTarget(): Promise<string | null> {
-  const res = await fetch(`${apiBase}/data-root/select`, { method: 'POST' })
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.dataRootSelect), { method: 'POST' })
   if (!res.ok) throw await localApiResponseError(res)
   const data = await res.json() as { path: string | null }
   return data.path
 }
 
 export async function requestDataRootMigration(targetDir: string): Promise<DataRootStatus> {
-  const res = await fetch(`${apiBase}/data-root/migration`, {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.dataRootMigration), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ targetDir }),
@@ -530,17 +447,17 @@ export async function requestDataRootMigration(targetDir: string): Promise<DataR
 }
 
 export async function cancelDataRootOperation(): Promise<DataRootStatus> {
-  const res = await fetch(`${apiBase}/data-root/migration`, { method: 'DELETE' })
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.dataRootMigration), { method: 'DELETE' })
   return parseDataRootResponse(res)
 }
 
 export async function requestDataRootRollback(): Promise<DataRootStatus> {
-  const res = await fetch(`${apiBase}/data-root/rollback`, { method: 'POST' })
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.dataRootRollback), { method: 'POST' })
   return parseDataRootResponse(res)
 }
 
 export async function restartApplication(): Promise<void> {
-  const res = await fetch(`${apiBase}/application/restart`, { method: 'POST' })
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.applicationRestart), { method: 'POST' })
   if (!res.ok) throw await localApiResponseError(res)
 }
 
@@ -555,14 +472,14 @@ async function localApiResponseError(res: Response): Promise<Error> {
 }
 
 export async function selectWorkspace(): Promise<string | null> {
-  const res = await fetch(`${apiBase}/workspace/select`, { method: 'POST' })
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.workspaceSelect), { method: 'POST' })
   if (!res.ok) throw localApiStatusError(res.status)
   const data = await res.json() as { path: string | null }
   return data.path
 }
 
 export async function selectAttachments(): Promise<AttachmentRef[]> {
-  const res = await fetch(`${apiBase}/attachments/select`, { method: 'POST' })
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.attachmentSelect), { method: 'POST' })
   if (!res.ok) throw localApiStatusError(res.status)
   const data = await res.json() as { files: AttachmentRef[] }
   return data.files
@@ -616,41 +533,6 @@ export type WorkspacePreview =
     reason?: string
   }
 
-export interface WorkspaceArtifactRecord {
-  id: string
-  path: string
-  name: string
-  action: 'created' | 'modified' | 'attached'
-  source: 'agent' | 'user'
-  workspacePath: string
-  sessionId?: string
-  projectId?: string
-  runId?: string
-  toolName?: string
-  createdAt: string
-}
-
-export interface WorkspaceLayoutSnapshot {
-  version: 1
-  updatedAt: string
-  workspacePath: string
-  sessionId?: string
-  width: number
-  collapsed: boolean
-  fullscreen: boolean
-  activeTab: string
-  openTabs: string[]
-  openRequest: { root: string; path: string } | null
-  fileNavigatorCollapsed: boolean
-  drafts: Record<string, {
-    path: string
-    modifiedAt?: number
-    editorText: string
-    savedText: string
-    editing: boolean
-  }>
-}
-
 function workspaceQuery(root: string, path?: string): string {
   const params = new URLSearchParams({ root })
   if (path) params.set('path', path)
@@ -658,7 +540,7 @@ function workspaceQuery(root: string, path?: string): string {
 }
 
 export async function listWorkspaceDirectory(root: string, path?: string): Promise<WorkspaceDirectory> {
-  const res = await fetch(`${apiBase}/workspace/list?${workspaceQuery(root, path)}`)
+  const res = await fetch(`${localApiUrl(LOCAL_APP_API_ROUTES.workspaceList)}?${workspaceQuery(root, path)}`)
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
     throw new Error((data as { error: string }).error)
@@ -667,7 +549,7 @@ export async function listWorkspaceDirectory(root: string, path?: string): Promi
 }
 
 export async function previewWorkspaceFile(root: string, path: string): Promise<WorkspacePreview> {
-  const res = await fetch(`${apiBase}/workspace/preview?${workspaceQuery(root, path)}`)
+  const res = await fetch(`${localApiUrl(LOCAL_APP_API_ROUTES.workspacePreview)}?${workspaceQuery(root, path)}`)
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
     throw new Error((data as { error: string }).error)
@@ -682,7 +564,7 @@ export async function saveWorkspaceFile(
   expectedModifiedAt?: number,
   sessionId?: string,
 ): Promise<WorkspacePreview> {
-  const res = await fetch(`${apiBase}/workspace/save`, {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.workspaceSave), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ root, path, content, expectedModifiedAt, sessionId }),
@@ -695,7 +577,7 @@ export async function saveWorkspaceFile(
 }
 
 export async function readWorkspaceLayoutSnapshot(): Promise<WorkspaceLayoutSnapshot | null> {
-  const res = await fetch(`${apiBase}/workspace/layout`)
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.workspaceLayout))
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
     throw new Error((data as { error: string }).error)
@@ -707,7 +589,7 @@ export async function readWorkspaceLayoutSnapshot(): Promise<WorkspaceLayoutSnap
 export async function saveWorkspaceLayoutSnapshot(
   snapshot: Omit<WorkspaceLayoutSnapshot, 'version' | 'updatedAt'>,
 ): Promise<WorkspaceLayoutSnapshot> {
-  const res = await fetch(`${apiBase}/workspace/layout`, {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.workspaceLayout), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(snapshot),
@@ -727,7 +609,7 @@ export async function listWorkspaceArtifacts(
 ): Promise<WorkspaceArtifactRecord[]> {
   const params = new URLSearchParams({ root, limit: String(limit) })
   if (sessionId) params.set('sessionId', sessionId)
-  const res = await fetch(`${apiBase}/workspace/artifacts?${params.toString()}`)
+  const res = await fetch(`${localApiUrl(LOCAL_APP_API_ROUTES.workspaceArtifacts)}?${params.toString()}`)
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
     throw new Error((data as { error: string }).error)
@@ -737,7 +619,7 @@ export async function listWorkspaceArtifacts(
 }
 
 export async function openWorkspacePath(root: string, path: string): Promise<void> {
-  const res = await fetch(`${apiBase}/workspace/open`, {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.workspaceOpen), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ root, path }),
@@ -749,7 +631,7 @@ export async function openWorkspacePath(root: string, path: string): Promise<voi
 }
 
 export async function openWorkspacePathInVSCode(root: string, path?: string): Promise<void> {
-  const res = await fetch(`${apiBase}/workspace/open-vscode`, {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.workspaceOpenVscode), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ root, path: path ?? root }),
@@ -772,25 +654,8 @@ export interface WorkspaceCommandResult {
   truncated: boolean
 }
 
-export interface TerminalActivityRecord {
-  id: string
-  command: string
-  cwd: string
-  workspacePath: string
-  sessionId?: string
-  startedAt: string
-  endedAt: string
-  durationMs: number
-  exitCode: number | null
-  signal: string | null
-  timedOut: boolean
-  truncated: boolean
-  stdoutPreview: string
-  stderrPreview: string
-}
-
 export async function runWorkspaceCommand(root: string, command: string, sessionId?: string): Promise<WorkspaceCommandResult> {
-  const res = await fetch(`${apiBase}/workspace/terminal/run`, {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.terminalRun), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ root, command, sessionId }),
@@ -816,7 +681,7 @@ export async function runWorkspaceCommandStream(
   sessionId?: string,
   handlers: WorkspaceCommandStreamHandlers = {},
 ): Promise<WorkspaceCommandResult> {
-  const res = await fetch(`${apiBase}/workspace/terminal/stream`, {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.terminalStream), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ root, command, sessionId }),
@@ -870,7 +735,7 @@ export async function listWorkspaceTerminalActivity(
 ): Promise<TerminalActivityRecord[]> {
   const params = new URLSearchParams({ root, limit: String(limit) })
   if (sessionId) params.set('sessionId', sessionId)
-  const res = await fetch(`${apiBase}/workspace/terminal/activity?${params.toString()}`)
+  const res = await fetch(`${localApiUrl(LOCAL_APP_API_ROUTES.terminalActivity)}?${params.toString()}`)
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
     throw new Error((data as { error: string }).error)
@@ -901,7 +766,7 @@ export async function createWorkspaceTerminalSession(
   root: string,
   size?: { cols: number; rows: number },
 ): Promise<WorkspaceTerminalSession> {
-  const res = await fetch(`${apiBase}/workspace/terminal/session`, {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.terminalSession), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ root, cols: size?.cols, rows: size?.rows }),
@@ -917,7 +782,7 @@ export async function streamWorkspaceTerminalSession(
   terminalSessionId: string,
   handlers: WorkspaceTerminalSessionHandlers,
 ): Promise<void> {
-  const res = await fetch(`${apiBase}/workspace/terminal/session/${encodeURIComponent(terminalSessionId)}/stream`, {
+  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.terminalSessions, terminalSessionId, '/stream')), {
     signal: handlers.signal,
   })
   if (!res.ok) {
@@ -959,7 +824,7 @@ export async function writeWorkspaceTerminalSession(
   command: string,
   appSessionId?: string,
 ): Promise<void> {
-  const res = await fetch(`${apiBase}/workspace/terminal/session/${encodeURIComponent(terminalSessionId)}/input`, {
+  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.terminalSessions, terminalSessionId, '/input')), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ command, sessionId: appSessionId }),
@@ -975,7 +840,7 @@ export async function resizeWorkspaceTerminalSession(
   cols: number,
   rows: number,
 ): Promise<WorkspaceTerminalSession> {
-  const res = await fetch(`${apiBase}/workspace/terminal/session/${encodeURIComponent(terminalSessionId)}/resize`, {
+  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.terminalSessions, terminalSessionId, '/resize')), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ cols, rows }),
@@ -988,7 +853,7 @@ export async function resizeWorkspaceTerminalSession(
 }
 
 export async function interruptWorkspaceTerminalSession(terminalSessionId: string): Promise<void> {
-  const res = await fetch(`${apiBase}/workspace/terminal/session/${encodeURIComponent(terminalSessionId)}/interrupt`, {
+  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.terminalSessions, terminalSessionId, '/interrupt')), {
     method: 'POST',
   })
   if (!res.ok) {
@@ -998,7 +863,7 @@ export async function interruptWorkspaceTerminalSession(terminalSessionId: strin
 }
 
 export async function closeWorkspaceTerminalSession(terminalSessionId: string): Promise<void> {
-  const res = await fetch(`${apiBase}/workspace/terminal/session/${encodeURIComponent(terminalSessionId)}`, {
+  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.terminalSessions, terminalSessionId)), {
     method: 'DELETE',
   })
   if (!res.ok) {
@@ -1014,7 +879,7 @@ export function getPathForFile(file: File): string {
 
 export async function importAttachment(file: File): Promise<AttachmentRef> {
   const dataUrl = await readFileAsDataUrl(file)
-  const res = await fetch(`${apiBase}/attachments/import`, {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.attachmentImport), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -1047,7 +912,7 @@ function defaultAttachmentName(file: File): string {
 }
 
 export async function saveApiKey(envVar: string, key: string): Promise<void> {
-  const res = await fetch(`${apiBase}/config/apikey`, {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.configApiKey), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ envVar, key }),
@@ -1060,37 +925,16 @@ export async function saveApiKey(envVar: string, key: string): Promise<void> {
 
 // ─── External Channel Connections ─────────────────────────────────────────
 
-export interface ChannelStatus {
-  type: string
-  displayName: string
-  running: boolean
-  requiredSecrets: string[]
-}
-
-export interface ConfiguredChannel {
-  id: string
-  type: string
-  enabled: boolean
-  name?: string
-}
-
-export interface ChannelConnectionsStatus {
-  started: boolean
-  channels: ChannelStatus[]
-  configured: ConfiguredChannel[]
-  failures: Array<{ id: string; type: string; error: string }>
-}
-
 /** GET /channels/status — external channel service status + channel list. */
 export async function getChannelConnectionsStatus(): Promise<ChannelConnectionsStatus> {
-  const res = await fetch(`${apiBase}/channels/status`)
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.channelsStatus))
   if (!res.ok) throw localApiStatusError(res.status)
   return res.json() as Promise<ChannelConnectionsStatus>
 }
 
 /** POST /channels/reload — reload config from disk + restart all external channels. */
 export async function reloadChannelConnections(): Promise<{ ok: boolean }> {
-  const res = await fetch(`${apiBase}/channels/reload`, { method: 'POST' })
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.channelsReload), { method: 'POST' })
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
     throw new Error((data as { error: string }).error)
@@ -1098,45 +942,14 @@ export async function reloadChannelConnections(): Promise<{ ok: boolean }> {
   return res.json() as Promise<{ ok: boolean }>
 }
 
-export type PluginRuntimeState = 'disabled' | 'inactive' | 'activating' | 'active' | 'blocked' | 'failed'
-
-export interface PluginStatus {
-  id: string
-  name: string
-  version: string
-  description: string
-  publisher?: string
-  source: 'builtin' | 'local'
-  location?: string
-  enabled: boolean
-  state: PluginRuntimeState
-  capabilities: string[]
-  permissions: string[]
-  activationEvents: string[]
-  contributes: { channels: string[]; tools: string[]; skills: string[] }
-  error?: string
-}
-
-export interface PluginDiagnostic {
-  source: string
-  message: string
-}
-
-export interface PluginsStatusResponse {
-  started: boolean
-  allowLocalCode: boolean
-  plugins: PluginStatus[]
-  diagnostics: PluginDiagnostic[]
-}
-
 export async function getPluginsStatus(): Promise<PluginsStatusResponse> {
-  const res = await fetch(`${apiBase}/plugins`)
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.plugins))
   if (!res.ok) throw localApiStatusError(res.status)
   return res.json() as Promise<PluginsStatusResponse>
 }
 
 export async function setPluginEnabled(pluginId: string, enabled: boolean): Promise<void> {
-  const res = await fetch(`${apiBase}/plugins/${encodeURIComponent(pluginId)}/enabled`, {
+  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.plugins, pluginId, '/enabled')), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled }),
@@ -1148,7 +961,7 @@ export async function setPluginEnabled(pluginId: string, enabled: boolean): Prom
 }
 
 export async function setLocalPluginCodeAllowed(allowed: boolean): Promise<void> {
-  const res = await fetch(`${apiBase}/plugins/local-code`, {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.pluginsLocalCode), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ allowed }),
@@ -1160,341 +973,9 @@ export async function setLocalPluginCodeAllowed(allowed: boolean): Promise<void>
 }
 
 export async function reloadPlugins(): Promise<void> {
-  const res = await fetch(`${apiBase}/plugins/reload`, { method: 'POST' })
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.pluginsReload), { method: 'POST' })
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
     throw new Error((data as { error: string }).error)
   }
-}
-
-// ─── Memory & Skills ──────────────────────────────────────────────────────
-
-export interface SkillMeta {
-  name: string
-  description: string
-}
-
-export interface SkillDetail {
-  name: string
-  description: string
-  body: string
-}
-
-export interface MemoryOverview {
-  dailyDates: string[]
-  longTerm: string
-  experienceCount: number
-}
-
-export interface MemoryTreeBranchOverview {
-  id: MemoryTreeBranchId
-  title: string
-  tier: string
-  status: 'active' | 'empty'
-  count: number
-  indexedCount: number
-  archivedCount: number
-  source: string
-  description: string
-  whenToUse: string
-  searchHints: string[]
-}
-
-export type MemoryTreeBranchId = 'long-term' | 'project' | 'daily' | 'experience'
-export type MemoryResourceKind =
-  | 'agent-instructions'
-  | 'persona'
-  | 'user-profile'
-  | 'tool-guidance'
-  | 'legacy-memory'
-  | 'skill'
-  | 'project-guideline'
-  | 'ui-guideline'
-  | 'taskbook'
-  | 'knowledge'
-  | 'summary-memory'
-  | 'attachment-manifest'
-  | 'attachment'
-  | 'runtime-event-ledger'
-  | 'workspace-index'
-  | 'project-memory-projection'
-export type MemoryResourceStatus = 'active' | 'missing' | 'disabled' | 'conflict'
-export type MemoryResourceManagementAction = 'disable' | 'restore' | 'remove' | 'rebind'
-export type MemoryTreeNodeStatus = 'active' | 'archived'
-export type MemoryTreeManagementAction = 'archive' | 'restore' | 'delete' | 'promote' | 'demote'
-
-export interface MemoryTreeWriteAudit {
-  id: string
-  intentId: string
-  sourceRunId: string
-  branch: MemoryTreeBranchId
-  at: string
-  decision: 'created' | 'merged' | 'reinforced' | 'rejected' | 'queued'
-  nodeId?: string
-  reason: string
-}
-
-export interface MemoryTreeManagementAudit {
-  id: string
-  nodeId: string
-  branch: MemoryTreeBranchId
-  action: MemoryTreeManagementAction
-  at: string
-  reason: string
-  fromStatus: 'active' | 'archived' | 'deleted'
-  toStatus: 'active' | 'archived' | 'deleted'
-  fromTier: 1 | 2 | 3
-  toTier: 1 | 2 | 3
-}
-
-export interface MemoryResourceManagementAudit {
-  id: string
-  resourceId: string
-  resourceKind: MemoryResourceKind
-  registryGroup: string
-  action: 'disable' | 'restore' | 'mark-missing' | 'mark-conflict' | 'remove' | 'rebind'
-  actor: 'user' | 'system'
-  at: string
-  reason: string
-  fromStatus: MemoryResourceStatus
-  toStatus?: MemoryResourceStatus
-  fromSourcePath?: string
-  toSourcePath?: string
-}
-
-export interface MemoryTreeRecentHit {
-  runId: string
-  sessionId: string
-  at: string
-  action: 'expand' | 'deep_search'
-  query?: string
-  reason?: string
-}
-
-export interface MemoryTreeNodeOverview {
-  id: string
-  branch: MemoryTreeBranchId
-  parentNodeId?: string
-  childCount: number
-  scope: 'global' | 'workspace' | 'project' | 'session'
-  scopeKey?: string
-  project?: { id: string; name: string; path: string }
-  tier: 1 | 2 | 3
-  summary: string
-  content: string
-  retrievalKeys: string[]
-  importance: number
-  confidence: number
-  reason: string
-  sourceRunIds: string[]
-  sourceStages: Array<'evolve' | 'capture' | 'tool' | 'migration'>
-  sourceRefs: string[]
-  status: MemoryTreeNodeStatus
-  createdAt: string
-  updatedAt: string
-  hitCount: number
-  recentHits: MemoryTreeRecentHit[]
-  writeHistory: MemoryTreeWriteAudit[]
-  managementHistory: MemoryTreeManagementAudit[]
-}
-
-export interface MemoryTreeProjectOverview {
-  id: string
-  name: string
-  path: string
-  lastActiveAt: string
-  projection?: ProjectMemoryProjectionState
-}
-
-export interface ProjectMemoryProjectionState {
-  projectId: string
-  enabled: boolean
-  projectionPath: string
-  projectionExists: boolean
-  safeToRemove: boolean
-  status: 'disabled' | 'missing' | 'ready' | 'stale' | 'conflict'
-  gitRepository: boolean
-  gitIgnored: boolean
-  gitIgnorePattern: string
-  sourceRevision?: string
-  entryCount?: number
-  omittedEntryCount?: number
-  lastSyncedAt?: string
-  conflictReason?: string
-}
-
-export type ProjectMemoryProjectionAction =
-  | { action: 'enable'; overwriteExisting?: boolean }
-  | { action: 'sync'; force?: boolean }
-  | { action: 'disable'; removeProjection?: boolean }
-  | { action: 'export' }
-
-export interface ProjectMemoryProjectionExportResult {
-  outputPath: string
-  entryCount: number
-  omittedEntryCount: number
-  contentHash: string
-  generatedAt: string
-}
-
-export interface MemoryTreeOverview {
-  generatedAt: string
-  totals: {
-    branches: number
-    projects: number
-    dailyMemories: number
-    experiences: number
-    longTermChars: number
-    indexedMemories: number
-    archivedMemories: number
-    deletedMemories: number
-    recoveryQueue: number
-    registeredResources: number
-    activeResources: number
-  }
-  branches: MemoryTreeBranchOverview[]
-  nodes: MemoryTreeNodeOverview[]
-  projects: MemoryTreeProjectOverview[]
-  resources: Array<{
-    id: string
-    kind: MemoryResourceKind
-    title: string
-    description: string
-    tier: 0 | 1 | 2 | 3
-    branch?: MemoryTreeBranchId
-    scope: 'global' | 'workspace' | 'project' | 'session' | 'run'
-    scopeKey?: string
-    authority: 'authoritative' | 'derived' | 'compatibility' | 'external'
-    privacy: 'private' | 'project-private' | 'shareable' | 'public'
-    sourceKind: 'file' | 'memory-node' | 'session-summary' | 'attachment' | 'runtime-event' | 'workspace-index'
-    sourcePath?: string
-    indexKeys: string[]
-    status: MemoryResourceStatus
-    registryGroup: string
-    owner?: {
-      kind: 'builtin' | 'user' | 'external' | 'plugin'
-      id: string
-      controller: 'skill-loader' | 'plugin-host'
-    }
-    updatedAt: string
-    managementHistory: MemoryResourceManagementAudit[]
-  }>
-  dailyDates: string[]
-  longTermExcerpt: string
-  recentAccesses: Array<MemoryTreeRecentHit & {
-    nodeId: string
-    summary: string
-    branch: MemoryTreeBranchId
-  }>
-  migration: null | {
-    id: string
-    completedAt: string
-    sourceCount: number
-    created: number
-    merged: number
-    reinforced: number
-    rejected: number
-  }
-  learningPolicy: {
-    experienceWriteThreshold: number
-  }
-}
-
-export async function listSkills(): Promise<SkillMeta[]> {
-  const res = await fetch(`${apiBase}/skills`)
-  if (!res.ok) throw localApiStatusError(res.status)
-  const data = await res.json() as { skills: SkillMeta[] }
-  return data.skills
-}
-
-export async function readSkill(name: string): Promise<SkillDetail> {
-  const res = await fetch(`${apiBase}/skills/${encodeURIComponent(name)}`)
-  if (!res.ok) throw localApiStatusError(res.status)
-  return res.json() as Promise<SkillDetail>
-}
-
-export async function getMemoryOverview(): Promise<MemoryOverview> {
-  const res = await fetch(`${apiBase}/memory`)
-  if (!res.ok) throw localApiStatusError(res.status)
-  return res.json() as Promise<MemoryOverview>
-}
-
-export async function getMemoryTreeOverview(): Promise<MemoryTreeOverview> {
-  const res = await fetch(`${apiBase}/memory/tree`)
-  if (!res.ok) throw localApiStatusError(res.status)
-  return res.json() as Promise<MemoryTreeOverview>
-}
-
-export async function updateMemoryLearningPolicy(experienceWriteThreshold: number): Promise<{ experienceWriteThreshold: number }> {
-  const res = await fetch(`${apiBase}/memory/policy`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ experienceWriteThreshold }),
-  })
-  if (!res.ok) throw localApiStatusError(res.status)
-  return res.json() as Promise<{ experienceWriteThreshold: number }>
-}
-
-export async function manageMemoryTreeNode(
-  nodeId: string,
-  action: MemoryTreeManagementAction,
-): Promise<{ node: { id: string; status: 'active' | 'archived' | 'deleted'; tier: 1 | 2 | 3 }; audit: MemoryTreeManagementAudit }> {
-  const res = await fetch(`${apiBase}/memory/tree/nodes/${encodeURIComponent(nodeId)}/manage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action }),
-  })
-  if (!res.ok) {
-    const body = await res.json().catch(() => null) as { error?: string } | null
-    throw new Error(body?.error ?? `Local app API error: ${res.status}`)
-  }
-  return res.json() as Promise<{
-    node: { id: string; status: 'active' | 'archived' | 'deleted'; tier: 1 | 2 | 3 }
-    audit: MemoryTreeManagementAudit
-  }>
-}
-
-export async function manageMemoryTreeResource(
-  resourceId: string,
-  action: MemoryResourceManagementAction,
-  options: { sourcePath?: string } = {},
-): Promise<{
-  cancelled: boolean
-  resource?: { id: string; status: MemoryResourceStatus }
-  audit?: MemoryResourceManagementAudit
-  changed?: boolean
-  removed?: boolean
-}> {
-  const res = await fetch(`${apiBase}/memory/tree/resources/${encodeURIComponent(resourceId)}/manage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, ...options }),
-  })
-  if (!res.ok) {
-    const body = await res.json().catch(() => null) as { error?: string } | null
-    throw new Error(body?.error ?? `Local app API error: ${res.status}`)
-  }
-  return res.json() as Promise<{
-    cancelled: boolean
-    resource?: { id: string; status: MemoryResourceStatus }
-    audit?: MemoryResourceManagementAudit
-    changed?: boolean
-    removed?: boolean
-  }>
-}
-
-export async function updateProjectMemoryProjection(
-  projectId: string,
-  action: ProjectMemoryProjectionAction,
-): Promise<ProjectMemoryProjectionState | { cancelled: boolean; export?: ProjectMemoryProjectionExportResult }> {
-  const res = await fetch(`${apiBase}/memory/projects/${encodeURIComponent(projectId)}/projection`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(action),
-  })
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
-    throw new Error((data as { error: string }).error)
-  }
-  return res.json() as Promise<ProjectMemoryProjectionState | { cancelled: boolean; export?: ProjectMemoryProjectionExportResult }>
 }

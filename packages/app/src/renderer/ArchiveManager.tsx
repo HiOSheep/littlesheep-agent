@@ -1,3 +1,5 @@
+// Archive control surface for project and standalone-session lifecycle actions.
+// Authoritative archive state remains in the main-process archive index.
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import {
   deleteArchivedProject,

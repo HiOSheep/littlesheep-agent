@@ -5,24 +5,18 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, readFile } from 'node:fs/promises'
 import { dirname, basename, resolve } from 'node:path'
 import { atomicWrite } from '@littlesheep/memory-core'
+import type {
+  WorkspaceArtifactAction,
+  WorkspaceArtifactRecord,
+  WorkspaceArtifactSource,
+} from '../shared/workspace-contracts.js'
 import { rebaseBoundPath, sameBoundPath } from './path-rebinding.js'
 
-export type WorkspaceArtifactAction = 'created' | 'modified' | 'attached'
-export type WorkspaceArtifactSource = 'agent' | 'user'
-
-export interface WorkspaceArtifactRecord {
-  id: string
-  path: string
-  name: string
-  action: WorkspaceArtifactAction
-  source: WorkspaceArtifactSource
-  workspacePath: string
-  sessionId?: string
-  projectId?: string
-  runId?: string
-  toolName?: string
-  createdAt: string
-}
+export type {
+  WorkspaceArtifactAction,
+  WorkspaceArtifactRecord,
+  WorkspaceArtifactSource,
+} from '../shared/workspace-contracts.js'
 
 export interface WorkspaceArtifactInput {
   path: string
