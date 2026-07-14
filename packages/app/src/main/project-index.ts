@@ -2,9 +2,16 @@
 // UI-owned project registry. It writes ~/.littlesheep/projects/index.json,
 // which is also read by @littlesheep/memory-tree's ProjectMemoryBranch.
 
-import { createHash } from 'node:crypto'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { basename, join, resolve } from 'node:path'
+import { createHash, randomUUID } from 'node:crypto'
+import { mkdir, readFile } from 'node:fs/promises'
+import { basename, join } from 'node:path'
+import { atomicWrite } from '@littlesheep/memory-core'
+import { isRetiredApplicationWorkspace } from './runtime-config.js'
+import {
+  appendBoundPathHistory,
+  normalizeBoundPath,
+  sameBoundPath,
+} from './path-rebinding.js'
 
 export interface ProjectMeta {
   id: string
@@ -12,6 +19,21 @@ export interface ProjectMeta {
   path: string
   createdAt: string
   lastActiveAt: string
+  /** Present for path-independent project identities created or rebound by current LS versions. */
+  identityVersion?: 2
+  /** Bounded audit trail used to repair stale path references after a move or rename. */
+  previousPaths?: string[]
+  pathUpdatedAt?: string
+}
+
+export class ProjectPathConflictError extends Error {
+  constructor(
+    readonly path: string,
+    readonly existingProjectId: string,
+  ) {
+    super(`Project path is already bound to project ${existingProjectId}: ${path}`)
+    this.name = 'ProjectPathConflictError'
+  }
 }
 
 export class ProjectIndex {
@@ -33,7 +55,7 @@ export class ProjectIndex {
   }
 
   async ensure(path: string, now = new Date()): Promise<ProjectMeta> {
-    const projectPath = normalizeProjectPath(path)
+    const projectPath = normalizeBoundPath(path)
     const projects = await this.list()
     const existingIndex = projects.findIndex((project) => samePath(project.path, projectPath))
     const lastActiveAt = now.toISOString()
@@ -52,11 +74,14 @@ export class ProjectIndex {
     }
 
     const project: ProjectMeta = {
-      id: projectIdFromPath(projectPath),
+      id: createStableProjectId(),
       name: projectNameFromPath(projectPath),
       path: projectPath,
       createdAt: lastActiveAt,
       lastActiveAt,
+      identityVersion: 2,
+      previousPaths: [],
+      pathUpdatedAt: lastActiveAt,
     }
     projects.push(project)
     await this.persist(projects)
@@ -73,11 +98,21 @@ export class ProjectIndex {
 
   async removeByPath(path: string): Promise<ProjectMeta | undefined> {
     const projects = await this.list()
-    const projectPath = normalizeProjectPath(path)
+    const projectPath = normalizeBoundPath(path)
     const existing = projects.find((project) => samePath(project.path, projectPath))
     if (!existing) return undefined
     await this.persist(projects.filter((project) => project.id !== existing.id))
     return existing
+  }
+
+  async removeManagedWorkspaceShells(workplaceDir: string): Promise<ProjectMeta[]> {
+    const projects = await this.list()
+    const removed = projects.filter((project) =>
+      samePath(project.path, workplaceDir) || isRetiredApplicationWorkspace(project.path, workplaceDir))
+    if (removed.length === 0) return []
+    const removedIds = new Set(removed.map((project) => project.id))
+    await this.persist(projects.filter((project) => !removedIds.has(project.id)))
+    return removed
   }
 
   async touch(id: string, now = new Date()): Promise<ProjectMeta | undefined> {
@@ -90,9 +125,27 @@ export class ProjectIndex {
     return updated
   }
 
+  async rebind(id: string, path: string, now = new Date()): Promise<ProjectMeta | undefined> {
+    const projects = await this.list()
+    const existingIndex = projects.findIndex((project) => project.id === id)
+    if (existingIndex < 0) return undefined
+    const projectPath = normalizeBoundPath(path)
+    const conflict = projects.find((project) => project.id !== id && samePath(project.path, projectPath))
+    if (conflict) throw new ProjectPathConflictError(projectPath, conflict.id)
+
+    const existing = projects[existingIndex]!
+    if (samePath(existing.path, projectPath)) return existing
+    const updated = reboundProjectMeta(existing, projectPath, now)
+    projects[existingIndex] = updated
+    await this.persist(projects)
+    return updated
+  }
+
   async upsert(project: ProjectMeta): Promise<void> {
     const projects = await this.list()
-    const existingIndex = projects.findIndex((item) => item.id === project.id || samePath(item.path, project.path))
+    const pathConflict = projects.find((item) => item.id !== project.id && samePath(item.path, project.path))
+    if (pathConflict) throw new ProjectPathConflictError(project.path, pathConflict.id)
+    const existingIndex = projects.findIndex((item) => item.id === project.id)
     if (existingIndex >= 0) {
       projects[existingIndex] = project
     } else {
@@ -103,12 +156,34 @@ export class ProjectIndex {
 
   private async persist(projects: ProjectMeta[]): Promise<void> {
     await mkdir(join(this.filePath, '..'), { recursive: true })
-    await writeFile(this.filePath, JSON.stringify({ projects }, null, 2), 'utf-8')
+    await atomicWrite(this.filePath, JSON.stringify({ projects }, null, 2))
+  }
+}
+
+export function createStableProjectId(): string {
+  return `project-${randomUUID()}`
+}
+
+export function reboundProjectMeta(project: ProjectMeta, path: string, now = new Date()): ProjectMeta {
+  const projectPath = normalizeBoundPath(path)
+  if (samePath(project.path, projectPath)) return project
+  const changedAt = now.toISOString()
+  const previousDefaultName = projectNameFromPath(project.path)
+  return {
+    ...project,
+    name: !project.name || project.name === previousDefaultName
+      ? projectNameFromPath(projectPath)
+      : project.name,
+    path: projectPath,
+    lastActiveAt: changedAt,
+    identityVersion: 2,
+    previousPaths: appendBoundPathHistory(project.previousPaths, project.path),
+    pathUpdatedAt: changedAt,
   }
 }
 
 export function projectIdFromPath(path: string): string {
-  const normalized = normalizeProjectPath(path)
+  const normalized = normalizeBoundPath(path)
   const name = projectNameFromPath(normalized)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
@@ -119,15 +194,11 @@ export function projectIdFromPath(path: string): string {
 }
 
 function projectNameFromPath(path: string): string {
-  return basename(normalizeProjectPath(path)) || 'Project'
-}
-
-function normalizeProjectPath(path: string): string {
-  return resolve(path).replace(/[\\/]+$/, '')
+  return basename(normalizeBoundPath(path)) || 'Project'
 }
 
 function samePath(a: string, b: string): boolean {
-  return normalizeProjectPath(a).toLowerCase() === normalizeProjectPath(b).toLowerCase()
+  return sameBoundPath(a, b)
 }
 
 function isProjectMeta(value: unknown): value is ProjectMeta {
@@ -140,6 +211,11 @@ function isProjectMeta(value: unknown): value is ProjectMeta {
     typeof item.createdAt === 'string' &&
     typeof item.lastActiveAt === 'string' &&
     item.id.length > 0 &&
-    item.path.length > 0
+    item.path.length > 0 &&
+    (item.identityVersion === undefined || item.identityVersion === 2) &&
+    (item.previousPaths === undefined || (
+      Array.isArray(item.previousPaths) && item.previousPaths.every((path) => typeof path === 'string')
+    )) &&
+    (item.pathUpdatedAt === undefined || typeof item.pathUpdatedAt === 'string')
   )
 }

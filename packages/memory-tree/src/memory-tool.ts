@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import type { AgentTool } from '@littlesheep/types';
 import type { BranchIndex, MemoryQueryResult } from './types.js';
-import { MemoryTree } from './memory-tree.js';
+import type { MemoryNavigationServiceLike } from './memory-service.js';
 
 const MemoryTreeInput = z.discriminatedUnion('action', [
   z.object({ action: z.literal('root_index') }),
@@ -83,7 +83,7 @@ function envelope(content: string, options: MemoryToolOptions): string {
   return options.envelope ? options.envelope(content) : content;
 }
 
-export function createMemoryTreeTool(tree: MemoryTree, options: MemoryToolOptions = {}): AgentTool {
+export function createMemoryTreeTool(memory: MemoryNavigationServiceLike, options: MemoryToolOptions = {}): AgentTool {
   return {
     name: 'memory_tree',
     description:
@@ -98,17 +98,17 @@ export function createMemoryTreeTool(tree: MemoryTree, options: MemoryToolOption
         let meta: Record<string, unknown>;
         switch (parsed.action) {
           case 'root_index':
-            output = tree.rootIndex();
+            output = await memory.rootIndex();
             meta = { action: parsed.action };
             break;
           case 'branch_index': {
-            const index = await tree.branchIndex(ctx.runId, parsed.branch);
+            const index = await memory.branchIndex(ctx.runId, parsed.branch);
             output = renderIndex(index);
             meta = { action: parsed.action, branch: parsed.branch, entries: index.entries.length, truncated: index.truncated };
             break;
           }
           case 'expand': {
-            const result = await tree.expand(ctx.runId, {
+            const result = await memory.expand(ctx.runId, {
               branchId: parsed.branch,
               nodeId: parsed.nodeId,
               query: parsed.query,
@@ -121,7 +121,7 @@ export function createMemoryTreeTool(tree: MemoryTree, options: MemoryToolOption
             break;
           }
           case 'deep_search': {
-            const result = await tree.deepSearch(ctx.runId, {
+            const result = await memory.deepSearch(ctx.runId, {
               query: parsed.query,
               branchId: parsed.branch,
               limit: parsed.limit,
@@ -143,7 +143,7 @@ export function createMemoryTreeTool(tree: MemoryTree, options: MemoryToolOption
 
 /** Keeps old calls safe by turning them into index navigation, never a direct content search. */
 export function createMemorySearchCompatibilityTool(
-  tree: MemoryTree,
+  memory: MemoryNavigationServiceLike,
   options: MemoryToolOptions = {},
 ): AgentTool {
   return {
@@ -156,7 +156,7 @@ export function createMemorySearchCompatibilityTool(
         const parsed = CompatibilitySearchInput.parse(input);
         if (!parsed.branch) {
           const output = [
-            tree.rootIndex(),
+            await memory.rootIndex(),
             '',
             `No memory content was searched for "${parsed.query}". Choose one branch, then call memory_search with that branch or memory_tree branch_index.`,
           ].join('\n');
@@ -168,7 +168,7 @@ export function createMemorySearchCompatibilityTool(
             meta: { action: 'root_index', searched: false, nextAction: 'branch_index' },
           };
         }
-        const index = await tree.branchIndex(ctx.runId, parsed.branch);
+        const index = await memory.branchIndex(ctx.runId, parsed.branch);
         const output = [
           renderIndex(index),
           '',

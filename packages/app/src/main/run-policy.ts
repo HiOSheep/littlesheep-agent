@@ -19,6 +19,7 @@ export interface ResolvedRunPolicy {
   requireApprovalForAllTools: boolean
   approve: (action: string, detail?: unknown) => Promise<boolean>
   profile?: AgentProfileId
+  permissionPolicyId: PermissionModeId
 }
 
 export function resolveRunPolicy(
@@ -44,6 +45,7 @@ export function resolveRunPolicy(
     requireApprovalForAllTools: permissionPolicy.requireApprovalForAllTools,
     approve: createPermissionApprover(permissionPolicy.mode, approvalBroker),
     profile: profile?.id,
+    permissionPolicyId: permissionPolicy.mode,
   }
 }
 

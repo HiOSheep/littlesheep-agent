@@ -8,7 +8,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { ExecutionLogStore } from './execution-log.js';
-import type { Message } from '@littlesheep/types';
+import type { ContextSnapshot, Message } from '@littlesheep/types';
+import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
 
 let dir: string;
 let store: ExecutionLogStore;
@@ -99,6 +100,182 @@ describe('ExecutionLogStore', () => {
     expect(log!.toolCalls[0]!.call.input).toEqual({ path: '/x' });
     expect(log!.toolCalls[0]!.result.ok).toBe(true);
     expect(log!.toolCalls[0]!.result.output).toBe('data');
+    expect(log!.toolInvocations).toHaveLength(1);
+    expect(log!.toolInvocations?.[0]).toMatchObject({
+      callId,
+      toolName: 'read',
+      status: 'succeeded',
+      inputSummary: 'object keys: path',
+      outputSummary: 'output present (4 characters)',
+      approval: { required: 'unknown', decision: 'unknown' },
+    });
+    expect(log!.toolInvocations?.[0]?.inputHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(JSON.stringify(log!.toolInvocations)).not.toContain('/x');
+    expect(JSON.stringify(log!.toolInvocations)).not.toContain('data');
+    expect(log!.evidence?.[0]).toMatchObject({
+      kind: 'tool_result',
+      status: 'pass',
+      metadata: { callId, toolName: 'read', outputPresent: true },
+    });
+  });
+
+  it('persists resolved configuration and bounded model/context snapshots', async () => {
+    const resolvedRunConfig = {
+      version: 1 as const,
+      runId: 'run-observed',
+      resolvedAt: '2026-07-13T00:00:00.000Z',
+      origin: 'app' as const,
+      behaviorModeId: 'coding',
+      permissionPolicyId: 'research' as const,
+      workflowStrategyId: 'core-flow-v1',
+      contextStrategyId: 'legacy-stage-assembly-v1',
+      memoryStrategyId: 'index-first-v1',
+      toolSelectionStrategyId: 'registered-tools-v1',
+      outputContractId: 'user-reply-v1',
+      provider: 'openai',
+      model: 'gpt-test',
+      reasoning: 'high' as const,
+      parameters: {},
+      availableToolNames: [],
+      approvalRequiredToolNames: [],
+      userOverrides: {},
+      projectOverrides: {},
+    };
+    const modelRequests = [{
+      version: 1 as const,
+      id: 'request-1',
+      runId: 'run-observed',
+      sessionId: 's' as import('@littlesheep/types').SessionId,
+      stage: 'reply' as const,
+      requestIndex: 1,
+      provider: 'openai',
+      model: 'gpt-test',
+      createdAt: '2026-07-13T00:00:01.000Z',
+      messages: [],
+      totalMessageCount: 0,
+      messagesTruncated: false,
+      toolNames: [],
+      totalToolCount: 0,
+      toolsTruncated: false,
+      stream: false,
+    }];
+    const contextSnapshots = [{
+      version: 1 as const,
+      id: 'context-1',
+      runId: 'run-observed',
+      sessionId: 's' as import('@littlesheep/types').SessionId,
+      provider: 'openai',
+      model: 'gpt-test',
+      createdAt: '2026-07-13T00:00:01.000Z',
+      budget: { status: 'unknown' as const, reason: 'not connected' },
+      items: [],
+      totalItemCount: 0,
+      itemsTruncated: false,
+      compressionRecommended: false,
+    }];
+
+    await store.write({
+      runId: 'run-observed', sessionId: 's', startedAt: '', endedAt: '', status: 'ok',
+      model: 'openai/gpt-test', inboundText: '', reply: '', trace: [], messages: [], durationMs: 0,
+      resolvedRunConfig,
+      modelRequests,
+      contextSnapshots,
+    });
+
+    const log = await store.read('run-observed');
+    expect(log?.resolvedRunConfig).toEqual(resolvedRunConfig);
+    expect(log?.modelRequests).toEqual(modelRequests);
+    expect(log?.contextSnapshots).toEqual(contextSnapshots);
+  });
+
+  it('reads legacy logs that do not contain the new phase-0 records', async () => {
+    writeFileSync(join(dir, 'legacy.json'), JSON.stringify({
+      runId: 'legacy', sessionId: 's', startedAt: '', endedAt: '', status: 'ok',
+      model: 'test', inboundText: 'old', reply: 'reply', trace: [], toolCalls: [], durationMs: 0,
+    }));
+
+    const log = await store.read('legacy');
+    expect(log?.runId).toBe('legacy');
+    expect(log?.toolCalls).toEqual([]);
+    expect(log?.resolvedRunConfig).toBeUndefined();
+    expect(log?.modelRequests).toBeUndefined();
+    expect(log?.toolInvocations).toBeUndefined();
+  });
+
+  it('links bounded memory and attachment resource ids without persisting their bodies', async () => {
+    const createdAt = '2026-07-13T00:00:01.000Z';
+    const sourceIds = [
+      'summary-1',
+      'attachment-manifest:run-resources',
+      'runtime-events:run-resources',
+      ...Array.from({ length: 260 }, (_, index) => `memory-resource-${index}`),
+    ];
+    const contextSnapshots: ContextSnapshot[] = [{
+      version: 1,
+      id: 'context-resources',
+      runId: 'run-resources',
+      sessionId: 'session-resources' as import('@littlesheep/types').SessionId,
+      provider: 'test',
+      model: 'model',
+      createdAt,
+      budget: { status: 'unknown', reason: 'test' },
+      items: sourceIds.map((id, index) => ({
+        id: `item-${index}`,
+        kind: index === 1 ? 'attachment_manifest' : index === 2 ? 'runtime_event' : 'summary_memory',
+        scope: index === 0 ? 'session' : 'run',
+        source: { kind: index === 1 ? 'attachment' : index === 2 ? 'runtime_event' : 'memory', id },
+        priority: 80,
+        required: true,
+        sensitive: true,
+        createdAt,
+        contentType: 'text',
+        contentHash: `hash-${index}`,
+        characterCount: 10,
+        disposition: 'included',
+      })),
+      totalItemCount: sourceIds.length,
+      itemsTruncated: false,
+      compressionRecommended: false,
+    }];
+    const memoryAccess: MemoryAccessLedger = {
+      runId: 'run-resources',
+      sessionId: 'session-resources' as import('@littlesheep/types').SessionId,
+      workspace: 'D:/workspace',
+      startedAt: createdAt,
+      endedAt: createdAt,
+      totalTokenBudget: 1_000,
+      tokensUsed: 10,
+      expandedBranches: ['resources'],
+      dedupKeys: [],
+      records: [{
+        id: 'access-1',
+        action: 'expand',
+        at: createdAt,
+        branchId: 'resources',
+        status: 'ok',
+        fragmentIds: ['summary-1', 'expanded-memory-node'],
+        sourceCount: 2,
+        dedupedCount: 0,
+        tokensUsed: 10,
+        tokenBudget: 100,
+      }],
+    };
+
+    await store.write({
+      runId: 'run-resources', sessionId: 'session-resources', startedAt: createdAt, endedAt: createdAt,
+      status: 'ok', model: 'test/model', inboundText: 'inspect', reply: 'done', trace: [], messages: [],
+      contextSnapshots, memoryAccess, durationMs: 1,
+    });
+
+    const log = await store.read('run-resources');
+    expect(log?.resourceIds).toHaveLength(256);
+    expect(log?.resourceIds?.slice(0, 3)).toEqual([
+      'summary-1',
+      'attachment-manifest:run-resources',
+      'runtime-events:run-resources',
+    ]);
+    expect(log?.resourceIdsTruncated).toBe(true);
+    expect(JSON.stringify(log)).not.toContain('PRIVATE-RESOURCE-BODY');
   });
 
   it('未配对的 call（无 result）被忽略', async () => {

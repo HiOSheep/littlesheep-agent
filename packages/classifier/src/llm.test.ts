@@ -109,12 +109,20 @@ describe('classify (integration)', () => {
 
   it('falls back to LLM when rules confidence < threshold', async () => {
     const llm = mockLlm([baseResponse('{"type":"problem","confidence":0.85,"reason":"task"}')]);
+    const requests: unknown[] = [];
     // Pure question: rules return chat@0.7; with threshold 0.75, 0.7 < 0.75 → LLM
     const msg = textMessage('user', '为什么天空是蓝色的？');
-    const result = await classify(msg, [], { llm, model: 'gpt-4o', rulesConfidenceThreshold: 0.75 });
+    const result = await classify(msg, [], {
+      llm,
+      model: 'gpt-4o',
+      rulesConfidenceThreshold: 0.75,
+      onRequest: (request) => requests.push(request),
+    });
     expect(result.source).toBe('llm');
     expect(result.type).toBe('problem');
     expect(llm.chat).toHaveBeenCalledTimes(1);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({ model: 'gpt-4o', max_tokens: 200 });
   });
 
   it('falls back to LLM when rules return null', async () => {

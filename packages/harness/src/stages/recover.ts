@@ -11,6 +11,8 @@ import type {
 import type { LlmClient, ChatMessage } from '@littlesheep/llm';
 import { toChatMessage, textOf, callLlmForJson } from './_shared.js';
 import { appendSystemPromptAddons } from '../profile-prompt.js';
+import { prepareModelRequest, recordProviderUsage } from '../model-observability.js';
+import { buildRunRequestCandidates } from '../context-candidates.js';
 
 export interface RecoverStageDeps {
   llm: LlmClient;
@@ -92,12 +94,27 @@ export function createRecoverStage(deps: RecoverStageDeps) {
     ];
 
     let parsed: DecodedRecovery | null;
+    const recoveryHistory = ctx.history.slice(-3);
     try {
       ({ parsed } = await callLlmForJson<DecodedRecovery>(
         deps.llm,
         deps.model,
         messages,
-        { maxAttempts: 3, maxTokens: 800 },
+        {
+          maxAttempts: 3,
+          maxTokens: 800,
+          signal: ctx.signal,
+          onRequest: (request) => prepareModelRequest(
+            ctx,
+            'recover',
+            request,
+            buildRunRequestCandidates(ctx, 'recover', request.messages, {
+              history: recoveryHistory,
+              primaryUserKind: 'workflow_state',
+            }),
+          ),
+          onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
+        },
       ));
     } catch (e) {
       // Transport error during recovery — escalate to the user instead of

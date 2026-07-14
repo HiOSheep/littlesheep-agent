@@ -23,6 +23,7 @@ describe('recoverStage', () => {
     expect(res.ok).toBe(true);
     expect(ctx.recoveryAttempts).toBe(1);
     expect(ctx.plan).toEqual([{ description: 'new step' }]);
+    expect(ctx.modelRequests?.map((request) => request.stage)).toEqual(['recover']);
   });
 
   it('retry without revisedPlan keeps existing plan', async () => {

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
@@ -35,11 +35,15 @@ const components: Components = {
 
 function CodeBlock({ code, language }: { code: string; language: string }) {
   const [copied, setCopied] = useState(false)
+  const copiedTimerRef = useRef<number>()
+
+  useEffect(() => () => window.clearTimeout(copiedTimerRef.current), [])
 
   async function copy() {
     await navigator.clipboard.writeText(code)
     setCopied(true)
-    window.setTimeout(() => setCopied(false), 1200)
+    window.clearTimeout(copiedTimerRef.current)
+    copiedTimerRef.current = window.setTimeout(() => setCopied(false), 1200)
   }
 
   return (

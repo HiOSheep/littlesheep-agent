@@ -16,9 +16,18 @@ import type {
 import type { LlmClient, ChatMessage } from '@littlesheep/llm';
 import type { Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
-import { assembleSystemPrompt, resolvePromptConfig } from '@littlesheep/prompt';
-import { toChatMessage, textOf, callLlmForJson, userChatMessage, asStringArray } from './_shared.js';
-import { appendSystemPromptAddons } from '../profile-prompt.js';
+import { assembleSystemPromptBundle, resolvePromptConfig } from '@littlesheep/prompt';
+import {
+  asStringArray,
+  attachmentContextMessages,
+  callLlmForJson,
+  textOf,
+  toChatMessage,
+  userChatMessage,
+} from './_shared.js';
+import { appendSystemPromptBundleAddons } from '../profile-prompt.js';
+import { prepareModelRequest, recordProviderUsage } from '../model-observability.js';
+import { buildRunRequestCandidates } from '../context-candidates.js';
 
 export interface DecideStageDeps {
   llm: LlmClient;
@@ -444,12 +453,23 @@ function mergePartialTaskBook(
 export function createDecideStage(deps: DecideStageDeps) {
   return async function decideStage(ctx: RunContext): Promise<StageResult> {
     const resolved = resolvePromptConfig(deps.config, deps.branding);
-    const systemPrompt = await assembleSystemPrompt(resolved, {
+    const baseSystemPrompt = await assembleSystemPromptBundle(resolved, {
       tools: ctx.tools,
       bootstrap: ctx.bootstrap ?? {},
       prelude: ctx.prelude,
+      sessionSummary: ctx.sessionSummary,
       memoryRootIndex: ctx.memoryRootIndex,
     });
+    const systemPrompt = appendSystemPromptBundleAddons(baseSystemPrompt, [
+      {
+        id: 'decide-contract',
+        text: SYSTEM_PROMPT,
+        kind: 'workflow_state',
+        source: { kind: 'workflow', id: 'decide-contract', runId: ctx.runId },
+      },
+      { id: 'profile', text: ctx.profilePromptAddon },
+      { id: 'reasoning', text: ctx.reasoningPromptAddon },
+    ]);
 
     const availableToolNames = new Set(ctx.tools.map((t) => t.name));
 
@@ -465,15 +485,14 @@ export function createDecideStage(deps: DecideStageDeps) {
     ctx.verifyFeedback = undefined;
 
     const inboundText = textOf(ctx.inbound) || '(empty message)';
+    const attachmentMessages = attachmentContextMessages(ctx.runId, ctx.attachments);
     const messages: ChatMessage[] = [
       {
         role: 'system',
-        content: appendSystemPromptAddons(
-          systemPrompt + '\n\n---\n\n' + SYSTEM_PROMPT,
-          ctx.profilePromptAddon,
-        ),
+        content: systemPrompt.text,
       },
       ...ctx.history.map(toChatMessage),
+      ...attachmentMessages.map((item) => item.message),
       userChatMessage(inboundText + verifyFeedback, ctx.attachments),
     ];
 
@@ -484,7 +503,21 @@ export function createDecideStage(deps: DecideStageDeps) {
         deps.llm,
         deps.model,
         messages,
-        { maxAttempts: 3, maxTokens: 1800, signal: ctx.signal },
+        {
+          maxAttempts: 3,
+          maxTokens: 1800,
+          signal: ctx.signal,
+          onRequest: (request) => prepareModelRequest(
+            ctx,
+            'decide',
+            request,
+            buildRunRequestCandidates(ctx, 'decide', request.messages, {
+              systemSegments: systemPrompt.segments,
+              insertedBeforePrimary: attachmentMessages.map((item) => item.context),
+            }),
+          ),
+          onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
+        },
       ));
     } catch (e) {
       ctx.lastError = {

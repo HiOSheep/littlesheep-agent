@@ -5,7 +5,12 @@
 //   Layer 3: runtime adapter — gathers live facts, calls the facade
 
 import type { BrandingConfig } from '@littlesheep/branding';
-import type { AgentTool } from '@littlesheep/types';
+import type {
+  AgentTool,
+  ContextItemKind,
+  ContextScope,
+  ContextSourceRef,
+} from '@littlesheep/types';
 import type { MemoryPrelude } from '@littlesheep/types';
 import type { Config } from '@littlesheep/config';
 import { CACHE_BOUNDARY_MARKER } from './cache-boundary.js';
@@ -19,8 +24,8 @@ import {
   workspaceSection,
   dateTimeSection,
   runtimeSection,
-  projectContextSection,
   preludeSection,
+  sessionSummarySection,
   outputDirectivesSection,
 } from './sections.js';
 
@@ -43,9 +48,27 @@ export interface PromptInput {
   };
   bootstrap: Record<string, string>;
   prelude?: MemoryPrelude;
+  sessionSummary?: import('@littlesheep/types').CompactionSummary;
   /** Bounded root index for on-demand memory-tree recall. */
   memoryRootIndex?: string;
   mode?: PromptMode;
+}
+
+export interface PromptContextSegment {
+  id: string;
+  order: number;
+  text: string;
+  kind: ContextItemKind;
+  source: ContextSourceRef;
+  priority: number;
+  required: boolean;
+  sensitive: boolean;
+  scope: ContextScope;
+}
+
+export interface SystemPromptBundle {
+  text: string;
+  segments: PromptContextSegment[];
 }
 
 /**
@@ -53,66 +76,179 @@ export interface PromptInput {
  * Does NOT read config. Keep this a pure function of its arguments.
  */
 export function buildSystemPrompt(input: PromptInput): string {
+  return buildSystemPromptBundle(input).text;
+}
+
+/** Render the same prompt with source-aware segments for Context accounting. */
+export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle {
   const mode = input.mode ?? 'full';
 
   if (mode === 'none') {
-    return `You are ${input.branding.displayName}.`;
+    const text = `You are ${input.branding.displayName}.`;
+    return {
+      text,
+      segments: [promptSegment('identity', 0, text, 'system_prompt', 100, true, 'global')],
+    };
   }
 
   const isMinimal = mode === 'minimal';
-  const sections: string[] = [];
+  const stable: Array<Omit<PromptContextSegment, 'order' | 'text'> & { content: string }> = [];
+  const addStable = (
+    id: string,
+    content: string,
+    kind: ContextItemKind = 'system_prompt',
+    priority = 100,
+    required = true,
+    scope: ContextScope = 'global',
+    source: ContextSourceRef = { kind: 'prompt', id },
+  ) => stable.push({ id, content, kind, source, priority, required, sensitive: true, scope });
 
   // ─── Stable sections (above cache boundary) ───
-  sections.push(identitySection(input.branding));
+  addStable('identity', identitySection(input.branding));
 
   if (!isMinimal) {
-    sections.push(coreFlowSection());
+    addStable('core-flow', coreFlowSection());
   }
 
-  sections.push(toolingSection(input.tools));
-  sections.push(safetySection());
+  addStable('tooling', toolingSection(input.tools), 'system_prompt', 98);
+  addStable('safety', safetySection(), 'system_prompt', 100);
 
   if (!isMinimal && input.skills && input.skills.length > 0) {
-    sections.push(skillsSection(input.skills));
+    addStable('skills-index', skillsSection(input.skills), 'system_prompt', 75, false);
   }
 
   if (!isMinimal && input.memoryRootIndex) {
-    sections.push(memoryTreeSection(input.memoryRootIndex));
+    addStable(
+      'memory-root-index',
+      memoryTreeSection(input.memoryRootIndex),
+      'memory_index',
+      95,
+      true,
+      'global',
+      { kind: 'memory', id: 'root-index' },
+    );
   }
 
-  sections.push(workspaceSection(input.workspace));
+  addStable(
+    'workspace',
+    workspaceSection(input.workspace),
+    'project_knowledge',
+    95,
+    true,
+    'workspace',
+    { kind: 'configuration', id: 'workspace', path: input.workspace },
+  );
 
   if (!isMinimal) {
-    sections.push(dateTimeSection(input.timezone));
+    addStable('date-time', dateTimeSection(input.timezone), 'system_prompt', 60, false);
   }
 
   if (input.runtime) {
-    sections.push(runtimeSection(input.runtime));
+    addStable('runtime', runtimeSection(input.runtime), 'system_prompt', 65, false);
   }
 
   if (!isMinimal) {
-    sections.push(outputDirectivesSection());
+    addStable('output-directives', outputDirectivesSection(), 'output_constraint', 95, true);
   }
 
-  // ─── Cache boundary ───
-  const stable = sections.join('\n\n---\n\n');
-  const volatileParts: string[] = [];
+  const segments: PromptContextSegment[] = stable.map((section, index) => ({
+    ...section,
+    order: index,
+    text: `${index > 0 ? '\n\n---\n\n' : ''}${section.content}`,
+  }));
+  let nextOrder = segments.length;
+  let hasVolatile = false;
+  const volatilePrefix = () => {
+    const prefix = hasVolatile
+      ? '\n\n---\n\n'
+      : `\n\n${CACHE_BOUNDARY_MARKER}\n\n`;
+    hasVolatile = true;
+    return prefix;
+  };
 
   // ─── Volatile sections (below cache boundary) ───
+  if (!isMinimal && input.sessionSummary) {
+    segments.push({
+      id: `summary-memory:${input.sessionSummary.id}`,
+      order: nextOrder++,
+      text: `${volatilePrefix()}${sessionSummarySection(input.sessionSummary)}`,
+      kind: 'summary_memory',
+      source: {
+        kind: 'memory',
+        id: input.sessionSummary.id,
+        generatedAt: input.sessionSummary.compactedAt,
+      },
+      priority: 88,
+      required: true,
+      sensitive: true,
+      scope: 'session',
+    });
+  }
+
   if (!isMinimal && Object.keys(input.bootstrap).length > 0) {
-    volatileParts.push(projectContextSection(input.bootstrap));
+    const files = Object.entries(input.bootstrap)
+      .filter(([, content]) => content && content.trim().length > 0);
+    files.forEach(([name, content], index) => {
+      const header = index === 0
+        ? '# Project Context\n\nThe following workspace files are injected for this run:\n\n'
+        : '';
+      const scope: ContextScope = name === 'SOUL.md' || name === 'USER.md' ? 'global' : 'workspace';
+      const required = name === 'AGENTS.md';
+      const priority = name === 'AGENTS.md' ? 95 : name === 'USER.md' ? 90 : name === 'SOUL.md' ? 85 : 80;
+      segments.push({
+        id: `bootstrap:${name}`,
+        order: nextOrder++,
+        text: `${volatilePrefix()}${header}## ${name}\n\n${content}`,
+        kind: 'project_knowledge',
+        source: { kind: 'prompt', id: name, path: name },
+        priority,
+        required,
+        sensitive: true,
+        scope,
+      });
+    });
   }
 
   if (!isMinimal && input.prelude) {
-    volatileParts.push(preludeSection(input.prelude));
+    const content = preludeSection(input.prelude);
+    if (content) {
+      segments.push({
+        id: 'summary-memory:legacy-prelude',
+        order: nextOrder++,
+        text: `${volatilePrefix()}${content}`,
+        kind: 'summary_memory',
+        source: { kind: 'memory', id: 'legacy-prelude' },
+        priority: 55,
+        required: false,
+        sensitive: true,
+        scope: 'session',
+      });
+    }
   }
 
-  const volatile = volatileParts.join('\n\n---\n\n');
-  const prompt = volatile.length > 0
-    ? `${stable}\n\n${CACHE_BOUNDARY_MARKER}\n\n${volatile}`
-    : stable;
+  return { text: segments.map((segment) => segment.text).join(''), segments };
+}
 
-  return prompt;
+function promptSegment(
+  id: string,
+  order: number,
+  text: string,
+  kind: ContextItemKind,
+  priority: number,
+  required: boolean,
+  scope: ContextScope,
+): PromptContextSegment {
+  return {
+    id,
+    order,
+    text,
+    kind,
+    source: { kind: 'prompt', id },
+    priority,
+    required,
+    sensitive: true,
+    scope,
+  };
 }
 
 /**
@@ -153,6 +289,7 @@ export interface RuntimeFacts {
   skills?: { name: string; description: string }[];
   bootstrap: Record<string, string>;
   prelude?: MemoryPrelude;
+  sessionSummary?: import('@littlesheep/types').CompactionSummary;
   memoryRootIndex?: string;
   runtime?: PromptInput['runtime'];
 }
@@ -162,7 +299,15 @@ export async function assembleSystemPrompt(
   facts: RuntimeFacts,
   mode?: PromptMode
 ): Promise<string> {
-  return buildSystemPrompt({
+  return (await assembleSystemPromptBundle(resolved, facts, mode)).text;
+}
+
+export async function assembleSystemPromptBundle(
+  resolved: ResolvedPromptConfig,
+  facts: RuntimeFacts,
+  mode?: PromptMode,
+): Promise<SystemPromptBundle> {
+  return buildSystemPromptBundle({
     branding: resolved.branding,
     tools: facts.tools,
     skills: facts.skills,
@@ -176,6 +321,7 @@ export async function assembleSystemPrompt(
     },
     bootstrap: facts.bootstrap,
     prelude: facts.prelude,
+    sessionSummary: facts.sessionSummary,
     memoryRootIndex: facts.memoryRootIndex,
     mode: mode ?? 'full',
   });

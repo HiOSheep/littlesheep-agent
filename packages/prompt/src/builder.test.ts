@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildSystemPrompt, truncateBootstrap, applyBootstrapLimits } from './builder.js';
+import { buildSystemPrompt, buildSystemPromptBundle, truncateBootstrap, applyBootstrapLimits } from './builder.js';
 import { splitAtBoundary, CACHE_BOUNDARY_MARKER } from './cache-boundary.js';
 import { DEFAULT_BRANDING } from '@littlesheep/branding';
 import type { AgentTool } from '@littlesheep/types';
@@ -30,6 +30,9 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('root index -> branch index -> node/query expansion');
     expect(prompt).toContain('Never search across the whole tree by default');
     expect(prompt).toContain('Semantic/vector recall is a last-resort candidate source');
+    expect(prompt).toContain("turn the user's ideas and goals into reliable, verified results");
+    expect(prompt).toContain('Use progressive disclosure');
+    expect(prompt).toContain('Never hide failure, partial completion, risk');
     const parts = splitAtBoundary(prompt);
     expect(parts.stable).toContain('Memory Tree Root Index');
     expect(parts.volatile).not.toContain('Memory Tree Root Index');
@@ -60,6 +63,72 @@ describe('buildSystemPrompt', () => {
       mode: 'none',
     });
     expect(prompt).toBe('You are LittleSheep.');
+  });
+
+  it('exposes memory and each bootstrap file as independently accountable segments', () => {
+    const input = {
+      branding: DEFAULT_BRANDING,
+      tools: [stubTool],
+      workspace: '/tmp/ws',
+      bootstrap: {
+        'AGENTS.md': 'agent rules',
+        'USER.md': 'user preferences',
+      },
+      memoryRootIndex: '# Memory Tree Root Index',
+      mode: 'full' as const,
+    };
+    const bundle = buildSystemPromptBundle(input);
+
+    expect(bundle.segments.map((segment) => segment.id)).toEqual(expect.arrayContaining([
+      'memory-root-index',
+      'bootstrap:AGENTS.md',
+      'bootstrap:USER.md',
+    ]));
+    expect(bundle.segments.find((segment) => segment.id === 'memory-root-index')).toMatchObject({
+      kind: 'memory_index',
+      scope: 'global',
+      required: true,
+    });
+    expect(bundle.segments.find((segment) => segment.id === 'bootstrap:AGENTS.md')).toMatchObject({
+      kind: 'project_knowledge',
+      scope: 'workspace',
+      required: true,
+    });
+    expect(bundle.segments.find((segment) => segment.id === 'bootstrap:USER.md')).toMatchObject({
+      kind: 'project_knowledge',
+      scope: 'global',
+      required: false,
+    });
+    expect(bundle.segments.map((segment) => segment.text).join('')).toBe(bundle.text);
+    expect(bundle.text).toBe(buildSystemPrompt(input));
+  });
+
+  it('registers a versioned session summary as summary memory', () => {
+    const bundle = buildSystemPromptBundle({
+      branding: DEFAULT_BRANDING,
+      tools: [],
+      workspace: '/tmp/ws',
+      bootstrap: {},
+      sessionSummary: {
+        version: 1,
+        id: 'summary-1',
+        collapsedCount: 40,
+        summary: 'Earlier goals and decisions.',
+        compactedAt: '2026-07-13T01:00:00.000Z',
+        sourceStartMessageId: 'message-1',
+        sourceEndMessageId: 'message-40',
+        sourceStartAt: '2026-07-12T01:00:00.000Z',
+        sourceEndAt: '2026-07-13T00:00:00.000Z',
+      },
+    });
+
+    expect(bundle.segments.find((segment) => segment.id === 'summary-memory:summary-1')).toMatchObject({
+      kind: 'summary_memory',
+      scope: 'session',
+      required: true,
+      source: { kind: 'memory', id: 'summary-1' },
+    });
+    expect(bundle.text).toContain('Earlier goals and decisions.');
   });
 
   it('splitAtBoundary correctly separates stable/volatile', () => {

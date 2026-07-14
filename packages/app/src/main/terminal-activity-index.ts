@@ -2,8 +2,10 @@
 // Persistent UI activity log for user-run workspace terminal commands.
 
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { atomicWrite } from '@littlesheep/memory-core'
+import { rebaseBoundPath, sameBoundPath } from './path-rebinding.js'
 
 export interface TerminalActivityRecord {
   id: string
@@ -89,6 +91,29 @@ export class TerminalActivityIndex {
     return record
   }
 
+  async rebindProject(
+    sessionIds: Iterable<string>,
+    fromPath: string,
+    toPath: string,
+  ): Promise<number> {
+    const projectSessions = new Set(sessionIds)
+    if (projectSessions.size === 0) return 0
+    const records = await this.readAll()
+    let changed = 0
+    const next = records.map((record) => {
+      if (!record.sessionId || !projectSessions.has(record.sessionId)) return record
+      const workspacePath = sameBoundPath(record.workspacePath, fromPath)
+        ? normalizePath(toPath)
+        : record.workspacePath
+      const cwd = rebaseBoundPath(record.cwd, fromPath, toPath)
+      if (workspacePath === record.workspacePath && cwd === record.cwd) return record
+      changed += 1
+      return { ...record, workspacePath, cwd }
+    })
+    if (changed > 0) await this.persist(next)
+    return changed
+  }
+
   private async readAll(): Promise<TerminalActivityRecord[]> {
     try {
       const raw = await readFile(this.filePath, 'utf-8')
@@ -102,7 +127,7 @@ export class TerminalActivityIndex {
 
   private async persist(records: TerminalActivityRecord[]): Promise<void> {
     await mkdir(join(this.filePath, '..'), { recursive: true })
-    await writeFile(this.filePath, JSON.stringify({ records }, null, 2), 'utf-8')
+    await atomicWrite(this.filePath, JSON.stringify({ records }, null, 2))
   }
 }
 

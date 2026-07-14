@@ -61,6 +61,7 @@ describe('EVOLVE structured memory intents', () => {
       sourceRunId: ctx.runId, sourceStage: 'evolve', summary: 'Workspace uses pnpm',
     });
     expect(ctx.evolutionNotes).toEqual(['Workspace uses pnpm']);
+    expect(ctx.modelRequests?.map((request) => request.stage)).toEqual(['evolve']);
   });
 
   it('does not write legacy free-form notes that bypass the structured gate', async () => {
@@ -94,6 +95,7 @@ describe('CAPTURE daily timeline intents', () => {
       sourceRunId: ctx.runId, sourceStage: 'capture', summary: 'Build verification',
     });
     expect(intent?.tier).toBe(3);
+    expect(ctx.modelRequests?.map((request) => request.stage)).toEqual(['capture']);
   });
 
   it('keeps a model transport failure non-fatal and performs no write', async () => {

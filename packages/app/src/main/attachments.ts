@@ -1,7 +1,7 @@
+import { readFile, stat } from 'node:fs/promises'
+import { basename, extname, isAbsolute, relative, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
-import { basename, extname, join } from 'node:path'
-import type { RunAttachment } from '@littlesheep/types'
+import type { AgentTool, AttachmentOwnership, RunAttachment } from '@littlesheep/types'
 import mammoth from 'mammoth'
 import * as XLSX from 'xlsx'
 
@@ -29,34 +29,32 @@ const IMAGE_MIME_BY_EXT: Record<string, string> = {
   '.tiff': 'image/tiff',
   '.svg': 'image/svg+xml',
 }
-const EXT_BY_MIME: Record<string, string> = {
-  'image/png': '.png',
-  'image/jpeg': '.jpg',
-  'image/gif': '.gif',
-  'image/webp': '.webp',
-  'image/bmp': '.bmp',
-  'image/tiff': '.tiff',
-  'image/svg+xml': '.svg',
-  'text/plain': '.txt',
-  'text/markdown': '.md',
-  'application/json': '.json',
-  'text/csv': '.csv',
-  'application/pdf': '.pdf',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
-}
-const MAX_IMPORTED_ATTACHMENT_BYTES = 25 * 1024 * 1024
-
 export interface AttachmentRef {
   path: string
   name?: string
   kind?: 'image' | 'document' | 'file'
+  mimeType?: string
   size?: number
+  cacheId?: string
+  contentHash?: string
+  ownership?: AttachmentOwnership
 }
 
-interface PreparedAttachment extends RunAttachment {
-  extractedText?: string
-  extractionNote?: string
+export interface ManagedAttachmentResolution extends AttachmentRef {
+  cacheId: string
+  contentHash: string
+  ownership: 'cache'
+}
+
+export interface ManagedAttachmentResolver {
+  resolve(ref: AttachmentRef): Promise<ManagedAttachmentResolution | undefined>
+}
+
+export interface PrepareRunAttachmentsOptions {
+  managedCache?: ManagedAttachmentResolver
+  workplaceDir?: string
+  workspaceDir?: string
+  projectId?: string
 }
 
 export async function classifyAttachment(filePath: string): Promise<AttachmentRef> {
@@ -72,27 +70,6 @@ export async function classifyAttachment(filePath: string): Promise<AttachmentRe
     kind: inferAttachmentKind(filePath),
     size,
   }
-}
-
-export async function importAttachmentData(workplaceDir: string, raw: Record<string, unknown>): Promise<AttachmentRef> {
-  const dataUrl = typeof raw.dataUrl === 'string' ? raw.dataUrl : ''
-  if (!dataUrl) throw new Error('attachment dataUrl is required')
-
-  const parsed = parseDataUrl(dataUrl)
-  if (!parsed) throw new Error('attachment dataUrl is invalid')
-  if (parsed.data.byteLength > MAX_IMPORTED_ATTACHMENT_BYTES) {
-    throw new Error(`attachment is larger than ${MAX_IMPORTED_ATTACHMENT_BYTES} bytes`)
-  }
-
-  const importDir = join(workplaceDir, 'attachments')
-  await mkdir(importDir, { recursive: true })
-  const requestedName = typeof raw.name === 'string' && raw.name.trim()
-    ? raw.name.trim()
-    : `clipboard${EXT_BY_MIME[parsed.mimeType] ?? ''}`
-  const fileName = buildImportedAttachmentName(requestedName, parsed.mimeType)
-  const filePath = join(importDir, fileName)
-  await writeFile(filePath, parsed.data)
-  return classifyAttachment(filePath)
 }
 
 export function parseAttachments(value: unknown): AttachmentRef[] {
@@ -111,65 +88,143 @@ export function parseAttachments(value: unknown): AttachmentRef[] {
         path: filePath,
         name: typeof raw.name === 'string' ? raw.name : basename(filePath),
         kind,
+        mimeType: typeof raw.mimeType === 'string' ? raw.mimeType : undefined,
         size: typeof raw.size === 'number' ? raw.size : undefined,
+        cacheId: typeof raw.cacheId === 'string' ? raw.cacheId.trim() || undefined : undefined,
       }
     })
     .filter((item): item is AttachmentRef => item !== null)
 }
 
-export async function prepareRunAttachments(attachments: AttachmentRef[]): Promise<RunAttachment[]> {
-  const prepared: PreparedAttachment[] = []
+export async function prepareRunAttachments(
+  attachments: AttachmentRef[],
+  options: PrepareRunAttachmentsOptions = {},
+): Promise<RunAttachment[]> {
+  const prepared: RunAttachment[] = []
   for (const attachment of attachments) {
-    const kind = attachment.kind ?? inferAttachmentKind(attachment.path)
-    const item: PreparedAttachment = {
-      path: attachment.path,
-      name: attachment.name ?? basename(attachment.path),
+    let source = attachment
+    let ownership = resolveAttachmentOwnership(attachment.path, options)
+    let contentHash: string | undefined
+    if (attachment.cacheId) {
+      const managed = await options.managedCache?.resolve(attachment)
+      if (!managed) throw new Error(`受管附件已失效，请重新添加：${attachment.name ?? basename(attachment.path)}`)
+      source = managed
+      ownership = 'cache'
+      contentHash = managed.contentHash
+    }
+
+    const kind = source.kind ?? inferAttachmentKind(source.path)
+    let size = source.size
+    if (size === undefined) {
+      try {
+        size = (await stat(source.path)).size
+      } catch {
+        size = undefined
+      }
+    }
+    const item: RunAttachment = {
+      id: randomUUID(),
+      path: source.path,
+      name: source.name ?? basename(source.path),
       kind,
-      size: attachment.size,
+      mimeType: source.mimeType,
+      size,
+      contentHash,
+      ownership,
+      contentState: 'uninspected',
     }
     if (kind === 'image') {
-      const data = await readImageDataUrl(attachment.path)
+      const data = await readImageDataUrl(source.path)
       item.mimeType = data.mimeType
       item.dataUrl = data.dataUrl
       if (!data.dataUrl && data.reason) item.extractionNote = data.reason
-    } else {
-      const extracted = await extractAttachmentText(attachment.path)
-      item.extractedText = extracted.text
-      item.extractionNote = extracted.note
+      item.contentState = data.dataUrl ? 'loaded' : 'unavailable'
     }
     prepared.push(item)
   }
   return prepared
 }
 
-export async function composeRunText(text: string, attachments: RunAttachment[]): Promise<string> {
-  if (attachments.length === 0) return text
-  const lines = [
-    text,
-    '',
-    '---',
-    'User selected these local attachments. Use extracted text and paths directly when useful. Image attachments are also included as model image inputs when supported.',
-  ]
-  for (const attachment of attachments as PreparedAttachment[]) {
-    const filePath = attachment.path
-    let size = attachment.size
-    try {
-      size = (await stat(filePath)).size
-    } catch {
-      // Keep the path in context even if stat fails; the agent can report the issue.
-    }
-    const visual = attachment.dataUrl ? ', image input attached' : ''
-    lines.push(`- ${attachment.name ?? basename(filePath)} (${attachment.kind}, ${size ?? 'unknown'} bytes${visual}): ${filePath}`)
-    if (attachment.extractionNote) {
-      lines.push(`  Note: ${attachment.extractionNote}`)
-    }
-    const preview = attachment.extractedText ?? await readTextPreview(filePath)
-    if (preview) {
-      lines.push('  Extracted text:')
-      lines.push(indent(preview, '    '))
-    }
+export function createInspectAttachmentTool(attachments: RunAttachment[]): AgentTool | undefined {
+  if (!attachments.some((attachment) => attachment.kind !== 'image')) return undefined
+  return {
+    name: 'inspect_attachment',
+    description: 'Read one user-selected attachment by its manifest id. Use only when the task needs the file content.',
+    inputSchema: {
+      parse(input: unknown) {
+        if (!input || typeof input !== 'object') throw new Error('attachment_id is required')
+        const attachmentId = (input as Record<string, unknown>).attachment_id
+        if (typeof attachmentId !== 'string' || !attachmentId.trim()) {
+          throw new Error('attachment_id is required')
+        }
+        return { attachment_id: attachmentId.trim() }
+      },
+      jsonSchema: {
+        type: 'object',
+        properties: {
+          attachment_id: {
+            type: 'string',
+            description: 'The attachment id shown in the current run attachment manifest.',
+          },
+        },
+        required: ['attachment_id'],
+        additionalProperties: false,
+      },
+    },
+    async execute(input, ctx) {
+      const { attachment_id: attachmentId } = input as { attachment_id: string }
+      const attachment = attachments.find((item) => item.id === attachmentId)
+      if (!attachment) {
+        return { callId: '', ok: false, error: `Attachment not found in this run: ${attachmentId}` }
+      }
+      if (ctx.signal?.aborted) {
+        return { callId: '', ok: false, error: 'Attachment inspection aborted.' }
+      }
+      let loaded: RunAttachment
+      try {
+        loaded = await loadRunAttachmentContent(attachment, ctx.signal)
+        Object.assign(attachment, loaded)
+      } catch (err) {
+        return { callId: '', ok: false, error: `Attachment inspection failed: ${(err as Error).message}` }
+      }
+      const header = [
+        `Attachment [${attachmentId}] ${loaded.name ?? loaded.path}`,
+        `Path: ${loaded.path}`,
+        `State: ${loaded.contentState ?? 'unavailable'}`,
+      ]
+      if (loaded.extractionNote) header.push(`Note: ${loaded.extractionNote}`)
+      if (loaded.extractedText?.trim()) header.push('', loaded.extractedText)
+      return {
+        callId: '',
+        ok: true,
+        output: header.join('\n'),
+        meta: {
+          attachmentId,
+          contentState: loaded.contentState,
+          contentAvailable: !!loaded.extractedText,
+        },
+      }
+    },
   }
-  return lines.join('\n')
+}
+
+export async function loadRunAttachmentContent(
+  attachment: RunAttachment,
+  signal?: AbortSignal,
+): Promise<RunAttachment> {
+  if (attachment.contentState === 'loaded' || attachment.contentState === 'unavailable') {
+    return attachment
+  }
+  if (signal?.aborted) throw new Error('Attachment inspection aborted.')
+  if (attachment.kind === 'image') return attachment
+  const extracted = await extractAttachmentText(attachment.path)
+  if (signal?.aborted) throw new Error('Attachment inspection aborted.')
+  return {
+    ...attachment,
+    extractedText: extracted.text,
+    extractionNote: extracted.note,
+    contentState: extracted.text ? 'loaded' : 'unavailable',
+  }
 }
 
 async function extractAttachmentText(filePath: string): Promise<{ text?: string; note?: string }> {
@@ -257,37 +312,6 @@ async function readTextPreview(filePath: string): Promise<string | null> {
   }
 }
 
-function parseDataUrl(dataUrl: string): { mimeType: string; data: Buffer } | null {
-  const match = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(dataUrl)
-  if (!match) return null
-  const mimeType = (match[1] || 'application/octet-stream').toLowerCase()
-  const isBase64 = !!match[2]
-  const payload = match[3] ?? ''
-  try {
-    return {
-      mimeType,
-      data: isBase64 ? Buffer.from(payload, 'base64') : Buffer.from(decodeURIComponent(payload), 'utf8'),
-    }
-  } catch {
-    return null
-  }
-}
-
-function buildImportedAttachmentName(name: string, mimeType: string): string {
-  const fallbackExt = EXT_BY_MIME[mimeType] ?? ''
-  const base = sanitizeFileName(basename(name || `attachment${fallbackExt}`))
-  const ext = extname(base) || fallbackExt
-  const stem = sanitizeFileName(base.slice(0, ext ? -ext.length : undefined)) || 'attachment'
-  return `${Date.now()}-${randomUUID().slice(0, 8)}-${stem.slice(0, 80)}${ext}`
-}
-
-function sanitizeFileName(value: string): string {
-  return value
-    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
 function inferAttachmentKind(filePath: string): RunAttachment['kind'] {
   const ext = extname(filePath).toLowerCase()
   if (IMAGE_ATTACHMENT_EXTS.has(ext)) return 'image'
@@ -295,10 +319,21 @@ function inferAttachmentKind(filePath: string): RunAttachment['kind'] {
   return 'file'
 }
 
-function clip(value: string, maxChars: number): string {
-  return value.length > maxChars ? `${value.slice(0, maxChars)}\n[extracted text truncated]` : value
+function resolveAttachmentOwnership(
+  filePath: string,
+  options: PrepareRunAttachmentsOptions,
+): AttachmentOwnership {
+  if (options.projectId && options.workspaceDir && isWithin(options.workspaceDir, filePath)) return 'project'
+  if (options.workplaceDir && isWithin(options.workplaceDir, filePath)) return 'user_workplace'
+  if (options.workspaceDir && isWithin(options.workspaceDir, filePath)) return 'user_workplace'
+  return 'external'
 }
 
-function indent(value: string, prefix: string): string {
-  return value.split('\n').map((line) => `${prefix}${line}`).join('\n')
+function isWithin(root: string, target: string): boolean {
+  const rel = relative(resolve(root), resolve(target))
+  return rel === '' || (!rel.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) && rel !== '..' && !isAbsolute(rel))
+}
+
+function clip(value: string, maxChars: number): string {
+  return value.length > maxChars ? `${value.slice(0, maxChars)}\n[extracted text truncated]` : value
 }

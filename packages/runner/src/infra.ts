@@ -2,7 +2,7 @@
 // Constructs all infrastructure (LLM/Session/Memory/Tools/Harness) from
 // Config + Branding. The runner's `run()` drives the assembled harness.
 
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { LlmClient } from '@littlesheep/llm';
 import { createLlmClient } from '@littlesheep/llm';
 import { SessionManager } from '@littlesheep/session';
@@ -27,6 +27,7 @@ import {
   writeSkillFile,
   findBuiltinSkillsDir,
   type SkillLoader,
+  type SkillSourceDefinition,
 } from '@littlesheep/skills';
 import { createDefaultHarness } from '@littlesheep/harness';
 import { SafeMemoryStore, QuarantineStore, sanitizePreludeForInjection } from '@littlesheep/safety';
@@ -41,6 +42,7 @@ import {
   LegacyExperienceBranch,
   LegacyLongTermBranch,
   MemoryRepository,
+  MemoryService,
   MemoryTree,
   MemoryWriteService,
   ProjectMemoryBranch,
@@ -55,7 +57,7 @@ import {
 export type LogFn = (level: 'info' | 'warn' | 'error', msg: string, data?: unknown) => void;
 
 /** Mutable per-runner state (updated by run, read by session_status tool). */
-export interface GatewayState {
+export interface RunnerState {
   sessionId: SessionId | undefined;
   model: string;
 }
@@ -74,7 +76,8 @@ export interface Infrastructure {
   memoryTree: MemoryTree;
   memoryRepository: MemoryRepository;
   memoryWriteService: MemoryWriteService;
-  state: GatewayState;
+  memoryService: MemoryService;
+  state: RunnerState;
 }
 
 export interface BuildInfrastructureOptions {
@@ -85,7 +88,9 @@ export interface BuildInfrastructureOptions {
   llm?: LlmClient;
   /** Override skills dirs (default: built-in + data + config.extraDirs). */
   skillsDirs?: string[];
-  state: GatewayState;
+  /** Stable user-data bootstrap directory, when provided by the owning adapter. */
+  bootstrapDir?: string;
+  state: RunnerState;
   log?: LogFn;
 }
 
@@ -222,17 +227,44 @@ export async function buildInfrastructure(
     invalidate: (branch) => memoryTree.invalidateBranch(branch),
     log: opts.log,
   });
+  const memoryService = new MemoryService({
+    tree: memoryTree,
+    repository: memoryRepository,
+    writer: memoryWriteService,
+    dataDir: dirs.root,
+    rootIndexMaxChars: opts.config.memory.treeRootIndexMaxChars,
+    resolveSessionSummary: async (sessionId, summaryId) => {
+      const summary = (await sessionManager.loadMetadata(sessionId))?.compaction;
+      return summary?.id === summaryId ? summary : undefined;
+    },
+    log: opts.log,
+  });
+  if (opts.bootstrapDir) {
+    await memoryService.loadBootstrapFiles(opts.bootstrapDir);
+  }
 
   // Skills loader: built-in + data dir + extra dirs from config.
-  const skillsDirs = opts.skillsDirs ?? [
-    findBuiltinSkillsDir(),
-    dirs.skills,
-    ...opts.config.skills.extraDirs,
-  ].filter((d): d is string => !!d);
+  const builtinSkillsDir = findBuiltinSkillsDir();
+  const skillSources: SkillSourceDefinition[] = opts.skillsDirs
+    ? opts.skillsDirs.map((dir) => ({
+        id: `external:${resolve(dir).toLocaleLowerCase()}`,
+        kind: 'external',
+        dir,
+      }))
+    : [
+        ...(builtinSkillsDir ? [{ id: 'builtin', kind: 'builtin' as const, dir: builtinSkillsDir }] : []),
+        { id: 'user', kind: 'user' as const, dir: dirs.skills },
+        ...opts.config.skills.extraDirs.map((dir) => ({
+          id: `external:${resolve(dir).toLocaleLowerCase()}`,
+          kind: 'external' as const,
+          dir,
+        })),
+      ];
   const skillLoader = await createSkillLoader({
-    dirs: skillsDirs,
+    sources: skillSources,
     disabled: opts.config.skills.disabled,
   });
+  await memoryService.syncSkillResources(skillLoader.index.discovered, skillLoader.index.sources);
 
   // Tool registry: builtins + skills + memory + session_status.
   // create_skill enables self-evolution: the agent writes new SKILL.md files
@@ -245,8 +277,8 @@ export async function buildInfrastructure(
   const extras: AgentTool[] = [
     createUseSkillTool(skillLoader),
     createCreateSkillTool({ loader: skillLoader, skillsDir: dirs.skills }),
-    createMemoryTreeTool(memoryTree, { envelope: memoryEnvelope }),
-    createMemorySearchCompatibilityTool(memoryTree, { envelope: memoryEnvelope }),
+    createMemoryTreeTool(memoryService, { envelope: memoryEnvelope }),
+    createMemorySearchCompatibilityTool(memoryService, { envelope: memoryEnvelope }),
     createSessionStatusTool({
       sessionId: () => opts.state.sessionId ?? asSessionId(''),
       sessionManager,
@@ -276,7 +308,7 @@ export async function buildInfrastructure(
     body: string;
   }): Promise<string> => {
     // Skip if a skill with this name already exists (don't overwrite).
-    const exists = skillLoader.index.skills.some((s) => s.name === skillOpts.name);
+    const exists = skillLoader.index.discovered.some((s) => s.name === skillOpts.name);
     if (exists) {
       throw new Error(`Skill "${skillOpts.name}" already exists`);
     }
@@ -288,6 +320,7 @@ export async function buildInfrastructure(
       body: skillOpts.body,
     });
     await skillLoader.reload();
+    await memoryService.syncSkillResources(skillLoader.index.discovered, skillLoader.index.sources);
     return path;
   };
 
@@ -296,7 +329,7 @@ export async function buildInfrastructure(
     model: modelName,
     sessionManager,
     memoryStore,
-    memoryWriter: memoryWriteService,
+    memoryWriter: memoryService,
     config: opts.config,
     branding: opts.branding,
     log: opts.log,
@@ -316,6 +349,7 @@ export async function buildInfrastructure(
     memoryTree,
     memoryRepository,
     memoryWriteService,
+    memoryService,
     state: opts.state,
   };
 }

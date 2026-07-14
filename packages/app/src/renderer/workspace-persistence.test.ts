@@ -8,9 +8,12 @@ import {
   hydrateWorkspaceFileDrafts,
   hydrateWorkspacePanelTabs,
   parseWorkspaceFileTabId,
+  rebindWorkspacePanelState,
+  rebindWorkspacePath,
   serializeWorkspaceFileDrafts,
   shouldUseWorkspaceLayoutFallback,
   workspaceFileTabId,
+  WORKSPACE_PANEL_OPEN_TABS_MAX,
 } from './workspace-persistence'
 
 describe('workspace persistence helpers', () => {
@@ -34,6 +37,14 @@ describe('workspace persistence helpers', () => {
     expect(hydrateWorkspacePanelTabs(['bogus'])).toEqual(['review'])
     expect(hydrateWorkspacePanelTabs(null)).toEqual(['review'])
     expect(hydrateWorkspacePanelTabs(['files'])).toEqual(['review'])
+  })
+
+  it('bounds restored workspace tabs', () => {
+    const tabs = Array.from({ length: WORKSPACE_PANEL_OPEN_TABS_MAX + 12 }, (_, index) => (
+      workspaceFileTabId('D:\\work', `D:\\work\\file-${index}.ts`)
+    ))
+
+    expect(hydrateWorkspacePanelTabs(tabs)).toHaveLength(WORKSPACE_PANEL_OPEN_TABS_MAX)
   })
 
   it('recovers only dirty drafts that match their file tab', () => {
@@ -256,5 +267,32 @@ describe('workspace persistence helpers', () => {
 
     expect(result.openTabs).toEqual(['review'])
     expect(result.activeTab).toBe('review')
+  })
+
+  it('rebinds open files and dirty drafts while leaving sibling paths unchanged', () => {
+    const fromRoot = 'D:\\work\\alpha'
+    const toRoot = 'E:\\projects\\alpha-renamed'
+    const oldFile = `${fromRoot}\\src\\index.ts`
+    const oldTab = workspaceFileTabId(fromRoot, oldFile)
+    const sibling = 'D:\\work\\alpha-old\\notes.md'
+
+    const result = rebindWorkspacePanelState({
+      openRequest: { id: 1, root: fromRoot, path: oldFile },
+      openTabs: ['review', oldTab],
+      activeTab: oldTab,
+      drafts: {
+        [oldTab]: { path: oldFile, editorText: 'changed', savedText: 'saved', editing: true },
+      },
+    }, fromRoot, toRoot)
+
+    const newFile = `${toRoot}\\src\\index.ts`
+    const newTab = workspaceFileTabId(toRoot, newFile)
+    expect(result).toMatchObject({
+      openRequest: { root: toRoot, path: newFile },
+      openTabs: ['review', newTab],
+      activeTab: newTab,
+    })
+    expect(result.drafts[newTab]?.path).toBe(newFile)
+    expect(rebindWorkspacePath(sibling, fromRoot, toRoot)).toBe(sibling)
   })
 })

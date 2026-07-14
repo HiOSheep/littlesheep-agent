@@ -2,8 +2,10 @@
 // Persistent artifact registry for files produced or modified in the workspace.
 
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { dirname, basename, resolve } from 'node:path'
+import { atomicWrite } from '@littlesheep/memory-core'
+import { rebaseBoundPath, sameBoundPath } from './path-rebinding.js'
 
 export type WorkspaceArtifactAction = 'created' | 'modified' | 'attached'
 export type WorkspaceArtifactSource = 'agent' | 'user'
@@ -96,6 +98,31 @@ export class WorkspaceArtifactIndex {
     return nextRecords
   }
 
+  async rebindProject(
+    projectId: string,
+    sessionIds: Iterable<string>,
+    fromPath: string,
+    toPath: string,
+  ): Promise<number> {
+    const projectSessions = new Set(sessionIds)
+    const records = await this.readAll()
+    let changed = 0
+    const next = records.map((record) => {
+      const belongsToProject = record.projectId === projectId
+        || Boolean(record.sessionId && projectSessions.has(record.sessionId))
+      if (!belongsToProject) return record
+      const workspacePath = sameBoundPath(record.workspacePath, fromPath)
+        ? normalizePath(toPath)
+        : record.workspacePath
+      const path = rebaseBoundPath(record.path, fromPath, toPath)
+      if (record.projectId === projectId && workspacePath === record.workspacePath && path === record.path) return record
+      changed += 1
+      return { ...record, projectId, workspacePath, path, name: basename(path) || path }
+    })
+    if (changed > 0) await this.persist(next)
+    return changed
+  }
+
   private async readAll(): Promise<WorkspaceArtifactRecord[]> {
     try {
       const raw = await readFile(this.filePath, 'utf-8')
@@ -109,7 +136,7 @@ export class WorkspaceArtifactIndex {
 
   private async persist(records: WorkspaceArtifactRecord[]): Promise<void> {
     await mkdir(dirname(this.filePath), { recursive: true })
-    await writeFile(this.filePath, JSON.stringify({ records }, null, 2), 'utf-8')
+    await atomicWrite(this.filePath, JSON.stringify({ records }, null, 2))
   }
 }
 

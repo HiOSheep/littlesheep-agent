@@ -3,13 +3,15 @@
 // Validates createRunner run wiring + inbound persistence order.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRunner } from './runner.js';
 import type { LlmClient, ChatRequest, ChatResponse, StreamChunk } from '@littlesheep/llm';
 import { DEFAULT_CONFIG } from '@littlesheep/config';
 import { DEFAULT_BRANDING, dataSubdirs } from '@littlesheep/branding';
+import type { AgentTool } from '@littlesheep/types';
+import { attachmentManifestResourceId, attachmentResourceId } from '@littlesheep/memory-tree';
 
 // ─── Mock LlmClient ─────────────────────────────────────────────────────
 
@@ -78,6 +80,26 @@ afterEach(async () => {
 // ─── Tests ──────────────────────────────────────────────────────────────
 
 describe('createRunner run', () => {
+  it('registers stable bootstrap authorities when the runner starts', async () => {
+    writeFileSync(join(dataDir, 'AGENTS.md'), 'Verify every completed task.', 'utf8');
+    writeFileSync(join(dataDir, 'SOUL.md'), 'Calm and factual.', 'utf8');
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('unused')),
+      bootstrapDir: dataDir,
+      skillsDirs: [],
+    });
+    createdRunners.push(runner);
+    const resources = await runner.infra.memoryService.listResources();
+    expect(resources.filter((resource) => resource.registryGroup.startsWith('bootstrap:'))).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: 'AGENTS.md', tier: 0, status: 'active' }),
+      expect.objectContaining({ title: 'SOUL.md', tier: 0, status: 'active' }),
+      expect.objectContaining({ title: 'USER.md', tier: 1, status: 'missing' }),
+    ]));
+  });
+
   it('chat path: "hello" → ok + reply + correct trace', async () => {
     const llm = makeMockLlm(textResponse('Hello!'));
     const runner = await createRunner({
@@ -100,6 +122,198 @@ describe('createRunner run', () => {
     expect(String(replyRequest.messages[0]?.content)).toContain('Memory Tree Root Index');
     const trace = result.trace as Array<{ name: string }>;
     expect(trace.map((t) => t.name)).toEqual(['enter', 'classify', 'reply', 'finalize']);
+  });
+
+  it('returns reply-call token usage with an explicit provider source', async () => {
+    const llm = makeMockLlm({
+      ...textResponse('Hello with usage!'),
+      usage: { promptTokens: 240, completionTokens: 12, totalTokens: 252 },
+    });
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+    });
+    createdRunners.push(runner);
+
+    const result = await runner.run({ text: 'hello' });
+
+    expect(result.usage).toEqual({
+      promptTokens: 240,
+      completionTokens: 12,
+      totalTokens: 252,
+      source: 'provider',
+    });
+    expect(result.contextSnapshots?.find((snapshot) => snapshot.providerUsage)?.providerUsage).toMatchObject({
+      source: 'provider',
+      provider: 'test',
+      model: 'model',
+      promptTokens: 240,
+      completionTokens: 12,
+      totalTokens: 252,
+    });
+  });
+
+  it('scopes additional tools to one run without mutating the shared registry', async () => {
+    const llm = makeMockLlm(textResponse('Attachment acknowledged.'));
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+    });
+    createdRunners.push(runner);
+    const inspectTool: AgentTool = {
+      name: 'inspect_attachment',
+      description: 'Inspect a selected attachment.',
+      inputSchema: {
+        parse: (input) => input,
+        jsonSchema: { type: 'object' },
+      },
+      async execute() {
+        return { callId: '', ok: true, output: 'content' };
+      },
+    };
+
+    const result = await runner.run({
+      text: 'hello',
+      additionalTools: [inspectTool],
+    });
+
+    expect(result.resolvedRunConfig?.availableToolNames).toContain('inspect_attachment');
+    expect(runner.infra.registry.names()).not.toContain('inspect_attachment');
+  });
+
+  it('registers attachment metadata for the run without persisting payloads and replaces it next run', async () => {
+    const llm = makeMockLlm(textResponse('Attachment acknowledged.'));
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+    });
+    createdRunners.push(runner);
+    const runId = 'run-attachment-registry';
+    const result = await runner.run({
+      runId,
+      text: 'hello',
+      attachments: [{
+        id: 'attachment-notes',
+        path: 'D:/private/notes.md',
+        name: 'notes.md',
+        kind: 'document',
+        dataUrl: 'data:text/plain;base64,PRIVATE-RUN-DATA',
+        extractedText: 'PRIVATE-RUN-BODY',
+        contentHash: 'a'.repeat(64),
+        contentState: 'loaded',
+        ownership: 'external',
+      }],
+    });
+    const manifestId = attachmentManifestResourceId(runId);
+    const attachmentId = attachmentResourceId(runId, 'attachment-notes');
+    const resourceSnapshot = await runner.infra.memoryRepository.snapshot();
+    expect(resourceSnapshot.resources[manifestId]).toMatchObject({ kind: 'attachment-manifest', scope: 'run' });
+    expect(resourceSnapshot.resources[attachmentId]).toMatchObject({
+      kind: 'attachment',
+      scopeKey: runId,
+      metadata: { contentHash: 'a'.repeat(64) },
+    });
+    expect(JSON.stringify(resourceSnapshot)).not.toContain('PRIVATE-RUN-DATA');
+    expect(JSON.stringify(resourceSnapshot)).not.toContain('PRIVATE-RUN-BODY');
+    expect(result.contextSnapshots?.flatMap((snapshot) => snapshot.items).some((item) => (
+      item.source.kind === 'attachment' && item.source.id === manifestId
+    ))).toBe(true);
+    expect((await runner.replay(runId))?.resourceIds).toContain(manifestId);
+
+    await runner.run({ sessionId: result.sessionId, text: 'follow up without attachments' });
+    expect(await runner.infra.memoryRepository.getResource(manifestId)).toBeUndefined();
+    expect(await runner.infra.memoryRepository.getResource(attachmentId)).toBeUndefined();
+  });
+
+  it('creates a non-destructive session summary when the configured threshold is reached', async () => {
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.sessions.compaction.threshold = 2;
+    config.sessions.compaction.keepRecent = 1;
+    const llm = makeMockLlm(textResponse('summary text'));
+    const runner = await createRunner({
+      config,
+      branding: DEFAULT_BRANDING,
+      model: 'openai/gpt-test',
+      llm,
+    });
+    createdRunners.push(runner);
+
+    const result = await runner.run({ text: 'remember this request' });
+    const metadata = await runner.sessionManager.loadMetadata(result.sessionId);
+    const messages = await runner.sessionManager.read(result.sessionId);
+
+    expect(messages).toHaveLength(2);
+    expect(metadata?.compaction).toMatchObject({
+      version: 1,
+      collapsedCount: 1,
+      sourceStartMessageId: messages[0]?.id,
+      sourceEndMessageId: messages[0]?.id,
+      summary: 'summary text',
+    });
+    const summary = metadata!.compaction!;
+    expect(await runner.infra.memoryRepository.getResource(summary.id)).toMatchObject({
+      id: summary.id,
+      kind: 'summary-memory',
+      scope: 'session',
+      scopeKey: String(result.sessionId),
+      source: { kind: 'session-summary', id: summary.id },
+    });
+    expect(JSON.stringify(await runner.infra.memoryRepository.snapshot())).not.toContain(summary.summary);
+    const calls = (llm.chat as ReturnType<typeof vi.fn>).mock.calls;
+    expect(String(calls.at(-1)?.[0]?.messages?.[0]?.content)).toContain('versioned session summary');
+
+    config.sessions.compaction.threshold = 100;
+    const continuation = await runner.run({ sessionId: result.sessionId, text: 'continue from the summary' });
+    expect(continuation.contextSnapshots?.flatMap((snapshot) => snapshot.items).some((item) => (
+      item.kind === 'summary_memory' && item.source.kind === 'memory' && item.source.id === summary.id
+    ))).toBe(true);
+    expect((await runner.replay(continuation.runId))?.resourceIds).toContain(summary.id);
+  });
+
+  it('uses the caller runId and persists the immutable run decision and request snapshots', async () => {
+    const llm = makeMockLlm(textResponse('Observed reply'));
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'openai/gpt-test',
+      llm,
+    });
+    createdRunners.push(runner);
+
+    const result = await runner.run({
+      runId: 'run-observed-fixed',
+      text: 'hello',
+      origin: 'app',
+      profile: 'coding',
+      permissionPolicyId: 'research',
+      reasoning: 'high',
+    });
+
+    expect(result.runId).toBe('run-observed-fixed');
+    expect(result.resolvedRunConfig).toMatchObject({
+      runId: 'run-observed-fixed',
+      origin: 'app',
+      behaviorModeId: 'coding',
+      permissionPolicyId: 'research',
+      provider: 'openai',
+      model: 'gpt-test',
+      reasoning: 'high',
+    });
+    expect(Object.isFrozen(result.resolvedRunConfig)).toBe(true);
+    expect(result.modelRequests?.map((request) => request.stage)).toEqual(['reply']);
+    expect(result.modelRequests?.[0]?.contextSnapshotId).toBe(result.contextSnapshots?.[0]?.id);
+    expect(result.contextSnapshots?.[0]?.budget.status).toBe('unknown');
+
+    const replay = await runner.replay(result.runId);
+    expect(replay?.resolvedRunConfig).toEqual(result.resolvedRunConfig);
+    expect(replay?.modelRequests).toEqual(result.modelRequests);
+    expect(replay?.contextSnapshots).toEqual(result.contextSnapshots);
   });
 
   it('applies the coding behavior profile without changing tool permission policy', async () => {
@@ -177,9 +391,12 @@ describe('createRunner run', () => {
       }],
     });
     expect(result.status).toBe('ok');
-    const lastMessage = seen.at(-1)?.messages.at(-1);
-    expect(Array.isArray(lastMessage?.content)).toBe(true);
-    expect(lastMessage?.content).toContainEqual({
+    const imageMessage = seen
+      .flatMap((request) => request.messages)
+      .find((message) => Array.isArray(message.content)
+        && message.content.some((part) => part.type === 'image_url'));
+    expect(Array.isArray(imageMessage?.content)).toBe(true);
+    expect(imageMessage?.content).toContainEqual({
       type: 'image_url',
       image_url: { url: 'data:image/png;base64,abc', detail: 'auto' },
     });
@@ -318,6 +535,14 @@ describe('createRunner run', () => {
     expect(dailyNodes).toHaveLength(1);
     expect(dailyNodes[0]).toMatchObject({ summary: 'Inspection completed', sourceRunIds: [result.runId] });
     expect((await runner.infra.memoryRepository.snapshot()).writeAudit.map((record) => record.decision)).toEqual(['created', 'created']);
+    expect(result.modelRequests?.map((request) => request.stage)).toEqual([
+      'classify',
+      'decide',
+      'execute',
+      'verify',
+      'evolve',
+      'capture',
+    ]);
   });
 
   // ─── Phase 3: channel meta binding ───────────────────────────────────

@@ -13,7 +13,26 @@ import { z } from 'zod';
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
-/** One entry in the skill index (frontmatter + location). */
+export type SkillSourceKind = 'builtin' | 'user' | 'external' | 'plugin';
+
+/** One owner-controlled directory that may contribute skills. */
+export interface SkillSourceDefinition {
+  /** Stable source id. Plugin sources use `plugin:<plugin-id>`. */
+  id: string;
+  kind: SkillSourceKind;
+  /** Directory containing `<entry>/SKILL.md`. */
+  dir: string;
+  /** Plugin id or other owner identity when different from the source id. */
+  ownerId?: string;
+  /** Disabled owners are still scanned for management, but are not callable. */
+  enabled?: boolean;
+  /** Optional allowlist of frontmatter names contributed by this source. */
+  include?: string[];
+}
+
+export type SkillAvailability = 'active' | 'disabled' | 'shadowed';
+
+/** One discovered skill (frontmatter + location + lifecycle owner). */
 export interface SkillIndexEntry {
   name: string;
   description: string;
@@ -21,19 +40,28 @@ export interface SkillIndexEntry {
   model?: string;
   /** Absolute directory containing SKILL.md. */
   dir: string;
+  source: SkillSourceDefinition;
+  availability: SkillAvailability;
 }
 
 /** The resolved skill index. */
 export interface SkillIndex {
+  /** Callable skills after owner state, config disablement and name precedence. */
   skills: SkillIndexEntry[];
+  /** All valid discovered skills, including disabled and shadowed entries. */
+  discovered: SkillIndexEntry[];
+  /** Normalized owner sources used to build this index. */
+  sources: SkillSourceDefinition[];
   /** Names that were skipped due to `disabled`. */
   disabled: string[];
 }
 
 /** Options for loading the skill index. */
 export interface LoadSkillIndexOptions {
-  /** Directories to scan for `<name>/SKILL.md`. */
-  dirs: string[];
+  /** Legacy directories; converted to external owner sources in order. */
+  dirs?: string[];
+  /** Owner-aware sources. Sources are evaluated in order; first active name wins. */
+  sources?: SkillSourceDefinition[];
   /** Skill names to skip. */
   disabled?: string[];
 }
@@ -44,6 +72,8 @@ export interface SkillLoader {
   loadBody(name: string): Promise<string | undefined>;
   /** Re-scan skill directories and rebuild the index. New skills become visible immediately. */
   reload(): Promise<SkillIndex>;
+  /** Atomically replace all dynamic sources owned by one source kind. */
+  replaceOwnedSources(kind: SkillSourceKind, sources: SkillSourceDefinition[]): Promise<SkillIndex>;
 }
 
 // ─── Frontmatter schema ───────────────────────────────────────────────────
@@ -118,9 +148,12 @@ export function findBuiltinSkillsDir(): string | undefined {
 export async function loadSkillIndex(opts: LoadSkillIndexOptions): Promise<SkillIndex> {
   const disabled = new Set(opts.disabled ?? []);
   const skills: SkillIndexEntry[] = [];
+  const discovered: SkillIndexEntry[] = [];
   const seen = new Set<string>();
+  const sources = normalizeSkillSources(opts);
 
-  for (const base of opts.dirs) {
+  for (const source of sources) {
+    const base = source.dir;
     if (!existsSync(base)) continue;
     let entries: import('node:fs').Dirent[];
     try {
@@ -143,20 +176,29 @@ export async function loadSkillIndex(opts: LoadSkillIndexOptions): Promise<Skill
       const validation = SkillFrontmatterSchema.safeParse(parsed.frontmatter);
       if (!validation.success) continue;
       const fm = validation.data;
-      if (disabled.has(fm.name)) continue;
-      if (seen.has(fm.name)) continue;
-      seen.add(fm.name);
-      skills.push({
+      if (source.include && !source.include.includes(fm.name)) continue;
+      const availability: SkillAvailability = source.enabled === false || disabled.has(fm.name)
+        ? 'disabled'
+        : seen.has(fm.name)
+          ? 'shadowed'
+          : 'active';
+      const indexed: SkillIndexEntry = {
         name: fm.name,
         description: fm.description,
         whenToUse: fm.when_to_use,
         model: fm.model,
         dir: resolve(base, entry.name),
-      });
+        source,
+        availability,
+      };
+      discovered.push(indexed);
+      if (availability !== 'active') continue;
+      seen.add(fm.name);
+      skills.push(indexed);
     }
   }
 
-  return { skills, disabled: [...disabled] };
+  return { skills, discovered, sources, disabled: [...disabled] };
 }
 
 /** Read the body of a skill by name. Returns undefined if not found. */
@@ -199,15 +241,54 @@ export async function writeSkillFile(opts: {
  * and subsequent loadBody() calls see the new index.
  */
 export async function createSkillLoader(opts: LoadSkillIndexOptions): Promise<SkillLoader> {
-  let index = await loadSkillIndex(opts);
+  const disabled = [...(opts.disabled ?? [])];
+  const baseSources = normalizeSkillSources(opts);
+  let dynamicSources: SkillSourceDefinition[] = [];
+  let index = await loadSkillIndex({ sources: baseSources, disabled });
+  const reload = async (): Promise<SkillIndex> => {
+    index = await loadSkillIndex({ sources: [...baseSources, ...dynamicSources], disabled });
+    return index;
+  };
   return {
     get index() {
       return index;
     },
     loadBody: (name) => loadSkillBody(name, index),
-    reload: async () => {
-      index = await loadSkillIndex(opts);
-      return index;
+    reload,
+    replaceOwnedSources: async (kind, sources) => {
+      if (sources.some((source) => source.kind !== kind)) {
+        throw new Error(`Skill source replacement for ${kind} contains a different owner kind.`);
+      }
+      dynamicSources = [
+        ...dynamicSources.filter((source) => source.kind !== kind),
+        ...sources,
+      ];
+      return reload();
     },
   };
+}
+
+function normalizeSkillSources(opts: LoadSkillIndexOptions): SkillSourceDefinition[] {
+  const sources = [
+    ...(opts.sources ?? []),
+    ...(opts.dirs ?? []).map((dir, index): SkillSourceDefinition => ({
+      id: `legacy:${index}:${resolve(dir).toLocaleLowerCase()}`,
+      kind: 'external',
+      dir,
+    })),
+  ].map((source) => ({
+    ...source,
+    id: source.id.trim(),
+    dir: resolve(source.dir),
+    ownerId: source.ownerId?.trim() || undefined,
+    enabled: source.enabled !== false,
+    include: source.include ? [...new Set(source.include.map((name) => name.trim()).filter(Boolean))] : undefined,
+  }));
+  const ids = new Set<string>();
+  for (const source of sources) {
+    if (!source.id) throw new Error('Skill source id is required.');
+    if (ids.has(source.id)) throw new Error(`Duplicate skill source id: ${source.id}`);
+    ids.add(source.id);
+  }
+  return sources;
 }

@@ -28,6 +28,21 @@ describe('resolveRuntimeWorkspaceDefault', () => {
     })
   })
 
+  it('migrates the historical Windows default with native separators', () => {
+    expect(resolveRuntimeWorkspaceDefault('C:\\Users\\me\\.legacy-app\\workspace', workplace, cwd)).toEqual({
+      workspace: workplace,
+      migrated: true,
+    })
+  })
+
+  it('keeps a hidden workspace that belongs to another owner root', () => {
+    const selected = 'D:\\projects\\client-app\\.cache\\workspace'
+    expect(resolveRuntimeWorkspaceDefault(selected, workplace, cwd)).toEqual({
+      workspace: selected,
+      migrated: false,
+    })
+  })
+
   it('keeps a LittleSheep workspace path', () => {
     const selected = 'C:/Users/me/.littlesheep/workspace'
     expect(resolveRuntimeWorkspaceDefault(selected, workplace, cwd)).toEqual({

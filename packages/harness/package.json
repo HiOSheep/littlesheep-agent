@@ -12,6 +12,7 @@
     }
   },
   "dependencies": {
+    "@littlesheep/context": "workspace:*",
     "@littlesheep/types": "workspace:*",
     "@littlesheep/session": "workspace:*",
     "@littlesheep/memory-core": "workspace:*",

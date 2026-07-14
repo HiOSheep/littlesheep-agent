@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  createSkillLoader,
   parseSkillFile,
   loadSkillIndex,
   loadSkillBody,
@@ -93,6 +94,9 @@ describe('loadSkillIndex', () => {
     expect(index.skills).toHaveLength(1);
     expect(index.skills[0]!.name).toBe('keep');
     expect(index.disabled).toEqual(['skip']);
+    expect(index.discovered.find((skill) => skill.name === 'skip')).toMatchObject({
+      availability: 'disabled',
+    });
   });
 
   it('dedupes by name (first directory wins)', async () => {
@@ -103,6 +107,45 @@ describe('loadSkillIndex', () => {
     const index = await loadSkillIndex({ dirs: [dir1, dir2] });
     expect(index.skills).toHaveLength(1);
     expect(index.skills[0]!.description).toBe('First.');
+    expect(index.discovered).toEqual(expect.arrayContaining([
+      expect.objectContaining({ description: 'First.', availability: 'active' }),
+      expect.objectContaining({ description: 'Second.', availability: 'shadowed' }),
+    ]));
+  });
+
+  it('tracks owner-controlled plugin sources and replaces them atomically', async () => {
+    const base = makeTempDir();
+    writeSkill(base, 'planner', 'name: planner\ndescription: Plan work.', 'Plan body.');
+    const loader = await createSkillLoader({ sources: [] });
+
+    await loader.replaceOwnedSources('plugin', [{
+      id: 'plugin:test.planner',
+      kind: 'plugin',
+      ownerId: 'test.planner',
+      dir: base,
+      include: ['planner'],
+    }]);
+    expect(loader.index.skills).toEqual([
+      expect.objectContaining({
+        name: 'planner',
+        availability: 'active',
+        source: expect.objectContaining({ kind: 'plugin', ownerId: 'test.planner' }),
+      }),
+    ]);
+
+    await loader.replaceOwnedSources('plugin', [{
+      id: 'plugin:test.planner',
+      kind: 'plugin',
+      ownerId: 'test.planner',
+      dir: base,
+      enabled: false,
+      include: ['planner'],
+    }]);
+    expect(loader.index.skills).toHaveLength(0);
+    expect(loader.index.discovered[0]).toMatchObject({ name: 'planner', availability: 'disabled' });
+
+    await loader.replaceOwnedSources('plugin', []);
+    expect(loader.index.discovered).toHaveLength(0);
   });
 
   it('skips invalid frontmatter', async () => {

@@ -83,6 +83,44 @@ describe('buildRunContext', () => {
     expect(typeof ctx.bootstrap).toBe('object');
   });
 
+  it('loads the versioned session summary without replacing recent messages', async () => {
+    const prior = textMessage('assistant', 'recent reply');
+    const compaction = {
+      version: 1 as const,
+      id: 'summary-1',
+      collapsedCount: 40,
+      summary: 'Earlier task constraints and decisions.',
+      compactedAt: '2026-07-13T01:00:00.000Z',
+      sourceStartMessageId: 'message-1',
+      sourceEndMessageId: 'message-40',
+      sourceStartAt: '2026-07-12T01:00:00.000Z',
+      sourceEndAt: '2026-07-13T00:00:00.000Z',
+    };
+    const sm = createMockSessionManager({
+      history: [prior],
+      metadata: {
+        createdAt: '2026-07-12T01:00:00.000Z',
+        updatedAt: '2026-07-13T01:00:00.000Z',
+        messageCount: 41,
+        compacted: true,
+        compaction,
+      },
+    });
+    const ctx = await buildRunContext({
+      sessionId: 's1',
+      inbound: textMessage('user', 'continue'),
+      sessionManager: sm,
+      memoryStore: createMockMemoryStore(),
+      tools: [],
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'openai/gpt-5.5',
+    });
+
+    expect(ctx.sessionSummary).toEqual(compaction);
+    expect(ctx.history).toEqual([prior]);
+  });
+
   it('runId auto-generated when absent', async () => {
     const sm = createMockSessionManager();
     const ms = createMockMemoryStore();
@@ -123,6 +161,41 @@ describe('buildRunContext', () => {
     expect(ctx.toolContext.signal).toBe(ac.signal);
     expect(ctx.toolContext.approve).toBe(approve);
     expect(ctx.toolContext.log).toBe(log);
+  });
+
+  it('preserves attachment metadata on RunContext without reading attachment content', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'ls-ctx-attachment-'));
+    try {
+      const attachments = [{
+        path: join(root, 'missing-notes.md'),
+        name: 'notes.md',
+        kind: 'document' as const,
+        mimeType: 'text/markdown',
+        size: 2048,
+      }];
+
+      const ctx = await buildRunContext({
+        sessionId: 's1',
+        inbound: textMessage('user', 'inspect the attachment'),
+        sessionManager: createMockSessionManager(),
+        memoryStore: createMockMemoryStore(),
+        tools: [],
+        config: DEFAULT_CONFIG,
+        branding: DEFAULT_BRANDING,
+        model: 'test/model',
+        cwd: root,
+        attachments,
+      });
+
+      expect(ctx.attachments).toBe(attachments);
+      expect(ctx.attachments?.[0]).toMatchObject({
+        name: 'notes.md',
+        kind: 'document',
+        size: 2048,
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   // ─── M3: history filtering ─────────────────────────────────────────────

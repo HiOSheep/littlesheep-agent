@@ -6,6 +6,9 @@ export interface ApprovalGrantTarget {
   source?: ApprovalSource
 }
 
+const MAX_APPROVAL_SCOPES = 128
+const MAX_GRANTS_PER_SCOPE = 64
+
 export function sessionApprovalScopeKey(sessionId: string): string {
   return `session:${sessionId}`
 }
@@ -29,7 +32,18 @@ export class SessionApprovalGrantStore {
 
   grant(scopeKey: string, target: ApprovalGrantTarget): void {
     const existing = this.grants.get(scopeKey) ?? new Set<string>()
-    existing.add(approvalGrantKey(target))
+    const key = approvalGrantKey(target)
+    existing.delete(key)
+    existing.add(key)
+    while (existing.size > MAX_GRANTS_PER_SCOPE) {
+      const oldest = existing.values().next().value as string | undefined
+      if (!oldest) break
+      existing.delete(oldest)
+    }
+    if (!this.grants.has(scopeKey) && this.grants.size >= MAX_APPROVAL_SCOPES) {
+      const oldestScope = this.grants.keys().next().value as string | undefined
+      if (oldestScope) this.grants.delete(oldestScope)
+    }
     this.grants.set(scopeKey, existing)
   }
 
@@ -39,6 +53,15 @@ export class SessionApprovalGrantStore {
     if (!source) return
     const target = this.grants.get(toScopeKey) ?? new Set<string>()
     for (const key of source) target.add(key)
+    while (target.size > MAX_GRANTS_PER_SCOPE) {
+      const oldest = target.values().next().value as string | undefined
+      if (!oldest) break
+      target.delete(oldest)
+    }
+    if (!this.grants.has(toScopeKey) && this.grants.size >= MAX_APPROVAL_SCOPES) {
+      const oldestScope = this.grants.keys().next().value as string | undefined
+      if (oldestScope && oldestScope !== fromScopeKey) this.grants.delete(oldestScope)
+    }
     this.grants.set(toScopeKey, target)
     this.grants.delete(fromScopeKey)
   }

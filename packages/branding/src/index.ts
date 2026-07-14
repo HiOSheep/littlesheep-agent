@@ -11,6 +11,7 @@
 //   5. DEFAULT_BRANDING (no file read)
 
 import { readFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
@@ -29,6 +30,38 @@ export interface BrandingConfig {
   dataDir: string;
   /** Display name shown in prompts (may differ from `name` for branding). */
   displayName: string;
+}
+
+export type DataRootMigrationPhase = 'requested' | 'copying' | 'verifying' | 'committing' | 'failed';
+
+export interface PendingDataRootMigration {
+  id: string;
+  sourceDir: string;
+  targetDir: string;
+  stageDir: string;
+  phase: DataRootMigrationPhase;
+  createdAt: string;
+  updatedAt: string;
+  attempts: number;
+  error?: string;
+}
+
+export interface CompletedDataRootMigration {
+  id: string;
+  sourceDir: string;
+  targetDir: string;
+  completedAt: string;
+  fileCount: number;
+  totalBytes: number;
+  manifestHash: string;
+}
+
+export interface DataRootLocatorDocument {
+  version: 1;
+  activeDataDir: string;
+  previousDataDir?: string;
+  pendingMigration?: PendingDataRootMigration;
+  lastMigration?: CompletedDataRootMigration;
 }
 
 /** Fallback when no config file is found. */
@@ -94,10 +127,22 @@ export async function loadBranding(configPath?: string): Promise<BrandingConfig>
   }
 }
 
-/** Resolve the absolute data directory (~/.littlesheep or env override). */
-export function resolveDataDir(branding: BrandingConfig): string {
-  const override = process.env.LITTLESHEEP_DATA_DIR;
-  if (override) return resolve(override);
+export function dataRootLocatorPath(branding: BrandingConfig): string {
+  const override = process.env.LITTLESHEEP_DATA_LOCATOR;
+  return resolve(override || join(homedir(), '.' + branding.cliName + '-location.json'));
+}
+
+export function readDataRootLocator(branding: BrandingConfig): DataRootLocatorDocument | undefined {
+  try {
+    const parsed = JSON.parse(readFileSync(dataRootLocatorPath(branding), 'utf8')) as unknown;
+    return parseDataRootLocator(parsed);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Resolve the branding-defined default without environment or locator overrides. */
+export function resolveDefaultDataDir(branding: BrandingConfig): string {
   // dataDir is a relative path like ".littlesheep"
   if (branding.dataDir.startsWith('~')) {
     return resolve(homedir(), branding.dataDir.slice(1));
@@ -106,6 +151,74 @@ export function resolveDataDir(branding: BrandingConfig): string {
     return resolve(branding.dataDir);
   }
   return resolve(homedir(), branding.dataDir);
+}
+
+/** Resolve the active data directory (environment override -> locator -> branding default). */
+export function resolveDataDir(branding: BrandingConfig): string {
+  const override = process.env.LITTLESHEEP_DATA_DIR;
+  if (override) return resolve(override);
+  const located = readDataRootLocator(branding)?.activeDataDir;
+  return located ? resolve(located) : resolveDefaultDataDir(branding);
+}
+
+export function parseDataRootLocator(value: unknown): DataRootLocatorDocument | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const raw = value as Record<string, unknown>;
+  if (raw.version !== 1 || typeof raw.activeDataDir !== 'string' || !raw.activeDataDir.trim()) return undefined;
+  return {
+    version: 1,
+    activeDataDir: resolve(raw.activeDataDir),
+    previousDataDir: typeof raw.previousDataDir === 'string' && raw.previousDataDir.trim()
+      ? resolve(raw.previousDataDir)
+      : undefined,
+    pendingMigration: parsePendingMigration(raw.pendingMigration),
+    lastMigration: parseCompletedMigration(raw.lastMigration),
+  };
+}
+
+function parsePendingMigration(value: unknown): PendingDataRootMigration | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const raw = value as Record<string, unknown>;
+  const phase = raw.phase;
+  if (typeof raw.id !== 'string' || !raw.id
+    || typeof raw.sourceDir !== 'string' || !raw.sourceDir
+    || typeof raw.targetDir !== 'string' || !raw.targetDir
+    || typeof raw.stageDir !== 'string' || !raw.stageDir
+    || (phase !== 'requested' && phase !== 'copying' && phase !== 'verifying' && phase !== 'committing' && phase !== 'failed')
+    || typeof raw.createdAt !== 'string' || typeof raw.updatedAt !== 'string'
+    || typeof raw.attempts !== 'number' || !Number.isSafeInteger(raw.attempts) || raw.attempts < 0) return undefined;
+  return {
+    id: raw.id,
+    sourceDir: resolve(raw.sourceDir),
+    targetDir: resolve(raw.targetDir),
+    stageDir: resolve(raw.stageDir),
+    phase,
+    createdAt: raw.createdAt,
+    updatedAt: raw.updatedAt,
+    attempts: raw.attempts,
+    error: typeof raw.error === 'string' ? raw.error : undefined,
+  };
+}
+
+function parseCompletedMigration(value: unknown): CompletedDataRootMigration | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.id !== 'string' || !raw.id
+    || typeof raw.sourceDir !== 'string' || !raw.sourceDir
+    || typeof raw.targetDir !== 'string' || !raw.targetDir
+    || typeof raw.completedAt !== 'string'
+    || typeof raw.fileCount !== 'number' || !Number.isSafeInteger(raw.fileCount) || raw.fileCount < 0
+    || typeof raw.totalBytes !== 'number' || !Number.isSafeInteger(raw.totalBytes) || raw.totalBytes < 0
+    || typeof raw.manifestHash !== 'string' || !raw.manifestHash) return undefined;
+  return {
+    id: raw.id,
+    sourceDir: resolve(raw.sourceDir),
+    targetDir: resolve(raw.targetDir),
+    completedAt: raw.completedAt,
+    fileCount: raw.fileCount,
+    totalBytes: raw.totalBytes,
+    manifestHash: raw.manifestHash,
+  };
 }
 
 /** Common subdirectories under the data dir. */
@@ -122,6 +235,9 @@ export function dataSubdirs(branding: BrandingConfig): {
   vectors: string;
   executionLogs: string;
   channels: string;
+  plugins: string;
+  pluginData: string;
+  attachmentCache: string;
   workplace: string;
 } {
   const root = resolveDataDir(branding);
@@ -138,6 +254,9 @@ export function dataSubdirs(branding: BrandingConfig): {
     vectors: join(root, 'vectors'),
     executionLogs: join(root, 'execution-logs'),
     channels: join(root, 'channels'),
+    plugins: join(root, 'plugins'),
+    pluginData: join(root, 'plugin-data'),
+    attachmentCache: join(root, 'attachment-cache'),
     workplace: join(root, 'workplace'),
   };
 }

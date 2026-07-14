@@ -1,8 +1,8 @@
 // @littlesheep/app — local-app-api-server.ts
 // Local app API server on 127.0.0.1 (loopback only) exposing AgentRunner.run to the
 // renderer process. This is the renderer-main bridge for the desktop app;
-// external messaging connectors live in @littlesheep/gateway and are exposed
-// here under /channels/*.
+// optional extensions are owned by @littlesheep/plugins and exposed here
+// through plugin and channel control endpoints.
 //
 // Bound to a random free port at startup (port=0); the actual port is
 // exposed to the renderer via the preload contextBridge.
@@ -20,8 +20,13 @@
 //   GET    /skills/:name              — read a skill's SKILL.md body
 //   GET    /memory                    — list daily memory dates + long-term snapshot
 //   GET    /memory/tree               — memory tree overview for the settings UI
+//   POST   /memory/tree/nodes/:id/manage — archive, restore, delete or retier one memory node
+//   POST   /memory/tree/resources/:id/manage — disable, restore, relocate or remove one registration
+//   GET    /memory/projects/:id/projection — inspect one project's private memory projection
+//   POST   /memory/projects/:id/projection — enable, sync, disable, clean or export project memory
 //   GET    /projects                  — list registered project workspaces
 //   POST   /projects/register         — explicitly register an existing folder as a project
+//   POST   /projects/:id/rebind       — preserve project identity after a folder move or rename
 //   DELETE /projects/:id              — archive or hard-delete a project record
 //   POST   /projects/create-folder    — create a project folder under a selected parent
 //   GET    /workspace/list            — list one directory inside the current workspace
@@ -47,10 +52,12 @@
 //   DELETE /archive/sessions/:id      — permanently delete an archived session
 //   DELETE /archive/projects/:id      — permanently delete an archived project record
 //   POST   /config/apikey             — save API key + rebuild runner
+//   GET    /plugins                   — installed plugin manifests and runtime state
+//   POST   /plugins/reload            — rediscover and reload optional plugins
+//   POST   /plugins/:id/enabled       — enable or disable one plugin
+//   POST   /plugins/local-code        — update the explicit local-code trust gate
 //   GET    /channels/status           — external channel connection status
 //   POST   /channels/reload           — reload external channel connections
-//   GET    /gateway/status            — legacy alias for /channels/status
-//   POST   /gateway/reload            — legacy alias for /channels/reload
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
@@ -60,12 +67,14 @@ import { EventEmitter } from 'node:events'
 import { access, lstat, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { shell } from 'electron'
-import type { AgentRunner, ExecutionLog } from '@littlesheep/runner'
+import type { AgentRunner, ExecutionLog, RunInput } from '@littlesheep/runner'
 import { asSessionId, type Message } from '@littlesheep/types'
 import type { Config } from '@littlesheep/config'
 import { parseModelRef, resolveApiKey, loadConfig, withProviderPresets } from '@littlesheep/config'
 import { SessionIndex, type SessionMeta } from './session-index.js'
-import { ProjectIndex, type ProjectMeta } from './project-index.js'
+import { ProjectIndex, ProjectPathConflictError, type ProjectMeta } from './project-index.js'
+import { ProjectRebindingService } from './project-rebinding.js'
+import { sameBoundPath } from './path-rebinding.js'
 import { ArchiveIndex, type ArchivedProjectMeta, type ArchivedSessionMeta } from './archive-index.js'
 import { TerminalActivityIndex } from './terminal-activity-index.js'
 import { WorkspaceArtifactIndex, type WorkspaceArtifactInput } from './workspace-artifact-index.js'
@@ -78,8 +87,10 @@ import {
 import { workspaceShellConfig } from './workspace-shell.js'
 import {
   buildMemoryTreePayload,
+  manageRuntimeMemoryResource,
   manageRuntimeMemoryNode,
   type MemoryNodeManagementAction,
+  type MemoryResourceManagementAction,
 } from './memory-tree-control.js'
 import { saveApiKey, injectKeysIntoEnv, deriveEnvVarName } from './keychain.js'
 import {
@@ -89,13 +100,13 @@ import {
 } from './modes.js'
 import { resolveRunPolicy, type RunApprovalBroker } from './run-policy.js'
 import {
-  composeRunText,
-  importAttachmentData,
+  createInspectAttachmentTool,
   parseAttachments,
   prepareRunAttachments,
   type AttachmentRef,
 } from './attachments.js'
-import type { GatewayService } from '@littlesheep/gateway'
+import { ManagedAttachmentCache } from './attachment-cache.js'
+import type { PluginHost } from '@littlesheep/plugins'
 import {
   coerceReasoningForModelRef,
   isReasoningSupportedForModelRef,
@@ -115,6 +126,9 @@ const MAX_TERMINAL_COMMAND_BYTES = 16 * 1024
 const MAX_TERMINAL_OUTPUT_BYTES = 512 * 1024
 const DEFAULT_TERMINAL_TIMEOUT_MS = 120_000
 const MAX_TERMINAL_TIMEOUT_MS = 300_000
+const MAX_ACTIVE_STREAM_RUNS = 16
+const MAX_PENDING_APPROVALS = 64
+const MAX_WORKSPACE_TERMINAL_SESSIONS = 16
 const DEFAULT_TERMINAL_SIZE = { cols: 80, rows: 24 }
 const MIN_TERMINAL_COLS = 20
 const MAX_TERMINAL_COLS = 360
@@ -126,6 +140,12 @@ const MEMORY_NODE_MANAGEMENT_ACTIONS = new Set<MemoryNodeManagementAction>([
   'delete',
   'promote',
   'demote',
+])
+const MEMORY_RESOURCE_MANAGEMENT_ACTIONS = new Set<MemoryResourceManagementAction>([
+  'disable',
+  'restore',
+  'remove',
+  'rebind',
 ])
 const TEXT_SNIFF_BYTES = 64 * 1024
 const HEAVY_WORKSPACE_DIRS = new Set([
@@ -153,7 +173,12 @@ class HttpError extends Error {
 // Used to detect concurrent reload requests (logged as a warning for
 // concurrency diagnosis — does NOT block/queue the second request).
 let reloadInProgress = false
-const pendingApprovals = new Map<string, (approved: boolean) => void>()
+interface PendingApproval {
+  resolve: (approved: boolean) => void
+  cleanup: () => void
+}
+
+const pendingApprovals = new Map<string, PendingApproval>()
 
 interface WorkspaceTerminalSessionSnapshot {
   sessionId: string
@@ -275,14 +300,23 @@ class WorkspaceTerminalSession extends EventEmitter<WorkspaceTerminalSessionEven
 
 class WorkspaceTerminalSessionManager {
   private readonly sessions = new Map<string, WorkspaceTerminalSession>()
+  private readonly removalTimers = new Map<string, NodeJS.Timeout>()
+  private closed = false
 
   async create(root: string, size = DEFAULT_TERMINAL_SIZE): Promise<WorkspaceTerminalSession> {
+    if (this.closed) throw new HttpError(503, 'terminal session manager is stopped')
+    if (this.sessions.size >= MAX_WORKSPACE_TERMINAL_SESSIONS) {
+      throw new HttpError(429, 'too many workspace terminal sessions')
+    }
     const session = await WorkspaceTerminalSession.create(root, size)
     this.sessions.set(session.sessionId, session)
     session.once('exit', () => {
-      windowSetTimeout(() => {
+      if (this.closed) return
+      const timer = windowSetTimeout(() => {
+        this.removalTimers.delete(session.sessionId)
         if (this.sessions.get(session.sessionId) === session) this.sessions.delete(session.sessionId)
       }, 30_000)
+      this.removalTimers.set(session.sessionId, timer)
     })
     return session
   }
@@ -294,10 +328,24 @@ class WorkspaceTerminalSessionManager {
   }
 
   close(sessionId: string): void {
+    const timer = this.removalTimers.get(sessionId)
+    if (timer) {
+      clearTimeout(timer)
+      this.removalTimers.delete(sessionId)
+    }
     const session = this.sessions.get(sessionId)
     if (!session) return
     this.sessions.delete(sessionId)
     session.kill()
+  }
+
+  closeAll(): void {
+    this.closed = true
+    for (const timer of this.removalTimers.values()) clearTimeout(timer)
+    this.removalTimers.clear()
+    const sessions = [...this.sessions.values()]
+    this.sessions.clear()
+    for (const session of sessions) session.kill()
   }
 }
 
@@ -465,15 +513,19 @@ export interface LocalAppApiServerOptions {
   selectWorkspace?: () => Promise<string | null>
   /** Open a native file picker from the Electron main process. */
   selectAttachments?: () => Promise<AttachmentRef[]>
+  /** Open a native save dialog for an explicitly requested shareable project-memory export. */
+  selectProjectMemoryExport?: (projectName: string, projectPath: string) => Promise<string | null>
+  /** Open a native file picker to relocate a missing workspace memory resource. */
+  selectMemoryResourceSource?: () => Promise<string | null>
 }
 
 export interface LocalAppApiServer {
   readonly port: number
   /** Hot-swap the runner (used after API key rebuild). */
   setRunner(r: AgentRunner): void
-  /** Inject the external channel gateway service reference. */
-  setChannelGatewayService(gs: GatewayService): void
-  /** Update the config reference (used by /channels/reload endpoint). */
+  /** Inject the optional plugin host after the core API is listening. */
+  setPluginHost(host: PluginHost): void
+  /** Update the config reference used by settings and extension endpoints. */
   setConfig(c: Config): void
   stop(): Promise<void>
 }
@@ -485,9 +537,46 @@ export async function startLocalAppApiServer(
   // Mutable runner reference — allows hot-swapping without restarting the
   // Local API server (port stays the same, renderer's apiBase remains valid).
   let currentRunner = initialRunner
-  // Mutable external channel gateway reference — injected after createGatewayService.
-  let currentChannelGatewayService: GatewayService | null = null
+  // The core API remains usable while the optional plugin host is absent or loading.
+  let currentPluginHost: PluginHost | null = null
   let currentConfig: Config = opts.config
+  const activeRunControllers = new Set<AbortController>()
+  const projectRebinding = new ProjectRebindingService({
+    dataDir: opts.dataDir,
+    projectIndex: opts.projectIndex,
+    sessionIndex: opts.sessionIndex,
+    archiveIndex: opts.archiveIndex,
+    workspaceArtifactIndex: opts.workspaceArtifactIndex,
+    terminalActivityIndex: opts.terminalActivityIndex,
+    workspaceLayoutIndex: opts.workspaceLayoutIndex,
+    rebindMemory: (previous, project) => currentRunner.infra.memoryService.rebindProjectPath(previous, project),
+    rebindRuntimeWorkspace: async (fromPath, toPath) => {
+      const currentWorkspace = currentConfig.agents.defaults.workspace || opts.workplaceDir
+      if (!sameBoundPath(currentWorkspace, fromPath)) return
+      const next: Config = {
+        ...currentConfig,
+        agents: {
+          ...currentConfig.agents,
+          defaults: { ...currentConfig.agents.defaults, workspace: toPath },
+        },
+      }
+      currentConfig = next
+      await opts.updateRuntimeConfig(next)
+    },
+  })
+  try {
+    await projectRebinding.recoverPending()
+  } catch (error) {
+    console.error(`[projects] pending path rebind recovery failed: ${(error as Error).message}`)
+  }
+  const attachmentCache = new ManagedAttachmentCache({
+    rootDir: join(opts.dataDir, 'attachment-cache'),
+  })
+  try {
+    await attachmentCache.initialize()
+  } catch (error) {
+    console.error(`[attachments] managed cache initialization failed: ${(error as Error).message}`)
+  }
 
   return new Promise<LocalAppApiServer>((resolve, reject) => {
     const server = createServer((req, res) => {
@@ -500,7 +589,18 @@ export async function startLocalAppApiServer(
         return
       }
 
-      route(req, res, () => currentRunner, () => currentChannelGatewayService, () => currentConfig, (c: Config) => { currentConfig = c }, opts).catch((err) => {
+      route(
+        req,
+        res,
+        () => currentRunner,
+        () => currentPluginHost,
+        () => currentConfig,
+        (c: Config) => { currentConfig = c },
+        opts,
+        projectRebinding,
+        attachmentCache,
+        activeRunControllers,
+      ).catch((err) => {
         const status = err instanceof HttpError ? err.status : 500
         if (!res.headersSent) {
           json(res, status, { error: (err as Error).message })
@@ -519,29 +619,40 @@ export async function startLocalAppApiServer(
         setRunner: (r: AgentRunner) => {
           currentRunner = r
         },
-        setChannelGatewayService: (gs: GatewayService) => {
-          currentChannelGatewayService = gs
+        setPluginHost: (host: PluginHost) => {
+          currentPluginHost = host
         },
         setConfig: (c: Config) => {
           currentConfig = c
         },
-        stop: () => closeHttpServer(server),
+        stop: async () => {
+          for (const controller of activeRunControllers) controller.abort()
+          activeRunControllers.clear()
+          settlePendingApprovals()
+          for (const capture of pendingTerminalCommandCaptures.values()) capture.cleanup()
+          pendingTerminalCommandCaptures.clear()
+          workspaceTerminalSessions.closeAll()
+          await closeHttpServer(server)
+        },
       })
     })
   })
 }
 
 type RunnerGetter = () => AgentRunner
-type ChannelGatewayServiceGetter = () => GatewayService | null
+type PluginHostGetter = () => PluginHost | null
 
 async function route(
   req: IncomingMessage,
   res: ServerResponse,
   getRunner: RunnerGetter,
-  getChannelGatewayService: ChannelGatewayServiceGetter,
+  getPluginHost: PluginHostGetter,
   getConfig: () => Config,
   setConfig: (c: Config) => void,
   opts: LocalAppApiServerOptions,
+  projectRebinding: ProjectRebindingService,
+  attachmentCache: ManagedAttachmentCache,
+  activeRunControllers: Set<AbortController>,
 ): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1')
   const path = url.pathname
@@ -557,21 +668,27 @@ async function route(
   if (method === 'POST' && path.startsWith('/approvals/')) {
     const id = decodeURIComponent(path.slice('/approvals/'.length))
     const body = await readJson(req)
-    const resolveApproval = pendingApprovals.get(id)
-    if (!resolveApproval) {
+    const pending = pendingApprovals.get(id)
+    if (!pending) {
       json(res, 404, { error: `approval request not found: ${id}` })
       return
     }
     pendingApprovals.delete(id)
-    resolveApproval(body.approved === true)
+    pending.cleanup()
+    pending.resolve(body.approved === true)
     json(res, 200, { ok: true })
     return
   }
 
   // POST /run/stream — run runner.runStream and emit assistant deltas as SSE.
   if (method === 'POST' && path === '/run/stream') {
+    if (activeRunControllers.size >= MAX_ACTIVE_STREAM_RUNS) {
+      json(res, 429, { error: 'too many active agent runs' })
+      return
+    }
     const body = await readJson(req)
     const controller = new AbortController()
+    activeRunControllers.add(controller)
     let completed = false
     req.on('close', () => {
       if (!completed) controller.abort()
@@ -588,9 +705,16 @@ async function route(
     try {
       const cwd = resolveWorkspace(body, getConfig(), opts)
       const ownership = await resolveRunSessionOwnership(sessionIndex, projectIndex, body)
+      const workspaceContext = resolveRunWorkspaceContext(cwd, ownership, opts.workplaceDir)
       const reasoning = resolveReasoning(body, getConfig())
-      const attachments = await prepareRunAttachments(parseAttachments(body.attachments))
-      const text = await composeRunText(String(body.text ?? ''), attachments)
+      const attachments = await prepareRunAttachments(parseAttachments(body.attachments), {
+        managedCache: attachmentCache,
+        workplaceDir: opts.workplaceDir,
+        workspaceDir: cwd,
+        projectId: ownership.projectId,
+      })
+      const inspectAttachmentTool = createInspectAttachmentTool(attachments)
+      const text = String(body.text ?? '')
       const result = await runner.runStream(
         {
           text,
@@ -599,12 +723,14 @@ async function route(
           cwd,
           reasoning,
           attachments,
+          additionalTools: inspectAttachmentTool ? [inspectAttachmentTool] : undefined,
+          workspaceContext,
           signal: controller.signal,
           onToolEvent: (evt) => writeSse(res, evt.type, evt),
           ...resolveRunPolicy(
             body,
             getConfig(),
-            buildSseApprovalBroker((request) => writeSse(res, 'approval_request', request)),
+            buildSseApprovalBroker((request) => writeSse(res, 'approval_request', request), controller.signal),
           ),
         },
         (delta) => writeSse(res, 'delta', { delta }),
@@ -612,12 +738,19 @@ async function route(
 
       await updateSessionIndex(sessionIndex, result.sessionId, body, ownership, cwd)
       if (ownership.projectId) await projectIndex.touch(ownership.projectId)
-      await appendAgentArtifacts(workspaceArtifactIndex, result, cwd, ownership.projectId)
+      const artifacts = await appendAgentArtifacts(workspaceArtifactIndex, result, cwd, ownership.projectId)
+      if (artifacts.length > 0) {
+        await syncWorkspaceResourceChanges(runner, cwd, {
+          ...workspaceContext,
+          changes: artifacts.map((artifact) => ({ path: artifact.path, source: 'agent' })),
+        })
+      }
       writeSse(res, 'result', result)
     } catch (err) {
       writeSse(res, 'error', { error: (err as Error).message })
     } finally {
       completed = true
+      activeRunControllers.delete(controller)
       res.end()
     }
     return
@@ -628,9 +761,16 @@ async function route(
     const body = await readJson(req)
     const cwd = resolveWorkspace(body, getConfig(), opts)
     const ownership = await resolveRunSessionOwnership(sessionIndex, projectIndex, body)
+    const workspaceContext = resolveRunWorkspaceContext(cwd, ownership, opts.workplaceDir)
     const reasoning = resolveReasoning(body, getConfig())
-    const attachments = await prepareRunAttachments(parseAttachments(body.attachments))
-    const text = await composeRunText(String(body.text ?? ''), attachments)
+    const attachments = await prepareRunAttachments(parseAttachments(body.attachments), {
+      managedCache: attachmentCache,
+      workplaceDir: opts.workplaceDir,
+      workspaceDir: cwd,
+      projectId: ownership.projectId,
+    })
+    const inspectAttachmentTool = createInspectAttachmentTool(attachments)
+    const text = String(body.text ?? '')
     const result = await runner.run({
       text,
       sessionId: body.sessionId ? asSessionId(String(body.sessionId)) : undefined,
@@ -638,13 +778,21 @@ async function route(
       cwd,
       reasoning,
       attachments,
+      additionalTools: inspectAttachmentTool ? [inspectAttachmentTool] : undefined,
+      workspaceContext,
       ...resolveRunPolicy(body, getConfig()),
     })
     // Update session index for UI sidebar.
     // Title: only set for NEW sessions — don't overwrite on subsequent messages.
     await updateSessionIndex(sessionIndex, result.sessionId, body, ownership, cwd)
     if (ownership.projectId) await projectIndex.touch(ownership.projectId)
-    await appendAgentArtifacts(workspaceArtifactIndex, result, cwd, ownership.projectId)
+    const artifacts = await appendAgentArtifacts(workspaceArtifactIndex, result, cwd, ownership.projectId)
+    if (artifacts.length > 0) {
+      await syncWorkspaceResourceChanges(runner, cwd, {
+        ...workspaceContext,
+        changes: artifacts.map((artifact) => ({ path: artifact.path, source: 'agent' })),
+      })
+    }
     json(res, 200, result)
     return
   }
@@ -673,8 +821,46 @@ async function route(
       json(res, 404, { error: 'project path does not exist' })
       return
     }
+    const archivedProject = await archiveIndex.findProjectByPath(folderPath)
+    if (archivedProject) {
+      json(res, 409, { error: `project path belongs to archived project: ${archivedProject.id}` })
+      return
+    }
     const project = await projectIndex.ensure(folderPath)
     json(res, 200, { project })
+    return
+  }
+
+  const projectRebindMatch = path.match(/^\/projects\/([^/]+)\/rebind$/)
+  if (method === 'POST' && projectRebindMatch) {
+    const id = decodeURIComponent(projectRebindMatch[1]!)
+    const body = await readJson(req)
+    const requestedPath = typeof body.path === 'string' ? body.path.trim() : ''
+    if (!requestedPath) {
+      json(res, 400, { error: 'project path is required' })
+      return
+    }
+    const folderPath = resolve(requestedPath)
+    try {
+      const info = await stat(folderPath)
+      if (!info.isDirectory()) {
+        json(res, 400, { error: 'project path is not a directory' })
+        return
+      }
+    } catch {
+      json(res, 404, { error: 'project path does not exist' })
+      return
+    }
+    try {
+      const result = await projectRebinding.rebind(id, folderPath)
+      json(res, 200, { ...result, runtime: buildRuntimePayload(getConfig(), opts.workplaceDir) })
+    } catch (error) {
+      if (error instanceof ProjectPathConflictError) {
+        json(res, 409, { error: error.message, conflictingProjectId: error.existingProjectId })
+        return
+      }
+      throw error
+    }
     return
   }
 
@@ -727,6 +913,11 @@ async function route(
     const folderPath = resolve(join(parent, folderName))
     if (!isPathInside(parent, folderPath)) {
       json(res, 400, { error: 'folder path escapes selected parent' })
+      return
+    }
+    const archivedProject = await archiveIndex.findProjectByPath(folderPath)
+    if (archivedProject) {
+      json(res, 409, { error: `project path belongs to archived project: ${archivedProject.id}` })
       return
     }
 
@@ -921,6 +1112,15 @@ async function route(
       nextDefaults.workspace = workspace || opts.workplaceDir
     }
 
+    if (Object.prototype.hasOwnProperty.call(body, 'contextCompressionThresholdRatio')) {
+      const ratio = body.contextCompressionThresholdRatio
+      if (typeof ratio !== 'number' || !Number.isFinite(ratio) || ratio < 0.5 || ratio > 0.95) {
+        json(res, 400, { error: 'contextCompressionThresholdRatio must be a number between 0.5 and 0.95' })
+        return
+      }
+      nextDefaults.contextCompressionThresholdRatio = ratio
+    }
+
     const next: Config = {
       ...current,
       agents: {
@@ -957,7 +1157,7 @@ async function route(
   // GET /config/providers — list providers + API key status
   if (method === 'POST' && path === '/attachments/import') {
     const body = await readJson(req, MAX_ATTACHMENT_IMPORT_BODY_BYTES)
-    const file = await importAttachmentData(opts.workplaceDir, body)
+    const file = await attachmentCache.importData(body)
     json(res, 200, { file })
     return
   }
@@ -989,6 +1189,11 @@ async function route(
       source: 'user',
       workspacePath: root,
       sessionId: normalizeOptionalSessionId(body.sessionId),
+    })
+    const workspaceContext = await resolveWorkspaceContextForPath(projectIndex, root, opts.workplaceDir)
+    await syncWorkspaceResourceChanges(runner, root, {
+      ...workspaceContext,
+      changes: [{ path: target, source: 'user' }],
     })
     json(res, 200, payload)
     return
@@ -1264,40 +1469,130 @@ async function route(
     return
   }
 
-  // GET /channels/status — external channel connection status.
-  // /gateway/status remains as a legacy alias for older renderers.
-  if (method === 'GET' && (path === '/channels/status' || path === '/gateway/status')) {
-    const gs = getChannelGatewayService()
-    if (!gs) {
-      json(res, 200, { started: false, channels: [], configured: [] })
+  // GET /plugins - installed manifests, activation state, and discovery errors.
+  if (method === 'GET' && path === '/plugins') {
+    const host = getPluginHost()
+    json(res, 200, {
+      started: host?.started ?? false,
+      allowLocalCode: getConfig().plugins.allowLocalCode,
+      plugins: host?.listPlugins() ?? [],
+      diagnostics: host?.diagnostics() ?? [],
+    })
+    return
+  }
+
+  const pluginEnabledMatch = path.match(/^\/plugins\/([^/]+)\/enabled$/)
+  if (method === 'POST' && pluginEnabledMatch) {
+    const host = getPluginHost()
+    if (!host) {
+      json(res, 503, { error: 'plugin host is not available' })
       return
     }
-    const plugins = gs.list()
-    const configured = (getConfig().channels?.channels ?? []).map((c) => ({
+    let pluginId: string
+    try {
+      pluginId = decodeURIComponent(pluginEnabledMatch[1]!)
+    } catch {
+      json(res, 400, { error: 'plugin id is not valid URL encoding' })
+      return
+    }
+    const body = await readJson(req)
+    if (typeof body.enabled !== 'boolean') {
+      json(res, 400, { error: 'enabled must be a boolean' })
+      return
+    }
+    const plugin = host.listPlugins().find((entry) => entry.id === pluginId)
+    if (!plugin) {
+      json(res, 404, { error: `plugin not found: ${pluginId}` })
+      return
+    }
+    if (plugin.enabled === body.enabled) {
+      json(res, 200, { ok: true })
+      return
+    }
+    const current = getConfig()
+    const disabled = new Set(current.plugins.disabled)
+    if (body.enabled) disabled.delete(pluginId)
+    else disabled.add(pluginId)
+    const next: Config = {
+      ...current,
+      plugins: { ...current.plugins, disabled: Array.from(disabled).sort() },
+    }
+    setConfig(next)
+    await opts.updateRuntimeConfig(next)
+    await host.reload()
+    json(res, 200, { ok: true })
+    return
+  }
+
+  if (method === 'POST' && path === '/plugins/local-code') {
+    const host = getPluginHost()
+    if (!host) {
+      json(res, 503, { error: 'plugin host is not available' })
+      return
+    }
+    const body = await readJson(req)
+    if (typeof body.allowed !== 'boolean') {
+      json(res, 400, { error: 'allowed must be a boolean' })
+      return
+    }
+    const current = getConfig()
+    if (current.plugins.allowLocalCode === body.allowed) {
+      json(res, 200, { ok: true })
+      return
+    }
+    const next: Config = {
+      ...current,
+      plugins: { ...current.plugins, allowLocalCode: body.allowed },
+    }
+    setConfig(next)
+    await opts.updateRuntimeConfig(next)
+    await host.reload()
+    json(res, 200, { ok: true })
+    return
+  }
+
+  if (method === 'POST' && path === '/plugins/reload') {
+    const host = getPluginHost()
+    if (!host) {
+      json(res, 503, { error: 'plugin host is not available' })
+      return
+    }
+    const newConfig = withProviderPresets(await loadConfig({ dataDir: opts.dataDir }))
+    setConfig(newConfig)
+    await opts.updateRuntimeConfig(newConfig)
+    await host.reload()
+    json(res, 200, { ok: true })
+    return
+  }
+
+  // GET /channels/status - external connections contributed by active plugins.
+  if (method === 'GET' && path === '/channels/status') {
+    const host = getPluginHost()
+    const configured = getConfig().channels.channels.map((c) => ({
       id: c.id,
       type: c.type,
       enabled: c.enabled,
       name: c.name,
     }))
     json(res, 200, {
-      started: gs.started,
-      channels: plugins.map((p) => ({
+      started: host?.started ?? false,
+      channels: (host?.listChannels() ?? []).map((p) => ({
         type: p.type,
         displayName: p.displayName,
         running: p.running,
         requiredSecrets: p.requiredSecrets,
       })),
       configured,
+      failures: host?.channelFailures() ?? [],
     })
     return
   }
 
-  // POST /channels/reload — reload config from disk + restart external channels.
-  // /gateway/reload remains as a legacy alias for older renderers.
-  if (method === 'POST' && (path === '/channels/reload' || path === '/gateway/reload')) {
-    const gs = getChannelGatewayService()
-    if (!gs) {
-      json(res, 400, { error: 'external channel service is not available' })
+  // POST /channels/reload - rediscover plugins and restart their contributions.
+  if (method === 'POST' && path === '/channels/reload') {
+    const host = getPluginHost()
+    if (!host) {
+      json(res, 503, { error: 'plugin host is not available' })
       return
     }
     // Short request id for log correlation across phases.
@@ -1316,13 +1611,12 @@ async function route(
       console.log(
         `[local-app-api] [channels:reload:${reqId}] config loaded from disk (${(performance.now() - cfgT0).toFixed(1)}ms)`,
       )
-      // 2. Update server's config reference (so /channels/status reflects new config)
+      // 2. Persist and distribute the updated runtime config.
       setConfig(newConfig)
-      // 3. Update external channel gateway service's config reference
-      gs.setConfig(newConfig)
-      // 4. Atomic reload: stop all channels, start with new config
+      await opts.updateRuntimeConfig(newConfig)
+      // 3. Rediscover plugins and restart their contributions.
       const reloadT0 = performance.now()
-      await gs.reload()
+      await host.reload()
       console.log(
         `[local-app-api] [channels:reload:${reqId}] service reload complete (${(performance.now() - reloadT0).toFixed(1)}ms)`,
       )
@@ -1410,6 +1704,103 @@ async function route(
       return
     }
     json(res, 200, { node: outcome.node, audit: outcome.audit })
+    return
+  }
+
+  const memoryResourceManagementMatch = path.match(/^\/memory\/tree\/resources\/([^/]+)\/manage$/)
+  if (method === 'POST' && memoryResourceManagementMatch) {
+    const resourceId = decodeURIComponent(memoryResourceManagementMatch[1]!)
+    const body = await readJson(req)
+    const action = typeof body.action === 'string' ? body.action : ''
+    if (!MEMORY_RESOURCE_MANAGEMENT_ACTIONS.has(action as MemoryResourceManagementAction)) {
+      json(res, 400, { error: 'action must be disable, restore, remove or rebind' })
+      return
+    }
+    let sourcePath = typeof body.sourcePath === 'string' ? body.sourcePath : undefined
+    if (action === 'rebind' && !sourcePath) {
+      if (!opts.selectMemoryResourceSource) {
+        json(res, 501, { error: 'memory resource relocation dialog is unavailable' })
+        return
+      }
+      sourcePath = await opts.selectMemoryResourceSource() ?? undefined
+      if (!sourcePath) {
+        json(res, 200, { cancelled: true })
+        return
+      }
+    }
+    const outcome = await manageRuntimeMemoryResource(
+      runner,
+      resourceId,
+      action as MemoryResourceManagementAction,
+      {
+        sourcePath,
+        reason: typeof body.reason === 'string' ? body.reason : undefined,
+      },
+    )
+    if (outcome.status === 'not_found') {
+      json(res, 404, { error: `memory resource not found: ${resourceId}` })
+      return
+    }
+    if (outcome.status === 'invalid') {
+      json(res, 409, { error: outcome.error })
+      return
+    }
+    json(res, 200, { cancelled: false, ...outcome.result as Record<string, unknown> })
+    return
+  }
+
+  const projectProjectionMatch = path.match(/^\/memory\/projects\/([^/]+)\/projection$/)
+  if (projectProjectionMatch && (method === 'GET' || method === 'POST')) {
+    const projectId = decodeURIComponent(projectProjectionMatch[1]!)
+    const project = (await projectIndex.list()).find((entry) => entry.id === projectId)
+    if (!project) {
+      json(res, 404, { error: `project not found: ${projectId}` })
+      return
+    }
+    const target = { id: project.id, name: project.name, path: project.path }
+    if (method === 'GET') {
+      json(res, 200, await runner.infra.memoryService.getProjectMemoryProjectionState(target))
+      return
+    }
+    const body = await readJson(req)
+    const action = typeof body.action === 'string' ? body.action : ''
+    if (action === 'enable') {
+      json(res, 200, await runner.infra.memoryService.enableProjectMemoryProjection(target, {
+        overwriteExisting: body.overwriteExisting === true,
+      }))
+      return
+    }
+    if (action === 'sync') {
+      json(res, 200, await runner.infra.memoryService.syncProjectMemoryProjection(target, {
+        force: body.force === true,
+      }))
+      return
+    }
+    if (action === 'disable') {
+      json(res, 200, await runner.infra.memoryService.disableProjectMemoryProjection(target, {
+        removeProjection: body.removeProjection === true,
+      }))
+      return
+    }
+    if (action === 'export') {
+      if (!opts.selectProjectMemoryExport) {
+        json(res, 501, { error: 'project memory export dialog is unavailable' })
+        return
+      }
+      const outputPath = await opts.selectProjectMemoryExport(project.name, project.path)
+      if (!outputPath) {
+        json(res, 200, { cancelled: true })
+        return
+      }
+      const exported = await runner.infra.memoryService.exportShareableProjectMemory(
+        target,
+        outputPath,
+        { overwriteExisting: true },
+      )
+      json(res, 200, { cancelled: false, export: exported })
+      return
+    }
+    json(res, 400, { error: 'action must be enable, sync, disable or export' })
     return
   }
 
@@ -2006,20 +2397,55 @@ async function resolveRunSessionOwnership(
   return { scope: 'project', projectId: project.id }
 }
 
+function resolveRunWorkspaceContext(
+  workspacePath: string,
+  ownership: { scope: SessionScope; projectId?: string },
+  workplaceDir: string,
+): NonNullable<RunInput['workspaceContext']> {
+  if (ownership.projectId) return { boundaryKind: 'project', projectId: ownership.projectId }
+  return {
+    boundaryKind: sameBoundPath(workspacePath, workplaceDir) ? 'agent_workplace' : 'user_workplace',
+  }
+}
+
+async function resolveWorkspaceContextForPath(
+  projectIndex: ProjectIndex,
+  workspacePath: string,
+  workplaceDir: string,
+): Promise<NonNullable<RunInput['workspaceContext']>> {
+  const project = (await projectIndex.list()).find((item) => sameBoundPath(item.path, workspacePath))
+  return project
+    ? { boundaryKind: 'project', projectId: project.id }
+    : { boundaryKind: sameBoundPath(workspacePath, workplaceDir) ? 'agent_workplace' : 'user_workplace' }
+}
+
+async function syncWorkspaceResourceChanges(
+  runner: AgentRunner,
+  workspacePath: string,
+  options: Parameters<AgentRunner['infra']['memoryService']['syncWorkspaceResources']>[1],
+): Promise<void> {
+  try {
+    await runner.infra.memoryService.syncWorkspaceResources(workspacePath, options)
+  } catch (error) {
+    console.error(`[workspace-index] incremental sync degraded: ${(error as Error).message}`)
+  }
+}
+
 async function appendAgentArtifacts(
   artifactIndex: WorkspaceArtifactIndex,
   result: { runId: string; sessionId: string; messages?: Message[] },
   workspacePath: string,
   projectId?: string,
-): Promise<void> {
+): Promise<WorkspaceArtifactInput[]> {
   const artifacts = extractWorkspaceArtifactsFromMessages(result.messages ?? [], {
     workspacePath,
     sessionId: result.sessionId,
     projectId,
     runId: result.runId,
   })
-  if (artifacts.length === 0) return
+  if (artifacts.length === 0) return []
   await artifactIndex.appendMany(artifacts)
+  return artifacts
 }
 
 function extractWorkspaceArtifactsFromMessages(
@@ -2119,6 +2545,7 @@ function buildRuntimePayload(config: Config, workplaceDir: string) {
     model: config.agents.defaults.model,
     reasoning: coerceReasoningForModelRef(config.agents.defaults.reasoning, config.agents.defaults.model),
     profile: normalizeAgentProfileId(config.agents.defaults.profile),
+    contextCompressionThresholdRatio: config.agents.defaults.contextCompressionThresholdRatio,
     workspace: config.agents.defaults.workspace || workplaceDir,
     workplace: workplaceDir,
     providers: config.providers.map((p) => {
@@ -2211,21 +2638,54 @@ interface ApprovalRequestPayload {
 
 function buildSseApprovalBroker(
   requestApproval: (request: ApprovalRequestPayload) => void,
+  signal?: AbortSignal,
 ): RunApprovalBroker {
   return async ({ action, detail, permissionMode }) => {
     const id = randomUUID()
     return new Promise<boolean>((resolveApproval) => {
-      const timer = setTimeout(() => {
+      let settled = false
+      let timer: NodeJS.Timeout | undefined
+      let onAbort: (() => void) | undefined
+      const cleanup = () => {
+        if (timer) clearTimeout(timer)
+        if (onAbort) signal?.removeEventListener('abort', onAbort)
+      }
+      const settle = (allowed: boolean) => {
+        if (settled) return
+        settled = true
+        cleanup()
         pendingApprovals.delete(id)
-        resolveApproval(false)
-      }, 120_000)
-      pendingApprovals.set(id, (allowed) => {
-        clearTimeout(timer)
         resolveApproval(allowed)
-      })
-      requestApproval({ id, action, detail, permissionMode, source: 'agent' })
+      }
+      onAbort = () => settle(false)
+      timer = setTimeout(() => settle(false), 120_000)
+      while (pendingApprovals.size >= MAX_PENDING_APPROVALS) {
+        const oldest = pendingApprovals.values().next().value as PendingApproval | undefined
+        if (!oldest) break
+        oldest.cleanup()
+        oldest.resolve(false)
+      }
+      pendingApprovals.set(id, { resolve: settle, cleanup })
+      if (signal?.aborted) {
+        settle(false)
+        return
+      }
+      signal?.addEventListener('abort', onAbort, { once: true })
+      try {
+        requestApproval({ id, action, detail, permissionMode, source: 'agent' })
+      } catch {
+        settle(false)
+      }
     })
   }
+}
+
+function settlePendingApprovals(): void {
+  for (const pending of pendingApprovals.values()) {
+    pending.cleanup()
+    pending.resolve(false)
+  }
+  pendingApprovals.clear()
 }
 
 function json(res: ServerResponse, status: number, data: unknown): void {

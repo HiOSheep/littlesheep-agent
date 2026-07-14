@@ -10,6 +10,8 @@ import {
   type MemoryWriteServiceLike,
 } from '@littlesheep/memory-tree';
 import { textOf, callLlmForJson, asStringArray } from './_shared.js';
+import { prepareModelRequest, recordProviderUsage } from '../model-observability.js';
+import { buildRunRequestCandidates } from '../context-candidates.js';
 
 export type CreateSkillFn = (opts: {
   name: string;
@@ -182,6 +184,16 @@ export function createEvolveStage(deps: EvolveStageDeps) {
         maxAttempts: 2,
         maxTokens: deps.createSkill ? 2_400 : 1_200,
         signal: ctx.signal,
+        onRequest: (request) => prepareModelRequest(
+          ctx,
+          'evolve',
+          request,
+          buildRunRequestCandidates(ctx, 'evolve', request.messages, {
+            history: [],
+            primaryUserKind: 'workflow_state',
+          }),
+        ),
+        onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
       }));
     } catch {
       // Learning failure must not turn a completed user task into a failed run.

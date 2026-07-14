@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { z } from 'zod';
-import { OpenAIClient, createLlmClient } from './client.js';
+import {
+  OpenAIClient,
+  buildOpenAICompatibleChatCompletionsBody,
+  createLlmClient,
+} from './client.js';
 import { LlmError, type ChatResponse } from './types.js';
 import { zodToJsonSchema, buildToolSpec } from './schema.js';
 import { retryWithBackoff } from './retry.js';
@@ -51,6 +55,26 @@ const BASE_OPTS = {
   timeoutMs: 5000,
 };
 
+describe('OpenAI-compatible request body', () => {
+  it('matches the payload shape used by runtime chat calls', () => {
+    expect(buildOpenAICompatibleChatCompletionsBody({
+      model: 'gpt-test',
+      messages: [{ role: 'user', content: 'hello' }],
+      max_tokens: 100,
+      reasoning_effort: 'high',
+      thinking: { type: 'enabled' },
+    }, true, { includeStreamUsage: true })).toEqual({
+      model: 'gpt-test',
+      messages: [{ role: 'user', content: 'hello' }],
+      stream: true,
+      stream_options: { include_usage: true },
+      max_tokens: 100,
+      reasoning_effort: 'high',
+      thinking: { type: 'enabled' },
+    });
+  });
+});
+
 describe('OpenAIClient.chat', () => {
   it('parses a simple text response', async () => {
     const fetch = mockFetch([{
@@ -73,6 +97,33 @@ describe('OpenAIClient.chat', () => {
     expect(res.usage?.promptTokens).toBe(10);
     expect(res.model).toBe('gpt-4o');
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the caller abort listener after the response is consumed', async () => {
+    const fetch = mockFetch([{
+      json: {
+        id: 'chatcmpl-lifecycle',
+        model: 'gpt-4o',
+        choices: [{
+          index: 0,
+          message: { role: 'assistant', content: 'ok' },
+          finish_reason: 'stop',
+        }],
+      },
+    }]);
+    const controller = new AbortController();
+    const add = vi.spyOn(controller.signal, 'addEventListener');
+    const remove = vi.spyOn(controller.signal, 'removeEventListener');
+    const client = new OpenAIClient({ ...BASE_OPTS, fetch });
+
+    await client.chat({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'hi' }],
+      signal: controller.signal,
+    });
+
+    expect(add).toHaveBeenCalledWith('abort', expect.any(Function), { once: true });
+    expect(remove).toHaveBeenCalledWith('abort', expect.any(Function));
   });
 
   it('parses tool_calls response', async () => {
@@ -106,6 +157,47 @@ describe('OpenAIClient.chat', () => {
     expect(res.toolCalls[0]?.function.name).toBe('read');
     expect(res.toolCalls[0]?.function.arguments).toBe('{"file_path":"/tmp/x"}');
     expect(res.finishReason).toBe('tool_calls');
+  });
+
+  it('parses provider reasoning and detailed usage without mixing it into visible content', async () => {
+    const fetch = mockFetch([{
+      json: {
+        id: 'chatcmpl-reasoning',
+        model: 'deepseek-v4-pro',
+        choices: [{
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: 'final',
+            reasoning_content: 'private provider reasoning',
+          },
+          finish_reason: 'stop',
+        }],
+        usage: {
+          prompt_tokens: 20,
+          completion_tokens: 12,
+          total_tokens: 32,
+          prompt_cache_hit_tokens: 5,
+          completion_tokens_details: { reasoning_tokens: 8 },
+        },
+      },
+    }]);
+    const client = new OpenAIClient({ ...BASE_OPTS, fetch });
+
+    const res = await client.chat({
+      model: 'deepseek-v4-pro',
+      messages: [{ role: 'user', content: 'think' }],
+    });
+
+    expect(res.content).toBe('final');
+    expect(res.reasoningContent).toBe('private provider reasoning');
+    expect(res.usage).toEqual({
+      promptTokens: 20,
+      completionTokens: 12,
+      totalTokens: 32,
+      cachedPromptTokens: 5,
+      reasoningTokens: 8,
+    });
   });
 
   it('retries on 503 then succeeds', async () => {
@@ -161,6 +253,35 @@ describe('OpenAIClient.chat', () => {
     expect(callBody.tool_choice).toBe('auto');
     expect(callBody.temperature).toBe(0.5);
     expect(callBody.max_tokens).toBe(100);
+  });
+
+  it('sends provider reasoning controls and preserved reasoning messages', async () => {
+    const fetch = mockFetch([{
+      json: {
+        id: 'x', model: 'glm-5.2',
+        choices: [{ index: 0, message: { role: 'assistant', content: 'done' }, finish_reason: 'stop' }],
+      },
+    }]);
+    const client = new OpenAIClient({ ...BASE_OPTS, fetch });
+    await client.chat({
+      model: 'glm-5.2',
+      messages: [{
+        role: 'assistant',
+        content: '',
+        reasoning_content: 'preserve exactly',
+        tool_calls: [{
+          id: 'call-1',
+          type: 'function',
+          function: { name: 'read', arguments: '{}' },
+        }],
+      }],
+      reasoning_effort: 'max',
+      thinking: { type: 'enabled', clear_thinking: false },
+    });
+    const callBody = JSON.parse((fetch.mock.calls[0]![1] as { body: string }).body);
+    expect(callBody.reasoning_effort).toBe('max');
+    expect(callBody.thinking).toEqual({ type: 'enabled', clear_thinking: false });
+    expect(callBody.messages[0].reasoning_content).toBe('preserve exactly');
   });
 
   it('sends multimodal content parts in the request body', async () => {
@@ -245,6 +366,31 @@ describe('OpenAIClient.chatStream', () => {
     expect(res.toolCalls[0]?.function.name).toBe('read');
     expect(res.toolCalls[0]?.function.arguments).toBe('{"file_path":"/x"}');
     expect(res.finishReason).toBe('tool_calls');
+  });
+
+  it('aggregates streamed reasoning separately from visible answer deltas', async () => {
+    const sse = [
+      'data: {"model":"glm-5.2","choices":[{"index":0,"delta":{"reasoning_content":"plan "}}]}',
+      'data: {"model":"glm-5.2","choices":[{"index":0,"delta":{"reasoning_content":"step"}}]}',
+      'data: {"model":"glm-5.2","choices":[{"index":0,"delta":{"content":"answer"}}]}',
+      'data: {"model":"glm-5.2","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+      'data: [DONE]',
+    ].join('\n\n');
+    const fetch = mockFetch([{ body: sse }]);
+    const client = new OpenAIClient({ ...BASE_OPTS, fetch });
+    const chunks: Array<{ type: string; delta?: string }> = [];
+
+    const res = await client.chatStream(
+      { model: 'glm-5.2', messages: [{ role: 'user', content: 'think' }] },
+      (chunk) => chunks.push(chunk),
+    );
+
+    expect(res.content).toBe('answer');
+    expect(res.reasoningContent).toBe('plan step');
+    expect(chunks.filter((chunk) => chunk.type === 'reasoning_delta')).toEqual([
+      { type: 'reasoning_delta', delta: 'plan ' },
+      { type: 'reasoning_delta', delta: 'step' },
+    ]);
   });
 });
 

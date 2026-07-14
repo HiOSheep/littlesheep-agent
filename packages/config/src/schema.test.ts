@@ -24,7 +24,7 @@ describe('config schema', () => {
   it('accepts full config and merges defaults', () => {
     const cfg = ConfigSchema.parse({
       version: 1,
-      agents: { defaults: { workspace: '/tmp/ws', model: 'openai/gpt-5.5' } },
+      agents: { defaults: { workspace: '/tmp/ws', model: 'openai/gpt-5.6' } },
     });
     expect(cfg.agents.defaults.workspace).toBe('/tmp/ws');
     expect(cfg.agents.defaults.reasoning).toBe('auto');
@@ -68,6 +68,11 @@ describe('config schema', () => {
       'deepseek-v4-pro',
       'deepseek-v4-flash',
       'custom-model',
+    ]);
+    expect(withPresets.providers[1]!.models?.slice(0, 3)).toEqual([
+      'gpt-5.6',
+      'gpt-5.6-terra',
+      'gpt-5.6-luna',
     ]);
   });
 

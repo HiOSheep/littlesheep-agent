@@ -101,7 +101,7 @@ export class MemoryTree {
   }
 
   /** Stable and bounded: memory volume only changes lower indexes, never this root. */
-  rootIndex(): string {
+  rootIndex(maxChars = this.options.rootIndexMaxChars): string {
     const header = [
       '# Memory Tree Root Index',
       '',
@@ -117,15 +117,16 @@ export class MemoryTree {
       return `- \`${branch.id}\` (${branch.displayName}): ${branch.purpose} Use when ${branch.whenToUse}. Hints: ${hints}.`;
     });
     const full = [...header, ...lines].join('\n');
-    if (full.length <= this.options.rootIndexMaxChars) return full;
+    const boundedChars = Math.max(240, Math.min(this.options.rootIndexMaxChars, Math.floor(maxChars)));
+    if (full.length <= boundedChars) return full;
     const marker = '\n- ... additional branch details are available through `memory_tree`.';
-    return full.slice(0, Math.max(0, this.options.rootIndexMaxChars - marker.length)) + marker;
+    return full.slice(0, Math.max(0, boundedChars - marker.length)) + marker;
   }
 
   beginRun(input: MemoryRunRegistration): MemoryAccessLedger {
     const signal = input.signal ?? new AbortController().signal;
     const now = input.now ?? new Date();
-    const root = this.rootIndex();
+    const root = input.rootIndex ?? this.rootIndex();
     const rootTokens = estimateTokens(root);
     const ledger: MemoryAccessLedger = {
       runId: input.runId,
@@ -142,11 +143,11 @@ export class MemoryTree {
         at: now.toISOString(),
         status: 'ok',
         fragmentIds: [],
-        sourceCount: this.branches.size,
+        sourceCount: input.rootSourceCount ?? this.branches.size,
         dedupedCount: 0,
         tokensUsed: rootTokens,
         tokenBudget: this.options.totalRunTokenBudget,
-        reason: 'Stable root index inserted into the system prompt.',
+        reason: 'Stable bounded T0 root index inserted into the system prompt.',
       }],
     };
     this.runs.set(input.runId, {

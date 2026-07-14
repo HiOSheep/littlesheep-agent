@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./model-capabilities": {
+      "types": "./dist/model-capabilities.d.ts",
+      "import": "./dist/model-capabilities.js"
     }
   },
   "dependencies": {

@@ -1,5 +1,29 @@
-import { describe, it, expect } from 'vitest';
-import { parseBranding, DEFAULT_BRANDING, dataSubdirs, resolveDataDir } from './index.js';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, it, expect } from 'vitest';
+import {
+  parseBranding,
+  DEFAULT_BRANDING,
+  dataRootLocatorPath,
+  dataSubdirs,
+  readDataRootLocator,
+  resolveDataDir,
+} from './index.js';
+
+let locatorRoot: string;
+
+beforeEach(() => {
+  locatorRoot = mkdtempSync(join(tmpdir(), 'ls-branding-locator-'));
+  process.env.LITTLESHEEP_DATA_LOCATOR = join(locatorRoot, 'location.json');
+  delete process.env.LITTLESHEEP_DATA_DIR;
+});
+
+afterEach(() => {
+  delete process.env.LITTLESHEEP_DATA_LOCATOR;
+  delete process.env.LITTLESHEEP_DATA_DIR;
+  rmSync(locatorRoot, { recursive: true, force: true });
+});
 
 describe('branding', () => {
   it('parseBranding accepts valid config', () => {
@@ -43,6 +67,21 @@ describe('branding', () => {
     expect(subs.vectors).toMatch(/vectors$/);
     expect(subs.executionLogs).toMatch(/execution-logs$/);
     expect(subs.channels).toMatch(/channels$/);
+    expect(subs.attachmentCache).toMatch(/attachment-cache$/);
     expect(subs.workplace).toMatch(/workplace$/);
+  });
+
+  it('uses a valid locator unless an explicit environment override is present', () => {
+    const located = join(locatorRoot, 'moved-data');
+    writeFileSync(dataRootLocatorPath(DEFAULT_BRANDING), JSON.stringify({
+      version: 1,
+      activeDataDir: located,
+    }), 'utf8');
+    expect(readDataRootLocator(DEFAULT_BRANDING)?.activeDataDir).toBe(located);
+    expect(resolveDataDir(DEFAULT_BRANDING)).toBe(located);
+
+    const overridden = join(locatorRoot, 'env-data');
+    process.env.LITTLESHEEP_DATA_DIR = overridden;
+    expect(resolveDataDir(DEFAULT_BRANDING)).toBe(overridden);
   });
 });

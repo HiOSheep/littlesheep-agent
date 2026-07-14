@@ -33,12 +33,13 @@
 //   - All API calls use HTTPS
 //   - Access token cached and refreshed before expiry
 
-import type {
-  ChannelPlugin,
-  ChannelPluginFactory,
-  ChannelContext,
-  InboundChannelMessage,
-} from '@littlesheep/gateway';
+import {
+  abortableDelay,
+  type ChannelPlugin,
+  type ChannelPluginFactory,
+  type ChannelContext,
+  type InboundChannelMessage,
+} from '@littlesheep/plugins';
 import { QqbotOptionsSchema, type QqbotOptions } from './options-schema.js';
 
 // ── Secret names ────────────────────────────────────────────────────────
@@ -780,17 +781,7 @@ export class QqbotChannelPlugin implements ChannelPlugin {
 
   /** Abortable sleep — resolves early if signal fires. */
   private sleep(ms: number, signal: AbortSignal): Promise<void> {
-    return new Promise((resolve) => {
-      const timer = setTimeout(resolve, ms);
-      signal.addEventListener(
-        'abort',
-        () => {
-          clearTimeout(timer);
-          resolve();
-        },
-        { once: true },
-      );
-    });
+    return abortableDelay(ms, signal);
   }
 }
 

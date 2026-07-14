@@ -1,4 +1,4 @@
-// @littlesheep/gateway — channel/session-binding.test.ts
+// @littlesheep/plugins — channel/session-binding.test.ts
 // Tests for ChannelSessionStore: bind, unbind, findByChannel, findBySession.
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

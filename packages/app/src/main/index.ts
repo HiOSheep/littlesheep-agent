@@ -8,8 +8,9 @@
 //   4. Create embedded Runner (in-process agent loop, origin='app')
 //   5. Initialize ProjectIndex + SessionIndex + ArchiveIndex (UI metadata)
 //   6. Start local app API server on 127.0.0.1 (random port)
-//   7. Expose port to renderer via env var (preload reads it)
-//   8. Create BrowserWindow
+//   7. Discover and activate optional plugins
+//   8. Expose port to renderer via env var (preload reads it)
+//   9. Create BrowserWindow
 
 import { app, BrowserWindow, shell, dialog } from 'electron'
 import { existsSync } from 'node:fs'
@@ -26,12 +27,9 @@ import {
 } from '@littlesheep/config'
 import { loadBranding, dataSubdirs, type BrandingConfig } from '@littlesheep/branding'
 import { createRunner, type AgentRunner, type LogFn } from '@littlesheep/runner'
-import { createGatewayService, type GatewayService } from '@littlesheep/gateway'
-import { createWebhookPlugin } from '@littlesheep/channel-webhook'
-import { createTelegramPlugin } from '@littlesheep/channel-telegram'
-import { createFeishuPlugin } from '@littlesheep/channel-feishu'
-import { createQqbotPlugin } from '@littlesheep/channel-qqbot'
+import { createPluginHost, type PluginHost } from '@littlesheep/plugins'
 import { startLocalAppApiServer, type LocalAppApiServer } from './local-app-api-server.js'
+import { BUILTIN_PLUGIN_SOURCES } from './builtin-plugins.js'
 import { classifyAttachment } from './attachments.js'
 import { SessionIndex } from './session-index.js'
 import { ProjectIndex } from './project-index.js'
@@ -45,7 +43,7 @@ import { runShutdownSequence } from './shutdown-sequence.js'
 
 let runner: AgentRunner | null = null
 let server: LocalAppApiServer | null = null
-let gatewayService: GatewayService | null = null
+let pluginHost: PluginHost | null = null
 let sessionIndex: SessionIndex | null = null
 let projectIndex: ProjectIndex | null = null
 let archiveIndex: ArchiveIndex | null = null
@@ -62,6 +60,8 @@ let currentDataDir: string = ''
 let currentBootstrapDir: string = ''
 let currentWorkplaceDir: string = ''
 let rebuildMutex: Promise<void> | null = null
+const retiredRunners = new Map<AgentRunner, NodeJS.Timeout>()
+const MAX_RETIRED_RUNNERS = 4
 
 const BOOTSTRAP_TEMPLATES: Record<string, string> = {
   'AGENTS.md': [
@@ -191,9 +191,10 @@ function createWindow(): BrowserWindow {
   win.webContents.once('did-finish-load', () => {
     if (!win.isVisible()) showWindow(win)
   })
-  setTimeout(() => {
+  const showFallbackTimer = setTimeout(() => {
     if (!win.isDestroyed() && !win.isVisible()) showWindow(win)
   }, 4000)
+  win.once('closed', () => clearTimeout(showFallbackTimer))
 
   // Dev: load from vite dev server. Prod: load built index.html.
   const devUrl = process.env['ELECTRON_RENDERER_URL']
@@ -212,6 +213,9 @@ async function ensureUserDataLayout(dirs: ReturnType<typeof dataSubdirs>): Promi
     mkdir(dirs.memory, { recursive: true }),
     mkdir(dirs.skills, { recursive: true }),
     mkdir(dirs.config, { recursive: true }),
+    mkdir(dirs.plugins, { recursive: true }),
+    mkdir(dirs.pluginData, { recursive: true }),
+    mkdir(dirs.attachmentCache, { recursive: true }),
     mkdir(dirs.workplace, { recursive: true }),
   ])
   await Promise.all(Object.entries(BOOTSTRAP_TEMPLATES).map(async ([file, content]) => {
@@ -237,15 +241,16 @@ async function ensureUserDataLayout(dirs: ReturnType<typeof dataSubdirs>): Promi
 async function persistRuntimeConfig(config: Config): Promise<void> {
   currentConfig = config
   if (server) server.setConfig(config)
-  gatewayService?.setConfig(config)
+  pluginHost?.setConfig(config)
   if (currentDataDir) {
     await saveConfig(config, join(currentDataDir, 'config.json'))
   }
 }
 
 async function updateRuntimeConfig(config: Config): Promise<void> {
-  const modelChanged = config.agents.defaults.model !== currentConfig?.agents.defaults.model
-  await persistRuntimeConfig(config)
+  const normalized = prepareRuntimeConfig(config, currentWorkplaceDir).config
+  const modelChanged = normalized.agents.defaults.model !== currentConfig?.agents.defaults.model
+  await persistRuntimeConfig(normalized)
   if (modelChanged) {
     await rebuildRunner()
   }
@@ -275,10 +280,11 @@ async function bootstrap(): Promise<void> {
 
   // 5. Project + session + archive indexes for UI sidebar and settings.
   projectIndex = new ProjectIndex({ dataDir: dataDir.root })
-  await projectIndex.removeByPath(dataDir.workplace)
+  await projectIndex.removeManagedWorkspaceShells(dataDir.workplace)
   sessionIndex = new SessionIndex({ dataDir: dataDir.root, workplaceDir: dataDir.workplace })
+  await sessionIndex.list()
   archiveIndex = new ArchiveIndex({ dataDir: dataDir.root, workplaceDir: dataDir.workplace })
-  await archiveIndex.removeProjectByPath(dataDir.workplace)
+  await archiveIndex.migrateManagedWorkspaceMetadata()
   terminalActivityIndex = new TerminalActivityIndex({ dataDir: dataDir.root })
   workspaceArtifactIndex = new WorkspaceArtifactIndex({ dataDir: dataDir.root })
   workspaceLayoutIndex = new WorkspaceLayoutIndex({ dataDir: dataDir.root })
@@ -320,31 +326,41 @@ async function bootstrap(): Promise<void> {
       if (result.canceled) return []
       return Promise.all(result.filePaths.map(classifyAttachment))
     },
+    selectProjectMemoryExport: async (projectName, projectPath) => {
+      const safeName = projectName.replace(/[<>:"/\\|?*\u0000-\u001F]/gu, '-').trim() || 'project'
+      const result = await dialog.showSaveDialog({
+        title: '导出可共享项目记忆',
+        defaultPath: join(projectPath, `${safeName}-memory.md`),
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+      })
+      return result.canceled ? null : result.filePath ?? null
+    },
+    selectMemoryResourceSource: async () => {
+      const result = await dialog.showOpenDialog({
+        title: '重新定位记忆资源',
+        properties: ['openFile'],
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+      })
+      return result.canceled ? null : result.filePaths[0] ?? null
+    },
   })
 
-  // 7. Start channel gateway service (embedded in-process).
-  //    Factories for all 4 channel types are registered; only enabled channels
-  //    in config.channels.channels will actually start. Fire-and-forget so a
-  //    channel failure doesn't block window creation.
-  gatewayService = createGatewayService({
+  // 7. Start the optional plugin host. Built-in channel implementations use
+  //    dynamic imports and are activated only when their channel type is enabled.
+  pluginHost = createPluginHost({
     runner,
     bindingsFile: join(dataDir.channels, 'bindings.json'),
+    pluginInstallDir: dataDir.plugins,
+    pluginDataDir: dataDir.pluginData,
     config,
-    pluginFactories: new Map([
-      ['webhook', createWebhookPlugin],
-      ['telegram', createTelegramPlugin],
-      ['feishu', createFeishuPlugin],
-      ['qqbot', createQqbotPlugin],
-    ]),
+    builtinSources: BUILTIN_PLUGIN_SOURCES,
     log: ((level: 'info' | 'warn' | 'error', msg: string) =>
-      console.log(`[gateway:${level}] ${msg}`)) as LogFn,
+      console.log(`[plugins:${level}] ${msg}`)) as LogFn,
   })
-  void gatewayService.start().catch((err) => {
-    console.error('[gateway] failed to start channels:', err)
+  server.setPluginHost(pluginHost)
+  void pluginHost.start().catch((err) => {
+    console.error('[plugins] host failed to start:', err)
   })
-
-  // 7b. Inject external channel gateway service into the local app API server.
-  server.setChannelGatewayService(gatewayService)
 
   // 8. Expose server port to renderer via env (preload reads it).
   process.env['LITTLESHEEP_API_PORT'] = String(server.port)
@@ -392,18 +408,38 @@ async function doRebuildRunner(): Promise<void> {
   runner = newRunner
   server.setRunner(newRunner)
   server.setConfig(currentConfig)
-  gatewayService?.setRunner(newRunner)
-  gatewayService?.setConfig(currentConfig)
+  if (pluginHost) await pluginHost.setRunner(newRunner)
+  pluginHost?.setConfig(currentConfig)
 
   // 3. Delay closing old runner to let in-flight requests complete.
   //    vectorStore writes are fire-and-forget; 5s covers most run windows.
   if (oldRunner) {
-    setTimeout(() => {
-      void oldRunner.shutdown().catch(() => {
-        /* best-effort: old runner shutdown failure is non-fatal */
-      })
-    }, 5000)
+    scheduleRetiredRunnerShutdown(oldRunner)
   }
+}
+
+function scheduleRetiredRunnerShutdown(retiredRunner: AgentRunner): void {
+  const timer = setTimeout(() => {
+    retiredRunners.delete(retiredRunner)
+    void retiredRunner.shutdown().catch(() => undefined)
+  }, 5000)
+  retiredRunners.set(retiredRunner, timer)
+
+  while (retiredRunners.size > MAX_RETIRED_RUNNERS) {
+    const oldest = retiredRunners.entries().next().value as [AgentRunner, NodeJS.Timeout] | undefined
+    if (!oldest) break
+    const [oldestRunner, oldestTimer] = oldest
+    clearTimeout(oldestTimer)
+    retiredRunners.delete(oldestRunner)
+    void oldestRunner.shutdown().catch(() => undefined)
+  }
+}
+
+async function shutdownRetiredRunners(): Promise<void> {
+  const entries = [...retiredRunners.entries()]
+  retiredRunners.clear()
+  for (const [, timer] of entries) clearTimeout(timer)
+  await Promise.all(entries.map(([retiredRunner]) => retiredRunner.shutdown().catch(() => undefined)))
 }
 
 // Only the instance that holds the single-instance lock should bootstrap.
@@ -434,7 +470,8 @@ if (gotLock) {
     shutdownStarted = true
     void runShutdownSequence([
       { name: 'local app API', run: () => server?.stop() },
-      { name: 'external channels', run: () => gatewayService?.stop() },
+      { name: 'plugins', run: () => pluginHost?.stop() },
+      { name: 'retired runners', run: shutdownRetiredRunners },
       { name: 'runner', run: () => runner?.shutdown() },
     ], {
       stepTimeoutMs: 1500,

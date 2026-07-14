@@ -1,4 +1,4 @@
-// @littlesheep/gateway — channel/session-binding.ts
+// @littlesheep/plugins — channel/session-binding.ts
 // ChannelSessionStore: persists channel↔session bindings to a JSON file.
 //
 // The bindings file (~/.littlesheep/channels/bindings.json) is a simple index

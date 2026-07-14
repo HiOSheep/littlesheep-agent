@@ -3,14 +3,123 @@
 import type { SessionId } from '@littlesheep/types';
 
 export enum InjectionTier {
+  T0_CORE = 0,
   T1_ESSENTIAL = 1,
   T2_RELEVANT = 2,
   T3_DETAIL = 3,
 }
 
 export type MemoryScope = 'global' | 'workspace' | 'project' | 'session';
+export type MemoryResourceScope = MemoryScope | 'run';
 export type MemoryBranchKind = 'long-term' | 'daily' | 'project' | 'experience';
+export type MemoryBranchCategory = MemoryBranchKind | 'resources';
 export type MemoryAccessAction = 'root_index' | 'branch_index' | 'expand' | 'deep_search';
+
+export type MemoryResourceKind =
+  | 'agent-instructions'
+  | 'persona'
+  | 'user-profile'
+  | 'tool-guidance'
+  | 'legacy-memory'
+  | 'skill'
+  | 'project-guideline'
+  | 'ui-guideline'
+  | 'taskbook'
+  | 'knowledge'
+  | 'summary-memory'
+  | 'attachment-manifest'
+  | 'attachment'
+  | 'runtime-event-ledger'
+  | 'workspace-index'
+  | 'project-memory-projection';
+
+export type MemoryResourceAuthority = 'authoritative' | 'derived' | 'compatibility' | 'external';
+export type MemoryResourcePrivacy = 'private' | 'project-private' | 'shareable' | 'public';
+export type MemoryResourceStatus = 'active' | 'missing' | 'disabled' | 'conflict';
+export type MemoryResourceSourceKind = 'file' | 'memory-node' | 'session-summary' | 'attachment' | 'runtime-event' | 'workspace-index';
+export type MemoryResourceManagementAction = 'disable' | 'restore' | 'mark-missing' | 'mark-conflict' | 'remove' | 'rebind';
+export type MemoryResourceManagementActor = 'user' | 'system';
+export type MemoryResourceOwnerKind = 'builtin' | 'user' | 'external' | 'plugin';
+export type MemoryResourceLifecycleController = 'skill-loader' | 'plugin-host';
+
+export interface MemoryResourceOwner {
+  kind: MemoryResourceOwnerKind;
+  id: string;
+  controller: MemoryResourceLifecycleController;
+}
+
+export interface MemoryResourceSource {
+  kind: MemoryResourceSourceKind;
+  path?: string;
+  id?: string;
+  contentHash?: string;
+}
+
+/** Metadata-only registration. Registering a resource never copies or injects its body. */
+export interface MemoryResourceRegistration {
+  version: 1;
+  id: string;
+  kind: MemoryResourceKind;
+  title: string;
+  description: string;
+  tier: InjectionTier;
+  branch?: MemoryBranchKind;
+  scope: MemoryResourceScope;
+  scopeKey?: string;
+  authority: MemoryResourceAuthority;
+  privacy: MemoryResourcePrivacy;
+  source: MemoryResourceSource;
+  indexKeys: string[];
+  status: MemoryResourceStatus;
+  registryGroup: string;
+  /** The subsystem that owns lifecycle changes for this indexed projection. */
+  owner?: MemoryResourceOwner;
+  registeredAt: string;
+  updatedAt: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface MemoryResourceQuery {
+  kind?: MemoryResourceKind;
+  tier?: InjectionTier;
+  branch?: MemoryBranchKind;
+  scope?: MemoryResourceScope;
+  scopeKey?: string;
+  status?: MemoryResourceStatus;
+  registryGroup?: string;
+}
+
+export interface MemoryResourceManagementAuditRecord {
+  id: string;
+  resourceId: string;
+  resourceKind: MemoryResourceKind;
+  registryGroup: string;
+  action: MemoryResourceManagementAction;
+  actor: MemoryResourceManagementActor;
+  at: string;
+  reason: string;
+  fromStatus: MemoryResourceStatus;
+  toStatus?: MemoryResourceStatus;
+  fromSourcePath?: string;
+  toSourcePath?: string;
+}
+
+export interface MemoryResourceManagementResult {
+  resource?: MemoryResourceRegistration;
+  audit?: MemoryResourceManagementAuditRecord;
+  changed: boolean;
+  removed: boolean;
+}
+
+export interface MemoryResourceRebindPatch {
+  sourcePath: string;
+  scopeKey?: string;
+  title?: string;
+  kind?: MemoryResourceKind;
+  indexKeys?: string[];
+  contentHash?: string;
+  status?: Exclude<MemoryResourceStatus, 'disabled'>;
+}
 
 export interface MemorySource {
   source: string;
@@ -97,7 +206,7 @@ export interface MemoryBranchContext {
 export interface BranchDescription {
   id: string;
   displayName: string;
-  kind: MemoryBranchKind;
+  kind: MemoryBranchCategory;
   purpose: string;
   whenToUse: string;
   searchHints: string[];
@@ -108,7 +217,7 @@ export interface BranchDescription {
 export interface MemoryBranch {
   readonly id: string;
   readonly displayName: string;
-  readonly kind: MemoryBranchKind;
+  readonly kind: MemoryBranchCategory;
   readonly purpose: string;
   readonly whenToUse: string;
   readonly searchHints: readonly string[];
@@ -127,6 +236,10 @@ export interface MemoryRunRegistration {
   workspace: string;
   signal?: AbortSignal;
   now?: Date;
+  /** Exact bounded T0 index inserted for this run. */
+  rootIndex?: string;
+  /** Number of branch/resource directory entries represented by rootIndex. */
+  rootSourceCount?: number;
 }
 
 export interface MemoryAccessRecord {
@@ -293,6 +406,15 @@ export interface MemoryMigrationRecord {
   rejected: number;
 }
 
+export interface MemorySchemaMigrationRecord {
+  id: string;
+  fromVersion: number;
+  toVersion: number;
+  startedAt: string;
+  completedAt: string;
+  backupFile: string;
+}
+
 export interface QueuedMemoryWrite {
   id: string;
   intent: MemoryWriteIntent;
@@ -301,7 +423,7 @@ export interface QueuedMemoryWrite {
   attempts: number;
 }
 
-export interface MemoryTreeDocument {
+export interface MemoryTreeDocumentV1 {
   version: 1;
   updatedAt: string;
   nodes: Record<string, MemoryNode>;
@@ -309,6 +431,20 @@ export interface MemoryTreeDocument {
   writeAudit: MemoryWriteAuditRecord[];
   managementAudit: MemoryManagementAuditRecord[];
   migrations: Record<string, MemoryMigrationRecord>;
+}
+
+export interface MemoryTreeDocument {
+  version: 2;
+  registryVersion: 1;
+  updatedAt: string;
+  nodes: Record<string, MemoryNode>;
+  resources: Record<string, MemoryResourceRegistration>;
+  recoveryQueue: QueuedMemoryWrite[];
+  writeAudit: MemoryWriteAuditRecord[];
+  managementAudit: MemoryManagementAuditRecord[];
+  resourceManagementAudit: MemoryResourceManagementAuditRecord[];
+  migrations: Record<string, MemoryMigrationRecord>;
+  schemaMigrations: MemorySchemaMigrationRecord[];
 }
 
 export interface MemoryWritePolicy {

@@ -20,6 +20,8 @@ export type ChatContentPart =
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string | ChatContentPart[];
+  /** Provider-supplied reasoning that must be replayed for interleaved tool calls. */
+  reasoning_content?: string;
   /** Assistant messages may carry tool_calls. */
   tool_calls?: {
     id: string;
@@ -39,6 +41,13 @@ export interface ChatRequest {
   tool_choice?: 'auto' | 'none' | 'required' | { type: 'function'; function: { name: string } };
   temperature?: number;
   max_tokens?: number;
+  /** OpenAI-compatible provider reasoning effort. */
+  reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  /** DeepSeek/GLM thinking-mode control. */
+  thinking?: {
+    type: 'enabled' | 'disabled';
+    clear_thinking?: boolean;
+  };
   stream?: boolean;
   signal?: AbortSignal;
   /** Override per-request timeout (ms). */
@@ -59,14 +68,22 @@ export interface ChatResponse {
   /** Tool calls requested by the model (empty when finish_reason !== 'tool_calls'). */
   toolCalls: ToolCall[];
   finishReason: 'stop' | 'tool_calls' | 'length' | 'content_filter';
-  usage?: { promptTokens: number; completionTokens: number; totalTokens?: number };
+  /** Provider reasoning, retained for tool-call continuation but not shown as final reply text. */
+  reasoningContent?: string;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens?: number;
+    cachedPromptTokens?: number;
+    reasoningTokens?: number;
+  };
   /** Raw model id echoed back. */
   model?: string;
 }
 
 /** A single chunk in a stream. */
 export interface StreamChunk {
-  type: 'delta' | 'tool_call_delta' | 'done';
+  type: 'delta' | 'reasoning_delta' | 'tool_call_delta' | 'done';
   /** Text delta (for type: 'delta'). */
   delta?: string;
   /** Tool call index (for type: 'tool_call_delta'). */

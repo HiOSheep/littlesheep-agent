@@ -4,6 +4,8 @@
 
 import type { Message, RunAttachment } from '@littlesheep/types';
 import type { ChatContentPart, ChatMessage, ChatResponse, LlmClient } from '@littlesheep/llm';
+import { attachmentManifestResourceId } from '@littlesheep/memory-tree';
+import type { InsertedContextMessage } from '../context-candidates.js';
 
 /** Extract text content from a Message (concatenates text blocks). */
 export function textOf(m: Message): string {
@@ -48,6 +50,48 @@ export function userChatMessage(
   };
 }
 
+export interface AttachmentContextMessage {
+  message: ChatMessage;
+  context: InsertedContextMessage;
+}
+
+export function attachmentManifestText(attachments?: RunAttachment[]): string {
+  if (!attachments || attachments.length === 0) return '';
+  return [
+    'Attached files manifest (content is not included in this block):',
+    ...attachments.map((attachment, index) => {
+      const id = attachment.id ?? `attachment-${index + 1}`;
+      const size = attachment.size === undefined ? 'unknown size' : `${attachment.size} bytes`;
+      const state = attachment.contentState ?? 'uninspected';
+      return `- [${id}] ${attachment.name ?? attachment.path} (${attachment.kind}, ${size}, ${state}) path=${attachment.path}`;
+    }),
+    'Use the inspect_attachment tool with attachment_id only when the task requires a non-image file\'s content.',
+  ].join('\n');
+}
+
+/** Build manifest-only attachment messages. Content enters through a scoped tool result. */
+export function attachmentContextMessages(
+  runId: string,
+  attachments: RunAttachment[] | undefined,
+): AttachmentContextMessage[] {
+  if (!attachments || attachments.length === 0) return [];
+  const manifest = attachmentManifestText(attachments);
+  const resourceId = attachmentManifestResourceId(runId);
+  const messages: AttachmentContextMessage[] = [{
+    message: { role: 'user', content: manifest },
+    context: {
+      id: resourceId,
+      kind: 'attachment_manifest',
+      source: { kind: 'attachment', id: resourceId, runId },
+      priority: 92,
+      required: true,
+      sensitive: true,
+      scope: 'run',
+    },
+  }];
+  return messages;
+}
+
 /** Extract the first JSON object {...} from a string (handles markdown wraps). */
 export function extractJson(content: string): unknown | null {
   const match = content.match(/\{[\s\S]*\}/);
@@ -80,7 +124,19 @@ export async function callLlmForJson<T>(
   llm: LlmClient,
   model: string,
   messages: ChatMessage[],
-  opts: { maxAttempts?: number; temperature?: number; maxTokens?: number; signal?: AbortSignal } = {},
+  opts: {
+    maxAttempts?: number;
+    temperature?: number;
+    maxTokens?: number;
+    signal?: AbortSignal;
+    onRequest?: (
+      request: import('@littlesheep/llm').ChatRequest,
+    ) => import('@littlesheep/llm').ChatRequest | void;
+    onResponse?: (
+      request: import('@littlesheep/llm').ChatRequest,
+      response: ChatResponse,
+    ) => void;
+  } = {},
 ): Promise<{ parsed: T | null; attempts: number; lastResponse?: ChatResponse }> {
   const maxAttempts = opts.maxAttempts ?? 3;
   let lastResponse: ChatResponse | undefined;
@@ -90,13 +146,16 @@ export async function callLlmForJson<T>(
     const msgs: ChatMessage[] = attempt > 1
       ? [...messages, { role: 'user', content: 'Your previous response was not valid JSON. Return ONLY a raw JSON object — no markdown fences, no surrounding prose.' }]
       : messages;
-    const res = await llm.chat({
+    const request = {
       model,
       messages: msgs,
       temperature: opts.temperature ?? 0,
       max_tokens: opts.maxTokens ?? 1000,
       signal: opts.signal,
-    });
+    };
+    const preparedRequest = opts.onRequest?.(request) ?? request;
+    const res = await llm.chat(preparedRequest);
+    opts.onResponse?.(preparedRequest, res);
     lastResponse = res;
     const parsed = extractJson(res.content) as T | null;
     if (parsed !== null) return { parsed, attempts: attempt, lastResponse: res };

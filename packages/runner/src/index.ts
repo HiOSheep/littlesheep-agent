@@ -2,10 +2,11 @@
 //
 // Shared agent runner used by:
 //   - Electron APP (local conversations, origin='app')
-//   - Channel gateway service (channel-routed conversations, origin='channel')
+//   - Optional channel plugins (channel-routed conversations, origin='channel')
 //   - CLI (single-shot + REPL, origin='cli')
 //
-// Replaces the former @littlesheep/gateway runOnce entry point.
+// The runner is the core execution entry point; optional extensions call it
+// through their declared contribution contracts.
 
 export {
   createRunner,
@@ -16,11 +17,13 @@ export {
   type RunOrigin,
 } from './runner.js';
 
+export { resolveRunConfig, type ResolveRunConfigOptions } from './run-config.js';
+
 export {
   buildInfrastructure,
   resolveLlm,
   type Infrastructure,
-  type GatewayState,
+  type RunnerState,
   type BuildInfrastructureOptions,
   type LogFn,
 } from './infra.js';

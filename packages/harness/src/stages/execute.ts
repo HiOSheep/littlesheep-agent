@@ -23,13 +23,19 @@ import type {
   ToolCall as LlmToolCall,
 } from '@littlesheep/llm';
 import { zodToJsonSchema } from '@littlesheep/llm';
-import { appendSystemPromptAddons } from '../profile-prompt.js';
+import { appendSystemPromptAddons, appendSystemPromptBundleAddons } from '../profile-prompt.js';
 import type { z } from 'zod';
 import type { Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
-import { assembleSystemPrompt, resolvePromptConfig } from '@littlesheep/prompt';
+import {
+  assembleSystemPromptBundle,
+  resolvePromptConfig,
+  type SystemPromptBundle,
+} from '@littlesheep/prompt';
 import { sanitizeOutput } from '@littlesheep/tools';
-import { toChatMessage, textOf, userChatMessage } from './_shared.js';
+import { attachmentContextMessages, toChatMessage, textOf, userChatMessage } from './_shared.js';
+import { prepareModelRequest, recordProviderUsage } from '../model-observability.js';
+import { buildRunRequestCandidates, type InsertedContextMessage } from '../context-candidates.js';
 
 export interface ExecuteStageDeps {
   llm: LlmClient;
@@ -62,6 +68,8 @@ interface ToolLoopOptions {
   tools: AgentTool[];
   sanitizeOpts: { maxOutputChars: number; stripImages: boolean };
   stepId?: string;
+  systemSegments?: SystemPromptBundle['segments'];
+  insertedBeforePrimary?: InsertedContextMessage[];
 }
 
 /** JSON.stringify that never throws (defends against circular refs / non-serializable output). */
@@ -87,15 +95,32 @@ function stampStepMeta(result: ToolResult, stepId?: string): ToolResult {
  */
 function raceWithTimeout<T>(p: Promise<T>, ms: number, signal?: AbortSignal): Promise<T> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`tool timed out after ${ms}ms`)), ms);
-    const onAbort = () => { clearTimeout(timer); reject(new Error('aborted')); };
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+    };
+    const settle = (kind: 'resolve' | 'reject', value: T | unknown) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (kind === 'resolve') resolve(value as T);
+      else reject(value);
+    };
+    const onAbort = () => settle('reject', new Error('aborted'));
+
+    timer = setTimeout(
+      () => settle('reject', new Error(`tool timed out after ${ms}ms`)),
+      ms,
+    );
     if (signal) {
-      if (signal.aborted) { clearTimeout(timer); reject(new Error('aborted')); return; }
+      if (signal.aborted) { onAbort(); return; }
       signal.addEventListener('abort', onAbort, { once: true });
     }
     p.then(
-      (v) => { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); resolve(v); },
-      (e) => { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); reject(e); },
+      (value) => settle('resolve', value),
+      (err) => settle('reject', err),
     );
   });
 }
@@ -130,7 +155,7 @@ function renderPlanGuidance(plan: PlanStep[]): string {
     const ap = step.requiresApproval ? ' (needs approval)' : '';
     return `${i + 1}. ${step.description}${tools}${ap}`;
   });
-  return `\n\n---\n\nProposed plan (from DECIDE):\n${lines.join('\n')}`;
+  return `Proposed plan (from DECIDE):\n${lines.join('\n')}`;
 }
 
 /** Render the structured task book as the execution contract for this run. */
@@ -148,7 +173,7 @@ function renderTaskBookGuidance(taskBook: TaskBook): string {
     const expected = step.expectedOutput ? `\n     expected: ${step.expectedOutput}` : '';
     return `${i + 1}. ${label}${step.description}${tools}${ap}${stepCriteria}${expected}`;
   });
-  return `\n\n---\n\nTask book (from DECIDE):
+  return `Task book (from DECIDE):
 Goal: ${taskBook.goal}
 Complexity: ${taskBook.complexity}
 Overdelivery limit: ${taskBook.overdeliveryPolicy.maxExtraScopeRatio}x
@@ -180,7 +205,7 @@ function renderStepGuidance(
   const previous = previousResults.length > 0
     ? previousResults.map((r, i) => `${i + 1}. ${r.title ?? r.stepId}: ${truncateText(r.output ?? r.error ?? r.status, 600)}`).join('\n')
     : '(none)';
-  return `\n\n---\n\nStep execution contract:
+  return `Step execution contract:
 You are executing exactly one task-book step.
 Task goal: ${taskBook.goal}
 Current step: ${index + 1}/${total}
@@ -251,7 +276,7 @@ async function runToolLoop(
   deps: ExecuteStageDeps,
   opts: ToolLoopOptions,
 ): Promise<ToolLoopResult> {
-  const { ctx, messages, tools, sanitizeOpts, stepId } = opts;
+  const { ctx, messages, tools, sanitizeOpts, stepId, systemSegments, insertedBeforePrimary } = opts;
   const toolSpecs = tools.map(toolToSpec);
   const toolResults: ToolResult[] = [];
   const repeatMap = new Map<string, number>();
@@ -259,14 +284,25 @@ async function runToolLoop(
   for (let iter = 1; iter <= MAX_ITERATIONS; iter++) {
     let res: ChatResponse;
     try {
-      res = await deps.llm.chat({
+      const rawRequest = {
         model: deps.model,
         messages,
         tools: toolSpecs.length > 0 ? toolSpecs : undefined,
         tool_choice: toolSpecs.length > 0 ? 'auto' : undefined,
         temperature: 0,
         signal: ctx.signal,
-      });
+      } satisfies import('@littlesheep/llm').ChatRequest;
+      const request = prepareModelRequest(
+        ctx,
+        'execute',
+        rawRequest,
+        buildRunRequestCandidates(ctx, 'execute', rawRequest.messages, {
+          systemSegments,
+          insertedBeforePrimary,
+        }),
+      );
+      res = await deps.llm.chat(request);
+      recordProviderUsage(ctx, request, res.usage);
     } catch (err) {
       return {
         ok: false,
@@ -291,6 +327,7 @@ async function runToolLoop(
       messages.push({
         role: 'assistant',
         content: res.content,
+        reasoning_content: res.reasoningContent,
         tool_calls: res.toolCalls.map((tc) => ({
           id: tc.id,
           type: 'function' as const,
@@ -468,10 +505,15 @@ function orderedStepResults(taskBook: TaskBook, results: Map<string, TaskStepRes
     .filter((result): result is TaskStepResult => !!result);
 }
 
-function buildBaseMessages(ctx: RunContext, systemMsg: string): ChatMessage[] {
+function buildBaseMessages(
+  ctx: RunContext,
+  systemMsg: string,
+  attachmentMessages: ReturnType<typeof attachmentContextMessages>,
+): ChatMessage[] {
   return [
     { role: 'system', content: systemMsg },
     ...ctx.history.map(toChatMessage),
+    ...attachmentMessages.map((item) => item.message),
     userChatMessage(textOf(ctx.inbound), ctx.attachments),
   ];
 }
@@ -494,14 +536,14 @@ async function synthesizeFinalReply(
   ).join('\n');
 
   try {
-    const res = await deps.llm.chat({
+    const rawRequest = {
       model: deps.model,
       messages: [
         {
           role: 'system',
           content: appendSystemPromptAddons(
             `You are the final response assembler. Produce the final user-facing answer from completed task-book step results.
-Keep it concise, truthful, and proportional to the user's request. Do not claim failed steps succeeded.`,
+Follow progressive disclosure: lead with the outcome and completion status, then give key results, artifacts, evidence, and the next action only when useful. Keep detail proportional to the user's request; simple tasks should not become reports. Do not dump raw command output or private chain-of-thought. Never hide failed or partial steps, permission denials, risks, uncertainty, external side effects, or decisions required from the user. Do not claim failed steps succeeded.`,
             ctx.profilePromptAddon,
             ctx.reasoningPromptAddon,
           ),
@@ -519,7 +561,18 @@ Keep it concise, truthful, and proportional to the user's request. Do not claim 
       temperature: 0,
       max_tokens: 900,
       signal: ctx.signal,
-    });
+    } satisfies import('@littlesheep/llm').ChatRequest;
+    const request = prepareModelRequest(
+      ctx,
+      'execute',
+      rawRequest,
+      buildRunRequestCandidates(ctx, 'execute', rawRequest.messages, {
+        history: [],
+        primaryUserKind: 'workflow_state',
+      }),
+    );
+    const res = await deps.llm.chat(request);
+    recordProviderUsage(ctx, request, res.usage);
     applyUsage(ctx, res.usage);
     return res.content.trim() || stepResults.map((step) => step.output).filter(Boolean).join('\n\n');
   } catch {
@@ -533,14 +586,17 @@ Keep it concise, truthful, and proportional to the user's request. Do not claim 
 async function executeLegacyLoop(
   deps: ExecuteStageDeps,
   ctx: RunContext,
-  systemMsg: string,
+  systemPrompt: SystemPromptBundle,
   sanitizeOpts: { maxOutputChars: number; stripImages: boolean },
 ): Promise<StageResult> {
+  const attachmentMessages = attachmentContextMessages(ctx.runId, ctx.attachments);
   const result = await runToolLoop(deps, {
     ctx,
-    messages: buildBaseMessages(ctx, systemMsg),
+    messages: buildBaseMessages(ctx, systemPrompt.text, attachmentMessages),
     tools: ctx.tools,
     sanitizeOpts,
+    systemSegments: systemPrompt.segments,
+    insertedBeforePrimary: attachmentMessages.map((item) => item.context),
   });
 
   ctx.toolResults = result.toolResults;
@@ -562,7 +618,7 @@ async function executeLegacyLoop(
 async function executeTaskBook(
   deps: ExecuteStageDeps,
   ctx: RunContext,
-  baseSystemPrompt: string,
+  baseSystemPrompt: SystemPromptBundle,
   taskBook: TaskBook,
   sanitizeOpts: { maxOutputChars: number; stripImages: boolean },
 ): Promise<StageResult> {
@@ -646,8 +702,9 @@ async function executeTaskBook(
       status: 'in_progress',
     });
 
-    const stepSystemMsg = baseSystemPrompt
-      + renderStepGuidance(
+    const stepSystemPrompt = appendSystemPromptBundleAddons(baseSystemPrompt, [{
+      id: `step-contract:${stepId}`,
+      text: renderStepGuidance(
         taskBook,
         step,
         stepId,
@@ -657,13 +714,19 @@ async function executeTaskBook(
           .slice(0, i)
           .map((priorStep, priorIndex) => resultsById.get(resolveStepId(priorStep, priorIndex)))
           .filter((result): result is TaskStepResult => !!result),
-      );
+      ),
+      kind: 'workflow_state',
+      source: { kind: 'workflow', id: `step-contract:${stepId}`, runId: ctx.runId },
+    }]);
+    const attachmentMessages = attachmentContextMessages(ctx.runId, ctx.attachments);
     const loopResult = await runToolLoop(deps, {
       ctx,
-      messages: buildBaseMessages(ctx, stepSystemMsg),
+      messages: buildBaseMessages(ctx, stepSystemPrompt.text, attachmentMessages),
       tools: pickStepTools(step, ctx.tools),
       sanitizeOpts,
       stepId,
+      systemSegments: stepSystemPrompt.segments,
+      insertedBeforePrimary: attachmentMessages.map((item) => item.context),
     });
 
     allToolResults.push(...loopResult.toolResults);
@@ -767,10 +830,11 @@ async function executeTaskBook(
 export function createExecuteStage(deps: ExecuteStageDeps) {
   return async function executeStage(ctx: RunContext): Promise<StageResult> {
     const resolved = resolvePromptConfig(deps.config, deps.branding);
-    const systemPrompt = await assembleSystemPrompt(resolved, {
+    const baseSystemPrompt = await assembleSystemPromptBundle(resolved, {
       tools: ctx.tools,
       bootstrap: ctx.bootstrap ?? {},
       prelude: ctx.prelude,
+      sessionSummary: ctx.sessionSummary,
       memoryRootIndex: ctx.memoryRootIndex,
     });
     const planGuidance = ctx.taskBook
@@ -779,20 +843,25 @@ export function createExecuteStage(deps: ExecuteStageDeps) {
         ? renderPlanGuidance(ctx.plan)
         : '';
 
-    const systemMsg = appendSystemPromptAddons(
-      systemPrompt + planGuidance,
-      ctx.profilePromptAddon,
-      ctx.reasoningPromptAddon,
-    );
+    const systemPrompt = appendSystemPromptBundleAddons(baseSystemPrompt, [
+      {
+        id: 'execution-plan',
+        text: planGuidance,
+        kind: 'workflow_state',
+        source: { kind: 'workflow', id: 'execution-plan', runId: ctx.runId },
+      },
+      { id: 'profile', text: ctx.profilePromptAddon },
+      { id: 'reasoning', text: ctx.reasoningPromptAddon },
+    ]);
     const sanitizeOpts = {
       maxOutputChars: deps.config.tools.maxOutputChars,
       stripImages: deps.config.tools.stripImages,
     };
 
     if (ctx.taskBook && ctx.taskBook.steps.length > 0) {
-      return executeTaskBook(deps, ctx, systemMsg, ctx.taskBook, sanitizeOpts);
+      return executeTaskBook(deps, ctx, systemPrompt, ctx.taskBook, sanitizeOpts);
     }
 
-    return executeLegacyLoop(deps, ctx, systemMsg, sanitizeOpts);
+    return executeLegacyLoop(deps, ctx, systemPrompt, sanitizeOpts);
   };
 }

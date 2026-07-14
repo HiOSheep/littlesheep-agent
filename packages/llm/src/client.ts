@@ -31,6 +31,7 @@ interface OpenAIChoice {
   message: {
     role: 'assistant';
     content: string | null;
+    reasoning_content?: string | null;
     tool_calls?: {
       id: string;
       type: 'function';
@@ -51,11 +52,15 @@ interface OpenAIUsage {
   prompt_tokens?: number;
   completion_tokens?: number;
   total_tokens?: number;
+  prompt_cache_hit_tokens?: number;
+  prompt_tokens_details?: { cached_tokens?: number };
+  completion_tokens_details?: { reasoning_tokens?: number };
 }
 
 interface OpenAIStreamDelta {
   role?: 'assistant';
   content?: string | null;
+  reasoning_content?: string | null;
   tool_calls?: {
     index: number;
     id?: string;
@@ -83,6 +88,36 @@ interface OpenAIEmbeddingResponse {
   model: string;
   data: OpenAIEmbeddingItem[];
   usage?: { prompt_tokens: number };
+}
+
+interface ManagedResponse {
+  response: Response;
+  cleanup: () => void;
+}
+
+export interface OpenAICompatibleChatBodyOptions {
+  includeStreamUsage?: boolean;
+}
+
+/** Build the exact JSON body shape used by the OpenAI-compatible chat endpoint. */
+export function buildOpenAICompatibleChatCompletionsBody(
+  req: ChatRequest,
+  stream: boolean,
+  opts: OpenAICompatibleChatBodyOptions = {},
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    model: req.model,
+    messages: req.messages,
+    stream,
+  };
+  if (stream && opts.includeStreamUsage) body.stream_options = { include_usage: true };
+  if (req.tools && req.tools.length > 0) body.tools = req.tools;
+  if (req.tool_choice) body.tool_choice = req.tool_choice;
+  if (req.temperature !== undefined) body.temperature = req.temperature;
+  if (req.max_tokens !== undefined) body.max_tokens = req.max_tokens;
+  if (req.reasoning_effort !== undefined) body.reasoning_effort = req.reasoning_effort;
+  if (req.thinking !== undefined) body.thinking = req.thinking;
+  return body;
 }
 
 /**
@@ -120,13 +155,17 @@ export class OpenAIClient implements LlmClient {
   async chat(req: ChatRequest): Promise<ChatResponse> {
     return retryWithBackoff(
       async () => {
-        const res = await this.callApi(req, false);
-        const json = (await res.json()) as OpenAIResponse;
-        const choice = json.choices[0];
-        // Transient provider hiccup (empty choices) → retryable so retryWithBackoff
-        // gets a chance instead of killing the call immediately.
-        if (!choice) throw new LlmError(500, 'No choices in response', true);
-        return this.parseChoice(choice, json);
+        const managed = await this.callApi(req, false);
+        try {
+          const json = (await managed.response.json()) as OpenAIResponse;
+          const choice = json.choices[0];
+          // Transient provider hiccup (empty choices) → retryable so retryWithBackoff
+          // gets a chance instead of killing the call immediately.
+          if (!choice) throw new LlmError(500, 'No choices in response', true);
+          return this.parseChoice(choice, json);
+        } finally {
+          managed.cleanup();
+        }
       },
       this.retry,
       req.signal,
@@ -137,9 +176,13 @@ export class OpenAIClient implements LlmClient {
   async chatStream(req: ChatRequest, onDelta: (chunk: StreamChunk) => void): Promise<ChatResponse> {
     return retryWithBackoff(
       async () => {
-        const res = await this.callStreamApiWithUsageFallback({ ...req, stream: true });
-        const { content, toolCalls, finishReason, model, usage } = await this.parseStream(res, onDelta);
-        return { content, toolCalls, finishReason, model, usage };
+        const managed = await this.callStreamApiWithUsageFallback({ ...req, stream: true });
+        try {
+          const { content, toolCalls, finishReason, model, usage, reasoningContent } = await this.parseStream(managed.response, onDelta);
+          return { content, toolCalls, finishReason, model, usage, reasoningContent };
+        } finally {
+          managed.cleanup();
+        }
       },
       this.retry,
       req.signal,
@@ -159,9 +202,10 @@ export class OpenAIClient implements LlmClient {
         const timeout = req.timeoutMs ?? this.timeoutMs;
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), timeout);
+        const onAbort = () => controller.abort();
         if (req.signal) {
           if (req.signal.aborted) controller.abort();
-          else req.signal.addEventListener('abort', () => controller.abort(), { once: true });
+          else req.signal.addEventListener('abort', onAbort, { once: true });
         }
 
         try {
@@ -193,6 +237,7 @@ export class OpenAIClient implements LlmClient {
           };
         } finally {
           clearTimeout(timer);
+          req.signal?.removeEventListener('abort', onAbort);
         }
       },
       this.retry,
@@ -201,7 +246,7 @@ export class OpenAIClient implements LlmClient {
   }
 
   /** Call the chat/completions endpoint. */
-  private async callStreamApiWithUsageFallback(req: ChatRequest): Promise<Response> {
+  private async callStreamApiWithUsageFallback(req: ChatRequest): Promise<ManagedResponse> {
     try {
       return await this.callApi(req, true, { includeStreamUsage: true });
     } catch (err) {
@@ -216,25 +261,24 @@ export class OpenAIClient implements LlmClient {
     req: ChatRequest,
     stream: boolean,
     opts: { includeStreamUsage?: boolean } = {},
-  ): Promise<Response> {
-    const body: Record<string, unknown> = {
-      model: req.model,
-      messages: req.messages,
-      stream,
-    };
-    if (stream && opts.includeStreamUsage) body.stream_options = { include_usage: true };
-    if (req.tools && req.tools.length > 0) body.tools = req.tools;
-    if (req.tool_choice) body.tool_choice = req.tool_choice;
-    if (req.temperature !== undefined) body.temperature = req.temperature;
-    if (req.max_tokens !== undefined) body.max_tokens = req.max_tokens;
+  ): Promise<ManagedResponse> {
+    const body = buildOpenAICompatibleChatCompletionsBody(req, stream, opts);
 
     const timeout = req.timeoutMs ?? this.timeoutMs;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeout);
+    let cleaned = false;
+    const onAbort = () => controller.abort();
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      clearTimeout(timer);
+      req.signal?.removeEventListener('abort', onAbort);
+    };
     // Chain with caller's signal
     if (req.signal) {
       if (req.signal.aborted) controller.abort();
-      else req.signal.addEventListener('abort', () => controller.abort(), { once: true });
+      else req.signal.addEventListener('abort', onAbort, { once: true });
     }
 
     try {
@@ -254,9 +298,10 @@ export class OpenAIClient implements LlmClient {
         if (this.retry.retryableStatuses.includes(res.status)) retryable = true;
         throw new LlmError(res.status, errMsg, retryable);
       }
-      return res;
-    } finally {
-      clearTimeout(timer);
+      return { response: res, cleanup };
+    } catch (err) {
+      cleanup();
+      throw err;
     }
   }
 
@@ -271,6 +316,7 @@ export class OpenAIClient implements LlmClient {
       content: choice.message.content ?? '',
       toolCalls,
       finishReason: this.mapFinishReason(choice.finish_reason),
+      reasoningContent: choice.message.reasoning_content ?? undefined,
       usage: parseUsage(raw.usage),
       model: raw.model,
     };
@@ -286,12 +332,14 @@ export class OpenAIClient implements LlmClient {
     finishReason: ChatResponse['finishReason'];
     model?: string;
     usage?: ChatResponse['usage'];
+    reasoningContent?: string;
   }> {
     if (!res.body) throw new LlmError(500, 'No response body for stream', false);
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
     let content = '';
+    let reasoningContent = '';
     const toolCallMap = new Map<number, { id: string; name: string; args: string }>();
     let finishReason: ChatResponse['finishReason'] = 'stop';
     let model: string | undefined;
@@ -325,6 +373,10 @@ export class OpenAIClient implements LlmClient {
           content += delta.content;
           onDelta({ type: 'delta', delta: delta.content });
         }
+        if (delta?.reasoning_content) {
+          reasoningContent += delta.reasoning_content;
+          onDelta({ type: 'reasoning_delta', delta: delta.reasoning_content });
+        }
         if (delta?.tool_calls) {
           for (const tc of delta.tool_calls) {
             const existing = toolCallMap.get(tc.index) ?? { id: '', name: '', args: '' };
@@ -350,7 +402,14 @@ export class OpenAIClient implements LlmClient {
       type: 'function' as const,
       function: { name: tc.name, arguments: tc.args },
     }));
-    return { content, toolCalls, finishReason, model, usage };
+    return {
+      content,
+      toolCalls,
+      finishReason,
+      model,
+      usage,
+      reasoningContent: reasoningContent || undefined,
+    };
   }
 
   private mapFinishReason(fr: string | null | undefined): ChatResponse['finishReason'] {
@@ -373,7 +432,16 @@ function parseUsage(usage: OpenAIUsage | null | undefined): ChatResponse['usage'
   const promptTokens = usage.prompt_tokens ?? 0;
   const completionTokens = usage.completion_tokens ?? 0;
   const totalTokens = usage.total_tokens ?? promptTokens + completionTokens;
-  return { promptTokens, completionTokens, totalTokens };
+  const cachedPromptTokens = usage.prompt_tokens_details?.cached_tokens
+    ?? usage.prompt_cache_hit_tokens;
+  const reasoningTokens = usage.completion_tokens_details?.reasoning_tokens;
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    ...(cachedPromptTokens === undefined ? {} : { cachedPromptTokens }),
+    ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
+  };
 }
 
 /** Build an LlmClient from a ModelProvider config. */

@@ -15,6 +15,8 @@ import type {
 } from '@littlesheep/types';
 import type { LlmClient, ChatMessage } from '@littlesheep/llm';
 import { appendSystemPromptAddons } from '../profile-prompt.js';
+import { prepareModelRequest, recordProviderUsage } from '../model-observability.js';
+import { buildRunRequestCandidates } from '../context-candidates.js';
 import { textOf, callLlmForJson } from './_shared.js';
 
 export interface VerifyStageDeps {
@@ -353,7 +355,21 @@ export function createVerifyStage(deps: VerifyStageDeps) {
         deps.llm,
         deps.model,
         messages,
-        { maxAttempts: 2, maxTokens: 500, signal: ctx.signal },
+        {
+          maxAttempts: 2,
+          maxTokens: 500,
+          signal: ctx.signal,
+          onRequest: (request) => prepareModelRequest(
+            ctx,
+            'verify',
+            request,
+            buildRunRequestCandidates(ctx, 'verify', request.messages, {
+              history: [],
+              primaryUserKind: 'workflow_state',
+            }),
+          ),
+          onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
+        },
       ));
     } catch (e) {
       return routeKnownIncompleteExecution(

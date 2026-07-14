@@ -164,6 +164,10 @@ describe('executeStage', () => {
     expect(ctx.taskExecution?.steps.map((step) => step.status)).toEqual(['done', 'done']);
     expect(ctx.taskExecution?.steps[0].toolCallIds).toEqual(['c1']);
     expect(ctx.toolResults?.[0].meta?.stepId).toBe('find');
+    const finalRequest = llm.chat.mock.calls.at(-1)?.[0] as import('@littlesheep/llm').ChatRequest;
+    expect(finalRequest.messages[0]?.content).toContain('Follow progressive disclosure');
+    expect(finalRequest.messages[0]?.content).toContain('Never hide failed or partial steps');
+    expect(finalRequest.messages[0]?.content).toContain('Do not dump raw command output or private chain-of-thought');
     expect(events.map((evt) => evt.type)).toEqual([
       'step_start',
       'tool_start',
@@ -269,6 +273,32 @@ describe('executeStage', () => {
     expect(ctx.toolResults).toHaveLength(1);
     expect(ctx.toolResults![0].ok).toBe(true);
     expect(ctx.toolResults![0].output).toBe('found-it');
+  });
+
+  it('replays provider reasoning exactly across an interleaved tool call', async () => {
+    const tool = makeTool('lookup', { ok: true, output: 'found-it' });
+    const requests: import('@littlesheep/llm').ChatRequest[] = [];
+    const llm = createMockLlm((request) => {
+      requests.push(request);
+      if (requests.length === 1) {
+        return {
+          ...toolCallResponse([{ id: 'c1', name: 'lookup', args: { q: 'x' } }]),
+          reasoningContent: 'provider reasoning must be preserved',
+        };
+      }
+      return textResponse('final answer');
+    });
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', 'lookup x') });
+
+    await stage(ctx);
+
+    expect(requests[1]?.messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        role: 'assistant',
+        reasoning_content: 'provider reasoning must be preserved',
+      }),
+    ]));
   });
 
   it('unknown tool name → tool_result error, continues', async () => {

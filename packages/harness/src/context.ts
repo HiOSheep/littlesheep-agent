@@ -19,8 +19,10 @@ import type {
   MemoryStoreLike,
   ClarificationRequest,
   ClarificationResponse,
+  ResolvedRunConfig,
 } from '@littlesheep/types';
 import type { SessionManager } from '@littlesheep/session';
+import type { MemoryBootstrapServiceLike } from '@littlesheep/memory-tree';
 import type { Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
 import { applyBootstrapLimits } from '@littlesheep/prompt';
@@ -83,8 +85,12 @@ export interface BuildRunContextOptions {
   reasoningPromptAddon?: string;
   /** Attachments for this run. */
   attachments?: import('@littlesheep/types').RunAttachment[];
+  /** Immutable configuration resolved by Runner before the harness starts. */
+  resolvedRunConfig?: ResolvedRunConfig;
   /** Directory containing bootstrap .md files (defaults to cwd). */
   bootstrapDir?: string;
+  /** Unified memory/resource service used to register and load bootstrap authorities. */
+  memoryResources?: MemoryBootstrapServiceLike;
 }
 
 /**
@@ -121,7 +127,10 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
 
   // 1. Recent session history (respect compaction keepRecent).
   const keepRecent = opts.config.sessions.compaction.keepRecent;
-  const rawHistory = await opts.sessionManager.readRecent(opts.sessionId, keepRecent);
+  const [rawHistory, sessionMetadata] = await Promise.all([
+    opts.sessionManager.readRecent(opts.sessionId, keepRecent),
+    opts.sessionManager.loadMetadata(opts.sessionId),
+  ]);
   const pendingClarification = latestPendingClarification(rawHistory);
   const clarificationResponse: ClarificationResponse | undefined = pendingClarification
     ? {
@@ -143,7 +152,9 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
   });
 
   // 2. Bootstrap files (MEMORY.md is deliberately excluded; MemoryTree indexes it).
-  const rawBootstrap = await readBootstrapFiles(bootstrapDir);
+  const rawBootstrap = opts.memoryResources
+    ? await opts.memoryResources.loadBootstrapFiles(bootstrapDir)
+    : await readBootstrapFiles(bootstrapDir);
   const bootstrap = applyBootstrapLimits(
     rawBootstrap,
     opts.config.agents.defaults.bootstrapMaxChars,
@@ -171,6 +182,7 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     toolContext,
     bootstrap,
     history,
+    sessionSummary: sessionMetadata?.compaction,
     produced: [],
     maxRecoveryAttempts: opts.config.agents.defaults.maxRecoveryAttempts,
     recoveryAttempts: 0,
@@ -185,6 +197,10 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     profilePromptAddon: opts.profilePromptAddon,
     reasoningPromptAddon: opts.reasoningPromptAddon,
     attachments: opts.attachments,
+    resolvedRunConfig: opts.resolvedRunConfig,
+    modelRequests: [],
+    contextSnapshots: [],
+    contextCompressionThresholdRatio: opts.config.agents.defaults.contextCompressionThresholdRatio,
     signal: opts.signal,
   };
 

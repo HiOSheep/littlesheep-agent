@@ -42,4 +42,14 @@ describe('session approval grants', () => {
 
     expect(grants.allows('draft:abandoned', { source: 'workspace', action: 'save_file' })).toBe(false)
   })
+
+  it('evicts old scopes instead of growing without a bound', () => {
+    const grants = new SessionApprovalGrantStore()
+    for (let index = 0; index < 140; index += 1) {
+      grants.grant(`session:${index}`, { action: 'exec' })
+    }
+
+    expect(grants.allows('session:0', { action: 'exec' })).toBe(false)
+    expect(grants.allows('session:139', { action: 'exec' })).toBe(true)
+  })
 })

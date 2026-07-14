@@ -75,6 +75,28 @@ async function main() {
   if (duplicateProjectPaths.length > 0) fail('project paths are unique', duplicateProjectPaths.join(', '))
   else pass('project paths are unique')
 
+  const projectRebindJournalPath = join(dataDir, 'projects', 'rebind-operation.json')
+  if (!existsSync(projectRebindJournalPath)) {
+    pass('no pending project path rebind')
+  } else {
+    const journal = await readJsonIfExists(projectRebindJournalPath, 'project rebind journal')
+    const validJournal = journal?.version === 1
+      && typeof journal.operationId === 'string'
+      && typeof journal.projectBefore?.id === 'string'
+      && journal.projectBefore.id === journal.projectAfter?.id
+      && typeof journal.projectBefore?.path === 'string'
+      && typeof journal.projectAfter?.path === 'string'
+      && Array.isArray(journal.completedSteps)
+    if (validJournal) {
+      warn(
+        'pending project path rebind',
+        `${journal.projectBefore.id}: ${journal.projectBefore.path} -> ${journal.projectAfter.path}; completed=${journal.completedSteps.length}`,
+      )
+    } else {
+      fail('project rebind journal', 'journal shape is invalid')
+    }
+  }
+
   const sessionIndex = await readJsonIfExists(join(dataDir, 'sessions.json'), 'sessions.json', false)
   const sessionItems = Array.isArray(sessionIndex?.sessions) ? sessionIndex.sessions : []
   pass('session index readable', `${sessionItems.length} session(s)`)
@@ -117,6 +139,36 @@ async function main() {
   const artifactIndex = await readJsonIfExists(join(dataDir, 'workspace', 'artifacts.json'), 'workspace/artifacts.json', false)
   const artifactItems = Array.isArray(artifactIndex?.records) ? artifactIndex.records : []
   if (artifactIndex) pass('workspace artifact index readable', `${artifactItems.length} artifact(s)`)
+
+  const resourceIndexDir = join(dataDir, 'workspace', 'resource-indexes')
+  if (!existsSync(resourceIndexDir)) {
+    warn('workspace resource indexes', `missing optional directory: ${resourceIndexDir}`)
+  } else {
+    const resourceIndexFiles = (await readdir(resourceIndexDir)).filter((name) => /^[a-f0-9]{24}\.json$/.test(name)).slice(0, 64)
+    let scanning = 0
+    let indexedFiles = 0
+    for (const fileName of resourceIndexFiles) {
+      const document = await readJsonIfExists(join(resourceIndexDir, fileName), `workspace resource index ${fileName}`)
+      if (!document) continue
+      const files = Array.isArray(document.files) ? document.files : null
+      const queue = Array.isArray(document.scan?.queue) ? document.scan.queue : null
+      const valid = document.version === 1
+        && typeof document.identity === 'string'
+        && typeof document.workspacePath === 'string'
+        && files !== null
+        && files.length <= 1024
+        && queue !== null
+        && queue.length <= 512
+        && files.every((file) => isSafeWorkspaceIndexFile(file))
+      if (!valid) {
+        fail(`workspace resource index ${fileName}`, 'index shape or safety bounds are invalid')
+        continue
+      }
+      indexedFiles += files.length
+      if (document.scan?.status === 'scanning') scanning += 1
+    }
+    pass('workspace resource indexes readable', `${resourceIndexFiles.length} index(es), ${indexedFiles} file(s), ${scanning} scanning`)
+  }
 
   const terminalIndex = await readJsonIfExists(join(dataDir, 'workspace', 'terminal-activity.json'), 'workspace/terminal-activity.json', false)
   const terminalItems = Array.isArray(terminalIndex?.records) ? terminalIndex.records : []
@@ -172,6 +224,15 @@ function duplicateNormalizedPaths(items) {
     seen.add(normalized)
   }
   return [...duplicates]
+}
+
+function isSafeWorkspaceIndexFile(file) {
+  if (!file || typeof file !== 'object' || typeof file.relativePath !== 'string') return false
+  const path = file.relativePath.replace(/\\/g, '/')
+  if (!path || path.startsWith('/') || path.startsWith('../') || /^[A-Za-z]:/.test(path)) return false
+  if (typeof file.size !== 'number' || file.size < 0 || typeof file.mtimeMs !== 'number' || file.mtimeMs < 0) return false
+  if (Object.hasOwn(file, 'content') || Object.hasOwn(file, 'body') || Object.hasOwn(file, 'dataUrl')) return false
+  return true
 }
 
 function printAndExit() {

@@ -1,4 +1,4 @@
-// @littlesheep/gateway — channel/policy.test.ts
+// @littlesheep/plugins — channel/policy.test.ts
 // Tests for evaluatePolicy + PairingState.
 
 import { describe, it, expect } from 'vitest';
@@ -158,5 +158,16 @@ describe('PairingState', () => {
     state.pair('ch-1', 'user-1');
     state.clearChannel('unknown');
     expect(state.isPaired('ch-1', 'user-1')).toBe(true);
+  });
+
+  it('bounds in-memory users for long-running pairing channels', () => {
+    const state = new PairingState();
+    for (let index = 0; index < 10_005; index += 1) {
+      state.pair('ch-1', `user-${index}`);
+    }
+
+    expect(state.getPairedIds('ch-1').size).toBe(10_000);
+    expect(state.isPaired('ch-1', 'user-0')).toBe(false);
+    expect(state.isPaired('ch-1', 'user-10004')).toBe(true);
   });
 });

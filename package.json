@@ -20,6 +20,7 @@
     "test:watch": "vitest",
     "clean": "pnpm -r run clean && rimraf node_modules",
     "typecheck": "pnpm -r run typecheck",
+    "verify:provider": "pnpm --filter @littlesheep/app exec electron ../../scripts/verify-provider-smoke.mjs",
     "verify:app-recovery": "node scripts/verify-app-recovery-sources.mjs"
   },
   "devDependencies": {

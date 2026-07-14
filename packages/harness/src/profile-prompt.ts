@@ -1,3 +1,9 @@
+import type {
+  PromptContextSegment,
+  SystemPromptBundle,
+} from '@littlesheep/prompt';
+import type { ContextItemKind, ContextScope, ContextSourceRef } from '@littlesheep/types';
+
 export function appendSystemPromptAddons(
   systemPrompt: string,
   ...addons: Array<string | undefined>
@@ -7,4 +13,39 @@ export function appendSystemPromptAddons(
     .filter((addon): addon is string => Boolean(addon))
   if (parts.length === 0) return systemPrompt
   return `${systemPrompt}\n\n---\n\n${parts.join('\n\n---\n\n')}`
+}
+
+export interface SystemPromptAddon {
+  id: string;
+  text?: string;
+  kind?: ContextItemKind;
+  source?: ContextSourceRef;
+  priority?: number;
+  required?: boolean;
+  scope?: ContextScope;
+}
+
+/** Append source-aware prompt additions while preserving the exact outbound text. */
+export function appendSystemPromptBundleAddons(
+  bundle: SystemPromptBundle,
+  addons: SystemPromptAddon[],
+): SystemPromptBundle {
+  const segments: PromptContextSegment[] = [...bundle.segments];
+  let order = segments.length;
+  for (const addon of addons) {
+    const text = addon.text?.trim();
+    if (!text) continue;
+    segments.push({
+      id: addon.id,
+      order: order++,
+      text: `\n\n---\n\n${text}`,
+      kind: addon.kind ?? 'system_prompt',
+      source: addon.source ?? { kind: 'configuration', id: addon.id },
+      priority: addon.priority ?? 95,
+      required: addon.required ?? true,
+      sensitive: true,
+      scope: addon.scope ?? 'run',
+    });
+  }
+  return { text: segments.map((segment) => segment.text).join(''), segments };
 }

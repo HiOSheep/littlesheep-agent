@@ -8,6 +8,7 @@ describe('local app run policy', () => {
     const policy = resolveRunPolicy({ profile: 'coding', permissionMode: 'research' }, DEFAULT_CONFIG, broker)
 
     expect(policy.profile).toBe('coding')
+    expect(policy.permissionPolicyId).toBe('research')
     expect(policy.requireApprovalForAllTools).toBe(false)
     await expect(policy.approve('exec', { command: 'pnpm test' })).resolves.toBe(true)
     expect(broker).toHaveBeenCalledWith({
@@ -22,6 +23,7 @@ describe('local app run policy', () => {
     const policy = resolveRunPolicy({ mode: 'coding' }, DEFAULT_CONFIG, broker)
 
     expect(policy.profile).toBe('coding')
+    expect(policy.permissionPolicyId).toBe('research')
     expect(policy.requireApprovalForAllTools).toBe(false)
     await expect(policy.approve('write', { file_path: 'README.md' })).resolves.toBe(false)
     expect(broker).toHaveBeenCalledWith(expect.objectContaining({ permissionMode: 'research' }))

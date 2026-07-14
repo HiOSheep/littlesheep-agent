@@ -10,6 +10,9 @@
 import type { RunContext, StageResult, StageName } from '@littlesheep/types';
 import type { LlmClient } from '@littlesheep/llm';
 import { classify } from '@littlesheep/classifier';
+import { prepareModelRequest, recordProviderUsage } from '../model-observability.js';
+import { buildRunRequestCandidates } from '../context-candidates.js';
+import { attachmentManifestText } from './_shared.js';
 
 function inboundText(ctx: RunContext): string {
   return ctx.inbound.content
@@ -30,10 +33,22 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
   return async function classifyStage(ctx: RunContext): Promise<StageResult> {
     let next: StageName;
     try {
-      const cls = await classify(ctx.inbound, ctx.history, {
+      const classifierHistory = ctx.history.slice(-5);
+      const manifest = attachmentManifestText(ctx.attachments);
+      const classificationInbound = manifest
+        ? { ...ctx.inbound, content: [...ctx.inbound.content, { type: 'text' as const, text: manifest }] }
+        : ctx.inbound;
+      const cls = await classify(classificationInbound, ctx.history, {
         llm: deps.llm,
         model: deps.model,
         rulesConfidenceThreshold: deps.rulesConfidenceThreshold ?? 0.7,
+        onRequest: (request) => prepareModelRequest(
+          ctx,
+          'classify',
+          request,
+          buildRunRequestCandidates(ctx, 'classify', request.messages, { history: classifierHistory }),
+        ),
+        onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
       });
       ctx.classification = cls;
       if (cls.type === 'problem') {

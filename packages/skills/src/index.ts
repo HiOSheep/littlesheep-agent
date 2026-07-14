@@ -13,7 +13,10 @@ export {
   parseSkillFile,
   type SkillIndex,
   type SkillIndexEntry,
+  type SkillAvailability,
   type SkillLoader,
+  type SkillSourceDefinition,
+  type SkillSourceKind,
   type LoadSkillIndexOptions,
   type ParsedSkillFile,
 } from './loader.js';

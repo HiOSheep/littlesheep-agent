@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { listSkills, readSkill, type SkillDetail, type SkillMeta } from './api'
 import { Markdown } from './Markdown'
 
@@ -10,6 +10,16 @@ interface MemorySkillsProps {
 export function MemorySkills({ onClose, embedded = false }: MemorySkillsProps) {
   const [skills, setSkills] = useState<SkillMeta[]>([])
   const [selectedSkill, setSelectedSkill] = useState<SkillDetail | null>(null)
+  const mountedRef = useRef(true)
+  const requestRef = useRef(0)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      requestRef.current += 1
+    }
+  }, [])
 
   useEffect(() => {
     void loadSkills()
@@ -24,18 +34,24 @@ export function MemorySkills({ onClose, embedded = false }: MemorySkillsProps) {
   }, [onClose])
 
   async function loadSkills() {
+    const requestId = ++requestRef.current
     try {
-      setSkills(await listSkills())
+      const next = await listSkills()
+      if (!mountedRef.current || requestId !== requestRef.current) return
+      setSkills(next)
     } catch {
-      setSkills([])
+      if (mountedRef.current && requestId === requestRef.current) setSkills([])
     }
   }
 
   async function openSkill(name: string) {
+    const requestId = ++requestRef.current
     try {
-      setSelectedSkill(await readSkill(name))
+      const next = await readSkill(name)
+      if (!mountedRef.current || requestId !== requestRef.current) return
+      setSelectedSkill(next)
     } catch {
-      setSelectedSkill(null)
+      if (mountedRef.current && requestId === requestRef.current) setSelectedSkill(null)
     }
   }
 

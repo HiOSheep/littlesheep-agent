@@ -78,6 +78,21 @@ async function collectPackageDirectories() {
   return packageDirs
 }
 
+async function collectSourceFiles(root) {
+  const files = []
+  const entries = await readdir(root, { withFileTypes: true })
+  for (const entry of entries) {
+    if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name === 'out') continue
+    const absolute = join(root, entry.name)
+    if (entry.isDirectory()) {
+      files.push(...await collectSourceFiles(absolute))
+    } else if (entry.isFile() && ['.ts', '.tsx'].includes(extname(entry.name).toLowerCase())) {
+      files.push(absolute)
+    }
+  }
+  return files
+}
+
 async function checkPublishedSurface() {
   const tracked = trackedFiles()
   const rootMarkdown = tracked.filter((path) => !path.includes('/') && extname(path).toLowerCase() === '.md')
@@ -134,8 +149,11 @@ async function checkPublishedSurface() {
 
 async function checkCanonicalFiles() {
   const required = [
+    'docs/architecture-principles.md',
+    'docs/architecture-decision-report.md',
     'docs/project-status.md',
     'docs/repository-guide.md',
+    'docs/plugin-development.md',
     'docs/core-agent-capability-taskbook.md',
     'docs/extension-workspace-taskbook.md',
     'scripts/build-app.ps1',
@@ -192,12 +210,90 @@ async function checkWorkspacePackages() {
   }
   assert(packageDirs.length > 0, 'workspace 包可发现', `${packageDirs.length} package(s)`)
   assert(names.size === packageDirs.length, 'workspace 包清单有效且唯一', `${names.size}/${packageDirs.length}`)
+  assert(names.has('@littlesheep/plugins'), '插件运行时包存在')
+  assert(!existsSync(join(repoRoot, 'packages', 'gateway')), '旧渠道网关包已移除')
 
   const rootManifest = await readJson(join(repoRoot, 'package.json'), '根 package.json 可解析')
   assert(
     rootManifest?.scripts?.['check:repo'] === 'node scripts/check-repository-hygiene.mjs',
     'check:repo 脚本已接入',
   )
+}
+
+async function checkModuleBoundaries() {
+  const packageDirs = await collectPackageDirectories()
+  const violations = []
+  const importPattern = /(?:from\s+|import\s*\()(['"])(@littlesheep\/[^'"\s]+)\1/g
+  const publicSubpaths = new Map()
+
+  for (const packageDir of packageDirs) {
+    const manifest = await readJson(join(packageDir, 'package.json'), '模块边界 package.json 可解析')
+    if (!manifest?.name) continue
+    const exportsField = manifest.exports && typeof manifest.exports === 'object' ? manifest.exports : {}
+    publicSubpaths.set(
+      manifest.name,
+      new Set(Object.keys(exportsField).filter((key) => key.startsWith('./') && key !== '.')),
+    )
+  }
+
+  for (const packageDir of packageDirs) {
+    const manifest = await readJson(join(packageDir, 'package.json'), '模块边界 package.json 可解析')
+    if (!manifest?.name) continue
+    const packageName = manifest.name.replace('@littlesheep/', '')
+    const sourceRoot = join(packageDir, 'src')
+    if (!existsSync(sourceRoot)) continue
+
+    for (const file of await collectSourceFiles(sourceRoot)) {
+      const content = (await readText(file)).replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '')
+      for (const match of content.matchAll(importPattern)) {
+        const specifier = match[2]
+        const dependency = specifier.replace('@littlesheep/', '')
+        const [dependencyName, ...subpathParts] = dependency.split('/')
+        const isChannel = dependencyName.startsWith('channel-')
+
+        if (subpathParts.length > 0) {
+          const publicPath = `./${subpathParts.join('/')}`
+          const allowed = publicSubpaths.get(`@littlesheep/${dependencyName}`)?.has(publicPath) === true
+          if (!allowed) {
+            violations.push(`${displayPath(file)}: deep import ${specifier}`)
+            continue
+          }
+        }
+        if (packageName !== 'app' && (dependencyName === 'app' || isChannel)) {
+          violations.push(`${displayPath(file)}: core package imports ${specifier}`)
+          continue
+        }
+        if (packageName === 'types' && dependencyName !== 'types') {
+          violations.push(`${displayPath(file)}: types imports ${specifier}`)
+        }
+      }
+    }
+  }
+
+  assert(violations.length === 0, 'workspace 模块依赖方向有效', violations.join(', '))
+}
+
+async function checkExtensionArchitectureNames() {
+  const forbiddenPatterns = [
+    /@littlesheep\/gateway/g,
+    /packages\/gateway/g,
+    /\bGatewayService\b/g,
+    /\bgatewayService\b/g,
+    /\/gateway\/(?:status|reload)\b/g,
+  ]
+  const extensions = new Set(['.js', '.json', '.md', '.mjs', '.ts', '.tsx', '.yaml', '.yml'])
+  const matches = []
+  for (const path of trackedFiles()) {
+    if (path === 'scripts/check-repository-hygiene.mjs') continue
+    const absolute = join(repoRoot, path)
+    if (!existsSync(absolute) || !extensions.has(extname(path).toLowerCase())) continue
+    const content = await readText(absolute)
+    for (const pattern of forbiddenPatterns) {
+      pattern.lastIndex = 0
+      if (pattern.test(content)) matches.push(path)
+    }
+  }
+  assert(matches.length === 0, '旧渠道网关架构名称未回流', [...new Set(matches)].join(', '))
 }
 
 function checkTrackedGeneratedFiles() {
@@ -253,6 +349,8 @@ async function main() {
   await checkPublishedSurface()
   await checkCanonicalFiles()
   await checkWorkspacePackages()
+  await checkModuleBoundaries()
+  await checkExtensionArchitectureNames()
   checkTrackedGeneratedFiles()
   await checkMarkdownLinks()
   await checkDocumentationLanguage()

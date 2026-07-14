@@ -28,7 +28,7 @@
 //   - All API calls use HTTPS
 
 import { createHash, createDecipheriv } from 'node:crypto';
-import type { ChannelPlugin, ChannelPluginFactory, ChannelContext } from '@littlesheep/gateway';
+import { abortableDelay, type ChannelPlugin, type ChannelPluginFactory, type ChannelContext } from '@littlesheep/plugins';
 import { FeishuOptionsSchema, type FeishuOptions } from './options-schema.js';
 
 // ── Secret names ────────────────────────────────────────────────────────
@@ -612,17 +612,7 @@ export class FeishuChannelPlugin implements ChannelPlugin {
 
   /** Abortable sleep — resolves early if signal fires. */
   private sleep(ms: number, signal: AbortSignal): Promise<void> {
-    return new Promise((resolve) => {
-      const timer = setTimeout(resolve, ms);
-      signal.addEventListener(
-        'abort',
-        () => {
-          clearTimeout(timer);
-          resolve();
-        },
-        { once: true },
-      );
-    });
+    return abortableDelay(ms, signal);
   }
 }
 

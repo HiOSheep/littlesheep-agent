@@ -8,6 +8,8 @@ import {
   type MemoryWriteServiceLike,
 } from '@littlesheep/memory-tree';
 import { textOf, callLlmForJson, asStringArray } from './_shared.js';
+import { prepareModelRequest, recordProviderUsage } from '../model-observability.js';
+import { buildRunRequestCandidates } from '../context-candidates.js';
 
 export interface CaptureStageDeps {
   llm: LlmClient;
@@ -125,6 +127,16 @@ export function createCaptureStage(deps: CaptureStageDeps) {
         maxAttempts: 2,
         maxTokens: 900,
         signal: ctx.signal,
+        onRequest: (request) => prepareModelRequest(
+          ctx,
+          'capture',
+          request,
+          buildRunRequestCandidates(ctx, 'capture', request.messages, {
+            history: [],
+            primaryUserKind: 'workflow_state',
+          }),
+        ),
+        onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
       }));
     } catch {
       // Capture is useful but non-blocking for the completed user task.

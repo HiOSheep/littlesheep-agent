@@ -84,6 +84,7 @@ describe('verifyStage', () => {
     expect(res.next).toBe('evolve');
     expect(res.ok).toBe(true);
     expect(res.meta?.verdict).toBe('pass');
+    expect(ctx.modelRequests?.map((request) => request.stage)).toEqual(['verify']);
   });
 
   it('includes the active behavior profile in the verification system prompt', async () => {

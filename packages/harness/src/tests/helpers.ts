@@ -10,6 +10,7 @@ import type {
   ToolContext,
   Message,
   SessionId,
+  SessionMetadata,
 } from '@littlesheep/types';
 import { textMessage } from '@littlesheep/types';
 import type { LlmClient, ChatRequest, ChatResponse, EmbedRequest, EmbedResponse } from '@littlesheep/llm';
@@ -197,6 +198,7 @@ export interface MockSessionManager {
 export function createMockSessionManager(opts: {
   history?: Message[];
   appendThrows?: Error;
+  metadata?: SessionMetadata | null;
 } = {}): MockSessionManager {
   return {
     readRecent: vi.fn(async (_sid: SessionId, _n?: number) => opts.history ?? []),
@@ -205,7 +207,7 @@ export function createMockSessionManager(opts: {
     }),
     read: vi.fn(async (_sid: SessionId) => opts.history ?? []),
     create: vi.fn(async () => ({ id: 'test-session' })),
-    loadMetadata: vi.fn(async () => null),
+    loadMetadata: vi.fn(async () => opts.metadata ?? null),
     updateMetadata: vi.fn(async () => undefined),
     load: vi.fn(async () => null),
     list: vi.fn(async () => []),

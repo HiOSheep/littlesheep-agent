@@ -119,4 +119,43 @@ describe('ArchiveIndex', () => {
       rmSync(dir, { recursive: true, force: true })
     }
   })
+
+  it('migrates retired default workspace archives without losing conversations', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ls-archive-index-'))
+    const workplace = join(dir, '.littlesheep', 'workplace')
+    const retiredWorkspace = join(dir, '.legacy-app', 'workspace')
+    try {
+      const archive = new ArchiveIndex({ dataDir: dir, workplaceDir: workplace })
+      const project: ProjectMeta = {
+        id: 'retired-workspace',
+        name: 'workspace',
+        path: retiredWorkspace,
+        createdAt: '2026-07-08T10:00:00.000Z',
+        lastActiveAt: '2026-07-08T11:00:00.000Z',
+      }
+      await archive.archiveProject(project)
+      await archive.archiveSession({
+        id: 'retired-chat',
+        title: 'Retired chat',
+        createdAt: 1,
+        lastMessageAt: 2,
+        mode: 'research',
+        scope: 'project',
+        projectId: project.id,
+        workspacePath: retiredWorkspace,
+      })
+
+      await expect(archive.migrateManagedWorkspaceMetadata()).resolves.toMatchObject([{ id: project.id }])
+      const remaining = await archive.list()
+      expect(remaining.projects).toEqual([])
+      expect(remaining.sessions).toEqual([expect.objectContaining({
+        id: 'retired-chat',
+        scope: 'standalone',
+        projectId: undefined,
+        workspacePath: workplace,
+      })])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })

@@ -75,9 +75,12 @@ importers:
       '@littlesheep/config':
         specifier: workspace:*
         version: link:../config
-      '@littlesheep/gateway':
+      '@littlesheep/memory-core':
         specifier: workspace:*
-        version: link:../gateway
+        version: link:../memory-core
+      '@littlesheep/plugins':
+        specifier: workspace:*
+        version: link:../plugins
       '@littlesheep/prompt':
         specifier: workspace:*
         version: link:../prompt
@@ -131,9 +134,9 @@ importers:
       '@littlesheep/config':
         specifier: workspace:*
         version: link:../../config
-      '@littlesheep/gateway':
+      '@littlesheep/plugins':
         specifier: workspace:*
-        version: link:../../gateway
+        version: link:../../plugins
       '@littlesheep/types':
         specifier: workspace:*
         version: link:../../types
@@ -146,9 +149,9 @@ importers:
       '@littlesheep/config':
         specifier: workspace:*
         version: link:../../config
-      '@littlesheep/gateway':
+      '@littlesheep/plugins':
         specifier: workspace:*
-        version: link:../../gateway
+        version: link:../../plugins
       '@littlesheep/types':
         specifier: workspace:*
         version: link:../../types
@@ -161,9 +164,9 @@ importers:
       '@littlesheep/config':
         specifier: workspace:*
         version: link:../../config
-      '@littlesheep/gateway':
+      '@littlesheep/plugins':
         specifier: workspace:*
-        version: link:../../gateway
+        version: link:../../plugins
       '@littlesheep/types':
         specifier: workspace:*
         version: link:../../types
@@ -176,9 +179,9 @@ importers:
       '@littlesheep/config':
         specifier: workspace:*
         version: link:../../config
-      '@littlesheep/gateway':
+      '@littlesheep/plugins':
         specifier: workspace:*
-        version: link:../../gateway
+        version: link:../../plugins
       '@littlesheep/types':
         specifier: workspace:*
         version: link:../../types
@@ -240,6 +243,18 @@ importers:
         specifier: ^3.23.0
         version: 3.25.76
 
+  packages/context:
+    dependencies:
+      '@littlesheep/config':
+        specifier: workspace:*
+        version: link:../config
+      '@littlesheep/llm':
+        specifier: workspace:*
+        version: link:../llm
+      '@littlesheep/types':
+        specifier: workspace:*
+        version: link:../types
+
   packages/experience:
     dependencies:
       '@littlesheep/memory-core':
@@ -255,21 +270,6 @@ importers:
         specifier: ^3.23.0
         version: 3.25.76
 
-  packages/gateway:
-    dependencies:
-      '@littlesheep/config':
-        specifier: workspace:*
-        version: link:../config
-      '@littlesheep/runner':
-        specifier: workspace:*
-        version: link:../runner
-      '@littlesheep/session':
-        specifier: workspace:*
-        version: link:../session
-      '@littlesheep/types':
-        specifier: workspace:*
-        version: link:../types
-
   packages/harness:
     dependencies:
       '@littlesheep/branding':
@@ -281,6 +281,9 @@ importers:
       '@littlesheep/config':
         specifier: workspace:*
         version: link:../config
+      '@littlesheep/context':
+        specifier: workspace:*
+        version: link:../context
       '@littlesheep/experience':
         specifier: workspace:*
         version: link:../experience
@@ -359,6 +362,27 @@ importers:
       '@littlesheep/safety':
         specifier: workspace:*
         version: link:../safety
+      '@littlesheep/types':
+        specifier: workspace:*
+        version: link:../types
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+
+  packages/plugins:
+    dependencies:
+      '@littlesheep/config':
+        specifier: workspace:*
+        version: link:../config
+      '@littlesheep/runner':
+        specifier: workspace:*
+        version: link:../runner
+      '@littlesheep/session':
+        specifier: workspace:*
+        version: link:../session
+      '@littlesheep/skills':
+        specifier: workspace:*
+        version: link:../skills
       '@littlesheep/types':
         specifier: workspace:*
         version: link:../types

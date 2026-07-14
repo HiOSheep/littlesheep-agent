@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getChannelConnectionsStatus, reloadChannelConnections, type ChannelConnectionsStatus } from './api'
 
 interface ChannelConnectionsProps {
@@ -12,6 +12,16 @@ export function ChannelConnections({ onClose, embedded = false }: ChannelConnect
   const [error, setError] = useState<string | null>(null)
   const [reloading, setReloading] = useState(false)
   const [reloadMsg, setReloadMsg] = useState<string | null>(null)
+  const mountedRef = useRef(true)
+  const requestRef = useRef(0)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      requestRef.current += 1
+    }
+  }, [])
 
   useEffect(() => {
     void loadStatus()
@@ -26,14 +36,18 @@ export function ChannelConnections({ onClose, embedded = false }: ChannelConnect
   }, [onClose])
 
   async function loadStatus() {
+    const requestId = ++requestRef.current
     setLoading(true)
     try {
-      setStatus(await getChannelConnectionsStatus())
+      const next = await getChannelConnectionsStatus()
+      if (!mountedRef.current || requestId !== requestRef.current) return
+      setStatus(next)
       setError(null)
     } catch (e) {
+      if (!mountedRef.current || requestId !== requestRef.current) return
       setError((e as Error).message)
     } finally {
-      setLoading(false)
+      if (mountedRef.current && requestId === requestRef.current) setLoading(false)
     }
   }
 
@@ -42,12 +56,14 @@ export function ChannelConnections({ onClose, embedded = false }: ChannelConnect
     setReloadMsg(null)
     try {
       await reloadChannelConnections()
+      if (!mountedRef.current) return
       setReloadMsg('外部渠道已重新加载')
       await loadStatus()
     } catch (e) {
+      if (!mountedRef.current) return
       setReloadMsg(`重新加载失败: ${(e as Error).message}`)
     } finally {
-      setReloading(false)
+      if (mountedRef.current) setReloading(false)
     }
   }
 
@@ -103,6 +119,22 @@ export function ChannelConnections({ onClose, embedded = false }: ChannelConnect
                     <span className="channel-name">{c.name ?? c.id}</span>
                     <span className="channel-type">{c.type}</span>
                     {!c.enabled && <span className="channel-tag">已禁用</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {status.failures.length > 0 && (
+              <div className="channel-section channel-failures">
+                <h3>需要处理 ({status.failures.length})</h3>
+                {status.failures.map((failure) => (
+                  <div key={failure.id} className="channel-row failure">
+                    <span className="channel-dot off" />
+                    <span className="channel-name">
+                      <strong>{failure.id}</strong>
+                      <small>{failure.error}</small>
+                    </span>
+                    <span className="channel-type">{failure.type}</span>
                   </div>
                 ))}
               </div>

@@ -17,7 +17,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "peerDependencies": {
-    "@littlesheep/gateway": "workspace:*"
+    "@littlesheep/plugins": "workspace:*"
   },
   "dependencies": {
     "@littlesheep/config": "workspace:*",

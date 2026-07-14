@@ -4,8 +4,11 @@
 // this index is a UI-facing cache of display metadata (title, timestamps, mode).
 
 import { join } from 'node:path'
-import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { readFile, mkdir } from 'node:fs/promises'
+import { atomicWrite } from '@littlesheep/memory-core'
 import { isSessionScope, type SessionScope } from '../shared/session-scope.js'
+import { isRetiredApplicationWorkspace } from './runtime-config.js'
+import { normalizeBoundPath } from './path-rebinding.js'
 
 export interface SessionMeta {
   id: string
@@ -80,10 +83,26 @@ export class SessionIndex {
     return existing
   }
 
+  async rebindProject(projectId: string, workspacePath: string): Promise<SessionMeta[]> {
+    const normalizedPath = normalizeBoundPath(workspacePath)
+    const sessions = await this.list()
+    const affected: SessionMeta[] = []
+    let changed = false
+    const next = sessions.map((session) => {
+      if (session.scope !== 'project' || session.projectId !== projectId) return session
+      const updated = { ...session, workspacePath: normalizedPath }
+      affected.push(updated)
+      if (session.workspacePath !== normalizedPath) changed = true
+      return updated
+    })
+    if (changed) await this.persist(next)
+    return affected
+  }
+
   private async persist(sessions: SessionMeta[]): Promise<void> {
     const dir = join(this.filePath, '..')
     await mkdir(dir, { recursive: true })
-    await writeFile(this.filePath, JSON.stringify({ sessions }, null, 2), 'utf-8')
+    await atomicWrite(this.filePath, JSON.stringify({ sessions }, null, 2))
   }
 }
 
@@ -101,14 +120,20 @@ export function normalizeSessionMeta(value: unknown, workplaceDir: string): Sess
   const projectId = typeof item.projectId === 'string' && item.projectId.trim()
     ? item.projectId.trim()
     : undefined
-  const workspacePath = typeof item.workspacePath === 'string' && item.workspacePath.trim()
+  const storedWorkspacePath = typeof item.workspacePath === 'string' && item.workspacePath.trim()
     ? item.workspacePath.trim()
     : undefined
+  const legacyDefaultWorkspace = storedWorkspacePath
+    ? isRetiredApplicationWorkspace(storedWorkspacePath, workplaceDir)
+    : false
+  const workspacePath = legacyDefaultWorkspace ? workplaceDir : storedWorkspacePath
   const inferredScope: SessionScope = projectId && (!workspacePath || !samePath(workspacePath, workplaceDir))
     ? 'project'
     : 'standalone'
   const requestedScope = isSessionScope(item.scope) ? item.scope : inferredScope
-  const scope: SessionScope = requestedScope === 'project' && projectId ? 'project' : 'standalone'
+  const scope: SessionScope = !legacyDefaultWorkspace && requestedScope === 'project' && projectId
+    ? 'project'
+    : 'standalone'
 
   return {
     id: item.id,
@@ -128,7 +153,9 @@ function sessionsNeedMigration(raw: unknown[], normalized: SessionMeta[]): boole
     const item = raw[index]
     if (typeof item !== 'object' || item === null) return true
     const stored = item as Record<string, unknown>
-    return stored.scope !== session.scope || stored.projectId !== session.projectId
+    return stored.scope !== session.scope ||
+      stored.projectId !== session.projectId ||
+      stored.workspacePath !== session.workspacePath
   })
 }
 

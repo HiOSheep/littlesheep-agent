@@ -22,7 +22,7 @@
 
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import type { ChannelPlugin, ChannelPluginFactory, ChannelContext } from '@littlesheep/gateway';
+import type { ChannelPlugin, ChannelPluginFactory, ChannelContext } from '@littlesheep/plugins';
 import { WebhookOptionsSchema, type WebhookOptions } from './options-schema.js';
 
 /** Default port if not specified in options. */

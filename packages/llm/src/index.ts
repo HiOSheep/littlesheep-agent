@@ -14,6 +14,12 @@ export type {
 } from './types.js';
 export { LlmError } from './types.js';
 
-export { OpenAIClient, createLlmClient, type OpenAIClientOptions } from './client.js';
+export {
+  OpenAIClient,
+  buildOpenAICompatibleChatCompletionsBody,
+  createLlmClient,
+  type OpenAIClientOptions,
+  type OpenAICompatibleChatBodyOptions,
+} from './client.js';
 export { retryWithBackoff, isRetryable, DEFAULT_RETRY, type RetryOptions } from './retry.js';
 export { zodToJsonSchema, buildToolSpec } from './schema.js';

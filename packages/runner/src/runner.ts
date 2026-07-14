@@ -1,7 +1,7 @@
 // @littlesheep/runner — runner.ts
 // Shared agent runner: assemble infra from config, expose run().
-// Used by both the Electron APP (local conversations, origin='app') and the
-// channel gateway service (channel-routed conversations, origin='channel').
+// Used by the Electron app (local conversations, origin='app') and optional
+// channel plugins (channel-routed conversations, origin='channel').
 
 import type {
   AgentResult,
@@ -11,23 +11,28 @@ import type {
   SessionMetadata,
   StageResult,
   ToolContext,
+  PermissionPolicyId,
+  RunConfigOrigin,
+  AgentTool,
 } from '@littlesheep/types';
 import { asSessionId, textMessage } from '@littlesheep/types';
+import { randomUUID } from 'node:crypto';
 import type { Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
-import type { LlmClient } from '@littlesheep/llm';
-import { SessionManager } from '@littlesheep/session';
-import { buildRunContext } from '@littlesheep/harness';
-import { buildInfrastructure, type GatewayState, type LogFn } from './infra.js';
+import type { ChatMessage, ChatRequest, LlmClient } from '@littlesheep/llm';
+import { maybeCompact, SessionManager } from '@littlesheep/session';
+import { buildRunContext, prepareModelRequest, recordProviderUsage } from '@littlesheep/harness';
+import { buildInfrastructure, type RunnerState, type LogFn } from './infra.js';
 import type { ExecutionLog } from './execution-log.js';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
 import { getAgentProfile, type AgentProfileId } from '@littlesheep/prompt';
+import { resolveRunConfig } from './run-config.js';
 
 /** AgentResult + sessionId (caller-friendly). */
 export type RunnerResult = AgentResult & { sessionId: SessionId; memoryAccess?: MemoryAccessLedger };
 
 /** Identifies the call origin — affects execution log archiving and tool approvals. */
-export type RunOrigin = 'app' | 'channel' | 'cli' | 'test';
+export type RunOrigin = RunConfigOrigin;
 
 export interface CreateRunnerOptions {
   config: Config;
@@ -72,6 +77,8 @@ export interface RunInput {
   toolFilter?: (tool: { name: string }) => boolean;
   /** Force every available tool through the stage-level approval gate. */
   requireApprovalForAllTools?: boolean;
+  /** Permission policy resolved by the owning adapter. */
+  permissionPolicyId?: PermissionPolicyId;
   /** Per-run reasoning budget selected by the user. */
   reasoning?: Config['agents']['defaults']['reasoning'];
   /** General/coding behavior profile. Permission policy is configured separately. */
@@ -80,6 +87,13 @@ export interface RunInput {
   onToolEvent?: (evt: import('@littlesheep/types').ToolStreamEvent) => void;
   /** Per-run attachments. Image data URLs are sent to vision-capable models. */
   attachments?: import('@littlesheep/types').RunAttachment[];
+  /** Ephemeral tools scoped to this run, such as user-selected attachment readers. */
+  additionalTools?: AgentTool[];
+  /** Adapter-resolved workspace boundary used by the metadata-only resource index. */
+  workspaceContext?: {
+    boundaryKind: import('@littlesheep/memory-tree').WorkspaceBoundaryKind;
+    projectId?: string;
+  };
 }
 
 export interface AgentRunner {
@@ -88,7 +102,7 @@ export interface AgentRunner {
   /** Replay a past run by id (reads execution log). Returns null if not found. */
   replay(runId: string): Promise<ExecutionLog | null>;
   shutdown(): Promise<void>;
-  readonly state: GatewayState;
+  readonly state: RunnerState;
   /** Underlying SessionManager — exposed so the app layer can read session history. */
   readonly sessionManager: SessionManager;
   /** Full infrastructure — exposed for memory/skills/experience read access. */
@@ -100,13 +114,14 @@ export interface AgentRunner {
 /** Build a runner. Async because the skill loader reads directories. */
 export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunner> {
   const model = opts.model ?? opts.config.agents.defaults.model;
-  const state: GatewayState = { sessionId: undefined, model };
+  const state: RunnerState = { sessionId: undefined, model };
   const infra = await buildInfrastructure({
     config: opts.config,
     branding: opts.branding,
     model,
     llm: opts.llm,
     skillsDirs: opts.skillsDirs,
+    bootstrapDir: opts.bootstrapDir,
     state,
     log: opts.log,
   });
@@ -118,6 +133,8 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
 
   async function run(input: RunInput): Promise<RunnerResult> {
     const startedAt = Date.now();
+    const runId = input.runId ?? randomUUID();
+    const origin = input.origin ?? 'cli';
 
     // Resolve abort signal: use the caller's if provided, else create one with
     // an overall run timeout so a hung tool/LLM can't block indefinitely.
@@ -138,7 +155,6 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         // Build metadata for channel-bound sessions so listByChannel() works.
         // origin is also stamped on app/cli sessions for UI provenance.
         // 'test' origin is omitted from metadata (not a user-visible origin).
-        const origin = input.origin ?? 'cli';
         const meta: Partial<SessionMetadata> = {};
         if (origin === 'app' || origin === 'channel' || origin === 'cli') {
           meta.origin = origin;
@@ -162,6 +178,14 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
 
       // Apply caller-provided tool policy before the run.
       let resolvedTools = infra.registry.list().map((r) => r.tool);
+      if (input.additionalTools && input.additionalTools.length > 0) {
+        const names = new Set(resolvedTools.map((tool) => tool.name));
+        for (const tool of input.additionalTools) {
+          if (names.has(tool.name)) throw new Error(`Additional tool name conflicts with a registered tool: ${tool.name}`);
+          names.add(tool.name);
+          resolvedTools.push(tool);
+        }
+      }
       if (input.toolFilter) {
         resolvedTools = resolvedTools.filter(input.toolFilter);
       }
@@ -170,6 +194,25 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       }
 
       const behaviorProfile = getAgentProfile(input.profile ?? opts.config.agents.defaults.profile);
+      const resolvedRunConfig = resolveRunConfig({
+        runId,
+        config: opts.config,
+        modelRef: model,
+        origin,
+        profile: behaviorProfile?.id,
+        permissionPolicyId: input.permissionPolicyId,
+        reasoning: input.reasoning,
+        tools: resolvedTools,
+        requireApprovalForAllTools: input.requireApprovalForAllTools === true,
+        toolFilterApplied: input.toolFilter !== undefined,
+        cwdOverridden: input.cwd !== undefined,
+      });
+      try {
+        await infra.memoryService.syncWorkspaceResources(cwd, input.workspaceContext);
+        await infra.memoryService.syncWorkspaceDocuments(cwd);
+      } catch (error) {
+        opts.log?.('warn', `runner: workspace resource registration degraded: ${(error as Error).message}`);
+      }
       const ctx: RunContext = await buildRunContext({
         sessionId,
         inbound,
@@ -179,6 +222,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         config: opts.config,
         branding: opts.branding,
         model,
+        runId,
         cwd,
         signal,
         approve: input.approve ?? opts.approve,
@@ -186,12 +230,25 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         onAssistantDelta: input.onAssistantDelta,
         onToolEvent: input.onToolEvent,
         profilePromptAddon: behaviorProfile?.systemPromptAddon,
-        reasoningPromptAddon: reasoningPromptAddon(input.reasoning ?? opts.config.agents.defaults.reasoning),
+        reasoningPromptAddon: reasoningPromptAddon(resolvedRunConfig.reasoning),
         attachments: input.attachments,
+        resolvedRunConfig,
         bootstrapDir: opts.bootstrapDir,
+        memoryResources: infra.memoryService,
       });
       try {
-        infra.memoryTree.beginRun({
+        await infra.memoryService.registerRunResources({
+          runId: ctx.runId,
+          sessionId,
+          workspace: cwd,
+          summary: ctx.sessionSummary,
+          attachments: ctx.attachments,
+        });
+      } catch (err) {
+        opts.log?.('warn', `runner: run resource registration degraded: ${(err as Error).message}`);
+      }
+      try {
+        const memoryRun = await infra.memoryService.beginRun({
           runId: ctx.runId,
           sessionId,
           query: input.text,
@@ -205,7 +262,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           workspace: cwd,
           signal,
         });
-        ctx.memoryRootIndex = infra.memoryTree.rootIndex();
+        ctx.memoryRootIndex = memoryRun.rootIndex;
       } catch (err) {
         opts.log?.('warn', `runner: memory tree start degraded: ${(err as Error).message}`);
       }
@@ -232,11 +289,65 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           error: `harness threw: ${(err as Error).message}`,
         };
       } finally {
-        memoryAccess = infra.memoryTree.finishRun(ctx.runId);
+        try {
+          memoryAccess = await infra.memoryService.finishRun(ctx.runId);
+        } catch (err) {
+          opts.log?.('warn', `runner: run resource cleanup degraded: ${(err as Error).message}`);
+        }
+      }
+      const runAborted = signal?.aborted === true;
+
+      // Compact only after the run has finalized and persisted its messages.
+      // The transcript remains intact; failures only skip the optional summary.
+      if (!runAborted) {
+        try {
+          const compacted = await maybeCompact(infra.sessionManager, sessionId, {
+            threshold: opts.config.sessions.compaction.threshold,
+            keepRecent: opts.config.sessions.compaction.keepRecent,
+            force: ctx.contextSnapshots?.some((snapshot) => snapshot.compressionRecommended) === true,
+            signal,
+            summarize: async ({ previousSummary, messages }) => {
+              const summaryMessages: ChatMessage[] = [
+                {
+                  role: 'system',
+                  content: `You maintain a versioned session summary for an AI agent. Preserve user goals, constraints, decisions, unfinished work, important facts, permission outcomes, artifact paths, and source message ids. Remove repetition and verbose tool output. Do not invent facts. Return only the summary text.`,
+                },
+                {
+                  role: 'user',
+                  content: [
+                    previousSummary ? `Previous summary:\n${previousSummary.summary}\n` : '',
+                    'New messages to merge:',
+                    ...messages.map(renderMessageForCompaction),
+                  ].filter(Boolean).join('\n\n'),
+                },
+              ];
+              const rawRequest = {
+                model,
+                messages: summaryMessages,
+                temperature: 0,
+                max_tokens: 1_400,
+                signal,
+              } satisfies ChatRequest;
+              const request = prepareModelRequest(ctx, 'capture', rawRequest);
+              const response = await infra.llm.chat(request);
+              recordProviderUsage(ctx, request, response.usage);
+              return { summary: response.content, model: response.model ?? model };
+            },
+          });
+          if (compacted) {
+            try {
+              await infra.memoryService.registerSessionSummary(sessionId, compacted);
+            } catch (err) {
+              opts.log?.('warn', `runner: summary resource registration degraded: ${(err as Error).message}`);
+            }
+          }
+        } catch (err) {
+          opts.log?.('warn', `runner: session compaction skipped: ${(err as Error).message}`);
+        }
       }
 
       // 6. Wrap into RunnerResult.
-      const result = assembleResult(stageResult, ctx, sessionId, startedAt, signal, memoryAccess);
+      const result = assembleResult(stageResult, ctx, sessionId, startedAt, runAborted, memoryAccess);
 
       // 7. M3: persist execution log (one JSON per run). Failure is non-fatal —
       //    the run result is still returned; only the audit log is lost.
@@ -258,6 +369,9 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           clarificationRequest: result.clarificationRequest,
           clarificationResponse: result.clarificationResponse,
           memoryAccess: result.memoryAccess,
+          resolvedRunConfig: result.resolvedRunConfig,
+          modelRequests: result.modelRequests,
+          contextSnapshots: result.contextSnapshots,
           messages: result.messages,
           durationMs: result.durationMs,
         });
@@ -287,6 +401,36 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
   };
 }
 
+function renderMessageForCompaction(message: Message): string {
+  const body = message.content.map((block) => {
+    if (block.type === 'text') return block.text;
+    if (block.type === 'reasoning') return '[reasoning]\n' + block.text;
+    if (block.type === 'tool_calls') {
+      return '[tool calls] ' + block.calls.map((call) => call.name + '#' + call.id).join(', ');
+    }
+    const output = block.result.output === undefined
+      ? ''
+      : ' output=' + truncateCompactionText(safeCompactionJson(block.result.output), 1_200);
+    const error = block.result.error ? ' error=' + block.result.error : '';
+    return '[tool result ' + block.result.callId + '] ok=' + block.result.ok + output + error;
+  }).join('\n');
+  return '[source message ' + message.id + ' | ' + message.timestamp + ' | ' + message.role + ']\n'
+    + truncateCompactionText(body, 4_000);
+}
+
+function safeCompactionJson(value: unknown): string {
+  try {
+    return typeof value === 'string' ? value : JSON.stringify(value) ?? '';
+  } catch {
+    return '[non-serializable]';
+  }
+}
+
+function truncateCompactionText(value: string, max: number): string {
+  if (value.length <= max) return value;
+  return value.slice(0, max) + '\n[truncated ' + (value.length - max) + ' characters]';
+}
+
 function reasoningPromptAddon(reasoning: Config['agents']['defaults']['reasoning']): string | undefined {
   switch (reasoning) {
     case 'low':
@@ -308,10 +452,10 @@ function assembleResult(
   ctx: RunContext,
   sessionId: SessionId,
   startedAtMs: number,
-  signal?: AbortSignal,
+  aborted = false,
   memoryAccess?: MemoryAccessLedger,
 ): RunnerResult {
-  const status: AgentResult['status'] = signal?.aborted
+  const status: AgentResult['status'] = aborted
     ? 'aborted'
     : stageResult.ok
       ? 'ok'
@@ -327,6 +471,9 @@ function assembleResult(
     trace,
     durationMs: Date.now() - startedAtMs,
     usage: ctx.usage,
+    resolvedRunConfig: ctx.resolvedRunConfig,
+    modelRequests: ctx.modelRequests,
+    contextSnapshots: ctx.contextSnapshots,
     taskExecution: ctx.taskExecution,
     taskBook: ctx.taskBook ? { ...ctx.taskBook, stageResults: undefined } : undefined,
     verificationHistory: ctx.verificationHistory,

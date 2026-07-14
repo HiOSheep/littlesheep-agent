@@ -27,7 +27,7 @@ export const AgentDefaultsSchema = z.object({
   /** Workspace directory (cwd for tools). Defaults to process.cwd(). */
   workspace: z.string().default(() => process.cwd()),
   /** Default model ref (provider/model). */
-  model: z.string().default('openai/gpt-5.5'),
+  model: z.string().default('openai/gpt-5.6'),
   /** Default reasoning budget exposed to the UI. */
   reasoning: z.enum(['auto', 'low', 'medium', 'high', 'ultra']).default('auto'),
   /** Default behavior profile: prompt-level specialization, not permissions. */
@@ -44,6 +44,8 @@ export const AgentDefaultsSchema = z.object({
   bootstrapMaxChars: z.number().int().positive().default(20000),
   /** Bootstrap total max chars. */
   bootstrapTotalMaxChars: z.number().int().positive().default(60000),
+  /** Context occupancy ratio that recommends compaction (0.5-0.95). */
+  contextCompressionThresholdRatio: z.number().min(0.5).max(0.95).default(0.8),
   /** Which harness to use (default: "core-flow"). */
   harness: z.string().default('core-flow'),
 }).default({});
@@ -134,13 +136,23 @@ export const SkillsConfigSchema = z.object({
   disabled: z.array(z.string()).default([]),
 });
 
+/** Runtime plugin discovery and trust policy. */
+export const PluginsConfigSchema = z.object({
+  /** Installed plugin ids that must not activate. */
+  disabled: z.array(z.string()).default([]),
+  /** Additional local plugin roots besides the user-data plugins directory. */
+  extraDirs: z.array(z.string()).default([]),
+  /** Local JavaScript runs in-process and therefore requires explicit trust. */
+  allowLocalCode: z.boolean().default(false),
+});
+
 /** MCP server config. */
 export const McpServerSchema = z.object({
   name: z.string(),
   command: z.string(),
   args: z.array(z.string()).default([]),
   env: z.record(z.string()).optional(),
-  /** Auto-start on gateway launch. */
+  /** Auto-start when the MCP extension is activated. */
   autoStart: z.boolean().default(true),
 });
 
@@ -225,6 +237,8 @@ export const ConfigSchema = z.object({
   sessions: SessionConfigSchema.default({}),
   /** Skills config. */
   skills: SkillsConfigSchema.default({}),
+  /** Plugin discovery, enablement, and local-code trust policy. */
+  plugins: PluginsConfigSchema.default({}),
   /** MCP config. */
   mcp: McpConfigSchema.default({}),
   /** Channels config (Phase 4: multi-channel message routing). */
@@ -240,6 +254,7 @@ export type SafetyConfig = z.infer<typeof SafetyConfigSchema>;
 export type SessionConfig = z.infer<typeof SessionConfigSchema>;
 export type CompactionConfig = z.infer<typeof CompactionConfigSchema>;
 export type SkillsConfig = z.infer<typeof SkillsConfigSchema>;
+export type PluginsConfig = z.infer<typeof PluginsConfigSchema>;
 export type McpServer = z.infer<typeof McpServerSchema>;
 export type McpConfig = z.infer<typeof McpConfigSchema>;
 export type ConversationPolicy = z.infer<typeof ConversationPolicySchema>;

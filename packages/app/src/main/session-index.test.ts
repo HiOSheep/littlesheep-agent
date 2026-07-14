@@ -39,6 +39,42 @@ describe('SessionIndex ownership', () => {
     }
   })
 
+  it('moves retired application sessions onto the LittleSheep workplace before restore', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ls-session-index-'))
+    const workplace = join(dir, '.littlesheep', 'workplace')
+    const retiredWorkspace = join(dir, '.legacy-app', 'workspace')
+    try {
+      writeFileSync(join(dir, 'sessions.json'), JSON.stringify({
+        sessions: [{
+          id: 'retired-project-chat',
+          title: 'Retired project shell chat',
+          createdAt: 1,
+          lastMessageAt: 2,
+          mode: 'research',
+          scope: 'project',
+          projectId: 'retired-workspace-project',
+          workspacePath: retiredWorkspace,
+        }],
+      }))
+
+      const sessions = await new SessionIndex({ dataDir: dir, workplaceDir: workplace }).list()
+      expect(sessions).toEqual([{
+        id: 'retired-project-chat',
+        title: 'Retired project shell chat',
+        createdAt: 1,
+        lastMessageAt: 2,
+        mode: 'research',
+        scope: 'standalone',
+        workspacePath: workplace,
+      }])
+
+      const stored = JSON.parse(readFileSync(join(dir, 'sessions.json'), 'utf8')) as { sessions: unknown[] }
+      expect(stored.sessions).toEqual(sessions)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('persists standalone and project ownership independently of workspace path', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ls-session-index-'))
     const sharedWorkspace = join(dir, 'Project')

@@ -2,11 +2,11 @@
 // Individual section builders. Each returns a markdown string.
 
 import type { BrandingConfig } from '@littlesheep/branding';
-import type { AgentTool } from '@littlesheep/types';
+import type { AgentTool, CompactionSummary } from '@littlesheep/types';
 
 /** Identity line — the first thing the model sees. */
 export function identitySection(branding: BrandingConfig): string {
-  return `# Identity\n\nYou are ${branding.displayName}, a high-autonomy AI agent running a **hard-control-flow state machine**. Your decisions are driven by a code-level Core Flow, not free-form LLM reasoning. The model (you) only decides WITHIN a stage; stage transitions are enforced by code.`;
+  return `# Identity\n\nYou are ${branding.displayName}, a high-autonomy AI agent running a **hard-control-flow state machine**. Your purpose is to turn the user's ideas and goals into reliable, verified results while reducing repetitive coordination work. Your decisions are driven by a code-level Core Flow, not free-form LLM reasoning. The model (you) only decides WITHIN a stage; stage transitions are enforced by code.`;
 }
 
 /** Core Flow reminder — the hard control flow contract. */
@@ -135,11 +135,25 @@ export function preludeSection(prelude: { content: string; daysIncluded: number 
 ${prelude.content}`;
 }
 
+/** Versioned summary of older messages; original transcript remains persisted. */
+export function sessionSummarySection(summary: CompactionSummary): string {
+  return `# Session Summary
+
+This summary covers ${summary.collapsedCount} earlier messages from ${summary.sourceStartAt} through ${summary.sourceEndAt}. Treat it as a compressed, traceable representation; recent messages below remain authoritative.
+
+${summary.summary}`;
+}
+
 /** Assistant output directives — reply format guidance. */
 export function outputDirectivesSection(): string {
   return `# Assistant Output Directives
 
 - Reply in the user's language (Chinese by default; keep technical terms in English).
+- Serve the user's productivity: focus on the user's idea and goal, and take responsibility for turning it into a verified result.
+- Use progressive disclosure. Start with the direct answer or current outcome, then provide the key result, artifacts, evidence, and next action. Put verbose logs, full plans, raw command output, and advanced details behind an optional detail section or the execution timeline.
+- Match the response depth to the task: simple requests get a simple answer; standard or complex tasks get a compact status summary followed by optional evidence.
+- Never hide failure, partial completion, risk, permission denial, uncertainty, external side effects, or a decision required from the user.
+- Do not output private chain-of-thought. Provide actionable step summaries, factual evidence, and decision boundaries instead.
 - Be concise. Code, paths, commands go inline.
 - When you used tools, summarize what you did — don't dump raw tool output.
 - If you're asking the user a question (ASK_USER), make it specific and actionable.`;

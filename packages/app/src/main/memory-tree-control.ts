@@ -4,8 +4,21 @@ import type { ProjectIndex } from './project-index.js'
 
 const LEGACY_MEMORY_MIGRATION_ID = 'legacy-user-data-v1'
 const BRANCH_ORDER = ['long-term', 'project', 'daily', 'experience'] as const
+const NODE_ACTION_LABELS: Record<MemoryNodeManagementAction, string> = {
+  archive: '归档',
+  restore: '恢复',
+  delete: '删除',
+  promote: '提升层级',
+  demote: '降低层级',
+}
+const RESOURCE_ACTION_LABELS: Record<Exclude<MemoryResourceManagementAction, 'rebind'>, string> = {
+  disable: '停用',
+  restore: '恢复',
+  remove: '移除登记',
+}
 
 export type MemoryNodeManagementAction = 'archive' | 'restore' | 'delete' | 'promote' | 'demote'
+export type MemoryResourceManagementAction = 'disable' | 'restore' | 'remove' | 'rebind'
 export type ManageRuntimeMemoryNodeResult =
   | { status: 'not_found' }
   | { status: 'invalid'; error: string }
@@ -17,19 +30,51 @@ export async function manageRuntimeMemoryNode(
   action: MemoryNodeManagementAction,
   reason?: string,
 ): Promise<ManageRuntimeMemoryNodeResult> {
-  const existing = await runner.infra.memoryRepository.getNode(nodeId)
+  const existing = await runner.infra.memoryService.getNode(nodeId)
   if (!existing || existing.isBranchRoot) return { status: 'not_found' as const }
   try {
-    const result = await runner.infra.memoryRepository.manageNode(
+    const result = await runner.infra.memoryService.manageNode(
       nodeId,
       action,
-      reason || `User selected ${action} in the memory-tree management page.`,
+      reason || `用户在记忆树管理页面执行了“${NODE_ACTION_LABELS[action]}”操作。`,
     )
     if (!result) return { status: 'not_found' as const }
-    await runner.infra.memoryTree.invalidateBranch(existing.branch)
     return { status: 'changed' as const, ...result }
   } catch (error) {
     return { status: 'invalid' as const, error: (error as Error).message }
+  }
+}
+
+export type ManageRuntimeMemoryResourceResult =
+  | { status: 'not_found' }
+  | { status: 'invalid'; error: string }
+  | { status: 'changed'; result: unknown }
+
+export async function manageRuntimeMemoryResource(
+  runner: AgentRunner,
+  resourceId: string,
+  action: MemoryResourceManagementAction,
+  options: { sourcePath?: string; reason?: string } = {},
+): Promise<ManageRuntimeMemoryResourceResult> {
+  try {
+    if (action === 'rebind' && !options.sourcePath?.trim()) {
+      return { status: 'invalid', error: '重新定位记忆资源时必须提供来源路径。' }
+    }
+    const result = action === 'rebind'
+      ? await runner.infra.memoryService.rebindResourceSource(
+          resourceId,
+          options.sourcePath ?? '',
+          options.reason || '用户从记忆树管理页面重新定位了资源。',
+        )
+      : await runner.infra.memoryService.manageResource(
+          resourceId,
+          action,
+          options.reason || `用户在记忆树资源目录执行了“${RESOURCE_ACTION_LABELS[action]}”操作。`,
+        )
+    if (!result) return { status: 'not_found' }
+    return { status: 'changed', result }
+  } catch (error) {
+    return { status: 'invalid', error: (error as Error).message }
   }
 }
 
@@ -39,7 +84,14 @@ export async function buildMemoryTreePayload(
   config: Config,
 ): Promise<Record<string, unknown>> {
   const projects = await projectIndex.list()
-  const treeDocument = await runner.infra.memoryRepository.snapshot()
+  const projectionStates = await runner.infra.memoryService.listProjectMemoryProjectionStates(
+    projects.map((project) => ({ id: project.id, name: project.name, path: project.path })),
+  )
+  // Projection inspection also reconciles derived resource status. Read the
+  // management snapshot afterwards so one payload cannot report conflicting facts.
+  const memorySnapshot = await runner.infra.memoryService.getManagementSnapshot()
+  const projectionByProjectId = new Map(projectionStates.map((state) => [state.projectId, state]))
+  const treeDocument = memorySnapshot.document
   const migration = treeDocument.migrations[LEGACY_MEMORY_MIGRATION_ID]
   const allNodes = Object.values(treeDocument.nodes).filter((node) => !node.isBranchRoot)
   const activeNodes = allNodes.filter((node) => node.status === 'active')
@@ -73,6 +125,12 @@ export async function buildMemoryTreePayload(
     current.push(audit)
     managementHistory.set(audit.nodeId, current)
   }
+  const resourceManagementHistory = new Map<string, typeof treeDocument.resourceManagementAudit>()
+  for (const audit of treeDocument.resourceManagementAudit) {
+    const current = resourceManagementHistory.get(audit.resourceId) ?? []
+    current.push(audit)
+    resourceManagementHistory.set(audit.resourceId, current)
+  }
 
   type RecentHit = {
     runId: string
@@ -83,7 +141,7 @@ export async function buildMemoryTreePayload(
     reason?: string
   }
   const hitsByNode = new Map<string, RecentHit[]>()
-  for (const ledger of runner.infra.memoryTree.listLedgers(80)) {
+  for (const ledger of memorySnapshot.ledgers) {
     for (const record of ledger.records) {
       if (record.action !== 'expand' && record.action !== 'deep_search') continue
       for (const fragmentId of record.fragmentIds) {
@@ -160,7 +218,10 @@ export async function buildMemoryTreePayload(
     if (node.status !== 'archived') continue
     archivedByBranch.set(node.branch, (archivedByBranch.get(node.branch) ?? 0) + 1)
   }
-  const branches = runner.infra.memoryTree.list()
+  const branches = memorySnapshot.branches
+    .filter((branch): branch is typeof branch & { id: (typeof BRANCH_ORDER)[number] } => (
+      BRANCH_ORDER.includes(branch.id as (typeof BRANCH_ORDER)[number])
+    ))
     .sort((left, right) => (
       BRANCH_ORDER.findIndex((id) => id === left.id)
       - BRANCH_ORDER.findIndex((id) => id === right.id)
@@ -209,6 +270,8 @@ export async function buildMemoryTreePayload(
       archivedMemories: visibleNodes.filter((node) => node.status === 'archived').length,
       deletedMemories: allNodes.filter((node) => node.status === 'deleted').length,
       recoveryQueue: treeDocument.recoveryQueue.length,
+      registeredResources: memorySnapshot.resources.length,
+      activeResources: memorySnapshot.resources.filter((resource) => resource.status === 'active').length,
     },
     branches,
     nodes,
@@ -217,6 +280,29 @@ export async function buildMemoryTreePayload(
       name: project.name,
       path: project.path,
       lastActiveAt: project.lastActiveAt,
+      projection: publicProjectionState(projectionByProjectId.get(project.id)),
+    })),
+    resources: memorySnapshot.resources.map((resource) => ({
+      id: resource.id,
+      kind: resource.kind,
+      title: resource.title,
+      description: resource.description,
+      tier: resource.tier,
+      branch: resource.branch,
+      scope: resource.scope,
+      scopeKey: resource.scopeKey,
+      authority: resource.authority,
+      privacy: resource.privacy,
+      sourceKind: resource.source.kind,
+      sourcePath: resource.source.path,
+      indexKeys: resource.indexKeys,
+      status: resource.status,
+      registryGroup: resource.registryGroup,
+      owner: resource.owner,
+      updatedAt: resource.updatedAt,
+      managementHistory: (resourceManagementHistory.get(resource.id) ?? [])
+        .sort((left, right) => right.at.localeCompare(left.at))
+        .slice(0, 8),
     })),
     dailyDates,
     longTermExcerpt: longTermExcerpt.slice(0, 1_600),
@@ -225,6 +311,26 @@ export async function buildMemoryTreePayload(
     learningPolicy: {
       experienceWriteThreshold: config.memory.experienceWriteThreshold,
     },
+  }
+}
+
+function publicProjectionState(state: Awaited<ReturnType<AgentRunner['infra']['memoryService']['getProjectMemoryProjectionState']>> | undefined) {
+  if (!state) return undefined
+  return {
+    projectId: state.projectId,
+    enabled: state.enabled,
+    projectionPath: state.projectionPath,
+    projectionExists: state.projectionExists,
+    safeToRemove: state.safeToRemove,
+    status: state.status,
+    gitRepository: state.gitRepository,
+    gitIgnored: state.gitIgnored,
+    gitIgnorePattern: state.gitIgnorePattern,
+    sourceRevision: state.sourceRevision,
+    entryCount: state.entryCount,
+    omittedEntryCount: state.omittedEntryCount,
+    lastSyncedAt: state.lastSyncedAt,
+    conflictReason: state.conflictReason,
   }
 }
 

@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { createHmac } from 'node:crypto';
-import type { ChannelContext, ChannelRuntimeConfig, InboundChannelMessage } from '@littlesheep/gateway';
+import type { ChannelContext, ChannelRuntimeConfig, InboundChannelMessage } from '@littlesheep/plugins';
 import type { SessionId } from '@littlesheep/types';
 import { asSessionId } from '@littlesheep/types';
 import { WebhookChannelPlugin } from './plugin.js';

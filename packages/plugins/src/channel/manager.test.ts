@@ -1,4 +1,4 @@
-// @littlesheep/gateway — channel/manager.test.ts
+// @littlesheep/plugins — channel/manager.test.ts
 // Tests for DefaultChannelManager: register, start, stop, remove (cascade delete).
 //
 // Uses a mock ChannelPlugin and a mock AgentRunner (no real LLM/session files).

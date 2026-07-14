@@ -11,6 +11,7 @@ import {
   listProjects,
   createProjectFolder,
   registerProject,
+  rebindProject,
   deleteProject,
   deleteSession,
   getSessionMessages,
@@ -35,11 +36,17 @@ import {
   closeWorkspaceTerminalSession,
   getPathForFile,
   importAttachment,
+  getPluginsStatus,
+  setPluginEnabled,
+  setLocalPluginCodeAllowed,
+  reloadPlugins,
   type ApprovalRequest,
   type AttachmentRef,
   type AgentProfileId,
   type HistoryMessage,
   type PermissionModeId,
+  type PluginStatus,
+  type PluginsStatusResponse,
   type ProjectMeta,
   type RuntimeState,
   type SessionMeta,
@@ -57,6 +64,12 @@ import { MemorySkills } from './MemorySkills'
 import { MemoryTreeView } from './MemoryTreeView'
 import { ArchiveManager } from './ArchiveManager'
 import { buildTaskProgress } from './task-progress'
+import {
+  executionDisclosureDefaultOpen,
+  executionDisclosureResetKey,
+  verificationDisclosureDefaultOpen,
+  verificationDisclosureResetKey,
+} from './progressive-disclosure'
 import type { HistoryActivity } from '../shared/history-activity'
 import { projectSessions, standaloneSessions } from '../shared/session-scope'
 import { ALL_PERMISSION_MODES } from '../shared/permission-modes'
@@ -68,13 +81,19 @@ import {
 } from './approval-grants'
 import {
   coerceReasoningForModelRef,
-  getContextWindowForModelRef,
   getSupportedReasoningOptions,
   type RuntimeReasoning,
 } from '../shared/model-capabilities'
 import {
+  buildContextUsage,
+  buildContextUsageSnapshot,
+  type ContextUsage,
+  type ContextUsageSnapshot,
+} from './context-usage'
+import {
   DEFAULT_WORKSPACE_PANEL_TABS,
   WORKSPACE_FILE_DRAFTS_MAX_CHARS,
+  WORKSPACE_PANEL_OPEN_TABS_MAX,
   alignWorkspacePanelStateToRoot,
   buildWorkspaceRecoverySnapshot,
   dedupeWorkspacePanelTabs,
@@ -84,6 +103,8 @@ import {
   isWorkspacePanelTab,
   normalizeWorkspacePanelTabId,
   parseWorkspaceFileTabId,
+  rebindWorkspacePanelState,
+  rebindWorkspacePath,
   serializeWorkspaceFileDrafts,
   shouldUseWorkspaceLayoutFallback,
   workspaceFileTabId,
@@ -102,6 +123,14 @@ import {
   resolveWorkspacePanelLayout,
   type WorkspacePanelDragMode,
 } from './workspace-layout'
+import {
+  appendNavigationEntry,
+  boundStringList,
+  MAX_NAVIGATION_EXPANDED_PATHS,
+  MAX_NAVIGATION_HISTORY_ENTRIES,
+  MAX_NAVIGATION_OPEN_TABS,
+  type NavigationHistoryState,
+} from './navigation-history'
 
 const MonacoEditor = lazy(async () => {
   const [monacoReact, monaco] = await Promise.all([
@@ -226,11 +255,6 @@ interface AssistantTurnActivity extends Omit<HistoryActivity, 'status' | 'steps'
   tools: LiveToolEvent[]
 }
 
-interface ContextUsageSnapshot {
-  modelRef: string
-  usedTokens: number
-}
-
 interface WorkspaceArtifactRef {
   path: string
   name: string
@@ -264,6 +288,7 @@ interface PendingApprovalPrompt {
 }
 
 type SettingsPage = 'home' | 'agent' | 'api' | 'scheduled' | 'memoryTree' | 'archive' | 'plugins' | 'skills' | 'channels'
+type DirectModulePage = Extract<SettingsPage, 'memoryTree' | 'scheduled' | 'plugins'>
 type ProjectSortMode = 'fixed' | 'recent' | 'name'
 type WorkspaceArtifactScopeFilter = 'project' | 'session'
 type WorkspaceArtifactSourceFilter = 'all' | 'agent' | 'user'
@@ -272,8 +297,26 @@ type WorkspaceArtifactActionFilter = 'all' | WorkspaceArtifactRef['action']
 type AppRoute =
   | { section: 'chat' }
   | { section: 'settings'; page: SettingsPage }
+  | { section: 'module'; page: DirectModulePage }
 
 type SidebarPanel = 'search' | null
+type StringListUpdater = (current: string[]) => string[]
+
+interface AppNavigationSnapshot {
+  route: AppRoute
+  sidebarCollapsed: boolean
+  sidebarWidth: number
+  conversationCollapsed: boolean
+  sidebarPanel: SidebarPanel
+  workspacePanelCollapsed: boolean
+  workspacePanelFullscreen: boolean
+  workspacePanelWidth: number
+  workspacePanelTab: WorkspacePanelTabId
+  workspacePanelOpenTabs: WorkspacePanelTabId[]
+  workspaceOpenRequest: { root: string; path: string } | null
+  workspaceFileNavigatorCollapsed: boolean
+  workspaceExpandedPaths: string[]
+}
 
 interface SettingsNavItem {
   page: SettingsPage
@@ -347,6 +390,8 @@ export function App() {
   const [workspacePanelOpenTabs, setWorkspacePanelOpenTabs] = useState<WorkspacePanelTabId[]>(() => readWorkspacePanelOpenTabsPreference())
   const [workspaceOpenRequest, setWorkspaceOpenRequest] = useState<WorkspaceOpenRequest | null>(() => readWorkspaceOpenRequestPreference())
   const [workspaceFileDrafts, setWorkspaceFileDrafts] = useState<Record<string, WorkspaceFileDraftState>>(() => readWorkspaceFileDraftsPreference())
+  const [workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed] = useState(() => readBooleanPreference(WORKSPACE_FILE_NAVIGATOR_COLLAPSED_KEY, false))
+  const [workspaceExpandedPaths, setWorkspaceExpandedPaths] = useState<string[]>([])
   const [pendingDirtyCloseTab, setPendingDirtyCloseTab] = useState<WorkspaceFileTabId | null>(null)
   const [conversationCollapsed, setConversationCollapsed] = useState(false)
   const [now, setNow] = useState(() => Date.now())
@@ -354,17 +399,29 @@ export function App() {
   const [sidebarPanel, setSidebarPanel] = useState<SidebarPanel>(null)
   const [sidebarSearch, setSidebarSearch] = useState('')
   const [projectCreatorOpen, setProjectCreatorOpen] = useState(false)
-  const [appHistory, setAppHistory] = useState<{ entries: AppRoute[]; index: number }>({
-    entries: [{ section: 'chat' }],
-    index: 0,
+  const [activeRoute, setActiveRoute] = useState<AppRoute>({ section: 'chat' })
+  const [appHistory, setAppHistory] = useState<NavigationHistoryState<AppNavigationSnapshot>>({
+    entries: [],
+    index: -1,
   })
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const shellRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const composerSyncFrameRef = useRef<number>()
+  const activeDragCleanupRef = useRef<(() => void) | null>(null)
+  const sidebarSettleFrameRef = useRef<number>()
+  const sidebarSettleTimerRef = useRef<number>()
   const wasSettingsOpenRef = useRef(false)
   const lastRenderedSettingsPageRef = useRef<SettingsPage>('home')
   const settingsEntryRippleTimerRef = useRef<number>()
+  const settingsEntryRippleFrameRef = useRef<number>()
+  const navigationHistoryInitializedRef = useRef(false)
+  const navigationRestoreTargetRef = useRef<AppNavigationSnapshot | null>(null)
+  const appHistoryRef = useRef(appHistory)
+  const settingsReturnRouteRef = useRef<AppRoute>({ section: 'chat' })
+  const appMountedRef = useRef(true)
+  const sessionLoadRequestRef = useRef(0)
   const restoredLastSessionRef = useRef(false)
   const workspaceLayoutFallbackNeededRef = useRef(shouldUseWorkspaceLayoutFallback(readWorkspaceLayoutFallbackMarkers()))
   const workspaceLayoutMirrorReadyRef = useRef(false)
@@ -403,31 +460,77 @@ export function App() {
     '--two-stage-resize-motion': `${TWO_STAGE_RESIZE_MOTION_MS}ms`,
   }) as CSSProperties, [sidebarWidth, workspacePanelLayout.width])
 
-  const activeRoute = appHistory.entries[appHistory.index] ?? { section: 'chat' as const }
   const settingsOpen = activeRoute.section === 'settings'
+  const directModulePage = activeRoute.section === 'module' ? activeRoute.page : null
   const routeSettingsPage = activeRoute.section === 'settings' ? activeRoute.page : 'home'
   if (settingsOpen) lastRenderedSettingsPageRef.current = routeSettingsPage
   const settingsPage = settingsOpen ? routeSettingsPage : lastRenderedSettingsPageRef.current
-  const canNavigateBack = (!settingsOpen && workspacePanelFullscreen) || appHistory.index > 0
-  const canNavigateForward = appHistory.index < appHistory.entries.length - 1
+  const canNavigateBack = appHistory.index > 0
+  const canNavigateForward = appHistory.index >= 0 && appHistory.index < appHistory.entries.length - 1
+
+  const navigationSnapshot = useMemo<AppNavigationSnapshot>(() => ({
+    route: activeRoute,
+    sidebarCollapsed,
+    sidebarWidth,
+    conversationCollapsed,
+    sidebarPanel,
+    workspacePanelCollapsed,
+    workspacePanelFullscreen,
+    workspacePanelWidth,
+    workspacePanelTab,
+    workspacePanelOpenTabs: boundStringList(workspacePanelOpenTabs, MAX_NAVIGATION_OPEN_TABS) as WorkspacePanelTabId[],
+    workspaceOpenRequest: workspaceOpenRequest
+      ? { root: workspaceOpenRequest.root, path: workspaceOpenRequest.path }
+      : null,
+    workspaceFileNavigatorCollapsed,
+    workspaceExpandedPaths: boundStringList(workspaceExpandedPaths, MAX_NAVIGATION_EXPANDED_PATHS),
+  }), [
+    activeRoute,
+    conversationCollapsed,
+    sidebarCollapsed,
+    sidebarPanel,
+    sidebarWidth,
+    workspaceExpandedPaths,
+    workspaceFileNavigatorCollapsed,
+    workspaceOpenRequest,
+    workspacePanelCollapsed,
+    workspacePanelFullscreen,
+    workspacePanelOpenTabs,
+    workspacePanelTab,
+    workspacePanelWidth,
+  ])
+
+  appHistoryRef.current = appHistory
+
+  useEffect(() => {
+    if (!navigationHistoryInitializedRef.current) {
+      navigationHistoryInitializedRef.current = true
+      setAppHistory({ entries: [navigationSnapshot], index: 0 })
+      return
+    }
+
+    const restoreTarget = navigationRestoreTargetRef.current
+    if (restoreTarget) {
+      if (navigationSnapshotsEqual(navigationSnapshot, restoreTarget)) {
+        navigationRestoreTargetRef.current = null
+      }
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      setAppHistory((current) => appendNavigationEntry(
+        current,
+        navigationSnapshot,
+        (left, right) => navigationSnapshotsEqual(left, right),
+        MAX_NAVIGATION_HISTORY_ENTRIES,
+      ))
+    }, 180)
+    return () => window.clearTimeout(timer)
+  }, [navigationSnapshot])
 
   function pushRoute(route: AppRoute) {
     setControlTip(null)
-    setAppHistory((current) => {
-      const active = current.entries[current.index]
-      if (routesEqual(active, route)) return current
-      const previous = current.entries[current.index - 1]
-      if (previous && routesEqual(previous, route)) {
-        return {
-          ...current,
-          index: current.index - 1,
-        }
-      }
-      return {
-        entries: [...current.entries.slice(0, current.index + 1), route],
-        index: current.index + 1,
-      }
-    })
+    setActiveRoute((current) => routesEqual(current, route) ? current : route)
   }
 
   function openSettingsRoot() {
@@ -436,6 +539,7 @@ export function App() {
   }
 
   function openSettingsFromEntry() {
+    if (!settingsOpen) settingsReturnRouteRef.current = activeRoute
     triggerSettingsEntryRipple()
     openSettingsRoot()
   }
@@ -445,29 +549,53 @@ export function App() {
     pushRoute({ section: 'settings', page })
   }
 
+  function openDirectModulePage(page: DirectModulePage) {
+    setSidebarPanel(null)
+    pushRoute({ section: 'module', page })
+  }
+
   function navigateBack() {
     setControlTip(null)
-    if (!settingsOpen && workspacePanelFullscreen) {
-      setWorkspacePanelFullscreen(false)
-      setWorkspacePanelCollapsed(false)
-      return
-    }
-    setAppHistory((current) => {
-      if (current.index <= 0) return current
-      return { ...current, index: current.index - 1 }
-    })
+    navigateHistoryTo(appHistoryRef.current.index - 1)
   }
 
   function navigateForward() {
     setControlTip(null)
-    setAppHistory((current) => {
-      if (current.index >= current.entries.length - 1) return current
-      return { ...current, index: current.index + 1 }
-    })
+    navigateHistoryTo(appHistoryRef.current.index + 1)
+  }
+
+  function navigateHistoryTo(index: number) {
+    const current = appHistoryRef.current
+    if (index < 0 || index >= current.entries.length || index === current.index) return
+    const target = current.entries[index]
+    if (!target) return
+    navigationRestoreTargetRef.current = target
+    restoreNavigationSnapshot(target)
+    const next = { ...current, index }
+    appHistoryRef.current = next
+    setAppHistory(next)
+  }
+
+  function restoreNavigationSnapshot(snapshot: AppNavigationSnapshot) {
+    setActiveRoute(snapshot.route)
+    setSidebarCollapsed(snapshot.sidebarCollapsed)
+    setSidebarWidth(snapshot.sidebarWidth)
+    setConversationCollapsed(snapshot.conversationCollapsed)
+    setSidebarPanel(snapshot.sidebarPanel)
+    setWorkspacePanelCollapsed(snapshot.workspacePanelCollapsed)
+    setWorkspacePanelFullscreen(snapshot.workspacePanelFullscreen)
+    setWorkspacePanelWidth(snapshot.workspacePanelWidth)
+    setWorkspacePanelTab(snapshot.workspacePanelTab)
+    setWorkspacePanelOpenTabs(snapshot.workspacePanelOpenTabs)
+    setWorkspaceOpenRequest(snapshot.workspaceOpenRequest
+      ? { id: Date.now(), ...snapshot.workspaceOpenRequest }
+      : null)
+    setWorkspaceFileNavigatorCollapsed(snapshot.workspaceFileNavigatorCollapsed)
+    setWorkspaceExpandedPaths(snapshot.workspaceExpandedPaths)
   }
 
   function closeSettingsWorkspace() {
-    pushRoute({ section: 'chat' })
+    pushRoute(settingsReturnRouteRef.current)
   }
 
   function closeSettingsFromEntry() {
@@ -477,8 +605,9 @@ export function App() {
 
   function triggerSettingsEntryRipple() {
     window.clearTimeout(settingsEntryRippleTimerRef.current)
+    window.cancelAnimationFrame(settingsEntryRippleFrameRef.current ?? 0)
     setSettingsEntryRippling(false)
-    window.requestAnimationFrame(() => {
+    settingsEntryRippleFrameRef.current = window.requestAnimationFrame(() => {
       setSettingsEntryRippling(true)
       settingsEntryRippleTimerRef.current = window.setTimeout(() => {
         setSettingsEntryRippling(false)
@@ -553,13 +682,23 @@ export function App() {
 
   useEffect(() => {
     setWorkspacePanelOpenTabs((tabs) => (
-      tabs.includes(workspacePanelTab) ? tabs : [...tabs, workspacePanelTab]
+      tabs.includes(workspacePanelTab)
+        ? tabs
+        : dedupeWorkspacePanelTabs(
+          tabs.length >= WORKSPACE_PANEL_OPEN_TABS_MAX
+            ? [...tabs.slice(1), workspacePanelTab]
+            : [...tabs, workspacePanelTab],
+        )
     ))
   }, [workspacePanelTab])
 
   useEffect(() => {
     writeWorkspaceOpenRequestPreference(workspaceOpenRequest)
   }, [workspaceOpenRequest])
+
+  useEffect(() => {
+    writeBooleanPreference(WORKSPACE_FILE_NAVIGATOR_COLLAPSED_KEY, workspaceFileNavigatorCollapsed)
+  }, [workspaceFileNavigatorCollapsed])
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -598,8 +737,21 @@ export function App() {
     return () => window.clearInterval(timer)
   }, [])
 
-  useEffect(() => () => {
-    window.clearTimeout(settingsEntryRippleTimerRef.current)
+  useEffect(() => {
+    appMountedRef.current = true
+    return () => {
+      appMountedRef.current = false
+      sessionLoadRequestRef.current += 1
+      window.clearTimeout(settingsEntryRippleTimerRef.current)
+      window.cancelAnimationFrame(settingsEntryRippleFrameRef.current ?? 0)
+      window.cancelAnimationFrame(composerSyncFrameRef.current ?? 0)
+      window.cancelAnimationFrame(sidebarSettleFrameRef.current ?? 0)
+      window.clearTimeout(sidebarSettleTimerRef.current)
+      activeDragCleanupRef.current?.()
+      abortRef.current?.abort()
+      pendingApprovalRef.current?.resolve('deny')
+      pendingApprovalRef.current = null
+    }
   }, [])
 
   useEffect(() => {
@@ -616,10 +768,13 @@ export function App() {
     const handleResize = () => {
       setViewportWidth(window.innerWidth)
       setSidebarWidth((value) => clampNumber(value, SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX))
-      window.requestAnimationFrame(() => syncComposerInputHeight(inputRef.current))
+      scheduleComposerHeightSync()
     }
     window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      window.cancelAnimationFrame(composerSyncFrameRef.current ?? 0)
+    }
   }, [])
 
   const selectableProviders = useMemo(() => {
@@ -644,7 +799,7 @@ export function App() {
   const visibleSessionMotionRef = useListReorderAnimation<HTMLDivElement>(visibleSessions.map((session) => session.id))
   const workspaceIsWorkplace = runtime ? isSamePath(runtime.workspace, runtime.workplace) : false
   const workspaceTip = runtime ? workspaceTitle(runtime.workspace, runtime.workplace) : ''
-  const projectPath = runtime?.workplace ?? 'D:\\tools\\littlesheep'
+  const projectPath = runtime?.workplace ?? runtime?.workspace ?? ''
   const contextUsage = useMemo(
     () => buildContextUsage(runtime?.model, contextUsageSnapshot),
     [contextUsageSnapshot, runtime?.model],
@@ -680,7 +835,7 @@ export function App() {
           setWorkspacePanelTab(fallback.activeTab)
           setWorkspaceOpenRequest(fallback.openRequest)
           setWorkspaceFileDrafts(fallback.drafts)
-          writeBooleanPreference(WORKSPACE_FILE_NAVIGATOR_COLLAPSED_KEY, fallback.fileNavigatorCollapsed)
+          setWorkspaceFileNavigatorCollapsed(fallback.fileNavigatorCollapsed)
         }
       } catch {
         // Layout mirror recovery is best-effort; localStorage remains the primary fast path.
@@ -759,17 +914,19 @@ export function App() {
   async function refreshSessions() {
     try {
       const { sessions } = await listSessions()
+      if (!appMountedRef.current) return
       setSessions(sessions)
     } catch (e) {
       console.error('Failed to list sessions:', e)
     } finally {
-      setSessionsLoaded(true)
+      if (appMountedRef.current) setSessionsLoaded(true)
     }
   }
 
   async function refreshProjects() {
     try {
       const { projects } = await listProjects()
+      if (!appMountedRef.current) return
       setProjects(projects)
     } catch (e) {
       console.error('Failed to list projects:', e)
@@ -779,17 +936,19 @@ export function App() {
   async function refreshRuntime() {
     try {
       const next = await getRuntime()
+      if (!appMountedRef.current) return
       setRuntime(next)
       setRuntimeError(null)
       alignWorkspacePanelToWorkspaceRoot(next.workspace)
     } catch (e) {
-      setRuntimeError((e as Error).message)
+      if (appMountedRef.current) setRuntimeError((e as Error).message)
     }
   }
 
-  async function applyRuntimePatch(patch: Partial<Pick<RuntimeState, 'model' | 'reasoning' | 'profile' | 'workspace'>>) {
+  async function applyRuntimePatch(patch: Partial<Pick<RuntimeState, 'model' | 'reasoning' | 'profile' | 'contextCompressionThresholdRatio' | 'workspace'>>) {
     try {
       const next = await updateRuntime(patch)
+      if (!appMountedRef.current) return
       setRuntime(next)
       setRuntimeError(null)
       if (Object.prototype.hasOwnProperty.call(patch, 'workspace')) {
@@ -797,6 +956,7 @@ export function App() {
       }
       void refreshProjects()
     } catch (e) {
+      if (!appMountedRef.current) return
       setRuntimeError((e as Error).message)
       await refreshRuntime()
     }
@@ -805,10 +965,11 @@ export function App() {
   async function addAttachments() {
     try {
       const files = await selectAttachments()
+      if (!appMountedRef.current) return
       if (files.length === 0) return
       mergeAttachments(files)
     } catch (e) {
-      setRuntimeError((e as Error).message)
+      if (appMountedRef.current) setRuntimeError((e as Error).message)
     }
   }
 
@@ -830,9 +991,10 @@ export function App() {
         }
       }
       mergeAttachments(refs)
+      if (!appMountedRef.current) return
       setRuntimeError(null)
     } catch (e) {
-      setRuntimeError((e as Error).message)
+      if (appMountedRef.current) setRuntimeError((e as Error).message)
     }
   }
 
@@ -847,10 +1009,11 @@ export function App() {
   async function chooseWorkspace() {
     try {
       const path = await selectWorkspace()
+      if (!appMountedRef.current) return
       if (!path) return
       await applyRuntimePatch({ workspace: path })
     } catch (e) {
-      setRuntimeError((e as Error).message)
+      if (appMountedRef.current) setRuntimeError((e as Error).message)
     }
   }
 
@@ -861,7 +1024,10 @@ export function App() {
   }
 
   async function activateProjectWorkspace(project: ProjectMeta) {
+    sessionLoadRequestRef.current += 1
     const next = await updateRuntime({ workspace: project.path })
+    if (!appMountedRef.current) return
+    pushRoute({ section: 'chat' })
     setRuntime(next)
     setRuntimeError(null)
     alignWorkspacePanelToWorkspaceRoot(next.workspace)
@@ -890,6 +1056,71 @@ export function App() {
     await activateProjectWorkspace(result.project)
   }
 
+  async function relocateProject(project: ProjectMeta) {
+    setControlTip(null)
+    try {
+      const path = await selectWorkspace()
+      if (!path) return
+      const result = await rebindProject(project.id, path)
+      if (!appMountedRef.current) return
+
+      const reboundWorkspace = rebindWorkspacePanelState({
+        openRequest: workspaceOpenRequest,
+        openTabs: workspacePanelOpenTabs,
+        activeTab: workspacePanelTab,
+        drafts: workspaceFileDrafts,
+      }, project.path, result.project.path)
+      setWorkspaceOpenRequest(reboundWorkspace.openRequest)
+      setWorkspacePanelOpenTabs(reboundWorkspace.openTabs)
+      setWorkspacePanelTab(reboundWorkspace.activeTab)
+      setWorkspaceFileDrafts(reboundWorkspace.drafts)
+      setWorkspaceExpandedPaths((paths) => paths.map((entry) => (
+        rebindWorkspacePath(entry, project.path, result.project.path)
+      )))
+      setPendingDirtyCloseTab((tab) => {
+        if (!tab) return null
+        const file = parseWorkspaceFileTabId(tab)
+        return file
+          ? workspaceFileTabId(
+              rebindWorkspacePath(file.root, project.path, result.project.path),
+              rebindWorkspacePath(file.path, project.path, result.project.path),
+            )
+          : tab
+      })
+
+      const reboundHistory: NavigationHistoryState<AppNavigationSnapshot> = {
+        ...appHistoryRef.current,
+        entries: appHistoryRef.current.entries.map((entry) => (
+          rebindNavigationSnapshotWorkspace(entry, project.path, result.project.path)
+        )),
+      }
+      appHistoryRef.current = reboundHistory
+      setAppHistory(reboundHistory)
+      if (navigationRestoreTargetRef.current) {
+        navigationRestoreTargetRef.current = rebindNavigationSnapshotWorkspace(
+          navigationRestoreTargetRef.current,
+          project.path,
+          result.project.path,
+        )
+      }
+      setProjects((items) => items.map((item) => item.id === result.project.id ? result.project : item))
+      const updatedSessions = new Map(result.sessions.map((session) => [session.id, session]))
+      setSessions((items) => items.map((session) => updatedSessions.get(session.id) ?? session))
+
+      const activeProject = sessionOwnership.scope === 'project' && sessionOwnership.projectId === project.id
+      const nextRuntime = activeProject && !isSamePath(result.runtime.workspace, result.project.path)
+        ? await updateRuntime({ workspace: result.project.path })
+        : result.runtime
+      if (!appMountedRef.current) return
+      setRuntime(nextRuntime)
+      setRuntimeError(null)
+      void refreshProjects()
+      void refreshSessions()
+    } catch (error) {
+      if (appMountedRef.current) setRuntimeError((error as Error).message)
+    }
+  }
+
   async function resetWorkspace() {
     setWorkspaceOpenRequest(null)
     await applyRuntimePatch({ workspace: '' })
@@ -903,6 +1134,10 @@ export function App() {
 
   function openWorkspaceFileTab(root: string, path: string) {
     const tab = workspaceFileTabId(root, path)
+    if (!workspacePanelOpenTabs.includes(tab) && workspacePanelOpenTabs.length >= WORKSPACE_PANEL_OPEN_TABS_MAX) {
+      setRuntimeError(`拓展工作区最多打开 ${WORKSPACE_PANEL_OPEN_TABS_MAX} 个标签`)
+      return
+    }
     setWorkspacePanelCollapsed(false)
     if (settingsOpen) pushRoute({ section: 'chat' })
     setWorkspacePanelOpenTabs((tabs) => (tabs.includes(tab) ? tabs : [...tabs, tab]))
@@ -980,8 +1215,11 @@ export function App() {
     try {
       const result = await runAgentStream(text || '请根据附件继续处理。', currentSession, permissionMode, {
         signal: controller.signal,
-        onApprovalRequest: (request) => requestApprovalForScope(request, approvalScopeKey),
+        onApprovalRequest: (request) => appMountedRef.current
+          ? requestApprovalForScope(request, approvalScopeKey)
+          : Promise.resolve(false),
         onToolEvent: (evt) => {
+          if (!appMountedRef.current) return
           if (evt.type === 'task_book' && evt.taskBook) {
             const taskBook = evt.taskBook
             updateLastAssistantActivity(setMessages, (activity) => ({
@@ -1080,6 +1318,7 @@ export function App() {
           }
         },
         onDelta: (delta) => {
+          if (!appMountedRef.current) return
           if (!delta) return
           setMessages((m) => {
             const next = [...m]
@@ -1098,9 +1337,15 @@ export function App() {
         profile: runtime?.profile,
         attachments: activeAttachments,
       })
+      if (!appMountedRef.current) return
       approvalGrantsRef.current.promote(approvalScopeKey, sessionApprovalScopeKey(result.sessionId))
       setCurrentSession(result.sessionId)
-      setContextUsageSnapshot(buildContextUsageSnapshot(runtime?.model, result.usage))
+      setContextUsageSnapshot(buildContextUsageSnapshot(
+        runtime?.model,
+        result.usage,
+        result.contextSnapshots,
+        result.modelRequests,
+      ))
       setWorkspaceArtifactVersion((value) => value + 1)
       setMessages((m) => {
         const next = [...m]
@@ -1136,6 +1381,7 @@ export function App() {
       void refreshSessions()
       void refreshProjects()
     } catch (e) {
+      if (!appMountedRef.current) return
       if ((e as Error).name === 'AbortError') {
         setMessages((m) => {
           const next = [...m]
@@ -1178,7 +1424,7 @@ export function App() {
       settleApprovalPrompt('deny')
       abortRef.current = null
       liveToolStepRef.current.clear()
-      setLoading(false)
+      if (appMountedRef.current) setLoading(false)
     }
   }
 
@@ -1188,6 +1434,8 @@ export function App() {
   }
 
   function newSession(ownership: Pick<SessionMeta, 'scope' | 'projectId'> = { scope: 'standalone' }) {
+    sessionLoadRequestRef.current += 1
+    pushRoute({ section: 'chat' })
     beginDraftApprovalScope()
     setCurrentSession(undefined)
     setSessionOwnership(ownership)
@@ -1213,16 +1461,20 @@ export function App() {
   }
 
   async function switchSession(session: SessionMeta) {
+    const requestId = ++sessionLoadRequestRef.current
     const { id, title, workspacePath } = session
     setSidebarPanel(null)
+    pushRoute({ section: 'chat' })
     if (workspacePath && (!runtime || !isSamePath(runtime.workspace, workspacePath))) {
       try {
         const next = await updateRuntime({ workspace: workspacePath })
+        if (!appMountedRef.current || requestId !== sessionLoadRequestRef.current) return
         setRuntime(next)
         setRuntimeError(null)
         alignWorkspacePanelToWorkspaceRoot(next.workspace)
         void refreshProjects()
       } catch (e) {
+        if (!appMountedRef.current || requestId !== sessionLoadRequestRef.current) return
         setRuntimeError((e as Error).message)
         await refreshRuntime()
         return
@@ -1236,12 +1488,14 @@ export function App() {
     setMessages([{ role: 'assistant', text: '正在加载历史消息...' }])
     try {
       const history = await getSessionMessages(id)
+      if (!appMountedRef.current || requestId !== sessionLoadRequestRef.current) return
       setMessages(
         history.length > 0
           ? history.map(historyMessageToChatMessage)
           : [{ role: 'assistant', text: `会话 "${title}" 暂无历史消息` }],
       )
     } catch (e) {
+      if (!appMountedRef.current || requestId !== sessionLoadRequestRef.current) return
       setMessages([{ role: 'assistant', text: `加载历史失败: ${(e as Error).message}` }])
     }
   }
@@ -1265,6 +1519,7 @@ export function App() {
   async function archiveSession(id: string) {
     setControlTip(null)
     await deleteSession(id)
+    if (!appMountedRef.current) return
     clearSessionFromLocalState(id)
     void refreshSessions()
   }
@@ -1272,6 +1527,7 @@ export function App() {
   async function deleteSessionPermanently(id: string) {
     setControlTip(null)
     await deleteSession(id, { hard: true })
+    if (!appMountedRef.current) return
     clearSessionFromLocalState(id)
     void refreshSessions()
   }
@@ -1324,6 +1580,7 @@ export function App() {
   async function resetWorkspaceAfterProjectRemoval(project: ProjectMeta, wasActiveProject: boolean) {
     if (!wasActiveProject) return
     const next = await updateRuntime({ workspace: '' })
+    if (!appMountedRef.current) return
     setRuntime(next)
     setRuntimeError(null)
     alignWorkspacePanelToWorkspaceRoot(next.workspace)
@@ -1340,6 +1597,7 @@ export function App() {
     const wasActiveProject = sessionOwnership.scope === 'project' && sessionOwnership.projectId === project.id
     const removedSessionIds = new Set(sessionsForProject(project).map((session) => session.id))
     await deleteProject(project.id)
+    if (!appMountedRef.current) return
     setProjects((items) => items.filter((item) => item.id !== project.id))
     setSessions((items) => items.filter((item) => !removedSessionIds.has(item.id)))
     if (currentSession && removedSessionIds.has(currentSession)) {
@@ -1359,6 +1617,7 @@ export function App() {
     const wasActiveProject = sessionOwnership.scope === 'project' && sessionOwnership.projectId === project.id
     const removedSessionIds = new Set(sessionsForProject(project).map((session) => session.id))
     await deleteProject(project.id, { hard: true })
+    if (!appMountedRef.current) return
     setProjects((items) => items.filter((item) => item.id !== project.id))
     setSessions((items) => items.filter((item) => !removedSessionIds.has(item.id)))
     setPinnedSessionIds((pinned) => {
@@ -1383,6 +1642,7 @@ export function App() {
     const ids = visibleSessions.map((session) => session.id)
     if (ids.length === 0) return
     await Promise.all(ids.map((id) => deleteSession(id)))
+    if (!appMountedRef.current) return
     setSessions((items) => items.filter((item) => !ids.includes(item.id)))
     setPinnedSessionIds((pinned) => {
       const next = new Set(pinned)
@@ -1411,10 +1671,19 @@ export function App() {
     })
   }
 
+  function scheduleComposerHeightSync() {
+    window.cancelAnimationFrame(composerSyncFrameRef.current ?? 0)
+    composerSyncFrameRef.current = window.requestAnimationFrame(() => {
+      composerSyncFrameRef.current = undefined
+      syncComposerInputHeight(inputRef.current)
+    })
+  }
+
   function beginSidebarResize(event: React.PointerEvent<HTMLDivElement>) {
     if (sidebarCollapsed) return
     if (event.button !== 0) return
     event.preventDefault()
+    activeDragCleanupRef.current?.()
     setControlTip(null)
     const startX = event.clientX
     const startWidth = sidebarWidth
@@ -1441,8 +1710,10 @@ export function App() {
     const clearSettlingClassSoon = () => {
       window.clearTimeout(settleTimer)
       settleTimer = window.setTimeout(() => {
+        sidebarSettleTimerRef.current = undefined
         shellRef.current?.classList.remove('sidebar-settling')
       }, SIDEBAR_SETTLE_ANIMATION_MS)
+      sidebarSettleTimerRef.current = settleTimer
     }
 
     const startThresholdAnimation = () => {
@@ -1491,7 +1762,8 @@ export function App() {
       shell.classList.remove('sidebar-drag-collapsed')
       shell.classList.remove('sidebar-threshold-animating')
       shell.classList.add('sidebar-settling')
-      window.requestAnimationFrame(() => {
+      sidebarSettleFrameRef.current = window.requestAnimationFrame(() => {
+        sidebarSettleFrameRef.current = undefined
         shell.style.setProperty('--sidebar-width', `${finalWidth}px`)
         resetSidebarPreviewVars()
         setSidebarWidth(finalWidth)
@@ -1503,6 +1775,9 @@ export function App() {
     const handlePointerUp = () => {
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
+      window.removeEventListener('blur', handlePointerUp)
+      activeDragCleanupRef.current = null
       window.clearTimeout(thresholdAnimationTimer)
       if (frameHandle !== undefined) {
         window.cancelAnimationFrame(frameHandle)
@@ -1525,11 +1800,31 @@ export function App() {
         settleSidebarOpen(finalWidth)
       }
       endResize('column')
-      window.requestAnimationFrame(() => syncComposerInputHeight(inputRef.current))
+      scheduleComposerHeightSync()
     }
 
+    activeDragCleanupRef.current = () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
+      window.removeEventListener('blur', handlePointerUp)
+      if (frameHandle !== undefined) window.cancelAnimationFrame(frameHandle)
+      window.clearTimeout(settleTimer)
+      window.clearTimeout(thresholdAnimationTimer)
+      shellRef.current?.classList.remove(
+        'sidebar-drag-live',
+        'sidebar-drag-collapsed',
+        'sidebar-settling',
+        'sidebar-threshold-animating',
+      )
+      resetSidebarPreviewVars()
+      endResize('column')
+      activeDragCleanupRef.current = null
+    }
     window.addEventListener('pointermove', handlePointerMove)
     window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
+    window.addEventListener('blur', handlePointerUp)
   }
 
   function nudgeSidebar(delta: number) {
@@ -1545,6 +1840,7 @@ export function App() {
     if (workspacePanelCollapsed || workspacePanelFullscreen) return
     if (event.button !== 0) return
     event.preventDefault()
+    activeDragCleanupRef.current?.()
     setControlTip(null)
     const resizer = event.currentTarget
     const pointerId = event.pointerId
@@ -1617,6 +1913,8 @@ export function App() {
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
       window.removeEventListener('pointercancel', handlePointerUp)
+      window.removeEventListener('blur', handlePointerUp)
+      activeDragCleanupRef.current = null
       if (frameHandle !== undefined) {
         window.cancelAnimationFrame(frameHandle)
         applyDragFrame()
@@ -1650,12 +1948,30 @@ export function App() {
         'workspace-panel-drag-fullscreen',
       )
       endResize('column')
-      window.requestAnimationFrame(() => syncComposerInputHeight(inputRef.current))
+      scheduleComposerHeightSync()
     }
 
+    activeDragCleanupRef.current = () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
+      window.removeEventListener('blur', handlePointerUp)
+      if (frameHandle !== undefined) window.cancelAnimationFrame(frameHandle)
+      window.clearTimeout(thresholdAnimationTimer)
+      if (resizer.hasPointerCapture(pointerId)) resizer.releasePointerCapture(pointerId)
+      shellRef.current?.classList.remove(
+        'workspace-panel-drag-live',
+        'workspace-panel-drag-collapsed',
+        'workspace-panel-drag-fullscreen',
+        'workspace-panel-threshold-animating',
+      )
+      endResize('column')
+      activeDragCleanupRef.current = null
+    }
     window.addEventListener('pointermove', handlePointerMove)
     window.addEventListener('pointerup', handlePointerUp)
     window.addEventListener('pointercancel', handlePointerUp)
+    window.addEventListener('blur', handlePointerUp)
   }
 
   function toggleWorkspacePanel() {
@@ -1691,6 +2007,10 @@ export function App() {
 
   function openWorkspacePanelTab(tab: WorkspacePanelTabId) {
     setControlTip(null)
+    if (!workspacePanelOpenTabs.includes(tab) && workspacePanelOpenTabs.length >= WORKSPACE_PANEL_OPEN_TABS_MAX) {
+      setRuntimeError(`拓展工作区最多打开 ${WORKSPACE_PANEL_OPEN_TABS_MAX} 个标签`)
+      return
+    }
     setWorkspacePanelOpenTabs((tabs) => (tabs.includes(tab) ? tabs : [...tabs, tab]))
     setWorkspacePanelTab(tab)
     setWorkspacePanelCollapsed(false)
@@ -1767,7 +2087,7 @@ export function App() {
         activeTab: workspacePanelTab,
         openTabs: workspacePanelOpenTabs,
         openRequest,
-        fileNavigatorCollapsed: readBooleanPreference(WORKSPACE_FILE_NAVIGATOR_COLLAPSED_KEY, false),
+        fileNavigatorCollapsed: workspaceFileNavigatorCollapsed,
         drafts: serializeWorkspaceFileDrafts(workspaceFileDrafts, workspacePanelOpenTabs),
       }).catch(() => undefined)
     }, 500)
@@ -1775,6 +2095,7 @@ export function App() {
   }, [
     currentSession,
     workspaceFileDrafts,
+    workspaceFileNavigatorCollapsed,
     workspaceOpenRequest,
     workspacePanelCollapsed,
     workspacePanelFullscreen,
@@ -1793,6 +2114,7 @@ export function App() {
         sidebarCollapsed ? 'sidebar-collapsed' : '',
         workspacePanelCollapsed ? 'workspace-panel-collapsed' : '',
         workspacePanelFullscreen ? 'workspace-panel-fullscreen' : '',
+        directModulePage ? 'direct-module-open' : '',
         settingsOpen ? 'settings-open' : '',
       ].filter(Boolean).join(' ')}
       style={layoutStyle}
@@ -1817,9 +2139,10 @@ export function App() {
         </div>
         <SidebarQuickNav
           activePanel={sidebarPanel}
+          activeModule={directModulePage}
           onNewConversation={createConversationFromSidebar}
           onOpenPanel={openSidebarPanel}
-          onOpenSettingsPage={openSettingsPage}
+          onOpenModulePage={openDirectModulePage}
           onTipChange={setControlTip}
         />
         <SidebarProjectSection
@@ -1837,6 +2160,7 @@ export function App() {
           onArchiveSession={archiveSession}
           onDeleteSession={deleteSessionPermanently}
           onArchiveProject={(project) => void archiveProject(project)}
+          onRebindProject={(project) => void relocateProject(project)}
           onDeleteProject={(project) => void deleteProjectPermanently(project)}
           onTipChange={setControlTip}
         />
@@ -1951,6 +2275,10 @@ export function App() {
         onPointerMove={updateWorkspacePanelReopenPresence}
         onPointerLeave={() => setWorkspacePanelReopenActive(false)}
       >
+      {directModulePage ? (
+        <DirectModuleWorkspace page={directModulePage} />
+      ) : (
+      <>
       <main className="chat">
         <div className={`messages ${messages.length === 0 ? 'is-empty' : ''}`} ref={scrollRef}>
           {messages.length === 0 && (
@@ -1992,17 +2320,6 @@ export function App() {
             )
           ))}
         </div>
-
-        <SidebarFeaturePanel
-          panel={sidebarPanel}
-          search={sidebarSearch}
-          sessions={visibleSessions}
-          currentSession={currentSession}
-          now={now}
-          onSearchChange={setSidebarSearch}
-          onClose={closeSidebarPanel}
-          onOpenSession={(session) => void switchSession(session)}
-        />
 
         <section className="composer-shell">
           <TaskProgressPresence activity={latestTaskActivity} now={activityNow} />
@@ -2143,6 +2460,8 @@ export function App() {
         sessionTitle={currentSession ? sessions.find((session) => session.id === currentSession)?.title : undefined}
         artifactVersion={workspaceArtifactVersion}
         fileDrafts={workspaceFileDrafts}
+        fileNavigatorCollapsed={workspaceFileNavigatorCollapsed}
+        expandedPaths={workspaceExpandedPaths}
         onTabChange={openWorkspacePanelTab}
         onCloseTab={closeWorkspacePanelTab}
         onFileDraftChange={updateWorkspaceFileDraft}
@@ -2153,6 +2472,10 @@ export function App() {
         onRequestFileSaveApproval={requestWorkspaceSaveApproval}
         onRequestCommandApproval={requestWorkspaceCommandApproval}
         onWorkspaceArtifactsChanged={() => setWorkspaceArtifactVersion((value) => value + 1)}
+        onFileNavigatorCollapsedChange={setWorkspaceFileNavigatorCollapsed}
+        onExpandedPathsChange={(update) => setWorkspaceExpandedPaths((paths) =>
+          boundStringList(update(paths), MAX_NAVIGATION_EXPANDED_PATHS),
+        )}
         onOpenFile={openFileInWorkspace}
         onTipChange={setControlTip}
       />
@@ -2173,6 +2496,18 @@ export function App() {
           <WorkspacePanelIcon collapsed />
         </span>
       </button>
+      </>
+      )}
+      <SidebarFeaturePanel
+        panel={sidebarPanel}
+        search={sidebarSearch}
+        sessions={visibleSessions}
+        currentSession={currentSession}
+        now={now}
+        onSearchChange={setSidebarSearch}
+        onClose={closeSidebarPanel}
+        onOpenSession={(session) => void switchSession(session)}
+      />
       </section>
       </div>
       </div>
@@ -2195,6 +2530,7 @@ export function App() {
           settingsEntryRippling={settingsEntryRippling}
           onOpenPage={openSettingsPage}
           onProfileChange={(profile) => void applyRuntimePatch({ profile })}
+          onContextCompressionThresholdChange={(ratio) => applyRuntimePatch({ contextCompressionThresholdRatio: ratio })}
           onArchiveChanged={() => {
             void refreshProjects()
             void refreshSessions()
@@ -2247,6 +2583,8 @@ function WorkspacePanel({
   sessionTitle,
   artifactVersion,
   fileDrafts,
+  fileNavigatorCollapsed,
+  expandedPaths,
   onTabChange,
   onCloseTab,
   onFileDraftChange,
@@ -2257,6 +2595,8 @@ function WorkspacePanel({
   onRequestFileSaveApproval,
   onRequestCommandApproval,
   onWorkspaceArtifactsChanged,
+  onFileNavigatorCollapsedChange,
+  onExpandedPathsChange,
   onOpenFile,
   onTipChange,
 }: {
@@ -2274,6 +2614,8 @@ function WorkspacePanel({
   sessionTitle?: string
   artifactVersion: number
   fileDrafts: Record<string, WorkspaceFileDraftState>
+  fileNavigatorCollapsed: boolean
+  expandedPaths: string[]
   onTabChange: (tab: WorkspacePanelTabId) => void
   onCloseTab: (tab: WorkspacePanelTabId) => void
   onFileDraftChange: (tab: WorkspaceFileTabId, draft: WorkspaceFileDraftState | null) => void
@@ -2284,6 +2626,8 @@ function WorkspacePanel({
   onRequestFileSaveApproval: (detail: unknown) => Promise<boolean>
   onRequestCommandApproval: (detail: unknown) => Promise<boolean>
   onWorkspaceArtifactsChanged: () => void
+  onFileNavigatorCollapsedChange: (collapsed: boolean) => void
+  onExpandedPathsChange: (update: StringListUpdater) => void
   onOpenFile: (path: string) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
@@ -2461,12 +2805,16 @@ function WorkspacePanel({
                 workspacePath={workspacePath}
                 defaultWorkspacePath={defaultWorkspacePath}
                 usingTemporaryRoot={usingTemporaryRoot}
+                navigatorCollapsed={fileNavigatorCollapsed}
+                expandedPaths={expandedPaths}
                 openRequest={openRequest}
                 sessionId={sessionId}
                 onRememberOpenPath={onRememberOpenPath}
                 onReturnToDefaultWorkspace={onReturnToDefaultWorkspace}
                 onRequestFileSaveApproval={onRequestFileSaveApproval}
                 onWorkspaceArtifactsChanged={onWorkspaceArtifactsChanged}
+                onNavigatorCollapsedChange={onFileNavigatorCollapsedChange}
+                onExpandedPathsChange={onExpandedPathsChange}
                 onOpenFileTab={(root, path) => {
                   onRememberOpenPath(root, path)
                   onTabChange(workspaceFileTabId(root, path))
@@ -2500,6 +2848,8 @@ function WorkspacePanel({
                   workspacePath={activeFileTab.root}
                   defaultWorkspacePath={defaultWorkspacePath}
                   usingTemporaryRoot={!isSamePath(activeFileTab.root, defaultWorkspacePath)}
+                  navigatorCollapsed={fileNavigatorCollapsed}
+                  expandedPaths={expandedPaths}
                   selectedPath={activeFileTab.path}
                   onOpenFileTab={(root, path) => {
                     onRememberOpenPath(root, path)
@@ -2509,6 +2859,8 @@ function WorkspacePanel({
                     onReturnToDefaultWorkspace()
                     onTabChange('review')
                   }}
+                  onNavigatorCollapsedChange={onFileNavigatorCollapsedChange}
+                  onExpandedPathsChange={onExpandedPathsChange}
                   onTipChange={onTipChange}
                 />
               </div>
@@ -2539,12 +2891,16 @@ function WorkspacePanel({
               workspacePath={workspacePath}
               defaultWorkspacePath={defaultWorkspacePath}
               usingTemporaryRoot={usingTemporaryRoot}
+              navigatorCollapsed={fileNavigatorCollapsed}
+              expandedPaths={expandedPaths}
               selectedPath={openRequest?.root === workspacePath ? openRequest.path : ''}
               onOpenFileTab={(root, path) => {
                 onRememberOpenPath(root, path)
                 onTabChange(workspaceFileTabId(root, path))
               }}
               onReturnToDefaultWorkspace={onReturnToDefaultWorkspace}
+              onNavigatorCollapsedChange={onFileNavigatorCollapsedChange}
+              onExpandedPathsChange={onExpandedPathsChange}
               onTipChange={onTipChange}
             />
           )}
@@ -3152,53 +3508,92 @@ interface WorkspaceDirectoryState {
   hiddenCount: number
 }
 
+const MAX_WORKSPACE_DIRECTORY_CACHE_ENTRIES = 128
+
+function updateWorkspaceDirectoryCache(
+  current: Record<string, WorkspaceDirectoryState>,
+  requestedPath: string,
+  resolvedPath: string,
+  state: WorkspaceDirectoryState,
+  rootPath: string,
+): Record<string, WorkspaceDirectoryState> {
+  const next = { ...current }
+  delete next[requestedPath]
+  delete next[resolvedPath]
+  next[requestedPath] = state
+  next[resolvedPath] = state
+
+  const protectedPaths = new Set([rootPath, requestedPath, resolvedPath])
+  let entryCount = Object.keys(next).length
+  for (const key of Object.keys(next)) {
+    if (entryCount <= MAX_WORKSPACE_DIRECTORY_CACHE_ENTRIES) break
+    if (protectedPaths.has(key)) continue
+    delete next[key]
+    entryCount -= 1
+  }
+  return next
+}
+
 function WorkspaceFiles({
   workspacePath,
   defaultWorkspacePath,
   usingTemporaryRoot,
+  navigatorCollapsed,
+  expandedPaths,
   openRequest,
   sessionId,
   onRememberOpenPath,
   onReturnToDefaultWorkspace,
   onRequestFileSaveApproval,
   onWorkspaceArtifactsChanged,
+  onNavigatorCollapsedChange,
+  onExpandedPathsChange,
   onOpenFileTab,
   onTipChange,
 }: {
   workspacePath: string
   defaultWorkspacePath: string
   usingTemporaryRoot: boolean
+  navigatorCollapsed: boolean
+  expandedPaths: string[]
   openRequest: WorkspaceOpenRequest | null
   sessionId?: string
   onRememberOpenPath: (root: string, path: string) => void
   onReturnToDefaultWorkspace: () => void
   onRequestFileSaveApproval: (detail: unknown) => Promise<boolean>
   onWorkspaceArtifactsChanged: () => void
+  onNavigatorCollapsedChange: (collapsed: boolean) => void
+  onExpandedPathsChange: (update: StringListUpdater) => void
   onOpenFileTab: (root: string, path: string) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const [directories, setDirectories] = useState<Record<string, WorkspaceDirectoryState>>({})
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set([workspacePath]))
+  const expanded = useMemo(() => new Set(expandedPaths), [expandedPaths])
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(() => new Set())
   const [treeError, setTreeError] = useState('')
   const [selectedPath, setSelectedPath] = useState('')
   const [preview, setPreview] = useState<WorkspacePreview | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState('')
-  const [navigatorCollapsed, setNavigatorCollapsed] = useState(() => readBooleanPreference(WORKSPACE_FILE_NAVIGATOR_COLLAPSED_KEY, false))
   const [filterText, setFilterText] = useState('')
   const directoryRequestRef = useRef(0)
   const previewRequestRef = useRef(0)
+  const mountedRef = useRef(true)
 
   useEffect(() => {
-    writeBooleanPreference(WORKSPACE_FILE_NAVIGATOR_COLLAPSED_KEY, navigatorCollapsed)
-  }, [navigatorCollapsed])
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      directoryRequestRef.current += 1
+      previewRequestRef.current += 1
+    }
+  }, [])
 
   useEffect(() => {
     let alive = true
     const requestId = ++directoryRequestRef.current
     setDirectories({})
-    setExpanded(new Set([workspacePath]))
+    onExpandedPathsChange((paths) => paths.includes(workspacePath) ? paths : [...paths, workspacePath])
     setTreeError('')
     setSelectedPath('')
     setPreview(null)
@@ -3237,41 +3632,48 @@ function WorkspaceFiles({
   }
 
   function commitDirectory(requestedPath: string, directory: WorkspaceDirectory) {
+    if (!mountedRef.current) return
     const state: WorkspaceDirectoryState = {
       entries: directory.entries,
       truncated: directory.truncated,
       hiddenCount: directory.hiddenCount,
     }
-    setDirectories((value) => ({
-      ...value,
-      [requestedPath]: state,
-      [directory.path]: state,
-    }))
+    setDirectories((value) => updateWorkspaceDirectoryCache(
+      value,
+      requestedPath,
+      directory.path,
+      state,
+      workspacePath,
+    ))
   }
 
   async function loadDirectory(path: string) {
+    const requestId = directoryRequestRef.current
     setTreeError('')
     setDirectoryLoading(path, true)
     try {
       const directory = await listWorkspaceDirectory(workspacePath, path)
+      if (!mountedRef.current || requestId !== directoryRequestRef.current) return
       commitDirectory(path, directory)
     } catch (err) {
+      if (!mountedRef.current || requestId !== directoryRequestRef.current) return
       setTreeError((err as Error).message)
     } finally {
+      if (!mountedRef.current || requestId !== directoryRequestRef.current) return
       setDirectoryLoading(path, false)
     }
   }
 
   function toggleDirectory(entry: WorkspaceEntry) {
-    setExpanded((value) => {
-      const next = new Set(value)
+    onExpandedPathsChange((paths) => {
+      const next = new Set(paths)
       if (next.has(entry.path)) {
         next.delete(entry.path)
       } else {
         next.add(entry.path)
         if (!directories[entry.path]) void loadDirectory(entry.path)
       }
-      return next
+      return [...next]
     })
   }
 
@@ -3288,19 +3690,19 @@ function WorkspaceFiles({
     setPreviewLoading(true)
     const parent = directoryPath(path)
     if (parent && !isSamePath(parent, workspacePath) && !directories[parent]) {
-      setExpanded((value) => new Set([...value, parent]))
+      onExpandedPathsChange((paths) => paths.includes(parent) ? paths : [...paths, parent])
       void loadDirectory(parent)
     }
     const requestId = ++previewRequestRef.current
     try {
       const result = await previewWorkspaceFile(workspacePath, path)
-      if (requestId !== previewRequestRef.current) return
+      if (!mountedRef.current || requestId !== previewRequestRef.current) return
       setPreview(result)
     } catch (err) {
-      if (requestId !== previewRequestRef.current) return
+      if (!mountedRef.current || requestId !== previewRequestRef.current) return
       setPreviewError((err as Error).message)
     } finally {
-      if (requestId !== previewRequestRef.current) return
+      if (!mountedRef.current || requestId !== previewRequestRef.current) return
       setPreviewLoading(false)
     }
   }
@@ -3384,7 +3786,7 @@ function WorkspaceFiles({
           type="button"
           aria-label={navigatorCollapsed ? '展开文件管理' : '折叠文件管理'}
           aria-expanded={!navigatorCollapsed}
-          onClick={() => setNavigatorCollapsed((value) => !value)}
+          onClick={() => onNavigatorCollapsedChange(!navigatorCollapsed)}
           onMouseEnter={(event) => onTipChange(buildFloatingHelpTip(navigatorCollapsed ? '展开文件管理' : '折叠文件管理', event.clientX, event.clientY))}
           onMouseMove={(event) => onTipChange(buildFloatingHelpTip(navigatorCollapsed ? '展开文件管理' : '折叠文件管理', event.clientX, event.clientY))}
           onMouseLeave={() => onTipChange(null)}
@@ -3453,7 +3855,7 @@ function WorkspaceFiles({
                 className="workspace-files-icon-btn"
                 type="button"
                 aria-label="折叠文件管理"
-                onClick={() => setNavigatorCollapsed(true)}
+                onClick={() => onNavigatorCollapsedChange(true)}
                 onMouseEnter={(event) => onTipChange(buildFloatingHelpTip('折叠文件管理', event.clientX, event.clientY))}
                 onMouseMove={(event) => onTipChange(buildFloatingHelpTip('折叠文件管理', event.clientX, event.clientY))}
                 onMouseLeave={() => onTipChange(null)}
@@ -3512,36 +3914,48 @@ function WorkspaceFileNavigator({
   workspacePath,
   defaultWorkspacePath,
   usingTemporaryRoot,
+  navigatorCollapsed,
+  expandedPaths,
   selectedPath,
   onOpenFileTab,
   onReturnToDefaultWorkspace,
+  onNavigatorCollapsedChange,
+  onExpandedPathsChange,
   onTipChange,
 }: {
   workspacePath: string
   defaultWorkspacePath: string
   usingTemporaryRoot: boolean
+  navigatorCollapsed: boolean
+  expandedPaths: string[]
   selectedPath: string
   onOpenFileTab: (root: string, path: string) => void
   onReturnToDefaultWorkspace: () => void
+  onNavigatorCollapsedChange: (collapsed: boolean) => void
+  onExpandedPathsChange: (update: StringListUpdater) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const [directories, setDirectories] = useState<Record<string, WorkspaceDirectoryState>>({})
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set([workspacePath]))
+  const expanded = useMemo(() => new Set(expandedPaths), [expandedPaths])
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(() => new Set())
   const [treeError, setTreeError] = useState('')
-  const [navigatorCollapsed, setNavigatorCollapsed] = useState(() => readBooleanPreference(WORKSPACE_FILE_NAVIGATOR_COLLAPSED_KEY, false))
   const [filterText, setFilterText] = useState('')
   const directoryRequestRef = useRef(0)
+  const mountedRef = useRef(true)
 
   useEffect(() => {
-    writeBooleanPreference(WORKSPACE_FILE_NAVIGATOR_COLLAPSED_KEY, navigatorCollapsed)
-  }, [navigatorCollapsed])
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      directoryRequestRef.current += 1
+    }
+  }, [])
 
   useEffect(() => {
     let alive = true
     const requestId = ++directoryRequestRef.current
     setDirectories({})
-    setExpanded(new Set([workspacePath]))
+    onExpandedPathsChange((paths) => paths.includes(workspacePath) ? paths : [...paths, workspacePath])
     setTreeError('')
     setDirectoryLoading(workspacePath, true)
     listWorkspaceDirectory(workspacePath, workspacePath)
@@ -3565,7 +3979,7 @@ function WorkspaceFileNavigator({
   useEffect(() => {
     const ancestors = workspaceAncestorPaths(workspacePath, selectedPath)
     if (ancestors.length === 0) return
-    setExpanded((value) => new Set([...value, ...ancestors]))
+    onExpandedPathsChange((paths) => [...paths, ...ancestors])
     for (const path of ancestors) {
       if (!directories[path]) void loadDirectory(path)
     }
@@ -3581,41 +3995,48 @@ function WorkspaceFileNavigator({
   }
 
   function commitDirectory(requestedPath: string, directory: WorkspaceDirectory) {
+    if (!mountedRef.current) return
     const state: WorkspaceDirectoryState = {
       entries: directory.entries,
       truncated: directory.truncated,
       hiddenCount: directory.hiddenCount,
     }
-    setDirectories((value) => ({
-      ...value,
-      [requestedPath]: state,
-      [directory.path]: state,
-    }))
+    setDirectories((value) => updateWorkspaceDirectoryCache(
+      value,
+      requestedPath,
+      directory.path,
+      state,
+      workspacePath,
+    ))
   }
 
   async function loadDirectory(path: string) {
+    const requestId = directoryRequestRef.current
     setTreeError('')
     setDirectoryLoading(path, true)
     try {
       const directory = await listWorkspaceDirectory(workspacePath, path)
+      if (!mountedRef.current || requestId !== directoryRequestRef.current) return
       commitDirectory(path, directory)
     } catch (err) {
+      if (!mountedRef.current || requestId !== directoryRequestRef.current) return
       setTreeError((err as Error).message)
     } finally {
+      if (!mountedRef.current || requestId !== directoryRequestRef.current) return
       setDirectoryLoading(path, false)
     }
   }
 
   function toggleDirectory(entry: WorkspaceEntry) {
-    setExpanded((value) => {
-      const next = new Set(value)
+    onExpandedPathsChange((paths) => {
+      const next = new Set(paths)
       if (next.has(entry.path)) {
         next.delete(entry.path)
       } else {
         next.add(entry.path)
         if (!directories[entry.path]) void loadDirectory(entry.path)
       }
-      return next
+      return [...next]
     })
   }
 
@@ -3656,7 +4077,7 @@ function WorkspaceFileNavigator({
         type="button"
         aria-label={navigatorCollapsed ? '展开文件管理' : '折叠文件管理'}
         aria-expanded={!navigatorCollapsed}
-        onClick={() => setNavigatorCollapsed((value) => !value)}
+        onClick={() => onNavigatorCollapsedChange(!navigatorCollapsed)}
         onMouseEnter={(event) => onTipChange(buildFloatingHelpTip(navigatorCollapsed ? '展开文件管理' : '折叠文件管理', event.clientX, event.clientY))}
         onMouseMove={(event) => onTipChange(buildFloatingHelpTip(navigatorCollapsed ? '展开文件管理' : '折叠文件管理', event.clientX, event.clientY))}
         onMouseLeave={() => onTipChange(null)}
@@ -3725,7 +4146,7 @@ function WorkspaceFileNavigator({
               className="workspace-files-icon-btn"
               type="button"
               aria-label="折叠文件管理"
-              onClick={() => setNavigatorCollapsed(true)}
+              onClick={() => onNavigatorCollapsedChange(true)}
               onMouseEnter={(event) => onTipChange(buildFloatingHelpTip('折叠文件管理', event.clientX, event.clientY))}
               onMouseMove={(event) => onTipChange(buildFloatingHelpTip('折叠文件管理', event.clientX, event.clientY))}
               onMouseLeave={() => onTipChange(null)}
@@ -4369,6 +4790,9 @@ function WorkspaceTerminal({
   const [historyCursor, setHistoryCursor] = useState(-1)
   const historyDraftRef = useRef('')
   const commandInputRef = useRef<HTMLInputElement>(null)
+  const focusFrameRef = useRef<number>()
+  const activityRequestRef = useRef(0)
+  const mountedRef = useRef(true)
   const commandHistory = useMemo(
     () => dedupeTerminalCommands([
       ...recentCommands,
@@ -4380,6 +4804,15 @@ function WorkspaceTerminal({
   useEffect(() => {
     void refreshTerminalActivities()
   }, [workspacePath, sessionId])
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      activityRequestRef.current += 1
+      window.cancelAnimationFrame(focusFrameRef.current ?? 0)
+    }
+  }, [])
 
   useEffect(() => {
     let disposed = false
@@ -4459,6 +4892,7 @@ function WorkspaceTerminal({
       if (fitFrame) window.cancelAnimationFrame(fitFrame)
       resizeObserver?.disconnect()
       streamAbortRef.current?.abort()
+      streamAbortRef.current = null
       const activeSessionId = terminalSessionRef.current
       terminalSessionRef.current = ''
       if (activeSessionId) void closeWorkspaceTerminalSession(activeSessionId).catch(() => undefined)
@@ -4493,14 +4927,22 @@ function WorkspaceTerminal({
       await streamWorkspaceTerminalSession(terminalSession.sessionId, {
         signal: controller.signal,
         onStart: (event) => {
+          if (isDisposed()) return
           terminalBackendRef.current = event.backend ?? 'spawn'
           setTerminalBackend(event.backend ?? 'spawn')
           setStatus(`${event.shell} 就绪`)
         },
-        onStdout: (text) => writeTerminalText(text),
-        onStderr: (text) => writeTerminalText(text, 'stderr'),
-        onExit: () => setStatus('终端已退出'),
+        onStdout: (text) => {
+          if (!isDisposed()) writeTerminalText(text)
+        },
+        onStderr: (text) => {
+          if (!isDisposed()) writeTerminalText(text, 'stderr')
+        },
+        onExit: () => {
+          if (!isDisposed()) setStatus('终端已退出')
+        },
         onError: (message) => {
+          if (isDisposed()) return
           writeTerminalLine(`\x1b[31m${message}\x1b[0m`)
           setStatus('终端错误')
         },
@@ -4508,8 +4950,11 @@ function WorkspaceTerminal({
     } catch (err) {
       const error = err as Error
       if (error.name === 'AbortError') return
+      if (isDisposed()) return
       setStatus(error.message)
       writeTerminalLine(`\x1b[31m${error.message}\x1b[0m`)
+    } finally {
+      if (streamAbortRef.current === controller) streamAbortRef.current = null
     }
   }
 
@@ -4543,11 +4988,14 @@ function WorkspaceTerminal({
   }
 
   async function refreshTerminalActivities() {
+    const requestId = ++activityRequestRef.current
     setActivityError('')
     try {
       const records = await listWorkspaceTerminalActivity(workspacePath, sessionId, 8)
+      if (!mountedRef.current || requestId !== activityRequestRef.current) return
       setActivities(records)
     } catch (err) {
+      if (!mountedRef.current || requestId !== activityRequestRef.current) return
       setActivityError((err as Error).message)
     }
   }
@@ -4562,7 +5010,11 @@ function WorkspaceTerminal({
     setCommand(nextCommand)
     setHistoryCursor(-1)
     historyDraftRef.current = ''
-    window.requestAnimationFrame(() => commandInputRef.current?.focus())
+    window.cancelAnimationFrame(focusFrameRef.current ?? 0)
+    focusFrameRef.current = window.requestAnimationFrame(() => {
+      focusFrameRef.current = undefined
+      commandInputRef.current?.focus()
+    })
   }
 
   function moveTerminalHistory(direction: 'older' | 'newer') {
@@ -5031,7 +5483,8 @@ function AssistantTurnMessage({
           <ActivityDisclosure
             title="执行过程"
             meta={runningCommands > 0 ? `正在运行 ${runningCommands} 条命令` : commandCount > 0 ? `已运行 ${commandCount} 条命令` : '等待执行'}
-            defaultOpen
+            defaultOpen={executionDisclosureDefaultOpen(activity.status)}
+            resetKey={executionDisclosureResetKey(activity.status)}
           >
             <ActivityTimeline activity={activity} now={now} onOpenFile={onOpenFile} />
           </ActivityDisclosure>
@@ -5039,7 +5492,8 @@ function AssistantTurnMessage({
             <ActivityDisclosure
               title="验证"
               meta={activity.verificationRunning ? '正在验证' : verificationSummary(activity.verificationHistory)}
-              defaultOpen={activity.verificationRunning}
+              defaultOpen={verificationDisclosureDefaultOpen(Boolean(activity.verificationRunning))}
+              resetKey={verificationDisclosureResetKey(activity.status, Boolean(activity.verificationRunning))}
             >
               <VerificationTimeline activity={activity} />
             </ActivityDisclosure>
@@ -5060,14 +5514,19 @@ function ActivityDisclosure({
   title,
   meta,
   defaultOpen = false,
+  resetKey,
   children,
 }: {
   title: string
   meta?: string
   defaultOpen?: boolean
+  resetKey?: string
   children: ReactNode
 }) {
   const [open, setOpen] = useState(defaultOpen)
+  useEffect(() => {
+    if (resetKey !== undefined) setOpen(defaultOpen)
+  }, [defaultOpen, resetKey])
 
   return (
     <section className={`activity-disclosure ${open ? 'open' : ''}`}>
@@ -5660,7 +6119,63 @@ function routesEqual(left: AppRoute | undefined, right: AppRoute): boolean {
   if (!left || left.section !== right.section) return false
   if (left.section === 'chat' && right.section === 'chat') return true
   if (left.section === 'settings' && right.section === 'settings') return left.page === right.page
+  if (left.section === 'module' && right.section === 'module') return left.page === right.page
   return false
+}
+
+function isDirectModulePage(page: SettingsPage): page is DirectModulePage {
+  return page === 'memoryTree' || page === 'scheduled' || page === 'plugins'
+}
+
+function rebindNavigationSnapshotWorkspace(
+  snapshot: AppNavigationSnapshot,
+  fromPath: string,
+  toPath: string,
+): AppNavigationSnapshot {
+  const rebound = rebindWorkspacePanelState({
+    openRequest: snapshot.workspaceOpenRequest
+      ? { id: 0, ...snapshot.workspaceOpenRequest }
+      : null,
+    openTabs: snapshot.workspacePanelOpenTabs,
+    activeTab: snapshot.workspacePanelTab,
+    drafts: {},
+  }, fromPath, toPath)
+  return {
+    ...snapshot,
+    workspacePanelTab: rebound.activeTab,
+    workspacePanelOpenTabs: rebound.openTabs,
+    workspaceOpenRequest: rebound.openRequest
+      ? { root: rebound.openRequest.root, path: rebound.openRequest.path }
+      : null,
+    workspaceExpandedPaths: [...new Set(snapshot.workspaceExpandedPaths.map((path) => (
+      rebindWorkspacePath(path, fromPath, toPath)
+    )))],
+  }
+}
+
+function navigationSnapshotsEqual(
+  left: AppNavigationSnapshot | undefined,
+  right: AppNavigationSnapshot,
+): boolean {
+  if (!left) return false
+  return routesEqual(left.route, right.route)
+    && left.sidebarCollapsed === right.sidebarCollapsed
+    && left.sidebarWidth === right.sidebarWidth
+    && left.conversationCollapsed === right.conversationCollapsed
+    && left.sidebarPanel === right.sidebarPanel
+    && left.workspacePanelCollapsed === right.workspacePanelCollapsed
+    && left.workspacePanelFullscreen === right.workspacePanelFullscreen
+    && left.workspacePanelWidth === right.workspacePanelWidth
+    && left.workspacePanelTab === right.workspacePanelTab
+    && stringListsEqual(left.workspacePanelOpenTabs, right.workspacePanelOpenTabs)
+    && left.workspaceOpenRequest?.root === right.workspaceOpenRequest?.root
+    && left.workspaceOpenRequest?.path === right.workspaceOpenRequest?.path
+    && left.workspaceFileNavigatorCollapsed === right.workspaceFileNavigatorCollapsed
+    && stringListsEqual(left.workspaceExpandedPaths, right.workspaceExpandedPaths)
+}
+
+function stringListsEqual(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index])
 }
 
 function clampNumber(value: number, min: number, max: number): number {
@@ -6184,6 +6699,8 @@ function useDismissOnOutside(
   eventName: DismissEventName = 'pointerdown',
 ) {
   const onDismissRef = useRef(onDismiss)
+  const refsRef = useRef(refs)
+  refsRef.current = refs
 
   useEffect(() => {
     onDismissRef.current = onDismiss
@@ -6195,7 +6712,7 @@ function useDismissOnOutside(
     const handlePointer = (event: MouseEvent | PointerEvent) => {
       const target = event.target as Node | null
       if (!target) return
-      if (refs.some((ref) => ref.current?.contains(target))) return
+      if (refsRef.current.some((ref) => ref.current?.contains(target))) return
       if (isTransientTriggerTarget(target)) return
       onDismissRef.current()
     }
@@ -6209,7 +6726,7 @@ function useDismissOnOutside(
       window.removeEventListener(eventName, handlePointer)
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [active, eventName, refs])
+  }, [active, eventName])
 }
 
 function isTransientTriggerTarget(target: Node): boolean {
@@ -6243,6 +6760,14 @@ function ProjectCreatorDialog({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   useEffect(() => {
     let frame = 0
@@ -6281,16 +6806,17 @@ function ProjectCreatorDialog({
     setError(null)
     try {
       await action()
+      if (!mountedRef.current) return
     } catch (err) {
-      setError((err as Error).message)
+      if (mountedRef.current) setError((err as Error).message)
     } finally {
-      setBusy(false)
+      if (mountedRef.current) setBusy(false)
     }
   }
 
   async function pickParent() {
     const selected = await onChooseParent()
-    if (selected) setParentPath(selected)
+    if (mountedRef.current && selected) setParentPath(selected)
   }
 
   async function submitCreate() {
@@ -6487,15 +7013,17 @@ function SettingsEntryBridge({
 
 function SidebarQuickNav({
   activePanel,
+  activeModule,
   onNewConversation,
   onOpenPanel,
-  onOpenSettingsPage,
+  onOpenModulePage,
   onTipChange,
 }: {
   activePanel: SidebarPanel
+  activeModule: DirectModulePage | null
   onNewConversation: () => void
   onOpenPanel: (panel: NonNullable<SidebarPanel>) => void
-  onOpenSettingsPage: (page: Extract<SettingsPage, 'memoryTree' | 'scheduled' | 'plugins'>) => void
+  onOpenModulePage: (page: DirectModulePage) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   return (
@@ -6516,19 +7044,22 @@ function SidebarQuickNav({
       <SidebarNavButton
         label="记忆树"
         icon={<MemoryTreeNavIcon />}
-        onClick={() => onOpenSettingsPage('memoryTree')}
+        active={activeModule === 'memoryTree'}
+        onClick={() => onOpenModulePage('memoryTree')}
         onTipChange={onTipChange}
       />
       <SidebarNavButton
         label="已安排"
         icon={<ScheduleIcon />}
-        onClick={() => onOpenSettingsPage('scheduled')}
+        active={activeModule === 'scheduled'}
+        onClick={() => onOpenModulePage('scheduled')}
         onTipChange={onTipChange}
       />
       <SidebarNavButton
         label="插件"
         icon={<PluginIcon />}
-        onClick={() => onOpenSettingsPage('plugins')}
+        active={activeModule === 'plugins'}
+        onClick={() => onOpenModulePage('plugins')}
         onTipChange={onTipChange}
       />
     </nav>
@@ -6586,6 +7117,7 @@ function SidebarProjectSection({
   onArchiveSession,
   onDeleteSession,
   onArchiveProject,
+  onRebindProject,
   onDeleteProject,
   onTipChange,
 }: {
@@ -6603,6 +7135,7 @@ function SidebarProjectSection({
   onArchiveSession: (id: string) => void | Promise<void>
   onDeleteSession: (id: string) => void | Promise<void>
   onArchiveProject: (project: ProjectMeta) => void | Promise<void>
+  onRebindProject: (project: ProjectMeta) => void | Promise<void>
   onDeleteProject: (project: ProjectMeta) => void | Promise<void>
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
@@ -6748,6 +7281,11 @@ function SidebarProjectSection({
                     onTipChange={onTipChange}
                     items={[
                       {
+                        label: '重新定位项目',
+                        icon: <ProjectIcon />,
+                        onSelect: () => onRebindProject(project),
+                      },
+                      {
                         label: '归档项目',
                         icon: <ArchiveIcon />,
                         onSelect: () => onArchiveProject(project),
@@ -6825,6 +7363,7 @@ function SidebarFeaturePanel({
   const [contentVisible, setContentVisible] = useState(false)
   const panelRef = useRef<HTMLElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const focusFrameRef = useRef<number>()
 
   useEffect(() => {
     let frame = 0
@@ -6861,8 +7400,13 @@ function SidebarFeaturePanel({
 
   useEffect(() => {
     if (renderedPanel === 'search' && visible && contentVisible) {
-      window.requestAnimationFrame(() => searchRef.current?.focus())
+      window.cancelAnimationFrame(focusFrameRef.current ?? 0)
+      focusFrameRef.current = window.requestAnimationFrame(() => {
+        focusFrameRef.current = undefined
+        searchRef.current?.focus()
+      })
     }
+    return () => window.cancelAnimationFrame(focusFrameRef.current ?? 0)
   }, [contentVisible, renderedPanel, visible])
 
   useDismissOnOutside(Boolean(renderedPanel && visible), [panelRef], onClose, 'click')
@@ -7447,6 +7991,28 @@ function FileGlyphIcon() {
   )
 }
 
+function DirectModuleWorkspace({ page }: { page: DirectModulePage }) {
+  return (
+    <main className="direct-module-workspace" aria-label={directModuleLabel(page)}>
+      <div key={page} className="direct-module-page settings-page-transition with-motion">
+        <DirectModulePageContent page={page} />
+      </div>
+    </main>
+  )
+}
+
+function DirectModulePageContent({ page }: { page: DirectModulePage }) {
+  if (page === 'memoryTree') return <MemoryTreeView />
+  if (page === 'scheduled') return <SettingsScheduledPage />
+  return <SettingsPluginsPage />
+}
+
+function directModuleLabel(page: DirectModulePage): string {
+  if (page === 'memoryTree') return '记忆树'
+  if (page === 'scheduled') return '已安排'
+  return '插件'
+}
+
 function SettingsWorkspace({
   page,
   runtime,
@@ -7465,6 +8031,7 @@ function SettingsWorkspace({
   settingsEntryRippling,
   onOpenPage,
   onProfileChange,
+  onContextCompressionThresholdChange,
   onArchiveChanged,
   onTipChange,
 }: {
@@ -7485,6 +8052,7 @@ function SettingsWorkspace({
   settingsEntryRippling: boolean
   onOpenPage: (page: SettingsPage) => void
   onProfileChange: (profile: AgentProfileId) => void
+  onContextCompressionThresholdChange: (ratio: number) => Promise<void>
   onArchiveChanged: () => void | Promise<void>
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
@@ -7583,13 +8151,18 @@ function SettingsWorkspace({
         <main className="settings-workspace-body">
           <div key={page} className={`settings-page-transition ${pageHasChangedRef.current ? 'with-motion' : ''}`}>
             {page === 'home' && <SettingsHome onOpenPage={onOpenPage} />}
-            {page === 'agent' && <SettingsAgentProfilePage profile={runtime?.profile ?? 'general'} onChange={onProfileChange} />}
+            {page === 'agent' && (
+              <SettingsAgentProfilePage
+                profile={runtime?.profile ?? 'general'}
+                contextCompressionThresholdRatio={runtime?.contextCompressionThresholdRatio ?? 0.8}
+                onChange={onProfileChange}
+                onContextCompressionThresholdChange={onContextCompressionThresholdChange}
+              />
+            )}
             {page === 'api' && <Settings onClose={returnHome} embedded />}
-            {page === 'scheduled' && <SettingsScheduledPage />}
             {page === 'channels' && <ChannelConnections onClose={returnHome} embedded />}
-            {page === 'memoryTree' && <MemoryTreeView />}
             {page === 'archive' && <ArchiveManager onChanged={onArchiveChanged} />}
-            {page === 'plugins' && <SettingsPluginsPage />}
+            {isDirectModulePage(page) && <DirectModulePageContent page={page} />}
             {page === 'skills' && <MemorySkills onClose={returnHome} embedded />}
           </div>
         </main>
@@ -7636,11 +8209,32 @@ function SettingsHome({ onOpenPage }: { onOpenPage: (page: SettingsPage) => void
 
 function SettingsAgentProfilePage({
   profile,
+  contextCompressionThresholdRatio,
   onChange,
+  onContextCompressionThresholdChange,
 }: {
   profile: AgentProfileId
+  contextCompressionThresholdRatio: number
   onChange: (profile: AgentProfileId) => void
+  onContextCompressionThresholdChange: (ratio: number) => Promise<void>
 }) {
+  const [compressionThreshold, setCompressionThreshold] = useState(contextCompressionThresholdRatio)
+  const [savingCompressionThreshold, setSavingCompressionThreshold] = useState(false)
+
+  useEffect(() => {
+    setCompressionThreshold(contextCompressionThresholdRatio)
+  }, [contextCompressionThresholdRatio])
+
+  async function saveCompressionThreshold() {
+    if (savingCompressionThreshold || compressionThreshold === contextCompressionThresholdRatio) return
+    setSavingCompressionThreshold(true)
+    try {
+      await onContextCompressionThresholdChange(compressionThreshold)
+    } finally {
+      setSavingCompressionThreshold(false)
+    }
+  }
+
   return (
     <div className="settings-module-page">
       <header className="settings-module-heading">
@@ -7671,6 +8265,35 @@ function SettingsAgentProfilePage({
           )
         })}
       </div>
+      <section className="settings-policy-section" aria-label="上下文策略">
+        <div className="settings-policy-heading">
+          <strong>上下文</strong>
+          <span>长期对话与模型窗口</span>
+        </div>
+        <div className="settings-policy-row">
+          <span>
+            <strong>压缩触发阈值</strong>
+            <small>达到模型上下文占用比例后生成可追溯摘要</small>
+          </span>
+          <input
+            type="range"
+            min="0.5"
+            max="0.95"
+            step="0.05"
+            value={compressionThreshold}
+            aria-label="上下文压缩触发阈值"
+            onChange={(event) => setCompressionThreshold(Number(event.target.value))}
+          />
+          <output>{Math.round(compressionThreshold * 100)}%</output>
+          <button
+            type="button"
+            onClick={() => void saveCompressionThreshold()}
+            disabled={savingCompressionThreshold || compressionThreshold === contextCompressionThresholdRatio}
+          >
+            {savingCompressionThreshold ? '保存中' : '保存'}
+          </button>
+        </div>
+      </section>
     </div>
   )
 }
@@ -7699,17 +8322,236 @@ function SettingsScheduledPage() {
   )
 }
 
+type PluginListFilter = 'all' | 'builtin' | 'local' | 'channel' | 'tool' | 'skill'
+
+const PLUGIN_FILTERS: Array<{ id: PluginListFilter; label: string }> = [
+  { id: 'all', label: '全部' },
+  { id: 'builtin', label: '内置' },
+  { id: 'local', label: '本地' },
+  { id: 'channel', label: '渠道' },
+  { id: 'tool', label: '工具' },
+  { id: 'skill', label: '技能' },
+]
+
+const PLUGIN_STATE_LABELS: Record<PluginStatus['state'], string> = {
+  disabled: '已停用',
+  inactive: '按需待命',
+  activating: '正在启动',
+  active: '运行中',
+  blocked: '等待信任',
+  failed: '启动失败',
+}
+
+const PLUGIN_CAPABILITY_LABELS: Record<string, string> = {
+  channel: '渠道',
+  tool: '工具',
+  skill: '技能',
+}
+
+const PLUGIN_PERMISSION_LABELS: Record<string, string> = {
+  'agent:run': '调用 Agent',
+  'channels:register': '注册渠道',
+  'tools:register': '注册工具',
+  'skills:register': '注册技能',
+  network: '访问网络',
+  process: '启动进程',
+  secrets: '读取所需密钥',
+  'filesystem:plugin-data': '读写插件数据',
+  'filesystem:workspace': '访问授权工作区',
+}
+
 function SettingsPluginsPage() {
   const [query, setQuery] = useState('')
-  const hasQuery = query.trim().length > 0
+  const [filter, setFilter] = useState<PluginListFilter>('all')
+  const [status, setStatus] = useState<PluginsStatusResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [busyAction, setBusyAction] = useState<string | null>(null)
+  const [expandedPluginId, setExpandedPluginId] = useState<string | null>(null)
+  const [confirmLocalCode, setConfirmLocalCode] = useState(false)
+  const trustSectionRef = useRef<HTMLElement | null>(null)
+  const mountedRef = useRef(true)
+  const requestRef = useRef(0)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      requestRef.current += 1
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadStatus()
+  }, [])
+
+  useEffect(() => {
+    if (!confirmLocalCode) return
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!trustSectionRef.current?.contains(event.target as Node)) setConfirmLocalCode(false)
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [confirmLocalCode])
+
+  const filteredPlugins = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase('zh-CN')
+    return (status?.plugins ?? []).filter((plugin) => {
+      const matchesFilter = filter === 'all'
+        || plugin.source === filter
+        || plugin.capabilities.includes(filter as 'channel' | 'tool' | 'skill')
+      if (!matchesFilter) return false
+      if (!needle) return true
+      return [
+        plugin.name,
+        plugin.id,
+        plugin.description,
+        plugin.publisher ?? '',
+        ...plugin.capabilities,
+        ...plugin.contributes.channels,
+        ...plugin.contributes.tools,
+        ...plugin.contributes.skills,
+      ].some((value) => value.toLocaleLowerCase('zh-CN').includes(needle))
+    })
+  }, [filter, query, status])
+
+  async function loadStatus(showLoading = true): Promise<void> {
+    const requestId = ++requestRef.current
+    if (showLoading) setLoading(true)
+    try {
+      const next = await getPluginsStatus()
+      if (!mountedRef.current || requestId !== requestRef.current) return
+      setStatus(next)
+      setError(null)
+    } catch (loadError) {
+      if (!mountedRef.current || requestId !== requestRef.current) return
+      setError((loadError as Error).message)
+    } finally {
+      if (showLoading && mountedRef.current && requestId === requestRef.current) setLoading(false)
+    }
+  }
+
+  async function handleReload(): Promise<void> {
+    setBusyAction('reload')
+    setNotice(null)
+    try {
+      await reloadPlugins()
+      if (!mountedRef.current) return
+      await loadStatus(false)
+      if (!mountedRef.current) return
+      setNotice('插件已重新发现并加载')
+    } catch (reloadError) {
+      if (mountedRef.current) setError((reloadError as Error).message)
+    } finally {
+      if (mountedRef.current) setBusyAction(null)
+    }
+  }
+
+  async function handlePluginEnabled(plugin: PluginStatus, enabled: boolean): Promise<void> {
+    setBusyAction(plugin.id)
+    setNotice(null)
+    try {
+      await setPluginEnabled(plugin.id, enabled)
+      if (!mountedRef.current) return
+      await loadStatus(false)
+      if (!mountedRef.current) return
+      setNotice(`${plugin.name}已${enabled ? '启用' : '停用'}`)
+    } catch (toggleError) {
+      if (mountedRef.current) setError((toggleError as Error).message)
+    } finally {
+      if (mountedRef.current) setBusyAction(null)
+    }
+  }
+
+  async function handleLocalCodeAllowed(allowed: boolean): Promise<void> {
+    setBusyAction('local-code')
+    setNotice(null)
+    try {
+      await setLocalPluginCodeAllowed(allowed)
+      if (!mountedRef.current) return
+      await loadStatus(false)
+      if (!mountedRef.current) return
+      setConfirmLocalCode(false)
+      setNotice(allowed ? '已允许执行本地插件代码' : '已停止执行本地插件代码')
+    } catch (trustError) {
+      if (mountedRef.current) setError((trustError as Error).message)
+    } finally {
+      if (mountedRef.current) setBusyAction(null)
+    }
+  }
+
+  const localPluginCount = status?.plugins.filter((plugin) => plugin.source === 'local').length ?? 0
+  const operationBusy = busyAction !== null
 
   return (
     <div className="settings-module-page">
-      <header className="settings-module-heading">
-        <div className="settings-module-kicker">扩展</div>
-        <h2>插件</h2>
-        <p>本地插件、工具连接器和扩展能力会集中在这里。</p>
+      <header className="settings-module-heading plugin-page-heading">
+        <div>
+          <div className="settings-module-kicker">扩展</div>
+          <h2>插件</h2>
+          <p>管理 LS 的可选渠道、工具和本地扩展。</p>
+        </div>
+        <button
+          className="plugin-reload-button"
+          type="button"
+          onClick={() => void handleReload()}
+          disabled={operationBusy}
+          aria-label="重新发现并加载插件"
+          title="重新加载插件"
+        >
+          <RefreshIcon />
+          <span>{busyAction === 'reload' ? '加载中' : '重新加载'}</span>
+        </button>
       </header>
+
+      <section ref={trustSectionRef} className="plugin-trust-section" aria-label="本地插件信任">
+        <div className="plugin-trust-summary">
+          <span className="plugin-trust-icon" aria-hidden="true"><PluginIcon /></span>
+          <span className="plugin-trust-copy">
+            <strong>本地插件代码</strong>
+            <small>{localPluginCount > 0 ? `已发现 ${localPluginCount} 个本地插件` : '当前未发现本地插件'}</small>
+          </span>
+          <button
+            className={`plugin-switch ${status?.allowLocalCode ? 'checked' : ''}`}
+            type="button"
+            role="switch"
+            aria-checked={status?.allowLocalCode ?? false}
+            aria-label="允许执行本地插件代码"
+            disabled={!status || operationBusy}
+            onClick={() => {
+              if (status?.allowLocalCode) void handleLocalCodeAllowed(false)
+              else setConfirmLocalCode(true)
+            }}
+          >
+            <span aria-hidden="true" />
+          </button>
+        </div>
+        <div
+          className={`plugin-trust-confirmation ${confirmLocalCode ? 'visible' : ''}`}
+          aria-hidden={!confirmLocalCode}
+          {...(!confirmLocalCode ? { inert: '' } : {})}
+        >
+          <div className="plugin-trust-confirmation-inner">
+            <div>
+              <strong>信任本机安装的插件代码？</strong>
+              <span>本地插件与主进程拥有同等权限，可访问本机数据和网络。只启用来源明确且已审查的插件。</span>
+            </div>
+            <div className="plugin-trust-actions">
+              <button type="button" onClick={() => setConfirmLocalCode(false)}>取消</button>
+              <button
+                className="danger"
+                type="button"
+                disabled={operationBusy}
+                onClick={() => void handleLocalCodeAllowed(true)}
+              >
+                确认信任
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <label className="settings-module-search">
         <SearchIcon />
         <input
@@ -7719,23 +8561,141 @@ function SettingsPluginsPage() {
         />
       </label>
       <div className="settings-module-toolbar" role="toolbar" aria-label="插件筛选">
-        <button className="settings-filter-pill active" type="button">全部</button>
-        <button className="settings-filter-pill" type="button">本地插件</button>
-        <button className="settings-filter-pill" type="button">工具连接</button>
+        {PLUGIN_FILTERS.map((item) => (
+          <button
+            key={item.id}
+            className={`settings-filter-pill ${filter === item.id ? 'active' : ''}`}
+            type="button"
+            aria-pressed={filter === item.id}
+            onClick={() => setFilter(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
+        {status && (
+          <span className={`plugin-host-state ${status.started ? 'ready' : 'starting'}`}>
+            <span aria-hidden="true" />
+            {status.started ? `${status.plugins.length} 个插件` : '插件宿主初始化中'}
+          </span>
+        )}
       </div>
-      <div className="settings-module-empty">
-        <div className="settings-module-empty-icon" aria-hidden="true">
-          <PluginIcon />
+
+      {notice && <div className="plugin-page-notice" role="status">{notice}</div>}
+      {error && <div className="plugin-page-error" role="alert">{error}</div>}
+
+      {loading && (
+        <div className="plugin-list-loading">
+          <span className="plugin-loading-indicator" aria-hidden="true" />
+          正在读取插件状态
         </div>
-        <strong>{hasQuery ? '没有匹配的插件' : '插件入口待接入'}</strong>
-        <span>
-          {hasQuery
-            ? '换一个关键词后再试。'
-            : '后续读取本地插件清单后，会在这里管理安装、启用和连接状态。'}
-        </span>
-      </div>
+      )}
+
+      {!loading && status && filteredPlugins.length > 0 && (
+        <div className="plugin-list" aria-label="已发现插件">
+          {filteredPlugins.map((plugin) => {
+            const expanded = expandedPluginId === plugin.id
+            const capabilityText = plugin.capabilities
+              .map((capability) => PLUGIN_CAPABILITY_LABELS[capability] ?? capability)
+              .join(' · ')
+            const detailId = `plugin-details-${plugin.id}`
+            return (
+              <article key={plugin.id} className={`plugin-list-item ${expanded ? 'expanded' : ''}`}>
+                <div className="plugin-list-summary">
+                  <button
+                    className="plugin-list-disclosure"
+                    type="button"
+                    aria-expanded={expanded}
+                    aria-controls={detailId}
+                    onClick={() => setExpandedPluginId(expanded ? null : plugin.id)}
+                  >
+                    <span className="plugin-list-icon" aria-hidden="true"><PluginIcon /></span>
+                    <span className="plugin-list-main">
+                      <span className="plugin-list-title">
+                        <strong>{plugin.name}</strong>
+                        <small>v{plugin.version}</small>
+                      </span>
+                      <span className="plugin-list-description">{plugin.description || plugin.id}</span>
+                      <span className="plugin-list-meta">
+                        {plugin.source === 'builtin' ? '内置' : '本地'} · {capabilityText}
+                      </span>
+                      {plugin.error && <span className="plugin-list-error">{plugin.error}</span>}
+                    </span>
+                    <span className={`plugin-runtime-state ${plugin.state}`}>{PLUGIN_STATE_LABELS[plugin.state]}</span>
+                    <span className="plugin-disclosure-chevron" aria-hidden="true" />
+                  </button>
+                  <button
+                    className={`plugin-switch ${plugin.enabled ? 'checked' : ''}`}
+                    type="button"
+                    role="switch"
+                    aria-checked={plugin.enabled}
+                    aria-label={`${plugin.enabled ? '停用' : '启用'}${plugin.name}`}
+                    disabled={operationBusy}
+                    onClick={() => void handlePluginEnabled(plugin, !plugin.enabled)}
+                  >
+                    <span aria-hidden="true" />
+                  </button>
+                </div>
+                <div
+                  id={detailId}
+                  className={`plugin-list-details ${expanded ? 'visible' : ''}`}
+                  aria-hidden={!expanded}
+                  {...(!expanded ? { inert: '' } : {})}
+                >
+                  <dl className="plugin-list-details-inner">
+                    <div><dt>标识</dt><dd>{plugin.id}</dd></div>
+                    <div>
+                      <dt>贡献</dt>
+                      <dd>{[
+                        ...plugin.contributes.channels.map((item) => `渠道 ${item}`),
+                        ...plugin.contributes.tools.map((item) => `工具 ${item}`),
+                        ...plugin.contributes.skills.map((item) => `技能 ${item}`),
+                      ].join('，') || '无'}</dd>
+                    </div>
+                    <div>
+                      <dt>激活</dt>
+                      <dd>{plugin.activationEvents.map(pluginActivationLabel).join('，')}</dd>
+                    </div>
+                    <div>
+                      <dt>权限声明</dt>
+                      <dd>{plugin.permissions.map((item) => PLUGIN_PERMISSION_LABELS[item] ?? item).join('，') || '无额外声明'}</dd>
+                    </div>
+                    {plugin.publisher && <div><dt>发布者</dt><dd>{plugin.publisher}</dd></div>}
+                    {plugin.location && <div><dt>位置</dt><dd className="plugin-location">{plugin.location}</dd></div>}
+                  </dl>
+                </div>
+              </article>
+            )
+          })}
+        </div>
+      )}
+
+      {!loading && status && filteredPlugins.length === 0 && (
+        <div className="settings-module-empty">
+          <div className="settings-module-empty-icon" aria-hidden="true"><PluginIcon /></div>
+          <strong>没有匹配的插件</strong>
+          <span>{query.trim() || filter !== 'all' ? '调整关键词或筛选条件后再试。' : '将插件放入用户插件目录后重新加载。'}</span>
+        </div>
+      )}
+
+      {status && status.diagnostics.length > 0 && (
+        <section className="plugin-diagnostics" aria-label="插件发现问题">
+          <strong>未载入的插件</strong>
+          {status.diagnostics.map((diagnostic, index) => (
+            <div key={`${diagnostic.source}:${index}`}>
+              <span>{diagnostic.source}</span>
+              <small>{diagnostic.message}</small>
+            </div>
+          ))}
+        </section>
+      )}
     </div>
   )
+}
+
+function pluginActivationLabel(event: string): string {
+  if (event === 'onStartup') return '应用启动时'
+  if (event.startsWith('onChannel:')) return `启用 ${event.slice('onChannel:'.length)} 渠道时`
+  return event
 }
 
 function MessageFileStrip({
@@ -8302,10 +9262,12 @@ function FloatingHelpTooltip({ tip }: { tip: FloatingHelpTip | null }) {
   const renderedTipRef = useRef<FloatingHelpTip | null>(null)
   const activeRef = useRef(false)
   const tokenRef = useRef(0)
+  const frameRef = useRef<number>()
 
   useEffect(() => {
     const token = tokenRef.current + 1
     tokenRef.current = token
+    window.cancelAnimationFrame(frameRef.current ?? 0)
 
     if (!tip) {
       setShown(false)
@@ -8331,12 +9293,14 @@ function FloatingHelpTooltip({ tip }: { tip: FloatingHelpTip | null }) {
       renderedTipRef.current = tip
       activeRef.current = true
       setRenderedTip(tip)
-      window.requestAnimationFrame(() => {
+      frameRef.current = window.requestAnimationFrame(() => {
+        frameRef.current = undefined
         if (tokenRef.current === token) setShown(true)
       })
     }, FLOATING_HELP_DELAY_MS)
     return () => {
       window.clearTimeout(showTimer)
+      window.cancelAnimationFrame(frameRef.current ?? 0)
     }
   }, [tip])
 
@@ -8354,20 +9318,16 @@ function FloatingHelpTooltip({ tip }: { tip: FloatingHelpTip | null }) {
 
 type RuntimeProvider = RuntimeState['providers'][number]
 
-interface ContextUsage {
-  usedTokens: number
-  maxTokens: number
-  percent: number
-  available: boolean
-}
-
 function ContextUsageIndicator({ usage }: { usage: ContextUsage }) {
+  const windowKnown = usage.maxTokens > 0
   const tone = usage.available && usage.percent >= 90 ? 'danger' : usage.available && usage.percent >= 70 ? 'warning' : 'normal'
   const style = {
     '--context-usage-angle': `${usage.available ? Math.max(0, Math.min(100, usage.percent)) * 3.6 : 0}deg`,
   } as CSSProperties
-  const ariaLabel = usage.available
-    ? `上下文已用 ${formatTokenCount(usage.usedTokens)}，共 ${formatTokenCount(usage.maxTokens)}，${usage.percent}% 已用`
+  const ariaLabel = !windowKnown
+    ? '当前模型的上下文窗口尚未登记'
+    : usage.available
+    ? `上下文${usage.source === 'provider' ? '供应商实测' : '本地精确装配'}已用 ${formatTokenCount(usage.usedTokens)}，共 ${formatTokenCount(usage.maxTokens)}，${usage.percent}% 已用`
     : `上下文真实用量待模型供应商返回，共 ${formatTokenCount(usage.maxTokens)}`
 
   return (
@@ -8381,9 +9341,30 @@ function ContextUsageIndicator({ usage }: { usage: ContextUsage }) {
       <span className="context-usage-ring" aria-hidden="true" />
       <span className="context-usage-popover" aria-hidden="true">
         <span className="context-usage-title">上下文窗口：</span>
-        {usage.available ? (
+        {!windowKnown ? (
           <>
-            <span>已用 {formatTokenCount(usage.usedTokens)}，共 {formatTokenCount(usage.maxTokens)}</span>
+            <span>当前模型的上下文窗口尚未登记</span>
+            <strong>不可用</strong>
+          </>
+        ) : usage.available ? (
+          <>
+            {usage.providerUsedTokens !== undefined ? (
+              <span className="context-usage-source">
+                供应商实测 {formatTokenCount(usage.providerUsedTokens)} · {formatUsageTime(usage.providerReportedAt)}
+              </span>
+            ) : (
+              <span className="context-usage-source">供应商实测待返回</span>
+            )}
+            {usage.localUsedTokens !== undefined ? (
+              <span className="context-usage-source" title={usage.localTokenizerId}>
+                本地精确装配 {formatTokenCount(usage.localUsedTokens)} · {formatUsageTime(usage.localCountedAt)}
+              </span>
+            ) : (
+              <span className="context-usage-source" title={usage.localUnavailableReason}>
+                本地精确计数不可用
+              </span>
+            )}
+            <span>共 {formatTokenCount(usage.maxTokens)}</span>
             <strong>{usage.percent}% 已用</strong>
           </>
         ) : (
@@ -8397,37 +9378,11 @@ function ContextUsageIndicator({ usage }: { usage: ContextUsage }) {
   )
 }
 
-function buildContextUsage(
-  modelRef: string | undefined,
-  snapshot: ContextUsageSnapshot | null,
-): ContextUsage {
-  const modelKey = modelRef ?? ''
-  const hasFreshSnapshot = snapshot?.modelRef === modelKey
-  const usedTokens = hasFreshSnapshot ? snapshot.usedTokens : 0
-  const maxTokens = getContextWindowForModelRef(modelRef)
-  const percent = maxTokens > 0 ? Math.min(100, Math.round((usedTokens / maxTokens) * 100)) : 0
-  return {
-    usedTokens,
-    maxTokens,
-    percent,
-    available: hasFreshSnapshot,
-  }
-}
-
-function buildContextUsageSnapshot(
-  modelRef: string | undefined,
-  usage: {
-    promptTokens: number
-    completionTokens: number
-    totalTokens?: number
-    source?: 'provider'
-  } | undefined,
-): ContextUsageSnapshot | null {
-  if (!usage || usage.source !== 'provider') return null
-  return {
-    modelRef: modelRef ?? '',
-    usedTokens: Math.max(0, usage.promptTokens),
-  }
+function formatUsageTime(value: string | undefined): string {
+  if (!value) return '本轮'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '本轮'
+  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 
 function formatTokenCount(tokens: number): string {

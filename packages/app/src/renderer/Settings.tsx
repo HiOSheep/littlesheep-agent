@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getProviders, saveApiKey, type ProviderInfo } from './api'
 
 interface SettingsProps {
@@ -13,6 +13,16 @@ export function Settings({ onClose, embedded = false }: SettingsProps) {
   const [saving, setSaving] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const mountedRef = useRef(true)
+  const requestRef = useRef(0)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      requestRef.current += 1
+    }
+  }, [])
 
   useEffect(() => {
     void loadProviders()
@@ -28,14 +38,17 @@ export function Settings({ onClose, embedded = false }: SettingsProps) {
   }, [onClose])
 
   async function loadProviders() {
+    const requestId = ++requestRef.current
     setLoading(true)
     try {
       const list = await getProviders()
+      if (!mountedRef.current || requestId !== requestRef.current) return
       setProviders(list)
     } catch (e) {
+      if (!mountedRef.current || requestId !== requestRef.current) return
       setError((e as Error).message)
     } finally {
-      setLoading(false)
+      if (mountedRef.current && requestId === requestRef.current) setLoading(false)
     }
   }
 
@@ -46,12 +59,14 @@ export function Settings({ onClose, embedded = false }: SettingsProps) {
     setError(null)
     try {
       await saveApiKey(envVar, key)
+      if (!mountedRef.current) return
       setKeys((k) => ({ ...k, [envVar]: '' }))
       await loadProviders()
     } catch (e) {
+      if (!mountedRef.current) return
       setError((e as Error).message)
     } finally {
-      setSaving(null)
+      if (mountedRef.current) setSaving(null)
     }
   }
 

@@ -4,7 +4,13 @@
 import type { RuntimeReasoning } from '../shared/model-capabilities'
 import type { HistoryActivity } from '../shared/history-activity'
 import type { SessionScope } from '../shared/session-scope'
-import type { TaskBook, ToolStreamEvent, VerificationRecord } from '@littlesheep/types'
+import type {
+  ContextSnapshot,
+  ModelRequestSnapshot,
+  TaskBook,
+  ToolStreamEvent,
+  VerificationRecord,
+} from '@littlesheep/types'
 import type { AgentProfileId } from '@littlesheep/prompt'
 import type { PermissionModeId } from '../shared/permission-modes'
 
@@ -43,6 +49,9 @@ export interface ProjectMeta {
   path: string
   createdAt: string
   lastActiveAt: string
+  identityVersion?: 2
+  previousPaths?: string[]
+  pathUpdatedAt?: string
 }
 
 export interface ArchivedSessionMeta extends SessionMeta {
@@ -71,6 +80,8 @@ export interface RunResult {
     totalTokens?: number
     source: 'provider'
   }
+  contextSnapshots?: ContextSnapshot[]
+  modelRequests?: ModelRequestSnapshot[]
   trace?: { name: string; ok: boolean }[]
   messages?: { role: string; content: unknown[] }[]
   taskBook?: TaskBook
@@ -166,7 +177,11 @@ export interface AttachmentRef {
   path: string
   name?: string
   kind?: 'image' | 'document' | 'file'
+  mimeType?: string
   size?: number
+  cacheId?: string
+  contentHash?: string
+  ownership?: 'cache' | 'agent_workplace' | 'user_workplace' | 'project' | 'external'
 }
 
 export interface RunOptions {
@@ -310,6 +325,27 @@ export async function registerProject(path: string): Promise<{ project: ProjectM
   return res.json() as Promise<{ project: ProjectMeta }>
 }
 
+export async function rebindProject(
+  id: string,
+  path: string,
+): Promise<{ project: ProjectMeta; sessions: SessionMeta[]; recovered: boolean; runtime: RuntimeState }> {
+  const res = await fetch(`${apiBase}/projects/${encodeURIComponent(id)}/rebind`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
+    throw new Error((data as { error: string }).error)
+  }
+  return res.json() as Promise<{
+    project: ProjectMeta
+    sessions: SessionMeta[]
+    recovered: boolean
+    runtime: RuntimeState
+  }>
+}
+
 export async function deleteProject(id: string, opts: { hard?: boolean } = {}): Promise<void> {
   const suffix = opts.hard ? '?hard=1' : ''
   const res = await fetch(`${apiBase}/projects/${encodeURIComponent(id)}${suffix}`, { method: 'DELETE' })
@@ -402,6 +438,7 @@ export interface RuntimeState {
   model: string
   reasoning: RuntimeReasoning
   profile: AgentProfileId
+  contextCompressionThresholdRatio: number
   workspace: string
   workplace: string
   providers: RuntimeProvider[]
@@ -413,7 +450,7 @@ export async function getRuntime(): Promise<RuntimeState> {
   return res.json() as Promise<RuntimeState>
 }
 
-export async function updateRuntime(patch: Partial<Pick<RuntimeState, 'model' | 'reasoning' | 'profile' | 'workspace'>>): Promise<RuntimeState> {
+export async function updateRuntime(patch: Partial<Pick<RuntimeState, 'model' | 'reasoning' | 'profile' | 'contextCompressionThresholdRatio' | 'workspace'>>): Promise<RuntimeState> {
   const res = await fetch(`${apiBase}/runtime`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -950,6 +987,7 @@ export interface ChannelConnectionsStatus {
   started: boolean
   channels: ChannelStatus[]
   configured: ConfiguredChannel[]
+  failures: Array<{ id: string; type: string; error: string }>
 }
 
 /** GET /channels/status — external channel service status + channel list. */
@@ -967,6 +1005,75 @@ export async function reloadChannelConnections(): Promise<{ ok: boolean }> {
     throw new Error((data as { error: string }).error)
   }
   return res.json() as Promise<{ ok: boolean }>
+}
+
+export type PluginRuntimeState = 'disabled' | 'inactive' | 'activating' | 'active' | 'blocked' | 'failed'
+
+export interface PluginStatus {
+  id: string
+  name: string
+  version: string
+  description: string
+  publisher?: string
+  source: 'builtin' | 'local'
+  location?: string
+  enabled: boolean
+  state: PluginRuntimeState
+  capabilities: string[]
+  permissions: string[]
+  activationEvents: string[]
+  contributes: { channels: string[]; tools: string[]; skills: string[] }
+  error?: string
+}
+
+export interface PluginDiagnostic {
+  source: string
+  message: string
+}
+
+export interface PluginsStatusResponse {
+  started: boolean
+  allowLocalCode: boolean
+  plugins: PluginStatus[]
+  diagnostics: PluginDiagnostic[]
+}
+
+export async function getPluginsStatus(): Promise<PluginsStatusResponse> {
+  const res = await fetch(`${apiBase}/plugins`)
+  if (!res.ok) throw localApiStatusError(res.status)
+  return res.json() as Promise<PluginsStatusResponse>
+}
+
+export async function setPluginEnabled(pluginId: string, enabled: boolean): Promise<void> {
+  const res = await fetch(`${apiBase}/plugins/${encodeURIComponent(pluginId)}/enabled`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
+    throw new Error((data as { error: string }).error)
+  }
+}
+
+export async function setLocalPluginCodeAllowed(allowed: boolean): Promise<void> {
+  const res = await fetch(`${apiBase}/plugins/local-code`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ allowed }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
+    throw new Error((data as { error: string }).error)
+  }
+}
+
+export async function reloadPlugins(): Promise<void> {
+  const res = await fetch(`${apiBase}/plugins/reload`, { method: 'POST' })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
+    throw new Error((data as { error: string }).error)
+  }
 }
 
 // ─── Memory & Skills ──────────────────────────────────────────────────────
@@ -1003,6 +1110,25 @@ export interface MemoryTreeBranchOverview {
 }
 
 export type MemoryTreeBranchId = 'long-term' | 'project' | 'daily' | 'experience'
+export type MemoryResourceKind =
+  | 'agent-instructions'
+  | 'persona'
+  | 'user-profile'
+  | 'tool-guidance'
+  | 'legacy-memory'
+  | 'skill'
+  | 'project-guideline'
+  | 'ui-guideline'
+  | 'taskbook'
+  | 'knowledge'
+  | 'summary-memory'
+  | 'attachment-manifest'
+  | 'attachment'
+  | 'runtime-event-ledger'
+  | 'workspace-index'
+  | 'project-memory-projection'
+export type MemoryResourceStatus = 'active' | 'missing' | 'disabled' | 'conflict'
+export type MemoryResourceManagementAction = 'disable' | 'restore' | 'remove' | 'rebind'
 export type MemoryTreeNodeStatus = 'active' | 'archived'
 export type MemoryTreeManagementAction = 'archive' | 'restore' | 'delete' | 'promote' | 'demote'
 
@@ -1028,6 +1154,21 @@ export interface MemoryTreeManagementAudit {
   toStatus: 'active' | 'archived' | 'deleted'
   fromTier: 1 | 2 | 3
   toTier: 1 | 2 | 3
+}
+
+export interface MemoryResourceManagementAudit {
+  id: string
+  resourceId: string
+  resourceKind: MemoryResourceKind
+  registryGroup: string
+  action: 'disable' | 'restore' | 'mark-missing' | 'mark-conflict' | 'remove' | 'rebind'
+  actor: 'user' | 'system'
+  at: string
+  reason: string
+  fromStatus: MemoryResourceStatus
+  toStatus?: MemoryResourceStatus
+  fromSourcePath?: string
+  toSourcePath?: string
 }
 
 export interface MemoryTreeRecentHit {
@@ -1071,6 +1212,38 @@ export interface MemoryTreeProjectOverview {
   name: string
   path: string
   lastActiveAt: string
+  projection?: ProjectMemoryProjectionState
+}
+
+export interface ProjectMemoryProjectionState {
+  projectId: string
+  enabled: boolean
+  projectionPath: string
+  projectionExists: boolean
+  safeToRemove: boolean
+  status: 'disabled' | 'missing' | 'ready' | 'stale' | 'conflict'
+  gitRepository: boolean
+  gitIgnored: boolean
+  gitIgnorePattern: string
+  sourceRevision?: string
+  entryCount?: number
+  omittedEntryCount?: number
+  lastSyncedAt?: string
+  conflictReason?: string
+}
+
+export type ProjectMemoryProjectionAction =
+  | { action: 'enable'; overwriteExisting?: boolean }
+  | { action: 'sync'; force?: boolean }
+  | { action: 'disable'; removeProjection?: boolean }
+  | { action: 'export' }
+
+export interface ProjectMemoryProjectionExportResult {
+  outputPath: string
+  entryCount: number
+  omittedEntryCount: number
+  contentHash: string
+  generatedAt: string
 }
 
 export interface MemoryTreeOverview {
@@ -1085,10 +1258,36 @@ export interface MemoryTreeOverview {
     archivedMemories: number
     deletedMemories: number
     recoveryQueue: number
+    registeredResources: number
+    activeResources: number
   }
   branches: MemoryTreeBranchOverview[]
   nodes: MemoryTreeNodeOverview[]
   projects: MemoryTreeProjectOverview[]
+  resources: Array<{
+    id: string
+    kind: MemoryResourceKind
+    title: string
+    description: string
+    tier: 0 | 1 | 2 | 3
+    branch?: MemoryTreeBranchId
+    scope: 'global' | 'workspace' | 'project' | 'session' | 'run'
+    scopeKey?: string
+    authority: 'authoritative' | 'derived' | 'compatibility' | 'external'
+    privacy: 'private' | 'project-private' | 'shareable' | 'public'
+    sourceKind: 'file' | 'memory-node' | 'session-summary' | 'attachment' | 'runtime-event' | 'workspace-index'
+    sourcePath?: string
+    indexKeys: string[]
+    status: MemoryResourceStatus
+    registryGroup: string
+    owner?: {
+      kind: 'builtin' | 'user' | 'external' | 'plugin'
+      id: string
+      controller: 'skill-loader' | 'plugin-host'
+    }
+    updatedAt: string
+    managementHistory: MemoryResourceManagementAudit[]
+  }>
   dailyDates: string[]
   longTermExcerpt: string
   recentAccesses: Array<MemoryTreeRecentHit & {
@@ -1162,4 +1361,49 @@ export async function manageMemoryTreeNode(
     node: { id: string; status: 'active' | 'archived' | 'deleted'; tier: 1 | 2 | 3 }
     audit: MemoryTreeManagementAudit
   }>
+}
+
+export async function manageMemoryTreeResource(
+  resourceId: string,
+  action: MemoryResourceManagementAction,
+  options: { sourcePath?: string } = {},
+): Promise<{
+  cancelled: boolean
+  resource?: { id: string; status: MemoryResourceStatus }
+  audit?: MemoryResourceManagementAudit
+  changed?: boolean
+  removed?: boolean
+}> {
+  const res = await fetch(`${apiBase}/memory/tree/resources/${encodeURIComponent(resourceId)}/manage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, ...options }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => null) as { error?: string } | null
+    throw new Error(body?.error ?? `Local app API error: ${res.status}`)
+  }
+  return res.json() as Promise<{
+    cancelled: boolean
+    resource?: { id: string; status: MemoryResourceStatus }
+    audit?: MemoryResourceManagementAudit
+    changed?: boolean
+    removed?: boolean
+  }>
+}
+
+export async function updateProjectMemoryProjection(
+  projectId: string,
+  action: ProjectMemoryProjectionAction,
+): Promise<ProjectMemoryProjectionState | { cancelled: boolean; export?: ProjectMemoryProjectionExportResult }> {
+  const res = await fetch(`${apiBase}/memory/projects/${encodeURIComponent(projectId)}/projection`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(action),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
+    throw new Error((data as { error: string }).error)
+  }
+  return res.json() as Promise<ProjectMemoryProjectionState | { cancelled: boolean; export?: ProjectMemoryProjectionExportResult }>
 }

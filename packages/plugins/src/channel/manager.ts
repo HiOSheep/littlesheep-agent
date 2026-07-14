@@ -1,4 +1,4 @@
-// @littlesheep/gateway — channel/manager.ts
+// @littlesheep/plugins — channel/manager.ts
 // DefaultChannelManager: manages channel plugin lifecycle.
 //
 // Responsibilities:
@@ -77,7 +77,7 @@ export class DefaultChannelManager {
   /**
    * Swap the agent runner reference. Used when API key changes trigger a runner
    * rebuild — channels keep running, but new runAgent calls use the new runner.
-   * Mirrors GatewayServer.setRunner() pattern.
+   * The plugin host calls this after rebuilding the core runner.
    */
   setRunner(runner: AgentRunner): void {
     this.runner = runner;
@@ -94,6 +94,23 @@ export class DefaultChannelManager {
     }
     this.factories.set(type, factory);
     this.log('info', `channel: registered type "${type}"`);
+  }
+
+  /** Remove an inactive channel type registration. */
+  unregisterType(type: string): boolean {
+    const inUse = Array.from(this.running.values()).some((entry) => entry.plugin.type === type)
+    if (inUse) throw new Error(`channel type "${type}" is still running`)
+    const removed = this.factories.delete(type)
+    if (removed) this.log('info', `channel: unregistered type "${type}"`)
+    return removed
+  }
+
+  hasType(type: string): boolean {
+    return this.factories.has(type)
+  }
+
+  registeredTypes(): string[] {
+    return Array.from(this.factories.keys())
   }
 
   /**
@@ -156,6 +173,10 @@ export class DefaultChannelManager {
     try {
       await plugin.start(ctx);
     } catch (err) {
+      abortController.abort();
+      await plugin.stop().catch((cleanupError) => {
+        this.log('warn', `channel: "${channelId}" cleanup after failed start: ${(cleanupError as Error).message}`);
+      });
       throw new Error(
         `channel "${channelId}" (${config.type}) failed to start: ${(err as Error).message}`,
       );

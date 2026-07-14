@@ -19,7 +19,25 @@ export {
   type MemorySearchOptions,
   type MemoryQueryResult,
   type MemoryBranchKind,
+  type MemoryBranchCategory,
   type MemoryScope,
+  type MemoryResourceScope,
+  type MemoryResourceKind,
+  type MemoryResourceAuthority,
+  type MemoryResourcePrivacy,
+  type MemoryResourceStatus,
+  type MemoryResourceSourceKind,
+  type MemoryResourceSource,
+  type MemoryResourceRegistration,
+  type MemoryResourceQuery,
+  type MemoryResourceManagementAction,
+  type MemoryResourceManagementActor,
+  type MemoryResourceOwnerKind,
+  type MemoryResourceLifecycleController,
+  type MemoryResourceOwner,
+  type MemoryResourceManagementAuditRecord,
+  type MemoryResourceManagementResult,
+  type MemoryResourceRebindPatch,
   type MemoryWriteIntent,
   type MemoryNode,
   type MemoryNodeStatus,
@@ -27,7 +45,9 @@ export {
   type MemoryManagementAuditRecord,
   type MemoryManagementResult,
   type MemoryMigrationRecord,
+  type MemorySchemaMigrationRecord,
   type MemoryTreeDocument,
+  type MemoryTreeDocumentV1,
   type MemoryWritePolicy,
   type MemoryWriteResult,
   type LogFn,
@@ -36,7 +56,25 @@ export {
   type GitLogEntry,
 } from './types.js';
 export { MemoryTree } from './memory-tree.js';
+export {
+  MemoryResourceBranch,
+  type MemoryResourceBranchOptions,
+  type MemoryResourceResolver,
+  type ResolvedMemoryResourceContent,
+} from './memory-resource-branch.js';
 export { ProjectMemoryBranch, type ProjectMemoryBranchDeps } from './project-memory-branch.js';
+export {
+  ProjectMemoryProjectionService,
+  projectProjectionResourceId,
+  projectProjectionRegistryGroup,
+  type ProjectMemoryTarget,
+  type ProjectMemoryProjectionEntry,
+  type ProjectMemoryPrivateProjection,
+  type ProjectMemoryProjectionStatus,
+  type ProjectMemoryProjectionState,
+  type ProjectMemoryShareableExportResult,
+  type ProjectMemoryProjectionServiceOptions,
+} from './project-memory-projection.js';
 export { TreeMemoryBranch, DEFAULT_BRANCH_SPECS, type TreeMemoryBranchOptions } from './tree-memory-branch.js';
 export { CompositeMemoryBranch, type CompositeMemoryBranchOptions } from './composite-memory-branch.js';
 export {
@@ -55,9 +93,28 @@ export {
   MemoryRepository,
   MemoryWriteService,
   type MemoryRepositoryOptions,
+  type ReplaceMemoryResourceGroupOptions,
+  type ManageMemoryResourceOptions,
+  type RebindMemoryResourceOptions,
+  type RemoveMemoryResourcesOptions,
   type MemoryWriteServiceOptions,
   type MemoryWriteServiceLike,
 } from './memory-repository.js';
+export {
+  MemoryService,
+  attachmentManifestResourceId,
+  attachmentResourceId,
+  runtimeEventLedgerResourceId,
+  type MemoryServiceOptions,
+  type MemoryRunStart,
+  type MemoryRunResourceInput,
+  type MemoryManagementSnapshot,
+  type MemorySkillResourceInput,
+  type MemorySkillSourceInput,
+  type SyncMemorySkillResourcesOptions,
+  type MemoryNavigationServiceLike,
+  type MemoryBootstrapServiceLike,
+} from './memory-service.js';
 export {
   createMemoryTreeTool,
   createMemorySearchCompatibilityTool,
@@ -65,4 +122,18 @@ export {
 } from './memory-tool.js';
 export { fetchGitLog, fetchLatestCommitDate, parseGitLog } from './git-log.js';
 export { readProjectIndex } from './project-index.js';
+export {
+  WorkspaceResourceIndexStore,
+  type WorkspaceResourceIndexStoreOptions,
+  type WorkspaceResourceIndexLimits,
+  type WorkspaceBoundaryKind,
+  type WorkspaceIndexedFileOwner,
+  type WorkspaceIndexedFileKind,
+  type WorkspaceResourceChange,
+  type WorkspaceResourceSyncOptions,
+  type WorkspaceIndexedFile,
+  type WorkspaceResourceScanState,
+  type WorkspaceResourceIndexSnapshot,
+  type WorkspaceResourceSyncResult,
+} from './workspace-resource-index.js';
 export { estimateTokens, activityScore, truncateChunk, MIN_USEFUL_TOKENS } from './util.js';

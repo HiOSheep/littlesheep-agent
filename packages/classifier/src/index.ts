@@ -2,7 +2,7 @@
 // Hybrid classifier: rules fast path + LLM fallback.
 
 import type { Classification, Message } from '@littlesheep/types';
-import type { LlmClient } from '@littlesheep/llm';
+import type { ChatRequest, ChatResponse, LlmClient } from '@littlesheep/llm';
 import { classifyByRules } from './rules.js';
 import { classifyByLlm } from './llm.js';
 
@@ -15,6 +15,10 @@ export interface ClassifierOptions {
   rulesConfidenceThreshold?: number;
   /** Recent history (for LLM context). */
   history?: Message[];
+  /** Observe the actual fallback request before it is sent. */
+  onRequest?: (request: ChatRequest) => ChatRequest | void;
+  /** Observe the fallback response with the exact prepared request. */
+  onResponse?: (request: ChatRequest, response: ChatResponse) => void;
 }
 
 /** Extract text from a Message. */
@@ -41,7 +45,7 @@ export async function classify(
   if (ruleResult && ruleResult.confidence >= threshold) {
     return ruleResult;
   }
-  return classifyByLlm(message, history, opts.llm, opts.model);
+  return classifyByLlm(message, history, opts.llm, opts.model, opts.onRequest, opts.onResponse);
 }
 
 export { classifyByRules, listRules } from './rules.js';

@@ -1,4 +1,4 @@
-// @littlesheep/gateway — channel/types.ts
+// @littlesheep/plugins — channel/types.ts
 // Core type contracts for the channel plugin system.
 //
 // A ChannelPlugin is an adapter that connects a communication channel

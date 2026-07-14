@@ -1,8 +1,10 @@
 // @littlesheep/app - workspace-layout-index.ts
 // Auditable mirror of renderer workspace layout recovery state.
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
+import { atomicWrite } from '@littlesheep/memory-core'
+import { rebaseBoundPath, sameBoundPath } from './path-rebinding.js'
 
 export type WorkspaceLayoutTabId = string
 
@@ -53,8 +55,54 @@ export class WorkspaceLayoutIndex {
   async save(input: unknown): Promise<WorkspaceLayoutSnapshot> {
     const snapshot = normalizeWorkspaceLayoutSnapshot(input)
     await mkdir(dirname(this.filePath), { recursive: true })
-    await writeFile(this.filePath, JSON.stringify(snapshot, null, 2), 'utf-8')
+    await atomicWrite(this.filePath, JSON.stringify(snapshot, null, 2))
     return snapshot
+  }
+
+  async rebindWorkspace(fromPath: string, toPath: string): Promise<WorkspaceLayoutSnapshot | null> {
+    const snapshot = await this.read()
+    if (!snapshot) return null
+    const openRequest = snapshot.openRequest
+      ? {
+          root: rebaseBoundPath(snapshot.openRequest.root, fromPath, toPath),
+          path: rebaseBoundPath(snapshot.openRequest.path, fromPath, toPath),
+        }
+      : null
+    const openTabs = snapshot.openTabs.map((tab) => rebindWorkspaceFileTabId(tab, fromPath, toPath))
+    const activeTab = rebindWorkspaceFileTabId(snapshot.activeTab, fromPath, toPath)
+    const drafts: Record<string, WorkspaceLayoutFileDraft> = {}
+    for (const [tab, draft] of Object.entries(snapshot.drafts)) {
+      drafts[rebindWorkspaceFileTabId(tab, fromPath, toPath)] = {
+        ...draft,
+        path: rebaseBoundPath(draft.path, fromPath, toPath),
+      }
+    }
+    const workspacePath = sameBoundPath(snapshot.workspacePath, fromPath)
+      ? resolve(toPath)
+      : snapshot.workspacePath
+    const changed = workspacePath !== snapshot.workspacePath
+      || openRequest?.root !== snapshot.openRequest?.root
+      || openRequest?.path !== snapshot.openRequest?.path
+      || activeTab !== snapshot.activeTab
+      || openTabs.some((tab, index) => tab !== snapshot.openTabs[index])
+      || Object.keys(drafts).some((tab) => !snapshot.drafts[tab] || drafts[tab]?.path !== snapshot.drafts[tab]?.path)
+    if (!changed) return snapshot
+    return this.save({ ...snapshot, workspacePath, openRequest, openTabs, activeTab, drafts })
+  }
+}
+
+function rebindWorkspaceFileTabId(tab: string, fromPath: string, toPath: string): string {
+  const match = tab.match(/^file:([^|]+)\|(.+)$/u)
+  if (!match) return tab
+  try {
+    const root = decodeURIComponent(match[1]!)
+    const path = decodeURIComponent(match[2]!)
+    const nextRoot = rebaseBoundPath(root, fromPath, toPath)
+    const nextPath = rebaseBoundPath(path, fromPath, toPath)
+    if (nextRoot === root && nextPath === path) return tab
+    return `file:${encodeURIComponent(nextRoot)}|${encodeURIComponent(nextPath)}`
+  } catch {
+    return tab
   }
 }
 

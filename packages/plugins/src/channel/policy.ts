@@ -1,4 +1,4 @@
-// @littlesheep/gateway — channel/policy.ts
+// @littlesheep/plugins — channel/policy.ts
 // Conversation policy evaluation: decides whether an external user is allowed
 // to converse with the agent via a channel.
 //
@@ -19,6 +19,9 @@ export interface PolicyResult {
   /** Human-readable reason (for logging/feedback). */
   reason: string;
 }
+
+const MAX_PAIRING_CHANNELS = 256;
+const MAX_PAIRED_USERS_PER_CHANNEL = 10_000;
 
 /**
  * Evaluate a conversation policy for an external user.
@@ -91,10 +94,20 @@ export class PairingState {
   pair(channelId: string, externalUserId: string): void {
     let set = this.state.get(channelId);
     if (!set) {
+      if (this.state.size >= MAX_PAIRING_CHANNELS) {
+        const oldestChannel = this.state.keys().next().value as string | undefined;
+        if (oldestChannel) this.state.delete(oldestChannel);
+      }
       set = new Set();
       this.state.set(channelId, set);
     }
+    set.delete(externalUserId);
     set.add(externalUserId);
+    while (set.size > MAX_PAIRED_USERS_PER_CHANNEL) {
+      const oldestUser = set.values().next().value as string | undefined;
+      if (!oldestUser) break;
+      set.delete(oldestUser);
+    }
   }
 
   /** Check if an external user is paired for a channel. */

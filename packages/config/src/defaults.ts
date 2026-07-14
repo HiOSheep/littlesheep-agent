@@ -9,7 +9,7 @@ export const PROVIDER_PRESETS: ModelProvider[] = [
     name: 'OpenAI',
     baseURL: 'https://api.openai.com/v1',
     apiKey: '$OPENAI_API_KEY',
-    models: ['gpt-5.5', 'gpt-5.4', 'gpt-5.2', 'gpt-4.1'],
+    models: ['gpt-5.6', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.4', 'gpt-5.2', 'gpt-4.1'],
   },
   {
     id: 'deepseek',
@@ -34,7 +34,7 @@ export const DEFAULT_CONFIG: Config = {
   agents: {
     defaults: {
       workspace: process.cwd(),
-      model: 'openai/gpt-5.5',
+      model: 'openai/gpt-5.6',
       reasoning: 'auto',
       profile: 'general',
       timeoutSeconds: 172800,
@@ -42,6 +42,7 @@ export const DEFAULT_CONFIG: Config = {
       timeFormat: 'auto',
       bootstrapMaxChars: 20000,
       bootstrapTotalMaxChars: 60000,
+      contextCompressionThresholdRatio: 0.8,
       harness: 'core-flow',
     },
   },
@@ -91,6 +92,11 @@ export const DEFAULT_CONFIG: Config = {
   skills: {
     extraDirs: [],
     disabled: [],
+  },
+  plugins: {
+    disabled: [],
+    extraDirs: [],
+    allowLocalCode: false,
   },
   mcp: {
     servers: [],

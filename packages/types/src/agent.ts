@@ -5,7 +5,7 @@
 // state machine — LLM only decides WITHIN a stage, never WHICH stage comes next.
 
 import type { Message } from './message.js';
-import type { SessionId } from './session.js';
+import type { CompactionSummary, SessionId } from './session.js';
 import type { AgentTool, ToolContext } from './tool.js';
 import type { MemoryPrelude } from './memory.js';
 import type { ClarificationRequest, ClarificationResponse } from './clarification.js';
@@ -208,6 +208,8 @@ export interface RunContext {
   toolContext: ToolContext;
   /** Memory prelude injected at ENTER. */
   prelude?: MemoryPrelude;
+  /** Versioned non-destructive summary of older messages in this session. */
+  sessionSummary?: CompactionSummary;
   /** Stable root index for the on-demand runtime memory tree. */
   memoryRootIndex?: string;
   /** Bootstrap file contents (AGENTS/SOUL/USER/TOOLS/MEMORY.md). */
@@ -258,6 +260,14 @@ export interface RunContext {
   reply?: string;
   /** Token usage reported by the model provider for the reply-bearing call. */
   usage?: RunUsage;
+  /** Immutable per-run configuration resolved before the harness starts. */
+  resolvedRunConfig?: import('./runtime-contracts.js').ResolvedRunConfig;
+  /** Bounded, redacted snapshots of actual model requests made by this run. */
+  modelRequests?: import('./runtime-contracts.js').ModelRequestSnapshot[];
+  /** Bounded, redacted context snapshots linked from model request snapshots. */
+  contextSnapshots?: import('./runtime-contracts.js').ContextSnapshot[];
+  /** Configured request occupancy ratio that recommends context compaction. */
+  contextCompressionThresholdRatio?: number;
   /** Optional streaming callback for assistant text deltas. */
   onAssistantDelta?: (delta: string) => void;
   /** Optional callback for tool execution events (start/end), emitted by execute stage. */
@@ -282,13 +292,21 @@ export interface RunUsage {
 }
 
 export interface RunAttachment {
+  id?: string;
   path: string;
   name?: string;
   kind: 'image' | 'document' | 'file';
   mimeType?: string;
   size?: number;
+  /** Stable digest for a verified LS-managed cache entry. */
+  contentHash?: string;
   /** Data URL for image inputs when the selected model supports vision. */
   dataUrl?: string;
+  /** Ephemeral extracted content. It is never persisted in AgentResult or execution logs. */
+  extractedText?: string;
+  extractionNote?: string;
+  ownership?: import('./runtime-contracts.js').AttachmentOwnership;
+  contentState?: import('./runtime-contracts.js').AttachmentContentState;
 }
 
 // ─── Stage contract ──────────────────────────────────────────────────────
@@ -406,6 +424,12 @@ export interface AgentResult {
   durationMs: number;
   /** Token usage for the reply-bearing model call when the provider reports it. */
   usage?: RunUsage;
+  /** Immutable configuration used for this run. */
+  resolvedRunConfig?: import('./runtime-contracts.js').ResolvedRunConfig;
+  /** Bounded, redacted request observations. */
+  modelRequests?: import('./runtime-contracts.js').ModelRequestSnapshot[];
+  /** Bounded, redacted context observations. */
+  contextSnapshots?: import('./runtime-contracts.js').ContextSnapshot[];
   /** Structured task execution result when DECIDE produced a task book. */
   taskExecution?: TaskExecutionResult;
   /** Calibrated task contract used by EXECUTE/VERIFY. */

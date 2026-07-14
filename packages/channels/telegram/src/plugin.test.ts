@@ -5,7 +5,7 @@
 // messages are processed and replies are sent via sendMessage.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type { ChannelContext, ChannelRuntimeConfig, InboundChannelMessage } from '@littlesheep/gateway';
+import type { ChannelContext, ChannelRuntimeConfig, InboundChannelMessage } from '@littlesheep/plugins';
 import type { SessionId } from '@littlesheep/types';
 import { asSessionId } from '@littlesheep/types';
 import { TelegramChannelPlugin, TELEGRAM_BOT_TOKEN_SECRET } from './plugin.js';

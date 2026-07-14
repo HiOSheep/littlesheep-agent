@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { InjectionTier } from './types.js';
-import type { MemoryTreeDocument, MemoryWriteIntent } from './types.js';
+import type { MemoryResourceRegistration, MemoryTreeDocument, MemoryTreeDocumentV1, MemoryWriteIntent } from './types.js';
 import { MemoryRepository } from './memory-repository.js';
 
 let dataDir: string;
@@ -38,16 +38,58 @@ afterEach(() => { rmSync(dataDir, { recursive: true, force: true }); });
 describe('MemoryRepository indexed writes', () => {
   it('initializes all canonical branch roots', async () => {
     const snapshot = await repository.snapshot();
+    expect(snapshot.version).toBe(2);
+    expect(snapshot.registryVersion).toBe(1);
+    expect(snapshot.resources).toEqual({});
+    expect(snapshot.resourceManagementAudit).toEqual([]);
     expect(Object.keys(snapshot.nodes).sort()).toEqual([
       'daily:root', 'experience:root', 'long-term:root', 'project:root',
     ]);
     expect(snapshot.nodes['long-term:root']?.isBranchRoot).toBe(true);
   });
 
+  it('migrates v1 data through an atomic v2 mapping and preserves a rollback backup', async () => {
+    const created = await repository.write(intent());
+    const current = await repository.snapshot();
+    const legacy: MemoryTreeDocumentV1 = {
+      version: 1,
+      updatedAt: current.updatedAt,
+      nodes: current.nodes,
+      recoveryQueue: current.recoveryQueue,
+      writeAudit: current.writeAudit,
+      managementAudit: current.managementAudit,
+      migrations: current.migrations,
+    };
+    writeFileSync(repository.indexPath, JSON.stringify(legacy, null, 2), 'utf8');
+
+    const reopened = new MemoryRepository({ dataDir });
+    await reopened.initialize();
+    const migrated = await reopened.snapshot();
+    expect(migrated.version).toBe(2);
+    expect(migrated.nodes[created.node!.id]?.content).toBe(created.node!.content);
+    expect(migrated.resources).toEqual({});
+    expect(migrated.schemaMigrations).toHaveLength(1);
+    const migration = migrated.schemaMigrations[0]!;
+    expect(migration).toMatchObject({ fromVersion: 1, toVersion: 2 });
+    expect(existsSync(join(reopened.rootDir, migration.backupFile))).toBe(true);
+
+    await reopened.restoreSchemaBackup(migration.backupFile);
+    expect((JSON.parse(readFileSync(reopened.indexPath, 'utf8')) as { version: number }).version).toBe(1);
+  });
+
+  it('refuses to overwrite an unknown future document version', async () => {
+    const future = JSON.stringify({ version: 99, important: 'must survive' }, null, 2);
+    writeFileSync(repository.indexPath, future, 'utf8');
+    const reopened = new MemoryRepository({ dataDir });
+    await expect(reopened.initialize()).rejects.toThrow('unsupported document version 99');
+    expect(readFileSync(reopened.indexPath, 'utf8')).toBe(future);
+  });
+
   it('upgrades pre-control-plane documents without rebuilding existing nodes', async () => {
     const existing = await repository.write(intent());
     const legacy = await repository.snapshot() as Partial<MemoryTreeDocument>;
     delete legacy.managementAudit;
+    delete legacy.resourceManagementAudit;
     delete legacy.migrations;
     writeFileSync(repository.indexPath, JSON.stringify(legacy, null, 2), 'utf8');
 
@@ -56,6 +98,7 @@ describe('MemoryRepository indexed writes', () => {
     const upgraded = await reopened.snapshot();
     expect(upgraded.nodes[existing.node!.id]?.summary).toBe(existing.node!.summary);
     expect(upgraded.managementAudit).toEqual([]);
+    expect(upgraded.resourceManagementAudit).toEqual([]);
     expect(upgraded.migrations).toEqual({});
   });
 
@@ -85,6 +128,134 @@ describe('MemoryRepository indexed writes', () => {
     expect(result.decision).toBe('rejected');
     expect(await repository.listNodes('long-term')).toHaveLength(0);
     expect((await repository.snapshot()).writeAudit.at(-1)?.decision).toBe('rejected');
+  });
+
+  it('rejects autonomous writes into the fixed T0 registry tier', async () => {
+    const result = await repository.write(intent({ tier: InjectionTier.T0_CORE }));
+    expect(result).toMatchObject({ decision: 'rejected' });
+    expect(result.reason).toContain('cannot target the fixed T0');
+  });
+
+  it('registers metadata without copying resource bodies and marks stale group entries missing', async () => {
+    const resource: MemoryResourceRegistration = {
+      version: 1,
+      id: 'file:agents',
+      kind: 'agent-instructions',
+      title: 'AGENTS.md',
+      description: 'Runtime operating rules.',
+      tier: InjectionTier.T0_CORE,
+      scope: 'global',
+      authority: 'authoritative',
+      privacy: 'private',
+      source: { kind: 'file', path: join(dataDir, 'AGENTS.md'), contentHash: 'sha256:test' },
+      indexKeys: ['agents', 'rules'],
+      status: 'active',
+      registryGroup: 'bootstrap',
+      registeredAt: '2026-07-13T00:00:00.000Z',
+      updatedAt: '2026-07-13T00:00:00.000Z',
+    };
+    await repository.replaceResourceGroup('bootstrap', [resource]);
+    expect(await repository.listResources({ tier: InjectionTier.T0_CORE })).toEqual([resource]);
+    expect(JSON.stringify(await repository.snapshot())).not.toContain('Runtime operating rules body');
+
+    await repository.replaceResourceGroup('bootstrap', []);
+    expect(await repository.getResource(resource.id)).toMatchObject({ status: 'missing' });
+
+    await repository.replaceResourceGroup('bootstrap', [], { staleMode: 'remove' });
+    expect(await repository.getResource(resource.id)).toBeUndefined();
+  });
+
+  it('rejects duplicate authoritative registrations for one physical source', async () => {
+    const base: MemoryResourceRegistration = {
+      version: 1,
+      id: 'file:one',
+      kind: 'knowledge',
+      title: 'Rules',
+      description: 'Project rules.',
+      tier: InjectionTier.T2_RELEVANT,
+      scope: 'global',
+      authority: 'authoritative',
+      privacy: 'private',
+      source: { kind: 'file', path: join(dataDir, 'rules.md') },
+      indexKeys: ['rules'],
+      status: 'active',
+      registryGroup: 'one',
+      registeredAt: '2026-07-13T00:00:00.000Z',
+      updatedAt: '2026-07-13T00:00:00.000Z',
+    };
+    await repository.replaceResourceGroup('one', [base]);
+    await expect(repository.replaceResourceGroup('two', [{ ...base, id: 'file:two', registryGroup: 'two' }]))
+      .rejects.toThrow('Conflicting authoritative memory resources');
+    expect(await repository.listResources({ status: 'active' })).toHaveLength(1);
+  });
+
+  it('preserves manual disablement across reconciliation and audits lifecycle changes', async () => {
+    const originalPath = join(dataDir, 'docs', 'rules.md');
+    const movedPath = join(dataDir, 'docs', 'architecture-principles.md');
+    const resource: MemoryResourceRegistration = {
+      version: 1,
+      id: 'workspace-rule',
+      kind: 'project-guideline',
+      title: 'rules.md',
+      description: 'Workspace rules.',
+      tier: InjectionTier.T1_ESSENTIAL,
+      branch: 'project',
+      scope: 'workspace',
+      scopeKey: dataDir,
+      authority: 'authoritative',
+      privacy: 'project-private',
+      source: { kind: 'file', path: originalPath },
+      indexKeys: ['rules'],
+      status: 'active',
+      registryGroup: 'workspace-docs:test',
+      registeredAt: '2026-07-13T00:00:00.000Z',
+      updatedAt: '2026-07-13T00:00:00.000Z',
+    };
+    await repository.replaceResourceGroup(resource.registryGroup, [resource]);
+
+    await expect(repository.manageResource(resource.id, 'disable')).resolves.toMatchObject({
+      changed: true,
+      resource: { status: 'disabled' },
+      audit: {
+        action: 'disable',
+        actor: 'user',
+        reason: '记忆资源已被停用。',
+        fromStatus: 'active',
+        toStatus: 'disabled',
+      },
+    });
+    await repository.replaceResourceGroup(resource.registryGroup, [{ ...resource, updatedAt: '2026-07-13T01:00:00.000Z' }]);
+    expect(await repository.getResource(resource.id)).toMatchObject({ status: 'disabled' });
+
+    await expect(repository.rebindResource(resource.id, {
+      sourcePath: movedPath,
+      title: 'architecture-principles.md',
+      indexKeys: ['architecture principles'],
+      status: 'active',
+    })).resolves.toMatchObject({
+      changed: true,
+      resource: { id: resource.id, status: 'disabled', source: { path: movedPath } },
+      audit: { action: 'rebind', fromSourcePath: originalPath, toSourcePath: movedPath },
+    });
+    await expect(repository.manageResource(resource.id, 'restore')).resolves.toMatchObject({
+      resource: { status: 'active' },
+      audit: { action: 'restore', fromStatus: 'disabled', toStatus: 'active' },
+    });
+
+    await repository.replaceResourceGroup(resource.registryGroup, []);
+    expect(await repository.getResource(resource.id)).toMatchObject({ status: 'missing' });
+    await expect(repository.listResourceManagementAudit(resource.id)).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ action: 'mark-missing', reason: expect.stringContaining('已不再出现在注册组') }),
+    ]));
+    await expect(repository.manageResource(resource.id, 'remove')).resolves.toMatchObject({
+      changed: true,
+      removed: true,
+      audit: { action: 'remove', reason: '记忆资源登记已移除。', fromStatus: 'missing' },
+    });
+    expect(await repository.getResource(resource.id)).toBeUndefined();
+    expect((await repository.listResourceManagementAudit(resource.id)).map((record) => record.action)).toEqual([
+      'remove', 'mark-missing', 'restore', 'rebind', 'disable',
+    ]);
   });
 
   it('queues an unresolved parent rather than creating an orphan node', async () => {
@@ -166,5 +337,70 @@ describe('MemoryRepository indexed writes', () => {
     await repository.manageNode(nodeId, 'promote');
     await expect(repository.manageNode(nodeId, 'promote')).rejects.toThrow('highest allowed tier');
     expect((await repository.getNode(nodeId))?.tier).toBe(InjectionTier.T2_RELEVANT);
+  });
+
+  it('rebinds project-scoped nodes, queued writes and resource paths idempotently', async () => {
+    const fromPath = join(dataDir, 'Original');
+    const toPath = join(dataDir, 'Moved');
+    const created = await repository.write(intent({
+      branch: 'project',
+      parentNodeId: 'project:root',
+      scope: 'workspace',
+      scopeKey: fromPath,
+      summary: 'Project build rule',
+      content: 'Use the verified project build command.',
+      retrievalKeys: ['project build'],
+      confidence: 0.9,
+      importance: 0.8,
+    }));
+    await repository.write(intent({
+      branch: 'project',
+      parentNodeId: 'project:missing',
+      scope: 'workspace',
+      scopeKey: fromPath,
+      summary: 'Queued project rule',
+      content: 'This write is waiting for its parent index.',
+      retrievalKeys: ['queued project rule'],
+      confidence: 0.9,
+      importance: 0.8,
+    }));
+    const resource: MemoryResourceRegistration = {
+      version: 1,
+      id: 'project-resource',
+      kind: 'project-guideline',
+      title: 'AGENTS.md',
+      description: 'Project rules.',
+      tier: InjectionTier.T1_ESSENTIAL,
+      branch: 'project',
+      scope: 'workspace',
+      scopeKey: fromPath,
+      authority: 'authoritative',
+      privacy: 'project-private',
+      source: { kind: 'file', path: join(fromPath, 'AGENTS.md') },
+      indexKeys: ['agents'],
+      status: 'active',
+      registryGroup: 'project-test',
+      registeredAt: '2026-07-13T00:00:00.000Z',
+      updatedAt: '2026-07-13T00:00:00.000Z',
+    };
+    await repository.replaceResourceGroup(resource.registryGroup, [resource]);
+
+    await expect(repository.rebindProjectPath(fromPath, toPath)).resolves.toMatchObject({
+      nodeCount: 1,
+      recoveryIntentCount: 1,
+      resourceCount: 1,
+    });
+    expect((await repository.getNode(created.node!.id))?.scopeKey).toBe(toPath);
+    const snapshot = await repository.snapshot();
+    expect(snapshot.recoveryQueue[0]?.intent.scopeKey).toBe(toPath);
+    expect(snapshot.resources['project-resource']).toMatchObject({
+      scopeKey: toPath,
+      source: { path: join(toPath, 'AGENTS.md') },
+    });
+    await expect(repository.rebindProjectPath(fromPath, toPath)).resolves.toEqual({
+      nodeCount: 0,
+      recoveryIntentCount: 0,
+      resourceCount: 0,
+    });
   });
 });

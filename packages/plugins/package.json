@@ -1,0 +1,28 @@
+{
+  "name": "@littlesheep/plugins",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LittleSheep 插件 SDK、发现与运行时宿主。",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@littlesheep/config": "workspace:*",
+    "@littlesheep/runner": "workspace:*",
+    "@littlesheep/session": "workspace:*",
+    "@littlesheep/skills": "workspace:*",
+    "@littlesheep/types": "workspace:*",
+    "zod": "^3.23.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rimraf dist"
+  }
+}

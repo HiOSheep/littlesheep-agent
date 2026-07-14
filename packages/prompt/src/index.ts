@@ -22,16 +22,21 @@ export {
   runtimeSection,
   projectContextSection,
   preludeSection,
+  sessionSummarySection,
   outputDirectivesSection,
 } from './sections.js';
 export {
   buildSystemPrompt,
+  buildSystemPromptBundle,
   resolvePromptConfig,
   assembleSystemPrompt,
+  assembleSystemPromptBundle,
   truncateBootstrap,
   applyBootstrapLimits,
   type PromptInput,
+  type PromptContextSegment,
   type PromptMode,
   type ResolvedPromptConfig,
   type RuntimeFacts,
+  type SystemPromptBundle,
 } from './builder.js';

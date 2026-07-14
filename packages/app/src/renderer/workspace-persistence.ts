@@ -20,6 +20,7 @@ export type WorkspaceFileTabId = `file:${string}`
 export type WorkspacePanelTabId = WorkspacePanelTab | WorkspaceFileTabId
 
 export const DEFAULT_WORKSPACE_PANEL_TABS: WorkspacePanelTabId[] = ['review']
+export const WORKSPACE_PANEL_OPEN_TABS_MAX = 64
 export const WORKSPACE_FILE_DRAFT_MAX_CHARS = 256 * 1024
 export const WORKSPACE_FILE_DRAFTS_MAX_CHARS = 1024 * 1024
 
@@ -113,6 +114,7 @@ export function dedupeWorkspacePanelTabs(tabs: WorkspacePanelTabId[]): Workspace
   const next: WorkspacePanelTabId[] = []
   for (const tab of tabs) {
     if (!next.includes(tab)) next.push(tab)
+    if (next.length >= WORKSPACE_PANEL_OPEN_TABS_MAX) break
   }
   return next.length > 0 ? next : DEFAULT_WORKSPACE_PANEL_TABS
 }
@@ -275,6 +277,60 @@ export function alignWorkspacePanelStateToRoot(
   return { openRequest, openTabs, activeTab, drafts }
 }
 
+export function rebindWorkspacePanelState(
+  state: WorkspacePanelRecoveryState,
+  fromRoot: string,
+  toRoot: string,
+): WorkspacePanelRecoveryState {
+  const openRequest = state.openRequest
+    ? {
+        ...state.openRequest,
+        root: rebindWorkspacePath(state.openRequest.root, fromRoot, toRoot),
+        path: rebindWorkspacePath(state.openRequest.path, fromRoot, toRoot),
+      }
+    : null
+  const openTabs = dedupeWorkspacePanelTabs(state.openTabs.map((tab) => {
+    const file = parseWorkspaceFileTabId(tab)
+    return file
+      ? workspaceFileTabId(
+          rebindWorkspacePath(file.root, fromRoot, toRoot),
+          rebindWorkspacePath(file.path, fromRoot, toRoot),
+        )
+      : tab
+  }))
+  const activeFile = parseWorkspaceFileTabId(state.activeTab)
+  const activeTab = activeFile
+    ? workspaceFileTabId(
+        rebindWorkspacePath(activeFile.root, fromRoot, toRoot),
+        rebindWorkspacePath(activeFile.path, fromRoot, toRoot),
+      )
+    : state.activeTab
+  const drafts: Record<string, WorkspaceFileDraftState> = {}
+  for (const [tab, draft] of Object.entries(state.drafts)) {
+    const file = parseWorkspaceFileTabId(tab)
+    const nextTab = file
+      ? workspaceFileTabId(
+          rebindWorkspacePath(file.root, fromRoot, toRoot),
+          rebindWorkspacePath(file.path, fromRoot, toRoot),
+        )
+      : tab
+    drafts[nextTab] = { ...draft, path: rebindWorkspacePath(draft.path, fromRoot, toRoot) }
+  }
+  return { openRequest, openTabs, activeTab, drafts }
+}
+
+export function rebindWorkspacePath(path: string, fromRoot: string, toRoot: string): string {
+  const normalizedPath = trimWorkspacePath(path)
+  const normalizedFrom = trimWorkspacePath(fromRoot)
+  const normalizedTo = trimWorkspacePath(toRoot)
+  const comparablePath = normalizeWorkspacePathForCompare(normalizedPath)
+  const comparableFrom = normalizeWorkspacePathForCompare(normalizedFrom)
+  if (comparablePath !== comparableFrom && !comparablePath.startsWith(`${comparableFrom}\\`)) return path
+  const suffix = normalizedPath.slice(normalizedFrom.length)
+  const separator = normalizedTo.includes('\\') ? '\\' : '/'
+  return `${normalizedTo}${suffix.replace(/[\\/]/g, separator)}`
+}
+
 function normalizeWorkspaceOpenRequest(value: unknown): WorkspaceOpenRequest | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const item = value as Record<string, unknown>
@@ -317,5 +373,9 @@ function isPathInsideOrSameWorkspace(path: string, root: string): boolean {
 }
 
 function normalizeWorkspacePathForCompare(value: string): string {
-  return value.replace(/[\\/]+$/, '').replace(/\//g, '\\').toLowerCase()
+  return trimWorkspacePath(value).replace(/\//g, '\\').toLowerCase()
+}
+
+function trimWorkspacePath(value: string): string {
+  return value.replace(/[\\/]+$/, '')
 }

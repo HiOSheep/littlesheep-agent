@@ -1,7 +1,7 @@
 // @littlesheep/classifier — llm.ts
 // LLM fallback classifier. Called when rules don't match or confidence is low.
 
-import type { LlmClient, ChatMessage } from '@littlesheep/llm';
+import type { ChatRequest, ChatResponse, LlmClient, ChatMessage } from '@littlesheep/llm';
 import type { Classification, Message, MessageClass } from '@littlesheep/types';
 
 const SYSTEM_PROMPT = `You are a message classifier for an AI agent. Classify the user's last message into exactly one of:
@@ -34,6 +34,8 @@ export async function classifyByLlm(
   history: Message[],
   llm: LlmClient,
   model: string,
+  onRequest?: (request: ChatRequest) => ChatRequest | void,
+  onResponse?: (request: ChatRequest, response: ChatResponse) => void,
 ): Promise<Classification> {
   const recentHistory = history.slice(-5);
   const messages: ChatMessage[] = [
@@ -47,7 +49,10 @@ export async function classifyByLlm(
 
   let content: string;
   try {
-    const res = await llm.chat({ model, messages, temperature: 0, max_tokens: 200 });
+    const request: ChatRequest = { model, messages, temperature: 0, max_tokens: 200 };
+    const preparedRequest = onRequest?.(request) ?? request;
+    const res = await llm.chat(preparedRequest);
+    onResponse?.(preparedRequest, res);
     content = res.content;
   } catch (err) {
     return {

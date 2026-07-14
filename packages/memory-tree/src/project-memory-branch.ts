@@ -39,11 +39,11 @@ export interface ProjectMemoryBranchDeps {
 }
 
 function projectNodeId(projectId: string): string {
-  return `legacy-project:${encodeURIComponent(projectId)}`;
+  return `project:${encodeURIComponent(projectId)}`;
 }
 
 function decodeProjectNodeId(nodeId: string | undefined): string | undefined {
-  const encoded = nodeId?.match(/^legacy-project:(.+)$/)?.[1];
+  const encoded = nodeId?.match(/^(?:project|legacy-project):(.+)$/u)?.[1];
   if (!encoded) return undefined;
   try { return decodeURIComponent(encoded); } catch { return undefined; }
 }

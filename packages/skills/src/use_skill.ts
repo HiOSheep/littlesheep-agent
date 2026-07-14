@@ -20,10 +20,12 @@ const UseSkillInput = z.object({
  * live loader.index, so it reflects skills created via `create_skill` mid-session.
  */
 export function createUseSkillTool(loader: SkillLoader): AgentTool {
-  const names = loader.index.skills.map((s) => s.name).join(', ');
   return {
     name: 'use_skill',
-    description: `Load a skill body by name. Available skills: ${names || '(none)'}. Call this when you want to follow a skill's instructions.`,
+    get description() {
+      const names = loader.index.skills.map((s) => s.name).join(', ');
+      return `Load a skill body by name. Available skills: ${names || '(none)'}. Call this when you want to follow a skill's instructions.`;
+    },
     inputSchema: UseSkillInput,
     async execute(input): Promise<ToolResult> {
       const start = Date.now();

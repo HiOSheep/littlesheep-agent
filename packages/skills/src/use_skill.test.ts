@@ -60,10 +60,12 @@ describe('createUseSkillTool', () => {
   });
 
   it('has name "use_skill" and an input schema', () => {
+    const emptyIndex = { skills: [], discovered: [], sources: [], disabled: [] };
     const loader = {
-      index: { skills: [], disabled: [] },
+      index: emptyIndex,
       loadBody: async () => undefined,
-      reload: async () => ({ skills: [], disabled: [] }),
+      reload: async () => emptyIndex,
+      replaceOwnedSources: async () => emptyIndex,
     };
     const tool = createUseSkillTool(loader);
     expect(tool.name).toBe('use_skill');

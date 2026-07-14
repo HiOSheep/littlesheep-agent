@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import {
   deleteArchivedProject,
   deleteArchivedSession,
@@ -23,23 +23,37 @@ export function ArchiveManager({ onChanged }: ArchiveManagerProps) {
   const [loading, setLoading] = useState(true)
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const mountedRef = useRef(true)
+  const requestRef = useRef(0)
 
   useEffect(() => {
     void refreshArchive()
+  }, [])
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      requestRef.current += 1
+    }
   }, [])
 
   const grouped = useMemo(() => groupArchive(archive), [archive])
   const hasItems = archive.projects.length > 0 || archive.sessions.length > 0
 
   async function refreshArchive() {
+    const requestId = ++requestRef.current
     setLoading(true)
     setError(null)
     try {
-      setArchive(await listArchive())
+      const next = await listArchive()
+      if (!mountedRef.current || requestId !== requestRef.current) return
+      setArchive(next)
     } catch (err) {
+      if (!mountedRef.current || requestId !== requestRef.current) return
       setError((err as Error).message)
     } finally {
-      setLoading(false)
+      if (mountedRef.current && requestId === requestRef.current) setLoading(false)
     }
   }
 
@@ -48,12 +62,15 @@ export function ArchiveManager({ onChanged }: ArchiveManagerProps) {
     setError(null)
     try {
       await action()
-      setArchive(await listArchive())
+      const next = await listArchive()
+      if (!mountedRef.current) return
+      setArchive(next)
       await onChanged?.()
     } catch (err) {
+      if (!mountedRef.current) return
       setError((err as Error).message)
     } finally {
-      setBusyKey(null)
+      if (mountedRef.current) setBusyKey(null)
     }
   }
 

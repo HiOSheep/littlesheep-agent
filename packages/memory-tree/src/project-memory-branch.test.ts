@@ -41,12 +41,13 @@ describe('ProjectMemoryBranch index-first retrieval', () => {
     const index = await branch.getIndex(context());
     expect(fetch).not.toHaveBeenCalled();
     expect(index.entries.map((entry) => entry.title)).toEqual(['current', 'other']);
+    expect(index.entries[0]?.id).toBe('project:current');
     expect(index.entries[0]?.summary).toContain('current workspace');
   });
 
   it('fetches only after explicit expansion and reuses the TTL cache', async () => {
     const { branch, fetch } = makeBranch();
-    const request = { nodeId: 'legacy-project:current', limit: 10, tokenBudget: 1_000 };
+    const request = { nodeId: 'project:current', limit: 10, tokenBudget: 1_000 };
     const first = await branch.expand(context(), request);
     const second = await branch.expand(context(), request);
     expect(fetch).toHaveBeenCalledTimes(1);
@@ -56,7 +57,7 @@ describe('ProjectMemoryBranch index-first retrieval', () => {
 
   it('re-fetches after invalidation', async () => {
     const { branch, fetch } = makeBranch();
-    const request = { nodeId: 'legacy-project:current', limit: 10, tokenBudget: 1_000 };
+    const request = { nodeId: 'project:current', limit: 10, tokenBudget: 1_000 };
     await branch.expand(context(), request);
     await branch.invalidate();
     await branch.expand(context(), request);

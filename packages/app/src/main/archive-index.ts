@@ -2,11 +2,14 @@
 // UI archive registry. Archived items are hidden from the main sidebar but
 // remain manageable from the settings archive page.
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { atomicWrite } from '@littlesheep/memory-core'
 import type { ProjectMeta } from './project-index.js'
 import { normalizeSessionMeta, type SessionMeta } from './session-index.js'
+import { isRetiredApplicationWorkspace } from './runtime-config.js'
 import { sessionBelongsToProject } from '../shared/session-scope.js'
+import { normalizeBoundPath, sameBoundPath } from './path-rebinding.js'
 
 export interface ArchivedProjectMeta extends ProjectMeta {
   archivedAt: number
@@ -64,6 +67,32 @@ export class ArchiveIndex {
     await this.persist(archive)
   }
 
+  async findProjectByPath(path: string): Promise<ArchivedProjectMeta | undefined> {
+    const normalizedPath = normalizeBoundPath(path)
+    return (await this.list()).projects.find((project) => sameBoundPath(project.path, normalizedPath))
+  }
+
+  async rebindProject(project: ProjectMeta, workspacePath: string): Promise<ArchivedSessionMeta[]> {
+    const normalizedPath = normalizeBoundPath(workspacePath)
+    const archive = await this.list()
+    let changed = false
+    archive.projects = archive.projects.map((item) => {
+      if (item.id !== project.id) return item
+      changed = true
+      return { ...item, ...project, path: normalizedPath, archivedAt: item.archivedAt }
+    })
+    const affected: ArchivedSessionMeta[] = []
+    archive.sessions = archive.sessions.map((session) => {
+      if (!sessionBelongsToProject(session, project.id)) return session
+      const updated = { ...session, workspacePath: normalizedPath }
+      affected.push(updated)
+      if (session.workspacePath !== normalizedPath) changed = true
+      return updated
+    })
+    if (changed) await this.persist(archive)
+    return affected
+  }
+
   async restoreProject(id: string): Promise<ArchivedProjectMeta | undefined> {
     const archive = await this.list()
     const project = archive.projects.find((item) => item.id === id)
@@ -95,6 +124,19 @@ export class ArchiveIndex {
     return project
   }
 
+  async migrateManagedWorkspaceMetadata(): Promise<ArchivedProjectMeta[]> {
+    const archive = await this.list()
+    const removed = archive.projects.filter((project) =>
+      samePath(project.path, this.workplaceDir) || isRetiredApplicationWorkspace(project.path, this.workplaceDir))
+    const removedIds = new Set(removed.map((project) => project.id))
+    archive.projects = archive.projects.filter((project) => !removedIds.has(project.id))
+
+    // list() already normalizes legacy session ownership and workspace paths.
+    // Persist once so a later restore cannot reintroduce the retired default.
+    await this.persist(archive)
+    return removed
+  }
+
   async removeSession(id: string): Promise<ArchivedSessionMeta | undefined> {
     return this.restoreSession(id)
   }
@@ -115,7 +157,7 @@ export class ArchiveIndex {
 
   private async persist(archive: ArchivePayload): Promise<void> {
     await mkdir(join(this.filePath, '..'), { recursive: true })
-    await writeFile(this.filePath, JSON.stringify(archive, null, 2), 'utf-8')
+    await atomicWrite(this.filePath, JSON.stringify(archive, null, 2))
   }
 }
 
@@ -130,7 +172,7 @@ function belongsToProject(session: SessionMeta, project: ProjectMeta): boolean {
 }
 
 function samePath(a: string, b: string): boolean {
-  return a.replace(/[\\/]+$/, '').toLowerCase() === b.replace(/[\\/]+$/, '').toLowerCase()
+  return sameBoundPath(a, b)
 }
 
 function isArchivedProjectMeta(value: unknown): value is ArchivedProjectMeta {
@@ -142,7 +184,12 @@ function isArchivedProjectMeta(value: unknown): value is ArchivedProjectMeta {
     typeof item.path === 'string' &&
     typeof item.createdAt === 'string' &&
     typeof item.lastActiveAt === 'string' &&
-    typeof item.archivedAt === 'number'
+    typeof item.archivedAt === 'number' &&
+    (item.identityVersion === undefined || item.identityVersion === 2) &&
+    (item.previousPaths === undefined || (
+      Array.isArray(item.previousPaths) && item.previousPaths.every((path) => typeof path === 'string')
+    )) &&
+    (item.pathUpdatedAt === undefined || typeof item.pathUpdatedAt === 'string')
   )
 }
 

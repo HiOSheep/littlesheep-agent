@@ -5,7 +5,7 @@
 // verifies that events are processed and replies are sent via the HTTP API.
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import type { ChannelContext, ChannelRuntimeConfig, InboundChannelMessage } from '@littlesheep/gateway';
+import type { ChannelContext, ChannelRuntimeConfig, InboundChannelMessage } from '@littlesheep/plugins';
 import type { SessionId } from '@littlesheep/types';
 import { asSessionId } from '@littlesheep/types';
 import {

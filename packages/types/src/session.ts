@@ -24,6 +24,8 @@ export interface SessionMetadata {
   messageCount: number;
   /** Whether compaction has been applied. */
   compacted?: boolean;
+  /** Latest non-destructive summary of older messages. Original messages remain in JSONL. */
+  compaction?: CompactionSummary;
   /** Free-form tags. */
   tags?: string[];
   /** Channel id when this session is bound to a communication channel.
@@ -53,12 +55,20 @@ export interface LockHandle {
 
 /** Compaction summary written when a session is compacted. */
 export interface CompactionSummary {
+  version: 1;
+  id: string;
   /** Messages collapsed into the summary. */
   collapsedCount: number;
   /** The distilled summary text inserted in place. */
   summary: string;
   /** When compaction happened. */
   compactedAt: string;
+  sourceStartMessageId: string;
+  sourceEndMessageId: string;
+  sourceStartAt: string;
+  sourceEndAt: string;
+  previousSummaryId?: string;
+  model?: string;
 }
 
 /**

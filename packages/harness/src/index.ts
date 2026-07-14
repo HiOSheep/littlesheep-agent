@@ -27,3 +27,14 @@ export { convertToolCall } from './stages/execute.js';
 // LLM helpers (JSON extraction + retry-on-parse-failure). Reused by the CLI
 // import-repo command and other LLM-backed utilities outside the harness loop.
 export { callLlmForJson, extractJson } from './stages/_shared.js';
+
+export {
+  prepareModelRequest,
+  recordModelRequest,
+  recordProviderUsage,
+  MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN,
+  MAX_SNAPSHOT_MESSAGES,
+  MAX_SNAPSHOT_ITEMS,
+  MAX_SNAPSHOT_TOOLS,
+} from './model-observability.js';
+export { buildRunRequestCandidates, type BuildRunRequestCandidatesOptions } from './context-candidates.js';

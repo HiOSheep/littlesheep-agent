@@ -26,7 +26,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\refresh-deskto
 2. `src/main/local-app-api-server.ts` 提供本地 UI、流式执行、设置、记忆树、项目、工作区和终端接口。
 3. `src/preload/` 只暴露 renderer 必需的桥接信息。
 4. `src/renderer/` 负责聊天、侧边栏、设置、归档、记忆树、执行过程和拓展工作区。
-5. 外部渠道由 `@littlesheep/gateway` 和 `packages/channels/*` 提供，不是本地 UI 的必要依赖。
+5. Electron 主进程并列装配 Runner 与 `@littlesheep/plugins` 宿主；插件工具经校验后迁移进 Runner，插件 Skill 通过 owner-scoped 来源进入 SkillLoader 和记忆注册表，外部渠道以插件贡献形式接入且不是本地 UI 的必要依赖。插件 API v1 的边界和本地代码信任规则见 [插件开发说明](../../docs/plugin-development.md)。
 
 ## 重要入口
 
@@ -34,7 +34,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\refresh-deskto
 | --- | --- |
 | `src/main/index.ts` | Electron 主进程启动和退出。 |
 | `src/main/local-app-api-server.ts` | Local App API、SSE、工作区和终端。 |
+| `src/main/attachment-cache.ts`、`attachments.ts` | 受管附件缓存、稳定索引、安全清理、按需解析和 run 所有权分类。 |
+| `../memory-tree/src/workspace-resource-index.ts`、`workspace-resource-scanner.ts` | 工作区相对路径元数据索引；通过 Runner/MemoryService 接入，正文仍由显式工作区工具读取。 |
 | `src/main/keychain.ts` | API key 安全存储。 |
+| `src/main/project-index.ts`、`project-rebinding.ts` | 稳定项目身份、路径冲突检查和可恢复跨索引重绑定。 |
 | `src/main/workspace-*.ts` | 工作区布局、产物、文件路由和 shell。 |
 | `src/renderer/App.tsx` | 主 UI 编排。 |
 | `src/renderer/TraceCard.tsx` | TaskBook、工具和验证过程。 |

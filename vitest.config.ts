@@ -8,6 +8,9 @@ import { fileURLToPath } from 'node:url';
 const pkg = (name: string) =>
   fileURLToPath(new URL(`./packages/${name}/src/index.ts`, import.meta.url));
 
+const pkgFile = (name: string, file: string) =>
+  fileURLToPath(new URL(`./packages/${name}/src/${file}.ts`, import.meta.url));
+
 // Channel plugins live under packages/channels/<name>/ (one level deeper).
 const channelPkg = (name: string) =>
   fileURLToPath(new URL(`./packages/channels/${name}/src/index.ts`, import.meta.url));
@@ -53,9 +56,11 @@ export default defineConfig({
       '@littlesheep/channel-feishu': channelPkg('feishu'),
       '@littlesheep/channel-qqbot': channelPkg('qqbot'),
       '@littlesheep/cli': pkg('cli'),
+      '@littlesheep/config/model-capabilities': pkgFile('config', 'model-capabilities'),
       '@littlesheep/config': pkg('config'),
+      '@littlesheep/context': pkg('context'),
       '@littlesheep/experience': pkg('experience'),
-      '@littlesheep/gateway': pkg('gateway'),
+      '@littlesheep/plugins': pkg('plugins'),
       '@littlesheep/harness': pkg('harness'),
       '@littlesheep/llm': pkg('llm'),
       '@littlesheep/memory-core': pkg('memory-core'),

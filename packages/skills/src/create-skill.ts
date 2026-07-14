@@ -69,7 +69,7 @@ export function createCreateSkillTool(deps: CreateSkillToolDeps): AgentTool {
         const { name, description, when_to_use, body } = parsed;
 
         // Check for name collision against the live index.
-        const existing = deps.loader.index.skills.find((s) => s.name === name);
+        const existing = deps.loader.index.discovered.find((s) => s.name === name);
         if (existing) {
           return {
             callId: '',
