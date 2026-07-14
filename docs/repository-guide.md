@@ -154,7 +154,7 @@
 | `packages/app/src/renderer/App.tsx` | 主界面、侧边栏、会话、输入栏、设置和拓展工作区编排。 |
 | `packages/app/src/renderer/TraceCard.tsx` | Agent 执行过程、TaskBook、工具调用和验证时间线。 |
 | `packages/app/src/renderer/MemoryTreeView.tsx`、`ArchiveManager.tsx`、`Settings.tsx` | 记忆树、项目记忆投影、归档和设置界面。 |
-| `packages/app/src/renderer/api.ts` | renderer 对 Local App API 的类型化 fetch/SSE 客户端。 |
+| `packages/app/src/renderer/api.ts` | renderer 对 Local App API 的兼容导出入口；领域客户端位于 `packages/app/src/renderer/api/`。 |
 | `packages/app/src/renderer/styles.css` | 当前深灰视觉系统、共享浮层/转场 token、折叠和工作区布局样式；后续按 feature 拆分时必须保留共享原语契约。 |
 | `packages/app/src/shared/` | renderer 与主进程共享的纯函数模型、Local App API 路由和跨进程协议；稳定跨 package 契约仍归 `packages/types/`。 |
 

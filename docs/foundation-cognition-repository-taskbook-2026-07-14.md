@@ -112,7 +112,6 @@ D1 已确认采用该方案。实现安排在稳定仓库边界之后，不能�
 | 大型组合文件 | 38 个非测试生产文件超过 300 行 | 修改冲突、职责漂移、难以并行开发 |
 | Renderer 总控过重 | `App.tsx` 约 9935 行 | UI、导航、会话、设置和工作区相互牵连 |
 | Local App API 过重 | `local-app-api-server.ts` 约 2819 行 | 路由、服务、资源生命周期和协议难以独立验证 |
-| Renderer API 过重 | `renderer/api.ts` 已由约 1500 行降至约 1088 行，仍是兼容 barrel | 请求实现仍集中，修改容易产生无关冲突 |
 | Memory 边界仍大 | `memory-repository.ts` 约 1279 行，`memory-service.ts` 约 1120 行 | 存储、迁移、索引和消费职责难以单独演进 |
 | 说明入口不足 | 26 个 package 根目录中 25 个没有 README | 新任务难以快速找到所有者和入口 |
 | 领域目录说明不足 | 35 个直接包含源码的 `src` 目录没有 README | 目录层级不能承担渐进式披露 |
@@ -257,9 +256,18 @@ D1 已确认采用该方案。实现安排在稳定仓库边界之后，不能�
 
 #### 3C Renderer API
 
+状态：已完成。`renderer/api.ts` 已收敛为 21 行兼容 barrel，领域实现位于 `renderer/api/`。
+
 - 按上述领域拆分 fetch/SSE 客户端；
 - 保留一个兼容 barrel，避免大规模同步修改调用方；
 - 共享协议类型不得在 main 和 renderer 各写一份。
+
+完成证据（2026-07-14）：
+
+- 客户端已按 run、sessions、runtime、attachments、workspace files、terminal、plugins/channels 和 memory 分域；
+- 工作区文件与终端会话进一步分离，旧 `./api` 和 `./api/workspace` 导出保持兼容；
+- 所有路由继续消费 `shared/local-app-api-routes.ts`，跨进程类型继续消费 shared contracts；
+- App TypeScript 双配置检查通过，完整质量门见本阶段最终验证记录。
 
 验收：桌面所有现有交互、转场、导航、恢复和 Local App API 契约不变；三个原始热点不再接收新领域逻辑。
 

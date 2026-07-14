@@ -70,48 +70,26 @@ import { randomUUID } from 'node:crypto'
 import { closeHttpServer } from './http-server-shutdown.js'
 import { spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import { access, lstat, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
-import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
-import { shell } from 'electron'
+import { stat } from 'node:fs/promises'
+import { isAbsolute, join, relative, resolve } from 'node:path'
 import {
   LOCAL_APP_API_PREFIXES,
   LOCAL_APP_API_ROUTES,
   matchLocalAppApiItemPath,
 } from '../shared/local-app-api-routes.js'
-import type { ProviderInfo, RuntimeState } from '../shared/runtime-api-contracts.js'
-import type { PluginsStatusResponse } from '../shared/plugin-control-contracts.js'
-import type { ChannelConnectionsStatus } from '../shared/channel-control-contracts.js'
-import type { AgentRunner, ExecutionLog, RunInput } from '@littlesheep/runner'
+import type { AgentRunner, RunInput } from '@littlesheep/runner'
 import { asSessionId, type Message } from '@littlesheep/types'
 import type { Config } from '@littlesheep/config'
-import { parseModelRef, resolveApiKey, loadConfig, withProviderPresets } from '@littlesheep/config'
 import { SessionIndex, type SessionMeta } from './session-index.js'
-import { ProjectIndex, ProjectPathConflictError, type ProjectMeta } from './project-index.js'
+import { ProjectIndex } from './project-index.js'
 import { ProjectRebindingService } from './project-rebinding.js'
 import { sameBoundPath } from './path-rebinding.js'
-import { ArchiveIndex, type ArchivedProjectMeta, type ArchivedSessionMeta } from './archive-index.js'
+import { ArchiveIndex } from './archive-index.js'
 import { TerminalActivityIndex } from './terminal-activity-index.js'
 import { WorkspaceArtifactIndex, type WorkspaceArtifactInput } from './workspace-artifact-index.js'
 import { WorkspaceLayoutIndex } from './workspace-layout-index.js'
-import {
-  WORKSPACE_MARKDOWN_EXTS,
-  classifyWorkspaceFileSurface,
-  previewLanguageForWorkspaceFile,
-} from './workspace-file-routing.js'
 import { workspaceShellConfig } from './workspace-shell.js'
-import {
-  buildMemoryTreePayload,
-  manageRuntimeMemoryResource,
-  manageRuntimeMemoryNode,
-  type MemoryNodeManagementAction,
-  type MemoryResourceManagementAction,
-} from './memory-tree-control.js'
-import { saveApiKey, injectKeysIntoEnv, deriveEnvVarName } from './keychain.js'
-import {
-  getAgentProfile,
-  normalizeAgentProfileId,
-  normalizePermissionModeId,
-} from './modes.js'
+import { normalizePermissionModeId } from './modes.js'
 import { resolveRunPolicy, type RunApprovalBroker } from './run-policy.js'
 import {
   createInspectAttachmentTool,
@@ -122,21 +100,33 @@ import {
 import { ManagedAttachmentCache } from './attachment-cache.js'
 import type { DataRootMigrationManager } from './data-root-migration.js'
 import type { PluginHost } from '@littlesheep/plugins'
+import { isSessionScope, type SessionScope } from '../shared/session-scope.js'
 import {
-  coerceReasoningForModelRef,
-  isReasoningSupportedForModelRef,
-  isRuntimeReasoning,
-  type RuntimeReasoning,
-} from '../shared/model-capabilities.js'
-import { buildHistoryMessages } from '../shared/history-activity.js'
-import { isSessionScope, sessionBelongsToProject, type SessionScope } from '../shared/session-scope.js'
+  HttpError,
+  json,
+  readJson,
+  writeSse,
+  type LocalAppApiRequest,
+} from './local-app-api/http.js'
+import { routeExtensions } from './local-app-api/extension-routes.js'
+import {
+  buildRuntimePayload,
+  resolveReasoning,
+  routeRuntime,
+} from './local-app-api/runtime-routes.js'
+import { routeMemory } from './local-app-api/memory-routes.js'
+import { routeSessions } from './local-app-api/session-routes.js'
+import { routeWorkspace } from './local-app-api/workspace-routes.js'
+import {
+  isPathInsideOrSame,
+  normalizeOptionalSessionId,
+  normalizePositiveInt,
+  resolveWorkspaceContextForPath,
+  resolveWorkspaceRoot,
+  resolveWorkspaceRootFromValue,
+  syncWorkspaceResourceChanges,
+} from './local-app-api/workspace-support.js'
 
-const MAX_JSON_BODY_BYTES = 1024 * 1024
-const MAX_ATTACHMENT_IMPORT_BODY_BYTES = 36 * 1024 * 1024
-const MAX_WORKSPACE_DIR_ENTRIES = 320
-const MAX_TEXT_PREVIEW_BYTES = 512 * 1024
-const MAX_TEXT_SAVE_BYTES = 1024 * 1024
-const MAX_WORKSPACE_SAVE_BODY_BYTES = MAX_TEXT_SAVE_BYTES + 64 * 1024
 const MAX_TERMINAL_COMMAND_BYTES = 16 * 1024
 const MAX_TERMINAL_OUTPUT_BYTES = 512 * 1024
 const DEFAULT_TERMINAL_TIMEOUT_MS = 120_000
@@ -149,45 +139,6 @@ const MIN_TERMINAL_COLS = 20
 const MAX_TERMINAL_COLS = 360
 const MIN_TERMINAL_ROWS = 6
 const MAX_TERMINAL_ROWS = 120
-const MEMORY_NODE_MANAGEMENT_ACTIONS = new Set<MemoryNodeManagementAction>([
-  'archive',
-  'restore',
-  'delete',
-  'promote',
-  'demote',
-])
-const MEMORY_RESOURCE_MANAGEMENT_ACTIONS = new Set<MemoryResourceManagementAction>([
-  'disable',
-  'restore',
-  'remove',
-  'rebind',
-])
-const TEXT_SNIFF_BYTES = 64 * 1024
-const HEAVY_WORKSPACE_DIRS = new Set([
-  '.git',
-  '.hg',
-  '.svn',
-  'node_modules',
-  '.pnpm-store',
-  'dist',
-  'out',
-  'build',
-  '.next',
-  '.nuxt',
-  'coverage',
-  'target',
-])
-class HttpError extends Error {
-  constructor(readonly status: number, message: string) {
-    super(message)
-  }
-}
-
-// Tracks whether a /channels/reload is in-flight. The local app API server is
-// instantiated once per app process, so a module-level flag is safe here.
-// Used to detect concurrent reload requests (logged as a warning for
-// concurrency diagnosis — does NOT block/queue the second request).
-let reloadInProgress = false
 interface PendingApproval {
   resolve: (approved: boolean) => void
   cleanup: () => void
@@ -819,407 +770,29 @@ async function route(
     return
   }
 
-  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.projects) {
-    const projects = await projectIndex.list()
-    json(res, 200, { projects })
-    return
-  }
+  const routeRequest: LocalAppApiRequest = { req, res, url, path, method }
+  if (await routeSessions(routeRequest, {
+    getRunner,
+    getConfig,
+    workplaceDir: opts.workplaceDir,
+    sessionIndex,
+    projectIndex,
+    archiveIndex,
+    projectRebinding,
+  })) return
 
-  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.projectRegister) {
-    const body = await readJson(req)
-    const requestedPath = typeof body.path === 'string' ? body.path.trim() : ''
-    if (!requestedPath) {
-      json(res, 400, { error: 'project path is required' })
-      return
-    }
-    const folderPath = resolve(requestedPath)
-    try {
-      const info = await stat(folderPath)
-      if (!info.isDirectory()) {
-        json(res, 400, { error: 'project path is not a directory' })
-        return
-      }
-    } catch {
-      json(res, 404, { error: 'project path does not exist' })
-      return
-    }
-    const archivedProject = await archiveIndex.findProjectByPath(folderPath)
-    if (archivedProject) {
-      json(res, 409, { error: `project path belongs to archived project: ${archivedProject.id}` })
-      return
-    }
-    const project = await projectIndex.ensure(folderPath)
-    json(res, 200, { project })
-    return
-  }
-
-  const projectRebindId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.projects, '/rebind')
-  if (method === 'POST' && projectRebindId !== null) {
-    const id = projectRebindId
-    const body = await readJson(req)
-    const requestedPath = typeof body.path === 'string' ? body.path.trim() : ''
-    if (!requestedPath) {
-      json(res, 400, { error: 'project path is required' })
-      return
-    }
-    const folderPath = resolve(requestedPath)
-    try {
-      const info = await stat(folderPath)
-      if (!info.isDirectory()) {
-        json(res, 400, { error: 'project path is not a directory' })
-        return
-      }
-    } catch {
-      json(res, 404, { error: 'project path does not exist' })
-      return
-    }
-    try {
-      const result = await projectRebinding.rebind(id, folderPath)
-      json(res, 200, { ...result, runtime: buildRuntimePayload(getConfig(), opts.workplaceDir) })
-    } catch (error) {
-      if (error instanceof ProjectPathConflictError) {
-        json(res, 409, { error: error.message, conflictingProjectId: error.existingProjectId })
-        return
-      }
-      throw error
-    }
-    return
-  }
-
-  const projectDeleteId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.projects)
-  if (method === 'DELETE' && projectDeleteId !== null) {
-    const id = projectDeleteId
-    const removed = await projectIndex.remove(id)
-    if (!removed) {
-      json(res, 404, { error: `project not found: ${id}` })
-      return
-    }
-
-    const sessions = await sessionIndex.list()
-    const projectSessions = sessions.filter((session) => sessionBelongsToProject(session, removed.id))
-
-    if (url.searchParams.get('hard') === '1') {
-      for (const session of projectSessions) {
-        await sessionIndex.remove(session.id)
-        await runner.sessionManager.delete(asSessionId(session.id))
-      }
-    } else {
-      const archivedAt = Date.now()
-      await archiveIndex.archiveProject(removed, archivedAt)
-      for (const session of projectSessions) {
-        await archiveIndex.archiveSession(session, archivedAt)
-        await sessionIndex.remove(session.id)
-      }
-    }
-
-    res.writeHead(204)
-    res.end()
-    return
-  }
-
-  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.projectCreateFolder) {
-    const body = await readJson(req)
-    const parentPath = typeof body.parentPath === 'string' ? body.parentPath.trim() : ''
-    const rawName = typeof body.name === 'string' ? body.name.trim() : ''
-    if (!parentPath || !rawName) {
-      json(res, 400, { error: 'parentPath and name are required' })
-      return
-    }
-
-    const folderName = sanitizeFolderName(rawName)
-    if (!folderName) {
-      json(res, 400, { error: 'folder name is invalid' })
-      return
-    }
-
-    const parent = resolve(parentPath)
-    const folderPath = resolve(join(parent, folderName))
-    if (!isPathInside(parent, folderPath)) {
-      json(res, 400, { error: 'folder path escapes selected parent' })
-      return
-    }
-    const archivedProject = await archiveIndex.findProjectByPath(folderPath)
-    if (archivedProject) {
-      json(res, 409, { error: `project path belongs to archived project: ${archivedProject.id}` })
-      return
-    }
-
-    try {
-      await mkdir(folderPath, { recursive: false })
-    } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code
-      if (code === 'EEXIST') {
-        json(res, 409, { error: 'folder already exists' })
-        return
-      }
-      throw err
-    }
-    const project = await projectIndex.ensure(folderPath)
-    json(res, 200, { path: folderPath, project })
-    return
-  }
-
-  // GET /sessions — list sessions for sidebar
-  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.sessions) {
-    const sessions = await sessionIndex.list()
-    json(res, 200, { sessions })
-    return
-  }
-
-  // GET /sessions/:id/messages — read session message history
-  const sessionMessagesId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.sessions, '/messages')
-  if (method === 'GET' && sessionMessagesId !== null) {
-    const id = sessionMessagesId
-    const messages = await runner.sessionManager.read(asSessionId(id))
-    const logsByRunId = await loadExecutionLogsByRunId(runner, messages, id)
-    // Transform to UI-friendly format: filter to user/assistant, extract text
-    // and rehydrate completed agent activity from durable execution logs.
-    const history = buildHistoryMessages(messages, logsByRunId)
-    json(res, 200, { messages: history })
-    return
-  }
-
-  // GET /runs/:runId — replay an execution log
-  const replayRunId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.runs)
-  if (method === 'GET' && replayRunId !== null) {
-    const runId = replayRunId
-    const log = await runner.replay(runId)
-    if (!log) {
-      json(res, 404, { error: `run not found: ${runId}` })
-      return
-    }
-    json(res, 200, log)
-    return
-  }
-
-  // DELETE /sessions/:id — archive or hard-delete session from the sidebar.
-  const sessionDeleteId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.sessions)
-  if (method === 'DELETE' && sessionDeleteId !== null) {
-    const id = sessionDeleteId
-    const removed = await sessionIndex.remove(id)
-    if (url.searchParams.get('hard') === '1') {
-      await runner.sessionManager.delete(asSessionId(id))
-    } else if (removed) {
-      await archiveIndex.archiveSession(removed)
-    }
-    res.writeHead(204)
-    res.end()
-    return
-  }
-
-  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.archive) {
-    json(res, 200, await archiveIndex.list())
-    return
-  }
-
-  const archivedSessionRestoreId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.archiveSessions, '/restore')
-  if (method === 'POST' && archivedSessionRestoreId !== null) {
-    const id = archivedSessionRestoreId
-    const archive = await archiveIndex.list()
-    const archivedSession = archive.sessions.find((item) => item.id === id)
-    if (!archivedSession) {
-      json(res, 404, { error: `archived session not found: ${id}` })
-      return
-    }
-    const archivedProject = findArchivedProjectForSession(archive.projects, archivedSession)
-    const restoredProject = archivedProject ? await archiveIndex.restoreProject(archivedProject.id) : undefined
-    const session = await archiveIndex.restoreSession(id)
-    if (!session) {
-      json(res, 404, { error: `archived session not found: ${id}` })
-      return
-    }
-    const activeProject = restoredProject ? toActiveProject(restoredProject) : undefined
-    if (activeProject) await projectIndex.upsert(activeProject)
-    await sessionIndex.upsert(session.id, toActiveSession(session))
-    json(res, 200, { session: toActiveSessionWithId(session), project: activeProject })
-    return
-  }
-
-  const archivedProjectRestoreId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.archiveProjects, '/restore')
-  if (method === 'POST' && archivedProjectRestoreId !== null) {
-    const id = archivedProjectRestoreId
-    const project = await archiveIndex.restoreProject(id)
-    if (!project) {
-      json(res, 404, { error: `archived project not found: ${id}` })
-      return
-    }
-    const activeProject = toActiveProject(project)
-    await projectIndex.upsert(activeProject)
-    const restoredSessions = await archiveIndex.restoreSessionsForProject(activeProject)
-    for (const session of restoredSessions) {
-      await sessionIndex.upsert(session.id, toActiveSession(session))
-    }
-    json(res, 200, {
-      project: activeProject,
-      sessions: restoredSessions.map(toActiveSessionWithId),
-    })
-    return
-  }
-
-  const archivedSessionDeleteId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.archiveSessions)
-  if (method === 'DELETE' && archivedSessionDeleteId !== null) {
-    const id = archivedSessionDeleteId
-    const removed = await archiveIndex.removeSession(id)
-    if (!removed) {
-      json(res, 404, { error: `archived session not found: ${id}` })
-      return
-    }
-    await runner.sessionManager.delete(asSessionId(id))
-    res.writeHead(204)
-    res.end()
-    return
-  }
-
-  const archivedProjectDeleteId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.archiveProjects)
-  if (method === 'DELETE' && archivedProjectDeleteId !== null) {
-    const id = archivedProjectDeleteId
-    const project = await archiveIndex.removeProject(id)
-    if (!project) {
-      json(res, 404, { error: `archived project not found: ${id}` })
-      return
-    }
-    const sessions = await archiveIndex.removeSessionsForProject(project)
-    for (const session of sessions) {
-      await runner.sessionManager.delete(asSessionId(session.id))
-    }
-    res.writeHead(204)
-    res.end()
-    return
-  }
-
-  // GET /state — runner state
-  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.state) {
-    json(res, 200, runner.state)
-    return
-  }
-
-  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.runtime) {
-    json(res, 200, buildRuntimePayload(getConfig(), opts.workplaceDir))
-    return
-  }
-
-  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.runtime) {
-    const body = await readJson(req)
-    const current = getConfig()
-    const nextDefaults = { ...current.agents.defaults }
-
-    if (typeof body.model === 'string' && body.model.trim()) {
-      const model = body.model.trim()
-      const validation = validateModelRef(current, model)
-      if (validation) {
-        json(res, 400, { error: validation })
-        return
-      }
-      nextDefaults.model = model
-    }
-
-    if (typeof body.reasoning === 'string' && body.reasoning.trim()) {
-      const reasoning = body.reasoning.trim()
-      if (!isReasoning(reasoning)) {
-        json(res, 400, { error: `invalid reasoning value: ${reasoning}` })
-        return
-      }
-      if (!isReasoningSupportedForModelRef(reasoning, nextDefaults.model)) {
-        json(res, 400, { error: `reasoning "${reasoning}" is not supported by model "${nextDefaults.model}"` })
-        return
-      }
-      nextDefaults.reasoning = reasoning
-    }
-
-    if (typeof body.profile === 'string' && body.profile.trim()) {
-      const profile = body.profile.trim()
-      if (!getAgentProfile(profile)) {
-        json(res, 400, { error: `invalid profile value: ${profile}` })
-        return
-      }
-      nextDefaults.profile = normalizeAgentProfileId(profile)
-    }
-
-    nextDefaults.reasoning = coerceReasoningForModelRef(nextDefaults.reasoning, nextDefaults.model)
-
-    if (Object.prototype.hasOwnProperty.call(body, 'workspace')) {
-      const workspace = typeof body.workspace === 'string' ? body.workspace.trim() : ''
-      nextDefaults.workspace = workspace || opts.workplaceDir
-    }
-
-    if (Object.prototype.hasOwnProperty.call(body, 'contextCompressionThresholdRatio')) {
-      const ratio = body.contextCompressionThresholdRatio
-      if (typeof ratio !== 'number' || !Number.isFinite(ratio) || ratio < 0.5 || ratio > 0.95) {
-        json(res, 400, { error: 'contextCompressionThresholdRatio must be a number between 0.5 and 0.95' })
-        return
-      }
-      nextDefaults.contextCompressionThresholdRatio = ratio
-    }
-
-    const next: Config = {
-      ...current,
-      agents: {
-        ...current.agents,
-        defaults: nextDefaults,
-      },
-    }
-    setConfig(next)
-    await opts.updateRuntimeConfig(next)
-    json(res, 200, buildRuntimePayload(next, opts.workplaceDir))
-    return
-  }
-
-  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.dataRoot) {
-    if (!opts.dataRootManager) {
-      json(res, 501, { error: 'data-root management is not available' })
-      return
-    }
-    json(res, 200, await opts.dataRootManager.status())
-    return
-  }
-
-  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.dataRootSelect) {
-    if (!opts.selectDataRootTarget) {
-      json(res, 501, { error: 'data-root picker is not available' })
-      return
-    }
-    json(res, 200, { path: await opts.selectDataRootTarget() })
-    return
-  }
-
-  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.dataRootMigration) {
-    if (!opts.dataRootManager) {
-      json(res, 501, { error: 'data-root management is not available' })
-      return
-    }
-    const body = await readJson(req)
-    const targetDir = typeof body.targetDir === 'string' ? body.targetDir : ''
-    json(res, 200, await opts.dataRootManager.requestMigration(targetDir))
-    return
-  }
-
-  if (method === 'DELETE' && path === LOCAL_APP_API_ROUTES.dataRootMigration) {
-    if (!opts.dataRootManager) {
-      json(res, 501, { error: 'data-root management is not available' })
-      return
-    }
-    json(res, 200, await opts.dataRootManager.cancelPending())
-    return
-  }
-
-  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.dataRootRollback) {
-    if (!opts.dataRootManager) {
-      json(res, 501, { error: 'data-root management is not available' })
-      return
-    }
-    json(res, 200, await opts.dataRootManager.requestRollback())
-    return
-  }
-
-  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.applicationRestart) {
-    if (!opts.restartApplication) {
-      json(res, 501, { error: 'application restart is not available' })
-      return
-    }
-    json(res, 200, { ok: true })
-    setTimeout(() => opts.restartApplication?.(), 80)
-    return
-  }
+  if (await routeRuntime(routeRequest, {
+    getRunner,
+    getConfig,
+    setConfig,
+    workplaceDir: opts.workplaceDir,
+    dataDir: opts.dataDir,
+    rebuildRunner: opts.rebuildRunner,
+    updateRuntimeConfig: opts.updateRuntimeConfig,
+    dataRootManager: opts.dataRootManager,
+    selectDataRootTarget: opts.selectDataRootTarget,
+    restartApplication: opts.restartApplication,
+  })) return
 
   if (method === 'POST' && path === LOCAL_APP_API_ROUTES.workspaceSelect) {
     if (!opts.selectWorkspace) {
@@ -1515,396 +1088,23 @@ async function route(
     return
   }
 
-  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.configProviders) {
-    const providers: ProviderInfo[] = getConfig().providers.map((p) => {
-      const envVar = deriveEnvVarName(p.apiKey)
-      const source: 'env' | 'literal' | 'none' = !p.apiKey
-        ? 'none'
-        : p.apiKey.startsWith('$')
-          ? 'env'
-          : 'literal'
-      const hasKey = envVar ? !!resolveApiKey(p.apiKey) : false
-      return {
-        id: p.id,
-        name: p.name,
-        baseURL: p.baseURL,
-        envVar,
-        hasKey,
-        source,
-      }
-    })
-    json(res, 200, { providers })
-    return
-  }
+  if (await routeExtensions(routeRequest, {
+    getPluginHost,
+    getConfig,
+    setConfig,
+    dataDir: opts.dataDir,
+    updateRuntimeConfig: opts.updateRuntimeConfig,
+  })) return
 
-  // POST /config/apikey — save API key + rebuild runner
-  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.configApiKey) {
-    const body = await readJson(req)
-    const envVar = String(body.envVar ?? '').trim()
-    const key = String(body.key ?? '').trim()
-    if (!envVar || !key) {
-      json(res, 400, { error: 'envVar and key are required' })
-      return
-    }
-    // 1. Encrypt and persist to keys.json
-    await saveApiKey(opts.dataDir, envVar, key)
-    // 2. Inject into process.env (immediate effect)
-    injectKeysIntoEnv({ [envVar]: key })
-    // 3. Rebuild runner (new LLM client picks up the new key from env)
-    await opts.rebuildRunner()
-    json(res, 200, { ok: true })
-    return
-  }
-
-  // GET /plugins - installed manifests, activation state, and discovery errors.
-  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.plugins) {
-    const host = getPluginHost()
-    const payload: PluginsStatusResponse = {
-      started: host?.started ?? false,
-      allowLocalCode: getConfig().plugins.allowLocalCode,
-      plugins: host?.listPlugins() ?? [],
-      diagnostics: host?.diagnostics() ?? [],
-    }
-    json(res, 200, payload)
-    return
-  }
-
-  const pluginEnabledId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.plugins, '/enabled')
-  if (method === 'POST' && pluginEnabledId !== null) {
-    const host = getPluginHost()
-    if (!host) {
-      json(res, 503, { error: 'plugin host is not available' })
-      return
-    }
-    const pluginId = pluginEnabledId
-    const body = await readJson(req)
-    if (typeof body.enabled !== 'boolean') {
-      json(res, 400, { error: 'enabled must be a boolean' })
-      return
-    }
-    const plugin = host.listPlugins().find((entry) => entry.id === pluginId)
-    if (!plugin) {
-      json(res, 404, { error: `plugin not found: ${pluginId}` })
-      return
-    }
-    if (plugin.enabled === body.enabled) {
-      json(res, 200, { ok: true })
-      return
-    }
-    const current = getConfig()
-    const disabled = new Set(current.plugins.disabled)
-    if (body.enabled) disabled.delete(pluginId)
-    else disabled.add(pluginId)
-    const next: Config = {
-      ...current,
-      plugins: { ...current.plugins, disabled: Array.from(disabled).sort() },
-    }
-    setConfig(next)
-    await opts.updateRuntimeConfig(next)
-    await host.reload()
-    json(res, 200, { ok: true })
-    return
-  }
-
-  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.pluginsLocalCode) {
-    const host = getPluginHost()
-    if (!host) {
-      json(res, 503, { error: 'plugin host is not available' })
-      return
-    }
-    const body = await readJson(req)
-    if (typeof body.allowed !== 'boolean') {
-      json(res, 400, { error: 'allowed must be a boolean' })
-      return
-    }
-    const current = getConfig()
-    if (current.plugins.allowLocalCode === body.allowed) {
-      json(res, 200, { ok: true })
-      return
-    }
-    const next: Config = {
-      ...current,
-      plugins: { ...current.plugins, allowLocalCode: body.allowed },
-    }
-    setConfig(next)
-    await opts.updateRuntimeConfig(next)
-    await host.reload()
-    json(res, 200, { ok: true })
-    return
-  }
-
-  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.pluginsReload) {
-    const host = getPluginHost()
-    if (!host) {
-      json(res, 503, { error: 'plugin host is not available' })
-      return
-    }
-    const newConfig = withProviderPresets(await loadConfig({ dataDir: opts.dataDir }))
-    setConfig(newConfig)
-    await opts.updateRuntimeConfig(newConfig)
-    await host.reload()
-    json(res, 200, { ok: true })
-    return
-  }
-
-  // GET /channels/status - external connections contributed by active plugins.
-  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.channelsStatus) {
-    const host = getPluginHost()
-    const configured: ChannelConnectionsStatus['configured'] = getConfig().channels.channels.map((c) => ({
-      id: c.id,
-      type: c.type,
-      enabled: c.enabled,
-      name: c.name,
-    }))
-    const payload: ChannelConnectionsStatus = {
-      started: host?.started ?? false,
-      channels: (host?.listChannels() ?? []).map((p) => ({
-        type: p.type,
-        displayName: p.displayName,
-        running: p.running,
-        requiredSecrets: p.requiredSecrets,
-      })),
-      configured,
-      failures: host?.channelFailures() ?? [],
-    }
-    json(res, 200, payload)
-    return
-  }
-
-  // POST /channels/reload - rediscover plugins and restart their contributions.
-  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.channelsReload) {
-    const host = getPluginHost()
-    if (!host) {
-      json(res, 503, { error: 'plugin host is not available' })
-      return
-    }
-    // Short request id for log correlation across phases.
-    const reqId = Math.random().toString(36).slice(2, 8)
-    const t0 = performance.now()
-    if (reloadInProgress) {
-      console.warn(
-        `[local-app-api] [channels:reload:${reqId}] WARNING: concurrent reload detected — another reload is in progress`,
-      )
-    }
-    reloadInProgress = true
-    try {
-      // 1. Reload config from disk (~/.littlesheep/config.json)
-      const cfgT0 = performance.now()
-      const newConfig = withProviderPresets(await loadConfig({ dataDir: opts.dataDir }))
-      console.log(
-        `[local-app-api] [channels:reload:${reqId}] config loaded from disk (${(performance.now() - cfgT0).toFixed(1)}ms)`,
-      )
-      // 2. Persist and distribute the updated runtime config.
-      setConfig(newConfig)
-      await opts.updateRuntimeConfig(newConfig)
-      // 3. Rediscover plugins and restart their contributions.
-      const reloadT0 = performance.now()
-      await host.reload()
-      console.log(
-        `[local-app-api] [channels:reload:${reqId}] service reload complete (${(performance.now() - reloadT0).toFixed(1)}ms)`,
-      )
-      json(res, 200, { ok: true })
-      console.log(
-        `[local-app-api] [channels:reload:${reqId}] total (${(performance.now() - t0).toFixed(1)}ms)`,
-      )
-      return
-    } catch (err) {
-      console.error(
-        `[local-app-api] [channels:reload:${reqId}] failed (${(performance.now() - t0).toFixed(1)}ms): ${(err as Error).message}`,
-      )
-      json(res, 500, { error: `reload failed: ${(err as Error).message}` })
-      return
-    } finally {
-      reloadInProgress = false
-    }
-  }
-
-  // GET /skills — list loaded skills
-  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.skills) {
-    const skills = runner.infra.skillLoader.index.skills.map((s) => ({
-      name: s.name,
-      description: s.description,
-    }))
-    json(res, 200, { skills })
-    return
-  }
-
-  // GET /skills/:name — read a skill's SKILL.md body
-  const skillName = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.skills)
-  if (method === 'GET' && skillName !== null) {
-    const name = skillName
-    const skill = runner.infra.skillLoader.index.skills.find((s) => s.name === name)
-    if (!skill) { json(res, 404, { error: `skill not found: ${name}` }); return }
-    const body = await runner.infra.skillLoader.loadBody(name)
-    json(res, 200, { name: skill.name, description: skill.description, body: body ?? '' })
-    return
-  }
-
-  // GET /memory — list daily memory dates + long-term excerpt
-  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.memoryPolicy) {
-    const body = await readJson(req)
-    const threshold = typeof body.experienceWriteThreshold === 'number'
-      ? body.experienceWriteThreshold
-      : Number.NaN
-    if (!Number.isFinite(threshold) || threshold < 0 || threshold > 1) {
-      json(res, 400, { error: 'experienceWriteThreshold must be a number between 0 and 1' })
-      return
-    }
-    const current = getConfig()
-    const next: Config = {
-      ...current,
-      memory: {
-        ...current.memory,
-        experienceWriteThreshold: threshold,
-      },
-    }
-    setConfig(next)
-    await opts.updateRuntimeConfig(next)
-    json(res, 200, { experienceWriteThreshold: threshold })
-    return
-  }
-
-  const memoryNodeId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.memoryNodes, '/manage')
-  if (method === 'POST' && memoryNodeId !== null) {
-    const nodeId = memoryNodeId
-    const body = await readJson(req)
-    const action = typeof body.action === 'string' ? body.action : ''
-    if (!MEMORY_NODE_MANAGEMENT_ACTIONS.has(action as MemoryNodeManagementAction)) {
-      json(res, 400, { error: 'action must be archive, restore, delete, promote or demote' })
-      return
-    }
-    const outcome = await manageRuntimeMemoryNode(
-      runner,
-      nodeId,
-      action as MemoryNodeManagementAction,
-      typeof body.reason === 'string' ? body.reason : undefined,
-    )
-    if (outcome.status === 'not_found') {
-      json(res, 404, { error: `memory node not found: ${nodeId}` })
-      return
-    }
-    if (outcome.status === 'invalid') {
-      json(res, 409, { error: outcome.error })
-      return
-    }
-    json(res, 200, { node: outcome.node, audit: outcome.audit })
-    return
-  }
-
-  const memoryResourceId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.memoryResources, '/manage')
-  if (method === 'POST' && memoryResourceId !== null) {
-    const resourceId = memoryResourceId
-    const body = await readJson(req)
-    const action = typeof body.action === 'string' ? body.action : ''
-    if (!MEMORY_RESOURCE_MANAGEMENT_ACTIONS.has(action as MemoryResourceManagementAction)) {
-      json(res, 400, { error: 'action must be disable, restore, remove or rebind' })
-      return
-    }
-    let sourcePath = typeof body.sourcePath === 'string' ? body.sourcePath : undefined
-    if (action === 'rebind' && !sourcePath) {
-      if (!opts.selectMemoryResourceSource) {
-        json(res, 501, { error: 'memory resource relocation dialog is unavailable' })
-        return
-      }
-      sourcePath = await opts.selectMemoryResourceSource() ?? undefined
-      if (!sourcePath) {
-        json(res, 200, { cancelled: true })
-        return
-      }
-    }
-    const outcome = await manageRuntimeMemoryResource(
-      runner,
-      resourceId,
-      action as MemoryResourceManagementAction,
-      {
-        sourcePath,
-        reason: typeof body.reason === 'string' ? body.reason : undefined,
-      },
-    )
-    if (outcome.status === 'not_found') {
-      json(res, 404, { error: `memory resource not found: ${resourceId}` })
-      return
-    }
-    if (outcome.status === 'invalid') {
-      json(res, 409, { error: outcome.error })
-      return
-    }
-    json(res, 200, { cancelled: false, ...outcome.result as Record<string, unknown> })
-    return
-  }
-
-  const projectProjectionId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.memoryProjects, '/projection')
-  if (projectProjectionId !== null && (method === 'GET' || method === 'POST')) {
-    const projectId = projectProjectionId
-    const project = (await projectIndex.list()).find((entry) => entry.id === projectId)
-    if (!project) {
-      json(res, 404, { error: `project not found: ${projectId}` })
-      return
-    }
-    const target = { id: project.id, name: project.name, path: project.path }
-    if (method === 'GET') {
-      json(res, 200, await runner.infra.memoryService.getProjectMemoryProjectionState(target))
-      return
-    }
-    const body = await readJson(req)
-    const action = typeof body.action === 'string' ? body.action : ''
-    if (action === 'enable') {
-      json(res, 200, await runner.infra.memoryService.enableProjectMemoryProjection(target, {
-        overwriteExisting: body.overwriteExisting === true,
-      }))
-      return
-    }
-    if (action === 'sync') {
-      json(res, 200, await runner.infra.memoryService.syncProjectMemoryProjection(target, {
-        force: body.force === true,
-      }))
-      return
-    }
-    if (action === 'disable') {
-      json(res, 200, await runner.infra.memoryService.disableProjectMemoryProjection(target, {
-        removeProjection: body.removeProjection === true,
-      }))
-      return
-    }
-    if (action === 'export') {
-      if (!opts.selectProjectMemoryExport) {
-        json(res, 501, { error: 'project memory export dialog is unavailable' })
-        return
-      }
-      const outputPath = await opts.selectProjectMemoryExport(project.name, project.path)
-      if (!outputPath) {
-        json(res, 200, { cancelled: true })
-        return
-      }
-      const exported = await runner.infra.memoryService.exportShareableProjectMemory(
-        target,
-        outputPath,
-        { overwriteExisting: true },
-      )
-      json(res, 200, { cancelled: false, export: exported })
-      return
-    }
-    json(res, 400, { error: 'action must be enable, sync, disable or export' })
-    return
-  }
-
-  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.memoryTree) {
-    json(res, 200, await buildMemoryTreePayload(runner, projectIndex, getConfig()))
-    return
-  }
-
-  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.memory) {
-    const store = runner.infra.memoryStore
-    const dailyDates = await store.listDailyDates()
-    let longTerm = ''
-    try { longTerm = await store.readLongTerm() } catch { /* not created yet */ }
-    json(res, 200, {
-      dailyDates: dailyDates.slice(-30),
-      longTerm: longTerm.slice(0, 2000),
-      experienceCount: (await runner.infra.experienceStore.list()).length,
-    })
-    return
-  }
+  if (await routeMemory(routeRequest, {
+    getRunner,
+    projectIndex,
+    getConfig,
+    setConfig,
+    updateRuntimeConfig: opts.updateRuntimeConfig,
+    selectProjectMemoryExport: opts.selectProjectMemoryExport,
+    selectMemoryResourceSource: opts.selectMemoryResourceSource,
+  })) return
 
   json(res, 404, { error: `Not found: ${method} ${path}` })
 }
@@ -2586,121 +1786,8 @@ function toolInputFilePath(input: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-async function loadExecutionLogsByRunId(
-  runner: AgentRunner,
-  messages: Message[],
-  sessionId: string,
-): Promise<Map<string, ExecutionLog>> {
-  const logs = new Map<string, ExecutionLog>()
-  const runIds = [...new Set(messages.map((message) => message.runId).filter((runId): runId is string => !!runId))]
-  for (const runId of runIds) {
-    const log = await runner.replay(runId)
-    if (!log || log.sessionId !== sessionId) continue
-    logs.set(log.runId, log)
-  }
-  return logs
-}
-
-function toActiveProject(project: ArchivedProjectMeta): ProjectMeta {
-  const { archivedAt: _archivedAt, ...activeProject } = project
-  return activeProject
-}
-
-function toActiveSession(session: ArchivedSessionMeta): Partial<Omit<SessionMeta, 'id'>> {
-  const { id: _id, archivedAt: _archivedAt, ...activeSession } = session
-  return activeSession
-}
-
-function toActiveSessionWithId(session: ArchivedSessionMeta): SessionMeta {
-  const { archivedAt: _archivedAt, ...activeSession } = session
-  return activeSession
-}
-
-function findArchivedProjectForSession(
-  projects: ArchivedProjectMeta[],
-  session: ArchivedSessionMeta,
-): ArchivedProjectMeta | undefined {
-  if (session.scope !== 'project' || !session.projectId) return undefined
-  return projects.find((project) => project.id === session.projectId)
-}
-
-function buildRuntimePayload(config: Config, workplaceDir: string): RuntimeState {
-  return {
-    model: config.agents.defaults.model,
-    reasoning: coerceReasoningForModelRef(config.agents.defaults.reasoning, config.agents.defaults.model),
-    profile: normalizeAgentProfileId(config.agents.defaults.profile),
-    contextCompressionThresholdRatio: config.agents.defaults.contextCompressionThresholdRatio,
-    workspace: config.agents.defaults.workspace || workplaceDir,
-    workplace: workplaceDir,
-    providers: config.providers.map((p) => {
-      const envVar = deriveEnvVarName(p.apiKey)
-      const requiresKey = !!p.apiKey
-      const hasKey = !requiresKey || !!resolveApiKey(p.apiKey)
-      return {
-        id: p.id,
-        name: p.name ?? p.id,
-        baseURL: p.baseURL,
-        models: p.models ?? [],
-        envVar,
-        requiresKey,
-        hasKey,
-      }
-    }),
-  }
-}
-
-function sanitizeFolderName(name: string): string {
-  const cleaned = name
-    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/[. ]+$/g, '')
-  if (!cleaned || cleaned === '.' || cleaned === '..') return ''
-  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(cleaned)) return ''
-  return cleaned
-}
-
-function isPathInside(parent: string, child: string): boolean {
-  const rel = relative(parent, child)
-  return rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel)
-}
-
 function sameWorkspacePath(left: string, right: string): boolean {
   return resolve(left).replace(/[\\/]+$/, '').toLowerCase() === resolve(right).replace(/[\\/]+$/, '').toLowerCase()
-}
-
-function validateModelRef(config: Config, modelRef: string): string | null {
-  let providerId: string
-  let model: string
-  try {
-    const parsed = parseModelRef(modelRef)
-    providerId = parsed.provider
-    model = parsed.model
-  } catch (err) {
-    return (err as Error).message
-  }
-  const provider = config.providers.find((p) => p.id === providerId)
-  if (!provider) return `unknown provider: ${providerId}`
-  if (provider.models && provider.models.length > 0 && !provider.models.includes(model)) {
-    return `model "${model}" is not listed for provider "${providerId}"`
-  }
-  if (provider.apiKey && !resolveApiKey(provider.apiKey)) {
-    return `provider "${provider.name ?? provider.id}" has no API key yet`
-  }
-  return null
-}
-
-function isReasoning(value: string): value is RuntimeReasoning {
-  return isRuntimeReasoning(value)
-}
-
-function resolveReasoning(
-  body: Record<string, unknown>,
-  config: Config,
-): Config['agents']['defaults']['reasoning'] {
-  const value = typeof body.reasoning === 'string' ? body.reasoning : ''
-  const requested = isReasoning(value) ? value : config.agents.defaults.reasoning
-  return coerceReasoningForModelRef(requested, config.agents.defaults.model)
 }
 
 function resolveWorkspace(
@@ -2770,50 +1857,4 @@ function settlePendingApprovals(): void {
     pending.resolve(false)
   }
   pendingApprovals.clear()
-}
-
-function json(res: ServerResponse, status: number, data: unknown): void {
-  res.writeHead(status, { 'Content-Type': 'application/json' })
-  res.end(JSON.stringify(data))
-}
-
-function writeSse(res: ServerResponse, event: string, data: unknown): void {
-  res.write(`event: ${event}\n`)
-  res.write(`data: ${JSON.stringify(data)}\n\n`)
-}
-
-function readJson(req: IncomingMessage, maxBytes = MAX_JSON_BODY_BYTES): Promise<Record<string, unknown>> {
-  return new Promise((resolve, reject) => {
-    let data = ''
-    let bytes = 0
-    let settled = false
-    const fail = (err: Error) => {
-      if (settled) return
-      settled = true
-      reject(err)
-      req.destroy()
-    }
-    req.on('data', (chunk: Buffer) => {
-      bytes += chunk.length
-      if (bytes > maxBytes) {
-        fail(new HttpError(413, 'request body too large'))
-        return
-      }
-      data += chunk.toString('utf8')
-    })
-    req.on('end', () => {
-      if (settled) return
-      settled = true
-      try {
-        resolve(data ? JSON.parse(data) : {})
-      } catch (e) {
-        reject(e)
-      }
-    })
-    req.on('error', (err) => {
-      if (settled) return
-      settled = true
-      reject(err)
-    })
-  })
 }

@@ -18,7 +18,6 @@
 | --- | ---: | --- | --- | --- |
 | `packages/app/src/renderer/App.tsx` | 9935 | 应用壳、导航、侧边栏、聊天、设置、工作区、浮层和大量状态 | `app-shell`、`navigation`、`sidebar`、`chat`、`settings`、`workspace`、`overlays` 领域组件与 controller | B |
 | `packages/app/src/main/local-app-api-server.ts` | 2819 | HTTP 基础设施及所有 Local App API 路由 | `http` 基础设施和 run、sessions、runtime、memory、workspace、terminal、plugins、attachments 路由 | C |
-| `packages/app/src/renderer/api.ts` | 1088 | 兼容 fetch/SSE barrel 和尚未分域的请求 | 按 run、sessions、runtime、memory、workspace、terminal、plugins、attachments 拆分客户端，保留 barrel | B |
 | `packages/memory-tree/src/memory-repository.ts` | 1279 | 文档 IO、迁移、节点、资源、审计和备份 | repository facade + `document-store`、`migration`、`node-store`、`resource-store`、`audit-store` | D |
 | `packages/memory-tree/src/memory-service.ts` | 1120 | run/project/bootstrap/skills/附件/事件资源协调 | service facade + scope、bootstrap、skill、attachment、event、project 协调器 | D |
 | `packages/app/src/renderer/MemoryTreeView.tsx` | 1104 | 记忆树加载、管理、资源和项目投影视图 | controller + tree、resource、audit、project-projection 组件 | B |
@@ -59,6 +58,12 @@
 | `packages/runner/src/execution-log.ts` | 316 | 执行日志 schema、写入和读取 | 分离 codec、store、query | E |
 | `packages/channels/webhook/src/plugin.ts` | 310 | Webhook server、鉴权和消息 | 分离 server、auth、mapper、sender | C |
 | `packages/experience/src/experience-store.ts` | 309 | 经验索引、备份、并发和衰减 | 分离 index、backup、mutation、decay | D |
+
+## 已完成拆分
+
+| 原始文件 | 原基线 | 当前入口 | 已形成边界 | 完成日期 |
+| --- | ---: | --- | --- | --- |
+| `packages/app/src/renderer/api.ts` | 1088 | 21 行兼容 barrel | `run`、`sessions`、`runtime`、`attachments`、`workspace-files`、`terminal`、`extensions`、`memory` 与 `common` | 2026-07-14 |
 
 ## 拆分顺序
 

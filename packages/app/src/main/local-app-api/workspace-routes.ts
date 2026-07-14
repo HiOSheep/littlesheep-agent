@@ -1,0 +1,159 @@
+// Attachment import, workspace file, layout and artifact routes.
+
+import { shell } from 'electron'
+import type { Config } from '@littlesheep/config'
+import type { AgentRunner } from '@littlesheep/runner'
+import { LOCAL_APP_API_ROUTES } from '../../shared/local-app-api-routes.js'
+import type { AttachmentRef } from '../attachments.js'
+import type { ManagedAttachmentCache } from '../attachment-cache.js'
+import type { ProjectIndex } from '../project-index.js'
+import type { WorkspaceArtifactIndex } from '../workspace-artifact-index.js'
+import type { WorkspaceLayoutIndex } from '../workspace-layout-index.js'
+import { json, readJson, type LocalAppApiRequest } from './http.js'
+import { openInVSCode } from './vscode-launcher.js'
+import {
+  listWorkspaceDirectory,
+  MAX_TEXT_SAVE_BYTES,
+  previewWorkspaceFile,
+  saveWorkspaceTextFile,
+} from './workspace-file-service.js'
+import {
+  normalizeOptionalSessionId,
+  normalizePositiveInt,
+  resolveWorkspaceContextForPath,
+  resolveWorkspaceRoot,
+  resolveWorkspaceRootFromValue,
+  resolveWorkspaceTarget,
+  syncWorkspaceResourceChanges,
+} from './workspace-support.js'
+
+const MAX_ATTACHMENT_IMPORT_BODY_BYTES = 36 * 1024 * 1024
+const MAX_WORKSPACE_SAVE_BODY_BYTES = MAX_TEXT_SAVE_BYTES + 64 * 1024
+
+export interface WorkspaceRouteContext {
+  getRunner: () => AgentRunner
+  getConfig: () => Config
+  workplaceDir: string
+  projectIndex: ProjectIndex
+  workspaceArtifactIndex: WorkspaceArtifactIndex
+  workspaceLayoutIndex: WorkspaceLayoutIndex
+  attachmentCache: ManagedAttachmentCache
+  selectWorkspace?: () => Promise<string | null>
+  selectAttachments?: () => Promise<AttachmentRef[]>
+}
+
+export async function routeWorkspace(
+  request: LocalAppApiRequest,
+  context: WorkspaceRouteContext,
+): Promise<boolean> {
+  const { req, res, url, path, method } = request
+
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.workspaceSelect) {
+    if (!context.selectWorkspace) {
+      json(res, 501, { error: 'workspace picker is not available' })
+      return true
+    }
+    json(res, 200, { path: await context.selectWorkspace() })
+    return true
+  }
+
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.attachmentSelect) {
+    if (!context.selectAttachments) {
+      json(res, 501, { error: 'attachment picker is not available' })
+      return true
+    }
+    json(res, 200, { files: await context.selectAttachments() })
+    return true
+  }
+
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.attachmentImport) {
+    const body = await readJson(req, MAX_ATTACHMENT_IMPORT_BODY_BYTES)
+    json(res, 200, { file: await context.attachmentCache.importData(body) })
+    return true
+  }
+
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.workspaceList) {
+    const root = resolveWorkspaceRoot(url, context.getConfig(), context.workplaceDir)
+    const target = resolveWorkspaceTarget(root, url.searchParams.get('path') ?? root)
+    json(res, 200, await listWorkspaceDirectory(root, target))
+    return true
+  }
+
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.workspacePreview) {
+    const root = resolveWorkspaceRoot(url, context.getConfig(), context.workplaceDir)
+    const target = resolveWorkspaceTarget(root, url.searchParams.get('path') ?? '')
+    json(res, 200, await previewWorkspaceFile(root, target))
+    return true
+  }
+
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.workspaceSave) {
+    const body = await readJson(req, MAX_WORKSPACE_SAVE_BODY_BYTES)
+    const root = resolveWorkspaceRootFromValue(body.root, context.getConfig(), context.workplaceDir)
+    const target = resolveWorkspaceTarget(root, typeof body.path === 'string' ? body.path : '')
+    const payload = await saveWorkspaceTextFile(root, target, body)
+    await context.workspaceArtifactIndex.append({
+      path: target,
+      action: 'modified',
+      source: 'user',
+      workspacePath: root,
+      sessionId: normalizeOptionalSessionId(body.sessionId),
+    })
+    const workspaceContext = await resolveWorkspaceContextForPath(
+      context.projectIndex,
+      root,
+      context.workplaceDir,
+    )
+    await syncWorkspaceResourceChanges(context.getRunner(), root, {
+      ...workspaceContext,
+      changes: [{ path: target, source: 'user' }],
+    })
+    json(res, 200, payload)
+    return true
+  }
+
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.workspaceLayout) {
+    json(res, 200, { snapshot: await context.workspaceLayoutIndex.read() })
+    return true
+  }
+
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.workspaceLayout) {
+    const body = await readJson(req)
+    json(res, 200, { snapshot: await context.workspaceLayoutIndex.save(body) })
+    return true
+  }
+
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.workspaceArtifacts) {
+    const root = resolveWorkspaceRoot(url, context.getConfig(), context.workplaceDir)
+    const records = await context.workspaceArtifactIndex.list({
+      workspacePath: root,
+      sessionId: normalizeOptionalSessionId(url.searchParams.get('sessionId')),
+      limit: normalizePositiveInt(url.searchParams.get('limit'), 50, 300),
+    })
+    json(res, 200, { records })
+    return true
+  }
+
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.workspaceOpen) {
+    const body = await readJson(req)
+    const root = resolveWorkspaceRootFromValue(body.root, context.getConfig(), context.workplaceDir)
+    const target = resolveWorkspaceTarget(root, typeof body.path === 'string' ? body.path : '')
+    const error = await shell.openPath(target)
+    if (error) {
+      json(res, 500, { error })
+      return true
+    }
+    json(res, 200, { ok: true })
+    return true
+  }
+
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.workspaceOpenVscode) {
+    const body = await readJson(req)
+    const root = resolveWorkspaceRootFromValue(body.root, context.getConfig(), context.workplaceDir)
+    const requestedPath = typeof body.path === 'string' && body.path.trim() ? body.path : root
+    await openInVSCode(resolveWorkspaceTarget(root, requestedPath))
+    json(res, 200, { ok: true })
+    return true
+  }
+
+  return false
+}

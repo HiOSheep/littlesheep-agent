@@ -259,6 +259,7 @@ async function checkRepositoryNavigation() {
     'packages/app/src/main',
     'packages/app/src/preload',
     'packages/app/src/renderer',
+    'packages/app/src/renderer/api',
     'packages/app/src/shared',
     'packages/cli/src/commands',
     'packages/harness/src/hooks',
@@ -290,7 +291,7 @@ async function checkRepositoryNavigation() {
   const hotspotBaselines = {
     'packages/app/src/renderer/App.tsx': 9935,
     'packages/app/src/main/local-app-api-server.ts': 2819,
-    'packages/app/src/renderer/api.ts': 1088,
+    'packages/app/src/renderer/api.ts': 21,
     'packages/memory-tree/src/memory-repository.ts': 1279,
     'packages/memory-tree/src/memory-service.ts': 1120,
     'packages/app/src/renderer/MemoryTreeView.tsx': 1104,
