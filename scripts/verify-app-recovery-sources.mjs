@@ -6,7 +6,14 @@ import { readdir, readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 
-const dataDir = resolve(process.env.LITTLESHEEP_DATA_DIR || join(homedir(), '.littlesheep'))
+const locatorPath = resolve(
+  process.env.LITTLESHEEP_DATA_LOCATOR || join(homedir(), '.littlesheep-location.json'),
+)
+const locatorRead = await readLocator(locatorPath)
+const locator = locatorRead.document
+const dataDir = resolve(
+  process.env.LITTLESHEEP_DATA_DIR || locator?.activeDataDir || join(homedir(), '.littlesheep'),
+)
 const result = {
   dataDir,
   ok: true,
@@ -41,6 +48,27 @@ async function readJsonIfExists(path, label, required = true) {
 }
 
 async function main() {
+  if (locatorRead.error) warn('data root locator', locatorRead.error)
+  if (process.env.LITTLESHEEP_DATA_DIR) {
+    pass('data root resolution', `environment override: ${dataDir}`)
+  } else if (locator) {
+    pass('data root resolution', `locator: ${locatorPath}`)
+    if (locator.pendingMigration) {
+      warn(
+        'pending data root migration',
+        `${locator.pendingMigration.phase}: ${locator.pendingMigration.sourceDir} -> ${locator.pendingMigration.targetDir}`,
+      )
+    }
+    if (locator.pendingRollback) {
+      warn(
+        'pending data root rollback',
+        `${locator.pendingRollback.fromDir} -> ${locator.pendingRollback.toDir}`,
+      )
+    }
+  } else {
+    pass('data root resolution', `branding default: ${dataDir}`)
+  }
+
   if (!existsSync(dataDir)) {
     fail('user data root', `missing: ${dataDir}`)
     printAndExit()
@@ -187,6 +215,19 @@ async function main() {
   }
 
   printAndExit()
+}
+
+async function readLocator(path) {
+  if (!existsSync(path)) return { document: null, error: null }
+  try {
+    const parsed = JSON.parse(await readFile(path, 'utf8'))
+    if (parsed?.version !== 1 || typeof parsed.activeDataDir !== 'string' || !parsed.activeDataDir.trim()) {
+      return { document: null, error: `invalid locator ignored: ${path}` }
+    }
+    return { document: parsed, error: null }
+  } catch (err) {
+    return { document: null, error: `unreadable locator ignored: ${err.message}` }
+  }
 }
 
 async function sampleRunIdsFromSessions(sessionDir, sessionFiles) {

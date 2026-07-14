@@ -1,6 +1,6 @@
 # LittleSheep 架构评估与开发决策报告
 
-最后更新：2026-07-13
+最后更新：2026-07-14
 评估范围：当前源码、正式文档与已记录的验证结果
 执行状态：阶段 0 已完成；阶段 1 Context Engine 主要数据链已实现且当前工程质量门为绿色，tokenizer 能力矩阵与 unavailable 模型保守预算保护已完成，真实 Provider 校准仍待完成
 
@@ -19,7 +19,7 @@ LittleSheep 当前不是“只有 Prompt 的聊天壳”。它已经具备代码
 1. Context Engine 已成为独立模块并接管模型请求准备路径，主要 Context 来源、版本化 Summary Memory、附件清单优先、按需附件工具、压缩阈值设置和 usage 绑定已经接入；tokenizer 能力矩阵与 unavailable 模型的保守请求前预算保护已经完成，当前缺口是三家真实 Provider 对账。
 2. 每次 run 已有统一、不可变的运行决议，但 Behavior Mode 仍只是 profile 与策略 id 的组合结果，尚没有可注册、可迁移的 Mode Registry。
 3. Tool Manager 只有注册与基础 wrapper，完整的授权、调用、超时、流式事件和执行证据仍主要位于 Harness/App。
-4. Memory 子系统已经具备面向 Runner、工具和 UI 的统一 `MemoryService`、T0-T3 注册协议、Summary Memory/附件的非复制式资源登记、项目记忆三层投影与控制面，以及稳定项目身份和可恢复路径重绑定；附件磁盘层使用独立受管缓存、稳定 cache id、哈希验证和有界安全清理，workplace 使用独立的游标式元数据索引并通过资源树按需展开。运行时事件账本的登记与 resolver 端口已经建立，但实时队列尚未实现。当前缺口转为完整数据根迁移、其他资源治理和真实长会话验收。
+4. Memory 子系统已经具备面向 Runner、工具和 UI 的统一 `MemoryService`、T0-T3 注册协议、Summary Memory/附件的非复制式资源登记、项目记忆三层投影与控制面，以及稳定项目身份和可恢复路径重绑定；附件磁盘层使用独立受管缓存，workplace 使用游标式元数据索引，完整数据根迁移通过外部 locator、启动期 staging、哈希清单、活动元数据重绑定、原子切换和回滚形成工程闭环。运行时事件账本的登记与 resolver 端口已经建立，但实时队列、真实长会话和正式用户迁移场景仍待验收。
 
 因此，不建议立即把所有目录重新拆包，也不建议继续在现有大文件上叠加功能。阶段 0 已经建立可观测契约和特征测试，阶段 1 也已抽出 `@littlesheep/context` 并接管候选、预算、快照、压缩信号和 usage 归属；当前应完成真实 Provider 验收和 T0-T3 剩余资源治理，同时开始收敛统一 Tool Execution。这样既保护当前可运行能力，也能让后续运行中重入、有界并行、MCP、插件和持续学习建立在稳定接口上。
 
@@ -99,7 +99,7 @@ React Renderer
 
 当前 `buildRunContext()` 仍会读取最近会话、过滤工具消息、加载 bootstrap 文件并构建 `ToolContext`；`packages/prompt` 负责 System Prompt，各 stage 仍负责形成语义消息，Runner 负责注入记忆根索引。模型请求随后被映射为显式 Context 候选，并由 `@littlesheep/context` 统一排序、预算和生成脱敏快照。System Prompt 已能把基础策略、记忆根索引、bootstrap 文件、输出约束、Workflow/TaskBook、行为 profile 和 reasoning 分别登记为 segment；版本化 Summary Memory 也作为独立来源进入后续请求。
 
-阶段 1 已形成主要数据链：Provider usage 会绑定到产生它的准确 Context 快照；UI 区分供应商实测、本地精确装配和 tokenizer 不可用；长会话压缩保留原始 JSONL，只在元数据中保存版本化摘要；压缩阈值已经接入 Local App API 与设置页；非图片附件通过当前 run 专属工具按需读取，未调用时不解析正文。新导入附件已进入独立受管缓存，run 只能使用经稳定 cache id、路径、普通文件、大小和哈希重新验证的缓存项，旧 workplace 与外部用户文件不属于自动清理范围；workplace 资源索引已使用有界目录批次、持久化游标、精确变更提示和资源树元数据入口，正文仍由显式文件工具读取。Provider reasoning/capability 契约回归、tokenizer 能力矩阵和 unavailable 模型保守预算保护已经完成；真实 Provider 校准、完整数据根迁移、运行中事件队列和安全重入协议仍未完成。
+阶段 1 已形成主要数据链：Provider usage 会绑定到产生它的准确 Context 快照；UI 区分供应商实测、本地精确装配和 tokenizer 不可用；长会话压缩保留原始 JSONL，只在元数据中保存版本化摘要；压缩阈值已经接入 Local App API 与设置页；非图片附件通过当前 run 专属工具按需读取，未调用时不解析正文。新导入附件已进入独立受管缓存，run 只能使用经稳定 cache id、路径、普通文件、大小和哈希重新验证的缓存项，旧 workplace 与外部用户文件不属于自动清理范围；workplace 资源索引已使用有界目录批次、持久化游标、精确变更提示和资源树元数据入口，正文仍由显式文件工具读取。完整数据根迁移已接入启动前恢复路径，失败不切换活动目录。Provider reasoning/capability 契约回归、tokenizer 能力矩阵和 unavailable 模型保守预算保护已经完成；真实 Provider 校准、运行中事件队列和安全重入协议仍未完成。
 
 系统现在已经可以从快照和执行日志回答大部分请求级问题，但仍需继续闭环：
 
@@ -186,7 +186,7 @@ src/renderer/shared/
 
 ## 6. 推荐实施顺序
 
-以下顺序描述 **跨模块职责收敛工作线**，不是产品全部任务的唯一阶段编号。Context、记忆注册、附件、运行中重入、检查点和后台执行使用 [Agent Runtime 连续性任务书](agent-runtime-continuity-taskbook.md) 的独立阶段号；全局执行顺序以 [项目状态](project-status.md) 的“推荐后续顺序”为准。每个阶段的当前进度以本节状态和项目状态为准，不能只因类型或入口存在就视为完成。
+以下顺序描述 **跨模块职责收敛工作线**，不是产品全部任务的唯一阶段编号。Context、记忆注册、附件、运行中重入、检查点和后台执行使用 [Agent Runtime 连续性任务书 2026-07-14](agent-runtime-continuity-taskbook-2026-07-14.md) 的独立阶段号；全局执行顺序以 [项目状态](project-status.md) 的“推荐后续顺序”为准。每个阶段的当前进度以本节状态和项目状态为准，不能只因类型或入口存在就视为完成。
 
 ### 阶段 0：特征基线与核心契约
 
@@ -267,7 +267,7 @@ src/renderer/shared/
 
 - 在现有 memory-tree 边界上先提供统一服务门面；
 - 增加记忆资源注册表和 T0-T3 协议，以版本化迁移映射现有 T1-T3 数据；
-- 保持已落地的项目记忆三层字段、同步、冲突、清理、Git 忽略、稳定身份和可恢复路径重绑定契约；通用资源沿用统一状态、重新定位、冲突保护和有界审计，插件/Skill 已由 owner-scoped 协议驱动，完整数据根迁移必须复用该协议；
+- 保持已落地的项目记忆三层字段、同步、冲突、清理、Git 忽略、稳定身份和可恢复路径重绑定契约；通用资源沿用统一状态、重新定位、冲突保护和有界审计，插件/Skill 已由 owner-scoped 协议驱动，数据根迁移继续保持外部 locator 与活动元数据重绑定边界；
 - 以现有 `packages/session/src/compaction.ts` 的非破坏式版本化摘要为基线，补齐真实长会话、失败回退、成本和恢复验收；
 - 压缩摘要继续保留来源消息范围、版本、模型、关键约束和校验信息，不能删除原始会话事实；
 - daily 到长期记忆的蒸馏走结构化写入闸门。
@@ -380,7 +380,7 @@ src/renderer/shared/
 - 保留固定安全脊柱，不把 Workflow 直接开放为任意图；
 - 保护现有用户数据与插件化改动，不做破坏式迁移。
 
-阶段 1 已完成候选端口、预算器、稳定装配顺序、来源分段、版本化摘要、附件清单优先、按需附件工具、压缩阈值设置、双账本展示、tokenizer 能力矩阵、不可展示的保守预算保护和供应商冒烟工具的主要实现；当前继续完成真实 Provider 对账。Memory Service、T0-T3 注册基础、Summary Memory、run-scoped 附件、运行时事件账本登记端口、项目记忆三层投影、稳定项目身份、路径重绑定、通用资源生命周期、插件/Skill 所有权迁移、大规模资源恢复验收、附件受管磁盘缓存和 workplace 有界资源索引已经进入真实运行路径；下一步实现完整数据根迁移，实时事件生产留给后续 `RuntimeEventQueue`。连续执行、有界并行、数据根迁移和 UI 透明度的具体阶段见 [Agent Runtime 连续性任务书](agent-runtime-continuity-taskbook.md)。这样每次职责迁移都有真实代码和证据支撑，而不是仅凭架构图推进。
+阶段 1 已完成候选端口、预算器、稳定装配顺序、来源分段、版本化摘要、附件清单优先、按需附件工具、压缩阈值设置、双账本展示、tokenizer 能力矩阵、不可展示的保守预算保护和供应商冒烟工具的主要实现；当前继续完成真实 Provider 对账。Memory Service、T0-T3 注册基础、Summary Memory、run-scoped 附件、运行时事件账本登记端口、项目记忆三层投影、稳定项目身份、路径重绑定、通用资源生命周期、插件/Skill 所有权迁移、大规模资源恢复验收、附件受管磁盘缓存、workplace 有界资源索引和完整数据根迁移已经进入真实运行路径。下一步先按 [总基调、认知架构与仓库基元化任务书 2026-07-14](foundation-cognition-repository-taskbook-2026-07-14.md) 收敛仓库基元，再推进统一 Tool Execution Service；实时事件生产留给后续 `RuntimeEventQueue`。连续执行、有界并行、数据生命周期和 UI 透明度的具体阶段见 [Agent Runtime 连续性任务书 2026-07-14](agent-runtime-continuity-taskbook-2026-07-14.md)。
 
 ## 11. 报告维护规则
 

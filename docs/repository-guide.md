@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-07-13
+最后更新：2026-07-14
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](project-status.md) 为准。
 
@@ -14,12 +14,17 @@
 | [repository-guide.md](repository-guide.md) | 目录、文件、模块归属、依赖和维护规则 | 仓库结构或模块所有权变化时 |
 | [core-agent-flow-guidelines.md](core-agent-flow-guidelines.md) | Core Flow、TaskBook、验证、恢复和记忆运行时的专项规范 | 核心流程契约变化时 |
 | [ui-interaction-guidelines.md](ui-interaction-guidelines.md) | UI 视觉与交互专项规范 | 新增或调整交互规则时 |
-| [core-agent-capability-taskbook.md](core-agent-capability-taskbook.md) | 核心 Agent 能力的阶段设计、验收标准和完成记录 | 阶段契约或实现范围变化时；不维护全仓最新测试数字 |
-| [extension-workspace-taskbook.md](extension-workspace-taskbook.md) | 拓展工作区的阶段设计、验收标准和剩余边界 | 工作区阶段契约或实现范围变化时；不替代项目状态 |
-| [agent-runtime-continuity-taskbook.md](agent-runtime-continuity-taskbook.md) | Context、T0-T3、附件、运行中重入、有界并行、检查点、后台执行和透明度的专项任务书 | Runtime 连续性阶段契约、依赖或验收结果变化时 |
+| [总基调、认知架构与仓库基元化任务书 2026-07-14](foundation-cognition-repository-taskbook-2026-07-14.md) | 总基调的工程转译、仓库基元化、LLM Call Contract、身份与数据边界 | 仓库整理阶段、认知契约或数据边界发生变化时 |
+| [核心 Agent 能力任务书 2026-07-13](core-agent-capability-taskbook-2026-07-13.md) | 核心 Agent 能力的阶段设计、验收标准和完成记录 | 阶段契约或实现范围变化时；不维护全仓最新测试数字 |
+| [Agent 核心与记忆系统任务书 2026-07-14](agent-core-memory-taskbook-2026-07-14.md) | 核心闭环、记忆闭环和真实场景验收基线 | 核心收敛顺序或验收门槛变化时 |
+| [核心收敛小任务书 2026-07-13](core-focus-maintenance-taskbook-2026-07-13.md) | 冻结非必要扩张并集中处理阻断 Bug 和核心收敛 | 核心收敛范围或冻结条件变化时 |
+| [拓展工作区任务书 2026-07-12](extension-workspace-taskbook-2026-07-12.md) | 拓展工作区的阶段设计、验收标准和剩余边界 | 工作区阶段契约或实现范围变化时；不替代项目状态 |
+| [Agent Runtime 连续性任务书 2026-07-14](agent-runtime-continuity-taskbook-2026-07-14.md) | Context、T0-T3、附件、运行中重入、有界并行、检查点、后台执行和透明度的专项任务书 | Runtime 连续性阶段契约、依赖或验收结果变化时 |
 | [plugin-development.md](plugin-development.md) | 插件 API、开发流程、安全边界和兼容规则 | 插件宿主或贡献接口变化时 |
 
 同一事实只在其责任文档中维护，其他文档使用链接引用。冲突时，长期约束看架构原则，当前事实和验证数字看项目状态，演进顺序看架构决策报告，目录归属看本指南，专项交互和流程看对应规范。不要创建按日期命名的一次性总结来复制进度、目录或测试数字。
+
+任务书属于版本化执行基线，命名固定为“任务书总名称 + 最后更新时间”。文件名使用 `*-taskbook-YYYY-MM-DD.md`，一级标题以同一日期结尾，正文 `最后更新：YYYY-MM-DD` 必须一致。修改任务书内容并更新日期时，必须在同一变更中重命名文件并更新全仓链接；不使用 `latest`、`final` 或无日期文件名表达当前版本。
 
 ## 根目录
 
@@ -111,6 +116,7 @@
 | `packages/app/src/main/builtin-plugins.ts` | 内置插件目录；具体渠道实现仍通过动态 import 按需加载。 |
 | `packages/app/src/main/local-app-api-server.ts` | renderer 与主进程之间的 loopback Local App API、SSE、会话、工作区、终端、插件和设置接口。 |
 | `packages/app/src/main/attachment-cache.ts`、`attachments.ts` | LS 受管附件缓存的稳定索引、配额/过期清理、安全删除校验，以及 run-scoped 附件解析与所有权分类。 |
+| `packages/app/src/main/data-root-migration.ts`、`data-root-metadata.ts` | 数据根 locator、迁移事务、同级 staging、流式哈希清单、启动前恢复、活动元数据内部路径重绑定和回滚；正式用户数据不得用于故障注入。 |
 | `packages/app/src/main/keychain.ts` | API key 的 Electron 安全存储与环境注入。 |
 | `packages/app/src/main/session-index.ts`、`project-index.ts`、`archive-index.ts` | UI 侧会话、稳定项目身份和归档元数据索引。 |
 | `packages/app/src/main/project-rebinding.ts`、`path-rebinding.ts` | 项目移动/重命名后的持久化重绑定事务、恢复日志和跨索引路径重映射。 |
@@ -184,9 +190,11 @@ Context 已收敛出独立包并接通来源分段、版本化摘要、附件清
 ### 用户运行时数据
 
 - 默认位置由 `@littlesheep/branding` 和应用运行时解析为 `<user-data>`；正式文档不固化真实用户绝对路径。
+- 解析优先级为 `LITTLESHEEP_DATA_DIR`、外部 locator、branding 默认目录。locator 默认位于用户主目录，保持在数据根之外，记录活动目录、待迁移/回滚事务和最近一次迁移清单。
 - 包括 API 配置、加密密钥引用、sessions、memory-tree、projects、archive、execution logs、workspace layout、terminal activity、`attachment-cache/`、`workspace/resource-indexes/` 和用户工作区。
 - `attachment-cache/` 只保存 LS 通过粘贴/浏览器导入创建并登记的临时附件；自动清理只能处理索引中仍通过路径、普通文件、大小和哈希验证的缓存项。`workplace/`、项目目录和外部路径是不同所有权边界，不能因为文件名或目录名相似而由缓存清理删除。
 - `workspace/resource-indexes/` 只保存各工作区的相对路径、文件类型、大小、修改时间和 `user/agent` 来源；它不保存正文，扫描有目录、深度、条目和待处理队列上限。索引文件属于 LS 受管运行数据，项目索引以稳定 project id 关联。
+- 数据根迁移只在应用启动、Runner/Local App API/插件宿主和其他写入者创建之前执行。目标必须不存在或为空；源目录保留，符号链接与 junction 不复制，内部活动元数据只重绑定原本位于旧数据根中的绝对路径，外部项目和用户文件路径保持不变。
 - 仓库治理、构建和测试不得迁移、格式化、删除或重写该目录。需要数据治理时必须先做只读诊断，并单独获得用户授权。
 
 ## 后续修改规则

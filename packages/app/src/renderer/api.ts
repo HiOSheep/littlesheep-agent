@@ -444,6 +444,51 @@ export interface RuntimeState {
   providers: RuntimeProvider[]
 }
 
+export interface DataRootMigrationState {
+  id: string
+  sourceDir: string
+  targetDir: string
+  stageDir: string
+  phase: 'requested' | 'copying' | 'verifying' | 'committing' | 'failed'
+  createdAt: string
+  updatedAt: string
+  attempts: number
+  error?: string
+  fileCount?: number
+  totalBytes?: number
+  manifestHash?: string
+}
+
+export interface DataRootRollbackState {
+  id: string
+  fromDir: string
+  toDir: string
+  createdAt: string
+  error?: string
+}
+
+export interface DataRootStatus {
+  managed: boolean
+  currentDataDir: string
+  defaultDataDir: string
+  locatorPath: string
+  environmentOverride?: string
+  previousDataDir?: string
+  pendingMigration?: DataRootMigrationState
+  pendingRollback?: DataRootRollbackState
+  lastMigration?: {
+    id: string
+    sourceDir: string
+    targetDir: string
+    completedAt: string
+    fileCount: number
+    totalBytes: number
+    manifestHash: string
+  }
+  requiresRestart: boolean
+  canRollback: boolean
+}
+
 export async function getRuntime(): Promise<RuntimeState> {
   const res = await fetch(`${apiBase}/runtime`)
   if (!res.ok) throw localApiStatusError(res.status)
@@ -461,6 +506,52 @@ export async function updateRuntime(patch: Partial<Pick<RuntimeState, 'model' | 
     throw new Error((data as { error: string }).error)
   }
   return res.json() as Promise<RuntimeState>
+}
+
+export async function getDataRootStatus(): Promise<DataRootStatus> {
+  const res = await fetch(`${apiBase}/data-root`)
+  return parseDataRootResponse(res)
+}
+
+export async function selectDataRootTarget(): Promise<string | null> {
+  const res = await fetch(`${apiBase}/data-root/select`, { method: 'POST' })
+  if (!res.ok) throw await localApiResponseError(res)
+  const data = await res.json() as { path: string | null }
+  return data.path
+}
+
+export async function requestDataRootMigration(targetDir: string): Promise<DataRootStatus> {
+  const res = await fetch(`${apiBase}/data-root/migration`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ targetDir }),
+  })
+  return parseDataRootResponse(res)
+}
+
+export async function cancelDataRootOperation(): Promise<DataRootStatus> {
+  const res = await fetch(`${apiBase}/data-root/migration`, { method: 'DELETE' })
+  return parseDataRootResponse(res)
+}
+
+export async function requestDataRootRollback(): Promise<DataRootStatus> {
+  const res = await fetch(`${apiBase}/data-root/rollback`, { method: 'POST' })
+  return parseDataRootResponse(res)
+}
+
+export async function restartApplication(): Promise<void> {
+  const res = await fetch(`${apiBase}/application/restart`, { method: 'POST' })
+  if (!res.ok) throw await localApiResponseError(res)
+}
+
+async function parseDataRootResponse(res: Response): Promise<DataRootStatus> {
+  if (!res.ok) throw await localApiResponseError(res)
+  return res.json() as Promise<DataRootStatus>
+}
+
+async function localApiResponseError(res: Response): Promise<Error> {
+  const data = await res.json().catch(() => null) as { error?: string } | null
+  return new Error(data?.error ?? `Local app API error: ${res.status}`)
 }
 
 export async function selectWorkspace(): Promise<string | null> {

@@ -1,6 +1,6 @@
 # LittleSheep 核心 Agent 流程规范
 
-最后更新：2026-07-13
+最后更新：2026-07-14
 
 本文是 [LittleSheep 架构原则](architecture-principles.md) 在 Core Flow、TaskBook、验证、恢复和记忆运行时上的专项约束。LLM 与 Agent、Mode 与权限、Context 与 Memory、Harness 与 Tool Execution 的顶层分工以架构原则为准；本文不重复维护另一套总架构。
 
@@ -158,15 +158,15 @@
 - 本地精确 ledger 与 Provider usage 已使用不同结构保存，Provider usage 会绑定到产生它的准确 Context 快照；UI 能区分“供应商实测”“本地精确装配”和“tokenizer 不可用”，不会用字符换算冒充真实 token。
 - 会话压缩已实现为非破坏式、版本化 Summary Memory：原始 JSONL 消息保留，旧消息摘要在下一轮作为独立 `summary_memory` 来源介入，并可按消息阈值或精确 Context 占用阈值触发。
 - CLASSIFY、DECIDE 和 REPLY 只接收附件清单；非图片正文通过当前 run 专属的 `inspect_attachment` 只读工具按需解析，未调用时不会读取文件正文，工具结果再进入 Context。图片仍按受限大小读取为多模态输入。
-- 当前记忆层级实现为 T1-T3，尚未完成 T0 协议和版本化迁移。
+- 当前记忆层级已升级为 T0-T3，并通过版本化迁移保留旧 T1-T3 数值与数据；T0 只承载固定预算的核心索引和安全信息。
 - 当前已支持 `AbortSignal`、步骤级局部恢复和历史执行记录重放；尚未实现运行中用户事件队列、安全重入协议、活动 run 检查点及应用重启续跑。
 
 ## 后续硬化方向
 
 - 使用真实 OpenAI、DeepSeek、GLM 配置完成最小对话、工具调用、中断和长任务冒烟，确认各模型的 reasoning、上下文上限和 usage 映射。
 - Provider/模型 tokenizer 能力矩阵已经建立：只有模型能力声明和运行时计数器 id 一致时才允许精确账本，当前内置模型均保持 unavailable。对于 unavailable 模型，Context Engine 已使用最终 Chat Completions 载荷的 UTF-8 保守估算和独立图片预算做请求前防溢出、可选项淘汰与压缩触发；该估算明确不可展示为真实 token。下一步完成本地装配、安全估算与 Provider usage 的真实对账验收。
-- 继续验证长会话压缩后的任务约束、未完成步骤、记忆来源、权限结果和失败回退；在附件数据生命周期阶段补齐受管缓存、ownership 清理与数据根迁移。
+- 继续验证长会话压缩后的任务约束、未完成步骤、记忆来源、权限结果和失败回退；附件缓存、ownership 清理、workplace 索引和可回滚数据根迁移已完成工程闭环，后续只做真实用户场景验收与发布兼容。
 - 替换或退役尚未接入主运行时的旧 `distillDailyToMemory()` 原始追加 helper；任何未来 daily 到长期记忆的蒸馏都必须走安全、去重、可回滚的结构化写入闸门，不能重新启用扁平追加路径。
 - 实现 `packages/mcp/` 客户端，同时复用内置工具的权限、超时、清洗和执行记录契约。
 - 继续进行工作区、渠道、记忆树和重启恢复的真实用户场景验收。
-- 按 [Agent Runtime 连续性任务书](agent-runtime-continuity-taskbook.md) 建立 Context、T0-T3、附件、运行中重入、有界并行、检查点、后台执行和双向透明的完整闭环。
+- 按 [Agent Runtime 连续性任务书 2026-07-14](agent-runtime-continuity-taskbook-2026-07-14.md) 建立 Context、T0-T3、附件、运行中重入、有界并行、检查点、后台执行和双向透明的完整闭环；仓库拆分和 LLM Call Contract 的先行顺序见 [总基调、认知架构与仓库基元化任务书 2026-07-14](foundation-cognition-repository-taskbook-2026-07-14.md)。

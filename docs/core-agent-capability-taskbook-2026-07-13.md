@@ -1,4 +1,4 @@
-# LittleSheep 核心 Agent 能力任务书
+# LittleSheep 核心 Agent 能力任务书 2026-07-13
 
 状态：阶段 1-7 的设计与基础实现均已完成，本文件作为阶段契约和验收记录保留。当前能力成熟度、最新验证结果和后续优先级只以 [项目状态](project-status.md) 与 [架构决策报告](architecture-decision-report.md) 为准。
 
@@ -206,7 +206,7 @@
 - 正在执行、验证或运行中的命令统一使用 2.8 秒稳定周期的文字弧光，不使用随机闪烁。
 - 输入栏上方的任务进度圆环由真实 task step 状态计算，规划/执行/验证/完成状态明确；完成后短暂停留并平滑退出，空闲时不占视觉注意力。
 - 进度浮层首次悬浮等待 0.5 秒，键盘聚焦或点击立即展开，支持移出、外部点击和 Escape 收回；浮层显示完整任务书步骤和当前进度。
-- 任务进度圆环与输入栏内的上下文占用圆环完全独立。上下文圆环按可用真实性来源显示 Provider usage 或匹配具体模型 tokenizer 的本地精确 `ContextSnapshot`，并明确区分两者；tokenizer 不可用时不进行字符换算，任何情况下都不能用任务进度或无来源估算冒充真实占用。完整演进契约见 [Agent Runtime 连续性任务书](agent-runtime-continuity-taskbook.md)。
+- 任务进度圆环与输入栏内的上下文占用圆环完全独立。上下文圆环按可用真实性来源显示 Provider usage 或匹配具体模型 tokenizer 的本地精确 `ContextSnapshot`，并明确区分两者；tokenizer 不可用时不进行字符换算，任何情况下都不能用任务进度或无来源估算冒充真实占用。完整演进契约见 [Agent Runtime 连续性任务书 2026-07-14](agent-runtime-continuity-taskbook-2026-07-14.md)。
 - 持久化、历史重建、事件顺序、局部重规划最终流和进度计算均有回归保护；当前全仓验证结果见 [项目状态](project-status.md)。
 
 ## 阶段 5：权限模式与系统提示词拆分

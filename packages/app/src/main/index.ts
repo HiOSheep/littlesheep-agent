@@ -40,6 +40,7 @@ import { WorkspaceLayoutIndex } from './workspace-layout-index.js'
 import { resolveRuntimeWorkspaceDefault } from './runtime-config.js'
 import { loadApiKeys, injectKeysIntoEnv } from './keychain.js'
 import { runShutdownSequence } from './shutdown-sequence.js'
+import { DataRootMigrationManager } from './data-root-migration.js'
 
 let runner: AgentRunner | null = null
 let server: LocalAppApiServer | null = null
@@ -257,8 +258,17 @@ async function updateRuntimeConfig(config: Config): Promise<void> {
 }
 
 async function bootstrap(): Promise<void> {
-  // 1. Load branding + data dirs.
+  // 1. Load branding and complete any registered data-root operation before
+  //    creating a writer, opening SQLite, or materializing the user layout.
   const branding = await loadBranding()
+  const dataRootManager = new DataRootMigrationManager({ branding })
+  const dataRootPreparation = await dataRootManager.prepareForBootstrap()
+  if (dataRootPreparation.status.pendingMigration?.error) {
+    console.error(`[data-root] migration pending: ${dataRootPreparation.status.pendingMigration.error}`)
+  }
+  if (dataRootPreparation.status.pendingRollback?.error) {
+    console.error(`[data-root] rollback pending: ${dataRootPreparation.status.pendingRollback.error}`)
+  }
   const dataDir = dataSubdirs(branding)
   await ensureUserDataLayout(dataDir)
 
@@ -342,6 +352,18 @@ async function bootstrap(): Promise<void> {
         filters: [{ name: 'Markdown', extensions: ['md'] }],
       })
       return result.canceled ? null : result.filePaths[0] ?? null
+    },
+    dataRootManager,
+    selectDataRootTarget: async () => {
+      const result = await dialog.showOpenDialog({
+        title: '选择新的 LittleSheep 数据目录',
+        properties: ['openDirectory', 'createDirectory'],
+      })
+      return result.canceled ? null : result.filePaths[0] ?? null
+    },
+    restartApplication: () => {
+      app.relaunch()
+      app.quit()
     },
   })
 

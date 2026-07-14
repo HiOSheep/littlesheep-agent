@@ -1,6 +1,6 @@
 # LittleSheep 项目状态
 
-最后更新：2026-07-13
+最后更新：2026-07-14
 
 本文件是项目进度的正式来源。状态只根据当前源码、测试和构建结果维护；旧的阶段报告不再作为进度依据。
 
@@ -10,21 +10,21 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 它还不是可直接宣称“生产就绪”的发行版。主要原因是当前内置模型尚无已验证的最终请求精确计数器、真实供应商验证未完成、活动 run 重启续跑、MCP、安装包发布和真实用户场景验收仍未闭环。因此本项目不使用一个没有权重定义的百分比来伪装精确进度，而用能力状态和验收证据表示总进度。产品方向已明确为：解放用户生产力，让用户专注于想法，LS 负责将想法可靠落地；执行和输出统一采用渐进式披露。
 
-**当前阶段：Context Engine 真实供应商校准、阶段 3 附件与数据生命周期、统一 Tool Execution 前置准备与产品化收尾。**
+**当前阶段：先执行仓库基元化与认知契约整理。阶段 0（基线与任务书命名）已完成；阶段 1-2 需要串行建立仓库导航、所有权地图、共享契约和拆分基元，随后再进入阶段 3-4 的行为保持型模块拆分。真实 Provider 校准可在不修改这些热点文件的前提下并行。**
 
 ## 能力总览
 
 | 能力域 | 状态 | 当前结论 | 主要位置 |
 | --- | --- | --- | --- |
-| 架构治理 | 阶段 0 已完成，阶段 1 进行中 | 已明确 LLM/Agent、Mode/权限、Context/Memory、Workflow/Tools 和插件边界；内部 v1 契约、不可变运行决议、全模型请求快照、统一工具记录、兼容矩阵和特征基线已落地，Context Engine 已形成独立包和首批调用路径 | `packages/types/src/runtime-contracts.ts`、`packages/context/`、`packages/harness/src/model-observability.ts`、`packages/runner/src/run-config.ts` |
+| 架构治理 | 仓库基元化阶段 0 已完成，阶段 1 待执行 | 顶层架构边界和内部 v1 运行契约已经建立；新的仓库基元化任务书已冻结命名与量化基线。当前仍有 33 个超过 300 行的非测试生产文件、25 个缺少 README 的 package 根目录和 35 个缺少 README 的主要源码目录，模块化整理尚未执行，不能写成已经完成 | `docs/foundation-cognition-repository-taskbook-2026-07-14.md`、`docs/repository-guide.md`、`packages/types/src/runtime-contracts.ts`、`packages/context/` |
 | Context Engine | 阶段 1 主要数据链已实现，供应商验收未闭环 | 支持确定性候选、来源 segment、已知/未知模型窗口、预算淘汰、版本化 Summary Memory、附件清单优先、按需附件工具、压缩阈值设置、Provider usage 绑定和双账本 UI；provider/model tokenizer 能力矩阵已建立，只有模型声明与运行时 `counterId` 一致时才允许生成精确账本。当前内置模型均明确为 unavailable，并已使用不可展示的保守安全估算完成请求前防溢出；真实 Provider 对账尚未完成 | `packages/context/`、`packages/harness/src/context-candidates.ts`、`packages/harness/src/model-observability.ts`、`packages/config/src/model-capabilities.ts` |
-| 附件与工作区资源生命周期 | 阶段 3 文件生命周期子项已完成 | 粘贴/浏览器导入进入独立受管缓存；索引记录稳定 id、大小、哈希和访问时间，按 30 天、256 项、512 MiB 有界清理。workplace 另有独立元数据资源索引，每次最多扫描 64 个目录、最多保存 512 个文件条目，按游标增量推进并在重启后恢复；只记录路径、类型、大小、修改时间和来源，不读正文。自动删除只作用于已登记且校验一致的缓存文件，旧 workplace、未登记文件、被替换文件和外部用户文件不会被清理 | `packages/app/src/main/attachment-cache.ts`、`packages/memory-tree/src/workspace-resource-index.ts`、`workspace-resource-scanner.ts` |
+| 附件、workplace 与数据根生命周期 | 阶段 3 工程实现已完成 | 粘贴/浏览器导入进入独立受管缓存，按 30 天、256 项、512 MiB 有界清理；workplace 使用可恢复的有界元数据索引，不读正文。设置页可登记完整数据根迁移，下一次启动会在任何写入者初始化前通过外部 locator、同级 staging、全文件 SHA-256 清单和活动元数据路径重绑定完成原子切换；源目录保留，失败继续使用旧目录，提交中断可恢复，回滚同样在下次启动生效。隔离测试已覆盖这些契约，尚未擅自搬迁正式用户数据 | `packages/app/src/main/attachment-cache.ts`、`packages/app/src/main/data-root-migration.ts`、`packages/app/src/main/data-root-metadata.ts`、`packages/memory-tree/src/workspace-resource-index.ts` |
 | 长会话压缩 | 已实现基础闭环 | 原始 JSONL 不删除；摘要版本化、记录来源范围、支持增量合并，并在下一轮作为独立 `summary_memory` 介入；摘要同时按 session scope 注册到资源目录，正文仍以会话元数据为权威来源并按需解析；真实长会话、失败回退和成本仍待验收 | `packages/session/src/compaction.ts`、`packages/runner/src/runner.ts`、`packages/prompt/src/builder.ts`、`packages/memory-tree/src/memory-service.ts` |
 | 硬控制流 Agent | 已实现 | `ENTER`、分类、决策、执行、恢复、验证、演化、捕获和收尾由 Harness 驱动 | `packages/harness/`、`packages/runner/` |
 | 需求判断与任务书 | 已实现 | 支持澄清请求、复杂度判断、TaskBook、步骤验收和局部重规划 | `packages/types/`、`packages/harness/src/stages/` |
 | 步骤级执行与恢复 | 已实现 | 保留已完成步骤证据，失败时按步骤恢复，不重复执行已完成部分 | `packages/harness/src/stages/execute.ts`、`recover.ts`、`verify.ts` |
 | 记忆树运行时协议 | 已实现基础闭环 | 根索引到分支索引再到展开/分支内深搜，写入走结构化闸门；新增 `resources` 分支后，注册文档正文仍必须先看目录再按需展开 | `packages/memory-tree/`、`packages/memory-core/`、`packages/runner/` |
-| Memory Service 与 T0-T3 注册 | 阶段 2 已完成 | v2 文档、T0、可回滚 v1 迁移、元数据资源目录、权威来源冲突保护、Bootstrap/Skills/工作区文档、Summary Memory、run-scoped 附件、运行时事件账本登记端口、项目记忆三层投影、稳定项目 ID、可恢复路径重绑定、通用资源生命周期和插件/Skill 所有权迁移均已进入真实路径。隔离重定位和 256 Skills/12 项目压力恢复验收已通过；实时事件队列属于阶段 4，完整数据根迁移属于阶段 3 | `packages/memory-tree/src/memory-service.ts`、`memory-repository.ts`、`memory-resource-branch.ts`、`resource-scaling.test.ts`、`packages/app/src/main/project-rebinding.ts` |
+| Memory Service 与 T0-T3 注册 | 阶段 2 已完成 | v2 文档、T0、可回滚 v1 迁移、元数据资源目录、权威来源冲突保护、Bootstrap/Skills/工作区文档、Summary Memory、run-scoped 附件、运行时事件账本登记端口、项目记忆三层投影、稳定项目 ID、可恢复路径重绑定、通用资源生命周期和插件/Skill 所有权迁移均已进入真实路径。隔离重定位和 256 Skills/12 项目压力恢复验收已通过；实时事件队列属于阶段 4 | `packages/memory-tree/src/memory-service.ts`、`memory-repository.ts`、`memory-resource-branch.ts`、`resource-scaling.test.ts`、`packages/app/src/main/project-rebinding.ts` |
 | 项目身份与路径重绑定 | 已实现基础闭环 | 新项目使用与路径无关的稳定 ID，旧路径派生 ID 原样保留；项目移动或重命名后可从侧边栏重新定位。持久化事务日志幂等迁移会话、归档、记忆 scope、项目投影、工作区文档资源、产物、终端活动、布局、导航状态和当前运行路径；路径冲突会拒绝提交 | `packages/app/src/main/project-index.ts`、`project-rebinding.ts`、`path-rebinding.ts`、`packages/memory-tree/src/memory-service.ts` |
 | 记忆管理控制面 | 已实现基础闭环 | UI 操作真实运行时索引与注册表，可查看、归档、恢复、删除记忆，并以渐进式披露查看资源来源、权威、隐私、索引键和生命周期审计；持久资源支持停用、恢复和只清理登记，缺失的工作区文档可在授权范围内保持原 ID 重新定位；项目记忆支持私有投影启用/同步、缺失与冲突恢复、Git 隐私提示、共享导出、停用和安全清理 | `packages/app/src/renderer/MemoryTreeView.tsx`、`packages/app/src/main/memory-tree-control.ts` |
 | 执行记录与历史重放 | 已实现 | 已完成 run 的 TaskBook、步骤、工具调用、验证、Context 快照和有界资源 ID 可持久化并重放；附件 data URL 与正文不进入执行日志；这仍不等于活动 run 在应用重启后续跑 | `packages/runner/src/execution-log.ts`、`packages/app/src/renderer/TraceCard.tsx` |
@@ -43,8 +43,8 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 | 检查 | 当前工作树结果 | 证据命令 |
 | --- | --- | --- |
-| 仓库卫生 | 通过：19 项通过，0 项失败 | `pnpm.cmd run check:repo` |
-| 全量测试 | 通过：115 个测试文件；980 passed、1 skipped | `pnpm.cmd test` |
+| 仓库卫生 | 通过：20 项通过，0 项失败 | `pnpm.cmd run check:repo` |
+| 全量测试 | 通过：117 个测试文件；989 passed、1 skipped | `pnpm.cmd test` |
 | 全工作区类型检查 | 通过 | `pnpm.cmd run typecheck` |
 | 全工作区构建 | 通过 | `pnpm.cmd run build` |
 | 应用恢复源检查 | 通过；仍保留旧执行日志缺失、可选 workspace artifact 索引缺失，以及现有用户数据尚未产生 workplace 资源索引的诊断警告 | `pnpm.cmd run verify:app-recovery` |
@@ -94,8 +94,19 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 - [架构决策报告](architecture-decision-report.md) 已按当前源码记录模块成熟度、主要缺口、推荐顺序和待用户决策事项。
 - 架构文档、项目状态、仓库目录、专项规范和任务书拥有独立职责，避免同一事实在多份报告中重复维护。
 - 文档已明确区分目标架构、当前事实、演进建议和专项任务书；Context Engine 只按“阶段 1 主要数据链已实现、验收未完成”记录，Tool Execution Service、Mode Registry 与 Memory Service 仍不按已完成能力记录。
+- [总基调、认知架构与仓库基元化任务书](foundation-cognition-repository-taskbook-2026-07-14.md) 已建立，并完成历史任务书日期化；任务书中的 package/领域 README、热点拆分和 LLM Call Contract 仍是待执行工作。
 
 ## 未完成方向
+
+### P0：仓库基元化与认知契约
+
+1. 阶段 0 已完成：任务书统一使用“总名称 + 最后更新时间”，并冻结大型文件、README 覆盖和质量门基线。
+2. 阶段 1 先为 workspace package 和具有独立责任的源码领域建立简洁 README、所有权地图与“需求类型 → 入口 → 测试”导航，不改运行行为。
+3. 阶段 2 固定跨进程和跨 package 的共享契约，为 App、Local App API、Renderer API、Memory、Harness 与 Context 建立 facade 和特征测试，禁止热点继续无边界增长。
+4. 阶段 3-4 在兼容 facade 保护下分域拆分 Electron App、Local App API、Renderer API、Memory、Harness 与 Context；保持 URL、数据、动画、导航、恢复和运行语义不变。
+5. 仓库边界稳定后，再实现版本化 `LlmCallContract`、记忆意图策略和持续仓库质量门。
+
+**验收标准**：新任务能从仓库指南和领域 README 定位所有者、入口与测试；跨模块契约只有一个权威来源；热点文件不再承接新领域职责；行为特征测试和全量质量门保持通过。
 
 ### P0：核心模块契约收敛
 
@@ -123,10 +134,10 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 2. 为运行中用户消息和 LS 内授权事件建立有界队列，在安全决策边界生成 `TaskBookPatch`，保留已完成步骤和证据；同时为无依赖、无资源冲突的步骤建立有硬上限的并行调度。
 3. 定义版本化 `RunCheckpoint`、幂等副作用记录、恢复兼容和防死循环上限，实现用户中断、应用重启和可恢复故障的清晰语义。
 4. T0-T3 基础注册表、v1→v2 版本化迁移、统一 Memory Service、Summary Memory、run-scoped 附件、运行时事件账本登记端口，以及项目记忆“用户数据权威源 / 项目内私有投影 / 可共享导出”三层契约与控制面已实现。项目稳定 ID、旧 ID 兼容和可恢复路径重绑定也已完成；实时事件生产仍依赖后续 `RuntimeEventQueue`，当前继续完成其他资源的通用治理。
-5. 附件缓存和 workplace 有界资源索引已进入独立、索引驱动的数据生命周期：新导入不再污染 workplace，重启可按稳定 cache id 或扫描游标恢复；缓存清理验证路径、文件类型、大小和 SHA-256，工作区索引只保存元数据并通过资源树按需展开。旧原型默认 workspace 的配置、项目壳、会话归属和归档元数据迁移已经完成并通过真实用户数据无损验证；下一步实现可回滚的完整数据根目录搬迁。
+5. 附件缓存、workplace 有界资源索引和可回滚完整数据根迁移已进入独立、索引驱动的数据生命周期。数据根迁移由外部 locator 登记，设置页只登记目标并明确要求重启；启动阶段在 Runner、Local App API 和插件宿主创建前暂停结构性写入，复制到目标同级 staging，跳过符号链接/junction，以流式 SHA-256 清单校验全部普通文件，只重绑定活动元数据中原本位于旧数据根内的路径，再原子提交。源目录保留，校验失败继续使用旧目录，提交后 locator 切换前中断可恢复，回滚在下次启动切回前一个仍存在的数据根。当前完成的是隔离临时目录工程验收，不代表已替用户迁移正式数据。
 6. 后台任务必须配套托盘、状态提示、彻底退出和用户可配置关闭策略，不能只让进程静默驻留。
 
-**当前事实**：Harness 已把模型请求映射为显式 Context 候选并交给 `@littlesheep/context` 准备；System Prompt 内的基础策略、记忆根索引、bootstrap、输出约束、Workflow/TaskBook、profile 和 reasoning 已能独立登记。Provider usage 会绑定到准确快照，UI 能区分供应商实测、本地精确装配和 tokenizer 不可用。tokenizer 能力矩阵已经覆盖当前内置模型，但没有任何模型被错误标记为本地精确；未来计数器必须与模型声明的 `counterId` 和请求格式一致。对 unavailable 模型，Context Engine 复用 LLM Client 的最终载荷构造器，以 UTF-8 字节和独立图片预算生成 `displayable: false` 的 `ContextSafetyEstimate`，用于请求前防溢出、可选项淘汰和压缩触发；Renderer 不读取该值作为已用 token。会话压缩已生成版本化 Summary Memory，原始消息保留；摘要以 session scope 注册，重启后仍从会话元数据按 summary id 解析。附件在模型输入中先以清单介入，非图片正文只有 Agent 调用当前 run 专属 `inspect_attachment` 时才读取并作为工具结果进入 Context；资源目录只保存附件元数据，活动 run 结束即清除内存正文，同会话新 run 会替换旧登记。执行日志从 Context 快照和记忆访问账本收集有界资源 ID，不保存附件正文或 data URL。记忆文档已升级到 v2，T0 根索引固定有界；Bootstrap、Skills 和工作区规范按元数据注册，正文仍沿资源分支显式展开。项目记忆完整权威数据继续留在用户数据中；项目内私有投影只有用户明确启用后才生成，并使用层级、敏感内容和路径白名单；共享 Markdown 导出采用独立、更严格的置信度白名单。投影的外部修改、缺失、停用和恢复会与资源目录对账，覆盖与移除需要确认，移除仅作用于 LS 最后验证写入的文件。新项目 ID 已与路径解耦，旧路径派生 ID 不重写；移动或重命名项目时，持久化重绑定事务会同步项目会话、归档、记忆 scope、投影、资源、产物、终端、布局、导航和当前运行路径，中断后可幂等恢复。Runner、工具和 UI 已通过统一 `MemoryService` 使用同一仓库；真实用户 v1 数据迁移验证保持 44 个节点及其 ID 集合、40 条写入审计、4 条管理审计和既有迁移记录不变，并生成可恢复备份。压缩阈值已接入 Local App API 与设置 UI。当前工程质量门为绿色，但生产环境尚未完成三家真实 Provider 校准。旧默认 workspace 已完成无损迁移；完整数据根目录虽可通过环境变量/品牌配置覆盖，但仍没有用户可操作的搬迁、校验和回滚闭环。关闭最后窗口当前会退出应用；运行时尚无有界并行调度。
+**当前事实**：Harness 已把模型请求映射为显式 Context 候选并交给 `@littlesheep/context` 准备；System Prompt 内的基础策略、记忆根索引、bootstrap、输出约束、Workflow/TaskBook、profile 和 reasoning 已能独立登记。Provider usage 会绑定到准确快照，UI 能区分供应商实测、本地精确装配和 tokenizer 不可用。tokenizer 能力矩阵已经覆盖当前内置模型，但没有任何模型被错误标记为本地精确；未来计数器必须与模型声明的 `counterId` 和请求格式一致。对 unavailable 模型，Context Engine 复用 LLM Client 的最终载荷构造器，以 UTF-8 字节和独立图片预算生成 `displayable: false` 的 `ContextSafetyEstimate`，用于请求前防溢出、可选项淘汰和压缩触发；Renderer 不读取该值作为已用 token。会话压缩已生成版本化 Summary Memory，原始消息保留；摘要以 session scope 注册，重启后仍从会话元数据按 summary id 解析。附件在模型输入中先以清单介入，非图片正文只有 Agent 调用当前 run 专属 `inspect_attachment` 时才读取并作为工具结果进入 Context；资源目录只保存附件元数据，活动 run 结束即清除内存正文，同会话新 run 会替换旧登记。执行日志从 Context 快照和记忆访问账本收集有界资源 ID，不保存附件正文或 data URL。记忆文档已升级到 v2，T0 根索引固定有界；Bootstrap、Skills 和工作区规范按元数据注册，正文仍沿资源分支显式展开。项目记忆完整权威数据继续留在用户数据中；项目内私有投影只有用户明确启用后才生成，并使用层级、敏感内容和路径白名单；共享 Markdown 导出采用独立、更严格的置信度白名单。投影的外部修改、缺失、停用和恢复会与资源目录对账，覆盖与移除需要确认，移除仅作用于 LS 最后验证写入的文件。新项目 ID 已与路径解耦，旧路径派生 ID 不重写；移动或重命名项目时，持久化重绑定事务会同步项目会话、归档、记忆 scope、投影、资源、产物、终端、布局、导航和当前运行路径，中断后可幂等恢复。Runner、工具和 UI 已通过统一 `MemoryService` 使用同一仓库；真实用户 v1 数据迁移验证保持既有节点、审计和迁移记录不变，并生成可恢复备份。压缩阈值与数据根管理已接入 Local App API 和设置 UI。数据根迁移的工程闭环已通过隔离故障注入，但正式用户数据仍保持原位置，等待用户主动验收。当前工程质量门为绿色，但生产环境尚未完成三家真实 Provider 校准。关闭最后窗口当前会退出应用；运行时尚无有界并行调度。
 
 **验收标准**：每项 Context 可追溯且不超预算；未知 tokenizer 不显示伪精确 token；追加要求不重做已完成副作用；活动 run 可在重启后从检查点恢复；所有循环有界；用户数据迁移可验证、可回滚；后台运行始终可见、可终止。
 
@@ -167,12 +178,12 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 ## 推荐后续顺序
 
-1. 在明确密钥和成本边界后完成 OpenAI、DeepSeek、GLM 真实冒烟，用结果校准 Context、reasoning、usage 与当前保守安全估算；安全估算不能替代 Provider 实测，也不能进入用户可见已用 token。
-2. 阶段 2 已完成；阶段 3 的附件磁盘缓存和 workplace 有界资源索引已完成，下一项是可回滚的完整数据根迁移，并复用现有 owner-scoped 生命周期协议。
-3. 收敛统一 Tool Execution Service；在它稳定前不实现运行中重入、有界并行、幂等检查点或 MCP，避免多条副作用执行路径。
-4. 按连续性任务书实现运行中用户事件、TaskBookPatch、有界并行、版本化检查点、重启恢复、后台运行和双向透明控制面。
-5. 再收敛 Mode Registry、升级 daily 到长期记忆的安全蒸馏，并渐进拆分 Electron App 大型组合模块。
-6. 完成工作区、渠道、插件宿主和记忆树真实场景验收后规划发布包；核心契约稳定后再推进插件 API v2、MCP 和更广生态。
+1. 完成仓库基元化任务书阶段 1：package/领域 README、所有权地图、大型文件拆分地图和维护入口。
+2. 串行完成阶段 2：共享契约、兼容 facade 和行为特征测试；在这一步完成前，不让多个分支同时修改 `App.tsx`、Local App API、Renderer API、Memory 或 Harness 热点。
+3. 按所有权边界推进阶段 3-4 的行为保持型拆分，先稳定模块边界，再继续向热点中增加新功能；每个子阶段都单独回归桌面交互和用户数据兼容。
+4. 在不修改上述热点的前提下，可并行完成 OpenAI、DeepSeek、GLM 真实冒烟，用结果校准 Context、reasoning、usage 与当前保守安全估算。
+5. 仓库分域稳定后，收敛统一 Tool Execution Service，并按连续性任务书实现运行中用户事件、TaskBookPatch、有界并行、版本化检查点、重启恢复和后台运行。
+6. 再实现版本化 LLM Call Contract、Mode Registry、daily 到长期记忆的安全蒸馏、插件 API v2 与 MCP；完成真实用户场景验收后规划发布包。
 
 ## 维护规则
 
@@ -180,5 +191,6 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 - 任何“已完成”都要说明范围：基础形态、配置层、连接器层和真实场景验收不能混为一谈。
 - 不把用户密钥、用户会话、记忆树或工作区文件复制到仓库；运行时数据只在用户数据目录中维护。
 - 顶层分工见 [architecture-principles.md](architecture-principles.md)，当前架构评估和决策点见 [architecture-decision-report.md](architecture-decision-report.md)，目录和模块归属见 [repository-guide.md](repository-guide.md)，插件边界见 [plugin-development.md](plugin-development.md)。
-- 核心能力细节见 [core-agent-capability-taskbook.md](core-agent-capability-taskbook.md)，拓展工作区细节见 [extension-workspace-taskbook.md](extension-workspace-taskbook.md)。
-- Context、记忆分级、附件、运行中重入、有界并行、检查点和后台连续执行的专项计划见 [agent-runtime-continuity-taskbook.md](agent-runtime-continuity-taskbook.md)。
+- 当前先行仓库整理和认知契约见 [总基调、认知架构与仓库基元化任务书 2026-07-14](foundation-cognition-repository-taskbook-2026-07-14.md)。
+- 核心能力细节见 [核心 Agent 能力任务书 2026-07-13](core-agent-capability-taskbook-2026-07-13.md)，拓展工作区细节见 [拓展工作区任务书 2026-07-12](extension-workspace-taskbook-2026-07-12.md)。
+- Context、记忆分级、附件、运行中重入、有界并行、检查点和后台连续执行的专项计划见 [Agent Runtime 连续性任务书 2026-07-14](agent-runtime-continuity-taskbook-2026-07-14.md)。

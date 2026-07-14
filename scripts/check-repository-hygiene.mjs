@@ -110,18 +110,20 @@ async function checkPublishedSurface() {
   assert(hiddenRoots.length === 0, '未跟踪本地隐藏工作目录', hiddenRoots.join(', '))
 
   const readme = await readText(join(repoRoot, 'README.md'))
-  const unlistedDocs = tracked
-    .filter((path) => /^docs\/[^/]+\.md$/i.test(path))
-    .filter((path) => !readme.includes(path))
+  const actualDocs = (await readdir(join(repoRoot, 'docs'), { withFileTypes: true }))
+    .filter((entry) => entry.isFile() && extname(entry.name).toLowerCase() === '.md')
+    .map((entry) => `docs/${entry.name}`)
+  const unlistedDocs = actualDocs.filter((path) => !readme.includes(path))
   assert(unlistedDocs.length === 0, '正式文档均可从 README 定位', unlistedDocs.join(', '))
 
   const publicTextExtensions = new Set([
     '.bat', '.cjs', '.css', '.html', '.js', '.json', '.jsx', '.md', '.mjs',
     '.ps1', '.ts', '.tsx', '.yaml', '.yml',
   ])
-  const textFiles = tracked.filter((path) =>
+  const trackedTextFiles = tracked.filter((path) =>
     path !== 'pnpm-lock.yaml' && publicTextExtensions.has(extname(path).toLowerCase()) && existsSync(join(repoRoot, path)),
   )
+  const textFiles = [...new Set([...trackedTextFiles, ...actualDocs])]
   const metadataFiles = textFiles.filter((path) =>
     path === 'README.md' ||
     path === 'package.json' ||
@@ -154,8 +156,12 @@ async function checkCanonicalFiles() {
     'docs/project-status.md',
     'docs/repository-guide.md',
     'docs/plugin-development.md',
-    'docs/core-agent-capability-taskbook.md',
-    'docs/extension-workspace-taskbook.md',
+    'docs/foundation-cognition-repository-taskbook-2026-07-14.md',
+    'docs/core-agent-capability-taskbook-2026-07-13.md',
+    'docs/agent-core-memory-taskbook-2026-07-14.md',
+    'docs/core-focus-maintenance-taskbook-2026-07-13.md',
+    'docs/extension-workspace-taskbook-2026-07-12.md',
+    'docs/agent-runtime-continuity-taskbook-2026-07-14.md',
     'scripts/build-app.ps1',
     'scripts/start-littlesheep.ps1',
     'scripts/refresh-desktop-shortcut.ps1',
@@ -180,6 +186,28 @@ async function checkCanonicalFiles() {
     if (hardcodedRoot.test(await readText(join(repoRoot, path)))) hardcodedPaths.push(path)
   }
   assert(hardcodedPaths.length === 0, '维护脚本与仓库位置无关', hardcodedPaths.join(', '))
+}
+
+async function checkTaskbookNaming() {
+  const entries = await readdir(join(repoRoot, 'docs'), { withFileTypes: true })
+  const taskbooks = entries
+    .filter((entry) => entry.isFile() && entry.name.includes('taskbook') && entry.name.endsWith('.md'))
+    .map((entry) => entry.name)
+  const violations = []
+  for (const name of taskbooks) {
+    const match = name.match(/-taskbook-(\d{4}-\d{2}-\d{2})\.md$/u)
+    if (!match) {
+      violations.push(`${name}: 文件名缺少最后更新时间`)
+      continue
+    }
+    const date = match[1]
+    const content = await readText(join(repoRoot, 'docs', name))
+    const title = content.split(/\r?\n/u, 1)[0]?.trim() ?? ''
+    const updated = content.match(/^最后更新：(\d{4}-\d{2}-\d{2})$/mu)?.[1]
+    if (!title.endsWith(date)) violations.push(`${name}: 一级标题日期应为 ${date}`)
+    if (updated !== date) violations.push(`${name}: 最后更新时间应为 ${date}`)
+  }
+  assert(taskbooks.length > 0 && violations.length === 0, '任务书名称与最后更新时间一致', violations.join(', '))
 }
 
 async function checkWorkspacePackages() {
@@ -308,8 +336,13 @@ function checkTrackedGeneratedFiles() {
 }
 
 async function checkMarkdownLinks() {
-  const markdownFiles = trackedFiles()
-    .filter((path) => extname(path).toLowerCase() === '.md' && existsSync(join(repoRoot, path)))
+  const actualDocs = (await readdir(join(repoRoot, 'docs'), { withFileTypes: true }))
+    .filter((entry) => entry.isFile() && extname(entry.name).toLowerCase() === '.md')
+    .map((entry) => `docs/${entry.name}`)
+  const markdownFiles = [...new Set([
+    ...trackedFiles().filter((path) => extname(path).toLowerCase() === '.md' && existsSync(join(repoRoot, path))),
+    ...actualDocs,
+  ])]
     .map((path) => join(repoRoot, path))
   const broken = []
   const localLinkPattern = /\[[^\]]*\]\(([^)]+)\)/g
@@ -336,8 +369,13 @@ async function checkMarkdownLinks() {
 }
 
 async function checkDocumentationLanguage() {
-  const documentationFiles = trackedFiles()
-    .filter((path) => extname(path).toLowerCase() === '.md' && existsSync(join(repoRoot, path)))
+  const actualDocs = (await readdir(join(repoRoot, 'docs'), { withFileTypes: true }))
+    .filter((entry) => entry.isFile() && extname(entry.name).toLowerCase() === '.md')
+    .map((entry) => `docs/${entry.name}`)
+  const documentationFiles = [...new Set([
+    ...trackedFiles().filter((path) => extname(path).toLowerCase() === '.md' && existsSync(join(repoRoot, path))),
+    ...actualDocs,
+  ])]
   const nonChinese = []
   for (const path of documentationFiles) {
     if (!/[\u4e00-\u9fff]/.test(await readText(join(repoRoot, path)))) nonChinese.push(path)
@@ -348,6 +386,7 @@ async function checkDocumentationLanguage() {
 async function main() {
   await checkPublishedSurface()
   await checkCanonicalFiles()
+  await checkTaskbookNaming()
   await checkWorkspacePackages()
   await checkModuleBoundaries()
   await checkExtensionArchitectureNames()

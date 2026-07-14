@@ -58,6 +58,12 @@
 //   POST   /plugins/local-code        — update the explicit local-code trust gate
 //   GET    /channels/status           — external channel connection status
 //   POST   /channels/reload           — reload external channel connections
+//   GET    /data-root                 — inspect the active data directory and pending operation
+//   POST   /data-root/select          — choose a migration target with the native picker
+//   POST   /data-root/migration       — register a migration for the next application start
+//   DELETE /data-root/migration       — cancel an uncommitted migration or rollback request
+//   POST   /data-root/rollback        — register a switch back to the previous data directory
+//   POST   /application/restart       — restart the desktop application after responding
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
@@ -106,6 +112,7 @@ import {
   type AttachmentRef,
 } from './attachments.js'
 import { ManagedAttachmentCache } from './attachment-cache.js'
+import type { DataRootMigrationManager } from './data-root-migration.js'
 import type { PluginHost } from '@littlesheep/plugins'
 import {
   coerceReasoningForModelRef,
@@ -517,6 +524,12 @@ export interface LocalAppApiServerOptions {
   selectProjectMemoryExport?: (projectName: string, projectPath: string) => Promise<string | null>
   /** Open a native file picker to relocate a missing workspace memory resource. */
   selectMemoryResourceSource?: () => Promise<string | null>
+  /** Data-root migration control. Omitted in non-Electron tests that do not need it. */
+  dataRootManager?: DataRootMigrationManager
+  /** Open a native directory picker for the next data-root target. */
+  selectDataRootTarget?: () => Promise<string | null>
+  /** Schedule a full application restart after the API response has been flushed. */
+  restartApplication?: () => void
 }
 
 export interface LocalAppApiServer {
@@ -1131,6 +1144,63 @@ async function route(
     setConfig(next)
     await opts.updateRuntimeConfig(next)
     json(res, 200, buildRuntimePayload(next, opts.workplaceDir))
+    return
+  }
+
+  if (method === 'GET' && path === '/data-root') {
+    if (!opts.dataRootManager) {
+      json(res, 501, { error: 'data-root management is not available' })
+      return
+    }
+    json(res, 200, await opts.dataRootManager.status())
+    return
+  }
+
+  if (method === 'POST' && path === '/data-root/select') {
+    if (!opts.selectDataRootTarget) {
+      json(res, 501, { error: 'data-root picker is not available' })
+      return
+    }
+    json(res, 200, { path: await opts.selectDataRootTarget() })
+    return
+  }
+
+  if (method === 'POST' && path === '/data-root/migration') {
+    if (!opts.dataRootManager) {
+      json(res, 501, { error: 'data-root management is not available' })
+      return
+    }
+    const body = await readJson(req)
+    const targetDir = typeof body.targetDir === 'string' ? body.targetDir : ''
+    json(res, 200, await opts.dataRootManager.requestMigration(targetDir))
+    return
+  }
+
+  if (method === 'DELETE' && path === '/data-root/migration') {
+    if (!opts.dataRootManager) {
+      json(res, 501, { error: 'data-root management is not available' })
+      return
+    }
+    json(res, 200, await opts.dataRootManager.cancelPending())
+    return
+  }
+
+  if (method === 'POST' && path === '/data-root/rollback') {
+    if (!opts.dataRootManager) {
+      json(res, 501, { error: 'data-root management is not available' })
+      return
+    }
+    json(res, 200, await opts.dataRootManager.requestRollback())
+    return
+  }
+
+  if (method === 'POST' && path === '/application/restart') {
+    if (!opts.restartApplication) {
+      json(res, 501, { error: 'application restart is not available' })
+      return
+    }
+    json(res, 200, { ok: true })
+    setTimeout(() => opts.restartApplication?.(), 80)
     return
   }
 

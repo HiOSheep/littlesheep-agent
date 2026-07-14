@@ -7,6 +7,7 @@ import {
   DEFAULT_BRANDING,
   dataRootLocatorPath,
   dataSubdirs,
+  parseDataRootLocator,
   readDataRootLocator,
   resolveDataDir,
 } from './index.js';
@@ -83,5 +84,39 @@ describe('branding', () => {
     const overridden = join(locatorRoot, 'env-data');
     process.env.LITTLESHEEP_DATA_DIR = overridden;
     expect(resolveDataDir(DEFAULT_BRANDING)).toBe(overridden);
+  });
+
+  it('parses resumable migration and rollback metadata', () => {
+    const parsed = parseDataRootLocator({
+      version: 1,
+      activeDataDir: join(locatorRoot, 'active'),
+      pendingMigration: {
+        id: 'move-1',
+        sourceDir: join(locatorRoot, 'active'),
+        targetDir: join(locatorRoot, 'target'),
+        stageDir: join(locatorRoot, '.target.stage'),
+        phase: 'committing',
+        createdAt: '2026-07-14T00:00:00.000Z',
+        updatedAt: '2026-07-14T00:01:00.000Z',
+        attempts: 1,
+        fileCount: 3,
+        totalBytes: 42,
+        manifestHash: 'abc',
+      },
+      pendingRollback: {
+        id: 'rollback-1',
+        fromDir: join(locatorRoot, 'target'),
+        toDir: join(locatorRoot, 'active'),
+        createdAt: '2026-07-14T00:02:00.000Z',
+      },
+    });
+
+    expect(parsed?.pendingMigration).toMatchObject({
+      phase: 'committing',
+      fileCount: 3,
+      totalBytes: 42,
+      manifestHash: 'abc',
+    });
+    expect(parsed?.pendingRollback?.id).toBe('rollback-1');
   });
 });

@@ -44,6 +44,17 @@ export interface PendingDataRootMigration {
   updatedAt: string;
   attempts: number;
   error?: string;
+  fileCount?: number;
+  totalBytes?: number;
+  manifestHash?: string;
+}
+
+export interface PendingDataRootRollback {
+  id: string;
+  fromDir: string;
+  toDir: string;
+  createdAt: string;
+  error?: string;
 }
 
 export interface CompletedDataRootMigration {
@@ -61,6 +72,7 @@ export interface DataRootLocatorDocument {
   activeDataDir: string;
   previousDataDir?: string;
   pendingMigration?: PendingDataRootMigration;
+  pendingRollback?: PendingDataRootRollback;
   lastMigration?: CompletedDataRootMigration;
 }
 
@@ -172,6 +184,7 @@ export function parseDataRootLocator(value: unknown): DataRootLocatorDocument | 
       ? resolve(raw.previousDataDir)
       : undefined,
     pendingMigration: parsePendingMigration(raw.pendingMigration),
+    pendingRollback: parsePendingRollback(raw.pendingRollback),
     lastMigration: parseCompletedMigration(raw.lastMigration),
   };
 }
@@ -197,7 +210,30 @@ function parsePendingMigration(value: unknown): PendingDataRootMigration | undef
     updatedAt: raw.updatedAt,
     attempts: raw.attempts,
     error: typeof raw.error === 'string' ? raw.error : undefined,
+    fileCount: parseOptionalNonNegativeInteger(raw.fileCount),
+    totalBytes: parseOptionalNonNegativeInteger(raw.totalBytes),
+    manifestHash: typeof raw.manifestHash === 'string' && raw.manifestHash ? raw.manifestHash : undefined,
   };
+}
+
+function parsePendingRollback(value: unknown): PendingDataRootRollback | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.id !== 'string' || !raw.id
+    || typeof raw.fromDir !== 'string' || !raw.fromDir
+    || typeof raw.toDir !== 'string' || !raw.toDir
+    || typeof raw.createdAt !== 'string') return undefined;
+  return {
+    id: raw.id,
+    fromDir: resolve(raw.fromDir),
+    toDir: resolve(raw.toDir),
+    createdAt: raw.createdAt,
+    error: typeof raw.error === 'string' ? raw.error : undefined,
+  };
+}
+
+function parseOptionalNonNegativeInteger(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
 function parseCompletedMigration(value: unknown): CompletedDataRootMigration | undefined {

@@ -22,7 +22,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\refresh-deskto
 
 ## 运行边界
 
-1. 主进程在 `src/main/index.ts` 初始化用户数据、配置、密钥、Runner、会话/项目索引和 Local App API。
+1. 主进程在 `src/main/index.ts` 先恢复待处理的数据根迁移或回滚，再初始化用户数据、配置、密钥、Runner、会话/项目索引和 Local App API。
 2. `src/main/local-app-api-server.ts` 提供本地 UI、流式执行、设置、记忆树、项目、工作区和终端接口。
 3. `src/preload/` 只暴露 renderer 必需的桥接信息。
 4. `src/renderer/` 负责聊天、侧边栏、设置、归档、记忆树、执行过程和拓展工作区。
@@ -35,6 +35,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\refresh-deskto
 | `src/main/index.ts` | Electron 主进程启动和退出。 |
 | `src/main/local-app-api-server.ts` | Local App API、SSE、工作区和终端。 |
 | `src/main/attachment-cache.ts`、`attachments.ts` | 受管附件缓存、稳定索引、安全清理、按需解析和 run 所有权分类。 |
+| `src/main/data-root-migration.ts`、`data-root-metadata.ts` | 外部 locator、启动期 staging 复制、SHA-256 清单校验、活动元数据路径重绑定、原子切换、中断恢复和回滚。 |
 | `../memory-tree/src/workspace-resource-index.ts`、`workspace-resource-scanner.ts` | 工作区相对路径元数据索引；通过 Runner/MemoryService 接入，正文仍由显式工作区工具读取。 |
 | `src/main/keychain.ts` | API key 安全存储。 |
 | `src/main/project-index.ts`、`project-rebinding.ts` | 稳定项目身份、路径冲突检查和可恢复跨索引重绑定。 |
@@ -55,4 +56,4 @@ pnpm.cmd --filter @littlesheep/app build
 pnpm.cmd run verify:app-recovery
 ```
 
-涉及公共事件、持久化、权限或恢复时，还必须运行根目录的全量测试、typecheck 和 build。用户数据默认位于 `C:\Users\<用户名>\.littlesheep`，应用代码和仓库维护脚本不得擅自迁移或重写它。
+涉及公共事件、持久化、权限或恢复时，还必须运行根目录的全量测试、typecheck 和 build。用户数据位置由 branding、外部 locator 或 `LITTLESHEEP_DATA_DIR` 解析；应用只在用户明确登记迁移后于下次启动执行，测试必须使用隔离临时目录。
