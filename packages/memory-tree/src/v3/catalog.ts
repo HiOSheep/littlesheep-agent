@@ -202,7 +202,7 @@ export class MemoryCatalog {
   countEmbeddingWork(): number {
     return this.embeddings.countWork();
   }
-
+  embeddingStatusCounts(): Record<MemoryCatalogEntry['embeddingStatus'], number> { return this.embeddings.statusCounts(); }
   rebuild(items: MemoryCatalogRebuildItem[]): number {
     this.transaction(() => {
       this.db.exec(`

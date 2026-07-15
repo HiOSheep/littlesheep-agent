@@ -172,6 +172,20 @@ export class MemoryCatalogEmbeddingController {
     return Number(row.count);
   }
 
+  statusCounts(): Record<MemoryCatalogEntry['embeddingStatus'], number> {
+    const counts: Record<MemoryCatalogEntry['embeddingStatus'], number> = {
+      disabled: 0, pending: 0, ready: 0, stale: 0, failed: 0,
+    };
+    const rows = this.db.prepare(`
+      SELECT embedding_status, COUNT(*) AS count
+      FROM atoms
+      WHERE status = 'active'
+      GROUP BY embedding_status
+    `).all() as Array<{ embedding_status: MemoryCatalogEntry['embeddingStatus']; count: number | bigint }>;
+    for (const row of rows) counts[row.embedding_status] = Number(row.count);
+    return counts;
+  }
+
   reconcileState(): void {
     if (!this.isConfigured()) {
       this.db.exec(`

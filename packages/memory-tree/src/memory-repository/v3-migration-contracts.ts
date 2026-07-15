@@ -42,3 +42,24 @@ export interface MemoryV3MigrationResult {
   migration: CompletedMemoryV3Migration;
   resumed: boolean;
 }
+
+export interface MemoryV3MigrationPreflight {
+  checkedAt: string;
+  locator: MemoryRepositoryLocator;
+  canMigrate: boolean;
+  canResume: boolean;
+  rollbackAvailable: boolean;
+  blockers: string[];
+  source?: {
+    fileCount: number;
+    totalBytes: number;
+    nodeCount: number;
+    resourceCount: number;
+    indexHash: string;
+    manifestHash: string;
+  };
+  storage?: {
+    requiredBytes: number;
+    availableBytes: number;
+  };
+}

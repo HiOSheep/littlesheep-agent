@@ -10,11 +10,13 @@ import {
 import type { ProjectIndex } from '../project-index.js'
 import {
   buildMemoryTreePayload,
+  buildMemoryTreeNodeDetail,
   manageRuntimeMemoryNode,
   manageRuntimeMemoryResource,
   type MemoryNodeManagementAction,
   type MemoryResourceManagementAction,
 } from '../memory-tree-control.js'
+import { inspectMemoryV3Migration } from '../memory-v3-migration-control.js'
 import { json, readJson, type LocalAppApiRequest } from './http.js'
 
 export interface MemoryRouteContext {
@@ -23,6 +25,7 @@ export interface MemoryRouteContext {
   getConfig: () => Config
   setConfig: (config: Config) => void
   updateRuntimeConfig: (config: Config) => Promise<void>
+  dataDir: string
   selectProjectMemoryExport?: (projectName: string, projectPath: string) => Promise<string | null>
   selectMemoryResourceSource?: () => Promise<string | null>
 }
@@ -46,7 +49,7 @@ export async function routeMemory(
   request: LocalAppApiRequest,
   context: MemoryRouteContext,
 ): Promise<boolean> {
-  const { req, res, path, method } = request
+  const { req, res, url, path, method } = request
   const runner = context.getRunner()
 
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.skills) {
@@ -116,6 +119,22 @@ export async function routeMemory(
       return true
     }
     json(res, 200, { node: outcome.node, audit: outcome.audit })
+    return true
+  }
+
+  const memoryNodeDetailId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.memoryNodes)
+  if (method === 'GET' && memoryNodeDetailId !== null) {
+    const disclosure = url.searchParams.get('disclosure') ?? 'D2'
+    if (disclosure !== 'D2' && disclosure !== 'D3') {
+      json(res, 400, { error: 'disclosure must be D2 or D3' })
+      return true
+    }
+    const detail = await buildMemoryTreeNodeDetail(runner, memoryNodeDetailId, disclosure)
+    if (!detail) {
+      json(res, 404, { error: `memory node not found: ${memoryNodeDetailId}` })
+      return true
+    }
+    json(res, 200, detail)
     return true
   }
 
@@ -216,6 +235,12 @@ export async function routeMemory(
 
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.memoryTree) {
     json(res, 200, await buildMemoryTreePayload(runner, context.projectIndex, context.getConfig()))
+    return true
+  }
+
+
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.memoryMigration) {
+    json(res, 200, await inspectMemoryV3Migration(context.dataDir))
     return true
   }
 

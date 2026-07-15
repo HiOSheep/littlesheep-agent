@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   getMemoryTreeOverview,
+  getMemoryTreeNodeDetail,
+  getMemoryV3MigrationPreflight,
   manageMemoryTreeResource,
   manageMemoryTreeNode,
   updateProjectMemoryProjection,
@@ -11,14 +13,18 @@ import {
   type MemoryTreeManagementAction,
   type MemoryResourceManagementAction,
   type MemoryTreeNodeOverview,
+  type MemoryTreeNodeDetail,
   type MemoryTreeOverview,
   type MemoryTreeProjectOverview,
   type ProjectMemoryProjectionState,
+  type MemoryV3MigrationPreflightOverview,
 } from './api'
-import { Markdown } from './Markdown'
 import { resourceKindLabel } from './memory-resource-labels'
+import { compactPath, formatDateTime, formatRelativeDate } from './memory-tree/format'
+import { MemoryMigrationPanel } from './memory-tree/migration-panel'
+import { MemoryNodeRow } from './memory-tree/node-row'
 
-type MemoryBranchFilter = 'all' | MemoryTreeBranchId | 'resources' | 'archive'
+type MemoryBranchFilter = 'all' | MemoryTreeBranchId | 'resources' | 'archive' | 'migration'
 type MemoryTreeResourceOverview = MemoryTreeOverview['resources'][number]
 type ConfirmationRequest =
   | {
@@ -67,6 +73,10 @@ export function MemoryTreeView() {
   const [branchFilter, setBranchFilter] = useState<MemoryBranchFilter>('all')
   const [query, setQuery] = useState('')
   const [expandedNodeId, setExpandedNodeId] = useState<string | null>(null)
+  const [nodeDetails, setNodeDetails] = useState<Record<string, MemoryTreeNodeDetail>>({})
+  const [loadingNodeDetails, setLoadingNodeDetails] = useState<Set<string>>(() => new Set())
+  const [migrationPreflight, setMigrationPreflight] = useState<MemoryV3MigrationPreflightOverview | null>(null)
+  const [migrationLoading, setMigrationLoading] = useState(false)
   const [expandedResourceId, setExpandedResourceId] = useState<string | null>(null)
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
   const [managingNodeId, setManagingNodeId] = useState<string | null>(null)
@@ -79,6 +89,8 @@ export function MemoryTreeView() {
   const confirmationFrameRef = useRef(0)
   const projectNoticeTimerRef = useRef(0)
   const loadRequestRef = useRef(0)
+  const nodeDetailRequestsRef = useRef(new Map<string, AbortController>())
+  const migrationRequestRef = useRef<AbortController | null>(null)
   const mountedRef = useRef(true)
 
   async function load(silent = false, preserveProjectNotice = false) {
@@ -91,6 +103,9 @@ export function MemoryTreeView() {
       const next = await getMemoryTreeOverview()
       if (!mountedRef.current || requestId !== loadRequestRef.current) return
       setOverview(next)
+      setNodeDetails((current) => Object.fromEntries(
+        Object.entries(current).filter(([nodeId]) => next.nodes.some((node) => node.id === nodeId)),
+      ))
       setExpandedNodeId((current) => current && next.nodes.some((node) => node.id === current) ? current : null)
       setExpandedResourceId((current) => current && next.resources.some((resource) => resource.id === current) ? current : null)
       setExpandedProjectId((current) => current && next.projects.some((project) => project.id === current) ? current : null)
@@ -117,8 +132,59 @@ export function MemoryTreeView() {
       window.clearTimeout(confirmationTimerRef.current)
       window.clearTimeout(projectNoticeTimerRef.current)
       window.cancelAnimationFrame(confirmationFrameRef.current)
+      for (const controller of nodeDetailRequestsRef.current.values()) controller.abort()
+      nodeDetailRequestsRef.current.clear()
+      migrationRequestRef.current?.abort()
     }
   }, [])
+
+  useEffect(() => {
+    if (branchFilter === 'migration' && !migrationPreflight && !migrationLoading) {
+      void loadMigrationPreflight()
+    }
+  }, [branchFilter])
+
+  async function loadNodeDetail(nodeId: string, disclosureLevel: 'D2' | 'D3') {
+    const cached = nodeDetails[nodeId]
+    if (cached && (cached.disclosureLevel === 'D3' || cached.disclosureLevel === disclosureLevel)) return
+    nodeDetailRequestsRef.current.get(nodeId)?.abort()
+    const controller = new AbortController()
+    nodeDetailRequestsRef.current.set(nodeId, controller)
+    setLoadingNodeDetails((current) => new Set(current).add(nodeId))
+    try {
+      const detail = await getMemoryTreeNodeDetail(nodeId, disclosureLevel, controller.signal)
+      if (!mountedRef.current || controller.signal.aborted) return
+      setNodeDetails((current) => boundedNodeDetailCache(current, detail))
+    } catch (err) {
+      if (!controller.signal.aborted && mountedRef.current) setError((err as Error).message)
+    } finally {
+      if (nodeDetailRequestsRef.current.get(nodeId) === controller) nodeDetailRequestsRef.current.delete(nodeId)
+      if (mountedRef.current) {
+        setLoadingNodeDetails((current) => {
+          const next = new Set(current)
+          next.delete(nodeId)
+          return next
+        })
+      }
+    }
+  }
+
+  async function loadMigrationPreflight() {
+    migrationRequestRef.current?.abort()
+    const controller = new AbortController()
+    migrationRequestRef.current = controller
+    setMigrationLoading(true)
+    setError(null)
+    try {
+      const result = await getMemoryV3MigrationPreflight(controller.signal)
+      if (mountedRef.current && !controller.signal.aborted) setMigrationPreflight(result)
+    } catch (err) {
+      if (!controller.signal.aborted && mountedRef.current) setError((err as Error).message)
+    } finally {
+      if (migrationRequestRef.current === controller) migrationRequestRef.current = null
+      if (mountedRef.current) setMigrationLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (overview) setExperienceThreshold(overview.learningPolicy.experienceWriteThreshold)
@@ -305,13 +371,10 @@ export function MemoryTreeView() {
       if (!needle) return true
       return [
         node.summary,
-        node.content,
         node.reason,
         node.scopeKey ?? '',
         node.project?.name ?? '',
         ...node.retrievalKeys,
-        ...node.sourceRefs,
-        ...node.sourceRunIds,
       ].some((value) => value.toLocaleLowerCase().includes(needle))
     })
   }, [branchFilter, overview, query])
@@ -341,11 +404,14 @@ export function MemoryTreeView() {
   }, [branchFilter, overview, query])
 
   const activeNodeCount = overview?.nodes.filter((node) => node.status === 'active').length ?? 0
-  const selectedBranch = branchFilter !== 'all' && branchFilter !== 'archive' && branchFilter !== 'resources'
+  const selectedBranch = branchFilter !== 'all' && branchFilter !== 'archive'
+    && branchFilter !== 'resources' && branchFilter !== 'migration'
     ? overview?.branches.find((branch) => branch.id === branchFilter)
     : null
   const visibleContentCount = branchFilter === 'resources'
     ? filteredResources.length
+    : branchFilter === 'migration'
+      ? 1
     : filteredNodes.length + (branchFilter === 'project' ? matchingProjects.length : 0)
   const confirmationCopy = confirmation ? describeConfirmation(confirmation) : null
   const confirmationBusy = confirmation?.kind === 'node'
@@ -383,6 +449,7 @@ export function MemoryTreeView() {
             <MemoryTreeStat label="已归档" value={String(overview.totals.archivedMemories)} />
             <MemoryTreeStat label="近期命中" value={String(overview.recentAccesses.length)} />
             <MemoryTreeStat label="项目" value={String(overview.totals.projects)} />
+            <MemoryTreeStat label="存储" value={overview.repository.backendKind.toUpperCase()} />
           </section>
 
           <section className="memory-learning-row" aria-label="经验学习策略">
@@ -439,6 +506,12 @@ export function MemoryTreeView() {
                 count={overview.totals.archivedMemories}
                 onClick={() => setBranchFilter('archive')}
               />
+              <MemoryBranchButton
+                active={branchFilter === 'migration'}
+                label="迁移与目录"
+                count={overview.repository.backendKind === 'v3' ? 1 : 0}
+                onClick={() => setBranchFilter('migration')}
+              />
             </nav>
 
             <section className="memory-node-pane">
@@ -480,6 +553,14 @@ export function MemoryTreeView() {
                 </div>
               )}
 
+              {branchFilter === 'migration' ? (
+                <MemoryMigrationPanel
+                  repository={overview.repository}
+                  preflight={migrationPreflight}
+                  loading={migrationLoading}
+                  onRefresh={() => void loadMigrationPreflight()}
+                />
+              ) : (
               <div className="memory-node-list">
                 {branchFilter === 'resources'
                   ? filteredResources.map((resource) => (
@@ -496,9 +577,16 @@ export function MemoryTreeView() {
                       <MemoryNodeRow
                         key={node.id}
                         node={node}
+                        detail={nodeDetails[node.id]}
+                        detailLoading={loadingNodeDetails.has(node.id)}
                         expanded={expandedNodeId === node.id}
                         busy={managingNodeId === node.id}
-                        onToggle={() => setExpandedNodeId((current) => current === node.id ? null : node.id)}
+                        onToggle={() => {
+                          const opening = expandedNodeId !== node.id
+                          setExpandedNodeId(opening ? node.id : null)
+                          if (opening) void loadNodeDetail(node.id, 'D2')
+                        }}
+                        onRequestEvidence={() => void loadNodeDetail(node.id, 'D3')}
                         onAction={(action) => requestAction(node, action)}
                       />
                     ))}
@@ -514,6 +602,7 @@ export function MemoryTreeView() {
                     </div>
                   )}
               </div>
+              )}
             </section>
           </div>
         </>
@@ -751,116 +840,6 @@ function MemoryBranchButton({
   )
 }
 
-function MemoryNodeRow({
-  node,
-  expanded,
-  busy,
-  onToggle,
-  onAction,
-}: {
-  node: MemoryTreeNodeOverview
-  expanded: boolean
-  busy: boolean
-  onToggle: () => void
-  onAction: (action: MemoryTreeManagementAction) => void
-}) {
-  const highestTier = node.branch === 'daily' ? 2 : 1
-  const histories = [
-    ...node.writeHistory.map((record) => ({
-      id: record.id,
-      at: record.at,
-      title: writeDecisionLabel(record.decision),
-      detail: record.reason,
-    })),
-    ...node.managementHistory.map((record) => ({
-      id: record.id,
-      at: record.at,
-      title: managementActionLabel(record.action),
-      detail: record.reason,
-    })),
-  ].sort((left, right) => right.at.localeCompare(left.at)).slice(0, 6)
-
-  return (
-    <article className={`memory-node-row ${expanded ? 'expanded' : ''} status-${node.status}`}>
-      <button className="memory-node-summary" type="button" onClick={onToggle} aria-expanded={expanded}>
-        <span className="memory-node-tier">T{node.tier}</span>
-        <span className="memory-node-summary-copy">
-          <strong>{node.summary}</strong>
-          <small>
-            {BRANCH_LABELS[node.branch]} · {scopeText(node)} · {node.status === 'archived' ? '已归档' : formatRelativeDate(node.updatedAt)}
-          </small>
-        </span>
-        {node.hitCount > 0 && <span className="memory-node-hit-count">命中 {node.hitCount}</span>}
-        <span className="memory-node-chevron" aria-hidden="true" />
-      </button>
-
-      <div className="memory-node-details" aria-hidden={!expanded}>
-        <div className="memory-node-details-inner">
-          <div className="memory-node-content"><Markdown text={node.content} /></div>
-
-          <dl className="memory-node-metadata">
-            <div><dt>写入理由</dt><dd>{node.reason}</dd></div>
-            <div><dt>作用范围</dt><dd>{scopeText(node)}{node.scopeKey ? ` · ${compactPath(node.scopeKey)}` : ''}</dd></div>
-            <div><dt>来源</dt><dd>{sourceText(node)}</dd></div>
-            <div><dt>可靠度</dt><dd>{Math.round(node.confidence * 100)}% 置信 · {Math.round(node.importance * 100)}% 重要</dd></div>
-          </dl>
-
-          {node.retrievalKeys.length > 0 && (
-            <div className="memory-node-keys">
-              {node.retrievalKeys.map((key) => <span key={key}>{key}</span>)}
-            </div>
-          )}
-
-          <section className="memory-node-subsection">
-            <strong>近期命中</strong>
-            {node.recentHits.length > 0 ? (
-              <div className="memory-hit-list">
-                {node.recentHits.map((hit) => (
-                  <div key={`${hit.runId}:${hit.at}`}>
-                    <span>{hit.action === 'deep_search' ? '分支深搜' : '索引展开'}{hit.query ? ` · ${hit.query}` : ''}</span>
-                    <time dateTime={hit.at}>{formatDateTime(hit.at)}</time>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p>本次应用运行期间暂无命中。</p>
-            )}
-          </section>
-
-          <section className="memory-node-subsection">
-            <strong>变更记录</strong>
-            {histories.length > 0 ? (
-              <div className="memory-history-list">
-                {histories.map((record) => (
-                  <div key={record.id}>
-                    <span><b>{record.title}</b>{record.detail}</span>
-                    <time dateTime={record.at}>{formatDateTime(record.at)}</time>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p>暂无变更记录。</p>
-            )}
-          </section>
-
-          <div className="memory-node-actions">
-            {node.status === 'active' ? (
-              <>
-                <button type="button" disabled={busy || node.tier <= highestTier} onClick={() => onAction('promote')}>提升</button>
-                <button type="button" disabled={busy || node.tier >= 3} onClick={() => onAction('demote')}>降级</button>
-                <button type="button" disabled={busy} onClick={() => onAction('archive')}>归档</button>
-              </>
-            ) : (
-              <button type="button" disabled={busy} onClick={() => onAction('restore')}>恢复</button>
-            )}
-            <button className="danger" type="button" disabled={busy} onClick={() => onAction('delete')}>删除</button>
-          </div>
-        </div>
-      </div>
-    </article>
-  )
-}
-
 function MemoryResourceRow({
   resource,
   expanded,
@@ -971,12 +950,14 @@ function branchTitle(filter: MemoryBranchFilter): string {
   if (filter === 'all') return '全部记忆'
   if (filter === 'resources') return '资源目录'
   if (filter === 'archive') return '归档记忆'
+  if (filter === 'migration') return '迁移与目录'
   return BRANCH_LABELS[filter]
 }
 
 function branchDescription(filter: MemoryBranchFilter): string {
   if (filter === 'resources') return '查看 Agent、用户、工具、技能和项目文档的权威来源与索引。'
   if (filter === 'archive') return '已暂停运行时介入、仍可恢复的记忆。'
+  if (filter === 'migration') return '当前存储版本、目录健康与迁移前置检查。'
   return '沿索引查看内容、来源、作用范围和近期命中。'
 }
 
@@ -996,41 +977,16 @@ function resourcePrivacyLabel(privacy: MemoryTreeResourceOverview['privacy']): s
   return ({ private: '私有', 'project-private': '项目私有', shareable: '可共享', public: '公开' })[privacy]
 }
 
-function scopeText(node: MemoryTreeNodeOverview): string {
-  if (node.project) return `项目：${node.project.name}`
-  return SCOPE_LABELS[node.scope]
-}
-
-function sourceText(node: MemoryTreeNodeOverview): string {
-  if (node.sourceRefs.length > 0) return node.sourceRefs.map(compactPath).join(' · ')
-  const stages = node.sourceStages.map((stage) => ({
-    evolve: '任务复盘',
-    capture: '每日捕获',
-    tool: '记忆工具',
-    migration: '旧数据迁移',
-  })[stage])
-  const runs = node.sourceRunIds.slice(-2).map((runId) => `run ${runId.slice(0, 8)}`)
-  return [...new Set([...stages, ...runs])].join(' · ') || '运行时记忆树'
-}
-
-function writeDecisionLabel(decision: string): string {
-  return ({
-    created: '自动写入',
-    merged: '自动合并',
-    reinforced: '来源强化',
-    rejected: '拒绝写入',
-    queued: '等待恢复',
-  } as Record<string, string>)[decision] ?? decision
-}
-
-function managementActionLabel(action: MemoryTreeManagementAction): string {
-  return ({
-    archive: '归档',
-    restore: '恢复',
-    delete: '删除',
-    promote: '提升',
-    demote: '降级',
-  } as Record<MemoryTreeManagementAction, string>)[action]
+function boundedNodeDetailCache(
+  current: Record<string, MemoryTreeNodeDetail>,
+  detail: MemoryTreeNodeDetail,
+): Record<string, MemoryTreeNodeDetail> {
+  const next = { ...current }
+  delete next[detail.nodeId]
+  next[detail.nodeId] = detail
+  const ids = Object.keys(next)
+  while (ids.length > 24) delete next[ids.shift()!]
+  return next
 }
 
 function resourceManagementActionLabel(action: MemoryTreeResourceOverview['managementHistory'][number]['action']): string {
@@ -1052,33 +1008,4 @@ function resourceOwnerLabel(owner: NonNullable<MemoryTreeResourceOverview['owner
     plugin: '插件',
   } as const)[owner.kind]
   return `${kind} · ${owner.id}`
-}
-
-function compactPath(path: string): string {
-  const parts = path.split(/[\\/]/).filter(Boolean)
-  if (parts.length <= 3) return path
-  return `${parts[0]}\\...\\${parts.slice(-2).join('\\')}`
-}
-
-function formatDateTime(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-function formatRelativeDate(value: string): string {
-  const timestamp = new Date(value).getTime()
-  if (!Number.isFinite(timestamp)) return value
-  const elapsed = Math.max(0, Date.now() - timestamp)
-  const minute = 60_000
-  const hour = 60 * minute
-  const day = 24 * hour
-  if (elapsed < hour) return `${Math.max(1, Math.floor(elapsed / minute))}分`
-  if (elapsed < day) return `${Math.floor(elapsed / hour)}小时`
-  return `${Math.floor(elapsed / day)}天`
 }

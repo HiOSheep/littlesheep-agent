@@ -230,8 +230,8 @@ async function route(
   if (await routeMemory(routeRequest, {
     getRunner,
     projectIndex,
-    getConfig,
-    setConfig,
+    getConfig, setConfig,
+    dataDir: opts.dataDir,
     updateRuntimeConfig: opts.updateRuntimeConfig,
     selectProjectMemoryExport: opts.selectProjectMemoryExport,
     selectMemoryResourceSource: opts.selectMemoryResourceSource,

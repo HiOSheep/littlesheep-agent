@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DEFAULT_CONFIG } from '@littlesheep/config'
+import { MemoryRepository } from '@littlesheep/memory-tree'
 import type { AgentRunner } from '@littlesheep/runner'
 import { ArchiveIndex } from './archive-index.js'
 import { ProjectIndex } from './project-index.js'
@@ -11,15 +12,30 @@ import { TerminalActivityIndex } from './terminal-activity-index.js'
 import { WorkspaceArtifactIndex } from './workspace-artifact-index.js'
 import { WorkspaceLayoutIndex } from './workspace-layout-index.js'
 import { startLocalAppApiServer } from './local-app-api-server.js'
-import { buildMemoryTreePayload, manageRuntimeMemoryNode } from './memory-tree-control.js'
+import { buildMemoryTreeNodeDetail, buildMemoryTreePayload, manageRuntimeMemoryNode } from './memory-tree-control.js'
 
 function runnerWith(overrides: Record<string, unknown> = {}): AgentRunner {
   const repository = {
-    getNode: vi.fn(async (_nodeId: string) => ({ id: 'node-1', branch: 'project', status: 'active' })),
+    getNode: vi.fn(async (_nodeId: string) => ({
+      id: 'node-1', branch: 'project', parentNodeId: 'project:root', childIds: [],
+      scope: 'workspace', scopeKey: 'D:/repo', tier: 2,
+      summary: 'Use pnpm for this repository',
+      content: 'Run pnpm build and pnpm test from the workspace root.',
+      retrievalKeys: ['pnpm', 'build'], importance: 0.8, confidence: 0.9,
+      reason: 'Observed in a verified project run.', sourceRunIds: ['run-1'],
+      sourceStages: ['evolve'], sourceRefs: ['execution-logs/run-1.json'],
+      status: 'active', createdAt: '2026-07-11T09:00:00.000Z', updatedAt: '2026-07-11T09:00:00.000Z',
+    })),
     manageNode: vi.fn(async (_nodeId: string, _action: string, _reason?: string) => ({
       node: { id: 'node-1', branch: 'project', status: 'archived' },
       audit: { id: 'audit-1', nodeId: 'node-1', action: 'archive' },
     })),
+    management: {
+      status: vi.fn(async () => ({ backendKind: 'v2', storageKind: 'legacy-index', retrievalSupported: false })),
+      inspectNode: vi.fn(async (_nodeId: string, disclosureLevel: 'D2' | 'D3') => ({
+        backendKind: 'v2', nodeId: 'node-1', disclosureLevel,
+      })),
+    },
     snapshot: vi.fn(async () => ({
       version: 2,
       registryVersion: 1,
@@ -247,19 +263,25 @@ describe('memory-tree control plane', () => {
       }]),
     } as unknown as ProjectIndex
     const payload = await buildMemoryTreePayload(runnerWith(), projectIndex, DEFAULT_CONFIG) as {
-      nodes: Array<{ id: string; project?: { id: string }; hitCount: number; recentHits: Array<{ runId: string }> }>
+      nodes: Array<{ id: string; project?: { id: string }; hitCount: number }>
       totals: { indexedMemories: number; archivedMemories: number }
       resources: Array<{ id: string; tier: number; sourcePath?: string; managementHistory: Array<{ action: string }> }>
       projects: Array<{ id: string; projection?: { status: string; gitIgnorePattern: string } }>
       migration: { id: string } | null
+      recentAccesses: Array<{ nodeId: string; runId: string }>
+      repository: { backendKind: string }
     }
 
     expect(payload.nodes[0]).toMatchObject({
       id: 'node-1',
       project: { id: 'project-1' },
       hitCount: 1,
-      recentHits: [{ runId: 'run-2' }],
     })
+    expect(payload.nodes[0]).not.toHaveProperty('content')
+    expect(payload).not.toHaveProperty('longTermExcerpt')
+    expect(JSON.stringify(payload)).not.toContain('Run pnpm build and pnpm test from the workspace root.')
+    expect(payload.recentAccesses).toEqual([expect.objectContaining({ nodeId: 'node-1', runId: 'run-2' })])
+    expect(payload.repository.backendKind).toBe('v2')
     expect(payload.totals).toMatchObject({ indexedMemories: 1, archivedMemories: 0 })
     expect(payload.resources).toEqual([expect.objectContaining({
       id: 'file:agents',
@@ -286,9 +308,81 @@ describe('memory-tree control plane', () => {
     })
   })
 
+  it('maps v3 D3 evidence, embedding state and history without creating a UI copy', async () => {
+    const runner = runnerWith()
+    vi.mocked(runner.infra.memoryRepository.management.inspectNode).mockResolvedValueOnce({
+      backendKind: 'v3',
+      nodeId: 'node-1',
+      disclosureLevel: 'D3',
+      atom: {
+        version: 3,
+        id: 'node-1',
+        revision: 4,
+        domain: 'project',
+        branch: 'project',
+        parentId: 'project:root',
+        scope: 'workspace',
+        scopeKey: 'D:/repo',
+        tier: 2,
+        statementKind: 'factual-claim',
+        epistemicStatus: 'verified',
+        authorityScope: { kind: 'tool-evidence', scope: 'workspace', scopeKey: 'D:/repo', topics: ['build'] },
+        assertedBy: { kind: 'tool', id: 'verify' },
+        evidenceRefs: ['execution-logs/run-1.json'],
+        entityRefs: [], relationRefs: [], title: 'Use pnpm', summary: 'Use pnpm for this repository',
+        content: 'Run pnpm build and pnpm test from the workspace root.', retrievalKeys: ['pnpm'],
+        importance: 0.8, confidence: 0.9, basePriority: 0.85,
+        verifiedUsefulness: { useful: 2, notUseful: 0, conflicts: 0, stale: 0, lastOutcome: 'useful' },
+        feedbackRevision: 2, lastUsefulAt: '2026-07-15T10:00:00.000Z', lastVerifiedAt: '2026-07-15T10:00:00.000Z',
+        reason: 'Verified build evidence.', sourceRunIds: ['run-1'], sourceStages: ['evolve'], status: 'active',
+        resolutionStatus: 'resolved', createdAt: '2026-07-11T09:00:00.000Z', updatedAt: '2026-07-15T10:00:00.000Z',
+        contentHash: 'sha256:atom',
+      },
+      catalog: {
+        atomId: 'node-1', filePath: 'atoms/project/node-1.json', revision: 4, domain: 'project', branch: 'project',
+        parentId: 'project:root', scope: 'workspace', scopeKey: 'D:/repo', tier: 2,
+        statementKind: 'factual-claim', epistemicStatus: 'verified', status: 'active', resolutionStatus: 'resolved',
+        contentHash: 'sha256:atom', embeddingStatus: 'ready', embeddingEngineId: 'local-bge',
+        embeddingModelId: 'bge-m3', embeddingDimensions: 1024,
+        createdAt: '2026-07-11T09:00:00.000Z', updatedAt: '2026-07-15T10:00:00.000Z',
+      },
+      envelope: {
+        atomId: 'node-1', atomRevision: 4, branch: 'project', scope: 'workspace', scopeKey: 'D:/repo', tier: 2,
+        disclosureLevel: 'D3', statementKind: 'factual-claim', epistemicStatus: 'verified',
+        authorityScope: { kind: 'tool-evidence', scope: 'workspace', scopeKey: 'D:/repo', topics: ['build'] },
+        assertedBy: { kind: 'tool', id: 'verify' }, evidenceRefs: ['execution-logs/run-1.json'],
+        confidence: 0.9, importance: 0.8,
+        verifiedUsefulness: { useful: 2, notUseful: 0, conflicts: 0, stale: 0, lastOutcome: 'useful' },
+        updatedAt: '2026-07-15T10:00:00.000Z', lastVerifiedAt: '2026-07-15T10:00:00.000Z',
+        retrievalPath: 'hierarchy', matchReason: 'Selected by id.', conflict: false, expired: false, truncated: false,
+      },
+      history: {
+        atomId: 'node-1', revision: 4, sourceRunIds: ['run-1'], sourceStages: ['evolve'], truncated: false,
+        entries: [{ kind: 'event', id: 'event-1', at: '2026-07-15T10:00:00.000Z', summary: 'Verified build result.' }],
+      },
+    })
+
+    const detail = await buildMemoryTreeNodeDetail(runner, 'node-1', 'D3')
+
+    expect(detail).toMatchObject({
+      backendKind: 'v3',
+      disclosureLevel: 'D3',
+      v3: {
+        revision: 4,
+        domain: 'project',
+        epistemicStatus: 'verified',
+        embedding: { status: 'ready', modelId: 'bge-m3', dimensions: 1024 },
+        history: { entries: [{ kind: 'event', id: 'event-1' }] },
+      },
+    })
+  })
+
   it('exposes the management action through the loopback Local App API', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'ls-memory-control-api-'))
     const workplaceDir = join(dataDir, 'workplace')
+    const migrationRepository = new MemoryRepository({ dataDir, backend: 'v2' })
+    await migrationRepository.initialize()
+    migrationRepository.close()
     const runner = runnerWith()
     const server = await startLocalAppApiServer(runner, {
       port: 0,
@@ -306,6 +400,25 @@ describe('memory-tree control plane', () => {
       selectMemoryResourceSource: vi.fn(async () => 'D:/repo/docs/principles/architecture-principles.md'),
     })
     try {
+      const detail = await fetch(`http://127.0.0.1:${server.port}/memory/tree/nodes/node-1?disclosure=D3`)
+      expect(detail.status).toBe(200)
+      await expect(detail.json()).resolves.toMatchObject({
+        nodeId: 'node-1',
+        backendKind: 'v2',
+        disclosureLevel: 'D3',
+        content: 'Run pnpm build and pnpm test from the workspace root.',
+        recentHits: [{ runId: 'run-2' }],
+        writeHistory: [{ id: 'write-1' }],
+      })
+
+      const migration = await fetch(`http://127.0.0.1:${server.port}/memory/tree/migration`)
+      expect(migration.status).toBe(200)
+      await expect(migration.json()).resolves.toMatchObject({
+        activeBackend: 'v2',
+        canMigrate: true,
+        source: { nodeCount: 0 },
+      })
+
       const response = await fetch(`http://127.0.0.1:${server.port}/memory/tree/nodes/node-1/manage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

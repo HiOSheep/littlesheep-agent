@@ -29,6 +29,24 @@ export type MemoryResourceStatus = 'active' | 'missing' | 'disabled' | 'conflict
 export type MemoryResourceManagementAction = 'disable' | 'restore' | 'remove' | 'rebind'
 export type MemoryTreeNodeStatus = 'active' | 'archived'
 export type MemoryTreeManagementAction = 'archive' | 'restore' | 'delete' | 'promote' | 'demote'
+export type MemoryTreeDisclosureLevel = 'D2' | 'D3'
+
+export interface MemoryRepositoryOverview {
+  backendKind: 'v2' | 'v3'
+  storageKind: 'legacy-index' | 'atom-catalog'
+  retrievalSupported: boolean
+  catalog?: {
+    integrity: string
+    atomCount: number
+    embedding: {
+      disabled: number
+      pending: number
+      ready: number
+      stale: number
+      failed: number
+    }
+  }
+}
 
 export interface MemoryTreeBranchOverview {
   id: MemoryTreeBranchId
@@ -102,21 +120,110 @@ export interface MemoryTreeNodeOverview {
   project?: { id: string; name: string; path: string }
   tier: 0 | 1 | 2 | 3
   summary: string
-  content: string
   retrievalKeys: string[]
   importance: number
   confidence: number
   reason: string
-  sourceRunIds: string[]
-  sourceStages: Array<'evolve' | 'capture' | 'tool' | 'migration'>
-  sourceRefs: string[]
   status: MemoryTreeNodeStatus
   createdAt: string
   updatedAt: string
   hitCount: number
+}
+
+export interface MemoryTreeNodeDetail {
+  nodeId: string
+  backendKind: 'v2' | 'v3'
+  disclosureLevel: MemoryTreeDisclosureLevel
+  content: string
+  retrievalKeys: string[]
+  reason: string
+  sourceRunIds: string[]
+  sourceStages: Array<'evolve' | 'capture' | 'tool' | 'migration'>
+  sourceRefs: string[]
   recentHits: MemoryTreeRecentHit[]
   writeHistory: MemoryTreeWriteAudit[]
   managementHistory: MemoryTreeManagementAudit[]
+  v3?: {
+    revision: number
+    domain: 'user' | 'agent-self' | 'task' | 'project' | 'session' | 'experience' | 'knowledge'
+    statementKind: string
+    epistemicStatus: string
+    resolutionStatus: string
+    authorityScope: {
+      kind: string
+      scope: 'global' | 'workspace' | 'project' | 'session' | 'run'
+      scopeKey?: string
+      topics: string[]
+    }
+    assertedBy: { kind: string; id?: string; label?: string }
+    evidenceRefs: string[]
+    effectiveAt?: string
+    expiresAt?: string
+    revalidateAt?: string
+    lastVerifiedAt?: string
+    lastUsefulAt?: string
+    verifiedUsefulness: {
+      useful: number
+      notUseful: number
+      conflicts: number
+      stale: number
+      lastOutcome?: string
+    }
+    embedding: {
+      status: 'disabled' | 'pending' | 'ready' | 'stale' | 'failed'
+      engineId?: string
+      modelId?: string
+      dimensions?: number
+    }
+    conflict: boolean
+    expired: boolean
+    neighborhood?: {
+      entities: Array<{
+        id: string
+        type: string
+        label: string
+        status: string
+      }>
+      relations: Array<{
+        id: string
+        fromEntityId: string
+        toEntityId: string
+        type: string
+        status: string
+        confidence: number
+        relevance: number
+      }>
+      truncated: boolean
+    }
+    history?: {
+      revision: number
+      entries: Array<{ kind: 'access' | 'feedback' | 'event' | 'audit'; id: string; at: string; summary: string }>
+      truncated: boolean
+    }
+  }
+}
+
+export interface MemoryV3MigrationPreflightOverview {
+  checkedAt: string
+  activeBackend: 'v2' | 'v3'
+  previousBackend?: 'v2' | 'v3'
+  phase?: 'requested' | 'snapshot' | 'building' | 'validating' | 'ready' | 'committing' | 'recovery'
+  attempts?: number
+  error?: string
+  canMigrate: boolean
+  canResume: boolean
+  rollbackAvailable: boolean
+  blockers: string[]
+  source?: {
+    fileCount: number
+    totalBytes: number
+    nodeCount: number
+    resourceCount: number
+  }
+  storage?: {
+    requiredBytes: number
+    availableBytes: number
+  }
 }
 
 export interface ProjectMemoryProjectionState {
@@ -185,6 +292,7 @@ export interface MemoryTreeResourceOverview {
 
 export interface MemoryTreeOverview {
   generatedAt: string
+  repository: MemoryRepositoryOverview
   totals: {
     branches: number
     projects: number
@@ -203,7 +311,6 @@ export interface MemoryTreeOverview {
   projects: MemoryTreeProjectOverview[]
   resources: MemoryTreeResourceOverview[]
   dailyDates: string[]
-  longTermExcerpt: string
   recentAccesses: Array<MemoryTreeRecentHit & {
     nodeId: string
     summary: string

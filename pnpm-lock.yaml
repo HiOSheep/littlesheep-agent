@@ -78,6 +78,9 @@ importers:
       '@littlesheep/memory-core':
         specifier: workspace:*
         version: link:../memory-core
+      '@littlesheep/memory-tree':
+        specifier: workspace:*
+        version: link:../memory-tree
       '@littlesheep/plugins':
         specifier: workspace:*
         version: link:../plugins

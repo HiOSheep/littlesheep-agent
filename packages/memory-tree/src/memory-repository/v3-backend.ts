@@ -46,6 +46,10 @@ import type {
   MemoryRepositoryRetrievalRequest,
 } from './retrieval.js';
 import type { MemoryAccessRecord } from '../v3/contracts.js';
+import type {
+  MemoryRepositoryManagementStatus,
+  MemoryRepositoryNodeInspection,
+} from './management.js';
 
 export interface MemoryRepositoryV3BackendOptions {
   dataDir: string;
@@ -234,6 +238,48 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
   indexMemory(request: MemoryRepositoryIndexRequest): Promise<MemoryRepositoryCandidate[]> { return this.retrieval.indexMemory(request); }
   retrieveMemory(request: MemoryRepositoryRetrievalRequest): Promise<MemoryRepositoryCandidate[]> { return this.retrieval.retrieveMemory(request); }
   recordMemoryAccess(records: MemoryAccessRecord[]): void { this.retrieval.recordMemoryAccess(records); }
+
+  async managementStatus(): Promise<MemoryRepositoryManagementStatus> {
+    return {
+      backendKind: 'v3',
+      storageKind: 'atom-catalog',
+      retrievalSupported: true,
+      catalog: {
+        integrity: this.catalog.integrityCheck(),
+        atomCount: this.catalog.countAtoms(),
+        embedding: this.catalog.embeddingStatusCounts(),
+      },
+    };
+  }
+
+  async inspectNodeForManagement(
+    nodeId: string,
+    disclosureLevel: MemoryRepositoryNodeInspection['disclosureLevel'],
+  ): Promise<MemoryRepositoryNodeInspection | undefined> {
+    const atom = await this.atomStore.read(nodeId);
+    if (!atom) return undefined;
+    const [candidate] = await this.retrieval.retrieveMemory({
+      branch: atom.branch,
+      scopes: [{ scope: atom.scope, scopeKey: this.ledger.publicScopeKey(atom.scope, atom.scopeKey) }],
+      query: '',
+      limit: 1,
+      now: new Date().toISOString(),
+      nodeId,
+      disclosureLevel,
+      mode: 'expand',
+    });
+    if (!candidate) return undefined;
+    return {
+      backendKind: 'v3',
+      nodeId,
+      disclosureLevel,
+      atom: candidate.atom,
+      catalog: this.catalog.getAtom(nodeId),
+      envelope: candidate.envelope,
+      neighborhood: candidate.neighborhood,
+      history: candidate.history,
+    };
+  }
 
   async rebindProjectPath(fromPath: string, toPath: string): Promise<MemoryProjectRebindResult> {
     const from = normalizedFilePath(fromPath);

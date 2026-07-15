@@ -4,7 +4,9 @@ import type { Config } from '@littlesheep/config'
 import type { AgentRunner } from '@littlesheep/runner'
 import type {
   MemoryResourceManagementAction,
+  MemoryTreeDisclosureLevel,
   MemoryTreeManagementAction,
+  MemoryTreeNodeDetail,
   MemoryTreeOverview,
   ProjectMemoryProjectionState,
 } from '../shared/memory-control-contracts.js'
@@ -88,6 +90,104 @@ export async function manageRuntimeMemoryResource(
   }
 }
 
+export async function buildMemoryTreeNodeDetail(
+  runner: AgentRunner,
+  nodeId: string,
+  disclosureLevel: MemoryTreeDisclosureLevel,
+): Promise<MemoryTreeNodeDetail | undefined> {
+  const node = await runner.infra.memoryService.getNode(nodeId)
+  if (!node || node.isBranchRoot || node.status === 'deleted') return undefined
+  const inspection = await runner.infra.memoryRepository.management.inspectNode(nodeId, disclosureLevel)
+  if (!inspection) return undefined
+  const snapshot = disclosureLevel === 'D3'
+    ? await runner.infra.memoryService.getManagementSnapshot()
+    : undefined
+  const recentHits = snapshot ? snapshot.ledgers.flatMap((ledger) => ledger.records
+    .filter((record) => (record.action === 'expand' || record.action === 'deep_search') && record.fragmentIds.includes(nodeId))
+    .map((record) => ({
+      runId: ledger.runId,
+      sessionId: String(ledger.sessionId),
+      at: record.at,
+      action: record.action as 'expand' | 'deep_search',
+      query: record.query,
+      reason: record.reason,
+    })))
+    .sort((left, right) => right.at.localeCompare(left.at))
+    .slice(0, 12) : []
+  const writeHistory = snapshot?.document.writeAudit
+    .filter((record) => record.nodeId === nodeId)
+    .slice(-16)
+    .reverse() ?? []
+  const managementHistory = snapshot?.document.managementAudit
+    .filter((record) => record.nodeId === nodeId)
+    .slice(-16)
+    .reverse() ?? []
+  const atom = inspection.atom
+  const catalog = inspection.catalog
+  const envelope = inspection.envelope
+  return {
+    nodeId,
+    backendKind: inspection.backendKind,
+    disclosureLevel,
+    content: node.content,
+    retrievalKeys: node.retrievalKeys,
+    reason: node.reason,
+    sourceRunIds: node.sourceRunIds,
+    sourceStages: node.sourceStages,
+    sourceRefs: node.sourceRefs ?? [],
+    recentHits,
+    writeHistory,
+    managementHistory,
+    v3: atom && catalog && envelope ? {
+      revision: atom.revision,
+      domain: atom.domain,
+      statementKind: atom.statementKind,
+      epistemicStatus: atom.epistemicStatus,
+      resolutionStatus: atom.resolutionStatus,
+      authorityScope: atom.authorityScope,
+      assertedBy: atom.assertedBy,
+      evidenceRefs: atom.evidenceRefs,
+      effectiveAt: atom.effectiveAt,
+      expiresAt: atom.expiresAt,
+      revalidateAt: atom.revalidateAt,
+      lastVerifiedAt: atom.lastVerifiedAt,
+      lastUsefulAt: atom.lastUsefulAt,
+      verifiedUsefulness: atom.verifiedUsefulness,
+      embedding: {
+        status: catalog.embeddingStatus,
+        engineId: catalog.embeddingEngineId,
+        modelId: catalog.embeddingModelId,
+        dimensions: catalog.embeddingDimensions,
+      },
+      conflict: envelope.conflict,
+      expired: envelope.expired,
+      neighborhood: inspection.neighborhood ? {
+        entities: inspection.neighborhood.entities.map((entity) => ({
+          id: entity.id,
+          type: entity.type,
+          label: entity.label,
+          status: entity.status,
+        })),
+        relations: inspection.neighborhood.relations.map((relation) => ({
+          id: relation.id,
+          fromEntityId: relation.fromEntityId,
+          toEntityId: relation.toEntityId,
+          type: relation.type,
+          status: relation.status,
+          confidence: relation.confidence,
+          relevance: relation.relevance,
+        })),
+        truncated: inspection.neighborhood.truncated,
+      } : undefined,
+      history: inspection.history ? {
+        revision: inspection.history.revision,
+        entries: inspection.history.entries,
+        truncated: inspection.history.truncated,
+      } : undefined,
+    } : undefined,
+  }
+}
+
 export async function buildMemoryTreePayload(
   runner: AgentRunner,
   projectIndex: ProjectIndex,
@@ -100,6 +200,7 @@ export async function buildMemoryTreePayload(
   // Projection inspection also reconciles derived resource status. Read the
   // management snapshot afterwards so one payload cannot report conflicting facts.
   const memorySnapshot = await runner.infra.memoryService.getManagementSnapshot()
+  const repository = await runner.infra.memoryRepository.management.status()
   const projectionByProjectId = new Map(projectionStates.map((state) => [state.projectId, state]))
   const treeDocument = memorySnapshot.document
   const migration = treeDocument.migrations[LEGACY_MEMORY_MIGRATION_ID]
@@ -122,19 +223,6 @@ export async function buildMemoryTreePayload(
     try { legacyExperienceCount = (await runner.infra.experienceStore.list()).length } catch { /* absent legacy source */ }
   }
 
-  const writeHistory = new Map<string, typeof treeDocument.writeAudit>()
-  for (const audit of treeDocument.writeAudit) {
-    if (!audit.nodeId) continue
-    const current = writeHistory.get(audit.nodeId) ?? []
-    current.push(audit)
-    writeHistory.set(audit.nodeId, current)
-  }
-  const managementHistory = new Map<string, typeof treeDocument.managementAudit>()
-  for (const audit of treeDocument.managementAudit) {
-    const current = managementHistory.get(audit.nodeId) ?? []
-    current.push(audit)
-    managementHistory.set(audit.nodeId, current)
-  }
   const resourceManagementHistory = new Map<string, typeof treeDocument.resourceManagementAudit>()
   for (const audit of treeDocument.resourceManagementAudit) {
     const current = resourceManagementHistory.get(audit.resourceId) ?? []
@@ -188,21 +276,14 @@ export async function buildMemoryTreePayload(
         project: project ? { id: project.id, name: project.name, path: project.path } : undefined,
         tier: node.tier,
         summary: node.summary,
-        content: node.content,
         retrievalKeys: node.retrievalKeys,
         importance: node.importance,
         confidence: node.confidence,
         reason: node.reason,
-        sourceRunIds: node.sourceRunIds,
-        sourceStages: node.sourceStages,
-        sourceRefs: node.sourceRefs ?? [],
         status: node.status === 'archived' ? 'archived' as const : 'active' as const,
         createdAt: node.createdAt,
         updatedAt: node.updatedAt,
         hitCount: recentHits.length,
-        recentHits: recentHits.slice(0, 5),
-        writeHistory: (writeHistory.get(node.id) ?? []).slice(-8).reverse(),
-        managementHistory: (managementHistory.get(node.id) ?? []).slice(-8).reverse(),
       }
     })
 
@@ -257,25 +338,29 @@ export async function buildMemoryTreePayload(
       }
     })
 
-  const longTermExcerpt = [
-    ...(activeByBranch.get('long-term') ?? []).slice(0, 10).map((node) => `- **${node.summary}**\n  ${node.content}`),
-    legacyLongTerm.trim(),
-  ].filter(Boolean).join('\n\n')
+  const longTermChars = (activeByBranch.get('long-term') ?? [])
+    .reduce((total, node) => total + node.content.length, legacyLongTerm.trim().length)
   const indexedDailyDates = (activeByBranch.get('daily') ?? []).map((node) => node.createdAt.slice(0, 10))
   const dailyDates = [...new Set([...legacyDailyDates, ...indexedDailyDates])].sort().slice(-14).reverse()
-  const recentAccesses = nodes
-    .flatMap((node) => node.recentHits.map((hit) => ({ nodeId: node.id, summary: node.summary, branch: node.branch, ...hit })))
+  const recentAccesses = visibleNodes
+    .flatMap((node) => (hitsByNode.get(node.id) ?? []).map((hit) => ({
+      nodeId: node.id,
+      summary: node.summary,
+      branch: node.branch,
+      ...hit,
+    })))
     .sort((left, right) => right.at.localeCompare(left.at))
     .slice(0, 30)
 
   return {
     generatedAt: new Date().toISOString(),
+    repository,
     totals: {
       branches: branches.length,
       projects: projects.length,
       dailyMemories: (activeByBranch.get('daily')?.length ?? 0) + legacyDailyDates.length,
       experiences: (activeByBranch.get('experience')?.length ?? 0) + legacyExperienceCount,
-      longTermChars: longTermExcerpt.trim().length,
+      longTermChars,
       indexedMemories: activeNodes.length,
       archivedMemories: visibleNodes.filter((node) => node.status === 'archived').length,
       deletedMemories: allNodes.filter((node) => node.status === 'deleted').length,
@@ -315,7 +400,6 @@ export async function buildMemoryTreePayload(
         .slice(0, 8),
     })),
     dailyDates,
-    longTermExcerpt: longTermExcerpt.slice(0, 1_600),
     recentAccesses,
     migration: migration ?? null,
     learningPolicy: {

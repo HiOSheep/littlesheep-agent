@@ -18,6 +18,7 @@ import { commitMemoryV3Locator, finishInterruptedMemoryV3Commit } from './v3-mig
 import type {
   MemoryV2ToV3MigrationManagerOptions,
   MemoryV3MigrationFaultPoint,
+  MemoryV3MigrationPreflight,
   MemoryV3MigrationResult,
 } from './v3-migration-contracts.js';
 import {
@@ -35,10 +36,19 @@ import {
   type MemoryRepositoryLocator,
   type PendingMemoryV3Migration,
 } from './repository-locator.js';
+import {
+  assertMemoryV3MigrationCapacity,
+  inspectMemoryV3MigrationPreflight,
+} from './v3-migration-preflight.js';
+import { MemoryV3MigrationOperationQueue } from './v3-migration-operation.js';
 
-const MIN_FREE_BYTES = 16 * 1024 * 1024;
-
-export type { MemoryV2ToV3MigrationManagerOptions, MemoryV3MigrationFaultContext, MemoryV3MigrationFaultPoint, MemoryV3MigrationResult } from './v3-migration-contracts.js';
+export type {
+  MemoryV2ToV3MigrationManagerOptions,
+  MemoryV3MigrationFaultContext,
+  MemoryV3MigrationFaultPoint,
+  MemoryV3MigrationPreflight,
+  MemoryV3MigrationResult,
+} from './v3-migration-contracts.js';
 
 export class MemoryV2ToV3MigrationManager {
   private readonly dataDir: string;
@@ -48,7 +58,7 @@ export class MemoryV2ToV3MigrationManager {
   private readonly idFactory: () => string;
   private readonly availableBytes: (path: string) => Promise<number>;
   private readonly faultInjector?: MemoryV2ToV3MigrationManagerOptions['faultInjector'];
-  private operationTail: Promise<void> = Promise.resolve();
+  private readonly operations = new MemoryV3MigrationOperationQueue();
 
   constructor(options: MemoryV2ToV3MigrationManagerOptions) {
     this.dataDir = resolve(options.dataDir);
@@ -65,8 +75,17 @@ export class MemoryV2ToV3MigrationManager {
       ?? createDefaultMemoryRepositoryLocator(this.now().toISOString());
   }
 
+  async preflight(): Promise<MemoryV3MigrationPreflight> {
+    return inspectMemoryV3MigrationPreflight({
+      dataDir: this.dataDir,
+      locator: await this.status(),
+      checkedAt: this.now().toISOString(),
+      availableBytes: this.availableBytes,
+    });
+  }
+
   migrate(): Promise<MemoryV3MigrationResult> {
-    return this.serialize(async () => {
+    return this.operations.run(async () => {
       let locator = await this.status();
       if (locator.activeBackend === 'v3' && locator.lastMigration) {
         return { locator, migration: locator.lastMigration, resumed: true };
@@ -99,7 +118,7 @@ export class MemoryV2ToV3MigrationManager {
   }
 
   rollback(): Promise<MemoryRepositoryLocator> {
-    return this.serialize(async () => {
+    return this.operations.run(async () => {
       const locator = await this.status();
       if (locator.activeBackend !== 'v3' || !locator.lastMigration) {
         throw new Error('Memory v3 is not the active migrated backend.');
@@ -162,7 +181,7 @@ export class MemoryV2ToV3MigrationManager {
     await removeOwnedMigrationChild(paths, paths.snapshotDir);
     await removeOwnedMigrationChild(paths, paths.stageDataDir);
     const source = await inspectMemoryV2Source(this.dataDir);
-    await this.assertDiskCapacity(source.manifest.totalBytes);
+    await assertMemoryV3MigrationCapacity(this.dataDir, source.manifest.totalBytes, this.availableBytes);
     pending = await this.persistPending(locator, pending, 'snapshot', {
       sourceIndexHash: source.indexHash,
       sourceManifestHash: source.manifest.manifestHash,
@@ -267,32 +286,10 @@ export class MemoryV2ToV3MigrationManager {
     });
   }
 
-  private async assertDiskCapacity(sourceBytes: number): Promise<void> {
-    const required = Math.max(MIN_FREE_BYTES, sourceBytes * 4 + MIN_FREE_BYTES);
-    const available = await this.availableBytes(this.dataDir);
-    if (available < required) {
-      const error = new Error(`Memory v3 migration requires ${required} free bytes but only ${available} are available.`);
-      Object.assign(error, { code: 'ENOSPC' });
-      throw error;
-    }
-  }
-
   private fault(point: MemoryV3MigrationFaultPoint, paths: MemoryV3MigrationPaths, atomId?: string): Promise<void> {
     return Promise.resolve(this.faultInjector?.(point, { ...paths, atomId }));
   }
 
-  private async serialize<T>(operation: () => Promise<T>): Promise<T> {
-    const prior = this.operationTail.catch(() => undefined);
-    let release!: () => void;
-    const gate = new Promise<void>((resolveGate) => { release = resolveGate; });
-    this.operationTail = prior.then(() => gate);
-    await prior;
-    try {
-      return await operation();
-    } finally {
-      release();
-    }
-  }
 }
 
 function errorMessage(error: unknown): string {

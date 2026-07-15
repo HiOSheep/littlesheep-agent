@@ -9591,7 +9591,7 @@ body.is-resizing-column .settings-sidebar-resizer::before {
 
 .memory-tree-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 6px;
   margin-bottom: 22px;
 }
@@ -10508,7 +10508,7 @@ body.is-resizing-column .settings-sidebar-resizer::before {
 }
 
 .memory-node-row.expanded .memory-node-details {
-  max-height: 1600px;
+  max-height: 2600px;
   opacity: 1;
   transform: translateY(0);
   visibility: visible;
@@ -10532,6 +10532,14 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   color: var(--text);
   font-size: 12px;
   line-height: 1.55;
+}
+
+.memory-node-detail-loading {
+  min-height: 72px;
+  padding: 24px 0;
+  color: var(--muted-2);
+  font-size: 11px;
+  text-align: center;
 }
 
 .memory-resource-description,
@@ -10681,6 +10689,161 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   border-color: rgba(239, 104, 104, 0.36);
 }
 
+.memory-disclosure-button,
+.memory-migration-status-line button {
+  width: max-content;
+  min-height: 28px;
+  padding: 0 8px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 760;
+  transition:
+    color var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease);
+}
+
+.memory-disclosure-button:hover:not(:disabled),
+.memory-disclosure-button:focus-visible,
+.memory-migration-status-line button:hover:not(:disabled),
+.memory-migration-status-line button:focus-visible {
+  color: var(--text-strong);
+  background: var(--control-hover);
+  border-color: var(--border-strong);
+  outline: 0;
+}
+
+.memory-disclosure-button:disabled,
+.memory-migration-status-line button:disabled {
+  opacity: 0.42;
+}
+
+.memory-v3-evidence {
+  display: grid;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.memory-v3-badges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0;
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.memory-v3-badges span {
+  display: inline-flex;
+  align-items: center;
+}
+
+.memory-v3-badges span + span::before {
+  content: "·";
+  margin: 0 6px;
+  color: var(--muted-2);
+}
+
+.memory-v3-badges .warning {
+  color: var(--warning);
+}
+
+.memory-relation-list {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.memory-migration-panel {
+  display: grid;
+  gap: 16px;
+  padding: 4px 5px 18px;
+  animation: content-fade-in var(--motion-base) var(--motion-ease) backwards;
+}
+
+.memory-migration-status-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  border-bottom: 1px solid var(--border);
+}
+
+.memory-migration-status-line > span {
+  display: grid;
+  gap: 3px;
+}
+
+.memory-migration-status-line strong {
+  color: var(--text-strong);
+  font-size: 15px;
+}
+
+.memory-migration-status-line small {
+  color: var(--muted-2);
+  font-size: 10.5px;
+}
+
+.memory-migration-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 18px;
+  margin: 0;
+}
+
+.memory-migration-metrics > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.memory-migration-metrics dt {
+  color: var(--muted-2);
+  font-size: 10px;
+}
+
+.memory-migration-metrics dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.memory-migration-readiness {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 36px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.memory-migration-readiness strong {
+  color: var(--text);
+  font-size: 11.5px;
+}
+
+.memory-migration-readiness.blocked strong {
+  color: var(--danger);
+}
+
+.memory-migration-readiness time {
+  color: var(--muted-2);
+  font-size: 10px;
+}
+
 .memory-tree-empty-row {
   min-height: 112px;
   padding: 42px 8px;
@@ -10784,6 +10947,10 @@ body.is-resizing-column .settings-sidebar-resizer::before {
 
   .memory-project-metadata {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .memory-migration-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

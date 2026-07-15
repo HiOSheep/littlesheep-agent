@@ -19,6 +19,7 @@
     "@littlesheep/channel-webhook": "workspace:*",
     "@littlesheep/config": "workspace:*",
     "@littlesheep/memory-core": "workspace:*",
+    "@littlesheep/memory-tree": "workspace:*",
     "@littlesheep/plugins": "workspace:*",
     "@littlesheep/prompt": "workspace:*",
     "@littlesheep/runner": "workspace:*",

@@ -29,6 +29,10 @@ import type {
   ReplaceMemoryResourceGroupOptions,
 } from './contracts.js';
 import type { MemoryRepositoryBackend } from './backend.js';
+import type {
+  MemoryRepositoryManagementStatus,
+  MemoryRepositoryNodeInspection,
+} from './management.js';
 
 export interface MemoryRepositoryV2BackendOptions {
   dataDir: string;
@@ -108,4 +112,19 @@ export class MemoryRepositoryV2Backend implements MemoryRepositoryBackend {
   }
   getMigration(id: string): Promise<MemoryMigrationRecord | undefined> { return this.nodes.getMigration(id); }
   markMigration(record: MemoryMigrationRecord): Promise<void> { return this.nodes.markMigration(record); }
+  async managementStatus(): Promise<MemoryRepositoryManagementStatus> {
+    return {
+      backendKind: 'v2',
+      storageKind: 'legacy-index',
+      retrievalSupported: false,
+    };
+  }
+  async inspectNodeForManagement(
+    nodeId: string,
+    disclosureLevel: MemoryRepositoryNodeInspection['disclosureLevel'],
+  ): Promise<MemoryRepositoryNodeInspection | undefined> {
+    const node = await this.nodes.get(nodeId);
+    if (!node || node.isBranchRoot) return undefined;
+    return { backendKind: 'v2', nodeId, disclosureLevel };
+  }
 }

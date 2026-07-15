@@ -25,6 +25,10 @@ import type {
 } from './contracts.js';
 import type { MemoryProjectRebindResult } from './project-rebinding.js';
 import type { MemoryRepositoryRetrievalBackend } from './retrieval.js';
+import type {
+  MemoryRepositoryManagementStatus,
+  MemoryRepositoryNodeInspection,
+} from './management.js';
 
 export interface MemoryRepositoryBackend extends Partial<MemoryRepositoryRetrievalBackend> {
   readonly rootDir: string;
@@ -62,5 +66,10 @@ export interface MemoryRepositoryBackend extends Partial<MemoryRepositoryRetriev
   manageNode(nodeId: string, action: MemoryManagementAction, reason?: string): Promise<MemoryManagementResult | undefined>;
   getMigration(id: string): Promise<MemoryMigrationRecord | undefined>;
   markMigration(record: MemoryMigrationRecord): Promise<void>;
+  managementStatus(): Promise<MemoryRepositoryManagementStatus>;
+  inspectNodeForManagement(
+    nodeId: string,
+    disclosureLevel: MemoryRepositoryNodeInspection['disclosureLevel'],
+  ): Promise<MemoryRepositoryNodeInspection | undefined>;
   close?(): void;
 }

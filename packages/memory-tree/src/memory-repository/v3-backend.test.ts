@@ -63,6 +63,29 @@ describe('MemoryRepositoryV3Backend recovery', () => {
     expect(created.decision).toBe('created');
     expect(backend.catalog.getAtom(created.node!.id)?.embeddingStatus).toBe('ready');
     expect(backend.catalog.countEmbeddingWork()).toBe(0);
+    const managementStatus = await backend.managementStatus();
+    expect(managementStatus).toMatchObject({
+      backendKind: 'v3',
+      storageKind: 'atom-catalog',
+      retrievalSupported: true,
+      catalog: {
+        integrity: 'ok',
+        embedding: { pending: 0, failed: 0 },
+      },
+    });
+    expect(managementStatus.catalog!.embedding.ready).toBeGreaterThanOrEqual(1);
+    await expect(backend.inspectNodeForManagement(created.node!.id, 'D3')).resolves.toMatchObject({
+      backendKind: 'v3',
+      disclosureLevel: 'D3',
+      atom: {
+        id: created.node!.id,
+        statementKind: 'factual-claim',
+        epistemicStatus: 'verified',
+      },
+      catalog: { embeddingStatus: 'ready' },
+      envelope: { disclosureLevel: 'D3', epistemicStatus: 'verified' },
+      history: { atomId: created.node!.id },
+    });
   });
 });
 

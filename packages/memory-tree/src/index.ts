@@ -105,6 +105,12 @@ export {
   type MemoryWriteServiceOptions,
   type MemoryWriteServiceLike,
 } from './memory-repository.js';
+export type {
+  MemoryRepositoryEmbeddingStatusCounts,
+  MemoryRepositoryManagementFacade,
+  MemoryRepositoryManagementStatus,
+  MemoryRepositoryNodeInspection,
+} from './memory-repository/management.js';
 export {
   MEMORY_REPOSITORY_LOCATOR_FILE,
   memoryRepositoryLocatorPath,
@@ -119,6 +125,7 @@ export {
   type MemoryV2ToV3MigrationManagerOptions,
   type MemoryV3MigrationFaultContext,
   type MemoryV3MigrationFaultPoint,
+  type MemoryV3MigrationPreflight,
   type MemoryV3MigrationResult,
 } from './memory-repository/v3-migration.js';
 export {

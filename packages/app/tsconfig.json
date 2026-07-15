@@ -32,6 +32,9 @@
       "path": "../memory-core"
     },
     {
+      "path": "../memory-tree"
+    },
+    {
       "path": "../plugins"
     },
     {

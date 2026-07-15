@@ -4,9 +4,12 @@ import type {
   MemoryOverview,
   MemoryResourceManagementAction,
   MemoryTreeManagementAction,
+  MemoryTreeNodeDetail,
   MemoryTreeNodeManagementResponse,
   MemoryTreeOverview,
   MemoryTreeResourceManagementResponse,
+  MemoryTreeDisclosureLevel,
+  MemoryV3MigrationPreflightOverview,
   ProjectMemoryProjectionAction,
   ProjectMemoryProjectionExportResult,
   ProjectMemoryProjectionState,
@@ -52,6 +55,23 @@ export async function getMemoryTreeOverview(): Promise<MemoryTreeOverview> {
   const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.memoryTree))
   if (!res.ok) throw localApiStatusError(res.status)
   return res.json() as Promise<MemoryTreeOverview>
+}
+
+export async function getMemoryTreeNodeDetail(
+  nodeId: string,
+  disclosure: MemoryTreeDisclosureLevel,
+  signal?: AbortSignal,
+): Promise<MemoryTreeNodeDetail> {
+  const path = localAppApiItemPath(LOCAL_APP_API_PREFIXES.memoryNodes, nodeId)
+  const res = await fetch(localApiUrl(`${path}?disclosure=${disclosure}`), { signal })
+  if (!res.ok) throw localApiStatusError(res.status)
+  return res.json() as Promise<MemoryTreeNodeDetail>
+}
+
+export async function getMemoryV3MigrationPreflight(signal?: AbortSignal): Promise<MemoryV3MigrationPreflightOverview> {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.memoryMigration), { signal })
+  if (!res.ok) throw localApiStatusError(res.status)
+  return res.json() as Promise<MemoryV3MigrationPreflightOverview>
 }
 
 export async function updateMemoryLearningPolicy(experienceWriteThreshold: number): Promise<{ experienceWriteThreshold: number }> {

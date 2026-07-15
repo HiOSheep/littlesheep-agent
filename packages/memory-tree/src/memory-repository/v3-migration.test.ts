@@ -13,6 +13,7 @@ import {
 } from '../types.js';
 import { createMemoryV3ExperimentMarker, MemoryRepository } from '../memory-repository.js';
 import { MEMORY_V3_EXPERIMENT_MARKER } from './contracts.js';
+import { memoryRepositoryLocatorPath } from './repository-locator.js';
 import { MemoryRepositoryV3Backend } from './v3-backend.js';
 import { resolveMemoryWritePolicy } from './write-policy.js';
 import {
@@ -25,6 +26,32 @@ describe('Memory v2 -> v3 migration', () => {
 
   afterEach(async () => {
     for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true });
+  });
+
+  it('reports a read-only migration preflight with source and capacity evidence', async () => {
+    const dataDir = await createDataDir(directories);
+    const source = await seedV2(dataDir);
+    const manager = new MemoryV2ToV3MigrationManager({
+      dataDir,
+      availableBytes: async () => 512 * 1024 * 1024,
+    });
+
+    const preflight = await manager.preflight();
+
+    expect(preflight).toMatchObject({
+      locator: { activeBackend: 'v2' },
+      canMigrate: true,
+      canResume: false,
+      rollbackAvailable: false,
+      blockers: [],
+      source: {
+        nodeCount: publicNodeCount(source),
+        resourceCount: Object.keys(source.resources).length,
+      },
+      storage: { availableBytes: 512 * 1024 * 1024 },
+    });
+    expect(preflight.storage!.requiredBytes).toBeGreaterThan(0);
+    expect(existsSync(memoryRepositoryLocatorPath(dataDir))).toBe(false);
   });
 
   it('preserves nodes, resources, ledgers, ids, and the untouched v2 rollback authority', async () => {

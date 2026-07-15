@@ -1,6 +1,6 @@
 # LittleSheep 模块拆分地图
 
-最后更新：2026-07-15 22:43:54
+最后更新：2026-07-16 00:17:15
 
 本文件记录大型生产文件的当前所有权、目标边界和拆分顺序。它是仓库基元化任务书的阶段产物，不替代项目状态，也不把行数当成唯一质量指标。
 
@@ -16,7 +16,7 @@
 
 | 当前文件 | 基线行数 | 当前责任 | 目标边界 | 所有权 |
 | --- | ---: | --- | --- | --- |
-| `packages/app/src/renderer/MemoryTreeView.tsx` | 1104 | 记忆树加载、管理、资源和项目投影视图 | controller + tree、resource、audit、project-projection 组件 | B |
+| `packages/app/src/renderer/MemoryTreeView.tsx` | 1011 | 记忆树 controller、资源和项目投影视图；v3 节点行与迁移面板已拆出 | controller + tree、resource、audit、project-projection 组件 | B |
 | `packages/channels/qqbot/src/plugin.ts` | 801 | QQ 协议、连接、消息、发送和生命周期 | transport、protocol、message-mapper、sender、lifecycle | C |
 | `packages/memory-tree/src/project-memory-projection.ts` | 778 | 投影生成、同步、冲突、恢复和删除 | projection facade + render、sync、conflict、lifecycle | D |
 | `packages/memory-tree/src/memory-tree.ts` | 647 | 根索引、导航、展开、搜索和预算 | tree facade + index、navigation、expansion、branch-search、budget | D |
@@ -41,7 +41,7 @@
 | `packages/memory-tree/src/memory-repository/v3-resource-store.ts` | 575 | v3 资源元数据、生命周期事务、实体投影和恢复 | 分离 resource registry、transaction recovery 与 graph projection | D |
 | `packages/memory-tree/src/memory-repository/v3-node-store.ts` | 545 | v3 节点查询、写入编排、层级和实体关联 | 事件与生命周期规则已拆出；后续分离 query projection 与 write coordinator | D |
 | `packages/memory-tree/src/memory-repository/v3-ledger.ts` | 502 | v3 分片审计、恢复队列、scope alias、schema migration 兼容和事务账本 | 一次性 v2 导入已放入独立迁移模块；后续分离 audit shards、recovery queue 与 transaction ledger | D |
-| `packages/memory-tree/src/memory-repository/v3-backend.ts` | 324 | v3 后端组合、检索 facade 和写后维护协调 | 保持组合层；若继续增长，拆出生命周期与 maintenance adapter | D |
+| `packages/memory-tree/src/memory-repository/v3-backend.ts` | 370 | v3 后端组合、检索 facade、management adapter 和写后维护协调 | 保持组合层；若继续增长，拆出生命周期与 maintenance adapter | D |
 | `packages/llm/src/client.ts` | 460 | 请求、流式、reasoning、重试适配 | 分离 request builder、stream parser、response mapper | E |
 | `packages/types/src/runtime-contracts.ts` | 449 | 多类运行时版本契约 | 按 context、event、checkpoint、execution 分组并保持 barrel | E |
 | `packages/memory-tree/src/memory-repository/resource-store.ts` | 439 | 资源注册、生命周期、重绑定和审计 | 分离 registry、lifecycle、rebind、audit | D |
@@ -52,7 +52,7 @@
 | `packages/plugins/src/channel/manager.ts` | 366 | 渠道调度、会话和发送 | 分离 dispatch、session、delivery | C |
 | `packages/app/src/renderer/ArchiveManager.tsx` | 363 | 归档加载、树和操作 | controller + project/session 视图 | B |
 | `packages/runner/src/infra.ts` | 359 | 默认基础设施创建 | 按 memory、tools、session、skills adapter 分组 | E |
-| `packages/app/src/main/memory-tree-control.ts` | 339 | 记忆控制面查询和命令 | 分离 query、resource、projection command | C |
+| `packages/app/src/main/memory-tree-control.ts` | 435 | 记忆控制面查询、v3 D0-D3 详情适配和既有管理命令 | 分离 query/detail、resource、projection command | C |
 | `packages/channels/telegram/src/plugin.ts` | 339 | Telegram 协议和生命周期 | 分离 transport、mapper、sender | C |
 | `packages/app/src/main/attachments.ts` | 339 | run 附件解析和所有权分类 | 分离 ownership、metadata、content resolver | C |
 | `packages/cli/src/commands/import-repo.ts` | 322 | 导入流程、Git、LLM 和进度 | 分离 source、distill、progress adapter | C |
@@ -79,7 +79,7 @@
 | `packages/app/src/renderer/api.ts` | 1088 | 21 行兼容 barrel | `run`、`sessions`、`runtime`、`attachments`、`workspace-files`、`terminal`、`extensions`、`memory` 与 `common` | 2026-07-14 |
 | `packages/app/src/main/local-app-api-server.ts` | 2819 | 241 行 server 组合入口 | HTTP 基元、run、projects、sessions/archive、runtime、memory、workspace、terminal、extensions、公共 contracts 与实例级资源清理 | 2026-07-14 |
 | `packages/app/src/renderer/App.tsx` | 9935 | 7 行兼容入口 | `app-shell`、`approval`、`chat`、`composer`、`runtime`、`settings`、`sidebar`、`ui` 与 `workspace` 领域视图和 controller | 2026-07-14 |
-| `packages/memory-tree/src/memory-repository.ts` | 1279 | 166 行 repository facade | 版本化后端选择、证据定位和稳定 Repository 公共契约；v2/v3 实现均已下沉 | 2026-07-15 |
+| `packages/memory-tree/src/memory-repository.ts` | 1279 | 170 行 repository facade | 版本化后端选择、证据定位和稳定 Repository 公共契约；management 使用独立 facade，v2/v3 实现均已下沉 | 2026-07-15 |
 | `packages/memory-tree/src/memory-service.ts` | 1120 | 343 行 service facade | run、摘要、附件、事件、Bootstrap、Skills、工作区资源、项目投影和资源管理协调器 | 2026-07-15 |
 | `packages/context/src/engine.ts` | 690 | 180 行 engine facade | candidates、budget、eviction、assembly、counting 与 snapshots | 2026-07-15 |
 | `packages/harness/src/stages/decide.ts` | 620 | 169 行 stage facade | 模型返回契约、需求/TaskBook 规范化、澄清请求和局部重规划 | 2026-07-15 |
@@ -92,7 +92,7 @@
 2. C 与 D 优先拆 Main/API 和 Memory，减少 B/E 的跨层依赖。
 3. B 已在 API barrel 稳定后完成 Renderer 组合壳拆分；后续 Renderer 细分继续按真实窗口验收。
 4. D/E 所有权下的 Memory、Harness/Context 已完成 facade 化与内部领域拆分，LLM Call Contract 和记忆意图闸门已在稳定边界上接入。
-5. Memory v3 阶段 4 已完成独立 snapshot、mapping、build、validation、commit 和 filesystem 模块；阶段 5 已把检索、证据封套与 KnownState 拆入独立模块。下一步保持 v3 facade 稳定，阶段 6 再接管理 UI 与正式迁移审批。
+5. Memory v3 阶段 4 已完成独立 snapshot、mapping、build、validation、commit 和 filesystem 模块；阶段 5 已把检索、证据封套与 KnownState 拆入独立模块；阶段 6 已拆出 management facade、迁移预检/串行操作和 Renderer node/migration 组件。下一步继续拆 `MemoryTreeView` 的 controller、resource 与 project-projection，并在独立启动前迁移协调器中实现正式迁移协议。
 
 ## 当前共享契约与 facade
 
@@ -116,7 +116,7 @@
 
 | 文件 | 所有者 | 暂缓原因 | 行数上限 | 复查日期 |
 | --- | --- | --- | ---: | --- |
-| `packages/app/src/renderer/MemoryTreeView.tsx` | B / Renderer Memory | 先冻结记忆管理、资源和投影交互特征，再按 controller/view 拆分 | 1104 | 2026-08-15 |
+| `packages/app/src/renderer/MemoryTreeView.tsx` | B / Renderer Memory | node row、迁移面板和格式化已拆出；继续冻结资源和投影交互后拆 controller/view | 1011 | 2026-08-15 |
 | `packages/channels/qqbot/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与协议适配端口稳定后拆分 | 801 | 2026-08-15 |
 | `packages/memory-tree/src/project-memory-projection.ts` | D / Memory | 投影事务、冲突与恢复必须在特征测试覆盖后迁移 | 780 | 2026-08-15 |
 | `packages/memory-tree/src/memory-tree.ts` | D / Memory | 根索引、导航和预算状态共享不变量，先冻结 facade | 650 | 2026-08-15 |

@@ -30,6 +30,7 @@ import type { MemoryRepositoryBackend } from './memory-repository/backend.js';
 import { createMemoryRepositoryBackend } from './memory-repository/factory.js';
 import type { MemoryProjectRebindResult } from './memory-repository/project-rebinding.js';
 import { createMemoryRepositoryRetrievalFacade, type MemoryRepositoryRetrievalFacade } from './memory-repository/retrieval-facade.js';
+import { createMemoryRepositoryManagementFacade, type MemoryRepositoryManagementFacade } from './memory-repository/management.js';
 
 export type {
   ManageMemoryResourceOptions,
@@ -52,6 +53,7 @@ export class MemoryRepository {
   readonly indexPath: string;
   readonly backendKind: MemoryRepositoryBackendKind;
   readonly retrieval: MemoryRepositoryRetrievalFacade;
+  readonly management: MemoryRepositoryManagementFacade;
   private readonly backend: MemoryRepositoryBackend;
 
   constructor(options: MemoryRepositoryOptions) {
@@ -59,6 +61,7 @@ export class MemoryRepository {
     this.backendKind = selected.kind;
     this.backend = selected.backend;
     this.retrieval = createMemoryRepositoryRetrievalFacade(this.backend);
+    this.management = createMemoryRepositoryManagementFacade(this.backend);
     this.rootDir = this.backend.rootDir;
     this.indexPath = this.backend.indexPath;
   }
@@ -155,9 +158,7 @@ export class MemoryRepository {
     return this.backend.manageNode(nodeId, action, reason);
   }
 
-  getMigration(id: string): Promise<MemoryMigrationRecord | undefined> {
-    return this.backend.getMigration(id);
-  }
+  getMigration(id: string): Promise<MemoryMigrationRecord | undefined> { return this.backend.getMigration(id); }
 
   markMigration(record: MemoryMigrationRecord): Promise<void> {
     return this.backend.markMigration(record);

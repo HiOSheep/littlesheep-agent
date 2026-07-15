@@ -39,6 +39,7 @@ export const LOCAL_APP_API_ROUTES = {
   skills: '/skills',
   memoryPolicy: '/memory/policy',
   memoryTree: '/memory/tree',
+  memoryMigration: '/memory/tree/migration',
   memory: '/memory',
 } as const
 
