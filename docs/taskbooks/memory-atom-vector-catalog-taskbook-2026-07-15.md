@@ -1,7 +1,7 @@
 # LittleSheep 原子记忆与内置向量目录任务书 2026-07-15
 
 最后更新：2026-07-15
-版本：v1.2
+版本：v1.3
 状态：目标架构已确认，待按阶段实施；本任务书不会自动迁移正式用户数据
 
 ## 1. 目标
@@ -16,6 +16,8 @@
 - 可选记忆长期没有产生验证价值或对当前决策无用时降低注入权重，Context 在全流程中可以增补也可以收敛；
 - 记忆使用反馈必须区分“被访问”与“被验证有用”，防止错误内容因重复出现而自增强；
 - 注入 LLM 的记忆必须携带有界证据元数据，让模型能判断来源、层级、置信度、重要性、新鲜度和冲突状态；
+- 用户记忆、LS 自身记忆、项目/会话记忆、经验与知识资源统一使用渐进式披露，不建立旁路副本；
+- 所有记忆更新由时间和真实事件驱动，先持久捕获、再幂等归并，失败可恢复且不静默丢失；
 - 默认 Embedding 在本地生成，不把记忆正文发送到 Provider 的 `/embeddings`；
 - 现有用户数据只能通过备份、校验、可恢复迁移和显式批准进入新格式。
 
@@ -23,11 +25,13 @@
 
 ## 2. 当前实现差距
 
-当前 Memory v2 已具备分支、parent、tier、scope、索引优先读取、资源注册和写入闸门，但仍有三项结构性差距：
+当前 Memory v2 已具备分支、parent、tier、scope、索引优先读取、资源注册和写入闸门，但仍有五项结构性差距：
 
 1. `memory-tree/index.json` 同时保存全部节点、资源、审计和恢复队列，单文件会随记忆增长而扩大；
 2. `packages/vector` 的 SQLite 数据库位于本地，但向量通过当前 LLM Client 的 `/embeddings` 生成，并固定使用 `text-embedding-3-small`；
 3. 旧 `VectorIndexedMemoryStore` 与新的 `MemoryRepository` 是两条并存路径，向量目录没有成为原子记忆文件的统一管理索引。
+4. 用户记忆、LS 自身记忆、项目/会话记忆和知识资源尚未拥有统一的 domain 与 D0-D3 渐进披露契约。
+5. 写入仍缺少统一的 `MemoryUpdateEvent` journal、时间 due index、幂等归并和启动补偿协议，不能宣称所有记忆都能近实时更新且失败不丢。
 
 因此，当前不能宣称已经实现“原子文件 + 层级 + 完全本地向量管理”。
 
@@ -40,6 +44,7 @@
 ```text
 version
 id
+domain
 branch
 parentId
 scope / scopeKey
@@ -54,6 +59,7 @@ lastUsefulAt / lastVerifiedAt
 reason
 sourceRunIds / sourceStages
 status
+effectiveAt / expiresAt / revalidateAt
 createdAt / updatedAt
 contentHash
 ```
@@ -61,6 +67,7 @@ contentHash
 约束：
 
 - `id` 创建后不因标题、父级、项目路径或文件路径变化而改变；
+- `domain` 至少区分 user、agent-self、task/project/session、experience 和 knowledge；domain 只定义主体与治理边界，不替代 branch/scope/tier；
 - `parentId` 是层级权威字段，子节点列表由目录查询生成，不在多个文件中重复维护；
 - 一个 atom 只保存一个可独立治理的记忆语义；多个来源可以强化同一 atom，不应重复创建近义文件；
 - `basePriority` 是可审计的基础治理值，不等于最终注入顺序；最终顺序由当前任务、作用域、来源、状态和已验证使用反馈动态派生；
@@ -82,6 +89,7 @@ memory-tree/
       experience/<shard>/<atom-id>.memory.json
     catalog.sqlite
     operations/
+    events/
     backups/
 ```
 
@@ -96,6 +104,8 @@ memory-tree/
 - `atom_vectors`：atom id、embedding 版本、维度和向量；
 - `atom_access`：访问时间、run、stage、检索路径、命中原因和是否进入 Context；
 - `atom_feedback`：从 atom 的验证反馈摘要和受限审计事件生成的查询投影，包含有用/无帮助/冲突/过期结果、证据引用、衰减后的 usefulness 和最近验证时间；
+- `memory_events`：已持久捕获事件的查询投影、处理状态、目标版本、幂等键、重试和恢复位置；权威 pending 事件仍在可恢复 event journal；
+- `memory_due`：按 effective、expiry、revalidation 和 usefulness decay 时间定位到期 atom，避免全库轮询；
 - `operations`：跨文件系统与 SQLite 更新的恢复日志；
 - `audit`：写入、合并、移动、归档、失效、删除和重建证据。
 
@@ -124,6 +134,22 @@ bounded root index
 - 可选候选按最后验证收益和策略配置执行时间衰减；衰减后仍可通过强 scope 匹配、新证据、用户点选或索引导航重新激活。低频不等于错误，衰减不能自动改变 confidence、归档或删除 atom。
 - 实际注入使用 `MemoryEvidenceEnvelope`，只携带本次判断需要的 atom 引用、branch/scope、tier、来源/权威、confidence、importance、验证/更新时间、新鲜度、命中理由、状态、冲突与截断信息；完整访问历史不进入 Prompt。
 
+### 3.4 统一渐进式披露
+
+所有 domain 使用同一披露协议：
+
+```text
+D0 root/domain/branch index
+  -> D1 atom summary + evidence metadata
+  -> D2 selected atom content
+  -> D3 source versions + update/audit history
+```
+
+- LLM 和 UI 默认从 D0/D1 开始，只有任务、验证或用户管理需要时才进入 D2/D3；
+- D0-D3 表示披露深度，T0-T3 表示介入优先级和预算语义，两者不能共用字段或相互推断；
+- 冲突、低置信、待恢复、待重验和权限风险必须在 D1 可见，不能等展开审计后才暴露；
+- User Memory 与 Agent Self Memory 都不能维护脱离 Memory Repository 的私有 Prompt 副本或 UI 副本。
+
 ## 4. 本地 Embedding
 
 - 默认使用随应用提供的本地多语言 Embedding Engine，覆盖中文、英文和代码/技术文本；
@@ -139,12 +165,17 @@ bounded root index
 
 文件系统和 SQLite 不能依靠一个普通事务同时提交，因此每次变更使用可恢复操作日志：
 
-1. 写入带 operation id 的 pending 记录；
-2. 原子创建或替换 atom 文件；
-3. 在 SQLite 事务中更新目录、FTS、向量状态和审计；
-4. 校验文件哈希与数据库记录；
-5. 标记 operation committed；
-6. 启动时重放或回滚未完成 operation。
+1. 把带 event id、idempotency key、domain/scope、来源时间、观察时间、证据和期望 atom 版本的 `MemoryUpdateEvent` 原子写入 event journal；
+2. 解析事件并写入带 operation id 的 pending 记录；
+3. 在版本前置条件下原子创建、合并或替换 atom 文件；
+4. 在 SQLite 事务中更新目录、FTS、向量状态、due index 和审计；
+5. 校验文件哈希、事件 revision 与数据库记录；
+6. 标记 operation 与 event committed；
+7. 启动时幂等重放未完成事件，或回滚未完成 operation 后重新归并。
+
+事件来源至少覆盖用户新增/纠正、任务状态、工具与 VERIFY 证据、项目/受管资源变化、LS 能力和配置变化、冲突处理、权限决定，以及 effective/expiry/revalidation/decay 时间到达。主任务只有在事件已持久捕获后才能把记忆更新显示为“已记录”；atom 归并可以在不阻塞回复的有界后台流程中完成。
+
+应用运行时通过事件队列和 due index 近实时处理，不使用无界轮询。应用关闭期间跨过的时间点在下次启动补偿，已登记资源使用保存的指纹对账；未授权目录不扫描。事件处理失败必须显示 pending/recovery 状态并有限重试，不能伪装为成功。
 
 删除默认先进入 archived/tombstone 状态，经过保留期和引用检查后再回收文件与向量。项目移动只更新 scope/path 投影，不改变 atom id。
 
@@ -168,10 +199,11 @@ bounded root index
 ### 阶段 0：契约与特征测试
 
 - 定义 `MemoryAtom`、`MemoryCatalogEntry`、`EmbeddingEngine` 和 operation journal v1；
-- 定义 `MemoryAccessRecord`、`MemoryUseFeedback`、`MemoryEvidenceEnvelope`、候选优先级明细和 `KnownState` 记忆证据引用契约；
+- 定义 `MemoryDomain`、`MemoryDisclosureLevel`、`MemoryUpdateEvent`、`MemoryAccessRecord`、`MemoryUseFeedback`、`MemoryEvidenceEnvelope`、候选优先级明细和 `KnownState` 记忆证据引用契约；
 - 冻结 v2 行为特征：层级、写入闸门、项目重绑定、资源注册和 UI 管理；
 - 增加“默认禁止远程 Embedding”的网络出口测试。
 - 增加“重复访问不自动强化”“只有验证成功才产生正向反馈”“低收益可选记忆按策略衰减”“T0/安全/当前约束不被普通衰减淘汰”“冲突/过期记忆不优先注入”的特征测试。
+- 增加“所有 domain 使用 D0-D3”“事件先持久再确认”“重复事件幂等”“崩溃后重放”“关闭期间到期项启动补偿”的特征测试。
 
 验收：新契约不改变当前运行数据；旧路径有完整行为基线。
 
@@ -179,6 +211,7 @@ bounded root index
 
 - 实现分片路径、原子读写、哈希、状态管理和损坏隔离；
 - 实现 parent 校验、循环检测、孤儿恢复和目录扫描；
+- 实现分片 event journal、事件幂等键、版本前置条件和 pending/committed/recovery 生命周期；
 - 所有测试使用隔离数据目录。
 
 验收：一万 atom 的创建、读取、更新、归档和重启扫描保持有界且不丢层级。
@@ -187,6 +220,7 @@ bounded root index
 
 - 建立 SQLite catalog、FTS、向量接口和恢复日志；
 - 建立访问账本、验证反馈表、优先级查询索引和有界保留/衰减策略；衰减参数可配置、可测试且不修改 confidence；
+- 建立 memory event 投影、due index、启动补偿扫描和有界后台消费队列；
 - 接入本地 Embedding Engine 并完成候选模型基准；
 - 建立模型升级、向量失效和后台重建机制。
 
@@ -197,6 +231,7 @@ bounded root index
 - 让现有 facade 在 feature flag 下读写 v3；
 - 保持 Memory Service、Runner、Harness、工具和 UI 公共接口兼容；
 - 去重、合并、冲突、失效和项目重绑定只走统一 repository transaction。
+- 将用户、LS 自身、任务/项目/会话、经验和知识资源统一映射到 domain，不允许旁路写入。
 
 验收：现有 Memory Tree 契约测试在 v2/v3 两种后端均通过。
 
@@ -214,12 +249,13 @@ bounded root index
 - 退役 `VectorIndexedMemoryStore` 的 Provider Embedding 路径；
 - 强制 branch/subtree filter、预算、去重和访问账本。
 - 将候选优先级、`MemoryEvidenceEnvelope` 与 `KnownState` 接入 Context Engine；每个阶段可追溯实际采用、排除和重新激活的 atom、状态版本和取舍理由。
+- 实现 D0-D3 按需展开，并验证用户记忆与 LS 自身记忆不会因披露层级不同产生 Prompt 或 UI 副本。
 
 验收：网络被阻断时记忆写入和检索正常，向量搜索不能绕过层级导航；同一作用域内经验证且相关的记忆稳定优先介入，单纯重复访问不能形成错误自增强。
 
 ### 阶段 6：管理 UI 与真实迁移
 
-- UI 展示 atom、父级、来源、向量状态、冲突、归档和重建进度；
+- UI 按 domain 与 D0-D3 展示 atom、父级、来源、向量状态、冲突、更新状态、事件时间线、归档和重建进度；
 - 用户可以移动、合并、失效、恢复和导出 atom；
 - 在用户批准后迁移正式数据并完成重启、回滚和长时间运行验收。
 
@@ -241,6 +277,10 @@ bounded root index
 | D10 | 当前已知信息 | 记忆检索结果以证据引用进入 run 级版本化 `KnownState`，DECIDE、EXECUTE、VERIFY、FINALIZE 不使用未登记事实 |
 | D11 | 使用衰减 | 长期无验证收益只降低可选记忆的注入权重，不降低 confidence，不作用于 T0、安全规则和当前用户约束 |
 | D12 | 请求证据 | 注入 LLM 的记忆携带有界 `MemoryEvidenceEnvelope`；Context 可按阶段加入或排除信息，取舍全程可追溯 |
+| D13 | 记忆主体 | User、Agent Self、Task/Project/Session、Experience、Knowledge 使用同一 repository，仅以 domain/scope/authority 区分 |
+| D14 | 渐进披露 | 所有 domain 统一使用 D0 索引、D1 摘要元数据、D2 正文、D3 来源与审计；D0-D3 与 T0-T3 独立 |
+| D15 | 实时更新 | 时间和真实事件生成 `MemoryUpdateEvent`；先持久捕获，再异步幂等归并，失败进入恢复队列 |
+| D16 | 不失忆语义 | 保证持久、可发现、可追溯、可恢复和相关时可取回，不以全量常驻 Prompt 实现 |
 
 ## 9. 总完成门槛
 
@@ -250,6 +290,9 @@ bounded root index
 - 重复访问不会自动提高可信度，错误、冲突和过期记忆不会形成自增强循环；
 - 长期低收益的可选记忆会降低注入频率，强制信息不被误衰减；每次 LLM 请求能看到所用记忆的必要证据元数据；
 - DECIDE、EXECUTE、VERIFY 和 FINALIZE 可以按当前目标增加或减少 Context 信息，且不丢失权威来源和排除记录；
+- 用户记忆、LS 自身记忆及其他 domain 都能从 D0/D1 渐进展开到 D2/D3，且 UI、Prompt 与运行时使用同一权威数据；
+- 每个有效时间/事件更新先持久捕获，重复消费幂等，故障与重启不会静默丢失；关闭期间的到期项在启动时补偿；
+- 已确认记忆具有稳定索引、版本、恢复与备份验证，相关时可以重新取回，不依赖永久注入 Prompt；
 - 内置目录可管理层级、FTS、向量、审计和恢复，并能从文件重建；
 - 默认断网仍可写入、导航和语义检索记忆；
 - Provider 不会在未经明确启用时收到记忆 Embedding 内容；
