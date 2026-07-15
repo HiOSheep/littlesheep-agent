@@ -16,7 +16,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 | 能力域 | 状态 | 当前结论 | 主要位置 |
 | --- | --- | --- | --- |
-| 架构治理 | 仓库基元化阶段 0-7 已完成 | 26 个 package 与指定领域目录均有所有权 README；关键组合入口已收敛为 facade。`check:repo` 自动校验任务书日期、300/600 行登记、受控超限、热点增长、深层 import、运行时依赖环和核心协议唯一来源 | `docs/foundation-cognition-repository-taskbook-2026-07-15.md`、`docs/module-split-map.md`、`scripts/check-repository-hygiene.mjs` |
+| 架构治理 | 仓库基元化阶段 0-7 已完成 | 26 个 package 与指定领域目录均有所有权 README；关键组合入口已收敛为 facade。`check:repo` 自动校验文档分层、任务书日期、300/600 行登记、受控超限、热点增长、深层 import、运行时依赖环和核心协议唯一来源 | `docs/taskbooks/foundation-cognition-repository-taskbook-2026-07-15.md`、`docs/reference/module-split-map.md`、`scripts/check-repository-hygiene.mjs` |
 | LLM 调用契约与记忆提交 | 已实现工程闭环 | 每次模型请求解析独立 `LlmCallContract`，声明 purpose、Context、决策、输出、工具、记忆和预算；FINALIZE 禁止模型调用。EVOLVE/CAPTURE 只提交有真实步骤、工具和验证证据的写入，冲突/失效意图只延期审计 | `packages/types/src/runtime-contracts.ts`、`packages/harness/src/llm-call-contracts/`、`model-observability.ts`、`stages/memory-intent-gate.ts` |
 | Context Engine | 阶段 1 主要数据链与调用契约已实现，供应商验收未闭环 | 支持确定性候选、来源 segment、契约过滤、预算淘汰、版本化 Summary Memory、附件清单优先、按需附件工具、Provider usage 绑定和双账本 UI；必需 Context 越权或缺失会失败关闭。当前内置模型均明确为 unavailable 并使用不可展示的保守安全估算；真实 Provider 对账尚未完成 | `packages/context/src/engine.ts`、`context-engine/`、`packages/harness/src/context-candidates.ts`、`model-observability.ts`、`packages/config/src/model-capabilities.ts` |
 | 附件、workplace 与数据根生命周期 | 阶段 3 工程实现已完成 | 粘贴/浏览器导入进入独立受管缓存，按 30 天、256 项、512 MiB 有界清理；workplace 使用可恢复的有界元数据索引，不读正文。设置页可登记完整数据根迁移，下一次启动会在任何写入者初始化前通过外部 locator、同级 staging、全文件 SHA-256 清单和活动元数据路径重绑定完成原子切换；源目录保留，失败继续使用旧目录，提交中断可恢复，回滚同样在下次启动生效。隔离测试已覆盖这些契约，尚未擅自搬迁正式用户数据 | `packages/app/src/main/attachment-cache.ts`、`packages/app/src/main/data-root-migration.ts`、`packages/app/src/main/data-root-metadata.ts`、`packages/memory-tree/src/workspace-resource-index.ts` |
@@ -44,7 +44,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 | 检查 | 当前工作树结果 | 证据命令 |
 | --- | --- | --- |
-| 仓库卫生 | 通过：29 项通过，0 项失败 | `pnpm.cmd run check:repo` |
+| 仓库卫生 | 通过：31 项通过，0 项失败 | `pnpm.cmd run check:repo` |
 | 全量测试 | 通过：119 个测试文件；996 passed、1 skipped | `pnpm.cmd test` |
 | 全工作区类型检查 | 通过 | `pnpm.cmd run typecheck` |
 | 全工作区构建 | 通过 | `pnpm.cmd run build` |
@@ -94,17 +94,18 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 ### 工程治理
 
-- [架构原则](architecture-principles.md) 已成为 LLM、Agent、Mode、Context、Memory、Tools、Workflow 和插件分工的规范性来源。
+- [文档决策入口](../README.md) 已成为唯一首要入口；正式文档按当前依据、稳定原则、执行任务书和工程参考四层渐进展开，根 README 不再平铺全部文件。
+- [架构原则](../principles/architecture-principles.md) 已成为 LLM、Agent、Mode、Context、Memory、Tools、Workflow 和插件分工的规范性来源。
 - [架构决策报告](architecture-decision-report.md) 已按当前源码记录模块成熟度、主要缺口、推荐顺序和待用户决策事项。
 - 架构文档、项目状态、仓库目录、专项规范和任务书拥有独立职责，避免同一事实在多份报告中重复维护。
 - 文档已明确区分目标架构、当前事实、演进建议和专项任务书；Context Engine 只按“阶段 1 主要数据链已实现、真实供应商验收未完成”记录，统一 Tool Execution Service 与 Mode Registry 仍不按已完成能力记录。
-- [总基调、认知架构与仓库基元化任务书](foundation-cognition-repository-taskbook-2026-07-15.md) 已完成阶段 0-7；package/领域 README、稳定 facade、LLM Call Contract、记忆更新闸门、理念资源和持续质量门均已落地。
+- [总基调、认知架构与仓库基元化任务书](../taskbooks/foundation-cognition-repository-taskbook-2026-07-15.md) 已完成阶段 0-7；package/领域 README、稳定 facade、LLM Call Contract、记忆更新闸门、理念资源和持续质量门均已落地。
 
 ## 未完成方向
 
 ### P0：持续维护与受控超限拆分
 
-1. 仓库基元化阶段 0-7 已完成，后续由 29 项仓库卫生门持续保护，不再作为待实现功能重复规划。
+1. 仓库基元化阶段 0-7 已完成，后续由 31 项仓库卫生门持续保护，不再作为待实现功能重复规划。
 2. 6 个超过 600 行的生产文件已登记所有者、暂缓原因、上限和 2026-08-15 复查日期；功能工作触及相应责任域时按拆分地图逐项收缩。
 3. 新增核心协议必须有唯一权威来源；workspace 运行时依赖环、未公开深层 import 和未登记大型文件会直接使质量门失败。
 
@@ -190,7 +191,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 - 本文件只记录当前事实和可复现证据；完成一项能力必须同时更新测试、构建证据和本文件。
 - 任何“已完成”都要说明范围：基础形态、配置层、连接器层和真实场景验收不能混为一谈。
 - 不把用户密钥、用户会话、记忆树或工作区文件复制到仓库；运行时数据只在用户数据目录中维护。
-- 顶层分工见 [architecture-principles.md](architecture-principles.md)，当前架构评估和决策点见 [architecture-decision-report.md](architecture-decision-report.md)，目录和模块归属见 [repository-guide.md](repository-guide.md)，插件边界见 [plugin-development.md](plugin-development.md)。
-- 当前先行仓库整理和认知契约见 [总基调、认知架构与仓库基元化任务书 2026-07-15](foundation-cognition-repository-taskbook-2026-07-15.md)。
-- 核心能力细节见 [核心 Agent 能力任务书 2026-07-13](core-agent-capability-taskbook-2026-07-13.md)，拓展工作区细节见 [拓展工作区任务书 2026-07-12](extension-workspace-taskbook-2026-07-12.md)。
-- Context、记忆分级、附件、运行中重入、有界并行、检查点和后台连续执行的专项计划见 [Agent Runtime 连续性任务书 2026-07-14](agent-runtime-continuity-taskbook-2026-07-14.md)。
+- 顶层分工见 [architecture-principles.md](../principles/architecture-principles.md)，当前架构评估和决策点见 [architecture-decision-report.md](architecture-decision-report.md)，目录和模块归属见 [repository-guide.md](../reference/repository-guide.md)，插件边界见 [plugin-development.md](../reference/plugin-development.md)。
+- 当前先行仓库整理和认知契约见 [总基调、认知架构与仓库基元化任务书 2026-07-15](../taskbooks/foundation-cognition-repository-taskbook-2026-07-15.md)。
+- 核心能力细节见 [核心 Agent 能力任务书 2026-07-13](../taskbooks/core-agent-capability-taskbook-2026-07-13.md)，拓展工作区细节见 [拓展工作区任务书 2026-07-12](../taskbooks/extension-workspace-taskbook-2026-07-12.md)。
+- Context、记忆分级、附件、运行中重入、有界并行、检查点和后台连续执行的专项计划见 [Agent Runtime 连续性任务书 2026-07-14](../taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md)。

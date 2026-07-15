@@ -303,7 +303,7 @@ describe('memory-tree control plane', () => {
       workplaceDir,
       rebuildRunner: vi.fn(async () => undefined),
       updateRuntimeConfig: vi.fn(async () => undefined),
-      selectMemoryResourceSource: vi.fn(async () => 'D:/repo/docs/architecture-principles.md'),
+      selectMemoryResourceSource: vi.fn(async () => 'D:/repo/docs/principles/architecture-principles.md'),
     })
     try {
       const response = await fetch(`http://127.0.0.1:${server.port}/memory/tree/nodes/node-1/manage`, {
@@ -349,7 +349,7 @@ describe('memory-tree control plane', () => {
       expect(rebound.status).toBe(200)
       expect(runner.infra.memoryService.rebindResourceSource).toHaveBeenCalledWith(
         'file:agents',
-        'D:/repo/docs/architecture-principles.md',
+        'D:/repo/docs/principles/architecture-principles.md',
         '用户从记忆树管理页面重新定位了资源。',
       )
     } finally {

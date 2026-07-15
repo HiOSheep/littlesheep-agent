@@ -2,28 +2,21 @@
 
 最后更新：2026-07-15
 
-本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](project-status.md) 为准。
+本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
-## 正式文档职责
+## 正式文档层级
 
-| 文档 | 唯一职责 | 更新时机 |
-| --- | --- | --- |
-| [architecture-principles.md](architecture-principles.md) | 长期架构原则、责任边界和禁止的架构捷径 | 顶层设计原则发生变化时 |
-| [architecture-decision-report.md](architecture-decision-report.md) | 当前架构评估、演进顺序、风险和用户决策点 | 完成一个架构阶段或证据推翻原建议时 |
-| [project-status.md](project-status.md) | 当前能力状态、真实验证结果和未完成方向 | 重大实现或验证后 |
-| [repository-guide.md](repository-guide.md) | 目录、文件、模块归属、依赖和维护规则 | 仓库结构或模块所有权变化时 |
-| [module-split-map.md](module-split-map.md) | 大型生产文件的所有权、目标边界、分支归属和拆分顺序 | 文件越过阈值、完成拆分或批准例外时 |
-| [core-agent-flow-guidelines.md](core-agent-flow-guidelines.md) | Core Flow、TaskBook、验证、恢复和记忆运行时的专项规范 | 核心流程契约变化时 |
-| [ui-interaction-guidelines.md](ui-interaction-guidelines.md) | UI 视觉与交互专项规范 | 新增或调整交互规则时 |
-| [总基调、认知架构与仓库基元化任务书 2026-07-15](foundation-cognition-repository-taskbook-2026-07-15.md) | 总基调的工程转译、仓库基元化、LLM Call Contract、身份与数据边界 | 仓库整理阶段、认知契约或数据边界发生变化时 |
-| [核心 Agent 能力任务书 2026-07-13](core-agent-capability-taskbook-2026-07-13.md) | 核心 Agent 能力的阶段设计、验收标准和完成记录 | 阶段契约或实现范围变化时；不维护全仓最新测试数字 |
-| [Agent 核心与记忆系统任务书 2026-07-14](agent-core-memory-taskbook-2026-07-14.md) | 核心闭环、记忆闭环和真实场景验收基线 | 核心收敛顺序或验收门槛变化时 |
-| [核心收敛小任务书 2026-07-13](core-focus-maintenance-taskbook-2026-07-13.md) | 冻结非必要扩张并集中处理阻断 Bug 和核心收敛 | 核心收敛范围或冻结条件变化时 |
-| [拓展工作区任务书 2026-07-12](extension-workspace-taskbook-2026-07-12.md) | 拓展工作区的阶段设计、验收标准和剩余边界 | 工作区阶段契约或实现范围变化时；不替代项目状态 |
-| [Agent Runtime 连续性任务书 2026-07-14](agent-runtime-continuity-taskbook-2026-07-14.md) | Context、T0-T3、附件、运行中重入、有界并行、检查点、后台执行和透明度的专项任务书 | Runtime 连续性阶段契约、依赖或验收结果变化时 |
-| [plugin-development.md](plugin-development.md) | 插件 API、开发流程、安全边界和兼容规则 | 插件宿主或贡献接口变化时 |
+正式文档采用渐进式披露，阅读入口固定为 [文档决策入口](../README.md)。根 README 只引导进入该入口，不再平铺全部文档。
 
-同一事实只在其责任文档中维护，其他文档使用链接引用。冲突时，长期约束看架构原则，当前事实和验证数字看项目状态，演进顺序看架构决策报告，目录归属看本指南，专项交互和流程看对应规范。不要创建按日期命名的一次性总结来复制进度、目录或测试数字。
+| 层级 | 目录 | 何时阅读 | 文档职责 |
+| --- | --- | --- | --- |
+| L0 决策入口 | `docs/README.md` | 每次准备决定下一步时 | 只显示当前阶段、推荐动作和此刻需要用户决定的事项 |
+| L1 当前依据 | `docs/decision/` | 需要核实现状或理解推荐顺序时 | [项目状态](../decision/project-status.md) 维护当前事实与验证；[架构决策报告](../decision/architecture-decision-report.md) 维护演进顺序与风险 |
+| L2 稳定原则 | `docs/principles/` | 修改产品方向、流程或交互规则时 | [架构原则](../principles/architecture-principles.md)、[核心流程规范](../principles/core-agent-flow-guidelines.md) 和 [UI 交互规范](../principles/ui-interaction-guidelines.md) |
+| L3 执行细节 | `docs/taskbooks/` | 方向已确定并准备实施具体阶段时 | 版本化任务书、阶段验收标准和历史完成证据 |
+| L4 工程参考 | `docs/reference/` | 定位代码、维护仓库或开发插件时 | 本指南、[模块拆分地图](module-split-map.md) 和 [插件开发说明](plugin-development.md) |
+
+同一事实只在其责任文档中维护，其他文档使用链接引用。冲突时，长期约束看架构原则，当前事实和验证数字看项目状态，演进顺序看架构决策报告，目录归属看本指南，专项交互和流程看对应规范。任务书不维护全局最新状态，也不要创建另一份一次性总结复制决策入口。
 
 任务书属于版本化执行基线，命名固定为“任务书总名称 + 最后更新时间”。文件名使用 `*-taskbook-YYYY-MM-DD.md`，一级标题以同一日期结尾，正文 `最后更新：YYYY-MM-DD` 必须一致。修改任务书内容并更新日期时，必须在同一变更中重命名文件并更新全仓链接；不使用 `latest`、`final` 或无日期文件名表达当前版本。
 
@@ -31,7 +24,7 @@
 
 | 路径 | 用途 |
 | --- | --- |
-| `docs/` | 正式架构约束、能力任务书、交互规范、项目状态和仓库维护说明。 |
+| `docs/` | 正式文档唯一入口和分层目录。先读 `docs/README.md`，再按需进入 `decision/`、`principles/`、`taskbooks/` 或 `reference/`。 |
 | `packages/` | pnpm workspace 的全部产品源码包。 |
 | `scripts/` | 可重复执行的构建、启动、快捷方式刷新、恢复检查和仓库卫生检查。 |
 | `skills/` | 仓库级技能示例和技能编写辅助材料；运行时技能仍从用户数据和配置的技能目录加载。 |
@@ -172,7 +165,7 @@
 
 ## 模块依赖方向
 
-模块分层和长期责任以 [架构原则](architecture-principles.md) 为准。当前代码和后续重构统一遵守以下依赖规则：
+模块分层和长期责任以 [架构原则](../principles/architecture-principles.md) 为准。当前代码和后续重构统一遵守以下依赖规则：
 
 ```text
 App / CLI / Channel adapters
@@ -191,7 +184,7 @@ App / CLI / Channel adapters
 7. 跨包只从公开入口导入；出现反向依赖时先定义端口，不通过深层 import 或循环依赖解决。
 8. 新建 package 需要同时满足独立职责、稳定接口、独立测试和真实复用；否则先在现有 package 内按 feature 拆分。
 
-Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约过滤、预算、淘汰、计数和双快照；provider/model tokenizer 能力矩阵强制模型声明与运行时 `counterId` 一致后才能生成精确账本，unavailable 模型只使用不可展示的保守请求前预算保护，当前仍缺真实 Provider 对账。Memory Repository 与 Memory Service 已分别把持久化和运行协调拆入同名领域目录；DECIDE、EXECUTE、VERIFY 也已把需求校准、工具循环、步骤调度和验证恢复从 stage facade 中分离。版本化 LLM Call Contract 位于 `packages/harness/src/llm-call-contracts/`，公共类型唯一来源是 `packages/types/src/runtime-contracts.ts`；EVOLVE/CAPTURE 的提交判定位于 `stages/memory-intent-gate.ts`。下一步收敛统一 Tool Execution Service、实时事件队列和 Mode Registry。不能因为已有 package 或接口就宣称真实场景已经完成，具体评估和演进顺序见 [架构决策报告](architecture-decision-report.md)。
+Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约过滤、预算、淘汰、计数和双快照；provider/model tokenizer 能力矩阵强制模型声明与运行时 `counterId` 一致后才能生成精确账本，unavailable 模型只使用不可展示的保守请求前预算保护，当前仍缺真实 Provider 对账。Memory Repository 与 Memory Service 已分别把持久化和运行协调拆入同名领域目录；DECIDE、EXECUTE、VERIFY 也已把需求校准、工具循环、步骤调度和验证恢复从 stage facade 中分离。版本化 LLM Call Contract 位于 `packages/harness/src/llm-call-contracts/`，公共类型唯一来源是 `packages/types/src/runtime-contracts.ts`；EVOLVE/CAPTURE 的提交判定位于 `stages/memory-intent-gate.ts`。下一步收敛统一 Tool Execution Service、实时事件队列和 Mode Registry。不能因为已有 package 或接口就宣称真实场景已经完成，具体评估和演进顺序见 [架构决策报告](../decision/architecture-decision-report.md)。
 
 ## 测试与脚本
 
@@ -230,12 +223,12 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 
 ## 后续修改规则
 
-1. 先根据 [架构原则](architecture-principles.md) 和本指南确认责任与模块归属；不要把运行时逻辑塞进 renderer，也不要让外部渠道成为本地核心依赖。
+1. 先根据 [架构原则](../principles/architecture-principles.md) 和本指南确认责任与模块归属；不要把运行时逻辑塞进 renderer，也不要让外部渠道成为本地核心依赖。
 2. 新增模块优先放入已有包；只有边界、生命周期和测试都清晰时才创建新包，并同步 workspace、入口、文档和测试。
 3. 修改公共类型或事件协议时，同时检查 `types`、生产者、消费者、持久化、renderer 恢复和相关测试。
 4. 删除模块前先搜索 import、导出、文档链接、脚本和用户数据兼容代码；删除后运行 `check:repo`、测试、typecheck 和 build。
-5. 文档只保留当前事实。阶段完成后更新 [project-status.md](project-status.md)，不要继续追加一次性历史报告。
-6. UI 变更遵守 [ui-interaction-guidelines.md](ui-interaction-guidelines.md)；核心流程变更遵守 [core-agent-flow-guidelines.md](core-agent-flow-guidelines.md)；跨模块重构同步更新 [架构决策报告](architecture-decision-report.md)。
+5. 文档只保留当前事实。阶段完成后更新 [project-status.md](../decision/project-status.md)，不要继续追加一次性历史报告。
+6. UI 变更遵守 [ui-interaction-guidelines.md](../principles/ui-interaction-guidelines.md)；核心流程变更遵守 [core-agent-flow-guidelines.md](../principles/core-agent-flow-guidelines.md)；跨模块重构同步更新 [架构决策报告](../decision/architecture-decision-report.md)。
 7. 每次应用构建都通过 `scripts/build-app.ps1` 或根 `build-app.bat` 刷新快捷方式；不得把机器绝对路径写进脚本。
 8. 插件变更必须同时验证 manifest 校验、未启用插件不加载、失败隔离、Runner 重建迁移和停用清理；本地代码默认不信任。
 9. 验证顺序固定为：`pnpm.cmd run check:repo`、`pnpm.cmd test`、`pnpm.cmd run typecheck`、`pnpm.cmd run build`、`pnpm.cmd run verify:app-recovery`。失败时记录真实原因，不用旧数字覆盖。

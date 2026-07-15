@@ -93,6 +93,20 @@ async function collectSourceFiles(root) {
   return files
 }
 
+async function collectMarkdownFiles(root) {
+  const files = []
+  const entries = await readdir(root, { withFileTypes: true })
+  for (const entry of entries) {
+    const absolute = join(root, entry.name)
+    if (entry.isDirectory()) {
+      files.push(...await collectMarkdownFiles(absolute))
+    } else if (entry.isFile() && extname(entry.name).toLowerCase() === '.md') {
+      files.push(absolute)
+    }
+  }
+  return files
+}
+
 async function checkPublishedSurface() {
   const tracked = trackedFiles()
   const rootMarkdown = tracked.filter((path) => !path.includes('/') && extname(path).toLowerCase() === '.md')
@@ -110,11 +124,24 @@ async function checkPublishedSurface() {
   assert(hiddenRoots.length === 0, '未跟踪本地隐藏工作目录', hiddenRoots.join(', '))
 
   const readme = await readText(join(repoRoot, 'README.md'))
-  const actualDocs = (await readdir(join(repoRoot, 'docs'), { withFileTypes: true }))
-    .filter((entry) => entry.isFile() && extname(entry.name).toLowerCase() === '.md')
-    .map((entry) => `docs/${entry.name}`)
-  const unlistedDocs = actualDocs.filter((path) => !readme.includes(path))
-  assert(unlistedDocs.length === 0, '正式文档均可从 README 定位', unlistedDocs.join(', '))
+  const docsIndexPath = join(repoRoot, 'docs', 'README.md')
+  const docsIndex = existsSync(docsIndexPath) ? await readText(docsIndexPath) : ''
+  const actualDocs = (await collectMarkdownFiles(join(repoRoot, 'docs'))).map(displayPath)
+  const unlistedDocs = actualDocs
+    .filter((path) => path !== 'docs/README.md')
+    .filter((path) => !docsIndex.includes(path.slice('docs/'.length)))
+  assert(readme.includes('docs/README.md'), '根 README 指向唯一文档入口')
+  assert(unlistedDocs.length === 0, '正式文档均可从分层入口定位', unlistedDocs.join(', '))
+
+  const progressiveSections = [
+    '## 现在先做什么',
+    '## 需要确认依据时',
+    '## 需要修改长期方向时',
+    '## 已决定方向后再看任务书',
+    '## 需要定位代码或维护仓库时',
+  ]
+  const missingSections = progressiveSections.filter((heading) => !docsIndex.includes(heading))
+  assert(missingSections.length === 0, '文档入口遵守渐进式披露层级', missingSections.join(', '))
 
   const publicTextExtensions = new Set([
     '.bat', '.cjs', '.css', '.html', '.js', '.json', '.jsx', '.md', '.mjs',
@@ -151,17 +178,18 @@ async function checkPublishedSurface() {
 
 async function checkCanonicalFiles() {
   const required = [
-    'docs/architecture-principles.md',
-    'docs/architecture-decision-report.md',
-    'docs/project-status.md',
-    'docs/repository-guide.md',
-    'docs/plugin-development.md',
-    'docs/foundation-cognition-repository-taskbook-2026-07-15.md',
-    'docs/core-agent-capability-taskbook-2026-07-13.md',
-    'docs/agent-core-memory-taskbook-2026-07-14.md',
-    'docs/core-focus-maintenance-taskbook-2026-07-13.md',
-    'docs/extension-workspace-taskbook-2026-07-12.md',
-    'docs/agent-runtime-continuity-taskbook-2026-07-14.md',
+    'docs/README.md',
+    'docs/principles/architecture-principles.md',
+    'docs/decision/architecture-decision-report.md',
+    'docs/decision/project-status.md',
+    'docs/reference/repository-guide.md',
+    'docs/reference/plugin-development.md',
+    'docs/taskbooks/foundation-cognition-repository-taskbook-2026-07-15.md',
+    'docs/taskbooks/core-agent-capability-taskbook-2026-07-13.md',
+    'docs/taskbooks/agent-core-memory-taskbook-2026-07-14.md',
+    'docs/taskbooks/core-focus-maintenance-taskbook-2026-07-13.md',
+    'docs/taskbooks/extension-workspace-taskbook-2026-07-12.md',
+    'docs/taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md',
     'scripts/build-app.ps1',
     'scripts/start-littlesheep.ps1',
     'scripts/refresh-desktop-shortcut.ps1',
@@ -189,19 +217,18 @@ async function checkCanonicalFiles() {
 }
 
 async function checkTaskbookNaming() {
-  const entries = await readdir(join(repoRoot, 'docs'), { withFileTypes: true })
-  const taskbooks = entries
-    .filter((entry) => entry.isFile() && entry.name.includes('taskbook') && entry.name.endsWith('.md'))
-    .map((entry) => entry.name)
+  const taskbooks = (await collectMarkdownFiles(join(repoRoot, 'docs')))
+    .filter((path) => path.includes('taskbook') && path.endsWith('.md'))
   const violations = []
-  for (const name of taskbooks) {
+  for (const path of taskbooks) {
+    const name = displayPath(path)
     const match = name.match(/-taskbook-(\d{4}-\d{2}-\d{2})\.md$/u)
     if (!match) {
       violations.push(`${name}: 文件名缺少最后更新时间`)
       continue
     }
     const date = match[1]
-    const content = await readText(join(repoRoot, 'docs', name))
+    const content = await readText(path)
     const title = content.split(/\r?\n/u, 1)[0]?.trim() ?? ''
     const updated = content.match(/^最后更新：(\d{4}-\d{2}-\d{2})$/mu)?.[1]
     if (!title.endsWith(date)) violations.push(`${name}: 一级标题日期应为 ${date}`)
@@ -340,7 +367,7 @@ async function checkRepositoryNavigation() {
   }
   assert(growth.length === 0, '核心组合热点未继续增长', growth.join(', '))
 
-  const splitMap = await readText(join(repoRoot, 'docs', 'module-split-map.md'))
+  const splitMap = await readText(join(repoRoot, 'docs', 'reference', 'module-split-map.md'))
   const missingFromSplitMap = largeFiles
     .map((entry) => entry.path)
     .filter((path) => !splitMap.includes(`\`${path}\``))
@@ -541,9 +568,7 @@ function checkTrackedGeneratedFiles() {
 }
 
 async function checkMarkdownLinks() {
-  const actualDocs = (await readdir(join(repoRoot, 'docs'), { withFileTypes: true }))
-    .filter((entry) => entry.isFile() && extname(entry.name).toLowerCase() === '.md')
-    .map((entry) => `docs/${entry.name}`)
+  const actualDocs = (await collectMarkdownFiles(join(repoRoot, 'docs'))).map(displayPath)
   const markdownFiles = [...new Set([
     ...trackedFiles().filter((path) => extname(path).toLowerCase() === '.md' && existsSync(join(repoRoot, path))),
     ...actualDocs,
@@ -574,9 +599,7 @@ async function checkMarkdownLinks() {
 }
 
 async function checkDocumentationLanguage() {
-  const actualDocs = (await readdir(join(repoRoot, 'docs'), { withFileTypes: true }))
-    .filter((entry) => entry.isFile() && extname(entry.name).toLowerCase() === '.md')
-    .map((entry) => `docs/${entry.name}`)
+  const actualDocs = (await collectMarkdownFiles(join(repoRoot, 'docs'))).map(displayPath)
   const documentationFiles = [...new Set([
     ...trackedFiles().filter((path) => extname(path).toLowerCase() === '.md' && existsSync(join(repoRoot, path))),
     ...actualDocs,

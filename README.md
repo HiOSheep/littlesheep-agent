@@ -20,7 +20,7 @@ Electron 主进程
 
 Local App API 只是本地 UI 与主进程之间的桥接，不属于外部渠道层。外部渠道是可选插件，只负责把渠道消息送入 Agent，并把 Agent 回复送回渠道；没有渠道配置时，LS 仍可完整运行。
 
-当前 workspace 包共 26 个：22 个核心包和 4 个渠道插件。包边界和重要模块见 [仓库指南](docs/repository-guide.md)。
+当前 workspace 包共 26 个：22 个核心包和 4 个渠道插件。包边界和重要模块见 [仓库指南](docs/reference/repository-guide.md)。
 
 ## 快速开始
 
@@ -48,7 +48,7 @@ pnpm.cmd run build
 pnpm.cmd run verify:app-recovery
 ```
 
-不要在 README 中固定测试数量。最新结果记录在 [项目状态](docs/project-status.md)，每次重大变更后重新运行上述命令并更新状态文档。
+不要在 README 中固定测试数量。最新结果记录在 [项目状态](docs/decision/project-status.md)，每次重大变更后重新运行上述命令并更新状态文档。
 
 ## 当前能力
 
@@ -62,23 +62,16 @@ pnpm.cmd run verify:app-recovery
 - 稳定项目身份：新项目 ID 与路径解耦；移动或重命名文件夹后可重新定位，并保留会话、记忆、投影和工作区状态。
 - 设置与模型：供应商密钥安全存储、供应商/模型选择、行为 profile 与权限策略分离；“存储与数据”支持登记完整数据根迁移、启动期校验切换和回滚。
 - 插件扩展：PluginHost、manifest 校验、本地代码信任、工具贡献、owner-scoped Skill 贡献和可选外部渠道插件。
-- 可选外部渠道：Webhook、Telegram、飞书和 QQ Bot；具体扩展边界见 [插件开发说明](docs/plugin-development.md)。
+- 可选外部渠道：Webhook、Telegram、飞书和 QQ Bot；具体扩展边界见 [插件开发说明](docs/reference/plugin-development.md)。
 
 ## 文档入口
 
 仓库说明文档默认使用中文；代码标识、协议字段、命令、路径和产品名保留英文，避免与源码和外部文档脱节。
 
-- [架构原则](docs/architecture-principles.md)：LLM、Agent、Mode、Context、Memory、Tools、Workflow 与插件的长期分工和硬约束。
-- [架构评估与开发决策报告](docs/architecture-decision-report.md)：当前模块评估、主要缺口、推荐演进顺序和待决策事项。
-- [项目状态](docs/project-status.md)：总进度、当前阶段、验证证据和未完成方向。
-- [仓库指南](docs/repository-guide.md)：目录、模块和维护规则。
-- [模块拆分地图](docs/module-split-map.md)：大型生产文件的所有权、目标边界和行为保持型拆分顺序。
-- [总基调、认知架构与仓库基元化任务书 2026-07-15](docs/foundation-cognition-repository-taskbook-2026-07-15.md)：已完成的仓库整理、认知契约、记忆提交和持续维护基线。
-- [核心 Agent 能力任务书 2026-07-13](docs/core-agent-capability-taskbook-2026-07-13.md)
-- [Agent 核心与记忆系统任务书 2026-07-14](docs/agent-core-memory-taskbook-2026-07-14.md)：核心收敛与真实场景验收基线。
-- [核心收敛小任务书 2026-07-13](docs/core-focus-maintenance-taskbook-2026-07-13.md)：冻结扩张、修复阻断 Bug、验证任务闭环与记忆系统。
-- [拓展工作区任务书 2026-07-12](docs/extension-workspace-taskbook-2026-07-12.md)
-- [Agent Runtime 连续性任务书 2026-07-14](docs/agent-runtime-continuity-taskbook-2026-07-14.md)：Context、记忆注册、附件、运行中重入、有界并行、检查点与后台连续执行。
-- [核心流程规范](docs/core-agent-flow-guidelines.md)
-- [UI 交互规范](docs/ui-interaction-guidelines.md)
-- [插件开发说明](docs/plugin-development.md)
+先打开 [文档决策入口](docs/README.md)。它会先告诉你当前只需要决定什么，再按需展开依据、原则、任务书和仓库参考。
+
+- 只想决定下一步：停留在文档决策入口第一页。
+- 需要核对当前事实：[项目状态](docs/decision/project-status.md)。
+- 需要理解推荐顺序：[架构决策报告](docs/decision/architecture-decision-report.md)。
+
+不要从任务书列表开始阅读；任务书只在方向已经确定、准备执行具体阶段时展开。

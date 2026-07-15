@@ -17,7 +17,7 @@ Renderer 拥有临时 UI 状态和交互编排，不拥有会话、记忆、项�
 
 - 只能通过 `api.ts` 或后续领域客户端访问主进程能力。
 - 禁止直接使用 Node.js、读写用户数据、复制主进程索引或自行执行工具。
-- 动画、浮层、导航和渐进式披露遵守 `docs/ui-interaction-guidelines.md`。
+- 动画、浮层、导航和渐进式披露遵守 `docs/principles/ui-interaction-guidelines.md`。
 
 ## 测试与修改定位
 

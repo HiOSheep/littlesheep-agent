@@ -5,9 +5,9 @@
 
 本文定义 LittleSheep（LS）长期开发必须遵守的架构原则。它回答“系统各部分应当如何分工”，不记录某一阶段的完成进度，也不直接作为发送给模型的 System Prompt。
 
-当前实现与目标架构之间的差距，以 [架构决策报告](architecture-decision-report.md) 和 [项目状态](project-status.md) 为准。若文档与源码行为不一致，先把差异记录为待处理问题，不得仅修改文档来伪装实现完成。
+当前实现与目标架构之间的差距，以 [架构决策报告](../decision/architecture-decision-report.md) 和 [项目状态](../decision/project-status.md) 为准。若文档与源码行为不一致，先把差异记录为待处理问题，不得仅修改文档来伪装实现完成。
 
-文档发生冲突时，不按文件日期简单覆盖：长期目标与硬约束以本文为准；当前实现事实以源码、测试和 [项目状态](project-status.md) 为准；演进建议以 [架构决策报告](architecture-decision-report.md) 为准；专项规范只细化其责任域，不能覆盖上层边界。任务书保存阶段设计和验收记录，不维护全项目最新测试数字。
+文档发生冲突时，不按文件日期简单覆盖：长期目标与硬约束以本文为准；当前实现事实以源码、测试和 [项目状态](../decision/project-status.md) 为准；演进建议以 [架构决策报告](../decision/architecture-decision-report.md) 为准；专项规范只细化其责任域，不能覆盖上层边界。任务书保存阶段设计和验收记录，不维护全项目最新测试数字。
 
 ## 1. 产品目标
 

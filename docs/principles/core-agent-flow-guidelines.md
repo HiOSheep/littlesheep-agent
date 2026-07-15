@@ -171,4 +171,4 @@
 - 替换或退役尚未接入主运行时的旧 `distillDailyToMemory()` 原始追加 helper；任何未来 daily 到长期记忆的蒸馏都必须走安全、去重、可回滚的结构化写入闸门，不能重新启用扁平追加路径。
 - 实现 `packages/mcp/` 客户端，同时复用内置工具的权限、超时、清洗和执行记录契约。
 - 继续进行工作区、渠道、记忆树和重启恢复的真实用户场景验收。
-- 按 [Agent Runtime 连续性任务书 2026-07-14](agent-runtime-continuity-taskbook-2026-07-14.md) 建立 Context、T0-T3、附件、运行中重入、有界并行、检查点、后台执行和双向透明的完整闭环；仓库拆分和 LLM Call Contract 的先行顺序见 [总基调、认知架构与仓库基元化任务书 2026-07-15](foundation-cognition-repository-taskbook-2026-07-15.md)。
+- 按 [Agent Runtime 连续性任务书 2026-07-14](../taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md) 建立 Context、T0-T3、附件、运行中重入、有界并行、检查点、后台执行和双向透明的完整闭环；仓库拆分和 LLM Call Contract 的先行顺序见 [总基调、认知架构与仓库基元化任务书 2026-07-15](../taskbooks/foundation-cognition-repository-taskbook-2026-07-15.md)。

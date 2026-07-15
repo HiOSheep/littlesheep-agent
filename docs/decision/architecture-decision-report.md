@@ -2,7 +2,7 @@
 
 最后更新：2026-07-15
 评估范围：当前源码、正式文档与已记录的验证结果
-执行状态：仓库基元化阶段 0-7 已完成；Context Engine、LLM Call Contract、记忆意图闸门和 29 项持续质量门已落地，真实 Provider 校准仍待完成
+执行状态：仓库基元化阶段 0-7 已完成；Context Engine、LLM Call Contract、记忆意图闸门和 31 项持续质量门已落地，真实 Provider 校准仍待完成
 
 ## 1. 给决策者的结论
 
@@ -186,7 +186,7 @@ src/renderer/shared/
 
 ## 6. 推荐实施顺序
 
-以下顺序描述 **跨模块职责收敛工作线**，不是产品全部任务的唯一阶段编号。Context、记忆注册、附件、运行中重入、检查点和后台执行使用 [Agent Runtime 连续性任务书 2026-07-14](agent-runtime-continuity-taskbook-2026-07-14.md) 的独立阶段号；全局执行顺序以 [项目状态](project-status.md) 的“推荐后续顺序”为准。每个阶段的当前进度以本节状态和项目状态为准，不能只因类型或入口存在就视为完成。
+以下顺序描述 **跨模块职责收敛工作线**，不是产品全部任务的唯一阶段编号。Context、记忆注册、附件、运行中重入、检查点和后台执行使用 [Agent Runtime 连续性任务书 2026-07-14](../taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md) 的独立阶段号；全局执行顺序以 [项目状态](project-status.md) 的“推荐后续顺序”为准。每个阶段的当前进度以本节状态和项目状态为准，不能只因类型或入口存在就视为完成。
 
 ### 阶段 0：特征基线与核心契约
 
@@ -375,17 +375,17 @@ src/renderer/shared/
 
 仓库基元化阶段 0-7 已完成，当前工作树质量门为绿色。建议先完成 Context Engine 的真实供应商校准，再进入统一 Tool Execution Service，而不是提前扩张新插件类型或 UI 范围。推进时持续遵守：
 
-- 以 [架构原则](architecture-principles.md) 作为最高层工程规范；
+- 以 [架构原则](../principles/architecture-principles.md) 作为最高层工程规范；
 - Behavior Mode 与 Permission Policy 保持正交；
 - 保留固定安全脊柱，不把 Workflow 直接开放为任意图；
 - 保护现有用户数据与插件化改动，不做破坏式迁移。
 
-Context Engine 已完成候选端口、预算器、稳定装配顺序、来源分段、版本化摘要、附件清单优先、按需附件工具、双账本展示、tokenizer 能力矩阵和不可展示的保守预算保护；版本化 LLM Call Contract 进一步约束每次调用的目的、输入、输出、工具和记忆策略。Memory Service、T0-T3 注册基础、Summary Memory、run-scoped 附件、理念资源、记忆意图闸门、项目投影、稳定项目身份、路径重绑定和资源生命周期均已进入真实运行路径。下一步先完成真实 Provider 对账，再推进统一 Tool Execution Service；实时事件生产留给后续 `RuntimeEventQueue`。连续执行、有界并行、数据生命周期和 UI 透明度的具体阶段见 [Agent Runtime 连续性任务书 2026-07-14](agent-runtime-continuity-taskbook-2026-07-14.md)。
+Context Engine 已完成候选端口、预算器、稳定装配顺序、来源分段、版本化摘要、附件清单优先、按需附件工具、双账本展示、tokenizer 能力矩阵和不可展示的保守预算保护；版本化 LLM Call Contract 进一步约束每次调用的目的、输入、输出、工具和记忆策略。Memory Service、T0-T3 注册基础、Summary Memory、run-scoped 附件、理念资源、记忆意图闸门、项目投影、稳定项目身份、路径重绑定和资源生命周期均已进入真实运行路径。下一步先完成真实 Provider 对账，再推进统一 Tool Execution Service；实时事件生产留给后续 `RuntimeEventQueue`。连续执行、有界并行、数据生命周期和 UI 透明度的具体阶段见 [Agent Runtime 连续性任务书 2026-07-14](../taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md)。
 
 ## 11. 报告维护规则
 
-- 本报告用于阶段决策，架构稳定原则以 [architecture-principles.md](architecture-principles.md) 为准。
+- 本报告用于阶段决策，架构稳定原则以 [architecture-principles.md](../principles/architecture-principles.md) 为准。
 - 当前能力和验证数字只在 [project-status.md](project-status.md) 维护，本报告不复制测试数量。
-- 目录和文件归属只在 [repository-guide.md](repository-guide.md) 维护。
+- 目录和文件归属只在 [repository-guide.md](../reference/repository-guide.md) 维护。
 - 每完成一个架构阶段，更新本报告对应矩阵、风险和下一决策；不要另建一次性总结文档。
 - 若实施结果证明推荐方向不成立，应记录证据并修改建议，而不是为了维持文档一致而保留错误架构。

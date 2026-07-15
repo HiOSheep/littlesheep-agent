@@ -3,7 +3,7 @@
 状态：规划已定稿，实施中（阶段 0、阶段 2、阶段 3 已完成；阶段 1 主要数据链已完成但真实供应商校准仍未闭环）
 最后更新：2026-07-14
 
-本文把 Context、记忆注册、附件、运行中追加要求、检查点恢复、后台执行和双向透明整理为一条可分阶段验收的开发任务书。它服从 [架构原则](architecture-principles.md) 和 [核心 Agent 流程规范](core-agent-flow-guidelines.md)，当前事实与最新测试数字仍以 [项目状态](project-status.md) 为准。
+本文把 Context、记忆注册、附件、运行中追加要求、检查点恢复、后台执行和双向透明整理为一条可分阶段验收的开发任务书。它服从 [架构原则](../principles/architecture-principles.md) 和 [核心 Agent 流程规范](../principles/core-agent-flow-guidelines.md)，当前事实与最新测试数字仍以 [项目状态](../decision/project-status.md) 为准。
 
 ## 0. 设计输入归一化结论
 
@@ -222,7 +222,7 @@ T0-T3 是资源权威、介入优先级和预算语义的逻辑分级，不是�
 - 每个 run 最多保留 64 组模型/Context 快照，每组最多保留 64 条消息、64 个 Context item 和 64 个工具名；工具统一记录最多保留 256 条并只保存输入哈希/键名和输出存在性；
 - 当前工具结果已映射为统一调用记录与执行证据，同时保留旧 `toolCalls` 读取路径供现有历史 UI 使用；
 - DECIDE 已接收与其他主决策阶段一致的 reasoning addon；当前 `1800` 规划输出上限被模型请求快照如实记录，后续由 Provider capability 与 Context Engine 统一预算；
-- 阶段 0 契约、兼容和观测验证已经通过；全仓最新测试、构建和恢复检查数字只在 [项目状态](project-status.md) 维护，避免任务书复制会快速过期的统计。
+- 阶段 0 契约、兼容和观测验证已经通过；全仓最新测试、构建和恢复检查数字只在 [项目状态](../decision/project-status.md) 维护，避免任务书复制会快速过期的统计。
 
 阶段 0 无剩余实施项。下一阶段从统一 Context 候选、预算和装配所有权开始，不在旧 stage 组装路径上继续叠加新来源。
 
@@ -266,7 +266,7 @@ T0-T3 是资源权威、介入优先级和预算语义的逻辑分级，不是�
 - 测试已证明一个计数器不能仅凭自己的 `supports()` 自行声明精确性，计数器缺失、id 不匹配或模型未分类都会保持 unavailable；
 - unavailable 模型已接入保守请求前预算保护：Context Engine 复用 LLM Client 的最终 OpenAI-compatible Chat Completions 载荷构造器，以 UTF-8 字节保守计量文本、工具 schema 和消息 framing，并为每个图片输入预留独立安全预算；它会淘汰低优先级可选 Context、触发压缩建议，并在必需内容仍超限时阻止请求；
 - 保守结果保存为 `ContextSafetyEstimate`，固定标记 `purpose: overflow_protection` 与 `displayable: false`，不属于 `LocalTokenLedger`。Renderer 回归已证明上下文圆环仍只读取 Provider usage 或匹配 tokenizer 的精确本地账本；
-- 当前工作树的最新验证结果与供应商阻塞统一记录在 [项目状态](project-status.md)，本任务书不复制会快速过期的测试数字。
+- 当前工作树的最新验证结果与供应商阻塞统一记录在 [项目状态](../decision/project-status.md)，本任务书不复制会快速过期的测试数字。
 
 剩余工作：
 
@@ -513,7 +513,7 @@ T0-T3 是资源权威、介入优先级和预算语义的逻辑分级，不是�
 
 阶段 1 与阶段 2 可以在契约稳定后部分并行，但阶段 4 必须基于统一 Context 与事件契约；阶段 5 必须基于 TaskBook 差异和副作用记录；阶段 6 只能展示真实底层数据，不能先做假 UI；阶段 7 需要前述能力形成可重复闭环。
 
-本任务书的阶段号只表示 **Runtime 连续性工作线**，不能与 [架构决策报告](architecture-decision-report.md) 中的模块收敛阶段号混用。全局执行时采用以下协调顺序：
+本任务书的阶段号只表示 **Runtime 连续性工作线**，不能与 [架构决策报告](../decision/architecture-decision-report.md) 中的模块收敛阶段号混用。全局执行时采用以下协调顺序：
 
 1. 完成阶段 1 的真实 Provider 对账与模型能力校准；
 2. 完成本任务书阶段 2-3 的 T0-T3 记忆注册、现有 Summary Memory 注册、附件生命周期和数据边界，使 Context 来源完整且可控；
