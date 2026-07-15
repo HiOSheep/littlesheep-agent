@@ -11,11 +11,13 @@ const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 describe('development workspace graph', () => {
   it('discovers every maintained package without descending into generated directories', async () => {
     const projects = await discoverWorkspaceProjects(repoRoot);
-    expect(projects).toHaveLength(26);
+    expect(projects).toHaveLength(27);
     expect(projects.find((project) => project.name === '@littlesheep/app')?.tsconfigs).toEqual([
       'tsconfig.json',
       'tsconfig.web.json',
     ]);
+    expect(projects.find((project) => project.name === '@littlesheep/embedding')?.tsconfigs)
+      .toEqual(['tsconfig.json']);
   });
 
   it('propagates a shared contract change to transitive dependents', async () => {

@@ -146,6 +146,7 @@ export {
   EmbeddingUnavailableError,
   MemoryEventJournal,
   MemoryOperationJournal,
+  MemoryV3MaintenanceWorker,
   MemoryV3StorageCoordinator,
   scoreMemoryCandidate,
 } from './v3/index.js';
@@ -164,4 +165,7 @@ export type {
   MemoryEvidenceEnvelope,
   KnownStateMemoryReference,
   EmbeddingEngine,
+  EmbeddingEngineDescriptor,
+  EmbeddingRequest,
+  EmbeddingResult,
 } from './v3/index.js';

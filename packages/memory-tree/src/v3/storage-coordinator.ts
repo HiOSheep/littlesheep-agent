@@ -88,8 +88,10 @@ export class MemoryV3StorageCoordinator {
     const recoveredEventIds: string[] = [];
     const failed: MemoryV3RecoveryResult['failed'] = [];
     for (const record of await this.eventJournal.listOutstanding(limit)) {
+      const storedMutation = record.event.payload[MUTATION_PAYLOAD_KEY];
+      if (storedMutation === undefined) continue;
       try {
-        const mutation = parseStorageMutation(record.event.payload[MUTATION_PAYLOAD_KEY]);
+        const mutation = parseStorageMutation(storedMutation);
         await this.resume(record, mutation);
         recoveredEventIds.push(record.event.id);
       } catch (error) {

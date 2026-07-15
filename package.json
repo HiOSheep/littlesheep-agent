@@ -29,6 +29,7 @@
     "verify:core": "pnpm run check:repo && pnpm run typecheck && pnpm run test:core-eval",
     "verify:full": "pnpm run check:repo && pnpm run test && pnpm run typecheck && pnpm run build && pnpm run verify:app-recovery",
     "verify:provider": "pnpm --filter @littlesheep/app exec electron ../../scripts/verify-provider-smoke.mjs",
+    "benchmark:embedding": "pnpm --filter @littlesheep/embedding run build && node scripts/benchmark-local-embedding.mjs",
     "verify:app-recovery": "node scripts/verify-app-recovery-sources.mjs"
   },
   "devDependencies": {

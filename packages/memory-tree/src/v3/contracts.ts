@@ -378,6 +378,7 @@ export interface EmbeddingEngineDescriptor {
 
 export interface EmbeddingRequest {
   texts: string[];
+  purpose: 'document' | 'query' | 'benchmark';
   signal?: AbortSignal;
 }
 

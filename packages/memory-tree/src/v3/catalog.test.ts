@@ -164,6 +164,40 @@ describe('MemoryCatalog', () => {
     expect(() => catalog.upsertRelation(relation)).toThrow(/cross entity scope boundaries/i);
   });
 
+  it('prevents entity and relation lifecycle changes from leaving dangling atom references', () => {
+    const catalog = createCatalog();
+    const left = makeEntity('entity-left', 'project-a');
+    const right = { ...makeEntity('entity-right', 'project-a'), externalKey: 'project-a:right' };
+    catalog.upsertEntity(left);
+    catalog.upsertEntity(right);
+    const relation = makeRelation(left.id, right.id);
+    catalog.upsertRelation(relation);
+    const atom = makeStoredAtom({
+      id: 'graph-atom',
+      entityRefs: [left.id],
+      relationRefs: [relation.id],
+    });
+    catalog.upsertAtom(atom, 'atoms/graph-atom.json');
+
+    expect(catalog.entityReferenceBlockers(left.id)).toEqual({
+      atomIds: [atom.id],
+      inboundRelationIds: [],
+      outboundRelationIds: [relation.id],
+    });
+    expect(() => catalog.upsertEntity({ ...left, status: 'archived', revision: 2 }))
+      .toThrow(/references remain/i);
+    expect(() => catalog.upsertRelation({ ...relation, status: 'archived', revision: 2 }))
+      .toThrow(/atom references remain/i);
+
+    catalog.upsertAtom(makeStoredAtom({ id: atom.id, entityRefs: [], relationRefs: [] }), 'atoms/graph-atom.json');
+    catalog.upsertRelation({ ...relation, status: 'archived', revision: 2 });
+    catalog.upsertRelation({ ...relation, status: 'deleted', revision: 3 });
+    expect(catalog.purgeRelation(relation.id)).toBe(true);
+    catalog.upsertEntity({ ...left, status: 'archived', revision: 2 });
+    catalog.upsertEntity({ ...left, status: 'deleted', revision: 3 });
+    expect(catalog.purgeEntity(left.id)).toBe(true);
+  });
+
   function createCatalog(options: Partial<ConstructorParameters<typeof MemoryCatalog>[0]> = {}): MemoryCatalog {
     const catalog = new MemoryCatalog({ dataDir, ...options });
     catalogs.push(catalog);
@@ -212,6 +246,28 @@ function makeEntity(id: string, scopeKey: string): MemoryEntity {
     label: scopeKey,
     aliases: [],
     status: 'active',
+    revision: 1,
+    createdAt: '2026-07-15T04:00:00.000Z',
+    updatedAt: '2026-07-15T04:00:00.000Z',
+  };
+}
+
+function makeRelation(fromEntityId: string, toEntityId: string): MemoryRelation {
+  return {
+    version: 1,
+    id: 'relation-linked',
+    fromEntityId,
+    toEntityId,
+    type: 'depends-on',
+    scope: 'project',
+    scopeKey: 'project-a',
+    source: { kind: 'agent', id: 'ls' },
+    evidenceRefs: ['test'],
+    confidence: 0.8,
+    authorityScope: { kind: 'tool-evidence', scope: 'project', scopeKey: 'project-a', topics: ['graph'] },
+    relevance: 0.8,
+    status: 'active',
+    resolutionStatus: 'resolved',
     revision: 1,
     createdAt: '2026-07-15T04:00:00.000Z',
     updatedAt: '2026-07-15T04:00:00.000Z',

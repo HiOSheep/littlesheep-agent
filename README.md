@@ -20,7 +20,7 @@ Electron 主进程
 
 Local App API 只是本地 UI 与主进程之间的桥接，不属于外部渠道层。外部渠道是可选插件，只负责把渠道消息送入 Agent，并把 Agent 回复送回渠道；没有渠道配置时，LS 仍可完整运行。
 
-当前 workspace 包共 26 个：22 个核心包和 4 个渠道插件。包边界和重要模块见 [仓库指南](docs/reference/repository-guide.md)。
+当前 workspace 包共 27 个：23 个核心包和 4 个渠道插件。包边界和重要模块见 [仓库指南](docs/reference/repository-guide.md)。
 
 ## 快速开始
 

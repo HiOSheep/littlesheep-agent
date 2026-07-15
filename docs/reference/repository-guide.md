@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-07-15 15:07:00
+最后更新：2026-07-15 16:35:02
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
@@ -73,7 +73,8 @@
 
 | 包 | 归属和职责 |
 | --- | --- |
-| `packages/memory-tree/` | v2 的 `MemoryService`/Repository 稳定门面、T0-T3 资源注册、索引导航、项目投影和生命周期；`src/v3/` 隔离拥有 atom 契约/文件、事件与操作 journal、SQLite catalog、FTS/向量端口、实体关系、优先级和恢复协调器。v3 尚未接管正式运行路径。 |
+| `packages/memory-tree/` | v2 的 `MemoryService`/Repository 稳定门面、T0-T3 资源注册、索引导航、项目投影和生命周期；`src/v3/` 隔离拥有 atom 契约/文件、事件与操作 journal、SQLite catalog、FTS/向量端口、有界维护 worker、实体关系与引用治理、优先级和恢复协调器。v3 尚未接管正式运行路径。 |
+| `packages/embedding/` | Memory v3 的本地 Transformers.js Embedding 实现、固定 revision 模型登记、显式资产准备、大小/SHA-256 校验、离线加载和候选基准；不拥有记忆正文、Catalog 或 Provider 请求。 |
 | `packages/memory-core/` | 文件记忆兼容存储、daily、长期记忆、写入闸门、归档和旧来源适配。 |
 | `packages/vector/` | 向量存储接口；只在已导航分支的深搜兜底路径使用。 |
 | `packages/experience/` | 经验记录、置信度衰减和可复用能力数据。 |
@@ -191,7 +192,7 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 - `pnpm.cmd run verify:changed`：默认以 `origin/main` 为基线，合并已提交、暂存、未暂存和未跟踪文件，计算变更 package 及其传递依赖方；单进程增量 typecheck 后，只运行与变更源文件相关的 Vitest。需要其他基线时设置 `LITTLESHEEP_BASE_REF`。
 - `pnpm.cmd run verify:core`：仓库门、全工作区增量 typecheck 与 69 项核心 Agent 契约测试，适用于 Harness、Runner、Context、Memory 和公共协议变更。
 - `pnpm.cmd run verify:full`：阶段结束的完整测试、类型、Electron 构建和恢复源检查，不用于每次小改动。
-- `pnpm.cmd run sync:tsconfig`：从 26 个 workspace manifest 的真实依赖自动生成 package `references` 和 `tsconfig.workspace.json`；`check:repo` 会拒绝过期引用。
+- `pnpm.cmd run sync:tsconfig`：从 27 个 workspace manifest 的真实依赖自动生成 package `references` 和 `tsconfig.workspace.json`；`check:repo` 会拒绝过期引用。
 - 包内 `src/**/*.test.ts(x)`：测试包内契约和模块行为，应与源码同目录维护。
 - `test/core-agent-contracts.test.ts`：跨包核心 Agent 契约。
 - `test/e2e-cli.test.ts`、`test/e2e-webhook.test.ts`：跨包 CLI/渠道流程。

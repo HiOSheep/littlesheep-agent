@@ -1,4 +1,4 @@
-export const MEMORY_CATALOG_SCHEMA_VERSION = 3;
+export const MEMORY_CATALOG_SCHEMA_VERSION = 5;
 
 export const MEMORY_CATALOG_SCHEMA_SQL = `
 PRAGMA foreign_keys = ON;
@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS atoms (
 CREATE INDEX IF NOT EXISTS idx_atoms_parent ON atoms(parent_id);
 CREATE INDEX IF NOT EXISTS idx_atoms_boundary ON atoms(branch, scope, scope_key, status);
 CREATE INDEX IF NOT EXISTS idx_atoms_updated ON atoms(updated_at);
+CREATE INDEX IF NOT EXISTS idx_atoms_embedding_work ON atoms(status, embedding_status, updated_at);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS atom_fts USING fts5(
   atom_id UNINDEXED,
@@ -126,6 +127,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_entity_external_boundary
   ON entities(entity_type, scope, scope_key, external_key)
   WHERE external_key IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS atom_entity_refs (
+  atom_id TEXT NOT NULL REFERENCES atoms(atom_id) ON DELETE CASCADE,
+  entity_id TEXT NOT NULL REFERENCES entities(entity_id),
+  PRIMARY KEY(atom_id, entity_id)
+);
+CREATE INDEX IF NOT EXISTS idx_atom_entity_refs_entity ON atom_entity_refs(entity_id);
+
 CREATE TABLE IF NOT EXISTS relations (
   relation_id TEXT PRIMARY KEY,
   from_entity_id TEXT NOT NULL REFERENCES entities(entity_id),
@@ -148,6 +156,13 @@ CREATE TABLE IF NOT EXISTS relations (
 );
 CREATE INDEX IF NOT EXISTS idx_relations_from ON relations(from_entity_id, relation_type);
 CREATE INDEX IF NOT EXISTS idx_relations_to ON relations(to_entity_id, relation_type);
+
+CREATE TABLE IF NOT EXISTS atom_relation_refs (
+  atom_id TEXT NOT NULL REFERENCES atoms(atom_id) ON DELETE CASCADE,
+  relation_id TEXT NOT NULL REFERENCES relations(relation_id),
+  PRIMARY KEY(atom_id, relation_id)
+);
+CREATE INDEX IF NOT EXISTS idx_atom_relation_refs_relation ON atom_relation_refs(relation_id);
 
 CREATE TABLE IF NOT EXISTS operations (
   operation_id TEXT PRIMARY KEY,
