@@ -1,10 +1,54 @@
 {
   "compilerOptions": {
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "jsx": "react-jsx",
-    "types": ["vite/client"],
+    "types": [
+      "vite/client"
+    ],
     "noEmit": true
   },
-  "include": ["src/renderer/**/*"],
-  "extends": "../../tsconfig.base.json"
+  "include": [
+    "src/renderer/**/*",
+    "src/shared/**/*"
+  ],
+  "extends": "../../tsconfig.base.json",
+  "references": [
+    {
+      "path": "../branding"
+    },
+    {
+      "path": "../channels/feishu"
+    },
+    {
+      "path": "../channels/qqbot"
+    },
+    {
+      "path": "../channels/telegram"
+    },
+    {
+      "path": "../channels/webhook"
+    },
+    {
+      "path": "../config"
+    },
+    {
+      "path": "../memory-core"
+    },
+    {
+      "path": "../plugins"
+    },
+    {
+      "path": "../prompt"
+    },
+    {
+      "path": "../runner"
+    },
+    {
+      "path": "../types"
+    }
+  ]
 }

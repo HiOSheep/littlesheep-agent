@@ -41,7 +41,7 @@
 | `package.json` | workspace 根脚本、测试入口、类型检查、构建和仓库卫生检查。 |
 | `pnpm-workspace.yaml` | 声明 `packages/*` 与 `packages/channels/*` 两组 workspace。 |
 | `pnpm-lock.yaml` | 依赖锁定文件；只有依赖变更时由 pnpm 更新。 |
-| `tsconfig.base.json`、`vitest.config.ts` | 全仓 TypeScript 与 Vitest 基线。 |
+| `tsconfig.base.json`、`tsconfig.workspace.json`、`vitest.config.ts` | 全仓 TypeScript 基线、自动生成的 project references solution 与 Vitest 基线。`tsconfig.workspace.json` 由维护脚本生成，不手工编辑。 |
 | `branding.config.json`、`littlesheep.config.json` | 仓库级品牌/开发配置样例，不放用户密钥。 |
 | `README.md` | 面向开发者的入口说明和质量门。 |
 | `build-app.bat`、`start-littlesheep.bat` | Windows 兼容入口，实际逻辑委托给 `scripts/`。 |
@@ -188,10 +188,17 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 
 ## 测试与脚本
 
+- `pnpm.cmd run verify:changed`：默认以 `origin/main` 为基线，合并已提交、暂存、未暂存和未跟踪文件，计算变更 package 及其传递依赖方；单进程增量 typecheck 后，只运行与变更源文件相关的 Vitest。需要其他基线时设置 `LITTLESHEEP_BASE_REF`。
+- `pnpm.cmd run verify:core`：仓库门、全工作区增量 typecheck 与 69 项核心 Agent 契约测试，适用于 Harness、Runner、Context、Memory 和公共协议变更。
+- `pnpm.cmd run verify:full`：阶段结束的完整测试、类型、Electron 构建和恢复源检查，不用于每次小改动。
+- `pnpm.cmd run sync:tsconfig`：从 26 个 workspace manifest 的真实依赖自动生成 package `references` 和 `tsconfig.workspace.json`；`check:repo` 会拒绝过期引用。
 - 包内 `src/**/*.test.ts(x)`：测试包内契约和模块行为，应与源码同目录维护。
 - `test/core-agent-contracts.test.ts`：跨包核心 Agent 契约。
 - `test/e2e-cli.test.ts`、`test/e2e-webhook.test.ts`：跨包 CLI/渠道流程。
 - `scripts/check-repository-hygiene.mjs`：仓库结构质量门，不参与运行时；检查正式文档、任务书日期、生成物、300/600 行登记、受控超限、热点增长、workspace 清单、深层 import、运行时依赖环和核心协议唯一来源。
+- `scripts/workspace-projects.mjs`：workspace 包发现、依赖图、受影响包传播和 TypeScript config 路径的唯一实现。
+- `scripts/sync-typescript-projects.mjs`：同步或检查 TypeScript project references，避免手工维护的引用图与 package manifest 分叉。
+- `scripts/run-affected-verification.mjs`：按 Git 变更执行受影响 typecheck 与 related tests；配置文件变化不应误触发全部运行时测试。
 - `scripts/verify-app-recovery-sources.mjs`：只读检查用户数据中的工作区、会话、执行日志和恢复索引。
 - `scripts/verify-provider-smoke.mjs`：使用本机安全存储中的凭证执行脱敏 Provider 冒烟，覆盖最小聊天、reasoning、工具调用、流式中断和 usage 对账；不得输出或写入明文密钥。
 - `scripts/build-app.ps1`：构建 Electron 应用并刷新快捷方式。
@@ -231,5 +238,6 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 6. UI 变更遵守 [ui-interaction-guidelines.md](../principles/ui-interaction-guidelines.md)；核心流程变更遵守 [core-agent-flow-guidelines.md](../principles/core-agent-flow-guidelines.md)；跨模块重构同步更新 [架构决策报告](../decision/architecture-decision-report.md)。
 7. 每次应用构建都通过 `scripts/build-app.ps1` 或根 `build-app.bat` 刷新快捷方式；不得把机器绝对路径写进脚本。
 8. 插件变更必须同时验证 manifest 校验、未启用插件不加载、失败隔离、Runner 重建迁移和停用清理；本地代码默认不信任。
-9. 验证顺序固定为：`pnpm.cmd run check:repo`、`pnpm.cmd test`、`pnpm.cmd run typecheck`、`pnpm.cmd run build`、`pnpm.cmd run verify:app-recovery`。失败时记录真实原因，不用旧数字覆盖。
-10. 说明文档默认使用中文；代码标识、协议字段、命令、路径和供应商产品名保留英文。确有维护价值的英文内容只能作为补充版本，不能取代中文正式文档。
+9. 日常修改先运行 `verify:changed`；核心协议和 Agent 流程运行 `verify:core`；阶段完成运行 `verify:full`。完整门内部顺序仍为 `check:repo`、全量测试、增量 typecheck、Electron build 和恢复源检查。失败时记录真实原因，不用快速门替代阶段完成证据。
+10. workspace package 依赖变化后运行 `sync:tsconfig`，不要手改生成的 references。`typecheck` 会产生被忽略的声明和 `.tsbuildinfo`，用于保证跨包契约正确并加速下一轮。
+11. 说明文档默认使用中文；代码标识、协议字段、命令、路径和供应商产品名保留英文。确有维护价值的英文内容只能作为补充版本，不能取代中文正式文档。

@@ -3,6 +3,45 @@
     "outDir": "./dist",
     "rootDir": "./src"
   },
-  "include": ["src/main/**/*", "src/preload/**/*"],
-  "extends": "../../tsconfig.base.json"
+  "include": [
+    "src/main/**/*",
+    "src/preload/**/*",
+    "src/shared/**/*"
+  ],
+  "extends": "../../tsconfig.base.json",
+  "references": [
+    {
+      "path": "../branding"
+    },
+    {
+      "path": "../channels/feishu"
+    },
+    {
+      "path": "../channels/qqbot"
+    },
+    {
+      "path": "../channels/telegram"
+    },
+    {
+      "path": "../channels/webhook"
+    },
+    {
+      "path": "../config"
+    },
+    {
+      "path": "../memory-core"
+    },
+    {
+      "path": "../plugins"
+    },
+    {
+      "path": "../prompt"
+    },
+    {
+      "path": "../runner"
+    },
+    {
+      "path": "../types"
+    }
+  ]
 }

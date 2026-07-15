@@ -8,7 +8,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.web.json",
-    "clean": "rimraf dist out",
+    "clean": "rimraf dist out *.tsbuildinfo",
     "preview": "electron-vite preview"
   },
   "devDependencies": {

@@ -4,6 +4,54 @@
     "outDir": "./dist",
     "rootDir": "./src"
   },
-  "include": ["src/**/*"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.js", "dist", "node_modules"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test.js",
+    "dist",
+    "node_modules"
+  ],
+  "references": [
+    {
+      "path": "../branding"
+    },
+    {
+      "path": "../classifier"
+    },
+    {
+      "path": "../config"
+    },
+    {
+      "path": "../context"
+    },
+    {
+      "path": "../experience"
+    },
+    {
+      "path": "../llm"
+    },
+    {
+      "path": "../memory-core"
+    },
+    {
+      "path": "../memory-tree"
+    },
+    {
+      "path": "../prompt"
+    },
+    {
+      "path": "../safety"
+    },
+    {
+      "path": "../session"
+    },
+    {
+      "path": "../tools"
+    },
+    {
+      "path": "../types"
+    }
+  ]
 }

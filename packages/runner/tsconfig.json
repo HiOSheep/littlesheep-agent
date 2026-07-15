@@ -1,10 +1,57 @@
 {
-    "compilerOptions":  {
-                            "outDir":  "./dist",
-                            "rootDir":  "./src"
-                        },
-    "include":  [
-                    "src/**/*"
-                ],
-    "extends":  "../../tsconfig.base.json"
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "extends": "../../tsconfig.base.json",
+  "references": [
+    {
+      "path": "../branding"
+    },
+    {
+      "path": "../config"
+    },
+    {
+      "path": "../experience"
+    },
+    {
+      "path": "../harness"
+    },
+    {
+      "path": "../llm"
+    },
+    {
+      "path": "../memory-core"
+    },
+    {
+      "path": "../memory-tree"
+    },
+    {
+      "path": "../prompt"
+    },
+    {
+      "path": "../safety"
+    },
+    {
+      "path": "../session"
+    },
+    {
+      "path": "../skills"
+    },
+    {
+      "path": "../snapshot"
+    },
+    {
+      "path": "../tools"
+    },
+    {
+      "path": "../types"
+    },
+    {
+      "path": "../vector"
+    }
+  ]
 }

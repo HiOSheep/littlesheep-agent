@@ -4,6 +4,24 @@
     "outDir": "./dist",
     "rootDir": "./src"
   },
-  "include": ["src/**/*"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.js", "dist", "node_modules"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test.js",
+    "dist",
+    "node_modules"
+  ],
+  "references": [
+    {
+      "path": "../config"
+    },
+    {
+      "path": "../llm"
+    },
+    {
+      "path": "../types"
+    }
+  ]
 }

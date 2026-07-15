@@ -1,0 +1,86 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "packages/app/tsconfig.json"
+    },
+    {
+      "path": "packages/app/tsconfig.web.json"
+    },
+    {
+      "path": "packages/branding/tsconfig.json"
+    },
+    {
+      "path": "packages/channels/feishu/tsconfig.json"
+    },
+    {
+      "path": "packages/channels/qqbot/tsconfig.json"
+    },
+    {
+      "path": "packages/channels/telegram/tsconfig.json"
+    },
+    {
+      "path": "packages/channels/webhook/tsconfig.json"
+    },
+    {
+      "path": "packages/classifier/tsconfig.json"
+    },
+    {
+      "path": "packages/cli/tsconfig.json"
+    },
+    {
+      "path": "packages/config/tsconfig.json"
+    },
+    {
+      "path": "packages/context/tsconfig.json"
+    },
+    {
+      "path": "packages/experience/tsconfig.json"
+    },
+    {
+      "path": "packages/harness/tsconfig.json"
+    },
+    {
+      "path": "packages/llm/tsconfig.json"
+    },
+    {
+      "path": "packages/mcp/tsconfig.json"
+    },
+    {
+      "path": "packages/memory-core/tsconfig.json"
+    },
+    {
+      "path": "packages/memory-tree/tsconfig.json"
+    },
+    {
+      "path": "packages/plugins/tsconfig.json"
+    },
+    {
+      "path": "packages/prompt/tsconfig.json"
+    },
+    {
+      "path": "packages/runner/tsconfig.json"
+    },
+    {
+      "path": "packages/safety/tsconfig.json"
+    },
+    {
+      "path": "packages/session/tsconfig.json"
+    },
+    {
+      "path": "packages/skills/tsconfig.json"
+    },
+    {
+      "path": "packages/snapshot/tsconfig.json"
+    },
+    {
+      "path": "packages/tools/tsconfig.json"
+    },
+    {
+      "path": "packages/types/tsconfig.json"
+    },
+    {
+      "path": "packages/vector/tsconfig.json"
+    }
+  ]
+}

@@ -195,6 +195,10 @@ async function checkCanonicalFiles() {
     'scripts/start-littlesheep.ps1',
     'scripts/refresh-desktop-shortcut.ps1',
     'scripts/verify-app-recovery-sources.mjs',
+    'scripts/workspace-projects.mjs',
+    'scripts/sync-typescript-projects.mjs',
+    'scripts/run-affected-verification.mjs',
+    'tsconfig.workspace.json',
     'build-app.bat',
     'start-littlesheep.bat',
   ]
@@ -270,8 +274,10 @@ async function checkWorkspacePackages() {
   assert(!existsSync(join(repoRoot, 'packages', 'gateway')), '旧渠道网关包已移除')
 
   const rootManifest = await readJson(join(repoRoot, 'package.json'), '根 package.json 可解析')
+  const repositoryCheck = rootManifest?.scripts?.['check:repo'] ?? ''
   assert(
-    rootManifest?.scripts?.['check:repo'] === 'node scripts/check-repository-hygiene.mjs',
+    repositoryCheck.includes('node scripts/check-repository-hygiene.mjs') &&
+      repositoryCheck.includes('node scripts/sync-typescript-projects.mjs --check'),
     'check:repo 脚本已接入',
   )
 }

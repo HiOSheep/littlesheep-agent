@@ -40,6 +40,28 @@ pnpm run build
 
 ## 质量门
 
+日常开发先使用按 Git 变更传播到依赖方的快速门：
+
+```powershell
+pnpm.cmd run verify:changed
+```
+
+修改 Harness、Runner、Context、Memory 或公共契约时，再运行核心门：
+
+```powershell
+pnpm.cmd run verify:core
+```
+
+阶段结束、准备推送或发布前运行完整门：
+
+```powershell
+pnpm.cmd run verify:full
+```
+
+`typecheck` 使用 TypeScript project references 和增量缓存，并刷新本地声明产物，确保依赖包检查的是当前契约而不是旧 `dist/*.d.ts`。首次或清理缓存后会较慢，无改动复查通常会快速跳过。
+
+完整门等价于按顺序运行：
+
 ```powershell
 pnpm.cmd run check:repo
 pnpm.cmd test

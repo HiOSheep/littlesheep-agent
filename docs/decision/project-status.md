@@ -16,7 +16,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 | 能力域 | 状态 | 当前结论 | 主要位置 |
 | --- | --- | --- | --- |
-| 架构治理 | 仓库基元化阶段 0-7 已完成 | 26 个 package 与指定领域目录均有所有权 README；关键组合入口已收敛为 facade。`check:repo` 自动校验文档分层、任务书日期、300/600 行登记、受控超限、热点增长、深层 import、运行时依赖环和核心协议唯一来源 | `docs/taskbooks/foundation-cognition-repository-taskbook-2026-07-15.md`、`docs/reference/module-split-map.md`、`scripts/check-repository-hygiene.mjs` |
+| 架构治理 | 仓库基元化阶段 0-7 已完成 | 26 个 package 与指定领域目录均有所有权 README；关键组合入口已收敛为 facade。`check:repo` 自动校验文档、模块和 TypeScript references；单进程 `tsc -b`、受影响包传播和 changed/core/full 三级验证已接通，避免依赖方读取旧声明并降低日常反馈成本 | `docs/reference/repository-guide.md`、`docs/reference/module-split-map.md`、`scripts/workspace-projects.mjs`、`scripts/run-affected-verification.mjs` |
 | LLM 调用契约与记忆提交 | 已实现工程闭环 | 每次模型请求解析独立 `LlmCallContract`，声明 purpose、Context、决策、输出、工具、记忆和预算；FINALIZE 禁止模型调用。EVOLVE/CAPTURE 只提交有真实步骤、工具和验证证据的写入，冲突/失效意图只延期审计 | `packages/types/src/runtime-contracts.ts`、`packages/harness/src/llm-call-contracts/`、`model-observability.ts`、`stages/memory-intent-gate.ts` |
 | Context Engine | 阶段 1 主要数据链与调用契约已实现，供应商验收未闭环 | 支持确定性候选、来源 segment、契约过滤、预算淘汰、版本化 Summary Memory、附件清单优先、按需附件工具、Provider usage 绑定和双账本 UI；必需 Context 越权或缺失会失败关闭。当前内置模型均明确为 unavailable 并使用不可展示的保守安全估算；真实 Provider 对账尚未完成 | `packages/context/src/engine.ts`、`context-engine/`、`packages/harness/src/context-candidates.ts`、`model-observability.ts`、`packages/config/src/model-capabilities.ts` |
 | 附件、workplace 与数据根生命周期 | 阶段 3 工程实现已完成 | 粘贴/浏览器导入进入独立受管缓存，按 30 天、256 项、512 MiB 有界清理；workplace 使用可恢复的有界元数据索引，不读正文。设置页可登记完整数据根迁移，下一次启动会在任何写入者初始化前通过外部 locator、同级 staging、全文件 SHA-256 清单和活动元数据路径重绑定完成原子切换；源目录保留，失败继续使用旧目录，提交中断可恢复，回滚同样在下次启动生效。隔离测试已覆盖这些契约，尚未擅自搬迁正式用户数据 | `packages/app/src/main/attachment-cache.ts`、`packages/app/src/main/data-root-migration.ts`、`packages/app/src/main/data-root-metadata.ts`、`packages/memory-tree/src/workspace-resource-index.ts` |
@@ -45,9 +45,11 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 | 检查 | 当前工作树结果 | 证据命令 |
 | --- | --- | --- |
 | 仓库卫生 | 通过：31 项通过，0 项失败 | `pnpm.cmd run check:repo` |
-| 全量测试 | 通过：119 个测试文件；996 passed、1 skipped | `pnpm.cmd test` |
-| 全工作区类型检查 | 通过 | `pnpm.cmd run typecheck` |
-| 全工作区构建 | 通过 | `pnpm.cmd run build` |
+| 开发快速门 | 通过：本轮全 workspace 配置变更下约 11 秒；增量 typecheck 约 1 秒，相关测试只运行命中的文件 | `pnpm.cmd run verify:changed` |
+| 核心 Agent 门 | 通过：仓库检查、增量全工作区类型和 69 项核心契约约 12 秒 | `pnpm.cmd run verify:core` |
+| 全量测试 | 通过：120 个测试文件；999 passed、1 skipped | `pnpm.cmd test` |
+| 全工作区类型检查 | 通过：完全清理后的 project references 冷构建约 26 秒，热缓存复查约 1 秒；原逐包命令约 46 秒 | `pnpm.cmd run typecheck` |
+| 全工作区构建 | 通过：增量类型图加 Electron 完整打包约 50 秒；原逐包构建约 98 秒 | `pnpm.cmd run build` |
 | 应用恢复源检查 | 通过；仍保留旧执行日志缺失、可选 workspace artifact 索引缺失，以及现有用户数据尚未产生 workplace 资源索引的诊断警告 | `pnpm.cmd run verify:app-recovery` |
 | 桌面快捷方式 | 已刷新至最新 Electron 构建；窗口可见且响应正常，记忆树可见 `PHILOSOPHY.md / 长期理念`，全局返回可回到原对话 | `scripts/refresh-desktop-shortcut.ps1` |
 
