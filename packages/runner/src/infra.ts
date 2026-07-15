@@ -178,6 +178,7 @@ export async function buildInfrastructure(
   // share this instance, so cache invalidation and run ledgers cannot diverge.
   const memoryRepository = new MemoryRepository({
     dataDir: dirs.root,
+    backend: opts.config.memory.repositoryBackend,
     policy: { experienceThreshold: opts.config.memory.experienceWriteThreshold },
     log: opts.log,
   });

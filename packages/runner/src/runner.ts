@@ -440,7 +440,8 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       run({ ...input, onAssistantDelta: onDelta }),
     replay: (runId: string) => infra.executionLogStore.read(runId),
     shutdown: async () => {
-      // Close the vector store's SQLite connection (MCP servers would close here too).
+      // Close long-lived SQLite connections before adapters replace or delete the data root.
+      infra.memoryRepository.close();
       infra.vectorStore.close();
     },
     state,

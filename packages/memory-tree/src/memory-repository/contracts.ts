@@ -7,11 +7,31 @@ import type {
   MemoryWritePolicy,
   MemoryWriteResult,
 } from '../types.js';
+import type { EmbeddingEngine } from '../v3/contracts.js';
+
+export type MemoryRepositoryBackendKind = 'v2' | 'v3';
+
+export interface MemoryRepositoryV3Options {
+  embeddingEngine?: EmbeddingEngine;
+  allowRemoteEmbedding?: boolean;
+  maxEmbeddingBatchSize?: number;
+  maxDueBatchSize?: number;
+}
+
+export const MEMORY_V3_EXPERIMENT_MARKER = '.memory-v3-experiment.json';
+
+export interface MemoryV3ExperimentMarker {
+  version: 1;
+  purpose: 'isolated-memory-v3-evaluation';
+  createdAt: string;
+}
 
 export interface MemoryRepositoryOptions {
   dataDir: string;
+  backend?: MemoryRepositoryBackendKind;
   policy?: Partial<MemoryWritePolicy>;
   log?: LogFn;
+  v3?: MemoryRepositoryV3Options;
 }
 
 export interface ReplaceMemoryResourceGroupOptions {

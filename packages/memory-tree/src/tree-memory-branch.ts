@@ -61,7 +61,13 @@ function toIndexEntry(node: MemoryNode): MemoryIndexEntry {
   };
 }
 
-function toFragment(node: MemoryNode, branchId: string, reason: string, score: number): MemoryFragment {
+function toFragment(
+  node: MemoryNode,
+  branchId: string,
+  reason: string,
+  score: number,
+  source: string,
+): MemoryFragment {
   const content = [
     `## ${node.summary}`,
     node.content,
@@ -80,7 +86,7 @@ function toFragment(node: MemoryNode, branchId: string, reason: string, score: n
     dedupKey: `tree-node:${node.id}:${node.updatedAt}`,
     matchReason: reason,
     metadata: {
-      source: `memory-tree/index.json#${node.id}`,
+      source,
       kind: 'indexed-memory-node',
       generatedAt: node.updatedAt,
       runId: node.sourceRunIds.at(-1),
@@ -173,7 +179,13 @@ export class TreeMemoryBranch implements MemoryBranch {
       branchId: this.id,
       nodeId: request.nodeId,
       query: request.query,
-      fragments: selected.map((node) => toFragment(node, this.id, matchReason, relevance(node, request.query ?? ''))),
+      fragments: selected.map((node) => toFragment(
+        node,
+        this.id,
+        matchReason,
+        relevance(node, request.query ?? ''),
+        this.repository.evidenceLocator(node.id),
+      )),
       childIndex,
       truncated: selected.length >= request.limit || (childIndex?.length ?? 0) > request.limit,
     };
@@ -186,7 +198,13 @@ export class TreeMemoryBranch implements MemoryBranch {
       .filter((entry) => entry.score > 0.15)
       .sort((left, right) => right.score - left.score)
       .slice(0, request.limit)
-      .map(({ node, score }) => toFragment(node, this.id, `Deep search matched "${request.query}".`, score));
+      .map(({ node, score }) => toFragment(
+        node,
+        this.id,
+        `Deep search matched "${request.query}".`,
+        score,
+        this.repository.evidenceLocator(node.id),
+      ));
   }
 }
 

@@ -1,6 +1,6 @@
 # LittleSheep 模块拆分地图
 
-最后更新：2026-07-15 16:35:02
+最后更新：2026-07-15 18:55:52
 
 本文件记录大型生产文件的当前所有权、目标边界和拆分顺序。它是仓库基元化任务书的阶段产物，不替代项目状态，也不把行数当成唯一质量指标。
 
@@ -36,8 +36,11 @@
 | `packages/memory-tree/src/types.ts` | 484 | 记忆树内部和持久化类型 | 按 node、resource、audit、projection 分组 | D |
 | `packages/memory-tree/src/v3/catalog.ts` | 510 | Memory v3 catalog 生命周期、atom/FTS/账本/due 投影 | 保持 facade；schema、query/codec、graph、Embedding 控制器已分离，后续把 ledger/due 投影下沉 | D |
 | `packages/memory-tree/src/v3/event-journal.ts` | 446 | Memory v3 event 与 operation journal 的同构恢复语义 | 契约稳定后拆为两个 store，共享 bounded journal codec | D |
-| `packages/memory-tree/src/v3/contracts.ts` | 417 | Memory v3 atom、认识状态、事件、实体、证据与 Embedding 契约 | 阶段 3 接入前按 atom、epistemic、event、graph 分组并保持 barrel | D |
+| `packages/memory-tree/src/v3/contracts.ts` | 417 | Memory v3 atom、认识状态、事件、实体、证据与 Embedding 契约 | 在阶段 5 Context/KnownState 接入前按 atom、event、graph、evidence 分组并保持 barrel | D |
 | `packages/memory-tree/src/v3/atom-store.ts` | 437 | atom 原子读写、轻量索引、扫描、层级和隔离 | 保持 store facade；规模验收稳定后分离 scanner/quarantine | D |
+| `packages/memory-tree/src/memory-repository/v3-resource-store.ts` | 575 | v3 资源元数据、生命周期事务、实体投影和恢复 | 分离 resource registry、transaction recovery 与 graph projection | D |
+| `packages/memory-tree/src/memory-repository/v3-node-store.ts` | 545 | v3 节点查询、写入编排、层级和实体关联 | 事件与生命周期规则已拆出；后续分离 query projection 与 write coordinator | D |
+| `packages/memory-tree/src/memory-repository/v3-ledger.ts` | 492 | v3 分片审计、恢复队列、scope alias、迁移和事务账本 | 分离 audit shards、recovery queue 与 transaction ledger | D |
 | `packages/llm/src/client.ts` | 460 | 请求、流式、reasoning、重试适配 | 分离 request builder、stream parser、response mapper | E |
 | `packages/types/src/runtime-contracts.ts` | 449 | 多类运行时版本契约 | 按 context、event、checkpoint、execution 分组并保持 barrel | E |
 | `packages/memory-tree/src/memory-repository/resource-store.ts` | 439 | 资源注册、生命周期、重绑定和审计 | 分离 registry、lifecycle、rebind、audit | D |
@@ -75,7 +78,7 @@
 | `packages/app/src/renderer/api.ts` | 1088 | 21 行兼容 barrel | `run`、`sessions`、`runtime`、`attachments`、`workspace-files`、`terminal`、`extensions`、`memory` 与 `common` | 2026-07-14 |
 | `packages/app/src/main/local-app-api-server.ts` | 2819 | 241 行 server 组合入口 | HTTP 基元、run、projects、sessions/archive、runtime、memory、workspace、terminal、extensions、公共 contracts 与实例级资源清理 | 2026-07-14 |
 | `packages/app/src/renderer/App.tsx` | 9935 | 7 行兼容入口 | `app-shell`、`approval`、`chat`、`composer`、`runtime`、`settings`、`sidebar`、`ui` 与 `workspace` 领域视图和 controller | 2026-07-14 |
-| `packages/memory-tree/src/memory-repository.ts` | 1279 | 171 行 repository facade | 文档存储/迁移、资源生命周期、节点管理、写入策略、意图写入和项目路径重绑定 | 2026-07-15 |
+| `packages/memory-tree/src/memory-repository.ts` | 1279 | 166 行 repository facade | 版本化后端选择、证据定位和稳定 Repository 公共契约；v2/v3 实现均已下沉 | 2026-07-15 |
 | `packages/memory-tree/src/memory-service.ts` | 1120 | 343 行 service facade | run、摘要、附件、事件、Bootstrap、Skills、工作区资源、项目投影和资源管理协调器 | 2026-07-15 |
 | `packages/context/src/engine.ts` | 690 | 180 行 engine facade | candidates、budget、eviction、assembly、counting 与 snapshots | 2026-07-15 |
 | `packages/harness/src/stages/decide.ts` | 620 | 169 行 stage facade | 模型返回契约、需求/TaskBook 规范化、澄清请求和局部重规划 | 2026-07-15 |
@@ -88,7 +91,7 @@
 2. C 与 D 优先拆 Main/API 和 Memory，减少 B/E 的跨层依赖。
 3. B 已在 API barrel 稳定后完成 Renderer 组合壳拆分；后续 Renderer 细分继续按真实窗口验收。
 4. D/E 所有权下的 Memory、Harness/Context 已完成 facade 化与内部领域拆分，LLM Call Contract 和记忆意图闸门已在稳定边界上接入。
-5. Memory v3 阶段 2 已完成并把 Embedding 从 Catalog 门面拆出；当前按阶段 3 逐步适配 v3 facade/Context，再收敛统一 Tool Execution Service。每次只移动一个责任域，完成定向测试和全量质量门后再继续。
+5. Memory v3 阶段 3 已完成双后端 facade、Repository transaction、认识状态和实体映射适配；下一步按阶段 4 建立隔离安全迁移，再进入阶段 5 的检索/KnownState 统一。每次只移动一个责任域，完成定向测试和全量质量门后再继续。
 
 ## 当前共享契约与 facade
 

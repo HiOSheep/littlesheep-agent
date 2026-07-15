@@ -122,7 +122,30 @@ export function recordMemoryResourceAudit(
     toSourcePath?: string;
   },
 ): MemoryResourceManagementAuditRecord {
-  const audit: MemoryResourceManagementAuditRecord = {
+  const audit = createMemoryResourceAudit(resource, action, options);
+  document.resourceManagementAudit.push(audit);
+  if (document.resourceManagementAudit.length > policy.maxAuditRecords) {
+    document.resourceManagementAudit.splice(
+      0,
+      document.resourceManagementAudit.length - policy.maxAuditRecords,
+    );
+  }
+  return audit;
+}
+
+export function createMemoryResourceAudit(
+  resource: MemoryResourceRegistration,
+  action: MemoryResourceManagementAction,
+  options: {
+    actor: MemoryResourceManagementAuditRecord['actor'];
+    reason: string;
+    fromStatus?: MemoryResourceRegistration['status'];
+    toStatus?: MemoryResourceRegistration['status'];
+    fromSourcePath?: string;
+    toSourcePath?: string;
+  },
+): MemoryResourceManagementAuditRecord {
+  return {
     id: randomUUID(),
     resourceId: resource.id,
     resourceKind: resource.kind,
@@ -136,17 +159,9 @@ export function recordMemoryResourceAudit(
     fromSourcePath: options.fromSourcePath,
     toSourcePath: options.toSourcePath,
   };
-  document.resourceManagementAudit.push(audit);
-  if (document.resourceManagementAudit.length > policy.maxAuditRecords) {
-    document.resourceManagementAudit.splice(
-      0,
-      document.resourceManagementAudit.length - policy.maxAuditRecords,
-    );
-  }
-  return audit;
 }
 
-function sameResourceRegistration(
+export function sameResourceRegistration(
   left: MemoryResourceRegistration,
   right: MemoryResourceRegistration,
 ): boolean {

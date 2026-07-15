@@ -16,32 +16,35 @@ import { fetchGitLog, fetchLatestCommitDate, parseGitLog } from './git-log.js';
 
 const execFileP = promisify(execFile);
 
-let repoDir: string;
+let repoDir: string | undefined;
+
+const GIT_TEST_TIMEOUT_MS = 60_000;
+const GIT_TEST_CONFIG = [
+  '-c', 'gc.auto=0',
+  '-c', 'core.autocrlf=false',
+  '-c', 'commit.gpgsign=false',
+  '-c', 'user.email=test@example.com',
+  '-c', 'user.name=Test User',
+];
 
 /** Run a git command in repoDir. */
 async function git(args: string[]): Promise<void> {
-  await execFileP('git', args, { cwd: repoDir });
+  if (!repoDir) throw new Error('Git test repository is not initialized.');
+  await execFileP('git', [...GIT_TEST_CONFIG, ...args], {
+    cwd: repoDir,
+    timeout: GIT_TEST_TIMEOUT_MS - 5_000,
+    windowsHide: true,
+  });
 }
 
 /** Create a commit with a unique file so each commit has a distinct tree. */
 async function commit(message: string): Promise<void> {
+  if (!repoDir) throw new Error('Git test repository is not initialized.');
   const fname = `f-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.txt`;
   writeFileSync(join(repoDir, fname), 'x');
   await git(['add', '-A']);
   await git(['commit', '-m', message]);
 }
-
-beforeEach(async () => {
-  repoDir = mkdtempSync(join(tmpdir(), 'mtree-git-'));
-  await git(['init']);
-  // Set local user config (CI / fresh environments may lack global config).
-  await git(['config', 'user.email', 'test@example.com']);
-  await git(['config', 'user.name', 'Test User']);
-});
-
-afterEach(async () => {
-  await removeTempDir(repoDir);
-});
 
 describe('parseGitLog', () => {
   it('parses 3 lines into 3 GitLogEntry with correct fields', () => {
@@ -72,11 +75,13 @@ describe('parseGitLog', () => {
 });
 
 describe('fetchGitLog — real git repo', () => {
+  useRealGitRepo();
+
   it('parses 3 commits into 3 GitLogEntry with correct fields', async () => {
     await commit('first commit');
     await commit('second commit');
     await commit('third commit');
-    const entries = await fetchGitLog(repoDir, 10);
+    const entries = await fetchGitLog(repoDir!, 10);
     expect(entries).toHaveLength(3);
     // Newest first (git log default order)
     expect(entries[0]?.message).toBe('third commit');
@@ -93,7 +98,7 @@ describe('fetchGitLog — real git repo', () => {
     await git(['checkout', '-']);
     await git(['merge', '--no-ff', 'feature', '-m', 'merge feature']);
 
-    const entries = await fetchGitLog(repoDir, 10);
+    const entries = await fetchGitLog(repoDir!, 10);
     const messages = entries.map((e) => e.message);
     // Merge commit is excluded by --no-merges.
     expect(messages).not.toContain('merge feature');
@@ -106,7 +111,7 @@ describe('fetchGitLog — real git repo', () => {
     for (let i = 0; i < 5; i++) {
       await commit(`commit-${i}`);
     }
-    const entries = await fetchGitLog(repoDir, 3);
+    const entries = await fetchGitLog(repoDir!, 3);
     expect(entries).toHaveLength(3);
     // Newest first
     expect(entries[0]?.message).toBe('commit-4');
@@ -114,7 +119,7 @@ describe('fetchGitLog — real git repo', () => {
   });
 
   it('returns [] for empty repo (no commits)', async () => {
-    const entries = await fetchGitLog(repoDir, 10);
+    const entries = await fetchGitLog(repoDir!, 10);
     expect(entries).toEqual([]);
   });
 
@@ -129,15 +134,17 @@ describe('fetchGitLog — real git repo', () => {
 });
 
 describe('fetchLatestCommitDate — real git repo', () => {
+  useRealGitRepo();
+
   it('returns ISO date for repo with commits', async () => {
     await commit('test commit');
-    const date = await fetchLatestCommitDate(repoDir);
+    const date = await fetchLatestCommitDate(repoDir!);
     expect(date).not.toBeNull();
     expect(date).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
   });
 
   it('returns null for empty repo (no commits)', async () => {
-    const date = await fetchLatestCommitDate(repoDir);
+    const date = await fetchLatestCommitDate(repoDir!);
     expect(date).toBeNull();
   });
 
@@ -151,11 +158,24 @@ describe('fetchLatestCommitDate — real git repo', () => {
   });
 });
 
+function useRealGitRepo(): void {
+  beforeEach(async () => {
+    repoDir = mkdtempSync(join(tmpdir(), 'mtree-git-'));
+    await git(['init', '--quiet']);
+  }, GIT_TEST_TIMEOUT_MS);
+
+  afterEach(async () => {
+    const current = repoDir;
+    repoDir = undefined;
+    if (current) await removeTempDir(current);
+  }, GIT_TEST_TIMEOUT_MS);
+}
+
 async function removeTempDir(path: string): Promise<void> {
   await rm(path, {
     recursive: true,
     force: true,
-    maxRetries: process.platform === 'win32' ? 5 : 1,
-    retryDelay: 80,
+    maxRetries: process.platform === 'win32' ? 20 : 1,
+    retryDelay: 100,
   });
 }

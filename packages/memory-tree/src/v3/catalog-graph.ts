@@ -12,6 +12,26 @@ export interface MemoryRelationReferenceBlockers {
   atomIds: string[];
 }
 
+export function getMemoryEntity(db: DatabaseSync, entityId: string): MemoryEntity | undefined {
+  const row = db.prepare('SELECT * FROM entities WHERE entity_id = ?').get(entityId) as Record<string, unknown> | undefined;
+  if (!row) return undefined;
+  return {
+    version: 1,
+    id: String(row.entity_id),
+    type: row.entity_type as MemoryEntity['type'],
+    owner: JSON.parse(String(row.owner_json)) as MemoryEntity['owner'],
+    scope: row.scope as MemoryEntity['scope'],
+    scopeKey: row.scope_key === null ? undefined : String(row.scope_key),
+    externalKey: row.external_key === null ? undefined : String(row.external_key),
+    label: String(row.label),
+    aliases: JSON.parse(String(row.aliases_json)) as string[],
+    status: row.status as MemoryEntity['status'],
+    revision: Number(row.revision),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  };
+}
+
 export function upsertMemoryEntity(db: DatabaseSync, entity: MemoryEntity): void {
   assertScope(entity);
   const existing = db.prepare('SELECT status FROM entities WHERE entity_id = ?')

@@ -20,6 +20,7 @@ import type {
 } from './contracts.js';
 import { MEMORY_CATALOG_SCHEMA_SQL, MEMORY_CATALOG_SCHEMA_VERSION } from './catalog-schema.js';
 import {
+  getMemoryEntity,
   memoryEntityReferenceBlockers,
   memoryRelationReferenceBlockers,
   upsertMemoryEntity,
@@ -63,6 +64,14 @@ export interface MemoryCatalogRebuildItem {
   filePath: string;
 }
 
+export interface MemoryCatalogListOptions {
+  branch?: MemoryAtom['branch'];
+  scope?: MemoryAtom['scope'];
+  scopeKey?: string;
+  status?: MemoryAtom['status'];
+  limit?: number;
+}
+
 export class MemoryCatalog {
   readonly dbPath: string;
   private readonly db: DatabaseSync;
@@ -101,6 +110,40 @@ export class MemoryCatalog {
   getAtom(atomId: string): MemoryCatalogEntry | undefined {
     const row = this.db.prepare('SELECT * FROM atoms WHERE atom_id = ?').get(atomId) as unknown as AtomRow | undefined;
     return row ? rowToEntry(row) : undefined;
+  }
+
+  listAtoms(options: MemoryCatalogListOptions = {}): MemoryCatalogEntry[] {
+    if (options.scope) assertScope({ scope: options.scope, scopeKey: options.scopeKey });
+    else if (options.scopeKey !== undefined) throw new Error('Memory catalog scopeKey requires an explicit scope.');
+    const where: string[] = [];
+    const params: Array<string | null> = [];
+    if (options.branch) {
+      where.push('branch = ?');
+      params.push(options.branch);
+    }
+    if (options.scope) {
+      where.push('scope = ?');
+      params.push(options.scope);
+      where.push('scope_key IS ?');
+      params.push(options.scopeKey ?? null);
+    }
+    if (options.status) {
+      where.push('status = ?');
+      params.push(options.status);
+    }
+    const rows = this.db.prepare(`
+      SELECT * FROM atoms ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}
+      ORDER BY updated_at DESC, atom_id ASC LIMIT ?
+    `).all(...params, boundedLimit(options.limit, 1_000, 100_000)) as unknown as AtomRow[];
+    return rows.map(rowToEntry);
+  }
+
+  listChildrenByParent(parentId: string, includeInactive = false): MemoryCatalogEntry[] {
+    const rows = this.db.prepare(`
+      SELECT * FROM atoms WHERE parent_id = ? ${includeInactive ? '' : "AND status = 'active'"}
+      ORDER BY updated_at DESC, atom_id ASC
+    `).all(parentId) as unknown as AtomRow[];
+    return rows.map(rowToEntry);
   }
 
   listChildren(parentId: string, options: Pick<MemoryCatalogSearchOptions, 'branch' | 'scope' | 'scopeKey' | 'includeArchived'>): MemoryCatalogEntry[] {
@@ -342,8 +385,16 @@ export class MemoryCatalog {
     upsertMemoryEntity(this.db, entity);
   }
 
+  getEntity(entityId: string): MemoryEntity | undefined {
+    return getMemoryEntity(this.db, entityId);
+  }
+
   upsertRelation(relation: MemoryRelation): void {
     upsertMemoryRelation(this.db, relation);
+  }
+
+  hasRelation(relationId: string): boolean {
+    return Boolean(this.db.prepare('SELECT 1 AS found FROM relations WHERE relation_id = ?').get(relationId));
   }
 
   entityReferenceBlockers(entityId: string): MemoryEntityReferenceBlockers {

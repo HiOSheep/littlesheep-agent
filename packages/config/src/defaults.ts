@@ -62,6 +62,7 @@ export const DEFAULT_CONFIG: Config = {
     stripImages: true,
   },
   memory: {
+    repositoryBackend: 'v2' as const,
     preludeDays: 3,
     preludeMaxCharsPerDay: 2000,
     preludeTotalMaxChars: 8000,

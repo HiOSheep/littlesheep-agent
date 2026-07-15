@@ -15,6 +15,7 @@ describe('config schema', () => {
     expect(cfg.agents.defaults.profile).toBe('general');
     expect(cfg.tools.exec.approvalMode).toBe('interactive');
     expect(cfg.memory.preludeDays).toBe(3);
+    expect(cfg.memory.repositoryBackend).toBe('v2');
     expect(cfg.memory.treeRunTokenBudget).toBe(3200);
     expect(cfg.memory.treeBranchTokenBudget).toBe(1200);
     expect(cfg.memory.treeRootIndexMaxChars).toBe(1600);

@@ -86,6 +86,15 @@ export function memoryIntentRejectionReason(
   return undefined;
 }
 
+export function assertMemoryTierChange(branch: MemoryNode['branch'], tier: InjectionTier): void {
+  if (![InjectionTier.T1_ESSENTIAL, InjectionTier.T2_RELEVANT, InjectionTier.T3_DETAIL].includes(tier)) {
+    throw new Error('Managed memory nodes cannot enter the fixed T0 registry tier.');
+  }
+  if (branch === 'daily' && tier === InjectionTier.T1_ESSENTIAL) {
+    throw new Error('Daily process records cannot be promoted to T1.');
+  }
+}
+
 function isTemporaryOrEmotional(intent: MemoryWriteIntent): boolean {
   const text = `${intent.summary}\n${intent.content}`;
   return /(?:仅本轮|这一次运行|临时(?:文件|状态|想法)|刚才临时|当前情绪|我现在(?:很|有点)(?:开心|难过|生气|焦虑)|only this run|temporary run state|current mood)/iu.test(text);

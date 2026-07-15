@@ -1,4 +1,4 @@
-// @littlesheep/memory-tree - compatibility facade over the repository domain stores.
+// @littlesheep/memory-tree - stable compatibility facade over versioned repository backends.
 
 import { InjectionTier } from './types.js';
 import type {
@@ -15,21 +15,20 @@ import type {
   MemoryResourceRebindPatch,
   MemoryTreeDocument,
   MemoryWriteIntent,
-  MemoryWritePolicy,
   MemoryWriteResult,
 } from './types.js';
 import type {
   ManageMemoryResourceOptions,
+  MemoryRepositoryBackendKind,
   MemoryRepositoryOptions,
   RebindMemoryResourceOptions,
   RemoveMemoryResourcesOptions,
   ReplaceMemoryResourceGroupOptions,
 } from './memory-repository/contracts.js';
-import { MemoryDocumentStore, memoryBranchRootId } from './memory-repository/document-store.js';
-import { MemoryNodeStore } from './memory-repository/node-store.js';
-import { rebindMemoryProjectPath, type MemoryProjectRebindResult } from './memory-repository/project-rebinding.js';
-import { MemoryResourceStore } from './memory-repository/resource-store.js';
-import { resolveMemoryWritePolicy } from './memory-repository/write-policy.js';
+import { memoryBranchRootId } from './memory-repository/document-store.js';
+import type { MemoryRepositoryBackend } from './memory-repository/backend.js';
+import { createMemoryRepositoryBackend } from './memory-repository/factory.js';
+import type { MemoryProjectRebindResult } from './memory-repository/project-rebinding.js';
 
 export type {
   ManageMemoryResourceOptions,
@@ -38,52 +37,52 @@ export type {
   RebindMemoryResourceOptions,
   RemoveMemoryResourcesOptions,
   ReplaceMemoryResourceGroupOptions,
+  MemoryRepositoryBackendKind,
+  MemoryV3ExperimentMarker,
+  MemoryRepositoryV3Options,
 } from './memory-repository/contracts.js';
+export { MEMORY_V3_EXPERIMENT_MARKER } from './memory-repository/contracts.js';
+export { createMemoryV3ExperimentMarker } from './memory-repository/factory.js';
 export { MemoryWriteService } from './memory-repository/write-service.js';
 export type { MemoryWriteServiceLike } from './memory-repository/write-service.js';
 
 export class MemoryRepository {
   readonly rootDir: string;
   readonly indexPath: string;
-  private readonly policy: MemoryWritePolicy;
-  private readonly documents: MemoryDocumentStore;
-  private readonly resources: MemoryResourceStore;
-  private readonly nodes: MemoryNodeStore;
+  readonly backendKind: MemoryRepositoryBackendKind;
+  private readonly backend: MemoryRepositoryBackend;
 
   constructor(options: MemoryRepositoryOptions) {
-    this.policy = resolveMemoryWritePolicy(options.policy);
-    this.documents = new MemoryDocumentStore({ dataDir: options.dataDir, log: options.log });
-    this.resources = new MemoryResourceStore(this.documents, this.policy);
-    this.nodes = new MemoryNodeStore(this.documents, this.policy);
-    this.rootDir = this.documents.rootDir;
-    this.indexPath = this.documents.indexPath;
+    const selected = createMemoryRepositoryBackend(options);
+    this.backendKind = selected.kind;
+    this.backend = selected.backend;
+    this.rootDir = this.backend.rootDir;
+    this.indexPath = this.backend.indexPath;
   }
 
-  static branchRootId(branch: MemoryBranchKind): string {
-    return memoryBranchRootId(branch);
+  static branchRootId(branch: MemoryBranchKind): string { return memoryBranchRootId(branch); }
+
+  evidenceLocator(nodeId: string): string {
+    return this.backendKind === 'v3'
+      ? `memory-v3:atom:${nodeId}`
+      : `memory-tree/index.json#${nodeId}`;
   }
 
-  initialize(): Promise<void> {
-    return this.documents.initialize();
-  }
+  initialize(): Promise<void> { return this.backend.initialize(); }
 
-  snapshot(): Promise<MemoryTreeDocument> {
-    return this.documents.read();
-  }
+  snapshot(): Promise<MemoryTreeDocument> { return this.backend.snapshot(); }
 
-  getResource(id: string): Promise<MemoryResourceRegistration | undefined> {
-    return this.resources.get(id);
-  }
+  getResource(id: string): Promise<MemoryResourceRegistration | undefined> { return this.backend.getResource(id); }
 
   listResources(query: MemoryResourceQuery = {}): Promise<MemoryResourceRegistration[]> {
-    return this.resources.list(query);
+    return this.backend.listResources(query);
   }
 
   listResourceManagementAudit(
     resourceId?: string,
     limit = 100,
   ): Promise<MemoryResourceManagementAuditRecord[]> {
-    return this.resources.listAudit(resourceId, limit);
+    return this.backend.listResourceManagementAudit(resourceId, limit);
   }
 
   replaceResourceGroup(
@@ -91,7 +90,7 @@ export class MemoryRepository {
     resources: MemoryResourceRegistration[],
     options: ReplaceMemoryResourceGroupOptions = {},
   ): Promise<MemoryResourceRegistration[]> {
-    return this.resources.replaceGroup(registryGroup, resources, options);
+    return this.backend.replaceResourceGroup(registryGroup, resources, options);
   }
 
   manageResource(
@@ -99,7 +98,7 @@ export class MemoryRepository {
     action: Exclude<MemoryResourceManagementAction, 'rebind'>,
     options: ManageMemoryResourceOptions = {},
   ): Promise<MemoryResourceManagementResult | undefined> {
-    return this.resources.manage(resourceId, action, options);
+    return this.backend.manageResource(resourceId, action, options);
   }
 
   rebindResource(
@@ -107,50 +106,42 @@ export class MemoryRepository {
     patch: MemoryResourceRebindPatch,
     options: RebindMemoryResourceOptions = {},
   ): Promise<MemoryResourceManagementResult | undefined> {
-    return this.resources.rebind(resourceId, patch, options);
+    return this.backend.rebindResource(resourceId, patch, options);
   }
 
   removeResources(
     query: MemoryResourceQuery,
     options: RemoveMemoryResourcesOptions = {},
   ): Promise<number> {
-    return this.resources.remove(query, options);
+    return this.backend.removeResources(query, options);
   }
 
-  restoreSchemaBackup(backupFile: string): Promise<void> {
-    return this.documents.restoreSchemaBackup(backupFile);
-  }
+  restoreSchemaBackup(backupFile: string): Promise<void> { return this.backend.restoreSchemaBackup(backupFile); }
 
-  getNode(id: string): Promise<MemoryNode | undefined> {
-    return this.nodes.get(id);
-  }
+  getNode(id: string): Promise<MemoryNode | undefined> { return this.backend.getNode(id); }
 
   listNodes(branch: MemoryBranchKind, scopeKey?: string): Promise<MemoryNode[]> {
-    return this.nodes.list(branch, scopeKey);
+    return this.backend.listNodes(branch, scopeKey);
   }
 
   rebindProjectPath(fromPath: string, toPath: string): Promise<MemoryProjectRebindResult> {
-    return rebindMemoryProjectPath(this.documents, this.policy, fromPath, toPath);
+    return this.backend.rebindProjectPath(fromPath, toPath);
   }
 
-  children(parentNodeId: string): Promise<MemoryNode[]> {
-    return this.nodes.children(parentNodeId);
-  }
+  children(parentNodeId: string): Promise<MemoryNode[]> { return this.backend.children(parentNodeId); }
 
-  write(intent: MemoryWriteIntent): Promise<MemoryWriteResult> {
-    return this.nodes.write(intent);
-  }
+  write(intent: MemoryWriteIntent): Promise<MemoryWriteResult> { return this.backend.write(intent); }
 
   retryRecoveryQueue(limit = 20): Promise<MemoryWriteResult[]> {
-    return this.nodes.retryRecoveryQueue(limit);
+    return this.backend.retryRecoveryQueue(limit);
   }
 
   setStatus(nodeId: string, status: MemoryNode['status']): Promise<MemoryNode | undefined> {
-    return this.nodes.setStatus(nodeId, status);
+    return this.backend.setStatus(nodeId, status);
   }
 
   changeTier(nodeId: string, tier: InjectionTier): Promise<MemoryNode | undefined> {
-    return this.nodes.changeTier(nodeId, tier);
+    return this.backend.changeTier(nodeId, tier);
   }
 
   manageNode(
@@ -158,14 +149,18 @@ export class MemoryRepository {
     action: MemoryManagementAction,
     reason = 'Changed by the user from the memory-tree management page.',
   ): Promise<MemoryManagementResult | undefined> {
-    return this.nodes.manage(nodeId, action, reason);
+    return this.backend.manageNode(nodeId, action, reason);
   }
 
   getMigration(id: string): Promise<MemoryMigrationRecord | undefined> {
-    return this.nodes.getMigration(id);
+    return this.backend.getMigration(id);
   }
 
   markMigration(record: MemoryMigrationRecord): Promise<void> {
-    return this.nodes.markMigration(record);
+    return this.backend.markMigration(record);
+  }
+
+  close(): void {
+    if ('close' in this.backend && typeof this.backend.close === 'function') this.backend.close();
   }
 }

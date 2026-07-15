@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-07-15 16:35:02
+最后更新：2026-07-15 18:55:52
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
@@ -73,7 +73,7 @@
 
 | 包 | 归属和职责 |
 | --- | --- |
-| `packages/memory-tree/` | v2 的 `MemoryService`/Repository 稳定门面、T0-T3 资源注册、索引导航、项目投影和生命周期；`src/v3/` 隔离拥有 atom 契约/文件、事件与操作 journal、SQLite catalog、FTS/向量端口、有界维护 worker、实体关系与引用治理、优先级和恢复协调器。v3 尚未接管正式运行路径。 |
+| `packages/memory-tree/` | `MemoryService` 与 `MemoryRepository` 稳定门面、T0-T3 资源注册、索引导航、项目投影和生命周期；`src/memory-repository/` 拥有 v2/v3 后端、选择闸门、事务账本、认识状态分类、节点/资源适配，`src/v3/` 拥有 atom、journal、SQLite catalog、FTS/向量、有界维护和实体关系权威文件。v3 可在带实验标记的隔离数据根运行，但尚未接管正式用户数据。 |
 | `packages/embedding/` | Memory v3 的本地 Transformers.js Embedding 实现、固定 revision 模型登记、显式资产准备、大小/SHA-256 校验、离线加载和候选基准；不拥有记忆正文、Catalog 或 Provider 请求。 |
 | `packages/memory-core/` | 文件记忆兼容存储、daily、长期记忆、写入闸门、归档和旧来源适配。 |
 | `packages/vector/` | 向量存储接口；只在已导航分支的深搜兜底路径使用。 |
@@ -114,7 +114,7 @@
 | Provider 请求、流式与 usage | `packages/llm/` | `src/client.ts` | `src/client.test.ts`、Provider smoke 脚本 |
 | 配置、Provider/模型能力 | `packages/config/` | `src/schema.ts`、`src/model-capabilities.ts` | `src/schema.test.ts`、App shared capability 测试 |
 | Prompt 与行为 profile | `packages/prompt/` | `src/builder.ts`、`src/profiles.ts` | `src/builder.test.ts`、`src/profiles.test.ts` |
-| 记忆树、资源注册与项目投影 | `packages/memory-tree/` | v2：`src/memory-service.ts`、`src/memory-repository.ts` facade；v3 隔离层：`src/v3/index.ts`、`atom-store.ts`、`catalog.ts`、`storage-coordinator.ts` | v2：`src/memory-*.test.ts`、`src/project-*.test.ts`；v3：`src/v3/*.test.ts` |
+| 记忆树、资源注册与项目投影 | `packages/memory-tree/` | 稳定 facade：`src/memory-service.ts`、`src/memory-repository.ts`；版本后端：`src/memory-repository/v2-backend.ts`、`v3-backend.ts`、`factory.ts`；v3 权威数据层：`src/v3/index.ts`、`atom-store.ts`、`catalog.ts`、`graph-store.ts`、`storage-coordinator.ts` | 双后端契约：`src/memory-repository.contract.test.ts`；v3：`src/memory-repository/v3-*.test.ts`、`src/v3/*.test.ts`；Runner：`packages/runner/src/memory-v3.integration.test.ts` |
 | 旧文件记忆、写入与归档 | `packages/memory-core/` | `src/write-memory.ts`、`src/archive.ts` | 对应同名测试 |
 | 会话和长会话摘要 | `packages/session/` | `src/manager.ts`、`src/compaction.ts` | 对应同名测试 |
 | 工具注册、审批和内置工具 | `packages/tools/` | `src/registry.ts`、`src/wrapper.ts`、`src/builtin/` | `src/**/*.test.ts` |

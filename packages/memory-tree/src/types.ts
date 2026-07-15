@@ -1,6 +1,7 @@
 // @littlesheep/memory-tree - index-first memory runtime contracts.
 
 import type { SessionId } from '@littlesheep/types';
+import type { MemoryWriteEpistemicMetadata } from './epistemic.js';
 
 export enum InjectionTier {
   T0_CORE = 0,
@@ -341,6 +342,8 @@ export interface MemoryWriteIntent {
   importance: number;
   confidence: number;
   reason: string;
+  /** Optional explicit classification. Memory v3 applies a conservative classifier when absent. */
+  epistemic?: MemoryWriteEpistemicMetadata;
   createdAt?: string;
 }
 

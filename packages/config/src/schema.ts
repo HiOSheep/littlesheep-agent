@@ -74,6 +74,8 @@ export const ToolsConfigSchema = z.object({
 
 /** Memory config. */
 export const MemoryConfigSchema = z.object({
+  /** Experimental repository backend. v3 also requires an isolated-data marker in the selected data root. */
+  repositoryBackend: z.enum(['v2', 'v3']).default('v2'),
   /** Legacy migration setting; daily memory is no longer injected every turn. */
   preludeDays: z.number().int().positive().default(3),
   /** Max chars per daily file in prelude. */

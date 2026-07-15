@@ -16,7 +16,7 @@ import type {
 import type { MemoryDocumentStore } from './document-store.js';
 import { applyMemoryIntent, refreshMemoryAncestors } from './intent-writer.js';
 import { cleanText } from './text.js';
-import { normalizeMemoryIntent } from './write-policy.js';
+import { assertMemoryTierChange, normalizeMemoryIntent } from './write-policy.js';
 
 export class MemoryNodeStore {
   constructor(
@@ -90,6 +90,7 @@ export class MemoryNodeStore {
     return this.documents.update((document) => {
       const node = document.nodes[nodeId];
       if (!node || node.isBranchRoot) return { value: undefined, changed: false };
+      assertMemoryTierChange(node.branch, tier);
       node.tier = tier;
       node.updatedAt = new Date().toISOString();
       return { value: structuredClone(node), changed: true };

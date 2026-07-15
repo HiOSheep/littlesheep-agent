@@ -1,8 +1,8 @@
 # LittleSheep 架构评估与开发决策报告
 
-最后更新：2026-07-15 16:35:02
+最后更新：2026-07-15 18:55:52
 评估范围：当前源码、正式文档与已记录的验证结果
-执行状态：Memory v3 阶段 0-2 隔离实现和真实离线验证已完成；正式路径仍为 v2，v3 facade、Context/工具/UI 适配和迁移尚未完成
+执行状态：Memory v3 阶段 0-3 隔离实现、双后端 facade 和完整工程验证已完成；正式路径仍为 v2，安全迁移、统一检索/KnownState、管理 UI 和正式切换尚未完成
 
 ## 1. 给决策者的结论
 
@@ -19,9 +19,9 @@ LittleSheep 当前不是“只有 Prompt 的聊天壳”。它已经具备代码
 1. Context Engine 已成为独立模块并接管模型请求准备路径；每次请求现在拥有版本化 `LlmCallContract`，Context segment、工具集合、输出预算和记忆策略在发送前失败关闭。tokenizer 能力矩阵与 unavailable 模型的保守请求前预算保护已经完成，当前缺口是三家真实 Provider 对账。
 2. 每次 run 已有统一、不可变的运行决议，但 Behavior Mode 仍只是 profile 与策略 id 的组合结果，尚没有可注册、可迁移的 Mode Registry。
 3. Tool Manager 只有注册与基础 wrapper，完整的授权、调用、超时、流式事件和执行证据仍主要位于 Harness/App。
-4. 正式 Memory v2 子系统仍由统一 `MemoryService` 和 `memory-tree/index.json` 承载，旧向量路径仍会调用 Provider；并行的 `src/v3/` 已实现语义 atom、稳定 parent、可重建 catalog、真实本地 Embedding、有界向量/due 维护、事件/操作恢复和实体关系引用治理，但尚未接管 Runner/UI。
+4. 正式 Memory v2 子系统仍由统一 `MemoryService` 和 `memory-tree/index.json` 承载，旧向量路径仍会调用 Provider；隔离 v3 已通过 feature flag 接入同一 Repository facade、Memory Service 与 Runner，并实现语义 atom、稳定 parent、认识状态、实体引用、可重建 catalog、真实本地 Embedding、有界维护和事务恢复，但尚未经过 v2→v3 安全迁移，也未接管正式数据。
 
-因此，不建议继续在集中式 Memory v2 文档上叠加新能力。当前进入 Memory v3 阶段 3，以 feature flag 适配统一 Repository facade、Context/KnownState、工具和 UI；真实 Provider 对话验收作为并行的独立质量门。随后再推进统一 Tool Execution Service 与 RuntimeEventQueue。正式用户记忆在隔离迁移通过前保持不变。
+因此，不建议继续在集中式 Memory v2 文档上叠加新能力。当前进入 Memory v3 阶段 4，先在隔离数据根完成只读快照、atom 生成、校验、故障注入和回滚；阶段 5 再统一检索、证据封套与 KnownState，阶段 6 才建设管理 UI 并申请正式迁移批准。真实 Provider 对话验收继续作为并行质量门，之后再推进统一 Tool Execution Service 与 RuntimeEventQueue。
 
 ## 2. 评估口径
 
@@ -264,7 +264,7 @@ src/renderer/shared/
 
 目标：让记忆和会话成为 Context Engine 可控、可追溯的来源。
 
-状态：进行中。v2 的 Memory Service、T0-T3、资源目录、管理 UI 和项目投影已落地；v3 阶段 0-2 已在隔离目录实现契约、atom 文件、journal、catalog、FTS、真实本地 Embedding、有界向量重建/due 消费、实体关系引用治理、优先级和崩溃重放。v3 facade、Context 接入与 v2→v3 迁移尚未实现。
+状态：进行中。v2 的 Memory Service、T0-T3、资源目录、管理 UI 和项目投影已落地；v3 阶段 0-3 已在隔离目录实现契约、atom 文件、journal、catalog、FTS、本地 Embedding、实体关系、双后端 facade、Repository transaction、认识状态分类、Memory Service/Runner 适配和重启恢复。v2→v3 安全迁移、v3 统一检索/KnownState 与管理 UI 尚未实现。
 
 建议边界：
 
@@ -384,14 +384,14 @@ src/renderer/shared/
 
 ## 10. 下一阶段推进条件
 
-仓库基元化阶段 0-7 与 Memory v3 阶段 0-2 已完成隔离实现。建议现在进入 v3 facade、Context/KnownState、工具和 UI 适配，同时进行 Context Engine 的真实供应商对话校准；随后收敛统一 Tool Execution Service，而不是提前扩张新插件类型或 UI 范围。推进时持续遵守：
+仓库基元化阶段 0-7 与 Memory v3 阶段 0-3 已完成。建议现在进入阶段 4 的隔离安全迁移，同时进行 Context Engine 的真实供应商对话校准；迁移闭环后按阶段 5 统一检索/KnownState，再收敛 Tool Execution Service，而不是提前扩张新插件类型或 UI 范围。推进时持续遵守：
 
 - 以 [架构原则](../principles/architecture-principles.md) 作为最高层工程规范；
 - Behavior Mode 与 Permission Policy 保持正交；
 - 保留固定安全脊柱，不把 Workflow 直接开放为任意图；
 - 保护现有用户数据与插件化改动，不做破坏式迁移。
 
-Context Engine 已完成候选端口、预算器、稳定装配顺序、来源分段、版本化摘要、附件清单优先、按需附件工具、双账本展示、tokenizer 能力矩阵和不可展示的保守预算保护；版本化 LLM Call Contract 进一步约束每次调用的目的、输入、输出、工具和记忆策略。Memory Service 的 v2 基础已经进入真实路径，Memory v3 阶段 0-2 也已完成隔离数据层。下一步先把 v3 通过 feature flag 接到统一 facade 和 Context，再进行安全迁移；真实 Provider 对话对账、统一 Tool Execution Service 和 `RuntimeEventQueue` 仍按独立质量门推进。
+Context Engine 已完成候选端口、预算器、稳定装配顺序、来源分段、版本化摘要、附件清单优先、按需附件工具、双账本展示、tokenizer 能力矩阵和不可展示的保守预算保护；版本化 LLM Call Contract 进一步约束每次调用的目的、输入、输出、工具和记忆策略。Memory v3 已通过 feature flag 接到统一 Repository facade、Memory Service 与 Runner。下一步先完成阶段 4 安全迁移，再让 Context 在阶段 5 使用 v3 证据和 KnownState；真实 Provider 对话对账、统一 Tool Execution Service 和 `RuntimeEventQueue` 仍按独立质量门推进。
 
 ## 11. 报告维护规则
 

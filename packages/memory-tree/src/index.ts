@@ -92,7 +92,11 @@ export {
 export {
   MemoryRepository,
   MemoryWriteService,
+  createMemoryV3ExperimentMarker,
+  MEMORY_V3_EXPERIMENT_MARKER,
   type MemoryRepositoryOptions,
+  type MemoryRepositoryBackendKind,
+  type MemoryV3ExperimentMarker,
   type ReplaceMemoryResourceGroupOptions,
   type ManageMemoryResourceOptions,
   type RebindMemoryResourceOptions,
@@ -138,6 +142,17 @@ export {
 } from './workspace-resource-index.js';
 export { estimateTokens, activityScore, truncateChunk, MIN_USEFUL_TOKENS } from './util.js';
 export * as MemoryV3 from './v3/index.js';
+export type {
+  AuthorityKind,
+  AuthorityScope,
+  EpistemicStatus,
+  MemoryActorKind,
+  MemoryActorRef,
+  MemoryAuthorityScope,
+  MemoryDomain,
+  MemoryWriteEpistemicMetadata,
+  StatementKind,
+} from './epistemic.js';
 export {
   MemoryAtomStore,
   MemoryAtomConflictError,
@@ -153,11 +168,7 @@ export {
 export type {
   MemoryAtom as MemoryAtomV3,
   MemoryCatalogEntry as MemoryCatalogEntryV3,
-  MemoryDomain,
   MemoryDisclosureLevel,
-  StatementKind,
-  EpistemicStatus,
-  AuthorityScope,
   MemoryEntity,
   MemoryRelation,
   MemoryUpdateEvent,

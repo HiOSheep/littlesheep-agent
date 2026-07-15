@@ -1,65 +1,30 @@
 // Owns the versioned Memory v3 storage, epistemic, evidence, graph, and embedding contracts.
 
 import type { InjectionTier, MemoryBranchKind, MemoryScope, MemoryWriteStage } from '../types.js';
+import type {
+  AuthorityScope,
+  EpistemicStatus,
+  MemoryActorRef,
+  MemoryDomain,
+  StatementKind,
+} from '../epistemic.js';
+export type {
+  AuthorityKind,
+  AuthorityScope,
+  EpistemicStatus,
+  MemoryActorKind,
+  MemoryActorRef,
+  MemoryAuthorityScope,
+  MemoryDomain,
+  MemoryWriteEpistemicMetadata,
+  StatementKind,
+} from '../epistemic.js';
 
 export const MEMORY_ATOM_VERSION = 3 as const;
 export const MEMORY_EVENT_VERSION = 1 as const;
 export const MEMORY_OPERATION_VERSION = 1 as const;
 
-export type MemoryDomain =
-  | 'user'
-  | 'agent-self'
-  | 'task'
-  | 'project'
-  | 'session'
-  | 'experience'
-  | 'knowledge';
-
 export type MemoryDisclosureLevel = 'D0' | 'D1' | 'D2' | 'D3';
-
-export type StatementKind =
-  | 'instruction'
-  | 'goal'
-  | 'preference'
-  | 'value'
-  | 'reported-observation'
-  | 'factual-claim'
-  | 'suggestion'
-  | 'hypothesis'
-  | 'decision'
-  | 'approval';
-
-export type EpistemicStatus =
-  | 'reported'
-  | 'unverified'
-  | 'corroborated'
-  | 'verified'
-  | 'disputed'
-  | 'superseded';
-
-export type AuthorityKind =
-  | 'user-self'
-  | 'system-policy'
-  | 'project-owner'
-  | 'session-owner'
-  | 'tool-evidence'
-  | 'external-source'
-  | 'none';
-
-export interface AuthorityScope {
-  kind: AuthorityKind;
-  scope: MemoryScope | 'run';
-  scopeKey?: string;
-  topics: string[];
-}
-
-export type MemoryActorKind = 'user' | 'agent' | 'system' | 'tool' | 'external';
-
-export interface MemoryActorRef {
-  kind: MemoryActorKind;
-  id?: string;
-  label?: string;
-}
 
 export type MemoryAtomStatus = 'active' | 'archived' | 'tombstone';
 
@@ -185,7 +150,7 @@ export interface MemoryEntity {
   id: string;
   type: MemoryEntityType;
   owner: MemoryActorRef;
-  scope: MemoryScope;
+  scope: MemoryScope | 'run';
   scopeKey?: string;
   externalKey?: string;
   label: string;

@@ -1,8 +1,8 @@
 # LittleSheep 原子记忆与内置向量目录任务书 2026-07-15
 
-最后更新：2026-07-15 16:35:02
-版本：v1.7
-状态：实施中；阶段 0-2 已完成隔离实现和真实离线验证，下一步进入 v3 facade 适配；未迁移正式用户数据
+最后更新：2026-07-15 18:55:52
+版本：v1.8
+状态：实施中；阶段 0-3 已完成隔离实现、双后端适配和完整工程验证，下一步进入安全迁移；未迁移正式用户数据
 
 ## 1. 目标
 
@@ -37,7 +37,7 @@
 6. 用户、外部资料和模型产生的事实主张、建议、偏好与决定尚无统一 epistemic schema，存在把“有人建议”误当成“事实成立”的风险。
 7. 实体身份、所有权边界和关系尚未形成统一 schema；名称、路径、向量相似或共现可能被误当成同一对象或已验证关系。
 
-因此，正式运行路径当前仍不能宣称已经切换到“原子文件 + 层级 + 完全本地向量管理”；该能力已在隔离的 Memory v3 阶段 0-2 实现，尚待 facade 适配和安全迁移。
+因此，正式运行路径当前仍不能宣称已经切换到“原子文件 + 层级 + 完全本地向量管理”；该能力已在隔离的 Memory v3 阶段 0-3 完成数据层和统一 facade 适配，尚待安全迁移、检索路径统一和正式切换批准。
 
 ## 3. Memory v3 数据模型
 
@@ -306,6 +306,16 @@ statement / atom / resource
 验收：断网时层级、FTS 和向量检索均可运行；数据库删除后可从 atom 文件与可恢复操作记录重建当前目录和优先级基线；访问账本与详细反馈证据有容量/保留期上限，不随运行次数无界增长。
 
 ### 阶段 3：Memory Repository v3 适配
+
+状态：**已完成隔离适配与完整工程验证**。
+
+- 已完成：`MemoryRepository` 保持原公共 API，通过 `memory.repositoryBackend` 在 v2/v3 间选择；默认始终为 v2，v3 还必须存在隔离数据根标记，未标记数据根失败关闭；
+- 已完成：v2/v3 共享根索引、节点、资源、管理、恢复和项目重绑定契约；并发去重、daily T1 边界、资源冲突/重绑定和恢复队列由双后端契约共同验证；
+- 已完成：v3 atom、资源和项目变更统一经过 event/operation journal 或 repository transaction，Catalog 删除后先恢复实体/关系投影，再重建带引用的 atom；
+- 已完成：每次写入都获得 domain、statement kind、epistemic status、authority scope 和 asserted-by；事实、建议、偏好和决定不会跨认识类别合并；
+- 已完成：用户、项目、文件、会话、任务、Skill、工具、规则和概念引用映射为稳定实体类型；资源仅保存元数据与权威来源引用，不复制正文；
+- 已完成：Memory Service 与 Runner 在隔离 v3 数据根上完成 EVOLVE/CAPTURE、索引导航、重启恢复和 `memory-v3:atom:<id>` 证据定位；Runner shutdown 会释放 v3 Catalog SQLite 句柄；
+- 已完成：大型节点存储已拆出事件与生命周期转换模块，Graph、Ledger 和 Resource Store 的首次初始化共享同一 Promise，避免重复扫描、递归等待和退出后句柄残留。
 
 - 让现有 facade 在 feature flag 下读写 v3；
 - 保持 Memory Service、Runner、Harness、工具和 UI 公共接口兼容；
