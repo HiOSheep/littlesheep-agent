@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DEFAULT_CONFIG } from '@littlesheep/config'
-import { MemoryRepository } from '@littlesheep/memory-tree'
+import { MemoryRepository, MemoryV2ToV3MigrationManager } from '@littlesheep/memory-tree'
 import type { AgentRunner } from '@littlesheep/runner'
 import { ArchiveIndex } from './archive-index.js'
 import { ProjectIndex } from './project-index.js'
@@ -398,6 +398,7 @@ describe('memory-tree control plane', () => {
       rebuildRunner: vi.fn(async () => undefined),
       updateRuntimeConfig: vi.fn(async () => undefined),
       selectMemoryResourceSource: vi.fn(async () => 'D:/repo/docs/principles/architecture-principles.md'),
+      memoryV3MigrationManager: new MemoryV2ToV3MigrationManager({ dataDir }),
     })
     try {
       const detail = await fetch(`http://127.0.0.1:${server.port}/memory/tree/nodes/node-1?disclosure=D3`)
@@ -418,6 +419,17 @@ describe('memory-tree control plane', () => {
         canMigrate: true,
         source: { nodeCount: 0 },
       })
+
+      const requestedMigration = await fetch(`http://127.0.0.1:${server.port}/memory/tree/migration`, { method: 'POST' })
+      expect(requestedMigration.status).toBe(200)
+      await expect(requestedMigration.json()).resolves.toMatchObject({
+        activeBackend: 'v2',
+        requiresRestart: true,
+        pendingOperation: { kind: 'migration', phase: 'requested', attempts: 0 },
+      })
+      const cancelledMigration = await fetch(`http://127.0.0.1:${server.port}/memory/tree/migration`, { method: 'DELETE' })
+      expect(cancelledMigration.status).toBe(200)
+      await expect(cancelledMigration.json()).resolves.toMatchObject({ requiresRestart: false })
 
       const response = await fetch(`http://127.0.0.1:${server.port}/memory/tree/nodes/node-1/manage`, {
         method: 'POST',

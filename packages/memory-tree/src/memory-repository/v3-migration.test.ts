@@ -54,6 +54,146 @@ describe('Memory v2 -> v3 migration', () => {
     expect(existsSync(memoryRepositoryLocatorPath(dataDir))).toBe(false);
   });
 
+  it('registers and cancels a migration request without creating migration data', async () => {
+    const dataDir = await createDataDir(directories);
+    await seedV2(dataDir);
+    const manager = new MemoryV2ToV3MigrationManager({ dataDir });
+
+    const requested = await manager.requestMigration();
+    expect(requested).toMatchObject({
+      activeBackend: 'v2',
+      pendingMigration: { phase: 'requested', attempts: 0 },
+    });
+    expect(existsSync(join(dataDir, 'memory-tree', 'migrations'))).toBe(false);
+    expect(existsSync(join(dataDir, 'memory-tree', 'v3'))).toBe(false);
+
+    const cancelled = await manager.cancelPending();
+    expect(cancelled.activeBackend).toBe('v2');
+    expect(cancelled.pendingMigration).toBeUndefined();
+  });
+
+  it('coalesces concurrent migration requests into one durable operation', async () => {
+    const dataDir = await createDataDir(directories);
+    await seedV2(dataDir);
+    const manager = new MemoryV2ToV3MigrationManager({ dataDir });
+
+    const [first, second] = await Promise.all([
+      manager.requestMigration(),
+      manager.requestMigration(),
+    ]);
+
+    expect(first.pendingMigration?.id).toBeTruthy();
+    expect(second.pendingMigration?.id).toBe(first.pendingMigration?.id);
+    expect((await manager.status()).pendingMigration?.attempts).toBe(0);
+  });
+
+  it('executes registered migration and rollback only in the bootstrap preparation path', async () => {
+    const dataDir = await createDataDir(directories);
+    await seedV2(dataDir);
+    const manager = new MemoryV2ToV3MigrationManager({ dataDir });
+
+    await manager.requestMigration();
+    expect((await manager.status()).activeBackend).toBe('v2');
+    const migrated = await manager.prepareForBootstrap();
+    expect(migrated).toMatchObject({ operation: 'migration', locator: { activeBackend: 'v3' } });
+
+    const rollbackRequest = await manager.requestRollback();
+    expect(rollbackRequest).toMatchObject({
+      activeBackend: 'v3',
+      pendingRollback: { phase: 'requested', attempts: 0 },
+    });
+    const rolledBack = await manager.prepareForBootstrap();
+    expect(rolledBack).toMatchObject({ operation: 'rollback', locator: { activeBackend: 'v2' } });
+  });
+
+  it('preserves an inactive v3 directory and rebuilds from newer v2 data after rollback', async () => {
+    const dataDir = await createDataDir(directories);
+    await seedV2(dataDir);
+    const manager = new MemoryV2ToV3MigrationManager({ dataDir });
+    const first = await manager.migrate();
+    await manager.rollback();
+
+    const v2 = new MemoryRepository({ dataDir, backend: 'v2' });
+    await v2.initialize();
+    const added = await v2.write(intent({
+      id: 'after-rollback',
+      summary: 'New v2 memory after rollback',
+      content: 'This memory must be present after the next v3 migration.',
+      sourceRunId: 'run-after-rollback',
+    }));
+    v2.close();
+
+    const second = await manager.migrate();
+    expect(second.migration.id).not.toBe(first.migration.id);
+    expect(existsSync(join(
+      dataDir,
+      'memory-tree',
+      'migrations',
+      second.migration.id,
+      'previous-v3',
+    ))).toBe(true);
+    const v3 = new MemoryRepository({ dataDir, backend: 'v3' });
+    await v3.initialize();
+    expect(await v3.getNode(added.node!.id)).toMatchObject({ summary: 'New v2 memory after rollback' });
+    v3.close();
+  });
+
+  it('keeps the previous backend active and exposes recovery after a bootstrap failure', async () => {
+    const dataDir = await createDataDir(directories);
+    await seedV2(dataDir);
+    let injected = false;
+    const interrupted = new MemoryV2ToV3MigrationManager({
+      dataDir,
+      faultInjector: (point) => {
+        if (point !== 'after-snapshot' || injected) return;
+        injected = true;
+        throw new Error('simulated bootstrap interruption');
+      },
+    });
+    await interrupted.requestMigration();
+
+    const failed = await interrupted.prepareForBootstrap();
+    expect(failed).toMatchObject({
+      operation: 'migration',
+      locator: { activeBackend: 'v2', pendingMigration: { phase: 'recovery' } },
+      error: 'simulated bootstrap interruption',
+    });
+
+    const recovered = await new MemoryV2ToV3MigrationManager({ dataDir }).prepareForBootstrap();
+    expect(recovered).toMatchObject({ operation: 'migration', locator: { activeBackend: 'v3' } });
+  });
+
+  it('cancels recovery without deleting an uncommitted v3 directory', async () => {
+    const dataDir = await createDataDir(directories);
+    await seedV2(dataDir);
+    let injected = false;
+    const manager = new MemoryV2ToV3MigrationManager({
+      dataDir,
+      faultInjector: (point) => {
+        if (point !== 'after-active-v3-commit' || injected) return;
+        injected = true;
+        throw new Error('stop after active directory rename');
+      },
+    });
+    await manager.requestMigration();
+    const failed = await manager.prepareForBootstrap();
+    const migrationId = failed.locator.pendingMigration!.id;
+    expect(failed).toMatchObject({ locator: { activeBackend: 'v2', pendingMigration: { phase: 'recovery' } } });
+    expect(existsSync(join(dataDir, 'memory-tree', 'v3'))).toBe(true);
+
+    const cancelled = await manager.cancelPending();
+    expect(cancelled.pendingMigration).toBeUndefined();
+    expect(cancelled.activeBackend).toBe('v2');
+    expect(existsSync(join(dataDir, 'memory-tree', 'v3'))).toBe(false);
+    expect(existsSync(join(
+      dataDir,
+      'memory-tree',
+      'migrations',
+      migrationId,
+      'abandoned-v3',
+    ))).toBe(true);
+  });
+
   it('preserves nodes, resources, ledgers, ids, and the untouched v2 rollback authority', async () => {
     const dataDir = await createDataDir(directories);
     const source = await seedV2(dataDir);

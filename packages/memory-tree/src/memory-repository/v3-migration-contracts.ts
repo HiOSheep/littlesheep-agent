@@ -21,6 +21,8 @@ export interface MemoryV3MigrationFaultContext {
   migrationDir: string;
   stageDataDir: string;
   activeV3Dir: string;
+  inactiveV3Dir: string;
+  abandonedV3Dir: string;
   atomId?: string;
 }
 
@@ -41,6 +43,16 @@ export interface MemoryV3MigrationResult {
   locator: MemoryRepositoryLocator;
   migration: CompletedMemoryV3Migration;
   resumed: boolean;
+}
+
+export interface MemoryV3BootstrapPreparation {
+  locator: MemoryRepositoryLocator;
+  operation: 'none' | 'migration' | 'rollback';
+  error?: string;
+}
+
+export interface PrepareMemoryV3ForBootstrapOptions {
+  throwOnError?: boolean;
 }
 
 export interface MemoryV3MigrationPreflight {

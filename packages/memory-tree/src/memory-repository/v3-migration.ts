@@ -17,9 +17,11 @@ import { validateMemoryV3Stage } from './v3-migration-validation.js';
 import { commitMemoryV3Locator, finishInterruptedMemoryV3Commit } from './v3-migration-commit.js';
 import type {
   MemoryV2ToV3MigrationManagerOptions,
+  MemoryV3BootstrapPreparation,
   MemoryV3MigrationFaultPoint,
   MemoryV3MigrationPreflight,
   MemoryV3MigrationResult,
+  PrepareMemoryV3ForBootstrapOptions,
 } from './v3-migration-contracts.js';
 import {
   availableFilesystemBytes,
@@ -35,6 +37,7 @@ import {
   writeMemoryRepositoryLocator,
   type MemoryRepositoryLocator,
   type PendingMemoryV3Migration,
+  type PendingMemoryV3Rollback,
 } from './repository-locator.js';
 import {
   assertMemoryV3MigrationCapacity,
@@ -44,10 +47,12 @@ import { MemoryV3MigrationOperationQueue } from './v3-migration-operation.js';
 
 export type {
   MemoryV2ToV3MigrationManagerOptions,
+  MemoryV3BootstrapPreparation,
   MemoryV3MigrationFaultContext,
   MemoryV3MigrationFaultPoint,
   MemoryV3MigrationPreflight,
   MemoryV3MigrationResult,
+  PrepareMemoryV3ForBootstrapOptions,
 } from './v3-migration-contracts.js';
 
 export class MemoryV2ToV3MigrationManager {
@@ -84,68 +89,144 @@ export class MemoryV2ToV3MigrationManager {
     });
   }
 
-  migrate(): Promise<MemoryV3MigrationResult> {
-    return this.operations.run(async () => {
-      let locator = await this.status();
-      if (locator.activeBackend === 'v3' && locator.lastMigration) {
-        return { locator, migration: locator.lastMigration, resumed: true };
-      }
-      const resumed = !!locator.pendingMigration;
-      if (!locator.pendingMigration) {
-        const timestamp = this.now().toISOString();
-        locator = {
-          ...locator,
-          activeBackend: 'v2',
-          pendingMigration: {
-            id: this.idFactory(),
-            phase: 'requested',
-            attempts: 0,
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          },
-          updatedAt: timestamp,
-        };
-        await writeMemoryRepositoryLocator(this.dataDir, locator);
-      }
-      try {
-        const completed = await this.execute(locator, locator.pendingMigration!);
-        return { locator: completed, migration: completed.lastMigration!, resumed };
-      } catch (error) {
-        await this.recordRecovery(locator.pendingMigration!.id, error);
-        throw error;
-      }
-    });
+  requestMigration(): Promise<MemoryRepositoryLocator> {
+    return this.registerMigrationRequest(true);
   }
 
-  rollback(): Promise<MemoryRepositoryLocator> {
+  requestRollback(): Promise<MemoryRepositoryLocator> {
     return this.operations.run(async () => {
       const locator = await this.status();
+      if (locator.pendingMigration) throw new Error('A Memory v3 migration is already pending.');
+      if (locator.pendingRollback) return locator;
       if (locator.activeBackend !== 'v3' || !locator.lastMigration) {
         throw new Error('Memory v3 is not the active migrated backend.');
       }
-      const paths = memoryV3MigrationPaths(this.dataDir, locator.lastMigration.id);
-      const snapshot = await loadMemoryV2Snapshot(paths.snapshotDir);
-      const currentSource = await inspectMemoryV2Source(this.dataDir);
-      assertSameManifest(snapshot.manifest, currentSource.manifest, 'Memory v2 changed after migration; automatic rollback is unsafe.');
-      const active = await validateMemoryV3Stage(
-        this.dataDir,
-        snapshot.document,
-        snapshot.manifest.manifestHash,
-        this.policy,
-        this.v3,
-      );
-      if (active.validationHash !== locator.lastMigration.validationHash) {
-        throw new Error('Memory v3 changed after migration; automatic rollback would lose data.');
+      const timestamp = this.now().toISOString();
+      const next: MemoryRepositoryLocator = {
+        ...locator,
+        pendingRollback: {
+          id: this.idFactory(),
+          phase: 'requested',
+          attempts: 0,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+        updatedAt: timestamp,
+      };
+      await writeMemoryRepositoryLocator(this.dataDir, next);
+      return next;
+    });
+  }
+
+  cancelPending(): Promise<MemoryRepositoryLocator> {
+    return this.operations.run(async () => {
+      const locator = await this.status();
+      const timestamp = this.now().toISOString();
+      if (locator.pendingMigration) {
+        const pending = locator.pendingMigration;
+        if (pending.phase === 'recovery') {
+          const paths = memoryV3MigrationPaths(this.dataDir, pending.id);
+          await ensureMigrationOwnership(paths.migrationDir, pending.id, pending.createdAt);
+          if (await migrationDirectoryExists(paths.activeV3Dir)) {
+            if (await migrationDirectoryExists(paths.abandonedV3Dir)) {
+              throw new Error('The failed Memory v3 directory is already preserved; refusing to overwrite it.');
+            }
+            await rename(paths.activeV3Dir, paths.abandonedV3Dir);
+          }
+        } else if (pending.phase !== 'requested' || pending.attempts !== 0) {
+          throw new Error('A started Memory v3 migration cannot be cancelled; restart to resume recovery.');
+        }
+        const next = { ...locator, pendingMigration: undefined, updatedAt: timestamp };
+        await writeMemoryRepositoryLocator(this.dataDir, next);
+        return next;
       }
-      const rolledBack: MemoryRepositoryLocator = {
+      if (locator.pendingRollback) {
+        const next = { ...locator, pendingRollback: undefined, updatedAt: timestamp };
+        await writeMemoryRepositoryLocator(this.dataDir, next);
+        return next;
+      }
+      return locator;
+    });
+  }
+
+  prepareForBootstrap(
+    options: PrepareMemoryV3ForBootstrapOptions = {},
+  ): Promise<MemoryV3BootstrapPreparation> {
+    return this.operations.run(async () => {
+      const locator = await this.status();
+      if (locator.pendingMigration) {
+        try {
+          return { locator: await this.execute(locator, locator.pendingMigration), operation: 'migration' };
+        } catch (error) {
+          await this.recordMigrationRecovery(locator.pendingMigration.id, error);
+          if (options.throwOnError) throw error;
+          return { locator: await this.status(), operation: 'migration', error: errorMessage(error) };
+        }
+      }
+      if (locator.pendingRollback) {
+        try {
+          return { locator: await this.executeRollback(locator, locator.pendingRollback), operation: 'rollback' };
+        } catch (error) {
+          await this.recordRollbackRecovery(locator.pendingRollback.id, error);
+          if (options.throwOnError) throw error;
+          return { locator: await this.status(), operation: 'rollback', error: errorMessage(error) };
+        }
+      }
+      return { locator, operation: 'none' };
+    });
+  }
+
+  async migrate(): Promise<MemoryV3MigrationResult> {
+    const before = await this.status();
+    if (before.activeBackend === 'v3' && before.lastMigration) {
+      return { locator: before, migration: before.lastMigration, resumed: true };
+    }
+    const resumed = !!before.pendingMigration;
+    await this.registerMigrationRequest(false);
+    const prepared = await this.prepareForBootstrap({ throwOnError: true });
+    if (prepared.locator.activeBackend !== 'v3' || !prepared.locator.lastMigration) {
+      throw new Error('Memory v3 migration did not activate the v3 backend.');
+    }
+    return { locator: prepared.locator, migration: prepared.locator.lastMigration, resumed };
+  }
+
+  async rollback(): Promise<MemoryRepositoryLocator> {
+    await this.requestRollback();
+    return (await this.prepareForBootstrap({ throwOnError: true })).locator;
+  }
+
+  private registerMigrationRequest(validatePreflight: boolean): Promise<MemoryRepositoryLocator> {
+    return this.operations.run(async () => {
+      let locator = await this.status();
+      if (locator.activeBackend === 'v3') return locator;
+      if (locator.pendingRollback) throw new Error('A Memory v3 rollback is already pending.');
+      if (locator.pendingMigration) return locator;
+      if (validatePreflight) {
+        const preflight = await inspectMemoryV3MigrationPreflight({
+          dataDir: this.dataDir,
+          locator,
+          checkedAt: this.now().toISOString(),
+          availableBytes: this.availableBytes,
+        });
+        if (!preflight.canMigrate) {
+          throw new Error(preflight.blockers[0] ?? 'Memory v3 migration preflight did not pass.');
+        }
+      }
+      const timestamp = this.now().toISOString();
+      locator = {
         ...locator,
         activeBackend: 'v2',
-        previousBackend: 'v3',
-        pendingMigration: undefined,
-        updatedAt: this.now().toISOString(),
+        pendingMigration: {
+          id: this.idFactory(),
+          phase: 'requested',
+          attempts: 0,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+        updatedAt: timestamp,
       };
-      await writeMemoryRepositoryLocator(this.dataDir, rolledBack);
-      return rolledBack;
+      await writeMemoryRepositoryLocator(this.dataDir, locator);
+      return locator;
     });
   }
 
@@ -163,8 +244,9 @@ export class MemoryV2ToV3MigrationManager {
     await ensureMigrationOwnership(paths.migrationDir, pending.id, this.now().toISOString());
     const activeExists = await migrationDirectoryExists(paths.activeV3Dir);
     const stageExists = await migrationDirectoryExists(paths.stageV3Dir);
-    if (activeExists) {
-      if (!pending.validationHash || stageExists) {
+    const inactiveExists = await migrationDirectoryExists(paths.inactiveV3Dir);
+    if (activeExists && pending.validationHash) {
+      if (stageExists) {
         throw new Error('An uncommitted Memory v3 directory already exists; refusing to overwrite it.');
       }
       return finishInterruptedMemoryV3Commit({
@@ -176,6 +258,12 @@ export class MemoryV2ToV3MigrationManager {
         v3: this.v3,
         now: this.now,
       });
+    }
+    if (activeExists) {
+      if (stageExists || inactiveExists || locator.previousBackend !== 'v3' || !locator.lastMigration) {
+        throw new Error('An inactive Memory v3 directory cannot be safely preserved for a new migration.');
+      }
+      await rename(paths.activeV3Dir, paths.inactiveV3Dir);
     }
 
     await removeOwnedMigrationChild(paths, paths.snapshotDir);
@@ -254,6 +342,49 @@ export class MemoryV2ToV3MigrationManager {
     return completed;
   }
 
+  private async executeRollback(
+    locator: MemoryRepositoryLocator,
+    pendingValue: PendingMemoryV3Rollback,
+  ): Promise<MemoryRepositoryLocator> {
+    if (!locator.lastMigration) throw new Error('Memory v3 rollback has no completed migration evidence.');
+    let pending: PendingMemoryV3Rollback = {
+      ...pendingValue,
+      attempts: pendingValue.attempts + 1,
+      updatedAt: this.now().toISOString(),
+      error: undefined,
+    };
+    pending = await this.persistPendingRollback(locator, pending, 'validating');
+    const paths = memoryV3MigrationPaths(this.dataDir, locator.lastMigration.id);
+    const snapshot = await loadMemoryV2Snapshot(paths.snapshotDir);
+    const currentSource = await inspectMemoryV2Source(this.dataDir);
+    assertSameManifest(
+      snapshot.manifest,
+      currentSource.manifest,
+      'Memory v2 changed after migration; automatic rollback is unsafe.',
+    );
+    const active = await validateMemoryV3Stage(
+      this.dataDir,
+      snapshot.document,
+      snapshot.manifest.manifestHash,
+      this.policy,
+      this.v3,
+    );
+    if (active.validationHash !== locator.lastMigration.validationHash) {
+      throw new Error('Memory v3 changed after migration; automatic rollback would lose data.');
+    }
+    pending = await this.persistPendingRollback(locator, pending, 'committing');
+    const rolledBack: MemoryRepositoryLocator = {
+      ...locator,
+      activeBackend: 'v2',
+      previousBackend: 'v3',
+      pendingMigration: undefined,
+      pendingRollback: undefined,
+      updatedAt: this.now().toISOString(),
+    };
+    await writeMemoryRepositoryLocator(this.dataDir, rolledBack);
+    return rolledBack;
+  }
+
   private async persistPending(
     locator: MemoryRepositoryLocator,
     pending: PendingMemoryV3Migration,
@@ -265,12 +396,29 @@ export class MemoryV2ToV3MigrationManager {
       ...locator,
       activeBackend: 'v2',
       pendingMigration: next,
+      pendingRollback: undefined,
       updatedAt: next.updatedAt,
     });
     return next;
   }
 
-  private async recordRecovery(id: string, error: unknown): Promise<void> {
+  private async persistPendingRollback(
+    locator: MemoryRepositoryLocator,
+    pending: PendingMemoryV3Rollback,
+    phase: PendingMemoryV3Rollback['phase'],
+  ): Promise<PendingMemoryV3Rollback> {
+    const next = { ...pending, phase, updatedAt: this.now().toISOString() };
+    await writeMemoryRepositoryLocator(this.dataDir, {
+      ...locator,
+      activeBackend: 'v3',
+      pendingMigration: undefined,
+      pendingRollback: next,
+      updatedAt: next.updatedAt,
+    });
+    return next;
+  }
+
+  private async recordMigrationRecovery(id: string, error: unknown): Promise<void> {
     const locator = await readMemoryRepositoryLocator(this.dataDir).catch(() => undefined);
     if (!locator?.pendingMigration || locator.pendingMigration.id !== id) return;
     const timestamp = this.now().toISOString();
@@ -278,6 +426,22 @@ export class MemoryV2ToV3MigrationManager {
       ...locator,
       pendingMigration: {
         ...locator.pendingMigration,
+        phase: 'recovery',
+        updatedAt: timestamp,
+        error: errorMessage(error).slice(0, 16_000),
+      },
+      updatedAt: timestamp,
+    });
+  }
+
+  private async recordRollbackRecovery(id: string, error: unknown): Promise<void> {
+    const locator = await readMemoryRepositoryLocator(this.dataDir).catch(() => undefined);
+    if (!locator?.pendingRollback || locator.pendingRollback.id !== id) return;
+    const timestamp = this.now().toISOString();
+    await writeMemoryRepositoryLocator(this.dataDir, {
+      ...locator,
+      pendingRollback: {
+        ...locator.pendingRollback,
         phase: 'recovery',
         updatedAt: timestamp,
         error: errorMessage(error).slice(0, 16_000),

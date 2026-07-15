@@ -207,9 +207,16 @@ export interface MemoryV3MigrationPreflightOverview {
   checkedAt: string
   activeBackend: 'v2' | 'v3'
   previousBackend?: 'v2' | 'v3'
-  phase?: 'requested' | 'snapshot' | 'building' | 'validating' | 'ready' | 'committing' | 'recovery'
-  attempts?: number
-  error?: string
+  pendingOperation?: {
+    kind: 'migration' | 'rollback'
+    phase: 'requested' | 'snapshot' | 'building' | 'validating' | 'ready' | 'committing' | 'recovery'
+    attempts: number
+    createdAt: string
+    updatedAt: string
+    error?: string
+  }
+  requiresRestart: boolean
+  canCancel: boolean
   canMigrate: boolean
   canResume: boolean
   rollbackAvailable: boolean

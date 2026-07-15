@@ -2,6 +2,7 @@
 
 import type { Config } from '@littlesheep/config'
 import type { PluginHost } from '@littlesheep/plugins'
+import type { MemoryV2ToV3MigrationManager } from '@littlesheep/memory-tree'
 import type { AgentRunner } from '@littlesheep/runner'
 import type { ArchiveIndex } from '../archive-index.js'
 import type { AttachmentRef } from '../attachments.js'
@@ -30,6 +31,7 @@ export interface LocalAppApiServerOptions {
   selectAttachments?: () => Promise<AttachmentRef[]>
   selectProjectMemoryExport?: (projectName: string, projectPath: string) => Promise<string | null>
   selectMemoryResourceSource?: () => Promise<string | null>
+  memoryV3MigrationManager?: MemoryV2ToV3MigrationManager
   dataRootManager?: DataRootMigrationManager
   selectDataRootTarget?: () => Promise<string | null>
   restartApplication?: () => void

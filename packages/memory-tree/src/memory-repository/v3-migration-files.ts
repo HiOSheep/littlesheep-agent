@@ -23,6 +23,8 @@ export function memoryV3MigrationPaths(dataDir: string, migrationId: string): Me
     stageDataDir,
     stageV3Dir: join(stageDataDir, 'memory-tree', 'v3'),
     activeV3Dir: join(dataDir, 'memory-tree', 'v3'),
+    inactiveV3Dir: join(migrationDir, 'previous-v3'),
+    abandonedV3Dir: join(migrationDir, 'abandoned-v3'),
   };
 }
 

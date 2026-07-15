@@ -42,7 +42,10 @@ export async function inspectMemoryV3MigrationPreflight(
   return {
     checkedAt: options.checkedAt,
     locator: options.locator,
-    canMigrate: !alreadyV3 && !options.locator.pendingMigration && blockers.length === 0,
+    canMigrate: !alreadyV3
+      && !options.locator.pendingMigration
+      && !options.locator.pendingRollback
+      && blockers.length === 0,
     canResume: !alreadyV3 && Boolean(options.locator.pendingMigration) && blockers.length === 0,
     rollbackAvailable: alreadyV3 && Boolean(options.locator.lastMigration),
     blockers,

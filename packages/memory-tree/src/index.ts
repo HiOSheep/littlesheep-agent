@@ -118,15 +118,19 @@ export {
   type CompletedMemoryV3Migration,
   type MemoryRepositoryLocator,
   type MemoryV3MigrationPhase,
+  type MemoryV3RollbackPhase,
   type PendingMemoryV3Migration,
+  type PendingMemoryV3Rollback,
 } from './memory-repository/repository-locator.js';
 export {
   MemoryV2ToV3MigrationManager,
   type MemoryV2ToV3MigrationManagerOptions,
+  type MemoryV3BootstrapPreparation,
   type MemoryV3MigrationFaultContext,
   type MemoryV3MigrationFaultPoint,
   type MemoryV3MigrationPreflight,
   type MemoryV3MigrationResult,
+  type PrepareMemoryV3ForBootstrapOptions,
 } from './memory-repository/v3-migration.js';
 export {
   MemoryService,

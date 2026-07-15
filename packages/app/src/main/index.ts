@@ -5,12 +5,13 @@
 //   1. Load branding + data dirs
 //   2. Load + decrypt API keys from keychain → inject into process.env
 //   3. Load config (resolveApiKey("$VAR") now finds keys in env)
-//   4. Create embedded Runner (in-process agent loop, origin='app')
-//   5. Initialize ProjectIndex + SessionIndex + ArchiveIndex (UI metadata)
-//   6. Start local app API server on 127.0.0.1 (random port)
-//   7. Discover and activate optional plugins
-//   8. Expose port to renderer via env var (preload reads it)
-//   9. Create BrowserWindow
+//   4. Complete any registered Memory v3 migration/rollback before writers start
+//   5. Create embedded Runner (in-process agent loop, origin='app')
+//   6. Initialize ProjectIndex + SessionIndex + ArchiveIndex (UI metadata)
+//   7. Start local app API server on 127.0.0.1 (random port)
+//   8. Discover and activate optional plugins
+//   9. Expose port to renderer via env var (preload reads it)
+//  10. Create BrowserWindow
 
 import { app, BrowserWindow, shell, dialog } from 'electron'
 import { existsSync } from 'node:fs'
@@ -26,6 +27,7 @@ import {
   type ModelProvider,
 } from '@littlesheep/config'
 import { loadBranding, dataSubdirs, type BrandingConfig } from '@littlesheep/branding'
+import { MemoryV2ToV3MigrationManager } from '@littlesheep/memory-tree'
 import { createRunner, type AgentRunner, type LogFn } from '@littlesheep/runner'
 import { createPluginHost, type PluginHost } from '@littlesheep/plugins'
 import { startLocalAppApiServer, type LocalAppApiServer } from './local-app-api-server.js'
@@ -41,6 +43,7 @@ import { resolveRuntimeWorkspaceDefault } from './runtime-config.js'
 import { loadApiKeys, injectKeysIntoEnv } from './keychain.js'
 import { runShutdownSequence } from './shutdown-sequence.js'
 import { DataRootMigrationManager } from './data-root-migration.js'
+import { prepareMemoryV3Bootstrap } from './memory-v3-bootstrap.js'
 
 let runner: AgentRunner | null = null
 let server: LocalAppApiServer | null = null
@@ -286,16 +289,32 @@ async function bootstrap(): Promise<void> {
 
   // 3. Load config (env vars are now set, $VAR references resolve correctly).
   const runtime = prepareRuntimeConfig(await loadConfig({ dataDir: dataDir.root }), dataDir.workplace)
-  const config = runtime.config
+  let config = runtime.config
   const model = runtime.model
-  if (runtime.migratedDefaultWorkspace) {
+  const memoryV3MigrationManager = new MemoryV2ToV3MigrationManager({
+    dataDir: dataDir.root,
+    policy: { experienceThreshold: config.memory.experienceWriteThreshold },
+  })
+  const memoryPreparation = await prepareMemoryV3Bootstrap({
+    dataDir: dataDir.root,
+    config,
+    manager: memoryV3MigrationManager,
+  })
+  config = memoryPreparation.config
+  if (memoryPreparation.error) {
+    console.error(`[memory-v3] ${memoryPreparation.operation} recovery pending: ${memoryPreparation.error}`)
+  }
+  if (runtime.migratedDefaultWorkspace || memoryPreparation.configChanged) {
     await saveConfig(config, join(dataDir.root, 'config.json'))
   }
 
-  // 4. Create embedded runner.
+  // 4. Any registered Memory v3 operation has now completed or failed closed;
+  //    config follows the durable locator before the first runtime writer starts.
+
+  // 5. Create embedded runner.
   runner = await createRunner({ config, branding, model, bootstrapDir: dataDir.root })
 
-  // 5. Project + session + archive indexes for UI sidebar and settings.
+  // 6. Project + session + archive indexes for UI sidebar and settings.
   projectIndex = new ProjectIndex({ dataDir: dataDir.root })
   await projectIndex.removeManagedWorkspaceShells(dataDir.workplace)
   sessionIndex = new SessionIndex({ dataDir: dataDir.root, workplaceDir: dataDir.workplace })
@@ -314,7 +333,7 @@ async function bootstrap(): Promise<void> {
   currentBootstrapDir = dataDir.root
   currentWorkplaceDir = dataDir.workplace
 
-  // 6. Start local app API server on loopback (random free port).
+  // 7. Start local app API server on loopback (random free port).
   server = await startLocalAppApiServer(runner, {
     port: 0,
     sessionIndex,
@@ -360,6 +379,7 @@ async function bootstrap(): Promise<void> {
       })
       return result.canceled ? null : result.filePaths[0] ?? null
     },
+    memoryV3MigrationManager,
     dataRootManager,
     selectDataRootTarget: async () => {
       const result = await dialog.showOpenDialog({
@@ -374,7 +394,7 @@ async function bootstrap(): Promise<void> {
     },
   })
 
-  // 7. Start the optional plugin host. Built-in channel implementations use
+  // 8. Start the optional plugin host. Built-in channel implementations use
   //    dynamic imports and are activated only when their channel type is enabled.
   pluginHost = createPluginHost({
     runner,
@@ -391,10 +411,10 @@ async function bootstrap(): Promise<void> {
     console.error('[plugins] host failed to start:', err)
   })
 
-  // 8. Expose server port to renderer via env (preload reads it).
+  // 9. Expose server port to renderer via env (preload reads it).
   process.env['LITTLESHEEP_API_PORT'] = String(server.port)
 
-  // 9. Create window.
+  // 10. Create window.
   createWindow()
 }
 

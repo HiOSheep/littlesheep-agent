@@ -231,7 +231,7 @@ async function route(
     getRunner,
     projectIndex,
     getConfig, setConfig,
-    dataDir: opts.dataDir,
+    memoryV3MigrationManager: opts.memoryV3MigrationManager,
     updateRuntimeConfig: opts.updateRuntimeConfig,
     selectProjectMemoryExport: opts.selectProjectMemoryExport,
     selectMemoryResourceSource: opts.selectMemoryResourceSource,

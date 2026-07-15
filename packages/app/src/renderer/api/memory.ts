@@ -74,6 +74,30 @@ export async function getMemoryV3MigrationPreflight(signal?: AbortSignal): Promi
   return res.json() as Promise<MemoryV3MigrationPreflightOverview>
 }
 
+export async function requestMemoryV3Migration(): Promise<MemoryV3MigrationPreflightOverview> {
+  return updateMemoryV3Operation(LOCAL_APP_API_ROUTES.memoryMigration, 'POST')
+}
+
+export async function cancelMemoryV3Operation(): Promise<MemoryV3MigrationPreflightOverview> {
+  return updateMemoryV3Operation(LOCAL_APP_API_ROUTES.memoryMigration, 'DELETE')
+}
+
+export async function requestMemoryV3Rollback(): Promise<MemoryV3MigrationPreflightOverview> {
+  return updateMemoryV3Operation(LOCAL_APP_API_ROUTES.memoryRollback, 'POST')
+}
+
+async function updateMemoryV3Operation(
+  path: string,
+  method: 'POST' | 'DELETE',
+): Promise<MemoryV3MigrationPreflightOverview> {
+  const res = await fetch(localApiUrl(path), { method })
+  if (!res.ok) {
+    const body = await res.json().catch(() => null) as { error?: string } | null
+    throw new Error(body?.error ?? `Local app API error: ${res.status}`)
+  }
+  return res.json() as Promise<MemoryV3MigrationPreflightOverview>
+}
+
 export async function updateMemoryLearningPolicy(experienceWriteThreshold: number): Promise<{ experienceWriteThreshold: number }> {
   const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.memoryPolicy), {
     method: 'POST',

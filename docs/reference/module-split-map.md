@@ -1,6 +1,6 @@
 # LittleSheep 模块拆分地图
 
-最后更新：2026-07-16 00:17:15
+最后更新：2026-07-16 01:37:16
 
 本文件记录大型生产文件的当前所有权、目标边界和拆分顺序。它是仓库基元化任务书的阶段产物，不替代项目状态，也不把行数当成唯一质量指标。
 
@@ -16,7 +16,7 @@
 
 | 当前文件 | 基线行数 | 当前责任 | 目标边界 | 所有权 |
 | --- | ---: | --- | --- | --- |
-| `packages/app/src/renderer/MemoryTreeView.tsx` | 1011 | 记忆树 controller、资源和项目投影视图；v3 节点行与迁移面板已拆出 | controller + tree、resource、audit、project-projection 组件 | B |
+| `packages/app/src/renderer/MemoryTreeView.tsx` | 1007 | 记忆树 controller、资源和项目投影视图；v3 节点行、迁移面板和迁移 hook 已拆出 | controller + tree、resource、audit、project-projection 组件 | B |
 | `packages/channels/qqbot/src/plugin.ts` | 801 | QQ 协议、连接、消息、发送和生命周期 | transport、protocol、message-mapper、sender、lifecycle | C |
 | `packages/memory-tree/src/project-memory-projection.ts` | 778 | 投影生成、同步、冲突、恢复和删除 | projection facade + render、sync、conflict、lifecycle | D |
 | `packages/memory-tree/src/memory-tree.ts` | 647 | 根索引、导航、展开、搜索和预算 | tree facade + index、navigation、expansion、branch-search、budget | D |
@@ -29,7 +29,7 @@
 | --- | ---: | --- | --- | --- |
 | `packages/plugins/src/host.ts` | 536 | 插件发现、加载、启停、贡献迁移 | 分离 discovery、activation、contribution、reconcile | C |
 | `packages/memory-tree/src/legacy-memory-branches.ts` | 509 | 旧记忆分支兼容 | 保持隔离，迁移结束后缩减或退役 | D |
-| `packages/app/src/main/index.ts` | 510 | Electron 启动和组合 | 抽取 bootstrap 服务，入口只保留装配顺序 | C |
+| `packages/app/src/main/index.ts` | 530 | Electron 启动和组合；Memory v3 启动协调已下沉 | 继续抽取 bootstrap 服务，入口只保留装配顺序 | C |
 | `packages/types/src/agent.ts` | 510 | Agent 与 TaskBook 契约 | 按 taskbook、trace、stage 类型分组并保持 barrel | E |
 | `packages/app/src/main/attachment-cache.ts` | 486 | 附件索引、配额、清理和校验 | 分离 index、quota、cleanup、validation | C |
 | `packages/runner/src/runner.ts` | 537 | run 生命周期与依赖协调 | 分离 run lifecycle、session、memory、stream 协调器 | E |
@@ -42,6 +42,7 @@
 | `packages/memory-tree/src/memory-repository/v3-node-store.ts` | 545 | v3 节点查询、写入编排、层级和实体关联 | 事件与生命周期规则已拆出；后续分离 query projection 与 write coordinator | D |
 | `packages/memory-tree/src/memory-repository/v3-ledger.ts` | 502 | v3 分片审计、恢复队列、scope alias、schema migration 兼容和事务账本 | 一次性 v2 导入已放入独立迁移模块；后续分离 audit shards、recovery queue 与 transaction ledger | D |
 | `packages/memory-tree/src/memory-repository/v3-backend.ts` | 370 | v3 后端组合、检索 facade、management adapter 和写后维护协调 | 保持组合层；若继续增长，拆出生命周期与 maintenance adapter | D |
+| `packages/memory-tree/src/memory-repository/v3-migration.ts` | 461 | v2->v3 请求登记、启动执行、恢复、受约束回滚和 locator 状态机 | 保持事务 facade；若继续增长，分离 request/recovery 与 rollback coordinator | D |
 | `packages/llm/src/client.ts` | 460 | 请求、流式、reasoning、重试适配 | 分离 request builder、stream parser、response mapper | E |
 | `packages/types/src/runtime-contracts.ts` | 449 | 多类运行时版本契约 | 按 context、event、checkpoint、execution 分组并保持 barrel | E |
 | `packages/memory-tree/src/memory-repository/resource-store.ts` | 439 | 资源注册、生命周期、重绑定和审计 | 分离 registry、lifecycle、rebind、audit | D |
@@ -92,7 +93,7 @@
 2. C 与 D 优先拆 Main/API 和 Memory，减少 B/E 的跨层依赖。
 3. B 已在 API barrel 稳定后完成 Renderer 组合壳拆分；后续 Renderer 细分继续按真实窗口验收。
 4. D/E 所有权下的 Memory、Harness/Context 已完成 facade 化与内部领域拆分，LLM Call Contract 和记忆意图闸门已在稳定边界上接入。
-5. Memory v3 阶段 4 已完成独立 snapshot、mapping、build、validation、commit 和 filesystem 模块；阶段 5 已把检索、证据封套与 KnownState 拆入独立模块；阶段 6 已拆出 management facade、迁移预检/串行操作和 Renderer node/migration 组件。下一步继续拆 `MemoryTreeView` 的 controller、resource 与 project-projection，并在独立启动前迁移协调器中实现正式迁移协议。
+5. Memory v3 阶段 4 已完成独立 snapshot、mapping、build、validation、commit 和 filesystem 模块；阶段 5 已把检索、证据封套与 KnownState 拆入独立模块；阶段 6 已拆出 management facade、迁移状态机/预检/启动协调器和 Renderer node/panel/hook。下一步继续拆 `MemoryTreeView` 的 controller、resource 与 project-projection，并让 atom 写管理复用同一 transaction 边界。
 
 ## 当前共享契约与 facade
 

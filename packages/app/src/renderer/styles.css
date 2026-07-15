@@ -9951,6 +9951,7 @@ body.is-resizing-column .settings-sidebar-resizer::before {
 .memory-learning-row button,
 .memory-node-actions button,
 .memory-project-actions button,
+.memory-migration-actions button,
 .memory-confirmation-actions button {
   width: max-content;
   min-height: 29px;
@@ -9974,6 +9975,8 @@ body.is-resizing-column .settings-sidebar-resizer::before {
 .memory-node-actions button:focus-visible,
 .memory-project-actions button:hover:not(:disabled),
 .memory-project-actions button:focus-visible,
+.memory-migration-actions button:hover:not(:disabled),
+.memory-migration-actions button:focus-visible,
 .memory-confirmation-actions button:hover:not(:disabled),
 .memory-confirmation-actions button:focus-visible {
   color: var(--text-strong);
@@ -9985,6 +9988,7 @@ body.is-resizing-column .settings-sidebar-resizer::before {
 .memory-learning-row button:disabled,
 .memory-node-actions button:disabled,
 .memory-project-actions button:disabled,
+.memory-migration-actions button:disabled,
 .memory-confirmation-actions button:disabled {
   cursor: default;
   opacity: 0.38;
@@ -10842,6 +10846,21 @@ body.is-resizing-column .settings-sidebar-resizer::before {
 .memory-migration-readiness time {
   color: var(--muted-2);
   font-size: 10px;
+}
+
+.memory-migration-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 32px;
+}
+
+.memory-migration-actions button.primary {
+  color: var(--text-strong);
+  background: var(--control-hover);
+  border-color: var(--border-strong);
 }
 
 .memory-tree-empty-row {

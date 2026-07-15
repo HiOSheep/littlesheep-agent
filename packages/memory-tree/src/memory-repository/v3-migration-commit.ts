@@ -69,6 +69,7 @@ export async function commitMemoryV3Locator(options: MemoryV3CommitOptions): Pro
     activeBackend: 'v3',
     previousBackend: 'v2',
     pendingMigration: undefined,
+    pendingRollback: undefined,
     lastMigration: migration,
     updatedAt: completedAt,
   };

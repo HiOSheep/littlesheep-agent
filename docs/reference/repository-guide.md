@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-07-15 20:46:57
+最后更新：2026-07-16 01:37:16
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
@@ -73,7 +73,7 @@
 
 | 包 | 归属和职责 |
 | --- | --- |
-| `packages/memory-tree/` | `MemoryService` 与 `MemoryRepository` 稳定门面、T0-T3 资源注册、索引导航、项目投影和生命周期；`src/memory-repository/` 拥有 v2/v3 后端、选择闸门、事务账本、认识状态分类、节点/资源适配，以及独立的 v2→v3 snapshot/build/validation/commit 迁移模块；`src/v3/` 拥有 atom、journal、SQLite catalog、FTS/向量、有界维护和实体关系权威文件。v3 已通过隔离迁移故障注入，但尚未接管正式用户数据。 |
+| `packages/memory-tree/` | `MemoryService` 与 `MemoryRepository` 稳定门面、T0-T3 资源注册、索引导航、项目投影和生命周期；`src/memory-repository/` 拥有 v2/v3 后端、选择闸门、事务账本、认识状态分类、节点/资源适配，以及独立的 v2→v3 snapshot/build/validation/commit、请求登记、恢复和受约束回滚模块；`src/v3/` 拥有 atom、journal、SQLite catalog、FTS/向量、有界维护和实体关系权威文件。v3 已通过隔离迁移故障注入和应用启动协议验证，但尚未接管正式用户数据。 |
 | `packages/embedding/` | Memory v3 的本地 Transformers.js Embedding 实现、固定 revision 模型登记、显式资产准备、大小/SHA-256 校验、离线加载和候选基准；不拥有记忆正文、Catalog 或 Provider 请求。 |
 | `packages/memory-core/` | 文件记忆兼容存储、daily、长期记忆、写入闸门、归档和旧来源适配。 |
 | `packages/vector/` | 向量存储接口；只在已导航分支的深搜兜底路径使用。 |
@@ -142,6 +142,7 @@
 | `packages/app/src/main/session-index.ts`、`project-index.ts`、`archive-index.ts` | UI 侧会话、稳定项目身份和归档元数据索引。 |
 | `packages/app/src/main/project-rebinding.ts`、`path-rebinding.ts` | 项目移动/重命名后的持久化重绑定事务、恢复日志和跨索引路径重映射。 |
 | `packages/app/src/main/memory-tree-control.ts` | 记忆树管理页面使用的运行时控制面；通过 `MemoryService` 读取节点、访问账本、资源注册表、资源生命周期审计和项目投影状态，并执行受约束的节点/资源管理动作。 |
+| `packages/app/src/main/memory-v3-bootstrap.ts`、`memory-v3-migration-control.ts` | Memory v3 迁移生命周期的应用边界：运行中只登记/取消请求，启动时在 Runner、Local App API 和插件写入者创建前执行迁移或回滚，并让配置服从 durable locator。 |
 | `packages/app/src/main/workspace-*.ts` | 工作区布局、产物、文件路由、终端和 shell 适配。 |
 | `packages/memory-tree/src/workspace-resource-index.ts`、`workspace-resource-scanner.ts` | 用户数据中的工作区资源元数据索引、游标式有界扫描、精确变更提示、重启恢复和按查询展开；不读取文件正文。 |
 | `packages/app/src/main/shutdown-sequence.ts` | 应用退出时的有序关闭。 |

@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   getMemoryTreeOverview,
   getMemoryTreeNodeDetail,
-  getMemoryV3MigrationPreflight,
   manageMemoryTreeResource,
   manageMemoryTreeNode,
   updateProjectMemoryProjection,
@@ -17,12 +16,12 @@ import {
   type MemoryTreeOverview,
   type MemoryTreeProjectOverview,
   type ProjectMemoryProjectionState,
-  type MemoryV3MigrationPreflightOverview,
 } from './api'
 import { resourceKindLabel } from './memory-resource-labels'
 import { compactPath, formatDateTime, formatRelativeDate } from './memory-tree/format'
 import { MemoryMigrationPanel } from './memory-tree/migration-panel'
 import { MemoryNodeRow } from './memory-tree/node-row'
+import { useMemoryMigration } from './memory-tree/use-memory-migration'
 
 type MemoryBranchFilter = 'all' | MemoryTreeBranchId | 'resources' | 'archive' | 'migration'
 type MemoryTreeResourceOverview = MemoryTreeOverview['resources'][number]
@@ -42,6 +41,7 @@ type ConfirmationRequest =
       resource: MemoryTreeResourceOverview
       action: 'remove' | 'disable'
     }
+  | { kind: 'migration'; action: 'migrate' | 'rollback' }
 type ProjectProjectionAction = 'enable' | 'sync' | 'force-sync' | 'export' | 'disable' | 'remove'
 
 const BRANCH_LABELS: Record<MemoryTreeBranchId, string> = {
@@ -75,8 +75,6 @@ export function MemoryTreeView() {
   const [expandedNodeId, setExpandedNodeId] = useState<string | null>(null)
   const [nodeDetails, setNodeDetails] = useState<Record<string, MemoryTreeNodeDetail>>({})
   const [loadingNodeDetails, setLoadingNodeDetails] = useState<Set<string>>(() => new Set())
-  const [migrationPreflight, setMigrationPreflight] = useState<MemoryV3MigrationPreflightOverview | null>(null)
-  const [migrationLoading, setMigrationLoading] = useState(false)
   const [expandedResourceId, setExpandedResourceId] = useState<string | null>(null)
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
   const [managingNodeId, setManagingNodeId] = useState<string | null>(null)
@@ -90,8 +88,8 @@ export function MemoryTreeView() {
   const projectNoticeTimerRef = useRef(0)
   const loadRequestRef = useRef(0)
   const nodeDetailRequestsRef = useRef(new Map<string, AbortController>())
-  const migrationRequestRef = useRef<AbortController | null>(null)
   const mountedRef = useRef(true)
+  const migration = useMemoryMigration({ active: branchFilter === 'migration', onRegistered: closeConfirmation })
 
   async function load(silent = false, preserveProjectNotice = false) {
     const requestId = ++loadRequestRef.current
@@ -134,15 +132,8 @@ export function MemoryTreeView() {
       window.cancelAnimationFrame(confirmationFrameRef.current)
       for (const controller of nodeDetailRequestsRef.current.values()) controller.abort()
       nodeDetailRequestsRef.current.clear()
-      migrationRequestRef.current?.abort()
     }
   }, [])
-
-  useEffect(() => {
-    if (branchFilter === 'migration' && !migrationPreflight && !migrationLoading) {
-      void loadMigrationPreflight()
-    }
-  }, [branchFilter])
 
   async function loadNodeDetail(nodeId: string, disclosureLevel: 'D2' | 'D3') {
     const cached = nodeDetails[nodeId]
@@ -166,23 +157,6 @@ export function MemoryTreeView() {
           return next
         })
       }
-    }
-  }
-
-  async function loadMigrationPreflight() {
-    migrationRequestRef.current?.abort()
-    const controller = new AbortController()
-    migrationRequestRef.current = controller
-    setMigrationLoading(true)
-    setError(null)
-    try {
-      const result = await getMemoryV3MigrationPreflight(controller.signal)
-      if (mountedRef.current && !controller.signal.aborted) setMigrationPreflight(result)
-    } catch (err) {
-      if (!controller.signal.aborted && mountedRef.current) setError((err as Error).message)
-    } finally {
-      if (migrationRequestRef.current === controller) migrationRequestRef.current = null
-      if (mountedRef.current) setMigrationLoading(false)
     }
   }
 
@@ -420,7 +394,9 @@ export function MemoryTreeView() {
       ? managingProjectId === confirmation.project.id
       : confirmation?.kind === 'resource'
         ? managingResourceId === confirmation.resource.id
-        : false
+        : confirmation?.kind === 'migration'
+          ? migration.busyAction === confirmation.action
+          : false
 
   return (
     <div className="memory-tree-page">
@@ -439,7 +415,7 @@ export function MemoryTreeView() {
         </button>
       </div>
 
-      {error && <div className="dialog-error">记忆树操作失败：{error}</div>}
+      {(error || migration.error) && <div className="dialog-error">记忆树操作失败：{error ?? migration.error}</div>}
       {loading && !overview && <div className="memory-tree-loading">正在读取运行时记忆索引...</div>}
 
       {overview && (
@@ -556,9 +532,14 @@ export function MemoryTreeView() {
               {branchFilter === 'migration' ? (
                 <MemoryMigrationPanel
                   repository={overview.repository}
-                  preflight={migrationPreflight}
-                  loading={migrationLoading}
-                  onRefresh={() => void loadMigrationPreflight()}
+                  preflight={migration.preflight}
+                  loading={migration.loading}
+                  busyAction={migration.busyAction}
+                  onRefresh={() => void migration.refresh()}
+                  onRequestMigration={() => openConfirmation({ kind: 'migration', action: 'migrate' })}
+                  onRequestRollback={() => openConfirmation({ kind: 'migration', action: 'rollback' })}
+                  onCancel={() => void migration.cancel()}
+                  onRestart={() => void migration.restart()}
                 />
               ) : (
               <div className="memory-node-list">
@@ -626,7 +607,8 @@ export function MemoryTreeView() {
                 onClick={() => {
                   if (confirmation.kind === 'node') void executeAction(confirmation.node, confirmation.action)
                   else if (confirmation.kind === 'project') void executeProjectAction(confirmation.project, confirmation.action)
-                  else void executeResourceAction(confirmation.resource, confirmation.action)
+                  else if (confirmation.kind === 'resource') void executeResourceAction(confirmation.resource, confirmation.action)
+                  else void migration.request(confirmation.action)
                 }}
               >
                 {confirmationBusy ? '处理中' : confirmationCopy.confirmLabel}
@@ -759,6 +741,23 @@ function describeConfirmation(request: ConfirmationRequest): {
   confirmLabel: string
   danger: boolean
 } {
+  if (request.kind === 'migration') {
+    return request.action === 'migrate'
+      ? {
+          title: '登记 Memory v3 迁移？',
+          description: '当前运行不会修改记忆数据。重启后，LS 会在 Runner、外部渠道、SQLite 和 Embedding 初始化前完成快照、构建与校验；失败时继续使用 V2。',
+          subject: 'Memory V2 -> V3',
+          confirmLabel: '确认登记',
+          danger: false,
+        }
+      : {
+          title: '登记 Memory v3 回滚？',
+          description: '当前运行不会切换版本。重启后，LS 只有在 V2 源和 V3 数据均未变化时才回到 V2；任何可能丢失新记忆的情况都会拒绝回滚。',
+          subject: 'Memory V3 -> V2',
+          confirmLabel: '确认登记',
+          danger: true,
+        }
+  }
   if (request.kind === 'node') {
     return request.action === 'delete'
       ? {

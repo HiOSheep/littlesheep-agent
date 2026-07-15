@@ -17,6 +17,12 @@ export type MemoryV3MigrationPhase =
   | 'committing'
   | 'recovery';
 
+export type MemoryV3RollbackPhase =
+  | 'requested'
+  | 'validating'
+  | 'committing'
+  | 'recovery';
+
 export interface PendingMemoryV3Migration {
   id: string;
   phase: MemoryV3MigrationPhase;
@@ -29,6 +35,15 @@ export interface PendingMemoryV3Migration {
   validationHash?: string;
   nodeCount?: number;
   resourceCount?: number;
+  error?: string;
+}
+
+export interface PendingMemoryV3Rollback {
+  id: string;
+  phase: MemoryV3RollbackPhase;
+  attempts: number;
+  createdAt: string;
+  updatedAt: string;
   error?: string;
 }
 
@@ -49,6 +64,7 @@ export interface MemoryRepositoryLocator {
   activeBackend: MemoryRepositoryBackendKind;
   previousBackend?: MemoryRepositoryBackendKind;
   pendingMigration?: PendingMemoryV3Migration;
+  pendingRollback?: PendingMemoryV3Rollback;
   lastMigration?: CompletedMemoryV3Migration;
   updatedAt: string;
 }
@@ -91,7 +107,11 @@ export function parseMemoryRepositoryLocator(value: unknown): MemoryRepositoryLo
   if (locator.version !== 1 || !isBackend(locator.activeBackend) || !validTimestamp(locator.updatedAt)) return null;
   if (locator.previousBackend !== undefined && !isBackend(locator.previousBackend)) return null;
   if (locator.pendingMigration && !validPending(locator.pendingMigration)) return null;
+  if (locator.pendingRollback && !validPendingRollback(locator.pendingRollback)) return null;
   if (locator.lastMigration && !validCompleted(locator.lastMigration)) return null;
+  if (locator.pendingMigration && locator.pendingRollback) return null;
+  if (locator.pendingMigration && locator.activeBackend !== 'v2') return null;
+  if (locator.pendingRollback && locator.activeBackend !== 'v3') return null;
   if (locator.activeBackend === 'v3' && !locator.lastMigration) return null;
   return structuredClone(locator as MemoryRepositoryLocator);
 }
@@ -110,6 +130,14 @@ function validPending(value: PendingMemoryV3Migration): boolean {
     && optionalHash(value.sourceIndexHash) && optionalHash(value.sourceManifestHash)
     && optionalHash(value.snapshotManifestHash) && optionalHash(value.validationHash)
     && optionalCount(value.nodeCount) && optionalCount(value.resourceCount)
+    && (value.error === undefined || typeof value.error === 'string');
+}
+
+function validPendingRollback(value: PendingMemoryV3Rollback): boolean {
+  return typeof value.id === 'string' && value.id.length > 0
+    && ['requested', 'validating', 'committing', 'recovery'].includes(value.phase)
+    && Number.isInteger(value.attempts) && value.attempts >= 0
+    && validTimestamp(value.createdAt) && validTimestamp(value.updatedAt)
     && (value.error === undefined || typeof value.error === 'string');
 }
 
