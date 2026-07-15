@@ -20,6 +20,7 @@ import {
   resolveLlmCallContract,
 } from './llm-call-contracts/registry.js';
 import { injectRuntimeAwareness } from './runtime-awareness.js';
+import { injectMemoryKnownState } from './memory-known-state.js';
 
 export {
   MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN,
@@ -88,13 +89,21 @@ function recordPreparedRequest(
 ): { request: ChatRequest; snapshot: ModelRequestSnapshot } {
   const resolvedRequest = applyResolvedReasoning(ctx, request);
   const requestIndex = (ctx.modelRequests?.at(-1)?.requestIndex ?? 0) + 1;
-  const runtimeAware = injectRuntimeAwareness(ctx, resolvedRequest, candidates, requestIndex);
-  const requestedToolNames = runtimeAware.request.tools?.map((tool) => tool.function.name) ?? [];
+  const requestedToolNames = resolvedRequest.tools?.map((tool) => tool.function.name) ?? [];
   const callContract = resolveLlmCallContract(ctx, purposeOrStage, {
     allowedToolNames: requestedToolNames,
-    maxOutputTokens: runtimeAware.request.max_tokens,
-    temperature: runtimeAware.request.temperature,
+    maxOutputTokens: resolvedRequest.max_tokens,
+    temperature: resolvedRequest.temperature,
   });
+  const memoryAware = callContract.inputs.allowedContextKinds.includes('memory_fragment')
+    ? injectMemoryKnownState(ctx, callContract.stage, resolvedRequest, candidates, requestIndex)
+    : { request: resolvedRequest, candidates };
+  const runtimeAware = injectRuntimeAwareness(
+    ctx,
+    memoryAware.request,
+    memoryAware.candidates,
+    requestIndex,
+  );
   validateModelRequest(callContract, runtimeAware.request);
   const prepared = contextEngine.prepare({
     runId: ctx.runId,

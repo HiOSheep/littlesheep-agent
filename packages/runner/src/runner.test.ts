@@ -117,8 +117,11 @@ describe('createRunner run', () => {
     expect(result.sessionId.length).toBeGreaterThan(0);
     expect(result.memoryAccess?.records.map((record) => record.action)).toEqual(['root_index']);
     expect(result.memoryAccess?.endedAt).toBeTruthy();
-    expect(runner.infra.registry.names()).toEqual(expect.arrayContaining(['memory_tree', 'memory_search']));
-    expect(runner.infra.registry.names()).not.toContain('memory_deep_search');
+    expect(runner.infra.registry.names()).toEqual(expect.arrayContaining([
+      'memory_tree',
+      'memory_search',
+      'memory_deep_search',
+    ]));
     const replyRequest = (llm.chat as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as ChatRequest;
     expect(String(replyRequest.messages[0]?.content)).toContain('Memory Tree Root Index');
     const trace = result.trace as Array<{ name: string }>;

@@ -5,9 +5,21 @@ export function buildVerifyUserMessage(ctx: RunContext, replanAttempts: number, 
     + `Execution contract:\n${describeTaskContract(ctx)}\n\n`
     + `Step execution results:\n${describeTaskExecution(ctx)}\n\n`
     + `Tool results (${(ctx.toolResults ?? []).length} call(s)):\n${summarizeToolResults(ctx.toolResults ?? [])}\n\n`
+    + `Memory KnownState:\n${summarizeKnownState(ctx)}\n\n`
     + `Drafted reply:\n${truncate(ctx.reply ?? '(no reply)', 800)}\n\n`
     + `Replan attempts: ${replanAttempts}/${maxReplan}\n\n`
     + 'Return your verdict.';
+}
+
+function summarizeKnownState(ctx: RunContext): string {
+  const state = ctx.memoryKnownState;
+  if (!state || state.references.length === 0) return '(no memory atom evidence entered this run)';
+  return state.references.slice(0, 48).map((reference) => {
+    const envelope = reference.envelope;
+    return `  - ${reference.atomId}@${reference.atomRevision}: decision=${reference.decision}; `
+      + `${envelope.statementKind}/${envelope.epistemicStatus}; authority=${envelope.authorityScope.kind}; `
+      + `scope=${envelope.scope}${envelope.scopeKey ? `:${envelope.scopeKey}` : ''}; reason=${truncate(reference.reason, 220)}`;
+  }).join('\n');
 }
 
 function inboundText(ctx: RunContext): string {

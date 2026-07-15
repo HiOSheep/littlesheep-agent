@@ -6,6 +6,7 @@
 import type { RunContext, StageResult, Message } from '@littlesheep/types';
 import { textMessage } from '@littlesheep/types';
 import type { SessionManager } from '@littlesheep/session';
+import { markMemoryKnownStateStage } from '../memory-known-state.js';
 
 export interface FinalizeStageDeps {
   sessionManager: SessionManager;
@@ -14,6 +15,7 @@ export interface FinalizeStageDeps {
 /** Factory: creates a finalize stage. */
 export function createFinalizeStage(deps: FinalizeStageDeps) {
   return async function finalizeStage(ctx: RunContext): Promise<StageResult> {
+    markMemoryKnownStateStage(ctx, 'finalize');
     // 1. Build the final assistant message.
     const replyText = ctx.reply && ctx.reply.length > 0 ? ctx.reply : '(no reply)';
     const msg: Message = textMessage('assistant', replyText, {

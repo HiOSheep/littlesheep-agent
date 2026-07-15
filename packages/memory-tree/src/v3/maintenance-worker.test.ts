@@ -99,6 +99,37 @@ describe('MemoryV3MaintenanceWorker', () => {
     expect(catalog.listEmbeddingWork(2).every((entry) => entry.embeddingStatus === 'pending')).toBe(true);
     expect(engine.embed).not.toHaveBeenCalled();
   });
+
+  it('runs one coalesced follow-up batch when a write lands during active embedding work', async () => {
+    let releaseFirstEmbedding!: () => void;
+    let markFirstEmbeddingStarted!: () => void;
+    const firstEmbeddingStarted = new Promise<void>((resolve) => { markFirstEmbeddingStarted = resolve; });
+    const release = new Promise<void>((resolve) => { releaseFirstEmbedding = resolve; });
+    const engine = makeEngine(true);
+    const baseEmbed = engine.embed;
+    engine.embed = vi.fn(async (request: EmbeddingRequest): Promise<EmbeddingResult> => {
+      if ((engine.embed as ReturnType<typeof vi.fn>).mock.calls.length === 1) {
+        markFirstEmbeddingStarted();
+        await release;
+      }
+      return baseEmbed(request);
+    });
+    catalog = new MemoryCatalog({ dataDir, embeddingEngine: engine });
+    const firstAtom = await atomStore.create(makeAtomInput({ id: 'active-batch-atom' }));
+    catalog.upsertAtom(firstAtom, atomStore.relativePathFor(firstAtom.id)!);
+    const worker = new MemoryV3MaintenanceWorker({ atomStore, catalog, eventJournal, embeddingBatchSize: 1 });
+
+    const activeRun = worker.runStartupCompensation();
+    await firstEmbeddingStarted;
+    const lateAtom = await atomStore.create(makeAtomInput({ id: 'late-write-atom' }));
+    catalog.upsertAtom(lateAtom, atomStore.relativePathFor(lateAtom.id)!);
+    const followUp = worker.runAfterWrite();
+    releaseFirstEmbedding();
+
+    await Promise.all([activeRun, followUp]);
+    expect(catalog.countEmbeddingWork()).toBe(0);
+    expect(engine.embed).toHaveBeenCalledTimes(2);
+  });
 });
 
 function makeEngine(available: boolean): EmbeddingEngine {

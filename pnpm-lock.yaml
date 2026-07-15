@@ -419,6 +419,9 @@ importers:
       '@littlesheep/config':
         specifier: workspace:*
         version: link:../config
+      '@littlesheep/embedding':
+        specifier: workspace:*
+        version: link:../embedding
       '@littlesheep/experience':
         specifier: workspace:*
         version: link:../experience
@@ -455,9 +458,6 @@ importers:
       '@littlesheep/types':
         specifier: workspace:*
         version: link:../types
-      '@littlesheep/vector':
-        specifier: workspace:*
-        version: link:../vector
 
   packages/safety:
     dependencies:

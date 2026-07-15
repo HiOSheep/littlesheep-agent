@@ -16,6 +16,7 @@ const MemoryTreeInput = z.discriminatedUnion('action', [
     limit: z.number().int().min(1).max(30).optional(),
     tokenBudget: z.number().int().min(64).max(4_000).optional(),
     cursor: z.string().optional(),
+    disclosureLevel: z.enum(['D2', 'D3']).optional(),
   }),
   z.object({
     action: z.literal('deep_search'),
@@ -24,6 +25,7 @@ const MemoryTreeInput = z.discriminatedUnion('action', [
     limit: z.number().int().min(1).max(30).optional(),
     tokenBudget: z.number().int().min(64).max(4_000).optional(),
     cursor: z.string().optional(),
+    subtreeRootId: z.string().min(1).optional(),
   }),
 ]);
 
@@ -31,6 +33,14 @@ const CompatibilitySearchInput = z.object({
   query: z.string().min(1),
   branch: z.string().min(1).optional(),
   limit: z.number().int().min(1).max(30).optional(),
+});
+
+const CompatibilityDeepSearchInput = z.object({
+  query: z.string().min(1),
+  branch: z.string().min(1),
+  limit: z.number().int().min(1).max(30).optional(),
+  tokenBudget: z.number().int().min(64).max(4_000).optional(),
+  subtreeRootId: z.string().min(1).optional(),
 });
 
 export interface MemoryToolOptions {
@@ -47,7 +57,10 @@ function renderIndex(index: BranchIndex): string {
     ...index.entries.map((entry) => {
       const children = entry.hasChildren ? ' -> has child index' : '';
       const keys = entry.searchKeys?.length ? `; keys: ${entry.searchKeys.join(', ')}` : '';
-      return `- [${entry.id}] ${entry.title}: ${entry.summary}${children}${keys}`;
+      const evidence = entry.evidence
+        ? `; evidence=${entry.evidence.disclosureLevel}/${entry.evidence.statementKind}/${entry.evidence.epistemicStatus}; authority=${entry.evidence.authorityScope.kind}; atom=${entry.evidence.atomId}@${entry.evidence.atomRevision}`
+        : '';
+      return `- [${entry.id}] ${entry.title}: ${entry.summary}${children}${keys}${evidence}`;
     }),
   ];
   if (index.truncated) lines.push('', `Index bounded. Continue with cursor: ${index.nextCursor ?? '(narrow the query)'}`);
@@ -65,6 +78,9 @@ function renderQuery(result: MemoryQueryResult): string {
       '',
       `## [${fragment.id}] T${fragment.tier} - ${fragment.matchReason}`,
       `Source: ${fragment.metadata.source} (${fragment.metadata.kind}); generated: ${fragment.metadata.generatedAt}`,
+      ...(fragment.evidence ? [
+        `Evidence: ${fragment.evidence.disclosureLevel}; ${fragment.evidence.statementKind}/${fragment.evidence.epistemicStatus}; authority=${fragment.evidence.authorityScope.kind}; boundary=${fragment.evidence.conflict ? 'conflicted' : 'contextual'}`,
+      ] : []),
       fragment.content,
     );
   }
@@ -81,6 +97,18 @@ function renderQuery(result: MemoryQueryResult): string {
 
 function envelope(content: string, options: MemoryToolOptions): string {
   return options.envelope ? options.envelope(content) : content;
+}
+
+function queryMeta(action: string, branch: string, result: MemoryQueryResult): Record<string, unknown> {
+  return {
+    action,
+    branch,
+    fragments: result.fragments.length,
+    tokensUsed: result.tokensUsed,
+    truncated: result.truncated,
+    memoryKnownState: result.knownState,
+    memoryKnownStateDelta: result.knownStateDelta,
+  };
 }
 
 export function createMemoryTreeTool(memory: MemoryNavigationServiceLike, options: MemoryToolOptions = {}): AgentTool {
@@ -104,7 +132,13 @@ export function createMemoryTreeTool(memory: MemoryNavigationServiceLike, option
           case 'branch_index': {
             const index = await memory.branchIndex(ctx.runId, parsed.branch);
             output = renderIndex(index);
-            meta = { action: parsed.action, branch: parsed.branch, entries: index.entries.length, truncated: index.truncated };
+            meta = {
+              action: parsed.action,
+              branch: parsed.branch,
+              entries: index.entries.length,
+              truncated: index.truncated,
+              memoryKnownState: index.knownState,
+            };
             break;
           }
           case 'expand': {
@@ -115,9 +149,10 @@ export function createMemoryTreeTool(memory: MemoryNavigationServiceLike, option
               limit: parsed.limit,
               tokenBudget: parsed.tokenBudget,
               cursor: parsed.cursor,
+              disclosureLevel: parsed.disclosureLevel,
             });
             output = renderQuery(result);
-            meta = { action: parsed.action, branch: parsed.branch, fragments: result.fragments.length, tokensUsed: result.tokensUsed, truncated: result.truncated };
+            meta = queryMeta(parsed.action, parsed.branch, result);
             break;
           }
           case 'deep_search': {
@@ -127,9 +162,10 @@ export function createMemoryTreeTool(memory: MemoryNavigationServiceLike, option
               limit: parsed.limit,
               tokenBudget: parsed.tokenBudget,
               cursor: parsed.cursor,
+              subtreeRootId: parsed.subtreeRootId,
             });
             output = renderQuery(result);
-            meta = { action: parsed.action, branch: parsed.branch, fragments: result.fragments.length, tokensUsed: result.tokensUsed, truncated: result.truncated };
+            meta = queryMeta(parsed.action, parsed.branch, result);
             break;
           }
         }
@@ -186,7 +222,44 @@ export function createMemorySearchCompatibilityTool(
             entries: index.entries.length,
             truncated: index.truncated,
             nextAction: 'expand',
+            memoryKnownState: index.knownState,
           },
+        };
+      } catch (error) {
+        return { callId: '', ok: false, error: (error as Error).message, durationMs: Date.now() - startedAt };
+      }
+    },
+  };
+}
+
+/** Dedicated compatibility name for the same branch-scoped v3 deep-search path. */
+export function createMemoryDeepSearchCompatibilityTool(
+  memory: MemoryNavigationServiceLike,
+  options: MemoryToolOptions = {},
+): AgentTool {
+  return {
+    name: 'memory_deep_search',
+    description:
+      'Search only one already indexed and expanded memory branch or subtree. ' +
+      'Uses the Memory v3 Catalog hierarchy, FTS and local vector candidates under the same budgets and access ledger.',
+    inputSchema: CompatibilityDeepSearchInput,
+    async execute(input, ctx) {
+      const startedAt = Date.now();
+      try {
+        const parsed = CompatibilityDeepSearchInput.parse(input);
+        const result = await memory.deepSearch(ctx.runId, {
+          query: parsed.query,
+          branchId: parsed.branch,
+          limit: parsed.limit,
+          tokenBudget: parsed.tokenBudget,
+          subtreeRootId: parsed.subtreeRootId,
+        });
+        return {
+          callId: '',
+          ok: true,
+          output: envelope(renderQuery(result), options),
+          durationMs: Date.now() - startedAt,
+          meta: queryMeta('deep_search', parsed.branch, result),
         };
       } catch (error) {
         return { callId: '', ok: false, error: (error as Error).message, durationMs: Date.now() - startedAt };

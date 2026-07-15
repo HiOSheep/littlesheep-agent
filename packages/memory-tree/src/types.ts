@@ -2,6 +2,11 @@
 
 import type { SessionId } from '@littlesheep/types';
 import type { MemoryWriteEpistemicMetadata } from './epistemic.js';
+import type {
+  MemoryDisclosureLevel,
+  MemoryEvidenceEnvelope,
+  MemoryKnownState,
+} from './v3/contracts.js';
 
 export enum InjectionTier {
   T0_CORE = 0,
@@ -145,6 +150,8 @@ export interface MemoryFragment {
   dedupKey: string;
   /** Why this fragment matched the current branch/query. */
   matchReason: string;
+  /** Structured Memory v3 evidence; absent for compatibility sources. */
+  evidence?: MemoryEvidenceEnvelope;
   metadata: MemorySource;
 }
 
@@ -155,6 +162,8 @@ export interface MemoryIndexEntry {
   hasChildren: boolean;
   searchKeys?: string[];
   updatedAt?: string;
+  /** D1 evidence metadata; the atom body remains undisclosed. */
+  evidence?: MemoryEvidenceEnvelope;
   metadata?: Record<string, unknown>;
 }
 
@@ -167,6 +176,7 @@ export interface BranchIndex {
   source: string;
   truncated?: boolean;
   nextCursor?: string;
+  knownState?: MemoryKnownState;
 }
 
 export interface BranchExpansion {
@@ -186,6 +196,7 @@ export interface BranchExpandRequest {
   limit: number;
   tokenBudget: number;
   cursor?: string;
+  disclosureLevel?: Extract<MemoryDisclosureLevel, 'D2' | 'D3'>;
 }
 
 export interface BranchSearchRequest {
@@ -193,6 +204,16 @@ export interface BranchSearchRequest {
   limit: number;
   tokenBudget: number;
   cursor?: string;
+  subtreeRootId?: string;
+}
+
+export interface MemoryBranchAccessObservation {
+  atomId: string;
+  path: 'hierarchy' | 'fts' | 'vector';
+  matchReason: string;
+  enteredContext: boolean;
+  disclosureLevel: MemoryDisclosureLevel;
+  tokensUsed: number;
 }
 
 export interface MemoryBranchContext {
@@ -226,6 +247,7 @@ export interface MemoryBranch {
   getIndex(ctx: MemoryBranchContext): Promise<BranchIndex>;
   expand(ctx: MemoryBranchContext, request: BranchExpandRequest): Promise<BranchExpansion>;
   search(ctx: MemoryBranchContext, request: BranchSearchRequest): Promise<MemoryFragment[]>;
+  recordAccess?(ctx: MemoryBranchContext, observations: MemoryBranchAccessObservation[]): void | Promise<void>;
   invalidate?(): void | Promise<void>;
   describe?(): BranchDescription;
 }
@@ -272,6 +294,7 @@ export interface MemoryAccessLedger {
   expandedBranches: string[];
   dedupKeys: string[];
   records: MemoryAccessRecord[];
+  knownState: MemoryKnownState;
 }
 
 export interface MemoryTreeOptions {
@@ -295,6 +318,7 @@ export interface MemoryExpandOptions {
   limit?: number;
   tokenBudget?: number;
   cursor?: string;
+  disclosureLevel?: Extract<MemoryDisclosureLevel, 'D2' | 'D3'>;
 }
 
 export interface MemorySearchOptions {
@@ -304,6 +328,7 @@ export interface MemorySearchOptions {
   limit?: number;
   tokenBudget?: number;
   cursor?: string;
+  subtreeRootId?: string;
 }
 
 export interface MemoryQueryResult {
@@ -317,6 +342,8 @@ export interface MemoryQueryResult {
   dedupedCount: number;
   tokensUsed: number;
   tokenBudget: number;
+  knownState: MemoryKnownState;
+  knownStateDelta: MemoryKnownState['references'];
 }
 
 export type MemoryNodeStatus = 'active' | 'archived' | 'deleted';

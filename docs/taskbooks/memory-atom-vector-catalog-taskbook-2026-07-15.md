@@ -1,8 +1,8 @@
 # LittleSheep 原子记忆与内置向量目录任务书 2026-07-15
 
-最后更新：2026-07-15 20:46:57
-版本：v1.9
-状态：实施中；阶段 0-4 已完成隔离实现、双后端适配、安全迁移和完整工程验证，下一步进入检索路径统一；未迁移正式用户数据
+最后更新：2026-07-15 22:43:54
+版本：v2.0
+状态：实施中；阶段 0-5 已完成隔离实现、双后端适配、安全迁移、检索统一和完整工程验证，下一步进入管理 UI 与正式迁移审批；未迁移正式用户数据
 
 ## 1. 目标
 
@@ -37,7 +37,7 @@
 6. 用户、外部资料和模型产生的事实主张、建议、偏好与决定尚无统一 epistemic schema，存在把“有人建议”误当成“事实成立”的风险。
 7. 实体身份、所有权边界和关系尚未形成统一 schema；名称、路径、向量相似或共现可能被误当成同一对象或已验证关系。
 
-因此，正式运行路径当前仍不能宣称已经切换到“原子文件 + 层级 + 完全本地向量管理”；该能力已在隔离的 Memory v3 阶段 0-4 完成数据层、统一 facade 和安全迁移工具，尚待检索路径统一、管理 UI 和正式切换批准。
+因此，正式运行路径当前仍不能宣称已经切换到“原子文件 + 层级 + 完全本地向量管理”；该能力已在隔离的 Memory v3 阶段 0-5 完成数据层、统一 facade、安全迁移工具、检索路径和 KnownState 接线，尚待管理 UI、正式切换批准和真实用户场景验收。
 
 ## 3. Memory v3 数据模型
 
@@ -292,6 +292,7 @@ statement / atom / resource
 - 已完成：远程 Embedding 默认硬拒绝且测试确认零调用；`packages/embedding` 通过显式 provision 流程管理固定 revision、大小与 SHA-256，产品运行只读完整本地目录，不隐式联网或依赖 Transformers 缓存；
 - 已完成：BGE 与 multilingual E5 使用同一 18 组中文、英文、混合语言和代码基准；BGE 定为平衡默认，E5 作为高质量档；两种模型均在进程内断网断言下完成真实推理；
 - 已完成：模型版本或内容变化会令已有向量进入 stale/pending；`MemoryV3MaintenanceWorker` 按有界批次生成/重建向量，不使用常驻轮询计时器，模型暂不可用时保持 pending；层级与 FTS 不依赖向量；
+- 已完成：每次成功 atom 写入后会等待一次有界维护批次；若写入发生在已有批次选定工作之后，会合并为至多一个后续批次。维护失败只保留 pending/failed 状态并记录诊断，不回滚已经提交的 atom；
 - 已完成：due 启动补偿先把幂等 `time-due` 事件持久捕获到 event journal，再按 atom/kind/dueAt 精确确认；存储协调器不会误消费不属于存储 mutation 的事件；
 - 已完成：atom 到 entity/relation 的引用投影进入 SQLite，实体或关系归档、删除与物理清理前会检查原子引用和入/出边，避免静默悬空引用；
 - 已完成：Catalog 的 Embedding 职责拆分到独立控制器，主门面保持在仓库大型文件门槛以内。
@@ -343,15 +344,18 @@ statement / atom / resource
 
 ### 阶段 5：检索路径统一
 
-- 将 `memory_tree`、`memory_search` 和 `memory_deep_search` 统一到 v3 catalog；
-- 退役 `VectorIndexedMemoryStore` 的 Provider Embedding 路径；
-- 强制 branch/subtree filter、预算、去重和访问账本。
-- 将候选优先级、`MemoryEvidenceEnvelope` 与 `KnownState` 接入 Context Engine；每个阶段可追溯实际采用、排除和重新激活的 atom、状态版本和取舍理由。
-- 把 statement kind、epistemic status、authority scope、asserted by 与 evidence refs 投影给模型，VERIFY 拒绝把 suggestion/reported/unverified claim 当作 verified fact 交付。
-- 实现 D0-D3 按需展开，并验证用户记忆与 LS 自身记忆不会因披露层级不同产生 Prompt 或 UI 副本。
-- Context 只展开当前目标需要的关系邻域；关系候选的采用、排除和冲突必须进入 `KnownState` 证据链。
+状态：**已完成隔离实现与完整工程验证**。
 
-验收：网络被阻断时记忆写入和检索正常，向量搜索不能绕过层级导航；同一作用域内经验证且相关的记忆稳定优先介入，单纯重复访问不能形成错误自增强。
+- 已完成：`memory_tree`、`memory_search` 和 `memory_deep_search` 统一使用 repository retrieval facade；v3 依次执行层级导航、分支/作用域/子树过滤、FTS、本地向量候选、优先级排序和关系邻域展开；
+- 已完成：Runner 不再创建 `VectorIndexedMemoryStore`、`SemanticDailyBranch` 或运行时 `VectorStore`，默认 Provider Embedding 旁路已退役；v3 本地模型由显式动态加载和 shutdown 释放管理；
+- 已完成：branch/subtree filter、分支/run token 预算、去重、访问账本和取消信号贯穿检索路径，向量搜索不能绕过已导航边界；
+- 已完成：候选优先级、`MemoryEvidenceEnvelope` 与版本化 run 级 `KnownState` 已接入 Harness。DECIDE、EXECUTE、VERIFY 和 FINALIZE 可追溯采用、排除、冲突、重新激活、状态版本和实际介入 Context 的 token；
+- 已完成：statement kind、epistemic status、authority scope、asserted by 与 evidence refs 会投影给模型；VERIFY 明确拒绝把 suggestion、reported observation 或 unverified claim 当作 verified fact 交付；
+- 已完成：D0-D3 使用同一份 atom/catalog 渐进展开，Prompt 与运行时不建立记忆正文副本；Context 只展开当前目标需要的关系邻域；
+- 已完成：成功写入后的本地向量维护可等待、单批有界、并发合并且失败不回滚 atom，长期运行不再依赖重启补齐新记忆向量；
+- 已验证：仓库卫生 31/31、27 个 workspace 类型检查、144 个测试文件中的 1125 项通过且 1 项按预期跳过、Electron main/preload/renderer 构建和应用恢复源检查通过。
+
+验收：已通过隔离工程验收。网络被阻断时记忆写入和检索正常，向量搜索不能绕过层级导航；同一作用域内经验证且相关的记忆稳定优先介入，单纯重复访问不能形成错误自增强。该结论不代表正式用户数据已经迁移。
 
 ### 阶段 6：管理 UI 与真实迁移
 

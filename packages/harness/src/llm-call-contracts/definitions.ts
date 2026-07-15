@@ -35,7 +35,7 @@ const FULL_INPUTS: readonly ContextItemKind[] = [
   'workflow_state', 'output_constraint', 'attachment_manifest', 'runtime_event',
 ];
 const WORKFLOW_INPUTS: readonly ContextItemKind[] = [
-  'system_prompt', 'workflow_state', 'output_constraint', 'tool_result', 'runtime_event',
+  'system_prompt', 'memory_fragment', 'workflow_state', 'output_constraint', 'tool_result', 'runtime_event',
 ];
 const NO_MEMORY: readonly LlmMemoryIntentKind[] = ['none'];
 

@@ -14,6 +14,7 @@
   "dependencies": {
     "@littlesheep/config": "workspace:*",
     "@littlesheep/experience": "workspace:*",
+    "@littlesheep/embedding": "workspace:*",
     "@littlesheep/session": "workspace:*",
     "@littlesheep/harness": "workspace:*",
     "@littlesheep/types": "workspace:*",
@@ -25,8 +26,7 @@
     "@littlesheep/branding": "workspace:*",
     "@littlesheep/skills": "workspace:*",
     "@littlesheep/safety": "workspace:*",
-    "@littlesheep/snapshot": "workspace:*",
-    "@littlesheep/vector": "workspace:*"
+    "@littlesheep/snapshot": "workspace:*"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

@@ -29,6 +29,7 @@ import { memoryBranchRootId } from './memory-repository/document-store.js';
 import type { MemoryRepositoryBackend } from './memory-repository/backend.js';
 import { createMemoryRepositoryBackend } from './memory-repository/factory.js';
 import type { MemoryProjectRebindResult } from './memory-repository/project-rebinding.js';
+import { createMemoryRepositoryRetrievalFacade, type MemoryRepositoryRetrievalFacade } from './memory-repository/retrieval-facade.js';
 
 export type {
   ManageMemoryResourceOptions,
@@ -50,12 +51,14 @@ export class MemoryRepository {
   readonly rootDir: string;
   readonly indexPath: string;
   readonly backendKind: MemoryRepositoryBackendKind;
+  readonly retrieval: MemoryRepositoryRetrievalFacade;
   private readonly backend: MemoryRepositoryBackend;
 
   constructor(options: MemoryRepositoryOptions) {
     const selected = createMemoryRepositoryBackend(options);
     this.backendKind = selected.kind;
     this.backend = selected.backend;
+    this.retrieval = createMemoryRepositoryRetrievalFacade(this.backend);
     this.rootDir = this.backend.rootDir;
     this.indexPath = this.backend.indexPath;
   }

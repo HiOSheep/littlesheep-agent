@@ -19,6 +19,19 @@ import type {
   MemoryTreeOptions,
 } from './types.js';
 import { estimateTokens, MIN_USEFUL_TOKENS } from './util.js';
+import {
+  cloneMemoryKnownState,
+  createMemoryKnownState,
+  updateMemoryKnownState,
+} from './known-state.js';
+import {
+  applyFragmentEvidence,
+  fragmentIndexEntry,
+  fragmentAccessObservations,
+  indexEvidenceUpdates,
+  recordBranchAccess,
+} from './memory-tree-evidence.js';
+import { fitMemoryIndex, memoryIndexTokens } from './memory-tree-index-budget.js';
 
 const DEFAULT_TOTAL_RUN_BUDGET = 3_200;
 const DEFAULT_BRANCH_BUDGET = 1_200;
@@ -58,12 +71,7 @@ function unique(values: string[]): string[] {
 }
 
 function cloneLedger(ledger: MemoryAccessLedger): MemoryAccessLedger {
-  return {
-    ...ledger,
-    expandedBranches: [...ledger.expandedBranches],
-    dedupKeys: [...ledger.dedupKeys],
-    records: ledger.records.map((record) => ({ ...record, fragmentIds: [...record.fragmentIds] })),
-  };
+  return structuredClone(ledger);
 }
 
 export class MemoryTree {
@@ -137,6 +145,7 @@ export class MemoryTree {
       tokensUsed: rootTokens,
       expandedBranches: [],
       dedupKeys: [],
+      knownState: createMemoryKnownState(input.runId, now.toISOString()),
       records: [{
         id: randomUUID(),
         action: 'root_index',
@@ -207,9 +216,13 @@ export class MemoryTree {
     const budget = this.availableBudget(run, branchId, this.options.perBranchTokenBudget);
     try {
       const raw = await branch.getIndex(run.context);
-      const fitted = this.fitIndex(raw, budget);
-      const tokens = this.indexTokens(fitted);
+      const fitted = fitMemoryIndex(raw, budget, this.options.sanitize);
+      const tokens = memoryIndexTokens(fitted);
       this.consume(run, branchId, tokens);
+      const access = indexEvidenceUpdates(raw.entries, fitted.entries);
+      updateMemoryKnownState(run.ledger.knownState, access.updates, new Date().toISOString());
+      await recordBranchAccess(branch, run.context, access.observations, this.options.log);
+      fitted.knownState = cloneMemoryKnownState(run.ledger.knownState);
       this.record(run, {
         action: 'branch_index',
         branchId,
@@ -264,8 +277,21 @@ export class MemoryTree {
         limit: options.limit ?? DEFAULT_RESULT_LIMIT,
         tokenBudget: budget,
         cursor: options.cursor,
+        disclosureLevel: options.disclosureLevel ?? 'D2',
       });
       const selected = this.selectFragments(run, branch.id, expansion.fragments, budget);
+      const fragmentDelta = applyFragmentEvidence(run.ledger.knownState, selected, 'expand');
+      const childAccess = indexEvidenceUpdates(expansion.childIndex ?? [], expansion.childIndex ?? []);
+      const childDelta = updateMemoryKnownState(
+        run.ledger.knownState,
+        childAccess.updates.map((update) => ({ ...update, stage: 'expand' })),
+        new Date().toISOString(),
+      );
+      const knownStateDelta = [...fragmentDelta, ...childDelta];
+      await recordBranchAccess(branch, run.context, [
+        ...fragmentAccessObservations(selected),
+        ...childAccess.observations,
+      ], this.options.log);
       const childIndex = [...(expansion.childIndex ?? []), ...selected.overflowIndex];
       const result: MemoryQueryResult = {
         action: 'expand',
@@ -278,6 +304,8 @@ export class MemoryTree {
         dedupedCount: selected.dedupedCount,
         tokensUsed: selected.tokensUsed,
         tokenBudget: budget,
+        knownState: cloneMemoryKnownState(run.ledger.knownState),
+        knownStateDelta,
       };
       run.ledger.expandedBranches = unique([...run.ledger.expandedBranches, branch.id]);
       this.recordQuery(run, 'expand', result, options.query, options.nodeId);
@@ -314,6 +342,7 @@ export class MemoryTree {
         limit: options.limit ?? DEFAULT_RESULT_LIMIT,
         tokenBudget: branchBudget,
         cursor: options.cursor,
+        subtreeRootId: options.subtreeRootId,
       });
     } catch (error) {
       const message = (error as Error).message;
@@ -326,6 +355,8 @@ export class MemoryTree {
       Math.min(requestedBudget, this.totalRemaining(run)),
       options.limit ?? DEFAULT_RESULT_LIMIT,
     );
+    const knownStateDelta = applyFragmentEvidence(run.ledger.knownState, selected, 'deep_search');
+    await recordBranchAccess(branch, run.context, fragmentAccessObservations(selected), this.options.log);
     const result: MemoryQueryResult = {
       action: 'deep_search',
       branchId: branch.id,
@@ -336,6 +367,8 @@ export class MemoryTree {
       dedupedCount: selected.dedupedCount,
       tokensUsed: selected.tokensUsed,
       tokenBudget: requestedBudget,
+      knownState: cloneMemoryKnownState(run.ledger.knownState),
+      knownStateDelta,
     };
     this.recordQuery(run, 'deep_search', result, options.query);
     return result;
@@ -422,6 +455,7 @@ export class MemoryTree {
     budget: number,
   ): {
     fragments: MemoryFragment[];
+    excluded: Array<{ fragment: MemoryFragment; reason: string }>;
     overflowIndex: MemoryIndexEntry[];
     tokensUsed: number;
     dedupedCount: number;
@@ -431,6 +465,7 @@ export class MemoryTree {
       .map((fragment) => this.sanitize({ ...fragment, branchId }))
       .sort((left, right) => right.priority - left.priority || left.tokenEstimate - right.tokenEstimate);
     const selected: MemoryFragment[] = [];
+    const excluded: Array<{ fragment: MemoryFragment; reason: string }> = [];
     const overflowIndex: MemoryIndexEntry[] = [];
     let used = 0;
     let dedupedCount = 0;
@@ -439,16 +474,19 @@ export class MemoryTree {
     for (const fragment of ordered) {
       if (run.dedupKeys.has(fragment.dedupKey)) {
         dedupedCount += 1;
+        excluded.push({ fragment, reason: 'Duplicate evidence was already adopted earlier in this run.' });
         continue;
       }
       const remaining = budget - used;
       if (remaining <= 0) {
         truncated = true;
+        excluded.push({ fragment, reason: 'Run or branch memory budget was exhausted.' });
         break;
       }
       let candidate = fragment;
       if (candidate.tokenEstimate > remaining) {
-        overflowIndex.push(this.fragmentIndexEntry(candidate));
+        overflowIndex.push(fragmentIndexEntry(candidate));
+        excluded.push({ fragment: candidate, reason: 'Atom content exceeded the remaining memory token budget.' });
         truncated = true;
         continue;
       }
@@ -458,7 +496,7 @@ export class MemoryTree {
     }
     run.ledger.dedupKeys = [...run.dedupKeys];
     this.consume(run, branchId, used);
-    return { fragments: selected, overflowIndex, tokensUsed: used, dedupedCount, truncated };
+    return { fragments: selected, excluded, overflowIndex, tokensUsed: used, dedupedCount, truncated };
   }
 
   private selectMixedFragments(
@@ -468,6 +506,7 @@ export class MemoryTree {
     limit: number,
   ): {
     fragments: MemoryFragment[];
+    excluded: Array<{ fragment: MemoryFragment; reason: string }>;
     overflowIndex: MemoryIndexEntry[];
     tokensUsed: number;
     dedupedCount: number;
@@ -477,6 +516,7 @@ export class MemoryTree {
       .map((fragment) => this.sanitize(fragment))
       .sort((left, right) => right.priority - left.priority || left.tokenEstimate - right.tokenEstimate);
     const selected: MemoryFragment[] = [];
+    const excluded: Array<{ fragment: MemoryFragment; reason: string }> = [];
     const overflowIndex: MemoryIndexEntry[] = [];
     const consumedByBranch = new Map<string, number>();
     let tokensUsed = 0;
@@ -485,10 +525,12 @@ export class MemoryTree {
     for (const fragment of ordered) {
       if (run.dedupKeys.has(fragment.dedupKey)) {
         dedupedCount += 1;
+        excluded.push({ fragment, reason: 'Duplicate evidence was already adopted earlier in this run.' });
         continue;
       }
       if (selected.length >= limit) {
-        overflowIndex.push(this.fragmentIndexEntry(fragment));
+        overflowIndex.push(fragmentIndexEntry(fragment));
+        excluded.push({ fragment, reason: 'Result limit excluded this lower-priority candidate.' });
         truncated = true;
         continue;
       }
@@ -496,7 +538,8 @@ export class MemoryTree {
         - (consumedByBranch.get(fragment.branchId) ?? 0);
       const remaining = Math.min(budget - tokensUsed, branchRemaining);
       if (fragment.tokenEstimate > remaining) {
-        overflowIndex.push(this.fragmentIndexEntry(fragment));
+        overflowIndex.push(fragmentIndexEntry(fragment));
+        excluded.push({ fragment, reason: 'Atom content exceeded the remaining memory token budget.' });
         truncated = true;
         continue;
       }
@@ -507,57 +550,7 @@ export class MemoryTree {
     }
     for (const [branchId, tokens] of consumedByBranch) this.consume(run, branchId, tokens);
     run.ledger.dedupKeys = [...run.dedupKeys];
-    return { fragments: selected, overflowIndex, tokensUsed, dedupedCount, truncated };
-  }
-
-  private fragmentIndexEntry(fragment: MemoryFragment): MemoryIndexEntry {
-    const heading = fragment.content.match(/^#{1,6}\s+(.+?)\s*$/m)?.[1];
-    return {
-      id: fragment.id,
-      title: heading ?? fragment.id,
-      summary: `${fragment.matchReason} Source: ${fragment.metadata.source}; about ${fragment.tokenEstimate} tokens.`,
-      hasChildren: true,
-      searchKeys: [fragment.metadata.kind, fragment.branchId],
-      updatedAt: fragment.metadata.generatedAt,
-      metadata: { source: fragment.metadata.source, tier: fragment.tier, omittedForBudget: true },
-    };
-  }
-
-  private fitIndex(index: BranchIndex, budget: number): BranchIndex {
-    if (budget <= 0) return { ...index, entries: [], truncated: index.entries.length > 0 };
-    const entries: MemoryIndexEntry[] = [];
-    let used = estimateTokens(`${index.displayName}\n${index.summary}`);
-    for (const entry of index.entries) {
-      const tokens = estimateTokens(`${entry.title}\n${entry.summary}\n${(entry.searchKeys ?? []).join(' ')}`);
-      if (used + tokens > budget) {
-        return {
-          ...index,
-          summary: this.safeText(index.summary),
-          entries,
-          truncated: true,
-          nextCursor: index.nextCursor ?? String(entries.length),
-        };
-      }
-      entries.push({
-        ...entry,
-        title: this.safeText(entry.title),
-        summary: this.safeText(entry.summary),
-      });
-      used += tokens;
-    }
-    return { ...index, summary: this.safeText(index.summary), entries };
-  }
-
-  private safeText(text: string): string {
-    return this.options.sanitize ? this.options.sanitize(text) : text;
-  }
-
-  private indexTokens(index: BranchIndex): number {
-    return estimateTokens([
-      index.displayName,
-      index.summary,
-      ...index.entries.map((entry) => `${entry.title} ${entry.summary}`),
-    ].join('\n'));
+    return { fragments: selected, excluded, overflowIndex, tokensUsed, dedupedCount, truncated };
   }
 
   private record(
@@ -618,6 +611,8 @@ export class MemoryTree {
       dedupedCount: 0,
       tokensUsed: 0,
       tokenBudget: budget,
+      knownState: cloneMemoryKnownState(run.ledger.knownState),
+      knownStateDelta: [],
     };
     this.recordQuery(run, action, result, query, nodeId);
     return result;
@@ -643,6 +638,8 @@ export class MemoryTree {
       dedupedCount: 0,
       tokensUsed: 0,
       tokenBudget: budget,
+      knownState: cloneMemoryKnownState(run.ledger.knownState),
+      knownStateDelta: [],
     };
     this.recordQuery(run, action, result, query, nodeId);
     return result;

@@ -260,6 +260,8 @@ export interface RunContext {
   insights?: string[];
   /** Runtime decisions for model-proposed memory operations. */
   memoryIntentDecisions?: import('./runtime-contracts.js').MemoryIntentDecisionRecord[];
+  /** Versioned run-local evidence adopted, excluded or conflicted by Memory v3. */
+  memoryKnownState?: import('./memory-evidence.js').RuntimeMemoryKnownState;
   /** Final reply text. */
   reply?: string;
   /** Token usage reported by the model provider for the reply-bearing call. */
@@ -448,6 +450,8 @@ export interface AgentResult {
   verificationHistory?: VerificationRecord[];
   /** Redacted model-proposal versus runtime-commit memory audit. */
   memoryIntentDecisions?: import('./runtime-contracts.js').MemoryIntentDecisionRecord[];
+  /** Bounded Memory v3 evidence state used across DECIDE/EXECUTE/VERIFY/FINALIZE. */
+  memoryKnownState?: import('./memory-evidence.js').RuntimeMemoryKnownState;
   /** Structured request when the result asks the user for information. */
   clarificationRequest?: ClarificationRequest;
   /** Previous clarification answered by this run's inbound message. */

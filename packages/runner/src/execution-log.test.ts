@@ -264,6 +264,7 @@ describe('ExecutionLogStore', () => {
       tokensUsed: 10,
       expandedBranches: ['resources'],
       dedupKeys: [],
+      knownState: { version: 1, runId: 'run-resources', revision: 0, updatedAt: createdAt, references: [] },
       records: [{
         id: 'access-1',
         action: 'expand',

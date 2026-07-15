@@ -24,8 +24,9 @@ import type {
   ReplaceMemoryResourceGroupOptions,
 } from './contracts.js';
 import type { MemoryProjectRebindResult } from './project-rebinding.js';
+import type { MemoryRepositoryRetrievalBackend } from './retrieval.js';
 
-export interface MemoryRepositoryBackend {
+export interface MemoryRepositoryBackend extends Partial<MemoryRepositoryRetrievalBackend> {
   readonly rootDir: string;
   readonly indexPath: string;
   initialize(): Promise<void>;

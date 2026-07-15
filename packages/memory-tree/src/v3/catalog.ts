@@ -8,6 +8,7 @@ import type {
   EmbeddingEngine,
   MemoryAccessRecord,
   MemoryAtom,
+  MemoryAtomHistoryEntry,
   MemoryCatalogEntry,
   MemoryCatalogSearchOptions,
   MemoryCatalogSearchResult,
@@ -185,9 +186,9 @@ export class MemoryCatalog {
     return this.embeddings.indexAtoms(verifiedAtoms, signal);
   }
 
-  async searchVector(query: string, options: MemoryCatalogSearchOptions): Promise<MemoryCatalogSearchResult[]> {
+  async searchVector(query: string, options: MemoryCatalogSearchOptions, signal?: AbortSignal): Promise<MemoryCatalogSearchResult[]> {
     assertScope(options);
-    return this.embeddings.search(query, options);
+    return this.embeddings.search(query, options, signal);
   }
 
   invalidateEmbeddings(): number {
@@ -238,24 +239,27 @@ export class MemoryCatalog {
   }
 
   recordAccess(record: MemoryAccessRecord): void {
-    this.db.prepare(`
+    this.recordAccessBatch([record]);
+  }
+
+  recordAccessBatch(records: MemoryAccessRecord[]): void {
+    if (records.length === 0) return;
+    const insert = this.db.prepare(`
       INSERT OR REPLACE INTO atom_access (
         id, atom_id, run_id, stage, retrieval_path, match_reason,
         entered_context, disclosure_level, tokens_used, accessed_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      record.id,
-      record.atomId,
-      record.runId,
-      record.stage,
-      record.path,
-      record.matchReason,
-      record.enteredContext ? 1 : 0,
-      record.disclosureLevel,
-      Math.max(0, Math.floor(record.tokensUsed)),
-      record.accessedAt,
-    );
-    pruneTable(this.db, 'atom_access', 'id', 'accessed_at', this.maxAccessRecords);
+    `);
+    this.transaction(() => {
+      for (const record of records) {
+        insert.run(
+          record.id, record.atomId, record.runId, record.stage, record.path,
+          record.matchReason, record.enteredContext ? 1 : 0, record.disclosureLevel,
+          Math.max(0, Math.floor(record.tokensUsed)), record.accessedAt,
+        );
+      }
+      pruneTable(this.db, 'atom_access', 'id', 'accessed_at', this.maxAccessRecords);
+    });
   }
 
   recordFeedback(feedback: MemoryUseFeedback): void {
@@ -277,6 +281,41 @@ export class MemoryCatalog {
       feedback.createdAt,
     );
     pruneTable(this.db, 'atom_feedback', 'id', 'created_at', this.maxFeedbackRecords);
+  }
+
+  listAtomHistory(atomId: string, limit = 40): MemoryAtomHistoryEntry[] {
+    const bounded = boundedLimit(limit, 40, 200);
+    const rows = this.db.prepare(`
+      SELECT kind, id, at, summary FROM (
+        SELECT 'access' AS kind, id, accessed_at AS at,
+          retrieval_path || ':' || disclosure_level || ':' ||
+          CASE entered_context WHEN 1 THEN 'entered' ELSE 'excluded' END || ':' || match_reason AS summary
+        FROM atom_access WHERE atom_id = ?
+        UNION ALL
+        SELECT 'feedback' AS kind, id, created_at AS at,
+          outcome || ':' || CASE verified WHEN 1 THEN 'verified' ELSE 'unverified' END || ':' || reason AS summary
+        FROM atom_feedback WHERE atom_id = ?
+        UNION ALL
+        SELECT 'event' AS kind, event_id AS id, occurred_at AS at,
+          event_kind || ':' || state || ':attempts=' || attempts AS summary
+        FROM memory_events WHERE atom_id = ?
+        UNION ALL
+        SELECT 'audit' AS kind, id, created_at AS at,
+          action || ':' || detail_json AS summary
+        FROM audit WHERE atom_id = ?
+      ) ORDER BY at DESC, id DESC LIMIT ?
+    `).all(atomId, atomId, atomId, atomId, bounded) as unknown as Array<{
+      kind: MemoryAtomHistoryEntry['kind'];
+      id: string;
+      at: string;
+      summary: string;
+    }>;
+    return rows.map((row) => ({
+      kind: row.kind,
+      id: row.id,
+      at: row.at,
+      summary: row.summary.slice(0, 400),
+    }));
   }
 
   countAccessRecords(): number {

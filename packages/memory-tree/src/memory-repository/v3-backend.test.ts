@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { MemoryEntity } from '../v3/contracts.js';
+import type { EmbeddingEngine, EmbeddingRequest, EmbeddingResult, MemoryEntity } from '../v3/contracts.js';
 import { InjectionTier, type MemoryWriteIntent } from '../types.js';
 import { createMemoryV3ExperimentMarker } from '../memory-repository.js';
 import { resolveMemoryWritePolicy } from './write-policy.js';
@@ -49,10 +49,29 @@ describe('MemoryRepositoryV3Backend recovery', () => {
       content: 'The catalog depends on a durable graph projection.',
     });
   });
+
+  it('indexes a committed atom before a successful write returns', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'ls-memory-v3-backend-embedding-'));
+    directories.push(dataDir);
+    await createMemoryV3ExperimentMarker(dataDir);
+    const backend = createBackend(dataDir, localEmbeddingEngine());
+    backends.push(backend);
+    await backend.initialize();
+
+    const created = await backend.write(intent());
+
+    expect(created.decision).toBe('created');
+    expect(backend.catalog.getAtom(created.node!.id)?.embeddingStatus).toBe('ready');
+    expect(backend.catalog.countEmbeddingWork()).toBe(0);
+  });
 });
 
-function createBackend(dataDir: string): MemoryRepositoryV3Backend {
-  return new MemoryRepositoryV3Backend({ dataDir, policy: resolveMemoryWritePolicy() });
+function createBackend(dataDir: string, embeddingEngine?: EmbeddingEngine): MemoryRepositoryV3Backend {
+  return new MemoryRepositoryV3Backend({
+    dataDir,
+    policy: resolveMemoryWritePolicy(),
+    v3: embeddingEngine ? { embeddingEngine } : undefined,
+  });
 }
 
 function testEntity(): MemoryEntity {
@@ -72,7 +91,7 @@ function testEntity(): MemoryEntity {
   };
 }
 
-function intent(entityId: string): MemoryWriteIntent {
+function intent(entityId?: string): MemoryWriteIntent {
   return {
     branch: 'long-term',
     parentNodeId: 'long-term:root',
@@ -92,7 +111,25 @@ function intent(entityId: string): MemoryWriteIntent {
       epistemicStatus: 'verified',
       authorityScope: { kind: 'tool-evidence', scope: 'global', topics: ['memory-v3'] },
       assertedBy: { kind: 'tool', id: 'memory-v3-recovery-test' },
-      entityRefs: [entityId],
+      entityRefs: entityId ? [entityId] : [],
     },
+  };
+}
+
+function localEmbeddingEngine(): EmbeddingEngine {
+  const descriptor = {
+    engineId: 'local-backend-test',
+    modelId: 'memory-v3-test',
+    version: '1',
+    dimensions: 3,
+    transport: 'local' as const,
+  };
+  return {
+    descriptor,
+    isAvailable: () => true,
+    embed: async (request: EmbeddingRequest): Promise<EmbeddingResult> => ({
+      descriptor,
+      vectors: request.texts.map(() => [1, 0, 0]),
+    }),
   };
 }

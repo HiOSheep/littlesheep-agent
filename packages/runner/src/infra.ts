@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import type { LlmClient } from '@littlesheep/llm';
 import { createLlmClient } from '@littlesheep/llm';
 import { SessionManager } from '@littlesheep/session';
-import { MemoryStore, VectorIndexedMemoryStore } from '@littlesheep/memory-core';
+import { MemoryStore } from '@littlesheep/memory-core';
 import type { Config, ModelProvider } from '@littlesheep/config';
 import { parseModelRef, getProvider, resolveApiKey } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
@@ -33,7 +33,6 @@ import { createDefaultHarness } from '@littlesheep/harness';
 import { SafeMemoryStore, QuarantineStore, sanitizePreludeForInjection } from '@littlesheep/safety';
 import { SnapshotMemoryStore } from '@littlesheep/snapshot';
 import { ExperienceStore } from '@littlesheep/experience';
-import { VectorStore } from '@littlesheep/vector';
 import { ExecutionLogStore } from './execution-log.js';
 import {
   CompositeMemoryBranch,
@@ -46,8 +45,8 @@ import {
   MemoryTree,
   MemoryWriteService,
   ProjectMemoryBranch,
-  SemanticDailyBranch,
   TreeMemoryBranch,
+  createMemoryDeepSearchCompatibilityTool,
   createMemorySearchCompatibilityTool,
   createMemoryTreeTool,
   migrateLegacyMemorySources,
@@ -67,7 +66,7 @@ export interface Infrastructure {
   llm: LlmClient;
   sessionManager: SessionManager;
   memoryStore: MemoryStoreLike;
-  vectorStore: VectorStore;
+  disposeEmbedding: () => Promise<void>;
   registry: ToolRegistry;
   harness: AgentHarness;
   skillLoader: SkillLoader;
@@ -135,24 +134,13 @@ export async function buildInfrastructure(
   });
   const baseMemory = new MemoryStore({ rootDir: dirs.root });
 
-  // Vector store: SQLite-backed semantic index for memory search.
-  // Embeddings generated via the same LLM client; model/dimensions hardcoded
-  // to text-embedding-3-small/1536 (can be moved to config later if needed).
-  const vectorStore = new VectorStore({
-    dbPath: join(dirs.vectors, 'memory.db'),
-    embeddingModel: 'text-embedding-3-small',
-    dimensions: 1536,
-    llm,
-  });
-
   const safetyCF = opts.config.safety;
   let memoryStore: MemoryStoreLike = baseMemory;
   if (safetyCF.enabled) {
-    // Wrap order (outer → inner): Snapshot → VectorIndexed → Safe → base.
+    // Wrap order (outer → inner): Snapshot → Safe → base.
     //   - Safe validates writes against injection patterns (rejects → quarantine).
-    //   - VectorIndexed indexes new daily entries into the vector DB (fire-and-forget).
     //   - Snapshot captures pre-write content for rollback (Phase B).
-    //   - Safe's rejects never reach VectorIndexed or Snapshot: validation happens
+    //   - Safe's rejects never reach Snapshot: validation happens
     //     before the write forwards inward, so no snapshot is taken for rejects.
     const safeMemory = new SafeMemoryStore(baseMemory, {
       source: 'runtime',
@@ -162,8 +150,7 @@ export async function buildInfrastructure(
       }),
       maxLength: safetyCF.maxEntryChars,
     });
-    const vectorIndexed = new VectorIndexedMemoryStore(safeMemory, vectorStore);
-    memoryStore = new SnapshotMemoryStore(vectorIndexed, {
+    memoryStore = new SnapshotMemoryStore(safeMemory, {
       snapshotDir: dirs.backups,
       maxSnapshots: 50,
     });
@@ -174,6 +161,21 @@ export async function buildInfrastructure(
   // both depend on it; absence is handled gracefully via optional deps.
   const experienceStore = new ExperienceStore({ rootDir: dirs.experience });
 
+  let embeddingEngine: import('@littlesheep/memory-tree').EmbeddingEngine | undefined;
+  let disposeEmbedding = async (): Promise<void> => undefined;
+  if (opts.config.memory.repositoryBackend === 'v3') {
+    const {
+      DEFAULT_LOCAL_EMBEDDING_MODEL,
+      LocalTransformersEmbeddingEngine,
+    } = await import('@littlesheep/embedding');
+    const localEngine = new LocalTransformersEmbeddingEngine({
+      model: DEFAULT_LOCAL_EMBEDDING_MODEL,
+      modelRootDir: join(dirs.root, 'models', 'embedding'),
+    });
+    embeddingEngine = localEngine;
+    disposeEmbedding = () => localEngine.dispose();
+  }
+
   // One memory runtime per Runner. Prompt, read tools and autonomous writes all
   // share this instance, so cache invalidation and run ledgers cannot diverge.
   const memoryRepository = new MemoryRepository({
@@ -181,6 +183,7 @@ export async function buildInfrastructure(
     backend: opts.config.memory.repositoryBackend,
     policy: { experienceThreshold: opts.config.memory.experienceWriteThreshold },
     log: opts.log,
+    v3: { embeddingEngine },
   });
   await memoryRepository.initialize();
   await memoryRepository.retryRecoveryQueue();
@@ -207,7 +210,6 @@ export async function buildInfrastructure(
     'long-term': legacyMigrationCompleted ? [] : [new LegacyLongTermBranch(memoryStore)],
     daily: [
       ...(legacyMigrationCompleted ? [] : [new LegacyDailyBranch(memoryStore)]),
-      new SemanticDailyBranch(vectorStore),
     ],
     project: [new ProjectMemoryBranch({ dataDir: dirs.root, log: opts.log })],
     experience: legacyMigrationCompleted ? [] : [new LegacyExperienceBranch(experienceStore)],
@@ -280,6 +282,7 @@ export async function buildInfrastructure(
     createCreateSkillTool({ loader: skillLoader, skillsDir: dirs.skills }),
     createMemoryTreeTool(memoryService, { envelope: memoryEnvelope }),
     createMemorySearchCompatibilityTool(memoryService, { envelope: memoryEnvelope }),
+    createMemoryDeepSearchCompatibilityTool(memoryService, { envelope: memoryEnvelope }),
     createSessionStatusTool({
       sessionId: () => opts.state.sessionId ?? asSessionId(''),
       sessionManager,
@@ -341,7 +344,7 @@ export async function buildInfrastructure(
     llm,
     sessionManager,
     memoryStore,
-    vectorStore,
+    disposeEmbedding,
     registry,
     harness,
     skillLoader,

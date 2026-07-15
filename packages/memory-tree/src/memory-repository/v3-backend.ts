@@ -39,6 +39,13 @@ import type { MemoryProjectRebindResult } from './project-rebinding.js';
 import { MemoryV3RepositoryLedger, type MemoryV3RepositoryTransaction } from './v3-ledger.js';
 import { MemoryV3NodeStore } from './v3-node-store.js';
 import { MemoryV3ResourceStore } from './v3-resource-store.js';
+import { MemoryV3Retrieval } from './v3-retrieval.js';
+import type {
+  MemoryRepositoryCandidate,
+  MemoryRepositoryIndexRequest,
+  MemoryRepositoryRetrievalRequest,
+} from './retrieval.js';
+import type { MemoryAccessRecord } from '../v3/contracts.js';
 
 export interface MemoryRepositoryV3BackendOptions {
   dataDir: string;
@@ -59,6 +66,7 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
   private readonly eventJournal: MemoryEventJournal;
   private readonly nodes: MemoryV3NodeStore;
   private readonly resources: MemoryV3ResourceStore;
+  private readonly retrieval: MemoryV3Retrieval;
   private readonly log?: MemoryRepositoryOptions['log'];
   private closed = false;
 
@@ -109,6 +117,7 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
       policy: options.policy,
       log: options.log,
     });
+    this.retrieval = new MemoryV3Retrieval({ atomStore: this.atomStore, catalog: this.catalog, graphStore: this.graphStore, ledger: this.ledger });
     this.maintenance = new MemoryV3MaintenanceWorker({
       atomStore: this.atomStore,
       catalog: this.catalog,
@@ -198,23 +207,33 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
   getNode(id: string): Promise<MemoryNode | undefined> { return this.nodes.get(id); }
   listNodes(branch: MemoryBranchKind, scopeKey?: string): Promise<MemoryNode[]> { return this.nodes.list(branch, scopeKey); }
   children(parentNodeId: string): Promise<MemoryNode[]> { return this.nodes.children(parentNodeId); }
-  write(intent: MemoryWriteIntent): Promise<MemoryWriteResult> { return this.nodes.write(intent); }
-  retryRecoveryQueue(limit = 20): Promise<MemoryWriteResult[]> { return this.nodes.retryRecoveryQueue(limit); }
+  write(intent: MemoryWriteIntent): Promise<MemoryWriteResult> {
+    return this.withPostWriteMaintenance(this.nodes.write(intent), (result) => Boolean(result.node));
+  }
+  retryRecoveryQueue(limit = 20): Promise<MemoryWriteResult[]> {
+    return this.withPostWriteMaintenance(
+      this.nodes.retryRecoveryQueue(limit),
+      (results) => results.some((result) => Boolean(result.node)),
+    );
+  }
   setStatus(nodeId: string, status: MemoryNode['status']): Promise<MemoryNode | undefined> {
-    return this.nodes.setStatus(nodeId, status);
+    return this.withPostWriteMaintenance(this.nodes.setStatus(nodeId, status), Boolean);
   }
   changeTier(nodeId: string, tier: InjectionTier): Promise<MemoryNode | undefined> {
-    return this.nodes.changeTier(nodeId, tier);
+    return this.withPostWriteMaintenance(this.nodes.changeTier(nodeId, tier), Boolean);
   }
   manageNode(
     nodeId: string,
     action: MemoryManagementAction,
     reason = 'Changed by the user from the memory-tree management page.',
   ): Promise<MemoryManagementResult | undefined> {
-    return this.nodes.manage(nodeId, action, reason);
+    return this.withPostWriteMaintenance(this.nodes.manage(nodeId, action, reason), Boolean);
   }
   getMigration(id: string): Promise<MemoryMigrationRecord | undefined> { return this.nodes.getMigration(id); }
   markMigration(record: MemoryMigrationRecord): Promise<void> { return this.nodes.markMigration(record); }
+  indexMemory(request: MemoryRepositoryIndexRequest): Promise<MemoryRepositoryCandidate[]> { return this.retrieval.indexMemory(request); }
+  retrieveMemory(request: MemoryRepositoryRetrievalRequest): Promise<MemoryRepositoryCandidate[]> { return this.retrieval.retrieveMemory(request); }
+  recordMemoryAccess(records: MemoryAccessRecord[]): void { this.retrieval.recordMemoryAccess(records); }
 
   async rebindProjectPath(fromPath: string, toPath: string): Promise<MemoryProjectRebindResult> {
     const from = normalizedFilePath(fromPath);
@@ -253,6 +272,24 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
         this.log?.('warn', `memory-v3: project rebind ${transaction.id} remains in recovery: ${errorMessage(error)}`);
       }
     }
+  }
+
+  private async withPostWriteMaintenance<T>(
+    operation: Promise<T>,
+    changed: (result: T) => boolean,
+  ): Promise<T> {
+    const result = await operation;
+    if (!changed(result) || this.closed) return result;
+    try {
+      const maintenance = await this.maintenance.runAfterWrite();
+      if (maintenance.due.failures.length > 0 || maintenance.embeddings.failures.length > 0
+        || maintenance.embeddings.unavailable) {
+        this.log?.('warn', 'memory-v3: post-write maintenance completed with recoverable failures', maintenance);
+      }
+    } catch (error) {
+      this.log?.('warn', `memory-v3: post-write maintenance failed without rolling back the committed atom: ${errorMessage(error)}`);
+    }
+    return result;
   }
 
   private async applyProjectRebind(transaction: MemoryV3RepositoryTransaction): Promise<MemoryProjectRebindResult> {

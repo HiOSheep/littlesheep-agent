@@ -116,10 +116,10 @@ export class MemoryCatalogEmbeddingController {
     return atomIds.map((atomId) => this.requiredAtom(atomId));
   }
 
-  async search(query: string, options: MemoryCatalogSearchOptions): Promise<MemoryCatalogSearchResult[]> {
+  async search(query: string, options: MemoryCatalogSearchOptions, signal?: AbortSignal): Promise<MemoryCatalogSearchResult[]> {
     const engine = await this.enabledEngine();
     if (!engine) throw new EmbeddingUnavailableError();
-    const request = { texts: [query], purpose: 'query' as const };
+    const request = { texts: [query], purpose: 'query' as const, signal };
     const result = await engine.embed(request);
     validateEmbeddingResult(engine, request, result);
     const queryVector = Float32Array.from(result.vectors[0]!);

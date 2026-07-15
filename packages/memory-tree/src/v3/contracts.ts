@@ -297,18 +297,57 @@ export interface MemoryEvidenceEnvelope {
   verifiedUsefulness: MemoryVerifiedUsefulness;
   updatedAt: string;
   lastVerifiedAt?: string;
+  retrievalPath: Extract<MemoryAccessRecord['path'], 'hierarchy' | 'fts' | 'vector'>;
   matchReason: string;
   conflict: boolean;
   expired: boolean;
   truncated: boolean;
 }
 
+export type KnownStateMemoryDecision = 'adopted' | 'excluded' | 'conflicted';
+
 export interface KnownStateMemoryReference {
   atomId: string;
   atomRevision: number;
   evidenceRefs: string[];
-  decision: 'adopted' | 'excluded' | 'conflicted';
+  decision: KnownStateMemoryDecision;
   reason: string;
+  envelope: MemoryEvidenceEnvelope;
+  stages: string[];
+  firstSeenAt: string;
+  updatedAt: string;
+  reactivatedCount: number;
+}
+
+/** Versioned run-local record of memory evidence that may influence later stages. */
+export interface MemoryKnownState {
+  version: 1;
+  runId: string;
+  revision: number;
+  updatedAt: string;
+  references: KnownStateMemoryReference[];
+}
+
+export interface MemoryRelationNeighborhood {
+  entities: MemoryEntity[];
+  relations: MemoryRelation[];
+  truncated: boolean;
+}
+
+export interface MemoryAtomHistoryEntry {
+  kind: 'access' | 'feedback' | 'event' | 'audit';
+  id: string;
+  at: string;
+  summary: string;
+}
+
+export interface MemoryAtomHistory {
+  atomId: string;
+  revision: number;
+  sourceRunIds: string[];
+  sourceStages: MemoryWriteStage[];
+  entries: MemoryAtomHistoryEntry[];
+  truncated: boolean;
 }
 
 export interface MemoryCandidatePriorityInput {

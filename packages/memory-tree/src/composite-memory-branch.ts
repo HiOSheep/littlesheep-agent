@@ -7,6 +7,7 @@ import type {
   BranchIndex,
   BranchSearchRequest,
   MemoryBranch,
+  MemoryBranchAccessObservation,
   MemoryBranchContext,
   MemoryBranchKind,
   MemoryFragment,
@@ -103,6 +104,10 @@ export class CompositeMemoryBranch implements MemoryBranch {
 
   async invalidate(): Promise<void> {
     await Promise.allSettled(this.sources.map((source) => source.invalidate?.()));
+  }
+
+  async recordAccess(ctx: MemoryBranchContext, observations: MemoryBranchAccessObservation[]): Promise<void> {
+    await Promise.allSettled(this.sources.map((source) => source.recordAccess?.(ctx, observations)));
   }
 
   private uniqueFragments(fragments: MemoryFragment[]): MemoryFragment[] {

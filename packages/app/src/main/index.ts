@@ -440,8 +440,8 @@ async function doRebuildRunner(): Promise<void> {
   if (pluginHost) await pluginHost.setRunner(newRunner)
   pluginHost?.setConfig(currentConfig)
 
-  // 3. Delay closing old runner to let in-flight requests complete.
-  //    vectorStore writes are fire-and-forget; 5s covers most run windows.
+  // 3. Delay closing the old runner so in-flight requests can finish before
+  //    its Catalog and optional local embedding pipeline release their handles.
   if (oldRunner) {
     scheduleRetiredRunnerShutdown(oldRunner)
   }

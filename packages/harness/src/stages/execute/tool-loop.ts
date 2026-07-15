@@ -16,6 +16,7 @@ import type {
 import { sanitizeOutput } from '@littlesheep/tools';
 import { buildRunRequestCandidates } from '../../context-candidates.js';
 import { prepareModelRequest, recordProviderUsage } from '../../model-observability.js';
+import { ingestMemoryKnownState } from '../../memory-known-state.js';
 import type {
   ExecuteStageDeps,
   ToolLoopOptions,
@@ -165,6 +166,9 @@ export async function runToolLoop(
           result.sanitized = sanitized.sanitized || result.sanitized === true;
         }
         result = stampStepMeta(result, stepId);
+        if (name === 'memory_tree' || name === 'memory_search' || name === 'memory_deep_search') {
+          ingestMemoryKnownState(ctx, result.meta?.memoryKnownState, 'execute');
+        }
         ctx.onToolEvent?.({
           type: 'tool_end',
           callId: id,

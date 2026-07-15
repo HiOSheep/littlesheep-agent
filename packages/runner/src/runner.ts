@@ -401,6 +401,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           taskBook: result.taskBook,
           verificationHistory: result.verificationHistory,
           memoryIntentDecisions: result.memoryIntentDecisions,
+          memoryKnownState: result.memoryKnownState,
           clarificationRequest: result.clarificationRequest,
           clarificationResponse: result.clarificationResponse,
           memoryAccess: result.memoryAccess,
@@ -442,7 +443,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     shutdown: async () => {
       // Close long-lived SQLite connections before adapters replace or delete the data root.
       infra.memoryRepository.close();
-      infra.vectorStore.close();
+      await infra.disposeEmbedding();
     },
     state,
     sessionManager: infra.sessionManager,
@@ -528,6 +529,7 @@ function assembleResult(
     taskBook: ctx.taskBook ? { ...ctx.taskBook, stageResults: undefined } : undefined,
     verificationHistory: ctx.verificationHistory,
     memoryIntentDecisions: ctx.memoryIntentDecisions,
+    memoryKnownState: ctx.memoryKnownState,
     clarificationRequest: ctx.clarificationRequest,
     clarificationResponse: ctx.clarificationResponse,
     memoryAccess,

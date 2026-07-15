@@ -3,6 +3,7 @@
 export {
   InjectionTier,
   type MemoryFragment,
+  type MemoryBranchAccessObservation,
   type MemoryIndexEntry,
   type BranchIndex,
   type BranchExpansion,
@@ -138,6 +139,7 @@ export {
 export {
   createMemoryTreeTool,
   createMemorySearchCompatibilityTool,
+  createMemoryDeepSearchCompatibilityTool,
   type MemoryToolOptions,
 } from './memory-tool.js';
 export { fetchGitLog, fetchLatestCommitDate, parseGitLog } from './git-log.js';
@@ -191,6 +193,10 @@ export type {
   MemoryUseFeedback,
   MemoryEvidenceEnvelope,
   KnownStateMemoryReference,
+  MemoryKnownState,
+  KnownStateMemoryDecision,
+  MemoryRelationNeighborhood,
+  MemoryAtomHistory,
   EmbeddingEngine,
   EmbeddingEngineDescriptor,
   EmbeddingRequest,

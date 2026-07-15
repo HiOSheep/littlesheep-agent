@@ -71,6 +71,17 @@ export class MemoryV3MaintenanceWorker {
     return run;
   }
 
+  runAfterWrite(signal?: AbortSignal): Promise<MemoryV3MaintenanceResult> {
+    const activeAtRequest = this.activeRun;
+    if (!activeAtRequest) return this.runStartupCompensation(signal);
+
+    // A write can land after the active batch selected its work. Wait for that
+    // batch, then coalesce all concurrent write follow-ups into one more pass.
+    return activeAtRequest
+      .catch(() => undefined)
+      .then(() => this.runStartupCompensation(signal));
+  }
+
   private async execute(signal?: AbortSignal): Promise<MemoryV3MaintenanceResult> {
     throwIfAborted(signal);
     const now = this.now().toISOString();

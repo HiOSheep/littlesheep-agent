@@ -1,6 +1,6 @@
 # LittleSheep 模块拆分地图
 
-最后更新：2026-07-15 20:46:57
+最后更新：2026-07-15 22:43:54
 
 本文件记录大型生产文件的当前所有权、目标边界和拆分顺序。它是仓库基元化任务书的阶段产物，不替代项目状态，也不把行数当成唯一质量指标。
 
@@ -19,7 +19,7 @@
 | `packages/app/src/renderer/MemoryTreeView.tsx` | 1104 | 记忆树加载、管理、资源和项目投影视图 | controller + tree、resource、audit、project-projection 组件 | B |
 | `packages/channels/qqbot/src/plugin.ts` | 801 | QQ 协议、连接、消息、发送和生命周期 | transport、protocol、message-mapper、sender、lifecycle | C |
 | `packages/memory-tree/src/project-memory-projection.ts` | 778 | 投影生成、同步、冲突、恢复和删除 | projection facade + render、sync、conflict、lifecycle | D |
-| `packages/memory-tree/src/memory-tree.ts` | 650 | 根索引、导航、展开、搜索和预算 | tree facade + index、navigation、expansion、branch-search、budget | D |
+| `packages/memory-tree/src/memory-tree.ts` | 647 | 根索引、导航、展开、搜索和预算 | tree facade + index、navigation、expansion、branch-search、budget | D |
 | `packages/app/src/main/data-root-migration.ts` | 637 | locator、清单、复制、重绑定、提交、恢复和回滚 | migration facade + plan、manifest、copy、rebind、commit、recovery | C |
 | `packages/channels/feishu/src/plugin.ts` | 632 | 飞书验签、事件、消息、发送和生命周期 | verification、transport、message-mapper、sender、lifecycle | C |
 
@@ -29,18 +29,19 @@
 | --- | ---: | --- | --- | --- |
 | `packages/plugins/src/host.ts` | 536 | 插件发现、加载、启停、贡献迁移 | 分离 discovery、activation、contribution、reconcile | C |
 | `packages/memory-tree/src/legacy-memory-branches.ts` | 509 | 旧记忆分支兼容 | 保持隔离，迁移结束后缩减或退役 | D |
-| `packages/app/src/main/index.ts` | 503 | Electron 启动和组合 | 抽取 bootstrap 服务，入口只保留装配顺序 | C |
-| `packages/types/src/agent.ts` | 493 | Agent 与 TaskBook 契约 | 按 taskbook、trace、stage 类型分组并保持 barrel | E |
+| `packages/app/src/main/index.ts` | 510 | Electron 启动和组合 | 抽取 bootstrap 服务，入口只保留装配顺序 | C |
+| `packages/types/src/agent.ts` | 510 | Agent 与 TaskBook 契约 | 按 taskbook、trace、stage 类型分组并保持 barrel | E |
 | `packages/app/src/main/attachment-cache.ts` | 486 | 附件索引、配额、清理和校验 | 分离 index、quota、cleanup、validation | C |
-| `packages/runner/src/runner.ts` | 534 | run 生命周期与依赖协调 | 分离 run lifecycle、session、memory、stream 协调器 | E |
+| `packages/runner/src/runner.ts` | 537 | run 生命周期与依赖协调 | 分离 run lifecycle、session、memory、stream 协调器 | E |
 | `packages/memory-tree/src/types.ts` | 484 | 记忆树内部和持久化类型 | 按 node、resource、audit、projection 分组 | D |
-| `packages/memory-tree/src/v3/catalog.ts` | 510 | Memory v3 catalog 生命周期、atom/FTS/账本/due 投影 | 保持 facade；schema、query/codec、graph、Embedding 控制器已分离，后续把 ledger/due 投影下沉 | D |
+| `packages/memory-tree/src/v3/catalog.ts` | 600 | Memory v3 catalog 生命周期、atom/FTS/账本/due/检索投影 | 保持 facade；schema、query/codec、graph、Embedding 控制器已分离，后续把 ledger/due 投影下沉 | D |
 | `packages/memory-tree/src/v3/event-journal.ts` | 446 | Memory v3 event 与 operation journal 的同构恢复语义 | 契约稳定后拆为两个 store，共享 bounded journal codec | D |
-| `packages/memory-tree/src/v3/contracts.ts` | 417 | Memory v3 atom、认识状态、事件、实体、证据与 Embedding 契约 | 在阶段 5 Context/KnownState 接入前按 atom、event、graph、evidence 分组并保持 barrel | D |
+| `packages/memory-tree/src/v3/contracts.ts` | 422 | Memory v3 atom、认识状态、事件、实体、证据与 Embedding 契约 | 按 atom、event、graph、evidence 分组并保持 barrel | D |
 | `packages/memory-tree/src/v3/atom-store.ts` | 437 | atom 原子读写、轻量索引、扫描、层级和隔离 | 保持 store facade；规模验收稳定后分离 scanner/quarantine | D |
 | `packages/memory-tree/src/memory-repository/v3-resource-store.ts` | 575 | v3 资源元数据、生命周期事务、实体投影和恢复 | 分离 resource registry、transaction recovery 与 graph projection | D |
 | `packages/memory-tree/src/memory-repository/v3-node-store.ts` | 545 | v3 节点查询、写入编排、层级和实体关联 | 事件与生命周期规则已拆出；后续分离 query projection 与 write coordinator | D |
 | `packages/memory-tree/src/memory-repository/v3-ledger.ts` | 502 | v3 分片审计、恢复队列、scope alias、schema migration 兼容和事务账本 | 一次性 v2 导入已放入独立迁移模块；后续分离 audit shards、recovery queue 与 transaction ledger | D |
+| `packages/memory-tree/src/memory-repository/v3-backend.ts` | 324 | v3 后端组合、检索 facade 和写后维护协调 | 保持组合层；若继续增长，拆出生命周期与 maintenance adapter | D |
 | `packages/llm/src/client.ts` | 460 | 请求、流式、reasoning、重试适配 | 分离 request builder、stream parser、response mapper | E |
 | `packages/types/src/runtime-contracts.ts` | 449 | 多类运行时版本契约 | 按 context、event、checkpoint、execution 分组并保持 barrel | E |
 | `packages/memory-tree/src/memory-repository/resource-store.ts` | 439 | 资源注册、生命周期、重绑定和审计 | 分离 registry、lifecycle、rebind、audit | D |
@@ -50,12 +51,12 @@
 | `packages/prompt/src/builder.ts` | 367 | Prompt 分段和装配 | 保留 builder facade，复杂 section 移入 `sections` | E |
 | `packages/plugins/src/channel/manager.ts` | 366 | 渠道调度、会话和发送 | 分离 dispatch、session、delivery | C |
 | `packages/app/src/renderer/ArchiveManager.tsx` | 363 | 归档加载、树和操作 | controller + project/session 视图 | B |
-| `packages/runner/src/infra.ts` | 355 | 默认基础设施创建 | 按 memory、tools、session、skills adapter 分组 | E |
+| `packages/runner/src/infra.ts` | 359 | 默认基础设施创建 | 按 memory、tools、session、skills adapter 分组 | E |
 | `packages/app/src/main/memory-tree-control.ts` | 339 | 记忆控制面查询和命令 | 分离 query、resource、projection command | C |
 | `packages/channels/telegram/src/plugin.ts` | 339 | Telegram 协议和生命周期 | 分离 transport、mapper、sender | C |
 | `packages/app/src/main/attachments.ts` | 339 | run 附件解析和所有权分类 | 分离 ownership、metadata、content resolver | C |
 | `packages/cli/src/commands/import-repo.ts` | 322 | 导入流程、Git、LLM 和进度 | 分离 source、distill、progress adapter | C |
-| `packages/runner/src/execution-log.ts` | 389 | 执行日志 schema、写入、查询与按会话原子摘要 sidecar | 分离 codec、store、query 与 latest-summary store | E |
+| `packages/runner/src/execution-log.ts` | 393 | 执行日志 schema、写入、查询与按会话原子摘要 sidecar | 分离 codec、store、query 与 latest-summary store | E |
 | `packages/channels/webhook/src/plugin.ts` | 310 | Webhook server、鉴权和消息 | 分离 server、auth、mapper、sender | C |
 | `packages/experience/src/experience-store.ts` | 309 | 经验索引、备份、并发和衰减 | 分离 index、backup、mutation、decay | D |
 | `packages/app/src/renderer/app-shell/use-app-controller.ts` | 576 | Renderer 跨领域兼容协调、启动恢复和视图快照 | 保持装配职责；Runtime/附件 effect 契约稳定后再下沉 | B |
@@ -67,7 +68,7 @@
 | `packages/app/src/renderer/workspace/use-workspace-layout-controller.ts` | 380 | 布局恢复、标签/草稿持久化和拖动入口 | 两级阈值算法保持在独立 interaction 模块 | B |
 | `packages/app/src/renderer/workspace/panel.tsx` | 368 | 拓展工作区标签壳 | 保持纯组合，领域内容继续下沉 | B |
 | `packages/app/src/renderer/ui/icons.tsx` | 333 | 无状态声明式图标集合 | 出现独立图标家族时按家族拆分 | B |
-| `packages/harness/src/stages/execute/tool-loop.ts` | 326 | 单步模型工具循环、审批、失败记录和消息续接 | 分离 loop policy、invocation adapter 与 transcript | E |
+| `packages/harness/src/stages/execute/tool-loop.ts` | 353 | 单步模型工具循环、审批、失败记录、时间感知和消息续接 | 分离 loop policy、invocation adapter 与 transcript | E |
 | `packages/context/src/context-engine/snapshots.ts` | 310 | Context/模型请求快照、哈希和有界裁剪 | 分离 snapshot builders 与 hash/shape codec | E |
 | `packages/app/src/renderer/chat/run-actions.ts` | 308 | SSE 顺序、活动归并、审批、停止和收尾 | 建立事件 reducer 特征测试后再拆分 | B |
 
@@ -91,7 +92,7 @@
 2. C 与 D 优先拆 Main/API 和 Memory，减少 B/E 的跨层依赖。
 3. B 已在 API barrel 稳定后完成 Renderer 组合壳拆分；后续 Renderer 细分继续按真实窗口验收。
 4. D/E 所有权下的 Memory、Harness/Context 已完成 facade 化与内部领域拆分，LLM Call Contract 和记忆意图闸门已在稳定边界上接入。
-5. Memory v3 阶段 4 已完成独立 snapshot、mapping、build、validation、commit 和 filesystem 模块；下一步进入阶段 5 的检索/KnownState 统一。每次只移动一个责任域，完成定向测试和全量质量门后再继续。
+5. Memory v3 阶段 4 已完成独立 snapshot、mapping、build、validation、commit 和 filesystem 模块；阶段 5 已把检索、证据封套与 KnownState 拆入独立模块。下一步保持 v3 facade 稳定，阶段 6 再接管理 UI 与正式迁移审批。
 
 ## 当前共享契约与 facade
 

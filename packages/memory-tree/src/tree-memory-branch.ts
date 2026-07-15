@@ -1,5 +1,6 @@
 // @littlesheep/memory-tree - branch adapter for indexed MemoryRepository nodes.
 
+import { randomUUID } from 'node:crypto';
 import type {
   BranchDescription,
   BranchExpansion,
@@ -7,14 +8,23 @@ import type {
   BranchIndex,
   BranchSearchRequest,
   MemoryBranch,
+  MemoryBranchAccessObservation,
   MemoryBranchContext,
   MemoryBranchKind,
   MemoryFragment,
-  MemoryIndexEntry,
   MemoryNode,
 } from './types.js';
-import { estimateTokens } from './util.js';
 import { MemoryRepository } from './memory-repository.js';
+import {
+  legacyNodeFragment,
+  legacyNodeIndexEntry,
+  legacyNodeRelevance,
+} from './tree-memory-legacy-presentation.js';
+import {
+  retrievalScopes,
+  toV3Fragment,
+  toV3IndexEntry,
+} from './tree-memory-v3-presentation.js';
 
 export interface TreeMemoryBranchOptions {
   repository: MemoryRepository;
@@ -23,82 +33,6 @@ export interface TreeMemoryBranchOptions {
   purpose: string;
   whenToUse: string;
   searchHints: string[];
-}
-
-function queryTerms(value: string): string[] {
-  const normalized = value.toLocaleLowerCase();
-  const words = normalized.split(/[^\p{L}\p{N}_-]+/u).filter((term) => term.length > 1);
-  const cjk = [...normalized].filter((char) => /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(char));
-  for (let index = 0; index + 1 < cjk.length; index += 1) words.push(cjk[index]! + cjk[index + 1]!);
-  return [...new Set(words)];
-}
-
-function relevance(node: MemoryNode, query: string): number {
-  if (!query.trim()) return node.importance * 0.55 + node.confidence * 0.35 + 0.1;
-  const terms = queryTerms(query);
-  if (terms.length === 0) return 0;
-  const haystack = `${node.summary}\n${node.content}\n${node.retrievalKeys.join(' ')}`.toLocaleLowerCase();
-  const matches = terms.filter((term) => haystack.includes(term)).length;
-  return Math.min(1, matches / terms.length * 0.7 + node.importance * 0.18 + node.confidence * 0.12);
-}
-
-function toIndexEntry(node: MemoryNode): MemoryIndexEntry {
-  return {
-    id: node.id,
-    title: node.summary,
-    summary: `${node.scope}${node.scopeKey ? `:${node.scopeKey}` : ''}; tier T${node.tier}; confidence ${node.confidence.toFixed(2)}`,
-    hasChildren: node.childIds.length > 0,
-    searchKeys: node.retrievalKeys.slice(0, 8),
-    updatedAt: node.updatedAt,
-    metadata: {
-      tier: node.tier,
-      scope: node.scope,
-      scopeKey: node.scopeKey,
-      importance: node.importance,
-      confidence: node.confidence,
-      reason: node.reason,
-    },
-  };
-}
-
-function toFragment(
-  node: MemoryNode,
-  branchId: string,
-  reason: string,
-  score: number,
-  source: string,
-): MemoryFragment {
-  const content = [
-    `## ${node.summary}`,
-    node.content,
-    '',
-    `Source reason: ${node.reason}`,
-  ].join('\n');
-  return {
-    id: node.id,
-    branchId,
-    parentNodeId: node.parentNodeId,
-    tier: node.tier,
-    priority: Math.max(0, Math.min(1, score)),
-    content,
-    tokenEstimate: estimateTokens(content),
-    truncatable: true,
-    dedupKey: `tree-node:${node.id}:${node.updatedAt}`,
-    matchReason: reason,
-    metadata: {
-      source,
-      kind: 'indexed-memory-node',
-      generatedAt: node.updatedAt,
-      runId: node.sourceRunIds.at(-1),
-      sourceRunIds: node.sourceRunIds,
-      sourceStages: node.sourceStages,
-      scope: node.scope,
-      scopeKey: node.scopeKey,
-      confidence: node.confidence,
-      importance: node.importance,
-      writeReason: node.reason,
-    },
-  };
 }
 
 export class TreeMemoryBranch implements MemoryBranch {
@@ -133,12 +67,32 @@ export class TreeMemoryBranch implements MemoryBranch {
   }
 
   async getIndex(ctx: MemoryBranchContext): Promise<BranchIndex> {
+    if (this.repository.retrieval.supported) {
+      const candidates = await this.repository.retrieval.indexMemory({
+        branch: this.kind,
+        scopes: retrievalScopes(ctx),
+        query: ctx.query,
+        limit: 80,
+        now: ctx.now.toISOString(),
+        signal: ctx.signal,
+      }) ?? [];
+      return {
+        branchId: this.id,
+        displayName: this.displayName,
+        summary: `${candidates.length} D1 atom summaries from the scoped Memory v3 Catalog. Expand only the atom or query needed by the current task.`,
+        entries: candidates.map(toV3IndexEntry),
+        generatedAt: ctx.now.toISOString(),
+        source: this.repository.indexPath,
+        truncated: candidates.length >= 80,
+        nextCursor: candidates.length >= 80 ? '80' : undefined,
+      };
+    }
     const nodes = await this.repository.listNodes(this.kind, this.kind === 'project' ? ctx.workspace : undefined);
     return {
       branchId: this.id,
       displayName: this.displayName,
       summary: `${nodes.length} indexed ${this.kind} memories. Select a node or provide a query to expand only the relevant branch.`,
-      entries: nodes.slice(0, 80).map(toIndexEntry),
+      entries: nodes.slice(0, 80).map(legacyNodeIndexEntry),
       generatedAt: ctx.now.toISOString(),
       source: this.repository.indexPath,
       truncated: nodes.length > 80,
@@ -150,6 +104,42 @@ export class TreeMemoryBranch implements MemoryBranch {
     ctx: MemoryBranchContext,
     request: BranchExpandRequest,
   ): Promise<BranchExpansion> {
+    if (this.repository.retrieval.supported) {
+      const disclosureLevel = request.disclosureLevel ?? 'D2';
+      if (disclosureLevel === 'D3' && !request.nodeId) {
+        throw new Error('Memory D3 disclosure requires one selected atom id; broad audit expansion is forbidden.');
+      }
+      const candidates = await this.repository.retrieval.retrieveMemory({
+        branch: this.kind,
+        scopes: retrievalScopes(ctx),
+        query: request.query ?? '',
+        nodeId: request.nodeId,
+        limit: request.limit,
+        now: ctx.now.toISOString(),
+        signal: ctx.signal,
+        disclosureLevel,
+        mode: 'expand',
+      }) ?? [];
+      const childCandidates = request.nodeId
+        ? await this.repository.retrieval.indexMemory({
+            branch: this.kind,
+            scopes: retrievalScopes(ctx),
+            query: request.query ?? ctx.query,
+            parentNodeId: request.nodeId,
+            limit: request.limit,
+            now: ctx.now.toISOString(),
+            signal: ctx.signal,
+          }) ?? []
+        : [];
+      return {
+        branchId: this.id,
+        nodeId: request.nodeId,
+        query: request.query,
+        fragments: candidates.map((candidate) => toV3Fragment(candidate, this.id)),
+        childIndex: childCandidates.length > 0 ? childCandidates.map(toV3IndexEntry) : undefined,
+        truncated: candidates.length >= request.limit || childCandidates.length >= request.limit,
+      };
+    }
     const nodes = await this.repository.listNodes(this.kind, this.kind === 'project' ? ctx.workspace : undefined);
     let selected: MemoryNode[];
     let matchReason: string;
@@ -159,7 +149,7 @@ export class TreeMemoryBranch implements MemoryBranch {
       matchReason = `Selected indexed node ${request.nodeId}.`;
     } else if (request.query?.trim()) {
       selected = nodes
-        .map((node) => ({ node, score: relevance(node, request.query!) }))
+        .map((node) => ({ node, score: legacyNodeRelevance(node, request.query!) }))
         .filter((entry) => entry.score > 0.15)
         .sort((left, right) => right.score - left.score)
         .slice(0, request.limit)
@@ -173,17 +163,17 @@ export class TreeMemoryBranch implements MemoryBranch {
     }
 
     const childIndex = request.nodeId
-      ? (await this.repository.children(request.nodeId)).map(toIndexEntry)
+      ? (await this.repository.children(request.nodeId)).map(legacyNodeIndexEntry)
       : undefined;
     return {
       branchId: this.id,
       nodeId: request.nodeId,
       query: request.query,
-      fragments: selected.map((node) => toFragment(
+      fragments: selected.map((node) => legacyNodeFragment(
         node,
         this.id,
         matchReason,
-        relevance(node, request.query ?? ''),
+        legacyNodeRelevance(node, request.query ?? ''),
         this.repository.evidenceLocator(node.id),
       )),
       childIndex,
@@ -192,19 +182,48 @@ export class TreeMemoryBranch implements MemoryBranch {
   }
 
   async search(ctx: MemoryBranchContext, request: BranchSearchRequest): Promise<MemoryFragment[]> {
+    if (this.repository.retrieval.supported) {
+      const candidates = await this.repository.retrieval.retrieveMemory({
+        branch: this.kind,
+        scopes: retrievalScopes(ctx),
+        query: request.query,
+        subtreeRootId: request.subtreeRootId,
+        limit: request.limit,
+        now: ctx.now.toISOString(),
+        signal: ctx.signal,
+        disclosureLevel: 'D2',
+        mode: 'deep-search',
+      }) ?? [];
+      return candidates.map((candidate) => toV3Fragment(candidate, this.id));
+    }
     const nodes = await this.repository.listNodes(this.kind, this.kind === 'project' ? ctx.workspace : undefined);
     return nodes
-      .map((node) => ({ node, score: relevance(node, request.query) }))
+      .map((node) => ({ node, score: legacyNodeRelevance(node, request.query) }))
       .filter((entry) => entry.score > 0.15)
       .sort((left, right) => right.score - left.score)
       .slice(0, request.limit)
-      .map(({ node, score }) => toFragment(
+      .map(({ node, score }) => legacyNodeFragment(
         node,
         this.id,
         `Deep search matched "${request.query}".`,
         score,
         this.repository.evidenceLocator(node.id),
       ));
+  }
+
+  recordAccess(ctx: MemoryBranchContext, observations: MemoryBranchAccessObservation[]): Promise<void> {
+    return this.repository.retrieval.recordAccess(observations.map((observation) => ({
+      id: randomUUID(),
+      atomId: observation.atomId,
+      runId: ctx.runId,
+      stage: 'execute',
+      path: observation.path,
+      matchReason: observation.matchReason,
+      enteredContext: observation.enteredContext,
+      disclosureLevel: observation.disclosureLevel,
+      tokensUsed: observation.tokensUsed,
+      accessedAt: new Date().toISOString(),
+    })));
   }
 }
 

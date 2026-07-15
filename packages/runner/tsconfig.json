@@ -15,6 +15,9 @@
       "path": "../config"
     },
     {
+      "path": "../embedding"
+    },
+    {
       "path": "../experience"
     },
     {
@@ -49,9 +52,6 @@
     },
     {
       "path": "../types"
-    },
-    {
-      "path": "../vector"
     }
   ]
 }
