@@ -1,7 +1,7 @@
 # LittleSheep 原子记忆与内置向量目录任务书 2026-07-15
 
 最后更新：2026-07-15
-版本：v1.3
+版本：v1.4
 状态：目标架构已确认，待按阶段实施；本任务书不会自动迁移正式用户数据
 
 ## 1. 目标
@@ -18,6 +18,7 @@
 - 注入 LLM 的记忆必须携带有界证据元数据，让模型能判断来源、层级、置信度、重要性、新鲜度和冲突状态；
 - 用户记忆、LS 自身记忆、项目/会话记忆、经验与知识资源统一使用渐进式披露，不建立旁路副本；
 - 所有记忆更新由时间和真实事件驱动，先持久捕获、再幂等归并，失败可恢复且不静默丢失；
+- 每条记忆区分事实、用户陈述、观察、建议、假设和决定，并保留验证状态与权威范围；
 - 默认 Embedding 在本地生成，不把记忆正文发送到 Provider 的 `/embeddings`；
 - 现有用户数据只能通过备份、校验、可恢复迁移和显式批准进入新格式。
 
@@ -25,13 +26,14 @@
 
 ## 2. 当前实现差距
 
-当前 Memory v2 已具备分支、parent、tier、scope、索引优先读取、资源注册和写入闸门，但仍有五项结构性差距：
+当前 Memory v2 已具备分支、parent、tier、scope、索引优先读取、资源注册和写入闸门，但仍有六项结构性差距：
 
 1. `memory-tree/index.json` 同时保存全部节点、资源、审计和恢复队列，单文件会随记忆增长而扩大；
 2. `packages/vector` 的 SQLite 数据库位于本地，但向量通过当前 LLM Client 的 `/embeddings` 生成，并固定使用 `text-embedding-3-small`；
 3. 旧 `VectorIndexedMemoryStore` 与新的 `MemoryRepository` 是两条并存路径，向量目录没有成为原子记忆文件的统一管理索引。
 4. 用户记忆、LS 自身记忆、项目/会话记忆和知识资源尚未拥有统一的 domain 与 D0-D3 渐进披露契约。
 5. 写入仍缺少统一的 `MemoryUpdateEvent` journal、时间 due index、幂等归并和启动补偿协议，不能宣称所有记忆都能近实时更新且失败不丢。
+6. 用户、外部资料和模型产生的事实主张、建议、偏好与决定尚无统一 epistemic schema，存在把“有人建议”误当成“事实成立”的风险。
 
 因此，当前不能宣称已经实现“原子文件 + 层级 + 完全本地向量管理”。
 
@@ -49,6 +51,8 @@ branch
 parentId
 scope / scopeKey
 tier
+statementKind / epistemicStatus / authorityScope
+assertedBy / evidenceRefs
 title
 summary
 content
@@ -59,6 +63,7 @@ lastUsefulAt / lastVerifiedAt
 reason
 sourceRunIds / sourceStages
 status
+resolutionStatus
 effectiveAt / expiresAt / revalidateAt
 createdAt / updatedAt
 contentHash
@@ -68,6 +73,9 @@ contentHash
 
 - `id` 创建后不因标题、父级、项目路径或文件路径变化而改变；
 - `domain` 至少区分 user、agent-self、task/project/session、experience 和 knowledge；domain 只定义主体与治理边界，不替代 branch/scope/tier；
+- `statementKind` 区分 instruction/goal、preference/value、reported observation、factual claim、suggestion/hypothesis 和 decision/approval；`epistemicStatus` 记录 reported、unverified、corroborated、verified、disputed、superseded 等状态；
+- `authorityScope` 描述来源在哪些问题上有决定权。用户对自身目标、偏好、授权和决定拥有权威，不因此自动拥有客观技术事实的证明力；
+- `resolutionStatus` 记录建议/假设的 proposed、under-review、adopted、rejected、superseded，或 claim 的待验证/已解决状态；采纳建议不能把其事实主张自动改为 verified；
 - `parentId` 是层级权威字段，子节点列表由目录查询生成，不在多个文件中重复维护；
 - 一个 atom 只保存一个可独立治理的记忆语义；多个来源可以强化同一 atom，不应重复创建近义文件；
 - `basePriority` 是可审计的基础治理值，不等于最终注入顺序；最终顺序由当前任务、作用域、来源、状态和已验证使用反馈动态派生；
@@ -106,6 +114,7 @@ memory-tree/
 - `atom_feedback`：从 atom 的验证反馈摘要和受限审计事件生成的查询投影，包含有用/无帮助/冲突/过期结果、证据引用、衰减后的 usefulness 和最近验证时间；
 - `memory_events`：已持久捕获事件的查询投影、处理状态、目标版本、幂等键、重试和恢复位置；权威 pending 事件仍在可恢复 event journal；
 - `memory_due`：按 effective、expiry、revalidation 和 usefulness decay 时间定位到期 atom，避免全库轮询；
+- `evidence_links`：atom/claim 与工具结果、用户原话、文档版本、执行步骤和 VERIFY 结果之间的可追溯关系；
 - `operations`：跨文件系统与 SQLite 更新的恢复日志；
 - `audit`：写入、合并、移动、归档、失效、删除和重建证据。
 
@@ -149,6 +158,26 @@ D0 root/domain/branch index
 - D0-D3 表示披露深度，T0-T3 表示介入优先级和预算语义，两者不能共用字段或相互推断；
 - 冲突、低置信、待恢复、待重验和权限风险必须在 D1 可见，不能等展开审计后才暴露；
 - User Memory 与 Agent Self Memory 都不能维护脱离 Memory Repository 的私有 Prompt 副本或 UI 副本。
+
+### 3.5 陈述与事实边界
+
+所有来源先产生 statement，再依据类型和证据进入不同治理路径：
+
+```text
+user/external/model statement
+  -> classify statementKind + authorityScope
+  -> preserve assertedBy + exact source
+  -> attach evidence and epistemicStatus
+  -> verify / adopt / reject / keep unresolved
+  -> expose through KnownState and MemoryEvidenceEnvelope
+```
+
+- 用户说“我希望/我选择/我允许”时，分别作为 goal/preference/decision/approval 处理，在其权威范围内直接约束 Agent；
+- 用户说“系统一定是这样”时，保存为来自用户的 factual claim；工具或权威资料验证前不能改写为 verified fact；
+- 用户或外部来源提出“建议这样做”时，保存为 proposal/hypothesis。Agent 可以评估并采用，但必须独立记录采纳决定和验证证据；
+- 官方文档、专家、搜索结果和其他 Agent 具有不同 source authority，但仍需保留版本、适用范围和冲突状态；
+- 单条错误建议不能派生用户能力、知识水平或人格标签。对用户能力的任何长期信息必须有用户明确陈述或多次、直接且经用户可管理的证据，并默认标记为待确认推断；
+- confidence 表示对内容正确性的证据强度，authority scope 表示来源在该问题上的决定权，两者不能合并成一个分数。
 
 ## 4. 本地 Embedding
 
@@ -199,11 +228,12 @@ D0 root/domain/branch index
 ### 阶段 0：契约与特征测试
 
 - 定义 `MemoryAtom`、`MemoryCatalogEntry`、`EmbeddingEngine` 和 operation journal v1；
-- 定义 `MemoryDomain`、`MemoryDisclosureLevel`、`MemoryUpdateEvent`、`MemoryAccessRecord`、`MemoryUseFeedback`、`MemoryEvidenceEnvelope`、候选优先级明细和 `KnownState` 记忆证据引用契约；
+- 定义 `MemoryDomain`、`MemoryDisclosureLevel`、`StatementKind`、`EpistemicStatus`、`AuthorityScope`、`MemoryUpdateEvent`、`MemoryAccessRecord`、`MemoryUseFeedback`、`MemoryEvidenceEnvelope`、候选优先级明细和 `KnownState` 记忆证据引用契约；
 - 冻结 v2 行为特征：层级、写入闸门、项目重绑定、资源注册和 UI 管理；
 - 增加“默认禁止远程 Embedding”的网络出口测试。
 - 增加“重复访问不自动强化”“只有验证成功才产生正向反馈”“低收益可选记忆按策略衰减”“T0/安全/当前约束不被普通衰减淘汰”“冲突/过期记忆不优先注入”的特征测试。
 - 增加“所有 domain 使用 D0-D3”“事件先持久再确认”“重复事件幂等”“崩溃后重放”“关闭期间到期项启动补偿”的特征测试。
+- 增加“用户目标/偏好具有范围内权威”“用户技术主张仍待验证”“采纳建议不等于事实验证”“错误建议不生成用户能力画像”“外部权威来源仍保留版本和适用范围”的特征测试。
 
 验收：新契约不改变当前运行数据；旧路径有完整行为基线。
 
@@ -232,6 +262,7 @@ D0 root/domain/branch index
 - 保持 Memory Service、Runner、Harness、工具和 UI 公共接口兼容；
 - 去重、合并、冲突、失效和项目重绑定只走统一 repository transaction。
 - 将用户、LS 自身、任务/项目/会话、经验和知识资源统一映射到 domain，不允许旁路写入。
+- 所有写入先经过 statement/authority/epistemic 分类；建议、事实主张、用户偏好和决定走独立状态转换，禁止通过 merge 丢失类别。
 
 验收：现有 Memory Tree 契约测试在 v2/v3 两种后端均通过。
 
@@ -249,13 +280,14 @@ D0 root/domain/branch index
 - 退役 `VectorIndexedMemoryStore` 的 Provider Embedding 路径；
 - 强制 branch/subtree filter、预算、去重和访问账本。
 - 将候选优先级、`MemoryEvidenceEnvelope` 与 `KnownState` 接入 Context Engine；每个阶段可追溯实际采用、排除和重新激活的 atom、状态版本和取舍理由。
+- 把 statement kind、epistemic status、authority scope、asserted by 与 evidence refs 投影给模型，VERIFY 拒绝把 suggestion/reported/unverified claim 当作 verified fact 交付。
 - 实现 D0-D3 按需展开，并验证用户记忆与 LS 自身记忆不会因披露层级不同产生 Prompt 或 UI 副本。
 
 验收：网络被阻断时记忆写入和检索正常，向量搜索不能绕过层级导航；同一作用域内经验证且相关的记忆稳定优先介入，单纯重复访问不能形成错误自增强。
 
 ### 阶段 6：管理 UI 与真实迁移
 
-- UI 按 domain 与 D0-D3 展示 atom、父级、来源、向量状态、冲突、更新状态、事件时间线、归档和重建进度；
+- UI 按 domain 与 D0-D3 展示 atom、父级、statement/epistemic 状态、来源、证据、向量状态、冲突、更新状态、事件时间线、归档和重建进度；
 - 用户可以移动、合并、失效、恢复和导出 atom；
 - 在用户批准后迁移正式数据并完成重启、回滚和长时间运行验收。
 
@@ -281,6 +313,9 @@ D0 root/domain/branch index
 | D14 | 渐进披露 | 所有 domain 统一使用 D0 索引、D1 摘要元数据、D2 正文、D3 来源与审计；D0-D3 与 T0-T3 独立 |
 | D15 | 实时更新 | 时间和真实事件生成 `MemoryUpdateEvent`；先持久捕获，再异步幂等归并，失败进入恢复队列 |
 | D16 | 不失忆语义 | 保证持久、可发现、可追溯、可恢复和相关时可取回，不以全量常驻 Prompt 实现 |
+| D17 | 陈述分类 | instruction/goal、preference/value、reported observation、factual claim、suggestion/hypothesis、decision/approval 分开治理 |
+| D18 | 权威边界 | 用户对自身目标、偏好、授权和决定具有权威；客观 claim 仍需证据验证，来源身份不替代 epistemic status |
+| D19 | 防错误画像 | 单条错误建议不生成用户能力画像；采纳建议不等于事实已验证，confidence 与 authority scope 独立 |
 
 ## 9. 总完成门槛
 
@@ -293,6 +328,8 @@ D0 root/domain/branch index
 - 用户记忆、LS 自身记忆及其他 domain 都能从 D0/D1 渐进展开到 D2/D3，且 UI、Prompt 与运行时使用同一权威数据；
 - 每个有效时间/事件更新先持久捕获，重复消费幂等，故障与重启不会静默丢失；关闭期间的到期项在启动时补偿；
 - 已确认记忆具有稳定索引、版本、恢复与备份验证，相关时可以重新取回，不依赖永久注入 Prompt；
+- 用户、外部来源和模型的陈述都保留 statement kind、epistemic status、authority scope、asserted by 与 evidence refs；
+- 用户偏好和决定在其范围内受到尊重，客观事实主张经过验证；建议可被采纳但不会被冒充为事实，错误建议不会自动形成用户能力画像；
 - 内置目录可管理层级、FTS、向量、审计和恢复，并能从文件重建；
 - 默认断网仍可写入、导航和语义检索记忆；
 - Provider 不会在未经明确启用时收到记忆 Embedding 内容；

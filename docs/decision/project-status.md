@@ -74,6 +74,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 - 各阶段会从 `KnownState` 派生有界 active evidence set：当前无用、重复、被替代或过期信息可退出后续 LLM 请求，必要时重新激活；注入的记忆携带层级、作用域、来源、confidence、importance、新鲜度和冲突状态等证据元数据。
 - 目标架构将用户记忆、LS 自身记忆、任务/项目/会话、经验和知识资源统一纳入同一 Memory Repository，并以 D0 索引、D1 摘要元数据、D2 正文、D3 来源与审计渐进披露；当前 v2 尚未完成这一统一契约。
 - 目标架构使用 `MemoryUpdateEvent`、持久 journal、幂等归并、due index 和启动补偿，根据时间与真实事件近实时更新记忆。这里的“不失忆”指持久、可发现、可追溯、可恢复且相关时可取回，不是把全部记忆常驻 Prompt；该闭环尚待 Memory v3 实施。
+- 目标架构还要求把用户/外界陈述分类为目标、偏好、报告观察、事实主张、建议/假设和决定/批准，并分别记录 epistemic status 与 authority scope。用户对自身意图和取舍具有权威，客观技术 claim 仍需证据；当前 v2 尚未实现这一结构化边界。
 - 自动写入使用结构化意图，记录作用域、层级、来源 run、置信度和理由；用户可在记忆树控制面管理真实数据。
 - 模型提出的记忆操作与运行时提交权分离；无真实证据或低价值写入会拒绝，冲突/失效只进入有界审计记录。
 - `PHILOSOPHY.md` 保存用户确认的长期理念，默认只在资源索引中出现，任务相关时才按预算展开正文。
@@ -118,9 +119,11 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 6. 建立 run 级版本化 `KnownState`，让记忆证据、工具证据、用户陈述、假设、未知和冲突在 DECIDE、EXECUTE、VERIFY、FINALIZE 之间显式传递，并允许各阶段有记录地增加、排除或重新激活 Context 信息。
 7. 统一 User、Agent Self、Task/Project/Session、Experience 和 Knowledge domain，并实现与 T0-T3 独立的 D0-D3 渐进披露协议。
 8. 建立 `MemoryUpdateEvent` journal、幂等归并、due index、失败恢复和启动补偿；所有更新先持久捕获，再异步物化到 atom/catalog。
-9. 先完成 feature flag、双后端契约测试和隔离迁移；正式用户数据必须另行批准后才能从 v2 切换到 v3。
+9. 建立 `StatementKind`、`EpistemicStatus` 和 `AuthorityScope`，让目标/偏好、报告观察、事实主张、建议/假设与决定分别治理；采纳建议不能自动验证其事实前提。
+10. 防止错误用户画像：单条错误建议不得推导用户能力标签，任何推断都要有独立来源、待确认状态和用户管理入口。
+11. 先完成 feature flag、双后端契约测试和隔离迁移；正式用户数据必须另行批准后才能从 v2 切换到 v3。
 
-**验收标准**：断网时记忆可写、可导航、可检索；数据库可从 atom 文件重建；向量检索不能跨越未导航分支；所有 domain 使用同一 repository 并可从 D0/D1 渐进展开到 D2/D3；匹配作用域内经验证的高价值记忆稳定优先介入；长期低收益可选记忆减少注入但强制信息不被误衰减；重复访问不会形成错误自增强；LLM 能获得所用记忆的必要证据元数据；每个执行阶段可追溯采用、排除和重新激活的 `KnownState` 版本与信息；事件在确认前持久化，重复处理幂等，崩溃、重启和关闭期间到期不会静默丢失；迁移可中断恢复和回滚且不丢节点。
+**验收标准**：断网时记忆可写、可导航、可检索；数据库可从 atom 文件重建；向量检索不能跨越未导航分支；所有 domain 使用同一 repository 并可从 D0/D1 渐进展开到 D2/D3；匹配作用域内经验证的高价值记忆稳定优先介入；长期低收益可选记忆减少注入但强制信息不被误衰减；重复访问不会形成错误自增强；LLM 能获得所用记忆的必要证据与 epistemic 元数据；用户目标/偏好在范围内受到尊重，客观 claim 不经验证不成为事实，建议被采纳也不改变其验证状态，错误建议不生成用户能力画像；每个执行阶段可追溯采用、排除和重新激活的 `KnownState` 版本与信息；事件在确认前持久化，重复处理幂等，崩溃、重启和关闭期间到期不会静默丢失；迁移可中断恢复和回滚且不丢节点。
 
 ### P0：持续维护与受控超限拆分
 
@@ -200,7 +203,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 ## 推荐后续顺序
 
-1. 实现 Memory v3 阶段 0-2：原子文件、domain、D0-D3、层级、SQLite catalog、FTS、本地 Embedding、访问反馈、使用衰减、事件 journal、due index、优先级索引和恢复日志；同时冻结 `MemoryEvidenceEnvelope`、`MemoryUpdateEvent` 与 `KnownState` 记忆证据契约，只使用隔离数据。
+1. 实现 Memory v3 阶段 0-2：原子文件、domain、D0-D3、statement/epistemic/authority schema、层级、SQLite catalog、FTS、本地 Embedding、访问反馈、使用衰减、事件 journal、due index、优先级索引和恢复日志；同时冻结 `MemoryEvidenceEnvelope`、`MemoryUpdateEvent` 与 `KnownState` 记忆证据契约，只使用隔离数据。
 2. 完成 OpenAI、DeepSeek、GLM 真实对话冒烟，用 Provider 结果校准 Context、reasoning、usage 与保守安全估算；远程 Embedding 不纳入默认路径。
 3. 在稳定 Call Contract 上收敛统一 Tool Execution Service，使内置、插件和未来 MCP 工具共享审批、超时、清洗、证据与恢复契约。
 4. 按连续性任务书实现 RuntimeEventQueue、TaskBookPatch、有界并行、版本化检查点、重启恢复和后台运行。
