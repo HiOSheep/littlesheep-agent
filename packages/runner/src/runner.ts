@@ -32,6 +32,7 @@ import type { ExecutionLog } from './execution-log.js';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
 import { getAgentProfile, type AgentProfileId } from '@littlesheep/prompt';
 import { resolveRunConfig } from './run-config.js';
+import { discoverLittleSheepCoreRoots } from './core-source-protection.js';
 
 /** AgentResult + sessionId (caller-friendly). */
 export type RunnerResult = AgentResult & { sessionId: SessionId; memoryAccess?: MemoryAccessLedger };
@@ -52,6 +53,8 @@ export interface CreateRunnerOptions {
   approve?: ToolContext['approve'];
   /** Directory containing registered identity, philosophy, tool, and memory resources. */
   bootstrapDir?: string;
+  /** Host-owned source roots that built-in mutation tools must keep read-only. */
+  protectedWriteRoots?: readonly string[];
   /** Overall run timeout in ms (default 5 min). When no signal is passed to
    *  run, a timed AbortController is created so a hung tool/LLM can't
    *  block indefinitely. 0 disables the timeout. */
@@ -120,6 +123,10 @@ export interface AgentRunner {
 export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunner> {
   const model = opts.model ?? opts.config.agents.defaults.model;
   const state: RunnerState = { sessionId: undefined, model };
+  const protectedWriteRoots = opts.protectedWriteRoots ?? discoverLittleSheepCoreRoots([
+    process.cwd(),
+    process.argv[1] ?? '',
+  ]);
   const infra = await buildInfrastructure({
     config: opts.config,
     branding: opts.branding,
@@ -229,6 +236,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         model,
         runId,
         cwd,
+        protectedWriteRoots,
         signal,
         approve: input.approve ?? opts.approve,
         log: opts.log,

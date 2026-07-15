@@ -87,6 +87,19 @@ describe('editTool', () => {
     expect(result.error).toMatch(/File not found/);
   });
 
+  it('rejects edits inside a protected core root before approval', async () => {
+    const root = tmpDir;
+    const file = join(root, 'protected-source.ts');
+    await writeFile(file, 'original', 'utf8');
+    const result = await editTool.execute(
+      { file_path: file, old_string: 'original', new_string: 'changed' },
+      { ...approvedCtx, protectedWriteRoots: [root] },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/core source is read-only/i);
+    expect(await readFile(file, 'utf8')).toBe('original');
+  });
+
   it('requires approval', () => {
     expect(editTool.requiresApproval).toBe(true);
   });

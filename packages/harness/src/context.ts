@@ -69,6 +69,8 @@ export interface BuildRunContextOptions {
   runId?: string;
   /** Working directory for file/exec tools (defaults to process.cwd()). */
   cwd?: string;
+  /** Host-owned roots that built-in mutation tools must keep read-only. */
+  protectedWriteRoots?: readonly string[];
   /** Abort signal for the owning run. */
   signal?: AbortSignal;
   /** Approval callback handed to tools. */
@@ -166,6 +168,7 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     sessionId: opts.sessionId,
     runId,
     cwd,
+    protectedWriteRoots: opts.protectedWriteRoots,
     approve: opts.approve,
     signal: opts.signal,
     log: opts.log,

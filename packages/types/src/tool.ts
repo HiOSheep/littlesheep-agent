@@ -23,6 +23,8 @@ export interface ToolContext {
   runId: string;
   /** Working directory for file/exec tools. */
   cwd: string;
+  /** Host-owned roots that built-in mutation tools must treat as read-only. */
+  protectedWriteRoots?: readonly string[];
   /** Approval callback: returns true if the action is permitted. */
   approve?: (action: string, detail?: unknown) => Promise<boolean>;
   /** Abort signal for the owning run. */

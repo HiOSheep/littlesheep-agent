@@ -144,6 +144,7 @@ describe('buildRunContext', () => {
     const ac = new AbortController();
     const approve = async () => true;
     const log = () => {};
+    const protectedWriteRoots = [process.cwd()];
     const ctx = await buildRunContext({
       sessionId: 's1',
       inbound: textMessage('user', 'go'),
@@ -153,12 +154,14 @@ describe('buildRunContext', () => {
       config: DEFAULT_CONFIG,
       branding: DEFAULT_BRANDING,
       model: 'm',
+      protectedWriteRoots,
       signal: ac.signal,
       approve,
       log,
     });
     expect(ctx.signal).toBe(ac.signal);
     expect(ctx.toolContext.signal).toBe(ac.signal);
+    expect(ctx.toolContext.protectedWriteRoots).toBe(protectedWriteRoots);
     expect(ctx.toolContext.approve).toBe(approve);
     expect(ctx.toolContext.log).toBe(log);
   });

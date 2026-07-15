@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { AgentTool } from '@littlesheep/types';
+import { CORE_SOURCE_READ_ONLY_ERROR, findProtectedWriteRoot, resolveToolPath } from '../path-protection.js';
 import { withToolTiming } from '../wrapper.js';
 
 const WriteInput = z.object({
@@ -17,13 +18,18 @@ export const writeTool: AgentTool = {
   requiresApproval: true,
   execute: withToolTiming(async (input, ctx) => {
     const { file_path, content } = WriteInput.parse(input);
-    const approved = await ctx.approve?.('write', { file_path }) ?? false;
+    const targetPath = resolveToolPath(file_path, ctx.cwd);
+    const protectedRoot = findProtectedWriteRoot(targetPath, ctx);
+    if (protectedRoot) {
+      return { ok: false, error: `${CORE_SOURCE_READ_ONLY_ERROR}: ${targetPath}` };
+    }
+    const approved = await ctx.approve?.('write', { file_path: targetPath }) ?? false;
     if (!approved) {
       return { ok: false, error: 'Approval denied' };
     }
-    await mkdir(dirname(file_path), { recursive: true });
-    await writeFile(file_path, content, 'utf8');
-    ctx.log?.('info', `wrote ${file_path} (${content.length} chars)`);
-    return { output: `Wrote ${content.length} chars to ${file_path}` };
+    await mkdir(dirname(targetPath), { recursive: true });
+    await writeFile(targetPath, content, 'utf8');
+    ctx.log?.('info', `wrote ${targetPath} (${content.length} chars)`);
+    return { output: `Wrote ${content.length} chars to ${targetPath}` };
   }),
 };

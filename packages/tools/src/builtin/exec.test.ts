@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { mkdtemp, rm, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createExecTool } from './exec.js';
 import type { ToolContext } from '@littlesheep/types';
 
@@ -94,6 +97,27 @@ describe('execTool approval gate', () => {
       baseCtx,
     );
     expect(result.ok).toBe(true);
+  });
+
+  it('rejects mutating commands inside a protected core root', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ls-core-exec-'));
+    const file = join(root, 'changed.txt');
+    try {
+      const exec = createExecTool({
+        interactive: false,
+        approvalConfig: { whitelist: [], blacklist: [], approvalMode: 'auto-approve' },
+      });
+      const script = `require('node:fs').writeFileSync(${JSON.stringify(file)}, 'changed')`;
+      const result = await exec.execute(
+        { command: `node -e ${JSON.stringify(script)}`, cwd: root },
+        { ...baseCtx, protectedWriteRoots: [root] },
+      );
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/core source is read-only/i);
+      await expect(stat(file)).rejects.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it('has requiresApproval=true', () => {

@@ -4,7 +4,7 @@
 
 ## 职责与边界
 
-- 公开入口是 `src/index.ts`；`runner.ts` 负责运行，`run-config.ts` 冻结决议，`execution-log.ts` 持久化证据。
+- 公开入口是 `src/index.ts`；`runner.ts` 负责运行，`run-config.ts` 冻结决议，`execution-log.ts` 持久化证据，`core-source-protection.ts` 从实际 workspace 标记发现 LS 核心源码只读根。
 - 负责依赖注入和运行生命周期，不吸收各领域内部算法或 Electron UI 逻辑。
 - 禁止让渠道、插件私有实现或 renderer 状态成为核心 run 的必要依赖。
 

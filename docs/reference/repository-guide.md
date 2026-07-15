@@ -85,9 +85,9 @@
 
 | 包 | 归属和职责 |
 | --- | --- |
-| `packages/tools/` | 内置工具、注册表、输入 schema、基础计时/结果 wrapper 和部分工具内审批。完整授权、超时、流式事件、证据与恢复当前仍分散在 Tools、Harness 和 App，尚待统一 Tool Execution Service 收敛。 |
+| `packages/tools/` | 内置工具、注册表、输入 schema、基础计时/结果 wrapper、部分工具内审批和核心源码只读路径闸门。完整授权、超时、流式事件、证据与恢复当前仍分散在 Tools、Harness 和 App，尚待统一 Tool Execution Service 收敛。 |
 | `packages/plugins/` | 插件 API v1、插件发现、信任闸门、生命周期宿主，以及渠道、工具和 owner-scoped Skill 贡献。它是扩展运行时，不是 Agent 任务核心。 |
-| `packages/skills/` | 技能加载、使用和自主创建。 |
+| `packages/skills/` | 技能加载、使用和自主创建；语义去重、合并、收益评估、归档/删除与回滚治理尚待后续控制面实现。 |
 | `packages/mcp/` | MCP 客户端预留包；当前仍是骨架，不应在状态文档中写成已完成。 |
 | `packages/cli/` | 命令行入口、参数解析、REPL 和管理命令。 |
 
@@ -219,9 +219,10 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 
 ### 用户运行时数据
 
-- 默认位置由 `@littlesheep/branding` 和应用运行时解析为 `<user-data>`；正式文档不固化真实用户绝对路径。
+- 完整应用数据根由 `@littlesheep/branding` 和应用运行时解析为 `<data-root>`；默认目录名为 `.littlesheep`，但用户可迁移到其他位置，正式文档不固化真实用户绝对路径。
 - 解析优先级为 `LITTLESHEEP_DATA_DIR`、外部 locator、branding 默认目录。locator 默认位于用户主目录，保持在数据根之外，记录活动目录、待迁移/回滚事务和最近一次迁移清单。
-- 包括 API 配置、加密密钥引用、sessions、memory-tree、projects、archive、execution logs、workspace layout、terminal activity、`attachment-cache/`、`workspace/resource-indexes/`、用户工作区，以及 `AGENTS.md`、`SOUL.md`、`USER.md`、`PHILOSOPHY.md`、`TOOLS.md`、`MEMORY.md` 等用户所有的运行时资源。
+- 包括 API 配置、加密密钥引用、sessions、memory-tree、用户与 LS 自身记忆、Skills、plugins/plugin-data、projects、archive、execution logs、workspace layout、terminal activity、`attachment-cache/`、`workspace/resource-indexes/`，以及 `AGENTS.md`、`SOUL.md`、`USER.md`、`PHILOSOPHY.md`、`TOOLS.md`、`MEMORY.md` 等用户所有的运行时资源。
+- `<data-root>/workplace/` 是未选择项目或外部目录时的默认工作区，只是完整应用数据根的一个子目录。移动 workplace 不等于迁移应用数据；“存储与数据”执行的是完整数据根迁移。
 - `PHILOSOPHY.md` 保存经用户确认的长期价值判断和设计取舍。它注册为 `philosophy` 资源但不进入每轮常驻 Prompt；Agent 必须先沿资源索引发现，再按任务相关性和 token 预算展开。
 - `attachment-cache/` 只保存 LS 通过粘贴/浏览器导入创建并登记的临时附件；自动清理只能处理索引中仍通过路径、普通文件、大小和哈希验证的缓存项。`workplace/`、项目目录和外部路径是不同所有权边界，不能因为文件名或目录名相似而由缓存清理删除。
 - `workspace/resource-indexes/` 只保存各工作区的相对路径、文件类型、大小、修改时间和 `user/agent` 来源；它不保存正文，扫描有目录、深度、条目和待处理队列上限。索引文件属于 LS 受管运行数据，项目索引以稳定 project id 关联。
@@ -239,5 +240,6 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 7. 每次应用构建都通过 `scripts/build-app.ps1` 或根 `build-app.bat` 刷新快捷方式；不得把机器绝对路径写进脚本。
 8. 插件变更必须同时验证 manifest 校验、未启用插件不加载、失败隔离、Runner 重建迁移和停用清理；本地代码默认不信任。
 9. 日常修改先运行 `verify:changed`；核心协议和 Agent 流程运行 `verify:core`；阶段完成运行 `verify:full`。完整门内部顺序仍为 `check:repo`、全量测试、增量 typecheck、Electron build 和恢复源检查。失败时记录真实原因，不用快速门替代阶段完成证据。
+10. 当前运行时的 LS 核心源码是只读安全边界：内置 `write`、`edit`、`exec` 不得修改自动发现的核心源码根。未来开放自我修改前，必须先建立隔离工作树、检查点、完整验证、用户审查和自动回滚，不能删除现有闸门后直接开放。
 10. workspace package 依赖变化后运行 `sync:tsconfig`，不要手改生成的 references。`typecheck` 会产生被忽略的声明和 `.tsbuildinfo`，用于保证跨包契约正确并加速下一轮。
 11. 说明文档默认使用中文；代码标识、协议字段、命令、路径和供应商产品名保留英文。确有维护价值的英文内容只能作为补充版本，不能取代中文正式文档。

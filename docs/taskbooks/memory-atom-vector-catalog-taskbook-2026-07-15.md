@@ -1,7 +1,7 @@
 # LittleSheep 原子记忆与内置向量目录任务书 2026-07-15
 
 最后更新：2026-07-15
-版本：v1.4
+版本：v1.5
 状态：目标架构已确认，待按阶段实施；本任务书不会自动迁移正式用户数据
 
 ## 1. 目标
@@ -19,6 +19,7 @@
 - 用户记忆、LS 自身记忆、项目/会话记忆、经验与知识资源统一使用渐进式披露，不建立旁路副本；
 - 所有记忆更新由时间和真实事件驱动，先持久捕获、再幂等归并，失败可恢复且不静默丢失；
 - 每条记忆区分事实、用户陈述、观察、建议、假设和决定，并保留验证状态与权威范围；
+- 记忆中的用户、项目、文件、会话、任务、Skill、工具、规则和概念具有明确实体边界，有向关系按证据和作用域渐进披露；
 - 默认 Embedding 在本地生成，不把记忆正文发送到 Provider 的 `/embeddings`；
 - 现有用户数据只能通过备份、校验、可恢复迁移和显式批准进入新格式。
 
@@ -26,7 +27,7 @@
 
 ## 2. 当前实现差距
 
-当前 Memory v2 已具备分支、parent、tier、scope、索引优先读取、资源注册和写入闸门，但仍有六项结构性差距：
+当前 Memory v2 已具备分支、parent、tier、scope、索引优先读取、资源注册和写入闸门，但仍有七项结构性差距：
 
 1. `memory-tree/index.json` 同时保存全部节点、资源、审计和恢复队列，单文件会随记忆增长而扩大；
 2. `packages/vector` 的 SQLite 数据库位于本地，但向量通过当前 LLM Client 的 `/embeddings` 生成，并固定使用 `text-embedding-3-small`；
@@ -34,6 +35,7 @@
 4. 用户记忆、LS 自身记忆、项目/会话记忆和知识资源尚未拥有统一的 domain 与 D0-D3 渐进披露契约。
 5. 写入仍缺少统一的 `MemoryUpdateEvent` journal、时间 due index、幂等归并和启动补偿协议，不能宣称所有记忆都能近实时更新且失败不丢。
 6. 用户、外部资料和模型产生的事实主张、建议、偏好与决定尚无统一 epistemic schema，存在把“有人建议”误当成“事实成立”的风险。
+7. 实体身份、所有权边界和关系尚未形成统一 schema；名称、路径、向量相似或共现可能被误当成同一对象或已验证关系。
 
 因此，当前不能宣称已经实现“原子文件 + 层级 + 完全本地向量管理”。
 
@@ -53,6 +55,7 @@ scope / scopeKey
 tier
 statementKind / epistemicStatus / authorityScope
 assertedBy / evidenceRefs
+entityRefs / relationRefs
 title
 summary
 content
@@ -76,6 +79,7 @@ contentHash
 - `statementKind` 区分 instruction/goal、preference/value、reported observation、factual claim、suggestion/hypothesis 和 decision/approval；`epistemicStatus` 记录 reported、unverified、corroborated、verified、disputed、superseded 等状态；
 - `authorityScope` 描述来源在哪些问题上有决定权。用户对自身目标、偏好、授权和决定拥有权威，不因此自动拥有客观技术事实的证明力；
 - `resolutionStatus` 记录建议/假设的 proposed、under-review、adopted、rejected、superseded，或 claim 的待验证/已解决状态；采纳建议不能把其事实主张自动改为 verified；
+- `entityRefs` 只引用具有稳定 id、类型和 owner/scope 的实体；`relationRefs` 引用独立关系记录，不能仅凭名称、路径、共现或向量相似自动生成强关系；
 - `parentId` 是层级权威字段，子节点列表由目录查询生成，不在多个文件中重复维护；
 - 一个 atom 只保存一个可独立治理的记忆语义；多个来源可以强化同一 atom，不应重复创建近义文件；
 - `basePriority` 是可审计的基础治理值，不等于最终注入顺序；最终顺序由当前任务、作用域、来源、状态和已验证使用反馈动态派生；
@@ -115,6 +119,8 @@ memory-tree/
 - `memory_events`：已持久捕获事件的查询投影、处理状态、目标版本、幂等键、重试和恢复位置；权威 pending 事件仍在可恢复 event journal；
 - `memory_due`：按 effective、expiry、revalidation 和 usefulness decay 时间定位到期 atom，避免全库轮询；
 - `evidence_links`：atom/claim 与工具结果、用户原话、文档版本、执行步骤和 VERIFY 结果之间的可追溯关系；
+- `entities`：实体 id、类型、owner、scope、稳定外部键、状态、别名和版本；
+- `relations`：有向实体关系、作用域、来源、证据、置信度、权威范围、相关度、有效/过期时间、冲突和解析状态；
 - `operations`：跨文件系统与 SQLite 更新的恢复日志；
 - `audit`：写入、合并、移动、归档、失效、删除和重建证据。
 
@@ -179,6 +185,26 @@ user/external/model statement
 - 单条错误建议不能派生用户能力、知识水平或人格标签。对用户能力的任何长期信息必须有用户明确陈述或多次、直接且经用户可管理的证据，并默认标记为待确认推断；
 - confidence 表示对内容正确性的证据强度，authority scope 表示来源在该问题上的决定权，两者不能合并成一个分数。
 
+### 3.6 实体边界与关系
+
+实体和关系使用独立、版本化的 catalog 契约：
+
+```text
+statement / atom / resource
+  -> resolve or create scoped entity ids
+  -> propose directed relations with evidence
+  -> validate ownership, scope and temporal bounds
+  -> persist relation state
+  -> disclose D0 boundary -> D1 strongest relations -> D2 local neighborhood -> D3 evidence/history
+```
+
+- 实体至少区分 user、project、directory、file、session、task、skill、tool、rule、concept 和 external-source；同名实体默认保持独立，只有稳定外部键或经验证映射才能合并；
+- 关系至少支持 belongs-to、depends-on、references、conflicts-with、replaces、derived-from、similar-to、affects 和 supported-by；方向与反向查询不能混为一条无方向标签；
+- 每条关系记录 `scope`、`source`、`evidenceRefs`、`confidence`、`authorityScope`、`relevance`、`effectiveAt`、`expiresAt`、`status` 和 `resolutionStatus`；
+- `similar-to`、向量距离、共现次数和路径邻近只用于候选导航，不能证明 same-as、belongs-to、depends-on 或因果关系；
+- 跨用户、跨项目、跨会话、跨插件 owner 和跨权限边界的关系默认不传播记忆或权限；需要传播时必须有显式规则和审计；
+- 删除、归档或合并实体前先检查入边、出边、TaskBook/项目/Skill 引用和可恢复状态，不能产生静默悬空引用。
+
 ## 4. 本地 Embedding
 
 - 默认使用随应用提供的本地多语言 Embedding Engine，覆盖中文、英文和代码/技术文本；
@@ -228,7 +254,7 @@ user/external/model statement
 ### 阶段 0：契约与特征测试
 
 - 定义 `MemoryAtom`、`MemoryCatalogEntry`、`EmbeddingEngine` 和 operation journal v1；
-- 定义 `MemoryDomain`、`MemoryDisclosureLevel`、`StatementKind`、`EpistemicStatus`、`AuthorityScope`、`MemoryUpdateEvent`、`MemoryAccessRecord`、`MemoryUseFeedback`、`MemoryEvidenceEnvelope`、候选优先级明细和 `KnownState` 记忆证据引用契约；
+- 定义 `MemoryDomain`、`MemoryDisclosureLevel`、`StatementKind`、`EpistemicStatus`、`AuthorityScope`、`MemoryEntity`、`MemoryRelation`、`MemoryUpdateEvent`、`MemoryAccessRecord`、`MemoryUseFeedback`、`MemoryEvidenceEnvelope`、候选优先级明细和 `KnownState` 记忆证据引用契约；
 - 冻结 v2 行为特征：层级、写入闸门、项目重绑定、资源注册和 UI 管理；
 - 增加“默认禁止远程 Embedding”的网络出口测试。
 - 增加“重复访问不自动强化”“只有验证成功才产生正向反馈”“低收益可选记忆按策略衰减”“T0/安全/当前约束不被普通衰减淘汰”“冲突/过期记忆不优先注入”的特征测试。
@@ -249,6 +275,7 @@ user/external/model statement
 ### 阶段 2：Catalog 与本地 Embedding
 
 - 建立 SQLite catalog、FTS、向量接口和恢复日志；
+- 建立实体与有向关系表、边界查询、关系证据和悬空引用检查；
 - 建立访问账本、验证反馈表、优先级查询索引和有界保留/衰减策略；衰减参数可配置、可测试且不修改 confidence；
 - 建立 memory event 投影、due index、启动补偿扫描和有界后台消费队列；
 - 接入本地 Embedding Engine 并完成候选模型基准；
@@ -262,6 +289,7 @@ user/external/model statement
 - 保持 Memory Service、Runner、Harness、工具和 UI 公共接口兼容；
 - 去重、合并、冲突、失效和项目重绑定只走统一 repository transaction。
 - 将用户、LS 自身、任务/项目/会话、经验和知识资源统一映射到 domain，不允许旁路写入。
+- 将项目、文件、会话、任务、Skill、工具、规则和概念映射到稳定实体 id；atom、资源与关系只保存引用，不复制另一份权威内容。
 - 所有写入先经过 statement/authority/epistemic 分类；建议、事实主张、用户偏好和决定走独立状态转换，禁止通过 merge 丢失类别。
 
 验收：现有 Memory Tree 契约测试在 v2/v3 两种后端均通过。
@@ -282,6 +310,7 @@ user/external/model statement
 - 将候选优先级、`MemoryEvidenceEnvelope` 与 `KnownState` 接入 Context Engine；每个阶段可追溯实际采用、排除和重新激活的 atom、状态版本和取舍理由。
 - 把 statement kind、epistemic status、authority scope、asserted by 与 evidence refs 投影给模型，VERIFY 拒绝把 suggestion/reported/unverified claim 当作 verified fact 交付。
 - 实现 D0-D3 按需展开，并验证用户记忆与 LS 自身记忆不会因披露层级不同产生 Prompt 或 UI 副本。
+- Context 只展开当前目标需要的关系邻域；关系候选的采用、排除和冲突必须进入 `KnownState` 证据链。
 
 验收：网络被阻断时记忆写入和检索正常，向量搜索不能绕过层级导航；同一作用域内经验证且相关的记忆稳定优先介入，单纯重复访问不能形成错误自增强。
 
@@ -316,6 +345,9 @@ user/external/model statement
 | D17 | 陈述分类 | instruction/goal、preference/value、reported observation、factual claim、suggestion/hypothesis、decision/approval 分开治理 |
 | D18 | 权威边界 | 用户对自身目标、偏好、授权和决定具有权威；客观 claim 仍需证据验证，来源身份不替代 epistemic status |
 | D19 | 防错误画像 | 单条错误建议不生成用户能力画像；采纳建议不等于事实已验证，confidence 与 authority scope 独立 |
+| D20 | 实体边界 | user/project/file/session/task/skill/tool/rule/concept 等使用稳定、带 owner/scope 的实体 id；同名或相似不自动合并 |
+| D21 | 关系语义 | 关系有方向、证据、权威、置信度、相关度、时间与冲突状态；相似度只用于候选导航，不证明事实 |
+| D22 | 应用数据根 | Memory、用户/LS 记忆、Skills 与 catalog 都属于可整体迁移的应用数据根；`workplace/` 仅是默认工作区子目录 |
 
 ## 9. 总完成门槛
 
@@ -329,6 +361,7 @@ user/external/model statement
 - 每个有效时间/事件更新先持久捕获，重复消费幂等，故障与重启不会静默丢失；关闭期间的到期项在启动时补偿；
 - 已确认记忆具有稳定索引、版本、恢复与备份验证，相关时可以重新取回，不依赖永久注入 Prompt；
 - 用户、外部来源和模型的陈述都保留 statement kind、epistemic status、authority scope、asserted by 与 evidence refs；
+- 实体边界、所有权和关系可按 D0-D3 查询；跨 scope 不会因名称、路径、共现或向量相似自动合并或传播；
 - 用户偏好和决定在其范围内受到尊重，客观事实主张经过验证；建议可被采纳但不会被冒充为事实，错误建议不会自动形成用户能力画像；
 - 内置目录可管理层级、FTS、向量、审计和恢复，并能从文件重建；
 - 默认断网仍可写入、导航和语义检索记忆；

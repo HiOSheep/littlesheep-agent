@@ -4,9 +4,10 @@
 
 ## 职责与边界
 
-- 公开入口是 `src/index.ts`；注册表在 `registry.ts`，包装在 `wrapper.ts`，内置工具在 `src/builtin/`。
+- 公开入口是 `src/index.ts`；注册表在 `registry.ts`，包装在 `wrapper.ts`，路径只读策略在 `path-protection.ts`，内置工具在 `src/builtin/`。
 - 工具实现只完成受约束动作；完整权限、超时、重试、事件和证据最终由统一 Tool Execution Service 协调。
 - 禁止工具自行绕过工作区、审批或执行日志，也不把长输出原样塞入 Context。
+- 当前内置写入、编辑和命令工具必须尊重 ToolContext 中的核心源码只读根；该拒绝发生在审批之前。
 
 ## 依赖与数据
 

@@ -19,7 +19,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 | 架构治理 | 仓库基元化阶段 0-7 已完成 | 26 个 package 与指定领域目录均有所有权 README；关键组合入口已收敛为 facade。`check:repo` 自动校验文档、模块和 TypeScript references；单进程 `tsc -b`、受影响包传播和 changed/core/full 三级验证已接通，避免依赖方读取旧声明并降低日常反馈成本 | `docs/reference/repository-guide.md`、`docs/reference/module-split-map.md`、`scripts/workspace-projects.mjs`、`scripts/run-affected-verification.mjs` |
 | LLM 调用契约与记忆提交 | 已实现工程闭环 | 每次模型请求解析独立 `LlmCallContract`，声明 purpose、Context、决策、输出、工具、记忆和预算；FINALIZE 禁止模型调用。EVOLVE/CAPTURE 只提交有真实步骤、工具和验证证据的写入，冲突/失效意图只延期审计 | `packages/types/src/runtime-contracts.ts`、`packages/harness/src/llm-call-contracts/`、`model-observability.ts`、`stages/memory-intent-gate.ts` |
 | Context Engine | 阶段 1 主要数据链与调用契约已实现，供应商验收未闭环 | 支持确定性候选、来源 segment、契约过滤、预算淘汰、版本化 Summary Memory、附件清单优先、按需附件工具、Provider usage 绑定和双账本 UI；必需 Context 越权或缺失会失败关闭。当前内置模型均明确为 unavailable 并使用不可展示的保守安全估算；真实 Provider 对账尚未完成 | `packages/context/src/engine.ts`、`context-engine/`、`packages/harness/src/context-candidates.ts`、`model-observability.ts`、`packages/config/src/model-capabilities.ts` |
-| 附件、workplace 与数据根生命周期 | 阶段 3 工程实现已完成 | 粘贴/浏览器导入进入独立受管缓存，按 30 天、256 项、512 MiB 有界清理；workplace 使用可恢复的有界元数据索引，不读正文。设置页可登记完整数据根迁移，下一次启动会在任何写入者初始化前通过外部 locator、同级 staging、全文件 SHA-256 清单和活动元数据路径重绑定完成原子切换；源目录保留，失败继续使用旧目录，提交中断可恢复，回滚同样在下次启动生效。隔离测试已覆盖这些契约，尚未擅自搬迁正式用户数据 | `packages/app/src/main/attachment-cache.ts`、`packages/app/src/main/data-root-migration.ts`、`packages/app/src/main/data-root-metadata.ts`、`packages/memory-tree/src/workspace-resource-index.ts` |
+| 应用数据根、默认 workplace 与附件生命周期 | 阶段 3 工程实现已完成 | 完整应用数据根默认名为 `.littlesheep`，但可通过环境、locator 和设置整体迁移；`workplace/` 只是未选择其他目录时的默认工作区子目录。粘贴/浏览器导入进入独立受管缓存，按 30 天、256 项、512 MiB 有界清理；workplace 使用可恢复的有界元数据索引，不读正文。设置页可登记完整数据根迁移，下一次启动会在任何写入者初始化前通过外部 locator、同级 staging、全文件 SHA-256 清单和活动元数据路径重绑定完成原子切换；源目录保留，失败继续使用旧目录，提交中断可恢复，回滚同样在下次启动生效。隔离测试已覆盖这些契约，尚未擅自搬迁正式用户数据 | `packages/branding/`、`packages/app/src/main/attachment-cache.ts`、`data-root-migration.ts`、`data-root-metadata.ts`、`packages/memory-tree/src/workspace-resource-index.ts` |
 | 长会话压缩 | 已实现基础闭环 | 原始 JSONL 不删除；摘要版本化、记录来源范围、支持增量合并，并在下一轮作为独立 `summary_memory` 介入；摘要同时按 session scope 注册到资源目录，正文仍以会话元数据为权威来源并按需解析；真实长会话、失败回退和成本仍待验收 | `packages/session/src/compaction.ts`、`packages/runner/src/runner.ts`、`packages/prompt/src/builder.ts`、`packages/memory-tree/src/memory-service.ts` |
 | 硬控制流 Agent | 已实现 | `ENTER`、分类、决策、执行、恢复、验证、演化、捕获和收尾由 Harness 驱动 | `packages/harness/`、`packages/runner/` |
 | 需求判断与任务书 | 已实现 | 支持澄清请求、复杂度判断、TaskBook、步骤验收和局部重规划 | `packages/types/`、`packages/harness/src/stages/` |
@@ -31,11 +31,12 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 | 执行记录与历史重放 | 已实现 | 已完成 run 的 TaskBook、步骤、工具调用、验证、调用契约、Context 快照、记忆意图运行时判定和有界资源 ID 可持久化并重放；附件正文不进入执行日志；这仍不等于活动 run 在应用重启后续跑 | `packages/runner/src/execution-log.ts`、`packages/app/src/renderer/TraceCard.tsx` |
 | 桌面聊天与流式交互 | 已实现基础形态 | Local App API、SSE、Markdown、附件、审批和中断已接通 | `packages/app/src/main/local-app-api-server.ts`、`packages/app/src/renderer/` |
 | 权限与行为模式分离 | 已实现基础形态 | 通用/编程系统提示词与完全访问/研究/受限权限策略分离 | `packages/prompt/src/profiles.ts`、`packages/app/src/main/run-policy.ts` |
+| 核心源码自修改保护 | 已实现内置工具硬闸 | Runner 从实际 workspace 标记自动发现 LS 核心源码根，并通过 ToolContext 传递只读边界；内置 `write`、`edit` 无条件拒绝核心源码路径，`exec` 在核心根内只允许保守只读诊断，完全访问与单次审批不能绕过。第三方本地插件仍属于用户显式完全信任边界，受控自我修改尚未开放 | `packages/runner/src/core-source-protection.ts`、`packages/tools/src/path-protection.ts`、`packages/tools/src/builtin/` |
 | 拓展工作区 | 已实现基础形态 | 文件树、标签、内置编辑器、产物索引、PowerShell/PTY 终端和恢复快照已接通 | `packages/app/src/renderer/`、`packages/app/src/main/workspace-*.ts` |
 | 模型供应商配置 | 已实现配置层 | OpenAI、DeepSeek、GLM 预置；只有配置了可用密钥的供应商/模型应进入选择范围 | `packages/config/`、`packages/app/src/main/keychain.ts` |
 | 插件运行时 | 已实现基础闭环 | 插件发现、manifest 校验、启停、错误隔离、本地代码信任和 Runner 工具迁移已接通；当前支持 `channel`、`tool` 和声明式 `skill` 贡献。插件 Skill 使用 owner-scoped 来源和稳定资源 ID，随插件启停、移除、路径变化及 Runner 重建同步 | `packages/plugins/`、`packages/skills/`、`packages/memory-tree/src/memory-service.ts` |
 | 外部渠道 | 已插件化基础形态 | Webhook、Telegram、飞书、QQ Bot 是可选渠道插件，只负责消息进出；没有配置时不加载实现 | `packages/channels/`、`packages/plugins/` |
-| 技能系统与经验库 | 已实现基础形态 | 技能加载、创建、经验记录和衰减基础能力存在 | `packages/skills/`、`packages/experience/` |
+| 技能系统与经验库 | 已实现基础形态，治理待补 | Skill 已区分 builtin、user、external、plugin 来源，支持 active/disabled/shadowed 与 owner-scoped 插件同步；创建时会拒绝同名覆盖。尚未实现语义去重、合并方案、冲突/回滚、基于验证收益的停用/归档/删除策略和用户可审查治理队列 | `packages/skills/`、`packages/experience/`、`packages/memory-tree/src/memory-service/skill-resources.ts` |
 | Runtime 连续执行 | 尚未实现完整闭环 | 已有 `AbortSignal` 和步骤级局部恢复；运行中用户事件重入、活动 run 检查点、幂等续跑、后台任务与托盘尚未完成 | `packages/harness/`、`packages/runner/`、`packages/app/` |
 
 ## 当前验证结果
@@ -45,9 +46,9 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 | 检查 | 当前工作树结果 | 证据命令 |
 | --- | --- | --- |
 | 仓库卫生 | 通过：31 项通过，0 项失败 | `pnpm.cmd run check:repo` |
-| 开发快速门 | 通过：本轮全 workspace 配置变更下约 11 秒；增量 typecheck 约 1 秒，相关测试只运行命中的文件 | `pnpm.cmd run verify:changed` |
-| 核心 Agent 门 | 通过：仓库检查、增量全工作区类型和 69 项核心契约约 12 秒 | `pnpm.cmd run verify:core` |
-| 全量测试 | 通过：120 个测试文件；999 passed、1 skipped | `pnpm.cmd test` |
+| 开发快速门 | 通过：本轮影响 24 个变更文件，传播到 25 个 workspace 包；45 个相关测试文件，428 passed、1 skipped；总耗时约 39 秒 | `pnpm.cmd run verify:changed` |
+| 核心 Agent 门 | 通过：仓库检查、全工作区增量类型和 69 项核心契约；总耗时约 15 秒 | `pnpm.cmd run verify:core` |
+| 全量测试 | 通过：122 个测试文件；1007 passed、1 skipped | `pnpm.cmd test` |
 | 全工作区类型检查 | 通过：完全清理后的 project references 冷构建约 26 秒，热缓存复查约 1 秒；原逐包命令约 46 秒 | `pnpm.cmd run typecheck` |
 | 全工作区构建 | 通过：增量类型图加 Electron 完整打包约 50 秒；原逐包构建约 98 秒 | `pnpm.cmd run build` |
 | 应用恢复源检查 | 通过；仍保留旧执行日志缺失、可选 workspace artifact 索引缺失，以及现有用户数据尚未产生 workplace 资源索引的诊断警告 | `pnpm.cmd run verify:app-recovery` |
@@ -75,6 +76,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 - DECIDE、EXECUTE、VERIFY 和 FINALIZE 将共享一条版本化 `KnownState` 事实链，明确区分已验证事实、用户陈述、记忆/工具证据、假设、未知和冲突；该闭环尚待随 Memory v3 与 Runtime 连续性实现。
 - 各阶段会从 `KnownState` 派生有界 active evidence set：当前无用、重复、被替代或过期信息可退出后续 LLM 请求，必要时重新激活；注入的记忆携带层级、作用域、来源、confidence、importance、新鲜度和冲突状态等证据元数据。
 - 目标架构将用户记忆、LS 自身记忆、任务/项目/会话、经验和知识资源统一纳入同一 Memory Repository，并以 D0 索引、D1 摘要元数据、D2 正文、D3 来源与审计渐进披露；当前 v2 尚未完成这一统一契约。
+- 目标架构还会登记 user/project/file/session/task/skill/tool/rule/concept 等稳定实体和有向关系。名称、路径、共现与向量相似只作为候选关联，不自动证明同一实体、所有权或因果关系；当前 v2 尚无统一实体/关系 schema。
 - 目标架构使用 `MemoryUpdateEvent`、持久 journal、幂等归并、due index 和启动补偿，根据时间与真实事件近实时更新记忆。这里的“不失忆”指持久、可发现、可追溯、可恢复且相关时可取回，不是把全部记忆常驻 Prompt；该闭环尚待 Memory v3 实施。
 - 目标架构还要求把用户/外界陈述分类为目标、偏好、报告观察、事实主张、建议/假设和决定/批准，并分别记录 epistemic status 与 authority scope。用户对自身意图和取舍具有权威，客观技术 claim 仍需证据；当前 v2 尚未实现这一结构化边界。
 - 自动写入使用结构化意图，记录作用域、层级、来源 run、置信度和理由；用户可在记忆树控制面管理真实数据。
@@ -173,6 +175,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 1. `packages/session/src/compaction.ts` 已实现非破坏式、版本化和可增量合并的 Summary Memory；下一步需要真实长会话、模型失败、摘要失配、恢复和成本场景验收，并确认关键任务约束不会因摘要而丢失。
 2. `packages/memory-core/src/distill.ts` 仍导出未接入主运行时的旧原始追加 helper。它必须在任何 daily 提升功能启用前被替换或退役；新的蒸馏只能进入结构化、安全、去重且可回滚的记忆树写入闸门。
 3. 对旧用户数据中缺少执行日志、缺少可选 workspace artifact 索引的情况制定只读诊断和渐进治理；workplace 资源索引在下一次真实 run 时按需创建，不为消除警告而提前扫描或改写用户文件。
+4. 建立实体/关系 catalog 与 Skill 治理队列：关系必须有方向、证据、作用域和时间；Skill 合并先给出可审查方案，低收益 Skill 优先停用或归档，删除必须经过引用检查、保留期与恢复验证。
 
 **验收标准**：长会话压缩后仍能沿记忆树恢复关键事实、任务约束和来源；压缩过程可追溯、可失败回退，不制造孤立记忆。
 
@@ -205,7 +208,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 ## 推荐后续顺序
 
-1. 实现 Memory v3 阶段 0-2：原子文件、domain、D0-D3、statement/epistemic/authority schema、层级、SQLite catalog、FTS、本地 Embedding、访问反馈、使用衰减、事件 journal、due index、优先级索引和恢复日志；同时冻结 `MemoryEvidenceEnvelope`、`MemoryUpdateEvent` 与 `KnownState` 记忆证据契约，只使用隔离数据。
+1. 实现 Memory v3 阶段 0-2：原子文件、domain、D0-D3、statement/epistemic/authority schema、实体与有向关系、层级、SQLite catalog、FTS、本地 Embedding、访问反馈、使用衰减、事件 journal、due index、优先级索引和恢复日志；同时冻结 `MemoryEvidenceEnvelope`、`MemoryUpdateEvent` 与 `KnownState` 记忆证据契约，只使用隔离数据。
 2. 完成 OpenAI、DeepSeek、GLM 真实对话冒烟，用 Provider 结果校准 Context、reasoning、usage 与保守安全估算；远程 Embedding 不纳入默认路径。
 3. 在稳定 Call Contract 上收敛统一 Tool Execution Service，使内置、插件和未来 MCP 工具共享审批、超时、清洗、证据与恢复契约。
 4. 按连续性任务书实现 RuntimeEventQueue、TaskBookPatch、有界并行、版本化检查点、重启恢复和后台运行。

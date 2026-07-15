@@ -1,8 +1,15 @@
 // @littlesheep/tools — builtin/exec.ts
 import { z } from 'zod';
 import { spawn } from 'node:child_process';
+import { resolve } from 'node:path';
 import type { AgentTool } from '@littlesheep/types';
 import { checkApproval, interactiveApprove, type ApprovalConfig, DEFAULT_APPROVAL } from '../approval.js';
+import {
+  CORE_SOURCE_READ_ONLY_ERROR,
+  commandReferencesProtectedRoot,
+  findProtectedWriteRoot,
+  isReadOnlyCoreCommand,
+} from '../path-protection.js';
 import { sanitizeOutput, DEFAULT_SANITIZE } from '../sanitize.js';
 import { withToolTiming } from '../wrapper.js';
 
@@ -27,7 +34,12 @@ export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
     requiresApproval: true,
     execute: withToolTiming(async (input, ctx) => {
       const { command, cwd, timeout_ms } = ExecInput.parse(input);
-      const workDir = cwd ?? ctx.cwd;
+      const workDir = resolve(cwd ?? ctx.cwd);
+      const protectedRoot = findProtectedWriteRoot(workDir, ctx)
+        ?? commandReferencesProtectedRoot(command, ctx.protectedWriteRoots);
+      if (protectedRoot && !isReadOnlyCoreCommand(command)) {
+        return { ok: false, error: `${CORE_SOURCE_READ_ONLY_ERROR}: command execution denied` };
+      }
 
       // Approval gate
       const approval = checkApproval(command, approvalConfig);

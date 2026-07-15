@@ -71,6 +71,17 @@ describe('writeTool', () => {
     await expect(stat(file)).rejects.toThrow();
   });
 
+  it('rejects writes inside a protected core root before approval', async () => {
+    const file = join(tmpDir, 'core', 'source.ts');
+    const result = await writeTool.execute(
+      { file_path: file, content: 'changed' },
+      { ...approvedCtx, protectedWriteRoots: [join(tmpDir, 'core')] },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/core source is read-only/i);
+    await expect(stat(file)).rejects.toThrow();
+  });
+
   it('requires approval', () => {
     expect(writeTool.requiresApproval).toBe(true);
   });
