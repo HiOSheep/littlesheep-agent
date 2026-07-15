@@ -8,6 +8,7 @@ import type {
   MemoryManagementAuditRecord,
   MemoryMigrationRecord,
   MemoryResourceManagementAuditRecord,
+  MemorySchemaMigrationRecord,
   MemoryScope,
   MemoryWriteAuditRecord,
   MemoryWriteIntent,
@@ -48,6 +49,7 @@ export interface MemoryV3LedgerSnapshot {
   resourceManagementAudit: MemoryResourceManagementAuditRecord[];
   recoveryQueue: QueuedMemoryWrite[];
   migrations: Record<string, MemoryMigrationRecord>;
+  schemaMigrations: MemorySchemaMigrationRecord[];
 }
 
 export interface MemoryV3RepositoryLedgerOptions {
@@ -67,6 +69,7 @@ export class MemoryV3RepositoryLedger {
   private readonly resourceAudits = new Map<string, MemoryResourceManagementAuditRecord>();
   private readonly recovery = new Map<string, QueuedMemoryWrite>();
   private readonly migrations = new Map<string, MemoryMigrationRecord>();
+  private readonly schemaMigrations = new Map<string, MemorySchemaMigrationRecord>();
   private readonly aliases = new Map<string, MemoryV3ScopeAlias>();
   private readonly transactions = new Map<string, MemoryV3RepositoryTransaction>();
   private initialized = false;
@@ -96,6 +99,7 @@ export class MemoryV3RepositoryLedger {
     await this.loadCategory('resource-audit', this.resourceAudits, isResourceAudit);
     await this.loadCategory('recovery', this.recovery, isQueuedWrite);
     await this.loadCategory('migrations', this.migrations, isMigration);
+    await this.loadCategory('schema-migrations', this.schemaMigrations, isSchemaMigration);
     await this.loadCategory('scope-aliases', this.aliases, isScopeAlias);
     await this.loadCategory('transactions', this.transactions, isTransaction);
     this.initialized = true;
@@ -115,6 +119,7 @@ export class MemoryV3RepositoryLedger {
       resourceManagementAudit: sorted(this.resourceAudits.values(), (record) => record.at),
       recoveryQueue: sorted(this.recovery.values(), (record) => record.queuedAt),
       migrations: Object.fromEntries([...this.migrations.entries()].map(([id, record]) => [id, structuredClone(record)])),
+      schemaMigrations: sorted(this.schemaMigrations.values(), (record) => record.completedAt),
     };
   }
 
@@ -465,6 +470,11 @@ function isQueuedWrite(value: unknown): value is QueuedMemoryWrite {
 
 function isMigration(value: unknown): value is MemoryMigrationRecord {
   return isObjectWithId(value) && typeof value.completedAt === 'string';
+}
+
+function isSchemaMigration(value: unknown): value is MemorySchemaMigrationRecord {
+  return isObjectWithId(value) && typeof value.startedAt === 'string'
+    && typeof value.completedAt === 'string' && typeof value.backupFile === 'string';
 }
 
 function isScopeAlias(value: unknown): value is MemoryV3ScopeAlias {

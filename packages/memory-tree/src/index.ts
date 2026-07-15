@@ -105,6 +105,22 @@ export {
   type MemoryWriteServiceLike,
 } from './memory-repository.js';
 export {
+  MEMORY_REPOSITORY_LOCATOR_FILE,
+  memoryRepositoryLocatorPath,
+  readMemoryRepositoryLocator,
+  type CompletedMemoryV3Migration,
+  type MemoryRepositoryLocator,
+  type MemoryV3MigrationPhase,
+  type PendingMemoryV3Migration,
+} from './memory-repository/repository-locator.js';
+export {
+  MemoryV2ToV3MigrationManager,
+  type MemoryV2ToV3MigrationManagerOptions,
+  type MemoryV3MigrationFaultContext,
+  type MemoryV3MigrationFaultPoint,
+  type MemoryV3MigrationResult,
+} from './memory-repository/v3-migration.js';
+export {
   MemoryService,
   attachmentManifestResourceId,
   attachmentResourceId,

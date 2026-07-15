@@ -159,7 +159,7 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
       managementAudit: ledger.managementAudit,
       resourceManagementAudit: ledger.resourceManagementAudit,
       migrations: ledger.migrations,
-      schemaMigrations: [],
+      schemaMigrations: ledger.schemaMigrations,
     };
   }
 

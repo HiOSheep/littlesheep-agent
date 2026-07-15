@@ -12,6 +12,7 @@ import {
 } from './contracts.js';
 import { MemoryRepositoryV2Backend } from './v2-backend.js';
 import { MemoryRepositoryV3Backend } from './v3-backend.js';
+import { readMemoryRepositoryLocatorSync } from './repository-locator.js';
 import { resolveMemoryWritePolicy } from './write-policy.js';
 
 export interface SelectedMemoryRepositoryBackend {
@@ -21,9 +22,9 @@ export interface SelectedMemoryRepositoryBackend {
 
 export function createMemoryRepositoryBackend(options: MemoryRepositoryOptions): SelectedMemoryRepositoryBackend {
   const kind = options.backend ?? 'v2';
-  if (kind === 'v3' && !hasValidMemoryV3ExperimentMarker(options.dataDir)) {
+  if (kind === 'v3' && !memoryV3IsAuthorized(options.dataDir)) {
     throw new Error(
-      `Memory v3 requires an explicit isolated-data marker (${MEMORY_V3_EXPERIMENT_MARKER}); refusing to open this data root.`,
+      `Memory v3 requires an active migration locator or explicit isolated-data marker (${MEMORY_V3_EXPERIMENT_MARKER}); refusing to open this data root.`,
     );
   }
   const policy = resolveMemoryWritePolicy(options.policy);
@@ -33,6 +34,16 @@ export function createMemoryRepositoryBackend(options: MemoryRepositoryOptions):
       ? new MemoryRepositoryV3Backend({ dataDir: options.dataDir, policy, log: options.log, v3: options.v3 })
       : new MemoryRepositoryV2Backend({ dataDir: options.dataDir, policy, log: options.log }),
   };
+}
+
+function memoryV3IsAuthorized(dataDir: string): boolean {
+  try {
+    const locator = readMemoryRepositoryLocatorSync(dataDir);
+    if (locator) return locator.activeBackend === 'v3';
+  } catch {
+    return false;
+  }
+  return hasValidMemoryV3ExperimentMarker(dataDir);
 }
 
 function hasValidMemoryV3ExperimentMarker(dataDir: string): boolean {
