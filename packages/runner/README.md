@@ -4,7 +4,7 @@
 
 ## 职责与边界
 
-- 公开入口是 `src/index.ts`；`runner.ts` 负责运行，`run-config.ts` 冻结决议，`execution-log.ts` 持久化证据，`core-source-protection.ts` 从实际 workspace 标记发现 LS 核心源码只读根。
+- 公开入口是 `src/index.ts`；`runner.ts` 负责运行，`run-config.ts` 冻结决议，`execution-log.ts` 持久化证据和按会话原子替换的上一轮摘要，`session-run-summary.ts` 生成有界进度/耗时摘要，`core-source-protection.ts` 从实际 workspace 标记发现 LS 核心源码只读根。
 - 负责依赖注入和运行生命周期，不吸收各领域内部算法或 Electron UI 逻辑。
 - 禁止让渠道、插件私有实现或 renderer 状态成为核心 run 的必要依赖。
 
@@ -15,5 +15,5 @@
 
 ## 测试与修改定位
 
-- 运行行为在 `src/runner.test.ts`，决议在 `src/run-config.test.ts`，日志在 `src/execution-log.test.ts`。
+- 运行行为和摘要接续在 `src/runner.test.ts`，决议在 `src/run-config.test.ts`，日志及摘要原子替换在 `src/execution-log.test.ts`。
 - 新 run 输入或事件必须同步公共契约、历史恢复和 Local App API 消费方。

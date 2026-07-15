@@ -33,6 +33,8 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain("turn the user's ideas and goals into reliable, verified results");
     expect(prompt).toContain('Use progressive disclosure');
     expect(prompt).toContain('Never hide failure, partial completion, risk');
+    expect(prompt).toContain('answer with hour and minute only');
+    expect(prompt).toContain('Do not volunteer low-value timing or percentage details');
     const parts = splitAtBoundary(prompt);
     expect(parts.stable).toContain('Memory Tree Root Index');
     expect(parts.volatile).not.toContain('Memory Tree Root Index');

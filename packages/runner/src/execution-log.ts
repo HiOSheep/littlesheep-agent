@@ -10,9 +10,9 @@
 // both the call (name, input) and the result (output, ok, error) — ctx.toolResults
 // alone only has results without the corresponding call metadata.
 
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, rename, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type {
   Message,
@@ -31,6 +31,7 @@ import type {
   ToolInvocationRecord,
   ExecutionEvidence,
   MemoryIntentDecisionRecord,
+  SessionRunSummary,
 } from '@littlesheep/types';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
 
@@ -113,6 +114,7 @@ export interface ExecutionLogStoreOptions {
 
 export class ExecutionLogStore {
   private readonly rootDir: string;
+  private readonly summaryWrites = new Map<string, Promise<void>>();
 
   constructor(opts: ExecutionLogStoreOptions) {
     this.rootDir = opts.rootDir;
@@ -198,6 +200,46 @@ export class ExecutionLogStore {
     }
   }
 
+  /** Read the bounded last-run summary associated with a session. */
+  async readLatestForSession(sessionId: string): Promise<SessionRunSummary | null> {
+    const file = this.latestSummaryPath(sessionId);
+    if (!existsSync(file)) return null;
+    try {
+      const parsed = JSON.parse(await readFile(file, 'utf8')) as unknown;
+      if (!isLatestSummaryEnvelope(parsed) || parsed.sessionId !== sessionId) return null;
+      return parsed.summary;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Atomically replace one session's bounded last-run summary. */
+  async writeLatestForSession(sessionId: string, summary: SessionRunSummary): Promise<void> {
+    const previous = this.summaryWrites.get(sessionId) ?? Promise.resolve();
+    const operation = previous.catch(() => undefined).then(async () => {
+      const existing = await this.readLatestForSession(sessionId);
+      if (existing && Date.parse(existing.endedAt) > Date.parse(summary.endedAt)) return;
+
+      const directory = join(this.rootDir, 'latest-by-session');
+      const file = this.latestSummaryPath(sessionId);
+      const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
+      await mkdir(directory, { recursive: true });
+      try {
+        await writeFile(temporary, JSON.stringify({ version: 1, sessionId, summary }, null, 2), 'utf8');
+        await rename(temporary, file);
+      } catch (error) {
+        await rm(temporary, { force: true }).catch(() => undefined);
+        throw error;
+      }
+    });
+    this.summaryWrites.set(sessionId, operation);
+    try {
+      await operation;
+    } finally {
+      if (this.summaryWrites.get(sessionId) === operation) this.summaryWrites.delete(sessionId);
+    }
+  }
+
   /** List all runIds that have execution logs. */
   async list(): Promise<string[]> {
     if (!existsSync(this.rootDir)) return [];
@@ -207,10 +249,37 @@ export class ExecutionLogStore {
       .filter((f) => f.endsWith('.json'))
       .map((f) => f.replace(/\.json$/, ''));
   }
+
+  private latestSummaryPath(sessionId: string): string {
+    const key = createHash('sha256').update(sessionId).digest('hex');
+    return join(this.rootDir, 'latest-by-session', `${key}.json`);
+  }
 }
 
 const MAX_TOOL_INVOCATIONS_PER_LOG = 256;
 const MAX_RESOURCE_IDS_PER_LOG = 256;
+
+interface LatestSummaryEnvelope {
+  version: 1;
+  sessionId: string;
+  summary: SessionRunSummary;
+}
+
+function isLatestSummaryEnvelope(value: unknown): value is LatestSummaryEnvelope {
+  if (!value || typeof value !== 'object') return false;
+  const envelope = value as Partial<LatestSummaryEnvelope>;
+  const summary = envelope.summary as Partial<SessionRunSummary> | undefined;
+  return envelope.version === 1
+    && typeof envelope.sessionId === 'string'
+    && summary?.version === 1
+    && typeof summary.runId === 'string'
+    && typeof summary.startedAt === 'string'
+    && typeof summary.endedAt === 'string'
+    && typeof summary.durationMs === 'number'
+    && !!summary.tools
+    && typeof summary.tools.total === 'number'
+    && Array.isArray(summary.tools.recent);
+}
 
 function collectResourceIds(input: ExecutionLogInput): { ids: string[]; truncated: boolean } {
   const uniqueIds = new Set<string>();

@@ -2,6 +2,13 @@
 
 export { CACHE_BOUNDARY_MARKER, splitAtBoundary } from './cache-boundary.js';
 export {
+  formatElapsedMilliseconds,
+  formatRuntimeClock,
+  resolveRuntimeTimeZone,
+  type RuntimeClockValue,
+  type RuntimeTimeFormat,
+} from './runtime-time.js';
+export {
   GENERAL_PROFILE,
   CODING_PROFILE,
   ALL_AGENT_PROFILES,

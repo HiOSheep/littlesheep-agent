@@ -5,7 +5,7 @@
 // state machine — LLM only decides WITHIN a stage, never WHICH stage comes next.
 
 import type { Message } from './message.js';
-import type { CompactionSummary, SessionId } from './session.js';
+import type { CompactionSummary, SessionId, SessionRunSummary } from './session.js';
 import type { AgentTool, ToolContext } from './tool.js';
 import type { MemoryPrelude } from './memory.js';
 import type { ClarificationRequest, ClarificationResponse } from './clarification.js';
@@ -210,6 +210,8 @@ export interface RunContext {
   prelude?: MemoryPrelude;
   /** Versioned non-destructive summary of older messages in this session. */
   sessionSummary?: CompactionSummary;
+  /** Bounded execution facts from the preceding run for immediate follow-up questions. */
+  previousRun?: SessionRunSummary;
   /** Stable root index for the on-demand runtime memory tree. */
   memoryRootIndex?: string;
   /** Prompt-resident bootstrap contents (AGENTS/SOUL/USER/TOOLS only). */
@@ -282,6 +284,12 @@ export interface RunContext {
   attachments?: RunAttachment[];
   /** Run metadata for diagnostics. */
   startedAt: string;
+  /** User-configured or host-resolved IANA time zone. */
+  timeZone?: string;
+  /** User-facing clock preference; exact runtime state always retains seconds. */
+  timeFormat?: 'auto' | '12' | '24';
+  /** Injectable runtime clock used by deterministic tests. */
+  runtimeNow?: () => Date;
   /** Abort signal. */
   signal?: AbortSignal;
 }
@@ -467,6 +475,7 @@ export interface ToolStreamEvent {
   ok?: boolean
   output?: string
   error?: string
+  durationMs?: number
   taskBook?: TaskBook
   verification?: VerificationRecord
 }

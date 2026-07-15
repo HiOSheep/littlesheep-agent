@@ -19,6 +19,7 @@ import {
   LlmCallContractViolationError,
   resolveLlmCallContract,
 } from './llm-call-contracts/registry.js';
+import { injectRuntimeAwareness } from './runtime-awareness.js';
 
 export {
   MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN,
@@ -86,21 +87,23 @@ function recordPreparedRequest(
   candidates?: ContextMessageCandidate[],
 ): { request: ChatRequest; snapshot: ModelRequestSnapshot } {
   const resolvedRequest = applyResolvedReasoning(ctx, request);
-  const requestedToolNames = resolvedRequest.tools?.map((tool) => tool.function.name) ?? [];
+  const requestIndex = (ctx.modelRequests?.at(-1)?.requestIndex ?? 0) + 1;
+  const runtimeAware = injectRuntimeAwareness(ctx, resolvedRequest, candidates, requestIndex);
+  const requestedToolNames = runtimeAware.request.tools?.map((tool) => tool.function.name) ?? [];
   const callContract = resolveLlmCallContract(ctx, purposeOrStage, {
     allowedToolNames: requestedToolNames,
-    maxOutputTokens: resolvedRequest.max_tokens,
-    temperature: resolvedRequest.temperature,
+    maxOutputTokens: runtimeAware.request.max_tokens,
+    temperature: runtimeAware.request.temperature,
   });
-  validateModelRequest(callContract, resolvedRequest);
+  validateModelRequest(callContract, runtimeAware.request);
   const prepared = contextEngine.prepare({
     runId: ctx.runId,
     sessionId: ctx.sessionId,
     stage: callContract.stage,
-    requestIndex: (ctx.modelRequests?.at(-1)?.requestIndex ?? 0) + 1,
+    requestIndex,
     provider: ctx.resolvedRunConfig?.provider,
-    request: resolvedRequest,
-    candidates,
+    request: runtimeAware.request,
+    candidates: runtimeAware.candidates,
     callContract,
     compressionThresholdRatio: callContract.budget.contextCompressionThresholdRatio,
   });

@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { ExecutionLogStore } from './execution-log.js';
-import type { ContextSnapshot, MemoryIntentDecisionRecord, Message } from '@littlesheep/types';
+import type { ContextSnapshot, MemoryIntentDecisionRecord, Message, SessionRunSummary } from '@littlesheep/types';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
 
 let dir: string;
@@ -429,5 +429,30 @@ describe('ExecutionLogStore', () => {
     expect(log?.taskBook).toMatchObject({ goal: 'inspect the project', successCriteria: ['inspection is verified'] });
     expect(log?.taskBook?.stageResults).toBeUndefined();
     expect(log?.verificationHistory).toEqual(verificationHistory);
+  });
+
+  it('atomically retains the newest bounded summary per session', async () => {
+    const summary = (runId: string, endedAt: string): SessionRunSummary => ({
+      version: 1,
+      runId,
+      status: 'ok',
+      startedAt: '2026-07-15T01:00:00.000Z',
+      endedAt,
+      durationMs: 1000,
+      tools: {
+        total: 0, succeeded: 0, failed: 0, totalDurationMs: 0,
+        recent: [], truncated: false,
+      },
+    });
+
+    await Promise.all([
+      store.writeLatestForSession('session-a', summary('newer', '2026-07-15T01:00:03.000Z')),
+      store.writeLatestForSession('session-a', summary('older', '2026-07-15T01:00:02.000Z')),
+    ]);
+
+    store = new ExecutionLogStore({ rootDir: dir });
+    expect(await store.readLatestForSession('session-a')).toMatchObject({ runId: 'newer' });
+    expect(await store.readLatestForSession('session-b')).toBeNull();
+    expect(await store.list()).toEqual([]);
   });
 });

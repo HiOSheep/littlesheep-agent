@@ -14,6 +14,7 @@ import type {
 import type { MemoryPrelude } from '@littlesheep/types';
 import type { Config } from '@littlesheep/config';
 import { CACHE_BOUNDARY_MARKER } from './cache-boundary.js';
+import { resolveRuntimeTimeZone } from './runtime-time.js';
 import {
   identitySection,
   coreFlowSection,
@@ -272,7 +273,7 @@ export function resolvePromptConfig(config: Config, branding: BrandingConfig): R
     branding,
     model: d.model,
     workspace: d.workspace,
-    timezone: d.userTimezone,
+    timezone: resolveRuntimeTimeZone(d.userTimezone),
     timeFormat: d.timeFormat,
     bootstrapMaxChars: d.bootstrapMaxChars,
     bootstrapTotalMaxChars: d.bootstrapTotalMaxChars,

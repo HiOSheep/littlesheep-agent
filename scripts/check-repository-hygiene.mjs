@@ -222,24 +222,31 @@ async function checkCanonicalFiles() {
 }
 
 async function checkTaskbookNaming() {
-  const taskbooks = (await collectMarkdownFiles(join(repoRoot, 'docs')))
+  const documents = await collectMarkdownFiles(join(repoRoot, 'docs'))
+  const taskbooks = documents
     .filter((path) => path.includes('taskbook') && path.endsWith('.md'))
   const violations = []
+  for (const path of documents) {
+    const content = await readText(path)
+    if (!/^最后更新：\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/mu.test(content)) {
+      violations.push(`${displayPath(path)}: 正文缺少秒级最后更新时间`)
+    }
+  }
   for (const path of taskbooks) {
     const name = displayPath(path)
     const match = name.match(/-taskbook-(\d{4}-\d{2}-\d{2})\.md$/u)
     if (!match) {
-      violations.push(`${name}: 文件名缺少最后更新时间`)
+      violations.push(`${name}: 文件名缺少任务书基线日期`)
       continue
     }
     const date = match[1]
     const content = await readText(path)
     const title = content.split(/\r?\n/u, 1)[0]?.trim() ?? ''
-    const updated = content.match(/^最后更新：(\d{4}-\d{2}-\d{2})$/mu)?.[1]
+    const updated = content.match(/^最后更新：(\d{4}-\d{2}-\d{2}) \d{2}:\d{2}:\d{2}$/mu)?.[1]
     if (!title.endsWith(date)) violations.push(`${name}: 一级标题日期应为 ${date}`)
-    if (updated !== date) violations.push(`${name}: 最后更新时间应为 ${date}`)
+    if (updated && updated < date) violations.push(`${name}: 最后更新时间不能早于基线日期 ${date}`)
   }
-  assert(taskbooks.length > 0 && violations.length === 0, '任务书名称与最后更新时间一致', violations.join(', '))
+  assert(taskbooks.length > 0 && violations.length === 0, '文档秒级更新时间与任务书基线日期有效', violations.join(', '))
 }
 
 async function checkWorkspacePackages() {

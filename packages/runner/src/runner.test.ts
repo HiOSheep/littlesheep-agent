@@ -478,6 +478,39 @@ describe('createRunner run', () => {
     expect(log!.memoryAccess).toEqual(result.memoryAccess);
   });
 
+  it('persists a bounded last-run summary for immediate follow-up context', async () => {
+    const requests: ChatRequest[] = [];
+    const llm = makeMockLlm((request) => {
+      requests.push(request);
+      return textResponse('Hello!');
+    });
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+    });
+    createdRunners.push(runner);
+
+    const first = await runner.run({ text: 'hello' });
+    const summary = await runner.infra.executionLogStore.readLatestForSession(first.sessionId);
+    expect(summary).toMatchObject({
+      version: 1,
+      runId: first.runId,
+      status: 'ok',
+      durationMs: expect.any(Number),
+      tools: { total: 0, succeeded: 0, failed: 0, truncated: false },
+    });
+
+    const requestCount = requests.length;
+    await runner.run({ sessionId: first.sessionId, text: 'hello again' });
+    const followUpRequests = requests.slice(requestCount);
+    expect(followUpRequests.some((request) => (
+      String(request.messages.find((message) => message.role === 'system')?.content)
+        .includes(`previous_run: id=${first.runId}`)
+    ))).toBe(true);
+  });
+
   it('replay 不存在的 runId → null', async () => {
     const llm = makeMockLlm(textResponse('hi'));
     const runner = await createRunner({

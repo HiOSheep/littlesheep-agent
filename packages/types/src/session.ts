@@ -10,6 +10,36 @@ export function asSessionId(s: string): SessionId {
   return s as SessionId;
 }
 
+export interface SessionRunToolTiming {
+  name: string;
+  status: 'succeeded' | 'failed';
+  durationMs?: number;
+  stepId?: string;
+}
+
+/** Bounded execution facts retained for an immediate follow-up turn. */
+export interface SessionRunSummary {
+  version: 1;
+  runId: string;
+  status: 'queued' | 'running' | 'ok' | 'error' | 'timeout' | 'aborted';
+  startedAt: string;
+  endedAt: string;
+  durationMs: number;
+  task?: {
+    status: 'pending' | 'running' | 'done' | 'failed' | 'blocked' | 'partial';
+    completedSteps: number;
+    totalSteps: number;
+  };
+  tools: {
+    total: number;
+    succeeded: number;
+    failed: number;
+    totalDurationMs: number;
+    recent: SessionRunToolTiming[];
+    truncated: boolean;
+  };
+}
+
 /** Session metadata persisted alongside the transcript. */
 export interface SessionMetadata {
   /** Human label for the session. */

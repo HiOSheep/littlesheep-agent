@@ -138,6 +138,7 @@ export async function runToolLoop(
         }
 
         let result: ToolResult;
+        const toolStartedAt = Date.now();
         try {
           ctx.onToolEvent?.({ type: 'tool_start', callId: id, name: tool.name, stepId, input });
           result = await raceWithTimeout(
@@ -146,9 +147,18 @@ export async function runToolLoop(
             ctx.signal,
           );
         } catch (error) {
-          result = { callId: id, ok: false, error: (error as Error).message };
+          result = {
+            callId: id,
+            ok: false,
+            error: (error as Error).message,
+            durationMs: Date.now() - toolStartedAt,
+          };
         }
-        result.callId = id;
+        result = {
+          ...result,
+          callId: id,
+          durationMs: result.durationMs ?? Date.now() - toolStartedAt,
+        };
         if (result.output !== undefined && typeof result.output !== 'undefined') {
           const sanitized = sanitizeOutput(result.output, sanitizeOpts);
           result.output = sanitized.output;
@@ -163,6 +173,7 @@ export async function runToolLoop(
           ok: result.ok,
           output: result.ok && result.output !== undefined ? String(result.output).slice(0, 400) : undefined,
           error: result.error,
+          durationMs: result.durationMs,
         });
         toolResults.push(result);
         persistToolResult(ctx, result);
@@ -170,7 +181,7 @@ export async function runToolLoop(
           role: 'tool',
           tool_call_id: id,
           name,
-          content: safeStringify(result.ok ? result.output : { ok: false, error: result.error }),
+          content: toolResultForModel(result),
         });
       }
       continue;
@@ -217,7 +228,7 @@ function appendFailure(
     role: 'tool',
     tool_call_id: failure.callId,
     name: failure.name,
-    content: safeStringify({ ok: false, error: failure.error }),
+    content: toolResultForModel(result),
   });
   ctx.onToolEvent?.({
     type: 'tool_end',
@@ -323,4 +334,16 @@ function safeStringify(value: unknown): string {
   } catch {
     return '[non-serializable]';
   }
+}
+
+function toolResultForModel(result: ToolResult): string {
+  return safeStringify({
+    ok: result.ok,
+    status: result.ok ? 'succeeded' : 'failed',
+    durationMs: result.durationMs,
+    stepId: typeof result.meta?.stepId === 'string' ? result.meta.stepId : undefined,
+    output: result.ok ? result.output : undefined,
+    error: result.ok ? undefined : result.error,
+    sanitized: result.sanitized === true || undefined,
+  });
 }

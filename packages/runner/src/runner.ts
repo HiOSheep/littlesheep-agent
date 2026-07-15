@@ -33,6 +33,7 @@ import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
 import { getAgentProfile, type AgentProfileId } from '@littlesheep/prompt';
 import { resolveRunConfig } from './run-config.js';
 import { discoverLittleSheepCoreRoots } from './core-source-protection.js';
+import { buildSessionRunSummary } from './session-run-summary.js';
 
 /** AgentResult + sessionId (caller-friendly). */
 export type RunnerResult = AgentResult & { sessionId: SessionId; memoryAccess?: MemoryAccessLedger };
@@ -183,7 +184,11 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       state.sessionId = sessionId;
 
       // 2. Build inbound user message.
-      const inbound: Message = textMessage('user', input.text, { sessionId });
+      const inbound: Message = textMessage('user', input.text, {
+        sessionId,
+        runId,
+        timestamp: new Date(startedAt).toISOString(),
+      });
 
       // 3. Build RunContext (loads history WITHOUT inbound — no duplicate).
       const cwd = input.cwd ?? opts.config.agents.defaults.workspace;
@@ -206,6 +211,12 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       }
 
       const behaviorProfile = getAgentProfile(input.profile ?? opts.config.agents.defaults.profile);
+      let previousRun: import('@littlesheep/types').SessionRunSummary | undefined;
+      try {
+        previousRun = await infra.executionLogStore.readLatestForSession(sessionId) ?? undefined;
+      } catch (err) {
+        opts.log?.('warn', `runner: failed to read last-run timing summary: ${(err as Error).message}`);
+      }
       const resolvedRunConfig = resolveRunConfig({
         runId,
         config: opts.config,
@@ -235,6 +246,8 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         branding: opts.branding,
         model,
         runId,
+        startedAt: new Date(startedAt).toISOString(),
+        previousRun,
         cwd,
         protectedWriteRoots,
         signal,
@@ -399,6 +412,20 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         });
       } catch (err) {
         opts.log?.('error', `runner: failed to write execution log: ${(err as Error).message}`);
+      }
+
+      try {
+        await infra.executionLogStore.writeLatestForSession(sessionId, buildSessionRunSummary({
+          runId: result.runId,
+          status: result.status,
+          startedAtMs: startedAt,
+          durationMs: result.durationMs,
+          messages: result.messages,
+          taskExecution: result.taskExecution,
+          taskBook: result.taskBook,
+        }));
+      } catch (err) {
+        opts.log?.('warn', `runner: failed to persist last-run timing summary: ${(err as Error).message}`);
       }
 
       return result;

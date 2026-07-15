@@ -121,6 +121,56 @@ describe('buildRunContext', () => {
     expect(ctx.history).toEqual([prior]);
   });
 
+  it('loads the preceding run summary and exact runtime clock configuration', async () => {
+    const lastRun = {
+      version: 1 as const,
+      runId: 'previous-run',
+      status: 'ok' as const,
+      startedAt: '2026-07-15T01:00:00.000Z',
+      endedAt: '2026-07-15T01:00:02.000Z',
+      durationMs: 2000,
+      tools: {
+        total: 1, succeeded: 1, failed: 0, totalDurationMs: 500,
+        recent: [{ name: 'read', status: 'succeeded' as const, durationMs: 500 }],
+        truncated: false,
+      },
+    };
+    const sm = createMockSessionManager({
+      metadata: {
+        createdAt: '2026-07-15T00:00:00.000Z',
+        updatedAt: '2026-07-15T01:00:02.000Z',
+        messageCount: 2,
+      },
+    });
+    const config = {
+      ...DEFAULT_CONFIG,
+      agents: {
+        defaults: {
+          ...DEFAULT_CONFIG.agents.defaults,
+          userTimezone: 'Asia/Hong_Kong',
+          timeFormat: '24' as const,
+        },
+      },
+    };
+    const ctx = await buildRunContext({
+      sessionId: 's1',
+      inbound: textMessage('user', 'continue'),
+      sessionManager: sm,
+      memoryStore: createMockMemoryStore(),
+      tools: [],
+      config,
+      branding: DEFAULT_BRANDING,
+      model: 'openai/gpt-5.5',
+      startedAt: '2026-07-15T02:00:00.000Z',
+      previousRun: lastRun,
+    });
+
+    expect(ctx.previousRun).toEqual(lastRun);
+    expect(ctx.startedAt).toBe('2026-07-15T02:00:00.000Z');
+    expect(ctx.timeZone).toBe('Asia/Hong_Kong');
+    expect(ctx.timeFormat).toBe('24');
+  });
+
   it('runId auto-generated when absent', async () => {
     const sm = createMockSessionManager();
     const ms = createMockMemoryStore();

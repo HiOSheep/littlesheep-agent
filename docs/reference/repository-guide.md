@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-07-15
+最后更新：2026-07-15 12:19:31
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
@@ -18,7 +18,7 @@
 
 同一事实只在其责任文档中维护，其他文档使用链接引用。冲突时，长期约束看架构原则，当前事实和验证数字看项目状态，演进顺序看架构决策报告，目录归属看本指南，专项交互和流程看对应规范。任务书不维护全局最新状态，也不要创建另一份一次性总结复制决策入口。
 
-任务书属于版本化执行基线，命名固定为“任务书总名称 + 最后更新时间”。文件名使用 `*-taskbook-YYYY-MM-DD.md`，一级标题以同一日期结尾，正文 `最后更新：YYYY-MM-DD` 必须一致。修改任务书内容并更新日期时，必须在同一变更中重命名文件并更新全仓链接；不使用 `latest`、`final` 或无日期文件名表达当前版本。
+任务书属于版本化执行基线，文件名使用 `*-taskbook-YYYY-MM-DD.md`，一级标题保留同一基线日期；文件名和标题不加入时分秒。所有正式文档正文统一使用 `最后更新：YYYY-MM-DD HH:mm:ss` 记录精确维护时间。对既有任务书做状态校正、证据补充或小范围维护时保持文件名和标题不变；只有建立新的执行基线版本时才创建新日期文件并更新全仓链接。不使用 `latest`、`final` 或无日期文件名表达当前版本。
 
 ## 根目录
 
@@ -107,7 +107,7 @@
 | 需求类型 | 主要所有者 | 首要入口 | 主要测试 |
 | --- | --- | --- | --- |
 | Agent 状态机、TaskBook、验证或恢复 | `packages/harness/` | `src/default-harness.ts`、`src/stages/*.ts`；复杂阶段内部实现位于 `src/stages/decide/`、`execute/`、`verify/` | `src/default-harness.test.ts`、`src/stages/*.test.ts`、`src/e2e.test.ts` |
-| 单次 run、流式事件、执行日志 | `packages/runner/` | `src/runner.ts`、`src/execution-log.ts` | `src/runner.test.ts`、`src/execution-log.test.ts` |
+| 单次 run、流式事件、执行日志与上一轮有界摘要 | `packages/runner/` | `src/runner.ts`、`src/execution-log.ts`、`src/session-run-summary.ts` | `src/runner.test.ts`、`src/execution-log.test.ts` |
 | 公共运行契约 | `packages/types/` | `src/index.ts`、`src/runtime-contracts.ts` | `src/runtime-contracts.test.ts`、`test/core-agent-contracts.test.ts` |
 | Context 候选、预算、计数和快照 | `packages/context/` | `src/engine.ts` facade、`src/context-engine/` | `src/engine.test.ts`、Harness Context/观测测试 |
 | Provider 请求、流式与 usage | `packages/llm/` | `src/client.ts` | `src/client.test.ts`、Provider smoke 脚本 |

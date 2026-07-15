@@ -176,6 +176,7 @@ describe('executeStage', () => {
       'step_start',
       'step_done',
     ]);
+    expect(events.find((evt) => evt.type === 'tool_end')?.durationMs).toBe(1);
   });
 
   it('resumes a partial replan without rerunning completed steps', async () => {
@@ -273,6 +274,14 @@ describe('executeStage', () => {
     expect(ctx.toolResults).toHaveLength(1);
     expect(ctx.toolResults![0].ok).toBe(true);
     expect(ctx.toolResults![0].output).toBe('found-it');
+    const continuation = llm.chat.mock.calls[1]?.[0] as import('@littlesheep/llm').ChatRequest;
+    const toolMessage = continuation.messages.find((message) => message.role === 'tool');
+    expect(JSON.parse(String(toolMessage?.content))).toMatchObject({
+      ok: true,
+      status: 'succeeded',
+      durationMs: 1,
+      output: 'found-it',
+    });
   });
 
   it('replays provider reasoning exactly across an interleaved tool call', async () => {

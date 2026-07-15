@@ -87,12 +87,14 @@ export function workspaceSection(cwd: string): string {
 Working directory: \`${cwd}\``;
 }
 
-/** Date & time section — timezone only (cache-stable). */
+/** Cache-stable time policy. The exact clock is injected per model request. */
 export function dateTimeSection(timezone?: string): string {
   const tz = timezone ?? 'UTC';
   return `# Current Date & Time
 
-Time zone: ${tz}. (The live clock comes from \`session_status\`.)`;
+Configured time zone: ${tz}.
+
+The Agent runtime injects an exact local clock, UTC offset, run elapsed time, task progress, and bounded tool timing below the prompt cache boundary immediately before every model request. Treat that live runtime block as authoritative rather than estimating time from conversation timestamps.`;
 }
 
 /** Runtime section — host/OS/node/model info. */
@@ -156,5 +158,7 @@ export function outputDirectivesSection(): string {
 - Do not output private chain-of-thought. Provide actionable step summaries, factual evidence, and decision boundaries instead.
 - Be concise. Code, paths, commands go inline.
 - When you used tools, summarize what you did — don't dump raw tool output.
+- When the user asks for the current time without requesting a precision, answer with hour and minute only. Give the date, seconds, time zone, or UTC offset when the user explicitly asks or follows up.
+- Use runtime progress and elapsed-time facts when they improve decisions, recovery, timeout handling, cost discussion, or an answer to the user's question. Do not volunteer low-value timing or percentage details in ordinary replies.
 - If you're asking the user a question (ASK_USER), make it specific and actionable.`;
 }

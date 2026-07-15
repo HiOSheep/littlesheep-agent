@@ -20,12 +20,14 @@ import type {
   ClarificationRequest,
   ClarificationResponse,
   ResolvedRunConfig,
+  SessionRunSummary,
 } from '@littlesheep/types';
 import type { SessionManager } from '@littlesheep/session';
 import type { MemoryBootstrapServiceLike } from '@littlesheep/memory-tree';
 import type { Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
 import { applyBootstrapLimits } from '@littlesheep/prompt';
+import { resolveRuntimeTimeZone } from '@littlesheep/prompt';
 
 /** Bootstrap file names (in priority order). Read from bootstrapDir. */
 const BOOTSTRAP_FILES = ['AGENTS.md', 'SOUL.md', 'USER.md', 'TOOLS.md'] as const;
@@ -67,6 +69,10 @@ export interface BuildRunContextOptions {
   model: string;
   /** Optional run id (auto-generated if absent). */
   runId?: string;
+  /** Exact owning-run start time, when already known by the caller. */
+  startedAt?: string;
+  /** Bounded execution facts from the preceding run. */
+  previousRun?: SessionRunSummary;
   /** Working directory for file/exec tools (defaults to process.cwd()). */
   cwd?: string;
   /** Host-owned roots that built-in mutation tools must keep read-only. */
@@ -186,6 +192,7 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     bootstrap,
     history,
     sessionSummary: sessionMetadata?.compaction,
+    previousRun: opts.previousRun,
     produced: [],
     maxRecoveryAttempts: opts.config.agents.defaults.maxRecoveryAttempts,
     recoveryAttempts: 0,
@@ -194,7 +201,9 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     replanAttempts: 0,
     maxReplanAttempts: 2,
     clarificationResponse,
-    startedAt: new Date().toISOString(),
+    startedAt: opts.startedAt ?? new Date().toISOString(),
+    timeZone: resolveRuntimeTimeZone(opts.config.agents.defaults.userTimezone),
+    timeFormat: opts.config.agents.defaults.timeFormat,
     onAssistantDelta: opts.onAssistantDelta,
     onToolEvent: opts.onToolEvent,
     profilePromptAddon: opts.profilePromptAddon,

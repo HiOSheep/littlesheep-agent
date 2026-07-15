@@ -1,6 +1,6 @@
 # LittleSheep 项目状态
 
-最后更新：2026-07-15
+最后更新：2026-07-15 12:16:36
 
 本文件是项目进度的正式来源。状态只根据当前源码、测试和构建结果维护；旧的阶段报告不再作为进度依据。
 
@@ -19,6 +19,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 | 架构治理 | 仓库基元化阶段 0-7 已完成 | 26 个 package 与指定领域目录均有所有权 README；关键组合入口已收敛为 facade。`check:repo` 自动校验文档、模块和 TypeScript references；单进程 `tsc -b`、受影响包传播和 changed/core/full 三级验证已接通，避免依赖方读取旧声明并降低日常反馈成本 | `docs/reference/repository-guide.md`、`docs/reference/module-split-map.md`、`scripts/workspace-projects.mjs`、`scripts/run-affected-verification.mjs` |
 | LLM 调用契约与记忆提交 | 已实现工程闭环 | 每次模型请求解析独立 `LlmCallContract`，声明 purpose、Context、决策、输出、工具、记忆和预算；FINALIZE 禁止模型调用。EVOLVE/CAPTURE 只提交有真实步骤、工具和验证证据的写入，冲突/失效意图只延期审计 | `packages/types/src/runtime-contracts.ts`、`packages/harness/src/llm-call-contracts/`、`model-observability.ts`、`stages/memory-intent-gate.ts` |
 | Context Engine | 阶段 1 主要数据链与调用契约已实现，供应商验收未闭环 | 支持确定性候选、来源 segment、契约过滤、预算淘汰、版本化 Summary Memory、附件清单优先、按需附件工具、Provider usage 绑定和双账本 UI；必需 Context 越权或缺失会失败关闭。当前内置模型均明确为 unavailable 并使用不可展示的保守安全估算；真实 Provider 对账尚未完成 | `packages/context/src/engine.ts`、`context-engine/`、`packages/harness/src/context-candidates.ts`、`model-observability.ts`、`packages/config/src/model-capabilities.ts` |
+| 运行时时间与执行感知 | 已实现基础闭环 | 每次实际模型请求都会在缓存边界后重新注入本地年月日时分秒、时区/offset、run elapsed、真实 TaskBook 进度和有界工具计时；工具 continuation 明确携带状态与 `durationMs`。上一轮 run 的有界进度/耗时摘要通过执行日志域内的会话 sidecar 原子替换，供紧接着的追问和重启恢复使用，不重写长会话；默认回复不主动输出低价值耗时数字 | `packages/prompt/src/runtime-time.ts`、`packages/harness/src/runtime-awareness.ts`、`model-observability.ts`、`stages/execute/tool-loop.ts`、`packages/runner/src/session-run-summary.ts`、`execution-log.ts` |
 | 应用数据根、默认 workplace 与附件生命周期 | 阶段 3 工程实现已完成 | 完整应用数据根默认名为 `.littlesheep`，但可通过环境、locator 和设置整体迁移；`workplace/` 只是未选择其他目录时的默认工作区子目录。粘贴/浏览器导入进入独立受管缓存，按 30 天、256 项、512 MiB 有界清理；workplace 使用可恢复的有界元数据索引，不读正文。设置页可登记完整数据根迁移，下一次启动会在任何写入者初始化前通过外部 locator、同级 staging、全文件 SHA-256 清单和活动元数据路径重绑定完成原子切换；源目录保留，失败继续使用旧目录，提交中断可恢复，回滚同样在下次启动生效。隔离测试已覆盖这些契约，尚未擅自搬迁正式用户数据 | `packages/branding/`、`packages/app/src/main/attachment-cache.ts`、`data-root-migration.ts`、`data-root-metadata.ts`、`packages/memory-tree/src/workspace-resource-index.ts` |
 | 长会话压缩 | 已实现基础闭环 | 原始 JSONL 不删除；摘要版本化、记录来源范围、支持增量合并，并在下一轮作为独立 `summary_memory` 介入；摘要同时按 session scope 注册到资源目录，正文仍以会话元数据为权威来源并按需解析；真实长会话、失败回退和成本仍待验收 | `packages/session/src/compaction.ts`、`packages/runner/src/runner.ts`、`packages/prompt/src/builder.ts`、`packages/memory-tree/src/memory-service.ts` |
 | 硬控制流 Agent | 已实现 | `ENTER`、分类、决策、执行、恢复、验证、演化、捕获和收尾由 Harness 驱动 | `packages/harness/`、`packages/runner/` |
@@ -46,9 +47,9 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 | 检查 | 当前工作树结果 | 证据命令 |
 | --- | --- | --- |
 | 仓库卫生 | 通过：31 项通过，0 项失败 | `pnpm.cmd run check:repo` |
-| 开发快速门 | 通过：本轮影响 24 个变更文件，传播到 25 个 workspace 包；45 个相关测试文件，428 passed、1 skipped；总耗时约 39 秒 | `pnpm.cmd run verify:changed` |
+| 开发快速门 | 通过：本轮影响 37 个变更文件，传播到 25 个 workspace 包；45 个相关测试文件，433 passed、1 skipped；总耗时约 26 秒 | `pnpm.cmd run verify:changed` |
 | 核心 Agent 门 | 通过：仓库检查、全工作区增量类型和 69 项核心契约；总耗时约 15 秒 | `pnpm.cmd run verify:core` |
-| 全量测试 | 通过：122 个测试文件；1007 passed、1 skipped | `pnpm.cmd test` |
+| 全量测试 | 通过：124 个测试文件；1015 passed、1 skipped | `pnpm.cmd test` |
 | 全工作区类型检查 | 通过：完全清理后的 project references 冷构建约 26 秒，热缓存复查约 1 秒；原逐包命令约 46 秒 | `pnpm.cmd run typecheck` |
 | 全工作区构建 | 通过：增量类型图加 Electron 完整打包约 50 秒；原逐包构建约 98 秒 | `pnpm.cmd run build` |
 | 应用恢复源检查 | 通过；仍保留旧执行日志缺失、可选 workspace artifact 索引缺失，以及现有用户数据尚未产生 workplace 资源索引的诊断警告 | `pnpm.cmd run verify:app-recovery` |
