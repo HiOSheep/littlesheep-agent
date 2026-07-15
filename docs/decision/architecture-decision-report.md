@@ -1,8 +1,8 @@
 # LittleSheep 架构评估与开发决策报告
 
-最后更新：2026-07-15 11:59:04
+最后更新：2026-07-15 15:07:00
 评估范围：当前源码、正式文档与已记录的验证结果
-执行状态：仓库基元化阶段 0-7 已完成；Memory v3 原子文件与内置本地向量目录方向已确认，当前实现仍为集中式 v2 文档与旧 Provider Embedding 路径
+执行状态：Memory v3 阶段 0-1 隔离实现已完成，阶段 2 catalog/恢复基础已完成；正式路径仍为 v2，真实本地神经 Embedding、后台治理、适配和迁移尚未完成
 
 ## 1. 给决策者的结论
 
@@ -19,9 +19,9 @@ LittleSheep 当前不是“只有 Prompt 的聊天壳”。它已经具备代码
 1. Context Engine 已成为独立模块并接管模型请求准备路径；每次请求现在拥有版本化 `LlmCallContract`，Context segment、工具集合、输出预算和记忆策略在发送前失败关闭。tokenizer 能力矩阵与 unavailable 模型的保守请求前预算保护已经完成，当前缺口是三家真实 Provider 对账。
 2. 每次 run 已有统一、不可变的运行决议，但 Behavior Mode 仍只是 profile 与策略 id 的组合结果，尚没有可注册、可迁移的 Mode Registry。
 3. Tool Manager 只有注册与基础 wrapper，完整的授权、调用、超时、流式事件和执行证据仍主要位于 Harness/App。
-4. Memory 子系统已经具备统一 `MemoryService`、T0-T3 注册协议、Summary Memory/附件的非复制式资源登记、项目记忆三层投影与控制面，以及稳定项目身份和可恢复路径重绑定。但全部节点仍集中在 `memory-tree/index.json`，旧 SQLite 向量路径仍通过 Provider `/embeddings` 生成向量。目标已修正为语义原子文件、稳定 parent、可重建本地 catalog、FTS 与默认本地 Embedding。
+4. 正式 Memory v2 子系统仍由统一 `MemoryService` 和 `memory-tree/index.json` 承载，旧向量路径仍会调用 Provider；并行的 `src/v3/` 已实现语义 atom、稳定 parent、可重建 catalog、FTS/向量端口、事件/操作恢复和实体关系边界，但尚未接管 Runner/UI，也没有把测试引擎冒充为真实本地 Embedding。
 
-因此，不建议立即把所有目录重新拆包，也不建议继续在集中式 Memory v2 文档上叠加新能力。当前先完成 Memory v3 阶段 0-2，在隔离目录建立原子文件、本地 catalog、FTS、Embedding 和恢复日志；再完成真实 Provider 对话验收，随后收敛统一 Tool Execution Service 与 RuntimeEventQueue。正式用户记忆在隔离迁移通过前保持不变。
+因此，不建议继续在集中式 Memory v2 文档上叠加新能力。当前先完成 Memory v3 阶段 2 剩余的真实本地模型基准、后台重建和 due 补偿，再完成真实 Provider 对话验收；随后进入 v3 facade 适配、统一 Tool Execution Service 与 RuntimeEventQueue。正式用户记忆在隔离迁移通过前保持不变。
 
 ## 2. 评估口径
 
@@ -264,7 +264,7 @@ src/renderer/shared/
 
 目标：让记忆和会话成为 Context Engine 可控、可追溯的来源。
 
-状态：进行中。Memory Service、T0-T3 基础注册、v1→v2 安全迁移、资源索引分支、管理 UI、Summary Memory/run-scoped 附件统一注册、项目记忆三层投影和资源生命周期已落地；Memory v3 原子文件、本地向量目录、本地 Embedding 与 v2→v3 迁移尚未实现。
+状态：进行中。v2 的 Memory Service、T0-T3、资源目录、管理 UI 和项目投影已落地；v3 的契约、atom 文件、journal、catalog、FTS/向量端口、实体关系、优先级和崩溃重放已在隔离目录实现。真实本地神经 Embedding、后台重建/due 消费、v3 facade、Context 接入与 v2→v3 迁移尚未实现。
 
 建议边界：
 
@@ -384,7 +384,7 @@ src/renderer/shared/
 
 ## 10. 下一阶段推进条件
 
-仓库基元化阶段 0-7 已完成，当前工作树质量门为绿色。建议先完成 Memory v3 阶段 0-2，再进行 Context Engine 的真实供应商对话校准和统一 Tool Execution Service，而不是提前扩张新插件类型或 UI 范围。推进时持续遵守：
+仓库基元化阶段 0-7 与 Memory v3 阶段 0-1 已完成，阶段 2 基础正在收口。建议先完成本地 Embedding 基准、向量后台重建与 due 补偿，再进行 Context Engine 的真实供应商对话校准和统一 Tool Execution Service，而不是提前扩张新插件类型或 UI 范围。推进时持续遵守：
 
 - 以 [架构原则](../principles/architecture-principles.md) 作为最高层工程规范；
 - Behavior Mode 与 Permission Policy 保持正交；

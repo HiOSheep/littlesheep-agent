@@ -1,6 +1,6 @@
 # LittleSheep 模块拆分地图
 
-最后更新：2026-07-15 12:19:31
+最后更新：2026-07-15 15:07:00
 
 本文件记录大型生产文件的当前所有权、目标边界和拆分顺序。它是仓库基元化任务书的阶段产物，不替代项目状态，也不把行数当成唯一质量指标。
 
@@ -34,6 +34,10 @@
 | `packages/app/src/main/attachment-cache.ts` | 486 | 附件索引、配额、清理和校验 | 分离 index、quota、cleanup、validation | C |
 | `packages/runner/src/runner.ts` | 534 | run 生命周期与依赖协调 | 分离 run lifecycle、session、memory、stream 协调器 | E |
 | `packages/memory-tree/src/types.ts` | 484 | 记忆树内部和持久化类型 | 按 node、resource、audit、projection 分组 | D |
+| `packages/memory-tree/src/v3/catalog.ts` | 560 | Memory v3 catalog 生命周期、atom/FTS/向量/账本投影 | 保持 facade；schema、query/codec、graph 已分离，后续把 ledger/due 投影下沉 | D |
+| `packages/memory-tree/src/v3/event-journal.ts` | 446 | Memory v3 event 与 operation journal 的同构恢复语义 | 契约稳定后拆为两个 store，共享 bounded journal codec | D |
+| `packages/memory-tree/src/v3/contracts.ts` | 417 | Memory v3 atom、认识状态、事件、实体、证据与 Embedding 契约 | 阶段 3 接入前按 atom、epistemic、event、graph 分组并保持 barrel | D |
+| `packages/memory-tree/src/v3/atom-store.ts` | 437 | atom 原子读写、轻量索引、扫描、层级和隔离 | 保持 store facade；规模验收稳定后分离 scanner/quarantine | D |
 | `packages/llm/src/client.ts` | 460 | 请求、流式、reasoning、重试适配 | 分离 request builder、stream parser、response mapper | E |
 | `packages/types/src/runtime-contracts.ts` | 449 | 多类运行时版本契约 | 按 context、event、checkpoint、execution 分组并保持 barrel | E |
 | `packages/memory-tree/src/memory-repository/resource-store.ts` | 439 | 资源注册、生命周期、重绑定和审计 | 分离 registry、lifecycle、rebind、audit | D |
@@ -84,7 +88,7 @@
 2. C 与 D 优先拆 Main/API 和 Memory，减少 B/E 的跨层依赖。
 3. B 已在 API barrel 稳定后完成 Renderer 组合壳拆分；后续 Renderer 细分继续按真实窗口验收。
 4. D/E 所有权下的 Memory、Harness/Context 已完成 facade 化与内部领域拆分，LLM Call Contract 和记忆意图闸门已在稳定边界上接入。
-5. 下一步收敛统一 Tool Execution Service；每次只移动一个责任域，完成定向测试和全量质量门后再继续。
+5. 当前先完成 Memory v3 阶段 2 的剩余基准与后台治理，再收敛统一 Tool Execution Service；每次只移动一个责任域，完成定向测试和全量质量门后再继续。
 
 ## 当前共享契约与 facade
 

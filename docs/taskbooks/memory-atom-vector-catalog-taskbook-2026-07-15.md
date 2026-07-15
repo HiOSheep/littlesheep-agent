@@ -1,8 +1,8 @@
 # LittleSheep 原子记忆与内置向量目录任务书 2026-07-15
 
-最后更新：2026-07-15 11:59:04
-版本：v1.5
-状态：目标架构已确认，待按阶段实施；本任务书不会自动迁移正式用户数据
+最后更新：2026-07-15 15:07:00
+版本：v1.6
+状态：实施中；阶段 0-1 已完成隔离实现，阶段 2 数据目录基础已完成但真实本地 Embedding 与后台消费仍未闭环；未迁移正式用户数据
 
 ## 1. 目标
 
@@ -253,6 +253,8 @@ statement / atom / resource
 
 ### 阶段 0：契约与特征测试
 
+状态：**已完成隔离契约与特征基线**。`packages/memory-tree/src/v3/contracts.ts` 已冻结 atom、domain、D0-D3、陈述/认识状态/权威、实体/关系、事件、操作、证据、反馈、优先级和 Embedding 端口；现有 v2 测试保持原样通过。
+
 - 定义 `MemoryAtom`、`MemoryCatalogEntry`、`EmbeddingEngine` 和 operation journal v1；
 - 定义 `MemoryDomain`、`MemoryDisclosureLevel`、`StatementKind`、`EpistemicStatus`、`AuthorityScope`、`MemoryEntity`、`MemoryRelation`、`MemoryUpdateEvent`、`MemoryAccessRecord`、`MemoryUseFeedback`、`MemoryEvidenceEnvelope`、候选优先级明细和 `KnownState` 记忆证据引用契约；
 - 冻结 v2 行为特征：层级、写入闸门、项目重绑定、资源注册和 UI 管理；
@@ -265,6 +267,8 @@ statement / atom / resource
 
 ### 阶段 1：Atom Store
 
+状态：**已完成隔离实现**。Atom 使用 branch + SHA-256 shard 路径、稳定 id、轻量常驻 header、按需正文读取、内容哈希、修订前置条件、同卷临时文件/刷盘/rename、parent/作用域/循环校验和损坏/孤儿隔离；event 与 operation journal 具备幂等键、三态恢复、记录/数量硬上限。隔离测试分别覆盖 CRUD、归档/恢复与 10,000 atom 重启扫描，未读取或迁移正式用户目录。
+
 - 实现分片路径、原子读写、哈希、状态管理和损坏隔离；
 - 实现 parent 校验、循环检测、孤儿恢复和目录扫描；
 - 实现分片 event journal、事件幂等键、版本前置条件和 pending/committed/recovery 生命周期；
@@ -273,6 +277,13 @@ statement / atom / resource
 验收：一万 atom 的创建、读取、更新、归档和重启扫描保持有界且不丢层级。
 
 ### 阶段 2：Catalog 与本地 Embedding
+
+状态：**部分完成**。
+
+- 已完成：可删除重建的 `node:sqlite` catalog、FTS5、branch/scope/subtree 强制过滤、向量 BLOB 与版本状态、访问/反馈有界保留、due index、事件/操作投影、实体/有向关系边界、数据库完整性检查和流式重建；
+- 已完成：`MemoryV3StorageCoordinator` 强制执行“事件捕获 → 操作登记 → atom 写入 → catalog 投影 → 双提交”，故障注入覆盖只捕获事件和 atom 已写/catalog 未写两种中断点；
+- 已完成：远程 Embedding 默认硬拒绝且测试确认零调用；模型版本或内容变化会令已有向量进入 stale/pending；层级与 FTS 不依赖向量；
+- 未完成：量化 `multilingual-e5-small` 与 `bge-small-zh-v1.5` 的中文/英文/代码基准、最终本地神经模型接入、后台分批重建、due 项启动补偿消费者和关系删除前的完整悬空引用治理。因此阶段 2 尚不能按“本地语义检索已交付”验收。
 
 - 建立 SQLite catalog、FTS、向量接口和恢复日志；
 - 建立实体与有向关系表、边界查询、关系证据和悬空引用检查；

@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-07-15 12:19:31
+最后更新：2026-07-15 15:07:00
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
@@ -73,7 +73,7 @@
 
 | 包 | 归属和职责 |
 | --- | --- |
-| `packages/memory-tree/` | `MemoryService` 统一消费门面、T0-T3 资源注册、v1→v2 安全迁移、资源生命周期与有界审计、分支注册、根/分支索引、节点/资源展开、同分支深搜、预算、来源、项目记忆三层投影、项目/资源路径迁移、workplace 元数据索引和原子仓库。 |
+| `packages/memory-tree/` | v2 的 `MemoryService`/Repository 稳定门面、T0-T3 资源注册、索引导航、项目投影和生命周期；`src/v3/` 隔离拥有 atom 契约/文件、事件与操作 journal、SQLite catalog、FTS/向量端口、实体关系、优先级和恢复协调器。v3 尚未接管正式运行路径。 |
 | `packages/memory-core/` | 文件记忆兼容存储、daily、长期记忆、写入闸门、归档和旧来源适配。 |
 | `packages/vector/` | 向量存储接口；只在已导航分支的深搜兜底路径使用。 |
 | `packages/experience/` | 经验记录、置信度衰减和可复用能力数据。 |
@@ -113,7 +113,7 @@
 | Provider 请求、流式与 usage | `packages/llm/` | `src/client.ts` | `src/client.test.ts`、Provider smoke 脚本 |
 | 配置、Provider/模型能力 | `packages/config/` | `src/schema.ts`、`src/model-capabilities.ts` | `src/schema.test.ts`、App shared capability 测试 |
 | Prompt 与行为 profile | `packages/prompt/` | `src/builder.ts`、`src/profiles.ts` | `src/builder.test.ts`、`src/profiles.test.ts` |
-| 记忆树、资源注册与项目投影 | `packages/memory-tree/` | `src/memory-service.ts`、`src/memory-repository.ts` facade；内部协调器位于同名目录 | `src/memory-*.test.ts`、`src/project-*.test.ts`、`src/resource-scaling.test.ts` |
+| 记忆树、资源注册与项目投影 | `packages/memory-tree/` | v2：`src/memory-service.ts`、`src/memory-repository.ts` facade；v3 隔离层：`src/v3/index.ts`、`atom-store.ts`、`catalog.ts`、`storage-coordinator.ts` | v2：`src/memory-*.test.ts`、`src/project-*.test.ts`；v3：`src/v3/*.test.ts` |
 | 旧文件记忆、写入与归档 | `packages/memory-core/` | `src/write-memory.ts`、`src/archive.ts` | 对应同名测试 |
 | 会话和长会话摘要 | `packages/session/` | `src/manager.ts`、`src/compaction.ts` | 对应同名测试 |
 | 工具注册、审批和内置工具 | `packages/tools/` | `src/registry.ts`、`src/wrapper.ts`、`src/builtin/` | `src/**/*.test.ts` |

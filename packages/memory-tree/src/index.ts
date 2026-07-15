@@ -137,3 +137,31 @@ export {
   type WorkspaceResourceSyncResult,
 } from './workspace-resource-index.js';
 export { estimateTokens, activityScore, truncateChunk, MIN_USEFUL_TOKENS } from './util.js';
+export * as MemoryV3 from './v3/index.js';
+export {
+  MemoryAtomStore,
+  MemoryAtomConflictError,
+  MemoryCatalog,
+  DisabledEmbeddingEngine,
+  EmbeddingUnavailableError,
+  MemoryEventJournal,
+  MemoryOperationJournal,
+  MemoryV3StorageCoordinator,
+  scoreMemoryCandidate,
+} from './v3/index.js';
+export type {
+  MemoryAtom as MemoryAtomV3,
+  MemoryCatalogEntry as MemoryCatalogEntryV3,
+  MemoryDomain,
+  MemoryDisclosureLevel,
+  StatementKind,
+  EpistemicStatus,
+  AuthorityScope,
+  MemoryEntity,
+  MemoryRelation,
+  MemoryUpdateEvent,
+  MemoryUseFeedback,
+  MemoryEvidenceEnvelope,
+  KnownStateMemoryReference,
+  EmbeddingEngine,
+} from './v3/index.js';

@@ -1,6 +1,6 @@
 # LittleSheep 项目状态
 
-最后更新：2026-07-15 12:16:36
+最后更新：2026-07-15 15:07:00
 
 本文件是项目进度的正式来源。状态只根据当前源码、测试和构建结果维护；旧的阶段报告不再作为进度依据。
 
@@ -10,7 +10,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 它还不是可直接宣称“生产就绪”的发行版。主要原因是当前内置模型尚无已验证的最终请求精确计数器、真实供应商验证未完成、活动 run 重启续跑、MCP、安装包发布和真实用户场景验收仍未闭环。因此本项目不使用一个没有权重定义的百分比来伪装精确进度，而用能力状态和验收证据表示总进度。产品方向已明确为：解放用户生产力，让用户专注于想法，LS 负责将想法可靠落地；执行和输出统一采用渐进式披露。
 
-**当前阶段：仓库基元化阶段 0-7 已完成；Memory v3 的原子文件、层级 parent、内置本地向量目录和本地 Embedding 方向已经确认。下一主线先在隔离目录实现 Memory v3 阶段 0-2，不迁移正式用户数据；随后完成真实 Provider 对话校准，再收敛统一 Tool Execution Service 与 Runtime 连续执行。**
+**当前阶段：Memory v3 阶段 0-1 已完成隔离实现，阶段 2 的 catalog、FTS/向量端口、事件恢复和边界治理基础已完成。下一步完成真实本地神经 Embedding 基准、后台向量重建和 due 补偿；当前 v2 仍是正式运行路径，不迁移正式用户数据。**
 
 ## 能力总览
 
@@ -26,7 +26,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 | 需求判断与任务书 | 已实现 | 支持澄清请求、复杂度判断、TaskBook、步骤验收和局部重规划 | `packages/types/`、`packages/harness/src/stages/` |
 | 步骤级执行与恢复 | 已实现 | 保留已完成步骤证据，失败时按步骤恢复，不重复执行已完成部分；工具循环、权限/超时、失败分类、步骤调度和结构验收已分离，stage facade 不再承接内部细节 | `packages/harness/src/stages/execute.ts`、`execute/`、`recover.ts`、`verify.ts`、`verify/` |
 | 记忆树运行时协议 | 已实现基础闭环 | 根索引到分支索引再到展开/分支内深搜，写入走结构化闸门；新增 `resources` 分支后，注册文档正文仍必须先看目录再按需展开 | `packages/memory-tree/`、`packages/memory-core/`、`packages/runner/` |
-| Memory Service 与 T0-T3 注册 | v2 基础闭环已完成，v3 原子化待实施 | v2 文档、T0、元数据资源目录、Bootstrap/Skills/工作区文档、Summary Memory、run-scoped 附件、项目投影和通用资源生命周期均进入真实路径；但节点仍集中在 `memory-tree/index.json`，旧向量路径仍通过 Provider Embedding。v3 已确认改为原子文件、稳定 parent、可重建 SQLite catalog、FTS 与本地 Embedding | `packages/memory-tree/`、`packages/vector/`、`docs/taskbooks/memory-atom-vector-catalog-taskbook-2026-07-15.md` |
+| Memory Service 与 Memory v3 | v2 基础闭环；v3 阶段 0-1 完成、阶段 2 部分完成 | v2 仍服务 Runner/UI 且旧向量路径仍通过 Provider。隔离 v3 已实现语义 atom、稳定 parent、轻量常驻 header、原子刷盘/rename、事件/操作 journal、可重建 SQLite catalog、FTS/向量状态、实体关系、优先级和崩溃重放；远程 Embedding 默认硬拒绝。真实本地神经模型、后台治理、v3 facade 与迁移尚未完成 | `packages/memory-tree/src/v3/`、`packages/vector/`、`docs/taskbooks/memory-atom-vector-catalog-taskbook-2026-07-15.md` |
 | 项目身份与路径重绑定 | 已实现基础闭环 | 新项目使用与路径无关的稳定 ID，旧路径派生 ID 原样保留；项目移动或重命名后可从侧边栏重新定位。持久化事务日志幂等迁移会话、归档、记忆 scope、项目投影、工作区文档资源、产物、终端活动、布局、导航状态和当前运行路径；路径冲突会拒绝提交 | `packages/app/src/main/project-index.ts`、`project-rebinding.ts`、`path-rebinding.ts`、`packages/memory-tree/src/memory-service.ts` |
 | 记忆管理控制面 | 已实现基础闭环 | UI 操作真实运行时索引与注册表，可查看、归档、恢复、删除记忆，并以渐进式披露查看资源来源、权威、隐私、索引键和生命周期审计；持久资源支持停用、恢复和只清理登记，缺失的工作区文档可在授权范围内保持原 ID 重新定位；项目记忆支持私有投影启用/同步、缺失与冲突恢复、Git 隐私提示、共享导出、停用和安全清理 | `packages/app/src/renderer/MemoryTreeView.tsx`、`packages/app/src/main/memory-tree-control.ts` |
 | 执行记录与历史重放 | 已实现 | 已完成 run 的 TaskBook、步骤、工具调用、验证、调用契约、Context 快照、记忆意图运行时判定和有界资源 ID 可持久化并重放；附件正文不进入执行日志；这仍不等于活动 run 在应用重启后续跑 | `packages/runner/src/execution-log.ts`、`packages/app/src/renderer/TraceCard.tsx` |
@@ -47,11 +47,11 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 | 检查 | 当前工作树结果 | 证据命令 |
 | --- | --- | --- |
 | 仓库卫生 | 通过：31 项通过，0 项失败 | `pnpm.cmd run check:repo` |
-| 开发快速门 | 通过：本轮影响 37 个变更文件，传播到 25 个 workspace 包；45 个相关测试文件，433 passed、1 skipped；总耗时约 26 秒 | `pnpm.cmd run verify:changed` |
+| 开发快速门 | 通过：本轮影响 27 个变更文件，传播到 10 个 workspace 包；20 个相关测试文件，157 passed、1 skipped；总耗时约 54 秒（含 10,000 atom 规模测试） | `pnpm.cmd run verify:changed` |
 | 核心 Agent 门 | 通过：仓库检查、全工作区增量类型和 69 项核心契约；总耗时约 15 秒 | `pnpm.cmd run verify:core` |
-| 全量测试 | 通过：124 个测试文件；1015 passed、1 skipped | `pnpm.cmd test` |
-| 全工作区类型检查 | 通过：完全清理后的 project references 冷构建约 26 秒，热缓存复查约 1 秒；原逐包命令约 46 秒 | `pnpm.cmd run typecheck` |
-| 全工作区构建 | 通过：增量类型图加 Electron 完整打包约 50 秒；原逐包构建约 98 秒 | `pnpm.cmd run build` |
+| 全量测试 | 通过：129 个测试文件；1038 passed、1 skipped | `pnpm.cmd test` |
+| 全工作区类型检查 | 通过：26 个 workspace package 的 project references 完整通过 | `pnpm.cmd run typecheck` |
+| 全工作区构建 | 通过：类型图与 Electron main/preload/renderer 完整构建 | `pnpm.cmd run build` |
 | 应用恢复源检查 | 通过；仍保留旧执行日志缺失、可选 workspace artifact 索引缺失，以及现有用户数据尚未产生 workplace 资源索引的诊断警告 | `pnpm.cmd run verify:app-recovery` |
 | 桌面快捷方式 | 已刷新至最新 Electron 构建；窗口可见且响应正常，记忆树可见 `PHILOSOPHY.md / 长期理念`，全局返回可回到原对话 | `scripts/refresh-desktop-shortcut.ps1` |
 
@@ -76,9 +76,9 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 - 目标架构要求在已导航分支和当前作用域内，让经验证且任务相关的高价值记忆优先介入；访问频率本身不提升可信度，错误、冲突和过期结果必须产生可审计负反馈。长期无验证收益的可选记忆降低注入权重，但不自动降低 confidence，T0、安全规则和当前用户约束不参与普通衰减。
 - DECIDE、EXECUTE、VERIFY 和 FINALIZE 将共享一条版本化 `KnownState` 事实链，明确区分已验证事实、用户陈述、记忆/工具证据、假设、未知和冲突；该闭环尚待随 Memory v3 与 Runtime 连续性实现。
 - 各阶段会从 `KnownState` 派生有界 active evidence set：当前无用、重复、被替代或过期信息可退出后续 LLM 请求，必要时重新激活；注入的记忆携带层级、作用域、来源、confidence、importance、新鲜度和冲突状态等证据元数据。
-- 目标架构将用户记忆、LS 自身记忆、任务/项目/会话、经验和知识资源统一纳入同一 Memory Repository，并以 D0 索引、D1 摘要元数据、D2 正文、D3 来源与审计渐进披露；当前 v2 尚未完成这一统一契约。
+- v3 已冻结 User、Agent Self、Task/Project/Session、Experience、Knowledge domain 与 D0-D3 契约，但尚未通过 facade 接管 v2 的 Runner/UI 生产路径。
 - 目标架构还会登记 user/project/file/session/task/skill/tool/rule/concept 等稳定实体和有向关系。名称、路径、共现与向量相似只作为候选关联，不自动证明同一实体、所有权或因果关系；当前 v2 尚无统一实体/关系 schema。
-- 目标架构使用 `MemoryUpdateEvent`、持久 journal、幂等归并、due index 和启动补偿，根据时间与真实事件近实时更新记忆。这里的“不失忆”指持久、可发现、可追溯、可恢复且相关时可取回，不是把全部记忆常驻 Prompt；该闭环尚待 Memory v3 实施。
+- v3 已实现 `MemoryUpdateEvent`、持久 journal、幂等存储协调器、due index 与两类崩溃点重放；真实 Runtime 事件生产、due 后台消费和 UI 状态仍待后续接入。这里的“不失忆”仍指持久、可发现、可追溯、可恢复且相关时可取回，不是把全部记忆常驻 Prompt。
 - 目标架构还要求把用户/外界陈述分类为目标、偏好、报告观察、事实主张、建议/假设和决定/批准，并分别记录 epistemic status 与 authority scope。用户对自身意图和取舍具有权威，客观技术 claim 仍需证据；当前 v2 尚未实现这一结构化边界。
 - 自动写入使用结构化意图，记录作用域、层级、来源 run、置信度和理由；用户可在记忆树控制面管理真实数据。
 - 模型提出的记忆操作与运行时提交权分离；无真实证据或低价值写入会拒绝，冲突/失效只进入有界审计记录。
@@ -116,17 +116,20 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 ### P0：Memory v3 原子记忆与内置向量目录
 
-1. 按语义原子拆分记忆文件，每个 atom 拥有稳定 id、parent、branch、scope、tier、来源、状态和内容哈希；不按固定字符机械切块。
-2. 建立可重建的本地 SQLite catalog，统一管理 atom 路径、父子关系、FTS、向量、状态、operation journal 和审计。
-3. 默认使用本地多语言 Embedding；Provider `/embeddings` 默认关闭，层级与 FTS 在向量不可用时仍正常工作。
-4. 建立访问账本和验证反馈：按 scope、权威、相关性、confidence、importance、新鲜度和已验证 usefulness 派生注入优先级；读取次数不得自动强化，长期无验证收益只衰减可选候选。
-5. 建立有界 `MemoryEvidenceEnvelope`，把 atom 层级、作用域、来源、confidence、importance、新鲜度、状态、冲突和截断信息随正文送入 LLM，而不是只发送失去语义的裸文本。
-6. 建立 run 级版本化 `KnownState`，让记忆证据、工具证据、用户陈述、假设、未知和冲突在 DECIDE、EXECUTE、VERIFY、FINALIZE 之间显式传递，并允许各阶段有记录地增加、排除或重新激活 Context 信息。
-7. 统一 User、Agent Self、Task/Project/Session、Experience 和 Knowledge domain，并实现与 T0-T3 独立的 D0-D3 渐进披露协议。
-8. 建立 `MemoryUpdateEvent` journal、幂等归并、due index、失败恢复和启动补偿；所有更新先持久捕获，再异步物化到 atom/catalog。
-9. 建立 `StatementKind`、`EpistemicStatus` 和 `AuthorityScope`，让目标/偏好、报告观察、事实主张、建议/假设与决定分别治理；采纳建议不能自动验证其事实前提。
-10. 防止错误用户画像：单条错误建议不得推导用户能力标签，任何推断都要有独立来源、待确认状态和用户管理入口。
-11. 先完成 feature flag、双后端契约测试和隔离迁移；正式用户数据必须另行批准后才能从 v2 切换到 v3。
+已完成的隔离基础：
+
+1. 语义 atom 契约、stable id/parent、domain、D0-D3、statement/epistemic/authority、实体/关系、证据封套和 KnownState 引用已冻结。
+2. Atom Store 已实现分片文件、内容哈希、修订冲突、同作用域 parent/循环校验、损坏/孤儿隔离、轻量常驻 header 和按需正文读取；10,000 atom 重启扫描通过。
+3. Event/operation journal 与 Storage Coordinator 已实现先捕获、幂等双提交和崩溃重放；日志数量与单记录大小有硬上限。
+4. SQLite catalog 已实现 FTS、branch/scope/subtree 强制过滤、向量状态、访问/反馈有界账本、due index、实体/有向关系和数据库删除后流式重建。
+5. Provider `/embeddings` 默认硬拒绝，测试确认未授权远程引擎零调用；访问次数不进入优先级，正向反馈必须携带验证证据，普通衰减不改 confidence 或淘汰 T0。
+
+仍未完成：
+
+1. 对 `multilingual-e5-small` 与 `bge-small-zh-v1.5` 做中文、英文、代码、体积、内存和延迟基准，选定并接入真实本地神经 Embedding。
+2. 实现有界后台向量生成/重建、模型升级进度、due 启动补偿消费者和关系删除前的完整引用治理。
+3. 在 feature flag 下完成 v3 facade、Context/KnownState、工具和 UI 适配，并让 v2/v3 双后端契约同时通过。
+4. 完成只读快照、隔离迁移、故障注入和回滚；正式用户数据必须另行批准后才能切换。
 
 **验收标准**：断网时记忆可写、可导航、可检索；数据库可从 atom 文件重建；向量检索不能跨越未导航分支；所有 domain 使用同一 repository 并可从 D0/D1 渐进展开到 D2/D3；匹配作用域内经验证的高价值记忆稳定优先介入；长期低收益可选记忆减少注入但强制信息不被误衰减；重复访问不会形成错误自增强；LLM 能获得所用记忆的必要证据与 epistemic 元数据；用户目标/偏好在范围内受到尊重，客观 claim 不经验证不成为事实，建议被采纳也不改变其验证状态，错误建议不生成用户能力画像；每个执行阶段可追溯采用、排除和重新激活的 `KnownState` 版本与信息；事件在确认前持久化，重复处理幂等，崩溃、重启和关闭期间到期不会静默丢失；迁移可中断恢复和回滚且不丢节点。
 
@@ -209,7 +212,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 ## 推荐后续顺序
 
-1. 实现 Memory v3 阶段 0-2：原子文件、domain、D0-D3、statement/epistemic/authority schema、实体与有向关系、层级、SQLite catalog、FTS、本地 Embedding、访问反馈、使用衰减、事件 journal、due index、优先级索引和恢复日志；同时冻结 `MemoryEvidenceEnvelope`、`MemoryUpdateEvent` 与 `KnownState` 记忆证据契约，只使用隔离数据。
+1. 完成 Memory v3 阶段 2 剩余项：本地神经 Embedding 候选基准与接入、后台向量重建、due 补偿消费者和关系引用治理；继续只使用隔离数据。
 2. 完成 OpenAI、DeepSeek、GLM 真实对话冒烟，用 Provider 结果校准 Context、reasoning、usage 与保守安全估算；远程 Embedding 不纳入默认路径。
 3. 在稳定 Call Contract 上收敛统一 Tool Execution Service，使内置、插件和未来 MCP 工具共享审批、超时、清洗、证据与恢复契约。
 4. 按连续性任务书实现 RuntimeEventQueue、TaskBookPatch、有界并行、版本化检查点、重启恢复和后台运行。
