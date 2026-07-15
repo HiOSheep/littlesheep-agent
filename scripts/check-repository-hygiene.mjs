@@ -190,6 +190,7 @@ async function checkCanonicalFiles() {
     'docs/taskbooks/core-focus-maintenance-taskbook-2026-07-13.md',
     'docs/taskbooks/extension-workspace-taskbook-2026-07-12.md',
     'docs/taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md',
+    'docs/taskbooks/memory-atom-vector-catalog-taskbook-2026-07-15.md',
     'scripts/build-app.ps1',
     'scripts/start-littlesheep.ps1',
     'scripts/refresh-desktop-shortcut.ps1',

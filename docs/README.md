@@ -6,15 +6,16 @@
 
 ## 现在先做什么
 
-**当前阶段**：仓库基元化阶段 0-7 已完成，版本化 LLM Call Contract、Context 强制约束、记忆意图闸门和持续维护质量门已经落地。
+**当前阶段**：仓库基元化阶段 0-7 已完成；用户已经确认 Memory v3 采用“原子记忆文件 + 层级 parent + 内置本地向量目录”的方向。当前 Memory v2 仍安全保留，正式用户数据尚未迁移。
 
-**推荐下一步**：使用已经配置 API key 的 OpenAI、DeepSeek 和 GLM 逐家完成真实 Provider 校准，验证最小对话、reasoning、工具调用、中断、usage 和上下文账本映射。
+**推荐下一步**：先完成 Memory v3 阶段 0-2，在隔离目录中建立原子文件、SQLite catalog、FTS、本地 Embedding 和恢复日志；随后再进行真实 Provider 对话校准。
 
-**你现在只需要决定**：是否进入真实 Provider 校准阶段。
+**你现在不需要追加决策**：默认按已确认方案继续设计和实现，但不触碰正式用户记忆。
 
-- 推荐：进入。它是统一 Tool Execution Service、运行时连续执行和 MCP 之前的真实性基础。
-- 前提：至少有一家供应商的可用 API key；未配置的供应商可以暂时跳过。
-- 暂时不用决定：新 UI、更多插件类型、MCP 和发布打包，它们都有更靠后的依赖顺序。
+- 默认 Embedding 在本地生成，Provider `/embeddings` 默认关闭。
+- SQLite 向量目录管理 atom 的路径、层级、FTS、向量、状态和审计，但必须能从原子文件重建。
+- 下一次需要用户明确批准的节点，是隔离迁移全部通过后切换正式用户数据。
+- 暂时不用决定：新 UI、更多插件类型、MCP 和发布打包。
 
 如果已经批准该方向，到这里即可停止阅读并开始执行。
 
@@ -23,7 +24,7 @@
 只按下面顺序展开：
 
 1. [项目状态](decision/project-status.md)：当前真正实现了什么、验证结果和仍未完成的边界。
-2. [架构决策报告](decision/architecture-decision-report.md)：为什么推荐 Provider → Tool Execution Service → Runtime 连续性 → Mode/MCP/插件。
+2. [架构决策报告](decision/architecture-decision-report.md)：为什么推荐 Memory v3 → Provider 对话校准 → Tool Execution Service → Runtime 连续性 → Mode/MCP/插件。
 
 当前事实与测试数字只以项目状态为准，演进顺序只以架构决策报告为准。
 
@@ -39,6 +40,7 @@
 
 ### 当前主线
 
+- [原子记忆与内置向量目录任务书 2026-07-15](taskbooks/memory-atom-vector-catalog-taskbook-2026-07-15.md)：Memory v3 原子文件、层级、本地向量目录、迁移与验收。
 - [Agent Runtime 连续性任务书 2026-07-14](taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md)：Provider 校准、Context、附件、运行中重入、检查点、后台执行和有界并行。
 
 ### 已完成基线

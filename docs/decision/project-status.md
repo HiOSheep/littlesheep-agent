@@ -10,7 +10,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 它还不是可直接宣称“生产就绪”的发行版。主要原因是当前内置模型尚无已验证的最终请求精确计数器、真实供应商验证未完成、活动 run 重启续跑、MCP、安装包发布和真实用户场景验收仍未闭环。因此本项目不使用一个没有权重定义的百分比来伪装精确进度，而用能力状态和验收证据表示总进度。产品方向已明确为：解放用户生产力，让用户专注于想法，LS 负责将想法可靠落地；执行和输出统一采用渐进式披露。
 
-**当前阶段：仓库基元化阶段 0-7 已完成；稳定 facade、版本化 LLM Call Contract、Context 强制约束、记忆意图闸门、理念资源注册和持续维护质量门均已落地。下一主线是完成真实 Provider 校准，再收敛统一 Tool Execution Service 与 Runtime 连续执行。**
+**当前阶段：仓库基元化阶段 0-7 已完成；Memory v3 的原子文件、层级 parent、内置本地向量目录和本地 Embedding 方向已经确认。下一主线先在隔离目录实现 Memory v3 阶段 0-2，不迁移正式用户数据；随后完成真实 Provider 对话校准，再收敛统一 Tool Execution Service 与 Runtime 连续执行。**
 
 ## 能力总览
 
@@ -25,7 +25,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 | 需求判断与任务书 | 已实现 | 支持澄清请求、复杂度判断、TaskBook、步骤验收和局部重规划 | `packages/types/`、`packages/harness/src/stages/` |
 | 步骤级执行与恢复 | 已实现 | 保留已完成步骤证据，失败时按步骤恢复，不重复执行已完成部分；工具循环、权限/超时、失败分类、步骤调度和结构验收已分离，stage facade 不再承接内部细节 | `packages/harness/src/stages/execute.ts`、`execute/`、`recover.ts`、`verify.ts`、`verify/` |
 | 记忆树运行时协议 | 已实现基础闭环 | 根索引到分支索引再到展开/分支内深搜，写入走结构化闸门；新增 `resources` 分支后，注册文档正文仍必须先看目录再按需展开 | `packages/memory-tree/`、`packages/memory-core/`、`packages/runner/` |
-| Memory Service 与 T0-T3 注册 | 阶段 2 与理念资源接入已完成 | v2 文档、T0、元数据资源目录、Bootstrap/Skills/工作区文档、Summary Memory、run-scoped 附件、项目投影和通用资源生命周期均进入真实路径。`PHILOSOPHY.md` 是显式 `philosophy` 资源，只沿索引按预算读取，不进入常驻 Prompt | `packages/memory-tree/src/memory-service.ts`、`memory-service/`、`memory-repository/`、`packages/app/src/main/index.ts` |
+| Memory Service 与 T0-T3 注册 | v2 基础闭环已完成，v3 原子化待实施 | v2 文档、T0、元数据资源目录、Bootstrap/Skills/工作区文档、Summary Memory、run-scoped 附件、项目投影和通用资源生命周期均进入真实路径；但节点仍集中在 `memory-tree/index.json`，旧向量路径仍通过 Provider Embedding。v3 已确认改为原子文件、稳定 parent、可重建 SQLite catalog、FTS 与本地 Embedding | `packages/memory-tree/`、`packages/vector/`、`docs/taskbooks/memory-atom-vector-catalog-taskbook-2026-07-15.md` |
 | 项目身份与路径重绑定 | 已实现基础闭环 | 新项目使用与路径无关的稳定 ID，旧路径派生 ID 原样保留；项目移动或重命名后可从侧边栏重新定位。持久化事务日志幂等迁移会话、归档、记忆 scope、项目投影、工作区文档资源、产物、终端活动、布局、导航状态和当前运行路径；路径冲突会拒绝提交 | `packages/app/src/main/project-index.ts`、`project-rebinding.ts`、`path-rebinding.ts`、`packages/memory-tree/src/memory-service.ts` |
 | 记忆管理控制面 | 已实现基础闭环 | UI 操作真实运行时索引与注册表，可查看、归档、恢复、删除记忆，并以渐进式披露查看资源来源、权威、隐私、索引键和生命周期审计；持久资源支持停用、恢复和只清理登记，缺失的工作区文档可在授权范围内保持原 ID 重新定位；项目记忆支持私有投影启用/同步、缺失与冲突恢复、Git 隐私提示、共享导出、停用和安全清理 | `packages/app/src/renderer/MemoryTreeView.tsx`、`packages/app/src/main/memory-tree-control.ts` |
 | 执行记录与历史重放 | 已实现 | 已完成 run 的 TaskBook、步骤、工具调用、验证、调用契约、Context 快照、记忆意图运行时判定和有界资源 ID 可持久化并重放；附件正文不进入执行日志；这仍不等于活动 run 在应用重启后续跑 | `packages/runner/src/execution-log.ts`、`packages/app/src/renderer/TraceCard.tsx` |
@@ -102,6 +102,15 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 - [总基调、认知架构与仓库基元化任务书](../taskbooks/foundation-cognition-repository-taskbook-2026-07-15.md) 已完成阶段 0-7；package/领域 README、稳定 facade、LLM Call Contract、记忆更新闸门、理念资源和持续质量门均已落地。
 
 ## 未完成方向
+
+### P0：Memory v3 原子记忆与内置向量目录
+
+1. 按语义原子拆分记忆文件，每个 atom 拥有稳定 id、parent、branch、scope、tier、来源、状态和内容哈希；不按固定字符机械切块。
+2. 建立可重建的本地 SQLite catalog，统一管理 atom 路径、父子关系、FTS、向量、状态、operation journal 和审计。
+3. 默认使用本地多语言 Embedding；Provider `/embeddings` 默认关闭，层级与 FTS 在向量不可用时仍正常工作。
+4. 先完成 feature flag、双后端契约测试和隔离迁移；正式用户数据必须另行批准后才能从 v2 切换到 v3。
+
+**验收标准**：断网时记忆可写、可导航、可检索；数据库可从 atom 文件重建；向量检索不能跨越未导航分支；迁移可中断恢复和回滚且不丢节点。
 
 ### P0：持续维护与受控超限拆分
 
@@ -181,10 +190,11 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 ## 推荐后续顺序
 
-1. 优先完成 OpenAI、DeepSeek、GLM 真实冒烟，用 Provider 结果校准 Context、reasoning、usage 与保守安全估算；该项需要用户提供有效凭证。
-2. 在稳定 Call Contract 上收敛统一 Tool Execution Service，使内置、插件和未来 MCP 工具共享审批、超时、清洗、证据与恢复契约。
-3. 按连续性任务书实现 RuntimeEventQueue、TaskBookPatch、有界并行、版本化检查点、重启恢复和后台运行。
-4. 再推进 Mode Registry、daily 到长期记忆的安全蒸馏、插件 API v2 与 MCP；完成真实用户场景验收后规划发布包。
+1. 实现 Memory v3 阶段 0-2：原子文件、层级、SQLite catalog、FTS、本地 Embedding 和恢复日志；只使用隔离数据。
+2. 完成 OpenAI、DeepSeek、GLM 真实对话冒烟，用 Provider 结果校准 Context、reasoning、usage 与保守安全估算；远程 Embedding 不纳入默认路径。
+3. 在稳定 Call Contract 上收敛统一 Tool Execution Service，使内置、插件和未来 MCP 工具共享审批、超时、清洗、证据与恢复契约。
+4. 按连续性任务书实现 RuntimeEventQueue、TaskBookPatch、有界并行、版本化检查点、重启恢复和后台运行。
+5. 再推进 Mode Registry、daily 到长期记忆的安全蒸馏、插件 API v2 与 MCP；完成真实用户场景验收后规划发布包。
 
 ## 维护规则
 
@@ -193,5 +203,6 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 - 不把用户密钥、用户会话、记忆树或工作区文件复制到仓库；运行时数据只在用户数据目录中维护。
 - 顶层分工见 [architecture-principles.md](../principles/architecture-principles.md)，当前架构评估和决策点见 [architecture-decision-report.md](architecture-decision-report.md)，目录和模块归属见 [repository-guide.md](../reference/repository-guide.md)，插件边界见 [plugin-development.md](../reference/plugin-development.md)。
 - 当前先行仓库整理和认知契约见 [总基调、认知架构与仓库基元化任务书 2026-07-15](../taskbooks/foundation-cognition-repository-taskbook-2026-07-15.md)。
+- Memory v3 的原子文件、层级、内置向量目录和迁移边界见 [原子记忆与内置向量目录任务书 2026-07-15](../taskbooks/memory-atom-vector-catalog-taskbook-2026-07-15.md)。
 - 核心能力细节见 [核心 Agent 能力任务书 2026-07-13](../taskbooks/core-agent-capability-taskbook-2026-07-13.md)，拓展工作区细节见 [拓展工作区任务书 2026-07-12](../taskbooks/extension-workspace-taskbook-2026-07-12.md)。
 - Context、记忆分级、附件、运行中重入、有界并行、检查点和后台连续执行的专项计划见 [Agent Runtime 连续性任务书 2026-07-14](../taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md)。
