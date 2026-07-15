@@ -212,7 +212,7 @@ export interface RunContext {
   sessionSummary?: CompactionSummary;
   /** Stable root index for the on-demand runtime memory tree. */
   memoryRootIndex?: string;
-  /** Bootstrap file contents (AGENTS/SOUL/USER/TOOLS/MEMORY.md). */
+  /** Prompt-resident bootstrap contents (AGENTS/SOUL/USER/TOOLS only). */
   bootstrap?: Record<string, string>;
   /** Session transcript (loaded messages). */
   history: Message[];
@@ -256,6 +256,8 @@ export interface RunContext {
   evolutionNotes?: string[];
   /** CAPTURE insights. */
   insights?: string[];
+  /** Runtime decisions for model-proposed memory operations. */
+  memoryIntentDecisions?: import('./runtime-contracts.js').MemoryIntentDecisionRecord[];
   /** Final reply text. */
   reply?: string;
   /** Token usage reported by the model provider for the reply-bearing call. */
@@ -436,6 +438,8 @@ export interface AgentResult {
   taskBook?: TaskBook;
   /** Durable VERIFY decisions associated with this result. */
   verificationHistory?: VerificationRecord[];
+  /** Redacted model-proposal versus runtime-commit memory audit. */
+  memoryIntentDecisions?: import('./runtime-contracts.js').MemoryIntentDecisionRecord[];
   /** Structured request when the result asks the user for information. */
   clarificationRequest?: ClarificationRequest;
   /** Previous clarification answered by this run's inbound message. */

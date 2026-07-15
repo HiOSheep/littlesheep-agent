@@ -1,8 +1,8 @@
 // Conversation rendering and execution-progress presentation.
-import type { TaskBook,VerificationRecord } from '@littlesheep/types'
+import type { TaskBook, VerificationRecord } from '@littlesheep/types'
 import { lastPathSegment } from '../workspace/path-utils'
 import { WorkspaceArtifactRef } from '../workspace/types'
-import { AssistantTurnActivity,ChatMessage,LiveStepEvent,LiveStepStatus,LiveToolEvent } from './types'
+import { AssistantTurnActivity, ChatMessage, LiveStepEvent, LiveStepStatus, LiveToolEvent } from './types'
 
 
 export function upsertLiveStep(

@@ -1,6 +1,6 @@
 // Extension workspace panels, files, terminal, artifacts, and view helpers.
 import {
-type WorkspaceEntry
+  type WorkspaceEntry
 } from '../api'
 
 

@@ -1,5 +1,5 @@
 // Reusable renderer interaction primitives and icons.
-import { useEffect,useLayoutEffect,useRef,useState,type ReactNode,type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { isTransientTriggerTarget } from './transient'
 
 

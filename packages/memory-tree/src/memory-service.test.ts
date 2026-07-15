@@ -60,10 +60,12 @@ describe('MemoryService resource registry', () => {
     writeFileSync(join(dataDir, 'AGENTS.md'), 'AGENT-BODY-SHOULD-NOT-BE-PRELOADED\nAlways verify results.', 'utf8');
     writeFileSync(join(dataDir, 'SOUL.md'), 'Calm and factual.', 'utf8');
     writeFileSync(join(dataDir, 'USER.md'), 'User prefers Chinese.', 'utf8');
+    writeFileSync(join(dataDir, 'PHILOSOPHY.md'), 'PHILOSOPHY-BODY-SHOULD-BE-INDEXED\nIdeas should become reliable outcomes.', 'utf8');
     writeFileSync(join(dataDir, 'TOOLS.md'), 'Use structured tools.', 'utf8');
 
     const bootstrap = await service.loadBootstrapFiles(dataDir);
     expect(bootstrap['AGENTS.md']).toContain('Always verify');
+    expect(bootstrap['PHILOSOPHY.md']).toBeUndefined();
     const rootIndex = await service.rootIndex();
     expect(rootIndex.length).toBeLessThanOrEqual(900);
     expect(rootIndex).toContain('AGENTS.md');
@@ -83,7 +85,9 @@ describe('MemoryService resource registry', () => {
 
     const index = await service.branchIndex('run-resource', 'resources');
     const agents = index.entries.find((entry) => entry.title === 'AGENTS.md');
+    const philosophy = index.entries.find((entry) => entry.title === 'PHILOSOPHY.md');
     expect(agents).toBeDefined();
+    expect(philosophy).toMatchObject({ metadata: { kind: 'philosophy', tier: 1 } });
     const expansion = await service.expand('run-resource', {
       branchId: 'resources',
       nodeId: agents!.id,

@@ -156,7 +156,7 @@ async function checkCanonicalFiles() {
     'docs/project-status.md',
     'docs/repository-guide.md',
     'docs/plugin-development.md',
-    'docs/foundation-cognition-repository-taskbook-2026-07-14.md',
+    'docs/foundation-cognition-repository-taskbook-2026-07-15.md',
     'docs/core-agent-capability-taskbook-2026-07-13.md',
     'docs/agent-core-memory-taskbook-2026-07-14.md',
     'docs/core-focus-maintenance-taskbook-2026-07-13.md',
@@ -261,10 +261,26 @@ async function checkRepositoryNavigation() {
     'packages/app/src/preload',
     'packages/app/src/renderer',
     'packages/app/src/renderer/api',
+    'packages/app/src/renderer/app-shell',
+    'packages/app/src/renderer/approval',
+    'packages/app/src/renderer/chat',
+    'packages/app/src/renderer/composer',
+    'packages/app/src/renderer/runtime',
+    'packages/app/src/renderer/settings',
+    'packages/app/src/renderer/sidebar',
+    'packages/app/src/renderer/ui',
+    'packages/app/src/renderer/workspace',
     'packages/app/src/shared',
     'packages/cli/src/commands',
+    'packages/context/src/context-engine',
     'packages/harness/src/hooks',
+    'packages/harness/src/llm-call-contracts',
     'packages/harness/src/stages',
+    'packages/harness/src/stages/decide',
+    'packages/harness/src/stages/execute',
+    'packages/harness/src/stages/verify',
+    'packages/memory-tree/src/memory-repository',
+    'packages/memory-tree/src/memory-service',
     'packages/plugins/src/channel',
     'packages/tools/src/builtin',
   ]
@@ -290,11 +306,25 @@ async function checkRepositoryNavigation() {
   // These are the current composition hotspots. A later split may lower a
   // baseline; adding new responsibilities must never increase it.
   const hotspotBaselines = {
-    'packages/app/src/renderer/App.tsx': 9935,
+    'packages/app/src/renderer/App.tsx': 7,
+    'packages/app/src/renderer/app-shell/use-app-controller.ts': 576,
+    'packages/app/src/renderer/chat/run-actions.ts': 308,
+    'packages/app/src/renderer/settings/plugins.tsx': 394,
+    'packages/app/src/renderer/ui/icons.tsx': 333,
+    'packages/app/src/renderer/workspace/file-navigator.tsx': 457,
+    'packages/app/src/renderer/workspace/files.tsx': 400,
+    'packages/app/src/renderer/workspace/panel.tsx': 368,
+    'packages/app/src/renderer/workspace/preview-pane.tsx': 446,
+    'packages/app/src/renderer/workspace/terminal.tsx': 556,
+    'packages/app/src/renderer/workspace/use-workspace-layout-controller.ts': 380,
     'packages/app/src/main/local-app-api-server.ts': 241,
     'packages/app/src/renderer/api.ts': 21,
-    'packages/memory-tree/src/memory-repository.ts': 1279,
-    'packages/memory-tree/src/memory-service.ts': 1120,
+    'packages/memory-tree/src/memory-repository.ts': 171,
+    'packages/memory-tree/src/memory-service.ts': 343,
+    'packages/context/src/engine.ts': 180,
+    'packages/harness/src/stages/decide.ts': 169,
+    'packages/harness/src/stages/execute.ts': 46,
+    'packages/harness/src/stages/verify.ts': 145,
     'packages/app/src/renderer/MemoryTreeView.tsx': 1104,
   }
   const growth = []
@@ -309,7 +339,43 @@ async function checkRepositoryNavigation() {
     if (count > baseline) growth.push(`${path}: ${count} > ${baseline}`)
   }
   assert(growth.length === 0, '核心组合热点未继续增长', growth.join(', '))
-  pass('大型生产文件基线', `${largeFiles.length} 个文件超过 300 行；超过 600 行的文件已登记到 docs/module-split-map.md`)
+
+  const splitMap = await readText(join(repoRoot, 'docs', 'module-split-map.md'))
+  const missingFromSplitMap = largeFiles
+    .map((entry) => entry.path)
+    .filter((path) => !splitMap.includes(`\`${path}\``))
+  assert(missingFromSplitMap.length === 0, '300 行以上生产文件已登记', missingFromSplitMap.join(', '))
+
+  const controlled = new Map()
+  const controlledPattern = /^\| `([^`]+)` \| ([^|]+) \| ([^|]+) \| (\d+) \| (\d{4}-\d{2}-\d{2}) \|$/gmu
+  for (const match of splitMap.matchAll(controlledPattern)) {
+    controlled.set(match[1], {
+      owner: match[2].trim(),
+      reason: match[3].trim(),
+      ceiling: Number(match[4]),
+      reviewAt: match[5],
+    })
+  }
+  const hardLimitFiles = largeFiles.filter((entry) => entry.lines > 600)
+  const controlledViolations = []
+  const today = new Date().toISOString().slice(0, 10)
+  for (const entry of hardLimitFiles) {
+    const exception = controlled.get(entry.path)
+    if (!exception) {
+      controlledViolations.push(`${entry.path}: 缺少受控超限登记`)
+      continue
+    }
+    if (!exception.owner || !exception.reason) controlledViolations.push(`${entry.path}: 所有者或原因为空`)
+    if (entry.lines > exception.ceiling) {
+      controlledViolations.push(`${entry.path}: ${entry.lines} > 受控上限 ${exception.ceiling}`)
+    }
+    if (exception.reviewAt < today) controlledViolations.push(`${entry.path}: 复查日期已过 ${exception.reviewAt}`)
+  }
+  for (const path of controlled.keys()) {
+    if (!hardLimitFiles.some((entry) => entry.path === path)) controlledViolations.push(`${path}: 已不超过 600 行，应移除登记`)
+  }
+  assert(controlledViolations.length === 0, '600 行以上生产文件受控', controlledViolations.join(', '))
+  pass('大型生产文件基线', `${largeFiles.length} 个文件超过 300 行；${hardLimitFiles.length} 个受控超过 600 行`)
 }
 
 async function checkModuleBoundaries() {
@@ -363,6 +429,81 @@ async function checkModuleBoundaries() {
   }
 
   assert(violations.length === 0, 'workspace 模块依赖方向有效', violations.join(', '))
+
+  const manifests = new Map()
+  for (const packageDir of packageDirs) {
+    const manifest = await readJson(join(packageDir, 'package.json'), '依赖图 package.json 可解析')
+    if (manifest?.name) manifests.set(manifest.name, manifest)
+  }
+  const graph = new Map()
+  for (const [name, manifest] of manifests) {
+    const dependencies = Object.entries({
+      ...(manifest.dependencies ?? {}),
+      ...(manifest.optionalDependencies ?? {}),
+      ...(manifest.peerDependencies ?? {}),
+    })
+      .filter(([dependency, version]) => manifests.has(dependency) && String(version).startsWith('workspace:'))
+      .map(([dependency]) => dependency)
+    graph.set(name, dependencies)
+  }
+  const cycles = findDependencyCycles(graph)
+  assert(cycles.length === 0, 'workspace 运行时依赖无环', cycles.map((cycle) => cycle.join(' -> ')).join(', '))
+
+  const contractOwners = new Map([
+    ['AttachmentManifest', 'packages/types/src/runtime-contracts.ts'],
+    ['ContextSnapshot', 'packages/types/src/runtime-contracts.ts'],
+    ['LlmCallContract', 'packages/types/src/runtime-contracts.ts'],
+    ['MemoryIntentDecisionRecord', 'packages/types/src/runtime-contracts.ts'],
+    ['ModelRequestSnapshot', 'packages/types/src/runtime-contracts.ts'],
+    ['ResolvedRunConfig', 'packages/types/src/runtime-contracts.ts'],
+    ['RuntimeEventEnvelope', 'packages/types/src/runtime-contracts.ts'],
+    ['TaskBook', 'packages/types/src/agent.ts'],
+    ['VerificationRecord', 'packages/types/src/agent.ts'],
+  ])
+  const duplicateContracts = []
+  for (const packageDir of packageDirs) {
+    for (const file of await collectSourceFiles(join(packageDir, 'src'))) {
+      if (/\.(test|spec)\.[^.]+$/u.test(file)) continue
+      const path = displayPath(file)
+      const content = await readText(file)
+      for (const [contract, owner] of contractOwners) {
+        const declaration = new RegExp(`^export\\s+(?:interface|type)\\s+${contract}\\b`, 'mu')
+        if (path !== owner && declaration.test(content)) duplicateContracts.push(`${path}: ${contract}（权威来源 ${owner}）`)
+      }
+    }
+  }
+  assert(duplicateContracts.length === 0, '核心协议类型保持唯一来源', duplicateContracts.join(', '))
+}
+
+function findDependencyCycles(graph) {
+  const state = new Map()
+  const stack = []
+  const cycles = []
+  const seen = new Set()
+
+  function visit(node) {
+    state.set(node, 1)
+    stack.push(node)
+    for (const dependency of graph.get(node) ?? []) {
+      if ((state.get(dependency) ?? 0) === 0) visit(dependency)
+      else if (state.get(dependency) === 1) {
+        const start = stack.indexOf(dependency)
+        const cycle = [...stack.slice(start), dependency]
+        const key = [...new Set(cycle.slice(0, -1))].sort().join('|')
+        if (!seen.has(key)) {
+          seen.add(key)
+          cycles.push(cycle)
+        }
+      }
+    }
+    stack.pop()
+    state.set(node, 2)
+  }
+
+  for (const node of graph.keys()) {
+    if ((state.get(node) ?? 0) === 0) visit(node)
+  }
+  return cycles
 }
 
 async function checkExtensionArchitectureNames() {

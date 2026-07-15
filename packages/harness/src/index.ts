@@ -38,3 +38,10 @@ export {
   MAX_SNAPSHOT_TOOLS,
 } from './model-observability.js';
 export { buildRunRequestCandidates, type BuildRunRequestCandidatesOptions } from './context-candidates.js';
+export {
+  LlmCallContractViolationError,
+  normalizeLlmCallPurpose,
+  resolveLlmCallContract,
+  type LlmCallContractViolationReason,
+  type ResolveLlmCallContractOptions,
+} from './llm-call-contracts/registry.js';

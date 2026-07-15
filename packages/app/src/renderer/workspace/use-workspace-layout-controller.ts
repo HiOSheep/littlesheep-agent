@@ -1,94 +1,39 @@
 // Owns renderer layout state, two-threshold resize interactions, workspace tabs, drafts, and recovery mirrors.
 import '@xterm/xterm/css/xterm.css'
-import { useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSProperties } from 'react'
-import { flushSync } from 'react-dom'
-import { projectSessions } from '../../shared/session-scope'
+import type { Dispatch, SetStateAction } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
-createProjectFolder,
-deleteProject,
-deleteSession,
-getPathForFile,
-getRuntime,
-getSessionMessages,
-importAttachment,
-listProjects,
-listSessions,
-readWorkspaceLayoutSnapshot,
-rebindProject,
-registerProject,
-runAgentStream,
-saveWorkspaceLayoutSnapshot,
-selectAttachments,
-selectWorkspace,
-updateRuntime,
-type ApprovalRequest,
-type AttachmentRef,
-type PermissionModeId,
-type ProjectMeta,
-type RuntimeState,
-type SessionMeta
+  readWorkspaceLayoutSnapshot,
+  saveWorkspaceLayoutSnapshot,
+  type RuntimeState
 } from '../api'
-import {
-SessionApprovalGrantStore,
-createDraftApprovalScopeKey,
-sessionApprovalScopeKey,
-type ApprovalDecision,
-} from '../approval-grants'
-import { PendingApprovalPrompt } from '../approval/types'
-import { buildArtifactsFromToolCalls,buildTraceData,bumpLiveStepTools,mergeTaskBookIntoLiveSteps,taskStepToLiveStep,updateLastAssistantActivity,upsertLiveStep,upsertLiveTool } from '../chat/activity-model'
-import { historyMessageToChatMessage } from '../chat/assistant-turn'
-import { ChatMessage,LiveStepStatus } from '../chat/types'
+import { clampNumber } from '../app-shell/navigation'
+import { SIDEBAR_COLLAPSED_KEY, SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_KEY, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, TWO_STAGE_RESIZE_MOTION_MS, WORKSPACE_FILE_NAVIGATOR_COLLAPSED_KEY, WORKSPACE_PANEL_COLLAPSED_KEY, WORKSPACE_PANEL_FULLSCREEN_KEY, WORKSPACE_PANEL_TAB_KEY, WORKSPACE_PANEL_WIDTH_KEY, readBooleanPreference, readNumberPreference, readWorkspaceFileDraftsPreference, readWorkspaceLayoutFallbackMarkers, readWorkspaceOpenRequestPreference, readWorkspacePanelOpenTabsPreference, readWorkspacePanelTabPreference, shouldApplyWorkspaceLayoutFallback, writeBooleanPreference, writeNumberPreference, writeStringPreference, writeWorkspaceFileDraftsPreference, writeWorkspaceOpenRequestPreference, writeWorkspacePanelOpenTabsPreference } from '../app-shell/preferences'
 import { syncComposerInputHeight } from '../composer/input-size'
-import { formatUserMessage } from '../composer/message-files'
-import { splitModelRef } from '../composer/runtime-picker'
-import {
-buildContextUsage,
-buildContextUsageSnapshot,
-type ContextUsageSnapshot
-} from '../context-usage'
-import {
-MAX_NAVIGATION_EXPANDED_PATHS,
-MAX_NAVIGATION_HISTORY_ENTRIES,
-MAX_NAVIGATION_OPEN_TABS,
-appendNavigationEntry,
-boundStringList,
-type NavigationHistoryState,
-} from '../navigation-history'
-import { DirectModulePage,SettingsPage } from '../settings/types'
+import { beginSidebarResizeInteraction } from '../sidebar/resize-interaction'
 import { FloatingHelpTip } from '../ui/floating-help'
-import { beginResize,endResize } from '../ui/resize'
 import {
-WORKSPACE_PANEL_WIDTH_DEFAULT,
-WORKSPACE_PANEL_WIDTH_MAX,
-WORKSPACE_PANEL_WIDTH_MIN,
-isWorkspacePanelReopenHotzone,
-resolveWorkspacePanelDrag,
-resolveWorkspacePanelLayout,
-type WorkspacePanelDragMode,
+  WORKSPACE_PANEL_WIDTH_DEFAULT,
+  WORKSPACE_PANEL_WIDTH_MAX,
+  WORKSPACE_PANEL_WIDTH_MIN,
+  isWorkspacePanelReopenHotzone,
+  resolveWorkspacePanelLayout
 } from '../workspace-layout'
 import {
-DEFAULT_WORKSPACE_PANEL_TABS,
-WORKSPACE_PANEL_OPEN_TABS_MAX,
-alignWorkspacePanelStateToRoot,
-dedupeWorkspacePanelTabs,
-hydrateWorkspaceLayoutFallbackSnapshot,
-parseWorkspaceFileTabId,
-rebindWorkspacePanelState,
-rebindWorkspacePath,
-serializeWorkspaceFileDrafts,
-shouldUseWorkspaceLayoutFallback,
-workspaceFileTabId,
-type WorkspaceFileDraftState,
-type WorkspaceFileTabId,
-type WorkspaceOpenRequest,
-type WorkspacePanelTabId
+  DEFAULT_WORKSPACE_PANEL_TABS,
+  WORKSPACE_PANEL_OPEN_TABS_MAX,
+  dedupeWorkspacePanelTabs,
+  hydrateWorkspaceLayoutFallbackSnapshot,
+  parseWorkspaceFileTabId,
+  serializeWorkspaceFileDrafts,
+  shouldUseWorkspaceLayoutFallback,
+  type WorkspaceFileDraftState,
+  type WorkspaceFileTabId,
+  type WorkspaceOpenRequest,
+  type WorkspacePanelTabId
 } from '../workspace-persistence'
-import { dataTransferHasFiles,inferAttachmentKind,isSamePath,lastPathSegment,resolveWorkspacePreviewRoot,workspaceTitle } from './path-utils'
-import { sortSessionsForSidebar,standaloneSessionsForSidebar,useListReorderAnimation } from '../app-shell/list-motion'
-import { clampNumber,navigationSnapshotsEqual,rebindNavigationSnapshotWorkspace,routesEqual } from '../app-shell/navigation'
-import { ACTIVE_SESSION_KEY,PINNED_SESSIONS_KEY,SIDEBAR_COLLAPSED_KEY,SIDEBAR_COLLAPSE_THRESHOLD,SIDEBAR_SETTLE_ANIMATION_MS,SIDEBAR_WIDTH_DEFAULT,SIDEBAR_WIDTH_KEY,SIDEBAR_WIDTH_MAX,SIDEBAR_WIDTH_MIN,TWO_STAGE_RESIZE_MOTION_MS,WORKSPACE_FILE_NAVIGATOR_COLLAPSED_KEY,WORKSPACE_PANEL_COLLAPSED_KEY,WORKSPACE_PANEL_FULLSCREEN_KEY,WORKSPACE_PANEL_MOTION_MS,WORKSPACE_PANEL_TAB_KEY,WORKSPACE_PANEL_WIDTH_KEY,readBooleanPreference,readNumberPreference,readStringPreference,readStringSetPreference,readWorkspaceFileDraftsPreference,readWorkspaceLayoutFallbackMarkers,readWorkspaceOpenRequestPreference,readWorkspacePanelOpenTabsPreference,readWorkspacePanelTabPreference,removePreference,shouldApplyWorkspaceLayoutFallback,writeBooleanPreference,writeNumberPreference,writeStringPreference,writeStringSetPreference,writeWorkspaceFileDraftsPreference,writeWorkspaceOpenRequestPreference,writeWorkspacePanelOpenTabsPreference } from '../app-shell/preferences'
-import { AppNavigationSnapshot,AppRoute,SidebarPanel } from '../app-shell/types'
-import type { Dispatch, SetStateAction } from 'react'
+import { isSamePath } from './path-utils'
+import { beginWorkspacePanelResizeInteraction } from './resize-interaction'
 
 export function useWorkspaceLayoutController({ runtime, currentSession, input, setControlTip, setRuntimeError }: {
   runtime: RuntimeState | null
@@ -274,153 +219,8 @@ export function useWorkspaceLayoutController({ runtime, currentSession, input, s
       syncComposerInputHeight(inputRef.current)
     })
   }
-
   function beginSidebarResize(event: React.PointerEvent<HTMLDivElement>) {
-    if (sidebarCollapsed) return
-    if (event.button !== 0) return
-    event.preventDefault()
-    activeDragCleanupRef.current?.()
-    setControlTip(null)
-    const startX = event.clientX
-    const startWidth = sidebarWidth
-    let draftWidth = startWidth
-    let draftCollapsed = false
-    let frameHandle: number | undefined
-    let settleTimer: number | undefined
-    let thresholdAnimationTimer: number | undefined
-    let pendingVisualWidth = startWidth
-    beginResize('column')
-    shellRef.current?.classList.add('sidebar-drag-live')
-
-    const applyDragFrame = () => {
-      frameHandle = undefined
-      shellRef.current?.style.setProperty('--sidebar-width', `${pendingVisualWidth}px`)
-    }
-
-    const scheduleDragFrame = (visualWidth: number) => {
-      pendingVisualWidth = visualWidth
-      if (frameHandle !== undefined) return
-      frameHandle = window.requestAnimationFrame(applyDragFrame)
-    }
-
-    const clearSettlingClassSoon = () => {
-      window.clearTimeout(settleTimer)
-      settleTimer = window.setTimeout(() => {
-        sidebarSettleTimerRef.current = undefined
-        shellRef.current?.classList.remove('sidebar-settling')
-      }, SIDEBAR_SETTLE_ANIMATION_MS)
-      sidebarSettleTimerRef.current = settleTimer
-    }
-
-    const startThresholdAnimation = () => {
-      window.clearTimeout(thresholdAnimationTimer)
-      shellRef.current?.classList.add('sidebar-threshold-animating')
-      thresholdAnimationTimer = window.setTimeout(() => {
-        shellRef.current?.classList.remove('sidebar-threshold-animating')
-      }, SIDEBAR_SETTLE_ANIMATION_MS)
-    }
-
-    const resetSidebarPreviewVars = () => {
-      shellRef.current?.style.setProperty('--sidebar-content-opacity', '1')
-      shellRef.current?.style.setProperty('--sidebar-content-shift', '0px')
-      shellRef.current?.style.setProperty('--sidebar-cover-opacity', '0')
-      shellRef.current?.style.setProperty('--sidebar-resizer-opacity', '1')
-    }
-
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      const rawWidth = startWidth + moveEvent.clientX - startX
-      const nextCollapsed = rawWidth <= SIDEBAR_COLLAPSE_THRESHOLD
-      if (nextCollapsed !== draftCollapsed) {
-        startThresholdAnimation()
-      }
-      draftCollapsed = nextCollapsed
-
-      if (draftCollapsed) {
-        shellRef.current?.classList.add('sidebar-drag-collapsed')
-        draftWidth = SIDEBAR_WIDTH_MIN
-        scheduleDragFrame(SIDEBAR_WIDTH_MIN)
-        return
-      }
-
-      shellRef.current?.classList.remove('sidebar-drag-collapsed')
-      draftWidth = rawWidth < SIDEBAR_WIDTH_MIN ? SIDEBAR_WIDTH_MIN : clampNumber(rawWidth, SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX)
-      scheduleDragFrame(draftWidth)
-    }
-
-    const settleSidebarOpen = (finalWidth: number) => {
-      const shell = shellRef.current
-      if (!shell) {
-        setSidebarWidth(finalWidth)
-        return
-      }
-
-      shell.classList.remove('sidebar-drag-live')
-      shell.classList.remove('sidebar-drag-collapsed')
-      shell.classList.remove('sidebar-threshold-animating')
-      shell.classList.add('sidebar-settling')
-      sidebarSettleFrameRef.current = window.requestAnimationFrame(() => {
-        sidebarSettleFrameRef.current = undefined
-        shell.style.setProperty('--sidebar-width', `${finalWidth}px`)
-        resetSidebarPreviewVars()
-        setSidebarWidth(finalWidth)
-        setSidebarCollapsed(false)
-        clearSettlingClassSoon()
-      })
-    }
-
-    const handlePointerUp = () => {
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', handlePointerUp)
-      window.removeEventListener('pointercancel', handlePointerUp)
-      window.removeEventListener('blur', handlePointerUp)
-      activeDragCleanupRef.current = null
-      window.clearTimeout(thresholdAnimationTimer)
-      if (frameHandle !== undefined) {
-        window.cancelAnimationFrame(frameHandle)
-        applyDragFrame()
-      }
-
-      if (draftCollapsed) {
-        shellRef.current?.classList.add('sidebar-collapsed')
-        shellRef.current?.classList.remove(
-          'sidebar-drag-live',
-          'sidebar-drag-collapsed',
-          'sidebar-settling',
-          'sidebar-threshold-animating',
-        )
-        shellRef.current?.style.setProperty('--sidebar-width', `${sidebarWidth}px`)
-        resetSidebarPreviewVars()
-        setSidebarCollapsed(true)
-      } else {
-        const finalWidth = clampNumber(draftWidth, SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX)
-        settleSidebarOpen(finalWidth)
-      }
-      endResize('column')
-      scheduleComposerHeightSync()
-    }
-
-    activeDragCleanupRef.current = () => {
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', handlePointerUp)
-      window.removeEventListener('pointercancel', handlePointerUp)
-      window.removeEventListener('blur', handlePointerUp)
-      if (frameHandle !== undefined) window.cancelAnimationFrame(frameHandle)
-      window.clearTimeout(settleTimer)
-      window.clearTimeout(thresholdAnimationTimer)
-      shellRef.current?.classList.remove(
-        'sidebar-drag-live',
-        'sidebar-drag-collapsed',
-        'sidebar-settling',
-        'sidebar-threshold-animating',
-      )
-      resetSidebarPreviewVars()
-      endResize('column')
-      activeDragCleanupRef.current = null
-    }
-    window.addEventListener('pointermove', handlePointerMove)
-    window.addEventListener('pointerup', handlePointerUp)
-    window.addEventListener('pointercancel', handlePointerUp)
-    window.addEventListener('blur', handlePointerUp)
+    beginSidebarResizeInteraction(event, { activeDragCleanupRef, setControlTip, sidebarCollapsed, sidebarWidth, shellRef, sidebarSettleTimerRef, sidebarSettleFrameRef, setSidebarWidth, setSidebarCollapsed, scheduleComposerHeightSync })
   }
 
   function nudgeSidebar(delta: number) {
@@ -431,143 +231,8 @@ export function useWorkspaceLayoutController({ runtime, currentSession, input, s
     setControlTip(null)
     setSidebarCollapsed((value) => !value)
   }
-
   function beginWorkspacePanelResize(event: React.PointerEvent<HTMLDivElement>) {
-    if (workspacePanelCollapsed || workspacePanelFullscreen) return
-    if (event.button !== 0) return
-    event.preventDefault()
-    activeDragCleanupRef.current?.()
-    setControlTip(null)
-    const resizer = event.currentTarget
-    const pointerId = event.pointerId
-    const startX = event.clientX
-    const startWidth = workspacePanelLayout.width
-    let draftWidth = startWidth
-    let draftMode: WorkspacePanelDragMode = 'split'
-    let frameHandle: number | undefined
-    let thresholdAnimationTimer: number | undefined
-    let pendingVisualWidth = startWidth
-    beginResize('column')
-    shellRef.current?.classList.add('workspace-panel-drag-live')
-    try {
-      resizer.setPointerCapture(pointerId)
-    } catch {
-      // Window listeners keep the drag active when pointer capture is unavailable.
-    }
-
-    const applyDragFrame = () => {
-      frameHandle = undefined
-      shellRef.current?.style.setProperty('--workspace-panel-width', `${pendingVisualWidth}px`)
-    }
-
-    const scheduleDragFrame = (visualWidth: number) => {
-      pendingVisualWidth = visualWidth
-      if (frameHandle !== undefined) return
-      frameHandle = window.requestAnimationFrame(applyDragFrame)
-    }
-
-    const finishThresholdAnimation = () => {
-      window.clearTimeout(thresholdAnimationTimer)
-      shellRef.current?.classList.remove('workspace-panel-threshold-animating')
-    }
-
-    const keepThresholdAnimationActive = () => {
-      const shell = shellRef.current
-      if (!shell) return
-      window.clearTimeout(thresholdAnimationTimer)
-      if (!shell.classList.contains('workspace-panel-threshold-animating')) {
-        shell.classList.add('workspace-panel-threshold-animating')
-        // Paint the clamped first-threshold frame before changing the layout mode.
-        void shell.offsetWidth
-      }
-      thresholdAnimationTimer = window.setTimeout(finishThresholdAnimation, WORKSPACE_PANEL_MOTION_MS)
-    }
-
-    const applyDraftMode = (nextMode: WorkspacePanelDragMode) => {
-      if (nextMode === draftMode) return
-      keepThresholdAnimationActive()
-      draftMode = nextMode
-      shellRef.current?.classList.toggle('workspace-panel-drag-collapsed', nextMode === 'collapsed')
-      shellRef.current?.classList.toggle('workspace-panel-drag-fullscreen', nextMode === 'fullscreen')
-    }
-
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      const rawWidth = startWidth - (moveEvent.clientX - startX)
-      const dragResult = resolveWorkspacePanelDrag(rawWidth, workspacePanelLayout)
-      draftWidth = dragResult.width
-      if (dragResult.mode !== draftMode) {
-        if (frameHandle !== undefined) window.cancelAnimationFrame(frameHandle)
-        pendingVisualWidth = draftWidth
-        applyDragFrame()
-        applyDraftMode(dragResult.mode)
-      } else {
-        scheduleDragFrame(draftWidth)
-      }
-    }
-
-    const handlePointerUp = () => {
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', handlePointerUp)
-      window.removeEventListener('pointercancel', handlePointerUp)
-      window.removeEventListener('blur', handlePointerUp)
-      activeDragCleanupRef.current = null
-      if (frameHandle !== undefined) {
-        window.cancelAnimationFrame(frameHandle)
-        applyDragFrame()
-      }
-      if (resizer.hasPointerCapture(pointerId)) resizer.releasePointerCapture(pointerId)
-
-      const shell = shellRef.current
-      flushSync(() => {
-        if (draftMode === 'collapsed') {
-          setWorkspacePanelCollapsed(true)
-          setWorkspacePanelFullscreen(false)
-          return
-        }
-        if (draftMode === 'fullscreen') {
-          setWorkspacePanelCollapsed(false)
-          setWorkspacePanelFullscreen(true)
-          return
-        }
-        const finalWidth = clampNumber(draftWidth, WORKSPACE_PANEL_WIDTH_MIN, workspacePanelLayout.maxSplitWidth)
-        setWorkspacePanelWidth(finalWidth)
-        setWorkspacePanelCollapsed(false)
-        setWorkspacePanelFullscreen(false)
-      })
-      shell?.style.setProperty(
-        '--workspace-panel-width',
-        `${draftMode === 'split' ? draftWidth : workspacePanelLayout.width}px`,
-      )
-      shell?.classList.remove(
-        'workspace-panel-drag-live',
-        'workspace-panel-drag-collapsed',
-        'workspace-panel-drag-fullscreen',
-      )
-      endResize('column')
-      scheduleComposerHeightSync()
-    }
-
-    activeDragCleanupRef.current = () => {
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', handlePointerUp)
-      window.removeEventListener('pointercancel', handlePointerUp)
-      window.removeEventListener('blur', handlePointerUp)
-      if (frameHandle !== undefined) window.cancelAnimationFrame(frameHandle)
-      window.clearTimeout(thresholdAnimationTimer)
-      if (resizer.hasPointerCapture(pointerId)) resizer.releasePointerCapture(pointerId)
-      shellRef.current?.classList.remove(
-        'workspace-panel-drag-live',
-        'workspace-panel-drag-collapsed',
-        'workspace-panel-drag-fullscreen',
-        'workspace-panel-threshold-animating',
-      )
-      endResize('column')
-      activeDragCleanupRef.current = null
-    }
-    window.addEventListener('pointermove', handlePointerMove)
-    window.addEventListener('pointerup', handlePointerUp)
-    window.addEventListener('pointercancel', handlePointerUp)
-    window.addEventListener('blur', handlePointerUp)
+    beginWorkspacePanelResizeInteraction(event, { workspacePanelCollapsed, workspacePanelFullscreen, activeDragCleanupRef, setControlTip, workspacePanelLayout, shellRef, setWorkspacePanelCollapsed, setWorkspacePanelFullscreen, setWorkspacePanelWidth, scheduleComposerHeightSync })
   }
 
   function toggleWorkspacePanel() {

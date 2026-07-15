@@ -16,6 +16,7 @@ import {
   type ProjectMemoryProjectionState,
 } from './api'
 import { Markdown } from './Markdown'
+import { resourceKindLabel } from './memory-resource-labels'
 
 type MemoryBranchFilter = 'all' | MemoryTreeBranchId | 'resources' | 'archive'
 type MemoryTreeResourceOverview = MemoryTreeOverview['resources'][number]
@@ -977,27 +978,6 @@ function branchDescription(filter: MemoryBranchFilter): string {
   if (filter === 'resources') return '查看 Agent、用户、工具、技能和项目文档的权威来源与索引。'
   if (filter === 'archive') return '已暂停运行时介入、仍可恢复的记忆。'
   return '沿索引查看内容、来源、作用范围和近期命中。'
-}
-
-function resourceKindLabel(kind: MemoryTreeResourceOverview['kind']): string {
-  return ({
-    'agent-instructions': '操作规则',
-    persona: '人格配置',
-    'user-profile': '用户资料',
-    'tool-guidance': '工具约定',
-    'legacy-memory': '兼容记忆',
-    skill: '技能',
-    'project-guideline': '项目规范',
-    'ui-guideline': '界面规范',
-    taskbook: '任务书',
-    knowledge: '知识资料',
-    'summary-memory': '会话摘要',
-    'attachment-manifest': '附件清单',
-    attachment: '任务附件',
-    'runtime-event-ledger': '运行时事件账本',
-    'workspace-index': '工作区资源索引',
-    'project-memory-projection': '项目记忆私有投影',
-  } as Record<MemoryTreeResourceOverview['kind'], string>)[kind]
 }
 
 function resourceStatusLabel(status: MemoryTreeResourceOverview['status']): string {

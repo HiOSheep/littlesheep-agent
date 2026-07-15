@@ -2,10 +2,10 @@
 import { useRef } from 'react'
 import { createPortal } from 'react-dom'
 import {
-type PermissionModeId
+  type PermissionModeId
 } from '../api'
 import {
-type ApprovalDecision
+  type ApprovalDecision
 } from '../approval-grants'
 import { FadePresence } from '../ui/presence'
 import { PendingApprovalPrompt } from './types'

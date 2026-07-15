@@ -1,8 +1,8 @@
-# LittleSheep 总基调、认知架构与仓库基元化任务书 2026-07-14
+# LittleSheep 总基调、认知架构与仓库基元化任务书 2026-07-15
 
-最后更新：2026-07-14
-版本：v1.1
-状态：执行中；D1-D6 已于 2026-07-14 按推荐方案确认，阶段 0-2 已完成，阶段 3 进行中
+最后更新：2026-07-15
+版本：v1.4
+状态：已完成；D1-D6 已于 2026-07-14 按推荐方案确认，阶段 0-7 已于 2026-07-15 完成并通过质量门与真实窗口验收
 
 本文把用户提供的本机私有开发原稿转译为可执行的工程任务。原稿保持不变且不进入公开仓库；本文只保存能够长期约束 LittleSheep（LS）的工程结论，不记录个人路径、开发对话或一次性过程。
 
@@ -221,9 +221,11 @@ D1 已确认采用该方案。实现安排在稳定仓库边界之后，不能�
 
 ### 阶段 3：Electron App 分域
 
-状态：进行中。3B Main/Local App API 与 3C Renderer API 已完成，下一步在稳定 API 上执行 3A Renderer 组合壳拆分。
+状态：已完成。Renderer、Main/Local App API 与 Renderer API 均已形成兼容入口和领域边界。
 
 #### 3A Renderer
+
+状态：已完成。`App.tsx` 已从约 9935 行收敛为 7 行兼容入口，Renderer 实现按责任域迁入独立目录。
 
 按以下边界从 `App.tsx` 逐步抽取：
 
@@ -236,6 +238,15 @@ D1 已确认采用该方案。实现安排在稳定仓库边界之后，不能�
 - 各领域 controller/hooks 与纯状态 reducer。
 
 目标：`App.tsx` 最终只承担应用壳、领域组合和顶层路由，目标不超过 300 行；动画和交互状态不能因拆分退化。
+
+完成证据（2026-07-14）：
+
+- `App.tsx` 只组合 `useAppController()` 与 `AppView`，顶层视图位于 `app-shell/`；
+- `app-shell`、`approval`、`chat`、`composer`、`runtime`、`settings`、`sidebar`、`ui` 和 `workspace` 已形成独立领域目录及中文 README；
+- 全局导航/有界历史、审批、run 事件归并、会话/项目动作、侧边栏与拓展工作区两级阈值拖动均已从总控文件中抽离；
+- `use-app-controller.ts` 收敛为 576 行兼容协调器；其余新生产文件均低于 600 行，301-600 行文件已在所属 README 解释保留理由并由仓库质量门锁定上限；
+- 拆分继续使用原 Local App API、共享协议、持久化键和交互组件，不引入新的运行时 API 或用户数据副本；
+- App 双配置 TypeScript 检查已通过；完整质量门和桌面验收结果以 [项目状态](project-status.md) 为准。
 
 #### 3B Main 与 Local App API
 
@@ -282,6 +293,8 @@ D1 已确认采用该方案。实现安排在稳定仓库边界之后，不能�
 
 ### 阶段 4：Memory、Harness 与 Context 分域
 
+状态：已完成。Memory Repository、Memory Service、Context Engine 与 DECIDE/EXECUTE/VERIFY 均已保留兼容 facade，并把内部责任迁入可独立测试的领域模块。
+
 任务：
 
 1. 将 Memory Repository 的文档 IO、迁移、节点写入、资源注册、审计和备份恢复拆成独立基元；
@@ -292,9 +305,21 @@ D1 已确认采用该方案。实现安排在稳定仓库边界之后，不能�
 6. 将 Context Engine 的候选规范化、预算、淘汰、装配、计数和快照拆分；
 7. 对外继续由现有 facade 提供兼容 API，直到调用方迁移完成。
 
+完成证据（2026-07-15）：
+
+- `memory-repository.ts` 从 1279 行收敛为 171 行 facade，文档存储、资源生命周期、节点管理、写入策略和项目路径重绑定进入 `memory-repository/`；
+- `memory-service.ts` 从 1120 行收敛为 343 行 facade，run、摘要、附件、事件、Bootstrap、Skills、工作区资源、项目投影和资源管理进入 `memory-service/`；
+- `ContextEngine` 从约 690 行收敛为 180 行 facade，候选、预算、淘汰、装配、计数和快照进入 `context-engine/`；
+- `decide.ts`、`execute.ts`、`verify.ts` 分别收敛为 169、46、145 行 facade，需求校准、局部重规划、工具循环、权限、失败分类、步骤调度、证据和验证路由进入同名领域目录；
+- `@littlesheep/memory-tree` 79 项、`@littlesheep/context` 11 项、Harness 115 项测试通过，三个包 typecheck 和相关 `git diff --check` 通过；
+- 所有新增生产模块低于 600 行，最大内部实现为 416 行的资源存储，未新增超限例外。
+- 最终质量门通过：`check:repo` 29/29、全量 119 个测试文件（996 项通过、1 项跳过）、26 个 workspace typecheck、全工作区 build 和恢复源检查；桌面快捷方式已刷新，最新 `LittleSheep` 窗口可见且响应正常。
+
 验收：记忆树索引、迁移、项目投影、TaskBook、工具循环、Context 快照和恢复行为与拆分前等价。
 
 ### 阶段 5：LLM Call Contract 与记忆更新策略
+
+状态：已完成。每次模型调用已拥有独立契约，Context、工具、输出预算和记忆提交均由运行时强制约束。
 
 先在阶段 1-4 稳定的模块边界上实现，不提前塞回大型文件。
 
@@ -310,7 +335,18 @@ D1 已确认采用该方案。实现安排在稳定仓库边界之后，不能�
 
 验收：每次模型请求都能回答“为什么调用、给了什么、允许决定什么、应输出什么、记忆意图如何处理”。
 
+完成证据（2026-07-15）：
+
+- `@littlesheep/types` 已定义版本化 `LlmCallContract`，覆盖 CLASSIFY、DECIDE、EXECUTE 工具循环/最终回复、RECOVER、VERIFY、EVOLVE、CAPTURE、REPLY、FINALIZE 和会话压缩；`FINALIZE` 明确禁止模型调用；
+- Context Engine 在预算计算前按契约过滤候选和 System Prompt segment；必需来源越权、缺失、stage 不匹配或禁用调用均失败关闭；模型请求快照持久化完整契约；
+- `prepareModelRequest()` 校验注册工具、步骤工具范围和输出 token 上限，会话压缩使用独立 `session_compaction` purpose；
+- EVOLVE/CAPTURE 的 `read/write/merge/invalidate/conflict/none` 建议经过真实步骤、工具和 VERIFY 证据闸门；只有运行时可提交，`invalidate/conflict` 只延期记录，不直接破坏数据；判定记录进入执行日志；
+- `PHILOSOPHY.md` 已成为用户数据模板和显式 `philosophy` 资源类型，只注册元数据并沿资源索引按预算展开，不进入常驻 Prompt bootstrap；
+- Harness 端到端测试验证连续六次不同 purpose 的契约、Context 和工具策略互不泄漏；Context、Harness、Runner 和 Memory 定向回归均通过。
+
 ### 阶段 6：持续维护质量门
+
+状态：已完成。仓库卫生门已从 25 项扩充为 29 项，并由脚本自动失败关闭。
 
 任务：
 
@@ -324,7 +360,16 @@ D1 已确认采用该方案。实现安排在稳定仓库边界之后，不能�
 
 验收：后续新增文件和模块默认符合本任务书，不依赖人工记忆规则。
 
+完成证据（2026-07-15）：
+
+- 任务书标题/文件名/最后更新日期、Markdown 链接、package 与领域 README、生成物、热点文件和模块依赖方向均自动校验；
+- 所有 300 行以上生产文件必须登记；6 个超过 600 行的文件进入包含原因、所有者、上限和 2026-08-15 复查日期的受控清单；
+- 新增 workspace 运行时依赖环检查、跨包深层 import 检查和核心协议唯一来源检查；
+- 当前 `pnpm.cmd run check:repo` 为 29 项通过、0 项失败。
+
 ### 阶段 7：真实场景回归与决策报告
+
+状态：已完成本任务书范围内的工程与代表性场景验收；真实供应商和真实长任务仍作为后续独立能力门。
 
 任务：
 
@@ -335,6 +380,22 @@ D1 已确认采用该方案。实现安排在稳定仓库边界之后，不能�
 5. 更新项目状态、仓库指南和架构决策报告。
 
 验收：维护成本和修改冲突面有可复现改善，功能与用户数据无回归。
+
+完成证据（2026-07-15）：
+
+- 全量测试 119 个文件，996 项通过、1 项按既有环境条件跳过；26 个 workspace package typecheck、全工作区 build、恢复源检查和 29 项仓库卫生门通过；
+- Electron 构建约 91 秒，完整测试约 37 秒，完整 typecheck 约 38 秒；时间仅作本机本轮参考，是否回归以命令结果为准；
+- 桌面快捷方式已刷新，最新 `LittleSheep` 窗口可见且响应正常；真实 UI 中已打开记忆树资源目录，确认 `PHILOSOPHY.md` 显示为“长期理念”，全局返回可回到原对话；
+- 自动回归覆盖会话、项目、归档、记忆树、插件、设置契约、工作区、附件、渠道和多步骤任务；恢复源检查保留旧 run 缺失执行日志和可选 workspace 索引缺失的诊断警告；
+- 现有会话、记忆和配置未迁移或重写；应用只在缺失时新增获批的 `PHILOSOPHY.md` 模板并注册其资源元数据；
+- 主要热点已从 `App.tsx` 9935→7 行、Local App API 2819→241 行、Renderer API 1088→21 行、Memory Repository 1279→171 行、Memory Service 1120→343 行、Context Engine 690→180 行、DECIDE/EXECUTE/VERIFY 620/867/473→169/46/145 行；公共 facade 与特征测试保留。
+
+后续需要用户决定或提供的事项：
+
+1. 提供可用于脱敏冒烟的 OpenAI、DeepSeek、GLM 凭证，完成真实 Provider 对账；
+2. 编辑并确认用户数据中的 `PHILOSOPHY.md` 长期理念正文；
+3. 在 2026-08-15 前决定 6 个受控超限文件的拆分优先级；
+4. 下一工程主线建议依次为真实 Provider 校准、统一 Tool Execution Service、RuntimeEventQueue/检查点与重启续跑。
 
 ## 6. 建议分支与并行边界
 

@@ -1,9 +1,9 @@
 // Approval UI and request types; authority remains in the main process.
 import {
-type ApprovalRequest
+  type ApprovalRequest
 } from '../api'
 import {
-type ApprovalDecision
+  type ApprovalDecision
 } from '../approval-grants'
 
 

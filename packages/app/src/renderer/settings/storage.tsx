@@ -1,14 +1,14 @@
 // Settings navigation and page composition.
-import { useEffect,useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
-cancelDataRootOperation,
-getDataRootStatus,
-requestDataRootMigration,
-requestDataRootRollback,
-restartApplication,
-selectDataRootTarget,
-type DataRootMigrationState,
-type DataRootStatus
+  cancelDataRootOperation,
+  getDataRootStatus,
+  requestDataRootMigration,
+  requestDataRootRollback,
+  restartApplication,
+  selectDataRootTarget,
+  type DataRootMigrationState,
+  type DataRootStatus
 } from '../api'
 
 

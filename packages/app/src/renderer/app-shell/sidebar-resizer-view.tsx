@@ -1,6 +1,6 @@
 // Pure renderer composition view. Runtime authority and side effects stay in the controller.
 import '@xterm/xterm/css/xterm.css'
-import { SIDEBAR_WIDTH_MAX,SIDEBAR_WIDTH_MIN } from './preferences'
+import { SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN } from './preferences'
 import type { AppController } from './use-app-controller'
 
 

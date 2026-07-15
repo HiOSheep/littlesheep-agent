@@ -6,9 +6,19 @@ import {
   MAX_SNAPSHOT_TOOLS,
   type ContextMessageCandidate,
 } from '@littlesheep/context';
-import type { ModelRequestSnapshot, RunContext, StageName } from '@littlesheep/types';
+import type {
+  LlmCallContract,
+  LlmCallPurpose,
+  ModelRequestSnapshot,
+  RunContext,
+  StageName,
+} from '@littlesheep/types';
 import type { ChatRequest, ChatResponse } from '@littlesheep/llm';
 import { resolveProviderReasoningRequest } from '@littlesheep/config';
+import {
+  LlmCallContractViolationError,
+  resolveLlmCallContract,
+} from './llm-call-contracts/registry.js';
 
 export {
   MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN,
@@ -23,21 +33,21 @@ const requestContextSnapshotIds = new WeakMap<ChatRequest, string>();
 /** Prepare and record the actual outbound request through the shared Context Engine. */
 export function prepareModelRequest(
   ctx: RunContext,
-  stage: StageName,
+  purposeOrStage: LlmCallPurpose | StageName,
   request: ChatRequest,
   candidates?: ContextMessageCandidate[],
 ): ChatRequest {
-  return recordPreparedRequest(ctx, stage, request, candidates).request;
+  return recordPreparedRequest(ctx, purposeOrStage, request, candidates).request;
 }
 
 /** Compatibility helper for observers that do not yet consume the prepared request. */
 export function recordModelRequest(
   ctx: RunContext,
-  stage: StageName,
+  purposeOrStage: LlmCallPurpose | StageName,
   request: ChatRequest,
   candidates?: ContextMessageCandidate[],
 ): ModelRequestSnapshot {
-  return recordPreparedRequest(ctx, stage, request, candidates).snapshot;
+  return recordPreparedRequest(ctx, purposeOrStage, request, candidates).snapshot;
 }
 
 /** Attach provider-reported usage to the exact Context snapshot for a prepared request. */
@@ -71,20 +81,28 @@ export function recordProviderUsage(
 
 function recordPreparedRequest(
   ctx: RunContext,
-  stage: StageName,
+  purposeOrStage: LlmCallPurpose | StageName,
   request: ChatRequest,
   candidates?: ContextMessageCandidate[],
 ): { request: ChatRequest; snapshot: ModelRequestSnapshot } {
   const resolvedRequest = applyResolvedReasoning(ctx, request);
+  const requestedToolNames = resolvedRequest.tools?.map((tool) => tool.function.name) ?? [];
+  const callContract = resolveLlmCallContract(ctx, purposeOrStage, {
+    allowedToolNames: requestedToolNames,
+    maxOutputTokens: resolvedRequest.max_tokens,
+    temperature: resolvedRequest.temperature,
+  });
+  validateModelRequest(callContract, resolvedRequest);
   const prepared = contextEngine.prepare({
     runId: ctx.runId,
     sessionId: ctx.sessionId,
-    stage,
+    stage: callContract.stage,
     requestIndex: (ctx.modelRequests?.at(-1)?.requestIndex ?? 0) + 1,
     provider: ctx.resolvedRunConfig?.provider,
     request: resolvedRequest,
     candidates,
-    compressionThresholdRatio: ctx.contextCompressionThresholdRatio,
+    callContract,
+    compressionThresholdRatio: callContract.budget.contextCompressionThresholdRatio,
   });
   ctx.contextSnapshots ??= [];
   ctx.modelRequests ??= [];
@@ -92,6 +110,49 @@ function recordPreparedRequest(
   pushBounded(ctx.modelRequests, prepared.modelRequestSnapshot, MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN);
   requestContextSnapshotIds.set(prepared.request, prepared.contextSnapshot.id);
   return { request: prepared.request, snapshot: prepared.modelRequestSnapshot };
+}
+
+function validateModelRequest(contract: LlmCallContract, request: ChatRequest): void {
+  if (contract.modelCall === 'forbidden') {
+    throw new LlmCallContractViolationError(
+      'forbidden_model_call',
+      'this purpose must be completed without another model request.',
+      contract.id,
+    );
+  }
+  if (request.max_tokens !== undefined && (
+    !Number.isFinite(request.max_tokens)
+    || request.max_tokens < 0
+    || request.max_tokens > contract.budget.maxOutputTokens
+  )) {
+    throw new LlmCallContractViolationError(
+      'output_budget_exceeded',
+      `requested max_tokens ${request.max_tokens} exceeds budget ${contract.budget.maxOutputTokens}.`,
+      contract.id,
+    );
+  }
+
+  const requestedToolNames = request.tools?.map((tool) => tool.function.name) ?? [];
+  if (contract.toolPolicy.mode === 'none' && requestedToolNames.length > 0) {
+    throw new LlmCallContractViolationError(
+      'tool_forbidden',
+      `this purpose forbids tools but request included: ${requestedToolNames.join(', ')}.`,
+      contract.id,
+    );
+  }
+  const allowedToolNames = new Set(contract.toolPolicy.allowedToolNames);
+  const disallowed = requestedToolNames.filter((name) => !allowedToolNames.has(name));
+  const namedChoice = typeof request.tool_choice === 'object'
+    ? request.tool_choice.function.name
+    : undefined;
+  if (namedChoice && !allowedToolNames.has(namedChoice)) disallowed.push(namedChoice);
+  if (disallowed.length > 0) {
+    throw new LlmCallContractViolationError(
+      'tool_not_allowed',
+      `request referenced tools outside the resolved scope: ${[...new Set(disallowed)].join(', ')}.`,
+      contract.id,
+    );
+  }
 }
 
 function applyResolvedReasoning(ctx: RunContext, request: ChatRequest): ChatRequest {

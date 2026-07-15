@@ -1,20 +1,20 @@
 // Pure renderer composition view. Runtime authority and side effects stay in the controller.
 import '@xterm/xterm/css/xterm.css'
 import {
-coerceReasoningForModelRef
+  coerceReasoningForModelRef
 } from '../../shared/model-capabilities'
 import { AssistantTurnMessage } from '../chat/assistant-turn'
 import { TaskProgressPresence } from '../chat/task-progress-indicator'
 import { AddMenu } from '../composer/add-menu'
 import { ContextUsageIndicator } from '../composer/context-usage-indicator'
-import { AttachmentPreviewCard,MessageFileStrip } from '../composer/message-files'
+import { AttachmentPreviewCard, MessageFileStrip } from '../composer/message-files'
 import { ModePicker } from '../composer/mode-picker'
 import { RuntimePicker } from '../composer/runtime-picker'
 import { WorkspaceChip } from '../composer/workspace-chip'
 import { Markdown } from '../Markdown'
 import { TraceCard } from '../TraceCard'
-import { buildFloatingHelpTip,buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { SendRunIcon,StopRunIcon } from '../ui/icons'
+import { buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
+import { SendRunIcon, StopRunIcon } from '../ui/icons'
 import { attachmentToArtifact } from '../workspace/path-utils'
 import type { AppController } from './use-app-controller'
 

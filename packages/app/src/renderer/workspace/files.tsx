@@ -1,25 +1,25 @@
 // Extension workspace panels, files, terminal, artifacts, and view helpers.
-import { useEffect,useMemo,useRef,useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-listWorkspaceDirectory,
-openWorkspacePath,
-openWorkspacePathInVSCode,
-previewWorkspaceFile,
-saveWorkspaceFile,
-type WorkspaceDirectory,
-type WorkspaceEntry,
-type WorkspacePreview
+  listWorkspaceDirectory,
+  openWorkspacePath,
+  openWorkspacePathInVSCode,
+  previewWorkspaceFile,
+  saveWorkspaceFile,
+  type WorkspaceDirectory,
+  type WorkspaceEntry,
+  type WorkspacePreview
 } from '../api'
 import { StringListUpdater } from '../app-shell/types'
-import { FloatingHelpTip,buildFloatingHelpTip,buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { FolderGlyphIcon,PanelCollapseIcon,RefreshIcon,SearchIcon,VSCodeIcon } from '../ui/icons'
+import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
+import { FolderGlyphIcon, PanelCollapseIcon, RefreshIcon, SearchIcon, VSCodeIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
 import {
-type WorkspaceOpenRequest
+  type WorkspaceOpenRequest
 } from '../workspace-persistence'
-import { WorkspaceDirectoryState,updateWorkspaceDirectoryCache } from './directory-cache'
-import { MAX_WORKSPACE_DIR_ENTRIES_LABEL,WorkspaceTreeNotice,WorkspaceTreeRows,normalizeWorkspaceFilter,workspaceEntryMatchesFilter } from './file-navigator'
-import { compactPath,directoryPath,isSamePath,lastPathSegment,workspaceBreadcrumbs } from './path-utils'
+import { WorkspaceDirectoryState, updateWorkspaceDirectoryCache } from './directory-cache'
+import { MAX_WORKSPACE_DIR_ENTRIES_LABEL, WorkspaceTreeNotice, WorkspaceTreeRows, normalizeWorkspaceFilter, workspaceEntryMatchesFilter } from './file-navigator'
+import { compactPath, directoryPath, isSamePath, lastPathSegment, workspaceBreadcrumbs } from './path-utils'
 import { WorkspacePreviewPane } from './preview-pane'
 
 

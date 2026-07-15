@@ -8,6 +8,8 @@ import {
   RUNTIME_EVENT_VERSION,
   TASK_BOOK_PATCH_VERSION,
   MODEL_REQUEST_SNAPSHOT_VERSION,
+  LLM_CALL_CONTRACT_VERSION,
+  MEMORY_INTENT_DECISION_VERSION,
   TOOL_INVOCATION_RECORD_VERSION,
   EXECUTION_EVIDENCE_VERSION,
   asSessionId,
@@ -21,6 +23,7 @@ import {
   type ResolvedRunConfig,
   type ModeDefinition,
   type ModelRequestSnapshot,
+  type MemoryIntentDecisionRecord,
   type ToolInvocationRecord,
   type ExecutionEvidenceBundle,
   type RuntimeEventEnvelope,
@@ -236,7 +239,52 @@ describe('runtime continuity v1 contracts', () => {
       toolChoice: 'auto',
       temperature: 0,
       stream: false,
+      callContract: {
+        version: LLM_CALL_CONTRACT_VERSION,
+        id: 'core-flow/execute_tool_loop@1',
+        purpose: 'execute_tool_loop',
+        stage: 'execute',
+        modelCall: 'required',
+        goal: 'Read the requested file.',
+        inputs: {
+          sourcePolicy: 'explicit_candidates_only',
+          allowedContextKinds: ['system_prompt', 'user_input'],
+          requiredContextKinds: ['system_prompt', 'user_input'],
+          history: 'none',
+          attachments: 'none',
+        },
+        allowedDecisions: ['propose_registered_tool_call'],
+        outputSchema: { kind: 'text', schemaId: 'execute.v1', strict: false, description: 'result' },
+        memoryIntentPolicy: {
+          allowed: ['read', 'none'],
+          defaultIntent: 'none',
+          commitAuthority: 'runtime_only',
+          requiresEvidence: true,
+        },
+        toolPolicy: {
+          mode: 'step_scoped',
+          allowedToolNames: ['read'],
+          runtimeApprovalRequired: true,
+          maxIterations: 20,
+        },
+        budget: { maxAttempts: 20, maxOutputTokens: 4096 },
+      },
       contextSnapshotId: 'context-1',
+    };
+    const memoryDecision: MemoryIntentDecisionRecord = {
+      version: MEMORY_INTENT_DECISION_VERSION,
+      id: 'memory-intent-1',
+      runId: config.runId,
+      stage: 'evolve',
+      proposedIntent: 'write',
+      decision: 'committed',
+      reason: 'Verified evidence was committed.',
+      branch: 'project',
+      summary: 'Use pnpm.',
+      evidenceRefs: ['run:run-1:verification:1:pass'],
+      writeIntentId: 'memory-intent-1',
+      repositoryDecision: 'created',
+      createdAt: '2026-07-13T00:00:04.000Z',
     };
     const invocation: ToolInvocationRecord = {
       version: TOOL_INVOCATION_RECORD_VERSION,
@@ -278,6 +326,8 @@ describe('runtime continuity v1 contracts', () => {
 
     expect(config.permissionPolicyId).toBe('research');
     expect(request.contextSnapshotId).toBe('context-1');
+    expect(request.callContract?.memoryIntentPolicy.commitAuthority).toBe('runtime_only');
+    expect(memoryDecision.decision).toBe('committed');
     expect(invocation.evidenceIds).toEqual(['evidence-1']);
     expect(evidence.evidence[0]?.sourceRef).toBe('tool:tool-record-1');
   });

@@ -79,6 +79,13 @@ const BOOTSTRAP_TEMPLATES: Record<string, string> = {
     'Keep this concise and update it when preferences change.',
     '',
   ].join('\n'),
+  'PHILOSOPHY.md': [
+    '# PHILOSOPHY.md',
+    '',
+    '这里保存经用户确认的长期价值判断、设计取舍和共同工作理念。',
+    'LS 只在任务相关时沿资源索引按需读取，不会把全文常驻到每轮上下文。',
+    '',
+  ].join('\n'),
   'TOOLS.md': [
     '# TOOLS.md',
     '',

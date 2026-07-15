@@ -30,6 +30,7 @@ import type {
   ContextSnapshot,
   ToolInvocationRecord,
   ExecutionEvidence,
+  MemoryIntentDecisionRecord,
 } from '@littlesheep/types';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
 
@@ -62,6 +63,7 @@ export interface ExecutionLog {
   taskExecution?: TaskExecutionResult;
   taskBook?: TaskBook;
   verificationHistory?: VerificationRecord[];
+  memoryIntentDecisions?: MemoryIntentDecisionRecord[];
   clarificationRequest?: ClarificationRequest;
   clarificationResponse?: ClarificationResponse;
   memoryAccess?: MemoryAccessLedger;
@@ -93,6 +95,7 @@ export interface ExecutionLogInput {
   taskExecution?: TaskExecutionResult;
   taskBook?: TaskBook;
   verificationHistory?: VerificationRecord[];
+  memoryIntentDecisions?: MemoryIntentDecisionRecord[];
   clarificationRequest?: ClarificationRequest;
   clarificationResponse?: ClarificationResponse;
   memoryAccess?: MemoryAccessLedger;
@@ -163,6 +166,7 @@ export class ExecutionLogStore {
       taskExecution: input.taskExecution,
       taskBook: input.taskBook ? { ...input.taskBook, stageResults: undefined } : undefined,
       verificationHistory: input.verificationHistory,
+      memoryIntentDecisions: input.memoryIntentDecisions,
       clarificationRequest: input.clarificationRequest,
       clarificationResponse: input.clarificationResponse,
       memoryAccess: input.memoryAccess,

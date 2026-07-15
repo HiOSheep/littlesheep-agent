@@ -19,6 +19,7 @@ export type MemoryResourceKind =
   | 'agent-instructions'
   | 'persona'
   | 'user-profile'
+  | 'philosophy'
   | 'tool-guidance'
   | 'legacy-memory'
   | 'skill'

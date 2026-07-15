@@ -1,17 +1,17 @@
 // Extension workspace panels, files, terminal, artifacts, and view helpers.
-import { useEffect,useMemo,useRef,useState,type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
-listWorkspaceDirectory,
-openWorkspacePathInVSCode,
-type WorkspaceDirectory,
-type WorkspaceEntry
+  listWorkspaceDirectory,
+  openWorkspacePathInVSCode,
+  type WorkspaceDirectory,
+  type WorkspaceEntry
 } from '../api'
 import { StringListUpdater } from '../app-shell/types'
-import { FloatingHelpTip,buildFloatingHelpTip,buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { FileGlyphIcon,FolderGlyphIcon,PanelCollapseIcon,RefreshIcon,SearchIcon,TreeChevronIcon,VSCodeIcon } from '../ui/icons'
+import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
+import { FileGlyphIcon, FolderGlyphIcon, PanelCollapseIcon, RefreshIcon, SearchIcon, TreeChevronIcon, VSCodeIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
-import { WorkspaceDirectoryState,updateWorkspaceDirectoryCache } from './directory-cache'
-import { compactPath,formatFileSize,workspaceAncestorPaths } from './path-utils'
+import { WorkspaceDirectoryState, updateWorkspaceDirectoryCache } from './directory-cache'
+import { compactPath, formatFileSize, workspaceAncestorPaths } from './path-utils'
 
 
 export function WorkspaceFileNavigator({

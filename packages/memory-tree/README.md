@@ -4,7 +4,7 @@
 
 ## 职责与边界
 
-- 公开入口是 `src/index.ts`；`memory-service.ts` 是消费门面，`memory-repository.ts` 是持久层，`memory-tree.ts` 负责导航。
+- 公开入口是 `src/index.ts`；`memory-service.ts` 与 `memory-repository.ts` 是稳定门面，内部协调器分别位于 `memory-service/` 和 `memory-repository/`，`memory-tree.ts` 负责导航。
 - 读取遵循根索引、分支索引、按需展开和分支内深搜；写入记录 parent、scope、tier、来源与理由。
 - 禁止默认跨树向量召回、复制 UI 专用记忆，或让用户项目文件自动变成长期记忆。
 

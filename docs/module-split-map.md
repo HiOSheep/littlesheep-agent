@@ -1,6 +1,6 @@
 # LittleSheep 模块拆分地图
 
-最后更新：2026-07-14
+最后更新：2026-07-15
 
 本文件记录大型生产文件的当前所有权、目标边界和拆分顺序。它是仓库基元化任务书的阶段产物，不替代项目状态，也不把行数当成唯一质量指标。
 
@@ -16,18 +16,12 @@
 
 | 当前文件 | 基线行数 | 当前责任 | 目标边界 | 所有权 |
 | --- | ---: | --- | --- | --- |
-| `packages/app/src/renderer/App.tsx` | 9935 | 应用壳、导航、侧边栏、聊天、设置、工作区、浮层和大量状态 | `app-shell`、`navigation`、`sidebar`、`chat`、`settings`、`workspace`、`overlays` 领域组件与 controller | B |
-| `packages/memory-tree/src/memory-repository.ts` | 1279 | 文档 IO、迁移、节点、资源、审计和备份 | repository facade + `document-store`、`migration`、`node-store`、`resource-store`、`audit-store` | D |
-| `packages/memory-tree/src/memory-service.ts` | 1120 | run/project/bootstrap/skills/附件/事件资源协调 | service facade + scope、bootstrap、skill、attachment、event、project 协调器 | D |
 | `packages/app/src/renderer/MemoryTreeView.tsx` | 1104 | 记忆树加载、管理、资源和项目投影视图 | controller + tree、resource、audit、project-projection 组件 | B |
-| `packages/harness/src/stages/execute.ts` | 867 | 步骤调度、工具循环、权限、错误和证据 | stage facade + scheduler、tool-loop、permission、failure、evidence | E |
 | `packages/channels/qqbot/src/plugin.ts` | 801 | QQ 协议、连接、消息、发送和生命周期 | transport、protocol、message-mapper、sender、lifecycle | C |
 | `packages/memory-tree/src/project-memory-projection.ts` | 778 | 投影生成、同步、冲突、恢复和删除 | projection facade + render、sync、conflict、lifecycle | D |
-| `packages/context/src/engine.ts` | 690 | 候选规范化、预算、淘汰、装配、计数和快照 | engine facade + candidates、budget、eviction、assembly、ledger、snapshot | E |
 | `packages/memory-tree/src/memory-tree.ts` | 650 | 根索引、导航、展开、搜索和预算 | tree facade + index、navigation、expansion、branch-search、budget | D |
 | `packages/app/src/main/data-root-migration.ts` | 637 | locator、清单、复制、重绑定、提交、恢复和回滚 | migration facade + plan、manifest、copy、rebind、commit、recovery | C |
 | `packages/channels/feishu/src/plugin.ts` | 632 | 飞书验签、事件、消息、发送和生命周期 | verification、transport、message-mapper、sender、lifecycle | C |
-| `packages/harness/src/stages/decide.ts` | 620 | 需求校准、复杂度、TaskBook、解析和重规划 | stage facade + calibration、complexity、taskbook-parser、replan | E |
 
 ## 软上限审查队列
 
@@ -40,9 +34,9 @@
 | `packages/app/src/main/attachment-cache.ts` | 486 | 附件索引、配额、清理和校验 | 分离 index、quota、cleanup、validation | C |
 | `packages/runner/src/runner.ts` | 484 | run 生命周期与依赖协调 | 分离 run lifecycle、session、memory、stream 协调器 | E |
 | `packages/memory-tree/src/types.ts` | 484 | 记忆树内部和持久化类型 | 按 node、resource、audit、projection 分组 | D |
-| `packages/harness/src/stages/verify.ts` | 473 | 步骤验收、缺口分类和恢复反馈 | 分离 criteria、gap、recovery-feedback | E |
 | `packages/llm/src/client.ts` | 460 | 请求、流式、reasoning、重试适配 | 分离 request builder、stream parser、response mapper | E |
 | `packages/types/src/runtime-contracts.ts` | 449 | 多类运行时版本契约 | 按 context、event、checkpoint、execution 分组并保持 barrel | E |
+| `packages/memory-tree/src/memory-repository/resource-store.ts` | 439 | 资源注册、生命周期、重绑定和审计 | 分离 registry、lifecycle、rebind、audit | D |
 | `packages/memory-tree/src/workspace-resource-index.ts` | 446 | 工作区资源索引、游标和更新 | 分离 store、scanner state、change-set | D |
 | `packages/memory-core/src/archive.ts` | 445 | daily 归档、摘要和回滚 | 分离 selection、distillation、commit、rollback | D |
 | `packages/app/src/renderer/workspace-persistence.ts` | 381 | 工作区恢复快照与规范化 | 分离 schema、normalize、serialize | B |
@@ -57,6 +51,18 @@
 | `packages/runner/src/execution-log.ts` | 316 | 执行日志 schema、写入和读取 | 分离 codec、store、query | E |
 | `packages/channels/webhook/src/plugin.ts` | 310 | Webhook server、鉴权和消息 | 分离 server、auth、mapper、sender | C |
 | `packages/experience/src/experience-store.ts` | 309 | 经验索引、备份、并发和衰减 | 分离 index、backup、mutation、decay | D |
+| `packages/app/src/renderer/app-shell/use-app-controller.ts` | 576 | Renderer 跨领域兼容协调、启动恢复和视图快照 | 保持装配职责；Runtime/附件 effect 契约稳定后再下沉 | B |
+| `packages/app/src/renderer/workspace/terminal.tsx` | 556 | PTY 生命周期、SSE、尺寸和命令历史 | 保持终端事务边界，禁止吸收工作区导航职责 | B |
+| `packages/app/src/renderer/workspace/file-navigator.tsx` | 457 | 目录缓存、筛选、展开路径和文件树 | 建立树状态特征测试后再拆 controller/view | B |
+| `packages/app/src/renderer/workspace/preview-pane.tsx` | 446 | 文件分派、编辑草稿、保存审批和预览错误 | 建立文件打开事务测试后再拆编辑与预览 | B |
+| `packages/app/src/renderer/workspace/files.tsx` | 400 | 文件工作面组合 | 保持组合职责，不接收标签壳或终端逻辑 | B |
+| `packages/app/src/renderer/settings/plugins.tsx` | 394 | 插件发现、筛选、启停、来源确认和代码授权 | 新能力进入插件宿主或独立设置组件 | B |
+| `packages/app/src/renderer/workspace/use-workspace-layout-controller.ts` | 380 | 布局恢复、标签/草稿持久化和拖动入口 | 两级阈值算法保持在独立 interaction 模块 | B |
+| `packages/app/src/renderer/workspace/panel.tsx` | 368 | 拓展工作区标签壳 | 保持纯组合，领域内容继续下沉 | B |
+| `packages/app/src/renderer/ui/icons.tsx` | 333 | 无状态声明式图标集合 | 出现独立图标家族时按家族拆分 | B |
+| `packages/harness/src/stages/execute/tool-loop.ts` | 326 | 单步模型工具循环、审批、失败记录和消息续接 | 分离 loop policy、invocation adapter 与 transcript | E |
+| `packages/context/src/context-engine/snapshots.ts` | 310 | Context/模型请求快照、哈希和有界裁剪 | 分离 snapshot builders 与 hash/shape codec | E |
+| `packages/app/src/renderer/chat/run-actions.ts` | 308 | SSE 顺序、活动归并、审批、停止和收尾 | 建立事件 reducer 特征测试后再拆分 | B |
 
 ## 已完成拆分
 
@@ -64,14 +70,21 @@
 | --- | ---: | --- | --- | --- |
 | `packages/app/src/renderer/api.ts` | 1088 | 21 行兼容 barrel | `run`、`sessions`、`runtime`、`attachments`、`workspace-files`、`terminal`、`extensions`、`memory` 与 `common` | 2026-07-14 |
 | `packages/app/src/main/local-app-api-server.ts` | 2819 | 241 行 server 组合入口 | HTTP 基元、run、projects、sessions/archive、runtime、memory、workspace、terminal、extensions、公共 contracts 与实例级资源清理 | 2026-07-14 |
+| `packages/app/src/renderer/App.tsx` | 9935 | 7 行兼容入口 | `app-shell`、`approval`、`chat`、`composer`、`runtime`、`settings`、`sidebar`、`ui` 与 `workspace` 领域视图和 controller | 2026-07-14 |
+| `packages/memory-tree/src/memory-repository.ts` | 1279 | 171 行 repository facade | 文档存储/迁移、资源生命周期、节点管理、写入策略、意图写入和项目路径重绑定 | 2026-07-15 |
+| `packages/memory-tree/src/memory-service.ts` | 1120 | 343 行 service facade | run、摘要、附件、事件、Bootstrap、Skills、工作区资源、项目投影和资源管理协调器 | 2026-07-15 |
+| `packages/context/src/engine.ts` | 690 | 180 行 engine facade | candidates、budget、eviction、assembly、counting 与 snapshots | 2026-07-15 |
+| `packages/harness/src/stages/decide.ts` | 620 | 169 行 stage facade | 模型返回契约、需求/TaskBook 规范化、澄清请求和局部重规划 | 2026-07-15 |
+| `packages/harness/src/stages/execute.ts` | 867 | 46 行 stage facade | guidance、tool-loop、权限/超时、failure-policy、TaskBook runners 与 final-reply | 2026-07-15 |
+| `packages/harness/src/stages/verify.ts` | 473 | 145 行 stage facade | 裁决契约、结构证据、步骤状态、验证记录和恢复路由 | 2026-07-15 |
 
 ## 拆分顺序
 
 1. 阶段 2 先冻结共享契约、兼容 facade 和特征测试。
 2. C 与 D 优先拆 Main/API 和 Memory，减少 B/E 的跨层依赖。
-3. B 在 API barrel 稳定后拆 Renderer；任何交互变化都按真实窗口验收。
-4. E 最后拆 Harness/Context 并实现 LLM Call Contract，避免在不稳定接口上重复迁移。
-5. 每次只移动一个责任域，完成定向测试和全量质量门后再继续。
+3. B 已在 API barrel 稳定后完成 Renderer 组合壳拆分；后续 Renderer 细分继续按真实窗口验收。
+4. D/E 所有权下的 Memory、Harness/Context 已完成 facade 化与内部领域拆分，LLM Call Contract 和记忆意图闸门已在稳定边界上接入。
+5. 下一步收敛统一 Tool Execution Service；每次只移动一个责任域，完成定向测试和全量质量门后再继续。
 
 ## 当前共享契约与 facade
 
@@ -85,10 +98,19 @@
 | 记忆控制面 | `packages/app/src/shared/memory-control-contracts.ts` | `memory-tree-control.ts`、`renderer/api.ts` | memory API router and MemoryTreeView controller |
 | 附件元数据 | `packages/app/src/shared/attachment-contracts.ts` | `attachments.ts`、`renderer/api.ts` | attachment API/import service |
 | Local App API 路由 | `packages/app/src/shared/local-app-api-routes.ts` | `local-app-api-server.ts`、`renderer/api.ts` | 分域 router modules; static and dynamic path encoding remains centralized |
-| Agent 状态机和模型请求 | `packages/types/` | `runner`、`harness` public barrels | LLM Call Contract and stage-specific ports |
+| Agent 状态机和模型请求 | `packages/types/` | `runner`、`harness` public barrels | 统一 Tool Execution Service 与 RuntimeEventQueue |
 
-当前 facade 输入输出：`startLocalAppApiServer(initialRunner, options) → LocalAppApiServer`、`createRunner(options) → AgentRunner`、`MemoryService`、`ContextEngine`、各 Harness stage function 和 renderer `api.ts` 导出函数。阶段 3-4 只能在这些入口稳定、特征测试通过后移动内部实现。
+当前 facade 输入输出：`startLocalAppApiServer(initialRunner, options) → LocalAppApiServer`、`createRunner(options) → AgentRunner`、`MemoryService`、`ContextEngine`、各 Harness stage function 和 renderer `api.ts` 导出函数。Call Contract 已通过这些稳定入口接入；后续工具执行与实时事件职责同样不得重新塞回 facade。
 
-## 例外登记
+## 受控超限清单
 
-当前没有批准的永久例外。301-600 行文件可以暂缓拆分，但不得继续增加新的责任；超过 600 行文件只能接受用于 facade、特征测试或完成拆分的兼容修改。例外必须记录文件、原因、所有者、上限和复查日期。
+以下不是永久例外，而是有界拆分队列。301-600 行文件继续由上方软上限队列管理；超过 600 行文件只能接受修复、特征测试或完成拆分所需的兼容修改，且不得超过登记上限。到期时必须复查、下调上限或完成拆分。
+
+| 文件 | 所有者 | 暂缓原因 | 行数上限 | 复查日期 |
+| --- | --- | --- | ---: | --- |
+| `packages/app/src/renderer/MemoryTreeView.tsx` | B / Renderer Memory | 先冻结记忆管理、资源和投影交互特征，再按 controller/view 拆分 | 1104 | 2026-08-15 |
+| `packages/channels/qqbot/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与协议适配端口稳定后拆分 | 801 | 2026-08-15 |
+| `packages/memory-tree/src/project-memory-projection.ts` | D / Memory | 投影事务、冲突与恢复必须在特征测试覆盖后迁移 | 780 | 2026-08-15 |
+| `packages/memory-tree/src/memory-tree.ts` | D / Memory | 根索引、导航和预算状态共享不变量，先冻结 facade | 650 | 2026-08-15 |
+| `packages/channels/feishu/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与事件验签端口稳定后拆分 | 632 | 2026-08-15 |
+| `packages/app/src/main/data-root-migration.ts` | C / App Main | 数据迁移事务需保持恢复与回滚原子性，先补齐阶段检查点 | 637 | 2026-08-15 |

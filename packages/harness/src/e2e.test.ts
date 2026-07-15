@@ -76,6 +76,24 @@ describe('e2e agent loop', () => {
       'final_delta',
     ]);
     expect(deltas).toEqual(['all done']);
+    expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
+      'classify',
+      'decide',
+      'execute_tool_loop',
+      'verify',
+      'evolve',
+      'capture',
+    ]);
+    for (const request of ctx.modelRequests ?? []) {
+      const contract = request.callContract;
+      const context = ctx.contextSnapshots?.find((snapshot) => snapshot.id === request.contextSnapshotId);
+      expect(contract).toBeDefined();
+      expect(context).toBeDefined();
+      expect(context?.items.every((item) => contract!.inputs.allowedContextKinds.includes(item.kind))).toBe(true);
+    }
+    expect(ctx.modelRequests?.find((request) => request.callContract?.purpose === 'verify')
+      ?.callContract?.toolPolicy.allowedToolNames).toEqual([]);
+    expect(new Set(ctx.modelRequests?.map((request) => request.callContract)).size).toBe(ctx.modelRequests?.length);
   });
 
   it('does not publish an unverified draft before a partial replan succeeds', async () => {

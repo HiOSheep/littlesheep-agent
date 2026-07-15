@@ -1,10 +1,10 @@
 // Primary navigation, project/session trees, and sidebar actions.
-import { useEffect,useLayoutEffect,useRef,useState,type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { clampNumber } from '../app-shell/navigation'
-import { buildFloatingHelpTip,buildFloatingHelpTipFromElement,FloatingHelpTip } from '../ui/floating-help'
+import { buildFloatingHelpTip, buildFloatingHelpTipFromElement, FloatingHelpTip } from '../ui/floating-help'
 import { useDismissOnOutside } from '../ui/presence'
-import { SIDEBAR_MENU_EVENT,transientTriggerProps } from '../ui/transient'
+import { SIDEBAR_MENU_EVENT, transientTriggerProps } from '../ui/transient'
 
 
 export interface SidebarMenuItem {

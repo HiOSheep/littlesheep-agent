@@ -2,19 +2,19 @@
 import type { FitAddon } from '@xterm/addon-fit'
 import type { Terminal as XTermTerminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
-import { useEffect,useMemo,useRef,useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-closeWorkspaceTerminalSession,
-createWorkspaceTerminalSession,
-interruptWorkspaceTerminalSession,
-listWorkspaceTerminalActivity,
-resizeWorkspaceTerminalSession,
-streamWorkspaceTerminalSession,
-writeWorkspaceTerminalSession,
-type TerminalActivityRecord
+  closeWorkspaceTerminalSession,
+  createWorkspaceTerminalSession,
+  interruptWorkspaceTerminalSession,
+  listWorkspaceTerminalActivity,
+  resizeWorkspaceTerminalSession,
+  streamWorkspaceTerminalSession,
+  writeWorkspaceTerminalSession,
+  type TerminalActivityRecord
 } from '../api'
 import { formatDurationMs } from '../chat/activity-model'
-import { FloatingHelpTip,buildFloatingHelpTip,buildFloatingHelpTipFromElement } from '../ui/floating-help'
+import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { RefreshIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
 import { compactPath } from './path-utils'

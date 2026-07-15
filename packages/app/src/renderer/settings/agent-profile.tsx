@@ -1,7 +1,7 @@
 // Settings navigation and page composition.
-import { useEffect,useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
-type AgentProfileId
+  type AgentProfileId
 } from '../api'
 import { PROFILE_OPTIONS } from '../runtime/options'
 

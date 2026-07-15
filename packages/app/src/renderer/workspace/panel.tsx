@@ -1,25 +1,25 @@
 // Extension workspace panels, files, terminal, artifacts, and view helpers.
 import { StringListUpdater } from '../app-shell/types'
 import { ChatMessage } from '../chat/types'
-import { FloatingHelpTip,buildFloatingHelpTip,buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { CloseMiniIcon,FileGlyphIcon,PanelCollapseIcon,PanelFullscreenIcon,WorkspaceFeatureIcon } from '../ui/icons'
+import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
+import { CloseMiniIcon, FileGlyphIcon, PanelCollapseIcon, PanelFullscreenIcon, WorkspaceFeatureIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
 import {
-isWorkspacePanelTab,
-parseWorkspaceFileTabId,
-workspaceFileTabId,
-type WorkspaceFileDraftState,
-type WorkspaceFileTabId,
-type WorkspaceOpenRequest,
-type WorkspacePanelTab,
-type WorkspacePanelTabId
+  isWorkspacePanelTab,
+  parseWorkspaceFileTabId,
+  workspaceFileTabId,
+  type WorkspaceFileDraftState,
+  type WorkspaceFileTabId,
+  type WorkspaceOpenRequest,
+  type WorkspacePanelTab,
+  type WorkspacePanelTabId
 } from '../workspace-persistence'
 import { WorkspaceAddMenu } from './add-menu'
 import { WorkspaceArtifacts } from './artifacts'
 import { WorkspaceFileNavigator } from './file-navigator'
 import { WorkspaceFiles } from './files'
 import { WorkspaceOverview } from './overview'
-import { isSamePath,lastPathSegment } from './path-utils'
+import { isSamePath, lastPathSegment } from './path-utils'
 import { WorkspacePlaceholder } from './placeholder'
 import { WorkspaceFileView } from './preview-pane'
 import { WorkspaceTerminal } from './terminal'

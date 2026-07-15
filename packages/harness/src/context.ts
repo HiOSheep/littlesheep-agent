@@ -94,7 +94,7 @@ export interface BuildRunContextOptions {
 }
 
 /**
- * Read bootstrap files (AGENTS/SOUL/USER/TOOLS/MEMORY.md) from a directory.
+ * Read only prompt-resident bootstrap files. MEMORY/PHILOSOPHY remain indexed resources.
  * Missing files are skipped (not errors). Returns a map keyed by stem
  * (e.g. "AGENTS" → contents).
  */

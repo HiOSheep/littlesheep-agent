@@ -2,8 +2,8 @@
 import '@xterm/xterm/css/xterm.css'
 import { SidebarActionMenu } from '../sidebar/action-menu'
 import { SessionRow } from '../sidebar/session-row'
-import { buildFloatingHelpTip,buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { ArchiveIcon,ComposeIcon,MoreIcon } from '../ui/icons'
+import { buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
+import { ArchiveIcon, ComposeIcon, MoreIcon } from '../ui/icons'
 import type { AppController } from './use-app-controller'
 
 

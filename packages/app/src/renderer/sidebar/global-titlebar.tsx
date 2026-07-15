@@ -1,5 +1,5 @@
 // Primary navigation, project/session trees, and sidebar actions.
-import { FloatingHelpTip,buildFloatingHelpTip,buildFloatingHelpTipFromElement } from '../ui/floating-help'
+import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { SettingsGearIcon } from '../ui/icons'
 
 

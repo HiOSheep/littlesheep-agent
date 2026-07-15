@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-07-14
+最后更新：2026-07-15
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](project-status.md) 为准。
 
@@ -15,7 +15,7 @@
 | [module-split-map.md](module-split-map.md) | 大型生产文件的所有权、目标边界、分支归属和拆分顺序 | 文件越过阈值、完成拆分或批准例外时 |
 | [core-agent-flow-guidelines.md](core-agent-flow-guidelines.md) | Core Flow、TaskBook、验证、恢复和记忆运行时的专项规范 | 核心流程契约变化时 |
 | [ui-interaction-guidelines.md](ui-interaction-guidelines.md) | UI 视觉与交互专项规范 | 新增或调整交互规则时 |
-| [总基调、认知架构与仓库基元化任务书 2026-07-14](foundation-cognition-repository-taskbook-2026-07-14.md) | 总基调的工程转译、仓库基元化、LLM Call Contract、身份与数据边界 | 仓库整理阶段、认知契约或数据边界发生变化时 |
+| [总基调、认知架构与仓库基元化任务书 2026-07-15](foundation-cognition-repository-taskbook-2026-07-15.md) | 总基调的工程转译、仓库基元化、LLM Call Contract、身份与数据边界 | 仓库整理阶段、认知契约或数据边界发生变化时 |
 | [核心 Agent 能力任务书 2026-07-13](core-agent-capability-taskbook-2026-07-13.md) | 核心 Agent 能力的阶段设计、验收标准和完成记录 | 阶段契约或实现范围变化时；不维护全仓最新测试数字 |
 | [Agent 核心与记忆系统任务书 2026-07-14](agent-core-memory-taskbook-2026-07-14.md) | 核心闭环、记忆闭环和真实场景验收基线 | 核心收敛顺序或验收门槛变化时 |
 | [核心收敛小任务书 2026-07-13](core-focus-maintenance-taskbook-2026-07-13.md) | 冻结非必要扩张并集中处理阻断 Bug 和核心收敛 | 核心收敛范围或冻结条件变化时 |
@@ -69,11 +69,11 @@
 | `packages/types/` | Agent、消息、会话、工具、记忆、澄清请求，以及 Mode、运行决议、Context、附件、运行事件、TaskBookPatch、检查点、模型请求和执行证据等内部 v1 契约。 |
 | `packages/classifier/` | 闲聊/问题/不清晰分类，含规则快速路径和模型兜底。 |
 | `packages/prompt/` | 系统提示词、行为 profile、工作区信息和记忆树根索引的装配。 |
-| `packages/harness/` | 硬控制流状态机、TaskBook、各 stage、hooks、局部重规划和验证。 |
+| `packages/harness/` | 硬控制流状态机、TaskBook、各 stage、hooks、局部重规划和验证；`src/stages/decide/`、`execute/`、`verify/` 分别拥有需求校准、工具执行和结构验收的内部基元。 |
 | `packages/runner/` | 运行时装配、单次 run、流式事件、执行日志和基础设施依赖注入。 |
 | `packages/llm/` | OpenAI-compatible 客户端、供应商请求、流式输出、重试和 usage 类型。 |
 | `packages/config/` | 配置 schema、默认值、供应商预置、模型选择和用户配置加载。 |
-| `packages/context/` | Context 候选排序、模型窗口预算、可注入精确 token 计数、预算淘汰、压缩阈值信号以及脱敏 `ContextSnapshot` / `ModelRequestSnapshot`。阶段 1 主要数据链已接通，但仍不负责记忆存储、会话存储或 Provider 调用。 |
+| `packages/context/` | Context 候选排序、模型窗口预算、可注入精确 token 计数、预算淘汰、压缩阈值信号以及脱敏 `ContextSnapshot` / `ModelRequestSnapshot`。`src/engine.ts` 是兼容 facade，内部实现位于 `src/context-engine/`；本包不负责记忆存储、会话存储或 Provider 调用。 |
 | `packages/branding/` | 品牌配置和用户数据目录布局。 |
 
 ### 记忆、学习与安全
@@ -113,21 +113,21 @@
 
 | 需求类型 | 主要所有者 | 首要入口 | 主要测试 |
 | --- | --- | --- | --- |
-| Agent 状态机、TaskBook、验证或恢复 | `packages/harness/` | `src/default-harness.ts`、`src/stages/` | `src/default-harness.test.ts`、`src/stages/*.test.ts` |
+| Agent 状态机、TaskBook、验证或恢复 | `packages/harness/` | `src/default-harness.ts`、`src/stages/*.ts`；复杂阶段内部实现位于 `src/stages/decide/`、`execute/`、`verify/` | `src/default-harness.test.ts`、`src/stages/*.test.ts`、`src/e2e.test.ts` |
 | 单次 run、流式事件、执行日志 | `packages/runner/` | `src/runner.ts`、`src/execution-log.ts` | `src/runner.test.ts`、`src/execution-log.test.ts` |
 | 公共运行契约 | `packages/types/` | `src/index.ts`、`src/runtime-contracts.ts` | `src/runtime-contracts.test.ts`、`test/core-agent-contracts.test.ts` |
-| Context 候选、预算、计数和快照 | `packages/context/` | `src/engine.ts` | `src/engine.test.ts`、Harness Context 测试 |
+| Context 候选、预算、计数和快照 | `packages/context/` | `src/engine.ts` facade、`src/context-engine/` | `src/engine.test.ts`、Harness Context/观测测试 |
 | Provider 请求、流式与 usage | `packages/llm/` | `src/client.ts` | `src/client.test.ts`、Provider smoke 脚本 |
 | 配置、Provider/模型能力 | `packages/config/` | `src/schema.ts`、`src/model-capabilities.ts` | `src/schema.test.ts`、App shared capability 测试 |
 | Prompt 与行为 profile | `packages/prompt/` | `src/builder.ts`、`src/profiles.ts` | `src/builder.test.ts`、`src/profiles.test.ts` |
-| 记忆树、资源注册与项目投影 | `packages/memory-tree/` | `src/memory-service.ts`、`src/memory-repository.ts` | `src/memory-*.test.ts`、`src/project-*.test.ts` |
+| 记忆树、资源注册与项目投影 | `packages/memory-tree/` | `src/memory-service.ts`、`src/memory-repository.ts` facade；内部协调器位于同名目录 | `src/memory-*.test.ts`、`src/project-*.test.ts`、`src/resource-scaling.test.ts` |
 | 旧文件记忆、写入与归档 | `packages/memory-core/` | `src/write-memory.ts`、`src/archive.ts` | 对应同名测试 |
 | 会话和长会话摘要 | `packages/session/` | `src/manager.ts`、`src/compaction.ts` | 对应同名测试 |
 | 工具注册、审批和内置工具 | `packages/tools/` | `src/registry.ts`、`src/wrapper.ts`、`src/builtin/` | `src/**/*.test.ts` |
 | 插件发现、信任和生命周期 | `packages/plugins/` | `src/host.ts`、`src/manifest.ts` | `src/**/*.test.ts` |
 | 外部渠道协议 | `packages/channels/*` | 各包 `src/plugin.ts` | 各包 `src/plugin.test.ts`、`test/e2e-webhook.test.ts` |
 | Electron 启动、Local App API 和用户数据 adapter | `packages/app/src/main/` | `index.ts`、`local-app-api-server.ts` | `src/main/*.test.ts` |
-| 桌面 UI、导航、设置和工作区 | `packages/app/src/renderer/` | `App.tsx`、`api.ts` | `src/renderer/*.test.ts(x)` 与真实窗口验收 |
+| 桌面 UI、导航、设置和工作区 | `packages/app/src/renderer/` | `App.tsx`、`app-shell/`、各 Renderer 领域目录、`api/` | `src/renderer/*.test.ts(x)`、领域同目录测试与真实窗口验收 |
 | CLI 与管理命令 | `packages/cli/` | `src/bin.ts`、`src/commands/` | `src/**/*.test.ts`、`test/e2e-cli.test.ts` |
 
 当前大型文件的拆分所有权和顺序见 [模块拆分地图](module-split-map.md)。
@@ -152,7 +152,10 @@
 | `packages/memory-tree/src/workspace-resource-index.ts`、`workspace-resource-scanner.ts` | 用户数据中的工作区资源元数据索引、游标式有界扫描、精确变更提示、重启恢复和按查询展开；不读取文件正文。 |
 | `packages/app/src/main/shutdown-sequence.ts` | 应用退出时的有序关闭。 |
 | `packages/app/src/preload/` | 安全的 context bridge，向 renderer 暴露必要运行时信息。 |
-| `packages/app/src/renderer/App.tsx` | 主界面、侧边栏、会话、输入栏、设置和拓展工作区编排。 |
+| `packages/app/src/renderer/App.tsx` | 7 行兼容入口，只组合 `app-shell` 控制器和顶层视图。 |
+| `packages/app/src/renderer/app-shell/` | 顶层视图组合、全局导航历史、设置转场和跨领域兼容协调器。 |
+| `packages/app/src/renderer/approval/`、`chat/`、`composer/`、`runtime/` | 审批展示、对话与流式 run 归并、输入栏和运行选项。 |
+| `packages/app/src/renderer/settings/`、`sidebar/`、`ui/`、`workspace/` | 设置页、项目/会话导航、通用交互基元和拓展工作区。 |
 | `packages/app/src/renderer/TraceCard.tsx` | Agent 执行过程、TaskBook、工具调用和验证时间线。 |
 | `packages/app/src/renderer/MemoryTreeView.tsx`、`ArchiveManager.tsx`、`Settings.tsx` | 记忆树、项目记忆投影、归档和设置界面。 |
 | `packages/app/src/renderer/api.ts` | renderer 对 Local App API 的兼容导出入口；领域客户端位于 `packages/app/src/renderer/api/`。 |
@@ -188,14 +191,14 @@ App / CLI / Channel adapters
 7. 跨包只从公开入口导入；出现反向依赖时先定义端口，不通过深层 import 或循环依赖解决。
 8. 新建 package 需要同时满足独立职责、稳定接口、独立测试和真实复用；否则先在现有 package 内按 feature 拆分。
 
-Context 已收敛出独立包并接通来源分段、版本化摘要、附件清单优先、按需附件工具、压缩阈值设置和双账本展示。provider/model tokenizer 能力矩阵已经建立，并强制模型声明与运行时 `counterId` 一致后才能生成精确账本；unavailable 模型也已接入与真实 ledger 类型隔离、不可展示的保守请求前预算保护，当前仍缺真实 Provider 对账。Memory Service 已接管首批消费者并统一注册 Summary Memory、run-scoped 附件、运行时事件账本端口和项目记忆三层投影；App 层已经补齐稳定项目身份和可恢复路径重绑定。当前仍缺其他资源的完整治理，实时事件队列、Mode 与 Tool Execution 也仍有职责分散。不能因为已有 package 或接口就宣称完成模块化，具体评估和演进顺序见 [架构决策报告](architecture-decision-report.md)。
+Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约过滤、预算、淘汰、计数和双快照；provider/model tokenizer 能力矩阵强制模型声明与运行时 `counterId` 一致后才能生成精确账本，unavailable 模型只使用不可展示的保守请求前预算保护，当前仍缺真实 Provider 对账。Memory Repository 与 Memory Service 已分别把持久化和运行协调拆入同名领域目录；DECIDE、EXECUTE、VERIFY 也已把需求校准、工具循环、步骤调度和验证恢复从 stage facade 中分离。版本化 LLM Call Contract 位于 `packages/harness/src/llm-call-contracts/`，公共类型唯一来源是 `packages/types/src/runtime-contracts.ts`；EVOLVE/CAPTURE 的提交判定位于 `stages/memory-intent-gate.ts`。下一步收敛统一 Tool Execution Service、实时事件队列和 Mode Registry。不能因为已有 package 或接口就宣称真实场景已经完成，具体评估和演进顺序见 [架构决策报告](architecture-decision-report.md)。
 
 ## 测试与脚本
 
 - 包内 `src/**/*.test.ts(x)`：测试包内契约和模块行为，应与源码同目录维护。
 - `test/core-agent-contracts.test.ts`：跨包核心 Agent 契约。
 - `test/e2e-cli.test.ts`、`test/e2e-webhook.test.ts`：跨包 CLI/渠道流程。
-- `scripts/check-repository-hygiene.mjs`：仓库结构质量门，不参与运行时；同时检查正式文档、生成物、旧渠道命名、workspace 清单和源码包依赖方向。
+- `scripts/check-repository-hygiene.mjs`：仓库结构质量门，不参与运行时；检查正式文档、任务书日期、生成物、300/600 行登记、受控超限、热点增长、workspace 清单、深层 import、运行时依赖环和核心协议唯一来源。
 - `scripts/verify-app-recovery-sources.mjs`：只读检查用户数据中的工作区、会话、执行日志和恢复索引。
 - `scripts/verify-provider-smoke.mjs`：使用本机安全存储中的凭证执行脱敏 Provider 冒烟，覆盖最小聊天、reasoning、工具调用、流式中断和 usage 对账；不得输出或写入明文密钥。
 - `scripts/build-app.ps1`：构建 Electron 应用并刷新快捷方式。
@@ -218,7 +221,8 @@ Context 已收敛出独立包并接通来源分段、版本化摘要、附件清
 
 - 默认位置由 `@littlesheep/branding` 和应用运行时解析为 `<user-data>`；正式文档不固化真实用户绝对路径。
 - 解析优先级为 `LITTLESHEEP_DATA_DIR`、外部 locator、branding 默认目录。locator 默认位于用户主目录，保持在数据根之外，记录活动目录、待迁移/回滚事务和最近一次迁移清单。
-- 包括 API 配置、加密密钥引用、sessions、memory-tree、projects、archive、execution logs、workspace layout、terminal activity、`attachment-cache/`、`workspace/resource-indexes/` 和用户工作区。
+- 包括 API 配置、加密密钥引用、sessions、memory-tree、projects、archive、execution logs、workspace layout、terminal activity、`attachment-cache/`、`workspace/resource-indexes/`、用户工作区，以及 `AGENTS.md`、`SOUL.md`、`USER.md`、`PHILOSOPHY.md`、`TOOLS.md`、`MEMORY.md` 等用户所有的运行时资源。
+- `PHILOSOPHY.md` 保存经用户确认的长期价值判断和设计取舍。它注册为 `philosophy` 资源但不进入每轮常驻 Prompt；Agent 必须先沿资源索引发现，再按任务相关性和 token 预算展开。
 - `attachment-cache/` 只保存 LS 通过粘贴/浏览器导入创建并登记的临时附件；自动清理只能处理索引中仍通过路径、普通文件、大小和哈希验证的缓存项。`workplace/`、项目目录和外部路径是不同所有权边界，不能因为文件名或目录名相似而由缓存清理删除。
 - `workspace/resource-indexes/` 只保存各工作区的相对路径、文件类型、大小、修改时间和 `user/agent` 来源；它不保存正文，扫描有目录、深度、条目和待处理队列上限。索引文件属于 LS 受管运行数据，项目索引以稳定 project id 关联。
 - 数据根迁移只在应用启动、Runner/Local App API/插件宿主和其他写入者创建之前执行。目标必须不存在或为空；源目录保留，符号链接与 junction 不复制，内部活动元数据只重绑定原本位于旧数据根中的绝对路径，外部项目和用户文件路径保持不变。

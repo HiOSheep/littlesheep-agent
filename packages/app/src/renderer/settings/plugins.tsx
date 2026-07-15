@@ -1,14 +1,14 @@
 // Settings navigation and page composition.
-import { useEffect,useMemo,useRef,useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-getPluginsStatus,
-reloadPlugins,
-setLocalPluginCodeAllowed,
-setPluginEnabled,
-type PluginsStatusResponse,
-type PluginStatus
+  getPluginsStatus,
+  reloadPlugins,
+  setLocalPluginCodeAllowed,
+  setPluginEnabled,
+  type PluginsStatusResponse,
+  type PluginStatus
 } from '../api'
-import { PluginIcon,RefreshIcon,SearchIcon } from '../ui/icons'
+import { PluginIcon, RefreshIcon, SearchIcon } from '../ui/icons'
 
 
 export type PluginListFilter = 'all' | 'builtin' | 'local' | 'channel' | 'tool' | 'skill'

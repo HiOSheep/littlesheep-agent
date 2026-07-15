@@ -1,23 +1,23 @@
 // Extension workspace panels, files, terminal, artifacts, and view helpers.
-import { useEffect,useMemo,useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
-listWorkspaceArtifacts,
-listWorkspaceTerminalActivity,
-type TerminalActivityRecord,
-type WorkspaceArtifactRecord
+  listWorkspaceArtifacts,
+  listWorkspaceTerminalActivity,
+  type TerminalActivityRecord,
+  type WorkspaceArtifactRecord
 } from '../api'
 import { ChatMessage } from '../chat/types'
 import { fileActionLabel } from '../composer/message-files'
-import { FileGlyphIcon,SearchIcon } from '../ui/icons'
+import { FileGlyphIcon, SearchIcon } from '../ui/icons'
 import {
-buildWorkspaceRecoverySnapshot,
-type WorkspaceFileDraftState,
-type WorkspaceOpenRequest,
-type WorkspacePanelTabId
+  buildWorkspaceRecoverySnapshot,
+  type WorkspaceFileDraftState,
+  type WorkspaceOpenRequest,
+  type WorkspacePanelTabId
 } from '../workspace-persistence'
-import { buildWorkspaceActivityFeed,collectWorkspaceArtifacts,mergeWorkspaceArtifacts,workspaceActivitySearchText,workspaceArtifactRecordToRef } from './activity'
-import { compactPath,formatDateTime,isSamePath,lastPathSegment } from './path-utils'
-import { WORKSPACE_ACTIVITY_FILTERS,WorkspaceActivityKindFilter } from './types'
+import { buildWorkspaceActivityFeed, collectWorkspaceArtifacts, mergeWorkspaceArtifacts, workspaceActivitySearchText, workspaceArtifactRecordToRef } from './activity'
+import { compactPath, formatDateTime, isSamePath, lastPathSegment } from './path-utils'
+import { WORKSPACE_ACTIVITY_FILTERS, WorkspaceActivityKindFilter } from './types'
 
 
 export function WorkspaceOverview({

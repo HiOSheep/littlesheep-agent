@@ -1,8 +1,8 @@
 // Extension workspace panels, files, terminal, artifacts, and view helpers.
 import {
-type AttachmentRef,
-type RuntimeState,
-type WorkspacePreview
+  type AttachmentRef,
+  type RuntimeState,
+  type WorkspacePreview
 } from '../api'
 import { WorkspaceArtifactRef } from './types'
 

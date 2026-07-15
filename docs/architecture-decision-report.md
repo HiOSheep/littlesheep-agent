@@ -1,8 +1,8 @@
 # LittleSheep 架构评估与开发决策报告
 
-最后更新：2026-07-14
+最后更新：2026-07-15
 评估范围：当前源码、正式文档与已记录的验证结果
-执行状态：阶段 0 已完成；阶段 1 Context Engine 主要数据链已实现且当前工程质量门为绿色，tokenizer 能力矩阵与 unavailable 模型保守预算保护已完成，真实 Provider 校准仍待完成
+执行状态：仓库基元化阶段 0-7 已完成；Context Engine、LLM Call Contract、记忆意图闸门和 29 项持续质量门已落地，真实 Provider 校准仍待完成
 
 ## 1. 给决策者的结论
 
@@ -12,16 +12,16 @@ LittleSheep 当前不是“只有 Prompt 的聊天壳”。它已经具备代码
 
 但当前更准确的描述是：
 
-> **已有较好的包级模块骨架，但几个关键的跨模块职责仍以分散协作的形式存在。**
+> **包级模块骨架、调用契约与仓库质量门已经稳定；工具执行、运行时连续性和 Mode Registry 仍需继续收敛。**
 
-最重要的四个结构问题是：
+当前最重要的结构结论是：
 
-1. Context Engine 已成为独立模块并接管模型请求准备路径，主要 Context 来源、版本化 Summary Memory、附件清单优先、按需附件工具、压缩阈值设置和 usage 绑定已经接入；tokenizer 能力矩阵与 unavailable 模型的保守请求前预算保护已经完成，当前缺口是三家真实 Provider 对账。
+1. Context Engine 已成为独立模块并接管模型请求准备路径；每次请求现在拥有版本化 `LlmCallContract`，Context segment、工具集合、输出预算和记忆策略在发送前失败关闭。tokenizer 能力矩阵与 unavailable 模型的保守请求前预算保护已经完成，当前缺口是三家真实 Provider 对账。
 2. 每次 run 已有统一、不可变的运行决议，但 Behavior Mode 仍只是 profile 与策略 id 的组合结果，尚没有可注册、可迁移的 Mode Registry。
 3. Tool Manager 只有注册与基础 wrapper，完整的授权、调用、超时、流式事件和执行证据仍主要位于 Harness/App。
-4. Memory 子系统已经具备面向 Runner、工具和 UI 的统一 `MemoryService`、T0-T3 注册协议、Summary Memory/附件的非复制式资源登记、项目记忆三层投影与控制面，以及稳定项目身份和可恢复路径重绑定；附件磁盘层使用独立受管缓存，workplace 使用游标式元数据索引，完整数据根迁移通过外部 locator、启动期 staging、哈希清单、活动元数据重绑定、原子切换和回滚形成工程闭环。运行时事件账本的登记与 resolver 端口已经建立，但实时队列、真实长会话和正式用户迁移场景仍待验收。
+4. Memory 子系统已经具备统一 `MemoryService`、T0-T3 注册协议、Summary Memory/附件的非复制式资源登记、项目记忆三层投影与控制面，以及稳定项目身份和可恢复路径重绑定。模型提出的记忆操作与运行时提交权现已分离，判定证据进入执行日志；`PHILOSOPHY.md` 作为按需理念资源接入。运行时事件账本的登记与 resolver 端口已经建立，但实时队列、真实长会话和正式用户迁移场景仍待验收。
 
-因此，不建议立即把所有目录重新拆包，也不建议继续在现有大文件上叠加功能。阶段 0 已经建立可观测契约和特征测试，阶段 1 也已抽出 `@littlesheep/context` 并接管候选、预算、快照、压缩信号和 usage 归属；当前应完成真实 Provider 验收和 T0-T3 剩余资源治理，同时开始收敛统一 Tool Execution。这样既保护当前可运行能力，也能让后续运行中重入、有界并行、MCP、插件和持续学习建立在稳定接口上。
+因此，不建议立即把所有目录重新拆包，也不建议继续在现有大文件上叠加功能。当前应先完成真实 Provider 验收，再在已稳定的调用契约上收敛统一 Tool Execution Service；随后实现 RuntimeEventQueue、检查点与重启续跑。这样既保护当前可运行能力，也能让有界并行、MCP、插件和持续学习建立在稳定接口上。
 
 ## 2. 评估口径
 
@@ -373,14 +373,14 @@ src/renderer/shared/
 
 ## 10. 下一阶段推进条件
 
-阶段 0 已完成，阶段 1 已启动且当前工作树质量门为绿色。建议先完成“阶段 1：Context Engine”的真实供应商校准，而不是提前切换到下一次跨模块重构。推进时持续遵守：
+仓库基元化阶段 0-7 已完成，当前工作树质量门为绿色。建议先完成 Context Engine 的真实供应商校准，再进入统一 Tool Execution Service，而不是提前扩张新插件类型或 UI 范围。推进时持续遵守：
 
 - 以 [架构原则](architecture-principles.md) 作为最高层工程规范；
 - Behavior Mode 与 Permission Policy 保持正交；
 - 保留固定安全脊柱，不把 Workflow 直接开放为任意图；
 - 保护现有用户数据与插件化改动，不做破坏式迁移。
 
-阶段 1 已完成候选端口、预算器、稳定装配顺序、来源分段、版本化摘要、附件清单优先、按需附件工具、压缩阈值设置、双账本展示、tokenizer 能力矩阵、不可展示的保守预算保护和供应商冒烟工具的主要实现；当前继续完成真实 Provider 对账。Memory Service、T0-T3 注册基础、Summary Memory、run-scoped 附件、运行时事件账本登记端口、项目记忆三层投影、稳定项目身份、路径重绑定、通用资源生命周期、插件/Skill 所有权迁移、大规模资源恢复验收、附件受管磁盘缓存、workplace 有界资源索引和完整数据根迁移已经进入真实运行路径。下一步先按 [总基调、认知架构与仓库基元化任务书 2026-07-14](foundation-cognition-repository-taskbook-2026-07-14.md) 收敛仓库基元，再推进统一 Tool Execution Service；实时事件生产留给后续 `RuntimeEventQueue`。连续执行、有界并行、数据生命周期和 UI 透明度的具体阶段见 [Agent Runtime 连续性任务书 2026-07-14](agent-runtime-continuity-taskbook-2026-07-14.md)。
+Context Engine 已完成候选端口、预算器、稳定装配顺序、来源分段、版本化摘要、附件清单优先、按需附件工具、双账本展示、tokenizer 能力矩阵和不可展示的保守预算保护；版本化 LLM Call Contract 进一步约束每次调用的目的、输入、输出、工具和记忆策略。Memory Service、T0-T3 注册基础、Summary Memory、run-scoped 附件、理念资源、记忆意图闸门、项目投影、稳定项目身份、路径重绑定和资源生命周期均已进入真实运行路径。下一步先完成真实 Provider 对账，再推进统一 Tool Execution Service；实时事件生产留给后续 `RuntimeEventQueue`。连续执行、有界并行、数据生命周期和 UI 透明度的具体阶段见 [Agent Runtime 连续性任务书 2026-07-14](agent-runtime-continuity-taskbook-2026-07-14.md)。
 
 ## 11. 报告维护规则
 

@@ -1,8 +1,8 @@
 // Application-shell state helpers shared by the renderer composition root.
-import { DirectModulePage,SettingsPage } from '../settings/types';
+import { DirectModulePage, SettingsPage } from '../settings/types'
 import {
-type WorkspacePanelTabId
-} from '../workspace-persistence';
+  type WorkspacePanelTabId
+} from '../workspace-persistence'
 
 
 export type AppRoute =

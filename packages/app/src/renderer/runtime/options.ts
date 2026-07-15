@@ -1,12 +1,12 @@
 // Renderer-only runtime option metadata shared by settings and composer controls.
 import { ALL_AGENT_PROFILES } from '@littlesheep/prompt'
 import {
-type RuntimeReasoning
+  type RuntimeReasoning
 } from '../../shared/model-capabilities'
 import { ALL_PERMISSION_MODES } from '../../shared/permission-modes'
 import {
-type AgentProfileId,
-type PermissionModeId
+  type AgentProfileId,
+  type PermissionModeId
 } from '../api'
 
 

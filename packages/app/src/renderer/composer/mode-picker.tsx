@@ -1,13 +1,13 @@
 // Task composer controls, attachments, runtime selection, and sizing.
-import { useEffect,useRef,useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
-type PermissionModeId
+  type PermissionModeId
 } from '../api'
 import { MODE_OPTIONS } from '../runtime/options'
-import { FloatingHelpTip,FloatingHelpTooltip,buildFloatingHelpTip,buildFloatingHelpTipFromElement } from '../ui/floating-help'
+import { FloatingHelpTip, FloatingHelpTooltip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { ModeRiskIcon } from '../ui/icons'
 import { useDismissOnOutside } from '../ui/presence'
-import { COMPOSER_MENU_EVENT,transientTriggerProps } from '../ui/transient'
+import { COMPOSER_MENU_EVENT, transientTriggerProps } from '../ui/transient'
 
 
 export function ModePicker({

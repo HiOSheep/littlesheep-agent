@@ -1,10 +1,10 @@
 // Task composer controls, attachments, runtime selection, and sizing.
 import {
-type AttachmentRef
+  type AttachmentRef
 } from '../api'
-import { FloatingHelpTip,buildFloatingHelpTip,buildFloatingHelpTipFromElement } from '../ui/floating-help'
+import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { FileGlyphIcon } from '../ui/icons'
-import { attachmentExtLabel,attachmentFileUrl,compactPath,formatFileSize,inferAttachmentKind,lastPathSegment } from '../workspace/path-utils'
+import { attachmentExtLabel, attachmentFileUrl, compactPath, formatFileSize, inferAttachmentKind, lastPathSegment } from '../workspace/path-utils'
 import { WorkspaceArtifactRef } from '../workspace/types'
 
 

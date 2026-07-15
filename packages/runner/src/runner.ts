@@ -21,7 +21,12 @@ import type { Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
 import type { ChatMessage, ChatRequest, LlmClient } from '@littlesheep/llm';
 import { maybeCompact, SessionManager } from '@littlesheep/session';
-import { buildRunContext, prepareModelRequest, recordProviderUsage } from '@littlesheep/harness';
+import {
+  buildRunContext,
+  buildRunRequestCandidates,
+  prepareModelRequest,
+  recordProviderUsage,
+} from '@littlesheep/harness';
 import { buildInfrastructure, type RunnerState, type LogFn } from './infra.js';
 import type { ExecutionLog } from './execution-log.js';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
@@ -45,7 +50,7 @@ export interface CreateRunnerOptions {
   skillsDirs?: string[];
   /** Default approve callback (CLI overrides per-run via run). */
   approve?: ToolContext['approve'];
-  /** Directory containing AGENTS/USER/TOOLS/MEMORY/SOUL bootstrap files. */
+  /** Directory containing registered identity, philosophy, tool, and memory resources. */
   bootstrapDir?: string;
   /** Overall run timeout in ms (default 5 min). When no signal is passed to
    *  run, a timed AbortController is created so a hung tool/LLM can't
@@ -328,7 +333,15 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
                 max_tokens: 1_400,
                 signal,
               } satisfies ChatRequest;
-              const request = prepareModelRequest(ctx, 'capture', rawRequest);
+              const request = prepareModelRequest(
+                ctx,
+                'session_compaction',
+                rawRequest,
+                buildRunRequestCandidates(ctx, 'capture', rawRequest.messages, {
+                  history: [],
+                  primaryUserKind: 'workflow_state',
+                }),
+              );
               const response = await infra.llm.chat(request);
               recordProviderUsage(ctx, request, response.usage);
               return { summary: response.content, model: response.model ?? model };
@@ -366,6 +379,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           taskExecution: result.taskExecution,
           taskBook: result.taskBook,
           verificationHistory: result.verificationHistory,
+          memoryIntentDecisions: result.memoryIntentDecisions,
           clarificationRequest: result.clarificationRequest,
           clarificationResponse: result.clarificationResponse,
           memoryAccess: result.memoryAccess,
@@ -477,6 +491,7 @@ function assembleResult(
     taskExecution: ctx.taskExecution,
     taskBook: ctx.taskBook ? { ...ctx.taskBook, stageResults: undefined } : undefined,
     verificationHistory: ctx.verificationHistory,
+    memoryIntentDecisions: ctx.memoryIntentDecisions,
     clarificationRequest: ctx.clarificationRequest,
     clarificationResponse: ctx.clarificationResponse,
     memoryAccess,

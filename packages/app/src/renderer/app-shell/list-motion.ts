@@ -1,9 +1,9 @@
 // Application-shell state helpers shared by the renderer composition root.
-import { useLayoutEffect,useRef } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import { standaloneSessions } from '../../shared/session-scope'
 import {
-type ProjectMeta,
-type SessionMeta
+  type ProjectMeta,
+  type SessionMeta
 } from '../api'
 import { ProjectSortMode } from '../sidebar/types'
 import { lastPathSegment } from '../workspace/path-utils'

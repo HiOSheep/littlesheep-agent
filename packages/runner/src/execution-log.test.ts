@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { ExecutionLogStore } from './execution-log.js';
-import type { ContextSnapshot, Message } from '@littlesheep/types';
+import type { ContextSnapshot, MemoryIntentDecisionRecord, Message } from '@littlesheep/types';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
 
 let dir: string;
@@ -173,6 +173,21 @@ describe('ExecutionLogStore', () => {
       itemsTruncated: false,
       compressionRecommended: false,
     }];
+    const memoryIntentDecisions: MemoryIntentDecisionRecord[] = [{
+      version: 1,
+      id: 'memory-intent-1',
+      runId: 'run-observed',
+      stage: 'evolve',
+      proposedIntent: 'write',
+      decision: 'committed',
+      reason: 'Created from verified evidence.',
+      branch: 'project',
+      summary: 'Use pnpm.',
+      evidenceRefs: ['run:run-observed:verification:1:pass'],
+      writeIntentId: 'memory-intent-1',
+      repositoryDecision: 'created',
+      createdAt: '2026-07-13T00:00:02.000Z',
+    }];
 
     await store.write({
       runId: 'run-observed', sessionId: 's', startedAt: '', endedAt: '', status: 'ok',
@@ -180,12 +195,14 @@ describe('ExecutionLogStore', () => {
       resolvedRunConfig,
       modelRequests,
       contextSnapshots,
+      memoryIntentDecisions,
     });
 
     const log = await store.read('run-observed');
     expect(log?.resolvedRunConfig).toEqual(resolvedRunConfig);
     expect(log?.modelRequests).toEqual(modelRequests);
     expect(log?.contextSnapshots).toEqual(contextSnapshots);
+    expect(log?.memoryIntentDecisions).toEqual(memoryIntentDecisions);
   });
 
   it('reads legacy logs that do not contain the new phase-0 records', async () => {

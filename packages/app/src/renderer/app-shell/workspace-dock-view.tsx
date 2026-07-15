@@ -1,13 +1,13 @@
 // Pure renderer composition view. Runtime authority and side effects stay in the controller.
 import '@xterm/xterm/css/xterm.css'
 import {
-MAX_NAVIGATION_EXPANDED_PATHS,
-boundStringList
+  MAX_NAVIGATION_EXPANDED_PATHS,
+  boundStringList
 } from '../navigation-history'
 import { WorkspacePanelIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
 import {
-WORKSPACE_PANEL_WIDTH_MIN
+  WORKSPACE_PANEL_WIDTH_MIN
 } from '../workspace-layout'
 import { WorkspacePanel } from '../workspace/panel'
 import type { AppController } from './use-app-controller'

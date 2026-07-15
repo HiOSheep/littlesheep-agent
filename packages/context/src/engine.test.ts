@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { asSessionId, type ContextItemKind } from '@littlesheep/types';
+import {
+  asSessionId,
+  type ContextItemKind,
+  type LlmCallContract,
+} from '@littlesheep/types';
 import type { ChatMessage, ChatRequest } from '@littlesheep/llm';
 import {
   ContextBudgetExceededError,
+  ContextContractViolationError,
   ContextEngine,
   type ContextMessageCandidate,
   type ExactContextTokenCounter,
@@ -49,6 +54,42 @@ function candidate(
 
 function baseRequest(messages: ChatMessage[] = []): ChatRequest {
   return { model: 'gpt-test', messages, temperature: 0, max_tokens: 10 };
+}
+
+function callContract(
+  allowedContextKinds: ContextItemKind[],
+  requiredContextKinds: ContextItemKind[],
+): LlmCallContract {
+  return {
+    version: 1,
+    id: 'test/reply@1',
+    purpose: 'reply',
+    stage: 'reply',
+    modelCall: 'required',
+    goal: 'test context filtering',
+    inputs: {
+      sourcePolicy: 'explicit_candidates_only',
+      allowedContextKinds,
+      requiredContextKinds,
+      history: 'none',
+      attachments: 'none',
+    },
+    allowedDecisions: ['respond'],
+    outputSchema: { kind: 'text', schemaId: 'test.v1', strict: false, description: 'test' },
+    memoryIntentPolicy: {
+      allowed: ['none'],
+      defaultIntent: 'none',
+      commitAuthority: 'runtime_only',
+      requiresEvidence: true,
+    },
+    toolPolicy: {
+      mode: 'none',
+      allowedToolNames: [],
+      runtimeApprovalRequired: false,
+      maxIterations: 0,
+    },
+    budget: { maxAttempts: 1, maxOutputTokens: 10 },
+  };
 }
 
 describe('ContextEngine', () => {
@@ -205,6 +246,82 @@ describe('ContextEngine', () => {
         omissionReason: 'budget',
       }),
     ]));
+  });
+
+  it('filters optional Context and system-prompt segments through the call contract', () => {
+    const engine = new ContextEngine({ resolveContextWindow: () => undefined });
+    const system: ContextMessageCandidate = {
+      id: 'system',
+      order: 0,
+      message: { role: 'system', content: 'policyworkspace' },
+      kind: 'system_prompt',
+      source: { kind: 'prompt', id: 'system' },
+      priority: 100,
+      required: true,
+      sensitive: true,
+      segments: [
+        {
+          id: 'policy', order: 0, text: 'policy', kind: 'system_prompt',
+          source: { kind: 'prompt', id: 'policy' }, priority: 100,
+          required: true, sensitive: true, scope: 'global',
+        },
+        {
+          id: 'workspace', order: 1, text: 'workspace', kind: 'project_knowledge',
+          source: { kind: 'configuration', id: 'workspace' }, priority: 50,
+          required: false, sensitive: true, scope: 'workspace',
+        },
+      ],
+    };
+    const result = engine.prepare({
+      runId: 'run-contract-filter',
+      sessionId: asSessionId('session-contract-filter'),
+      stage: 'reply',
+      requestIndex: 1,
+      provider: 'openai',
+      request: baseRequest(),
+      callContract: callContract(['system_prompt', 'user_input'], ['system_prompt', 'user_input']),
+      candidates: [
+        system,
+        candidate('history', 5, 'history', { kind: 'recent_message' }),
+        candidate('current', 10, 'current', { required: true, kind: 'user_input' }),
+      ],
+    });
+
+    expect(result.request.messages.map((message) => message.content)).toEqual(['policy', 'current']);
+    expect(result.contextSnapshot.items.map((item) => item.id)).toEqual(['policy', 'current']);
+    expect(result.modelRequestSnapshot.callContract?.id).toBe('test/reply@1');
+    expect(Object.isFrozen(result.modelRequestSnapshot.callContract)).toBe(true);
+  });
+
+  it('rejects required forbidden or missing Context with an explicit contract error', () => {
+    const engine = new ContextEngine({ resolveContextWindow: () => undefined });
+    const contract = callContract(['system_prompt', 'user_input'], ['system_prompt', 'user_input']);
+
+    expect(() => engine.prepare({
+      runId: 'run-contract-forbidden',
+      sessionId: asSessionId('session-contract-forbidden'),
+      stage: 'reply',
+      requestIndex: 1,
+      provider: 'openai',
+      request: baseRequest(),
+      callContract: contract,
+      candidates: [
+        candidate('system', 0, 'system', { required: true, role: 'system' }),
+        candidate('tool', 1, 'tool', { required: true, kind: 'tool_result', role: 'tool' }),
+        candidate('current', 2, 'current', { required: true, kind: 'user_input' }),
+      ],
+    })).toThrow(ContextContractViolationError);
+
+    expect(() => engine.prepare({
+      runId: 'run-contract-missing',
+      sessionId: asSessionId('session-contract-missing'),
+      stage: 'reply',
+      requestIndex: 1,
+      provider: 'openai',
+      request: baseRequest(),
+      callContract: contract,
+      candidates: [candidate('system', 0, 'system', { required: true, role: 'system' })],
+    })).toThrow(/required Context kind user_input is absent/);
   });
 
   it('keeps unknown models explicit instead of inventing a context window', () => {

@@ -1,15 +1,15 @@
 // Task composer controls, attachments, runtime selection, and sizing.
-import { useEffect,useMemo,useRef,useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-getSupportedReasoningOptions,
-type RuntimeReasoning
+  getSupportedReasoningOptions,
+  type RuntimeReasoning
 } from '../../shared/model-capabilities'
 import {
-type RuntimeState
+  type RuntimeState
 } from '../api'
 import { REASONING_OPTIONS } from '../runtime/options'
 import { useDismissOnOutside } from '../ui/presence'
-import { COMPOSER_MENU_EVENT,transientTriggerProps } from '../ui/transient'
+import { COMPOSER_MENU_EVENT, transientTriggerProps } from '../ui/transient'
 import { RuntimeProvider } from './context-usage-indicator'
 
 

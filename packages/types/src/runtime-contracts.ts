@@ -16,6 +16,8 @@ export const RUN_CHECKPOINT_VERSION = 1 as const;
 export const RESOLVED_RUN_CONFIG_VERSION = 1 as const;
 export const MODE_DEFINITION_VERSION = 1 as const;
 export const MODEL_REQUEST_SNAPSHOT_VERSION = 1 as const;
+export const LLM_CALL_CONTRACT_VERSION = 1 as const;
+export const MEMORY_INTENT_DECISION_VERSION = 1 as const;
 export const TOOL_INVOCATION_RECORD_VERSION = 1 as const;
 export const EXECUTION_EVIDENCE_VERSION = 1 as const;
 
@@ -79,6 +81,80 @@ export interface ModelMessageShape {
   reasoningHash?: string;
 }
 
+export type LlmCallPurpose =
+  | 'classify'
+  | 'decide'
+  | 'execute_tool_loop'
+  | 'execute_final_reply'
+  | 'recover'
+  | 'verify'
+  | 'evolve'
+  | 'capture'
+  | 'reply'
+  | 'finalize'
+  | 'session_compaction';
+
+export type LlmMemoryIntentKind =
+  | 'read'
+  | 'write'
+  | 'merge'
+  | 'invalidate'
+  | 'conflict'
+  | 'none';
+
+export interface LlmCallInputContract {
+  readonly sourcePolicy: 'explicit_candidates_only';
+  readonly allowedContextKinds: readonly ContextItemKind[];
+  readonly requiredContextKinds: readonly ContextItemKind[];
+  readonly history: 'none' | 'recent' | 'session';
+  readonly attachments: 'none' | 'manifest' | 'images_and_manifest';
+}
+
+export interface LlmCallOutputContract {
+  readonly kind: 'json' | 'text' | 'none';
+  readonly schemaId: string;
+  readonly strict: boolean;
+  readonly description: string;
+}
+
+export interface LlmCallMemoryIntentPolicy {
+  readonly allowed: readonly LlmMemoryIntentKind[];
+  readonly defaultIntent: 'none';
+  readonly commitAuthority: 'runtime_only';
+  readonly requiresEvidence: boolean;
+  readonly writableBranches?: readonly string[];
+}
+
+export interface LlmCallToolPolicy {
+  readonly mode: 'none' | 'registered' | 'step_scoped';
+  readonly allowedToolNames: readonly string[];
+  readonly runtimeApprovalRequired: boolean;
+  readonly maxIterations: number;
+}
+
+export interface LlmCallBudgetContract {
+  readonly maxAttempts: number;
+  readonly maxOutputTokens: number;
+  readonly temperature?: number;
+  readonly contextCompressionThresholdRatio?: number;
+}
+
+/** Resolved, versioned policy for one model call or an explicitly forbidden call. */
+export interface LlmCallContract {
+  readonly version: 1;
+  readonly id: string;
+  readonly purpose: LlmCallPurpose;
+  readonly stage: StageName;
+  readonly modelCall: 'required' | 'optional' | 'forbidden';
+  readonly goal: string;
+  readonly inputs: LlmCallInputContract;
+  readonly allowedDecisions: readonly string[];
+  readonly outputSchema: LlmCallOutputContract;
+  readonly memoryIntentPolicy: LlmCallMemoryIntentPolicy;
+  readonly toolPolicy: LlmCallToolPolicy;
+  readonly budget: LlmCallBudgetContract;
+}
+
 export interface ModelRequestSnapshot {
   version: 1;
   id: string;
@@ -102,8 +178,29 @@ export interface ModelRequestSnapshot {
   thinkingMode?: 'enabled' | 'disabled';
   preserveThinking?: boolean;
   stream: boolean;
+  /** Present on new logs; omitted only for backward-compatible legacy snapshots. */
+  callContract?: LlmCallContract;
   contextSnapshotId?: string;
   payloadHash?: string;
+}
+
+export type MemoryIntentRuntimeDecision = 'committed' | 'deferred' | 'rejected' | 'ignored';
+
+/** Redacted audit record separating a model proposal from the runtime commit decision. */
+export interface MemoryIntentDecisionRecord {
+  readonly version: 1;
+  readonly id: string;
+  readonly runId: string;
+  readonly stage: 'evolve' | 'capture';
+  readonly proposedIntent: LlmMemoryIntentKind;
+  readonly decision: MemoryIntentRuntimeDecision;
+  readonly reason: string;
+  readonly branch?: string;
+  readonly summary?: string;
+  readonly evidenceRefs: readonly string[];
+  readonly writeIntentId?: string;
+  readonly repositoryDecision?: 'created' | 'merged' | 'reinforced' | 'rejected' | 'queued';
+  readonly createdAt: string;
 }
 
 export type ToolInvocationStatus =

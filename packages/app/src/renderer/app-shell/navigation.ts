@@ -1,10 +1,10 @@
 // Application-shell state helpers shared by the renderer composition root.
-import { DirectModulePage,SettingsPage } from '../settings/types'
+import { DirectModulePage, SettingsPage } from '../settings/types'
 import {
-rebindWorkspacePanelState,
-rebindWorkspacePath
+  rebindWorkspacePanelState,
+  rebindWorkspacePath
 } from '../workspace-persistence'
-import { AppNavigationSnapshot,AppRoute } from './types'
+import { AppNavigationSnapshot, AppRoute } from './types'
 
 
 export function routesEqual(left: AppRoute | undefined, right: AppRoute): boolean {

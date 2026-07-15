@@ -2,8 +2,8 @@
 import { type ReactNode } from 'react'
 import { SidebarPanel } from '../app-shell/types'
 import { DirectModulePage } from '../settings/types'
-import { buildFloatingHelpTip,buildFloatingHelpTipFromElement,FloatingHelpTip } from '../ui/floating-help'
-import { MemoryTreeNavIcon,NavComposeIcon,PluginIcon,ScheduleIcon,SearchIcon } from '../ui/icons'
+import { buildFloatingHelpTip, buildFloatingHelpTipFromElement, FloatingHelpTip } from '../ui/floating-help'
+import { MemoryTreeNavIcon, NavComposeIcon, PluginIcon, ScheduleIcon, SearchIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
 
 

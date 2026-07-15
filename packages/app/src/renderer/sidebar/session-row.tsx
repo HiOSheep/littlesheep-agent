@@ -1,10 +1,10 @@
 // Primary navigation, project/session trees, and sidebar actions.
 import {
-type SessionMeta
+  type SessionMeta
 } from '../api'
 import { formatRelativeSessionTime } from '../app-shell/list-motion'
-import { FloatingHelpTip,buildFloatingHelpTip,buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { ArchiveIcon,MoreIcon,PinIcon,TrashIcon } from '../ui/icons'
+import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
+import { ArchiveIcon, MoreIcon, PinIcon, TrashIcon } from '../ui/icons'
 import { SidebarActionMenu } from './action-menu'
 
 

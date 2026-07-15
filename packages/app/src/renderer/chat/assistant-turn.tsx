@@ -1,21 +1,21 @@
 // Conversation rendering and execution-progress presentation.
-import { useEffect,useState,type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
-type HistoryMessage
+  type HistoryMessage
 } from '../api'
 import { MessageFileStrip } from '../composer/message-files'
 import { Markdown } from '../Markdown'
 import {
-executionDisclosureDefaultOpen,
-executionDisclosureResetKey,
-verificationDisclosureDefaultOpen,
-verificationDisclosureResetKey,
+  executionDisclosureDefaultOpen,
+  executionDisclosureResetKey,
+  verificationDisclosureDefaultOpen,
+  verificationDisclosureResetKey,
 } from '../progressive-disclosure'
 import { TraceCard } from '../TraceCard'
 import { FileGlyphIcon } from '../ui/icons'
-import { assistantTurnStatusLabel,buildArtifactsFromLiveTools,formatMaybeDuration,liveStepStatusLabel,toolFilePath,verificationSummary,verificationVerdictLabel } from './activity-model'
-import { formatToolInput,formatToolResult,liveToolStatusClass,shortActivityText,toolShellTitle } from './task-progress-indicator'
-import { AssistantTurnActivity,ChatMessage,LiveToolEvent } from './types'
+import { assistantTurnStatusLabel, buildArtifactsFromLiveTools, formatMaybeDuration, liveStepStatusLabel, toolFilePath, verificationSummary, verificationVerdictLabel } from './activity-model'
+import { formatToolInput, formatToolResult, liveToolStatusClass, shortActivityText, toolShellTitle } from './task-progress-indicator'
+import { AssistantTurnActivity, ChatMessage, LiveToolEvent } from './types'
 
 
 export function AssistantTurnMessage({

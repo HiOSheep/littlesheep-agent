@@ -1,6 +1,6 @@
 // @littlesheep/harness - CAPTURE records detailed run facts in the daily branch.
 
-import type { RunContext, StageResult } from '@littlesheep/types';
+import type { LlmMemoryIntentKind, RunContext, StageResult } from '@littlesheep/types';
 import type { LlmClient, ChatMessage } from '@littlesheep/llm';
 import {
   InjectionTier,
@@ -10,6 +10,12 @@ import {
 import { textOf, callLlmForJson, asStringArray } from './_shared.js';
 import { prepareModelRequest, recordProviderUsage } from '../model-observability.js';
 import { buildRunRequestCandidates } from '../context-candidates.js';
+import {
+  commitMemoryIntentBatch,
+  evaluateMemoryIntent,
+  memoryWriteEvidenceRefs,
+  type GatedMemoryProposal,
+} from './memory-intent-gate.js';
 
 export interface CaptureStageDeps {
   llm: LlmClient;
@@ -23,6 +29,7 @@ timeline, not long-term memory and not a skill library.
 
 Return ONLY JSON:
 {"observations":[{
+  "intent":"write|none",
   "summary":"short dated index title",
   "content":"specific fact, action, result or unresolved issue",
   "retrievalKeys":["concrete","search","keys"],
@@ -36,6 +43,7 @@ secrets, or a duplicate paraphrase of the final answer. Return an empty array
 when nothing factual happened.`;
 
 interface Observation {
+  intent?: unknown;
   summary?: unknown;
   content?: unknown;
   retrievalKeys?: unknown;
@@ -68,7 +76,7 @@ function keys(value: unknown, fallback: string): string[] {
   return [...new Set(fallback.toLocaleLowerCase().split(/[^\p{L}\p{N}_-]+/u).filter((entry) => entry.length > 2))].slice(0, 8);
 }
 
-function intentsFrom(parsed: DecodedCapture | null, ctx: RunContext): MemoryWriteIntent[] {
+function proposalsFrom(parsed: DecodedCapture | null, ctx: RunContext): GatedMemoryProposal[] {
   const observations: Observation[] = Array.isArray(parsed?.observations)
     ? parsed!.observations!.filter((entry): entry is Observation => !!entry && typeof entry === 'object').slice(0, 10)
     : asStringArray(parsed?.insights).slice(0, 10).map((insight) => ({
@@ -79,15 +87,44 @@ function intentsFrom(parsed: DecodedCapture | null, ctx: RunContext): MemoryWrit
         confidence: 0.6,
         reason: 'Legacy CAPTURE observation retained only in the daily timeline.',
       }));
-  const result: MemoryWriteIntent[] = [];
-  for (const observation of observations) {
+  const result: GatedMemoryProposal[] = [];
+  for (const [index, observation] of observations.entries()) {
+    const rawIntent = text(observation.intent, 24) as LlmMemoryIntentKind | undefined;
+    const intent: LlmMemoryIntentKind = rawIntent ?? 'write';
     const summary = text(observation.summary, 240);
     const content = text(observation.content, 4_000);
     const reason = text(observation.reason, 500);
-    if (!summary || !content || !reason) continue;
+    const importance = score(observation.importance, 0.4);
+    const confidence = score(observation.confidence, 0.6);
+    const gated = evaluateMemoryIntent({
+      ctx,
+      stage: 'capture',
+      intent,
+      branch: 'daily',
+      summary,
+      importance,
+      confidence,
+      minConfidence: 0.5,
+    });
+    if (gated.action !== 'commit') {
+      result.push(gated);
+      continue;
+    }
+    if (!summary || !content || !reason) {
+      result.push({
+        ...gated,
+        action: 'reject',
+        reason: 'A CAPTURE write must include summary, content, and reason.',
+      });
+      continue;
+    }
     const retrievalKeys = keys(observation.retrievalKeys, `${summary} ${content}`);
-    if (retrievalKeys.length === 0) continue;
-    result.push({
+    if (retrievalKeys.length === 0) {
+      result.push({ ...gated, action: 'reject', reason: 'A CAPTURE write requires retrieval keys.' });
+      continue;
+    }
+    const writeIntent: MemoryWriteIntent = {
+      id: `${ctx.runId}:capture:memory-intent:${index + 1}`,
       branch: 'daily',
       parentNodeId: 'daily:root',
       scope: 'workspace',
@@ -98,10 +135,12 @@ function intentsFrom(parsed: DecodedCapture | null, ctx: RunContext): MemoryWrit
       retrievalKeys,
       sourceRunId: ctx.runId,
       sourceStage: 'capture',
-      importance: score(observation.importance, 0.4),
-      confidence: score(observation.confidence, 0.6),
+      sourceRefs: memoryWriteEvidenceRefs(gated),
+      importance,
+      confidence,
       reason,
-    });
+    };
+    result.push({ ...gated, writeIntent });
   }
   return result;
 }
@@ -141,16 +180,28 @@ export function createCaptureStage(deps: CaptureStageDeps) {
     } catch {
       // Capture is useful but non-blocking for the completed user task.
     }
-    const intents = intentsFrom(parsed, ctx);
-    ctx.insights = intents.map((intent) => intent.summary);
-    const writeResults = deps.memoryWriter ? await deps.memoryWriter.writeMany(intents) : [];
+    const proposals = proposalsFrom(parsed, ctx);
+    const { records, writeResults } = await commitMemoryIntentBatch(
+      ctx,
+      'capture',
+      deps.memoryWriter,
+      proposals,
+    );
+    ctx.insights = records
+      .filter((record) => record.decision === 'committed' && record.summary)
+      .map((record) => record.summary!);
     return {
       stage: 'capture',
       next: 'finalize',
       ok: true,
       meta: {
-        proposedObservations: intents.length,
+        proposedObservations: proposals.length,
         memoryWrites: writeResults.map((result) => ({ decision: result.decision, nodeId: result.node?.id, reason: result.reason })),
+        memoryIntentDecisions: records.map((record) => ({
+          intent: record.proposedIntent,
+          decision: record.decision,
+          reason: record.reason,
+        })),
       },
     };
   };

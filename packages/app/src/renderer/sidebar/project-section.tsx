@@ -1,15 +1,15 @@
 // Primary navigation, project/session trees, and sidebar actions.
-import { useEffect,useMemo,useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { projectSessions } from '../../shared/session-scope'
 import {
-type ProjectMeta,
-type SessionMeta
+  type ProjectMeta,
+  type SessionMeta
 } from '../api'
-import { formatRelativeSessionTime,sortProjectsForSidebar,useListReorderAnimation } from '../app-shell/list-motion'
-import { PROJECT_SORT_KEY,readProjectSortPreference,writeStringPreference } from '../app-shell/preferences'
-import { FloatingHelpTip,buildFloatingHelpTip,buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { ArchiveIcon,CheckIcon,ComposeIcon,MoreIcon,ProjectIcon,SortIcon,TrashIcon } from '../ui/icons'
-import { isSamePath,lastPathSegment } from '../workspace/path-utils'
+import { formatRelativeSessionTime, sortProjectsForSidebar, useListReorderAnimation } from '../app-shell/list-motion'
+import { PROJECT_SORT_KEY, readProjectSortPreference, writeStringPreference } from '../app-shell/preferences'
+import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
+import { ArchiveIcon, CheckIcon, ComposeIcon, MoreIcon, ProjectIcon, SortIcon, TrashIcon } from '../ui/icons'
+import { isSamePath, lastPathSegment } from '../workspace/path-utils'
 import { SidebarActionMenu } from './action-menu'
 import { SessionRow } from './session-row'
 import { ProjectSortMode } from './types'

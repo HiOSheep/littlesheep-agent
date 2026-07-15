@@ -53,7 +53,9 @@ pnpm.cmd run verify:app-recovery
 ## 当前能力
 
 - 硬控制流 Agent：分类、需求澄清、TaskBook、步骤执行、验证、局部恢复和收尾。
+- 版本化模型调用契约：每次 LLM 请求独立声明 Context、允许决策、输出、工具、记忆意图和预算；越权在发送前失败关闭。
 - 索引优先记忆树：统一 Memory Service、T0-T3 资源注册、可回滚迁移、根/分支索引、按需展开、同分支深搜、预算、来源和写入闸门。
+- 用户长期理念：`PHILOSOPHY.md` 作为按需资源注册，不全文常驻每轮 Prompt；模型建议与运行时记忆提交权分离。
 - 持久化执行记录：已完成 run 的 TaskBook、步骤、工具调用、验证记录和最终结果可在重启后重放；活动 run 的检查点续跑仍属于后续任务。
 - 桌面聊天：SSE 流式回复、Markdown、代码块复制、附件、权限审批和中断；新导入附件使用独立受管缓存，用户工作区和外部文件不进入自动缓存清理范围。
 - 拓展工作区：项目/会话、文件树、标签、内置 VS Code 风格编辑器、产物索引和 PowerShell/PTY 终端；Agent 通过有界、可恢复的元数据索引发现工作区资源，文件正文仍按任务需要读取。
@@ -71,7 +73,7 @@ pnpm.cmd run verify:app-recovery
 - [项目状态](docs/project-status.md)：总进度、当前阶段、验证证据和未完成方向。
 - [仓库指南](docs/repository-guide.md)：目录、模块和维护规则。
 - [模块拆分地图](docs/module-split-map.md)：大型生产文件的所有权、目标边界和行为保持型拆分顺序。
-- [总基调、认知架构与仓库基元化任务书 2026-07-14](docs/foundation-cognition-repository-taskbook-2026-07-14.md)：当前仓库整理、认知契约和数据边界的先行任务书。
+- [总基调、认知架构与仓库基元化任务书 2026-07-15](docs/foundation-cognition-repository-taskbook-2026-07-15.md)：已完成的仓库整理、认知契约、记忆提交和持续维护基线。
 - [核心 Agent 能力任务书 2026-07-13](docs/core-agent-capability-taskbook-2026-07-13.md)
 - [Agent 核心与记忆系统任务书 2026-07-14](docs/agent-core-memory-taskbook-2026-07-14.md)：核心收敛与真实场景验收基线。
 - [核心收敛小任务书 2026-07-13](docs/core-focus-maintenance-taskbook-2026-07-13.md)：冻结扩张、修复阻断 Bug、验证任务闭环与记忆系统。

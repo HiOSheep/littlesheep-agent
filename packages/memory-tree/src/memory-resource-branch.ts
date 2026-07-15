@@ -166,7 +166,7 @@ export class MemoryResourceBranch implements MemoryBranch {
   readonly displayName = 'Resource Directory';
   readonly purpose = 'Metadata-only catalog of authoritative Agent, user, tool, skill and project documents.';
   readonly whenToUse = 'the task depends on a registered rule, profile, skill, guideline, taskbook or knowledge document';
-  readonly searchHints = ['AGENTS.md', 'SOUL.md', 'USER.md', 'TOOLS.md', 'skill', 'guideline', 'taskbook'];
+  readonly searchHints = ['AGENTS.md', 'SOUL.md', 'USER.md', 'PHILOSOPHY.md', 'TOOLS.md', 'skill', 'guideline', 'taskbook'];
   private readonly repository: MemoryRepository;
   private readonly resolveResource?: MemoryResourceResolver;
 

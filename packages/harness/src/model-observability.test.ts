@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatRequest } from '@littlesheep/llm';
-import { makeCtx } from './tests/helpers.js';
+import { makeCtx, makeTool } from './tests/helpers.js';
 import {
   MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN,
   MAX_SNAPSHOT_ITEMS,
@@ -42,10 +42,17 @@ function request(messageCount = 2, toolCount = 1): ChatRequest {
   };
 }
 
+function registeredTools(count: number) {
+  return Array.from({ length: count }, (_, index) => makeTool(`tool-${index}`, {
+    ok: true,
+    output: 'ok',
+  }));
+}
+
 describe('recordModelRequest', () => {
   it('records a frozen request/context shape without prompt text or image bytes', () => {
-    const ctx = makeCtx();
-    const snapshot = recordModelRequest(ctx, 'execute', request());
+    const ctx = makeCtx({ tools: registeredTools(1) });
+    const snapshot = recordModelRequest(ctx, 'execute_tool_loop', request());
     const serialized = JSON.stringify({ snapshot, contexts: ctx.contextSnapshots });
 
     expect(snapshot).toMatchObject({
@@ -56,6 +63,10 @@ describe('recordModelRequest', () => {
       totalMessageCount: 2,
       totalToolCount: 1,
       stream: true,
+      callContract: {
+        id: 'core-flow/execute_tool_loop@1',
+        purpose: 'execute_tool_loop',
+      },
     });
     expect(snapshot.payloadHash).toMatch(/^[a-f0-9]{64}$/);
     expect(ctx.contextSnapshots?.[0]?.budget).toMatchObject({ status: 'unknown' });
@@ -74,8 +85,8 @@ describe('recordModelRequest', () => {
   });
 
   it('caps message, item, tool, and per-run snapshot collections', () => {
-    const ctx = makeCtx();
-    const oversized = recordModelRequest(ctx, 'decide', request(70, 70));
+    const ctx = makeCtx({ tools: registeredTools(70) });
+    const oversized = recordModelRequest(ctx, 'execute_tool_loop', request(70, 70));
 
     expect(oversized.messages).toHaveLength(MAX_SNAPSHOT_MESSAGES);
     expect(oversized.totalMessageCount).toBe(70);
@@ -87,7 +98,7 @@ describe('recordModelRequest', () => {
     expect(ctx.contextSnapshots?.[0]?.itemsTruncated).toBe(true);
 
     for (let index = 1; index < 70; index++) {
-      recordModelRequest(ctx, 'reply', request(1, 0));
+      recordModelRequest(ctx, 'reply', request(2, 0));
     }
     expect(ctx.modelRequests).toHaveLength(MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN);
     expect(ctx.contextSnapshots).toHaveLength(MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN);
@@ -97,8 +108,8 @@ describe('recordModelRequest', () => {
 
   it('binds provider usage to the exact prepared Context snapshot', () => {
     const ctx = makeCtx();
-    const first = prepareModelRequest(ctx, 'decide', request());
-    const second = prepareModelRequest(ctx, 'reply', request());
+    const first = prepareModelRequest(ctx, 'decide', request(2, 0));
+    const second = prepareModelRequest(ctx, 'reply', request(2, 0));
 
     recordProviderUsage(ctx, first, {
       promptTokens: 120,
@@ -119,6 +130,13 @@ describe('recordModelRequest', () => {
       reasoningTokens: 12,
     });
     expect(ctx.contextSnapshots?.[1]?.providerUsage).toBeUndefined();
+    expect(ctx.modelRequests?.map((snapshot) => snapshot.callContract?.purpose)).toEqual([
+      'decide',
+      'reply',
+    ]);
+    expect(ctx.modelRequests?.[0]?.callContract?.memoryIntentPolicy.allowed).toEqual(['read', 'none']);
+    expect(ctx.modelRequests?.[1]?.callContract?.outputSchema.schemaId).toBe('chat-reply.v1');
+    expect(ctx.modelRequests?.[0]?.callContract).not.toBe(ctx.modelRequests?.[1]?.callContract);
     expect(Object.isFrozen(ctx.contextSnapshots?.[0])).toBe(true);
 
     recordProviderUsage(ctx, second, undefined);
@@ -126,7 +144,7 @@ describe('recordModelRequest', () => {
   });
 
   it('applies model-specific reasoning controls before Context snapshotting', () => {
-    const ctx = makeCtx();
+    const ctx = makeCtx({ tools: registeredTools(1) });
     ctx.resolvedRunConfig = {
       version: 1,
       runId: ctx.runId,
@@ -149,7 +167,7 @@ describe('recordModelRequest', () => {
       projectOverrides: {},
     };
 
-    const prepared = prepareModelRequest(ctx, 'execute', {
+    const prepared = prepareModelRequest(ctx, 'execute_tool_loop', {
       ...request(),
       model: 'deepseek-v4-pro',
       temperature: 0,
@@ -168,5 +186,18 @@ describe('recordModelRequest', () => {
       model: 'deepseek-v4-pro',
       reason: expect.stringContaining('has not verified a client-side counter'),
     });
+  });
+
+  it('fails closed for forbidden tools, forbidden calls, and oversized outputs', () => {
+    const ctx = makeCtx({ tools: registeredTools(1) });
+
+    expect(() => prepareModelRequest(ctx, 'reply', request())).toThrow(/forbids tools/);
+    expect(() => prepareModelRequest(ctx, 'finalize', request(2, 0))).toThrow(/without another model request/);
+    expect(() => prepareModelRequest(ctx, 'classify', {
+      ...request(2, 0),
+      max_tokens: 257,
+    })).toThrow(/exceeds budget 256/);
+    expect(ctx.modelRequests).toBeUndefined();
+    expect(ctx.contextSnapshots).toBeUndefined();
   });
 });

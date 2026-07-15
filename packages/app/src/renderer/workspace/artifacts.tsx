@@ -1,16 +1,16 @@
 // Extension workspace panels, files, terminal, artifacts, and view helpers.
-import { useEffect,useMemo,useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
-listWorkspaceArtifacts,
-type WorkspaceArtifactRecord
+  listWorkspaceArtifacts,
+  type WorkspaceArtifactRecord
 } from '../api'
 import { fileActionLabel } from '../composer/message-files'
-import { FloatingHelpTip,buildFloatingHelpTip,buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { FileGlyphIcon,RefreshIcon,SearchIcon } from '../ui/icons'
+import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
+import { FileGlyphIcon, RefreshIcon, SearchIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
-import { compactPath,formatDateTime } from './path-utils'
+import { compactPath, formatDateTime } from './path-utils'
 import { WorkspacePlaceholder } from './placeholder'
-import { WorkspaceArtifactActionFilter,WorkspaceArtifactScopeFilter,WorkspaceArtifactSourceFilter } from './types'
+import { WorkspaceArtifactActionFilter, WorkspaceArtifactScopeFilter, WorkspaceArtifactSourceFilter } from './types'
 
 
 export function WorkspaceArtifacts({

@@ -1,6 +1,6 @@
 # LittleSheep 核心 Agent 流程规范
 
-最后更新：2026-07-14
+最后更新：2026-07-15
 
 本文是 [LittleSheep 架构原则](architecture-principles.md) 在 Core Flow、TaskBook、验证、恢复和记忆运行时上的专项约束。LLM 与 Agent、Mode 与权限、Context 与 Memory、Harness 与 Tool Execution 的顶层分工以架构原则为准；本文不重复维护另一套总架构。
 
@@ -126,7 +126,7 @@
 - 所有写入都包含 parent、scope、tier、检索键、来源 run、置信度、重要性和理由。缺少父节点时进入恢复队列；重复或相似内容应强化或合并已有索引节点。
 - 管理页和设置页必须读取并修改同一套运行时记忆树、仓库和策略配置。
 - 目标分级为 T0-T3：T0 仅保存极小、稳定、必须常驻的身份/安全/根索引；T1 保存当前作用域核心规则与摘要；T2 保存任务相关片段；T3 保存低频细节、原始记录和深搜候选。现有 T1-T3 数据升级到含 T0 的协议时必须版本化迁移。
-- `AGENTS.md`、`SOUL.md`、`USER.md`、`TOOLS.md`、`MEMORY.md`、Skills、项目规范、UI 规范和任务书等资源通过记忆注册表描述权威、作用域、隐私和索引键，不等于把这些文档常驻注入每轮 Context。
+- `AGENTS.md`、`SOUL.md`、`USER.md`、`PHILOSOPHY.md`、`TOOLS.md`、`MEMORY.md`、Skills、项目规范、UI 规范和任务书等资源通过记忆注册表描述权威、作用域、隐私和索引键，不等于把这些文档常驻注入每轮 Context。
 - 长会话压缩生成的 Summary Memory 至少应回答：当前目标是什么、刚才发生了什么、用户新改了什么、哪些步骤已完成、哪些仍待执行，以及关键证据、权限和来源是什么。它用于维持模型决策连续性，不是只为了缩短文本。
 
 ## 当前实现切片
@@ -155,6 +155,8 @@
 - 结构化记忆写入具备阈值、写侧安全检查、父级索引原子更新、审计记录、恢复排队、去重和合并。
 - TaskBook、步骤、工具调用、验证结果和最终回复会进入执行日志，历史 UI 与实时过程使用同一套无气泡展示结构。
 - `@littlesheep/context` 已接管显式候选、稳定排序、窗口预算、可选项淘汰、压缩建议和脱敏 `ContextSnapshot`；System Prompt 内部已经按基础策略、记忆根索引、bootstrap 文件、行为 profile、reasoning、Workflow/TaskBook 和输出约束拆成可追溯 segment。
+- 每次模型请求都解析独立、版本化的 `LlmCallContract`，明确 purpose、stage、Context 来源、允许决策、输出结构、工具、记忆意图和预算；缺少必需 Context、stage 不匹配、工具越权或预算无效时在发送前失败关闭，`FINALIZE` 禁止额外模型调用。
+- EVOLVE/CAPTURE 只接收模型的结构化记忆建议；运行时依据真实步骤、工具和 VERIFY 证据决定是否提交，`invalidate` 与 `conflict` 只延期审计而不直接修改记忆。`PHILOSOPHY.md` 已作为显式理念资源注册，只沿索引按任务相关性和预算展开，不进入常驻 Prompt bootstrap。
 - 本地精确 ledger 与 Provider usage 已使用不同结构保存，Provider usage 会绑定到产生它的准确 Context 快照；UI 能区分“供应商实测”“本地精确装配”和“tokenizer 不可用”，不会用字符换算冒充真实 token。
 - 会话压缩已实现为非破坏式、版本化 Summary Memory：原始 JSONL 消息保留，旧消息摘要在下一轮作为独立 `summary_memory` 来源介入，并可按消息阈值或精确 Context 占用阈值触发。
 - CLASSIFY、DECIDE 和 REPLY 只接收附件清单；非图片正文通过当前 run 专属的 `inspect_attachment` 只读工具按需解析，未调用时不会读取文件正文，工具结果再进入 Context。图片仍按受限大小读取为多模态输入。
@@ -169,4 +171,4 @@
 - 替换或退役尚未接入主运行时的旧 `distillDailyToMemory()` 原始追加 helper；任何未来 daily 到长期记忆的蒸馏都必须走安全、去重、可回滚的结构化写入闸门，不能重新启用扁平追加路径。
 - 实现 `packages/mcp/` 客户端，同时复用内置工具的权限、超时、清洗和执行记录契约。
 - 继续进行工作区、渠道、记忆树和重启恢复的真实用户场景验收。
-- 按 [Agent Runtime 连续性任务书 2026-07-14](agent-runtime-continuity-taskbook-2026-07-14.md) 建立 Context、T0-T3、附件、运行中重入、有界并行、检查点、后台执行和双向透明的完整闭环；仓库拆分和 LLM Call Contract 的先行顺序见 [总基调、认知架构与仓库基元化任务书 2026-07-14](foundation-cognition-repository-taskbook-2026-07-14.md)。
+- 按 [Agent Runtime 连续性任务书 2026-07-14](agent-runtime-continuity-taskbook-2026-07-14.md) 建立 Context、T0-T3、附件、运行中重入、有界并行、检查点、后台执行和双向透明的完整闭环；仓库拆分和 LLM Call Contract 的先行顺序见 [总基调、认知架构与仓库基元化任务书 2026-07-15](foundation-cognition-repository-taskbook-2026-07-15.md)。

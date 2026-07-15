@@ -1,20 +1,20 @@
 // Extension workspace panels, files, terminal, artifacts, and view helpers.
-import { Suspense,lazy,useEffect,useRef,useState } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import {
-openWorkspacePath,
-openWorkspacePathInVSCode,
-previewWorkspaceFile,
-saveWorkspaceFile,
-type WorkspacePreview
+  openWorkspacePath,
+  openWorkspacePathInVSCode,
+  previewWorkspaceFile,
+  saveWorkspaceFile,
+  type WorkspacePreview
 } from '../api'
-import { FloatingHelpTip,buildFloatingHelpTip,buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { ExternalOpenIcon,FileGlyphIcon,VSCodeIcon } from '../ui/icons'
+import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
+import { ExternalOpenIcon, FileGlyphIcon, VSCodeIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
 import {
-type WorkspaceFileDraftState,
-type WorkspaceFileTabId
+  type WorkspaceFileDraftState,
+  type WorkspaceFileTabId
 } from '../workspace-persistence'
-import { attachmentFileUrl,countEditorLines,detectEditorEol,formatDateTime,formatEditorLanguageLabel,formatFileSize,lastPathSegment,shouldOfferExternalVSCode,utf8ByteLength,workspaceBreadcrumbs } from './path-utils'
+import { attachmentFileUrl, countEditorLines, detectEditorEol, formatDateTime, formatEditorLanguageLabel, formatFileSize, lastPathSegment, shouldOfferExternalVSCode, utf8ByteLength, workspaceBreadcrumbs } from './path-utils'
 import { WorkspacePlaceholder } from './placeholder'
 
 

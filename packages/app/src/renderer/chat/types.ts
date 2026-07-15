@@ -1,7 +1,7 @@
 // Conversation rendering and execution-progress presentation.
 import type { HistoryActivity } from '../../shared/history-activity'
 import {
-type AttachmentRef
+  type AttachmentRef
 } from '../api'
 import { WorkspaceArtifactRef } from '../workspace/types'
 

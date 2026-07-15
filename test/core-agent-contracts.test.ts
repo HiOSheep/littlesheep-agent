@@ -262,12 +262,14 @@ describe('core agent behavior contracts', () => {
     const llm = createMockLlm(textResponse(JSON.stringify({
       memories: [
         {
+          intent: 'write',
           branch: 'long-term', parentNodeId: 'long-term:root', scope: 'global',
           summary: 'Temporary thought', content: 'This is only this run temporary run state.',
           retrievalKeys: ['temporary'], importance: 0.2, confidence: 0.3,
           reason: 'The model proposed it even though it is not durable.',
         },
         {
+          intent: 'write',
           branch: 'project', parentNodeId: 'project:root', scope: 'workspace',
           summary: 'Workspace package manager', content: 'Use pnpm in this repository.',
           retrievalKeys: ['pnpm', 'package manager'], importance: 0.8, confidence: 0.95,
@@ -282,12 +284,26 @@ describe('core agent behavior contracts', () => {
       toolContext: { cwd: 'D:/project' },
     })
     ctx.cwd = 'D:/project'
+    ctx.taskExecution = {
+      goal: 'Inspect the project package manager.', complexity: 'simple', status: 'done',
+      startedAt: '2026-07-15T00:00:00.000Z', endedAt: '2026-07-15T00:00:01.000Z',
+      steps: [{
+        stepId: 'step-1', description: 'Inspect packageManager', status: 'done',
+        startedAt: '2026-07-15T00:00:00.000Z', endedAt: '2026-07-15T00:00:01.000Z',
+        toolCallIds: [], toolResults: [],
+      }],
+    }
+    ctx.verificationHistory = [{
+      attempt: 1, verdict: 'pass', reason: 'packageManager was inspected.',
+      verifiedAt: '2026-07-15T00:00:02.000Z', source: 'model',
+    }]
 
     await createEvolveStage({ llm, model: 'test/model', memoryWriter: writer })(ctx)
 
     expect(await repository.listNodes('long-term')).toHaveLength(0)
     expect(await repository.listNodes('project', 'D:/project')).toHaveLength(1)
-    expect((await repository.snapshot()).writeAudit.map((record) => record.decision)).toEqual(['rejected', 'created'])
+    expect((await repository.snapshot()).writeAudit.map((record) => record.decision)).toEqual(['created'])
+    expect(ctx.memoryIntentDecisions?.map((record) => record.decision)).toEqual(['rejected', 'committed'])
 
     tree.beginRun({
       runId: 'recall-run', sessionId: asSessionId('session-1'), query: 'Which package manager?',

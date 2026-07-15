@@ -1,16 +1,16 @@
 // Application-shell state helpers shared by the renderer composition root.
 import { ProjectSortMode } from '../sidebar/types'
 import {
-DEFAULT_WORKSPACE_PANEL_TABS,
-WORKSPACE_FILE_DRAFTS_MAX_CHARS,
-dedupeWorkspacePanelTabs,
-hydrateWorkspaceFileDrafts,
-hydrateWorkspacePanelTabs,
-normalizeWorkspacePanelTabId,
-serializeWorkspaceFileDrafts,
-type WorkspaceFileDraftState,
-type WorkspaceOpenRequest,
-type WorkspacePanelTabId
+  DEFAULT_WORKSPACE_PANEL_TABS,
+  WORKSPACE_FILE_DRAFTS_MAX_CHARS,
+  dedupeWorkspacePanelTabs,
+  hydrateWorkspaceFileDrafts,
+  hydrateWorkspacePanelTabs,
+  normalizeWorkspacePanelTabId,
+  serializeWorkspaceFileDrafts,
+  type WorkspaceFileDraftState,
+  type WorkspaceOpenRequest,
+  type WorkspacePanelTabId
 } from '../workspace-persistence'
 import { isSamePath } from '../workspace/path-utils'
 import { clampNumber } from './navigation'

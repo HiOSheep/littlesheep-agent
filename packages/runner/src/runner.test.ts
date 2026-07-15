@@ -97,6 +97,7 @@ describe('createRunner run', () => {
       expect.objectContaining({ title: 'AGENTS.md', tier: 0, status: 'active' }),
       expect.objectContaining({ title: 'SOUL.md', tier: 0, status: 'active' }),
       expect.objectContaining({ title: 'USER.md', tier: 1, status: 'missing' }),
+      expect.objectContaining({ title: 'PHILOSOPHY.md', kind: 'philosophy', tier: 1, status: 'missing' }),
     ]));
   });
 

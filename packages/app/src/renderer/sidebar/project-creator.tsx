@@ -1,6 +1,6 @@
 // Primary navigation, project/session trees, and sidebar actions.
-import { useEffect,useRef,useState } from 'react'
-import { CloseIcon,ProjectIcon } from '../ui/icons'
+import { useEffect, useRef, useState } from 'react'
+import { CloseIcon, ProjectIcon } from '../ui/icons'
 import { useDismissOnOutside } from '../ui/presence'
 import { compactPath } from '../workspace/path-utils'
 

@@ -1,8 +1,8 @@
 // Conversation rendering and execution-progress presentation.
-import { useEffect,useId,useRef,useState,type CSSProperties } from 'react'
+import { useEffect, useId, useRef, useState, type CSSProperties } from 'react'
 import { buildTaskProgress } from '../task-progress'
 import { formatDurationMs } from './activity-model'
-import { AssistantTurnActivity,LiveToolEvent } from './types'
+import { AssistantTurnActivity, LiveToolEvent } from './types'
 
 
 export const TASK_PROGRESS_COMPLETE_HOLD_MS = 700

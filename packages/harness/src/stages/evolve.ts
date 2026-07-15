@@ -1,6 +1,6 @@
 // @littlesheep/harness - EVOLVE proposes structured durable memories/skills.
 
-import type { RunContext, StageResult } from '@littlesheep/types';
+import type { LlmMemoryIntentKind, RunContext, StageResult } from '@littlesheep/types';
 import type { LlmClient, ChatMessage } from '@littlesheep/llm';
 import {
   InjectionTier,
@@ -12,6 +12,12 @@ import {
 import { textOf, callLlmForJson, asStringArray } from './_shared.js';
 import { prepareModelRequest, recordProviderUsage } from '../model-observability.js';
 import { buildRunRequestCandidates } from '../context-candidates.js';
+import {
+  commitMemoryIntentBatch,
+  evaluateMemoryIntent,
+  memoryWriteEvidenceRefs,
+  type GatedMemoryProposal,
+} from './memory-intent-gate.js';
 
 export type CreateSkillFn = (opts: {
   name: string;
@@ -39,6 +45,7 @@ Memory tree branches and canonical parent roots:
 Return ONLY JSON:
 {
   "memories": [{
+    "intent": "write|merge|invalidate|conflict|none",
     "branch": "long-term|project|experience",
     "parentNodeId": "branch:root",
     "scope": "global|workspace|project",
@@ -63,6 +70,9 @@ Write sparingly. Do not propose:
 - a long-term memory below 0.75 confidence and 0.70 importance;
 - an experience unless the method was actually tested or the failure mechanism is evidenced.
 
+Use invalidate or conflict only to flag evidence that an existing memory may be stale or contradictory.
+The runtime will defer those proposals for reconciliation and will never destructively apply them here.
+
 Create a skill only for a recurring, multi-step procedure with clear decision criteria.
 If nothing qualifies, return {"memories":[],"createSkill":null}.`;
 
@@ -74,6 +84,7 @@ interface SkillProposal {
 }
 
 interface MemoryProposal {
+  intent?: unknown;
   branch?: unknown;
   parentNodeId?: unknown;
   scope?: unknown;
@@ -95,6 +106,7 @@ interface DecodedEvolve {
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
 const BRANCHES = new Set<MemoryBranchKind>(['long-term', 'project', 'experience']);
 const SCOPES = new Set<MemoryScope>(['global', 'workspace', 'project']);
+const INTENTS = new Set<LlmMemoryIntentKind>(['read', 'write', 'merge', 'invalidate', 'conflict', 'none']);
 
 function cleanString(value: unknown, max: number): string | undefined {
   if (typeof value !== 'string') return undefined;
@@ -123,28 +135,55 @@ function validateSkillProposal(proposal: SkillProposal | null | undefined): {
   return { name, description, whenToUse, body };
 }
 
-function memoryIntents(value: unknown, ctx: RunContext): MemoryWriteIntent[] {
+function memoryProposals(value: unknown, ctx: RunContext): GatedMemoryProposal[] {
   if (!Array.isArray(value)) return [];
-  const intents: MemoryWriteIntent[] = [];
-  for (const raw of value.slice(0, 8)) {
+  const proposals: GatedMemoryProposal[] = [];
+  for (const [index, raw] of value.slice(0, 8).entries()) {
     if (!raw || typeof raw !== 'object') continue;
     const proposal = raw as MemoryProposal;
+    const requestedIntent = cleanString(proposal.intent, 24) as LlmMemoryIntentKind | undefined;
+    const intent = requestedIntent && INTENTS.has(requestedIntent) ? requestedIntent : 'write';
     const branch = cleanString(proposal.branch, 32) as MemoryBranchKind | undefined;
-    if (!branch || !BRANCHES.has(branch)) continue;
+    const validBranch = branch && BRANCHES.has(branch) ? branch : undefined;
     const summary = cleanString(proposal.summary, 240);
     const content = cleanString(proposal.content, 4_000);
     const reason = cleanString(proposal.reason, 500);
     const retrievalKeys = stringArray(proposal.retrievalKeys);
-    if (!summary || !content || !reason || retrievalKeys.length === 0) continue;
+    const importance = clampScore(proposal.importance);
+    const confidence = clampScore(proposal.confidence);
+    const gated = evaluateMemoryIntent({
+      ctx,
+      stage: 'evolve',
+      intent,
+      branch: validBranch,
+      summary,
+      importance,
+      confidence,
+      minImportance: validBranch === 'long-term' ? 0.7 : 0.5,
+      minConfidence: validBranch === 'long-term' ? 0.75 : 0.7,
+    });
+    if (gated.action !== 'commit') {
+      proposals.push(gated);
+      continue;
+    }
+    if (!validBranch || !summary || !content || !reason || retrievalKeys.length === 0) {
+      proposals.push({
+        ...gated,
+        action: 'reject',
+        reason: 'A write or merge proposal must include a valid branch, summary, content, reason, and retrieval keys.',
+      });
+      continue;
+    }
     const requestedScope = cleanString(proposal.scope, 24) as MemoryScope | undefined;
     const scope: MemoryScope = requestedScope && SCOPES.has(requestedScope)
       ? requestedScope
-      : branch === 'project' ? 'workspace' : 'global';
+      : validBranch === 'project' ? 'workspace' : 'global';
     const scopeKey = scope === 'global' ? undefined : ctx.cwd;
     const requestedParent = cleanString(proposal.parentNodeId, 200);
-    intents.push({
-      branch,
-      parentNodeId: requestedParent ?? `${branch}:root`,
+    const writeIntent: MemoryWriteIntent = {
+      id: `${ctx.runId}:evolve:memory-intent:${index + 1}`,
+      branch: validBranch,
+      parentNodeId: requestedParent ?? `${validBranch}:root`,
       scope,
       scopeKey,
       tier: InjectionTier.T2_RELEVANT,
@@ -153,12 +192,14 @@ function memoryIntents(value: unknown, ctx: RunContext): MemoryWriteIntent[] {
       retrievalKeys,
       sourceRunId: ctx.runId,
       sourceStage: 'evolve',
-      importance: clampScore(proposal.importance),
-      confidence: clampScore(proposal.confidence),
+      sourceRefs: memoryWriteEvidenceRefs(gated),
+      importance,
+      confidence,
       reason,
-    });
+    };
+    proposals.push({ ...gated, writeIntent });
   }
-  return intents;
+  return proposals;
 }
 
 export function createEvolveStage(deps: EvolveStageDeps) {
@@ -199,14 +240,22 @@ export function createEvolveStage(deps: EvolveStageDeps) {
       // Learning failure must not turn a completed user task into a failed run.
     }
 
-    const intents = memoryIntents(parsed?.memories, ctx);
+    const proposals = memoryProposals(parsed?.memories, ctx);
     const legacyNotes = asStringArray(parsed?.notes);
-    ctx.evolutionNotes = intents.map((intent) => intent.summary).concat(legacyNotes);
-    const writeResults = deps.memoryWriter ? await deps.memoryWriter.writeMany(intents) : [];
+    const { records, writeResults } = await commitMemoryIntentBatch(
+      ctx,
+      'evolve',
+      deps.memoryWriter,
+      proposals,
+    );
+    ctx.evolutionNotes = records
+      .filter((record) => record.decision === 'committed' && record.summary)
+      .map((record) => record.summary!)
+      .concat(legacyNotes);
 
     let skillCreated: string | null = null;
     const proposal = validateSkillProposal(parsed?.createSkill);
-    if (deps.createSkill && proposal) {
+    if (deps.createSkill && proposal && ctx.verificationHistory?.at(-1)?.verdict === 'pass') {
       try { skillCreated = await deps.createSkill(proposal); } catch { /* non-fatal */ }
     }
 
@@ -215,8 +264,13 @@ export function createEvolveStage(deps: EvolveStageDeps) {
       next: 'capture',
       ok: true,
       meta: {
-        proposedMemories: intents.length,
+        proposedMemories: proposals.length,
         memoryWrites: writeResults.map((result) => ({ decision: result.decision, nodeId: result.node?.id, reason: result.reason })),
+        memoryIntentDecisions: records.map((record) => ({
+          intent: record.proposedIntent,
+          decision: record.decision,
+          reason: record.reason,
+        })),
         legacyNotesIgnored: legacyNotes.length,
         skillCreated,
       },

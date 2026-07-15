@@ -1,5 +1,5 @@
 // Task composer controls, attachments, runtime selection, and sizing.
-import { FloatingHelpTip,buildFloatingHelpTip,buildFloatingHelpTipFromElement } from '../ui/floating-help'
+import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { compactPath } from '../workspace/path-utils'
 
 

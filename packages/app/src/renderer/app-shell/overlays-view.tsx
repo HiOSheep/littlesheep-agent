@@ -1,16 +1,16 @@
 // Pure renderer composition view. Runtime authority and side effects stay in the controller.
 import '@xterm/xterm/css/xterm.css'
 import {
-selectWorkspace
+  selectWorkspace
 } from '../api'
-import { ApprovalPrompt,DirtyFileClosePrompt } from '../approval/prompt'
+import { ApprovalPrompt, DirtyFileClosePrompt } from '../approval/prompt'
 import { SettingsWorkspace } from '../settings/workspace'
 import { SettingsEntryBridge } from '../sidebar/global-titlebar'
 import { ProjectCreatorDialog } from '../sidebar/project-creator'
 import { FloatingHelpTooltip } from '../ui/floating-help'
 import { FadePresence } from '../ui/presence'
 import {
-parseWorkspaceFileTabId
+  parseWorkspaceFileTabId
 } from '../workspace-persistence'
 import type { AppController } from './use-app-controller'
 

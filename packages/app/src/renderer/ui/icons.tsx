@@ -1,7 +1,7 @@
 // Reusable renderer interaction primitives and icons.
 import { ModeRisk } from '../runtime/options'
 import {
-type WorkspacePanelTab
+  type WorkspacePanelTab
 } from '../workspace-persistence'
 
 

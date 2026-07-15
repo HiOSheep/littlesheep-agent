@@ -4,7 +4,7 @@
 
 ## 职责与边界
 
-- 公开入口是 `src/index.ts`，当前核心实现位于 `src/engine.ts`。
+- 公开入口是 `src/index.ts`；`src/engine.ts` 是稳定 facade，候选、预算、淘汰、装配、计数和快照实现位于 `src/context-engine/`。
 - 拥有候选规范化、优先级、预算、淘汰、计数和快照；不拥有记忆或会话存储。
 - 禁止直接调用 Provider、扫描用户文件或把保守估算展示为真实 token usage。
 
@@ -15,5 +15,5 @@
 
 ## 测试与修改定位
 
-- 行为测试在 `src/engine.test.ts`。
+- 行为测试在 `src/engine.test.ts`，内部所有权说明见 `src/context-engine/README.md`。
 - 修改预算算法时必须覆盖未知计数器、必需内容超限、淘汰顺序和脱敏快照。

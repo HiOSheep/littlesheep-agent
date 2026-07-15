@@ -1,13 +1,13 @@
 // Extension workspace panels, files, terminal, artifacts, and view helpers.
-import { useEffect,useLayoutEffect,useRef,useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { clampNumber } from '../app-shell/navigation'
-import { FloatingHelpTip,buildFloatingHelpTip,buildFloatingHelpTipFromElement } from '../ui/floating-help'
+import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { WorkspaceFeatureIcon } from '../ui/icons'
 import { useDismissOnOutside } from '../ui/presence'
-import { WORKSPACE_MENU_EVENT,transientTriggerProps } from '../ui/transient'
+import { WORKSPACE_MENU_EVENT, transientTriggerProps } from '../ui/transient'
 import {
-type WorkspacePanelTab
+  type WorkspacePanelTab
 } from '../workspace-persistence'
 
 

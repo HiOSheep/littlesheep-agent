@@ -1,11 +1,11 @@
 // Primary navigation, project/session trees, and sidebar actions.
-import { useEffect,useMemo,useRef,useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-type SessionMeta
+  type SessionMeta
 } from '../api'
 import { formatRelativeSessionTime } from '../app-shell/list-motion'
 import { SidebarPanel } from '../app-shell/types'
-import { CloseIcon,SearchIcon } from '../ui/icons'
+import { CloseIcon, SearchIcon } from '../ui/icons'
 import { useDismissOnOutside } from '../ui/presence'
 
 

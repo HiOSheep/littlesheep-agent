@@ -1,11 +1,11 @@
 // Settings navigation and page composition.
 import { useRef } from 'react'
 import {
-type AgentProfileId,
-type RuntimeState
+  type AgentProfileId,
+  type RuntimeState
 } from '../api'
 import { isDirectModulePage } from '../app-shell/navigation'
-import { SIDEBAR_WIDTH_MAX,SIDEBAR_WIDTH_MIN } from '../app-shell/preferences'
+import { SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN } from '../app-shell/preferences'
 import { ArchiveManager } from '../ArchiveManager'
 import { ChannelConnections } from '../ChannelConnections'
 import { MemorySkills } from '../MemorySkills'

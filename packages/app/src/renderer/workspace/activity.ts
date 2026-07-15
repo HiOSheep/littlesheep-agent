@@ -1,15 +1,15 @@
 // Extension workspace panels, files, terminal, artifacts, and view helpers.
 import {
-type TerminalActivityRecord,
-type WorkspaceArtifactRecord
+  type TerminalActivityRecord,
+  type WorkspaceArtifactRecord
 } from '../api'
 import { formatDurationMs } from '../chat/activity-model'
 import { shortActivityText } from '../chat/task-progress-indicator'
-import { AssistantTurnStatus,ChatMessage } from '../chat/types'
+import { AssistantTurnStatus, ChatMessage } from '../chat/types'
 import { fileActionLabel } from '../composer/message-files'
-import { compactPath,normalizePathForCompare } from './path-utils'
+import { compactPath, normalizePathForCompare } from './path-utils'
 import { terminalActivityStatus } from './terminal'
-import { WorkspaceActivityFeedItem,WorkspaceArtifactRef } from './types'
+import { WorkspaceActivityFeedItem, WorkspaceArtifactRef } from './types'
 
 
 export function collectWorkspaceArtifacts(messages: ChatMessage[]): WorkspaceArtifactRef[] {
