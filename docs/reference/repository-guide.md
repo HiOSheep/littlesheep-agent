@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-07-16 10:42:44
+最后更新：2026-07-16 11:17:51
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
@@ -194,6 +194,7 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 - `pnpm.cmd run verify:core`：仓库门、全工作区增量 typecheck 与 69 项核心 Agent 契约测试，适用于 Harness、Runner、Context、Memory 和公共协议变更。
 - `pnpm.cmd run verify:full`：阶段结束的完整测试、类型、Electron 构建和恢复源检查，不用于每次小改动。
 - `pnpm.cmd run verify:memory-v3-soak`：只在系统临时目录创建隔离 Memory v3 数据，重复验证只追加原始数据记录/commit receipt、atom 治理、journal 裁剪、重启、catalog 重建和 run working set；默认完成后删除临时根，不迁移或改写正式用户数据。
+- `pnpm.cmd run verify:memory-v3-readiness -- --data-dir=<应用数据根>`：只读检查指定 V2 数据根，只把 `memory-tree` 复制到系统临时目录，在副本上验证完整迁移、V3 重启读取、业务 atom/内部 scope root 口径、catalog integrity 和回滚；不复制配置、会话、密钥或 workplace，任何退出路径都删除临时副本。结果只证明该次源快照，正式登记迁移前必须重新执行，不能用旧哈希替代迁移器的提交前复核。
 - `pnpm.cmd run sync:tsconfig`：从 27 个 workspace manifest 的真实依赖自动生成 package `references` 和 `tsconfig.workspace.json`；`check:repo` 会拒绝过期引用。
 - 包内 `src/**/*.test.ts(x)`：测试包内契约和模块行为，应与源码同目录维护。
 - `test/core-agent-contracts.test.ts`：跨包核心 Agent 契约。
@@ -205,6 +206,7 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 - `scripts/verify-app-recovery-sources.mjs`：只读检查用户数据中的工作区、会话、执行日志和恢复索引。
 - `scripts/verify-provider-smoke.mjs`：使用本机安全存储中的凭证执行脱敏 Provider 冒烟，覆盖最小聊天、reasoning、工具调用、流式中断和 usage 对账；不得输出或写入明文密钥。
 - `scripts/verify-memory-v3-soak.mjs`：Memory v3 的可重复隔离压力与恢复验收；必须校验临时根边界，并在任何退出路径关闭 SQLite 后再清理。
+- `scripts/verify-memory-v3-migration-readiness.mjs`：用指定真实 V2 数据的隔离副本执行迁移就绪验收；必须在复制前后复核源 manifest/index 哈希，并区分业务 atom 与内部 scope root，不得在源数据根登记迁移。
 - `scripts/build-app.ps1`：构建 Electron 应用并刷新快捷方式。
 - `scripts/refresh-desktop-shortcut.ps1`：按脚本所在仓库路径解析 Electron，生成桌面快捷方式。
 - `scripts/start-littlesheep.ps1`：位置无关的开发启动入口。

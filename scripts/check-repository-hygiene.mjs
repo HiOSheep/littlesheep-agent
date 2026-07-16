@@ -198,6 +198,8 @@ async function checkCanonicalFiles() {
     'scripts/workspace-projects.mjs',
     'scripts/sync-typescript-projects.mjs',
     'scripts/run-affected-verification.mjs',
+    'scripts/verify-memory-v3-soak.mjs',
+    'scripts/verify-memory-v3-migration-readiness.mjs',
     'tsconfig.workspace.json',
     'build-app.bat',
     'start-littlesheep.bat',

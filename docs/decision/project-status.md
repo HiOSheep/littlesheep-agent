@@ -1,6 +1,6 @@
 # LittleSheep 项目状态
 
-最后更新：2026-07-16 10:42:44
+最后更新：2026-07-16 11:17:51
 
 本文件是项目进度的正式来源。状态只根据当前源码、测试和构建结果维护；旧的阶段报告不再作为进度依据。
 
@@ -10,7 +10,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 它还不是可直接宣称“生产就绪”的发行版。主要原因是当前内置模型尚无已验证的最终请求精确计数器、真实供应商验证未完成、活动 run 重启续跑、MCP、安装包发布和真实用户场景验收仍未闭环。因此本项目不使用一个没有权重定义的百分比来伪装精确进度，而用能力状态和验收证据表示总进度。产品方向已明确为：解放用户生产力，让用户专注于想法，LS 负责将想法可靠落地；执行和输出统一采用渐进式披露。
 
-**当前阶段：Memory v3 阶段 0-5 已完成；阶段 6 已接通同源 D0-D3 读取、启动前迁移/回滚、atom 移动/合并/失效/恢复/导出、首次自动选择、执行中受控纳入/release、原始数据记录孤儿恢复、commit receipt、隔离 soak 和真实 Electron 窗口验收。当前正式用户数据仍为 v2，实际切换继续等待用户单独确认。**
+**当前阶段：Memory v3 阶段 0-5 已完成；阶段 6 已接通同源 D0-D3 读取、启动前迁移/回滚、atom 移动/合并/失效/恢复/导出、首次自动选择、执行中受控纳入/release、原始数据记录孤儿恢复、commit receipt、隔离 soak、真实 Electron 窗口验收和正式 V2 数据隔离迁移演练。当前正式用户数据仍为 v2，实际切换继续等待用户单独确认。**
 
 ## 能力总览
 
@@ -26,7 +26,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 | 需求判断与任务书 | 已实现 | 支持澄清请求、复杂度判断、TaskBook、步骤验收和局部重规划 | `packages/types/`、`packages/harness/src/stages/` |
 | 步骤级执行与恢复 | 已实现 | 保留已完成步骤证据，失败时按步骤恢复，不重复执行已完成部分；工具循环、权限/超时、失败分类、步骤调度和结构验收已分离，stage facade 不再承接内部细节 | `packages/harness/src/stages/execute.ts`、`execute/`、`recover.ts`、`verify.ts`、`verify/` |
 | 记忆树运行时协议 | 已实现基础闭环 | 根索引到分支索引再到展开/分支内深搜；首次请求从 D1 元数据最多自动选择 2 个 D2 atom、预算 600 tokens；执行中模型通过受控 `expand/deep_search` 把所需 atom 纳入本轮 working set，也可显式 `release` 无用 atom并释放本轮 token/dedup 预算。模型可见契约已说明纳入、释放和重新介入语义；持久原始数据记录和 atom 不受影响。注册文档正文仍必须先看目录再按需展开 | `packages/prompt/src/sections.ts`、`packages/memory-tree/src/memory-tree.ts`、`memory-tool.ts`、`memory-tree-working-set.ts`、`packages/harness/src/memory-context-working-set.ts`、`packages/runner/` |
-| Memory Service 与 Memory v3 | v2 基础闭环；v3 隔离工程与窗口验收完成 | v2 仍是正式默认。v3 以只追加原始数据记录保存事件最初落盘的数据、以 atom 保存可治理投影、以可重建 catalog 负责层级/FTS/向量；原始记录不把建议、陈述或假设冒充成事实，认识状态由 atom 元数据表达。Recovery journal 只保留有界恢复状态。管理 UI 从同一 Repository/raw record/atom/Catalog 按需展开 D0-D3，并可登记迁移/回滚和执行高级 atom 管理；原始数据记录已写但 journal 未写的崩溃可在重启时自动补投影。隔离 Electron 窗口已完成 D2/D3、菜单、移动、失效/恢复、证据导出和全局返回/前进验收；正式用户数据未迁移 | `packages/memory-tree/src/memory-repository/`、`packages/memory-tree/src/v3/`、`packages/app/src/main/memory-v3-bootstrap.ts`、`packages/app/src/main/memory-atom-control.ts`、`packages/app/src/renderer/MemoryTreeView.tsx`、`docs/taskbooks/memory-atom-vector-catalog-taskbook-2026-07-15.md` |
+| Memory Service 与 Memory v3 | v2 基础闭环；v3 工程、窗口和正式数据副本演练完成 | v2 仍是正式默认。v3 以只追加原始数据记录保存事件最初落盘的数据、以 atom 保存可治理投影、以可重建 catalog 负责层级/FTS/向量；原始记录不把建议、陈述或假设冒充成事实，认识状态由 atom 元数据表达。Recovery journal 只保留有界恢复状态。管理 UI 从同一 Repository/raw record/atom/Catalog 按需展开 D0-D3，并可登记迁移/回滚和执行高级 atom 管理；原始数据记录已写但 journal 未写的崩溃可在重启时自动补投影。隔离 Electron 窗口已完成 D2/D3、菜单、移动、失效/恢复、证据导出和全局返回/前进验收；当前正式 V2 的只读预检与隔离迁移、重启、回滚也已通过，但正式 backend 尚未切换 | `packages/memory-tree/src/memory-repository/`、`packages/memory-tree/src/v3/`、`packages/app/src/main/memory-v3-bootstrap.ts`、`packages/app/src/main/memory-atom-control.ts`、`packages/app/src/renderer/MemoryTreeView.tsx`、`scripts/verify-memory-v3-migration-readiness.mjs`、`docs/taskbooks/memory-atom-vector-catalog-taskbook-2026-07-15.md` |
 | 项目身份与路径重绑定 | 已实现基础闭环 | 新项目使用与路径无关的稳定 ID，旧路径派生 ID 原样保留；项目移动或重命名后可从侧边栏重新定位。持久化事务日志幂等迁移会话、归档、记忆 scope、项目投影、工作区文档资源、产物、终端活动、布局、导航状态和当前运行路径；路径冲突会拒绝提交 | `packages/app/src/main/project-index.ts`、`project-rebinding.ts`、`path-rebinding.ts`、`packages/memory-tree/src/memory-service.ts` |
 | 记忆管理控制面 | v2 基础闭环；v3 同源读取、迁移和高级管理已接通 | UI 操作真实运行时索引与注册表。v3 树概况只加载 D0/D1，D2 正文与 D3 原始数据记录/证据/历史/关系按需展开；“更多”菜单可移动、合并、失效、恢复和导出单 atom 证据包，所有操作进入同一 Repository transaction，不建立 Renderer 副本。迁移页继续支持预检、登记、取消、重启执行、失败恢复和安全回滚 | `packages/app/src/renderer/MemoryTreeView.tsx`、`packages/app/src/renderer/memory-tree/`、`packages/app/src/main/memory-tree-control.ts`、`memory-atom-control.ts`、`packages/app/src/main/local-app-api/memory-atom-routes.ts` |
 | 执行记录与历史重放 | 已实现 | 已完成 run 的 TaskBook、步骤、工具调用、验证、调用契约、Context 快照、记忆意图运行时判定和有界资源 ID 可持久化并重放；附件正文不进入执行日志；这仍不等于活动 run 在应用重启后续跑 | `packages/runner/src/execution-log.ts`、`packages/app/src/renderer/TraceCard.tsx` |
@@ -141,6 +141,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 20. Storage Coordinator 启动时分批协调原始数据记录、journal 与 catalog；能证明未执行或部分执行的记录才重放，能证明已投影的只补目录状态，含糊状态不猜测覆盖。
 21. 隔离 `verify:memory-v3-soak` 已通过：120 次初始写入形成 149 条原始数据记录与 121 个 atom，经历 4 次重启、journal 裁剪、raw-record-only 崩溃恢复、catalog 删除重建和 96 次 working-set run；catalog integrity 为 `ok`，历史记录依靠 commit receipt 恢复审计投影而不会倒放覆盖演进后的 atom，临时数据根执行后已删除。
 22. 隔离 V3 Electron 窗口已验收：管理页显示 65 个活动 atom，可展开 D2 与 D3“证据与历史”，更多菜单支持点击外部收回，移动、失效/恢复和单 atom 证据包导出均成功；全局返回到主页后前进栈保持可用，并可恢复记忆树页面。导航历史限制为 50 项，恢复期间的派生状态只替换当前快照，不截断前进分支。
+23. 当前正式 V2 数据已通过 `verify:memory-v3-readiness` 的只读预检和隔离副本完整演练：2 个源文件共 164272 bytes，40 个业务节点与 11 个资源等价迁移；V3 catalog 含 40 个业务 atom 和 5 个内部 scope root，integrity 为 `ok`；关闭重启后计数稳定，隔离回滚成功，源 index/manifest 哈希全程未变化，临时副本已删除。
 
 仍未完成：
 
