@@ -35,7 +35,7 @@ describe('memory atom control', () => {
     await expect(manageRuntimeMemoryAtom(v2, request)).resolves.toMatchObject({ status: 'unsupported' })
   })
 
-  it('exports a complete D3 evidence package with immutable facts', async () => {
+  it('exports a complete D3 evidence package with raw records', async () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'ls-memory-atom-export-'))
     directories.push(dataDir)
     const outputPath = join(dataDir, 'nested', 'atom.memory.json')
@@ -48,7 +48,7 @@ describe('memory atom control', () => {
       envelope: { atomId: 'atom-1', atomRevision: 7 },
       neighborhood: { entities: [], relations: [], truncated: false },
       history: { atomId: 'atom-1', revision: 7, sourceRunIds: [], sourceStages: [], entries: [], truncated: false },
-      immutableFacts: [{
+      rawRecords: [{
         version: 1,
         id: 'event-1',
         idempotencyKey: 'key:event-1',
@@ -63,14 +63,14 @@ describe('memory atom control', () => {
     const runner = mockRunner({ backendKind: 'v3', inspectNode })
 
     const result = await exportRuntimeMemoryAtom(runner, 'atom-1', outputPath)
-    expect(result).toMatchObject({ atomId: 'atom-1', revision: 7, immutableFactCount: 1, outputPath })
+    expect(result).toMatchObject({ atomId: 'atom-1', revision: 7, rawRecordCount: 1, outputPath })
     const exported = JSON.parse(await readFile(outputPath, 'utf8')) as Record<string, unknown>
     expect(exported).toMatchObject({
       version: 1,
       kind: 'littlesheep-memory-atom-evidence',
       nodeId: 'atom-1',
       atom: { id: 'atom-1', revision: 7 },
-      immutableFacts: [{ id: 'event-1' }],
+      rawRecords: [{ id: 'event-1' }],
     })
     expect(inspectNode).toHaveBeenCalledWith('atom-1', 'D3')
   })

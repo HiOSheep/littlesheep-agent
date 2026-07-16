@@ -22,7 +22,7 @@ import type {
 import { MemoryAtomStore } from '../v3/atom-store.js';
 import { MemoryCatalog } from '../v3/catalog.js';
 import { MemoryEventJournal, MemoryOperationJournal } from '../v3/event-journal.js';
-import { MemoryImmutableFactStore } from '../v3/immutable-fact-store.js';
+import { MemoryRawRecordStore } from '../v3/raw-record-store.js';
 import { MemoryV3GraphStore } from '../v3/graph-store.js';
 import { MemoryV3MaintenanceWorker } from '../v3/maintenance-worker.js';
 import { MemoryV3StorageCoordinator } from '../v3/storage-coordinator.js';
@@ -68,7 +68,7 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
   readonly atomStore: MemoryAtomStore;
   readonly catalog: MemoryCatalog;
   readonly graphStore: MemoryV3GraphStore;
-  readonly factStore: MemoryImmutableFactStore;
+  readonly rawRecordStore: MemoryRawRecordStore;
   readonly ledger: MemoryV3RepositoryLedger;
   readonly coordinator: MemoryV3StorageCoordinator;
   readonly maintenance: MemoryV3MaintenanceWorker;
@@ -97,7 +97,7 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
       maxAuditRecords: options.policy.maxAuditRecords,
     });
     this.graphStore = new MemoryV3GraphStore({ dataDir: options.dataDir, catalog: this.catalog, log: options.log });
-    this.factStore = new MemoryImmutableFactStore({ dataDir: options.dataDir, log: options.log });
+    this.rawRecordStore = new MemoryRawRecordStore({ dataDir: options.dataDir, log: options.log });
     this.eventJournal = new MemoryEventJournal({ dataDir: options.dataDir, log: options.log });
     const operationJournal = new MemoryOperationJournal({ dataDir: options.dataDir, log: options.log });
     this.coordinator = new MemoryV3StorageCoordinator({
@@ -105,7 +105,7 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
       catalog: this.catalog,
       eventJournal: this.eventJournal,
       operationJournal,
-      factStore: this.factStore,
+      rawRecordStore: this.rawRecordStore,
       onCheckpoint: async (checkpoint, context) => {
         if (checkpoint !== 'catalog-updated') return;
         const record = await this.eventJournal.get(context.eventId);
@@ -291,8 +291,8 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
       envelope: candidate.envelope,
       neighborhood: candidate.neighborhood,
       history: candidate.history,
-      immutableFacts: disclosureLevel === 'D3'
-        ? await this.factStore.listForAtom(nodeId, 100)
+      rawRecords: disclosureLevel === 'D3'
+        ? await this.rawRecordStore.listForAtom(nodeId, 100)
         : undefined,
     };
   }

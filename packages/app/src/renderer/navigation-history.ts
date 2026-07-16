@@ -34,6 +34,19 @@ export function appendNavigationEntry<T>(
   }
 }
 
+export function replaceActiveNavigationEntry<T>(
+  state: NavigationHistoryState<T>,
+  entry: T,
+  equals: (left: T | undefined, right: T) => boolean,
+): NavigationHistoryState<T> {
+  if (state.index < 0 || state.index >= state.entries.length) return state
+  if (equals(state.entries[state.index], entry)) return state
+
+  const entries = [...state.entries]
+  entries[state.index] = entry
+  return { entries, index: state.index }
+}
+
 export function boundStringList(
   values: readonly string[],
   maxEntries: number,

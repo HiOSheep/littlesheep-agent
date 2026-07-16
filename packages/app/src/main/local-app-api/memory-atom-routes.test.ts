@@ -54,7 +54,7 @@ describe('memory atom Local App API routes', () => {
         envelope: { atomId: 'atom-1', atomRevision: 4 },
         neighborhood: { entities: [], relations: [], truncated: false },
         history: { atomId: 'atom-1', revision: 4, entries: [], truncated: false },
-        immutableFacts: [{ id: 'event-1' }],
+        rawRecords: [{ id: 'event-1' }],
       }),
     })
     const selectMemoryAtomExport = vi.fn().mockResolvedValue(outputPath)
@@ -65,7 +65,7 @@ describe('memory atom Local App API routes', () => {
       status: 200,
       body: {
         cancelled: false,
-        export: { outputPath, atomId: 'atom-1', revision: 4, immutableFactCount: 1 },
+        export: { outputPath, atomId: 'atom-1', revision: 4, rawRecordCount: 1 },
       },
     })
     expect(selectMemoryAtomExport).toHaveBeenCalledWith('Remember locally.memory.json')

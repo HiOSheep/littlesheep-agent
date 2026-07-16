@@ -41,7 +41,7 @@ export interface MemoryAtomEvidenceExportResult {
   outputPath: string;
   atomId: string;
   revision: number;
-  immutableFactCount: number;
+  rawRecordCount: number;
   exportedAt: string;
 }
 
@@ -60,7 +60,7 @@ export async function exportRuntimeMemoryAtom(
     outputPath,
     atomId,
     revision: inspection.atom.revision,
-    immutableFactCount: inspection.immutableFacts?.length ?? 0,
+    rawRecordCount: inspection.rawRecords?.length ?? 0,
     exportedAt,
   };
 }
@@ -83,7 +83,7 @@ function buildEvidencePackage(inspection: MemoryRepositoryNodeInspection, export
     envelope: inspection.envelope,
     neighborhood: inspection.neighborhood,
     history: inspection.history,
-    immutableFacts: inspection.immutableFacts ?? [],
+    rawRecords: inspection.rawRecords ?? [],
   };
 }
 

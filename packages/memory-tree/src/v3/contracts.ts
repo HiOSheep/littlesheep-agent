@@ -23,7 +23,8 @@ export type {
 export const MEMORY_ATOM_VERSION = 3 as const;
 export const MEMORY_EVENT_VERSION = 1 as const;
 export const MEMORY_OPERATION_VERSION = 1 as const;
-export const MEMORY_IMMUTABLE_FACT_VERSION = 1 as const;
+export const MEMORY_RAW_RECORD_VERSION = 1 as const;
+export const MEMORY_RAW_RECORD_COMMIT_VERSION = 1 as const;
 
 export type MemoryDisclosureLevel = 'D0' | 'D1' | 'D2' | 'D3';
 
@@ -134,17 +135,33 @@ export type MemoryStorageMutation =
     };
 
 /**
- * Immutable source-of-truth record captured before a Memory v3 projection is
- * changed. Recovery journals may be pruned; these fact records may not.
+ * Append-only raw data record captured before a Memory v3 projection changes.
+ * Its epistemic meaning remains in the event metadata; storage does not call
+ * every captured statement a fact. Recovery journals may be pruned, but these
+ * records may not be rewritten or removed.
  */
-export interface MemoryImmutableFact {
-  version: typeof MEMORY_IMMUTABLE_FACT_VERSION;
+export interface MemoryRawRecord {
+  version: typeof MEMORY_RAW_RECORD_VERSION;
   id: string;
   idempotencyKey: string;
   event: MemoryUpdateEvent;
   mutation: MemoryStorageMutation;
   atomIds: string[];
   capturedAt: string;
+  contentHash: string;
+}
+
+/**
+ * Append-only proof that one raw record's storage mutation reached the
+ * committed boundary. The receipt is separate so the raw record never needs to
+ * be edited after capture.
+ */
+export interface MemoryRawRecordCommitReceipt {
+  version: typeof MEMORY_RAW_RECORD_COMMIT_VERSION;
+  rawRecordId: string;
+  rawRecordContentHash: string;
+  operationId: string;
+  committedAt: string;
   contentHash: string;
 }
 

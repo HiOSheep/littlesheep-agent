@@ -1,4 +1,4 @@
-// Owns advanced Memory v3 atom projection lifecycle without mutating immutable source facts.
+// Owns atom projection lifecycle without modifying append-only Memory v3 raw records.
 
 import { randomUUID } from 'node:crypto';
 import type { MemoryAtomStore } from '../v3/atom-store.js';

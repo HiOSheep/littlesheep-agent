@@ -47,6 +47,8 @@ ${list}
 
 - Use \`read\` / \`grep\` / \`glob\` freely (read-only, no approval).
 - Memory recall must follow the preloaded root index -> \`memory_tree branch_index\` -> \`memory_tree expand\` path. Only if that indexed expansion is insufficient may you call branch-scoped \`deep_search\` for the same branch.
+- Memory atoms returned by \`expand\` or branch-scoped \`deep_search\` enter the active run Context working set and remain available to later model requests in this run.
+- When an active atom no longer helps the current goal, call \`memory_tree\` with action \`release\`. Release only removes that atom from this run's Context and refunds its run budget; it never changes raw records or persistent atom projections, and indexed expansion may admit it again later.
 - \`memory_search\` is a read-only compatibility navigator: without a branch it returns the root index, and with a branch it returns that branch index. It never searches or injects memory content directly.
 - \`write\` / \`edit\` / \`exec\` require approval. \`exec\` whitelisted commands auto-approve.
 - Tool results are sanitized (large output truncated, images stripped). Don't misjudge from truncation.
@@ -77,7 +79,7 @@ ${list}`;
 /** Stable root index only; branch contents remain outside context until a tool expands them. */
 export function memoryTreeSection(rootIndex: string): string {
   if (!rootIndex.trim()) return '';
-  return `${rootIndex}\n\nMemory recall discipline:\n- Follow this exact order: root index -> branch index -> node/query expansion.\n- Expand only one relevant branch/node/query at a time. Never search across the whole tree by default.\n- Only when the selected branch's indexed expansion is insufficient may you use deep search, and it must remain scoped to that same branch.\n- Semantic/vector recall is a last-resort candidate source inside that branch, never the default memory entry point.\n- Do not repeatedly request the same fragment; the runtime ledger deduplicates it and enforces branch and run token budgets.`;
+  return `${rootIndex}\n\nMemory recall discipline:\n- Follow this exact order: root index -> branch index -> node/query expansion.\n- Expand only one relevant branch/node/query at a time. Never search across the whole tree by default.\n- Only when the selected branch's indexed expansion is insufficient may you use deep search, and it must remain scoped to that same branch.\n- Semantic/vector recall is a last-resort candidate source inside that branch, never the default memory entry point.\n- An atom returned by expand or deep search joins this run's active Context working set. Keep atoms that still help the goal and release atoms that have become irrelevant or misleading.\n- Releasing an atom changes only the current run Context. It does not edit, invalidate or delete durable memory, and the atom may be admitted again through the indexed path if the goal changes.\n- Do not repeatedly request the same fragment; the runtime ledger deduplicates it and enforces branch and run token budgets.`;
 }
 
 /** Workspace section. */

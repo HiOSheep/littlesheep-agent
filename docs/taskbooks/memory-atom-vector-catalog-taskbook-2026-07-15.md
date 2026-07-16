@@ -1,16 +1,16 @@
 # LittleSheep 原子记忆与内置向量目录任务书 2026-07-15
 
-最后更新：2026-07-16 08:12:11
-版本：v2.2
-状态：实施中；阶段 0-5 已完成，阶段 6 的同源读取、迁移生命周期、atom 高级管理、首次自动选择、运行中释放和事实孤儿恢复已完成；隔离长时间运行与正式用户场景验收仍待推进；未迁移正式用户数据
+最后更新：2026-07-16 10:42:44
+版本：v2.6
+状态：实施中；阶段 0-5 已完成，阶段 6 的同源读取、迁移生命周期、atom 高级管理、首次自动选择、执行中受控纳入/释放、原始数据记录孤儿恢复、隔离 soak 和真实 Electron 窗口验收已完成；正式用户场景验收仍待用户批准迁移后推进；未迁移正式用户数据
 
 ## 1. 目标
 
 把现有集中式记忆文档升级为 Memory v3：
 
-- 每个真实事件先形成一个带哈希的 immutable fact；事实一旦写入不修改、不合并、不裁剪，纠正通过新事实表达；
-- 一条可独立理解、检索和治理的记忆对应一个 atom projection；atom 可移动、合并、失效和恢复，但不得改写其来源事实；
-- 每次 run 维护独立的 Context working set：首次请求自动选择少量相关 atom，执行中可继续介入或释放当前无用 atom；
+- 每个事件先形成一个带哈希的原始数据记录（raw record）；记录一旦写入不修改、不合并、不裁剪，纠正通过新的原始数据记录表达；记录内容仍按认识状态区分事实主张、用户陈述、建议、假设、决定与证据；
+- 一条可独立理解、检索和治理的记忆对应一个 atom projection；atom 可移动、合并、失效和恢复，但不得改写其来源原始数据记录；
+- 每次 run 维护独立的 Context working set：首次用户请求由 Runtime 从 D1 索引自动选择少量相关 atom；执行中 LLM 可通过受控 `expand/deep_search` 决策继续纳入 atom，也可 `release` 当前无用 atom；
 - 原子记忆仍属于长期、daily、项目或经验分支，并通过 parent 保持树状层级；
 - 内置本地向量目录负责原子文件的登记、层级查询、全文检索、向量检索、状态和一致性管理；
 - 记忆读取继续遵守 `root index -> branch index -> hierarchy expansion -> branch-scoped search`；
@@ -27,6 +27,8 @@
 
 本任务不是把任意长文机械切成固定字符块。原子化的依据是语义所有权：一项事实、偏好、决策、经验、约束或可复用方法应能独立理解，并拥有独立来源和生命周期。
 
+原始数据记录、atom、向量目录和 working set 都只是实现机制。它们的唯一目的，是让 LS 对需要保留的信息不失忆，并让每次任务只加载和使用当前真正有效的信息；任何不能改善持久可恢复性或任务执行效率的细分设计，都不应继续增加复杂度。
+
 ## 2. 当前实现差距
 
 当前 Memory v2 已具备分支、parent、tier、scope、索引优先读取、资源注册和写入闸门，但仍有七项结构性差距：
@@ -39,26 +41,26 @@
 6. 用户、外部资料和模型产生的事实主张、建议、偏好与决定尚无统一 epistemic schema，存在把“有人建议”误当成“事实成立”的风险。
 7. 实体身份、所有权边界和关系尚未形成统一 schema；名称、路径、向量相似或共现可能被误当成同一对象或已验证关系。
 
-因此，正式运行路径当前仍不能宣称已经切换到“不可变事实 + atom 投影 + 层级 + 完全本地向量管理”；该能力已在隔离的 Memory v3 完成数据层、统一 facade、安全迁移、检索路径、KnownState、同源 D0-D3 控制面、atom 高级管理、初始 working set 和事实孤儿恢复。尚待隔离长时间运行、用户批准和正式数据场景验收。
+因此，正式运行路径当前仍不能宣称已经切换到“原始数据记录 + atom 投影 + 层级 + 完全本地向量管理”；该能力已在隔离的 Memory v3 完成数据层、统一 facade、安全迁移、检索路径、KnownState、同源 D0-D3 控制面、atom 高级管理、初始 working set、原始数据记录孤儿恢复、commit receipt、隔离 soak 和真实窗口验收。尚待用户批准和正式数据场景验收。
 
 ## 3. Memory v3 数据模型
 
 ### 3.0 三层数据语义
 
 ```text
-Immutable Fact Store
+Raw Record Store
   -> Atom Projection Store + rebuildable Catalog
   -> Run Context Working Set
 ```
 
-- **Immutable Fact Store** 是事件真相源。每个 fact 保存原始 `MemoryUpdateEvent`、当时的结构化 mutation、涉及的 atom id、捕获时间和内容哈希；没有 update/delete/prune API。
-- **Atom Projection Store** 是面向层级导航、相关性计算、FTS/向量检索和用户治理的当前语义投影。移动、合并、失效、恢复和 tombstone 都只影响投影；合并不能自动提高 confidence 或 usefulness，来源 atom 与 fact 仍可审计。
+- **Raw Record Store** 保存事件最初落盘的原始数据。每条记录保存原始 `MemoryUpdateEvent`、当时的结构化 mutation、涉及的 atom id、捕获时间和内容哈希；没有 update/delete/prune API。mutation 提交后另写 append-only commit receipt，证明该记录已落地而不回写原始记录；receipt 同样没有 update/delete/prune API。Raw record 是存储概念，不表示其内容已经是事实。
+- **Atom Projection Store** 是面向层级导航、相关性计算、FTS/向量检索和用户治理的当前语义投影。移动、合并、失效、恢复和 tombstone 都只影响投影；合并不能自动提高 confidence 或 usefulness，来源 atom 与原始数据记录仍可审计。
 - **Run Context Working Set** 是单次 run 内实际介入模型的有界 atom 集。加入和 `release` 都由 Runtime 校验索引前置条件、作用域、预算、去重和证据封套；release 不写持久数据，后续可以重新介入。
-- Recovery journal 与 operation journal 只保存有界恢复状态，可以裁剪已提交记录；它们不是不可变事实的替代品。
+- Recovery journal 与 operation journal 只保存有界恢复状态，可以裁剪已提交记录；它们不是原始数据记录的替代品。
 
 ### 3.1 Atom 投影文件
 
-Atom 是从 immutable facts 或迁移基线派生的可重建语义投影，不是原始事件文件。每个 atom 文件至少包含：
+Atom 是从 raw records 或迁移基线派生的可重建语义投影，不是原始事件文件。每个 atom 文件至少包含：
 
 ```text
 version
@@ -109,8 +111,10 @@ contentHash
 ```text
 memory-tree/
   v3/
-    facts/
-      <shard>/<event-hash>.fact.json
+    raw-records/
+      <shard>/<event-hash>.raw-record.json
+    raw-record-commits/
+      <shard>/<event-hash>.commit.json
     atoms/
       long-term/<shard>/<atom-id>.memory.json
       daily/<shard>/<atom-id>.memory.json
@@ -133,7 +137,7 @@ memory-tree/
 - `atom_vectors`：atom id、embedding 版本、维度和向量；
 - `atom_access`：访问时间、run、stage、检索路径、命中原因和是否进入 Context；
 - `atom_feedback`：从 atom 的验证反馈摘要和受限审计事件生成的查询投影，包含有用/无帮助/冲突/过期结果、证据引用、衰减后的 usefulness 和最近验证时间；
-- `memory_events`：已持久捕获事件的查询投影、处理状态、目标版本、幂等键、重试和恢复位置；事件真相仍在 immutable fact，pending/recovery 状态由有界 event journal 管理；
+- `memory_events`：已持久捕获事件的查询投影、处理状态、目标版本、幂等键、重试和恢复位置；事件原始数据仍在 raw record，pending/recovery 状态由有界 event journal 管理；
 - `memory_due`：按 effective、expiry、revalidation 和 usefulness decay 时间定位到期 atom，避免全库轮询；
 - `evidence_links`：atom/claim 与工具结果、用户原话、文档版本、执行步骤和 VERIFY 结果之间的可追溯关系；
 - `entities`：实体 id、类型、owner、scope、稳定外部键、状态、别名和版本；
@@ -141,7 +145,7 @@ memory-tree/
 - `operations`：跨文件系统与 SQLite 更新的恢复日志；
 - `audit`：写入、合并、移动、归档、失效、删除和重建证据。
 
-Memory Repository 是唯一持久写入入口。Immutable facts 保存事件真相；atom 文件保存可审计的当前投影、最小重建元数据和有界验证反馈摘要；SQLite 负责高效管理和查询；访问明细与恢复日志按容量和保留期治理。数据库属于可重建索引：损坏或删除后，可以扫描持久文件、校验哈希和 parent 引用并重建目录与当前优先级基线；不能让数据库、journal 或 Renderer 成为无法恢复的唯一记忆副本。
+Memory Repository 是唯一持久写入入口。Raw records 保存事件最初落盘的原始数据，但不替内容作事实判断；atom 文件保存可审计的当前投影、最小重建元数据和有界验证反馈摘要；SQLite 负责高效管理和查询；访问明细与恢复日志按容量和保留期治理。数据库属于可重建索引：损坏或删除后，可以扫描持久文件、校验哈希和 parent 引用并重建目录与当前优先级基线；不能让数据库、journal 或 Renderer 成为无法恢复的唯一记忆副本。
 
 ### 3.3 层级与检索
 
@@ -166,7 +170,7 @@ bounded root index
 - 可选候选按最后验证收益和策略配置执行时间衰减；衰减后仍可通过强 scope 匹配、新证据、用户点选或索引导航重新激活。低频不等于错误，衰减不能自动改变 confidence、归档或删除 atom。
 - 实际注入使用 `MemoryEvidenceEnvelope`，只携带本次判断需要的 atom 引用、branch/scope、tier、来源/权威、confidence、importance、验证/更新时间、新鲜度、命中理由、状态、冲突与截断信息；完整访问历史不进入 Prompt。
 - 当前初始选择实现只检查 D1 索引元数据，最多选择 2 个 D2 atom、总预算 600 tokens；这些是可测试的安全默认值，不是要求永久固定的产品常量。初始选择不做跨树向量搜索。
-- 执行过程中，LLM 可通过 `memory_tree` 请求 branch index、expand、branch-scoped deep search 或 `release`。新增片段进入当前 working set；release 只移出本轮 active set、释放 token/dedup 预算并记录 KnownState 排除原因，不修改 fact、atom 或 catalog 状态。
+- 执行过程中，LLM 可通过 `memory_tree` 请求 branch index、expand、branch-scoped deep search 或 `release`。新增片段进入当前 working set；release 只移出本轮 active set、释放 token/dedup 预算并记录 KnownState 排除原因，不修改原始数据记录、atom 或 catalog 状态。
 
 ### 3.4 统一渐进式披露
 
@@ -246,13 +250,13 @@ statement / atom / resource
 
 文件系统和 SQLite 不能依靠一个普通事务同时提交，因此每次变更使用可恢复操作日志：
 
-1. 把带 event id、idempotency key、domain/scope、来源时间、观察时间、证据和期望 atom 版本的 `MemoryUpdateEvent` 与 mutation 原子写成 immutable fact；
+1. 把带 event id、idempotency key、domain/scope、来源时间、观察时间、证据和期望 atom 版本的 `MemoryUpdateEvent` 与 mutation 原子写成 raw record；
 2. 将同一事件登记到有界 event journal，并写入带 operation id 的 pending 记录；
 3. 在版本前置条件下原子创建、合并或替换 atom projection 文件；
 4. 在 SQLite 事务中更新目录、FTS、向量状态、due index 和审计；
-5. 校验 fact/atom 哈希、事件 revision 与数据库记录；
+5. 校验 raw record/atom 哈希、事件 revision 与数据库记录；
 6. 标记 operation 与 event committed；
-7. 启动时先比对 facts、journal 与 catalog：fact 已存在但 journal 缺失时补建恢复事件；随后幂等重放未完成操作。状态含糊时报告冲突，不能猜测覆盖。
+7. 启动时先比对原始数据记录、journal 与 catalog：原始记录已存在但 journal 缺失时补建恢复事件；随后幂等重放未完成操作。状态含糊时报告冲突，不能猜测覆盖。
 
 事件来源至少覆盖用户新增/纠正、任务状态、工具与 VERIFY 证据、项目/受管资源变化、LS 能力和配置变化、冲突处理、权限决定，以及 effective/expiry/revalidation/decay 时间到达。主任务只有在事件已持久捕获后才能把记忆更新显示为“已记录”；atom 归并可以在不阻塞回复的有界后台流程中完成。
 
@@ -293,7 +297,7 @@ statement / atom / resource
 
 ### 阶段 1：Atom Store
 
-状态：**已完成隔离实现**。Immutable fact 使用独立分片文件、内容哈希和只追加 API；Atom 使用 branch + SHA-256 shard 路径、稳定 id、轻量常驻 header、按需正文读取、内容哈希、修订前置条件、同卷临时文件/刷盘/rename、parent/作用域/循环校验和损坏/孤儿隔离；event 与 operation journal 具备幂等键、三态恢复、记录/数量硬上限。隔离测试覆盖 fact 冲突、journal 裁剪后事实保留、CRUD、归档/恢复与 10,000 atom 重启扫描，未读取或迁移正式用户目录。
+状态：**已完成隔离实现**。Raw record 使用独立分片文件、内容哈希和只追加 API；Atom 使用 branch + SHA-256 shard 路径、稳定 id、轻量常驻 header、按需正文读取、内容哈希、修订前置条件、同卷临时文件/刷盘/rename、parent/作用域/循环校验和损坏/孤儿隔离；event 与 operation journal 具备幂等键、三态恢复、记录/数量硬上限。隔离测试覆盖原始记录冲突、journal 裁剪后原始数据保留、CRUD、归档/恢复与 10,000 atom 重启扫描，未读取或迁移正式用户目录。
 
 - 实现分片路径、原子读写、哈希、状态管理和损坏隔离；
 - 实现 parent 校验、循环检测、孤儿恢复和目录扫描；
@@ -307,7 +311,7 @@ statement / atom / resource
 状态：**已完成隔离实现与真实离线验收**。
 
 - 已完成：可删除重建的 `node:sqlite` catalog、FTS5、branch/scope/subtree 强制过滤、向量 BLOB 与版本状态、访问/反馈有界保留、due index、事件/操作投影、实体/有向关系边界、数据库完整性检查和流式重建；
-- 已完成：`MemoryV3StorageCoordinator` 强制执行“immutable fact 捕获 → event/operation 登记 → atom 写入 → catalog 投影 → 双提交”；启动时分批协调 fact、journal 与 catalog，故障注入覆盖 fact 已写/event 未写、只捕获事件、merge 部分写入和 atom 已写/catalog 未写等中断点；
+- 已完成：`MemoryV3StorageCoordinator` 强制执行“raw record 捕获 → event/operation 登记 → atom 写入 → catalog 投影 → 双提交”；启动时分批协调原始数据记录、journal 与 catalog，故障注入覆盖原始记录已写/event 未写、只捕获事件、merge 部分写入和 atom 已写/catalog 未写等中断点；
 - 已完成：远程 Embedding 默认硬拒绝且测试确认零调用；`packages/embedding` 通过显式 provision 流程管理固定 revision、大小与 SHA-256，产品运行只读完整本地目录，不隐式联网或依赖 Transformers 缓存；
 - 已完成：BGE 与 multilingual E5 使用同一 18 组中文、英文、混合语言和代码基准；BGE 定为平衡默认，E5 作为高质量档；两种模型均在进程内断网断言下完成真实推理；
 - 已完成：模型版本或内容变化会令已有向量进入 stale/pending；`MemoryV3MaintenanceWorker` 按有界批次生成/重建向量，不使用常驻轮询计时器，模型暂不可用时保持 pending；层级与 FTS 不依赖向量；
@@ -373,13 +377,13 @@ statement / atom / resource
 - 已完成：statement kind、epistemic status、authority scope、asserted by 与 evidence refs 会投影给模型；VERIFY 明确拒绝把 suggestion、reported observation 或 unverified claim 当作 verified fact 交付；
 - 已完成：D0-D3 使用同一份 atom/catalog 渐进展开，Prompt 与运行时不建立记忆正文副本；Context 只展开当前目标需要的关系邻域；
 - 已完成：成功写入后的本地向量维护可等待、单批有界、并发合并且失败不回滚 atom，长期运行不再依赖重启补齐新记忆向量；
-- 已验证：仓库卫生 31/31、27 个 workspace 类型检查、150 个测试文件中的 1159 项通过且 1 项按预期跳过、Electron main/preload/renderer 构建和应用恢复源检查通过。
+- 已验证：仓库卫生 31/31、27 个 workspace 类型检查、150 个测试文件中的 1164 项通过且 1 项按预期跳过、Electron main/preload/renderer 构建和应用恢复源检查通过。
 
 验收：已通过隔离工程验收。网络被阻断时记忆写入和检索正常，向量搜索不能绕过层级导航；同一作用域内经验证且相关的记忆稳定优先介入，单纯重复访问不能形成错误自增强。该结论不代表正式用户数据已经迁移。
 
 ### 阶段 6：管理 UI 与真实迁移
 
-状态：**进行中；同源读取控制面、正式迁移生命周期、atom 高级管理、初始 working set、运行中 release 和事实孤儿恢复已完成；隔离长时间运行与真实用户场景验收尚未完成**。
+状态：**进行中；同源读取控制面、正式迁移生命周期、atom 高级管理、初始 working set、运行中 release、原始数据记录孤儿恢复、隔离 soak 和真实窗口验收已完成；正式用户场景验收尚未完成**。
 
 - 已完成：`/memory/tree` 只传输 D0/D1 概况与摘要，不再一次性返回记忆正文、完整来源和历史；D2 正文/认识状态与 D3 证据、命中、管理历史、事件时间线、实体和关系邻域均按节点请求展开；
 - 已完成：v3 节点详情直接来自同一 `MemoryRepository`、atom 和 Catalog；独立 `management` facade 提供目录状态与节点检查，不建立 UI 展示副本，也不扩大 Repository 主 facade；
@@ -388,13 +392,16 @@ statement / atom / resource
 - 已完成：设置页通过显式确认登记迁移或回滚，运行中的 API 只持久化请求、不执行结构性变更；用户可在重启前取消请求，失败进入可见 recovery，并可重启恢复或在安全边界内取消；
 - 已完成：“登记请求 -> 应用重启 -> 数据根准备 -> Memory v3 迁移/回滚 -> 配置对齐 -> Runner -> Local App API -> 渠道插件”的启动前执行协议；迁移不与活动 Agent run、渠道、Repository、SQLite 或 Embedding 写入竞争；
 - 已完成：迁移失败继续使用 v2；回滚失败继续使用 v3。只有 v2 源和 v3 validation hash 均未变化时才允许回滚，回滚后的重新迁移会保留旧 v3 后从最新 v2 重建；
-- 已完成：用户可对 v3 atom 执行同分支/同作用域移动、受认识边界约束的合并、失效、恢复和单 atom D3 证据包导出；双 revision 预检、层级循环防护、来源 tombstone 和 immutable facts 保证治理不丢原始事实；
+- 已完成：用户可对 v3 atom 执行同分支/同作用域移动、受认识边界约束的合并、失效、恢复和单 atom D3 证据包导出；双 revision 预检、层级循环防护、来源 tombstone 和 raw records 保证治理不丢原始数据；
 - 已完成：首次业务模型请求从 D1 索引中最多自动选择 2 个 D2 atom、预算 600 tokens；执行中可显式 release 当前 atom，真实请求内容和 KnownState 同步移除，后续允许重新介入；
-- 已完成：`fact-captured` 崩溃点可在重启时从 immutable fact 自动补建 recovery event 并恢复 atom/catalog；已提交 journal 即使被裁剪，fact 仍保留；
+- 已完成：`raw-record-captured` 崩溃点可在重启时从 raw record 自动补建 recovery event 并恢复 atom/catalog；已提交 journal 即使被裁剪，原始数据记录仍保留；
+- 已完成：提交边界会生成独立的 append-only commit receipt。删除 catalog 并从已经历 update/archive/restore/merge 的当前 atom 文件重建时，历史原始记录依据 receipt 只恢复审计投影，不会倒放覆盖较新 atom；没有 receipt 的原始记录才进入 pending/committed 判定；
+- 已完成：`verify:memory-v3-soak` 在隔离临时数据根验证 120 次初始写入、149 条最终原始数据记录、121 个 atom、4 次重启、journal 裁剪到 8 条、raw-record-only 崩溃恢复、catalog 删除重建、96 次 working-set run、release/re-admit 和 16 条有界 ledger；SQLite integrity 为 `ok`，临时根已删除；
 - 已完成：Renderer “更多”菜单、目标选择对话框、点击外部收回和过渡动画接入同一 Local App API；管理/导出路由使用真实 HTTP 测试覆盖状态码、参数和证据文件；
-- 待完成：隔离长时间运行、真实窗口细节验收和正式用户场景验收。
+- 已完成：隔离 V3 Electron 窗口显示 65 个活动 atom，D2、D3“证据与历史”、菜单收回、移动、失效/恢复和单 atom 证据包导出均通过；返回主页后前进栈仍可恢复记忆树，恢复期间的派生状态不会截断前进分支；
+- 待完成：用户批准正式数据迁移后的真实用户场景验收。
 
-验收：读取、迁移生命周期、atom 管理、working set 与事实孤儿恢复已通过定向类型检查、HTTP、故障/重启/并发和 Runner 首次请求测试；UI 管理运行时同一份 fact/atom/catalog，不建立展示副本。完整阶段验收仍要求隔离长时间运行、真实窗口和正式用户场景，并由用户单独批准实际数据切换。
+验收：读取、迁移生命周期、atom 管理、working set、原始数据记录孤儿恢复、catalog 灾难重建、隔离 soak 和真实窗口已通过定向类型检查、HTTP、故障/重启/并发、Runner 首次请求和 Electron 交互测试；UI 管理运行时同一份 raw record/atom/catalog，不建立展示副本。完整阶段验收仍要求用户单独批准实际数据切换并完成正式用户场景。
 
 ## 8. 已确认决策
 
@@ -403,7 +410,7 @@ statement / atom / resource
 | D1 | 记忆粒度 | 按可独立治理的语义原子切割，不按固定字符机械分块 |
 | D2 | 层级 | atom 保存稳定 `parentId`，数据库按 parent 查询子级 |
 | D3 | 向量库 | 使用应用内置的本地 SQLite 向量目录管理 atom |
-| D4 | 权威边界 | Immutable facts 是事件真相源；atom 是可治理、可重建投影；catalog 是高效管理索引；journal 只是有界恢复状态 |
+| D4 | 权威边界 | Raw records 是事件原始数据源；append-only commit receipt 独立证明 mutation 已提交且不改写原始记录；atom 是可治理、可重建投影；catalog 是高效管理索引；journal 只是有界恢复状态 |
 | D5 | Embedding | 默认本地生成；远程 Provider Embedding 仅显式选择后允许 |
 | D6 | 检索范围 | 先沿层级导航，FTS/向量只在已选择分支或子树内检索 |
 | D7 | 用户数据 | 不自动迁移；先完成隔离迁移与故障注入，再单独批准正式切换 |
@@ -422,18 +429,18 @@ statement / atom / resource
 | D20 | 实体边界 | user/project/file/session/task/skill/tool/rule/concept 等使用稳定、带 owner/scope 的实体 id；同名或相似不自动合并 |
 | D21 | 关系语义 | 关系有方向、证据、权威、置信度、相关度、时间与冲突状态；相似度只用于候选导航，不证明事实 |
 | D22 | 应用数据根 | Memory、用户/LS 记忆、Skills 与 catalog 都属于可整体迁移的应用数据根；`workplace/` 仅是默认工作区子目录 |
-| D23 | 原始事实 | 每个真实事件先写 immutable fact；写入后不修改、不合并、不裁剪，纠正通过新事实表达 |
-| D24 | 运行工作集 | 首次请求从 D1 选择少量 D2 atom；执行中可加入或 release atom，release 只影响当前 run 并可重新介入 |
+| D23 | 原始数据 | 每个事件先写 raw record；写入后不修改、不合并、不裁剪，纠正通过新的原始数据记录表达；是否为事实由认识状态另行判断 |
+| D24 | 运行工作集 | 首次用户请求由 Runtime 从 D1 选择少量 D2 atom；执行中由 LLM 通过受控 `expand/deep_search` 决策纳入 atom，或通过 `release` 移出 atom；release 只影响当前 run 并可沿索引重新介入 |
 
 ## 9. 总完成门槛
 
 - 不再存在随记忆规模线性膨胀的单一权威 `index.json`；
-- 每个事件事实有不可变文件、内容哈希和来源；每个记忆 atom 有稳定 id、parent、来源、状态和独立投影生命周期；
+- 每个事件原始数据记录有只追加文件、内容哈希和来源；每个记忆 atom 有稳定 id、parent、来源、状态和独立投影生命周期；
 - 经验证的高价值记忆能在匹配作用域内优先注入，排序原因和反馈证据可审计；
 - 重复访问不会自动提高可信度，错误、冲突和过期记忆不会形成自增强循环；
 - 长期低收益的可选记忆会降低注入频率，强制信息不被误衰减；每次 LLM 请求能看到所用记忆的必要证据元数据；
 - DECIDE、EXECUTE、VERIFY 和 FINALIZE 可以按当前目标增加或减少 Context 信息，且不丢失权威来源和排除记录；
-- 首次请求能在有界预算内自动选择相关 atom；执行中的 release 不修改持久事实或 atom，目标变化后可重新介入；
+- 首次请求能在有界预算内自动选择相关 atom；执行中模型可沿索引纳入更多 atom，并可 release 当前无用 atom；这些操作都不修改持久事实或 atom，目标变化后可重新介入；
 - 用户记忆、LS 自身记忆及其他 domain 都能从 D0/D1 渐进展开到 D2/D3，且 UI、Prompt 与运行时使用同一权威数据；
 - 每个有效时间/事件更新先持久捕获，重复消费幂等，故障与重启不会静默丢失；关闭期间的到期项在启动时补偿；
 - 已确认记忆具有稳定索引、版本、恢复与备份验证，相关时可以重新取回，不依赖永久注入 Prompt；

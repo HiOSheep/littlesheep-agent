@@ -181,9 +181,9 @@ function defaultReason(action: MemoryAtomManagementAction): string {
 
 function dialogCopy(action: MemoryAtomManagementAction) {
   return ({
-    move: { title: '移动记忆原子', description: '只调整投影层级，不会改写原始事实或跨越作用域。', confirm: '确认移动' },
+    move: { title: '移动记忆原子', description: '只调整投影层级，不会改写原始数据记录或跨越作用域。', confirm: '确认移动' },
     merge: { title: '合并重复原子', description: '目标保留稳定 ID；来源保留为可审计记录，不会提高置信度。', confirm: '确认合并' },
-    invalidate: { title: '标记记忆失效', description: '原始事实继续保留，但该投影将退出检索和上下文装配。', confirm: '确认失效' },
+    invalidate: { title: '标记记忆失效', description: '原始数据记录继续保留，但该投影将退出检索和上下文装配。', confirm: '确认失效' },
     reactivate: { title: '恢复记忆有效性', description: '恢复失效前保存的认识状态和处理状态。', confirm: '确认恢复' },
   })[action]
 }

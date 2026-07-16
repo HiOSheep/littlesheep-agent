@@ -200,19 +200,19 @@ function MemoryV3EvidenceSummary({ detail }: { detail: MemoryTreeNodeDetail }) {
           {v3.evidenceRefs.slice(0, 12).map((ref) => <span key={ref}>{compactPath(ref)}</span>)}
         </div>
       )}
-      {v3.immutableFacts && (
+      {v3.rawRecords && (
         <section className="memory-node-subsection">
-          <strong>不可变来源事实</strong>
-          {v3.immutableFacts.length > 0 ? (
+          <strong>原始数据记录</strong>
+          {v3.rawRecords.length > 0 ? (
             <div className="memory-history-list">
-              {v3.immutableFacts.map((fact) => (
-                <div key={fact.id}>
-                  <span><b>{fact.kind}</b>{fact.sourceKind} · {fact.evidenceRefs.slice(0, 2).join(' · ')}</span>
-                  <time dateTime={fact.occurredAt}>{formatDateTime(fact.occurredAt)}</time>
+              {v3.rawRecords.map((record) => (
+                <div key={record.id}>
+                  <span><b>{record.kind}</b>{record.sourceKind} · {record.evidenceRefs.slice(0, 2).join(' · ')}</span>
+                  <time dateTime={record.occurredAt}>{formatDateTime(record.occurredAt)}</time>
                 </div>
               ))}
             </div>
-          ) : <p>该投影来自旧数据或尚未建立不可变事件来源。</p>}
+          ) : <p>该投影来自旧数据或尚未建立原始事件记录。</p>}
         </section>
       )}
       {v3.neighborhood && (v3.neighborhood.entities.length > 0 || v3.neighborhood.relations.length > 0) && (

@@ -43,6 +43,15 @@ function setup() {
 }
 
 describe('memory_tree agent tools', () => {
+  it('explains run-scoped admission and release to the model', () => {
+    const { tree } = setup();
+    const tool = createMemoryTreeTool(tree);
+
+    expect(tool.description).toContain('enter this run\'s active Context working set');
+    expect(tool.description).toContain('release affects only this run');
+    expect(tool.description).toContain('never changes raw records or persistent atom projections');
+  });
+
   it('navigates branch index then expansion and applies the read-side envelope', async () => {
     const { tree, ctx } = setup();
     const tool = createMemoryTreeTool(tree, { envelope: (content) => `<safe>${content}</safe>` });

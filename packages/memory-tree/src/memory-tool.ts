@@ -118,7 +118,9 @@ export function createMemoryTreeTool(memory: MemoryNavigationServiceLike, option
     name: 'memory_tree',
     description:
       'Navigate persistent memory in order: root index, branch_index, expand a node/query, then branch-scoped deep_search only if needed. ' +
-      'The runtime rejects skipped levels. Results are budgeted, deduplicated and source-traced per run.',
+      'The runtime rejects skipped levels. Atoms returned by expand or deep_search enter this run\'s active Context working set. ' +
+      'Use release when an active atom no longer helps; release affects only this run and never changes raw records or persistent atom projections. ' +
+      'Results are budgeted, deduplicated and source-traced per run.',
     inputSchema: MemoryTreeInput,
     async execute(input, ctx) {
       const startedAt = Date.now();

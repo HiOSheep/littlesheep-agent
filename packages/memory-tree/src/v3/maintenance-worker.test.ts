@@ -6,7 +6,7 @@ import type { EmbeddingEngine, EmbeddingRequest, EmbeddingResult } from './contr
 import { MemoryAtomStore } from './atom-store.js';
 import { MemoryCatalog } from './catalog.js';
 import { MemoryEventJournal, MemoryOperationJournal } from './event-journal.js';
-import { MemoryImmutableFactStore } from './immutable-fact-store.js';
+import { MemoryRawRecordStore } from './raw-record-store.js';
 import { MemoryV3MaintenanceWorker } from './maintenance-worker.js';
 import { MemoryV3StorageCoordinator } from './storage-coordinator.js';
 import { makeAtomInput } from './test-fixtures.js';
@@ -82,7 +82,7 @@ describe('MemoryV3MaintenanceWorker', () => {
       catalog,
       eventJournal,
       operationJournal: new MemoryOperationJournal({ dataDir }),
-      factStore: new MemoryImmutableFactStore({ dataDir }),
+      rawRecordStore: new MemoryRawRecordStore({ dataDir }),
     });
     await expect(coordinator.recover()).resolves.toEqual({ recoveredEventIds: [], failed: [] });
   });

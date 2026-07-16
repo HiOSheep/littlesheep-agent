@@ -4,6 +4,11 @@ import type { MemoryAtom, MemoryStorageMutation } from './contracts.js';
 import { MemoryAtomStore } from './atom-store.js';
 import { canonicalJson } from './durable-json.js';
 
+export interface AppliedMemoryMutation {
+  primary: MemoryAtom;
+  affected: MemoryAtom[];
+}
+
 export function parseStorageMutation(value: unknown): MemoryStorageMutation {
   if (!value || typeof value !== 'object') throw new Error('Memory event is missing its storage mutation payload.');
   const mutation = value as Partial<MemoryStorageMutation> & Record<string, unknown>;
@@ -88,7 +93,7 @@ export async function classifyMutationProjection(
     const existing = await store.read(mutation.atom.id);
     if (!existing) return 'pending';
     if (matchesDefinedFields(existing, mutation.atom)) return 'committed';
-    throw new Error(`Immutable fact conflicts with existing atom ${mutation.atom.id}.`);
+    throw new Error(`Raw record conflicts with existing atom ${mutation.atom.id}.`);
   }
   if (mutation.kind === 'merge') {
     const [target, source] = await Promise.all([
@@ -112,14 +117,14 @@ export async function classifyMutationProjection(
     return targetState === 'committed' && sourceState === 'committed' ? 'committed' : 'pending';
   }
   const existing = await store.read(mutation.atomId);
-  if (!existing) throw new Error(`Immutable fact references missing atom ${mutation.atomId}.`);
+  if (!existing) throw new Error(`Raw record references missing atom ${mutation.atomId}.`);
   if (mutation.kind === 'update') {
     return mutationPatchProjection(existing, mutation.atomId, mutation.expectedRevision, mutation.patch, 'update');
   }
   if (existing.revision === mutation.expectedRevision) return 'pending';
   const expectedStatus = mutation.kind === 'archive' ? 'archived' : 'active';
   if (existing.revision === mutation.expectedRevision + 1 && existing.status === expectedStatus) return 'committed';
-  throw new Error(`Immutable ${mutation.kind} fact has an ambiguous projection for atom ${existing.id}.`);
+  throw new Error(`Raw record for ${mutation.kind} has an ambiguous projection for atom ${existing.id}.`);
 }
 
 function mutationPatchProjection(
@@ -129,8 +134,8 @@ function mutationPatchProjection(
   patch: Extract<MemoryStorageMutation, { kind: 'update' }>['patch'],
   label: string,
 ): 'pending' | 'committed' {
-  if (!existing) throw new Error(`Immutable ${label} fact references missing atom ${atomId}.`);
+  if (!existing) throw new Error(`Raw record for ${label} references missing atom ${atomId}.`);
   if (existing.revision === expectedRevision) return 'pending';
   if (existing.revision === expectedRevision + 1 && matchesDefinedFields(existing, patch)) return 'committed';
-  throw new Error(`Immutable ${label} fact has an ambiguous projection for atom ${existing.id}.`);
+  throw new Error(`Raw record for ${label} has an ambiguous projection for atom ${existing.id}.`);
 }

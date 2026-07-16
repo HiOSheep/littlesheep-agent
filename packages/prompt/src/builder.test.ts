@@ -30,6 +30,9 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('root index -> branch index -> node/query expansion');
     expect(prompt).toContain('Never search across the whole tree by default');
     expect(prompt).toContain('Semantic/vector recall is a last-resort candidate source');
+    expect(prompt).toContain('enter the active run Context working set');
+    expect(prompt).toContain('Release only removes that atom from this run');
+    expect(prompt).toContain('does not edit, invalidate or delete durable memory');
     expect(prompt).toContain("turn the user's ideas and goals into reliable, verified results");
     expect(prompt).toContain('Use progressive disclosure');
     expect(prompt).toContain('Never hide failure, partial completion, risk');

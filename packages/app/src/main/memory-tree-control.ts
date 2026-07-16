@@ -184,14 +184,14 @@ export async function buildMemoryTreeNodeDetail(
         entries: inspection.history.entries,
         truncated: inspection.history.truncated,
       } : undefined,
-      immutableFacts: inspection.immutableFacts?.map((fact) => ({
-        id: fact.id,
-        kind: fact.event.kind,
-        capturedAt: fact.capturedAt,
-        occurredAt: fact.event.occurredAt,
-        sourceKind: fact.event.source.kind,
-        evidenceRefs: fact.event.evidenceRefs,
-        atomIds: fact.atomIds,
+      rawRecords: inspection.rawRecords?.map((record) => ({
+        id: record.id,
+        kind: record.event.kind,
+        capturedAt: record.capturedAt,
+        occurredAt: record.event.occurredAt,
+        sourceKind: record.event.source.kind,
+        evidenceRefs: record.event.evidenceRefs,
+        atomIds: record.atomIds,
       })),
     } : undefined,
   }
@@ -207,7 +207,7 @@ export async function buildMemoryTreePayload(
     projects.map((project) => ({ id: project.id, name: project.name, path: project.path })),
   )
   // Projection inspection also reconciles derived resource status. Read the
-  // management snapshot afterwards so one payload cannot report conflicting facts.
+  // management snapshot afterwards so one payload cannot report conflicting records.
   const memorySnapshot = await runner.infra.memoryService.getManagementSnapshot()
   const repository = await runner.infra.memoryRepository.management.status()
   const projectionByProjectId = new Map(projectionStates.map((state) => [state.projectId, state]))

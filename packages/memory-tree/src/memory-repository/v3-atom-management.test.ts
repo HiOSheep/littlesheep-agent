@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { MemoryAtomStore } from '../v3/atom-store.js';
 import { MemoryCatalog } from '../v3/catalog.js';
 import { MemoryEventJournal, MemoryOperationJournal } from '../v3/event-journal.js';
-import { MemoryImmutableFactStore } from '../v3/immutable-fact-store.js';
+import { MemoryRawRecordStore } from '../v3/raw-record-store.js';
 import { scoreMemoryCandidate } from '../v3/priority.js';
 import { MemoryV3StorageCoordinator } from '../v3/storage-coordinator.js';
 import { makeAtomInput } from '../v3/test-fixtures.js';
@@ -15,7 +15,7 @@ describe('MemoryV3AtomManagement', () => {
   let dataDir: string;
   let catalog: MemoryCatalog;
   let atomStore: MemoryAtomStore;
-  let factStore: MemoryImmutableFactStore;
+  let rawRecordStore: MemoryRawRecordStore;
   let management: MemoryV3AtomManagement;
   let tick: number;
   let now: () => Date;
@@ -26,11 +26,11 @@ describe('MemoryV3AtomManagement', () => {
     now = () => new Date(tick += 1_000);
     atomStore = new MemoryAtomStore({ dataDir, now });
     catalog = new MemoryCatalog({ dataDir });
-    factStore = new MemoryImmutableFactStore({ dataDir, now });
+    rawRecordStore = new MemoryRawRecordStore({ dataDir, now });
     const coordinator = new MemoryV3StorageCoordinator({
       atomStore,
       catalog,
-      factStore,
+      rawRecordStore,
       eventJournal: new MemoryEventJournal({ dataDir, now }),
       operationJournal: new MemoryOperationJournal({ dataDir, now }),
     });
@@ -89,8 +89,8 @@ describe('MemoryV3AtomManagement', () => {
       content: 'Original source wording.',
       merge: { intoAtomId: target.id, reason: 'Same fact projection.' },
     });
-    expect(await factStore.count()).toBe(1);
-    expect((await factStore.listForAtom(source.id))[0]?.mutation.kind).toBe('merge');
+    expect(await rawRecordStore.count()).toBe(1);
+    expect((await rawRecordStore.listForAtom(source.id))[0]?.mutation.kind).toBe('merge');
   });
 
   it('rejects epistemically incompatible atoms and non-leaf merge sources', async () => {
@@ -129,9 +129,9 @@ describe('MemoryV3AtomManagement', () => {
       priorEpistemicStatus: 'corroborated', priorResolutionStatus: 'under-review',
     });
     catalog = new MemoryCatalog({ dataDir });
-    const restartedFactStore = new MemoryImmutableFactStore({ dataDir, now });
+    const restartedRawRecordStore = new MemoryRawRecordStore({ dataDir, now });
     const coordinator = new MemoryV3StorageCoordinator({
-      atomStore: restartedStore, catalog, factStore: restartedFactStore,
+      atomStore: restartedStore, catalog, rawRecordStore: restartedRawRecordStore,
       eventJournal: new MemoryEventJournal({ dataDir, now }),
       operationJournal: new MemoryOperationJournal({ dataDir, now }),
     });

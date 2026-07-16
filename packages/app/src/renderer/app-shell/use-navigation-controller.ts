@@ -8,6 +8,7 @@ import {
   MAX_NAVIGATION_OPEN_TABS,
   appendNavigationEntry,
   boundStringList,
+  replaceActiveNavigationEntry,
   type NavigationHistoryState,
 } from '../navigation-history'
 import { DirectModulePage, SettingsPage } from '../settings/types'
@@ -67,6 +68,7 @@ export function useNavigationController({
   const settingsEntryRippleFrameRef = useRef<number>()
   const navigationHistoryInitializedRef = useRef(false)
   const navigationRestoreTargetRef = useRef<AppNavigationSnapshot | null>(null)
+  const navigationRestoreSettleTimerRef = useRef<number>()
   const appHistoryRef = useRef(appHistory)
   const settingsReturnRouteRef = useRef<AppRoute>({ section: 'chat' })
   const [settingsEntryRippling, setSettingsEntryRippling] = useState(false)
@@ -122,19 +124,33 @@ export function useNavigationController({
 
     const restoreTarget = navigationRestoreTargetRef.current
     if (restoreTarget) {
-      if (navigationSnapshotsEqual(navigationSnapshot, restoreTarget)) {
-        navigationRestoreTargetRef.current = null
-      }
-      return
+      window.clearTimeout(navigationRestoreSettleTimerRef.current)
+      navigationRestoreSettleTimerRef.current = window.setTimeout(() => {
+        setAppHistory((current) => {
+          const next = replaceActiveNavigationEntry(
+            current,
+            navigationSnapshot,
+            (left, right) => navigationSnapshotsEqual(left, right),
+          )
+          appHistoryRef.current = next
+          navigationRestoreTargetRef.current = null
+          return next
+        })
+      }, 260)
+      return () => window.clearTimeout(navigationRestoreSettleTimerRef.current)
     }
 
     const timer = window.setTimeout(() => {
-      setAppHistory((current) => appendNavigationEntry(
-        current,
-        navigationSnapshot,
-        (left, right) => navigationSnapshotsEqual(left, right),
-        MAX_NAVIGATION_HISTORY_ENTRIES,
-      ))
+      setAppHistory((current) => {
+        const next = appendNavigationEntry(
+          current,
+          navigationSnapshot,
+          (left, right) => navigationSnapshotsEqual(left, right),
+          MAX_NAVIGATION_HISTORY_ENTRIES,
+        )
+        appHistoryRef.current = next
+        return next
+      })
     }, 180)
     return () => window.clearTimeout(timer)
   }, [navigationSnapshot])
@@ -228,6 +244,7 @@ export function useNavigationController({
 
   useEffect(() => () => {
     window.clearTimeout(settingsEntryRippleTimerRef.current)
+    window.clearTimeout(navigationRestoreSettleTimerRef.current)
     window.cancelAnimationFrame(settingsEntryRippleFrameRef.current ?? 0)
   }, [])
 

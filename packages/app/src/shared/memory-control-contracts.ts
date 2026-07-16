@@ -204,7 +204,7 @@ export interface MemoryTreeNodeDetail {
       entries: Array<{ kind: 'access' | 'feedback' | 'event' | 'audit'; id: string; at: string; summary: string }>
       truncated: boolean
     }
-    immutableFacts?: Array<{
+    rawRecords?: Array<{
       id: string
       kind: string
       capturedAt: string
@@ -253,7 +253,7 @@ export interface MemoryAtomEvidenceExportResponse {
     outputPath: string
     atomId: string
     revision: number
-    immutableFactCount: number
+    rawRecordCount: number
     exportedAt: string
   }
 }

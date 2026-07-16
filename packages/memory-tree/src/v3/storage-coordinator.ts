@@ -1,4 +1,4 @@
-// Coordinates immutable fact capture, journals, atom files and catalog commits.
+// Coordinates raw record capture, journals, atom files and catalog commits.
 import type {
   MemoryAtom,
   MemoryEventJournalRecord,
@@ -9,12 +9,13 @@ import type {
 import { MemoryAtomStore } from './atom-store.js';
 import { MemoryCatalog } from './catalog.js';
 import { MemoryEventJournal, MemoryOperationJournal } from './event-journal.js';
-import { MemoryImmutableFactStore } from './immutable-fact-store.js';
+import { MemoryRawRecordStore } from './raw-record-store.js';
 import {
   MEMORY_STORAGE_MUTATION_PAYLOAD_KEY,
-  reconcileImmutableFacts,
-} from './storage-fact-reconciliation.js';
+  reconcileRawRecords,
+} from './storage-raw-record-reconciliation.js';
 import {
+  type AppliedMemoryMutation,
   assertUpdateCanResume,
   errorMessage,
   matchesDefinedFields,
@@ -25,7 +26,7 @@ import {
 } from './storage-mutation-runtime.js';
 
 export type MemoryStorageCheckpoint =
-  | 'fact-captured'
+  | 'raw-record-captured'
   | 'event-captured'
   | 'operation-started'
   | 'merge-target-written'
@@ -33,6 +34,7 @@ export type MemoryStorageCheckpoint =
   | 'atom-written'
   | 'catalog-updated'
   | 'operation-committed'
+  | 'raw-record-committed'
   | 'event-committed';
 
 export interface MemoryV3StorageCoordinatorOptions {
@@ -40,7 +42,7 @@ export interface MemoryV3StorageCoordinatorOptions {
   catalog: MemoryCatalog;
   eventJournal: MemoryEventJournal;
   operationJournal: MemoryOperationJournal;
-  factStore: MemoryImmutableFactStore;
+  rawRecordStore: MemoryRawRecordStore;
   onCheckpoint?: (
     checkpoint: MemoryStorageCheckpoint,
     context: { eventId: string; operationId?: string; atomId?: string },
@@ -53,17 +55,12 @@ export interface MemoryV3RecoveryResult {
   rebuiltCatalog: boolean;
 }
 
-interface AppliedMemoryMutation {
-  primary: MemoryAtom;
-  affected: MemoryAtom[];
-}
-
 export class MemoryV3StorageCoordinator {
   private readonly atomStore: MemoryAtomStore;
   private readonly catalog: MemoryCatalog;
   private readonly eventJournal: MemoryEventJournal;
   private readonly operationJournal: MemoryOperationJournal;
-  private readonly factStore: MemoryImmutableFactStore;
+  private readonly rawRecordStore: MemoryRawRecordStore;
   private readonly onCheckpoint?: MemoryV3StorageCoordinatorOptions['onCheckpoint'];
   private mutationChain: Promise<void> = Promise.resolve();
 
@@ -72,13 +69,13 @@ export class MemoryV3StorageCoordinator {
     this.catalog = options.catalog;
     this.eventJournal = options.eventJournal;
     this.operationJournal = options.operationJournal;
-    this.factStore = options.factStore;
+    this.rawRecordStore = options.rawRecordStore;
     this.onCheckpoint = options.onCheckpoint;
   }
 
   async initialize(recoveryLimit = 1_000): Promise<MemoryV3RecoveryResult> {
     const scan = await this.atomStore.initialize();
-    await this.factStore.initialize();
+    await this.rawRecordStore.initialize();
     await this.eventJournal.initialize();
     await this.operationJournal.initialize();
     let rebuiltCatalog = false;
@@ -86,15 +83,15 @@ export class MemoryV3StorageCoordinator {
       await this.catalog.rebuildFrom(this.catalogItems());
       rebuiltCatalog = true;
     }
-    const facts = await reconcileImmutableFacts({
+    const records = await reconcileRawRecords({
       atomStore: this.atomStore,
       catalog: this.catalog,
       eventJournal: this.eventJournal,
-      factStore: this.factStore,
+      rawRecordStore: this.rawRecordStore,
       limit: recoveryLimit,
     });
     const result = await this.recover(recoveryLimit);
-    return { ...result, failed: [...facts.failed, ...result.failed], rebuiltCatalog };
+    return { ...result, failed: [...records.failed, ...result.failed], rebuiltCatalog };
   }
 
   private async *catalogItems() {
@@ -105,8 +102,8 @@ export class MemoryV3StorageCoordinator {
 
   async apply(event: MemoryUpdateEvent, mutation: MemoryStorageMutation): Promise<MemoryAtom> {
     return this.exclusive(async () => {
-      const fact = await this.factStore.capture(event, mutation);
-      await this.checkpoint('fact-captured', fact.id);
+      const record = await this.rawRecordStore.capture(event, mutation);
+      await this.checkpoint('raw-record-captured', record.id);
       const captured = await this.eventJournal.capture({
         ...structuredClone(event),
         payload: {
@@ -172,6 +169,8 @@ export class MemoryV3StorageCoordinator {
         this.catalog.projectOperation(operation);
       }
       await this.checkpoint('operation-committed', record.event.id, operation.id, applied.primary.id);
+      await this.rawRecordStore.markCommitted(record.event.id, operation.id);
+      await this.checkpoint('raw-record-committed', record.event.id, operation.id, applied.primary.id);
       const committedEvent = await this.eventJournal.markCommitted(record.event.id, operation.id);
       this.catalog.projectEvent(committedEvent);
       await this.checkpoint('event-committed', record.event.id, operation.id, applied.primary.id);
