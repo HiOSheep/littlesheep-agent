@@ -11092,6 +11092,43 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   border-color: var(--border-strong);
 }
 
+.memory-embedding-progress {
+  position: relative;
+  height: 24px;
+  overflow: hidden;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.memory-embedding-progress::before {
+  content: '';
+  position: absolute;
+  inset: 8px 0 auto;
+  height: 2px;
+  background: var(--control-hover);
+}
+
+.memory-embedding-progress > span {
+  position: absolute;
+  inset: 8px auto auto 0;
+  height: 2px;
+  min-width: 2px;
+  background: var(--text-strong);
+  transition: width var(--motion-base) var(--motion-ease);
+}
+
+.memory-embedding-progress > small {
+  position: absolute;
+  right: 0;
+  bottom: 1px;
+  max-width: 60%;
+  overflow: hidden;
+  color: var(--muted-2);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .memory-tree-empty-row {
   min-height: 112px;
   padding: 42px 8px;

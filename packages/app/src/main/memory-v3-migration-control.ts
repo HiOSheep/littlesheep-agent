@@ -7,36 +7,41 @@ import type {
 } from '@littlesheep/memory-tree'
 import type { AgentRunner } from '@littlesheep/runner'
 import type { MemoryV3MigrationPreflightOverview } from '../shared/memory-control-contracts.js'
+import type { MemoryEmbeddingModelStatus } from '../shared/memory-control-contracts.js'
 
 export async function inspectMemoryV3Migration(
   manager: MemoryV2ToV3MigrationManager,
   runner: AgentRunner,
+  embeddingModel?: MemoryEmbeddingModelStatus,
 ): Promise<MemoryV3MigrationPreflightOverview> {
-  return publicPreflight(await manager.preflight({ validateActiveV3: activeV3Validator(runner) }))
+  return publicPreflight(await manager.preflight({ validateActiveV3: activeV3Validator(runner) }), embeddingModel)
 }
 
 export async function requestMemoryV3Migration(
   manager: MemoryV2ToV3MigrationManager,
   runner: AgentRunner,
+  embeddingModel?: MemoryEmbeddingModelStatus,
 ): Promise<MemoryV3MigrationPreflightOverview> {
   await manager.requestMigration()
-  return inspectMemoryV3Migration(manager, runner)
+  return inspectMemoryV3Migration(manager, runner, embeddingModel)
 }
 
 export async function cancelMemoryV3Operation(
   manager: MemoryV2ToV3MigrationManager,
   runner: AgentRunner,
+  embeddingModel?: MemoryEmbeddingModelStatus,
 ): Promise<MemoryV3MigrationPreflightOverview> {
   await manager.cancelPending()
-  return inspectMemoryV3Migration(manager, runner)
+  return inspectMemoryV3Migration(manager, runner, embeddingModel)
 }
 
 export async function requestMemoryV3Rollback(
   manager: MemoryV2ToV3MigrationManager,
   runner: AgentRunner,
+  embeddingModel?: MemoryEmbeddingModelStatus,
 ): Promise<MemoryV3MigrationPreflightOverview> {
   await manager.requestRollback({ validateActiveV3: activeV3Validator(runner) })
-  return inspectMemoryV3Migration(manager, runner)
+  return inspectMemoryV3Migration(manager, runner, embeddingModel)
 }
 
 function activeV3Validator(runner: AgentRunner) {
@@ -45,7 +50,10 @@ function activeV3Validator(runner: AgentRunner) {
   )
 }
 
-function publicPreflight(preflight: MemoryV3MigrationPreflight): MemoryV3MigrationPreflightOverview {
+function publicPreflight(
+  preflight: MemoryV3MigrationPreflight,
+  embeddingModel?: MemoryEmbeddingModelStatus,
+): MemoryV3MigrationPreflightOverview {
   const pending = preflight.locator.pendingMigration
     ? { kind: 'migration' as const, ...preflight.locator.pendingMigration }
     : preflight.locator.pendingRollback
@@ -77,5 +85,6 @@ function publicPreflight(preflight: MemoryV3MigrationPreflight): MemoryV3Migrati
       resourceCount: preflight.source.resourceCount,
     } : undefined,
     storage: preflight.storage,
+    embeddingModel,
   }
 }

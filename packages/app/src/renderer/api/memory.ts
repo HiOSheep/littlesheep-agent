@@ -4,6 +4,7 @@ import type {
   MemoryAtomEvidenceExportResponse,
   MemoryAtomManagementRequest,
   MemoryAtomManagementResponse,
+  MemoryEmbeddingModelStatus,
   MemoryOverview,
   MemoryResourceManagementAction,
   MemoryTreeManagementAction,
@@ -75,6 +76,29 @@ export async function getMemoryV3MigrationPreflight(signal?: AbortSignal): Promi
   const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.memoryMigration), { signal })
   if (!res.ok) throw localApiStatusError(res.status)
   return res.json() as Promise<MemoryV3MigrationPreflightOverview>
+}
+
+export async function getMemoryEmbeddingModelStatus(signal?: AbortSignal): Promise<MemoryEmbeddingModelStatus> {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.memoryEmbeddingModel), { signal })
+  if (!res.ok) throw localApiStatusError(res.status)
+  return res.json() as Promise<MemoryEmbeddingModelStatus>
+}
+
+export async function prepareMemoryEmbeddingModel(): Promise<MemoryEmbeddingModelStatus> {
+  return updateMemoryEmbeddingModel('POST')
+}
+
+export async function cancelMemoryEmbeddingModelPreparation(): Promise<MemoryEmbeddingModelStatus> {
+  return updateMemoryEmbeddingModel('DELETE')
+}
+
+async function updateMemoryEmbeddingModel(method: 'POST' | 'DELETE'): Promise<MemoryEmbeddingModelStatus> {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.memoryEmbeddingModel), { method })
+  if (!res.ok) {
+    const body = await res.json().catch(() => null) as { error?: string } | null
+    throw new Error(body?.error ?? `Local app API error: ${res.status}`)
+  }
+  return res.json() as Promise<MemoryEmbeddingModelStatus>
 }
 
 export async function requestMemoryV3Migration(): Promise<MemoryV3MigrationPreflightOverview> {

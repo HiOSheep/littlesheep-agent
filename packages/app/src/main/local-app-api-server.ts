@@ -9,11 +9,7 @@ import { ProjectRebindingService } from './project-rebinding.js'
 import { sameBoundPath } from './path-rebinding.js'
 import { ManagedAttachmentCache } from './attachment-cache.js'
 import type { PluginHost } from '@littlesheep/plugins'
-import {
-  HttpError,
-  json,
-  type LocalAppApiRequest,
-} from './local-app-api/http.js'
+import { HttpError, json, type LocalAppApiRequest } from './local-app-api/http.js'
 import { routeExtensions } from './local-app-api/extension-routes.js'
 import { routeRuntime } from './local-app-api/runtime-routes.js'
 import { routeMemory } from './local-app-api/memory-routes.js'
@@ -23,9 +19,9 @@ import { routeWorkspace } from './local-app-api/workspace-routes.js'
 import { TerminalRouter } from './local-app-api/terminal-routes.js'
 import { RunRouter } from './local-app-api/run-routes.js'
 import type { LocalAppApiServer, LocalAppApiServerOptions } from './local-app-api/contracts.js'
+import { MemoryEmbeddingModelManager, type MemoryEmbeddingModelController } from './memory-embedding-model-control.js'
 
 export type { LocalAppApiServer, LocalAppApiServerOptions } from './local-app-api/contracts.js'
-
 export async function startLocalAppApiServer(
   initialRunner: AgentRunner,
   opts: LocalAppApiServerOptions,
@@ -67,6 +63,8 @@ export async function startLocalAppApiServer(
   const attachmentCache = new ManagedAttachmentCache({
     rootDir: join(opts.dataDir, 'attachment-cache'),
   })
+  const embeddingModelManager = opts.memoryEmbeddingModelManager ?? new MemoryEmbeddingModelManager({ dataDir: opts.dataDir })
+  const routeOptions = { ...opts, memoryEmbeddingModelManager: embeddingModelManager }
   const runRouter = new RunRouter()
   const terminalRouter = new TerminalRouter()
   try {
@@ -93,7 +91,7 @@ export async function startLocalAppApiServer(
         () => currentPluginHost,
         () => currentConfig,
         (c: Config) => { currentConfig = c },
-        opts,
+        routeOptions,
         projectRebinding,
         attachmentCache,
         runRouter,
@@ -126,6 +124,7 @@ export async function startLocalAppApiServer(
         stop: async () => {
           runRouter.stop()
           terminalRouter.stop()
+          await embeddingModelManager.shutdown()
           await closeHttpServer(server)
         },
       })
@@ -143,7 +142,7 @@ async function route(
   getPluginHost: PluginHostGetter,
   getConfig: () => Config,
   setConfig: (c: Config) => void,
-  opts: LocalAppApiServerOptions,
+  opts: LocalAppApiServerOptions & { memoryEmbeddingModelManager: MemoryEmbeddingModelController },
   projectRebinding: ProjectRebindingService,
   attachmentCache: ManagedAttachmentCache,
   runRouter: RunRouter,
@@ -232,6 +231,7 @@ async function route(
     projectIndex,
     getConfig, setConfig,
     memoryV3MigrationManager: opts.memoryV3MigrationManager,
+    memoryEmbeddingModelManager: opts.memoryEmbeddingModelManager,
     updateRuntimeConfig: opts.updateRuntimeConfig,
     selectProjectMemoryExport: opts.selectProjectMemoryExport,
     selectMemoryResourceSource: opts.selectMemoryResourceSource,

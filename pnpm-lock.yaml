@@ -75,6 +75,9 @@ importers:
       '@littlesheep/config':
         specifier: workspace:*
         version: link:../config
+      '@littlesheep/embedding':
+        specifier: workspace:*
+        version: link:../embedding
       '@littlesheep/memory-core':
         specifier: workspace:*
         version: link:../memory-core

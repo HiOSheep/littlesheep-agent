@@ -18,6 +18,7 @@
     "@littlesheep/channel-telegram": "workspace:*",
     "@littlesheep/channel-webhook": "workspace:*",
     "@littlesheep/config": "workspace:*",
+    "@littlesheep/embedding": "workspace:*",
     "@littlesheep/memory-core": "workspace:*",
     "@littlesheep/memory-tree": "workspace:*",
     "@littlesheep/plugins": "workspace:*",

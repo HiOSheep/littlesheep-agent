@@ -13,6 +13,7 @@
 | `session-routes.ts` | 会话、归档和执行日志重放。 |
 | `runtime-routes.ts` | Runtime、Provider key、数据根和应用重启。 |
 | `memory-routes.ts` | Skills、记忆树、记忆策略和项目记忆投影。 |
+| `memory-migration-routes.ts` | Memory v3 迁移、回滚和固定本地向量模型准备。 |
 | `workspace-routes.ts` | 附件导入、文件、布局和产物路由。 |
 | `workspace-file-service.ts` | 安全目录列表、预览和文本保存。 |
 | `workspace-support.ts` | 工作区边界、scope 和资源索引同步。 |

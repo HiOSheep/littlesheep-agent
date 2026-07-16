@@ -292,6 +292,25 @@ export interface MemoryV3MigrationPreflightOverview {
     requiredBytes: number
     availableBytes: number
   }
+  embeddingModel?: MemoryEmbeddingModelStatus
+}
+
+export type MemoryEmbeddingModelState = 'ready' | 'missing' | 'invalid' | 'preparing' | 'failed'
+
+export interface MemoryEmbeddingModelStatus {
+  modelId: string
+  state: MemoryEmbeddingModelState
+  available: boolean
+  requiredBytes: number
+  verifiedBytes: number
+  completedBytes: number
+  totalBytes: number
+  missing: string[]
+  invalid: string[]
+  currentFile?: string
+  error?: string
+  startedAt?: string
+  updatedAt: string
 }
 
 export interface ProjectMemoryProjectionState {

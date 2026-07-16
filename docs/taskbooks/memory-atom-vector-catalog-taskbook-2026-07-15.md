@@ -1,8 +1,8 @@
 # LittleSheep 原子记忆与内置向量目录任务书 2026-07-15
 
-最后更新：2026-07-16 11:59:42
-版本：v2.7
-状态：实施中；阶段 0-5 已完成，阶段 6 的同源读取、迁移生命周期、实时回滚安全预检、atom 高级管理、首次自动选择、执行中受控纳入/释放、原始数据记录孤儿恢复、隔离 soak、真实 Electron 窗口验收和正式 V2 数据隔离迁移演练已完成；正式用户场景验收仍待用户批准迁移后推进；未迁移正式用户数据
+最后更新：2026-07-16 13:08:15
+版本：v2.9
+状态：实施中；阶段 0-5 已完成，阶段 6 的同源读取、迁移生命周期、实时回滚安全预检、本地向量模型资产控制面、atom 高级管理、首次自动选择、执行中受控纳入/释放、原始数据记录孤儿恢复、隔离 soak、真实 Electron 窗口验收和正式 V2 数据隔离迁移演练已完成；正式用户场景验收仍待用户批准迁移后推进；未迁移正式用户数据
 
 ## 1. 目标
 
@@ -377,13 +377,13 @@ statement / atom / resource
 - 已完成：statement kind、epistemic status、authority scope、asserted by 与 evidence refs 会投影给模型；VERIFY 明确拒绝把 suggestion、reported observation 或 unverified claim 当作 verified fact 交付；
 - 已完成：D0-D3 使用同一份 atom/catalog 渐进展开，Prompt 与运行时不建立记忆正文副本；Context 只展开当前目标需要的关系邻域；
 - 已完成：成功写入后的本地向量维护可等待、单批有界、并发合并且失败不回滚 atom，长期运行不再依赖重启补齐新记忆向量；
-- 已验证：仓库卫生 31/31、27 个 workspace 类型检查、150 个测试文件中的 1170 项通过且 1 项按预期跳过、Electron main/preload/renderer 构建和应用恢复源检查通过。
+- 已验证：仓库卫生 31/31、27 个 workspace 类型检查、152 个测试文件中的 1176 项通过且 1 项按预期跳过、Electron main/preload/renderer 构建和应用恢复源检查通过。
 
 验收：已通过隔离工程验收。网络被阻断时记忆写入和检索正常，向量搜索不能绕过层级导航；同一作用域内经验证且相关的记忆稳定优先介入，单纯重复访问不能形成错误自增强。该结论不代表正式用户数据已经迁移。
 
 ### 阶段 6：管理 UI 与真实迁移
 
-状态：**进行中；同源读取控制面、正式迁移生命周期、实时回滚安全预检、atom 高级管理、初始 working set、运行中 release、原始数据记录孤儿恢复、隔离 soak、真实窗口验收和正式 V2 数据隔离迁移演练已完成；正式用户场景验收尚未完成**。
+状态：**进行中；同源读取控制面、正式迁移生命周期、实时回滚安全预检、本地向量模型资产控制面、atom 高级管理、初始 working set、运行中 release、原始数据记录孤儿恢复、隔离 soak、真实窗口验收和正式 V2 数据隔离迁移演练已完成；正式用户场景验收尚未完成**。
 
 - 已完成：`/memory/tree` 只传输 D0/D1 概况与摘要，不再一次性返回记忆正文、完整来源和历史；D2 正文/认识状态与 D3 证据、命中、管理历史、事件时间线、实体和关系邻域均按节点请求展开；
 - 已完成：v3 节点详情直接来自同一 `MemoryRepository`、atom 和 Catalog；独立 `management` facade 提供目录状态与节点检查，不建立 UI 展示副本，也不扩大 Repository 主 facade；
@@ -393,6 +393,7 @@ statement / atom / resource
 - 已完成：“登记请求 -> 应用重启 -> 数据根准备 -> Memory v3 迁移/回滚 -> 配置对齐 -> Runner -> Local App API -> 渠道插件”的启动前执行协议；迁移不与活动 Agent run、渠道、Repository、SQLite 或 Embedding 写入竞争；
 - 已完成：迁移失败继续使用 v2；回滚失败继续使用 v3。只有 v2 源和 v3 validation hash 均未变化时才允许回滚，回滚后的重新迁移会保留旧 v3 后从最新 v2 重建；
 - 已完成：回滚就绪检查在登记前读取迁移 snapshot、当前 V2 manifest，并通过活动 Runner 使用的同一 V3 repository 执行全量 validation；UI 分别显示 V2 回滚源与 V3 当前状态。V2 变化、V3 新写入或 validator 缺失均不生成 pending rollback；启动执行仍重复磁盘级强校验，防止预检后竞态或旧版本 pending 绕过；
+- 已完成：迁移页与 CLI 就绪检查独立显示默认 BGE 本地资产的缺失、损坏、准备中、失败和就绪状态。用户显式点击后才按固定 repository/revision/大小/SHA-256 下载，可见进度并可取消；并发点击只复用一个任务，应用关闭会中止；模型准备期间 UI 与 Local App API 均拒绝登记迁移，避免重启与下载竞态。模型缺失不阻断迁移或层级/FTS，但不会再被误报为向量就绪；
 - 已完成：用户可对 v3 atom 执行同分支/同作用域移动、受认识边界约束的合并、失效、恢复和单 atom D3 证据包导出；双 revision 预检、层级循环防护、来源 tombstone 和 raw records 保证治理不丢原始数据；
 - 已完成：首次业务模型请求从 D1 索引中最多自动选择 2 个 D2 atom、预算 600 tokens；执行中可显式 release 当前 atom，真实请求内容和 KnownState 同步移除，后续允许重新介入；
 - 已完成：`raw-record-captured` 崩溃点可在重启时从 raw record 自动补建 recovery event 并恢复 atom/catalog；已提交 journal 即使被裁剪，原始数据记录仍保留；

@@ -9,6 +9,11 @@ import {
   MemoryRepository,
   MemoryV2ToV3MigrationManager,
 } from '../packages/memory-tree/dist/index.js';
+import {
+  DEFAULT_LOCAL_EMBEDDING_MODEL,
+  getLocalEmbeddingModel,
+  verifyLocalEmbeddingModel,
+} from '../packages/embedding/dist/index.js';
 
 const args = parseArgs(process.argv.slice(2));
 const sourceDataDir = resolve(args.dataDir);
@@ -16,6 +21,7 @@ const sourceMemoryDir = join(sourceDataDir, 'memory-tree');
 const isolatedDataDir = await mkdtemp(join(tmpdir(), 'littlesheep-memory-v3-readiness-'));
 const isolatedMemoryDir = join(isolatedDataDir, 'memory-tree');
 const startedAt = performance.now();
+const embeddingModelRootDir = join(sourceDataDir, 'models', 'embedding');
 assertIsolatedRoot(isolatedDataDir);
 
 let repository;
@@ -24,6 +30,11 @@ try {
   const sourceManager = new MemoryV2ToV3MigrationManager({ dataDir: sourceDataDir });
   const sourceBefore = await sourceManager.preflight();
   assertPreflightReady(sourceBefore, 'source');
+  const embeddingSpec = getLocalEmbeddingModel(DEFAULT_LOCAL_EMBEDDING_MODEL);
+  const embeddingVerification = await verifyLocalEmbeddingModel(
+    DEFAULT_LOCAL_EMBEDDING_MODEL,
+    embeddingModelRootDir,
+  );
 
   await cp(sourceMemoryDir, isolatedMemoryDir, {
     recursive: true,
@@ -92,6 +103,14 @@ try {
       manifestHash: sourceBefore.source.manifestHash,
     },
     storage: sourceBefore.storage,
+    embedding: {
+      modelId: embeddingSpec.id,
+      available: embeddingVerification.available,
+      requiredBytes: embeddingSpec.files.reduce((sum, file) => sum + file.bytes, 0),
+      verifiedBytes: embeddingVerification.totalBytes,
+      missing: embeddingVerification.missing,
+      invalid: embeddingVerification.invalid,
+    },
     migration: {
       validationHash: migrated.migration.validationHash,
       activeBackendVerified: 'v3',

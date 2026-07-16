@@ -17,14 +17,10 @@ import {
   type MemoryNodeManagementAction,
   type MemoryResourceManagementAction,
 } from '../memory-tree-control.js'
-import {
-  cancelMemoryV3Operation,
-  inspectMemoryV3Migration,
-  requestMemoryV3Migration,
-  requestMemoryV3Rollback,
-} from '../memory-v3-migration-control.js'
 import { json, readJson, type LocalAppApiRequest } from './http.js'
 import { routeMemoryAtom } from './memory-atom-routes.js'
+import type { MemoryEmbeddingModelController } from '../memory-embedding-model-control.js'
+import { routeMemoryMigration } from './memory-migration-routes.js'
 
 export interface MemoryRouteContext {
   getRunner: () => AgentRunner
@@ -33,6 +29,7 @@ export interface MemoryRouteContext {
   setConfig: (config: Config) => void
   updateRuntimeConfig: (config: Config) => Promise<void>
   memoryV3MigrationManager?: MemoryV2ToV3MigrationManager
+  memoryEmbeddingModelManager: MemoryEmbeddingModelController
   selectProjectMemoryExport?: (projectName: string, projectPath: string) => Promise<string | null>
   selectMemoryResourceSource?: () => Promise<string | null>
   selectMemoryAtomExport?: (suggestedName: string) => Promise<string | null>
@@ -63,6 +60,11 @@ export async function routeMemory(
   if (await routeMemoryAtom(request, {
     runner,
     selectMemoryAtomExport: context.selectMemoryAtomExport,
+  })) return true
+  if (await routeMemoryMigration(request, {
+    runner,
+    migrationManager: context.memoryV3MigrationManager,
+    embeddingModelManager: context.memoryEmbeddingModelManager,
   })) return true
 
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.skills) {
@@ -248,34 +250,6 @@ export async function routeMemory(
 
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.memoryTree) {
     json(res, 200, await buildMemoryTreePayload(runner, context.projectIndex, context.getConfig()))
-    return true
-  }
-
-  if (path === LOCAL_APP_API_ROUTES.memoryMigration) {
-    if (!context.memoryV3MigrationManager) {
-      json(res, 501, { error: 'Memory v3 migration management is not available' })
-      return true
-    }
-    if (method === 'GET') {
-      json(res, 200, await inspectMemoryV3Migration(context.memoryV3MigrationManager, runner))
-      return true
-    }
-    if (method === 'POST') {
-      json(res, 200, await requestMemoryV3Migration(context.memoryV3MigrationManager, runner))
-      return true
-    }
-    if (method === 'DELETE') {
-      json(res, 200, await cancelMemoryV3Operation(context.memoryV3MigrationManager, runner))
-      return true
-    }
-  }
-
-  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.memoryRollback) {
-    if (!context.memoryV3MigrationManager) {
-      json(res, 501, { error: 'Memory v3 migration management is not available' })
-      return true
-    }
-    json(res, 200, await requestMemoryV3Rollback(context.memoryV3MigrationManager, runner))
     return true
   }
 

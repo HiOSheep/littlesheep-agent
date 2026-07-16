@@ -12,6 +12,7 @@ import type { SessionIndex } from '../session-index.js'
 import type { TerminalActivityIndex } from '../terminal-activity-index.js'
 import type { WorkspaceArtifactIndex } from '../workspace-artifact-index.js'
 import type { WorkspaceLayoutIndex } from '../workspace-layout-index.js'
+import type { MemoryEmbeddingModelController } from '../memory-embedding-model-control.js'
 
 export interface LocalAppApiServerOptions {
   /** Port to listen on. 0 selects a random free loopback port. */
@@ -33,6 +34,7 @@ export interface LocalAppApiServerOptions {
   selectMemoryResourceSource?: () => Promise<string | null>
   selectMemoryAtomExport?: (suggestedName: string) => Promise<string | null>
   memoryV3MigrationManager?: MemoryV2ToV3MigrationManager
+  memoryEmbeddingModelManager?: MemoryEmbeddingModelController
   dataRootManager?: DataRootMigrationManager
   selectDataRootTarget?: () => Promise<string | null>
   restartApplication?: () => void

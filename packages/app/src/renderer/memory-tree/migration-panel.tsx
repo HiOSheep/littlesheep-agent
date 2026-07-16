@@ -11,6 +11,8 @@ export function MemoryMigrationPanel({
   onRequestRollback,
   onCancel,
   onRestart,
+  onPrepareEmbedding,
+  onCancelEmbedding,
 }: {
   repository: MemoryTreeOverview['repository']
   preflight: MemoryV3MigrationPreflightOverview | null
@@ -21,8 +23,12 @@ export function MemoryMigrationPanel({
   onRequestRollback: () => void
   onCancel: () => void
   onRestart: () => void
+  onPrepareEmbedding: () => void
+  onCancelEmbedding: () => void
 }) {
   const pending = preflight?.pendingOperation
+  const embedding = preflight?.embeddingModel
+  const embeddingPreparing = embedding?.state === 'preparing'
   const readinessBlockers = preflight?.activeBackend === 'v3'
     ? preflight.rollback?.blockers ?? []
     : preflight?.blockers ?? []
@@ -55,6 +61,13 @@ export function MemoryMigrationPanel({
             <div><dt>资源登记</dt><dd>{preflight.source?.resourceCount ?? 0}</dd></div>
             <div><dt>源数据</dt><dd>{formatBytes(preflight.source?.totalBytes ?? 0)}</dd></div>
             <div><dt>可用空间</dt><dd>{formatBytes(preflight.storage?.availableBytes ?? 0)}</dd></div>
+            {embedding && (
+              <>
+                <div><dt>本地向量</dt><dd>{embeddingModelLabel(embedding.state)}</dd></div>
+                <div><dt>向量模型</dt><dd>{embedding.modelId}</dd></div>
+                <div><dt>模型资产</dt><dd>{formatBytes(embeddingPreparing ? embedding.completedBytes : embedding.verifiedBytes)} / {formatBytes(embedding.requiredBytes)}</dd></div>
+              </>
+            )}
             {preflight.rollback && (
               <>
                 <div><dt>V2 回滚源</dt><dd>{preflight.rollback.sourceUnchanged ? '未变化' : '已变化'}</dd></div>
@@ -68,7 +81,38 @@ export function MemoryMigrationPanel({
           </div>
           {readinessBlockers.map((blocker) => <p className="memory-project-callout conflict" key={blocker}>{blocker}</p>)}
           {pending?.error && <p className="memory-project-callout conflict">{pending.error}</p>}
+          {embeddingPreparing && (
+            <div className="memory-embedding-progress">
+              <span
+                role="progressbar"
+                aria-label="本地向量模型准备进度"
+                aria-valuemin={0}
+                aria-valuemax={embedding.totalBytes}
+                aria-valuenow={embedding.completedBytes}
+                style={{ width: `${embeddingProgress(embedding.completedBytes, embedding.totalBytes)}%` }}
+              />
+              <small>{embedding.currentFile ?? '校验模型资产'}</small>
+            </div>
+          )}
+          {embedding && embedding.state !== 'ready' && embedding.state !== 'preparing' && (
+            <p className={`memory-project-callout ${embedding.state === 'failed' ? 'conflict' : ''}`}>
+              {embedding.error ?? '本地向量模型尚未准备；层级导航和全文检索仍可使用。'}
+            </p>
+          )}
           <div className="memory-migration-actions">
+            {embedding && embedding.state !== 'ready' && (
+              embeddingPreparing
+                ? (
+                    <button type="button" disabled={!!busyAction} onClick={onCancelEmbedding}>
+                      {busyAction === 'embedding-cancel' ? '取消中' : '取消模型准备'}
+                    </button>
+                  )
+                : (
+                    <button type="button" disabled={!!busyAction} onClick={onPrepareEmbedding}>
+                      {busyAction === 'embedding-prepare' ? '启动中' : '准备本地向量模型'}
+                    </button>
+                  )
+            )}
             {pending ? (
               <>
                 {preflight.canCancel && (
@@ -83,7 +127,7 @@ export function MemoryMigrationPanel({
             ) : (
               <>
                 {preflight.canMigrate && (
-                  <button className="primary" type="button" disabled={!!busyAction} onClick={onRequestMigration}>
+                  <button className="primary" type="button" disabled={!!busyAction || embeddingPreparing} onClick={onRequestMigration}>
                     准备迁移到 V3
                   </button>
                 )}
@@ -126,8 +170,27 @@ function migrationReadinessLabel(preflight: MemoryV3MigrationPreflightOverview):
   if (preflight.activeBackend === 'v3' && preflight.rollback?.canRollback) return '回滚前置条件通过'
   if (preflight.activeBackend === 'v3' && preflight.rollback) return '回滚前置条件未通过'
   if (preflight.canResume) return '可恢复未完成迁移'
-  if (preflight.canMigrate) return '迁移前置条件通过'
+  if (preflight.canMigrate) {
+    return preflight.embeddingModel?.available === false
+      ? '迁移可执行 · 向量待准备'
+      : '迁移前置条件通过'
+  }
   return preflight.blockers.length > 0 ? '迁移前置条件未通过' : '当前无需迁移'
+}
+
+function embeddingModelLabel(state: NonNullable<MemoryV3MigrationPreflightOverview['embeddingModel']>['state']): string {
+  return ({
+    ready: '已就绪',
+    missing: '未准备',
+    invalid: '需修复',
+    preparing: '准备中',
+    failed: '准备失败',
+  })[state]
+}
+
+function embeddingProgress(completed: number, total: number): number {
+  if (!Number.isFinite(completed) || !Number.isFinite(total) || total <= 0) return 0
+  return Math.max(0, Math.min(100, (completed / total) * 100))
 }
 
 function formatBytes(value: number): string {

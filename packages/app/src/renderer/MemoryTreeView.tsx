@@ -24,7 +24,6 @@ import { MemoryMigrationPanel } from './memory-tree/migration-panel'
 import { MemoryNodeRow } from './memory-tree/node-row'
 import { useMemoryAtomActions } from './memory-tree/use-memory-atom-actions'
 import { useMemoryMigration } from './memory-tree/use-memory-migration'
-
 type MemoryBranchFilter = 'all' | MemoryTreeBranchId | 'resources' | 'archive' | 'migration'
 type MemoryTreeResourceOverview = MemoryTreeOverview['resources'][number]
 type ConfirmationRequest =
@@ -547,6 +546,8 @@ export function MemoryTreeView() {
                   onRequestRollback={() => openConfirmation({ kind: 'migration', action: 'rollback' })}
                   onCancel={() => void migration.cancel()}
                   onRestart={() => void migration.restart()}
+                  onPrepareEmbedding={() => void migration.prepareEmbedding()}
+                  onCancelEmbedding={() => void migration.cancelEmbedding()}
                 />
               ) : (
               <div className="memory-node-list">

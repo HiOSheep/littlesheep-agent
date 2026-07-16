@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   cancelMemoryV3Operation,
+  cancelMemoryEmbeddingModelPreparation,
+  getMemoryEmbeddingModelStatus,
   getMemoryV3MigrationPreflight,
+  prepareMemoryEmbeddingModel,
   requestMemoryV3Migration,
   requestMemoryV3Rollback,
   restartApplication,
@@ -35,6 +38,32 @@ export function useMemoryMigration({
   useEffect(() => {
     if (active && !preflight && !loading) void refresh()
   }, [active])
+
+  useEffect(() => {
+    if (!active || preflight?.embeddingModel?.state !== 'preparing') return
+    let cancelled = false
+    const controller = new AbortController()
+    const poll = async () => {
+      while (!cancelled) {
+        await new Promise((resolve) => setTimeout(resolve, 500))
+        if (cancelled) return
+        try {
+          const status = await getMemoryEmbeddingModelStatus(controller.signal)
+          if (cancelled) return
+          setPreflight((current) => current ? { ...current, embeddingModel: status } : current)
+          if (status.state !== 'preparing') return
+        } catch (cause) {
+          if (!controller.signal.aborted) setError(errorMessage(cause))
+          return
+        }
+      }
+    }
+    void poll()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [active, preflight?.embeddingModel?.state])
 
   async function refresh() {
     if (busyAction) return
@@ -103,7 +132,50 @@ export function useMemoryMigration({
     }
   }
 
-  return { preflight, loading, busyAction, error, refresh, request, cancel, restart }
+  async function prepareEmbedding() {
+    if (busyAction) return
+    setBusyAction('embedding-prepare')
+    setError(null)
+    try {
+      const status = await prepareMemoryEmbeddingModel()
+      if (mountedRef.current) {
+        setPreflight((current) => current ? { ...current, embeddingModel: status } : current)
+      }
+    } catch (cause) {
+      if (mountedRef.current) setError(errorMessage(cause))
+    } finally {
+      if (mountedRef.current) setBusyAction(null)
+    }
+  }
+
+  async function cancelEmbedding() {
+    if (busyAction) return
+    setBusyAction('embedding-cancel')
+    setError(null)
+    try {
+      const status = await cancelMemoryEmbeddingModelPreparation()
+      if (mountedRef.current) {
+        setPreflight((current) => current ? { ...current, embeddingModel: status } : current)
+      }
+    } catch (cause) {
+      if (mountedRef.current) setError(errorMessage(cause))
+    } finally {
+      if (mountedRef.current) setBusyAction(null)
+    }
+  }
+
+  return {
+    preflight,
+    loading,
+    busyAction,
+    error,
+    refresh,
+    request,
+    cancel,
+    restart,
+    prepareEmbedding,
+    cancelEmbedding,
+  }
 }
 
 function errorMessage(error: unknown): string {

@@ -39,6 +39,7 @@ export const LOCAL_APP_API_ROUTES = {
   skills: '/skills',
   memoryPolicy: '/memory/policy',
   memoryTree: '/memory/tree',
+  memoryEmbeddingModel: '/memory/tree/embedding-model',
   memoryMigration: '/memory/tree/migration',
   memoryRollback: '/memory/tree/rollback',
   memory: '/memory',

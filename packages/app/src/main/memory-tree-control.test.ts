@@ -384,6 +384,19 @@ describe('memory-tree control plane', () => {
     await migrationRepository.initialize()
     migrationRepository.close()
     const runner = runnerWith()
+    let embeddingState: 'missing' | 'preparing' = 'missing'
+    const embeddingModelManager = {
+      status: vi.fn(async () => embeddingModelStatus(embeddingState)),
+      start: vi.fn(async () => {
+        embeddingState = 'preparing'
+        return embeddingModelStatus(embeddingState)
+      }),
+      cancel: vi.fn(async () => {
+        embeddingState = 'missing'
+        return embeddingModelStatus(embeddingState)
+      }),
+      shutdown: vi.fn(async () => undefined),
+    }
     const server = await startLocalAppApiServer(runner, {
       port: 0,
       sessionIndex: new SessionIndex({ dataDir, workplaceDir }),
@@ -399,6 +412,7 @@ describe('memory-tree control plane', () => {
       updateRuntimeConfig: vi.fn(async () => undefined),
       selectMemoryResourceSource: vi.fn(async () => 'D:/repo/docs/principles/architecture-principles.md'),
       memoryV3MigrationManager: new MemoryV2ToV3MigrationManager({ dataDir }),
+      memoryEmbeddingModelManager: embeddingModelManager,
     })
     try {
       const detail = await fetch(`http://127.0.0.1:${server.port}/memory/tree/nodes/node-1?disclosure=D3`)
@@ -418,7 +432,23 @@ describe('memory-tree control plane', () => {
         activeBackend: 'v2',
         canMigrate: true,
         source: { nodeCount: 0 },
+        embeddingModel: { modelId: 'bge-small-zh-v1.5', state: 'missing', available: false },
       })
+
+      const embeddingStatus = await fetch(`http://127.0.0.1:${server.port}/memory/tree/embedding-model`)
+      expect(embeddingStatus.status).toBe(200)
+      await expect(embeddingStatus.json()).resolves.toMatchObject({ state: 'missing' })
+      const embeddingStarted = await fetch(`http://127.0.0.1:${server.port}/memory/tree/embedding-model`, { method: 'POST' })
+      expect(embeddingStarted.status).toBe(202)
+      await expect(embeddingStarted.json()).resolves.toMatchObject({ state: 'preparing' })
+      const migrationWhilePreparing = await fetch(`http://127.0.0.1:${server.port}/memory/tree/migration`, { method: 'POST' })
+      expect(migrationWhilePreparing.status).toBe(409)
+      await expect(migrationWhilePreparing.json()).resolves.toMatchObject({
+        error: expect.stringContaining('still running'),
+      })
+      const embeddingCancelled = await fetch(`http://127.0.0.1:${server.port}/memory/tree/embedding-model`, { method: 'DELETE' })
+      expect(embeddingCancelled.status).toBe(200)
+      await expect(embeddingCancelled.json()).resolves.toMatchObject({ state: 'missing' })
 
       const requestedMigration = await fetch(`http://127.0.0.1:${server.port}/memory/tree/migration`, { method: 'POST' })
       expect(requestedMigration.status).toBe(200)
@@ -481,6 +511,7 @@ describe('memory-tree control plane', () => {
       await server.stop()
       rmSync(dataDir, { recursive: true, force: true })
     }
+    expect(embeddingModelManager.shutdown).toHaveBeenCalledOnce()
   })
 
   it('exposes project-memory projection actions only for registered projects', async () => {
@@ -597,3 +628,19 @@ describe('memory-tree control plane', () => {
     }
   })
 })
+
+function embeddingModelStatus(state: 'missing' | 'preparing') {
+  return {
+    modelId: 'bge-small-zh-v1.5',
+    state,
+    available: false,
+    requiredBytes: 24_450_000,
+    verifiedBytes: 0,
+    completedBytes: state === 'preparing' ? 1024 : 0,
+    totalBytes: 24_450_000,
+    missing: ['config.json', 'onnx/model_quantized.onnx'],
+    invalid: [],
+    currentFile: state === 'preparing' ? 'config.json' : undefined,
+    updatedAt: '2026-07-16T04:00:00.000Z',
+  }
+}
