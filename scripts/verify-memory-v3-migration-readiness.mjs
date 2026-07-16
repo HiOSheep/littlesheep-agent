@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
-import { cp, mkdtemp, rm } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
 import { performance } from 'node:perf_hooks';
+import { DEFAULT_BRANDING } from '../packages/branding/dist/index.js';
+import { DEFAULT_CONFIG } from '../packages/config/dist/index.js';
 import {
   MEMORY_REPOSITORY_LOCATOR_FILE,
   MemoryAtomStore,
@@ -14,6 +16,7 @@ import {
   getLocalEmbeddingModel,
   verifyLocalEmbeddingModel,
 } from '../packages/embedding/dist/index.js';
+import { createRunner } from '../packages/runner/dist/index.js';
 
 const args = parseArgs(process.argv.slice(2));
 const sourceDataDir = resolve(args.dataDir);
@@ -83,6 +86,7 @@ try {
   const isolatedAfterRollback = await isolatedManager.preflight();
   assertPreflightReady(isolatedAfterRollback, 'rolled-back isolated copy');
   assertSameSource(sourceBefore, isolatedAfterRollback, 'Rollback changed the isolated Memory v2 source.');
+  const runtimeAcceptance = await verifyPostMigrationRuntime(isolatedManager, isolatedDataDir);
 
   const sourceAfterVerification = await sourceManager.preflight();
   assertSameSource(
@@ -121,6 +125,7 @@ try {
       internalRootCount: restartAtomMetrics.internalRootCount,
       rollbackVerified: true,
     },
+    runtimeAcceptance,
     sourceUnchanged: true,
     isolatedCloneRemoved: true,
     timingMs: Math.round(performance.now() - startedAt),
@@ -194,6 +199,167 @@ function assertIsolatedRoot(path) {
   const tempRoot = resolve(tmpdir());
   assert(normalized.startsWith(`${tempRoot}${sep}`));
   assert(normalized.includes('littlesheep-memory-v3-readiness-'));
+}
+
+async function verifyPostMigrationRuntime(manager, dataDir) {
+  const migration = await manager.migrate();
+  assert.equal(migration.locator.activeBackend, 'v3');
+  const workspace = join(dataDir, 'workplace');
+  await mkdir(workspace, { recursive: true });
+  const config = structuredClone(DEFAULT_CONFIG);
+  config.memory.repositoryBackend = 'v3';
+  config.agents.defaults.workspace = workspace;
+  const previousDataDir = process.env.LITTLESHEEP_DATA_DIR;
+  process.env.LITTLESHEEP_DATA_DIR = dataDir;
+  const runId = 'memory-v3-runtime-acceptance';
+  const marker = 'Migrated runtime acceptance marker';
+  let first;
+  let restored;
+  try {
+    first = await createRunner({
+      config,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm([
+        textResponse('{"type":"problem","confidence":0.9,"reason":"runtime acceptance"}'),
+        textResponse('{"plan":[{"description":"verify migrated runtime","tools":[]}]}'),
+        textResponse('The isolated migrated runtime completed its verification step.'),
+        textResponse('{"verdict":"pass","reason":"isolated runtime goal achieved"}'),
+        textResponse(JSON.stringify({ memories: [{
+          branch: 'project',
+          parentNodeId: 'project:root',
+          scope: 'workspace',
+          summary: marker,
+          content: 'The migrated Memory v3 repository accepted an EVOLVE write through the real Runner path.',
+          retrievalKeys: ['migrated', 'runtime', 'acceptance'],
+          importance: 0.8,
+          confidence: 0.95,
+          reason: 'Verified by the isolated post-migration Runner acceptance flow.',
+        }], createSkill: null })),
+        textResponse(JSON.stringify({ observations: [{
+          summary: 'Migrated runtime run completed',
+          content: 'The isolated post-migration Runner completed and persisted its CAPTURE record.',
+          retrievalKeys: ['migrated', 'runtime', 'capture'],
+          importance: 0.5,
+          confidence: 0.95,
+          reason: 'The Runner returned an accepted result in the isolated migrated data root.',
+        }] })),
+      ]),
+      skillsDirs: [],
+      runTimeoutMs: 30_000,
+    });
+    const result = await first.run({
+      runId,
+      origin: 'app',
+      text: 'Verify the isolated migrated Memory v3 runtime without external tools.',
+      cwd: workspace,
+    });
+    assert.equal(result.status, 'ok');
+    const projectNode = (await first.infra.memoryRepository.listNodes('project'))
+      .find((node) => node.sourceRunIds.includes(runId));
+    const dailyNode = (await first.infra.memoryRepository.listNodes('daily'))
+      .find((node) => node.sourceRunIds.includes(runId));
+    assert(projectNode, 'The migrated runtime did not persist its EVOLVE atom.');
+    assert(dailyNode, 'The migrated runtime did not persist its CAPTURE atom.');
+    const firstMessages = await first.sessionManager.read(result.sessionId);
+    assert(firstMessages.some((message) => message.role === 'user'));
+    assert(firstMessages.some((message) => message.role === 'assistant'));
+
+    await first.shutdown();
+    first = undefined;
+    restored = await createRunner({
+      config,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm([]),
+      skillsDirs: [],
+      runTimeoutMs: 30_000,
+    });
+    assert.equal((await restored.infra.memoryRepository.getNode(projectNode.id))?.summary, marker);
+    assert.equal((await restored.infra.memoryRepository.getNode(dailyNode.id))?.summary, 'Migrated runtime run completed');
+    const restoredMessages = await restored.sessionManager.read(result.sessionId);
+    assert.deepEqual(restoredMessages.map((message) => message.id), firstMessages.map((message) => message.id));
+
+    const navigationRunId = 'memory-v3-runtime-navigation';
+    await restored.infra.memoryService.beginRun({
+      runId: navigationRunId,
+      sessionId: result.sessionId,
+      query: 'migrated runtime acceptance',
+      recentHistory: [],
+      workspace,
+      autoPrime: false,
+    });
+    const index = await restored.infra.memoryService.branchIndex(navigationRunId, 'project');
+    assert(index.entries.some((entry) => entry.id === projectNode.id));
+    const expansion = await restored.infra.memoryService.expand(navigationRunId, {
+      branchId: 'project',
+      nodeId: projectNode.id,
+      limit: 1,
+      tokenBudget: 800,
+    });
+    assert(expansion.fragments.some((fragment) => fragment.id === projectNode.id));
+    const released = await restored.infra.memoryService.release(navigationRunId, [projectNode.id]);
+    assert.deepEqual(released.releasedAtomIds, [projectNode.id]);
+    const search = await restored.infra.memoryService.deepSearch(navigationRunId, {
+      branchId: 'project',
+      query: 'migrated runtime acceptance',
+      limit: 5,
+      tokenBudget: 800,
+    });
+    assert(search.fragments.some((fragment) => fragment.id === projectNode.id));
+    await restored.infra.memoryService.finishRun(navigationRunId);
+
+    const validateActiveV3 = (source, sourceManifestHash) => (
+      restored.infra.memoryRepository.management.validateMigrationSource(source, sourceManifestHash)
+    );
+    const rollbackPreflight = await manager.preflight({ validateActiveV3 });
+    assert.equal(rollbackPreflight.rollback?.sourceUnchanged, true);
+    assert.equal(rollbackPreflight.rollback?.activeV3Unchanged, false);
+    assert.equal(rollbackPreflight.rollbackAvailable, false);
+    await assert.rejects(
+      manager.requestRollback({ validateActiveV3 }),
+      /differs|lose data/iu,
+    );
+    assert.equal((await manager.status()).pendingRollback, undefined);
+    return {
+      runStatus: result.status,
+      sessionMessageCount: restoredMessages.length,
+      evolveAtomsPersisted: 1,
+      captureAtomsPersisted: 1,
+      restartRecovered: true,
+      indexedNavigationVerified: true,
+      ftsRetrievalVerified: true,
+      rollbackBlockedAfterAuthoritativeWrite: true,
+    };
+  } finally {
+    await first?.shutdown().catch(() => undefined);
+    await restored?.shutdown().catch(() => undefined);
+    if (previousDataDir === undefined) delete process.env.LITTLESHEEP_DATA_DIR;
+    else process.env.LITTLESHEEP_DATA_DIR = previousDataDir;
+  }
+}
+
+function makeMockLlm(responses) {
+  const queue = [...responses];
+  const chat = async () => {
+    const response = queue.shift();
+    if (!response) throw new Error('Unexpected LLM request during Memory v3 runtime acceptance.');
+    return response;
+  };
+  return {
+    chat,
+    chatStream: async (request, onDelta) => {
+      const response = await chat(request);
+      if (response.content) onDelta({ type: 'delta', delta: response.content });
+      onDelta({ type: 'done', finishReason: response.finishReason });
+      return response;
+    },
+    embed: async () => ({ embeddings: [], model: '', usage: { promptTokens: 0 } }),
+  };
+}
+
+function textResponse(content) {
+  return { content, toolCalls: [], finishReason: 'stop' };
 }
 
 function parseArgs(values) {
