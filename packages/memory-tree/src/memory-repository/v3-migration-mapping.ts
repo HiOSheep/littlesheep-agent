@@ -2,7 +2,7 @@
 
 import type { MemoryNode, MemoryTreeDocument, MemoryWriteIntent } from '../types.js';
 import type { MemoryEntity } from '../v3/contracts.js';
-import { MemoryRepositoryV3Backend } from './v3-backend.js';
+import type { MemoryRepositoryV3Backend } from './v3-backend.js';
 import { classifyMemoryWriteIntent } from './v3-statement.js';
 import {
   createMemoryAtomInput,

@@ -55,7 +55,7 @@ describe('Memory v3 application bootstrap', () => {
     expect(prepared.config.memory.repositoryBackend).toBe('v3')
   })
 
-  it('keeps v3 active when rollback validation fails and aligns config to the locator', async () => {
+  it('keeps v3 active when bootstrap catches a stale rollback preflight', async () => {
     const dataDir = await createDataDir(directories)
     await seedV2(dataDir)
     const manager = new MemoryV2ToV3MigrationManager({ dataDir })
@@ -64,7 +64,17 @@ describe('Memory v3 application bootstrap', () => {
     await repository.initialize()
     await repository.write(memoryIntent('post-migration'))
     repository.close()
-    await manager.requestRollback()
+    const migrated = await manager.status()
+    await manager.requestRollback({
+      validateActiveV3: async () => ({
+        validationHash: migrated.lastMigration!.validationHash,
+        nodeCount: migrated.lastMigration!.nodeCount,
+        resourceCount: migrated.lastMigration!.resourceCount,
+        atomCount: migrated.lastMigration!.nodeCount,
+        pendingEmbeddingCount: 0,
+        catalogIntegrity: 'ok',
+      }),
+    })
     const config = structuredClone(DEFAULT_CONFIG)
     config.memory.repositoryBackend = 'v2'
 

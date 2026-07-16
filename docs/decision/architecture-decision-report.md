@@ -1,8 +1,8 @@
 # LittleSheep 架构评估与开发决策报告
 
-最后更新：2026-07-16 11:17:51
+最后更新：2026-07-16 11:59:42
 评估范围：当前源码、正式文档与已记录的验证结果
-执行状态：Memory v3 阶段 0-5 已完成；阶段 6 的同源 D0-D3 读取、迁移生命周期、atom 高级管理、首次自动选择、执行中受控纳入/release、原始数据记录孤儿恢复、commit receipt、隔离 soak、真实 Electron 窗口验收和正式 V2 数据隔离迁移演练已完成；正式路径仍为 v2，正式用户数据切换尚未完成
+执行状态：Memory v3 阶段 0-5 已完成；阶段 6 的同源 D0-D3 读取、迁移生命周期、实时回滚安全预检、atom 高级管理、首次自动选择、执行中受控纳入/release、原始数据记录孤儿恢复、commit receipt、隔离 soak、真实 Electron 窗口验收和正式 V2 数据隔离迁移演练已完成；正式路径仍为 v2，正式用户数据切换尚未完成
 
 ## 1. 给决策者的结论
 
@@ -21,7 +21,7 @@ LittleSheep 当前不是“只有 Prompt 的聊天壳”。它已经具备代码
 3. Tool Manager 只有注册与基础 wrapper，完整的授权、调用、超时、流式事件和执行证据仍主要位于 Harness/App。
 4. 正式 Memory v2 子系统仍由统一 `MemoryService` 和 `memory-tree/index.json` 承载，但 Runner 已退役默认 Provider Embedding 旁路；隔离 v3 已通过 feature flag 接入同一 Repository facade、Memory Service、Runner 与 Harness，并实现语义 atom、稳定 parent、认识状态、实体引用、可重建 catalog、真实本地 Embedding、统一检索、版本化 KnownState、有界维护、事务恢复和 v2→v3 安全迁移，但尚未接管正式数据。
 
-因此，不建议继续在集中式 Memory v2 文档上叠加新能力。Memory v3 阶段 6 已完成直接读取同一 raw record/atom/catalog 的 D0-D3 管理视图、“显式确认登记 -> 重启 -> 所有运行时写入者创建前迁移/回滚”的正式生命周期，以及 atom 高级管理、首次 working set、运行中 release、原始数据记录孤儿恢复、commit receipt、隔离 soak、真实窗口验收和当前正式 V2 数据的隔离迁移/重启/回滚演练；失败保持原 backend，恢复和回滚状态持久可见。当前重点转为用户明确批准后的正式迁移验收。真实 Provider 对话验收继续作为并行质量门，之后再推进统一 Tool Execution Service 与 RuntimeEventQueue。
+因此，不建议继续在集中式 Memory v2 文档上叠加新能力。Memory v3 阶段 6 已完成直接读取同一 raw record/atom/catalog 的 D0-D3 管理视图、“显式确认登记 -> 重启 -> 所有运行时写入者创建前迁移/回滚”的正式生命周期，以及实时回滚安全预检、atom 高级管理、首次 working set、运行中 release、原始数据记录孤儿恢复、commit receipt、隔离 soak、真实窗口验收和当前正式 V2 数据的隔离迁移/重启/回滚演练。回滚只有在运行中同源验证与启动时磁盘验证均通过时才执行，失败保持原 backend，不把可预见失败推迟到重启后。当前重点转为用户明确批准后的正式迁移验收。真实 Provider 对话验收继续作为并行质量门，之后再推进统一 Tool Execution Service 与 RuntimeEventQueue。
 
 ## 2. 评估口径
 

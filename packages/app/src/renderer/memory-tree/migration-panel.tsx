@@ -23,6 +23,9 @@ export function MemoryMigrationPanel({
   onRestart: () => void
 }) {
   const pending = preflight?.pendingOperation
+  const readinessBlockers = preflight?.activeBackend === 'v3'
+    ? preflight.rollback?.blockers ?? []
+    : preflight?.blockers ?? []
   return (
     <div className="memory-migration-panel">
       <div className="memory-migration-status-line">
@@ -52,12 +55,18 @@ export function MemoryMigrationPanel({
             <div><dt>资源登记</dt><dd>{preflight.source?.resourceCount ?? 0}</dd></div>
             <div><dt>源数据</dt><dd>{formatBytes(preflight.source?.totalBytes ?? 0)}</dd></div>
             <div><dt>可用空间</dt><dd>{formatBytes(preflight.storage?.availableBytes ?? 0)}</dd></div>
+            {preflight.rollback && (
+              <>
+                <div><dt>V2 回滚源</dt><dd>{preflight.rollback.sourceUnchanged ? '未变化' : '已变化'}</dd></div>
+                <div><dt>V3 当前状态</dt><dd>{preflight.rollback.activeV3Unchanged ? '未变化' : '已变化'}</dd></div>
+              </>
+            )}
           </dl>
-          <div className={`memory-migration-readiness ${preflight.blockers.length > 0 ? 'blocked' : 'ready'}`}>
+          <div className={`memory-migration-readiness ${readinessBlockers.length > 0 ? 'blocked' : 'ready'}`}>
             <strong>{migrationReadinessLabel(preflight)}</strong>
             <time dateTime={preflight.checkedAt}>{formatDateTime(preflight.checkedAt)}</time>
           </div>
-          {preflight.blockers.map((blocker) => <p className="memory-project-callout conflict" key={blocker}>{blocker}</p>)}
+          {readinessBlockers.map((blocker) => <p className="memory-project-callout conflict" key={blocker}>{blocker}</p>)}
           {pending?.error && <p className="memory-project-callout conflict">{pending.error}</p>}
           <div className="memory-migration-actions">
             {pending ? (
@@ -78,7 +87,7 @@ export function MemoryMigrationPanel({
                     准备迁移到 V3
                   </button>
                 )}
-                {preflight.activeBackend === 'v3' && preflight.rollbackAvailable && (
+                {preflight.activeBackend === 'v3' && preflight.rollback?.canRollback && (
                   <button type="button" disabled={!!busyAction} onClick={onRequestRollback}>
                     准备回滚到 V2
                   </button>
@@ -114,7 +123,8 @@ function migrationReadinessLabel(preflight: MemoryV3MigrationPreflightOverview):
   if (preflight.pendingOperation?.kind === 'rollback') {
     return preflight.pendingOperation.phase === 'recovery' ? '回滚等待恢复' : '回滚等待重启'
   }
-  if (preflight.rollbackAvailable) return '可进入回滚校验'
+  if (preflight.activeBackend === 'v3' && preflight.rollback?.canRollback) return '回滚前置条件通过'
+  if (preflight.activeBackend === 'v3' && preflight.rollback) return '回滚前置条件未通过'
   if (preflight.canResume) return '可恢复未完成迁移'
   if (preflight.canMigrate) return '迁移前置条件通过'
   return preflight.blockers.length > 0 ? '迁移前置条件未通过' : '当前无需迁移'

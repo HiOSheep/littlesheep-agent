@@ -257,15 +257,15 @@ export async function routeMemory(
       return true
     }
     if (method === 'GET') {
-      json(res, 200, await inspectMemoryV3Migration(context.memoryV3MigrationManager))
+      json(res, 200, await inspectMemoryV3Migration(context.memoryV3MigrationManager, runner))
       return true
     }
     if (method === 'POST') {
-      json(res, 200, await requestMemoryV3Migration(context.memoryV3MigrationManager))
+      json(res, 200, await requestMemoryV3Migration(context.memoryV3MigrationManager, runner))
       return true
     }
     if (method === 'DELETE') {
-      json(res, 200, await cancelMemoryV3Operation(context.memoryV3MigrationManager))
+      json(res, 200, await cancelMemoryV3Operation(context.memoryV3MigrationManager, runner))
       return true
     }
   }
@@ -275,7 +275,7 @@ export async function routeMemory(
       json(res, 501, { error: 'Memory v3 migration management is not available' })
       return true
     }
-    json(res, 200, await requestMemoryV3Rollback(context.memoryV3MigrationManager))
+    json(res, 200, await requestMemoryV3Rollback(context.memoryV3MigrationManager, runner))
     return true
   }
 

@@ -275,6 +275,12 @@ export interface MemoryV3MigrationPreflightOverview {
   canMigrate: boolean
   canResume: boolean
   rollbackAvailable: boolean
+  rollback?: {
+    canRollback: boolean
+    sourceUnchanged: boolean
+    activeV3Unchanged: boolean
+    blockers: string[]
+  }
   blockers: string[]
   source?: {
     fileCount: number

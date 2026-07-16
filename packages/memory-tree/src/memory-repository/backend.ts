@@ -31,6 +31,7 @@ import type {
   MemoryRepositoryManagementStatus,
   MemoryRepositoryNodeInspection,
 } from './management.js';
+import type { MemoryV3MigrationValidation } from './v3-migration-contracts.js';
 
 export interface MemoryRepositoryBackend extends Partial<MemoryRepositoryRetrievalBackend> {
   readonly rootDir: string;
@@ -76,5 +77,9 @@ export interface MemoryRepositoryBackend extends Partial<MemoryRepositoryRetriev
   manageAtomForManagement?(
     request: MemoryAtomManagementRequest,
   ): Promise<MemoryAtomManagementResult>;
+  validateMigrationSourceForManagement?(
+    source: MemoryTreeDocument,
+    sourceManifestHash: string,
+  ): Promise<MemoryV3MigrationValidation>;
   close?(): void;
 }

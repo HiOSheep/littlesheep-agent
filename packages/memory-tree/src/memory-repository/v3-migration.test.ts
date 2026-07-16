@@ -106,6 +106,52 @@ describe('Memory v2 -> v3 migration', () => {
     expect(rolledBack).toMatchObject({ operation: 'rollback', locator: { activeBackend: 'v2' } });
   });
 
+  it('reports precise live rollback readiness before registering a restart operation', async () => {
+    const dataDir = await createDataDir(directories);
+    await seedV2(dataDir);
+    const manager = new MemoryV2ToV3MigrationManager({ dataDir });
+    await manager.migrate();
+    const repository = new MemoryRepository({ dataDir, backend: 'v3' });
+    await repository.initialize();
+    const validateActiveV3 = (source: MemoryTreeDocument, sourceManifestHash: string) => (
+      repository.management.validateMigrationSource(source, sourceManifestHash)
+    );
+
+    const preflight = await manager.preflight({ validateActiveV3 });
+    expect(preflight).toMatchObject({
+      rollbackAvailable: true,
+      rollback: {
+        canRollback: true,
+        sourceUnchanged: true,
+        activeV3Unchanged: true,
+        blockers: [],
+      },
+    });
+
+    const requested = await manager.requestRollback({ validateActiveV3 });
+    expect(requested.pendingRollback).toMatchObject({ phase: 'requested', attempts: 0 });
+    repository.close();
+    await expect(manager.prepareForBootstrap({ throwOnError: true }))
+      .resolves.toMatchObject({ operation: 'rollback', locator: { activeBackend: 'v2' } });
+  });
+
+  it('does not advertise rollback without an active Memory v3 validator', async () => {
+    const dataDir = await createDataDir(directories);
+    await seedV2(dataDir);
+    const manager = new MemoryV2ToV3MigrationManager({ dataDir });
+    await manager.migrate();
+
+    const preflight = await manager.preflight();
+
+    expect(preflight.rollbackAvailable).toBe(false);
+    expect(preflight.rollback).toMatchObject({
+      canRollback: false,
+      sourceUnchanged: true,
+      activeV3Unchanged: false,
+    });
+    expect(preflight.rollback?.blockers.join(' ')).toMatch(/has not been validated/i);
+  });
+
   it('preserves an inactive v3 directory and rebuilds from newer v2 data after rollback', async () => {
     const dataDir = await createDataDir(directories);
     await seedV2(dataDir);
@@ -314,6 +360,57 @@ describe('Memory v2 -> v3 migration', () => {
     repository.close();
     await expect(manager.rollback()).rejects.toThrow(/differs|lose data/i);
     expect((await manager.status()).activeBackend).toBe('v3');
+  });
+
+  it('rejects a live rollback request before registration after v3 has changed', async () => {
+    const dataDir = await createDataDir(directories);
+    await seedV2(dataDir);
+    const manager = new MemoryV2ToV3MigrationManager({ dataDir });
+    await manager.migrate();
+    const repository = new MemoryRepository({ dataDir, backend: 'v3' });
+    await repository.initialize();
+    await repository.write(intent({ id: 'live-post-migration-write', sourceRunId: 'run-live-after-migration' }));
+    const validateActiveV3 = (source: MemoryTreeDocument, sourceManifestHash: string) => (
+      repository.management.validateMigrationSource(source, sourceManifestHash)
+    );
+
+    const preflight = await manager.preflight({ validateActiveV3 });
+    expect(preflight.rollbackAvailable).toBe(false);
+    expect(preflight.rollback).toMatchObject({
+      canRollback: false,
+      sourceUnchanged: true,
+      activeV3Unchanged: false,
+    });
+    await expect(manager.requestRollback({ validateActiveV3 })).rejects.toThrow(/differs|lose data/i);
+    expect((await manager.status()).pendingRollback).toBeUndefined();
+    repository.close();
+  });
+
+  it('rejects a live rollback request before registration after the v2 source has changed', async () => {
+    const dataDir = await createDataDir(directories);
+    await seedV2(dataDir);
+    const manager = new MemoryV2ToV3MigrationManager({ dataDir });
+    await manager.migrate();
+    const repository = new MemoryRepository({ dataDir, backend: 'v3' });
+    await repository.initialize();
+    const indexPath = join(dataDir, 'memory-tree', 'index.json');
+    const document = JSON.parse(await readFile(indexPath, 'utf8')) as MemoryTreeDocument;
+    document.updatedAt = '2026-07-16T12:34:56.000Z';
+    await writeFile(indexPath, `${JSON.stringify(document, null, 2)}\n`, 'utf8');
+    const validateActiveV3 = (source: MemoryTreeDocument, sourceManifestHash: string) => (
+      repository.management.validateMigrationSource(source, sourceManifestHash)
+    );
+
+    const preflight = await manager.preflight({ validateActiveV3 });
+    expect(preflight.rollbackAvailable).toBe(false);
+    expect(preflight.rollback).toMatchObject({
+      canRollback: false,
+      sourceUnchanged: false,
+      activeV3Unchanged: true,
+    });
+    await expect(manager.requestRollback({ validateActiveV3 })).rejects.toThrow(/v2 changed|unsafe/i);
+    expect((await manager.status()).pendingRollback).toBeUndefined();
+    repository.close();
   });
 
   it('refuses commit when v2 changes after the snapshot instead of creating dual authorities', async () => {

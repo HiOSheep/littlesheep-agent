@@ -133,6 +133,9 @@ export {
   type MemoryV3MigrationFaultPoint,
   type MemoryV3MigrationPreflight,
   type MemoryV3MigrationResult,
+  type MemoryV3MigrationValidation,
+  type MemoryV3PreflightOptions,
+  type MemoryV3RollbackReadiness,
   type PrepareMemoryV3ForBootstrapOptions,
 } from './memory-repository/v3-migration.js';
 export {

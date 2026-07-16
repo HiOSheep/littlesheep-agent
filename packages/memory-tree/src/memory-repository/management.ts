@@ -9,6 +9,8 @@ import type {
 } from '../v3/contracts.js';
 import type { MemoryRepositoryBackendKind } from './contracts.js';
 import type { MemoryRepositoryBackend } from './backend.js';
+import type { MemoryTreeDocument } from '../types.js';
+import type { MemoryV3MigrationValidation } from './v3-migration-contracts.js';
 
 export interface MemoryRepositoryEmbeddingStatusCounts {
   disabled: number;
@@ -101,6 +103,10 @@ export interface MemoryRepositoryManagementFacade {
     disclosureLevel: MemoryRepositoryNodeInspection['disclosureLevel'],
   ): Promise<MemoryRepositoryNodeInspection | undefined>;
   manageAtom(request: MemoryAtomManagementRequest): Promise<MemoryAtomManagementResult>;
+  validateMigrationSource(
+    source: MemoryTreeDocument,
+    sourceManifestHash: string,
+  ): Promise<MemoryV3MigrationValidation>;
 }
 
 export function createMemoryRepositoryManagementFacade(
@@ -114,6 +120,12 @@ export function createMemoryRepositoryManagementFacade(
         return Promise.reject(new Error('Advanced atom management requires the Memory v3 backend.'));
       }
       return backend.manageAtomForManagement(request);
+    },
+    validateMigrationSource: (source, sourceManifestHash) => {
+      if (!backend.validateMigrationSourceForManagement) {
+        return Promise.reject(new Error('Migration source validation requires the Memory v3 backend.'));
+      }
+      return backend.validateMigrationSourceForManagement(source, sourceManifestHash);
     },
   };
 }

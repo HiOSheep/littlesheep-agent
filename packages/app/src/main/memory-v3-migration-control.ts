@@ -1,33 +1,48 @@
 // Read-only Memory v3 migration status for the management UI.
 
-import type { MemoryV2ToV3MigrationManager, MemoryV3MigrationPreflight } from '@littlesheep/memory-tree'
+import type {
+  MemoryTreeDocument,
+  MemoryV2ToV3MigrationManager,
+  MemoryV3MigrationPreflight,
+} from '@littlesheep/memory-tree'
+import type { AgentRunner } from '@littlesheep/runner'
 import type { MemoryV3MigrationPreflightOverview } from '../shared/memory-control-contracts.js'
 
 export async function inspectMemoryV3Migration(
   manager: MemoryV2ToV3MigrationManager,
+  runner: AgentRunner,
 ): Promise<MemoryV3MigrationPreflightOverview> {
-  return publicPreflight(await manager.preflight())
+  return publicPreflight(await manager.preflight({ validateActiveV3: activeV3Validator(runner) }))
 }
 
 export async function requestMemoryV3Migration(
   manager: MemoryV2ToV3MigrationManager,
+  runner: AgentRunner,
 ): Promise<MemoryV3MigrationPreflightOverview> {
   await manager.requestMigration()
-  return inspectMemoryV3Migration(manager)
+  return inspectMemoryV3Migration(manager, runner)
 }
 
 export async function cancelMemoryV3Operation(
   manager: MemoryV2ToV3MigrationManager,
+  runner: AgentRunner,
 ): Promise<MemoryV3MigrationPreflightOverview> {
   await manager.cancelPending()
-  return inspectMemoryV3Migration(manager)
+  return inspectMemoryV3Migration(manager, runner)
 }
 
 export async function requestMemoryV3Rollback(
   manager: MemoryV2ToV3MigrationManager,
+  runner: AgentRunner,
 ): Promise<MemoryV3MigrationPreflightOverview> {
-  await manager.requestRollback()
-  return inspectMemoryV3Migration(manager)
+  await manager.requestRollback({ validateActiveV3: activeV3Validator(runner) })
+  return inspectMemoryV3Migration(manager, runner)
+}
+
+function activeV3Validator(runner: AgentRunner) {
+  return (source: MemoryTreeDocument, sourceManifestHash: string) => (
+    runner.infra.memoryRepository.management.validateMigrationSource(source, sourceManifestHash)
+  )
 }
 
 function publicPreflight(preflight: MemoryV3MigrationPreflight): MemoryV3MigrationPreflightOverview {
@@ -48,6 +63,12 @@ function publicPreflight(preflight: MemoryV3MigrationPreflight): MemoryV3Migrati
     canMigrate: preflight.canMigrate,
     canResume: preflight.canResume,
     rollbackAvailable: preflight.rollbackAvailable,
+    rollback: preflight.rollback ? {
+      canRollback: preflight.rollback.canRollback,
+      sourceUnchanged: preflight.rollback.sourceUnchanged,
+      activeV3Unchanged: preflight.rollback.activeV3Unchanged,
+      blockers: preflight.rollback.blockers,
+    } : undefined,
     blockers: preflight.blockers,
     source: preflight.source ? {
       fileCount: preflight.source.fileCount,

@@ -1,6 +1,6 @@
 // Public contracts for the isolated Memory v2 -> v3 migration manager.
 
-import type { MemoryWritePolicy } from '../types.js';
+import type { MemoryTreeDocument, MemoryWritePolicy } from '../types.js';
 import type { MemoryRepositoryV3Options } from './contracts.js';
 import type { CompletedMemoryV3Migration, MemoryRepositoryLocator } from './repository-locator.js';
 
@@ -61,6 +61,7 @@ export interface MemoryV3MigrationPreflight {
   canMigrate: boolean;
   canResume: boolean;
   rollbackAvailable: boolean;
+  rollback?: MemoryV3RollbackReadiness;
   blockers: string[];
   source?: {
     fileCount: number;
@@ -74,4 +75,29 @@ export interface MemoryV3MigrationPreflight {
     requiredBytes: number;
     availableBytes: number;
   };
+}
+
+export interface MemoryV3MigrationValidation {
+  validationHash: string;
+  nodeCount: number;
+  resourceCount: number;
+  atomCount: number;
+  pendingEmbeddingCount: number;
+  catalogIntegrity: string;
+}
+
+export type MemoryV3ActiveStateValidator = (
+  source: MemoryTreeDocument,
+  sourceManifestHash: string,
+) => Promise<MemoryV3MigrationValidation>;
+
+export interface MemoryV3PreflightOptions {
+  validateActiveV3?: MemoryV3ActiveStateValidator;
+}
+
+export interface MemoryV3RollbackReadiness {
+  canRollback: boolean;
+  sourceUnchanged: boolean;
+  activeV3Unchanged: boolean;
+  blockers: string[];
 }

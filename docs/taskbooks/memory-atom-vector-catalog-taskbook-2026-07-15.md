@@ -1,8 +1,8 @@
 # LittleSheep 原子记忆与内置向量目录任务书 2026-07-15
 
-最后更新：2026-07-16 11:17:51
-版本：v2.6
-状态：实施中；阶段 0-5 已完成，阶段 6 的同源读取、迁移生命周期、atom 高级管理、首次自动选择、执行中受控纳入/释放、原始数据记录孤儿恢复、隔离 soak、真实 Electron 窗口验收和正式 V2 数据隔离迁移演练已完成；正式用户场景验收仍待用户批准迁移后推进；未迁移正式用户数据
+最后更新：2026-07-16 11:59:42
+版本：v2.7
+状态：实施中；阶段 0-5 已完成，阶段 6 的同源读取、迁移生命周期、实时回滚安全预检、atom 高级管理、首次自动选择、执行中受控纳入/释放、原始数据记录孤儿恢复、隔离 soak、真实 Electron 窗口验收和正式 V2 数据隔离迁移演练已完成；正式用户场景验收仍待用户批准迁移后推进；未迁移正式用户数据
 
 ## 1. 目标
 
@@ -360,7 +360,7 @@ statement / atom / resource
 - 已完成：提交前比较 source/snapshot manifest，逐节点比较 v2 projection 与 v3 atom，验证资源和全部账本内容、Graph 引用、Atom Store 扫描、Catalog 数量与 SQLite integrity；Embedding 模型不可用时层级和 FTS 正常完成，向量保持 pending；
 - 已完成：staging 通过同卷 rename 提交为活动 v3 目录，再原子提交 locator。目录已提交但 locator 未提交时可幂等恢复；任意较早中断会丢弃受 ownership marker 约束的局部 staging 后重建；
 - 已完成：回滚只在 v2 源和 v3 validation hash 均未变化时允许，防止把 v3 新写入静默丢弃。v2 原文件和 snapshot 均保留，不建立双写；
-- 已完成：26 项迁移测试覆盖全部 9 个声明断电点、预检和中途 ENOSPC、损坏 JSON、损坏节点、孤儿 parent、重复 id、快照后 v2 变化、v3 写入后拒绝回滚、模型不可用、重启恢复、请求合并/取消、回滚后重新迁移和旧 v3 保留；
+- 已完成：30 项迁移测试覆盖全部 9 个声明断电点、预检和中途 ENOSPC、损坏 JSON、损坏节点、孤儿 parent、重复 id、快照后 v2 变化、v3 写入后拒绝回滚、模型不可用、重启恢复、请求合并/取消、运行中回滚预检、回滚后重新迁移和旧 v3 保留；
 - 已完成：应用只在用户确认登记后，于下一次启动的 Runner、Local App API、渠道插件、SQLite 和 Embedding 写入者创建前执行迁移或回滚；locator 是 backend 权威，配置在运行时创建前与 locator 自动对齐；
 - 正式用户数据仍保持 v2；具备正式迁移入口不等于已经替用户切换，实际切换仍由用户在管理 UI 中明确确认并重启。
 
@@ -377,13 +377,13 @@ statement / atom / resource
 - 已完成：statement kind、epistemic status、authority scope、asserted by 与 evidence refs 会投影给模型；VERIFY 明确拒绝把 suggestion、reported observation 或 unverified claim 当作 verified fact 交付；
 - 已完成：D0-D3 使用同一份 atom/catalog 渐进展开，Prompt 与运行时不建立记忆正文副本；Context 只展开当前目标需要的关系邻域；
 - 已完成：成功写入后的本地向量维护可等待、单批有界、并发合并且失败不回滚 atom，长期运行不再依赖重启补齐新记忆向量；
-- 已验证：仓库卫生 31/31、27 个 workspace 类型检查、150 个测试文件中的 1164 项通过且 1 项按预期跳过、Electron main/preload/renderer 构建和应用恢复源检查通过。
+- 已验证：仓库卫生 31/31、27 个 workspace 类型检查、150 个测试文件中的 1170 项通过且 1 项按预期跳过、Electron main/preload/renderer 构建和应用恢复源检查通过。
 
 验收：已通过隔离工程验收。网络被阻断时记忆写入和检索正常，向量搜索不能绕过层级导航；同一作用域内经验证且相关的记忆稳定优先介入，单纯重复访问不能形成错误自增强。该结论不代表正式用户数据已经迁移。
 
 ### 阶段 6：管理 UI 与真实迁移
 
-状态：**进行中；同源读取控制面、正式迁移生命周期、atom 高级管理、初始 working set、运行中 release、原始数据记录孤儿恢复、隔离 soak、真实窗口验收和正式 V2 数据隔离迁移演练已完成；正式用户场景验收尚未完成**。
+状态：**进行中；同源读取控制面、正式迁移生命周期、实时回滚安全预检、atom 高级管理、初始 working set、运行中 release、原始数据记录孤儿恢复、隔离 soak、真实窗口验收和正式 V2 数据隔离迁移演练已完成；正式用户场景验收尚未完成**。
 
 - 已完成：`/memory/tree` 只传输 D0/D1 概况与摘要，不再一次性返回记忆正文、完整来源和历史；D2 正文/认识状态与 D3 证据、命中、管理历史、事件时间线、实体和关系邻域均按节点请求展开；
 - 已完成：v3 节点详情直接来自同一 `MemoryRepository`、atom 和 Catalog；独立 `management` facade 提供目录状态与节点检查，不建立 UI 展示副本，也不扩大 Repository 主 facade；
@@ -392,6 +392,7 @@ statement / atom / resource
 - 已完成：设置页通过显式确认登记迁移或回滚，运行中的 API 只持久化请求、不执行结构性变更；用户可在重启前取消请求，失败进入可见 recovery，并可重启恢复或在安全边界内取消；
 - 已完成：“登记请求 -> 应用重启 -> 数据根准备 -> Memory v3 迁移/回滚 -> 配置对齐 -> Runner -> Local App API -> 渠道插件”的启动前执行协议；迁移不与活动 Agent run、渠道、Repository、SQLite 或 Embedding 写入竞争；
 - 已完成：迁移失败继续使用 v2；回滚失败继续使用 v3。只有 v2 源和 v3 validation hash 均未变化时才允许回滚，回滚后的重新迁移会保留旧 v3 后从最新 v2 重建；
+- 已完成：回滚就绪检查在登记前读取迁移 snapshot、当前 V2 manifest，并通过活动 Runner 使用的同一 V3 repository 执行全量 validation；UI 分别显示 V2 回滚源与 V3 当前状态。V2 变化、V3 新写入或 validator 缺失均不生成 pending rollback；启动执行仍重复磁盘级强校验，防止预检后竞态或旧版本 pending 绕过；
 - 已完成：用户可对 v3 atom 执行同分支/同作用域移动、受认识边界约束的合并、失效、恢复和单 atom D3 证据包导出；双 revision 预检、层级循环防护、来源 tombstone 和 raw records 保证治理不丢原始数据；
 - 已完成：首次业务模型请求从 D1 索引中最多自动选择 2 个 D2 atom、预算 600 tokens；执行中可显式 release 当前 atom，真实请求内容和 KnownState 同步移除，后续允许重新介入；
 - 已完成：`raw-record-captured` 崩溃点可在重启时从 raw record 自动补建 recovery event 并恢复 atom/catalog；已提交 journal 即使被裁剪，原始数据记录仍保留；
@@ -402,7 +403,7 @@ statement / atom / resource
 - 已完成：`verify:memory-v3-readiness` 对当前正式 V2 数据执行只读预检，并只复制 `memory-tree` 到系统临时目录完成真实迁移、关闭重启、catalog 检查和回滚；40 个业务节点、11 个资源和源哈希保持一致，V3 的 5 个内部 scope root 与业务 atom 分开验证，临时副本在成功或失败后均自动删除；演练证据只对该次源快照有效，正式登记前必须重新预检，迁移提交仍独立复核源 manifest；
 - 待完成：用户批准正式数据迁移后的真实用户场景验收。
 
-验收：读取、迁移生命周期、atom 管理、working set、原始数据记录孤儿恢复、catalog 灾难重建、隔离 soak、真实窗口和正式 V2 数据副本演练已通过定向类型检查、HTTP、故障/重启/并发、Runner 首次请求、Electron 交互和源哈希不变检查；UI 管理运行时同一份 raw record/atom/catalog，不建立展示副本。完整阶段验收仍要求用户单独批准实际数据切换并完成正式用户场景。
+验收：读取、迁移生命周期、实时回滚预检、atom 管理、working set、原始数据记录孤儿恢复、catalog 灾难重建、隔离 soak、真实窗口和正式 V2 数据副本演练已通过定向类型检查、HTTP、故障/重启/并发、Runner 首次请求、Electron 交互和源哈希不变检查；UI 管理运行时同一份 raw record/atom/catalog，不建立展示副本。完整阶段验收仍要求用户单独批准实际数据切换并完成正式用户场景。
 
 ## 8. 已确认决策
 

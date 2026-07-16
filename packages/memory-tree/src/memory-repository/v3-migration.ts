@@ -21,6 +21,8 @@ import type {
   MemoryV3MigrationFaultPoint,
   MemoryV3MigrationPreflight,
   MemoryV3MigrationResult,
+  MemoryV3PreflightOptions,
+  MemoryV3RollbackReadiness,
   PrepareMemoryV3ForBootstrapOptions,
 } from './v3-migration-contracts.js';
 import {
@@ -52,6 +54,9 @@ export type {
   MemoryV3MigrationFaultPoint,
   MemoryV3MigrationPreflight,
   MemoryV3MigrationResult,
+  MemoryV3MigrationValidation,
+  MemoryV3PreflightOptions,
+  MemoryV3RollbackReadiness,
   PrepareMemoryV3ForBootstrapOptions,
 } from './v3-migration-contracts.js';
 
@@ -80,26 +85,43 @@ export class MemoryV2ToV3MigrationManager {
       ?? createDefaultMemoryRepositoryLocator(this.now().toISOString());
   }
 
-  async preflight(): Promise<MemoryV3MigrationPreflight> {
-    return inspectMemoryV3MigrationPreflight({
+  async preflight(options: MemoryV3PreflightOptions = {}): Promise<MemoryV3MigrationPreflight> {
+    const locator = await this.status();
+    const preflight = await inspectMemoryV3MigrationPreflight({
       dataDir: this.dataDir,
-      locator: await this.status(),
+      locator,
       checkedAt: this.now().toISOString(),
       availableBytes: this.availableBytes,
     });
+    if (locator.activeBackend !== 'v3' || !locator.lastMigration) return preflight;
+    const rollback = await this.inspectRollbackReadiness(locator, options.validateActiveV3);
+    return { ...preflight, rollbackAvailable: rollback.canRollback, rollback };
   }
 
   requestMigration(): Promise<MemoryRepositoryLocator> {
     return this.registerMigrationRequest(true);
   }
 
-  requestRollback(): Promise<MemoryRepositoryLocator> {
+  requestRollback(options: MemoryV3PreflightOptions = {}): Promise<MemoryRepositoryLocator> {
     return this.operations.run(async () => {
       const locator = await this.status();
       if (locator.pendingMigration) throw new Error('A Memory v3 migration is already pending.');
       if (locator.pendingRollback) return locator;
       if (locator.activeBackend !== 'v3' || !locator.lastMigration) {
         throw new Error('Memory v3 is not the active migrated backend.');
+      }
+      const readiness = await this.inspectRollbackReadiness(
+        locator,
+        options.validateActiveV3 ?? ((source, sourceManifestHash) => validateMemoryV3Stage(
+          this.dataDir,
+          source,
+          sourceManifestHash,
+          this.policy,
+          this.v3,
+        )),
+      );
+      if (!readiness.canRollback) {
+        throw new Error(readiness.blockers[0] ?? 'Memory v3 rollback preflight did not pass.');
       }
       const timestamp = this.now().toISOString();
       const next: MemoryRepositoryLocator = {
@@ -193,6 +215,61 @@ export class MemoryV2ToV3MigrationManager {
   async rollback(): Promise<MemoryRepositoryLocator> {
     await this.requestRollback();
     return (await this.prepareForBootstrap({ throwOnError: true })).locator;
+  }
+
+  private async inspectRollbackReadiness(
+    locator: MemoryRepositoryLocator,
+    validateActiveV3?: MemoryV3PreflightOptions['validateActiveV3'],
+  ): Promise<MemoryV3RollbackReadiness> {
+    const blockers: string[] = [];
+    let sourceUnchanged = false;
+    let activeV3Unchanged = false;
+    if (locator.activeBackend !== 'v3' || !locator.lastMigration) {
+      return {
+        canRollback: false,
+        sourceUnchanged,
+        activeV3Unchanged,
+        blockers: ['Memory v3 is not the active migrated backend.'],
+      };
+    }
+    const paths = memoryV3MigrationPaths(this.dataDir, locator.lastMigration.id);
+    let snapshot;
+    try {
+      snapshot = await loadMemoryV2Snapshot(paths.snapshotDir);
+    } catch (error) {
+      blockers.push(`Rollback snapshot is unavailable or invalid: ${errorMessage(error)}`);
+      return { canRollback: false, sourceUnchanged, activeV3Unchanged, blockers };
+    }
+    try {
+      const currentSource = await inspectMemoryV2Source(this.dataDir);
+      assertSameManifest(
+        snapshot.manifest,
+        currentSource.manifest,
+        'Memory v2 changed after migration; automatic rollback is unsafe.',
+      );
+      sourceUnchanged = true;
+    } catch (error) {
+      blockers.push(errorMessage(error));
+    }
+    if (!validateActiveV3) {
+      blockers.push('Active Memory v3 state has not been validated for rollback.');
+    } else {
+      try {
+        const active = await validateActiveV3(snapshot.document, snapshot.manifest.manifestHash);
+        if (active.validationHash !== locator.lastMigration.validationHash) {
+          throw new Error('Memory v3 changed after migration; automatic rollback would lose data.');
+        }
+        activeV3Unchanged = true;
+      } catch (error) {
+        blockers.push(errorMessage(error));
+      }
+    }
+    return {
+      canRollback: blockers.length === 0,
+      sourceUnchanged,
+      activeV3Unchanged,
+      blockers,
+    };
   }
 
   private registerMigrationRequest(validatePreflight: boolean): Promise<MemoryRepositoryLocator> {

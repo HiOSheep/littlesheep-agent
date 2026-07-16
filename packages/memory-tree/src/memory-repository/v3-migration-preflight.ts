@@ -47,7 +47,7 @@ export async function inspectMemoryV3MigrationPreflight(
       && !options.locator.pendingRollback
       && blockers.length === 0,
     canResume: !alreadyV3 && Boolean(options.locator.pendingMigration) && blockers.length === 0,
-    rollbackAvailable: alreadyV3 && Boolean(options.locator.lastMigration),
+    rollbackAvailable: false,
     blockers,
     source,
     storage,
