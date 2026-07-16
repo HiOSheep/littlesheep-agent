@@ -19,7 +19,7 @@ export type MemoryScope = 'global' | 'workspace' | 'project' | 'session';
 export type MemoryResourceScope = MemoryScope | 'run';
 export type MemoryBranchKind = 'long-term' | 'daily' | 'project' | 'experience';
 export type MemoryBranchCategory = MemoryBranchKind | 'resources';
-export type MemoryAccessAction = 'root_index' | 'branch_index' | 'expand' | 'deep_search';
+export type MemoryAccessAction = 'root_index' | 'branch_index' | 'expand' | 'deep_search' | 'release';
 
 export type MemoryResourceKind =
   | 'agent-instructions'
@@ -264,6 +264,8 @@ export interface MemoryRunRegistration {
   rootIndex?: string;
   /** Number of branch/resource directory entries represented by rootIndex. */
   rootSourceCount?: number;
+  /** Disable initial D1-guided D2 selection for protocol tests or diagnostics. */
+  autoPrime?: boolean;
 }
 
 export interface MemoryAccessRecord {
@@ -331,6 +333,26 @@ export interface MemorySearchOptions {
   subtreeRootId?: string;
 }
 
+export interface MemoryReleaseResult {
+  releasedAtomIds: string[];
+  notActiveAtomIds: string[];
+  freedTokens: number;
+  knownState: MemoryKnownState;
+  knownStateDelta: MemoryKnownState['references'];
+}
+
+export interface MemoryPrimeOptions {
+  query: string;
+  maxAtoms?: number;
+  tokenBudget?: number;
+}
+
+export interface MemoryPrimeResult {
+  fragments: MemoryFragment[];
+  indexedBranches: string[];
+  tokensUsed: number;
+}
+
 export interface MemoryQueryResult {
   action: 'expand' | 'deep_search';
   branchId?: string;
@@ -396,6 +418,10 @@ export interface MemoryNode {
   updatedAt: string;
   isBranchRoot?: boolean;
   mergedFrom?: string[];
+  /** Present only for Memory v3 nodes; used as an optimistic management precondition. */
+  atomRevision?: number;
+  invalidatedAt?: string;
+  mergedIntoId?: string;
 }
 
 export interface MemoryWriteAuditRecord {

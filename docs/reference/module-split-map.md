@@ -1,6 +1,6 @@
 # LittleSheep 模块拆分地图
 
-最后更新：2026-07-16 01:37:16
+最后更新：2026-07-16 08:12:11
 
 本文件记录大型生产文件的当前所有权、目标边界和拆分顺序。它是仓库基元化任务书的阶段产物，不替代项目状态，也不把行数当成唯一质量指标。
 
@@ -19,7 +19,7 @@
 | `packages/app/src/renderer/MemoryTreeView.tsx` | 1007 | 记忆树 controller、资源和项目投影视图；v3 节点行、迁移面板和迁移 hook 已拆出 | controller + tree、resource、audit、project-projection 组件 | B |
 | `packages/channels/qqbot/src/plugin.ts` | 801 | QQ 协议、连接、消息、发送和生命周期 | transport、protocol、message-mapper、sender、lifecycle | C |
 | `packages/memory-tree/src/project-memory-projection.ts` | 778 | 投影生成、同步、冲突、恢复和删除 | projection facade + render、sync、conflict、lifecycle | D |
-| `packages/memory-tree/src/memory-tree.ts` | 647 | 根索引、导航、展开、搜索和预算 | tree facade + index、navigation、expansion、branch-search、budget | D |
+| `packages/memory-tree/src/memory-tree.ts` | 630 | 根索引、导航、展开和搜索；working set 预算/去重/释放已拆出 | tree facade + index、navigation、expansion、branch-search | D |
 | `packages/app/src/main/data-root-migration.ts` | 637 | locator、清单、复制、重绑定、提交、恢复和回滚 | migration facade + plan、manifest、copy、rebind、commit、recovery | C |
 | `packages/channels/feishu/src/plugin.ts` | 632 | 飞书验签、事件、消息、发送和生命周期 | verification、transport、message-mapper、sender、lifecycle | C |
 
@@ -34,7 +34,7 @@
 | `packages/app/src/main/attachment-cache.ts` | 486 | 附件索引、配额、清理和校验 | 分离 index、quota、cleanup、validation | C |
 | `packages/runner/src/runner.ts` | 537 | run 生命周期与依赖协调 | 分离 run lifecycle、session、memory、stream 协调器 | E |
 | `packages/memory-tree/src/types.ts` | 484 | 记忆树内部和持久化类型 | 按 node、resource、audit、projection 分组 | D |
-| `packages/memory-tree/src/v3/catalog.ts` | 600 | Memory v3 catalog 生命周期、atom/FTS/账本/due/检索投影 | 保持 facade；schema、query/codec、graph、Embedding 控制器已分离，后续把 ledger/due 投影下沉 | D |
+| `packages/memory-tree/src/v3/catalog.ts` | 579 | Memory v3 catalog 生命周期、atom/FTS/账本/due/检索投影 | 保持 facade；schema、query/codec、history、graph、Embedding 控制器已分离，后续把 ledger/due 投影下沉 | D |
 | `packages/memory-tree/src/v3/event-journal.ts` | 446 | Memory v3 event 与 operation journal 的同构恢复语义 | 契约稳定后拆为两个 store，共享 bounded journal codec | D |
 | `packages/memory-tree/src/v3/contracts.ts` | 422 | Memory v3 atom、认识状态、事件、实体、证据与 Embedding 契约 | 按 atom、event、graph、evidence 分组并保持 barrel | D |
 | `packages/memory-tree/src/v3/atom-store.ts` | 437 | atom 原子读写、轻量索引、扫描、层级和隔离 | 保持 store facade；规模验收稳定后分离 scanner/quarantine | D |
@@ -93,7 +93,7 @@
 2. C 与 D 优先拆 Main/API 和 Memory，减少 B/E 的跨层依赖。
 3. B 已在 API barrel 稳定后完成 Renderer 组合壳拆分；后续 Renderer 细分继续按真实窗口验收。
 4. D/E 所有权下的 Memory、Harness/Context 已完成 facade 化与内部领域拆分，LLM Call Contract 和记忆意图闸门已在稳定边界上接入。
-5. Memory v3 阶段 4 已完成独立 snapshot、mapping、build、validation、commit 和 filesystem 模块；阶段 5 已把检索、证据封套与 KnownState 拆入独立模块；阶段 6 已拆出 management facade、迁移状态机/预检/启动协调器和 Renderer node/panel/hook。下一步继续拆 `MemoryTreeView` 的 controller、resource 与 project-projection，并让 atom 写管理复用同一 transaction 边界。
+5. Memory v3 阶段 4 已完成独立 snapshot、mapping、build、validation、commit 和 filesystem 模块；阶段 5 已把检索、证据封套与 KnownState 拆入独立模块；阶段 6 已拆出 management facade、immutable fact store、fact reconciliation、working set、atom API router、迁移协调器和 Renderer node/panel/hook。下一步继续拆 `MemoryTreeView` 的 controller、resource 与 project-projection，并通过隔离长时间运行验证这些边界。
 
 ## 当前共享契约与 facade
 

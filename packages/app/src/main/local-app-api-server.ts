@@ -235,7 +235,7 @@ async function route(
     updateRuntimeConfig: opts.updateRuntimeConfig,
     selectProjectMemoryExport: opts.selectProjectMemoryExport,
     selectMemoryResourceSource: opts.selectMemoryResourceSource,
+    selectMemoryAtomExport: opts.selectMemoryAtomExport,
   })) return
-
   json(res, 404, { error: `Not found: ${method} ${path}` })
 }

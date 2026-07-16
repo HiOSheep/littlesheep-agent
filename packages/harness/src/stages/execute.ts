@@ -8,7 +8,6 @@ import { executeLegacyLoop, executeTaskBook } from './execute/runners.js';
 
 export type { ExecuteStageDeps } from './execute/contracts.js';
 export { convertToolCall } from './execute/tool-loop.js';
-
 export function createExecuteStage(deps: ExecuteStageDeps) {
   return async function executeStage(ctx: RunContext): Promise<StageResult> {
     const resolved = resolvePromptConfig(deps.config, deps.branding);
@@ -18,6 +17,7 @@ export function createExecuteStage(deps: ExecuteStageDeps) {
       prelude: ctx.prelude,
       sessionSummary: ctx.sessionSummary,
       memoryRootIndex: ctx.memoryRootIndex,
+      initialMemoryContext: ctx.initialMemoryContext,
     });
     const planGuidance = ctx.taskBook
       ? renderTaskBookGuidance(ctx.taskBook)

@@ -1,10 +1,12 @@
 import type {
+  MemoryAtomManagementAction,
   MemoryTreeManagementAction,
   MemoryTreeNodeDetail,
   MemoryTreeNodeOverview,
 } from '../api'
 import { Markdown } from '../Markdown'
 import { compactPath, formatDateTime, formatRelativeDate } from './format'
+import { MemoryAtomActions } from './atom-actions'
 
 const BRANCH_LABELS = {
   'long-term': '长期记忆',
@@ -29,6 +31,9 @@ export function MemoryNodeRow({
   onToggle,
   onRequestEvidence,
   onAction,
+  atomManagementEnabled,
+  onAtomAction,
+  onExportAtom,
 }: {
   node: MemoryTreeNodeOverview
   detail?: MemoryTreeNodeDetail
@@ -38,6 +43,9 @@ export function MemoryNodeRow({
   onToggle: () => void
   onRequestEvidence: () => void
   onAction: (action: MemoryTreeManagementAction) => void
+  atomManagementEnabled: boolean
+  onAtomAction: (action: MemoryAtomManagementAction) => void
+  onExportAtom: () => void
 }) {
   const highestTier = node.branch === 'daily' ? 2 : 1
   const histories = detail ? [
@@ -147,14 +155,21 @@ export function MemoryNodeRow({
           <div className="memory-node-actions">
             {node.status === 'active' ? (
               <>
-                <button type="button" disabled={busy || node.tier <= highestTier} onClick={() => onAction('promote')}>提升</button>
-                <button type="button" disabled={busy || node.tier >= 3} onClick={() => onAction('demote')}>降级</button>
-                <button type="button" disabled={busy} onClick={() => onAction('archive')}>归档</button>
+                <button type="button" disabled={busy || Boolean(node.invalidatedAt) || node.tier <= highestTier} onClick={() => onAction('promote')}>提升</button>
+                <button type="button" disabled={busy || Boolean(node.invalidatedAt) || node.tier >= 3} onClick={() => onAction('demote')}>降级</button>
+                <button type="button" disabled={busy || Boolean(node.invalidatedAt)} onClick={() => onAction('archive')}>归档</button>
               </>
             ) : (
               <button type="button" disabled={busy} onClick={() => onAction('restore')}>恢复</button>
             )}
             <button className="danger" type="button" disabled={busy} onClick={() => onAction('delete')}>删除</button>
+            <MemoryAtomActions
+              node={node}
+              enabled={atomManagementEnabled}
+              busy={busy}
+              onRequest={onAtomAction}
+              onExport={onExportAtom}
+            />
           </div>
         </div>
       </div>
@@ -184,6 +199,21 @@ function MemoryV3EvidenceSummary({ detail }: { detail: MemoryTreeNodeDetail }) {
         <div className="memory-node-keys">
           {v3.evidenceRefs.slice(0, 12).map((ref) => <span key={ref}>{compactPath(ref)}</span>)}
         </div>
+      )}
+      {v3.immutableFacts && (
+        <section className="memory-node-subsection">
+          <strong>不可变来源事实</strong>
+          {v3.immutableFacts.length > 0 ? (
+            <div className="memory-history-list">
+              {v3.immutableFacts.map((fact) => (
+                <div key={fact.id}>
+                  <span><b>{fact.kind}</b>{fact.sourceKind} · {fact.evidenceRefs.slice(0, 2).join(' · ')}</span>
+                  <time dateTime={fact.occurredAt}>{formatDateTime(fact.occurredAt)}</time>
+                </div>
+              ))}
+            </div>
+          ) : <p>该投影来自旧数据或尚未建立不可变事件来源。</p>}
+        </section>
       )}
       {v3.neighborhood && (v3.neighborhood.entities.length > 0 || v3.neighborhood.relations.length > 0) && (
         <section className="memory-node-subsection">

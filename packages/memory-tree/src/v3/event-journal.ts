@@ -133,6 +133,11 @@ export class MemoryEventJournal {
     return record ? structuredClone(record) : undefined;
   }
 
+  async knownEventIds(eventIds: readonly string[]): Promise<Set<string>> {
+    await this.ensureInitialized();
+    return new Set(eventIds.filter((eventId) => this.records.has(eventId)));
+  }
+
   async listOutstanding(limit = 1_000): Promise<MemoryEventJournalRecord[]> {
     await this.ensureInitialized();
     return [...this.records.values()]

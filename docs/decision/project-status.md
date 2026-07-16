@@ -1,6 +1,6 @@
 # LittleSheep 项目状态
 
-最后更新：2026-07-16 01:37:16
+最后更新：2026-07-16 08:12:11
 
 本文件是项目进度的正式来源。状态只根据当前源码、测试和构建结果维护；旧的阶段报告不再作为进度依据。
 
@@ -10,7 +10,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 它还不是可直接宣称“生产就绪”的发行版。主要原因是当前内置模型尚无已验证的最终请求精确计数器、真实供应商验证未完成、活动 run 重启续跑、MCP、安装包发布和真实用户场景验收仍未闭环。因此本项目不使用一个没有权重定义的百分比来伪装精确进度，而用能力状态和验收证据表示总进度。产品方向已明确为：解放用户生产力，让用户专注于想法，LS 负责将想法可靠落地；执行和输出统一采用渐进式披露。
 
-**当前阶段：Memory v3 阶段 0-5 已完成；阶段 6 已接通同源 D0-D3 读取控制面，并完成“确认登记 -> 重启 -> 运行时写入者初始化前迁移/回滚”的正式生命周期、失败恢复和受约束回滚。下一步补齐 v3 atom 写管理与隔离长时间运行；当前正式用户数据仍为 v2，实际切换继续等待用户单独确认。**
+**当前阶段：Memory v3 阶段 0-5 已完成；阶段 6 已接通同源 D0-D3 读取、启动前迁移/回滚、atom 移动/合并/失效/恢复/导出、首次自动选择、运行中 release 和 immutable fact 孤儿恢复。下一步完成隔离长时间运行与真实窗口验收；当前正式用户数据仍为 v2，实际切换继续等待用户单独确认。**
 
 ## 能力总览
 
@@ -25,10 +25,10 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 | 硬控制流 Agent | 已实现 | `ENTER`、分类、决策、执行、恢复、验证、演化、捕获和收尾由 Harness 驱动 | `packages/harness/`、`packages/runner/` |
 | 需求判断与任务书 | 已实现 | 支持澄清请求、复杂度判断、TaskBook、步骤验收和局部重规划 | `packages/types/`、`packages/harness/src/stages/` |
 | 步骤级执行与恢复 | 已实现 | 保留已完成步骤证据，失败时按步骤恢复，不重复执行已完成部分；工具循环、权限/超时、失败分类、步骤调度和结构验收已分离，stage facade 不再承接内部细节 | `packages/harness/src/stages/execute.ts`、`execute/`、`recover.ts`、`verify.ts`、`verify/` |
-| 记忆树运行时协议 | 已实现基础闭环 | 根索引到分支索引再到展开/分支内深搜，写入走结构化闸门；新增 `resources` 分支后，注册文档正文仍必须先看目录再按需展开 | `packages/memory-tree/`、`packages/memory-core/`、`packages/runner/` |
-| Memory Service 与 Memory v3 | v2 基础闭环；v3 阶段 0-5 完成，阶段 6 读取与迁移生命周期完成 | v2 仍是正式默认。Runner 已退役默认 Provider Embedding 旁路；v3 通过本地 Embedding、层级/FTS/向量统一检索、D0-D3 证据封套和版本化 KnownState 工作。管理 UI 从同一 Repository/atom/Catalog 按需展开 D0-D3，并可确认登记迁移或回滚；结构性操作只在下一次启动、所有运行时写入者创建前执行，失败保持原 backend，配置跟随 locator。正式用户数据未迁移 | `packages/memory-tree/src/memory-repository/`、`packages/memory-tree/src/v3/`、`packages/app/src/main/memory-v3-bootstrap.ts`、`packages/app/src/main/memory-tree-control.ts`、`packages/app/src/renderer/MemoryTreeView.tsx`、`docs/taskbooks/memory-atom-vector-catalog-taskbook-2026-07-15.md` |
+| 记忆树运行时协议 | 已实现基础闭环 | 根索引到分支索引再到展开/分支内深搜；首次请求从 D1 元数据最多自动选择 2 个 D2 atom、预算 600 tokens；执行中可显式 release 当前 atom 并释放本轮 token/dedup 预算，持久 fact/atom 不受影响。注册文档正文仍必须先看目录再按需展开 | `packages/memory-tree/src/memory-tree.ts`、`memory-tree-working-set.ts`、`packages/harness/src/memory-context-working-set.ts`、`packages/runner/` |
+| Memory Service 与 Memory v3 | v2 基础闭环；v3 阶段 0-5 完成，阶段 6 主要工程能力完成 | v2 仍是正式默认。v3 以 immutable facts 保存事件真相、以 atom 保存可治理投影、以可重建 catalog 负责层级/FTS/向量；Recovery journal 只保留有界恢复状态。管理 UI 从同一 Repository/fact/atom/Catalog 按需展开 D0-D3，并可登记迁移/回滚和执行高级 atom 管理；fact 已写但 journal 未写的崩溃可在重启时自动补投影。正式用户数据未迁移 | `packages/memory-tree/src/memory-repository/`、`packages/memory-tree/src/v3/`、`packages/app/src/main/memory-v3-bootstrap.ts`、`packages/app/src/main/memory-atom-control.ts`、`packages/app/src/renderer/MemoryTreeView.tsx`、`docs/taskbooks/memory-atom-vector-catalog-taskbook-2026-07-15.md` |
 | 项目身份与路径重绑定 | 已实现基础闭环 | 新项目使用与路径无关的稳定 ID，旧路径派生 ID 原样保留；项目移动或重命名后可从侧边栏重新定位。持久化事务日志幂等迁移会话、归档、记忆 scope、项目投影、工作区文档资源、产物、终端活动、布局、导航状态和当前运行路径；路径冲突会拒绝提交 | `packages/app/src/main/project-index.ts`、`project-rebinding.ts`、`path-rebinding.ts`、`packages/memory-tree/src/memory-service.ts` |
-| 记忆管理控制面 | v2 写管理基础闭环；v3 同源读取与迁移控制已接通 | UI 操作真实运行时索引与注册表。v2 可查看、归档、恢复、删除记忆并管理资源/项目投影；v3 树概况只加载 D0/D1，D2 正文与 D3 证据/历史/关系按需展开，详情来自同一 Repository/atom/Catalog。迁移页支持无副作用预检、确认登记、取消、重启执行、失败恢复和安全回滚；v3 atom 移动、合并、失效、恢复和导出尚未开放 | `packages/app/src/renderer/MemoryTreeView.tsx`、`packages/app/src/renderer/memory-tree/`、`packages/app/src/main/memory-tree-control.ts`、`packages/app/src/main/memory-v3-migration-control.ts` |
+| 记忆管理控制面 | v2 基础闭环；v3 同源读取、迁移和高级管理已接通 | UI 操作真实运行时索引与注册表。v3 树概况只加载 D0/D1，D2 正文与 D3 facts/证据/历史/关系按需展开；“更多”菜单可移动、合并、失效、恢复和导出单 atom 证据包，所有操作进入同一 Repository transaction，不建立 Renderer 副本。迁移页继续支持预检、登记、取消、重启执行、失败恢复和安全回滚 | `packages/app/src/renderer/MemoryTreeView.tsx`、`packages/app/src/renderer/memory-tree/`、`packages/app/src/main/memory-tree-control.ts`、`memory-atom-control.ts`、`packages/app/src/main/local-app-api/memory-atom-routes.ts` |
 | 执行记录与历史重放 | 已实现 | 已完成 run 的 TaskBook、步骤、工具调用、验证、调用契约、Context 快照、记忆意图运行时判定和有界资源 ID 可持久化并重放；附件正文不进入执行日志；这仍不等于活动 run 在应用重启后续跑 | `packages/runner/src/execution-log.ts`、`packages/app/src/renderer/TraceCard.tsx` |
 | 桌面聊天与流式交互 | 已实现基础形态 | Local App API、SSE、Markdown、附件、审批和中断已接通 | `packages/app/src/main/local-app-api-server.ts`、`packages/app/src/renderer/` |
 | 权限与行为模式分离 | 已实现基础形态 | 通用/编程系统提示词与完全访问/研究/受限权限策略分离 | `packages/prompt/src/profiles.ts`、`packages/app/src/main/run-policy.ts` |
@@ -48,8 +48,8 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 | --- | --- | --- |
 | 仓库卫生 | 通过：31 项通过，0 项失败 | `pnpm.cmd run check:repo` |
 | 开发快速门 | 本轮未单独重复执行；已由更强的全量测试、全工作区类型检查和完整构建覆盖 | `pnpm.cmd run verify:changed` |
-| 核心 Agent 门 | 本轮未单独重复执行；核心契约包含在全量 1136 项测试中 | `pnpm.cmd run verify:core` |
-| 全量测试 | 通过：145 个测试文件；1136 passed、1 skipped | `pnpm.cmd test` |
+| 核心 Agent 门 | 本轮未单独重复执行；核心契约包含在全量 1159 项测试中 | `pnpm.cmd run verify:core` |
+| 全量测试 | 通过：150 个测试文件；1159 passed、1 skipped | `pnpm.cmd test` |
 | 全工作区类型检查 | 通过：27 个 workspace package 的 project references 完整通过 | `pnpm.cmd run typecheck` |
 | 全工作区构建 | 通过：类型图与 Electron main/preload/renderer 完整构建 | `pnpm.cmd run build` |
 | 应用恢复源检查 | 通过；现有数据根、默认 workplace、会话、执行日志目录、资源索引、终端活动和布局均可读取；仍保留部分旧 run 缺执行日志与可选 workspace artifact 索引缺失的诊断警告 | `pnpm.cmd run verify:app-recovery` |
@@ -121,7 +121,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 1. 语义 atom 契约、stable id/parent、domain、D0-D3、statement/epistemic/authority、实体/关系、证据封套和 KnownState 引用已冻结。
 2. Atom Store 已实现分片文件、内容哈希、修订冲突、同作用域 parent/循环校验、损坏/孤儿隔离、轻量常驻 header 和按需正文读取；10,000 atom 重启扫描通过。
-3. Event/operation journal 与 Storage Coordinator 已实现先捕获、幂等双提交和崩溃重放；日志数量与单记录大小有硬上限。
+3. Immutable Fact Store 先以独立哈希文件保存事件与 mutation，写入后没有 update/delete/prune API；Event/operation journal 与 Storage Coordinator 再执行有界恢复和幂等双提交。fact 已写但 event 未写、merge 部分写入、atom 已写/catalog 未写等崩溃点均可恢复，journal 裁剪不删除事实。
 4. SQLite catalog 已实现 FTS、branch/scope/subtree 强制过滤、向量状态、访问/反馈有界账本、due index、实体/有向关系和数据库删除后流式重建。
 5. Provider `/embeddings` 默认硬拒绝，测试确认未授权远程引擎零调用；访问次数不进入优先级，正向反馈必须携带验证证据，普通衰减不改 confidence 或淘汰 T0。
 6. 独立 `packages/embedding` 已实现显式模型 provision、完整性校验、本地加载、批处理与取消；BGE Recall@1/3 为 `0.7778/0.8889`，E5 为 `0.9444/1.0`，两者离线断言网络尝试均为 0。
@@ -134,15 +134,19 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 13. 阶段 4 已完成：迁移器直接只读原始 v2 文件，保存全量哈希 snapshot，在同卷 staging 中保留 node id、层级、资源、全部审计、恢复队列和迁移记录，并通过版本 locator、全量 validation hash、原子 rename、幂等恢复和受约束回滚提交。26 项测试覆盖全部断电点、两类 ENOSPC、损坏/孤儿/重复数据、源变化、请求合并/取消、模型不可用、回滚后再迁移和防丢失回滚；正式用户数据未迁移。
 14. 阶段 5 已完成：三类记忆工具共享 repository retrieval facade；v3 统一层级、作用域/子树过滤、FTS、本地向量、候选优先级、关系邻域、D0-D3 和访问账本。版本化 KnownState 贯穿 Harness 阶段，VERIFY 保持事实/建议/报告观察/未验证主张边界；默认 Provider Embedding 旁路已从 Runner 退役。
 15. 新写入 atom 会在返回成功前触发有界本地向量维护；写入落在活动批次之后时会合并一个后续批次，模型不可用或维护失败不会回滚权威 atom，也不依赖无界轮询计时器。
-16. 阶段 6 读取与迁移生命周期已完成：树接口只返回 D0/D1，节点 D2/D3 通过可取消请求按需展开；详情缓存限制为 24 条。Repository management facade 可检查 Catalog、atom、Embedding、认识状态、证据和关系邻域；迁移页可预检、确认登记、取消、重启执行、恢复和受约束回滚。运行中的 API 不执行迁移，启动协调器在 Runner、Local App API、渠道插件、SQLite 与 Embedding 创建前处理 durable locator，并把配置同步到实际 backend。
+16. 阶段 6 读取与迁移生命周期已完成：树接口只返回 D0/D1，节点 D2/D3 通过可取消请求按需展开；详情缓存限制为 24 条。Repository management facade 可检查 Catalog、atom、immutable facts、Embedding、认识状态、证据和关系邻域；迁移页可预检、确认登记、取消、重启执行、恢复和受约束回滚。
+17. v3 atom 高级管理已完成：移动限制在同 branch/scope/scopeKey，合并要求相同认识类别、权威、断言者和解析状态，双 revision 先预检；来源 atom 保留 tombstone，合并不自动提高 confidence/usefulness，失效后退出检索并可精确恢复。
+18. 单 atom D3 `.memory.json` 证据包导出已接入 Local App API 和 Renderer；真实 HTTP 测试覆盖参数校验、状态码、管理结果和文件输出。
+19. Runner 首次业务请求已验证真实介入 D1 选中的 atom；默认最多 2 个 D2 atom、600 tokens。`memory_tree release` 会同步移出真实后续请求与 KnownState，并允许之后重新加入。
+20. Storage Coordinator 启动时分批协调 facts、journal 与 catalog；能证明未执行或部分执行的事实才重放，能证明已投影的只补目录状态，含糊状态不猜测覆盖。
 
 仍未完成：
 
-1. 完成 v3 atom 移动、合并、失效、恢复和导出的写管理能力；所有操作继续使用同一 Repository transaction，不建立 UI 数据副本。
-2. 使用隔离的长时间运行继续验证 v3 写入、检索、向量维护、关闭释放、迁移恢复和重启恢复，不把工程测试冒充正式用户数据验收。
+1. 使用隔离的长时间运行继续验证 v3 fact 捕获、atom 写入/治理、首次选择、运行中 release、向量维护、关闭释放、迁移恢复和多次重启，不把工程测试冒充正式用户数据验收。
+2. 完成真实 Electron 窗口中 atom 菜单、目标选择、点击外部收回、过渡动画和 D3 详情/导出的交互验收。
 3. 正式用户数据切换必须继续由用户在迁移页明确确认并重启；切换后再执行真实会话、记忆写入、检索和受约束回滚验收。
 
-**验收标准**：断网时记忆可写、可导航、可检索；数据库可从 atom 文件重建；向量检索不能跨越未导航分支；所有 domain 使用同一 repository 并可从 D0/D1 渐进展开到 D2/D3；匹配作用域内经验证的高价值记忆稳定优先介入；长期低收益可选记忆减少注入但强制信息不被误衰减；重复访问不会形成错误自增强；LLM 能获得所用记忆的必要证据与 epistemic 元数据；用户目标/偏好在范围内受到尊重，客观 claim 不经验证不成为事实，建议被采纳也不改变其验证状态，错误建议不生成用户能力画像；每个执行阶段可追溯采用、排除和重新激活的 `KnownState` 版本与信息；事件在确认前持久化，重复处理幂等，崩溃、重启和关闭期间到期不会静默丢失；迁移可中断恢复和回滚且不丢节点。
+**验收标准**：断网时记忆可写、可导航、可检索；immutable facts 写入后不修改且不会随 journal 裁剪丢失；atom 与数据库投影可从持久文件恢复；向量检索不能跨越未导航分支；所有 domain 使用同一 repository 并可从 D0/D1 渐进展开到 D2/D3；匹配作用域内经验证的高价值记忆稳定优先介入；首次请求只加载有界相关 atom，执行中 release 不改持久数据且可重新介入；长期低收益可选记忆减少注入但强制信息不被误衰减；重复访问不会形成错误自增强；LLM 能获得所用记忆的必要证据与 epistemic 元数据；用户目标/偏好在范围内受到尊重，客观 claim 不经验证不成为事实，建议被采纳也不改变其验证状态，错误建议不生成用户能力画像；每个执行阶段可追溯采用、排除和重新激活的 `KnownState` 版本与信息；事件在确认前持久化，重复处理幂等，崩溃、重启和关闭期间到期不会静默丢失；迁移可中断恢复和回滚且不丢节点。
 
 ### P0：持续维护与受控超限拆分
 
@@ -223,7 +227,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 ## 推荐后续顺序
 
-1. 继续 Memory v3 阶段 6：在已完成的启动前迁移生命周期上补齐 atom 移动、合并、失效、恢复和导出，并完成隔离长时间运行；正式切换继续等待用户明确批准。
+1. 完成 Memory v3 隔离长时间运行与真实窗口验收；atom 高级管理、首次选择、运行中 release 和 fact 孤儿恢复已完成，正式切换继续等待用户明确批准。
 2. 完成 OpenAI、DeepSeek、GLM 真实对话冒烟，用 Provider 结果校准 Context、reasoning、usage 与保守安全估算；远程 Embedding 不纳入默认路径。
 3. 待用户明确批准后切换正式数据，再验收真实会话写入、索引导航、本地向量维护、应用重启和受约束回滚；切换前保持 v2 权威。
 4. 在稳定 Call Contract 上收敛统一 Tool Execution Service，使内置、插件和未来 MCP 工具共享审批、超时、清洗、证据与恢复契约。

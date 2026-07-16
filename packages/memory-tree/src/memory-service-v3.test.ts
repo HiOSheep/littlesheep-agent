@@ -39,6 +39,7 @@ describe('MemoryService on the Memory v3 repository backend', () => {
       query: 'What communication preference applies?',
       recentHistory: [],
       workspace: dataDir,
+      autoPrime: false,
     });
     const index = await service.branchIndex('run-v3', 'long-term');
     expect(index.entries).toHaveLength(1);
@@ -108,6 +109,7 @@ describe('MemoryService on the Memory v3 repository backend', () => {
       query: 'Should we use cobalt deployment?',
       recentHistory: [],
       workspace: dataDir,
+      autoPrime: false,
     });
 
     await expect(service.deepSearch('run-search', {
@@ -167,6 +169,7 @@ describe('MemoryService on the Memory v3 repository backend', () => {
     await service.beginRun({
       runId: 'run-vector', sessionId: asSessionId('session-vector'), query: 'galaxy',
       recentHistory: [], workspace: dataDir,
+      autoPrime: false,
     });
     const index = await service.branchIndex('run-vector', 'long-term');
     await service.expand('run-vector', {

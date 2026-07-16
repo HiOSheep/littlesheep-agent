@@ -379,6 +379,14 @@ async function bootstrap(): Promise<void> {
       })
       return result.canceled ? null : result.filePaths[0] ?? null
     },
+    selectMemoryAtomExport: async (suggestedName) => {
+      const result = await dialog.showSaveDialog({
+        title: '导出记忆原子证据包',
+        defaultPath: join(dataDir.root, 'exports', suggestedName),
+        filters: [{ name: 'LittleSheep Memory', extensions: ['json'] }],
+      })
+      return result.canceled ? null : result.filePath ?? null
+    },
     memoryV3MigrationManager,
     dataRootManager,
     selectDataRootTarget: async () => {

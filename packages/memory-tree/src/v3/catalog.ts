@@ -41,6 +41,7 @@ import {
   type AtomRow,
 } from './catalog-helpers.js';
 import { MemoryCatalogEmbeddingController } from './catalog-embedding.js';
+import { listMemoryAtomHistory } from './catalog-history.js';
 import { memoryAtomContentHash } from './atom-store.js';
 import { parseMemoryAtom, validateMemoryUseFeedback } from './validation.js';
 
@@ -284,38 +285,7 @@ export class MemoryCatalog {
   }
 
   listAtomHistory(atomId: string, limit = 40): MemoryAtomHistoryEntry[] {
-    const bounded = boundedLimit(limit, 40, 200);
-    const rows = this.db.prepare(`
-      SELECT kind, id, at, summary FROM (
-        SELECT 'access' AS kind, id, accessed_at AS at,
-          retrieval_path || ':' || disclosure_level || ':' ||
-          CASE entered_context WHEN 1 THEN 'entered' ELSE 'excluded' END || ':' || match_reason AS summary
-        FROM atom_access WHERE atom_id = ?
-        UNION ALL
-        SELECT 'feedback' AS kind, id, created_at AS at,
-          outcome || ':' || CASE verified WHEN 1 THEN 'verified' ELSE 'unverified' END || ':' || reason AS summary
-        FROM atom_feedback WHERE atom_id = ?
-        UNION ALL
-        SELECT 'event' AS kind, event_id AS id, occurred_at AS at,
-          event_kind || ':' || state || ':attempts=' || attempts AS summary
-        FROM memory_events WHERE atom_id = ?
-        UNION ALL
-        SELECT 'audit' AS kind, id, created_at AS at,
-          action || ':' || detail_json AS summary
-        FROM audit WHERE atom_id = ?
-      ) ORDER BY at DESC, id DESC LIMIT ?
-    `).all(atomId, atomId, atomId, atomId, bounded) as unknown as Array<{
-      kind: MemoryAtomHistoryEntry['kind'];
-      id: string;
-      at: string;
-      summary: string;
-    }>;
-    return rows.map((row) => ({
-      kind: row.kind,
-      id: row.id,
-      at: row.at,
-      summary: row.summary.slice(0, 400),
-    }));
+    return listMemoryAtomHistory(this.db, atomId, limit);
   }
 
   countAccessRecords(): number {
@@ -349,6 +319,15 @@ export class MemoryCatalog {
       event.observedAt,
       record.updatedAt,
     );
+  }
+
+  knownEventIds(eventIds: readonly string[]): Set<string> {
+    const ids = [...new Set(eventIds)].slice(0, 500);
+    if (ids.length === 0) return new Set();
+    const placeholders = ids.map(() => '?').join(', ');
+    const rows = this.db.prepare(`SELECT event_id FROM memory_events WHERE event_id IN (${placeholders})`)
+      .all(...ids) as unknown as Array<{ event_id: string }>;
+    return new Set(rows.map((row) => row.event_id));
   }
 
   projectOperation(record: MemoryOperationRecord): void {

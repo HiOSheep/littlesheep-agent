@@ -22,6 +22,7 @@ import type {
 import { MemoryAtomStore } from '../v3/atom-store.js';
 import { MemoryCatalog } from '../v3/catalog.js';
 import { MemoryEventJournal, MemoryOperationJournal } from '../v3/event-journal.js';
+import { MemoryImmutableFactStore } from '../v3/immutable-fact-store.js';
 import { MemoryV3GraphStore } from '../v3/graph-store.js';
 import { MemoryV3MaintenanceWorker } from '../v3/maintenance-worker.js';
 import { MemoryV3StorageCoordinator } from '../v3/storage-coordinator.js';
@@ -47,9 +48,12 @@ import type {
 } from './retrieval.js';
 import type { MemoryAccessRecord } from '../v3/contracts.js';
 import type {
+  MemoryAtomManagementRequest,
+  MemoryAtomManagementResult,
   MemoryRepositoryManagementStatus,
   MemoryRepositoryNodeInspection,
 } from './management.js';
+import { MemoryV3AtomManagement } from './v3-atom-management.js';
 
 export interface MemoryRepositoryV3BackendOptions {
   dataDir: string;
@@ -64,11 +68,13 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
   readonly atomStore: MemoryAtomStore;
   readonly catalog: MemoryCatalog;
   readonly graphStore: MemoryV3GraphStore;
+  readonly factStore: MemoryImmutableFactStore;
   readonly ledger: MemoryV3RepositoryLedger;
   readonly coordinator: MemoryV3StorageCoordinator;
   readonly maintenance: MemoryV3MaintenanceWorker;
   private readonly eventJournal: MemoryEventJournal;
   private readonly nodes: MemoryV3NodeStore;
+  private readonly atomManagement: MemoryV3AtomManagement;
   private readonly resources: MemoryV3ResourceStore;
   private readonly retrieval: MemoryV3Retrieval;
   private readonly log?: MemoryRepositoryOptions['log'];
@@ -91,6 +97,7 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
       maxAuditRecords: options.policy.maxAuditRecords,
     });
     this.graphStore = new MemoryV3GraphStore({ dataDir: options.dataDir, catalog: this.catalog, log: options.log });
+    this.factStore = new MemoryImmutableFactStore({ dataDir: options.dataDir, log: options.log });
     this.eventJournal = new MemoryEventJournal({ dataDir: options.dataDir, log: options.log });
     const operationJournal = new MemoryOperationJournal({ dataDir: options.dataDir, log: options.log });
     this.coordinator = new MemoryV3StorageCoordinator({
@@ -98,6 +105,7 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
       catalog: this.catalog,
       eventJournal: this.eventJournal,
       operationJournal,
+      factStore: this.factStore,
       onCheckpoint: async (checkpoint, context) => {
         if (checkpoint !== 'catalog-updated') return;
         const record = await this.eventJournal.get(context.eventId);
@@ -112,6 +120,11 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
       ledger: this.ledger,
       policy: options.policy,
       log: options.log,
+    });
+    this.atomManagement = new MemoryV3AtomManagement({
+      atomStore: this.atomStore,
+      catalog: this.catalog,
+      coordinator: this.coordinator,
     });
     this.resources = new MemoryV3ResourceStore({
       dataDir: options.dataDir,
@@ -278,7 +291,14 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
       envelope: candidate.envelope,
       neighborhood: candidate.neighborhood,
       history: candidate.history,
+      immutableFacts: disclosureLevel === 'D3'
+        ? await this.factStore.listForAtom(nodeId, 100)
+        : undefined,
     };
+  }
+
+  manageAtomForManagement(request: MemoryAtomManagementRequest): Promise<MemoryAtomManagementResult> {
+    return this.withPostWriteMaintenance(this.atomManagement.manage(request), () => true);
   }
 
   async rebindProjectPath(fromPath: string, toPath: string): Promise<MemoryProjectRebindResult> {

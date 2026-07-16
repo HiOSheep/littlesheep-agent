@@ -5,6 +5,7 @@ export * from './catalog-embedding.js';
 export * from './catalog-graph.js';
 export * from './embedding-engine.js';
 export * from './event-journal.js';
+export * from './immutable-fact-store.js';
 export * from './graph-store.js';
 export * from './maintenance-worker.js';
 export * from './priority.js';

@@ -10679,6 +10679,235 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   padding-top: 2px;
 }
 
+.memory-atom-actions {
+  position: relative;
+  display: inline-flex;
+}
+
+.memory-node-actions .memory-atom-more {
+  display: inline-grid;
+  place-items: center;
+  width: 29px;
+  min-width: 29px;
+  padding: 0;
+  opacity: 0.58;
+}
+
+.memory-atom-more svg {
+  width: 15px;
+  height: 15px;
+}
+
+.memory-atom-actions.open .memory-atom-more,
+.memory-atom-more:hover,
+.memory-atom-more:focus-visible {
+  opacity: 1;
+}
+
+.memory-atom-menu {
+  position: absolute;
+  right: 0;
+  bottom: 34px;
+  z-index: 40;
+  display: grid;
+  width: max-content;
+  min-width: 152px;
+  padding: 4px;
+  background: var(--surface-raised, #303030);
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.38);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(5px) scale(0.985);
+  transform-origin: bottom right;
+  transition:
+    opacity var(--transient-motion) var(--motion-ease),
+    transform var(--transient-motion) var(--motion-ease),
+    visibility 0s linear var(--transient-motion);
+}
+
+.memory-atom-actions.open .memory-atom-menu {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+  transition:
+    opacity var(--transient-motion) var(--motion-ease),
+    transform var(--transient-motion) var(--motion-ease),
+    visibility 0s;
+}
+
+.memory-node-actions .memory-atom-menu button {
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.memory-atom-menu-separator {
+  height: 1px;
+  margin: 3px 5px;
+  background: var(--border);
+}
+
+.memory-atom-dialog-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 2320;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transient-motion) var(--motion-ease);
+}
+
+.memory-atom-dialog-layer.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.memory-atom-dialog {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 10px;
+  width: min(520px, 100%);
+  max-height: min(680px, calc(100vh - 44px));
+  overflow: auto;
+  padding: 17px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 22px 64px rgba(0, 0, 0, 0.48);
+  opacity: 0;
+  transform: translateY(8px) scale(0.985);
+  transition:
+    opacity var(--transient-motion) var(--motion-ease),
+    transform var(--transient-motion) var(--motion-ease);
+}
+
+.memory-atom-dialog-layer.visible .memory-atom-dialog {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.memory-atom-dialog h3,
+.memory-atom-dialog p,
+.memory-atom-dialog blockquote {
+  margin: 0;
+}
+
+.memory-atom-dialog h3 {
+  color: var(--text-strong);
+  font-size: 15px;
+}
+
+.memory-atom-dialog > p,
+.memory-atom-dialog blockquote {
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.memory-atom-dialog blockquote {
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.025);
+  border-left: 2px solid var(--border-strong);
+}
+
+.memory-atom-target-picker,
+.memory-atom-reason {
+  display: grid;
+  gap: 6px;
+}
+
+.memory-atom-target-picker > input,
+.memory-atom-reason textarea {
+  width: 100%;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: 0;
+}
+
+.memory-atom-target-picker > input {
+  height: 31px;
+  padding: 0 9px;
+}
+
+.memory-atom-reason textarea {
+  min-height: 54px;
+  padding: 7px 9px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.memory-atom-target-picker > input:focus,
+.memory-atom-reason textarea:focus {
+  border-color: var(--border-strong);
+  background: var(--control-hover);
+}
+
+.memory-atom-reason > span {
+  color: var(--muted-2);
+  font-size: 10.5px;
+  font-weight: 760;
+}
+
+.memory-atom-target-list {
+  display: grid;
+  max-height: 230px;
+  overflow: auto;
+  padding: 2px;
+}
+
+.memory-atom-target-list > button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 7px 8px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  text-align: left;
+}
+
+.memory-atom-target-list > button:hover,
+.memory-atom-target-list > button:focus-visible,
+.memory-atom-target-list > button.selected {
+  background: var(--control-hover);
+  border-color: var(--border-strong);
+  outline: 0;
+}
+
+.memory-atom-target-list strong {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memory-atom-target-list small,
+.memory-atom-target-list > p {
+  margin: 0;
+  color: var(--muted-2);
+  font-size: 10px;
+}
+
+.memory-atom-target-list > p {
+  padding: 16px 8px;
+  text-align: center;
+}
+
 .memory-node-actions button.danger,
 .memory-project-actions button.danger,
 .memory-confirmation-actions button.danger {

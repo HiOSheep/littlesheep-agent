@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { DEFAULT_BRANDING } from '@littlesheep/branding';
 import { DEFAULT_CONFIG } from '@littlesheep/config';
 import type { ChatRequest, ChatResponse, LlmClient, StreamChunk } from '@littlesheep/llm';
-import { createMemoryV3ExperimentMarker } from '@littlesheep/memory-tree';
+import { createMemoryV3ExperimentMarker, InjectionTier } from '@littlesheep/memory-tree';
 import { asSessionId } from '@littlesheep/types';
 import { createRunner, type AgentRunner } from './runner.js';
 
@@ -100,6 +100,7 @@ describe('Runner Memory v3 integration', () => {
       query: 'pnpm workspace',
       recentHistory: [],
       workspace,
+      autoPrime: false,
     });
     const index = await restored.infra.memoryService.branchIndex(navigationRunId, 'project');
     expect(index.entries.map((entry) => entry.id)).toContain(projectNodes[0]!.id);
@@ -115,13 +116,65 @@ describe('Runner Memory v3 integration', () => {
     });
     await restored.infra.memoryService.finishRun(navigationRunId);
   });
+
+  it('injects a D1-selected atom into the first business model request', async () => {
+    const workspace = join(dataDir, 'workspace');
+    await mkdir(workspace, { recursive: true });
+    const requests: ChatRequest[] = [];
+    const runner = await createRunner({
+      config: {
+        ...DEFAULT_CONFIG,
+        memory: { ...DEFAULT_CONFIG.memory, repositoryBackend: 'v3' as const },
+      },
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('Hello from LS.'), requests),
+      skillsDirs: [],
+    });
+    runners.push(runner);
+    const write = await runner.infra.memoryService.write({
+      id: 'initial-greeting-memory',
+      branch: 'long-term',
+      parentNodeId: 'long-term:root',
+      scope: 'global',
+      tier: InjectionTier.T2_RELEVANT,
+      summary: 'User greeting preference',
+      content: 'The user prefers concise greetings.',
+      retrievalKeys: ['hello', 'greeting', 'concise'],
+      sourceRefs: ['user:explicit-greeting-preference'],
+      sourceRunId: 'seed-run',
+      sourceStage: 'evolve',
+      importance: 0.8,
+      confidence: 0.9,
+      reason: 'Explicit user preference used by the integration test.',
+      epistemic: {
+        domain: 'user',
+        statementKind: 'preference',
+        epistemicStatus: 'reported',
+        authorityScope: { kind: 'user-self', scope: 'global', topics: ['greeting'] },
+        assertedBy: { kind: 'user', id: 'user' },
+        evidenceRefs: ['user:explicit-greeting-preference'],
+      },
+    });
+    expect(write).toMatchObject({ decision: 'created', node: { summary: 'User greeting preference' } });
+    const result = await runner.run({ text: 'hello', cwd: workspace });
+    expect(result.status).toBe('ok');
+    const outbound = requests.find((request) => String(request.messages[0]?.content).includes('Initially Selected Memory Atoms'));
+    expect(String(outbound?.messages[0]?.content)).toContain('prefers concise greetings');
+    expect(result.memoryAccess?.records.map((record) => record.action)).toEqual(expect.arrayContaining([
+      'root_index', 'branch_index', 'expand',
+    ]));
+  });
 });
 
-function makeMockLlm(responses: ChatResponse | ChatResponse[]): LlmClient {
+function makeMockLlm(responses: ChatResponse | ChatResponse[], requests?: ChatRequest[]): LlmClient {
   const queue = Array.isArray(responses) ? [...responses] : undefined;
   const single = Array.isArray(responses) ? undefined : responses;
   const fallback = textResponse('');
-  const chat = vi.fn(async (_request: ChatRequest): Promise<ChatResponse> => queue?.shift() ?? single ?? fallback);
+  const chat = vi.fn(async (request: ChatRequest): Promise<ChatResponse> => {
+    requests?.push(request);
+    return queue?.shift() ?? single ?? fallback;
+  });
   const chatStream = vi.fn(async (request: ChatRequest, onDelta: (chunk: StreamChunk) => void) => {
     const response = await chat(request);
     if (response.content) onDelta({ type: 'delta', delta: response.content });

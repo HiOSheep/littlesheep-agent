@@ -21,6 +21,7 @@ import {
 } from './llm-call-contracts/registry.js';
 import { injectRuntimeAwareness } from './runtime-awareness.js';
 import { injectMemoryKnownState } from './memory-known-state.js';
+import { applyMemoryContextWorkingSet } from './memory-context-working-set.js';
 
 export {
   MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN,
@@ -88,16 +89,17 @@ function recordPreparedRequest(
   candidates?: ContextMessageCandidate[],
 ): { request: ChatRequest; snapshot: ModelRequestSnapshot } {
   const resolvedRequest = applyResolvedReasoning(ctx, request);
+  const workingSetAware = applyMemoryContextWorkingSet(ctx, resolvedRequest, candidates);
   const requestIndex = (ctx.modelRequests?.at(-1)?.requestIndex ?? 0) + 1;
-  const requestedToolNames = resolvedRequest.tools?.map((tool) => tool.function.name) ?? [];
+  const requestedToolNames = workingSetAware.request.tools?.map((tool) => tool.function.name) ?? [];
   const callContract = resolveLlmCallContract(ctx, purposeOrStage, {
     allowedToolNames: requestedToolNames,
     maxOutputTokens: resolvedRequest.max_tokens,
     temperature: resolvedRequest.temperature,
   });
   const memoryAware = callContract.inputs.allowedContextKinds.includes('memory_fragment')
-    ? injectMemoryKnownState(ctx, callContract.stage, resolvedRequest, candidates, requestIndex)
-    : { request: resolvedRequest, candidates };
+    ? injectMemoryKnownState(ctx, callContract.stage, workingSetAware.request, workingSetAware.candidates, requestIndex)
+    : workingSetAware;
   const runtimeAware = injectRuntimeAwareness(
     ctx,
     memoryAware.request,

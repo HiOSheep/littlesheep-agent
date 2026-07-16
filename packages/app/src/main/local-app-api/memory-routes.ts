@@ -24,6 +24,7 @@ import {
   requestMemoryV3Rollback,
 } from '../memory-v3-migration-control.js'
 import { json, readJson, type LocalAppApiRequest } from './http.js'
+import { routeMemoryAtom } from './memory-atom-routes.js'
 
 export interface MemoryRouteContext {
   getRunner: () => AgentRunner
@@ -34,6 +35,7 @@ export interface MemoryRouteContext {
   memoryV3MigrationManager?: MemoryV2ToV3MigrationManager
   selectProjectMemoryExport?: (projectName: string, projectPath: string) => Promise<string | null>
   selectMemoryResourceSource?: () => Promise<string | null>
+  selectMemoryAtomExport?: (suggestedName: string) => Promise<string | null>
 }
 
 const MEMORY_NODE_MANAGEMENT_ACTIONS = new Set<MemoryNodeManagementAction>([
@@ -57,6 +59,11 @@ export async function routeMemory(
 ): Promise<boolean> {
   const { req, res, url, path, method } = request
   const runner = context.getRunner()
+
+  if (await routeMemoryAtom(request, {
+    runner,
+    selectMemoryAtomExport: context.selectMemoryAtomExport,
+  })) return true
 
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.skills) {
     const skills = runner.infra.skillLoader.index.skills.map((skill) => ({
@@ -243,7 +250,6 @@ export async function routeMemory(
     json(res, 200, await buildMemoryTreePayload(runner, context.projectIndex, context.getConfig()))
     return true
   }
-
 
   if (path === LOCAL_APP_API_ROUTES.memoryMigration) {
     if (!context.memoryV3MigrationManager) {

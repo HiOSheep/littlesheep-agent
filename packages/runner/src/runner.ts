@@ -289,6 +289,17 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           signal,
         });
         ctx.memoryRootIndex = memoryRun.rootIndex;
+        ctx.initialMemoryContext = memoryRun.initialContext?.content;
+        if (memoryRun.initialContext) {
+          ctx.memoryContextWorkingSet = {
+            revision: 1,
+            activeAtomIds: [...memoryRun.initialContext.atomIds],
+            releasedAtomIds: [],
+            activeCallByAtom: Object.fromEntries(memoryRun.initialContext.atomIds.map((atomId) => [atomId, 'initial'])),
+            callAtomIds: { initial: [...memoryRun.initialContext.atomIds] },
+            updatedAt: new Date().toISOString(),
+          };
+        }
       } catch (err) {
         opts.log?.('warn', `runner: memory tree start degraded: ${(err as Error).message}`);
       }

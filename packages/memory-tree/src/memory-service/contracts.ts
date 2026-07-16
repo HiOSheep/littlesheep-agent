@@ -13,6 +13,8 @@ import type {
   MemoryAccessLedger,
   MemoryExpandOptions,
   MemoryQueryResult,
+  MemoryReleaseResult,
+  MemoryFragment,
   MemoryResourceOwnerKind,
   MemoryResourceRegistration,
   MemorySearchOptions,
@@ -40,6 +42,11 @@ export interface MemoryServiceOptions {
 export interface MemoryRunStart {
   rootIndex: string;
   ledger: MemoryAccessLedger;
+  initialContext?: {
+    content: string;
+    atomIds: string[];
+    fragments: MemoryFragment[];
+  };
 }
 
 export interface MemoryManagementSnapshot {
@@ -85,6 +92,7 @@ export interface MemoryNavigationServiceLike {
   branchIndex(runId: string, branchId: string): Promise<BranchIndex>;
   expand(runId: string, options: MemoryExpandOptions): Promise<MemoryQueryResult>;
   deepSearch(runId: string, options: MemorySearchOptions): Promise<MemoryQueryResult>;
+  release?(runId: string, atomIds: string[]): Promise<MemoryReleaseResult>;
 }
 
 export interface MemoryBootstrapServiceLike {

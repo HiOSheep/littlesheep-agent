@@ -184,6 +184,15 @@ export async function buildMemoryTreeNodeDetail(
         entries: inspection.history.entries,
         truncated: inspection.history.truncated,
       } : undefined,
+      immutableFacts: inspection.immutableFacts?.map((fact) => ({
+        id: fact.id,
+        kind: fact.event.kind,
+        capturedAt: fact.capturedAt,
+        occurredAt: fact.event.occurredAt,
+        sourceKind: fact.event.source.kind,
+        evidenceRefs: fact.event.evidenceRefs,
+        atomIds: fact.atomIds,
+      })),
     } : undefined,
   }
 }
@@ -284,6 +293,9 @@ export async function buildMemoryTreePayload(
         createdAt: node.createdAt,
         updatedAt: node.updatedAt,
         hitCount: recentHits.length,
+        atomRevision: node.atomRevision,
+        invalidatedAt: node.invalidatedAt,
+        mergedIntoId: node.mergedIntoId,
       }
     })
 

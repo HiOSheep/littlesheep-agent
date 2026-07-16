@@ -188,6 +188,15 @@ export type RecoveryDecision =
   | { action: 'escalate'; reason: string }
   | { action: 'abort'; reason: string };
 
+export interface RuntimeMemoryContextWorkingSet {
+  revision: number;
+  activeAtomIds: string[];
+  releasedAtomIds: string[];
+  activeCallByAtom: Record<string, string>;
+  callAtomIds: Record<string, string[]>;
+  updatedAt: string;
+}
+
 // ─── Run context (threaded through all stages) ───────────────────────────
 
 /** The shared context object passed stage-to-stage. Stages mutate this. */
@@ -214,6 +223,8 @@ export interface RunContext {
   previousRun?: SessionRunSummary;
   /** Stable root index for the on-demand runtime memory tree. */
   memoryRootIndex?: string;
+  /** Small D2 atom set selected through D1 indexes before the first model decision. */
+  initialMemoryContext?: string;
   /** Prompt-resident bootstrap contents (AGENTS/SOUL/USER/TOOLS only). */
   bootstrap?: Record<string, string>;
   /** Session transcript (loaded messages). */
@@ -262,6 +273,8 @@ export interface RunContext {
   memoryIntentDecisions?: import('./runtime-contracts.js').MemoryIntentDecisionRecord[];
   /** Versioned run-local evidence adopted, excluded or conflicted by Memory v3. */
   memoryKnownState?: import('./memory-evidence.js').RuntimeMemoryKnownState;
+  /** Run-scoped atom ownership used to add, release, and re-add memory context safely. */
+  memoryContextWorkingSet?: RuntimeMemoryContextWorkingSet;
   /** Final reply text. */
   reply?: string;
   /** Token usage reported by the model provider for the reply-bearing call. */

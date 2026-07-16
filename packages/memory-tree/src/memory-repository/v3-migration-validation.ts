@@ -124,8 +124,14 @@ function comparableNode(node: MemoryNode) {
       isBranchRoot: true,
     };
   }
+  const {
+    atomRevision: _atomRevision,
+    invalidatedAt: _invalidatedAt,
+    mergedIntoId: _mergedIntoId,
+    ...v2Projection
+  } = node;
   return {
-    ...node,
+    ...v2Projection,
     childIds: [...node.childIds].sort(),
     sourceRefs: node.sourceRefs ?? [],
     mergedFrom: node.mergedFrom ?? [],

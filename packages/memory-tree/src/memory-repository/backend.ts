@@ -26,6 +26,8 @@ import type {
 import type { MemoryProjectRebindResult } from './project-rebinding.js';
 import type { MemoryRepositoryRetrievalBackend } from './retrieval.js';
 import type {
+  MemoryAtomManagementRequest,
+  MemoryAtomManagementResult,
   MemoryRepositoryManagementStatus,
   MemoryRepositoryNodeInspection,
 } from './management.js';
@@ -71,5 +73,8 @@ export interface MemoryRepositoryBackend extends Partial<MemoryRepositoryRetriev
     nodeId: string,
     disclosureLevel: MemoryRepositoryNodeInspection['disclosureLevel'],
   ): Promise<MemoryRepositoryNodeInspection | undefined>;
+  manageAtomForManagement?(
+    request: MemoryAtomManagementRequest,
+  ): Promise<MemoryAtomManagementResult>;
   close?(): void;
 }

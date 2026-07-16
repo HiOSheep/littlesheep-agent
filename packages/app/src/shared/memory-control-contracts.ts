@@ -30,6 +30,7 @@ export type MemoryResourceManagementAction = 'disable' | 'restore' | 'remove' | 
 export type MemoryTreeNodeStatus = 'active' | 'archived'
 export type MemoryTreeManagementAction = 'archive' | 'restore' | 'delete' | 'promote' | 'demote'
 export type MemoryTreeDisclosureLevel = 'D2' | 'D3'
+export type MemoryAtomManagementAction = 'move' | 'merge' | 'invalidate' | 'reactivate'
 
 export interface MemoryRepositoryOverview {
   backendKind: 'v2' | 'v3'
@@ -128,6 +129,9 @@ export interface MemoryTreeNodeOverview {
   createdAt: string
   updatedAt: string
   hitCount: number
+  atomRevision?: number
+  invalidatedAt?: string
+  mergedIntoId?: string
 }
 
 export interface MemoryTreeNodeDetail {
@@ -200,6 +204,57 @@ export interface MemoryTreeNodeDetail {
       entries: Array<{ kind: 'access' | 'feedback' | 'event' | 'audit'; id: string; at: string; summary: string }>
       truncated: boolean
     }
+    immutableFacts?: Array<{
+      id: string
+      kind: string
+      capturedAt: string
+      occurredAt: string
+      sourceKind: string
+      evidenceRefs: string[]
+      atomIds: string[]
+    }>
+  }
+}
+
+export type MemoryAtomManagementRequest =
+  | { action: 'move'; atomId: string; expectedRevision: number; parentNodeId?: string; reason: string }
+  | {
+      action: 'merge'
+      atomId: string
+      expectedRevision: number
+      targetAtomId: string
+      targetExpectedRevision: number
+      reason: string
+    }
+  | { action: 'invalidate' | 'reactivate'; atomId: string; expectedRevision: number; reason: string }
+
+export interface MemoryAtomManagementResponse {
+  action: MemoryAtomManagementAction
+  atoms: Array<{
+    id: string
+    revision: number
+    parentId?: string
+    status: 'active' | 'archived' | 'tombstone'
+    epistemicStatus: string
+    resolutionStatus: string
+  }>
+  audit: {
+    id: string
+    action: MemoryAtomManagementAction
+    at: string
+    reason: string
+    atomIds: string[]
+  }
+}
+
+export interface MemoryAtomEvidenceExportResponse {
+  cancelled: boolean
+  export?: {
+    outputPath: string
+    atomId: string
+    revision: number
+    immutableFactCount: number
+    exportedAt: string
   }
 }
 

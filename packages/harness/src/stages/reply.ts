@@ -30,6 +30,7 @@ export function createReplyStage(deps: ReplyStageDeps) {
       prelude: ctx.prelude,
       sessionSummary: ctx.sessionSummary,
       memoryRootIndex: ctx.memoryRootIndex,
+      initialMemoryContext: ctx.initialMemoryContext,
     }, 'full');
     const systemPrompt = appendSystemPromptBundleAddons(baseSystemPrompt, [
       { id: 'profile', text: ctx.profilePromptAddon },

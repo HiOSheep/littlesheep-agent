@@ -31,6 +31,7 @@ export interface LocalAppApiServerOptions {
   selectAttachments?: () => Promise<AttachmentRef[]>
   selectProjectMemoryExport?: (projectName: string, projectPath: string) => Promise<string | null>
   selectMemoryResourceSource?: () => Promise<string | null>
+  selectMemoryAtomExport?: (suggestedName: string) => Promise<string | null>
   memoryV3MigrationManager?: MemoryV2ToV3MigrationManager
   dataRootManager?: DataRootMigrationManager
   selectDataRootTarget?: () => Promise<string | null>

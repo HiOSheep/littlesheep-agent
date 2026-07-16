@@ -6,6 +6,7 @@ import { InjectionTier, type MemoryWriteIntent } from '../types.js';
 import { MemoryAtomStore } from '../v3/atom-store.js';
 import { MemoryCatalog } from '../v3/catalog.js';
 import { MemoryEventJournal, MemoryOperationJournal } from '../v3/event-journal.js';
+import { MemoryImmutableFactStore } from '../v3/immutable-fact-store.js';
 import { MemoryV3GraphStore } from '../v3/graph-store.js';
 import { MemoryV3StorageCoordinator } from '../v3/storage-coordinator.js';
 import { MemoryV3RepositoryLedger } from './v3-ledger.js';
@@ -130,6 +131,7 @@ async function createRuntime(dataDir: string) {
     catalog,
     eventJournal,
     operationJournal,
+    factStore: new MemoryImmutableFactStore({ dataDir }),
     onCheckpoint: async (checkpoint, context) => {
       if (checkpoint !== 'catalog-updated') return;
       const record = await eventJournal.get(context.eventId);

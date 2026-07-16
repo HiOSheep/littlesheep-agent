@@ -23,6 +23,7 @@ export type {
 export const MEMORY_ATOM_VERSION = 3 as const;
 export const MEMORY_EVENT_VERSION = 1 as const;
 export const MEMORY_OPERATION_VERSION = 1 as const;
+export const MEMORY_IMMUTABLE_FACT_VERSION = 1 as const;
 
 export type MemoryDisclosureLevel = 'D0' | 'D1' | 'D2' | 'D3';
 
@@ -45,6 +46,19 @@ export interface MemoryVerifiedUsefulness {
   conflicts: number;
   stale: number;
   lastOutcome?: MemoryUseOutcome;
+}
+
+export interface MemoryAtomInvalidation {
+  at: string;
+  reason: string;
+  priorEpistemicStatus: EpistemicStatus;
+  priorResolutionStatus: MemoryResolutionStatus;
+}
+
+export interface MemoryAtomMerge {
+  intoAtomId: string;
+  at: string;
+  reason: string;
 }
 
 export interface MemoryAtom {
@@ -80,6 +94,9 @@ export interface MemoryAtom {
   sourceStages: MemoryWriteStage[];
   status: MemoryAtomStatus;
   resolutionStatus: MemoryResolutionStatus;
+  invalidation?: MemoryAtomInvalidation | null;
+  merge?: MemoryAtomMerge | null;
+  mergedFromAtomIds?: string[];
   effectiveAt?: string;
   expiresAt?: string;
   revalidateAt?: string;
@@ -105,7 +122,31 @@ export type MemoryStorageMutation =
   | { kind: 'create'; atom: CreateMemoryAtomInput }
   | { kind: 'update'; atomId: string; expectedRevision: number; patch: MemoryAtomPatch }
   | { kind: 'archive'; atomId: string; expectedRevision: number }
-  | { kind: 'restore'; atomId: string; expectedRevision: number };
+  | { kind: 'restore'; atomId: string; expectedRevision: number }
+  | {
+      kind: 'merge';
+      targetAtomId: string;
+      targetExpectedRevision: number;
+      targetPatch: MemoryAtomPatch;
+      sourceAtomId: string;
+      sourceExpectedRevision: number;
+      sourcePatch: MemoryAtomPatch;
+    };
+
+/**
+ * Immutable source-of-truth record captured before a Memory v3 projection is
+ * changed. Recovery journals may be pruned; these fact records may not.
+ */
+export interface MemoryImmutableFact {
+  version: typeof MEMORY_IMMUTABLE_FACT_VERSION;
+  id: string;
+  idempotencyKey: string;
+  event: MemoryUpdateEvent;
+  mutation: MemoryStorageMutation;
+  atomIds: string[];
+  capturedAt: string;
+  contentHash: string;
+}
 
 export type MemoryEmbeddingStatus = 'disabled' | 'pending' | 'ready' | 'stale' | 'failed';
 

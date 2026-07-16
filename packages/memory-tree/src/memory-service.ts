@@ -17,6 +17,7 @@ import type {
   MemoryManagementResult,
   MemoryNode,
   MemoryQueryResult,
+  MemoryReleaseResult,
   MemoryResourceManagementAction,
   MemoryResourceManagementResult,
   MemoryResourceQuery,
@@ -175,17 +176,15 @@ export class MemoryService {
     return this.runs.finish(runId);
   }
 
-  branchIndex(runId: string, branchId: string): Promise<BranchIndex> {
-    return this.tree.branchIndex(runId, branchId);
-  }
+  branchIndex(runId: string, branchId: string): Promise<BranchIndex> { return this.tree.branchIndex(runId, branchId); }
 
   expand(runId: string, options: MemoryExpandOptions): Promise<MemoryQueryResult> {
     return this.tree.expand(runId, options);
   }
 
-  deepSearch(runId: string, options: MemorySearchOptions): Promise<MemoryQueryResult> {
-    return this.tree.deepSearch(runId, options);
-  }
+  deepSearch(runId: string, options: MemorySearchOptions): Promise<MemoryQueryResult> { return this.tree.deepSearch(runId, options); }
+
+  release(runId: string, atomIds: string[]): Promise<MemoryReleaseResult> { return this.tree.release(runId, atomIds); }
 
   listBranches(): BranchDescription[] {
     return this.tree.list();

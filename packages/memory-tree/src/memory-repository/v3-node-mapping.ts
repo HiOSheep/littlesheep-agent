@@ -101,6 +101,9 @@ export function memoryAtomToNode(
     mergedFrom: atom.evidenceRefs
       .filter((value) => value.startsWith(MERGED_INTENT_PREFIX))
       .map((value) => value.slice(MERGED_INTENT_PREFIX.length)),
+    atomRevision: atom.revision,
+    invalidatedAt: atom.invalidation?.at,
+    mergedIntoId: atom.merge?.intoAtomId,
   };
 }
 

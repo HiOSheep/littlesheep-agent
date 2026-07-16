@@ -105,6 +105,22 @@ describe('MemoryTree index-first protocol', () => {
     expect(getIndex).toHaveBeenCalledTimes(1);
   });
 
+  it('primes a bounded initial atom only after D1 index inspection', async () => {
+    const tree = new MemoryTree({ totalRunTokenBudget: 1_000, perBranchTokenBudget: 300 });
+    tree.register(makeBranch({ fragments: [makeFragment('initial', 'relevant initial context')] }));
+    begin(tree);
+
+    const primed = await tree.prime('run-1', { query: 'Indexed node context', maxAtoms: 1, tokenBudget: 100 });
+    expect(primed.fragments.map((fragment) => fragment.id)).toEqual(['initial']);
+    expect(primed.indexedBranches).toEqual(['daily']);
+    expect(tree.getLedger('run-1')!.records.map((record) => record.action)).toEqual([
+      'root_index', 'branch_index', 'expand',
+    ]);
+    expect(tree.getLedger('run-1')!.records[1]).toMatchObject({
+      action: 'branch_index', tokensUsed: 0, tokenBudget: 0,
+    });
+  });
+
   it('rejects expansion before the branch index without touching branch content or spending tokens', async () => {
     const branch = makeBranch({ fragments: [makeFragment('hidden')] });
     const expand = vi.fn(branch.expand.bind(branch));
@@ -149,6 +165,27 @@ describe('MemoryTree index-first protocol', () => {
     expect(ledger.records.map((record) => record.action)).toEqual(['root_index', 'branch_index', 'expand', 'expand']);
     expect(ledger.dedupKeys).toContain('daily:large');
     expect(ledger.tokensUsed).toBeGreaterThan(0);
+  });
+
+  it('releases an active atom, refunds its budget, and allows an explicit re-add', async () => {
+    const tree = new MemoryTree({ totalRunTokenBudget: 1_000, perBranchTokenBudget: 200 });
+    tree.register(makeBranch({ fragments: [makeFragment('releasable', 'remember the exact build constraint')] }));
+    begin(tree);
+    await tree.branchIndex('run-1', 'daily');
+    const first = await tree.expand('run-1', { branchId: 'daily', nodeId: 'daily:node', tokenBudget: 100 });
+    const tokensWithAtom = tree.getLedger('run-1')!.tokensUsed;
+
+    const released = await tree.release('run-1', ['releasable']);
+    expect(released.releasedAtomIds).toEqual(['releasable']);
+    expect(released.freedTokens).toBe(first.fragments[0]!.tokenEstimate);
+    expect(tree.getLedger('run-1')!.tokensUsed).toBe(tokensWithAtom - released.freedTokens);
+    expect(tree.getLedger('run-1')!.dedupKeys).not.toContain('daily:releasable');
+
+    const readded = await tree.expand('run-1', { branchId: 'daily', nodeId: 'daily:node', tokenBudget: 100 });
+    expect(readded.fragments.map((fragment) => fragment.id)).toEqual(['releasable']);
+    expect(tree.getLedger('run-1')!.records.map((record) => record.action)).toEqual([
+      'root_index', 'branch_index', 'expand', 'release', 'expand',
+    ]);
   });
 
   it('returns an overflow index instead of injecting a partial oversized fragment', async () => {

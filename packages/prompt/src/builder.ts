@@ -52,6 +52,8 @@ export interface PromptInput {
   sessionSummary?: import('@littlesheep/types').CompactionSummary;
   /** Bounded root index for on-demand memory-tree recall. */
   memoryRootIndex?: string;
+  /** Small volatile D2 atom set selected through D1 indexes for this run. */
+  initialMemoryContext?: string;
   mode?: PromptMode;
 }
 
@@ -186,6 +188,20 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
     });
   }
 
+  if (!isMinimal && input.initialMemoryContext) {
+    segments.push({
+      id: 'initial-memory-selection',
+      order: nextOrder++,
+      text: `${volatilePrefix()}${input.initialMemoryContext}`,
+      kind: 'memory_fragment',
+      source: { kind: 'memory', id: 'initial-selection' },
+      priority: 92,
+      required: false,
+      sensitive: true,
+      scope: 'run',
+    });
+  }
+
   if (!isMinimal && Object.keys(input.bootstrap).length > 0) {
     const files = Object.entries(input.bootstrap)
       .filter(([, content]) => content && content.trim().length > 0);
@@ -292,6 +308,7 @@ export interface RuntimeFacts {
   prelude?: MemoryPrelude;
   sessionSummary?: import('@littlesheep/types').CompactionSummary;
   memoryRootIndex?: string;
+  initialMemoryContext?: string;
   runtime?: PromptInput['runtime'];
 }
 
@@ -324,6 +341,7 @@ export async function assembleSystemPromptBundle(
     prelude: facts.prelude,
     sessionSummary: facts.sessionSummary,
     memoryRootIndex: facts.memoryRootIndex,
+    initialMemoryContext: facts.initialMemoryContext,
     mode: mode ?? 'full',
   });
 }

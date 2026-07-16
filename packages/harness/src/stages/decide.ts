@@ -26,7 +26,6 @@ import {
 import { mergePartialTaskBook, renderReplanFeedback } from './decide/replan.js';
 
 export type { DecideStageDeps } from './decide/contracts.js';
-
 export function createDecideStage(deps: DecideStageDeps) {
   return async function decideStage(ctx: RunContext): Promise<StageResult> {
     const resolved = resolvePromptConfig(deps.config, deps.branding);
@@ -36,6 +35,7 @@ export function createDecideStage(deps: DecideStageDeps) {
       prelude: ctx.prelude,
       sessionSummary: ctx.sessionSummary,
       memoryRootIndex: ctx.memoryRootIndex,
+      initialMemoryContext: ctx.initialMemoryContext,
     });
     const systemPrompt = appendSystemPromptBundleAddons(baseSystemPrompt, [
       {

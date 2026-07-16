@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-07-16 01:37:16
+最后更新：2026-07-16 08:12:11
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
@@ -114,7 +114,7 @@
 | Provider 请求、流式与 usage | `packages/llm/` | `src/client.ts` | `src/client.test.ts`、Provider smoke 脚本 |
 | 配置、Provider/模型能力 | `packages/config/` | `src/schema.ts`、`src/model-capabilities.ts` | `src/schema.test.ts`、App shared capability 测试 |
 | Prompt 与行为 profile | `packages/prompt/` | `src/builder.ts`、`src/profiles.ts` | `src/builder.test.ts`、`src/profiles.test.ts` |
-| 记忆树、资源注册与项目投影 | `packages/memory-tree/` | 稳定 facade：`src/memory-service.ts`、`src/memory-repository.ts`；版本后端：`src/memory-repository/v2-backend.ts`、`v3-backend.ts`、`factory.ts`；安全迁移：`repository-locator.ts`、`v3-migration*.ts`；v3 权威数据层：`src/v3/index.ts`、`atom-store.ts`、`catalog.ts`、`graph-store.ts`、`storage-coordinator.ts` | 双后端契约：`src/memory-repository.contract.test.ts`；迁移：`src/memory-repository/v3-migration.test.ts`；v3：`src/memory-repository/v3-*.test.ts`、`src/v3/*.test.ts`；Runner：`packages/runner/src/memory-v3.integration.test.ts` |
+| 记忆树、资源注册与项目投影 | `packages/memory-tree/` | 稳定 facade：`src/memory-service.ts`、`src/memory-repository.ts`；run working set：`src/memory-tree-working-set.ts`；版本后端：`src/memory-repository/v2-backend.ts`、`v3-backend.ts`、`factory.ts`；安全迁移：`repository-locator.ts`、`v3-migration*.ts`；v3 事实与投影：`src/v3/immutable-fact-store.ts`、`atom-store.ts`、`catalog.ts`、`graph-store.ts`、`storage-coordinator.ts`、`storage-fact-reconciliation.ts` | 双后端契约：`src/memory-repository.contract.test.ts`；迁移：`src/memory-repository/v3-migration.test.ts`；v3：`src/memory-repository/v3-*.test.ts`、`src/v3/*.test.ts`；Runner：`packages/runner/src/memory-v3.integration.test.ts` |
 | 旧文件记忆、写入与归档 | `packages/memory-core/` | `src/write-memory.ts`、`src/archive.ts` | 对应同名测试 |
 | 会话和长会话摘要 | `packages/session/` | `src/manager.ts`、`src/compaction.ts` | 对应同名测试 |
 | 工具注册、审批和内置工具 | `packages/tools/` | `src/registry.ts`、`src/wrapper.ts`、`src/builtin/` | `src/**/*.test.ts` |
@@ -135,13 +135,13 @@
 | `packages/app/src/main/index.ts` | Electron 主进程启动、用户数据初始化、Runner/PluginHost 装配、窗口和退出流程。 |
 | `packages/app/src/main/builtin-plugins.ts` | 内置插件目录；具体渠道实现仍通过动态 import 按需加载。 |
 | `packages/app/src/main/local-app-api-server.ts` | renderer 与主进程之间的 loopback Local App API 组合入口和生命周期。 |
-| `packages/app/src/main/local-app-api/` | Local App API 的 HTTP 基元、公共契约及 run、项目、会话、Runtime、记忆、工作区、终端和扩展领域路由。 |
+| `packages/app/src/main/local-app-api/` | Local App API 的 HTTP 基元、公共契约及 run、项目、会话、Runtime、记忆、工作区、终端和扩展领域路由；atom 高级管理与证据导出位于 `memory-atom-routes.ts`。 |
 | `packages/app/src/main/attachment-cache.ts`、`attachments.ts` | LS 受管附件缓存的稳定索引、配额/过期清理、安全删除校验，以及 run-scoped 附件解析与所有权分类。 |
 | `packages/app/src/main/data-root-migration.ts`、`data-root-metadata.ts` | 数据根 locator、迁移事务、同级 staging、流式哈希清单、启动前恢复、活动元数据内部路径重绑定和回滚；正式用户数据不得用于故障注入。 |
 | `packages/app/src/main/keychain.ts` | API key 的 Electron 安全存储与环境注入。 |
 | `packages/app/src/main/session-index.ts`、`project-index.ts`、`archive-index.ts` | UI 侧会话、稳定项目身份和归档元数据索引。 |
 | `packages/app/src/main/project-rebinding.ts`、`path-rebinding.ts` | 项目移动/重命名后的持久化重绑定事务、恢复日志和跨索引路径重映射。 |
-| `packages/app/src/main/memory-tree-control.ts` | 记忆树管理页面使用的运行时控制面；通过 `MemoryService` 读取节点、访问账本、资源注册表、资源生命周期审计和项目投影状态，并执行受约束的节点/资源管理动作。 |
+| `packages/app/src/main/memory-tree-control.ts`、`memory-atom-control.ts` | 记忆树管理页面使用的运行时控制面；通过 `MemoryService` 读取节点、访问账本、资源注册表、资源生命周期审计和项目投影状态，并通过 Repository management 执行受约束的 atom 移动、合并、失效、恢复和证据导出。 |
 | `packages/app/src/main/memory-v3-bootstrap.ts`、`memory-v3-migration-control.ts` | Memory v3 迁移生命周期的应用边界：运行中只登记/取消请求，启动时在 Runner、Local App API 和插件写入者创建前执行迁移或回滚，并让配置服从 durable locator。 |
 | `packages/app/src/main/workspace-*.ts` | 工作区布局、产物、文件路由、终端和 shell 适配。 |
 | `packages/memory-tree/src/workspace-resource-index.ts`、`workspace-resource-scanner.ts` | 用户数据中的工作区资源元数据索引、游标式有界扫描、精确变更提示、重启恢复和按查询展开；不读取文件正文。 |

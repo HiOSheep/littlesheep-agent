@@ -32,6 +32,8 @@ const authority = z.object({
   scopeKey: nonEmpty.optional(),
   topics: z.array(nonEmpty).max(64),
 }).strict();
+const epistemicStatus = z.enum(['reported', 'unverified', 'corroborated', 'verified', 'disputed', 'superseded']);
+const resolutionStatus = z.enum(['unresolved', 'proposed', 'under-review', 'adopted', 'rejected', 'resolved', 'superseded']);
 
 const atomSchema = z.object({
   version: z.literal(3),
@@ -55,7 +57,7 @@ const atomSchema = z.object({
     'decision',
     'approval',
   ]),
-  epistemicStatus: z.enum(['reported', 'unverified', 'corroborated', 'verified', 'disputed', 'superseded']),
+  epistemicStatus,
   authorityScope: authority,
   assertedBy: actor,
   evidenceRefs: z.array(nonEmpty).max(256),
@@ -82,7 +84,19 @@ const atomSchema = z.object({
   sourceRunIds: z.array(nonEmpty).max(256),
   sourceStages: z.array(z.enum(['evolve', 'capture', 'tool', 'migration'])).max(64),
   status: z.enum(['active', 'archived', 'tombstone']),
-  resolutionStatus: z.enum(['unresolved', 'proposed', 'under-review', 'adopted', 'rejected', 'resolved', 'superseded']),
+  resolutionStatus,
+  invalidation: z.object({
+    at: timestamp,
+    reason: nonEmpty.max(8_000),
+    priorEpistemicStatus: epistemicStatus,
+    priorResolutionStatus: resolutionStatus,
+  }).strict().nullable().optional(),
+  merge: z.object({
+    intoAtomId: nonEmpty.max(512),
+    at: timestamp,
+    reason: nonEmpty.max(8_000),
+  }).strict().nullable().optional(),
+  mergedFromAtomIds: z.array(nonEmpty.max(512)).max(256).optional(),
   effectiveAt: timestamp.optional(),
   expiresAt: timestamp.optional(),
   revalidateAt: timestamp.optional(),

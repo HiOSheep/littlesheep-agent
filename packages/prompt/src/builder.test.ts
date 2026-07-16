@@ -105,6 +105,28 @@ describe('buildSystemPrompt', () => {
     expect(bundle.text).toBe(buildSystemPrompt(input));
   });
 
+  it('keeps the initial D2 atom selection below the prompt cache boundary', () => {
+    const bundle = buildSystemPromptBundle({
+      branding: DEFAULT_BRANDING,
+      tools: [stubTool],
+      workspace: '/tmp/ws',
+      bootstrap: {},
+      memoryRootIndex: '# Memory Tree Root Index',
+      initialMemoryContext: '# Initially Selected Memory Atoms\n\n## [atom-a] T2\nRelevant fact.',
+      mode: 'full',
+    });
+    const segment = bundle.segments.find((candidate) => candidate.id === 'initial-memory-selection');
+    expect(segment).toMatchObject({
+      kind: 'memory_fragment',
+      scope: 'run',
+      required: false,
+      source: { kind: 'memory', id: 'initial-selection' },
+    });
+    const parts = splitAtBoundary(bundle.text);
+    expect(parts.stable).not.toContain('Relevant fact.');
+    expect(parts.volatile).toContain('Relevant fact.');
+  });
+
   it('registers a versioned session summary as summary memory', () => {
     const bundle = buildSystemPromptBundle({
       branding: DEFAULT_BRANDING,

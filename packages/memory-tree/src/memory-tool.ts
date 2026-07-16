@@ -8,6 +8,7 @@ import type { MemoryNavigationServiceLike } from './memory-service.js';
 const MemoryTreeInput = z.discriminatedUnion('action', [
   z.object({ action: z.literal('root_index') }),
   z.object({ action: z.literal('branch_index'), branch: z.string().min(1) }),
+  z.object({ action: z.literal('release'), atomIds: z.array(z.string().min(1)).min(1).max(30) }),
   z.object({
     action: z.literal('expand'),
     branch: z.string().min(1),
@@ -108,6 +109,7 @@ function queryMeta(action: string, branch: string, result: MemoryQueryResult): R
     truncated: result.truncated,
     memoryKnownState: result.knownState,
     memoryKnownStateDelta: result.knownStateDelta,
+    memoryFragmentIds: result.fragments.map((fragment) => fragment.evidence?.atomId ?? fragment.id),
   };
 }
 
@@ -138,6 +140,25 @@ export function createMemoryTreeTool(memory: MemoryNavigationServiceLike, option
               entries: index.entries.length,
               truncated: index.truncated,
               memoryKnownState: index.knownState,
+            };
+            break;
+          }
+          case 'release': {
+            if (!memory.release) throw new Error('This runtime does not support run-scoped memory release.');
+            const result = await memory.release(ctx.runId, parsed.atomIds);
+            output = [
+              '# Memory Context Release',
+              `Released: ${result.releasedAtomIds.join(', ') || 'none'}.`,
+              `Not active: ${result.notActiveAtomIds.join(', ') || 'none'}.`,
+              `Freed memory budget: ${result.freedTokens} tokens.`,
+            ].join('\n');
+            meta = {
+              action: parsed.action,
+              memoryContextAction: 'release',
+              memoryReleasedAtomIds: result.releasedAtomIds,
+              memoryNotActiveAtomIds: result.notActiveAtomIds,
+              memoryKnownState: result.knownState,
+              memoryKnownStateDelta: result.knownStateDelta,
             };
             break;
           }

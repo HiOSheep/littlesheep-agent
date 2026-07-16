@@ -6,6 +6,7 @@ import { MemoryAtomStore } from './atom-store.js';
 import { MemoryCatalog } from './catalog.js';
 import type { MemoryUpdateEvent } from './contracts.js';
 import { MemoryEventJournal, MemoryOperationJournal } from './event-journal.js';
+import { MemoryImmutableFactStore } from './immutable-fact-store.js';
 import { MemoryV3StorageCoordinator } from './storage-coordinator.js';
 import { makeAtomInput } from './test-fixtures.js';
 
@@ -40,6 +41,7 @@ describe('MemoryV3StorageCoordinator', () => {
     expect(atom.revision).toBe(1);
     expect(runtime.catalog.getAtom(atom.id)?.contentHash).toBe(atom.contentHash);
     expect(checkpoints).toEqual([
+      'fact-captured',
       'event-captured',
       'operation-started',
       'atom-written',
@@ -49,6 +51,35 @@ describe('MemoryV3StorageCoordinator', () => {
     ]);
     expect(await runtime.eventJournal.listOutstanding()).toEqual([]);
     expect(await runtime.operationJournal.listOutstanding()).toEqual([]);
+  });
+
+  it('rebuilds a missing recovery event from an immutable fact after restart', async () => {
+    let injected = false;
+    const firstRuntime = makeRuntime();
+    const first = new MemoryV3StorageCoordinator({
+      ...firstRuntime,
+      onCheckpoint: (checkpoint) => {
+        if (checkpoint === 'fact-captured' && !injected) {
+          injected = true;
+          throw new Error('simulated crash after immutable fact capture');
+        }
+      },
+    });
+    await first.initialize();
+    await expect(first.apply(makeEvent('event-fact-only'), { kind: 'create', atom: makeAtomInput() }))
+      .rejects.toThrow(/immutable fact capture/i);
+    expect(await firstRuntime.factStore.count()).toBe(1);
+    expect(await firstRuntime.eventJournal.get('event-fact-only')).toBeUndefined();
+    expect(await firstRuntime.atomStore.read('atom-root')).toBeUndefined();
+    firstRuntime.catalog.close();
+    catalogs = catalogs.filter((catalog) => catalog !== firstRuntime.catalog);
+
+    const secondRuntime = makeRuntime();
+    const recovery = await new MemoryV3StorageCoordinator(secondRuntime).initialize();
+    expect(recovery.failed).toEqual([]);
+    expect(recovery.recoveredEventIds).toEqual(['event-fact-only']);
+    expect(await secondRuntime.atomStore.read('atom-root')).toBeDefined();
+    expect(secondRuntime.catalog.getAtom('atom-root')).toBeDefined();
   });
 
   it('replays an atom-written/catalog-missing failure idempotently after restart', async () => {
@@ -108,6 +139,80 @@ describe('MemoryV3StorageCoordinator', () => {
     expect(await secondRuntime.atomStore.read('atom-root')).toBeDefined();
   });
 
+  it('recovers a merge after the target write without duplicating either projection', async () => {
+    let injected = false;
+    const firstRuntime = makeRuntime();
+    const first = new MemoryV3StorageCoordinator({
+      ...firstRuntime,
+      onCheckpoint: (checkpoint) => {
+        if (checkpoint === 'merge-target-written' && !injected) {
+          injected = true;
+          throw new Error('simulated crash after merge target');
+        }
+      },
+    });
+    await first.initialize();
+    await seedMergeAtoms(firstRuntime);
+    await expect(first.apply(makeEvent('event-merge-recovery'), mergeMutation()))
+      .rejects.toThrow(/merge target/iu);
+    expect((await firstRuntime.atomStore.read('merge-target'))?.revision).toBe(2);
+    expect((await firstRuntime.atomStore.read('merge-source'))?.revision).toBe(1);
+    firstRuntime.catalog.close();
+    catalogs = catalogs.filter((catalog) => catalog !== firstRuntime.catalog);
+
+    const secondRuntime = makeRuntime();
+    const second = new MemoryV3StorageCoordinator(secondRuntime);
+    const recovery = await second.initialize();
+    expect(recovery.failed).toEqual([]);
+    expect(recovery.recoveredEventIds).toEqual(['event-merge-recovery']);
+    expect(await secondRuntime.atomStore.read('merge-target')).toMatchObject({ revision: 2, mergedFromAtomIds: ['merge-source'] });
+    expect(await secondRuntime.atomStore.read('merge-source')).toMatchObject({ revision: 2, status: 'tombstone' });
+    expect(secondRuntime.catalog.getAtom('merge-target')?.revision).toBe(2);
+    expect(secondRuntime.catalog.getAtom('merge-source')?.revision).toBe(2);
+  });
+
+  it('recovers merge catalog projection after both atom files were written', async () => {
+    let injected = false;
+    const firstRuntime = makeRuntime();
+    const first = new MemoryV3StorageCoordinator({
+      ...firstRuntime,
+      onCheckpoint: (checkpoint) => {
+        if (checkpoint === 'atom-written' && !injected) {
+          injected = true;
+          throw new Error('simulated crash before merge catalog projection');
+        }
+      },
+    });
+    await first.initialize();
+    await seedMergeAtoms(firstRuntime);
+    await expect(first.apply(makeEvent('event-merge-catalog'), mergeMutation()))
+      .rejects.toThrow(/catalog projection/iu);
+    expect((await firstRuntime.atomStore.read('merge-target'))?.revision).toBe(2);
+    expect((await firstRuntime.atomStore.read('merge-source'))?.revision).toBe(2);
+    expect(firstRuntime.catalog.getAtom('merge-target')?.revision).toBe(1);
+    firstRuntime.catalog.close();
+    catalogs = catalogs.filter((catalog) => catalog !== firstRuntime.catalog);
+
+    const secondRuntime = makeRuntime();
+    const recovery = await new MemoryV3StorageCoordinator(secondRuntime).initialize();
+    expect(recovery.failed).toEqual([]);
+    expect(secondRuntime.catalog.getAtom('merge-target')?.revision).toBe(2);
+    expect(secondRuntime.catalog.getAtom('merge-source')).toMatchObject({ revision: 2, status: 'tombstone' });
+  });
+
+  it('checks both merge revisions before changing either atom', async () => {
+    const runtime = makeRuntime();
+    const coordinator = new MemoryV3StorageCoordinator(runtime);
+    await coordinator.initialize();
+    await seedMergeAtoms(runtime);
+    const mutation = mergeMutation();
+    mutation.sourceExpectedRevision = 0;
+    await expect(coordinator.apply(makeEvent('event-merge-conflict'), mutation))
+      .rejects.toThrow(/merge source/iu);
+    expect((await runtime.atomStore.read('merge-target'))?.revision).toBe(1);
+    expect((await runtime.atomStore.read('merge-source'))?.revision).toBe(1);
+  });
+
   function makeRuntime() {
     const catalog = new MemoryCatalog({ dataDir });
     catalogs.push(catalog);
@@ -116,9 +221,32 @@ describe('MemoryV3StorageCoordinator', () => {
       catalog,
       eventJournal: new MemoryEventJournal({ dataDir, now }),
       operationJournal: new MemoryOperationJournal({ dataDir, now }),
+      factStore: new MemoryImmutableFactStore({ dataDir, now }),
     };
   }
+
+  async function seedMergeAtoms(runtime: ReturnType<typeof makeRuntime>) {
+    for (const atom of [
+      await runtime.atomStore.create(makeAtomInput({ id: 'merge-target' })),
+      await runtime.atomStore.create(makeAtomInput({ id: 'merge-source' })),
+    ]) runtime.catalog.upsertAtom(atom, runtime.atomStore.relativePathFor(atom.id)!);
+  }
 });
+
+function mergeMutation(): Extract<import('./contracts.js').MemoryStorageMutation, { kind: 'merge' }> {
+  return {
+    kind: 'merge',
+    targetAtomId: 'merge-target',
+    targetExpectedRevision: 1,
+    targetPatch: { mergedFromAtomIds: ['merge-source'] },
+    sourceAtomId: 'merge-source',
+    sourceExpectedRevision: 1,
+    sourcePatch: {
+      status: 'tombstone',
+      merge: { intoAtomId: 'merge-target', at: '2026-07-15T04:00:02.000Z', reason: 'duplicate projection' },
+    },
+  };
+}
 
 function makeEvent(id: string): MemoryUpdateEvent {
   return {

@@ -1,6 +1,9 @@
 // Skills and memory-tree control-plane client.
 
 import type {
+  MemoryAtomEvidenceExportResponse,
+  MemoryAtomManagementRequest,
+  MemoryAtomManagementResponse,
   MemoryOverview,
   MemoryResourceManagementAction,
   MemoryTreeManagementAction,
@@ -122,6 +125,38 @@ export async function manageMemoryTreeNode(
     throw new Error(body?.error ?? `Local app API error: ${res.status}`)
   }
   return res.json() as Promise<MemoryTreeNodeManagementResponse>
+}
+
+export async function manageMemoryAtom(
+  request: MemoryAtomManagementRequest,
+): Promise<MemoryAtomManagementResponse> {
+  const res = await fetch(localApiUrl(localAppApiItemPath(
+    LOCAL_APP_API_PREFIXES.memoryNodes,
+    request.atomId,
+    '/manage-atom',
+  )), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => null) as { error?: string } | null
+    throw new Error(body?.error ?? `Local app API error: ${res.status}`)
+  }
+  return res.json() as Promise<MemoryAtomManagementResponse>
+}
+
+export async function exportMemoryAtom(nodeId: string): Promise<MemoryAtomEvidenceExportResponse> {
+  const res = await fetch(localApiUrl(localAppApiItemPath(
+    LOCAL_APP_API_PREFIXES.memoryNodes,
+    nodeId,
+    '/export',
+  )), { method: 'POST' })
+  if (!res.ok) {
+    const body = await res.json().catch(() => null) as { error?: string } | null
+    throw new Error(body?.error ?? `Local app API error: ${res.status}`)
+  }
+  return res.json() as Promise<MemoryAtomEvidenceExportResponse>
 }
 
 export async function manageMemoryTreeResource(

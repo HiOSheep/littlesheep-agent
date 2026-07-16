@@ -123,6 +123,9 @@ export function managementMutation(
   atom: MemoryAtom,
   action: MemoryManagementAction,
 ): { mutation: MemoryStorageMutation; toStatus: MemoryNode['status']; toTier: InjectionTier } {
+  if (atom.invalidation && action !== 'delete') {
+    throw new Error('Reactivate this invalidated memory through the Memory v3 lifecycle before using legacy management actions.');
+  }
   if (action === 'archive') {
     if (atom.status !== 'active') throw new Error('Only active memories can be archived.');
     return {

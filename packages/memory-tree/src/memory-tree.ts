@@ -13,7 +13,10 @@ import type {
   MemoryExpandOptions,
   MemoryFragment,
   MemoryIndexEntry,
+  MemoryPrimeOptions,
+  MemoryPrimeResult,
   MemoryQueryResult,
+  MemoryReleaseResult,
   MemoryRunRegistration,
   MemorySearchOptions,
   MemoryTreeOptions,
@@ -26,12 +29,20 @@ import {
 } from './known-state.js';
 import {
   applyFragmentEvidence,
-  fragmentIndexEntry,
   fragmentAccessObservations,
   indexEvidenceUpdates,
   recordBranchAccess,
 } from './memory-tree-evidence.js';
 import { fitMemoryIndex, memoryIndexTokens } from './memory-tree-index-budget.js';
+import {
+  availableWorkingSetBudget,
+  consumeWorkingSetTokens,
+  releaseWorkingSetAtoms,
+  selectBranchWorkingSet,
+  selectMixedWorkingSet,
+  totalWorkingSetRemaining,
+  type ActiveMemoryRun,
+} from './memory-tree-working-set.js';
 
 const DEFAULT_TOTAL_RUN_BUDGET = 3_200;
 const DEFAULT_BRANCH_BUDGET = 1_200;
@@ -46,13 +57,6 @@ interface ResolvedOptions {
   maxRetainedLedgers: number;
   sanitize?: (content: string) => string;
   log?: LogFn;
-}
-
-interface ActiveRun {
-  context: MemoryBranchContext;
-  ledger: MemoryAccessLedger;
-  branchTokens: Map<string, number>;
-  dedupKeys: Set<string>;
 }
 
 function resolveOptions(options: Partial<MemoryTreeOptions>): ResolvedOptions {
@@ -70,13 +74,36 @@ function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
 
+function indexEntryRelevance(query: string, entry: MemoryIndexEntry, branch: MemoryBranch): number {
+  const terms = queryTerms(query);
+  const haystack = [
+    entry.title,
+    entry.summary,
+    ...(entry.searchKeys ?? []),
+    branch.displayName,
+    branch.purpose,
+    branch.whenToUse,
+    ...branch.searchHints,
+  ].join('\n').toLocaleLowerCase();
+  if (terms.length === 0) return 0;
+  return terms.filter((term) => haystack.includes(term)).length / terms.length;
+}
+
+function queryTerms(value: string): string[] {
+  const normalized = value.normalize('NFKC').toLocaleLowerCase();
+  const terms = normalized.split(/[^\p{L}\p{N}_-]+/u).filter((term) => term.length > 1);
+  const cjk = [...normalized].filter((char) => /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(char));
+  for (let index = 0; index + 1 < cjk.length; index += 1) terms.push(cjk[index]! + cjk[index + 1]!);
+  return unique(terms);
+}
+
 function cloneLedger(ledger: MemoryAccessLedger): MemoryAccessLedger {
   return structuredClone(ledger);
 }
 
 export class MemoryTree {
   private readonly branches = new Map<string, MemoryBranch>();
-  private readonly runs = new Map<string, ActiveRun>();
+  private readonly runs = new Map<string, ActiveMemoryRun>();
   private readonly completedLedgers = new Map<string, MemoryAccessLedger>();
   private readonly options: ResolvedOptions;
 
@@ -172,6 +199,7 @@ export class MemoryTree {
       ledger,
       branchTokens: new Map(),
       dedupKeys: new Set(),
+      activeFragments: new Map(),
     });
     return cloneLedger(ledger);
   }
@@ -213,12 +241,12 @@ export class MemoryTree {
   async branchIndex(runId: string, branchId: string): Promise<BranchIndex> {
     const run = this.requireRun(runId);
     const branch = this.requireBranch(branchId);
-    const budget = this.availableBudget(run, branchId, this.options.perBranchTokenBudget);
+    const budget = availableWorkingSetBudget(run, branchId, this.options.perBranchTokenBudget, this.options);
     try {
       const raw = await branch.getIndex(run.context);
       const fitted = fitMemoryIndex(raw, budget, this.options.sanitize);
       const tokens = memoryIndexTokens(fitted);
-      this.consume(run, branchId, tokens);
+      consumeWorkingSetTokens(run, branchId, tokens);
       const access = indexEvidenceUpdates(raw.entries, fitted.entries);
       updateMemoryKnownState(run.ledger.knownState, access.updates, new Date().toISOString());
       await recordBranchAccess(branch, run.context, access.observations, this.options.log);
@@ -256,6 +284,70 @@ export class MemoryTree {
     }
   }
 
+  /** Select a tiny D2 working set by inspecting D1 indexes before any content expansion. */
+  async prime(runId: string, options: MemoryPrimeOptions): Promise<MemoryPrimeResult> {
+    const run = this.requireRun(runId);
+    const maxAtoms = Math.max(0, Math.min(4, Math.floor(options.maxAtoms ?? 2)));
+    const tokenBudget = Math.max(0, Math.min(totalWorkingSetRemaining(run), Math.floor(options.tokenBudget ?? 600)));
+    if (maxAtoms === 0 || tokenBudget < MIN_USEFUL_TOKENS) {
+      return { fragments: [], indexedBranches: [], tokensUsed: 0 };
+    }
+    const indexedBranches: string[] = [];
+    const sourceCounts = new Map<string, number>();
+    const candidates: Array<{ branchId: string; nodeId: string; score: number; order: number }> = [];
+    const branchOrder = ['long-term', 'project', 'daily', 'experience'];
+    for (const branchId of branchOrder) {
+      const branch = this.branches.get(branchId);
+      if (!branch) continue;
+      try {
+        const index = await branch.getIndex(run.context);
+        indexedBranches.push(branch.id);
+        sourceCounts.set(branch.id, index.entries.length);
+        index.entries.slice(0, 8).forEach((entry, order) => candidates.push({
+          branchId: branch.id,
+          nodeId: entry.id,
+          score: indexEntryRelevance(options.query, entry, branch),
+          order: branchOrder.indexOf(branch.id) * 100 + order,
+        }));
+      } catch (error) {
+        this.options.log?.('warn', `memory-tree: initial index inspection failed for "${branch.id}": ${(error as Error).message}`);
+      }
+    }
+    const selectedCandidates = candidates
+      .sort((left, right) => right.score - left.score || left.order - right.order)
+      .slice(0, maxAtoms);
+    for (const branchId of unique(selectedCandidates.map((candidate) => candidate.branchId))) {
+      this.record(run, {
+        action: 'branch_index',
+        branchId,
+        status: 'ok',
+        sourceCount: sourceCounts.get(branchId) ?? 0,
+        tokensUsed: 0,
+        tokenBudget: 0,
+        reason: 'Runtime inspected D1 metadata for initial atom selection; the index body did not enter model context.',
+      });
+    }
+    const fragments: MemoryFragment[] = [];
+    let tokensUsed = 0;
+    for (const [index, candidate] of selectedCandidates.entries()) {
+      const slots = Math.max(1, selectedCandidates.length - index);
+      const remaining = tokenBudget - tokensUsed;
+      if (remaining < MIN_USEFUL_TOKENS) break;
+      const result = await this.expand(runId, {
+        branchId: candidate.branchId,
+        nodeId: candidate.nodeId,
+        limit: 1,
+        tokenBudget: Math.max(MIN_USEFUL_TOKENS, Math.floor(remaining / slots)),
+      });
+      for (const fragment of result.fragments) {
+        if (fragments.length >= maxAtoms) break;
+        fragments.push(fragment);
+        tokensUsed += fragment.tokenEstimate;
+      }
+    }
+    return { fragments, indexedBranches, tokensUsed };
+  }
+
   async expand(runId: string, options: MemoryExpandOptions): Promise<MemoryQueryResult> {
     const run = this.requireRun(runId);
     const branch = this.requireBranch(options.branchId);
@@ -265,7 +357,7 @@ export class MemoryTree {
       throw new Error(message);
     }
     const requestedBudget = options.tokenBudget ?? this.options.perBranchTokenBudget;
-    const budget = this.availableBudget(run, branch.id, requestedBudget);
+    const budget = availableWorkingSetBudget(run, branch.id, requestedBudget, this.options);
     if (budget < MIN_USEFUL_TOKENS) {
       return this.budgetExhausted(run, 'expand', branch.id, options.query, options.nodeId, budget);
     }
@@ -279,7 +371,7 @@ export class MemoryTree {
         cursor: options.cursor,
         disclosureLevel: options.disclosureLevel ?? 'D2',
       });
-      const selected = this.selectFragments(run, branch.id, expansion.fragments, budget);
+      const selected = selectBranchWorkingSet(run, branch.id, expansion.fragments, budget, this.options);
       const fragmentDelta = applyFragmentEvidence(run.ledger.knownState, selected, 'expand');
       const childAccess = indexEvidenceUpdates(expansion.childIndex ?? [], expansion.childIndex ?? []);
       const childDelta = updateMemoryKnownState(
@@ -331,7 +423,7 @@ export class MemoryTree {
     }
     const requestedBudget = options.tokenBudget ?? this.options.perBranchTokenBudget;
     const errors: Array<{ branchId: string; message: string }> = [];
-    const branchBudget = this.availableBudget(run, branch.id, requestedBudget);
+    const branchBudget = availableWorkingSetBudget(run, branch.id, requestedBudget, this.options);
     if (branchBudget < MIN_USEFUL_TOKENS) {
       return this.budgetExhausted(run, 'deep_search', branch.id, options.query, undefined, branchBudget);
     }
@@ -349,11 +441,12 @@ export class MemoryTree {
       errors.push({ branchId: branch.id, message });
       this.options.log?.('warn', `memory-tree: deep search failed for "${branch.id}": ${message}`);
     }
-    const selected = this.selectMixedFragments(
+    const selected = selectMixedWorkingSet(
       run,
       candidates,
-      Math.min(requestedBudget, this.totalRemaining(run)),
+      Math.min(requestedBudget, totalWorkingSetRemaining(run)),
       options.limit ?? DEFAULT_RESULT_LIMIT,
+      this.options,
     );
     const knownStateDelta = applyFragmentEvidence(run.ledger.knownState, selected, 'deep_search');
     await recordBranchAccess(branch, run.context, fragmentAccessObservations(selected), this.options.log);
@@ -374,6 +467,21 @@ export class MemoryTree {
     return result;
   }
 
+  async release(runId: string, atomIds: string[]): Promise<MemoryReleaseResult> {
+    const run = this.requireRun(runId);
+    const { requestedCount, ...result } = releaseWorkingSetAtoms(run, atomIds);
+    this.record(run, {
+      action: 'release',
+      status: 'ok',
+      fragmentIds: result.releasedAtomIds,
+      sourceCount: requestedCount,
+      tokensUsed: 0,
+      tokenBudget: totalWorkingSetRemaining(run),
+      reason: `Released ${result.releasedAtomIds.length} active memory atom(s) and freed ${result.freedTokens} tokens.`,
+    });
+    return result;
+  }
+
   async invalidateBranch(id: string): Promise<void> {
     const branch = this.branches.get(id);
     if (!branch) {
@@ -387,7 +495,7 @@ export class MemoryTree {
     }
   }
 
-  private requireRun(runId: string): ActiveRun {
+  private requireRun(runId: string): ActiveMemoryRun {
     const run = this.runs.get(runId);
     if (!run) throw new Error(`memory-tree: run "${runId}" is not registered`);
     return run;
@@ -399,22 +507,7 @@ export class MemoryTree {
     return branch;
   }
 
-  private totalRemaining(run: ActiveRun): number {
-    return Math.max(0, run.ledger.totalTokenBudget - run.ledger.tokensUsed);
-  }
-
-  private availableBudget(run: ActiveRun, branchId: string, requested: number): number {
-    const branchUsed = run.branchTokens.get(branchId) ?? 0;
-    const branchRemaining = Math.max(0, this.options.perBranchTokenBudget - branchUsed);
-    return Math.max(0, Math.min(requested, branchRemaining, this.totalRemaining(run)));
-  }
-
-  private consume(run: ActiveRun, branchId: string, tokens: number): void {
-    run.ledger.tokensUsed += tokens;
-    run.branchTokens.set(branchId, (run.branchTokens.get(branchId) ?? 0) + tokens);
-  }
-
-  private hasSuccessfulBranchIndex(run: ActiveRun, branchId: string): boolean {
+  private hasSuccessfulBranchIndex(run: ActiveMemoryRun, branchId: string): boolean {
     return run.ledger.records.some((record) =>
       record.action === 'branch_index'
       && record.branchId === branchId
@@ -422,7 +515,7 @@ export class MemoryTree {
   }
 
   private recordNavigationFailure(
-    run: ActiveRun,
+    run: ActiveMemoryRun,
     action: Extract<MemoryAccessAction, 'expand' | 'deep_search'>,
     branchId: string | undefined,
     query: string | undefined,
@@ -443,118 +536,8 @@ export class MemoryTree {
     });
   }
 
-  private sanitize(fragment: MemoryFragment): MemoryFragment {
-    const content = this.options.sanitize ? this.options.sanitize(fragment.content) : fragment.content;
-    return { ...fragment, content, tokenEstimate: estimateTokens(content) };
-  }
-
-  private selectFragments(
-    run: ActiveRun,
-    branchId: string,
-    fragments: MemoryFragment[],
-    budget: number,
-  ): {
-    fragments: MemoryFragment[];
-    excluded: Array<{ fragment: MemoryFragment; reason: string }>;
-    overflowIndex: MemoryIndexEntry[];
-    tokensUsed: number;
-    dedupedCount: number;
-    truncated: boolean;
-  } {
-    const ordered = fragments
-      .map((fragment) => this.sanitize({ ...fragment, branchId }))
-      .sort((left, right) => right.priority - left.priority || left.tokenEstimate - right.tokenEstimate);
-    const selected: MemoryFragment[] = [];
-    const excluded: Array<{ fragment: MemoryFragment; reason: string }> = [];
-    const overflowIndex: MemoryIndexEntry[] = [];
-    let used = 0;
-    let dedupedCount = 0;
-    let truncated = false;
-
-    for (const fragment of ordered) {
-      if (run.dedupKeys.has(fragment.dedupKey)) {
-        dedupedCount += 1;
-        excluded.push({ fragment, reason: 'Duplicate evidence was already adopted earlier in this run.' });
-        continue;
-      }
-      const remaining = budget - used;
-      if (remaining <= 0) {
-        truncated = true;
-        excluded.push({ fragment, reason: 'Run or branch memory budget was exhausted.' });
-        break;
-      }
-      let candidate = fragment;
-      if (candidate.tokenEstimate > remaining) {
-        overflowIndex.push(fragmentIndexEntry(candidate));
-        excluded.push({ fragment: candidate, reason: 'Atom content exceeded the remaining memory token budget.' });
-        truncated = true;
-        continue;
-      }
-      selected.push(candidate);
-      used += candidate.tokenEstimate;
-      run.dedupKeys.add(candidate.dedupKey);
-    }
-    run.ledger.dedupKeys = [...run.dedupKeys];
-    this.consume(run, branchId, used);
-    return { fragments: selected, excluded, overflowIndex, tokensUsed: used, dedupedCount, truncated };
-  }
-
-  private selectMixedFragments(
-    run: ActiveRun,
-    fragments: MemoryFragment[],
-    budget: number,
-    limit: number,
-  ): {
-    fragments: MemoryFragment[];
-    excluded: Array<{ fragment: MemoryFragment; reason: string }>;
-    overflowIndex: MemoryIndexEntry[];
-    tokensUsed: number;
-    dedupedCount: number;
-    truncated: boolean;
-  } {
-    const ordered = fragments
-      .map((fragment) => this.sanitize(fragment))
-      .sort((left, right) => right.priority - left.priority || left.tokenEstimate - right.tokenEstimate);
-    const selected: MemoryFragment[] = [];
-    const excluded: Array<{ fragment: MemoryFragment; reason: string }> = [];
-    const overflowIndex: MemoryIndexEntry[] = [];
-    const consumedByBranch = new Map<string, number>();
-    let tokensUsed = 0;
-    let dedupedCount = 0;
-    let truncated = false;
-    for (const fragment of ordered) {
-      if (run.dedupKeys.has(fragment.dedupKey)) {
-        dedupedCount += 1;
-        excluded.push({ fragment, reason: 'Duplicate evidence was already adopted earlier in this run.' });
-        continue;
-      }
-      if (selected.length >= limit) {
-        overflowIndex.push(fragmentIndexEntry(fragment));
-        excluded.push({ fragment, reason: 'Result limit excluded this lower-priority candidate.' });
-        truncated = true;
-        continue;
-      }
-      const branchRemaining = this.availableBudget(run, fragment.branchId, budget)
-        - (consumedByBranch.get(fragment.branchId) ?? 0);
-      const remaining = Math.min(budget - tokensUsed, branchRemaining);
-      if (fragment.tokenEstimate > remaining) {
-        overflowIndex.push(fragmentIndexEntry(fragment));
-        excluded.push({ fragment, reason: 'Atom content exceeded the remaining memory token budget.' });
-        truncated = true;
-        continue;
-      }
-      selected.push(fragment);
-      tokensUsed += fragment.tokenEstimate;
-      consumedByBranch.set(fragment.branchId, (consumedByBranch.get(fragment.branchId) ?? 0) + fragment.tokenEstimate);
-      run.dedupKeys.add(fragment.dedupKey);
-    }
-    for (const [branchId, tokens] of consumedByBranch) this.consume(run, branchId, tokens);
-    run.ledger.dedupKeys = [...run.dedupKeys];
-    return { fragments: selected, excluded, overflowIndex, tokensUsed, dedupedCount, truncated };
-  }
-
   private record(
-    run: ActiveRun,
+    run: ActiveMemoryRun,
     input: Omit<MemoryAccessRecord, 'id' | 'at' | 'fragmentIds' | 'dedupedCount'> & {
       fragmentIds?: string[];
       dedupedCount?: number;
@@ -570,7 +553,7 @@ export class MemoryTree {
   }
 
   private recordQuery(
-    run: ActiveRun,
+    run: ActiveMemoryRun,
     action: Extract<MemoryAccessAction, 'expand' | 'deep_search'>,
     result: MemoryQueryResult,
     query?: string,
@@ -595,7 +578,7 @@ export class MemoryTree {
   }
 
   private budgetExhausted(
-    run: ActiveRun,
+    run: ActiveMemoryRun,
     action: Extract<MemoryAccessAction, 'expand' | 'deep_search'>,
     branchId: string,
     query: string | undefined,
@@ -619,7 +602,7 @@ export class MemoryTree {
   }
 
   private queryFailure(
-    run: ActiveRun,
+    run: ActiveMemoryRun,
     action: Extract<MemoryAccessAction, 'expand' | 'deep_search'>,
     branchId: string,
     query: string | undefined,

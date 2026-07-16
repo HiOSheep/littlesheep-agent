@@ -19,8 +19,10 @@ import {
 } from './api'
 import { resourceKindLabel } from './memory-resource-labels'
 import { compactPath, formatDateTime, formatRelativeDate } from './memory-tree/format'
+import { boundedNodeDetailCache } from './memory-tree/detail-cache'
 import { MemoryMigrationPanel } from './memory-tree/migration-panel'
 import { MemoryNodeRow } from './memory-tree/node-row'
+import { useMemoryAtomActions } from './memory-tree/use-memory-atom-actions'
 import { useMemoryMigration } from './memory-tree/use-memory-migration'
 
 type MemoryBranchFilter = 'all' | MemoryTreeBranchId | 'resources' | 'archive' | 'migration'
@@ -90,6 +92,11 @@ export function MemoryTreeView() {
   const nodeDetailRequestsRef = useRef(new Map<string, AbortController>())
   const mountedRef = useRef(true)
   const migration = useMemoryMigration({ active: branchFilter === 'migration', onRegistered: closeConfirmation })
+  const atomActions = useMemoryAtomActions({
+    overview,
+    onReload: () => load(true),
+    onError: setError,
+  })
 
   async function load(silent = false, preserveProjectNotice = false) {
     const requestId = ++loadRequestRef.current
@@ -561,7 +568,7 @@ export function MemoryTreeView() {
                         detail={nodeDetails[node.id]}
                         detailLoading={loadingNodeDetails.has(node.id)}
                         expanded={expandedNodeId === node.id}
-                        busy={managingNodeId === node.id}
+                        busy={managingNodeId === node.id || atomActions.busyNodeId === node.id}
                         onToggle={() => {
                           const opening = expandedNodeId !== node.id
                           setExpandedNodeId(opening ? node.id : null)
@@ -569,6 +576,9 @@ export function MemoryTreeView() {
                         }}
                         onRequestEvidence={() => void loadNodeDetail(node.id, 'D3')}
                         onAction={(action) => requestAction(node, action)}
+                        atomManagementEnabled={overview.repository.backendKind === 'v3' && Boolean(node.atomRevision)}
+                        onAtomAction={(action) => atomActions.open(node, action)}
+                        onExportAtom={() => void atomActions.exportAtom(node)}
                       />
                     ))}
                 {visibleContentCount === 0 && (
@@ -588,6 +598,8 @@ export function MemoryTreeView() {
           </div>
         </>
       )}
+
+      {atomActions.dialog}
 
       {confirmation && confirmationCopy && (
         <div className={`memory-confirmation-layer ${confirmationVisible ? 'visible' : ''}`}>
@@ -974,18 +986,6 @@ function resourceAuthorityShortLabel(authority: MemoryTreeResourceOverview['auth
 
 function resourcePrivacyLabel(privacy: MemoryTreeResourceOverview['privacy']): string {
   return ({ private: '私有', 'project-private': '项目私有', shareable: '可共享', public: '公开' })[privacy]
-}
-
-function boundedNodeDetailCache(
-  current: Record<string, MemoryTreeNodeDetail>,
-  detail: MemoryTreeNodeDetail,
-): Record<string, MemoryTreeNodeDetail> {
-  const next = { ...current }
-  delete next[detail.nodeId]
-  next[detail.nodeId] = detail
-  const ids = Object.keys(next)
-  while (ids.length > 24) delete next[ids.shift()!]
-  return next
 }
 
 function resourceManagementActionLabel(action: MemoryTreeResourceOverview['managementHistory'][number]['action']): string {

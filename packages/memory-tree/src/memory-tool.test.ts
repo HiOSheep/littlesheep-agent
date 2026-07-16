@@ -99,4 +99,20 @@ describe('memory_tree agent tools', () => {
       action: 'deep_search', status: 'error', tokensUsed: 0,
     });
   });
+
+  it('releases selected atoms from only the current run context', async () => {
+    const { tree, ctx } = setup();
+    const tool = createMemoryTreeTool(tree);
+    await tool.execute({ action: 'branch_index', branch: 'long-term' }, ctx);
+    const expansion = await tool.execute({ action: 'expand', branch: 'long-term', nodeId: 'node-1' }, ctx);
+    const released = await tool.execute({ action: 'release', atomIds: ['node-1'] }, ctx);
+
+    expect(expansion.meta?.memoryFragmentIds).toEqual(['node-1']);
+    expect(released.ok).toBe(true);
+    expect(released.meta).toMatchObject({
+      memoryContextAction: 'release',
+      memoryReleasedAtomIds: ['node-1'],
+    });
+    expect(tree.getLedger('run-1')!.dedupKeys).not.toContain('node-1');
+  });
 });

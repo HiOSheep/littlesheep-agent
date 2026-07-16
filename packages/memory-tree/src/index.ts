@@ -106,6 +106,9 @@ export {
   type MemoryWriteServiceLike,
 } from './memory-repository.js';
 export type {
+  MemoryAtomManagementAudit,
+  MemoryAtomManagementRequest,
+  MemoryAtomManagementResult,
   MemoryRepositoryEmbeddingStatusCounts,
   MemoryRepositoryManagementFacade,
   MemoryRepositoryManagementStatus,
@@ -189,6 +192,8 @@ export {
   DisabledEmbeddingEngine,
   EmbeddingUnavailableError,
   MemoryEventJournal,
+  MemoryImmutableFactStore,
+  MemoryImmutableFactConflictError,
   MemoryOperationJournal,
   MemoryV3MaintenanceWorker,
   MemoryV3StorageCoordinator,
@@ -196,6 +201,9 @@ export {
 } from './v3/index.js';
 export type {
   MemoryAtom as MemoryAtomV3,
+  MemoryAtomInvalidation,
+  MemoryAtomMerge,
+  MemoryImmutableFact,
   MemoryCatalogEntry as MemoryCatalogEntryV3,
   MemoryDisclosureLevel,
   MemoryEntity,
