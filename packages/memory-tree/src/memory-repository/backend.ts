@@ -32,6 +32,7 @@ import type {
   MemoryRepositoryNodeInspection,
 } from './management.js';
 import type { MemoryV3MigrationValidation } from './v3-migration-contracts.js';
+import type { MemoryAtom, MemoryUseFeedback } from '../v3/contracts.js';
 
 export interface MemoryRepositoryBackend extends Partial<MemoryRepositoryRetrievalBackend> {
   readonly rootDir: string;
@@ -63,6 +64,7 @@ export interface MemoryRepositoryBackend extends Partial<MemoryRepositoryRetriev
   rebindProjectPath(fromPath: string, toPath: string): Promise<MemoryProjectRebindResult>;
   children(parentNodeId: string): Promise<MemoryNode[]>;
   write(intent: MemoryWriteIntent): Promise<MemoryWriteResult>;
+  recordMemoryFeedback(feedbacks: MemoryUseFeedback[]): Promise<MemoryAtom[]>;
   retryRecoveryQueue(limit?: number): Promise<MemoryWriteResult[]>;
   setStatus(nodeId: string, status: MemoryNode['status']): Promise<MemoryNode | undefined>;
   changeTier(nodeId: string, tier: InjectionTier): Promise<MemoryNode | undefined>;

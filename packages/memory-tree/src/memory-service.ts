@@ -35,6 +35,11 @@ import type {
   ProjectMemoryTarget,
 } from './project-memory-projection.js';
 import { MemoryTree } from './memory-tree.js';
+import {
+  MemorySourceFeedbackCoordinator,
+  type MemoryConversationSourceInput,
+  type MemoryConversationSourceRecord,
+} from './memory-service/source-feedback.js';
 import type {
   WorkspaceResourceSyncOptions,
   WorkspaceResourceSyncResult,
@@ -83,6 +88,7 @@ export class MemoryService {
   private readonly tree: MemoryTree;
   private readonly repository: MemoryRepository;
   private readonly writer: MemoryWriteService;
+  private readonly sourceFeedback: MemorySourceFeedbackCoordinator;
   private readonly rootIndexMaxChars: number;
   private readonly attachments: AttachmentResourceCoordinator;
   private readonly summaries: SessionSummaryResourceCoordinator;
@@ -101,6 +107,7 @@ export class MemoryService {
     this.writer = options.writer;
     this.rootIndexMaxChars = options.rootIndexMaxChars;
     const dataDir = resolve(options.dataDir);
+    this.sourceFeedback = new MemorySourceFeedbackCoordinator(dataDir, this.repository);
     this.attachments = new AttachmentResourceCoordinator(this.repository);
     this.summaries = new SessionSummaryResourceCoordinator(this.repository, options.resolveSessionSummary);
     this.events = new RuntimeEventResourceCoordinator(this.repository, options.resolveRuntimeEvents);
@@ -168,43 +175,35 @@ export class MemoryService {
     return combined.slice(0, Math.max(0, this.rootIndexMaxChars - marker.length)) + marker;
   }
 
-  beginRun(input: MemoryRunRegistration): Promise<MemoryRunStart> {
-    return this.runs.begin(input);
-  }
+  beginRun(input: MemoryRunRegistration): Promise<MemoryRunStart> { return this.runs.begin(input); }
 
-  finishRun(runId: string): Promise<MemoryAccessLedger | undefined> {
-    return this.runs.finish(runId);
-  }
+  finishRun(runId: string): Promise<MemoryAccessLedger | undefined> { return this.runs.finish(runId); }
 
   branchIndex(runId: string, branchId: string): Promise<BranchIndex> { return this.tree.branchIndex(runId, branchId); }
 
-  expand(runId: string, options: MemoryExpandOptions): Promise<MemoryQueryResult> {
-    return this.tree.expand(runId, options);
-  }
+  expand(runId: string, options: MemoryExpandOptions): Promise<MemoryQueryResult> { return this.tree.expand(runId, options); }
 
   deepSearch(runId: string, options: MemorySearchOptions): Promise<MemoryQueryResult> { return this.tree.deepSearch(runId, options); }
 
   release(runId: string, atomIds: string[]): Promise<MemoryReleaseResult> { return this.tree.release(runId, atomIds); }
 
-  listBranches(): BranchDescription[] {
-    return this.tree.list();
-  }
+  listBranches(): BranchDescription[] { return this.tree.list(); }
 
-  listLedgers(limit = 40): MemoryAccessLedger[] {
-    return this.tree.listLedgers(limit);
-  }
+  listLedgers(limit = 40): MemoryAccessLedger[] { return this.tree.listLedgers(limit); }
 
   async invalidate(branch: string): Promise<void> {
     await this.tree.invalidateBranch(branch);
   }
 
-  write(intent: MemoryWriteIntent): Promise<MemoryWriteResult> {
-    return this.writer.write(intent);
-  }
+  write(intent: MemoryWriteIntent): Promise<MemoryWriteResult> { return this.writer.write(intent); }
 
-  writeMany(intents: MemoryWriteIntent[]): Promise<MemoryWriteResult[]> {
-    return this.writer.writeMany(intents);
-  }
+  writeMany(intents: MemoryWriteIntent[]): Promise<MemoryWriteResult[]> { return this.writer.writeMany(intents); }
+
+  captureConversationSources(inputs: MemoryConversationSourceInput[]): Promise<MemoryConversationSourceRecord[]> { return this.sourceFeedback.capture(inputs); }
+
+  listConversationSources(sourceRefs: string[], limit = 100): Promise<MemoryConversationSourceRecord[]> { return this.sourceFeedback.list(sourceRefs, limit); }
+
+  recordRunFeedback(input: import('./types.js').MemoryRunFeedbackInput): Promise<import('./v3/contracts.js').MemoryAtom[]> { return this.sourceFeedback.recordRunFeedback(input); }
 
   async recover(limit = 20): Promise<MemoryWriteResult[]> {
     const results = await this.repository.retryRecoveryQueue(limit);
@@ -213,9 +212,7 @@ export class MemoryService {
     return results;
   }
 
-  getNode(id: string): Promise<MemoryNode | undefined> {
-    return this.repository.getNode(id);
-  }
+  getNode(id: string): Promise<MemoryNode | undefined> { return this.repository.getNode(id); }
 
   async manageNode(
     nodeId: string,
@@ -229,9 +226,7 @@ export class MemoryService {
     return result;
   }
 
-  listResources(query: MemoryResourceQuery = {}): Promise<MemoryResourceRegistration[]> {
-    return this.management.list(query);
-  }
+  listResources(query: MemoryResourceQuery = {}): Promise<MemoryResourceRegistration[]> { return this.management.list(query); }
 
   manageResource(
     resourceId: string,
@@ -249,9 +244,7 @@ export class MemoryService {
     return this.management.rebindSource(resourceId, sourcePath, reason);
   }
 
-  getManagementSnapshot(): Promise<MemoryManagementSnapshot> {
-    return this.management.snapshot();
-  }
+  getManagementSnapshot(): Promise<MemoryManagementSnapshot> { return this.management.snapshot(); }
 
   getProjectMemoryProjectionState(project: ProjectMemoryTarget): Promise<ProjectMemoryProjectionState> {
     return this.projects.getState(project);
@@ -297,13 +290,9 @@ export class MemoryService {
     return this.projects.exportShareable(project, outputPath, options);
   }
 
-  registerRunResources(input: MemoryRunResourceInput): Promise<void> {
-    return this.runs.registerResources(input);
-  }
+  registerRunResources(input: MemoryRunResourceInput): Promise<void> { return this.runs.registerResources(input); }
 
-  registerSessionSummary(sessionId: SessionId, summary: CompactionSummary): Promise<void> {
-    return this.summaries.register(sessionId, summary);
-  }
+  registerSessionSummary(sessionId: SessionId, summary: CompactionSummary): Promise<void> { return this.summaries.register(sessionId, summary); }
 
   registerRunAttachments(runId: string, sessionId: SessionId, attachments: RunAttachment[]): Promise<void> {
     return this.attachments.register(runId, sessionId, attachments);
@@ -317,9 +306,7 @@ export class MemoryService {
     return this.events.register(runId, sessionId, events);
   }
 
-  loadBootstrapFiles(dir: string): Promise<Record<string, string>> {
-    return this.bootstrap.load(dir);
-  }
+  loadBootstrapFiles(dir: string): Promise<Record<string, string>> { return this.bootstrap.load(dir); }
 
   syncSkillResources(
     skills: MemorySkillResourceInput[],
@@ -329,9 +316,7 @@ export class MemoryService {
     return this.skills.sync(skills, sources, options);
   }
 
-  syncWorkspaceDocuments(workspace: string): Promise<void> {
-    return this.workspaceDocuments.sync(workspace);
-  }
+  syncWorkspaceDocuments(workspace: string): Promise<void> { return this.workspaceDocuments.sync(workspace); }
 
   syncWorkspaceResources(
     workspace: string,

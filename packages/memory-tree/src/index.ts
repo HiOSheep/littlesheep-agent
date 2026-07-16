@@ -16,6 +16,7 @@ export {
   type MemoryRunRegistration,
   type MemoryAccessRecord,
   type MemoryAccessLedger,
+  type MemoryRunFeedbackInput,
   type MemoryExpandOptions,
   type MemorySearchOptions,
   type MemoryQueryResult,
@@ -176,6 +177,18 @@ export {
   type WorkspaceResourceSyncResult,
 } from './workspace-resource-index.js';
 export { estimateTokens, activityScore, truncateChunk, MIN_USEFUL_TOKENS } from './util.js';
+export { memoryUseFeedbackFromRun } from './memory-feedback.js';
+export {
+  MemoryConversationSourceStore,
+  MemoryConversationSourceConflictError,
+  MEMORY_CONVERSATION_SOURCE_VERSION,
+} from './conversation-source-store.js';
+export type {
+  MemoryConversationSourceInput,
+  MemoryConversationSourceKind,
+  MemoryConversationSourceManifest,
+  MemoryConversationSourceRecord,
+} from './conversation-source-store.js';
 export * as MemoryV3 from './v3/index.js';
 export type {
   AuthorityKind,
@@ -196,6 +209,7 @@ export {
   EmbeddingUnavailableError,
   MemoryEventJournal,
   MemoryRawRecordStore,
+  MemoryRawRecordStore as MemoryProjectionMutationRecordStore,
   MemoryRawRecordConflictError,
   MemoryRawRecordCommitConflictError,
   MemoryOperationJournal,
@@ -207,6 +221,8 @@ export type {
   MemoryAtom as MemoryAtomV3,
   MemoryAtomInvalidation,
   MemoryAtomMerge,
+  MemoryProjectionMutationRecord,
+  MemoryProjectionMutationCommitReceipt,
   MemoryRawRecord,
   MemoryRawRecordCommitReceipt,
   MemoryCatalogEntry as MemoryCatalogEntryV3,

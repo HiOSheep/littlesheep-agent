@@ -41,7 +41,8 @@ export interface MemoryAtomEvidenceExportResult {
   outputPath: string;
   atomId: string;
   revision: number;
-  rawRecordCount: number;
+  sourceRecordCount: number;
+  projectionRecordCount: number;
   exportedAt: string;
 }
 
@@ -53,14 +54,16 @@ export async function exportRuntimeMemoryAtom(
   const inspection = await runner.infra.memoryRepository.management.inspectNode(atomId, 'D3');
   if (!inspection?.atom) return undefined;
   const exportedAt = new Date().toISOString();
-  const evidencePackage = buildEvidencePackage(inspection, exportedAt);
+  const sourceRecords = await runner.infra.memoryService.listConversationSources(inspection.atom.sourceRefs, 100);
+  const evidencePackage = buildEvidencePackage(inspection, sourceRecords, exportedAt);
   await mkdir(dirname(outputPath), { recursive: true });
   await atomicWrite(outputPath, `${JSON.stringify(evidencePackage, null, 2)}\n`);
   return {
     outputPath,
     atomId,
     revision: inspection.atom.revision,
-    rawRecordCount: inspection.rawRecords?.length ?? 0,
+    sourceRecordCount: sourceRecords.length,
+    projectionRecordCount: inspection.projectionRecords?.length ?? 0,
     exportedAt,
   };
 }
@@ -70,7 +73,11 @@ export function suggestedMemoryAtomExportName(atomId: string, title?: string): s
   return `${preferred}.memory.json`;
 }
 
-function buildEvidencePackage(inspection: MemoryRepositoryNodeInspection, exportedAt: string) {
+function buildEvidencePackage(
+  inspection: MemoryRepositoryNodeInspection,
+  sourceRecords: Awaited<ReturnType<AgentRunner['infra']['memoryService']['listConversationSources']>>,
+  exportedAt: string,
+) {
   return {
     version: 1,
     kind: 'littlesheep-memory-atom-evidence',
@@ -83,7 +90,8 @@ function buildEvidencePackage(inspection: MemoryRepositoryNodeInspection, export
     envelope: inspection.envelope,
     neighborhood: inspection.neighborhood,
     history: inspection.history,
-    rawRecords: inspection.rawRecords ?? [],
+    sourceRecords,
+    projectionRecords: inspection.projectionRecords ?? [],
   };
 }
 

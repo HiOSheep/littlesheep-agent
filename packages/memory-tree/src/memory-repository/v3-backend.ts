@@ -46,7 +46,7 @@ import type {
   MemoryRepositoryIndexRequest,
   MemoryRepositoryRetrievalRequest,
 } from './retrieval.js';
-import type { MemoryAccessRecord } from '../v3/contracts.js';
+import type { MemoryAccessRecord, MemoryAtom, MemoryUseFeedback } from '../v3/contracts.js';
 import type {
   MemoryAtomManagementRequest,
   MemoryAtomManagementResult,
@@ -56,6 +56,7 @@ import type {
 import { MemoryV3AtomManagement } from './v3-atom-management.js';
 import { validateMemoryV3RepositoryState } from './v3-migration-validation-state.js';
 import type { MemoryV3MigrationValidation } from './v3-migration-contracts.js';
+import { MemoryV3FeedbackManager, MEMORY_USE_FEEDBACK_PAYLOAD_KEY } from './v3-feedback-manager.js';
 
 export interface MemoryRepositoryV3BackendOptions {
   dataDir: string;
@@ -65,6 +66,7 @@ export interface MemoryRepositoryV3BackendOptions {
 }
 
 export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
+  readonly dataDir: string;
   readonly rootDir: string;
   readonly indexPath: string;
   readonly atomStore: MemoryAtomStore;
@@ -77,12 +79,14 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
   private readonly eventJournal: MemoryEventJournal;
   private readonly nodes: MemoryV3NodeStore;
   private readonly atomManagement: MemoryV3AtomManagement;
+  private readonly feedback: MemoryV3FeedbackManager;
   private readonly resources: MemoryV3ResourceStore;
   private readonly retrieval: MemoryV3Retrieval;
   private readonly log?: MemoryRepositoryOptions['log'];
   private closed = false;
 
   constructor(options: MemoryRepositoryV3BackendOptions) {
+    this.dataDir = options.dataDir;
     this.rootDir = join(options.dataDir, 'memory-tree', 'v3');
     this.indexPath = join(this.rootDir, 'catalog.sqlite');
     this.log = options.log;
@@ -111,7 +115,10 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
       onCheckpoint: async (checkpoint, context) => {
         if (checkpoint !== 'catalog-updated') return;
         const record = await this.eventJournal.get(context.eventId);
-        if (record) await this.ledger.materializeEventAudits(record.event.payload);
+        if (!record) return;
+        await this.ledger.materializeEventAudits(record.event.payload);
+        const feedback = record.event.payload[MEMORY_USE_FEEDBACK_PAYLOAD_KEY];
+        if (feedback && typeof feedback === 'object') this.catalog.recordFeedback(feedback as MemoryUseFeedback);
       },
     });
     this.nodes = new MemoryV3NodeStore({
@@ -128,6 +135,12 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
       catalog: this.catalog,
       coordinator: this.coordinator,
     });
+    this.feedback = new MemoryV3FeedbackManager(
+      this.atomStore,
+      this.catalog,
+      this.coordinator,
+      this.graphStore,
+    );
     this.resources = new MemoryV3ResourceStore({
       dataDir: options.dataDir,
       catalog: this.catalog,
@@ -229,6 +242,9 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
   write(intent: MemoryWriteIntent): Promise<MemoryWriteResult> {
     return this.withPostWriteMaintenance(this.nodes.write(intent), (result) => Boolean(result.node));
   }
+  recordMemoryFeedback(feedbacks: MemoryUseFeedback[]): Promise<MemoryAtom[]> {
+    return this.withPostWriteMaintenance(this.feedback.recordMany(feedbacks), (atoms) => atoms.length > 0);
+  }
   retryRecoveryQueue(limit = 20): Promise<MemoryWriteResult[]> {
     return this.withPostWriteMaintenance(
       this.nodes.retryRecoveryQueue(limit),
@@ -293,7 +309,7 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
       envelope: candidate.envelope,
       neighborhood: candidate.neighborhood,
       history: candidate.history,
-      rawRecords: disclosureLevel === 'D3'
+      projectionRecords: disclosureLevel === 'D3'
         ? await this.rawRecordStore.listForAtom(nodeId, 100)
         : undefined,
     };

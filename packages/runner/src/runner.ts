@@ -24,6 +24,7 @@ import { maybeCompact, SessionManager } from '@littlesheep/session';
 import {
   buildRunContext,
   buildRunRequestCandidates,
+  collectConversationSourceRecords,
   prepareModelRequest,
   recordProviderUsage,
 } from '@littlesheep/harness';
@@ -325,12 +326,42 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           ok: false,
           error: `harness threw: ${(err as Error).message}`,
         };
-      } finally {
-        try {
-          memoryAccess = await infra.memoryService.finishRun(ctx.runId);
-        } catch (err) {
-          opts.log?.('warn', `runner: run resource cleanup degraded: ${(err as Error).message}`);
-        }
+      }
+      try {
+        await infra.memoryService.captureConversationSources(collectConversationSourceRecords(ctx));
+      } catch (err) {
+        opts.log?.('warn', `runner: conversation source capture degraded: ${(err as Error).message}`);
+      }
+      try {
+        const latestVerification = ctx.verificationHistory?.at(-1);
+        await infra.memoryService.recordRunFeedback({
+          runId: ctx.runId,
+          status: signal?.aborted ? 'aborted' : stageResult.ok ? 'ok' : 'error',
+          references: (ctx.memoryKnownState?.references ?? []).map((reference) => ({
+            atomId: reference.atomId,
+            decision: reference.decision,
+            reason: reference.reason,
+          })),
+          activeAtomIds: [...(ctx.memoryContextWorkingSet?.activeAtomIds ?? [])],
+          releasedAtomIds: [...(ctx.memoryContextWorkingSet?.releasedAtomIds ?? [])],
+          verification: latestVerification ? {
+            attempt: latestVerification.attempt,
+            verdict: latestVerification.verdict,
+            source: latestVerification.source,
+            verifiedAt: latestVerification.verifiedAt,
+          } : undefined,
+          successfulToolCallIds: (ctx.toolResults ?? [])
+            .filter((result) => result.ok)
+            .map((result) => result.callId),
+          recordedAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        opts.log?.('warn', `runner: memory usefulness feedback degraded: ${(err as Error).message}`);
+      }
+      try {
+        memoryAccess = await infra.memoryService.finishRun(ctx.runId);
+      } catch (err) {
+        opts.log?.('warn', `runner: run resource cleanup degraded: ${(err as Error).message}`);
       }
       const runAborted = signal?.aborted === true;
 

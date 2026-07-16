@@ -1,4 +1,4 @@
-// Coordinates raw record capture, journals, atom files and catalog commits.
+// Coordinates projection mutation records, journals, atom files and catalog commits.
 import type {
   MemoryAtom,
   MemoryEventJournalRecord,

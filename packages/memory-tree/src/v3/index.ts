@@ -6,6 +6,7 @@ export * from './catalog-graph.js';
 export * from './embedding-engine.js';
 export * from './event-journal.js';
 export * from './raw-record-store.js';
+export { MemoryRawRecordStore as MemoryProjectionMutationRecordStore } from './raw-record-store.js';
 export * from './raw-record-commit-store.js';
 export * from './graph-store.js';
 export * from './maintenance-worker.js';

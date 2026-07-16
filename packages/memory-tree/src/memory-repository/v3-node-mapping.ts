@@ -10,6 +10,7 @@ import { unique } from './text.js';
 const INTERNAL_SCOPE_ROOT_PREFIX = 'v3-scope-root:';
 const MERGED_INTENT_PREFIX = 'memory-intent:';
 const INTERNAL_EVIDENCE_PREFIX = 'memory-internal:';
+const LEGACY_SOURCE_REF_PREFIX = 'memory-v2-source:';
 
 export function memoryV3ScopeRootId(
   branch: MemoryBranchKind,
@@ -47,6 +48,7 @@ export function createMemoryV3ScopeRoot(
     epistemicStatus: 'verified',
     authorityScope: { kind: 'system-policy', scope, scopeKey: storageScopeKey, topics: ['memory-index'] },
     assertedBy: { kind: 'system', id: 'memory-v3-repository' },
+    sourceRefs: [],
     evidenceRefs: [`${INTERNAL_EVIDENCE_PREFIX}scope-root`],
     entityRefs: [],
     relationRefs: [],
@@ -92,13 +94,14 @@ export function memoryAtomToNode(
     reason: atom.reason,
     sourceRunIds: [...atom.sourceRunIds],
     sourceStages: [...atom.sourceStages],
-    sourceRefs: atom.evidenceRefs.filter((value) => (
-      !value.startsWith(MERGED_INTENT_PREFIX) && !value.startsWith(INTERNAL_EVIDENCE_PREFIX)
-    )),
+    sourceRefs: unique([
+      ...atom.sourceRefs,
+      ...legacySourceRefsFromEvidence(atom.evidenceRefs),
+    ]),
     status: atom.status === 'tombstone' ? 'deleted' : atom.status,
     createdAt: atom.createdAt,
     updatedAt: atom.updatedAt,
-    mergedFrom: atom.evidenceRefs
+    mergedFrom: atom.mergedIntentIds ?? atom.evidenceRefs
       .filter((value) => value.startsWith(MERGED_INTENT_PREFIX))
       .map((value) => value.slice(MERGED_INTENT_PREFIX.length)),
     atomRevision: atom.revision,
@@ -149,7 +152,8 @@ export function createMemoryAtomInput(
           : input.classification.authorityScope.scopeKey,
     },
     assertedBy: input.classification.assertedBy,
-    evidenceRefs: unique([...input.sourceRefs, ...input.classification.evidenceRefs]),
+    sourceRefs: unique(input.sourceRefs),
+    evidenceRefs: unique(input.classification.evidenceRefs),
     entityRefs: unique(input.entityRefs),
     relationRefs: unique(input.relationRefs),
     title: input.summary,
@@ -173,6 +177,16 @@ export function createMemoryAtomInput(
 
 export function mergedIntentEvidence(intentId: string): string {
   return `${MERGED_INTENT_PREFIX}${intentId}`;
+}
+
+export function legacySourceEvidence(sourceRef: string): string {
+  return `${LEGACY_SOURCE_REF_PREFIX}${sourceRef}`;
+}
+
+export function legacySourceRefsFromEvidence(evidenceRefs: string[]): string[] {
+  return evidenceRefs
+    .filter((value) => value.startsWith(LEGACY_SOURCE_REF_PREFIX))
+    .map((value) => value.slice(LEGACY_SOURCE_REF_PREFIX.length));
 }
 
 export function memoryV3EntityId(

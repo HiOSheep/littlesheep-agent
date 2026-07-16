@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { EmbeddingEngine, EmbeddingRequest, EmbeddingResult, MemoryEntity } from '../v3/contracts.js';
+import type { EmbeddingEngine, EmbeddingRequest, EmbeddingResult, MemoryEntity, MemoryRelation } from '../v3/contracts.js';
 import { InjectionTier, type MemoryWriteIntent } from '../types.js';
 import { createMemoryV3ExperimentMarker } from '../memory-repository.js';
 import { resolveMemoryWritePolicy } from './write-policy.js';
@@ -87,6 +87,80 @@ describe('MemoryRepositoryV3Backend recovery', () => {
       history: { atomId: created.node!.id },
     });
   });
+
+  it('updates verified usefulness idempotently without changing confidence', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'ls-memory-v3-backend-feedback-'));
+    directories.push(dataDir);
+    await createMemoryV3ExperimentMarker(dataDir);
+    const backend = createBackend(dataDir);
+    backends.push(backend);
+    await backend.initialize();
+    const created = await backend.write(intent());
+    const before = await backend.atomStore.read(created.node!.id);
+    const feedback = {
+      id: 'feedback-1',
+      atomId: created.node!.id,
+      runId: 'run-feedback',
+      outcome: 'useful' as const,
+      verified: true,
+      evidenceRefs: ['run:run-feedback:verification:1:pass'],
+      verifyStageId: 'run-feedback:verify:1',
+      reason: 'Structural verification passed.',
+      createdAt: '2026-07-16T06:00:00.000Z',
+    };
+
+    await backend.recordMemoryFeedback([feedback]);
+    await backend.recordMemoryFeedback([feedback]);
+    const after = await backend.atomStore.read(created.node!.id);
+
+    expect(after?.verifiedUsefulness.useful).toBe(1);
+    expect(after?.feedbackRevision).toBe(1);
+    expect(after?.lastUsefulAt).toBe(feedback.createdAt);
+    expect(after?.confidence).toBe(before?.confidence);
+    expect(backend.catalog.countFeedbackRecords()).toBe(1);
+  });
+
+  it('adjusts existing relation relevance from verified usefulness without changing relation confidence', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'ls-memory-v3-backend-relation-feedback-'));
+    directories.push(dataDir);
+    await createMemoryV3ExperimentMarker(dataDir);
+    const backend = createBackend(dataDir);
+    backends.push(backend);
+    await backend.initialize();
+    const left = testEntity();
+    const right = { ...testEntity(), id: 'concept:runtime-feedback', externalKey: 'runtime-feedback', label: 'Runtime feedback' };
+    await backend.graphStore.upsertEntity(left);
+    await backend.graphStore.upsertEntity(right);
+    const relation = testRelation(left.id, right.id);
+    await backend.graphStore.upsertRelation(relation);
+    const created = await backend.write(intent(left.id, relation.id));
+
+    await backend.recordMemoryFeedback([{
+      id: 'feedback-relation-1',
+      atomId: created.node!.id,
+      runId: 'run-feedback',
+      outcome: 'useful',
+      verified: true,
+      evidenceRefs: ['run:run-feedback:verification:1:pass'],
+      reason: 'Structural verification passed.',
+      createdAt: '2026-07-16T06:00:00.000Z',
+    }]);
+    await backend.recordMemoryFeedback([{
+      id: 'feedback-relation-1',
+      atomId: created.node!.id,
+      runId: 'run-feedback',
+      outcome: 'useful',
+      verified: true,
+      evidenceRefs: ['run:run-feedback:verification:1:pass'],
+      reason: 'Structural verification passed.',
+      createdAt: '2026-07-16T06:00:00.000Z',
+    }]);
+
+    const updated = await backend.graphStore.getRelation(relation.id);
+    expect(updated?.relevance).toBeGreaterThan(relation.relevance);
+    expect(updated?.confidence).toBe(relation.confidence);
+    expect(updated?.feedbackRevision).toBe(1);
+  });
 });
 
 function createBackend(dataDir: string, embeddingEngine?: EmbeddingEngine): MemoryRepositoryV3Backend {
@@ -114,7 +188,7 @@ function testEntity(): MemoryEntity {
   };
 }
 
-function intent(entityId?: string): MemoryWriteIntent {
+function intent(entityId?: string, relationId?: string): MemoryWriteIntent {
   return {
     branch: 'long-term',
     parentNodeId: 'long-term:root',
@@ -135,7 +209,32 @@ function intent(entityId?: string): MemoryWriteIntent {
       authorityScope: { kind: 'tool-evidence', scope: 'global', topics: ['memory-v3'] },
       assertedBy: { kind: 'tool', id: 'memory-v3-recovery-test' },
       entityRefs: entityId ? [entityId] : [],
+      relationRefs: relationId ? [relationId] : [],
     },
+  };
+}
+
+function testRelation(fromEntityId: string, toEntityId: string): MemoryRelation {
+  return {
+    version: 1,
+    id: 'relation:catalog-feedback',
+    fromEntityId,
+    toEntityId,
+    type: 'depends-on',
+    scope: 'global',
+    source: { kind: 'tool', id: 'memory-v3-recovery-test' },
+    sourceRefs: [],
+    evidenceRefs: ['tool:memory-v3-recovery-test'],
+    confidence: 0.9,
+    authorityScope: { kind: 'tool-evidence', scope: 'global', topics: ['memory-v3'] },
+    relevance: 0.5,
+    feedbackRevision: 0,
+    recentFeedbackIds: [],
+    status: 'active',
+    resolutionStatus: 'resolved',
+    revision: 1,
+    createdAt: '2026-07-15T09:00:00.000Z',
+    updatedAt: '2026-07-15T09:00:00.000Z',
   };
 }
 

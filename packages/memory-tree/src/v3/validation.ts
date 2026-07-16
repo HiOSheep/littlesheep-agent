@@ -9,6 +9,10 @@ import type {
 } from './contracts.js';
 
 const nonEmpty = z.string().trim().min(1);
+const conversationSourceRef = nonEmpty.regex(
+  /^conversation-source:/u,
+  'Memory sourceRefs must reference conversation source records.',
+);
 const timestamp = nonEmpty.refine((value) => Number.isFinite(Date.parse(value)), 'invalid timestamp');
 const score = z.number().finite().min(0).max(1);
 const nonNegativeInteger = z.number().int().min(0);
@@ -60,6 +64,7 @@ const atomSchema = z.object({
   epistemicStatus,
   authorityScope: authority,
   assertedBy: actor,
+  sourceRefs: z.array(conversationSourceRef).max(256).default([]),
   evidenceRefs: z.array(nonEmpty).max(256),
   entityRefs: z.array(nonEmpty).max(256),
   relationRefs: z.array(nonEmpty).max(256),
@@ -97,6 +102,7 @@ const atomSchema = z.object({
     reason: nonEmpty.max(8_000),
   }).strict().nullable().optional(),
   mergedFromAtomIds: z.array(nonEmpty.max(512)).max(256).optional(),
+  mergedIntentIds: z.array(nonEmpty.max(512)).max(256).optional(),
   effectiveAt: timestamp.optional(),
   expiresAt: timestamp.optional(),
   revalidateAt: timestamp.optional(),
@@ -140,6 +146,7 @@ const updateEventSchema = z.object({
   source: actor,
   occurredAt: timestamp,
   observedAt: timestamp,
+  sourceRefs: z.array(conversationSourceRef).max(256).default([]),
   evidenceRefs: z.array(nonEmpty).max(256),
   payload: z.record(z.unknown()),
 }).strict().superRefine((event, ctx) => {

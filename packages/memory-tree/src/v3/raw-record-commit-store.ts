@@ -1,4 +1,4 @@
-// Persists append-only proof that raw record mutations reached the commit boundary.
+// Persists append-only proof that projection mutations reached the commit boundary.
 
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdir, readFile, readdir, rename } from 'node:fs/promises';

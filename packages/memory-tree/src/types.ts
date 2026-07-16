@@ -299,6 +299,26 @@ export interface MemoryAccessLedger {
   knownState: MemoryKnownState;
 }
 
+export interface MemoryRunFeedbackInput {
+  runId: string;
+  status: 'ok' | 'error' | 'aborted';
+  references: Array<{
+    atomId: string;
+    decision: 'adopted' | 'excluded' | 'conflicted';
+    reason: string;
+  }>;
+  activeAtomIds: string[];
+  releasedAtomIds: string[];
+  verification?: {
+    attempt: number;
+    verdict: 'pass' | 'needs_replan' | 'fail';
+    source: 'model' | 'structural' | 'degraded';
+    verifiedAt: string;
+  };
+  successfulToolCallIds: string[];
+  recordedAt: string;
+}
+
 export interface MemoryTreeOptions {
   /** Maximum memory content allowed to enter one run through all expansions. */
   totalRunTokenBudget: number;
@@ -386,8 +406,10 @@ export interface MemoryWriteIntent {
   retrievalKeys: string[];
   sourceRunId: string;
   sourceStage: MemoryWriteStage;
-  /** Concrete files, records or external sources that produced this memory. */
+  /** V3 conversation source record ids; legacy v2 callers are normalized during migration. */
   sourceRefs?: string[];
+  /** Tool, VERIFY or external evidence that supports the projected statement. */
+  evidenceRefs?: string[];
   importance: number;
   confidence: number;
   reason: string;

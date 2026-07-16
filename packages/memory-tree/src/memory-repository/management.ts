@@ -4,7 +4,7 @@ import type {
   MemoryCatalogEntry,
   MemoryDisclosureLevel,
   MemoryEvidenceEnvelope,
-  MemoryRawRecord,
+  MemoryProjectionMutationRecord,
   MemoryRelationNeighborhood,
 } from '../v3/contracts.js';
 import type { MemoryRepositoryBackendKind } from './contracts.js';
@@ -40,7 +40,7 @@ export interface MemoryRepositoryNodeInspection {
   envelope?: MemoryEvidenceEnvelope;
   neighborhood?: MemoryRelationNeighborhood;
   history?: MemoryAtomHistory;
-  rawRecords?: MemoryRawRecord[];
+  projectionRecords?: MemoryProjectionMutationRecord[];
 }
 
 export type MemoryAtomManagementRequest =

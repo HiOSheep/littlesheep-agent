@@ -1,4 +1,4 @@
-// Rebuilds missing recovery projections without modifying append-only raw records.
+// Rebuilds missing recovery projections without modifying append-only projection records.
 
 import type { MemoryEventJournalRecord, MemoryRawRecord } from './contracts.js';
 import { MemoryAtomStore } from './atom-store.js';

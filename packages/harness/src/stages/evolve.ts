@@ -16,6 +16,7 @@ import {
   commitMemoryIntentBatch,
   evaluateMemoryIntent,
   memoryWriteEvidenceRefs,
+  memoryWriteSourceRefs,
   type GatedMemoryProposal,
 } from './memory-intent-gate.js';
 
@@ -192,7 +193,8 @@ function memoryProposals(value: unknown, ctx: RunContext): GatedMemoryProposal[]
       retrievalKeys,
       sourceRunId: ctx.runId,
       sourceStage: 'evolve',
-      sourceRefs: memoryWriteEvidenceRefs(gated),
+      sourceRefs: memoryWriteSourceRefs(gated),
+      evidenceRefs: memoryWriteEvidenceRefs(gated),
       importance,
       confidence,
       reason,

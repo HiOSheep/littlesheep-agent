@@ -1,4 +1,4 @@
-// Owns atom projection lifecycle without modifying append-only Memory v3 raw records.
+// Owns atom projection lifecycle without modifying immutable conversation sources.
 
 import { randomUUID } from 'node:crypto';
 import type { MemoryAtomStore } from '../v3/atom-store.js';
@@ -110,6 +110,7 @@ export class MemoryV3AtomManagement {
     const at = this.now().toISOString();
     const before = [auditState(target), auditState(source)];
     const targetPatch: MemoryAtomPatch = {
+      sourceRefs: boundedUnique([...target.sourceRefs, ...source.sourceRefs], 256),
       evidenceRefs: boundedUnique([...target.evidenceRefs, ...source.evidenceRefs], 256),
       entityRefs: boundedUnique([...target.entityRefs, ...source.entityRefs], 256),
       relationRefs: boundedUnique([...target.relationRefs, ...source.relationRefs], 256),

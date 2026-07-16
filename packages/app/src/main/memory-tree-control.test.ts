@@ -120,6 +120,7 @@ function runnerWith(overrides: Record<string, unknown> = {}): AgentRunner {
   }
   const memoryService = {
     getNode: repository.getNode,
+    listConversationSources: vi.fn(async () => []),
     manageNode: vi.fn(async (...args: Parameters<typeof repository.manageNode>) => {
       const result = await repository.manageNode(...args)
       if (result) await memoryTree.invalidateBranch('project')
@@ -328,6 +329,7 @@ describe('memory-tree control plane', () => {
         epistemicStatus: 'verified',
         authorityScope: { kind: 'tool-evidence', scope: 'workspace', scopeKey: 'D:/repo', topics: ['build'] },
         assertedBy: { kind: 'tool', id: 'verify' },
+        sourceRefs: ['conversation-source:run-1:user-message:message-1'],
         evidenceRefs: ['execution-logs/run-1.json'],
         entityRefs: [], relationRefs: [], title: 'Use pnpm', summary: 'Use pnpm for this repository',
         content: 'Run pnpm build and pnpm test from the workspace root.', retrievalKeys: ['pnpm'],
@@ -350,7 +352,9 @@ describe('memory-tree control plane', () => {
         atomId: 'node-1', atomRevision: 4, branch: 'project', scope: 'workspace', scopeKey: 'D:/repo', tier: 2,
         disclosureLevel: 'D3', statementKind: 'factual-claim', epistemicStatus: 'verified',
         authorityScope: { kind: 'tool-evidence', scope: 'workspace', scopeKey: 'D:/repo', topics: ['build'] },
-        assertedBy: { kind: 'tool', id: 'verify' }, evidenceRefs: ['execution-logs/run-1.json'],
+        assertedBy: { kind: 'tool', id: 'verify' },
+        sourceRefs: ['conversation-source:run-1:user-message:message-1'],
+        evidenceRefs: ['execution-logs/run-1.json'],
         confidence: 0.9, importance: 0.8,
         verifiedUsefulness: { useful: 2, notUseful: 0, conflicts: 0, stale: 0, lastOutcome: 'useful' },
         updatedAt: '2026-07-15T10:00:00.000Z', lastVerifiedAt: '2026-07-15T10:00:00.000Z',

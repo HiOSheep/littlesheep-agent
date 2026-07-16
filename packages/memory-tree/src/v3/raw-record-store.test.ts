@@ -93,6 +93,7 @@ function makeEvent(id: string): MemoryUpdateEvent {
     source: { kind: 'user', id: 'user' },
     occurredAt: '2026-07-15T04:00:00.000Z',
     observedAt: '2026-07-15T04:00:01.000Z',
+    sourceRefs: [`conversation-source:run-1:user-message:${id}`],
     evidenceRefs: [`message:${id}`],
     payload: { statement: `Raw record ${id}` },
   };

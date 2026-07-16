@@ -23,8 +23,12 @@ export type {
 export const MEMORY_ATOM_VERSION = 3 as const;
 export const MEMORY_EVENT_VERSION = 1 as const;
 export const MEMORY_OPERATION_VERSION = 1 as const;
-export const MEMORY_RAW_RECORD_VERSION = 1 as const;
-export const MEMORY_RAW_RECORD_COMMIT_VERSION = 1 as const;
+export const MEMORY_PROJECTION_RECORD_VERSION = 1 as const;
+export const MEMORY_PROJECTION_RECORD_COMMIT_VERSION = 1 as const;
+/** @deprecated Internal compatibility alias. Use projection-record terminology. */
+export const MEMORY_RAW_RECORD_VERSION = MEMORY_PROJECTION_RECORD_VERSION;
+/** @deprecated Internal compatibility alias. Use projection-record terminology. */
+export const MEMORY_RAW_RECORD_COMMIT_VERSION = MEMORY_PROJECTION_RECORD_COMMIT_VERSION;
 
 export type MemoryDisclosureLevel = 'D0' | 'D1' | 'D2' | 'D3';
 
@@ -76,6 +80,7 @@ export interface MemoryAtom {
   epistemicStatus: EpistemicStatus;
   authorityScope: AuthorityScope;
   assertedBy: MemoryActorRef;
+  sourceRefs: string[];
   evidenceRefs: string[];
   entityRefs: string[];
   relationRefs: string[];
@@ -98,6 +103,7 @@ export interface MemoryAtom {
   invalidation?: MemoryAtomInvalidation | null;
   merge?: MemoryAtomMerge | null;
   mergedFromAtomIds?: string[];
+  mergedIntentIds?: string[];
   effectiveAt?: string;
   expiresAt?: string;
   revalidateAt?: string;
@@ -135,13 +141,12 @@ export type MemoryStorageMutation =
     };
 
 /**
- * Append-only raw data record captured before a Memory v3 projection changes.
- * Its epistemic meaning remains in the event metadata; storage does not call
- * every captured statement a fact. Recovery journals may be pruned, but these
- * records may not be rewritten or removed.
+ * Append-only projection mutation record captured before a Memory v3 atom changes.
+ * It exists for idempotency, audit and crash recovery. It is not user-visible
+ * conversation source data and must never be presented as such.
  */
-export interface MemoryRawRecord {
-  version: typeof MEMORY_RAW_RECORD_VERSION;
+export interface MemoryProjectionMutationRecord {
+  version: typeof MEMORY_PROJECTION_RECORD_VERSION;
   id: string;
   idempotencyKey: string;
   event: MemoryUpdateEvent;
@@ -151,19 +156,25 @@ export interface MemoryRawRecord {
   contentHash: string;
 }
 
+/** @deprecated Internal compatibility alias. */
+export type MemoryRawRecord = MemoryProjectionMutationRecord;
+
 /**
- * Append-only proof that one raw record's storage mutation reached the
- * committed boundary. The receipt is separate so the raw record never needs to
- * be edited after capture.
+ * Append-only proof that one projection mutation record reached the committed
+ * boundary. The receipt is separate so the mutation record never needs to be
+ * edited after capture.
  */
-export interface MemoryRawRecordCommitReceipt {
-  version: typeof MEMORY_RAW_RECORD_COMMIT_VERSION;
+export interface MemoryProjectionMutationCommitReceipt {
+  version: typeof MEMORY_PROJECTION_RECORD_COMMIT_VERSION;
   rawRecordId: string;
   rawRecordContentHash: string;
   operationId: string;
   committedAt: string;
   contentHash: string;
 }
+
+/** @deprecated Internal compatibility alias. */
+export type MemoryRawRecordCommitReceipt = MemoryProjectionMutationCommitReceipt;
 
 export type MemoryEmbeddingStatus = 'disabled' | 'pending' | 'ready' | 'stale' | 'failed';
 
@@ -239,10 +250,13 @@ export interface MemoryRelation {
   scope: MemoryScope;
   scopeKey?: string;
   source: MemoryActorRef;
+  sourceRefs: string[];
   evidenceRefs: string[];
   confidence: number;
   authorityScope: AuthorityScope;
   relevance: number;
+  feedbackRevision?: number;
+  recentFeedbackIds?: string[];
   effectiveAt?: string;
   expiresAt?: string;
   status: 'proposed' | 'active' | 'disputed' | 'archived' | 'deleted';
@@ -278,6 +292,7 @@ export interface MemoryUpdateEvent {
   source: MemoryActorRef;
   occurredAt: string;
   observedAt: string;
+  sourceRefs: string[];
   evidenceRefs: string[];
   payload: Record<string, unknown>;
 }
@@ -349,6 +364,7 @@ export interface MemoryEvidenceEnvelope {
   epistemicStatus: EpistemicStatus;
   authorityScope: AuthorityScope;
   assertedBy: MemoryActorRef;
+  sourceRefs: string[];
   evidenceRefs: string[];
   confidence: number;
   importance: number;
@@ -367,6 +383,7 @@ export type KnownStateMemoryDecision = 'adopted' | 'excluded' | 'conflicted';
 export interface KnownStateMemoryReference {
   atomId: string;
   atomRevision: number;
+  sourceRefs: string[];
   evidenceRefs: string[];
   decision: KnownStateMemoryDecision;
   reason: string;

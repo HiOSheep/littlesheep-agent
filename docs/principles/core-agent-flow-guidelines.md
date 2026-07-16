@@ -1,6 +1,6 @@
 # LittleSheep 核心 Agent 流程规范
 
-最后更新：2026-07-16 10:42:44
+最后更新：2026-07-16 15:55:18
 
 本文是 [LittleSheep 架构原则](architecture-principles.md) 在 Core Flow、TaskBook、验证、恢复和记忆运行时上的专项约束。LLM 与 Agent、Mode 与权限、Context 与 Memory、Harness 与 Tool Execution 的顶层分工以架构原则为准；本文不重复维护另一套总架构。
 
@@ -140,24 +140,24 @@
 - 深搜绝不跨树。必须在同一次 run 中明确指定一个已经成功读取分支索引并完成展开的分支。语义/向量召回只能作为该分支内的最后兜底候选来源。
 - 兼容工具 `memory_search` 只负责导航：返回根索引或选定分支索引，不直接注入记忆正文。
 - 每次记忆介入都必须有预算、去重、来源追踪、安全封套，并记录到当前 run 账本。
-- 记忆持久层分为原始数据记录与 atom projections：原始数据记录只追加且不修改，但其内容仍按 statement kind 和 epistemic status 区分事实主张、用户陈述、建议、假设、决定与证据；atom 用于层级、相关性、检索和治理，可移动、合并、失效或恢复。Recovery journal 是有界恢复队列，不是原始数据源。
+- 记忆运行时采用四层模型：对话原始来源、投影变更记录、Atom projections 和 run working set。对话原始来源只保存用户输入与对话区可见的 LS 回复、步骤、工具过程、验证和错误，成功写入后不改写；投影变更记录只服务幂等、恢复和审计；Atom 用于层级、相关性、检索和治理，可去重、合并、调整父级、失效、恢复或重建；working set 只决定本轮实际介入。Recovery journal 是有界恢复队列，不是原始数据源。
 - 首次业务请求先检查 D1 索引元数据，只选择一个极小且受预算约束的 D2 atom working set；不得默认跨树向量召回。执行中模型可通过受控工具请求继续展开，也可 `release` 当前无用 atom；release 只释放本轮 Context 与 dedup 预算，不能删除或失效持久记忆。
 - 在已导航分支和当前作用域内，候选按 scope 匹配、来源权威、任务相关性、confidence、importance、新鲜度、已验证 usefulness 以及冲突/失效/过期惩罚稳定排序；高优先级记忆先介入，但不能挤掉安全规则、当前用户输入和必要工具证据。可选记忆长期没有验证收益时降低注入权重，但不自动降低 confidence；T0、安全规则和当前用户约束不参与普通使用衰减。
-- 读取次数本身不提高事实可信度。只有用户确认，或记忆参与的任务获得工具证据与 VERIFY 成功结果时，才记录正向 usefulness 反馈；无帮助、冲突、过期或导致错误的结果记录负反馈。任何反馈都必须可审计，并防止重复出现的错误记忆形成自增强循环。
+- 读取次数本身不提高事实可信度。`confidence` 只由新的权威来源或验证证据改变；Atom/关系的 relevance 与已验证 usefulness 可以随成功、无帮助、冲突和过期结果变化。只有用户在其权威范围内确认，或记忆参与的任务获得结构性 VERIFY、成功工具证据等可追溯结果时，才记录正向 usefulness；显式 `release` 只是未验证路由反馈，不能证明 Atom 错误。任何反馈都必须可审计，并防止重复出现的错误记忆形成自增强循环。
 - 实际进入请求的记忆使用有界 `MemoryEvidenceEnvelope`，至少包含 atom 引用、branch/scope、tier、来源/权威、confidence、importance、验证或更新时间、新鲜度、命中理由、状态、冲突和截断信息；模型据此判断证据权重，运行时仍保留唯一元数据修改权。
-- `MemoryEvidenceEnvelope` 还必须携带 statement kind、epistemic status、authority scope、asserted by 和 evidence refs。建议、假设和未验证陈述即使相关性很高，也不能以“事实”标签注入；用户目标/偏好则在其权威范围内直接约束计划。
+- `MemoryEvidenceEnvelope` 还必须携带 statement kind、epistemic status、authority scope、asserted by、`sourceRefs` 和 `evidenceRefs`。`sourceRefs` 只指向对话原始来源，工具、VERIFY 和外部佐证进入 `evidenceRefs`。建议、假设和未验证陈述即使相关性很高，也不能以“事实”标签注入；用户目标/偏好则在其权威范围内直接约束计划。
 - User Memory、Agent Self Memory、Task/Project/Session Memory 和 Knowledge Memory 使用同一套索引与写入协议。任何 domain 都按 D0 可发现索引、D1 摘要元数据、D2 原子正文、D3 来源与审计渐进展开；D0-D3 不等同于 T0-T3。
 - Memory Repository 还要登记用户、项目、文件、会话、任务、Skill、工具、规则和概念等实体，以及属于、依赖、引用、冲突、替代、派生、相似、影响等有向关系。D0/D1 只给出边界和最强相关关系，D2 按任务展开局部关系邻域，D3 才读取完整证据与历史；关系分数只服务导航，不直接触发事实确认或合并。
 - LS 自身记忆中的学习经验、工具技巧和失败教训可以持续更新，但不能覆盖高权威身份、安全规则、架构原则或用户当前要求；用户推断与用户明确陈述也必须分开存放和披露。
-- 影响记忆的用户纠正、工具/VERIFY 证据、项目/资源变化、能力变化、冲突处理和时间到期统一生成版本化 `MemoryUpdateEvent`。事件先写入只追加的原始数据记录，再登记到可恢复 journal，随后幂等更新 atom 与 catalog；mutation 提交后另写 append-only commit receipt，不修改原始记录。记录落盘后即使在 journal 登记前崩溃，也必须在重启时自动补投影；catalog 重建使用 receipt 区分历史已提交记录与真正待恢复记录，禁止倒放旧 mutation 覆盖较新 atom。处理失败进入恢复状态，禁止只更新内存或静默覆盖原始数据。
+- V3 backend 激活后，Runner 在每轮结束时补齐该轮全部对话原始来源；EVOLVE/CAPTURE 写 Atom 前先持久化其 `sourceRefs`，来源捕获失败时延期投影写入。正式 V2 路径在迁移前继续以会话 JSONL 保存可见对话，不提前创建 V3 来源文件。影响 Atom 的用户纠正、工具/VERIFY 证据、项目/资源变化、能力变化、冲突处理和时间到期统一生成版本化 `MemoryUpdateEvent`，并先写入只追加的投影变更记录，再登记到可恢复 journal，随后幂等更新 Atom 与 catalog；mutation 提交后另写 append-only commit receipt。投影变更记录落盘后即使在 journal 登记前崩溃，也必须在重启时自动补投影；catalog 重建使用 receipt 区分历史已提交记录与真正待恢复记录，禁止倒放旧 mutation 覆盖较新 Atom。处理失败进入恢复状态，禁止只更新内存或静默覆盖对话来源。
 - 时间变化通过 `effectiveAt`、`expiresAt`、`revalidateAt`、`lastUsefulAt` 和 due index 处理。运行中在安全边界近实时消费，到应用关闭期间跨过的时间点在下次启动补偿；不允许为“实时”无界轮询全部记忆或监控未授权文件。
 - 不失忆依赖持久权威副本、稳定索引、事件 journal、版本和恢复验证，不依赖全量 Prompt。当前请求不相关的记忆可以不注入，但必须仍可沿索引重新发现；用户批准的删除和到期清理仍按 tombstone、引用检查与审计执行。
 - 超出预算的结果返回摘要或可继续展开的索引，不直接塞入一段被截断的原始正文。
 - `EVOLVE` 提出长期、项目或经验记忆的写入意图；`CAPTURE` 记录详细 daily 流水。两个阶段都不能直接写入旧式扁平文件。
-- 所有写入都包含 parent、scope、tier、检索键、来源 run、置信度、重要性和理由。缺少父节点时进入恢复队列；重复或相似内容应强化或合并已有索引节点。
+- 所有写入都包含 parent、scope、tier、检索键、来源 run、`sourceRefs`、`evidenceRefs`、置信度、重要性和理由。缺少父节点时进入恢复队列；重复或相似内容只能在 statement、epistemic、authority 和作用域兼容时强化或合并。合并保留来源、证据、来源 Atom tombstone 与历史；重复出现本身不能覆盖正文或提高 confidence。合法父级变化保持稳定 Atom id，并执行 revision、同作用域和循环校验。
 - 管理页和设置页必须读取并修改同一套运行时记忆树、仓库和策略配置。
 - Skill 治理必须按 owner/source 保留所有权。LS 可以提出重复 Skill 的合并候选，或对长期无验证收益的 Skill 提出停用、归档与删除建议；合并前需验证适用范围、依赖、权限和回归，删除前需确认无引用、经过保留期且可恢复。插件、内置或外部来源文件默认只能停用登记，不能由 LS 擅自删除。
-- 目标分级为 T0-T3：T0 仅保存极小、稳定、必须常驻的身份/安全/根索引；T1 保存当前作用域核心规则与摘要；T2 保存任务相关片段；T3 保存低频细节、原始记录和深搜候选。现有 T1-T3 数据升级到含 T0 的协议时必须版本化迁移。
+- 目标分级为 T0-T3：T0 仅保存极小、稳定、必须常驻的身份/安全/根索引；T1 保存当前作用域核心规则与摘要；T2 保存任务相关片段；T3 保存低频细节、对话原始来源、深层审计和分支内深搜候选。现有 T1-T3 数据升级到含 T0 的协议时必须版本化迁移。
 - `AGENTS.md`、`SOUL.md`、`USER.md`、`PHILOSOPHY.md`、`TOOLS.md`、`MEMORY.md`、Skills、项目规范、UI 规范和任务书等资源通过记忆注册表描述权威、作用域、隐私和索引键，不等于把这些文档常驻注入每轮 Context。
 - 上述运行时资源、记忆、Skills、配置、会话和恢复记录都属于可整体迁移的 LS 应用数据根；默认 `workplace/` 只是数据根下的默认工作区，不能再用 workplace 指代整份应用数据。
 - 长会话压缩生成的 Summary Memory 至少应回答：当前目标是什么、刚才发生了什么、用户新改了什么、哪些步骤已完成、哪些仍待执行，以及关键证据、权限和来源是什么。它用于维持模型决策连续性，不是只为了缩短文本。

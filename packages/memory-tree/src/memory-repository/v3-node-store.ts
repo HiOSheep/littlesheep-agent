@@ -266,7 +266,7 @@ export class MemoryV3NodeStore {
       memoryAtomToNode(atom, [], this.ledger.publicScopeKey(atom.scope, atom.scopeKey)),
       intent,
     ));
-    if (exact) return this.reinforce(exact, intent, classification, entityRefs);
+    if (exact) return this.reinforce(exact, parent.id, intent, classification, entityRefs);
 
     const similar = candidates
       .map((atom) => ({
@@ -312,28 +312,47 @@ export class MemoryV3NodeStore {
 
   private async reinforce(
     atom: MemoryAtom,
+    requestedParentId: string,
     intent: MemoryWriteIntent,
     classification: ClassifiedMemoryStatement,
     entityRefs: string[],
   ): Promise<MemoryWriteResult> {
+    const sourceRefs = unique([...atom.sourceRefs, ...(intent.sourceRefs ?? [])]).slice(-256);
+    const evidenceRefs = unique([...atom.evidenceRefs, ...classification.evidenceRefs]).slice(-256);
+    const hasNewSource = sourceRefs.some((value) => !atom.sourceRefs.includes(value));
+    const hasNewEvidence = evidenceRefs.some((value) => !atom.evidenceRefs.includes(value));
+    const mayStrengthenConfidence = confidenceSupport(classification, hasNewSource, hasNewEvidence);
+    const mayStrengthenPriority = hasNewSource || hasNewEvidence;
+    const mayReparent = requestedParentId !== atom.parentId
+      && (hasNewEvidence || classification.assertedBy.kind === 'user');
     const patch: MemoryAtomPatch = {
-      confidence: Math.max(atom.confidence, intent.confidence),
-      importance: Math.max(atom.importance, intent.importance),
-      basePriority: Math.max(atom.basePriority, intent.confidence, intent.importance),
+      parentId: mayReparent ? requestedParentId : atom.parentId,
+      confidence: mayStrengthenConfidence ? Math.max(atom.confidence, intent.confidence) : atom.confidence,
+      importance: mayStrengthenPriority ? Math.max(atom.importance, intent.importance) : atom.importance,
+      basePriority: mayStrengthenPriority
+        ? Math.max(atom.basePriority, mayStrengthenConfidence ? intent.confidence : 0, intent.importance)
+        : atom.basePriority,
       retrievalKeys: unique([...atom.retrievalKeys, ...intent.retrievalKeys]),
-      sourceRunIds: unique([...atom.sourceRunIds, intent.sourceRunId]),
+      sourceRunIds: unique([...atom.sourceRunIds, intent.sourceRunId]).slice(-256),
       sourceStages: unique([...atom.sourceStages, intent.sourceStage]),
-      evidenceRefs: unique([...atom.evidenceRefs, ...classification.evidenceRefs]),
+      sourceRefs,
+      evidenceRefs,
       entityRefs: unique([...atom.entityRefs, ...entityRefs]),
       relationRefs: unique([...atom.relationRefs, ...classification.relationRefs]),
       reason: intent.reason || atom.reason,
-      epistemicStatus: strongerEpistemicStatus(atom.epistemicStatus, classification.epistemicStatus),
-      resolutionStatus: strongerResolutionStatus(atom.resolutionStatus, classification.resolutionStatus),
+      epistemicStatus: mayStrengthenConfidence
+        ? strongerEpistemicStatus(atom.epistemicStatus, classification.epistemicStatus)
+        : atom.epistemicStatus,
+      resolutionStatus: mayStrengthenConfidence
+        ? strongerResolutionStatus(atom.resolutionStatus, classification.resolutionStatus)
+        : atom.resolutionStatus,
     };
     const audit = writeAudit(
       intent,
       'reinforced',
-      'An equivalent Memory v3 atom exists; provenance and evidence were reinforced.',
+      mayReparent
+        ? 'An equivalent Memory v3 atom exists; sources were consolidated and its hierarchy was updated by a supported write.'
+        : 'An equivalent Memory v3 atom exists; provenance and evidence were reinforced.',
       atom.id,
     );
     const updated = await this.coordinator.apply(
@@ -355,27 +374,32 @@ export class MemoryV3NodeStore {
     classification: ClassifiedMemoryStatement,
     entityRefs: string[],
   ): Promise<MemoryWriteResult> {
-    const replace = intent.confidence >= atom.confidence && intent.content.length >= Math.floor(atom.content.length * 0.7);
+    const sourceRefs = unique([...atom.sourceRefs, ...(intent.sourceRefs ?? [])]).slice(-256);
+    const evidenceRefs = unique([...atom.evidenceRefs, ...classification.evidenceRefs]).slice(-256);
+    const hasNewSource = sourceRefs.some((value) => !atom.sourceRefs.includes(value));
+    const hasNewEvidence = evidenceRefs.some((value) => !atom.evidenceRefs.includes(value));
+    const mayStrengthenConfidence = confidenceSupport(classification, hasNewSource, hasNewEvidence);
+    const mayStrengthenPriority = hasNewSource || hasNewEvidence;
     const patch: MemoryAtomPatch = {
-      summary: replace ? intent.summary : atom.summary,
-      title: replace ? intent.summary : atom.title,
-      content: replace ? intent.content : atom.content,
-      reason: replace ? intent.reason : atom.reason,
-      confidence: Math.max(atom.confidence, intent.confidence),
-      importance: Math.max(atom.importance, intent.importance),
-      basePriority: Math.max(atom.basePriority, intent.confidence, intent.importance),
+      confidence: mayStrengthenConfidence ? Math.max(atom.confidence, intent.confidence) : atom.confidence,
+      importance: mayStrengthenPriority ? Math.max(atom.importance, intent.importance) : atom.importance,
+      basePriority: mayStrengthenPriority
+        ? Math.max(atom.basePriority, mayStrengthenConfidence ? intent.confidence : 0, intent.importance)
+        : atom.basePriority,
       retrievalKeys: unique([...atom.retrievalKeys, ...intent.retrievalKeys]),
-      sourceRunIds: unique([...atom.sourceRunIds, intent.sourceRunId]),
+      sourceRunIds: unique([...atom.sourceRunIds, intent.sourceRunId]).slice(-256),
       sourceStages: unique([...atom.sourceStages, intent.sourceStage]),
-      evidenceRefs: unique([
-        ...atom.evidenceRefs,
-        ...classification.evidenceRefs,
-        mergedIntentEvidence(intent.id!),
-      ]),
+      sourceRefs,
+      evidenceRefs,
+      mergedIntentIds: unique([...(atom.mergedIntentIds ?? []), intent.id!]).slice(-256),
       entityRefs: unique([...atom.entityRefs, ...entityRefs]),
       relationRefs: unique([...atom.relationRefs, ...classification.relationRefs]),
-      epistemicStatus: strongerEpistemicStatus(atom.epistemicStatus, classification.epistemicStatus),
-      resolutionStatus: strongerResolutionStatus(atom.resolutionStatus, classification.resolutionStatus),
+      epistemicStatus: mayStrengthenConfidence
+        ? strongerEpistemicStatus(atom.epistemicStatus, classification.epistemicStatus)
+        : atom.epistemicStatus,
+      resolutionStatus: mayStrengthenConfidence
+        ? strongerResolutionStatus(atom.resolutionStatus, classification.resolutionStatus)
+        : atom.resolutionStatus,
     };
     const reason = `Merged with Memory v3 atom ${atom.id} (similarity ${score.toFixed(2)}).`;
     const audit = writeAudit(intent, 'merged', reason, atom.id);
@@ -418,6 +442,7 @@ export class MemoryV3NodeStore {
       source: input.assertedBy,
       occurredAt: now,
       observedAt: now,
+      sourceRefs: [],
       evidenceRefs: input.evidenceRefs,
       payload: { internal: true, purpose: 'scope-root' },
     };
@@ -542,4 +567,16 @@ export class MemoryV3NodeStore {
     this.mutationChain = run.then(() => undefined, () => undefined);
     return run;
   }
+}
+
+function confidenceSupport(
+  classification: ClassifiedMemoryStatement,
+  hasNewSource: boolean,
+  hasNewEvidence: boolean,
+): boolean {
+  if (hasNewEvidence) return true;
+  return hasNewSource
+    && classification.assertedBy.kind === 'user'
+    && ['instruction', 'goal', 'preference', 'value', 'decision', 'approval']
+      .includes(classification.statementKind);
 }

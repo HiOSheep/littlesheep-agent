@@ -66,6 +66,7 @@ function relation(fromEntityId: string, toEntityId: string): MemoryRelation {
     type: 'references',
     scope: 'global',
     source: { kind: 'tool', id: 'test' },
+    sourceRefs: [],
     evidenceRefs: ['test'],
     confidence: 1,
     authorityScope: { kind: 'tool-evidence', scope: 'global', topics: ['test'] },

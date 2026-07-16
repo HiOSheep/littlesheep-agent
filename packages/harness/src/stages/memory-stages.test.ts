@@ -4,7 +4,10 @@ import { createEvolveStage } from './evolve.js';
 import { createCaptureStage } from './capture.js';
 import { createMockLlm, makeCtx, textResponse } from '../tests/helpers.js';
 
-function writer(): MemoryWriteServiceLike & { writeMany: ReturnType<typeof vi.fn> } {
+function writer(): MemoryWriteServiceLike & {
+  writeMany: ReturnType<typeof vi.fn>;
+  captureConversationSources: ReturnType<typeof vi.fn>;
+} {
   const writeMany = vi.fn(async (intents: MemoryWriteIntent[]) => intents.map((intent, index) => ({
     intentId: intent.id ?? `intent-${index}`,
     decision: 'created' as const,
@@ -30,7 +33,11 @@ function writer(): MemoryWriteServiceLike & { writeMany: ReturnType<typeof vi.fn
       updatedAt: '2026-07-10T00:00:00.000Z',
     },
   })));
-  return { write: vi.fn(), writeMany } as unknown as MemoryWriteServiceLike & { writeMany: ReturnType<typeof vi.fn> };
+  const captureConversationSources = vi.fn(async () => []);
+  return { write: vi.fn(), writeMany, captureConversationSources } as unknown as MemoryWriteServiceLike & {
+    writeMany: ReturnType<typeof vi.fn>;
+    captureConversationSources: ReturnType<typeof vi.fn>;
+  };
 }
 
 function verifiedCtx(reply = 'Done') {
@@ -91,10 +98,17 @@ describe('EVOLVE structured memory intents', () => {
       sourceRunId: ctx.runId, sourceStage: 'evolve', summary: 'Workspace uses pnpm',
     });
     expect(intent.sourceRefs).toEqual(expect.arrayContaining([
+      expect.stringContaining(':user-message:'),
+      expect.stringContaining(':assistant-reply'),
+      expect.stringContaining(':task-step:step-1:1'),
+      expect.stringContaining(':verification:1'),
+    ]));
+    expect(intent.evidenceRefs).toEqual(expect.arrayContaining([
       expect.stringContaining(':verification:1:pass'),
       expect.stringContaining(':step:step-1:done'),
       expect.stringContaining(':tool:tool-1:succeeded'),
     ]));
+    expect(memoryWriter.captureConversationSources).toHaveBeenCalledTimes(1);
     expect(ctx.evolutionNotes).toEqual(['Workspace uses pnpm']);
     expect(ctx.memoryIntentDecisions).toEqual([
       expect.objectContaining({ proposedIntent: 'write', decision: 'committed' }),
@@ -131,6 +145,36 @@ describe('EVOLVE structured memory intents', () => {
       expect.objectContaining({ proposedIntent: 'conflict', decision: 'deferred' }),
     ]);
   });
+
+  it('defers projection writes when immutable conversation source capture fails', async () => {
+    const memoryWriter = writer();
+    memoryWriter.captureConversationSources.mockRejectedValueOnce(new Error('source disk unavailable'));
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      memories: [{
+        intent: 'write',
+        branch: 'project',
+        summary: 'Workspace uses pnpm',
+        content: 'Use pnpm workspace commands for this repository.',
+        retrievalKeys: ['pnpm'],
+        importance: 0.8,
+        confidence: 0.95,
+        reason: 'Verified by the run.',
+      }],
+      createSkill: null,
+    })));
+    const ctx = verifiedCtx();
+
+    await createEvolveStage({ llm, model: 'test', memoryWriter })(ctx);
+
+    expect(memoryWriter.writeMany).not.toHaveBeenCalled();
+    expect(ctx.memoryIntentDecisions).toEqual([
+      expect.objectContaining({
+        proposedIntent: 'write',
+        decision: 'deferred',
+        reason: expect.stringContaining('Conversation source capture failed'),
+      }),
+    ]);
+  });
 });
 
 describe('CAPTURE daily timeline intents', () => {
@@ -156,6 +200,10 @@ describe('CAPTURE daily timeline intents', () => {
     });
     expect(intent?.tier).toBe(3);
     expect(intent?.sourceRefs).toEqual(expect.arrayContaining([
+      expect.stringContaining(':user-message:'),
+      expect.stringContaining(':verification:1'),
+    ]));
+    expect(intent?.evidenceRefs).toEqual(expect.arrayContaining([
       expect.stringContaining(':verification:1:pass'),
     ]));
     expect(ctx.modelRequests?.map((request) => request.stage)).toEqual(['capture']);

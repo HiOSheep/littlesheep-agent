@@ -29,6 +29,7 @@ export function normalizeMemoryIntent(intent: MemoryWriteIntent): MemoryWriteInt
     content: cleanText(intent.content),
     retrievalKeys: unique(intent.retrievalKeys.map((key) => cleanText(key).toLocaleLowerCase())).slice(0, 24),
     sourceRefs: unique((intent.sourceRefs ?? []).map((source) => cleanText(source))).slice(0, 24),
+    evidenceRefs: unique((intent.evidenceRefs ?? []).map((source) => cleanText(source))).slice(0, 64),
     reason: cleanText(intent.reason),
     importance: clamp01(intent.importance),
     confidence: clamp01(intent.confidence),

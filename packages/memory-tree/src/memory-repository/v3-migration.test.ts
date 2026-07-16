@@ -12,6 +12,7 @@ import {
   type MemoryWriteIntent,
 } from '../types.js';
 import { createMemoryV3ExperimentMarker, MemoryRepository } from '../memory-repository.js';
+import { MemoryConversationSourceStore } from '../conversation-source-store.js';
 import { MEMORY_V3_EXPERIMENT_MARKER } from './contracts.js';
 import { memoryRepositoryLocatorPath } from './repository-locator.js';
 import { MemoryRepositoryV3Backend } from './v3-backend.js';
@@ -386,6 +387,35 @@ describe('Memory v2 -> v3 migration', () => {
     repository.close();
   });
 
+  it('rejects rollback when only a new conversation source would be lost', async () => {
+    const dataDir = await createDataDir(directories);
+    await seedV2(dataDir);
+    const manager = new MemoryV2ToV3MigrationManager({ dataDir });
+    await manager.migrate();
+    const repository = new MemoryRepository({ dataDir, backend: 'v3' });
+    await repository.initialize();
+    await new MemoryConversationSourceStore({ dataDir }).capture({
+      id: 'conversation-source:post-migration:user-message:message-1',
+      kind: 'user-message',
+      sessionId: 'session-post-migration',
+      runId: 'run-post-migration',
+      occurredAt: '2026-07-16T12:00:00.000Z',
+      payload: { text: 'This source must survive or rollback must close.' },
+    });
+    const validateActiveV3 = (source: MemoryTreeDocument, sourceManifestHash: string) => (
+      repository.management.validateMigrationSource(source, sourceManifestHash)
+    );
+
+    const preflight = await manager.preflight({ validateActiveV3 });
+    expect(preflight.rollback).toMatchObject({
+      canRollback: false,
+      sourceUnchanged: true,
+      activeV3Unchanged: false,
+    });
+    await expect(manager.requestRollback({ validateActiveV3 })).rejects.toThrow(/differs|lose data/i);
+    repository.close();
+  });
+
   it('rejects a live rollback request before registration after the v2 source has changed', async () => {
     const dataDir = await createDataDir(directories);
     await seedV2(dataDir);
@@ -538,7 +568,7 @@ function intent(overrides: Partial<MemoryWriteIntent> = {}): MemoryWriteIntent {
     retrievalKeys: ['concise', 'engineering', 'updates'],
     sourceRunId: 'run-parent',
     sourceStage: 'evolve',
-    sourceRefs: ['user:preference'],
+    sourceRefs: ['conversation-source:run-test:user-message:preference'],
     importance: 0.9,
     confidence: 0.95,
     reason: 'The user stated the preference explicitly.',

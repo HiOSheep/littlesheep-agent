@@ -1,4 +1,8 @@
 import type { MemoryWriteIntent, MemoryWriteResult } from '../types.js';
+import type {
+  MemoryConversationSourceInput,
+  MemoryConversationSourceRecord,
+} from '../conversation-source-store.js';
 import type { MemoryWriteServiceOptions } from './contracts.js';
 
 export class MemoryWriteService {
@@ -42,4 +46,10 @@ export class MemoryWriteService {
   }
 }
 
-export type MemoryWriteServiceLike = Pick<MemoryWriteService, 'write' | 'writeMany'>;
+export interface MemoryWriteServiceLike {
+  write(intent: MemoryWriteIntent): Promise<MemoryWriteResult>;
+  writeMany(intents: MemoryWriteIntent[]): Promise<MemoryWriteResult[]>;
+  captureConversationSources?(
+    inputs: MemoryConversationSourceInput[],
+  ): Promise<MemoryConversationSourceRecord[]>;
+}

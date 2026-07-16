@@ -1,4 +1,4 @@
-// Persists append-only Memory v3 source records separately from bounded recovery journals.
+// Persists append-only Memory v3 projection mutation records for recovery and audit.
 
 import { createHash } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
@@ -43,7 +43,7 @@ export interface MemoryRawRecordScanResult {
 
 export class MemoryRawRecordConflictError extends Error {
   constructor(readonly rawRecordId: string) {
-    super(`Memory raw record ${rawRecordId} already exists with different content.`);
+    super(`Memory projection record ${rawRecordId} already exists with different content.`);
     this.name = 'MemoryRawRecordConflictError';
   }
 }
@@ -196,7 +196,7 @@ export class MemoryRawRecordStore {
     try {
       return await operation();
     } catch (error) {
-      this.log?.('error', 'memory-v3: raw record mutation failed', error);
+      this.log?.('error', 'memory-v3: projection record persistence failed', error);
       throw error;
     } finally {
       release();

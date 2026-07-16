@@ -45,3 +45,7 @@ export {
   type LlmCallContractViolationReason,
   type ResolveLlmCallContractOptions,
 } from './llm-call-contracts/registry.js';
+export {
+  collectConversationSourceRecords,
+  conversationSourceRefs,
+} from './conversation-source-records.js';

@@ -33,6 +33,7 @@ import type {
   MemoryRepositoryManagementStatus,
   MemoryRepositoryNodeInspection,
 } from './management.js';
+import type { MemoryAtom, MemoryUseFeedback } from '../v3/contracts.js';
 
 export interface MemoryRepositoryV2BackendOptions {
   dataDir: string;
@@ -96,6 +97,7 @@ export class MemoryRepositoryV2Backend implements MemoryRepositoryBackend {
   }
   children(parentNodeId: string): Promise<MemoryNode[]> { return this.nodes.children(parentNodeId); }
   write(intent: MemoryWriteIntent): Promise<MemoryWriteResult> { return this.nodes.write(intent); }
+  recordMemoryFeedback(_feedbacks: MemoryUseFeedback[]): Promise<MemoryAtom[]> { return Promise.resolve([]); }
   retryRecoveryQueue(limit = 20): Promise<MemoryWriteResult[]> { return this.nodes.retryRecoveryQueue(limit); }
   setStatus(nodeId: string, status: MemoryNode['status']): Promise<MemoryNode | undefined> {
     return this.nodes.setStatus(nodeId, status);

@@ -188,6 +188,7 @@ function createDueEvent(atom: MemoryAtom, due: MemoryDueRecord, observedAt: stri
     source: { kind: 'system', id: 'memory-v3-due-index', label: 'Memory v3 due index' },
     occurredAt: due.dueAt,
     observedAt,
+    sourceRefs: [],
     evidenceRefs: [`memory-atom:${atom.id}@${atom.revision}`],
     payload: {
       dueKind: due.kind,

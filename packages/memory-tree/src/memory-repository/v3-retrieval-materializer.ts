@@ -185,6 +185,7 @@ function evidenceEnvelope(
     epistemicStatus: atom.epistemicStatus,
     authorityScope: { ...structuredClone(atom.authorityScope), topics: atom.authorityScope.topics.slice(0, MAX_AUTHORITY_TOPICS) },
     assertedBy: structuredClone(atom.assertedBy),
+    sourceRefs: atom.sourceRefs.slice(0, MAX_EVIDENCE_REFS),
     evidenceRefs: atom.evidenceRefs.slice(0, MAX_EVIDENCE_REFS),
     confidence: atom.confidence,
     importance: atom.importance,

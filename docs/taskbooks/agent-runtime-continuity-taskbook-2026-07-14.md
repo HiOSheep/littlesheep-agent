@@ -1,7 +1,7 @@
 # LittleSheep Agent Runtime 连续性任务书 2026-07-14
 
 状态：规划已定稿，实施中（阶段 0、阶段 2、阶段 3 已完成；阶段 1 主要数据链已完成但真实供应商校准仍未闭环）
-最后更新：2026-07-15 12:12:51
+最后更新：2026-07-16 15:38:12
 
 本文把 Context、记忆注册、附件、运行中追加要求、检查点恢复、后台执行和双向透明整理为一条可分阶段验收的开发任务书。它服从 [架构原则](../principles/architecture-principles.md) 和 [核心 Agent 流程规范](../principles/core-agent-flow-guidelines.md)，当前事实与最新测试数字仍以 [项目状态](../decision/project-status.md) 为准。
 
@@ -128,7 +128,7 @@ Context Engine 决定哪些候选进入当前请求。保存了某条信息，�
 - T0：极小、稳定、必须常驻的身份、安全和根索引。
 - T1：当前用户、项目或模式作用域的核心规则与摘要。
 - T2：当前任务相关片段。
-- T3：低频细节、原始记录和分支内深搜候选。
+- T3：低频细节、对话原始来源、深层审计和分支内深搜候选。
 
 `AGENTS.md`、`SOUL.md`、`USER.md`、`TOOLS.md`、`MEMORY.md`、Skills、项目规范、UI 规范和任务书通过注册表声明 authority、scope、privacy、tier 和索引键，不因被注册就整份注入。
 

@@ -216,9 +216,14 @@ function parseRelation(value: unknown, source: string): MemoryRelation {
   if (!value || typeof value !== 'object') throw new Error(`Invalid Memory v3 relation: ${source}`);
   const relation = value as Partial<MemoryRelation>;
   if (relation.version !== 1 || !relation.id || !relation.fromEntityId || !relation.toEntityId
-    || !relation.type || !relation.scope || !relation.source || !Array.isArray(relation.evidenceRefs)
+    || !relation.type || !relation.scope || !relation.source
+    || (relation.sourceRefs !== undefined && !Array.isArray(relation.sourceRefs)) || !Array.isArray(relation.evidenceRefs)
     || !relation.status || !Number.isInteger(relation.revision) || !relation.createdAt || !relation.updatedAt) {
     throw new Error(`Invalid Memory v3 relation: ${source}`);
   }
-  return structuredClone(relation as MemoryRelation);
+  const sourceRefs = [...(relation.sourceRefs ?? [])];
+  if (sourceRefs.some((sourceRef) => typeof sourceRef !== 'string' || !sourceRef.startsWith('conversation-source:'))) {
+    throw new Error(`Memory v3 relation sourceRefs must reference conversation sources: ${source}`);
+  }
+  return { ...structuredClone(relation as MemoryRelation), sourceRefs };
 }

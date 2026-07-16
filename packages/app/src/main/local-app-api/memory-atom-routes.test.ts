@@ -49,12 +49,12 @@ describe('memory atom Local App API routes', () => {
         backendKind: 'v3',
         nodeId: 'atom-1',
         disclosureLevel: 'D3',
-        atom: { id: 'atom-1', revision: 4 },
+        atom: { id: 'atom-1', revision: 4, sourceRefs: [] },
         catalog: { atomId: 'atom-1', revision: 4 },
         envelope: { atomId: 'atom-1', atomRevision: 4 },
         neighborhood: { entities: [], relations: [], truncated: false },
         history: { atomId: 'atom-1', revision: 4, entries: [], truncated: false },
-        rawRecords: [{ id: 'event-1' }],
+        projectionRecords: [{ id: 'event-1' }],
       }),
     })
     const selectMemoryAtomExport = vi.fn().mockResolvedValue(outputPath)
@@ -65,7 +65,13 @@ describe('memory atom Local App API routes', () => {
       status: 200,
       body: {
         cancelled: false,
-        export: { outputPath, atomId: 'atom-1', revision: 4, rawRecordCount: 1 },
+        export: {
+          outputPath,
+          atomId: 'atom-1',
+          revision: 4,
+          sourceRecordCount: 0,
+          projectionRecordCount: 1,
+        },
       },
     })
     expect(selectMemoryAtomExport).toHaveBeenCalledWith('Remember locally.memory.json')
@@ -137,6 +143,7 @@ function mockRunner(options: {
           branch: 'long-term',
           isBranchRoot: false,
         }),
+        listConversationSources: vi.fn().mockResolvedValue([]),
       },
       memoryRepository: {
         management: {

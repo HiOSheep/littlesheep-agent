@@ -3,6 +3,7 @@
 本目录实现 `MemoryService` 背后的作用域协调器，不直接成为新的公开入口。
 
 - `run-coordinator.ts`：run 开始/结束、运行级资源登记与失效。
+- `source-feedback.ts`：对话原始来源持久化，以及由 VERIFY/工具证据约束的 Atom 使用反馈。
 - `summary-resources.ts`、`attachment-resources.ts`、`runtime-event-resources.ts`：会话摘要、附件和事件账本的独立生命周期。
 - `bootstrap-resources.ts`、`skill-resources.ts`：用户数据中的身份/规则/理念文档和 Skill 所有权同步；`PHILOSOPHY.md` 只注册到资源索引，不作为常驻 Prompt bootstrap。
 - `workspace-documents.ts`、`workspace-index-resources.ts`：正式文档目录与有界文件元数据索引。

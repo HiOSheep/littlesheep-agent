@@ -200,19 +200,34 @@ function MemoryV3EvidenceSummary({ detail }: { detail: MemoryTreeNodeDetail }) {
           {v3.evidenceRefs.slice(0, 12).map((ref) => <span key={ref}>{compactPath(ref)}</span>)}
         </div>
       )}
-      {v3.rawRecords && (
+      {v3.sourceRecords && (
         <section className="memory-node-subsection">
-          <strong>原始数据记录</strong>
-          {v3.rawRecords.length > 0 ? (
+          <strong>对话原始来源</strong>
+          {v3.sourceRecords.length > 0 ? (
             <div className="memory-history-list">
-              {v3.rawRecords.map((record) => (
+              {v3.sourceRecords.map((record) => (
+                <div key={record.id}>
+                  <span><b>{record.kind}</b>{record.summary}</span>
+                  <time dateTime={record.occurredAt}>{formatDateTime(record.occurredAt)}</time>
+                </div>
+              ))}
+            </div>
+          ) : <p>该投影来自旧数据，尚未关联可见对话来源。</p>}
+        </section>
+      )}
+      {v3.projectionRecords && (
+        <section className="memory-node-subsection">
+          <strong>投影变更记录</strong>
+          {v3.projectionRecords.length > 0 ? (
+            <div className="memory-history-list">
+              {v3.projectionRecords.map((record) => (
                 <div key={record.id}>
                   <span><b>{record.kind}</b>{record.sourceKind} · {record.evidenceRefs.slice(0, 2).join(' · ')}</span>
                   <time dateTime={record.occurredAt}>{formatDateTime(record.occurredAt)}</time>
                 </div>
               ))}
             </div>
-          ) : <p>该投影来自旧数据或尚未建立原始事件记录。</p>}
+          ) : <p>尚无投影变更记录。</p>}
         </section>
       )}
       {v3.neighborhood && (v3.neighborhood.entities.length > 0 || v3.neighborhood.relations.length > 0) && (

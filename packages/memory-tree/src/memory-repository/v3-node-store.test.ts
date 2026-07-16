@@ -50,6 +50,7 @@ describe('MemoryV3NodeStore', () => {
     const reinforced = await runtime.nodes.write(intent({ id: 'preference-2', sourceRunId: 'run-2', confidence: 0.95 }));
     expect(reinforced).toMatchObject({ decision: 'reinforced', node: { id: first.node!.id } });
     expect(reinforced.node?.sourceRunIds).toEqual(['run-1', 'run-2']);
+    expect(reinforced.node?.confidence).toBe(0.9);
 
     const suggestion = await runtime.nodes.write(intent({
       id: 'suggestion',
@@ -79,6 +80,31 @@ describe('MemoryV3NodeStore', () => {
     expect(suggestion.decision).toBe('created');
     expect(fact.decision).toBe('created');
     expect(fact.node?.id).not.toBe(suggestion.node?.id);
+  });
+
+  it('moves an exact atom to a supported requested parent without rewriting its content', async () => {
+    const parent = await runtime.nodes.write(intent({
+      id: 'preference-parent',
+      summary: 'Communication preferences',
+      content: 'User communication preferences are grouped here.',
+      retrievalKeys: ['communication', 'preferences'],
+    }));
+    const first = await runtime.nodes.write(intent({
+      id: 'preference-child-1',
+      sourceRefs: ['conversation-source:run-1:user-message:message-1'],
+    }));
+    const moved = await runtime.nodes.write(intent({
+      id: 'preference-child-2',
+      sourceRunId: 'run-2',
+      parentNodeId: parent.node!.id,
+      sourceRefs: ['conversation-source:run-2:user-message:message-2'],
+    }));
+
+    expect(moved).toMatchObject({
+      decision: 'reinforced',
+      node: { id: first.node!.id, parentNodeId: parent.node!.id },
+    });
+    expect(moved.node?.content).toBe(first.node?.content);
   });
 
   it('queues missing parents and persists management state across restart', async () => {

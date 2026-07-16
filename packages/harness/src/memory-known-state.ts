@@ -140,7 +140,7 @@ function renderKnownState(state: RuntimeMemoryKnownState): string {
     lines.push(
       `- [${reference.atomId}@${reference.atomRevision}] decision=${reference.decision}; disclosure=${envelope.disclosureLevel}; branch=${envelope.branch}; scope=${envelope.scope}${envelope.scopeKey ? `:${cleanInline(envelope.scopeKey)}` : ''}; tier=T${envelope.tier}`,
       `  statement=${envelope.statementKind}; epistemic=${envelope.epistemicStatus}; authority=${envelope.authorityScope.kind}/${envelope.authorityScope.scope}; confidence=${formatScore(envelope.confidence)}; importance=${formatScore(envelope.importance)}; path=${envelope.retrievalPath}`,
-      `  match=${cleanInline(envelope.matchReason)}; decision_reason=${cleanInline(reference.reason)}; evidence=${envelope.evidenceRefs.slice(0, 4).map(cleanInline).join(', ') || '(none)'}; stages=${reference.stages.join(',')}; reactivated=${reference.reactivatedCount}`,
+      `  match=${cleanInline(envelope.matchReason)}; decision_reason=${cleanInline(reference.reason)}; sources=${envelope.sourceRefs.slice(0, 3).map(cleanInline).join(', ') || '(none)'}; evidence=${envelope.evidenceRefs.slice(0, 4).map(cleanInline).join(', ') || '(none)'}; stages=${reference.stages.join(',')}; reactivated=${reference.reactivatedCount}`,
     );
   }
   lines.push(
@@ -174,7 +174,8 @@ function parseKnownState(value: unknown, runId: string): RuntimeMemoryKnownState
 
 function parseReference(value: unknown): RuntimeKnownStateMemoryReference | undefined {
   if (!isRecord(value) || typeof value.atomId !== 'string' || !Number.isInteger(value.atomRevision)
-    || !stringArray(value.evidenceRefs) || !['adopted', 'excluded', 'conflicted'].includes(String(value.decision))
+    || (value.sourceRefs !== undefined && !stringArray(value.sourceRefs)) || !stringArray(value.evidenceRefs)
+    || !['adopted', 'excluded', 'conflicted'].includes(String(value.decision))
     || typeof value.reason !== 'string' || !isRecord(value.envelope) || !Array.isArray(value.stages)
     || typeof value.firstSeenAt !== 'string' || typeof value.updatedAt !== 'string'
     || !Number.isInteger(value.reactivatedCount) || Number(value.reactivatedCount) < 0
@@ -191,7 +192,8 @@ function parseReference(value: unknown): RuntimeKnownStateMemoryReference | unde
     || !stringArray(envelope.authorityScope.topics) || typeof envelope.assertedBy.kind !== 'string'
     || (envelope.assertedBy.id !== undefined && typeof envelope.assertedBy.id !== 'string')
     || (envelope.assertedBy.label !== undefined && typeof envelope.assertedBy.label !== 'string')
-    || !stringArray(envelope.evidenceRefs) || typeof envelope.confidence !== 'number'
+    || (envelope.sourceRefs !== undefined && !stringArray(envelope.sourceRefs)) || !stringArray(envelope.evidenceRefs)
+    || typeof envelope.confidence !== 'number'
     || typeof envelope.importance !== 'number' || typeof envelope.updatedAt !== 'string'
     || (envelope.lastVerifiedAt !== undefined && typeof envelope.lastVerifiedAt !== 'string')
     || !['hierarchy', 'fts', 'vector'].includes(String(envelope.retrievalPath))
@@ -200,10 +202,14 @@ function parseReference(value: unknown): RuntimeKnownStateMemoryReference | unde
   return {
     atomId: value.atomId,
     atomRevision: Number(value.atomRevision),
+    sourceRefs: stringArray(value.sourceRefs) ? [...value.sourceRefs] : [],
     evidenceRefs: [...value.evidenceRefs],
     decision: value.decision as RuntimeKnownStateMemoryReference['decision'],
     reason: value.reason,
-    envelope: structuredClone(envelope) as unknown as RuntimeKnownStateMemoryReference['envelope'],
+    envelope: {
+      ...structuredClone(envelope),
+      sourceRefs: stringArray(envelope.sourceRefs) ? [...envelope.sourceRefs] : [],
+    } as unknown as RuntimeKnownStateMemoryReference['envelope'],
     stages: [...value.stages],
     firstSeenAt: value.firstSeenAt,
     updatedAt: value.updatedAt,

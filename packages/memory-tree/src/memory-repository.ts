@@ -137,6 +137,7 @@ export class MemoryRepository {
   children(parentNodeId: string): Promise<MemoryNode[]> { return this.backend.children(parentNodeId); }
 
   write(intent: MemoryWriteIntent): Promise<MemoryWriteResult> { return this.backend.write(intent); }
+  recordMemoryFeedback(feedbacks: import('./v3/contracts.js').MemoryUseFeedback[]): Promise<import('./v3/contracts.js').MemoryAtom[]> { return this.backend.recordMemoryFeedback(feedbacks); }
 
   retryRecoveryQueue(limit = 20): Promise<MemoryWriteResult[]> {
     return this.backend.retryRecoveryQueue(limit);

@@ -1,4 +1,4 @@
-export const MEMORY_CATALOG_SCHEMA_VERSION = 5;
+export const MEMORY_CATALOG_SCHEMA_VERSION = 6;
 
 export const MEMORY_CATALOG_SCHEMA_SQL = `
 PRAGMA foreign_keys = ON;
@@ -142,6 +142,7 @@ CREATE TABLE IF NOT EXISTS relations (
   scope TEXT NOT NULL,
   scope_key TEXT,
   source_json TEXT NOT NULL,
+  source_refs_json TEXT NOT NULL DEFAULT '[]',
   evidence_refs_json TEXT NOT NULL,
   confidence REAL NOT NULL,
   authority_scope_json TEXT NOT NULL,

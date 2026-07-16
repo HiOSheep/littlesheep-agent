@@ -93,6 +93,7 @@ export class MemoryCatalog {
     this.db.exec('PRAGMA busy_timeout = 5000;');
     this.db.exec('PRAGMA journal_mode = WAL;');
     this.db.exec(MEMORY_CATALOG_SCHEMA_SQL);
+    ensureCatalogColumns(this.db);
     this.db.exec(`PRAGMA user_version = ${MEMORY_CATALOG_SCHEMA_VERSION};`);
     this.embeddings = new MemoryCatalogEmbeddingController({
       db: this.db,
@@ -282,6 +283,10 @@ export class MemoryCatalog {
       feedback.createdAt,
     );
     pruneTable(this.db, 'atom_feedback', 'id', 'created_at', this.maxFeedbackRecords);
+  }
+
+  hasFeedback(feedbackId: string): boolean {
+    return Boolean(this.db.prepare('SELECT 1 AS found FROM atom_feedback WHERE id = ?').get(feedbackId));
   }
 
   listAtomHistory(atomId: string, limit = 40): MemoryAtomHistoryEntry[] {
@@ -575,5 +580,12 @@ export class MemoryCatalog {
       this.db.exec('ROLLBACK');
       throw error;
     }
+  }
+}
+
+function ensureCatalogColumns(db: DatabaseSync): void {
+  const relationColumns = db.prepare('PRAGMA table_info(relations)').all() as unknown as Array<{ name: string }>;
+  if (!relationColumns.some((column) => column.name === 'source_refs_json')) {
+    db.exec("ALTER TABLE relations ADD COLUMN source_refs_json TEXT NOT NULL DEFAULT '[]';");
   }
 }

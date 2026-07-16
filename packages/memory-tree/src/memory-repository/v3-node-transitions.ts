@@ -42,6 +42,7 @@ export function intentEvent(
     source: classification.assertedBy,
     occurredAt: intent.createdAt!,
     observedAt,
+    sourceRefs: intent.sourceRefs ?? [],
     evidenceRefs: classification.evidenceRefs,
     payload: {
       statementKind: classification.statementKind,
@@ -71,6 +72,7 @@ export function repositoryEvent(
     source: { kind: 'user' },
     occurredAt: now,
     observedAt: now,
+    sourceRefs: [...atom.sourceRefs],
     evidenceRefs: [`memory-atom:${atom.id}@${atom.revision}`],
     payload: payload ?? {},
   };

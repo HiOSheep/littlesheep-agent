@@ -36,6 +36,7 @@ export function updateMemoryKnownState(
     const reference: KnownStateMemoryReference = {
       atomId: update.envelope.atomId,
       atomRevision: update.envelope.atomRevision,
+      sourceRefs: [...update.envelope.sourceRefs],
       evidenceRefs: [...update.envelope.evidenceRefs],
       decision: update.decision,
       reason: update.reason,

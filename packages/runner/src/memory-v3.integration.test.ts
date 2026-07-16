@@ -74,6 +74,19 @@ describe('Runner Memory v3 integration', () => {
     expect(projectNodes[0]).toMatchObject({ summary: 'Repository uses pnpm', sourceRunIds: [result.runId] });
     expect(dailyNodes[0]).toMatchObject({ summary: 'Inspection completed', sourceRunIds: [result.runId] });
     expect(await countFiles(join(dataDir, 'memory-tree', 'v3', 'atoms'), '.memory.json')).toBeGreaterThanOrEqual(2);
+    expect(await countFiles(join(dataDir, 'memory-tree', 'v3', 'conversation-sources'), '.conversation-source.json'))
+      .toBeGreaterThanOrEqual(2);
+    const inspection = await first.infra.memoryRepository.management.inspectNode(projectNodes[0]!.id, 'D3');
+    expect(inspection?.atom?.sourceRefs).toEqual(expect.arrayContaining([
+      expect.stringContaining(`conversation-source:${result.runId}:user-message:`),
+      expect.stringContaining(`conversation-source:${result.runId}:assistant-reply`),
+    ]));
+    expect(inspection?.atom?.evidenceRefs).toEqual(expect.arrayContaining([
+      expect.stringContaining(`run:${result.runId}:verification:1:pass`),
+    ]));
+    expect(inspection?.projectionRecords?.length).toBeGreaterThan(0);
+    await expect(first.infra.memoryService.listConversationSources(inspection?.atom?.sourceRefs ?? []))
+      .resolves.toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'user-message' })]));
 
     await first.shutdown();
     runners.splice(runners.indexOf(first), 1);
@@ -141,7 +154,7 @@ describe('Runner Memory v3 integration', () => {
       summary: 'User greeting preference',
       content: 'The user prefers concise greetings.',
       retrievalKeys: ['hello', 'greeting', 'concise'],
-      sourceRefs: ['user:explicit-greeting-preference'],
+      sourceRefs: ['conversation-source:seed-run:user-message:seed-message'],
       sourceRunId: 'seed-run',
       sourceStage: 'evolve',
       importance: 0.8,

@@ -125,6 +125,9 @@ export async function buildMemoryTreeNodeDetail(
   const atom = inspection.atom
   const catalog = inspection.catalog
   const envelope = inspection.envelope
+  const sourceRecords = disclosureLevel === 'D3' && atom
+    ? await runner.infra.memoryService.listConversationSources(atom.sourceRefs, 100)
+    : []
   return {
     nodeId,
     backendKind: inspection.backendKind,
@@ -146,6 +149,7 @@ export async function buildMemoryTreeNodeDetail(
       resolutionStatus: atom.resolutionStatus,
       authorityScope: atom.authorityScope,
       assertedBy: atom.assertedBy,
+      sourceRefs: atom.sourceRefs,
       evidenceRefs: atom.evidenceRefs,
       effectiveAt: atom.effectiveAt,
       expiresAt: atom.expiresAt,
@@ -184,7 +188,15 @@ export async function buildMemoryTreeNodeDetail(
         entries: inspection.history.entries,
         truncated: inspection.history.truncated,
       } : undefined,
-      rawRecords: inspection.rawRecords?.map((record) => ({
+      sourceRecords: disclosureLevel === 'D3' ? sourceRecords.map((record) => ({
+        id: record.id,
+        kind: record.kind,
+        sessionId: record.sessionId,
+        runId: record.runId,
+        occurredAt: record.occurredAt,
+        summary: sourceRecordSummary(record.payload),
+      })) : undefined,
+      projectionRecords: inspection.projectionRecords?.map((record) => ({
         id: record.id,
         kind: record.event.kind,
         capturedAt: record.capturedAt,
@@ -195,6 +207,21 @@ export async function buildMemoryTreeNodeDetail(
       })),
     } : undefined,
   }
+}
+
+function sourceRecordSummary(payload: Record<string, unknown>): string {
+  const text = typeof payload.text === 'string'
+    ? payload.text
+    : typeof payload.description === 'string'
+      ? payload.description
+      : typeof payload.name === 'string'
+        ? payload.name
+        : typeof payload.message === 'string'
+          ? payload.message
+          : ''
+  if (text.trim()) return text.replace(/[\r\n]+/gu, ' ').trim().slice(0, 180)
+  const keys = Object.keys(payload).slice(0, 6)
+  return keys.length > 0 ? keys.join(' · ') : '可见对话记录'
 }
 
 export async function buildMemoryTreePayload(

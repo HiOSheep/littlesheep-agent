@@ -214,7 +214,7 @@ function suggestionIntent(scopeKey: string): MemoryWriteIntent {
     retrievalKeys: ['cobalt', 'deployment'],
     sourceRunId: 'run-write-suggestion',
     sourceStage: 'evolve',
-    sourceRefs: ['user:message-suggestion'],
+    sourceRefs: ['conversation-source:run-write-suggestion:user-message:message-suggestion'],
     importance: 0.8,
     confidence: 0.6,
     reason: 'User suggestion, not verified fact.',

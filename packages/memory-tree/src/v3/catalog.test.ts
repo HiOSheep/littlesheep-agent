@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import type { EmbeddingEngine, EmbeddingRequest, EmbeddingResult, MemoryEntity, MemoryRelation } from './contracts.js';
 import { MemoryCatalog } from './catalog.js';
 import { EmbeddingUnavailableError } from './embedding-engine.js';
@@ -85,6 +86,56 @@ describe('MemoryCatalog', () => {
     expect(upgraded.getAtom(atom.id)?.embeddingStatus).toBe('stale');
   });
 
+  it('upgrades a v5 relation table before persisting conversation source refs', () => {
+    const dbPath = join(dataDir, 'legacy-v5.sqlite');
+    const legacy = new DatabaseSync(dbPath);
+    legacy.exec(`
+      CREATE TABLE relations (
+        relation_id TEXT PRIMARY KEY,
+        from_entity_id TEXT NOT NULL,
+        to_entity_id TEXT NOT NULL,
+        relation_type TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        scope_key TEXT,
+        source_json TEXT NOT NULL,
+        evidence_refs_json TEXT NOT NULL,
+        confidence REAL NOT NULL,
+        authority_scope_json TEXT NOT NULL,
+        relevance REAL NOT NULL,
+        effective_at TEXT,
+        expires_at TEXT,
+        status TEXT NOT NULL,
+        resolution_status TEXT NOT NULL,
+        revision INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      PRAGMA user_version = 5;
+    `);
+    legacy.close();
+
+    const catalog = createCatalog({ dbPath });
+    const left = makeEntity('legacy-left', 'project-a');
+    const right = { ...makeEntity('legacy-right', 'project-a'), externalKey: 'project-a:legacy-right' };
+    catalog.upsertEntity(left);
+    catalog.upsertEntity(right);
+    catalog.upsertRelation(makeRelation(left.id, right.id));
+    catalog.close();
+    catalogs = catalogs.filter((candidate) => candidate !== catalog);
+
+    const upgraded = new DatabaseSync(dbPath);
+    const columns = upgraded.prepare('PRAGMA table_info(relations)').all() as unknown as Array<{ name: string }>;
+    const row = upgraded.prepare(`
+      SELECT source_refs_json FROM relations WHERE relation_id = ?
+    `).get('relation-linked') as { source_refs_json: string };
+    const version = upgraded.prepare('PRAGMA user_version').get() as { user_version: number };
+    upgraded.close();
+
+    expect(columns.map((column) => column.name)).toContain('source_refs_json');
+    expect(JSON.parse(row.source_refs_json)).toEqual(['conversation-source:run-1:assistant-reply']);
+    expect(version.user_version).toBe(6);
+  });
+
   it('rebuilds a deleted catalog from authoritative atom files', async () => {
     const firstPath = join(dataDir, 'first.sqlite');
     const first = createCatalog({ dbPath: firstPath });
@@ -151,6 +202,7 @@ describe('MemoryCatalog', () => {
       scope: 'project',
       scopeKey: 'project-a',
       source: { kind: 'agent', id: 'ls' },
+      sourceRefs: ['conversation-source:run-1:assistant-reply'],
       evidenceRefs: ['test'],
       confidence: 0.5,
       authorityScope: { kind: 'none', scope: 'project', scopeKey: 'project-a', topics: [] },
@@ -262,6 +314,7 @@ function makeRelation(fromEntityId: string, toEntityId: string): MemoryRelation 
     scope: 'project',
     scopeKey: 'project-a',
     source: { kind: 'agent', id: 'ls' },
+    sourceRefs: ['conversation-source:run-1:assistant-reply'],
     evidenceRefs: ['test'],
     confidence: 0.8,
     authorityScope: { kind: 'tool-evidence', scope: 'project', scopeKey: 'project-a', topics: ['graph'] },

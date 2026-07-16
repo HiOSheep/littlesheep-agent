@@ -114,7 +114,7 @@ function memoryIntent(sourceRunId: string) {
     retrievalKeys: ['bootstrap', sourceRunId],
     sourceRunId,
     sourceStage: 'evolve' as const,
-    sourceRefs: [`run:${sourceRunId}`],
+    sourceRefs: [`conversation-source:${sourceRunId}:user-message:seed`],
     importance: 0.8,
     confidence: 0.9,
     reason: 'Bootstrap migration test.',

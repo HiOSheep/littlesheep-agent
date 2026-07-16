@@ -36,7 +36,7 @@ export function classifyMemoryWriteIntent(intent: MemoryWriteIntent): Classified
     epistemicStatus,
     authorityScope,
     assertedBy,
-    evidenceRefs: unique([...(intent.sourceRefs ?? []), ...(explicit?.evidenceRefs ?? [])]).slice(0, 64),
+    evidenceRefs: unique([...(intent.evidenceRefs ?? []), ...(explicit?.evidenceRefs ?? [])]).slice(0, 64),
     entityRefs: unique(explicit?.entityRefs ?? []).slice(0, 64),
     relationRefs: unique(explicit?.relationRefs ?? []).slice(0, 64),
     resolutionStatus: resolutionStatus(statementKind, epistemicStatus, assertedBy),
@@ -57,19 +57,21 @@ export function sameStatementCategory(
 }
 
 function inferStatementKind(intent: MemoryWriteIntent, text: string): StatementKind {
-  if (/(?:建议|可以考虑|最好(?:是)?|recommend|suggest|should consider)/iu.test(text)) return 'suggestion';
+  if (/(?:建议|可以考虑|推荐|不妨|最好考虑|recommend|suggest|should consider)/iu.test(text)) return 'suggestion';
   if (/(?:可能|也许|推测|假设|maybe|perhaps|hypothes)/iu.test(text)) return 'hypothesis';
   if (/(?:批准|授权|允许|同意执行|approved|permission granted)/iu.test(text)) return 'approval';
   if (/(?:决定|已选择|确认采用|decision|decided|selected)/iu.test(text)) return 'decision';
   if (/(?:偏好|喜欢|希望|习惯|prefers?|preference|wants?)/iu.test(text)) return 'preference';
+  if (/(?:核心理念|设计原则|价值取向|重视|value|principle)/iu.test(text)) return 'value';
   if (/(?:目标|要实现|需要完成|goal|objective)/iu.test(text)) return 'goal';
+  if (/(?:必须|不得|禁止|始终|规则是|must|never|always|required)/iu.test(text)) return 'instruction';
   if (intent.sourceStage === 'capture') return 'reported-observation';
   return 'factual-claim';
 }
 
 function inferActor(intent: MemoryWriteIntent, kind: StatementKind, text: string): MemoryActorRef {
   if (['preference', 'goal', 'decision', 'approval', 'value'].includes(kind)
-    && /(?:用户|user|我(?:偏好|喜欢|希望|决定|选择|允许|批准))/iu.test(text)) {
+    && /(?:用户|user|我(?:偏好|喜欢|希望|决定|选择|允许|批准|重视))/iu.test(text)) {
     return { kind: 'user' };
   }
   if (intent.sourceStage === 'tool') return { kind: 'tool' };

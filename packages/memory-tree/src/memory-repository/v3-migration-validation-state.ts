@@ -6,9 +6,10 @@ import { canonicalJson, sha256Canonical } from '../v3/durable-json.js';
 import type { MemoryRepositoryV3Backend } from './v3-backend.js';
 import type { MemoryV3MigrationValidation } from './v3-migration-contracts.js';
 import { classifyMemoryWriteIntent } from './v3-statement.js';
-import { mergedIntentEvidence } from './v3-node-mapping.js';
+import { legacySourceEvidence } from './v3-node-mapping.js';
 import { memoryV2NodeAsIntent, publicMemoryV2Nodes } from './v3-migration-mapping.js';
 import { unique } from './text.js';
+import { MemoryConversationSourceStore } from '../conversation-source-store.js';
 
 export async function validateMemoryV3RepositoryState(
   backend: MemoryRepositoryV3Backend,
@@ -39,8 +40,10 @@ export async function validateMemoryV3RepositoryState(
   const atomCount = await backend.atomStore.count();
   if (backend.catalog.countAtoms() !== atomCount) throw new Error('Memory v3 catalog and atom store counts differ.');
   const catalogEntries = backend.catalog.listAtoms({ limit: 100_000 });
+  const conversationSources = await new MemoryConversationSourceStore({ dataDir: backend.dataDir }).manifest();
   const validationHash = sha256Canonical({
     sourceManifestHash,
+    conversationSources,
     nodes: catalogEntries.map((entry) => [entry.atomId, entry.contentHash]),
     resources: Object.keys(target.resources).sort(),
     writeAuditIds: target.writeAudit.map((record) => record.id).sort(),
@@ -86,7 +89,9 @@ function assertAtomEquivalent(node: MemoryNode, atom: MemoryAtom): void {
     content: node.content,
     sourceRunIds: node.sourceRunIds,
     sourceStages: node.sourceStages,
-    evidenceRefs: unique([...(node.sourceRefs ?? []), ...(node.mergedFrom ?? []).map(mergedIntentEvidence)]),
+    sourceRefs: [],
+    evidenceRefs: unique((node.sourceRefs ?? []).map(legacySourceEvidence)),
+    mergedIntentIds: unique(node.mergedFrom ?? []),
     status: node.status === 'deleted' ? 'tombstone' : node.status,
     createdAt: node.createdAt,
     updatedAt: node.updatedAt,

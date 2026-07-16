@@ -1,4 +1,4 @@
-// Owns raw record file validation, scanning, hashing, and quarantine.
+// Owns projection mutation record validation, scanning, hashing, and quarantine.
 
 import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, readdir, rename } from 'node:fs/promises';
@@ -16,7 +16,7 @@ export function rawRecordContentHash(
 }
 
 export function cloneRawRecordStorageMutation(value: MemoryStorageMutation): MemoryStorageMutation {
-  if (!value || typeof value !== 'object') throw new Error('Memory raw record requires a storage mutation.');
+  if (!value || typeof value !== 'object') throw new Error('Memory projection record requires a storage mutation.');
   const mutation = structuredClone(value);
   if (!['create', 'update', 'archive', 'restore', 'merge'].includes(mutation.kind)) {
     throw new Error(`Unsupported memory raw record mutation: ${String((mutation as { kind?: unknown }).kind)}`);

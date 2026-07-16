@@ -25,6 +25,7 @@ export interface RuntimeMemoryEvidenceEnvelope {
   epistemicStatus: string;
   authorityScope: RuntimeMemoryAuthorityScope;
   assertedBy: RuntimeMemoryActorRef;
+  sourceRefs: string[];
   evidenceRefs: string[];
   confidence: number;
   importance: number;
@@ -40,6 +41,7 @@ export interface RuntimeMemoryEvidenceEnvelope {
 export interface RuntimeKnownStateMemoryReference {
   atomId: string;
   atomRevision: number;
+  sourceRefs: string[];
   evidenceRefs: string[];
   decision: 'adopted' | 'excluded' | 'conflicted';
   reason: string;

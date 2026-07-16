@@ -16,6 +16,7 @@ export function makeAtomInput(overrides: Partial<CreateMemoryAtomInput> = {}): C
     epistemicStatus: 'verified',
     authorityScope: { kind: 'tool-evidence', scope: 'project', scopeKey: 'project-a', topics: ['repository'] },
     assertedBy: { kind: 'tool', id: 'test-tool' },
+    sourceRefs: ['conversation-source:run-test:user-message:user-1'],
     evidenceRefs: ['tool:test'],
     entityRefs: [],
     relationRefs: [],

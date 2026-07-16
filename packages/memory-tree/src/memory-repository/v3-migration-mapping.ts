@@ -6,6 +6,7 @@ import type { MemoryRepositoryV3Backend } from './v3-backend.js';
 import { classifyMemoryWriteIntent } from './v3-statement.js';
 import {
   createMemoryAtomInput,
+  legacySourceEvidence,
   memoryV3ScopeRootId,
   mergedIntentEvidence,
   scopeEntity,
@@ -61,7 +62,7 @@ export async function memoryV2NodeToAtomInput(
     reason: node.reason,
     sourceRunId: node.sourceRunIds[0] ?? `memory-v2:${node.id}`,
     sourceStage: node.sourceStages[0] ?? 'migration',
-    sourceRefs: node.sourceRefs ?? [],
+    sourceRefs: [],
     entityRefs: [...entityRefs],
     relationRefs: [],
     classification,
@@ -70,10 +71,8 @@ export async function memoryV2NodeToAtomInput(
   return {
     ...created,
     title: node.summary,
-    evidenceRefs: unique([
-      ...created.evidenceRefs,
-      ...(node.mergedFrom ?? []).map(mergedIntentEvidence),
-    ]),
+    sourceRefs: [],
+    mergedIntentIds: unique(node.mergedFrom ?? []),
     sourceRunIds: [...node.sourceRunIds],
     sourceStages: [...node.sourceStages],
     status: node.status === 'deleted' ? 'tombstone' as const : node.status,
@@ -94,7 +93,8 @@ export function memoryV2NodeAsIntent(node: MemoryNode): MemoryWriteIntent {
     retrievalKeys: node.retrievalKeys,
     sourceRunId: node.sourceRunIds[0] ?? `memory-v2:${node.id}`,
     sourceStage: node.sourceStages[0] ?? 'migration',
-    sourceRefs: node.sourceRefs,
+    sourceRefs: [],
+    evidenceRefs: unique((node.sourceRefs ?? []).map(legacySourceEvidence)),
     importance: node.importance,
     confidence: node.confidence,
     reason: node.reason,

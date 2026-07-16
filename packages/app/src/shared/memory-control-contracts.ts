@@ -160,6 +160,7 @@ export interface MemoryTreeNodeDetail {
       topics: string[]
     }
     assertedBy: { kind: string; id?: string; label?: string }
+    sourceRefs: string[]
     evidenceRefs: string[]
     effectiveAt?: string
     expiresAt?: string
@@ -204,7 +205,15 @@ export interface MemoryTreeNodeDetail {
       entries: Array<{ kind: 'access' | 'feedback' | 'event' | 'audit'; id: string; at: string; summary: string }>
       truncated: boolean
     }
-    rawRecords?: Array<{
+    sourceRecords?: Array<{
+      id: string
+      kind: string
+      sessionId: string
+      runId: string
+      occurredAt: string
+      summary: string
+    }>
+    projectionRecords?: Array<{
       id: string
       kind: string
       capturedAt: string
@@ -253,7 +262,8 @@ export interface MemoryAtomEvidenceExportResponse {
     outputPath: string
     atomId: string
     revision: number
-    rawRecordCount: number
+    sourceRecordCount: number
+    projectionRecordCount: number
     exportedAt: string
   }
 }

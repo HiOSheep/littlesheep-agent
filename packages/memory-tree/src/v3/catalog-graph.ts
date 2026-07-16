@@ -102,14 +102,15 @@ export function upsertMemoryRelation(db: DatabaseSync, relation: MemoryRelation)
   db.prepare(`
     INSERT INTO relations (
       relation_id, from_entity_id, to_entity_id, relation_type, scope, scope_key,
-      source_json, evidence_refs_json, confidence, authority_scope_json, relevance,
+      source_json, source_refs_json, evidence_refs_json, confidence, authority_scope_json, relevance,
       effective_at, expires_at, status, resolution_status, revision, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(relation_id) DO UPDATE SET
       from_entity_id = excluded.from_entity_id,
       to_entity_id = excluded.to_entity_id,
       relation_type = excluded.relation_type,
       source_json = excluded.source_json,
+      source_refs_json = excluded.source_refs_json,
       evidence_refs_json = excluded.evidence_refs_json,
       confidence = excluded.confidence,
       authority_scope_json = excluded.authority_scope_json,
@@ -128,6 +129,7 @@ export function upsertMemoryRelation(db: DatabaseSync, relation: MemoryRelation)
     relation.scope,
     relation.scopeKey ?? null,
     JSON.stringify(relation.source),
+    JSON.stringify(relation.sourceRefs),
     JSON.stringify(relation.evidenceRefs),
     relation.confidence,
     JSON.stringify(relation.authorityScope),

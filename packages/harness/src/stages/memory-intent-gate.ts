@@ -10,6 +10,10 @@ import type {
   MemoryWriteResult,
   MemoryWriteServiceLike,
 } from '@littlesheep/memory-tree';
+import {
+  collectConversationSourceRecords,
+  conversationSourceRefs,
+} from '../conversation-source-records.js';
 
 const MAX_MEMORY_INTENT_DECISIONS_PER_RUN = 64;
 const MAX_EVIDENCE_REFS_PER_INTENT = 32;
@@ -32,6 +36,7 @@ export interface GatedMemoryProposal {
   summary?: string;
   action: 'commit' | 'defer' | 'reject' | 'ignore';
   reason: string;
+  sourceRefs: string[];
   evidenceRefs: string[];
   writeIntent?: MemoryWriteIntent;
 }
@@ -108,12 +113,29 @@ export async function commitMemoryIntentBatch(
 ): Promise<MemoryIntentBatchResult> {
   const commitProposals = proposals.filter((proposal) => proposal.action === 'commit' && proposal.writeIntent);
   const writeIntents = commitProposals.map((proposal) => proposal.writeIntent!);
-  const writeResults = writer ? await writer.writeMany(writeIntents) : [];
+  let sourceCaptureError: string | undefined;
+  if (writer?.captureConversationSources && writeIntents.length > 0) {
+    try {
+      await writer.captureConversationSources(collectConversationSourceRecords(ctx));
+    } catch (error) {
+      sourceCaptureError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  const writeResults = writer && !sourceCaptureError ? await writer.writeMany(writeIntents) : [];
   const resultByIntentId = new Map(writeResults.map((result) => [result.intentId, result]));
   const now = new Date().toISOString();
   const records = proposals.map((proposal, index) => {
     const writeResult = proposal.writeIntent ? resultByIntentId.get(proposal.writeIntent.id ?? '') : undefined;
-    return decisionRecord(ctx, stage, proposal, writeResult, writer !== undefined, index, now);
+    return decisionRecord(
+      ctx,
+      stage,
+      proposal,
+      writeResult,
+      writer !== undefined,
+      index,
+      now,
+      sourceCaptureError,
+    );
   });
   ctx.memoryIntentDecisions ??= [];
   if (ctx.memoryIntentDecisions.length + records.length > MAX_MEMORY_INTENT_DECISIONS_PER_RUN) {
@@ -128,6 +150,10 @@ export async function commitMemoryIntentBatch(
 
 export function memoryWriteEvidenceRefs(proposal: GatedMemoryProposal): string[] {
   return proposal.evidenceRefs.slice(0, MAX_EVIDENCE_REFS_PER_INTENT);
+}
+
+export function memoryWriteSourceRefs(proposal: GatedMemoryProposal): string[] {
+  return proposal.sourceRefs.slice(0, MAX_EVIDENCE_REFS_PER_INTENT);
 }
 
 function collectRunEvidence(ctx: RunContext): { refs: string[]; verified: boolean } {
@@ -153,6 +179,7 @@ function base(input: MemoryIntentGateInput, evidenceRefs: string[]): Omit<GatedM
     intent: input.intent,
     branch: input.branch,
     summary: input.summary,
+    sourceRefs: conversationSourceRefs(input.ctx, MAX_EVIDENCE_REFS_PER_INTENT),
     evidenceRefs,
   };
 }
@@ -173,12 +200,17 @@ function decisionRecord(
   writerAvailable: boolean,
   index: number,
   createdAt: string,
+  sourceCaptureError?: string,
 ): MemoryIntentDecisionRecord {
   let decision: MemoryIntentDecisionRecord['decision'];
   let reason = proposal.reason;
   if (proposal.action === 'ignore') decision = 'ignored';
   else if (proposal.action === 'reject') decision = 'rejected';
   else if (proposal.action === 'defer') decision = 'deferred';
+  else if (sourceCaptureError) {
+    decision = 'deferred';
+    reason = `Conversation source capture failed before projection write: ${sourceCaptureError}`;
+  }
   else if (!writerAvailable) {
     decision = 'deferred';
     reason = 'The runtime approved the proposal, but no memory writer is available.';

@@ -49,7 +49,7 @@ describe('memory_tree agent tools', () => {
 
     expect(tool.description).toContain('enter this run\'s active Context working set');
     expect(tool.description).toContain('release affects only this run');
-    expect(tool.description).toContain('never changes raw records or persistent atom projections');
+    expect(tool.description).toContain('never changes conversation source records or persistent atom projections');
   });
 
   it('navigates branch index then expansion and applies the read-side envelope', async () => {
