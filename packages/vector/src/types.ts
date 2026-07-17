@@ -3,11 +3,16 @@
 
 import type { LlmClient } from '@littlesheep/llm';
 
-/** Memory vector tier — controls retention + search scope. */
+/**
+ * Legacy v2 vector tier retained for reading existing local databases.
+ *
+ * The Memory v3 runtime does not write this store or use these tiers as an
+ * authority. New Atom embeddings belong to the Memory v3 local catalog.
+ */
 export type VectorTier =
-  | 'daily'             // raw daily memory entry (≤30 days old)
-  | 'monthly-summary'   // LLM-distilled monthly summary (≤12 months old)
-  | 'yearly-summary';   // LLM-distilled yearly summary (>12 months old)
+  | 'daily'
+  | 'monthly-summary'
+  | 'yearly-summary';
 
 /** A stored vector record (metadata + embedding stored separately). */
 export interface VectorRecord {
@@ -15,11 +20,11 @@ export interface VectorRecord {
   id: string;
   /** The source text that was embedded. */
   text: string;
-  /** Tier controls retention + search filtering. */
+  /** Legacy tier used only for compatibility filtering. */
   tier: VectorTier;
   /** YYYY-MM-DD (daily) | YYYY-MM (monthly) | YYYY (yearly). */
   date: string;
-  /** Source file path (for removal on archive). */
+  /** Historical source file path. */
   source: string;
   /** Creation timestamp (Date.now()). */
   createdAt: number;

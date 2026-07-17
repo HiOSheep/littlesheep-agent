@@ -91,6 +91,19 @@ export class MemoryV3GraphStore {
     return relation ? structuredClone(relation) : undefined;
   }
 
+  async listRelations(options: {
+    status?: MemoryRelation['status'];
+    limit?: number;
+  } = {}): Promise<MemoryRelation[]> {
+    await this.ensureInitialized();
+    const limit = Math.max(1, Math.min(MAX_GRAPH_RECORDS, Math.floor(options.limit ?? MAX_GRAPH_RECORDS)));
+    return [...this.relations.values()]
+      .filter((relation) => !options.status || relation.status === options.status)
+      .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt) || left.id.localeCompare(right.id))
+      .slice(0, limit)
+      .map((relation) => structuredClone(relation));
+  }
+
   async upsertRelation(relation: MemoryRelation): Promise<MemoryRelation> {
     await this.ensureInitialized();
     return this.exclusive(async () => {

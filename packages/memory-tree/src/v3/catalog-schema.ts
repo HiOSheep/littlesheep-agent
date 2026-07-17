@@ -1,4 +1,4 @@
-export const MEMORY_CATALOG_SCHEMA_VERSION = 6;
+export const MEMORY_CATALOG_SCHEMA_VERSION = 9;
 
 export const MEMORY_CATALOG_SCHEMA_SQL = `
 PRAGMA foreign_keys = ON;
@@ -20,10 +20,13 @@ CREATE TABLE IF NOT EXISTS atoms (
   title TEXT NOT NULL,
   summary TEXT NOT NULL,
   content_hash TEXT NOT NULL,
+  embedding_hash TEXT NOT NULL,
   embedding_status TEXT NOT NULL,
   embedding_engine_id TEXT,
   embedding_model_id TEXT,
   embedding_dimensions INTEGER,
+  activation_score REAL NOT NULL DEFAULT 0.25,
+  activation_updated_at TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -43,15 +46,16 @@ CREATE VIRTUAL TABLE IF NOT EXISTS atom_fts USING fts5(
 
 CREATE TABLE IF NOT EXISTS atom_vectors (
   atom_id TEXT PRIMARY KEY REFERENCES atoms(atom_id) ON DELETE CASCADE,
+  vector_namespace TEXT NOT NULL DEFAULT 'memory-atom',
   engine_id TEXT NOT NULL,
   model_id TEXT NOT NULL,
   engine_version TEXT NOT NULL,
   dimensions INTEGER NOT NULL,
   embedding BLOB NOT NULL,
   content_hash TEXT NOT NULL,
+  embedding_hash TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_vectors_engine ON atom_vectors(engine_id, model_id, engine_version);
 
 CREATE TABLE IF NOT EXISTS atom_access (
   id TEXT PRIMARY KEY,

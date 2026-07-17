@@ -7,6 +7,7 @@ import type {
   MemoryManagementResult,
   MemoryMigrationRecord,
   MemoryNode,
+  MemoryRecentNodeQuery,
   MemoryResourceManagementAction,
   MemoryResourceManagementAuditRecord,
   MemoryResourceManagementResult,
@@ -130,6 +131,8 @@ export class MemoryRepository {
     return this.backend.listNodes(branch, scopeKey);
   }
 
+  listRecentNodes(branch: MemoryBranchKind, query: MemoryRecentNodeQuery = {}): Promise<MemoryNode[]> { return this.backend.listRecentNodes(branch, query); }
+
   rebindProjectPath(fromPath: string, toPath: string): Promise<MemoryProjectRebindResult> {
     return this.backend.rebindProjectPath(fromPath, toPath);
   }
@@ -151,12 +154,10 @@ export class MemoryRepository {
     return this.backend.changeTier(nodeId, tier);
   }
 
-  manageNode(
-    nodeId: string,
-    action: MemoryManagementAction,
-    reason = 'Changed by the user from the memory-tree management page.',
+  manageNode(nodeId: string, action: MemoryManagementAction,
+    reason = 'Changed by the user from the memory-tree management page.', expectedRevision?: number,
   ): Promise<MemoryManagementResult | undefined> {
-    return this.backend.manageNode(nodeId, action, reason);
+    return this.backend.manageNode(nodeId, action, reason, expectedRevision);
   }
 
   getMigration(id: string): Promise<MemoryMigrationRecord | undefined> { return this.backend.getMigration(id); }
@@ -165,7 +166,7 @@ export class MemoryRepository {
     return this.backend.markMigration(record);
   }
 
-  close(): void {
-    if ('close' in this.backend && typeof this.backend.close === 'function') this.backend.close();
-  }
+  startBackgroundMaintenance(): Promise<void> { return this.backend.startBackgroundMaintenance?.() ?? Promise.resolve(); }
+  async shutdown(): Promise<void> { if (this.backend.shutdown) await this.backend.shutdown(); else this.backend.close?.(); }
+  close(): void { if ('close' in this.backend && typeof this.backend.close === 'function') this.backend.close(); }
 }

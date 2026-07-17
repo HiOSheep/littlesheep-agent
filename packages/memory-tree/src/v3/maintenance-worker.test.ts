@@ -52,6 +52,35 @@ describe('MemoryV3MaintenanceWorker', () => {
     expect((engine.embed as ReturnType<typeof vi.fn>).mock.calls.map(([request]) => request.texts.length)).toEqual([2, 1]);
   });
 
+  it('drains every bounded embedding batch in the background and coalesces concurrent requests', async () => {
+    const engine = makeEngine(true);
+    catalog = new MemoryCatalog({ dataDir, embeddingEngine: engine });
+    for (const id of ['drain-a', 'drain-b', 'drain-c', 'drain-d', 'drain-e']) {
+      const atom = await atomStore.create(makeAtomInput({ id, title: id, content: `content ${id}` }));
+      catalog.upsertAtom(atom, atomStore.relativePathFor(atom.id)!);
+    }
+    const worker = new MemoryV3MaintenanceWorker({
+      atomStore,
+      catalog,
+      eventJournal,
+      embeddingBatchSize: 2,
+    });
+
+    const first = worker.startBackgroundDrain();
+    const second = worker.startBackgroundDrain();
+    expect(second).toBe(first);
+    await expect(first).resolves.toMatchObject({
+      passes: 3,
+      indexed: 5,
+      stalled: false,
+      aborted: false,
+      last: { embeddings: { remaining: 0 } },
+    });
+    expect(catalog.countEmbeddingWork()).toBe(0);
+    expect((engine.embed as ReturnType<typeof vi.fn>).mock.calls.map(([request]) => request.texts.length))
+      .toEqual([2, 2, 1]);
+  });
+
   it('captures overdue records once and leaves them for the repository event consumer', async () => {
     const now = () => new Date('2026-07-15T06:00:00.000Z');
     catalog = new MemoryCatalog({ dataDir });
@@ -100,6 +129,68 @@ describe('MemoryV3MaintenanceWorker', () => {
     expect(result.embeddings).toMatchObject({ selected: 2, indexed: 0, remaining: 2, unavailable: true });
     expect(catalog.listEmbeddingWork(2).every((entry) => entry.embeddingStatus === 'pending')).toBe(true);
     expect(engine.embed).not.toHaveBeenCalled();
+  });
+
+  it('stops a background drain when the model is unavailable and retries on a later trigger', async () => {
+    let available = false;
+    const engine = makeEngine(true);
+    engine.isAvailable = vi.fn(async () => available);
+    catalog = new MemoryCatalog({ dataDir, embeddingEngine: engine });
+    for (const id of ['retry-a', 'retry-b']) {
+      const atom = await atomStore.create(makeAtomInput({ id }));
+      catalog.upsertAtom(atom, atomStore.relativePathFor(atom.id)!);
+    }
+    const worker = new MemoryV3MaintenanceWorker({ atomStore, catalog, eventJournal, embeddingBatchSize: 1 });
+
+    await expect(worker.startBackgroundDrain()).resolves.toMatchObject({
+      passes: 1,
+      indexed: 0,
+      stalled: true,
+      aborted: false,
+      last: { embeddings: { unavailable: true, remaining: 2 } },
+    });
+    available = true;
+    await expect(worker.startBackgroundDrain()).resolves.toMatchObject({
+      passes: 2,
+      indexed: 2,
+      stalled: false,
+      aborted: false,
+    });
+    expect(catalog.countEmbeddingWork()).toBe(0);
+  });
+
+  it('aborts and awaits a background drain before shutdown completes', async () => {
+    let yieldCount = 0;
+    let markBetweenPasses!: () => void;
+    let releaseYield!: () => void;
+    const betweenPasses = new Promise<void>((resolve) => { markBetweenPasses = resolve; });
+    const yieldGate = new Promise<void>((resolve) => { releaseYield = resolve; });
+    const engine = makeEngine(true);
+    catalog = new MemoryCatalog({ dataDir, embeddingEngine: engine });
+    for (const id of ['shutdown-a', 'shutdown-b', 'shutdown-c']) {
+      const atom = await atomStore.create(makeAtomInput({ id }));
+      catalog.upsertAtom(atom, atomStore.relativePathFor(atom.id)!);
+    }
+    const worker = new MemoryV3MaintenanceWorker({
+      atomStore,
+      catalog,
+      eventJournal,
+      embeddingBatchSize: 1,
+      yieldControl: async () => {
+        yieldCount += 1;
+        if (yieldCount !== 2) return;
+        markBetweenPasses();
+        await yieldGate;
+      },
+    });
+
+    const drain = worker.startBackgroundDrain();
+    await betweenPasses;
+    const shutdown = worker.shutdown();
+    releaseYield();
+    await shutdown;
+    await expect(drain).resolves.toMatchObject({ passes: 1, indexed: 1, aborted: true });
+    expect(catalog.countEmbeddingWork()).toBe(2);
   });
 
   it('runs one coalesced follow-up batch when a write lands during active embedding work', async () => {

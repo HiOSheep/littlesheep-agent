@@ -1,7 +1,9 @@
 // Task composer controls, attachments, runtime selection, and sizing.
+import { useEffect, useRef, type MouseEvent } from 'react'
 import {
   type AttachmentRef
 } from '../api'
+import { useLinkNavigation } from '../link-navigation'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { FileGlyphIcon } from '../ui/icons'
 import { attachmentExtLabel, attachmentFileUrl, compactPath, formatFileSize, inferAttachmentKind, lastPathSegment } from '../workspace/path-utils'
@@ -17,30 +19,69 @@ export function MessageFileStrip({
   label: string
   onOpenFile: (path: string) => void
 }) {
+  const navigation = useLinkNavigation()
   if (files.length === 0) return null
 
   return (
-    <div className="message-file-strip" aria-label={label}>
+    <div className={`message-file-strip ${label !== '附件' ? 'result-links' : ''}`} aria-label={label}>
       <span className="message-file-strip-label">{label}</span>
       <div className="message-file-list">
         {files.map((file) => (
-          <button
+          <MessageFileLink
             key={`${file.action}:${file.path}`}
-            className={`message-file-card ${file.action}`}
-            type="button"
-            onClick={() => onOpenFile(file.path)}
-          >
-            <span className="message-file-icon" aria-hidden="true">
-              <FileGlyphIcon />
-            </span>
-            <span className="message-file-main">
-              <strong>{file.name}</strong>
-              <small>{fileActionLabel(file.action)} · {compactPath(file.path)}</small>
-            </span>
-          </button>
+            file={file}
+            onOpen={() => onOpenFile(file.path)}
+            onOpenSystem={() => navigation.openWithSystem(file.path)}
+          />
         ))}
       </div>
     </div>
+  )
+}
+
+function MessageFileLink({
+  file,
+  onOpen,
+  onOpenSystem,
+}: {
+  file: WorkspaceArtifactRef
+  onOpen: () => void
+  onOpenSystem: () => void
+}) {
+  const clickTimerRef = useRef<number>()
+
+  useEffect(() => () => window.clearTimeout(clickTimerRef.current), [])
+
+  function handleClick(event: MouseEvent<HTMLButtonElement>) {
+    window.clearTimeout(clickTimerRef.current)
+    if (event.detail === 0) {
+      onOpen()
+      return
+    }
+    if (event.detail > 1) return
+    clickTimerRef.current = window.setTimeout(onOpen, 230)
+  }
+
+  function handleDoubleClick() {
+    window.clearTimeout(clickTimerRef.current)
+    onOpenSystem()
+  }
+
+  return (
+    <button
+      className={`message-file-card ${file.action}`}
+      type="button"
+      onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
+    >
+      <span className="message-file-icon" aria-hidden="true">
+        <FileGlyphIcon />
+      </span>
+      <span className="message-file-main">
+        <strong>{file.name}</strong>
+        <small>{fileActionLabel(file.action)} · {compactPath(file.path)}</small>
+      </span>
+    </button>
   )
 }
 

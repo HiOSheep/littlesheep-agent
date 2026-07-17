@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -6,7 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { asSessionId } from '@littlesheep/types';
 import { InjectionTier, type MemoryWriteIntent } from './types.js';
 import { createMemoryV3ExperimentMarker, MemoryRepository, MemoryWriteService } from './memory-repository.js';
-import type { EmbeddingEngine } from './v3/contracts.js';
+import type { EmbeddingEngine, EmbeddingRequest } from './v3/contracts.js';
 import { MemoryService } from './memory-service.js';
 import { MemoryTree } from './memory-tree.js';
 import { DEFAULT_BRANCH_SPECS, TreeMemoryBranch } from './tree-memory-branch.js';
@@ -171,13 +171,16 @@ describe('MemoryService on the Memory v3 repository backend', () => {
       recentHistory: [], workspace: dataDir,
       autoPrime: false,
     });
+    const embeddingCallsBeforeIndex = vi.mocked(engine.embed).mock.calls.length;
     const index = await service.branchIndex('run-vector', 'long-term');
+    expect(engine.embed).toHaveBeenCalledTimes(embeddingCallsBeforeIndex);
     await service.expand('run-vector', {
       branchId: 'long-term', nodeId: index.entries[0]!.id, tokenBudget: 64,
     });
     const result = await service.deepSearch('run-vector', {
       branchId: 'long-term', query: 'galaxy', tokenBudget: 800,
     });
+    expect(vi.mocked(engine.embed).mock.calls.length).toBeGreaterThan(embeddingCallsBeforeIndex);
     expect(result.fragments[0]?.evidence?.retrievalPath).toBe('vector');
     expect(result.fragments[0]?.content).toContain('nebula');
   });
@@ -236,9 +239,9 @@ function semanticTestEngine(): EmbeddingEngine {
   return {
     descriptor,
     isAvailable: () => true,
-    embed: async (request) => ({
+    embed: vi.fn(async (request: EmbeddingRequest) => ({
       descriptor,
       vectors: request.texts.map((text) => /nebula|galaxy/iu.test(text) ? [1, 0] : [0, 1]),
-    }),
+    })),
   };
 }

@@ -32,6 +32,7 @@ export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
     description: 'Execute a shell command. Whitelisted commands auto-approve; others require approval.',
     inputSchema: ExecInput,
     requiresApproval: true,
+    execution: { concurrency: 'exclusive' },
     execute: withToolTiming(async (input, ctx) => {
       const { command, cwd, timeout_ms } = ExecInput.parse(input);
       const workDir = resolve(cwd ?? ctx.cwd);
@@ -60,6 +61,9 @@ export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
         }
       }
 
+      if (!isLikelyReadOnlyCommand(command)) {
+        await ctx.versioning?.beforeWorkspaceMutation(workDir);
+      }
       ctx.log?.('info', `exec: ${command} (cwd: ${workDir})`);
 
       // Use PowerShell on Windows (per TOOLS.md convention), sh on Unix
@@ -115,3 +119,12 @@ export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
 
 /** Default exec tool instance (interactive mode). */
 export const execTool = createExecTool({ interactive: true });
+
+function isLikelyReadOnlyCommand(command: string): boolean {
+  const value = command.trim();
+  if (!value || /[;>&]|\|\||\$\(|`/u.test(value)) return false;
+  return /^(?:pwd|dir|ls|Get-ChildItem|Get-Content|Select-String|rg)(?:\s|$)/iu.test(value)
+    || /^git\s+(?:status|log|diff|show)(?:\s|$)/iu.test(value)
+    || /^(?:node|npm|pnpm)\s+--version(?:\s|$)/iu.test(value)
+    || /^echo(?:\s|$)/iu.test(value);
+}

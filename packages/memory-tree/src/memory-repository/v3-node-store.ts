@@ -10,6 +10,7 @@ import type {
   MemoryManagementResult,
   MemoryMigrationRecord,
   MemoryNode,
+  MemoryRecentNodeQuery,
   MemoryScope,
   MemoryWriteIntent,
   MemoryWritePolicy,
@@ -43,12 +44,13 @@ import {
   createMemoryV3ScopeRoot,
   isMemoryV3InternalRootId,
   memoryAtomToNode,
-  memoryV3EntityId,
   memoryV3ScopeRootId,
   mergedIntentEvidence,
-  scopeEntity,
-  sourceEntity,
 } from './v3-node-mapping.js';
+import {
+  MemoryV3WriteGraphProjection,
+  type MemoryV3RelationProjectionRecovery,
+} from './v3-write-graph-projection.js';
 import {
   atomIdForIntent,
   branchForRootId,
@@ -75,7 +77,7 @@ export class MemoryV3NodeStore {
   private readonly atomStore: MemoryAtomStore;
   private readonly catalog: MemoryCatalog;
   private readonly coordinator: MemoryV3StorageCoordinator;
-  private readonly graphStore: MemoryV3GraphStore;
+  private readonly graphProjection: MemoryV3WriteGraphProjection;
   private readonly ledger: MemoryV3RepositoryLedger;
   private readonly policy: MemoryWritePolicy;
   private readonly log?: LogFn;
@@ -85,7 +87,7 @@ export class MemoryV3NodeStore {
     this.atomStore = options.atomStore;
     this.catalog = options.catalog;
     this.coordinator = options.coordinator;
-    this.graphStore = options.graphStore;
+    this.graphProjection = new MemoryV3WriteGraphProjection(options.graphStore, options.catalog);
     this.ledger = options.ledger;
     this.policy = options.policy;
     this.log = options.log;
@@ -95,6 +97,10 @@ export class MemoryV3NodeStore {
     for (const branch of Object.keys(MEMORY_BRANCH_ROOTS) as MemoryBranchKind[]) {
       await this.ensureScopeRoot(branch, 'global', undefined);
     }
+  }
+
+  reconcileGraphProjection(limit?: number): Promise<MemoryV3RelationProjectionRecovery> {
+    return this.exclusive(() => this.graphProjection.reconcile(limit));
   }
 
   async get(id: string): Promise<MemoryNode | undefined> {
@@ -111,6 +117,21 @@ export class MemoryV3NodeStore {
     return nodes
       .filter((node) => !scopeKey || !node.scopeKey || node.scopeKey === scopeKey)
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  }
+
+  async listRecent(branch: MemoryBranchKind, query: MemoryRecentNodeQuery = {}): Promise<MemoryNode[]> {
+    const limit = boundedRecentNodeLimit(query.limit);
+    const storageScopeKey = query.scope && query.scopeKey
+      ? await this.ledger.storageScopeKey(query.scope, query.scopeKey)
+      : undefined;
+    const entries = this.catalog.listAtoms({
+      branch,
+      scope: query.scope,
+      scopeKey: storageScopeKey,
+      status: query.status === 'deleted' ? 'tombstone' : query.status ?? 'active',
+      limit,
+    }).filter((entry) => !isMemoryV3InternalRootId(entry.atomId));
+    return this.readNodes(entries);
   }
 
   async children(parentNodeId: string): Promise<MemoryNode[]> {
@@ -174,10 +195,14 @@ export class MemoryV3NodeStore {
     nodeId: string,
     action: MemoryManagementAction,
     reason = 'Changed by the user from the memory-tree management page.',
+    expectedRevision?: number,
   ): Promise<MemoryManagementResult | undefined> {
     return this.exclusive(async () => {
       const atom = await this.mutableAtom(nodeId);
       if (!atom) return undefined;
+      if (expectedRevision !== undefined && atom.revision !== expectedRevision) {
+        throw new Error(`Memory atom ${atom.id} revision conflict: expected ${expectedRevision}, found ${atom.revision}.`);
+      }
       const children = await this.children(atom.id);
       if ((action === 'archive' || action === 'delete') && children.some((child) => child.status !== 'deleted')) {
         throw new Error('Manage child memories before changing this parent memory.');
@@ -257,16 +282,13 @@ export class MemoryV3NodeStore {
       return { intentId: intent.id!, decision: 'queued', reason, queuedId: queued?.id };
     }
 
-    const entityRefs = await this.ensureEntities(intent, classification, storageScopeKey);
-    for (const relationId of classification.relationRefs) {
-      if (!await this.graphStore.getRelation(relationId)) throw new Error(`Memory relation does not exist: ${relationId}`);
-    }
+    const graph = await this.graphProjection.prepare(intent, classification, storageScopeKey);
     const candidates = await this.candidateAtoms(intent.branch, intent.scope, storageScopeKey, classification);
     const exact = candidates.find((atom) => equivalentMemoryNode(
       memoryAtomToNode(atom, [], this.ledger.publicScopeKey(atom.scope, atom.scopeKey)),
       intent,
     ));
-    if (exact) return this.reinforce(exact, parent.id, intent, classification, entityRefs);
+    if (exact) return this.reinforce(exact, parent.id, intent, classification, graph.entityRefs, graph.relationRefs);
 
     const similar = candidates
       .map((atom) => ({
@@ -278,7 +300,7 @@ export class MemoryV3NodeStore {
       }))
       .sort((left, right) => right.score - left.score)[0];
     if (similar && similar.score >= this.policy.duplicateSimilarityThreshold) {
-      return this.merge(similar.atom, similar.score, intent, classification, entityRefs);
+      return this.merge(similar.atom, similar.score, intent, classification, graph.entityRefs, graph.relationRefs);
     }
 
     const audit = writeAudit(intent, 'created', 'Created an indexed Memory v3 atom and refreshed its scope index.', atomIdForIntent(intent.id!));
@@ -296,10 +318,12 @@ export class MemoryV3NodeStore {
       confidence: intent.confidence,
       reason: intent.reason,
       sourceRunId: intent.sourceRunId,
+      sourceRunIds: intent.sourceRunIds,
       sourceStage: intent.sourceStage,
+      sourceStages: intent.sourceStages,
       sourceRefs: intent.sourceRefs ?? [],
-      entityRefs,
-      relationRefs: classification.relationRefs,
+      entityRefs: graph.entityRefs,
+      relationRefs: graph.relationRefs,
       classification,
       createdAt: intent.createdAt!,
     });
@@ -307,6 +331,7 @@ export class MemoryV3NodeStore {
       intentEvent(intent, classification, storageScopeKey, 'created', audit, atomInput.id),
       { kind: 'create', atom: atomInput },
     );
+    await this.activateGraphProjection(atom);
     return { intentId: intent.id!, decision: 'created', reason: 'Indexed memory created.', node: await this.toNode(atom) };
   }
 
@@ -316,6 +341,7 @@ export class MemoryV3NodeStore {
     intent: MemoryWriteIntent,
     classification: ClassifiedMemoryStatement,
     entityRefs: string[],
+    relationRefs: string[],
   ): Promise<MemoryWriteResult> {
     const sourceRefs = unique([...atom.sourceRefs, ...(intent.sourceRefs ?? [])]).slice(-256);
     const evidenceRefs = unique([...atom.evidenceRefs, ...classification.evidenceRefs]).slice(-256);
@@ -333,12 +359,12 @@ export class MemoryV3NodeStore {
         ? Math.max(atom.basePriority, mayStrengthenConfidence ? intent.confidence : 0, intent.importance)
         : atom.basePriority,
       retrievalKeys: unique([...atom.retrievalKeys, ...intent.retrievalKeys]),
-      sourceRunIds: unique([...atom.sourceRunIds, intent.sourceRunId]).slice(-256),
-      sourceStages: unique([...atom.sourceStages, intent.sourceStage]),
+      sourceRunIds: unique([...atom.sourceRunIds, ...(intent.sourceRunIds ?? []), intent.sourceRunId]).slice(-256),
+      sourceStages: unique([...atom.sourceStages, ...(intent.sourceStages ?? []), intent.sourceStage]),
       sourceRefs,
       evidenceRefs,
       entityRefs: unique([...atom.entityRefs, ...entityRefs]),
-      relationRefs: unique([...atom.relationRefs, ...classification.relationRefs]),
+      relationRefs: unique([...atom.relationRefs, ...relationRefs]),
       reason: intent.reason || atom.reason,
       epistemicStatus: mayStrengthenConfidence
         ? strongerEpistemicStatus(atom.epistemicStatus, classification.epistemicStatus)
@@ -359,6 +385,7 @@ export class MemoryV3NodeStore {
       intentEvent(intent, classification, atom.scopeKey, 'reinforced', audit, atom.id, atom.revision),
       { kind: 'update', atomId: atom.id, expectedRevision: atom.revision, patch },
     );
+    await this.activateGraphProjection(updated);
     return {
       intentId: intent.id!,
       decision: 'reinforced',
@@ -373,6 +400,7 @@ export class MemoryV3NodeStore {
     intent: MemoryWriteIntent,
     classification: ClassifiedMemoryStatement,
     entityRefs: string[],
+    relationRefs: string[],
   ): Promise<MemoryWriteResult> {
     const sourceRefs = unique([...atom.sourceRefs, ...(intent.sourceRefs ?? [])]).slice(-256);
     const evidenceRefs = unique([...atom.evidenceRefs, ...classification.evidenceRefs]).slice(-256);
@@ -387,13 +415,13 @@ export class MemoryV3NodeStore {
         ? Math.max(atom.basePriority, mayStrengthenConfidence ? intent.confidence : 0, intent.importance)
         : atom.basePriority,
       retrievalKeys: unique([...atom.retrievalKeys, ...intent.retrievalKeys]),
-      sourceRunIds: unique([...atom.sourceRunIds, intent.sourceRunId]).slice(-256),
-      sourceStages: unique([...atom.sourceStages, intent.sourceStage]),
+      sourceRunIds: unique([...atom.sourceRunIds, ...(intent.sourceRunIds ?? []), intent.sourceRunId]).slice(-256),
+      sourceStages: unique([...atom.sourceStages, ...(intent.sourceStages ?? []), intent.sourceStage]),
       sourceRefs,
       evidenceRefs,
       mergedIntentIds: unique([...(atom.mergedIntentIds ?? []), intent.id!]).slice(-256),
       entityRefs: unique([...atom.entityRefs, ...entityRefs]),
-      relationRefs: unique([...atom.relationRefs, ...classification.relationRefs]),
+      relationRefs: unique([...atom.relationRefs, ...relationRefs]),
       epistemicStatus: mayStrengthenConfidence
         ? strongerEpistemicStatus(atom.epistemicStatus, classification.epistemicStatus)
         : atom.epistemicStatus,
@@ -407,6 +435,7 @@ export class MemoryV3NodeStore {
       intentEvent(intent, classification, atom.scopeKey, 'merged', audit, atom.id, atom.revision),
       { kind: 'update', atomId: atom.id, expectedRevision: atom.revision, patch },
     );
+    await this.activateGraphProjection(updated);
     return { intentId: intent.id!, decision: 'merged', reason, node: await this.toNode(updated) };
   }
 
@@ -461,47 +490,12 @@ export class MemoryV3NodeStore {
     return atoms.filter((atom) => sameStatementCategory(atom, classification));
   }
 
-  private async ensureEntities(
-    intent: MemoryWriteIntent,
-    classification: ClassifiedMemoryStatement,
-    storageScopeKey: string | undefined,
-  ): Promise<string[]> {
-    const now = new Date().toISOString();
-    const ids = new Set(classification.entityRefs);
-    for (const id of classification.entityRefs) {
-      if (!await this.graphStore.getEntity(id)) throw new Error(`Memory entity does not exist: ${id}`);
+  private async activateGraphProjection(atom: MemoryAtom): Promise<void> {
+    try {
+      await this.graphProjection.activateForAtom(atom);
+    } catch (error) {
+      this.log?.('warn', `memory-v3: relation activation deferred to startup recovery: ${(error as Error).message}`);
     }
-    const scopeEntityId = intent.scope === 'global' || !storageScopeKey
-      ? undefined
-      : memoryV3EntityId(
-          intent.scope === 'workspace' ? 'directory' : intent.scope,
-          intent.scope,
-          storageScopeKey,
-          storageScopeKey,
-        );
-    const scoped = scopeEntity(
-      intent.scope,
-      storageScopeKey,
-      intent.scopeKey,
-      now,
-      scopeEntityId ? await this.graphStore.getEntity(scopeEntityId) : undefined,
-    );
-    if (scoped) {
-      await this.graphStore.upsertEntity(scoped);
-      ids.add(scoped.id);
-    }
-    for (const sourceRef of intent.sourceRefs ?? []) {
-      const candidateId = memoryV3EntityId(
-        sourceEntity(sourceRef, intent.scope, storageScopeKey, now).type,
-        intent.scope,
-        storageScopeKey,
-        sourceRef,
-      );
-      const entity = sourceEntity(sourceRef, intent.scope, storageScopeKey, now, await this.graphStore.getEntity(candidateId));
-      await this.graphStore.upsertEntity(entity);
-      ids.add(entity.id);
-    }
-    return [...ids];
   }
 
   private async virtualRoot(branch: MemoryBranchKind): Promise<MemoryNode> {
@@ -567,6 +561,11 @@ export class MemoryV3NodeStore {
     this.mutationChain = run.then(() => undefined, () => undefined);
     return run;
   }
+}
+
+function boundedRecentNodeLimit(value: number | undefined): number {
+  if (!Number.isSafeInteger(value) || value! <= 0) return 256;
+  return Math.min(value!, 256);
 }
 
 function confidenceSupport(

@@ -1,6 +1,7 @@
 import type {
   MemoryAccessRecord,
   MemoryAtom,
+  MemoryAtomRetrievalPath,
   MemoryAtomHistory,
   MemoryCandidatePriorityBreakdown,
   MemoryDisclosureLevel,
@@ -8,6 +9,7 @@ import type {
   MemoryRelationNeighborhood,
 } from '../v3/contracts.js';
 import type { MemoryBranchKind, MemoryScope } from '../types.js';
+import type { MemoryTaskQuery } from '../task-query.js';
 
 export interface MemoryRetrievalScope {
   scope: MemoryScope;
@@ -18,6 +20,7 @@ export interface MemoryRepositoryIndexRequest {
   branch: MemoryBranchKind;
   scopes: MemoryRetrievalScope[];
   query: string;
+  taskQuery?: MemoryTaskQuery;
   limit: number;
   now: string;
   signal?: AbortSignal;
@@ -29,13 +32,15 @@ export interface MemoryRepositoryRetrievalRequest extends MemoryRepositoryIndexR
   subtreeRootId?: string;
   disclosureLevel: Extract<MemoryDisclosureLevel, 'D2' | 'D3'>;
   mode: 'expand' | 'deep-search';
+  retrievalPathHint?: MemoryAtomRetrievalPath;
+  retrievalMatchReasonHint?: string;
 }
 
 export interface MemoryRepositoryCandidate {
   atom: MemoryAtom;
   envelope: MemoryEvidenceEnvelope;
   priority: MemoryCandidatePriorityBreakdown;
-  retrievalPath: Extract<MemoryAccessRecord['path'], 'hierarchy' | 'fts' | 'vector'>;
+  retrievalPath: MemoryAtomRetrievalPath;
   hasChildren: boolean;
   neighborhood?: MemoryRelationNeighborhood;
   history?: MemoryAtomHistory;

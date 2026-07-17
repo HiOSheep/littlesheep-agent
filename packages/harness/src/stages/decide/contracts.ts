@@ -1,12 +1,15 @@
 import type { BrandingConfig } from '@littlesheep/branding';
 import type { Config } from '@littlesheep/config';
 import type { LlmClient } from '@littlesheep/llm';
+import type { MemoryRunRefinementServiceLike } from '@littlesheep/memory-tree';
 
 export interface DecideStageDeps {
   llm: LlmClient;
   model: string;
   config: Config;
   branding: BrandingConfig;
+  memoryRefiner?: MemoryRunRefinementServiceLike;
+  log?: (level: 'info' | 'warn' | 'error', message: string, data?: unknown) => void;
 }
 
 export interface DecodedPlan {

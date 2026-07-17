@@ -18,8 +18,13 @@ function summarizeKnownState(ctx: RunContext): string {
     const envelope = reference.envelope;
     return `  - ${reference.atomId}@${reference.atomRevision}: decision=${reference.decision}; `
       + `${envelope.statementKind}/${envelope.epistemicStatus}; authority=${envelope.authorityScope.kind}; `
-      + `scope=${envelope.scope}${envelope.scopeKey ? `:${envelope.scopeKey}` : ''}; reason=${truncate(reference.reason, 220)}`;
+      + `scope=${envelope.scope}${envelope.scopeKey ? `:${envelope.scopeKey}` : ''}; task=${score(envelope.taskRelevance)}; `
+      + `routing=${score(envelope.routingRelevance)}; relation=${score(envelope.relationshipRelevance)}; reason=${truncate(reference.reason, 220)}`;
   }).join('\n');
+}
+
+function score(value: number | undefined): string {
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value!)).toFixed(2) : 'n/a';
 }
 
 function inboundText(ctx: RunContext): string {

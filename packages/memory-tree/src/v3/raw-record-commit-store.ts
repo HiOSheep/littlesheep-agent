@@ -1,6 +1,7 @@
 // Persists append-only proof that projection mutations reached the commit boundary.
 
 import { createHash, randomBytes } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, readdir, rename } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import type { MemoryRawRecord, MemoryRawRecordCommitReceipt } from './contracts.js';
@@ -12,7 +13,7 @@ export interface MemoryRawRecordCommitStoreOptions {
   now: () => Date;
   maxReceiptBytes: number;
   maxScanFiles: number;
-  resolveRawRecord: (rawRecordId: string) => MemoryRawRecord | undefined;
+  resolveRawRecord: (rawRecordId: string) => Promise<MemoryRawRecord | undefined>;
 }
 
 export class MemoryRawRecordCommitConflictError extends Error {
@@ -28,8 +29,7 @@ export class MemoryRawRecordCommitStore {
   private readonly now: () => Date;
   private readonly maxReceiptBytes: number;
   private readonly maxScanFiles: number;
-  private readonly resolveRawRecord: (rawRecordId: string) => MemoryRawRecord | undefined;
-  private readonly receipts = new Map<string, MemoryRawRecordCommitReceipt>();
+  private readonly resolveRawRecord: (rawRecordId: string) => Promise<MemoryRawRecord | undefined>;
   private initialized = false;
   private mutationChain: Promise<void> = Promise.resolve();
 
@@ -44,19 +44,18 @@ export class MemoryRawRecordCommitStore {
 
   async initialize(): Promise<void> {
     await this.exclusive(async () => {
-      await mkdir(this.rootDir, { recursive: true });
-      await mkdir(this.quarantineDir, { recursive: true });
-      this.receipts.clear();
+      await Promise.all([
+        mkdir(this.rootDir, { recursive: true }),
+        mkdir(this.quarantineDir, { recursive: true }),
+      ]);
       for (const path of await collectReceiptFiles(this.rootDir, this.maxScanFiles)) {
         try {
           const receipt = await readReceipt(path, this.maxReceiptBytes);
-          const record = this.resolveRawRecord(receipt.rawRecordId);
+          const record = await this.resolveRawRecord(receipt.rawRecordId);
           if (!record) throw new Error('commit receipt references a missing raw record');
           if (record.contentHash !== receipt.rawRecordContentHash) {
             throw new Error('commit receipt record hash does not match the raw record');
           }
-          if (this.receipts.has(receipt.rawRecordId)) throw new Error('duplicate record commit receipt');
-          this.receipts.set(receipt.rawRecordId, receipt);
         } catch (error) {
           await quarantine(path, this.quarantineDir, errorMessage(error), this.now);
         }
@@ -68,12 +67,12 @@ export class MemoryRawRecordCommitStore {
   async markCommitted(rawRecordId: string, operationId: string): Promise<MemoryRawRecordCommitReceipt> {
     await this.ensureInitialized();
     return this.exclusive(async () => {
-      const record = this.resolveRawRecord(rawRecordId);
+      const record = await this.resolveRawRecord(rawRecordId);
       if (!record) throw new Error(`Memory raw record not found: ${rawRecordId}`);
-      const existing = this.receipts.get(rawRecordId);
+      const existing = await this.readDirect(rawRecordId);
       if (existing) {
         if (existing.rawRecordContentHash === record.contentHash && existing.operationId === operationId) {
-          return structuredClone(existing);
+          return existing;
         }
         throw new MemoryRawRecordCommitConflictError(rawRecordId);
       }
@@ -90,15 +89,18 @@ export class MemoryRawRecordCommitStore {
       };
       assertReceiptBytes(Buffer.byteLength(JSON.stringify(receipt), 'utf8'), this.maxReceiptBytes);
       await durableAtomicWriteJson(this.pathFor(rawRecordId), receipt);
-      this.receipts.set(rawRecordId, receipt);
       return structuredClone(receipt);
     });
   }
 
   async get(rawRecordId: string): Promise<MemoryRawRecordCommitReceipt | undefined> {
     await this.ensureInitialized();
-    const receipt = this.receipts.get(rawRecordId);
-    return receipt ? structuredClone(receipt) : undefined;
+    return this.readDirect(rawRecordId);
+  }
+
+  private async readDirect(rawRecordId: string): Promise<MemoryRawRecordCommitReceipt | undefined> {
+    const path = this.pathFor(rawRecordId);
+    return existsSync(path) ? readReceipt(path, this.maxReceiptBytes) : undefined;
   }
 
   private pathFor(rawRecordId: string): string {

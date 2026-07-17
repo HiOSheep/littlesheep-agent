@@ -90,7 +90,7 @@ describe('createDefaultHarness state machine', () => {
     const ctx = makeCtx({ inbound: textMessage('user', 'asdf qwer') });
     const res = await h.run(ctx);
     expect(res.next).toBe('exit');
-    expect(ctx.reply).toContain('What would you like LS to help you accomplish?');
+    expect(ctx.reply).toBe('what do you mean?');
     const trace = res.meta?.trace as Array<{ name: string }>;
     const names = trace.map((t) => t.name);
     expect(names).toEqual(['enter', 'classify', 'ask_user', 'finalize']);

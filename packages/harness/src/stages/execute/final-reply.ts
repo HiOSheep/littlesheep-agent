@@ -1,7 +1,7 @@
 import type { RunContext, TaskBook, TaskStepResult } from '@littlesheep/types';
 import { buildRunRequestCandidates } from '../../context-candidates.js';
 import { prepareModelRequest, recordProviderUsage } from '../../model-observability.js';
-import { appendSystemPromptAddons } from '../../profile-prompt.js';
+import { appendSystemPromptAddons, buildUserFacingVoiceAddon } from '../../profile-prompt.js';
 import { textOf } from '../_shared.js';
 import type { ExecuteStageDeps } from './contracts.js';
 import { applyUsage } from './tool-loop.js';
@@ -20,7 +20,6 @@ export async function synthesizeFinalReply(
     + `Output: ${step.output ?? '(no output)'}\n`
     + (step.error ? `Error: ${step.error}\n` : ''),
   ).join('\n');
-
   try {
     const rawRequest = {
       model: deps.model,
@@ -32,6 +31,7 @@ export async function synthesizeFinalReply(
 Follow progressive disclosure: lead with the outcome and completion status, then give key results, artifacts, evidence, and the next action only when useful. Keep detail proportional to the user's request; simple tasks should not become reports. Do not dump raw command output or private chain-of-thought. Never hide failed or partial steps, permission denials, risks, uncertainty, external side effects, or decisions required from the user. Do not claim failed steps succeeded.`,
             ctx.profilePromptAddon,
             ctx.reasoningPromptAddon,
+            buildUserFacingVoiceAddon(ctx),
           ),
         },
         {

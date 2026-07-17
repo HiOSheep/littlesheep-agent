@@ -130,6 +130,34 @@ describe('context usage presentation model', () => {
     expect(snapshot?.provider?.usedTokens).toBe(12_000)
   })
 
+  it('treats an ASK_USER composition call as reply-bearing context', () => {
+    const askSnapshot = contextSnapshot({
+      id: 'context-ask-user',
+      providerUsage: {
+        version: 1,
+        source: 'provider',
+        provider: 'openai',
+        model: 'gpt-5.5',
+        promptTokens: 800,
+        completionTokens: 60,
+        totalTokens: 860,
+        reportedAt: '2026-07-13T01:00:02.000Z',
+      },
+    })
+    const requests = [
+      { stage: 'ask_user', contextSnapshotId: 'context-ask-user' },
+    ] as Parameters<typeof buildContextUsageSnapshot>[3]
+
+    const snapshot = buildContextUsageSnapshot(
+      'openai/gpt-5.5',
+      { promptTokens: 800, completionTokens: 60, source: 'provider' },
+      [askSnapshot],
+      requests,
+    )
+
+    expect(snapshot?.provider?.usedTokens).toBe(800)
+  })
+
   it('does not fabricate usage for unavailable counters or a different model', () => {
     const snapshot = buildContextUsageSnapshot('openai/gpt-5.5', undefined, [contextSnapshot({
       safetyEstimate: {

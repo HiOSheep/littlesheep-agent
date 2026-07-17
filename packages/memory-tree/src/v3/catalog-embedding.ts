@@ -3,16 +3,19 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type {
   EmbeddingEngine,
+  EmbeddingEngineDescriptor,
   MemoryAtom,
   MemoryCatalogEntry,
   MemoryCatalogSearchOptions,
   MemoryCatalogSearchResult,
 } from './contracts.js';
+import { MEMORY_VECTOR_NAMESPACE } from './contracts.js';
 import {
   boundedLimit,
   bufferToVector,
   cosineSimilarity,
   embeddingText,
+  memoryAtomEmbeddingHash,
   rowToEntry,
   scopedAtomQuery,
   vectorToBuffer,
@@ -30,6 +33,11 @@ export interface MemoryCatalogEmbeddingControllerOptions {
   engine?: EmbeddingEngine;
   allowRemote: boolean;
   maxVectorCandidates: number;
+}
+
+export interface PreparedMemoryVectorQuery {
+  descriptor: EmbeddingEngineDescriptor;
+  vector: Float32Array;
 }
 
 export class MemoryCatalogEmbeddingController {
@@ -77,16 +85,18 @@ export class MemoryCatalogEmbeddingController {
       this.transaction(() => {
         const upsertVector = this.db.prepare(`
           INSERT INTO atom_vectors (
-            atom_id, engine_id, model_id, engine_version, dimensions,
-            embedding, content_hash, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            atom_id, vector_namespace, engine_id, model_id, engine_version, dimensions,
+            embedding, content_hash, embedding_hash, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(atom_id) DO UPDATE SET
+            vector_namespace = excluded.vector_namespace,
             engine_id = excluded.engine_id,
             model_id = excluded.model_id,
             engine_version = excluded.engine_version,
             dimensions = excluded.dimensions,
             embedding = excluded.embedding,
             content_hash = excluded.content_hash,
+            embedding_hash = excluded.embedding_hash,
             updated_at = excluded.updated_at
         `);
         const markReady = this.db.prepare(`
@@ -98,12 +108,14 @@ export class MemoryCatalogEmbeddingController {
           const atom = atoms[index]!;
           upsertVector.run(
             atom.id,
+            MEMORY_VECTOR_NAMESPACE,
             descriptor.engineId,
             descriptor.modelId,
             descriptor.version,
             descriptor.dimensions,
             vectorToBuffer(result.vectors[index]!),
             atom.contentHash,
+            memoryAtomEmbeddingHash(atom),
             timestamp,
           );
           markReady.run(descriptor.engineId, descriptor.modelId, descriptor.dimensions, atom.id);
@@ -117,13 +129,24 @@ export class MemoryCatalogEmbeddingController {
   }
 
   async search(query: string, options: MemoryCatalogSearchOptions, signal?: AbortSignal): Promise<MemoryCatalogSearchResult[]> {
+    return this.searchPrepared(await this.prepareQuery(query, signal), options);
+  }
+
+  async prepareQuery(query: string, signal?: AbortSignal): Promise<PreparedMemoryVectorQuery> {
     const engine = await this.enabledEngine();
     if (!engine) throw new EmbeddingUnavailableError();
     const request = { texts: [query], purpose: 'query' as const, signal };
     const result = await engine.embed(request);
     validateEmbeddingResult(engine, request, result);
-    const queryVector = Float32Array.from(result.vectors[0]!);
-    const descriptor = engine.descriptor;
+    return { descriptor: engine.descriptor, vector: Float32Array.from(result.vectors[0]!) };
+  }
+
+  searchPrepared(
+    prepared: PreparedMemoryVectorQuery,
+    options: MemoryCatalogSearchOptions,
+  ): MemoryCatalogSearchResult[] {
+    const queryVector = prepared.vector;
+    const descriptor = prepared.descriptor;
     const candidateLimit = Math.min(
       this.maxVectorCandidates,
       Math.max(boundedLimit(options.limit, 20, 200) * 50, 500),
@@ -132,9 +155,10 @@ export class MemoryCatalogEmbeddingController {
       SELECT a.*, v.embedding
       FROM atoms a
       JOIN atom_vectors v ON v.atom_id = a.atom_id
-    `, `a.embedding_status = 'ready' AND v.engine_id = ? AND v.model_id = ? AND v.engine_version = ? AND v.dimensions = ?`, 'a.updated_at DESC', candidateLimit);
+    `, `a.embedding_status = 'ready' AND v.vector_namespace = ? AND v.engine_id = ? AND v.model_id = ? AND v.engine_version = ? AND v.dimensions = ?`, 'a.updated_at DESC', candidateLimit);
     const rows = this.db.prepare(sql).all(
       ...prefixParams,
+      MEMORY_VECTOR_NAMESPACE,
       descriptor.engineId,
       descriptor.modelId,
       descriptor.version,
@@ -195,20 +219,30 @@ export class MemoryCatalogEmbeddingController {
       return;
     }
     const descriptor = this.engine!.descriptor;
-    this.db.exec(`UPDATE atoms SET embedding_status = 'pending' WHERE embedding_status = 'disabled'`);
+    this.db.exec(`
+      UPDATE atoms SET embedding_status = 'disabled', embedding_engine_id = NULL,
+        embedding_model_id = NULL, embedding_dimensions = NULL
+      WHERE status <> 'active';
+      DELETE FROM atom_vectors WHERE atom_id IN (
+        SELECT atom_id FROM atoms WHERE status <> 'active'
+      );
+      UPDATE atoms SET embedding_status = 'pending'
+      WHERE status = 'active' AND embedding_status = 'disabled';
+    `);
     this.db.prepare(`
       UPDATE atoms SET embedding_status = 'stale'
-      WHERE embedding_status = 'ready'
-        AND NOT EXISTS (
+      WHERE status = 'active' AND embedding_status = 'ready'
+        AND (embedding_hash = '' OR NOT EXISTS (
           SELECT 1 FROM atom_vectors vector
           WHERE vector.atom_id = atoms.atom_id
+            AND vector.vector_namespace = ?
             AND vector.engine_id = ?
             AND vector.model_id = ?
             AND vector.engine_version = ?
             AND vector.dimensions = ?
-            AND vector.content_hash = atoms.content_hash
-        )
-    `).run(descriptor.engineId, descriptor.modelId, descriptor.version, descriptor.dimensions);
+            AND vector.embedding_hash = atoms.embedding_hash
+        ))
+    `).run(MEMORY_VECTOR_NAMESPACE, descriptor.engineId, descriptor.modelId, descriptor.version, descriptor.dimensions);
   }
 
   private async enabledEngine(): Promise<EmbeddingEngine | undefined> {

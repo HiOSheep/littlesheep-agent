@@ -12,7 +12,6 @@ import type {
   MemoryBranchContext,
   MemoryExpandOptions,
   MemoryFragment,
-  MemoryIndexEntry,
   MemoryPrimeOptions,
   MemoryPrimeResult,
   MemoryQueryResult,
@@ -34,21 +33,29 @@ import {
   recordBranchAccess,
 } from './memory-tree-evidence.js';
 import { fitMemoryIndex, memoryIndexTokens } from './memory-tree-index-budget.js';
+import { scoreMemoryPrimeIndexEntry } from './memory-prime-relevance.js';
+import {
+  selectMemoryPrimeCandidates,
+  type MemoryPrimeCandidate,
+} from './memory-prime-selection.js';
+import { composeMemoryTaskQuery, type MemoryTaskQuery } from './task-query.js';
 import {
   availableWorkingSetBudget,
   consumeWorkingSetTokens,
+  createActiveMemoryRun,
   releaseWorkingSetAtoms,
   selectBranchWorkingSet,
   selectMixedWorkingSet,
   totalWorkingSetRemaining,
   type ActiveMemoryRun,
 } from './memory-tree-working-set.js';
-
+import { memoryPrimeSelectionContext, refineMemoryRun } from './memory-tree-refinement.js';
 const DEFAULT_TOTAL_RUN_BUDGET = 3_200;
 const DEFAULT_BRANCH_BUDGET = 1_200;
 const DEFAULT_ROOT_INDEX_MAX_CHARS = 1_600;
 const DEFAULT_RETAINED_LEDGERS = 64;
 const DEFAULT_RESULT_LIMIT = 12;
+const MAX_INITIAL_INDEX_CANDIDATES_PER_BRANCH = 80;
 
 interface ResolvedOptions {
   totalRunTokenBudget: number;
@@ -72,29 +79,6 @@ function resolveOptions(options: Partial<MemoryTreeOptions>): ResolvedOptions {
 
 function unique(values: string[]): string[] {
   return [...new Set(values)];
-}
-
-function indexEntryRelevance(query: string, entry: MemoryIndexEntry, branch: MemoryBranch): number {
-  const terms = queryTerms(query);
-  const haystack = [
-    entry.title,
-    entry.summary,
-    ...(entry.searchKeys ?? []),
-    branch.displayName,
-    branch.purpose,
-    branch.whenToUse,
-    ...branch.searchHints,
-  ].join('\n').toLocaleLowerCase();
-  if (terms.length === 0) return 0;
-  return terms.filter((term) => haystack.includes(term)).length / terms.length;
-}
-
-function queryTerms(value: string): string[] {
-  const normalized = value.normalize('NFKC').toLocaleLowerCase();
-  const terms = normalized.split(/[^\p{L}\p{N}_-]+/u).filter((term) => term.length > 1);
-  const cjk = [...normalized].filter((char) => /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(char));
-  for (let index = 0; index + 1 < cjk.length; index += 1) terms.push(cjk[index]! + cjk[index + 1]!);
-  return unique(terms);
 }
 
 function cloneLedger(ledger: MemoryAccessLedger): MemoryAccessLedger {
@@ -186,21 +170,20 @@ export class MemoryTree {
         reason: 'Stable bounded T0 root index inserted into the system prompt.',
       }],
     };
-    this.runs.set(input.runId, {
-      context: {
+    const taskQuery = composeMemoryTaskQuery(input.query, input.recentHistory, {}, input.continuitySummary);
+    this.runs.set(input.runId, createActiveMemoryRun(
+      {
         runId: input.runId,
         sessionId: input.sessionId,
         query: input.query,
+        taskQuery,
         recentHistory: input.recentHistory,
         workspace: input.workspace,
         signal,
         now,
       },
       ledger,
-      branchTokens: new Map(),
-      dedupKeys: new Set(),
-      activeFragments: new Map(),
-    });
+    ));
     return cloneLedger(ledger);
   }
 
@@ -218,6 +201,11 @@ export class MemoryTree {
       this.completedLedgers.delete(oldest);
     }
     return cloneLedger(completed);
+  }
+
+  getTaskQuery(runId: string): MemoryTaskQuery | undefined {
+    const query = this.runs.get(runId)?.context.taskQuery;
+    return query ? structuredClone(query) : undefined;
   }
 
   getLedger(runId: string): MemoryAccessLedger | undefined {
@@ -287,6 +275,8 @@ export class MemoryTree {
   /** Select a tiny D2 working set by inspecting D1 indexes before any content expansion. */
   async prime(runId: string, options: MemoryPrimeOptions): Promise<MemoryPrimeResult> {
     const run = this.requireRun(runId);
+    const taskQuery = options.taskQuery ?? (run.context.taskQuery && options.query.trim() === run.context.query.trim()
+      ? run.context.taskQuery : composeMemoryTaskQuery(options.query));
     const maxAtoms = Math.max(0, Math.min(4, Math.floor(options.maxAtoms ?? 2)));
     const tokenBudget = Math.max(0, Math.min(totalWorkingSetRemaining(run), Math.floor(options.tokenBudget ?? 600)));
     if (maxAtoms === 0 || tokenBudget < MIN_USEFUL_TOKENS) {
@@ -294,29 +284,50 @@ export class MemoryTree {
     }
     const indexedBranches: string[] = [];
     const sourceCounts = new Map<string, number>();
-    const candidates: Array<{ branchId: string; nodeId: string; score: number; order: number }> = [];
+    const candidates: MemoryPrimeCandidate[] = [];
     const branchOrder = ['long-term', 'project', 'daily', 'experience'];
+    const selectionContext = memoryPrimeSelectionContext(run.context, options.query, taskQuery);
     for (const branchId of branchOrder) {
       const branch = this.branches.get(branchId);
       if (!branch) continue;
       try {
-        const index = await branch.getIndex(run.context);
+        const index = await branch.getIndex(selectionContext);
         indexedBranches.push(branch.id);
         sourceCounts.set(branch.id, index.entries.length);
-        index.entries.slice(0, 8).forEach((entry, order) => candidates.push({
-          branchId: branch.id,
-          nodeId: entry.id,
-          score: indexEntryRelevance(options.query, entry, branch),
-          order: branchOrder.indexOf(branch.id) * 100 + order,
-        }));
+        index.entries.slice(0, MAX_INITIAL_INDEX_CANDIDATES_PER_BRANCH).forEach((entry, order) => {
+          const { taskRelevance, selectionScore } = scoreMemoryPrimeIndexEntry(taskQuery, entry);
+          candidates.push({
+            branchId: branch.id,
+            nodeId: entry.id,
+            taskRelevance,
+            selectionScore,
+            order: branchOrder.indexOf(branch.id) * 100 + order,
+            retrievalPath: entry.evidence?.retrievalPath,
+            retrievalMatchReason: entry.evidence?.matchReason,
+            relationStrength: entry.evidence?.relationRoute?.strength,
+          });
+        });
       } catch (error) {
         this.options.log?.('warn', `memory-tree: initial index inspection failed for "${branch.id}": ${(error as Error).message}`);
+        this.record(run, {
+          action: 'branch_index',
+          branchId: branch.id,
+          status: 'error',
+          sourceCount: 0,
+          tokensUsed: 0,
+          tokenBudget: 0,
+          error: (error as Error).message,
+          reason: 'Runtime could not inspect this D1 index for initial atom selection.',
+        });
       }
     }
-    const selectedCandidates = candidates
-      .sort((left, right) => right.score - left.score || left.order - right.order)
-      .slice(0, maxAtoms);
-    for (const branchId of unique(selectedCandidates.map((candidate) => candidate.branchId))) {
+    const selectedCandidates = selectMemoryPrimeCandidates(candidates, maxAtoms);
+    const selectedByBranch = new Map<string, number>();
+    for (const candidate of selectedCandidates) {
+      selectedByBranch.set(candidate.branchId, (selectedByBranch.get(candidate.branchId) ?? 0) + 1);
+    }
+    for (const branchId of indexedBranches) {
+      const selectedCount = selectedByBranch.get(branchId) ?? 0;
       this.record(run, {
         action: 'branch_index',
         branchId,
@@ -324,7 +335,7 @@ export class MemoryTree {
         sourceCount: sourceCounts.get(branchId) ?? 0,
         tokensUsed: 0,
         tokenBudget: 0,
-        reason: 'Runtime inspected D1 metadata for initial atom selection; the index body did not enter model context.',
+        reason: `Runtime inspected D1 metadata for ${options.purpose ?? 'initial'} atom selection; ${selectedCount} candidate(s) entered the conservative relevance cluster above 0.25. history=${taskQuery.historyMessageCount}; summary=${taskQuery.summaryUsed ? taskQuery.continuitySummaryId : 'none'}; exclusions=${taskQuery.excludedPhrases.length}. The index body did not enter model context.`,
       });
     }
     const fragments: MemoryFragment[] = [];
@@ -336,8 +347,12 @@ export class MemoryTree {
       const result = await this.expand(runId, {
         branchId: candidate.branchId,
         nodeId: candidate.nodeId,
+        query: taskQuery.retrievalText || options.query,
+        taskQuery,
         limit: 1,
         tokenBudget: Math.max(MIN_USEFUL_TOKENS, Math.floor(remaining / slots)),
+        retrievalPathHint: candidate.retrievalPath,
+        retrievalMatchReasonHint: candidate.retrievalMatchReason,
       });
       for (const fragment of result.fragments) {
         if (fragments.length >= maxAtoms) break;
@@ -348,9 +363,14 @@ export class MemoryTree {
     return { fragments, indexedBranches, tokensUsed };
   }
 
+  async refine(runId: string, options: MemoryPrimeOptions): Promise<MemoryPrimeResult> { return refineMemoryRun(this.requireRun(runId), options, () => this.prime(runId, options)); }
+
   async expand(runId: string, options: MemoryExpandOptions): Promise<MemoryQueryResult> {
     const run = this.requireRun(runId);
     const branch = this.requireBranch(options.branchId);
+    const query = options.query ?? run.context.query;
+    const taskQuery = options.taskQuery ?? (run.context.taskQuery && query.trim() === run.context.query.trim()
+      ? run.context.taskQuery : composeMemoryTaskQuery(query));
     if (!this.hasSuccessfulBranchIndex(run, branch.id)) {
       const message = `memory-tree: branch "${branch.id}" has not been indexed in this run. Call memory_tree with action "branch_index" for this branch before expand.`;
       this.recordNavigationFailure(run, 'expand', branch.id, options.query, options.nodeId, message);
@@ -365,11 +385,14 @@ export class MemoryTree {
     try {
       const expansion = await branch.expand(run.context, {
         nodeId: options.nodeId,
-        query: options.query,
+        query: taskQuery.retrievalText || options.query,
+        taskQuery,
         limit: options.limit ?? DEFAULT_RESULT_LIMIT,
         tokenBudget: budget,
         cursor: options.cursor,
         disclosureLevel: options.disclosureLevel ?? 'D2',
+        retrievalPathHint: options.retrievalPathHint,
+        retrievalMatchReasonHint: options.retrievalMatchReasonHint,
       });
       const selected = selectBranchWorkingSet(run, branch.id, expansion.fragments, budget, this.options);
       const fragmentDelta = applyFragmentEvidence(run.ledger.knownState, selected, 'expand');
@@ -409,6 +432,7 @@ export class MemoryTree {
 
   async deepSearch(runId: string, options: MemorySearchOptions): Promise<MemoryQueryResult> {
     const run = this.requireRun(runId);
+    const taskQuery = options.taskQuery ?? composeMemoryTaskQuery(options.query);
     const branchId = options.branchId?.trim();
     if (!branchId) {
       const message = 'memory-tree: deep_search requires one explicit branch. Follow root_index -> branch_index -> expand, then deep_search that same branch.';
@@ -430,7 +454,8 @@ export class MemoryTree {
     let candidates: MemoryFragment[] = [];
     try {
       candidates = await branch.search(run.context, {
-        query: options.query,
+        query: taskQuery.retrievalText || options.query,
+        taskQuery,
         limit: options.limit ?? DEFAULT_RESULT_LIMIT,
         tokenBudget: branchBudget,
         cursor: options.cursor,

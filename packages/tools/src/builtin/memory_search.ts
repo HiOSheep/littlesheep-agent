@@ -1,5 +1,7 @@
 // @littlesheep/tools — builtin/memory_search.ts
-// Search long-term + daily memory files + vector index + experience DB.
+// Legacy library adapter for long-term/daily files, an optional v2 vector
+// index, and the experience DB. The LS runtime does not register this tool;
+// production memory navigation is owned by @littlesheep/memory-tree.
 //
 // Search order (results merged, not ranked across sources):
 //   1. Vector search (semantic) — if a vectorStore is provided. Catches errors
@@ -20,6 +22,7 @@ const MemorySearchInput = z.object({
   limit: z.number().int().positive().optional().default(20),
 });
 
+/** @deprecated Use the Memory v3 compatibility tool from @littlesheep/memory-tree. */
 export function createMemorySearchTool(
   store: MemoryStoreLike,
   experienceStore?: ExperienceStore,
@@ -27,7 +30,7 @@ export function createMemorySearchTool(
 ): AgentTool {
   return {
     name: 'memory_search',
-    description: 'Search long-term + daily memory files + vector index + experience DB for past context. Read-only.',
+    description: 'Legacy read-only memory search adapter. The Memory v3 runtime uses index-first navigation instead.',
     inputSchema: MemorySearchInput,
     execute: withToolTiming(async (input) => {
       const { query, limit } = MemorySearchInput.parse(input);

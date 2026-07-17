@@ -19,6 +19,8 @@ import {
   memoryWriteSourceRefs,
   type GatedMemoryProposal,
 } from './memory-intent-gate.js';
+import { resolveMemoryWriteEpistemic } from './memory-epistemic-policy.js';
+import { EVOLVE_MEMORY_PROMPT } from './memory-stage-prompts.js';
 
 export type CreateSkillFn = (opts: {
   name: string;
@@ -32,50 +34,8 @@ export interface EvolveStageDeps {
   model: string;
   memoryWriter?: MemoryWriteServiceLike;
   createSkill?: CreateSkillFn;
+  llmPolicy?: 'adaptive' | 'always' | 'never';
 }
-
-const SYSTEM_PROMPT = `You are the EVOLVE stage of a hard-control-flow agent.
-Separate durable capability from run narration. Propose only memories that will
-materially improve future work; CAPTURE records ordinary run details elsewhere.
-
-Memory tree branches and canonical parent roots:
-- long-term -> long-term:root: explicit stable user preferences, cross-project facts, durable decisions.
-- project -> project:root: workspace-specific architecture, rules, paths and decisions.
-- experience -> experience:root: verified reusable methods, pitfalls and tool-use patterns.
-
-Return ONLY JSON:
-{
-  "memories": [{
-    "intent": "write|merge|invalidate|conflict|none",
-    "branch": "long-term|project|experience",
-    "parentNodeId": "branch:root",
-    "scope": "global|workspace|project",
-    "summary": "short index title",
-    "content": "the durable fact or reusable lesson",
-    "retrievalKeys": ["specific", "search", "keys"],
-    "importance": 0.0,
-    "confidence": 0.0,
-    "reason": "why this should affect future runs"
-  }],
-  "createSkill": {
-    "name": "lowercase-hyphen-name",
-    "description": "one-line purpose",
-    "whenToUse": "activation condition",
-    "body": "# Skill Title\\n\\n## Overview\\n..."
-  }
-}
-
-Write sparingly. Do not propose:
-- temporary state, current mood, one-off output, speculation or facts useful only in this run;
-- content already present in the supplied history/reply unless the run verified or materially revised it;
-- a long-term memory below 0.75 confidence and 0.70 importance;
-- an experience unless the method was actually tested or the failure mechanism is evidenced.
-
-Use invalidate or conflict only to flag evidence that an existing memory may be stale or contradictory.
-The runtime will defer those proposals for reconciliation and will never destructively apply them here.
-
-Create a skill only for a recurring, multi-step procedure with clear decision criteria.
-If nothing qualifies, return {"memories":[],"createSkill":null}.`;
 
 interface SkillProposal {
   name?: unknown;
@@ -95,6 +55,7 @@ interface MemoryProposal {
   importance?: unknown;
   confidence?: unknown;
   reason?: unknown;
+  epistemic?: unknown;
 }
 
 interface DecodedEvolve {
@@ -198,6 +159,15 @@ function memoryProposals(value: unknown, ctx: RunContext): GatedMemoryProposal[]
       importance,
       confidence,
       reason,
+      epistemic: resolveMemoryWriteEpistemic({
+        raw: proposal.epistemic,
+        stage: 'evolve',
+        branch: validBranch,
+        scope,
+        scopeKey,
+        sourceRefs: gated.sourceRefs,
+        evidenceRefs: gated.evidenceRefs,
+      }),
     };
     proposals.push({ ...gated, writeIntent });
   }
@@ -206,6 +176,16 @@ function memoryProposals(value: unknown, ctx: RunContext): GatedMemoryProposal[]
 
 export function createEvolveStage(deps: EvolveStageDeps) {
   return async function evolveStage(ctx: RunContext): Promise<StageResult> {
+    const policy = deps.llmPolicy ?? 'always';
+    if (policy === 'never' || (policy === 'adaptive' && !hasReusableEvolutionSignal(ctx))) {
+      ctx.evolutionNotes = [];
+      return {
+        stage: 'evolve',
+        next: 'capture',
+        ok: true,
+        meta: { skippedModelCall: true, reason: policy === 'never' ? 'disabled' : 'no-reusable-signal' },
+      };
+    }
     const executionSummary = ctx.taskExecution
       ? `${ctx.taskExecution.status}; ${ctx.taskExecution.steps.map((step) => `${step.stepId}:${step.status}`).join(', ')}`
       : '(no structured task execution)';
@@ -217,7 +197,7 @@ export function createEvolveStage(deps: EvolveStageDeps) {
       `Tool results: ${(ctx.toolResults ?? []).length} call(s)`,
     ].join('\n');
     const messages: ChatMessage[] = [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: EVOLVE_MEMORY_PROMPT },
       { role: 'user', content: userMessage },
     ];
 
@@ -278,4 +258,18 @@ export function createEvolveStage(deps: EvolveStageDeps) {
       },
     };
   };
+}
+
+function hasReusableEvolutionSignal(ctx: RunContext): boolean {
+  if (ctx.verificationHistory?.at(-1)?.verdict !== 'pass') return false;
+  const inbound = textOf(ctx.inbound);
+  if (/(?:记住|以后|始终|偏好|习惯|规则|约定|remember|always|prefer|preference|convention)/iu.test(inbound)) {
+    return true;
+  }
+  if (ctx.taskBook?.complexity === 'complex' || ctx.taskBook?.complexity === 'standard') return true;
+  if ((ctx.recoveryAttempts ?? 0) > 0 || (ctx.replanAttempts ?? 0) > 0) return true;
+  const durableTools = new Set(['write', 'edit', 'exec', 'create_skill']);
+  return ctx.produced.some((message) => message.content.some((block) => (
+    block.type === 'tool_calls' && block.calls.some((call) => durableTools.has(call.name))
+  )));
 }

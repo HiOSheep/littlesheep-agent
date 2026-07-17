@@ -28,6 +28,8 @@ export function normalizeMemoryIntent(intent: MemoryWriteIntent): MemoryWriteInt
     summary: cleanText(intent.summary),
     content: cleanText(intent.content),
     retrievalKeys: unique(intent.retrievalKeys.map((key) => cleanText(key).toLocaleLowerCase())).slice(0, 24),
+    sourceRunIds: unique((intent.sourceRunIds ?? []).map((runId) => cleanText(runId))).slice(-256),
+    sourceStages: unique(intent.sourceStages ?? []).slice(0, 64),
     sourceRefs: unique((intent.sourceRefs ?? []).map((source) => cleanText(source))).slice(0, 24),
     evidenceRefs: unique((intent.evidenceRefs ?? []).map((source) => cleanText(source))).slice(0, 64),
     reason: cleanText(intent.reason),

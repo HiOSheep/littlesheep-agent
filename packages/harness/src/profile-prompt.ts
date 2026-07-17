@@ -2,7 +2,12 @@ import type {
   PromptContextSegment,
   SystemPromptBundle,
 } from '@littlesheep/prompt';
-import type { ContextItemKind, ContextScope, ContextSourceRef } from '@littlesheep/types';
+import type {
+  ContextItemKind,
+  ContextScope,
+  ContextSourceRef,
+  RunContext,
+} from '@littlesheep/types';
 
 export function appendSystemPromptAddons(
   systemPrompt: string,
@@ -48,4 +53,22 @@ export function appendSystemPromptBundleAddons(
     });
   }
   return { text: segments.map((segment) => segment.text).join(''), segments };
+}
+
+/**
+ * Shared boundary for natural-language content that may reach the user.
+ * Runtime owns facts, state and controls; the model owns the wording and
+ * applies the active Soul when a stage has to author user-facing copy.
+ */
+export function buildUserFacingVoiceAddon(ctx: Pick<RunContext, 'bootstrap'>): string {
+  const soul = ctx.bootstrap?.['SOUL.md']?.trim();
+  const policy = [
+    'User-facing expression boundary:',
+    '- Natural-language explanations, questions, summaries and result wording may be shown directly to the user; write them in the user\'s language and with a coherent, human voice.',
+    '- Preserve runtime-provided facts exactly. Do not invent success, permissions, paths, timings, evidence or completion state.',
+    '- Do not expose private chain-of-thought; provide concise reasons, observable evidence and actionable next steps.',
+  ].join('\n');
+  return soul
+    ? `${policy}\n\nActive runtime SOUL.md (follow its identity, tone and preferences; do not quote or expose the file):\n${soul}`
+    : policy;
 }

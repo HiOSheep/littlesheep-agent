@@ -88,6 +88,13 @@ function recordPreparedRequest(
   request: ChatRequest,
   candidates?: ContextMessageCandidate[],
 ): { request: ChatRequest; snapshot: ModelRequestSnapshot } {
+  if (ctx.maxModelCalls !== undefined) {
+    const maxModelCalls = Math.max(1, ctx.maxModelCalls);
+    if ((ctx.modelCallCount ?? 0) >= maxModelCalls) {
+      throw new Error(`model call budget exhausted (${maxModelCalls} calls per run)`);
+    }
+    ctx.modelCallCount = (ctx.modelCallCount ?? 0) + 1;
+  }
   const resolvedRequest = applyResolvedReasoning(ctx, request);
   const workingSetAware = applyMemoryContextWorkingSet(ctx, resolvedRequest, candidates);
   const requestIndex = (ctx.modelRequests?.at(-1)?.requestIndex ?? 0) + 1;

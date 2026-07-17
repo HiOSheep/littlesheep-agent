@@ -5,24 +5,41 @@ import { join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import {
   InjectionTier,
+  MemoryV3,
   MemoryAtomStore,
   MemoryCatalog,
   MemoryEventJournal,
   MemoryRawRecordStore,
   MemoryOperationJournal,
   MemoryTree,
+  MemoryV3MaintenanceWorker,
   MemoryV3StorageCoordinator,
   createMemoryV3ExperimentMarker,
+  scoreMemoryCandidate,
 } from '../packages/memory-tree/dist/index.js';
 import { DEFAULT_CONFIG, saveConfig } from '../packages/config/dist/index.js';
+import {
+  createDeterministicEmbeddingEngine,
+  embeddingReport,
+  verifyMemoryV3RuntimeFeedback,
+} from './lib/memory-v3-runtime-soak.mjs';
+
+const SOAK_PROJECT_ENTITY_ID = 'project:memory-v3-soak';
+const SOAK_CONCEPT_ENTITY_ID = 'concept:context-routing';
+const SOAK_RELATION_ID = 'relation:memory-v3-soak:context-routing';
+const SOAK_RELATION_RELEVANCE = 0.94;
+const MIB = 1024 * 1024;
 
 const args = parseArgs(process.argv.slice(2));
 const startedAt = performance.now();
 const rssBefore = process.memoryUsage().rss;
+let rssPeak = rssBefore;
+const embedding = await createSoakEmbedding(args);
 const dataDir = await mkdtemp(join(tmpdir(), 'littlesheep-memory-v3-soak-'));
 assertIsolatedRoot(dataDir);
 
 let runtime;
+let report;
 let eventSequence = 0;
 let clock = Date.parse('2026-07-16T00:00:00.000Z');
 const now = () => new Date(clock += 1_000);
@@ -32,7 +49,8 @@ let expectedRawRecordCount = 0;
 
 try {
   runtime = openRuntime();
-  assert.deepEqual((await runtime.coordinator.initialize()).failed, []);
+  assert.deepEqual((await initializeRuntime(runtime)).failed, []);
+  await installRelationshipGraph(runtime);
 
   for (let index = 0; index < args.atoms; index += 1) {
     const event = index === 0 ? firstEvent : makeEvent('create', atomId(index), index);
@@ -43,11 +61,12 @@ try {
     expectedRawRecordCount += 1;
   }
 
-  await applyUpdate(runtime, atomId(10), {
-    parentId: atomId(2),
-    summary: 'Moved under a more relevant parent during the soak verification.',
-  }, 'move');
-  expectedRawRecordCount += 1;
+  const availabilityRecovery = await verifyEmbeddingAvailabilityRecovery(runtime, args.atoms);
+  const initialEmbeddingDrain = await drainEmbeddingWork(runtime, args.atoms, 'initial atom indexing');
+  const relationshipRouting = await verifyRelationshipRouting(runtime);
+  const embeddingBoundaries = await verifyEmbeddingBoundaries(runtime);
+  expectedRawRecordCount += 2;
+  sampleRss();
 
   await applyMutation(runtime, 'archive', atomId(20), async (atom) => ({
     kind: 'archive', atomId: atom.id, expectedRevision: atom.revision,
@@ -77,11 +96,14 @@ try {
     },
   });
   expectedRawRecordCount += 1;
+  const lifecycleEmbeddingDrain = await drainEmbeddingWork(runtime, 1, 'archive and restore lifecycle');
+  assert.equal(runtime.catalog.getAtom(mergeSource.id)?.embeddingStatus, 'disabled');
 
+  const restartEmbeddingDrains = [];
   for (let restart = 0; restart < args.restarts; restart += 1) {
-    closeRuntime(runtime);
+    await closeRuntime(runtime);
     runtime = openRuntime();
-    const recovery = await runtime.coordinator.initialize();
+    const recovery = await initializeRuntime(runtime);
     assert.deepEqual(recovery.failed, []);
     assert.equal(await runtime.atomStore.count(), args.atoms);
     assert.equal(await runtime.rawRecordStore.count(), expectedRawRecordCount);
@@ -95,10 +117,16 @@ try {
       }, `restart-${restart + 1}`);
       expectedRawRecordCount += 1;
     }
+    restartEmbeddingDrains.push(await drainEmbeddingWork(
+      runtime,
+      Math.min(6, args.atoms - 40),
+      `restart ${restart + 1} semantic updates`,
+    ));
+    sampleRss();
   }
 
   const recoveryAtomId = 'atom-recovery';
-  closeRuntime(runtime);
+  await closeRuntime(runtime);
   let injectedFailure = false;
   runtime = openRuntime((checkpoint, context) => {
     if (!injectedFailure && checkpoint === 'raw-record-captured' && context.eventId.includes('fault')) {
@@ -106,7 +134,7 @@ try {
       throw new Error('Intentional soak fault after raw record capture.');
     }
   });
-  assert.deepEqual((await runtime.coordinator.initialize()).failed, []);
+  assert.deepEqual((await initializeRuntime(runtime)).failed, []);
   await assert.rejects(
     runtime.coordinator.apply(
       makeEvent('fault', recoveryAtomId, args.atoms + 1),
@@ -118,12 +146,13 @@ try {
   assert.equal(await runtime.rawRecordStore.count(), expectedRawRecordCount);
   assert.equal(await runtime.atomStore.read(recoveryAtomId), undefined);
 
-  closeRuntime(runtime);
+  await closeRuntime(runtime);
   runtime = openRuntime();
-  const recovered = await runtime.coordinator.initialize();
+  const recovered = await initializeRuntime(runtime);
   assert.deepEqual(recovered.failed, []);
   assert(recovered.recoveredEventIds.some((id) => id.includes('fault')));
   assert(await runtime.atomStore.read(recoveryAtomId));
+  const recoveryEmbeddingDrain = await drainEmbeddingWork(runtime, 1, 'projection-record-only crash recovery');
 
   const firstRecordBefore = await runtime.rawRecordStore.get(firstEvent.id);
   assert(firstRecordBefore);
@@ -139,14 +168,18 @@ try {
   assert.equal(await runtime.rawRecordStore.count(), expectedRawRecordCount);
 
   const catalogPath = runtime.catalog.dbPath;
-  closeRuntime(runtime);
+  await closeRuntime(runtime);
   await removeCatalogFiles(catalogPath);
   runtime = openRuntime();
-  const rebuilt = await runtime.coordinator.initialize();
+  const rebuilt = await initializeRuntime(runtime);
   assert.deepEqual(rebuilt.failed, []);
   assert.equal(rebuilt.rebuiltCatalog, true);
   assert.equal(runtime.catalog.countAtoms(), args.atoms + 1);
   assert.equal(runtime.catalog.integrityCheck(), 'ok');
+  const rebuiltEmbeddingDrain = await drainEmbeddingWork(runtime, args.atoms, 'catalog disaster rebuild');
+  assert.equal(runtime.catalog.embeddingStatusCounts().disabled, 0);
+  assert.equal(runtime.catalog.embeddingStatusCounts().pending, 0);
+  assert.equal(runtime.catalog.embeddingStatusCounts().ready, args.atoms);
   assert.equal(await runtime.rawRecordStore.count(), expectedRawRecordCount);
   assert((await runtime.eventJournal.count()) <= args.maxCommittedJournalRecords);
   assert((await countFiles(runtime.operationJournal.rootDir, '.operation.json')) <= args.maxCommittedJournalRecords);
@@ -154,8 +187,20 @@ try {
   assert.deepEqual(await runtime.operationJournal.listOutstanding(), []);
 
   const workingSet = await verifyWorkingSet(args.runs);
+  const runtimeFeedback = await verifyMemoryV3RuntimeFeedback({
+    dataDir,
+    feedbackEvents: args.feedbackEvents,
+    embeddingBatchSize: args.embeddingBatch,
+    now,
+  });
+  sampleRss();
+  assert(
+    rssPeak <= args.maxRssMiB * MIB,
+    `Memory v3 soak RSS ${formatMiB(rssPeak)} MiB exceeded the ${args.maxRssMiB} MiB limit.`,
+  );
   if (args.prepareUi) await prepareUiEvaluationRoot();
-  const report = {
+  if (embedding.networkAttempts) assert.equal(embedding.networkAttempts(), 0);
+  report = {
     ok: true,
     generatedAt: new Date().toISOString(),
     isolatedDataRoot: dataDir,
@@ -169,7 +214,28 @@ try {
       operationJournalRecords: await countFiles(runtime.operationJournal.rootDir, '.operation.json'),
       catalogRebuiltFromAtoms: rebuilt.rebuiltCatalog,
       rawRecordOnlyCrashRecovered: Boolean(await runtime.atomStore.read(recoveryAtomId)),
+      entities: await runtime.graphStore.countEntities(),
+      relations: await runtime.graphStore.countRelations(),
     },
+    embedding: {
+      mode: embedding.mode,
+      engine: embedding.engine.descriptor,
+      assetVerification: embedding.assetVerification,
+      availabilityRecovery,
+      total: embeddingReport(embedding.stats),
+      initialDrain: initialEmbeddingDrain,
+      metadataAndSemanticBoundaries: embeddingBoundaries,
+      inactiveLifecycleDrain: lifecycleEmbeddingDrain,
+      restartDrains: restartEmbeddingDrains,
+      recoveryDrain: recoveryEmbeddingDrain,
+      rebuildDrain: rebuiltEmbeddingDrain,
+      status: runtime.catalog.embeddingStatusCounts(),
+      offlineAssertion: embedding.networkAttempts
+        ? { enabled: true, blockedNetworkAttempts: embedding.networkAttempts() }
+        : { enabled: false, blockedNetworkAttempts: 0 },
+    },
+    relationshipRouting,
+    runtimeFeedback,
     workingSet,
     uiEvaluationPrepared: args.prepareUi,
     timingMs: Math.round(performance.now() - startedAt),
@@ -177,14 +243,25 @@ try {
       before: rssBefore,
       after: process.memoryUsage().rss,
       delta: process.memoryUsage().rss - rssBefore,
+      peak: rssPeak,
+      limit: args.maxRssMiB * MIB,
     },
     cleanup: args.keep ? 'kept by request' : 'removed after verification',
   };
-  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 } finally {
-  closeRuntime(runtime);
-  if (!args.keep) await rm(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  try {
+    await closeRuntime(runtime);
+  } finally {
+    try {
+      await embedding.dispose();
+    } finally {
+      if (!args.keep) await rm(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  }
 }
+assert(report);
+report.embedding.lifecycle = embedding.lifecycleReport();
+process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 
 async function prepareUiEvaluationRoot() {
   assert(args.keep, '--prepare-ui requires --keep so the Electron process can use the isolated data root.');
@@ -198,7 +275,8 @@ async function prepareUiEvaluationRoot() {
 
 function openRuntime(onCheckpoint) {
   const atomStore = new MemoryAtomStore({ dataDir, now });
-  const catalog = new MemoryCatalog({ dataDir });
+  const catalog = new MemoryCatalog({ dataDir, embeddingEngine: embedding.engine });
+  const graphStore = new MemoryV3.MemoryV3GraphStore({ dataDir, catalog });
   const eventJournal = new MemoryEventJournal({
     dataDir,
     now,
@@ -212,10 +290,19 @@ function openRuntime(onCheckpoint) {
     maxTotalRecords: 2_000,
   });
   const rawRecordStore = new MemoryRawRecordStore({ dataDir, now });
-  return {
+  const maintenance = new MemoryV3MaintenanceWorker({
     atomStore,
     catalog,
     eventJournal,
+    embeddingBatchSize: args.embeddingBatch,
+    now,
+  });
+  return {
+    atomStore,
+    catalog,
+    graphStore,
+    eventJournal,
+    maintenance,
     operationJournal,
     rawRecordStore,
     coordinator: new MemoryV3StorageCoordinator({
@@ -230,10 +317,342 @@ function openRuntime(onCheckpoint) {
   };
 }
 
-function closeRuntime(value) {
+async function initializeRuntime(value) {
+  await value.graphStore.initialize();
+  return value.coordinator.initialize();
+}
+
+async function closeRuntime(value) {
   if (!value || value.closed) return;
-  value.catalog.close();
   value.closed = true;
+  await value.maintenance.shutdown();
+  value.catalog.close();
+}
+
+async function installRelationshipGraph(value) {
+  const createdAt = now().toISOString();
+  await value.graphStore.upsertEntity({
+    version: 1,
+    id: SOAK_PROJECT_ENTITY_ID,
+    type: 'project',
+    owner: { kind: 'user', id: 'memory-v3-soak-user' },
+    scope: 'project',
+    scopeKey: 'memory-v3-soak',
+    externalKey: 'memory-v3-soak',
+    label: 'Memory v3 soak project',
+    aliases: [],
+    status: 'active',
+    revision: 1,
+    createdAt,
+    updatedAt: createdAt,
+  });
+  await value.graphStore.upsertEntity({
+    version: 1,
+    id: SOAK_CONCEPT_ENTITY_ID,
+    type: 'concept',
+    owner: { kind: 'agent', id: 'littlesheep' },
+    scope: 'project',
+    scopeKey: 'memory-v3-soak',
+    externalKey: 'memory-v3-soak:context-routing',
+    label: 'Context routing',
+    aliases: ['atom injection'],
+    status: 'active',
+    revision: 1,
+    createdAt,
+    updatedAt: createdAt,
+  });
+  await value.graphStore.upsertRelation({
+    version: 1,
+    id: SOAK_RELATION_ID,
+    fromEntityId: SOAK_PROJECT_ENTITY_ID,
+    toEntityId: SOAK_CONCEPT_ENTITY_ID,
+    type: 'depends-on',
+    scope: 'project',
+    scopeKey: 'memory-v3-soak',
+    source: { kind: 'tool', id: 'verify-memory-v3-soak' },
+    sourceRefs: [],
+    evidenceRefs: ['soak:relationship-routing'],
+    confidence: 0.92,
+    authorityScope: {
+      kind: 'tool-evidence',
+      scope: 'project',
+      scopeKey: 'memory-v3-soak',
+      topics: ['memory-v3', 'context-routing'],
+    },
+    relevance: SOAK_RELATION_RELEVANCE,
+    status: 'active',
+    resolutionStatus: 'resolved',
+    revision: 1,
+    createdAt,
+    updatedAt: createdAt,
+  });
+}
+
+async function drainEmbeddingWork(value, expectedIndexed, label) {
+  const callsBefore = embedding.stats.calls;
+  const textsBefore = embedding.stats.texts;
+  const batchOffset = embedding.stats.batches.length;
+  const result = await value.maintenance.startBackgroundDrain();
+  assert.equal(result.aborted, false, `${label} was unexpectedly aborted.`);
+  assert.equal(result.stalled, false, `${label} stalled before the catalog became idle.`);
+  assert.equal(result.indexed, expectedIndexed, `${label} indexed an unexpected number of atoms.`);
+  assert.equal(result.last?.due.failures.length ?? 0, 0, `${label} produced due-event failures.`);
+  assert.equal(result.last?.embeddings.failures.length ?? 0, 0, `${label} produced embedding failures.`);
+  assert.equal(value.catalog.countEmbeddingWork(), 0, `${label} left active embedding work behind.`);
+  const batches = embedding.stats.batches.slice(batchOffset);
+  assert(batches.every((size) => size <= args.embeddingBatch), `${label} exceeded the embedding batch limit.`);
+  return {
+    passes: result.passes,
+    indexed: result.indexed,
+    calls: embedding.stats.calls - callsBefore,
+    texts: embedding.stats.texts - textsBefore,
+    batches,
+    maxBatch: batches.length > 0 ? Math.max(...batches) : 0,
+  };
+}
+
+async function verifyEmbeddingAvailabilityRecovery(value, expectedPending) {
+  if (!embedding.controls) return { exercised: false };
+  const callsBefore = embedding.stats.calls;
+  embedding.controls.setAvailable(false);
+  const unavailable = await value.maintenance.startBackgroundDrain();
+  assert.equal(unavailable.aborted, false);
+  assert.equal(unavailable.stalled, true);
+  assert.equal(unavailable.indexed, 0);
+  assert.equal(unavailable.last?.embeddings.unavailable, true);
+  assert.equal(unavailable.last?.embeddings.remaining, expectedPending);
+  assert.equal(value.catalog.countEmbeddingWork(), expectedPending);
+  assert.equal(embedding.stats.calls, callsBefore);
+  embedding.controls.setAvailable(true);
+  return {
+    exercised: true,
+    unavailablePasses: unavailable.passes,
+    indexedWhileUnavailable: unavailable.indexed,
+    retainedPending: value.catalog.countEmbeddingWork(),
+    embedCallsWhileUnavailable: embedding.stats.calls - callsBefore,
+  };
+}
+
+async function verifyRelationshipRouting(value) {
+  const linkedId = atomId(1);
+  const unlinkedId = atomId(args.relatedAtoms + 1);
+  const linked = await requiredAtom(value, linkedId);
+  const unlinked = await requiredAtom(value, unlinkedId);
+  const evaluatedAt = now().toISOString();
+  const before = value.catalog.relationRelevanceForAtoms([linkedId, unlinkedId], evaluatedAt);
+  assert.equal(before.get(linkedId), SOAK_RELATION_RELEVANCE);
+  assert.equal(before.has(unlinkedId), false);
+  const linkedScore = comparableScore(linked, before.get(linkedId) ?? 0.5, evaluatedAt);
+  const unlinkedScore = comparableScore(unlinked, before.get(unlinkedId) ?? 0.5, evaluatedAt);
+  assert(linkedScore.score > unlinkedScore.score, 'An active high-relevance relation did not improve candidate ordering.');
+
+  const callsBefore = embedding.stats.calls;
+  const relation = await value.graphStore.getRelation(SOAK_RELATION_ID);
+  assert(relation);
+  const updatedRelevance = 0.68;
+  await value.graphStore.upsertRelation({
+    ...relation,
+    relevance: updatedRelevance,
+    revision: relation.revision + 1,
+    updatedAt: now().toISOString(),
+  });
+  const after = value.catalog.relationRelevanceForAtoms([linkedId, unlinkedId], now().toISOString());
+  const adjustedScore = comparableScore(linked, after.get(linkedId) ?? 0.5, evaluatedAt);
+  assert.equal(after.get(linkedId), updatedRelevance);
+  assert(adjustedScore.score < linkedScore.score);
+  assert.equal(embedding.stats.calls, callsBefore);
+  assert.equal(value.catalog.countEmbeddingWork(), 0);
+  return {
+    linkedAtoms: args.relatedAtoms,
+    linkedAtomId: linkedId,
+    unlinkedAtomId: unlinkedId,
+    relationRelevance: { before: before.get(linkedId), after: after.get(linkedId) },
+    score: { linkedBefore: linkedScore.score, linkedAfter: adjustedScore.score, unlinked: unlinkedScore.score },
+    relationMetadataTriggeredEmbedding: false,
+  };
+}
+
+async function verifyEmbeddingBoundaries(value) {
+  const metadataAtomId = atomId(10);
+  const beforeMetadata = value.catalog.getAtom(metadataAtomId);
+  assert(beforeMetadata);
+  const callsBeforeMetadata = embedding.stats.calls;
+  await applyUpdate(value, metadataAtomId, { parentId: atomId(2) }, 'move');
+  const afterMetadata = value.catalog.getAtom(metadataAtomId);
+  assert(afterMetadata);
+  assert.equal(afterMetadata.embeddingHash, beforeMetadata.embeddingHash);
+  assert.equal(afterMetadata.embeddingStatus, 'ready');
+  assert.equal(embedding.stats.calls, callsBeforeMetadata);
+  assert.equal(value.catalog.countEmbeddingWork(), 0);
+
+  const semanticAtomId = atomId(11);
+  const beforeSemantic = value.catalog.getAtom(semanticAtomId);
+  assert(beforeSemantic);
+  await applyUpdate(value, semanticAtomId, {
+    summary: 'Semantic content changed and therefore requires a fresh local vector.',
+  }, 'semantic-update');
+  const pendingSemantic = value.catalog.getAtom(semanticAtomId);
+  assert(pendingSemantic);
+  assert.notEqual(pendingSemantic.embeddingHash, beforeSemantic.embeddingHash);
+  assert.equal(pendingSemantic.embeddingStatus, 'pending');
+  const failedCallsBefore = embedding.stats.failedCalls ?? 0;
+  embedding.controls?.failNextEmbed();
+  const semanticDrain = await drainEmbeddingWork(value, 1, 'semantic atom update');
+  assert.equal(value.catalog.getAtom(semanticAtomId)?.embeddingStatus, 'ready');
+  const transientFailures = (embedding.stats.failedCalls ?? 0) - failedCallsBefore;
+  if (embedding.controls) assert.equal(transientFailures, 1);
+  return {
+    metadataAtomId,
+    metadataEmbeddingHashStable: afterMetadata.embeddingHash === beforeMetadata.embeddingHash,
+    metadataTriggeredEmbedding: embedding.stats.calls !== callsBeforeMetadata + semanticDrain.calls,
+    semanticAtomId,
+    semanticEmbeddingHashChanged: pendingSemantic.embeddingHash !== beforeSemantic.embeddingHash,
+    transientFailureRecovery: {
+      exercised: Boolean(embedding.controls),
+      injectedFailures: transientFailures,
+      recoveredInSameDrain: Boolean(embedding.controls) ? semanticDrain.indexed === 1 : undefined,
+    },
+    semanticDrain,
+  };
+}
+
+function comparableScore(atom, relationshipRelevance, evaluatedAt) {
+  return scoreMemoryCandidate({
+    atom,
+    now: evaluatedAt,
+    scopeMatch: 1,
+    taskRelevance: 0.8,
+    authorityMatch: 1,
+    verifiedUsefulness: 2 / 3,
+    routingRelevance: 0.5,
+    relationshipRelevance,
+    decayHalfLifeDays: 45,
+    requiredByCurrentUser: false,
+    safetyCritical: false,
+  });
+}
+
+async function createSoakEmbedding(options) {
+  if (options.embedding === 'deterministic') {
+    const deterministic = createDeterministicEmbeddingEngine('catalog');
+    let disposed = false;
+    return {
+      mode: 'deterministic',
+      ...deterministic,
+      assetVerification: undefined,
+      controls: undefined,
+      networkAttempts: undefined,
+      async dispose() { disposed = true; },
+      lifecycleReport: () => ({ disposed }),
+    };
+  }
+
+  const [{ LocalTransformersEmbeddingEngine, verifyLocalEmbeddingModel }, modelRootDir] = await Promise.all([
+    import('../packages/embedding/dist/index.js'),
+    resolveEmbeddingModelRoot(options.embeddingModelRoot),
+  ]);
+  const verification = await verifyLocalEmbeddingModel(options.embeddingModel, modelRootDir);
+  if (!verification.available) {
+    throw new Error(
+      `Local embedding model is incomplete: missing=${verification.missing.join(',')}; invalid=${verification.invalid.join(',')}`,
+    );
+  }
+  const base = new LocalTransformersEmbeddingEngine({
+    model: options.embeddingModel,
+    modelRootDir,
+    batchSize: options.embeddingBatch,
+  });
+  const stats = {
+    calls: 0,
+    texts: 0,
+    batches: [],
+    failedCalls: 0,
+    durationMs: 0,
+    availabilityChecks: 0,
+  };
+  let available = true;
+  let failNextEmbed = false;
+  let blockedNetworkAttempts = 0;
+  let disposed = false;
+  let disposeDurationMs = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    blockedNetworkAttempts += 1;
+    throw new Error('Network access is forbidden during the Memory v3 local embedding soak.');
+  };
+
+  return {
+    mode: 'local-transformers',
+    stats,
+    assetVerification: {
+      available: verification.available,
+      modelRoot: verification.modelRoot,
+      missing: verification.missing,
+      invalid: verification.invalid,
+      totalBytes: verification.totalBytes,
+    },
+    engine: {
+      descriptor: base.descriptor,
+      async isAvailable() {
+        stats.availabilityChecks += 1;
+        return available && await base.isAvailable();
+      },
+      async embed(request) {
+        stats.calls += 1;
+        stats.texts += request.texts.length;
+        stats.batches.push(request.texts.length);
+        const started = performance.now();
+        try {
+          if (failNextEmbed) {
+            failNextEmbed = false;
+            throw new Error('Intentional transient local embedding failure.');
+          }
+          return await base.embed(request);
+        } catch (error) {
+          stats.failedCalls += 1;
+          throw error;
+        } finally {
+          stats.durationMs += performance.now() - started;
+          sampleRss();
+        }
+      },
+    },
+    controls: {
+      setAvailable(value) { available = Boolean(value); },
+      failNextEmbed() { failNextEmbed = true; },
+    },
+    networkAttempts: () => blockedNetworkAttempts,
+    async dispose() {
+      const started = performance.now();
+      try {
+        await base.dispose();
+      } finally {
+        disposeDurationMs = performance.now() - started;
+        disposed = true;
+        globalThis.fetch = originalFetch;
+        sampleRss();
+      }
+    },
+    lifecycleReport: () => ({
+      disposed,
+      disposeDurationMs: Math.round(disposeDurationMs * 10_000) / 10_000,
+      availabilityChecks: stats.availabilityChecks,
+    }),
+  };
+}
+
+async function resolveEmbeddingModelRoot(explicitRoot) {
+  if (explicitRoot) return resolve(explicitRoot);
+  const { loadBranding, resolveDataDir } = await import('../packages/branding/dist/index.js');
+  return join(resolveDataDir(await loadBranding()), 'models', 'embedding');
+}
+
+function sampleRss() {
+  rssPeak = Math.max(rssPeak, process.memoryUsage().rss);
+}
+
+function formatMiB(bytes) {
+  return Math.round(bytes / MIB * 10) / 10;
 }
 
 async function applyUpdate(value, id, patch, label) {
@@ -259,6 +678,7 @@ async function requiredAtom(value, id) {
 function makeAtom(id, index) {
   const parentIndex = index > 0 ? Math.floor((index - 1) / 8) : undefined;
   const timestamp = now().toISOString();
+  const relationshipLinked = index > 0 && index <= args.relatedAtoms;
   return {
     id,
     domain: 'project',
@@ -276,9 +696,10 @@ function makeAtom(id, index) {
       topics: ['memory-v3', 'soak'],
     },
     assertedBy: { kind: 'tool', id: 'verify-memory-v3-soak' },
+    sourceRefs: [],
     evidenceRefs: [`soak:${id}`],
-    entityRefs: [],
-    relationRefs: [],
+    entityRefs: relationshipLinked ? [SOAK_PROJECT_ENTITY_ID, SOAK_CONCEPT_ENTITY_ID] : [],
+    relationRefs: relationshipLinked ? [SOAK_RELATION_ID] : [],
     title: index === 0 ? 'Special alpha retention root' : `Soak atom ${index}`,
     summary: index === 0
       ? 'Project memory catalog root for special alpha retention.'
@@ -510,6 +931,13 @@ function parseArgs(values) {
     atoms: 120,
     restarts: 4,
     runs: 96,
+    embedding: 'deterministic',
+    embeddingModel: 'bge-small-zh-v1.5',
+    embeddingModelRoot: undefined,
+    feedbackEvents: 128,
+    relatedAtoms: 32,
+    embeddingBatch: 16,
+    maxRssMiB: 384,
     maxCommittedJournalRecords: 8,
     keep: false,
     prepareUi: false,
@@ -519,10 +947,24 @@ function parseArgs(values) {
     if (value.startsWith('--atoms=')) options.atoms = integer(value, '--atoms=', 48, 1_000);
     else if (value.startsWith('--restarts=')) options.restarts = integer(value, '--restarts=', 1, 20);
     else if (value.startsWith('--runs=')) options.runs = integer(value, '--runs=', 1, 2_000);
+    else if (value.startsWith('--embedding=')) options.embedding = value.slice('--embedding='.length);
+    else if (value.startsWith('--embedding-model=')) options.embeddingModel = value.slice('--embedding-model='.length);
+    else if (value.startsWith('--embedding-model-root=')) options.embeddingModelRoot = resolve(value.slice('--embedding-model-root='.length));
+    else if (value.startsWith('--feedback-events=')) options.feedbackEvents = integer(value, '--feedback-events=', 64, 2_000);
+    else if (value.startsWith('--related-atoms=')) options.relatedAtoms = integer(value, '--related-atoms=', 1, 998);
+    else if (value.startsWith('--embedding-batch=')) options.embeddingBatch = integer(value, '--embedding-batch=', 1, 256);
+    else if (value.startsWith('--max-rss-mib=')) options.maxRssMiB = integer(value, '--max-rss-mib=', 64, 4_096);
     else if (value === '--keep') options.keep = true;
     else if (value === '--prepare-ui') options.prepareUi = true;
     else throw new Error(`Unknown argument: ${value}`);
   }
+  if (options.embedding !== 'deterministic' && options.embedding !== 'local') {
+    throw new Error('embedding must be deterministic or local.');
+  }
+  if (options.embeddingModel !== 'bge-small-zh-v1.5' && options.embeddingModel !== 'multilingual-e5-small') {
+    throw new Error('embedding-model must be bge-small-zh-v1.5 or multilingual-e5-small.');
+  }
+  options.relatedAtoms = Math.min(options.relatedAtoms, options.atoms - 2);
   return options;
 }
 

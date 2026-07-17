@@ -1,11 +1,14 @@
 // Owns the versioned Memory v3 storage, epistemic, evidence, graph, and embedding contracts.
 
+import type { AtomicActivationSnapshot } from '@littlesheep/types';
 import type { InjectionTier, MemoryBranchKind, MemoryScope, MemoryWriteStage } from '../types.js';
 import type {
   AuthorityScope,
   EpistemicStatus,
   MemoryActorRef,
   MemoryDomain,
+  MemoryEntityType,
+  MemoryRelationType,
   StatementKind,
 } from '../epistemic.js';
 export type {
@@ -16,7 +19,11 @@ export type {
   MemoryActorRef,
   MemoryAuthorityScope,
   MemoryDomain,
+  MemoryEntityType,
+  MemoryRelationType,
+  MemoryWriteEntityHint,
   MemoryWriteEpistemicMetadata,
+  MemoryWriteRelationHint,
   StatementKind,
 } from '../epistemic.js';
 
@@ -25,12 +32,26 @@ export const MEMORY_EVENT_VERSION = 1 as const;
 export const MEMORY_OPERATION_VERSION = 1 as const;
 export const MEMORY_PROJECTION_RECORD_VERSION = 1 as const;
 export const MEMORY_PROJECTION_RECORD_COMMIT_VERSION = 1 as const;
+export const MEMORY_VECTOR_NAMESPACE = 'memory-atom' as const;
 /** @deprecated Internal compatibility alias. Use projection-record terminology. */
 export const MEMORY_RAW_RECORD_VERSION = MEMORY_PROJECTION_RECORD_VERSION;
 /** @deprecated Internal compatibility alias. Use projection-record terminology. */
 export const MEMORY_RAW_RECORD_COMMIT_VERSION = MEMORY_PROJECTION_RECORD_COMMIT_VERSION;
 
 export type MemoryDisclosureLevel = 'D0' | 'D1' | 'D2' | 'D3';
+
+export type MemoryAtomRetrievalPath = 'hierarchy' | 'fts' | 'vector' | 'relation';
+export type MemoryRelationRouteDirection = 'outbound' | 'inbound' | 'shared';
+
+export interface MemoryRelationRouteEvidence {
+  seedAtomId: string;
+  relationId: string;
+  relationType: MemoryRelationType;
+  direction: MemoryRelationRouteDirection;
+  confidence: number;
+  relevance: number;
+  strength: number;
+}
 
 export type MemoryAtomStatus = 'active' | 'archived' | 'tombstone';
 
@@ -51,6 +72,27 @@ export interface MemoryVerifiedUsefulness {
   conflicts: number;
   stale: number;
   lastOutcome?: MemoryUseOutcome;
+}
+
+/**
+ * Bounded routing evidence used only to decide whether an atom should be
+ * admitted into future run contexts. It never changes epistemic confidence.
+ */
+export interface MemoryRoutingFeedback {
+  useful: number;
+  notUseful: number;
+  conflicts: number;
+  stale: number;
+  /**
+   * Derived routing score at lastRoutedAt. This remains separate from
+   * epistemic confidence and decays back toward neutral between observations.
+   */
+  effectiveRelevance?: number;
+  /** Bounded effective observation weight used to prevent old feedback revival. */
+  effectiveEvidenceWeight?: number;
+  lastOutcome?: MemoryUseOutcome;
+  lastRoutedAt?: string;
+  recentFeedbackIds?: string[];
 }
 
 export interface MemoryAtomInvalidation {
@@ -92,6 +134,7 @@ export interface MemoryAtom {
   confidence: number;
   basePriority: number;
   verifiedUsefulness: MemoryVerifiedUsefulness;
+  routingFeedback?: MemoryRoutingFeedback;
   feedbackRevision: number;
   lastUsefulAt?: string;
   lastVerifiedAt?: string;
@@ -177,6 +220,7 @@ export interface MemoryProjectionMutationCommitReceipt {
 export type MemoryRawRecordCommitReceipt = MemoryProjectionMutationCommitReceipt;
 
 export type MemoryEmbeddingStatus = 'disabled' | 'pending' | 'ready' | 'stale' | 'failed';
+export type MemoryVectorNamespace = typeof MEMORY_VECTOR_NAMESPACE;
 
 export interface MemoryCatalogEntry {
   atomId: string;
@@ -193,26 +237,17 @@ export interface MemoryCatalogEntry {
   status: MemoryAtomStatus;
   resolutionStatus: MemoryResolutionStatus;
   contentHash: string;
+  embeddingHash: string;
+  vectorNamespace: MemoryVectorNamespace;
   embeddingStatus: MemoryEmbeddingStatus;
   embeddingEngineId?: string;
   embeddingModelId?: string;
   embeddingDimensions?: number;
+  activationScore: number;
+  activationUpdatedAt: string;
   createdAt: string;
   updatedAt: string;
 }
-
-export type MemoryEntityType =
-  | 'user'
-  | 'project'
-  | 'directory'
-  | 'file'
-  | 'session'
-  | 'task'
-  | 'skill'
-  | 'tool'
-  | 'rule'
-  | 'concept'
-  | 'external-source';
 
 export interface MemoryEntity {
   version: 1;
@@ -229,17 +264,6 @@ export interface MemoryEntity {
   createdAt: string;
   updatedAt: string;
 }
-
-export type MemoryRelationType =
-  | 'belongs-to'
-  | 'depends-on'
-  | 'references'
-  | 'conflicts-with'
-  | 'replaces'
-  | 'derived-from'
-  | 'similar-to'
-  | 'affects'
-  | 'supported-by';
 
 export interface MemoryRelation {
   version: 1;
@@ -332,7 +356,7 @@ export interface MemoryAccessRecord {
   atomId: string;
   runId: string;
   stage: string;
-  path: 'root-index' | 'branch-index' | 'hierarchy' | 'fts' | 'vector';
+  path: 'root-index' | 'branch-index' | MemoryAtomRetrievalPath;
   matchReason: string;
   enteredContext: boolean;
   disclosureLevel: MemoryDisclosureLevel;
@@ -369,9 +393,14 @@ export interface MemoryEvidenceEnvelope {
   confidence: number;
   importance: number;
   verifiedUsefulness: MemoryVerifiedUsefulness;
+  taskRelevance: number;
+  routingRelevance: number;
+  relationshipRelevance: number;
+  activation: AtomicActivationSnapshot;
   updatedAt: string;
   lastVerifiedAt?: string;
-  retrievalPath: Extract<MemoryAccessRecord['path'], 'hierarchy' | 'fts' | 'vector'>;
+  retrievalPath: MemoryAtomRetrievalPath;
+  relationRoute?: MemoryRelationRouteEvidence;
   matchReason: string;
   conflict: boolean;
   expired: boolean;
@@ -432,6 +461,8 @@ export interface MemoryCandidatePriorityInput {
   taskRelevance: number;
   authorityMatch: number;
   verifiedUsefulness: number;
+  routingRelevance: number;
+  relationshipRelevance: number;
   decayHalfLifeDays: number;
   requiredByCurrentUser: boolean;
   safetyCritical: boolean;
@@ -441,8 +472,14 @@ export interface MemoryCandidatePriorityBreakdown {
   score: number;
   eligible: boolean;
   protected: boolean;
+  taskRelevance: number;
   freshness: number;
   usefulnessDecay: number;
+  routingRelevance: number;
+  routingMultiplier: number;
+  relationshipRelevance: number;
+  relationshipMultiplier: number;
+  activation: AtomicActivationSnapshot;
   penalties: string[];
   factors: Record<string, number>;
 }

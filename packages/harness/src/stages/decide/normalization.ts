@@ -22,6 +22,9 @@ export function buildClarificationRequest(
   const rawQuestions = Array.isArray(parsed.clarification?.questions)
     ? parsed.clarification.questions
     : [];
+  const modelAuthoredCopy = Boolean(cleanString(parsed.clarification?.blockingReason))
+    && rawQuestions.length > 0
+    && rawQuestions.every((question) => Boolean(cleanString(question.prompt)));
   const questions: ClarificationQuestion[] = rawQuestions
     .map((question, index): ClarificationQuestion | null => {
       const missing = assessment.missingInfo?.[index] ?? `missing-information-${index + 1}`;
@@ -58,6 +61,7 @@ export function buildClarificationRequest(
     sourceStage: 'decide',
     createdAt,
     originalRequest: inboundText,
+    copySource: modelAuthoredCopy ? 'model' : 'runtime_fallback',
     blockingReason: cleanString(parsed.clarification?.blockingReason)
       ?? (usesChinese(inboundText)
         ? '缺少安全、准确执行任务所需的关键信息。'

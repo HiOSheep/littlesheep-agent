@@ -165,6 +165,17 @@ export function createInspectAttachmentTool(attachments: RunAttachment[]): Agent
         additionalProperties: false,
       },
     },
+    execution: {
+      concurrency: 'parallel',
+      resources(input) {
+        const attachmentId = input && typeof input === 'object'
+          ? (input as Record<string, unknown>).attachment_id
+          : undefined
+        return typeof attachmentId === 'string' && attachmentId.trim()
+          ? [{ key: `attachment:${attachmentId.trim()}`, mode: 'read' as const }]
+          : []
+      },
+    },
     async execute(input, ctx) {
       const { attachment_id: attachmentId } = input as { attachment_id: string }
       const attachment = attachments.find((item) => item.id === attachmentId)

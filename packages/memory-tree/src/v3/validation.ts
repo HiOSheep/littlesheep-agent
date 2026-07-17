@@ -82,12 +82,23 @@ const atomSchema = z.object({
     stale: nonNegativeInteger,
     lastOutcome: z.enum(['useful', 'not-useful', 'conflict', 'stale']).optional(),
   }).strict(),
+  routingFeedback: z.object({
+    useful: nonNegativeInteger,
+    notUseful: nonNegativeInteger,
+    conflicts: nonNegativeInteger,
+    stale: nonNegativeInteger,
+    effectiveRelevance: score.optional(),
+    effectiveEvidenceWeight: z.number().finite().min(0).max(64).optional(),
+    lastOutcome: z.enum(['useful', 'not-useful', 'conflict', 'stale']).optional(),
+    lastRoutedAt: timestamp.optional(),
+    recentFeedbackIds: z.array(nonEmpty.max(512)).max(64).optional(),
+  }).strict().optional(),
   feedbackRevision: nonNegativeInteger,
   lastUsefulAt: timestamp.optional(),
   lastVerifiedAt: timestamp.optional(),
   reason: nonEmpty.max(8_000),
   sourceRunIds: z.array(nonEmpty).max(256),
-  sourceStages: z.array(z.enum(['evolve', 'capture', 'tool', 'migration'])).max(64),
+  sourceStages: z.array(z.enum(['evolve', 'capture', 'tool', 'migration', 'maintenance'])).max(64),
   status: z.enum(['active', 'archived', 'tombstone']),
   resolutionStatus,
   invalidation: z.object({
@@ -207,7 +218,7 @@ export function validateMemoryUseFeedback(feedback: MemoryUseFeedback): void {
   if (!Number.isFinite(Date.parse(feedback.createdAt))) {
     throw new Error('Memory feedback createdAt must be a valid timestamp.');
   }
-  if (feedback.outcome === 'useful' && (!feedback.verified || feedback.evidenceRefs.length === 0)) {
-    throw new Error('Positive memory feedback requires verification evidence.');
+  if (feedback.outcome === 'useful' && feedback.evidenceRefs.length === 0) {
+    throw new Error('Positive memory feedback requires traceable use evidence.');
   }
 }

@@ -9,7 +9,7 @@ import type { ManagedAttachmentCache } from '../attachment-cache.js'
 import type { ProjectIndex } from '../project-index.js'
 import type { WorkspaceArtifactIndex } from '../workspace-artifact-index.js'
 import type { WorkspaceLayoutIndex } from '../workspace-layout-index.js'
-import { json, readJson, type LocalAppApiRequest } from './http.js'
+import { HttpError, json, readJson, type LocalAppApiRequest } from './http.js'
 import { openInVSCode } from './vscode-launcher.js'
 import {
   listWorkspaceDirectory,
@@ -146,6 +146,14 @@ export async function routeWorkspace(
     return true
   }
 
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.externalOpen) {
+    const body = await readJson(req)
+    const href = normalizeExternalHref(body.href)
+    await shell.openExternal(href)
+    json(res, 200, { ok: true })
+    return true
+  }
+
   if (method === 'POST' && path === LOCAL_APP_API_ROUTES.workspaceOpenVscode) {
     const body = await readJson(req)
     const root = resolveWorkspaceRootFromValue(body.root, context.getConfig(), context.workplaceDir)
@@ -156,4 +164,20 @@ export async function routeWorkspace(
   }
 
   return false
+}
+
+function normalizeExternalHref(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new HttpError(400, 'external href is required')
+  }
+  let url: URL
+  try {
+    url = new URL(value.trim())
+  } catch {
+    throw new HttpError(400, 'external href must be an absolute URL')
+  }
+  if (!['http:', 'https:', 'mailto:', 'tel:'].includes(url.protocol)) {
+    throw new HttpError(400, `external protocol is not allowed: ${url.protocol}`)
+  }
+  return url.href
 }

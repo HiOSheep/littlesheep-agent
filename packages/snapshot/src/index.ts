@@ -19,3 +19,16 @@ export {
   SnapshotMemoryStore,
   type SnapshotMemoryStoreOptions,
 } from './snapshot-memory-store.js';
+export {
+  GitCheckpointCoordinator,
+  RunGitCheckpoint,
+  type BeginRunCheckpointOptions,
+  type CompleteRunCheckpointOptions,
+  type GitCheckpointCoordinatorOptions,
+  type RollbackCheckpointOptions,
+  type VersioningMutationHook,
+} from './git-checkpoint.js';
+export {
+  ShadowGitRepository,
+  type ShadowGitRepositoryOptions,
+} from './git-client.js';

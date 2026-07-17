@@ -32,10 +32,14 @@ import { buildInfrastructure, type RunnerState, type LogFn } from './infra.js';
 import type { ExecutionLog } from './execution-log.js';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
 import { getAgentProfile, type AgentProfileId } from '@littlesheep/prompt';
-import { resolveRunConfig } from './run-config.js';
+import { reasoningPromptAddon, resolveRunConfig } from './run-config.js';
 import { discoverLittleSheepCoreRoots } from './core-source-protection.js';
 import { buildSessionRunSummary } from './session-run-summary.js';
-
+import { independentSuccessfulToolCallIds } from './memory-feedback-evidence.js';
+import { recordSessionSummaryActivation } from './session-summary-activation.js';
+import type { RunGitCheckpoint } from '@littlesheep/snapshot';
+import { completeRunVersionCheckpoint } from './version-checkpoint-lifecycle.js';
+import { beginRuntimeResourceObservation, completeRuntimeResourceObservation } from './runtime-resource-observation.js';
 /** AgentResult + sessionId (caller-friendly). */
 export type RunnerResult = AgentResult & { sessionId: SessionId; memoryAccess?: MemoryAccessLedger };
 
@@ -147,8 +151,12 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
 
   async function run(input: RunInput): Promise<RunnerResult> {
     const startedAt = Date.now();
+    const runtimeResourceStart = beginRuntimeResourceObservation();
     const runId = input.runId ?? randomUUID();
     const origin = input.origin ?? 'cli';
+    const cwd = input.cwd ?? opts.config.agents.defaults.workspace;
+    let activeCheckpoint: RunGitCheckpoint | undefined;
+    let checkpointCompleted = false;
 
     // Resolve abort signal: use the caller's if provided, else create one with
     // an overall run timeout so a hung tool/LLM can't block indefinitely.
@@ -161,6 +169,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     }
 
     try {
+      activeCheckpoint = await infra.versioning?.beginRun({ runId, workspaceRoot: cwd });
       // 1. Resolve or create session.
       let sessionId: SessionId;
       if (input.sessionId) {
@@ -192,8 +201,6 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       });
 
       // 3. Build RunContext (loads history WITHOUT inbound — no duplicate).
-      const cwd = input.cwd ?? opts.config.agents.defaults.workspace;
-
       // Apply caller-provided tool policy before the run.
       let resolvedTools = infra.registry.list().map((r) => r.tool);
       if (input.additionalTools && input.additionalTools.length > 0) {
@@ -254,6 +261,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         signal,
         approve: input.approve ?? opts.approve,
         log: opts.log,
+        versioning: activeCheckpoint,
         onAssistantDelta: input.onAssistantDelta,
         onToolEvent: input.onToolEvent,
         profilePromptAddon: behaviorProfile?.systemPromptAddon,
@@ -263,6 +271,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         bootstrapDir: opts.bootstrapDir,
         memoryResources: infra.memoryService,
       });
+      let usedContinuitySummaryId: string | undefined;
       try {
         await infra.memoryService.registerRunResources({
           runId: ctx.runId,
@@ -286,11 +295,17 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
               .map((block) => block.text)
               .join('\n'),
           })),
+          continuitySummary: ctx.sessionSummary ? {
+            id: ctx.sessionSummary.id,
+            content: ctx.sessionSummary.summary,
+          } : undefined,
           workspace: cwd,
           signal,
         });
         ctx.memoryRootIndex = memoryRun.rootIndex;
+        usedContinuitySummaryId = memoryRun.continuitySummaryId;
         ctx.initialMemoryContext = memoryRun.initialContext?.content;
+        ctx.memoryKnownState = structuredClone(memoryRun.ledger.knownState);
         if (memoryRun.initialContext) {
           ctx.memoryContextWorkingSet = {
             revision: 1,
@@ -332,8 +347,10 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       } catch (err) {
         opts.log?.('warn', `runner: conversation source capture degraded: ${(err as Error).message}`);
       }
+      const latestVerification = ctx.verificationHistory?.at(-1);
+      const successfulToolCallIds = independentSuccessfulToolCallIds(ctx);
+      const recordedAt = new Date().toISOString();
       try {
-        const latestVerification = ctx.verificationHistory?.at(-1);
         await infra.memoryService.recordRunFeedback({
           runId: ctx.runId,
           status: signal?.aborted ? 'aborted' : stageResult.ok ? 'ok' : 'error',
@@ -344,19 +361,33 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           })),
           activeAtomIds: [...(ctx.memoryContextWorkingSet?.activeAtomIds ?? [])],
           releasedAtomIds: [...(ctx.memoryContextWorkingSet?.releasedAtomIds ?? [])],
+          usedAtomIds: [...(latestVerification?.usedMemoryAtomIds ?? [])],
           verification: latestVerification ? {
             attempt: latestVerification.attempt,
             verdict: latestVerification.verdict,
             source: latestVerification.source,
             verifiedAt: latestVerification.verifiedAt,
           } : undefined,
-          successfulToolCallIds: (ctx.toolResults ?? [])
-            .filter((result) => result.ok)
-            .map((result) => result.callId),
-          recordedAt: new Date().toISOString(),
+          successfulToolCallIds,
+          recordedAt,
         });
       } catch (err) {
         opts.log?.('warn', `runner: memory usefulness feedback degraded: ${(err as Error).message}`);
+      }
+      try {
+        await recordSessionSummaryActivation({
+          sessionManager: infra.sessionManager,
+          sessionId,
+          summary: ctx.sessionSummary,
+          usedSummaryId: usedContinuitySummaryId,
+          runId: ctx.runId,
+          status: signal?.aborted ? 'aborted' : stageResult.ok ? 'ok' : 'error',
+          verification: latestVerification,
+          successfulToolCallIds,
+          recordedAt,
+        });
+      } catch (err) {
+        opts.log?.('warn', `runner: session summary activation degraded: ${(err as Error).message}`);
       }
       try {
         memoryAccess = await infra.memoryService.finishRun(ctx.runId);
@@ -416,6 +447,23 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
             } catch (err) {
               opts.log?.('warn', `runner: summary resource registration degraded: ${(err as Error).message}`);
             }
+            try {
+              const consolidation = await infra.memoryService.consolidateDailyMemory({
+                sessionId,
+                workspace: cwd,
+                runId: ctx.runId,
+                summary: compacted,
+              });
+              if (consolidation.failures.length > 0) {
+                opts.log?.('warn', 'runner: daily memory consolidation retained source atoms after partial failure.', {
+                  promoted: consolidation.promoted,
+                  archived: consolidation.archived,
+                  failures: consolidation.failures,
+                });
+              }
+            } catch (err) {
+              opts.log?.('warn', `runner: daily memory consolidation skipped: ${(err as Error).message}`);
+            }
           }
         } catch (err) {
           opts.log?.('warn', `runner: session compaction skipped: ${(err as Error).message}`);
@@ -450,6 +498,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           resolvedRunConfig: result.resolvedRunConfig,
           modelRequests: result.modelRequests,
           contextSnapshots: result.contextSnapshots,
+          runtimeResources: completeRuntimeResourceObservation(runtimeResourceStart),
           messages: result.messages,
           durationMs: result.durationMs,
         });
@@ -471,8 +520,26 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         opts.log?.('warn', `runner: failed to persist last-run timing summary: ${(err as Error).message}`);
       }
 
+      if (activeCheckpoint) {
+        checkpointCompleted = await completeRunVersionCheckpoint({
+          checkpoint: activeCheckpoint,
+          result,
+          sessionId,
+          startedAtMs: startedAt,
+          executionLogStore: infra.executionLogStore,
+          log: opts.log,
+        });
+      }
+
       return result;
     } finally {
+      if (activeCheckpoint && !checkpointCompleted) {
+        try {
+          await activeCheckpoint.abort();
+        } catch (err) {
+          opts.log?.('error', `runner: failed to freeze interrupted run: ${(err as Error).message}`);
+        }
+      }
       if (timeoutTimer) clearTimeout(timeoutTimer);
     }
   }
@@ -484,8 +551,9 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     replay: (runId: string) => infra.executionLogStore.read(runId),
     shutdown: async () => {
       // Close long-lived SQLite connections before adapters replace or delete the data root.
-      infra.memoryRepository.close();
+      await infra.memoryRepository.shutdown();
       await infra.disposeEmbedding();
+      await infra.versioning?.freeze();
     },
     state,
     sessionManager: infra.sessionManager,
@@ -524,22 +592,6 @@ function truncateCompactionText(value: string, max: number): string {
   return value.slice(0, max) + '\n[truncated ' + (value.length - max) + ' characters]';
 }
 
-function reasoningPromptAddon(reasoning: Config['agents']['defaults']['reasoning']): string | undefined {
-  switch (reasoning) {
-    case 'low':
-      return 'Reasoning budget: low. Prefer a direct answer or the smallest safe tool plan.';
-    case 'medium':
-      return 'Reasoning budget: medium. Balance speed with enough planning to avoid obvious mistakes.';
-    case 'high':
-      return 'Reasoning budget: high. Think through edge cases before acting and verify important results.';
-    case 'ultra':
-      return 'Reasoning budget: ultra. Use a careful multi-step approach, inspect assumptions, and verify thoroughly before finalizing.';
-    case 'auto':
-    default:
-      return undefined;
-  }
-}
-
 function assembleResult(
   stageResult: StageResult,
   ctx: RunContext,
@@ -548,11 +600,7 @@ function assembleResult(
   aborted = false,
   memoryAccess?: MemoryAccessLedger,
 ): RunnerResult {
-  const status: AgentResult['status'] = aborted
-    ? 'aborted'
-    : stageResult.ok
-      ? 'ok'
-      : 'error';
+  const status: AgentResult['status'] = aborted ? 'aborted' : stageResult.ok ? 'ok' : 'error';
   const trace = (stageResult.meta?.trace as AgentResult['trace']) ?? [];
   return {
     runId: ctx.runId,

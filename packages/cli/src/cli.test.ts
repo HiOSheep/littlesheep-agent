@@ -2,7 +2,7 @@
 // Auto-mocks @littlesheep/runner to test runCli orchestration without real infra.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -120,5 +120,21 @@ describe('runCli', () => {
     const written = stderrSpy.mock.calls.map((c) => String(c[0])).join('');
     expect(written).toContain('Unknown flags');
     expect(mockRun).not.toHaveBeenCalled();
+  });
+
+  it('retires memory archive before loading config, providers, or mutating user data', async () => {
+    const configPath = join(dataDir, 'config.json');
+    const invalidConfig = '{ this is intentionally invalid';
+    writeFileSync(configPath, invalidConfig, 'utf8');
+    const beforeEntries = readdirSync(dataDir).sort();
+
+    await runCli(['memory', 'archive', '--force']);
+
+    expect(process.exitCode).toBe(2);
+    expect(stderrSpy.mock.calls.map((c) => String(c[0])).join('')).toContain('memory archive');
+    expect(mockRun).not.toHaveBeenCalled();
+    expect(vi.mocked(createRunner)).not.toHaveBeenCalled();
+    expect(readdirSync(dataDir).sort()).toEqual(beforeEntries);
+    expect(readFileSync(configPath, 'utf8')).toBe(invalidConfig);
   });
 });

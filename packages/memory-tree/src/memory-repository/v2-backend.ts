@@ -7,6 +7,7 @@ import type {
   MemoryManagementResult,
   MemoryMigrationRecord,
   MemoryNode,
+  MemoryRecentNodeQuery,
   MemoryResourceManagementAction,
   MemoryResourceManagementAuditRecord,
   MemoryResourceManagementResult,
@@ -92,6 +93,13 @@ export class MemoryRepositoryV2Backend implements MemoryRepositoryBackend {
   restoreSchemaBackup(backupFile: string): Promise<void> { return this.documents.restoreSchemaBackup(backupFile); }
   getNode(id: string): Promise<MemoryNode | undefined> { return this.nodes.get(id); }
   listNodes(branch: MemoryBranchKind, scopeKey?: string): Promise<MemoryNode[]> { return this.nodes.list(branch, scopeKey); }
+  async listRecentNodes(branch: MemoryBranchKind, query: MemoryRecentNodeQuery = {}): Promise<MemoryNode[]> {
+    const limit = Number.isSafeInteger(query.limit) && query.limit! > 0 ? Math.min(query.limit!, 256) : 256;
+    return (await this.nodes.list(branch, query.scopeKey))
+      .filter((node) => (!query.scope || node.scope === query.scope)
+        && (!query.status || node.status === query.status))
+      .slice(0, limit);
+  }
   rebindProjectPath(fromPath: string, toPath: string): Promise<MemoryProjectRebindResult> {
     return rebindMemoryProjectPath(this.documents, this.policy, fromPath, toPath);
   }
@@ -109,6 +117,7 @@ export class MemoryRepositoryV2Backend implements MemoryRepositoryBackend {
     nodeId: string,
     action: MemoryManagementAction,
     reason = 'Changed by the user from the memory-tree management page.',
+    _expectedRevision?: number,
   ): Promise<MemoryManagementResult | undefined> {
     return this.nodes.manage(nodeId, action, reason);
   }

@@ -340,6 +340,38 @@ describe('ContextEngine', () => {
     expect(result.compressionRecommended).toBe(false);
   });
 
+  it('does not recommend session compaction from a stage soft target when the model window has room', () => {
+    const engine = new ContextEngine({
+      tokenCounter: lengthCounter,
+      resolveContextWindow: () => ({ maxContextTokens: 1_000, source: 'builtin-model-registry' }),
+      resolveTokenizerCapability: exactLengthCapability,
+    });
+    const contract = callContract(
+      ['system_prompt', 'recent_message', 'user_input'],
+      ['system_prompt', 'user_input'],
+    );
+    contract.budget.maxPromptTokens = 40;
+    const result = engine.prepare({
+      runId: 'run-soft-target',
+      sessionId: asSessionId('session-soft-target'),
+      stage: 'reply',
+      requestIndex: 1,
+      provider: 'openai',
+      request: baseRequest(),
+      callContract: contract,
+      candidates: [
+        candidate('system', 0, 's'.repeat(15), { required: true, priority: 100, role: 'system' }),
+        candidate('history', 10, 'h'.repeat(15), { priority: 10 }),
+        candidate('current', 20, 'u'.repeat(25), { required: true, priority: 90, kind: 'user_input' }),
+      ],
+    });
+
+    expect(result.omittedCandidateIds).toEqual(['history']);
+    expect(result.contextSnapshot.localTokenLedger?.promptTokens).toBe(40);
+    expect(result.contextSnapshot.budget).toMatchObject({ availablePromptTokens: 990 });
+    expect(result.compressionRecommended).toBe(false);
+  });
+
   it('does not let a counter self-declare exactness for an unavailable model', () => {
     const counter: ExactContextTokenCounter = {
       id: 'untrusted-counter',

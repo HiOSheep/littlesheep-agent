@@ -1,13 +1,12 @@
 // @littlesheep/tools — builtin/memory_deep_search.ts
-// Deep search ALL archived memory by keyword: daily files (archive/YYYY/MM/DD.md),
-// monthly summaries (archive/YYYY/MM/summary.md), and yearly summaries
-// (archive/YYYY/summary.md).
+// Read-only compatibility search for existing Memory v2 archive files:
+// daily files (archive/YYYY/MM/DD.md), monthly summaries
+// (archive/YYYY/MM/summary.md), and yearly summaries (archive/YYYY/summary.md).
 //
 // STRICTLY READ-ONLY. This tool NEVER calls vectorStore.insert() — it searches
 // the raw archive files directly via ripgrep (with a naive fallback). This
-// satisfies the user's requirement: "深层搜索可以查询，但不随时插入向量库，
-// 防止过多相近记忆一次涌入使 llm 产生幻觉". Old memories are always queryable
-// via this tool even when they have been removed from the vector index.
+// Existing files remain queryable after the v2 writer is retired. This adapter
+// must never create archives, summaries, vectors, or Memory v3 Atoms.
 
 import { z } from 'zod';
 import { spawn } from 'node:child_process';
@@ -82,12 +81,19 @@ function searchWithRipgrep(
     const proc = spawn('rg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
     let stdout = '';
+    let settled = false;
+    const finish = (value: ArchiveHit[] | null) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
     proc.stdout?.on('data', (d) => (stdout += d.toString()));
 
-    proc.on('error', () => resolve(null));
-    proc.on('exit', (code) => {
+    proc.on('error', () => finish(null));
+    // `close` fires after stdio streams close; `exit` can precede the final stdout chunk on Windows.
+    proc.on('close', (code) => {
       if (code !== 0 && code !== 1) {
-        resolve(null);
+        finish(null);
         return;
       }
       const hits: ArchiveHit[] = [];
@@ -108,7 +114,7 @@ function searchWithRipgrep(
           // skip non-JSON lines
         }
       }
-      resolve(hits);
+      finish(hits);
     });
   });
 }
@@ -164,8 +170,8 @@ export function createMemoryDeepSearchTool(archiveDir: string): AgentTool {
   return {
     name: 'memory_deep_search',
     description:
-      'Deep search ALL archived memory (daily + monthly/yearly summaries) by keyword. ' +
-      'Read-only — never modifies the vector index. Use for historical context older than 30 days.',
+      'Read existing legacy archive files by keyword. ' +
+      'Compatibility-only and read-only; never creates summaries, vectors, or Memory v3 Atoms.',
     inputSchema: MemoryDeepSearchInput,
     execute: withToolTiming(async (input) => {
       const { query, limit, since, until } = MemoryDeepSearchInput.parse(input);

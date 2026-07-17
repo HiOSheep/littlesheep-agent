@@ -7,6 +7,7 @@ import { join, relative } from 'node:path';
 import type { AgentTool } from '@littlesheep/types';
 import { globToRegex } from './glob.js';
 import { withToolTiming } from '../wrapper.js';
+import { parallelFilePolicy } from '../execution-policy.js';
 
 const GrepInput = z.object({
   pattern: z.string().describe('Regex pattern to search for.'),
@@ -19,6 +20,7 @@ export const grepTool: AgentTool = {
   name: 'grep',
   description: 'Search file contents using ripgrep (falls back to naive search). Read-only.',
   inputSchema: GrepInput,
+  execution: parallelFilePolicy('path', 'read', true),
   execute: withToolTiming(async (input, ctx) => {
     const { pattern, path: searchPath, glob: _glob, max_results } = GrepInput.parse(input);
     const target = searchPath ?? ctx.cwd;

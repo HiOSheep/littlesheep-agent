@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { AgentTool } from '@littlesheep/types';
 import { withToolTiming } from '../wrapper.js';
+import { parallelFilePolicy } from '../execution-policy.js';
 
 const GlobInput = z.object({
   pattern: z.string().describe('Glob pattern (e.g. "**/*.ts").'),
@@ -28,6 +29,7 @@ export const globTool: AgentTool = {
   name: 'glob',
   description: 'Find files by glob pattern. Read-only.',
   inputSchema: GlobInput,
+  execution: parallelFilePolicy('path', 'read', true),
   execute: withToolTiming(async (input, ctx) => {
     const { pattern, path: searchPath, max_results } = GlobInput.parse(input);
     const target = searchPath ?? ctx.cwd;

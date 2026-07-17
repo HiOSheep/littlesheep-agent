@@ -27,6 +27,15 @@ export function createUseSkillTool(loader: SkillLoader): AgentTool {
       return `Load a skill body by name. Available skills: ${names || '(none)'}. Call this when you want to follow a skill's instructions.`;
     },
     inputSchema: UseSkillInput,
+    execution: {
+      concurrency: 'parallel',
+      resources(input) {
+        const name = input && typeof input === 'object' ? (input as Record<string, unknown>).name : undefined;
+        return typeof name === 'string' && name.trim()
+          ? [{ key: `skill:${name.trim().toLocaleLowerCase()}`, mode: 'read' as const }]
+          : [];
+      },
+    },
     async execute(input): Promise<ToolResult> {
       const start = Date.now();
       try {

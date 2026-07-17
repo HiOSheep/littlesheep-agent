@@ -31,6 +31,28 @@ export interface ToolContext {
   signal?: AbortSignal;
   /** Logger sink. */
   log?: (level: 'info' | 'warn' | 'error', msg: string, data?: unknown) => void;
+  /** Host-owned durable preimage checkpoint hook for mutating file tools. */
+  versioning?: {
+    beforeFileMutation(filePath: string): Promise<void>;
+    beforeWorkspaceMutation(workspacePath: string): Promise<void>;
+  };
+}
+
+export type ToolResourceAccessMode = 'read' | 'write';
+
+/** One runtime-owned resource lock used to decide whether tool calls may overlap. */
+export interface ToolResourceAccess {
+  key: string;
+  mode: ToolResourceAccessMode;
+}
+
+/**
+ * Tool execution policy. Unknown tools default to exclusive execution.
+ * A parallel tool must identify every resource whose mutation order matters.
+ */
+export interface ToolExecutionPolicy {
+  concurrency: 'parallel' | 'exclusive';
+  resources?: (input: unknown, ctx: ToolContext) => readonly ToolResourceAccess[];
 }
 
 /** Outcome of an approval check. */
@@ -49,6 +71,8 @@ export interface AgentTool {
   inputSchema: ToolSchema;
   /** Whether this tool requires approval before executing. */
   requiresApproval?: boolean;
+  /** Explicit runtime concurrency contract; omitted means exclusive. */
+  execution?: ToolExecutionPolicy;
   /** Execute the tool. Must not throw — return ok:false on error. */
   execute(input: unknown, ctx: ToolContext): Promise<ToolResult>;
 }

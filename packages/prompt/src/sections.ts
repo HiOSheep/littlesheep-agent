@@ -51,6 +51,7 @@ ${list}
 - When an active atom no longer helps the current goal, call \`memory_tree\` with action \`release\`. Release only removes that atom from this run's Context and refunds its run budget; it never changes raw records or persistent atom projections, and indexed expansion may admit it again later.
 - \`memory_search\` is a read-only compatibility navigator: without a branch it returns the root index, and with a branch it returns that branch index. It never searches or injects memory content directly.
 - \`write\` / \`edit\` / \`exec\` require approval. \`exec\` whitelisted commands auto-approve.
+- When several tool calls are independent, request them together in one response. The runtime executes only explicitly parallel-safe, non-conflicting calls concurrently; do not parallelize calls whose inputs depend on earlier outputs.
 - Tool results are sanitized (large output truncated, images stripped). Don't misjudge from truncation.
 - When a task is larger, prefer completing it in one EXECUTE turn rather than many small calls.`;
 }
@@ -141,9 +142,12 @@ ${prelude.content}`;
 
 /** Versioned summary of older messages; original transcript remains persisted. */
 export function sessionSummarySection(summary: CompactionSummary): string {
+  const compression = summary.version === 2
+    ? ` It is an atomic level-${summary.cache.compressionDepth} projection with a traceable source hash.`
+    : '';
   return `# Session Summary
 
-This summary covers ${summary.collapsedCount} earlier messages from ${summary.sourceStartAt} through ${summary.sourceEndAt}. Treat it as a compressed, traceable representation; recent messages below remain authoritative.
+This summary covers ${summary.collapsedCount} earlier messages from ${summary.sourceStartAt} through ${summary.sourceEndAt}.${compression} Treat it as a compressed, traceable representation; recent messages below remain authoritative.
 
 ${summary.summary}`;
 }

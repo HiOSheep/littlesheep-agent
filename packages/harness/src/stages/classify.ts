@@ -61,6 +61,7 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
           sourceStage: 'classify',
           createdAt: new Date().toISOString(),
           originalRequest,
+          copySource: 'runtime_fallback',
           blockingReason: /[\u3400-\u9fff]/u.test(originalRequest)
             ? '当前消息不足以判断一个安全、明确的下一步。'
             : 'The message does not contain enough meaning to identify a safe next action.',

@@ -83,6 +83,8 @@ export interface BuildRunContextOptions {
   approve?: ToolContext['approve'];
   /** Logger sink handed to tools. */
   log?: ToolContext['log'];
+  /** Run-scoped durable preimage checkpoint hooks handed to mutating tools. */
+  versioning?: ToolContext['versioning'];
   /** Optional assistant text delta callback for streaming callers. */
   onAssistantDelta?: (delta: string) => void;
   /** Optional tool event callback forwarded to RunContext for real-time streaming. */
@@ -178,6 +180,7 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     approve: opts.approve,
     signal: opts.signal,
     log: opts.log,
+    versioning: opts.versioning,
   };
 
   // 4. Assemble RunContext.
@@ -211,6 +214,7 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     attachments: opts.attachments,
     resolvedRunConfig: opts.resolvedRunConfig,
     modelRequests: [],
+    maxModelCalls: opts.config.agents.defaults.maxModelCallsPerRun,
     contextSnapshots: [],
     contextCompressionThresholdRatio: opts.config.agents.defaults.contextCompressionThresholdRatio,
     signal: opts.signal,

@@ -40,6 +40,25 @@ describe('recoverStage', () => {
     expect(ctx.plan).toEqual([{ description: 'old plan' }]);
   });
 
+  it('includes the active Soul when recovery wording may reach the user', async () => {
+    const systemPrompts: string[] = [];
+    const llm = createMockLlm((request) => {
+      systemPrompts.push(String(request.messages[0]?.content ?? ''));
+      return textResponse('{"action":"retry","reason":"try again"}');
+    });
+    const stage = createRecoverStage({ ...deps, llm });
+    const ctx = makeCtx({
+      recoveryAttempts: 0,
+      lastError: { stage: 'execute', message: 'fail' },
+      inbound: textMessage('user', '继续'),
+      bootstrap: { 'SOUL.md': 'SOUL_SENTINEL_RECOVER_VOICE' },
+    });
+
+    await stage(ctx);
+
+    expect(systemPrompts[0]).toContain('SOUL_SENTINEL_RECOVER_VOICE');
+  });
+
   it('escalate action → ask_user', async () => {
     const llm = createMockLlm(textResponse('{"action":"escalate","reason":"stuck"}'));
     const stage = createRecoverStage({ ...deps, llm });
@@ -53,7 +72,7 @@ describe('recoverStage', () => {
   });
 
   it('abort action → finalize', async () => {
-    const llm = createMockLlm(textResponse('{"action":"abort","reason":"give up"}'));
+    const llm = createMockLlm(textResponse('{"action":"abort","reason":"I cannot continue safely."}'));
     const stage = createRecoverStage({ ...deps, llm });
     const ctx = makeCtx({
       recoveryAttempts: 0,
@@ -62,6 +81,7 @@ describe('recoverStage', () => {
     });
     const res = await stage(ctx);
     expect(res.next).toBe('finalize');
+    expect(ctx.reply).toBe('I cannot continue safely.');
   });
 
   it('forced escalate when recoveryAttempts exceeds max', async () => {

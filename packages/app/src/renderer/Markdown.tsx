@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { useLinkNavigation } from './link-navigation'
 
 interface MarkdownProps {
   text: string
@@ -19,6 +20,9 @@ export function Markdown({ text }: MarkdownProps) {
 }
 
 const components: Components = {
+  a({ href, children }) {
+    return <MarkdownLink href={href}>{children}</MarkdownLink>
+  },
   code({ className, children, ...props }) {
     const code = String(children).replace(/\n$/, '')
     const language = /language-(\w+)/.exec(className ?? '')?.[1]
@@ -31,6 +35,38 @@ const components: Components = {
     }
     return <CodeBlock code={code} language={language} />
   },
+}
+
+function MarkdownLink({ href, children }: { href?: string; children: ReactNode }) {
+  const navigation = useLinkNavigation()
+  const clickTimerRef = useRef<number>()
+
+  useEffect(() => () => window.clearTimeout(clickTimerRef.current), [])
+
+  function openInside(event: MouseEvent<HTMLAnchorElement>) {
+    event.preventDefault()
+    if (!href) return
+    window.clearTimeout(clickTimerRef.current)
+    if (event.detail === 0) {
+      navigation.openInside(href)
+      return
+    }
+    if (event.detail > 1) return
+    clickTimerRef.current = window.setTimeout(() => navigation.openInside(href), 230)
+  }
+
+  function openWithSystem(event: MouseEvent<HTMLAnchorElement>) {
+    event.preventDefault()
+    if (!href) return
+    window.clearTimeout(clickTimerRef.current)
+    navigation.openWithSystem(href)
+  }
+
+  return (
+    <a href={href} onClick={openInside} onDoubleClick={openWithSystem}>
+      {children}
+    </a>
+  )
 }
 
 function CodeBlock({ code, language }: { code: string; language: string }) {

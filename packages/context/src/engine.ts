@@ -21,7 +21,6 @@ import {
 } from './context-engine/counting.js';
 import { evictOptionalContext, optionalOmissionUnits } from './context-engine/eviction.js';
 import { buildContextSnapshot, buildModelRequestSnapshot } from './context-engine/snapshots.js';
-
 export * from './context-engine/contracts.js';
 export { defaultContextSafetyEstimator } from './context-engine/counting.js';
 export class ContextEngine {
@@ -53,6 +52,7 @@ export class ContextEngine {
       request: requestFromCandidates(input.request, candidates, omitted),
       measurement: 0,
     };
+    const targetPromptTokens = budget.targetPromptTokens ?? budget.availablePromptTokens;
     let promptTokens: number | undefined;
     let counterFailure: string | undefined;
     let safetyEstimate: ContextSafetyEstimate | undefined;
@@ -63,20 +63,20 @@ export class ContextEngine {
           counterResolution.counter.countRequest(state.request),
           'exact token counter',
         );
-        if (budget.availablePromptTokens !== undefined && state.measurement > budget.availablePromptTokens) {
+        if (targetPromptTokens !== undefined && state.measurement > targetPromptTokens) {
           evictOptionalContext(
             state,
             input.request,
             candidates,
             omitted,
             optional,
-            budget.availablePromptTokens,
+            targetPromptTokens,
             (request) => validTokenCount(
               counterResolution.counter!.countRequest(request),
               'exact token counter',
             ),
           );
-          if (state.measurement > budget.availablePromptTokens) {
+          if (budget.availablePromptTokens !== undefined && state.measurement > budget.availablePromptTokens) {
             throw new ContextBudgetExceededError(state.measurement, budget.availablePromptTokens);
           }
         }
@@ -87,26 +87,26 @@ export class ContextEngine {
       }
     }
 
-    if (promptTokens === undefined && budget.availablePromptTokens !== undefined) {
+    if (promptTokens === undefined && targetPromptTokens !== undefined) {
       try {
         state.measurement = validTokenCount(
           this.safetyEstimator.estimatePromptTokens(state.request),
           'context safety estimator',
         );
-        if (state.measurement > budget.availablePromptTokens) {
+        if (state.measurement > targetPromptTokens) {
           evictOptionalContext(
             state,
             input.request,
             candidates,
             omitted,
             optional,
-            budget.availablePromptTokens,
+            targetPromptTokens,
             (request) => validTokenCount(
               this.safetyEstimator.estimatePromptTokens(request),
               'context safety estimator',
             ),
           );
-          if (state.measurement > budget.availablePromptTokens) {
+          if (budget.availablePromptTokens !== undefined && state.measurement > budget.availablePromptTokens) {
             throw new ContextBudgetExceededError(
               state.measurement,
               budget.availablePromptTokens,

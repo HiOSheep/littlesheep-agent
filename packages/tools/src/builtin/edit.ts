@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 import type { AgentTool } from '@littlesheep/types';
 import { CORE_SOURCE_READ_ONLY_ERROR, findProtectedWriteRoot, resolveToolPath } from '../path-protection.js';
 import { withToolTiming } from '../wrapper.js';
+import { parallelFilePolicy } from '../execution-policy.js';
 
 const EditInput = z.object({
   file_path: z.string(),
@@ -17,6 +18,7 @@ export const editTool: AgentTool = {
   description: 'Edit a file by replacing an exact string. Requires approval.',
   inputSchema: EditInput,
   requiresApproval: true,
+  execution: parallelFilePolicy('file_path', 'write'),
   execute: withToolTiming(async (input, ctx) => {
     const { file_path, old_string, new_string } = EditInput.parse(input);
     const targetPath = resolveToolPath(file_path, ctx.cwd);
@@ -31,6 +33,7 @@ export const editTool: AgentTool = {
     if (!approved) {
       return { ok: false, error: 'Approval denied' };
     }
+    await ctx.versioning?.beforeFileMutation(targetPath);
     const content = await readFile(targetPath, 'utf8');
     const occurrences = content.split(old_string).length - 1;
     if (occurrences === 0) {

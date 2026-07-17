@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { AgentTool } from '@littlesheep/types';
 import type { BranchIndex, MemoryQueryResult } from './types.js';
 import type { MemoryNavigationServiceLike } from './memory-service.js';
+import { memoryAtomEnd, memoryAtomStart } from './memory-render-boundary.js';
 
 const MemoryTreeInput = z.discriminatedUnion('action', [
   z.object({ action: z.literal('root_index') }),
@@ -75,14 +76,17 @@ function renderQuery(result: MemoryQueryResult): string {
   ];
   if (result.fragments.length === 0) lines.push('', 'No new matching memory fragments were returned.');
   for (const fragment of result.fragments) {
+    const atomId = fragment.evidence?.atomId ?? fragment.id;
     lines.push(
       '',
+      memoryAtomStart(atomId),
       `## [${fragment.id}] T${fragment.tier} - ${fragment.matchReason}`,
       `Source: ${fragment.metadata.source} (${fragment.metadata.kind}); generated: ${fragment.metadata.generatedAt}`,
       ...(fragment.evidence ? [
         `Evidence: ${fragment.evidence.disclosureLevel}; ${fragment.evidence.statementKind}/${fragment.evidence.epistemicStatus}; authority=${fragment.evidence.authorityScope.kind}; boundary=${fragment.evidence.conflict ? 'conflicted' : 'contextual'}`,
       ] : []),
       fragment.content,
+      memoryAtomEnd(atomId),
     );
   }
   if (result.childIndex?.length) {

@@ -17,31 +17,15 @@ import {
   memoryWriteSourceRefs,
   type GatedMemoryProposal,
 } from './memory-intent-gate.js';
+import { resolveMemoryWriteEpistemic } from './memory-epistemic-policy.js';
+import { CAPTURE_MEMORY_PROMPT } from './memory-stage-prompts.js';
 
 export interface CaptureStageDeps {
   llm: LlmClient;
   model: string;
   memoryWriter?: MemoryWriteServiceLike;
+  llmEnabled?: boolean;
 }
-
-const SYSTEM_PROMPT = `You are the CAPTURE stage of a hard-control-flow agent.
-Record factual run details that may help later reconstruction. This is the daily
-timeline, not long-term memory and not a skill library.
-
-Return ONLY JSON:
-{"observations":[{
-  "intent":"write|none",
-  "summary":"short dated index title",
-  "content":"specific fact, action, result or unresolved issue",
-  "retrievalKeys":["concrete","search","keys"],
-  "importance":0.0,
-  "confidence":0.0,
-  "reason":"why this detail may matter later"
-}]}
-
-Do not record greetings, generic reply wording, transient emotion, guesses,
-secrets, or a duplicate paraphrase of the final answer. Return an empty array
-when nothing factual happened.`;
 
 interface Observation {
   intent?: unknown;
@@ -51,6 +35,7 @@ interface Observation {
   importance?: unknown;
   confidence?: unknown;
   reason?: unknown;
+  epistemic?: unknown;
 }
 
 interface DecodedCapture {
@@ -77,7 +62,11 @@ function keys(value: unknown, fallback: string): string[] {
   return [...new Set(fallback.toLocaleLowerCase().split(/[^\p{L}\p{N}_-]+/u).filter((entry) => entry.length > 2))].slice(0, 8);
 }
 
-function proposalsFrom(parsed: DecodedCapture | null, ctx: RunContext): GatedMemoryProposal[] {
+function proposalsFrom(
+  parsed: DecodedCapture | null,
+  ctx: RunContext,
+  proposalSource: 'model' | 'runtime' = 'model',
+): GatedMemoryProposal[] {
   const observations: Observation[] = Array.isArray(parsed?.observations)
     ? parsed!.observations!.filter((entry): entry is Observation => !!entry && typeof entry === 'object').slice(0, 10)
     : asStringArray(parsed?.insights).slice(0, 10).map((insight) => ({
@@ -106,6 +95,7 @@ function proposalsFrom(parsed: DecodedCapture | null, ctx: RunContext): GatedMem
       importance,
       confidence,
       minConfidence: 0.5,
+      proposalSource,
     });
     if (gated.action !== 'commit') {
       result.push(gated);
@@ -141,6 +131,15 @@ function proposalsFrom(parsed: DecodedCapture | null, ctx: RunContext): GatedMem
       importance,
       confidence,
       reason,
+      epistemic: resolveMemoryWriteEpistemic({
+        raw: observation.epistemic,
+        stage: 'capture',
+        branch: 'daily',
+        scope: 'workspace',
+        scopeKey: ctx.cwd,
+        sourceRefs: gated.sourceRefs,
+        evidenceRefs: gated.evidenceRefs,
+      }),
     };
     result.push({ ...gated, writeIntent });
   }
@@ -149,8 +148,34 @@ function proposalsFrom(parsed: DecodedCapture | null, ctx: RunContext): GatedMem
 
 export function createCaptureStage(deps: CaptureStageDeps) {
   return async function captureStage(ctx: RunContext): Promise<StageResult> {
+    if (deps.llmEnabled === false) {
+      const proposals = proposalsFrom(deterministicCapture(ctx), ctx, 'runtime');
+      const { records, writeResults } = await commitMemoryIntentBatch(
+        ctx,
+        'capture',
+        deps.memoryWriter,
+        proposals,
+      );
+      ctx.insights = records
+        .filter((record) => record.decision === 'committed' && record.summary)
+        .map((record) => record.summary!);
+      return {
+        stage: 'capture',
+        next: 'finalize',
+        ok: true,
+        meta: {
+          skippedModelCall: true,
+          sourceCapture: 'runner-deterministic-conversation-records',
+          memoryWrites: writeResults.map((result) => ({
+            decision: result.decision,
+            nodeId: result.node?.id,
+            reason: result.reason,
+          })),
+        },
+      };
+    }
     const messages: ChatMessage[] = [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: CAPTURE_MEMORY_PROMPT },
       {
         role: 'user',
         content: [
@@ -206,5 +231,31 @@ export function createCaptureStage(deps: CaptureStageDeps) {
         })),
       },
     };
+  };
+}
+
+function deterministicCapture(ctx: RunContext): DecodedCapture {
+  const inbound = textOf(ctx.inbound).trim();
+  const goal = ctx.taskBook?.goal?.trim() || inbound || 'Conversation run';
+  const reply = (ctx.reply ?? '').trim();
+  const execution = ctx.taskExecution;
+  const status = execution?.status ?? (ctx.lastError ? 'error' : 'completed');
+  const content = [
+    `User request: ${inbound || '(empty)'}`,
+    `Run status: ${status}`,
+    execution ? `Task goal: ${execution.goal}` : undefined,
+    reply ? `Delivered result: ${reply}` : undefined,
+    `Tool calls: ${(ctx.toolResults ?? []).length}`,
+  ].filter((line): line is string => !!line).join('\n').slice(0, 4_000);
+  return {
+    observations: [{
+      intent: 'write',
+      summary: `Run ${status}: ${goal}`.slice(0, 240),
+      content,
+      retrievalKeys: keys(undefined, `${goal} ${inbound}`),
+      importance: execution ? 0.5 : 0.35,
+      confidence: 1,
+      reason: 'Deterministic runtime record derived from persisted conversation and execution state.',
+    }],
   };
 }

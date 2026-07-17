@@ -76,7 +76,7 @@ export function buildContextUsageSnapshot(
     .reverse()
     .find((item) =>
       `${item.provider}/${item.model}` === modelKey
-      && (item.stage === 'reply' || item.stage === 'execute')
+      && (item.stage === 'reply' || item.stage === 'execute' || item.stage === 'ask_user')
       && snapshotsById.has(item.contextSnapshotId ?? ''),
     )
   const snapshot = (replyRequest?.contextSnapshotId

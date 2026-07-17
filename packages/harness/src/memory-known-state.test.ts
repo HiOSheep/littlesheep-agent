@@ -28,6 +28,7 @@ describe('run Memory KnownState', () => {
     const system = String(prepared.messages[0]?.content);
     expect(system).toContain('# Run Memory KnownState');
     expect(system).toContain('statement=suggestion; epistemic=unverified');
+    expect(system).toContain('usefulness=2/1');
     expect(system).toContain('adoption never verifies it as fact');
     expect(ctx.memoryKnownState?.references[0]?.stages).toEqual(expect.arrayContaining(['execute', 'verify']));
     expect(ctx.contextSnapshots?.[0]?.items).toEqual(expect.arrayContaining([
@@ -84,6 +85,7 @@ function knownState(runId: string): RuntimeMemoryKnownState {
         evidenceRefs: ['user:message-1'],
         confidence: 0.7,
         importance: 0.8,
+        verifiedUsefulness: { useful: 2, notUseful: 1, conflicts: 0, stale: 0 },
         updatedAt: at,
         retrievalPath: 'fts',
         matchReason: 'FTS matched the current project query.',

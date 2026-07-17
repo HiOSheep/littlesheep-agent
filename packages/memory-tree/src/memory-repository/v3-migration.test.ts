@@ -505,13 +505,19 @@ describe('Memory v2 -> v3 migration', () => {
       policy: resolveMemoryWritePolicy(),
       v3: { embeddingEngine },
     });
-    await backend.initialize();
-    const publicEntries = backend.catalog.listAtoms({ limit: 100_000 })
-      .filter((entry) => !entry.atomId.endsWith(':root') && !entry.atomId.startsWith('v3-scope-root:'));
-    expect(publicEntries.length).toBeGreaterThan(0);
-    expect(publicEntries.every((entry) => entry.embeddingStatus === 'pending')).toBe(true);
-    expect(backend.catalog.searchFts('concise', { branch: 'long-term', scope: 'global', limit: 10 }).length).toBeGreaterThan(0);
-    backend.close();
+    try {
+      await backend.initialize();
+      const publicEntries = backend.catalog.listAtoms({ limit: 100_000 })
+        .filter((entry) => !entry.atomId.endsWith(':root') && !entry.atomId.startsWith('v3-scope-root:'));
+      const activeEntries = publicEntries.filter((entry) => entry.status === 'active');
+      const inactiveEntries = publicEntries.filter((entry) => entry.status !== 'active');
+      expect(activeEntries.length).toBeGreaterThan(0);
+      expect(activeEntries.every((entry) => entry.embeddingStatus === 'pending')).toBe(true);
+      expect(inactiveEntries.every((entry) => entry.embeddingStatus === 'disabled')).toBe(true);
+      expect(backend.catalog.searchFts('concise', { branch: 'long-term', scope: 'global', limit: 10 }).length).toBeGreaterThan(0);
+    } finally {
+      await backend.shutdown();
+    }
   });
 });
 

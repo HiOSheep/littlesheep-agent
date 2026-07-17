@@ -1,5 +1,6 @@
 // Conversation rendering and execution-progress presentation.
 import { useEffect, useState, type ReactNode } from 'react'
+import type { TaskComplexity } from '@littlesheep/types'
 import {
   type HistoryMessage
 } from '../api'
@@ -8,8 +9,6 @@ import { Markdown } from '../Markdown'
 import {
   executionDisclosureDefaultOpen,
   executionDisclosureResetKey,
-  verificationDisclosureDefaultOpen,
-  verificationDisclosureResetKey,
 } from '../progressive-disclosure'
 import { TraceCard } from '../TraceCard'
 import { FileGlyphIcon } from '../ui/icons'
@@ -38,7 +37,7 @@ export function AssistantTurnMessage({
           <TraceCard trace={message.trace} toolCalls={message.toolCalls} durationMs={message.durationMs} onOpenFile={onOpenFile} />
         )}
         {message.artifacts && message.artifacts.length > 0 && (
-          <MessageFileStrip files={message.artifacts} label="产物" onOpenFile={onOpenFile} />
+          <MessageFileStrip files={message.artifacts} label="产出成果" onOpenFile={onOpenFile} />
         )}
       </div>
     )
@@ -47,6 +46,11 @@ export function AssistantTurnMessage({
   const collapsed = Boolean(message.activityCollapsed)
   const commandCount = activity.tools.length
   const runningCommands = activity.tools.filter((tool) => tool.ok === undefined).length
+  const thoughtRunning = activity.status === 'running' && !activity.taskBook
+  const executionRunning = activity.status === 'running' && Boolean(activity.taskBook || activity.steps.length || activity.tools.length)
+  const thoughtMeta = activity.taskBook
+    ? `${taskComplexityLabel(activity.taskBook.complexity)} · ${activity.taskBook.steps.length} 个步骤`
+    : '正在判断目标与范围'
 
   return (
     <section className={`assistant-turn ${activity.status} ${collapsed ? 'collapsed' : ''}`}>
@@ -63,35 +67,41 @@ export function AssistantTurnMessage({
       </button>
       <div className={`assistant-turn-process disclosure-panel ${collapsed ? '' : 'open'}`} aria-hidden={collapsed}>
         <div className="assistant-turn-process-inner">
-          <ActivityDisclosure title="指令" meta="1 条" defaultOpen={false}>
-            <div className="assistant-turn-instruction">
-              <Markdown text={activity.instruction} />
-            </div>
+          <ActivityDisclosure
+            title={thoughtRunning ? '思考中' : '思考'}
+            meta={thoughtMeta}
+            running={thoughtRunning}
+            defaultOpen={thoughtRunning}
+            resetKey={activity.taskBook ? 'thought-ready' : 'thought-running'}
+          >
+            <ThoughtSummary activity={activity} />
           </ActivityDisclosure>
           <ActivityDisclosure
-            title="执行过程"
+            title={executionRunning ? '执行中' : '执行'}
             meta={runningCommands > 0 ? `正在运行 ${runningCommands} 条命令` : commandCount > 0 ? `已运行 ${commandCount} 条命令` : '等待执行'}
+            running={executionRunning}
             defaultOpen={executionDisclosureDefaultOpen(activity.status)}
             resetKey={executionDisclosureResetKey(activity.status)}
           >
             <ActivityTimeline activity={activity} now={now} onOpenFile={onOpenFile} />
+            {(activity.verificationRunning || (activity.verificationHistory?.length ?? 0) > 0) && (
+              <div className="activity-verification-block">
+                <div className="activity-verification-heading">
+                  <strong className={activity.verificationRunning ? 'is-running' : ''}>
+                    {activity.verificationRunning ? '正在验证' : '验证'}
+                  </strong>
+                  <span>{activity.verificationRunning ? '检查任务是否真正达标' : verificationSummary(activity.verificationHistory)}</span>
+                </div>
+                <VerificationTimeline activity={activity} />
+              </div>
+            )}
           </ActivityDisclosure>
-          {(activity.verificationRunning || (activity.verificationHistory?.length ?? 0) > 0) && (
-            <ActivityDisclosure
-              title="验证"
-              meta={activity.verificationRunning ? '正在验证' : verificationSummary(activity.verificationHistory)}
-              defaultOpen={verificationDisclosureDefaultOpen(Boolean(activity.verificationRunning))}
-              resetKey={verificationDisclosureResetKey(activity.status, Boolean(activity.verificationRunning))}
-            >
-              <VerificationTimeline activity={activity} />
-            </ActivityDisclosure>
-          )}
         </div>
       </div>
       <div className="message assistant assistant-final">
         {message.text ? <Markdown text={message.text} /> : <span className="loading task-running-text is-running">正在执行...</span>}
         {message.artifacts && message.artifacts.length > 0 && (
-          <MessageFileStrip files={message.artifacts} label="产物" onOpenFile={onOpenFile} />
+          <MessageFileStrip files={message.artifacts} label="产出成果" onOpenFile={onOpenFile} />
         )}
       </div>
     </section>
@@ -102,12 +112,14 @@ export function AssistantTurnMessage({
 export function ActivityDisclosure({
   title,
   meta,
+  running = false,
   defaultOpen = false,
   resetKey,
   children,
 }: {
   title: string
   meta?: string
+  running?: boolean
   defaultOpen?: boolean
   resetKey?: string
   children: ReactNode
@@ -125,7 +137,7 @@ export function ActivityDisclosure({
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
-        <span className="activity-disclosure-title">{title}</span>
+        <span className={`activity-disclosure-title ${running ? 'is-running' : ''}`}>{title}</span>
         {meta && <span className="activity-disclosure-meta">{meta}</span>}
         <span className="activity-disclosure-chevron" aria-hidden="true" />
       </button>
@@ -134,6 +146,38 @@ export function ActivityDisclosure({
       </div>
     </section>
   )
+}
+
+
+function ThoughtSummary({ activity }: { activity: AssistantTurnActivity }) {
+  const assessment = activity.taskBook?.assessment
+  if (!assessment) {
+    return <div className="activity-empty">正在理解需求，并确定合适的执行范围。</div>
+  }
+
+  return (
+    <div className="assistant-thought-summary">
+      <p>{assessment.rationale || assessment.userNeed}</p>
+      <dl>
+        <div>
+          <dt>目标</dt>
+          <dd>{assessment.goal}</dd>
+        </div>
+        <div>
+          <dt>验收</dt>
+          <dd>{assessment.successCriteria.join('；')}</dd>
+        </div>
+      </dl>
+    </div>
+  )
+}
+
+
+function taskComplexityLabel(complexity: TaskComplexity): string {
+  if (complexity === 'trivial') return '轻量任务'
+  if (complexity === 'simple') return '简单任务'
+  if (complexity === 'complex') return '复杂任务'
+  return '普通任务'
 }
 
 

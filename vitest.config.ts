@@ -79,6 +79,8 @@ export default defineConfig({
     include: ['packages/**/src/**/*.test.ts', 'test/**/*.test.ts'],
     environment: 'node',
     testTimeout: 30_000,
+    maxWorkers: 8,
+    minWorkers: 1,
     server: {
       deps: {
         // Belt-and-suspenders: never optimize/transform node:* built-ins.

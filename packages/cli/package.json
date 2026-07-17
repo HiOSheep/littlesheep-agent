@@ -21,8 +21,7 @@
     "@littlesheep/types": "workspace:*",
     "@littlesheep/tools": "workspace:*",
     "@littlesheep/memory-core": "workspace:*",
-    "@littlesheep/snapshot": "workspace:*",
-    "@littlesheep/vector": "workspace:*"
+    "@littlesheep/snapshot": "workspace:*"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

@@ -15,9 +15,7 @@ import { parseArgs, USAGE, VERSION } from './args.js';
 import { startRepl } from './repl.js';
 import { parseMemoryRollbackFlags, runMemoryRollback } from './commands/memory.js';
 import { parseImportRepoFlags, runImportRepo } from './commands/import-repo.js';
-import { parseArchiveFlags, runArchive } from './commands/archive.js';
 import { ExperienceStore } from '@littlesheep/experience';
-import { MemoryStore } from '@littlesheep/memory-core';
 
 /** Run the CLI with the given argv (typically process.argv.slice(2)). */
 export async function runCli(argv: string[]): Promise<void> {
@@ -29,6 +27,13 @@ export async function runCli(argv: string[]): Promise<void> {
   }
   if (args.version) {
     process.stdout.write(VERSION + '\n');
+    return;
+  }
+  if (args.retiredCommand === 'memory archive') {
+    process.stderr.write(
+      'The legacy "memory archive" command is retired under Memory v3 because it bypassed the Atom repository and local vector catalog. Existing archive/vector files are preserved. Use the Memory v3 runtime; structured compaction will use the unified write and recovery gates.\n',
+    );
+    process.exitCode = 2;
     return;
   }
   if (args.unknown.length > 0) {
@@ -73,30 +78,6 @@ export async function runCli(argv: string[]): Promise<void> {
       const { llm } = resolveLlm(config, model);
       const experienceStore = new ExperienceStore({ rootDir: dataDir.experience });
       await runImportRepo({ flags, llm, model, experienceStore });
-    } catch (e) {
-      process.stderr.write(`${(e as Error).message}\n`);
-      process.exitCode = 1;
-    }
-    return;
-  }
-
-  // Subcommand: 'memory archive' (needs config + LLM + MemoryStore + VectorStore).
-  if (args.memoryArchive !== undefined) {
-    const flags = parseArchiveFlags(args.memoryArchive);
-    let config = await loadConfig({ dataDir: dataDir.root });
-    if (config.providers.length === 0) config = defaultConfigWithOpenAI();
-    const model = flags.model ?? config.agents.defaults.model;
-    try {
-      const { llm } = resolveLlm(config, model);
-      const memoryStore = new MemoryStore({ rootDir: dataDir.root });
-      await runArchive({
-        flags,
-        llm,
-        model,
-        memoryStore,
-        archiveDir: dataDir.archive,
-        vectorsDir: dataDir.vectors,
-      });
     } catch (e) {
       process.stderr.write(`${(e as Error).message}\n`);
       process.exitCode = 1;

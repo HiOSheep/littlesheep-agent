@@ -7,7 +7,7 @@ import { textMessage } from '@littlesheep/types';
 describe('askUserStage', () => {
   it('renders and preserves a structured clarification request', async () => {
     const llm = createMockLlm(textResponse('请选择目标文件：README.md 还是 package.json？'));
-    const stage = createAskUserStage();
+    const stage = createAskUserStage({ llm, model: 'test' });
     const ctx = makeCtx({
       inbound: textMessage('user', '修改那个文件'),
       clarificationRequest: {
@@ -16,6 +16,7 @@ describe('askUserStage', () => {
         sourceStage: 'decide',
         createdAt: '2026-07-10T00:00:00.000Z',
         originalRequest: '修改那个文件',
+        copySource: 'model',
         blockingReason: '没有目标路径',
         questions: [{
           id: 'question-1',
@@ -37,12 +38,17 @@ describe('askUserStage', () => {
     expect(llm.chat).not.toHaveBeenCalled();
   });
 
-  it('converts a recovery escalation into a first-class request', async () => {
-    const llm = createMockLlm(textResponse('执行失败了，你希望我重试还是停止？'));
-    const stage = createAskUserStage();
+  it('uses the LLM and active Soul to compose runtime-generated clarification copy', async () => {
+    const systemPrompts: string[] = [];
+    const llm = createMockLlm((request) => {
+      systemPrompts.push(String(request.messages[0]?.content ?? ''));
+      return textResponse('这一步需要你的决定：要我重试，还是先停下来？');
+    });
+    const stage = createAskUserStage({ llm, model: 'test' });
     const ctx = makeCtx({
       inbound: textMessage('user', '继续执行'),
       lastError: { stage: 'execute', message: 'permission denied' },
+      bootstrap: { 'SOUL.md': 'SOUL_SENTINEL_ASK_USER_VOICE' },
     });
 
     const result = await stage(ctx);
@@ -50,6 +56,9 @@ describe('askUserStage', () => {
     expect(result.meta?.escalated).toBe(true);
     expect(ctx.clarificationRequest?.kind).toBe('recovery_decision');
     expect(ctx.clarificationRequest?.sourceStage).toBe('execute');
-    expect(llm.chat).not.toHaveBeenCalled();
+    expect(ctx.clarificationRequest?.copySource).toBe('model');
+    expect(ctx.reply).toBe('这一步需要你的决定：要我重试，还是先停下来？');
+    expect(systemPrompts[0]).toContain('SOUL_SENTINEL_ASK_USER_VOICE');
+    expect(ctx.modelRequests?.at(-1)?.callContract?.purpose).toBe('ask_user');
   });
 });

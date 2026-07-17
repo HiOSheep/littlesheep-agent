@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 import type { AgentTool } from '@littlesheep/types';
 import { sanitizeOutput, DEFAULT_SANITIZE, isBinary, binaryPreview } from '../sanitize.js';
 import { withToolTiming } from '../wrapper.js';
+import { parallelFilePolicy } from '../execution-policy.js';
 
 const ReadInput = z.object({
   file_path: z.string().describe('Absolute path to the file to read.'),
@@ -16,6 +17,7 @@ export const readTool: AgentTool = {
   name: 'read',
   description: 'Read a file from the filesystem. Returns text content (binary gets hex preview).',
   inputSchema: ReadInput,
+  execution: parallelFilePolicy('file_path', 'read'),
   execute: withToolTiming(async (input, ctx) => {
     const { file_path, offset, limit } = ReadInput.parse(input);
     if (!existsSync(file_path)) {

@@ -6,6 +6,47 @@ export interface MemoryOverview {
   experienceCount: number
 }
 
+export type MemoryFileName =
+  | 'AGENTS.md'
+  | 'SOUL.md'
+  | 'USER.md'
+  | 'PHILOSOPHY.md'
+  | 'TOOLS.md'
+  | 'MEMORY.md'
+
+export interface MemoryFileOverview {
+  name: MemoryFileName
+  description: string
+  exists: boolean
+  editable: boolean
+  size: number
+  updatedAt?: string
+}
+
+export interface MemoryFileDetail extends MemoryFileOverview {
+  content: string
+}
+
+export interface MemoryActivationLevelCounts {
+  high: number
+  medium: number
+  low: number
+}
+
+export interface MemoryActivationProjection {
+  levels: MemoryActivationLevelCounts
+  sources: {
+    durableMemory: MemoryActivationLevelCounts
+    semanticCache: MemoryActivationLevelCounts
+  }
+  computedAt: string
+}
+
+export interface MemoryFilesPayload {
+  files: MemoryFileOverview[]
+  activation: MemoryActivationProjection
+}
+
 export type MemoryTreeBranchId = 'long-term' | 'project' | 'daily' | 'experience'
 export type MemoryResourceKind =
   | 'agent-instructions'

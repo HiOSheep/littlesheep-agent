@@ -3,6 +3,7 @@ export * from './atom-store.js';
 export * from './catalog.js';
 export * from './catalog-embedding.js';
 export * from './catalog-graph.js';
+export * from './catalog-relation-routing.js';
 export * from './embedding-engine.js';
 export * from './event-journal.js';
 export * from './raw-record-store.js';

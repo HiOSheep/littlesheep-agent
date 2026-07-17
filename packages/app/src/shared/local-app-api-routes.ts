@@ -24,6 +24,7 @@ export const LOCAL_APP_API_ROUTES = {
   workspaceLayout: '/workspace/layout',
   workspaceArtifacts: '/workspace/artifacts',
   workspaceOpen: '/workspace/open',
+  externalOpen: '/external/open',
   workspaceOpenVscode: '/workspace/open-vscode',
   terminalSession: '/workspace/terminal/session',
   terminalRun: '/workspace/terminal/run',
@@ -38,6 +39,7 @@ export const LOCAL_APP_API_ROUTES = {
   channelsReload: '/channels/reload',
   skills: '/skills',
   memoryPolicy: '/memory/policy',
+  memoryFiles: '/memory/files',
   memoryTree: '/memory/tree',
   memoryEmbeddingModel: '/memory/tree/embedding-model',
   memoryMigration: '/memory/tree/migration',
@@ -58,6 +60,7 @@ export const LOCAL_APP_API_PREFIXES = {
   memoryNodes: '/memory/tree/nodes/',
   memoryResources: '/memory/tree/resources/',
   memoryProjects: '/memory/projects/',
+  memoryFiles: '/memory/files/',
 } as const
 
 export function localAppApiItemPath(prefix: string, id: string, suffix = ''): string {

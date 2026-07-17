@@ -31,7 +31,7 @@ import {
 } from '@littlesheep/skills';
 import { createDefaultHarness } from '@littlesheep/harness';
 import { SafeMemoryStore, QuarantineStore, sanitizePreludeForInjection } from '@littlesheep/safety';
-import { SnapshotMemoryStore } from '@littlesheep/snapshot';
+import { GitCheckpointCoordinator, SnapshotMemoryStore } from '@littlesheep/snapshot';
 import { ExperienceStore } from '@littlesheep/experience';
 import { ExecutionLogStore } from './execution-log.js';
 import {
@@ -76,6 +76,7 @@ export interface Infrastructure {
   memoryRepository: MemoryRepository;
   memoryWriteService: MemoryWriteService;
   memoryService: MemoryService;
+  versioning?: GitCheckpointCoordinator;
   state: RunnerState;
 }
 
@@ -122,6 +123,17 @@ export async function buildInfrastructure(
   opts: BuildInfrastructureOptions,
 ): Promise<Infrastructure> {
   const dirs = dataSubdirs(opts.branding);
+  const versioning = opts.config.versioning.enabled
+    ? new GitCheckpointCoordinator({
+        dataRoot: dirs.root,
+        maxCheckpoints: opts.config.versioning.maxCheckpoints,
+        maxFileBytes: opts.config.versioning.maxFileBytes,
+        maxWorkspaceFiles: opts.config.versioning.maxWorkspaceFiles,
+        maxWorkspaceBytes: opts.config.versioning.maxWorkspaceBytes,
+        log: opts.log,
+      })
+    : undefined;
+  await versioning?.initialize();
   const { llm, modelName } = resolveLlm(opts.config, opts.model, opts.llm);
   opts.state.model = modelName;
 
@@ -237,6 +249,8 @@ export async function buildInfrastructure(
     dataDir: dirs.root,
     rootIndexMaxChars: opts.config.memory.treeRootIndexMaxChars,
     resolveSessionSummary: async (sessionId, summaryId) => {
+      const projection = await sessionManager.loadCompactionProjection(sessionId, summaryId);
+      if (projection) return projection;
       const summary = (await sessionManager.loadMetadata(sessionId))?.compaction;
       return summary?.id === summaryId ? summary : undefined;
     },
@@ -334,10 +348,15 @@ export async function buildInfrastructure(
     sessionManager,
     memoryStore,
     memoryWriter: memoryService,
+    memoryRefiner: memoryService,
     config: opts.config,
     branding: opts.branding,
     log: opts.log,
     createSkill: createSkillFn,
+  });
+
+  void memoryRepository.startBackgroundMaintenance().catch((error) => {
+    opts.log?.('warn', `memory-v3: background maintenance stopped: ${(error as Error).message}`);
   });
 
   return {
@@ -354,6 +373,7 @@ export async function buildInfrastructure(
     memoryRepository,
     memoryWriteService,
     memoryService,
+    versioning,
     state: opts.state,
   };
 }

@@ -178,6 +178,8 @@ export interface VerificationRecord {
   reason: string;
   feedback?: string;
   failedStepIds?: string[];
+  /** Active adopted memory atoms that materially supported this verdict/result. */
+  usedMemoryAtomIds?: string[];
   verifiedAt: string;
   source: 'model' | 'structural' | 'degraded';
 }
@@ -283,6 +285,10 @@ export interface RunContext {
   resolvedRunConfig?: import('./runtime-contracts.js').ResolvedRunConfig;
   /** Bounded, redacted snapshots of actual model requests made by this run. */
   modelRequests?: import('./runtime-contracts.js').ModelRequestSnapshot[];
+  /** Hard upper bound for provider calls in one run. */
+  maxModelCalls?: number;
+  /** Monotonic provider-call count; independent from bounded observability arrays. */
+  modelCallCount?: number;
   /** Bounded, redacted context snapshots linked from model request snapshots. */
   contextSnapshots?: import('./runtime-contracts.js').ContextSnapshot[];
   /** Configured request occupancy ratio that recommends context compaction. */
@@ -469,6 +475,8 @@ export interface AgentResult {
   clarificationRequest?: ClarificationRequest;
   /** Previous clarification answered by this run's inbound message. */
   clarificationResponse?: ClarificationResponse;
+  /** Linked local data/workspace rollback point created for this run. */
+  versionCheckpoint?: import('./versioning.js').VersionCheckpointSummary;
 }
 
 // ─── Stream events (emitted during a run) ────────────────────────────────

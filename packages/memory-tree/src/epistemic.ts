@@ -55,6 +55,45 @@ export interface MemoryActorRef {
   label?: string;
 }
 
+export type MemoryEntityType =
+  | 'user'
+  | 'project'
+  | 'directory'
+  | 'file'
+  | 'session'
+  | 'task'
+  | 'skill'
+  | 'tool'
+  | 'rule'
+  | 'concept'
+  | 'external-source';
+
+export type MemoryRelationType =
+  | 'belongs-to'
+  | 'depends-on'
+  | 'references'
+  | 'conflicts-with'
+  | 'replaces'
+  | 'derived-from'
+  | 'similar-to'
+  | 'affects'
+  | 'supported-by';
+
+/** Model-described entity candidate. Runtime owns its id, scope, owner, status, and revision. */
+export interface MemoryWriteEntityHint {
+  stableKey: string;
+  type: MemoryEntityType;
+  label: string;
+  aliases?: string[];
+}
+
+/** Model-described directed edge. Runtime owns evidence, confidence, authority, and activation. */
+export interface MemoryWriteRelationHint {
+  fromKey: string;
+  toKey: string;
+  type: MemoryRelationType;
+}
+
 export interface MemoryWriteEpistemicMetadata {
   domain: MemoryDomain;
   statementKind: StatementKind;
@@ -64,4 +103,6 @@ export interface MemoryWriteEpistemicMetadata {
   evidenceRefs?: string[];
   entityRefs?: string[];
   relationRefs?: string[];
+  entityHints?: MemoryWriteEntityHint[];
+  relationHints?: MemoryWriteRelationHint[];
 }

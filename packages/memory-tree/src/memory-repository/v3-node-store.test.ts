@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -141,9 +141,70 @@ describe('MemoryV3NodeStore', () => {
     expect((await runtime.nodes.get(created.node!.id))?.scopeKey).toBe('D:/new');
     expect(await runtime.nodes.list('project', 'D:/new')).toHaveLength(1);
   });
+
+  it('uses a hard-bounded catalog query for recent nodes', async () => {
+    for (let index = 0; index < 3; index += 1) {
+      await runtime.nodes.write(intent({
+        id: `daily-${index}`,
+        branch: 'daily',
+        parentNodeId: 'daily:root',
+        scope: 'workspace',
+        scopeKey: 'D:/repo',
+        sourceStage: 'capture',
+        summary: `Daily ${index}`,
+        content: `Daily content ${index}`,
+        retrievalKeys: [`daily-${index}`],
+      }));
+    }
+    const listAtoms = vi.spyOn(runtime.catalog, 'listAtoms');
+
+    const recent = await runtime.nodes.listRecent('daily', {
+      scope: 'workspace',
+      scopeKey: 'D:/repo',
+      limit: 10_000,
+    });
+
+    expect(recent).toHaveLength(3);
+    expect(listAtoms).toHaveBeenCalledWith(expect.objectContaining({
+      branch: 'daily',
+      scope: 'workspace',
+      status: 'active',
+      limit: 256,
+    }));
+  });
+
+  it('retries the same stable maintenance write after a raw-record crash point', async () => {
+    runtime.catalog.close();
+    await rm(dataDir, { recursive: true, force: true });
+    await createMemoryV3ExperimentMarker(dataDir);
+    let armed = false;
+    let failOnce = true;
+    runtime = await createRuntime(dataDir, (checkpoint) => {
+      if (armed && checkpoint === 'raw-record-captured' && failOnce) {
+        failOnce = false;
+        throw new Error('injected raw-record crash');
+      }
+    });
+    armed = true;
+    const retryable = intent({
+      id: 'maintenance-retryable-write',
+      sourceStage: 'maintenance',
+      createdAt: '2026-07-17T00:00:00.000Z',
+    });
+
+    await expect(runtime.nodes.write(retryable)).rejects.toThrow('injected raw-record crash');
+    const result = await runtime.nodes.write(retryable);
+
+    expect(result).toMatchObject({ decision: 'created', node: { sourceStages: ['maintenance'] } });
+    expect((await runtime.ledger.snapshot()).writeAudit.filter((record) => record.intentId === retryable.id))
+      .toHaveLength(1);
+  });
 });
 
-async function createRuntime(dataDir: string) {
+async function createRuntime(
+  dataDir: string,
+  fault?: (checkpoint: string) => void | Promise<void>,
+) {
   const ledger = new MemoryV3RepositoryLedger({ dataDir });
   await ledger.initialize();
   const atomStore = new MemoryAtomStore({ dataDir });
@@ -159,9 +220,11 @@ async function createRuntime(dataDir: string) {
     operationJournal,
     rawRecordStore: new MemoryRawRecordStore({ dataDir }),
     onCheckpoint: async (checkpoint, context) => {
-      if (checkpoint !== 'catalog-updated') return;
-      const record = await eventJournal.get(context.eventId);
-      if (record) await ledger.materializeEventAudits(record.event.payload);
+      if (checkpoint === 'catalog-updated') {
+        const record = await eventJournal.get(context.eventId);
+        if (record) await ledger.materializeEventAudits(record.event.payload);
+      }
+      await fault?.(checkpoint);
     },
   });
   await coordinator.initialize();

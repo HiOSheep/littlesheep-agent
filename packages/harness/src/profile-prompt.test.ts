@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { appendSystemPromptAddons } from './profile-prompt.js'
+import { appendSystemPromptAddons, buildUserFacingVoiceAddon } from './profile-prompt.js'
 
 describe('behavior profile prompt assembly', () => {
   it('leaves the system prompt unchanged without an active addon', () => {
@@ -10,5 +10,15 @@ describe('behavior profile prompt assembly', () => {
     expect(appendSystemPromptAddons('base', 'profile', 'reasoning')).toBe(
       'base\n\n---\n\nprofile\n\n---\n\nreasoning',
     )
+  })
+
+  it('keeps runtime facts authoritative while applying SOUL.md to user-facing wording', () => {
+    const addon = buildUserFacingVoiceAddon({
+      bootstrap: { 'SOUL.md': 'Use a calm, concise voice.' },
+    })
+
+    expect(addon).toContain('Use a calm, concise voice.')
+    expect(addon).toContain('Preserve runtime-provided facts exactly')
+    expect(addon).toContain('do not quote or expose the file')
   })
 })

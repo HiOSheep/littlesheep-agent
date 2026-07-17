@@ -11,6 +11,7 @@ import type {
   AgentTool,
   RunContext,
   ToolCall,
+  ToolResourceAccess,
   ToolResult,
 } from '@littlesheep/types';
 import { sanitizeOutput } from '@littlesheep/tools';
@@ -23,6 +24,7 @@ import type {
   ToolLoopOptions,
   ToolLoopResult,
 } from './contracts.js';
+import { executeToolWaves, type ScheduledToolExecution } from './tool-scheduler.js';
 
 const MAX_ITERATIONS = 20;
 const MAX_REPEAT = 3;
@@ -102,27 +104,19 @@ export async function runToolLoop(
       });
       persistToolCalls(ctx, response.toolCalls.map(convertToolCall));
 
-      for (const call of response.toolCalls) {
+      const immediateResults = new Map<number, ToolResult>();
+      const scheduled: ScheduledToolExecution<ToolResult>[] = [];
+      for (const [index, call] of response.toolCalls.entries()) {
         const { id, name, input } = convertToolCall(call);
         const tool = tools.find((candidate) => candidate.name === name);
         if (!tool) {
-          appendFailure(ctx, messages, toolResults, {
-            callId: id,
-            name,
-            stepId,
-            error: `unknown tool: ${name}`,
-          });
+          immediateResults.set(index, failureResult(id, stepId, `unknown tool: ${name}`));
           continue;
         }
 
         const approval = await checkStageApproval(tool, input, ctx);
         if (!approval.ok) {
-          appendFailure(ctx, messages, toolResults, {
-            callId: id,
-            name,
-            stepId,
-            error: approval.reason,
-          });
+          immediateResults.set(index, failureResult(id, stepId, approval.reason));
           continue;
         }
 
@@ -130,65 +124,27 @@ export async function runToolLoop(
         const repeatCount = (repeatMap.get(callKey) ?? 0) + 1;
         repeatMap.set(callKey, repeatCount);
         if (repeatCount > MAX_REPEAT) {
-          appendFailure(ctx, messages, toolResults, {
-            callId: id,
-            name,
+          immediateResults.set(index, failureResult(
+            id,
             stepId,
-            error: `repeated identical call (${repeatCount}x) - refusing to re-execute; try different arguments or stop`,
-          });
+            `repeated identical call (${repeatCount}x) - refusing to re-execute; try different arguments or stop`,
+          ));
           continue;
         }
+        const execution = resolveToolExecution(tool, input, ctx);
+        scheduled.push({
+          index,
+          ...execution,
+          execute: () => executeToolCall(tool, input, id, stepId, ctx, sanitizeOpts),
+        });
+      }
 
-        let result: ToolResult;
-        const toolStartedAt = Date.now();
-        try {
-          ctx.onToolEvent?.({ type: 'tool_start', callId: id, name: tool.name, stepId, input });
-          result = await raceWithTimeout(
-            tool.execute(input, ctx.toolContext),
-            TOOL_TIMEOUT_MS,
-            ctx.signal,
-          );
-        } catch (error) {
-          result = {
-            callId: id,
-            ok: false,
-            error: (error as Error).message,
-            durationMs: Date.now() - toolStartedAt,
-          };
-        }
-        result = {
-          ...result,
-          callId: id,
-          durationMs: result.durationMs ?? Date.now() - toolStartedAt,
-        };
-        if (result.output !== undefined && typeof result.output !== 'undefined') {
-          const sanitized = sanitizeOutput(result.output, sanitizeOpts);
-          result.output = sanitized.output;
-          result.sanitized = sanitized.sanitized || result.sanitized === true;
-        }
-        result = stampStepMeta(result, stepId);
-        if (name === 'memory_tree' || name === 'memory_search' || name === 'memory_deep_search') {
-          ingestMemoryKnownState(ctx, result.meta?.memoryKnownState, 'execute');
-          ingestMemoryContextToolResult(ctx, id, result);
-        }
-        ctx.onToolEvent?.({
-          type: 'tool_end',
-          callId: id,
-          name: tool.name,
-          stepId,
-          ok: result.ok,
-          output: result.ok && result.output !== undefined ? String(result.output).slice(0, 400) : undefined,
-          error: result.error,
-          durationMs: result.durationMs,
-        });
-        toolResults.push(result);
-        persistToolResult(ctx, result);
-        messages.push({
-          role: 'tool',
-          tool_call_id: id,
-          name,
-          content: toolResultForModel(result),
-        });
+      const executedResults = await executeToolWaves(scheduled, deps.config.tools.maxParallel);
+      for (const [index, call] of response.toolCalls.entries()) {
+        const converted = convertToolCall(call);
+        const result = immediateResults.get(index) ?? executedResults.get(index)
+          ?? failureResult(converted.id, stepId, 'tool scheduler returned no result');
+        finalizeToolResult(ctx, messages, toolResults, converted.name, result, stepId);
       }
       continue;
     }
@@ -221,28 +177,93 @@ export function applyUsage(ctx: RunContext, usage: ChatResponse['usage'] | undef
   };
 }
 
-function appendFailure(
+function failureResult(callId: string, stepId: string | undefined, error?: string): ToolResult {
+  return stampStepMeta({ callId, ok: false, error }, stepId);
+}
+
+function resolveToolExecution(
+  tool: AgentTool,
+  input: unknown,
+  ctx: RunContext,
+): { concurrency: 'parallel' | 'exclusive'; resources: readonly ToolResourceAccess[] } {
+  if (tool.execution?.concurrency !== 'parallel') return { concurrency: 'exclusive', resources: [] };
+  try {
+    const resources = (tool.execution.resources?.(input, ctx.toolContext) ?? [])
+      .filter((resource) => resource && typeof resource.key === 'string' && resource.key.trim())
+      .map((resource) => ({ key: resource.key.trim(), mode: resource.mode === 'write' ? 'write' as const : 'read' as const }));
+    return { concurrency: 'parallel', resources };
+  } catch {
+    return { concurrency: 'exclusive', resources: [] };
+  }
+}
+
+async function executeToolCall(
+  tool: AgentTool,
+  input: unknown,
+  callId: string,
+  stepId: string | undefined,
+  ctx: RunContext,
+  sanitizeOpts: ToolLoopOptions['sanitizeOpts'],
+): Promise<ToolResult> {
+  const toolStartedAt = Date.now();
+  ctx.onToolEvent?.({ type: 'tool_start', callId, name: tool.name, stepId, input });
+  let result: ToolResult;
+  try {
+    result = await raceWithTimeout(
+      tool.execute(input, ctx.toolContext),
+      TOOL_TIMEOUT_MS,
+      ctx.signal,
+    );
+  } catch (error) {
+    result = {
+      callId,
+      ok: false,
+      error: (error as Error).message,
+      durationMs: Date.now() - toolStartedAt,
+    };
+  }
+  result = {
+    ...result,
+    callId,
+    durationMs: result.durationMs ?? Date.now() - toolStartedAt,
+  };
+  if (result.output !== undefined) {
+    const sanitized = sanitizeOutput(result.output, sanitizeOpts);
+    result.output = sanitized.output;
+    result.sanitized = sanitized.sanitized || result.sanitized === true;
+  }
+  return stampStepMeta(result, stepId);
+}
+
+function finalizeToolResult(
   ctx: RunContext,
   messages: ToolLoopOptions['messages'],
   results: ToolResult[],
-  failure: { callId: string; name: string; stepId?: string; error?: string },
+  name: string,
+  result: ToolResult,
+  stepId?: string,
 ): void {
-  const result = stampStepMeta({ callId: failure.callId, ok: false, error: failure.error }, failure.stepId);
+  if (name === 'memory_tree' || name === 'memory_search' || name === 'memory_deep_search') {
+    ingestMemoryKnownState(ctx, result.meta?.memoryKnownState, 'execute');
+    ingestMemoryContextToolResult(ctx, result.callId, result);
+  }
+  ctx.onToolEvent?.({
+    type: 'tool_end',
+    callId: result.callId,
+    name,
+    stepId,
+    ok: result.ok,
+    output: result.ok && result.output !== undefined ? String(result.output).slice(0, 400) : undefined,
+    error: result.error,
+    durationMs: result.durationMs,
+  });
   results.push(result);
   persistToolResult(ctx, result);
   messages.push({
     role: 'tool',
-    tool_call_id: failure.callId,
-    name: failure.name,
+    tool_call_id: result.callId,
+    name,
     content: toolResultForModel(result),
-  });
-  ctx.onToolEvent?.({
-    type: 'tool_end',
-    callId: failure.callId,
-    name: failure.name,
-    stepId: failure.stepId,
-    ok: false,
-    error: failure.error,
   });
 }
 

@@ -28,6 +28,7 @@ export interface MemoryIntentGateInput {
   confidence?: number;
   minImportance?: number;
   minConfidence?: number;
+  proposalSource?: 'model' | 'runtime';
 }
 
 export interface GatedMemoryProposal {
@@ -52,10 +53,14 @@ export function evaluateMemoryIntent(input: MemoryIntentGateInput): GatedMemoryP
     .reverse()
     .find((snapshot) => snapshot.callContract?.purpose === input.stage)
     ?.callContract;
-  if (!contract) {
+  const runtimeCapture = input.proposalSource === 'runtime' && input.stage === 'capture';
+  if (!contract && !runtimeCapture) {
     return rejected(input, [], 'No matching model-call contract snapshot exists for this proposal.');
   }
-  if (!contract.memoryIntentPolicy.allowed.includes(input.intent)) {
+  if (runtimeCapture && (input.intent !== 'write' || input.branch !== 'daily')) {
+    return rejected(input, [], 'Runtime CAPTURE may only propose daily write intents.');
+  }
+  if (contract && !contract.memoryIntentPolicy.allowed.includes(input.intent)) {
     return rejected(input, [], `Intent ${input.intent} is not allowed by ${contract.id}.`);
   }
   if (input.intent === 'none') {

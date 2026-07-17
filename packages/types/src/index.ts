@@ -3,6 +3,10 @@
 
 export * from './message.js';
 export * from './clarification.js';
+export * from './cache.js';
+export * from './activation.js';
+export * from './activation-projection.js';
+export * from './versioning.js';
 export * from './session.js';
 export * from './tool.js';
 export * from './memory.js';

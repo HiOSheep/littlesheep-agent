@@ -37,9 +37,6 @@
     },
     {
       "path": "../types"
-    },
-    {
-      "path": "../vector"
     }
   ]
 }

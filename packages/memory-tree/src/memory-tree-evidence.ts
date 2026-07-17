@@ -70,6 +70,10 @@ export function applyFragmentEvidence(
   }
   for (const excluded of selection.excluded) {
     if (!excluded.fragment.evidence) continue;
+    const existing = knownState.references.find((reference) => reference.atomId === excluded.fragment.evidence!.atomId);
+    if (excluded.reason.startsWith('Duplicate evidence') && existing?.decision === 'adopted') {
+      continue;
+    }
     const envelope = { ...structuredClone(excluded.fragment.evidence), truncated: true };
     updates.push({
       envelope,

@@ -87,6 +87,61 @@ describe('verifyStage', () => {
     expect(ctx.modelRequests?.map((request) => request.stage)).toEqual(['verify']);
   });
 
+  it('accepts only active adopted atoms as explicit verification usage evidence', async () => {
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      verdict: 'pass',
+      reason: 'goal achieved with memory evidence',
+      usedMemoryAtomIds: ['atom-used', 'atom-excluded', 'atom-inactive', 'atom-used'],
+    })));
+    const stage = createVerifyStage({ ...deps, llm });
+    const ctx = makeVerifyCtx();
+    const envelope = {
+      atomRevision: 1,
+      branch: 'project',
+      scope: 'project',
+      tier: 2,
+      disclosureLevel: 'D2' as const,
+      statementKind: 'factual-claim',
+      epistemicStatus: 'verified',
+      authorityScope: { kind: 'tool-evidence', scope: 'project', topics: ['test'] },
+      assertedBy: { kind: 'tool', id: 'test' },
+      sourceRefs: [],
+      evidenceRefs: ['verify:test'],
+      confidence: 1,
+      importance: 1,
+      taskRelevance: 1,
+      updatedAt: '2026-07-16T06:00:00.000Z',
+      retrievalPath: 'hierarchy' as const,
+      matchReason: 'test match',
+      conflict: false,
+      expired: false,
+      truncated: false,
+    };
+    ctx.memoryKnownState = {
+      version: 1,
+      runId: ctx.runId,
+      revision: 1,
+      updatedAt: '2026-07-16T06:00:00.000Z',
+      references: [
+        knownStateReference('atom-used', 'adopted', envelope),
+        knownStateReference('atom-excluded', 'excluded', envelope),
+        knownStateReference('atom-inactive', 'adopted', envelope),
+      ],
+    };
+    ctx.memoryContextWorkingSet = {
+      revision: 1,
+      activeAtomIds: ['atom-used', 'atom-excluded'],
+      releasedAtomIds: ['atom-inactive'],
+      activeCallByAtom: { 'atom-used': 'initial', 'atom-excluded': 'initial' },
+      callAtomIds: { initial: ['atom-used', 'atom-excluded'] },
+      updatedAt: '2026-07-16T06:00:00.000Z',
+    };
+
+    await stage(ctx);
+
+    expect(ctx.verificationHistory?.at(-1)?.usedMemoryAtomIds).toEqual(['atom-used']);
+  });
+
   it('includes the active behavior profile in the verification system prompt', async () => {
     const systemPrompts: string[] = [];
     const llm = createMockLlm((request) => {
@@ -96,10 +151,12 @@ describe('verifyStage', () => {
     const stage = createVerifyStage({ ...deps, llm });
     const ctx = makeVerifyCtx();
     ctx.profilePromptAddon = 'PROFILE_SENTINEL_VERIFY';
+    ctx.bootstrap = { 'SOUL.md': 'SOUL_SENTINEL_VERIFY_VOICE' };
 
     await stage(ctx);
 
     expect(systemPrompts[0]).toContain('PROFILE_SENTINEL_VERIFY');
+    expect(systemPrompts[0]).toContain('SOUL_SENTINEL_VERIFY_VOICE');
   });
 
   it('verifies against taskBook success criteria when present', async () => {
@@ -344,3 +401,23 @@ describe('verifyStage', () => {
     expect(ctx.verifyFeedback).toBe('output was empty');
   });
 });
+
+function knownStateReference(
+  atomId: string,
+  decision: 'adopted' | 'excluded',
+  envelope: Omit<NonNullable<RunContext['memoryKnownState']>['references'][number]['envelope'], 'atomId'>,
+) {
+  return {
+    atomId,
+    atomRevision: 1,
+    sourceRefs: [],
+    evidenceRefs: ['verify:test'],
+    decision,
+    reason: 'test reference',
+    envelope: { ...envelope, atomId },
+    stages: ['expand'],
+    firstSeenAt: '2026-07-16T06:00:00.000Z',
+    updatedAt: '2026-07-16T06:00:00.000Z',
+    reactivatedCount: 0,
+  };
+}

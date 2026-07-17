@@ -7,17 +7,19 @@ import type { MemoryUseFeedback } from './v3/contracts.js';
 export function memoryUseFeedbackFromRun(input: MemoryRunFeedbackInput): MemoryUseFeedback[] {
   const active = new Set(input.activeAtomIds);
   const released = new Set(input.releasedAtomIds);
-  const verified = input.status === 'ok'
-    && input.verification?.verdict === 'pass'
-    && (input.verification.source === 'structural' || input.successfulToolCallIds.length > 0);
-  const evidenceRefs = verified ? runEvidenceRefs(input) : [];
+  const used = new Set(input.usedAtomIds ?? []);
+  const verification = input.verification;
+  const passed = input.status === 'ok' && verification?.verdict === 'pass';
+  const verified = Boolean(passed && verification
+    && (verification.source === 'structural' || input.successfulToolCallIds.length > 0));
+  const evidenceRefs = passed ? runEvidenceRefs(input) : [];
   const feedback: MemoryUseFeedback[] = [];
   const seen = new Set<string>();
 
   for (const reference of input.references) {
     if (!reference.atomId || seen.has(reference.atomId)) continue;
     seen.add(reference.atomId);
-    if (reference.decision === 'conflicted') {
+    if (reference.decision === 'conflicted' && active.has(reference.atomId) && used.has(reference.atomId)) {
       feedback.push(record(input, reference.atomId, 'conflict', false, [], reference.reason));
       continue;
     }
@@ -32,14 +34,16 @@ export function memoryUseFeedbackFromRun(input: MemoryRunFeedbackInput): MemoryU
       ));
       continue;
     }
-    if (verified && reference.decision === 'adopted' && active.has(reference.atomId)) {
+    if (passed && reference.decision === 'adopted' && active.has(reference.atomId) && used.has(reference.atomId)) {
       feedback.push(record(
         input,
         reference.atomId,
         'useful',
-        true,
+        verified,
         evidenceRefs,
-        'The atom remained in the active working set of a successfully verified run with positive execution evidence.',
+        verified
+          ? 'VERIFY explicitly identified this active adopted atom as material to a successful run with independent positive execution evidence.'
+          : 'VERIFY explicitly identified this active adopted atom as material to the successful run; this updates routing only and does not verify the atom as fact.',
       ));
     }
   }

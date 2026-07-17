@@ -42,6 +42,15 @@ export interface MemoryV3MaintenanceResult {
   };
 }
 
+export interface MemoryV3MaintenanceDrainResult {
+  passes: number;
+  captured: number;
+  indexed: number;
+  stalled: boolean;
+  aborted: boolean;
+  last?: MemoryV3MaintenanceResult;
+}
+
 export class MemoryV3MaintenanceWorker {
   private readonly atomStore: MemoryAtomStore;
   private readonly catalog: MemoryCatalog;
@@ -50,7 +59,10 @@ export class MemoryV3MaintenanceWorker {
   private readonly dueBatchSize: number;
   private readonly now: () => Date;
   private readonly yieldControl: () => Promise<void>;
+  private readonly lifecycleController = new AbortController();
   private activeRun?: Promise<MemoryV3MaintenanceResult>;
+  private backgroundDrain?: Promise<MemoryV3MaintenanceDrainResult>;
+  private stopped = false;
 
   constructor(options: MemoryV3MaintenanceWorkerOptions) {
     this.atomStore = options.atomStore;
@@ -59,12 +71,12 @@ export class MemoryV3MaintenanceWorker {
     this.embeddingBatchSize = boundedBatchSize(options.embeddingBatchSize, DEFAULT_EMBEDDING_BATCH_SIZE);
     this.dueBatchSize = boundedBatchSize(options.dueBatchSize, DEFAULT_DUE_BATCH_SIZE);
     this.now = options.now ?? (() => new Date());
-    this.yieldControl = options.yieldControl ?? (() => Promise.resolve());
+    this.yieldControl = options.yieldControl ?? (() => new Promise<void>((resolve) => setImmediate(resolve)));
   }
 
   runStartupCompensation(signal?: AbortSignal): Promise<MemoryV3MaintenanceResult> {
     if (this.activeRun) return this.activeRun;
-    const run = this.execute(signal).finally(() => {
+    const run = this.execute(this.lifecycleSignal(signal)).finally(() => {
       if (this.activeRun === run) this.activeRun = undefined;
     });
     this.activeRun = run;
@@ -80,6 +92,62 @@ export class MemoryV3MaintenanceWorker {
     return activeAtRequest
       .catch(() => undefined)
       .then(() => this.runStartupCompensation(signal));
+  }
+
+  startBackgroundDrain(): Promise<MemoryV3MaintenanceDrainResult> {
+    if (this.backgroundDrain) return this.backgroundDrain;
+    if (this.stopped) return Promise.resolve({
+      passes: 0,
+      captured: 0,
+      indexed: 0,
+      stalled: false,
+      aborted: true,
+    });
+    const run = this.drainUntilIdle(this.lifecycleController.signal).finally(() => {
+      if (this.backgroundDrain === run) this.backgroundDrain = undefined;
+    });
+    this.backgroundDrain = run;
+    return run;
+  }
+
+  stop(): void {
+    if (this.stopped) return;
+    this.stopped = true;
+    this.lifecycleController.abort();
+  }
+
+  async shutdown(): Promise<void> {
+    this.stop();
+    const pending: Promise<unknown>[] = [];
+    if (this.backgroundDrain) pending.push(this.backgroundDrain);
+    if (this.activeRun) pending.push(this.activeRun);
+    if (pending.length > 0) await Promise.allSettled(pending);
+  }
+
+  private async drainUntilIdle(signal: AbortSignal): Promise<MemoryV3MaintenanceDrainResult> {
+    let passes = 0;
+    let captured = 0;
+    let indexed = 0;
+    let last: MemoryV3MaintenanceResult | undefined;
+    try {
+      while (true) {
+        throwIfAborted(signal);
+        last = await this.runStartupCompensation(signal);
+        passes += 1;
+        captured += last.due.captured;
+        indexed += last.embeddings.indexed;
+        const remaining = last.due.remaining + last.embeddings.remaining;
+        if (remaining === 0) return { passes, captured, indexed, stalled: false, aborted: false, last };
+        const progressed = last.due.captured + last.embeddings.indexed > 0;
+        if (last.embeddings.unavailable || !progressed) {
+          return { passes, captured, indexed, stalled: true, aborted: false, last };
+        }
+        await this.yieldControl();
+      }
+    } catch (error) {
+      if (isAbortError(error)) return { passes, captured, indexed, stalled: false, aborted: true, last };
+      throw error;
+    }
   }
 
   private async execute(signal?: AbortSignal): Promise<MemoryV3MaintenanceResult> {
@@ -99,6 +167,12 @@ export class MemoryV3MaintenanceWorker {
         remaining: this.catalog.countEmbeddingWork(),
       },
     };
+  }
+
+  private lifecycleSignal(signal?: AbortSignal): AbortSignal {
+    return signal
+      ? AbortSignal.any([this.lifecycleController.signal, signal])
+      : this.lifecycleController.signal;
   }
 
   private async captureDueEvents(
@@ -212,4 +286,8 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
 }

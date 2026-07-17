@@ -26,6 +26,7 @@ export interface LlmCallContractTemplate {
   maxIterations: number;
   maxAttempts: number;
   maxOutputTokens: number;
+  maxPromptTokens: number;
   temperature?: number;
 }
 
@@ -47,7 +48,7 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     requiredContextKinds: ['system_prompt', 'user_input'], history: 'recent', attachments: 'manifest',
     allowedDecisions: ['chat', 'problem', 'unclear'], outputSchema: json('classification.v1', 'Classification with type, confidence and reason.'),
     memoryIntents: NO_MEMORY, requiresMemoryEvidence: true, toolMode: 'none', runtimeApprovalRequired: false,
-    maxIterations: 0, maxAttempts: 1, maxOutputTokens: 256, temperature: 0,
+    maxIterations: 0, maxAttempts: 1, maxOutputTokens: 256, maxPromptTokens: 4_096, temperature: 0,
   }),
   decide: template({
     purpose: 'decide', stage: 'decide', modelCall: 'required',
@@ -57,7 +58,7 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     allowedDecisions: ['needs_clarification', 'lightweight_plan', 'structured_taskbook', 'partial_replan'],
     outputSchema: json('taskbook-decision.v1', 'NeedAssessment, optional ClarificationRequest and TaskBook.'),
     memoryIntents: ['read', 'none'], requiresMemoryEvidence: true, toolMode: 'none', runtimeApprovalRequired: false,
-    maxIterations: 0, maxAttempts: 3, maxOutputTokens: 1_800, temperature: 0,
+    maxIterations: 0, maxAttempts: 3, maxOutputTokens: 1_800, maxPromptTokens: 12_000, temperature: 0,
   }),
   execute_tool_loop: template({
     purpose: 'execute_tool_loop', stage: 'execute', modelCall: 'required',
@@ -67,7 +68,7 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     allowedDecisions: ['return_step_result', 'propose_registered_tool_call'],
     outputSchema: text('execute-step-result.v1', 'Concise step result or provider-native tool call proposal.'),
     memoryIntents: ['read', 'none'], requiresMemoryEvidence: true, toolMode: 'step_scoped', runtimeApprovalRequired: true,
-    maxIterations: 20, maxAttempts: 20, maxOutputTokens: 4_096, temperature: 0,
+    maxIterations: 20, maxAttempts: 20, maxOutputTokens: 4_096, maxPromptTokens: 24_000, temperature: 0,
   }),
   execute_final_reply: template({
     purpose: 'execute_final_reply', stage: 'execute', modelCall: 'optional',
@@ -76,7 +77,7 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     history: 'none', attachments: 'none', allowedDecisions: ['compose_final_reply'],
     outputSchema: text('final-reply.v1', 'User-facing answer with progressive disclosure and explicit failures.'),
     memoryIntents: NO_MEMORY, requiresMemoryEvidence: true, toolMode: 'none', runtimeApprovalRequired: false,
-    maxIterations: 0, maxAttempts: 1, maxOutputTokens: 900, temperature: 0,
+    maxIterations: 0, maxAttempts: 1, maxOutputTokens: 900, maxPromptTokens: 8_000, temperature: 0,
   }),
   recover: template({
     purpose: 'recover', stage: 'recover', modelCall: 'optional',
@@ -85,7 +86,7 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     requiredContextKinds: ['system_prompt', 'workflow_state'], history: 'recent', attachments: 'none',
     allowedDecisions: ['retry', 'escalate', 'abort'], outputSchema: json('recovery-decision.v1', 'Bounded recovery action and optional revised legacy plan.'),
     memoryIntents: ['read', 'conflict', 'none'], requiresMemoryEvidence: true, toolMode: 'none', runtimeApprovalRequired: false,
-    maxIterations: 0, maxAttempts: 3, maxOutputTokens: 800, temperature: 0,
+    maxIterations: 0, maxAttempts: 3, maxOutputTokens: 800, maxPromptTokens: 4_096, temperature: 0,
   }),
   verify: template({
     purpose: 'verify', stage: 'verify', modelCall: 'required',
@@ -94,7 +95,7 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     history: 'none', attachments: 'none', allowedDecisions: ['pass', 'needs_replan', 'fail'],
     outputSchema: json('verification-verdict.v1', 'Verdict, reason, feedback and exact failed step ids.'),
     memoryIntents: ['conflict', 'none'], requiresMemoryEvidence: true, toolMode: 'none', runtimeApprovalRequired: false,
-    maxIterations: 0, maxAttempts: 2, maxOutputTokens: 500, temperature: 0,
+    maxIterations: 0, maxAttempts: 2, maxOutputTokens: 500, maxPromptTokens: 8_000, temperature: 0,
   }),
   evolve: template({
     purpose: 'evolve', stage: 'evolve', modelCall: 'optional',
@@ -104,7 +105,7 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     outputSchema: json('evolution-proposal.v1', 'Structured memory intents and an optional reusable Skill proposal.'),
     memoryIntents: ['write', 'merge', 'invalidate', 'conflict', 'none'], requiresMemoryEvidence: true,
     writableBranches: ['long-term', 'project', 'experience'], toolMode: 'none', runtimeApprovalRequired: false,
-    maxIterations: 0, maxAttempts: 2, maxOutputTokens: 2_400, temperature: 0,
+    maxIterations: 0, maxAttempts: 2, maxOutputTokens: 2_400, maxPromptTokens: 6_000, temperature: 0,
   }),
   capture: template({
     purpose: 'capture', stage: 'capture', modelCall: 'optional',
@@ -113,7 +114,7 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     history: 'none', attachments: 'none', allowedDecisions: ['propose_daily_write', 'none'],
     outputSchema: json('daily-capture.v1', 'Structured factual daily observations.'),
     memoryIntents: ['write', 'none'], requiresMemoryEvidence: true, writableBranches: ['daily'],
-    toolMode: 'none', runtimeApprovalRequired: false, maxIterations: 0, maxAttempts: 2, maxOutputTokens: 900, temperature: 0,
+    toolMode: 'none', runtimeApprovalRequired: false, maxIterations: 0, maxAttempts: 2, maxOutputTokens: 900, maxPromptTokens: 4_096, temperature: 0,
   }),
   reply: template({
     purpose: 'reply', stage: 'reply', modelCall: 'required',
@@ -122,7 +123,16 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     requiredContextKinds: ['system_prompt', 'user_input'], history: 'session', attachments: 'images_and_manifest',
     allowedDecisions: ['respond'], outputSchema: text('chat-reply.v1', 'Direct user-facing conversational response.'),
     memoryIntents: ['read', 'none'], requiresMemoryEvidence: true, toolMode: 'none', runtimeApprovalRequired: false,
-    maxIterations: 0, maxAttempts: 1, maxOutputTokens: 4_096, temperature: 0.7,
+    maxIterations: 0, maxAttempts: 1, maxOutputTokens: 4_096, maxPromptTokens: 16_000, temperature: 0.7,
+  }),
+  ask_user: template({
+    purpose: 'ask_user', stage: 'ask_user', modelCall: 'optional',
+    goal: (ctx) => `Compose one actionable clarification without changing runtime facts for: ${inbound(ctx)}`,
+    allowedContextKinds: ['system_prompt', 'workflow_state', 'output_constraint', 'runtime_event'],
+    requiredContextKinds: ['system_prompt', 'workflow_state'], history: 'none', attachments: 'none',
+    allowedDecisions: ['compose_clarification'], outputSchema: text('clarification-reply.v1', 'User-facing clarification that preserves the structured request.'),
+    memoryIntents: NO_MEMORY, requiresMemoryEvidence: false, toolMode: 'none', runtimeApprovalRequired: false,
+    maxIterations: 0, maxAttempts: 1, maxOutputTokens: 500, maxPromptTokens: 4_096, temperature: 0.45,
   }),
   finalize: template({
     purpose: 'finalize', stage: 'finalize', modelCall: 'forbidden',
@@ -130,7 +140,7 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     allowedContextKinds: [], requiredContextKinds: [], history: 'none', attachments: 'none',
     allowedDecisions: ['persist_existing_result'], outputSchema: none('finalize.no-model.v1', 'No model output is permitted.'),
     memoryIntents: NO_MEMORY, requiresMemoryEvidence: true, toolMode: 'none', runtimeApprovalRequired: false,
-    maxIterations: 0, maxAttempts: 0, maxOutputTokens: 0,
+    maxIterations: 0, maxAttempts: 0, maxOutputTokens: 0, maxPromptTokens: 0,
   }),
   session_compaction: template({
     purpose: 'session_compaction', stage: 'capture', modelCall: 'optional',
@@ -139,7 +149,7 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     requiredContextKinds: ['system_prompt', 'workflow_state'], history: 'none', attachments: 'none',
     allowedDecisions: ['produce_summary'], outputSchema: text('session-summary.v1', 'Traceable summary preserving goals, constraints, decisions and unfinished work.'),
     memoryIntents: NO_MEMORY, requiresMemoryEvidence: true, toolMode: 'none', runtimeApprovalRequired: false,
-    maxIterations: 0, maxAttempts: 1, maxOutputTokens: 1_400, temperature: 0,
+    maxIterations: 0, maxAttempts: 1, maxOutputTokens: 1_400, maxPromptTokens: 12_000, temperature: 0,
   }),
 };
 

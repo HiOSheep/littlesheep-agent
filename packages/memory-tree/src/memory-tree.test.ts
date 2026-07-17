@@ -121,6 +121,307 @@ describe('MemoryTree index-first protocol', () => {
     });
   });
 
+  it('bounds TaskBook refinements and skips normalized duplicate queries', async () => {
+    const tree = new MemoryTree({ totalRunTokenBudget: 1_000, perBranchTokenBudget: 300 });
+    tree.register(makeBranch({ fragments: [makeFragment('refined', 'taskbook-specific context')] }));
+    begin(tree);
+
+    const first = await tree.refine('run-1', {
+      query: 'Indexed node context',
+      maxAtoms: 1,
+      tokenBudget: 100,
+      purpose: 'taskbook',
+    });
+    const duplicate = await tree.refine('run-1', {
+      query: '  indexed   node CONTEXT  ',
+      maxAtoms: 1,
+      tokenBudget: 100,
+      purpose: 'taskbook',
+    });
+    await tree.refine('run-1', { query: 'Indexed node context 2', purpose: 'replan' });
+    await tree.refine('run-1', { query: 'Indexed node context 3', purpose: 'replan' });
+    await tree.refine('run-1', { query: 'Indexed node context 4', purpose: 'replan' });
+    const limited = await tree.refine('run-1', { query: 'Indexed node context 5', purpose: 'replan' });
+
+    expect(first.fragments.map((fragment) => fragment.id)).toEqual(['refined']);
+    expect(duplicate).toMatchObject({ fragments: [], skippedReason: 'duplicate-query' });
+    expect(limited).toMatchObject({ fragments: [], skippedReason: 'refinement-limit' });
+    expect(tree.getLedger('run-1')?.records.some((record) => record.reason?.includes('taskbook atom selection'))).toBe(true);
+  });
+
+  it('resolves a referential request through bounded recent history before D1 admission', async () => {
+    const tree = new MemoryTree({ totalRunTokenBudget: 1_000, perBranchTokenBudget: 300 });
+    const branch = makeBranch({ fragments: [makeFragment('history-target', 'Atom routing uses task relevance.')] });
+    const getIndex = vi.fn(async (ctx: MemoryBranchContext): Promise<BranchIndex> => ({
+      branchId: 'daily',
+      displayName: 'Daily',
+      summary: 'history-aware index',
+      entries: [{
+        id: 'daily:history-target',
+        title: 'Atom 注入相关性',
+        summary: '按任务相关性选择 Atom。',
+        hasChildren: false,
+      }],
+      generatedAt: ctx.now.toISOString(),
+      source: 'test',
+    }));
+    branch.getIndex = getIndex;
+    tree.register(branch);
+    tree.beginRun({
+      runId: 'run-history',
+      sessionId: 'session-history' as SessionId,
+      query: '继续处理它',
+      recentHistory: [
+        { role: 'user', content: '请优化 Atom 注入相关性。' },
+        { role: 'assistant', content: '下一步处理多轮指代。' },
+      ],
+      workspace: 'D:/workspace',
+      now: new Date('2026-07-10T00:00:00.000Z'),
+    });
+
+    const primed = await tree.prime('run-history', { query: '继续处理它', maxAtoms: 1, tokenBudget: 100 });
+
+    expect(primed.fragments.map((fragment) => fragment.id)).toEqual(['history-target']);
+    expect(getIndex).toHaveBeenCalledWith(expect.objectContaining({
+      query: '继续处理它',
+      taskQuery: expect.objectContaining({ historyUsed: true, historyMessageCount: 2 }),
+    }));
+  });
+
+  it('falls back to a session summary across a compaction boundary without making it default context', async () => {
+    const tree = new MemoryTree({ totalRunTokenBudget: 1_000, perBranchTokenBudget: 300 });
+    const branch = makeBranch({ fragments: [makeFragment('summary-target', 'Aster checkpoints survive restart.')] });
+    branch.getIndex = async (ctx): Promise<BranchIndex> => ({
+      branchId: 'daily',
+      displayName: 'Daily',
+      summary: 'summary-aware index',
+      entries: [{
+        id: 'daily:summary-target',
+        title: 'Aster checkpoint recovery',
+        summary: 'Resume interrupted long tasks from a bounded checkpoint.',
+        hasChildren: false,
+      }],
+      generatedAt: ctx.now.toISOString(),
+      source: 'test',
+    });
+    tree.register(branch);
+    tree.beginRun({
+      runId: 'run-summary',
+      sessionId: 'session-summary' as SessionId,
+      query: '继续',
+      recentHistory: [{ role: 'assistant', content: '下一步继续执行。' }],
+      continuitySummary: {
+        id: 'summary-aster',
+        content: '当前目标：完成 Aster checkpoint recovery。下一步验证跨重启恢复。',
+      },
+      workspace: 'D:/workspace',
+      now: new Date('2026-07-10T00:00:00.000Z'),
+    });
+
+    const primed = await tree.prime('run-summary', { query: '继续', maxAtoms: 1, tokenBudget: 100 });
+
+    expect(primed.fragments.map((fragment) => fragment.id)).toEqual(['summary-target']);
+    expect(tree.getTaskQuery('run-summary')).toMatchObject({
+      summaryUsed: true,
+      continuitySummaryId: 'summary-aster',
+    });
+    expect(tree.getLedger('run-summary')!.records.find((record) => record.action === 'branch_index')?.reason)
+      .toContain('summary=summary-aster');
+  });
+
+  it('does not inject unrelated atoms merely to fill the initial working set', async () => {
+    const tree = new MemoryTree({ totalRunTokenBudget: 1_000, perBranchTokenBudget: 300 });
+    const branch = makeBranch({ fragments: [makeFragment('unrelated', 'pnpm workspace preference')] });
+    branch.getIndex = async (ctx): Promise<BranchIndex> => ({
+      branchId: 'daily',
+      displayName: 'Daily',
+      summary: 'one unrelated atom',
+      entries: [{
+        id: 'daily:unrelated',
+        title: 'Package manager preference',
+        summary: 'Use pnpm for repository scripts.',
+        hasChildren: false,
+        relevance: 0.14,
+      }],
+      generatedAt: ctx.now.toISOString(),
+      source: 'test',
+    });
+    tree.register(branch);
+    begin(tree);
+
+    const primed = await tree.prime('run-1', {
+      query: 'What is the weather tomorrow?',
+      maxAtoms: 2,
+      tokenBudget: 100,
+    });
+
+    expect(primed.fragments).toEqual([]);
+    expect(primed.indexedBranches).toEqual(['daily']);
+    expect(tree.getLedger('run-1')!.records).toHaveLength(2);
+    expect(tree.getLedger('run-1')!.records[1]).toMatchObject({
+      action: 'branch_index',
+      status: 'ok',
+      fragmentIds: [],
+      tokensUsed: 0,
+    });
+    expect(tree.getLedger('run-1')!.records[1]!.reason).toContain('0 candidate(s)');
+  });
+
+  it('does not admit a substantially weaker candidate merely because it shares generic task terms', async () => {
+    const tree = new MemoryTree({ totalRunTokenBudget: 1_000, perBranchTokenBudget: 300 });
+    const branch = makeBranch({ fragments: [makeFragment('selected', 'Atom injection uses task relevance.')] });
+    const expand = vi.fn(branch.expand.bind(branch));
+    branch.expand = expand;
+    branch.getIndex = async (ctx): Promise<BranchIndex> => ({
+      branchId: 'daily',
+      displayName: 'Daily',
+      summary: 'task-specific and generic candidates',
+      entries: [
+        {
+          id: 'daily:target',
+          title: 'Atom injection relevance',
+          summary: 'Route memory context by the current task.',
+          searchKeys: ['Atom injection relevance'],
+          hasChildren: false,
+          relevance: 0.75,
+          metadata: { taskRelevanceResolved: true, priority: { score: 0.8 } },
+        },
+        {
+          id: 'daily:generic',
+          title: 'Atom maintenance plan',
+          summary: 'Maintain Atom records after writes.',
+          searchKeys: ['Atom'],
+          hasChildren: false,
+          relevance: 0.54,
+          metadata: { taskRelevanceResolved: true, priority: { score: 0.9 } },
+        },
+      ],
+      generatedAt: ctx.now.toISOString(),
+      source: 'test',
+    });
+    tree.register(branch);
+    begin(tree);
+
+    await tree.prime('run-1', {
+      query: 'check Atom injection relevance',
+      maxAtoms: 2,
+      tokenBudget: 100,
+    });
+
+    expect(expand).toHaveBeenCalledTimes(1);
+    expect(expand).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ nodeId: 'daily:target' }));
+  });
+
+  it('evaluates the full bounded D1 index instead of only its first eight entries', async () => {
+    const tree = new MemoryTree({ totalRunTokenBudget: 1_000, perBranchTokenBudget: 300 });
+    const branch = makeBranch({ fragments: [makeFragment('selected', 'target atom content')] });
+    const expand = vi.fn(branch.expand.bind(branch));
+    branch.expand = expand;
+    branch.getIndex = async (ctx): Promise<BranchIndex> => ({
+      branchId: 'daily',
+      displayName: 'Daily',
+      summary: 'bounded candidates',
+      entries: [
+        ...Array.from({ length: 12 }, (_, index) => ({
+          id: `daily:distractor-${index}`,
+          title: `Distractor ${index}`,
+          summary: 'Unrelated package metadata.',
+          hasChildren: false,
+          relevance: 0,
+        })),
+        {
+          id: 'daily:target',
+          title: 'Aurora retention policy',
+          summary: 'The exact task-specific memory.',
+          hasChildren: false,
+          relevance: 0.95,
+        },
+      ],
+      generatedAt: ctx.now.toISOString(),
+      source: 'test',
+    });
+    tree.register(branch);
+    begin(tree);
+
+    const primed = await tree.prime('run-1', {
+      query: 'aurora retention policy',
+      maxAtoms: 1,
+      tokenBudget: 100,
+    });
+
+    expect(primed.fragments.map((fragment) => fragment.id)).toEqual(['selected']);
+    expect(expand).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ nodeId: 'daily:target' }));
+  });
+
+  it('uses governed candidate priority after the task-relevance admission gate', async () => {
+    const tree = new MemoryTree({ totalRunTokenBudget: 1_000, perBranchTokenBudget: 300 });
+    const branch = makeBranch({ fragments: [makeFragment('selected')] });
+    const expand = vi.fn(branch.expand.bind(branch));
+    branch.expand = expand;
+    branch.getIndex = async (ctx): Promise<BranchIndex> => ({
+      branchId: 'daily',
+      displayName: 'Daily',
+      summary: 'conflicting candidates',
+      entries: [
+        {
+          id: 'daily:disputed',
+          title: 'Exact disputed wording',
+          summary: 'A disputed statement with stronger lexical overlap.',
+          hasChildren: false,
+          relevance: 1,
+          metadata: { priority: { score: 0.42 } },
+        },
+        {
+          id: 'daily:verified',
+          title: 'Verified rule',
+          summary: 'The current verified rule.',
+          hasChildren: false,
+          relevance: 0.8,
+          metadata: { priority: { score: 0.81 } },
+        },
+      ],
+      generatedAt: ctx.now.toISOString(),
+      source: 'test',
+    });
+    tree.register(branch);
+    begin(tree);
+
+    await tree.prime('run-1', { query: 'current verified rule', maxAtoms: 1, tokenBudget: 100 });
+
+    expect(expand).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      nodeId: 'daily:verified',
+      query: 'current verified rule',
+    }));
+  });
+
+  it('does not treat branch descriptions as relevance for every atom in the branch', async () => {
+    const tree = new MemoryTree({ totalRunTokenBudget: 1_000, perBranchTokenBudget: 300 });
+    const branch = makeBranch({ fragments: [makeFragment('unrelated')] });
+    branch.getIndex = async (ctx): Promise<BranchIndex> => ({
+      branchId: 'daily',
+      displayName: 'Daily',
+      summary: 'one atom',
+      entries: [{
+        id: 'daily:unrelated',
+        title: 'Package manager preference',
+        summary: 'Use pnpm for repository scripts.',
+        hasChildren: false,
+      }],
+      generatedAt: ctx.now.toISOString(),
+      source: 'test',
+    });
+    tree.register(branch);
+    begin(tree);
+
+    const primed = await tree.prime('run-1', {
+      query: 'testing recall',
+      maxAtoms: 1,
+      tokenBudget: 100,
+    });
+
+    expect(primed.fragments).toEqual([]);
+  });
+
   it('rejects expansion before the branch index without touching branch content or spending tokens', async () => {
     const branch = makeBranch({ fragments: [makeFragment('hidden')] });
     const expand = vi.fn(branch.expand.bind(branch));

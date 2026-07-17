@@ -36,3 +36,20 @@ export {
   type StageTraceEntry,
   type ExecutionLogStoreOptions,
 } from './execution-log.js';
+
+export {
+  MEMORY_WORKLOAD_OBSERVATION_VERSION,
+  observeMemoryWorkload,
+  type MemoryWorkloadObservation,
+  type MemoryWorkloadObservationOptions,
+} from './memory-workload-observability.js';
+
+export {
+  RUNTIME_RESOURCE_OBSERVATION_VERSION,
+  beginRuntimeResourceObservation,
+  completeRuntimeResourceObservation,
+  type RuntimeDeviceClass,
+  type RuntimeResourceObservation,
+  type RuntimeResourceObservationStart,
+  type RuntimeResourceSample,
+} from './runtime-resource-observation.js';

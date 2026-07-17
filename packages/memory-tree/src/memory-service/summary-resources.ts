@@ -37,6 +37,16 @@ export class SessionSummaryResourceCoordinator {
         sourceEndAt: summary.sourceEndAt,
         previousSummaryId: summary.previousSummaryId,
         model: summary.model,
+        ...(summary.version === 2 ? {
+          cacheNamespace: summary.cache.namespace,
+          cacheCompressionDepth: summary.cache.compressionDepth,
+          cacheDisclosureLevel: summary.cache.disclosureLevel,
+          cacheVectorClass: summary.cache.vectorClass,
+          sourceSummaryIds: summary.sourceSummaryIds,
+          mergedSummaryCount: summary.mergedSummaryCount,
+          sourceHash: summary.sourceHash,
+          lineageHash: summary.lineageHash,
+        } : {}),
       },
     };
     await this.repository.replaceResourceGroup(resource.registryGroup, [resource], { staleMode: 'remove' });

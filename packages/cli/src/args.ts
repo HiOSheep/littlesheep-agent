@@ -15,8 +15,8 @@ export interface ParsedArgs {
   memoryExperience?: string[];
   /** Raw argv for the 'memory import-repo' subcommand (undefined if not requested). */
   memoryImportRepo?: string[];
-  /** Raw argv for the 'memory archive' subcommand (undefined if not requested). */
-  memoryArchive?: string[];
+  /** Recognized legacy command that must fail before loading providers or touching data. */
+  retiredCommand?: 'memory archive';
 }
 
 export const USAGE = `Usage: littlesheep [options] [text]
@@ -34,8 +34,6 @@ export const USAGE = `Usage: littlesheep [options] [text]
                           (run 'littlesheep memory rollback' for details)
     memory experience decay
                           Decay experience confidence + prune low-confidence entries
-    memory archive [--dry-run] [--force] [--model <ref>]
-                          Archive daily memories older than 30 days; distill monthly/yearly summaries
     memory import-repo <path-or-url>
                           Distill a repo's knowledge into the experience DB via LLM
 
@@ -59,9 +57,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
     return out;
   }
 
-  // Subcommand: 'memory archive ...' (consumes the rest of argv).
+  // Memory v3 retired this command because it wrote a second summary/vector authority.
   if (argv[0] === 'memory' && argv[1] === 'archive') {
-    out.memoryArchive = argv.slice(2);
+    out.retiredCommand = 'memory archive';
     return out;
   }
 

@@ -1,6 +1,7 @@
 // Composes the feature-flagged Memory v3 backend behind the stable MemoryRepository facade.
 
 import { join } from 'node:path';
+import { AtomicActivationLevelTracker } from '@littlesheep/types';
 import type { InjectionTier } from '../types.js';
 import type {
   MemoryBranchKind,
@@ -8,6 +9,7 @@ import type {
   MemoryManagementResult,
   MemoryMigrationRecord,
   MemoryNode,
+  MemoryRecentNodeQuery,
   MemoryResourceManagementAction,
   MemoryResourceManagementAuditRecord,
   MemoryResourceManagementResult,
@@ -57,6 +59,8 @@ import { MemoryV3AtomManagement } from './v3-atom-management.js';
 import { validateMemoryV3RepositoryState } from './v3-migration-validation-state.js';
 import type { MemoryV3MigrationValidation } from './v3-migration-contracts.js';
 import { MemoryV3FeedbackManager, MEMORY_USE_FEEDBACK_PAYLOAD_KEY } from './v3-feedback-manager.js';
+import { memoryCatalogActivationScore } from '../v3/activation.js';
+import { isMemoryV3InternalRootId } from './v3-node-mapping.js';
 
 export interface MemoryRepositoryV3BackendOptions {
   dataDir: string;
@@ -82,8 +86,11 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
   private readonly feedback: MemoryV3FeedbackManager;
   private readonly resources: MemoryV3ResourceStore;
   private readonly retrieval: MemoryV3Retrieval;
+  private readonly activationLevels = new AtomicActivationLevelTracker(100_000);
   private readonly log?: MemoryRepositoryOptions['log'];
   private closed = false;
+  private backgroundMaintenanceEnabled = false;
+  private backgroundMaintenanceRun?: Promise<void>;
 
   constructor(options: MemoryRepositoryV3BackendOptions) {
     this.dataDir = options.dataDir;
@@ -168,12 +175,40 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
       if (record) await this.ledger.materializeEventAudits(record.event.payload);
     }
     await this.nodes.initialize();
+    try {
+      const relationRecovery = await this.nodes.reconcileGraphProjection();
+      if (relationRecovery.truncated) {
+        this.log?.('warn', 'memory-v3: proposed relation recovery reached its bounded startup limit', relationRecovery);
+      }
+    } catch (error) {
+      this.log?.('warn', `memory-v3: proposed relation recovery remains deferred: ${errorMessage(error)}`);
+    }
     await this.resources.initialize();
     await this.recoverProjectTransactions();
     const maintenance = await this.maintenance.runStartupCompensation();
     if (maintenance.due.failures.length > 0 || maintenance.embeddings.failures.length > 0) {
       this.log?.('warn', 'memory-v3: startup maintenance completed with recoverable failures', maintenance);
     }
+  }
+
+  startBackgroundMaintenance(): Promise<void> {
+    if (this.closed) return Promise.resolve();
+    this.backgroundMaintenanceEnabled = true;
+    if (this.backgroundMaintenanceRun) return this.backgroundMaintenanceRun;
+    const run = this.maintenance.startBackgroundDrain()
+      .then((result) => {
+        if (result.stalled && result.last) {
+          this.log?.('warn', 'memory-v3: background maintenance paused without making further progress', result);
+        }
+      })
+      .catch((error) => {
+        if (!isAbortError(error)) this.log?.('warn', `memory-v3: background maintenance failed: ${errorMessage(error)}`);
+      })
+      .finally(() => {
+        if (this.backgroundMaintenanceRun === run) this.backgroundMaintenanceRun = undefined;
+      });
+    this.backgroundMaintenanceRun = run;
+    return run;
   }
 
   async snapshot(): Promise<MemoryTreeDocument> {
@@ -238,6 +273,9 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
   }
   getNode(id: string): Promise<MemoryNode | undefined> { return this.nodes.get(id); }
   listNodes(branch: MemoryBranchKind, scopeKey?: string): Promise<MemoryNode[]> { return this.nodes.list(branch, scopeKey); }
+  listRecentNodes(branch: MemoryBranchKind, query: MemoryRecentNodeQuery = {}): Promise<MemoryNode[]> {
+    return this.nodes.listRecent(branch, query);
+  }
   children(parentNodeId: string): Promise<MemoryNode[]> { return this.nodes.children(parentNodeId); }
   write(intent: MemoryWriteIntent): Promise<MemoryWriteResult> {
     return this.withPostWriteMaintenance(this.nodes.write(intent), (result) => Boolean(result.node));
@@ -261,8 +299,9 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
     nodeId: string,
     action: MemoryManagementAction,
     reason = 'Changed by the user from the memory-tree management page.',
+    expectedRevision?: number,
   ): Promise<MemoryManagementResult | undefined> {
-    return this.withPostWriteMaintenance(this.nodes.manage(nodeId, action, reason), Boolean);
+    return this.withPostWriteMaintenance(this.nodes.manage(nodeId, action, reason, expectedRevision), Boolean);
   }
   getMigration(id: string): Promise<MemoryMigrationRecord | undefined> { return this.nodes.getMigration(id); }
   markMigration(record: MemoryMigrationRecord): Promise<void> { return this.nodes.markMigration(record); }
@@ -271,6 +310,13 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
   recordMemoryAccess(records: MemoryAccessRecord[]): void { this.retrieval.recordMemoryAccess(records); }
 
   async managementStatus(): Promise<MemoryRepositoryManagementStatus> {
+    const now = new Date().toISOString();
+    const activationEntries: Array<{ id: string; score: number }> = [];
+    for (const entry of this.catalog.listAtoms({ status: 'active', limit: 100_000, orderBy: 'activation' })) {
+      if (isMemoryV3InternalRootId(entry.atomId)) continue;
+      activationEntries.push({ id: entry.atomId, score: memoryCatalogActivationScore(entry, now) });
+    }
+    const activation = this.activationLevels.project(activationEntries);
     return {
       backendKind: 'v3',
       storageKind: 'atom-catalog',
@@ -279,6 +325,7 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
         integrity: this.catalog.integrityCheck(),
         atomCount: this.catalog.countAtoms(),
         embedding: this.catalog.embeddingStatusCounts(),
+        activation,
       },
     };
   }
@@ -349,6 +396,16 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
   close(): void {
     if (this.closed) return;
     this.closed = true;
+    this.maintenance.stop();
+    this.activationLevels.clear();
+    this.catalog.close();
+  }
+
+  async shutdown(): Promise<void> {
+    if (this.closed) return;
+    this.closed = true;
+    await this.maintenance.shutdown();
+    this.activationLevels.clear();
     this.catalog.close();
   }
 
@@ -376,6 +433,11 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
       if (maintenance.due.failures.length > 0 || maintenance.embeddings.failures.length > 0
         || maintenance.embeddings.unavailable) {
         this.log?.('warn', 'memory-v3: post-write maintenance completed with recoverable failures', maintenance);
+      }
+      if (this.backgroundMaintenanceEnabled
+        && maintenance.due.remaining + maintenance.embeddings.remaining > 0
+        && !maintenance.embeddings.unavailable) {
+        void this.startBackgroundMaintenance();
       }
     } catch (error) {
       this.log?.('warn', `memory-v3: post-write maintenance failed without rolling back the committed atom: ${errorMessage(error)}`);
@@ -412,4 +474,8 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
 }

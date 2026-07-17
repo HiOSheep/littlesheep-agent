@@ -1,9 +1,11 @@
+import { createHash } from 'node:crypto';
 import { type DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import type {
   MemoryAtom,
   MemoryCatalogEntry,
   MemoryCatalogSearchOptions,
 } from './contracts.js';
+import { MEMORY_VECTOR_NAMESPACE } from './contracts.js';
 
 export interface AtomRow {
   atom_id: string;
@@ -20,10 +22,13 @@ export interface AtomRow {
   status: MemoryCatalogEntry['status'];
   resolution_status: MemoryCatalogEntry['resolutionStatus'];
   content_hash: string;
+  embedding_hash: string;
   embedding_status: MemoryCatalogEntry['embeddingStatus'];
   embedding_engine_id: string | null;
   embedding_model_id: string | null;
   embedding_dimensions: number | bigint | null;
+  activation_score: number | bigint;
+  activation_updated_at: string;
   created_at: string;
   updated_at: string;
 }
@@ -75,10 +80,14 @@ export function rowToEntry(row: AtomRow): MemoryCatalogEntry {
     status: row.status,
     resolutionStatus: row.resolution_status,
     contentHash: row.content_hash,
+    embeddingHash: row.embedding_hash,
+    vectorNamespace: MEMORY_VECTOR_NAMESPACE,
     embeddingStatus: row.embedding_status,
     embeddingEngineId: row.embedding_engine_id ?? undefined,
     embeddingModelId: row.embedding_model_id ?? undefined,
     embeddingDimensions: row.embedding_dimensions === null ? undefined : Number(row.embedding_dimensions),
+    activationScore: Number(row.activation_score),
+    activationUpdatedAt: row.activation_updated_at || row.updated_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -95,9 +104,44 @@ export function toFtsQuery(query: string): string {
 }
 
 export function embeddingText(atom: MemoryAtom): string {
-  const header = [atom.title, atom.summary, atom.retrievalKeys.join(' ')].filter(Boolean).join('\n');
+  return embeddingTextFromFields({
+    title: atom.title,
+    summary: atom.summary,
+    content: atom.content,
+    retrievalKeys: atom.retrievalKeys,
+  });
+}
+
+export function memoryAtomEmbeddingHash(atom: MemoryAtom): string {
+  return memoryEmbeddingHashFromFields({
+    title: atom.title,
+    summary: atom.summary,
+    content: atom.content,
+    retrievalKeys: atom.retrievalKeys,
+  });
+}
+
+export function memoryEmbeddingHashFromFields(fields: {
+  title: string;
+  summary: string;
+  content: string;
+  retrievalKeys: readonly string[] | string;
+}): string {
+  return createHash('sha256').update(embeddingTextFromFields(fields), 'utf8').digest('hex');
+}
+
+function embeddingTextFromFields(fields: {
+  title: string;
+  summary: string;
+  content: string;
+  retrievalKeys: readonly string[] | string;
+}): string {
+  const retrievalKeys = typeof fields.retrievalKeys === 'string'
+    ? fields.retrievalKeys
+    : fields.retrievalKeys.join(' ');
+  const header = [fields.title, fields.summary, retrievalKeys].filter(Boolean).join('\n');
   const remaining = Math.max(0, 32_000 - header.length - 1);
-  return `${header}\n${atom.content.slice(0, remaining)}`;
+  return `${header}\n${fields.content.slice(0, remaining)}`;
 }
 
 export function vectorToBuffer(vector: number[]): Buffer {

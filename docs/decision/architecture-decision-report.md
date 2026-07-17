@@ -1,8 +1,8 @@
 # LittleSheep 架构评估与开发决策报告
 
-最后更新：2026-07-16 17:04:25
+最后更新：2026-07-17 09:03:51
 评估范围：当前源码、正式文档与已记录的验证结果
-执行状态：Memory v3 阶段 0-6 的工程实现、隔离演练和正式用户数据迁移已完成；正式 backend/config 为 v3，40 个业务 atom、5 个内部根、11 个资源和 45 条 BGE 512 维向量已通过真实数据根、Electron 重启、Catalog integrity 与恢复源检查
+执行状态：Memory v3 阶段 0-16 的工程实现、隔离演练和正式用户数据迁移已完成；正式 backend/config 为 v3，40 个业务 atom、5 个内部根、11 个资源和 45 条 BGE 512 维向量已通过真实数据根、Electron 重启、Catalog v8 integrity 与恢复源检查；多轮任务语义、压缩后任务锚点恢复、关系引导的一跳 Atom 选择、写入认识边界、Atom 关系调和和 TaskBook 二次注入均已有独立质量门
 
 ## 1. 给决策者的结论
 
@@ -12,16 +12,16 @@ LittleSheep 当前不是“只有 Prompt 的聊天壳”。它已经具备代码
 
 但当前更准确的描述是：
 
-> **包级模块骨架、调用契约与仓库质量门已经稳定；Memory v3、工具执行、运行时连续性和 Mode Registry 仍需继续收敛。**
+> **包级模块骨架、调用契约与仓库质量门已经稳定；Memory v3 的动态 Atom 激活层级、真实 Provider/长期负载、工具执行、运行时连续性和 Mode Registry 仍需继续收敛。**
 
 当前最重要的结构结论是：
 
 1. Context Engine 已成为独立模块并接管模型请求准备路径；每次请求现在拥有版本化 `LlmCallContract`，Context segment、工具集合、输出预算和记忆策略在发送前失败关闭。tokenizer 能力矩阵与 unavailable 模型的保守请求前预算保护已经完成，当前缺口是三家真实 Provider 对账。
 2. 每次 run 已有统一、不可变的运行决议，但 Behavior Mode 仍只是 profile 与策略 id 的组合结果，尚没有可注册、可迁移的 Mode Registry。
 3. Tool Manager 只有注册与基础 wrapper，完整的授权、调用、超时、流式事件和执行证据仍主要位于 Harness/App。
-4. 正式 Memory v3 已通过同一 Repository facade 接管 Memory Service、Runner、Harness、工具和 UI；迁移前的 V2 源与 snapshot 继续保留为来源和受约束回滚证据。v3 已实现语义 atom、稳定 parent、认识状态、实体引用、可重建 catalog、真实本地 Embedding、统一检索、版本化 KnownState、有界维护和事务恢复。
+4. 正式 Memory v3 已通过同一 Repository facade 接管 Memory Service、Runner、Harness、工具和 UI；迁移前的 V2 源与 snapshot 继续保留为来源和受约束回滚证据。v3 已实现语义 atom、稳定 parent、认识状态、实体引用、可重建 catalog、真实本地 Embedding、统一检索、版本化 KnownState、有界维护、事务恢复，以及当前请求自足/多轮指代/否定条件/任务转向/版本化摘要回退共用的有界任务语义。
 
-因此，不再在集中式 Memory v2 文档上叠加新能力。Memory v3 阶段 6 已完成直接读取同一对话来源/投影变更记录/atom/catalog 的 D0-D3 管理视图、“显式确认登记 -> 重启 -> 所有运行时写入者创建前迁移/回滚”的正式生命周期，以及实时回滚安全预检、本地向量模型资产校验与显式准备、atom 高级管理、首次 working set、运行中 release、投影变更记录孤儿恢复、对话来源先持久化、验证反馈、commit receipt、隔离 soak、真实窗口验收和正式数据迁移。当前 45 个 atom 的本地向量均已就绪；无新增 V3 权威写入时仍可安全回滚，产生新来源或 atom 后会在登记前关闭回滚。当前重点转为真实 Provider、正式 V3 写入与长任务验收，之后再推进统一 Tool Execution Service 与 RuntimeEventQueue。
+因此，不再在集中式 Memory v2 文档上叠加新能力。Memory v3 阶段 0-16 已完成 Runtime 同源 D0-D3 读取、正式迁移/回滚生命周期、实时安全预检、本地向量资产、Atom 高级治理、working set、release、恢复、来源、反馈、commit receipt、动态 routing、关系引导候选发现、语义向量哈希、多轮任务语义、压缩后任务锚点恢复、写入认识元数据对账、自动实体/关系投影、提交后关系激活、启动补偿、冲突/替代调和、TaskBook 驱动的二次 Atom 选择、隔离 soak 和正式数据迁移。首次选择仍基于用户原始请求；DECIDE 明确 goal、验收标准和目标步骤后，Runtime 可在硬次数、Atom 数和 token 预算内补充高相关 Atom，并同步 working set、KnownState 与账本。关系从高任务相关种子出发，只在同 branch/scope/subtree 内做有方向、有证据的一跳扩展；邻接 Atom 仍须独立通过任务价值和预算。记忆文件与层级负责持久化、恢复、人工治理和候选导航，Runtime 才负责决定本轮发现、采用、保留、释放和重新激活哪些 Atom。现有 routing feedback、verified usefulness 和时间衰减已能让持久 Atom 动态升降，但还需要阶段 17 把这种能力抽象成持久记忆与语义缓存共用的连续 activation score；固定 `T0-T3` 仅保留为策略类别，不再承担动态热度语义。历史 Atom Renderer 原型已完成验证但不再作为产品入口；普通 GUI 只展示六份记忆文件并仅允许编辑 `SOUL.md`。当前 45 个 atom 的本地向量均已就绪；阶段 17 完成后再结合可用密钥验证真实 Provider、正式 V3 写入、活动长任务和持续用户负载。
 
 ## 2. 评估口径
 
@@ -84,7 +84,7 @@ React Renderer
 | Tool Registry | 稳定基础 | `packages/tools/src/registry.ts` | 主要解决注册/查找，不是完整 Tool Manager | 保留 registry，增加统一 Tool Execution Service |
 | Tool Execution | 职责分散 | `packages/tools/`、`harness/stages/execute.ts`、App 审批 | timeout、授权、事件、证据和重试缺少单一所有者 | 执行机制归 `tools` 服务，Harness 只编排 |
 | Memory Tree | 基础可用，职责收敛进行中 | `packages/memory-tree/`、`memory-core/`、Runner | Memory Service 已接管首批消费者，Summary Memory、run-scoped 附件、运行时事件账本登记端口、项目记忆三层投影和稳定项目身份已统一；实时事件生产与通用资源治理尚未闭环 | 继续扩展现有门面，不新建总包 |
-| Session | 基础可用 | `packages/session/` | 已有非破坏式版本化摘要和增量合并，但真实长会话、失败回退与 Provider 成本仍待验收 | 继续由 Context 策略驱动并补齐恢复场景 |
+| Session | 基础可用 | `packages/session/` | 已有非破坏式版本化摘要、增量合并和压缩后任务锚点恢复门，但真实 Provider 长会话、摘要失败、工具副作用恢复与成本仍待验收 | 继续由 Context 策略驱动并补齐真实恢复场景 |
 | Execution Log | 稳定基础 | `packages/runner/src/execution-log.ts` | 已记录运行决议、请求/Context 快照和派生工具证据，但工具生命周期仍由多处生成 | 随 Tool Execution Service 收敛实时证据，不把日志默认注入上下文 |
 | LLM Provider | 基础可用 | `packages/llm/`、`packages/config/` | 真实模型能力、reasoning 和 usage 映射仍待验收 | 建立 provider capability descriptor |
 | Plugin Host | 基础可用 | `packages/plugins/` | v1 已接通 `channel`/`tool`/声明式 `skill`；Skill 所有权跨 Host、Loader 和 Memory Service 协同 | 保持 owner-scoped 协议，新增贡献点前先实现完整消费方和生命周期 |
@@ -162,7 +162,7 @@ ResolvedRunConfig
 
 首批收敛已经完成：Runner 的 run 生命周期、bootstrap 注册、Agent 记忆工具、结构化写入和 App 记忆控制面都优先通过 `MemoryService`。旧 `memoryTree`、`memoryRepository` 和 `memoryWriteService` 字段暂时留在 Infrastructure 中兼容测试和迁移调用，新的第一方功能不得继续直接依赖它们。内部仍可使用 memory-tree、memory-core、vector、experience、safety 和 snapshot。
 
-版本化记忆注册表与 T0-T3 基础分级已经实现：T0 保持固定预算，普通记忆写入不能进入 T0；v1 文档在保留 T1-T3 数值的前提下迁移到 v2，并在原子切换前生成回滚备份；未知未来版本拒绝覆盖。资源注册表只保存来源元数据，`resources` 分支沿现有索引导航读取正文，UI 与运行时读取同一份注册表。Summary Memory 已按 session scope 登记并以会话元数据为正文权威来源；附件清单和单项附件按 run scope 登记，正文只存在于活动 run 内存或专用读取结果中，执行日志仅关联有界资源 ID。运行时事件账本同样使用 run scope，只登记事件数量、类型、顺序和状态；payload 值仍由未来的事件队列持有，resolver 展开只提供受控摘要。项目记忆三层策略也已落地：完整权威数据留在可整体迁移的 LS 应用数据根，`workplace/` 只是默认工作区子目录；用户明确启用后，项目目录只生成经过层级、敏感内容和路径白名单过滤的私有派生投影；共享 Markdown 使用独立、更严格的置信度白名单。控制面显示同步、缺失、冲突和 Git 忽略状态，覆盖与移除需要确认，且移除只作用于 LS 最后验证写入的文件。新项目 ID 已与路径解耦，旧 ID 保持兼容；持久化重绑定事务会在项目移动或重命名后迁移会话、归档、记忆、投影和工作区关联。仍未完成的是实时事件队列、实体/关系 schema，以及 Skill 的语义去重、合并、收益治理和恢复队列。
+版本化记忆注册表与 T0-T3 基础分级已经实现：T0 保持固定预算，普通记忆写入不能进入 T0；v1 文档在保留 T1-T3 数值的前提下迁移到 v2，并在原子切换前生成回滚备份；未知未来版本拒绝覆盖。资源注册表只保存来源元数据，`resources` 分支沿现有索引导航读取正文，UI 与运行时读取同一份注册表。Summary Memory 已按 session scope 登记并以会话元数据为正文权威来源；附件清单和单项附件按 run scope 登记，正文只存在于活动 run 内存或专用读取结果中，执行日志仅关联有界资源 ID。运行时事件账本同样使用 run scope，只登记事件数量、类型、顺序和状态；payload 值仍由未来的事件队列持有，resolver 展开只提供受控摘要。项目记忆三层策略也已落地：完整权威数据留在可整体迁移的 LS 应用数据根，`workplace/` 只是默认工作区子目录；用户明确启用后，项目目录只生成经过层级、敏感内容和路径白名单过滤的私有派生投影；共享 Markdown 使用独立、更严格的置信度白名单。控制面显示同步、缺失、冲突和 Git 忽略状态，覆盖与移除需要确认，且移除只作用于 LS 最后验证写入的文件。新项目 ID 已与路径解耦，旧 ID 保持兼容；持久化重绑定事务会在项目移动或重命名后迁移会话、归档、记忆、投影和工作区关联。实体/关系 schema、方向语义、有界关系候选发现和证据封套已经完成；仍未完成的是实时事件队列、关系长期真实负载治理，以及 Skill 的语义去重、合并、收益治理和恢复队列。
 
 ### 5.5 Workflow 可配置必须晚于契约稳定
 
@@ -264,17 +264,17 @@ src/renderer/shared/
 
 目标：让记忆和会话成为 Context Engine 可控、可追溯的来源。
 
-状态：主要工程闭环与正式迁移已完成，真实 Provider/长任务验收进行中。v3 阶段 0-6 已实现投影变更记录、atom projections、journal、catalog、FTS、本地 Embedding、实体关系、Repository transaction、认识状态分类、统一检索、D0-D3、版本化 KnownState、重启恢复、管理 UI、正式迁移与受约束回滚；当前正式数据和 45 条本地向量均由 v3 接管。
+状态：主要工程闭环与正式迁移已完成，真实 Provider/长任务验收进行中。v3 阶段 0-16 已实现投影变更记录、atom projections、journal、Catalog v8、FTS、本地 Embedding、实体关系、Repository transaction、认识状态分类与来源对账、统一检索、动态 routing、关系引导的一跳候选发现、自动关系投影、提交后激活、启动补偿、冲突/替代调和、TaskBook 二次注入调和、语义向量哈希、D0-D3、版本化 KnownState、重启恢复、内部治理、正式迁移与受约束回滚；用户 GUI 已收敛为六份记忆文件视图，当前正式数据和 45 条本地向量均由 v3 接管。
 
 建议边界：
 
 - 在现有 memory-tree 边界上先提供统一服务门面；
 - 增加记忆资源注册表和 T0-T3 协议，以版本化迁移映射现有 T1-T3 数据；
 - 保持已落地的项目记忆三层字段、同步、冲突、清理、Git 忽略、稳定身份和可恢复路径重绑定契约；通用资源沿用统一状态、重新定位、冲突保护和有界审计，插件/Skill 已由 owner-scoped 协议驱动，数据根迁移继续保持外部 locator 与活动元数据重绑定边界；
-- 以现有 `packages/session/src/compaction.ts` 的非破坏式版本化摘要为基线，补齐真实长会话、失败回退、成本和恢复验收；
+- 以现有 `packages/session/src/compaction.ts` 的非破坏式版本化摘要和阶段 12 的任务锚点回退门为基线，补齐真实 Provider 长会话、摘要失败、工具副作用、成本和恢复验收；
 - 压缩摘要继续保留来源消息范围、版本、模型、关键约束和校验信息，不能删除原始会话事实；
 - daily 到长期记忆的蒸馏走结构化写入闸门。
-- 按 [原子记忆与内置向量目录任务书 2026-07-15](../taskbooks/memory-atom-vector-catalog-taskbook-2026-07-15.md) 以只追加对话原始来源保存用户输入与对话区可见信息，以投影变更记录保障幂等与恢复，以语义 atom 形成可治理投影，并用可重建 SQLite catalog 管理 parent、实体、有向关系、FTS、向量和恢复投影；
+- 按 [原子记忆与内置向量目录任务书 2026-07-17](../taskbooks/memory-atom-vector-catalog-taskbook-2026-07-17.md) 以只追加对话原始来源保存用户输入与对话区可见信息，以投影变更记录保障幂等与恢复，以语义 atom 形成可治理投影，并用可重建 SQLite catalog 管理 parent、实体、有向关系、FTS、向量和恢复投影；用户 GUI、Runtime 与 LLM Context 使用分离的披露视图；
 - Skill 治理按 owner/source 生成可审查的合并、停用、归档或删除方案；相似度和使用次数都不能直接触发覆盖或删除；
 - 默认本地生成 Embedding，Provider `/embeddings` 只在用户显式启用时允许；层级和 FTS 不依赖向量可用性。
 
@@ -335,6 +335,7 @@ src/renderer/shared/
 | D6 App 拆分方式 | 多 workspace 包 / app 内 feature 目录 | app 内 feature | 降低发布和协议成本，等复用事实出现后再升包 |
 | D7 Plugin SDK/Host | 立即拆分 / API v2 前保持同包 | 暂缓拆分 | 避免为仍在变化的接口承担兼容成本 |
 | D8 Token 真相 | 单一估算 / Provider usage + 精确本地 ledger 分层 | 分层 | 用户展示必须真实，预算又需要请求前保护；未知 tokenizer 不生成伪精确数字 |
+| D9 Atom 动态层级 | 固定热层 / 后端连续 activation + 前端三层投影 | 后端连续、前端三层 | 文件、parent、披露深度和缓存压缩不能替代运行时价值；真实有效使用升温，低频衰减，任务相关度仍是首要准入门。UI 使用滞回阈值保持稳定，不把三层写回后端 |
 
 ## 8. 现在做、暂缓做、不要做
 
@@ -373,6 +374,7 @@ src/renderer/shared/
 | 过度拆包 | 依赖和版本管理复杂度超过收益 | 新包准入标准；优先包内模块化 |
 | Mode 与权限混合 | 行为切换意外扩大权限 | 独立类型、独立 UI、最终权限 ceiling |
 | Context 来源不透明 | “不失忆”不可验证、token 显示失真 | ContextSnapshot、来源账本、Provider usage 分层 |
+| 高频 Atom 自增强 | 常见但错误或无关的信息长期挤占 Context | 仅真实采用与验证收益升温；原始访问不计分；task relevance、scope 和证据先于 activation |
 | Memory 自动写入失控 | 错误事实长期固化 | 索引写入闸门、来源、置信度、合并、恢复和用户管理 |
 | 实体/关系误合并 | 跨项目、跨用户或跨权限信息污染 | 稳定实体 id、owner/scope、关系证据、D0-D3 披露和跨边界默认不传播 |
 | Skill 自动治理误删 | 能力丢失、插件所有权破坏 | 合并建议先审查、停用优先、引用检查、保留期、版本回滚和来源文件保护 |
@@ -384,14 +386,14 @@ src/renderer/shared/
 
 ## 10. 下一阶段推进条件
 
-仓库基元化阶段 0-7 与 Memory v3 阶段 0-6 已完成，正式数据、模型和向量目录已切换并通过重启验收。下一质量门是 Context Engine 的真实供应商对话校准和正式 V3 新写入连续性，之后收敛 Tool Execution Service，而不是提前扩张新插件类型或无关 UI 范围。推进时持续遵守：
+仓库基元化阶段 0-7 与 Memory v3 阶段 0-16 已完成，正式数据、模型和向量目录已切换并通过重启验收，多轮任务语义、压缩后任务锚点恢复、关系引导 Atom 选择、写入认识边界、Atom 关系调和和 TaskBook 二次注入也已有独立质量门。自动实体/关系投影、提交后激活、冲突与替代处理以及结构化任务锚点 refinement 已作为“最少且足够的正确 Atom”的支撑机制落地，不以关系规模或文件布局作为完成标准。下一工程门先完成阶段 17：把持久记忆和语义缓存统一到连续、可衰减且无固定层数的 activation 契约，并证明高频有用 Atom 升温、低频 Atom 降温、冷 Atom 可重新激活且无关高频 Atom 不能绕过任务门；随后再在真实 Provider、正式 V3 新写入、活动长任务与持续用户负载中验证注入准确性、关系演化和 Context 成本。之后收敛 Tool Execution Service，而不是提前扩张新插件类型或无关 UI 范围。推进时持续遵守：
 
 - 以 [架构原则](../principles/architecture-principles.md) 作为最高层工程规范；
 - Behavior Mode 与 Permission Policy 保持正交；
 - 保留固定安全脊柱，不把 Workflow 直接开放为任意图；
 - 保护现有用户数据与插件化改动，不做破坏式迁移。
 
-Context Engine 已完成候选端口、预算器、稳定装配顺序、来源分段、版本化摘要、附件清单优先、按需附件工具、双账本展示、tokenizer 能力矩阵和不可展示的保守预算保护；版本化 LLM Call Contract 进一步约束每次调用的目的、输入、输出、工具和记忆策略。Memory v3 已接管统一 Repository facade、Memory Service、Runner 与 Harness；安全迁移器、统一检索、证据封套、KnownState、同源 D0-D3 管理读取、atom 高级管理、run working set、对话原始来源、投影变更记录恢复、验证反馈、commit receipt、正式迁移与本地向量回填均已完成。真实 Provider 对话对账、统一 Tool Execution Service 和 `RuntimeEventQueue` 仍按独立质量门推进。
+Context Engine 已完成候选端口、预算器、稳定装配顺序、来源分段、版本化摘要、附件清单优先、按需附件工具、双账本展示、tokenizer 能力矩阵和不可展示的保守预算保护；版本化 LLM Call Contract 进一步约束每次调用的目的、输入、输出、工具和记忆策略。Memory v3 已接管统一 Repository facade、Memory Service、Runner 与 Harness；安全迁移器、统一检索、证据封套、KnownState、同源 D0-D3 内部读取、Atom 高级治理、run working set、对话原始来源、投影变更记录恢复、分层反馈、动态路由相关性、语义向量哈希、commit receipt、多轮指代/否定/任务转向语义、版本化摘要回退、写入认识边界、自动关系投影、提交后激活、启动补偿、冲突/替代调和、TaskBook 二次注入调和、正式迁移与本地向量回填均已完成。普通 GUI 仅呈现六份记忆文件，不展示底层原子结构。真实 Provider 对话对账、持续用户负载、活动 run 检查点、统一 Tool Execution Service 和 `RuntimeEventQueue` 仍按独立质量门推进。
 
 ## 11. 报告维护规则
 

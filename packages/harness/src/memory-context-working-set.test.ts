@@ -65,8 +65,18 @@ describe('run memory context working set', () => {
       callAtomIds: { initial: ['atom-a'] },
       updatedAt: '2026-07-16T02:00:00.000Z',
     };
-    const initial = '# Initially Selected Memory Atoms\n\n## [atom-a] T2 - selected\nsecret initial atom';
-    const requestValue: ChatRequest = { model: 'test', messages: [{ role: 'system', content: `stable\n\n${initial}` }] };
+    const initial = [
+      '# Initially Selected Memory Atoms',
+      '',
+      '<!-- littlesheep-memory-atom:start atom-a -->',
+      '## [atom-a] T2 - selected',
+      'secret initial atom',
+      '<!-- littlesheep-memory-atom:end atom-a -->',
+    ].join('\n');
+    const requestValue: ChatRequest = {
+      model: 'test',
+      messages: [{ role: 'system', content: `stable\n\n${initial}\n\n---\n\n# Required Policy\nkeep this policy` }],
+    };
     const candidate = {
       id: 'system', order: 0, message: requestValue.messages[0]!, kind: 'system_prompt' as const,
       source: { kind: 'prompt' as const, id: 'system' }, priority: 100, required: true, sensitive: true,
@@ -79,6 +89,7 @@ describe('run memory context working set', () => {
     const prepared = applyMemoryContextWorkingSet(ctx, requestValue, [candidate]);
 
     expect(String(prepared.request.messages[0]?.content)).not.toContain('secret initial atom');
+    expect(String(prepared.request.messages[0]?.content)).toContain('keep this policy');
     expect(prepared.candidates?.[0]?.segments?.[0]?.text).not.toContain('secret initial atom');
   });
 });
@@ -98,10 +109,14 @@ function renderedResult(): string {
     '# Memory Expansion',
     'Budget: 20/100 tokens.',
     '',
+    '<!-- littlesheep-memory-atom:start atom-a -->',
     '## [atom-a] T2 - selected',
     'secret atom A',
+    '<!-- littlesheep-memory-atom:end atom-a -->',
     '',
+    '<!-- littlesheep-memory-atom:start atom-b -->',
     '## [atom-b] T2 - selected',
     'retained atom B',
+    '<!-- littlesheep-memory-atom:end atom-b -->',
   ].join('\n');
 }

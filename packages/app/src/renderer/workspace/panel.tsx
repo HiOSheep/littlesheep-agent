@@ -16,6 +16,7 @@ import {
 } from '../workspace-persistence'
 import { WorkspaceAddMenu } from './add-menu'
 import { WorkspaceArtifacts } from './artifacts'
+import { WorkspaceBrowser } from './browser'
 import { WorkspaceFileNavigator } from './file-navigator'
 import { WorkspaceFiles } from './files'
 import { WorkspaceOverview } from './overview'
@@ -24,12 +25,10 @@ import { WorkspacePlaceholder } from './placeholder'
 import { WorkspaceFileView } from './preview-pane'
 import { WorkspaceTerminal } from './terminal'
 
-
 export function WorkspacePanel({
   collapsed,
   fullscreen,
-  activeTab,
-  openTabs,
+  activeTab, openTabs, browserUrl,
   messages,
   workspacePath,
   defaultWorkspacePath,
@@ -54,13 +53,14 @@ export function WorkspacePanel({
   onWorkspaceArtifactsChanged,
   onFileNavigatorCollapsedChange,
   onExpandedPathsChange,
-  onOpenFile,
+  onOpenFile, onNavigateLink, onOpenExternalLink,
   onTipChange,
 }: {
   collapsed: boolean
   fullscreen: boolean
   activeTab: WorkspacePanelTabId
   openTabs: WorkspacePanelTabId[]
+  browserUrl: string
   messages: ChatMessage[]
   workspacePath: string
   defaultWorkspacePath: string
@@ -86,6 +86,8 @@ export function WorkspacePanel({
   onFileNavigatorCollapsedChange: (collapsed: boolean) => void
   onExpandedPathsChange: (update: StringListUpdater) => void
   onOpenFile: (path: string) => void
+  onNavigateLink: (href: string) => void
+  onOpenExternalLink: (href: string) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const workspaceEntries: Array<{
@@ -97,7 +99,7 @@ export function WorkspacePanel({
     { id: 'review', label: '审查', desc: '当前工作现场、任务阶段和产物入口', shortcut: 'Ctrl+Shift+G' },
     { id: 'artifacts', label: '产物', desc: '按项目、来源和类型管理生成或保存的文件', shortcut: 'Ctrl+Shift+A' },
     { id: 'terminal', label: '终端', desc: 'LS 内置 PowerShell，命令执行受权限控制' },
-    { id: 'browser', label: '浏览器', desc: '后续接入网页预览和网页操作现场', shortcut: 'Ctrl+T' },
+    { id: 'browser', label: '浏览器', desc: '在拓展工作区预览对话中的网页链接', shortcut: 'Ctrl+T' },
     { id: 'sideChat', label: '侧边聊天', desc: '后续承载与当前文件或产物相关的局部对话', shortcut: 'Ctrl+Alt+S' },
   ]
   const fallbackEntry: typeof workspaceEntries[number] = {
@@ -331,10 +333,7 @@ export function WorkspacePanel({
               />
             )}
             {activeTab === 'browser' && (
-              <WorkspacePlaceholder
-                title="浏览器"
-                text="后续会接入网页预览和网页操作现场，用于资料检索、页面检查和工具产物查看。"
-              />
+              <WorkspaceBrowser url={browserUrl} onNavigate={onNavigateLink} onOpenExternal={onOpenExternalLink} />
             )}
             {activeTab === 'sideChat' && (
               <WorkspacePlaceholder

@@ -106,21 +106,74 @@ function filterToolResultContent(content: string, inactiveAtomIds: Set<string>):
 
 function filterRenderedMemory(output: string, inactiveAtomIds: Set<string>): string {
   const lines = output.split('\n');
+  if (lines.some((line) => line.startsWith('<!-- littlesheep-memory-atom:start '))) {
+    return filterMarkedMemory(lines, inactiveAtomIds);
+  }
   const retained: string[] = [];
   let suppress = false;
   let removed = 0;
+  let noticeIndex = -1;
   for (const line of lines) {
     const headingEnd = line.startsWith('## [') ? line.indexOf(']', 4) : -1;
     if (headingEnd > 4) {
+      if (suppress && noticeIndex < 0) noticeIndex = insertReleaseNotice(retained);
       suppress = inactiveAtomIds.has(line.slice(4, headingEnd));
       if (suppress) removed += 1;
-    } else if (line === '# Child Index') {
+    } else if (line === '# Child Index' || line === '---' || line.startsWith('# ')) {
+      if (suppress && noticeIndex < 0) noticeIndex = insertReleaseNotice(retained);
       suppress = false;
     }
     if (!suppress) retained.push(line);
   }
-  if (removed > 0) retained.push('', `[${removed} memory atom section(s) released from the active run context.]`);
+  if (suppress && noticeIndex < 0) noticeIndex = insertReleaseNotice(retained);
+  updateReleaseNotice(retained, noticeIndex, removed);
   return retained.join('\n');
+}
+
+function filterMarkedMemory(lines: string[], inactiveAtomIds: Set<string>): string {
+  const retained: string[] = [];
+  let suppress = false;
+  let removed = 0;
+  let noticeIndex = -1;
+  for (const line of lines) {
+    const startId = markerAtomId(line, 'start');
+    if (startId) {
+      suppress = inactiveAtomIds.has(startId);
+      if (suppress) removed += 1;
+      if (!suppress) retained.push(line);
+      continue;
+    }
+    const endId = markerAtomId(line, 'end');
+    if (endId) {
+      if (!suppress) retained.push(line);
+      else if (noticeIndex < 0) noticeIndex = insertReleaseNotice(retained);
+      suppress = false;
+      continue;
+    }
+    if (!suppress) retained.push(line);
+  }
+  if (suppress && noticeIndex < 0) noticeIndex = insertReleaseNotice(retained);
+  updateReleaseNotice(retained, noticeIndex, removed);
+  return retained.join('\n');
+}
+
+function insertReleaseNotice(retained: string[]): number {
+  retained.push('');
+  const index = retained.length;
+  retained.push('');
+  return index;
+}
+
+function updateReleaseNotice(retained: string[], index: number, removed: number): void {
+  if (index < 0 || removed <= 0) return;
+  retained[index] = `[${removed} memory atom section(s) released from the active run context.]`;
+}
+
+function markerAtomId(line: string, boundary: 'start' | 'end'): string | undefined {
+  const prefix = `<!-- littlesheep-memory-atom:${boundary} `;
+  if (!line.startsWith(prefix) || !line.endsWith(' -->')) return undefined;
+  const atomId = line.slice(prefix.length, -4).trim();
+  return atomId || undefined;
 }
 
 function boundCallMap(value: Record<string, string[]>): void {

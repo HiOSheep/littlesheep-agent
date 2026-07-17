@@ -190,7 +190,7 @@ async function checkCanonicalFiles() {
     'docs/taskbooks/core-focus-maintenance-taskbook-2026-07-13.md',
     'docs/taskbooks/extension-workspace-taskbook-2026-07-12.md',
     'docs/taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md',
-    'docs/taskbooks/memory-atom-vector-catalog-taskbook-2026-07-15.md',
+    'docs/taskbooks/memory-atom-vector-catalog-taskbook-2026-07-17.md',
     'scripts/build-app.ps1',
     'scripts/start-littlesheep.ps1',
     'scripts/refresh-desktop-shortcut.ps1',
@@ -199,6 +199,7 @@ async function checkCanonicalFiles() {
     'scripts/sync-typescript-projects.mjs',
     'scripts/run-affected-verification.mjs',
     'scripts/verify-memory-v3-soak.mjs',
+    'scripts/verify-memory-v3-compaction-continuity.mjs',
     'scripts/verify-memory-v3-migration-readiness.mjs',
     'tsconfig.workspace.json',
     'build-app.bat',
@@ -368,7 +369,7 @@ async function checkRepositoryNavigation() {
     'packages/harness/src/stages/decide.ts': 169,
     'packages/harness/src/stages/execute.ts': 46,
     'packages/harness/src/stages/verify.ts': 145,
-    'packages/app/src/renderer/MemoryTreeView.tsx': 1104,
+    'packages/app/src/renderer/MemoryTreeView.tsx': 206,
   }
   const growth = []
   for (const [path, baseline] of Object.entries(hotspotBaselines)) {
@@ -572,6 +573,59 @@ async function checkExtensionArchitectureNames() {
   assert(matches.length === 0, '旧渠道网关架构名称未回流', [...new Set(matches)].join(', '))
 }
 
+async function checkMemoryV3WriteBoundary() {
+  const retiredPaths = [
+    'packages/memory-core/src/archive.ts',
+    'packages/memory-core/src/archive.test.ts',
+    'packages/memory-core/src/vector-decorator.ts',
+    'packages/memory-core/src/vector-decorator.test.ts',
+    'packages/memory-core/src/distill.ts',
+    'packages/cli/src/commands/archive.ts',
+    'packages/cli/src/commands/archive.test.ts',
+  ]
+  const retiredFiles = retiredPaths
+    .filter((path) => existsSync(join(repoRoot, path)))
+  const sourceFiles = await collectSourceFiles(join(repoRoot, 'packages'))
+  const forbiddenSymbols = [
+    ['archiveOldMemories', /\barchiveOldMemories\b/u],
+    ['VectorIndexedMemoryStore', /\bVectorIndexedMemoryStore\b/u],
+    ['parseArchiveFlags', /\bparseArchiveFlags\b/u],
+    ['runArchive', /\brunArchive\b/u],
+    ['distillDailyToMemory', /\bdistillDailyToMemory\b/u],
+    ['markDistilled', /\bmarkDistilled\b/u],
+  ]
+  const matches = []
+  for (const path of sourceFiles) {
+    const content = await readText(path)
+    for (const [name, pattern] of forbiddenSymbols) {
+      if (pattern.test(content)) matches.push(`${displayPath(path)}:${name}`)
+    }
+  }
+
+  const memoryCorePackage = await readJson(join(repoRoot, 'packages', 'memory-core', 'package.json'), 'memory-core package.json 可读')
+  const memoryCoreDeps = {
+    ...(memoryCorePackage?.dependencies ?? {}),
+    ...(memoryCorePackage?.devDependencies ?? {}),
+  }
+  const forbiddenMemoryCoreDeps = ['@littlesheep/config', '@littlesheep/llm', '@littlesheep/vector']
+    .filter((name) => Object.prototype.hasOwnProperty.call(memoryCoreDeps, name))
+
+  const cliTsconfig = await readJson(join(repoRoot, 'packages', 'cli', 'tsconfig.json'), 'cli tsconfig 可读')
+  const cliReferences = Array.isArray(cliTsconfig?.references) ? cliTsconfig.references : []
+  const cliVectorReference = cliReferences.some((reference) => reference?.path === '../vector')
+
+  assert(
+    retiredFiles.length === 0 && matches.length === 0,
+    'Memory v2 归档与向量写入入口已退役',
+    [...retiredFiles, ...matches].join(', '),
+  )
+  assert(
+    forbiddenMemoryCoreDeps.length === 0 && !cliVectorReference,
+    '核心包不再依赖旧向量/归档实现',
+    [...forbiddenMemoryCoreDeps.map((name) => `memory-core:${name}`), cliVectorReference ? 'cli:../vector' : ''].filter(Boolean).join(', '),
+  )
+}
+
 function checkTrackedGeneratedFiles() {
   const generated = trackedFiles().filter((path) =>
     path.startsWith('packages/app/out/') ||
@@ -635,6 +689,7 @@ async function main() {
   await checkRepositoryNavigation()
   await checkModuleBoundaries()
   await checkExtensionArchitectureNames()
+  await checkMemoryV3WriteBoundary()
   checkTrackedGeneratedFiles()
   await checkMarkdownLinks()
   await checkDocumentationLanguage()

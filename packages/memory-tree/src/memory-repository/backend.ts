@@ -7,6 +7,7 @@ import type {
   MemoryManagementResult,
   MemoryMigrationRecord,
   MemoryNode,
+  MemoryRecentNodeQuery,
   MemoryResourceManagementAction,
   MemoryResourceManagementAuditRecord,
   MemoryResourceManagementResult,
@@ -61,6 +62,7 @@ export interface MemoryRepositoryBackend extends Partial<MemoryRepositoryRetriev
   restoreSchemaBackup(backupFile: string): Promise<void>;
   getNode(id: string): Promise<MemoryNode | undefined>;
   listNodes(branch: MemoryBranchKind, scopeKey?: string): Promise<MemoryNode[]>;
+  listRecentNodes(branch: MemoryBranchKind, query?: MemoryRecentNodeQuery): Promise<MemoryNode[]>;
   rebindProjectPath(fromPath: string, toPath: string): Promise<MemoryProjectRebindResult>;
   children(parentNodeId: string): Promise<MemoryNode[]>;
   write(intent: MemoryWriteIntent): Promise<MemoryWriteResult>;
@@ -68,7 +70,12 @@ export interface MemoryRepositoryBackend extends Partial<MemoryRepositoryRetriev
   retryRecoveryQueue(limit?: number): Promise<MemoryWriteResult[]>;
   setStatus(nodeId: string, status: MemoryNode['status']): Promise<MemoryNode | undefined>;
   changeTier(nodeId: string, tier: InjectionTier): Promise<MemoryNode | undefined>;
-  manageNode(nodeId: string, action: MemoryManagementAction, reason?: string): Promise<MemoryManagementResult | undefined>;
+  manageNode(
+    nodeId: string,
+    action: MemoryManagementAction,
+    reason?: string,
+    expectedRevision?: number,
+  ): Promise<MemoryManagementResult | undefined>;
   getMigration(id: string): Promise<MemoryMigrationRecord | undefined>;
   markMigration(record: MemoryMigrationRecord): Promise<void>;
   managementStatus(): Promise<MemoryRepositoryManagementStatus>;
@@ -83,5 +90,7 @@ export interface MemoryRepositoryBackend extends Partial<MemoryRepositoryRetriev
     source: MemoryTreeDocument,
     sourceManifestHash: string,
   ): Promise<MemoryV3MigrationValidation>;
+  startBackgroundMaintenance?(): Promise<void>;
+  shutdown?(): Promise<void>;
   close?(): void;
 }

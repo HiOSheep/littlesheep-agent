@@ -4,13 +4,27 @@
 // Sessions are stored as JSONL at <sessionsDir>/<sessionId>.jsonl.
 // Each line is a Message record. Writes are serialized via file lock.
 
-import { readFile, writeFile, mkdir, appendFile, stat, unlink } from 'node:fs/promises';
+import { readFile, mkdir, appendFile, stat, unlink } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { Message, Session, SessionId, SessionMetadata, LockHandle, SessionManagerLike } from '@littlesheep/types';
+import type {
+  AtomicActivationEvidence,
+  AtomicActivationLevelCounts,
+  AtomicActivationObservation,
+  CompactionSummary,
+  CompactionSummaryV2,
+  LockHandle,
+  Message,
+  Session,
+  SessionId,
+  SessionManagerLike,
+  SessionMetadata,
+} from '@littlesheep/types';
 import { asSessionId } from '@littlesheep/types';
 import { acquireLock } from './lock.js';
+import { atomicWriteText } from './atomic-file.js';
+import { SessionCompactionStore } from './compaction-store.js';
 
 /** Options for SessionManager. */
 export interface SessionManagerOptions {
@@ -22,7 +36,12 @@ export interface SessionManagerOptions {
 
 /** Manages session transcripts on disk. */
 export class SessionManager implements SessionManagerLike {
-  constructor(private opts: SessionManagerOptions) {}
+  private readonly compactions: SessionCompactionStore;
+  private readonly compactionRecovery = new Map<SessionId, Promise<void>>();
+
+  constructor(private opts: SessionManagerOptions) {
+    this.compactions = new SessionCompactionStore(opts.sessionsDir);
+  }
 
   /** Resolve the JSONL file path for a session. */
   sessionFile(sessionId: SessionId): string {
@@ -45,12 +64,17 @@ export class SessionManager implements SessionManagerLike {
     await mkdir(this.opts.sessionsDir, { recursive: true });
     // Write empty file with metadata header (first line is metadata, not a message).
     const header = JSON.stringify({ type: 'metadata', metadata }) + '\n';
-    await writeFile(this.sessionFile(id), header, 'utf8');
+    await atomicWriteText(this.sessionFile(id), header);
     return { id, metadata, messages: [] };
   }
 
   /** Load metadata from the session file header. */
   async loadMetadata(sessionId: SessionId): Promise<SessionMetadata | null> {
+    await this.recoverCompactions(sessionId);
+    return this.readMetadata(sessionId);
+  }
+
+  private async readMetadata(sessionId: SessionId): Promise<SessionMetadata | null> {
     const file = this.sessionFile(sessionId);
     if (!existsSync(file)) return null;
     const raw = await readFile(file, 'utf8');
@@ -109,12 +133,13 @@ export class SessionManager implements SessionManagerLike {
 
   /** Update session metadata (rewrites the file header). */
   async updateMetadata(sessionId: SessionId, patch: Partial<SessionMetadata>): Promise<void> {
+    await this.recoverCompactions(sessionId);
     const file = this.sessionFile(sessionId);
     let handle: LockHandle | null = null;
     try {
       handle = await acquireLock(file, this.opts.lockTimeoutMs ?? 60000);
       const existing = await this.read(sessionId);
-      const oldMeta = (await this.loadMetadata(sessionId)) ?? {
+      const oldMeta = (await this.readMetadata(sessionId)) ?? {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         messageCount: existing.length,
@@ -127,10 +152,46 @@ export class SessionManager implements SessionManagerLike {
       };
       const header = JSON.stringify({ type: 'metadata', metadata }) + '\n';
       const body = existing.map((m) => JSON.stringify(m)).join('\n') + (existing.length > 0 ? '\n' : '');
-      await writeFile(file, header + body, 'utf8');
+      await atomicWriteText(file, header + body);
     } finally {
       await handle?.release();
     }
+  }
+
+  async commitCompaction(sessionId: SessionId, summary: CompactionSummaryV2): Promise<void> {
+    const file = this.sessionFile(sessionId);
+    let handle: LockHandle | null = null;
+    try {
+      handle = await acquireLock(file, this.opts.lockTimeoutMs ?? 60000);
+      await this.compactions.commit(sessionId, summary, async (projection) => {
+        await this.writeMetadataWithoutLock(sessionId, { compacted: true, compaction: projection });
+      });
+    } finally {
+      await handle?.release();
+    }
+  }
+
+  loadCompactionProjection(sessionId: SessionId, summaryId: string): Promise<CompactionSummary | undefined> {
+    return this.compactions.load(sessionId, summaryId);
+  }
+
+  recordCompactionActivation(
+    sessionId: SessionId,
+    summaryId: string,
+    observation: AtomicActivationObservation,
+  ): Promise<AtomicActivationEvidence> {
+    return this.compactions.recordActivation(sessionId, summaryId, observation);
+  }
+
+  loadCompactionActivation(
+    sessionId: SessionId,
+    summaryId: string,
+  ): Promise<AtomicActivationEvidence | undefined> {
+    return this.compactions.loadActivation(sessionId, summaryId);
+  }
+
+  semanticCacheActivationOverview(now?: string): Promise<AtomicActivationLevelCounts> {
+    return this.compactions.activationOverview(now);
   }
 
   /** Load a full session (metadata + messages). */
@@ -170,6 +231,7 @@ export class SessionManager implements SessionManagerLike {
     } finally {
       await handle?.release();
     }
+    await this.compactions.removeSession(sessionId);
   }
 
   /**
@@ -198,5 +260,45 @@ export class SessionManager implements SessionManagerLike {
     if (!existsSync(file)) return null;
     const s = await stat(file);
     return { size: s.size, mtime: s.mtime };
+  }
+
+  private async writeMetadataWithoutLock(sessionId: SessionId, patch: Partial<SessionMetadata>): Promise<void> {
+    const existing = await this.read(sessionId);
+    const oldMeta = (await this.readMetadata(sessionId)) ?? {
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      messageCount: existing.length,
+    };
+    const metadata: SessionMetadata = {
+      ...oldMeta,
+      ...patch,
+      updatedAt: new Date().toISOString(),
+      messageCount: existing.length,
+    };
+    const header = JSON.stringify({ type: 'metadata', metadata }) + '\n';
+    const body = existing.map((message) => JSON.stringify(message)).join('\n') + (existing.length > 0 ? '\n' : '');
+    await atomicWriteText(this.sessionFile(sessionId), header + body);
+  }
+
+  private recoverCompactions(sessionId: SessionId): Promise<void> {
+    if (!this.compactions.hasPending(sessionId)) return Promise.resolve();
+    const existing = this.compactionRecovery.get(sessionId);
+    if (existing) return existing;
+    const run = (async () => {
+      const file = this.sessionFile(sessionId);
+      let handle: LockHandle | null = null;
+      try {
+        handle = await acquireLock(file, this.opts.lockTimeoutMs ?? 60000);
+        await this.compactions.recover(sessionId, async (summary) => {
+          await this.writeMetadataWithoutLock(sessionId, { compacted: true, compaction: summary });
+        });
+      } finally {
+        await handle?.release();
+      }
+    })().finally(() => {
+      this.compactionRecovery.delete(sessionId);
+    });
+    this.compactionRecovery.set(sessionId, run);
+    return run;
   }
 }

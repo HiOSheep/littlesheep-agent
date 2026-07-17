@@ -28,11 +28,12 @@ export function intentEvent(
   atomId: string,
   expectedRevision?: number,
 ): MemoryUpdateEvent {
-  const observedAt = new Date().toISOString();
+  const observedAt = intent.createdAt ?? new Date().toISOString();
+  const idempotencyKey = `memory-repository:${intent.id}:${decision}:${atomId}:${expectedRevision ?? 0}`;
   return {
     version: MEMORY_EVENT_VERSION,
-    id: randomUUID(),
-    idempotencyKey: `memory-repository:${intent.id}:${decision}:${atomId}:${expectedRevision ?? 0}`,
+    id: stableRepositoryEventId(idempotencyKey),
+    idempotencyKey,
     kind: eventKindForStage(intent.sourceStage),
     domain: classification.domain,
     scope: intent.scope,
@@ -92,7 +93,7 @@ export function writeAudit(
     intentId: intent.id!,
     sourceRunId: intent.sourceRunId,
     branch: intent.branch,
-    at: new Date().toISOString(),
+    at: intent.createdAt ?? new Date().toISOString(),
     decision,
     nodeId,
     reason,
@@ -101,6 +102,10 @@ export function writeAudit(
 
 export function atomIdForIntent(intentId: string): string {
   return `memory-atom:${createHash('sha256').update(intentId, 'utf8').digest('hex')}`;
+}
+
+function stableRepositoryEventId(idempotencyKey: string): string {
+  return `memory-event:${createHash('sha256').update(idempotencyKey, 'utf8').digest('hex')}`;
 }
 
 export function branchForRootId(id: string): MemoryBranchKind | undefined {
@@ -204,8 +209,21 @@ export function strongerResolutionStatus(
 }
 
 function eventKindForStage(stage: MemoryWriteIntent['sourceStage']): MemoryUpdateEventKind {
-  if (stage === 'tool') return 'tool-evidence';
-  if (stage === 'capture') return 'task-state';
-  if (stage === 'evolve') return 'agent-capability-change';
-  return 'resource-change';
+  switch (stage) {
+    case 'tool':
+      return 'tool-evidence';
+    case 'capture':
+      return 'task-state';
+    case 'evolve':
+      return 'agent-capability-change';
+    case 'maintenance':
+    case 'migration':
+      return 'resource-change';
+    default:
+      return unreachableStage(stage);
+  }
+}
+
+function unreachableStage(stage: never): never {
+  throw new Error(`Unsupported memory write stage: ${String(stage)}`);
 }

@@ -28,12 +28,14 @@ export function toV3IndexEntry(candidate: MemoryRepositoryCandidate): MemoryInde
   return {
     id: atom.id,
     title: atom.title || atom.summary,
+    relevance: candidate.priority.taskRelevance,
     summary: [
       atom.summary,
       `${atom.domain}/${atom.statementKind}/${atom.epistemicStatus}`,
       `scope=${atom.scope}${atom.scopeKey ? `:${atom.scopeKey}` : ''}`,
       `authority=${authority}`,
       `confidence=${atom.confidence.toFixed(2)}`,
+      `task=${candidate.priority.taskRelevance.toFixed(3)}`,
       `priority=${candidate.priority.score.toFixed(3)}`,
       warnings ? `warning=${warnings}` : undefined,
     ].filter(Boolean).join('; '),
@@ -48,6 +50,7 @@ export function toV3IndexEntry(candidate: MemoryRepositoryCandidate): MemoryInde
       epistemicStatus: atom.epistemicStatus,
       authorityScope: atom.authorityScope,
       priority: candidate.priority,
+      taskRelevanceResolved: true,
     },
   };
 }
@@ -63,10 +66,15 @@ export function toV3Fragment(candidate: MemoryRepositoryCandidate, branchId: str
     `- atom: ${atom.id}@${atom.revision}; disclosure=${evidence.disclosureLevel}; path=${evidence.retrievalPath}`,
     `- statement: ${atom.statementKind}; epistemic=${atom.epistemicStatus}; resolution=${atom.resolutionStatus}`,
     `- authority: ${atom.authorityScope.kind}/${atom.authorityScope.scope}${atom.authorityScope.scopeKey ? `:${atom.authorityScope.scopeKey}` : ''}; assertedBy=${atom.assertedBy.kind}${atom.assertedBy.id ? `:${atom.assertedBy.id}` : ''}`,
-    `- confidence=${atom.confidence.toFixed(2)}; importance=${atom.importance.toFixed(2)}; updated=${atom.updatedAt}${atom.lastVerifiedAt ? `; verified=${atom.lastVerifiedAt}` : ''}`,
+    `- confidence=${atom.confidence.toFixed(2)}; importance=${atom.importance.toFixed(2)}; task=${evidence.taskRelevance.toFixed(2)}; routing=${evidence.routingRelevance.toFixed(2)}; relation=${evidence.relationshipRelevance.toFixed(2)}; activation=${evidence.activation.score.toFixed(2)}; updated=${atom.updatedAt}${atom.lastVerifiedAt ? `; verified=${atom.lastVerifiedAt}` : ''}`,
     `- evidence refs: ${atom.evidenceRefs.length > 0 ? atom.evidenceRefs.slice(0, 12).join(', ') : '(none)'}`,
     `- use boundary: ${evidence.conflict ? 'CONFLICTED - do not treat as settled fact' : epistemicUseBoundary(atom.statementKind, atom.epistemicStatus)}`,
   ];
+  if (evidence.relationRoute) {
+    lines.push(
+      `- relation route: seed=${evidence.relationRoute.seedAtomId}; ${evidence.relationRoute.relationType}/${evidence.relationRoute.direction}; relation=${evidence.relationRoute.relationId}; confidence=${evidence.relationRoute.confidence.toFixed(2)}; relevance=${evidence.relationRoute.relevance.toFixed(2)}; strength=${evidence.relationRoute.strength.toFixed(2)}`,
+    );
+  }
   if (candidate.neighborhood) {
     lines.push('', 'Relevant relation neighborhood:');
     for (const relation of candidate.neighborhood.relations) {

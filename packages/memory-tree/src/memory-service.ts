@@ -49,6 +49,8 @@ import { BootstrapResourceCoordinator } from './memory-service/bootstrap-resourc
 import type {
   MemoryManagementSnapshot,
   MemoryRunResourceInput,
+  MemoryRunRefinement,
+  MemoryRunRefinementInput,
   MemoryRunStart,
   MemoryServiceOptions,
   MemorySkillResourceInput,
@@ -64,6 +66,7 @@ import { SkillResourceCoordinator } from './memory-service/skill-resources.js';
 import { SessionSummaryResourceCoordinator } from './memory-service/summary-resources.js';
 import { WorkspaceDocumentCoordinator } from './memory-service/workspace-documents.js';
 import { WorkspaceIndexResourceCoordinator } from './memory-service/workspace-index-resources.js';
+import { MemoryDailyConsolidationService, type MemoryDailyConsolidationInput, type MemoryDailyConsolidationResult } from './memory-consolidation.js';
 
 export type {
   MemoryBootstrapServiceLike,
@@ -71,6 +74,9 @@ export type {
   MemoryNavigationServiceLike,
   MemoryRunResourceInput,
   MemoryRunStart,
+  MemoryRunRefinement,
+  MemoryRunRefinementInput,
+  MemoryRunRefinementServiceLike,
   MemoryServiceOptions,
   MemorySkillResourceInput,
   MemorySkillSourceInput,
@@ -100,6 +106,7 @@ export class MemoryService {
   private readonly projects: ProjectMemoryCoordinator;
   private readonly management: MemoryResourceManagementCoordinator;
   private readonly runs: MemoryRunCoordinator;
+  private readonly consolidation: MemoryDailyConsolidationService;
 
   constructor(options: MemoryServiceOptions) {
     this.tree = options.tree;
@@ -145,6 +152,8 @@ export class MemoryService {
       this.events,
       () => this.rootIndex(),
     );
+    this.consolidation = new MemoryDailyConsolidationService({ repository: this.repository, writer: this.writer,
+      invalidate: (branch) => this.tree.invalidateBranch(branch) });
     this.tree.register(new MemoryResourceBranch({
       repository: this.repository,
       resolve: (resource, ctx) => resolver.resolve(resource, ctx.runId, ctx.query),
@@ -176,6 +185,8 @@ export class MemoryService {
   }
 
   beginRun(input: MemoryRunRegistration): Promise<MemoryRunStart> { return this.runs.begin(input); }
+
+  refineRun(input: MemoryRunRefinementInput): Promise<MemoryRunRefinement> { return this.runs.refine(input); }
 
   finishRun(runId: string): Promise<MemoryAccessLedger | undefined> { return this.runs.finish(runId); }
 
@@ -293,6 +304,10 @@ export class MemoryService {
   registerRunResources(input: MemoryRunResourceInput): Promise<void> { return this.runs.registerResources(input); }
 
   registerSessionSummary(sessionId: SessionId, summary: CompactionSummary): Promise<void> { return this.summaries.register(sessionId, summary); }
+
+  consolidateDailyMemory(input: MemoryDailyConsolidationInput): Promise<MemoryDailyConsolidationResult> {
+    return this.consolidation.consolidate(input);
+  }
 
   registerRunAttachments(runId: string, sessionId: SessionId, attachments: RunAttachment[]): Promise<void> {
     return this.attachments.register(runId, sessionId, attachments);

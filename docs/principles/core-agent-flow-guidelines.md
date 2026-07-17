@@ -1,6 +1,6 @@
 # LittleSheep 核心 Agent 流程规范
 
-最后更新：2026-07-16 15:55:18
+最后更新：2026-07-17 13:24:05
 
 本文是 [LittleSheep 架构原则](architecture-principles.md) 在 Core Flow、TaskBook、验证、恢复和记忆运行时上的专项约束。LLM 与 Agent、Mode 与权限、Context 与 Memory、Harness 与 Tool Execution 的顶层分工以架构原则为准；本文不重复维护另一套总架构。
 
@@ -140,22 +140,26 @@
 - 深搜绝不跨树。必须在同一次 run 中明确指定一个已经成功读取分支索引并完成展开的分支。语义/向量召回只能作为该分支内的最后兜底候选来源。
 - 兼容工具 `memory_search` 只负责导航：返回根索引或选定分支索引，不直接注入记忆正文。
 - 每次记忆介入都必须有预算、去重、来源追踪、安全封套，并记录到当前 run 账本。
-- 记忆运行时采用四层模型：对话原始来源、投影变更记录、Atom projections 和 run working set。对话原始来源只保存用户输入与对话区可见的 LS 回复、步骤、工具过程、验证和错误，成功写入后不改写；投影变更记录只服务幂等、恢复和审计；Atom 用于层级、相关性、检索和治理，可去重、合并、调整父级、失效、恢复或重建；working set 只决定本轮实际介入。Recovery journal 是有界恢复队列，不是原始数据源。
-- 首次业务请求先检查 D1 索引元数据，只选择一个极小且受预算约束的 D2 atom working set；不得默认跨树向量召回。执行中模型可通过受控工具请求继续展开，也可 `release` 当前无用 atom；release 只释放本轮 Context 与 dedup 预算，不能删除或失效持久记忆。
-- 在已导航分支和当前作用域内，候选按 scope 匹配、来源权威、任务相关性、confidence、importance、新鲜度、已验证 usefulness 以及冲突/失效/过期惩罚稳定排序；高优先级记忆先介入，但不能挤掉安全规则、当前用户输入和必要工具证据。可选记忆长期没有验证收益时降低注入权重，但不自动降低 confidence；T0、安全规则和当前用户约束不参与普通使用衰减。
-- 读取次数本身不提高事实可信度。`confidence` 只由新的权威来源或验证证据改变；Atom/关系的 relevance 与已验证 usefulness 可以随成功、无帮助、冲突和过期结果变化。只有用户在其权威范围内确认，或记忆参与的任务获得结构性 VERIFY、成功工具证据等可追溯结果时，才记录正向 usefulness；显式 `release` 只是未验证路由反馈，不能证明 Atom 错误。任何反馈都必须可审计，并防止重复出现的错误记忆形成自增强循环。
-- 实际进入请求的记忆使用有界 `MemoryEvidenceEnvelope`，至少包含 atom 引用、branch/scope、tier、来源/权威、confidence、importance、验证或更新时间、新鲜度、命中理由、状态、冲突和截断信息；模型据此判断证据权重，运行时仍保留唯一元数据修改权。
+- 记忆运行时采用四层模型：对话原始来源、投影变更记录、Atom projections 和 run working set。对话原始来源只保存用户输入与对话区可见的 LS 回复、步骤、工具过程、验证和错误，成功写入后不改写；投影变更记录只服务幂等、恢复和审计；Atom 用于层级、相关性、检索和治理，可去重、合并、调整父级、失效、恢复或重建；working set 只决定本轮实际介入。物理文件位置和分层方式只服务持久化、恢复、人工管理与索引导航，不能成为注入分数。Runtime 必须显式维护“哪些 Atom 被发现、采用、排除、释放或重新激活，以及为什么”，并让这些决策随当前任务、关系、证据、时间和已验证效用变化，而不是随文件路径变化。Recovery journal 是有界恢复队列，不是原始数据源。
+- 首次业务请求先检查 D1 索引元数据，当前安全默认最多选择 2 个 D2 Atom、总预算 600 tokens，并要求 task relevance 严格高于 `0.25`。通过门槛后默认只保留最强相关簇，再按 scope、authority、confidence、importance、epistemic status、verified usefulness、routing/relationship relevance 和时效排序；只有由高相关种子通过有效语义关系发现、且 route strength 达到硬门槛的必要 Atom，才可跨越普通相关性断层与种子一同进入首次 working set。普通较弱尾部即使治理优先级较高，也只留在索引中供后续展开。没有候选达标时保持零注入，只记录各分支 D1 检查，不为凑数量加载无关正文；不得默认跨树向量召回。初始采用结果必须立即同步到 run 级 `KnownState`。执行中模型可通过受控工具请求继续展开，也可 `release` 当前无用 Atom；release 只释放本轮 Context 与 dedup 预算，不能删除或失效持久记忆。
+- 初始注入先形成有界任务语义，而不是把 recent history 直接拼进检索词。当前请求已经包含完整目标时只使用当前请求；只有真实指代、延续或 LS 方案引用才继承最多 2 条、总计 1,200 字符的最近 user/assistant 文本，tool/system 内容不参与。显式任务转向必须切断旧历史。硬排除对象、正向替代方案和“该对象已被否决”这类约束 Atom 分开判定：被排除正文不能因词面相似进入 Context，方向一致的约束仍可介入；“避免某问题”默认属于要解决的正向主题，不等同于禁止检索该问题。D1、FTS 和分支内向量检索必须共用同一任务语义。深搜候选出现清晰相关性断层时应在断层处停止，不能为了填满调用方 limit 注入明显较弱的 Atom；候选整体偏弱或连续时则保持保守，不凭一个固定阈值武断裁剪。
+- 长会话压缩后的版本化摘要只在真实指代且最近消息仍缺任务锚点时作为 `continuitySummary` 回退。摘要最多选择 4 个目标/未完成事项/下一步/约束/决定句段、总计 1,000 字符；当前请求、近期明确用户目标和任务转向优先。摘要不替代原始会话、不复制为长期记忆，也不因保存位置或新鲜度自动获得注入权重。
+- 在已导航分支和当前作用域内，候选按 scope 匹配、来源权威、task relevance、confidence、importance、新鲜度、verified usefulness、routing relevance、relationship relevance 以及冲突/失效/过期惩罚稳定排序。关系不只是排序信号：Runtime 可从 `task relevance >= 0.7` 的种子做一次有界一跳发现，但必须保持同 branch/scope/scopeKey/subtree，并检查关系方向、状态、生效/过期时间、authority、confidence、relevance 和来源/证据；邻接 Atom 仍须独立通过 task relevance 和预算。`similar-to` 只作导航，不触发自动注入。关系信号必须随当前 task relevance 降低而向中性收缩，不能让“历史关系多”替代“本轮真正相关”。高优先级记忆先介入，但不能挤掉安全规则、当前用户输入和必要工具证据。可选记忆长期没有验证收益时降低注入权重，但不自动降低 confidence；T0、安全规则和当前用户约束不参与普通使用衰减。
+- 读取次数、重复出现或仅停留在 Context 中都不产生正反馈。VERIFY 可返回 `usedMemoryAtomIds`，但 Runtime 只接受当前 working set 中同时为 active 与 adopted 的 Atom；显式使用只提高有界 routing usefulness。只有结构性 VERIFY，或 VERIFY 通过且存在非记忆导航、非 Skill 加载的独立成功工具证据时，才提高 verified usefulness；`memory_tree`、`memory_search`、`memory_deep_search` 和 `use_skill` 的成功只能证明导航或加载发生，不能冒充任务验证。两类反馈都不能自动提高事实 confidence。显式 `release` 只是未验证路由反馈，不能证明 Atom 错误；未进入 active Context 或未被明确使用的冲突候选也不能因一次检索自动生成负反馈。所有反馈必须可审计、幂等且有硬上限，防止错误记忆形成自增强循环。
+- routing feedback 的历史计数用于审计，排序使用与 confidence 分离的派生相关度和有效证据权重。派生值随时间回归中性；新事件到来时先按时间衰减旧权重，再加入新证据，不能因更新时间刷新而让已经衰减的旧负反馈重新放大。
+- 实际进入请求的记忆使用有界 `MemoryEvidenceEnvelope`，至少包含 Atom 引用、branch/scope、tier、来源/权威、confidence、importance、verified usefulness 摘要、task relevance、routing relevance、relationship relevance、验证或更新时间、新鲜度、命中理由、状态、冲突和截断信息；关系发现还要使用独立 `relation` 检索路径，并记录种子 Atom、关系 id、类型、方向、confidence、relevance 和 route strength。模型据此判断“为什么介入、过去是否真正有用”和证据权重，运行时仍保留唯一元数据修改权。
 - `MemoryEvidenceEnvelope` 还必须携带 statement kind、epistemic status、authority scope、asserted by、`sourceRefs` 和 `evidenceRefs`。`sourceRefs` 只指向对话原始来源，工具、VERIFY 和外部佐证进入 `evidenceRefs`。建议、假设和未验证陈述即使相关性很高，也不能以“事实”标签注入；用户目标/偏好则在其权威范围内直接约束计划。
 - User Memory、Agent Self Memory、Task/Project/Session Memory 和 Knowledge Memory 使用同一套索引与写入协议。任何 domain 都按 D0 可发现索引、D1 摘要元数据、D2 原子正文、D3 来源与审计渐进展开；D0-D3 不等同于 T0-T3。
-- Memory Repository 还要登记用户、项目、文件、会话、任务、Skill、工具、规则和概念等实体，以及属于、依赖、引用、冲突、替代、派生、相似、影响等有向关系。D0/D1 只给出边界和最强相关关系，D2 按任务展开局部关系邻域，D3 才读取完整证据与历史；关系分数只服务导航，不直接触发事实确认或合并。
+- Memory Repository 还要登记用户、项目、文件、会话、任务、Skill、工具、规则和概念等实体，以及属于、依赖、引用、冲突、替代、派生、相似、影响和证据支持等有向关系。D0/D1 只给出边界和最强相关关系，D2 按任务展开局部关系邻域，D3 才读取完整证据与历史；关系可以在严格边界内发现候选，但不能直接触发事实确认、合并或无条件注入。
 - LS 自身记忆中的学习经验、工具技巧和失败教训可以持续更新，但不能覆盖高权威身份、安全规则、架构原则或用户当前要求；用户推断与用户明确陈述也必须分开存放和披露。
 - V3 backend 激活后，Runner 在每轮结束时补齐该轮全部对话原始来源；EVOLVE/CAPTURE 写 Atom 前先持久化其 `sourceRefs`，来源捕获失败时延期投影写入。正式 V2 路径在迁移前继续以会话 JSONL 保存可见对话，不提前创建 V3 来源文件。影响 Atom 的用户纠正、工具/VERIFY 证据、项目/资源变化、能力变化、冲突处理和时间到期统一生成版本化 `MemoryUpdateEvent`，并先写入只追加的投影变更记录，再登记到可恢复 journal，随后幂等更新 Atom 与 catalog；mutation 提交后另写 append-only commit receipt。投影变更记录落盘后即使在 journal 登记前崩溃，也必须在重启时自动补投影；catalog 重建使用 receipt 区分历史已提交记录与真正待恢复记录，禁止倒放旧 mutation 覆盖较新 Atom。处理失败进入恢复状态，禁止只更新内存或静默覆盖对话来源。
 - 时间变化通过 `effectiveAt`、`expiresAt`、`revalidateAt`、`lastUsefulAt` 和 due index 处理。运行中在安全边界近实时消费，到应用关闭期间跨过的时间点在下次启动补偿；不允许为“实时”无界轮询全部记忆或监控未授权文件。
 - 不失忆依赖持久权威副本、稳定索引、事件 journal、版本和恢复验证，不依赖全量 Prompt。当前请求不相关的记忆可以不注入，但必须仍可沿索引重新发现；用户批准的删除和到期清理仍按 tombstone、引用检查与审计执行。
 - 超出预算的结果返回摘要或可继续展开的索引，不直接塞入一段被截断的原始正文。
-- `EVOLVE` 提出长期、项目或经验记忆的写入意图；`CAPTURE` 记录详细 daily 流水。两个阶段都不能直接写入旧式扁平文件。
+- `EVOLVE` 提出长期、项目或经验记忆的写入意图；`CAPTURE` 记录详细 daily 流水。模型只描述 domain、statement kind、asserted source 与 topics；Runtime 根据对话来源、成功工具结果、外部证据和 VERIFY 决定认识状态与权威。两个阶段都不能直接写入旧式扁平文件。
 - 所有写入都包含 parent、scope、tier、检索键、来源 run、`sourceRefs`、`evidenceRefs`、置信度、重要性和理由。缺少父节点时进入恢复队列；重复或相似内容只能在 statement、epistemic、authority 和作用域兼容时强化或合并。合并保留来源、证据、来源 Atom tombstone 与历史；重复出现本身不能覆盖正文或提高 confidence。合法父级变化保持稳定 Atom id，并执行 revision、同作用域和循环校验。
-- 管理页和设置页必须读取并修改同一套运行时记忆树、仓库和策略配置。
+- 用户侧记忆页只读取应用数据根中的记忆文件目录，当前仅允许修改 `SOUL.md`；不得在普通 GUI 中暴露 Atom、关系、向量和压缩投影。Runtime 内部治理、检索和审计继续使用同一套 Memory Repository，不能因前端简化而建立展示副本。
+- LLM 每轮只预载记忆树简介与受限根索引，具体 Atom 按索引渐进介入；“树可完整访问”不等于“树内容完整注入”。
 - Skill 治理必须按 owner/source 保留所有权。LS 可以提出重复 Skill 的合并候选，或对长期无验证收益的 Skill 提出停用、归档与删除建议；合并前需验证适用范围、依赖、权限和回归，删除前需确认无引用、经过保留期且可恢复。插件、内置或外部来源文件默认只能停用登记，不能由 LS 擅自删除。
 - 目标分级为 T0-T3：T0 仅保存极小、稳定、必须常驻的身份/安全/根索引；T1 保存当前作用域核心规则与摘要；T2 保存任务相关片段；T3 保存低频细节、对话原始来源、深层审计和分支内深搜候选。现有 T1-T3 数据升级到含 T0 的协议时必须版本化迁移。
 - `AGENTS.md`、`SOUL.md`、`USER.md`、`PHILOSOPHY.md`、`TOOLS.md`、`MEMORY.md`、Skills、项目规范、UI 规范和任务书等资源通过记忆注册表描述权威、作用域、隐私和索引键，不等于把这些文档常驻注入每轮 Context。
@@ -184,26 +188,27 @@
 - 自动重规划耗尽后升级到 `ASK_USER`，不会用“强制通过”掩盖未完成任务。
 - Runner 只持有一个索引优先记忆运行时实例，供提示词装配、`memory_tree`、兼容 `memory_search`、EVOLVE/CAPTURE 写入、缓存失效、执行日志和设置概览共同使用。
 - 固定 daily prelude 和 `MEMORY.md` 启动注入已关闭；旧扁平文件、项目/Git 状态、经验数据和向量仍作为按需兼容来源保留。
-- 运行时强制 `root index -> branch index -> expansion -> branch-scoped deep search`；前置条件失败时记录为零注入 token，普通展开不能调用向量来源。
+- 运行时强制 `root index -> branch index -> expansion -> branch-scoped deep search`；D1 只在已限定 branch/scope 内使用层级与 FTS 索引，不调用 Embedding。task relevance 由独立评分器计算，不混入 confidence、importance 或历史 usefulness；prime 检查每分支最多 80 个 D1 条目后执行 `> 0.25` admission 和最强相关簇截断。高相关种子可经同 branch/scope/subtree 的有界一跳关系发现必要候选，强关系候选只有独立通过任务门后才能进入首次 working set；路径与 route 证据进入 KnownState。版本化会话摘要已接入同一任务语义，仅在真实指代且近期锚点不足时回退。前置条件失败时记录为零注入 token，普通展开不能调用向量来源。同一次分支内深搜的查询向量必须跨已授权 scope 复用，不能因 scope 数量重复计算。
 - 结构化记忆写入具备阈值、写侧安全检查、父级索引原子更新、审计记录、恢复排队、去重和合并。
 - TaskBook、步骤、工具调用、验证结果和最终回复会进入执行日志，历史 UI 与实时过程使用同一套无气泡展示结构。
 - `@littlesheep/context` 已接管显式候选、稳定排序、窗口预算、可选项淘汰、压缩建议和脱敏 `ContextSnapshot`；System Prompt 内部已经按基础策略、记忆根索引、bootstrap 文件、行为 profile、reasoning、Workflow/TaskBook 和输出约束拆成可追溯 segment。
 - 每次模型请求都解析独立、版本化的 `LlmCallContract`，明确 purpose、stage、Context 来源、允许决策、输出结构、工具、记忆意图和预算；缺少必需 Context、stage 不匹配、工具越权或预算无效时在发送前失败关闭，`FINALIZE` 禁止额外模型调用。
-- EVOLVE/CAPTURE 只接收模型的结构化记忆建议；运行时依据真实步骤、工具和 VERIFY 证据决定是否提交，`invalidate` 与 `conflict` 只延期审计而不直接修改记忆。`PHILOSOPHY.md` 已作为显式理念资源注册，只沿索引按任务相关性和预算展开，不进入常驻 Prompt bootstrap。
+- `CAPTURE` 默认从已经持久化的用户可见运行事实确定性生成 daily 记录；`EVOLVE` 按复杂度和记忆信号自适应调用。用户可见的聊天回复、澄清问题、任务/步骤说明、验证说明、执行结论和交付表达必须由 LLM 结合 `SOUL.md`/profile 生成或复用已经生成的模型文案，不能为了节省调用把前台语气改成固定模板。UI 控件、状态、路径、权限和进度数字仍由 Runtime 稳定提供；模型不可用时才允许使用明确的确定性降级文案。
+- EVOLVE/CAPTURE 只接收模型的结构化记忆建议；模型不得自报 verified 或 authority。运行时会验证 asserted source，证据不足时降级为 LS 自身的未验证陈述并丢弃不可信主体 id/label；`invalidate` 与 `conflict` 只延期审计而不直接修改记忆。`PHILOSOPHY.md` 已作为显式理念资源注册，只沿索引按任务相关性和预算展开，不进入常驻 Prompt bootstrap。
 - 本地精确 ledger 与 Provider usage 已使用不同结构保存，Provider usage 会绑定到产生它的准确 Context 快照；UI 能区分“供应商实测”“本地精确装配”和“tokenizer 不可用”，不会用字符换算冒充真实 token。
 - 会话压缩已实现为非破坏式、版本化 Summary Memory：原始 JSONL 消息保留，旧消息摘要在下一轮作为独立 `summary_memory` 来源介入，并可按消息阈值或精确 Context 占用阈值触发。
 - CLASSIFY、DECIDE 和 REPLY 只接收附件清单；非图片正文通过当前 run 专属的 `inspect_attachment` 只读工具按需解析，未调用时不会读取文件正文，工具结果再进入 Context。图片仍按受限大小读取为多模态输入。
 - 当前记忆层级已升级为 T0-T3，并通过版本化迁移保留旧 T1-T3 数值与数据；T0 只承载固定预算的核心索引和安全信息。
-- 当前已支持 `AbortSignal`、步骤级局部恢复和历史执行记录重放；尚未实现运行中用户事件队列、安全重入协议、活动 run 检查点及应用重启续跑。
+- 当前已支持 `AbortSignal`、步骤级局部恢复、工具调用级有界并行、shadow Git 数据/工作区检查点、退出冻结和历史执行记录重放；尚未实现运行中用户事件队列、安全重入协议、TaskBook 步骤级并行、活动 run 启动续跑和后台托盘。
 - 内置写入、编辑与命令工具已接入宿主级核心源码只读根；读、grep、glob 等诊断仍可用。第三方本地插件代码仍属于显式完全信任边界，不能把插件信任误写成系统级代码沙箱。
 
 ## 后续硬化方向
 
 - 使用真实 OpenAI、DeepSeek、GLM 配置完成最小对话、工具调用、中断和长任务冒烟，确认各模型的 reasoning、上下文上限和 usage 映射。
 - Provider/模型 tokenizer 能力矩阵已经建立：只有模型能力声明和运行时计数器 id 一致时才允许精确账本，当前内置模型均保持 unavailable。对于 unavailable 模型，Context Engine 已使用最终 Chat Completions 载荷的 UTF-8 保守估算和独立图片预算做请求前防溢出、可选项淘汰与压缩触发；该估算明确不可展示为真实 token。下一步完成本地装配、安全估算与 Provider usage 的真实对账验收。
-- 继续验证长会话压缩后的任务约束、未完成步骤、记忆来源、权限结果和失败回退；附件缓存、ownership 清理、workplace 索引和可回滚数据根迁移已完成工程闭环，后续只做真实用户场景验收与发布兼容。
-- 替换或退役尚未接入主运行时的旧 `distillDailyToMemory()` 原始追加 helper；任何未来 daily 到长期记忆的蒸馏都必须走安全、去重、可回滚的结构化写入闸门，不能重新启用扁平追加路径。
-- 实现实体/关系 catalog 与 Skill 治理队列；关系相似度不自动确认事实，Skill 相似度不自动合并或删除。
+- 压缩后任务锚点的本地 BGE 与重启连续性门已经完成；继续验证真实 Provider 长会话中的任务约束、未完成步骤、记忆来源、权限结果、摘要失败回退、工具副作用恢复和成本。附件缓存、ownership 清理、workplace 索引和可回滚数据根迁移已完成工程闭环，后续只做真实用户场景验收与发布兼容。
+- 旧 `distillDailyToMemory()/markDistilled()` 原始追加 helper 已退役并由仓库卫生门阻止回流；任何未来 daily 到长期记忆的蒸馏都必须走安全、去重、可回滚的结构化写入闸门。
+- 实体/关系 catalog 与有界一跳候选发现已经实现；下一步建立自动关系投影与冲突/替代调和，关系必须经稳定实体、方向、作用域、来源和证据验证后才能激活。Skill 治理队列仍待实现，Skill 相似度不自动合并或删除。
 - 实现 `packages/mcp/` 客户端，同时复用内置工具的权限、超时、清洗和执行记录契约。
 - 继续进行工作区、渠道、记忆树和重启恢复的真实用户场景验收。
-- 按 [Agent Runtime 连续性任务书 2026-07-14](../taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md) 建立 Context、T0-T3、附件、运行中重入、有界并行、检查点、后台执行和双向透明的完整闭环；仓库拆分和 LLM Call Contract 的先行顺序见 [总基调、认知架构与仓库基元化任务书 2026-07-15](../taskbooks/foundation-cognition-repository-taskbook-2026-07-15.md)。
+- 按 [Agent Runtime 连续性任务书 2026-07-14](../taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md) 和 [Agent Runtime 效率与版本化连续性任务书 2026-07-17](../taskbooks/agent-runtime-efficiency-versioning-taskbook-2026-07-17.md) 建立 Context、T0-T3、附件、运行中重入、有界并行、检查点、后台执行和双向透明的完整闭环；仓库拆分和 LLM Call Contract 的先行顺序见 [总基调、认知架构与仓库基元化任务书 2026-07-15](../taskbooks/foundation-cognition-repository-taskbook-2026-07-15.md)。

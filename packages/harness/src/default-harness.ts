@@ -19,7 +19,7 @@ import type { SessionManager } from '@littlesheep/session';
 import type { MemoryStoreLike } from '@littlesheep/types';
 import type { Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
-import type { MemoryWriteServiceLike } from '@littlesheep/memory-tree';
+import type { MemoryRunRefinementServiceLike, MemoryWriteServiceLike } from '@littlesheep/memory-tree';
 import { HookRunner } from './hooks/runner.js';
 import { enterStage } from './stages/enter.js';
 import { createClassifyStage } from './stages/classify.js';
@@ -42,6 +42,8 @@ export interface DefaultHarnessOptions {
   branding: BrandingConfig;
   /** Indexed, guarded autonomous memory writer used by EVOLVE/CAPTURE. */
   memoryWriter?: MemoryWriteServiceLike;
+  /** Bounded post-DECIDE memory refinement using the normalized TaskBook. */
+  memoryRefiner?: MemoryRunRefinementServiceLike;
   /**
    * Optional: if provided, EVOLVE may autonomously create skills when it
    * identifies a reusable pattern. This is the agent's self-evolution
@@ -80,6 +82,8 @@ export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness 
     model: opts.model,
     config: opts.config,
     branding: opts.branding,
+    memoryRefiner: opts.memoryRefiner,
+    log: opts.log,
   }));
   stages.set('execute', createExecuteStage({
     llm: opts.llm,
@@ -100,11 +104,13 @@ export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness 
     model: opts.model,
     memoryWriter: opts.memoryWriter,
     createSkill: opts.createSkill,
+    llmPolicy: opts.config.memory.llmEvolve,
   }));
   stages.set('capture', createCaptureStage({
     llm: opts.llm,
     model: opts.model,
     memoryWriter: opts.memoryWriter,
+    llmEnabled: opts.config.memory.llmCapture,
   }));
   stages.set('reply', createReplyStage({
     llm: opts.llm,
@@ -112,7 +118,10 @@ export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness 
     config: opts.config,
     branding: opts.branding,
   }));
-  stages.set('ask_user', createAskUserStage());
+  stages.set('ask_user', createAskUserStage({
+    llm: opts.llm,
+    model: opts.model,
+  }));
   stages.set('finalize', createFinalizeStage({
     sessionManager: opts.sessionManager,
   }));

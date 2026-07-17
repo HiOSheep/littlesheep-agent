@@ -4,17 +4,18 @@ import type { MemoryScope } from '../types.js';
 import type { MemoryAtomStore } from '../v3/atom-store.js';
 import type { MemoryCatalog } from '../v3/catalog.js';
 import type {
-  MemoryAccessRecord,
   MemoryAtom,
+  MemoryAtomRetrievalPath,
   MemoryAtomHistory,
   MemoryCandidatePriorityBreakdown,
   MemoryDisclosureLevel,
   MemoryEvidenceEnvelope,
   MemoryRelation,
+  MemoryRelationRouteEvidence,
   MemoryRelationNeighborhood,
 } from '../v3/contracts.js';
 import type { MemoryV3GraphStore } from '../v3/graph-store.js';
-import { scoreMemoryCandidate } from '../v3/priority.js';
+import { memoryRoutingRelevance, scoreMemoryCandidate } from '../v3/priority.js';
 import { isMemoryV3InternalRootId } from './v3-node-mapping.js';
 import type { MemoryV3RepositoryLedger } from './v3-ledger.js';
 import type {
@@ -27,12 +28,16 @@ const MAX_ENTITIES = 16;
 const MAX_HISTORY = 16;
 const MAX_EVIDENCE_REFS = 24;
 const MAX_AUTHORITY_TOPICS = 16;
+const DEEP_SEARCH_CLUSTER_MIN_TOP = 0.75;
+const DEEP_SEARCH_CLUSTER_MIN_DROP = 0.06;
 
 export interface MemoryV3ScoredCandidate {
   atom: MemoryAtom;
   relevance: number;
-  retrievalPath: Extract<MemoryAccessRecord['path'], 'hierarchy' | 'fts' | 'vector'>;
+  retrievalPath: MemoryAtomRetrievalPath;
   matchReason: string;
+  relationshipRelevanceHint?: number;
+  relationRoute?: MemoryRelationRouteEvidence;
 }
 
 export class MemoryV3CandidateMaterializer {
@@ -53,18 +58,39 @@ export class MemoryV3CandidateMaterializer {
       const current = deduped.get(candidate.atom.id);
       if (!current || candidate.relevance > current.relevance) deduped.set(candidate.atom.id, candidate);
     }
+    const relationshipRelevance = this.catalog.relationRelevanceForAtoms([...deduped.keys()], request.now);
     const scored = [...deduped.values()].map((candidate) => ({
       candidate,
-      priority: this.priority(candidate.atom, candidate.relevance, request.now),
+      priority: this.priority(
+        candidate.atom,
+        candidate.relevance,
+        Math.max(
+          relationshipRelevance.get(candidate.atom.id) ?? 0.5,
+          candidate.relationshipRelevanceHint ?? 0.5,
+        ),
+        request.now,
+      ),
     })).filter((entry) => entry.priority.eligible);
     scored.sort((left, right) => right.priority.score - left.priority.score
       || right.candidate.atom.updatedAt.localeCompare(left.candidate.atom.updatedAt)
       || left.candidate.atom.id.localeCompare(right.candidate.atom.id));
 
-    const selected = scored.slice(0, Math.max(1, Math.min(request.limit, 100)));
+    const limit = Math.max(1, Math.min(request.limit, 100));
+    const selected = isDeepSearchRequest(request)
+      ? selectDeepSearchCluster(scored, limit)
+      : scored.slice(0, limit);
     return Promise.all(selected.map(async ({ candidate, priority }) => {
       const conflict = isConflict(candidate.atom);
-      const envelope = evidenceEnvelope(candidate, disclosureLevel, conflict, request.now);
+      const envelope = evidenceEnvelope(
+        candidate,
+        disclosureLevel,
+        conflict,
+        request.now,
+        priority.taskRelevance,
+        priority.routingRelevance,
+        priority.relationshipRelevance,
+        priority.activation,
+      );
       const includeDetails = disclosureLevel === 'D2' || disclosureLevel === 'D3';
       return {
         atom: candidate.atom,
@@ -87,7 +113,12 @@ export class MemoryV3CandidateMaterializer {
     return { ...structuredClone(atom), scopeKey, authorityScope };
   }
 
-  private priority(atom: MemoryAtom, taskRelevance: number, now: string): MemoryCandidatePriorityBreakdown {
+  private priority(
+    atom: MemoryAtom,
+    taskRelevance: number,
+    relationshipRelevance: number,
+    now: string,
+  ): MemoryCandidatePriorityBreakdown {
     const useful = atom.verifiedUsefulness.useful;
     const negative = atom.verifiedUsefulness.notUseful + atom.verifiedUsefulness.conflicts + atom.verifiedUsefulness.stale;
     const verifiedUsefulness = (useful + 1) / (useful + negative + 2);
@@ -104,6 +135,8 @@ export class MemoryV3CandidateMaterializer {
       taskRelevance,
       authorityMatch: authorityWeight(atom.authorityScope.kind),
       verifiedUsefulness,
+      routingRelevance: memoryRoutingRelevance(atom, now),
+      relationshipRelevance,
       decayHalfLifeDays: 45,
       requiredByCurrentUser,
       safetyCritical,
@@ -163,11 +196,43 @@ export class MemoryV3CandidateMaterializer {
   }
 }
 
+function isDeepSearchRequest(request: MemoryRepositoryIndexRequest): boolean {
+  return 'mode' in request && request.mode === 'deep-search';
+}
+
+export function selectDeepSearchCluster<T extends { priority: { taskRelevance: number } }>(
+  scored: T[],
+  limit: number,
+): T[] {
+  const baseline = scored.slice(0, limit);
+  if (baseline.length < 2) return baseline;
+  const byTask = [...scored]
+    .sort((left, right) => right.priority.taskRelevance - left.priority.taskRelevance)
+    .slice(0, limit);
+  if (byTask[0]!.priority.taskRelevance < DEEP_SEARCH_CLUSTER_MIN_TOP) return baseline;
+  let splitAfter = -1;
+  let largestDrop = 0;
+  for (let index = 0; index + 1 < byTask.length; index += 1) {
+    const drop = byTask[index]!.priority.taskRelevance - byTask[index + 1]!.priority.taskRelevance;
+    if (drop > largestDrop) {
+      largestDrop = drop;
+      splitAfter = index;
+    }
+  }
+  if (splitAfter < 0 || largestDrop < DEEP_SEARCH_CLUSTER_MIN_DROP) return baseline;
+  const floor = byTask[splitAfter]!.priority.taskRelevance;
+  return scored.filter((entry) => entry.priority.taskRelevance >= floor).slice(0, limit);
+}
+
 function evidenceEnvelope(
   candidate: MemoryV3ScoredCandidate,
   disclosureLevel: MemoryDisclosureLevel,
   conflict: boolean,
   nowValue: string,
+  taskRelevance: number,
+  routingRelevance: number,
+  relationshipRelevance: number,
+  activation: MemoryEvidenceEnvelope['activation'],
 ): MemoryEvidenceEnvelope {
   const atom = candidate.atom;
   const now = Date.parse(nowValue);
@@ -190,9 +255,14 @@ function evidenceEnvelope(
     confidence: atom.confidence,
     importance: atom.importance,
     verifiedUsefulness: structuredClone(atom.verifiedUsefulness),
+    taskRelevance,
+    routingRelevance,
+    relationshipRelevance,
+    activation: structuredClone(activation),
     updatedAt: atom.updatedAt,
     lastVerifiedAt: atom.lastVerifiedAt,
     retrievalPath: candidate.retrievalPath,
+    relationRoute: candidate.relationRoute ? structuredClone(candidate.relationRoute) : undefined,
     matchReason: candidate.matchReason,
     conflict: conflict || expired,
     expired,

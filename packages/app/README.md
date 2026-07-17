@@ -51,7 +51,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\refresh-deskto
 | `src/main/workspace-*.ts` | 工作区布局、产物、文件路由和 shell。 |
 | `src/renderer/App.tsx` | 主 UI 编排。 |
 | `src/renderer/TraceCard.tsx` | TaskBook、工具和验证过程。 |
-| `src/renderer/MemoryTreeView.tsx` | 真实记忆树控制面。 |
+| `src/main/memory-files.ts`、`src/renderer/MemoryTreeView.tsx` | 用户记忆文件视图；只显示六份权威文件，后端仅允许编辑 `SOUL.md`，不暴露 Atom、关系或向量结构。 |
+| `src/renderer/chat/assistant-turn.tsx`、`Markdown.tsx`、`workspace/browser.tsx` | 思考/执行/结果渐进披露与文件、网页链接的内置预览。 |
 | `src/renderer/api.ts` | Local App API 客户端。 |
 | `src/renderer/styles.css` | 共享深灰视觉和交互规范。 |
 

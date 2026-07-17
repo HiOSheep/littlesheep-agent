@@ -52,7 +52,6 @@ describe('e2e agent loop', () => {
       textResponse('all done', 'stop'),
       textResponse('{"verdict":"pass","reason":"goal achieved"}'),
       textResponse('{"notes":[]}'),
-      textResponse('{"insights":[]}'),
     ]);
     const h = makeHarness(llm);
     const ctx = makeCtx({ inbound: textMessage('user', 'solve P vs NP') });
@@ -82,7 +81,6 @@ describe('e2e agent loop', () => {
       'execute_tool_loop',
       'verify',
       'evolve',
-      'capture',
     ]);
     for (const request of ctx.modelRequests ?? []) {
       const contract = request.callContract;
@@ -155,7 +153,7 @@ describe('e2e agent loop', () => {
     const ctx = makeCtx({ inbound: textMessage('user', 'xyzzy') });
     const res = await h.run(ctx);
     expect(res.ok).toBe(true);
-    expect(ctx.reply).toContain('What would you like LS to help you accomplish?');
+    expect(ctx.reply).toBe('Could you clarify what you want?');
     const trace = res.meta?.trace as Array<{ name: string }>;
     expect(trace.map((t) => t.name)).toEqual(['enter', 'classify', 'ask_user', 'finalize']);
     expect(ctx.clarificationRequest?.kind).toBe('ambiguous_request');

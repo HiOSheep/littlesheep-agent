@@ -1,6 +1,7 @@
 // @littlesheep/types — session.ts
 // Session identity + transcript shape.
 
+import type { AtomicCacheMetadata } from './cache.js';
 import type { Message } from './message.js';
 
 /** Branded session id (string). */
@@ -83,9 +84,7 @@ export interface LockHandle {
   release(): Promise<void>;
 }
 
-/** Compaction summary written when a session is compacted. */
-export interface CompactionSummary {
-  version: 1;
+interface CompactionSummaryBase {
   id: string;
   /** Messages collapsed into the summary. */
   collapsedCount: number;
@@ -100,6 +99,46 @@ export interface CompactionSummary {
   previousSummaryId?: string;
   model?: string;
 }
+
+/** Legacy metadata-only summary retained for existing user data. */
+export interface CompactionSummaryV1 extends CompactionSummaryBase {
+  version: 1;
+}
+
+export interface CompactionSourceRange {
+  messageCount: number;
+  sourceStartMessageId: string;
+  sourceEndMessageId: string;
+  sourceStartAt: string;
+  sourceEndAt: string;
+  sourceHash: string;
+}
+
+/**
+ * Atomic, non-destructive session projection. The transcript remains the
+ * source of truth; this projection is bounded to three compression levels.
+ */
+export interface CompactionSummaryV2 extends CompactionSummaryBase {
+  version: 2;
+  cache: AtomicCacheMetadata & {
+    namespace: 'session-summary';
+    dataClass: 'semantic';
+    vectorClass: 'semantic-cache';
+  };
+  sourceRanges: CompactionSourceRange[];
+  /** Recent summary ids only. This list is bounded and never becomes a chain. */
+  sourceSummaryIds: string[];
+  /** Run ids represented by the preserved source transcript, bounded to recent ids. */
+  sourceRunIds?: string[];
+  /** True when older source run ids were omitted from the bounded projection. */
+  sourceRunIdsTruncated?: boolean;
+  mergedSummaryCount: number;
+  sourceHash: string;
+  lineageHash: string;
+}
+
+/** Compaction summary written when a session is compacted. */
+export type CompactionSummary = CompactionSummaryV1 | CompactionSummaryV2;
 
 /**
  * Structural interface for a session manager.

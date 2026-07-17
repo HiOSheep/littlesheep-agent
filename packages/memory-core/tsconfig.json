@@ -9,19 +9,10 @@
   "extends": "../../tsconfig.base.json",
   "references": [
     {
-      "path": "../config"
-    },
-    {
-      "path": "../llm"
-    },
-    {
       "path": "../safety"
     },
     {
       "path": "../types"
-    },
-    {
-      "path": "../vector"
     }
   ]
 }

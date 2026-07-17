@@ -103,6 +103,7 @@ export function escalateExhaustedReplan(ctx: RunContext, reason: string, feedbac
     sourceStage: 'verify',
     createdAt: new Date().toISOString(),
     originalRequest,
+    copySource: 'runtime_fallback',
     blockingReason: chinese
       ? `自动局部重规划已达到上限，任务仍未达标：${feedback || reason}`
       : `Automatic partial re-planning reached its limit and the task is still incomplete: ${feedback || reason}`,

@@ -159,6 +159,18 @@ export async function openWorkspacePath(root: string, path: string): Promise<voi
   }
 }
 
+export async function openExternalHref(href: string): Promise<void> {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.externalOpen), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ href }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
+    throw new Error((data as { error: string }).error)
+  }
+}
+
 export async function openWorkspacePathInVSCode(root: string, path?: string): Promise<void> {
   const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.workspaceOpenVscode), {
     method: 'POST',

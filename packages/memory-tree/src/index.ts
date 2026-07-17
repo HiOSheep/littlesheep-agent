@@ -42,6 +42,7 @@ export {
   type MemoryResourceRebindPatch,
   type MemoryWriteIntent,
   type MemoryNode,
+  type MemoryRecentNodeQuery,
   type MemoryNodeStatus,
   type MemoryManagementAction,
   type MemoryManagementAuditRecord,
@@ -58,6 +59,23 @@ export {
   type GitLogEntry,
 } from './types.js';
 export { MemoryTree } from './memory-tree.js';
+export {
+  composeMemoryTaskQuery,
+  type MemoryTaskContinuitySummary,
+  type MemoryTaskQuery,
+  type MemoryTaskQueryHistoryMessage,
+  type MemoryTaskQueryLimits,
+  type MemoryTaskQuerySegment,
+  type MemoryTaskQuerySegmentSource,
+  type MemoryTaskReferenceKind,
+} from './task-query.js';
+export {
+  scoreMemoryTaskRelevance,
+  describeMemoryTaskRelevance,
+  type MemoryTaskRelevanceDocument,
+  type MemoryTaskRelevanceField,
+  type MemoryTaskRelevanceResult,
+} from './task-relevance.js';
 export {
   MemoryResourceBranch,
   type MemoryResourceBranchOptions,
@@ -146,6 +164,9 @@ export {
   runtimeEventLedgerResourceId,
   type MemoryServiceOptions,
   type MemoryRunStart,
+  type MemoryRunRefinement,
+  type MemoryRunRefinementInput,
+  type MemoryRunRefinementServiceLike,
   type MemoryRunResourceInput,
   type MemoryManagementSnapshot,
   type MemorySkillResourceInput,
@@ -179,6 +200,13 @@ export {
 export { estimateTokens, activityScore, truncateChunk, MIN_USEFUL_TOKENS } from './util.js';
 export { memoryUseFeedbackFromRun } from './memory-feedback.js';
 export {
+  MemoryDailyConsolidationService,
+  type MemoryDailyConsolidationFailure,
+  type MemoryDailyConsolidationInput,
+  type MemoryDailyConsolidationResult,
+  type MemoryDailyConsolidationServiceOptions,
+} from './memory-consolidation.js';
+export {
   MemoryConversationSourceStore,
   MemoryConversationSourceConflictError,
   MEMORY_CONVERSATION_SOURCE_VERSION,
@@ -198,7 +226,11 @@ export type {
   MemoryActorRef,
   MemoryAuthorityScope,
   MemoryDomain,
+  MemoryEntityType,
+  MemoryRelationType,
+  MemoryWriteEntityHint,
   MemoryWriteEpistemicMetadata,
+  MemoryWriteRelationHint,
   StatementKind,
 } from './epistemic.js';
 export {

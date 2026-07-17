@@ -4,12 +4,19 @@ import type { MemoryCatalog } from '../v3/catalog.js';
 import type { MemoryAccessRecord, MemoryAtom } from '../v3/contracts.js';
 import { EmbeddingUnavailableError } from '../v3/embedding-engine.js';
 import type { MemoryV3GraphStore } from '../v3/graph-store.js';
+import {
+  describeMemoryTaskRelevance,
+  scoreMemoryTaskRelevance,
+} from '../task-relevance.js';
+import { composeMemoryTaskQuery, type MemoryTaskQuery } from '../task-query.js';
 import { isMemoryV3InternalRootId } from './v3-node-mapping.js';
 import type { MemoryV3RepositoryLedger } from './v3-ledger.js';
 import {
   MemoryV3CandidateMaterializer,
   type MemoryV3ScoredCandidate,
 } from './v3-retrieval-materializer.js';
+import { addMemoryV3RelationCandidates } from './v3-retrieval-relations.js';
+import { listActivationFallback } from './v3-retrieval-activation.js';
 import type {
   MemoryRepositoryCandidate,
   MemoryRepositoryIndexRequest,
@@ -19,6 +26,7 @@ import type {
 } from './retrieval.js';
 
 const MAX_CANDIDATE_POOL = 400;
+const D1_FALLBACK_POOL = 80;
 
 interface ResolvedScope extends MemoryRetrievalScope {
   storageScopeKey?: string;
@@ -51,42 +59,69 @@ export class MemoryV3Retrieval implements MemoryRepositoryRetrievalBackend {
   }
 
   async indexMemory(request: MemoryRepositoryIndexRequest): Promise<MemoryRepositoryCandidate[]> {
+    const taskQuery = request.taskQuery ?? composeMemoryTaskQuery(request.query);
+    const retrievalQuery = taskQuery.retrievalText || request.query;
     const scopes = await this.resolveScopes(request.scopes);
     const pool: MemoryV3ScoredCandidate[] = [];
     for (const scope of scopes) {
       throwIfAborted(request.signal);
-      const entries = request.parentNodeId
+      const entries = new Map<string, {
+        entry: ReturnType<MemoryCatalog['listAtoms']>[number];
+        retrievalPath: Extract<MemoryAccessRecord['path'], 'hierarchy' | 'fts'>;
+      }>();
+      if (!request.parentNodeId && retrievalQuery.trim()) {
+        const ftsLimit = Math.min(200, Math.max(request.limit * 2, 40));
+        for (const result of this.catalog.searchFts(retrievalQuery, {
+          branch: request.branch,
+          scope: scope.scope,
+          scopeKey: scope.storageScopeKey,
+          limit: ftsLimit,
+        })) {
+          entries.set(result.entry.atomId, { entry: result.entry, retrievalPath: 'fts' });
+        }
+      }
+      const fallback = request.parentNodeId
         ? this.catalog.listChildren(request.parentNodeId, {
             branch: request.branch,
             scope: scope.scope,
             scopeKey: scope.storageScopeKey,
           }).slice(0, MAX_CANDIDATE_POOL)
-        : this.catalog.listAtoms({
-            branch: request.branch,
-            scope: scope.scope,
-            scopeKey: scope.storageScopeKey,
-            status: 'active',
-            limit: MAX_CANDIDATE_POOL,
-          });
-      for (const entry of entries) {
+        : listActivationFallback(
+            this.catalog,
+            request,
+            scope,
+            retrievalQuery.trim() ? D1_FALLBACK_POOL : MAX_CANDIDATE_POOL,
+          );
+      for (const entry of fallback) {
+        if (!entries.has(entry.atomId)) entries.set(entry.atomId, { entry, retrievalPath: 'hierarchy' });
+      }
+      for (const { entry, retrievalPath } of entries.values()) {
         throwIfAborted(request.signal);
         if (isMemoryV3InternalRootId(entry.atomId)) continue;
         const atom = await this.atomStore.read(entry.atomId);
         if (!atom) continue;
+        const relevance = taskRelevance(atom, taskQuery);
+        if (relevance.blockedByExclusion) continue;
         pool.push({
           atom: this.materializer.publicAtom(atom),
-          relevance: lexicalRelevance(atom, request.query),
-          retrievalPath: 'hierarchy',
-          matchReason: request.query.trim()
-            ? `D1 branch index relevance for "${cleanInline(request.query)}".`
+          relevance: relevance.score,
+          retrievalPath,
+          matchReason: retrievalQuery.trim()
+            ? `D1 ${retrievalPath} candidate for "${cleanInline(retrievalQuery)}": ${describeMemoryTaskRelevance(relevance)}.`
             : 'D1 branch index priority.',
         });
       }
     }
-    return this.materializer.materialize(pool, request, 'D1');
+    const routed = await addMemoryV3RelationCandidates({
+      pool, request, taskQuery, atomStore: this.atomStore, catalog: this.catalog,
+      publicAtom: (atom) => this.materializer.publicAtom(atom),
+    });
+    return this.materializer.materialize(routed, request, 'D1');
   }
 
   async retrieveMemory(request: MemoryRepositoryRetrievalRequest): Promise<MemoryRepositoryCandidate[]> {
+    const taskQuery = request.taskQuery ?? composeMemoryTaskQuery(request.query);
+    const retrievalQuery = taskQuery.retrievalText || request.query;
     const scopes = await this.resolveScopes(request.scopes);
     throwIfAborted(request.signal);
     let pool: MemoryV3ScoredCandidate[] = [];
@@ -98,13 +133,14 @@ export class MemoryV3Retrieval implements MemoryRepositoryRetrievalBackend {
         && await this.insideSubtree(exact, request.subtreeRootId)) {
         pool.push({
           atom: this.materializer.publicAtom(exact),
-          relevance: 1,
-          retrievalPath: 'hierarchy',
-          matchReason: `Selected atom ${exact.id} through the indexed hierarchy.`,
+          relevance: retrievalQuery.trim() ? taskRelevance(exact, taskQuery).score : 1,
+          retrievalPath: request.retrievalPathHint ?? 'hierarchy',
+          matchReason: request.retrievalMatchReasonHint
+            ?? `Selected atom ${exact.id} through the indexed hierarchy.`,
         });
       }
-    } else if (request.query.trim()) {
-      pool = await this.searchScoped(request, scopes);
+    } else if (retrievalQuery.trim()) {
+      pool = await this.searchScoped(request, scopes, taskQuery);
     } else {
       for (const scope of scopes) {
         throwIfAborted(request.signal);
@@ -122,14 +158,18 @@ export class MemoryV3Retrieval implements MemoryRepositoryRetrievalBackend {
           if (!atom || !await this.insideSubtree(atom, request.subtreeRootId)) continue;
           pool.push({
             atom: this.materializer.publicAtom(atom),
-            relevance: lexicalRelevance(atom, request.query),
+            relevance: taskRelevance(atom, taskQuery).score,
             retrievalPath: 'hierarchy',
             matchReason: 'Selected by scoped hierarchy priority.',
           });
         }
       }
     }
-    return this.materializer.materialize(pool, request, request.disclosureLevel);
+    const routed = request.nodeId ? pool : await addMemoryV3RelationCandidates({
+      pool, request, taskQuery, atomStore: this.atomStore, catalog: this.catalog,
+      publicAtom: (atom) => this.materializer.publicAtom(atom),
+    });
+    return this.materializer.materialize(routed, request, request.disclosureLevel);
   }
 
   recordMemoryAccess(records: MemoryAccessRecord[]): void {
@@ -141,10 +181,20 @@ export class MemoryV3Retrieval implements MemoryRepositoryRetrievalBackend {
   private async searchScoped(
     request: MemoryRepositoryRetrievalRequest,
     scopes: ResolvedScope[],
+    taskQuery: MemoryTaskQuery,
   ): Promise<MemoryV3ScoredCandidate[]> {
+    const retrievalQuery = taskQuery.retrievalText || request.query;
     const merged = new Map<string, MemoryV3ScoredCandidate>();
     const perScopeLimit = Math.min(MAX_CANDIDATE_POOL, Math.max(request.limit * 4, 20));
+    let preparedVector: Awaited<ReturnType<MemoryCatalog['prepareVectorQuery']>> | undefined;
+    try {
+      preparedVector = await this.catalog.prepareVectorQuery(retrievalQuery, request.signal);
+    } catch (error) {
+      if (!(error instanceof EmbeddingUnavailableError)) throw error;
+      // A missing local model never blocks hierarchy or FTS retrieval.
+    }
     for (const scope of scopes) {
+      throwIfAborted(request.signal);
       const options = {
         branch: request.branch,
         scope: scope.scope,
@@ -152,16 +202,13 @@ export class MemoryV3Retrieval implements MemoryRepositoryRetrievalBackend {
         subtreeRootId: request.subtreeRootId,
         limit: perScopeLimit,
       } as const;
-      for (const result of this.catalog.searchFts(request.query, options)) {
-        await this.mergeSearchResult(merged, result.entry.atomId, result.score, 'fts', request.query);
+      for (const result of this.catalog.searchFts(retrievalQuery, options)) {
+        await this.mergeSearchResult(merged, result.entry.atomId, result.score, 'fts', taskQuery);
       }
-      try {
-        for (const result of await this.catalog.searchVector(request.query, options, request.signal)) {
-          await this.mergeSearchResult(merged, result.entry.atomId, result.score, 'vector', request.query);
+      if (preparedVector) {
+        for (const result of this.catalog.searchPreparedVector(preparedVector, options)) {
+          await this.mergeSearchResult(merged, result.entry.atomId, result.score, 'vector', taskQuery);
         }
-      } catch (error) {
-        if (!(error instanceof EmbeddingUnavailableError)) throw error;
-        // A missing local model never blocks hierarchy or FTS retrieval.
       }
     }
     return [...merged.values()];
@@ -172,19 +219,25 @@ export class MemoryV3Retrieval implements MemoryRepositoryRetrievalBackend {
     atomId: string,
     score: number,
     path: Extract<MemoryAccessRecord['path'], 'fts' | 'vector'>,
-    query: string,
+    taskQuery: MemoryTaskQuery,
   ): Promise<void> {
     if (isMemoryV3InternalRootId(atomId)) return;
     const atom = await this.atomStore.read(atomId);
     if (!atom) return;
-    const relevance = clamp01(path === 'vector' ? (score + 1) / 2 : score);
+    const lexical = taskRelevance(atom, taskQuery);
+    if (lexical.blockedByExclusion) return;
+    const relevance = clamp01(path === 'vector'
+      ? Math.max((score + 1) / 2, lexical.score)
+      : Math.max(score, lexical.score));
     const current = merged.get(atomId);
     if (current && current.relevance >= relevance) return;
     merged.set(atomId, {
       atom: this.materializer.publicAtom(atom),
       relevance,
       retrievalPath: path,
-      matchReason: `${path.toUpperCase()} matched "${cleanInline(query)}" inside the selected branch/subtree.`,
+      matchReason: path === 'fts'
+        ? `FTS matched "${cleanInline(taskQuery.retrievalText)}" inside the selected branch/subtree: ${describeMemoryTaskRelevance(lexical)}.`
+        : `VECTOR matched "${cleanInline(taskQuery.retrievalText)}" inside the selected branch/subtree.`,
     });
   }
 
@@ -218,20 +271,13 @@ export class MemoryV3Retrieval implements MemoryRepositoryRetrievalBackend {
 
 }
 
-function lexicalRelevance(atom: MemoryAtom, query: string): number {
-  const terms = queryTerms(query);
-  if (terms.length === 0) return 0.5;
-  const haystack = `${atom.title}\n${atom.summary}\n${atom.content}\n${atom.retrievalKeys.join(' ')}`.toLocaleLowerCase();
-  const matches = terms.filter((term) => haystack.includes(term)).length;
-  return clamp01(matches / terms.length * 0.85 + atom.importance * 0.1 + atom.confidence * 0.05);
-}
-
-function queryTerms(value: string): string[] {
-  const normalized = value.normalize('NFKC').toLocaleLowerCase();
-  const words = normalized.split(/[^\p{L}\p{N}_-]+/u).filter((term) => term.length > 1);
-  const cjk = [...normalized].filter((char) => /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(char));
-  for (let index = 0; index + 1 < cjk.length; index += 1) words.push(cjk[index]! + cjk[index + 1]!);
-  return [...new Set(words)];
+function taskRelevance(atom: MemoryAtom, query: string | MemoryTaskQuery) {
+  return scoreMemoryTaskRelevance(query, {
+    title: atom.title,
+    summary: atom.summary,
+    content: atom.content,
+    searchKeys: atom.retrievalKeys,
+  });
 }
 
 function cleanInline(value: string): string {

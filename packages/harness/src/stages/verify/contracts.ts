@@ -10,6 +10,7 @@ export interface DecodedVerdict {
   reason?: string;
   feedback?: string;
   failedStepIds?: unknown;
+  usedMemoryAtomIds?: unknown;
 }
 
 export const VERIFY_SYSTEM_PROMPT = `You are the VERIFY stage of a hard-control-flow agent.
@@ -17,7 +18,9 @@ Your job is to judge whether the run achieved the user's calibrated goal,
 based on the task book/plan, per-step execution results, tool results, and drafted reply.
 
 Return ONLY a JSON object, no markdown:
-{"verdict":"pass"|"needs_replan"|"fail","reason":"short explanation","feedback":"optional guidance for re-planning","failedStepIds":["step-id"]}
+{"verdict":"pass"|"needs_replan"|"fail","reason":"short explanation","feedback":"optional guidance for re-planning","failedStepIds":["step-id"],"usedMemoryAtomIds":["atom-id"]}
+
+The reason may be shown in the execution timeline. Write reason/feedback in the user's language, keep them concise and user-facing, and do not expose private chain-of-thought.
 
 Verdict rules:
 - "pass": the goal is achieved. Tool results positively confirm success AND
@@ -38,5 +41,6 @@ Memory evidence is governed by the injected Run Memory KnownState:
 - suggestions and hypotheses remain advice even when adopted;
 - reported observations and unverified factual claims are not verified facts;
 - a factual claim requires corroborated/verified status or independent positive tool evidence within the same scope.
+- usedMemoryAtomIds must contain only adopted, active atoms that materially supported the execution result or verdict. Do not list atoms merely because they were visible in Context. Return [] when no memory atom was actually used.
 If the drafted reply crosses any of these boundaries, do not pass it.
 Never call tools - you only judge.`;

@@ -32,17 +32,30 @@ import {
 import {
   assertScope,
   boundedLimit,
+  memoryAtomEmbeddingHash,
   positiveLimit,
   pruneTable,
   rowToEntry,
   scalarCount,
   scopedAtomQuery,
-  toFtsQuery,
   type AtomRow,
 } from './catalog-helpers.js';
-import { MemoryCatalogEmbeddingController } from './catalog-embedding.js';
+import {
+  MemoryCatalogEmbeddingController,
+  type PreparedMemoryVectorQuery,
+} from './catalog-embedding.js';
 import { listMemoryAtomHistory } from './catalog-history.js';
+import { upgradeMemoryCatalogSchema } from './catalog-migrations.js';
+import { aggregateRelationRelevance } from './catalog-relevance.js';
+import { replaceAtomDueRecords, replaceAtomGraphReferences } from './catalog-atom-projection.js';
+import {
+  listRelationRoutingCandidates,
+  type MemoryRelationRoutingCandidate,
+  type MemoryRelationRoutingOptions,
+} from './catalog-relation-routing.js';
+import { searchMemoryCatalogFts } from './catalog-fts.js';
 import { memoryAtomContentHash } from './atom-store.js';
+import { memoryAtomActivation } from './activation.js';
 import { parseMemoryAtom, validateMemoryUseFeedback } from './validation.js';
 
 const DEFAULT_MAX_ACCESS_RECORDS = 20_000;
@@ -72,6 +85,7 @@ export interface MemoryCatalogListOptions {
   scopeKey?: string;
   status?: MemoryAtom['status'];
   limit?: number;
+  orderBy?: 'updated' | 'activation';
 }
 
 export class MemoryCatalog {
@@ -93,7 +107,7 @@ export class MemoryCatalog {
     this.db.exec('PRAGMA busy_timeout = 5000;');
     this.db.exec('PRAGMA journal_mode = WAL;');
     this.db.exec(MEMORY_CATALOG_SCHEMA_SQL);
-    ensureCatalogColumns(this.db);
+    upgradeMemoryCatalogSchema(this.db);
     this.db.exec(`PRAGMA user_version = ${MEMORY_CATALOG_SCHEMA_VERSION};`);
     this.embeddings = new MemoryCatalogEmbeddingController({
       db: this.db,
@@ -134,9 +148,12 @@ export class MemoryCatalog {
       where.push('status = ?');
       params.push(options.status);
     }
+    const orderBy = options.orderBy === 'activation'
+      ? 'activation_score DESC, activation_updated_at DESC, updated_at DESC, atom_id ASC'
+      : 'updated_at DESC, atom_id ASC';
     const rows = this.db.prepare(`
       SELECT * FROM atoms ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}
-      ORDER BY updated_at DESC, atom_id ASC LIMIT ?
+      ORDER BY ${orderBy} LIMIT ?
     `).all(...params, boundedLimit(options.limit, 1_000, 100_000)) as unknown as AtomRow[];
     return rows.map(rowToEntry);
   }
@@ -160,22 +177,21 @@ export class MemoryCatalog {
     return rows.map(rowToEntry);
   }
 
+  relationRelevanceForAtoms(atomIds: readonly string[], now: string): Map<string, number> {
+    return aggregateRelationRelevance(this.db, atomIds, now);
+  }
+
+  listRelationRoutingCandidates(
+    seedAtomIds: readonly string[],
+    options: MemoryRelationRoutingOptions,
+    now: string,
+  ): MemoryRelationRoutingCandidate[] {
+    return listRelationRoutingCandidates(this.db, seedAtomIds, options, now);
+  }
+
   searchFts(query: string, options: MemoryCatalogSearchOptions): MemoryCatalogSearchResult[] {
     assertScope(options);
-    const ftsQuery = toFtsQuery(query);
-    if (!ftsQuery) return [];
-    const limit = boundedLimit(options.limit, 20, 200);
-    const { sql, prefixParams } = scopedAtomQuery(options, `
-      SELECT a.*, bm25(atom_fts) AS fts_rank
-      FROM atom_fts
-      JOIN atoms a ON a.atom_id = atom_fts.atom_id
-    `, `atom_fts MATCH ?`, 'fts_rank ASC, a.updated_at DESC', limit);
-    const rows = this.db.prepare(sql).all(...prefixParams, ftsQuery) as unknown as Array<AtomRow & { fts_rank: number }>;
-    return rows.map((row) => ({
-      entry: rowToEntry(row),
-      score: 1 / (1 + Math.abs(Number(row.fts_rank))),
-      matchReason: 'fts',
-    }));
+    return searchMemoryCatalogFts(this.db, query, options);
   }
 
   async indexEmbedding(atom: MemoryAtom, signal?: AbortSignal): Promise<MemoryCatalogEntry> {
@@ -192,6 +208,13 @@ export class MemoryCatalog {
     assertScope(options);
     return this.embeddings.search(query, options, signal);
   }
+
+  prepareVectorQuery(query: string, signal?: AbortSignal): Promise<PreparedMemoryVectorQuery> { return this.embeddings.prepareQuery(query, signal); }
+
+  searchPreparedVector(
+    prepared: PreparedMemoryVectorQuery,
+    options: MemoryCatalogSearchOptions,
+  ): MemoryCatalogSearchResult[] { assertScope(options); return this.embeddings.searchPrepared(prepared, options); }
 
   invalidateEmbeddings(): number {
     return this.embeddings.invalidate();
@@ -475,24 +498,31 @@ export class MemoryCatalog {
   }
 
   private upsertAtomInTransaction(atom: MemoryAtom, filePath: string): void {
-    const existing = this.db.prepare('SELECT content_hash, embedding_status FROM atoms WHERE atom_id = ?')
-      .get(atom.id) as { content_hash: string; embedding_status: string } | undefined;
-    const contentChanged = existing?.content_hash !== atom.contentHash;
+    const embeddingHash = memoryAtomEmbeddingHash(atom);
+    const activation = memoryAtomActivation(atom, atom.updatedAt);
+    const existing = this.db.prepare('SELECT embedding_hash, embedding_status FROM atoms WHERE atom_id = ?')
+      .get(atom.id) as { embedding_hash: string; embedding_status: string } | undefined;
+    const embeddingChanged = existing?.embedding_hash !== embeddingHash;
     const embeddingConfigured = this.embeddings.isConfigured();
-    const embeddingStatus = !embeddingConfigured
+    const embeddingEligible = embeddingConfigured && atom.status === 'active';
+    const embeddingStatus = !embeddingEligible
       ? 'disabled'
-      : contentChanged
+      : embeddingChanged
         ? 'pending'
         : existing?.embedding_status === 'ready' || existing?.embedding_status === 'stale'
           ? existing.embedding_status
           : 'pending';
-    if (contentChanged) this.db.prepare('DELETE FROM atom_vectors WHERE atom_id = ?').run(atom.id);
+    if (embeddingChanged || !embeddingEligible) {
+      this.db.prepare('DELETE FROM atom_vectors WHERE atom_id = ?').run(atom.id);
+    }
+    else this.db.prepare('UPDATE atom_vectors SET content_hash = ? WHERE atom_id = ?').run(atom.contentHash, atom.id);
     this.db.prepare(`
       INSERT INTO atoms (
         atom_id, file_path, revision, domain, branch, parent_id, scope, scope_key,
         tier, statement_kind, epistemic_status, status, resolution_status,
-        title, summary, content_hash, embedding_status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        title, summary, content_hash, embedding_hash, embedding_status,
+        activation_score, activation_updated_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(atom_id) DO UPDATE SET
         file_path = excluded.file_path,
         revision = excluded.revision,
@@ -509,10 +539,13 @@ export class MemoryCatalog {
         title = excluded.title,
         summary = excluded.summary,
         content_hash = excluded.content_hash,
+        embedding_hash = excluded.embedding_hash,
         embedding_status = excluded.embedding_status,
         embedding_engine_id = CASE WHEN excluded.embedding_status IN ('ready', 'stale') THEN atoms.embedding_engine_id ELSE NULL END,
         embedding_model_id = CASE WHEN excluded.embedding_status IN ('ready', 'stale') THEN atoms.embedding_model_id ELSE NULL END,
         embedding_dimensions = CASE WHEN excluded.embedding_status IN ('ready', 'stale') THEN atoms.embedding_dimensions ELSE NULL END,
+        activation_score = excluded.activation_score,
+        activation_updated_at = excluded.activation_updated_at,
         updated_at = excluded.updated_at
     `).run(
       atom.id,
@@ -531,35 +564,22 @@ export class MemoryCatalog {
       atom.title,
       atom.summary,
       atom.contentHash,
+      embeddingHash,
       embeddingStatus,
+      activation.score,
+      activation.computedAt,
       atom.createdAt,
       atom.updatedAt,
     );
-    this.db.prepare('DELETE FROM atom_fts WHERE atom_id = ?').run(atom.id);
-    this.db.prepare(`
-      INSERT INTO atom_fts (atom_id, title, summary, content, retrieval_keys)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(atom.id, atom.title, atom.summary, atom.content, atom.retrievalKeys.join(' '));
-    this.replaceAtomGraphReferences(atom);
-    this.replaceAtomDueRecords(atom);
-  }
-
-  private replaceAtomGraphReferences(atom: MemoryAtom): void {
-    this.db.prepare('DELETE FROM atom_entity_refs WHERE atom_id = ?').run(atom.id);
-    this.db.prepare('DELETE FROM atom_relation_refs WHERE atom_id = ?').run(atom.id);
-    const insertEntity = this.db.prepare('INSERT INTO atom_entity_refs (atom_id, entity_id) VALUES (?, ?)');
-    for (const entityId of new Set(atom.entityRefs)) insertEntity.run(atom.id, entityId);
-    const insertRelation = this.db.prepare('INSERT INTO atom_relation_refs (atom_id, relation_id) VALUES (?, ?)');
-    for (const relationId of new Set(atom.relationRefs)) insertRelation.run(atom.id, relationId);
-  }
-
-  private replaceAtomDueRecords(atom: MemoryAtom): void {
-    this.db.prepare('DELETE FROM memory_due WHERE atom_id = ?').run(atom.id);
-    if (atom.status !== 'active') return;
-    const insert = this.db.prepare('INSERT INTO memory_due (atom_id, due_kind, due_at) VALUES (?, ?, ?)');
-    if (atom.effectiveAt) insert.run(atom.id, 'effective', atom.effectiveAt);
-    if (atom.expiresAt) insert.run(atom.id, 'expiry', atom.expiresAt);
-    if (atom.revalidateAt) insert.run(atom.id, 'revalidate', atom.revalidateAt);
+    if (embeddingChanged) {
+      this.db.prepare('DELETE FROM atom_fts WHERE atom_id = ?').run(atom.id);
+      this.db.prepare(`
+        INSERT INTO atom_fts (atom_id, title, summary, content, retrieval_keys)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(atom.id, atom.title, atom.summary, atom.content, atom.retrievalKeys.join(' '));
+    }
+    replaceAtomGraphReferences(this.db, atom);
+    replaceAtomDueRecords(this.db, atom);
   }
 
   private verifyAtom(atom: MemoryAtom): MemoryAtom {
@@ -580,12 +600,5 @@ export class MemoryCatalog {
       this.db.exec('ROLLBACK');
       throw error;
     }
-  }
-}
-
-function ensureCatalogColumns(db: DatabaseSync): void {
-  const relationColumns = db.prepare('PRAGMA table_info(relations)').all() as unknown as Array<{ name: string }>;
-  if (!relationColumns.some((column) => column.name === 'source_refs_json')) {
-    db.exec("ALTER TABLE relations ADD COLUMN source_refs_json TEXT NOT NULL DEFAULT '[]';");
   }
 }

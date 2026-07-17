@@ -1,22 +1,10 @@
-// Skills and memory-tree control-plane client.
+// Skills and user-facing memory document client.
 
 import type {
-  MemoryAtomEvidenceExportResponse,
-  MemoryAtomManagementRequest,
-  MemoryAtomManagementResponse,
-  MemoryEmbeddingModelStatus,
-  MemoryOverview,
-  MemoryResourceManagementAction,
-  MemoryTreeManagementAction,
-  MemoryTreeNodeDetail,
-  MemoryTreeNodeManagementResponse,
-  MemoryTreeOverview,
-  MemoryTreeResourceManagementResponse,
-  MemoryTreeDisclosureLevel,
-  MemoryV3MigrationPreflightOverview,
-  ProjectMemoryProjectionAction,
-  ProjectMemoryProjectionExportResult,
-  ProjectMemoryProjectionState,
+  MemoryFilesPayload,
+  MemoryFileDetail,
+  MemoryFileOverview,
+  MemoryFileName,
 } from '../../shared/memory-control-contracts'
 import {
   LOCAL_APP_API_PREFIXES,
@@ -49,169 +37,33 @@ export async function readSkill(name: string): Promise<SkillDetail> {
   return res.json() as Promise<SkillDetail>
 }
 
-export async function getMemoryOverview(): Promise<MemoryOverview> {
-  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.memory))
+export async function listMemoryFiles(): Promise<MemoryFileOverview[]> {
+  return (await getMemoryFilesPayload()).files
+}
+
+export async function getMemoryFilesPayload(): Promise<MemoryFilesPayload> {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.memoryFiles))
   if (!res.ok) throw localApiStatusError(res.status)
-  return res.json() as Promise<MemoryOverview>
+  return res.json() as Promise<MemoryFilesPayload>
 }
 
-export async function getMemoryTreeOverview(): Promise<MemoryTreeOverview> {
-  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.memoryTree))
+export async function readMemoryFile(name: MemoryFileName, signal?: AbortSignal): Promise<MemoryFileDetail> {
+  const path = localAppApiItemPath(LOCAL_APP_API_PREFIXES.memoryFiles, name)
+  const res = await fetch(localApiUrl(path), { signal })
   if (!res.ok) throw localApiStatusError(res.status)
-  return res.json() as Promise<MemoryTreeOverview>
+  return res.json() as Promise<MemoryFileDetail>
 }
 
-export async function getMemoryTreeNodeDetail(
-  nodeId: string,
-  disclosure: MemoryTreeDisclosureLevel,
-  signal?: AbortSignal,
-): Promise<MemoryTreeNodeDetail> {
-  const path = localAppApiItemPath(LOCAL_APP_API_PREFIXES.memoryNodes, nodeId)
-  const res = await fetch(localApiUrl(`${path}?disclosure=${disclosure}`), { signal })
-  if (!res.ok) throw localApiStatusError(res.status)
-  return res.json() as Promise<MemoryTreeNodeDetail>
-}
-
-export async function getMemoryV3MigrationPreflight(signal?: AbortSignal): Promise<MemoryV3MigrationPreflightOverview> {
-  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.memoryMigration), { signal })
-  if (!res.ok) throw localApiStatusError(res.status)
-  return res.json() as Promise<MemoryV3MigrationPreflightOverview>
-}
-
-export async function getMemoryEmbeddingModelStatus(signal?: AbortSignal): Promise<MemoryEmbeddingModelStatus> {
-  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.memoryEmbeddingModel), { signal })
-  if (!res.ok) throw localApiStatusError(res.status)
-  return res.json() as Promise<MemoryEmbeddingModelStatus>
-}
-
-export async function prepareMemoryEmbeddingModel(): Promise<MemoryEmbeddingModelStatus> {
-  return updateMemoryEmbeddingModel('POST')
-}
-
-export async function cancelMemoryEmbeddingModelPreparation(): Promise<MemoryEmbeddingModelStatus> {
-  return updateMemoryEmbeddingModel('DELETE')
-}
-
-async function updateMemoryEmbeddingModel(method: 'POST' | 'DELETE'): Promise<MemoryEmbeddingModelStatus> {
-  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.memoryEmbeddingModel), { method })
-  if (!res.ok) {
-    const body = await res.json().catch(() => null) as { error?: string } | null
-    throw new Error(body?.error ?? `Local app API error: ${res.status}`)
-  }
-  return res.json() as Promise<MemoryEmbeddingModelStatus>
-}
-
-export async function requestMemoryV3Migration(): Promise<MemoryV3MigrationPreflightOverview> {
-  return updateMemoryV3Operation(LOCAL_APP_API_ROUTES.memoryMigration, 'POST')
-}
-
-export async function cancelMemoryV3Operation(): Promise<MemoryV3MigrationPreflightOverview> {
-  return updateMemoryV3Operation(LOCAL_APP_API_ROUTES.memoryMigration, 'DELETE')
-}
-
-export async function requestMemoryV3Rollback(): Promise<MemoryV3MigrationPreflightOverview> {
-  return updateMemoryV3Operation(LOCAL_APP_API_ROUTES.memoryRollback, 'POST')
-}
-
-async function updateMemoryV3Operation(
-  path: string,
-  method: 'POST' | 'DELETE',
-): Promise<MemoryV3MigrationPreflightOverview> {
-  const res = await fetch(localApiUrl(path), { method })
-  if (!res.ok) {
-    const body = await res.json().catch(() => null) as { error?: string } | null
-    throw new Error(body?.error ?? `Local app API error: ${res.status}`)
-  }
-  return res.json() as Promise<MemoryV3MigrationPreflightOverview>
-}
-
-export async function updateMemoryLearningPolicy(experienceWriteThreshold: number): Promise<{ experienceWriteThreshold: number }> {
-  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.memoryPolicy), {
-    method: 'POST',
+export async function writeMemoryFile(name: MemoryFileName, content: string): Promise<MemoryFileDetail> {
+  const path = localAppApiItemPath(LOCAL_APP_API_PREFIXES.memoryFiles, name)
+  const res = await fetch(localApiUrl(path), {
+    method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ experienceWriteThreshold }),
-  })
-  if (!res.ok) throw localApiStatusError(res.status)
-  return res.json() as Promise<{ experienceWriteThreshold: number }>
-}
-
-export async function manageMemoryTreeNode(
-  nodeId: string,
-  action: MemoryTreeManagementAction,
-): Promise<MemoryTreeNodeManagementResponse> {
-  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.memoryNodes, nodeId, '/manage')), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action }),
+    body: JSON.stringify({ content }),
   })
   if (!res.ok) {
     const body = await res.json().catch(() => null) as { error?: string } | null
     throw new Error(body?.error ?? `Local app API error: ${res.status}`)
   }
-  return res.json() as Promise<MemoryTreeNodeManagementResponse>
-}
-
-export async function manageMemoryAtom(
-  request: MemoryAtomManagementRequest,
-): Promise<MemoryAtomManagementResponse> {
-  const res = await fetch(localApiUrl(localAppApiItemPath(
-    LOCAL_APP_API_PREFIXES.memoryNodes,
-    request.atomId,
-    '/manage-atom',
-  )), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(request),
-  })
-  if (!res.ok) {
-    const body = await res.json().catch(() => null) as { error?: string } | null
-    throw new Error(body?.error ?? `Local app API error: ${res.status}`)
-  }
-  return res.json() as Promise<MemoryAtomManagementResponse>
-}
-
-export async function exportMemoryAtom(nodeId: string): Promise<MemoryAtomEvidenceExportResponse> {
-  const res = await fetch(localApiUrl(localAppApiItemPath(
-    LOCAL_APP_API_PREFIXES.memoryNodes,
-    nodeId,
-    '/export',
-  )), { method: 'POST' })
-  if (!res.ok) {
-    const body = await res.json().catch(() => null) as { error?: string } | null
-    throw new Error(body?.error ?? `Local app API error: ${res.status}`)
-  }
-  return res.json() as Promise<MemoryAtomEvidenceExportResponse>
-}
-
-export async function manageMemoryTreeResource(
-  resourceId: string,
-  action: MemoryResourceManagementAction,
-  options: { sourcePath?: string } = {},
-): Promise<MemoryTreeResourceManagementResponse> {
-  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.memoryResources, resourceId, '/manage')), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, ...options }),
-  })
-  if (!res.ok) {
-    const body = await res.json().catch(() => null) as { error?: string } | null
-    throw new Error(body?.error ?? `Local app API error: ${res.status}`)
-  }
-  return res.json() as Promise<MemoryTreeResourceManagementResponse>
-}
-
-export async function updateProjectMemoryProjection(
-  projectId: string,
-  action: ProjectMemoryProjectionAction,
-): Promise<ProjectMemoryProjectionState | { cancelled: boolean; export?: ProjectMemoryProjectionExportResult }> {
-  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.memoryProjects, projectId, '/projection')), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(action),
-  })
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
-    throw new Error((data as { error: string }).error)
-  }
-  return res.json() as Promise<ProjectMemoryProjectionState | { cancelled: boolean; export?: ProjectMemoryProjectionExportResult }>
+  return res.json() as Promise<MemoryFileDetail>
 }

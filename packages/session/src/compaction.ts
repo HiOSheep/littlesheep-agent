@@ -1,6 +1,14 @@
-import { randomUUID } from 'node:crypto';
-import type { CompactionSummary, Message, SessionId } from '@littlesheep/types';
+import { createHash, randomUUID } from 'node:crypto';
+import {
+  nextCacheCompressionDepth,
+  type CompactionSummary,
+  type CompactionSummaryV2,
+  type Message,
+  type SessionId,
+} from '@littlesheep/types';
 import type { SessionManager } from './manager.js';
+
+const MAX_COMPACTION_SOURCE_RUN_IDS = 64;
 
 export interface CompactionSummaryInput {
   sessionId: SessionId;
@@ -71,20 +79,68 @@ export async function maybeCompact(
 
   const first = messages[0]!;
   const last = messages[compactThroughIndex]!;
-  const record: CompactionSummary = Object.freeze({
+  const coveredMessages = messages.slice(0, compactThroughIndex + 1);
+  const sourceHash = hashMessages(coveredMessages);
+  const sourceRunIds = uniqueSourceRunIds(coveredMessages);
+  const sourceRunIdsTruncated = sourceRunIds.length > MAX_COMPACTION_SOURCE_RUN_IDS;
+  const compactedAt = new Date().toISOString();
+  const previousDepth = previous?.version === 2 ? previous.cache.compressionDepth : previous ? 1 : undefined;
+  const compressionDepth = nextCacheCompressionDepth(previousDepth);
+  const sourceSummaryIds = previous
+    ? [...new Set([
+        ...(previous.version === 2 ? previous.sourceSummaryIds : []),
+        previous.id,
+      ])].slice(-3)
+    : [];
+  const contentHash = hashText(summary);
+  const lineageHash = hashText([
+    previous?.version === 2 ? previous.lineageHash : previous?.id ?? 'root',
+    sourceHash,
+    contentHash,
+  ].join('\0'));
+  const cache: CompactionSummaryV2['cache'] = {
     version: 1,
+    namespace: 'session-summary',
+    dataClass: 'semantic',
+    compressionDepth,
+    disclosureLevel: 'D1',
+    vectorClass: 'semantic-cache',
+    sourceRefs: [
+      `session:${sessionId}:messages:${previous?.sourceStartMessageId ?? first.id}..${last.id}`,
+      ...sourceSummaryIds.map((id) => `session-summary:${id}`),
+    ].slice(-4),
+    contentHash,
+    createdAt: compactedAt,
+  };
+  const record: CompactionSummaryV2 = Object.freeze({
+    version: 2,
     id: randomUUID(),
     collapsedCount: compactThroughIndex + 1,
     summary,
-    compactedAt: new Date().toISOString(),
+    compactedAt,
     sourceStartMessageId: previous?.sourceStartMessageId ?? first.id,
     sourceEndMessageId: last.id,
     sourceStartAt: previous?.sourceStartAt ?? first.timestamp,
     sourceEndAt: last.timestamp,
-    previousSummaryId: previous?.id,
+    previousSummaryId: previousDepth === 3 ? undefined : previous?.id,
     model: output.model,
+    cache,
+    sourceRanges: [{
+      messageCount: compactThroughIndex + 1,
+      sourceStartMessageId: previous?.sourceStartMessageId ?? first.id,
+      sourceEndMessageId: last.id,
+      sourceStartAt: previous?.sourceStartAt ?? first.timestamp,
+      sourceEndAt: last.timestamp,
+      sourceHash,
+    }],
+    sourceSummaryIds,
+    sourceRunIds: sourceRunIds.slice(-MAX_COMPACTION_SOURCE_RUN_IDS),
+    sourceRunIdsTruncated,
+    mergedSummaryCount: (previous?.version === 2 ? previous.mergedSummaryCount : previous ? 1 : 0) + 1,
+    sourceHash,
+    lineageHash,
   });
-  await manager.updateMetadata(sessionId, { compacted: true, compaction: record });
+  await manager.commitCompaction(sessionId, record);
   return record;
 }
 
@@ -96,4 +152,29 @@ export function selectForCompaction(messages: Message[], keepRecent: number): Me
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw new Error('Session compaction aborted.');
+}
+
+function hashMessages(messages: Message[]): string {
+  return hashText(JSON.stringify(messages.map((message) => ({
+    id: message.id,
+    role: message.role,
+    timestamp: message.timestamp,
+    content: message.content,
+  }))));
+}
+
+function uniqueSourceRunIds(messages: readonly Message[]): string[] {
+  const seen = new Set<string>();
+  const runIds: string[] = [];
+  for (const message of messages) {
+    const runId = message.runId?.trim();
+    if (!runId || seen.has(runId)) continue;
+    seen.add(runId);
+    runIds.push(runId);
+  }
+  return runIds;
+}
+
+function hashText(value: string): string {
+  return createHash('sha256').update(value, 'utf8').digest('hex');
 }

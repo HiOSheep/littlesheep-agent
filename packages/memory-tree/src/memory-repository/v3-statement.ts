@@ -39,6 +39,8 @@ export function classifyMemoryWriteIntent(intent: MemoryWriteIntent): Classified
     evidenceRefs: unique([...(intent.evidenceRefs ?? []), ...(explicit?.evidenceRefs ?? [])]).slice(0, 64),
     entityRefs: unique(explicit?.entityRefs ?? []).slice(0, 64),
     relationRefs: unique(explicit?.relationRefs ?? []).slice(0, 64),
+    entityHints: structuredClone(explicit?.entityHints ?? []).slice(0, 12),
+    relationHints: structuredClone(explicit?.relationHints ?? []).slice(0, 16),
     resolutionStatus: resolutionStatus(statementKind, epistemicStatus, assertedBy),
   };
 }
@@ -133,6 +135,7 @@ function resolutionStatus(
 ): MemoryResolutionStatus {
   if (kind === 'suggestion' || kind === 'hypothesis') return 'proposed';
   if (kind === 'decision' || kind === 'approval') return actor.kind === 'user' ? 'resolved' : 'under-review';
-  if ((kind === 'preference' || kind === 'goal' || kind === 'value') && actor.kind === 'user') return 'adopted';
+  if ((kind === 'instruction' || kind === 'preference' || kind === 'goal' || kind === 'value')
+    && actor.kind === 'user') return 'adopted';
   return status === 'verified' ? 'resolved' : 'unresolved';
 }

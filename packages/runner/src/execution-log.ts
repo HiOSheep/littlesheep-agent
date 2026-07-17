@@ -33,8 +33,10 @@ import type {
   MemoryIntentDecisionRecord,
   RuntimeMemoryKnownState,
   SessionRunSummary,
+  VersionCheckpointSummary,
 } from '@littlesheep/types';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
+import type { RuntimeResourceObservation } from './runtime-resource-observation.js';
 
 /** A single tool call + its result, paired by id. */
 export interface ToolCallRecord {
@@ -73,6 +75,9 @@ export interface ExecutionLog {
   resolvedRunConfig?: ResolvedRunConfig;
   modelRequests?: ModelRequestSnapshot[];
   contextSnapshots?: ContextSnapshot[];
+  /** Two process-memory samples plus a coarse, non-identifying device class. */
+  runtimeResources?: RuntimeResourceObservation;
+  versionCheckpoint?: VersionCheckpointSummary;
   /** Bounded ids of memory/attachment resources that influenced this run. */
   resourceIds?: string[];
   resourceIdsTruncated?: boolean;
@@ -106,6 +111,8 @@ export interface ExecutionLogInput {
   resolvedRunConfig?: ResolvedRunConfig;
   modelRequests?: ModelRequestSnapshot[];
   contextSnapshots?: ContextSnapshot[];
+  runtimeResources?: RuntimeResourceObservation;
+  versionCheckpoint?: VersionCheckpointSummary;
   messages: Message[];
   durationMs: number;
 }
@@ -179,6 +186,8 @@ export class ExecutionLogStore {
       resolvedRunConfig: input.resolvedRunConfig,
       modelRequests: input.modelRequests,
       contextSnapshots: input.contextSnapshots,
+      runtimeResources: input.runtimeResources,
+      versionCheckpoint: input.versionCheckpoint,
       resourceIds: resources.ids.length > 0 ? resources.ids : undefined,
       resourceIdsTruncated: resources.truncated || undefined,
       toolCalls,
@@ -190,6 +199,29 @@ export class ExecutionLogStore {
     await mkdir(this.rootDir, { recursive: true });
     await writeFile(this.filePath(input.runId), JSON.stringify(log, null, 2), 'utf8');
     return log;
+  }
+
+  /** Attach the post-run checkpoint after the audit record itself has been written. */
+  async attachVersionCheckpoint(
+    runId: string,
+    versionCheckpoint: VersionCheckpointSummary,
+    durationMs?: number,
+  ): Promise<void> {
+    const file = this.filePath(runId);
+    const parsed = JSON.parse(await readFile(file, 'utf8')) as ExecutionLog;
+    if (parsed.runId !== runId) throw new Error(`execution log run id mismatch: ${runId}`);
+    const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(temporary, JSON.stringify({
+        ...parsed,
+        versionCheckpoint,
+        durationMs: durationMs ?? parsed.durationMs,
+      }, null, 2), 'utf8');
+      await rename(temporary, file);
+    } catch (error) {
+      await rm(temporary, { force: true }).catch(() => undefined);
+      throw error;
+    }
   }
 
   /** Read an execution log. Returns null if not found or corrupt (never throws). */

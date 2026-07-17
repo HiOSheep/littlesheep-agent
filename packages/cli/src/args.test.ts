@@ -64,9 +64,17 @@ describe('parseArgs', () => {
     expect(out.unknown).toEqual(['--bogus', '--weird']);
   });
 
+  it('recognizes the retired memory archive command without treating it as chat input', () => {
+    const out = parseArgs(['memory', 'archive', '--force']);
+    expect(out.retiredCommand).toBe('memory archive');
+    expect(out.text).toBeUndefined();
+    expect(out.unknown).toEqual([]);
+  });
+
   it('USAGE contains "Usage:" and "littlesheep"', () => {
     expect(USAGE).toContain('Usage:');
     expect(USAGE).toContain('littlesheep');
+    expect(USAGE).not.toContain('memory archive');
   });
 
   it('VERSION === "0.1.0"', () => {

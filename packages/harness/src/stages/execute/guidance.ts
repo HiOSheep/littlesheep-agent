@@ -85,7 +85,8 @@ ${previous}
 Instructions:
 - Complete only this step.
 - Use tools when they reduce uncertainty or are required by the step.
-- Return a concise step result when the step is complete.
+- Request independent tool calls together; keep dependent calls in separate rounds.
+- Return a concise step result when the step is complete. It may be shown to the user directly, so use the user's language, follow the active SOUL.md voice, preserve runtime facts, and do not expose private chain-of-thought.
 - Do not claim the whole task is complete unless this is the final step.`;
 }
 

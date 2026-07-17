@@ -1,19 +1,19 @@
 # @littlesheep/vector
 
-提供向量存储与检索接口，作为已导航记忆分支的深搜兜底能力。
+保留 Memory v2 本地向量数据库的兼容类型、读取与测试实现。当前 Memory v3 Runtime 不再装配或写入该存储；新的 Atom Embedding 由 `@littlesheep/memory-tree` 内的本地 Catalog 统一管理。
 
 ## 职责与边界
 
-- 公开入口是 `src/index.ts`；类型在 `types.ts`，实现入口在 `vector-store.ts`。
-- 只负责向量索引与相似度候选，不决定哪些结果进入 Context。
-- 禁止默认跨记忆树搜索或把向量结果直接作为权威事实注入模型。
+- 公开入口是 `src/index.ts`；类型在 `types.ts`，兼容实现在 `vector-store.ts`。
+- 仅用于读取或验证既有 v2 数据，不得由 Runner、Harness、Memory Core 或 CLI 注册为写入权威。
+- v2 向量结果不能直接进入 Context，也不能创建、更新或提升 Memory v3 Atom。
 
 ## 依赖与数据
 
-- 依赖 LLM embedding 能力和公共契约，由 Memory 领域在受限分支内调用。
-- 向量索引是派生数据，权威正文仍属于原记忆节点或资源。
+- 兼容实现仍依赖旧 LLM embedding 接口；生产 Runtime 不应构造它。
+- 既有向量数据库只是可再生派生数据，权威正文与 Memory v3 状态不在此包。
 
 ## 测试与修改定位
 
 - 存储、排序和边界行为测试位于 `src/vector-store.test.ts`。
-- 更换后端时保持稳定 ID、作用域过滤和可重建语义。
+- 修改兼容读取时必须保持旧数据库可读，并证明不会恢复写入装配路径。

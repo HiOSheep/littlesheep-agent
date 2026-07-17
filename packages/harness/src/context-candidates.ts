@@ -68,7 +68,9 @@ export function buildRunRequestCandidates(
           sessionId: ctx.sessionId,
           generatedAt: historyMessage.timestamp,
         },
-        priority: 50,
+        // Recent conversation is more useful for continuity than the static date-time section;
+        // runtime-awareness already carries the exact current clock and elapsed run facts.
+        priority: 75,
         required: false,
       });
     }

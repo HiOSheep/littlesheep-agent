@@ -7,7 +7,7 @@ import {
 import { DEFAULT_CONFIG } from '@littlesheep/config';
 import { DEFAULT_BRANDING } from '@littlesheep/branding';
 import { textMessage } from '@littlesheep/types';
-import type { TaskBook, ToolStreamEvent } from '@littlesheep/types';
+import type { AgentTool, TaskBook, ToolStreamEvent } from '@littlesheep/types';
 
 const deps = { model: 'test', config: DEFAULT_CONFIG, branding: DEFAULT_BRANDING };
 
@@ -95,6 +95,7 @@ describe('executeStage', () => {
     const stage = createExecuteStage({ ...deps, llm });
     const ctx = makeCtx({
       inbound: textMessage('user', 'review the core'),
+      bootstrap: { 'SOUL.md': 'SOUL_SENTINEL_SINGLE_STEP_VOICE' },
       taskBook: {
         assessment: {
           userNeed: 'review core',
@@ -119,6 +120,8 @@ describe('executeStage', () => {
     expect(systemPrompts[0]).toContain('Goal: find core gaps');
     expect(systemPrompts[0]).toContain('gaps are named');
     expect(systemPrompts[0]).toContain('Overdelivery limit: 1.5x');
+    expect(systemPrompts[0]).toContain('SOUL_SENTINEL_SINGLE_STEP_VOICE');
+    expect(systemPrompts[0]).toContain('It may be shown to the user directly');
   });
 
   it('executes taskBook steps in order, records step results, and emits step/tool events', async () => {
@@ -133,6 +136,7 @@ describe('executeStage', () => {
     const ctx = makeCtx({
       tools: [tool],
       inbound: textMessage('user', 'lookup x and summarize'),
+      bootstrap: { 'SOUL.md': 'SOUL_SENTINEL_USER_FACING_VOICE' },
       taskBook: {
         assessment: {
           userNeed: 'lookup and summarize',
@@ -168,6 +172,7 @@ describe('executeStage', () => {
     expect(finalRequest.messages[0]?.content).toContain('Follow progressive disclosure');
     expect(finalRequest.messages[0]?.content).toContain('Never hide failed or partial steps');
     expect(finalRequest.messages[0]?.content).toContain('Do not dump raw command output or private chain-of-thought');
+    expect(finalRequest.messages[0]?.content).toContain('SOUL_SENTINEL_USER_FACING_VOICE');
     expect(events.map((evt) => evt.type)).toEqual([
       'step_start',
       'tool_start',
@@ -414,6 +419,45 @@ describe('executeStage', () => {
     expect(a.calls).toHaveLength(1);
     expect(b.calls).toHaveLength(1);
     expect(ctx.toolResults).toHaveLength(2);
+  });
+
+  it('executes independent parallel-safe tool calls concurrently', async () => {
+    let releaseFirst: (() => void) | undefined;
+    let firstCompleted = false;
+    let secondStartedBeforeFirstCompleted = false;
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const tool = (name: string, execute: AgentTool['execute']): AgentTool => ({
+      name,
+      description: `${name} parallel test tool`,
+      inputSchema: { parse: (input) => input },
+      execution: { concurrency: 'parallel' },
+      execute,
+    });
+    const first = tool('parallel-a', async () => {
+      await Promise.race([firstGate, new Promise((resolve) => setTimeout(resolve, 100))]);
+      firstCompleted = true;
+      return { callId: '', ok: true, output: 'A' };
+    });
+    const second = tool('parallel-b', async () => {
+      secondStartedBeforeFirstCompleted = !firstCompleted;
+      releaseFirst?.();
+      return { callId: '', ok: true, output: 'B' };
+    });
+    const llm = createMockLlm([
+      toolCallResponse([
+        { id: 'parallel-1', name: first.name, args: {} },
+        { id: 'parallel-2', name: second.name, args: {} },
+      ]),
+      textResponse('done'),
+    ]);
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({ tools: [first, second], inbound: textMessage('user', 'run both') });
+
+    const result = await stage(ctx);
+
+    expect(result.ok).toBe(true);
+    expect(secondStartedBeforeFirstCompleted).toBe(true);
+    expect(ctx.toolResults?.map((item) => item.callId)).toEqual(['parallel-1', 'parallel-2']);
   });
 
   // ─── M3: ctx.produced persistence ──────────────────────────────────────

@@ -3,7 +3,7 @@ import type { ChatMessage } from '@littlesheep/llm';
 import type { RunContext, StageResult } from '@littlesheep/types';
 import { buildRunRequestCandidates } from '../context-candidates.js';
 import { prepareModelRequest, recordProviderUsage } from '../model-observability.js';
-import { appendSystemPromptAddons } from '../profile-prompt.js';
+import { appendSystemPromptAddons, buildUserFacingVoiceAddon } from '../profile-prompt.js';
 import { callLlmForJson } from './_shared.js';
 import {
   type DecodedVerdict,
@@ -23,16 +23,15 @@ import {
   hasIncompleteTaskExecution,
   installPartialReplan,
 } from './verify/task-state.js';
-
+import { acceptedUsedMemoryAtomIds } from './verify/memory-evidence.js';
 export type { VerifyStageDeps } from './verify/contracts.js';
-
 export function createVerifyStage(deps: VerifyStageDeps) {
   return async function verifyStage(ctx: RunContext): Promise<StageResult> {
     const replanAttempts = ctx.replanAttempts ?? 0;
     const maxReplan = ctx.maxReplanAttempts ?? 2;
     ctx.onToolEvent?.({ type: 'verification_start' });
     const messages: ChatMessage[] = [
-      { role: 'system', content: appendSystemPromptAddons(VERIFY_SYSTEM_PROMPT, ctx.profilePromptAddon) },
+      { role: 'system', content: appendSystemPromptAddons(VERIFY_SYSTEM_PROMPT, ctx.profilePromptAddon, buildUserFacingVoiceAddon(ctx)) },
       { role: 'user', content: buildVerifyUserMessage(ctx, replanAttempts, maxReplan) },
     ];
 
@@ -79,6 +78,7 @@ export function createVerifyStage(deps: VerifyStageDeps) {
       recordVerification(ctx, {
         verdict: 'pass',
         reason: parsed.reason ?? 'Task contract satisfied.',
+        usedMemoryAtomIds: acceptedUsedMemoryAtomIds(ctx, parsed.usedMemoryAtomIds),
         source: 'model',
       });
       publishVerifiedReply(ctx);

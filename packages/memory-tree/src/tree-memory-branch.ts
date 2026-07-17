@@ -25,6 +25,7 @@ import {
   toV3Fragment,
   toV3IndexEntry,
 } from './tree-memory-v3-presentation.js';
+import { composeMemoryTaskQuery } from './task-query.js';
 
 export interface TreeMemoryBranchOptions {
   repository: MemoryRepository;
@@ -68,10 +69,12 @@ export class TreeMemoryBranch implements MemoryBranch {
 
   async getIndex(ctx: MemoryBranchContext): Promise<BranchIndex> {
     if (this.repository.retrieval.supported) {
+      const taskQuery = ctx.taskQuery ?? composeMemoryTaskQuery(ctx.query);
       const candidates = await this.repository.retrieval.indexMemory({
         branch: this.kind,
         scopes: retrievalScopes(ctx),
-        query: ctx.query,
+        query: taskQuery.retrievalText || ctx.query,
+        taskQuery,
         limit: 80,
         now: ctx.now.toISOString(),
         signal: ctx.signal,
@@ -105,6 +108,7 @@ export class TreeMemoryBranch implements MemoryBranch {
     request: BranchExpandRequest,
   ): Promise<BranchExpansion> {
     if (this.repository.retrieval.supported) {
+      const taskQuery = request.taskQuery ?? composeMemoryTaskQuery(request.query ?? ctx.query);
       const disclosureLevel = request.disclosureLevel ?? 'D2';
       if (disclosureLevel === 'D3' && !request.nodeId) {
         throw new Error('Memory D3 disclosure requires one selected atom id; broad audit expansion is forbidden.');
@@ -112,19 +116,23 @@ export class TreeMemoryBranch implements MemoryBranch {
       const candidates = await this.repository.retrieval.retrieveMemory({
         branch: this.kind,
         scopes: retrievalScopes(ctx),
-        query: request.query ?? '',
+        query: taskQuery.retrievalText || request.query || '',
+        taskQuery,
         nodeId: request.nodeId,
         limit: request.limit,
         now: ctx.now.toISOString(),
         signal: ctx.signal,
         disclosureLevel,
         mode: 'expand',
+        retrievalPathHint: request.retrievalPathHint,
+        retrievalMatchReasonHint: request.retrievalMatchReasonHint,
       }) ?? [];
       const childCandidates = request.nodeId
         ? await this.repository.retrieval.indexMemory({
             branch: this.kind,
             scopes: retrievalScopes(ctx),
-            query: request.query ?? ctx.query,
+            query: taskQuery.retrievalText || request.query || ctx.query,
+            taskQuery,
             parentNodeId: request.nodeId,
             limit: request.limit,
             now: ctx.now.toISOString(),
@@ -183,10 +191,12 @@ export class TreeMemoryBranch implements MemoryBranch {
 
   async search(ctx: MemoryBranchContext, request: BranchSearchRequest): Promise<MemoryFragment[]> {
     if (this.repository.retrieval.supported) {
+      const taskQuery = request.taskQuery ?? composeMemoryTaskQuery(request.query);
       const candidates = await this.repository.retrieval.retrieveMemory({
         branch: this.kind,
         scopes: retrievalScopes(ctx),
-        query: request.query,
+        query: taskQuery.retrievalText || request.query,
+        taskQuery,
         subtreeRootId: request.subtreeRootId,
         limit: request.limit,
         now: ctx.now.toISOString(),

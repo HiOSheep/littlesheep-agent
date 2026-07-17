@@ -20,6 +20,12 @@ export interface MemoryRepositoryEmbeddingStatusCounts {
   failed: number;
 }
 
+export interface MemoryActivationLevelCounts {
+  high: number;
+  medium: number;
+  low: number;
+}
+
 export interface MemoryRepositoryManagementStatus {
   backendKind: MemoryRepositoryBackendKind;
   storageKind: 'legacy-index' | 'atom-catalog';
@@ -28,6 +34,7 @@ export interface MemoryRepositoryManagementStatus {
     integrity: string;
     atomCount: number;
     embedding: MemoryRepositoryEmbeddingStatusCounts;
+    activation: MemoryActivationLevelCounts;
   };
 }
 

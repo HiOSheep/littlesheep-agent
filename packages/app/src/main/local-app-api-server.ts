@@ -76,7 +76,7 @@ export async function startLocalAppApiServer(
   return new Promise<LocalAppApiServer>((resolve, reject) => {
     const server = createServer((req, res) => {
       res.setHeader('Access-Control-Allow-Origin', '*')
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
       if (req.method === 'OPTIONS') {
         res.writeHead(204)
@@ -228,7 +228,7 @@ async function route(
 
   if (await routeMemory(routeRequest, {
     getRunner,
-    projectIndex,
+    projectIndex, dataDir: opts.dataDir,
     getConfig, setConfig,
     memoryV3MigrationManager: opts.memoryV3MigrationManager,
     memoryEmbeddingModelManager: opts.memoryEmbeddingModelManager,

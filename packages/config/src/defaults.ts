@@ -43,6 +43,7 @@ export const DEFAULT_CONFIG: Config = {
       bootstrapMaxChars: 20000,
       bootstrapTotalMaxChars: 60000,
       contextCompressionThresholdRatio: 0.8,
+      maxModelCallsPerRun: 32,
       harness: 'core-flow',
     },
   },
@@ -60,6 +61,7 @@ export const DEFAULT_CONFIG: Config = {
     },
     maxOutputChars: 10000,
     stripImages: true,
+    maxParallel: 4,
   },
   memory: {
     repositoryBackend: 'v2' as const,
@@ -73,6 +75,8 @@ export const DEFAULT_CONFIG: Config = {
     treeBranchTokenBudget: 1200,
     treeRootIndexMaxChars: 1600,
     experienceWriteThreshold: 0.65,
+    llmCapture: false,
+    llmEvolve: 'adaptive',
   },
   safety: {
     enabled: true,
@@ -104,6 +108,13 @@ export const DEFAULT_CONFIG: Config = {
   },
   channels: {
     channels: [],
+  },
+  versioning: {
+    enabled: true,
+    maxCheckpoints: 256,
+    maxFileBytes: 8 * 1024 * 1024,
+    maxWorkspaceFiles: 20000,
+    maxWorkspaceBytes: 512 * 1024 * 1024,
   },
 };
 

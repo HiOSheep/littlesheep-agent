@@ -62,6 +62,7 @@ export function createCreateSkillTool(deps: CreateSkillToolDeps): AgentTool {
       'After creation, the skill is permanently saved and available in future sessions.',
     inputSchema: CreateSkillInput,
     requiresApproval: true,
+    execution: { concurrency: 'exclusive' },
     async execute(input): Promise<ToolResult> {
       const start = Date.now();
       try {

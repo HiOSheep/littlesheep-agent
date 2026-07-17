@@ -24,7 +24,7 @@ import {
   normalizePlan,
 } from './decide/normalization.js';
 import { mergePartialTaskBook, renderReplanFeedback } from './decide/replan.js';
-
+import { maybeRefineMemoryForTaskBook } from '../memory-taskbook-refinement.js';
 export type { DecideStageDeps } from './decide/contracts.js';
 export function createDecideStage(deps: DecideStageDeps) {
   return async function decideStage(ctx: RunContext): Promise<StageResult> {
@@ -64,7 +64,6 @@ export function createDecideStage(deps: DecideStageDeps) {
       ...attachmentMessages.map((item) => item.message),
       userChatMessage(inboundText + verifyFeedback, ctx.attachments),
     ];
-
     let parsed: DecodedPlan | null;
     let attempts: number;
     try {
@@ -149,6 +148,7 @@ export function createDecideStage(deps: DecideStageDeps) {
     ctx.needAssessment = assessment;
     ctx.taskBook = taskBook;
     ctx.plan = plan;
+    await maybeRefineMemoryForTaskBook(ctx, taskBook, deps.memoryRefiner, partialReplan ? 'replan' : 'taskbook', partialReplan?.targetStepIds, deps.log);
     ctx.onToolEvent?.({ type: 'task_book', taskBook });
     return {
       stage: 'decide',

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -114,6 +114,33 @@ describe('execTool approval gate', () => {
       );
       expect(result.ok).toBe(false);
       expect(result.error).toMatch(/core source is read-only/i);
+      await expect(stat(file)).rejects.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('does not start a mutating command when the workspace preimage fails', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ls-exec-checkpoint-'));
+    const file = join(root, 'changed.txt');
+    try {
+      const exec = createExecTool({
+        interactive: false,
+        approvalConfig: { whitelist: [], blacklist: [], approvalMode: 'auto-approve' },
+      });
+      const beforeWorkspaceMutation = vi.fn(async () => { throw new Error('checkpoint unavailable'); });
+      const script = `require('node:fs').writeFileSync(${JSON.stringify(file)}, 'changed')`;
+      const result = await exec.execute(
+        { command: `node -e ${JSON.stringify(script)}`, cwd: root },
+        {
+          ...baseCtx,
+          cwd: root,
+          versioning: { beforeFileMutation: vi.fn(), beforeWorkspaceMutation },
+        },
+      );
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/checkpoint unavailable/);
+      expect(beforeWorkspaceMutation).toHaveBeenCalledWith(root);
       await expect(stat(file)).rejects.toThrow();
     } finally {
       await rm(root, { recursive: true, force: true });

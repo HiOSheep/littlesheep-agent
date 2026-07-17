@@ -20,6 +20,7 @@ import type {
   MemorySearchOptions,
   MemoryTreeDocument,
 } from '../types.js';
+import type { MemoryTaskQuery } from '../task-query.js';
 import type { WorkspaceResourceIndexLimits } from '../workspace-resource-index.js';
 
 export interface MemoryServiceOptions {
@@ -42,11 +43,33 @@ export interface MemoryServiceOptions {
 export interface MemoryRunStart {
   rootIndex: string;
   ledger: MemoryAccessLedger;
-  initialContext?: {
-    content: string;
-    atomIds: string[];
-    fragments: MemoryFragment[];
-  };
+  initialContext?: MemoryRunContextSelection;
+  continuitySummaryId?: string;
+}
+
+export interface MemoryRunContextSelection {
+  content: string;
+  atomIds: string[];
+  fragments: MemoryFragment[];
+}
+
+export interface MemoryRunRefinementInput {
+  runId: string;
+  query: string;
+  taskQuery?: MemoryTaskQuery;
+  purpose: 'taskbook' | 'replan';
+  maxAtoms?: number;
+  tokenBudget?: number;
+}
+
+export interface MemoryRunRefinement {
+  ledger: MemoryAccessLedger;
+  context?: MemoryRunContextSelection;
+  skippedReason?: 'empty-query' | 'duplicate-query' | 'refinement-limit';
+}
+
+export interface MemoryRunRefinementServiceLike {
+  refineRun(input: MemoryRunRefinementInput): Promise<MemoryRunRefinement>;
 }
 
 export interface MemoryManagementSnapshot {

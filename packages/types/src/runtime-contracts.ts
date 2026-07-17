@@ -91,6 +91,7 @@ export type LlmCallPurpose =
   | 'evolve'
   | 'capture'
   | 'reply'
+  | 'ask_user'
   | 'finalize'
   | 'session_compaction';
 
@@ -135,6 +136,8 @@ export interface LlmCallToolPolicy {
 export interface LlmCallBudgetContract {
   readonly maxAttempts: number;
   readonly maxOutputTokens: number;
+  /** Stage-local prompt ceiling; smaller than the model window when possible. */
+  readonly maxPromptTokens?: number;
   readonly temperature?: number;
   readonly contextCompressionThresholdRatio?: number;
 }

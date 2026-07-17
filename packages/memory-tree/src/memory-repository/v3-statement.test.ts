@@ -22,6 +22,25 @@ describe('Memory v3 statement classification', () => {
     });
   });
 
+  it('treats a user instruction as adopted within the user authority boundary', () => {
+    const result = classifyMemoryWriteIntent(intent({
+      epistemic: {
+        domain: 'project',
+        statementKind: 'instruction',
+        epistemicStatus: 'reported',
+        authorityScope: { kind: 'user-self', scope: 'global', topics: ['validation'] },
+        assertedBy: { kind: 'user', id: 'local-user' },
+      },
+    }));
+
+    expect(result).toMatchObject({
+      statementKind: 'instruction',
+      epistemicStatus: 'reported',
+      resolutionStatus: 'adopted',
+      assertedBy: { kind: 'user', id: 'local-user' },
+    });
+  });
+
   it('conservatively distinguishes user preference, tool evidence, and agent suggestion', () => {
     expect(classifyMemoryWriteIntent(intent({
       summary: '用户偏好简洁回复',

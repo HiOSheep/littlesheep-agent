@@ -239,9 +239,6 @@ importers:
       '@littlesheep/types':
         specifier: workspace:*
         version: link:../types
-      '@littlesheep/vector':
-        specifier: workspace:*
-        version: link:../vector
 
   packages/config:
     dependencies:
@@ -353,21 +350,12 @@ importers:
 
   packages/memory-core:
     dependencies:
-      '@littlesheep/config':
-        specifier: workspace:*
-        version: link:../config
-      '@littlesheep/llm':
-        specifier: workspace:*
-        version: link:../llm
       '@littlesheep/safety':
         specifier: workspace:*
         version: link:../safety
       '@littlesheep/types':
         specifier: workspace:*
         version: link:../types
-      '@littlesheep/vector':
-        specifier: workspace:*
-        version: link:../vector
       zod:
         specifier: ^3.23.0
         version: 3.25.76

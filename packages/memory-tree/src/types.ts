@@ -2,7 +2,9 @@
 
 import type { SessionId } from '@littlesheep/types';
 import type { MemoryWriteEpistemicMetadata } from './epistemic.js';
+import type { MemoryTaskContinuitySummary, MemoryTaskQuery } from './task-query.js';
 import type {
+  MemoryAtomRetrievalPath,
   MemoryDisclosureLevel,
   MemoryEvidenceEnvelope,
   MemoryKnownState,
@@ -160,6 +162,8 @@ export interface MemoryIndexEntry {
   title: string;
   summary: string;
   hasChildren: boolean;
+  /** Current-query relevance used for D1 routing; it does not describe factual confidence. */
+  relevance?: number;
   searchKeys?: string[];
   updatedAt?: string;
   /** D1 evidence metadata; the atom body remains undisclosed. */
@@ -193,14 +197,18 @@ export interface BranchExpansion {
 export interface BranchExpandRequest {
   nodeId?: string;
   query?: string;
+  taskQuery?: MemoryTaskQuery;
   limit: number;
   tokenBudget: number;
   cursor?: string;
   disclosureLevel?: Extract<MemoryDisclosureLevel, 'D2' | 'D3'>;
+  retrievalPathHint?: MemoryAtomRetrievalPath;
+  retrievalMatchReasonHint?: string;
 }
 
 export interface BranchSearchRequest {
   query: string;
+  taskQuery?: MemoryTaskQuery;
   limit: number;
   tokenBudget: number;
   cursor?: string;
@@ -209,7 +217,7 @@ export interface BranchSearchRequest {
 
 export interface MemoryBranchAccessObservation {
   atomId: string;
-  path: 'hierarchy' | 'fts' | 'vector';
+  path: MemoryAtomRetrievalPath;
   matchReason: string;
   enteredContext: boolean;
   disclosureLevel: MemoryDisclosureLevel;
@@ -219,6 +227,7 @@ export interface MemoryBranchAccessObservation {
 export interface MemoryBranchContext {
   runId: string;
   query: string;
+  taskQuery?: MemoryTaskQuery;
   sessionId: SessionId;
   recentHistory: ReadonlyArray<{ role: string; content: string }>;
   workspace: string;
@@ -257,6 +266,7 @@ export interface MemoryRunRegistration {
   sessionId: SessionId;
   query: string;
   recentHistory: ReadonlyArray<{ role: string; content: string }>;
+  continuitySummary?: MemoryTaskContinuitySummary;
   workspace: string;
   signal?: AbortSignal;
   now?: Date;
@@ -309,6 +319,8 @@ export interface MemoryRunFeedbackInput {
   }>;
   activeAtomIds: string[];
   releasedAtomIds: string[];
+  /** Explicitly cited by VERIFY as materially used; mere Context presence is insufficient. */
+  usedAtomIds?: string[];
   verification?: {
     attempt: number;
     verdict: 'pass' | 'needs_replan' | 'fail';
@@ -337,14 +349,18 @@ export interface MemoryExpandOptions {
   branchId: string;
   nodeId?: string;
   query?: string;
+  taskQuery?: MemoryTaskQuery;
   limit?: number;
   tokenBudget?: number;
   cursor?: string;
   disclosureLevel?: Extract<MemoryDisclosureLevel, 'D2' | 'D3'>;
+  retrievalPathHint?: MemoryAtomRetrievalPath;
+  retrievalMatchReasonHint?: string;
 }
 
 export interface MemorySearchOptions {
   query: string;
+  taskQuery?: MemoryTaskQuery;
   /** Deep search is always scoped to one branch selected through its index. */
   branchId: string;
   limit?: number;
@@ -363,14 +379,17 @@ export interface MemoryReleaseResult {
 
 export interface MemoryPrimeOptions {
   query: string;
+  taskQuery?: MemoryTaskQuery;
   maxAtoms?: number;
   tokenBudget?: number;
+  purpose?: 'initial' | 'taskbook' | 'replan';
 }
 
 export interface MemoryPrimeResult {
   fragments: MemoryFragment[];
   indexedBranches: string[];
   tokensUsed: number;
+  skippedReason?: 'empty-query' | 'duplicate-query' | 'refinement-limit';
 }
 
 export interface MemoryQueryResult {
@@ -389,8 +408,14 @@ export interface MemoryQueryResult {
 }
 
 export type MemoryNodeStatus = 'active' | 'archived' | 'deleted';
-export type MemoryWriteStage = 'evolve' | 'capture' | 'tool' | 'migration';
+export type MemoryWriteStage = 'evolve' | 'capture' | 'tool' | 'migration' | 'maintenance';
 export type MemoryManagementAction = 'archive' | 'restore' | 'delete' | 'promote' | 'demote';
+export interface MemoryRecentNodeQuery {
+  scope?: MemoryScope;
+  scopeKey?: string;
+  status?: MemoryNodeStatus;
+  limit?: number;
+}
 
 /** Structured write contract shared by EVOLVE, CAPTURE and future management UI. */
 export interface MemoryWriteIntent {
@@ -405,7 +430,11 @@ export interface MemoryWriteIntent {
   content: string;
   retrievalKeys: string[];
   sourceRunId: string;
+  /** Additional source runs retained by maintenance/consolidation writes. */
+  sourceRunIds?: string[];
   sourceStage: MemoryWriteStage;
+  /** Additional source stages retained by maintenance/consolidation writes. */
+  sourceStages?: MemoryWriteStage[];
   /** V3 conversation source record ids; legacy v2 callers are normalized during migration. */
   sourceRefs?: string[];
   /** Tool, VERIFY or external evidence that supports the projected statement. */
@@ -435,6 +464,14 @@ export interface MemoryNode {
   sourceRunIds: string[];
   sourceStages: MemoryWriteStage[];
   sourceRefs?: string[];
+  evidenceRefs?: string[];
+  domain?: import('./epistemic.js').MemoryDomain;
+  statementKind?: import('./epistemic.js').StatementKind;
+  epistemicStatus?: import('./epistemic.js').EpistemicStatus;
+  authorityScope?: import('./epistemic.js').AuthorityScope;
+  assertedBy?: import('./epistemic.js').MemoryActorRef;
+  entityRefs?: string[];
+  relationRefs?: string[];
   status: MemoryNodeStatus;
   createdAt: string;
   updatedAt: string;

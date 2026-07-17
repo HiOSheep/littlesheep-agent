@@ -27,6 +27,7 @@ export interface AppNavigationSnapshot {
   workspacePanelWidth: number
   workspacePanelTab: WorkspacePanelTabId
   workspacePanelOpenTabs: WorkspacePanelTabId[]
+  workspaceBrowserUrl: string
   workspaceOpenRequest: { root: string; path: string } | null
   workspaceFileNavigatorCollapsed: boolean
   workspaceExpandedPaths: string[]

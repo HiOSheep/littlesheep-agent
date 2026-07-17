@@ -10,7 +10,7 @@ import type {
 } from '@littlesheep/types';
 import type { LlmClient, ChatMessage } from '@littlesheep/llm';
 import { toChatMessage, textOf, callLlmForJson } from './_shared.js';
-import { appendSystemPromptAddons } from '../profile-prompt.js';
+import { appendSystemPromptAddons, buildUserFacingVoiceAddon } from '../profile-prompt.js';
 import { prepareModelRequest, recordProviderUsage } from '../model-observability.js';
 import { buildRunRequestCandidates } from '../context-candidates.js';
 
@@ -24,6 +24,8 @@ A prior stage failed. Decide how to proceed.
 
 Return ONLY a JSON object, no markdown:
 {"action":"retry"|"escalate"|"abort","revisedPlan":[{"description":"...","tools":["..."],"requiresApproval":false}],"reason":"short explanation"}
+
+The reason may be shown to the user. Write it in the user's language, follow the active voice, keep it concise and do not expose private chain-of-thought.
 
 Actions:
 - "retry": try the failing stage again. Optionally provide a revisedPlan (replaces the current plan).
@@ -88,7 +90,14 @@ export function createRecoverStage(deps: RecoverStageDeps) {
       + `Inbound: ${textOf(ctx.inbound).slice(0, 500)}`;
 
     const messages: ChatMessage[] = [
-      { role: 'system', content: appendSystemPromptAddons(SYSTEM_PROMPT, ctx.profilePromptAddon) },
+      {
+        role: 'system',
+        content: appendSystemPromptAddons(
+          SYSTEM_PROMPT,
+          ctx.profilePromptAddon,
+          buildUserFacingVoiceAddon(ctx),
+        ),
+      },
       ...ctx.history.slice(-3).map(toChatMessage),
       { role: 'user', content: userMsg },
     ];
@@ -151,8 +160,30 @@ export function createRecoverStage(deps: RecoverStageDeps) {
       }
       next = 'execute';
     } else if (parsed.action === 'escalate') {
+      const originalRequest = textOf(ctx.inbound);
+      const chinese = /[\u3400-\u9fff]/u.test(originalRequest);
+      ctx.clarificationRequest = {
+        id: `${ctx.runId}:clarification`,
+        kind: 'recovery_decision',
+        sourceStage: 'recover',
+        createdAt: new Date().toISOString(),
+        originalRequest,
+        copySource: 'runtime_fallback',
+        blockingReason: parsed.reason?.trim()
+          || `${lastError?.stage ?? 'recover'}: ${lastError?.message ?? 'execution could not continue'}`,
+        questions: [{
+          id: 'question-1',
+          field: 'recoveryDecision',
+          prompt: chinese ? '你希望我接下来如何处理？' : 'How would you like me to proceed?',
+          required: true,
+        }],
+      };
       next = 'ask_user';
     } else {
+      ctx.reply = parsed.reason?.trim()
+        || (/[\u3400-\u9fff]/u.test(textOf(ctx.inbound))
+          ? '当前任务无法安全继续，已停止。'
+          : 'The task could not continue safely and has been stopped.');
       next = 'finalize';
     }
 

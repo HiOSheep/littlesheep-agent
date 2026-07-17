@@ -157,6 +157,8 @@ function priorityInput(atom: Awaited<ReturnType<MemoryAtomStore['read']>> & obje
   return {
     atom: atom!, now: '2026-07-15T04:30:00.000Z', scopeMatch: 1, taskRelevance: 1,
     authorityMatch: 1, verifiedUsefulness: 0.5, decayHalfLifeDays: 30,
+    routingRelevance: 0.5,
+    relationshipRelevance: 0.5,
     requiredByCurrentUser: false, safetyCritical: false,
   };
 }

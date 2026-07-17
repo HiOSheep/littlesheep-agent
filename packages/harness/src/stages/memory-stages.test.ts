@@ -84,6 +84,19 @@ describe('EVOLVE structured memory intents', () => {
         importance: 0.8,
         confidence: 0.95,
         reason: 'Verified from packageManager and successful commands.',
+        epistemic: {
+          domain: 'project',
+          statementKind: 'factual-claim',
+          assertedBy: { kind: 'tool', id: 'package-inspector' },
+          topics: ['package manager'],
+          entities: [
+            { stableKey: 'project:workspace', type: 'project', label: 'Current workspace' },
+            { stableKey: 'tool:pnpm', type: 'tool', label: 'pnpm' },
+          ],
+          relations: [
+            { fromKey: 'project:workspace', toKey: 'tool:pnpm', type: 'depends-on' },
+          ],
+        },
       }],
       createSkill: null,
     })));
@@ -96,6 +109,20 @@ describe('EVOLVE structured memory intents', () => {
     expect(intent).toMatchObject({
       branch: 'project', parentNodeId: 'project:root', scope: 'workspace', scopeKey: ctx.cwd,
       sourceRunId: ctx.runId, sourceStage: 'evolve', summary: 'Workspace uses pnpm',
+      epistemic: {
+        domain: 'project',
+        statementKind: 'factual-claim',
+        epistemicStatus: 'corroborated',
+        authorityScope: { kind: 'tool-evidence', scope: 'workspace', scopeKey: ctx.cwd },
+        assertedBy: { kind: 'tool', id: 'package-inspector' },
+        entityHints: [
+          { stableKey: 'project:workspace', type: 'project', label: 'Current workspace' },
+          { stableKey: 'tool:pnpm', type: 'tool', label: 'pnpm' },
+        ],
+        relationHints: [
+          { fromKey: 'project:workspace', toKey: 'tool:pnpm', type: 'depends-on' },
+        ],
+      },
     });
     expect(intent.sourceRefs).toEqual(expect.arrayContaining([
       expect.stringContaining(':user-message:'),
@@ -188,6 +215,11 @@ describe('CAPTURE daily timeline intents', () => {
       importance: 0.5,
       confidence: 0.9,
       reason: 'Useful when diagnosing the next build regression.',
+      epistemic: {
+        domain: 'task',
+        statementKind: 'reported-observation',
+        assertedBy: { kind: 'tool', id: 'build-command' },
+      },
     }] })));
     const ctx = verifiedCtx('Build passed');
     const result = await createCaptureStage({ llm, model: 'test', memoryWriter })(ctx);
@@ -197,6 +229,13 @@ describe('CAPTURE daily timeline intents', () => {
     expect(intent).toMatchObject({
       branch: 'daily', parentNodeId: 'daily:root', scope: 'workspace', scopeKey: ctx.cwd,
       sourceRunId: ctx.runId, sourceStage: 'capture', summary: 'Build verification',
+      epistemic: {
+        domain: 'task',
+        statementKind: 'reported-observation',
+        epistemicStatus: 'corroborated',
+        authorityScope: { kind: 'tool-evidence', scope: 'workspace', scopeKey: ctx.cwd },
+        assertedBy: { kind: 'tool', id: 'build-command' },
+      },
     });
     expect(intent?.tier).toBe(3);
     expect(intent?.sourceRefs).toEqual(expect.arrayContaining([

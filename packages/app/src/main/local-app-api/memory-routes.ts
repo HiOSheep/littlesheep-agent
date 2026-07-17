@@ -21,6 +21,15 @@ import { json, readJson, type LocalAppApiRequest } from './http.js'
 import { routeMemoryAtom } from './memory-atom-routes.js'
 import type { MemoryEmbeddingModelController } from '../memory-embedding-model-control.js'
 import { routeMemoryMigration } from './memory-migration-routes.js'
+import {
+  listUserMemoryFiles,
+  readUserMemoryFile,
+  writeUserMemoryFile,
+} from '../memory-files.js'
+import type {
+  MemoryActivationLevelCounts,
+  MemoryFilesPayload,
+} from '../../shared/memory-control-contracts.js'
 
 export interface MemoryRouteContext {
   getRunner: () => AgentRunner
@@ -33,6 +42,7 @@ export interface MemoryRouteContext {
   selectProjectMemoryExport?: (projectName: string, projectPath: string) => Promise<string | null>
   selectMemoryResourceSource?: () => Promise<string | null>
   selectMemoryAtomExport?: (suggestedName: string) => Promise<string | null>
+  dataDir: string
 }
 
 const MEMORY_NODE_MANAGEMENT_ACTIONS = new Set<MemoryNodeManagementAction>([
@@ -73,6 +83,56 @@ export async function routeMemory(
       description: skill.description,
     }))
     json(res, 200, { skills })
+    return true
+  }
+
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.memoryFiles) {
+    const [files, repository, semanticCache] = await Promise.all([
+      listUserMemoryFiles(context.dataDir),
+      runner.infra.memoryRepository.management.status(),
+      runner.infra.sessionManager.semanticCacheActivationOverview(),
+    ])
+    const durableMemory = repository.catalog?.activation ?? emptyActivationCounts()
+    const payload: MemoryFilesPayload = {
+      files,
+      activation: {
+        levels: addActivationCounts(durableMemory, semanticCache),
+        sources: { durableMemory, semanticCache },
+        computedAt: new Date().toISOString(),
+      },
+    }
+    json(res, 200, payload)
+    return true
+  }
+
+  const memoryFileName = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.memoryFiles)
+  if (memoryFileName !== null && (method === 'GET' || method === 'PUT')) {
+    if (method === 'GET') {
+      const file = await readUserMemoryFile(context.dataDir, memoryFileName)
+      if (!file) {
+        json(res, 404, { error: `memory file not found: ${memoryFileName}` })
+        return true
+      }
+      json(res, 200, file)
+      return true
+    }
+    const body = await readJson(req)
+    const content = typeof body.content === 'string' ? body.content : undefined
+    if (content === undefined) {
+      json(res, 400, { error: 'content must be a string' })
+      return true
+    }
+    try {
+      const file = await writeUserMemoryFile(context.dataDir, memoryFileName, content)
+      if (!file) {
+        json(res, 404, { error: `memory file not found: ${memoryFileName}` })
+        return true
+      }
+      await runner.infra.memoryService.loadBootstrapFiles(context.dataDir)
+      json(res, 200, file)
+    } catch (error) {
+      json(res, 403, { error: (error as Error).message })
+    }
     return true
   }
 
@@ -271,4 +331,19 @@ export async function routeMemory(
   }
 
   return false
+}
+
+function emptyActivationCounts(): MemoryActivationLevelCounts {
+  return { high: 0, medium: 0, low: 0 }
+}
+
+function addActivationCounts(
+  left: MemoryActivationLevelCounts,
+  right: MemoryActivationLevelCounts,
+): MemoryActivationLevelCounts {
+  return {
+    high: left.high + right.high,
+    medium: left.medium + right.medium,
+    low: left.low + right.low,
+  }
 }

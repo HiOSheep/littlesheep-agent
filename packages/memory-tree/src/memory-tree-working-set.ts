@@ -17,6 +17,8 @@ export interface ActiveMemoryRun {
   branchTokens: Map<string, number>;
   dedupKeys: Set<string>;
   activeFragments: Map<string, { dedupKey: string; branchId: string; tokens: number }>;
+  refinementQueryKeys: Set<string>;
+  refinementCount: number;
 }
 
 export interface MemoryWorkingSetConfig {
@@ -31,6 +33,21 @@ export interface MemoryFragmentSelection {
   tokensUsed: number;
   dedupedCount: number;
   truncated: boolean;
+}
+
+export function createActiveMemoryRun(
+  context: MemoryBranchContext,
+  ledger: MemoryAccessLedger,
+): ActiveMemoryRun {
+  return {
+    context,
+    ledger,
+    branchTokens: new Map(),
+    dedupKeys: new Set(),
+    activeFragments: new Map(),
+    refinementQueryKeys: new Set(),
+    refinementCount: 0,
+  };
 }
 
 export function totalWorkingSetRemaining(run: ActiveMemoryRun): number {

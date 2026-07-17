@@ -11,16 +11,16 @@ import {
   recordProviderUsage,
 } from './model-observability.js';
 
-function request(messageCount = 2, toolCount = 1): ChatRequest {
+function request(messageCount = 2, toolCount = 1, includeImage = true): ChatRequest {
   const messages: ChatRequest['messages'] = Array.from({ length: messageCount }, (_, index) => ({
     role: index === 0 ? 'system' : index === messageCount - 1 ? 'user' : 'assistant',
     content: index === messageCount - 1
       ? [
           { type: 'text' as const, text: `USER_SECRET_${index}` },
-          {
+          ...(includeImage ? [{
             type: 'image_url' as const,
             image_url: { url: 'data:image/png;base64,IMAGE_SECRET_BYTES', detail: 'auto' as const },
-          },
+          }] : []),
         ]
       : `PROMPT_SECRET_${index}`,
   }));
@@ -86,7 +86,7 @@ describe('recordModelRequest', () => {
 
   it('caps message, item, tool, and per-run snapshot collections', () => {
     const ctx = makeCtx({ tools: registeredTools(70) });
-    const oversized = recordModelRequest(ctx, 'execute_tool_loop', request(70, 70));
+    const oversized = recordModelRequest(ctx, 'execute_tool_loop', request(70, 70, false));
 
     expect(oversized.messages).toHaveLength(MAX_SNAPSHOT_MESSAGES);
     expect(oversized.totalMessageCount).toBe(70);

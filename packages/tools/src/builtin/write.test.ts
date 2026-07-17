@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { mkdtemp, rm, readFile, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -79,6 +79,22 @@ describe('writeTool', () => {
     );
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/core source is read-only/i);
+    await expect(stat(file)).rejects.toThrow();
+  });
+
+  it('fails closed when the preimage checkpoint cannot be created', async () => {
+    const file = join(tmpDir, 'checkpoint-failure.txt');
+    const beforeFileMutation = vi.fn(async () => { throw new Error('checkpoint unavailable'); });
+    const result = await writeTool.execute(
+      { file_path: file, content: 'must not be written' },
+      {
+        ...approvedCtx,
+        versioning: { beforeFileMutation, beforeWorkspaceMutation: vi.fn() },
+      },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/checkpoint unavailable/);
+    expect(beforeFileMutation).toHaveBeenCalledWith(file);
     await expect(stat(file)).rejects.toThrow();
   });
 

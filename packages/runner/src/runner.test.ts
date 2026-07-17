@@ -115,7 +115,14 @@ describe('createRunner run', () => {
     expect(result.reply).toBe('Hello!');
     expect(typeof result.sessionId).toBe('string');
     expect(result.sessionId.length).toBeGreaterThan(0);
-    expect(result.memoryAccess?.records.map((record) => record.action)).toEqual(['root_index']);
+    expect(result.memoryAccess?.records[0]?.action).toBe('root_index');
+    expect(result.memoryAccess?.records.slice(1)).toHaveLength(4);
+    expect(result.memoryAccess?.records.slice(1).every((record) => (
+      record.action === 'branch_index'
+      && record.tokensUsed === 0
+      && record.fragmentIds.length === 0
+    ))).toBe(true);
+    expect(result.memoryAccess?.records.some((record) => record.action === 'expand')).toBe(false);
     expect(result.memoryAccess?.endedAt).toBeTruthy();
     expect(runner.infra.registry.names()).toEqual(expect.arrayContaining([
       'memory_tree',
@@ -254,11 +261,23 @@ describe('createRunner run', () => {
 
     expect(messages).toHaveLength(2);
     expect(metadata?.compaction).toMatchObject({
-      version: 1,
+      version: 2,
       collapsedCount: 1,
       sourceStartMessageId: messages[0]?.id,
       sourceEndMessageId: messages[0]?.id,
+      sourceRunIds: [result.runId],
+      sourceRunIdsTruncated: false,
       summary: 'summary text',
+      cache: {
+        compressionDepth: 1,
+        disclosureLevel: 'D1',
+        vectorClass: 'semantic-cache',
+      },
+      sourceRanges: [{
+        messageCount: 1,
+        sourceStartMessageId: messages[0]?.id,
+        sourceEndMessageId: messages[0]?.id,
+      }],
     });
     const summary = metadata!.compaction!;
     expect(await runner.infra.memoryRepository.getResource(summary.id)).toMatchObject({
@@ -570,7 +589,7 @@ describe('createRunner run', () => {
     expect(projectNodes).toHaveLength(1);
     expect(projectNodes[0]).toMatchObject({ summary: 'Repository uses pnpm', sourceRunIds: [result.runId] });
     expect(dailyNodes).toHaveLength(1);
-    expect(dailyNodes[0]).toMatchObject({ summary: 'Inspection completed', sourceRunIds: [result.runId] });
+    expect(dailyNodes[0]).toMatchObject({ summary: 'Run done: read the file', sourceRunIds: [result.runId] });
     expect((await runner.infra.memoryRepository.snapshot()).writeAudit.map((record) => record.decision)).toEqual(['created', 'created']);
     expect(result.modelRequests?.map((request) => request.stage)).toEqual([
       'classify',
@@ -578,7 +597,6 @@ describe('createRunner run', () => {
       'execute',
       'verify',
       'evolve',
-      'capture',
     ]);
   });
 

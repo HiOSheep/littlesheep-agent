@@ -2,7 +2,7 @@
 
 import { createHash } from 'node:crypto';
 import { InjectionTier, type MemoryBranchKind, type MemoryNode, type MemoryScope } from '../types.js';
-import type { CreateMemoryAtomInput, MemoryAtom, MemoryEntity, MemoryEntityType } from '../v3/contracts.js';
+import type { CreateMemoryAtomInput, MemoryAtom, MemoryEntity, MemoryEntityType, MemoryRelationType } from '../v3/contracts.js';
 import { MEMORY_BRANCH_ROOTS, memoryBranchRootId } from './document-store.js';
 import type { ClassifiedMemoryStatement } from './v3-statement.js';
 import { unique } from './text.js';
@@ -60,6 +60,7 @@ export function createMemoryV3ScopeRoot(
     confidence: 1,
     basePriority: 1,
     verifiedUsefulness: { useful: 0, notUseful: 0, conflicts: 0, stale: 0 },
+    routingFeedback: { useful: 0, notUseful: 0, conflicts: 0, stale: 0, recentFeedbackIds: [] },
     feedbackRevision: 0,
     reason: 'Canonical internal Memory v3 scope root.',
     sourceRunIds: [],
@@ -98,6 +99,14 @@ export function memoryAtomToNode(
       ...atom.sourceRefs,
       ...legacySourceRefsFromEvidence(atom.evidenceRefs),
     ]),
+    evidenceRefs: [...atom.evidenceRefs],
+    domain: atom.domain,
+    statementKind: atom.statementKind,
+    epistemicStatus: atom.epistemicStatus,
+    authorityScope: structuredClone(atom.authorityScope),
+    assertedBy: structuredClone(atom.assertedBy),
+    entityRefs: [...atom.entityRefs],
+    relationRefs: [...atom.relationRefs],
     status: atom.status === 'tombstone' ? 'deleted' : atom.status,
     createdAt: atom.createdAt,
     updatedAt: atom.updatedAt,
@@ -125,7 +134,9 @@ export function createMemoryAtomInput(
     confidence: number;
     reason: string;
     sourceRunId: string;
+    sourceRunIds?: string[];
     sourceStage: MemoryAtom['sourceStages'][number];
+    sourceStages?: MemoryAtom['sourceStages'];
     sourceRefs: string[];
     entityRefs: string[];
     relationRefs: string[];
@@ -164,10 +175,11 @@ export function createMemoryAtomInput(
     confidence: input.confidence,
     basePriority: Math.max(input.importance, input.confidence),
     verifiedUsefulness: { useful: 0, notUseful: 0, conflicts: 0, stale: 0 },
+    routingFeedback: { useful: 0, notUseful: 0, conflicts: 0, stale: 0, recentFeedbackIds: [] },
     feedbackRevision: 0,
     reason: input.reason,
-    sourceRunIds: [input.sourceRunId],
-    sourceStages: [input.sourceStage],
+    sourceRunIds: unique([...(input.sourceRunIds ?? []), input.sourceRunId]).slice(-256),
+    sourceStages: unique([...(input.sourceStages ?? []), input.sourceStage]).slice(0, 64),
     status: 'active',
     resolutionStatus: input.classification.resolutionStatus,
     createdAt: input.createdAt,
@@ -199,6 +211,19 @@ export function memoryV3EntityId(
     .update(`${type}\0${scope}\0${storageScopeKey ?? ''}\0${externalKey}`, 'utf8')
     .digest('hex');
   return `memory-entity:${type}:${digest}`;
+}
+
+export function memoryV3RelationId(
+  type: MemoryRelationType,
+  scope: MemoryScope,
+  storageScopeKey: string | undefined,
+  fromEntityId: string,
+  toEntityId: string,
+): string {
+  const digest = createHash('sha256')
+    .update(`${type}\0${scope}\0${storageScopeKey ?? ''}\0${fromEntityId}\0${toEntityId}`, 'utf8')
+    .digest('hex');
+  return `memory-relation:${type}:${digest}`;
 }
 
 export function sourceRefEntityType(sourceRef: string): MemoryEntityType {

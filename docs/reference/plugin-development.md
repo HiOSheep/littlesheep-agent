@@ -172,7 +172,7 @@ PluginHost 只把 `active` 插件的 Skill 放入可调用索引；`disabled`、
 - `reload()` 按“停止贡献 -> 重新发现 -> 重新激活”的顺序执行。
 - Runner 因模型/API key 变化重建时，工具贡献会迁移到新 ToolRegistry，插件 Skill 来源也会迁移到新 SkillLoader 和同一记忆注册表；冲突不会覆盖新 Runner 的同名工具或技能。
 - 宿主停用插件时会清理已注册工具和渠道类型；插件自己的定时器、文件句柄等资源仍应在可选的 `deactivate()` 中释放。
-- 插件 Skill 的生命周期由 PluginHost 独占。记忆树资源目录只展示来源、状态和审计，不提供绕过插件页面的停用、恢复或移除按钮。
+- 插件 Skill 的生命周期由 PluginHost 独占。相关来源、状态和审计保留在 Runtime 资源注册表中；普通记忆文件页不展示这些内部条目，也不提供绕过插件页面的停用、恢复或移除按钮。
 - 渠道轮询和重连等待应使用 `@littlesheep/plugins` 导出的 `abortableDelay()`；该辅助函数会在正常完成和取消时都移除 `AbortSignal` 监听器，避免长连接反复等待造成监听器累积。
 - 单个插件或渠道启动失败只记录到该插件/渠道状态，不终止核心宿主。
 

@@ -3,7 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SessionManager } from './manager.js';
-import { asSessionId, textMessage } from '@littlesheep/types';
+import { asSessionId, textMessage, type CompactionSummaryV2 } from '@littlesheep/types';
+import { SessionCompactionStore } from './compaction-store.js';
 
 let tmpDir: string;
 
@@ -74,6 +75,59 @@ describe('SessionManager', () => {
     const loaded = await sm.load(session.id);
     expect(loaded!.metadata.title).toBe('updated title');
     expect(loaded!.metadata.messageCount).toBe(1);
+  });
+
+  it('recovers an interrupted compaction transaction on the next metadata read', async () => {
+    const sm = new SessionManager({ sessionsDir: tmpDir });
+    const session = await sm.create();
+    await sm.append(session.id, [textMessage('user', 'source', {
+      id: 'source-message',
+      timestamp: '2026-07-16T10:00:00.000Z',
+    })]);
+    const summary: CompactionSummaryV2 = {
+      version: 2,
+      id: 'summary-recovery',
+      collapsedCount: 1,
+      summary: 'Recovered summary.',
+      compactedAt: '2026-07-16T10:01:00.000Z',
+      sourceStartMessageId: 'source-message',
+      sourceEndMessageId: 'source-message',
+      sourceStartAt: '2026-07-16T10:00:00.000Z',
+      sourceEndAt: '2026-07-16T10:00:00.000Z',
+      cache: {
+        version: 1,
+        namespace: 'session-summary',
+        dataClass: 'semantic',
+        compressionDepth: 1,
+        disclosureLevel: 'D1',
+        vectorClass: 'semantic-cache',
+        sourceRefs: ['session:source-message'],
+        contentHash: 'a'.repeat(64),
+        createdAt: '2026-07-16T10:01:00.000Z',
+      },
+      sourceRanges: [{
+        messageCount: 1,
+        sourceStartMessageId: 'source-message',
+        sourceEndMessageId: 'source-message',
+        sourceStartAt: '2026-07-16T10:00:00.000Z',
+        sourceEndAt: '2026-07-16T10:00:00.000Z',
+        sourceHash: 'b'.repeat(64),
+      }],
+      sourceSummaryIds: [],
+      mergedSummaryCount: 1,
+      sourceHash: 'b'.repeat(64),
+      lineageHash: 'c'.repeat(64),
+    };
+    const store = new SessionCompactionStore(tmpDir);
+    await expect(store.commit(session.id, summary, async () => {
+      throw new Error('simulated metadata failure');
+    })).rejects.toThrow('simulated metadata failure');
+
+    await expect(sm.loadMetadata(session.id)).resolves.toMatchObject({
+      compacted: true,
+      compaction: { id: summary.id, version: 2 },
+    });
+    await expect(sm.loadCompactionProjection(session.id, summary.id)).resolves.toEqual(summary);
   });
 
   // ── delete() ────────────────────────────────────────────────────────────

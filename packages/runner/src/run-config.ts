@@ -59,6 +59,7 @@ export function resolveRunConfig(opts: ResolveRunConfigOptions): ResolvedRunConf
     parameters: {
       maxRecoveryAttempts: opts.config.agents.defaults.maxRecoveryAttempts,
       runTimeoutSeconds: opts.config.agents.defaults.timeoutSeconds,
+      maxModelCallsPerRun: opts.config.agents.defaults.maxModelCallsPerRun,
     },
     availableToolNames,
     approvalRequiredToolNames,
@@ -66,6 +67,16 @@ export function resolveRunConfig(opts: ResolveRunConfigOptions): ResolvedRunConf
     projectOverrides: {},
     sourceConfigRevision: String(opts.config.version),
   });
+}
+
+export function reasoningPromptAddon(reasoning: Config['agents']['defaults']['reasoning']): string | undefined {
+  switch (reasoning) {
+    case 'low': return 'Reasoning budget: low. Prefer a direct answer or the smallest safe tool plan.';
+    case 'medium': return 'Reasoning budget: medium. Balance speed with enough planning to avoid obvious mistakes.';
+    case 'high': return 'Reasoning budget: high. Think through edge cases before acting and verify important results.';
+    case 'ultra': return 'Reasoning budget: ultra. Use a careful multi-step approach, inspect assumptions, and verify thoroughly before finalizing.';
+    default: return undefined;
+  }
 }
 
 function unique(values: string[]): string[] {

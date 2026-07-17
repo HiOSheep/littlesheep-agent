@@ -1,5 +1,7 @@
 // JSON-safe run-level Memory v3 evidence contracts shared by Harness, Runner, logs, and UI.
 
+import type { AtomicActivationSnapshot } from './activation.js';
+
 export interface RuntimeMemoryAuthorityScope {
   kind: string;
   scope: string;
@@ -29,9 +31,29 @@ export interface RuntimeMemoryEvidenceEnvelope {
   evidenceRefs: string[];
   confidence: number;
   importance: number;
+  verifiedUsefulness?: {
+    useful: number;
+    notUseful: number;
+    conflicts: number;
+    stale: number;
+    lastOutcome?: string;
+  };
+  taskRelevance?: number;
+  routingRelevance?: number;
+  relationshipRelevance?: number;
+  activation?: AtomicActivationSnapshot;
   updatedAt: string;
   lastVerifiedAt?: string;
-  retrievalPath: 'hierarchy' | 'fts' | 'vector';
+  retrievalPath: 'hierarchy' | 'fts' | 'vector' | 'relation';
+  relationRoute?: {
+    seedAtomId: string;
+    relationId: string;
+    relationType: string;
+    direction: 'outbound' | 'inbound' | 'shared';
+    confidence: number;
+    relevance: number;
+    strength: number;
+  };
   matchReason: string;
   conflict: boolean;
   expired: boolean;

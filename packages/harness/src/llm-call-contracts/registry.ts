@@ -43,7 +43,7 @@ const LEGACY_STAGE_PURPOSE: Readonly<Record<StageName, LlmCallPurpose>> = {
   evolve: 'evolve',
   capture: 'capture',
   reply: 'reply',
-  ask_user: 'finalize',
+  ask_user: 'ask_user',
   finalize: 'finalize',
 };
 
@@ -112,6 +112,7 @@ export function resolveLlmCallContract(
     budget: {
       maxAttempts: template.maxAttempts,
       maxOutputTokens,
+      maxPromptTokens: template.maxPromptTokens,
       temperature: options.temperature ?? template.temperature,
       contextCompressionThresholdRatio: ctx.contextCompressionThresholdRatio,
     },

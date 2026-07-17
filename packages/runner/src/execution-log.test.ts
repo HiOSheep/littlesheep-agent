@@ -35,6 +35,29 @@ describe('ExecutionLogStore', () => {
       inboundText: 'hello',
       reply: 'hi',
       trace: [{ name: 'enter' as const, startedAt: '', endedAt: '', ok: true }],
+      runtimeResources: {
+        version: 1 as const,
+        device: {
+          platform: 'win32' as const,
+          arch: 'x64',
+          totalMemoryMiBBucket: 16_384,
+          logicalCpuBucket: 16,
+        },
+        start: {
+          sampledAt: '2026-01-01T00:00:00.000Z',
+          rssBytes: 100,
+          heapUsedBytes: 40,
+          externalBytes: 5,
+          arrayBuffersBytes: 2,
+        },
+        end: {
+          sampledAt: '2026-01-01T00:00:05.000Z',
+          rssBytes: 120,
+          heapUsedBytes: 45,
+          externalBytes: 6,
+          arrayBuffersBytes: 3,
+        },
+      },
       messages: [],
       durationMs: 5000,
     };
@@ -47,6 +70,7 @@ describe('ExecutionLogStore', () => {
     expect(log!.inboundText).toBe('hello');
     expect(log!.status).toBe('ok');
     expect(log!.durationMs).toBe(5000);
+    expect(log!.runtimeResources).toEqual(input.runtimeResources);
     expect(log!.toolCalls).toEqual([]);
   });
 

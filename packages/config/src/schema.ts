@@ -46,6 +46,8 @@ export const AgentDefaultsSchema = z.object({
   bootstrapTotalMaxChars: z.number().int().positive().default(60000),
   /** Context occupancy ratio that recommends compaction (0.5-0.95). */
   contextCompressionThresholdRatio: z.number().min(0.5).max(0.95).default(0.8),
+  /** Hard provider-call ceiling for one run, including retries and compaction. */
+  maxModelCallsPerRun: z.number().int().min(1).max(128).default(32),
   /** Which harness to use (default: "core-flow"). */
   harness: z.string().default('core-flow'),
 }).default({});
@@ -70,6 +72,8 @@ export const ToolsConfigSchema = z.object({
   maxOutputChars: z.number().int().positive().default(10000),
   /** Strip image base64 to placeholder. */
   stripImages: z.boolean().default(true),
+  /** Maximum independent tool calls executed concurrently. */
+  maxParallel: z.number().int().min(1).max(8).default(4),
 });
 
 /** Memory config. */
@@ -96,6 +100,19 @@ export const MemoryConfigSchema = z.object({
   treeRootIndexMaxChars: z.number().int().min(600).max(4000).default(1600),
   /** Balanced default threshold for autonomous experience learning. */
   experienceWriteThreshold: z.number().min(0).max(1).default(0.65),
+  /** CAPTURE uses deterministic source records by default instead of another model call. */
+  llmCapture: z.boolean().default(false),
+  /** EVOLVE calls the model only when the verified run has reusable value by default. */
+  llmEvolve: z.enum(['adaptive', 'always', 'never']).default('adaptive'),
+});
+
+/** Local shadow-Git checkpoint policy. */
+export const VersioningConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  maxCheckpoints: z.number().int().min(16).max(2048).default(256),
+  maxFileBytes: z.number().int().min(1024).max(128 * 1024 * 1024).default(8 * 1024 * 1024),
+  maxWorkspaceFiles: z.number().int().min(100).max(200000).default(20000),
+  maxWorkspaceBytes: z.number().int().min(1024 * 1024).max(8 * 1024 * 1024 * 1024).default(512 * 1024 * 1024),
 });
 
 /** Safety config (Phase A: injection defence + quarantine + prelude sanitization). */
@@ -245,6 +262,8 @@ export const ConfigSchema = z.object({
   mcp: McpConfigSchema.default({}),
   /** Channels config (Phase 4: multi-channel message routing). */
   channels: ChannelsConfigSchema.default({}),
+  /** Local data and workspace rollback checkpoints. */
+  versioning: VersioningConfigSchema.default({}),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -262,3 +281,4 @@ export type McpConfig = z.infer<typeof McpConfigSchema>;
 export type ConversationPolicy = z.infer<typeof ConversationPolicySchema>;
 export type ChannelConfig = z.infer<typeof ChannelConfigSchema>;
 export type ChannelsConfig = z.infer<typeof ChannelsConfigSchema>;
+export type VersioningConfig = z.infer<typeof VersioningConfigSchema>;

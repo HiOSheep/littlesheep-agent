@@ -531,7 +531,7 @@ if (gotLock) {
       { name: 'retired runners', run: shutdownRetiredRunners },
       { name: 'runner', run: () => runner?.shutdown() },
     ], {
-      stepTimeoutMs: 1500,
+      stepTimeoutMs: 5000,
       onWarning: (message) => console.warn(`[shutdown] ${message}`),
     }).finally(() => app.exit(0))
   })

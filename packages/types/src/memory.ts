@@ -6,9 +6,11 @@ export type MemoryTier =
   | 'long-term' // MEMORY.md (curated summary)
   | 'daily' // memory/YYYY-MM-DD.md
   | 'insight' // captured runtime insight
-  | 'archive' // archived daily (memory/YYYY-MM-DD.md moved to archive/YYYY/MM/DD.md)
-  | 'monthly-summary' // archive/YYYY/MM/summary.md
-  | 'yearly-summary'; // archive/YYYY/summary.md
+  // The remaining tiers are read-only compatibility labels for existing v2 files.
+  // Memory v3 must not create or promote records through these archive paths.
+  | 'archive' // legacy archive/YYYY/MM/DD.md
+  | 'monthly-summary' // legacy archive/YYYY/MM/summary.md
+  | 'yearly-summary'; // legacy archive/YYYY/summary.md
 
 /** A single memory entry (one bullet / one captured note). */
 export interface MemoryRecord {
@@ -17,7 +19,7 @@ export interface MemoryRecord {
   tier: MemoryTier;
   /** The memory text (markdown bullet or short paragraph). */
   text: string;
-  /** Source: stage that wrote it, or 'distill'. */
+  /** Source stage; legacy readers may still encounter the historical value 'distill'. */
   source?: string;
   /** Optional tags for search filtering. */
   tags?: string[];

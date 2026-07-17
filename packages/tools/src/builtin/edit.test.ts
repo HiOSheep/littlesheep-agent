@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -97,6 +97,24 @@ describe('editTool', () => {
     );
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/core source is read-only/i);
+    expect(await readFile(file, 'utf8')).toBe('original');
+  });
+
+  it('keeps the original file when the preimage checkpoint fails', async () => {
+    const file = join(tmpDir, 'checkpoint-failure.txt');
+    await writeFile(file, 'original', 'utf8');
+    const result = await editTool.execute(
+      { file_path: file, old_string: 'original', new_string: 'changed' },
+      {
+        ...approvedCtx,
+        versioning: {
+          beforeFileMutation: vi.fn(async () => { throw new Error('checkpoint unavailable'); }),
+          beforeWorkspaceMutation: vi.fn(),
+        },
+      },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/checkpoint unavailable/);
     expect(await readFile(file, 'utf8')).toBe('original');
   });
 

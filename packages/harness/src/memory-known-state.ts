@@ -139,7 +139,7 @@ function renderKnownState(state: RuntimeMemoryKnownState): string {
     const envelope = reference.envelope;
     lines.push(
       `- [${reference.atomId}@${reference.atomRevision}] decision=${reference.decision}; disclosure=${envelope.disclosureLevel}; branch=${envelope.branch}; scope=${envelope.scope}${envelope.scopeKey ? `:${cleanInline(envelope.scopeKey)}` : ''}; tier=T${envelope.tier}`,
-      `  statement=${envelope.statementKind}; epistemic=${envelope.epistemicStatus}; authority=${envelope.authorityScope.kind}/${envelope.authorityScope.scope}; confidence=${formatScore(envelope.confidence)}; importance=${formatScore(envelope.importance)}; path=${envelope.retrievalPath}`,
+      `  statement=${envelope.statementKind}; epistemic=${envelope.epistemicStatus}; authority=${envelope.authorityScope.kind}/${envelope.authorityScope.scope}; confidence=${formatScore(envelope.confidence)}; importance=${formatScore(envelope.importance)}; usefulness=${formatUsefulness(envelope.verifiedUsefulness)}; task=${formatScore(envelope.taskRelevance ?? 0)}; routing=${formatScore(envelope.routingRelevance ?? 0.5)}; relation=${formatScore(envelope.relationshipRelevance ?? 0.5)}; activation=${formatScore(envelope.activation?.score ?? 0.25)}; path=${envelope.retrievalPath}${envelope.relationRoute ? `; relation_route=${cleanInline(`${envelope.relationRoute.seedAtomId}->${envelope.relationRoute.relationId}->${envelope.atomId} (${envelope.relationRoute.relationType}/${envelope.relationRoute.direction}; strength=${formatScore(envelope.relationRoute.strength)})`)}` : ''}`,
       `  match=${cleanInline(envelope.matchReason)}; decision_reason=${cleanInline(reference.reason)}; sources=${envelope.sourceRefs.slice(0, 3).map(cleanInline).join(', ') || '(none)'}; evidence=${envelope.evidenceRefs.slice(0, 4).map(cleanInline).join(', ') || '(none)'}; stages=${reference.stages.join(',')}; reactivated=${reference.reactivatedCount}`,
     );
   }
@@ -195,8 +195,10 @@ function parseReference(value: unknown): RuntimeKnownStateMemoryReference | unde
     || (envelope.sourceRefs !== undefined && !stringArray(envelope.sourceRefs)) || !stringArray(envelope.evidenceRefs)
     || typeof envelope.confidence !== 'number'
     || typeof envelope.importance !== 'number' || typeof envelope.updatedAt !== 'string'
+    || (envelope.verifiedUsefulness !== undefined && !isVerifiedUsefulness(envelope.verifiedUsefulness))
     || (envelope.lastVerifiedAt !== undefined && typeof envelope.lastVerifiedAt !== 'string')
-    || !['hierarchy', 'fts', 'vector'].includes(String(envelope.retrievalPath))
+    || !['hierarchy', 'fts', 'vector', 'relation'].includes(String(envelope.retrievalPath))
+    || (envelope.relationRoute !== undefined && !isRelationRoute(envelope.relationRoute))
     || typeof envelope.matchReason !== 'string' || typeof envelope.conflict !== 'boolean'
     || typeof envelope.expired !== 'boolean' || typeof envelope.truncated !== 'boolean') return undefined;
   return {
@@ -217,6 +219,17 @@ function parseReference(value: unknown): RuntimeKnownStateMemoryReference | unde
   };
 }
 
+function isRelationRoute(value: unknown): boolean {
+  return isRecord(value)
+    && typeof value.seedAtomId === 'string'
+    && typeof value.relationId === 'string'
+    && typeof value.relationType === 'string'
+    && ['outbound', 'inbound', 'shared'].includes(String(value.direction))
+    && typeof value.confidence === 'number'
+    && typeof value.relevance === 'number'
+    && typeof value.strength === 'number';
+}
+
 function appendSystemText(message: ChatMessage, suffix: string): ChatMessage {
   if (typeof message.content === 'string') return { ...message, content: `${message.content}${suffix}` };
   return { ...message, content: [...message.content, { type: 'text', text: suffix }] };
@@ -235,6 +248,18 @@ function decisionRank(value: RuntimeKnownStateMemoryReference['decision']): numb
 
 function formatScore(value: number): string {
   return Number.isFinite(value) ? Math.max(0, Math.min(1, value)).toFixed(2) : '0.00';
+}
+
+function formatUsefulness(value: RuntimeMemoryKnownState['references'][number]['envelope']['verifiedUsefulness']): string {
+  if (!value) return 'unknown';
+  return `${value.useful}/${value.notUseful + value.conflicts + value.stale}`;
+}
+
+function isVerifiedUsefulness(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return ['useful', 'notUseful', 'conflicts', 'stale'].every((key) => (
+    Number.isInteger(value[key]) && Number(value[key]) >= 0
+  )) && (value.lastOutcome === undefined || typeof value.lastOutcome === 'string');
 }
 
 function cleanInline(value: string): string {

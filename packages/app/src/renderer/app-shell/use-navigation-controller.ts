@@ -40,6 +40,8 @@ export interface NavigationControllerInput {
   setWorkspacePanelTab: Dispatch<SetStateAction<WorkspacePanelTabId>>
   workspacePanelOpenTabs: WorkspacePanelTabId[]
   setWorkspacePanelOpenTabs: Dispatch<SetStateAction<WorkspacePanelTabId[]>>
+  workspaceBrowserUrl: string
+  setWorkspaceBrowserUrl: Dispatch<SetStateAction<string>>
   workspaceOpenRequest: WorkspaceOpenRequest | null
   setWorkspaceOpenRequest: Dispatch<SetStateAction<WorkspaceOpenRequest | null>>
   workspaceFileNavigatorCollapsed: boolean
@@ -53,7 +55,8 @@ export function useNavigationController({
   conversationCollapsed, setConversationCollapsed, sidebarPanel, setSidebarPanel,
   workspacePanelCollapsed, setWorkspacePanelCollapsed, workspacePanelFullscreen,
   setWorkspacePanelFullscreen, workspacePanelWidth, setWorkspacePanelWidth, workspacePanelTab,
-  setWorkspacePanelTab, workspacePanelOpenTabs, setWorkspacePanelOpenTabs, workspaceOpenRequest,
+  setWorkspacePanelTab, workspacePanelOpenTabs, setWorkspacePanelOpenTabs, workspaceBrowserUrl,
+  setWorkspaceBrowserUrl, workspaceOpenRequest,
   setWorkspaceOpenRequest, workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed,
   workspaceExpandedPaths, setWorkspaceExpandedPaths,
 }: NavigationControllerInput) {
@@ -92,6 +95,7 @@ export function useNavigationController({
     workspacePanelWidth,
     workspacePanelTab,
     workspacePanelOpenTabs: boundStringList(workspacePanelOpenTabs, MAX_NAVIGATION_OPEN_TABS) as WorkspacePanelTabId[],
+    workspaceBrowserUrl,
     workspaceOpenRequest: workspaceOpenRequest
       ? { root: workspaceOpenRequest.root, path: workspaceOpenRequest.path }
       : null,
@@ -111,6 +115,7 @@ export function useNavigationController({
     workspacePanelOpenTabs,
     workspacePanelTab,
     workspacePanelWidth,
+    workspaceBrowserUrl,
   ])
 
   appHistoryRef.current = appHistory
@@ -214,6 +219,7 @@ export function useNavigationController({
     setWorkspacePanelWidth(snapshot.workspacePanelWidth)
     setWorkspacePanelTab(snapshot.workspacePanelTab)
     setWorkspacePanelOpenTabs(snapshot.workspacePanelOpenTabs)
+    setWorkspaceBrowserUrl(snapshot.workspaceBrowserUrl)
     setWorkspaceOpenRequest(snapshot.workspaceOpenRequest
       ? { id: Date.now(), ...snapshot.workspaceOpenRequest }
       : null)

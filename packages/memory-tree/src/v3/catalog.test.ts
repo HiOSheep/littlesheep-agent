@@ -3,9 +3,18 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import type { EmbeddingEngine, EmbeddingRequest, EmbeddingResult, MemoryEntity, MemoryRelation } from './contracts.js';
+import type {
+  EmbeddingEngine,
+  EmbeddingRequest,
+  EmbeddingResult,
+  MemoryAtom,
+  MemoryEntity,
+  MemoryRelation,
+} from './contracts.js';
 import { MemoryCatalog } from './catalog.js';
 import { EmbeddingUnavailableError } from './embedding-engine.js';
+import { memoryAtomContentHash } from './atom-store.js';
+import { memoryAtomEmbeddingHash } from './catalog-helpers.js';
 import { makeStoredAtom } from './test-fixtures.js';
 
 describe('MemoryCatalog', () => {
@@ -60,6 +69,29 @@ describe('MemoryCatalog', () => {
     });
     expect(results[0]?.entry.atomId).toBe('database');
     expect(results[0]?.score).toBeGreaterThan(results[1]?.score ?? -1);
+    const db = new DatabaseSync(catalog.dbPath);
+    const namespaces = db.prepare('SELECT DISTINCT vector_namespace FROM atom_vectors').all() as Array<{
+      vector_namespace: string;
+    }>;
+    db.close();
+    expect(namespaces).toEqual([{ vector_namespace: 'memory-atom' }]);
+  });
+
+  it('reuses one prepared query vector across scoped catalog searches', async () => {
+    const engine = makeEngine('local');
+    const catalog = createCatalog({ embeddingEngine: engine });
+    const memory = makeStoredAtom({ id: 'prepared-database', content: 'sqlite database catalog' });
+    catalog.upsertAtom(memory, 'atoms/prepared-database.json');
+    await catalog.indexEmbedding(memory);
+
+    const prepared = await catalog.prepareVectorQuery('database');
+    const options = { branch: 'project' as const, scope: 'project' as const, scopeKey: 'project-a', limit: 2 };
+    expect(catalog.searchPreparedVector(prepared, options)[0]?.entry.atomId).toBe(memory.id);
+    expect(catalog.searchPreparedVector(prepared, options)[0]?.entry.atomId).toBe(memory.id);
+
+    const queryCalls = vi.mocked(engine.embed).mock.calls
+      .filter(([request]) => request.purpose === 'query');
+    expect(queryCalls).toHaveLength(1);
   });
 
   it('never calls a remote embedding engine unless explicitly enabled', async () => {
@@ -84,6 +116,95 @@ describe('MemoryCatalog', () => {
 
     const upgraded = createCatalog({ dbPath, embeddingEngine: makeEngine('local', '2') });
     expect(upgraded.getAtom(atom.id)?.embeddingStatus).toBe('stale');
+  });
+
+  it('upgrades a v7 catalog with ready vectors to semantic embedding hashes', async () => {
+    const dbPath = join(dataDir, 'legacy-v7.sqlite');
+    const engine = makeEngine('local', '1');
+    const first = createCatalog({ dbPath, embeddingEngine: engine });
+    const atom = makeStoredAtom({ id: 'legacy-semantic-hash', content: 'semantic hash migration' });
+    first.upsertAtom(atom, 'atoms/legacy-semantic-hash.json');
+    await first.indexEmbedding(atom);
+    first.close();
+    catalogs = catalogs.filter((catalog) => catalog !== first);
+
+    const legacy = new DatabaseSync(dbPath);
+    legacy.exec(`
+      DROP INDEX IF EXISTS idx_atoms_activation;
+      ALTER TABLE atom_vectors DROP COLUMN embedding_hash;
+      ALTER TABLE atoms DROP COLUMN embedding_hash;
+      ALTER TABLE atoms DROP COLUMN activation_score;
+      ALTER TABLE atoms DROP COLUMN activation_updated_at;
+      PRAGMA user_version = 7;
+    `);
+    legacy.close();
+
+    const upgraded = createCatalog({ dbPath, embeddingEngine: makeEngine('local', '1') });
+    const db = new DatabaseSync(dbPath);
+    const row = db.prepare(`
+      SELECT atom.embedding_hash AS atom_hash, vector.embedding_hash AS vector_hash
+      FROM atoms atom JOIN atom_vectors vector ON vector.atom_id = atom.atom_id
+      WHERE atom.atom_id = ?
+    `).get(atom.id) as { atom_hash: string; vector_hash: string };
+    const version = db.prepare('PRAGMA user_version').get() as { user_version: number };
+    db.close();
+
+    expect(row.atom_hash).toBe(memoryAtomEmbeddingHash(atom));
+    expect(row.vector_hash).toBe(row.atom_hash);
+    expect(version.user_version).toBe(9);
+    expect(upgraded.getAtom(atom.id)?.embeddingStatus).toBe('ready');
+    expect(upgraded.getAtom(atom.id)).toMatchObject({
+      activationScore: 0.25,
+      activationUpdatedAt: atom.updatedAt,
+    });
+  });
+
+  it('upgrades a v6 vector table before creating the namespace index', async () => {
+    const dbPath = join(dataDir, 'legacy-v6.sqlite');
+    const engine = makeEngine('local', '1');
+    const first = createCatalog({ dbPath, embeddingEngine: engine });
+    const atom = makeStoredAtom({ id: 'legacy-vector', content: 'legacy vector memory' });
+    first.upsertAtom(atom, 'atoms/legacy-vector.json');
+    await first.indexEmbedding(atom);
+    first.close();
+    catalogs = catalogs.filter((catalog) => catalog !== first);
+
+    const legacy = new DatabaseSync(dbPath);
+    legacy.exec(`
+      DROP INDEX IF EXISTS idx_vectors_namespace_engine;
+      ALTER TABLE atom_vectors RENAME TO atom_vectors_v7;
+      CREATE TABLE atom_vectors (
+        atom_id TEXT PRIMARY KEY REFERENCES atoms(atom_id) ON DELETE CASCADE,
+        engine_id TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        engine_version TEXT NOT NULL,
+        dimensions INTEGER NOT NULL,
+        embedding BLOB NOT NULL,
+        content_hash TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO atom_vectors (
+        atom_id, engine_id, model_id, engine_version, dimensions, embedding, content_hash, updated_at
+      ) SELECT
+        atom_id, engine_id, model_id, engine_version, dimensions, embedding, content_hash, updated_at
+      FROM atom_vectors_v7;
+      DROP TABLE atom_vectors_v7;
+      PRAGMA user_version = 6;
+    `);
+    legacy.close();
+
+    const upgraded = createCatalog({ dbPath, embeddingEngine: makeEngine('local', '1') });
+    const db = new DatabaseSync(dbPath);
+    const columns = db.prepare('PRAGMA table_info(atom_vectors)').all() as unknown as Array<{ name: string }>;
+    const vector = db.prepare('SELECT vector_namespace FROM atom_vectors WHERE atom_id = ?')
+      .get(atom.id) as { vector_namespace: string };
+    const indexes = db.prepare('PRAGMA index_list(atom_vectors)').all() as unknown as Array<{ name: string }>;
+    db.close();
+
+    expect(columns.map((column) => column.name)).toContain('vector_namespace');
+    expect(vector.vector_namespace).toBe('memory-atom');
+    expect(indexes.map((index) => index.name)).toContain('idx_vectors_namespace_engine');
+    expect(upgraded.getAtom(atom.id)?.embeddingStatus).toBe('ready');
   });
 
   it('upgrades a v5 relation table before persisting conversation source refs', () => {
@@ -133,7 +254,141 @@ describe('MemoryCatalog', () => {
 
     expect(columns.map((column) => column.name)).toContain('source_refs_json');
     expect(JSON.parse(row.source_refs_json)).toEqual(['conversation-source:run-1:assistant-reply']);
-    expect(version.user_version).toBe(6);
+    expect(version.user_version).toBe(9);
+  });
+
+  it('keeps a continuous activation projection and can build a hot fallback order', () => {
+    const catalog = createCatalog();
+    const cold = makeStoredAtom({
+      id: 'activation-cold',
+      createdAt: '2025-01-01T00:00:00.000Z',
+      updatedAt: '2026-07-15T05:00:00.000Z',
+      lastUsefulAt: undefined,
+      routingFeedback: undefined,
+      verifiedUsefulness: { useful: 0, notUseful: 0, conflicts: 0, stale: 0 },
+    });
+    const hot = makeStoredAtom({
+      id: 'activation-hot',
+      createdAt: '2025-01-01T00:00:00.000Z',
+      updatedAt: '2026-07-15T05:00:00.000Z',
+      lastUsefulAt: '2026-07-15T05:00:00.000Z',
+      routingFeedback: {
+        useful: 16,
+        notUseful: 0,
+        conflicts: 0,
+        stale: 0,
+        effectiveRelevance: 0.94,
+        effectiveEvidenceWeight: 16,
+        lastOutcome: 'useful',
+        lastRoutedAt: '2026-07-15T05:00:00.000Z',
+      },
+      verifiedUsefulness: { useful: 8, notUseful: 0, conflicts: 0, stale: 0 },
+    });
+    catalog.upsertAtom(cold, 'atoms/activation-cold.json');
+    catalog.upsertAtom(hot, 'atoms/activation-hot.json');
+
+    const ordered = catalog.listAtoms({ status: 'active', orderBy: 'activation', limit: 10 });
+    expect(ordered.map((entry) => entry.atomId).slice(0, 2)).toEqual([hot.id, cold.id]);
+    expect(ordered[0]?.activationScore).toBeGreaterThan(0.66);
+    expect(ordered[1]?.activationScore).toBeLessThan(0.33);
+  });
+
+  it('keeps a ready vector for routing-only changes and rebuilds it for semantic changes', async () => {
+    const engine = makeEngine('local');
+    const catalog = createCatalog({ embeddingEngine: engine });
+    const atom = makeStoredAtom({ id: 'embedding-boundary', content: 'stable semantic content' });
+    catalog.upsertAtom(atom, 'atoms/embedding-boundary.json');
+    await catalog.indexEmbedding(atom);
+
+    const routingOnlyWithoutHash: Omit<MemoryAtom, 'contentHash'> = {
+      ...atom,
+      revision: atom.revision + 1,
+      routingFeedback: {
+        useful: 1,
+        notUseful: 1,
+        conflicts: 0,
+        stale: 0,
+        lastOutcome: 'not-useful',
+        lastRoutedAt: '2026-07-15T05:00:00.000Z',
+        recentFeedbackIds: ['feedback-routing-only'],
+      },
+      feedbackRevision: atom.feedbackRevision + 1,
+      updatedAt: '2026-07-15T05:00:00.000Z',
+    };
+    const routingOnly: MemoryAtom = {
+      ...routingOnlyWithoutHash,
+      contentHash: memoryAtomContentHash(routingOnlyWithoutHash),
+    };
+    catalog.upsertAtom(routingOnly, 'atoms/embedding-boundary.json');
+
+    expect(catalog.getAtom(atom.id)).toMatchObject({
+      embeddingStatus: 'ready',
+      embeddingHash: memoryAtomEmbeddingHash(atom),
+    });
+    expect(catalog.countEmbeddingWork()).toBe(0);
+    expect(engine.embed).toHaveBeenCalledTimes(1);
+
+    const semanticWithoutHash: Omit<MemoryAtom, 'contentHash'> = {
+      ...routingOnly,
+      revision: routingOnly.revision + 1,
+      content: 'changed semantic content',
+      updatedAt: '2026-07-15T06:00:00.000Z',
+    };
+    const semantic: MemoryAtom = {
+      ...semanticWithoutHash,
+      contentHash: memoryAtomContentHash(semanticWithoutHash),
+    };
+    catalog.upsertAtom(semantic, 'atoms/embedding-boundary.json');
+
+    expect(catalog.getAtom(atom.id)?.embeddingStatus).toBe('pending');
+    expect(catalog.countEmbeddingWork()).toBe(1);
+    await catalog.indexEmbedding(semantic);
+    expect(engine.embed).toHaveBeenCalledTimes(2);
+  });
+
+  it('drops vectors for inactive atoms and requeues an atom when it is restored', async () => {
+    const engine = makeEngine('local');
+    const catalog = createCatalog({ embeddingEngine: engine });
+    const atom = makeStoredAtom({ id: 'embedding-lifecycle', content: 'active semantic memory' });
+    catalog.upsertAtom(atom, 'atoms/embedding-lifecycle.json');
+    await catalog.indexEmbedding(atom);
+
+    const archivedWithoutHash: Omit<MemoryAtom, 'contentHash'> = {
+      ...atom,
+      revision: atom.revision + 1,
+      status: 'archived',
+      updatedAt: '2026-07-15T07:00:00.000Z',
+    };
+    const archived: MemoryAtom = {
+      ...archivedWithoutHash,
+      contentHash: memoryAtomContentHash(archivedWithoutHash),
+    };
+    catalog.upsertAtom(archived, 'atoms/embedding-lifecycle.json');
+
+    expect(catalog.getAtom(atom.id)?.embeddingStatus).toBe('disabled');
+    expect(catalog.countEmbeddingWork()).toBe(0);
+    const inspection = new DatabaseSync(catalog.dbPath, { readOnly: true });
+    expect(inspection.prepare('SELECT COUNT(*) AS count FROM atom_vectors WHERE atom_id = ?')
+      .get(atom.id)).toMatchObject({ count: 0 });
+    inspection.close();
+
+    const restoredWithoutHash: Omit<MemoryAtom, 'contentHash'> = {
+      ...archived,
+      revision: archived.revision + 1,
+      status: 'active',
+      updatedAt: '2026-07-15T08:00:00.000Z',
+    };
+    const restored: MemoryAtom = {
+      ...restoredWithoutHash,
+      contentHash: memoryAtomContentHash(restoredWithoutHash),
+    };
+    catalog.upsertAtom(restored, 'atoms/embedding-lifecycle.json');
+
+    expect(catalog.getAtom(atom.id)?.embeddingStatus).toBe('pending');
+    expect(catalog.countEmbeddingWork()).toBe(1);
+    await catalog.indexEmbedding(restored);
+    expect(catalog.getAtom(atom.id)?.embeddingStatus).toBe('ready');
+    expect(engine.embed).toHaveBeenCalledTimes(2);
   });
 
   it('rebuilds a deleted catalog from authoritative atom files', async () => {
@@ -161,7 +416,7 @@ describe('MemoryCatalog', () => {
     })[0]?.entry.atomId).toBe('child');
   });
 
-  it('bounds access and feedback records and rejects unverified positive reinforcement', () => {
+  it('bounds access and feedback records and rejects positive routing without traceable use evidence', () => {
     const catalog = createCatalog({ maxAccessRecords: 2, maxFeedbackRecords: 2 });
     const atom = makeStoredAtom();
     catalog.upsertAtom(atom, 'atoms/root.json');
@@ -176,7 +431,7 @@ describe('MemoryCatalog', () => {
     expect(() => catalog.recordFeedback({
       id: 'feedback-bad', atomId: atom.id, runId: 'run', outcome: 'useful', verified: false,
       evidenceRefs: [], reason: 'Only accessed.', createdAt: '2026-07-15T04:00:00.000Z',
-    })).toThrow(/verification evidence/i);
+    })).toThrow(/traceable use evidence/i);
     for (let index = 0; index < 3; index += 1) {
       catalog.recordFeedback({
         id: `feedback-${index}`, atomId: atom.id, runId: 'run', outcome: 'not-useful', verified: false,
@@ -231,6 +486,9 @@ describe('MemoryCatalog', () => {
     });
     catalog.upsertAtom(atom, 'atoms/graph-atom.json');
 
+    expect(catalog.relationRelevanceForAtoms([atom.id, 'missing-atom'], '2026-07-15T05:00:00.000Z'))
+      .toEqual(new Map([[atom.id, relation.relevance]]));
+
     expect(catalog.entityReferenceBlockers(left.id)).toEqual({
       atomIds: [atom.id],
       inboundRelationIds: [],
@@ -248,6 +506,92 @@ describe('MemoryCatalog', () => {
     catalog.upsertEntity({ ...left, status: 'archived', revision: 2 });
     catalog.upsertEntity({ ...left, status: 'deleted', revision: 3 });
     expect(catalog.purgeEntity(left.id)).toBe(true);
+  });
+
+  it('routes only trusted one-hop relation candidates inside the selected branch, scope, and subtree', () => {
+    const catalog = createCatalog();
+    const root = makeStoredAtom({ id: 'route-root', entityRefs: [], relationRefs: [] });
+    const outsideRoot = makeStoredAtom({ id: 'outside-root', entityRefs: [], relationRefs: [] });
+    const entities = [
+      makeEntity('entity-route-feature', 'project-a'),
+      { ...makeEntity('entity-route-policy', 'project-a'), externalKey: 'project-a:policy' },
+      { ...makeEntity('entity-route-similar', 'project-a'), externalKey: 'project-a:similar' },
+      { ...makeEntity('entity-route-expired', 'project-a'), externalKey: 'project-a:expired' },
+      { ...makeEntity('entity-route-weak', 'project-a'), externalKey: 'project-a:weak' },
+      { ...makeEntity('entity-route-outside', 'project-a'), externalKey: 'project-a:outside' },
+    ];
+    for (const entity of entities) catalog.upsertEntity(entity);
+    const [feature, policy, similar, expired, weak, outside] = entities;
+    const relations: MemoryRelation[] = [
+      { ...makeRelation(feature!.id, policy!.id), id: 'relation-route-dependency' },
+      { ...makeRelation(feature!.id, similar!.id), id: 'relation-route-similar', type: 'similar-to' },
+      {
+        ...makeRelation(feature!.id, expired!.id),
+        id: 'relation-route-expired',
+        expiresAt: '2026-07-15T04:30:00.000Z',
+      },
+      {
+        ...makeRelation(feature!.id, weak!.id),
+        id: 'relation-route-weak',
+        confidence: 0.2,
+      },
+      { ...makeRelation(feature!.id, outside!.id), id: 'relation-route-outside' },
+    ];
+    for (const relation of relations) catalog.upsertRelation(relation);
+    const atoms = [
+      root,
+      outsideRoot,
+      makeStoredAtom({ id: 'route-seed', parentId: root.id, entityRefs: [feature!.id], relationRefs: [] }),
+      makeStoredAtom({ id: 'route-required', parentId: root.id, entityRefs: [policy!.id], relationRefs: [] }),
+      makeStoredAtom({ id: 'route-similar', parentId: root.id, entityRefs: [similar!.id], relationRefs: [] }),
+      makeStoredAtom({ id: 'route-expired', parentId: root.id, entityRefs: [expired!.id], relationRefs: [] }),
+      makeStoredAtom({ id: 'route-weak', parentId: root.id, entityRefs: [weak!.id], relationRefs: [] }),
+      makeStoredAtom({ id: 'route-outside', parentId: outsideRoot.id, entityRefs: [outside!.id], relationRefs: [] }),
+    ];
+    for (const atom of atoms) catalog.upsertAtom(atom, `atoms/${atom.id}.json`);
+
+    const candidates = catalog.listRelationRoutingCandidates(['route-seed'], {
+      branch: 'project',
+      subtreeRootId: root.id,
+      limit: 10,
+    }, '2026-07-15T05:00:00.000Z');
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({
+      seedAtomId: 'route-seed',
+      entry: { atomId: 'route-required' },
+      relationId: 'relation-route-dependency',
+      relationType: 'depends-on',
+      direction: 'outbound',
+    });
+    expect(candidates[0]!.routeStrength).toBeGreaterThan(0.55);
+  });
+
+  it('uses relation direction when routing replacements', () => {
+    const catalog = createCatalog();
+    const replacement = makeEntity('entity-replacement-new', 'project-a');
+    const old = { ...makeEntity('entity-replacement-old', 'project-a'), externalKey: 'project-a:old' };
+    catalog.upsertEntity(replacement);
+    catalog.upsertEntity(old);
+    catalog.upsertRelation({
+      ...makeRelation(replacement.id, old.id),
+      id: 'relation-replaces-old',
+      type: 'replaces',
+    });
+    const atoms = [
+      makeStoredAtom({ id: 'replacement-new', entityRefs: [replacement.id], relationRefs: [] }),
+      makeStoredAtom({ id: 'replacement-old', entityRefs: [old.id], relationRefs: [] }),
+    ];
+    for (const atom of atoms) catalog.upsertAtom(atom, `atoms/${atom.id}.json`);
+
+    expect(catalog.listRelationRoutingCandidates(['replacement-old'], {
+      branch: 'project', limit: 10,
+    }, '2026-07-15T05:00:00.000Z').map((candidate) => candidate.entry.atomId))
+      .toEqual(['replacement-new']);
+    expect(catalog.listRelationRoutingCandidates(['replacement-new'], {
+      branch: 'project', limit: 10,
+    }, '2026-07-15T05:00:00.000Z'))
+      .toEqual([]);
   });
 
   function createCatalog(options: Partial<ConstructorParameters<typeof MemoryCatalog>[0]> = {}): MemoryCatalog {

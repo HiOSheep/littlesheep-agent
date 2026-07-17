@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-07-16 17:04:25
+最后更新：2026-07-17 14:27:30
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
@@ -41,7 +41,7 @@
 | `package.json` | workspace 根脚本、测试入口、类型检查、构建和仓库卫生检查。 |
 | `pnpm-workspace.yaml` | 声明 `packages/*` 与 `packages/channels/*` 两组 workspace。 |
 | `pnpm-lock.yaml` | 依赖锁定文件；只有依赖变更时由 pnpm 更新。 |
-| `tsconfig.base.json`、`tsconfig.workspace.json`、`vitest.config.ts` | 全仓 TypeScript 基线、自动生成的 project references solution 与 Vitest 基线。`tsconfig.workspace.json` 由维护脚本生成，不手工编辑。 |
+| `tsconfig.base.json`、`tsconfig.workspace.json`、`vitest.config.ts` | 全仓 TypeScript 基线、自动生成的 project references solution 与 Vitest 基线。`tsconfig.workspace.json` 由维护脚本生成，不手工编辑。Vitest 保留单项 30 秒超时，并把文件并发限制为 8，避免高核心数 Windows 机器上的 SQLite、文件扫描、Git 与子进程测试产生资源争用和锁清理假失败。 |
 | `branding.config.json`、`littlesheep.config.json` | 仓库级品牌/开发配置样例，不放用户密钥。 |
 | `README.md` | 面向开发者的入口说明和质量门。 |
 | `build-app.bat`、`start-littlesheep.bat` | Windows 兼容入口，实际逻辑委托给 `scripts/`。 |
@@ -73,7 +73,7 @@
 
 | 包 | 归属和职责 |
 | --- | --- |
-| `packages/memory-tree/` | `MemoryService` 与 `MemoryRepository` 稳定门面、T0-T3 资源注册、索引导航、项目投影和生命周期；`src/memory-repository/` 拥有 v2/v3 后端、选择闸门、事务账本、认识状态分类、节点/资源适配，以及独立的 v2→v3 snapshot/build/validation/commit、请求登记、恢复和受约束回滚模块；`src/v3/` 拥有 atom、journal、SQLite catalog、FTS/向量、有界维护和实体关系权威文件。v3 已接管正式用户数据；v2 与 snapshot 保留为兼容和受约束回滚来源。 |
+| `packages/memory-tree/` | `MemoryService` 与 `MemoryRepository` 稳定门面、T0-T3 资源注册、索引导航、项目投影和生命周期；`src/task-query.ts` 与 `task-relevance.ts` 拥有有界多轮任务语义、版本化会话摘要回退和当前任务匹配；`src/memory-tree.ts` 负责 D1 准入、最强相关簇和 run working set；`src/memory-repository/` 拥有 v2/v3 后端、选择闸门、事务账本、认识状态分类、节点/资源适配，以及独立的 v2→v3 snapshot/build/validation/commit、请求登记、恢复和受约束回滚模块；`src/v3/` 拥有 atom、journal、SQLite catalog、FTS/向量、有界维护和实体关系权威文件。v3 已接管正式用户数据；v2 与 snapshot 保留为兼容和受约束回滚来源。 |
 | `packages/embedding/` | Memory v3 的本地 Transformers.js Embedding 实现、固定 revision 模型登记、显式资产准备、大小/SHA-256 校验、离线加载和候选基准；不拥有记忆正文、Catalog 或 Provider 请求。 |
 | `packages/memory-core/` | 文件记忆兼容存储、daily、长期记忆、写入闸门、归档和旧来源适配。 |
 | `packages/vector/` | 向量存储接口；只在已导航分支的深搜兜底路径使用。 |
@@ -114,9 +114,9 @@
 | Provider 请求、流式与 usage | `packages/llm/` | `src/client.ts` | `src/client.test.ts`、Provider smoke 脚本 |
 | 配置、Provider/模型能力 | `packages/config/` | `src/schema.ts`、`src/model-capabilities.ts` | `src/schema.test.ts`、App shared capability 测试 |
 | Prompt 与行为 profile | `packages/prompt/` | `src/builder.ts`、`src/profiles.ts` | `src/builder.test.ts`、`src/profiles.test.ts` |
-| 记忆树、资源注册与项目投影 | `packages/memory-tree/` | 稳定 facade：`src/memory-service.ts`、`src/memory-repository.ts`；对话原始来源：`src/conversation-source-store.ts`；run 反馈：`src/memory-feedback.ts`、`src/memory-repository/v3-feedback-manager.ts`；run working set：`src/memory-tree-working-set.ts`；版本后端：`src/memory-repository/v2-backend.ts`、`v3-backend.ts`、`factory.ts`；安全迁移：`repository-locator.ts`、`v3-migration*.ts`；v3 投影变更与 Atom：`src/v3/raw-record-store.ts`、`raw-record-file.ts`、`raw-record-commit-store.ts`（兼容内部命名，语义为 projection mutation records）、`atom-store.ts`、`catalog.ts`、`graph-store.ts`、`storage-coordinator.ts` | 双后端契约：`src/memory-repository.contract.test.ts`；来源与反馈：`src/conversation-source-store.test.ts`、`src/memory-feedback.test.ts`；迁移：`src/memory-repository/v3-migration.test.ts`；v3：`src/memory-repository/v3-*.test.ts`、`src/v3/*.test.ts`；Runner：`packages/runner/src/memory-v3.integration.test.ts` |
-| 旧文件记忆、写入与归档 | `packages/memory-core/` | `src/write-memory.ts`、`src/archive.ts` | 对应同名测试 |
-| 会话和长会话摘要 | `packages/session/` | `src/manager.ts`、`src/compaction.ts` | 对应同名测试 |
+| 记忆树、资源注册与项目投影 | `packages/memory-tree/` | 稳定 facade：`src/memory-service.ts`、`src/memory-repository.ts`；对话原始来源：`src/conversation-source-store.ts`；run 反馈：`src/memory-feedback.ts`、`src/memory-repository/v3-feedback-manager.ts`；run working set：`src/memory-tree-working-set.ts`；多轮任务语义、当前任务相关度与 prime 选择：`src/task-query.ts`、`src/task-relevance.ts`、`src/memory-prime-relevance.ts`；D1/深搜候选：`src/memory-repository/v3-retrieval.ts`、`v3-retrieval-materializer.ts`；Catalog FTS/向量：`src/v3/catalog-fts.ts`、`catalog-embedding.ts`；路由/关系相关性：`src/v3/priority.ts`、`src/v3/catalog-relevance.ts`；版本后端：`src/memory-repository/v2-backend.ts`、`v3-backend.ts`、`factory.ts`；安全迁移：`repository-locator.ts`、`v3-migration*.ts`；v3 投影变更与 Atom：`src/v3/raw-record-store.ts`、`raw-record-file.ts`、`raw-record-commit-store.ts`（兼容内部命名，语义为 projection mutation records）、`atom-store.ts`、`catalog.ts`、`graph-store.ts`、`storage-coordinator.ts` | 双后端契约：`src/memory-repository.contract.test.ts`；来源与反馈：`src/conversation-source-store.test.ts`、`src/memory-feedback.test.ts`；任务语义、相关性与 D1：`src/task-query.test.ts`、`src/task-relevance.test.ts`、`src/memory-prime-relevance.test.ts`、`src/memory-tree.test.ts`、`src/memory-service-v3.test.ts`、`src/v3/catalog.test.ts`、`src/v3/contracts-priority.test.ts`、`src/memory-repository/v3-backend.test.ts`；迁移：`src/memory-repository/v3-migration.test.ts`；v3：`src/memory-repository/v3-*.test.ts`、`src/v3/*.test.ts`；Runner：`packages/runner/src/memory-v3.integration.test.ts`；VERIFY 采用过滤：`packages/harness/src/stages/verify/memory-evidence.ts` |
+| 旧文件记忆兼容读取与安全写入基元 | `packages/memory-core/` | `src/store.ts`、`src/search.ts`、`src/write-memory.ts` | 对应同名测试；旧 archive/vector 写入入口已退役 |
+| 会话和长会话摘要 | `packages/session/` | `src/manager.ts`、`src/compaction.ts`、`src/compaction-store.ts` | 对应同名测试；摘要进入 Memory v3 的边界还需联查 `packages/runner/src/runner.ts` 与 `packages/memory-tree/src/task-query.ts` |
 | 工具注册、审批和内置工具 | `packages/tools/` | `src/registry.ts`、`src/wrapper.ts`、`src/builtin/` | `src/**/*.test.ts` |
 | 插件发现、信任和生命周期 | `packages/plugins/` | `src/host.ts`、`src/manifest.ts` | `src/**/*.test.ts` |
 | 外部渠道协议 | `packages/channels/*` | 各包 `src/plugin.ts` | 各包 `src/plugin.test.ts`、`test/e2e-webhook.test.ts` |
@@ -141,7 +141,8 @@
 | `packages/app/src/main/keychain.ts` | API key 的 Electron 安全存储与环境注入。 |
 | `packages/app/src/main/session-index.ts`、`project-index.ts`、`archive-index.ts` | UI 侧会话、稳定项目身份和归档元数据索引。 |
 | `packages/app/src/main/project-rebinding.ts`、`path-rebinding.ts` | 项目移动/重命名后的持久化重绑定事务、恢复日志和跨索引路径重映射。 |
-| `packages/app/src/main/memory-tree-control.ts`、`memory-atom-control.ts` | 记忆树管理页面使用的运行时控制面；通过 `MemoryService` 读取节点、访问账本、资源注册表、资源生命周期审计和项目投影状态，并通过 Repository management 执行受约束的 atom 移动、合并、失效、恢复和证据导出。 |
+| `packages/app/src/main/memory-files.ts`、`local-app-api/memory-routes.ts` | 用户记忆文件视图的允许列表、读取上限和“仅 `SOUL.md` 可写”边界；Renderer 不能直接访问数据根。 |
+| `packages/app/src/main/memory-tree-control.ts`、`memory-atom-control.ts` | Runtime/内部维护使用的记忆树与 Atom 控制面；通过 `MemoryService` 读取节点、访问账本、资源注册表和审计，并通过 Repository management 执行受约束的移动、合并、失效、恢复和证据导出。普通 GUI 不调用这些 Atom 管理入口。 |
 | `packages/app/src/main/memory-v3-bootstrap.ts`、`memory-v3-migration-control.ts` | Memory v3 迁移生命周期的应用边界：运行中只登记/取消请求，启动时在 Runner、Local App API 和插件写入者创建前执行迁移或回滚，并让配置服从 durable locator。 |
 | `packages/app/src/main/workspace-*.ts` | 工作区布局、产物、文件路由、终端和 shell 适配。 |
 | `packages/memory-tree/src/workspace-resource-index.ts`、`workspace-resource-scanner.ts` | 用户数据中的工作区资源元数据索引、游标式有界扫描、精确变更提示、重启恢复和按查询展开；不读取文件正文。 |
@@ -152,7 +153,8 @@
 | `packages/app/src/renderer/approval/`、`chat/`、`composer/`、`runtime/` | 审批展示、对话与流式 run 归并、输入栏和运行选项。 |
 | `packages/app/src/renderer/settings/`、`sidebar/`、`ui/`、`workspace/` | 设置页、项目/会话导航、通用交互基元和拓展工作区。 |
 | `packages/app/src/renderer/TraceCard.tsx` | Agent 执行过程、TaskBook、工具调用和验证时间线。 |
-| `packages/app/src/renderer/MemoryTreeView.tsx`、`ArchiveManager.tsx`、`Settings.tsx` | 记忆树、项目记忆投影、归档和设置界面。 |
+| `packages/app/src/renderer/MemoryTreeView.tsx`、`ArchiveManager.tsx`、`Settings.tsx` | 六份记忆文件的简洁视图、归档和设置界面；记忆页仅 `SOUL.md` 可编辑，不展示 Atom 内部结构。 |
+| `packages/app/src/renderer/chat/assistant-turn.tsx`、`Markdown.tsx`、`workspace/browser.tsx` | 思考摘要/执行过程/最终结果的渐进披露，以及链接单击内置预览、双击系统打开的全局交互。 |
 | `packages/app/src/renderer/api.ts` | renderer 对 Local App API 的兼容导出入口；领域客户端位于 `packages/app/src/renderer/api/`。 |
 | `packages/app/src/renderer/styles.css` | 当前深灰视觉系统、共享浮层/转场 token、折叠和工作区布局样式；后续按 feature 拆分时必须保留共享原语契约。 |
 | `packages/app/src/shared/` | renderer 与主进程共享的纯函数模型、Local App API 路由和跨进程协议；稳定跨 package 契约仍归 `packages/types/`。 |
@@ -193,7 +195,13 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 - `pnpm.cmd run verify:changed`：默认以 `origin/main` 为基线，合并已提交、暂存、未暂存和未跟踪文件，计算变更 package 及其传递依赖方；单进程增量 typecheck 后，只运行与变更源文件相关的 Vitest。需要其他基线时设置 `LITTLESHEEP_BASE_REF`。
 - `pnpm.cmd run verify:core`：仓库门、全工作区增量 typecheck 与 69 项核心 Agent 契约测试，适用于 Harness、Runner、Context、Memory 和公共协议变更。
 - `pnpm.cmd run verify:full`：阶段结束的完整测试、类型、Electron 构建和恢复源检查，不用于每次小改动。
-- `pnpm.cmd run verify:memory-v3-soak`：只在系统临时目录创建隔离 Memory v3 数据，重复验证只追加投影变更记录/commit receipt、atom 治理、journal 裁剪、重启、catalog 重建和 run working set；默认完成后删除临时根，不迁移或改写正式用户数据。对话原始来源由独立 store 与 Runner 集成测试覆盖。
+- `pnpm.cmd run verify:memory-v3-soak`：只在系统临时目录创建隔离 Memory v3 数据，重复验证只追加投影变更记录/commit receipt、atom 治理、journal 裁剪、重启、catalog 重建、向量有界批处理、关系相关性、routing feedback、run working set 和 RSS 上限；默认完成后删除临时根，不迁移或改写正式用户数据。增强档可使用 `--atoms=500 --runs=256 --feedback-events=256`，并可通过 `--related-atoms`、`--embedding-batch`、`--max-rss-mib` 调整验收边界。确定性测试 Embedding 只用于可重复规模门，不替代正式 BGE 或 Provider 验收。
+- `pnpm.cmd run verify:memory-v3-relevance`：使用正式本地 BGE 和系统临时数据根，分开测量 D1 admission 与 branch-scoped deep search 的 Recall@K、负例、多余注入、scope 泄漏、token、query Embedding 次数和零网络边界。D1 必须保持零向量；同一次深搜只允许生成一次查询向量。该门不读取或修改正式用户 Atom/Catalog。
+- `pnpm.cmd run verify:memory-v3-evolution`：使用正式本地 BGE 和系统临时数据根，验证 Atom 初始准入、run 内 release/readmit、真实请求正文移除、KnownState/ledger 一致、未见冲突零反馈、历史 routing 衰减、routing-only 与 verified usefulness 分层、重启保持和 vector deep search。该门要求正文、confidence 与 embedding hash 不因路由反馈变化，运行阶段零网络请求，完成后删除临时数据根。
+- `pnpm.cmd run verify:memory-v3-intent-routing`：使用正式本地 BGE 和系统临时数据根，验证当前请求自足、多轮中英文指代、LS 方案引用、硬排除/负向约束、任务转向和项目 scope。D1 必须保持零查询向量，分支内深搜每个请求只生成一个查询向量；被排除正文、旧历史污染、scope 泄漏和网络尝试都必须为零。
+- `pnpm.cmd run verify:memory-v3-compaction-continuity`：使用正式本地 BGE 和系统临时数据根，验证压缩后真实指代只在近期任务锚点不足时读取版本化会话摘要；覆盖中英文回退、当前目标优先、任务转向、排除/替代、session 隔离、无摘要零注入和 Repository 重启。D1 必须零查询向量，弱相关尾部不得为填满 working set 自动注入，运行阶段不得访问网络。
+- `pnpm.cmd run verify:memory-v3-bge-soak`：复用同一隔离 soak，但使用活动数据根中已 provision 且通过哈希校验的真实本地 BGE 模型。合成 Atom 仍只写系统临时目录；模型目录只读。该门额外验证模型暂不可用、瞬时 Embed 失败恢复、512 维向量、离线零请求、RSS 上限和 pipeline dispose，不修改正式记忆或 Catalog。
+- `pnpm.cmd run verify:memory-v3-provider -- --provider=<id>`：在创建隔离数据根前先执行真实非流式 Provider 预检，要求真实回复和权威 usage；预检通过后才验证 Memory v3 首轮注入、EVOLVE/CAPTURE、反馈和重启召回。鉴权失败、缺少 usage、mock 或 Harness 恢复文本都不能算通过。
 - `pnpm.cmd run verify:memory-v3-readiness -- --data-dir=<应用数据根>`：只读检查指定 V2 数据根，只把 `memory-tree` 复制到系统临时目录，在副本上验证完整迁移、V3 重启读取、业务 atom/内部 scope root 口径、catalog integrity 和回滚；不复制配置、会话、密钥或 workplace，任何退出路径都删除临时副本。结果只证明该次源快照，正式登记迁移前必须重新执行，不能用旧哈希替代迁移器的提交前复核。
 - `pnpm.cmd run sync:tsconfig`：从 27 个 workspace manifest 的真实依赖自动生成 package `references` 和 `tsconfig.workspace.json`；`check:repo` 会拒绝过期引用。
 - 包内 `src/**/*.test.ts(x)`：测试包内契约和模块行为，应与源码同目录维护。
@@ -205,7 +213,9 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 - `scripts/run-affected-verification.mjs`：按 Git 变更执行受影响 typecheck 与 related tests；配置文件变化不应误触发全部运行时测试。
 - `scripts/verify-app-recovery-sources.mjs`：只读检查用户数据中的工作区、会话、执行日志和恢复索引。
 - `scripts/verify-provider-smoke.mjs`：使用本机安全存储中的凭证执行脱敏 Provider 冒烟，覆盖最小聊天、reasoning、工具调用、流式中断和 usage 对账；不得输出或写入明文密钥。
-- `scripts/verify-memory-v3-soak.mjs`：Memory v3 的可重复隔离压力与恢复验收；必须校验临时根边界，并在任何退出路径关闭 SQLite 后再清理。
+- `scripts/verify-memory-v3-soak.mjs`：Memory v3 的可重复隔离压力与恢复验收；支持确定性和真实本地 Transformers.js 两种 Embedding 模式。必须校验临时根边界，并在任何退出路径停止维护 worker、关闭 SQLite、释放 pipeline 后再清理。
+- `scripts/lib/memory-v3-runtime-soak.mjs`：soak 的公共 Repository 路径辅助验证，负责确定性本地 Embedding、候选排序翻转、routing feedback 有界性和重启恢复；不得向正式应用数据根写入合成记忆。
+- `scripts/verify-memory-v3-provider.mjs`、`scripts/lib/memory-v3-provider-acceptance.mjs`：真实 Provider 连续性门及其脱敏预检/隔离运行辅助；必须在任何失败路径清理临时数据根，且不得把凭证或完整 Provider 错误写入报告。
 - `scripts/verify-memory-v3-migration-readiness.mjs`：用指定真实 V2 数据的隔离副本执行迁移就绪验收；必须在复制前后复核源 manifest/index 哈希，并区分业务 atom 与内部 scope root，不得在源数据根登记迁移。
 - `scripts/build-app.ps1`：构建 Electron 应用并刷新快捷方式。
 - `scripts/refresh-desktop-shortcut.ps1`：按脚本所在仓库路径解析 Electron，生成桌面快捷方式。
