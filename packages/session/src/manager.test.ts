@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SessionManager } from './manager.js';
@@ -51,6 +51,76 @@ describe('SessionManager', () => {
     const recent = await sm.readRecent(session.id, 2);
     expect(recent).toHaveLength(2);
     expect(recent[1]!.content[0]).toMatchObject({ type: 'text', text: 'msg 4' });
+  });
+
+  it('pages backward from a stable message id without loading the full transcript', async () => {
+    const sm = new SessionManager({ sessionsDir: tmpDir });
+    const session = await sm.create();
+    const msgs = Array.from({ length: 6 }, (_, i) => ({
+      ...textMessage('user', `window ${i}`),
+      id: `window-${i}`,
+    }));
+    await sm.append(session.id, msgs);
+
+    const newest = await sm.readWindow(session.id, 2);
+    expect(newest.messages.map((message) => message.id)).toEqual(['window-4', 'window-5']);
+    expect(newest.hasMore).toBe(true);
+
+    await sm.append(session.id, [{ ...textMessage('user', 'newer'), id: 'window-6' }]);
+    const older = await sm.readWindow(session.id, 2, newest.beforeId);
+    expect(older.messages.map((message) => message.id)).toEqual(['window-2', 'window-3']);
+    expect(older.hasMore).toBe(true);
+
+    const oldest = await sm.readWindow(session.id, 2, older.beforeId);
+    expect(oldest.messages.map((message) => message.id)).toEqual(['window-0', 'window-1']);
+    expect(oldest.hasMore).toBe(false);
+  });
+
+  it('reserves a user-facing reply once across manager restarts', async () => {
+    const first = new SessionManager({ sessionsDir: tmpDir });
+    const session = await first.create();
+
+    await expect(first.reserveAssistantReply(session.id, '  Hello   World  ')).resolves.toBe(true);
+    await expect(first.reserveAssistantReply(session.id, 'hello world')).resolves.toBe(false);
+
+    const restarted = new SessionManager({ sessionsDir: tmpDir });
+    await expect(restarted.reserveAssistantReply(session.id, 'HELLO WORLD')).resolves.toBe(false);
+    await expect(restarted.reserveAssistantReply(session.id, 'A different reply')).resolves.toBe(true);
+  });
+
+  it('backfills the reply registry from the existing session transcript', async () => {
+    const sm = new SessionManager({ sessionsDir: tmpDir });
+    const session = await sm.create();
+    await sm.append(session.id, [textMessage('assistant', 'Persisted before registry creation')]);
+
+    await expect(sm.reserveAssistantReply(session.id, 'persisted before registry creation')).resolves.toBe(false);
+    await expect(sm.reserveAssistantReply(session.id, 'New visible reply')).resolves.toBe(true);
+  });
+
+  it('allows only one concurrent reservation of identical reply text', async () => {
+    const sm = new SessionManager({ sessionsDir: tmpDir });
+    const session = await sm.create();
+
+    const results = await Promise.all(Array.from(
+      { length: 6 },
+      () => sm.reserveAssistantReply(session.id, 'One published reply'),
+    ));
+
+    expect(results.filter(Boolean)).toHaveLength(1);
+  });
+
+  it('replaces an interrupted registry initialization temporary file', async () => {
+    const sm = new SessionManager({ sessionsDir: tmpDir });
+    const session = await sm.create();
+    const registry = join(tmpDir, '.reply-fingerprints', `${session.id}.sha256`);
+    await mkdir(join(tmpDir, '.reply-fingerprints'), { recursive: true });
+    await writeFile(`${registry}.tmp`, 'interrupted initialization', 'utf8');
+
+    await expect(sm.reserveAssistantReply(session.id, 'Recovered reply')).resolves.toBe(true);
+
+    const { existsSync } = await import('node:fs');
+    expect(existsSync(`${registry}.tmp`)).toBe(false);
+    expect(existsSync(registry)).toBe(true);
   });
 
   it('lists sessions', async () => {
@@ -135,12 +205,15 @@ describe('SessionManager', () => {
   it('delete removes the session file', async () => {
     const sm = new SessionManager({ sessionsDir: tmpDir });
     const session = await sm.create();
+    await sm.reserveAssistantReply(session.id, 'Reserved reply');
     expect(await sm.list()).toHaveLength(1);
 
     await sm.delete(session.id);
 
     expect(await sm.list()).toHaveLength(0);
     expect(await sm.load(session.id)).toBeNull();
+    const { existsSync } = await import('node:fs');
+    expect(existsSync(join(tmpDir, '.reply-fingerprints', `${session.id}.sha256`))).toBe(false);
   });
 
   it('delete tolerates missing files (ENOENT)', async () => {

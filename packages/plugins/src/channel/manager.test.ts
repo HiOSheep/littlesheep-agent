@@ -149,6 +149,10 @@ function makeMockRunner(): {
       return this.run(input);
     },
     async replay() { return null; },
+    runtimeEvents: {
+      append: () => ({ kind: 'rejected', reason: 'run-not-active', message: 'mock runner' }),
+      summary: () => null,
+    },
     async shutdown() {},
     state: { sessionId: undefined, model: 'mock-model' },
     // Cast: SessionManager is a class with private opts, but we only need

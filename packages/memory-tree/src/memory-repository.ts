@@ -165,7 +165,6 @@ export class MemoryRepository {
   markMigration(record: MemoryMigrationRecord): Promise<void> {
     return this.backend.markMigration(record);
   }
-
   startBackgroundMaintenance(): Promise<void> { return this.backend.startBackgroundMaintenance?.() ?? Promise.resolve(); }
   async shutdown(): Promise<void> { if (this.backend.shutdown) await this.backend.shutdown(); else this.backend.close?.(); }
   close(): void { if ('close' in this.backend && typeof this.backend.close === 'function') this.backend.close(); }

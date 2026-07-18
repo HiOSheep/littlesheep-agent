@@ -50,6 +50,7 @@ describe('e2e agent loop', () => {
       textResponse('{"type":"problem","confidence":0.9,"reason":"math task"}'),
       textResponse('{"plan":[{"description":"think hard","tools":[]}]}'),
       textResponse('all done', 'stop'),
+      textResponse('final assembled answer'),
       textResponse('{"verdict":"pass","reason":"goal achieved"}'),
       textResponse('{"notes":[]}'),
     ]);
@@ -74,11 +75,12 @@ describe('e2e agent loop', () => {
       'verification',
       'final_delta',
     ]);
-    expect(deltas).toEqual(['all done']);
+    expect(deltas).toEqual(['final assembled answer']);
     expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
       'classify',
       'decide',
       'execute_tool_loop',
+      'execute_final_reply',
       'verify',
       'evolve',
     ]);
@@ -116,8 +118,10 @@ describe('e2e agent loop', () => {
       textResponse('{"type":"problem","confidence":0.9,"reason":"task"}'),
       textResponse(JSON.stringify(initialTaskBook)),
       textResponse('unverified draft'),
+      textResponse('unverified final draft'),
       textResponse('{"verdict":"needs_replan","reason":"missing evidence","feedback":"revise it","failedStepIds":["summary"]}'),
       textResponse(JSON.stringify(revisedTaskBook)),
+      textResponse('verified step result'),
       textResponse('verified final answer'),
       textResponse('{"verdict":"pass","reason":"summary is verified"}'),
       textResponse('{"notes":[]}'),

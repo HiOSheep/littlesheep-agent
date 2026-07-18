@@ -39,6 +39,14 @@ export {
 } from './model-observability.js';
 export { buildRunRequestCandidates, type BuildRunRequestCandidatesOptions } from './context-candidates.js';
 export {
+  acceptUniqueUserFacingReply,
+  collectRecentAssistantReplies,
+  normalizeUserFacingReply,
+  UserFacingReplyError,
+  MAX_RECENT_VISIBLE_REPLIES,
+  MAX_VISIBLE_REPLY_REWRITES,
+} from './user-facing-reply.js';
+export {
   LlmCallContractViolationError,
   normalizeLlmCallPurpose,
   resolveLlmCallContract,
@@ -49,3 +57,22 @@ export {
   collectConversationSourceRecords,
   conversationSourceRefs,
 } from './conversation-source-records.js';
+export {
+  consumeRuntimeControlEvents,
+  RUNTIME_CONTROL_EVENT_TYPES,
+  type RuntimeControlBoundaryResult,
+} from './runtime-control-boundary.js';
+export {
+  applyTaskBookPatch,
+  applyTaskBookPatchToContext,
+  MAX_APPLIED_TASK_BOOK_PATCH_IDS,
+  MAX_TASK_BOOK_PATCH_CRITERIA,
+  MAX_TASK_BOOK_PATCH_EVENT_IDS,
+  MAX_TASK_BOOK_PATCH_OPERATIONS,
+  MAX_TASK_BOOK_PATCH_STEPS,
+  MAX_TASK_BOOK_PATCH_TEXT,
+  MAX_TASK_BOOK_PATCH_TOOLS,
+  type TaskBookPatchApplyOptions,
+  type TaskBookPatchApplyResult,
+  type TaskBookPatchRejectReason,
+} from './taskbook-patch.js';

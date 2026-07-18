@@ -5,11 +5,12 @@ import { appendSystemPromptBundleAddons } from '../profile-prompt.js';
 import type { ExecuteStageDeps } from './execute/contracts.js';
 import { renderPlanGuidance, renderTaskBookGuidance } from './execute/guidance.js';
 import { executeLegacyLoop, executeTaskBook } from './execute/runners.js';
-
 export type { ExecuteStageDeps } from './execute/contracts.js';
 export { convertToolCall } from './execute/tool-loop.js';
 export function createExecuteStage(deps: ExecuteStageDeps) {
   return async function executeStage(ctx: RunContext): Promise<StageResult> {
+    ctx.reply = undefined;
+    ctx.replyProvenance = undefined;
     const resolved = resolvePromptConfig(deps.config, deps.branding);
     const baseSystemPrompt = await assembleSystemPromptBundle(resolved, {
       tools: ctx.tools,
@@ -38,9 +39,7 @@ export function createExecuteStage(deps: ExecuteStageDeps) {
       maxOutputChars: deps.config.tools.maxOutputChars,
       stripImages: deps.config.tools.stripImages,
     };
-    if (ctx.taskBook && ctx.taskBook.steps.length > 0) {
-      return executeTaskBook(deps, ctx, systemPrompt, ctx.taskBook, sanitizeOpts);
-    }
+    if (ctx.taskBook && ctx.taskBook.steps.length > 0) return executeTaskBook(deps, ctx, systemPrompt, ctx.taskBook, sanitizeOpts);
     return executeLegacyLoop(deps, ctx, systemPrompt, sanitizeOpts);
   };
 }

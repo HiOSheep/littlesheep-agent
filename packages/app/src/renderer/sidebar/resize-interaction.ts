@@ -38,15 +38,19 @@ export function beginSidebarResizeInteraction(
     let settleTimer: number | undefined
     let thresholdAnimationTimer: number | undefined
     let pendingVisualWidth = startWidth
+    let appliedVisualWidth = startWidth
     beginResize('column')
     shellRef.current?.classList.add('sidebar-drag-live')
 
     const applyDragFrame = () => {
       frameHandle = undefined
+      if (pendingVisualWidth === appliedVisualWidth) return
       shellRef.current?.style.setProperty('--sidebar-width', `${pendingVisualWidth}px`)
+      appliedVisualWidth = pendingVisualWidth
     }
 
     const scheduleDragFrame = (visualWidth: number) => {
+      if (visualWidth === pendingVisualWidth && frameHandle === undefined) return
       pendingVisualWidth = visualWidth
       if (frameHandle !== undefined) return
       frameHandle = window.requestAnimationFrame(applyDragFrame)
@@ -126,6 +130,7 @@ export function beginSidebarResizeInteraction(
       window.clearTimeout(thresholdAnimationTimer)
       if (frameHandle !== undefined) {
         window.cancelAnimationFrame(frameHandle)
+        frameHandle = undefined
         applyDragFrame()
       }
 

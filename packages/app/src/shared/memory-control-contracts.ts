@@ -183,7 +183,7 @@ export interface MemoryTreeNodeDetail {
   retrievalKeys: string[]
   reason: string
   sourceRunIds: string[]
-  sourceStages: Array<'evolve' | 'capture' | 'tool' | 'migration'>
+  sourceStages: Array<'evolve' | 'capture' | 'tool' | 'migration' | 'maintenance'>
   sourceRefs: string[]
   recentHits: MemoryTreeRecentHit[]
   writeHistory: MemoryTreeWriteAudit[]

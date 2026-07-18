@@ -8,7 +8,7 @@ import { createMockSessionManager, createMockMemoryStore } from './tests/helpers
 import { DEFAULT_CONFIG } from '@littlesheep/config';
 import { DEFAULT_BRANDING } from '@littlesheep/branding';
 import { textMessage } from '@littlesheep/types';
-import type { Message } from '@littlesheep/types';
+import type { Message, RuntimeEventQueueLike } from '@littlesheep/types';
 
 describe('readBootstrapFiles', () => {
   it('skips missing files, returns map keyed by full filename', async () => {
@@ -35,6 +35,7 @@ describe('buildRunContext', () => {
       const prior = textMessage('user', 'prior');
       const sm = createMockSessionManager({ history: [prior] });
       const ms = createMockMemoryStore();
+      const runtimeEventQueue = {} as RuntimeEventQueueLike;
       const ctx = await buildRunContext({
         sessionId: 's1',
         inbound: textMessage('user', 'go'),
@@ -45,6 +46,7 @@ describe('buildRunContext', () => {
         branding: DEFAULT_BRANDING,
         model: 'openai/gpt-4o',
         bootstrapDir: dir,
+        runtimeEventQueue,
       });
       expect(ctx.sessionId).toBe('s1');
       expect(ctx.model).toBe('openai/gpt-4o');
@@ -54,6 +56,7 @@ describe('buildRunContext', () => {
       expect(ctx.toolContext.cwd).toBe(process.cwd());
       expect(ctx.produced).toEqual([]);
       expect(ctx.prelude).toBeUndefined();
+      expect(ctx.runtimeEventQueue).toBe(runtimeEventQueue);
       expect(ms.readDaily).not.toHaveBeenCalled();
       expect(ms.readLongTerm).not.toHaveBeenCalled();
       expect(sm.readRecent).toHaveBeenCalledWith(

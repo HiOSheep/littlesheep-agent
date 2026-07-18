@@ -18,8 +18,7 @@ import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement 
 import { RefreshIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
 import { compactPath } from './path-utils'
-
-
+import { createTerminalFitScheduler } from './terminal-fit'
 export function WorkspaceTerminal({
   workspacePath,
   sessionId,
@@ -76,7 +75,6 @@ export function WorkspaceTerminal({
     let disposed = false
     let terminal: XTermTerminal | null = null
     let resizeObserver: ResizeObserver | null = null
-    let fitFrame = 0
 
     Promise.all([
       import('@xterm/xterm'),
@@ -129,10 +127,15 @@ export function WorkspaceTerminal({
             // The terminal can be momentarily hidden during animated layout changes.
           }
         }
-        fitFrame = window.requestAnimationFrame(fitTerminal)
+        const fitScheduler = createTerminalFitScheduler(
+          () => hostRef.current
+            ? { width: Math.round(hostRef.current.clientWidth), height: Math.round(hostRef.current.clientHeight) }
+            : null,
+          fitTerminal,
+        )
+        fitScheduler.schedule(true)
         resizeObserver = new ResizeObserver(() => {
-          if (fitFrame) window.cancelAnimationFrame(fitFrame)
-          fitFrame = window.requestAnimationFrame(fitTerminal)
+          fitScheduler.schedule()
         })
         resizeObserver.observe(hostRef.current)
         writeTerminalLine('LittleSheep PowerShell')
@@ -147,7 +150,6 @@ export function WorkspaceTerminal({
 
     return () => {
       disposed = true
-      if (fitFrame) window.cancelAnimationFrame(fitFrame)
       resizeObserver?.disconnect()
       streamAbortRef.current?.abort()
       streamAbortRef.current = null
@@ -517,8 +519,6 @@ export function WorkspaceTerminal({
     </div>
   )
 }
-
-
 export function terminalActivityStatus(activity: TerminalActivityRecord): string {
   if (activity.signal === 'session') return '已发送'
   if (activity.signal === 'captured' || activity.signal === 'next-command') return '已记录'
@@ -529,8 +529,6 @@ export function terminalActivityStatus(activity: TerminalActivityRecord): string
   if (activity.exitCode === 0) return '成功'
   return `退出 ${activity.exitCode ?? activity.signal ?? '异常'}`
 }
-
-
 export function dedupeTerminalCommands(commands: string[]): string[] {
   const seen = new Set<string>()
   const result: string[] = []
@@ -542,8 +540,6 @@ export function dedupeTerminalCommands(commands: string[]): string[] {
   }
   return result
 }
-
-
 export function terminalActivityTip(activity: TerminalActivityRecord): string {
   const parts = [
     activity.command,

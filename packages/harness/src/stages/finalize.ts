@@ -16,13 +16,35 @@ export interface FinalizeStageDeps {
 export function createFinalizeStage(deps: FinalizeStageDeps) {
   return async function finalizeStage(ctx: RunContext): Promise<StageResult> {
     markMemoryKnownStateStage(ctx, 'finalize');
-    // 1. Build the final assistant message.
-    const replyText = ctx.reply && ctx.reply.length > 0 ? ctx.reply : '(no reply)';
+    // 1. Persist only a non-empty reply traceable to this run's real Provider request.
+    const replyText = ctx.reply?.trim();
+    const provenance = ctx.replyProvenance;
+    const modelRequest = provenance
+      ? ctx.modelRequests?.find((request) => request.id === provenance.modelRequestId)
+      : undefined;
+    const traceable = Boolean(
+      provenance?.source === 'llm'
+      && modelRequest
+      && modelRequest.requestIndex === provenance.modelRequestIndex
+      && modelRequest.provider === provenance.provider
+      && modelRequest.model === provenance.model
+      && modelRequest.callContract?.purpose === provenance.purpose,
+    );
+    if (!replyText || !traceable) {
+      return {
+        stage: 'finalize',
+        next: 'exit',
+        ok: false,
+        error: 'finalize rejected a missing or untraceable Provider API user-facing reply.',
+        meta: { produced: ctx.produced.length },
+      };
+    }
     const msg: Message = textMessage('assistant', replyText, {
       sessionId: ctx.sessionId,
       runId: ctx.runId,
       stage: 'finalize',
       clarificationRequest: ctx.clarificationRequest,
+      replyProvenance: provenance,
     });
     ctx.produced.push(msg);
 

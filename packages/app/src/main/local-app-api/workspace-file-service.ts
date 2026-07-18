@@ -9,6 +9,7 @@ import {
 } from '../workspace-file-routing.js'
 import { HttpError } from './http.js'
 import { isPathInsideOrSame } from './workspace-support.js'
+import { previewWorkspaceOfficeFile } from '../workspace-office-preview.js'
 
 const MAX_WORKSPACE_DIR_ENTRIES = 320
 const MAX_TEXT_PREVIEW_BYTES = 512 * 1024
@@ -93,11 +94,7 @@ export async function previewWorkspaceFile(root: string, target: string) {
   if (surface === 'imagePreview') return { ...base, kind: 'image' as const }
   if (surface === 'pdfPreview') return { ...base, kind: 'pdf' as const }
   if (surface === 'documentCard') {
-    return {
-      ...base,
-      kind: 'unsupported' as const,
-      reason: 'Word、PPT、Excel 等 Office 文件当前使用系统默认应用打开，避免把二进制内容放进内置代码编辑器。',
-    }
+    return { ...base, ...await previewWorkspaceOfficeFile(target, ext) }
   }
   if (info.size > MAX_TEXT_PREVIEW_BYTES) {
     return {

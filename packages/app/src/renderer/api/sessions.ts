@@ -113,9 +113,25 @@ export async function deleteArchivedProject(id: string): Promise<void> {
   if (!res.ok) throw localApiStatusError(res.status)
 }
 
-export async function getSessionMessages(id: string): Promise<HistoryMessageRecord[]> {
-  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.sessions, id, '/messages')))
+export interface SessionMessagePage {
+  messages: HistoryMessageRecord[]
+  hasMore: boolean
+  beforeId?: string
+}
+
+export async function getSessionMessagePage(
+  id: string,
+  options: { limit?: number; beforeId?: string } = {},
+): Promise<SessionMessagePage> {
+  const params = new URLSearchParams()
+  if (options.limit !== undefined) params.set('limit', String(options.limit))
+  if (options.beforeId) params.set('before', options.beforeId)
+  const suffix = params.toString() ? `/messages?${params.toString()}` : '/messages'
+  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.sessions, id, suffix)))
   if (!res.ok) throw localApiStatusError(res.status)
-  const data = await res.json() as { messages: HistoryMessageRecord[] }
-  return data.messages
+  return res.json() as Promise<SessionMessagePage>
+}
+
+export async function getSessionMessages(id: string): Promise<HistoryMessageRecord[]> {
+  return (await getSessionMessagePage(id)).messages
 }

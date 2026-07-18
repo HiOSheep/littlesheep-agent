@@ -25,6 +25,12 @@ import type {
   ToolLoopResult,
 } from './contracts.js';
 import { executeToolWaves, type ScheduledToolExecution } from './tool-scheduler.js';
+import {
+  beginSideEffect,
+  describeSideEffect,
+  finishSideEffect,
+  sideEffectCheckpointReason,
+} from './side-effect-ledger.js';
 
 const MAX_ITERATIONS = 20;
 const MAX_REPEAT = 3;
@@ -135,7 +141,7 @@ export async function runToolLoop(
         scheduled.push({
           index,
           ...execution,
-          execute: () => executeToolCall(tool, input, id, stepId, ctx, sanitizeOpts),
+          execute: () => executeToolCall(tool, input, id, stepId, ctx, sanitizeOpts, execution.resources),
         });
       }
 
@@ -204,9 +210,39 @@ async function executeToolCall(
   stepId: string | undefined,
   ctx: RunContext,
   sanitizeOpts: ToolLoopOptions['sanitizeOpts'],
+  resources: readonly ToolResourceAccess[],
 ): Promise<ToolResult> {
   const toolStartedAt = Date.now();
   ctx.onToolEvent?.({ type: 'tool_start', callId, name: tool.name, stepId, input });
+  const sideEffect = describeSideEffect(tool, input, resources, stepId, callId);
+  if (sideEffect) {
+    const begin = beginSideEffect(ctx, sideEffect);
+    if (begin.kind === 'duplicate' || begin.kind === 'blocked') {
+      return stampStepMeta({
+        callId,
+        ok: false,
+        error: begin.kind === 'duplicate'
+          ? `side effect already recorded as succeeded; refusing to replay ${sideEffect.idempotencyKey}`
+          : begin.reason,
+        durationMs: Date.now() - toolStartedAt,
+      }, stepId);
+    }
+    try {
+      await ctx.persistRuntimeCheckpoint?.(sideEffectCheckpointReason(sideEffect, 'started'));
+    } catch (error) {
+      finishSideEffect(ctx, sideEffect, {
+        callId,
+        ok: false,
+        error: `checkpoint before side effect failed: ${(error as Error).message}`,
+      });
+      return stampStepMeta({
+        callId,
+        ok: false,
+        error: `refusing effectful tool until its checkpoint is durable: ${(error as Error).message}`,
+        durationMs: Date.now() - toolStartedAt,
+      }, stepId);
+    }
+  }
   let result: ToolResult;
   try {
     result = await raceWithTimeout(
@@ -231,6 +267,25 @@ async function executeToolCall(
     const sanitized = sanitizeOutput(result.output, sanitizeOpts);
     result.output = sanitized.output;
     result.sanitized = sanitized.sanitized || result.sanitized === true;
+  }
+  if (sideEffect) {
+    finishSideEffect(ctx, sideEffect, result);
+    try {
+      await ctx.persistRuntimeCheckpoint?.(sideEffectCheckpointReason(sideEffect, 'finished'));
+    } catch (error) {
+      // The side effect may already have happened. Keep the ledger in an
+      // uncertain state and fail closed so a later resume cannot replay it.
+      const uncertain = (ctx.sideEffects ?? []).find((item) => item.idempotencyKey === sideEffect.idempotencyKey);
+      if (uncertain) {
+        uncertain.status = 'unknown';
+        uncertain.error = `checkpoint after side effect failed: ${(error as Error).message}`;
+      }
+      result = {
+        ...result,
+        ok: false,
+        error: `side effect result is not durably checkpointed: ${(error as Error).message}`,
+      };
+    }
   }
   return stampStepMeta(result, stepId);
 }

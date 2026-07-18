@@ -19,7 +19,15 @@ import type { SessionManager } from '@littlesheep/session';
 import type { MemoryStoreLike } from '@littlesheep/types';
 import type { Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
-import type { MemoryRunRefinementServiceLike, MemoryWriteServiceLike } from '@littlesheep/memory-tree';
+import type {
+  MemoryAtomCorrectionServiceLike,
+  MemoryAtomHierarchyServiceLike,
+  MemoryAtomReconciliationServiceLike,
+  MemoryAtomRevisionServiceLike,
+  MemoryAtomSubtreeServiceLike,
+  MemoryRunRefinementServiceLike,
+  MemoryWriteServiceLike,
+} from '@littlesheep/memory-tree';
 import { HookRunner } from './hooks/runner.js';
 import { enterStage } from './stages/enter.js';
 import { createClassifyStage } from './stages/classify.js';
@@ -32,6 +40,7 @@ import { createCaptureStage } from './stages/capture.js';
 import { createReplyStage } from './stages/reply.js';
 import { createAskUserStage } from './stages/ask_user.js';
 import { createFinalizeStage } from './stages/finalize.js';
+import { consumeRuntimeControlEvents, consumeRuntimeTaskEvents } from './runtime-control-boundary.js';
 
 export interface DefaultHarnessOptions {
   llm: LlmClient;
@@ -44,6 +53,16 @@ export interface DefaultHarnessOptions {
   memoryWriter?: MemoryWriteServiceLike;
   /** Bounded post-DECIDE memory refinement using the normalized TaskBook. */
   memoryRefiner?: MemoryRunRefinementServiceLike;
+  /** Runtime-owned boundary for model-proposed multi-Atom reconciliation. */
+  memoryReconciler?: MemoryAtomReconciliationServiceLike;
+  /** Runtime-owned boundary for model-proposed semantic parent corrections. */
+  memoryHierarchy?: MemoryAtomHierarchyServiceLike;
+  /** Runtime-owned boundary for bounded non-leaf Atom subtree movement. */
+  memorySubtree?: MemoryAtomSubtreeServiceLike;
+  /** Runtime-owned boundary for evidence-preserving Atom projection refinement. */
+  memoryReviser?: MemoryAtomRevisionServiceLike;
+  /** Runtime-owned boundary for evidence-backed fact correction and replacement. */
+  memoryCorrector?: MemoryAtomCorrectionServiceLike;
   /**
    * Optional: if provided, EVOLVE may autonomously create skills when it
    * identifies a reusable pattern. This is the agent's self-evolution
@@ -103,6 +122,11 @@ export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness 
     llm: opts.llm,
     model: opts.model,
     memoryWriter: opts.memoryWriter,
+    memoryReconciler: opts.memoryReconciler,
+    memoryHierarchy: opts.memoryHierarchy,
+    memorySubtree: opts.memorySubtree,
+    memoryReviser: opts.memoryReviser,
+    memoryCorrector: opts.memoryCorrector,
     createSkill: opts.createSkill,
     llmPolicy: opts.config.memory.llmEvolve,
   }));
@@ -130,7 +154,7 @@ export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness 
     name: 'core-flow',
 
     async run(ctx: RunContext): Promise<StageResult> {
-      let current: StageName | 'exit' = 'enter';
+      let current: StageName | 'exit' = ctx.entryStage ?? 'enter';
       const trace: Array<{ name: StageName; startedAt: string; endedAt: string; ok: boolean }> = [];
       let lastResult: StageResult = {
         stage: 'enter',
@@ -153,6 +177,60 @@ export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness 
             error: `no stage registered for '${stageName}'`,
             meta: { trace },
           };
+        }
+
+        const runtimeControl = consumeRuntimeControlEvents(ctx);
+        if (runtimeControl.shouldStop) {
+          const endedAt = new Date().toISOString();
+          const error = runtimeControl.error
+            ?? (runtimeControl.state === 'paused'
+              ? 'run paused at a safe boundary'
+              : 'run interrupted at a safe boundary');
+          const controlResult: StageResult = {
+            stage: stageName,
+            next: 'exit',
+            ok: false,
+            error,
+            meta: {
+              runtimeControl: ctx.runtimeControl,
+              runtimeEventIds: runtimeControl.settledEventIds,
+            },
+          };
+          trace.push({ name: stageName, startedAt, endedAt, ok: false });
+          ctx.lastError = { stage: stageName, message: error };
+          lastResult = controlResult;
+          current = 'exit';
+          continue;
+        }
+
+        const runtimeTasks = consumeRuntimeTaskEvents(ctx);
+        if (runtimeTasks.error) {
+          const endedAt = new Date().toISOString();
+          const error = runtimeTasks.error;
+          const boundaryResult: StageResult = {
+            stage: stageName,
+            next: 'exit',
+            ok: false,
+            error,
+            meta: {
+              runtimeEventIds: runtimeTasks.settledEventIds,
+              deferredRuntimeEventIds: runtimeTasks.deferredEventIds,
+              appliedTaskBookPatchIds: runtimeTasks.appliedPatchIds,
+            },
+          };
+          trace.push({ name: stageName, startedAt, endedAt, ok: false });
+          ctx.lastError = { stage: stageName, message: error };
+          lastResult = boundaryResult;
+          current = 'exit';
+          continue;
+        }
+        if (runtimeTasks.shouldReplan && stageName !== 'decide') {
+          current = ctx.classification ? 'decide' : 'classify';
+          continue;
+        }
+        if (runtimeTasks.taskBookChanged && stageName !== 'execute' && !runtimeTasks.shouldReplan) {
+          current = ctx.taskBook ? 'execute' : 'decide';
+          continue;
         }
 
         // before hooks (void → modifying → claiming)

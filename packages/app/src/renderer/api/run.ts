@@ -11,12 +11,20 @@ import {
 import type {
   ContextSnapshot,
   ModelRequestSnapshot,
+  ReplyProvenance,
+  RuntimeEventIngressOutcome,
   TaskBook,
   ToolStreamEvent,
   VerificationRecord,
 } from '@littlesheep/types'
 import type { AgentProfileId } from '@littlesheep/prompt'
 import type { PermissionModeId } from '../../shared/permission-modes'
+import type {
+  LocalAppRuntimeControlEventResponse,
+  LocalAppRuntimeControlEventType,
+  LocalAppRuntimeTaskEventRequest,
+  LocalAppRuntimeTaskEventResponse,
+} from '../../shared/runtime-event-contracts'
 import { localApiStatusError, localApiUrl, parseSseFrame } from './common'
 
 export interface RunResult {
@@ -24,6 +32,7 @@ export interface RunResult {
   sessionId: string
   status: 'ok' | 'error' | 'aborted'
   reply: string
+  replyProvenance?: ReplyProvenance
   error?: string
   durationMs: number
   usage?: {
@@ -112,9 +121,14 @@ export async function runAgent(
 
 export interface RunStreamHandlers {
   signal?: AbortSignal
+  onStart?: (event: RunStreamStart) => void
   onDelta: (delta: string) => void
   onApprovalRequest?: (request: ApprovalRequest) => boolean | Promise<boolean>
   onToolEvent?: (evt: ToolStreamEvent) => void
+}
+
+export interface RunStreamStart {
+  runId: string
 }
 
 export interface ApprovalRequest {
@@ -154,6 +168,7 @@ export async function runAgentStream(
   const decoder = new TextDecoder()
   let buffer = ''
   let finalResult: RunResult | undefined
+  let activeRunId = ''
 
   while (true) {
     const { value, done } = await reader.read()
@@ -163,7 +178,15 @@ export async function runAgentStream(
     for (const frame of frames) {
       const event = parseSseFrame(frame)
       if (!event) continue
-      if (event.name === 'delta') {
+      if (event.name === 'start') {
+        const runId = String((event.data as { runId?: string }).runId ?? '').trim()
+        if (!runId) throw new Error('Local app API stream started without a run id')
+        if (activeRunId && activeRunId !== runId) throw new Error('Local app API stream changed run id')
+        if (!activeRunId) {
+          activeRunId = runId
+          handlers.onStart?.({ runId })
+        }
+      } else if (event.name === 'delta') {
         handlers.onDelta(String((event.data as { delta?: string }).delta ?? ''))
       } else if (event.name === 'tool_start' || event.name === 'tool_end') {
         const d = event.data as { callId?: string; name?: string; stepId?: string; input?: unknown; ok?: boolean; output?: string; error?: string }
@@ -202,7 +225,41 @@ export async function runAgentStream(
   }
 
   if (!finalResult) throw new Error('Local app API stream ended without result')
+  if (!activeRunId) throw new Error('Local app API stream ended without start metadata')
+  if (finalResult.runId !== activeRunId) throw new Error('Local app API stream result run id does not match start metadata')
   return finalResult
+}
+
+export async function sendRuntimeControlEvent(
+  runId: string,
+  type: LocalAppRuntimeControlEventType,
+  reason?: string,
+): Promise<RuntimeEventIngressOutcome> {
+  const path = localAppApiItemPath(LOCAL_APP_API_PREFIXES.runs, runId, '/events')
+  const res = await fetch(localApiUrl(path), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type, ...(reason ? { reason } : {}) }),
+  })
+  if (!res.ok) throw localApiStatusError(res.status)
+  const response = await res.json() as LocalAppRuntimeControlEventResponse
+  return response.outcome
+}
+
+/** Submit a bounded task-changing event to an active run. */
+export async function sendRuntimeTaskEvent(
+  runId: string,
+  request: LocalAppRuntimeTaskEventRequest,
+): Promise<RuntimeEventIngressOutcome> {
+  const path = localAppApiItemPath(LOCAL_APP_API_PREFIXES.runs, runId, '/events')
+  const res = await fetch(localApiUrl(path), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+  if (!res.ok) throw localApiStatusError(res.status)
+  const response = await res.json() as LocalAppRuntimeTaskEventResponse
+  return response.outcome
 }
 
 async function respondApproval(id: string, approved: boolean): Promise<void> {

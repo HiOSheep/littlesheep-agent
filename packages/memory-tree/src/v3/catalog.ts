@@ -166,6 +166,28 @@ export class MemoryCatalog {
     return rows.map(rowToEntry);
   }
 
+  hasActiveChildren(parentId: string): boolean {
+    const row = this.db.prepare("SELECT 1 AS present FROM atoms WHERE parent_id = ? AND status = 'active' LIMIT 1").get(parentId) as { present?: number } | undefined;
+    return row?.present === 1;
+  }
+
+  countActiveDescendants(parentId: string, limit = 129): number {
+    const bounded = boundedLimit(limit, 129, 100_000);
+    const row = this.db.prepare(`
+      WITH RECURSIVE active_descendants(atom_id) AS (
+        SELECT atom_id FROM atoms WHERE parent_id = ? AND status = 'active'
+        UNION
+        SELECT child.atom_id
+        FROM atoms child
+        JOIN active_descendants parent ON child.parent_id = parent.atom_id
+        WHERE child.status = 'active'
+        LIMIT ?
+      )
+      SELECT COUNT(*) AS count FROM active_descendants
+    `).get(parentId, bounded) as { count?: number | bigint } | undefined;
+    return Number(row?.count ?? 0);
+  }
+
   listChildren(parentId: string, options: Pick<MemoryCatalogSearchOptions, 'branch' | 'scope' | 'scopeKey' | 'includeArchived'>): MemoryCatalogEntry[] {
     assertScope(options);
     const rows = this.db.prepare(`

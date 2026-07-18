@@ -2,7 +2,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   listWorkspaceDirectory,
-  openWorkspacePath,
   openWorkspacePathInVSCode,
   previewWorkspaceFile,
   saveWorkspaceFile,
@@ -196,15 +195,6 @@ export function WorkspaceFiles({
     }
   }
 
-  async function openSelectedExternal() {
-    if (!selectedPath) return
-    try {
-      await openWorkspacePath(workspacePath, selectedPath)
-    } catch (err) {
-      setPreviewError((err as Error).message)
-    }
-  }
-
   async function openWorkspaceInVSCode() {
     try {
       await openWorkspacePathInVSCode(workspacePath)
@@ -263,7 +253,6 @@ export function WorkspaceFiles({
         error={previewError}
         selectedPath={selectedPath}
         workspacePath={workspacePath}
-        onOpenExternal={openSelectedExternal}
         onOpenInVSCode={openSelectedInVSCode}
         onSaveFile={saveSelectedFile}
         onTipChange={onTipChange}

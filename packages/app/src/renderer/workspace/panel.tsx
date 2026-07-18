@@ -1,4 +1,5 @@
 // Extension workspace panels, files, terminal, artifacts, and view helpers.
+import { useEffect, useRef, useState } from 'react'
 import { StringListUpdater } from '../app-shell/types'
 import { ChatMessage } from '../chat/types'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
@@ -24,11 +25,11 @@ import { isSamePath, lastPathSegment } from './path-utils'
 import { WorkspacePlaceholder } from './placeholder'
 import { WorkspaceFileView } from './preview-pane'
 import { WorkspaceTerminal } from './terminal'
-
+import type { WorkspaceBrowserHistory } from './browser-history'
 export function WorkspacePanel({
   collapsed,
   fullscreen,
-  activeTab, openTabs, browserUrl,
+  activeTab, openTabs, browserUrl, browserHistory,
   messages,
   workspacePath,
   defaultWorkspacePath,
@@ -53,7 +54,7 @@ export function WorkspacePanel({
   onWorkspaceArtifactsChanged,
   onFileNavigatorCollapsedChange,
   onExpandedPathsChange,
-  onOpenFile, onNavigateLink, onOpenExternalLink,
+  onOpenFile, onNavigateLink, onBrowserNavigate, onBrowserHistoryMove,
   onTipChange,
 }: {
   collapsed: boolean
@@ -61,6 +62,7 @@ export function WorkspacePanel({
   activeTab: WorkspacePanelTabId
   openTabs: WorkspacePanelTabId[]
   browserUrl: string
+  browserHistory: WorkspaceBrowserHistory
   messages: ChatMessage[]
   workspacePath: string
   defaultWorkspacePath: string
@@ -87,7 +89,8 @@ export function WorkspacePanel({
   onExpandedPathsChange: (update: StringListUpdater) => void
   onOpenFile: (path: string) => void
   onNavigateLink: (href: string) => void
-  onOpenExternalLink: (href: string) => void
+  onBrowserNavigate: (url: string, mode?: 'push' | 'replace') => void
+  onBrowserHistoryMove: (delta: number) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const workspaceEntries: Array<{
@@ -140,6 +143,33 @@ export function WorkspacePanel({
   const displayedTabs = visibleTabs.length > 0 ? visibleTabs : [activeEntry]
   const fullscreenTip = fullscreen ? '退出全屏工作区' : '全屏展开工作区'
   const workspaceIsDefault = isSamePath(workspacePath, workplacePath)
+  const [warmTab, setWarmTab] = useState<WorkspacePanelTabId | null>(null)
+  const previousTabRef = useRef<WorkspacePanelTabId>(activeTab)
+  const [pageVisible, setPageVisible] = useState(() => document.visibilityState !== 'hidden')
+
+  useEffect(() => {
+    const previousTab = previousTabRef.current
+    previousTabRef.current = activeTab
+    if (previousTab === activeTab) return
+    setWarmTab(previousTab)
+    const timer = window.setTimeout(() => setWarmTab((current) => current === previousTab ? null : current), 20_000)
+    return () => window.clearTimeout(timer)
+  }, [activeTab])
+
+  useEffect(() => {
+    const onVisibilityChange = () => setPageVisible(document.visibilityState !== 'hidden')
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [])
+
+  const panelSuspended = collapsed || !pageVisible
+  // Derive the previous tab during the transition render as well. This keeps
+  // the old heavy view mounted while React commits the new active tab instead
+  // of unmounting it and recreating it one effect later.
+  const transitionWarmTab = previousTabRef.current !== activeTab
+    ? previousTabRef.current
+    : warmTab
+  const warmFileTab = transitionWarmTab ? parseWorkspaceFileTabId(transitionWarmTab) : null
 
   return (
     <aside
@@ -239,10 +269,11 @@ export function WorkspacePanel({
           </div>
         </header>
         <div className="workspace-panel-body">
-          <div
-            key={activeEntry.id}
-            className={`workspace-panel-view content-fade ${!activeFileTab && activeTab !== 'files' ? 'with-file-navigator' : ''}`}
-          >
+          {!panelSuspended && (
+            <div
+              key={activeEntry.id}
+              className={`workspace-panel-view content-fade ${!activeFileTab && activeTab !== 'files' ? 'with-file-navigator' : ''}`}
+            >
             {activeTab === 'review' && (
               <WorkspaceOverview
                 workspacePath={workspacePath}
@@ -333,7 +364,13 @@ export function WorkspacePanel({
               />
             )}
             {activeTab === 'browser' && (
-              <WorkspaceBrowser url={browserUrl} onNavigate={onNavigateLink} onOpenExternal={onOpenExternalLink} />
+              <WorkspaceBrowser
+                url={browserUrl}
+                history={browserHistory}
+                onNavigate={onBrowserNavigate}
+                onHistoryMove={onBrowserHistoryMove}
+                onTipChange={onTipChange}
+              />
             )}
             {activeTab === 'sideChat' && (
               <WorkspacePlaceholder
@@ -341,8 +378,9 @@ export function WorkspacePanel({
                 text="后续会承载与当前文件、命令或产物绑定的局部对话，不挤占主对话区。"
               />
             )}
-          </div>
-          {!activeFileTab && activeTab !== 'files' && (
+            </div>
+          )}
+          {!panelSuspended && !activeFileTab && activeTab !== 'files' && (
             <WorkspaceFileNavigator
               workspacePath={workspacePath}
               defaultWorkspacePath={defaultWorkspacePath}
@@ -359,6 +397,33 @@ export function WorkspacePanel({
               onExpandedPathsChange={onExpandedPathsChange}
               onTipChange={onTipChange}
             />
+          )}
+          {!panelSuspended && transitionWarmTab && transitionWarmTab !== activeTab && (warmFileTab || transitionWarmTab === 'terminal') && (
+            <div className="workspace-panel-view warm-cache" aria-hidden="true" {...{ inert: '' }}>
+              {warmFileTab && (
+                <div className="workspace-files">
+                  <WorkspaceFileView
+                    tabId={transitionWarmTab as WorkspaceFileTabId}
+                    root={warmFileTab.root}
+                    path={warmFileTab.path}
+                    sessionId={sessionId}
+                    draft={fileDrafts[transitionWarmTab]}
+                    onDraftChange={onFileDraftChange}
+                    onRequestFileSaveApproval={onRequestFileSaveApproval}
+                    onWorkspaceArtifactsChanged={onWorkspaceArtifactsChanged}
+                    onTipChange={onTipChange}
+                  />
+                </div>
+              )}
+              {transitionWarmTab === 'terminal' && (
+                <WorkspaceTerminal
+                  workspacePath={workspacePath}
+                  sessionId={sessionId}
+                  onRequestCommandApproval={onRequestCommandApproval}
+                  onTipChange={onTipChange}
+                />
+              )}
+            </div>
           )}
         </div>
       </div>

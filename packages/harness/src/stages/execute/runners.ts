@@ -1,5 +1,6 @@
+// Owns legacy and TaskBook execution orchestration; delegates tool loops, failure policy, and final reply synthesis.
 import type { SystemPromptBundle } from '@littlesheep/prompt';
-import { appendSystemPromptBundleAddons } from '../../profile-prompt.js';
+import { appendSystemPromptBundleAddons, buildUserFacingVoiceAddon } from '../../profile-prompt.js';
 import type {
   RunContext,
   StageResult,
@@ -21,6 +22,9 @@ import {
 import { synthesizeFinalReply } from './final-reply.js';
 import { buildBaseMessages, renderStepGuidance } from './guidance.js';
 import { applyUsage, runToolLoop } from './tool-loop.js';
+import { acceptUniqueUserFacingReply, type ReplyRewriteInput } from '../../user-facing-reply.js';
+import { buildRunRequestCandidates } from '../../context-candidates.js';
+import { prepareModelRequest, recordProviderUsage } from '../../model-observability.js';
 
 export async function executeLegacyLoop(
   deps: ExecuteStageDeps,
@@ -42,8 +46,20 @@ export async function executeLegacyLoop(
     ctx.lastError = { stage: 'execute', message: result.error ?? 'execute failed' };
     return { stage: 'execute', next: 'recover', ok: false, error: ctx.lastError.message };
   }
-  ctx.reply = result.content;
   applyUsage(ctx, result.usage);
+  try {
+    ctx.reply = await acceptUniqueUserFacingReply(
+      ctx,
+      'execute_tool_loop',
+      result.content,
+      (input) => rewriteLegacyExecutionReply(deps, ctx, systemPrompt, input),
+    );
+  } catch (error) {
+    ctx.reply = undefined;
+    ctx.replyProvenance = undefined;
+    ctx.lastError = { stage: 'execute', message: `user-facing execution reply generation failed: ${(error as Error).message}` };
+    return { stage: 'execute', next: 'recover', ok: false, error: ctx.lastError.message };
+  }
   return {
     stage: 'execute',
     next: 'verify',
@@ -174,7 +190,8 @@ export async function executeTaskBook(
       execution.endedAt = new Date().toISOString();
       syncExecutionSteps();
       ctx.toolResults = allToolResults;
-      ctx.reply = stepResult.error;
+      ctx.reply = undefined;
+      ctx.replyProvenance = undefined;
       ctx.lastError = { stage: 'execute', message: stepResult.error };
       ctx.onToolEvent?.({
         type: 'step_failed',
@@ -205,7 +222,8 @@ export async function executeTaskBook(
       execution.endedAt = new Date().toISOString();
       syncExecutionSteps();
       ctx.toolResults = allToolResults;
-      ctx.reply = stepResult.output || stepResult.error;
+      ctx.reply = undefined;
+      ctx.replyProvenance = undefined;
       ctx.onToolEvent?.({
         type: 'step_failed',
         stepId,
@@ -240,8 +258,24 @@ export async function executeTaskBook(
   execution.endedAt = new Date().toISOString();
   syncExecutionSteps();
   ctx.toolResults = allToolResults;
-  ctx.reply = await synthesizeFinalReply(deps, ctx, taskBook, execution.steps);
-  execution.summary = ctx.reply;
+  try {
+    ctx.reply = await synthesizeFinalReply(deps, ctx, taskBook, execution.steps);
+    execution.summary = ctx.reply;
+  } catch (error) {
+    ctx.reply = undefined;
+    ctx.replyProvenance = undefined;
+    execution.status = 'failed';
+    execution.endedAt = new Date().toISOString();
+    syncExecutionSteps();
+    ctx.lastError = { stage: 'execute', message: `user-facing final reply generation failed: ${(error as Error).message}` };
+    return {
+      stage: 'execute',
+      next: 'recover',
+      ok: false,
+      error: ctx.lastError.message,
+      meta: { taskStatus: execution.status, taskSteps: execution.steps.length, toolCalls: allToolResults.length },
+    };
+  }
   ctx.lastError = undefined;
   return {
     stage: 'execute',
@@ -253,4 +287,43 @@ export async function executeTaskBook(
       toolCalls: allToolResults.length,
     },
   };
+}
+
+async function rewriteLegacyExecutionReply(
+  deps: ExecuteStageDeps,
+  ctx: RunContext,
+  systemPrompt: SystemPromptBundle,
+  input: ReplyRewriteInput,
+): Promise<string> {
+  const rewrittenSystem = appendSystemPromptBundleAddons(systemPrompt, [{
+    id: 'user-facing-rewrite',
+    text: `${buildUserFacingVoiceAddon(ctx)}\n\nThe prior API-generated response exactly repeats a previously published LS reply. Generate the answer again with a genuinely different opening and sentence structure. Preserve runtime facts, execution status, evidence and uncertainty. Do not mention the regeneration. Return only the user-facing reply.`,
+  }]);
+  const attachments = attachmentContextMessages(ctx.runId, ctx.attachments);
+  const rawRequest = {
+    model: deps.model,
+    messages: [
+      ...buildBaseMessages(ctx, rewrittenSystem.text, attachments),
+      {
+        role: 'user' as const,
+        content: `Prior API-generated response:\n${input.generatedReply}\n\nRecent replies to avoid repeating exactly:\n${input.avoidReplies.map((reply, index) => `${index + 1}. ${reply}`).join('\n')}`,
+      },
+    ],
+    temperature: 0.75,
+    max_tokens: 4_096,
+    signal: ctx.signal,
+  } satisfies import('@littlesheep/llm').ChatRequest;
+  const request = prepareModelRequest(
+    ctx,
+    'execute_tool_loop',
+    rawRequest,
+    buildRunRequestCandidates(ctx, 'execute', rawRequest.messages, {
+      systemSegments: rewrittenSystem.segments,
+      insertedBeforePrimary: attachments.map((item) => item.context),
+    }),
+  );
+  const response = await deps.llm.chat(request);
+  recordProviderUsage(ctx, request, response.usage);
+  applyUsage(ctx, response.usage);
+  return response.content;
 }

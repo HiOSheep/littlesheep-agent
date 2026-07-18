@@ -14,24 +14,23 @@ import type {
   PermissionPolicyId,
   RunConfigOrigin,
   AgentTool,
+  RuntimeEventIngress,
+  RunCheckpoint,
 } from '@littlesheep/types';
 import { asSessionId, textMessage } from '@littlesheep/types';
 import { randomUUID } from 'node:crypto';
 import type { Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
-import type { ChatMessage, ChatRequest, LlmClient } from '@littlesheep/llm';
-import { maybeCompact, SessionManager } from '@littlesheep/session';
+import type { LlmClient } from '@littlesheep/llm';
+import type { SessionManager } from '@littlesheep/session';
 import {
   buildRunContext,
-  buildRunRequestCandidates,
   collectConversationSourceRecords,
-  prepareModelRequest,
-  recordProviderUsage,
 } from '@littlesheep/harness';
 import { buildInfrastructure, type RunnerState, type LogFn } from './infra.js';
 import type { ExecutionLog } from './execution-log.js';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
-import { getAgentProfile, type AgentProfileId } from '@littlesheep/prompt';
+import { getAgentProfile, normalizeAgentProfileId, type AgentProfileId } from '@littlesheep/prompt';
 import { reasoningPromptAddon, resolveRunConfig } from './run-config.js';
 import { discoverLittleSheepCoreRoots } from './core-source-protection.js';
 import { buildSessionRunSummary } from './session-run-summary.js';
@@ -40,8 +39,23 @@ import { recordSessionSummaryActivation } from './session-summary-activation.js'
 import type { RunGitCheckpoint } from '@littlesheep/snapshot';
 import { completeRunVersionCheckpoint } from './version-checkpoint-lifecycle.js';
 import { beginRuntimeResourceObservation, completeRuntimeResourceObservation } from './runtime-resource-observation.js';
+import { compactSessionAfterRun } from './session-continuity.js';
+import { ActiveRunRegistry } from './active-run-registry.js';
+import { buildRunCheckpoint, shouldPersistRunCheckpoint } from './run-checkpoint.js';
+import { RunCheckpointController } from './run-checkpoint-controller.js';
 /** AgentResult + sessionId (caller-friendly). */
-export type RunnerResult = AgentResult & { sessionId: SessionId; memoryAccess?: MemoryAccessLedger };
+export type RunnerResult = AgentResult & {
+  sessionId: SessionId;
+  memoryAccess?: MemoryAccessLedger;
+  runCheckpointId?: string;
+};
+
+interface ContinuationInput {
+  checkpoint: RunCheckpoint;
+  inbound: Message;
+  historyExcludeMessageIds: readonly string[];
+  persistInbound: boolean;
+}
 
 /** Identifies the call origin — affects execution log archiving and tool approvals. */
 export type RunOrigin = RunConfigOrigin;
@@ -65,6 +79,8 @@ export interface CreateRunnerOptions {
    *  run, a timed AbortController is created so a hung tool/LLM can't
    *  block indefinitely. 0 disables the timeout. */
   runTimeoutMs?: number;
+  /** Hard upper bound for simultaneously registered runtime event queues. */
+  maxActiveRuns?: number;
   log?: LogFn;
 }
 
@@ -110,11 +126,26 @@ export interface RunInput {
   };
 }
 
+export interface ResumeCheckpointOptions {
+  /** Required only when the checkpoint was waiting for a clarification. */
+  text?: string;
+  /** Human-readable reason retained in the disposition audit. */
+  reason?: string;
+  signal?: AbortSignal;
+  approve?: ToolContext['approve'];
+  onAssistantDelta?: (delta: string) => void;
+  onToolEvent?: (evt: import('@littlesheep/types').ToolStreamEvent) => void;
+}
+
 export interface AgentRunner {
   run(input: RunInput): Promise<RunnerResult>;
   runStream(input: RunInput, onDelta: (delta: string) => void): Promise<RunnerResult>;
+  /** Inspect and explicitly continue a durable runtime checkpoint. */
+  resumeCheckpoint?(checkpointId: string, options?: ResumeCheckpointOptions): Promise<RunnerResult>;
   /** Replay a past run by id (reads execution log). Returns null if not found. */
   replay(runId: string): Promise<ExecutionLog | null>;
+  /** Ingress for events targeting an active run; independent from session input. */
+  readonly runtimeEvents: RuntimeEventIngress;
   shutdown(): Promise<void>;
   readonly state: RunnerState;
   /** Underlying SessionManager — exposed so the app layer can read session history. */
@@ -143,20 +174,29 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     state,
     log: opts.log,
   });
+  const activeRuns = new ActiveRunRegistry({ maxActiveRuns: opts.maxActiveRuns });
+  const checkpointController = infra.runCheckpointStore
+    ? new RunCheckpointController({
+        checkpointStore: infra.runCheckpointStore,
+        dispositionStore: infra.runCheckpointDispositionStore,
+      })
+    : undefined;
 
   // Overall run timeout. When run is called without a signal, a timed
   // AbortController is created so a hung tool/LLM can't block indefinitely.
   // 0 disables. Tools and llm.chat both respect ctx.signal (→ toolContext.signal).
   const RUN_TIMEOUT_MS = opts.runTimeoutMs ?? 5 * 60 * 1000;
 
-  async function run(input: RunInput): Promise<RunnerResult> {
+  async function run(input: RunInput, continuation?: ContinuationInput): Promise<RunnerResult> {
     const startedAt = Date.now();
     const runtimeResourceStart = beginRuntimeResourceObservation();
     const runId = input.runId ?? randomUUID();
-    const origin = input.origin ?? 'cli';
-    const cwd = input.cwd ?? opts.config.agents.defaults.workspace;
+    const origin = input.origin ?? continuation?.checkpoint.resumeState?.origin ?? 'cli';
+    const cwd = input.cwd ?? continuation?.checkpoint.resumeState?.cwd ?? opts.config.agents.defaults.workspace;
     let activeCheckpoint: RunGitCheckpoint | undefined;
     let checkpointCompleted = false;
+    let runtimeQueueRegistered = false;
+    let runCheckpointId: string | undefined;
 
     // Resolve abort signal: use the caller's if provided, else create one with
     // an overall run timeout so a hung tool/LLM can't block indefinitely.
@@ -172,7 +212,12 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       activeCheckpoint = await infra.versioning?.beginRun({ runId, workspaceRoot: cwd });
       // 1. Resolve or create session.
       let sessionId: SessionId;
-      if (input.sessionId) {
+      if (continuation) {
+        if (input.sessionId && String(input.sessionId) !== String(continuation.checkpoint.sessionId)) {
+          throw new Error('resume session does not match the checkpoint session');
+        }
+        sessionId = continuation.checkpoint.sessionId;
+      } else if (input.sessionId) {
         sessionId = input.sessionId;
       } else {
         // Build metadata for channel-bound sessions so listByChannel() works.
@@ -192,13 +237,19 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         sessionId = session.id;
       }
       state.sessionId = sessionId;
+      const runtimeEventQueue = continuation?.checkpoint.runtimeEventQueue
+        ? activeRuns.registerFromSnapshot(runId, sessionId, continuation.checkpoint.runtimeEventQueue)
+        : activeRuns.register(runId, sessionId);
+      runtimeQueueRegistered = true;
 
       // 2. Build inbound user message.
-      const inbound: Message = textMessage('user', input.text, {
-        sessionId,
-        runId,
-        timestamp: new Date(startedAt).toISOString(),
-      });
+      const inbound: Message = continuation
+        ? structuredClone({ ...continuation.inbound, sessionId })
+        : textMessage('user', input.text, {
+            sessionId,
+            runId,
+            timestamp: new Date(startedAt).toISOString(),
+          });
 
       // 3. Build RunContext (loads history WITHOUT inbound — no duplicate).
       // Apply caller-provided tool policy before the run.
@@ -267,10 +318,31 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         profilePromptAddon: behaviorProfile?.systemPromptAddon,
         reasoningPromptAddon: reasoningPromptAddon(resolvedRunConfig.reasoning),
         attachments: input.attachments,
-        resolvedRunConfig,
-        bootstrapDir: opts.bootstrapDir,
-        memoryResources: infra.memoryService,
-      });
+         resolvedRunConfig,
+         runtimeEventQueue,
+         bootstrapDir: opts.bootstrapDir,
+         memoryResources: infra.memoryService,
+         workspaceContext: input.workspaceContext,
+          historyExcludeMessageIds: continuation?.historyExcludeMessageIds,
+       });
+      if (continuation) restoreContinuationContext(ctx, continuation.checkpoint);
+      ctx.persistRuntimeCheckpoint = async (reason) => {
+        if (!infra.runCheckpointStore) return undefined;
+        const checkpoint = buildRunCheckpoint({
+          ctx,
+          stageResult: {
+            stage: 'execute',
+            next: 'exit',
+            ok: false,
+            error: reason,
+          },
+          reason,
+        });
+        const outcome = await infra.runCheckpointStore.write(checkpoint);
+        if (outcome.kind === 'conflict') throw new Error(`run checkpoint id conflict: ${outcome.checkpointId}`);
+        runCheckpointId = checkpoint.id;
+        return checkpoint.id;
+      };
       let usedContinuitySummaryId: string | undefined;
       try {
         await infra.memoryService.registerRunResources({
@@ -323,10 +395,12 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       // 4. Persist inbound AFTER buildRunContext (so it's not in loaded history)
       //    but BEFORE harness.run (so FINALIZE's append of produced goes after
       //    inbound → correct JSONL order: [..., user, assistant]).
-      try {
-        await infra.sessionManager.append(sessionId, [inbound]);
-      } catch (err) {
-        opts.log?.('error', `runner: failed to persist inbound: ${(err as Error).message}`);
+      if (!continuation || continuation.persistInbound) {
+        try {
+          await infra.sessionManager.append(sessionId, [inbound]);
+        } catch (err) {
+          opts.log?.('error', `runner: failed to persist inbound: ${(err as Error).message}`);
+        }
       }
 
       // 5. Run the state machine.
@@ -342,6 +416,31 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           error: `harness threw: ${(err as Error).message}`,
         };
       }
+      const runInterrupted = signal?.aborted === true || ctx.runtimeControl?.state === 'interrupted';
+      if (infra.runCheckpointStore && shouldPersistRunCheckpoint(ctx, stageResult, runInterrupted)) {
+        try {
+          const checkpoint = buildRunCheckpoint({
+            ctx,
+            stageResult,
+            interrupted: runInterrupted,
+            reason: checkpointReason(ctx, stageResult, runInterrupted),
+          });
+          const outcome = await infra.runCheckpointStore.write(checkpoint);
+          if (outcome.kind === 'conflict') {
+            throw new Error(`run checkpoint id conflict: ${outcome.checkpointId}`);
+          }
+          runCheckpointId = checkpoint.id;
+        } catch (error) {
+          const message = `run checkpoint persistence failed: ${(error as Error).message}`;
+          opts.log?.('error', `runner: ${message}`);
+          ctx.lastError = { stage: stageResult.stage, message };
+          stageResult = {
+            ...stageResult,
+            ok: false,
+            error: stageResult.error ? `${stageResult.error}; ${message}` : message,
+          };
+        }
+      }
       try {
         await infra.memoryService.captureConversationSources(collectConversationSourceRecords(ctx));
       } catch (err) {
@@ -353,7 +452,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       try {
         await infra.memoryService.recordRunFeedback({
           runId: ctx.runId,
-          status: signal?.aborted ? 'aborted' : stageResult.ok ? 'ok' : 'error',
+          status: runInterrupted ? 'aborted' : stageResult.ok ? 'ok' : 'error',
           references: (ctx.memoryKnownState?.references ?? []).map((reference) => ({
             atomId: reference.atomId,
             decision: reference.decision,
@@ -381,7 +480,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           summary: ctx.sessionSummary,
           usedSummaryId: usedContinuitySummaryId,
           runId: ctx.runId,
-          status: signal?.aborted ? 'aborted' : stageResult.ok ? 'ok' : 'error',
+          status: runInterrupted ? 'aborted' : stageResult.ok ? 'ok' : 'error',
           verification: latestVerification,
           successfulToolCallIds,
           recordedAt,
@@ -394,84 +493,24 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       } catch (err) {
         opts.log?.('warn', `runner: run resource cleanup degraded: ${(err as Error).message}`);
       }
-      const runAborted = signal?.aborted === true;
+      const runAborted = runInterrupted;
 
       // Compact only after the run has finalized and persisted its messages.
       // The transcript remains intact; failures only skip the optional summary.
       if (!runAborted) {
-        try {
-          const compacted = await maybeCompact(infra.sessionManager, sessionId, {
-            threshold: opts.config.sessions.compaction.threshold,
-            keepRecent: opts.config.sessions.compaction.keepRecent,
-            force: ctx.contextSnapshots?.some((snapshot) => snapshot.compressionRecommended) === true,
-            signal,
-            summarize: async ({ previousSummary, messages }) => {
-              const summaryMessages: ChatMessage[] = [
-                {
-                  role: 'system',
-                  content: `You maintain a versioned session summary for an AI agent. Preserve user goals, constraints, decisions, unfinished work, important facts, permission outcomes, artifact paths, and source message ids. Remove repetition and verbose tool output. Do not invent facts. Return only the summary text.`,
-                },
-                {
-                  role: 'user',
-                  content: [
-                    previousSummary ? `Previous summary:\n${previousSummary.summary}\n` : '',
-                    'New messages to merge:',
-                    ...messages.map(renderMessageForCompaction),
-                  ].filter(Boolean).join('\n\n'),
-                },
-              ];
-              const rawRequest = {
-                model,
-                messages: summaryMessages,
-                temperature: 0,
-                max_tokens: 1_400,
-                signal,
-              } satisfies ChatRequest;
-              const request = prepareModelRequest(
-                ctx,
-                'session_compaction',
-                rawRequest,
-                buildRunRequestCandidates(ctx, 'capture', rawRequest.messages, {
-                  history: [],
-                  primaryUserKind: 'workflow_state',
-                }),
-              );
-              const response = await infra.llm.chat(request);
-              recordProviderUsage(ctx, request, response.usage);
-              return { summary: response.content, model: response.model ?? model };
-            },
-          });
-          if (compacted) {
-            try {
-              await infra.memoryService.registerSessionSummary(sessionId, compacted);
-            } catch (err) {
-              opts.log?.('warn', `runner: summary resource registration degraded: ${(err as Error).message}`);
-            }
-            try {
-              const consolidation = await infra.memoryService.consolidateDailyMemory({
-                sessionId,
-                workspace: cwd,
-                runId: ctx.runId,
-                summary: compacted,
-              });
-              if (consolidation.failures.length > 0) {
-                opts.log?.('warn', 'runner: daily memory consolidation retained source atoms after partial failure.', {
-                  promoted: consolidation.promoted,
-                  archived: consolidation.archived,
-                  failures: consolidation.failures,
-                });
-              }
-            } catch (err) {
-              opts.log?.('warn', `runner: daily memory consolidation skipped: ${(err as Error).message}`);
-            }
-          }
-        } catch (err) {
-          opts.log?.('warn', `runner: session compaction skipped: ${(err as Error).message}`);
-        }
+        await compactSessionAfterRun({
+          sessionManager: infra.sessionManager, memoryService: infra.memoryService, llm: infra.llm, ctx,
+          sessionId, runId: ctx.runId, workspace: cwd, model,
+          threshold: opts.config.sessions.compaction.threshold,
+          keepRecent: opts.config.sessions.compaction.keepRecent,
+          force: ctx.contextSnapshots?.some((snapshot) => snapshot.compressionRecommended) === true,
+          signal, log: opts.log,
+        });
       }
 
       // 6. Wrap into RunnerResult.
       const result = assembleResult(stageResult, ctx, sessionId, startedAt, runAborted, memoryAccess);
+      if (runCheckpointId) result.runCheckpointId = runCheckpointId;
 
       // 7. M3: persist execution log (one JSON per run). Failure is non-fatal —
       //    the run result is still returned; only the audit log is lost.
@@ -485,6 +524,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           model,
           inboundText: input.text,
           reply: result.reply ?? '',
+          replyProvenance: result.replyProvenance,
           error: result.error,
           trace: result.trace,
           taskExecution: result.taskExecution,
@@ -498,6 +538,9 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           resolvedRunConfig: result.resolvedRunConfig,
           modelRequests: result.modelRequests,
           contextSnapshots: result.contextSnapshots,
+          runtimeControl: result.runtimeControl,
+          runtimeEventQueue: result.runtimeEventQueue,
+          runCheckpointId,
           runtimeResources: completeRuntimeResourceObservation(runtimeResourceStart),
           messages: result.messages,
           durationMs: result.durationMs,
@@ -533,6 +576,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
 
       return result;
     } finally {
+      if (runtimeQueueRegistered) activeRuns.unregister(runId);
       if (activeCheckpoint && !checkpointCompleted) {
         try {
           await activeCheckpoint.abort();
@@ -544,15 +588,104 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     }
   }
 
+  async function resumeCheckpoint(
+    checkpointId: string,
+    options: ResumeCheckpointOptions = {},
+  ): Promise<RunnerResult> {
+    if (!checkpointController || !infra.runCheckpointStore) {
+      throw new Error('runtime checkpoint continuation is unavailable')
+    }
+    const checkpoint = await infra.runCheckpointStore.read(checkpointId)
+    if (!checkpoint) throw new Error(`run checkpoint not found: ${checkpointId}`)
+    const state = checkpoint.resumeState
+    if (!state) throw new Error('run checkpoint is inspect-only because it has no resume state')
+    const inbound = await infra.sessionManager.findMessage(checkpoint.sessionId, state.inboundMessageId)
+    if (!inbound || inbound.role !== 'user') {
+      throw new Error('run checkpoint original inbound message is missing or invalid')
+    }
+    const isClarification = checkpoint.status === 'waiting_user'
+    if (isClarification && !options.text?.trim()) {
+      throw new Error('run checkpoint is waiting for a user clarification')
+    }
+    const availableNames = new Set(infra.registry.list().map((item) => item.tool.name))
+    const missingTools = state.availableToolNames.filter((name) => !availableNames.has(name))
+    if (missingTools.length > 0) {
+      throw new Error(`run checkpoint requires unavailable tools: ${missingTools.join(', ')}`)
+    }
+    const resumeRunId = randomUUID()
+    const claim = await checkpointController.claimResume(
+      checkpoint.id,
+      options.reason ?? 'user requested checkpoint continuation',
+      resumeRunId,
+      model,
+    )
+    if (claim.kind === 'blocked') {
+      throw new Error(`run checkpoint cannot be resumed: ${claim.inspection.reasons.join('; ')}`)
+    }
+    if (claim.kind === 'conflict') throw new Error(`run checkpoint resume conflict: ${claim.message}`)
+
+    const continuationInbound = isClarification
+      ? textMessage('user', options.text!.trim(), {
+          sessionId: checkpoint.sessionId,
+          runId: resumeRunId,
+        })
+      : structuredClone(inbound)
+    try {
+      const result = await run({
+        sessionId: checkpoint.sessionId,
+        text: isClarification ? options.text!.trim() : messageText(inbound),
+        cwd: state.cwd,
+        runId: resumeRunId,
+        origin: state.origin,
+        signal: options.signal,
+        approve: options.approve ?? opts.approve,
+        onAssistantDelta: options.onAssistantDelta,
+        onToolEvent: options.onToolEvent,
+        permissionPolicyId: state.permissionPolicyId,
+        reasoning: state.reasoning,
+        profile: normalizeAgentProfileId(state.behaviorModeId),
+        workspaceContext: state.workspaceContext,
+      }, {
+        checkpoint,
+        inbound: continuationInbound,
+        historyExcludeMessageIds: [state.inboundMessageId],
+        persistInbound: isClarification,
+      })
+      await checkpointController.completeResume(
+        checkpoint.id,
+        resumeRunId,
+        result.status === 'ok' ? 'ok' : result.status === 'aborted' ? 'aborted' : 'error',
+        result.error ?? 'checkpoint continuation completed',
+        result.runCheckpointId,
+      )
+      return result
+    } catch (error) {
+      await checkpointController.completeResume(
+        checkpoint.id,
+        resumeRunId,
+        options.signal?.aborted ? 'aborted' : 'error',
+        error instanceof Error ? error.message : String(error),
+      ).catch(() => undefined)
+      throw error
+    }
+  }
+
   return {
     run,
     runStream: (input: RunInput, onDelta: (delta: string) => void) =>
       run({ ...input, onAssistantDelta: onDelta }),
+    resumeCheckpoint,
     replay: (runId: string) => infra.executionLogStore.read(runId),
+    runtimeEvents: activeRuns,
     shutdown: async () => {
+      activeRuns.dispose();
       // Close long-lived SQLite connections before adapters replace or delete the data root.
       await infra.memoryRepository.shutdown();
       await infra.disposeEmbedding();
+      await infra.runCheckpointStore?.prune().catch(() => undefined);
+      infra.runCheckpointStore?.dispose();
+      await infra.runCheckpointDispositionStore.prune().catch(() => undefined);
+      infra.runCheckpointDispositionStore.dispose();
       await infra.versioning?.freeze();
     },
     state,
@@ -562,34 +695,11 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
   };
 }
 
-function renderMessageForCompaction(message: Message): string {
-  const body = message.content.map((block) => {
-    if (block.type === 'text') return block.text;
-    if (block.type === 'reasoning') return '[reasoning]\n' + block.text;
-    if (block.type === 'tool_calls') {
-      return '[tool calls] ' + block.calls.map((call) => call.name + '#' + call.id).join(', ');
-    }
-    const output = block.result.output === undefined
-      ? ''
-      : ' output=' + truncateCompactionText(safeCompactionJson(block.result.output), 1_200);
-    const error = block.result.error ? ' error=' + block.result.error : '';
-    return '[tool result ' + block.result.callId + '] ok=' + block.result.ok + output + error;
-  }).join('\n');
-  return '[source message ' + message.id + ' | ' + message.timestamp + ' | ' + message.role + ']\n'
-    + truncateCompactionText(body, 4_000);
-}
-
-function safeCompactionJson(value: unknown): string {
-  try {
-    return typeof value === 'string' ? value : JSON.stringify(value) ?? '';
-  } catch {
-    return '[non-serializable]';
-  }
-}
-
-function truncateCompactionText(value: string, max: number): string {
-  if (value.length <= max) return value;
-  return value.slice(0, max) + '\n[truncated ' + (value.length - max) + ' characters]';
+function checkpointReason(ctx: RunContext, stageResult: StageResult, interrupted: boolean): string {
+  if (ctx.runtimeControl?.state === 'paused') return ctx.runtimeControl.reason ?? 'run paused at a safe boundary';
+  if (interrupted) return ctx.runtimeControl?.reason ?? 'run interrupted before completion';
+  if (ctx.clarificationRequest) return 'run is waiting for user clarification';
+  return stageResult.error ?? ctx.lastError?.message ?? 'run requires recovery';
 }
 
 function assembleResult(
@@ -607,6 +717,7 @@ function assembleResult(
     sessionId,
     status,
     reply: ctx.reply ?? '',
+    replyProvenance: ctx.replyProvenance,
     error: stageResult.error,
     messages: ctx.produced,
     trace,
@@ -618,10 +729,60 @@ function assembleResult(
     taskExecution: ctx.taskExecution,
     taskBook: ctx.taskBook ? { ...ctx.taskBook, stageResults: undefined } : undefined,
     verificationHistory: ctx.verificationHistory,
+    runtimeControl: ctx.runtimeControl,
+    runtimeEventQueue: snapshotRuntimeEventQueue(ctx),
     memoryIntentDecisions: ctx.memoryIntentDecisions,
     memoryKnownState: ctx.memoryKnownState,
     clarificationRequest: ctx.clarificationRequest,
     clarificationResponse: ctx.clarificationResponse,
     memoryAccess,
   };
+}
+
+function snapshotRuntimeEventQueue(ctx: RunContext) {
+  try {
+    return ctx.runtimeEventQueue?.snapshot();
+  } catch {
+    return undefined;
+  }
+}
+
+function messageText(message: Message): string {
+  return message.content
+    .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
+    .map((block) => block.text)
+    .join('\n')
+}
+
+function restoreContinuationContext(ctx: RunContext, checkpoint: RunCheckpoint): void {
+  const state = checkpoint.resumeState;
+  if (!state) throw new Error('checkpoint has no resumable runtime state');
+
+  ctx.entryStage = checkpoint.currentStage === 'enter' || checkpoint.currentStage === 'finalize'
+    ? checkpoint.currentStage === 'enter' ? 'classify' : 'reply'
+    : checkpoint.currentStage;
+  ctx.resumedFromCheckpointId = checkpoint.id;
+  ctx.taskBook = checkpoint.taskBook ? structuredClone(checkpoint.taskBook) : undefined;
+  ctx.taskBookRevision = checkpoint.taskBookRevision;
+  ctx.taskExecution = checkpoint.taskExecution ? structuredClone(checkpoint.taskExecution) : undefined;
+  ctx.plan = state.plan ? structuredClone(state.plan) : undefined;
+  ctx.classification = state.classification ? structuredClone(state.classification) : undefined;
+  ctx.needAssessment = state.needAssessment ? structuredClone(state.needAssessment) : undefined;
+  ctx.appliedTaskBookPatchIds = [...state.appliedTaskBookPatchIds];
+  ctx.deferredRuntimeEventIds = [...checkpoint.pendingEventIds];
+  ctx.deferredRuntimeEvents = structuredClone(state.deferredRuntimeEvents);
+  ctx.sideEffects = structuredClone(checkpoint.sideEffects);
+  ctx.loopBudget = structuredClone(checkpoint.loopBudget);
+  ctx.modelCallCount = checkpoint.loopBudget.attemptsUsed;
+  ctx.recoveryAttempts = state.recoveryAttempts;
+  ctx.replanAttempts = state.replanAttempts;
+  ctx.maxReplanAttempts = state.maxReplanAttempts;
+  ctx.verificationHistory = structuredClone(state.verificationHistory);
+  // A paused/interrupted control snapshot must not immediately stop the new
+  // continuation at its first safe boundary. The original event evidence is
+  // retained in the restored queue; the new run starts in a clean state.
+  ctx.runtimeControl = undefined;
+  ctx.lastError = undefined;
+  ctx.reply = undefined;
+  ctx.replyProvenance = undefined;
 }

@@ -89,6 +89,10 @@ function makeRunner(baseSkillSources: SkillSourceDefinition[] = []) {
     },
     async runStream(input: RunInput) { return this.run(input) },
     async replay() { return null },
+    runtimeEvents: {
+      append: () => ({ kind: 'rejected', reason: 'run-not-active', message: 'mock runner' }),
+      summary: () => null,
+    },
     async shutdown() {},
     state: { sessionId: undefined, model: 'mock' },
     sessionManager,

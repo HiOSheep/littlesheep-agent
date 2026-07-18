@@ -1,0 +1,161 @@
+import type { RunContext, StageResult } from '@littlesheep/types';
+import {
+  buildAssessmentAndTaskBook,
+  buildClarificationRequest,
+  compactLightweightPlan,
+  normalizePlan,
+} from './normalization.js';
+import { mergePartialTaskBook } from './replan.js';
+import type { DecideStageDeps, DecodedPlan } from './contracts.js';
+import type { DecideRequest } from './request.js';
+import { maybeRefineMemoryForTaskBook } from '../../memory-taskbook-refinement.js';
+
+export async function adoptDecodedDecision(
+  deps: DecideStageDeps,
+  ctx: RunContext,
+  request: DecideRequest,
+  parsed: DecodedPlan,
+  attempts: number,
+): Promise<StageResult> {
+  const availableToolNames = new Set(ctx.tools.map((tool) => tool.name));
+  let plan = normalizePlan(parsed.taskBook?.steps, availableToolNames);
+  if (plan.length === 0) plan = normalizePlan(parsed.plan, availableToolNames);
+  if (plan.length === 0 && parsed.assessment?.needsClarification === true) {
+    plan = [clarificationStep()];
+  }
+  if (plan.length === 0) return failDecision(ctx, 'decoded decision had no valid steps');
+
+  const built = buildAssessmentAndTaskBook(parsed, plan, request.inboundText);
+  let assessment = built.assessment;
+  let taskBook = built.taskBook;
+  if (!request.partialReplan && !assessment.needsClarification && !assessment.requiresTaskBook) {
+    plan = compactLightweightPlan(plan, assessment.goal, assessment.successCriteria);
+    taskBook = { ...taskBook, steps: plan };
+  }
+
+  const reusedExistingTaskBook = Boolean(request.previousTaskBook && !request.replanRequested);
+  if (reusedExistingTaskBook && request.previousTaskBook) {
+    assessment = request.previousTaskBook.assessment;
+    taskBook = request.previousTaskBook;
+    plan = request.previousTaskBook.steps;
+  }
+  const taskBookRevision = resolveTaskBookRevision({
+    previousTaskBook: request.previousTaskBook,
+    currentRevision: ctx.taskBookRevision,
+    replanRequested: request.replanRequested,
+  });
+
+  if (assessment.needsClarification && !reusedExistingTaskBook) {
+    ctx.needAssessment = assessment;
+    ctx.taskBook = taskBook;
+    ctx.plan = plan;
+    ctx.taskBookRevision = taskBookRevision;
+    consumeDecisionInputs(ctx, request.deferredRuntimeEvents);
+    ctx.clarificationRequest = buildClarificationRequest(
+      parsed,
+      assessment,
+      request.inboundText,
+      ctx.runId,
+      new Date().toISOString(),
+    );
+    return {
+      stage: 'decide',
+      next: 'ask_user',
+      ok: true,
+      meta: {
+        complexity: assessment.complexity,
+        needsClarification: true,
+        missingInfo: assessment.missingInfo,
+        clarificationRequestId: ctx.clarificationRequest.id,
+        taskBookRevision,
+        deferredRuntimeEventIds: request.deferredRuntimeEvents.map((event) => event.id),
+        llmAttempts: attempts,
+      },
+    };
+  }
+
+  if (request.partialReplan && request.previousTaskBook) {
+    taskBook = mergePartialTaskBook(request.previousTaskBook, taskBook, request.partialReplan, ctx);
+    assessment = request.previousTaskBook.assessment;
+    plan = taskBook.steps;
+  }
+  const memoryRefinement = await maybeRefineMemoryForTaskBook(
+    ctx,
+    taskBook,
+    deps.memoryRefiner,
+    request.partialReplan ? 'replan' : 'taskbook',
+    request.partialReplan?.targetStepIds,
+    deps.log,
+  );
+  ctx.needAssessment = assessment;
+  ctx.taskBook = taskBook;
+  ctx.plan = plan;
+  ctx.taskBookRevision = taskBookRevision;
+  consumeDecisionInputs(ctx, request.deferredRuntimeEvents);
+  ctx.onToolEvent?.({ type: 'task_book', taskBook });
+  return {
+    stage: 'decide',
+    next: 'execute',
+    ok: true,
+    meta: {
+      planSteps: plan.length,
+      complexity: assessment.complexity,
+      maxExtraScopeRatio: assessment.maxExtraScopeRatio,
+      requiresTaskBook: assessment.requiresTaskBook,
+      taskBookRevision,
+      reusedExistingTaskBook,
+      partialReplan: request.partialReplan
+        ? { attempt: request.partialReplan.attempt, targetStepIds: request.partialReplan.targetStepIds }
+        : undefined,
+      deferredRuntimeEventIds: request.deferredRuntimeEvents.map((event) => event.id),
+      memoryRefinement,
+      llmAttempts: attempts,
+    },
+  };
+}
+
+function clarificationStep() {
+  return {
+    id: 'clarify',
+    title: 'Clarify missing information',
+    description: 'Ask the user for the missing information before executing.',
+    acceptanceCriteria: ['The user supplies the blocking information.'],
+    status: 'pending' as const,
+  };
+}
+
+function failDecision(ctx: RunContext, message: string): StageResult {
+  ctx.lastError = { stage: 'decide', message };
+  return { stage: 'decide', next: 'recover', ok: false, error: message };
+}
+
+function resolveTaskBookRevision(options: {
+  previousTaskBook?: RunContext['taskBook'];
+  currentRevision?: number;
+  replanRequested: boolean;
+}): number {
+  const current = Number.isSafeInteger(options.currentRevision) && (options.currentRevision ?? 0) > 0
+    ? options.currentRevision!
+    : options.previousTaskBook
+      ? 1
+      : 0;
+  if (!options.previousTaskBook) return 1;
+  if (!options.replanRequested) return Math.max(1, current);
+  return Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, current) + 1);
+}
+
+function consumeDecisionInputs(
+  ctx: RunContext,
+  events: RunContext['deferredRuntimeEvents'],
+): void {
+  if (events && events.length > 0) {
+    const ids = [
+      ...(ctx.deferredRuntimeEventIds ?? []),
+      ...events.map((event) => event.id),
+    ];
+    ctx.deferredRuntimeEventIds = [...new Set(ids)].slice(-128);
+  }
+  // Payloads are no longer needed in the active prompt after adoption.
+  ctx.deferredRuntimeEvents = [];
+  ctx.verifyFeedback = undefined;
+}

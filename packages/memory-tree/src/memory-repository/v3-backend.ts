@@ -61,6 +61,7 @@ import type { MemoryV3MigrationValidation } from './v3-migration-contracts.js';
 import { MemoryV3FeedbackManager, MEMORY_USE_FEEDBACK_PAYLOAD_KEY } from './v3-feedback-manager.js';
 import { memoryCatalogActivationScore } from '../v3/activation.js';
 import { isMemoryV3InternalRootId } from './v3-node-mapping.js';
+import { MAX_SUBTREE_ACTIVE_DESCENDANTS } from '../memory-subtree-contracts.js';
 
 export interface MemoryRepositoryV3BackendOptions {
   dataDir: string;
@@ -336,17 +337,18 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
   ): Promise<MemoryRepositoryNodeInspection | undefined> {
     const atom = await this.atomStore.read(nodeId);
     if (!atom) return undefined;
-    const [candidate] = await this.retrieval.retrieveMemory({
+    const now = new Date().toISOString();
+    const [retrieved] = await this.retrieval.retrieveMemory({
       branch: atom.branch,
       scopes: [{ scope: atom.scope, scopeKey: this.ledger.publicScopeKey(atom.scope, atom.scopeKey) }],
       query: '',
       limit: 1,
-      now: new Date().toISOString(),
+      now,
       nodeId,
       disclosureLevel,
       mode: 'expand',
     });
-    if (!candidate) return undefined;
+    const candidate = retrieved ?? await this.retrieval.inspectAtomForManagement(atom, disclosureLevel, now);
     return {
       backendKind: 'v3',
       nodeId,
@@ -359,6 +361,11 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
       projectionRecords: disclosureLevel === 'D3'
         ? await this.rawRecordStore.listForAtom(nodeId, 100)
         : undefined,
+      hasActiveChildren: this.catalog.hasActiveChildren(nodeId),
+      activeDescendantCount: this.catalog.countActiveDescendants(
+        nodeId,
+        MAX_SUBTREE_ACTIVE_DESCENDANTS + 1,
+      ),
     };
   }
 

@@ -3,12 +3,12 @@ import { navigationSnapshotsEqual } from './navigation'
 import type { AppNavigationSnapshot } from './types'
 
 describe('application navigation snapshots', () => {
-  it('treats the internal browser URL as part of global back and forward history', () => {
-    const first = snapshot({ workspaceBrowserUrl: 'https://example.com/first' })
-    const second = snapshot({ workspaceBrowserUrl: 'https://example.com/second' })
+  it('does not mix embedded browser history into global back and forward history', () => {
+    const first = snapshot()
+    const second = snapshot()
 
     expect(navigationSnapshotsEqual(first, first)).toBe(true)
-    expect(navigationSnapshotsEqual(first, second)).toBe(false)
+    expect(navigationSnapshotsEqual(first, second)).toBe(true)
   })
 })
 
@@ -24,7 +24,6 @@ function snapshot(overrides: Partial<AppNavigationSnapshot> = {}): AppNavigation
     workspacePanelWidth: 480,
     workspacePanelTab: 'browser',
     workspacePanelOpenTabs: ['browser'],
-    workspaceBrowserUrl: '',
     workspaceOpenRequest: null,
     workspaceFileNavigatorCollapsed: false,
     workspaceExpandedPaths: [],

@@ -9,6 +9,7 @@ import { MemoryRawRecordStore } from '../v3/raw-record-store.js';
 import { scoreMemoryCandidate } from '../v3/priority.js';
 import { MemoryV3StorageCoordinator } from '../v3/storage-coordinator.js';
 import { makeAtomInput } from '../v3/test-fixtures.js';
+import { createMemoryV3ScopeRoot } from './v3-node-mapping.js';
 import { MemoryV3AtomManagement } from './v3-atom-management.js';
 
 describe('MemoryV3AtomManagement', () => {
@@ -64,6 +65,42 @@ describe('MemoryV3AtomManagement', () => {
     })).rejects.toThrow(/cannot cross/iu);
   });
 
+  it('maps the public branch root and an omitted parent to the current scope root', async () => {
+    const root = await atomStore.create(createMemoryV3ScopeRoot(
+      'project',
+      'project',
+      'project-a',
+      now().toISOString(),
+    ));
+    catalog.upsertAtom(root, atomStore.relativePathFor(root.id)!);
+    const parent = await seed('nested-parent', { parentId: root.id });
+    const child = await seed('nested-child', { parentId: parent.id });
+
+    const movedToRoot = (await management.manage({
+      action: 'move',
+      atomId: child.id,
+      expectedRevision: child.revision,
+      parentNodeId: 'project:root',
+      reason: 'Return to the public project root.',
+    })).atoms[0]!;
+    expect(movedToRoot.parentId).toBe(root.id);
+
+    const movedUnderParent = (await management.manage({
+      action: 'move',
+      atomId: child.id,
+      expectedRevision: movedToRoot.revision,
+      parentNodeId: parent.id,
+      reason: 'Restore the nested parent for the second root check.',
+    })).atoms[0]!;
+    const movedWithOmittedParent = (await management.manage({
+      action: 'move',
+      atomId: child.id,
+      expectedRevision: movedUnderParent.revision,
+      reason: 'An omitted parent also means the current scope root.',
+    })).atoms[0]!;
+    expect(movedWithOmittedParent.parentId).toBe(root.id);
+  });
+
   it('merges only compatible leaf projections without strengthening confidence or losing source content', async () => {
     const target = await seed('target', { content: 'Canonical projection.', confidence: 0.61, verifiedUsefulness: { useful: 2, notUseful: 0, conflicts: 0, stale: 0 } });
     const source = await seed('source', { content: 'Original source wording.', retrievalKeys: ['additional-key'], confidence: 0.92, verifiedUsefulness: { useful: 9, notUseful: 0, conflicts: 0, stale: 0 } });
@@ -108,6 +145,61 @@ describe('MemoryV3AtomManagement', () => {
       action: 'merge', atomId: 'source-parent', expectedRevision: 1,
       targetAtomId: 'leaf-target', targetExpectedRevision: 1, reason: 'Has children.',
     })).rejects.toThrow(/child atoms/iu);
+  });
+
+  it('supersedes an older projection while preserving both Atom bodies and recording prior state', async () => {
+    const oldAtom = await seed('old-policy', {
+      title: 'Old policy',
+      summary: 'The project requires remote embeddings.',
+      content: 'Use the remote embedding service for every memory query.',
+      epistemicStatus: 'corroborated',
+      resolutionStatus: 'under-review',
+    });
+    const replacement = await seed('new-policy', {
+      title: 'Current policy',
+      summary: 'The project uses local embeddings only.',
+      content: 'Use the bundled local embedding model without network access.',
+    });
+
+    const result = await management.manage({
+      action: 'supersede',
+      atomId: oldAtom.id,
+      expectedRevision: oldAtom.revision,
+      replacementAtomId: replacement.id,
+      replacementExpectedRevision: replacement.revision,
+      relationId: 'relation:new-replaces-old',
+      reason: 'Verified local-only policy replaces the earlier remote policy.',
+      evidenceRefs: ['run:correction:verification:1:pass'],
+    });
+
+    expect(result.atoms[0]).toMatchObject({
+      id: oldAtom.id,
+      revision: oldAtom.revision + 1,
+      title: oldAtom.title,
+      summary: oldAtom.summary,
+      content: oldAtom.content,
+      epistemicStatus: 'superseded',
+      resolutionStatus: 'superseded',
+      supersession: {
+        byAtomId: replacement.id,
+        relationId: 'relation:new-replaces-old',
+        priorEpistemicStatus: 'corroborated',
+        priorResolutionStatus: 'under-review',
+      },
+    });
+    await expect(atomStore.read(replacement.id)).resolves.toEqual(replacement);
+    const [record] = await rawRecordStore.listForAtom(oldAtom.id);
+    expect(record).toMatchObject({
+      event: {
+        kind: 'conflict-resolution',
+        payload: { atomManagement: { action: 'supersede', replacementAtomId: replacement.id } },
+      },
+      mutation: {
+        kind: 'update',
+        atomId: oldAtom.id,
+        expectedRevision: oldAtom.revision,
+      },
+    });
   });
 
   it('invalidates retrieval eligibility and restores the exact prior epistemic state after restart', async () => {

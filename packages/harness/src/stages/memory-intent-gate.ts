@@ -81,6 +81,27 @@ export function evaluateMemoryIntent(input: MemoryIntentGateInput): GatedMemoryP
   if (input.stage === 'evolve' && !evidence.verified) {
     return rejected(input, evidence.refs, 'EVOLVE may commit durable memory only after a passing verification record.');
   }
+  if (input.intent === 'merge') {
+    return {
+      ...base(input, evidence.refs),
+      action: 'defer',
+      reason: 'Merge proposals require explicit Atom ids, revisions and the runtime reconciliation gate.',
+    };
+  }
+  if (input.intent === 'move') {
+    return {
+      ...base(input, evidence.refs),
+      action: 'defer',
+      reason: 'Move proposals require explicit Atom ids, revisions, a parent relation and the runtime hierarchy gate.',
+    };
+  }
+  if (input.intent === 'revise') {
+    return {
+      ...base(input, evidence.refs),
+      action: 'defer',
+      reason: 'Revision proposals require explicit Atom ids, revisions and the runtime content-refinement gate.',
+    };
+  }
   if (input.intent === 'invalidate' || input.intent === 'conflict') {
     return {
       ...base(input, evidence.refs),
@@ -142,6 +163,15 @@ export async function commitMemoryIntentBatch(
       sourceCaptureError,
     );
   });
+  appendMemoryIntentDecisionRecords(ctx, records);
+  return { records, writeResults };
+}
+
+export function appendMemoryIntentDecisionRecords(
+  ctx: RunContext,
+  records: readonly MemoryIntentDecisionRecord[],
+): void {
+  if (records.length === 0) return;
   ctx.memoryIntentDecisions ??= [];
   if (ctx.memoryIntentDecisions.length + records.length > MAX_MEMORY_INTENT_DECISIONS_PER_RUN) {
     ctx.memoryIntentDecisions.splice(
@@ -150,7 +180,6 @@ export async function commitMemoryIntentBatch(
     );
   }
   ctx.memoryIntentDecisions.push(...records);
-  return { records, writeResults };
 }
 
 export function memoryWriteEvidenceRefs(proposal: GatedMemoryProposal): string[] {
@@ -161,7 +190,7 @@ export function memoryWriteSourceRefs(proposal: GatedMemoryProposal): string[] {
   return proposal.sourceRefs.slice(0, MAX_EVIDENCE_REFS_PER_INTENT);
 }
 
-function collectRunEvidence(ctx: RunContext): { refs: string[]; verified: boolean } {
+export function collectRunEvidence(ctx: RunContext): { refs: string[]; verified: boolean } {
   const refs = new Set<string>();
   for (const verification of ctx.verificationHistory ?? []) {
     refs.add(`run:${ctx.runId}:verification:${verification.attempt}:${verification.verdict}`);

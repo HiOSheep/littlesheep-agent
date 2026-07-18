@@ -63,7 +63,7 @@ export function toV3Fragment(candidate: MemoryRepositoryCandidate, branchId: str
     atom.content,
     '',
     'Evidence metadata:',
-    `- atom: ${atom.id}@${atom.revision}; disclosure=${evidence.disclosureLevel}; path=${evidence.retrievalPath}`,
+    `- atom: ${atom.id}@${atom.revision}; parent=${evidence.parentNodeId ?? '(branch root)'}; disclosure=${evidence.disclosureLevel}; path=${evidence.retrievalPath}`,
     `- statement: ${atom.statementKind}; epistemic=${atom.epistemicStatus}; resolution=${atom.resolutionStatus}`,
     `- authority: ${atom.authorityScope.kind}/${atom.authorityScope.scope}${atom.authorityScope.scopeKey ? `:${atom.authorityScope.scopeKey}` : ''}; assertedBy=${atom.assertedBy.kind}${atom.assertedBy.id ? `:${atom.assertedBy.id}` : ''}`,
     `- confidence=${atom.confidence.toFixed(2)}; importance=${atom.importance.toFixed(2)}; task=${evidence.taskRelevance.toFixed(2)}; routing=${evidence.routingRelevance.toFixed(2)}; relation=${evidence.relationshipRelevance.toFixed(2)}; activation=${evidence.activation.score.toFixed(2)}; updated=${atom.updatedAt}${atom.lastVerifiedAt ? `; verified=${atom.lastVerifiedAt}` : ''}`,

@@ -1,0 +1,130 @@
+// Runtime-owned side-effect ledger for resumable tool execution.
+//
+// The ledger is intentionally conservative. A read-only tool does not create
+// a record. A write-capable or unknown tool is recorded before it starts and
+// must reach a durable terminal record before a checkpoint can be resumed.
+
+import { createHash } from 'node:crypto'
+import type {
+  AgentTool,
+  RunContext,
+  SideEffectCheckpoint,
+  ToolResourceAccess,
+  ToolResult,
+} from '@littlesheep/types'
+
+const MAX_SIDE_EFFECTS = 256
+const MAX_RESOURCE_KEYS = 32
+const READ_ONLY_TOOLS = new Set([
+  'read',
+  'grep',
+  'glob',
+  'memory_tree',
+  'memory_search',
+  'memory_deep_search',
+  'session_status',
+  'use_skill',
+  'inspect_attachment',
+])
+
+export interface SideEffectDescriptor {
+  idempotencyKey: string
+  inputHash: string
+  toolName: string
+  stepId?: string
+  callId: string
+  resourceKeys: string[]
+  effectKind: SideEffectCheckpoint['effectKind']
+}
+
+export type BeginSideEffectResult =
+  | { kind: 'none' }
+  | { kind: 'started'; descriptor: SideEffectDescriptor }
+  | { kind: 'duplicate'; descriptor: SideEffectDescriptor; status: SideEffectCheckpoint['status'] }
+  | { kind: 'blocked'; descriptor: SideEffectDescriptor; reason: string }
+
+export function describeSideEffect(
+  tool: AgentTool,
+  input: unknown,
+  resources: readonly ToolResourceAccess[],
+  stepId: string | undefined,
+  callId: string,
+): SideEffectDescriptor | undefined {
+  const resourceKeys = resources
+    .filter((resource) => resource.mode === 'write')
+    .map((resource) => resource.key.trim())
+    .filter(Boolean)
+    .slice(0, MAX_RESOURCE_KEYS)
+  const hasReadResources = resources.length > 0 && resources.every((resource) => resource.mode === 'read')
+  if (resourceKeys.length === 0 && hasReadResources) return undefined
+  if (resourceKeys.length === 0 && READ_ONLY_TOOLS.has(tool.name)) return undefined
+
+  const inputHash = hashInput(input)
+  const effectKind: SideEffectCheckpoint['effectKind'] = resourceKeys.length > 0
+    ? 'local_mutation'
+    : tool.name === 'exec'
+      ? 'external'
+      : 'unknown'
+  return {
+    idempotencyKey: `tool:${tool.name}:${inputHash}`,
+    inputHash,
+    toolName: tool.name,
+    ...(stepId ? { stepId } : {}),
+    callId,
+    resourceKeys,
+    effectKind,
+  }
+}
+
+export function beginSideEffect(ctx: RunContext, descriptor: SideEffectDescriptor): BeginSideEffectResult {
+  const existing = (ctx.sideEffects ?? []).find((item) => item.idempotencyKey === descriptor.idempotencyKey)
+  if (existing) {
+    if (existing.status === 'succeeded') {
+      return { kind: 'duplicate', descriptor, status: existing.status }
+    }
+    return {
+      kind: 'blocked',
+      descriptor,
+      reason: `side effect ${descriptor.idempotencyKey} already has status ${existing.status}`,
+    }
+  }
+  const entry: SideEffectCheckpoint = {
+    ...descriptor,
+    status: 'in_progress',
+    startedAt: new Date().toISOString(),
+  }
+  const effects = ctx.sideEffects ?? (ctx.sideEffects = [])
+  if (effects.length >= MAX_SIDE_EFFECTS) {
+    const terminal = effects.findIndex((item) => item.status === 'succeeded' || item.status === 'failed')
+    if (terminal < 0) return { kind: 'blocked', descriptor, reason: 'side-effect ledger capacity is exhausted' }
+    effects.splice(terminal, 1)
+  }
+  effects.push(entry)
+  return { kind: 'started', descriptor }
+}
+
+export function finishSideEffect(ctx: RunContext, descriptor: SideEffectDescriptor, result: ToolResult): void {
+  const entry = (ctx.sideEffects ?? []).find((item) => item.idempotencyKey === descriptor.idempotencyKey)
+  if (!entry) return
+  entry.status = result.ok ? 'succeeded' : 'unknown'
+  entry.endedAt = new Date().toISOString()
+  entry.evidenceRef = `tool:${descriptor.callId}`
+  if (!result.ok && result.error) entry.error = result.error.slice(0, 2_048)
+}
+
+export function sideEffectCheckpointReason(descriptor: SideEffectDescriptor, phase: 'started' | 'finished'): string {
+  return `${phase} effectful tool ${descriptor.toolName} (${descriptor.idempotencyKey})`
+}
+
+function hashInput(input: unknown): string {
+  return createHash('sha256').update(stableSerialize(input), 'utf8').digest('hex')
+}
+
+function stableSerialize(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableSerialize).join(',')}]`
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableSerialize(record[key])}`).join(',')}}`
+  }
+  return JSON.stringify(value) ?? 'null'
+}

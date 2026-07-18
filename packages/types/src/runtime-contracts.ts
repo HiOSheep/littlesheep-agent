@@ -11,8 +11,11 @@ import type { SessionId } from './session.js';
 export const CONTEXT_SNAPSHOT_VERSION = 1 as const;
 export const ATTACHMENT_MANIFEST_VERSION = 1 as const;
 export const RUNTIME_EVENT_VERSION = 1 as const;
+export const RUNTIME_EVENT_QUEUE_VERSION = 1 as const;
+export const RUNTIME_CONTROL_VERSION = 1 as const;
 export const TASK_BOOK_PATCH_VERSION = 1 as const;
 export const RUN_CHECKPOINT_VERSION = 1 as const;
+export const RUN_CHECKPOINT_DISPOSITION_VERSION = 1 as const;
 export const RESOLVED_RUN_CONFIG_VERSION = 1 as const;
 export const MODE_DEFINITION_VERSION = 1 as const;
 export const MODEL_REQUEST_SNAPSHOT_VERSION = 1 as const;
@@ -99,6 +102,8 @@ export type LlmMemoryIntentKind =
   | 'read'
   | 'write'
   | 'merge'
+  | 'move'
+  | 'revise'
   | 'invalidate'
   | 'conflict'
   | 'none';
@@ -203,6 +208,7 @@ export interface MemoryIntentDecisionRecord {
   readonly evidenceRefs: readonly string[];
   readonly writeIntentId?: string;
   readonly repositoryDecision?: 'created' | 'merged' | 'reinforced' | 'rejected' | 'queued';
+  readonly reconciliationDecision?: 'committed' | 'partial' | 'noop' | 'rejected' | 'deferred';
   readonly createdAt: string;
 }
 
@@ -469,6 +475,21 @@ export type RuntimeEventType =
 export type RuntimeEventSource = 'app' | 'channel' | 'workspace' | 'system';
 export type RuntimeEventStatus = 'queued' | 'applied' | 'ignored' | 'conflict' | 'expired';
 
+export type RuntimeEventQueueRejectReason =
+  | 'run-mismatch'
+  | 'session-mismatch'
+  | 'invalid-id'
+  | 'invalid-dedup-key'
+  | 'invalid-type'
+  | 'invalid-source'
+  | 'invalid-time'
+  | 'invalid-payload'
+  | 'payload-too-large'
+  | 'capacity'
+  | 'conflict'
+  | 'sequence-exhausted'
+  | 'disposed';
+
 export interface RuntimeEventEnvelope {
   version: 1;
   id: string;
@@ -484,6 +505,137 @@ export interface RuntimeEventEnvelope {
   expiresAt?: string;
   appliedAt?: string;
   decisionReason?: string;
+}
+
+export interface RuntimeEventAppendInput {
+  id?: string;
+  runId?: string;
+  sessionId?: SessionId;
+  type: RuntimeEventType;
+  source: RuntimeEventSource;
+  payload: Record<string, unknown>;
+  dedupKey?: string;
+  receivedAt?: string;
+  expiresAt?: string;
+}
+
+export type RuntimeEventAppendOutcome =
+  | { kind: 'accepted'; event: RuntimeEventEnvelope }
+  | { kind: 'duplicate'; event: RuntimeEventEnvelope }
+  | { kind: 'expired'; event: RuntimeEventEnvelope }
+  | {
+      kind: 'rejected';
+      reason: RuntimeEventQueueRejectReason;
+      message: string;
+      existingEventId?: string;
+    };
+
+export type RuntimeEventDecisionStatus = Exclude<RuntimeEventStatus, 'queued'>;
+
+export interface RuntimeEventDecision {
+  eventId: string;
+  status: RuntimeEventDecisionStatus;
+  reason?: string;
+}
+
+export interface RuntimeEventDecisionBatch {
+  token: string;
+  openedAt: string;
+  cursor: number;
+  events: RuntimeEventEnvelope[];
+}
+
+export interface RuntimeEventQueueSummary {
+  runId: string;
+  sessionId: SessionId;
+  cursor: number;
+  nextSequence: number;
+  queued: number;
+  applied: number;
+  ignored: number;
+  conflict: number;
+  expired: number;
+  pendingEventIds: string[];
+  overflowCount: number;
+  activeDecisionBatch: boolean;
+}
+
+/** Redacted event metadata suitable for diagnostics and context summaries. */
+export interface RuntimeEventContextSummary {
+  id: string;
+  sequence: number;
+  type: RuntimeEventType;
+  source: RuntimeEventSource;
+  status: RuntimeEventStatus;
+  receivedAt: string;
+  expiresAt?: string;
+  payloadKeys: string[];
+  decisionReasonRecorded: boolean;
+}
+
+/**
+ * Public port consumed by Harness. The concrete queue remains owned by
+ * Runner, so the dependency direction stays types -> no infrastructure.
+ */
+export interface RuntimeEventQueueLike {
+  append(input: RuntimeEventAppendInput): RuntimeEventAppendOutcome;
+  pending(limit?: number): RuntimeEventEnvelope[];
+  openDecisionBatch(limit?: number): RuntimeEventDecisionBatch | undefined;
+  openDecisionBatchForTypes(
+    types: readonly RuntimeEventType[],
+    limit?: number,
+  ): RuntimeEventDecisionBatch | undefined;
+  settleDecisionBatch(token: string, decisions: readonly RuntimeEventDecision[]): RuntimeEventEnvelope[];
+  releaseDecisionBatch(token: string): boolean;
+  snapshot(): RuntimeEventQueueSnapshot;
+  summary(): RuntimeEventQueueSummary;
+  contextSummary(limit?: number): RuntimeEventContextSummary[];
+  dispose(): void;
+}
+
+export type RuntimeControlState = 'running' | 'paused' | 'interrupted';
+
+export interface RuntimeControlSnapshot {
+  version: typeof RUNTIME_CONTROL_VERSION;
+  state: RuntimeControlState;
+  changedAt: string;
+  reason?: string;
+  eventIds: string[];
+}
+
+export type RuntimeEventIngressRejectReason = 'run-not-active' | 'active-run-capacity';
+
+export type RuntimeEventIngressOutcome =
+  | RuntimeEventAppendOutcome
+  | {
+      kind: 'rejected';
+      reason: RuntimeEventIngressRejectReason;
+      message: string;
+    };
+
+/** Runner-owned ingress for events targeting an active run. */
+export interface RuntimeEventIngress {
+  append(
+    runId: string,
+    input: Omit<RuntimeEventAppendInput, 'runId'>,
+  ): RuntimeEventIngressOutcome;
+  summary(runId: string): RuntimeEventQueueSummary | null;
+}
+
+/**
+ * Bounded in-memory event queue state used by an active run. The queue is a
+ * runtime continuity primitive; it is not an instruction stream for the LLM.
+ * Event payloads remain available to the runtime for a controlled decision
+ * boundary, while context assembly should use a redacted summary by default.
+ */
+export interface RuntimeEventQueueSnapshot {
+  version: typeof RUNTIME_EVENT_QUEUE_VERSION;
+  runId: string;
+  sessionId: SessionId;
+  cursor: number;
+  nextSequence: number;
+  overflowCount: number;
+  events: RuntimeEventEnvelope[];
 }
 
 export type TaskBookPatchOperation =
@@ -511,6 +663,15 @@ export interface SideEffectCheckpoint {
   idempotencyKey: string;
   toolName: string;
   status: SideEffectStatus;
+  /** Stable invocation identity used to avoid replaying an uncertain action. */
+  inputHash?: string;
+  /** The TaskBook step that owns this effect, when the run is step-aware. */
+  stepId?: string;
+  /** Provider/tool call id for evidence correlation; not used as the idempotency key. */
+  callId?: string;
+  /** Resource keys observed by the tool scheduler. */
+  resourceKeys?: string[];
+  effectKind?: 'local_mutation' | 'external' | 'unknown';
   startedAt?: string;
   endedAt?: string;
   evidenceRef?: string;
@@ -528,6 +689,40 @@ export interface LoopBudgetSnapshot {
   maxCost?: number;
 }
 
+/**
+ * Resume metadata captured alongside a v1 checkpoint. It deliberately keeps
+ * the original inbound message as a reference rather than duplicating its
+ * full text. A resumed run gets a new run id and excludes that referenced
+ * message from the newly assembled history, so the user message is never
+ * appended twice.
+ */
+export interface RunCheckpointResumeState {
+  version: 1;
+  inboundMessageId: string;
+  cwd: string;
+  /** Workspace ownership must survive a continuation; cwd alone is not enough. */
+  workspaceContext?: {
+    boundaryKind: 'agent_workplace' | 'user_workplace' | 'project';
+    projectId?: string;
+  };
+  model: string;
+  origin: RunConfigOrigin;
+  permissionPolicyId: PermissionPolicyId;
+  reasoning: ReasoningLevel;
+  behaviorModeId: string;
+  availableToolNames: string[];
+  attachmentCount: number;
+  classification?: import('./agent.js').Classification;
+  needAssessment?: import('./agent.js').NeedAssessment;
+  plan?: PlanStep[];
+  appliedTaskBookPatchIds: string[];
+  deferredRuntimeEvents: RuntimeEventEnvelope[];
+  recoveryAttempts: number;
+  replanAttempts: number;
+  maxReplanAttempts: number;
+  verificationHistory: import('./agent.js').VerificationRecord[];
+}
+
 export interface RunCheckpoint {
   version: 1;
   id: string;
@@ -541,9 +736,38 @@ export interface RunCheckpoint {
   taskExecution?: TaskExecutionResult;
   eventCursor: number;
   pendingEventIds: string[];
+  /** Full bounded queue state; omitted by legacy v1 checkpoint writers. */
+  runtimeEventQueue?: RuntimeEventQueueSnapshot;
+  /** Last deterministic pause/resume/interrupt state at the checkpoint boundary. */
+  runtimeControl?: RuntimeControlSnapshot;
   contextSnapshotIds: string[];
   sideEffects: SideEffectCheckpoint[];
   loopBudget: LoopBudgetSnapshot;
+  /** Optional in v1 for backward compatibility; old checkpoints are inspect-only. */
+  resumeState?: RunCheckpointResumeState;
   createdAt: string;
   reason: string;
+}
+
+export type RunCheckpointDispositionStatus = 'resuming' | 'resumed' | 'abandoned';
+
+/** Mutable, append-audited decision kept separate from immutable checkpoint data. */
+export interface RunCheckpointDisposition {
+  version: typeof RUN_CHECKPOINT_DISPOSITION_VERSION;
+  checkpointId: string;
+  status: RunCheckpointDispositionStatus;
+  decidedAt: string;
+  updatedAt: string;
+  reason: string;
+  resumeRunId?: string;
+  nextCheckpointId?: string;
+  resultStatus?: 'ok' | 'error' | 'aborted';
+  history: Array<{
+    status: RunCheckpointDispositionStatus;
+    at: string;
+    reason: string;
+    resumeRunId?: string;
+    nextCheckpointId?: string;
+    resultStatus?: 'ok' | 'error' | 'aborted';
+  }>;
 }

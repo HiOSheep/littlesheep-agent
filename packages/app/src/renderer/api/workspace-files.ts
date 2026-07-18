@@ -61,6 +61,22 @@ export type WorkspacePreview =
     modifiedAt?: number
     reason?: string
   }
+  | {
+    kind: 'office'
+    path: string
+    name: string
+    relativePath: string
+    size: number
+    modifiedAt?: number
+    officeKind: 'document' | 'spreadsheet' | 'presentation'
+    sections: Array<{
+      title: string
+      paragraphs?: string[]
+      rows?: string[][]
+    }>
+    truncated: boolean
+    note?: string
+  }
 
 function workspaceQuery(root: string, path?: string): string {
   const params = new URLSearchParams({ root })

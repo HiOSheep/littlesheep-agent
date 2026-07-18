@@ -149,6 +149,9 @@ export async function routeWorkspace(
   if (method === 'POST' && path === LOCAL_APP_API_ROUTES.externalOpen) {
     const body = await readJson(req)
     const href = normalizeExternalHref(body.href)
+    if (/^https?:$/iu.test(new URL(href).protocol)) {
+      throw new HttpError(409, '网页链接必须通过 LS 内置浏览器打开。')
+    }
     await shell.openExternal(href)
     json(res, 200, { ok: true })
     return true

@@ -7,6 +7,8 @@ export type HistoryStepStatus = 'pending' | 'running' | 'done' | 'failed' | 'ski
 export interface HistoryActivity {
   status: HistoryActivityStatus
   instruction: string
+  /** Runtime failure/abort state; this is not an assistant-authored reply. */
+  error?: string
   startedAt: number
   endedAt?: number
   durationMs?: number
@@ -39,6 +41,8 @@ export interface HistoryActivity {
 }
 
 export interface HistoryMessageRecord {
+  /** Durable source message id; stable across paging and app restarts. */
+  id: string
   role: 'user' | 'assistant'
   text: string
   timestamp: string
@@ -134,6 +138,7 @@ export function executionLogToHistoryActivity(log: ExecutionLog): HistoryActivit
   return {
     status: log.status === 'ok' ? 'done' : log.status === 'aborted' ? 'aborted' : 'failed',
     instruction: log.inboundText,
+    error: log.error,
     startedAt,
     endedAt,
     durationMs: log.durationMs,
@@ -184,11 +189,12 @@ export function buildHistoryMessages(
       const ownsActivity = ownsRun && !!log && hasExecutionActivity(log)
       const textFromMessage = messageText(message)
       const text = message.role === 'assistant' && ownsRun && !textFromMessage.trim() && log
-        ? (log.reply || (log.error ? `Error: ${log.error}` : ''))
+        ? log.reply
         : textFromMessage
       const activity = ownsActivity && log ? executionLogToHistoryActivity(log) : undefined
       if (!text.trim() && !activity) return null
       return {
+        id: message.id,
         role: message.role,
         text,
         timestamp: message.timestamp,

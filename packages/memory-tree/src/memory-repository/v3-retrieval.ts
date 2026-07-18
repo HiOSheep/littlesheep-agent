@@ -1,7 +1,9 @@
+// Owns branch/scope-constrained Memory v3 retrieval and exact management inspection routing.
+
 import { randomUUID } from 'node:crypto';
 import type { MemoryAtomStore } from '../v3/atom-store.js';
 import type { MemoryCatalog } from '../v3/catalog.js';
-import type { MemoryAccessRecord, MemoryAtom } from '../v3/contracts.js';
+import type { MemoryAccessRecord, MemoryAtom, MemoryDisclosureLevel } from '../v3/contracts.js';
 import { EmbeddingUnavailableError } from '../v3/embedding-engine.js';
 import type { MemoryV3GraphStore } from '../v3/graph-store.js';
 import {
@@ -176,6 +178,14 @@ export class MemoryV3Retrieval implements MemoryRepositoryRetrievalBackend {
     this.catalog.recordAccessBatch(records
       .filter((record) => this.catalog.getAtom(record.atomId))
       .map((record) => ({ ...record, id: record.id || randomUUID() })));
+  }
+
+  inspectAtomForManagement(
+    atom: MemoryAtom,
+    disclosureLevel: Extract<MemoryDisclosureLevel, 'D2' | 'D3'>,
+    now: string,
+  ): Promise<MemoryRepositoryCandidate> {
+    return this.materializer.inspectForManagement(atom, disclosureLevel, now);
   }
 
   private async searchScoped(

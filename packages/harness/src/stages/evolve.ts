@@ -4,7 +4,12 @@ import type { LlmMemoryIntentKind, RunContext, StageResult } from '@littlesheep/
 import type { LlmClient, ChatMessage } from '@littlesheep/llm';
 import {
   InjectionTier,
+  type MemoryAtomCorrectionServiceLike,
+  type MemoryAtomHierarchyServiceLike,
   type MemoryBranchKind,
+  type MemoryAtomReconciliationServiceLike,
+  type MemoryAtomRevisionServiceLike,
+  type MemoryAtomSubtreeServiceLike,
   type MemoryScope,
   type MemoryWriteIntent,
   type MemoryWriteServiceLike,
@@ -21,6 +26,13 @@ import {
 } from './memory-intent-gate.js';
 import { resolveMemoryWriteEpistemic } from './memory-epistemic-policy.js';
 import { EVOLVE_MEMORY_PROMPT } from './memory-stage-prompts.js';
+import { processEvolveReconciliations } from './evolve/reconciliation.js';
+import { processEvolveReparents } from './evolve/hierarchy.js';
+import { processEvolveSubtreeMoves } from './evolve/subtree.js';
+import { processEvolveRevisions } from './evolve/revision.js';
+import { processEvolveCorrections } from './evolve/correction.js';
+import { hasReusableEvolutionSignal } from './evolve/signal.js';
+import { parseSkillProposal } from './evolve/skill-proposal.js';
 
 export type CreateSkillFn = (opts: {
   name: string;
@@ -33,15 +45,13 @@ export interface EvolveStageDeps {
   llm: LlmClient;
   model: string;
   memoryWriter?: MemoryWriteServiceLike;
+  memoryReconciler?: MemoryAtomReconciliationServiceLike;
+  memoryHierarchy?: MemoryAtomHierarchyServiceLike;
+  memorySubtree?: MemoryAtomSubtreeServiceLike;
+  memoryReviser?: MemoryAtomRevisionServiceLike;
+  memoryCorrector?: MemoryAtomCorrectionServiceLike;
   createSkill?: CreateSkillFn;
   llmPolicy?: 'adaptive' | 'always' | 'never';
-}
-
-interface SkillProposal {
-  name?: unknown;
-  description?: unknown;
-  whenToUse?: unknown;
-  body?: unknown;
 }
 
 interface MemoryProposal {
@@ -60,15 +70,19 @@ interface MemoryProposal {
 
 interface DecodedEvolve {
   memories?: unknown;
+  reconciliations?: unknown;
+  reparents?: unknown;
+  subtreeMoves?: unknown;
+  revisions?: unknown;
+  corrections?: unknown;
   /** Accepted only for old persisted mocks; never written without the new contract. */
   notes?: unknown;
-  createSkill?: SkillProposal | null;
+  createSkill?: unknown;
 }
 
-const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
 const BRANCHES = new Set<MemoryBranchKind>(['long-term', 'project', 'experience']);
 const SCOPES = new Set<MemoryScope>(['global', 'workspace', 'project']);
-const INTENTS = new Set<LlmMemoryIntentKind>(['read', 'write', 'merge', 'invalidate', 'conflict', 'none']);
+const INTENTS = new Set<LlmMemoryIntentKind>(['read', 'write', 'merge', 'move', 'revise', 'invalidate', 'conflict', 'none']);
 
 function cleanString(value: unknown, max: number): string | undefined {
   if (typeof value !== 'string') return undefined;
@@ -83,18 +97,6 @@ function clampScore(value: unknown): number {
 function stringArray(value: unknown, maxItems = 16): string[] {
   if (!Array.isArray(value)) return [];
   return [...new Set(value.map((item) => cleanString(item, 80)).filter((item): item is string => !!item))].slice(0, maxItems);
-}
-
-function validateSkillProposal(proposal: SkillProposal | null | undefined): {
-  name: string; description: string; whenToUse?: string; body: string;
-} | null {
-  if (!proposal || typeof proposal !== 'object') return null;
-  const name = cleanString(proposal.name, 64) ?? '';
-  const description = cleanString(proposal.description, 200) ?? '';
-  const body = cleanString(proposal.body, 12_000) ?? '';
-  const whenToUse = cleanString(proposal.whenToUse, 500);
-  if (!name || !description || !body || !NAME_RE.test(name)) return null;
-  return { name, description, whenToUse, body };
 }
 
 function memoryProposals(value: unknown, ctx: RunContext): GatedMemoryProposal[] {
@@ -230,13 +232,38 @@ export function createEvolveStage(deps: EvolveStageDeps) {
       deps.memoryWriter,
       proposals,
     );
+    const reconciliation = await processEvolveReconciliations(
+      parsed?.reconciliations,
+      ctx,
+      deps.memoryReconciler,
+    );
+    const hierarchy = await processEvolveReparents(
+      parsed?.reparents,
+      ctx,
+      deps.memoryHierarchy,
+    );
+    const subtrees = await processEvolveSubtreeMoves(
+      parsed?.subtreeMoves,
+      ctx,
+      deps.memorySubtree,
+    );
+    const revisions = await processEvolveRevisions(
+      parsed?.revisions,
+      ctx,
+      deps.memoryReviser,
+    );
+    const corrections = await processEvolveCorrections(
+      parsed?.corrections,
+      ctx,
+      deps.memoryCorrector,
+    );
     ctx.evolutionNotes = records
       .filter((record) => record.decision === 'committed' && record.summary)
       .map((record) => record.summary!)
       .concat(legacyNotes);
 
     let skillCreated: string | null = null;
-    const proposal = validateSkillProposal(parsed?.createSkill);
+    const proposal = parseSkillProposal(parsed?.createSkill);
     if (deps.createSkill && proposal && ctx.verificationHistory?.at(-1)?.verdict === 'pass') {
       try { skillCreated = await deps.createSkill(proposal); } catch { /* non-fatal */ }
     }
@@ -253,23 +280,78 @@ export function createEvolveStage(deps: EvolveStageDeps) {
           decision: record.decision,
           reason: record.reason,
         })),
+        memoryReconciliations: reconciliation.results.map((result) => ({
+          proposalId: result.proposalId,
+          status: result.status,
+          targetAtomId: result.targetAtomId,
+          committed: result.committedSourceAtomIds.length,
+          remaining: result.remainingSourceAtomIds.length,
+          reason: result.reason,
+        })),
+        memoryReconciliationDecisions: reconciliation.decisions.map((record) => ({
+          decision: record.decision,
+          reconciliationDecision: record.reconciliationDecision,
+          reason: record.reason,
+        })),
+        memoryHierarchyChanges: hierarchy.results.map((result) => ({
+          proposalId: result.proposalId,
+          status: result.status,
+          atomId: result.atomId,
+          parentAtomId: result.parentAtomId,
+          committed: result.committed,
+          reason: result.reason,
+        })),
+        memoryHierarchyDecisions: hierarchy.decisions.map((record) => ({
+          decision: record.decision,
+          reconciliationDecision: record.reconciliationDecision,
+          reason: record.reason,
+        })),
+        memorySubtreeMoves: subtrees.results.map((result) => ({
+          proposalId: result.proposalId,
+          status: result.status,
+          rootAtomId: result.rootAtomId,
+          parentAtomId: result.parentAtomId,
+          activeDescendantCount: result.activeDescendantCount,
+          committed: result.committed,
+          reason: result.reason,
+        })),
+        memorySubtreeDecisions: subtrees.decisions.map((record) => ({
+          decision: record.decision,
+          reconciliationDecision: record.reconciliationDecision,
+          reason: record.reason,
+        })),
+        memoryAtomRevisions: revisions.results.map((result) => ({
+          proposalId: result.proposalId,
+          status: result.status,
+          atomId: result.atomId,
+          committed: result.committed,
+          previousRevision: result.previousRevision,
+          revision: result.revision,
+          reason: result.reason,
+        })),
+        memoryRevisionDecisions: revisions.decisions.map((record) => ({
+          decision: record.decision,
+          reconciliationDecision: record.reconciliationDecision,
+          reason: record.reason,
+        })),
+        memoryAtomCorrections: corrections.results.map((result) => ({
+          proposalId: result.proposalId,
+          status: result.status,
+          supersededAtomId: result.supersededAtomId,
+          replacementAtomId: result.replacementAtomId,
+          committed: result.committed,
+          previousRevision: result.previousRevision,
+          revision: result.revision,
+          reason: result.reason,
+        })),
+        memoryCorrectionDecisions: corrections.decisions.map((record) => ({
+          decision: record.decision,
+          reconciliationDecision: record.reconciliationDecision,
+          reason: record.reason,
+        })),
         legacyNotesIgnored: legacyNotes.length,
         skillCreated,
       },
     };
   };
-}
-
-function hasReusableEvolutionSignal(ctx: RunContext): boolean {
-  if (ctx.verificationHistory?.at(-1)?.verdict !== 'pass') return false;
-  const inbound = textOf(ctx.inbound);
-  if (/(?:记住|以后|始终|偏好|习惯|规则|约定|remember|always|prefer|preference|convention)/iu.test(inbound)) {
-    return true;
-  }
-  if (ctx.taskBook?.complexity === 'complex' || ctx.taskBook?.complexity === 'standard') return true;
-  if ((ctx.recoveryAttempts ?? 0) > 0 || (ctx.replanAttempts ?? 0) > 0) return true;
-  const durableTools = new Set(['write', 'edit', 'exec', 'create_skill']);
-  return ctx.produced.some((message) => message.content.some((block) => (
-    block.type === 'tool_calls' && block.calls.some((call) => durableTools.has(call.name))
-  )));
 }

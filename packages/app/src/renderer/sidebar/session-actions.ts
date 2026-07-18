@@ -4,7 +4,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import { projectSessions } from '../../shared/session-scope'
 import {
   deleteSession,
-  getSessionMessages,
+  getSessionMessagePage,
   updateRuntime,
   type ProjectMeta,
   type RuntimeState,
@@ -38,12 +38,15 @@ export interface SessionActionContext {
   refreshSessions: () => Promise<void>
   runtime: RuntimeState | null
   sessionLoadRequestRef: MutableRefObject<number>
+  historyLoadRequestRef: MutableRefObject<number>
+  historyWindow: SessionHistoryWindow
   sessions: SessionMeta[]
   setContextUsageSnapshot: Dispatch<SetStateAction<ContextUsageSnapshot | null>>
   setConversationCollapsed: Dispatch<SetStateAction<boolean>>
   setControlTip: Dispatch<SetStateAction<FloatingHelpTip | null>>
   setCurrentSession: Dispatch<SetStateAction<string | undefined>>
   setMessages: Dispatch<SetStateAction<ChatMessage[]>>
+  setHistoryWindow: Dispatch<SetStateAction<SessionHistoryWindow>>
   setPinnedSessionIds: Dispatch<SetStateAction<Set<string>>>
   setRuntime: Dispatch<SetStateAction<RuntimeState | null>>
   setRuntimeError: Dispatch<SetStateAction<string | null>>
@@ -55,17 +58,28 @@ export interface SessionActionContext {
   visibleSessions: SessionMeta[]
 }
 
+export interface SessionHistoryWindow {
+  hasMore: boolean
+  beforeId?: string
+  loading: boolean
+}
+
+const SESSION_HISTORY_PAGE_SIZE = 120
+const SESSION_HISTORY_MEMORY_MAX = 480
+
 export function createSessionActions(context: SessionActionContext) {
-  const { abortRef, activeApprovalScopeKey, alignWorkspacePanelToWorkspaceRoot, appMountedRef, approvalGrantsRef, beginDraftApprovalScope, currentSession, pushRoute, refreshProjects, refreshRuntime, refreshSessions, runtime, sessionLoadRequestRef, sessions, setContextUsageSnapshot, setConversationCollapsed, setControlTip, setCurrentSession, setMessages, setPinnedSessionIds, setRuntime, setRuntimeError, setSessionOwnership, setSessions, setSidebarPanel, settleApprovalPrompt, sessionOwnership, visibleSessions } = context
+  const { abortRef, activeApprovalScopeKey, alignWorkspacePanelToWorkspaceRoot, appMountedRef, approvalGrantsRef, beginDraftApprovalScope, currentSession, historyLoadRequestRef, historyWindow, pushRoute, refreshProjects, refreshRuntime, refreshSessions, runtime, sessionLoadRequestRef, sessions, setContextUsageSnapshot, setConversationCollapsed, setControlTip, setCurrentSession, setHistoryWindow, setMessages, setPinnedSessionIds, setRuntime, setRuntimeError, setSessionOwnership, setSessions, setSidebarPanel, settleApprovalPrompt, sessionOwnership, visibleSessions } = context
 
 
   function newSession(ownership: Pick<SessionMeta, 'scope' | 'projectId'> = { scope: 'standalone' }) {
     sessionLoadRequestRef.current += 1
+    historyLoadRequestRef.current += 1
     pushRoute({ section: 'chat' })
     beginDraftApprovalScope()
     setCurrentSession(undefined)
     setSessionOwnership(ownership)
     setMessages([])
+    setHistoryWindow({ hasMore: false, beforeId: undefined, loading: false })
     setContextUsageSnapshot(null)
     settleApprovalPrompt('deny')
     abortRef.current?.abort()
@@ -92,7 +106,8 @@ export function createSessionActions(context: SessionActionContext) {
 
   async function switchSession(session: SessionMeta) {
     const requestId = ++sessionLoadRequestRef.current
-    const { id, title, workspacePath } = session
+    historyLoadRequestRef.current += 1
+    const { id, workspacePath } = session
     setSidebarPanel(null)
     pushRoute({ section: 'chat' })
     if (workspacePath && (!runtime || !isSamePath(runtime.workspace, workspacePath))) {
@@ -115,18 +130,63 @@ export function createSessionActions(context: SessionActionContext) {
     abortRef.current?.abort()
     setCurrentSession(id)
     setContextUsageSnapshot(null)
-    setMessages([{ role: 'assistant', text: '正在加载历史消息...' }])
+    setRuntimeError('正在加载历史消息...')
+    setMessages([])
+    setHistoryWindow({ hasMore: false, beforeId: undefined, loading: true })
     try {
-      const history = await getSessionMessages(id)
+      const history = await getSessionMessagePage(id, { limit: SESSION_HISTORY_PAGE_SIZE })
       if (!appMountedRef.current || requestId !== sessionLoadRequestRef.current) return
+      setRuntimeError(null)
       setMessages(
-        history.length > 0
-          ? history.map(historyMessageToChatMessage)
-          : [{ role: 'assistant', text: `会话 "${title}" 暂无历史消息` }],
+        history.messages.length > 0
+          ? history.messages.map(historyMessageToChatMessage)
+          : [],
       )
+      setHistoryWindow({ hasMore: history.hasMore, beforeId: history.beforeId, loading: false })
     } catch (e) {
       if (!appMountedRef.current || requestId !== sessionLoadRequestRef.current) return
-      setMessages([{ role: 'assistant', text: `加载历史失败: ${(e as Error).message}` }])
+      setMessages([])
+      setHistoryWindow({ hasMore: false, beforeId: undefined, loading: false })
+      setRuntimeError(`加载历史失败: ${(e as Error).message}`)
+    }
+  }
+
+
+  async function loadOlderMessages(): Promise<boolean> {
+    const cursor = historyWindow.beforeId
+    if (!currentSession || historyLoadRequestRef.current !== 0 || historyWindow.loading || !historyWindow.hasMore || !cursor) return false
+    setHistoryWindow({ ...historyWindow, loading: true })
+
+    const requestId = ++historyLoadRequestRef.current
+    try {
+      const page = await getSessionMessagePage(currentSession, {
+        limit: SESSION_HISTORY_PAGE_SIZE,
+        beforeId: cursor,
+      })
+      if (!appMountedRef.current || requestId !== historyLoadRequestRef.current) return false
+      const older = page.messages.map(historyMessageToChatMessage)
+      setMessages((current) => {
+        const seen = new Set<string>()
+        const merged = [...older, ...current].filter((message) => {
+          const key = message.id ?? `${message.role}:${message.timestamp ?? ''}:${message.text}`
+          if (seen.has(key)) return false
+          seen.add(key)
+          return true
+        })
+        return merged.length > SESSION_HISTORY_MEMORY_MAX
+          ? merged.slice(merged.length - SESSION_HISTORY_MEMORY_MAX)
+          : merged
+      })
+      setHistoryWindow({ hasMore: page.hasMore, beforeId: page.beforeId, loading: false })
+      return older.length > 0
+    } catch (error) {
+      if (appMountedRef.current && requestId === historyLoadRequestRef.current) {
+        setHistoryWindow((state) => ({ ...state, loading: false }))
+        setRuntimeError(`加载更早对话失败: ${(error as Error).message}`)
+      }
+      return false
+    } finally {
+      if (historyLoadRequestRef.current === requestId) historyLoadRequestRef.current = 0
     }
   }
 
@@ -143,6 +203,7 @@ export function createSessionActions(context: SessionActionContext) {
       beginDraftApprovalScope()
       setCurrentSession(undefined)
       setMessages([])
+      setHistoryWindow({ hasMore: false, beforeId: undefined, loading: false })
       setContextUsageSnapshot(null)
     }
   }
@@ -187,6 +248,7 @@ export function createSessionActions(context: SessionActionContext) {
       beginDraftApprovalScope()
       setCurrentSession(undefined)
       setMessages([])
+      setHistoryWindow({ hasMore: false, beforeId: undefined, loading: false })
       setContextUsageSnapshot(null)
     }
     void refreshSessions()
@@ -205,5 +267,5 @@ export function createSessionActions(context: SessionActionContext) {
       return next
     })
   }
-  return { newSession, createConversationFromSidebar, openSidebarPanel, closeSidebarPanel, switchSession, clearSessionFromLocalState, archiveSession, deleteSessionPermanently, sessionsForProject, archiveAllSessions, togglePinnedSession }
+  return { newSession, createConversationFromSidebar, openSidebarPanel, closeSidebarPanel, switchSession, loadOlderMessages, clearSessionFromLocalState, archiveSession, deleteSessionPermanently, sessionsForProject, archiveAllSessions, togglePinnedSession }
 }

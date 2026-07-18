@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { MemoryWriteIntent, MemoryWriteServiceLike } from '@littlesheep/memory-tree';
+import type {
+  MemoryAtomHierarchyServiceLike,
+  MemoryAtomReconciliationServiceLike,
+  MemoryAtomRevisionServiceLike,
+  MemoryWriteIntent,
+  MemoryWriteServiceLike,
+} from '@littlesheep/memory-tree';
+import type { RuntimeKnownStateMemoryReference } from '@littlesheep/types';
 import { createEvolveStage } from './evolve.js';
 import { createCaptureStage } from './capture.js';
 import { createMockLlm, makeCtx, textResponse } from '../tests/helpers.js';
@@ -173,6 +180,337 @@ describe('EVOLVE structured memory intents', () => {
     ]);
   });
 
+  it('requires explicit Atom reconciliation instead of treating a merge intent as a write', async () => {
+    const memoryWriter = writer();
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      memories: [{
+        intent: 'merge',
+        branch: 'project',
+        scope: 'workspace',
+        summary: 'Duplicate package manager rule',
+        content: 'Use pnpm workspace commands.',
+        retrievalKeys: ['pnpm', 'workspace'],
+        importance: 0.8,
+        confidence: 0.95,
+        reason: 'This should use the Atom reconciliation path.',
+      }],
+      reconciliations: [],
+      createSkill: null,
+    })));
+    const ctx = verifiedCtx();
+
+    await createEvolveStage({ llm, model: 'test', memoryWriter })(ctx);
+
+    expect(memoryWriter.writeMany).toHaveBeenCalledWith([]);
+    expect(ctx.memoryIntentDecisions).toEqual([
+      expect.objectContaining({
+        proposedIntent: 'merge',
+        decision: 'deferred',
+        reason: expect.stringContaining('explicit Atom ids'),
+      }),
+    ]);
+  });
+
+  it('routes a move memory intent to the dedicated hierarchy gate instead of writing it', async () => {
+    const memoryWriter = writer();
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      memories: [{
+        intent: 'move',
+        branch: 'project',
+        scope: 'workspace',
+        summary: 'Move a hierarchy atom',
+        content: 'This must be handled by the hierarchy gate.',
+        retrievalKeys: ['hierarchy'],
+        importance: 0.9,
+        confidence: 0.95,
+        reason: 'This should use the dedicated reparent protocol.',
+      }],
+      createSkill: null,
+    })));
+    const ctx = verifiedCtx();
+
+    await createEvolveStage({ llm, model: 'test', memoryWriter })(ctx);
+
+    expect(memoryWriter.writeMany).toHaveBeenCalledWith([]);
+    expect(ctx.memoryIntentDecisions).toEqual([
+      expect.objectContaining({
+        proposedIntent: 'move',
+        decision: 'deferred',
+        reason: expect.stringContaining('hierarchy gate'),
+      }),
+    ]);
+  });
+
+  it('commits a model merge proposal only through adopted current KnownState references', async () => {
+    const memoryWriter = writer();
+    const reconcile = vi.fn(async (proposals: Parameters<MemoryAtomReconciliationServiceLike['reconcile']>[0]) => (
+      proposals.map((proposal) => ({
+        proposalId: proposal.id,
+        status: 'committed' as const,
+        targetAtomId: proposal.target.atomId,
+        sourceAtomIds: proposal.sources.map((source) => source.atomId),
+        committedSourceAtomIds: proposal.sources.map((source) => source.atomId),
+        remainingSourceAtomIds: [],
+        reason: 'Committed by the runtime reconciliation gate.',
+        managementResults: [],
+      }))
+    ));
+    const memoryReconciler: MemoryAtomReconciliationServiceLike = { reconcile };
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      memories: [],
+      reconciliations: [{
+        action: 'merge',
+        basis: 'duplicate-projection',
+        target: { atomId: 'atom-target', expectedRevision: 3 },
+        sources: [{ atomId: 'atom-source', expectedRevision: 2 }],
+        reason: 'Both atoms express the same verified package manager rule.',
+      }],
+      createSkill: null,
+    })));
+    const ctx = verifiedCtx();
+    ctx.memoryKnownState = {
+      version: 1,
+      runId: ctx.runId,
+      revision: 1,
+      updatedAt: '2026-07-17T08:00:00.000Z',
+      references: [
+        knownReference('atom-target', 3),
+        knownReference('atom-source', 2),
+      ],
+    };
+
+    const result = await createEvolveStage({
+      llm,
+      model: 'test',
+      memoryWriter,
+      memoryReconciler,
+    })(ctx);
+
+    expect(reconcile).toHaveBeenCalledWith([
+      expect.objectContaining({
+        action: 'merge',
+        basis: 'duplicate-projection',
+        target: { atomId: 'atom-target', expectedRevision: 3 },
+        sources: [{ atomId: 'atom-source', expectedRevision: 2 }],
+        evidenceRefs: expect.arrayContaining([
+          'memory-v3:atom:atom-target@3',
+          'memory-v3:atom:atom-source@2',
+          expect.stringContaining(':verification:1:pass'),
+        ]),
+      }),
+    ]);
+    expect(ctx.memoryIntentDecisions).toContainEqual(expect.objectContaining({
+      proposedIntent: 'merge',
+      decision: 'committed',
+      reconciliationDecision: 'committed',
+    }));
+    expect(result.meta?.memoryReconciliations).toEqual([
+      expect.objectContaining({ status: 'committed', committed: 1, remaining: 0 }),
+    ]);
+  });
+
+  it('rejects a reconciliation proposal when its revision is not the current KnownState revision', async () => {
+    const reconcile = vi.fn();
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      memories: [],
+      reconciliations: [{
+        action: 'merge',
+        basis: 'duplicate-projection',
+        target: { atomId: 'atom-target', expectedRevision: 4 },
+        sources: [{ atomId: 'atom-source', expectedRevision: 2 }],
+        reason: 'Both atoms appear to express the same package manager rule.',
+      }],
+      createSkill: null,
+    })));
+    const ctx = verifiedCtx();
+    ctx.memoryKnownState = {
+      version: 1,
+      runId: ctx.runId,
+      revision: 1,
+      updatedAt: '2026-07-17T08:00:00.000Z',
+      references: [knownReference('atom-target', 3), knownReference('atom-source', 2)],
+    };
+
+    await createEvolveStage({
+      llm,
+      model: 'test',
+      memoryReconciler: { reconcile },
+    })(ctx);
+
+    expect(reconcile).not.toHaveBeenCalled();
+    expect(ctx.memoryIntentDecisions).toContainEqual(expect.objectContaining({
+      proposedIntent: 'merge',
+      decision: 'rejected',
+      reconciliationDecision: 'rejected',
+      reason: expect.stringContaining('not an adopted, current'),
+    }));
+  });
+
+  it('commits one explicit-relation reparent proposal through the hierarchy service', async () => {
+    const reparent = vi.fn(async (proposals: Parameters<MemoryAtomHierarchyServiceLike['reparent']>[0]) => (
+      proposals.map((proposal) => ({
+        proposalId: proposal.id,
+        status: 'committed' as const,
+        atomId: proposal.atom.atomId,
+        parentAtomId: proposal.parent.atomId,
+        committed: true,
+        reason: 'Committed by the runtime hierarchy gate.',
+        managementResults: [],
+      }))
+    ));
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      memories: [],
+      reconciliations: [],
+      reparents: [{
+        action: 'move',
+        basis: 'explicit-parent-relation',
+        atom: { atomId: 'atom-child', expectedRevision: 2 },
+        parent: { atomId: 'atom-parent', expectedRevision: 4 },
+        relationId: 'relation:child-belongs-to-parent',
+        reason: 'The active ownership relation proves the corrected semantic parent.',
+      }],
+      createSkill: null,
+    })));
+    const ctx = verifiedCtx();
+    ctx.memoryKnownState = {
+      version: 1,
+      runId: ctx.runId,
+      revision: 1,
+      updatedAt: '2026-07-17T08:00:00.000Z',
+      references: [
+        knownReference('atom-child', 2),
+        knownReference('atom-parent', 4),
+      ],
+    };
+
+    const result = await createEvolveStage({
+      llm,
+      model: 'test',
+      memoryHierarchy: { reparent },
+    })(ctx);
+
+    expect(reparent).toHaveBeenCalledWith([
+      expect.objectContaining({
+        action: 'move',
+        basis: 'explicit-parent-relation',
+        atom: { atomId: 'atom-child', expectedRevision: 2 },
+        parent: { atomId: 'atom-parent', expectedRevision: 4 },
+        relationId: 'relation:child-belongs-to-parent',
+        evidenceRefs: expect.arrayContaining([
+          'memory-v3:atom:atom-child@2',
+          'memory-v3:atom:atom-parent@4',
+          'memory-v3:relation:relation:child-belongs-to-parent',
+          expect.stringContaining(':verification:1:pass'),
+        ]),
+      }),
+    ]);
+    expect(ctx.memoryIntentDecisions).toContainEqual(expect.objectContaining({
+      proposedIntent: 'move',
+      decision: 'committed',
+      reconciliationDecision: 'committed',
+    }));
+    expect(result.meta?.memoryHierarchyChanges).toEqual([
+      expect.objectContaining({ status: 'committed', committed: true }),
+    ]);
+  });
+
+  it('audits additional reparent proposals instead of silently discarding them', async () => {
+    const reparent = vi.fn(async (proposals: Parameters<MemoryAtomHierarchyServiceLike['reparent']>[0]) => (
+      proposals.map((proposal) => ({
+        proposalId: proposal.id,
+        status: 'committed' as const,
+        atomId: proposal.atom.atomId,
+        parentAtomId: proposal.parent.atomId,
+        committed: true,
+        reason: 'Committed by the runtime hierarchy gate.',
+        managementResults: [],
+      }))
+    ));
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      memories: [],
+      reconciliations: [],
+      reparents: [
+        {
+          action: 'move',
+          basis: 'explicit-parent-relation',
+          atom: { atomId: 'atom-child', expectedRevision: 2 },
+          parent: { atomId: 'atom-parent', expectedRevision: 4 },
+          relationId: 'relation:child-belongs-to-parent',
+          reason: 'The active ownership relation proves the corrected semantic parent.',
+        },
+        {
+          action: 'move',
+          basis: 'explicit-parent-relation',
+          atom: { atomId: 'atom-other-child', expectedRevision: 1 },
+          parent: { atomId: 'atom-parent', expectedRevision: 4 },
+          relationId: 'relation:other-belongs-to-parent',
+          reason: 'The second proposal is intentionally beyond the per-run bound.',
+        },
+      ],
+      createSkill: null,
+    })));
+    const ctx = verifiedCtx();
+    ctx.memoryKnownState = {
+      version: 1,
+      runId: ctx.runId,
+      revision: 1,
+      updatedAt: '2026-07-17T08:00:00.000Z',
+      references: [
+        knownReference('atom-child', 2),
+        knownReference('atom-other-child', 1),
+        knownReference('atom-parent', 4),
+      ],
+    };
+
+    await createEvolveStage({ llm, model: 'test', memoryHierarchy: { reparent } })(ctx);
+
+    expect(reparent).toHaveBeenCalledTimes(1);
+    expect(reparent.mock.calls[0]?.[0]).toHaveLength(1);
+    expect(ctx.memoryIntentDecisions).toContainEqual(expect.objectContaining({
+      id: `${ctx.runId}:evolve:reparent:2`,
+      proposedIntent: 'move',
+      decision: 'rejected',
+      reconciliationDecision: 'rejected',
+      reason: expect.stringContaining('Only one reparent proposal'),
+    }));
+  });
+
+  it('rejects a hierarchy proposal that only references a D1 Atom', async () => {
+    const reparent = vi.fn();
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      memories: [],
+      reconciliations: [],
+      reparents: [{
+        action: 'move',
+        basis: 'explicit-parent-relation',
+        atom: { atomId: 'atom-child', expectedRevision: 2 },
+        parent: { atomId: 'atom-parent', expectedRevision: 4 },
+        relationId: 'relation:child-belongs-to-parent',
+        reason: 'The index appears to suggest a different hierarchy parent.',
+      }],
+      createSkill: null,
+    })));
+    const ctx = verifiedCtx();
+    const child = knownReference('atom-child', 2);
+    child.envelope.disclosureLevel = 'D1';
+    ctx.memoryKnownState = {
+      version: 1,
+      runId: ctx.runId,
+      revision: 1,
+      updatedAt: '2026-07-17T08:00:00.000Z',
+      references: [child, knownReference('atom-parent', 4)],
+    };
+
+    await createEvolveStage({ llm, model: 'test', memoryHierarchy: { reparent } })(ctx);
+
+    expect(reparent).not.toHaveBeenCalled();
+    expect(ctx.memoryIntentDecisions).toContainEqual(expect.objectContaining({
+      proposedIntent: 'move',
+      decision: 'rejected',
+      reason: expect.stringContaining('D2/D3'),
+    }));
+  });
+
   it('defers projection writes when immutable conversation source capture fails', async () => {
     const memoryWriter = writer();
     memoryWriter.captureConversationSources.mockRejectedValueOnce(new Error('source disk unavailable'));
@@ -202,7 +540,209 @@ describe('EVOLVE structured memory intents', () => {
       }),
     ]);
   });
+
+  it('commits one same-claim Atom revision only from a complete D3 KnownState reference', async () => {
+    const revise = vi.fn(async (proposals: Parameters<MemoryAtomRevisionServiceLike['revise']>[0]) => (
+      proposals.map((proposal) => ({
+        proposalId: proposal.id,
+        status: 'committed' as const,
+        atomId: proposal.atom.atomId,
+        committed: true,
+        previousRevision: proposal.atom.expectedRevision,
+        revision: proposal.atom.expectedRevision + 1,
+        reason: 'Committed by the runtime Atom revision gate.',
+        managementResults: [],
+      }))
+    ));
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      memories: [],
+      revisions: [{
+        action: 'revise',
+        basis: 'same-claim-refinement',
+        atom: { atomId: 'atom-revision', expectedRevision: 4 },
+        replacement: {
+          title: 'Workspace package manager',
+          summary: 'The workspace uses pnpm for package management.',
+          content: 'Use pnpm workspace commands when operating in this repository.',
+          retrievalKeys: ['pnpm', 'workspace', 'package manager'],
+        },
+        reason: 'Clarifies the verified package manager claim without changing its meaning.',
+      }],
+      createSkill: null,
+    })));
+    const ctx = verifiedCtx();
+    const reference = knownReference('atom-revision', 4);
+    reference.envelope.disclosureLevel = 'D3';
+    ctx.memoryKnownState = {
+      version: 1,
+      runId: ctx.runId,
+      revision: 1,
+      updatedAt: '2026-07-17T08:00:00.000Z',
+      references: [reference],
+    };
+
+    const result = await createEvolveStage({ llm, model: 'test', memoryReviser: { revise } })(ctx);
+
+    expect(revise).toHaveBeenCalledWith([
+      expect.objectContaining({
+        action: 'revise',
+        basis: 'same-claim-refinement',
+        atom: { atomId: 'atom-revision', expectedRevision: 4 },
+        evidenceRefs: expect.arrayContaining([
+          'memory-v3:atom:atom-revision@4',
+          expect.stringContaining(':verification:1:pass'),
+        ]),
+      }),
+    ]);
+    expect(ctx.memoryIntentDecisions).toContainEqual(expect.objectContaining({
+      proposedIntent: 'revise',
+      decision: 'committed',
+      reconciliationDecision: 'committed',
+    }));
+    expect(result.meta?.memoryAtomRevisions).toEqual([
+      expect.objectContaining({ atomId: 'atom-revision', status: 'committed', revision: 5 }),
+    ]);
+  });
+
+  it('rejects D2 or truncated revision targets before calling the revision service', async () => {
+    for (const mutate of [
+      (reference: RuntimeKnownStateMemoryReference) => reference,
+      (reference: RuntimeKnownStateMemoryReference) => {
+        reference.envelope.disclosureLevel = 'D3';
+        reference.envelope.truncated = true;
+        return reference;
+      },
+    ]) {
+      const revise = vi.fn();
+      const llm = createMockLlm(textResponse(JSON.stringify({
+        memories: [],
+        revisions: [revisionProposalJson('atom-revision', 4)],
+        createSkill: null,
+      })));
+      const ctx = verifiedCtx();
+      ctx.memoryKnownState = {
+        version: 1,
+        runId: ctx.runId,
+        revision: 1,
+        updatedAt: '2026-07-17T08:00:00.000Z',
+        references: [mutate(knownReference('atom-revision', 4))],
+      };
+
+      await createEvolveStage({ llm, model: 'test', memoryReviser: { revise } })(ctx);
+
+      expect(revise).not.toHaveBeenCalled();
+      expect(ctx.memoryIntentDecisions).toContainEqual(expect.objectContaining({
+        proposedIntent: 'revise',
+        decision: 'rejected',
+        reason: expect.stringContaining('complete D3'),
+      }));
+    }
+  });
+
+  it('audits extra revision proposals while sending only the first proposal to Runtime', async () => {
+    const revise = vi.fn(async (proposals: Parameters<MemoryAtomRevisionServiceLike['revise']>[0]) => (
+      proposals.map((proposal) => ({
+        proposalId: proposal.id,
+        status: 'noop' as const,
+        atomId: proposal.atom.atomId,
+        committed: false,
+        previousRevision: proposal.atom.expectedRevision,
+        revision: proposal.atom.expectedRevision,
+        reason: 'The projection already matches.',
+        managementResults: [],
+      }))
+    ));
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      memories: [],
+      revisions: [
+        revisionProposalJson('atom-first', 2),
+        revisionProposalJson('atom-second', 3),
+      ],
+      createSkill: null,
+    })));
+    const ctx = verifiedCtx();
+    const first = knownReference('atom-first', 2);
+    const second = knownReference('atom-second', 3);
+    first.envelope.disclosureLevel = 'D3';
+    second.envelope.disclosureLevel = 'D3';
+    ctx.memoryKnownState = {
+      version: 1,
+      runId: ctx.runId,
+      revision: 1,
+      updatedAt: '2026-07-17T08:00:00.000Z',
+      references: [first, second],
+    };
+
+    await createEvolveStage({ llm, model: 'test', memoryReviser: { revise } })(ctx);
+
+    expect(revise).toHaveBeenCalledTimes(1);
+    expect(revise.mock.calls[0]?.[0]).toHaveLength(1);
+    expect(revise.mock.calls[0]?.[0][0]?.atom.atomId).toBe('atom-first');
+    expect(ctx.memoryIntentDecisions).toContainEqual(expect.objectContaining({
+      id: `${ctx.runId}:evolve:revision:2`,
+      proposedIntent: 'revise',
+      decision: 'rejected',
+      reason: expect.stringContaining('Only one Atom revision proposal'),
+    }));
+  });
 });
+
+function revisionProposalJson(atomId: string, expectedRevision: number) {
+  return {
+    action: 'revise',
+    basis: 'same-claim-refinement',
+    atom: { atomId, expectedRevision },
+    replacement: {
+      title: 'Workspace package manager',
+      summary: 'The workspace uses pnpm for package management.',
+      content: 'Use pnpm workspace commands when operating in this repository.',
+      retrievalKeys: ['pnpm', 'workspace', 'package manager'],
+    },
+    reason: 'Clarifies the verified package manager claim without changing its meaning.',
+  };
+}
+
+function knownReference(atomId: string, atomRevision: number): RuntimeKnownStateMemoryReference {
+  return {
+    atomId,
+    atomRevision,
+    sourceRefs: [`conversation-source:${atomId}`],
+    evidenceRefs: [`tool:${atomId}`],
+    decision: 'adopted',
+    reason: 'Selected for the verified task.',
+    envelope: {
+      atomId,
+      atomRevision,
+      branch: 'project',
+      scope: 'workspace',
+      scopeKey: process.cwd(),
+      tier: 2,
+      disclosureLevel: 'D2',
+      statementKind: 'factual-claim',
+      epistemicStatus: 'verified',
+      authorityScope: { kind: 'tool-evidence', scope: 'workspace', scopeKey: process.cwd(), topics: ['repository'] },
+      assertedBy: { kind: 'tool', id: 'test-tool' },
+      sourceRefs: [`conversation-source:${atomId}`],
+      evidenceRefs: [`tool:${atomId}`],
+      confidence: 0.9,
+      importance: 0.8,
+      verifiedUsefulness: { useful: 1, notUseful: 0, conflicts: 0, stale: 0 },
+      taskRelevance: 0.9,
+      routingRelevance: 0.8,
+      relationshipRelevance: 0.5,
+      updatedAt: '2026-07-17T08:00:00.000Z',
+      retrievalPath: 'hierarchy',
+      matchReason: 'Selected for this task.',
+      conflict: false,
+      expired: false,
+      truncated: false,
+    },
+    stages: ['enter', 'evolve'],
+    firstSeenAt: '2026-07-17T08:00:00.000Z',
+    updatedAt: '2026-07-17T08:00:00.000Z',
+    reactivatedCount: 0,
+  };
+}
 
 describe('CAPTURE daily timeline intents', () => {
   it('forces observations into the daily workspace branch regardless of model wording', async () => {

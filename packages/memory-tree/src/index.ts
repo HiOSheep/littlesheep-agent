@@ -128,6 +128,7 @@ export type {
   MemoryAtomManagementAudit,
   MemoryAtomManagementRequest,
   MemoryAtomManagementResult,
+  MemoryAtomRevisionPatch,
   MemoryRepositoryEmbeddingStatusCounts,
   MemoryRepositoryManagementFacade,
   MemoryRepositoryManagementStatus,
@@ -207,6 +208,51 @@ export {
   type MemoryDailyConsolidationServiceOptions,
 } from './memory-consolidation.js';
 export {
+  MemoryAtomReconciliationService,
+  type MemoryAtomMergeProposal,
+  type MemoryAtomReconciliationProposal,
+  type MemoryAtomReconciliationResult,
+  type MemoryAtomReconciliationServiceLike,
+  type MemoryAtomReconciliationServiceOptions,
+  type MemoryAtomReconciliationStatus,
+  type MemoryAtomRevisionReference,
+} from './memory-reconciliation.js';
+export {
+  MemoryAtomHierarchyService,
+  type MemoryAtomHierarchyResult,
+  type MemoryAtomHierarchyServiceLike,
+  type MemoryAtomHierarchyServiceOptions,
+  type MemoryAtomHierarchyStatus,
+  type MemoryAtomReparentProposal,
+} from './memory-hierarchy.js';
+export {
+  MAX_SUBTREE_ACTIVE_DESCENDANTS,
+  MAX_SUBTREE_PROPOSALS,
+  MemoryAtomSubtreeService,
+  type MemoryAtomSubtreeMoveProposal,
+  type MemoryAtomSubtreeResult,
+  type MemoryAtomSubtreeServiceLike,
+  type MemoryAtomSubtreeServiceOptions,
+  type MemoryAtomSubtreeStatus,
+} from './memory-subtree.js';
+export {
+  MAX_REVISION_PROPOSALS,
+  MemoryAtomRevisionService,
+  type MemoryAtomRevisionProposal,
+  type MemoryAtomRevisionResult,
+  type MemoryAtomRevisionServiceLike,
+  type MemoryAtomRevisionStatus,
+} from './memory-revision.js';
+export {
+  MAX_CORRECTION_PROPOSALS,
+  MemoryAtomCorrectionService,
+  type MemoryAtomCorrectionBasis,
+  type MemoryAtomCorrectionProposal,
+  type MemoryAtomCorrectionResult,
+  type MemoryAtomCorrectionServiceLike,
+  type MemoryAtomCorrectionStatus,
+} from './memory-correction.js';
+export {
   MemoryConversationSourceStore,
   MemoryConversationSourceConflictError,
   MEMORY_CONVERSATION_SOURCE_VERSION,
@@ -253,6 +299,7 @@ export type {
   MemoryAtom as MemoryAtomV3,
   MemoryAtomInvalidation,
   MemoryAtomMerge,
+  MemoryAtomSupersession,
   MemoryProjectionMutationRecord,
   MemoryProjectionMutationCommitReceipt,
   MemoryRawRecord,

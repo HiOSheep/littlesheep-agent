@@ -116,6 +116,14 @@ function comparableNode(node: MemoryNode) {
     atomRevision: _atomRevision,
     invalidatedAt: _invalidatedAt,
     mergedIntoId: _mergedIntoId,
+    evidenceRefs: _evidenceRefs,
+    domain: _domain,
+    statementKind: _statementKind,
+    epistemicStatus: _epistemicStatus,
+    authorityScope: _authorityScope,
+    assertedBy: _assertedBy,
+    entityRefs: _entityRefs,
+    relationRefs: _relationRefs,
     ...v2Projection
   } = node;
   return {

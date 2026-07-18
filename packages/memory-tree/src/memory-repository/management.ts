@@ -48,6 +48,22 @@ export interface MemoryRepositoryNodeInspection {
   neighborhood?: MemoryRelationNeighborhood;
   history?: MemoryAtomHistory;
   projectionRecords?: MemoryProjectionMutationRecord[];
+  /** Bounded structural fact used by automatic hierarchy management. */
+  hasActiveChildren?: boolean;
+  /** Active descendants, capped before an automatic subtree move can scan without bound. */
+  activeDescendantCount?: number;
+}
+
+/**
+ * The only projection fields that the automatic refinement gate may change.
+ * Sources, epistemic metadata, relations, scope and lifecycle stay outside
+ * this patch and are preserved by the Runtime.
+ */
+export interface MemoryAtomRevisionPatch {
+  title: string;
+  summary: string;
+  content: string;
+  retrievalKeys: string[];
 }
 
 export type MemoryAtomManagementRequest =
@@ -67,10 +83,30 @@ export type MemoryAtomManagementRequest =
       reason: string;
     }
   | {
+      action: 'revise';
+      atomId: string;
+      expectedRevision: number;
+      patch: MemoryAtomRevisionPatch;
+      reason: string;
+      /** Runtime evidence for the append-only event/audit, not atom source data. */
+      evidenceRefs?: string[];
+    }
+  | {
       action: 'invalidate' | 'reactivate';
       atomId: string;
       expectedRevision: number;
       reason: string;
+    }
+  | {
+      action: 'supersede';
+      atomId: string;
+      expectedRevision: number;
+      replacementAtomId: string;
+      replacementExpectedRevision: number;
+      relationId: string;
+      reason: string;
+      /** Runtime evidence for the append-only event/audit, not atom source data. */
+      evidenceRefs?: string[];
     };
 
 export interface MemoryAtomManagementAudit {
@@ -82,6 +118,7 @@ export interface MemoryAtomManagementAudit {
   before: Array<{
     atomId: string;
     revision: number;
+    contentHash?: string;
     parentId?: string;
     status: MemoryAtom['status'];
     epistemicStatus: MemoryAtom['epistemicStatus'];
@@ -90,6 +127,7 @@ export interface MemoryAtomManagementAudit {
   after: Array<{
     atomId: string;
     revision: number;
+    contentHash?: string;
     parentId?: string;
     status: MemoryAtom['status'];
     epistemicStatus: MemoryAtom['epistemicStatus'];

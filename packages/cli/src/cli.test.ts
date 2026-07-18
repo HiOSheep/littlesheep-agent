@@ -49,6 +49,10 @@ beforeEach(() => {
     run: mockRun,
     runStream: mockRun,
     replay: vi.fn().mockResolvedValue(null),
+    runtimeEvents: {
+      append: () => ({ kind: 'rejected', reason: 'run-not-active', message: 'mock runner' }),
+      summary: () => null,
+    },
     shutdown: mockShutdown,
     state: { sessionId: undefined, model: 'openai/gpt-4o' },
     sessionManager: {} as never,

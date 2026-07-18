@@ -6,6 +6,7 @@ import {
   RESOLVED_RUN_CONFIG_VERSION,
   MODE_DEFINITION_VERSION,
   RUNTIME_EVENT_VERSION,
+  RUNTIME_EVENT_QUEUE_VERSION,
   TASK_BOOK_PATCH_VERSION,
   MODEL_REQUEST_SNAPSHOT_VERSION,
   LLM_CALL_CONTRACT_VERSION,
@@ -27,6 +28,7 @@ import {
   type ToolInvocationRecord,
   type ExecutionEvidenceBundle,
   type RuntimeEventEnvelope,
+  type RuntimeEventQueueSnapshot,
   type TaskBookPatch,
 } from './index.js';
 
@@ -187,8 +189,18 @@ describe('runtime continuity v1 contracts', () => {
 
     expect(manifest.version).toBe(1);
     expect(event.version).toBe(1);
+    const queueSnapshot: RuntimeEventQueueSnapshot = {
+      version: RUNTIME_EVENT_QUEUE_VERSION,
+      runId: event.runId,
+      sessionId: event.sessionId,
+      cursor: event.sequence,
+      nextSequence: event.sequence + 1,
+      overflowCount: 0,
+      events: [event],
+    };
     expect(patch.version).toBe(1);
     expect(checkpoint.version).toBe(1);
+    expect(queueSnapshot.version).toBe(1);
     expect(checkpoint.sideEffects[0]?.status).toBe('succeeded');
   });
 

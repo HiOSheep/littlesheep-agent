@@ -1,7 +1,7 @@
 // @littlesheep/harness — stages/ask_user.ts
 // ASK_USER: unclear intent (CLASSIFY) or escalation (RECOVER). Produces a
-// clarifying question to send back to the user. Prefers an LLM-generated
-// question; falls back to a templated question on LLM failure.
+// clarifying question to send back to the user. The runtime supplies facts;
+// the final wording must come from the model and active SOUL.
 
 import type {
   ClarificationQuestion,
@@ -14,6 +14,7 @@ import { buildRunRequestCandidates } from '../context-candidates.js';
 import { prepareModelRequest, recordProviderUsage } from '../model-observability.js';
 import { appendSystemPromptAddons, buildUserFacingVoiceAddon } from '../profile-prompt.js';
 import { textOf } from './_shared.js';
+import { acceptUniqueUserFacingReply, type ReplyRewriteInput } from '../user-facing-reply.js';
 
 export interface AskUserStageDeps {
   llm: LlmClient;
@@ -23,24 +24,35 @@ export interface AskUserStageDeps {
 /**
  * Factory: creates an ask_user stage.
  *
- * DECIDE-authored clarification requests already contain model-written copy,
- * so they are rendered without another call. Runtime-generated requests get
- * one bounded composition call when a provider is available; the deterministic
- * renderer remains the explicit degraded fallback for offline/error cases.
+ * Structured clarification facts may originate in DECIDE or Runtime, but the
+ * final text shown to the user is always composed in this stage by the model.
  */
 export function createAskUserStage(deps?: AskUserStageDeps) {
   return async function askUserStage(ctx: RunContext): Promise<StageResult> {
+    ctx.reply = undefined;
+    ctx.replyProvenance = undefined;
     const request = ensureClarificationRequest(ctx);
     const fallback = renderClarificationMessage(request);
-    const existingPrompt = request.prompt?.trim();
-    const question = existingPrompt
-      || (request.copySource === 'model' || !deps
-        ? fallback
-        : await composeClarificationMessage(deps, ctx, request, fallback));
+    if (!deps) {
+      ctx.lastError = { stage: 'ask_user', message: 'user-facing clarification generation requires an LLM.' };
+      return { stage: 'ask_user', next: 'exit', ok: false, error: ctx.lastError.message };
+    }
 
-    request.prompt = question;
-    ctx.clarificationRequest = request;
-    ctx.reply = question;
+    try {
+      const question = await acceptUniqueUserFacingReply(
+        ctx,
+        'ask_user',
+        await composeClarificationMessage(deps, ctx, request, fallback),
+        (input) => composeClarificationMessage(deps, ctx, request, fallback, input),
+      );
+      request.prompt = question;
+      request.copySource = 'model';
+      ctx.clarificationRequest = request;
+      ctx.reply = question;
+    } catch (error) {
+      ctx.lastError = { stage: 'ask_user', message: `user-facing clarification generation failed: ${(error as Error).message}` };
+      return { stage: 'ask_user', next: 'exit', ok: false, error: ctx.lastError.message };
+    }
     return {
       stage: 'ask_user',
       next: 'finalize',
@@ -59,16 +71,21 @@ async function composeClarificationMessage(
   ctx: RunContext,
   request: ClarificationRequest,
   fallback: string,
+  rewrite?: ReplyRewriteInput,
 ): Promise<string> {
+  const system = appendSystemPromptAddons(
+    `You are the ASK_USER stage of a hard-control-flow agent. Compose one concise, actionable clarification message for the user from the supplied runtime facts. Return only the message text, with no preamble or JSON. Preserve every option and required decision; do not add facts, risks, permissions, paths or claims that are not present in the input.`,
+    buildUserFacingVoiceAddon(ctx),
+    rewrite
+      ? `The prior API-generated response exactly repeats a previously published LS reply. Generate the clarification again with a genuinely different opening and sentence structure while preserving every runtime fact. Do not mention the regeneration. Prior response:\n${rewrite.generatedReply}\nRecent replies to avoid repeating exactly:\n${rewrite.avoidReplies.map((reply, index) => `${index + 1}. ${reply}`).join('\n')}`
+      : undefined,
+  );
   const rawRequest = {
     model: deps.model,
     messages: [
       {
         role: 'system',
-        content: appendSystemPromptAddons(
-          `You are the ASK_USER stage of a hard-control-flow agent. Compose one concise, actionable clarification message for the user from the supplied runtime facts. Return only the message text, with no preamble or JSON. Preserve every option and required decision; do not add facts, risks, permissions, paths or claims that are not present in the input.`,
-          buildUserFacingVoiceAddon(ctx),
-        ),
+        content: system,
       },
       {
         role: 'user',
@@ -76,43 +93,35 @@ async function composeClarificationMessage(
           originalRequest: request.originalRequest,
           blockingReason: request.blockingReason,
           questions: request.questions,
+          runtimeDraft: fallback,
         }),
       },
     ],
-    temperature: 0.45,
+    temperature: rewrite ? 0.75 : 0.65,
     max_tokens: 500,
     signal: ctx.signal,
   } satisfies ChatRequest;
 
-  try {
-    const prepared = prepareModelRequest(
-      ctx,
-      'ask_user',
-      rawRequest,
-      buildRunRequestCandidates(ctx, 'ask_user', rawRequest.messages, {
-        history: [],
-        primaryUserKind: 'workflow_state',
-      }),
-    );
-    const response = await deps.llm.chat(prepared);
-    recordProviderUsage(ctx, prepared, response.usage);
-    if (response.usage) {
-      ctx.usage = {
-        promptTokens: response.usage.promptTokens,
-        completionTokens: response.usage.completionTokens,
-        totalTokens: response.usage.totalTokens ?? response.usage.promptTokens + response.usage.completionTokens,
-        source: 'provider',
-      };
-    }
-    const content = response.content.trim();
-    if (content) {
-      request.copySource = 'model';
-      return content;
-    }
-  } catch {
-    // Keep the request actionable when the optional composition call fails.
+  const prepared = prepareModelRequest(
+    ctx,
+    'ask_user',
+    rawRequest,
+    buildRunRequestCandidates(ctx, 'ask_user', rawRequest.messages, {
+      history: [],
+      primaryUserKind: 'workflow_state',
+    }),
+  );
+  const response = await deps.llm.chat(prepared);
+  recordProviderUsage(ctx, prepared, response.usage);
+  if (response.usage) {
+    ctx.usage = {
+      promptTokens: response.usage.promptTokens,
+      completionTokens: response.usage.completionTokens,
+      totalTokens: response.usage.totalTokens ?? response.usage.promptTokens + response.usage.completionTokens,
+      source: 'provider',
+    };
   }
-  return fallback;
+  return response.content;
 }
 
 function ensureClarificationRequest(ctx: RunContext): ClarificationRequest {

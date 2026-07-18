@@ -16,6 +16,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type {
   Message,
+  ReplyProvenance,
   ToolCall,
   ToolResult,
   RunStatus,
@@ -32,6 +33,8 @@ import type {
   ExecutionEvidence,
   MemoryIntentDecisionRecord,
   RuntimeMemoryKnownState,
+  RuntimeControlSnapshot,
+  RuntimeEventQueueSnapshot,
   SessionRunSummary,
   VersionCheckpointSummary,
 } from '@littlesheep/types';
@@ -62,6 +65,7 @@ export interface ExecutionLog {
   model: string;
   inboundText: string;
   reply: string;
+  replyProvenance?: ReplyProvenance;
   error?: string;
   trace: StageTraceEntry[];
   taskExecution?: TaskExecutionResult;
@@ -75,6 +79,10 @@ export interface ExecutionLog {
   resolvedRunConfig?: ResolvedRunConfig;
   modelRequests?: ModelRequestSnapshot[];
   contextSnapshots?: ContextSnapshot[];
+  runtimeControl?: RuntimeControlSnapshot;
+  runtimeEventQueue?: RuntimeEventQueueSnapshot;
+  /** Links an interrupted/recoverable run to its durable runtime checkpoint. */
+  runCheckpointId?: string;
   /** Two process-memory samples plus a coarse, non-identifying device class. */
   runtimeResources?: RuntimeResourceObservation;
   versionCheckpoint?: VersionCheckpointSummary;
@@ -98,6 +106,7 @@ export interface ExecutionLogInput {
   model: string;
   inboundText: string;
   reply: string;
+  replyProvenance?: ReplyProvenance;
   error?: string;
   trace: StageTraceEntry[];
   taskExecution?: TaskExecutionResult;
@@ -111,6 +120,9 @@ export interface ExecutionLogInput {
   resolvedRunConfig?: ResolvedRunConfig;
   modelRequests?: ModelRequestSnapshot[];
   contextSnapshots?: ContextSnapshot[];
+  runtimeControl?: RuntimeControlSnapshot;
+  runtimeEventQueue?: RuntimeEventQueueSnapshot;
+  runCheckpointId?: string;
   runtimeResources?: RuntimeResourceObservation;
   versionCheckpoint?: VersionCheckpointSummary;
   messages: Message[];
@@ -173,6 +185,7 @@ export class ExecutionLogStore {
       model: input.model,
       inboundText: input.inboundText,
       reply: input.reply,
+      replyProvenance: input.replyProvenance,
       error: input.error,
       trace: input.trace,
       taskExecution: input.taskExecution,
@@ -186,6 +199,9 @@ export class ExecutionLogStore {
       resolvedRunConfig: input.resolvedRunConfig,
       modelRequests: input.modelRequests,
       contextSnapshots: input.contextSnapshots,
+      runtimeControl: input.runtimeControl,
+      runtimeEventQueue: input.runtimeEventQueue,
+      runCheckpointId: input.runCheckpointId,
       runtimeResources: input.runtimeResources,
       versionCheckpoint: input.versionCheckpoint,
       resourceIds: resources.ids.length > 0 ? resources.ids : undefined,

@@ -43,7 +43,7 @@ export interface ClarificationRequest {
   /** Original missing-info labels from demand calibration. */
   missingInfo?: string[];
   questions: ClarificationQuestion[];
-  /** Whether the natural-language copy came from the model or a runtime fallback. */
+  /** Provenance of the structured draft. A runtime fallback must still pass through ASK_USER before display. */
   copySource?: 'model' | 'runtime_fallback';
   /** Exact text shown to the user after ASK_USER renders the request. */
   prompt?: string;

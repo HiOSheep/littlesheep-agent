@@ -19,11 +19,13 @@ import { AssistantTurnActivity, ChatMessage, LiveToolEvent } from './types'
 
 export function AssistantTurnMessage({
   message,
+  messageKey,
   now,
   onOpenFile,
   onToggleActivity,
 }: {
   message: ChatMessage
+  messageKey?: string
   now: number
   onOpenFile: (path: string) => void
   onToggleActivity: () => void
@@ -31,7 +33,7 @@ export function AssistantTurnMessage({
   const activity = message.activity
   if (!activity) {
     return (
-      <div className="message assistant">
+      <div className="message assistant" data-message-key={messageKey}>
         {message.text ? <Markdown text={message.text} /> : <span className="loading">思考中...</span>}
         {(message.trace || message.toolCalls) && (
           <TraceCard trace={message.trace} toolCalls={message.toolCalls} durationMs={message.durationMs} onOpenFile={onOpenFile} />
@@ -53,7 +55,7 @@ export function AssistantTurnMessage({
     : '正在判断目标与范围'
 
   return (
-    <section className={`assistant-turn ${activity.status} ${collapsed ? 'collapsed' : ''}`}>
+    <section className={`assistant-turn ${activity.status} ${collapsed ? 'collapsed' : ''}`} data-message-key={messageKey}>
       <button
         type="button"
         className="assistant-turn-header"
@@ -99,7 +101,11 @@ export function AssistantTurnMessage({
         </div>
       </div>
       <div className="message assistant assistant-final">
-        {message.text ? <Markdown text={message.text} /> : <span className="loading task-running-text is-running">正在执行...</span>}
+        {message.text
+          ? <Markdown text={message.text} />
+          : activity.error
+            ? <span className="run-status-error">{activity.error}</span>
+            : <span className="loading task-running-text is-running">正在执行...</span>}
         {message.artifacts && message.artifacts.length > 0 && (
           <MessageFileStrip files={message.artifacts} label="产出成果" onOpenFile={onOpenFile} />
         )}
@@ -330,6 +336,7 @@ export function ActivityCommandItem({
 export function historyMessageToChatMessage(message: HistoryMessage): ChatMessage {
   const artifacts = buildArtifactsFromLiveTools(message.activity?.tools)
   return {
+    id: message.id,
     role: message.role,
     text: message.text,
     timestamp: message.timestamp,

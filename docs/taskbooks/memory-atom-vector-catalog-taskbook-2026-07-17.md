@@ -1,8 +1,8 @@
 # LittleSheep 原子记忆与内置向量目录任务书 2026-07-17
 
-最后更新：2026-07-17 15:28:13
-版本：v3.24
-状态：阶段 0-21 的 Runtime 工程实现、正式数据迁移、本地向量、动态路由、独立任务相关度、D1 精确候选召回、Memory v3 专属相关性门、动态 working set 与反馈演化门、多轮指代/否定条件/任务转向门、压缩后任务连续性门、关系引导的一跳 Atom 选择门、写入认识边界门、Atom 相关性与关系调和门、TaskBook 驱动的二次注入调和门、跨持久记忆/语义缓存的连续 activation、前端三层只读投影、真实负载质量/成本/资源观测、初始 KnownState、显式 Atom 使用反馈、500 Atom 确定性规模门、256 Atom 真实 BGE 恢复门、Memory v2 写入退役和结构化 daily 压缩提升均已完成；真实 Provider 与达到校准门槛的长期真实负载验收仍未完成
+最后更新：2026-07-17 23:33:48
+版本：v3.30
+状态：阶段 0-26 的 Runtime 工程实现、正式数据迁移、本地向量、动态路由、独立任务相关度、D1 精确候选召回、Memory v3 专属相关性门、动态 working set 与反馈演化门、多轮指代/否定条件/任务转向门、压缩后任务连续性门、关系引导的一跳 Atom 选择门、写入认识边界门、Atom 相关性与关系调和门、TaskBook 驱动的二次注入调和门、跨持久记忆/语义缓存的连续 activation、前端三层只读投影、真实负载质量/成本/资源观测、初始 KnownState、显式 Atom 使用反馈、500 Atom 确定性规模门、256 Atom 真实 BGE 恢复门、Memory v2 写入退役、结构化 daily 压缩提升、模型提案的有界重复 Atom 合并闸门、显式关系驱动的叶子 Atom 跨 parent 重组、有证据约束的同陈述内容修订、有证据约束的事实纠正/冲突替代，以及有证据约束的非叶子子树重组均已完成首版工程闭环；真实 Provider 与达到校准门槛的长期真实负载验收仍未完成
 
 ## 1. 目标
 
@@ -46,7 +46,7 @@
 6. 用户、外部资料和模型产生的事实主张、建议、偏好与决定尚无统一 epistemic schema，存在把“有人建议”误当成“事实成立”的风险。
 7. 实体身份、所有权边界和关系尚未形成统一 schema；名称、路径、向量相似或共现可能被误当成同一对象或已验证关系。
 
-正式运行路径现已切换到“对话原始来源 + 可演化 Atom 投影 + 层级导航 + 完全本地向量目录”。阶段 0-21、正式迁移、Catalog v9 工程契约、初始 working set、KnownState、动态路由、D1/分支内深搜相关性门、动态反馈演化、多轮任务语义门、压缩后任务连续性门、关系引导的一跳 Atom 选择、运行时认识元数据决策、自动实体/关系投影、提交后关系激活、冲突/替代调和、TaskBook 驱动的二次 Atom 选择、持久记忆/语义缓存连续 activation、前端三层只读投影、真实负载质量/成本/资源观测、投影恢复、隔离 soak、真实本地 BGE 恢复、旧双权威写入退役和结构化 daily 提升均已完成。当前未完成的不是文件位置、迁移、本地反馈、基础多轮指代、压缩摘要回退、关系候选发现、写入认识分类、关系调和、结构化任务二次注入、动态 activation、daily 一对一提升或观测能力，而是真实 Provider 驱动的新会话与 EVOLVE/CAPTURE、真实长任务、复杂多 Atom 语义调和和达到校准门槛的持续用户负载验收。
+正式运行路径现已切换到“对话原始来源 + 可演化 Atom 投影 + 层级导航 + 完全本地向量目录”。阶段 0-26、正式迁移、Catalog v9 工程契约、初始 working set、KnownState、动态路由、D1/分支内深搜相关性门、动态反馈演化、多轮任务语义门、压缩后任务连续性门、关系引导的一跳 Atom 选择、运行时认识元数据决策、自动实体/关系投影、提交后关系激活、冲突/替代调和、TaskBook 驱动的二次 Atom 选择、持久记忆/语义缓存连续 activation、前端三层只读投影、真实负载质量/成本/资源观测、投影恢复、隔离 soak、真实本地 BGE 恢复、旧双权威写入退役、结构化 daily 提升、重复 Atom 合并闸门、显式关系驱动的叶子 Atom 跨 parent 重组、同陈述内容修订、事实纠正/冲突替代和有界非叶子子树重组均已完成首版工程闭环。当前未完成的不是文件位置、迁移、本地反馈、基础多轮指代、压缩摘要回退、关系候选发现、写入认识分类、结构化任务二次注入、动态 activation、daily 一对一提升、重复投影合并、叶子层级修正、同陈述澄清、有证据事实替代或有界子树移动，而是真实 Provider 驱动的新会话与 EVOLVE/CAPTURE、真实长任务、纠正/子树提案质量、跨陈述语义重写和达到校准门槛的持续用户负载验收。
 
 ## 3. Memory v3 数据模型
 
@@ -644,15 +644,15 @@ V3 backend 激活后，对话原始来源由 Runner 从用户输入和对话区�
 - `MemoryTier`、旧 `VectorTier`、旧 archive 文件搜索和兼容 Vector 实现仅用于读取或验证既有 v2 数据。Runner 注册的 `memory_search`/`memory_deep_search` 继续由 Memory v3 Repository 提供；兼容 adapter 不创建摘要、向量或 Atom；
 - 仓库卫生门禁止七个旧文件、六个主动符号、Memory Core 的 Config/LLM/Vector 依赖和 CLI Vector project reference 回流；旧命令名称只允许出现在退役识别、错误提示和回归测试中；
 - 正式用户数据中的旧 archive index 与 vector database 没有删除、迁移或改写。未来 daily 压缩、提升或蒸馏必须先形成带来源、认识状态和层级的结构化 Atom 提案，再经过统一去重、调和、审计、提交和恢复闸门；
-- 对话区中真正给用户看的 Agent 回复、澄清、任务说明、步骤摘要、验证说明和交付表达仍由 LLM 结合 `SOUL.md`、用户语言与 Runtime 事实生成或复用；Renderer 只呈现文案和机器状态，不能自行代写 Agent 人格内容。模型不可用时才使用明确的确定性降级文案。
+- 对话区中真正给用户看的 Agent 回复、澄清、任务说明、步骤摘要、验证说明和交付表达必须由真实 LLM 调用结合 `SOUL.md`、用户语言与 Runtime 事实生成；同一文案只能在同一 UI 回合的更新、日志和持久化中复用，不能作为新的重复消息发送。Renderer 只呈现通过重复检查的文案和机器状态，不能自行代写 Agent 人格内容；模型不可用、空回复或重复改写耗尽时只呈现 Runtime 错误/状态。
 
-验证证据：`check:repo` 为 33/33；CLI、参数解析和 `SOUL.md` 表达边界定向测试为 25/25；完整测试为 176 个文件、1299 passed、1 skipped；27 个 workspace typecheck、Electron main/preload/renderer build、CLI 依赖构建和应用恢复检查通过。真实 Node 子进程使用故意损坏的隔离配置执行 `memory archive --force`，退出码为 2，数据目录哈希前后一致且未进入 Provider/Runner 路径。
+验证证据：阶段 20 验收时的基线为 `check:repo` 33/33、180 个测试文件/1317 passed/1 skipped；当前完整复跑已更新为 188 个测试文件/1361 passed/1 skipped。CLI、参数解析和 `SOUL.md` 表达边界定向测试保持通过；27 个 workspace typecheck、Electron main/preload/renderer build、CLI 依赖构建和应用恢复检查通过。真实 Node 子进程使用故意损坏的隔离配置执行 `memory archive --force`，退出码为 2，数据目录哈希前后一致且未进入 Provider/Runner 路径。
 
 验收结论：阶段 20 完成。Memory v3 已成为唯一生产写入路径，旧 archive/vector 只读兼容不再具有提交权；正式用户旧数据未改写。结构化 daily 压缩/提升本身属于下一阶段，不在本阶段伪装完成。
 
 ### 阶段 21：结构化 daily 压缩与提升
 
-状态：**已完成首版确定性一对一提升闭环；来源、范围、失败保留、幂等恢复和硬上限均已接通；复杂多 Atom 语义合并仍明确留在后续阶段**。
+状态：**已完成首版确定性一对一提升闭环；来源、范围、失败保留、幂等恢复和硬上限均已接通；重复投影合并进入阶段 22，更复杂的内容重写与层级重组仍留在后续阶段**。
 
 - `CompactionSummaryV2` 记录压缩覆盖消息中的最近 `sourceRunIds`，最多 64 个，并用 `sourceRunIdsTruncated` 明示更早来源是否被省略；旧摘要缺少新字段时继续兼容读取，字段存在时必须通过类型、非空和数量校验；
 - Memory Repository 提供 Catalog 支持的 `listRecentNodes()`，单次查询硬上限为 256；consolidation 每次最多处理 8 个 Atom，不全库扫描、不建立轮询任务，也不在应用空闲时静默遍历用户数据；
@@ -663,9 +663,86 @@ V3 backend 激活后，对话原始来源由 Runner 从用户输入和对话区�
 - Runner 在会话压缩摘要完成持久化和资源登记后触发 consolidation。真实集成测试确认 daily Atom 被提升为 project T2、目标保留 `capture + maintenance` 来源阶段、源 Atom 成功归档，且整轮模型请求仍为 7 次，没有为维护流程增加 LLM 调用；
 - 本阶段的维护流程不负责生成用户可见文案。需要向用户说明记忆变化时，Runtime 提供真实状态与证据，LLM 结合 `SOUL.md` 和用户语言构思表达，Renderer 只负责呈现与渐进披露。
 
-验证证据：Session compaction 6/6、daily consolidation 4/4、稳定事件/审计 1/1、写入认识边界 6/6、真实 Runner integration 7/7；本轮补强后的跨模块定向回归为 11 个测试文件、78/78，Session、Memory Tree、Harness 和 Runner 定向 typecheck 通过。完整仓库质量门将在本阶段收尾时复跑并以实际数字更新。
+验证证据：Session compaction 6/6、daily consolidation 4/4、稳定事件/审计 1/1、写入认识边界 6/6、真实 Runner integration 7/7；阶段 21 定向回归和本轮完整质量门均保持通过；当前 `check:repo` 33/33、全量测试 188 文件/1361 passed/1 skipped、全量 typecheck、build、应用恢复检查和桌面窗口启动均通过。
 
 验收结论：阶段 21 完成。版本化压缩摘要现在可以有界、可追溯地驱动 daily Atom 的保守提升，同时保持原始对话来源不变、失败不丢源、零额外模型调用和可恢复提交。后续若需要多个 Atom 的语义去重、合并或层级重组，只允许由模型提出结构化提案，Runtime 校验来源、认识边界、作用域、revision、关系和回归条件后提交，不允许模型直接改写存储。
+
+### 阶段 22：模型提案的有界重复 Atom 调和
+
+状态：**已完成 duplicate-projection 合并闸门；模型提案、KnownState 准入、Runtime 校验、幂等重试和部分失败保留均已接通；任意内容重写、跨 parent 调层级和真实 Provider 提案质量仍未开放**。
+
+- EVOLVE 输出契约升级为 `evolution-proposal.v2`，新增独立 `reconciliations` 数组。普通 `memories[].intent=merge` 不再被当作新写入或相似写入提交，而是明确延期到 Atom 调和协议；
+- 单轮最多接收 2 个提案；每个提案固定一个 canonical target 和最多 4 个 source。模型只能从本轮 `KnownState` 中引用已 adopted、未冲突、未过期且 revision 完全一致的 D2 Atom，不能凭索引标题或全库扫描提出合并；
+- 模型只负责判断“这些投影是否表达同一陈述”并说明理由。Runtime 重新校验 branch、scope、scopeKey、parent、domain、statement kind、epistemic/resolution、authority、asserted source、revision、确定性语义锚点，以及连接两组实体的 `conflicts-with`/`replaces` 关系；任一边界不满足即拒绝；
+- 提交继续复用 Memory v3 的原子 merge mutation、投影变更记录、operation journal 和 commit receipt。目标 wording、confidence、verified usefulness 与事实状态不被模型重写；source 保留正文并进入 tombstone，来源和证据只做有界并集；
+- 多 source 以同一个有界提案顺序提交。每次成功都会推进 target revision；进程或存储在中途失败时返回 `partial`，未提交 source 保持 active。重试时根据 `source.merge.intoAtomId` 和 revision 识别已完成部分，不重复提交，也不回滚已落盘证据；
+- 调和不会新增独立 LLM 调用、向量查询、后台轮询或全库扫描；它只复用本来就会发生的 EVOLVE 调用和本轮已介入 Atom。模型提案与 Runtime 的 committed/deferred/rejected/partial/noop 结果写入同一有界 `MemoryIntentDecisionRecord` 审计；
+- 协议、校验和编排分别位于 `memory-reconciliation-contracts.ts`、`memory-reconciliation-validation.ts`、`memory-reconciliation.ts` 与 `stages/evolve/reconciliation.ts`，核心组合文件保持在仓库维护基线内。
+
+验证证据：阶段 22 的 Memory Tree 与 Harness 定向回归覆盖多源合并、重复执行幂等、第二源瞬时失败后的部分结果和重试、无语义锚点拒绝、冲突/替代关系阻断、普通 merge intent 延期、KnownState adopted/revision 门和 Runtime 审计；本轮完整质量门为 `check:repo` 33/33、全量测试 188 文件/1361 passed/1 skipped、27 个 workspace typecheck、Electron build、应用恢复检查和桌面快捷方式启动均通过。
+
+验收结论：阶段 22 的“重复投影合并”工程边界完成。LS 现在允许模型提出、但不允许模型直接执行 Atom 合并；Runtime 只在本轮已采用证据内做有界、可恢复的结构调和。下一步仍需真实 Provider 判断质量、错误提案率、长期收益和更复杂的层级/内容重组方案，不能把本阶段等同于任意语义自治整理。
+
+### 阶段 23：显式关系驱动的叶子 Atom 跨 parent 重组
+
+状态：**已完成首版叶子层级重组闭环；模型提案、KnownState 准入、关系方向与强度校验、叶子/作用域边界、原子提交、重启恢复、幂等重试和超额提案审计均已接通；非叶子子树移动由阶段 26 的独立协议治理**。
+
+- EVOLVE 契约升级为 `evolution-proposal.v3`，新增独立 `reparents` 数组。普通 `memories[].intent=move` 只能进入延期审计，不能旁路写入；真正的层级调整必须携带 Atom、目标 parent、当前 revision、关系 id 和具体理由；
+- 单轮最多提交 1 个 reparent 提案。第 2 个及之后的提案不静默丢弃，而是在有界数量内逐项写入 `rejected` 决策；超出审计上限的尾部另写一条有界拒绝记录，防止模型输出规模转化为无界内存或审计增长；
+- Atom 与目标 parent 必须是本轮 adopted、当前 revision、未冲突、未过期的 D2/D3 KnownState 引用；二者必须保持 branch、scope 和 scopeKey 一致；只允许移动没有 active child 的叶子 Atom，避免模型在不了解隐藏子树时搬迁整棵层级；
+- Runtime 只接受方向为 Atom 实体 → parent 实体的 active、resolved 且有来源证据的 `belongs-to` 或 `derived-from` 关系，最低 confidence 为 0.75、relevance 为 0.5。名称、路径、向量相似、共现和文本相似不能替代关系证据；
+- 提交复用 Memory v3 的 move mutation、projection record、operation journal、commit receipt 和 revision precondition。提交成功后 Catalog、Atom、关系邻域和审计保持同源；提交响应丢失时，下一次相同提案识别已完成状态并返回 noop，不重复移动；
+- 本阶段不新增 LLM 调用、向量查询、后台轮询或全库扫描。模型只负责提出语义关系，Runtime 独立决定是否满足安全边界；原始对话来源仍不可改写，Atom 只是可修订投影；
+- 面向用户的记忆变化说明、任务过程、验证结果和交付表达继续由 LLM 结合运行时 `SOUL.md` 与用户语言构思。Runtime 只提供事实、状态、权限、路径、进度和证据，Renderer 只呈现并执行渐进式披露。
+
+验证证据：Harness、纯层级服务和真实 V3 Backend 重启集成定向回归共 3 个文件、18/18 通过；覆盖正常移动、已提交重试、响应丢失恢复、非叶子拒绝、关系方向/强度拒绝、跨 scope 拒绝、D1 拒绝、超额提案拒绝审计、真实 relation neighborhood、Catalog/Atom revision、投影记录和重启后一致性。最终质量门为 `check:repo` 33/33、全量测试 188 文件/1361 passed/1 skipped、全工作区 typecheck 27/27、build 和 `verify:app-recovery` 通过。
+
+验收结论：阶段 23 完成了“有明确语义关系时的叶子层级纠正”，没有把模型提案权扩大为任意记忆重写权。后续应先用真实 Provider 和长期负载评估提案准确率、误拒率与收益，再决定是否开放更复杂的内容修订或子树重组。
+
+### 阶段 24：有证据约束的 Atom 同陈述内容修订
+
+状态：**已完成首版 same-claim-refinement 闭环；模型提案、完整 D3 KnownState 准入、当前 run 验证证据、语义/硬锚点边界、原子提交、响应丢失恢复、幂等重试和超额提案审计均已接通。阶段 24 当时不包含事实纠正、冲突替代、跨陈述扩写和任意语义重写；其中事实纠正/冲突替代已由阶段 25 的独立协议补齐**。
+
+- EVOLVE 输出契约升级为 `evolution-proposal.v4`，新增独立 `revisions` 数组和 `revise` 记忆意图。普通 `memories[].intent=revise` 只能进入延期审计，不能旁路修改 Atom；单轮最多接受 1 个内容修订提案，超额项会形成有界拒绝记录；
+- 候选必须来自本轮 adopted、当前 revision、未冲突、未截断的完整 D3 KnownState，并且当前 run 已有通过的 VERIFY 记录和可追溯 Runtime 证据。模型必须复制准确 Atom id/revision，不能从索引标题、向量相似或全库扫描猜测目标；
+- 首版只允许同时替换 `title`、`summary`、`content` 和 `retrievalKeys`，用于同一陈述的澄清、规范化和去冗余。稳定 Atom id、对话 `sourceRefs`、证据、实体/关系、branch/scope/parent、confidence、importance、epistemic/resolution 和生命周期状态保持不变；
+- Runtime 独立校验原陈述词项保留率、新文本精度、检索锚点、长度扩张和路径、URL、版本、数字等硬锚点。修订既不能删除原硬锚点，也不能引入无证据的新硬锚点；陈述本身错误、冲突或被替代时必须进入独立纠正/冲突流程，不能借内容润色静默覆盖历史；
+- 提交复用 Memory v3 的原子 update mutation、投影变更记录、operation journal、commit receipt、Catalog/FTS 同步和向量重建状态。提交响应丢失后，相同提案会依据新 revision 与投影内容识别已提交结果并返回 `noop`；
+- 本阶段不新增独立 LLM 调用、向量搜索、后台轮询或全库扫描，只复用 EVOLVE 已有调用和本轮 KnownState。面向用户的记忆变化说明、任务过程、验证结果和交付表达必须由真实 LLM 调用结合 `SOUL.md`、用户语言和 Runtime 事实构思，并通过统一来源与持久化会话级精确去重；Renderer 只负责稳定状态、排版和渐进式披露，不能把固定模板冒充 Agent 人格。
+
+验证证据：阶段 24 的 Harness、纯修订服务和真实 V3 Backend 重启集成共 3 个测试文件、22/22 通过；覆盖正常修订、重复调用 noop、响应丢失恢复、revision 冲突、无关语义拒绝、硬锚点删除/新增拒绝、D2/截断 D3 拒绝、单轮超额提案审计，以及 Atom、Catalog、投影记录和 commit receipt 的重启一致性。最终质量门为 `check:repo` 33/33、全量测试 188 文件/1361 passed/1 skipped、全工作区 typecheck 27/27、完整 build 和 `verify:app-recovery` 通过；桌面快捷方式已刷新并完成窗口启动验证。
+
+验收结论：阶段 24 允许模型在严格证据与 Runtime 边界内改善同一 Atom 投影的清晰度，但没有授予模型改写事实、改变认识状态或直接操作存储的权力。下一步应以真实 Provider 和长期负载评估修订提案的准确率、误拒率、重复率与检索收益，再决定事实纠正或更复杂语义重组协议。
+
+### 阶段 25：有证据约束的事实纠正与冲突替代
+
+状态：**已完成首版事实纠正/冲突替代工程闭环；旧 Atom 保留、既有 replacement 投影、完整 D3 KnownState 准入、当前 run 验证证据、显式关系门、原子 supersession、管理读取、响应丢失恢复、幂等重试和超额提案审计均已接通；真实 Provider 的提案质量和跨陈述扩写仍待验收**。
+
+- EVOLVE 输出契约升级为 `evolution-proposal.v5`，新增独立 `corrections` 数组和 `propose_atom_correction` 决策。普通 `memories[].intent=conflict/invalidate` 仍只能进入延期审计，不能旁路修改 Atom；单轮最多接受 1 个纠正提案，额外提案形成有界拒绝记录；
+- 提案只能引用两个当前已存在的 Atom：replacement 必须是本轮 adopted、当前 revision、未冲突且未截断的完整 D3；被替代 Atom 必须是本轮 adopted 或 conflicted、当前 revision 且完整 D3。两者必须保持 branch、scope、scopeKey、parent 与 statement kind 一致，模型不能在纠正提案内创建新 Atom；
+- 当前 run 必须有通过的 VERIFY 记录和 Runtime evidence。replacement 还必须具备足够权威、置信与可追溯来源；名称、共现、文本相似或向量相似不能证明纠正关系；
+- Runtime 只接受方向正确、active、resolved、有来源证据且达到强度门槛的 `replaces` 或 `conflicts-with` 关系。`evidence-backed-correction` 必须使用 `replaces`；`conflict-replacement` 可以使用满足同等证据门的 `conflicts-with`；
+- 提交复用 Memory v3 的 supersede 管理事务、投影变更记录、operation journal、commit receipt、revision precondition 和 Catalog 同步。旧 Atom 的正文、来源、证据与历史不被覆盖，只新增指向 replacement 的 supersession 投影并标记为 `superseded`；普通检索继续过滤旧投影，管理与恢复读取可以定位它；
+- 提交响应丢失后，相同提案可以读取已 superseded Atom 并返回 `noop`，不会重复提交。该路径不新增独立 LLM 调用、向量查询、后台轮询或全库扫描，只复用 EVOLVE 的结构化提案和本轮 KnownState；
+- 用户真正看到的记忆变化说明、执行过程、验证结果和交付表达，每条新消息都必须在本轮实时调用当前 Provider API，由 LLM 结合 `SOUL.md`、用户语言和 Runtime 事实生成。Runtime 不生成候选文案、不从候选池选择，也不在模型不可用时伪造正常 Agent 回复。
+
+验证证据：阶段 25 的 Harness、纯纠正服务和真实 V3 Backend 重启集成专项共 17/17 通过；相邻 Memory/Harness/Runner 回归 76/76 通过，覆盖正常 supersede、conflict replacement、权威/证据/关系方向与强度拒绝、revision 冲突、跨边界拒绝、单轮上限、普通 intent 延期、真实 Catalog/投影记录、响应丢失与 noop 恢复。当前完整质量门为 `check:repo` 33/33、188 个测试文件/1361 passed/1 skipped、全工作区 typecheck 27/27、完整 build 和 `verify:app-recovery` 通过；桌面快捷方式已刷新，并通过该快捷方式确认 `LittleSheep` 窗口可见。
+
+验收结论：阶段 25 允许模型在严格证据与 Runtime 关系边界内声明“哪个既有投影替代哪个旧投影”，但不允许覆盖历史、直接创建事实、跨作用域纠正或绕过验证。工程闭环已经建立；下一步重点是用真实 Provider 和长期负载评估提案准确率、错误替代率、检索收益和纠正后的任务质量。
+
+### 阶段 26：有证据约束的非叶子子树重组
+
+状态：**已完成首版非叶子子树重组工程闭环；Catalog 有界后代统计、完整 D3 KnownState 准入、当前 run VERIFY/evidence 门、方向正确关系门、同 branch/scope 边界、128 active descendant 自动上限、只移动子树根、原子提交、重启恢复、响应丢失 noop 和超额提案审计均已接通；真实 Provider 的提案质量、超大子树人工治理和长期负载收益仍待验收**。
+
+- EVOLVE 契约当前升级为 `evolution-proposal.v6`，新增独立 `subtreeMoves` 数组和 `propose_atom_subtree_move` 决策。普通 `memories[].intent=move` 仍只能进入延期审计，叶子 `reparents` 仍使用独立协议，二者不能旁路子树服务；
+- 子树根与目标 parent 必须是本轮 adopted、当前 revision、未冲突、未过期、未截断的完整 D3 KnownState 引用，且保持 branch、scope 和 scopeKey 一致。Runtime 通过方向为根实体 → parent 实体的 active、resolved、有证据 `belongs-to`/`derived-from` 关系证明语义归属；名称、路径、文本相似、向量距离和共现不能替代关系证据；
+- V3 Catalog 递归统计 active descendants，查询以 `MAX_SUBTREE_ACTIVE_DESCENDANTS + 1` 截断；子树根必须至少有一个 active descendant，超过 128 个 active descendants 自动拒绝，不能把未知或无界的影响范围交给模型自动搬迁；
+- 提交复用 Memory v3 的 move mutation、projection record、operation journal、commit receipt 和 revision precondition，只修改子树根 `parentId`。后代 Atom 的正文、父链、revision、原始对话来源、关系和生命周期保持不变；Storage 层继续负责循环与 tombstone parent 检查；
+- 响应丢失后，相同提案依据根 parent/revision 和有界后代检查识别已提交状态并返回 `noop`，不重复移动；本阶段不新增 LLM 调用、向量查询、后台轮询或全库扫描；
+
+验证证据：Catalog、纯子树服务、真实 V3 Backend 重启集成和 EVOLVE 专项共 4 个文件、27/27 通过；相邻 Memory/Harness/Runner 回归 13 个文件、85/85 通过，覆盖非叶子正常移动、后代保持、超限/叶子/缺少检查拒绝、关系方向拒绝、D3/VERIFY/单轮上限、普通 move intent 不旁路、真实 Catalog/投影记录、重启和响应丢失 noop 恢复。完整质量门待本轮最后执行后更新。
+
+验收结论：阶段 26 把“可证明的非叶子语义归属修正”开放为独立、可恢复且有硬规模上限的 Runtime 能力；它不是任意树编辑器，也不代表 LS 已经能在真实 Provider 长期负载下自动可靠重组所有记忆。
 
 ## 8. 已确认决策
 
@@ -703,14 +780,19 @@ V3 backend 激活后，对话原始来源由 Runner 从用户输入和对话区�
 | D30 | 压缩连续性 | 版本化会话摘要只在真实指代且近期消息缺少任务锚点时作为有界回退；当前请求和近期明确目标优先，任务转向阻断旧摘要。摘要不替代原始会话，也不因文件位置获得注入权重 |
 | D31 | 关系引导注入 | 关系只帮助发现和排序邻接候选；候选仍须独立通过 task relevance、Atom 状态、scope、证据和预算。必要强关系可在通过独立任务门后进入首次 working set，检索路径和关系证据必须结构化记录 |
 | D32 | 写入认识权 | 模型只描述 statement kind、asserted source、domain 和 topics；epistemic status、authority 与 resolution 由 Runtime 根据对话来源、工具证据和 VERIFY 决定。证据不足时降级，不接受模型自证 |
-| D33 | 蒸馏边界 | 旧 daily 原文追加到 `MEMORY.md` 的 helper 永久退役；压缩、蒸馏和提升只能形成结构化 Atom 写入并经过统一来源、认识、作用域、revision、审计与恢复闸门。阶段 21 已完成保守的一对一提升，复杂多 Atom 合并仍须先形成模型提案再由 Runtime 提交 |
+| D33 | 蒸馏边界 | 旧 daily 原文追加到 `MEMORY.md` 的 helper 永久退役；压缩、蒸馏和提升只能形成结构化 Atom 写入并经过统一来源、认识、作用域、revision、审计与恢复闸门。阶段 21 已完成保守的一对一提升；阶段 22 只开放模型提案的重复投影合并，更复杂重组仍由 Runtime 闸门控制 |
 | D34 | 注入优先级 | 文件与目录仅负责持久化、恢复、管理和候选导航；Memory 的首要质量指标是 Runtime 能否基于当前任务、作用域、证据、认识状态、时效、验证收益、路由关系和预算，正确决定 Atom 的发现、采用、释放与重新激活 |
 | D35 | TaskBook 二次调和 | 首次选择使用原始请求；DECIDE 得到更精确的 TaskBook 后，goal、验收标准与目标步骤作为独立加权锚点再做一次有界补充选择。单次最多 2 Atom/400 tokens、单 run 最多 4 次，重复 query 跳过；新增 Atom 必须同步 working set、KnownState 和访问账本 |
 | D36 | 动态激活层级 | 后端 Atom 热度是连续、可衰减且不限制层数的 activation score，不是文件位置、语义 parent、D0-D3 或固定 T0-T3。真实采用并产生价值才升温，长期不用或无帮助逐渐降温；持久记忆与语义缓存共享计算但隔离 namespace/lifecycle，任务相关度始终先于热度。前端只做带滞回的三层只读投影 |
 | D37 | 真实负载校准 | 先通过只读、脱敏、有界报告确认 KnownState、显式 Atom 使用与 Provider usage 覆盖充足，再评审 activation 参数。当前正式数据为 `insufficient`；前端三层展示不等于后端三档模型，报告达到 `ready` 也不自动调参 |
 | D38 | 质量与资源代理 | 最终 VERIFY、TaskExecution、Provider token 和起止资源快照用于补足真实负载判断；adopted 但未显式使用只是诊断代理，不自动等同误注入或负反馈。所有采样、集合和设备类别有硬上限，旧日志缺字段时保持缺失 |
-| D39 | 用户可见表达 | Runtime 提供并约束事实、状态、权限、路径、进度和验证结果；LLM 结合 `SOUL.md` 与用户语言构思对话区中的回复、澄清、任务/步骤说明、验证说明和交付表达。Renderer 只负责呈现与渐进披露，不能把固定前端模板冒充 Agent 人格文案；确定性文案仅用于明确降级 |
-| D40 | daily 结构化提升 | 压缩摘要只提供有界来源 run 范围；Runtime 仅从该范围内筛选可提升 daily Atom，先写目标、再按 expected revision 归档源。首版不调用 LLM、不进行多 Atom 语义合并，失败时保留源；未来语义合并由模型提出提案、Runtime 校验提交 |
+| D39 | 用户可见表达 | Runtime 提供并约束事实、状态、权限、路径、进度和验证结果；每条新的用户可见 Agent 自然语言必须来自本轮当前 Provider 的实时 API 返回，并结合 `SOUL.md` 与用户语言构思，不存在候选文案池或 Runtime 选稿。发布前在持久化会话级注册表中原子占用规范化回复指纹，覆盖完整历史、重启和并发 run；完全重复时最多重新实时调用两次当前 Provider API。Renderer 只负责呈现与渐进披露，不能把固定前端模板冒充 Agent 人格文案。模型不可用、注册表不可用、空回复或重新生成耗尽时只显示 Runtime 错误/状态 |
+| D40 | daily 结构化提升 | 压缩摘要只提供有界来源 run 范围；Runtime 仅从该范围内筛选可提升 daily Atom，先写目标、再按 expected revision 归档源。首版不调用 LLM、不进行多 Atom 语义合并，失败时保留源；后续调和使用独立模型提案与 Runtime 提交协议 |
+| D41 | 重复 Atom 调和 | 模型只能对本轮已 adopted、未冲突且 revision 匹配的 KnownState Atom 提出 `duplicate-projection` 合并。Runtime 独立验证作用域、parent、认识边界、确定性语义锚点、冲突/替代关系和恢复状态；单轮最多 2 个提案、每项最多 4 个 source。提交复用原子 merge 事务，部分失败保留未提交 source，重试幂等；同陈述内容修订由 D43 单独治理，事实纠正和任意语义重写仍未授权 |
+| D42 | 叶子层级重组 | 只允许模型对本轮 adopted、未冲突、当前 revision 的 D2/D3 叶子 Atom 提出跨 parent 移动；目标 parent 必须在同 branch/scope/scopeKey，且存在方向为 Atom 实体到 parent 实体的 active、resolved、有证据 `belongs-to`/`derived-from` 关系，confidence ≥ 0.75、relevance ≥ 0.5。单轮最多 1 项，超额项必须记录拒绝；Runtime 负责叶子、循环、边界、revision、原子提交、恢复和审计，模型不能直接修改存储，也不能移动非叶子子树或重写正文 |
+| D43 | 同陈述内容修订 | 模型每轮最多对 1 个本轮 adopted、当前 revision、未冲突、未截断的完整 D3 KnownState Atom 提出 `same-claim-refinement`。只允许澄清、规范化和去冗余地替换 title/summary/content/retrievalKeys；Runtime 必须有当前 run 的通过验证证据，并独立校验语义保留、检索锚点、硬锚点、长度、revision、提交与恢复。来源、证据、实体/关系、层级、认识状态和生命周期不变；事实纠正、冲突替代和新增陈述使用独立协议 |
+| D44 | 事实纠正与冲突替代 | 模型每轮最多对 1 组本轮完整 D3 KnownState Atom 提出 supersede：replacement 必须 adopted，旧 Atom 可以 adopted 或 conflicted；两者保持 branch/scope/scopeKey/parent/statement kind 一致，并精确匹配 revision。Runtime 必须验证当前 run 的通过证据、replacement 权威与来源，以及方向正确、active、resolved、有证据的 `replaces`/`conflicts-with` 关系。提交只把旧 Atom 标记 superseded 并指向既有 replacement，保留旧正文、来源和历史；普通 conflict/invalidate intent、创建新 Atom、覆盖原始数据和跨边界替代均不能旁路该协议 |
+| D45 | 非叶子子树重组 | 模型每轮最多对 1 个本轮 adopted、当前 revision、未冲突且未截断的完整 D3 非叶子 Atom 提出 `move-subtree`；目标 parent 同 branch/scope/scopeKey，必须存在方向正确、active、resolved、有证据的 `belongs-to`/`derived-from` 关系。Catalog 只提供有界 active descendant 计数；根至少有 1 个且最多 128 个 active descendants，超过上限或缺少检查自动拒绝/延期。提交只改变根 `parentId`，后代父链、正文、revision、来源与关系不变；Runtime 负责循环、边界、revision、原子提交、恢复和审计，普通 `move` intent 与叶子 reparent 不能旁路该协议 |
 
 ## 9. 总完成门槛
 

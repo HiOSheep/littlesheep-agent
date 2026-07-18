@@ -87,8 +87,13 @@ describe('MemoryRepositoryV3Backend recovery', () => {
         epistemicStatus: 'verified',
       },
       catalog: { embeddingStatus: 'ready' },
-      envelope: { disclosureLevel: 'D3', epistemicStatus: 'verified' },
+      envelope: {
+        disclosureLevel: 'D3',
+        epistemicStatus: 'verified',
+        parentNodeId: 'long-term:root',
+      },
       history: { atomId: created.node!.id },
+      hasActiveChildren: false,
     });
   });
 

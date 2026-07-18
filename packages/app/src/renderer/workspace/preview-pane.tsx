@@ -1,14 +1,13 @@
 // Extension workspace panels, files, terminal, artifacts, and view helpers.
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import {
-  openWorkspacePath,
   openWorkspacePathInVSCode,
   previewWorkspaceFile,
   saveWorkspaceFile,
   type WorkspacePreview
 } from '../api'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { ExternalOpenIcon, FileGlyphIcon, VSCodeIcon } from '../ui/icons'
+import { FileGlyphIcon, VSCodeIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
 import {
   type WorkspaceFileDraftState,
@@ -78,14 +77,6 @@ export function WorkspaceFileView({
     }
   }, [root, path])
 
-  async function openExternal() {
-    try {
-      await openWorkspacePath(root, path)
-    } catch (err) {
-      setError((err as Error).message)
-    }
-  }
-
   async function openInVSCode() {
     try {
       await openWorkspacePathInVSCode(root, path)
@@ -116,7 +107,6 @@ export function WorkspaceFileView({
       workspacePath={root}
       tabId={tabId}
       draft={draft}
-      onOpenExternal={openExternal}
       onOpenInVSCode={openInVSCode}
       onSaveFile={saveFile}
       onDraftChange={onDraftChange}
@@ -134,7 +124,6 @@ export function WorkspacePreviewPane({
   workspacePath,
   tabId,
   draft,
-  onOpenExternal,
   onOpenInVSCode,
   onSaveFile,
   onDraftChange,
@@ -147,7 +136,6 @@ export function WorkspacePreviewPane({
   workspacePath: string
   tabId?: WorkspaceFileTabId
   draft?: WorkspaceFileDraftState
-  onOpenExternal: () => void | Promise<void>
   onOpenInVSCode: () => void | Promise<void>
   onSaveFile: (path: string, content: string, expectedModifiedAt?: number) => Promise<WorkspacePreview>
   onDraftChange?: (tab: WorkspaceFileTabId, draft: WorkspaceFileDraftState | null) => void
@@ -331,20 +319,6 @@ export function WorkspacePreviewPane({
                 <VSCodeIcon />
               </button>
             )}
-            <button
-              {...transientTriggerProps()}
-              className="workspace-files-icon-btn"
-              type="button"
-              aria-label="用系统默认应用打开"
-              onClick={() => void onOpenExternal()}
-              onMouseEnter={(event) => onTipChange(buildFloatingHelpTip('用系统默认应用打开', event.clientX, event.clientY))}
-              onMouseMove={(event) => onTipChange(buildFloatingHelpTip('用系统默认应用打开', event.clientX, event.clientY))}
-              onMouseLeave={() => onTipChange(null)}
-              onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement('用系统默认应用打开', event.currentTarget))}
-              onBlur={() => onTipChange(null)}
-            >
-              <ExternalOpenIcon />
-            </button>
           </div>
         )}
       </div>
@@ -367,7 +341,7 @@ export function WorkspacePreviewPane({
       >
         {loading && <WorkspacePlaceholder title="读取中" text="正在读取文件预览。" />}
         {!loading && error && <WorkspacePlaceholder title="预览失败" text={error} />}
-        {!loading && !error && !preview && <WorkspacePlaceholder title="文件预览" text="代码、脚本、配置和可识别文本会进入内置 VS Code 工作台；图片/PDF 预览，Word/PPT/Excel 用文件卡片和系统应用。" />}
+        {!loading && !error && !preview && <WorkspacePlaceholder title="文件预览" text="代码和文本进入内置 VS Code 工作台；图片、PDF 和 Office 文件在 LS 内部预览。" />}
         {!loading && !error && editable && (
           <div className="workspace-editor-shell">
             <div className="workspace-editor-monaco">
@@ -423,24 +397,80 @@ export function WorkspacePreviewPane({
         {!loading && !error && preview?.kind === 'pdf' && (
           <iframe className="workspace-preview-pdf" src={attachmentFileUrl(preview.path)} title={preview.name} />
         )}
+        {!loading && !error && preview?.kind === 'office' && (
+          <WorkspaceOfficePreview preview={preview} />
+        )}
         {!loading && !error && preview?.kind === 'unsupported' && (
           <div className="workspace-preview-unsupported">
             <FileGlyphIcon />
             <strong>{preview.name}</strong>
             <span>{preview.reason ?? '这个文件类型暂不支持内联预览。'}</span>
-            <div className="workspace-preview-unsupported-actions">
-              {canOpenExternalVSCode && (
+            {canOpenExternalVSCode && (
+              <div className="workspace-preview-unsupported-actions">
                 <button type="button" onClick={() => void onOpenInVSCode()}>
                   用外部 VS Code 打开
                 </button>
-              )}
-              <button type="button" onClick={() => void onOpenExternal()}>
-                用系统默认应用打开
-              </button>
-            </div>
+              </div>
+            )}
           </div>
         )}
       </div>
     </div>
   )
+}
+
+function WorkspaceOfficePreview({
+  preview,
+}: {
+  preview: Extract<WorkspacePreview, { kind: 'office' }>
+}) {
+  return (
+    <div className={`workspace-office-preview ${preview.officeKind}`}>
+      <div className="workspace-office-heading">
+        <strong>{officeKindLabel(preview.officeKind)}</strong>
+        {preview.note && <span>{preview.note}</span>}
+        {preview.truncated && <span>内容较多，已按预览上限截取。</span>}
+      </div>
+      {preview.sections.length === 0 && (
+        <div className="workspace-office-empty">文件已在 LS 内打开，但没有提取到可显示的文字。</div>
+      )}
+      {preview.officeKind === 'spreadsheet' ? (
+        <div className="workspace-office-sheets">
+          {preview.sections.map((section) => (
+            <section className="workspace-office-sheet" key={section.title}>
+              <h3>{section.title}</h3>
+              <div className="workspace-office-table-wrap">
+                <table>
+                  <tbody>
+                    {(section.rows ?? []).map((row, rowIndex) => (
+                      <tr key={`${section.title}-${rowIndex}`}>
+                        {row.map((cell, cellIndex) => <td key={`${rowIndex}-${cellIndex}`}>{cell}</td>)}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ))}
+        </div>
+      ) : (
+        <div className="workspace-office-sections">
+          {preview.sections.map((section) => (
+            <section className="workspace-office-section" key={section.title}>
+              <h3>{section.title}</h3>
+              {(section.paragraphs ?? []).map((paragraph, index) => (
+                <p key={`${section.title}-${index}`}>{paragraph}</p>
+              ))}
+            </section>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function officeKindLabel(kind: Extract<WorkspacePreview, { kind: 'office' }>['officeKind']): string {
+  if (kind === 'spreadsheet') return '表格预览'
+  if (kind === 'presentation') return '演示文稿预览'
+  return '文档预览'
 }

@@ -3,6 +3,29 @@
 
 import type { ClarificationRequest, ClarificationResponse } from './clarification.js';
 
+/** LLM call categories that may author natural language shown as an LS reply. */
+export type UserFacingReplyPurpose =
+  | 'reply'
+  | 'ask_user'
+  | 'execute_tool_loop'
+  | 'execute_final_reply'
+  | 'recover';
+
+/** Auditable proof that a visible LS reply was authored by a model call. */
+export interface ReplyProvenance {
+  version: 1;
+  source: 'llm';
+  purpose: UserFacingReplyPurpose;
+  /** Provider API request that generated the text published to the user. */
+  modelRequestId: string;
+  modelRequestIndex: number;
+  provider: string;
+  model: string;
+  generatedAt: string;
+  /** Number of additional Provider API calls required to obtain a unique reply. */
+  rewriteCount: number;
+}
+
 /** Who authored a message. */
 export type Role = 'system' | 'user' | 'assistant' | 'tool';
 
@@ -60,6 +83,8 @@ export interface Message {
   clarificationRequest?: ClarificationRequest;
   /** Link from a user answer to the clarification it resolves. */
   clarificationResponse?: ClarificationResponse;
+  /** Source contract for natural language rendered as an LS reply. */
+  replyProvenance?: ReplyProvenance;
 }
 
 /** Convenience: a plain text message. */
@@ -75,6 +100,15 @@ export function textMessage(
     timestamp: extra?.timestamp ?? new Date().toISOString(),
     ...extra,
   };
+}
+
+/** Stable comparison form used by the durable user-facing reply registry. */
+export function normalizeUserFacingReply(value: string): string {
+  return value
+    .normalize('NFKC')
+    .replace(/\s+/gu, ' ')
+    .trim()
+    .toLowerCase();
 }
 
 /** Stage names that may tag a message (imported lazily to avoid cycle). */

@@ -180,13 +180,32 @@ function createWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      // Keep hidden work display-driven and throttled. Visible animations are
+      // still scheduled by Chromium against the active monitor's VSync.
+      backgroundThrottling: true,
+      // Web pages are rendered in an isolated guest surface so navigation
+      // and links remain inside LS instead of escaping to the system browser.
+      webviewTag: true,
     },
   })
 
-  // Open external links in the system browser, not in-app.
+  // The renderer owns internal web navigation. Never turn a webpage link into
+  // an unexpected system-browser window from the host shell.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url)
+    if (!/^https?:\/\//iu.test(url) && /^(mailto|tel):/iu.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
+  })
+
+  // Guest webviews are the LS browser surface. A page opening a new window
+  // must be routed back into the same guest, never into the system browser.
+  win.webContents.on('did-attach-webview', (_event, guestContents) => {
+    guestContents.setWindowOpenHandler(({ url }) => {
+      if (/^https?:\/\//iu.test(url)) void guestContents.loadURL(url).catch(() => undefined)
+      return { action: 'deny' }
+    })
+    guestContents.on('will-navigate', (event, url) => {
+      if (!/^https?:\/\//iu.test(url)) event.preventDefault()
+    })
   })
 
   // F12 / Ctrl+Shift+I to toggle DevTools (Electron 36 doesn't bind F12 by default).

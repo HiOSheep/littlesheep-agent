@@ -46,6 +46,7 @@ export function beginWorkspacePanelResizeInteraction(
     let frameHandle: number | undefined
     let thresholdAnimationTimer: number | undefined
     let pendingVisualWidth = startWidth
+    let appliedVisualWidth = startWidth
     beginResize('column')
     shellRef.current?.classList.add('workspace-panel-drag-live')
     try {
@@ -56,10 +57,13 @@ export function beginWorkspacePanelResizeInteraction(
 
     const applyDragFrame = () => {
       frameHandle = undefined
+      if (pendingVisualWidth === appliedVisualWidth) return
       shellRef.current?.style.setProperty('--workspace-panel-width', `${pendingVisualWidth}px`)
+      appliedVisualWidth = pendingVisualWidth
     }
 
     const scheduleDragFrame = (visualWidth: number) => {
+      if (visualWidth === pendingVisualWidth && frameHandle === undefined) return
       pendingVisualWidth = visualWidth
       if (frameHandle !== undefined) return
       frameHandle = window.requestAnimationFrame(applyDragFrame)
@@ -112,6 +116,7 @@ export function beginWorkspacePanelResizeInteraction(
       activeDragCleanupRef.current = null
       if (frameHandle !== undefined) {
         window.cancelAnimationFrame(frameHandle)
+        frameHandle = undefined
         applyDragFrame()
       }
       if (resizer.hasPointerCapture(pointerId)) resizer.releasePointerCapture(pointerId)

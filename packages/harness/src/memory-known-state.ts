@@ -139,7 +139,7 @@ function renderKnownState(state: RuntimeMemoryKnownState): string {
     const envelope = reference.envelope;
     lines.push(
       `- [${reference.atomId}@${reference.atomRevision}] decision=${reference.decision}; disclosure=${envelope.disclosureLevel}; branch=${envelope.branch}; scope=${envelope.scope}${envelope.scopeKey ? `:${cleanInline(envelope.scopeKey)}` : ''}; tier=T${envelope.tier}`,
-      `  statement=${envelope.statementKind}; epistemic=${envelope.epistemicStatus}; authority=${envelope.authorityScope.kind}/${envelope.authorityScope.scope}; confidence=${formatScore(envelope.confidence)}; importance=${formatScore(envelope.importance)}; usefulness=${formatUsefulness(envelope.verifiedUsefulness)}; task=${formatScore(envelope.taskRelevance ?? 0)}; routing=${formatScore(envelope.routingRelevance ?? 0.5)}; relation=${formatScore(envelope.relationshipRelevance ?? 0.5)}; activation=${formatScore(envelope.activation?.score ?? 0.25)}; path=${envelope.retrievalPath}${envelope.relationRoute ? `; relation_route=${cleanInline(`${envelope.relationRoute.seedAtomId}->${envelope.relationRoute.relationId}->${envelope.atomId} (${envelope.relationRoute.relationType}/${envelope.relationRoute.direction}; strength=${formatScore(envelope.relationRoute.strength)})`)}` : ''}`,
+      `  parent=${envelope.parentNodeId ?? '(branch root)'}; statement=${envelope.statementKind}; epistemic=${envelope.epistemicStatus}; authority=${envelope.authorityScope.kind}/${envelope.authorityScope.scope}; confidence=${formatScore(envelope.confidence)}; importance=${formatScore(envelope.importance)}; usefulness=${formatUsefulness(envelope.verifiedUsefulness)}; task=${formatScore(envelope.taskRelevance ?? 0)}; routing=${formatScore(envelope.routingRelevance ?? 0.5)}; relation=${formatScore(envelope.relationshipRelevance ?? 0.5)}; activation=${formatScore(envelope.activation?.score ?? 0.25)}; path=${envelope.retrievalPath}${envelope.relationRoute ? `; relation_route=${cleanInline(`${envelope.relationRoute.seedAtomId}->${envelope.relationRoute.relationId}->${envelope.atomId} (${envelope.relationRoute.relationType}/${envelope.relationRoute.direction}; strength=${formatScore(envelope.relationRoute.strength)})`)}` : ''}`,
       `  match=${cleanInline(envelope.matchReason)}; decision_reason=${cleanInline(reference.reason)}; sources=${envelope.sourceRefs.slice(0, 3).map(cleanInline).join(', ') || '(none)'}; evidence=${envelope.evidenceRefs.slice(0, 4).map(cleanInline).join(', ') || '(none)'}; stages=${reference.stages.join(',')}; reactivated=${reference.reactivatedCount}`,
     );
   }
@@ -183,6 +183,7 @@ function parseReference(value: unknown): RuntimeKnownStateMemoryReference | unde
   const envelope = value.envelope;
   if (typeof envelope.atomId !== 'string' || !Number.isInteger(envelope.atomRevision)
     || typeof envelope.branch !== 'string' || typeof envelope.scope !== 'string'
+    || (envelope.parentNodeId !== undefined && typeof envelope.parentNodeId !== 'string')
     || (envelope.scopeKey !== undefined && typeof envelope.scopeKey !== 'string')
     || !Number.isInteger(envelope.tier) || !['D0', 'D1', 'D2', 'D3'].includes(String(envelope.disclosureLevel))
     || typeof envelope.statementKind !== 'string' || typeof envelope.epistemicStatus !== 'string'

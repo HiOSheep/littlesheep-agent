@@ -4,8 +4,9 @@
 // Sessions are stored as JSONL at <sessionsDir>/<sessionId>.jsonl.
 // Each line is a Message record. Writes are serialized via file lock.
 
-import { readFile, mkdir, appendFile, stat, unlink } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { readFile, mkdir, appendFile, stat, unlink, open } from 'node:fs/promises';
+import { createReadStream, existsSync } from 'node:fs';
+import { createInterface } from 'node:readline';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type {
@@ -25,6 +26,7 @@ import { asSessionId } from '@littlesheep/types';
 import { acquireLock } from './lock.js';
 import { atomicWriteText } from './atomic-file.js';
 import { SessionCompactionStore } from './compaction-store.js';
+import { ReplyFingerprintStore } from './reply-fingerprint-store.js';
 
 /** Options for SessionManager. */
 export interface SessionManagerOptions {
@@ -34,13 +36,26 @@ export interface SessionManagerOptions {
   lockTimeoutMs?: number;
 }
 
+export interface SessionMessageWindow {
+  messages: Message[];
+  hasMore: boolean;
+  beforeId?: string;
+}
+
+const SESSION_WINDOW_DEFAULT_LIMIT = 120;
+const SESSION_WINDOW_MAX_LIMIT = 240;
+const SESSION_READ_CHUNK_BYTES = 64 * 1024;
+const SESSION_MAX_LINE_BYTES = 8 * 1024 * 1024;
+
 /** Manages session transcripts on disk. */
 export class SessionManager implements SessionManagerLike {
   private readonly compactions: SessionCompactionStore;
+  private readonly replyFingerprints: ReplyFingerprintStore;
   private readonly compactionRecovery = new Map<SessionId, Promise<void>>();
 
   constructor(private opts: SessionManagerOptions) {
     this.compactions = new SessionCompactionStore(opts.sessionsDir);
+    this.replyFingerprints = new ReplyFingerprintStore(opts.sessionsDir, opts.lockTimeoutMs ?? 60000);
   }
 
   /** Resolve the JSONL file path for a session. */
@@ -125,10 +140,123 @@ export class SessionManager implements SessionManagerLike {
     return messages;
   }
 
+  /**
+   * Find one message without materializing the whole transcript. This is
+   * used by checkpoint continuation, where the original inbound message may
+   * be far outside the normal recent-history window.
+   */
+  async findMessage(sessionId: SessionId, messageId: string): Promise<Message | null> {
+    const file = this.sessionFile(sessionId);
+    if (!existsSync(file) || !messageId.trim()) return null;
+    const input = createReadStream(file, { encoding: 'utf8' });
+    const lines = createInterface({ input, crlfDelay: Infinity });
+    try {
+      for await (const line of lines) {
+        if (line.length === 0 || Buffer.byteLength(line, 'utf8') > SESSION_MAX_LINE_BYTES) continue;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        if (!parsed || typeof parsed !== 'object') continue;
+        const candidate = parsed as Partial<Message> & { type?: string };
+        if (candidate.type === 'metadata' || candidate.id !== messageId || !candidate.role) continue;
+        return parsed as Message;
+      }
+      return null;
+    } finally {
+      lines.close();
+      input.destroy();
+    }
+  }
+
   /** Read the last N messages (more efficient than full read for long sessions). */
   async readRecent(sessionId: SessionId, count: number): Promise<Message[]> {
-    const all = await this.read(sessionId);
-    return all.slice(-count);
+    return (await this.readWindow(sessionId, count)).messages;
+  }
+
+  /** Read a bounded transcript window from the end of the JSONL file. */
+  async readWindow(
+    sessionId: SessionId,
+    count = SESSION_WINDOW_DEFAULT_LIMIT,
+    beforeId?: string,
+  ): Promise<SessionMessageWindow> {
+    const file = this.sessionFile(sessionId);
+    if (!existsSync(file)) return { messages: [], hasMore: false };
+
+    const limit = Math.max(1, Math.min(SESSION_WINDOW_MAX_LIMIT, Math.floor(count) || SESSION_WINDOW_DEFAULT_LIMIT));
+    const handle = await open(file, 'r');
+    try {
+      const fileStats = await handle.stat();
+      let position = fileStats.size;
+      let carry = Buffer.alloc(0);
+      let boundaryFound = beforeId === undefined;
+      let hasMore = false;
+      const reversed: Message[] = [];
+
+      const consume = (lineBuffer: Buffer): boolean => {
+        if (lineBuffer.length === 0 || lineBuffer.length > SESSION_MAX_LINE_BYTES) return false;
+        const line = lineBuffer.toString('utf8').trim();
+        if (!line) return false;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(line);
+        } catch {
+          return false;
+        }
+        if (!parsed || typeof parsed !== 'object') return false;
+        const candidate = parsed as Partial<Message> & { type?: string };
+        if (candidate.type === 'metadata' || typeof candidate.id !== 'string' || !candidate.role) return false;
+        const message = parsed as Message;
+        if (!boundaryFound) {
+          if (message.id === beforeId) boundaryFound = true;
+          return false;
+        }
+        if (reversed.length < limit) {
+          reversed.push(message);
+        } else {
+          hasMore = true;
+        }
+        return hasMore;
+      };
+
+      while (position > 0 && !hasMore) {
+        const start = Math.max(0, position - SESSION_READ_CHUNK_BYTES);
+        const length = position - start;
+        const chunk = Buffer.alloc(length);
+        await handle.read(chunk, 0, length, start);
+        const combined = carry.length > 0 ? Buffer.concat([chunk, carry]) : chunk;
+        const lines: Buffer[] = [];
+        let lineEnd = combined.length;
+        for (let index = combined.length - 1; index >= 0; index -= 1) {
+          if (combined[index] !== 0x0a) continue;
+          lines.push(combined.subarray(index + 1, lineEnd));
+          lineEnd = index;
+        }
+        if (start === 0) {
+          lines.push(combined.subarray(0, lineEnd));
+          carry = Buffer.alloc(0);
+        } else {
+          carry = combined.subarray(0, lineEnd);
+          if (carry.length > SESSION_MAX_LINE_BYTES) carry = Buffer.alloc(0);
+        }
+        for (const line of lines) {
+          if (consume(line)) break;
+        }
+        position = start;
+      }
+
+      if (!hasMore && position === 0 && carry.length > 0) consume(carry);
+      const messages = reversed.reverse();
+      return {
+        messages,
+        hasMore: beforeId !== undefined && !boundaryFound ? false : hasMore,
+        beforeId: messages[0]?.id,
+      };
+    } finally {
+      await handle.close();
+    }
   }
 
   /** Update session metadata (rewrites the file header). */
@@ -156,6 +284,11 @@ export class SessionManager implements SessionManagerLike {
     } finally {
       await handle?.release();
     }
+  }
+
+  /** Atomically reserve text that is about to become visible as an Assistant reply. */
+  reserveAssistantReply(sessionId: SessionId, reply: string): Promise<boolean> {
+    return this.replyFingerprints.reserve(sessionId, reply);
   }
 
   async commitCompaction(sessionId: SessionId, summary: CompactionSummaryV2): Promise<void> {
@@ -232,6 +365,7 @@ export class SessionManager implements SessionManagerLike {
       await handle?.release();
     }
     await this.compactions.removeSession(sessionId);
+    await this.replyFingerprints.delete(sessionId);
   }
 
   /**

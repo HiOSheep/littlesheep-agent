@@ -63,7 +63,6 @@ export function navigationSnapshotsEqual(
     && left.workspacePanelWidth === right.workspacePanelWidth
     && left.workspacePanelTab === right.workspacePanelTab
     && stringListsEqual(left.workspacePanelOpenTabs, right.workspacePanelOpenTabs)
-    && left.workspaceBrowserUrl === right.workspaceBrowserUrl
     && left.workspaceOpenRequest?.root === right.workspaceOpenRequest?.root
     && left.workspaceOpenRequest?.path === right.workspaceOpenRequest?.path
     && left.workspaceFileNavigatorCollapsed === right.workspaceFileNavigatorCollapsed

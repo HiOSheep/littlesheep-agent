@@ -3,6 +3,7 @@ import '@xterm/xterm/css/xterm.css'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import {
   runAgentStream,
+  sendRuntimeControlEvent,
   type ApprovalRequest,
   type AttachmentRef,
   type PermissionModeId,
@@ -19,11 +20,13 @@ import {
   buildContextUsageSnapshot,
   type ContextUsageSnapshot
 } from '../context-usage'
-import { buildArtifactsFromToolCalls, buildTraceData, bumpLiveStepTools, mergeTaskBookIntoLiveSteps, taskStepToLiveStep, updateLastAssistantActivity, upsertLiveStep, upsertLiveTool } from './activity-model'
-import { ChatMessage, LiveStepStatus } from './types'
+import { buildArtifactsFromToolCalls, buildTraceData, taskStepToLiveStep } from './activity-model'
+import { handleRunToolEvent } from './run-event-handlers'
+import { ChatMessage } from './types'
 
 export interface RunActionContext {
   abortRef: MutableRefObject<AbortController | null>
+  activeRunIdRef: MutableRefObject<string | null>
   activeApprovalScopeKey: (sessionId?: string) => string
   appMountedRef: MutableRefObject<boolean>
   approvalGrantsRef: MutableRefObject<SessionApprovalGrantStore>
@@ -47,10 +50,11 @@ export interface RunActionContext {
   setMessages: Dispatch<SetStateAction<ChatMessage[]>>
   setWorkspaceArtifactVersion: Dispatch<SetStateAction<number>>
   settleApprovalPrompt: (decision: ApprovalDecision) => void
+  stopRequestedRunIdRef: MutableRefObject<string | null>
 }
 
 export function createRunActions(context: RunActionContext) {
-  const { abortRef, activeApprovalScopeKey, appMountedRef, approvalGrantsRef, attachments, currentSession, input, liveToolStepRef, loading, permissionMode, refreshProjects, refreshSessions, requestApprovalForScope, runtime, sessionOwnership, setActivityNow, setAttachments, setContextUsageSnapshot, setCurrentSession, setInput, setLoading, setMessages, setWorkspaceArtifactVersion, settleApprovalPrompt } = context
+  const { abortRef, activeRunIdRef, activeApprovalScopeKey, appMountedRef, approvalGrantsRef, attachments, currentSession, input, liveToolStepRef, loading, permissionMode, refreshProjects, refreshSessions, requestApprovalForScope, runtime, sessionOwnership, setActivityNow, setAttachments, setContextUsageSnapshot, setCurrentSession, setInput, setLoading, setMessages, setWorkspaceArtifactVersion, settleApprovalPrompt, stopRequestedRunIdRef } = context
 
 
   async function send() {
@@ -62,13 +66,16 @@ export function createRunActions(context: RunActionContext) {
     const activityStartedAt = Date.now()
     const approvalScopeKey = activeApprovalScopeKey()
     abortRef.current = controller
+    activeRunIdRef.current = null
+    stopRequestedRunIdRef.current = null
     setInput('')
     setAttachments([])
     setActivityNow(activityStartedAt)
     setMessages((m) => [
       ...m,
-      { role: 'user', text: displayText, timestamp: new Date(activityStartedAt).toISOString(), attachments: activeAttachments },
+      { id: localMessageId('user'), role: 'user', text: displayText, timestamp: new Date(activityStartedAt).toISOString(), attachments: activeAttachments },
       {
+        id: localMessageId('assistant'),
         role: 'assistant',
         text: '',
         timestamp: new Date(activityStartedAt).toISOString(),
@@ -87,108 +94,13 @@ export function createRunActions(context: RunActionContext) {
     try {
       const result = await runAgentStream(text || '请根据附件继续处理。', currentSession, permissionMode, {
         signal: controller.signal,
+        onStart: ({ runId }) => {
+          activeRunIdRef.current = runId
+        },
         onApprovalRequest: (request) => appMountedRef.current
           ? requestApprovalForScope(request, approvalScopeKey)
           : Promise.resolve(false),
-        onToolEvent: (evt) => {
-          if (!appMountedRef.current) return
-          if (evt.type === 'task_book' && evt.taskBook) {
-            const taskBook = evt.taskBook
-            updateLastAssistantActivity(setMessages, (activity) => ({
-              ...activity,
-              taskBook,
-              steps: mergeTaskBookIntoLiveSteps(activity.steps, taskBook),
-            }))
-            return
-          }
-          if (evt.type === 'step_start' && evt.stepId) {
-            updateLastAssistantActivity(setMessages, (activity) => ({
-              ...activity,
-              steps: upsertLiveStep(activity.steps, {
-                stepId: evt.stepId ?? '',
-                title: evt.title || evt.description || '执行步骤',
-                description: evt.description,
-                status: 'running',
-                startedAt: Date.now(),
-              }),
-            }))
-            return
-          }
-          if (evt.type === 'verification_start') {
-            updateLastAssistantActivity(setMessages, (activity) => ({
-              ...activity,
-              verificationRunning: true,
-            }))
-            return
-          }
-          if (evt.type === 'verification' && evt.verification) {
-            updateLastAssistantActivity(setMessages, (activity) => ({
-              ...activity,
-              verificationRunning: false,
-              verificationHistory: [
-                ...(activity.verificationHistory ?? []),
-                evt.verification!,
-              ],
-            }))
-            return
-          }
-          if (evt.type === 'step_done' || evt.type === 'step_failed' || evt.type === 'step_skipped') {
-            if (!evt.stepId) return
-            const status: LiveStepStatus = evt.type === 'step_done'
-              ? 'done'
-              : evt.type === 'step_failed'
-                ? 'failed'
-                : 'skipped'
-            updateLastAssistantActivity(setMessages, (activity) => ({
-              ...activity,
-              steps: upsertLiveStep(activity.steps, {
-                stepId: evt.stepId ?? '',
-                title: evt.title || evt.description || '执行步骤',
-                description: evt.description,
-                status,
-                output: evt.output,
-                error: evt.error,
-                activeTools: 0,
-                endedAt: Date.now(),
-              }),
-            }))
-            return
-          }
-          if (evt.type === 'tool_start' && evt.callId && evt.name) {
-            if (evt.stepId) liveToolStepRef.current.set(evt.callId, evt.stepId)
-            updateLastAssistantActivity(setMessages, (activity) => ({
-              ...activity,
-              tools: upsertLiveTool(activity.tools, {
-                callId: evt.callId ?? '',
-                name: evt.name ?? '',
-                stepId: evt.stepId,
-                startedAt: Date.now(),
-                input: evt.input,
-                ok: undefined,
-                error: undefined,
-              }),
-              steps: evt.stepId ? bumpLiveStepTools(activity.steps, evt.stepId ?? '', 1) : activity.steps,
-            }))
-            return
-          }
-          if (evt.type === 'tool_end' && evt.callId) {
-            const stepId = evt.stepId ?? liveToolStepRef.current.get(evt.callId)
-            liveToolStepRef.current.delete(evt.callId)
-            updateLastAssistantActivity(setMessages, (activity) => ({
-              ...activity,
-              tools: upsertLiveTool(activity.tools, {
-                callId: evt.callId ?? '',
-                name: evt.name ?? '',
-                stepId,
-                ok: evt.ok,
-                output: evt.output,
-                error: evt.error,
-                endedAt: Date.now(),
-              }),
-              steps: stepId ? bumpLiveStepTools(activity.steps, stepId, -1) : activity.steps,
-            }))
-          }
-        },
+        onToolEvent: (evt) => handleRunToolEvent(evt, { appMountedRef, liveToolStepRef, setMessages }),
         onDelta: (delta) => {
           if (!appMountedRef.current) return
           if (!delta) return
@@ -230,19 +142,24 @@ export function createRunActions(context: RunActionContext) {
           const currentActivity = last.activity
           next[next.length - 1] = {
             ...last,
-            text: last.text || result.reply || '(no reply)',
+            text: last.text || (result.status === 'ok' ? result.reply : ''),
             ...traceData,
             artifacts,
             activityCollapsed: true,
             activity: currentActivity
               ? {
                 ...currentActivity,
-                status: result.status === 'ok' ? 'done' : 'failed',
+                status: result.status === 'ok' ? 'done' : result.status === 'aborted' ? 'aborted' : 'failed',
                 endedAt,
                 durationMs: result.durationMs || endedAt - currentActivity.startedAt,
                 taskBook: result.taskBook ?? currentActivity.taskBook,
                 verificationHistory: result.verificationHistory ?? currentActivity.verificationHistory,
                 verificationRunning: false,
+                error: result.status === 'ok'
+                  ? undefined
+                  : result.status === 'aborted'
+                    ? result.error || '本次运行已停止。'
+                    : result.error || '本次运行未生成可展示的回复。',
                 steps: currentActivity.steps.length > 0 ? currentActivity.steps : taskSteps,
               }
               : undefined,
@@ -262,10 +179,10 @@ export function createRunActions(context: RunActionContext) {
             const endedAt = Date.now()
             next[next.length - 1] = {
               ...last,
-              text: last.text || '已停止。',
+              text: last.text,
               activityCollapsed: true,
               activity: last.activity
-                ? { ...last.activity, status: 'aborted', endedAt, durationMs: endedAt - last.activity.startedAt }
+                ? { ...last.activity, status: 'aborted', error: '本次运行已停止。', endedAt, durationMs: endedAt - last.activity.startedAt }
                 : undefined,
             }
           }
@@ -276,25 +193,25 @@ export function createRunActions(context: RunActionContext) {
       setMessages((m) => {
         const next = [...m]
         const last = next[next.length - 1]
-        const text = `Error: ${(e as Error).message}`
+        const error = (e as Error).message
         if (last?.role === 'assistant' && !last.text) {
           const endedAt = Date.now()
           next[next.length - 1] = {
             ...last,
-            text,
+            text: '',
             activityCollapsed: true,
             activity: last.activity
-              ? { ...last.activity, status: 'failed', endedAt, durationMs: endedAt - last.activity.startedAt }
+              ? { ...last.activity, status: 'failed', error, endedAt, durationMs: endedAt - last.activity.startedAt }
               : undefined,
           }
-        } else {
-          next.push({ role: 'assistant', text })
         }
         return next
       })
     } finally {
       settleApprovalPrompt('deny')
       abortRef.current = null
+      activeRunIdRef.current = null
+      stopRequestedRunIdRef.current = null
       liveToolStepRef.current.clear()
       if (appMountedRef.current) setLoading(false)
     }
@@ -302,7 +219,27 @@ export function createRunActions(context: RunActionContext) {
 
   function stop() {
     settleApprovalPrompt('deny')
-    abortRef.current?.abort()
+    const runId = activeRunIdRef.current
+    if (!runId) {
+      abortRef.current?.abort()
+      return
+    }
+    if (stopRequestedRunIdRef.current === runId) return
+    stopRequestedRunIdRef.current = runId
+    void sendRuntimeControlEvent(runId, 'interrupt_requested', 'user-requested-stop')
+      .then((outcome) => {
+        if (outcome.kind === 'rejected') abortRef.current?.abort()
+      })
+      .catch(() => {
+        abortRef.current?.abort()
+      })
   }
   return { send, stop }
+}
+
+function localMessageId(role: 'user' | 'assistant'): string {
+  const uuid = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  return `live-${role}-${uuid}`
 }

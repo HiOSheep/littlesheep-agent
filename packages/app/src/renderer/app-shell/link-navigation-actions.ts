@@ -1,9 +1,5 @@
 // Link navigation policy for internal workspace previews and system-default opening.
-import {
-  openExternalHref,
-  openWorkspacePath,
-  type RuntimeState,
-} from '../api'
+import { openWorkspacePath, type RuntimeState } from '../api'
 import { resolveLinkTarget } from '../workspace/link-target'
 import { resolveWorkspacePreviewRoot } from '../workspace/path-utils'
 
@@ -15,7 +11,7 @@ interface LinkNavigationOptions {
   setControlTip: (tip: null) => void
   setRuntimeError: (message: string) => void
   openFileInWorkspace: (path: string) => void
-  setWorkspaceBrowserUrl: (url: string) => void
+  navigateWorkspaceBrowser: (url: string, mode?: 'push' | 'replace') => void
   openWorkspacePanelTab: (tab: 'browser') => void
   appMountedRef: { current: boolean }
 }
@@ -27,7 +23,7 @@ export function createLinkNavigationActions(options: LinkNavigationOptions) {
     const target = resolveLinkTarget(href, workspaceRoot)
     options.setControlTip(null)
     if (target.kind === 'web') {
-      options.setWorkspaceBrowserUrl(target.href)
+      options.navigateWorkspaceBrowser(target.href)
       options.openWorkspacePanelTab('browser')
       if (options.settingsOpen) options.pushRoute({ section: 'chat' })
       return
@@ -49,7 +45,8 @@ export function createLinkNavigationActions(options: LinkNavigationOptions) {
     void (async () => {
       try {
         if (target.kind === 'web') {
-          await openExternalHref(target.href)
+          options.navigateWorkspaceBrowser(target.href)
+          options.openWorkspacePanelTab('browser')
           return
         }
         if (target.kind === 'file') {

@@ -257,6 +257,7 @@ function userIntent(input: {
     importance: 0.9,
     confidence: 0.95,
     reason: 'The user explicitly established this scoped memory rule.',
+    createdAt: '2026-07-17T07:00:00.000Z',
     epistemic: {
       domain: 'user',
       statementKind: input.statementKind,

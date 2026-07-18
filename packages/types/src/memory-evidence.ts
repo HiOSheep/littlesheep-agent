@@ -18,6 +18,7 @@ export interface RuntimeMemoryActorRef {
 export interface RuntimeMemoryEvidenceEnvelope {
   atomId: string;
   atomRevision: number;
+  parentNodeId?: string;
   branch: string;
   scope: string;
   scopeKey?: string;

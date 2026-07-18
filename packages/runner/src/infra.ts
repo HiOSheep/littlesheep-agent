@@ -34,6 +34,8 @@ import { SafeMemoryStore, QuarantineStore, sanitizePreludeForInjection } from '@
 import { GitCheckpointCoordinator, SnapshotMemoryStore } from '@littlesheep/snapshot';
 import { ExperienceStore } from '@littlesheep/experience';
 import { ExecutionLogStore } from './execution-log.js';
+import { RunCheckpointStore } from './run-checkpoint-store.js';
+import { RunCheckpointDispositionStore } from './run-checkpoint-disposition-store.js';
 import {
   CompositeMemoryBranch,
   DEFAULT_BRANCH_SPECS,
@@ -41,6 +43,11 @@ import {
   LegacyExperienceBranch,
   LegacyLongTermBranch,
   MemoryRepository,
+  MemoryAtomCorrectionService,
+  MemoryAtomHierarchyService,
+  MemoryAtomReconciliationService,
+  MemoryAtomRevisionService,
+  MemoryAtomSubtreeService,
   MemoryService,
   MemoryTree,
   MemoryWriteService,
@@ -71,6 +78,10 @@ export interface Infrastructure {
   harness: AgentHarness;
   skillLoader: SkillLoader;
   executionLogStore: ExecutionLogStore;
+  /** Activity checkpoints are separate from shadow Git rollback points. */
+  runCheckpointStore?: RunCheckpointStore;
+  /** Mutable resume/abandon decisions kept separate from immutable checkpoints. */
+  runCheckpointDispositionStore: RunCheckpointDispositionStore;
   experienceStore: ExperienceStore;
   memoryTree: MemoryTree;
   memoryRepository: MemoryRepository;
@@ -139,6 +150,22 @@ export async function buildInfrastructure(
 
   // M3: execution log store — one JSON file per run, for replay/audit.
   const executionLogStore = new ExecutionLogStore({ rootDir: dirs.executionLogs });
+  const runCheckpointStore = new RunCheckpointStore({
+    rootDir: join(dirs.root, 'run-checkpoints'),
+  });
+  try {
+    await runCheckpointStore.initialize();
+  } catch (error) {
+    opts.log?.('warn', `runner: run checkpoint store initialization degraded: ${(error as Error).message}`);
+  }
+  const runCheckpointDispositionStore = new RunCheckpointDispositionStore({
+    rootDir: join(dirs.root, 'run-checkpoint-dispositions'),
+  });
+  try {
+    await runCheckpointDispositionStore.initialize();
+  } catch (error) {
+    opts.log?.('warn', `runner: run checkpoint disposition initialization degraded: ${(error as Error).message}`);
+  }
 
   const sessionManager = new SessionManager({
     sessionsDir: dirs.sessions,
@@ -256,6 +283,26 @@ export async function buildInfrastructure(
     },
     log: opts.log,
   });
+  const memoryReconciliationService = new MemoryAtomReconciliationService({
+    management: memoryRepository.management,
+    invalidate: (branch) => memoryTree.invalidateBranch(branch),
+  });
+  const memoryHierarchyService = new MemoryAtomHierarchyService({
+    management: memoryRepository.management,
+    invalidate: (branch) => memoryTree.invalidateBranch(branch),
+  });
+  const memorySubtreeService = new MemoryAtomSubtreeService({
+    management: memoryRepository.management,
+    invalidate: (branch) => memoryTree.invalidateBranch(branch),
+  });
+  const memoryRevisionService = new MemoryAtomRevisionService({
+    management: memoryRepository.management,
+    invalidate: (branch) => memoryTree.invalidateBranch(branch),
+  });
+  const memoryCorrectionService = new MemoryAtomCorrectionService({
+    management: memoryRepository.management,
+    invalidate: (branch) => memoryTree.invalidateBranch(branch),
+  });
   if (opts.bootstrapDir) {
     await memoryService.loadBootstrapFiles(opts.bootstrapDir);
   }
@@ -349,6 +396,11 @@ export async function buildInfrastructure(
     memoryStore,
     memoryWriter: memoryService,
     memoryRefiner: memoryService,
+    memoryReconciler: memoryReconciliationService,
+    memoryHierarchy: memoryHierarchyService,
+    memorySubtree: memorySubtreeService,
+    memoryReviser: memoryRevisionService,
+    memoryCorrector: memoryCorrectionService,
     config: opts.config,
     branding: opts.branding,
     log: opts.log,
@@ -368,6 +420,8 @@ export async function buildInfrastructure(
     harness,
     skillLoader,
     executionLogStore,
+    runCheckpointStore,
+    runCheckpointDispositionStore,
     experienceStore,
     memoryTree,
     memoryRepository,

@@ -105,6 +105,45 @@ export class MemoryV3CandidateMaterializer {
     }));
   }
 
+  /**
+   * Governance and recovery must still inspect archived, disputed or
+   * superseded Atoms even though ordinary retrieval correctly excludes them.
+   */
+  async inspectForManagement(
+    atom: MemoryAtom,
+    disclosureLevel: Extract<MemoryDisclosureLevel, 'D2' | 'D3'>,
+    now: string,
+  ): Promise<MemoryRepositoryCandidate> {
+    const publicAtom = this.publicAtom(atom);
+    const candidate: MemoryV3ScoredCandidate = {
+      atom: publicAtom,
+      relevance: 1,
+      retrievalPath: 'hierarchy',
+      matchReason: `Loaded atom ${atom.id} through the Runtime management boundary.`,
+    };
+    const relationshipRelevance = this.catalog.relationRelevanceForAtoms([atom.id], now).get(atom.id) ?? 0.5;
+    const priority = this.priority(publicAtom, 1, relationshipRelevance, now);
+    return {
+      atom: publicAtom,
+      envelope: evidenceEnvelope(
+        candidate,
+        disclosureLevel,
+        isConflict(publicAtom),
+        now,
+        priority.taskRelevance,
+        priority.routingRelevance,
+        priority.relationshipRelevance,
+        priority.activation,
+      ),
+      priority,
+      retrievalPath: 'hierarchy',
+      hasChildren: this.catalog.listChildrenByParent(atom.id)
+        .some((entry) => !isMemoryV3InternalRootId(entry.atomId)),
+      neighborhood: await this.neighborhood(atom),
+      history: disclosureLevel === 'D3' ? this.history(atom) : undefined,
+    };
+  }
+
   publicAtom(atom: MemoryAtom): MemoryAtom {
     const scopeKey = this.ledger.publicScopeKey(atom.scope, atom.scopeKey);
     const authorityScope = atom.authorityScope.scope === atom.scope
@@ -241,6 +280,9 @@ function evidenceEnvelope(
   return {
     atomId: atom.id,
     atomRevision: atom.revision,
+    parentNodeId: atom.parentId && isMemoryV3InternalRootId(atom.parentId)
+      ? `${atom.branch}:root`
+      : atom.parentId,
     branch: atom.branch,
     scope: atom.scope,
     scopeKey: atom.scopeKey,

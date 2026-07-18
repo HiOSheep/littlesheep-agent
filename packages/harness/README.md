@@ -6,6 +6,8 @@
 
 - 公开入口是 `src/index.ts`；装配入口为 `default-harness.ts`，阶段实现在 `src/stages/`。
 - Harness 决定状态转移和 TaskBook 语义，通过端口使用 LLM、工具、Context、记忆与会话。
+- `stages/evolve.ts` 只负责 EVOLVE 调用与普通记忆/Skill 提案；`stages/evolve/reconciliation.ts` 负责重复 Atom 方案，`stages/evolve/hierarchy.ts` 负责显式关系驱动的叶子 reparent，`stages/evolve/subtree.ts` 负责有界非叶子 subtree move。三条结构调和路径都把模型限制到本轮 adopted KnownState、精确 revision 和有界 Runtime 端口；Harness 记录提案与 Runtime 决定，但不直接修改 Atom 存储。
+- 对话区的回复、澄清、任务/步骤说明、验证说明和交付表达必须由真实 LLM 调用结合运行时 `SOUL.md` 构思并由 Harness 保留；Runtime 只提供事实、状态、权限、路径、进度和证据，Renderer 不自行生成 Agent 人格文案。Harness 在发布前通过 Session 的持久化注册表原子占用规范化回复指纹，覆盖同一会话完整历史、重启和并发 run；冲突候选只交给 LLM 改写。改写耗尽、注册表不可用或模型不可用时只返回 Runtime 错误状态，不发送固定人格模板。
 - 禁止依赖 Electron、CLI、具体渠道或 App 私有实现，也不直接拥有文件系统生命周期。
 
 ## 依赖与数据

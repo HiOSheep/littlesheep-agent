@@ -20,6 +20,7 @@ import type {
   ClarificationRequest,
   ClarificationResponse,
   ResolvedRunConfig,
+  RuntimeEventQueueLike,
   SessionRunSummary,
 } from '@littlesheep/types';
 import type { SessionManager } from '@littlesheep/session';
@@ -97,10 +98,19 @@ export interface BuildRunContextOptions {
   attachments?: import('@littlesheep/types').RunAttachment[];
   /** Immutable configuration resolved by Runner before the harness starts. */
   resolvedRunConfig?: ResolvedRunConfig;
+  /** Run-owned bounded event queue consumed only at Harness safe boundaries. */
+  runtimeEventQueue?: RuntimeEventQueueLike;
   /** Directory containing bootstrap .md files (defaults to cwd). */
   bootstrapDir?: string;
   /** Unified memory/resource service used to register and load bootstrap authorities. */
   memoryResources?: MemoryBootstrapServiceLike;
+  /** Message ids that are already represented by a resumed inbound message. */
+  historyExcludeMessageIds?: readonly string[];
+  /** Workspace ownership context retained for a continuation run. */
+  workspaceContext?: {
+    boundaryKind: import('@littlesheep/memory-tree').WorkspaceBoundaryKind;
+    projectId?: string;
+  };
 }
 
 /**
@@ -156,7 +166,9 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
   // (M3) but must not enter the LLM context — toChatMessage maps 'tool' role to
   // 'user' and extracts empty text from tool_calls/tool_result blocks, which
   // would pollute the conversation. EXECUTE rebuilds tool messages each run.
+  const excludedMessageIds = new Set(opts.historyExcludeMessageIds ?? []);
   const history = rawHistory.filter((m) => {
+    if (excludedMessageIds.has(m.id)) return false;
     if (m.role === 'tool') return false;
     return m.content.some((c) => c.type === 'text');
   });
@@ -189,6 +201,7 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     sessionId: opts.sessionId,
     inbound: opts.inbound,
     cwd,
+    workspaceContext: opts.workspaceContext,
     model: opts.model,
     tools: opts.tools,
     toolContext,
@@ -197,6 +210,19 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     sessionSummary: sessionMetadata?.compaction,
     previousRun: opts.previousRun,
     produced: [],
+    taskBookRevision: 0,
+    appliedTaskBookPatchIds: [],
+    deferredRuntimeEventIds: [],
+    deferredRuntimeEvents: [],
+    sideEffects: [],
+    loopBudget: {
+      attemptsUsed: 0,
+      maxAttempts: opts.config.agents.defaults.maxModelCallsPerRun,
+      elapsedMs: 0,
+      maxElapsedMs: 0,
+      noProgressRounds: 0,
+      maxNoProgressRounds: 2,
+    },
     maxRecoveryAttempts: opts.config.agents.defaults.maxRecoveryAttempts,
     recoveryAttempts: 0,
     // VERIFY bounded iteration: replan budget (default 2). When exhausted,
@@ -213,6 +239,10 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     reasoningPromptAddon: opts.reasoningPromptAddon,
     attachments: opts.attachments,
     resolvedRunConfig: opts.resolvedRunConfig,
+    runtimeEventQueue: opts.runtimeEventQueue,
+    reserveUserFacingReply: typeof opts.sessionManager.reserveAssistantReply === 'function'
+      ? (reply) => opts.sessionManager.reserveAssistantReply(opts.sessionId, reply)
+      : undefined,
     modelRequests: [],
     maxModelCalls: opts.config.agents.defaults.maxModelCallsPerRun,
     contextSnapshots: [],

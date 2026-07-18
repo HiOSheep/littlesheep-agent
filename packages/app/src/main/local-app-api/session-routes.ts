@@ -39,9 +39,16 @@ export async function routeSessions(
 
   const sessionMessagesId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.sessions, '/messages')
   if (method === 'GET' && sessionMessagesId !== null) {
-    const messages = await runner.sessionManager.read(asSessionId(sessionMessagesId))
+    const limit = boundedHistoryLimit(url.searchParams.get('limit'))
+    const beforeId = url.searchParams.get('before')?.trim() || undefined
+    const window = await runner.sessionManager.readWindow(asSessionId(sessionMessagesId), limit, beforeId)
+    const messages = window.messages
     const logsByRunId = await loadExecutionLogsByRunId(runner, messages, sessionMessagesId)
-    json(res, 200, { messages: buildHistoryMessages(messages, logsByRunId) })
+    json(res, 200, {
+      messages: buildHistoryMessages(messages, logsByRunId),
+      hasMore: window.hasMore,
+      beforeId: window.beforeId,
+    })
     return true
   }
 
@@ -146,6 +153,12 @@ export async function routeSessions(
   }
 
   return false
+}
+
+function boundedHistoryLimit(value: string | null): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return 120
+  return Math.max(24, Math.min(240, Math.floor(parsed)))
 }
 
 async function loadExecutionLogsByRunId(

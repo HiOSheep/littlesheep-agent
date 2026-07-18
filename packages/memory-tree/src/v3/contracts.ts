@@ -108,6 +108,16 @@ export interface MemoryAtomMerge {
   reason: string;
 }
 
+/** Why an older Atom is no longer the active projection after correction. */
+export interface MemoryAtomSupersession {
+  byAtomId: string;
+  relationId: string;
+  at: string;
+  reason: string;
+  priorEpistemicStatus: EpistemicStatus;
+  priorResolutionStatus: MemoryResolutionStatus;
+}
+
 export interface MemoryAtom {
   version: typeof MEMORY_ATOM_VERSION;
   id: string;
@@ -145,6 +155,7 @@ export interface MemoryAtom {
   resolutionStatus: MemoryResolutionStatus;
   invalidation?: MemoryAtomInvalidation | null;
   merge?: MemoryAtomMerge | null;
+  supersession?: MemoryAtomSupersession | null;
   mergedFromAtomIds?: string[];
   mergedIntentIds?: string[];
   effectiveAt?: string;
@@ -379,6 +390,8 @@ export interface MemoryUseFeedback {
 export interface MemoryEvidenceEnvelope {
   atomId: string;
   atomRevision: number;
+  /** Public parent id used for bounded hierarchy navigation and model proposals. */
+  parentNodeId?: string;
   branch: MemoryBranchKind;
   scope: MemoryScope;
   scopeKey?: string;

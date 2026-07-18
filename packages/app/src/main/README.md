@@ -9,6 +9,8 @@
 - `local-app-api/`：HTTP/SSE 基元、公共契约与各领域路由；新增接口必须进入对应领域。
 - `session-index.ts`、`project-index.ts`、`archive-index.ts`：UI 元数据索引。
 - `attachment-cache.ts`、`data-root-*.ts`、`workspace-*.ts`：各自受管数据和资源生命周期。
+- `workspace-office-preview.ts`：在主进程执行有界的 Office/OpenDocument 只读文本提取；先检查文件大小，并限制 ZIP 条目和 XML 展开规模，Renderer 只接收结构化结果。
+- `index.ts` 的 webview 宿主策略：网页预览留在 LS 内部，HTTP(S) 新窗口请求回收到当前 guest，非网页协议才按明确策略交给系统处理。
 
 主进程拥有 Electron 生命周期和用户数据 adapter，不拥有 Agent Workflow、记忆算法或 renderer 交互状态。
 

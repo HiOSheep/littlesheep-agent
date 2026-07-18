@@ -32,10 +32,11 @@ describe('askUserStage', () => {
 
     expect(result.next).toBe('finalize');
     expect(result.meta?.clarificationRequestId).toBe('run-1:clarification');
-    expect(ctx.reply).toBe('没有目标路径\n\n请选择目标文件。（可选：README.md、package.json）');
+    expect(ctx.reply).toBe('请选择目标文件：README.md 还是 package.json？');
     expect(ctx.clarificationRequest?.prompt).toBe(ctx.reply);
     expect(ctx.lastError).toBeUndefined();
-    expect(llm.chat).not.toHaveBeenCalled();
+    expect(llm.chat).toHaveBeenCalledTimes(1);
+    expect(ctx.replyProvenance?.source).toBe('llm');
   });
 
   it('uses the LLM and active Soul to compose runtime-generated clarification copy', async () => {
@@ -60,5 +61,25 @@ describe('askUserStage', () => {
     expect(ctx.reply).toBe('这一步需要你的决定：要我重试，还是先停下来？');
     expect(systemPrompts[0]).toContain('SOUL_SENTINEL_ASK_USER_VOICE');
     expect(ctx.modelRequests?.at(-1)?.callContract?.purpose).toBe('ask_user');
+    expect(ctx.replyProvenance?.purpose).toBe('ask_user');
+  });
+
+  it('rewrites a model reply when it exactly repeats a recent assistant message', async () => {
+    const llm = createMockLlm([
+      textResponse('请告诉我目标文件。'),
+      textResponse('为了继续处理，请先指定要修改的文件。'),
+    ]);
+    const stage = createAskUserStage({ llm, model: 'test' });
+    const ctx = makeCtx({
+      inbound: textMessage('user', '修改那个文件'),
+      history: [textMessage('assistant', '请告诉我目标文件。')],
+      lastError: { stage: 'decide', message: 'target path missing' },
+    });
+
+    await stage(ctx);
+
+    expect(ctx.reply).toBe('为了继续处理，请先指定要修改的文件。');
+    expect(ctx.replyProvenance?.rewriteCount).toBe(1);
+    expect(llm.chat).toHaveBeenCalledTimes(2);
   });
 });

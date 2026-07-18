@@ -13,6 +13,7 @@ import { toChatMessage, textOf, callLlmForJson } from './_shared.js';
 import { appendSystemPromptAddons, buildUserFacingVoiceAddon } from '../profile-prompt.js';
 import { prepareModelRequest, recordProviderUsage } from '../model-observability.js';
 import { buildRunRequestCandidates } from '../context-candidates.js';
+import { acceptUniqueUserFacingReply, type ReplyRewriteInput } from '../user-facing-reply.js';
 
 export interface RecoverStageDeps {
   llm: LlmClient;
@@ -180,10 +181,19 @@ export function createRecoverStage(deps: RecoverStageDeps) {
       };
       next = 'ask_user';
     } else {
-      ctx.reply = parsed.reason?.trim()
-        || (/[\u3400-\u9fff]/u.test(textOf(ctx.inbound))
-          ? '当前任务无法安全继续，已停止。'
-          : 'The task could not continue safely and has been stopped.');
+      try {
+        ctx.reply = await acceptUniqueUserFacingReply(
+          ctx,
+          'recover',
+          parsed.reason ?? '',
+          (input) => rewriteAbortReason(deps, ctx, lastError, input),
+        );
+      } catch (error) {
+        ctx.reply = undefined;
+        ctx.replyProvenance = undefined;
+        ctx.lastError = { stage: 'recover', message: `user-facing recovery reply generation failed: ${(error as Error).message}` };
+        return { stage: 'recover', next: 'exit', ok: false, error: ctx.lastError.message };
+      }
       next = 'finalize';
     }
 
@@ -194,4 +204,46 @@ export function createRecoverStage(deps: RecoverStageDeps) {
       meta: { action: parsed.action, attempts: ctx.recoveryAttempts, reason: parsed.reason },
     };
   };
+}
+
+async function rewriteAbortReason(
+  deps: RecoverStageDeps,
+  ctx: RunContext,
+  lastError: RunContext['lastError'],
+  input: ReplyRewriteInput,
+): Promise<string> {
+  const messages: ChatMessage[] = [
+    {
+      role: 'system',
+      content: appendSystemPromptAddons(
+        SYSTEM_PROMPT,
+        buildUserFacingVoiceAddon(ctx),
+        'The previous abort reason exactly repeats a previously published LS reply. Return action "abort" again, but rewrite reason with a genuinely different opening and sentence structure. Preserve the same failure facts and do not mention the rewrite.',
+      ),
+    },
+    {
+      role: 'user',
+      content: [
+        `Last error: stage=${lastError?.stage ?? 'unknown'}, message=${lastError?.message ?? 'unknown'}`,
+        `Prior API-generated reason: ${input.generatedReply}`,
+        `Recent replies to avoid repeating exactly:\n${input.avoidReplies.map((reply, index) => `${index + 1}. ${reply}`).join('\n')}`,
+      ].join('\n\n'),
+    },
+  ];
+  const { parsed } = await callLlmForJson<DecodedRecovery>(deps.llm, deps.model, messages, {
+    maxAttempts: 2,
+    maxTokens: 800,
+    signal: ctx.signal,
+    onRequest: (request) => prepareModelRequest(
+      ctx,
+      'recover',
+      request,
+      buildRunRequestCandidates(ctx, 'recover', request.messages, {
+        history: [],
+        primaryUserKind: 'workflow_state',
+      }),
+    ),
+    onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
+  });
+  return parsed?.action === 'abort' ? parsed.reason ?? '' : '';
 }

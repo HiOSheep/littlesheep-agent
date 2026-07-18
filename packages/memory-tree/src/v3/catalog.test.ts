@@ -54,6 +54,22 @@ describe('MemoryCatalog', () => {
       .toThrow(/require scopeKey/i);
   });
 
+  it('counts only active descendants and caps recursive hierarchy inspection', () => {
+    const catalog = createCatalog();
+    const root = makeStoredAtom({ id: 'count-root' });
+    const child = makeStoredAtom({ id: 'count-child', parentId: root.id });
+    const grandchild = makeStoredAtom({ id: 'count-grandchild', parentId: child.id });
+    const archived = makeStoredAtom({ id: 'count-archived', parentId: root.id, status: 'archived' });
+    for (const atom of [root, child, grandchild, archived]) {
+      catalog.upsertAtom(atom, `atoms/${atom.id}.json`);
+    }
+
+    expect(catalog.countActiveDescendants(root.id, 10)).toBe(2);
+    expect(catalog.countActiveDescendants(root.id, 1)).toBe(1);
+    expect(catalog.countActiveDescendants(child.id, 10)).toBe(1);
+    expect(catalog.countActiveDescendants(archived.id, 10)).toBe(0);
+  });
+
   it('uses an explicitly local engine for scoped vector candidates', async () => {
     const engine = makeEngine('local');
     const catalog = createCatalog({ embeddingEngine: engine });

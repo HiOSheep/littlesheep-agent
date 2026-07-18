@@ -1,0 +1,99 @@
+import type { ChatMessage } from '@littlesheep/llm';
+import type { SystemPromptBundle } from '@littlesheep/prompt';
+import { assembleSystemPromptBundle, resolvePromptConfig } from '@littlesheep/prompt';
+import type { RunContext } from '@littlesheep/types';
+import { buildRunRequestCandidates } from '../../context-candidates.js';
+import { appendSystemPromptBundleAddons } from '../../profile-prompt.js';
+import {
+  attachmentContextMessages,
+  textOf,
+  toChatMessage,
+  userChatMessage,
+  type AttachmentContextMessage,
+} from '../_shared.js';
+import {
+  DECIDE_SYSTEM_PROMPT,
+  type DecideStageDeps,
+} from './contracts.js';
+import { renderReplanFeedback } from './replan.js';
+import { renderDeferredRuntimeEvents } from './runtime-events.js';
+
+export interface DecideRequest {
+  systemPrompt: SystemPromptBundle;
+  messages: ChatMessage[];
+  inboundText: string;
+  attachmentMessages: AttachmentContextMessage[];
+  previousTaskBook: RunContext['taskBook'];
+  partialReplan: RunContext['partialReplanRequest'];
+  deferredRuntimeEvents: NonNullable<RunContext['deferredRuntimeEvents']>;
+  replanRequested: boolean;
+}
+
+export async function buildDecideRequest(
+  deps: DecideStageDeps,
+  ctx: RunContext,
+): Promise<DecideRequest> {
+  const resolved = resolvePromptConfig(deps.config, deps.branding);
+  const baseSystemPrompt = await assembleSystemPromptBundle(resolved, {
+    tools: ctx.tools,
+    bootstrap: ctx.bootstrap ?? {},
+    prelude: ctx.prelude,
+    sessionSummary: ctx.sessionSummary,
+    memoryRootIndex: ctx.memoryRootIndex,
+    initialMemoryContext: ctx.initialMemoryContext,
+  });
+  const systemPrompt = appendSystemPromptBundleAddons(baseSystemPrompt, [
+    {
+      id: 'decide-contract',
+      text: DECIDE_SYSTEM_PROMPT,
+      kind: 'workflow_state',
+      source: { kind: 'workflow', id: 'decide-contract', runId: ctx.runId },
+    },
+    { id: 'profile', text: ctx.profilePromptAddon },
+    { id: 'reasoning', text: ctx.reasoningPromptAddon },
+  ]);
+
+  const previousTaskBook = ctx.taskBook;
+  const partialReplan = ctx.partialReplanRequest;
+  const deferredRuntimeEvents = ctx.deferredRuntimeEvents ?? [];
+  const replanRequested = Boolean(
+    previousTaskBook
+    && (partialReplan || ctx.verifyFeedback || deferredRuntimeEvents.length > 0),
+  );
+  const verifyFeedback = partialReplan && previousTaskBook
+    ? renderReplanFeedback(ctx, partialReplan)
+    : ctx.verifyFeedback
+      ? `\n\n---\nPrevious plan did not achieve the goal. Verify feedback:\n${ctx.verifyFeedback}\nPlease produce a REVISED assessment and taskBook that addresses this feedback.`
+      : '';
+  const inboundText = textOf(ctx.inbound) || '(empty message)';
+  const attachmentMessages = attachmentContextMessages(ctx.runId, ctx.attachments);
+  const runtimeEventContext = renderDeferredRuntimeEvents(deferredRuntimeEvents);
+  const messages: ChatMessage[] = [
+    { role: 'system', content: systemPrompt.text },
+    ...ctx.history.map(toChatMessage),
+    ...attachmentMessages.map((item) => item.message),
+    userChatMessage(`${inboundText}${verifyFeedback}${runtimeEventContext}`, ctx.attachments),
+  ];
+
+  return {
+    systemPrompt,
+    messages,
+    inboundText,
+    attachmentMessages,
+    previousTaskBook,
+    partialReplan,
+    deferredRuntimeEvents,
+    replanRequested,
+  };
+}
+
+export function buildDecideRequestCandidates(
+  ctx: RunContext,
+  request: DecideRequest,
+  messages: ChatMessage[],
+) {
+  return buildRunRequestCandidates(ctx, 'decide', messages, {
+    systemSegments: request.systemPrompt.segments,
+    insertedBeforePrimary: request.attachmentMessages.map((item) => item.context),
+  });
+}

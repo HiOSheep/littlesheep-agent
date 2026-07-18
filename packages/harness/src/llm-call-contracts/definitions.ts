@@ -58,7 +58,7 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     allowedDecisions: ['needs_clarification', 'lightweight_plan', 'structured_taskbook', 'partial_replan'],
     outputSchema: json('taskbook-decision.v1', 'NeedAssessment, optional ClarificationRequest and TaskBook.'),
     memoryIntents: ['read', 'none'], requiresMemoryEvidence: true, toolMode: 'none', runtimeApprovalRequired: false,
-    maxIterations: 0, maxAttempts: 3, maxOutputTokens: 1_800, maxPromptTokens: 12_000, temperature: 0,
+    maxIterations: 0, maxAttempts: 3, maxOutputTokens: 1_800, maxPromptTokens: 16_000, temperature: 0,
   }),
   execute_tool_loop: template({
     purpose: 'execute_tool_loop', stage: 'execute', modelCall: 'required',
@@ -77,7 +77,7 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     history: 'none', attachments: 'none', allowedDecisions: ['compose_final_reply'],
     outputSchema: text('final-reply.v1', 'User-facing answer with progressive disclosure and explicit failures.'),
     memoryIntents: NO_MEMORY, requiresMemoryEvidence: true, toolMode: 'none', runtimeApprovalRequired: false,
-    maxIterations: 0, maxAttempts: 1, maxOutputTokens: 900, maxPromptTokens: 8_000, temperature: 0,
+    maxIterations: 0, maxAttempts: 3, maxOutputTokens: 900, maxPromptTokens: 8_000, temperature: 0.65,
   }),
   recover: template({
     purpose: 'recover', stage: 'recover', modelCall: 'optional',
@@ -101,9 +101,9 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     purpose: 'evolve', stage: 'evolve', modelCall: 'optional',
     goal: (ctx) => `Propose only durable, evidenced improvements from the verified run: ${goal(ctx)}`,
     allowedContextKinds: WORKFLOW_INPUTS, requiredContextKinds: ['system_prompt', 'workflow_state'],
-    history: 'none', attachments: 'none', allowedDecisions: ['propose_memory_intents', 'propose_skill', 'none'],
-    outputSchema: json('evolution-proposal.v1', 'Structured memory intents and an optional reusable Skill proposal.'),
-    memoryIntents: ['write', 'merge', 'invalidate', 'conflict', 'none'], requiresMemoryEvidence: true,
+    history: 'none', attachments: 'none', allowedDecisions: ['propose_memory_intents', 'propose_atom_reconciliation', 'propose_atom_reparent', 'propose_atom_subtree_move', 'propose_atom_revision', 'propose_atom_correction', 'propose_skill', 'none'],
+    outputSchema: json('evolution-proposal.v6', 'Structured memory intents, bounded Atom merge/reparent/subtree/revision/correction proposals and an optional reusable Skill proposal.'),
+    memoryIntents: ['write', 'merge', 'move', 'revise', 'invalidate', 'conflict', 'none'], requiresMemoryEvidence: true,
     writableBranches: ['long-term', 'project', 'experience'], toolMode: 'none', runtimeApprovalRequired: false,
     maxIterations: 0, maxAttempts: 2, maxOutputTokens: 2_400, maxPromptTokens: 6_000, temperature: 0,
   }),
@@ -123,7 +123,7 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     requiredContextKinds: ['system_prompt', 'user_input'], history: 'session', attachments: 'images_and_manifest',
     allowedDecisions: ['respond'], outputSchema: text('chat-reply.v1', 'Direct user-facing conversational response.'),
     memoryIntents: ['read', 'none'], requiresMemoryEvidence: true, toolMode: 'none', runtimeApprovalRequired: false,
-    maxIterations: 0, maxAttempts: 1, maxOutputTokens: 4_096, maxPromptTokens: 16_000, temperature: 0.7,
+    maxIterations: 0, maxAttempts: 3, maxOutputTokens: 4_096, maxPromptTokens: 16_000, temperature: 0.7,
   }),
   ask_user: template({
     purpose: 'ask_user', stage: 'ask_user', modelCall: 'optional',
@@ -132,7 +132,7 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     requiredContextKinds: ['system_prompt', 'workflow_state'], history: 'none', attachments: 'none',
     allowedDecisions: ['compose_clarification'], outputSchema: text('clarification-reply.v1', 'User-facing clarification that preserves the structured request.'),
     memoryIntents: NO_MEMORY, requiresMemoryEvidence: false, toolMode: 'none', runtimeApprovalRequired: false,
-    maxIterations: 0, maxAttempts: 1, maxOutputTokens: 500, maxPromptTokens: 4_096, temperature: 0.45,
+    maxIterations: 0, maxAttempts: 3, maxOutputTokens: 500, maxPromptTokens: 4_096, temperature: 0.65,
   }),
   finalize: template({
     purpose: 'finalize', stage: 'finalize', modelCall: 'forbidden',

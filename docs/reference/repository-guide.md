@@ -80,7 +80,7 @@
 | `packages/experience/` | 经验记录、置信度衰减和可复用能力数据。 |
 | `packages/snapshot/` | 记忆快照、索引和回滚支持。 |
 | `packages/safety/` | 记忆/提示注入防护、清洗、隔离和安全存储。 |
-| `packages/session/` | JSONL 会话管理、锁和长会话压缩入口。 |
+| `packages/session/` | JSONL 会话管理、锁、持久化回复指纹注册表和长会话压缩入口。 |
 
 ### 工具与扩展
 
@@ -116,7 +116,7 @@
 | Prompt 与行为 profile | `packages/prompt/` | `src/builder.ts`、`src/profiles.ts` | `src/builder.test.ts`、`src/profiles.test.ts` |
 | 记忆树、资源注册与项目投影 | `packages/memory-tree/` | 稳定 facade：`src/memory-service.ts`、`src/memory-repository.ts`；对话原始来源：`src/conversation-source-store.ts`；run 反馈：`src/memory-feedback.ts`、`src/memory-repository/v3-feedback-manager.ts`；run working set：`src/memory-tree-working-set.ts`；多轮任务语义、当前任务相关度与 prime 选择：`src/task-query.ts`、`src/task-relevance.ts`、`src/memory-prime-relevance.ts`；D1/深搜候选：`src/memory-repository/v3-retrieval.ts`、`v3-retrieval-materializer.ts`；Catalog FTS/向量：`src/v3/catalog-fts.ts`、`catalog-embedding.ts`；路由/关系相关性：`src/v3/priority.ts`、`src/v3/catalog-relevance.ts`；版本后端：`src/memory-repository/v2-backend.ts`、`v3-backend.ts`、`factory.ts`；安全迁移：`repository-locator.ts`、`v3-migration*.ts`；v3 投影变更与 Atom：`src/v3/raw-record-store.ts`、`raw-record-file.ts`、`raw-record-commit-store.ts`（兼容内部命名，语义为 projection mutation records）、`atom-store.ts`、`catalog.ts`、`graph-store.ts`、`storage-coordinator.ts` | 双后端契约：`src/memory-repository.contract.test.ts`；来源与反馈：`src/conversation-source-store.test.ts`、`src/memory-feedback.test.ts`；任务语义、相关性与 D1：`src/task-query.test.ts`、`src/task-relevance.test.ts`、`src/memory-prime-relevance.test.ts`、`src/memory-tree.test.ts`、`src/memory-service-v3.test.ts`、`src/v3/catalog.test.ts`、`src/v3/contracts-priority.test.ts`、`src/memory-repository/v3-backend.test.ts`；迁移：`src/memory-repository/v3-migration.test.ts`；v3：`src/memory-repository/v3-*.test.ts`、`src/v3/*.test.ts`；Runner：`packages/runner/src/memory-v3.integration.test.ts`；VERIFY 采用过滤：`packages/harness/src/stages/verify/memory-evidence.ts` |
 | 旧文件记忆兼容读取与安全写入基元 | `packages/memory-core/` | `src/store.ts`、`src/search.ts`、`src/write-memory.ts` | 对应同名测试；旧 archive/vector 写入入口已退役 |
-| 会话和长会话摘要 | `packages/session/` | `src/manager.ts`、`src/compaction.ts`、`src/compaction-store.ts` | 对应同名测试；摘要进入 Memory v3 的边界还需联查 `packages/runner/src/runner.ts` 与 `packages/memory-tree/src/task-query.ts` |
+| 会话、回复精确去重和长会话摘要 | `packages/session/` | `src/manager.ts`、`src/reply-fingerprint-store.ts`、`src/compaction.ts`、`src/compaction-store.ts` | 对应同名测试；用户可见回复注册表不进入 Context，摘要进入 Memory v3 的边界还需联查 `packages/runner/src/runner.ts` 与 `packages/memory-tree/src/task-query.ts` |
 | 工具注册、审批和内置工具 | `packages/tools/` | `src/registry.ts`、`src/wrapper.ts`、`src/builtin/` | `src/**/*.test.ts` |
 | 插件发现、信任和生命周期 | `packages/plugins/` | `src/host.ts`、`src/manifest.ts` | `src/**/*.test.ts` |
 | 外部渠道协议 | `packages/channels/*` | 各包 `src/plugin.ts` | 各包 `src/plugin.test.ts`、`test/e2e-webhook.test.ts` |

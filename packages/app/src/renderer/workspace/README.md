@@ -3,17 +3,22 @@
 这里负责右侧拓展工作区的布局、标签、文件树、预览、终端、产物和工作区活动。
 
 - `panel.tsx`、`add-menu.tsx`、`overview.tsx`：工作区壳和标签内容。
-- `files.tsx`、`file-navigator.tsx`、`preview-pane.tsx`、`terminal.tsx`：文件与终端能力。
+- `files.tsx`、`file-navigator.tsx`、`preview-pane.tsx`、`terminal.tsx`、`browser.tsx`：文件、终端和内置浏览器能力。
 - `resize-interaction.ts`、`use-workspace-layout-controller.ts`：独立于左侧栏的布局、拖动、折叠和恢复。
 - `activity.ts`、`path-utils.ts`、`directory-cache.ts`、`types.ts`：纯数据与路径边界。
 
 文件读写、终端进程和产物索引必须通过 Local App API；从文件树打开文件要创建标签，重启恢复只使用用户数据中的受控快照。
+
+浏览器的前进、后退和刷新只作用于 `browser-history.ts` 管理的独立 URL 栈，最多保留 50 条 URL，不进入全局应用导航快照。网页内部链接和新窗口请求留在 LS 的 `webview` 中；地址加载、重定向、刷新和历史移动都会在导航事件完成后清理挂起状态，避免重复加载或重复写入历史。切换标签后 webview 可以重建，因此工具栏以后端的逻辑 URL 栈为准，不直接依赖 Chromium 的原生历史栈。网页绘制由 Chromium 当前显示器 VSync 调度，刷新率是有效帧率上限；静态页面不由 LS 发起持续重绘，浏览器标签失活、工作区折叠或窗口隐藏时会卸载或允许 Chromium 节流。
+
+文件预览按资源上限执行：代码、文本和 Markdown 进入 Monaco；Office/OpenDocument 只读提取正文或表格/幻灯片文本，主进程先检查文件大小，再限制 ZIP 条目数量和 XML 展开规模。完整排版、编辑和旧式二进制 Office 兼容不属于当前预览契约。
 
 ## 软上限说明
 
 以下文件位于 300-600 行区间，暂按单一交互事务保留：
 
 - `terminal.tsx`：PTY 生命周期、SSE、尺寸同步和命令历史必须共同清理。
+- `terminal-fit.ts`：合并同一显示帧内的尺寸通知，并忽略尺寸未变化的 `ResizeObserver` 回调。
 - `file-navigator.tsx`：目录缓存、筛选、展开路径和树行渲染共享同一导航状态。
 - `preview-pane.tsx`：文件类型分派、编辑草稿、保存审批和预览错误共同组成一次文件打开事务。
 - `files.tsx`、`panel.tsx`：分别只协调文件工作面和工作区标签壳。

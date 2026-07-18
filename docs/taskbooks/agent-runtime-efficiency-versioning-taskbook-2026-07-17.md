@@ -1,8 +1,8 @@
 # LittleSheep Agent Runtime 效率与版本化连续性任务书 2026-07-17
 
-最后更新：2026-07-17 13:24:05
+最后更新：2026-07-18 02:22:16
 
-状态：本轮实现已完成工具调用级并行、数据与工作区 shadow Git 检查点、退出冻结和 LLM 调用收敛；活动 run 重启续跑、运行中事件重入、TaskBook 步骤级并行和后台托盘仍未完成。
+状态：本轮实现已完成工具调用级并行、数据与工作区 shadow Git 检查点、退出冻结和 LLM 调用收敛；本次已完成有界 `RuntimeEventQueue` 基元及快照/决策批次测试，但安全边界消费、TaskBookPatch、活动 run 重启续跑、TaskBook 步骤级并行和后台托盘仍未完成。
 
 本文是本轮“并行执行、可回退、少而有效地调用 LLM”工作的专项任务书。长期分工以 [架构原则](../principles/architecture-principles.md) 为准，当前事实以 [项目状态](../decision/project-status.md) 为准，旧连续性任务书中的阶段设计仍有效，但与本文冲突的完成状态以本文和项目状态为准。
 
@@ -11,7 +11,7 @@
 本任务线只服务两个核心目标：不失忆、高效完成任务。所有缓存、日志、版本、调度和上下文结构都必须证明能够减少丢失、重复、等待、无效 Token 或恢复成本，否则应简化或延后。
 
 - LLM 负责理解、推理、提出计划、工具调用建议和用户可见表达；Agent Runtime 负责状态、权限、调度、执行、验证、记忆提交、版本和恢复。
-- 用户看到的最终回答、执行结论和阶段性表达必须由 LLM 结合运行时 `SOUL.md` 生成。确定性代码只负责隐藏的流水记录、状态装配、验证、版本提交和安全兜底，不能把有风格的前台表达改成固定模板。
+- 用户看到的最终回答、执行结论和阶段性表达必须由真实 LLM 调用结合运行时 `SOUL.md` 生成。确定性代码只负责隐藏的流水记录、状态装配、验证、版本提交和安全兜底，不能把有风格的前台表达改成固定模板；重复、空回复或模型失败只能显示 Runtime 错误/状态。
 - 并行只针对相互独立、无资源读写冲突、权限语义明确的工具调用；缺少依赖和资源信息时默认串行。TaskBook 步骤级并行是后续独立阶段，不能把工具调用并行误称为完整任务并行。
 - 版本化只作用于 LS 应用数据和用户明确授权的工作区，不修改用户已有 `.git`，不把密钥、缓存、SQLite/WAL、构建物或无关未跟踪文件纳入管理。
 
@@ -41,16 +41,24 @@
 
 - 每轮模型调用有独立 `modelCallCount` 和默认 32 次硬上限，不依赖有界观测数组的长度。
 - `CAPTURE` 默认从已持久化的对话、步骤和工具状态生成确定性 daily 原子，不为内部流水额外调用 LLM；`EVOLVE` 使用 `adaptive/always/never`，默认只在复杂任务、持久化工具、恢复/重规划或明确记忆信号出现时调用。
-- `REPLY`、DECIDE 产生的任务说明、执行步骤结果、VERIFY 说明和多步骤 `execute_final_reply` 由 LLM 生成；运行时生成的澄清事实由 `ASK_USER` 做一次有界表达，DECIDE 已写好的澄清直接复用，不重复调用。所有前台自然语言调用均注入运行时 `SOUL.md`，保证用户配置的人格、语气和渐进式披露风格。按钮、状态、权限、路径和进度由 Runtime 固定提供，`FINALIZE` 禁止新增模型调用。
+- `REPLY`、DECIDE 产生的任务说明、执行步骤结果、VERIFY 说明和多步骤 `execute_final_reply` 都必须在当次 run 中实时调用当前 Provider API 生成；运行时生成的澄清事实只能作为 `ASK_USER` 的输入，最终文本仍由 LLM 现场组织，不能直接发送，也不能从模板库、预备文案池或历史回答选取。这里不存在“LLM 生成候选文案后由 Runtime 挑选”的前台流程：Runtime 只校验真实 API 返回的来源、事实边界和唯一性。所有前台自然语言调用均注入运行时 `SOUL.md`，保证用户配置的人格、语气和渐进式披露风格；`ReplyProvenance` 绑定真实 model request，API 返回在发布前由持久化会话级注册表原子占用规范化指纹，完全重复时最多重新实时调用两次当前 Provider API，仍重复、注册表失败或生成失败只呈现 Runtime 错误/状态。按钮、状态、权限、路径和进度由 Runtime 固定提供，`FINALIZE` 禁止新增模型调用，只负责校验并持久化已经生成的回复。
 - Context Engine 区分阶段软目标与模型窗口硬上限：先按优先级裁剪可选内容，必要内容在未超过真实模型窗口时可以超过软目标；未知模型不会凭软目标触发会话压缩。
 - 每次请求在缓存边界后注入精确到秒的 runtime awareness；最近对话优先于重复的静态时间段，时间、耗时和进度仍由运行时事实提供。
 - 记忆上下文继续沿 `root index -> branch index -> expand -> branch-scoped search`，只把有任务价值、作用域正确、证据可解释且预算允许的 Atom 放入请求。
 
 主要实现：`packages/harness/src/model-observability.ts`、`packages/context/src/engine.ts`、`packages/harness/src/context-candidates.ts`、`packages/harness/src/stages/capture.ts`、`packages/harness/src/stages/execute/final-reply.ts`。
 
+### 2.4 RuntimeEventQueue 基元
+
+- `packages/runner/src/runtime-event-queue.ts` 提供 run/session 隔离的有界事件队列；事件数量、payload 大小、事件寿命和决策批次都有硬上限。
+- 入队支持稳定 sequence、事件 id 与 `dedupKey` 幂等去重；重复且语义相同的事件返回已有记录，冲突、越界和容量不足显式拒绝，不静默丢弃。
+- 队列支持过期标记、单一决策批次租约、原子结算和失败释放；已完成事件可裁剪，`cursor` 与序号仍保持连续，避免长 run 的集合无限增长。
+- 快照只保存有界事件状态，恢复时不恢复悬挂的决策租约；`contextSummary()` 只暴露类型、来源、序号和 payload key，不把完整 payload 默认注入 LLM。
+- 当前仅完成运行时基元和隔离测试（专项 `10/10`）；它尚未接入 Harness 的安全决策边界，也不会自行生成或应用 `TaskBookPatch`。
+
 ## 3. 尚未完成
 
-1. **运行中事件重入**：建立 `RuntimeEventQueue`，在安全边界消费用户追加要求、暂停、恢复和设置变更，并只生成局部 `TaskBookPatch`。
+1. **运行中事件重入**：把已有 `RuntimeEventQueue` 接入安全决策边界，消费用户追加要求、暂停、恢复和设置变更，并只生成局部 `TaskBookPatch`。
 2. **TaskBook 步骤级并行**：为步骤声明依赖、读写集合、副作用和验收标准；无依赖、无冲突步骤才可并行，并按稳定依赖顺序归并结果。
 3. **活动 run 重启续跑**：把 TaskBook、分支状态、事件游标、权限结果和幂等副作用状态纳入可恢复检查点；启动时提供恢复、放弃和现场查看，而不是只恢复数据文件。
 4. **后台执行控制面**：托盘状态、重新打开、暂停、中断、彻底退出和关闭窗口策略需要独立语义与 UI；在配套完成前不改变当前关闭行为。
@@ -61,7 +69,7 @@
 
 - 并行与串行在相同输入下得到等价的工具证据、验证结论和记忆写入；冲突资源不并行，长期运行无集合、监听器、子进程或句柄无界增长。
 - 每轮完整对话、写入前和退出冻结均有可定位版本；数据与工作区能同步回退，回退不删除无关未跟踪文件，密钥和生成物不入 shadow Git。
-- 普通聊天、复杂任务和运行时澄清的用户可见自然语言都能在请求快照中找到 LLM 调用与 `SOUL`/profile 上下文来源；已由 DECIDE 生成的澄清不重复调用，确定性 CAPTURE 不增加前台模型调用。
+- 普通聊天、复杂任务和运行时澄清的用户可见自然语言都能在请求快照中找到本轮当前 Provider 的真实 LLM 调用与 `SOUL`/profile 上下文来源，并通过 `ReplyProvenance` 追溯；同一 UI 回合的更新可以复用已通过检查的文本，但不得把它作为新的消息发送。确定性 CAPTURE 不增加前台模型调用。
 - Context 快照记录实际纳入与排除的来源和理由；真实模型窗口未知时不显示伪精确 Token 百分比，也不因软目标误触发压缩。
 - 运行中失败、取消、关闭和重启都有明确状态，不能把部分完成伪装成成功。
 
@@ -79,4 +87,4 @@ pnpm.cmd run verify:app-recovery
 
 ## 6. 后续顺序
 
-先完成真实 Provider 校准和统一 Tool Execution Service，再实现 RuntimeEventQueue 与 TaskBook 步骤并行，随后把现有 shadow Git 检查点升级为活动 run 可恢复续跑，最后补后台控制面、版本治理 UI 和效率对比基线。
+先完成真实 Provider 校准和统一 Tool Execution Service，再把已有 RuntimeEventQueue 接入安全消费并实现 TaskBookPatch，随后实现 TaskBook 步骤并行和活动 run 可恢复续跑，最后补后台控制面、版本治理 UI 和效率对比基线。

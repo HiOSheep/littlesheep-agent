@@ -118,9 +118,9 @@ describe('durable history activity reconstruction', () => {
     expect(history).toHaveLength(1)
     expect(history[0]).toMatchObject({
       role: 'assistant',
-      text: 'Error: Run was stopped by the user.',
+      text: '',
       activityCollapsed: true,
-      activity: { status: 'aborted' },
+      activity: { status: 'aborted', error: 'Run was stopped by the user.' },
     })
   })
 

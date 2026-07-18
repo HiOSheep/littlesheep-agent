@@ -13,7 +13,13 @@ import {
 } from './tests/helpers.js';
 import { DEFAULT_CONFIG } from '@littlesheep/config';
 import { DEFAULT_BRANDING } from '@littlesheep/branding';
-import { textMessage } from '@littlesheep/types';
+import {
+  RUNTIME_EVENT_VERSION,
+  textMessage,
+  type RuntimeEventDecision,
+  type RuntimeEventEnvelope,
+  type RuntimeEventQueueLike,
+} from '@littlesheep/types';
 
 const baseDeps = {
   model: 'test',
@@ -54,11 +60,12 @@ describe('createDefaultHarness state machine', () => {
   it('problem path: enter → classify → decide → execute(stop) → verify(pass) → evolve → capture → finalize → exit', async () => {
     const tool = makeTool('read', { ok: true, output: 'data' });
     // 'read the file' doesn't match any rule → LLM classify fallback.
-    // LLM queue: classify → decide → execute(stop) → verify(pass) → evolve → capture
+    // LLM queue: classify → decide → execute(stop) → final reply → verify(pass) → evolve → capture
     const llm = createMockLlm([
       textResponse('{"type":"problem","confidence":0.9,"reason":"task"}'),
       textResponse('{"plan":[{"description":"read it","tools":["read"]}]}'),
       textResponse('done', 'stop'),
+      textResponse('The file was read successfully.'),
       textResponse('{"verdict":"pass","reason":"goal achieved"}'),
       textResponse('{"notes":["learned"]}'),
       textResponse('{"insights":["captured"]}'),
@@ -77,6 +84,78 @@ describe('createDefaultHarness state machine', () => {
       'enter', 'classify', 'decide', 'execute', 'verify', 'evolve', 'capture', 'finalize',
     ]);
     expect(ctx.classification?.type).toBe('problem');
+  });
+
+  it('re-enters DECIDE for a task event received after EXECUTE and adopts a new TaskBook revision', async () => {
+    const planningPrompts: string[] = [];
+    const llm = createMockLlm((request) => {
+      planningPrompts.push(String(request.messages.at(-1)?.content ?? ''));
+      const revised = planningPrompts.length > 1;
+      return textResponse(JSON.stringify({
+        assessment: {
+          userNeed: revised ? 'include the runtime verification update' : 'complete the original task',
+          complexity: 'standard',
+          goal: 'complete the task',
+          successCriteria: [revised ? 'runtime verification is included' : 'the original task is complete'],
+          requiresTaskBook: true,
+        },
+        taskBook: {
+          goal: 'complete the task',
+          complexity: 'standard',
+          successCriteria: [revised ? 'runtime verification is included' : 'the original task is complete'],
+          steps: [{
+            id: 'step-1',
+            description: revised ? 'complete the task and verify the runtime update' : 'complete the task',
+          }],
+        },
+      }));
+    });
+    const h = makeHarness(llm);
+    const runtimeQueue = createMutableRuntimeTaskQueue();
+    let executeCalls = 0;
+    h.registerStage('classify', async (ctx) => {
+      ctx.classification = { type: 'problem', confidence: 1, source: 'rules', reason: 'integration test' };
+      return { stage: 'classify', next: 'decide', ok: true };
+    });
+    h.registerStage('execute', async (ctx) => {
+      executeCalls += 1;
+      if (executeCalls === 1) {
+        runtimeQueue.enqueue({
+          version: RUNTIME_EVENT_VERSION,
+          id: 'runtime-update-1',
+          runId: ctx.runId,
+          sessionId: ctx.sessionId,
+          sequence: 1,
+          type: 'user_message',
+          source: 'app',
+          status: 'queued',
+          receivedAt: '2026-07-18T11:00:00.000Z',
+          payload: { text: 'Add a verification step before delivery.' },
+        });
+        return { stage: 'execute', next: 'verify', ok: true };
+      }
+      return { stage: 'execute', next: 'finalize', ok: true };
+    });
+    h.registerStage('finalize', async () => ({
+      stage: 'finalize', next: 'exit', ok: true,
+    }));
+    const ctx = makeCtx({ inbound: textMessage('user', 'complete the task') });
+    ctx.runtimeEventQueue = runtimeQueue.port;
+
+    const result = await h.run(ctx);
+
+    expect(result.ok).toBe(true);
+    expect(executeCalls).toBe(2);
+    expect(planningPrompts).toHaveLength(2);
+    expect(planningPrompts[1]).toContain('Add a verification step before delivery.');
+    expect(ctx.taskBookRevision).toBe(2);
+    expect(ctx.taskBook?.steps[0]?.description).toBe('complete the task and verify the runtime update');
+    expect(ctx.deferredRuntimeEvents).toEqual([]);
+    expect(ctx.deferredRuntimeEventIds).toEqual(['runtime-update-1']);
+    const trace = result.meta?.trace as Array<{ name: string }>;
+    expect(trace.map((item) => item.name)).toEqual([
+      'enter', 'classify', 'decide', 'execute', 'decide', 'execute', 'finalize',
+    ]);
   });
 
   it('unclear path: enter → classify(unclear) → ask_user → finalize → exit', async () => {
@@ -154,3 +233,54 @@ describe('createDefaultHarness state machine', () => {
     expect(trace.map((t) => t.name)).toEqual(['enter', 'classify']);
   });
 });
+
+function createMutableRuntimeTaskQueue(): {
+  port: RuntimeEventQueueLike;
+  enqueue: (event: RuntimeEventEnvelope) => void;
+} {
+  let queued: RuntimeEventEnvelope[] = [];
+  let active: { token: string; events: RuntimeEventEnvelope[] } | undefined;
+  let batchSequence = 0;
+  const boundary = {
+    openDecisionBatchForTypes(types: readonly RuntimeEventEnvelope['type'][]) {
+      if (active) throw new Error('decision batch already active');
+      const events = queued.filter((event) => types.includes(event.type));
+      if (events.length === 0) return undefined;
+      const token = `batch-${++batchSequence}`;
+      active = { token, events };
+      return {
+        token,
+        openedAt: '2026-07-18T11:00:01.000Z',
+        cursor: 0,
+        events: structuredClone(events),
+      };
+    },
+    settleDecisionBatch(token: string, decisions: readonly RuntimeEventDecision[]) {
+      if (!active || active.token !== token) throw new Error('decision batch token mismatch');
+      const settledIds = new Set(active.events.map((event) => event.id));
+      const settled = active.events.map((event) => {
+        const decision = decisions.find((item) => item.eventId === event.id);
+        if (!decision) throw new Error(`missing decision for ${event.id}`);
+        return {
+          ...event,
+          status: decision.status,
+          decisionReason: decision.reason,
+        };
+      });
+      queued = queued.filter((event) => !settledIds.has(event.id));
+      active = undefined;
+      return settled;
+    },
+    releaseDecisionBatch(token: string) {
+      if (!active || active.token !== token) return false;
+      active = undefined;
+      return true;
+    },
+  };
+  return {
+    port: boundary as unknown as RuntimeEventQueueLike,
+    enqueue(event) {
+      queued.push(structuredClone(event));
+    },
+  };
+}

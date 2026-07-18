@@ -115,6 +115,7 @@ Rules:
 - Demand calibration comes first: avoid using a cannon for a mosquito.
 - Trivial/simple tasks should have 1 brief step and minimal overhead.
 - Standard/complex tasks need stage goals and acceptance criteria.
+- Natural-language fields that can reach the user (assessment, clarification, goals, criteria, step titles/descriptions and expected outputs) must use the user's language and follow the active SOUL.md voice. Keep IDs, tool names, status values and runtime facts machine-stable.
 - Aim to be a little more helpful than requested, but never more than 3x the user's requested scope/cost.
 - If key information is missing and guessing would be harmful, set needsClarification=true and list missingInfo.
 - When needsClarification=true, fill clarification.blockingReason and one answerable question per missing field.

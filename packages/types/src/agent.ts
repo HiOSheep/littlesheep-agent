@@ -4,7 +4,7 @@
 // This is the heart of LittleSheep. The agent loop is a HARD control-flow
 // state machine — LLM only decides WITHIN a stage, never WHICH stage comes next.
 
-import type { Message } from './message.js';
+import type { Message, ReplyProvenance } from './message.js';
 import type { CompactionSummary, SessionId, SessionRunSummary } from './session.js';
 import type { AgentTool, ToolContext } from './tool.js';
 import type { MemoryPrelude } from './memory.js';
@@ -211,6 +211,11 @@ export interface RunContext {
   inbound: Message;
   /** Working directory. */
   cwd: string;
+  /** Resolved workspace ownership boundary used by memory/resource registration. */
+  workspaceContext?: {
+    boundaryKind: 'agent_workplace' | 'user_workplace' | 'project';
+    projectId?: string;
+  };
   /** Model ref (provider/model). */
   model: string;
   /** Tools available to EXECUTE stage. */
@@ -239,6 +244,18 @@ export interface RunContext {
   needAssessment?: NeedAssessment;
   /** Structured task book from DECIDE. */
   taskBook?: TaskBook;
+  /** Monotonic revision of the run-local TaskBook; starts at 1 when present. */
+  taskBookRevision?: number;
+  /** Bounded ids of TaskBook patches already committed at a runtime boundary. */
+  appliedTaskBookPatchIds?: string[];
+  /** Runtime events retained for a later re-plan instead of being silently lost. */
+  deferredRuntimeEventIds?: string[];
+  /** Bounded event envelopes supplied to the next DECIDE pass for re-planning. */
+  deferredRuntimeEvents?: import('./runtime-contracts.js').RuntimeEventEnvelope[];
+  /** Bounded side-effect ledger supplied by host-owned tool execution. */
+  sideEffects?: import('./runtime-contracts.js').SideEffectCheckpoint[];
+  /** Bounded loop budget snapshot used by recovery/checkpoint diagnostics. */
+  loopBudget?: import('./runtime-contracts.js').LoopBudgetSnapshot;
   /** Runtime execution result for the current task book. */
   taskExecution?: TaskExecutionResult;
   /** Plan from DECIDE. */
@@ -273,12 +290,26 @@ export interface RunContext {
   insights?: string[];
   /** Runtime decisions for model-proposed memory operations. */
   memoryIntentDecisions?: import('./runtime-contracts.js').MemoryIntentDecisionRecord[];
+  /** Run-owned bounded event queue; payloads are only opened at safe boundaries. */
+  runtimeEventQueue?: import('./runtime-contracts.js').RuntimeEventQueueLike;
+  /** Start the harness at a recovered stage instead of always entering fresh. */
+  entryStage?: StageName;
+  /** Original checkpoint identity when this context is a continuation run. */
+  resumedFromCheckpointId?: string;
+  /** Persist a bounded runtime checkpoint before/after an effectful tool call. */
+  persistRuntimeCheckpoint?: (reason: string) => Promise<string | undefined>;
+  /** Deterministic control state applied by the Harness at a safe boundary. */
+  runtimeControl?: import('./runtime-contracts.js').RuntimeControlSnapshot;
   /** Versioned run-local evidence adopted, excluded or conflicted by Memory v3. */
   memoryKnownState?: import('./memory-evidence.js').RuntimeMemoryKnownState;
   /** Run-scoped atom ownership used to add, release, and re-add memory context safely. */
   memoryContextWorkingSet?: RuntimeMemoryContextWorkingSet;
   /** Final reply text. */
   reply?: string;
+  /** LLM provenance for the final user-visible reply. */
+  replyProvenance?: ReplyProvenance;
+  /** Atomically reserves a never-published reply in the durable session registry. */
+  reserveUserFacingReply?: (reply: string) => Promise<boolean>;
   /** Token usage reported by the model provider for the reply-bearing call. */
   usage?: RunUsage;
   /** Immutable per-run configuration resolved before the harness starts. */
@@ -437,6 +468,8 @@ export interface AgentRun {
   stages: { name: StageName; startedAt: string; endedAt: string; ok: boolean }[];
   /** Final reply text (when status === 'ok'). */
   reply?: string;
+  /** LLM provenance for the final user-visible reply. */
+  replyProvenance?: ReplyProvenance;
   /** Error text (when status === 'error'). */
   error?: string;
 }
@@ -446,6 +479,8 @@ export interface AgentResult {
   runId: string;
   status: RunStatus;
   reply?: string;
+  /** LLM provenance for the final user-visible reply. */
+  replyProvenance?: ReplyProvenance;
   error?: string;
   /** Messages to persist. */
   messages: Message[];
@@ -467,6 +502,10 @@ export interface AgentResult {
   taskBook?: TaskBook;
   /** Durable VERIFY decisions associated with this result. */
   verificationHistory?: VerificationRecord[];
+  /** Last deterministic runtime control state applied at a safe boundary. */
+  runtimeControl?: import('./runtime-contracts.js').RuntimeControlSnapshot;
+  /** Bounded event queue snapshot captured before active-run cleanup. */
+  runtimeEventQueue?: import('./runtime-contracts.js').RuntimeEventQueueSnapshot;
   /** Redacted model-proposal versus runtime-commit memory audit. */
   memoryIntentDecisions?: import('./runtime-contracts.js').MemoryIntentDecisionRecord[];
   /** Bounded Memory v3 evidence state used across DECIDE/EXECUTE/VERIFY/FINALIZE. */

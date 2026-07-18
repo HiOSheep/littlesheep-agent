@@ -10,8 +10,10 @@ import type {
   MemoryAtomManagementAudit,
   MemoryAtomManagementRequest,
   MemoryAtomManagementResult,
+  MemoryAtomRevisionPatch,
 } from './management.js';
-import { isMemoryV3InternalRootId } from './v3-node-mapping.js';
+import { isMemoryV3InternalRootId, memoryV3ScopeRootId } from './v3-node-mapping.js';
+import { memoryBranchRootId } from './document-store.js';
 import { repositoryEvent } from './v3-node-transitions.js';
 import { sameStatementCategory } from './v3-statement.js';
 import { cleanText, unique } from './text.js';
@@ -47,9 +49,131 @@ export class MemoryV3AtomManagement {
       const reason = managementReason(request.reason);
       if (request.action === 'move') return this.move(request, reason);
       if (request.action === 'merge') return this.merge(request, reason);
+      if (request.action === 'revise') return this.revise(request, reason);
+      if (request.action === 'supersede') return this.supersede(request, reason);
       if (request.action === 'invalidate') return this.invalidate(request, reason);
       return this.reactivate(request, reason);
     });
+  }
+
+  private async supersede(
+    request: Extract<MemoryAtomManagementRequest, { action: 'supersede' }>,
+    reason: string,
+  ): Promise<MemoryAtomManagementResult> {
+    if (request.atomId === request.replacementAtomId) {
+      throw new Error('A memory atom cannot supersede itself.');
+    }
+    const [atom, replacement] = await Promise.all([
+      this.requiredAtom(request.atomId, request.expectedRevision),
+      this.requiredAtom(request.replacementAtomId, request.replacementExpectedRevision),
+    ]);
+    assertCorrectionEligible(atom, 'superseded');
+    assertCorrectionEligible(replacement, 'replacement');
+    assertSameBoundary(atom, replacement, 'supersession');
+    if ((atom.parentId ?? '') !== (replacement.parentId ?? '')) {
+      throw new Error('A correction replacement must remain under the same semantic parent.');
+    }
+    if (atom.domain !== replacement.domain || atom.statementKind !== replacement.statementKind) {
+      throw new Error('A correction replacement cannot cross domain or statement-kind boundaries.');
+    }
+    const at = this.now().toISOString();
+    const before = [auditState(atom)];
+    const event = repositoryEvent(
+      atom,
+      `atom-management:supersede:${replacement.id}:${request.relationId}`,
+      'conflict-resolution',
+      {
+        atomManagement: {
+          action: 'supersede',
+          reason,
+          replacementAtomId: replacement.id,
+          relationId: request.relationId,
+          priorProjection: {
+            title: atom.title,
+            summary: atom.summary,
+            content: atom.content,
+            contentHash: atom.contentHash,
+          },
+        },
+      },
+    );
+    event.source = { kind: 'agent', id: 'memory-v3-runtime' };
+    event.evidenceRefs = boundedUnique([
+      ...(request.evidenceRefs ?? []),
+      `memory-atom:${atom.id}@${atom.revision}`,
+      `memory-atom:${replacement.id}@${replacement.revision}`,
+      `memory-relation:${request.relationId}`,
+    ], 256);
+    const updated = await this.coordinator.apply(
+      event,
+      {
+        kind: 'update',
+        atomId: atom.id,
+        expectedRevision: atom.revision,
+        patch: {
+          epistemicStatus: 'superseded',
+          resolutionStatus: 'superseded',
+          supersession: {
+            byAtomId: replacement.id,
+            relationId: request.relationId,
+            at,
+            reason,
+            priorEpistemicStatus: atom.epistemicStatus,
+            priorResolutionStatus: atom.resolutionStatus,
+          },
+        },
+      },
+    );
+    return result('supersede', [updated], before, reason, new Date(at));
+  }
+
+  private async revise(
+    request: Extract<MemoryAtomManagementRequest, { action: 'revise' }>,
+    reason: string,
+  ): Promise<MemoryAtomManagementResult> {
+    const atom = await this.requiredAtom(request.atomId, request.expectedRevision);
+    if (atom.status !== 'active') throw new Error('Only active memory atoms can be revised.');
+    if (atom.invalidation) throw new Error('Invalidated memory atoms cannot be revised.');
+    if (atom.merge) throw new Error('Merged memory atoms cannot be revised.');
+    if (atom.supersession) throw new Error('Superseded memory atoms cannot be revised.');
+    if (atom.epistemicStatus === 'disputed' || atom.epistemicStatus === 'superseded'
+      || atom.resolutionStatus === 'rejected' || atom.resolutionStatus === 'superseded') {
+      throw new Error('Memory atom is outside the safe same-claim revision boundary.');
+    }
+    const patch = normalizedRevisionPatch(request.patch);
+    if (sameRevisionProjection(atom, patch)) {
+      throw new Error('The memory atom already has the requested revision projection.');
+    }
+    const before = [auditState(atom)];
+    const event = repositoryEvent(atom, 'atom-management:revise', 'configuration-change', {
+      atomManagement: {
+        action: 'revise',
+        reason,
+        priorProjection: {
+          title: atom.title,
+          summary: atom.summary,
+          content: atom.content,
+          retrievalKeys: [...atom.retrievalKeys],
+          contentHash: atom.contentHash,
+        },
+        replacement: patch,
+      },
+    });
+    event.source = { kind: 'agent', id: 'memory-v3-runtime' };
+    event.evidenceRefs = boundedUnique([
+      ...(request.evidenceRefs ?? []),
+      `memory-atom:${atom.id}@${atom.revision}`,
+    ], 256);
+    const updated = await this.coordinator.apply(
+      event,
+      {
+        kind: 'update',
+        atomId: atom.id,
+        expectedRevision: atom.revision,
+        patch,
+      },
+    );
+    return result('revise', [updated], before, reason, this.now());
   }
 
   private async move(
@@ -57,9 +181,7 @@ export class MemoryV3AtomManagement {
     reason: string,
   ): Promise<MemoryAtomManagementResult> {
     const atom = await this.requiredAtom(request.atomId, request.expectedRevision);
-    const parent = request.parentNodeId
-      ? await this.requiredAtom(request.parentNodeId)
-      : undefined;
+    const parent = await this.resolveMoveParent(atom, request.parentNodeId);
     if (parent) {
       if (parent.status === 'tombstone') throw new Error('A memory atom cannot move under a tombstone parent.');
       assertSameBoundary(atom, parent, 'move');
@@ -152,6 +274,7 @@ export class MemoryV3AtomManagement {
     const atom = await this.requiredAtom(request.atomId, request.expectedRevision);
     if (atom.status !== 'active') throw new Error('Only active memory atoms can be invalidated.');
     if (atom.merge) throw new Error('A merged memory atom cannot be invalidated.');
+    if (atom.supersession) throw new Error('A superseded memory atom cannot be invalidated again.');
     if (atom.invalidation) throw new Error('This memory atom is already invalidated.');
     const at = this.now().toISOString();
     const before = [auditState(atom)];
@@ -211,6 +334,17 @@ export class MemoryV3AtomManagement {
     return atom;
   }
 
+  private async resolveMoveParent(atom: MemoryAtom, requestedParentId?: string): Promise<MemoryAtom> {
+    const scopeRootId = memoryV3ScopeRootId(atom.branch, atom.scope, atom.scopeKey);
+    const publicBranchRootId = memoryBranchRootId(atom.branch);
+    const normalized = requestedParentId?.trim();
+    const parentId = !normalized || normalized === publicBranchRootId ? scopeRootId : normalized;
+    const parent = await this.atomStore.read(parentId);
+    if (!parent) throw new Error(`Memory move parent not found: ${parentId}.`);
+    if (parent.status === 'tombstone') throw new Error('A memory atom cannot move under a tombstone parent.');
+    return parent;
+  }
+
   private async exclusive<T>(operation: () => Promise<T>): Promise<T> {
     const prior = this.mutationChain;
     let release!: () => void;
@@ -236,6 +370,14 @@ function assertMergeEligible(atom: MemoryAtom, role: string): void {
   if (atom.status !== 'active') throw new Error(`The merge ${role} must be active.`);
   if (atom.invalidation) throw new Error(`The merge ${role} is invalidated.`);
   if (atom.merge) throw new Error(`The merge ${role} has already been merged.`);
+  if (atom.supersession) throw new Error(`The merge ${role} has already been superseded.`);
+}
+
+function assertCorrectionEligible(atom: MemoryAtom, role: string): void {
+  if (atom.status !== 'active') throw new Error(`The correction ${role} Atom must be active.`);
+  if (atom.invalidation) throw new Error(`The correction ${role} Atom is invalidated.`);
+  if (atom.merge) throw new Error(`The correction ${role} Atom has already been merged.`);
+  if (atom.supersession) throw new Error(`The correction ${role} Atom has already been superseded.`);
 }
 
 function result(
@@ -261,11 +403,31 @@ function auditState(atom: MemoryAtom): MemoryAtomManagementAudit['before'][numbe
   return {
     atomId: atom.id,
     revision: atom.revision,
+    contentHash: atom.contentHash,
     parentId: atom.parentId,
     status: atom.status,
     epistemicStatus: atom.epistemicStatus,
     resolutionStatus: atom.resolutionStatus,
   };
+}
+
+function normalizedRevisionPatch(patch: MemoryAtomRevisionPatch): MemoryAtomRevisionPatch {
+  const title = cleanText(patch.title);
+  const summary = cleanText(patch.summary);
+  const content = cleanText(patch.content);
+  const retrievalKeys = boundedUnique(patch.retrievalKeys, 64);
+  if (!title || title.length > 500) throw new Error('A revised memory atom title is invalid.');
+  if (!summary || summary.length > 8_000) throw new Error('A revised memory atom summary is invalid.');
+  if (!content || content.length > 12_000) throw new Error('A revised memory atom content is invalid.');
+  if (retrievalKeys.length === 0) throw new Error('A revised memory atom needs retrieval keys.');
+  return { title, summary, content, retrievalKeys };
+}
+
+function sameRevisionProjection(atom: MemoryAtom, patch: MemoryAtomRevisionPatch): boolean {
+  return atom.title === patch.title
+    && atom.summary === patch.summary
+    && atom.content === patch.content
+    && JSON.stringify(atom.retrievalKeys) === JSON.stringify(patch.retrievalKeys);
 }
 
 function managementReason(value: string): string {

@@ -10,7 +10,7 @@ import { createRunner } from './runner.js';
 import type { LlmClient, ChatRequest, ChatResponse, StreamChunk } from '@littlesheep/llm';
 import { DEFAULT_CONFIG } from '@littlesheep/config';
 import { DEFAULT_BRANDING, dataSubdirs } from '@littlesheep/branding';
-import type { AgentTool } from '@littlesheep/types';
+import { textMessage, type AgentTool } from '@littlesheep/types';
 import { attachmentManifestResourceId, attachmentResourceId } from '@littlesheep/memory-tree';
 
 // ─── Mock LlmClient ─────────────────────────────────────────────────────
@@ -133,6 +133,54 @@ describe('createRunner run', () => {
     expect(String(replyRequest.messages[0]?.content)).toContain('Memory Tree Root Index');
     const trace = result.trace as Array<{ name: string }>;
     expect(trace.map((t) => t.name)).toEqual(['enter', 'classify', 'reply', 'finalize']);
+  });
+
+  it('rewrites an exact reply from older session history after runner restart', async () => {
+    const firstRunner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('Stable exact reply')),
+    });
+    createdRunners.push(firstRunner);
+    const first = await firstRunner.run({ text: 'hello' });
+    expect(first.reply).toBe('Stable exact reply');
+
+    const filler = Array.from({ length: 24 }, (_, index) => textMessage(
+      index % 2 === 0 ? 'user' : 'assistant',
+      `filler-${index}`,
+      { sessionId: first.sessionId },
+    ));
+    await firstRunner.infra.sessionManager.append(first.sessionId, filler);
+    await firstRunner.shutdown();
+    createdRunners.pop();
+
+    const restarted = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm((request) => textResponse(
+        String(request.messages[0]?.content).includes('Regeneration contract')
+          ? 'Fresh wording after restart'
+          : 'Stable exact reply',
+      )),
+    });
+    createdRunners.push(restarted);
+
+    const second = await restarted.run({
+      text: 'hello again',
+      sessionId: first.sessionId,
+    });
+
+    expect(second.status).toBe('ok');
+    expect(second.reply).toBe('Fresh wording after restart');
+    expect(second.replyProvenance?.rewriteCount).toBe(1);
+    expect(second.modelRequests?.some((request) => (
+      request.id === second.replyProvenance?.modelRequestId
+      && request.requestIndex === second.replyProvenance?.modelRequestIndex
+      && request.provider === second.replyProvenance?.provider
+      && request.model === second.replyProvenance?.model
+    ))).toBe(true);
   });
 
   it('returns reply-call token usage with an explicit provider source', async () => {
@@ -455,6 +503,67 @@ describe('createRunner run', () => {
     expect(result.status).toBe('aborted');
   });
 
+  it('routes an active-run interrupt through the bounded queue and stops at the next safe boundary', async () => {
+    const llm = makeMockLlm(textResponse('reply before boundary'));
+    let releaseResponse!: () => void;
+    let markCallStarted!: () => void;
+    const responseGate = new Promise<void>((resolve) => { releaseResponse = resolve; });
+    const callStarted = new Promise<void>((resolve) => { markCallStarted = resolve; });
+    (llm.chat as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      markCallStarted();
+      await responseGate;
+      return textResponse('reply before boundary');
+    });
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+    });
+    createdRunners.push(runner);
+    const runId = 'run-runtime-interrupt';
+    const running = runner.run({ runId, text: 'hello' });
+    await callStarted;
+
+    expect(runner.runtimeEvents.summary(runId)).toMatchObject({ queued: 0 });
+    expect(runner.runtimeEvents.append(runId, {
+      type: 'interrupt_requested',
+      source: 'app',
+      payload: { reason: 'user requested stop' },
+      dedupKey: 'interrupt:1',
+    })).toMatchObject({ kind: 'accepted', event: { runId, sequence: 1 } });
+    releaseResponse();
+
+    const result = await running;
+    expect(result.status).toBe('aborted');
+    expect(result.runtimeControl).toMatchObject({
+      state: 'interrupted',
+      reason: 'user requested stop',
+      eventIds: [expect.any(String)],
+    });
+    expect(result.runtimeEventQueue).toMatchObject({
+      runId,
+      cursor: 1,
+      events: [expect.objectContaining({ type: 'interrupt_requested', status: 'applied' })],
+    });
+    expect(runner.runtimeEvents.summary(runId)).toBeNull();
+    const checkpoint = await runner.infra.runCheckpointStore?.latestForRun(runId);
+    expect(checkpoint).toMatchObject({
+      runId,
+      status: 'recoverable',
+      currentStage: expect.any(String),
+      runtimeControl: { state: 'interrupted' },
+      runtimeEventQueue: {
+        runId,
+        events: [expect.objectContaining({ type: 'interrupt_requested', status: 'applied' })],
+      },
+    });
+    expect((await runner.replay(runId))).toMatchObject({
+      runtimeControl: { state: 'interrupted' },
+      runCheckpointId: checkpoint?.id,
+    });
+  });
+
   it('persists inbound + produced in JSONL [user, assistant] order', async () => {
     const llm = makeMockLlm(textResponse('Reply body'));
     const runner = await createRunner({
@@ -566,6 +675,7 @@ describe('createRunner run', () => {
       textResponse('{"type":"problem","confidence":0.9,"reason":"task"}'),
       textResponse('{"plan":[{"description":"inspect it","tools":[]}]}'),
       textResponse('Inspection complete.'),
+      textResponse('Inspection completed successfully.'),
       textResponse('{"verdict":"pass","reason":"goal achieved"}'),
       textResponse(JSON.stringify({ memories: [{
         branch: 'project', parentNodeId: 'project:root', scope: 'workspace',
@@ -594,6 +704,7 @@ describe('createRunner run', () => {
     expect(result.modelRequests?.map((request) => request.stage)).toEqual([
       'classify',
       'decide',
+      'execute',
       'execute',
       'verify',
       'evolve',

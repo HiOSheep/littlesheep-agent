@@ -4,32 +4,65 @@ import { createFinalizeStage } from './finalize.js';
 import { createMockSessionManager, makeCtx } from '../tests/helpers.js';
 import { textMessage } from '@littlesheep/types';
 
+const replyProvenance = {
+  version: 1 as const,
+  source: 'llm' as const,
+  purpose: 'reply' as const,
+  modelRequestId: 'model-request-1',
+  modelRequestIndex: 1,
+  provider: 'test-provider',
+  model: 'test-model',
+  generatedAt: '2026-07-17T00:00:00.000Z',
+  rewriteCount: 0,
+};
+
 describe('finalizeStage', () => {
   it('builds assistant Message from ctx.reply, pushes to produced, transitions to exit', async () => {
     const sm = createMockSessionManager();
     const stage = createFinalizeStage({ sessionManager: sm });
-    const ctx = makeCtx({ reply: 'hello back', sessionId: 's1' });
+    const ctx = makeCtx({ reply: 'hello back', replyProvenance, sessionId: 's1' });
     const res = await stage(ctx);
     expect(res.next).toBe('exit');
     expect(res.ok).toBe(true);
     expect(ctx.produced).toHaveLength(1);
     expect(ctx.produced[0].role).toBe('assistant');
     expect(ctx.produced[0].content).toEqual([{ type: 'text', text: 'hello back' }]);
+    expect(ctx.produced[0].replyProvenance).toEqual(replyProvenance);
     expect(sm.append).toHaveBeenCalledWith('s1', ctx.produced);
   });
 
-  it('uses "(no reply)" placeholder when ctx.reply is empty', async () => {
+  it('rejects an empty or unprovenanced reply instead of persisting a placeholder', async () => {
     const sm = createMockSessionManager();
     const stage = createFinalizeStage({ sessionManager: sm });
     const ctx = makeCtx({ reply: '' });
-    await stage(ctx);
-    expect(ctx.produced[0].content).toEqual([{ type: 'text', text: '(no reply)' }]);
+    const result = await stage(ctx);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/missing or untraceable Provider API/);
+    expect(ctx.produced).toEqual([]);
+    expect(sm.append).not.toHaveBeenCalled();
+  });
+
+  it('rejects reply provenance that cannot be traced to a real model request', async () => {
+    const sm = createMockSessionManager();
+    const stage = createFinalizeStage({ sessionManager: sm });
+    const ctx = makeCtx({
+      reply: 'This text has only a forged provenance object.',
+      replyProvenance,
+      modelRequests: [],
+    });
+
+    const result = await stage(ctx);
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/untraceable Provider API/);
+    expect(ctx.produced).toEqual([]);
+    expect(sm.append).not.toHaveBeenCalled();
   });
 
   it('sessionManager.append failure does NOT block (returns ok:true)', async () => {
     const sm = createMockSessionManager({ appendThrows: new Error('disk full') });
     const stage = createFinalizeStage({ sessionManager: sm });
-    const ctx = makeCtx({ reply: 'ok' });
+    const ctx = makeCtx({ reply: 'ok', replyProvenance });
     const res = await stage(ctx);
     expect(res.ok).toBe(true);
     expect(res.next).toBe('exit');
@@ -41,6 +74,7 @@ describe('finalizeStage', () => {
     const stage = createFinalizeStage({ sessionManager: sm });
     const ctx = makeCtx({
       reply: 'x',
+      replyProvenance,
       produced: [textMessage('user', 'preexisting')],
     });
     const res = await stage(ctx);
@@ -53,6 +87,7 @@ describe('finalizeStage', () => {
     const stage = createFinalizeStage({ sessionManager: sm });
     const ctx = makeCtx({
       reply: 'Which file?',
+      replyProvenance: { ...replyProvenance, purpose: 'ask_user' },
       clarificationRequest: {
         id: 'run-1:clarification',
         kind: 'missing_information',

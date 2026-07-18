@@ -12,7 +12,7 @@ import type {
   SessionId,
   SessionMetadata,
 } from '@littlesheep/types';
-import { textMessage } from '@littlesheep/types';
+import { normalizeUserFacingReply, textMessage } from '@littlesheep/types';
 import type { LlmClient, ChatRequest, ChatResponse, EmbedRequest, EmbedResponse } from '@littlesheep/llm';
 
 // ─── Mock LlmClient ─────────────────────────────────────────────────────
@@ -100,6 +100,8 @@ export interface MakeCtxOptions {
   clarificationResponse?: RunContext['clarificationResponse'];
   classification?: RunContext['classification'];
   reply?: string;
+  replyProvenance?: RunContext['replyProvenance'];
+  modelRequests?: RunContext['modelRequests'];
   lastError?: RunContext['lastError'];
   recoveryAttempts?: number;
   maxRecoveryAttempts?: number;
@@ -112,6 +114,27 @@ export interface MakeCtxOptions {
 export function makeCtx(opts: MakeCtxOptions = {}): RunContext {
   const sessionId = (opts.sessionId ?? 'test-session') as SessionId;
   const runId = randomUUID();
+  const modelRequests = opts.modelRequests ?? (opts.replyProvenance ? [{
+    version: 1 as const,
+    id: opts.replyProvenance.modelRequestId,
+    runId,
+    sessionId,
+    stage: replyPurposeStage(opts.replyProvenance.purpose),
+    requestIndex: opts.replyProvenance.modelRequestIndex,
+    provider: opts.replyProvenance.provider,
+    model: opts.replyProvenance.model,
+    createdAt: opts.replyProvenance.generatedAt,
+    messages: [],
+    totalMessageCount: 0,
+    messagesTruncated: false,
+    toolNames: [],
+    totalToolCount: 0,
+    toolsTruncated: false,
+    stream: false,
+    callContract: {
+      purpose: opts.replyProvenance.purpose,
+    } as NonNullable<NonNullable<RunContext['modelRequests']>[number]['callContract']>,
+  }] : undefined);
   return {
     runId,
     sessionId,
@@ -138,8 +161,17 @@ export function makeCtx(opts: MakeCtxOptions = {}): RunContext {
     plan: opts.plan,
     classification: opts.classification,
     reply: opts.reply,
+    replyProvenance: opts.replyProvenance,
+    modelRequests,
     lastError: opts.lastError,
   };
+}
+
+function replyPurposeStage(purpose: NonNullable<RunContext['replyProvenance']>['purpose']) {
+  if (purpose === 'ask_user') return 'ask_user' as const;
+  if (purpose === 'recover') return 'recover' as const;
+  if (purpose === 'reply') return 'reply' as const;
+  return 'execute' as const;
 }
 
 // ─── AgentTool builder ──────────────────────────────────────────────────
@@ -181,6 +213,7 @@ import type { SessionManager } from '@littlesheep/session';
 export interface MockSessionManager {
   readRecent: ReturnType<typeof vi.fn>;
   append: ReturnType<typeof vi.fn>;
+  reserveAssistantReply: ReturnType<typeof vi.fn>;
   read: ReturnType<typeof vi.fn>;
   create: ReturnType<typeof vi.fn>;
   loadMetadata: ReturnType<typeof vi.fn>;
@@ -200,10 +233,26 @@ export function createMockSessionManager(opts: {
   appendThrows?: Error;
   metadata?: SessionMetadata | null;
 } = {}): MockSessionManager {
+  const reservedReplies = new Set(
+    (opts.history ?? [])
+      .filter((message) => message.role === 'assistant')
+      .map((message) => message.content
+        .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
+        .map((block) => block.text)
+        .join('\n'))
+      .map(normalizeUserFacingReply)
+      .filter(Boolean),
+  );
   return {
     readRecent: vi.fn(async (_sid: SessionId, _n?: number) => opts.history ?? []),
     append: vi.fn(async (_sid: SessionId, _msgs: Message[]) => {
       if (opts.appendThrows) throw opts.appendThrows;
+    }),
+    reserveAssistantReply: vi.fn(async (_sid: SessionId, reply: string) => {
+      const normalized = normalizeUserFacingReply(reply);
+      if (!normalized || reservedReplies.has(normalized)) return false;
+      reservedReplies.add(normalized);
+      return true;
     }),
     read: vi.fn(async (_sid: SessionId) => opts.history ?? []),
     create: vi.fn(async () => ({ id: 'test-session' })),
@@ -233,7 +282,6 @@ export interface MockMemoryStore {
   longTermPath: string;
   dailyDirPath: string;
 }
-
 /** Build a mock MemoryStore. All reads return empty; writes are no-ops. */
 export function createMockMemoryStore(): MockMemoryStore {
   return {

@@ -41,6 +41,7 @@ describe('Runner Memory v3 integration', () => {
         textResponse('{"type":"problem","confidence":0.9,"reason":"task"}'),
         textResponse('{"plan":[{"description":"inspect it","tools":[]}]}'),
         textResponse('Inspection complete.'),
+        textResponse('Inspection completed successfully.'),
         textResponse('{"verdict":"pass","reason":"goal achieved"}'),
         textResponse(JSON.stringify({ memories: [{
           branch: 'project',
@@ -281,6 +282,7 @@ describe('Runner Memory v3 integration', () => {
         },
       })),
       textResponse('Repository validation followed the pnpm workspace policy.'),
+      textResponse('The repository validation completed successfully using the pnpm workspace policy.'),
       textResponse(JSON.stringify({ verdict: 'pass', reason: 'The policy was followed.', usedMemoryAtomIds: [atomId] })),
       textResponse('{"memories":[],"createSkill":null}'),
       textResponse('{"observations":[]}'),
@@ -315,6 +317,7 @@ describe('Runner Memory v3 integration', () => {
         textResponse('{"type":"problem","confidence":0.99,"reason":"resume compacted task"}'),
         textResponse('{"plan":[{"description":"resume checkpoint work","tools":[]}]}'),
         textResponse('Checkpoint continuity resumed.'),
+        textResponse('The checkpoint continuity task resumed successfully.'),
         textResponse('{"verdict":"pass","reason":"checkpoint task resumed"}'),
         textResponse('{"memories":[],"createSkill":null}'),
         textResponse('{"observations":[]}'),
@@ -439,6 +442,7 @@ describe('Runner Memory v3 integration', () => {
         action: 'expand', branch: 'long-term', nodeId: seed.node!.id, limit: 1, tokenBudget: 300,
       }),
       textResponse('The active memory context was refreshed.'),
+      textResponse('The active memory context was refreshed successfully.'),
       textResponse(JSON.stringify({
         verdict: 'pass',
         reason: 'The atom was released and then re-admitted through the indexed path.',
@@ -523,6 +527,7 @@ describe('Runner Memory v3 integration', () => {
       textResponse('{"type":"problem","confidence":0.99,"reason":"memory continuity task"}'),
       textResponse('{"plan":[{"description":"use the injected continuity marker","tools":[]}]}'),
       textResponse(`The persisted project decision uses ${marker}.`),
+      textResponse(`The project decision was persisted and uses ${marker}.`),
       textResponse(JSON.stringify({
         verdict: 'pass',
         reason: 'The injected marker was used in the result.',
@@ -609,6 +614,7 @@ describe('Runner Memory v3 integration', () => {
         textResponse('{"type":"problem","confidence":0.99,"reason":"persist a project decision"}'),
         textResponse('{"plan":[{"description":"record the project decision","tools":[]}]}'),
         textResponse(`Recorded ${marker}.`),
+        textResponse(`The project decision was recorded successfully: ${marker}.`),
         textResponse('{"verdict":"pass","reason":"decision recorded"}'),
         textResponse('{"memories":[],"createSkill":null}'),
         textResponse(JSON.stringify({ observations: [{
@@ -660,7 +666,7 @@ describe('Runner Memory v3 integration', () => {
     expect(archivedDaily).toEqual(expect.arrayContaining([
       expect.objectContaining({ content: expect.stringContaining(marker), status: 'archived' }),
     ]));
-    expect(requests).toHaveLength(7);
+    expect(requests).toHaveLength(8);
   });
 });
 
