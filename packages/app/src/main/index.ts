@@ -44,6 +44,7 @@ import { loadApiKeys, injectKeysIntoEnv } from './keychain.js'
 import { runShutdownSequence } from './shutdown-sequence.js'
 import { DataRootMigrationManager } from './data-root-migration.js'
 import { prepareMemoryV3Bootstrap } from './memory-v3-bootstrap.js'
+import { resolveAppIconPath } from './app-icon.js'
 
 let runner: AgentRunner | null = null
 let server: LocalAppApiServer | null = null
@@ -166,6 +167,11 @@ function createWindow(): BrowserWindow {
     minWidth: 800,
     minHeight: 600,
     title: 'LittleSheep',
+    icon: resolveAppIconPath({
+      appPath: app.getAppPath(),
+      moduleDir: __dirname,
+      resourcesPath: process.resourcesPath,
+    }),
     titleBarStyle: 'hidden',
     titleBarOverlay: {
       color: '#181818',

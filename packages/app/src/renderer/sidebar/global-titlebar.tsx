@@ -1,6 +1,7 @@
 // Primary navigation, project/session trees, and sidebar actions.
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { SettingsGearIcon } from '../ui/icons'
+import appIconUrl from '../../../resources/littlesheep-icon.png'
 
 
 export function GlobalTitlebar({
@@ -61,7 +62,7 @@ export function GlobalTitlebar({
         </button>
       </div>
       <div className="window-titlebar-brand">
-        <span className="window-titlebar-icon" aria-hidden="true">LS</span>
+        <img className="window-titlebar-icon" src={appIconUrl} alt="" aria-hidden="true" />
         <span>LittleSheep</span>
       </div>
     </header>

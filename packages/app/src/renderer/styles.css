@@ -738,18 +738,11 @@ input:focus-visible {
 }
 
 .window-titlebar-icon {
-  display: grid;
-  place-items: center;
+  display: block;
   width: 18px;
   height: 18px;
   flex: 0 0 auto;
-  color: var(--muted);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  font-size: 8px;
-  font-weight: 900;
-  letter-spacing: 0;
+  object-fit: contain;
 }
 
 .app {

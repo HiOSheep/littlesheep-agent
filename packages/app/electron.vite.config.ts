@@ -49,6 +49,11 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(__dirname, 'src/renderer'),
+    server: {
+      fs: {
+        allow: [resolve(__dirname, 'resources')],
+      },
+    },
     build: {
       rollupOptions: {
         input: { index: resolve(__dirname, 'src/renderer/index.html') },
