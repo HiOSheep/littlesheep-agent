@@ -2,7 +2,7 @@
 import type { FitAddon } from '@xterm/addon-fit'
 import type { Terminal as XTermTerminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   closeWorkspaceTerminalSession,
   createWorkspaceTerminalSession,
@@ -10,7 +10,6 @@ import {
   listWorkspaceTerminalActivity,
   resizeWorkspaceTerminalSession,
   streamWorkspaceTerminalSession,
-  writeWorkspaceTerminalSession,
   type TerminalActivityRecord
 } from '../api'
 import { formatDurationMs } from '../chat/activity-model'
@@ -19,14 +18,25 @@ import { RefreshIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
 import { compactPath } from './path-utils'
 import { createTerminalFitScheduler } from './terminal-fit'
+import { createTerminalInputController, type TerminalInputController } from './terminal-input-controller'
+import type { PermissionModeId } from '../../shared/permission-modes'
+
+const TERMINAL_FONT_FAMILY = '"SimSun", "宋体", monospace'
+const TERMINAL_FONT_SIZE = 12
+const TERMINAL_LINE_HEIGHT = 1.34
+
 export function WorkspaceTerminal({
   workspacePath,
   sessionId,
+  permissionMode,
+  workspaceBoundary,
   onRequestCommandApproval,
   onTipChange,
 }: {
   workspacePath: string
   sessionId?: string
+  permissionMode: PermissionModeId
+  workspaceBoundary: 'inside' | 'outside'
   onRequestCommandApproval: (detail: unknown) => Promise<boolean>
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
@@ -37,26 +47,14 @@ export function WorkspaceTerminal({
   const terminalSessionRef = useRef<string>('')
   const terminalBackendRef = useRef<'pty' | 'spawn'>('spawn')
   const terminalSizeRef = useRef<{ cols: number; rows: number }>({ cols: 0, rows: 0 })
-  const [command, setCommand] = useState('')
   const [running, setRunning] = useState(false)
   const [status, setStatus] = useState('启动中')
   const [terminalBackend, setTerminalBackend] = useState<'pty' | 'spawn' | ''>('')
   const [activities, setActivities] = useState<TerminalActivityRecord[]>([])
   const [activityError, setActivityError] = useState('')
-  const [recentCommands, setRecentCommands] = useState<string[]>([])
-  const [historyCursor, setHistoryCursor] = useState(-1)
-  const historyDraftRef = useRef('')
-  const commandInputRef = useRef<HTMLInputElement>(null)
-  const focusFrameRef = useRef<number>()
   const activityRequestRef = useRef(0)
   const mountedRef = useRef(true)
-  const commandHistory = useMemo(
-    () => dedupeTerminalCommands([
-      ...recentCommands,
-      ...activities.map((activity) => activity.command),
-    ]),
-    [activities, recentCommands],
-  )
+  const inputControllerRef = useRef<TerminalInputController | null>(null)
 
   useEffect(() => {
     void refreshTerminalActivities()
@@ -67,7 +65,8 @@ export function WorkspaceTerminal({
     return () => {
       mountedRef.current = false
       activityRequestRef.current += 1
-      window.cancelAnimationFrame(focusFrameRef.current ?? 0)
+      inputControllerRef.current?.dispose()
+      inputControllerRef.current = null
     }
   }, [])
 
@@ -75,6 +74,21 @@ export function WorkspaceTerminal({
     let disposed = false
     let terminal: XTermTerminal | null = null
     let resizeObserver: ResizeObserver | null = null
+    let fitScheduler: ReturnType<typeof createTerminalFitScheduler> | null = null
+    let displayCleanup: (() => void) | null = null
+    let inputDisposable: { dispose: () => void } | null = null
+    const inputController = createTerminalInputController({
+      getTerminalSessionId: () => terminalSessionRef.current,
+      getAppSessionId: () => sessionId,
+      getPermissionMode: () => permissionMode,
+      getWorkspacePath: () => workspacePath,
+      isDisposed: () => disposed || !mountedRef.current,
+      requestApproval: onRequestCommandApproval,
+      writeLine: writeTerminalLine,
+      setStatus,
+      onCompletedCommand: () => void refreshTerminalActivities(),
+    })
+    inputControllerRef.current = inputController
 
     Promise.all([
       import('@xterm/xterm'),
@@ -86,11 +100,11 @@ export function WorkspaceTerminal({
           cols: 80,
           rows: 24,
           convertEol: true,
-          cursorBlink: false,
-          disableStdin: true,
-          fontFamily: 'Consolas, ui-monospace, SFMono-Regular, Menlo, Monaco, monospace',
-          fontSize: 12,
-          lineHeight: 1.32,
+          cursorBlink: true,
+          disableStdin: false,
+          fontFamily: TERMINAL_FONT_FAMILY,
+          fontSize: TERMINAL_FONT_SIZE,
+          lineHeight: TERMINAL_LINE_HEIGHT,
           theme: {
             background: '#1f1f1f',
             foreground: '#d7d7d7',
@@ -118,26 +132,72 @@ export function WorkspaceTerminal({
         terminal.open(hostRef.current)
         terminalRef.current = terminal
         fitAddonRef.current = fitAddon
+        inputDisposable = terminal.onData((data) => {
+          if (!disposed) inputController.queue(data)
+        })
+        terminal.focus()
         const fitTerminal = () => {
           if (disposed || !terminalRef.current || !fitAddonRef.current) return
           try {
+            const previousCols = terminalRef.current.cols
+            const previousRows = terminalRef.current.rows
             fitAddonRef.current.fit()
+            if (terminalRef.current.cols === previousCols
+              && terminalRef.current.rows === previousRows
+              && terminalRef.current.rows > 0) {
+              terminalRef.current.refresh(0, terminalRef.current.rows - 1)
+            }
             reportTerminalSize()
           } catch {
             // The terminal can be momentarily hidden during animated layout changes.
           }
         }
-        const fitScheduler = createTerminalFitScheduler(
-          () => hostRef.current
-            ? { width: Math.round(hostRef.current.clientWidth), height: Math.round(hostRef.current.clientHeight) }
-            : null,
+        const scheduler = createTerminalFitScheduler(
+          () => {
+            const host = hostRef.current
+            if (!host) return null
+            const bounds = host.getBoundingClientRect()
+            if (bounds.width <= 0 || bounds.height <= 0) return null
+            return {
+              width: bounds.width,
+              height: bounds.height,
+              devicePixelRatio: window.devicePixelRatio,
+            }
+          },
           fitTerminal,
         )
-        fitScheduler.schedule(true)
+        fitScheduler = scheduler
+        scheduler.schedule(true)
         resizeObserver = new ResizeObserver(() => {
-          fitScheduler.schedule()
+          scheduler.schedule()
         })
         resizeObserver.observe(hostRef.current)
+
+        const scheduleDisplayRefresh = () => scheduler.schedule(true)
+        const handleVisibilityChange = () => {
+          if (!document.hidden) scheduleDisplayRefresh()
+        }
+        let resolutionQuery: MediaQueryList | null = null
+        const handleResolutionChange = () => {
+          resolutionQuery?.removeEventListener('change', handleResolutionChange)
+          resolutionQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
+          resolutionQuery.addEventListener('change', handleResolutionChange)
+          scheduleDisplayRefresh()
+        }
+        resolutionQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
+        resolutionQuery.addEventListener('change', handleResolutionChange)
+        window.addEventListener('resize', scheduleDisplayRefresh)
+        window.visualViewport?.addEventListener('resize', scheduleDisplayRefresh)
+        document.addEventListener('visibilitychange', handleVisibilityChange)
+        void document.fonts?.ready.then(() => {
+          if (!disposed) scheduleDisplayRefresh()
+        })
+        displayCleanup = () => {
+          resolutionQuery?.removeEventListener('change', handleResolutionChange)
+          window.removeEventListener('resize', scheduleDisplayRefresh)
+          window.visualViewport?.removeEventListener('resize', scheduleDisplayRefresh)
+          document.removeEventListener('visibilitychange', handleVisibilityChange)
+        }
         writeTerminalLine('LittleSheep PowerShell')
         writeTerminalLine(`cwd: ${workspacePath}`)
         writeTerminalLine('正在启动 LS 内置终端...')
@@ -150,6 +210,11 @@ export function WorkspaceTerminal({
 
     return () => {
       disposed = true
+      inputController.dispose()
+      if (inputControllerRef.current === inputController) inputControllerRef.current = null
+      displayCleanup?.()
+      fitScheduler?.cancel()
+      inputDisposable?.dispose()
       resizeObserver?.disconnect()
       streamAbortRef.current?.abort()
       streamAbortRef.current = null
@@ -160,7 +225,7 @@ export function WorkspaceTerminal({
       if (terminalRef.current === terminal) terminalRef.current = null
       fitAddonRef.current = null
     }
-  }, [workspacePath])
+  }, [permissionMode, workspaceBoundary, workspacePath])
 
   async function startTerminalSession(isDisposed: () => boolean) {
     streamAbortRef.current?.abort()
@@ -168,12 +233,32 @@ export function WorkspaceTerminal({
     streamAbortRef.current = controller
     setStatus('启动中')
     try {
-      const terminalSession = await createWorkspaceTerminalSession(
-        workspacePath,
-        terminalSizeRef.current.cols > 0 && terminalSizeRef.current.rows > 0
-          ? terminalSizeRef.current
-          : undefined,
-      )
+      const size = terminalSizeRef.current.cols > 0 && terminalSizeRef.current.rows > 0
+        ? terminalSizeRef.current
+        : undefined
+      let terminalSession
+      try {
+        // Main performs the exact boundary check. A successful first request
+        // means no prompt is needed, including full mode inside the container.
+        terminalSession = await createWorkspaceTerminalSession(workspacePath, size, permissionMode, false)
+      } catch (error) {
+        if ((error as { status?: number }).status !== 403) throw error
+        const approved = await onRequestCommandApproval({
+          action: 'terminal_session',
+          command: '打开 LS 内置终端',
+          cwd: workspacePath,
+          root: workspacePath,
+          boundary: workspaceBoundary,
+        })
+        if (!approved) {
+          if (!isDisposed()) {
+            writeTerminalLine('\x1b[33m已取消打开终端。\x1b[0m')
+            setStatus('已取消')
+          }
+          return
+        }
+        terminalSession = await createWorkspaceTerminalSession(workspacePath, size, permissionMode, true)
+      }
       if (isDisposed()) {
         await closeWorkspaceTerminalSession(terminalSession.sessionId).catch(() => undefined)
         return
@@ -184,6 +269,8 @@ export function WorkspaceTerminal({
       terminalSizeRef.current = { cols: terminalSession.cols, rows: terminalSession.rows }
       reportTerminalSize()
       setStatus(`${terminalSession.shell} 就绪`)
+      terminalRef.current?.focus()
+      void inputControllerRef.current?.drain()
       await streamWorkspaceTerminalSession(terminalSession.sessionId, {
         signal: controller.signal,
         onStart: (event) => {
@@ -260,102 +347,9 @@ export function WorkspaceTerminal({
     }
   }
 
-  function rememberTerminalCommand(nextCommand: string) {
-    setRecentCommands((commands) => dedupeTerminalCommands([nextCommand, ...commands]).slice(0, 24))
-    setHistoryCursor(-1)
-    historyDraftRef.current = ''
-  }
-
-  function pickTerminalCommand(nextCommand: string) {
-    setCommand(nextCommand)
-    setHistoryCursor(-1)
-    historyDraftRef.current = ''
-    window.cancelAnimationFrame(focusFrameRef.current ?? 0)
-    focusFrameRef.current = window.requestAnimationFrame(() => {
-      focusFrameRef.current = undefined
-      commandInputRef.current?.focus()
-    })
-  }
-
-  function moveTerminalHistory(direction: 'older' | 'newer') {
-    if (commandHistory.length === 0) return
-    if (direction === 'older') {
-      const nextCursor = historyCursor < 0 ? 0 : Math.min(historyCursor + 1, commandHistory.length - 1)
-      if (historyCursor < 0) historyDraftRef.current = command
-      setHistoryCursor(nextCursor)
-      setCommand(commandHistory[nextCursor] ?? '')
-      return
-    }
-
-    if (historyCursor < 0) return
-    const nextCursor = historyCursor - 1
-    if (nextCursor < 0) {
-      setHistoryCursor(-1)
-      setCommand(historyDraftRef.current)
-      historyDraftRef.current = ''
-      return
-    }
-    setHistoryCursor(nextCursor)
-    setCommand(commandHistory[nextCursor] ?? '')
-  }
-
-  function handleTerminalInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
-    if (event.key === 'ArrowUp') {
-      event.preventDefault()
-      moveTerminalHistory('older')
-      return
-    }
-    if (event.key === 'ArrowDown') {
-      event.preventDefault()
-      moveTerminalHistory('newer')
-      return
-    }
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      setCommand('')
-      setHistoryCursor(-1)
-      historyDraftRef.current = ''
-      return
-    }
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'l') {
-      event.preventDefault()
-      clearTerminal()
-    }
-  }
-
-  async function submitCommand(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const nextCommand = command.trim()
-    if (!nextCommand || running) return
-
-    setCommand('')
-    setRunning(true)
-    try {
-      const approved = await onRequestCommandApproval({
-        command: nextCommand,
-        cwd: workspacePath,
-        root: workspacePath,
-      })
-      if (!approved) {
-        writeTerminalLine('\x1b[33m已取消执行。\x1b[0m')
-        writeTerminalLine('')
-        setStatus('已取消')
-        return
-      }
-      const activeSessionId = terminalSessionRef.current
-      if (!activeSessionId) throw new Error('终端还没有启动完成。')
-      await writeWorkspaceTerminalSession(activeSessionId, nextCommand, sessionId)
-      rememberTerminalCommand(nextCommand)
-      setStatus('PowerShell 就绪')
-      void refreshTerminalActivities()
-    } catch (err) {
-      const error = err as Error
-      writeTerminalLine(`\x1b[31m${error.message}\x1b[0m`)
-      writeTerminalLine('')
-      setStatus('失败')
-    } finally {
-      setRunning(false)
-    }
+  function insertTerminalCommand(nextCommand: string) {
+    inputControllerRef.current?.queue(nextCommand)
+    terminalRef.current?.focus()
   }
 
   async function interruptTerminal() {
@@ -374,13 +368,14 @@ export function WorkspaceTerminal({
   async function stopAndRestartTerminal() {
     const activeSessionId = terminalSessionRef.current
     terminalSessionRef.current = ''
+    inputControllerRef.current?.reset()
     streamAbortRef.current?.abort()
     setRunning(true)
     setStatus('正在停止')
     if (activeSessionId) await closeWorkspaceTerminalSession(activeSessionId).catch(() => undefined)
     writeTerminalLine('')
     writeTerminalLine('\x1b[33m正在停止当前 PowerShell 会话并重启...\x1b[0m')
-    void startTerminalSession(() => false)
+    void startTerminalSession(() => !mountedRef.current)
     setRunning(false)
   }
 
@@ -470,7 +465,7 @@ export function WorkspaceTerminal({
               key={activity.id}
               type="button"
               className={`workspace-terminal-activity-row ${activity.exitCode === 0 && !activity.timedOut ? 'ok' : 'warn'}`}
-              onClick={() => pickTerminalCommand(activity.command)}
+              onClick={() => insertTerminalCommand(activity.command)}
               onMouseEnter={(event) => onTipChange(buildFloatingHelpTip(terminalActivityTip(activity), event.clientX, event.clientY))}
               onMouseMove={(event) => onTipChange(buildFloatingHelpTip(terminalActivityTip(activity), event.clientX, event.clientY))}
               onMouseLeave={() => onTipChange(null)}
@@ -485,37 +480,7 @@ export function WorkspaceTerminal({
           ))}
         </div>
       </div>
-      <div className="workspace-terminal-shell" ref={hostRef} aria-label="终端输出" />
-      <form className="workspace-terminal-command" onSubmit={submitCommand}>
-        <span className="workspace-terminal-prompt" aria-hidden="true">$</span>
-        <input
-          ref={commandInputRef}
-          value={command}
-          disabled={running}
-          placeholder={running ? '命令发送中...' : '输入 PowerShell 命令，在当前工作区执行'}
-          aria-label="终端命令"
-          spellCheck={false}
-          onChange={(event) => {
-            setCommand(event.target.value)
-            setHistoryCursor(-1)
-            historyDraftRef.current = ''
-          }}
-          onKeyDown={handleTerminalInputKeyDown}
-        />
-        <button
-          {...transientTriggerProps()}
-          className="workspace-terminal-run"
-          type="submit"
-          disabled={!command.trim() || running}
-          onMouseEnter={(event) => onTipChange(buildFloatingHelpTip('执行命令', event.clientX, event.clientY))}
-          onMouseMove={(event) => onTipChange(buildFloatingHelpTip('执行命令', event.clientX, event.clientY))}
-          onMouseLeave={() => onTipChange(null)}
-          onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement('执行命令', event.currentTarget))}
-          onBlur={() => onTipChange(null)}
-        >
-          执行
-        </button>
-      </form>
+      <div className="workspace-terminal-shell" ref={hostRef} aria-label="终端输入与输出" />
     </div>
   )
 }

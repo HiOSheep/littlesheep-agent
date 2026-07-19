@@ -15,6 +15,7 @@ import type {
   ToolResult,
 } from '@littlesheep/types';
 import { sanitizeOutput } from '@littlesheep/tools';
+import { shouldRequestPermissionApproval, describeToolAccess } from '@littlesheep/safety';
 import { buildRunRequestCandidates } from '../../context-candidates.js';
 import { prepareModelRequest, recordProviderUsage } from '../../model-observability.js';
 import { ingestMemoryKnownState } from '../../memory-known-state.js';
@@ -141,7 +142,16 @@ export async function runToolLoop(
         scheduled.push({
           index,
           ...execution,
-          execute: () => executeToolCall(tool, input, id, stepId, ctx, sanitizeOpts, execution.resources),
+          execute: () => executeToolCall(
+            tool,
+            input,
+            id,
+            stepId,
+            ctx,
+            sanitizeOpts,
+            execution.resources,
+            approval.granted,
+          ),
         });
       }
 
@@ -211,6 +221,7 @@ async function executeToolCall(
   ctx: RunContext,
   sanitizeOpts: ToolLoopOptions['sanitizeOpts'],
   resources: readonly ToolResourceAccess[],
+  approvalGranted: boolean,
 ): Promise<ToolResult> {
   const toolStartedAt = Date.now();
   ctx.onToolEvent?.({ type: 'tool_start', callId, name: tool.name, stepId, input });
@@ -246,7 +257,10 @@ async function executeToolCall(
   let result: ToolResult;
   try {
     result = await raceWithTimeout(
-      tool.execute(input, ctx.toolContext),
+      tool.execute(
+        input,
+        approvalGranted ? { ...ctx.toolContext, approvalGranted: true } : ctx.toolContext,
+      ),
       TOOL_TIMEOUT_MS,
       ctx.signal,
     );
@@ -337,16 +351,23 @@ async function checkStageApproval(
   tool: AgentTool,
   input: unknown,
   ctx: RunContext,
-): Promise<{ ok: boolean; reason?: string }> {
-  if (!tool.requiresApproval) return { ok: true };
+): Promise<{ ok: boolean; reason?: string; granted: boolean }> {
+  const mode = ctx.toolContext.permissionMode;
+  const requiresApproval = mode
+    ? shouldRequestPermissionApproval(
+        mode,
+        describeToolAccess(tool.name, input, ctx.toolContext),
+      )
+    : tool.requiresApproval === true;
+  if (!requiresApproval) return { ok: true, granted: false };
   const approve = ctx.toolContext.approve;
-  if (!approve) return { ok: false, reason: 'approval unavailable' };
+  if (!approve) return { ok: false, reason: 'approval unavailable', granted: false };
   try {
     return await approve(tool.name, input)
-      ? { ok: true }
-      : { ok: false, reason: 'denied by approval gate' };
+      ? { ok: true, granted: true }
+      : { ok: false, reason: 'denied by approval gate', granted: false };
   } catch (error) {
-    return { ok: false, reason: `approval error: ${(error as Error).message}` };
+    return { ok: false, reason: `approval error: ${(error as Error).message}`, granted: false };
   }
 }
 

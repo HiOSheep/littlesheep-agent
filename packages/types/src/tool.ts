@@ -3,6 +3,7 @@
 
 import type { ToolCall, ToolResult } from './message.js';
 import type { SessionId } from './session.js';
+import type { PermissionPolicyId } from './runtime-contracts.js';
 
 /**
  * A schema validator. Zod schemas satisfy this structurally; we keep types
@@ -25,8 +26,14 @@ export interface ToolContext {
   cwd: string;
   /** Host-owned roots that built-in mutation tools must treat as read-only. */
   protectedWriteRoots?: readonly string[];
+  /** Active movable application-data root that defines the logical LS container. */
+  containerRoot?: string;
+  /** Permission policy for this run; behavior profiles are intentionally separate. */
+  permissionMode?: PermissionPolicyId;
   /** Approval callback: returns true if the action is permitted. */
   approve?: (action: string, detail?: unknown) => Promise<boolean>;
+  /** Set only for the current invocation after the Harness has approved it. */
+  approvalGranted?: boolean;
   /** Abort signal for the owning run. */
   signal?: AbortSignal;
   /** Logger sink. */

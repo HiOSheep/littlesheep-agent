@@ -15,6 +15,7 @@ describe('local app run policy', () => {
       action: 'exec',
       detail: { command: 'pnpm test' },
       permissionMode: 'research',
+      boundary: 'unknown',
     })
   })
 
@@ -40,10 +41,19 @@ describe('local app run policy', () => {
     expect(broker).toHaveBeenCalledTimes(2)
   })
 
-  it('auto-approves full access, fails closed without a broker, and protects every restricted tool', async () => {
+  it('allows full access only for proven container paths', async () => {
     const broker = vi.fn(async () => false)
-    await expect(createPermissionApprover('full', broker)('exec')).resolves.toBe(true)
+    const containerRoot = process.cwd()
+    await expect(createPermissionApprover('full', broker, {
+      containerRoot,
+      cwd: containerRoot,
+    })('exec', { command: 'pwd', cwd: containerRoot })).resolves.toBe(true)
     expect(broker).not.toHaveBeenCalled()
+    await expect(createPermissionApprover('full', broker, {
+      containerRoot,
+      cwd: containerRoot,
+    })('exec', { command: 'pwd', cwd: '..' })).resolves.toBe(false)
+    expect(broker).toHaveBeenCalledWith(expect.objectContaining({ boundary: 'outside' }))
     await expect(createPermissionApprover('research')('write')).resolves.toBe(false)
     expect(resolveRunPolicy({ permissionMode: 'restricted' }, DEFAULT_CONFIG, broker).requireApprovalForAllTools).toBe(true)
   })

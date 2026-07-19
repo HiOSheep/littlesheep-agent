@@ -1,6 +1,10 @@
 export type PermissionModeId = 'full' | 'research' | 'restricted'
 export type PermissionRisk = 'low' | 'medium' | 'critical'
 
+/**
+ * Authorization policy only. General/coding behavior profiles live in the
+ * prompt package and must never be inferred from this type.
+ */
 export interface PermissionMode {
   id: PermissionModeId
   label: string
@@ -12,7 +16,7 @@ export interface PermissionMode {
 export const FULL_ACCESS_MODE: PermissionMode = {
   id: 'full',
   label: '完全访问',
-  description: '允许读取、修改文件和执行命令；任务执行中不再逐项询问批准。',
+  description: 'LS 容器内可读取、修改、删除和执行；访问容器外资源仍需单独批准。',
   risk: 'critical',
   riskLabel: '最高权限',
 }
@@ -20,7 +24,7 @@ export const FULL_ACCESS_MODE: PermissionMode = {
 export const RESEARCH_MODE: PermissionMode = {
   id: 'research',
   label: '研究',
-  description: '允许读取和检索；修改文件和执行命令需要额外批准。',
+  description: 'LS 容器内默认只能查看；修改、删除、执行及访问容器外资源都需批准。',
   risk: 'medium',
   riskLabel: '中等权限',
 }
@@ -28,9 +32,9 @@ export const RESEARCH_MODE: PermissionMode = {
 export const RESTRICTED_MODE: PermissionMode = {
   id: 'restricted',
   label: '受限',
-  description: '默认不开放任何工具权限；每个工具调用都需要用户逐项批准。',
+  description: '所有工具操作都需用户批准，包括 LS 容器内的查看。',
   risk: 'low',
-  riskLabel: '低权限',
+  riskLabel: '最低权限',
 }
 
 export const ALL_PERMISSION_MODES: PermissionMode[] = [

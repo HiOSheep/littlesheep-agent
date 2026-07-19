@@ -1,5 +1,6 @@
 // @littlesheep/app — workspace-persistence.ts
 // Pure recovery helpers for the extension workspace UI.
+import { isWorkspaceBrowserTabId, type WorkspaceBrowserTabId } from './workspace/browser-tabs'
 
 export interface WorkspaceOpenRequest {
   id: number
@@ -17,7 +18,7 @@ export interface WorkspaceFileDraftState {
 
 export type WorkspacePanelTab = 'review' | 'artifacts' | 'terminal' | 'browser' | 'files' | 'sideChat'
 export type WorkspaceFileTabId = `file:${string}`
-export type WorkspacePanelTabId = WorkspacePanelTab | WorkspaceFileTabId
+export type WorkspacePanelTabId = WorkspacePanelTab | WorkspaceFileTabId | WorkspaceBrowserTabId
 
 export const DEFAULT_WORKSPACE_PANEL_TABS: WorkspacePanelTabId[] = ['review']
 export const WORKSPACE_PANEL_OPEN_TABS_MAX = 64
@@ -103,6 +104,7 @@ export function isWorkspacePanelTab(value: unknown): value is WorkspacePanelTab 
 
 export function isWorkspacePanelTabId(value: unknown): value is WorkspacePanelTabId {
   return isWorkspacePanelTab(value) || parseWorkspaceFileTabId(value) !== null
+    || isWorkspaceBrowserTabId(value)
 }
 
 export function normalizeWorkspacePanelTabId(value: unknown): WorkspacePanelTabId | null {
@@ -116,14 +118,19 @@ export function dedupeWorkspacePanelTabs(tabs: WorkspacePanelTabId[]): Workspace
     if (!next.includes(tab)) next.push(tab)
     if (next.length >= WORKSPACE_PANEL_OPEN_TABS_MAX) break
   }
-  return next.length > 0 ? next : DEFAULT_WORKSPACE_PANEL_TABS
+  return next
 }
 
 export function hydrateWorkspacePanelTabs(value: unknown): WorkspacePanelTabId[] {
   if (!Array.isArray(value)) return DEFAULT_WORKSPACE_PANEL_TABS
-  return dedupeWorkspacePanelTabs(value
+  const tabs = value
     .map(normalizeWorkspacePanelTabId)
-    .filter((tab): tab is WorkspacePanelTabId => Boolean(tab)))
+    .filter((tab): tab is WorkspacePanelTabId => Boolean(tab))
+  // An explicit empty list means the user closed every extension tab. Invalid
+  // non-empty data still falls back to the stable first entry.
+  if (value.length === 0) return []
+  const deduped = dedupeWorkspacePanelTabs(tabs)
+  return deduped.length > 0 ? deduped : DEFAULT_WORKSPACE_PANEL_TABS
 }
 
 export function normalizeWorkspaceFileDraft(tab: string, value: unknown): WorkspaceFileDraftState | null {
@@ -226,7 +233,7 @@ export function hydrateWorkspaceLayoutFallbackSnapshot(value: unknown): Workspac
   const drafts = hydrateWorkspaceFileDrafts(item.drafts)
   const state = alignWorkspacePanelStateToRoot({
     openRequest,
-    openTabs: openTabs.includes(activeTab) ? openTabs : [...openTabs, activeTab],
+    openTabs: openTabs.length === 0 || openTabs.includes(activeTab) ? openTabs : [...openTabs, activeTab],
     activeTab,
     drafts,
   }, workspacePath)
@@ -258,10 +265,15 @@ export function alignWorkspacePanelStateToRoot(
   const openRequest = state.openRequest && isWorkspaceTargetInsideRoot(state.openRequest, normalizedRoot)
     ? state.openRequest
     : null
-  const openTabs = dedupeWorkspacePanelTabs(state.openTabs.filter((tab) => {
+  const filteredTabs = state.openTabs.filter((tab) => {
     const fileTab = parseWorkspaceFileTabId(tab)
     return !fileTab || isWorkspaceFileInsideRoot(fileTab, normalizedRoot)
-  }))
+  })
+  const openTabs = state.openTabs.length === 0
+    ? []
+    : filteredTabs.length > 0
+      ? dedupeWorkspacePanelTabs(filteredTabs)
+      : DEFAULT_WORKSPACE_PANEL_TABS
   const activeFileTab = parseWorkspaceFileTabId(state.activeTab)
   const activeTab = !activeFileTab || isWorkspaceFileInsideRoot(activeFileTab, normalizedRoot)
     ? state.activeTab
@@ -289,15 +301,16 @@ export function rebindWorkspacePanelState(
         path: rebindWorkspacePath(state.openRequest.path, fromRoot, toRoot),
       }
     : null
-  const openTabs = dedupeWorkspacePanelTabs(state.openTabs.map((tab) => {
+  const reboundTabs = state.openTabs.map((tab) => {
     const file = parseWorkspaceFileTabId(tab)
     return file
       ? workspaceFileTabId(
           rebindWorkspacePath(file.root, fromRoot, toRoot),
           rebindWorkspacePath(file.path, fromRoot, toRoot),
-        )
+      )
       : tab
-  }))
+  })
+  const openTabs = state.openTabs.length === 0 ? [] : dedupeWorkspacePanelTabs(reboundTabs)
   const activeFile = parseWorkspaceFileTabId(state.activeTab)
   const activeTab = activeFile
     ? workspaceFileTabId(
@@ -343,7 +356,7 @@ function hasValidSerializedOpenTabs(value: unknown): boolean {
   if (typeof value !== 'string' || !value.trim()) return false
   try {
     const parsed = JSON.parse(value) as unknown
-    return Array.isArray(parsed) && parsed.some((item) => normalizeWorkspacePanelTabId(item))
+    return Array.isArray(parsed) && (parsed.length === 0 || parsed.some((item) => normalizeWorkspacePanelTabId(item)))
   } catch {
     return false
   }

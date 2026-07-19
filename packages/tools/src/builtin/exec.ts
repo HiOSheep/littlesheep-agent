@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import type { AgentTool } from '@littlesheep/types';
+import { authorizeToolAccess, describeToolAccess } from '@littlesheep/safety';
 import { checkApproval, interactiveApprove, type ApprovalConfig, DEFAULT_APPROVAL } from '../approval.js';
 import {
   CORE_SOURCE_READ_ONLY_ERROR,
@@ -35,12 +36,15 @@ export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
     execution: { concurrency: 'exclusive' },
     execute: withToolTiming(async (input, ctx) => {
       const { command, cwd, timeout_ms } = ExecInput.parse(input);
-      const workDir = resolve(cwd ?? ctx.cwd);
+      const workDir = resolve(ctx.cwd, cwd ?? '.');
       const protectedRoot = findProtectedWriteRoot(workDir, ctx)
         ?? commandReferencesProtectedRoot(command, ctx.protectedWriteRoots);
       if (protectedRoot && !isReadOnlyCoreCommand(command)) {
         return { ok: false, error: `${CORE_SOURCE_READ_ONLY_ERROR}: command execution denied` };
       }
+
+      const authorization = await authorizeToolAccess('exec', { command, cwd: workDir }, ctx);
+      if (!authorization.allowed) return { ok: false, error: 'Approval denied: this command requires user approval.' };
 
       // Approval gate
       const approval = checkApproval(command, approvalConfig);
@@ -48,7 +52,13 @@ export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
         return { ok: false, error: `Approval denied: ${approval.reason}` };
       }
       if (approval.decision === 'escalate') {
-        if (opts.interactive) {
+        const descriptor = describeToolAccess('exec', { command, cwd: workDir }, ctx);
+        const policyAlreadyApproved = authorization.approvedByPolicy
+          || (ctx.permissionMode === 'full' && descriptor.boundary === 'inside');
+        if (policyAlreadyApproved) {
+          // The boundary policy already authorized this invocation. Keep the
+          // blacklist check above, but do not ask for the same command twice.
+        } else if (opts.interactive) {
           const ok = await interactiveApprove(command);
           if (!ok) {
             return { ok: false, error: 'User denied command' };

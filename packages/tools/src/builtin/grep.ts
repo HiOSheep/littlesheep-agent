@@ -3,8 +3,9 @@ import { z } from 'zod';
 import { spawn } from 'node:child_process';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import type { AgentTool } from '@littlesheep/types';
+import { authorizeToolAccess } from '@littlesheep/safety';
 import { globToRegex } from './glob.js';
 import { withToolTiming } from '../wrapper.js';
 import { parallelFilePolicy } from '../execution-policy.js';
@@ -23,7 +24,11 @@ export const grepTool: AgentTool = {
   execution: parallelFilePolicy('path', 'read', true),
   execute: withToolTiming(async (input, ctx) => {
     const { pattern, path: searchPath, glob: _glob, max_results } = GrepInput.parse(input);
-    const target = searchPath ?? ctx.cwd;
+    const target = resolve(ctx.cwd, searchPath ?? '.');
+    const authorization = await authorizeToolAccess('grep', { path: target }, ctx);
+    if (!authorization.allowed) {
+      return { ok: false, error: 'Approval denied: searching this path requires user approval.' };
+    }
 
     // Try ripgrep first
     const hits = await new Promise<string[]>((resolve) => {

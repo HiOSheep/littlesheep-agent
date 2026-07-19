@@ -5,7 +5,9 @@
   "description": "LittleSheep desktop application — Electron + Vite + embedded Runner.",
   "main": "./out/main/index.js",
   "scripts": {
+    "predev": "node ../../scripts/prepare-littlesheep-runtime.mjs",
     "dev": "electron-vite dev",
+    "prebuild": "node ../../scripts/prepare-littlesheep-runtime.mjs",
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.web.json",
     "clean": "rimraf dist out *.tsbuildinfo",
@@ -24,6 +26,7 @@
     "@littlesheep/plugins": "workspace:*",
     "@littlesheep/prompt": "workspace:*",
     "@littlesheep/runner": "workspace:*",
+    "@littlesheep/safety": "workspace:*",
     "@littlesheep/types": "workspace:*",
     "@types/node": "^22.0.0",
     "@types/react": "^18.3.0",

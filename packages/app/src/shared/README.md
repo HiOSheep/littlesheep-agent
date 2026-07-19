@@ -5,6 +5,7 @@
 ## 边界
 
 - 当前包含权限模式、模型能力、会话/项目、工作区、运行时、数据根、记忆控制面、附件、插件/渠道和历史活动等共享规则。
+- `permission-modes.ts` 只描述三档授权策略；行为 profile（通用/编程）由另一套契约管理。逻辑容器根由 Main 解析，Renderer 不拥有最终边界判断。
 - 只能依赖纯 TypeScript 契约，不依赖 Electron、React、文件系统或网络。
 - 跨 package 的稳定协议应进入 `@littlesheep/types`；仅 App 两侧共享的模型留在此处。
 

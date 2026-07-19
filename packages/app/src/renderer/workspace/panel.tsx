@@ -3,10 +3,9 @@ import { useEffect, useRef, useState } from 'react'
 import { StringListUpdater } from '../app-shell/types'
 import { ChatMessage } from '../chat/types'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { CloseMiniIcon, FileGlyphIcon, PanelCollapseIcon, PanelFullscreenIcon, WorkspaceFeatureIcon } from '../ui/icons'
+import { PanelFullscreenIcon, SidebarToggleIcon, WorkspaceFeatureIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
 import {
-  isWorkspacePanelTab,
   parseWorkspaceFileTabId,
   workspaceFileTabId,
   type WorkspaceFileDraftState,
@@ -15,7 +14,6 @@ import {
   type WorkspacePanelTab,
   type WorkspacePanelTabId
 } from '../workspace-persistence'
-import { WorkspaceAddMenu } from './add-menu'
 import { WorkspaceArtifacts } from './artifacts'
 import { WorkspaceBrowser } from './browser'
 import { WorkspaceFileNavigator } from './file-navigator'
@@ -26,10 +24,13 @@ import { WorkspacePlaceholder } from './placeholder'
 import { WorkspaceFileView } from './preview-pane'
 import { WorkspaceTerminal } from './terminal'
 import type { WorkspaceBrowserHistory } from './browser-history'
+import { isWorkspaceBrowserTabId, type WorkspaceBrowserTab, type WorkspaceBrowserTabId } from './browser-tabs'
+import { WorkspaceTabStrip } from './tab-strip'
+import type { PermissionModeId } from '../../shared/permission-modes'
 export function WorkspacePanel({
   collapsed,
   fullscreen,
-  activeTab, openTabs, browserUrl, browserHistory,
+  activeTab, openTabs, browserTabs, browserUrl, browserHistory,
   messages,
   workspacePath,
   defaultWorkspacePath,
@@ -37,6 +38,7 @@ export function WorkspacePanel({
   workplacePath,
   openRequest,
   sessionId,
+  permissionMode,
   sessionTitle,
   artifactVersion,
   fileDrafts,
@@ -54,13 +56,14 @@ export function WorkspacePanel({
   onWorkspaceArtifactsChanged,
   onFileNavigatorCollapsedChange,
   onExpandedPathsChange,
-  onOpenFile, onNavigateLink, onBrowserNavigate, onBrowserHistoryMove,
+  onOpenFile, onNavigateLink, onBrowserNavigate, onBrowserHistoryMove, onBrowserOpenNewTab, onBrowserTitleChange,
   onTipChange,
 }: {
   collapsed: boolean
   fullscreen: boolean
   activeTab: WorkspacePanelTabId
   openTabs: WorkspacePanelTabId[]
+  browserTabs: WorkspaceBrowserTab[]
   browserUrl: string
   browserHistory: WorkspaceBrowserHistory
   messages: ChatMessage[]
@@ -70,6 +73,7 @@ export function WorkspacePanel({
   workplacePath: string
   openRequest: WorkspaceOpenRequest | null
   sessionId?: string
+  permissionMode: PermissionModeId
   sessionTitle?: string
   artifactVersion: number
   fileDrafts: Record<string, WorkspaceFileDraftState>
@@ -91,61 +95,31 @@ export function WorkspacePanel({
   onNavigateLink: (href: string) => void
   onBrowserNavigate: (url: string, mode?: 'push' | 'replace') => void
   onBrowserHistoryMove: (delta: number) => void
+  onBrowserOpenNewTab: (url: string) => void
+  onBrowserTitleChange: (tabId: WorkspaceBrowserTabId, title: string) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const workspaceEntries: Array<{
     id: WorkspacePanelTab
     label: string
     desc: string
-    shortcut?: string
   }> = [
-    { id: 'review', label: '审查', desc: '当前工作现场、任务阶段和产物入口', shortcut: 'Ctrl+Shift+G' },
-    { id: 'artifacts', label: '产物', desc: '按项目、来源和类型管理生成或保存的文件', shortcut: 'Ctrl+Shift+A' },
+    { id: 'review', label: '审查', desc: '当前工作现场、任务阶段和产物入口' },
+    { id: 'artifacts', label: '产物', desc: '按项目、来源和类型管理生成或保存的文件' },
     { id: 'terminal', label: '终端', desc: 'LS 内置 PowerShell，命令执行受权限控制' },
-    { id: 'browser', label: '浏览器', desc: '在拓展工作区预览对话中的网页链接', shortcut: 'Ctrl+T' },
-    { id: 'sideChat', label: '侧边聊天', desc: '后续承载与当前文件或产物相关的局部对话', shortcut: 'Ctrl+Alt+S' },
+    { id: 'browser', label: '浏览器', desc: '在拓展工作区预览对话中的网页链接' },
+    { id: 'sideChat', label: '侧边聊天', desc: '后续承载与当前文件或产物相关的局部对话' },
   ]
-  const fallbackEntry: typeof workspaceEntries[number] = {
-    id: 'review',
-    label: '审查',
-    desc: '当前工作现场、任务阶段和产物入口',
-    shortcut: 'Ctrl+Shift+G',
-  }
-  const workspaceEntryById = new Map(workspaceEntries.map((entry) => [entry.id, entry]))
   const activeFileTab = parseWorkspaceFileTabId(activeTab)
-  const activeEntry = activeFileTab
-    ? {
-      id: activeTab,
-      label: lastPathSegment(activeFileTab.path),
-      desc: activeFileTab.path,
-      shortcut: undefined,
-      kind: 'file' as const,
-      dirty: Boolean(fileDrafts[activeTab]?.editorText !== fileDrafts[activeTab]?.savedText),
-    }
-    : { ...(isWorkspacePanelTab(activeTab) ? workspaceEntryById.get(activeTab) ?? fallbackEntry : fallbackEntry), kind: 'feature' as const, dirty: false }
-  const visibleTabs = openTabs
-    .map((tab) => {
-      const fileTab = parseWorkspaceFileTabId(tab)
-      if (fileTab) {
-        return {
-          id: tab,
-          label: lastPathSegment(fileTab.path),
-          desc: fileTab.path,
-          shortcut: undefined,
-          kind: 'file' as const,
-          dirty: Boolean(fileDrafts[tab]?.editorText !== fileDrafts[tab]?.savedText),
-        }
-      }
-      const entry = isWorkspacePanelTab(tab) ? workspaceEntryById.get(tab) : undefined
-      return entry ? { ...entry, kind: 'feature' as const, dirty: false } : null
-    })
-    .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
-  const displayedTabs = visibleTabs.length > 0 ? visibleTabs : [activeEntry]
+  const activeTabLabel = activeFileTab
+    ? lastPathSegment(activeFileTab.path)
+    : isWorkspaceBrowserTabId(activeTab)
+      ? browserTabs.find((tab) => tab.id === activeTab)?.title || '浏览器'
+      : workspaceEntries.find((entry) => entry.id === activeTab)?.label || '审查'
   const fullscreenTip = fullscreen ? '退出全屏工作区' : '全屏展开工作区'
   const workspaceIsDefault = isSamePath(workspacePath, workplacePath)
   const [warmTab, setWarmTab] = useState<WorkspacePanelTabId | null>(null)
   const previousTabRef = useRef<WorkspacePanelTabId>(activeTab)
-  const [pageVisible, setPageVisible] = useState(() => document.visibilityState !== 'hidden')
 
   useEffect(() => {
     const previousTab = previousTabRef.current
@@ -156,13 +130,12 @@ export function WorkspacePanel({
     return () => window.clearTimeout(timer)
   }, [activeTab])
 
-  useEffect(() => {
-    const onVisibilityChange = () => setPageVisible(document.visibilityState !== 'hidden')
-    document.addEventListener('visibilitychange', onVisibilityChange)
-    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
-  }, [])
-
-  const panelSuspended = collapsed || !pageVisible
+  // Minimize/restore changes document.visibilityState, but must not unmount a
+  // webview: doing so destroys the guest page and makes restore navigate from
+  // about:blank again. Electron's backgroundThrottling keeps hidden pages
+  // quiet; only an intentional workspace collapse suspends the panel.
+  const panelSuspended = collapsed
+  const hasOpenTabs = openTabs.length > 0
   // Derive the previous tab during the transition render as well. This keeps
   // the old heavy view mounted while React commits the new active tab instead
   // of unmounting it and recreating it one effect later.
@@ -179,59 +152,16 @@ export function WorkspacePanel({
       <div className="workspace-panel-contents" {...(collapsed ? { inert: '' } : {})}>
         <header className="workspace-panel-header">
           <div className="workspace-panel-topbar">
-            <div className="workspace-tab-strip" role="tablist" aria-label="拓展功能区">
-              {displayedTabs.map((entry) => {
-                const active = entry.id === activeTab
-                return (
-                  <div
-                    key={entry.id}
-                    className={`workspace-active-item ${active ? 'active' : ''} ${entry.kind === 'file' && entry.dirty ? 'file-dirty' : ''}`}
-                    role="tab"
-                    tabIndex={0}
-                    aria-selected={active}
-                    onClick={() => onTabChange(entry.id)}
-                    onKeyDown={(event) => {
-                      if (event.key !== 'Enter' && event.key !== ' ') return
-                      event.preventDefault()
-                      onTabChange(entry.id)
-                    }}
-                    onMouseEnter={(event) => onTipChange(buildFloatingHelpTip(entry.desc, event.clientX, event.clientY))}
-                    onMouseMove={(event) => onTipChange(buildFloatingHelpTip(entry.desc, event.clientX, event.clientY))}
-                    onMouseLeave={() => onTipChange(null)}
-                    onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement(entry.desc, event.currentTarget))}
-                    onBlur={() => onTipChange(null)}
-                  >
-                    {entry.kind === 'file' ? <FileGlyphIcon /> : <WorkspaceFeatureIcon id={entry.id} />}
-                    <span className="workspace-active-label">{entry.label}</span>
-                    <button
-                      {...transientTriggerProps()}
-                      className="workspace-active-close"
-                      type="button"
-                      aria-label={`关闭${entry.label}标签`}
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        onCloseTab(entry.id)
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key !== 'Enter' && event.key !== ' ') return
-                        event.preventDefault()
-                        event.stopPropagation()
-                        onCloseTab(entry.id)
-                      }}
-                    >
-                      <CloseMiniIcon />
-                    </button>
-                  </div>
-                )
-              })}
-              <WorkspaceAddMenu
-                entries={workspaceEntries}
-                activeTab={isWorkspacePanelTab(activeTab) ? activeTab : 'review'}
-                openTabs={displayedTabs.map((entry) => entry.id).filter(isWorkspacePanelTab)}
-                onSelect={onTabChange}
-                onTipChange={onTipChange}
-              />
-            </div>
+            <WorkspaceTabStrip
+              activeTab={activeTab}
+              openTabs={openTabs}
+              browserTabs={browserTabs}
+              fileDrafts={fileDrafts}
+              workspaceEntries={workspaceEntries}
+              onTabChange={onTabChange}
+              onCloseTab={onCloseTab}
+              onTipChange={onTipChange}
+            />
             <div className="workspace-context-line">
               {workspaceIsDefault ? '默认工作区' : '目标工作区'}
             </div>
@@ -239,7 +169,7 @@ export function WorkspacePanel({
           <div className="workspace-panel-actions">
             <button
               {...transientTriggerProps()}
-              className="workspace-panel-action"
+              className="workspace-panel-action workspace-panel-collapse-action"
               type="button"
               aria-label={fullscreenTip}
               aria-pressed={fullscreen}
@@ -264,14 +194,21 @@ export function WorkspacePanel({
               onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement('收起拓展工作区', event.currentTarget))}
               onBlur={() => onTipChange(null)}
             >
-              <PanelCollapseIcon />
+              <SidebarToggleIcon className="workspace-panel-toggle-icon" />
             </button>
           </div>
         </header>
         <div className="workspace-panel-body">
-          {!panelSuspended && (
+          {!panelSuspended && !hasOpenTabs && (
+            <WorkspaceEmptyLauncher
+              entries={workspaceEntries}
+              onSelect={onTabChange}
+              onTipChange={onTipChange}
+            />
+          )}
+          {!panelSuspended && hasOpenTabs && (
             <div
-              key={activeEntry.id}
+              key={activeTab}
               className={`workspace-panel-view content-fade ${!activeFileTab && activeTab !== 'files' ? 'with-file-navigator' : ''}`}
             >
             {activeTab === 'review' && (
@@ -279,7 +216,7 @@ export function WorkspacePanel({
                 workspacePath={workspacePath}
                 workplacePath={workplacePath}
                 activeTab={activeTab}
-                activeTabLabel={activeEntry.label}
+                activeTabLabel={activeTabLabel}
                 openTabs={openTabs}
                 openRequest={openRequest}
                 sessionId={sessionId}
@@ -359,16 +296,21 @@ export function WorkspacePanel({
               <WorkspaceTerminal
                 workspacePath={workspacePath}
                 sessionId={sessionId}
+                permissionMode={permissionMode}
+                workspaceBoundary={workspaceIsDefault ? 'inside' : 'outside'}
                 onRequestCommandApproval={onRequestCommandApproval}
                 onTipChange={onTipChange}
               />
             )}
-            {activeTab === 'browser' && (
+            {isWorkspaceBrowserTabId(activeTab) && (
               <WorkspaceBrowser
+                tabId={activeTab}
                 url={browserUrl}
                 history={browserHistory}
                 onNavigate={onBrowserNavigate}
                 onHistoryMove={onBrowserHistoryMove}
+                onOpenNewTab={onBrowserOpenNewTab}
+                onTitleChange={(title) => onBrowserTitleChange(activeTab, title)}
                 onTipChange={onTipChange}
               />
             )}
@@ -380,7 +322,7 @@ export function WorkspacePanel({
             )}
             </div>
           )}
-          {!panelSuspended && !activeFileTab && activeTab !== 'files' && (
+          {!panelSuspended && hasOpenTabs && !activeFileTab && activeTab !== 'files' && (
             <WorkspaceFileNavigator
               workspacePath={workspacePath}
               defaultWorkspacePath={defaultWorkspacePath}
@@ -398,7 +340,7 @@ export function WorkspacePanel({
               onTipChange={onTipChange}
             />
           )}
-          {!panelSuspended && transitionWarmTab && transitionWarmTab !== activeTab && (warmFileTab || transitionWarmTab === 'terminal') && (
+          {!panelSuspended && hasOpenTabs && transitionWarmTab && transitionWarmTab !== activeTab && (warmFileTab || transitionWarmTab === 'terminal') && (
             <div className="workspace-panel-view warm-cache" aria-hidden="true" {...{ inert: '' }}>
               {warmFileTab && (
                 <div className="workspace-files">
@@ -419,6 +361,8 @@ export function WorkspacePanel({
                 <WorkspaceTerminal
                   workspacePath={workspacePath}
                   sessionId={sessionId}
+                  permissionMode={permissionMode}
+                  workspaceBoundary={workspaceIsDefault ? 'inside' : 'outside'}
                   onRequestCommandApproval={onRequestCommandApproval}
                   onTipChange={onTipChange}
                 />
@@ -428,5 +372,43 @@ export function WorkspacePanel({
         </div>
       </div>
     </aside>
+  )
+}
+
+
+function WorkspaceEmptyLauncher({
+  entries,
+  onSelect,
+  onTipChange,
+}: {
+  entries: Array<{ id: WorkspacePanelTab; label: string; desc: string }>
+  onSelect: (tab: WorkspacePanelTab) => void
+  onTipChange: (tip: FloatingHelpTip | null) => void
+}) {
+  return (
+    <nav className="workspace-empty-launcher content-fade" aria-label="拓展功能入口">
+      {entries.map((entry) => (
+        <button
+          {...transientTriggerProps()}
+          key={entry.id}
+          className="workspace-empty-launcher-item"
+          type="button"
+          onClick={() => {
+            onTipChange(null)
+            onSelect(entry.id)
+          }}
+          onMouseEnter={(event) => onTipChange(buildFloatingHelpTip(entry.desc, event.clientX, event.clientY))}
+          onMouseMove={(event) => onTipChange(buildFloatingHelpTip(entry.desc, event.clientX, event.clientY))}
+          onMouseLeave={() => onTipChange(null)}
+          onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement(entry.desc, event.currentTarget))}
+          onBlur={() => onTipChange(null)}
+        >
+          <span className="workspace-empty-launcher-icon" aria-hidden="true">
+            <WorkspaceFeatureIcon id={entry.id} />
+          </span>
+          <span className="workspace-empty-launcher-label">{entry.label}</span>
+        </button>
+      ))}
+    </nav>
   )
 }

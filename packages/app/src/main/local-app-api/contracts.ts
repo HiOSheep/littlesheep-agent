@@ -13,6 +13,8 @@ import type { TerminalActivityIndex } from '../terminal-activity-index.js'
 import type { WorkspaceArtifactIndex } from '../workspace-artifact-index.js'
 import type { WorkspaceLayoutIndex } from '../workspace-layout-index.js'
 import type { MemoryEmbeddingModelController } from '../memory-embedding-model-control.js'
+import type { BrowserStorageOperationResult, BrowserStorageStatus } from '../../shared/browser-control-contracts.js'
+import type { DevelopmentEnvironmentManager } from '../development-environments.js'
 
 export interface LocalAppApiServerOptions {
   /** Port to listen on. 0 selects a random free loopback port. */
@@ -38,6 +40,14 @@ export interface LocalAppApiServerOptions {
   dataRootManager?: DataRootMigrationManager
   selectDataRootTarget?: () => Promise<string | null>
   restartApplication?: () => void
+  getBrowserStorageStatus?: () => Promise<BrowserStorageStatus>
+  clearBrowserCache?: () => Promise<BrowserStorageOperationResult>
+  clearBrowserData?: () => Promise<BrowserStorageOperationResult>
+  developmentEnvironmentManager?: DevelopmentEnvironmentManager
+  selectDevelopmentEnvironmentSource?: (
+    environmentId: string,
+    version: string | null,
+  ) => Promise<string | null>
 }
 
 export interface LocalAppApiServer {

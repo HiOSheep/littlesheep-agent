@@ -18,6 +18,8 @@ import { DirectModulePageContent } from './direct-module'
 import { SettingsHome } from './home'
 import { SETTINGS_NAV_GROUPS } from './navigation'
 import { SettingsStoragePage } from './storage'
+import { SettingsBrowserPage } from './browser'
+import { SettingsDevelopmentEnvironmentsPage } from './development-environments'
 import { SettingsPage } from './types'
 
 
@@ -169,6 +171,8 @@ export function SettingsWorkspace({
             )}
             {page === 'api' && <Settings onClose={returnHome} embedded />}
             {page === 'storage' && <SettingsStoragePage />}
+            {page === 'browser' && <SettingsBrowserPage />}
+            {page === 'developmentEnvironments' && <SettingsDevelopmentEnvironmentsPage />}
             {page === 'channels' && <ChannelConnections onClose={returnHome} embedded />}
             {page === 'archive' && <ArchiveManager onChanged={onArchiveChanged} />}
             {isDirectModulePage(page) && <DirectModulePageContent page={page} />}

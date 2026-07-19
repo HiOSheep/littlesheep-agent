@@ -1,6 +1,6 @@
 # LittleSheep 架构评估与开发决策报告
 
-最后更新：2026-07-17 09:03:51
+最后更新：2026-07-19 09:48:44
 评估范围：当前源码、正式文档与已记录的验证结果
 执行状态：Memory v3 阶段 0-16 的工程实现、隔离演练和正式用户数据迁移已完成；正式 backend/config 为 v3，40 个业务 atom、5 个内部根、11 个资源和 45 条 BGE 512 维向量已通过真实数据根、Electron 重启、Catalog v8 integrity 与恢复源检查；多轮任务语义、压缩后任务锚点恢复、关系引导的一跳 Atom 选择、写入认识边界、Atom 关系调和和 TaskBook 二次注入均已有独立质量门
 
@@ -90,7 +90,8 @@ React Renderer
 | Plugin Host | 基础可用 | `packages/plugins/` | v1 已接通 `channel`/`tool`/声明式 `skill`；Skill 所有权跨 Host、Loader 和 Memory Service 协同 | 保持 owner-scoped 协议，新增贡献点前先实现完整消费方和生命周期 |
 | External Channels | 基础可用 | `packages/channels/*` | 真实凭证和异常隔离场景仍需验收 | 保持纯适配器，不回到核心网关模式 |
 | MCP | 尚未实现 | `packages/mcp/` | 只有骨架 | 必须复用 Tool Execution Service 后再实现 |
-| Electron Main/API | 职责分散 | `packages/app/src/main/` | `local-app-api-server.ts` 路由和用例集中 | 先按 feature 拆 handler/service，不新建大量包 |
+| Electron Main/API | 职责分散 | `packages/app/src/main/` | `local-app-api-server.ts` 路由和用例集中；开发环境管理已按定义、文件安全和管理 facade 拆分 | 先按 feature 拆 handler/service，不新建大量包 |
+| 开发环境管理 | 基础可用 | `packages/app/src/main/development-environments.ts`、`development-environment-files.ts`、设置页 | Electron 内置 Node 已可用，其他运行时的自动下载、签名校验和安装包分发未完成 | 先冻结导入/版本契约，再实现来源清单和按需下载 |
 | Renderer | 职责分散 | `packages/app/src/renderer/App.tsx`、`styles.css` | 页面状态、导航、会话、设置和工作区编排集中 | 按 feature + shared primitives 渐进拆分 |
 
 ## 5. 关键问题分析
@@ -121,6 +122,8 @@ React Renderer
 - 完全访问/研究/受限：权限策略。
 
 这条边界必须保留。未来的 Mode 可以组合 Prompt、Workflow、Tools、Memory、Context、输出和模型默认值，但它只能声明“候选能力与策略”，不能授予权限。
+
+权限策略还必须叠加一条独立的逻辑容器边界。产品语义上，活动完整应用数据根（默认 `.littlesheep`）是 LS 容器，`workplace/` 只是其中的默认工作区；用户主动选定的外部工作区仍是容器外，不能因为被选中就改变边界。完全访问只在容器内且范围可证明时免批准，研究只对容器内读取免批准，受限所有操作都需批准；容器外和 `unknown` 范围三档都需批准。Agent 在外部工作区启动时先跳过自动资源/文档索引，待具体访问获批后再继续。当前实现由 Main、Safety、Harness、内置工具和终端共同执行路径闸门，不等同真实 Docker/OS 沙箱，核心源码的宿主级只读保护则高于所有策略；用户主动的 UI 选择、预览和保存是另一条用户操作路径。
 
 建议把最终运行决议记录为一个不可变对象。当前 `packages/app/src/main/run-policy.ts` 已有一个范围较窄的 `ResolvedRunPolicy`，只解析行为 profile 与工具审批；它不是下面规划的完整运行决议，因此目标契约使用不同名称，避免同名异义：
 
@@ -240,6 +243,7 @@ src/renderer/shared/
 - ToolRegistry 继续负责注册和来源；
 - Tool Execution Service 负责解析、schema、权限、超时、中断、清洗、记录和错误分类；
 - 把现有核心源码只读闸门提升为统一路径策略，使内置、插件和未来 MCP 工具共享宿主不可写边界；
+- 当前已先落地逻辑容器边界基元：`containerRoot`、`inside/outside/unknown` 分类、动态命令 fail-closed、Main 终端复核和工具内部二次复核。后续统一服务仍需把插件/MCP 资源声明、网络权限和更强的单次授权 token 收入同一协议；
 - Harness 负责步骤编排，不直接实现工具机制；
 - App 只提供审批交互和 Permission Policy，不重复判断工具内部行为。
 
@@ -336,6 +340,7 @@ src/renderer/shared/
 | D7 Plugin SDK/Host | 立即拆分 / API v2 前保持同包 | 暂缓拆分 | 避免为仍在变化的接口承担兼容成本 |
 | D8 Token 真相 | 单一估算 / Provider usage + 精确本地 ledger 分层 | 分层 | 用户展示必须真实，预算又需要请求前保护；未知 tokenizer 不生成伪精确数字 |
 | D9 Atom 动态层级 | 固定热层 / 后端连续 activation + 前端三层投影 | 后端连续、前端三层 | 文件、parent、披露深度和缓存压缩不能替代运行时价值；真实有效使用升温，低频衰减，任务相关度仍是首要准入门。UI 使用滞回阈值保持稳定，不把三层写回后端 |
+| D10 权限容器 | 真实 Docker/OS 沙箱 / 逻辑数据根边界 + 后续可叠加系统沙箱 | 逻辑数据根边界 | 当前 Electron 运行方式先保证可迁移数据根、Main 复核、工具内复核和未知 fail-closed；不把尚未存在的进程隔离写成已完成能力 |
 
 ## 8. 现在做、暂缓做、不要做
 

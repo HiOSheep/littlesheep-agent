@@ -43,6 +43,7 @@ import { compactSessionAfterRun } from './session-continuity.js';
 import { ActiveRunRegistry } from './active-run-registry.js';
 import { buildRunCheckpoint, shouldPersistRunCheckpoint } from './run-checkpoint.js';
 import { RunCheckpointController } from './run-checkpoint-controller.js';
+import { describeToolAccess, shouldRequestPermissionApproval } from '@littlesheep/safety';
 /** AgentResult + sessionId (caller-friendly). */
 export type RunnerResult = AgentResult & {
   sessionId: SessionId;
@@ -75,6 +76,8 @@ export interface CreateRunnerOptions {
   bootstrapDir?: string;
   /** Host-owned source roots that built-in mutation tools must keep read-only. */
   protectedWriteRoots?: readonly string[];
+  /** Active movable application-data root used as the logical LS container. */
+  containerRoot?: string;
   /** Overall run timeout in ms (default 5 min). When no signal is passed to
    *  run, a timed AbortController is created so a hung tool/LLM can't
    *  block indefinitely. 0 disables the timeout. */
@@ -109,6 +112,8 @@ export interface RunInput {
   requireApprovalForAllTools?: boolean;
   /** Permission policy resolved by the owning adapter. */
   permissionPolicyId?: PermissionPolicyId;
+  /** Set only when the caller has explicitly approved the initial workspace scan. */
+  workspaceAccessApproved?: boolean;
   /** Per-run reasoning budget selected by the user. */
   reasoning?: Config['agents']['defaults']['reasoning'];
   /** General/coding behavior profile. Permission policy is configured separately. */
@@ -164,6 +169,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     process.cwd(),
     process.argv[1] ?? '',
   ]);
+  const containerRoot = opts.containerRoot ?? opts.bootstrapDir;
   const infra = await buildInfrastructure({
     config: opts.config,
     branding: opts.branding,
@@ -289,11 +295,25 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         toolFilterApplied: input.toolFilter !== undefined,
         cwdOverridden: input.cwd !== undefined,
       });
-      try {
-        await infra.memoryService.syncWorkspaceResources(cwd, input.workspaceContext);
-        await infra.memoryService.syncWorkspaceDocuments(cwd);
-      } catch (error) {
-        opts.log?.('warn', `runner: workspace resource registration degraded: ${(error as Error).message}`);
+      const permissionMode = containerRoot
+        ? (input.permissionPolicyId ?? (input.requireApprovalForAllTools ? 'restricted' : 'research'))
+        : undefined;
+      const workspaceScan = containerRoot
+        ? describeToolAccess('read', { path: cwd }, { cwd, containerRoot })
+        : undefined;
+      const workspaceScanNeedsApproval = permissionMode !== undefined
+        && workspaceScan !== undefined
+        && shouldRequestPermissionApproval(permissionMode, workspaceScan)
+        && input.workspaceAccessApproved !== true;
+      if (!workspaceScanNeedsApproval) {
+        try {
+          await infra.memoryService.syncWorkspaceResources(cwd, input.workspaceContext);
+          await infra.memoryService.syncWorkspaceDocuments(cwd);
+        } catch (error) {
+          opts.log?.('warn', `runner: workspace resource registration degraded: ${(error as Error).message}`);
+        }
+      } else {
+        opts.log?.('info', `runner: deferred workspace indexing until approved access (${workspaceScan?.boundary})`);
       }
       const ctx: RunContext = await buildRunContext({
         sessionId,
@@ -309,6 +329,8 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         previousRun,
         cwd,
         protectedWriteRoots,
+        containerRoot,
+        permissionMode,
         signal,
         approve: input.approve ?? opts.approve,
         log: opts.log,

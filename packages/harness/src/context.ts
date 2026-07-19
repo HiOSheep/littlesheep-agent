@@ -78,6 +78,10 @@ export interface BuildRunContextOptions {
   cwd?: string;
   /** Host-owned roots that built-in mutation tools must keep read-only. */
   protectedWriteRoots?: readonly string[];
+  /** Active movable application-data root used as the logical LS container. */
+  containerRoot?: string;
+  /** Resolved permission policy, when the owning adapter supplies a container. */
+  permissionMode?: import('@littlesheep/types').PermissionPolicyId;
   /** Abort signal for the owning run. */
   signal?: AbortSignal;
   /** Approval callback handed to tools. */
@@ -189,6 +193,8 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     runId,
     cwd,
     protectedWriteRoots: opts.protectedWriteRoots,
+    containerRoot: opts.containerRoot,
+    permissionMode: opts.permissionMode,
     approve: opts.approve,
     signal: opts.signal,
     log: opts.log,

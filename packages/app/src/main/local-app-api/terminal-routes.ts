@@ -3,10 +3,16 @@
 import { stat } from 'node:fs/promises'
 import type { Config } from '@littlesheep/config'
 import {
+  resolveTerminalPermissionMode,
+  assertTerminalCommandAllowed,
+  assertTerminalSessionAllowed,
+} from './terminal-permission.js'
+import {
   LOCAL_APP_API_PREFIXES,
   LOCAL_APP_API_ROUTES,
 } from '../../shared/local-app-api-routes.js'
 import type { TerminalActivityIndex } from '../terminal-activity-index.js'
+import type { DevelopmentEnvironmentManager } from '../development-environments.js'
 import { HttpError, json, readJson, writeSse, type LocalAppApiRequest } from './http.js'
 import {
   clampTerminalTimeout,
@@ -25,10 +31,14 @@ import {
   resolveWorkspaceRootFromValue,
 } from './workspace-support.js'
 
+const MAX_TERMINAL_INPUT_BYTES = 64 * 1024
+
 export interface TerminalRouteContext {
   getConfig: () => Config
+  dataDir?: string
   workplaceDir: string
   terminalActivityIndex: TerminalActivityIndex
+  developmentEnvironmentManager?: DevelopmentEnvironmentManager
 }
 
 export class TerminalRouter {
@@ -42,9 +52,19 @@ export class TerminalRouter {
     if (method === 'POST' && path === LOCAL_APP_API_ROUTES.terminalSession) {
       const body = await readJson(req)
       const root = resolveWorkspaceRootFromValue(body.root, context.getConfig(), context.workplaceDir)
+      const permissionMode = resolveTerminalPermissionMode(body.permissionMode)
+      assertTerminalSessionAllowed({
+        cwd: root,
+        containerRoot: context.dataDir ?? context.workplaceDir,
+        permissionMode,
+        approved: body.approved === true,
+      })
       const info = await stat(root)
       if (!info.isDirectory()) throw new HttpError(400, 'workspace root is not a directory')
-      const session = await this.sessions.create(root, normalizeTerminalSize(body))
+      const terminalEnvironment = context.developmentEnvironmentManager
+        ? await context.developmentEnvironmentManager.terminalEnvironment()
+        : process.env
+      const session = await this.sessions.create(root, normalizeTerminalSize(body), permissionMode, terminalEnvironment)
       json(res, 200, session.snapshot())
       return true
     }
@@ -85,7 +105,51 @@ export class TerminalRouter {
       }
 
       if (method === 'POST' && action === 'input') {
-        const body = await readJson(req, MAX_TERMINAL_COMMAND_BYTES + 4096)
+        const body = await readJson(req, MAX_TERMINAL_INPUT_BYTES + 4096)
+        const rawInput = typeof body.data === 'string' ? body.data : undefined
+        if (rawInput !== undefined) {
+          if (!rawInput) {
+            json(res, 200, { ok: true, completed: 0 })
+            return true
+          }
+          if (Buffer.byteLength(rawInput, 'utf8') > MAX_TERMINAL_INPUT_BYTES) {
+            throw new HttpError(413, `终端输入超过 ${Math.round(MAX_TERMINAL_INPUT_BYTES / 1024)} KB。`)
+          }
+          if (rawInput.includes('\u0000')) throw new HttpError(400, 'terminal input contains invalid characters')
+
+          const session = this.sessions.get(terminalSessionId)
+          const analysis = session.analyzeInput(rawInput)
+          const completedCommands = analysis.commands.filter((entry) => entry.command || entry.uncertain)
+          const approved = body.approved === true
+          for (const entry of completedCommands) {
+            if (entry.uncertain && !approved) {
+              throw new HttpError(403, '无法确认当前终端编辑结果，请批准后继续。')
+            }
+            assertTerminalCommandAllowed({
+              command: entry.command,
+              cwd: session.root,
+              containerRoot: context.dataDir ?? context.workplaceDir,
+              permissionMode: session.permissionMode,
+              approved,
+            })
+          }
+
+          if (completedCommands.length > 0) {
+            const command = completedCommands.map((entry) => entry.command || '[interactive terminal input]').join('\n')
+            await this.captures.finalize(terminalSessionId, activityIndex, { signal: 'next-command' })
+            this.captures.start(session, command, normalizeOptionalSessionId(body.sessionId), activityIndex)
+          }
+          try {
+            session.writeInput(rawInput)
+            session.commitInput(analysis)
+          } catch (error) {
+            await this.captures.finalize(terminalSessionId, activityIndex, { signal: 'send-failed' })
+            throw error
+          }
+          json(res, 200, { ok: true, completed: completedCommands.length })
+          return true
+        }
+
         const command = typeof body.command === 'string' ? body.command.trim() : ''
         if (!command) {
           json(res, 400, { error: 'command is required' })
@@ -96,6 +160,13 @@ export class TerminalRouter {
         }
         if (command.includes('\u0000')) throw new HttpError(400, 'command contains invalid characters')
         const session = this.sessions.get(terminalSessionId)
+        assertTerminalCommandAllowed({
+          command,
+          cwd: session.root,
+          containerRoot: context.dataDir ?? context.workplaceDir,
+          permissionMode: session.permissionMode,
+          approved: body.approved === true,
+        })
         await this.captures.finalize(terminalSessionId, activityIndex, { signal: 'next-command' })
         this.captures.start(session, command, normalizeOptionalSessionId(body.sessionId), activityIndex)
         try {
@@ -142,7 +213,24 @@ export class TerminalRouter {
         json(res, 400, { error: 'command is required' })
         return true
       }
-      const payload = await runWorkspaceTerminalCommand(root, command, clampTerminalTimeout(body.timeoutMs))
+      const permissionMode = resolveTerminalPermissionMode(body.permissionMode)
+      assertTerminalCommandAllowed({
+        command,
+        cwd: root,
+        containerRoot: context.dataDir ?? context.workplaceDir,
+        permissionMode,
+        approved: body.approved === true,
+      })
+      const terminalEnvironment = context.developmentEnvironmentManager
+        ? await context.developmentEnvironmentManager.terminalEnvironment()
+        : process.env
+      const payload = await runWorkspaceTerminalCommand(
+        root,
+        command,
+        clampTerminalTimeout(body.timeoutMs),
+        {},
+        { env: terminalEnvironment },
+      )
       await activityIndex.append({
         ...payload,
         workspacePath: root,
@@ -173,7 +261,18 @@ export class TerminalRouter {
         json(res, 400, { error: 'command is required' })
         return true
       }
+      const permissionMode = resolveTerminalPermissionMode(body.permissionMode)
+      assertTerminalCommandAllowed({
+        command,
+        cwd: root,
+        containerRoot: context.dataDir ?? context.workplaceDir,
+        permissionMode,
+        approved: body.approved === true,
+      })
       const timeoutMs = clampTerminalTimeout(body.timeoutMs)
+      const terminalEnvironment = context.developmentEnvironmentManager
+        ? await context.developmentEnvironmentManager.terminalEnvironment()
+        : process.env
       let completed = false
       let cancelCommand: (() => void) | null = null
       res.on('close', () => {
@@ -194,7 +293,7 @@ export class TerminalRouter {
           onStdout: (text) => writeSse(res, 'stdout', { text }),
           onStderr: (text) => writeSse(res, 'stderr', { text }),
           onTruncated: () => writeSse(res, 'truncated', { truncated: true }),
-        })
+        }, { env: terminalEnvironment })
         await activityIndex.append({
           ...payload,
           workspacePath: root,

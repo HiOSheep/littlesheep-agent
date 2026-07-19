@@ -16,19 +16,19 @@ if (-not (Test-Path -LiteralPath $iconPath -PathType Leaf)) {
 
 Push-Location $appDirectory
 try {
-  $electronPath = (& node -e "process.stdout.write(require('electron'))").Trim()
-  if ($LASTEXITCODE -ne 0 -or -not $electronPath) {
-    throw 'Unable to resolve electron.exe from @littlesheep/app.'
+  $runtimePath = (& node (Join-Path $PSScriptRoot 'prepare-littlesheep-runtime.mjs')).Trim()
+  if ($LASTEXITCODE -ne 0 -or -not $runtimePath) {
+    throw 'Unable to prepare LittleSheep.exe from @littlesheep/app.'
   }
 } finally {
   Pop-Location
 }
 
-if (-not [System.IO.Path]::IsPathRooted($electronPath)) {
-  $electronPath = (Resolve-Path (Join-Path $appDirectory $electronPath)).Path
+if (-not [System.IO.Path]::IsPathRooted($runtimePath)) {
+  $runtimePath = (Resolve-Path (Join-Path $appDirectory $runtimePath)).Path
 }
-if (-not (Test-Path -LiteralPath $electronPath -PathType Leaf)) {
-  throw "electron.exe was not found at $electronPath"
+if (-not (Test-Path -LiteralPath $runtimePath -PathType Leaf)) {
+  throw "LittleSheep.exe was not found at $runtimePath"
 }
 
 if (-not $ShortcutPath) {
@@ -39,7 +39,7 @@ if (-not $ShortcutPath) {
 $shell = New-Object -ComObject WScript.Shell
 try {
   $shortcut = $shell.CreateShortcut($ShortcutPath)
-  $shortcut.TargetPath = $electronPath
+  $shortcut.TargetPath = $runtimePath
   $shortcut.Arguments = '.'
   $shortcut.WorkingDirectory = $appDirectory
   $shortcut.IconLocation = "$iconPath,0"
@@ -52,6 +52,6 @@ try {
 }
 
 Write-Host "Desktop shortcut refreshed: $ShortcutPath"
-Write-Host "Target: $electronPath"
+Write-Host "Target: $runtimePath"
 Write-Host "Working directory: $appDirectory"
 Write-Host "Icon: $iconPath"

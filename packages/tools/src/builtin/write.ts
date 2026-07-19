@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { AgentTool } from '@littlesheep/types';
+import { authorizeToolAccess } from '@littlesheep/safety';
 import { CORE_SOURCE_READ_ONLY_ERROR, findProtectedWriteRoot, resolveToolPath } from '../path-protection.js';
 import { withToolTiming } from '../wrapper.js';
 import { parallelFilePolicy } from '../execution-policy.js';
@@ -25,10 +26,10 @@ export const writeTool: AgentTool = {
     if (protectedRoot) {
       return { ok: false, error: `${CORE_SOURCE_READ_ONLY_ERROR}: ${targetPath}` };
     }
-    const approved = await ctx.approve?.('write', { file_path: targetPath }) ?? false;
-    if (!approved) {
-      return { ok: false, error: 'Approval denied' };
-    }
+    const authorization = await authorizeToolAccess('write', { file_path: targetPath }, ctx, {
+      defaultRequiresApproval: true,
+    });
+    if (!authorization.allowed) return { ok: false, error: 'Approval denied' };
     await ctx.versioning?.beforeFileMutation(targetPath);
     await mkdir(dirname(targetPath), { recursive: true });
     await writeFile(targetPath, content, 'utf8');

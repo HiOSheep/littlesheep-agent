@@ -1,18 +1,18 @@
 // 内置浏览器标签、导航历史、加载状态和网页内跳转的 Renderer 视图。
 import { createElement, useEffect, useRef, useState } from 'react'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { BrowserBackIcon, BrowserForwardIcon, RefreshIcon } from '../ui/icons'
+import { RefreshIcon } from '../ui/icons'
+import { BrowserBackIcon, BrowserForwardIcon, BrowserNewTabIcon } from '../ui/browser-icons'
 import { transientTriggerProps } from '../ui/transient'
-import {
-  normalizeBrowserEventUrl,
-  normalizeBrowserUrl,
-  type WorkspaceBrowserHistory,
-} from './browser-history'
+import { EMBEDDED_BROWSER_PARTITION } from '../../shared/browser-control-contracts'
+import { normalizeBrowserEventUrl, normalizeBrowserUrl, type WorkspaceBrowserHistory } from './browser-history'
+import type { WorkspaceBrowserTabId } from './browser-tabs'
 import { canStartBrowserNavigation } from './browser-navigation'
 
 type BrowserViewElement = HTMLElement & {
   loadURL?: (url: string) => Promise<void>
   reload?: () => void
+  getTitle?: () => Promise<string>
 }
 
 type BrowserNavigationMode = 'push' | 'replace'
@@ -27,16 +27,22 @@ interface PendingNavigation {
 }
 
 export function WorkspaceBrowser({
+  tabId,
   url,
   history,
   onNavigate,
   onHistoryMove,
+  onOpenNewTab,
+  onTitleChange,
   onTipChange,
 }: {
+  tabId: WorkspaceBrowserTabId
   url: string
   history: WorkspaceBrowserHistory
   onNavigate: (url: string, mode?: BrowserNavigationMode) => void
   onHistoryMove: (delta: number) => void
+  onOpenNewTab: (url: string) => void
+  onTitleChange: (title: string) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const [draft, setDraft] = useState(url)
@@ -46,8 +52,11 @@ export function WorkspaceBrowser({
   const currentUrlRef = useRef('')
   const browserHistoryRef = useRef(history)
   const onNavigateRef = useRef(onNavigate)
+  const onOpenNewTabRef = useRef(onOpenNewTab)
+  const onTitleChangeRef = useRef(onTitleChange)
   const pendingNavigationRef = useRef<PendingNavigation | null>(null)
   const navigationSequenceRef = useRef(0)
+  const lastPopupRef = useRef<{ url: string; at: number } | null>(null)
 
   // Keep the logical cursor current even when two toolbar clicks arrive
   // before React has committed the parent's state update.
@@ -56,6 +65,14 @@ export function WorkspaceBrowser({
   useEffect(() => {
     onNavigateRef.current = onNavigate
   }, [onNavigate])
+
+  useEffect(() => {
+    onOpenNewTabRef.current = onOpenNewTab
+  }, [onOpenNewTab])
+
+  useEffect(() => {
+    onTitleChangeRef.current = onTitleChange
+  }, [onTitleChange])
 
   useEffect(() => {
     const browser = browserRef.current
@@ -69,7 +86,9 @@ export function WorkspaceBrowser({
     }
 
     const readEventUrl = (event: Event): string => {
-      const nextUrl = (event as Event & { url?: string }).url
+      const navigationEvent = event as Event & { url?: string; isMainFrame?: boolean }
+      if (navigationEvent.isMainFrame === false) return ''
+      const nextUrl = navigationEvent.url
       return typeof nextUrl === 'string' ? normalizeBrowserEventUrl(nextUrl) : ''
     }
     const observeNavigation = (event: Event) => {
@@ -104,7 +123,18 @@ export function WorkspaceBrowser({
       event.preventDefault()
       const nextUrl = readEventUrl(event)
       if (!nextUrl) return
-      requestNavigation(nextUrl)
+      routeNewTab(nextUrl)
+    }
+    const observeTitle = (event: Event) => {
+      const title = (event as Event & { title?: string }).title
+      if (typeof title === 'string' && title.trim()) onTitleChangeRef.current(title)
+    }
+    const observeFinishedLoad = () => {
+      const getTitle = browser.getTitle
+      if (!getTitle) return
+      void getTitle().then((title) => {
+        if (title.trim()) onTitleChangeRef.current(title)
+      }).catch(() => undefined)
     }
     const startLoading = () => setLoading(true)
     const stopLoading = () => {
@@ -127,17 +157,23 @@ export function WorkspaceBrowser({
     browser.addEventListener('did-navigate', observeNavigation)
     browser.addEventListener('did-navigate-in-page', observeNavigation)
     browser.addEventListener('new-window', routePopupInside)
+    browser.addEventListener('page-title-updated', observeTitle)
+    browser.addEventListener('did-finish-load', observeFinishedLoad)
     browser.addEventListener('did-start-loading', startLoading)
     browser.addEventListener('did-stop-loading', stopLoading)
     browser.addEventListener('did-fail-load', failLoading)
+    const unsubscribe = window.littlesheep?.onBrowserOpenNewTab?.(({ url: nextUrl }) => routeNewTab(nextUrl))
     return () => {
       browser.removeEventListener('dom-ready', markBrowserReady)
       browser.removeEventListener('did-navigate', observeNavigation)
       browser.removeEventListener('did-navigate-in-page', observeNavigation)
       browser.removeEventListener('new-window', routePopupInside)
+      browser.removeEventListener('page-title-updated', observeTitle)
+      browser.removeEventListener('did-finish-load', observeFinishedLoad)
       browser.removeEventListener('did-start-loading', startLoading)
       browser.removeEventListener('did-stop-loading', stopLoading)
       browser.removeEventListener('did-fail-load', failLoading)
+      unsubscribe?.()
     }
   // Rebind when the active URL changes because the popup handler closes over
   // the current reload target. Keeping only the truthiness dependency would
@@ -212,6 +248,16 @@ export function WorkspaceBrowser({
       pendingNavigationRef.current = null
       setLoading(false)
     }
+  }
+
+  function routeNewTab(nextUrl: string) {
+    const normalized = normalizeBrowserUrl(nextUrl)
+    if (!normalized) return
+    const now = Date.now()
+    const previous = lastPopupRef.current
+    if (previous && previous.url === normalized && now - previous.at < 400) return
+    lastPopupRef.current = { url: normalized, at: now }
+    onOpenNewTabRef.current(normalized)
   }
 
   function requestNavigation(nextUrl: string) {
@@ -297,6 +343,19 @@ export function WorkspaceBrowser({
           >
             <RefreshIcon />
           </button>
+          <button
+            {...transientTriggerProps()}
+            type="button"
+            aria-label="新建浏览器标签"
+            onClick={() => onOpenNewTabRef.current('')}
+            onMouseEnter={(event) => onTipChange(buildFloatingHelpTip('新建浏览器标签', event.clientX, event.clientY))}
+            onMouseMove={(event) => onTipChange(buildFloatingHelpTip('新建浏览器标签', event.clientX, event.clientY))}
+            onMouseLeave={() => onTipChange(null)}
+            onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement('新建浏览器标签', event.currentTarget))}
+            onBlur={() => onTipChange(null)}
+          >
+            <BrowserNewTabIcon />
+          </button>
         </div>
         <form
           className="workspace-browser-address"
@@ -317,12 +376,31 @@ export function WorkspaceBrowser({
       <div className="workspace-browser-body">
         {url ? (
           createElement('webview', {
-            ref: (node: HTMLElement | null): void => { browserRef.current = node as BrowserViewElement | null },
+            key: tabId,
+            ref: (node: HTMLElement | null): void => {
+              if (node) {
+                // React does not reliably serialize Electron's custom
+                // `allowpopups` boolean property. Set both forms before the
+                // guest performs its first real navigation.
+                node.setAttribute('allowpopups', '')
+                const browserNode = node as BrowserViewElement & { allowpopups?: boolean }
+                browserNode.allowpopups = true
+              }
+              browserRef.current = node as BrowserViewElement | null
+            },
             src: 'about:blank',
             title: url,
-            partition: 'persist:littlesheep-browser',
-            allowpopups: false,
-            webpreferences: 'contextIsolation=yes,sandbox=yes,backgroundThrottling=yes',
+            partition: EMBEDDED_BROWSER_PARTITION,
+            // Let Chromium create the window request. The main process
+            // intercepts it and routes the URL back into an LS browser tab;
+            // keeping this enabled is required for target="_blank" links and
+            // window.open() to reach that routing boundary.
+            // Use a string attribute here. React treats an unknown custom
+            // element boolean prop as a property and may omit it during the
+            // element's initial upgrade; Electron reads allowpopups only at
+            // guest creation time.
+            allowpopups: '',
+            webpreferences: 'contextIsolation=yes,sandbox=yes,nativeWindowOpen=yes,backgroundThrottling=yes,autoplayPolicy=no-user-gesture-required',
           })
         ) : (
           <div className="workspace-browser-empty">从对话中的链接进入网页预览。</div>

@@ -18,8 +18,8 @@ export function WorkspaceAddMenu({
   onSelect,
   onTipChange,
 }: {
-  entries: Array<{ id: WorkspacePanelTab; label: string; desc: string; shortcut?: string }>
-  activeTab: WorkspacePanelTab
+  entries: Array<{ id: WorkspacePanelTab; label: string; desc: string }>
+  activeTab: WorkspacePanelTab | null
   openTabs: WorkspacePanelTab[]
   onSelect: (tab: WorkspacePanelTab) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
@@ -160,7 +160,6 @@ export function WorkspaceAddMenu({
                 <span className="workspace-add-label">{entry.label}</span>
                 <span className="workspace-add-meta">
                   {opened && <span className="workspace-add-open-dot" aria-label="已打开" />}
-                  {entry.shortcut && <span className="workspace-add-shortcut">{entry.shortcut}</span>}
                 </span>
               </button>
             )

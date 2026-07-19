@@ -2,6 +2,7 @@
 import { useRef } from 'react'
 import { createPortal } from 'react-dom'
 import {
+  type ApprovalRequest,
   type PermissionModeId
 } from '../api'
 import {
@@ -55,6 +56,7 @@ export function ApprovalPromptSurface({
         <div className="approval-kicker">{source === 'workspace' ? '用户工作区操作' : 'Agent 工具调用'}</div>
         <h2>{approvalActionTitle(request.action)}</h2>
         <p>{approvalModeDescription(request.permissionMode)}</p>
+        <p className="approval-boundary-note">{approvalBoundaryDescription(request.boundary)}</p>
         <p className="approval-risk-note">{approvalActionRiskDescription(request.action, source)}</p>
         <pre>{formatApprovalDetail(request.detail)}</pre>
         <p className="approval-session-note">“本对话允许”只授权当前对话中的同来源、同类操作；切换类别或重启应用后仍会重新询问。</p>
@@ -120,9 +122,17 @@ export function approvalActionTitle(action: string): string {
 
 
 export function approvalModeDescription(mode: PermissionModeId): string {
-  if (mode === 'restricted') return '当前为受限权限，所有工具调用都需要你批准后才会继续。'
-  if (mode === 'research') return '当前为研究权限，涉及修改、命令或长期沉淀的动作需要你批准。'
-  return '当前为完全访问权限。'
+  if (mode === 'restricted') return '当前为受限权限，所有工具操作都需要你批准，包括容器内查看。'
+  if (mode === 'research') return '当前为研究权限，容器内读取可直接进行；修改、删除、执行和容器外访问需要你批准。'
+  return '当前为完全访问权限。LS 容器内操作可直接进行，容器外资源仍需要你批准。'
+}
+
+
+export function approvalBoundaryDescription(boundary: ApprovalRequest['boundary']): string {
+  if (boundary === 'outside') return '范围判定：容器外资源。此次操作必须由你明确批准。'
+  if (boundary === 'unknown') return '范围判定：无法证明留在容器内。此次操作按高风险处理并要求批准。'
+  if (boundary === 'inside') return '范围判定：LS 容器内资源。'
+  return '范围判定：由当前操作详情进一步确认。'
 }
 
 

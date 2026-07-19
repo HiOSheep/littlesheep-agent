@@ -16,6 +16,10 @@ export interface WorkspaceTerminalCommandEvents {
   onTruncated?: () => void
 }
 
+export interface WorkspaceTerminalCommandOptions {
+  env?: NodeJS.ProcessEnv
+}
+
 export function clampTerminalTimeout(value: unknown): number {
   const requested = typeof value === 'number' && Number.isFinite(value) ? value : DEFAULT_TERMINAL_TIMEOUT_MS
   return Math.max(1_000, Math.min(MAX_TERMINAL_TIMEOUT_MS, Math.round(requested)))
@@ -26,6 +30,7 @@ export async function runWorkspaceTerminalCommand(
   command: string,
   timeoutMs: number,
   events: WorkspaceTerminalCommandEvents = {},
+  options: WorkspaceTerminalCommandOptions = {},
 ) {
   if (Buffer.byteLength(command, 'utf8') > MAX_TERMINAL_COMMAND_BYTES) {
     throw new HttpError(413, `命令超过 ${Math.round(MAX_TERMINAL_COMMAND_BYTES / 1024)} KB。`)
@@ -91,7 +96,7 @@ export async function runWorkspaceTerminalCommand(
     }
     const child = spawn(shellCommand, shellArgs, {
       cwd: root,
-      env: process.env,
+      env: options.env ?? process.env,
       windowsHide: true,
     })
     events.onStart?.(() => {

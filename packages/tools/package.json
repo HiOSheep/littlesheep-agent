@@ -17,6 +17,7 @@
     "@littlesheep/types": "workspace:*",
     "@littlesheep/memory-core": "workspace:*",
     "@littlesheep/session": "workspace:*",
+    "@littlesheep/safety": "workspace:*",
     "@littlesheep/vector": "workspace:*",
     "zod": "^3.23.0"
   },

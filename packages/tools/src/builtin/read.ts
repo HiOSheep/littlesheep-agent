@@ -2,7 +2,9 @@
 import { z } from 'zod';
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { AgentTool } from '@littlesheep/types';
+import { authorizeToolAccess } from '@littlesheep/safety';
 import { sanitizeOutput, DEFAULT_SANITIZE, isBinary, binaryPreview } from '../sanitize.js';
 import { withToolTiming } from '../wrapper.js';
 import { parallelFilePolicy } from '../execution-policy.js';
@@ -20,14 +22,19 @@ export const readTool: AgentTool = {
   execution: parallelFilePolicy('file_path', 'read'),
   execute: withToolTiming(async (input, ctx) => {
     const { file_path, offset, limit } = ReadInput.parse(input);
-    if (!existsSync(file_path)) {
-      return { ok: false, error: `File not found: ${file_path}` };
+    const targetPath = resolve(ctx.cwd, file_path);
+    const authorization = await authorizeToolAccess('read', { file_path: targetPath }, ctx);
+    if (!authorization.allowed) {
+      return { ok: false, error: 'Approval denied: reading this path requires user approval.' };
     }
-    const buffer = await readFile(file_path);
+    if (!existsSync(targetPath)) {
+      return { ok: false, error: `File not found: ${targetPath}` };
+    }
+    const buffer = await readFile(targetPath);
     // Binary files: return hex preview directly (offset/limit don't apply)
     if (isBinary(buffer)) {
       const preview = binaryPreview(buffer);
-      ctx.log?.('info', `read binary ${file_path} (${buffer.length} bytes)`);
+      ctx.log?.('info', `read binary ${targetPath} (${buffer.length} bytes)`);
       return { output: preview, sanitized: true };
     }
     let text = buffer.toString('utf8');
@@ -40,7 +47,7 @@ export const readTool: AgentTool = {
     }
     text = lines.join('\n');
     const { output, sanitized } = sanitizeOutput(text, DEFAULT_SANITIZE);
-    ctx.log?.('info', `read ${file_path} (${text.length} chars)`);
+    ctx.log?.('info', `read ${targetPath} (${text.length} chars)`);
     return { output, sanitized };
   }),
 };

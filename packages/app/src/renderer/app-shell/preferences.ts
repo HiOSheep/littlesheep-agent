@@ -272,7 +272,8 @@ export function readWorkspacePanelOpenTabsPreference(): WorkspacePanelTabId[] {
 
 export function writeWorkspacePanelOpenTabsPreference(tabs: WorkspacePanelTabId[]): void {
   try {
-    window.localStorage.setItem(WORKSPACE_PANEL_OPEN_TABS_KEY, JSON.stringify(dedupeWorkspacePanelTabs(tabs)))
+    const normalized = tabs.length === 0 ? [] : dedupeWorkspacePanelTabs(tabs)
+    window.localStorage.setItem(WORKSPACE_PANEL_OPEN_TABS_KEY, JSON.stringify(normalized))
   } catch {
     // Local UI preferences are best-effort only.
   }

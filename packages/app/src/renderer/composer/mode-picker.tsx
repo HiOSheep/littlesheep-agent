@@ -20,7 +20,15 @@ export function ModePicker({
   const [open, setOpen] = useState(false)
   const [tip, setTip] = useState<FloatingHelpTip | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const selected = MODE_OPTIONS.find((item) => item.id === value) ?? MODE_OPTIONS[0]!
+
+  function buildModeOptionTip(text: string, element: HTMLElement): FloatingHelpTip {
+    return buildFloatingHelpTipFromElement(text, element, {
+      placement: 'right',
+      avoidElement: panelRef.current,
+    })
+  }
 
   useDismissOnOutside(open, [rootRef], () => setOpen(false))
 
@@ -69,7 +77,7 @@ export function ModePicker({
         <ModeRiskIcon risk={selected.risk} className="mode-picker-mark" />
         <span className="model-picker-current">{selected.label}</span>
       </button>
-      <div className="model-picker-panel option-picker-panel mode-picker-panel" role="dialog" aria-label="权限模式选择">
+      <div ref={panelRef} className="model-picker-panel option-picker-panel mode-picker-panel" role="dialog" aria-label="权限模式选择">
         <div className="option-picker-list" role="listbox" aria-label="权限模式">
           {MODE_OPTIONS.map((item) => {
             const isActive = item.id === value
@@ -79,11 +87,11 @@ export function ModePicker({
                 type="button"
                 className={`model-option option-picker-option mode-option risk-${item.risk} ${isActive ? 'active' : ''}`}
                 aria-label={`${item.label}: ${item.riskLabel}，${item.desc}`}
-                onMouseEnter={(event) => setTip(buildFloatingHelpTip(item.desc, event.clientX, event.clientY))}
-                onMouseMove={(event) => setTip(buildFloatingHelpTip(item.desc, event.clientX, event.clientY))}
+                onMouseEnter={(event) => setTip(buildModeOptionTip(item.desc, event.currentTarget))}
+                onMouseMove={(event) => setTip(buildModeOptionTip(item.desc, event.currentTarget))}
                 onMouseLeave={() => setTip(null)}
                 onFocus={(event) => {
-                  setTip(buildFloatingHelpTipFromElement(item.desc, event.currentTarget))
+                  setTip(buildModeOptionTip(item.desc, event.currentTarget))
                 }}
                 onBlur={() => setTip(null)}
                 onClick={() => {

@@ -11,7 +11,7 @@ import {
 } from '../api'
 import { StringListUpdater } from '../app-shell/types'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { FolderGlyphIcon, PanelCollapseIcon, RefreshIcon, SearchIcon, VSCodeIcon } from '../ui/icons'
+import { FolderGlyphIcon, RefreshIcon, SearchIcon, VSCodeIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
 import {
   type WorkspaceOpenRequest
@@ -327,20 +327,6 @@ export function WorkspaceFiles({
                 onBlur={() => onTipChange(null)}
               >
                 <RefreshIcon />
-              </button>
-              <button
-                {...transientTriggerProps()}
-                className="workspace-files-icon-btn"
-                type="button"
-                aria-label="折叠文件管理"
-                onClick={() => onNavigatorCollapsedChange(true)}
-                onMouseEnter={(event) => onTipChange(buildFloatingHelpTip('折叠文件管理', event.clientX, event.clientY))}
-                onMouseMove={(event) => onTipChange(buildFloatingHelpTip('折叠文件管理', event.clientX, event.clientY))}
-                onMouseLeave={() => onTipChange(null)}
-                onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement('折叠文件管理', event.currentTarget))}
-                onBlur={() => onTipChange(null)}
-              >
-                <PanelCollapseIcon />
               </button>
             </div>
           </div>

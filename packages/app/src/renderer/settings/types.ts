@@ -1,7 +1,7 @@
 // Settings navigation and page composition.
 
 
-export type SettingsPage = 'home' | 'agent' | 'api' | 'storage' | 'scheduled' | 'memoryTree' | 'archive' | 'plugins' | 'skills' | 'channels'
+export type SettingsPage = 'home' | 'agent' | 'api' | 'storage' | 'browser' | 'developmentEnvironments' | 'scheduled' | 'memoryTree' | 'archive' | 'plugins' | 'skills' | 'channels'
 
 export type DirectModulePage = Extract<SettingsPage, 'memoryTree' | 'scheduled' | 'plugins'>
 

@@ -1,21 +1,8 @@
-// Pure renderer composition view. Runtime authority and side effects stay in the controller.
-import '@xterm/xterm/css/xterm.css'
 import { useLayoutEffect, useRef, useState, type MouseEvent } from 'react'
-import {
-  coerceReasoningForModelRef
-} from '../../shared/model-capabilities'
 import { AssistantTurnMessage } from '../chat/assistant-turn'
-import { TaskProgressPresence } from '../chat/task-progress-indicator'
-import { AddMenu } from '../composer/add-menu'
-import { ContextUsageIndicator } from '../composer/context-usage-indicator'
-import { AttachmentPreviewCard, MessageFileStrip } from '../composer/message-files'
-import { ModePicker } from '../composer/mode-picker'
-import { RuntimePicker } from '../composer/runtime-picker'
-import { WorkspaceChip } from '../composer/workspace-chip'
+import { MessageFileStrip } from '../composer/message-files'
 import { Markdown } from '../Markdown'
 import { TraceCard } from '../TraceCard'
-import { buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { SendRunIcon, StopRunIcon } from '../ui/icons'
 import {
   createDisplaySettleState,
   observeDisplaySettleFrame,
@@ -33,7 +20,16 @@ type ScrollRepair =
   | { kind: 'height'; height: number; top: number }
 
 export function ChatView({ controller }: { controller: AppController }) {
-  const { currentSession, messages, setMessages, historyWindow, loadOlderMessages, input, setInput, loading, permissionMode, setPermissionMode, runtime, attachments, setAttachments, dragActive, runtimeError, workspacePanelCollapsed, workspacePanelReopenActive, setWorkspacePanelReopenActive, workspacePanelFullscreen, workspacePanelTab, workspacePanelOpenTabs, workspaceOpenRequest, setWorkspaceOpenRequest, workspaceFileDrafts, workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed, workspaceExpandedPaths, setWorkspaceExpandedPaths, pendingDirtyCloseTab, setPendingDirtyCloseTab, conversationCollapsed, setConversationCollapsed, scrollRef, inputRef, shellRef, activityNow, workspaceArtifactVersion, controlTip, setControlTip, selectableProviders, selectedModel, workspaceIsWorkplace, workspaceTip, contextUsage, latestTaskActivity, uploadTip, sendTip, requestWorkspaceSaveApproval, requestWorkspaceCommandApproval, applyRuntimePatch, addAttachments, chooseWorkspace, resetWorkspace, openFileInWorkspace, handleComposerDragEnter, handleComposerDragOver, handleComposerDragLeave, handleComposerDrop, handleComposerPaste, send, stop, updateWorkspaceFileDraft, closeWorkspacePanelTab, defaultWorkspacePath, workspacePanelRoot, workspacePanelUsingTemporaryRoot } = controller
+  const {
+    currentSession,
+    messages,
+    setMessages,
+    historyWindow,
+    loadOlderMessages,
+    scrollRef,
+    activityNow,
+    openFileInWorkspace,
+  } = controller
 
   const stickToBottomRef = useRef(true)
   const scrollRepairRef = useRef<ScrollRepair | null>(null)
@@ -120,7 +116,6 @@ export function ChatView({ controller }: { controller: AppController }) {
   }
 
   return (
-      <main className="chat">
         <div
           className={`messages ${messages.length === 0 ? 'is-empty' : ''}`}
           ref={scrollRef}
@@ -130,6 +125,7 @@ export function ChatView({ controller }: { controller: AppController }) {
           }}
           onClickCapture={captureDisclosureAnchor}
         >
+          <div className="messages-content">
           {historyWindow.hasMore && (
             <button
               type="button"
@@ -140,7 +136,12 @@ export function ChatView({ controller }: { controller: AppController }) {
               {historyWindow.loading ? '加载更早内容...' : '加载更早内容'}
             </button>
           )}
-          {messages.length === 0 && (
+          {historyWindow.loading && messages.length === 0 && (
+            <div className="history-loading loading" role="status" aria-live="polite">
+              加载历史消息...
+            </div>
+          )}
+          {messages.length === 0 && !historyWindow.loading && (
             <div className="empty-hint">
               <div className="empty-title">今天要推进什么？</div>
               <div className="empty-copy">选择模型、推理强度和工作目录后，直接交给 LittleSheep。</div>
@@ -179,104 +180,7 @@ export function ChatView({ controller }: { controller: AppController }) {
               </div>
             )
           ))}
-        </div>
-
-        <section className="composer-shell">
-          <TaskProgressPresence activity={latestTaskActivity} now={activityNow} />
-          <div
-            className={`composer ${dragActive ? 'drag-active' : ''}`}
-            onDragEnter={handleComposerDragEnter}
-            onDragOver={handleComposerDragOver}
-            onDragLeave={handleComposerDragLeave}
-            onDrop={handleComposerDrop}
-          >
-            {attachments.length > 0 && (
-              <div className="attachment-preview-grid">
-                {attachments.map((file) => (
-                  <AttachmentPreviewCard
-                    key={file.path}
-                    file={file}
-                    onOpen={() => openFileInWorkspace(file.path)}
-                    onRemove={() => {
-                      setControlTip(null)
-                      setAttachments((prev) => prev.filter((item) => item.path !== file.path))
-                    }}
-                    onTipChange={setControlTip}
-                  />
-                ))}
-              </div>
-            )}
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onPaste={handleComposerPaste}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  void send()
-                }
-              }}
-              placeholder="给 LittleSheep 一个任务，或上传文件后直接发送"
-              rows={1}
-            />
-            <div className="composer-controls">
-              <div className="composer-left">
-                <AddMenu
-                  label={uploadTip}
-                  onAddFiles={addAttachments}
-                  onChooseWorkspace={chooseWorkspace}
-                  onTipChange={setControlTip}
-                />
-                <ModePicker value={permissionMode} onChange={setPermissionMode} />
-                {runtime && !workspaceIsWorkplace && (
-                  <WorkspaceChip
-                    path={runtime.workspace}
-                    tip={workspaceTip}
-                    onReset={resetWorkspace}
-                    onTipChange={setControlTip}
-                  />
-                )}
-              </div>
-              <div className="composer-right">
-                <ContextUsageIndicator usage={contextUsage} />
-                <RuntimePicker
-                  runtime={runtime}
-                  providers={selectableProviders}
-                  selected={selectedModel}
-                  onModelChange={(model) => {
-                    void applyRuntimePatch({
-                      model,
-                      reasoning: coerceReasoningForModelRef(runtime?.reasoning ?? 'auto', model),
-                    })
-                  }}
-                  onReasoningChange={(reasoning) => void applyRuntimePatch({ reasoning })}
-                />
-                <button
-                  className={`send-round ${loading ? 'stop' : ''}`}
-                  onClick={() => {
-                    setControlTip(null)
-                    if (loading) {
-                      stop()
-                    } else {
-                      void send()
-                    }
-                  }}
-                  disabled={!loading && !input.trim() && attachments.length === 0}
-                  aria-label={sendTip}
-                  onMouseEnter={(event) => setControlTip(buildFloatingHelpTip(sendTip, event.clientX, event.clientY))}
-                  onMouseMove={(event) => setControlTip(buildFloatingHelpTip(sendTip, event.clientX, event.clientY))}
-                  onMouseLeave={() => setControlTip(null)}
-                  onFocus={(event) => setControlTip(buildFloatingHelpTipFromElement(sendTip, event.currentTarget))}
-                  onBlur={() => setControlTip(null)}
-                >
-                  {loading ? <StopRunIcon /> : <SendRunIcon />}
-                </button>
-              </div>
-            </div>
           </div>
-          {runtimeError && <div className="composer-error">{runtimeError}</div>}
-        </section>
-      </main>
+        </div>
   )
 }

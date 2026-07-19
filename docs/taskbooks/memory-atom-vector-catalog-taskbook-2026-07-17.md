@@ -646,7 +646,7 @@ V3 backend 激活后，对话原始来源由 Runner 从用户输入和对话区�
 - 正式用户数据中的旧 archive index 与 vector database 没有删除、迁移或改写。未来 daily 压缩、提升或蒸馏必须先形成带来源、认识状态和层级的结构化 Atom 提案，再经过统一去重、调和、审计、提交和恢复闸门；
 - 对话区中真正给用户看的 Agent 回复、澄清、任务说明、步骤摘要、验证说明和交付表达必须由真实 LLM 调用结合 `SOUL.md`、用户语言与 Runtime 事实生成；同一文案只能在同一 UI 回合的更新、日志和持久化中复用，不能作为新的重复消息发送。Renderer 只呈现通过重复检查的文案和机器状态，不能自行代写 Agent 人格内容；模型不可用、空回复或重复改写耗尽时只呈现 Runtime 错误/状态。
 
-验证证据：阶段 20 验收时的基线为 `check:repo` 33/33、180 个测试文件/1317 passed/1 skipped；当前完整复跑已更新为 188 个测试文件/1361 passed/1 skipped。CLI、参数解析和 `SOUL.md` 表达边界定向测试保持通过；27 个 workspace typecheck、Electron main/preload/renderer build、CLI 依赖构建和应用恢复检查通过。真实 Node 子进程使用故意损坏的隔离配置执行 `memory archive --force`，退出码为 2，数据目录哈希前后一致且未进入 Provider/Runner 路径。
+验证证据：阶段 20 验收时的基线为 `check:repo` 33/33、180 个测试文件/1317 passed/1 skipped；当前完整复跑已更新为 209 个测试文件/1453 passed/1 skipped。CLI、参数解析和 `SOUL.md` 表达边界定向测试保持通过；27 个 workspace typecheck、Electron main/preload/renderer build、CLI 依赖构建和应用恢复检查通过。真实 Node 子进程使用故意损坏的隔离配置执行 `memory archive --force`，退出码为 2，数据目录哈希前后一致且未进入 Provider/Runner 路径。
 
 验收结论：阶段 20 完成。Memory v3 已成为唯一生产写入路径，旧 archive/vector 只读兼容不再具有提交权；正式用户旧数据未改写。结构化 daily 压缩/提升本身属于下一阶段，不在本阶段伪装完成。
 
@@ -663,7 +663,7 @@ V3 backend 激活后，对话原始来源由 Runner 从用户输入和对话区�
 - Runner 在会话压缩摘要完成持久化和资源登记后触发 consolidation。真实集成测试确认 daily Atom 被提升为 project T2、目标保留 `capture + maintenance` 来源阶段、源 Atom 成功归档，且整轮模型请求仍为 7 次，没有为维护流程增加 LLM 调用；
 - 本阶段的维护流程不负责生成用户可见文案。需要向用户说明记忆变化时，Runtime 提供真实状态与证据，LLM 结合 `SOUL.md` 和用户语言构思表达，Renderer 只负责呈现与渐进披露。
 
-验证证据：Session compaction 6/6、daily consolidation 4/4、稳定事件/审计 1/1、写入认识边界 6/6、真实 Runner integration 7/7；阶段 21 定向回归和本轮完整质量门均保持通过；当前 `check:repo` 33/33、全量测试 188 文件/1361 passed/1 skipped、全量 typecheck、build、应用恢复检查和桌面窗口启动均通过。
+验证证据：Session compaction 6/6、daily consolidation 4/4、稳定事件/审计 1/1、写入认识边界 6/6、真实 Runner integration 7/7；阶段 21 定向回归和本轮完整质量门均保持通过；当前 `check:repo` 33/33、全量测试 209 文件/1453 passed/1 skipped、全量 typecheck、build、应用恢复检查和桌面窗口启动均通过。
 
 验收结论：阶段 21 完成。版本化压缩摘要现在可以有界、可追溯地驱动 daily Atom 的保守提升，同时保持原始对话来源不变、失败不丢源、零额外模型调用和可恢复提交。后续若需要多个 Atom 的语义去重、合并或层级重组，只允许由模型提出结构化提案，Runtime 校验来源、认识边界、作用域、revision、关系和回归条件后提交，不允许模型直接改写存储。
 
@@ -679,7 +679,7 @@ V3 backend 激活后，对话原始来源由 Runner 从用户输入和对话区�
 - 调和不会新增独立 LLM 调用、向量查询、后台轮询或全库扫描；它只复用本来就会发生的 EVOLVE 调用和本轮已介入 Atom。模型提案与 Runtime 的 committed/deferred/rejected/partial/noop 结果写入同一有界 `MemoryIntentDecisionRecord` 审计；
 - 协议、校验和编排分别位于 `memory-reconciliation-contracts.ts`、`memory-reconciliation-validation.ts`、`memory-reconciliation.ts` 与 `stages/evolve/reconciliation.ts`，核心组合文件保持在仓库维护基线内。
 
-验证证据：阶段 22 的 Memory Tree 与 Harness 定向回归覆盖多源合并、重复执行幂等、第二源瞬时失败后的部分结果和重试、无语义锚点拒绝、冲突/替代关系阻断、普通 merge intent 延期、KnownState adopted/revision 门和 Runtime 审计；本轮完整质量门为 `check:repo` 33/33、全量测试 188 文件/1361 passed/1 skipped、27 个 workspace typecheck、Electron build、应用恢复检查和桌面快捷方式启动均通过。
+验证证据：阶段 22 的 Memory Tree 与 Harness 定向回归覆盖多源合并、重复执行幂等、第二源瞬时失败后的部分结果和重试、无语义锚点拒绝、冲突/替代关系阻断、普通 merge intent 延期、KnownState adopted/revision 门和 Runtime 审计；本轮完整质量门为 `check:repo` 33/33、全量测试 209 文件/1453 passed/1 skipped、27 个 workspace typecheck、Electron build、应用恢复检查和桌面快捷方式启动均通过。
 
 验收结论：阶段 22 的“重复投影合并”工程边界完成。LS 现在允许模型提出、但不允许模型直接执行 Atom 合并；Runtime 只在本轮已采用证据内做有界、可恢复的结构调和。下一步仍需真实 Provider 判断质量、错误提案率、长期收益和更复杂的层级/内容重组方案，不能把本阶段等同于任意语义自治整理。
 
@@ -695,7 +695,7 @@ V3 backend 激活后，对话原始来源由 Runner 从用户输入和对话区�
 - 本阶段不新增 LLM 调用、向量查询、后台轮询或全库扫描。模型只负责提出语义关系，Runtime 独立决定是否满足安全边界；原始对话来源仍不可改写，Atom 只是可修订投影；
 - 面向用户的记忆变化说明、任务过程、验证结果和交付表达继续由 LLM 结合运行时 `SOUL.md` 与用户语言构思。Runtime 只提供事实、状态、权限、路径、进度和证据，Renderer 只呈现并执行渐进式披露。
 
-验证证据：Harness、纯层级服务和真实 V3 Backend 重启集成定向回归共 3 个文件、18/18 通过；覆盖正常移动、已提交重试、响应丢失恢复、非叶子拒绝、关系方向/强度拒绝、跨 scope 拒绝、D1 拒绝、超额提案拒绝审计、真实 relation neighborhood、Catalog/Atom revision、投影记录和重启后一致性。最终质量门为 `check:repo` 33/33、全量测试 188 文件/1361 passed/1 skipped、全工作区 typecheck 27/27、build 和 `verify:app-recovery` 通过。
+验证证据：Harness、纯层级服务和真实 V3 Backend 重启集成定向回归共 3 个文件、18/18 通过；覆盖正常移动、已提交重试、响应丢失恢复、非叶子拒绝、关系方向/强度拒绝、跨 scope 拒绝、D1 拒绝、超额提案拒绝审计、真实 relation neighborhood、Catalog/Atom revision、投影记录和重启后一致性。最终质量门为 `check:repo` 33/33、全量测试 209 文件/1453 passed/1 skipped、全工作区 typecheck 27/27、build 和 `verify:app-recovery` 通过。
 
 验收结论：阶段 23 完成了“有明确语义关系时的叶子层级纠正”，没有把模型提案权扩大为任意记忆重写权。后续应先用真实 Provider 和长期负载评估提案准确率、误拒率与收益，再决定是否开放更复杂的内容修订或子树重组。
 
@@ -710,7 +710,7 @@ V3 backend 激活后，对话原始来源由 Runner 从用户输入和对话区�
 - 提交复用 Memory v3 的原子 update mutation、投影变更记录、operation journal、commit receipt、Catalog/FTS 同步和向量重建状态。提交响应丢失后，相同提案会依据新 revision 与投影内容识别已提交结果并返回 `noop`；
 - 本阶段不新增独立 LLM 调用、向量搜索、后台轮询或全库扫描，只复用 EVOLVE 已有调用和本轮 KnownState。面向用户的记忆变化说明、任务过程、验证结果和交付表达必须由真实 LLM 调用结合 `SOUL.md`、用户语言和 Runtime 事实构思，并通过统一来源与持久化会话级精确去重；Renderer 只负责稳定状态、排版和渐进式披露，不能把固定模板冒充 Agent 人格。
 
-验证证据：阶段 24 的 Harness、纯修订服务和真实 V3 Backend 重启集成共 3 个测试文件、22/22 通过；覆盖正常修订、重复调用 noop、响应丢失恢复、revision 冲突、无关语义拒绝、硬锚点删除/新增拒绝、D2/截断 D3 拒绝、单轮超额提案审计，以及 Atom、Catalog、投影记录和 commit receipt 的重启一致性。最终质量门为 `check:repo` 33/33、全量测试 188 文件/1361 passed/1 skipped、全工作区 typecheck 27/27、完整 build 和 `verify:app-recovery` 通过；桌面快捷方式已刷新并完成窗口启动验证。
+验证证据：阶段 24 的 Harness、纯修订服务和真实 V3 Backend 重启集成共 3 个测试文件、22/22 通过；覆盖正常修订、重复调用 noop、响应丢失恢复、revision 冲突、无关语义拒绝、硬锚点删除/新增拒绝、D2/截断 D3 拒绝、单轮超额提案审计，以及 Atom、Catalog、投影记录和 commit receipt 的重启一致性。最终质量门为 `check:repo` 33/33、全量测试 209 文件/1453 passed/1 skipped、全工作区 typecheck 27/27、完整 build 和 `verify:app-recovery` 通过；桌面快捷方式已刷新并完成窗口启动验证。
 
 验收结论：阶段 24 允许模型在严格证据与 Runtime 边界内改善同一 Atom 投影的清晰度，但没有授予模型改写事实、改变认识状态或直接操作存储的权力。下一步应以真实 Provider 和长期负载评估修订提案的准确率、误拒率、重复率与检索收益，再决定事实纠正或更复杂语义重组协议。
 
@@ -726,7 +726,7 @@ V3 backend 激活后，对话原始来源由 Runner 从用户输入和对话区�
 - 提交响应丢失后，相同提案可以读取已 superseded Atom 并返回 `noop`，不会重复提交。该路径不新增独立 LLM 调用、向量查询、后台轮询或全库扫描，只复用 EVOLVE 的结构化提案和本轮 KnownState；
 - 用户真正看到的记忆变化说明、执行过程、验证结果和交付表达，每条新消息都必须在本轮实时调用当前 Provider API，由 LLM 结合 `SOUL.md`、用户语言和 Runtime 事实生成。Runtime 不生成候选文案、不从候选池选择，也不在模型不可用时伪造正常 Agent 回复。
 
-验证证据：阶段 25 的 Harness、纯纠正服务和真实 V3 Backend 重启集成专项共 17/17 通过；相邻 Memory/Harness/Runner 回归 76/76 通过，覆盖正常 supersede、conflict replacement、权威/证据/关系方向与强度拒绝、revision 冲突、跨边界拒绝、单轮上限、普通 intent 延期、真实 Catalog/投影记录、响应丢失与 noop 恢复。当前完整质量门为 `check:repo` 33/33、188 个测试文件/1361 passed/1 skipped、全工作区 typecheck 27/27、完整 build 和 `verify:app-recovery` 通过；桌面快捷方式已刷新，并通过该快捷方式确认 `LittleSheep` 窗口可见。
+验证证据：阶段 25 的 Harness、纯纠正服务和真实 V3 Backend 重启集成专项共 17/17 通过；相邻 Memory/Harness/Runner 回归 76/76 通过，覆盖正常 supersede、conflict replacement、权威/证据/关系方向与强度拒绝、revision 冲突、跨边界拒绝、单轮上限、普通 intent 延期、真实 Catalog/投影记录、响应丢失与 noop 恢复。当前完整质量门为 `check:repo` 33/33、209 个测试文件/1453 passed/1 skipped、全工作区 typecheck 27/27、完整 build 和 `verify:app-recovery` 通过；桌面快捷方式已刷新，并通过该快捷方式确认 `LittleSheep` 窗口可见。
 
 验收结论：阶段 25 允许模型在严格证据与 Runtime 关系边界内声明“哪个既有投影替代哪个旧投影”，但不允许覆盖历史、直接创建事实、跨作用域纠正或绕过验证。工程闭环已经建立；下一步重点是用真实 Provider 和长期负载评估提案准确率、错误替代率、检索收益和纠正后的任务质量。
 

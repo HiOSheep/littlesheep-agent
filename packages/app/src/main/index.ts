@@ -13,7 +13,7 @@
 //   9. Expose port to renderer via env var (preload reads it)
 //  10. Create BrowserWindow
 
-import { app, BrowserWindow, shell, dialog } from 'electron'
+import { app, BrowserWindow, dialog } from 'electron'
 import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -45,6 +45,14 @@ import { runShutdownSequence } from './shutdown-sequence.js'
 import { DataRootMigrationManager } from './data-root-migration.js'
 import { prepareMemoryV3Bootstrap } from './memory-v3-bootstrap.js'
 import { resolveAppIconPath } from './app-icon.js'
+import { developmentEnvironmentLabel } from './development-environment-definitions.js'
+import {
+  clearEmbeddedBrowserCache,
+  clearEmbeddedBrowserData,
+  configureEmbeddedBrowserWindow,
+  getBrowserStorageStatus,
+  getEmbeddedBrowserSession,
+} from './embedded-browser.js'
 
 let runner: AgentRunner | null = null
 let server: LocalAppApiServer | null = null
@@ -195,24 +203,7 @@ function createWindow(): BrowserWindow {
     },
   })
 
-  // The renderer owns internal web navigation. Never turn a webpage link into
-  // an unexpected system-browser window from the host shell.
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (!/^https?:\/\//iu.test(url) && /^(mailto|tel):/iu.test(url)) void shell.openExternal(url)
-    return { action: 'deny' }
-  })
-
-  // Guest webviews are the LS browser surface. A page opening a new window
-  // must be routed back into the same guest, never into the system browser.
-  win.webContents.on('did-attach-webview', (_event, guestContents) => {
-    guestContents.setWindowOpenHandler(({ url }) => {
-      if (/^https?:\/\//iu.test(url)) void guestContents.loadURL(url).catch(() => undefined)
-      return { action: 'deny' }
-    })
-    guestContents.on('will-navigate', (event, url) => {
-      if (!/^https?:\/\//iu.test(url)) event.preventDefault()
-    })
-  })
+  configureEmbeddedBrowserWindow(win)
 
   // F12 / Ctrl+Shift+I to toggle DevTools (Electron 36 doesn't bind F12 by default).
   win.webContents.on('before-input-event', (event, input) => {
@@ -337,7 +328,13 @@ async function bootstrap(): Promise<void> {
   //    config follows the durable locator before the first runtime writer starts.
 
   // 5. Create embedded runner.
-  runner = await createRunner({ config, branding, model, bootstrapDir: dataDir.root })
+  runner = await createRunner({
+    config,
+    branding,
+    model,
+    bootstrapDir: dataDir.root,
+    containerRoot: dataDir.root,
+  })
 
   // 6. Project + session + archive indexes for UI sidebar and settings.
   projectIndex = new ProjectIndex({ dataDir: dataDir.root })
@@ -349,6 +346,7 @@ async function bootstrap(): Promise<void> {
   terminalActivityIndex = new TerminalActivityIndex({ dataDir: dataDir.root })
   workspaceArtifactIndex = new WorkspaceArtifactIndex({ dataDir: dataDir.root })
   workspaceLayoutIndex = new WorkspaceLayoutIndex({ dataDir: dataDir.root })
+  getEmbeddedBrowserSession()
 
   // Save module-level state for rebuildRunner.
   currentConfig = config
@@ -425,6 +423,18 @@ async function bootstrap(): Promise<void> {
       app.relaunch()
       app.quit()
     },
+    getBrowserStorageStatus,
+    clearBrowserCache: clearEmbeddedBrowserCache,
+    clearBrowserData: clearEmbeddedBrowserData,
+    selectDevelopmentEnvironmentSource: async (environmentId, version) => {
+      const label = developmentEnvironmentLabel(environmentId)
+      const result = await dialog.showOpenDialog({
+        title: version ? `导入 ${label} ${version}` : `导入 ${label} 工具链`,
+        message: '选择已下载并解压的工具链目录。LS 会复制一份到自己的数据目录，不会移动或修改原目录。',
+        properties: ['openDirectory'],
+      })
+      return result.canceled ? null : result.filePaths[0] ?? null
+    },
   })
 
   // 8. Start the optional plugin host. Built-in channel implementations use
@@ -484,6 +494,7 @@ async function doRebuildRunner(): Promise<void> {
     branding: currentBranding,
     model: currentModel,
     bootstrapDir: currentBootstrapDir || currentDataDir,
+    containerRoot: currentDataDir || currentBootstrapDir,
   })
 
   // 2. Atomically swap references.

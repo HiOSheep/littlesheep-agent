@@ -37,6 +37,7 @@ describe('workspace persistence helpers', () => {
     expect(hydrateWorkspacePanelTabs(['bogus'])).toEqual(['review'])
     expect(hydrateWorkspacePanelTabs(null)).toEqual(['review'])
     expect(hydrateWorkspacePanelTabs(['files'])).toEqual(['review'])
+    expect(hydrateWorkspacePanelTabs([])).toEqual([])
   })
 
   it('bounds restored workspace tabs', () => {

@@ -47,6 +47,9 @@
       "path": "../runner"
     },
     {
+      "path": "../safety"
+    },
+    {
       "path": "../types"
     }
   ]

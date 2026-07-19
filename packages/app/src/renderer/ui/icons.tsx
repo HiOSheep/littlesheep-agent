@@ -5,6 +5,15 @@ import {
 } from '../workspace-persistence'
 
 
+export function SidebarToggleIcon({ className = '' }: { className?: string }) {
+  return (
+    <span className={['sidebar-toggle-icon', className].filter(Boolean).join(' ')} aria-hidden="true">
+      <span className="sidebar-toggle-divider" />
+    </span>
+  )
+}
+
+
 export function SettingsGearIcon() {
   return (
     <svg className="settings-gear-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -264,24 +273,6 @@ export function RefreshIcon() {
   return (
     <svg className="workspace-panel-svg-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
       <path d="M12.7 6.05A4.65 4.65 0 1 0 13 8M12.85 3.75v2.4h-2.4" />
-    </svg>
-  )
-}
-
-
-export function BrowserBackIcon() {
-  return (
-    <svg className="workspace-panel-svg-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path d="M3.15 8h9.7M6.55 4.55 3.1 8l3.45 3.45" />
-    </svg>
-  )
-}
-
-
-export function BrowserForwardIcon() {
-  return (
-    <svg className="workspace-panel-svg-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path d="M12.85 8h-9.7M9.45 4.55 12.9 8l-3.45 3.45" />
     </svg>
   )
 }

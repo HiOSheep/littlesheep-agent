@@ -22,7 +22,7 @@ import {
 } from '../attachments.js'
 import type { ManagedAttachmentCache } from '../attachment-cache.js'
 import type { ProjectIndex } from '../project-index.js'
-import { resolveRunPolicy, type RunApprovalBroker } from '../run-policy.js'
+import { resolveRunPolicy, type RunApprovalBroker, type RunApprovalRequest } from '../run-policy.js'
 import type { SessionIndex } from '../session-index.js'
 import type { WorkspaceArtifactIndex } from '../workspace-artifact-index.js'
 import { json, readJson, writeSse, type LocalAppApiRequest } from './http.js'
@@ -57,11 +57,8 @@ interface ActiveStreamRun {
   runner: AgentRunner
 }
 
-interface ApprovalRequestPayload {
+interface ApprovalRequestPayload extends RunApprovalRequest {
   id: string
-  action: string
-  detail?: unknown
-  permissionMode: string
   source: 'agent'
 }
 
@@ -70,6 +67,8 @@ type RuntimeEventInput = Parameters<AgentRunner['runtimeEvents']['append']>[1]
 export interface RunRouteContext {
   getRunner: () => AgentRunner
   getConfig: () => Config
+  /** Active movable application-data root; defines the logical LS container. */
+  dataDir?: string
   workplaceDir: string
   sessionIndex: SessionIndex
   projectIndex: ProjectIndex
@@ -212,6 +211,7 @@ export class RunRouter {
                 (approval) => writeSse(res, 'approval_request', approval),
                 controller.signal,
               ),
+              { containerRoot: context.dataDir ?? context.workplaceDir, cwd },
             ),
           },
           (delta) => writeSse(res, 'delta', { delta }),
@@ -254,7 +254,10 @@ export class RunRouter {
         attachments,
         additionalTools: inspectAttachmentTool ? [inspectAttachmentTool] : undefined,
         workspaceContext,
-        ...resolveRunPolicy(body, context.getConfig()),
+        ...resolveRunPolicy(body, context.getConfig(), undefined, {
+          containerRoot: context.dataDir ?? context.workplaceDir,
+          cwd,
+        }),
       })
       await this.finishRun(context, runner, result, body, ownership, cwd, workspaceContext)
       json(res, 200, result)
@@ -332,7 +335,7 @@ export class RunRouter {
     requestApproval: (request: ApprovalRequestPayload) => void,
     signal?: AbortSignal,
   ): RunApprovalBroker {
-    return async ({ action, detail, permissionMode }) => {
+    return async ({ action, detail, permissionMode, boundary }) => {
       const id = randomUUID()
       return new Promise<boolean>((resolveApproval) => {
         let settled = false
@@ -364,7 +367,7 @@ export class RunRouter {
         }
         signal?.addEventListener('abort', onAbort, { once: true })
         try {
-          requestApproval({ id, action, detail, permissionMode, source: 'agent' })
+          requestApproval({ id, action, detail, permissionMode, boundary, source: 'agent' })
         } catch {
           settle(false)
         }

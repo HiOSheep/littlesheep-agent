@@ -30,13 +30,8 @@ import {
 } from '../workspace-persistence'
 import { isSamePath } from './path-utils'
 import { beginWorkspacePanelResizeInteraction } from './resize-interaction'
-import {
-  appendWorkspaceBrowserHistory,
-  createWorkspaceBrowserHistory,
-  moveWorkspaceBrowserHistory,
-  replaceWorkspaceBrowserHistory,
-  type WorkspaceBrowserHistory,
-} from './browser-history'
+import { useWorkspaceBrowserController } from './use-browser-controller'
+import { isWorkspaceBrowserTabId } from './browser-tabs'
 
 export function useWorkspaceLayoutController({ runtime, currentSession, input, setControlTip, setRuntimeError }: {
   runtime: RuntimeState | null
@@ -53,9 +48,6 @@ export function useWorkspaceLayoutController({ runtime, currentSession, input, s
   const [workspacePanelFullscreen, setWorkspacePanelFullscreen] = useState(() => readBooleanPreference(WORKSPACE_PANEL_FULLSCREEN_KEY, false))
   const [workspacePanelTab, setWorkspacePanelTab] = useState<WorkspacePanelTabId>(() => readWorkspacePanelTabPreference(WORKSPACE_PANEL_TAB_KEY))
   const [workspacePanelOpenTabs, setWorkspacePanelOpenTabs] = useState<WorkspacePanelTabId[]>(() => readWorkspacePanelOpenTabsPreference())
-  const [workspaceBrowserUrl, setWorkspaceBrowserUrl] = useState('')
-  const [workspaceBrowserHistory, setWorkspaceBrowserHistory] = useState<WorkspaceBrowserHistory>(() => createWorkspaceBrowserHistory())
-  const workspaceBrowserHistoryRef = useRef(workspaceBrowserHistory)
   const [workspaceOpenRequest, setWorkspaceOpenRequest] = useState<WorkspaceOpenRequest | null>(() => readWorkspaceOpenRequestPreference())
   const [workspaceFileDrafts, setWorkspaceFileDrafts] = useState<Record<string, WorkspaceFileDraftState>>(() => readWorkspaceFileDraftsPreference())
   const [workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed] = useState(() => readBooleanPreference(WORKSPACE_FILE_NAVIGATOR_COLLAPSED_KEY, false))
@@ -83,29 +75,14 @@ export function useWorkspaceLayoutController({ runtime, currentSession, input, s
     ),
   )
 
-  useEffect(() => {
-    workspaceBrowserHistoryRef.current = workspaceBrowserHistory
-  }, [workspaceBrowserHistory])
-
-  function navigateWorkspaceBrowser(url: string, mode: 'push' | 'replace' = 'push') {
-    const current = workspaceBrowserHistoryRef.current
-    const next = mode === 'replace'
-      ? replaceWorkspaceBrowserHistory(current, url)
-      : appendWorkspaceBrowserHistory(current, url)
-    if (next === current) return
-    workspaceBrowserHistoryRef.current = next
-    setWorkspaceBrowserHistory(next)
-    setWorkspaceBrowserUrl(next.entries[next.index] ?? '')
-  }
-
-  function moveWorkspaceBrowser(delta: number) {
-    const current = workspaceBrowserHistoryRef.current
-    const next = moveWorkspaceBrowserHistory(current, delta)
-    if (next === current) return
-    workspaceBrowserHistoryRef.current = next
-    setWorkspaceBrowserHistory(next)
-    setWorkspaceBrowserUrl(next.entries[next.index] ?? '')
-  }
+  const browserController = useWorkspaceBrowserController({
+    workspacePanelTab,
+    setWorkspacePanelTab,
+    workspacePanelOpenTabs,
+    setWorkspacePanelOpenTabs,
+    setWorkspacePanelCollapsed,
+    setRuntimeError,
+  })
   const workspacePanelLayout = useMemo(() => resolveWorkspacePanelLayout({
     viewportWidth,
     sidebarWidth,
@@ -147,6 +124,7 @@ export function useWorkspaceLayoutController({ runtime, currentSession, input, s
   }, [workspacePanelOpenTabs])
 
   useEffect(() => {
+    if (workspacePanelOpenTabs.length === 0) return
     setWorkspacePanelOpenTabs((tabs) => (
       tabs.includes(workspacePanelTab)
         ? tabs
@@ -302,6 +280,7 @@ export function useWorkspaceLayoutController({ runtime, currentSession, input, s
       setRuntimeError(`拓展工作区最多打开 ${WORKSPACE_PANEL_OPEN_TABS_MAX} 个标签`)
       return
     }
+    if (isWorkspaceBrowserTabId(tab)) browserController.ensureWorkspaceBrowserTab(tab)
     setWorkspacePanelOpenTabs((tabs) => (tabs.includes(tab) ? tabs : [...tabs, tab]))
     setWorkspacePanelTab(tab)
     setWorkspacePanelCollapsed(false)
@@ -336,6 +315,7 @@ export function useWorkspaceLayoutController({ runtime, currentSession, input, s
     }
     const tabIndex = workspacePanelOpenTabs.indexOf(tab)
     const nextTabs = workspacePanelOpenTabs.filter((item) => item !== tab)
+    if (isWorkspaceBrowserTabId(tab) && tab !== 'browser') browserController.removeWorkspaceBrowserTab(tab)
     if (parseWorkspaceFileTabId(tab)) {
       setWorkspaceFileDrafts((drafts) => {
         if (!drafts[tab]) return drafts
@@ -345,11 +325,9 @@ export function useWorkspaceLayoutController({ runtime, currentSession, input, s
       })
     }
     if (nextTabs.length === 0) {
-      const fallbackTab = DEFAULT_WORKSPACE_PANEL_TABS[0] ?? 'review'
-      setWorkspacePanelOpenTabs(DEFAULT_WORKSPACE_PANEL_TABS)
-      setWorkspacePanelTab(fallbackTab)
-      setWorkspacePanelCollapsed(true)
-      setWorkspacePanelFullscreen(false)
+      setWorkspacePanelOpenTabs([])
+      setWorkspacePanelTab(DEFAULT_WORKSPACE_PANEL_TABS[0] ?? 'review')
+      setWorkspacePanelCollapsed(false)
       return
     }
     setWorkspacePanelOpenTabs(nextTabs)
@@ -404,7 +382,7 @@ export function useWorkspaceLayoutController({ runtime, currentSession, input, s
     activeDragCleanupRef.current?.()
   }, [])
 
-  return { sidebarCollapsed, setSidebarCollapsed, workspacePanelCollapsed, setWorkspacePanelCollapsed, workspacePanelReopenActive, setWorkspacePanelReopenActive, workspacePanelFullscreen, setWorkspacePanelFullscreen, workspacePanelTab, setWorkspacePanelTab, workspacePanelOpenTabs, setWorkspacePanelOpenTabs, workspaceBrowserUrl, workspaceBrowserHistory, navigateWorkspaceBrowser, moveWorkspaceBrowser, workspaceOpenRequest, setWorkspaceOpenRequest, workspaceFileDrafts, setWorkspaceFileDrafts, workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed, workspaceExpandedPaths, setWorkspaceExpandedPaths, pendingDirtyCloseTab, setPendingDirtyCloseTab, inputRef, shellRef, sidebarWidth, setSidebarWidth, workspacePanelWidth, setWorkspacePanelWidth, workspacePanelLayout, layoutStyle, beginSidebarResize, nudgeSidebar, toggleSidebar, beginWorkspacePanelResize, toggleWorkspacePanel, updateWorkspacePanelReopenPresence, toggleWorkspacePanelFullscreen, nudgeWorkspacePanel, openWorkspacePanelTab, updateWorkspaceFileDraft, closeWorkspacePanelTab, defaultWorkspacePath, workspacePanelRoot, workspacePanelUsingTemporaryRoot }
+  return { sidebarCollapsed, setSidebarCollapsed, workspacePanelCollapsed, setWorkspacePanelCollapsed, workspacePanelReopenActive, setWorkspacePanelReopenActive, workspacePanelFullscreen, setWorkspacePanelFullscreen, workspacePanelTab, setWorkspacePanelTab, workspacePanelOpenTabs, setWorkspacePanelOpenTabs, ...browserController, workspaceOpenRequest, setWorkspaceOpenRequest, workspaceFileDrafts, setWorkspaceFileDrafts, workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed, workspaceExpandedPaths, setWorkspaceExpandedPaths, pendingDirtyCloseTab, setPendingDirtyCloseTab, inputRef, shellRef, sidebarWidth, setSidebarWidth, workspacePanelWidth, setWorkspacePanelWidth, workspacePanelLayout, layoutStyle, beginSidebarResize, nudgeSidebar, toggleSidebar, beginWorkspacePanelResize, toggleWorkspacePanel, updateWorkspacePanelReopenPresence, toggleWorkspacePanelFullscreen, nudgeWorkspacePanel, openWorkspacePanelTab, updateWorkspaceFileDraft, closeWorkspacePanelTab, defaultWorkspacePath, workspacePanelRoot, workspacePanelUsingTemporaryRoot }
 }
 
 export type WorkspaceLayoutController = ReturnType<typeof useWorkspaceLayoutController>

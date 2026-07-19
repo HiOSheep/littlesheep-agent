@@ -78,6 +78,22 @@ describe('editTool', () => {
     expect(content).toBe('original');
   });
 
+  it('does not probe an unauthorized missing path before approval', async () => {
+    const approve = vi.fn(async () => false);
+    const result = await editTool.execute(
+      { file_path: join(tmpDir, 'outside-missing.txt'), old_string: 'x', new_string: 'y' },
+      {
+        ...deniedCtx,
+        containerRoot: join(tmpDir, 'container'),
+        permissionMode: 'research',
+        approve,
+      },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/Approval denied/);
+    expect(approve).toHaveBeenCalledTimes(1);
+  });
+
   it('fails for missing file', async () => {
     const result = await editTool.execute(
       { file_path: join(tmpDir, 'missing.txt'), old_string: 'x', new_string: 'y' },

@@ -116,7 +116,13 @@ export async function runCli(argv: string[]): Promise<void> {
   }
 
   // 5. Create runner.
-  const runner = await createRunner({ config, branding, model });
+  const runner = await createRunner({
+    config,
+    branding,
+    model,
+    bootstrapDir: dataDir.root,
+    containerRoot: dataDir.root,
+  });
 
   // 6. Dispatch: single-shot or REPL.
   if (args.text !== undefined) {

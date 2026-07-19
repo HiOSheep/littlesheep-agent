@@ -6,6 +6,7 @@ declare global {
     littlesheep: {
       apiBase: string
       getPathForFile?: (file: unknown) => string
+      onBrowserOpenNewTab?: (listener: (event: { url: string; disposition?: string }) => void) => () => void
     }
   }
 }
@@ -16,13 +17,19 @@ export function localApiUrl(path: string): string {
   return `${apiBase}${path}`
 }
 
-export function localApiStatusError(status: number): Error {
-  return new Error(`Local app API error: ${status}`)
+export interface LocalApiError extends Error {
+  status: number
+}
+
+export function localApiStatusError(status: number, message = `Local app API error: ${status}`): LocalApiError {
+  const error = new Error(message) as LocalApiError
+  error.status = status
+  return error
 }
 
 export async function localApiResponseError(res: Response): Promise<Error> {
   const data = await res.json().catch(() => null) as { error?: string } | null
-  return new Error(data?.error ?? `Local app API error: ${res.status}`)
+  return localApiStatusError(res.status, data?.error ?? `Local app API error: ${res.status}`)
 }
 
 export function parseSseFrame(frame: string): { name: string; data: unknown } | null {

@@ -10,6 +10,8 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
       { page: 'agent', title: 'Agent 行为', desc: '通用与编程两套系统提示词' },
       { page: 'api', title: '模型供应商', desc: 'API 密钥与可用模型' },
       { page: 'storage', title: '存储与数据', desc: '数据位置、迁移与回滚' },
+      { page: 'browser', title: '内置浏览器', desc: '站点数据、登录状态与缓存管理' },
+      { page: 'developmentEnvironments', title: '开发环境', desc: 'LS 运行时、工具链和版本偏好' },
     ],
   },
   {

@@ -4,6 +4,7 @@ import {
   type RuntimeState,
   type WorkspacePreview
 } from '../api'
+import { workspaceLanguageLabel } from '../../shared/workspace-languages'
 import { WorkspaceArtifactRef } from './types'
 
 
@@ -185,31 +186,7 @@ export function utf8ByteLength(text: string): number {
 
 
 export function formatEditorLanguageLabel(language: string): string {
-  if (!language) return 'Text'
-  const labels: Record<string, string> = {
-    bat: 'Batch',
-    cpp: 'C++',
-    css: 'CSS',
-    dockerfile: 'Dockerfile',
-    hcl: 'HCL',
-    html: 'HTML',
-    ini: 'INI',
-    javascript: 'JavaScript',
-    json: 'JSON',
-    markdown: 'Markdown',
-    objective: 'Objective-C',
-    'objective-c': 'Objective-C',
-    powershell: 'PowerShell',
-    python: 'Python',
-    shell: 'Shell',
-    sql: 'SQL',
-    systemverilog: 'SystemVerilog',
-    text: 'Text',
-    typescript: 'TypeScript',
-    xml: 'XML',
-    yaml: 'YAML',
-  }
-  return labels[language] ?? language.replace(/(^|[-_])\w/g, (part) => part.replace(/[-_]/, '').toUpperCase())
+  return workspaceLanguageLabel(language === 'text' ? 'plaintext' : language)
 }
 
 

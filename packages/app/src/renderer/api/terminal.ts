@@ -1,12 +1,13 @@
 // Workspace command and interactive terminal clients.
 
 import type { TerminalActivityRecord } from '../../shared/workspace-contracts'
+import type { PermissionModeId } from '../../shared/permission-modes'
 import {
   LOCAL_APP_API_PREFIXES,
   LOCAL_APP_API_ROUTES,
   localAppApiItemPath,
 } from '../../shared/local-app-api-routes'
-import { localApiUrl, parseSseFrame } from './common'
+import { localApiStatusError, localApiUrl, parseSseFrame } from './common'
 
 export interface WorkspaceCommandResult {
   command: string
@@ -20,15 +21,20 @@ export interface WorkspaceCommandResult {
   truncated: boolean
 }
 
-export async function runWorkspaceCommand(root: string, command: string, sessionId?: string): Promise<WorkspaceCommandResult> {
+export async function runWorkspaceCommand(
+  root: string,
+  command: string,
+  sessionId?: string,
+  options: { permissionMode?: PermissionModeId; approved?: boolean } = {},
+): Promise<WorkspaceCommandResult> {
   const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.terminalRun), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ root, command, sessionId }),
+    body: JSON.stringify({ root, command, sessionId, ...options }),
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
-    throw new Error((data as { error: string }).error)
+    throw localApiStatusError(res.status, (data as { error: string }).error)
   }
   return res.json() as Promise<WorkspaceCommandResult>
 }
@@ -46,16 +52,17 @@ export async function runWorkspaceCommandStream(
   command: string,
   sessionId?: string,
   handlers: WorkspaceCommandStreamHandlers = {},
+  options: { permissionMode?: PermissionModeId; approved?: boolean } = {},
 ): Promise<WorkspaceCommandResult> {
   const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.terminalStream), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ root, command, sessionId }),
+    body: JSON.stringify({ root, command, sessionId, ...options }),
     signal: handlers.signal,
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
-    throw new Error((data as { error: string }).error)
+    throw localApiStatusError(res.status, (data as { error: string }).error)
   }
   if (!res.body) throw new Error('Local app API terminal stream has no body')
 
@@ -104,7 +111,7 @@ export async function listWorkspaceTerminalActivity(
   const res = await fetch(`${localApiUrl(LOCAL_APP_API_ROUTES.terminalActivity)}?${params.toString()}`)
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
-    throw new Error((data as { error: string }).error)
+    throw localApiStatusError(res.status, (data as { error: string }).error)
   }
   const data = await res.json() as { records: TerminalActivityRecord[] }
   return data.records
@@ -113,6 +120,7 @@ export async function listWorkspaceTerminalActivity(
 export interface WorkspaceTerminalSession {
   sessionId: string
   cwd: string
+  permissionMode: PermissionModeId
   shell: string
   backend?: 'pty' | 'spawn'
   cols: number
@@ -131,15 +139,17 @@ export interface WorkspaceTerminalSessionHandlers {
 export async function createWorkspaceTerminalSession(
   root: string,
   size?: { cols: number; rows: number },
+  permissionMode?: PermissionModeId,
+  approved = false,
 ): Promise<WorkspaceTerminalSession> {
   const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.terminalSession), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ root, cols: size?.cols, rows: size?.rows }),
+    body: JSON.stringify({ root, cols: size?.cols, rows: size?.rows, permissionMode, approved }),
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
-    throw new Error((data as { error: string }).error)
+    throw localApiStatusError(res.status, (data as { error: string }).error)
   }
   return res.json() as Promise<WorkspaceTerminalSession>
 }
@@ -189,16 +199,37 @@ export async function writeWorkspaceTerminalSession(
   terminalSessionId: string,
   command: string,
   appSessionId?: string,
+  options: { permissionMode?: PermissionModeId; approved?: boolean } = {},
 ): Promise<void> {
   const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.terminalSessions, terminalSessionId, '/input')), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ command, sessionId: appSessionId }),
+    body: JSON.stringify({ command, sessionId: appSessionId, ...options }),
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
-    throw new Error((data as { error: string }).error)
+    throw localApiStatusError(res.status, (data as { error: string }).error)
   }
+}
+
+/** Send raw xterm input to the PTY without synthesizing a command form. */
+export async function writeWorkspaceTerminalInput(
+  terminalSessionId: string,
+  data: string,
+  appSessionId?: string,
+  options: { permissionMode?: PermissionModeId; approved?: boolean } = {},
+): Promise<{ completed: number }> {
+  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.terminalSessions, terminalSessionId, '/input')), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ data, sessionId: appSessionId, ...options }),
+  })
+  if (!res.ok) {
+    const response = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
+    throw localApiStatusError(res.status, (response as { error: string }).error)
+  }
+  const response = await res.json().catch(() => ({ completed: 0 })) as { completed?: number }
+  return { completed: typeof response.completed === 'number' ? response.completed : 0 }
 }
 
 export async function resizeWorkspaceTerminalSession(

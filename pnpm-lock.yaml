@@ -99,6 +99,9 @@ importers:
       '@littlesheep/runner':
         specifier: workspace:*
         version: link:../runner
+      '@littlesheep/safety':
+        specifier: workspace:*
+        version: link:../safety
       '@littlesheep/types':
         specifier: workspace:*
         version: link:../types
@@ -497,6 +500,9 @@ importers:
       '@littlesheep/memory-core':
         specifier: workspace:*
         version: link:../memory-core
+      '@littlesheep/safety':
+        specifier: workspace:*
+        version: link:../safety
       '@littlesheep/session':
         specifier: workspace:*
         version: link:../session

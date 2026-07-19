@@ -3,7 +3,7 @@
 // Validates createRunner run wiring + inbound persistence order.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRunner } from './runner.js';
@@ -99,6 +99,44 @@ describe('createRunner run', () => {
       expect.objectContaining({ title: 'USER.md', tier: 1, status: 'missing' }),
       expect.objectContaining({ title: 'PHILOSOPHY.md', kind: 'philosophy', tier: 1, status: 'missing' }),
     ]));
+  });
+
+  it('defers automatic indexing for an external workspace until access is approved', async () => {
+    const containerRoot = join(dataDir, 'container');
+    const externalWorkspace = join(dataDir, 'external-workspace');
+    mkdirSync(containerRoot, { recursive: true });
+    mkdirSync(externalWorkspace, { recursive: true });
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('workspace acknowledged')),
+      bootstrapDir: containerRoot,
+      containerRoot,
+      skillsDirs: [],
+    });
+    createdRunners.push(runner);
+    const syncResources = vi.spyOn(runner.infra.memoryService, 'syncWorkspaceResources');
+    const syncDocuments = vi.spyOn(runner.infra.memoryService, 'syncWorkspaceDocuments');
+
+    await runner.run({
+      text: 'inspect the external workspace',
+      cwd: externalWorkspace,
+      permissionPolicyId: 'full',
+    });
+
+    expect(syncResources).not.toHaveBeenCalled();
+    expect(syncDocuments).not.toHaveBeenCalled();
+
+    await runner.run({
+      text: 'continue after approval',
+      cwd: externalWorkspace,
+      permissionPolicyId: 'full',
+      workspaceAccessApproved: true,
+    });
+
+    expect(syncResources).toHaveBeenCalledWith(externalWorkspace, undefined);
+    expect(syncDocuments).toHaveBeenCalledWith(externalWorkspace);
   });
 
   it('chat path: "hello" → ok + reply + correct trace', async () => {

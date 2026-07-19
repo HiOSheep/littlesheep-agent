@@ -1,6 +1,6 @@
 # LittleSheep 模块拆分地图
 
-最后更新：2026-07-18 14:31:01
+最后更新：2026-07-19 09:48:44
 
 本文件记录大型生产文件的当前所有权、目标边界和拆分顺序。它是仓库基元化任务书的阶段产物，不替代项目状态，也不把行数当成唯一质量指标。
 
@@ -30,8 +30,9 @@
 | --- | ---: | --- | --- | --- |
 | `packages/plugins/src/host.ts` | 536 | 插件发现、加载、启停、贡献迁移 | 分离 discovery、activation、contribution、reconcile | C |
 | `packages/memory-tree/src/legacy-memory-branches.ts` | 509 | 旧记忆分支兼容 | 保持隔离，迁移结束后缩减或退役 | D |
-| `packages/app/src/main/index.ts` | 530 | Electron 启动和组合；Memory v3 启动协调已下沉 | 继续抽取 bootstrap 服务，入口只保留装配顺序 | C |
+| `packages/app/src/main/index.ts` | 551 | Electron 启动和组合；Memory v3 与内置浏览器宿主已下沉 | 继续抽取 bootstrap 服务，入口只保留装配顺序 | C |
 | `packages/app/src/main/workspace-office-preview.ts` | 315 | 有界 Office/OpenDocument 只读文本预览、ZIP 条目限制和结果裁剪 | 将格式解析器与统一预览预算继续分离；保持二进制不进入 Renderer | C |
+| `packages/app/src/main/development-environments.ts` | 421 | LS 工具链管理 facade、版本偏好、导入/移除事务、Electron Node shim 和终端环境派生 | 保持 facade；定义、文件安全和版本检测已拆到同目录独立模块，后续下载器不得回填此文件 | C |
 | `packages/types/src/agent.ts` | 510 | Agent 与 TaskBook 契约 | 按 taskbook、trace、stage 类型分组并保持 barrel | E |
 | `packages/app/src/main/attachment-cache.ts` | 486 | 附件索引、配额、清理和校验 | 分离 index、quota、cleanup、validation | C |
 | `packages/memory-tree/src/types.ts` | 600 | 记忆树内部和持久化类型 | 按 node、resource、audit、projection 分组 | D |
@@ -61,6 +62,7 @@
 | `packages/runner/src/runner.ts` | 534 | run 生命周期、输入装配、Memory 反馈、执行日志和关闭协调 | session continuity 已下沉；Provider 连续性门后继续分离日志与收尾协调 | E |
 | `packages/app/src/main/memory-tree-control.ts` | 435 | 记忆控制面查询、v3 D0-D3 详情适配和既有管理命令 | 分离 query/detail、resource、projection command | C |
 | `packages/app/src/main/local-app-api/run-routes.ts` | 472 | run 流式入口、运行时事件和检查点恢复路由 | 保持 HTTP 路由组合；继续把检查点查询与 SSE 适配下沉到独立 adapter | C |
+| `packages/app/src/main/local-app-api/terminal-routes.ts` | 302 | 终端会话、原始 PTY 输入、权限校验和活动捕获路由 | 将交互输入授权与活动捕获继续下沉到独立 adapter，保持路由只做 HTTP 编排 | C |
 | `packages/harness/src/taskbook-patch.ts` | 446 | TaskBook 局部修订契约、校验和合并 | 保持纯任务书补丁边界；若继续增长，分离 schema、merge 和 validation | E |
 | `packages/runner/src/run-checkpoint-disposition-store.ts` | 343 | 检查点 resuming/resumed/abandoned 决策的原子持久化 | 保持有界审计 store；后续将 codec 与 retention policy 分离 | E |
 | `packages/app/src/renderer/workspace/browser.tsx` | 333 | 内置浏览器标签、导航、加载状态和网页内跳转 | 保持视图组合；历史算法和导航资格已独立到 browser-history/navigation | B |
@@ -70,15 +72,15 @@
 | `packages/runner/src/execution-log.ts` | 393 | 执行日志 schema、写入、查询与按会话原子摘要 sidecar | 分离 codec、store、query 与 latest-summary store | E |
 | `packages/channels/webhook/src/plugin.ts` | 310 | Webhook server、鉴权和消息 | 分离 server、auth、mapper、sender | C |
 | `packages/experience/src/experience-store.ts` | 309 | 经验索引、备份、并发和衰减 | 分离 index、backup、mutation、decay | D |
-| `packages/app/src/renderer/app-shell/use-app-controller.ts` | 580 | Renderer 跨领域兼容协调、启动恢复和视图快照 | 保持装配职责；Runtime/附件 effect 契约稳定后再下沉 | B |
-| `packages/app/src/renderer/workspace/terminal.tsx` | 556 | PTY 生命周期、SSE、尺寸和命令历史 | 保持终端事务边界，禁止吸收工作区导航职责 | B |
+| `packages/app/src/renderer/app-shell/use-app-controller.ts` | 578 | Renderer 跨领域兼容协调、启动恢复和视图快照 | 保持装配职责；Runtime/附件 effect 契约稳定后再下沉 | B |
+| `packages/app/src/renderer/workspace/terminal.tsx` | 596 | PTY 生命周期、SSE、尺寸、命令历史和权限预检/批准重试 | 保持终端事务边界，禁止吸收工作区导航职责；权限语义继续下沉到 Main/Safety | B |
 | `packages/app/src/renderer/workspace/file-navigator.tsx` | 457 | 目录缓存、筛选、展开路径和文件树 | 建立树状态特征测试后再拆 controller/view | B |
-| `packages/app/src/renderer/workspace/preview-pane.tsx` | 476 | 文件分派、编辑草稿、保存审批和预览错误 | 建立文件打开事务测试后再拆编辑与预览 | B |
+| `packages/app/src/renderer/workspace/preview-pane.tsx` | 478 | 文件分派、编辑草稿、保存审批和预览错误 | 建立文件打开事务测试后再拆编辑与预览；Monaco 语言配置保持独立 | B |
 | `packages/app/src/renderer/workspace/files.tsx` | 400 | 文件工作面组合 | 保持组合职责，不接收标签壳或终端逻辑 | B |
 | `packages/app/src/renderer/settings/plugins.tsx` | 394 | 插件发现、筛选、启停、来源确认和代码授权 | 新能力进入插件宿主或独立设置组件 | B |
-| `packages/app/src/renderer/workspace/use-workspace-layout-controller.ts` | 410 | 布局恢复、标签/草稿持久化和拖动入口 | 两级阈值算法保持在独立 interaction 模块 | B |
-| `packages/app/src/renderer/workspace/panel.tsx` | 432 | 拓展工作区标签壳、页面缓存和浏览器工作面装配 | 保持纯组合，浏览器状态继续由独立 controller/历史模块承载 | B |
-| `packages/app/src/renderer/ui/icons.tsx` | 351 | 无状态声明式图标集合 | 出现独立图标家族时按家族拆分 | B |
+| `packages/app/src/renderer/workspace/use-workspace-layout-controller.ts` | 389 | 布局恢复、标签/草稿持久化和拖动入口 | 两级阈值算法保持在独立 interaction 模块；浏览器状态由独立 controller 承载 | B |
+| `packages/app/src/renderer/workspace/panel.tsx` | 365 | 拓展工作区页面、缓存和工作面装配 | 保持纯组合；标签条和浏览器状态已分别下沉 | B |
+| `packages/app/src/renderer/ui/icons.tsx` | 333 | 无状态声明式图标集合 | 浏览器图标家族已拆出；其余图标继续按家族拆分 | B |
 | `packages/harness/src/stages/execute/tool-loop.ts` | 353 | 单步模型工具循环、审批、失败记录、时间感知和消息续接 | 分离 loop policy、invocation adapter 与 transcript | E |
 | `packages/harness/src/stages/execute/runners.ts` | 329 | legacy/TaskBook 执行编排、步骤状态、失败路由和最终回复合成 | 分离 legacy runner 与 TaskBook runner；公共状态同步保留为有界 helper | E |
 | `packages/harness/src/stages/evolve/revision.ts` | 306 | Atom 内容修订提案解析、D3 KnownState/验证准入、提交和审计 | 后续增长时分离 parse/validate 与 commit adapter；不得吸收存储语义校验 | E |
@@ -92,8 +94,8 @@
 
 | 原始文件 | 原基线 | 当前入口 | 已形成边界 | 完成日期 |
 | --- | ---: | --- | --- | --- |
-| `packages/app/src/renderer/api.ts` | 1088 | 21 行兼容 barrel | `run`、`sessions`、`runtime`、`attachments`、`workspace-files`、`terminal`、`extensions`、`memory` 与 `common` | 2026-07-14 |
-| `packages/app/src/main/local-app-api-server.ts` | 2819 | 241 行 server 组合入口 | HTTP 基元、run、projects、sessions/archive、runtime、memory、workspace、terminal、extensions、公共 contracts 与实例级资源清理 | 2026-07-14 |
+| `packages/app/src/renderer/api.ts` | 1088 | 22 行兼容 barrel | `run`、`sessions`、`runtime`、`attachments`、`workspace-files`、`terminal`、`extensions`、`browser`、`development-environments`、`memory` 与 `common` | 2026-07-14 |
+| `packages/app/src/main/local-app-api-server.ts` | 2819 | 261 行 server 组合入口 | HTTP 基元、run、projects、sessions/archive、runtime、memory、workspace、browser、development-environments、terminal、extensions、公共 contracts 与实例级资源清理 | 2026-07-14 |
 | `packages/app/src/renderer/App.tsx` | 9935 | 7 行兼容入口 | `app-shell`、`approval`、`chat`、`composer`、`runtime`、`settings`、`sidebar`、`ui` 与 `workspace` 领域视图和 controller | 2026-07-14 |
 | `packages/memory-tree/src/memory-repository.ts` | 1279 | 171 行 repository facade | 版本化后端选择、证据定位和稳定 Repository 公共契约；management 使用独立 facade，v2/v3 实现均已下沉 | 2026-07-15 |
 | `packages/memory-tree/src/memory-service.ts` | 1120 | 342 行 service facade | run、摘要、daily consolidation、附件、事件、Bootstrap、Skills、工作区资源、项目投影和资源管理协调器；Atom reconciliation 保持为 Runner 独立组合端口 | 2026-07-15 |

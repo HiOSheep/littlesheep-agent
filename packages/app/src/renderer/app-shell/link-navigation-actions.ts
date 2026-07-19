@@ -11,6 +11,7 @@ interface LinkNavigationOptions {
   setControlTip: (tip: null) => void
   setRuntimeError: (message: string) => void
   openFileInWorkspace: (path: string) => void
+  openWorkspaceBrowser: (url: string) => void
   navigateWorkspaceBrowser: (url: string, mode?: 'push' | 'replace') => void
   openWorkspacePanelTab: (tab: 'browser') => void
   appMountedRef: { current: boolean }
@@ -23,8 +24,7 @@ export function createLinkNavigationActions(options: LinkNavigationOptions) {
     const target = resolveLinkTarget(href, workspaceRoot)
     options.setControlTip(null)
     if (target.kind === 'web') {
-      options.navigateWorkspaceBrowser(target.href)
-      options.openWorkspacePanelTab('browser')
+      options.openWorkspaceBrowser(target.href)
       if (options.settingsOpen) options.pushRoute({ section: 'chat' })
       return
     }
@@ -45,8 +45,7 @@ export function createLinkNavigationActions(options: LinkNavigationOptions) {
     void (async () => {
       try {
         if (target.kind === 'web') {
-          options.navigateWorkspaceBrowser(target.href)
-          options.openWorkspacePanelTab('browser')
+          options.openWorkspaceBrowser(target.href)
           return
         }
         if (target.kind === 'file') {

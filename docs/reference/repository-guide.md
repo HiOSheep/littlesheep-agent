@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-07-17 14:27:30
+最后更新：2026-07-19 09:48:44
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
@@ -79,14 +79,14 @@
 | `packages/vector/` | 向量存储接口；只在已导航分支的深搜兜底路径使用。 |
 | `packages/experience/` | 经验记录、置信度衰减和可复用能力数据。 |
 | `packages/snapshot/` | 记忆快照、索引和回滚支持。 |
-| `packages/safety/` | 记忆/提示注入防护、清洗、隔离和安全存储。 |
+| `packages/safety/` | 记忆/提示注入防护、清洗、隔离、安全存储，以及 LS 逻辑容器的路径边界、Shell 保守判定和权限策略基元。 |
 | `packages/session/` | JSONL 会话管理、锁、持久化回复指纹注册表和长会话压缩入口。 |
 
 ### 工具与扩展
 
 | 包 | 归属和职责 |
 | --- | --- |
-| `packages/tools/` | 内置工具、注册表、输入 schema、基础计时/结果 wrapper、部分工具内审批和核心源码只读路径闸门。完整授权、超时、流式事件、证据与恢复当前仍分散在 Tools、Harness 和 App，尚待统一 Tool Execution Service 收敛。 |
+| `packages/tools/` | 内置工具、注册表、输入 schema、基础计时/结果 wrapper、容器边界复核和核心源码只读路径闸门。完整授权、超时、流式事件、证据与恢复当前仍分散在 Tools、Harness 和 App，尚待统一 Tool Execution Service 收敛。 |
 | `packages/plugins/` | 插件 API v1、插件发现、信任闸门、生命周期宿主，以及渠道、工具和 owner-scoped Skill 贡献。它是扩展运行时，不是 Agent 任务核心。 |
 | `packages/skills/` | 技能加载、使用和自主创建；语义去重、合并、收益评估、归档/删除与回滚治理尚待后续控制面实现。 |
 | `packages/mcp/` | MCP 客户端预留包；当前仍是骨架，不应在状态文档中写成已完成。 |
@@ -121,6 +121,7 @@
 | 插件发现、信任和生命周期 | `packages/plugins/` | `src/host.ts`、`src/manifest.ts` | `src/**/*.test.ts` |
 | 外部渠道协议 | `packages/channels/*` | 各包 `src/plugin.ts` | 各包 `src/plugin.test.ts`、`test/e2e-webhook.test.ts` |
 | Electron 启动、Local App API 和用户数据 adapter | `packages/app/src/main/` | `index.ts`、`local-app-api-server.ts` | `src/main/*.test.ts` |
+| LS 开发环境、工具链版本和终端环境 | `packages/app/src/main/`、`packages/app/src/renderer/settings/` | `development-environments.ts`、`development-environment-definitions.ts`、`development-environment-files.ts`、`local-app-api/development-environment-routes.ts`、`settings/development-environments.tsx` | `development-environments.test.ts`、`development-environment-api.test.ts` |
 | 桌面 UI、导航、设置和工作区 | `packages/app/src/renderer/` | `App.tsx`、`app-shell/`、各 Renderer 领域目录、`api/` | `src/renderer/*.test.ts(x)`、领域同目录测试与真实窗口验收 |
 | CLI 与管理命令 | `packages/cli/` | `src/bin.ts`、`src/commands/` | `src/**/*.test.ts`、`test/e2e-cli.test.ts` |
 
@@ -136,8 +137,13 @@
 | `packages/app/src/main/builtin-plugins.ts` | 内置插件目录；具体渠道实现仍通过动态 import 按需加载。 |
 | `packages/app/src/main/local-app-api-server.ts` | renderer 与主进程之间的 loopback Local App API 组合入口和生命周期。 |
 | `packages/app/src/main/local-app-api/` | Local App API 的 HTTP 基元、公共契约及 run、项目、会话、Runtime、记忆、工作区、终端和扩展领域路由；atom 高级管理与证据导出位于 `memory-atom-routes.ts`。 |
+| `packages/app/src/main/run-policy.ts`、`local-app-api/terminal-permission.ts` | Main 侧权限策略决议、逻辑容器边界复核和终端会话/命令审批；Renderer 的批准结果不能替代这里的判定。 |
 | `packages/app/src/main/attachment-cache.ts`、`attachments.ts` | LS 受管附件缓存的稳定索引、配额/过期清理、安全删除校验，以及 run-scoped 附件解析与所有权分类。 |
 | `packages/app/src/main/data-root-migration.ts`、`data-root-metadata.ts` | 数据根 locator、迁移事务、同级 staging、流式哈希清单、启动前恢复、活动元数据内部路径重绑定和回滚；正式用户数据不得用于故障注入。 |
+| `packages/app/src/main/development-environment-definitions.ts` | 可管理开发环境的稳定 ID、中文标签、检测命令、可执行文件候选和分类；新增环境先在这里登记。 |
+| `packages/app/src/main/development-environment-files.ts` | 工具链偏好读取、版本规范化/系列匹配、目录扫描、可执行文件检测、符号链接拒绝、导入校验和安全路径辅助；不负责 UI 或终端会话。 |
+| `packages/app/src/main/development-environments.ts` | LS 工具链管理 facade：偏好串行写入、检测快照、导入/移除事务、Electron Node shim 和终端派生环境。 |
+| `packages/app/src/main/local-app-api/development-environment-routes.ts` | 开发环境状态、偏好、导入和移除的 Local App API 路由；Renderer 不直接访问工具链目录。 |
 | `packages/app/src/main/keychain.ts` | API key 的 Electron 安全存储与环境注入。 |
 | `packages/app/src/main/session-index.ts`、`project-index.ts`、`archive-index.ts` | UI 侧会话、稳定项目身份和归档元数据索引。 |
 | `packages/app/src/main/project-rebinding.ts`、`path-rebinding.ts` | 项目移动/重命名后的持久化重绑定事务、恢复日志和跨索引路径重映射。 |
@@ -152,6 +158,7 @@
 | `packages/app/src/renderer/app-shell/` | 顶层视图组合、全局导航历史、设置转场和跨领域兼容协调器。 |
 | `packages/app/src/renderer/approval/`、`chat/`、`composer/`、`runtime/` | 审批展示、对话与流式 run 归并、输入栏和运行选项。 |
 | `packages/app/src/renderer/settings/`、`sidebar/`、`ui/`、`workspace/` | 设置页、项目/会话导航、通用交互基元和拓展工作区。 |
+| `packages/app/src/renderer/settings/development-environments.tsx` | 设置中的开发环境管理页：状态、目标版本、系列版本选择、导入、移除和错误/忙碌反馈。 |
 | `packages/app/src/renderer/TraceCard.tsx` | Agent 执行过程、TaskBook、工具调用和验证时间线。 |
 | `packages/app/src/renderer/MemoryTreeView.tsx`、`ArchiveManager.tsx`、`Settings.tsx` | 六份记忆文件的简洁视图、归档和设置界面；记忆页仅 `SOUL.md` 可编辑，不展示 Atom 内部结构。 |
 | `packages/app/src/renderer/chat/assistant-turn.tsx`、`Markdown.tsx`、`workspace/browser.tsx` | 思考摘要/执行过程/最终结果的渐进披露，以及链接单击内置预览、双击系统打开的全局交互。 |
@@ -218,7 +225,8 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 - `scripts/verify-memory-v3-provider.mjs`、`scripts/lib/memory-v3-provider-acceptance.mjs`：真实 Provider 连续性门及其脱敏预检/隔离运行辅助；必须在任何失败路径清理临时数据根，且不得把凭证或完整 Provider 错误写入报告。
 - `scripts/verify-memory-v3-migration-readiness.mjs`：用指定真实 V2 数据的隔离副本执行迁移就绪验收；必须在复制前后复核源 manifest/index 哈希，并区分业务 atom 与内部 scope root，不得在源数据根登记迁移。
 - `scripts/build-app.ps1`：构建 Electron 应用并刷新快捷方式。
-- `scripts/refresh-desktop-shortcut.ps1`：按脚本所在仓库路径解析 Electron，生成桌面快捷方式。
+- `scripts/prepare-littlesheep-runtime.mjs`：按当前 Electron 版本在本机生成被命名为 `LittleSheep.exe` 的运行时副本；该副本属于安装/构建产物，不进入 Git。
+- `scripts/refresh-desktop-shortcut.ps1`：调用命名运行时准备脚本，按脚本所在仓库路径生成指向 `LittleSheep.exe` 的桌面快捷方式。
 - `scripts/start-littlesheep.ps1`：位置无关的开发启动入口。
 
 ## 源码、生成物和用户数据边界
@@ -239,6 +247,7 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 - 解析优先级为 `LITTLESHEEP_DATA_DIR`、外部 locator、branding 默认目录。locator 默认位于用户主目录，保持在数据根之外，记录活动目录、待迁移/回滚事务和最近一次迁移清单。
 - 包括 API 配置、加密密钥引用、sessions、memory-tree、用户与 LS 自身记忆、Skills、plugins/plugin-data、projects、archive、execution logs、workspace layout、terminal activity、`attachment-cache/`、`workspace/resource-indexes/`，以及 `AGENTS.md`、`SOUL.md`、`USER.md`、`PHILOSOPHY.md`、`TOOLS.md`、`MEMORY.md` 等用户所有的运行时资源。
 - `<data-root>/workplace/` 是未选择项目或外部目录时的默认工作区，只是完整应用数据根的一个子目录。移动 workplace 不等于迁移应用数据；“存储与数据”执行的是完整数据根迁移。
+- `<data-root>` 同时是 Agent 的逻辑容器根：默认 workplace 在容器内，用户选定的数据根外项目在容器外。当前由 Main/Safety 的路径和审批闸门实现，不等同于 Docker/OS 进程沙箱；范围不明的命令按 `unknown` 处理。Agent 在外部或未知工作区启动时先跳过自动资源/文档索引，用户主动的选择、预览和保存走独立 UI 路径。
 - `PHILOSOPHY.md` 保存经用户确认的长期价值判断和设计取舍。它注册为 `philosophy` 资源但不进入每轮常驻 Prompt；Agent 必须先沿资源索引发现，再按任务相关性和 token 预算展开。
 - `attachment-cache/` 只保存 LS 通过粘贴/浏览器导入创建并登记的临时附件；自动清理只能处理索引中仍通过路径、普通文件、大小和哈希验证的缓存项。`workplace/`、项目目录和外部路径是不同所有权边界，不能因为文件名或目录名相似而由缓存清理删除。
 - `workspace/resource-indexes/` 只保存各工作区的相对路径、文件类型、大小、修改时间和 `user/agent` 来源；它不保存正文，扫描有目录、深度、条目和待处理队列上限。索引文件属于 LS 受管运行数据，项目索引以稳定 project id 关联。

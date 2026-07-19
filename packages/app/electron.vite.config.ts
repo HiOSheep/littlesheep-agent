@@ -12,8 +12,21 @@
 
 import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
-import { resolve } from 'node:path'
-import { builtinModules } from 'node:module'
+import { existsSync, readFileSync } from 'node:fs'
+import { builtinModules, createRequire } from 'node:module'
+import { dirname, extname, join, resolve } from 'node:path'
+
+const configRequire = createRequire(import.meta.url)
+const electronPackageRoot = dirname(configRequire.resolve('electron'))
+const electronBinaryName = readFileSync(join(electronPackageRoot, 'path.txt'), 'utf8').trim()
+const namedElectronPath = join(
+  electronPackageRoot,
+  'dist',
+  `LittleSheep${extname(electronBinaryName)}`,
+)
+if (existsSync(namedElectronPath)) {
+  process.env.ELECTRON_EXEC_PATH = namedElectronPath
+}
 
 const runtimeExternals = [
   'better-sqlite3',

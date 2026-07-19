@@ -15,6 +15,7 @@ import {
 } from '../workspace-persistence'
 import { attachmentFileUrl, countEditorLines, detectEditorEol, formatDateTime, formatEditorLanguageLabel, formatFileSize, lastPathSegment, shouldOfferExternalVSCode, utf8ByteLength, workspaceBreadcrumbs } from './path-utils'
 import { WorkspacePlaceholder } from './placeholder'
+import { configureLittleSheepMonaco } from './monaco-language-support'
 
 
 export const MonacoEditor = lazy(async () => {
@@ -351,6 +352,7 @@ export function WorkspacePreviewPane({
                   language={editorLanguage}
                   value={editorText}
                   theme="vs-dark"
+                  beforeMount={configureLittleSheepMonaco}
                   onChange={(value) => updateEditorText(value ?? '')}
                   options={{
                     automaticLayout: true,

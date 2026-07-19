@@ -1,6 +1,8 @@
 // @littlesheep/app - workspace-file-routing.ts
 // Pure workspace file routing helpers shared by the Local App API and tests.
 
+import { workspaceLanguageForFile } from '../shared/workspace-languages.js'
+
 export type WorkspaceFileSurface =
   | 'builtinEditor'
   | 'imagePreview'
@@ -45,6 +47,7 @@ const WORKSPACE_TEXT_EXTS = new Set([
   '.cfg',
   '.json',
   '.jsonc',
+  '.json5',
   '.code-workspace',
   '.ipynb',
   '.js',
@@ -68,6 +71,8 @@ const WORKSPACE_TEXT_EXTS = new Set([
   '.editorconfig',
   '.env',
   '.py',
+  '.pyw',
+  '.pyi',
   '.rs',
   '.go',
   '.java',
@@ -81,8 +86,12 @@ const WORKSPACE_TEXT_EXTS = new Set([
   '.hxx',
   '.ipp',
   '.cs',
+  '.csx',
   '.php',
+  '.phtml',
   '.rb',
+  '.rake',
+  '.gemspec',
   '.sh',
   '.bash',
   '.zsh',
@@ -109,6 +118,9 @@ const WORKSPACE_TEXT_EXTS = new Set([
   '.lua',
   '.kt',
   '.kts',
+  '.ml',
+  '.mli',
+  '.fsscript',
   '.swift',
   '.dart',
   '.zig',
@@ -120,10 +132,13 @@ const WORKSPACE_TEXT_EXTS = new Set([
   '.exs',
   '.erl',
   '.hrl',
+  '.erl',
+  '.hrl',
   '.scala',
   '.sc',
   '.clj',
   '.cljs',
+  '.cljc',
   '.edn',
   '.hs',
   '.lhs',
@@ -146,12 +161,20 @@ const WORKSPACE_TEXT_EXTS = new Set([
   '.vh',
   '.gradle',
   '.groovy',
+  '.gvy',
   '.hcl',
   '.tf',
   '.tfvars',
   '.bicep',
   '.cue',
   '.rego',
+  '.asm',
+  '.s',
+  '.nim',
+  '.nix',
+  '.prisma',
+  '.tex',
+  '.xhtml',
   '.mod',
   '.sum',
   '.cshtml',
@@ -235,34 +258,5 @@ export function classifyWorkspaceFileSurface(lowerName: string, ext: string): Wo
 }
 
 export function previewLanguageForWorkspaceFile(lowerName: string, ext: string): string {
-  if (lowerName === 'dockerfile') return 'dockerfile'
-  if (lowerName === 'containerfile') return 'dockerfile'
-  if (lowerName === 'makefile') return 'makefile'
-  if (lowerName === 'justfile') return 'makefile'
-  if (lowerName === 'cmakelists.txt') return 'cmake'
-  if (lowerName === 'go.mod') return 'go'
-  if (lowerName === 'go.sum') return 'text'
-  if (lowerName === '.editorconfig') return 'ini'
-  const normalized = ext.replace(/^\./, '')
-  if (normalized === 'md') return 'markdown'
-  if (normalized === 'jsonc' || normalized === 'code-workspace' || normalized === 'ipynb') return 'json'
-  if (normalized === 'ts' || normalized === 'tsx' || normalized === 'mts' || normalized === 'cts') return 'typescript'
-  if (normalized === 'js' || normalized === 'jsx' || normalized === 'mjs' || normalized === 'cjs') return 'javascript'
-  if (normalized === 'yml') return 'yaml'
-  if (normalized === 'htm') return 'html'
-  if (normalized === 'env') return 'ini'
-  if (normalized === 'ps1' || normalized === 'psm1' || normalized === 'psd1' || normalized === 'ps1xml') return 'powershell'
-  if (normalized === 'sh' || normalized === 'bash' || normalized === 'zsh' || normalized === 'fish') return 'shell'
-  if (normalized === 'cmd' || normalized === 'bat') return 'bat'
-  if (normalized === 'vue' || normalized === 'svelte' || normalized === 'astro') return 'html'
-  if (normalized === 'c' || normalized === 'cc' || normalized === 'cpp' || normalized === 'cxx') return 'cpp'
-  if (normalized === 'h' || normalized === 'hpp' || normalized === 'hh' || normalized === 'hxx' || normalized === 'ipp') return 'cpp'
-  if (normalized === 'm' || normalized === 'mm') return 'objective-c'
-  if (normalized === 'pl' || normalized === 'pm' || normalized === 't') return 'perl'
-  if (normalized === 'sv' || normalized === 'svh' || normalized === 'v' || normalized === 'vh') return 'systemverilog'
-  if (normalized === 'hbs' || normalized === 'handlebars' || normalized === 'mustache') return 'handlebars'
-  if (normalized === 'cshtml' || normalized === 'razor') return 'razor'
-  if (normalized === 'tf' || normalized === 'tfvars') return 'hcl'
-  if (normalized === 'lock' || normalized === 'mod' || normalized === 'sum') return 'text'
-  return normalized || 'text'
+  return workspaceLanguageForFile(lowerName, ext)
 }

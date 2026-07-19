@@ -16,10 +16,13 @@ import { routeMemory } from './local-app-api/memory-routes.js'
 import { routeSessions } from './local-app-api/session-routes.js'
 import { routeProjects } from './local-app-api/project-routes.js'
 import { routeWorkspace } from './local-app-api/workspace-routes.js'
+import { routeBrowser } from './local-app-api/browser-routes.js'
+import { routeDevelopmentEnvironments } from './local-app-api/development-environment-routes.js'
 import { TerminalRouter } from './local-app-api/terminal-routes.js'
 import { RunRouter } from './local-app-api/run-routes.js'
 import type { LocalAppApiServer, LocalAppApiServerOptions } from './local-app-api/contracts.js'
 import { MemoryEmbeddingModelManager, type MemoryEmbeddingModelController } from './memory-embedding-model-control.js'
+import { DevelopmentEnvironmentManager } from './development-environments.js'
 
 export type { LocalAppApiServer, LocalAppApiServerOptions } from './local-app-api/contracts.js'
 export async function startLocalAppApiServer(
@@ -64,6 +67,10 @@ export async function startLocalAppApiServer(
     rootDir: join(opts.dataDir, 'attachment-cache'),
   })
   const embeddingModelManager = opts.memoryEmbeddingModelManager ?? new MemoryEmbeddingModelManager({ dataDir: opts.dataDir })
+  const developmentEnvironmentManager = opts.developmentEnvironmentManager ?? new DevelopmentEnvironmentManager({
+    dataDir: opts.dataDir,
+    electronExecutable: process.execPath,
+  })
   const routeOptions = { ...opts, memoryEmbeddingModelManager: embeddingModelManager }
   const runRouter = new RunRouter()
   const terminalRouter = new TerminalRouter()
@@ -72,6 +79,7 @@ export async function startLocalAppApiServer(
   } catch (error) {
     console.error(`[attachments] managed cache initialization failed: ${(error as Error).message}`)
   }
+  await developmentEnvironmentManager.initialize()
 
   return new Promise<LocalAppApiServer>((resolve, reject) => {
     const server = createServer((req, res) => {
@@ -96,6 +104,7 @@ export async function startLocalAppApiServer(
         attachmentCache,
         runRouter,
         terminalRouter,
+        developmentEnvironmentManager,
       ).catch((err) => {
         const status = err instanceof HttpError ? err.status : 500
         if (!res.headersSent) {
@@ -147,6 +156,7 @@ async function route(
   attachmentCache: ManagedAttachmentCache,
   runRouter: RunRouter,
   terminalRouter: TerminalRouter,
+  developmentEnvironmentManager: DevelopmentEnvironmentManager,
 ): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1')
   const path = url.pathname
@@ -163,6 +173,7 @@ async function route(
   if (await runRouter.route(routeRequest, {
     getRunner,
     getConfig,
+    dataDir: opts.dataDir,
     workplaceDir: opts.workplaceDir,
     sessionIndex,
     projectIndex,
@@ -200,6 +211,11 @@ async function route(
     restartApplication: opts.restartApplication,
   })) return
 
+  if (await routeDevelopmentEnvironments(routeRequest, {
+    manager: developmentEnvironmentManager,
+    selectSource: opts.selectDevelopmentEnvironmentSource,
+  })) return
+
   if (await routeWorkspace(routeRequest, {
     getRunner,
     getConfig,
@@ -212,10 +228,14 @@ async function route(
     selectAttachments: opts.selectAttachments,
   })) return
 
+  if (await routeBrowser(routeRequest, opts)) return
+
   if (await terminalRouter.route(routeRequest, {
     getConfig,
+    dataDir: opts.dataDir,
     workplaceDir: opts.workplaceDir,
     terminalActivityIndex,
+    developmentEnvironmentManager,
   })) return
 
   if (await routeExtensions(routeRequest, {

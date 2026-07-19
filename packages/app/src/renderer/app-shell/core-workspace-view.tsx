@@ -3,6 +3,7 @@ import '@xterm/xterm/css/xterm.css'
 import { DirectModuleWorkspace } from '../settings/direct-module'
 import { SidebarFeaturePanel } from '../sidebar/feature-panel'
 import { ChatView } from './chat-view'
+import { ComposerView } from './composer-view'
 import type { AppController } from './use-app-controller'
 import { WorkspaceDockView } from './workspace-dock-view'
 
@@ -21,7 +22,10 @@ export function CoreWorkspaceView({ controller }: { controller: AppController })
         <DirectModuleWorkspace page={directModulePage} />
       ) : (
       <>
-      <ChatView controller={controller} />
+      <main className="chat">
+        <ChatView controller={controller} />
+        <ComposerView controller={controller} />
+      </main>
 
       <WorkspaceDockView controller={controller} />
       </>

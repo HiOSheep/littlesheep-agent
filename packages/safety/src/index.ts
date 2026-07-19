@@ -25,3 +25,13 @@ export {
   SafeMemoryStore,
   type SafeMemoryStoreOptions,
 } from './safe-memory-store.js';
+export {
+  authorizeToolAccess,
+  describeToolAccess,
+  shouldRequestPermissionApproval,
+  type ContainerBoundary,
+  type PermissionAction,
+  type PermissionBoundaryContext,
+  type ToolAccessDescriptor,
+  type ToolAuthorization,
+} from './permission-boundary.js';

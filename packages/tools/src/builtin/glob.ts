@@ -2,8 +2,9 @@
 import { z } from 'zod';
 import { readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import type { AgentTool } from '@littlesheep/types';
+import { authorizeToolAccess } from '@littlesheep/safety';
 import { withToolTiming } from '../wrapper.js';
 import { parallelFilePolicy } from '../execution-policy.js';
 
@@ -32,7 +33,11 @@ export const globTool: AgentTool = {
   execution: parallelFilePolicy('path', 'read', true),
   execute: withToolTiming(async (input, ctx) => {
     const { pattern, path: searchPath, max_results } = GlobInput.parse(input);
-    const target = searchPath ?? ctx.cwd;
+    const target = resolve(ctx.cwd, searchPath ?? '.');
+    const authorization = await authorizeToolAccess('glob', { path: target }, ctx);
+    if (!authorization.allowed) {
+      return { ok: false, error: 'Approval denied: searching this path requires user approval.' };
+    }
     if (!existsSync(target)) {
       return { ok: false, error: `Path not found: ${target}` };
     }

@@ -5,7 +5,8 @@
 ## 职责与边界
 
 - 公开入口是 `src/index.ts`；校验在 `validate.ts`，清洗在 `sanitize-prelude.ts`，隔离在 `quarantine.ts`。
-- 负责安全策略基元，不决定产品权限模式或替代 Tool Execution 审批。
+- 提供逻辑容器边界、路径/符号链接规范化、Shell 范围保守判定和三档权限策略的安全基元；产品层仍负责审批 UI 和生命周期，不得绕过这些判定。
+- 当前边界是 Main 进程中的 fail-closed 逻辑约束，不等同于真实 Docker/OS 沙箱；未知范围必须升级到用户审批。
 - 禁止吞掉风险或把隔离内容重新注入 Context。
 
 ## 依赖与数据

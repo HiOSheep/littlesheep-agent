@@ -130,7 +130,9 @@ export function createSessionActions(context: SessionActionContext) {
     abortRef.current?.abort()
     setCurrentSession(id)
     setContextUsageSnapshot(null)
-    setRuntimeError('正在加载历史消息...')
+    // Loading status belongs to the message viewport. Do not route it through
+    // runtimeError: that would insert/remove a row below the shared composer
+    // and make the input surface jump on every session switch.
     setMessages([])
     setHistoryWindow({ hasMore: false, beforeId: undefined, loading: true })
     try {

@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   MAX_WORKSPACE_BROWSER_HISTORY,
   appendWorkspaceBrowserHistory,
+  browserUrlsShareHistoryEntry,
+  compactWorkspaceBrowserHistory,
   createWorkspaceBrowserHistory,
+  getBrowserHistoryIdentity,
   moveWorkspaceBrowserHistory,
   normalizeBrowserEventUrl,
   normalizeBrowserUrl,
@@ -37,6 +40,67 @@ describe('embedded browser history', () => {
     state = replaceWorkspaceBrowserHistory(state, 'https://example.test/redirected')
     expect(state.entries).toEqual(['https://example.test/redirected'])
     expect(state.index).toBe(0)
+  })
+
+  it('treats one Bilibili BV video as one meaningful history entry', () => {
+    let state = createWorkspaceBrowserHistory(
+      'https://www.bilibili.com/video/BV1PXNZ6DEx4/?spm_id_from=333.1007',
+    )
+    state = appendWorkspaceBrowserHistory(
+      state,
+      'https://www.bilibili.com/video/BV1PXNZ6DEx4/?vd_source=source#reply123',
+    )
+
+    expect(state.entries).toEqual([
+      'https://www.bilibili.com/video/BV1PXNZ6DEx4/?vd_source=source#reply123',
+    ])
+    expect(browserUrlsShareHistoryEntry(
+      state.entries[0]!,
+      'https://m.bilibili.com/video/BV1PXNZ6DEx4?p=2',
+    )).toBe(true)
+    expect(browserUrlsShareHistoryEntry(
+      state.entries[0]!,
+      'https://www.bilibili.com/video/BV1xx411c7mD',
+    )).toBe(false)
+  })
+
+  it('keeps content identifiers but ignores transient detail state across sites', () => {
+    expect(getBrowserHistoryIdentity(
+      'https://www.youtube.com/watch?v=video-a&t=120&utm_source=test',
+    )).toBe(getBrowserHistoryIdentity(
+      'https://m.youtube.com/watch?v=video-a#comments',
+    ))
+    expect(browserUrlsShareHistoryEntry(
+      'https://example.test/articles/42?utm_source=test#comments',
+      'https://example.test/articles/42?tab=discussion&sort=newest',
+    )).toBe(true)
+    expect(browserUrlsShareHistoryEntry(
+      'https://example.test/search?q=memory',
+      'https://example.test/search?q=agent',
+    )).toBe(false)
+    expect(browserUrlsShareHistoryEntry(
+      'https://example.test/articles/42',
+      'https://example.test/articles/43',
+    )).toBe(false)
+  })
+
+  it('compacts adjacent persisted detail states without collapsing real revisits', () => {
+    const compacted = compactWorkspaceBrowserHistory({
+      entries: [
+        'https://www.bilibili.com/video/BV1PXNZ6DEx4',
+        'https://www.bilibili.com/video/BV1PXNZ6DEx4#reply-1',
+        'https://www.bilibili.com/video/BV1xx411c7mD',
+        'https://www.bilibili.com/video/BV1PXNZ6DEx4',
+      ],
+      index: 1,
+    })
+
+    expect(compacted.entries).toEqual([
+      'https://www.bilibili.com/video/BV1PXNZ6DEx4#reply-1',
+      'https://www.bilibili.com/video/BV1xx411c7mD',
+      'https://www.bilibili.com/video/BV1PXNZ6DEx4',
+    ])
+    expect(compacted.index).toBe(0)
   })
 
   it('moves within the bounded stack without mutating its entries', () => {

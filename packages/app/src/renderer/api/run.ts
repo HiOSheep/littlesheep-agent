@@ -136,6 +136,8 @@ export interface ApprovalRequest {
   action: string
   detail?: unknown
   permissionMode: PermissionModeId
+  /** Boundary calculated by the Main process for Agent requests. */
+  boundary?: 'inside' | 'outside' | 'unknown'
   source?: 'agent' | 'workspace'
 }
 

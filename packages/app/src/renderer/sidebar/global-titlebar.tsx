@@ -1,6 +1,6 @@
 // Primary navigation, project/session trees, and sidebar actions.
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { SettingsGearIcon } from '../ui/icons'
+import { SettingsGearIcon, SidebarToggleIcon } from '../ui/icons'
 import appIconUrl from '../../../resources/littlesheep-icon.png'
 
 
@@ -38,9 +38,7 @@ export function GlobalTitlebar({
           onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement(sidebarToggleTip, event.currentTarget))}
           onBlur={() => onTipChange(null)}
         >
-          <span className="sidebar-toggle-icon" aria-hidden="true">
-            <span className="sidebar-toggle-divider" />
-          </span>
+          <SidebarToggleIcon />
         </button>
         <button
           className="app-nav-btn nav-back"

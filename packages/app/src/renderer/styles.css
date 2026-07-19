@@ -416,8 +416,8 @@ body {
   background: var(--bg);
   color: var(--text);
   overflow: hidden;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: auto;
+  text-rendering: auto;
 }
 
 button,
@@ -491,7 +491,7 @@ input:focus-visible {
 .channel-overall,
 .channel-section,
 .ms-item {
-  animation: content-fade-in var(--motion-base) var(--motion-ease) both;
+  animation: content-fade-in var(--motion-base) var(--motion-ease) backwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1101,16 +1101,9 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
 
 .conversation-section .sidebar-section-toggle,
 .project-section .sidebar-section-toggle {
+  position: relative;
   gap: 0;
-}
-
-.conversation-section.collapsed .sidebar-section-toggle,
-.conversation-section .sidebar-section-header:hover .sidebar-section-toggle,
-.conversation-section .sidebar-section-header:focus-within .sidebar-section-toggle,
-.project-section.collapsed .sidebar-section-toggle,
-.project-section .sidebar-section-header:hover .sidebar-section-toggle,
-.project-section .sidebar-section-header:focus-within .sidebar-section-toggle {
-  gap: 7px;
+  padding-right: 20px;
 }
 
 .sidebar-section-toggle:hover,
@@ -1292,7 +1285,7 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
 
 .sidebar-section-arrow,
 .settings-entry-arrow {
-  display: inline-block;
+  display: block;
   width: 7px;
   height: 7px;
   color: var(--muted-2);
@@ -1301,10 +1294,20 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   border-bottom: 1.5px solid currentColor;
   transform: translateY(-1px) rotate(45deg);
   transition:
-    width var(--motion-fast) var(--motion-ease),
     opacity var(--motion-fast) var(--motion-ease),
     border-color var(--motion-fast) var(--motion-ease),
     transform var(--motion-fast) var(--motion-ease);
+}
+
+.conversation-section .sidebar-section-arrow,
+.project-section .sidebar-section-arrow {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  margin-top: -3px;
+  opacity: 0;
+  border-color: transparent;
+  transform: translateY(-1px) rotate(45deg);
 }
 
 .conversation-section.collapsed .sidebar-section-arrow,
@@ -1314,7 +1317,6 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
 
 .conversation-section:not(.collapsed) .sidebar-section-arrow,
 .project-section:not(.collapsed) .sidebar-section-arrow {
-  width: 0;
   opacity: 0;
   border-color: transparent;
   transform: translateY(-1px) rotate(45deg);
@@ -1326,7 +1328,6 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
 .project-section.collapsed .sidebar-section-arrow,
 .project-section .sidebar-section-header:hover .sidebar-section-arrow,
 .project-section .sidebar-section-header:focus-within .sidebar-section-arrow {
-  width: 7px;
   opacity: 1;
   border-color: currentColor;
 }
@@ -1954,6 +1955,8 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
 
 .chat {
   position: relative;
+  --chat-content-max-width: 980px;
+  --chat-content-gutter: clamp(18px, 2.6vw, 40px);
   flex: 1 1 0;
   width: 0;
   container-name: chat-pane;
@@ -1966,7 +1969,7 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   overflow: hidden;
   background: var(--bg);
   opacity: 1;
-  transform: translateX(0);
+  transform: none;
   transition:
     opacity var(--workspace-panel-motion) var(--motion-ease),
     transform var(--workspace-panel-motion) var(--motion-ease);
@@ -2047,7 +2050,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   color: var(--text);
   background: var(--surface);
   opacity: 1;
-  transform: translateX(0);
+  transform: none;
   transition:
     flex-basis var(--workspace-panel-motion) var(--motion-ease),
     background-color var(--motion-fast) var(--motion-ease),
@@ -2229,7 +2232,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   min-height: 0;
   padding: 12px;
   opacity: 1;
-  transform: translateX(0);
+  transform: none;
   transition:
     padding var(--workspace-panel-motion) var(--motion-ease),
     opacity var(--workspace-panel-motion) var(--motion-ease),
@@ -2496,13 +2499,6 @@ body.is-resizing-column .workspace-panel-resizer::before {
   opacity: 0.7;
 }
 
-.workspace-add-shortcut {
-  color: var(--muted-2);
-  font-size: 12px;
-  font-weight: 620;
-  white-space: nowrap;
-}
-
 .workspace-context-line {
   min-width: 0;
   overflow: hidden;
@@ -2554,6 +2550,20 @@ body.is-resizing-column .workspace-panel-resizer::before {
     background-color var(--motion-fast) var(--motion-ease),
     border-color var(--motion-fast) var(--motion-ease),
     color var(--motion-fast) var(--motion-ease);
+}
+
+.workspace-panel-collapse-action {
+  width: 26px;
+  height: 24px;
+  border-radius: 6px;
+}
+
+.workspace-panel-collapse-action:active .workspace-panel-toggle-icon {
+  transform: scale(0.96);
+}
+
+.workspace-panel-toggle-icon .sidebar-toggle-divider {
+  left: 5px;
 }
 
 .workspace-panel-action:hover,
@@ -2626,6 +2636,70 @@ body.is-resizing-column .workspace-panel-resizer::before {
   padding-top: 12px;
 }
 
+.workspace-empty-launcher {
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  width: min(360px, calc(100% - 32px));
+  margin: auto;
+  padding: 24px 0;
+}
+
+.workspace-empty-launcher-item {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 820;
+  text-align: left;
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease);
+}
+
+.workspace-empty-launcher-item:hover,
+.workspace-empty-launcher-item:focus-visible {
+  color: var(--text-strong);
+  background: var(--control-hover);
+  border-color: var(--border-strong);
+  outline: 0;
+}
+
+.workspace-empty-launcher-item:active {
+  transform: scale(0.99);
+}
+
+.workspace-empty-launcher-icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  color: var(--muted);
+}
+
+.workspace-empty-launcher-item:hover .workspace-empty-launcher-icon,
+.workspace-empty-launcher-item:focus-visible .workspace-empty-launcher-icon {
+  color: var(--text-strong);
+}
+
+.workspace-empty-launcher-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .workspace-panel-view {
   flex: 1 1 auto;
   height: 100%;
@@ -2646,6 +2720,10 @@ body.is-resizing-column .workspace-panel-resizer::before {
 
 .workspace-panel-view.with-file-navigator {
   padding-right: 34px;
+  --workspace-files-control-size: 25px;
+  --workspace-files-control-top: 5px;
+  --workspace-files-control-edge: 6px;
+  --workspace-files-control-gap: 4px;
 }
 
 .workspace-panel-view > .workspace-preview-pane {
@@ -3419,7 +3497,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   min-height: 0;
   margin-top: 8px;
   overflow: hidden;
-  background: #f7f7f7;
+  background: transparent;
 }
 
 .workspace-browser-body iframe,
@@ -3437,7 +3515,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   height: 100%;
   min-height: 220px;
   padding: 20px;
-  color: #555;
+  color: var(--muted-2);
   font-size: 12px;
   text-align: center;
 }
@@ -3448,6 +3526,10 @@ body.is-resizing-column .workspace-panel-resizer::before {
   height: 100%;
   min-height: 0;
   overflow: hidden;
+  --workspace-files-control-size: 25px;
+  --workspace-files-control-top: 5px;
+  --workspace-files-control-edge: 6px;
+  --workspace-files-control-gap: 4px;
 }
 
 .workspace-files-tree,
@@ -3527,34 +3609,27 @@ body.is-resizing-column .workspace-panel-resizer::before {
 
 .workspace-files-navigator-rail {
   position: absolute;
-  top: 5px;
-  right: 2px;
+  top: var(--workspace-files-control-top, 5px);
+  right: var(--workspace-files-control-edge, 6px);
   z-index: 2;
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: var(--workspace-files-control-size, 25px);
+  height: var(--workspace-files-control-size, 25px);
+  padding: 0;
   color: var(--muted);
   background: transparent;
   border: 1px solid transparent;
   border-radius: 7px;
   cursor: pointer;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateX(4px);
+  line-height: 0;
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
   transition:
     background-color var(--motion-fast) var(--motion-ease),
     border-color var(--motion-fast) var(--motion-ease),
-    color var(--motion-fast) var(--motion-ease),
-    opacity var(--workspace-panel-motion) var(--motion-ease),
-    transform var(--workspace-panel-motion) var(--motion-ease);
-}
-
-.workspace-files.navigator-collapsed .workspace-files-navigator-rail,
-.workspace-files-navigator.navigator-collapsed .workspace-files-navigator-rail {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateX(0);
+    color var(--motion-fast) var(--motion-ease);
 }
 
 .workspace-files-navigator-rail:hover,
@@ -3651,21 +3726,30 @@ body.is-resizing-column .workspace-panel-resizer::before {
 .workspace-files-actions {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  align-self: flex-start;
+  gap: var(--workspace-files-control-gap, 4px);
   flex: 0 0 auto;
+  height: var(--workspace-files-control-size, 25px);
+  min-height: var(--workspace-files-control-size, 25px);
+  padding-right: calc(
+    var(--workspace-files-control-size, 25px) +
+    var(--workspace-files-control-gap, 4px)
+  );
 }
 
 .workspace-files-icon-btn {
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  width: 25px;
-  height: 25px;
+  width: var(--workspace-files-control-size, 25px);
+  height: var(--workspace-files-control-size, 25px);
+  padding: 0;
   color: var(--muted);
   background: transparent;
   border: 1px solid transparent;
   border-radius: 7px;
   cursor: pointer;
+  line-height: 0;
   transition:
     background-color var(--motion-fast) var(--motion-ease),
     border-color var(--motion-fast) var(--motion-ease),
@@ -3679,11 +3763,17 @@ body.is-resizing-column .workspace-panel-resizer::before {
   border-color: var(--border-strong);
 }
 
+.workspace-files-icon-btn .workspace-tree-glyph-icon {
+  width: 16px;
+  height: 16px;
+}
+
 .workspace-files-text-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 25px;
+  height: var(--workspace-files-control-size, 25px);
+  min-height: var(--workspace-files-control-size, 25px);
   padding: 0 8px;
   color: var(--muted);
   background: transparent;
@@ -3692,6 +3782,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   cursor: pointer;
   font-size: 11px;
   font-weight: 780;
+  line-height: 1;
   white-space: nowrap;
   transition:
     background-color var(--motion-fast) var(--motion-ease),
@@ -3919,8 +4010,11 @@ body.is-resizing-column .workspace-panel-resizer::before {
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 4px;
+  align-self: flex-start;
+  gap: var(--workspace-files-control-gap, 4px);
   flex: 0 0 auto;
+  height: var(--workspace-files-control-size, 25px);
+  min-height: var(--workspace-files-control-size, 25px);
 }
 
 .workspace-preview-body {
@@ -4205,10 +4299,11 @@ body.is-resizing-column .workspace-panel-resizer::before {
 
 .workspace-terminal {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 8px;
   height: 100%;
   min-height: 0;
+  font-family: "SimSun", "宋体", monospace;
 }
 
 .workspace-terminal-header {
@@ -4378,7 +4473,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
 .workspace-terminal-activity-command {
   min-width: 0;
   overflow: hidden;
-  font-family: var(--mono);
+  font-family: "SimSun", "宋体", monospace;
   font-weight: 690;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4403,100 +4498,21 @@ body.is-resizing-column .workspace-panel-resizer::before {
   background: #1f1f1f;
   border: 1px solid rgba(255, 255, 255, 0.055);
   border-radius: 8px;
+  font-family: "SimSun", "宋体", monospace;
 }
 
 .workspace-terminal-shell .xterm {
   height: 100%;
 }
 
+.workspace-terminal-shell .xterm-rows {
+  -webkit-font-smoothing: auto;
+  text-rendering: auto;
+}
+
 .workspace-terminal-shell .xterm-viewport,
 .workspace-terminal-shell .xterm-screen {
   background: #1f1f1f !important;
-}
-
-.workspace-terminal-command {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 7px;
-  min-height: 38px;
-  padding: 4px 5px 4px 10px;
-  color: var(--text);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 9px;
-  transition:
-    background-color var(--motion-fast) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease);
-}
-
-.workspace-terminal-command:hover,
-.workspace-terminal-command:focus-within {
-  background: var(--control-hover);
-  border-color: var(--border-strong);
-}
-
-.workspace-terminal-prompt {
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 800;
-  text-align: center;
-}
-
-.workspace-terminal-command input {
-  min-width: 0;
-  color: var(--text-strong);
-  background: transparent;
-  border: 0;
-  outline: 0;
-  font-family: var(--mono);
-  font-size: 12px;
-}
-
-.workspace-terminal-command input::placeholder {
-  color: var(--muted-2);
-}
-
-.workspace-terminal-command input:disabled {
-  color: var(--muted);
-}
-
-.workspace-terminal-run {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 28px;
-  padding: 0 10px;
-  color: var(--text);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 820;
-  transition:
-    background-color var(--motion-fast) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease),
-    color var(--motion-fast) var(--motion-ease);
-}
-
-.workspace-terminal-run:hover,
-.workspace-terminal-run:focus-visible {
-  color: var(--text-strong);
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.07);
-}
-
-.workspace-terminal-run:disabled {
-  color: var(--muted-2);
-  cursor: default;
-  opacity: 0.45;
-}
-
-.workspace-terminal-run:disabled:hover {
-  background: transparent;
-  border-color: transparent;
 }
 
 @keyframes workspace-loading-pulse {
@@ -4516,8 +4532,14 @@ body.is-resizing-column .workspace-panel-resizer::before {
   overflow-y: auto;
   overflow-anchor: none;
   overscroll-behavior: contain;
-  padding: 24px clamp(18px, 2.6vw, 40px);
+  padding: 24px var(--chat-content-gutter);
   background: var(--bg);
+}
+
+.messages-content {
+  width: min(var(--chat-content-max-width), 100%);
+  min-height: 100%;
+  margin-inline: auto;
 }
 
 .history-load-older {
@@ -4552,9 +4574,14 @@ body.is-resizing-column .workspace-panel-resizer::before {
 }
 
 .messages.is-empty {
+  display: block;
+  padding: clamp(24px, 5vh, 64px) var(--chat-content-gutter);
+}
+
+.messages.is-empty .messages-content {
   display: grid;
   place-items: center;
-  padding: clamp(24px, 5vh, 64px) clamp(18px, 2.6vw, 40px);
+  align-content: center;
 }
 
 .empty-hint {
@@ -4605,11 +4632,6 @@ body.is-resizing-column .workspace-panel-resizer::before {
   background: var(--surface-3);
   border: 1px solid var(--border-strong);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-  transition: margin-right var(--workspace-panel-motion) var(--motion-ease);
-}
-
-.window-shell.workspace-panel-collapsed .message.user {
-  margin-right: 76px;
 }
 
 .message.assistant {
@@ -4872,7 +4894,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   flex-direction: column;
   min-height: 0;
   max-height: min(52vh, 440px);
-  padding: 8px clamp(16px, 2.2vw, 34px) 12px;
+  padding: 8px var(--chat-content-gutter) 12px;
   background: rgba(24, 24, 24, 0.98);
   transition:
     padding var(--motion-fast) var(--motion-ease),
@@ -4880,10 +4902,15 @@ body.is-resizing-column .workspace-panel-resizer::before {
 }
 
 .task-progress-anchor {
-  position: relative;
+  /* The progress presence belongs above the composer, but must not become a
+     session-dependent flex item that moves the shared input surface. */
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  left: 0;
   z-index: 44;
   display: flex;
-  width: min(980px, 100%);
+  width: min(var(--chat-content-max-width), 100%);
   height: 24px;
   max-height: 24px;
   margin: 0 auto 4px;
@@ -5094,9 +5121,8 @@ body.is-resizing-column .workspace-panel-resizer::before {
 
 .attachment-preview-card {
   position: relative;
-  display: grid;
-  grid-template-rows: 78px auto;
   width: 112px;
+  height: 126px;
   min-height: 126px;
   overflow: hidden;
   color: var(--text);
@@ -5112,6 +5138,12 @@ body.is-resizing-column .workspace-panel-resizer::before {
     transform var(--motion-fast) var(--motion-ease);
 }
 
+.attachment-preview-card.image {
+  width: 96px;
+  height: 96px;
+  min-height: 96px;
+}
+
 .attachment-preview-card:hover {
   background: var(--surface-2);
   border-color: var(--border-strong);
@@ -5121,9 +5153,34 @@ body.is-resizing-column .workspace-panel-resizer::before {
   transform: translateY(1px);
 }
 
-.attachment-preview-card:focus-visible {
+.attachment-preview-card:focus-within {
   outline: 2px solid rgba(226, 226, 226, 0.32);
   outline-offset: 2px;
+}
+
+.attachment-preview-open {
+  display: grid;
+  grid-template-rows: 78px auto;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  outline: none;
+}
+
+.attachment-preview-open:focus-visible,
+.attachment-preview-remove:focus-visible {
+  outline: none;
+}
+
+.attachment-preview-card.image .attachment-preview-open {
+  display: block;
 }
 
 .attachment-preview-thumb,
@@ -5135,7 +5192,14 @@ body.is-resizing-column .workspace-panel-resizer::before {
 }
 
 .attachment-preview-thumb {
-  object-fit: cover;
+  display: block;
+  object-fit: contain;
+  object-position: center;
+}
+
+.attachment-preview-card.image .attachment-preview-thumb {
+  height: 100%;
+  border-bottom: 0;
 }
 
 .attachment-preview-file-icon {
@@ -5185,8 +5249,17 @@ body.is-resizing-column .workspace-panel-resizer::before {
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 50%;
   cursor: pointer;
-  font-size: 15px;
-  line-height: 1;
+  line-height: 0;
+  outline: none;
+  transition:
+    color var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease);
+}
+
+.attachment-preview-remove .sidebar-svg-icon {
+  width: 12px;
+  height: 12px;
 }
 
 .attachment-preview-remove:hover {
@@ -5195,13 +5268,104 @@ body.is-resizing-column .workspace-panel-resizer::before {
   border-color: var(--border-strong);
 }
 
+.attachment-image-preview-presence {
+  z-index: 2400;
+}
+
+.attachment-image-preview-layer {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 48px 40px;
+  overflow: hidden;
+  background: rgba(8, 8, 8, 0.86);
+  opacity: 0;
+  transition: opacity var(--motion-slow) var(--motion-ease);
+}
+
+.attachment-image-preview-presence.visible .attachment-image-preview-layer {
+  opacity: 1;
+}
+
+.attachment-image-preview-surface {
+  display: grid;
+  place-items: center;
+  max-width: 100%;
+  max-height: 100%;
+  margin: 0;
+  opacity: 0;
+  transform: scale(0.975);
+  transition:
+    opacity var(--motion-slow) var(--motion-ease),
+    transform var(--motion-slow) var(--motion-ease);
+}
+
+.attachment-image-preview-presence.visible .attachment-image-preview-surface {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.attachment-image-preview-surface img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: calc(100vw - 80px);
+  max-height: calc(100vh - 96px);
+  object-fit: contain;
+  border-radius: 4px;
+  box-shadow: 0 18px 72px rgba(0, 0, 0, 0.44);
+  user-select: none;
+}
+
+.attachment-image-preview-close {
+  position: absolute;
+  top: 18px;
+  right: 20px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  color: rgba(255, 255, 255, 0.76);
+  background: rgba(30, 30, 30, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 50%;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.94);
+  transition:
+    color var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    opacity var(--motion-slow) var(--motion-ease),
+    transform var(--motion-slow) var(--motion-ease);
+}
+
+.attachment-image-preview-presence.visible .attachment-image-preview-close {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.attachment-image-preview-close:hover,
+.attachment-image-preview-close:focus-visible {
+  color: #fff;
+  background: rgba(54, 54, 54, 0.92);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.attachment-image-preview-close .sidebar-svg-icon {
+  width: 16px;
+  height: 16px;
+}
+
 .composer {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   min-height: 96px;
   max-height: min(44vh, 384px);
-  width: min(980px, 100%);
+  width: min(var(--chat-content-max-width), 100%);
   margin: 0 auto;
   padding: 10px 12px;
   background: var(--surface);
@@ -5948,111 +6112,6 @@ body.is-resizing-column .workspace-panel-resizer::before {
   font-size: 12px;
 }
 
-.runtime-menu-shell {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 10px);
-  display: flex;
-  flex-direction: row-reverse;
-  align-items: flex-end;
-  gap: 8px;
-  max-width: calc(100vw - 56px);
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(8px) scale(0.985);
-  transform-origin: right bottom;
-  visibility: hidden;
-  will-change: opacity, transform;
-  transition:
-    opacity var(--transient-motion) var(--motion-ease),
-    transform var(--transient-motion) var(--motion-ease),
-    visibility 0s linear var(--transient-motion);
-}
-
-.runtime-picker.open .runtime-menu-shell {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(0) scale(1);
-  visibility: visible;
-  transition:
-    opacity var(--transient-motion) var(--motion-ease),
-    transform var(--transient-motion) var(--motion-ease),
-    visibility 0s;
-}
-
-.runtime-menu-shell .runtime-picker-panel,
-.runtime-submenu {
-  position: relative;
-  right: auto;
-  bottom: auto;
-  display: block;
-  flex: 0 0 auto;
-  width: 260px;
-  max-height: min(390px, 58vh);
-  padding: 8px;
-  overflow-y: auto;
-  color: var(--text);
-  background: rgba(37, 37, 37, 0.98);
-  border: 1px solid var(--border-strong);
-  border-radius: 14px;
-  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.44);
-  opacity: 1;
-  pointer-events: auto;
-  transform: none;
-  visibility: visible;
-  transition: none;
-}
-
-.runtime-submenu {
-  width: 0;
-  max-width: 0;
-  max-height: min(360px, 56vh);
-  padding-right: 0;
-  padding-left: 0;
-  overflow: hidden;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateX(8px) scale(0.985);
-  visibility: hidden;
-  border-width: 0;
-  will-change: opacity, transform, width, max-width;
-  transition:
-    opacity var(--transient-motion) var(--motion-ease),
-    transform var(--transient-motion) var(--motion-ease),
-    width var(--transient-motion) var(--motion-ease),
-    max-width var(--transient-motion) var(--motion-ease),
-    padding var(--transient-motion) var(--motion-ease),
-    border-width var(--transient-motion) var(--motion-ease),
-    visibility 0s linear var(--transient-motion);
-}
-
-.runtime-submenu.visible {
-  padding: 8px;
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateX(0) scale(1);
-  visibility: visible;
-  border-width: 1px;
-  transition:
-    opacity var(--transient-motion) var(--motion-ease),
-    transform var(--transient-motion) var(--motion-ease),
-    width var(--transient-motion) var(--motion-ease),
-    max-width var(--transient-motion) var(--motion-ease),
-    padding var(--transient-motion) var(--motion-ease),
-    border-width var(--transient-motion) var(--motion-ease),
-    visibility 0s;
-}
-
-.runtime-provider-menu.visible {
-  width: 220px;
-  max-width: 220px;
-}
-
-.runtime-model-menu.visible {
-  width: 286px;
-  max-width: 286px;
-}
-
 .runtime-menu-list {
   display: grid;
   gap: 2px;
@@ -6163,18 +6222,51 @@ body.is-resizing-column .workspace-panel-resizer::before {
 }
 
 .runtime-menu-shell {
-  display: flex;
-  flex-direction: row-reverse;
-  align-items: flex-end;
-  width: auto;
-  max-width: calc(100vw - 56px);
-  gap: 8px;
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  display: block;
+  width: min(260px, calc(100vw - 56px));
+  max-width: min(260px, calc(100vw - 56px));
+  min-width: 0;
+  height: auto;
   padding: 0;
   overflow: visible;
   background: transparent;
   border: 0;
   border-radius: 0;
   box-shadow: none;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px) scale(0.985);
+  transform-origin: right bottom;
+  visibility: hidden;
+  will-change: opacity, transform;
+  transition:
+    opacity var(--transient-motion) var(--motion-ease),
+    transform var(--transient-motion) var(--motion-ease),
+    visibility 0s linear var(--transient-motion);
+}
+
+.runtime-picker.open .runtime-menu-shell {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+  visibility: visible;
+  transition:
+    opacity var(--transient-motion) var(--motion-ease),
+    transform var(--transient-motion) var(--motion-ease),
+    visibility 0s;
+}
+
+.runtime-menu-shell::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 100%;
+  bottom: 0;
+  width: 8px;
+  pointer-events: auto;
 }
 
 .runtime-menu-shell .runtime-picker-panel {
@@ -6182,12 +6274,13 @@ body.is-resizing-column .workspace-panel-resizer::before {
   right: auto;
   bottom: auto;
   display: grid;
-  flex: 0 0 260px;
-  width: 260px;
+  width: 100%;
+  min-width: 0;
   max-height: min(390px, 58vh);
   gap: 3px;
   padding: 8px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   color: var(--text);
   background: rgba(37, 37, 37, 0.98);
   border: 1px solid var(--border-strong);
@@ -6201,62 +6294,52 @@ body.is-resizing-column .workspace-panel-resizer::before {
 }
 
 .runtime-menu-shell .runtime-submenu {
-  position: relative;
-  right: auto;
-  bottom: auto;
+  position: absolute;
+  right: calc(100% + 8px);
+  bottom: 0;
+  z-index: 1;
   display: block;
-  flex: 0 0 auto;
-  width: 0;
-  max-width: 0;
+  width: min(286px, calc(100vw - 56px));
+  max-width: min(286px, calc(100vw - 56px));
   max-height: min(360px, 56vh);
-  padding: 8px 0;
-  overflow: hidden;
+  padding: 8px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   color: var(--text);
   background: rgba(37, 37, 37, 0.98);
-  border: 0 solid var(--border-strong);
+  border: 1px solid var(--border-strong);
   border-radius: 14px;
   box-shadow: 0 22px 54px rgba(0, 0, 0, 0.44);
   opacity: 0;
   pointer-events: none;
   transform: translateX(8px) scale(0.985);
   visibility: hidden;
-  will-change: opacity, transform, width, max-width;
+  will-change: opacity, transform;
   transition:
     opacity var(--transient-motion) var(--motion-ease),
     transform var(--transient-motion) var(--motion-ease),
-    width var(--transient-motion) var(--motion-ease),
-    max-width var(--transient-motion) var(--motion-ease),
-    padding var(--transient-motion) var(--motion-ease),
-    border-width var(--transient-motion) var(--motion-ease),
     visibility 0s linear var(--transient-motion);
 }
 
 .runtime-menu-shell .runtime-submenu.visible {
-  padding: 8px;
-  overflow-y: auto;
   opacity: 1;
   pointer-events: auto;
   transform: translateX(0) scale(1);
   visibility: visible;
-  border-width: 1px;
   transition:
     opacity var(--transient-motion) var(--motion-ease),
     transform var(--transient-motion) var(--motion-ease),
-    width var(--transient-motion) var(--motion-ease),
-    max-width var(--transient-motion) var(--motion-ease),
-    padding var(--transient-motion) var(--motion-ease),
-    border-width var(--transient-motion) var(--motion-ease),
     visibility 0s;
 }
 
-.runtime-menu-shell .runtime-model-menu.visible {
-  width: 286px;
-  max-width: 286px;
+.runtime-menu-shell .runtime-model-menu {
+  width: min(286px, calc(100vw - 56px));
+  max-width: min(286px, calc(100vw - 56px));
 }
 
-.runtime-menu-shell .runtime-provider-menu.visible {
-  width: 220px;
-  max-width: 220px;
+.runtime-menu-shell .runtime-provider-menu {
+  width: min(220px, calc(100vw - 56px));
+  max-width: min(220px, calc(100vw - 56px));
 }
 
 .runtime-submenu-trigger {
@@ -6421,6 +6504,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   padding: 0 10px;
   font-family: var(--mono);
   font-size: 12px;
+  font-weight: 850;
   text-align: left;
 }
 
@@ -6474,13 +6558,17 @@ body.is-resizing-column .workspace-panel-resizer::before {
   color: var(--bg);
   background: var(--accent);
   border-color: var(--accent);
-  font-weight: 900;
+  font-weight: 850;
 }
 
 .floating-help-tip {
   position: fixed;
   z-index: 2147483000;
-  max-width: 260px;
+  width: max-content;
+  max-width: min(560px, calc(100vw - 24px));
+  max-height: min(160px, calc(100vh - 24px));
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 8px 10px;
   color: var(--muted);
   background: var(--surface);
@@ -6491,7 +6579,9 @@ body.is-resizing-column .workspace-panel-resizer::before {
   font-weight: 600;
   line-height: 1.45;
   pointer-events: none;
-  white-space: pre-line;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   opacity: 0;
   transform: translateY(5px);
   transition:
@@ -6537,7 +6627,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   max-width: min(280px, 34vw);
   height: 34px;
   gap: 7px;
-  padding: 0 10px;
+  padding: 0 34px 0 10px;
   color: var(--text);
   background: var(--control);
   border: 1px solid transparent;
@@ -6548,13 +6638,11 @@ body.is-resizing-column .workspace-panel-resizer::before {
   outline: none;
   transition:
     background-color var(--motion-fast) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease),
-    padding-right var(--motion-fast) var(--motion-ease);
+    border-color var(--motion-fast) var(--motion-ease);
 }
 
 .workspace-context-chip:hover,
 .workspace-context-chip:focus-within {
-  padding-right: 34px;
   background: var(--control-hover);
   border-color: var(--border-strong);
 }
@@ -6655,7 +6743,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
 
 .composer-error {
   flex: 0 0 auto;
-  width: min(980px, 100%);
+  width: min(var(--chat-content-max-width), 100%);
   margin: 8px auto 0;
   color: #ffd2d2;
   font-size: 12px;
@@ -8167,6 +8255,347 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   font-size: 10.5px;
 }
 
+.development-environments-page {
+  gap: 0;
+}
+
+.development-environments-heading-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.development-environments-heading-row > div {
+  min-width: 0;
+}
+
+.development-environments-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 9px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 11.5px;
+  font-weight: 760;
+  transition:
+    color var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    opacity var(--motion-fast) var(--motion-ease);
+}
+
+.development-environments-refresh .workspace-panel-svg-icon,
+.development-environment-import .workspace-tree-glyph-icon,
+.development-environment-version-remove .sidebar-svg-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.development-environments-refresh:hover:not(:disabled),
+.development-environments-refresh:focus-visible {
+  color: var(--text-strong);
+  background: var(--control-hover);
+  border-color: var(--border-strong);
+  outline: 0;
+}
+
+.development-environments-refresh:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.development-environments-root {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  width: min(720px, 100%);
+  min-height: 42px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.development-environments-root span {
+  color: var(--muted-2);
+  font-size: 11px;
+  font-weight: 780;
+}
+
+.development-environments-root code {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-family: Consolas, 'Cascadia Mono', monospace;
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.development-environments-notice {
+  margin-top: 14px;
+  color: var(--muted-2);
+}
+
+.development-environment-group {
+  display: grid;
+  width: min(720px, 100%);
+  margin-top: 24px;
+}
+
+.development-environment-group-title {
+  padding: 0 8px 8px;
+  color: var(--muted-2);
+  font-size: 11px;
+  font-weight: 820;
+}
+
+.development-environment-list {
+  display: grid;
+  border-top: 1px solid var(--border);
+}
+
+.development-environment-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(156px, 205px);
+  align-items: center;
+  gap: 18px;
+  min-height: 94px;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.development-environment-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.development-environment-title-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.development-environment-title-line strong {
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 880;
+}
+
+.development-environment-main > small,
+.development-environment-main > p {
+  color: var(--muted-2);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.development-environment-installed {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+  color: var(--muted-2);
+  font-size: 10px;
+}
+
+.development-environment-version {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  overflow: hidden;
+  color: var(--muted);
+  background: var(--control);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.development-environment-version-select,
+.development-environment-version-remove {
+  display: grid;
+  place-items: center;
+  min-height: 19px;
+  padding: 0 5px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-family: Consolas, 'Cascadia Mono', monospace;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.development-environment-version-remove {
+  width: 22px;
+  padding: 0;
+  border-left: 1px solid var(--border);
+}
+
+.development-environment-version-select:hover,
+.development-environment-version-select:focus-visible,
+.development-environment-version-remove:hover:not(:disabled),
+.development-environment-version-remove:focus-visible {
+  color: var(--text-strong);
+  background: var(--control-hover);
+  outline: 0;
+}
+
+.development-environment-version-remove:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.development-environment-main > p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.development-environment-detail {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.development-environment-detail code {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--muted-2);
+  font-family: Consolas, 'Cascadia Mono', monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.development-environment-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 0 6px;
+  color: var(--muted-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 820;
+}
+
+.development-environment-status.ready {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 45%, transparent);
+}
+
+.development-environment-status.system-fallback {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 45%, transparent);
+}
+
+.development-environment-status.version-pending {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.development-environment-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 6px;
+}
+
+.development-environment-controls label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.development-environment-controls label > span {
+  color: var(--muted-2);
+  font-size: 10px;
+}
+
+.development-environment-controls input {
+  width: 100%;
+  min-width: 0;
+  min-height: 30px;
+  padding: 0 7px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: 0;
+  font-family: Consolas, 'Cascadia Mono', monospace;
+  font-size: 11px;
+}
+
+.development-environment-controls input:focus {
+  border-color: var(--border-strong);
+  background: var(--control-hover);
+}
+
+.development-environment-controls > button {
+  min-height: 30px;
+  padding: 0 8px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 780;
+}
+
+.development-environment-action-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.development-environment-action-row button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.development-environment-action-row button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.development-environment-controls > button:hover:not(:disabled),
+.development-environment-controls > button:focus-visible {
+  color: var(--text-strong);
+  background: var(--control-hover);
+  border-color: var(--border-strong);
+  outline: 0;
+}
+
+.development-environment-controls > button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.development-environments-empty {
+  width: min(720px, 100%);
+  padding: 18px 8px;
+  color: var(--muted-2);
+  font-size: 12px;
+}
+
 @media (max-width: 760px) {
   .storage-settings-row {
     grid-template-columns: minmax(0, 1fr);
@@ -8179,6 +8608,21 @@ body.is-resizing-column .settings-sidebar-resizer::before {
 
   .storage-settings-row button {
     justify-self: start;
+  }
+
+  .development-environments-heading-row {
+    display: grid;
+    gap: 10px;
+  }
+
+  .development-environment-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .development-environments-root {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
   }
 }
 
@@ -8283,6 +8727,11 @@ body.is-resizing-column .settings-sidebar-resizer::before {
 
 .approval-risk-note {
   color: var(--text) !important;
+}
+
+.approval-boundary-note {
+  color: var(--accent) !important;
+  font-weight: 600;
 }
 
 .approval-session-note {
@@ -10385,9 +10834,14 @@ body.is-resizing-column .settings-sidebar-resizer::before {
 }
 
 @container chat-pane (max-width: 520px) {
+  .messages,
   .composer-shell {
-    padding-right: 10px;
-    padding-left: 10px;
+    --chat-content-gutter: 10px;
+  }
+
+  .composer-shell {
+    padding-right: var(--chat-content-gutter);
+    padding-left: var(--chat-content-gutter);
   }
 
   .composer-controls {

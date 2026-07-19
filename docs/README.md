@@ -1,14 +1,16 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-07-17 12:55:45
+最后更新：2026-07-19 09:48:44
 
 本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
 
 ## 现在先做什么
 
-**当前阶段**：正式 Memory v2→v3 迁移已于 2026-07-16 完成，活动 backend 与运行配置均为 v3。正式数据包含 40 个业务 atom、5 个内部 scope root 和 11 个资源；SQLite Catalog integrity 为 `ok`。固定 BGE 模型已完成 24,451,050 字节和 SHA-256 校验，45 个 atom 均已生成 512 维本地向量，状态为 45 ready、0 pending、0 failed。阶段 9 的专属运行时相关性门已通过：D1 Recall@1/2 均为 `1.0`、多余注入 `0`、向量调用 `0`；分支内深搜 Recall@1/3 为 `0.7/0.9`、作用域泄漏 `0`。阶段 10 的动态 working set 与反馈演化门已通过；阶段 11 已统一中英文指代、排除、负向约束和任务转向；阶段 12 已接入版本化会话摘要回退；阶段 13 又完成关系引导的一跳 Atom 选择。阶段 13 的 7 个关系案例在 Repository 重启前后共 14/14 通过，首次 working set 也在重启前后稳定注入种子与必要依赖；D1 查询向量、scope leak、多余 Atom 和网络尝试均为 0。
+**当前阶段**：正式 Memory v2→v3 迁移、原子化记忆与本地向量目录、动态 working set、关系导航、shadow Git 检查点、退出冻结、工具调用级并行、LLM 调用收敛、逻辑容器权限基础闭环和“设置→开发环境”版本管理基础闭环均已完成；真实 Provider 校准、运行时工具链下载分发、运行中事件重入、TaskBook 步骤级并行和活动 run 重启续跑仍是主线。具体测试数字只看 [项目状态](decision/project-status.md)。
 
-**推荐下一步**：先完成 OpenAI、DeepSeek、GLM 的真实 Provider 校准，再进入运行中事件重入、TaskBook 步骤级并行和活动 run 重启续跑。工具调用级并行、shadow Git 检查点、退出冻结、上下文收敛和本地 Memory v3 基元已经完成，不再把目录或文件放置当作主线。
+**推荐下一步**：先完成 OpenAI、DeepSeek、GLM 的真实 Provider 校准，再进入运行中事件重入、TaskBook 步骤级并行和活动 run 重启续跑。权限定义已统一为“行为 profile 与权限策略正交”，不要再把编程当作权限模式。
+
+**当前权限决策**：产品语义上 LS 是 Agent 的容器，活动完整应用数据根（默认 `.littlesheep`）是容器边界，`workplace/` 是容器内的默认工作区；当前桌面实现是 Main 的逻辑边界，不是实际 Docker/OS 进程沙箱。完全访问只对容器内读、写、改、删、执行免批准；研究只对容器内读取免批准；受限所有操作都需批准；容器外或范围不明三档都需批准。外部工作区启动 run 时先跳过自动索引，用户主动的 UI 预览/保存仍与 Agent 授权分开。核心源码另有不可绕过的宿主级只读保护。
 
 **你现在不需要再次决定迁移**：迁移、模型准备、向量回填和应用重启已经完成。真实 Provider 门当前只缺可用凭证；受控 mock 只能证明首轮注入、KnownState、反馈、EVOLVE/CAPTURE 和重启召回的本地结构连续性，不能替代真实模型验收。
 
@@ -50,6 +52,7 @@
 - [原子记忆与内置向量目录任务书 2026-07-17](taskbooks/memory-atom-vector-catalog-taskbook-2026-07-17.md)：Memory v3 原子文件、层级、本地向量目录、三层视图边界、动态注入、压缩连续性、迁移与验收。
 - [Agent Runtime 连续性任务书 2026-07-14](taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md)：Provider 校准、Context、附件、运行中重入、检查点、后台执行和有界并行。
 - [Agent Runtime 效率与版本化连续性任务书 2026-07-17](taskbooks/agent-runtime-efficiency-versioning-taskbook-2026-07-17.md)：工具调用并行、shadow Git、检查点、退出冻结、LLM 调用预算和前台 `SOUL` 表达边界。
+- [开发环境管理任务书 2026-07-19](taskbooks/development-environment-taskbook-2026-07-19.md)：设置页版本偏好、工具链导入、终端优先路径、安全校验和后续运行时分发边界。
 
 ### 已完成基线
 

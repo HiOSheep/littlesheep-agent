@@ -5,6 +5,12 @@ import { EventEmitter } from 'node:events'
 import type { ServerResponse } from 'node:http'
 import { HttpError, writeSse } from './http.js'
 import { createWorkspaceTerminalProcess, type WorkspaceTerminalProcess } from './terminal-process.js'
+import {
+  analyzeTerminalInput,
+  EMPTY_TERMINAL_INPUT_STATE,
+  type TerminalInputAnalysis,
+} from './terminal-input.js'
+import type { PermissionPolicyId } from '@littlesheep/types'
 
 const MAX_TERMINAL_OUTPUT_BYTES = 512 * 1024
 const MAX_WORKSPACE_TERMINAL_SESSIONS = 16
@@ -17,6 +23,7 @@ const MAX_TERMINAL_ROWS = 120
 export interface WorkspaceTerminalSessionSnapshot {
   sessionId: string
   cwd: string
+  permissionMode: PermissionPolicyId
   shell: string
   backend: 'pty' | 'spawn'
   cols: number
@@ -34,17 +41,25 @@ interface WorkspaceTerminalSessionEvents {
 export class WorkspaceTerminalSession extends EventEmitter<WorkspaceTerminalSessionEvents> {
   readonly sessionId = randomUUID()
   readonly root: string
+  readonly permissionMode: PermissionPolicyId
   readonly shellLabel: string
   readonly backend: 'pty' | 'spawn'
   private readonly terminal: WorkspaceTerminalProcess
   private readonly outputHistory: Array<{ stream: 'stdout' | 'stderr'; text: string }> = []
   private size: { cols: number; rows: number }
+  private inputState = { ...EMPTY_TERMINAL_INPUT_STATE }
   private exited = false
   private exitInfo: { exitCode: number | null; signal: string | null } | null = null
 
-  private constructor(root: string, size: { cols: number; rows: number }, terminal: WorkspaceTerminalProcess) {
+  private constructor(
+    root: string,
+    size: { cols: number; rows: number },
+    terminal: WorkspaceTerminalProcess,
+    permissionMode: PermissionPolicyId,
+  ) {
     super()
     this.root = root
+    this.permissionMode = permissionMode
     this.size = size
     this.terminal = terminal
     this.backend = terminal.kind
@@ -54,21 +69,28 @@ export class WorkspaceTerminalSession extends EventEmitter<WorkspaceTerminalSess
     terminal.onExit((event) => {
       this.exited = true
       this.exitInfo = event
+      this.inputState = { ...EMPTY_TERMINAL_INPUT_STATE }
       this.emit('exit', event)
     })
     queueMicrotask(() => this.emit('start', this.snapshot()))
   }
 
-  static async create(root: string, size = DEFAULT_TERMINAL_SIZE): Promise<WorkspaceTerminalSession> {
+  static async create(
+    root: string,
+    size = DEFAULT_TERMINAL_SIZE,
+    permissionMode: PermissionPolicyId = 'research',
+    env: NodeJS.ProcessEnv = process.env,
+  ): Promise<WorkspaceTerminalSession> {
     const normalizedSize = normalizeTerminalSize(size)
-    const terminal = await createWorkspaceTerminalProcess(root, normalizedSize)
-    return new WorkspaceTerminalSession(root, normalizedSize, terminal)
+    const terminal = await createWorkspaceTerminalProcess(root, normalizedSize, env)
+    return new WorkspaceTerminalSession(root, normalizedSize, terminal, permissionMode)
   }
 
   snapshot(): WorkspaceTerminalSessionSnapshot {
     return {
       sessionId: this.sessionId,
       cwd: this.root,
+      permissionMode: this.permissionMode,
       shell: this.shellLabel,
       backend: this.backend,
       cols: this.size.cols,
@@ -84,11 +106,24 @@ export class WorkspaceTerminalSession extends EventEmitter<WorkspaceTerminalSess
 
   writeCommand(command: string): void {
     this.writeInput(`${command}\r`)
+    this.inputState = { ...EMPTY_TERMINAL_INPUT_STATE }
   }
 
   writeInput(data: string): void {
     if (this.exited) throw new HttpError(410, 'terminal session has exited')
     this.terminal.write(data)
+  }
+
+  analyzeInput(data: string): TerminalInputAnalysis {
+    return analyzeTerminalInput(this.inputState, data)
+  }
+
+  commitInput(analysis: TerminalInputAnalysis): void {
+    this.inputState = { ...analysis.nextState }
+  }
+
+  resetInputState(): void {
+    this.inputState = { ...EMPTY_TERMINAL_INPUT_STATE }
   }
 
   resize(cols: number, rows: number): WorkspaceTerminalSessionSnapshot {
@@ -103,6 +138,7 @@ export class WorkspaceTerminalSession extends EventEmitter<WorkspaceTerminalSess
 
   kill(): void {
     if (!this.exited) this.terminal.kill()
+    this.terminal.dispose()
   }
 
   private pushOutput(stream: 'stdout' | 'stderr', text: string): void {
@@ -121,12 +157,17 @@ export class WorkspaceTerminalSessionManager {
   private readonly removalTimers = new Map<string, NodeJS.Timeout>()
   private closed = false
 
-  async create(root: string, size = DEFAULT_TERMINAL_SIZE): Promise<WorkspaceTerminalSession> {
+  async create(
+    root: string,
+    size = DEFAULT_TERMINAL_SIZE,
+    permissionMode: PermissionPolicyId = 'research',
+    env: NodeJS.ProcessEnv = process.env,
+  ): Promise<WorkspaceTerminalSession> {
     if (this.closed) throw new HttpError(503, 'terminal session manager is stopped')
     if (this.sessions.size >= MAX_WORKSPACE_TERMINAL_SESSIONS) {
       throw new HttpError(429, 'too many workspace terminal sessions')
     }
-    const session = await WorkspaceTerminalSession.create(root, size)
+    const session = await WorkspaceTerminalSession.create(root, size, permissionMode, env)
     this.sessions.set(session.sessionId, session)
     session.once('exit', () => {
       if (this.closed) return

@@ -37,7 +37,15 @@ export function useApprovalController({
   }
 
   async function requestApprovalForScope(request: ApprovalRequest, scopeKey: string): Promise<boolean> {
-    if (request.permissionMode === 'full') return true
+    // Full access is scoped to the LS container. Main annotates Agent
+    // requests with the boundary it calculated; an outside/unknown request
+    // must still reach the user even when the selected mode is full.
+    const detailBoundary = request.detail && typeof request.detail === 'object' && !Array.isArray(request.detail)
+      ? (request.detail as { boundary?: unknown }).boundary
+      : undefined
+    const boundary = request.boundary
+      ?? (detailBoundary === 'inside' || detailBoundary === 'outside' || detailBoundary === 'unknown' ? detailBoundary : undefined)
+    if (request.permissionMode === 'full' && boundary !== 'outside' && boundary !== 'unknown') return true
     if (approvalGrantsRef.current.allows(scopeKey, request)) return true
     const decision = await new Promise<ApprovalDecision>((resolve) => {
       openApprovalPrompt({ request, resolve })

@@ -18,6 +18,9 @@
       "path": "../memory-core"
     },
     {
+      "path": "../safety"
+    },
+    {
       "path": "../session"
     },
     {
