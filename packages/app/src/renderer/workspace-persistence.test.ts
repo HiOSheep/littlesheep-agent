@@ -15,6 +15,7 @@ import {
   workspaceFileTabId,
   WORKSPACE_PANEL_OPEN_TABS_MAX,
 } from './workspace-persistence'
+import { LEGACY_WORKSPACE_BROWSER_TAB_ID } from './workspace/browser-tabs'
 
 describe('workspace persistence helpers', () => {
   it('roundtrips Windows file tab ids without losing path characters', () => {
@@ -37,6 +38,7 @@ describe('workspace persistence helpers', () => {
     expect(hydrateWorkspacePanelTabs(['bogus'])).toEqual(['review'])
     expect(hydrateWorkspacePanelTabs(null)).toEqual(['review'])
     expect(hydrateWorkspacePanelTabs(['files'])).toEqual(['review'])
+    expect(hydrateWorkspacePanelTabs(['browser'])).toEqual([LEGACY_WORKSPACE_BROWSER_TAB_ID])
     expect(hydrateWorkspacePanelTabs([])).toEqual([])
   })
 

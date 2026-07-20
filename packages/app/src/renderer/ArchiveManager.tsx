@@ -146,7 +146,11 @@ export function ArchiveManager({ onChanged }: ArchiveManagerProps) {
                     </ArchiveActionButton>
                   </span>
                 </div>
-                <div className="archive-child-list" aria-hidden={!expanded}>
+                <div
+                  className="archive-child-list"
+                  aria-hidden={!expanded}
+                  {...(!expanded ? { inert: '' } : {})}
+                >
                   {sessions.length > 0 ? (
                     sessions.map((session) => (
                       <ArchiveSessionRow

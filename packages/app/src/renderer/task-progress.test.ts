@@ -27,6 +27,16 @@ describe('task progress', () => {
     })
   })
 
+  it('enters execution when a standalone tool starts before any task step', () => {
+    const snapshot = buildTaskProgress(activity({
+      steps: [],
+      tools: [{ callId: 'tool-1', name: 'read', startedAt: 2 }],
+    }))
+
+    expect(snapshot.phase).toBe('executing')
+    expect(snapshot.label).toBe('正在执行')
+  })
+
   it('reaches 100 only after the run is done', () => {
     expect(buildTaskProgress(activity({ status: 'done', verificationRunning: false }))).toMatchObject({
       percent: 100, phase: 'done', label: '任务完成',

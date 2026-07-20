@@ -25,6 +25,7 @@ import { WorkspaceFileView } from './preview-pane'
 import { WorkspaceTerminal } from './terminal'
 import type { WorkspaceBrowserHistory } from './browser-history'
 import { isWorkspaceBrowserTabId, type WorkspaceBrowserTab, type WorkspaceBrowserTabId } from './browser-tabs'
+import { resolveWorkspaceEntrySelection } from './entry-selection'
 import { WorkspaceTabStrip } from './tab-strip'
 import type { PermissionModeId } from '../../shared/permission-modes'
 export function WorkspacePanel({
@@ -149,7 +150,11 @@ export function WorkspacePanel({
       className={`workspace-panel ${collapsed ? 'collapsed' : ''} ${fullscreen ? 'fullscreen' : ''}`}
       aria-label="拓展工作区"
     >
-      <div className="workspace-panel-contents" {...(collapsed ? { inert: '' } : {})}>
+      <div
+        className="workspace-panel-contents"
+        aria-hidden={collapsed}
+        {...(collapsed ? { inert: '' } : {})}
+      >
         <header className="workspace-panel-header">
           <div className="workspace-panel-topbar">
             <WorkspaceTabStrip
@@ -160,6 +165,7 @@ export function WorkspacePanel({
               workspaceEntries={workspaceEntries}
               onTabChange={onTabChange}
               onCloseTab={onCloseTab}
+              onOpenBrowserTab={onBrowserOpenNewTab}
               onTipChange={onTipChange}
             />
             <div className="workspace-context-line">
@@ -203,6 +209,7 @@ export function WorkspacePanel({
             <WorkspaceEmptyLauncher
               entries={workspaceEntries}
               onSelect={onTabChange}
+              onOpenBrowserTab={onBrowserOpenNewTab}
               onTipChange={onTipChange}
             />
           )}
@@ -379,10 +386,12 @@ export function WorkspacePanel({
 function WorkspaceEmptyLauncher({
   entries,
   onSelect,
+  onOpenBrowserTab,
   onTipChange,
 }: {
   entries: Array<{ id: WorkspacePanelTab; label: string; desc: string }>
   onSelect: (tab: WorkspacePanelTab) => void
+  onOpenBrowserTab: (url: string) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   return (
@@ -395,7 +404,9 @@ function WorkspaceEmptyLauncher({
           type="button"
           onClick={() => {
             onTipChange(null)
-            onSelect(entry.id)
+            const selection = resolveWorkspaceEntrySelection(entry.id)
+            if (selection.kind === 'new-browser-tab') onOpenBrowserTab(selection.url)
+            else onSelect(selection.tab)
           }}
           onMouseEnter={(event) => onTipChange(buildFloatingHelpTip(entry.desc, event.clientX, event.clientY))}
           onMouseMove={(event) => onTipChange(buildFloatingHelpTip(entry.desc, event.clientX, event.clientY))}

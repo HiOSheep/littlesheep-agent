@@ -5,11 +5,12 @@ import {
   createWorkspaceBrowserTab,
   hydrateWorkspaceBrowserTabs,
   isWorkspaceBrowserTabId,
+  LEGACY_WORKSPACE_BROWSER_TAB_ID,
   serializeWorkspaceBrowserTabs,
 } from './browser-tabs'
 
 describe('embedded browser tabs', () => {
-  it('keeps a stable default tab and bounded persisted metadata', () => {
+  it('keeps bounded persisted metadata without injecting a default page', () => {
     const tabs = hydrateWorkspaceBrowserTabs(Array.from({ length: MAX_WORKSPACE_BROWSER_TABS + 4 }, (_, index) => ({
       id: `browser:tab-${index}`,
       title: `tab-${index}`,
@@ -18,8 +19,21 @@ describe('embedded browser tabs', () => {
     })))
 
     expect(tabs).toHaveLength(MAX_WORKSPACE_BROWSER_TABS)
-    expect(tabs[0]?.id).toBe('browser')
-    expect(isWorkspaceBrowserTabId(tabs[1]?.id)).toBe(true)
+    expect(tabs[0]?.id).toBe('browser:tab-0')
+    expect(isWorkspaceBrowserTabId(tabs[0]?.id)).toBe(true)
+    expect(hydrateWorkspaceBrowserTabs(null)).toEqual([])
+  })
+
+  it('migrates the former fixed browser page without treating it as the launcher', () => {
+    const [tab] = hydrateWorkspaceBrowserTabs([{
+      id: 'browser',
+      title: '哔哩哔哩',
+      url: 'https://www.bilibili.com/',
+      history: { entries: ['https://www.bilibili.com/'], index: 0 },
+    }])
+
+    expect(tab?.id).toBe(LEGACY_WORKSPACE_BROWSER_TAB_ID)
+    expect(tab?.url).toBe('https://www.bilibili.com/')
   })
 
   it('normalizes the active URL and retains a bounded history', () => {
@@ -45,7 +59,14 @@ describe('embedded browser tabs', () => {
     const second = createNewWorkspaceBrowserTab('https://example.test/b')
     expect(first.id).not.toBe(second.id)
     expect(first.history).not.toBe(second.history)
-    expect(serializeWorkspaceBrowserTabs([first, second])).toHaveLength(3)
+    expect(serializeWorkspaceBrowserTabs([first, second])).toHaveLength(2)
+  })
+
+  it('creates a genuinely blank browser tab', () => {
+    const tab = createNewWorkspaceBrowserTab()
+    expect(tab.url).toBe('')
+    expect(tab.history).toEqual({ entries: [], index: -1 })
+    expect(serializeWorkspaceBrowserTabs([tab])[0]?.history).toEqual({ entries: [], index: -1 })
   })
 
   it('removes adjacent fine-grained page states while hydrating persisted tabs', () => {

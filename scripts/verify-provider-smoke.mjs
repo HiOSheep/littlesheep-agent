@@ -12,7 +12,7 @@ import {
 import { createLlmClient } from '../packages/llm/dist/index.js';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const supportedChecks = new Set(['chat', 'tool', 'abort']);
+const supportedChecks = new Set(['chat', 'continuity', 'tool', 'abort']);
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -52,12 +52,57 @@ async function main() {
   const results = [];
   for (const check of args.checks) {
     if (check === 'chat') results.push(await runChat(client, provider.id, model, requestOptions));
+    if (check === 'continuity') results.push(await runContinuity(client, provider.id, model, requestOptions));
     if (check === 'tool') results.push(await runTool(client, provider.id, model, requestOptions));
     if (check === 'abort') results.push(await runAbort(client, provider.id, model, requestOptions));
   }
 
   for (const result of results) console.log(JSON.stringify(result));
   return results.every((result) => result.ok) ? 0 : 1;
+}
+
+async function runContinuity(client, provider, model, requestOptions) {
+  const startedAt = Date.now();
+  try {
+    const response = await client.chat({
+      model,
+      messages: [
+        {
+          role: 'system',
+          content: [
+            'Continue the supplied conversation unless the user changes topics.',
+            'Resolve shorthand and numeric references from recent messages before asking for repeated information.',
+            'A later explicit user correction supersedes an earlier conflicting assistant claim within the same topic.',
+            'Answer the final user message naturally in Chinese.',
+          ].join(' '),
+        },
+        { role: 'user', content: '介绍一下DBV-152这辆车吧。' },
+        { role: 'assistant', content: 'DBV-152 是一辆 X 级坦克歼击车，使用 152 mm 主炮，单发伤害是 750。' },
+        { role: 'user', content: '单发是800啊。' },
+        { role: 'assistant', content: '明白了，已更正：DBV-152 的单发伤害是 800。' },
+        { role: 'user', content: '假如你拥有了152，会怎么做呢？' },
+      ],
+      max_tokens: 768,
+      ...requestOptions,
+    });
+    const content = response.content.trim();
+    const resolvesVehicle = /DBV|坦克|TD|歼击|车辆|装甲|主炮|单发|伏击|支援|转场/u.test(content);
+    const asksForRepeatedSubject = /152.{0,16}(是什么|指什么|具体指|什么意思)|请.{0,12}(解释|说明).{0,12}152/u.test(content);
+    return {
+      check: 'continuity',
+      ok: content.length > 0 && resolvesVehicle && !asksForRepeatedSubject,
+      provider,
+      model,
+      finishReason: response.finishReason,
+      resolvedReference: resolvesVehicle,
+      askedForRepeatedSubject,
+      contentCharacters: content.length,
+      usage: sanitizeUsage(response.usage),
+      durationMs: Date.now() - startedAt,
+    };
+  } catch (error) {
+    return failedResult('continuity', provider, model, startedAt, error);
+  }
 }
 
 async function runChat(client, provider, model, requestOptions) {

@@ -12,8 +12,9 @@ import {
 export const MAX_WORKSPACE_BROWSER_TABS = 12
 export const MAX_BROWSER_TAB_TITLE_LENGTH = 120
 export const MAX_BROWSER_URL_LENGTH = 8192
+export const LEGACY_WORKSPACE_BROWSER_TAB_ID = 'browser:legacy' as const
 
-export type WorkspaceBrowserTabId = 'browser' | `browser:${string}`
+export type WorkspaceBrowserTabId = `browser:${string}`
 
 export interface WorkspaceBrowserTab {
   id: WorkspaceBrowserTabId
@@ -25,7 +26,7 @@ export interface WorkspaceBrowserTab {
 let browserTabSequence = 0
 
 export function isWorkspaceBrowserTabId(value: unknown): value is WorkspaceBrowserTabId {
-  return value === 'browser' || (typeof value === 'string' && /^browser:[a-z0-9_-]+$/iu.test(value))
+  return typeof value === 'string' && /^browser:[a-z0-9_-]+$/iu.test(value)
 }
 
 export function createWorkspaceBrowserTabId(): WorkspaceBrowserTabId {
@@ -35,7 +36,7 @@ export function createWorkspaceBrowserTabId(): WorkspaceBrowserTabId {
 
 export function createWorkspaceBrowserTab(
   url = '',
-  id: WorkspaceBrowserTabId = 'browser',
+  id: WorkspaceBrowserTabId = createWorkspaceBrowserTabId(),
   title = '浏览器',
 ): WorkspaceBrowserTab {
   const normalizedUrl = normalizeBrowserTabUrl(url)
@@ -61,20 +62,24 @@ export function hydrateWorkspaceBrowserTabs(value: unknown): WorkspaceBrowserTab
       if (tabs.length >= MAX_WORKSPACE_BROWSER_TABS) break
     }
   }
-  if (!tabs.some((tab) => tab.id === 'browser')) tabs.unshift(createWorkspaceBrowserTab())
   return tabs.slice(0, MAX_WORKSPACE_BROWSER_TABS)
 }
 
 export function serializeWorkspaceBrowserTabs(tabs: WorkspaceBrowserTab[]): WorkspaceBrowserTab[] {
-  return hydrateWorkspaceBrowserTabs(tabs).map((tab) => ({
-    id: tab.id,
-    title: tab.title,
-    url: tab.url,
-    history: {
-      entries: tab.history.entries.slice(-MAX_WORKSPACE_BROWSER_HISTORY),
-      index: Math.max(0, Math.min(tab.history.index, tab.history.entries.length - 1)),
-    },
-  }))
+  return hydrateWorkspaceBrowserTabs(tabs).map((tab) => {
+    const entries = tab.history.entries.slice(-MAX_WORKSPACE_BROWSER_HISTORY)
+    return {
+      id: tab.id,
+      title: tab.title,
+      url: tab.url,
+      history: {
+        entries,
+        index: entries.length === 0
+          ? -1
+          : Math.max(0, Math.min(tab.history.index, entries.length - 1)),
+      },
+    }
+  })
 }
 
 export function normalizeBrowserTabUrl(value: unknown): string {
@@ -98,16 +103,24 @@ export function normalizeBrowserTabTitle(value: unknown, url = ''): string {
 function normalizeWorkspaceBrowserTab(value: unknown): WorkspaceBrowserTab | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const raw = value as Record<string, unknown>
-  if (!isWorkspaceBrowserTabId(raw.id)) return null
+  const id = normalizeWorkspaceBrowserTabId(raw.id)
+  if (!id) return null
   const url = normalizeBrowserTabUrl(raw.url)
   const history = normalizeBrowserHistory(raw.history, url)
   const currentUrl = history.entries[history.index] ?? url
   return {
-    id: raw.id,
+    id,
     title: normalizeBrowserTabTitle(raw.title, currentUrl),
     url: currentUrl,
     history,
   }
+}
+
+function normalizeWorkspaceBrowserTabId(value: unknown): WorkspaceBrowserTabId | null {
+  // Older builds used `browser` both as the launcher and as a persistent page.
+  // Keep that page recoverable while moving it out of the launcher namespace.
+  if (value === 'browser') return LEGACY_WORKSPACE_BROWSER_TAB_ID
+  return isWorkspaceBrowserTabId(value) ? value : null
 }
 
 function normalizeBrowserHistory(value: unknown, fallbackUrl: string): WorkspaceBrowserHistory {

@@ -135,6 +135,7 @@ export function SettingsWorkspace({
           className="settings-sidebar-resizer"
           role="separator"
           aria-hidden={sidebarCollapsed}
+          {...(sidebarCollapsed ? { inert: '' } : {})}
           aria-label="调整设置侧栏宽度"
           aria-orientation="vertical"
           aria-valuemin={SIDEBAR_WIDTH_MIN}

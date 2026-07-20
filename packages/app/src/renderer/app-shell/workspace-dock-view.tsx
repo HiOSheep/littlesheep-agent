@@ -23,6 +23,7 @@ export function WorkspaceDockView({ controller }: { controller: AppController })
         className="workspace-panel-resizer"
         role="separator"
         aria-hidden={workspacePanelCollapsed || workspacePanelFullscreen}
+        {...(workspacePanelCollapsed || workspacePanelFullscreen ? { inert: '' } : {})}
         aria-label="调整拓展工作区宽度"
         aria-orientation="vertical"
         aria-valuemin={WORKSPACE_PANEL_WIDTH_MIN}
@@ -96,6 +97,7 @@ export function WorkspaceDockView({ controller }: { controller: AppController })
         aria-label="打开拓展工作区"
         aria-expanded={!workspacePanelCollapsed}
         aria-hidden={!workspacePanelCollapsed}
+        {...(!workspacePanelCollapsed ? { inert: '' } : {})}
         tabIndex={workspacePanelCollapsed ? 0 : -1}
         onClick={toggleWorkspacePanel}
         onFocus={() => setWorkspacePanelReopenActive(true)}

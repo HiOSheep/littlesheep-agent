@@ -135,6 +135,8 @@ export function SidebarActionMenu({
           className={`sidebar-menu-panel ${open ? 'visible' : ''}`}
           role="menu"
           aria-label={label}
+          aria-hidden={!open}
+          {...(!open ? { inert: '' } : {})}
           style={{ left: position.x, top: position.y }}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}

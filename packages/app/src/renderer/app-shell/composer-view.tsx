@@ -5,6 +5,7 @@ import {
 } from '../../shared/model-capabilities'
 import { AddMenu } from '../composer/add-menu'
 import { ContextUsageIndicator } from '../composer/context-usage-indicator'
+import { shouldFocusComposerInput } from '../composer/focus-routing'
 import { AttachmentPreviewCard } from '../composer/message-files'
 import { ModePicker } from '../composer/mode-picker'
 import { RuntimePicker } from '../composer/runtime-picker'
@@ -57,6 +58,10 @@ export function ComposerView({ controller }: { controller: AppController }) {
       <TaskProgressPresence activity={latestTaskActivity} now={activityNow} />
       <div
         className={`composer ${dragActive ? 'drag-active' : ''}`}
+        onClick={(event) => {
+          if (!shouldFocusComposerInput(event.target)) return
+          inputRef.current?.focus({ preventScroll: true })
+        }}
         onDragEnter={handleComposerDragEnter}
         onDragOver={handleComposerDragOver}
         onDragLeave={handleComposerDragLeave}

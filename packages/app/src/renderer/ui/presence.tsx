@@ -11,11 +11,13 @@ export function FadePresence({
   children,
   exitMs = 190,
   className = '',
+  interactiveDuringExit = false,
 }: {
   show: boolean
   children: ReactNode
   exitMs?: number
   className?: string
+  interactiveDuringExit?: boolean
 }) {
   const [mounted, setMounted] = useState(show)
   const [visible, setVisible] = useState(false)
@@ -56,8 +58,13 @@ export function FadePresence({
   }, [exitMs, show])
 
   if (!mounted) return null
+  const interactionHidden = !show && !interactiveDuringExit
   return (
-    <div className={`presence-layer presence-${phase} ${visible ? 'visible' : ''} ${className}`.trim()}>
+    <div
+      className={`presence-layer presence-${phase} ${visible ? 'visible' : ''} ${className}`.trim()}
+      aria-hidden={interactionHidden}
+      {...(interactionHidden ? { inert: '' } : {})}
+    >
       {children}
     </div>
   )

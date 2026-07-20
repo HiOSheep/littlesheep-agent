@@ -34,6 +34,7 @@ export function buildRunRequestCandidates(
   options: BuildRunRequestCandidatesOptions = {},
 ): ContextMessageCandidate[] {
   const history = options.history ?? ctx.history;
+  const historyPriorities = conversationContinuityPriorities(history, ctx.inbound);
   const inserted = options.insertedBeforePrimary ?? [];
   const insertedStartIndex = 1 + history.length;
   const primaryUserIndex = insertedStartIndex + inserted.length;
@@ -68,9 +69,7 @@ export function buildRunRequestCandidates(
           sessionId: ctx.sessionId,
           generatedAt: historyMessage.timestamp,
         },
-        // Recent conversation is more useful for continuity than the static date-time section;
-        // runtime-awareness already carries the exact current clock and elapsed run facts.
-        priority: 75,
+        priority: historyPriorities[index - 1] ?? 75,
         required: false,
       });
     }
@@ -163,3 +162,66 @@ function candidate(
 ): ContextMessageCandidate {
   return { ...value, sensitive: value.sensitive ?? true };
 }
+
+function conversationContinuityPriorities(history: Message[], inbound: Message): number[] {
+  const inboundTerms = continuityTerms(messageText(inbound));
+  const priorities: number[] = history.map((message, index) => {
+    const distanceFromLatest = history.length - 1 - index;
+    const recencyPriority = distanceFromLatest < 4
+      ? 90
+      : distanceFromLatest < 8
+        ? 82
+        : 72;
+    return sharesContinuityTerm(inboundTerms, continuityTerms(messageText(message)))
+      ? 94
+      : recencyPriority;
+  });
+
+  // Keep a user/assistant turn coherent when only one side repeats the active
+  // entity. A retained answer without its subject is not useful continuity.
+  for (let index = 0; index < history.length - 1; index += 1) {
+    if (history[index]?.role !== 'user' || history[index + 1]?.role !== 'assistant') continue;
+    const turnPriority = Math.max(priorities[index] ?? 72, priorities[index + 1] ?? 72);
+    priorities[index] = turnPriority;
+    priorities[index + 1] = turnPriority;
+  }
+  return priorities;
+}
+
+function messageText(message: Message): string {
+  return message.content
+    .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
+    .map((block) => block.text)
+    .join('\n');
+}
+
+function continuityTerms(value: string): Set<string> {
+  const normalized = value.normalize('NFKC').toLocaleLowerCase('en-US');
+  const terms = new Set<string>();
+  for (const match of normalized.matchAll(/[a-z0-9]+(?:[-_.:/][a-z0-9]+)*/gu)) {
+    const identifier = match[0];
+    if (identifier.length >= 2) terms.add(identifier);
+    for (const part of identifier.split(/[-_.:/]+/u)) {
+      if (part.length >= 2) terms.add(part);
+    }
+  }
+  for (const match of normalized.matchAll(/[\u3400-\u9fff]{3,}/gu)) {
+    const run = match[0];
+    for (let index = 0; index <= run.length - 3; index += 1) {
+      const term = run.slice(index, index + 3);
+      if (!GENERIC_CONTINUITY_TERMS.has(term)) terms.add(term);
+    }
+  }
+  return terms;
+}
+
+function sharesContinuityTerm(left: Set<string>, right: Set<string>): boolean {
+  for (const term of left) {
+    if (right.has(term)) return true;
+  }
+  return false;
+}
+
+const GENERIC_CONTINUITY_TERMS = new Set([
+  '介绍一', '绍一下', '是什么', '为什么', '怎么样', '怎么做', '可以吗', '需要吗', '能不能',
+]);

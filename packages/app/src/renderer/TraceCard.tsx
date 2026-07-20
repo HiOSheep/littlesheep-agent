@@ -36,7 +36,11 @@ export function TraceCard({ trace, toolCalls, durationMs, onOpenFile }: TraceCar
         <small>{toolCount > 0 ? `${toolCount} 个工具` : '无工具调用'} · {durationMs ? `${(durationMs / 1000).toFixed(1)}s` : '-'}</small>
         <i className="trace-chevron" aria-hidden="true" />
       </button>
-      <div className={`trace-body disclosure-panel ${open ? 'open' : ''}`} aria-hidden={!open}>
+      <div
+        className={`trace-body disclosure-panel ${open ? 'open' : ''}`}
+        aria-hidden={!open}
+        {...(!open ? { inert: '' } : {})}
+      >
         <div className="trace-body-inner">
           {trace && trace.length > 0 && (
             <div className="trace-stages">
@@ -86,7 +90,11 @@ function TraceToolItem({
         <span className="activity-command-duration">历史</span>
         <span className="activity-command-chevron" aria-hidden="true" />
       </button>
-      <div className={`activity-command-body disclosure-panel ${open ? 'open' : ''}`} aria-hidden={!open}>
+      <div
+        className={`activity-command-body disclosure-panel ${open ? 'open' : ''}`}
+        aria-hidden={!open}
+        {...(!open ? { inert: '' } : {})}
+      >
         <div className="activity-command-shell">
           <div className="activity-command-shell-title">
             <span>{tool.name}</span>

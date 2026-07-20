@@ -152,7 +152,11 @@ export function SidebarProjectSection({
           </button>
         </div>
       </div>
-      <div className="project-tree">
+      <div
+        className="project-tree"
+        aria-hidden={collapsed}
+        {...(collapsed ? { inert: '' } : {})}
+      >
         {visibleProjects.map((project) => {
           const tip = `项目工作区\n${project.path}`
           const active = project.id === activeProjectId
@@ -215,7 +219,11 @@ export function SidebarProjectSection({
                   </SidebarActionMenu>
                 </span>
               </div>
-              <div className="project-session-list" aria-hidden={!expanded}>
+              <div
+                className="project-session-list"
+                aria-hidden={!expanded}
+                {...(!expanded ? { inert: '' } : {})}
+              >
                 {projectSessions.length > 0 ? (
                   projectSessions.map((session) => (
                     <SessionRow

@@ -66,7 +66,13 @@ export function AddMenu({
       >
         +
       </button>
-      <div className="add-menu-panel" role="menu" aria-label="添加">
+      <div
+        className="add-menu-panel"
+        role="menu"
+        aria-label="添加"
+        aria-hidden={!open}
+        {...(!open ? { inert: '' } : {})}
+      >
         <div className="add-menu-title">添加</div>
         <button className="add-menu-item" type="button" role="menuitem" onClick={() => runAction(onAddFiles)}>
           <span className="add-menu-icon">+</span>

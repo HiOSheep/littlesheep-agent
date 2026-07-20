@@ -55,7 +55,11 @@ export function ConversationSectionView({ controller }: { controller: AppControl
               </button>
             </div>
           </div>
-          <div className="session-list">
+          <div
+            className="session-list"
+            aria-hidden={conversationCollapsed}
+            {...(conversationCollapsed ? { inert: '' } : {})}
+          >
             {visibleSessions.map((s) => (
               <SessionRow
                 key={s.id}

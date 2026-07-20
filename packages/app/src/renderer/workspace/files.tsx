@@ -273,7 +273,11 @@ export function WorkspaceFiles({
         >
           <FolderGlyphIcon />
         </button>
-        <div className="workspace-files-navigator-inner" {...(navigatorCollapsed ? { inert: '' } : {})}>
+        <div
+          className="workspace-files-navigator-inner"
+          aria-hidden={navigatorCollapsed}
+          {...(navigatorCollapsed ? { inert: '' } : {})}
+        >
           <div className="workspace-files-toolbar">
             <div className="workspace-files-root">
               <span>

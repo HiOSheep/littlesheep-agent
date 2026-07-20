@@ -28,14 +28,12 @@ export class ContextEngine {
   private readonly safetyEstimator: NonNullable<ContextEngineOptions['safetyEstimator']>;
   private readonly resolveContextWindow: NonNullable<ContextEngineOptions['resolveContextWindow']>;
   private readonly resolveTokenizerCapability: NonNullable<ContextEngineOptions['resolveTokenizerCapability']>;
-
   constructor(options: ContextEngineOptions = {}) {
     this.tokenCounter = options.tokenCounter;
     this.safetyEstimator = options.safetyEstimator ?? defaultContextSafetyEstimator;
     this.resolveContextWindow = options.resolveContextWindow ?? resolveModelContextWindow;
     this.resolveTokenizerCapability = options.resolveTokenizerCapability ?? resolveModelTokenizerCapability;
   }
-
   prepare(input: PrepareContextRequestInput): PreparedContextRequest {
     const createdAt = new Date().toISOString();
     const budget = resolveContextBudget(input, this.resolveContextWindow);
@@ -86,21 +84,23 @@ export class ContextEngine {
         counterFailure = (error as Error).message;
       }
     }
-
-    if (promptTokens === undefined && targetPromptTokens !== undefined) {
+    // Conservative estimates guard the hard model window; only exact counters
+    // may enforce the smaller stage target without over-pruning Context.
+    const safetyPromptTokens = budget.availablePromptTokens ?? targetPromptTokens;
+    if (promptTokens === undefined && safetyPromptTokens !== undefined) {
       try {
         state.measurement = validTokenCount(
           this.safetyEstimator.estimatePromptTokens(state.request),
           'context safety estimator',
         );
-        if (state.measurement > targetPromptTokens) {
+        if (state.measurement > safetyPromptTokens) {
           evictOptionalContext(
             state,
             input.request,
             candidates,
             omitted,
             optional,
-            targetPromptTokens,
+            safetyPromptTokens,
             (request) => validTokenCount(
               this.safetyEstimator.estimatePromptTokens(request),
               'context safety estimator',

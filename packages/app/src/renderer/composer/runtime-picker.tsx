@@ -138,6 +138,7 @@ export function RuntimePicker({
       <div
         className="runtime-menu-shell"
         aria-hidden={!open}
+        {...(!open ? { inert: '' } : {})}
         onMouseEnter={cancelRuntimeSubmenuClose}
         onMouseLeave={() => scheduleRuntimeSubmenuClose(80)}
       >
@@ -220,6 +221,7 @@ export function RuntimePicker({
               : activeProvider ? `${activeProvider.name} 模型` : '模型'
           }
           aria-hidden={!activeSubmenu || providers.length === 0}
+          {...(!activeSubmenu || providers.length === 0 ? { inert: '' } : {})}
           onMouseEnter={cancelRuntimeSubmenuClose}
           onMouseLeave={() => scheduleRuntimeSubmenuClose()}
         >

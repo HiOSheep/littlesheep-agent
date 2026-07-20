@@ -97,11 +97,17 @@ export function SidebarFeaturePanel({
       ref={panelRef}
       className={`sidebar-feature-panel ${visible ? 'visible' : ''}`}
       aria-label={title}
+      aria-hidden={!visible}
+      {...(!visible ? { inert: '' } : {})}
       onKeyDown={(event) => {
         if (event.key === 'Escape') onClose()
       }}
     >
-      <div className={`sidebar-feature-content ${contentVisible ? 'visible' : ''}`}>
+      <div
+        className={`sidebar-feature-content ${contentVisible ? 'visible' : ''}`}
+        aria-hidden={!contentVisible}
+        {...(!contentVisible ? { inert: '' } : {})}
+      >
         <div className="sidebar-feature-header">
           <span>
             <strong>{title}</strong>

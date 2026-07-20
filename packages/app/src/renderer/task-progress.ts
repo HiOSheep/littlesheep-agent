@@ -19,7 +19,7 @@ export function buildTaskProgress(activity: HistoryActivity): TaskProgressSnapsh
   else if (activity.status === 'failed') phase = 'failed'
   else if (activity.status === 'done') phase = 'done'
   else if (activity.verificationRunning) phase = 'verifying'
-  else if (running || completedSteps > 0) phase = 'executing'
+  else if (running || failed || completedSteps > 0 || activity.tools.length > 0) phase = 'executing'
   else phase = 'planning'
 
   let percent = 0

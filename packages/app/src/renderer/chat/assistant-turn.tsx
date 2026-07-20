@@ -13,6 +13,7 @@ import {
 import { TraceCard } from '../TraceCard'
 import { FileGlyphIcon } from '../ui/icons'
 import { assistantTurnStatusLabel, buildArtifactsFromLiveTools, formatMaybeDuration, liveStepStatusLabel, toolFilePath, verificationSummary, verificationVerdictLabel } from './activity-model'
+import { hasExecutionStarted, visibleActivitySteps } from './activity-visibility'
 import { formatToolInput, formatToolResult, liveToolStatusClass, shortActivityText, toolShellTitle } from './task-progress-indicator'
 import { AssistantTurnActivity, ChatMessage, LiveToolEvent } from './types'
 
@@ -48,11 +49,26 @@ export function AssistantTurnMessage({
   const collapsed = Boolean(message.activityCollapsed)
   const commandCount = activity.tools.length
   const runningCommands = activity.tools.filter((tool) => tool.ok === undefined).length
+  const visibleSteps = visibleActivitySteps(activity)
+  const runningSteps = visibleSteps.filter((step) => step.status === 'running').length
   const thoughtRunning = activity.status === 'running' && !activity.taskBook
-  const executionRunning = activity.status === 'running' && Boolean(activity.taskBook || activity.steps.length || activity.tools.length)
+  const executionStarted = hasExecutionStarted(activity)
+  const executionRunning = activity.status === 'running' && executionStarted
   const thoughtMeta = activity.taskBook
     ? `${taskComplexityLabel(activity.taskBook.complexity)} · ${activity.taskBook.steps.length} 个步骤`
     : '正在判断目标与范围'
+  const executionMeta = runningCommands > 0
+    ? `正在运行 ${runningCommands} 条命令`
+    : runningSteps > 0
+      ? `正在执行 ${runningSteps} 个步骤`
+      : activity.verificationRunning
+        ? '正在验证结果'
+        : commandCount > 0
+          ? `已运行 ${commandCount} 条命令`
+          : visibleSteps.length > 0
+            ? `已记录 ${visibleSteps.length} 个步骤`
+            : verificationSummary(activity.verificationHistory)
+  const hasFinalContent = Boolean(message.text.trim() || activity.error || message.artifacts?.length)
 
   return (
     <section className={`assistant-turn ${activity.status} ${collapsed ? 'collapsed' : ''}`} data-message-key={messageKey}>
@@ -67,7 +83,11 @@ export function AssistantTurnMessage({
         </span>
         <span className="assistant-turn-chevron" aria-hidden="true" />
       </button>
-      <div className={`assistant-turn-process disclosure-panel ${collapsed ? '' : 'open'}`} aria-hidden={collapsed}>
+      <div
+        className={`assistant-turn-process disclosure-panel ${collapsed ? '' : 'open'}`}
+        aria-hidden={collapsed}
+        {...(collapsed ? { inert: '' } : {})}
+      >
         <div className="assistant-turn-process-inner">
           <ActivityDisclosure
             title={thoughtRunning ? '思考中' : '思考'}
@@ -78,38 +98,44 @@ export function AssistantTurnMessage({
           >
             <ThoughtSummary activity={activity} />
           </ActivityDisclosure>
-          <ActivityDisclosure
-            title={executionRunning ? '执行中' : '执行'}
-            meta={runningCommands > 0 ? `正在运行 ${runningCommands} 条命令` : commandCount > 0 ? `已运行 ${commandCount} 条命令` : '等待执行'}
-            running={executionRunning}
-            defaultOpen={executionDisclosureDefaultOpen(activity.status)}
-            resetKey={executionDisclosureResetKey(activity.status)}
-          >
-            <ActivityTimeline activity={activity} now={now} onOpenFile={onOpenFile} />
-            {(activity.verificationRunning || (activity.verificationHistory?.length ?? 0) > 0) && (
-              <div className="activity-verification-block">
-                <div className="activity-verification-heading">
-                  <strong className={activity.verificationRunning ? 'is-running' : ''}>
-                    {activity.verificationRunning ? '正在验证' : '验证'}
-                  </strong>
-                  <span>{activity.verificationRunning ? '检查任务是否真正达标' : verificationSummary(activity.verificationHistory)}</span>
+          {executionStarted && (
+            <ActivityDisclosure
+              title={executionRunning ? '执行中' : '执行'}
+              meta={executionMeta}
+              running={executionRunning}
+              defaultOpen={executionDisclosureDefaultOpen(activity.status)}
+              resetKey={executionDisclosureResetKey(activity.status)}
+            >
+              {(visibleSteps.length > 0 || commandCount > 0) && (
+                <ActivityTimeline activity={activity} now={now} onOpenFile={onOpenFile} />
+              )}
+              {(activity.verificationRunning || (activity.verificationHistory?.length ?? 0) > 0) && (
+                <div className="activity-verification-block">
+                  <div className="activity-verification-heading">
+                    <strong className={activity.verificationRunning ? 'is-running' : ''}>
+                      {activity.verificationRunning ? '正在验证' : '验证'}
+                    </strong>
+                    <span>{activity.verificationRunning ? '检查任务是否真正达标' : verificationSummary(activity.verificationHistory)}</span>
+                  </div>
+                  <VerificationTimeline activity={activity} />
                 </div>
-                <VerificationTimeline activity={activity} />
-              </div>
-            )}
-          </ActivityDisclosure>
+              )}
+            </ActivityDisclosure>
+          )}
         </div>
       </div>
-      <div className="message assistant assistant-final">
-        {message.text
-          ? <Markdown text={message.text} />
-          : activity.error
-            ? <span className="run-status-error">{activity.error}</span>
-            : <span className="loading task-running-text is-running">正在执行...</span>}
-        {message.artifacts && message.artifacts.length > 0 && (
-          <MessageFileStrip files={message.artifacts} label="产出成果" onOpenFile={onOpenFile} />
-        )}
-      </div>
+      {hasFinalContent && (
+        <div className="message assistant assistant-final">
+          {message.text
+            ? <Markdown text={message.text} />
+            : activity.error
+              ? <span className="run-status-error">{activity.error}</span>
+              : null}
+          {message.artifacts && message.artifacts.length > 0 && (
+            <MessageFileStrip files={message.artifacts} label="产出成果" onOpenFile={onOpenFile} />
+          )}
+        </div>
+      )}
     </section>
   )
 }
@@ -147,7 +173,11 @@ export function ActivityDisclosure({
         {meta && <span className="activity-disclosure-meta">{meta}</span>}
         <span className="activity-disclosure-chevron" aria-hidden="true" />
       </button>
-      <div className={`activity-disclosure-body disclosure-panel ${open ? 'open' : ''}`} aria-hidden={!open}>
+      <div
+        className={`activity-disclosure-body disclosure-panel ${open ? 'open' : ''}`}
+        aria-hidden={!open}
+        {...(!open ? { inert: '' } : {})}
+      >
         <div className="activity-disclosure-inner">{children}</div>
       </div>
     </section>
@@ -196,13 +226,12 @@ export function ActivityTimeline({
   now: number
   onOpenFile: (path: string) => void
 }) {
-  if (activity.steps.length === 0 && activity.tools.length === 0) {
-    return <div className="activity-empty">等待状态机进入执行阶段。</div>
-  }
+  const visibleSteps = visibleActivitySteps(activity)
+  if (visibleSteps.length === 0 && activity.tools.length === 0) return null
 
   return (
     <div className="activity-timeline">
-      {activity.steps.map((step) => {
+      {visibleSteps.map((step) => {
         const tools = activity.tools.filter((tool) => tool.stepId === step.stepId)
         return (
           <div key={step.stepId} className={`activity-timeline-step ${step.status}`}>
@@ -303,7 +332,11 @@ export function ActivityCommandItem({
         <span className="activity-command-duration">{formatMaybeDuration(tool.startedAt, tool.endedAt, now)}</span>
         <span className="activity-command-chevron" aria-hidden="true" />
       </button>
-      <div className={`activity-command-body disclosure-panel ${open ? 'open' : ''}`} aria-hidden={!open}>
+      <div
+        className={`activity-command-body disclosure-panel ${open ? 'open' : ''}`}
+        aria-hidden={!open}
+        {...(!open ? { inert: '' } : {})}
+      >
         <div className="activity-command-shell">
           <div className="activity-command-shell-title">
             <span>{toolShellTitle(tool.name)}</span>

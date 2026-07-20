@@ -32,40 +32,42 @@ export function ContextUsageIndicator({ usage }: { usage: ContextUsage }) {
       aria-label={ariaLabel}
     >
       <span className="context-usage-ring" aria-hidden="true" />
-      <span className="context-usage-popover" aria-hidden="true">
-        <span className="context-usage-title">上下文窗口：</span>
-        {!windowKnown ? (
-          <>
-            <span>当前模型的上下文窗口尚未登记</span>
-            <strong>不可用</strong>
-          </>
-        ) : usage.available ? (
-          <>
-            {usage.providerUsedTokens !== undefined ? (
-              <span className="context-usage-source">
-                供应商实测 {formatTokenCount(usage.providerUsedTokens)} · {formatUsageTime(usage.providerReportedAt)}
-              </span>
-            ) : (
-              <span className="context-usage-source">供应商实测待返回</span>
-            )}
-            {usage.localUsedTokens !== undefined ? (
-              <span className="context-usage-source" title={usage.localTokenizerId}>
-                本地精确装配 {formatTokenCount(usage.localUsedTokens)} · {formatUsageTime(usage.localCountedAt)}
-              </span>
-            ) : (
-              <span className="context-usage-source" title={usage.localUnavailableReason}>
-                本地精确计数不可用
-              </span>
-            )}
-            <span>共 {formatTokenCount(usage.maxTokens)}</span>
-            <strong>{usage.percent}% 已用</strong>
-          </>
-        ) : (
-          <>
-            <span>等待模型供应商返回真实用量</span>
-            <strong>共 {formatTokenCount(usage.maxTokens)}</strong>
-          </>
-        )}
+      <span className="context-usage-popover-shell">
+        <span className="context-usage-popover" aria-hidden="true">
+          <span className="context-usage-title">上下文窗口：</span>
+          {!windowKnown ? (
+            <>
+              <span>当前模型的上下文窗口尚未登记</span>
+              <strong>不可用</strong>
+            </>
+          ) : usage.available ? (
+            <>
+              {usage.providerUsedTokens !== undefined ? (
+                <span className="context-usage-source">
+                  供应商实测 {formatTokenCount(usage.providerUsedTokens)} · {formatUsageTime(usage.providerReportedAt)}
+                </span>
+              ) : (
+                <span className="context-usage-source">供应商实测待返回</span>
+              )}
+              {usage.localUsedTokens !== undefined ? (
+                <span className="context-usage-source" title={usage.localTokenizerId}>
+                  本地精确装配 {formatTokenCount(usage.localUsedTokens)} · {formatUsageTime(usage.localCountedAt)}
+                </span>
+              ) : (
+                <span className="context-usage-source" title={usage.localUnavailableReason}>
+                  本地精确计数不可用
+                </span>
+              )}
+              <span>共 {formatTokenCount(usage.maxTokens)}</span>
+              <strong>{usage.percent}% 已用</strong>
+            </>
+          ) : (
+            <>
+              <span>等待模型供应商返回真实用量</span>
+              <strong>共 {formatTokenCount(usage.maxTokens)}</strong>
+            </>
+          )}
+        </span>
       </span>
     </div>
   )

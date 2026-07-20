@@ -1,6 +1,10 @@
 // @littlesheep/app — workspace-persistence.ts
 // Pure recovery helpers for the extension workspace UI.
-import { isWorkspaceBrowserTabId, type WorkspaceBrowserTabId } from './workspace/browser-tabs'
+import {
+  isWorkspaceBrowserTabId,
+  LEGACY_WORKSPACE_BROWSER_TAB_ID,
+  type WorkspaceBrowserTabId,
+} from './workspace/browser-tabs'
 
 export interface WorkspaceOpenRequest {
   id: number
@@ -108,7 +112,13 @@ export function isWorkspacePanelTabId(value: unknown): value is WorkspacePanelTa
 }
 
 export function normalizeWorkspacePanelTabId(value: unknown): WorkspacePanelTabId | null {
-  const normalized = value === 'overview' || value === 'files' ? 'review' : value
+  // `browser` is now a launcher action. Persisted values from older builds
+  // refer to the former fixed browser page and migrate to a normal tab.
+  const normalized = value === 'browser'
+    ? LEGACY_WORKSPACE_BROWSER_TAB_ID
+    : value === 'overview' || value === 'files'
+      ? 'review'
+      : value
   return isWorkspacePanelTabId(normalized) ? normalized : null
 }
 

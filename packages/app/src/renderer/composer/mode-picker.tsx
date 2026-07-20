@@ -77,7 +77,14 @@ export function ModePicker({
         <ModeRiskIcon risk={selected.risk} className="mode-picker-mark" />
         <span className="model-picker-current">{selected.label}</span>
       </button>
-      <div ref={panelRef} className="model-picker-panel option-picker-panel mode-picker-panel" role="dialog" aria-label="权限模式选择">
+      <div
+        ref={panelRef}
+        className="model-picker-panel option-picker-panel mode-picker-panel"
+        role="dialog"
+        aria-label="权限模式选择"
+        aria-hidden={!open}
+        {...(!open ? { inert: '' } : {})}
+      >
         <div className="option-picker-list" role="listbox" aria-label="权限模式">
           {MODE_OPTIONS.map((item) => {
             const isActive = item.id === value

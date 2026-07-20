@@ -33,6 +33,52 @@ describe('replyStage', () => {
     expect(ctx.replyProvenance).toMatchObject({ source: 'llm', purpose: 'reply', rewriteCount: 0 });
   });
 
+  it('preserves a referenced topic anchor and later correction in the DeepSeek request', async () => {
+    const requests: import('@littlesheep/llm').ChatRequest[] = [];
+    const llm = createMockLlm((request) => {
+      requests.push(request);
+      return textResponse('我会把它当作高机动高单发的支援型 TD 来玩。');
+    });
+    const stage = createReplyStage({
+      llm,
+      model: 'deepseek/deepseek-v4-flash',
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+    });
+    const history = [
+      textMessage('user', '介绍一下DBV-152这辆车吧'),
+      textMessage('assistant', 'DBV-152 是一辆 X 级坦克歼击车，主炮口径为 152 mm。'),
+      textMessage('user', '你这信息有错误啊'),
+      textMessage('assistant', '请告诉我具体是哪一项。'),
+      textMessage('user', '单发是800啊'),
+      textMessage('assistant', '明白了，已更正：单发伤害是 800。'),
+    ];
+    const ctx = makeCtx({
+      inbound: textMessage('user', '假如你拥有了152，会怎么做呢？'),
+      history,
+    });
+    // Reproduce the old failure condition: the strict byte upper bound is
+    // above the reply stage's 16k soft target while remaining far below the
+    // verified one-million-token model window.
+    ctx.memoryRootIndex = `# Memory Tree Root Index\n${'indexed-memory-entry\n'.repeat(900)}`;
+
+    const result = await stage(ctx);
+
+    expect(result.ok).toBe(true);
+    const sentText = requests[0]?.messages.map((message) => typeof message.content === 'string'
+      ? message.content
+      : message.content.filter((part) => part.type === 'text').map((part) => part.text).join('\n')) ?? [];
+    expect(sentText).toEqual(expect.arrayContaining([
+      '介绍一下DBV-152这辆车吧',
+      '单发是800啊',
+      '假如你拥有了152，会怎么做呢？',
+    ]));
+    expect(ctx.contextSnapshots?.[0]?.safetyEstimate?.estimatedPromptTokens).toBeGreaterThan(16_000);
+    expect(ctx.contextSnapshots?.[0]?.items
+      .filter((item) => item.kind === 'recent_message')
+      .every((item) => item.disposition === 'included')).toBe(true);
+  });
+
   it('buffers streaming output and publishes only the distinct rewritten reply', async () => {
     const llm = createMockLlm([
       textResponse('还是同一句回复。'),

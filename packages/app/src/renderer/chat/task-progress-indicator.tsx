@@ -2,6 +2,7 @@
 import { useEffect, useId, useRef, useState, type CSSProperties } from 'react'
 import { buildTaskProgress } from '../task-progress'
 import { formatDurationMs } from './activity-model'
+import { visibleActivitySteps } from './activity-visibility'
 import { AssistantTurnActivity, LiveToolEvent } from './types'
 
 
@@ -92,6 +93,7 @@ export function TaskProgressIndicator({
   const closeTimerRef = useRef<number>()
   const popoverId = useId()
   const progress = buildTaskProgress(activity)
+  const visibleSteps = visibleActivitySteps(activity)
   const style = { '--task-progress-angle': `${progress.percent * 3.6}deg` } as CSSProperties
   const currentDetail = progress.phase === 'planning'
     ? '正在校准需求并生成执行计划'
@@ -181,9 +183,9 @@ export function TaskProgressIndicator({
           </span>
           <span className="task-progress-popover-copy">{currentDetail}</span>
           <span className="task-progress-popover-meta">{compactStatus} · {formatDurationMs(now - activity.startedAt)}</span>
-          {activity.taskBook?.assessment.requiresTaskBook && activity.steps.length > 0 && (
+          {activity.taskBook?.assessment.requiresTaskBook && visibleSteps.length > 0 && (
             <span className="task-progress-step-list">
-              {activity.steps.map((step) => (
+              {visibleSteps.map((step) => (
                 <span key={step.stepId} className={`task-progress-step ${step.status}`}>
                   <span className="task-progress-step-dot" aria-hidden="true" />
                   <span>{step.title}</span>

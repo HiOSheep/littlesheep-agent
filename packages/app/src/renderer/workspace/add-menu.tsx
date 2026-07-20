@@ -9,6 +9,7 @@ import { WORKSPACE_MENU_EVENT, transientTriggerProps } from '../ui/transient'
 import {
   type WorkspacePanelTab
 } from '../workspace-persistence'
+import { resolveWorkspaceEntrySelection } from './entry-selection'
 
 
 export function WorkspaceAddMenu({
@@ -16,12 +17,14 @@ export function WorkspaceAddMenu({
   activeTab,
   openTabs,
   onSelect,
+  onOpenBrowserTab,
   onTipChange,
 }: {
   entries: Array<{ id: WorkspacePanelTab; label: string; desc: string }>
   activeTab: WorkspacePanelTab | null
   openTabs: WorkspacePanelTab[]
   onSelect: (tab: WorkspacePanelTab) => void
+  onOpenBrowserTab: (url: string) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const [mounted, setMounted] = useState(false)
@@ -67,7 +70,9 @@ export function WorkspaceAddMenu({
 
   function selectEntry(tab: WorkspacePanelTab) {
     onTipChange(null)
-    onSelect(tab)
+    const selection = resolveWorkspaceEntrySelection(tab)
+    if (selection.kind === 'new-browser-tab') onOpenBrowserTab(selection.url)
+    else onSelect(selection.tab)
     closeMenu()
   }
 
@@ -137,6 +142,8 @@ export function WorkspaceAddMenu({
           className={`workspace-add-panel ${open ? 'visible' : ''}`}
           role="menu"
           aria-label="拓展功能菜单"
+          aria-hidden={!open}
+          {...(!open ? { inert: '' } : {})}
           style={{ left: position.x, top: position.y }}
         >
           {entries.map((entry) => {

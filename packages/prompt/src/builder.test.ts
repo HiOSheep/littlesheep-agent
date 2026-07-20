@@ -35,6 +35,8 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('does not edit, invalidate or delete durable memory');
     expect(prompt).toContain("turn the user's ideas and goals into reliable, verified results");
     expect(prompt).toContain('Use progressive disclosure');
+    expect(prompt).toContain('Resolve shorthand and omitted subjects from supplied recent conversation');
+    expect(prompt).toContain('later explicit user corrections override earlier conflicting Assistant claims');
     expect(prompt).toContain('Never hide failure, partial completion, risk');
     expect(prompt).toContain('answer with hour and minute only');
     expect(prompt).toContain('Do not volunteer low-value timing or percentage details');

@@ -84,7 +84,7 @@ export function WorkspaceTerminal({
       getWorkspacePath: () => workspacePath,
       isDisposed: () => disposed || !mountedRef.current,
       requestApproval: onRequestCommandApproval,
-      writeLine: writeTerminalLine,
+      writeLine: writeTerminalNotice,
       setStatus,
       onCompletedCommand: () => void refreshTerminalActivities(),
     })
@@ -99,9 +99,13 @@ export function WorkspaceTerminal({
         terminal = new Terminal({
           cols: 80,
           rows: 24,
-          convertEol: true,
+          // PTY output already carries the shell's cursor and line-ending
+          // semantics. Rewriting LF here can move the xterm cursor away from
+          // the prompt that ConPTY is tracking.
+          convertEol: false,
           cursorBlink: true,
-          disableStdin: false,
+          disableStdin: true,
+          scrollOnUserInput: true,
           fontFamily: TERMINAL_FONT_FAMILY,
           fontSize: TERMINAL_FONT_SIZE,
           lineHeight: TERMINAL_LINE_HEIGHT,
@@ -135,7 +139,6 @@ export function WorkspaceTerminal({
         inputDisposable = terminal.onData((data) => {
           if (!disposed) inputController.queue(data)
         })
-        terminal.focus()
         const fitTerminal = () => {
           if (disposed || !terminalRef.current || !fitAddonRef.current) return
           try {
@@ -167,6 +170,9 @@ export function WorkspaceTerminal({
           fitTerminal,
         )
         fitScheduler = scheduler
+        // Fit once synchronously so the PTY is created with the real panel
+        // geometry instead of printing its prompt at the 80x24 fallback size.
+        fitTerminal()
         scheduler.schedule(true)
         resizeObserver = new ResizeObserver(() => {
           scheduler.schedule()
@@ -198,10 +204,9 @@ export function WorkspaceTerminal({
           window.visualViewport?.removeEventListener('resize', scheduleDisplayRefresh)
           document.removeEventListener('visibilitychange', handleVisibilityChange)
         }
-        writeTerminalLine('LittleSheep PowerShell')
-        writeTerminalLine(`cwd: ${workspacePath}`)
-        writeTerminalLine('正在启动 LS 内置终端...')
-        writeTerminalLine('')
+        // The PTY owns the XTerm cursor. Renderer-written banners would move
+        // XTerm without moving PowerShell's PSReadLine cursor model, causing
+        // the first command to be redrawn beside an earlier line.
         void startTerminalSession(() => disposed)
       })
       .catch((err) => {
@@ -231,7 +236,17 @@ export function WorkspaceTerminal({
     streamAbortRef.current?.abort()
     const controller = new AbortController()
     streamAbortRef.current = controller
+    setTerminalInputEnabled(false)
     setStatus('启动中')
+    let terminalOutputSeen = false
+    let terminalReadyLabel = 'PowerShell'
+    const enableInputAfterOutput = () => {
+      if (terminalOutputSeen || isDisposed()) return
+      terminalOutputSeen = true
+      setStatus(`${terminalReadyLabel} 就绪`)
+      setTerminalInputEnabled(true)
+      void inputControllerRef.current?.drain()
+    }
     try {
       const size = terminalSizeRef.current.cols > 0 && terminalSizeRef.current.rows > 0
         ? terminalSizeRef.current
@@ -265,32 +280,42 @@ export function WorkspaceTerminal({
       }
       terminalSessionRef.current = terminalSession.sessionId
       terminalBackendRef.current = terminalSession.backend ?? 'spawn'
+      terminalReadyLabel = terminalSession.shell
       setTerminalBackend(terminalSession.backend ?? 'spawn')
       terminalSizeRef.current = { cols: terminalSession.cols, rows: terminalSession.rows }
       reportTerminalSize()
-      setStatus(`${terminalSession.shell} 就绪`)
-      terminalRef.current?.focus()
-      void inputControllerRef.current?.drain()
+      setStatus('正在连接')
       await streamWorkspaceTerminalSession(terminalSession.sessionId, {
         signal: controller.signal,
         onStart: (event) => {
           if (isDisposed()) return
           terminalBackendRef.current = event.backend ?? 'spawn'
+          terminalReadyLabel = event.shell
           setTerminalBackend(event.backend ?? 'spawn')
-          setStatus(`${event.shell} 就绪`)
+          setStatus('正在连接')
         },
         onStdout: (text) => {
-          if (!isDisposed()) writeTerminalText(text)
+          if (!isDisposed()) {
+            writeTerminalText(text)
+            enableInputAfterOutput()
+          }
         },
         onStderr: (text) => {
-          if (!isDisposed()) writeTerminalText(text, 'stderr')
+          if (!isDisposed()) {
+            writeTerminalText(text, 'stderr')
+            enableInputAfterOutput()
+          }
         },
         onExit: () => {
-          if (!isDisposed()) setStatus('终端已退出')
+          if (!isDisposed()) {
+            setTerminalInputEnabled(false)
+            setStatus('终端已退出')
+          }
         },
         onError: (message) => {
           if (isDisposed()) return
-          writeTerminalLine(`\x1b[31m${message}\x1b[0m`)
+          setTerminalInputEnabled(false)
+          writeTerminalNotice(`\x1b[31m${message}\x1b[0m`)
           setStatus('终端错误')
         },
       })
@@ -298,8 +323,9 @@ export function WorkspaceTerminal({
       const error = err as Error
       if (error.name === 'AbortError') return
       if (isDisposed()) return
+      setTerminalInputEnabled(false)
       setStatus(error.message)
-      writeTerminalLine(`\x1b[31m${error.message}\x1b[0m`)
+      writeTerminalNotice(`\x1b[31m${error.message}\x1b[0m`)
     } finally {
       if (streamAbortRef.current === controller) streamAbortRef.current = null
     }
@@ -309,6 +335,11 @@ export function WorkspaceTerminal({
     const terminal = terminalRef.current
     if (!terminal) return
     terminal.writeln(line)
+  }
+
+  function writeTerminalNotice(line = '') {
+    if (terminalSessionRef.current && terminalBackendRef.current === 'pty') return
+    writeTerminalLine(line)
   }
 
   function writeTerminalText(text: string, tone: 'normal' | 'stderr' = 'normal') {
@@ -352,6 +383,13 @@ export function WorkspaceTerminal({
     terminalRef.current?.focus()
   }
 
+  function setTerminalInputEnabled(enabled: boolean) {
+    const terminal = terminalRef.current
+    if (!terminal) return
+    terminal.options.disableStdin = !enabled
+    if (enabled) terminal.focus()
+  }
+
   async function interruptTerminal() {
     const activeSessionId = terminalSessionRef.current
     if (!activeSessionId) return
@@ -360,7 +398,7 @@ export function WorkspaceTerminal({
       setStatus('已发送 Ctrl+C')
     } catch (err) {
       const error = err as Error
-      writeTerminalLine(`\x1b[31m${error.message}\x1b[0m`)
+      writeTerminalNotice(`\x1b[31m${error.message}\x1b[0m`)
       setStatus('中断失败')
     }
   }
@@ -368,22 +406,24 @@ export function WorkspaceTerminal({
   async function stopAndRestartTerminal() {
     const activeSessionId = terminalSessionRef.current
     terminalSessionRef.current = ''
+    setTerminalInputEnabled(false)
     inputControllerRef.current?.reset()
     streamAbortRef.current?.abort()
     setRunning(true)
     setStatus('正在停止')
     if (activeSessionId) await closeWorkspaceTerminalSession(activeSessionId).catch(() => undefined)
-    writeTerminalLine('')
-    writeTerminalLine('\x1b[33m正在停止当前 PowerShell 会话并重启...\x1b[0m')
+    terminalRef.current?.reset()
     void startTerminalSession(() => !mountedRef.current)
     setRunning(false)
   }
 
   function clearTerminal() {
+    if (terminalSessionRef.current && terminalBackendRef.current === 'pty') {
+      inputControllerRef.current?.queue('\x0c')
+      terminalRef.current?.focus()
+      return
+    }
     terminalRef.current?.clear()
-    writeTerminalLine('LittleSheep PowerShell')
-    writeTerminalLine(`cwd: ${workspacePath}`)
-    writeTerminalLine('')
   }
 
   return (

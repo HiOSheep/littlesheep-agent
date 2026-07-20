@@ -95,6 +95,12 @@ export function analyzeTerminalInput(
       continue
     }
 
+    if (char === '\x0c') {
+      // Ctrl+L redraws the current line after clearing the terminal. It does
+      // not change the command being edited or make its authorization unknown.
+      continue
+    }
+
     if (char === '\x17') {
       line = line.replace(/\s*\S+\s*$/u, '')
       continue

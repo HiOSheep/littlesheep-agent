@@ -372,6 +372,64 @@ describe('ContextEngine', () => {
     expect(result.compressionRecommended).toBe(false);
   });
 
+  it('does not use a conservative overflow estimate as an exact stage token budget', () => {
+    const safetyEstimator = {
+      id: 'length-safety-estimator-v1',
+      estimatePromptTokens: (request: ChatRequest) => request.messages.reduce((total, message) => {
+        if (typeof message.content === 'string') return total + message.content.length;
+        return total + message.content.reduce(
+          (sum, part) => sum + (part.type === 'text' ? part.text.length : 1),
+          0,
+        );
+      }, 0),
+    };
+    const engine = new ContextEngine({
+      safetyEstimator,
+      resolveContextWindow: () => ({ maxContextTokens: 1_000, source: 'builtin-model-registry' }),
+      resolveTokenizerCapability: () => ({
+        status: 'unavailable',
+        reasonCode: 'no-verified-final-request-counter',
+        reason: 'No verified final request counter.',
+        source: 'builtin-model-registry',
+        verifiedAt: '2026-07-13',
+      }),
+    });
+    const contract = callContract(
+      ['system_prompt', 'recent_message', 'user_input'],
+      ['system_prompt', 'user_input'],
+    );
+    contract.budget.maxPromptTokens = 40;
+    const result = engine.prepare({
+      runId: 'run-conservative-soft-target',
+      sessionId: asSessionId('session-conservative-soft-target'),
+      stage: 'reply',
+      requestIndex: 1,
+      provider: 'deepseek',
+      request: baseRequest(),
+      callContract: contract,
+      candidates: [
+        candidate('system', 0, 's'.repeat(15), { required: true, priority: 100, role: 'system' }),
+        candidate('topic-anchor', 10, 'h'.repeat(15), { priority: 94 }),
+        candidate('recent-correction', 20, 'c'.repeat(10), { priority: 90 }),
+        candidate('current', 30, 'u'.repeat(25), { required: true, priority: 95, kind: 'user_input' }),
+      ],
+    });
+
+    expect(result.omittedCandidateIds).toEqual([]);
+    expect(result.request.messages.map((message) => message.content)).toEqual([
+      's'.repeat(15),
+      'h'.repeat(15),
+      'c'.repeat(10),
+      'u'.repeat(25),
+    ]);
+    expect(result.contextSnapshot.safetyEstimate).toMatchObject({
+      estimatorId: safetyEstimator.id,
+      estimatedPromptTokens: 65,
+      displayable: false,
+    });
+    expect(result.contextSnapshot.budget).toMatchObject({ availablePromptTokens: 990 });
+  });
+
   it('does not let a counter self-declare exactness for an unavailable model', () => {
     const counter: ExactContextTokenCounter = {
       id: 'untrusted-counter',

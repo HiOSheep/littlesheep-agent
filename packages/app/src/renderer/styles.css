@@ -169,6 +169,7 @@
 
 .memory-files-list {
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -186,17 +187,13 @@
   gap: 8px;
   text-align: left;
   cursor: pointer;
-  transition: background var(--motion-base) var(--motion-ease), color var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease);
+  transition: background var(--motion-base) var(--motion-ease), color var(--motion-base) var(--motion-ease);
 }
 
 .memory-file-row:hover,
 .memory-file-row:focus-visible,
 .memory-file-row.active {
   background: var(--control-hover);
-}
-
-.memory-file-row:active {
-  transform: translateY(1px);
 }
 
 .memory-file-row > span {
@@ -379,7 +376,7 @@
   --text: #e8e8e8;
   --text-strong: #ffffff;
   --muted: #a0a0a0;
-  --muted-2: #747474;
+  --muted-2: #858585;
   --accent: #e2e2e2;
   --accent-hover: #f4f4f4;
   --accent-soft: rgba(226, 226, 226, 0.1);
@@ -396,7 +393,7 @@
   --transient-motion: 220ms;
   --dialog-motion: 360ms;
   --motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  --font: "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", "Microsoft YaHei", "Noto Sans SC", sans-serif;
   --mono: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
   --sidebar-width: 276px;
   --sidebar-min-readable-width: 220px;
@@ -416,6 +413,8 @@ body {
   background: var(--bg);
   color: var(--text);
   overflow: hidden;
+  font-synthesis: none;
+  font-kerning: normal;
   -webkit-font-smoothing: auto;
   text-rendering: auto;
 }
@@ -435,6 +434,11 @@ textarea:focus-visible,
 input:focus-visible {
   outline: 2px solid rgba(226, 226, 226, 0.32);
   outline-offset: 2px;
+}
+
+[inert],
+[inert] * {
+  pointer-events: none !important;
 }
 
 ::-webkit-scrollbar {
@@ -473,12 +477,15 @@ input:focus-visible {
 @keyframes content-fade-in {
   from {
     opacity: 0;
-    transform: translateY(5px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
+}
+
+@keyframes text-surface-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .content-fade,
@@ -549,9 +556,6 @@ input:focus-visible {
   overflow: hidden;
   background: var(--bg);
   clip-path: circle(150vmax at var(--settings-origin-x) var(--settings-origin-y));
-  transform: translateZ(0);
-  backface-visibility: hidden;
-  will-change: clip-path;
   transition: clip-path var(--settings-reveal-motion) cubic-bezier(0.22, 0.72, 0.2, 1);
 }
 
@@ -784,12 +788,10 @@ input:focus-visible {
   background: var(--surface);
   border-right: 0;
   opacity: 1;
-  transform: translateX(0);
   transition:
     border-color var(--motion-fast) var(--motion-ease),
     border-right-width var(--motion-fast) var(--motion-ease),
-    opacity 260ms var(--motion-ease),
-    transform var(--sidebar-collapse-motion) var(--motion-ease);
+    opacity 260ms var(--motion-ease);
 }
 
 .sidebar::after {
@@ -817,10 +819,8 @@ input:focus-visible {
   min-height: 0;
   padding: 18px 14px;
   opacity: var(--sidebar-content-opacity);
-  transform: translateX(var(--sidebar-content-shift));
   transition:
-    opacity var(--sidebar-collapse-motion) var(--motion-ease),
-    transform var(--sidebar-collapse-motion) var(--motion-ease);
+    opacity var(--sidebar-collapse-motion) var(--motion-ease);
 }
 
 .window-shell.sidebar-collapsed .sidebar,
@@ -829,7 +829,6 @@ input:focus-visible {
   border-color: transparent;
   opacity: 0;
   pointer-events: none;
-  transform: translateX(-10px);
 }
 
 .sidebar-resizer {
@@ -1214,18 +1213,12 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   box-shadow: var(--shadow);
   opacity: 0;
   pointer-events: none;
-  transform: translateY(-4px) scale(0.98);
-  transform-origin: top right;
-  will-change: opacity, transform;
-  transition:
-    opacity var(--transient-motion) var(--motion-ease),
-    transform var(--transient-motion) var(--motion-ease);
+  transition: opacity var(--transient-motion) var(--motion-ease);
 }
 
 .sidebar-menu-panel.visible {
   opacity: 1;
   pointer-events: auto;
-  transform: translateY(0) scale(1);
 }
 
 .sidebar-menu-item {
@@ -1436,12 +1429,10 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   opacity: 0;
   overflow: hidden;
   white-space: nowrap;
-  transform: translateX(-4px);
   transition:
     max-width var(--motion-base) var(--motion-ease),
     margin-left var(--motion-base) var(--motion-ease),
-    opacity var(--motion-fast) var(--motion-ease),
-    transform var(--motion-fast) var(--motion-ease);
+    opacity var(--motion-fast) var(--motion-ease);
 }
 
 .settings-entry-btn:hover .settings-entry-label,
@@ -1449,7 +1440,6 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   margin-left: 7px;
   max-width: 64px;
   opacity: 1;
-  transform: translateX(0);
 }
 
 .sidebar-footer {
@@ -1498,18 +1488,15 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   overflow-y: auto;
   padding-right: 2px;
   opacity: 1;
-  transform: translateY(0);
   transition:
     opacity var(--motion-base) var(--motion-ease),
-    max-height var(--motion-slow) var(--motion-ease),
-    transform var(--motion-base) var(--motion-ease);
+    max-height var(--motion-slow) var(--motion-ease);
 }
 
 .project-section.collapsed .project-tree {
   max-height: 0;
   opacity: 0;
   pointer-events: none;
-  transform: translateY(-4px);
 }
 
 .project-group {
@@ -1578,18 +1565,15 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   max-height: 480px;
   overflow: hidden;
   opacity: 1;
-  transform: translateY(0);
   transition:
     opacity var(--motion-base) var(--motion-ease),
-    max-height var(--motion-slow) var(--motion-ease),
-    transform var(--motion-base) var(--motion-ease);
+    max-height var(--motion-slow) var(--motion-ease);
 }
 
 .project-group.collapsed .project-session-list {
   max-height: 0;
   opacity: 0;
   pointer-events: none;
-  transform: translateY(-4px);
 }
 
 .project-session-item {
@@ -1626,7 +1610,6 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   height: var(--sidebar-action-size);
   color: var(--muted-2);
   opacity: 1;
-  transform: translateX(0);
   transition:
     opacity var(--motion-fast) var(--motion-ease),
     transform var(--motion-fast) var(--motion-ease);
@@ -1697,18 +1680,15 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   overflow-y: auto;
   opacity: 1;
   padding-right: 2px;
-  transform: translateY(0);
   transition:
     opacity var(--motion-base) var(--motion-ease),
-    max-height var(--motion-slow) var(--motion-ease),
-    transform var(--motion-base) var(--motion-ease);
+    max-height var(--motion-slow) var(--motion-ease);
 }
 
 .conversation-section.collapsed .session-list {
   max-height: 0;
   opacity: 0;
   pointer-events: none;
-  transform: translateY(-4px);
 }
 
 .sidebar-feature-panel {
@@ -1729,16 +1709,12 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   box-shadow: var(--shadow);
   opacity: 0;
   pointer-events: none;
-  transform: translateY(8px) scale(0.985);
-  transition:
-    opacity var(--motion-base) var(--motion-ease),
-    transform var(--motion-base) var(--motion-ease);
+  transition: opacity var(--motion-base) var(--motion-ease);
 }
 
 .sidebar-feature-panel.visible {
   opacity: 1;
   pointer-events: auto;
-  transform: translateY(0) scale(1);
 }
 
 .sidebar-feature-content {
@@ -1747,16 +1723,11 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   min-height: 0;
   flex-direction: column;
   opacity: 0;
-  transform: translateY(4px);
-  will-change: opacity, transform;
-  transition:
-    opacity 120ms var(--motion-ease),
-    transform 140ms var(--motion-ease);
+  transition: opacity 140ms var(--motion-ease);
 }
 
 .sidebar-feature-content.visible {
   opacity: 1;
-  transform: translateY(0);
 }
 
 .sidebar-feature-header {
@@ -1851,6 +1822,7 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   flex: 1;
   min-height: 0;
   margin-top: 8px;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
@@ -1969,17 +1941,13 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   overflow: hidden;
   background: var(--bg);
   opacity: 1;
-  transform: none;
-  transition:
-    opacity var(--workspace-panel-motion) var(--motion-ease),
-    transform var(--workspace-panel-motion) var(--motion-ease);
+  transition: opacity var(--workspace-panel-motion) var(--motion-ease);
 }
 
 .window-shell.workspace-panel-fullscreen .chat,
 .window-shell.workspace-panel-drag-fullscreen .chat {
   opacity: 0;
   pointer-events: none;
-  transform: translateX(-18px);
 }
 
 .workspace-panel-resizer {
@@ -2050,12 +2018,10 @@ body.is-resizing-column .workspace-panel-resizer::before {
   color: var(--text);
   background: var(--surface);
   opacity: 1;
-  transform: none;
   transition:
     flex-basis var(--workspace-panel-motion) var(--motion-ease),
     background-color var(--motion-fast) var(--motion-ease),
-    opacity var(--workspace-panel-motion) var(--motion-ease),
-    transform var(--workspace-panel-motion) var(--motion-ease);
+    opacity var(--workspace-panel-motion) var(--motion-ease);
 }
 
 .window-shell.workspace-panel-fullscreen .workspace-panel,
@@ -2173,18 +2139,15 @@ body.is-resizing-column .workspace-panel-resizer::before {
   line-height: 1.35;
   opacity: 0;
   pointer-events: none;
-  transform: translate(6px, 0);
   visibility: hidden;
   transition:
     opacity var(--motion-fast) var(--motion-ease),
-    transform var(--motion-fast) var(--motion-ease),
     visibility 0s linear var(--motion-fast);
 }
 
 .workspace-panel-reopen-target:hover .workspace-panel-reopen-label,
 .workspace-panel-reopen-target:focus-visible .workspace-panel-reopen-label {
   opacity: 1;
-  transform: translate(0, 0);
   visibility: visible;
   transition-delay: 500ms;
 }
@@ -2232,18 +2195,15 @@ body.is-resizing-column .workspace-panel-resizer::before {
   min-height: 0;
   padding: 12px;
   opacity: 1;
-  transform: none;
   transition:
     padding var(--workspace-panel-motion) var(--motion-ease),
-    opacity var(--workspace-panel-motion) var(--motion-ease),
-    transform var(--workspace-panel-motion) var(--motion-ease);
+    opacity var(--workspace-panel-motion) var(--motion-ease);
 }
 
 .window-shell.workspace-panel-collapsed .workspace-panel-contents,
 .window-shell.workspace-panel-drag-collapsed .workspace-panel-contents {
   opacity: 0;
   pointer-events: none;
-  transform: translateX(14px);
 }
 
 .window-shell.workspace-panel-fullscreen .workspace-panel-contents,
@@ -2388,8 +2348,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   transition:
     background-color var(--motion-fast) var(--motion-ease),
     border-color var(--motion-fast) var(--motion-ease),
-    color var(--motion-fast) var(--motion-ease),
-    transform var(--motion-fast) var(--motion-ease);
+    color var(--motion-fast) var(--motion-ease);
 }
 
 .workspace-add-trigger:hover,
@@ -2418,17 +2377,12 @@ body.is-resizing-column .workspace-panel-resizer::before {
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.34);
   opacity: 0;
   pointer-events: none;
-  transform: translateY(-5px) scale(0.985);
-  transform-origin: top left;
-  transition:
-    opacity var(--transient-motion) var(--motion-ease),
-    transform var(--transient-motion) var(--motion-ease);
+  transition: opacity var(--transient-motion) var(--motion-ease);
 }
 
 .workspace-add-panel.visible {
   opacity: 1;
   pointer-events: auto;
-  transform: translateY(0) scale(1);
 }
 
 .workspace-add-item {
@@ -2504,7 +2458,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   overflow: hidden;
   padding-left: 2px;
   color: var(--muted-2);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.1;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2664,8 +2618,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   transition:
     background-color var(--motion-fast) var(--motion-ease),
     border-color var(--motion-fast) var(--motion-ease),
-    color var(--motion-fast) var(--motion-ease),
-    transform var(--motion-fast) var(--motion-ease);
+    color var(--motion-fast) var(--motion-ease);
 }
 
 .workspace-empty-launcher-item:hover,
@@ -2674,10 +2627,6 @@ body.is-resizing-column .workspace-panel-resizer::before {
   background: var(--control-hover);
   border-color: var(--border-strong);
   outline: 0;
-}
-
-.workspace-empty-launcher-item:active {
-  transform: scale(0.99);
 }
 
 .workspace-empty-launcher-icon {
@@ -2868,7 +2817,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   border: 1px solid transparent;
   border-radius: 7px;
   cursor: pointer;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 780;
   transition:
     background-color var(--motion-fast) var(--motion-ease),
@@ -2967,8 +2916,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   transition:
     background-color var(--motion-fast) var(--motion-ease),
     border-color var(--motion-fast) var(--motion-ease),
-    color var(--motion-fast) var(--motion-ease),
-    transform var(--motion-fast) var(--motion-ease);
+    color var(--motion-fast) var(--motion-ease);
 }
 
 .workspace-overview-artifact {
@@ -3027,7 +2975,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   min-width: 0;
   overflow: hidden;
   color: var(--muted-2);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3046,7 +2994,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
 
 .workspace-activity-time {
   color: var(--muted-2);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 760;
   white-space: nowrap;
 }
@@ -3084,7 +3032,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   min-height: 64px;
   padding: 12px;
   color: var(--muted-2);
-  font-size: 11.5px;
+  font-size: 12px;
   text-align: center;
 }
 
@@ -3128,7 +3076,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   min-width: 0;
   overflow: hidden;
   color: var(--muted-2);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3161,7 +3109,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   border: 1px solid transparent;
   border-radius: 7px;
   cursor: pointer;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 780;
   transition:
     background-color var(--motion-fast) var(--motion-ease),
@@ -3324,7 +3272,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
 
 .workspace-artifact-row-main small {
   color: var(--muted-2);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.25;
 }
 
@@ -3569,14 +3517,12 @@ body.is-resizing-column .workspace-panel-resizer::before {
   background: rgba(37, 37, 37, 0.98);
   border-color: var(--border);
   box-shadow: -18px 0 42px rgba(0, 0, 0, 0.24);
-  will-change: width, opacity, transform;
   transition:
     width var(--workspace-panel-motion) var(--motion-ease),
     background-color var(--motion-fast) var(--motion-ease),
     border-color var(--motion-fast) var(--motion-ease),
     box-shadow var(--workspace-panel-motion) var(--motion-ease),
-    opacity var(--workspace-panel-motion) var(--motion-ease),
-    transform var(--workspace-panel-motion) var(--motion-ease);
+    opacity var(--workspace-panel-motion) var(--motion-ease);
 }
 
 .workspace-files.navigator-collapsed .workspace-files-navigator,
@@ -3594,17 +3540,14 @@ body.is-resizing-column .workspace-panel-resizer::before {
   min-width: 0;
   min-height: 0;
   opacity: 1;
-  transform: translateX(0);
   transition:
-    opacity var(--workspace-panel-motion) var(--motion-ease),
-    transform var(--workspace-panel-motion) var(--motion-ease);
+    opacity var(--workspace-panel-motion) var(--motion-ease);
 }
 
 .workspace-files.navigator-collapsed .workspace-files-navigator-inner,
 .workspace-files-navigator.navigator-collapsed .workspace-files-navigator-inner {
   opacity: 0;
   pointer-events: none;
-  transform: translateX(10px);
 }
 
 .workspace-files-navigator-rail {
@@ -3717,7 +3660,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   min-width: 0;
   overflow: hidden;
   color: var(--muted-2);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3881,8 +3824,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   transition:
     background-color var(--motion-fast) var(--motion-ease),
     border-color var(--motion-fast) var(--motion-ease),
-    color var(--motion-fast) var(--motion-ease),
-    transform var(--motion-fast) var(--motion-ease);
+    color var(--motion-fast) var(--motion-ease);
 }
 
 .workspace-tree-row:hover,
@@ -3943,7 +3885,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
 
 .workspace-tree-size {
   color: var(--muted-2);
-  font-size: 10.5px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -3981,7 +3923,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   gap: 4px;
   overflow: hidden;
   color: var(--muted-2);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.25;
   white-space: nowrap;
 }
@@ -4064,7 +4006,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   color: var(--muted-2);
   background: rgba(255, 255, 255, 0.025);
   border-top: 1px solid rgba(255, 255, 255, 0.055);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 760;
   line-height: 1;
 }
@@ -4089,7 +4031,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
 .workspace-preview-markdown {
   padding: 4px 2px;
   color: var(--text);
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.58;
 }
 
@@ -4103,7 +4045,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   border: 1px solid var(--border);
   border-radius: 8px;
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;
@@ -4332,7 +4274,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   min-width: 0;
   overflow: hidden;
   color: var(--muted-2);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4382,7 +4324,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   min-height: 22px;
   padding: 0 3px;
   color: var(--muted-2);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 820;
 }
 
@@ -4454,7 +4396,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   border: 1px solid transparent;
   border-radius: 7px;
   cursor: pointer;
-  font-size: 11.5px;
+  font-size: 12px;
   text-align: left;
   transition:
     background-color var(--motion-fast) var(--motion-ease),
@@ -4481,7 +4423,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
 
 .workspace-terminal-activity-meta {
   color: var(--muted-2);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 720;
   white-space: nowrap;
 }
@@ -4529,6 +4471,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
 .messages {
   flex: 1 1 auto;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   overflow-anchor: none;
   overscroll-behavior: contain;
@@ -4679,8 +4622,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   transition:
     background-color var(--motion-fast) var(--motion-ease),
     border-color var(--motion-fast) var(--motion-ease),
-    color var(--motion-fast) var(--motion-ease),
-    transform var(--motion-fast) var(--motion-ease);
+    color var(--motion-fast) var(--motion-ease);
 }
 
 .message-file-card:hover,
@@ -4688,10 +4630,6 @@ body.is-resizing-column .workspace-panel-resizer::before {
   color: var(--text-strong);
   background: var(--control-hover);
   border-color: var(--border-strong);
-}
-
-.message-file-card:active {
-  transform: translateY(1px);
 }
 
 .message-file-strip.result-links .message-file-card {
@@ -4742,7 +4680,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
 
 .message-file-main small {
   color: var(--muted-2);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 650;
 }
 
@@ -4852,6 +4790,20 @@ body.is-resizing-column .workspace-panel-resizer::before {
   font-size: 0.92em;
 }
 
+.markdown pre {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.markdown pre > code {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .code-block {
   overflow: hidden;
   background: var(--bg);
@@ -4916,14 +4868,12 @@ body.is-resizing-column .workspace-panel-resizer::before {
   margin: 0 auto 4px;
   padding-left: 4px;
   opacity: 1;
-  transform: translateY(0);
   animation: task-progress-enter var(--motion-slow) var(--motion-ease);
   transition:
     height var(--motion-slow) var(--motion-ease),
     max-height var(--motion-slow) var(--motion-ease),
     margin var(--motion-slow) var(--motion-ease),
-    opacity var(--motion-base) var(--motion-ease),
-    transform var(--motion-base) var(--motion-ease);
+    opacity var(--motion-base) var(--motion-ease);
 }
 
 .task-progress-anchor.exiting {
@@ -4932,7 +4882,6 @@ body.is-resizing-column .workspace-panel-resizer::before {
   margin-bottom: 0;
   opacity: 0;
   pointer-events: none;
-  transform: translateY(5px);
 }
 
 @keyframes task-progress-enter {
@@ -4941,14 +4890,12 @@ body.is-resizing-column .workspace-panel-resizer::before {
     max-height: 0;
     margin-bottom: 0;
     opacity: 0;
-    transform: translateY(5px);
   }
   to {
     height: 24px;
     max-height: 24px;
     margin-bottom: 4px;
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
@@ -5025,23 +4972,18 @@ body.is-resizing-column .workspace-panel-resizer::before {
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38);
   opacity: 0;
   pointer-events: none;
-  transform: translateY(6px) scale(0.985);
-  transform-origin: left bottom;
   visibility: hidden;
   transition:
     opacity var(--transient-motion) var(--motion-ease),
-    transform var(--transient-motion) var(--motion-ease),
     visibility 0s linear var(--transient-motion);
 }
 
 .task-progress-popover.open {
   opacity: 1;
   pointer-events: auto;
-  transform: translateY(0) scale(1);
   visibility: visible;
   transition:
     opacity var(--transient-motion) var(--motion-ease),
-    transform var(--transient-motion) var(--motion-ease),
     visibility 0s;
 }
 
@@ -5075,6 +5017,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   display: grid;
   gap: 4px;
   max-height: 150px;
+  overflow-x: hidden;
   overflow-y: auto;
   padding-top: 2px;
 }
@@ -5086,7 +5029,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   gap: 7px;
   min-width: 0;
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.3;
 }
 
@@ -5116,6 +5059,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   gap: 10px;
   max-height: 136px;
   margin: 0 0 10px;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
@@ -5134,8 +5078,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   outline: none;
   transition:
     background-color var(--motion-fast) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease),
-    transform var(--motion-fast) var(--motion-ease);
+    border-color var(--motion-fast) var(--motion-ease);
 }
 
 .attachment-preview-card.image {
@@ -5147,10 +5090,6 @@ body.is-resizing-column .workspace-panel-resizer::before {
 .attachment-preview-card:hover {
   background: var(--surface-2);
   border-color: var(--border-strong);
-}
-
-.attachment-preview-card:active {
-  transform: translateY(1px);
 }
 
 .attachment-preview-card:focus-within {
@@ -5512,24 +5451,18 @@ body.is-resizing-column .workspace-panel-resizer::before {
   box-shadow: 0 22px 54px rgba(0, 0, 0, 0.44);
   opacity: 0;
   pointer-events: none;
-  transform: translateY(8px) scale(0.985);
-  transform-origin: left bottom;
   visibility: hidden;
-  will-change: opacity, transform;
   transition:
     opacity var(--transient-motion) var(--motion-ease),
-    transform var(--transient-motion) var(--motion-ease),
     visibility 0s linear var(--transient-motion);
 }
 
 .add-menu.open .add-menu-panel {
   opacity: 1;
   pointer-events: auto;
-  transform: translateY(0) scale(1);
   visibility: visible;
   transition:
     opacity var(--transient-motion) var(--motion-ease),
-    transform var(--transient-motion) var(--motion-ease),
     visibility 0s;
 }
 
@@ -5809,10 +5742,36 @@ body.is-resizing-column .workspace-panel-resizer::before {
   border-radius: 50%;
 }
 
-.context-usage-popover {
+.context-usage-popover-shell {
   position: absolute;
-  right: 50%;
+  left: 0;
+  right: 0;
   bottom: calc(100% + 9px);
+  display: flex;
+  justify-content: center;
+  min-width: 100%;
+  pointer-events: none;
+  visibility: hidden;
+  opacity: 0;
+  transition:
+    opacity var(--transient-motion) var(--motion-ease),
+    visibility 0s linear var(--transient-motion);
+}
+
+.context-usage:hover .context-usage-popover-shell,
+.context-usage:focus-visible .context-usage-popover-shell,
+.context-usage:focus-within .context-usage-popover-shell {
+  pointer-events: auto;
+  visibility: visible;
+  opacity: 1;
+  transition:
+    opacity var(--transient-motion) var(--motion-ease),
+    visibility 0s;
+  transition-delay: 500ms, 0s;
+}
+
+.context-usage-popover {
+  position: static;
   display: grid;
   justify-items: center;
   gap: 4px;
@@ -5826,28 +5785,9 @@ body.is-resizing-column .workspace-panel-resizer::before {
   box-shadow: var(--shadow);
   font-size: 13px;
   line-height: 1.25;
-  opacity: 0;
-  pointer-events: none;
-  transform: translate(50%, 6px) scale(0.985);
-  visibility: hidden;
-  white-space: nowrap;
-  transition:
-    opacity var(--transient-motion) var(--motion-ease),
-    transform var(--transient-motion) var(--motion-ease),
-    visibility 0s linear var(--transient-motion);
-}
-
-.context-usage:hover .context-usage-popover,
-.context-usage:focus-visible .context-usage-popover,
-.context-usage:focus-within .context-usage-popover {
   opacity: 1;
-  transform: translate(50%, 0) scale(1);
   visibility: visible;
-  transition:
-    opacity var(--transient-motion) var(--motion-ease),
-    transform var(--transient-motion) var(--motion-ease),
-    visibility 0s;
-  transition-delay: 500ms, 500ms, 0s;
+  white-space: nowrap;
 }
 
 .context-usage-title {
@@ -5958,24 +5898,18 @@ body.is-resizing-column .workspace-panel-resizer::before {
   box-shadow: 0 22px 54px rgba(0, 0, 0, 0.44);
   opacity: 0;
   pointer-events: none;
-  transform: translateY(8px) scale(0.985);
-  transform-origin: right bottom;
   visibility: hidden;
-  will-change: opacity, transform;
   transition:
     opacity var(--transient-motion) var(--motion-ease),
-    transform var(--transient-motion) var(--motion-ease),
     visibility 0s linear var(--transient-motion);
 }
 
 .runtime-picker.open .runtime-picker-panel {
   opacity: 1;
   pointer-events: auto;
-  transform: translateY(0) scale(1);
   visibility: visible;
   transition:
     opacity var(--transient-motion) var(--motion-ease),
-    transform var(--transient-motion) var(--motion-ease),
     visibility 0s;
 }
 
@@ -5997,6 +5931,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   min-width: 0;
   max-height: 230px;
   padding: 6px;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
@@ -6238,25 +6173,26 @@ body.is-resizing-column .workspace-panel-resizer::before {
   box-shadow: none;
   opacity: 0;
   pointer-events: none;
-  transform: translateY(8px) scale(0.985);
-  transform-origin: right bottom;
   visibility: hidden;
-  will-change: opacity, transform;
   transition:
     opacity var(--transient-motion) var(--motion-ease),
-    transform var(--transient-motion) var(--motion-ease),
     visibility 0s linear var(--transient-motion);
 }
 
 .runtime-picker.open .runtime-menu-shell {
   opacity: 1;
   pointer-events: auto;
-  transform: translateY(0) scale(1);
   visibility: visible;
   transition:
     opacity var(--transient-motion) var(--motion-ease),
-    transform var(--transient-motion) var(--motion-ease),
     visibility 0s;
+}
+
+.runtime-picker:not(.open) .runtime-menu-shell::before,
+.runtime-picker:not(.open) .runtime-menu-shell .runtime-picker-panel,
+.runtime-picker:not(.open) .runtime-menu-shell .runtime-submenu {
+  pointer-events: none;
+  visibility: hidden;
 }
 
 .runtime-menu-shell::before {
@@ -6279,6 +6215,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   max-height: min(390px, 58vh);
   gap: 3px;
   padding: 8px;
+  overflow-x: hidden;
   overflow-y: auto;
   scrollbar-gutter: stable;
   color: var(--text);
@@ -6303,6 +6240,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   max-width: min(286px, calc(100vw - 56px));
   max-height: min(360px, 56vh);
   padding: 8px;
+  overflow-x: hidden;
   overflow-y: auto;
   scrollbar-gutter: stable;
   color: var(--text);
@@ -6312,23 +6250,18 @@ body.is-resizing-column .workspace-panel-resizer::before {
   box-shadow: 0 22px 54px rgba(0, 0, 0, 0.44);
   opacity: 0;
   pointer-events: none;
-  transform: translateX(8px) scale(0.985);
   visibility: hidden;
-  will-change: opacity, transform;
   transition:
     opacity var(--transient-motion) var(--motion-ease),
-    transform var(--transient-motion) var(--motion-ease),
     visibility 0s linear var(--transient-motion);
 }
 
 .runtime-menu-shell .runtime-submenu.visible {
   opacity: 1;
   pointer-events: auto;
-  transform: translateX(0) scale(1);
   visibility: visible;
   transition:
     opacity var(--transient-motion) var(--motion-ease),
-    transform var(--transient-motion) var(--motion-ease),
     visibility 0s;
 }
 
@@ -6374,24 +6307,18 @@ body.is-resizing-column .workspace-panel-resizer::before {
   box-shadow: 0 20px 54px rgba(0, 0, 0, 0.46);
   opacity: 0;
   pointer-events: none;
-  transform: translateY(8px) scale(0.985);
-  transform-origin: left bottom;
   visibility: hidden;
-  will-change: opacity, transform;
   transition:
     opacity var(--transient-motion) var(--motion-ease),
-    transform var(--transient-motion) var(--motion-ease),
     visibility 0s linear var(--transient-motion);
 }
 
 .model-picker.open .model-picker-panel {
   opacity: 1;
   pointer-events: auto;
-  transform: translateY(0) scale(1);
   visibility: visible;
   transition:
     opacity var(--transient-motion) var(--motion-ease),
-    transform var(--transient-motion) var(--motion-ease),
     visibility 0s;
 }
 
@@ -6409,12 +6336,14 @@ body.is-resizing-column .workspace-panel-resizer::before {
 .option-picker-list {
   max-height: min(360px, 56vh);
   padding: 8px;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
 .model-picker-providers {
   min-width: 0;
   padding: 8px;
+  overflow-x: hidden;
   overflow-y: auto;
   background: var(--bg);
   border-right: 1px solid var(--border);
@@ -6494,6 +6423,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
 .model-picker-model-list {
   max-height: calc(min(360px, 56vh) - 40px);
   padding: 8px;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
@@ -6583,15 +6513,11 @@ body.is-resizing-column .workspace-panel-resizer::before {
   overflow-wrap: anywhere;
   word-break: break-word;
   opacity: 0;
-  transform: translateY(5px);
-  transition:
-    opacity var(--motion-fast) var(--motion-ease),
-    transform var(--motion-fast) var(--motion-ease);
+  transition: opacity var(--motion-fast) var(--motion-ease);
 }
 
 .floating-help-tip.visible {
   opacity: 1;
-  transform: translateY(0);
 }
 
 .pill-select:hover:not(:disabled),
@@ -6806,15 +6732,11 @@ body.is-resizing-column .workspace-panel-resizer::before {
 
 .presence-layer .dialog {
   opacity: 0;
-  transform: translateY(10px) scale(0.985);
-  transition:
-    opacity var(--motion-base) var(--motion-ease),
-    transform var(--motion-slow) var(--motion-ease);
+  transition: opacity var(--motion-base) var(--motion-ease);
 }
 
 .presence-layer.visible .dialog {
   opacity: 1;
-  transform: translateY(0) scale(1);
 }
 
 .settings-workspace {
@@ -6833,9 +6755,6 @@ body.is-resizing-column .workspace-panel-resizer::before {
   clip-path: circle(0 at var(--settings-origin-x) var(--settings-origin-y));
   overflow: hidden;
   isolation: isolate;
-  transform: translateZ(0);
-  backface-visibility: hidden;
-  will-change: clip-path, transform;
   transition: clip-path var(--settings-reveal-motion) cubic-bezier(0.22, 0.72, 0.2, 1);
 }
 
@@ -6906,13 +6825,10 @@ body.is-resizing-column .workspace-panel-resizer::before {
   opacity: 0;
   overflow: hidden;
   pointer-events: none;
-  transform: scale(0.96);
-  transform-origin: 17px 50%;
   visibility: hidden;
   transition:
     max-width var(--motion-base) var(--motion-ease),
     opacity 180ms var(--motion-ease),
-    transform var(--settings-reveal-motion) cubic-bezier(0.22, 0.72, 0.2, 1),
     visibility 0s linear 180ms;
 }
 
@@ -6921,12 +6837,10 @@ body.is-resizing-column .workspace-panel-resizer::before {
   max-width: 35px;
   opacity: 1;
   pointer-events: auto;
-  transform: scale(1);
   visibility: visible;
   transition:
     max-width var(--motion-base) var(--motion-ease),
     opacity 180ms var(--motion-ease),
-    transform var(--settings-reveal-motion) cubic-bezier(0.22, 0.72, 0.2, 1),
     visibility 0s;
 }
 
@@ -6940,7 +6854,6 @@ body.is-resizing-column .workspace-panel-resizer::before {
 .presence-layer.presence-open .settings-entry-bridge {
   opacity: 0;
   pointer-events: none;
-  transform: scale(1.02);
   visibility: hidden;
 }
 
@@ -6956,12 +6869,10 @@ body.is-resizing-column .workspace-panel-resizer::before {
   opacity: 0;
   overflow: hidden;
   white-space: nowrap;
-  transform: translateX(-4px);
   transition:
     max-width var(--motion-base) var(--motion-ease),
     margin-left var(--motion-base) var(--motion-ease),
-    opacity var(--motion-fast) var(--motion-ease),
-    transform var(--motion-fast) var(--motion-ease);
+    opacity var(--motion-fast) var(--motion-ease);
 }
 
 .settings-entry-bridge:hover .settings-entry-bridge-label,
@@ -6969,7 +6880,6 @@ body.is-resizing-column .workspace-panel-resizer::before {
   max-width: 64px;
   margin-left: 7px;
   opacity: 1;
-  transform: translateX(0);
 }
 
 .settings-layout {
@@ -6992,10 +6902,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   overflow: hidden;
   background: var(--surface);
   opacity: 1;
-  transform: translateX(0);
-  transition:
-    opacity 260ms var(--motion-ease),
-    transform var(--sidebar-collapse-motion) var(--motion-ease);
+  transition: opacity 260ms var(--motion-ease);
 }
 
 .settings-sidebar::after {
@@ -7023,17 +6930,14 @@ body.is-resizing-column .workspace-panel-resizer::before {
   min-height: 0;
   padding: 18px 14px;
   opacity: var(--sidebar-content-opacity);
-  transform: translateX(var(--sidebar-content-shift));
   transition:
-    opacity var(--sidebar-collapse-motion) var(--motion-ease),
-    transform var(--sidebar-collapse-motion) var(--motion-ease);
+    opacity var(--sidebar-collapse-motion) var(--motion-ease);
 }
 
 .window-shell.sidebar-collapsed .settings-sidebar,
 .window-shell.sidebar-drag-collapsed .settings-sidebar {
   opacity: 0;
   pointer-events: none;
-  transform: translateX(-10px);
 }
 
 .settings-sidebar-resizer {
@@ -7097,6 +7001,7 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   flex: 1 1 auto;
   gap: 14px;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   padding-right: 2px;
 }
@@ -7192,33 +7097,46 @@ body.is-resizing-column .settings-sidebar-resizer::before {
 
 .settings-workspace-body {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
   padding: clamp(54px, 8vh, 104px) clamp(22px, 5vw, 96px) 56px;
   background: var(--bg);
-  contain: paint;
   isolation: isolate;
 }
 
 .direct-module-workspace {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
   overflow: auto;
   padding: clamp(42px, 7vh, 88px) clamp(22px, 5vw, 96px) 56px;
   background: var(--bg);
-  contain: paint;
   isolation: isolate;
+}
+
+@supports (padding-top: round(nearest, 1px, 1px)) {
+  .settings-workspace-body {
+    padding-top: round(nearest, clamp(54px, 8vh, 104px), 1px);
+    padding-right: round(nearest, clamp(22px, 5vw, 96px), 1px);
+    padding-left: round(nearest, clamp(22px, 5vw, 96px), 1px);
+  }
+
+  .direct-module-workspace {
+    padding-top: round(nearest, clamp(42px, 7vh, 88px), 1px);
+    padding-right: round(nearest, clamp(22px, 5vw, 96px), 1px);
+    padding-left: round(nearest, clamp(22px, 5vw, 96px), 1px);
+  }
 }
 
 .direct-module-page {
   align-self: flex-start;
   width: min(860px, 100%);
   min-height: 100%;
+  margin-inline-start: max(0px, round(nearest, calc((100% - min(860px, 100%)) / 2), 1px));
 }
 
 .settings-page-transition {
@@ -7227,11 +7145,32 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   align-self: flex-start;
   width: min(760px, 100%);
   min-height: 100%;
+  margin-inline-start: max(0px, round(nearest, calc((100% - min(760px, 100%)) / 2), 1px));
   background: var(--bg);
 }
 
 .settings-page-transition.with-motion {
-  animation: content-fade-in var(--motion-base) var(--motion-ease) backwards;
+  animation: text-surface-fade-in var(--motion-base) var(--motion-ease) backwards;
+}
+
+.memory-activation-projection,
+.memory-file-document,
+.memory-files-loading,
+.settings-workspace .content-fade,
+.settings-workspace .dialog-hint,
+.settings-workspace .dialog-error,
+.settings-workspace .provider-row,
+.settings-workspace .channel-overall,
+.settings-workspace .channel-section,
+.settings-workspace .ms-item,
+.direct-module-workspace .content-fade,
+.direct-module-workspace .dialog-hint,
+.direct-module-workspace .dialog-error,
+.direct-module-workspace .provider-row,
+.direct-module-workspace .channel-overall,
+.direct-module-workspace .channel-section,
+.direct-module-workspace .ms-item {
+  animation-name: text-surface-fade-in;
 }
 
 .settings-home {
@@ -7560,11 +7499,9 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   overflow: hidden;
   opacity: 0;
   visibility: hidden;
-  transform: translateY(-5px);
   transition:
     max-height var(--transient-motion) var(--motion-ease),
     opacity var(--motion-base) var(--motion-ease),
-    transform var(--transient-motion) var(--motion-ease),
     visibility 0s linear var(--transient-motion);
 }
 
@@ -7572,7 +7509,6 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   max-height: 150px;
   opacity: 1;
   visibility: visible;
-  transform: translateY(0);
   transition-delay: 0s;
 }
 
@@ -7845,11 +7781,9 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   overflow: hidden;
   opacity: 0;
   visibility: hidden;
-  transform: translateY(-5px);
   transition:
     max-height var(--transient-motion) var(--motion-ease),
     opacity var(--motion-base) var(--motion-ease),
-    transform var(--transient-motion) var(--motion-ease),
     visibility 0s linear var(--transient-motion);
 }
 
@@ -7857,7 +7791,6 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   max-height: 320px;
   opacity: 1;
   visibility: visible;
-  transform: translateY(0);
   transition-delay: 0s;
 }
 
@@ -8048,7 +7981,7 @@ body.is-resizing-column .settings-sidebar-resizer::before {
 
 .settings-policy-row small {
   color: var(--muted-2);
-  font-size: 10.5px;
+  font-size: 11px;
 }
 
 .settings-policy-row input[type="range"] {
@@ -8059,7 +7992,7 @@ body.is-resizing-column .settings-sidebar-resizer::before {
 
 .settings-policy-row output {
   color: var(--text-strong);
-  font-size: 11.5px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
@@ -8072,7 +8005,7 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   background: transparent;
   border: 1px solid transparent;
   border-radius: 7px;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 760;
   transition:
     color var(--motion-fast) var(--motion-ease),
@@ -8166,7 +8099,7 @@ body.is-resizing-column .settings-sidebar-resizer::before {
 .storage-settings-row small {
   overflow-wrap: anywhere;
   color: var(--muted-2);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.4;
 }
 
@@ -8175,7 +8108,7 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   overflow: hidden;
   color: var(--muted);
   font-family: Consolas, 'Cascadia Mono', monospace;
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.45;
   text-align: right;
   text-overflow: ellipsis;
@@ -8192,7 +8125,7 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   background: transparent;
   border: 1px solid transparent;
   border-radius: 7px;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 760;
   transition:
     color var(--motion-fast) var(--motion-ease),
@@ -8252,7 +8185,7 @@ body.is-resizing-column .settings-sidebar-resizer::before {
 .storage-settings-notice code {
   color: var(--text-strong);
   font-family: Consolas, 'Cascadia Mono', monospace;
-  font-size: 10.5px;
+  font-size: 11px;
 }
 
 .development-environments-page {
@@ -8283,7 +8216,7 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   border: 1px solid transparent;
   border-radius: 7px;
   cursor: pointer;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 760;
   transition:
     color var(--motion-fast) var(--motion-ease),
@@ -8335,7 +8268,7 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   overflow: hidden;
   color: var(--muted);
   font-family: Consolas, 'Cascadia Mono', monospace;
-  font-size: 10.5px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -8395,7 +8328,7 @@ body.is-resizing-column .settings-sidebar-resizer::before {
 .development-environment-main > small,
 .development-environment-main > p {
   color: var(--muted-2);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.4;
 }
 
@@ -8467,7 +8400,7 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   gap: 5px 10px;
   min-width: 0;
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -8669,15 +8602,11 @@ body.is-resizing-column .settings-sidebar-resizer::before {
 
 .approval-presence .approval-prompt {
   opacity: 0;
-  transform: translateY(8px) scale(0.985);
-  transition:
-    opacity var(--transient-motion) var(--motion-ease),
-    transform var(--transient-motion) var(--motion-ease);
+  transition: opacity var(--transient-motion) var(--motion-ease);
 }
 
 .approval-presence.visible .approval-prompt {
   opacity: 1;
-  transform: translateY(0) scale(1);
 }
 
 .approval-kicker {
@@ -9224,20 +9153,18 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   margin-top: 0;
   overflow: hidden;
   opacity: 0;
-  transform: translateY(-4px);
   transition:
     max-height var(--motion-slow) var(--motion-ease),
     margin-top var(--motion-base) var(--motion-ease),
-    opacity var(--motion-base) var(--motion-ease),
-    transform var(--motion-base) var(--motion-ease);
+    opacity var(--motion-base) var(--motion-ease);
 }
 
 .trace-body.open {
   max-height: 620px;
   margin-top: 6px;
+  overflow-x: hidden;
   overflow-y: auto;
   opacity: 1;
-  transform: translateY(0);
 }
 
 .trace-body-inner {
@@ -9261,7 +9188,7 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   min-height: 22px;
   line-height: 22px;
   border-radius: 7px;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -9349,7 +9276,6 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   -webkit-background-clip: text;
   background-clip: text;
   animation: running-text-sheen 2.8s linear infinite;
-  will-change: background-position;
 }
 
 @keyframes running-text-sheen {
@@ -9392,20 +9318,22 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   max-height: 0;
   overflow: hidden;
   opacity: 0;
-  transform: translateY(-4px);
   transition:
     max-height var(--motion-slow) var(--motion-ease),
     opacity var(--motion-base) var(--motion-ease),
-    transform var(--motion-base) var(--motion-ease),
     margin var(--motion-base) var(--motion-ease);
+}
+
+.disclosure-panel:not(.open) {
+  pointer-events: none;
 }
 
 .assistant-turn-process.open {
   max-height: 980px;
   margin-top: 18px;
+  overflow-x: hidden;
   overflow-y: auto;
   opacity: 1;
-  transform: translateY(0);
 }
 
 .assistant-turn-process-inner {
@@ -9426,7 +9354,7 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   max-width: 760px;
   padding: 3px 2px 2px;
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.6;
 }
 
@@ -9461,6 +9389,7 @@ body.is-resizing-column .settings-sidebar-resizer::before {
 .activity-disclosure {
   display: grid;
   gap: 0;
+  animation: content-fade-in var(--motion-base) var(--motion-ease) both;
 }
 
 .activity-disclosure-header {
@@ -9494,9 +9423,9 @@ body.is-resizing-column .settings-sidebar-resizer::before {
 .activity-disclosure-body.open {
   max-height: 760px;
   margin-top: 3px;
+  overflow-x: hidden;
   overflow-y: auto;
   opacity: 1;
-  transform: translateY(0);
 }
 
 .activity-disclosure-inner {
@@ -9537,13 +9466,13 @@ body.is-resizing-column .settings-sidebar-resizer::before {
 
 .activity-verification-heading strong {
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 800;
 }
 
 .activity-verification-heading span {
   color: var(--muted-2);
-  font-size: 11.5px;
+  font-size: 12px;
 }
 
 .verification-record {
@@ -9571,7 +9500,7 @@ body.is-resizing-column .settings-sidebar-resizer::before {
 
 .verification-record-main strong {
   color: currentColor;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 800;
 }
 
@@ -9717,9 +9646,9 @@ body.is-resizing-column .settings-sidebar-resizer::before {
 .activity-command-body.open {
   max-height: 420px;
   margin-top: 6px;
+  overflow-x: hidden;
   overflow-y: auto;
   opacity: 1;
-  transform: translateY(0);
 }
 
 .activity-command-shell {
@@ -9792,7 +9721,8 @@ body.is-resizing-column .settings-sidebar-resizer::before {
 .activity-command-shell pre {
   max-height: 180px;
   margin: 0 0 11px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   color: var(--text);
   background: transparent;
   border: 0;
@@ -9856,15 +9786,12 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   color: var(--muted);
   font-size: 12px;
   opacity: 1;
-  transform: translateY(0);
   transition:
-    opacity var(--motion-slow) var(--motion-ease),
-    transform var(--motion-slow) var(--motion-ease);
+    opacity var(--motion-slow) var(--motion-ease);
 }
 
 .activity-live.closing {
   opacity: 0;
-  transform: translateY(4px);
 }
 
 .activity-step-list {
@@ -10118,16 +10045,11 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   border-radius: 10px;
   box-shadow: var(--shadow);
   opacity: 0;
-  transform: translateY(18px) scale(0.965);
-  will-change: opacity, transform;
-  transition:
-    opacity var(--dialog-motion) var(--motion-ease),
-    transform var(--dialog-motion) var(--motion-ease);
+  transition: opacity var(--dialog-motion) var(--motion-ease);
 }
 
 .project-creator-layer.visible .project-creator-dialog {
   opacity: 1;
-  transform: translateY(0) scale(1);
 }
 
 .project-creator-header {
@@ -10270,17 +10192,14 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   max-height: 0;
   overflow: hidden;
   opacity: 0;
-  transform: translateY(-4px);
   transition:
     max-height var(--motion-slow) var(--motion-ease),
-    opacity var(--motion-base) var(--motion-ease),
-    transform var(--motion-base) var(--motion-ease);
+    opacity var(--motion-base) var(--motion-ease);
 }
 
 .project-create-panel.visible {
   max-height: 260px;
   opacity: 1;
-  transform: translateY(0);
 }
 
 .project-name-input {
@@ -10535,7 +10454,6 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   font-size: 11px;
   font-weight: 700;
   opacity: 1;
-  transform: translateX(0);
   transition:
     opacity var(--motion-fast) var(--motion-ease),
     transform var(--motion-fast) var(--motion-ease);
@@ -10642,18 +10560,15 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   max-height: 420px;
   overflow: hidden;
   opacity: 1;
-  transform: translateY(0);
   transition:
     opacity var(--motion-base) var(--motion-ease),
-    max-height var(--motion-slow) var(--motion-ease),
-    transform var(--motion-base) var(--motion-ease);
+    max-height var(--motion-slow) var(--motion-ease);
 }
 
 .archive-project-group.collapsed .archive-child-list {
   max-height: 0;
   opacity: 0;
   pointer-events: none;
-  transform: translateY(-4px);
 }
 
 .archive-empty-row {
@@ -10808,6 +10723,7 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   max-height: 220px;
   margin-top: 8px;
   padding: 10px;
+  overflow-x: hidden;
   overflow-y: auto;
   color: var(--text);
   background: var(--bg);

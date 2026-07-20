@@ -96,7 +96,11 @@ export function ProjectCreatorDialog({
   }
 
   return (
-    <div className={`project-creator-layer ${visible ? 'visible' : ''}`} aria-hidden={!visible}>
+    <div
+      className={`project-creator-layer ${visible ? 'visible' : ''}`}
+      aria-hidden={!visible}
+      {...(!visible ? { inert: '' } : {})}
+    >
       <div className="project-creator-scrim" />
       <div
         ref={dialogRef}
@@ -142,7 +146,11 @@ export function ProjectCreatorDialog({
             </span>
           </button>
 
-          <div className={`project-create-panel ${mode === 'create' ? 'visible' : ''}`}>
+          <div
+            className={`project-create-panel ${mode === 'create' ? 'visible' : ''}`}
+            aria-hidden={mode !== 'create'}
+            {...(mode !== 'create' ? { inert: '' } : {})}
+          >
             <button className="project-parent-picker" type="button" disabled={busy} onClick={() => void run(pickParent)}>
               <span>
                 <strong>存放位置</strong>

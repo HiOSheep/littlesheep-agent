@@ -13,6 +13,7 @@ export function SidebarResizerView({ controller }: { controller: AppController }
         className="sidebar-resizer"
         role="separator"
         aria-hidden={sidebarCollapsed}
+        {...(sidebarCollapsed ? { inert: '' } : {})}
         aria-label="调整会话栏宽度"
         aria-orientation="vertical"
         aria-valuemin={SIDEBAR_WIDTH_MIN}

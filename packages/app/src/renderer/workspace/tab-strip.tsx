@@ -23,6 +23,7 @@ export function WorkspaceTabStrip({
   workspaceEntries,
   onTabChange,
   onCloseTab,
+  onOpenBrowserTab,
   onTipChange,
 }: {
   activeTab: WorkspacePanelTabId
@@ -32,6 +33,7 @@ export function WorkspaceTabStrip({
   workspaceEntries: WorkspaceEntry[]
   onTabChange: (tab: WorkspacePanelTabId) => void
   onCloseTab: (tab: WorkspacePanelTabId) => void
+  onOpenBrowserTab: (url: string) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const browserEntry = (tabId: WorkspaceBrowserTabId) => {
@@ -117,6 +119,7 @@ export function WorkspaceTabStrip({
         activeTab={isWorkspacePanelTab(activeTab) && displayedTabs.some((entry) => entry.id === activeTab) ? activeTab : null}
         openTabs={displayedTabs.map((entry) => entry.id).filter(isWorkspacePanelTab)}
         onSelect={onTabChange}
+        onOpenBrowserTab={onOpenBrowserTab}
         onTipChange={onTipChange}
       />
     </div>

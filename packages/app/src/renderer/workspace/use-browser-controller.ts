@@ -86,15 +86,12 @@ export function useWorkspaceBrowserController({
     return created
   }
 
-  function activateBrowserTab(tabId: WorkspaceBrowserTabId) {
-    ensureWorkspaceBrowserTab(tabId)
-    setWorkspacePanelOpenTabs((tabs) => tabs.includes(tabId) ? tabs : [...tabs, tabId])
-    setWorkspacePanelTab(tabId)
-    setWorkspacePanelCollapsed(false)
-  }
-
   function navigateWorkspaceBrowser(url: string, mode: 'push' | 'replace' = 'push') {
-    const tabId = activeBrowserTabId ?? 'browser'
+    const tabId = activeBrowserTabId
+    if (!tabId) {
+      openWorkspaceBrowserTab(url)
+      return
+    }
     const tab = ensureWorkspaceBrowserTab(tabId)
     const currentUrl = tab.history.entries[tab.history.index] ?? tab.url
     const sameHistoryEntry = mode === 'push' && browserUrlsShareHistoryEntry(currentUrl, url)
@@ -115,15 +112,7 @@ export function useWorkspaceBrowserController({
   function openWorkspaceBrowser(url: string) {
     const normalizedUrl = normalizeBrowserTabUrl(url)
     if (!normalizedUrl) return
-    const tab = ensureWorkspaceBrowserTab('browser')
-    const nextHistory = appendWorkspaceBrowserHistory(tab.history, normalizedUrl)
-    updateBrowserTab('browser', (current) => ({
-      ...current,
-      url: nextHistory.entries[nextHistory.index] ?? normalizedUrl,
-      history: nextHistory,
-      title: normalizeBrowserTabTitle('', normalizedUrl),
-    }))
-    activateBrowserTab('browser')
+    openWorkspaceBrowserTab(normalizedUrl)
   }
 
   function openWorkspaceBrowserTab(url = '') {
@@ -152,7 +141,8 @@ export function useWorkspaceBrowserController({
   }
 
   function moveWorkspaceBrowser(delta: number) {
-    const tabId = activeBrowserTabId ?? 'browser'
+    const tabId = activeBrowserTabId
+    if (!tabId) return
     const tab = ensureWorkspaceBrowserTab(tabId)
     const nextHistory = moveWorkspaceBrowserHistory(tab.history, delta)
     if (nextHistory === tab.history) return
@@ -165,7 +155,6 @@ export function useWorkspaceBrowserController({
   }
 
   function removeWorkspaceBrowserTab(tabId: WorkspaceBrowserTabId) {
-    if (tabId === 'browser') return
     commitBrowserTabs(workspaceBrowserTabsRef.current.filter((tab) => tab.id !== tabId))
   }
 

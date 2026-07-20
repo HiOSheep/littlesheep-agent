@@ -276,6 +276,10 @@ export function useWorkspaceLayoutController({ runtime, currentSession, input, s
 
   function openWorkspacePanelTab(tab: WorkspacePanelTabId) {
     setControlTip(null)
+    if (tab === 'browser') {
+      browserController.openWorkspaceBrowserTab('')
+      return
+    }
     if (!workspacePanelOpenTabs.includes(tab) && workspacePanelOpenTabs.length >= WORKSPACE_PANEL_OPEN_TABS_MAX) {
       setRuntimeError(`拓展工作区最多打开 ${WORKSPACE_PANEL_OPEN_TABS_MAX} 个标签`)
       return
@@ -315,7 +319,7 @@ export function useWorkspaceLayoutController({ runtime, currentSession, input, s
     }
     const tabIndex = workspacePanelOpenTabs.indexOf(tab)
     const nextTabs = workspacePanelOpenTabs.filter((item) => item !== tab)
-    if (isWorkspaceBrowserTabId(tab) && tab !== 'browser') browserController.removeWorkspaceBrowserTab(tab)
+    if (isWorkspaceBrowserTabId(tab)) browserController.removeWorkspaceBrowserTab(tab)
     if (parseWorkspaceFileTabId(tab)) {
       setWorkspaceFileDrafts((drafts) => {
         if (!drafts[tab]) return drafts

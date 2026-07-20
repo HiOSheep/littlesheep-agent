@@ -31,4 +31,12 @@ describe('interactive terminal input tracking', () => {
       { command: 'Get-Date', uncertain: false },
     ])
   })
+
+  it('keeps the current command certain when Ctrl+L redraws the terminal', () => {
+    const result = analyzeTerminalInput(EMPTY_TERMINAL_INPUT_STATE, 'openclaw\x0c gateway run\r')
+
+    expect(result.commands).toEqual([
+      { command: 'openclaw gateway run', uncertain: false },
+    ])
+  })
 })
