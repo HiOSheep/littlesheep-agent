@@ -175,6 +175,9 @@ export class RunRouter {
         Connection: 'keep-alive',
         'X-Accel-Buffering': 'no',
       })
+      // Let the renderer show the run immediately while workspace and
+      // attachment preparation continues asynchronously below.
+      writeSse(res, 'start', { ok: true, runId })
       try {
         const cwd = resolveRunWorkspace(body, context.getConfig(), context.workplaceDir)
         const ownership = await resolveRunSessionOwnership(context.sessionIndex, context.projectIndex, body)
@@ -190,7 +193,6 @@ export class RunRouter {
         // A synchronous portion of a runner may produce events immediately;
         // the renderer must be able to address the run for interruption from
         // the first streamed frame onward.
-        writeSse(res, 'start', { ok: true, runId })
         const runPromise = runner.runStream(
           {
             runId,
@@ -204,6 +206,7 @@ export class RunRouter {
             workspaceContext,
             signal: controller.signal,
             onToolEvent: (event) => writeSse(res, event.type, event),
+            onAssistantReplace: (text) => writeSse(res, 'replace', { text }),
             ...resolveRunPolicy(
               body,
               context.getConfig(),

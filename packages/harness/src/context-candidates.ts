@@ -35,6 +35,7 @@ export function buildRunRequestCandidates(
 ): ContextMessageCandidate[] {
   const history = options.history ?? ctx.history;
   const historyPriorities = conversationContinuityPriorities(history, ctx.inbound);
+  const historyEvictionGroups = conversationTurnEvictionGroups(history, stage);
   const inserted = options.insertedBeforePrimary ?? [];
   const insertedStartIndex = 1 + history.length;
   const primaryUserIndex = insertedStartIndex + inserted.length;
@@ -71,6 +72,7 @@ export function buildRunRequestCandidates(
         },
         priority: historyPriorities[index - 1] ?? 75,
         required: false,
+        evictionGroup: historyEvictionGroups[index - 1],
       });
     }
 
@@ -220,6 +222,17 @@ function sharesContinuityTerm(left: Set<string>, right: Set<string>): boolean {
     if (right.has(term)) return true;
   }
   return false;
+}
+
+function conversationTurnEvictionGroups(history: Message[], stage: StageName): Array<string | undefined> {
+  const groups: Array<string | undefined> = history.map(() => undefined);
+  for (let index = 0; index < history.length - 1; index += 1) {
+    if (history[index]?.role !== 'user' || history[index + 1]?.role !== 'assistant') continue;
+    const group = `${stage}:history-turn:${history[index]?.id ?? index}`;
+    groups[index] = group;
+    groups[index + 1] = group;
+  }
+  return groups;
 }
 
 const GENERIC_CONTINUITY_TERMS = new Set([

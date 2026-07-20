@@ -28,7 +28,7 @@ export function recordVerification(
 export function publishVerifiedReply(ctx: RunContext): void {
   if (!ctx.reply || ctx.replyProvenance?.source !== 'llm') return;
   ctx.onToolEvent?.({ type: 'final_delta', output: ctx.reply });
-  ctx.onAssistantDelta?.(ctx.reply);
+  ctx.onAssistantReplace?.(ctx.reply);
 }
 
 export function routeKnownIncompleteExecution(

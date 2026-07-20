@@ -83,7 +83,7 @@ export interface ChatResponse {
 
 /** A single chunk in a stream. */
 export interface StreamChunk {
-  type: 'delta' | 'reasoning_delta' | 'tool_call_delta' | 'done';
+  type: 'delta' | 'reset' | 'reasoning_delta' | 'tool_call_delta' | 'done';
   /** Text delta (for type: 'delta'). */
   delta?: string;
   /** Tool call index (for type: 'tool_call_delta'). */

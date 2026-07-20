@@ -30,6 +30,7 @@ describe('renderer run API', () => {
       { name: 'start', data: { ok: true, runId: 'run-1' } },
       { name: 'step_start', data: { type: 'step_start', stepId: 'step-1', title: 'Read' } },
       { name: 'delta', data: { delta: 'done' } },
+      { name: 'replace', data: { text: 'done!' } },
       { name: 'result', data: {
         runId: 'run-1',
         sessionId: 'session-1',
@@ -41,15 +42,18 @@ describe('renderer run API', () => {
 
     const started: string[] = []
     const deltas: string[] = []
+    const replacements: string[] = []
     const events: unknown[] = []
     const result = await api.runAgentStream('read', undefined, undefined, {
       onStart: ({ runId }) => started.push(runId),
       onDelta: (delta) => deltas.push(delta),
+      onReplace: (text) => replacements.push(text),
       onToolEvent: (event) => events.push(event),
     })
 
     expect(started).toEqual(['run-1'])
     expect(deltas).toEqual(['done'])
+    expect(replacements).toEqual(['done!'])
     expect(events).toEqual([expect.objectContaining({ type: 'step_start', stepId: 'step-1' })])
     expect(result).toMatchObject({ runId: 'run-1', status: 'ok', reply: 'done' })
   })

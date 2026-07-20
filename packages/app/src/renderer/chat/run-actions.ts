@@ -20,6 +20,7 @@ import {
   buildContextUsageSnapshot,
   type ContextUsageSnapshot
 } from '../context-usage'
+import { createAssistantDeltaBuffer } from './assistant-delta-buffer'
 import { buildArtifactsFromToolCalls, buildTraceData, taskStepToLiveStep } from './activity-model'
 import { handleRunToolEvent } from './run-event-handlers'
 import { ChatMessage } from './types'
@@ -91,6 +92,10 @@ export function createRunActions(context: RunActionContext) {
     ])
     liveToolStepRef.current.clear()
     setLoading(true)
+    const deltaBuffer = createAssistantDeltaBuffer((delta) => {
+      if (!appMountedRef.current) return
+      setMessages((messages) => updateLastAssistantText(messages, (text) => text + delta))
+    })
     try {
       const result = await runAgentStream(text || '请根据附件继续处理。', currentSession, permissionMode, {
         signal: controller.signal,
@@ -103,15 +108,12 @@ export function createRunActions(context: RunActionContext) {
         onToolEvent: (evt) => handleRunToolEvent(evt, { appMountedRef, liveToolStepRef, setMessages }),
         onDelta: (delta) => {
           if (!appMountedRef.current) return
-          if (!delta) return
-          setMessages((m) => {
-            const next = [...m]
-            const last = next[next.length - 1]
-            if (last?.role === 'assistant') {
-              next[next.length - 1] = { ...last, text: last.text + delta }
-            }
-            return next
-          })
+          deltaBuffer.push(delta)
+        },
+        onReplace: (text) => {
+          if (!appMountedRef.current) return
+          deltaBuffer.clear()
+          setMessages((messages) => updateLastAssistantText(messages, () => text))
         },
       }, {
         workspace: runtime?.workspace,
@@ -122,6 +124,7 @@ export function createRunActions(context: RunActionContext) {
         attachments: activeAttachments,
       })
       if (!appMountedRef.current) return
+      deltaBuffer.flush()
       approvalGrantsRef.current.promote(approvalScopeKey, sessionApprovalScopeKey(result.sessionId))
       setCurrentSession(result.sessionId)
       setContextUsageSnapshot(buildContextUsageSnapshot(
@@ -171,6 +174,7 @@ export function createRunActions(context: RunActionContext) {
       void refreshProjects()
     } catch (e) {
       if (!appMountedRef.current) return
+      deltaBuffer.clear()
       if ((e as Error).name === 'AbortError') {
         setMessages((m) => {
           const next = [...m]
@@ -179,7 +183,7 @@ export function createRunActions(context: RunActionContext) {
             const endedAt = Date.now()
             next[next.length - 1] = {
               ...last,
-              text: last.text,
+              text: '',
               activityCollapsed: true,
               activity: last.activity
                 ? { ...last.activity, status: 'aborted', error: '本次运行已停止。', endedAt, durationMs: endedAt - last.activity.startedAt }
@@ -208,6 +212,7 @@ export function createRunActions(context: RunActionContext) {
         return next
       })
     } finally {
+      deltaBuffer.dispose()
       settleApprovalPrompt('deny')
       abortRef.current = null
       activeRunIdRef.current = null
@@ -242,4 +247,16 @@ function localMessageId(role: 'user' | 'assistant'): string {
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`
   return `live-${role}-${uuid}`
+}
+
+
+function updateLastAssistantText(
+  messages: ChatMessage[],
+  update: (text: string) => string,
+): ChatMessage[] {
+  const last = messages[messages.length - 1]
+  if (last?.role !== 'assistant') return messages
+  const next = [...messages]
+  next[next.length - 1] = { ...last, text: update(last.text) }
+  return next
 }

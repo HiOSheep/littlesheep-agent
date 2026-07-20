@@ -45,6 +45,8 @@ export interface ContextMessageCandidate {
   required: boolean;
   sensitive: boolean;
   scope?: ContextScope;
+  /** Optional eviction group; members are omitted together. */
+  evictionGroup?: string;
   segments?: ContextMessageSegment[];
 }
 
@@ -58,6 +60,8 @@ export interface ContextMessageSegment {
   required: boolean;
   sensitive: boolean;
   scope?: ContextScope;
+  /** Optional eviction group for a set of prompt segments. */
+  evictionGroup?: string;
 }
 
 export interface PrepareContextRequestInput {

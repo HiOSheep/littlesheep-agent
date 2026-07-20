@@ -87,6 +87,7 @@ describe('run stream Local App API', () => {
         title: '执行步骤',
       })
       onDelta('完成')
+      input.onAssistantReplace?.('done!')
       return {
         runId: input.runId!,
         sessionId,
@@ -115,6 +116,8 @@ describe('run stream Local App API', () => {
       expect(body).toContain('event: step_start')
       expect(body).toContain('event: delta')
       expect(body).toContain('"delta":"完成"')
+      expect(body).toContain('event: replace')
+      expect(body).toContain('"text":"done!"')
       expect(body).toContain('event: result')
       expect(body).toMatch(/event: start\ndata: \{"ok":true,"runId":"[^"]+"\}/)
       expect(runStream).toHaveBeenCalledOnce()

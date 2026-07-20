@@ -174,8 +174,11 @@ export class OpenAIClient implements LlmClient {
 
   /** Streaming chat. Aggregates chunks, calls onDelta for each. */
   async chatStream(req: ChatRequest, onDelta: (chunk: StreamChunk) => void): Promise<ChatResponse> {
+    let attempt = 0;
     return retryWithBackoff(
       async () => {
+        if (attempt > 0) onDelta({ type: 'reset' });
+        attempt += 1;
         const managed = await this.callStreamApiWithUsageFallback({ ...req, stream: true });
         try {
           const { content, toolCalls, finishReason, model, usage, reasoningContent } = await this.parseStream(managed.response, onDelta);

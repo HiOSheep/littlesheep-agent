@@ -123,6 +123,7 @@ export interface RunStreamHandlers {
   signal?: AbortSignal
   onStart?: (event: RunStreamStart) => void
   onDelta: (delta: string) => void
+  onReplace?: (text: string) => void
   onApprovalRequest?: (request: ApprovalRequest) => boolean | Promise<boolean>
   onToolEvent?: (evt: ToolStreamEvent) => void
 }
@@ -190,6 +191,8 @@ export async function runAgentStream(
         }
       } else if (event.name === 'delta') {
         handlers.onDelta(String((event.data as { delta?: string }).delta ?? ''))
+      } else if (event.name === 'replace') {
+        handlers.onReplace?.(String((event.data as { text?: string }).text ?? ''))
       } else if (event.name === 'tool_start' || event.name === 'tool_end') {
         const d = event.data as { callId?: string; name?: string; stepId?: string; input?: unknown; ok?: boolean; output?: string; error?: string }
         handlers.onToolEvent?.({

@@ -143,6 +143,7 @@ describe('buildRunRequestCandidates', () => {
 
     expect(anchorQuestion?.priority).toBe(94);
     expect(anchorAnswer?.priority).toBe(94);
+    expect(anchorQuestion?.evictionGroup).toBe(anchorAnswer?.evictionGroup);
     expect(unrelatedRecent?.priority).toBeLessThan(94);
   });
 });

@@ -92,6 +92,8 @@ export interface BuildRunContextOptions {
   versioning?: ToolContext['versioning'];
   /** Optional assistant text delta callback for streaming callers. */
   onAssistantDelta?: (delta: string) => void;
+  /** Replace provisional streamed text with the approved final reply. */
+  onAssistantReplace?: (text: string) => void;
   /** Optional tool event callback forwarded to RunContext for real-time streaming. */
   onToolEvent?: (evt: import('@littlesheep/types').ToolStreamEvent) => void;
   /** Extra system prompt injected by the active general/coding behavior profile. */
@@ -240,6 +242,7 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     timeZone: resolveRuntimeTimeZone(opts.config.agents.defaults.userTimezone),
     timeFormat: opts.config.agents.defaults.timeFormat,
     onAssistantDelta: opts.onAssistantDelta,
+    onAssistantReplace: opts.onAssistantReplace,
     onToolEvent: opts.onToolEvent,
     profilePromptAddon: opts.profilePromptAddon,
     reasoningPromptAddon: opts.reasoningPromptAddon,

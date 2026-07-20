@@ -106,6 +106,8 @@ export interface RunInput {
   runId?: string;
   /** Optional assistant text delta callback for streaming callers. */
   onAssistantDelta?: (delta: string) => void;
+  /** Replace provisional streamed text with the approved final reply. */
+  onAssistantReplace?: (text: string) => void;
   /** Tool filter function applied before the run. */
   toolFilter?: (tool: { name: string }) => boolean;
   /** Force every available tool through the stage-level approval gate. */
@@ -139,6 +141,7 @@ export interface ResumeCheckpointOptions {
   signal?: AbortSignal;
   approve?: ToolContext['approve'];
   onAssistantDelta?: (delta: string) => void;
+  onAssistantReplace?: (text: string) => void;
   onToolEvent?: (evt: import('@littlesheep/types').ToolStreamEvent) => void;
 }
 
@@ -336,6 +339,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         log: opts.log,
         versioning: activeCheckpoint,
         onAssistantDelta: input.onAssistantDelta,
+        onAssistantReplace: input.onAssistantReplace,
         onToolEvent: input.onToolEvent,
         profilePromptAddon: behaviorProfile?.systemPromptAddon,
         reasoningPromptAddon: reasoningPromptAddon(resolvedRunConfig.reasoning),
@@ -662,6 +666,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         signal: options.signal,
         approve: options.approve ?? opts.approve,
         onAssistantDelta: options.onAssistantDelta,
+        onAssistantReplace: options.onAssistantReplace,
         onToolEvent: options.onToolEvent,
         permissionPolicyId: state.permissionPolicyId,
         reasoning: state.reasoning,

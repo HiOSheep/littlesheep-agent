@@ -79,6 +79,61 @@ describe('replyStage', () => {
       .every((item) => item.disposition === 'included')).toBe(true);
   });
 
+  it('streams provider deltas and replaces provisional text with the canonical reply', async () => {
+    const llm = createMockLlm(textResponse('Hello '));
+    llm.chatStream.mockImplementationOnce(async (_request, onChunk) => {
+      onChunk({ type: 'delta', delta: 'Hel' });
+      onChunk({ type: 'delta', delta: 'lo ' });
+      return textResponse('Hello!');
+    });
+    const stage = createReplyStage({
+      llm,
+      model: 'test',
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+    });
+    const deltas: string[] = [];
+    const replacements: string[] = [];
+    const ctx = makeCtx({ inbound: textMessage('user', 'Say hello') });
+    ctx.onAssistantDelta = (delta) => deltas.push(delta);
+    ctx.onAssistantReplace = (text) => replacements.push(text);
+
+    const result = await stage(ctx);
+
+    expect(result.ok).toBe(true);
+    expect(deltas).toEqual(['Hel', 'lo ']);
+    expect(replacements).toEqual(['Hello!']);
+    expect(ctx.reply).toBe('Hello!');
+  });
+
+  it('resets provisional text when the streaming provider retries', async () => {
+    const llm = createMockLlm(textResponse('new answer'));
+    llm.chatStream.mockImplementationOnce(async (_request, onChunk) => {
+      onChunk({ type: 'delta', delta: 'old answer' });
+      onChunk({ type: 'reset' });
+      onChunk({ type: 'delta', delta: 'new answer' });
+      return textResponse('new answer');
+    });
+    const stage = createReplyStage({
+      llm,
+      model: 'test',
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+    });
+    const deltas: string[] = [];
+    const replacements: string[] = [];
+    const ctx = makeCtx({ inbound: textMessage('user', 'Retry safely') });
+    ctx.onAssistantDelta = (delta) => deltas.push(delta);
+    ctx.onAssistantReplace = (text) => replacements.push(text);
+
+    const result = await stage(ctx);
+
+    expect(result.ok).toBe(true);
+    expect(deltas).toEqual(['old answer', 'new answer']);
+    expect(replacements).toEqual(['']);
+    expect(ctx.reply).toBe('new answer');
+  });
+
   it('buffers streaming output and publishes only the distinct rewritten reply', async () => {
     const llm = createMockLlm([
       textResponse('还是同一句回复。'),
@@ -96,6 +151,7 @@ describe('replyStage', () => {
       history: [textMessage('assistant', '还是同一句回复。')],
     });
     ctx.onAssistantDelta = (delta) => deltas.push(delta);
+    ctx.onAssistantReplace = (text) => deltas.push(text);
 
     const result = await stage(ctx);
 

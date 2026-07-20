@@ -326,6 +326,8 @@ export interface RunContext {
   contextCompressionThresholdRatio?: number;
   /** Optional streaming callback for assistant text deltas. */
   onAssistantDelta?: (delta: string) => void;
+  /** Replace the provisional streamed text with the approved final reply. */
+  onAssistantReplace?: (text: string) => void;
   /** Optional callback for tool execution events (start/end), emitted by execute stage. */
   onToolEvent?: (evt: ToolStreamEvent) => void;
   /** System prompt injected by the active general/coding behavior profile. */

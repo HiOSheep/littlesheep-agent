@@ -53,6 +53,7 @@ export function createReplyStage(deps: ReplyStageDeps) {
     ];
 
     let reply: string;
+    let streamed = '';
     try {
       const stream = ctx.onAssistantDelta !== undefined;
       const rawRequest = {
@@ -71,11 +72,16 @@ export function createReplyStage(deps: ReplyStageDeps) {
           insertedBeforePrimary: attachmentMessages.map((item) => item.context),
         }),
       );
-      let streamed = '';
       const res = stream
         ? await deps.llm.chatStream(req, (chunk) => {
+            if (chunk.type === 'reset') {
+              streamed = '';
+              ctx.onAssistantReplace?.('');
+              return;
+            }
             if (chunk.type === 'delta' && chunk.delta) {
               streamed += chunk.delta;
+              ctx.onAssistantDelta?.(chunk.delta);
             }
           })
         : await deps.llm.chat(req);
@@ -95,10 +101,11 @@ export function createReplyStage(deps: ReplyStageDeps) {
         apiGeneratedReply,
         (input) => rewriteReply(deps, ctx, systemPrompt.text, messages, input),
       );
-      // The Provider API is called for this run; publish only after the
-      // generated response passes the durable duplicate gate.
-      ctx.onAssistantDelta?.(reply);
+      // Streamed text is provisional. Replace it only after the complete
+      // model reply passes the durable duplicate gate.
+      if (reply !== streamed.trim()) ctx.onAssistantReplace?.(reply);
     } catch (err) {
+      if (streamed) ctx.onAssistantReplace?.('');
       ctx.lastError = { stage: 'reply', message: `user-facing reply generation failed: ${(err as Error).message}` };
       return {
         stage: 'reply',

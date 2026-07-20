@@ -58,8 +58,10 @@ describe('e2e agent loop', () => {
     const ctx = makeCtx({ inbound: textMessage('user', 'solve P vs NP') });
     const events: ToolStreamEvent[] = [];
     const deltas: string[] = [];
+    const replacements: string[] = [];
     ctx.onToolEvent = (event) => events.push(event);
     ctx.onAssistantDelta = (delta) => deltas.push(delta);
+    ctx.onAssistantReplace = (text) => replacements.push(text);
     const res = await h.run(ctx);
     expect(res.ok).toBe(true);
     expect(res.next).toBe('exit');
@@ -75,7 +77,8 @@ describe('e2e agent loop', () => {
       'verification',
       'final_delta',
     ]);
-    expect(deltas).toEqual(['final assembled answer']);
+    expect(deltas).toEqual([]);
+    expect(replacements).toEqual(['final assembled answer']);
     expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
       'classify',
       'decide',
@@ -131,14 +134,17 @@ describe('e2e agent loop', () => {
     const ctx = makeCtx({ inbound: textMessage('user', 'prepare a verified summary') });
     const events: ToolStreamEvent[] = [];
     const deltas: string[] = [];
+    const replacements: string[] = [];
     ctx.onToolEvent = (event) => events.push(event);
     ctx.onAssistantDelta = (delta) => deltas.push(delta);
+    ctx.onAssistantReplace = (text) => replacements.push(text);
 
     const res = await h.run(ctx);
 
     expect(res.ok).toBe(true);
     expect(ctx.reply).toBe('verified final answer');
-    expect(deltas).toEqual(['verified final answer']);
+    expect(deltas).toEqual([]);
+    expect(replacements).toEqual(['verified final answer']);
     expect(events.filter((event) => event.type === 'final_delta')).toHaveLength(1);
     expect(events.map((event) => event.type)).toEqual([
       'task_book', 'step_start', 'step_done', 'verification_start', 'verification',

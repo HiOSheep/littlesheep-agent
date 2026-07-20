@@ -37,7 +37,7 @@ function candidate(
   id: string,
   order: number,
   content: string,
-  options: { required?: boolean; priority?: number; kind?: ContextItemKind; role?: ChatMessage['role'] } = {},
+  options: { required?: boolean; priority?: number; kind?: ContextItemKind; role?: ChatMessage['role']; evictionGroup?: string } = {},
 ): ContextMessageCandidate {
   const role = options.role ?? 'user';
   return {
@@ -49,6 +49,7 @@ function candidate(
     priority: options.priority ?? 50,
     required: options.required ?? false,
     sensitive: true,
+    evictionGroup: options.evictionGroup,
   };
 }
 
@@ -512,6 +513,46 @@ describe('ContextEngine', () => {
     });
     expect(result.contextSnapshot.localTokenLedger).toMatchObject({ accuracy: 'unavailable' });
     expect(result.compressionRecommended).toBe(true);
+  });
+
+  it('evicts a user and assistant turn as one continuity unit', () => {
+    const engine = new ContextEngine({
+      safetyEstimator: {
+        id: 'length-safety-estimator-v1',
+        estimatePromptTokens: (request) => request.messages.reduce(
+          (total, message) => total + (typeof message.content === 'string' ? message.content.length : 0),
+          0,
+        ),
+      },
+      resolveContextWindow: () => ({ maxContextTokens: 50, source: 'builtin-model-registry' }),
+      resolveTokenizerCapability: () => ({
+        status: 'unavailable',
+        reasonCode: 'no-verified-final-request-counter',
+        reason: 'No verified final request counter.',
+        source: 'builtin-model-registry',
+        verifiedAt: '2026-07-13',
+      }),
+    });
+    const result = engine.prepare({
+      runId: 'run-grouped-turn',
+      sessionId: asSessionId('session-grouped-turn'),
+      stage: 'reply',
+      requestIndex: 1,
+      provider: 'openai',
+      request: baseRequest(),
+      candidates: [
+        candidate('system', 0, 's'.repeat(10), { required: true, role: 'system' }),
+        candidate('turn-user', 1, 'u'.repeat(15), { priority: 10, evictionGroup: 'turn-1' }),
+        candidate('turn-assistant', 2, 'a'.repeat(15), { priority: 10, role: 'assistant', evictionGroup: 'turn-1' }),
+        candidate('current', 3, 'c'.repeat(25), { required: true, priority: 95 }),
+      ],
+    });
+
+    expect(result.omittedCandidateIds).toEqual(['turn-user', 'turn-assistant']);
+    expect(result.request.messages.map((message) => message.content)).toEqual([
+      's'.repeat(10),
+      'c'.repeat(25),
+    ]);
   });
 
   it('fails closed when required context exceeds the conservative safety budget', () => {
