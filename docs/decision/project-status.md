@@ -1,6 +1,6 @@
 # LittleSheep 项目状态
 
-最后更新：2026-07-29 10:47:00
+最后更新：2026-07-29 11:33:05
 
 本文件是项目进度的正式来源。状态只根据当前源码、测试和构建结果维护；旧的阶段报告不再作为进度依据。当前实现若处于未完成重构或质量门失败状态，必须明确写成“进行中”，不能沿用最近一次绿色基线冒充当前状态。
 
@@ -10,12 +10,12 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 它还不是可直接宣称“生产就绪”的发行版。主要原因是当前内置模型尚无已验证的最终请求精确计数器、真实供应商验证未完成、活动 run 重启续跑、MCP、安装包发布和真实用户场景验收仍未闭环。因此本项目不使用一个没有权重定义的百分比来伪装精确进度，而用能力状态和验收证据表示总进度。产品方向已明确为：解放用户生产力，让用户专注于想法，LS 负责将想法可靠落地；执行和输出统一采用渐进式披露。
 
-**当前阶段：Memory v3 阶段 0-26、工具调用级并行、运行时事件安全边界、TaskBookPatch、Runner 检查点续跑基元、shadow Git 检查点、退出冻结、前台实时 Provider API 表达来源/去重闸门、逻辑容器权限闸门和 LS 开发环境版本管理已有工程基线。当前工作树正在继续收敛 LLM 调用：把语义活动迁移为 `respond / execute / clarify`，为直接回应建立紧凑 Prompt 和有界历史，并拆分 DECIDE 模型调用；全量质量门尚未恢复。完成这批基线修复后，真实 Provider 校准、运行时工具链分发与连续执行的产品控制面仍是主线。**
+**当前阶段：Memory v3 阶段 0-26、工具调用级并行、运行时事件安全边界、TaskBookPatch、Runner 检查点续跑基元、shadow Git 检查点、退出冻结、前台实时 Provider API 表达来源/去重闸门、逻辑容器权限闸门和 LS 开发环境版本管理已有工程基线。语义活动 `respond / execute / clarify`、直接回应紧凑 Prompt、有界历史、选择性上一轮摘要和 DECIDE 模型调用拆分已经通过本地完整质量门。下一主线是真实 Provider 校准、统一工具执行服务与连续执行的产品控制面。**
 
 - 后端继续使用连续、可衰减且无固定层数的 activation score；任务相关度、scope、证据和认识状态先于 activation。前端只显示带滞回的高/中/低三层汇总，不把三层写回后端。
 - 正式数据根已有 40 个业务 Atom、5 个内部 scope root、11 个资源、45 条本地 512 维向量；Catalog schema v9、TaskBook 二次注入、KnownState、working set、关系调和和版本化摘要链路已完成隔离质量门。
 - 阶段 19 已把最终 VERIFY、TaskExecution、Provider token 和两次运行时资源采样纳入只读报告。2026-07-29 重新读取 46/46 个执行日志：15 个有记忆访问、0 个有 KnownState、0 个报告显式 Atom 使用、12 个有 Provider usage、1 个有最终 VERIFY、10 个有资源采样。只有 Provider usage 达到单项门槛，整体仍为 `insufficient`，因此不调整 activation 参数。
-- 阶段 20 已退役 Memory v2 的 archive 摘要写入、旧 vector 装饰写入和 CLI archive adapter；既有 archive/vector 数据保持原样，只读兼容路径不能创建摘要、向量或 Atom。阶段 20 当时的验收基线为 180 个文件、1317 passed、1 skipped。当前工作树为 222 个测试文件、1534 passed、5 failed、1 skipped；typecheck、build、仓库卫生和恢复源检查通过，但完整质量门为红色。
+- 阶段 20 已退役 Memory v2 的 archive 摘要写入、旧 vector 装饰写入和 CLI archive adapter；既有 archive/vector 数据保持原样，只读兼容路径不能创建摘要、向量或 Atom。阶段 20 当时的验收基线为 180 个文件、1317 passed、1 skipped。当前工作树为 222 个测试文件、1540 passed、1 skipped；核心门、全量测试、typecheck、build、仓库卫生和恢复源检查均通过。
 - 阶段 21 已把版本化会话摘要覆盖的 source run 与 daily Atom 对齐，完成有界、确定性的一对一提升：每次最多扫描 256、处理 8 个候选，先提交 project/long-term/experience T2 目标，再按 expected revision 归档源；写入或归档失败保留 daily 源，整个维护流程不增加 LLM 调用。
 - 阶段 22 已把重复 Atom 合并接入独立调和闸门：模型只可引用本轮已 adopted、未冲突且 revision 匹配的 KnownState Atom；Runtime 再校验 scope、parent、认识边界、语义锚点和冲突/替代关系。单轮最多 2 个提案、每项最多 4 个 source，部分失败保留未提交 source 并支持幂等重试；阶段 22 本身不开放任意内容重写或层级重组，后续层级能力由阶段 23 单独治理。
 - 阶段 23 已把显式关系驱动的叶子 Atom 跨 parent 调整接入独立层级闸门：单轮最多 1 项，只接受本轮 adopted 的当前 D2/D3 Atom 与目标 parent，并要求同 scope、active/resolved 且有证据的 `belongs-to`/`derived-from` 正向关系。Runtime 负责叶子、revision、关系强度、提交、恢复和审计；超额提案明确拒绝，不静默丢弃。非叶子子树移动由阶段 26 的独立协议治理。
@@ -31,11 +31,11 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 | --- | --- | --- | --- |
 | 架构治理 | 仓库基元化阶段 0-7 已完成 | 27 个 package 与指定领域目录均有所有权 README；关键组合入口已收敛为 facade。`check:repo` 自动校验文档、模块和 TypeScript references；单进程 `tsc -b`、受影响包传播和 changed/core/full 三级验证已接通，避免依赖方读取旧声明并降低日常反馈成本 | `docs/reference/repository-guide.md`、`docs/reference/module-split-map.md`、`scripts/workspace-projects.mjs`、`scripts/run-affected-verification.mjs` |
 | LLM 调用契约与记忆提交 | 已实现工程闭环 | 每次模型请求解析独立 `LlmCallContract`，声明 purpose、Context、决策、输出、工具、记忆和预算；每轮有独立模型调用计数与硬上限；`CAPTURE` 默认按真实持久化状态确定性记录，`EVOLVE` 自适应调用。用户可见 Agent 自然语言必须在当次 run 中实时调用 Provider API，由 LLM 结合 `SOUL.md`/profile 现场生成，并通过 `ReplyProvenance` 绑定真实 model request；完全重复时最多重新实时调用两次 API，失败只返回 Runtime 状态。UI 状态与机器事实由 Runtime 固定提供，`FINALIZE` 禁止新增模型调用，只校验和持久化既有 API 回复。模型描述 statement/source，Runtime 独立决定 epistemic status 与 authority | `packages/types/src/runtime-contracts.ts`、`packages/types/src/message.ts`、`packages/harness/src/llm-call-contracts/`、`model-observability.ts`、`user-facing-reply.ts`、`stages/ask_user.ts`、`stages/capture.ts`、`stages/execute/final-reply.ts` |
-| Context Engine | 主要数据链与调用契约已实现；直接回应瘦身进行中；供应商验收未闭环 | 支持确定性候选、来源 segment、契约过滤、阶段软预算、真实模型窗口硬上限、版本化 Summary Memory、附件清单优先、按需附件工具、Provider usage 绑定和双账本 UI。当前 `respond` 路径正在改为只保留身份、能力名、受限记忆索引、`USER.md`、相关摘要/Atom、最近 8 条且最多 6000 字符的历史与紧凑输出约束；执行专用 Workflow、workspace、reasoning 和完整 bootstrap 不再默认重复注入。该差异尚有回归断言未收口，不能标记为稳定完成 | `packages/context/src/engine.ts`、`context-engine/`、`packages/harness/src/context-candidates.ts`、`model-observability.ts`、`packages/harness/src/stages/reply.ts`、`packages/prompt/src/builder.ts` |
-| 运行时时间与执行感知 | 基础闭环已实现；直接回应介入条件重新验收中 | 每次实际模型请求仍在缓存边界后注入当前时间和本轮状态。当前直接回应路径尝试仅在状态、进度、耗时或上一轮相关请求中展开完整执行摘要，普通回复使用紧凑时钟；这一条件与既有“紧接着的追问可恢复上一轮摘要”测试尚未达成一致，因此当前契约仍处于进行中 | `packages/prompt/src/runtime-time.ts`、`packages/harness/src/runtime-awareness.ts`、`model-observability.ts`、`stages/execute/tool-loop.ts`、`packages/runner/src/session-run-summary.ts`、`execution-log.ts` |
+| Context Engine | 主要数据链、调用契约与直接回应瘦身已实现；供应商验收未闭环 | 支持确定性候选、来源 segment、契约过滤、阶段软预算、真实模型窗口硬上限、版本化 Summary Memory、附件清单优先、按需附件工具、Provider usage 绑定和双账本 UI。`respond` 路径只保留身份、能力名、受限记忆索引、`USER.md`、相关摘要/Atom、最近 8 条且最多 6000 字符的历史与紧凑输出约束；执行专用 Workflow、workspace、reasoning 和完整 bootstrap 不再默认重复注入。快照回归明确验证 `respond` 不含 `project_knowledge`，`decide/execute` 仍按需保留 | `packages/context/src/engine.ts`、`context-engine/`、`packages/harness/src/context-candidates.ts`、`model-observability.ts`、`packages/harness/src/stages/reply.ts`、`packages/prompt/src/builder.ts` |
+| 运行时时间与执行感知 | 基础闭环与直接回应介入条件已验收 | 每次实际模型请求仍在缓存边界后注入当前时间和本轮状态。普通直接回应只使用紧凑时钟；只有用户明确询问进度、状态、结果、耗时、成功/失败、错误、恢复或“刚才/上一轮/上次”时，才注入上一轮有界执行摘要和最近工具计时。正反向回归均已覆盖，普通闲聊不会被旧执行详情污染 | `packages/prompt/src/runtime-time.ts`、`packages/harness/src/runtime-awareness.ts`、`model-observability.ts`、`stages/execute/tool-loop.ts`、`packages/runner/src/session-run-summary.ts`、`execution-log.ts` |
 | 应用数据根、默认 workplace 与附件生命周期 | 阶段 3 工程实现已完成 | 完整应用数据根默认名为 `.littlesheep`，但可通过环境、locator 和设置整体迁移；`workplace/` 只是未选择其他目录时的默认工作区子目录。粘贴/浏览器导入进入独立受管缓存，按 30 天、256 项、512 MiB 有界清理；workplace 使用可恢复的有界元数据索引，不读正文。设置页可登记完整数据根迁移，下一次启动会在任何写入者初始化前通过外部 locator、同级 staging、全文件 SHA-256 清单和活动元数据路径重绑定完成原子切换；源目录保留，失败继续使用旧目录，提交中断可恢复，回滚同样在下次启动生效。隔离测试已覆盖这些契约，尚未擅自搬迁正式用户数据 | `packages/branding/`、`packages/app/src/main/attachment-cache.ts`、`data-root-migration.ts`、`data-root-metadata.ts`、`packages/memory-tree/src/workspace-resource-index.ts` |
 | 长会话压缩与 daily 提升 | 本地连续性门、首版提升、重复投影调和、叶子层级纠正、同陈述修订、事实纠正/冲突替代和非叶子子树重组闸门已完成 | 原始 JSONL 不删除；摘要版本化、记录来源范围和最近 64 个 source run，支持增量合并，并在下一轮作为独立 `summary_memory` 介入。真实指代且近期消息缺少任务锚点时才回退摘要；压缩后只对明确覆盖、符合认识边界的 active daily Atom 做有界一对一提升，先写目标再归档源，失败保留源且不增加模型调用。重复投影合并、叶子跨 parent 调整、同陈述内容澄清、事实替代和有界子树移动都只允许模型提出、Runtime 校验和原子提交；真实 Provider 长会话、摘要生成失败、提案判断质量、跨陈述重写、超大子树治理和成本仍待验收 | `packages/session/src/compaction.ts`、`compaction-store.ts`、`packages/memory-tree/src/memory-consolidation.ts`、`memory-reconciliation.ts`、`memory-hierarchy.ts`、`memory-subtree.ts`、`memory-revision.ts`、`memory-correction.ts`、`packages/runner/src/runner.ts` |
-| 硬控制流 Agent | 基础状态机已实现；语义活动迁移进行中 | Runtime 继续控制 `ENTER`、内部 stage、权限、工具、验证、恢复和收尾；模型只在有界活动路由中选择 `respond / execute / clarify`。内部 `classify` stage id、旧 `chat / problem / unclear` 会话与插件字段暂时保留兼容，不再作为新架构语义 | `packages/types/src/agent.ts`、`packages/classifier/`、`packages/harness/src/stages/classify.ts`、`packages/runner/` |
+| 硬控制流 Agent | 基础状态机与语义活动迁移已实现 | Runtime 继续控制 `ENTER`、内部 stage、权限、工具、验证、恢复和收尾；模型只在有界活动路由中选择 `respond / execute / clarify`。内部 `classify` stage id、旧 `chat / problem / unclear` 会话与插件字段暂时保留兼容，不再作为新架构语义 | `packages/types/src/agent.ts`、`packages/classifier/`、`packages/harness/src/stages/classify.ts`、`packages/runner/` |
 | 需求判断与任务书 | 已实现 | 支持澄清请求、复杂度判断、TaskBook、步骤验收和局部重规划 | `packages/types/`、`packages/harness/src/stages/` |
 | 步骤级执行与恢复 | 已实现基础闭环；TaskBook 步骤并行待做 | 保留已完成步骤证据，失败时按步骤恢复，不重复执行已完成部分；同一模型响应中的独立工具调用已经有界并行，冲突资源自动串行并按原始调用顺序归并；完整 TaskBook 步骤级并行仍需步骤依赖、资源读写集合、分支取消和稳定归并契约 | `packages/harness/src/stages/execute.ts`、`execute/tool-loop.ts`、`execute/tool-scheduler.ts`、`recover.ts`、`verify.ts` |
 | 记忆树运行时协议 | 已实现基础闭环并通过相关性、动态工作集、多轮任务语义、关系路由与 TaskBook 调和门 | 根索引到分支索引再到展开/分支内深搜；D1 在 branch/scope 内先用 FTS 找精确候选，再补 80 个近期候选。首次 prime 最多选择 2 个 D2 Atom、预算 600 tokens；DECIDE 后的结构化 TaskBook 可再补最多 2 Atom/400 tokens，单 run 最多 4 次且重复 query 跳过。goal、验收标准和目标步骤分别评分，避免扁平长文本稀释相关性。高相关种子仍只做一次有界同 scope 关系扩展，D1 不调用向量；release 后真实请求删除对应正文，KnownState 同步排除，重新展开只恢复最新副本 | `packages/memory-tree/src/task-query.ts`、`memory-prime-selection.ts`、`memory-tree.ts`、`memory-service/run-coordinator.ts`、`packages/harness/src/memory-taskbook-refinement.ts`、`memory-context-working-set.ts` |
@@ -63,14 +63,14 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 ## 当前验证结果
 
-当前工作树的类型、构建、仓库卫生、恢复源和文本差异检查通过，但全量测试仍有 5 项失败，因此工程质量门为红色。真实供应商冒烟还是独立验收门，即使本地质量门恢复也不能据此宣称三家 Provider 已完成校准。
+当前工作树的核心门、全量测试、类型、构建、仓库卫生和恢复源检查均通过，工程质量门为绿色。真实供应商冒烟仍是独立验收门，不能因本地质量门通过就宣称三家 Provider 已完成校准。
 
 | 检查 | 当前工作树结果 | 证据命令 |
 | --- | --- | --- |
 | 仓库卫生 | 通过：33 项通过，0 项失败 | `pnpm.cmd run check:repo` |
-| 开发快速门 | 本轮未单独执行；不能由失败的全量测试替代为通过 | `pnpm.cmd run verify:changed` |
-| 核心 Agent 门 | 未单独执行；当前全量测试中的活动路由、Context 快照和上一轮摘要契约已有失败 | `pnpm.cmd run verify:core` |
-| 全量测试 | **失败**：222 个测试文件中 218 passed、4 failed；测试项为 1534 passed、5 failed、1 skipped。失败包括 2 项 `respond` ContextSnapshot 仍要求旧 `project_knowledge`、2 项上一轮摘要介入契约不一致，以及 1 项新历史窗口测试漏引入 `textOf` | `pnpm.cmd test`、`packages/harness/src/model-request-characterization.test.ts`、`packages/harness/src/runtime-awareness.test.ts`、`packages/runner/src/runner.test.ts`、`packages/harness/src/stages/_shared.test.ts` |
+| 开发快速门 | 本轮未单独执行；核心门和全量测试提供更广覆盖 | `pnpm.cmd run verify:changed` |
+| 核心 Agent 门 | 通过：7 个测试文件、88 项全部通过；仓库卫生 33/33、全工作区增量 typecheck 通过 | `pnpm.cmd run verify:core` |
+| 全量测试 | 通过：222 个测试文件全部通过；测试项为 1540 passed、1 skipped。覆盖 `respond` ContextSnapshot、上一轮摘要选择性介入、历史窗口和 Runner 连续性 | `pnpm.cmd test`、`packages/harness/src/model-request-characterization.test.ts`、`packages/harness/src/runtime-awareness.test.ts`、`packages/runner/src/runner.test.ts`、`packages/harness/src/stages/_shared.test.ts` |
 | 全工作区类型检查 | 通过：27 个 workspace package 的 project references 完整通过 | `pnpm.cmd run typecheck` |
 | 全工作区构建 | 通过：类型图与 Electron main/preload/renderer 完整构建 | `pnpm.cmd run build` |
 | 开发环境定向回归 | 通过：开发环境管理与 Local App API 共 2 个测试文件，7 项全部通过；导入、精确版本、系列版本、激活、移除和取消选择均有覆盖，App typecheck 已通过 | `packages/app/src/main/development-environments.test.ts`、`development-environment-api.test.ts` |
@@ -91,7 +91,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 | Memory v3 真实负载观测 | 观测工程门通过，校准门未通过：2026-07-29 只读报告检查正式数据根 46/46 份执行日志，0 拒绝、0 投影截断；15 个 run 有记忆访问，0 个有 KnownState，1 个有最终 VERIFY，0 个报告显式 Atom 使用，12 个有权威 Provider usage，10 个有资源采样。Memory 访问共使用 5,880/48,000 tokens；Provider 共报告 prompt 75,958、completion 17,742、reasoning 15,187、cached prompt 21,504，Memory/Provider prompt 比率 0.0632。默认五项门槛为 20/10/10/20/20，目前只有 Provider usage 达标，状态仍为 `insufficient`，禁止据此调参 | `pnpm.cmd run report:memory-v3-workload`、`packages/runner/src/memory-workload-observability.ts`、`packages/runner/src/runtime-resource-observation.ts` |
 | Memory v3 Provider 连续性 | mock 结构门通过：首轮注入、KnownState、VERIFY 显式使用、routing/verified usefulness 分层、EVOLVE/CAPTURE、关闭重启和新 run 再召回均通过。真实门未通过：2026-07-29 最小 chat 请求确认 DeepSeek 密钥已加载，但官方端点返回脱敏 HTTP 401 `invalid key`；OpenAI/GLM 无可用测试密钥 | `packages/runner/src/memory-v3.integration.test.ts`、`pnpm.cmd run verify:provider -- --provider=deepseek --checks=chat --reasoning=auto` |
 | 应用恢复源检查 | 通过；现有数据根、默认 workplace、会话、执行日志目录、资源索引、终端活动和布局均可读取；仍保留部分旧 run 缺执行日志与可选 workspace artifact 索引缺失的诊断警告 | `pnpm.cmd run verify:app-recovery` |
-| 桌面快捷方式 | 上一绿色阶段曾刷新并验证；当前活动路由重构只完成本地构建，因全量测试失败，本轮未刷新快捷方式，也未把当前工作树作为可验收版本发布 | `scripts/refresh-desktop-shortcut.ps1` |
+| 桌面快捷方式 | 已刷新并验证：`<Desktop>\LittleSheep.lnk` 指向当前构建准备的 `LittleSheep.exe`；从快捷方式启动后主窗口标题为 `LittleSheep`，进程响应正常 | `scripts/refresh-desktop-shortcut.ps1`、PowerShell 进程窗口检查 |
 
 供应商冒烟脚本已经能够脱敏执行最小聊天、reasoning、工具调用、`reasoning_content` 续接、流式中断和 usage 对账。Memory v3 专项验收又增加了真实非流式 reply + authoritative usage 预检，防止把状态机恢复文本当成 Provider 成功。当前 DeepSeek 请求到达官方端点且密钥已被读取，但凭证无效并返回 HTTP 401；OpenAI 与 GLM 未提供可用测试凭证。因此真实 Provider 阶段仍未完成，mock 只证明本地结构链路。
 
@@ -207,7 +207,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 40. 阶段 17 已建立动态 Atom 激活层级：后端用连续、惰性衰减且不限制层数的 activation score 统一持久记忆和语义缓存的候选速度；真实采用且产生价值才升温，长期不用或无帮助逐步降温。该分数不改写语义 parent、事实 confidence 或 D0-D3，无关高频 Atom 不能越过任务门。前端只映射为带滞回的高/中/低三层只读汇总，不暴露 Atom 或原始分数。持久记忆和语义缓存共用有界投影跟踪器：只保留当前条目的上一层，刷新可防阈值抖动，移除条目即释放，重启自动清空。实现没有无界访问历史与全库常驻轮询；专项质量门 `62/62` 通过。
 41. 阶段 18 已建立真实负载只读观测基线：Runner 只聚合覆盖数、记忆访问、KnownState、VERIFY 显式使用、Provider usage 和 token 数据；命令行报告按修改时间有界选择日志，先脱敏投影再统计，不输出对话、回复、工具内容、路径或 Atom ID。正式 36 个 run 全部可读，但 20/10/10 三项默认校准门均未达到，因此只确认观测能力完成，不宣称 activation 已完成真实负载校准。
 42. 阶段 19 已扩展真实负载质量、成本与资源观测：执行日志每轮只保留开始/结束两次粗粒度资源快照；报告增加最终 VERIFY、TaskExecution、Provider prompt/completion/cache/reasoning token、Memory/Provider prompt 比率和 RSS/heap 变化，并把旧日志缺字段保持为缺失。正式数据仍为 36/36 可读、0 拒绝、0 投影截断，0 个资源样本，五项校准门全部不足；“adopted 但未显式使用”只作为诊断代理，不等同误注入事实。
-43. 阶段 20 已退役 Memory v2 的 archive 月/年摘要写入、旧 Vector 装饰写入和 CLI archive adapter。Memory Core 不再依赖 Config、LLM 或旧 Vector，CLI 不再引用 Vector project；旧类型和文件搜索只保留明确的只读兼容。卫生门禁止旧文件、主动符号和依赖回流；真实 CLI 子进程以退出码 2 在配置/Provider/用户数据加载前失败关闭。阶段 20 验收时为 180 个文件、1317 passed、1 skipped；2026-07-19 最近一次完整绿色基线为 216 个文件、1494 passed、1 skipped。2026-07-29 当前工作树已经增长到 222 个文件、1534 passed、5 failed、1 skipped，正式用户旧 archive/vector 文件仍未改写。
+43. 阶段 20 已退役 Memory v2 的 archive 月/年摘要写入、旧 Vector 装饰写入和 CLI archive adapter。Memory Core 不再依赖 Config、LLM 或旧 Vector，CLI 不再引用 Vector project；旧类型和文件搜索只保留明确的只读兼容。卫生门禁止旧文件、主动符号和依赖回流；真实 CLI 子进程以退出码 2 在配置/Provider/用户数据加载前失败关闭。阶段 20 验收时为 180 个文件、1317 passed、1 skipped；2026-07-29 当前工作树已经增长到 222 个文件、1540 passed、1 skipped，正式用户旧 archive/vector 文件仍未改写。
 44. 阶段 21 已完成结构化 daily 一对一提升：压缩摘要只保留最近 64 个 source run，Repository 查询最多扫描 256 个候选、每批处理 8 个；Runtime 先写 project/long-term/experience T2 目标，再按 expected revision 归档源 Atom，失败保留源且不增加 LLM 调用。复杂多 Atom 语义合并仍必须先由模型提出结构化提案，再由 Runtime 校验提交。
 45. 阶段 22 已完成模型提案的重复 Atom 合并闸门：EVOLVE 使用独立 `reconciliations` 契约，普通 `merge` intent 不再旁路为写入；候选必须来自本轮 adopted KnownState，并通过 revision、scope、parent、认识边界、确定性语义锚点和冲突/替代关系检查。多 source 顺序复用原子 merge mutation；中途失败返回 partial，未提交 source 保持 active，重试识别已完成部分。协议与实现已拆为独立模块，定向 12/12 和全仓 typecheck 通过。
 46. 阶段 23 已完成显式关系驱动的叶子 Atom 跨 parent 重组：EVOLVE 使用独立 `reparents` 契约，普通 `move` intent 只能延期审计；候选必须来自本轮 adopted 的当前 D2/D3 KnownState，并通过叶子、revision、branch/scope、关系方向、active/resolved、来源证据、confidence/relevance、提交和恢复检查。单轮最多 1 项，超额项写入 rejected 审计；真实 V3 Backend 回归确认 parent、Catalog、关系邻域、投影记录和重启后一致。非叶子子树由阶段 26 的独立协议治理。
@@ -263,7 +263,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 **当前事实**：Harness 已把模型请求映射为显式 Context 候选并交给 `@littlesheep/context` 准备。完整执行路径继续把基础策略、记忆根索引、bootstrap、输出约束、Workflow/TaskBook、profile 和 reasoning 独立登记；正在收敛的 `respond` 路径改用紧凑 Prompt，只保留回答所需的身份、能力名、`USER.md`、受限记忆索引、相关摘要/Atom、最近历史和输出约束。Provider usage 继续绑定准确快照，UI 区分供应商实测、本地精确装配和 tokenizer 不可用；unavailable 模型只使用 `displayable: false` 的保守安全估算防溢出，不向用户冒充真实 token。当前 DECIDE 输出上限为 1400，直接 REPLY 与重复改写上限为 1200；这些值仍是 stage 局部预算，尚未由 Provider capability 统一解析。
 
-版本化 Summary Memory、附件清单优先与按需正文工具、T0 根索引、项目记忆投影、稳定项目 ID、路径重绑定、统一 `MemoryService`、数据根迁移和压缩阈值设置继续沿既有工程基线工作。工具调用级有界并行、运行中事件安全消费、确定性 TaskBookPatch 和 Runner 显式续跑已经实现；完整 TaskBook 步骤并行、前端事件生产入口、启动恢复控制面和后台执行尚未实现。2026-07-29 当前工作树的 typecheck、build、仓库卫生与恢复检查通过，但全量测试有 5 项失败；三家真实 Provider 校准也未完成，因此不能宣称当前工程质量门绿色或生产就绪。
+版本化 Summary Memory、附件清单优先与按需正文工具、T0 根索引、项目记忆投影、稳定项目 ID、路径重绑定、统一 `MemoryService`、数据根迁移和压缩阈值设置继续沿既有工程基线工作。工具调用级有界并行、运行中事件安全消费、确定性 TaskBookPatch 和 Runner 显式续跑已经实现；完整 TaskBook 步骤并行、前端事件生产入口、启动恢复控制面和后台执行尚未实现。2026-07-29 当前工作树的核心门、全量测试、typecheck、build、仓库卫生与恢复检查均通过；三家真实 Provider 校准仍未完成，因此工程质量门绿色不等于生产就绪。
 
 **验收标准**：每项 Context 可追溯且不超预算；未知 tokenizer 不显示伪精确 token；追加要求不重做已完成副作用；活动 run 可在重启后从检查点恢复；所有循环有界；用户数据迁移可验证、可回滚；后台运行始终可见、可终止。
 
@@ -313,12 +313,10 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：核心状
 
 ## 推荐后续顺序
 
-1. 收口 `respond / execute / clarify` 活动路由与直接回应 Context 瘦身，修正快照断言、历史窗口测试和上一轮摘要介入契约，恢复 `pnpm.cmd test` 全绿。
-2. 在全量测试绿色后重新执行 `check:repo`、typecheck、build、恢复源检查和差异检查，并把新验证结果写回本文件；在此之前不推送阶段版本或刷新快捷方式。
-3. 替换当前无效的 DeepSeek 密钥，或提供 OpenAI/GLM 可用密钥；完成真实对话、工具调用和中断冒烟，用 Provider 结果校准 Context、reasoning、usage 与保守安全估算。远程 Embedding 不纳入默认路径。
-4. 在正式 V3 上验收真实会话写入、索引导航、验证反馈、本地向量持续维护和应用重启连续性，并继续积累 KnownState、显式 Atom 使用、最终 VERIFY 和资源样本。
-5. 在稳定 Call Contract 上收敛统一 Tool Execution Service，使内置、插件和未来 MCP 工具共享审批、超时、清洗、证据与恢复契约。
-6. 在已有 RuntimeEventQueue、安全边界、TaskBookPatch、Runner 续跑和 shadow Git 检查点之上，补齐前端事件生产、应用启动恢复/放弃/查看现场控制面，再实现 TaskBook 步骤并行和后台运行；之后推进开发环境正式分发、Mode Registry、插件 API v2 与 MCP。
+1. 替换当前无效的 DeepSeek 密钥，或提供 OpenAI/GLM 可用密钥；完成真实对话、工具调用和中断冒烟，用 Provider 结果校准 Context、reasoning、usage 与保守安全估算。远程 Embedding 不纳入默认路径。
+2. 在正式 V3 上验收真实会话写入、索引导航、验证反馈、本地向量持续维护和应用重启连续性，并继续积累 KnownState、显式 Atom 使用、最终 VERIFY 和资源样本。
+3. 在稳定 Call Contract 上收敛统一 Tool Execution Service，使内置、插件和未来 MCP 工具共享审批、超时、清洗、证据与恢复契约。
+4. 在已有 RuntimeEventQueue、安全边界、TaskBookPatch、Runner 续跑和 shadow Git 检查点之上，补齐前端事件生产、应用启动恢复/放弃/查看现场控制面，再实现 TaskBook 步骤并行和后台运行；之后推进开发环境正式分发、Mode Registry、插件 API v2 与 MCP。
 
 ## 维护规则
 

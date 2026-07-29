@@ -1,19 +1,36 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatRequest } from '@littlesheep/llm';
 import { CACHE_BOUNDARY_MARKER } from '@littlesheep/prompt';
-import { textMessage } from '@littlesheep/types';
+import { textMessage, type SessionRunSummary } from '@littlesheep/types';
 import { buildRunRequestCandidates } from './context-candidates.js';
 import { prepareModelRequest } from './model-observability.js';
 import { makeCtx } from './tests/helpers.js';
 
-function request(): ChatRequest {
+function request(content = 'what is the status?'): ChatRequest {
   return {
     model: 'test-model',
     messages: [
       { role: 'system', content: 'stable policy' },
-      { role: 'user', content: 'what is the status?' },
+      { role: 'user', content },
     ],
     max_tokens: 900,
+  };
+}
+
+function previousRunSummary(): SessionRunSummary {
+  return {
+    version: 1,
+    runId: 'previous-run',
+    status: 'ok',
+    startedAt: '2026-07-15T02:00:00.000Z',
+    endedAt: '2026-07-15T02:00:02.500Z',
+    durationMs: 2500,
+    task: { status: 'done', completedSteps: 2, totalSteps: 2 },
+    tools: {
+      total: 1, succeeded: 1, failed: 0, totalDurationMs: 700,
+      recent: [{ name: 'read', status: 'succeeded', durationMs: 700 }],
+      truncated: false,
+    },
   };
 }
 
@@ -96,33 +113,34 @@ describe('runtime awareness', () => {
   });
 
   it('refreshes the live second for every outbound request and includes the previous run', () => {
-    const ctx = makeCtx();
+    const inbound = 'what is the status of the previous run?';
+    const ctx = makeCtx({ inbound: textMessage('user', inbound) });
     ctx.startedAt = '2026-07-15T03:00:00.000Z';
     ctx.timeZone = 'Asia/Hong_Kong';
     let now = new Date('2026-07-15T03:04:05.000Z');
     ctx.runtimeNow = () => now;
-    ctx.previousRun = {
-      version: 1,
-      runId: 'previous-run',
-      status: 'ok',
-      startedAt: '2026-07-15T02:00:00.000Z',
-      endedAt: '2026-07-15T02:00:02.500Z',
-      durationMs: 2500,
-      task: { status: 'done', completedSteps: 2, totalSteps: 2 },
-      tools: {
-        total: 1, succeeded: 1, failed: 0, totalDurationMs: 700,
-        recent: [{ name: 'read', status: 'succeeded', durationMs: 700 }],
-        truncated: false,
-      },
-    };
+    ctx.previousRun = previousRunSummary();
 
-    const first = prepareModelRequest(ctx, 'reply', request());
+    const first = prepareModelRequest(ctx, 'reply', request(inbound));
     now = new Date('2026-07-15T03:04:06.000Z');
-    const second = prepareModelRequest(ctx, 'reply', request());
+    const second = prepareModelRequest(ctx, 'reply', request(inbound));
 
     expect(String(first.messages[0]?.content)).toContain('2026-07-15 11:04:05');
     expect(String(second.messages[0]?.content)).toContain('2026-07-15 11:04:06');
     expect(String(second.messages[0]?.content)).toContain('previous_run: id=previous-run');
     expect(String(second.messages[0]?.content)).toContain('read:succeeded:700 ms');
+  });
+
+  it('keeps previous-run execution details out of an ordinary direct reply', () => {
+    const inbound = 'hello again';
+    const ctx = makeCtx({ inbound: textMessage('user', inbound) });
+    ctx.previousRun = previousRunSummary();
+
+    const prepared = prepareModelRequest(ctx, 'reply', request(inbound));
+    const system = String(prepared.messages[0]?.content);
+
+    expect(system).toContain('# Runtime Clock');
+    expect(system).not.toContain('previous_run:');
+    expect(system).not.toContain('recent_previous_tools:');
   });
 });

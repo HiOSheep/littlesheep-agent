@@ -12,6 +12,7 @@ import type {
 } from '@littlesheep/types';
 
 const MAX_RUNTIME_TOOL_DETAILS = 8;
+const DETAILED_REPLY_RUNTIME_PATTERN = /(?:进度|状态|耗时|用时|多久|刚才|上一轮|上次|执行(?:到哪|情况|结果)|完成(?:了吗|了没|情况|进度|度)|是否完成|成功(?:了吗|了没|与否)|失败(?:了吗|原因|情况)|报错|错误(?:原因|情况)|恢复(?:情况|状态)|previous\s+run|last\s+run|just\s+now|progress|status|elapsed|duration|how\s+long|result|did\s+(?:it|that).{0,12}(?:work|finish|succeed|fail)|succeed(?:ed)?|fail(?:ed|ure)?|error|recovery)/iu;
 
 export interface RuntimeAwarenessInjection {
   request: ChatRequest;
@@ -103,7 +104,7 @@ function shouldUseCompactRuntime(ctx: RunContext, purpose: LlmCallPurpose | unde
     .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
     .map((part) => part.text)
     .join('\n');
-  return !/(?:进度|状态|完成|执行|耗时|多久|刚才|上一轮|上次|progress|status|complete|elapsed|previous run)/iu.test(request);
+  return !DETAILED_REPLY_RUNTIME_PATTERN.test(request);
 }
 
 function renderCompactRuntimeAwareness(

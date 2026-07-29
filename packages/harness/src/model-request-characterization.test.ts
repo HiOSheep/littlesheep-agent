@@ -85,12 +85,17 @@ function expectRecordedSnapshot(
     localTokenLedger: { accuracy: 'unavailable' },
   });
   const items = ctx.contextSnapshots?.[0]?.items ?? [];
+  const kinds = items.map((item) => item.kind);
   expect(ctx.contextSnapshots?.[0]?.totalItemCount).toBe(items.length);
-  expect(items.map((item) => item.kind)).toEqual(expect.arrayContaining([
+  expect(kinds).toEqual(expect.arrayContaining([
     'memory_index',
-    'project_knowledge',
     'output_constraint',
   ]));
+  if (stage === 'reply') {
+    expect(kinds).not.toContain('project_knowledge');
+  } else {
+    expect(kinds).toContain('project_knowledge');
+  }
   expect(items.slice(-5).map((item) => item.kind)).toEqual([
     'recent_message',
     'recent_message',

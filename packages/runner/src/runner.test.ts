@@ -672,7 +672,7 @@ describe('createRunner run', () => {
     });
 
     const requestCount = requests.length;
-    await runner.run({ sessionId: first.sessionId, text: 'hello again' });
+    await runner.run({ sessionId: first.sessionId, text: 'what was the status of the previous run?' });
     const followUpRequests = requests.slice(requestCount);
     expect(followUpRequests.some((request) => (
       String(request.messages.find((message) => message.role === 'system')?.content)

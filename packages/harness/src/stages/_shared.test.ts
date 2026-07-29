@@ -6,6 +6,7 @@ import {
   attachmentManifestText,
   callLlmForJson,
   recentHistoryForModel,
+  textOf,
 } from './_shared.js'
 
 describe('attachment context helpers', () => {
