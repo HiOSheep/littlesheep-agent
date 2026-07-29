@@ -620,6 +620,52 @@ export interface RuntimeEventIngress {
   summary(runId: string): RuntimeEventQueueSummary | null;
 }
 
+export type RuntimeActiveRunPhase = 'planning' | 'executing' | 'verifying' | 'finalizing';
+
+export type RuntimeActiveRunControlStatus = 'running' | 'pause_requested' | 'interrupt_requested';
+
+export type RuntimeActiveRunAction = 'pause' | 'resume' | 'interrupt';
+
+export interface RuntimeActiveRunStep {
+  stepId: string;
+  title?: string;
+}
+
+/** Bounded, redacted state suitable for desktop and tray control surfaces. */
+export interface RuntimeActiveRunSnapshot {
+  runId: string;
+  sessionId: SessionId;
+  origin: RunConfigOrigin;
+  startedAt: string;
+  updatedAt: string;
+  phase: RuntimeActiveRunPhase;
+  controlStatus: RuntimeActiveRunControlStatus;
+  totalSteps: number;
+  completedSteps: number;
+  activeSteps: RuntimeActiveRunStep[];
+  activeToolCount: number;
+}
+
+export type RuntimeActiveRunActionOutcome =
+  | {
+      kind: 'accepted';
+      action: RuntimeActiveRunAction;
+      run: RuntimeActiveRunSnapshot;
+    }
+  | {
+      kind: 'rejected';
+      action: RuntimeActiveRunAction;
+      reason: 'run-not-active' | 'action-conflict' | 'queue-rejected';
+      message: string;
+    };
+
+/** Runtime-owned active-run query/control port; no Renderer state is authoritative. */
+export interface RuntimeActiveRunControl {
+  list(): RuntimeActiveRunSnapshot[];
+  request(runId: string, action: RuntimeActiveRunAction, reason?: string): RuntimeActiveRunActionOutcome;
+  subscribe(listener: (runs: RuntimeActiveRunSnapshot[]) => void): () => void;
+}
+
 /**
  * Bounded in-memory event queue state used by an active run. The queue is a
  * runtime continuity primitive; it is not an instruction stream for the LLM.

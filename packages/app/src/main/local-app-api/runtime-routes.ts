@@ -49,6 +49,7 @@ export async function routeRuntime(
     const body = await readJson(req)
     const current = context.getConfig()
     const nextDefaults = { ...current.agents.defaults }
+    const nextDesktop = { ...current.desktop }
 
     if (typeof body.model === 'string' && body.model.trim()) {
       const model = body.model.trim()
@@ -98,12 +99,26 @@ export async function routeRuntime(
       nextDefaults.contextCompressionThresholdRatio = ratio
     }
 
+    if (Object.prototype.hasOwnProperty.call(body, 'closePolicy')) {
+      const closePolicy = body.closePolicy
+      if (
+        closePolicy !== 'always-background'
+        && closePolicy !== 'background-while-active'
+        && closePolicy !== 'always-quit'
+      ) {
+        json(res, 400, { error: 'closePolicy must be always-background, background-while-active, or always-quit' })
+        return true
+      }
+      nextDesktop.closePolicy = closePolicy
+    }
+
     const next: Config = {
       ...current,
       agents: {
         ...current.agents,
         defaults: nextDefaults,
       },
+      desktop: nextDesktop,
     }
     context.setConfig(next)
     await context.updateRuntimeConfig(next)
@@ -214,6 +229,7 @@ export function buildRuntimePayload(config: Config, workplaceDir: string): Runti
     reasoning: coerceReasoningForModelRef(config.agents.defaults.reasoning, config.agents.defaults.model),
     profile: normalizeAgentProfileId(config.agents.defaults.profile),
     contextCompressionThresholdRatio: config.agents.defaults.contextCompressionThresholdRatio,
+    closePolicy: config.desktop.closePolicy,
     workspace: config.agents.defaults.workspace || workplaceDir,
     workplace: workplaceDir,
     providers: config.providers.map((provider) => {

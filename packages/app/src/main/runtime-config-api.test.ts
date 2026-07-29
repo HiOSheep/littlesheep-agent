@@ -39,7 +39,10 @@ describe('runtime config Local App API', () => {
     try {
       const initial = await fetch(`http://127.0.0.1:${server.port}/runtime`)
       expect(initial.status).toBe(200)
-      await expect(initial.json()).resolves.toMatchObject({ contextCompressionThresholdRatio: 0.8 })
+      await expect(initial.json()).resolves.toMatchObject({
+        contextCompressionThresholdRatio: 0.8,
+        closePolicy: 'background-while-active',
+      })
 
       const changed = await fetch(`http://127.0.0.1:${server.port}/runtime`, {
         method: 'POST',
@@ -49,6 +52,15 @@ describe('runtime config Local App API', () => {
       expect(changed.status).toBe(200)
       await expect(changed.json()).resolves.toMatchObject({ contextCompressionThresholdRatio: 0.9 })
       expect(updates.at(-1)?.agents.defaults.contextCompressionThresholdRatio).toBe(0.9)
+
+      const closePolicy = await fetch(`http://127.0.0.1:${server.port}/runtime`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ closePolicy: 'always-background' }),
+      })
+      expect(closePolicy.status).toBe(200)
+      await expect(closePolicy.json()).resolves.toMatchObject({ closePolicy: 'always-background' })
+      expect(updates.at(-1)?.desktop.closePolicy).toBe('always-background')
 
       const after = await fetch(`http://127.0.0.1:${server.port}/runtime`)
       await expect(after.json()).resolves.toMatchObject({ contextCompressionThresholdRatio: 0.9 })
@@ -61,7 +73,13 @@ describe('runtime config Local App API', () => {
         })
         expect(response.status).toBe(400)
       }
-      expect(updates).toHaveLength(1)
+      const invalidClosePolicy = await fetch(`http://127.0.0.1:${server.port}/runtime`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ closePolicy: 'coding' }),
+      })
+      expect(invalidClosePolicy.status).toBe(400)
+      expect(updates).toHaveLength(2)
     } finally {
       await server.stop()
       rmSync(dataDir, { recursive: true, force: true })

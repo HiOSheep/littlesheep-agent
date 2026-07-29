@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-07-29 10:47:00
+最后更新：2026-07-29 17:14:25
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
@@ -63,7 +63,7 @@
 | `packages/classifier/` | `respond / execute / clarify` 语义活动路由，含规则快速路径和模型兜底；旧 `chat / problem / unclear` 只由公共契约做兼容映射。 |
 | `packages/prompt/` | 系统提示词、行为 profile、工作区信息和记忆树根索引的装配；支持完整执行、紧凑 `respond`、最小与禁用四种投影模式。 |
 | `packages/harness/` | 硬控制流状态机、TaskBook、各 stage、hooks、局部重规划和验证；`src/stages/decide/request.ts`、`model-call.ts`、`adoption.ts` 分别拥有决策请求、模型调用和采用，`execute/`、`verify/` 拥有工具执行与结构验收；`runtime-control-boundary.ts` 和 `taskbook-patch.ts` 拥有运行中事件的安全消费与确定性局部修订。 |
-| `packages/runner/` | 运行时装配、单次 run、流式事件、执行日志、活动 run 事件注册、持久检查点、显式续跑和基础设施依赖注入。 |
+| `packages/runner/` | 运行时装配、单次 run、流式事件、执行日志、活动 run 事件注册与有界状态快照、暂停/继续/中断、持久检查点、显式续跑和基础设施依赖注入。 |
 | `packages/llm/` | OpenAI-compatible 客户端、供应商请求、流式输出、重试和 usage 类型。 |
 | `packages/config/` | 配置 schema、默认值、供应商预置、模型选择和用户配置加载。 |
 | `packages/context/` | Context 候选排序、模型窗口预算、可注入精确 token 计数、预算淘汰、压缩阈值信号以及脱敏 `ContextSnapshot` / `ModelRequestSnapshot`。`src/engine.ts` 是兼容 facade，内部实现位于 `src/context-engine/`；本包不负责记忆存储、会话存储或 Provider 调用。 |
@@ -108,7 +108,7 @@
 | 需求类型 | 主要所有者 | 首要入口 | 主要测试 |
 | --- | --- | --- | --- |
 | Agent 状态机、活动路由、TaskBook、验证或恢复 | `packages/harness/`、`packages/classifier/` | `harness/src/default-harness.ts`、`src/stages/classify.ts`、`src/stages/decide/{request,model-call,adoption}.ts`、`runtime-control-boundary.ts`、`taskbook-patch.ts`；语义路由规则位于 `classifier/src/{rules,llm}.ts` | `harness/src/default-harness.test.ts`、`src/stages/*.test.ts`、`runtime-control-boundary.test.ts`、`taskbook-patch.test.ts`、`classifier/src/*.test.ts` |
-| 单次 run、流式事件、执行日志、上一轮有界摘要与活动续跑 | `packages/runner/` | `src/runner.ts`、`src/execution-log.ts`、`src/session-run-summary.ts`、`src/runtime-event-queue.ts`、`src/active-run-registry.ts`、`src/run-checkpoint-*.ts` | `src/runner.test.ts`、`src/execution-log.test.ts`、`src/runtime-event-queue.test.ts`、`src/runner-continuation.test.ts`、`src/run-checkpoint-*.test.ts` |
+| 单次 run、流式事件、执行日志、上一轮有界摘要与活动续跑 | `packages/runner/` | `src/runner.ts`、`src/execution-log.ts`、`src/session-run-summary.ts`、`src/runtime-event-queue.ts`、`src/active-run-registry.ts`、`src/active-run-activity.ts`、`src/run-abort-control.ts`、`src/run-checkpoint-*.ts` | `src/runner.test.ts`、`src/execution-log.test.ts`、`src/runtime-event-queue.test.ts`、`src/active-run-registry.test.ts`、`src/runner-continuation.test.ts`、`src/run-checkpoint-*.test.ts` |
 | 公共运行契约 | `packages/types/` | `src/index.ts`、`src/runtime-contracts.ts` | `src/runtime-contracts.test.ts`、`test/core-agent-contracts.test.ts` |
 | Context 候选、预算、计数和快照 | `packages/context/` | `src/engine.ts` facade、`src/context-engine/` | `src/engine.test.ts`、Harness Context/观测测试 |
 | Provider 请求、流式与 usage | `packages/llm/` | `src/client.ts` | `src/client.test.ts`、Provider smoke 脚本 |
@@ -121,6 +121,7 @@
 | 插件发现、信任和生命周期 | `packages/plugins/` | `src/host.ts`、`src/manifest.ts` | `src/**/*.test.ts` |
 | 外部渠道协议 | `packages/channels/*` | 各包 `src/plugin.ts` | 各包 `src/plugin.test.ts`、`test/e2e-webhook.test.ts` |
 | Electron 启动、Local App API 和用户数据 adapter | `packages/app/src/main/` | `index.ts`、`local-app-api-server.ts` | `src/main/*.test.ts` |
+| 窗口、托盘、关闭策略与活动任务控制 | `packages/app/src/main/`、`packages/runner/` | `desktop-shell.ts`、`tray-controller.ts`、`close-policy.ts`、`run-activity-monitor.ts`、`local-app-api/application-lifecycle-routes.ts`、`runner/src/active-run-*.ts` | `close-policy.test.ts`、`run-activity-monitor.test.ts`、`application-lifecycle-api.test.ts`、`runner/src/active-run-registry.test.ts` |
 | LS 开发环境、工具链版本和终端环境 | `packages/app/src/main/`、`packages/app/src/renderer/settings/` | `development-environments.ts`、`development-environment-definitions.ts`、`development-environment-files.ts`、`local-app-api/development-environment-routes.ts`、`settings/development-environments.tsx` | `development-environments.test.ts`、`development-environment-api.test.ts` |
 | 桌面 UI、导航、设置和工作区 | `packages/app/src/renderer/` | `App.tsx`、`app-shell/`、各 Renderer 领域目录、`api/` | `src/renderer/*.test.ts(x)`、领域同目录测试与真实窗口验收 |
 | CLI 与管理命令 | `packages/cli/` | `src/bin.ts`、`src/commands/` | `src/**/*.test.ts`、`test/e2e-cli.test.ts` |
@@ -133,10 +134,12 @@
 
 | 路径 | 重要模块 |
 | --- | --- |
-| `packages/app/src/main/index.ts` | Electron 主进程启动、用户数据初始化、Runner/PluginHost 装配、窗口和退出流程。 |
+| `packages/app/src/main/index.ts` | Electron 主进程启动、用户数据初始化及 Runner/PluginHost/桌面壳装配；不再直接拥有窗口、托盘或关闭策略实现。 |
+| `packages/app/src/main/desktop-shell.ts`、`tray-controller.ts`、`close-policy.ts` | 主窗口创建与显示、托盘任务菜单、三档关闭策略，以及托盘不可用时禁止隐藏的失败关闭边界。 |
+| `packages/app/src/main/run-activity-monitor.ts` | 聚合当前与有界退役 Runner 的活动任务，去重快照、路由暂停/继续/中断，并限制来源、监听器和聚合项数量。 |
 | `packages/app/src/main/builtin-plugins.ts` | 内置插件目录；具体渠道实现仍通过动态 import 按需加载。 |
 | `packages/app/src/main/local-app-api-server.ts` | renderer 与主进程之间的 loopback Local App API 组合入口和生命周期。 |
-| `packages/app/src/main/local-app-api/` | Local App API 的 HTTP 基元、公共契约及 run、项目、会话、Runtime、记忆、工作区、终端和扩展领域路由；atom 高级管理与证据导出位于 `memory-atom-routes.ts`。 |
+| `packages/app/src/main/local-app-api/` | Local App API 的 HTTP 基元、公共契约及 run、应用生命周期、项目、会话、Runtime、记忆、工作区、终端和扩展领域路由；活动任务列表/控制位于 `application-lifecycle-routes.ts`，组合入口位于 `run-lifecycle-routes.ts`，atom 高级管理与证据导出位于 `memory-atom-routes.ts`。 |
 | `packages/app/src/main/run-policy.ts`、`local-app-api/terminal-permission.ts` | Main 侧权限策略决议、逻辑容器边界复核和终端会话/命令审批；Renderer 的批准结果不能替代这里的判定。 |
 | `packages/app/src/main/attachment-cache.ts`、`attachments.ts` | LS 受管附件缓存的稳定索引、配额/过期清理、安全删除校验，以及 run-scoped 附件解析与所有权分类。 |
 | `packages/app/src/main/data-root-migration.ts`、`data-root-metadata.ts` | 数据根 locator、迁移事务、同级 staging、流式哈希清单、启动前恢复、活动元数据内部路径重绑定和回滚；正式用户数据不得用于故障注入。 |
@@ -162,7 +165,7 @@
 | `packages/app/src/renderer/TraceCard.tsx` | Agent 执行过程、TaskBook、工具调用和验证时间线。 |
 | `packages/app/src/renderer/MemoryTreeView.tsx`、`ArchiveManager.tsx`、`Settings.tsx` | 六份记忆文件的简洁视图、归档和设置界面；记忆页仅 `SOUL.md` 可编辑，不展示 Atom 内部结构。 |
 | `packages/app/src/renderer/chat/assistant-turn.tsx`、`Markdown.tsx`、`workspace/browser.tsx` | 思考摘要/执行过程/最终结果的渐进披露，以及链接单击内置预览、双击系统打开的全局交互。 |
-| `packages/app/src/renderer/api.ts` | renderer 对 Local App API 的兼容导出入口；领域客户端位于 `packages/app/src/renderer/api/`。 |
+| `packages/app/src/renderer/api.ts` | renderer 对 Local App API 的兼容导出入口；领域客户端位于 `packages/app/src/renderer/api/`。活动任务查询与控制客户端位于 `api/application-lifecycle.ts`，当前尚未从兼容 barrel 导出，也尚未接入设置页。 |
 | `packages/app/src/renderer/styles.css` | 当前深灰视觉系统、共享浮层/转场 token、折叠和工作区布局样式；后续按 feature 拆分时必须保留共享原语契约。 |
 | `packages/app/src/shared/` | renderer 与主进程共享的纯函数模型、Local App API 路由和跨进程协议；稳定跨 package 契约仍归 `packages/types/`。 |
 
@@ -195,7 +198,7 @@ App / CLI / Channel adapters
 7. 跨包只从公开入口导入；出现反向依赖时先定义端口，不通过深层 import 或循环依赖解决。
 8. 新建 package 需要同时满足独立职责、稳定接口、独立测试和真实复用；否则先在现有 package 内按 feature 拆分。
 
-Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约过滤、预算、淘汰、计数和双快照；provider/model tokenizer 能力矩阵强制模型声明与运行时 `counterId` 一致后才能生成精确账本，unavailable 模型只使用不可展示的保守请求前预算保护，当前仍缺真实 Provider 对账。Memory Repository 与 Memory Service 已分别把持久化和运行协调拆入同名领域目录；DECIDE、EXECUTE、VERIFY 也已把需求校准、模型调用、工具循环、步骤调度和验证恢复从 stage facade 中分离。TaskBook 与步骤执行公共契约位于 `packages/types/src/task.ts`，状态机与 RunContext 位于 `packages/types/src/agent.ts`。统一 Tool Execution Service 位于 `packages/tools/src/tool-execution-service.ts`，调度、中断、记录摘要和结果处理使用同目录独立模块；Harness 只通过公开入口调用。版本化 LLM Call Contract 位于 `packages/harness/src/llm-call-contracts/`，公共类型唯一来源是 `packages/types/src/runtime-contracts.ts`；EVOLVE/CAPTURE 的提交判定位于 `stages/memory-intent-gate.ts`。运行时事件队列、活动 run ingress、安全边界、TaskBookPatch、TaskBook 步骤级有界并行、持久检查点、Runner 显式续跑、Renderer 事件入口和应用启动恢复控制面已有独立模块；下一步是后台控制面、真实跨重启长任务和 Mode Registry。不能因为已有 package 或接口就宣称真实场景已经完成，具体评估和演进顺序见 [架构决策报告](../decision/architecture-decision-report.md)。
+Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约过滤、预算、淘汰、计数和双快照；provider/model tokenizer 能力矩阵强制模型声明与运行时 `counterId` 一致后才能生成精确账本，unavailable 模型只使用不可展示的保守请求前预算保护，当前仍缺真实 Provider 对账。Memory Repository 与 Memory Service 已分别把持久化和运行协调拆入同名领域目录；DECIDE、EXECUTE、VERIFY 也已把需求校准、模型调用、工具循环、步骤调度和验证恢复从 stage facade 中分离。TaskBook 与步骤执行公共契约位于 `packages/types/src/task.ts`，状态机与 RunContext 位于 `packages/types/src/agent.ts`。统一 Tool Execution Service 位于 `packages/tools/src/tool-execution-service.ts`，调度、中断、记录摘要和结果处理使用同目录独立模块；Harness 只通过公开入口调用。版本化 LLM Call Contract 位于 `packages/harness/src/llm-call-contracts/`，公共类型唯一来源是 `packages/types/src/runtime-contracts.ts`；EVOLVE/CAPTURE 的提交判定位于 `stages/memory-intent-gate.ts`。运行时事件队列、活动 run ingress、安全边界、TaskBookPatch、TaskBook 步骤级有界并行、持久检查点、Runner 显式续跑、Renderer 事件入口、应用启动恢复、活动任务控制、托盘和关闭策略已有独立模块；下一步是设置页后台入口、真实 Electron 后台/跨重启长任务和 Mode Registry。不能因为已有 package 或接口就宣称真实场景已经完成，具体评估和演进顺序见 [架构决策报告](../decision/architecture-decision-report.md)。
 
 ## 测试与脚本
 

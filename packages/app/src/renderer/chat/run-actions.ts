@@ -164,6 +164,7 @@ export function createRunActions(context: RunActionContext) {
           const endedAt = Date.now()
           const taskSteps = result.taskExecution?.steps?.map((step) => taskStepToLiveStep(step)) ?? []
           const currentActivity = last.activity
+          const paused = result.runtimeControl?.state === 'paused'
           next[next.length - 1] = {
             ...last,
             text: last.text || (result.status === 'ok' ? result.reply : ''),
@@ -173,17 +174,19 @@ export function createRunActions(context: RunActionContext) {
             activity: currentActivity
               ? {
                 ...currentActivity,
-                status: result.status === 'ok' ? 'done' : result.status === 'aborted' ? 'aborted' : 'failed',
+                status: paused ? 'paused' : result.status === 'ok' ? 'done' : result.status === 'aborted' ? 'aborted' : 'failed',
                 endedAt,
                 durationMs: result.durationMs || endedAt - currentActivity.startedAt,
                 taskBook: result.taskBook ?? currentActivity.taskBook,
                 verificationHistory: result.verificationHistory ?? currentActivity.verificationHistory,
                 verificationRunning: false,
-                error: result.status === 'ok'
-                  ? undefined
-                  : result.status === 'aborted'
-                    ? result.error || '本次运行已停止。'
-                    : result.error || '本次运行未生成可展示的回复。',
+                error: paused
+                  ? '任务已暂停，现场已保存。'
+                  : result.status === 'ok'
+                    ? undefined
+                    : result.status === 'aborted'
+                      ? result.error || '本次运行已停止。'
+                      : result.error || '本次运行未生成可展示的回复。',
                 steps: currentActivity.steps.length > 0 ? currentActivity.steps : taskSteps,
               }
               : undefined,

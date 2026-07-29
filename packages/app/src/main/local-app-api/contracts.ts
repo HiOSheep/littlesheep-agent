@@ -15,6 +15,11 @@ import type { WorkspaceLayoutIndex } from '../workspace-layout-index.js'
 import type { MemoryEmbeddingModelController } from '../memory-embedding-model-control.js'
 import type { BrowserStorageOperationResult, BrowserStorageStatus } from '../../shared/browser-control-contracts.js'
 import type { DevelopmentEnvironmentManager } from '../development-environments.js'
+import type {
+  RuntimeActiveRunAction,
+  RuntimeActiveRunActionOutcome,
+  RuntimeActiveRunSnapshot,
+} from '@littlesheep/types'
 
 export interface LocalAppApiServerOptions {
   /** Port to listen on. 0 selects a random free loopback port. */
@@ -40,6 +45,12 @@ export interface LocalAppApiServerOptions {
   dataRootManager?: DataRootMigrationManager
   selectDataRootTarget?: () => Promise<string | null>
   restartApplication?: () => void
+  listActiveRuns?: () => RuntimeActiveRunSnapshot[]
+  controlActiveRun?: (
+    runId: string,
+    action: RuntimeActiveRunAction,
+    reason?: string,
+  ) => RuntimeActiveRunActionOutcome
   getBrowserStorageStatus?: () => Promise<BrowserStorageStatus>
   clearBrowserCache?: () => Promise<BrowserStorageOperationResult>
   clearBrowserData?: () => Promise<BrowserStorageOperationResult>

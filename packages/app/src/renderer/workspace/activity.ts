@@ -142,6 +142,7 @@ export function parseMessageTimestamp(message: ChatMessage, fallbackIndex: numbe
 export function workspaceActivityStatusLabel(status: AssistantTurnStatus): string {
   if (status === 'running') return 'Agent 正在执行'
   if (status === 'failed') return 'Agent 执行失败'
+  if (status === 'paused') return 'Agent 已暂停'
   if (status === 'aborted') return 'Agent 已停止'
   return 'Agent 完成一轮任务'
 }

@@ -13,6 +13,7 @@ describe('config schema', () => {
     expect(cfg.agents.defaults.harness).toBe('core-flow');
     expect(cfg.agents.defaults.reasoning).toBe('auto');
     expect(cfg.agents.defaults.profile).toBe('general');
+    expect(cfg.desktop.closePolicy).toBe('background-while-active');
     expect(cfg.tools.exec.approvalMode).toBe('interactive');
     expect(cfg.memory.preludeDays).toBe(3);
     expect(cfg.memory.repositoryBackend).toBe('v2');
@@ -39,6 +40,16 @@ describe('config schema', () => {
       agents: { defaults: { profile: 'coding' } },
     });
     expect(cfg.agents.defaults.profile).toBe('coding');
+  });
+
+  it('keeps desktop close policy separate from behavior and permission settings', () => {
+    for (const closePolicy of ['always-background', 'background-while-active', 'always-quit'] as const) {
+      const cfg = ConfigSchema.parse({ desktop: { closePolicy } });
+      expect(cfg.desktop.closePolicy).toBe(closePolicy);
+      expect(cfg.agents.defaults.profile).toBe('general');
+      expect(cfg.tools.exec.approvalMode).toBe('interactive');
+    }
+    expect(() => ConfigSchema.parse({ desktop: { closePolicy: 'coding' } })).toThrow();
   });
 
   it('rejects invalid approvalMode', () => {

@@ -1,8 +1,8 @@
 # LittleSheep 架构评估与开发决策报告
 
-最后更新：2026-07-29 12:32:00
+最后更新：2026-07-29 17:14:25
 评估范围：当前源码、正式文档与已记录的验证结果
-执行状态：Memory v3 阶段 0-26 的工程实现、隔离演练和正式用户数据迁移已完成；正式 backend/config 为 v3，40 个业务 atom、5 个内部根、11 个资源和 45 条 BGE 512 维向量已通过既有真实数据根、Electron 重启、Catalog v9 integrity 与恢复源检查。`respond / execute / clarify` 活动语义、直接回应 Context 瘦身、上一轮摘要选择性介入和统一 Tool Execution Service 已形成工程基线；真实 Provider 校准仍未完成。
+执行状态：Memory v3 阶段 0-26 的工程实现、隔离演练和正式用户数据迁移已完成；正式 backend/config 为 v3，40 个业务 atom、5 个内部根、11 个资源和 45 条 BGE 512 维向量已通过既有真实数据根、Electron 重启、Catalog v9 integrity 与恢复源检查。`respond / execute / clarify` 活动语义、直接回应 Context 瘦身、统一 Tool Execution Service、TaskBook 步骤级有界并行、活动任务控制、托盘和三档关闭策略已形成工程基线；真实 Provider 校准、设置页后台控制入口和真实 Electron 长任务连续性验收仍未完成。
 
 ## 1. 给决策者的结论
 
@@ -12,7 +12,7 @@ LittleSheep 当前不是“只有 Prompt 的聊天壳”。它已经具备代码
 
 但当前更准确的描述是：
 
-> **包级模块骨架和既有调用契约已有稳定基础；Memory v3 动态 activation、活动路由、直接回应 Context 与统一 Tool Execution Service 的工程门已经完成。下一步完成真实 Provider/长期负载，并把运行时事件、检查点恢复和步骤并行接入产品控制面。**
+> **包级模块骨架和既有调用契约已有稳定基础；Memory v3 动态 activation、活动路由、直接回应 Context、统一 Tool Execution Service、运行时事件、检查点恢复、步骤并行与桌面后台控制的工程门已经完成。下一步完成真实 Provider/长期负载，把关闭策略和活动任务接入设置页，并验收真实 Electron 后台与跨重启长任务。**
 
 当前最重要的结构结论是：
 
@@ -90,7 +90,7 @@ React Renderer
 | Plugin Host | 基础可用 | `packages/plugins/` | v1 已接通 `channel`/`tool`/声明式 `skill`；Skill 所有权跨 Host、Loader 和 Memory Service 协同 | 保持 owner-scoped 协议，新增贡献点前先实现完整消费方和生命周期 |
 | External Channels | 基础可用 | `packages/channels/*` | 真实凭证和异常隔离场景仍需验收 | 保持纯适配器，不回到核心网关模式 |
 | MCP | 尚未实现 | `packages/mcp/` | 只有骨架；统一工具执行前置条件已具备 | 以 adapter 接入 Tool Execution Service，不建立独立执行管线 |
-| Electron Main/API | 职责分散 | `packages/app/src/main/` | `local-app-api-server.ts` 路由和用例集中；开发环境管理已按定义、文件安全和管理 facade 拆分 | 先按 feature 拆 handler/service，不新建大量包 |
+| Electron Main/API | 主要组合边界已分域 | `packages/app/src/main/` | `local-app-api-server.ts` 保持薄组合；窗口/托盘/关闭行为、活动任务聚合和生命周期路由已拆为独立模块，`index.ts` 仍承担全局启动装配 | 保持现有 feature 边界，继续缩小启动组合入口，不新建无复用价值的包 |
 | 开发环境管理 | 基础可用 | `packages/app/src/main/development-environments.ts`、`development-environment-files.ts`、设置页 | Electron 内置 Node 已可用，其他运行时的自动下载、签名校验和安装包分发未完成 | 先冻结导入/版本契约，再实现来源清单和按需下载 |
 | Renderer | 职责分散 | `packages/app/src/renderer/App.tsx`、`styles.css` | 页面状态、导航、会话、设置和工作区编排集中 | 按 feature + shared primitives 渐进拆分 |
 
@@ -100,7 +100,7 @@ React Renderer
 
 当前 `buildRunContext()` 仍会读取最近会话、过滤工具消息、加载 bootstrap 文件并构建 `ToolContext`；`packages/prompt` 负责 System Prompt，各 stage 仍负责形成语义消息，Runner 负责注入记忆根索引。模型请求随后被映射为显式 Context 候选，并由 `@littlesheep/context` 统一排序、预算和生成脱敏快照。完整执行路径把基础策略、记忆根索引、bootstrap、输出约束、Workflow/TaskBook、行为 profile 和 reasoning 分别登记为 segment；当前工作树新增的 `respond` 路径只登记直接回答所需的紧凑策略、能力、用户资料、记忆证据、摘要和最近历史。版本化 Summary Memory 继续作为独立来源进入后续请求。
 
-阶段 1 已形成主要数据链：Provider usage 会绑定到产生它的准确 Context 快照；UI 区分供应商实测、本地精确装配和 tokenizer 不可用；长会话压缩保留原始 JSONL，只在元数据中保存版本化摘要；压缩阈值已经接入 Local App API 与设置页；非图片附件通过当前 run 专属工具按需读取，未调用时不解析正文。新导入附件已进入独立受管缓存，run 只能使用经稳定 cache id、路径、普通文件、大小和哈希重新验证的缓存项，旧 workplace 与外部用户文件不属于自动清理范围；workplace 资源索引已使用有界目录批次、持久化游标、精确变更提示和资源树元数据入口，正文仍由显式文件工具读取。完整数据根迁移已接入启动前恢复路径，失败不切换活动目录。Provider reasoning/capability 契约回归、tokenizer 能力矩阵和 unavailable 模型保守预算保护已经完成；真实 Provider 校准仍未完成。运行中事件队列、ingress、安全消费、TaskBookPatch、Renderer 事件生产和应用启动恢复控制面已形成运行时闭环，剩余缺口是 TaskBook 步骤级并行、后台运行和真实跨重启长任务验收。
+阶段 1 已形成主要数据链：Provider usage 会绑定到产生它的准确 Context 快照；UI 区分供应商实测、本地精确装配和 tokenizer 不可用；长会话压缩保留原始 JSONL，只在元数据中保存版本化摘要；压缩阈值已经接入 Local App API 与设置页；非图片附件通过当前 run 专属工具按需读取，未调用时不解析正文。新导入附件已进入独立受管缓存，run 只能使用经稳定 cache id、路径、普通文件、大小和哈希重新验证的缓存项，旧 workplace 与外部用户文件不属于自动清理范围；workplace 资源索引已使用有界目录批次、持久化游标、精确变更提示和资源树元数据入口，正文仍由显式文件工具读取。完整数据根迁移已接入启动前恢复路径，失败不切换活动目录。Provider reasoning/capability 契约回归、tokenizer 能力矩阵和 unavailable 模型保守预算保护已经完成；真实 Provider 校准仍未完成。运行中事件队列、ingress、安全消费、TaskBookPatch、Renderer 事件生产、步骤级有界并行、应用启动恢复、活动任务控制、托盘和关闭策略已形成运行时闭环，剩余缺口是设置页后台入口、真实 Provider 长任务和真实 Electron 后台/跨重启验收。
 
 系统现在已经可以从快照和执行日志回答大部分请求级问题，但仍需继续闭环：
 
@@ -295,8 +295,8 @@ src/renderer/shared/
 - 固定 ENTER、权限闸门、VERIFY、RECOVER 上限和 FINALIZE 语义；
 - 把可替换部分定义为 stage strategy 或受测模板；
 - 工作流定义必须声明输入、输出、失败和恢复契约。
-- 已有运行中事件队列、TaskBook 差异修订、版本化检查点、Runner 显式续跑、应用启动恢复控制面和幂等副作用记录；下一步补齐 TaskBook 步骤级并行与后台运行；
-- 为 TaskBook 定义依赖、资源读写集合和有界并行调度；同一资源冲突写入和顺序验证保持串行；
+- 已有运行中事件队列、TaskBook 差异修订、版本化检查点、Runner 显式续跑、应用启动恢复控制面、活动任务控制、托盘、关闭策略和幂等副作用记录；下一步补设置页入口与真实场景验收；
+- TaskBook 已按依赖、资源读写集合和副作用实现有界并行调度；同一资源冲突写入和顺序验证保持串行；
 - 为重试、验证和重规划统一设置次数、时间、成本与无进展上限。
 
 验收标准：简单任务不承担复杂任务开销；复杂任务不能跳过 TaskBook/VERIFY；任何 Mode 都不能绕过权限和收尾；追加要求不会丢失已完成证据；并行执行不产生资源冲突且与串行执行得到等价验收结论；应用重启能从检查点继续且不重复副作用；循环和并发达到上限后有边界地停止。
@@ -311,7 +311,7 @@ src/renderer/shared/
 2. 再拆 Renderer 的 navigation、conversation、composer、settings、workspace feature；
 3. 最后收敛 shared overlay、motion、tooltip 和 icon primitives；
 4. 保持现有视觉与持久化行为，用截图和恢复测试防止交互回退。
-5. 为运行中事件、记忆更新、Context 双来源账本、后台任务和托盘状态提供渐进披露的统一控制面。
+5. 在现有运行中事件、恢复 UI 和托盘基础上，为设置页补“应用与后台”、活动任务列表和关闭策略，并继续让记忆更新与 Context 双来源账本按渐进披露展示。
 
 验收标准：根文件只负责组合；每个 feature 有明确状态所有者和 API；跨 feature 共享逻辑不复制；转场与恢复行为保持一致。
 
@@ -393,14 +393,14 @@ src/renderer/shared/
 
 ## 10. 下一阶段推进条件
 
-仓库基元化阶段 0-7、Memory v3 阶段 0-26、`respond / execute / clarify` 活动语义、直接回应 Context、统一 Tool Execution Service、运行时事件产品入口和应用启动恢复控制面已完成既定工程门；阶段 17 的连续 activation、阶段 18-19 的真实负载观测和阶段 20-26 的旧写入退役、daily 提升及受约束 Atom 治理均已落地。当前第一工程门是替换无效 DeepSeek 密钥并完成真实 Provider/正式 V3 新写入/活动长任务验收；并行工程线是 TaskBook 步骤级并行和后台运行。在这些契约稳定前不扩张新插件类型或无关 UI 范围。推进时持续遵守：
+仓库基元化阶段 0-7、Memory v3 阶段 0-26、`respond / execute / clarify` 活动语义、直接回应 Context、统一 Tool Execution Service、运行时事件产品入口、TaskBook 步骤级有界并行、应用启动恢复、活动任务控制、托盘和三档关闭策略已完成既定工程门；阶段 17 的连续 activation、阶段 18-19 的真实负载观测和阶段 20-26 的旧写入退役、daily 提升及受约束 Atom 治理均已落地。当前第一工程门是替换无效 DeepSeek 密钥并完成真实 Provider/正式 V3 新写入/活动长任务验收；并行工程线是设置页后台控制入口与真实 Electron 后台/跨重启连续性验收。在这些契约稳定前不扩张新插件类型或无关 UI 范围。推进时持续遵守：
 
 - 以 [架构原则](../principles/architecture-principles.md) 作为最高层工程规范；
 - Behavior Mode 与 Permission Policy 保持正交；
 - 保留固定安全脊柱，不把 Workflow 直接开放为任意图；
 - 保护现有用户数据与插件化改动，不做破坏式迁移。
 
-Context Engine 已完成候选端口、预算器、稳定装配顺序、来源分段、版本化摘要、附件清单优先、按需附件工具、双账本展示、tokenizer 能力矩阵和不可展示的保守预算保护；版本化 LLM Call Contract 约束每次调用的目的、输入、输出、工具和记忆策略。Memory v3 已接管统一 Repository facade、Memory Service、Runner 与 Harness，并完成阶段 0-26 的工程能力。`respond` 紧凑 Prompt、活动路由兼容映射、上一轮摘要选择性介入、统一 Tool Execution Service、运行时事件前端生产和应用启动检查点恢复已通过本地回归验收；真实 Provider 对话对账、持续用户负载、真实跨重启长任务、TaskBook 步骤并行和后台运行继续按独立质量门推进。
+Context Engine 已完成候选端口、预算器、稳定装配顺序、来源分段、版本化摘要、附件清单优先、按需附件工具、双账本展示、tokenizer 能力矩阵和不可展示的保守预算保护；版本化 LLM Call Contract 约束每次调用的目的、输入、输出、工具和记忆策略。Memory v3 已接管统一 Repository facade、Memory Service、Runner 与 Harness，并完成阶段 0-26 的工程能力。`respond` 紧凑 Prompt、活动路由兼容映射、上一轮摘要选择性介入、统一 Tool Execution Service、运行时事件前端生产、TaskBook 步骤并行、应用启动检查点恢复和桌面后台控制已通过本地回归验收；真实 Provider 对话对账、持续用户负载、设置页后台入口和真实 Electron 后台/跨重启长任务继续按独立质量门推进。
 
 ## 11. 报告维护规则
 

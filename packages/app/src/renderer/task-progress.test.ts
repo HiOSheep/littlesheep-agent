@@ -42,4 +42,12 @@ describe('task progress', () => {
       percent: 100, phase: 'done', label: '任务完成',
     })
   })
+
+  it('keeps paused progress visible without presenting it as failure or interruption', () => {
+    expect(buildTaskProgress(activity({ status: 'paused', verificationRunning: false }))).toMatchObject({
+      percent: 45,
+      phase: 'paused',
+      label: '任务已暂停',
+    })
+  })
 })

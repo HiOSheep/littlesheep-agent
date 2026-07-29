@@ -126,6 +126,7 @@ export function assistantTurnStatusLabel(activity: AssistantTurnActivity, now: n
   const duration = formatDurationMs(activity.durationMs ?? ((activity.endedAt ?? now) - activity.startedAt))
   if (activity.status === 'running') return `处理中 ${duration}`
   if (activity.status === 'failed') return `处理失败 ${duration}`
+  if (activity.status === 'paused') return `已暂停 ${duration}`
   if (activity.status === 'aborted') return `已停止 ${duration}`
   return `已处理 ${duration}`
 }

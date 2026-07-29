@@ -124,6 +124,32 @@ describe('durable history activity reconstruction', () => {
     })
   })
 
+  it('presents a persisted pause as paused rather than failed or user-stopped', () => {
+    const messages: Message[] = [{
+      id: 'assistant-tool', role: 'assistant', runId: 'run-1', stage: 'execute',
+      timestamp: '2026-07-11T01:00:01.000Z',
+      content: [{ type: 'tool_calls', calls: [{ id: 'call-1', name: 'read', input: {} }] }],
+    }]
+    const log = executionLog({
+      status: 'aborted',
+      reply: '',
+      error: 'run paused at a safe boundary',
+      runtimeControl: {
+        version: 1,
+        state: 'paused',
+        reason: 'user requested pause',
+        eventIds: ['pause-event-1'],
+        changedAt: '2026-07-11T01:00:03.000Z',
+      },
+    })
+
+    const history = buildHistoryMessages(messages, new Map([['run-1', log]]))
+
+    expect(history[0]).toMatchObject({
+      activity: { status: 'paused', error: '任务已暂停，现场已保存。' },
+    })
+  })
+
   it('survives the execution-log JSON round trip used after an app restart', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ls-history-activity-'))
     tempDirs.push(dir)

@@ -41,7 +41,11 @@ describe('renderer runtime task event helpers', () => {
   })
 
   it('emits only confirmed runtime patch values in stable key order', () => {
-    const patch: RuntimePatch = { reasoning: 'high', model: 'deepseek/deepseek-chat' }
+    const patch: RuntimePatch = {
+      reasoning: 'high',
+      model: 'deepseek/deepseek-chat',
+      closePolicy: 'always-background',
+    }
     const state = runtimeState()
     expect(runtimeSettingEventEntries(patch, state)).toEqual([
       { key: 'model', value: state.model },
@@ -91,6 +95,7 @@ function runtimeState(): RuntimeState {
     reasoning: 'high',
     profile: 'general',
     contextCompressionThresholdRatio: 0.8,
+    closePolicy: 'background-while-active',
     workspace: 'D:/workspace',
     workplace: 'D:/data/workplace',
     providers: [],

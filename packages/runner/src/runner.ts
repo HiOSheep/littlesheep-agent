@@ -14,8 +14,10 @@ import type {
   PermissionPolicyId,
   RunConfigOrigin,
   AgentTool,
+  RuntimeActiveRunControl,
   RuntimeEventIngress,
   RunCheckpoint,
+  ToolStreamEvent,
 } from '@littlesheep/types';
 import { asSessionId, textMessage } from '@littlesheep/types';
 import { randomUUID } from 'node:crypto';
@@ -44,6 +46,7 @@ import { ActiveRunRegistry } from './active-run-registry.js';
 import { buildRunCheckpoint, shouldPersistRunCheckpoint } from './run-checkpoint.js';
 import { RunCheckpointController } from './run-checkpoint-controller.js';
 import { createRunCheckpointControl, type RunCheckpointControl } from './run-checkpoint-control.js';
+import { createRunAbortControl, resolveRunTimeoutMs } from './run-abort-control.js';
 import { describeToolAccess, shouldRequestPermissionApproval } from '@littlesheep/safety';
 import { resolveRunTools } from './run-tools.js';
 /** AgentResult + sessionId (caller-friendly). */
@@ -80,9 +83,9 @@ export interface CreateRunnerOptions {
   protectedWriteRoots?: readonly string[];
   /** Active movable application-data root used as the logical LS container. */
   containerRoot?: string;
-  /** Overall run timeout in ms (default 5 min). When no signal is passed to
-   *  run, a timed AbortController is created so a hung tool/LLM can't
-   *  block indefinitely. 0 disables the timeout. */
+  /** Overall run timeout in ms. Defaults to agents.defaults.timeoutSeconds.
+   *  The bound applies even when a host also supplies an AbortSignal. 0
+   *  disables the timeout. */
   runTimeoutMs?: number;
   /** Hard upper bound for simultaneously registered runtime event queues. */
   maxActiveRuns?: number;
@@ -160,6 +163,8 @@ export interface AgentRunner {
   replay(runId: string): Promise<ExecutionLog | null>;
   /** Ingress for events targeting an active run; independent from session input. */
   readonly runtimeEvents: RuntimeEventIngress;
+  /** Bounded runtime-owned query and control surface for active runs. */
+  readonly activeRuns?: RuntimeActiveRunControl;
   shutdown(): Promise<void>;
   readonly state: RunnerState;
   /** Underlying SessionManager — exposed so the app layer can read session history. */
@@ -198,10 +203,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     : undefined;
   const runCheckpoints = createRunCheckpointControl(checkpointController, infra.runCheckpointStore, model);
 
-  // Overall run timeout. When run is called without a signal, a timed
-  // AbortController is created so a hung tool/LLM can't block indefinitely.
-  // 0 disables. Tools and llm.chat both respect ctx.signal (→ toolContext.signal).
-  const RUN_TIMEOUT_MS = opts.runTimeoutMs ?? 5 * 60 * 1000;
+  const RUN_TIMEOUT_MS = resolveRunTimeoutMs(opts.runTimeoutMs, opts.config.agents.defaults.timeoutSeconds);
 
   async function run(input: RunInput, continuation?: ContinuationInput): Promise<RunnerResult> {
     const startedAt = Date.now();
@@ -214,15 +216,8 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     let runtimeQueueRegistered = false;
     let runCheckpointId: string | undefined;
 
-    // Resolve abort signal: use the caller's if provided, else create one with
-    // an overall run timeout so a hung tool/LLM can't block indefinitely.
-    let signal = input.signal;
-    let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
-    if (!signal && RUN_TIMEOUT_MS > 0) {
-      const controller = new AbortController();
-      timeoutTimer = setTimeout(() => controller.abort(), RUN_TIMEOUT_MS);
-      signal = controller.signal;
-    }
+    const abortControl = createRunAbortControl({ signal: input.signal, timeoutMs: RUN_TIMEOUT_MS, origin, startedAt });
+    const signal = abortControl.signal;
 
     try {
       activeCheckpoint = await infra.versioning?.beginRun({ runId, workspaceRoot: cwd });
@@ -253,10 +248,12 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         sessionId = session.id;
       }
       state.sessionId = sessionId;
-      const runtimeEventQueue = continuation?.checkpoint.runtimeEventQueue
-        ? activeRuns.registerFromSnapshot(runId, sessionId, continuation.checkpoint.runtimeEventQueue)
-        : activeRuns.register(runId, sessionId);
+      const runtimeEventQueue = activeRuns.registerRun(runId, sessionId, continuation?.checkpoint.runtimeEventQueue, abortControl.registration);
       runtimeQueueRegistered = true;
+      const onToolEvent = (event: ToolStreamEvent): void => {
+        activeRuns.observe(runId, event);
+        input.onToolEvent?.(event);
+      };
 
       // 2. Build inbound user message.
       const inbound: Message = continuation
@@ -340,7 +337,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         versioning: activeCheckpoint,
         onAssistantDelta: input.onAssistantDelta,
         onAssistantReplace: input.onAssistantReplace,
-        onToolEvent: input.onToolEvent,
+        onToolEvent,
         profilePromptAddon: behaviorProfile?.systemPromptAddon,
         reasoningPromptAddon: reasoningPromptAddon(resolvedRunConfig.reasoning),
         attachments: input.attachments,
@@ -443,6 +440,8 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         };
       }
       const runInterrupted = signal?.aborted === true || ctx.runtimeControl?.state === 'interrupted';
+      const runPaused = ctx.runtimeControl?.state === 'paused';
+      const runStopped = runInterrupted || runPaused;
       if (infra.runCheckpointStore && shouldPersistRunCheckpoint(ctx, stageResult, runInterrupted)) {
         try {
           const checkpoint = buildRunCheckpoint({
@@ -478,7 +477,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       try {
         await infra.memoryService.recordRunFeedback({
           runId: ctx.runId,
-          status: runInterrupted ? 'aborted' : stageResult.ok ? 'ok' : 'error',
+          status: runStopped ? 'aborted' : stageResult.ok ? 'ok' : 'error',
           references: (ctx.memoryKnownState?.references ?? []).map((reference) => ({
             atomId: reference.atomId,
             decision: reference.decision,
@@ -506,7 +505,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           summary: ctx.sessionSummary,
           usedSummaryId: usedContinuitySummaryId,
           runId: ctx.runId,
-          status: runInterrupted ? 'aborted' : stageResult.ok ? 'ok' : 'error',
+          status: runStopped ? 'aborted' : stageResult.ok ? 'ok' : 'error',
           verification: latestVerification,
           successfulToolCallIds,
           recordedAt,
@@ -519,7 +518,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       } catch (err) {
         opts.log?.('warn', `runner: run resource cleanup degraded: ${(err as Error).message}`);
       }
-      const runAborted = runInterrupted;
+      const runAborted = runStopped;
 
       // Compact only after the run has finalized and persisted its messages.
       // The transcript remains intact; failures only skip the optional summary.
@@ -612,7 +611,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           opts.log?.('error', `runner: failed to freeze interrupted run: ${(err as Error).message}`);
         }
       }
-      if (timeoutTimer) clearTimeout(timeoutTimer);
+      abortControl.dispose();
     }
   }
 
@@ -707,6 +706,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     runCheckpoints,
     replay: (runId: string) => infra.executionLogStore.read(runId),
     runtimeEvents: activeRuns,
+    activeRuns,
     shutdown: async () => {
       activeRuns.dispose();
       // Close long-lived SQLite connections before adapters replace or delete the data root.

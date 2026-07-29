@@ -1,7 +1,7 @@
 import type { ExecutionLog, ToolCallRecord } from '@littlesheep/runner'
 import type { Message, TaskBook, VerificationRecord } from '@littlesheep/types'
 
-export type HistoryActivityStatus = 'running' | 'done' | 'failed' | 'aborted'
+export type HistoryActivityStatus = 'running' | 'done' | 'failed' | 'aborted' | 'paused'
 export type HistoryStepStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped'
 
 export interface HistoryActivity {
@@ -135,10 +135,11 @@ export function hasExecutionActivity(log: ExecutionLog): boolean {
 export function executionLogToHistoryActivity(log: ExecutionLog): HistoryActivity {
   const startedAt = finiteTimestamp(log.startedAt) ?? 0
   const endedAt = finiteTimestamp(log.endedAt)
+  const paused = log.runtimeControl?.state === 'paused'
   return {
-    status: log.status === 'ok' ? 'done' : log.status === 'aborted' ? 'aborted' : 'failed',
+    status: paused ? 'paused' : log.status === 'ok' ? 'done' : log.status === 'aborted' ? 'aborted' : 'failed',
     instruction: log.inboundText,
-    error: log.error,
+    error: paused ? '任务已暂停，现场已保存。' : log.error,
     startedAt,
     endedAt,
     durationMs: log.durationMs,

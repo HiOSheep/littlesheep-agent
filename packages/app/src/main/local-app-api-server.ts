@@ -18,6 +18,7 @@ import { routeProjects } from './local-app-api/project-routes.js'
 import { routeWorkspace } from './local-app-api/workspace-routes.js'
 import { routeBrowser } from './local-app-api/browser-routes.js'
 import { routeDevelopmentEnvironments } from './local-app-api/development-environment-routes.js'
+import { routeRunLifecycle } from './local-app-api/run-lifecycle-routes.js'
 import { TerminalRouter } from './local-app-api/terminal-routes.js'
 import { RunRouter } from './local-app-api/run-routes.js'
 import type { LocalAppApiServer, LocalAppApiServerOptions } from './local-app-api/contracts.js'
@@ -170,14 +171,11 @@ async function route(
   const workspaceLayoutIndex = opts.workspaceLayoutIndex
 
   const routeRequest: LocalAppApiRequest = { req, res, url, path, method }
-  if (await runRouter.route(routeRequest, {
+  if (await routeRunLifecycle(routeRequest, {
+    runRouter,
     getRunner,
     getConfig,
-    dataDir: opts.dataDir,
-    workplaceDir: opts.workplaceDir,
-    sessionIndex,
-    projectIndex,
-    workspaceArtifactIndex,
+    options: opts,
     attachmentCache,
   })) return
 

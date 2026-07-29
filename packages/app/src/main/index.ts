@@ -13,7 +13,7 @@
 //   9. Expose port to renderer via env var (preload reads it)
 //  10. Create BrowserWindow
 
-import { app, BrowserWindow, dialog } from 'electron'
+import { app, dialog } from 'electron'
 import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -42,14 +42,14 @@ import { WorkspaceLayoutIndex } from './workspace-layout-index.js'
 import { resolveRuntimeWorkspaceDefault } from './runtime-config.js'
 import { loadApiKeys, injectKeysIntoEnv } from './keychain.js'
 import { runShutdownSequence } from './shutdown-sequence.js'
+import { RunActivityMonitor } from './run-activity-monitor.js'
+import { LittleSheepDesktopShell } from './desktop-shell.js'
 import { DataRootMigrationManager } from './data-root-migration.js'
 import { prepareMemoryV3Bootstrap } from './memory-v3-bootstrap.js'
-import { resolveAppIconPath } from './app-icon.js'
 import { developmentEnvironmentLabel } from './development-environment-definitions.js'
 import {
   clearEmbeddedBrowserCache,
   clearEmbeddedBrowserData,
-  configureEmbeddedBrowserWindow,
   getBrowserStorageStatus,
   getEmbeddedBrowserSession,
 } from './embedded-browser.js'
@@ -64,6 +64,8 @@ let terminalActivityIndex: TerminalActivityIndex | null = null
 let workspaceArtifactIndex: WorkspaceArtifactIndex | null = null
 let workspaceLayoutIndex: WorkspaceLayoutIndex | null = null
 let shutdownStarted = false
+let quitRequested = false
+const runActivity = new RunActivityMonitor()
 
 // Module-level state for runner rebuild (triggered by API key change).
 let currentConfig: Config | null = null
@@ -75,6 +77,15 @@ let currentWorkplaceDir: string = ''
 let rebuildMutex: Promise<void> | null = null
 const retiredRunners = new Map<AgentRunner, NodeJS.Timeout>()
 const MAX_RETIRED_RUNNERS = 4
+const RETIRED_RUNNER_POLL_MS = 1_000
+const desktopShell = new LittleSheepDesktopShell({
+  activity: runActivity,
+  getClosePolicy: () => currentConfig?.desktop.closePolicy ?? 'background-while-active',
+  canCreateWindow: () => !shutdownStarted && currentConfig !== null,
+  isQuitting: () => quitRequested || shutdownStarted,
+  onQuit: requestApplicationQuit,
+  onWarning: (message) => console.warn(`[desktop] ${message}`),
+})
 
 const BOOTSTRAP_TEMPLATES: Record<string, string> = {
   'AGENTS.md': [
@@ -153,85 +164,14 @@ if (!gotLock) {
   app.quit()
 } else {
   app.on('second-instance', () => {
-    // Focus the existing window when a second instance tries to launch.
-    const wins = BrowserWindow.getAllWindows()
-    if (wins.length > 0) {
-      showWindow(wins[0]!)
-    }
+    desktopShell.show()
   })
 }
 
-function showWindow(win: BrowserWindow): void {
-  if (win.isDestroyed()) return
-  if (win.isMinimized()) win.restore()
-  if (!win.isVisible()) win.show()
-  win.focus()
-}
-
-function createWindow(): BrowserWindow {
-  const win = new BrowserWindow({
-    width: 1280,
-    height: 820,
-    minWidth: 800,
-    minHeight: 600,
-    title: 'LittleSheep',
-    icon: resolveAppIconPath({
-      appPath: app.getAppPath(),
-      moduleDir: __dirname,
-      resourcesPath: process.resourcesPath,
-    }),
-    titleBarStyle: 'hidden',
-    titleBarOverlay: {
-      color: '#181818',
-      symbolColor: '#e8e8e8',
-      height: 32,
-    },
-    backgroundColor: '#181818',
-    autoHideMenuBar: true,
-    show: false,
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false,
-      // Keep hidden work display-driven and throttled. Visible animations are
-      // still scheduled by Chromium against the active monitor's VSync.
-      backgroundThrottling: true,
-      // Web pages are rendered in an isolated guest surface so navigation
-      // and links remain inside LS instead of escaping to the system browser.
-      webviewTag: true,
-    },
-  })
-
-  configureEmbeddedBrowserWindow(win)
-
-  // F12 / Ctrl+Shift+I to toggle DevTools (Electron 36 doesn't bind F12 by default).
-  win.webContents.on('before-input-event', (event, input) => {
-    if (input.type !== 'keyDown') return
-    if (input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i')) {
-      win.webContents.toggleDevTools()
-      event.preventDefault()
-    }
-  })
-
-  win.once('ready-to-show', () => showWindow(win))
-  win.webContents.once('did-finish-load', () => {
-    if (!win.isVisible()) showWindow(win)
-  })
-  const showFallbackTimer = setTimeout(() => {
-    if (!win.isDestroyed() && !win.isVisible()) showWindow(win)
-  }, 4000)
-  win.once('closed', () => clearTimeout(showFallbackTimer))
-
-  // Dev: load from vite dev server. Prod: load built index.html.
-  const devUrl = process.env['ELECTRON_RENDERER_URL']
-  if (devUrl) {
-    void win.loadURL(devUrl)
-  } else {
-    void win.loadFile(join(__dirname, '../renderer/index.html'))
-  }
-
-  return win
+function requestApplicationQuit(): void {
+  if (shutdownStarted) return
+  quitRequested = true
+  app.quit()
 }
 
 async function ensureUserDataLayout(dirs: ReturnType<typeof dataSubdirs>): Promise<void> {
@@ -335,6 +275,7 @@ async function bootstrap(): Promise<void> {
     bootstrapDir: dataDir.root,
     containerRoot: dataDir.root,
   })
+  runActivity.setRunners([runner])
 
   // 6. Project + session + archive indexes for UI sidebar and settings.
   projectIndex = new ProjectIndex({ dataDir: dataDir.root })
@@ -370,6 +311,8 @@ async function bootstrap(): Promise<void> {
     workplaceDir: dataDir.workplace,
     rebuildRunner,
     updateRuntimeConfig,
+    listActiveRuns: () => runActivity.snapshot(),
+    controlActiveRun: (runId, action, reason) => runActivity.request(runId, action, reason),
     selectWorkspace: async () => {
       const result = await dialog.showOpenDialog({
         title: '选择工作文件夹',
@@ -421,7 +364,7 @@ async function bootstrap(): Promise<void> {
     },
     restartApplication: () => {
       app.relaunch()
-      app.quit()
+      requestApplicationQuit()
     },
     getBrowserStorageStatus,
     clearBrowserCache: clearEmbeddedBrowserCache,
@@ -457,8 +400,8 @@ async function bootstrap(): Promise<void> {
   // 9. Expose server port to renderer via env (preload reads it).
   process.env['LITTLESHEEP_API_PORT'] = String(server.port)
 
-  // 10. Create window.
-  createWindow()
+  // 10. Create the visible shell and its explicit background control surface.
+  desktopShell.initialize()
 }
 
 /**
@@ -481,6 +424,10 @@ async function rebuildRunner(): Promise<void> {
 
 async function doRebuildRunner(): Promise<void> {
   if (!currentConfig || !currentBranding || !server) return
+  await releaseIdleRetiredRunners()
+  if (retiredRunners.size >= MAX_RETIRED_RUNNERS) {
+    throw new Error(`cannot replace runtime while ${retiredRunners.size} previous runtime(s) still own active tasks`)
+  }
 
   const oldRunner = runner
 
@@ -509,23 +456,44 @@ async function doRebuildRunner(): Promise<void> {
   if (oldRunner) {
     scheduleRetiredRunnerShutdown(oldRunner)
   }
+  refreshActivitySources()
 }
 
 function scheduleRetiredRunnerShutdown(retiredRunner: AgentRunner): void {
-  const timer = setTimeout(() => {
-    retiredRunners.delete(retiredRunner)
-    void retiredRunner.shutdown().catch(() => undefined)
-  }, 5000)
+  const timer = setTimeout(() => inspectRetiredRunner(retiredRunner), RETIRED_RUNNER_POLL_MS)
+  timer.unref?.()
   retiredRunners.set(retiredRunner, timer)
+  refreshActivitySources()
+}
 
-  while (retiredRunners.size > MAX_RETIRED_RUNNERS) {
-    const oldest = retiredRunners.entries().next().value as [AgentRunner, NodeJS.Timeout] | undefined
-    if (!oldest) break
-    const [oldestRunner, oldestTimer] = oldest
-    clearTimeout(oldestTimer)
-    retiredRunners.delete(oldestRunner)
-    void oldestRunner.shutdown().catch(() => undefined)
+function inspectRetiredRunner(retiredRunner: AgentRunner): void {
+  if (!retiredRunners.has(retiredRunner)) return
+  if ((retiredRunner.activeRuns?.list().length ?? 0) > 0) {
+    const timer = setTimeout(() => inspectRetiredRunner(retiredRunner), RETIRED_RUNNER_POLL_MS)
+    timer.unref?.()
+    retiredRunners.set(retiredRunner, timer)
+    return
   }
+  retiredRunners.delete(retiredRunner)
+  refreshActivitySources()
+  void retiredRunner.shutdown().catch(() => undefined)
+}
+
+async function releaseIdleRetiredRunners(): Promise<void> {
+  const idle = [...retiredRunners.entries()]
+    .filter(([retiredRunner]) => (retiredRunner.activeRuns?.list().length ?? 0) === 0)
+  for (const [retiredRunner, timer] of idle) {
+    clearTimeout(timer)
+    retiredRunners.delete(retiredRunner)
+  }
+  if (idle.length > 0) {
+    refreshActivitySources()
+    await Promise.all(idle.map(([retiredRunner]) => retiredRunner.shutdown().catch(() => undefined)))
+  }
+}
+
+function refreshActivitySources(): void {
+  runActivity.setRunners([runner, ...retiredRunners.keys()])
 }
 
 async function shutdownRetiredRunners(): Promise<void> {
@@ -533,6 +501,7 @@ async function shutdownRetiredRunners(): Promise<void> {
   retiredRunners.clear()
   for (const [, timer] of entries) clearTimeout(timer)
   await Promise.all(entries.map(([retiredRunner]) => retiredRunner.shutdown().catch(() => undefined)))
+  refreshActivitySources()
 }
 
 // Only the instance that holds the single-instance lock should bootstrap.
@@ -543,15 +512,11 @@ if (gotLock) {
   })
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
-    }
+    desktopShell.show()
   })
 
   app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-      app.quit()
-    }
+    if (!shutdownStarted) requestApplicationQuit()
   })
 
   app.on('before-quit', (event) => {
@@ -560,12 +525,15 @@ if (gotLock) {
       return
     }
     event.preventDefault()
+    quitRequested = true
     shutdownStarted = true
+    desktopShell.dispose()
     void runShutdownSequence([
       { name: 'local app API', run: () => server?.stop() },
       { name: 'plugins', run: () => pluginHost?.stop() },
       { name: 'retired runners', run: shutdownRetiredRunners },
       { name: 'runner', run: () => runner?.shutdown() },
+      { name: 'run activity monitor', run: () => runActivity.dispose() },
     ], {
       stepTimeoutMs: 5000,
       onWarning: (message) => console.warn(`[shutdown] ${message}`),

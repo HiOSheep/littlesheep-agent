@@ -1,4 +1,4 @@
-export type AssistantActivityStatus = 'running' | 'done' | 'failed' | 'aborted'
+export type AssistantActivityStatus = 'running' | 'done' | 'failed' | 'aborted' | 'paused'
 
 export function executionDisclosureDefaultOpen(status: AssistantActivityStatus): boolean {
   return status === 'running'

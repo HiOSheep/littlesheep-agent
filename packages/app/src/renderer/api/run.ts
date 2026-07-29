@@ -12,6 +12,7 @@ import type {
   ContextSnapshot,
   ModelRequestSnapshot,
   ReplyProvenance,
+  RuntimeControlSnapshot,
   RuntimeEventIngressOutcome,
   TaskBook,
   ToolStreamEvent,
@@ -47,6 +48,8 @@ export interface RunResult {
   messages?: { role: string; content: unknown[] }[]
   taskBook?: TaskBook
   verificationHistory?: VerificationRecord[]
+  runtimeControl?: RuntimeControlSnapshot
+  runCheckpointId?: string
   taskExecution?: {
     goal: string
     complexity: string

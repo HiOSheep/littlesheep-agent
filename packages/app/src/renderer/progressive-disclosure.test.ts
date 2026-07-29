@@ -12,6 +12,7 @@ describe('progressive disclosure defaults', () => {
     expect(executionDisclosureDefaultOpen('done')).toBe(false)
     expect(executionDisclosureDefaultOpen('failed')).toBe(false)
     expect(executionDisclosureDefaultOpen('aborted')).toBe(false)
+    expect(executionDisclosureDefaultOpen('paused')).toBe(false)
   })
 
   it('opens verification only while verification is active', () => {

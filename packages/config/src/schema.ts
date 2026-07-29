@@ -52,6 +52,16 @@ export const AgentDefaultsSchema = z.object({
   harness: z.string().default('core-flow'),
 }).default({});
 
+/** Electron desktop lifecycle preferences. */
+export const DesktopConfigSchema = z.object({
+  /** What closing the last visible window means. */
+  closePolicy: z.enum([
+    'always-background',
+    'background-while-active',
+    'always-quit',
+  ]).default('background-while-active'),
+}).default({});
+
 /** Tools config. */
 export const ToolsConfigSchema = z.object({
   exec: z.object({
@@ -246,6 +256,8 @@ export const ConfigSchema = z.object({
   agents: z.object({
     defaults: AgentDefaultsSchema,
   }).default({}),
+  /** Desktop shell lifecycle preferences; ignored by non-desktop adapters. */
+  desktop: DesktopConfigSchema,
   /** Tools config. */
   tools: ToolsConfigSchema.default({ exec: {} }),
   /** Memory config. */
@@ -269,6 +281,8 @@ export const ConfigSchema = z.object({
 export type Config = z.infer<typeof ConfigSchema>;
 export type ModelProvider = z.infer<typeof ModelProviderSchema>;
 export type AgentDefaults = z.infer<typeof AgentDefaultsSchema>;
+export type DesktopConfig = z.infer<typeof DesktopConfigSchema>;
+export type DesktopClosePolicy = DesktopConfig['closePolicy'];
 export type ToolsConfig = z.infer<typeof ToolsConfigSchema>;
 export type MemoryConfig = z.infer<typeof MemoryConfigSchema>;
 export type SafetyConfig = z.infer<typeof SafetyConfigSchema>;

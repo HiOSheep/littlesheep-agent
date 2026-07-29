@@ -6,6 +6,7 @@ import type {
   PendingDataRootRollback,
 } from '@littlesheep/branding'
 import type { AgentProfileId } from '@littlesheep/prompt'
+import type { DesktopClosePolicy } from '@littlesheep/config'
 import type { RuntimeReasoning } from './model-capabilities'
 
 export interface ProviderInfo {
@@ -32,6 +33,7 @@ export interface RuntimeState {
   reasoning: RuntimeReasoning
   profile: AgentProfileId
   contextCompressionThresholdRatio: number
+  closePolicy: DesktopClosePolicy
   workspace: string
   workplace: string
   providers: RuntimeProvider[]
@@ -39,7 +41,7 @@ export interface RuntimeState {
 
 export type RuntimePatch = Partial<Pick<
   RuntimeState,
-  'model' | 'reasoning' | 'profile' | 'contextCompressionThresholdRatio' | 'workspace'
+  'model' | 'reasoning' | 'profile' | 'contextCompressionThresholdRatio' | 'closePolicy' | 'workspace'
 >>
 
 export interface DataRootStatus {

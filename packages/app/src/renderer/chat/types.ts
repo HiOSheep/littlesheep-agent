@@ -52,7 +52,7 @@ export interface LiveStepEvent {
 }
 
 
-export type AssistantTurnStatus = 'running' | 'done' | 'failed' | 'aborted'
+export type AssistantTurnStatus = 'running' | 'done' | 'failed' | 'aborted' | 'paused'
 
 
 export interface AssistantTurnActivity extends Omit<HistoryActivity, 'status' | 'steps' | 'tools'> {

@@ -47,6 +47,9 @@ export const DEFAULT_CONFIG: Config = {
       harness: 'core-flow',
     },
   },
+  desktop: {
+    closePolicy: 'background-while-active',
+  },
   tools: {
     exec: {
       whitelist: [

@@ -5,7 +5,7 @@ export interface TaskProgressSnapshot {
   completedSteps: number
   totalSteps: number
   activeStep?: string
-  phase: 'planning' | 'executing' | 'verifying' | 'done' | 'failed' | 'aborted'
+  phase: 'planning' | 'executing' | 'verifying' | 'done' | 'failed' | 'aborted' | 'paused'
   label: string
 }
 
@@ -15,7 +15,8 @@ export function buildTaskProgress(activity: HistoryActivity): TaskProgressSnapsh
   const running = activity.steps.find((step) => step.status === 'running')
   const failed = activity.steps.find((step) => step.status === 'failed')
   let phase: TaskProgressSnapshot['phase']
-  if (activity.status === 'aborted') phase = 'aborted'
+  if (activity.status === 'paused') phase = 'paused'
+  else if (activity.status === 'aborted') phase = 'aborted'
   else if (activity.status === 'failed') phase = 'failed'
   else if (activity.status === 'done') phase = 'done'
   else if (activity.verificationRunning) phase = 'verifying'
@@ -39,9 +40,11 @@ export function buildTaskProgress(activity: HistoryActivity): TaskProgressSnapsh
         ? '任务完成'
         : phase === 'failed'
           ? '任务失败'
-          : phase === 'aborted'
-            ? '任务已停止'
-            : activeStep || '正在执行'
+          : phase === 'paused'
+            ? '任务已暂停'
+            : phase === 'aborted'
+              ? '任务已停止'
+              : activeStep || '正在执行'
 
   return { percent, completedSteps, totalSteps, activeStep, phase, label }
 }

@@ -656,6 +656,53 @@ describe('createRunner run', () => {
     });
   });
 
+  it('freezes a paused run as a resumable paused checkpoint instead of a failure', async () => {
+    const llm = makeMockLlm(textResponse('reply before pause boundary'));
+    let releaseResponse!: () => void;
+    let markCallStarted!: () => void;
+    const responseGate = new Promise<void>((resolve) => { releaseResponse = resolve; });
+    const callStarted = new Promise<void>((resolve) => { markCallStarted = resolve; });
+    (llm.chat as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      markCallStarted();
+      await responseGate;
+      return textResponse('reply before pause boundary');
+    });
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+    });
+    createdRunners.push(runner);
+    const runId = 'run-runtime-pause';
+    const running = runner.run({ runId, text: 'hello' });
+    await callStarted;
+
+    expect(runner.activeRuns?.request(runId, 'pause', 'user requested pause')).toMatchObject({
+      kind: 'accepted',
+      run: { controlStatus: 'pause_requested' },
+    });
+    releaseResponse();
+
+    const result = await running;
+    expect(result.status).toBe('aborted');
+    expect(result.runtimeControl).toMatchObject({
+      state: 'paused',
+      reason: 'user requested pause',
+    });
+    const checkpoint = await runner.infra.runCheckpointStore?.latestForRun(runId);
+    expect(checkpoint).toMatchObject({
+      runId,
+      status: 'paused',
+      runtimeControl: { state: 'paused' },
+    });
+    expect((await runner.replay(runId))).toMatchObject({
+      status: 'aborted',
+      runtimeControl: { state: 'paused' },
+      runCheckpointId: checkpoint?.id,
+    });
+  });
+
   it('persists inbound + produced in JSONL [user, assistant] order', async () => {
     const llm = makeMockLlm(textResponse('Reply body'));
     const runner = await createRunner({
