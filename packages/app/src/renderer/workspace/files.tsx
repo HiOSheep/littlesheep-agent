@@ -34,6 +34,7 @@ export function WorkspaceFiles({
   onReturnToDefaultWorkspace,
   onRequestFileSaveApproval,
   onWorkspaceArtifactsChanged,
+  onWorkspaceFileSaved,
   onNavigatorCollapsedChange,
   onExpandedPathsChange,
   onOpenFileTab,
@@ -50,6 +51,7 @@ export function WorkspaceFiles({
   onReturnToDefaultWorkspace: () => void
   onRequestFileSaveApproval: (detail: unknown) => Promise<boolean>
   onWorkspaceArtifactsChanged: () => void
+  onWorkspaceFileSaved: (root: string, path: string, preview: WorkspacePreview) => void
   onNavigatorCollapsedChange: (collapsed: boolean) => void
   onExpandedPathsChange: (update: StringListUpdater) => void
   onOpenFileTab: (root: string, path: string) => void
@@ -223,6 +225,7 @@ export function WorkspaceFiles({
     const nextPreview = await saveWorkspaceFile(workspacePath, path, content, expectedModifiedAt, sessionId)
     setPreview(nextPreview)
     onWorkspaceArtifactsChanged()
+    onWorkspaceFileSaved(workspacePath, path, nextPreview)
     const parent = directoryPath(path)
     if (parent) void loadDirectory(parent)
     return nextPreview

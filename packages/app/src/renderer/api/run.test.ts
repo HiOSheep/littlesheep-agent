@@ -137,4 +137,30 @@ describe('renderer run API', () => {
       }),
     )
   })
+
+  it('returns a structured runtime-event rejection instead of hiding it behind HTTP 409', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+    vi.stubGlobal('fetch', fetchMock)
+    const api = await loadRunApi()
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      runId: 'run-1',
+      outcome: {
+        kind: 'rejected',
+        reason: 'capacity',
+        message: 'Runtime event queue reached its limit.',
+      },
+      summary: null,
+    }), {
+      status: 409,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+
+    await expect(api.sendRuntimeTaskEvent('run-1', {
+      type: 'user_message',
+      text: 'keep this input visible',
+    })).resolves.toMatchObject({
+      kind: 'rejected',
+      reason: 'capacity',
+    })
+  })
 })

@@ -246,9 +246,7 @@ export async function sendRuntimeControlEvent(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ type, ...(reason ? { reason } : {}) }),
   })
-  if (!res.ok) throw localApiStatusError(res.status)
-  const response = await res.json() as LocalAppRuntimeControlEventResponse
-  return response.outcome
+  return readRuntimeEventOutcome<LocalAppRuntimeControlEventResponse>(res)
 }
 
 /** Submit a bounded task-changing event to an active run. */
@@ -262,9 +260,20 @@ export async function sendRuntimeTaskEvent(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
   })
-  if (!res.ok) throw localApiStatusError(res.status)
-  const response = await res.json() as LocalAppRuntimeTaskEventResponse
-  return response.outcome
+  return readRuntimeEventOutcome<LocalAppRuntimeTaskEventResponse>(res)
+}
+
+
+async function readRuntimeEventOutcome<T extends { outcome: RuntimeEventIngressOutcome }>(
+  response: Response,
+): Promise<RuntimeEventIngressOutcome> {
+  const payload = await response.json().catch(() => undefined) as T | undefined
+  // A rejected ingress is a valid, explainable runtime result. Main returns it
+  // with 409 so callers can distinguish it from malformed requests and
+  // transport failures without losing the structured rejection reason.
+  if (payload?.outcome) return payload.outcome
+  if (!response.ok) throw localApiStatusError(response.status)
+  throw new Error('Local app API runtime event response is missing an outcome')
 }
 
 async function respondApproval(id: string, approved: boolean): Promise<void> {

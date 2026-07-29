@@ -17,7 +17,6 @@ import { attachmentFileUrl, countEditorLines, detectEditorEol, formatDateTime, f
 import { WorkspacePlaceholder } from './placeholder'
 import { configureLittleSheepMonaco } from './monaco-language-support'
 
-
 export const MonacoEditor = lazy(async () => {
   const [monacoReact, monaco] = await Promise.all([
     import('@monaco-editor/react'),
@@ -26,7 +25,6 @@ export const MonacoEditor = lazy(async () => {
   monacoReact.loader.config({ monaco })
   return { default: monacoReact.default }
 })
-
 
 export function WorkspaceFileView({
   tabId,
@@ -37,6 +35,7 @@ export function WorkspaceFileView({
   onDraftChange,
   onRequestFileSaveApproval,
   onWorkspaceArtifactsChanged,
+  onWorkspaceFileSaved,
   onTipChange,
 }: {
   tabId: WorkspaceFileTabId
@@ -47,6 +46,7 @@ export function WorkspaceFileView({
   onDraftChange: (tab: WorkspaceFileTabId, draft: WorkspaceFileDraftState | null) => void
   onRequestFileSaveApproval: (detail: unknown) => Promise<boolean>
   onWorkspaceArtifactsChanged: () => void
+  onWorkspaceFileSaved: (root: string, path: string, preview: WorkspacePreview) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const [preview, setPreview] = useState<WorkspacePreview | null>(null)
@@ -96,6 +96,7 @@ export function WorkspaceFileView({
     const nextPreview = await saveWorkspaceFile(root, nextPath, content, expectedModifiedAt, sessionId)
     setPreview(nextPreview)
     onWorkspaceArtifactsChanged()
+    onWorkspaceFileSaved(root, nextPath, nextPreview)
     return nextPreview
   }
 
@@ -115,7 +116,6 @@ export function WorkspaceFileView({
     />
   )
 }
-
 
 export function WorkspacePreviewPane({
   preview,

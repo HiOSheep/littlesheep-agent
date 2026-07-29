@@ -78,6 +78,7 @@ export function WorkspaceDockView({ controller }: { controller: AppController })
         onRequestFileSaveApproval={requestWorkspaceSaveApproval}
         onRequestCommandApproval={requestWorkspaceCommandApproval}
         onWorkspaceArtifactsChanged={() => setWorkspaceArtifactVersion((value) => value + 1)}
+        onWorkspaceFileSaved={controller.notifyRuntimeWorkspaceFileSaved}
         onFileNavigatorCollapsedChange={setWorkspaceFileNavigatorCollapsed}
         onExpandedPathsChange={(update) => setWorkspaceExpandedPaths((paths) =>
           boundStringList(update(paths), MAX_NAVIGATION_EXPANDED_PATHS),

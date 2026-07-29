@@ -5373,6 +5373,12 @@ body.is-resizing-column .workspace-panel-resizer::before {
   justify-content: flex-end;
 }
 
+.composer-run-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .icon-btn {
   display: grid;
   place-items: center;
@@ -6665,6 +6671,44 @@ body.is-resizing-column .workspace-panel-resizer::before {
 .send-round-icon.stop rect {
   fill: currentColor;
   stroke: none;
+}
+
+.runtime-event-notice {
+  position: absolute;
+  right: var(--chat-content-gutter);
+  bottom: calc(100% + 4px);
+  left: var(--chat-content-gutter);
+  z-index: 45;
+  box-sizing: border-box;
+  width: min(var(--chat-content-max-width), 100%);
+  height: 24px;
+  margin: 0 auto;
+  padding: 3px 8px 3px 34px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: runtime-event-notice-enter var(--motion-base) var(--motion-ease);
+}
+
+.runtime-event-notice.success {
+  color: #b9d9c4;
+}
+
+.runtime-event-notice.warning {
+  color: #f0d3a0;
+}
+
+.runtime-event-notice.error {
+  color: #ffd2d2;
+}
+
+@keyframes runtime-event-notice-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .composer-error {

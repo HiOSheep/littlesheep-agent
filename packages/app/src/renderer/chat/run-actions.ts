@@ -24,6 +24,8 @@ import { createAssistantDeltaBuffer } from './assistant-delta-buffer'
 import { buildArtifactsFromToolCalls, buildTraceData, taskStepToLiveStep } from './activity-model'
 import { handleRunToolEvent } from './run-event-handlers'
 import { ChatMessage } from './types'
+import { sendActiveRunUpdate } from './active-run-update'
+import type { RuntimeTaskEventIdentity, RuntimeTaskEventNotice } from '../runtime-events/runtime-task-events'
 
 export interface RunActionContext {
   abortRef: MutableRefObject<AbortController | null>
@@ -37,6 +39,12 @@ export interface RunActionContext {
   liveToolStepRef: MutableRefObject<Map<string, string>>
   loading: boolean
   permissionMode: PermissionModeId
+  pendingRuntimeMessageRef: MutableRefObject<{
+    runId: string
+    text: string
+    identity: RuntimeTaskEventIdentity
+  } | null>
+  publishRuntimeEventNotice: (notice: RuntimeTaskEventNotice | null) => void
   refreshProjects: () => Promise<void>
   refreshSessions: () => Promise<void>
   requestApprovalForScope: (request: ApprovalRequest, scopeKey: string) => Promise<boolean>
@@ -55,12 +63,23 @@ export interface RunActionContext {
 }
 
 export function createRunActions(context: RunActionContext) {
-  const { abortRef, activeRunIdRef, activeApprovalScopeKey, appMountedRef, approvalGrantsRef, attachments, currentSession, input, liveToolStepRef, loading, permissionMode, refreshProjects, refreshSessions, requestApprovalForScope, runtime, sessionOwnership, setActivityNow, setAttachments, setContextUsageSnapshot, setCurrentSession, setInput, setLoading, setMessages, setWorkspaceArtifactVersion, settleApprovalPrompt, stopRequestedRunIdRef } = context
+  const { abortRef, activeRunIdRef, activeApprovalScopeKey, appMountedRef, approvalGrantsRef, attachments, currentSession, input, liveToolStepRef, loading, permissionMode, pendingRuntimeMessageRef, publishRuntimeEventNotice, refreshProjects, refreshSessions, requestApprovalForScope, runtime, sessionOwnership, setActivityNow, setAttachments, setContextUsageSnapshot, setCurrentSession, setInput, setLoading, setMessages, setWorkspaceArtifactVersion, settleApprovalPrompt, stopRequestedRunIdRef } = context
 
 
   async function send() {
     const text = input.trim()
-    if ((!text && attachments.length === 0) || loading) return
+    if (loading) {
+      await sendActiveRunUpdate(text, {
+        activeRunIdRef,
+        appMountedRef,
+        hasAttachments: attachments.length > 0,
+        pendingRuntimeMessageRef,
+        publishRuntimeEventNotice,
+        setInput,
+      })
+      return
+    }
+    if (!text && attachments.length === 0) return
     const activeAttachments = attachments
     const displayText = formatUserMessage(text, activeAttachments)
     const controller = new AbortController()
@@ -68,7 +87,9 @@ export function createRunActions(context: RunActionContext) {
     const approvalScopeKey = activeApprovalScopeKey()
     abortRef.current = controller
     activeRunIdRef.current = null
+    pendingRuntimeMessageRef.current = null
     stopRequestedRunIdRef.current = null
+    publishRuntimeEventNotice(null)
     setInput('')
     setAttachments([])
     setActivityNow(activityStartedAt)

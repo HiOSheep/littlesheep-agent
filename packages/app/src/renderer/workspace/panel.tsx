@@ -55,6 +55,7 @@ export function WorkspacePanel({
   onRequestFileSaveApproval,
   onRequestCommandApproval,
   onWorkspaceArtifactsChanged,
+  onWorkspaceFileSaved,
   onFileNavigatorCollapsedChange,
   onExpandedPathsChange,
   onOpenFile, onNavigateLink, onBrowserNavigate, onBrowserHistoryMove, onBrowserOpenNewTab, onBrowserTitleChange,
@@ -90,6 +91,7 @@ export function WorkspacePanel({
   onRequestFileSaveApproval: (detail: unknown) => Promise<boolean>
   onRequestCommandApproval: (detail: unknown) => Promise<boolean>
   onWorkspaceArtifactsChanged: () => void
+  onWorkspaceFileSaved: (root: string, path: string, preview: import('../api').WorkspacePreview) => void
   onFileNavigatorCollapsedChange: (collapsed: boolean) => void
   onExpandedPathsChange: (update: StringListUpdater) => void
   onOpenFile: (path: string) => void
@@ -247,6 +249,7 @@ export function WorkspacePanel({
                 onReturnToDefaultWorkspace={onReturnToDefaultWorkspace}
                 onRequestFileSaveApproval={onRequestFileSaveApproval}
                 onWorkspaceArtifactsChanged={onWorkspaceArtifactsChanged}
+                onWorkspaceFileSaved={onWorkspaceFileSaved}
                 onNavigatorCollapsedChange={onFileNavigatorCollapsedChange}
                 onExpandedPathsChange={onExpandedPathsChange}
                 onOpenFileTab={(root, path) => {
@@ -276,6 +279,7 @@ export function WorkspacePanel({
                   onDraftChange={onFileDraftChange}
                   onRequestFileSaveApproval={onRequestFileSaveApproval}
                   onWorkspaceArtifactsChanged={onWorkspaceArtifactsChanged}
+                  onWorkspaceFileSaved={onWorkspaceFileSaved}
                   onTipChange={onTipChange}
                 />
                 <WorkspaceFileNavigator
@@ -360,6 +364,7 @@ export function WorkspacePanel({
                     onDraftChange={onFileDraftChange}
                     onRequestFileSaveApproval={onRequestFileSaveApproval}
                     onWorkspaceArtifactsChanged={onWorkspaceArtifactsChanged}
+                    onWorkspaceFileSaved={onWorkspaceFileSaved}
                     onTipChange={onTipChange}
                   />
                 </div>

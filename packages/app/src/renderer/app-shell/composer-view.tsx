@@ -29,6 +29,7 @@ export function ComposerView({ controller }: { controller: AppController }) {
     setAttachments,
     dragActive,
     runtimeError,
+    runtimeEventNotice,
     activityNow,
     selectableProviders,
     selectedModel,
@@ -38,6 +39,7 @@ export function ComposerView({ controller }: { controller: AppController }) {
     latestTaskActivity,
     uploadTip,
     sendTip,
+    stopTip,
     setControlTip,
     applyRuntimePatch,
     addAttachments,
@@ -129,29 +131,54 @@ export function ComposerView({ controller }: { controller: AppController }) {
               }}
               onReasoningChange={(reasoning) => void applyRuntimePatch({ reasoning })}
             />
-            <button
-              className={`send-round ${loading ? 'stop' : ''}`}
-              onClick={() => {
-                setControlTip(null)
-                if (loading) {
-                  stop()
-                } else {
+            <div className="composer-run-actions">
+              {loading && (
+                <button
+                  className="send-round stop"
+                  onClick={() => {
+                    setControlTip(null)
+                    stop()
+                  }}
+                  aria-label={stopTip}
+                  onMouseEnter={(event) => setControlTip(buildFloatingHelpTip(stopTip, event.clientX, event.clientY))}
+                  onMouseMove={(event) => setControlTip(buildFloatingHelpTip(stopTip, event.clientX, event.clientY))}
+                  onMouseLeave={() => setControlTip(null)}
+                  onFocus={(event) => setControlTip(buildFloatingHelpTipFromElement(stopTip, event.currentTarget))}
+                  onBlur={() => setControlTip(null)}
+                >
+                  <StopRunIcon />
+                </button>
+              )}
+              <button
+                className="send-round"
+                onClick={() => {
+                  setControlTip(null)
                   void send()
-                }
-              }}
-              disabled={!loading && !input.trim() && attachments.length === 0}
-              aria-label={sendTip}
-              onMouseEnter={(event) => setControlTip(buildFloatingHelpTip(sendTip, event.clientX, event.clientY))}
-              onMouseMove={(event) => setControlTip(buildFloatingHelpTip(sendTip, event.clientX, event.clientY))}
-              onMouseLeave={() => setControlTip(null)}
-              onFocus={(event) => setControlTip(buildFloatingHelpTipFromElement(sendTip, event.currentTarget))}
-              onBlur={() => setControlTip(null)}
-            >
-              {loading ? <StopRunIcon /> : <SendRunIcon />}
-            </button>
+                }}
+                disabled={!input.trim() && attachments.length === 0}
+                aria-label={sendTip}
+                onMouseEnter={(event) => setControlTip(buildFloatingHelpTip(sendTip, event.clientX, event.clientY))}
+                onMouseMove={(event) => setControlTip(buildFloatingHelpTip(sendTip, event.clientX, event.clientY))}
+                onMouseLeave={() => setControlTip(null)}
+                onFocus={(event) => setControlTip(buildFloatingHelpTipFromElement(sendTip, event.currentTarget))}
+                onBlur={() => setControlTip(null)}
+              >
+                <SendRunIcon />
+              </button>
+            </div>
           </div>
         </div>
       </div>
+      {runtimeEventNotice && (
+        <div
+          key={runtimeEventNotice.id}
+          className={`runtime-event-notice ${runtimeEventNotice.tone}`}
+          role="status"
+          aria-live={runtimeEventNotice.tone === 'error' ? 'assertive' : 'polite'}
+        >
+          {runtimeEventNotice.text}
+        </div>
+      )}
       {runtimeError && <div className="composer-error">{runtimeError}</div>}
     </section>
   )
