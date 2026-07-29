@@ -1,11 +1,9 @@
 // @littlesheep/types - internal v1 contracts for observable runtime continuity.
 
 import type {
-  PlanStep,
   StageName,
-  TaskBook,
-  TaskExecutionResult,
 } from './agent.js';
+import type { PlanStep, TaskBook, TaskExecutionResult } from './task.js';
 import type { SessionId } from './session.js';
 
 export const CONTEXT_SNAPSHOT_VERSION = 1 as const;
@@ -713,14 +711,14 @@ export interface RunCheckpointResumeState {
   availableToolNames: string[];
   attachmentCount: number;
   classification?: import('./agent.js').Classification;
-  needAssessment?: import('./agent.js').NeedAssessment;
+  needAssessment?: import('./task.js').NeedAssessment;
   plan?: PlanStep[];
   appliedTaskBookPatchIds: string[];
   deferredRuntimeEvents: RuntimeEventEnvelope[];
   recoveryAttempts: number;
   replanAttempts: number;
   maxReplanAttempts: number;
-  verificationHistory: import('./agent.js').VerificationRecord[];
+  verificationHistory: import('./task.js').VerificationRecord[];
 }
 
 export interface RunCheckpoint {
@@ -731,6 +729,8 @@ export interface RunCheckpoint {
   status: 'paused' | 'waiting_user' | 'recoverable';
   currentStage: StageName;
   currentStepId?: string;
+  /** Bounded parallel branches that were in progress at the checkpoint boundary. */
+  activeStepIds?: string[];
   taskBook?: TaskBook;
   taskBookRevision: number;
   taskExecution?: TaskExecutionResult;

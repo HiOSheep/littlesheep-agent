@@ -10,6 +10,16 @@ import type { CompactionSummary, SessionId, SessionRunSummary } from './session.
 import type { AgentTool, ToolContext } from './tool.js';
 import type { MemoryPrelude } from './memory.js';
 import type { ClarificationRequest, ClarificationResponse } from './clarification.js';
+import type {
+  NeedAssessment,
+  PartialReplanRequest,
+  PlanStep,
+  TaskBook,
+  TaskExecutionResult,
+  TaskReplanRecord,
+  TaskStepStatus,
+  VerificationRecord,
+} from './task.js';
 
 // ─── Stage names (state machine nodes) ──────────────────────────────────
 
@@ -56,151 +66,6 @@ export interface Classification {
   source: 'rules' | 'llm';
   /** Optional reason for debugging. */
   reason?: string;
-}
-
-/** Coarse task-size signal produced by DECIDE. */
-export type TaskComplexity = 'trivial' | 'simple' | 'standard' | 'complex';
-
-/** Status of a planned task-book step. */
-export type TaskStepStatus = 'pending' | 'in_progress' | 'done' | 'blocked' | 'failed' | 'skipped';
-
-/** Aggregate status of a task-book execution. */
-export type TaskExecutionStatus = 'pending' | 'running' | 'done' | 'failed' | 'blocked' | 'partial';
-
-/** Machine-readable reason a task-book step could not complete. */
-export type TaskStepFailureKind =
-  | 'tool_error'
-  | 'permission_denied'
-  | 'not_found'
-  | 'model_error'
-  | 'verification_gap'
-  | 'aborted'
-  | 'unknown';
-
-/**
- * DECIDE's demand calibration. This keeps the agent from using a heavyweight
- * workflow for a tiny request, while still planning carefully for hard work.
- */
-export interface NeedAssessment {
-  /** The user's actual need, stripped of incidental phrasing. */
-  userNeed: string;
-  /** Size/risk/ambiguity bucket for the task. */
-  complexity: TaskComplexity;
-  /** The concrete goal this run should achieve. */
-  goal: string;
-  /** What must be true for the run to count as done. */
-  successCriteria: string[];
-  /** Missing information that blocks useful execution. */
-  missingInfo?: string[];
-  /** True when DECIDE should ask the user instead of guessing. */
-  needsClarification?: boolean;
-  /** Whether the task needs an explicit multi-step task book. */
-  requiresTaskBook: boolean;
-  /**
-   * Upper bound for extra helpful work relative to the user's request.
-   * User preference: slightly exceed expectations, never more than 3x scope/cost.
-   */
-  maxExtraScopeRatio: number;
-  /** Short rationale useful for debugging or trace views. */
-  rationale?: string;
-}
-
-/** A plan step produced by DECIDE. */
-export interface PlanStep {
-  /** Stable id inside a task book, e.g. "step-1". */
-  id?: string;
-  /** Short label for UI/debug traces. */
-  title?: string;
-  /** Step description (natural language). */
-  description: string;
-  /** Tools this step may need. */
-  tools?: string[];
-  /** Whether this step requires approval. */
-  requiresApproval?: boolean;
-  /** Per-step criteria used by VERIFY and future step executors. */
-  acceptanceCriteria?: string[];
-  /** Expected artifact/result for this step. */
-  expectedOutput?: string;
-  /** Execution status, reserved for stricter step execution. */
-  status?: TaskStepStatus;
-}
-
-/** Runtime result for one task-book step. */
-export interface TaskStepResult {
-  stepId: string;
-  title?: string;
-  description: string;
-  status: TaskStepStatus;
-  startedAt: string;
-  endedAt?: string;
-  acceptanceCriteria?: string[];
-  expectedOutput?: string;
-  output?: string;
-  error?: string;
-  /** Failure category used by VERIFY/RECOVER routing. */
-  failureKind?: TaskStepFailureKind;
-  /** 1 for the first execution, incremented when this step is retried. */
-  attempt?: number;
-  toolCallIds: string[];
-  toolResults: import('./message.js').ToolResult[];
-}
-
-/** VERIFY's bounded request to revise only failed/incomplete steps. */
-export interface PartialReplanRequest {
-  attempt: number;
-  requestedAt: string;
-  targetStepIds: string[];
-  reason: string;
-  feedback: string;
-}
-
-/** Durable audit record for one partial re-plan cycle. */
-export interface TaskReplanRecord extends PartialReplanRequest {
-  preservedStepIds: string[];
-  revisedStepIds?: string[];
-  decidedAt?: string;
-  resumedAt?: string;
-}
-
-/** Runtime result for the whole task book. */
-export interface TaskExecutionResult {
-  goal: string;
-  complexity: TaskComplexity;
-  status: TaskExecutionStatus;
-  startedAt: string;
-  endedAt?: string;
-  summary?: string;
-  steps: TaskStepResult[];
-  replanHistory?: TaskReplanRecord[];
-}
-
-/** Structured task book produced by DECIDE and consumed by EXECUTE/VERIFY. */
-export interface TaskBook {
-  assessment: NeedAssessment;
-  goal: string;
-  complexity: TaskComplexity;
-  successCriteria: string[];
-  steps: PlanStep[];
-  overdeliveryPolicy: {
-    /** Clamped to 1..3. */
-    maxExtraScopeRatio: number;
-    guidance: string;
-  };
-  /** Stage-level outcomes filled by step-aware EXECUTE. */
-  stageResults?: TaskStepResult[];
-}
-
-/** Durable VERIFY outcome linked to the task book and final reply. */
-export interface VerificationRecord {
-  attempt: number;
-  verdict: 'pass' | 'needs_replan' | 'fail';
-  reason: string;
-  feedback?: string;
-  failedStepIds?: string[];
-  /** Active adopted memory atoms that materially supported this verdict/result. */
-  usedMemoryAtomIds?: string[];
-  verifiedAt: string;
-  source: 'model' | 'structural' | 'degraded';
 }
 
 /** A recovery decision from RECOVER. */

@@ -3,6 +3,7 @@
 import { randomUUID } from 'node:crypto';
 import type {
   AgentTool,
+  TaskStepSideEffect,
   ToolContext,
   ToolInvocationRecord,
   ToolInvocationStatus,
@@ -15,6 +16,7 @@ import { describeToolAccess, shouldRequestPermissionApproval } from '@littleshee
 import { DEFAULT_SANITIZE, type SanitizeOptions } from './sanitize.js';
 import {
   executeToolWaves,
+  toolResourceAccessCovered,
   type ScheduledToolExecution,
 } from './tool-execution-scheduler.js';
 import { ToolControlError, invokeWithTimeout, waitForAbort } from './tool-execution-control.js';
@@ -43,6 +45,13 @@ export interface ToolInvocationRequest {
   name: string;
   input: unknown;
   stepId?: string;
+  /** Branch-local cancellation while the owning run signal remains authoritative. */
+  signal?: AbortSignal;
+  /** Present only when a Runtime-approved parallel TaskBook branch owns the call. */
+  parallelStep?: {
+    sideEffect: TaskStepSideEffect;
+    resources: readonly ToolResourceAccess[];
+  };
 }
 
 export interface ToolExecutionLifecycleContext {
@@ -114,6 +123,7 @@ export class ToolExecutionService {
     ToolExecutionServiceOptions,
     'maxParallel' | 'maxRepeat' | 'timeoutMs' | 'maxRecords' | 'sanitize'
   >> & ToolExecutionServiceOptions;
+  private approvalQueue: Promise<void> = Promise.resolve();
   private recordsTruncated = false;
 
   constructor(options: ToolExecutionServiceOptions) {
@@ -137,6 +147,7 @@ export class ToolExecutionService {
     requests: readonly ToolInvocationRequest[],
     lifecycle?: ToolExecutionLifecycle,
     allowedToolNames?: ReadonlySet<string>,
+    maxParallel?: number,
   ): Promise<Map<number, ToolResult>> {
     const immediate = new Map<number, ToolResult>();
     const prepared: PreparedInvocation[] = [];
@@ -181,7 +192,21 @@ export class ToolExecutionService {
         continue;
       }
 
-      const approval = await this.approve(registration.tool, input, record, retained);
+      const policy = resolveToolExecutionPolicy(registration.tool, input, this.options.toolContext);
+      const parallelContractError = validateParallelStepContract(request, policy);
+      if (parallelContractError) {
+        immediate.set(index, this.finishWithoutExecution(
+          record,
+          retained,
+          request,
+          'validation_failed',
+          parallelContractError,
+          'parallel_step_contract',
+        ));
+        continue;
+      }
+
+      const approval = await this.approve(registration.tool, input, record, retained, request.signal);
       if (!approval.ok) {
         immediate.set(index, this.finishWithoutExecution(
           record,
@@ -208,7 +233,6 @@ export class ToolExecutionService {
         continue;
       }
 
-      const policy = resolveToolExecutionPolicy(registration.tool, input, this.options.toolContext);
       prepared.push({
         index,
         request,
@@ -227,7 +251,10 @@ export class ToolExecutionService {
       resources: invocation.resources,
       execute: () => this.executePrepared(invocation, lifecycle),
     }));
-    const completed = await executeToolWaves(scheduled, this.options.maxParallel);
+    const completed = await executeToolWaves(
+      scheduled,
+      Math.min(this.options.maxParallel, boundedInteger(maxParallel, 1, 8, this.options.maxParallel)),
+    );
     return new Map([...immediate, ...completed]);
   }
 
@@ -285,6 +312,7 @@ export class ToolExecutionService {
     input: unknown,
     record: ToolInvocationRecord,
     retained: boolean,
+    signal?: AbortSignal,
   ): Promise<
     | { ok: true; granted: boolean }
     | { ok: false; status: 'approval_denied' | 'approval_unavailable' | 'aborted'; error: string; errorKind: string }
@@ -318,14 +346,12 @@ export class ToolExecutionService {
       };
     }
     try {
-      if (this.options.toolContext.signal?.aborted) {
-        throw new ToolControlError('approval aborted', 'aborted');
-      }
-      const approved = await waitForAbort(
+      const approvalSignal = signal ?? this.options.toolContext.signal;
+      const approved = await this.withApprovalLock(approvalSignal, () => waitForAbort(
         Promise.resolve().then(() => approve(tool.name, input)),
-        this.options.toolContext.signal,
+        approvalSignal,
         'approval aborted',
-      );
+      ));
       record.approval.decision = approved ? 'approved' : 'denied';
       record.approval.decidedAt = this.timestamp();
       record.approval.reason = approved ? undefined : 'denied by approval gate';
@@ -429,6 +455,7 @@ export class ToolExecutionService {
 
   private async invokeTool(invocation: PreparedInvocation): Promise<InvocationOutcome> {
     const { registration, input, approvalGranted, request } = invocation;
+    const signal = request.signal ?? this.options.toolContext.signal;
     try {
       const result = await invokeWithTimeout(
         (signal) => registration.tool.execute(input, {
@@ -437,7 +464,7 @@ export class ToolExecutionService {
           ...(approvalGranted ? { approvalGranted: true } : {}),
         }),
         this.options.timeoutMs,
-        this.options.toolContext.signal,
+        signal,
       );
       return { result: { ...result, callId: request.callId } };
     } catch (error) {
@@ -503,6 +530,18 @@ export class ToolExecutionService {
     return (this.options.now?.() ?? new Date()).toISOString();
   }
 
+  private async withApprovalLock<T>(signal: AbortSignal | undefined, task: () => Promise<T>): Promise<T> {
+    const previous = this.approvalQueue.catch(() => undefined);
+    let release!: () => void;
+    this.approvalQueue = new Promise<void>((resolve) => { release = resolve; });
+    try {
+      await waitForAbort(previous, signal, 'approval aborted');
+      return await task();
+    } finally {
+      release();
+    }
+  }
+
   private emitToolEvent(event: ToolStreamEvent): void {
     try {
       this.options.onToolEvent?.(event);
@@ -510,6 +549,29 @@ export class ToolExecutionService {
       this.options.toolContext.log?.('warn', 'tool event observer failed', boundedError(error));
     }
   }
+}
+
+function validateParallelStepContract(
+  request: ToolInvocationRequest,
+  policy: { concurrency: 'parallel' | 'exclusive'; resources: readonly ToolResourceAccess[] },
+): string | undefined {
+  const contract = request.parallelStep;
+  if (!contract) return undefined;
+  if (policy.concurrency !== 'parallel') {
+    return `parallel step ${request.stepId ?? 'unknown'} selected an exclusive tool: ${request.name}`;
+  }
+  if (contract.sideEffect === 'none' && policy.resources.length > 0) {
+    return `parallel step ${request.stepId ?? 'unknown'} declared no resource access but ${request.name} resolved resources`;
+  }
+  if (contract.sideEffect === 'read' && policy.resources.some((resource) => resource.mode === 'write')) {
+    return `parallel step ${request.stepId ?? 'unknown'} declared read-only work but ${request.name} resolved a write`;
+  }
+  for (const actual of policy.resources) {
+    if (!contract.resources.some((declared) => toolResourceAccessCovered(declared, actual))) {
+      return `parallel step ${request.stepId ?? 'unknown'} exceeded its resource envelope at ${actual.key}`;
+    }
+  }
+  return undefined;
 }
 
 function normalizeLifecycleResult(

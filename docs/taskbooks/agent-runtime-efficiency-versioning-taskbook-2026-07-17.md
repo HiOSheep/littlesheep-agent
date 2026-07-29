@@ -1,8 +1,8 @@
 # LittleSheep Agent Runtime 效率与版本化连续性任务书 2026-07-17
 
-最后更新：2026-07-29 13:45:17
+最后更新：2026-07-29 15:01:04
 
-状态：已完成统一 Tool Execution Service、工具调用级并行、数据与工作区 shadow Git 检查点、退出冻结、有界 `RuntimeEventQueue`、活动 run ingress、Harness 安全边界、确定性 `TaskBookPatch`、延迟事件重规划、Renderer 事件生产/反馈入口、持久 RunCheckpoint、Runner 显式续跑和应用启动恢复控制面。活动路由与直接回应 Context 已恢复完整质量门；TaskBook 步骤级并行、后台托盘和真实跨重启长任务验收仍未完成。
+状态：已完成统一 Tool Execution Service、工具调用级与 TaskBook 步骤级有界并行、数据与工作区 shadow Git 检查点、退出冻结、有界 `RuntimeEventQueue`、活动 run ingress、Harness 安全边界、确定性 `TaskBookPatch`、延迟事件重规划、Renderer 事件生产/反馈入口、持久 RunCheckpoint、Runner 显式续跑和应用启动恢复控制面。活动路由与直接回应 Context 已恢复完整质量门；后台托盘和真实跨重启长任务验收仍未完成。
 
 本文是本轮“并行执行、可回退、少而有效地调用 LLM”工作的专项任务书。长期分工以 [架构原则](../principles/architecture-principles.md) 为准，当前事实以 [项目状态](../decision/project-status.md) 为准，旧连续性任务书中的阶段设计仍有效，但与本文冲突的完成状态以本文和项目状态为准。
 
@@ -12,7 +12,7 @@
 
 - LLM 负责理解、推理、提出计划、工具调用建议和用户可见表达；Agent Runtime 负责状态、权限、调度、执行、验证、记忆提交、版本和恢复。
 - 用户看到的最终回答、执行结论和阶段性表达必须由真实 LLM 调用结合运行时 `SOUL.md` 生成。确定性代码只负责隐藏的流水记录、状态装配、验证、版本提交和安全兜底，不能把有风格的前台表达改成固定模板；重复、空回复或模型失败只能显示 Runtime 错误/状态。
-- 并行只针对相互独立、无资源读写冲突、权限语义明确的工具调用；缺少依赖和资源信息时默认串行。TaskBook 步骤级并行是后续独立阶段，不能把工具调用并行误称为完整任务并行。
+- 并行只针对相互独立、无资源读写冲突、权限语义明确的工具调用或 TaskBook 步骤；缺少完整依赖、工具、资源和副作用信息时默认串行。工具调用并行与步骤并行仍是两层独立调度，不能混为无上限并发。
 - 版本化只作用于 LS 应用数据和用户明确授权的工作区，不修改用户已有 `.git`，不把密钥、缓存、SQLite/WAL、构建物或无关未跟踪文件纳入管理。
 
 ## 2. 已完成实现
@@ -57,7 +57,7 @@
 - `ActiveRunRegistry`、Local App API 和 Renderer API 已提供 run-scoped ingress；停止按钮会发送控制事件，活动 run 中的普通输入会发送任务变化事件而不创建第二个 run。Harness 在每个 stage 前先处理控制事件，再处理任务变化事件。
 - `pause / resume / interrupt` 使用独立安全批次；携带确定性 `TaskBookPatch` 的任务事件会在队列结算成功后原子更新 TaskBook，未携带 patch 的事件进入有界延迟区并回到 DECIDE 重规划。
 - 普通追加消息、设置变化和工作区文件保存已由 Renderer 生产；文件事件只携带路径、类型、大小和修改时间，不携带文件正文。只有 `accepted`、`duplicate` 清空输入，网络失败、过期、冲突、拒绝和队列满均保留输入；响应丢失重试复用同一事件 id 与 `dedupKey`。
-- 事件结果使用 Runtime 状态提示，不伪装成 Agent 对话；提示共用一个有清理路径的计时器。当前缺口转为 TaskBook 步骤级并行和后台运行。
+- 事件结果使用 Runtime 状态提示，不伪装成 Agent 对话；提示共用一个有清理路径的计时器。当前缺口转为后台运行和真实跨重启长任务验收。
 
 ### 2.5 持久 RunCheckpoint 与 Runner 显式续跑
 
@@ -74,13 +74,23 @@
 - 调用记录最多保留 256 项，重复调用索引最多 1024 项；输入指纹序列化有深度、集合项数和 64 KiB 上限，观察者异常不会破坏真实工具执行。
 - 旧 Harness 调度器已迁移删除；旧执行日志缺少权威记录时仍可从 tool message 推断兼容证据。
 
+### 2.7 TaskBook 步骤级有界并行
+
+- DECIDE 与 `TaskBookPatch` 支持为步骤声明 `serial/parallel`、仅指向更早步骤的依赖、资源读写集合和副作用；嵌套执行契约经过运行时校验。
+- Runtime 默认同时运行 2 个步骤、硬上限 4；串行步骤形成调度屏障。缺少完整工具/资源/副作用契约、需审批、受限权限、研究模式写入、容器外资源、外部副作用或冲突路径一律退回串行。
+- 每个并行分支有独立 `AbortController`，父 run 中断向下传播；分支内工具并发限制为 1，避免步骤并发与工具并发相乘。
+- Tool Execution Service 会再次校验实际工具资源位于步骤声明封套内，独占工具不能进入并行分支；多个并发分支的审批回调仍串行。
+- 分支消息、工具结果和执行证据按 TaskBook 顺序稳定归并，不按完成先后打乱。恢复时已完成兄弟分支保持完成，不重新执行。
+- `RunCheckpoint` 在保留旧 `currentStepId` 的同时，可有界记录最多 4 个 `activeStepIds`；旧 v1 检查点仍可读取，应用恢复摘要可展示多个活动步骤。
+
+主要实现：`packages/harness/src/stages/execute/task-step-scheduler.ts`、`task-step-runner.ts`、`task-book-runner.ts`、`packages/tools/src/tool-execution-service.ts`、`packages/runner/src/run-checkpoint.ts`。
+
 ## 3. 尚未完成
 
-1. **活动 run 恢复控制面**：在已有持久检查点和 Runner 显式续跑之上，启动时提供恢复、放弃和现场查看；Local App API 与 Renderer 必须展示失败关闭原因，不能自动重放不确定副作用。
-2. **TaskBook 步骤级并行**：为步骤声明依赖、读写集合、副作用和验收标准；无依赖、无冲突步骤才可并行，并按稳定依赖顺序归并结果。
-3. **后台执行控制面**：托盘状态、重新打开、暂停、中断、彻底退出和关闭窗口策略需要独立语义与 UI；在配套完成前不改变当前关闭行为。
-4. **真实 Provider 校准**：使用 OpenAI、DeepSeek、GLM 真实凭证校准模型窗口、reasoning、usage、上下文本地账本和前台表达质量；mock 只证明本地结构。
-5. **版本治理 UI**：在不把内部 Atom 结构暴露给普通记忆页的前提下，增加用户可理解的 run checkpoint、数据/工作区回退和恢复结果入口。
+1. **后台执行控制面**：托盘状态、重新打开、暂停、中断、彻底退出和关闭窗口策略需要独立语义与 UI；在配套完成前不改变当前关闭行为。
+2. **真实 Provider 校准**：使用 OpenAI、DeepSeek、GLM 真实凭证校准模型窗口、reasoning、usage、上下文本地账本和前台表达质量；mock 只证明本地结构。
+3. **真实长任务与崩溃恢复**：验证多步骤并行、并行副作用检查点、应用崩溃/重启、网络中断和恢复后验收结论，不用单元测试替代产品场景。
+4. **版本治理 UI**：在不把内部 Atom 结构暴露给普通记忆页的前提下，增加用户可理解的数据/工作区回退和恢复结果入口；run checkpoint 的启动恢复入口已经完成。
 
 ## 4. 验收标准
 
@@ -104,4 +114,4 @@ pnpm.cmd run verify:app-recovery
 
 ## 6. 后续顺序
 
-保持 `respond / execute / clarify`、直接回应 Context、统一 Tool Execution Service 与 Renderer 运行时事件入口的完整质量门；继续真实 Provider 校准，并把现有 RunCheckpoint 基元接入应用启动恢复控制面。随后实现 TaskBook 步骤并行，最后补后台控制面、版本治理 UI 和效率对比基线。
+保持 `respond / execute / clarify`、直接回应 Context、统一 Tool Execution Service、TaskBook 步骤级并行、Renderer 运行时事件入口和应用启动恢复控制面的完整质量门；继续真实 Provider 校准，随后补后台控制面、真实崩溃/重启长任务、版本治理 UI 和效率对比基线。

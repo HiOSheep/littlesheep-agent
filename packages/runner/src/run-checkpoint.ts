@@ -11,6 +11,7 @@ import type {
 
 const MAX_CHECKPOINT_IDS = 128;
 const MAX_SIDE_EFFECTS = 256;
+const MAX_ACTIVE_STEP_IDS = 4;
 const MAX_DEFERRED_EVENTS = 128;
 const MAX_RESUME_EVENTS = 32;
 const MAX_VERIFICATION_RECORDS = 32;
@@ -44,7 +45,11 @@ export function buildRunCheckpoint(options: BuildRunCheckpointOptions): RunCheck
     : ctx.runtimeControl?.state === 'paused'
       ? 'paused'
       : 'recoverable';
-  const currentStepId = ctx.taskExecution?.steps.find((step) => step.status === 'in_progress')?.stepId
+  const activeStepIds = (ctx.taskExecution?.steps ?? [])
+    .filter((step) => step.status === 'in_progress')
+    .map((step) => step.stepId)
+    .slice(0, MAX_ACTIVE_STEP_IDS);
+  const currentStepId = activeStepIds[0]
     ?? ctx.taskBook?.steps.find((step) => (step.status ?? 'pending') === 'pending')?.id;
   const elapsedMs = Math.max(0, now.getTime() - Date.parse(ctx.startedAt));
   const loopBudget = ctx.loopBudget ?? {
@@ -69,6 +74,7 @@ export function buildRunCheckpoint(options: BuildRunCheckpointOptions): RunCheck
     status,
     currentStage: stageResult.stage,
     ...(currentStepId ? { currentStepId } : {}),
+    ...(activeStepIds.length > 0 ? { activeStepIds } : {}),
     ...(ctx.taskBook ? { taskBook: clone(ctx.taskBook) } : {}),
     taskBookRevision: ctx.taskBookRevision ?? (ctx.taskBook ? 1 : 0),
     ...(ctx.taskExecution ? { taskExecution: clone(ctx.taskExecution) } : {}),

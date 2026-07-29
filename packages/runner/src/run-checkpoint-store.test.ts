@@ -18,6 +18,7 @@ function checkpoint(id: string, runId = 'run-1', createdAt = '2026-07-18T10:00:0
     status: 'paused',
     currentStage: 'execute',
     currentStepId: 'step-1',
+    activeStepIds: ['step-1', 'step-2'],
     taskBookRevision: 1,
     eventCursor: 2,
     pendingEventIds: ['event-3'],
@@ -144,6 +145,10 @@ describe('RunCheckpointStore', () => {
     const { dir, store } = await tempStore();
     try {
       await expect(store.write({ ...checkpoint('invalid'), taskBookRevision: -1 })).rejects.toBeInstanceOf(RunCheckpointValidationError);
+      await expect(store.write({
+        ...checkpoint('too-many-active-steps'),
+        activeStepIds: ['step-1', 'step-2', 'step-3', 'step-4', 'step-5'],
+      })).rejects.toBeInstanceOf(RunCheckpointValidationError);
       expect((await readdir(dir))).toEqual([]);
     } finally {
       store.dispose();

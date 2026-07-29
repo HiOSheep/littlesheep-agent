@@ -34,7 +34,8 @@ export function renderTaskBookGuidance(taskBook: TaskBook): string {
       ? `\n     acceptance: ${step.acceptanceCriteria.join('; ')}`
       : '';
     const expected = step.expectedOutput ? `\n     expected: ${step.expectedOutput}` : '';
-    return `${index + 1}. ${label}${step.description}${tools}${approval}${stepCriteria}${expected}`;
+    const scheduling = renderScheduling(step);
+    return `${index + 1}. ${label}${step.description}${tools}${approval}${scheduling}${stepCriteria}${expected}`;
   });
   return `Task book (from DECIDE):
 Goal: ${taskBook.goal}
@@ -80,6 +81,7 @@ Step description: ${step.description}
 Step acceptance criteria:
 ${criteria}
 Expected output: ${step.expectedOutput ?? '(not specified)'}
+Scheduling contract: ${renderSchedulingSummary(step)}
 Previous step results:
 ${previous}
 
@@ -89,6 +91,21 @@ Instructions:
 - Request independent tool calls together; keep dependent calls in separate rounds.
 - Return a concise step result when the step is complete. It may be shown to the user directly, so use the user's language, follow the active SOUL.md voice, preserve runtime facts, and do not expose private chain-of-thought.
 - Do not claim the whole task is complete unless this is the final step.`;
+}
+
+function renderScheduling(step: PlanStep): string {
+  if (!step.execution) return '';
+  const dependencies = step.execution.dependsOn?.length
+    ? `; after: ${step.execution.dependsOn.join(', ')}`
+    : '';
+  return ` [${step.execution.mode}; effect: ${step.execution.sideEffect ?? 'unspecified'}${dependencies}]`;
+}
+
+function renderSchedulingSummary(step: PlanStep): string {
+  if (!step.execution) return 'serial (no explicit parallel contract)';
+  const dependencies = step.execution.dependsOn?.join(', ') || 'none';
+  const resources = step.execution.resources?.map((resource) => `${resource.mode}:${resource.key}`).join(', ') || 'none';
+  return `${step.execution.mode}; dependencies=${dependencies}; sideEffect=${step.execution.sideEffect ?? 'unspecified'}; resources=${resources}`;
 }
 
 export function buildBaseMessages(

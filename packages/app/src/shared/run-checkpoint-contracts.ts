@@ -15,6 +15,7 @@ export interface LocalAppRunCheckpointProgress {
   failedSteps: number
   totalSteps: number
   currentStepTitle?: string
+  activeStepTitles?: string[]
 }
 
 export interface LocalAppRunCheckpointSideEffectSummary {
@@ -31,6 +32,7 @@ export interface LocalAppRunCheckpointSummary {
   status: LocalAppRunCheckpointStatus
   currentStage: string
   currentStepId?: string
+  activeStepIds?: string[]
   createdAt: string
   reason: string
   resumable: boolean

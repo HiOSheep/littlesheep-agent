@@ -502,8 +502,8 @@ async function checkModuleBoundaries() {
     ['ModelRequestSnapshot', 'packages/types/src/runtime-contracts.ts'],
     ['ResolvedRunConfig', 'packages/types/src/runtime-contracts.ts'],
     ['RuntimeEventEnvelope', 'packages/types/src/runtime-contracts.ts'],
-    ['TaskBook', 'packages/types/src/agent.ts'],
-    ['VerificationRecord', 'packages/types/src/agent.ts'],
+    ['TaskBook', 'packages/types/src/task.ts'],
+    ['VerificationRecord', 'packages/types/src/task.ts'],
   ])
   const duplicateContracts = []
   for (const packageDir of packageDirs) {

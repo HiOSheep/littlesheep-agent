@@ -56,6 +56,12 @@ export interface DecodedPlanStep {
   description?: string;
   tools?: unknown;
   requiresApproval?: boolean;
+  execution?: {
+    mode?: unknown;
+    dependsOn?: unknown;
+    resources?: unknown;
+    sideEffect?: unknown;
+  };
   acceptanceCriteria?: unknown;
   expectedOutput?: string;
   status?: unknown;
@@ -104,6 +110,12 @@ Return ONLY a JSON object, no markdown:
         "description": "step description",
         "tools": ["toolName1"],
         "requiresApproval": false,
+        "execution": {
+          "mode": "serial|parallel",
+          "dependsOn": ["earlier-step-id"],
+          "resources": [{"key":"workspace:relative/path","mode":"read|write"}],
+          "sideEffect": "none|read|write|external"
+        },
         "acceptanceCriteria": ["how this step is complete"],
         "expectedOutput": "artifact or result"
       }
@@ -123,6 +135,11 @@ Rules:
 - Each step must have a non-empty "description".
 - "tools" lists tool names this step may use (from the available tools list). Omit if none.
 - "requiresApproval" is true for steps that should pause for user approval.
+- Omit "execution" unless the scheduling contract is complete. Missing or unsafe contracts run serially.
+- Use mode="parallel" only for genuinely independent work. dependsOn may reference earlier stable step ids only.
+- Parallel steps must list the complete resource envelope. Use workspace:<relative path> for files/directories and stable names for non-file resources.
+- Parallel steps may use only explicitly listed parallel-safe tools. Use tools=[] for a pure model step; do not omit tools on a parallel step.
+- sideEffect is the highest expected class. external effects and approval-requiring steps always run serially.
 - Keep plans minimal: prefer 1-3 steps unless the task is genuinely complex. Never invent tool names.
 
 Compatibility: if you cannot produce taskBook, return the old {"plan":[...]} shape.`;

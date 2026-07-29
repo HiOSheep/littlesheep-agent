@@ -244,6 +244,56 @@ describe('ToolExecutionService', () => {
       status: 'failed', errorKind: 'checkpoint_before_effect',
     });
   });
+
+  it('rejects a parallel branch tool that exceeds its declared resource envelope', async () => {
+    const execute = vi.fn(async () => ({ callId: '', ok: true } satisfies ToolResult));
+    const value = tool('scoped-read', execute);
+    value.execution = {
+      concurrency: 'parallel',
+      resources: () => [{ key: 'fs:/workspace/private/file.txt', mode: 'read' }],
+    };
+    const service = createService([registration(value, 'builtin')]);
+
+    const results = await service.executeBatch([{
+      callId: 'outside-envelope',
+      name: 'scoped-read',
+      input: { value: 'x' },
+      stepId: 'parallel-step',
+      parallelStep: {
+        sideEffect: 'read',
+        resources: [{ key: 'fs:/workspace/public', mode: 'read' }],
+      },
+    }]);
+
+    expect(results.get(0)).toMatchObject({ ok: false, error: expect.stringContaining('resource envelope') });
+    expect(execute).not.toHaveBeenCalled();
+    expect(service.snapshot().records[0]).toMatchObject({ status: 'validation_failed', errorKind: 'parallel_step_contract' });
+  });
+
+  it('serializes approval callbacks across concurrent batches', async () => {
+    let active = 0;
+    let maxActive = 0;
+    const approve = vi.fn(async () => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      active -= 1;
+      return true;
+    });
+    const execute = vi.fn(async () => ({ callId: '', ok: true } satisfies ToolResult));
+    const service = createService([
+      registration(tool('guarded', execute, { requiresApproval: true }), 'builtin'),
+    ], { toolContext: { approve } });
+
+    await Promise.all([
+      service.executeBatch([{ callId: 'approval-a', name: 'guarded', input: { value: 'a' } }]),
+      service.executeBatch([{ callId: 'approval-b', name: 'guarded', input: { value: 'b' } }]),
+    ]);
+
+    expect(approve).toHaveBeenCalledTimes(2);
+    expect(maxActive).toBe(1);
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
 });
 
 function createService(

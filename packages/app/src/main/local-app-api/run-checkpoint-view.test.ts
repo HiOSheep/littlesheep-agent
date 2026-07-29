@@ -78,12 +78,32 @@ describe('run checkpoint renderer view', () => {
     const source = inspection('bounded', 'source-bounded')
     source.checkpoint.reason = 'x'.repeat(4_000)
     source.checkpoint.pendingEventIds = ['event-1', 'event-2']
+    source.checkpoint.currentStepId = 'step-a'
+    source.checkpoint.activeStepIds = ['step-a', 'step-b']
+    source.checkpoint.taskExecution = {
+      goal: 'parallel work',
+      complexity: 'standard',
+      status: 'running',
+      startedAt: '2026-07-29T09:59:00.000Z',
+      steps: ['step-a', 'step-b'].map((stepId) => ({
+        stepId,
+        title: stepId,
+        description: `run ${stepId}`,
+        status: 'in_progress',
+        executionMode: 'parallel',
+        startedAt: '2026-07-29T09:59:00.000Z',
+        toolCallIds: [],
+        toolResults: [],
+      })),
+    }
 
     const summary = toCheckpointSummary(source)
     const detail = toCheckpointDetail(source)
 
     expect(summary.reason.length).toBeLessThanOrEqual(2_048)
     expect(summary).not.toHaveProperty('resumeState')
+    expect(summary.activeStepIds).toEqual(['step-a', 'step-b'])
+    expect(summary.progress.activeStepTitles).toEqual(['step-a', 'step-b'])
     expect(detail.pendingEventCount).toBe(2)
     expect(detail).not.toHaveProperty('context')
   })

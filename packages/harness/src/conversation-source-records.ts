@@ -77,6 +77,8 @@ export function collectConversationSourceRecords(ctx: RunContext): MemoryConvers
         title: step.title,
         description: step.description,
         status: step.status,
+        executionMode: step.executionMode,
+        dependsOn: step.dependsOn,
         acceptanceCriteria: step.acceptanceCriteria,
         expectedOutput: step.expectedOutput,
         output: step.output,

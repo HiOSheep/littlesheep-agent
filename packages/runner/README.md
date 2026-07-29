@@ -12,9 +12,9 @@
 ## 依赖与数据
 
 - Runner 可以组合基础设施，但跨领域只使用公开入口。
-- 拥有 execution log 与 run checkpoint 生命周期协调；会话、记忆、配置和 shadow Git 存储仍由各自服务拥有。Runner 关闭时先释放 SQLite/Embedding，再请求版本服务执行退出冻结。
+- 拥有 execution log 与 run checkpoint 生命周期协调；检查点同时保存最多 4 个并行活动步骤，旧 `currentStepId` 继续作为兼容入口。会话、记忆、配置和 shadow Git 存储仍由各自服务拥有。Runner 关闭时先释放 SQLite/Embedding，再请求版本服务执行退出冻结。
 
 ## 测试与修改定位
 
-- 运行行为和摘要接续在 `src/runner.test.ts`，决议在 `src/run-config.test.ts`，检查点收尾在 `src/version-checkpoint-lifecycle.ts` 及 `@littlesheep/snapshot` 测试，日志及摘要原子替换在 `src/execution-log.test.ts`，负载报告的脱敏、有界、质量、成本和资源契约在 `src/memory-workload-observability.test.ts` 与 `src/runtime-resource-observation.test.ts`。
+- 运行行为和摘要接续在 `src/runner.test.ts`，决议在 `src/run-config.test.ts`，活动 run 检查点在 `src/run-checkpoint*.ts` 与 `src/runner-continuation.test.ts`，版本检查点收尾在 `src/version-checkpoint-lifecycle.ts` 及 `@littlesheep/snapshot` 测试，日志及摘要原子替换在 `src/execution-log.test.ts`，负载报告的脱敏、有界、质量、成本和资源契约在 `src/memory-workload-observability.test.ts` 与 `src/runtime-resource-observation.test.ts`。
 - 新 run 输入或事件必须同步公共契约、历史恢复和 Local App API 消费方。

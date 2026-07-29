@@ -1,6 +1,6 @@
 # LittleSheep 模块拆分地图
 
-最后更新：2026-07-29 10:47:00
+最后更新：2026-07-29 15:01:04
 
 本文件记录大型生产文件的当前所有权、目标边界和拆分顺序。它是仓库基元化任务书的阶段产物，不替代项目状态，也不把行数当成唯一质量指标。
 
@@ -21,9 +21,9 @@
 | `packages/runner/src/runner.ts` | 812 | run 生命周期、输入装配、Memory 反馈、日志、检查点持久化/续跑和资源收尾 | 保持应用服务 facade；工具选择与来源解析已下沉，继续下沉日志、检查点和收尾协调 | E |
 | `packages/channels/qqbot/src/plugin.ts` | 801 | QQ 协议、连接、消息、发送和生命周期 | transport、protocol、message-mapper、sender、lifecycle | C |
 | `packages/memory-tree/src/project-memory-projection.ts` | 780 | 投影生成、同步、冲突、恢复和删除 | projection facade + render、sync、conflict、lifecycle | D |
-| `packages/types/src/runtime-contracts.ts` | 773 | Context、事件、检查点、执行证据和版本化运行时契约 | 按 context、event、checkpoint、execution 分组并保持 barrel | E |
+| `packages/types/src/runtime-contracts.ts` | 774 | Context、事件、检查点、执行证据和版本化运行时契约 | 按 context、event、checkpoint、execution 分组并保持 barrel | E |
 | `packages/runner/src/runtime-event-queue.ts` | 723 | run/session 隔离、有界事件、幂等、租约、结算和快照恢复 | 将 queue codec、lease/settle 和 registry 接入边界继续下沉；保持 facade 稳定 | E |
-| `packages/runner/src/run-checkpoint-store.ts` | 670 | 检查点 codec、原子存储、校验、列表、容量和保留期 | 分离 schema/codec、store、query 与 retention policy | E |
+| `packages/runner/src/run-checkpoint-store.ts` | 675 | 检查点 codec、原子存储、校验、列表、容量和保留期 | 分离 schema/codec、store、query 与 retention policy | E |
 | `packages/memory-tree/src/memory-tree.ts` | 655 | 根索引、导航、展开和搜索；working set 预算/去重/释放已拆出 | tree facade + index、navigation、expansion、branch-search | D |
 | `packages/channels/feishu/src/plugin.ts` | 632 | 飞书验签、事件、消息、发送和生命周期 | verification、transport、message-mapper、sender、lifecycle | C |
 | `packages/app/src/main/data-root-migration.ts` | 628 | locator、清单、复制、重绑定、提交、恢复和回滚 | migration facade + plan、manifest、copy、rebind、commit、recovery | C |
@@ -34,8 +34,8 @@
 | 当前文件 | 当前行数 | 主要责任 | 处理方向 | 所有权 |
 | --- | ---: | --- | --- | --- |
 | `packages/memory-tree/src/types.ts` | 600 | 记忆树内部和持久化类型 | 按 node、resource、audit、projection 分组 | D |
-| `packages/types/src/agent.ts` | 599 | Agent、活动路由兼容、TaskBook、工具运行记录与 trace 契约 | 按 taskbook、trace、stage 类型分组并保持 barrel | E |
-| `packages/tools/src/tool-execution-service.ts` | 521 | 工具查找、校验、审批、执行生命周期、事件与结构化记录 facade | 调度、中断、记录摘要和结果处理已拆分；facade 不吸收 Harness 编排或副作用状态所有权 | E |
+| `packages/types/src/agent.ts` | 464 | 状态机、活动路由兼容、RunContext、stage 与 Hook 契约 | TaskBook 已迁入 `task.ts`；继续保持状态机与运行上下文边界，不再吸收领域协议 | E |
+| `packages/tools/src/tool-execution-service.ts` | 583 | 工具查找、校验、审批、执行生命周期、事件与结构化记录 facade | 调度、中断、记录摘要和结果处理已拆分；facade 不吸收 Harness 编排或副作用状态所有权 | E |
 | `packages/memory-tree/src/memory-repository/v3-node-store.ts` | 581 | v3 节点查询、写入编排、层级和实体关联 | 事件与生命周期规则已拆出；后续分离 query projection 与 write coordinator | D |
 | `packages/app/src/renderer/app-shell/use-app-controller.ts` | 579 | Renderer 跨领域兼容协调、启动恢复和视图快照 | 保持装配职责；Runtime/附件 effect 契约稳定后再下沉 | B |
 | `packages/memory-tree/src/memory-repository/v3-resource-store.ts` | 575 | v3 资源元数据、生命周期事务、实体投影和恢复 | 分离 resource registry、transaction recovery 与 graph projection | D |

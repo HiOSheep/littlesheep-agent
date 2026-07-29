@@ -27,6 +27,7 @@ export const MAX_RUN_CHECKPOINT_MAX_PER_RUN = 64 as const;
 
 const MAX_ID_LENGTH = 256;
 const MAX_REASON_LENGTH = 4_096;
+const MAX_ACTIVE_STEP_IDS = 4;
 const MAX_PENDING_EVENT_IDS = 128;
 const MAX_CONTEXT_SNAPSHOT_IDS = 128;
 const MAX_SIDE_EFFECTS = 256;
@@ -443,6 +444,9 @@ function validateCheckpoint(value: unknown, maxFileBytes: number): RunCheckpoint
   const currentStepId = value.currentStepId === undefined
     ? undefined
     : boundedText(value.currentStepId, MAX_ID_LENGTH, 'checkpoint.currentStepId');
+  const activeStepIds = value.activeStepIds === undefined
+    ? []
+    : boundedStringArray(value.activeStepIds, MAX_ACTIVE_STEP_IDS, 'checkpoint.activeStepIds');
   const resumeState = value.resumeState === undefined
     ? undefined
     : validateResumeState(value.resumeState);
@@ -454,6 +458,7 @@ function validateCheckpoint(value: unknown, maxFileBytes: number): RunCheckpoint
     status: value.status as RunCheckpoint['status'],
     currentStage: value.currentStage as StageName,
     ...(currentStepId ? { currentStepId } : {}),
+    ...(activeStepIds.length > 0 ? { activeStepIds } : {}),
     ...(value.taskBook === undefined ? {} : { taskBook: cloneJson(value.taskBook) as RunCheckpoint['taskBook'] }),
     taskBookRevision,
     ...(value.taskExecution === undefined ? {} : { taskExecution: cloneJson(value.taskExecution) as RunCheckpoint['taskExecution'] }),

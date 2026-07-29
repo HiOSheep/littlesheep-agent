@@ -6,6 +6,7 @@ import {
 } from '../tests/helpers.js';
 import { DEFAULT_CONFIG } from '@littlesheep/config';
 import { DEFAULT_BRANDING } from '@littlesheep/branding';
+import { parallelFilePolicy } from '@littlesheep/tools';
 import { textMessage } from '@littlesheep/types';
 import type { AgentTool, TaskBook, ToolStreamEvent } from '@littlesheep/types';
 
@@ -182,6 +183,196 @@ describe('executeStage', () => {
       'step_done',
     ]);
     expect(events.find((evt) => evt.type === 'tool_end')?.durationMs).toBeGreaterThanOrEqual(1);
+  });
+
+  it('executes independent TaskBook branches concurrently and merges evidence in stable step order', async () => {
+    let activeTools = 0;
+    let maxActiveTools = 0;
+    const tool = makeTool('parallel-read', { ok: true, output: 'unused' });
+    tool.execution = parallelFilePolicy('path', 'read');
+    tool.execute = async (input) => {
+      activeTools += 1;
+      maxActiveTools = Math.max(maxActiveTools, activeTools);
+      const path = String((input as { path?: string }).path ?? '');
+      await new Promise((resolve) => setTimeout(resolve, path.startsWith('a') ? 30 : 5));
+      activeTools -= 1;
+      return { callId: '', ok: true, output: `read:${path}` };
+    };
+    const llm = createMockLlm(textResponse('unused'));
+    llm.chat.mockImplementation(async (request: import('@littlesheep/llm').ChatRequest) => {
+      const system = String(request.messages[0]?.content ?? '');
+      if (system.includes('final response assembler')) return textResponse('parallel final answer');
+      const stepId = system.includes('Step id: inspect-a') ? 'inspect-a' : 'inspect-b';
+      if (request.messages.some((message) => message.role === 'tool')) return textResponse(`${stepId} result`);
+      const path = stepId === 'inspect-a' ? 'a.txt' : 'b.txt';
+      return toolCallResponse([{ id: `call-${stepId}`, name: 'parallel-read', args: { path } }]);
+    });
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [tool],
+      inbound: textMessage('user', 'inspect both files'),
+      toolContext: { containerRoot: process.cwd(), permissionMode: 'full' },
+      taskBook: {
+        assessment: {
+          userNeed: 'inspect both files', complexity: 'standard', goal: 'inspect both files',
+          successCriteria: ['both files inspected'], requiresTaskBook: true, maxExtraScopeRatio: 1,
+        },
+        goal: 'inspect both files',
+        complexity: 'standard',
+        successCriteria: ['both files inspected'],
+        steps: [
+          {
+            id: 'inspect-a', description: 'inspect a', tools: ['parallel-read'],
+            execution: { mode: 'parallel', sideEffect: 'read', resources: [{ key: 'workspace:a.txt', mode: 'read' }] },
+          },
+          {
+            id: 'inspect-b', description: 'inspect b', tools: ['parallel-read'],
+            execution: { mode: 'parallel', sideEffect: 'read', resources: [{ key: 'workspace:b.txt', mode: 'read' }] },
+          },
+        ],
+        overdeliveryPolicy: { maxExtraScopeRatio: 1, guidance: 'stay focused' },
+      },
+    });
+    const events: ToolStreamEvent[] = [];
+    ctx.onToolEvent = (event) => events.push(event);
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ ok: true, next: 'verify' });
+    expect(maxActiveTools).toBe(2);
+    expect(ctx.taskExecution?.steps.map((step) => [step.stepId, step.executionMode, step.output])).toEqual([
+      ['inspect-a', 'parallel', 'inspect-a result'],
+      ['inspect-b', 'parallel', 'inspect-b result'],
+    ]);
+    expect(events.slice(0, 2).map((event) => event.type)).toEqual(['step_start', 'step_start']);
+    expect(ctx.toolResults?.map((item) => item.meta?.stepId)).toEqual(['inspect-a', 'inspect-b']);
+    expect(ctx.produced.filter((message) => message.role === 'tool').map((message) => {
+      const content = message.content[0];
+      return content?.type === 'tool_result' ? content.result.meta?.stepId : undefined;
+    })).toEqual(['inspect-a', 'inspect-b']);
+  });
+
+  it('checkpoints each parallel effectful branch and preserves the bounded active set', async () => {
+    let activeTools = 0;
+    let maxActiveTools = 0;
+    const tool = makeTool('parallel-write', { ok: true, output: 'unused' });
+    tool.execution = parallelFilePolicy('path', 'write');
+    tool.execute = async (input) => {
+      activeTools += 1;
+      maxActiveTools = Math.max(maxActiveTools, activeTools);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      activeTools -= 1;
+      return { callId: '', ok: true, output: `wrote:${String((input as { path?: string }).path ?? '')}` };
+    };
+    const llm = createMockLlm(textResponse('unused'));
+    llm.chat.mockImplementation(async (request: import('@littlesheep/llm').ChatRequest) => {
+      const system = String(request.messages[0]?.content ?? '');
+      if (system.includes('final response assembler')) return textResponse('writes complete');
+      const stepId = system.includes('Step id: write-a') ? 'write-a' : 'write-b';
+      if (request.messages.some((message) => message.role === 'tool')) return textResponse(`${stepId} result`);
+      const path = stepId === 'write-a' ? 'write-a.txt' : 'write-b.txt';
+      return toolCallResponse([{ id: `call-${stepId}`, name: 'parallel-write', args: { path } }]);
+    });
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [tool],
+      inbound: textMessage('user', 'write both files'),
+      toolContext: { containerRoot: process.cwd(), permissionMode: 'full' },
+      taskBook: {
+        assessment: {
+          userNeed: 'write both files', complexity: 'standard', goal: 'write both files',
+          successCriteria: ['both files written'], requiresTaskBook: true, maxExtraScopeRatio: 1,
+        },
+        goal: 'write both files',
+        complexity: 'standard',
+        successCriteria: ['both files written'],
+        steps: ['write-a', 'write-b'].map((id) => ({
+          id,
+          description: id,
+          tools: ['parallel-write'],
+          execution: {
+            mode: 'parallel' as const,
+            sideEffect: 'write' as const,
+            resources: [{ key: `workspace:${id}.txt`, mode: 'write' as const }],
+          },
+        })),
+        overdeliveryPolicy: { maxExtraScopeRatio: 1, guidance: 'stay focused' },
+      },
+    });
+    const activeSnapshots: string[][] = [];
+    ctx.persistRuntimeCheckpoint = vi.fn(async () => {
+      activeSnapshots.push((ctx.taskExecution?.steps ?? [])
+        .filter((step) => step.status === 'in_progress')
+        .map((step) => step.stepId));
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      return `checkpoint-${activeSnapshots.length}`;
+    });
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ ok: true, next: 'verify' });
+    expect(maxActiveTools).toBe(2);
+    expect(ctx.persistRuntimeCheckpoint).toHaveBeenCalledTimes(4);
+    expect(activeSnapshots.some((ids) => ids.length === 2)).toBe(true);
+    expect(ctx.sideEffects?.map((effect) => [effect.stepId, effect.status])).toEqual([
+      ['write-a', 'succeeded'],
+      ['write-b', 'succeeded'],
+    ]);
+  });
+
+  it('resumes an incomplete parallel branch without rerunning its completed sibling', async () => {
+    const llm = createMockLlm(textResponse('unused'));
+    llm.chat.mockImplementation(async (request: import('@littlesheep/llm').ChatRequest) => {
+      const system = String(request.messages[0]?.content ?? '');
+      if (system.includes('final response assembler')) return textResponse('resume complete');
+      if (system.includes('Step id: completed')) throw new Error('completed sibling must not rerun');
+      return textResponse('remaining result');
+    });
+    const taskBook: TaskBook = {
+      assessment: {
+        userNeed: 'resume work', complexity: 'standard', goal: 'resume work',
+        successCriteria: ['both steps complete'], requiresTaskBook: true, maxExtraScopeRatio: 1,
+      },
+      goal: 'resume work',
+      complexity: 'standard',
+      successCriteria: ['both steps complete'],
+      steps: ['completed', 'remaining'].map((id) => ({
+        id,
+        description: id,
+        tools: [],
+        execution: { mode: 'parallel', sideEffect: 'none', resources: [] },
+      })),
+      overdeliveryPolicy: { maxExtraScopeRatio: 1, guidance: 'stay focused' },
+    };
+    const ctx = makeCtx({ inbound: textMessage('user', 'resume work'), taskBook });
+    ctx.taskExecution = {
+      goal: taskBook.goal,
+      complexity: taskBook.complexity,
+      status: 'running',
+      startedAt: '2026-07-29T10:00:00.000Z',
+      steps: [
+        {
+          stepId: 'completed', description: 'completed', status: 'done', executionMode: 'parallel',
+          startedAt: '2026-07-29T10:00:00.000Z', endedAt: '2026-07-29T10:00:01.000Z',
+          output: 'preserved result', toolCallIds: [], toolResults: [],
+        },
+        {
+          stepId: 'remaining', description: 'remaining', status: 'failed', executionMode: 'parallel',
+          startedAt: '2026-07-29T10:00:00.000Z', endedAt: '2026-07-29T10:00:01.000Z',
+          error: 'interrupted', toolCallIds: [], toolResults: [],
+        },
+      ],
+    };
+
+    const result = await createExecuteStage({ ...deps, llm })(ctx);
+
+    expect(result).toMatchObject({ ok: true, next: 'verify' });
+    expect(ctx.taskExecution.steps.map((step) => [step.stepId, step.output])).toEqual([
+      ['completed', 'preserved result'],
+      ['remaining', 'remaining result'],
+    ]);
+    expect(llm.chat.mock.calls.filter((call) => String(call[0].messages[0]?.content).includes('Step id: completed')))
+      .toHaveLength(0);
   });
 
   it('resumes a partial replan without rerunning completed steps', async () => {

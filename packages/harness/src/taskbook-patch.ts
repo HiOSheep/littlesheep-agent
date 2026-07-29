@@ -19,6 +19,8 @@ export const MAX_TASK_BOOK_PATCH_EVENT_IDS = 32 as const;
 export const MAX_TASK_BOOK_PATCH_STEPS = 64 as const;
 export const MAX_TASK_BOOK_PATCH_TOOLS = 32 as const;
 export const MAX_TASK_BOOK_PATCH_CRITERIA = 32 as const;
+export const MAX_TASK_BOOK_PATCH_DEPENDENCIES = 16 as const;
+export const MAX_TASK_BOOK_PATCH_RESOURCES = 32 as const;
 export const MAX_TASK_BOOK_PATCH_TEXT = 8_192 as const;
 export const MAX_APPLIED_TASK_BOOK_PATCH_IDS = 64 as const;
 
@@ -35,6 +37,7 @@ const STEP_KEYS = new Set([
   'description',
   'tools',
   'requiresApproval',
+  'execution',
   'acceptanceCriteria',
   'expectedOutput',
   'status',
@@ -44,6 +47,7 @@ const UPDATE_KEYS = new Set([
   'description',
   'tools',
   'requiresApproval',
+  'execution',
   'acceptanceCriteria',
   'expectedOutput',
 ]);
@@ -129,6 +133,8 @@ export function applyTaskBookPatch(
       patchId: patch.id,
     };
   }
+  const dependencyOrder = validateDependencyOrder(steps);
+  if (!dependencyOrder.ok) return rejectedResult(dependencyOrder, patch.id);
 
   const next = cloneTaskBook(current);
   next.steps = steps;
@@ -151,6 +157,24 @@ export function applyTaskBookPatch(
     revision: patch.nextRevision,
     patchId: patch.id,
   };
+}
+
+function validateDependencyOrder(
+  steps: readonly PlanStep[],
+): { ok: true } | { ok: false; reason: TaskBookPatchRejectReason; message: string } {
+  const indexById = new Map(steps.map((step, index) => [step.id!, index]));
+  for (const [index, step] of steps.entries()) {
+    for (const dependency of step.execution?.dependsOn ?? []) {
+      const dependencyIndex = indexById.get(dependency);
+      if (dependencyIndex === undefined) {
+        return reject('unknown-step', `Step '${step.id}' depends on unknown step '${dependency}'.`);
+      }
+      if (dependencyIndex >= index) {
+        return reject('invalid-operation', `Step '${step.id}' must depend only on an earlier step ('${dependency}').`);
+      }
+    }
+  }
+  return { ok: true };
 }
 
 /** Apply and record a patch on the mutable run context at a safe boundary. */
@@ -259,6 +283,11 @@ function validateOperation(
       if (typeof value.patch.requiresApproval !== 'boolean') return reject('invalid-operation', 'requiresApproval must be boolean.');
       patch.requiresApproval = value.patch.requiresApproval;
     }
+    if ('execution' in value.patch) {
+      const execution = validateExecutionPolicy(value.patch.execution);
+      if (!execution.ok) return execution;
+      patch.execution = execution.execution;
+    }
     if ('acceptanceCriteria' in value.patch) {
       const criteria = boundedStringArray(value.patch.acceptanceCriteria, MAX_TASK_BOOK_PATCH_CRITERIA, MAX_TASK_BOOK_PATCH_TEXT);
       if (!criteria.ok) return reject('invalid-operation', 'acceptanceCriteria are invalid.');
@@ -307,6 +336,8 @@ function validateStep(
     : boundedStringArray(value.acceptanceCriteria, MAX_TASK_BOOK_PATCH_CRITERIA, MAX_TASK_BOOK_PATCH_TEXT);
   if (criteria && !criteria.ok) return reject('invalid-operation', 'Step acceptanceCriteria are invalid.');
   if (value.requiresApproval !== undefined && typeof value.requiresApproval !== 'boolean') return reject('invalid-operation', 'requiresApproval must be boolean.');
+  const execution = value.execution === undefined ? undefined : validateExecutionPolicy(value.execution);
+  if (execution && !execution.ok) return execution;
   const status = value.status === undefined ? 'pending' : value.status;
   if (status !== 'pending') return reject('protected-step', 'New steps must start as pending.');
   return {
@@ -317,9 +348,57 @@ function validateStep(
       description,
       ...(tools && tools.ok ? { tools: tools.values } : {}),
       ...(value.requiresApproval === undefined ? {} : { requiresApproval: value.requiresApproval }),
+      ...(execution && execution.ok ? { execution: execution.execution } : {}),
       ...(criteria && criteria.ok ? { acceptanceCriteria: criteria.values } : {}),
       ...(value.expectedOutput === undefined ? {} : { expectedOutput: optionalText(value.expectedOutput) }),
       status: 'pending',
+    },
+  };
+}
+
+function validateExecutionPolicy(
+  value: unknown,
+): { ok: true; execution: NonNullable<PlanStep['execution']> } | { ok: false; reason: TaskBookPatchRejectReason; message: string } {
+  if (!isRecord(value)) return reject('invalid-operation', 'Step execution policy must be an object.');
+  const keys = new Set(['mode', 'dependsOn', 'resources', 'sideEffect']);
+  for (const key of Object.keys(value)) {
+    if (!keys.has(key)) return reject('invalid-operation', `Step execution policy contains unsupported field '${key}'.`);
+  }
+  if (value.mode !== 'serial' && value.mode !== 'parallel') {
+    return reject('invalid-operation', 'Step execution mode must be serial or parallel.');
+  }
+  const dependencies = value.dependsOn === undefined
+    ? undefined
+    : boundedStringArray(value.dependsOn, MAX_TASK_BOOK_PATCH_DEPENDENCIES, 256);
+  if (dependencies && !dependencies.ok) return reject('invalid-operation', 'Step execution dependencies are invalid.');
+  if (value.resources !== undefined && !Array.isArray(value.resources)) {
+    return reject('invalid-operation', 'Step execution resources must be an array.');
+  }
+  const rawResources = Array.isArray(value.resources) ? value.resources : [];
+  const resources = rawResources.flatMap((entry) => {
+    if (!isRecord(entry) || Object.keys(entry).some((key) => key !== 'key' && key !== 'mode')) return [];
+    const key = typeof entry.key === 'string' ? entry.key.trim().slice(0, 2_048) : '';
+    if (!key || (entry.mode !== 'read' && entry.mode !== 'write')) return [];
+    return [{ key, mode: entry.mode as 'read' | 'write' }];
+  });
+  if (resources.length !== rawResources.length || resources.length > MAX_TASK_BOOK_PATCH_RESOURCES) {
+    return reject('invalid-operation', 'Step execution resources are invalid.');
+  }
+  const sideEffect = value.sideEffect;
+  if (sideEffect !== undefined
+    && sideEffect !== 'none'
+    && sideEffect !== 'read'
+    && sideEffect !== 'write'
+    && sideEffect !== 'external') {
+    return reject('invalid-operation', 'Step sideEffect is invalid.');
+  }
+  return {
+    ok: true,
+    execution: {
+      mode: value.mode,
+      ...(dependencies && dependencies.ok && dependencies.values.length > 0 ? { dependsOn: dependencies.values } : {}),
+      ...(resources.length > 0 ? { resources } : {}),
+      ...(sideEffect ? { sideEffect } : {}),
     },
   };
 }
@@ -388,7 +467,7 @@ function cloneTaskBook(taskBook: TaskBook): TaskBook {
 function boundedStringArray(
   value: unknown,
   maximum: number,
-  itemMaximum = MAX_TASK_BOOK_PATCH_TEXT,
+  itemMaximum: number = MAX_TASK_BOOK_PATCH_TEXT,
 ): { ok: true; values: string[] } | { ok: false } {
   if (!Array.isArray(value) || value.length > maximum) return { ok: false };
   const values = value.map((item) => boundedText(item, itemMaximum));

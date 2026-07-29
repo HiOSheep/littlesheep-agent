@@ -12,10 +12,9 @@ export function resolveStepId(step: PlanStep, index: number): string {
 }
 
 export function pickStepTools(step: PlanStep, tools: AgentTool[]): AgentTool[] {
-  if (!step.tools || step.tools.length === 0) return tools;
+  if (!step.tools) return tools;
   const names = new Set(step.tools);
-  const picked = tools.filter((tool) => names.has(tool.name));
-  return picked.length > 0 ? picked : tools;
+  return tools.filter((tool) => names.has(tool.name));
 }
 
 export function hasBlockingToolFailure(results: ToolResult[]): boolean {

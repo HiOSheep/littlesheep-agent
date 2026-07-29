@@ -45,7 +45,16 @@ export function toCheckpointSummary(
   const executionSteps = checkpoint.taskExecution?.steps ?? []
   const completedSteps = executionSteps.filter((step) => step.status === 'done').length
   const failedSteps = executionSteps.filter((step) => step.status === 'failed').length
-  const currentStep = executionSteps.find((step) => step.stepId === checkpoint.currentStepId)
+  const activeStepIds = (checkpoint.activeStepIds?.length
+    ? checkpoint.activeStepIds
+    : executionSteps.filter((step) => step.status === 'in_progress').map((step) => step.stepId))
+    .slice(0, 4)
+  const activeSteps = activeStepIds
+    .map((stepId) => executionSteps.find((step) => step.stepId === stepId)
+      ?? taskSteps.find((step) => step.id === stepId))
+    .filter((step): step is PlanStep | TaskStepResult => Boolean(step))
+  const currentStep = activeSteps[0]
+    ?? executionSteps.find((step) => step.stepId === checkpoint.currentStepId)
     ?? taskSteps.find((step) => step.id === checkpoint.currentStepId)
   const unverified = checkpoint.sideEffects.filter((effect) => (
     effect.status === 'in_progress' || effect.status === 'unknown'
@@ -57,6 +66,7 @@ export function toCheckpointSummary(
     status: checkpoint.status,
     currentStage: checkpoint.currentStage,
     ...(checkpoint.currentStepId ? { currentStepId: checkpoint.currentStepId } : {}),
+    ...(activeStepIds.length > 0 ? { activeStepIds } : {}),
     createdAt: checkpoint.createdAt,
     reason: bounded(checkpoint.reason, MAX_TEXT),
     resumable: inspection.resumable,
@@ -81,6 +91,7 @@ export function toCheckpointSummary(
       failedSteps,
       totalSteps: Math.max(taskSteps.length, executionSteps.length),
       ...(currentStep ? { currentStepTitle: stepTitle(currentStep) } : {}),
+      ...(activeSteps.length > 0 ? { activeStepTitles: activeSteps.map(stepTitle) } : {}),
     },
     sideEffects: {
       total: checkpoint.sideEffects.length,

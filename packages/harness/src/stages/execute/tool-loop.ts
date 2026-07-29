@@ -53,7 +53,19 @@ export async function runToolLoop(
   deps: ExecuteStageDeps,
   opts: ToolLoopOptions,
 ): Promise<ToolLoopResult> {
-  const { ctx, messages, tools, sanitizeOpts, stepId, systemSegments, insertedBeforePrimary } = opts;
+  const {
+    ctx,
+    messages,
+    tools,
+    sanitizeOpts,
+    stepId,
+    systemSegments,
+    insertedBeforePrimary,
+    signal = ctx.signal,
+    produced = ctx.produced,
+    parallelStep,
+    maxParallelTools,
+  } = opts;
   const toolSpecs = tools.map(toolToSpec);
   const toolResults: ToolResult[] = [];
   const executionService = toolExecutionService(deps, ctx, sanitizeOpts);
@@ -67,7 +79,7 @@ export async function runToolLoop(
         tools: toolSpecs.length > 0 ? toolSpecs : undefined,
         tool_choice: toolSpecs.length > 0 ? 'auto' : undefined,
         temperature: 0,
-        signal: ctx.signal,
+        signal,
       } satisfies import('@littlesheep/llm').ChatRequest;
       const request = prepareModelRequest(
         ctx,
@@ -112,22 +124,30 @@ export async function runToolLoop(
           function: { name: call.function.name, arguments: call.function.arguments },
         })),
       });
-      persistToolCalls(ctx, response.toolCalls.map(convertToolCall));
+      persistToolCalls(ctx, produced, response.toolCalls.map(convertToolCall));
 
       const requests = response.toolCalls.map((call) => {
         const converted = convertToolCall(call);
-        return { callId: converted.id, name: converted.name, input: converted.input, stepId };
+        return {
+          callId: converted.id,
+          name: converted.name,
+          input: converted.input,
+          stepId,
+          signal,
+          parallelStep,
+        };
       });
       const executedResults = await executionService.executeBatch(
         requests,
         sideEffectLifecycle(ctx),
         new Set(tools.map((tool) => tool.name)),
+        maxParallelTools,
       );
       for (const [index, call] of response.toolCalls.entries()) {
         const converted = convertToolCall(call);
         const result = executedResults.get(index)
           ?? failureResult(converted.id, stepId, 'tool scheduler returned no result');
-        finalizeToolResult(ctx, messages, toolResults, converted.name, result, stepId);
+        finalizeToolResult(ctx, produced, messages, toolResults, converted.name, result, stepId);
       }
       continue;
     }
@@ -166,6 +186,7 @@ function failureResult(callId: string, stepId: string | undefined, error?: strin
 
 function finalizeToolResult(
   ctx: RunContext,
+  produced: RunContext['produced'],
   messages: ToolLoopOptions['messages'],
   results: ToolResult[],
   name: string,
@@ -177,7 +198,7 @@ function finalizeToolResult(
     ingestMemoryContextToolResult(ctx, result.callId, result);
   }
   results.push(result);
-  persistToolResult(ctx, result);
+  persistToolResult(ctx, produced, result);
   messages.push({
     role: 'tool',
     tool_call_id: result.callId,
@@ -310,8 +331,8 @@ function sideEffectLifecycle(ctx: RunContext): ToolExecutionLifecycle {
   };
 }
 
-function persistToolCalls(ctx: RunContext, calls: ToolCall[]): void {
-  ctx.produced.push({
+function persistToolCalls(ctx: RunContext, produced: RunContext['produced'], calls: ToolCall[]): void {
+  produced.push({
     id: randomUUID(),
     role: 'assistant',
     content: [{ type: 'tool_calls', calls }],
@@ -322,8 +343,8 @@ function persistToolCalls(ctx: RunContext, calls: ToolCall[]): void {
   });
 }
 
-function persistToolResult(ctx: RunContext, result: ToolResult): void {
-  ctx.produced.push({
+function persistToolResult(ctx: RunContext, produced: RunContext['produced'], result: ToolResult): void {
+  produced.push({
     id: randomUUID(),
     role: 'tool',
     content: [{ type: 'tool_result', result }],

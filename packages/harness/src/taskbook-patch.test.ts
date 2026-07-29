@@ -89,6 +89,31 @@ describe('TaskBook patch boundary', () => {
     if (removed.kind === 'applied') expect(removed.taskBook.steps.map((step) => step.id)).toEqual(['step-1', 'step-2']);
   });
 
+  it('validates parallel execution contracts and dependency order', () => {
+    const applied = applyTaskBookPatch(taskBook(), patch([{
+      type: 'update_pending_step',
+      stepId: 'step-2',
+      patch: {
+        execution: {
+          mode: 'parallel',
+          dependsOn: ['step-1'],
+          resources: [{ key: 'workspace:result.txt', mode: 'write' }],
+          sideEffect: 'write',
+        },
+      },
+    }]), { runId: 'run-1', currentRevision: 1 });
+    expect(applied.kind).toBe('applied');
+    if (applied.kind === 'applied') {
+      expect(applied.taskBook.steps[1]?.execution).toMatchObject({ mode: 'parallel', dependsOn: ['step-1'] });
+    }
+
+    expect(applyTaskBookPatch(taskBook(), patch([{
+      type: 'update_pending_step',
+      stepId: 'step-2',
+      patch: { execution: { mode: 'parallel', dependsOn: ['missing'], sideEffect: 'none' } },
+    }]), { runId: 'run-1', currentRevision: 1 })).toMatchObject({ kind: 'rejected', reason: 'unknown-step' });
+  });
+
   it('rejects revision conflicts, event mismatches, and protected steps', () => {
     expect(applyTaskBookPatch(taskBook(), patch([{ type: 'update_goal', goal: 'new goal' }], { baseRevision: 2, nextRevision: 3 }), {
       runId: 'run-1', currentRevision: 1,

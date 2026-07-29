@@ -80,8 +80,9 @@ export function normalizePlan(
   for (const step of raw) {
     const description = cleanString(step?.description) ?? cleanString(step?.title);
     if (!description) continue;
-    const tools = Array.isArray(step.tools)
-      ? step.tools.filter((tool): tool is string => typeof tool === 'string' && availableToolNames.has(tool))
+    const rawTools = Array.isArray(step.tools) ? step.tools : undefined;
+    const tools = rawTools
+      ? rawTools.filter((tool): tool is string => typeof tool === 'string' && availableToolNames.has(tool))
       : undefined;
     const acceptanceCriteria = asStringArray(step.acceptanceCriteria).map((item) => item.trim()).filter(Boolean);
     const status = typeof step.status === 'string' && STEP_STATUSES.has(step.status)
@@ -91,14 +92,46 @@ export function normalizePlan(
       id: cleanString(step.id),
       title: cleanString(step.title),
       description,
-      tools: tools && tools.length > 0 ? tools : undefined,
+      tools,
       requiresApproval: step.requiresApproval === true ? true : undefined,
+      execution: normalizeStepExecution(step.execution),
       acceptanceCriteria: acceptanceCriteria.length > 0 ? acceptanceCriteria : undefined,
       expectedOutput: cleanString(step.expectedOutput),
       status,
     });
   }
   return plan;
+}
+
+function normalizeStepExecution(value: DecodedPlanStep['execution']): PlanStep['execution'] {
+  if (!value || (value.mode !== 'serial' && value.mode !== 'parallel')) return undefined;
+  const dependsOn = Array.isArray(value.dependsOn)
+    ? [...new Set(value.dependsOn
+        .filter((item): item is string => typeof item === 'string')
+        .map((item) => item.trim())
+        .filter(Boolean))].slice(0, 16)
+    : [];
+  const resources = Array.isArray(value.resources)
+    ? value.resources.flatMap((item) => {
+        if (!item || typeof item !== 'object') return [];
+        const resource = item as Record<string, unknown>;
+        const key = cleanString(resource.key)?.slice(0, 2_048);
+        if (!key || (resource.mode !== 'read' && resource.mode !== 'write')) return [];
+        return [{ key, mode: resource.mode as 'read' | 'write' }];
+      }).slice(0, 32)
+    : [];
+  const sideEffect = value.sideEffect === 'none'
+    || value.sideEffect === 'read'
+    || value.sideEffect === 'write'
+    || value.sideEffect === 'external'
+      ? value.sideEffect
+      : undefined;
+  return {
+    mode: value.mode,
+    ...(dependsOn.length > 0 ? { dependsOn } : {}),
+    ...(resources.length > 0 ? { resources } : {}),
+    ...(sideEffect ? { sideEffect } : {}),
+  };
 }
 
 export function compactLightweightPlan(

@@ -148,6 +148,12 @@ describe('decideStage', () => {
           title: 'Inspect',
           description: 'inspect core files',
           tools: ['read', 'missing'],
+          execution: {
+            mode: 'parallel',
+            dependsOn: [],
+            resources: [{ key: 'workspace:packages/harness', mode: 'read' }],
+            sideEffect: 'read',
+          },
           acceptanceCriteria: ['state machine files inspected'],
           expectedOutput: 'gap list',
         }],
@@ -164,6 +170,11 @@ describe('decideStage', () => {
     expect(ctx.taskBook?.goal).toBe('identify core loop gaps');
     expect(ctx.taskBook?.successCriteria).toEqual(['gaps are identified', 'next action is clear']);
     expect(ctx.taskBook?.steps[0].tools).toEqual(['read']);
+    expect(ctx.taskBook?.steps[0].execution).toEqual({
+      mode: 'parallel',
+      resources: [{ key: 'workspace:packages/harness', mode: 'read' }],
+      sideEffect: 'read',
+    });
     expect(ctx.taskBook?.steps[0].acceptanceCriteria).toEqual(['state machine files inspected']);
   });
 

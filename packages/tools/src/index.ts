@@ -19,6 +19,8 @@ export {
 export {
   buildToolExecutionWaves,
   executeToolWaves,
+  toolResourceAccessCovered,
+  toolResourcesConflict,
   type ScheduledToolExecution,
 } from './tool-execution-scheduler.js';
 

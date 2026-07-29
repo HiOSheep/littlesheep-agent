@@ -23,7 +23,7 @@ export function buildToolExecutionWaves<T>(
     if (wave
       && wave.length < limit
       && wave.every((candidate) => candidate.concurrency === 'parallel')
-      && wave.every((candidate) => !resourcesConflict(candidate.resources, call.resources))) {
+      && wave.every((candidate) => !toolResourcesConflict(candidate.resources, call.resources))) {
       wave.push(call);
     } else {
       waves.push([call]);
@@ -47,15 +47,43 @@ export async function executeToolWaves<T>(
   return results;
 }
 
-function resourcesConflict(
+export function toolResourcesConflict(
   left: readonly ToolResourceAccess[],
   right: readonly ToolResourceAccess[],
 ): boolean {
   for (const first of left) {
     for (const second of right) {
-      if (first.key !== second.key) continue;
+      if (!resourceKeysOverlap(first.key, second.key)) continue;
       if (first.mode === 'write' || second.mode === 'write') return true;
     }
   }
   return false;
+}
+
+/** True when one declared envelope entry safely contains an actual access. */
+export function toolResourceAccessCovered(
+  declared: ToolResourceAccess,
+  actual: ToolResourceAccess,
+): boolean {
+  if (actual.mode === 'write' && declared.mode !== 'write') return false;
+  return resourceKeyContains(declared.key, actual.key);
+}
+
+function resourceKeysOverlap(left: string, right: string): boolean {
+  return resourceKeyContains(left, right) || resourceKeyContains(right, left);
+}
+
+function resourceKeyContains(parent: string, child: string): boolean {
+  const normalizedParent = normalizeResourceKey(parent);
+  const normalizedChild = normalizeResourceKey(child);
+  if (normalizedParent === normalizedChild) return true;
+  if (!normalizedParent.startsWith('fs:') || !normalizedChild.startsWith('fs:')) return false;
+  return normalizedChild.startsWith(`${normalizedParent}/`);
+}
+
+function normalizeResourceKey(value: string): string {
+  const trimmed = value.trim().replace(/\\/gu, '/').replace(/\/+$/u, '');
+  return process.platform === 'win32' && trimmed.startsWith('fs:')
+    ? trimmed.toLocaleLowerCase()
+    : trimmed;
 }
