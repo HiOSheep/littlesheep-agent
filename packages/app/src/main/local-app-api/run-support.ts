@@ -2,7 +2,7 @@
 
 import { isAbsolute, resolve } from 'node:path'
 import type { Config } from '@littlesheep/config'
-import type { AgentRunner, RunInput } from '@littlesheep/runner'
+import type { AgentRunner, RunnerResult, RunInput } from '@littlesheep/runner'
 import type { Message } from '@littlesheep/types'
 import { isSessionScope, type SessionScope } from '../../shared/session-scope.js'
 import { normalizePermissionModeId } from '../modes.js'
@@ -11,7 +11,38 @@ import type { ProjectIndex } from '../project-index.js'
 import type { SessionIndex } from '../session-index.js'
 import type { WorkspaceArtifactIndex, WorkspaceArtifactInput } from '../workspace-artifact-index.js'
 import { HttpError } from './http.js'
-import { isPathInsideOrSame } from './workspace-support.js'
+import { isPathInsideOrSame, syncWorkspaceResourceChanges } from './workspace-support.js'
+
+export interface RunResourceContext {
+  sessionIndex: SessionIndex
+  projectIndex: ProjectIndex
+  workspaceArtifactIndex: WorkspaceArtifactIndex
+}
+
+export async function finishRunResources(
+  context: RunResourceContext,
+  runner: AgentRunner,
+  result: RunnerResult,
+  body: Record<string, unknown>,
+  ownership: { scope: SessionScope; projectId?: string },
+  cwd: string,
+  workspaceContext: NonNullable<Parameters<AgentRunner['infra']['memoryService']['syncWorkspaceResources']>[1]>,
+): Promise<void> {
+  await updateSessionIndex(context.sessionIndex, result.sessionId, body, ownership, cwd)
+  if (ownership.projectId) await context.projectIndex.touch(ownership.projectId)
+  const artifacts = await appendAgentArtifacts(
+    context.workspaceArtifactIndex,
+    result,
+    cwd,
+    ownership.projectId,
+  )
+  if (artifacts.length > 0) {
+    await syncWorkspaceResourceChanges(runner, cwd, {
+      ...workspaceContext,
+      changes: artifacts.map((artifact) => ({ path: artifact.path, source: 'agent' })),
+    })
+  }
+}
 
 export async function updateSessionIndex(
   sessionIndex: SessionIndex,

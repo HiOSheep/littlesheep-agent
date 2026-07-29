@@ -72,7 +72,7 @@ export async function startLocalAppApiServer(
     electronExecutable: process.execPath,
   })
   const routeOptions = { ...opts, memoryEmbeddingModelManager: embeddingModelManager }
-  const runRouter = new RunRouter()
+  const runRouter = await RunRouter.create(initialRunner)
   const terminalRouter = new TerminalRouter()
   try {
     await attachmentCache.initialize()

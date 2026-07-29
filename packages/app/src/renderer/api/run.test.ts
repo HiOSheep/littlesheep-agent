@@ -13,7 +13,8 @@ function streamResponse(events: Array<{ name: string; data: unknown }>): Respons
 async function loadRunApi() {
   vi.resetModules()
   vi.stubGlobal('window', { littlesheep: { apiBase: 'http://127.0.0.1:43127' } })
-  return import('./run.js')
+  const [run, checkpoints] = await Promise.all([import('./run.js'), import('./run-checkpoints.js')])
+  return { ...run, ...checkpoints }
 }
 
 describe('renderer run API', () => {
@@ -76,6 +77,61 @@ describe('renderer run API', () => {
     await expect(api.runAgentStream('read', undefined, undefined, {
       onDelta: () => undefined,
     })).rejects.toThrow('result run id does not match start metadata')
+  })
+
+  it('resumes a checkpoint through the shared SSE consumer and encoded endpoint', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+    vi.stubGlobal('fetch', fetchMock)
+    const api = await loadRunApi()
+    fetchMock
+      .mockResolvedValueOnce(streamResponse([
+        { name: 'start', data: { ok: true, runId: 'resume-run-1' } },
+        { name: 'approval_request', data: {
+          id: 'approval-1',
+          action: 'write',
+          permissionMode: 'research',
+          boundary: 'inside',
+          source: 'agent',
+        } },
+        { name: 'verification_start', data: { type: 'verification_start' } },
+        { name: 'result', data: {
+          runId: 'resume-run-1',
+          sessionId: 'session-1',
+          status: 'ok',
+          reply: 'continued',
+          durationMs: 12,
+        } },
+      ]))
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+    const started: string[] = []
+    const events: unknown[] = []
+
+    const result = await api.resumeRunCheckpointStream('checkpoint/a', {
+      text: '继续',
+      reason: 'user resumed',
+    }, {
+      onStart: ({ runId }) => started.push(runId),
+      onDelta: () => undefined,
+      onToolEvent: (event) => events.push(event),
+      onApprovalRequest: (request) => request.id === 'approval-1',
+    })
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'http://127.0.0.1:43127/run-checkpoints/checkpoint%2Fa/resume/stream',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ text: '继续', reason: 'user resumed' }),
+      }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'http://127.0.0.1:43127/approvals/approval-1',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ approved: true }) }),
+    )
+    expect(started).toEqual(['resume-run-1'])
+    expect(events).toEqual([{ type: 'verification_start' }])
+    expect(result).toMatchObject({ runId: 'resume-run-1', sessionId: 'session-1', status: 'ok' })
   })
 
   it('sends a bounded runtime control event to the run-specific endpoint', async () => {

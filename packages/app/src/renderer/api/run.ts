@@ -25,7 +25,7 @@ import type {
   LocalAppRuntimeTaskEventRequest,
   LocalAppRuntimeTaskEventResponse,
 } from '../../shared/runtime-event-contracts'
-import { localApiStatusError, localApiUrl, parseSseFrame } from './common'
+import { localApiResponseError, localApiStatusError, localApiUrl, parseSseFrame } from './common'
 
 export interface RunResult {
   runId: string
@@ -164,7 +164,14 @@ export async function runAgentStream(
     body: JSON.stringify({ text, sessionId, permissionMode, ...options }),
     signal: handlers.signal,
   })
-  if (!res.ok) throw localApiStatusError(res.status)
+  return consumeRunStream(res, handlers)
+}
+
+export async function consumeRunStream(
+  res: Response,
+  handlers: RunStreamHandlers,
+): Promise<RunResult> {
+  if (!res.ok) throw await localApiResponseError(res)
   if (!res.body) throw new Error('Local app API stream has no body')
 
   const reader = res.body.getReader()

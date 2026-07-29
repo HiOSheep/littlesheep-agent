@@ -100,7 +100,7 @@ React Renderer
 
 当前 `buildRunContext()` 仍会读取最近会话、过滤工具消息、加载 bootstrap 文件并构建 `ToolContext`；`packages/prompt` 负责 System Prompt，各 stage 仍负责形成语义消息，Runner 负责注入记忆根索引。模型请求随后被映射为显式 Context 候选，并由 `@littlesheep/context` 统一排序、预算和生成脱敏快照。完整执行路径把基础策略、记忆根索引、bootstrap、输出约束、Workflow/TaskBook、行为 profile 和 reasoning 分别登记为 segment；当前工作树新增的 `respond` 路径只登记直接回答所需的紧凑策略、能力、用户资料、记忆证据、摘要和最近历史。版本化 Summary Memory 继续作为独立来源进入后续请求。
 
-阶段 1 已形成主要数据链：Provider usage 会绑定到产生它的准确 Context 快照；UI 区分供应商实测、本地精确装配和 tokenizer 不可用；长会话压缩保留原始 JSONL，只在元数据中保存版本化摘要；压缩阈值已经接入 Local App API 与设置页；非图片附件通过当前 run 专属工具按需读取，未调用时不解析正文。新导入附件已进入独立受管缓存，run 只能使用经稳定 cache id、路径、普通文件、大小和哈希重新验证的缓存项，旧 workplace 与外部用户文件不属于自动清理范围；workplace 资源索引已使用有界目录批次、持久化游标、精确变更提示和资源树元数据入口，正文仍由显式文件工具读取。完整数据根迁移已接入启动前恢复路径，失败不切换活动目录。Provider reasoning/capability 契约回归、tokenizer 能力矩阵和 unavailable 模型保守预算保护已经完成；真实 Provider 校准仍未完成。运行中事件的队列、ingress、安全消费和 TaskBookPatch 已形成运行时闭环，缺口是实际前端生产入口、产品级恢复控制面与步骤并行。
+阶段 1 已形成主要数据链：Provider usage 会绑定到产生它的准确 Context 快照；UI 区分供应商实测、本地精确装配和 tokenizer 不可用；长会话压缩保留原始 JSONL，只在元数据中保存版本化摘要；压缩阈值已经接入 Local App API 与设置页；非图片附件通过当前 run 专属工具按需读取，未调用时不解析正文。新导入附件已进入独立受管缓存，run 只能使用经稳定 cache id、路径、普通文件、大小和哈希重新验证的缓存项，旧 workplace 与外部用户文件不属于自动清理范围；workplace 资源索引已使用有界目录批次、持久化游标、精确变更提示和资源树元数据入口，正文仍由显式文件工具读取。完整数据根迁移已接入启动前恢复路径，失败不切换活动目录。Provider reasoning/capability 契约回归、tokenizer 能力矩阵和 unavailable 模型保守预算保护已经完成；真实 Provider 校准仍未完成。运行中事件队列、ingress、安全消费、TaskBookPatch、Renderer 事件生产和应用启动恢复控制面已形成运行时闭环，剩余缺口是 TaskBook 步骤级并行、后台运行和真实跨重启长任务验收。
 
 系统现在已经可以从快照和执行日志回答大部分请求级问题，但仍需继续闭环：
 
@@ -295,7 +295,7 @@ src/renderer/shared/
 - 固定 ENTER、权限闸门、VERIFY、RECOVER 上限和 FINALIZE 语义；
 - 把可替换部分定义为 stage strategy 或受测模板；
 - 工作流定义必须声明输入、输出、失败和恢复契约。
-- 已有运行中事件队列、TaskBook 差异修订、版本化检查点、Runner 显式续跑和幂等副作用记录；下一步补齐应用启动发现与用户恢复控制面；
+- 已有运行中事件队列、TaskBook 差异修订、版本化检查点、Runner 显式续跑、应用启动恢复控制面和幂等副作用记录；下一步补齐 TaskBook 步骤级并行与后台运行；
 - 为 TaskBook 定义依赖、资源读写集合和有界并行调度；同一资源冲突写入和顺序验证保持串行；
 - 为重试、验证和重规划统一设置次数、时间、成本与无进展上限。
 
@@ -393,14 +393,14 @@ src/renderer/shared/
 
 ## 10. 下一阶段推进条件
 
-仓库基元化阶段 0-7、Memory v3 阶段 0-26、`respond / execute / clarify` 活动语义、直接回应 Context 和统一 Tool Execution Service 已完成既定工程门；阶段 17 的连续 activation、阶段 18-19 的真实负载观测和阶段 20-26 的旧写入退役、daily 提升及受约束 Atom 治理均已落地。当前第一工程门是替换无效 DeepSeek 密钥并完成真实 Provider/正式 V3 新写入/活动长任务验收；并行工程线是运行时事件产品入口和检查点恢复控制面。在这些契约稳定前不扩张新插件类型或无关 UI 范围。推进时持续遵守：
+仓库基元化阶段 0-7、Memory v3 阶段 0-26、`respond / execute / clarify` 活动语义、直接回应 Context、统一 Tool Execution Service、运行时事件产品入口和应用启动恢复控制面已完成既定工程门；阶段 17 的连续 activation、阶段 18-19 的真实负载观测和阶段 20-26 的旧写入退役、daily 提升及受约束 Atom 治理均已落地。当前第一工程门是替换无效 DeepSeek 密钥并完成真实 Provider/正式 V3 新写入/活动长任务验收；并行工程线是 TaskBook 步骤级并行和后台运行。在这些契约稳定前不扩张新插件类型或无关 UI 范围。推进时持续遵守：
 
 - 以 [架构原则](../principles/architecture-principles.md) 作为最高层工程规范；
 - Behavior Mode 与 Permission Policy 保持正交；
 - 保留固定安全脊柱，不把 Workflow 直接开放为任意图；
 - 保护现有用户数据与插件化改动，不做破坏式迁移。
 
-Context Engine 已完成候选端口、预算器、稳定装配顺序、来源分段、版本化摘要、附件清单优先、按需附件工具、双账本展示、tokenizer 能力矩阵和不可展示的保守预算保护；版本化 LLM Call Contract 约束每次调用的目的、输入、输出、工具和记忆策略。Memory v3 已接管统一 Repository facade、Memory Service、Runner 与 Harness，并完成阶段 0-26 的工程能力。`respond` 紧凑 Prompt、活动路由兼容映射、上一轮摘要选择性介入和统一 Tool Execution Service 已通过本地回归验收；真实 Provider 对话对账、持续用户负载、运行时事件前端生产、应用启动检查点恢复和 TaskBook 步骤并行继续按独立质量门推进。
+Context Engine 已完成候选端口、预算器、稳定装配顺序、来源分段、版本化摘要、附件清单优先、按需附件工具、双账本展示、tokenizer 能力矩阵和不可展示的保守预算保护；版本化 LLM Call Contract 约束每次调用的目的、输入、输出、工具和记忆策略。Memory v3 已接管统一 Repository facade、Memory Service、Runner 与 Harness，并完成阶段 0-26 的工程能力。`respond` 紧凑 Prompt、活动路由兼容映射、上一轮摘要选择性介入、统一 Tool Execution Service、运行时事件前端生产和应用启动检查点恢复已通过本地回归验收；真实 Provider 对话对账、持续用户负载、真实跨重启长任务、TaskBook 步骤并行和后台运行继续按独立质量门推进。
 
 ## 11. 报告维护规则
 

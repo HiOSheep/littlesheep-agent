@@ -22,7 +22,7 @@ function createSwitchContext(overrides: Partial<SessionActionContext> = {}): Ses
     pushRoute: vi.fn(),
     refreshProjects: vi.fn(async () => undefined),
     refreshRuntime: vi.fn(async () => undefined),
-    refreshSessions: vi.fn(async () => undefined),
+    refreshSessions: vi.fn(async () => []),
     runtime: null,
     sessionLoadRequestRef: { current: 0 },
     historyLoadRequestRef: { current: 0 },
@@ -69,5 +69,39 @@ describe('session switching', () => {
     expect(context.setHistoryWindow).toHaveBeenCalledWith({ hasMore: false, beforeId: undefined, loading: true })
     expect(context.setRuntimeError).not.toHaveBeenCalledWith('正在加载历史消息...')
     expect(context.setRuntimeError).toHaveBeenCalledWith(null)
+  })
+
+  it('force reloads the active session after checkpoint recovery without aborting the completed stream', async () => {
+    const abort = vi.fn()
+    const context = createSwitchContext({
+      abortRef: { current: { abort } as unknown as AbortController },
+      currentSession: 'session-1',
+    })
+    mockedGetSessionMessagePage.mockResolvedValue({
+      messages: [{
+        id: 'message-1',
+        role: 'assistant',
+        text: '恢复后的结果',
+        timestamp: '2026-07-29T10:00:00.000Z',
+      }],
+      hasMore: false,
+    })
+    const { switchSession } = createSessionActions(context)
+
+    await switchSession({
+      id: 'session-1',
+      title: '当前会话',
+      createdAt: 1,
+      lastMessageAt: 2,
+      mode: 'general',
+      scope: 'standalone',
+    }, { forceReload: true })
+
+    expect(abort).not.toHaveBeenCalled()
+    expect(context.setCurrentSession).not.toHaveBeenCalled()
+    expect(mockedGetSessionMessagePage).toHaveBeenCalledWith('session-1', { limit: 120 })
+    expect(context.setMessages).toHaveBeenLastCalledWith([
+      expect.objectContaining({ role: 'assistant', text: '恢复后的结果' }),
+    ])
   })
 })

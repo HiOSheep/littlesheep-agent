@@ -52,7 +52,7 @@ export class RunCheckpointController {
   }
 
   /** Return a bounded newest-first view suitable for startup/UI diagnostics. */
-  async list(limit = DEFAULT_CHECKPOINT_INSPECTION_LIMIT, expectedModel?: string): Promise<RunCheckpointInspection[]> {
+  async list(limit: number = DEFAULT_CHECKPOINT_INSPECTION_LIMIT, expectedModel?: string): Promise<RunCheckpointInspection[]> {
     const boundedLimit = boundedInteger(limit, DEFAULT_CHECKPOINT_INSPECTION_LIMIT, 1, MAX_CHECKPOINT_INSPECTION_LIMIT)
     const checkpoints = await this.checkpointStore.list({ limit: boundedLimit })
     const result: RunCheckpointInspection[] = []
@@ -120,6 +120,14 @@ export class RunCheckpointController {
       reason,
       nextCheckpointId,
     )
+  }
+
+  async interruptResume(
+    checkpointId: string,
+    resumeRunId: string,
+    reason: string,
+  ): Promise<RunCheckpointDispositionOutcome> {
+    return this.dispositionStore.interruptResume(checkpointId, resumeRunId, reason)
   }
 
   async abandon(checkpointId: string, reason: string): Promise<RunCheckpointDispositionOutcome> {

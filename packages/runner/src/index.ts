@@ -96,6 +96,11 @@ export {
 } from './run-checkpoint-controller.js';
 
 export {
+  createRunCheckpointControl,
+  type RunCheckpointControl,
+} from './run-checkpoint-control.js';
+
+export {
   RunCheckpointDispositionStore,
   DEFAULT_RUN_CHECKPOINT_DISPOSITION_MAX_RECORDS,
   MAX_RUN_CHECKPOINT_DISPOSITION_MAX_RECORDS,

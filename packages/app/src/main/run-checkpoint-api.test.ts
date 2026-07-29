@@ -1,0 +1,225 @@
+import { mkdtempSync, mkdirSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, expect, it, vi } from 'vitest'
+import { DEFAULT_CONFIG } from '@littlesheep/config'
+import type { AgentRunner, RunCheckpointInspection } from '@littlesheep/runner'
+import {
+  asSessionId,
+  type RunCheckpoint,
+  type RunCheckpointDisposition,
+} from '@littlesheep/types'
+import {
+  LOCAL_APP_API_PREFIXES,
+  LOCAL_APP_API_ROUTES,
+  localAppApiItemPath,
+} from '../shared/local-app-api-routes.js'
+import { ArchiveIndex } from './archive-index.js'
+import { ProjectIndex } from './project-index.js'
+import { SessionIndex } from './session-index.js'
+import { TerminalActivityIndex } from './terminal-activity-index.js'
+import { WorkspaceArtifactIndex } from './workspace-artifact-index.js'
+import { WorkspaceLayoutIndex } from './workspace-layout-index.js'
+import { startLocalAppApiServer } from './local-app-api-server.js'
+
+function checkpointInspection(dataDir: string): RunCheckpointInspection {
+  const checkpoint: RunCheckpoint = {
+    version: 1,
+    id: 'checkpoint-1',
+    runId: 'source-run-1',
+    sessionId: asSessionId('checkpoint-session'),
+    status: 'recoverable',
+    currentStage: 'execute',
+    currentStepId: 'step-1',
+    taskBookRevision: 1,
+    eventCursor: 0,
+    pendingEventIds: [],
+    contextSnapshotIds: [],
+    sideEffects: [],
+    loopBudget: {
+      attemptsUsed: 1,
+      maxAttempts: 8,
+      elapsedMs: 500,
+      maxElapsedMs: 60_000,
+      noProgressRounds: 0,
+      maxNoProgressRounds: 2,
+    },
+    resumeState: {
+      version: 1,
+      inboundMessageId: 'inbound-1',
+      cwd: join(dataDir, 'workplace'),
+      model: 'openai/gpt-4o-mini',
+      origin: 'app',
+      permissionPolicyId: 'research',
+      reasoning: 'auto',
+      behaviorModeId: 'general',
+      availableToolNames: [],
+      attachmentCount: 0,
+      appliedTaskBookPatchIds: [],
+      deferredRuntimeEvents: [],
+      recoveryAttempts: 0,
+      replanAttempts: 0,
+      maxReplanAttempts: 2,
+      verificationHistory: [],
+      workspaceContext: { boundaryKind: 'agent_workplace' },
+    },
+    createdAt: '2026-07-29T10:00:00.000Z',
+    reason: 'application closed during execution',
+  }
+  return { checkpoint, disposition: null, resumable: true, reasons: [] }
+}
+
+function abandonedDisposition(): RunCheckpointDisposition {
+  const at = '2026-07-29T10:10:00.000Z'
+  return {
+    version: 1,
+    checkpointId: 'checkpoint-1',
+    status: 'abandoned',
+    decidedAt: at,
+    updatedAt: at,
+    reason: 'user abandoned',
+    history: [{ status: 'abandoned', at, reason: 'user abandoned' }],
+  }
+}
+
+async function createFixture() {
+  const dataDir = mkdtempSync(join(tmpdir(), 'ls-run-checkpoint-api-'))
+  const workplaceDir = join(dataDir, 'workplace')
+  mkdirSync(workplaceDir, { recursive: true })
+  const config = structuredClone(DEFAULT_CONFIG)
+  config.agents.defaults.workspace = workplaceDir
+  const inspection = checkpointInspection(dataDir)
+  const recoverInterruptedResumes = vi.fn(async () => 1)
+  const abandon = vi.fn(async () => ({
+    kind: 'written' as const,
+    disposition: abandonedDisposition(),
+  }))
+  const resumeCheckpoint = vi.fn<NonNullable<AgentRunner['resumeCheckpoint']>>(async (_id, options = {}) => {
+    options.onToolEvent?.({ type: 'verification_start' })
+    options.onAssistantDelta?.('继续完成')
+    return {
+      runId: options.runId!,
+      sessionId: inspection.checkpoint.sessionId,
+      status: 'ok',
+      reply: '继续完成',
+      messages: [],
+      trace: [],
+      durationMs: 5,
+    }
+  })
+  const runner = {
+    state: { model: config.agents.defaults.model },
+    runStream: vi.fn(),
+    resumeCheckpoint,
+    runCheckpoints: {
+      list: vi.fn(async () => [inspection]),
+      inspect: vi.fn(async (id: string) => id === inspection.checkpoint.id ? inspection : null),
+      abandon,
+      recoverInterruptedResumes,
+      diagnostics: () => ({
+        rootDir: join(dataDir, 'run-checkpoints'),
+        scannedFiles: 1,
+        readFiles: 1,
+        validFiles: 1,
+        invalidFiles: 0,
+        diagnostics: [],
+      }),
+    },
+    runtimeEvents: {
+      append: vi.fn(() => ({ kind: 'rejected', reason: 'run-not-active', message: 'not active' })),
+      summary: vi.fn(() => null),
+    },
+  } as unknown as AgentRunner
+  const sessionIndex = new SessionIndex({ dataDir, workplaceDir })
+  const server = await startLocalAppApiServer(runner, {
+    port: 0,
+    sessionIndex,
+    projectIndex: new ProjectIndex({ dataDir }),
+    archiveIndex: new ArchiveIndex({ dataDir, workplaceDir }),
+    terminalActivityIndex: new TerminalActivityIndex({ dataDir }),
+    workspaceArtifactIndex: new WorkspaceArtifactIndex({ dataDir }),
+    workspaceLayoutIndex: new WorkspaceLayoutIndex({ dataDir }),
+    config,
+    dataDir,
+    workplaceDir,
+    rebuildRunner: vi.fn(async () => undefined),
+    updateRuntimeConfig: vi.fn(async () => undefined),
+  })
+  return {
+    abandon,
+    dataDir,
+    inspection,
+    recoverInterruptedResumes,
+    resumeCheckpoint,
+    server,
+    sessionIndex,
+  }
+}
+
+describe('run checkpoint Local App API', () => {
+  it('discovers, inspects and resumes a checkpoint through bounded HTTP and SSE contracts', async () => {
+    const fixture = await createFixture()
+    const base = `http://127.0.0.1:${fixture.server.port}`
+    try {
+      expect(fixture.recoverInterruptedResumes).toHaveBeenCalledWith(
+        'application restarted before checkpoint continuation completed',
+      )
+
+      const listResponse = await fetch(`${base}${LOCAL_APP_API_ROUTES.runCheckpoints}`)
+      expect(listResponse.status).toBe(200)
+      await expect(listResponse.json()).resolves.toMatchObject({
+        checkpoints: [{ id: 'checkpoint-1', resumable: true, currentStage: 'execute' }],
+        diagnostics: { invalidFiles: 0, warningCount: 0 },
+      })
+
+      const itemPath = localAppApiItemPath(LOCAL_APP_API_PREFIXES.runCheckpoints, 'checkpoint-1')
+      const inspectResponse = await fetch(`${base}${itemPath}`)
+      expect(inspectResponse.status).toBe(200)
+      await expect(inspectResponse.json()).resolves.toMatchObject({
+        checkpoint: { id: 'checkpoint-1', pendingEventCount: 0 },
+      })
+
+      const resumeResponse = await fetch(`${base}${itemPath}/resume/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'resume from test' }),
+      })
+      expect(resumeResponse.status).toBe(200)
+      const stream = await resumeResponse.text()
+      expect(stream).toContain('event: start')
+      expect(stream).toContain('event: verification_start')
+      expect(stream).toContain('event: delta')
+      expect(stream).toContain('event: result')
+      const resumeOptions = fixture.resumeCheckpoint.mock.calls[0]?.[1]
+      expect(resumeOptions?.runId).toEqual(expect.any(String))
+      expect(stream).toContain(`"runId":"${resumeOptions?.runId}"`)
+      expect((await fixture.sessionIndex.list()).find((session) => session.id === 'checkpoint-session')).toMatchObject({
+        id: 'checkpoint-session',
+        workspacePath: join(fixture.dataDir, 'workplace'),
+      })
+    } finally {
+      await fixture.server.stop()
+      rmSync(fixture.dataDir, { recursive: true, force: true })
+    }
+  })
+
+  it('abandons a checkpoint without deleting its source session', async () => {
+    const fixture = await createFixture()
+    const base = `http://127.0.0.1:${fixture.server.port}`
+    const path = localAppApiItemPath(LOCAL_APP_API_PREFIXES.runCheckpoints, 'checkpoint-1', '/abandon')
+    try {
+      const response = await fetch(`${base}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'user chose not to continue' }),
+      })
+      expect(response.status).toBe(200)
+      await expect(response.json()).resolves.toEqual({ checkpointId: 'checkpoint-1', outcome: 'abandoned' })
+      expect(fixture.abandon).toHaveBeenCalledWith('checkpoint-1', 'user chose not to continue')
+      expect((await fixture.sessionIndex.list()).find((session) => session.id === 'checkpoint-session')).toBeUndefined()
+    } finally {
+      await fixture.server.stop()
+      rmSync(fixture.dataDir, { recursive: true, force: true })
+    }
+  })
+})

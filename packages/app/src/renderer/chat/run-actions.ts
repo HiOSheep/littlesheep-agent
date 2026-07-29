@@ -46,7 +46,7 @@ export interface RunActionContext {
   } | null>
   publishRuntimeEventNotice: (notice: RuntimeTaskEventNotice | null) => void
   refreshProjects: () => Promise<void>
-  refreshSessions: () => Promise<void>
+  refreshSessions: () => Promise<SessionMeta[]>
   requestApprovalForScope: (request: ApprovalRequest, scopeKey: string) => Promise<boolean>
   runtime: RuntimeState | null
   sessionOwnership: Pick<SessionMeta, 'scope' | 'projectId'>

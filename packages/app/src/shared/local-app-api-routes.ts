@@ -3,6 +3,7 @@
 export const LOCAL_APP_API_ROUTES = {
   run: '/run',
   runStream: '/run/stream',
+  runCheckpoints: '/run-checkpoints',
   projects: '/projects',
   projectRegister: '/projects/register',
   projectCreateFolder: '/projects/create-folder',
@@ -59,6 +60,7 @@ export const LOCAL_APP_API_PREFIXES = {
   projects: '/projects/',
   sessions: '/sessions/',
   runs: '/runs/',
+  runCheckpoints: '/run-checkpoints/',
   archiveSessions: '/archive/sessions/',
   archiveProjects: '/archive/projects/',
   terminalSessions: '/workspace/terminal/session/',

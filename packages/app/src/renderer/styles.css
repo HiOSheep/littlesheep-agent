@@ -4,6 +4,537 @@
   box-sizing: border-box;
 }
 
+/* Startup checkpoint recovery is a Runtime control surface, not Agent prose. */
+.checkpoint-recovery-trigger {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 2050;
+  display: inline-grid;
+  grid-template-columns: 18px auto 20px;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 7px 9px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-base) var(--motion-ease),
+    border-color var(--motion-base) var(--motion-ease),
+    opacity var(--dialog-motion) var(--motion-ease);
+}
+
+.checkpoint-recovery-trigger:hover,
+.checkpoint-recovery-trigger:focus-visible {
+  background: var(--control-hover);
+  border-color: #5a5a5a;
+}
+
+.checkpoint-recovery-trigger svg {
+  width: 18px;
+  height: 18px;
+}
+
+.checkpoint-recovery-trigger span {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.checkpoint-recovery-trigger strong {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  color: var(--bg);
+  background: var(--accent);
+  border-radius: 50%;
+  font-size: 11px;
+}
+
+.checkpoint-recovery-presence {
+  z-index: 2100;
+}
+
+.checkpoint-recovery-layer {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: rgba(8, 8, 8, 0);
+  opacity: 0;
+  transition:
+    opacity var(--dialog-motion) var(--motion-ease),
+    background-color var(--dialog-motion) var(--motion-ease);
+}
+
+.checkpoint-recovery-presence.visible .checkpoint-recovery-layer {
+  background: rgba(8, 8, 8, 0.62);
+  opacity: 1;
+}
+
+.checkpoint-recovery-dialog {
+  width: min(720px, calc(100vw - 48px));
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: auto;
+  overscroll-behavior: contain;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transition: opacity var(--dialog-motion) var(--motion-ease);
+}
+
+.checkpoint-recovery-presence.visible .checkpoint-recovery-dialog {
+  opacity: 1;
+}
+
+.checkpoint-recovery-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 66px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.checkpoint-recovery-header > span {
+  display: grid;
+  gap: 2px;
+}
+
+.checkpoint-recovery-header small {
+  color: var(--muted-2);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.checkpoint-recovery-header h2 {
+  color: var(--text-strong);
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.checkpoint-recovery-header button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.checkpoint-recovery-header button:hover,
+.checkpoint-recovery-header button:focus-visible {
+  background: var(--control-hover);
+}
+
+.checkpoint-recovery-header button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.checkpoint-recovery-list {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+}
+
+.checkpoint-recovery-list button {
+  display: grid;
+  min-width: 150px;
+  max-width: 230px;
+  gap: 2px;
+  padding: 7px 9px;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.checkpoint-recovery-list button:hover,
+.checkpoint-recovery-list button.active {
+  background: var(--control-hover);
+  border-color: var(--border);
+}
+
+.checkpoint-recovery-list span,
+.checkpoint-recovery-list time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.checkpoint-recovery-list span {
+  color: var(--text-strong);
+  font-size: 12px;
+}
+
+.checkpoint-recovery-list time {
+  color: var(--muted-2);
+  font-size: 10px;
+}
+
+.checkpoint-recovery-content {
+  padding: 18px;
+}
+
+.checkpoint-recovery-summary {
+  display: grid;
+  gap: 10px;
+}
+
+.checkpoint-recovery-state-line,
+.checkpoint-recovery-metrics,
+.checkpoint-scene-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px 12px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.checkpoint-recovery-state-line time {
+  margin-left: auto;
+}
+
+.checkpoint-state-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: var(--warning);
+}
+
+.checkpoint-state-dot.ready {
+  background: var(--success);
+}
+
+.checkpoint-state-dot.blocked {
+  background: var(--danger);
+}
+
+.checkpoint-recovery-summary h3 {
+  color: var(--text-strong);
+  font-size: 16px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.checkpoint-recovery-path {
+  color: var(--muted-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.checkpoint-recovery-blockers,
+.checkpoint-recovery-error,
+.checkpoint-recovery-diagnostic {
+  margin-top: 14px;
+  padding: 9px 10px;
+  border-left: 2px solid var(--warning);
+  color: #f0d3a0;
+  background: var(--warning-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.checkpoint-recovery-blockers {
+  display: grid;
+  gap: 5px;
+}
+
+.checkpoint-recovery-error {
+  border-left-color: var(--danger);
+  color: #ffd2d2;
+  background: var(--danger-soft);
+}
+
+.checkpoint-recovery-answer {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.checkpoint-recovery-answer span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.checkpoint-recovery-answer textarea {
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
+  padding: 9px 10px;
+  color: var(--text);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  outline: none;
+}
+
+.checkpoint-recovery-answer textarea:focus {
+  border-color: #707070;
+}
+
+.checkpoint-recovery-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  margin-top: 14px;
+  padding: 9px 10px;
+  background: var(--bg-elevated);
+  border-left: 2px solid var(--accent);
+}
+
+.checkpoint-recovery-progress > span:last-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.checkpoint-recovery-progress strong,
+.checkpoint-recovery-progress small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.checkpoint-recovery-progress strong {
+  color: var(--text-strong);
+  font-size: 12px;
+}
+
+.checkpoint-recovery-progress small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.checkpoint-recovery-spinner {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: checkpoint-recovery-spin 900ms linear infinite;
+}
+
+@keyframes checkpoint-recovery-spin {
+  to { transform: rotate(360deg); }
+}
+
+.checkpoint-recovery-detail {
+  max-height: 0;
+  margin-top: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition:
+    max-height var(--dialog-motion) var(--motion-ease),
+    margin-top var(--dialog-motion) var(--motion-ease),
+    opacity var(--dialog-motion) var(--motion-ease);
+}
+
+.checkpoint-recovery-detail.open {
+  max-height: 920px;
+  margin-top: 16px;
+  opacity: 1;
+}
+
+.checkpoint-scene {
+  display: grid;
+  gap: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.checkpoint-scene section {
+  display: grid;
+  gap: 8px;
+}
+
+.checkpoint-scene h4 {
+  color: var(--text-strong);
+  font-size: 12px;
+}
+
+.checkpoint-scene ul,
+.checkpoint-scene ol {
+  display: grid;
+  gap: 7px;
+  padding-left: 20px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.checkpoint-scene-steps li,
+.checkpoint-scene-effects > div {
+  min-width: 0;
+}
+
+.checkpoint-scene-steps li > span,
+.checkpoint-scene-effects span {
+  color: var(--text);
+}
+
+.checkpoint-scene-steps small,
+.checkpoint-scene-effects small {
+  margin-left: 8px;
+  color: var(--muted-2);
+}
+
+.checkpoint-scene-steps p {
+  margin-top: 3px;
+  color: #ffd2d2;
+}
+
+.checkpoint-scene-effects {
+  display: grid;
+  gap: 7px;
+}
+
+.checkpoint-scene-effects > div {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.checkpoint-scene-effects code {
+  max-width: 100%;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.checkpoint-recovery-detail-loading,
+.checkpoint-recovery-empty {
+  padding: 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.checkpoint-recovery-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: 48px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.checkpoint-recovery-actions button {
+  min-height: 32px;
+  padding: 6px 11px;
+  color: var(--text);
+  background: var(--control);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.checkpoint-recovery-actions button:hover,
+.checkpoint-recovery-actions button:focus-visible {
+  background: var(--control-hover);
+}
+
+.checkpoint-recovery-actions button.primary {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.checkpoint-recovery-actions button.primary:hover,
+.checkpoint-recovery-actions button.primary:focus-visible {
+  background: var(--accent-hover);
+}
+
+.checkpoint-recovery-actions button.danger {
+  color: #ffd2d2;
+  background: var(--danger-soft);
+  border-color: rgba(239, 104, 104, 0.42);
+}
+
+.checkpoint-recovery-actions button:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.checkpoint-abandon-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.checkpoint-abandon-confirm span {
+  flex: 1 1 280px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+@media (max-width: 640px) {
+  .checkpoint-recovery-trigger {
+    right: 12px;
+    bottom: 12px;
+  }
+
+  .checkpoint-recovery-layer {
+    align-items: end;
+    padding: 12px;
+  }
+
+  .checkpoint-recovery-dialog {
+    width: 100%;
+    max-height: calc(100vh - 24px);
+  }
+
+  .checkpoint-recovery-content {
+    padding: 14px;
+  }
+
+  .checkpoint-recovery-state-line time {
+    width: 100%;
+    margin-left: 19px;
+  }
+
+  .checkpoint-recovery-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .checkpoint-recovery-actions button {
+    width: 100%;
+  }
+}
+
 /* User-facing memory files. Internal atoms remain a runtime-only concern. */
 .memory-files-page {
   width: min(1120px, 100%);

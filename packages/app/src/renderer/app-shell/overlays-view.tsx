@@ -7,6 +7,7 @@ import { ApprovalPrompt, DirtyFileClosePrompt } from '../approval/prompt'
 import { SettingsWorkspace } from '../settings/workspace'
 import { SettingsEntryBridge } from '../sidebar/global-titlebar'
 import { ProjectCreatorDialog } from '../sidebar/project-creator'
+import { CheckpointRecovery } from '../runtime-recovery/checkpoint-recovery'
 import { FloatingHelpTooltip } from '../ui/floating-help'
 import { FadePresence } from '../ui/presence'
 import {
@@ -71,6 +72,7 @@ export function OverlaysView({ controller }: { controller: AppController }) {
           if (tab) closeWorkspacePanelTab(tab, { force: true })
         }}
       />
+      <CheckpointRecovery recovery={controller.checkpointRecovery} />
       <ApprovalPrompt prompt={pendingApproval} onResolve={settleApprovalPrompt} />
       <FloatingHelpTooltip tip={controlTip} />
 

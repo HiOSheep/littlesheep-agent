@@ -49,7 +49,7 @@ export interface ProjectActionContext {
   navigationRestoreTargetRef: MutableRefObject<AppNavigationSnapshot | null>
   pushRoute: (route: AppRoute) => void
   refreshProjects: () => Promise<void>
-  refreshSessions: () => Promise<void>
+  refreshSessions: () => Promise<SessionMeta[]>
   runtime: RuntimeState | null
   sessionLoadRequestRef: MutableRefObject<number>
   sessionOwnership: Pick<SessionMeta, 'scope' | 'projectId'>

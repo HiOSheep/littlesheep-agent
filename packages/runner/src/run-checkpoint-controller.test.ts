@@ -108,4 +108,30 @@ describe('RunCheckpointController', () => {
       await rm(state.dir, { recursive: true, force: true })
     }
   })
+
+  it('treats an interrupted resume as resumable and lets a new run reclaim it', async () => {
+    const state = await stores()
+    try {
+      await state.checkpointStore.write(checkpoint('restart-safe'))
+      expect(await state.controller.claimResume('restart-safe', 'first', 'resume-before-restart', 'test/model'))
+        .toMatchObject({ kind: 'claimed' })
+      expect(await state.controller.interruptResume(
+        'restart-safe',
+        'resume-before-restart',
+        'application restarted',
+      )).toMatchObject({ kind: 'written', disposition: { status: 'interrupted' } })
+
+      const inspection = await state.controller.inspect('restart-safe', 'test/model')
+      expect(inspection).toMatchObject({ resumable: true, disposition: { status: 'interrupted' } })
+      expect(await state.controller.claimResume('restart-safe', 'continue', 'resume-after-restart', 'test/model'))
+        .toMatchObject({
+          kind: 'claimed',
+          disposition: { status: 'resuming', resumeRunId: 'resume-after-restart' },
+        })
+    } finally {
+      state.checkpointStore.dispose()
+      state.dispositionStore.dispose()
+      await rm(state.dir, { recursive: true, force: true })
+    }
+  })
 })

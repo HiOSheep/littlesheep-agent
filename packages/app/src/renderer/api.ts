@@ -1,6 +1,5 @@
 // Compatibility barrel for the renderer Local App API clients.
 // Domain implementations live under ./api and existing imports stay stable.
-
 export type { AgentProfileId } from '@littlesheep/prompt'
 export type { PermissionModeId } from '../shared/permission-modes'
 export type * from '../shared/attachment-contracts'
@@ -12,6 +11,7 @@ export type { HistoryMessageRecord as HistoryMessage } from '../shared/history-a
 export type * from '../shared/session-project-contracts'
 export type * from '../shared/workspace-contracts'
 export * from './api/run'
+export * from './api/run-checkpoints'
 export * from './api/sessions'
 export * from './api/runtime'
 export * from './api/attachments'

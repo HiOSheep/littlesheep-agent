@@ -35,7 +35,7 @@ export interface SessionActionContext {
   pushRoute: (route: AppRoute) => void
   refreshProjects: () => Promise<void>
   refreshRuntime: () => Promise<void>
-  refreshSessions: () => Promise<void>
+  refreshSessions: () => Promise<SessionMeta[]>
   runtime: RuntimeState | null
   sessionLoadRequestRef: MutableRefObject<number>
   historyLoadRequestRef: MutableRefObject<number>
@@ -104,7 +104,7 @@ export function createSessionActions(context: SessionActionContext) {
   }
 
 
-  async function switchSession(session: SessionMeta) {
+  async function switchSession(session: SessionMeta, options: { forceReload?: boolean } = {}) {
     const requestId = ++sessionLoadRequestRef.current
     historyLoadRequestRef.current += 1
     const { id, workspacePath } = session
@@ -126,10 +126,13 @@ export function createSessionActions(context: SessionActionContext) {
       }
     }
     setSessionOwnership({ scope: session.scope, projectId: session.projectId })
-    if (id === currentSession) return
-    abortRef.current?.abort()
-    setCurrentSession(id)
-    setContextUsageSnapshot(null)
+    const sessionChanged = id !== currentSession
+    if (!sessionChanged && !options.forceReload) return
+    if (sessionChanged) {
+      abortRef.current?.abort()
+      setCurrentSession(id)
+      setContextUsageSnapshot(null)
+    }
     // Loading status belongs to the message viewport. Do not route it through
     // runtimeError: that would insert/remove a row below the shared composer
     // and make the input surface jump on every session switch.

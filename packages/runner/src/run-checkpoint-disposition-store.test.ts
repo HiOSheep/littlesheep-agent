@@ -60,6 +60,38 @@ describe('RunCheckpointDispositionStore', () => {
     }
   })
 
+  it('releases an interrupted resume lease and allows a new run to claim it', async () => {
+    const { dir, store } = await tempStore()
+    try {
+      await store.claimResume('checkpoint-interrupted', 'first attempt', 'resume-1')
+      expect(await store.interruptResume('checkpoint-interrupted', 'other-run', 'wrong owner'))
+        .toMatchObject({ kind: 'conflict', disposition: { status: 'resuming' } })
+
+      const interrupted = await store.interruptResume(
+        'checkpoint-interrupted',
+        'resume-1',
+        'application restarted',
+      )
+      expect(interrupted).toMatchObject({
+        kind: 'written',
+        disposition: { status: 'interrupted', resumeRunId: 'resume-1' },
+      })
+      expect(await store.interruptResume('checkpoint-interrupted', 'resume-1', 'again'))
+        .toMatchObject({ kind: 'duplicate', disposition: { status: 'interrupted' } })
+
+      const reclaimed = await store.claimResume('checkpoint-interrupted', 'retry', 'resume-2')
+      expect(reclaimed).toMatchObject({
+        kind: 'written',
+        disposition: { status: 'resuming', resumeRunId: 'resume-2' },
+      })
+      expect((await store.read('checkpoint-interrupted'))?.history.map((entry) => entry.status))
+        .toEqual(['resuming', 'interrupted', 'resuming'])
+    } finally {
+      store.dispose()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('serializes concurrent claims and keeps disposition history bounded', async () => {
     const { dir, store, time } = await tempStore(2)
     try {

@@ -1,8 +1,8 @@
 # LittleSheep Agent Runtime 效率与版本化连续性任务书 2026-07-17
 
-最后更新：2026-07-29 13:07:24
+最后更新：2026-07-29 13:45:17
 
-状态：已完成统一 Tool Execution Service、工具调用级并行、数据与工作区 shadow Git 检查点、退出冻结、有界 `RuntimeEventQueue`、活动 run ingress、Harness 安全边界、确定性 `TaskBookPatch`、延迟事件重规划、Renderer 事件生产/反馈入口、持久 RunCheckpoint 和 Runner 显式续跑基元。活动路由与直接回应 Context 已恢复完整质量门；应用启动恢复控制面、TaskBook 步骤级并行和后台托盘仍未完成。
+状态：已完成统一 Tool Execution Service、工具调用级并行、数据与工作区 shadow Git 检查点、退出冻结、有界 `RuntimeEventQueue`、活动 run ingress、Harness 安全边界、确定性 `TaskBookPatch`、延迟事件重规划、Renderer 事件生产/反馈入口、持久 RunCheckpoint、Runner 显式续跑和应用启动恢复控制面。活动路由与直接回应 Context 已恢复完整质量门；TaskBook 步骤级并行、后台托盘和真实跨重启长任务验收仍未完成。
 
 本文是本轮“并行执行、可回退、少而有效地调用 LLM”工作的专项任务书。长期分工以 [架构原则](../principles/architecture-principles.md) 为准，当前事实以 [项目状态](../decision/project-status.md) 为准，旧连续性任务书中的阶段设计仍有效，但与本文冲突的完成状态以本文和项目状态为准。
 
@@ -57,14 +57,14 @@
 - `ActiveRunRegistry`、Local App API 和 Renderer API 已提供 run-scoped ingress；停止按钮会发送控制事件，活动 run 中的普通输入会发送任务变化事件而不创建第二个 run。Harness 在每个 stage 前先处理控制事件，再处理任务变化事件。
 - `pause / resume / interrupt` 使用独立安全批次；携带确定性 `TaskBookPatch` 的任务事件会在队列结算成功后原子更新 TaskBook，未携带 patch 的事件进入有界延迟区并回到 DECIDE 重规划。
 - 普通追加消息、设置变化和工作区文件保存已由 Renderer 生产；文件事件只携带路径、类型、大小和修改时间，不携带文件正文。只有 `accepted`、`duplicate` 清空输入，网络失败、过期、冲突、拒绝和队列满均保留输入；响应丢失重试复用同一事件 id 与 `dedupKey`。
-- 事件结果使用 Runtime 状态提示，不伪装成 Agent 对话；提示共用一个有清理路径的计时器。当前缺口转为应用启动恢复控制面和 TaskBook 步骤级并行。
+- 事件结果使用 Runtime 状态提示，不伪装成 Agent 对话；提示共用一个有清理路径的计时器。当前缺口转为 TaskBook 步骤级并行和后台运行。
 
 ### 2.5 持久 RunCheckpoint 与 Runner 显式续跑
 
 - `RunCheckpointStore` 原子保存版本化 TaskBook、步骤执行、事件队列、权限、循环预算和副作用状态，并对数量、大小、版本、作用域和恢复数据做有界校验。
-- disposition/controller 以 claim/complete 事务防止同一检查点并发续跑；Runner 的 `resumeCheckpoint()` 不重复追加原始用户输入，并恢复 TaskBook、事件和执行状态。
+- disposition/controller 以 claim/interrupt/complete 事务防止同一检查点并发续跑；旧进程残留的 `resuming` 租约会转换为可审计、可重新领取的 `interrupted`。Runner 的 `resumeCheckpoint()` 不重复追加原始用户输入，并恢复 TaskBook、事件和执行状态。
 - 不确定外部副作用、缺失原始输入或缺失工具时续跑会失败关闭，不用聊天文本猜测进度。
-- 当前尚未接入应用启动发现、Local App API/Renderer 的恢复、放弃、查看现场入口，因此这是 Runtime 基元，不是完整产品闭环。
+- Main 启动发现、Local App API 有界列表/详情/放弃/SSE 续跑和 Renderer 恢复控制面已经接通；用户可查看现场、补充信息、继续、停止或放弃，恢复后会强制重载对应会话。真实 Electron 崩溃/重启长任务仍需独立验收，因此当前是工程闭环，不是生产就绪声明。
 - 2026-07-29 定向复核覆盖队列、活动 run 注册、安全边界、TaskBookPatch、checkpoint store/controller、Runner 续跑和 App ingress，共 9 个测试文件、43 项全部通过。
 
 ### 2.6 统一 Tool Execution Service

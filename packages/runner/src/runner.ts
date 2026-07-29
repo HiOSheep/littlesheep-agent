@@ -43,6 +43,7 @@ import { compactSessionAfterRun } from './session-continuity.js';
 import { ActiveRunRegistry } from './active-run-registry.js';
 import { buildRunCheckpoint, shouldPersistRunCheckpoint } from './run-checkpoint.js';
 import { RunCheckpointController } from './run-checkpoint-controller.js';
+import { createRunCheckpointControl, type RunCheckpointControl } from './run-checkpoint-control.js';
 import { describeToolAccess, shouldRequestPermissionApproval } from '@littlesheep/safety';
 import { resolveRunTools } from './run-tools.js';
 /** AgentResult + sessionId (caller-friendly). */
@@ -139,6 +140,8 @@ export interface ResumeCheckpointOptions {
   text?: string;
   /** Human-readable reason retained in the disposition audit. */
   reason?: string;
+  /** Host-owned identity published before the resumed stream starts. */
+  runId?: string;
   signal?: AbortSignal;
   approve?: ToolContext['approve'];
   onAssistantDelta?: (delta: string) => void;
@@ -151,6 +154,8 @@ export interface AgentRunner {
   runStream(input: RunInput, onDelta: (delta: string) => void): Promise<RunnerResult>;
   /** Inspect and explicitly continue a durable runtime checkpoint. */
   resumeCheckpoint?(checkpointId: string, options?: ResumeCheckpointOptions): Promise<RunnerResult>;
+  /** Bounded application control surface for startup recovery. */
+  readonly runCheckpoints?: RunCheckpointControl;
   /** Replay a past run by id (reads execution log). Returns null if not found. */
   replay(runId: string): Promise<ExecutionLog | null>;
   /** Ingress for events targeting an active run; independent from session input. */
@@ -191,6 +196,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         dispositionStore: infra.runCheckpointDispositionStore,
       })
     : undefined;
+  const runCheckpoints = createRunCheckpointControl(checkpointController, infra.runCheckpointStore, model);
 
   // Overall run timeout. When run is called without a signal, a timed
   // AbortController is created so a hung tool/LLM can't block indefinitely.
@@ -634,7 +640,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     if (missingTools.length > 0) {
       throw new Error(`run checkpoint requires unavailable tools: ${missingTools.join(', ')}`)
     }
-    const resumeRunId = randomUUID()
+    const resumeRunId = options.runId?.trim() || randomUUID()
     const claim = await checkpointController.claimResume(
       checkpoint.id,
       options.reason ?? 'user requested checkpoint continuation',
@@ -698,6 +704,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     runStream: (input: RunInput, onDelta: (delta: string) => void) =>
       run({ ...input, onAssistantDelta: onDelta }),
     resumeCheckpoint,
+    runCheckpoints,
     replay: (runId: string) => infra.executionLogStore.read(runId),
     runtimeEvents: activeRuns,
     shutdown: async () => {

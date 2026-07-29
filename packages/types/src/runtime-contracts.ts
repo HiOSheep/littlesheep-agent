@@ -749,7 +749,7 @@ export interface RunCheckpoint {
   reason: string;
 }
 
-export type RunCheckpointDispositionStatus = 'resuming' | 'resumed' | 'abandoned';
+export type RunCheckpointDispositionStatus = 'resuming' | 'interrupted' | 'resumed' | 'abandoned';
 
 /** Mutable, append-audited decision kept separate from immutable checkpoint data. */
 export interface RunCheckpointDisposition {
@@ -763,6 +763,7 @@ export interface RunCheckpointDisposition {
   nextCheckpointId?: string;
   resultStatus?: 'ok' | 'error' | 'aborted';
   history: Array<{
+    /** `interrupted` releases a resume lease left behind by a previous process. */
     status: RunCheckpointDispositionStatus;
     at: string;
     reason: string;
