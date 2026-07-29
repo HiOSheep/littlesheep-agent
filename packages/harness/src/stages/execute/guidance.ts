@@ -7,6 +7,7 @@ import type {
 } from '@littlesheep/types';
 import {
   attachmentContextMessages,
+  recentHistoryForModel,
   textOf,
   toChatMessage,
   userChatMessage,
@@ -97,7 +98,7 @@ export function buildBaseMessages(
 ): ChatMessage[] {
   return [
     { role: 'system', content: systemMessage },
-    ...ctx.history.map(toChatMessage),
+    ...recentHistoryForModel(ctx.history, 8).map(toChatMessage),
     ...attachments.map((item) => item.message),
     userChatMessage(textOf(ctx.inbound), ctx.attachments),
   ];

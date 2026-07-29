@@ -11,9 +11,17 @@ import type {
 import type { LlmClient, ChatMessage } from '@littlesheep/llm';
 import { toChatMessage, textOf, callLlmForJson } from './_shared.js';
 import { appendSystemPromptAddons, buildUserFacingVoiceAddon } from '../profile-prompt.js';
-import { prepareModelRequest, recordProviderUsage } from '../model-observability.js';
+import {
+  preferDirectModelOutput,
+  prepareModelRequest,
+  recordProviderUsage,
+} from '../model-observability.js';
 import { buildRunRequestCandidates } from '../context-candidates.js';
-import { acceptUniqueUserFacingReply, type ReplyRewriteInput } from '../user-facing-reply.js';
+import {
+  acceptUniqueUserFacingReply,
+  reserveUserFacingReplyOnce,
+  type ReplyRewriteInput,
+} from '../user-facing-reply.js';
 
 export interface RecoverStageDeps {
   llm: LlmClient;
@@ -24,19 +32,21 @@ const SYSTEM_PROMPT = `You are the RECOVER stage of a hard-control-flow agent.
 A prior stage failed. Decide how to proceed.
 
 Return ONLY a JSON object, no markdown:
-{"action":"retry"|"escalate"|"abort","revisedPlan":[{"description":"...","tools":["..."],"requiresApproval":false}],"reason":"short explanation"}
+{"action":"retry"|"escalate"|"abort","revisedPlan":[{"description":"...","tools":["..."],"requiresApproval":false}],"reason":"short explanation","userMessage":"complete user-facing question when action is escalate"}
 
 The reason may be shown to the user. Write it in the user's language, follow the active voice, keep it concise and do not expose private chain-of-thought.
 
 Actions:
 - "retry": try the failing stage again. Optionally provide a revisedPlan (replaces the current plan).
-- "escalate": hand control back to the user (ask for clarification). Use when you cannot auto-recover.
+- "escalate": hand control back to the user. Include userMessage as one complete, actionable question in the user's language.
 - "abort": terminate the run entirely. Use only for unrecoverable failures.`;
 
 interface DecodedRecovery {
   action?: string;
   revisedPlan?: Array<{ description?: string; tools?: unknown; requiresApproval?: boolean }>;
   reason?: string;
+  /** Optional complete wording when escalation must be shown to the user. */
+  userMessage?: string;
 }
 
 /** Validate + normalize a revisedPlan decoded from LLM output. */
@@ -111,13 +121,14 @@ export function createRecoverStage(deps: RecoverStageDeps) {
         deps.model,
         messages,
         {
-          maxAttempts: 3,
-          maxTokens: 800,
+          maxAttempts: 2,
+          maxTokens: 600,
+          maxTokensCeiling: 900,
           signal: ctx.signal,
           onRequest: (request) => prepareModelRequest(
             ctx,
             'recover',
-            request,
+            preferDirectModelOutput(ctx, request, { force: true }),
             buildRunRequestCandidates(ctx, 'recover', request.messages, {
               history: recoveryHistory,
               primaryUserKind: 'workflow_state',
@@ -161,6 +172,7 @@ export function createRecoverStage(deps: RecoverStageDeps) {
       }
       next = 'execute';
     } else if (parsed.action === 'escalate') {
+      const visibleMessage = parsed.userMessage?.trim();
       const originalRequest = textOf(ctx.inbound);
       const chinese = /[\u3400-\u9fff]/u.test(originalRequest);
       ctx.clarificationRequest = {
@@ -169,16 +181,41 @@ export function createRecoverStage(deps: RecoverStageDeps) {
         sourceStage: 'recover',
         createdAt: new Date().toISOString(),
         originalRequest,
-        copySource: 'runtime_fallback',
+        copySource: visibleMessage ? 'model' : 'runtime_fallback',
         blockingReason: parsed.reason?.trim()
           || `${lastError?.stage ?? 'recover'}: ${lastError?.message ?? 'execution could not continue'}`,
         questions: [{
           id: 'question-1',
           field: 'recoveryDecision',
-          prompt: chinese ? '你希望我接下来如何处理？' : 'How would you like me to proceed?',
+          prompt: visibleMessage ?? (chinese ? '你希望我接下来如何处理？' : 'How would you like me to proceed?'),
           required: true,
         }],
       };
+      if (visibleMessage) {
+        let reserved: string | undefined;
+        try {
+          reserved = await reserveUserFacingReplyOnce(ctx, 'recover', visibleMessage);
+        } catch (error) {
+          ctx.lastError = { stage: 'recover', message: `user-facing recovery reply generation failed: ${(error as Error).message}` };
+          return { stage: 'recover', next: 'exit', ok: false, error: ctx.lastError.message };
+        }
+        if (reserved) {
+          ctx.clarificationRequest.prompt = reserved;
+          ctx.reply = reserved;
+          next = 'finalize';
+          return {
+            stage: 'recover',
+            next,
+            ok: true,
+            meta: {
+              action: parsed.action,
+              attempts: ctx.recoveryAttempts,
+              reason: parsed.reason,
+              directClarification: true,
+            },
+          };
+        }
+      }
       next = 'ask_user';
     } else {
       try {
@@ -232,12 +269,13 @@ async function rewriteAbortReason(
   ];
   const { parsed } = await callLlmForJson<DecodedRecovery>(deps.llm, deps.model, messages, {
     maxAttempts: 2,
-    maxTokens: 800,
+    maxTokens: 600,
+    maxTokensCeiling: 900,
     signal: ctx.signal,
     onRequest: (request) => prepareModelRequest(
       ctx,
       'recover',
-      request,
+      preferDirectModelOutput(ctx, request, { force: true }),
       buildRunRequestCandidates(ctx, 'recover', request.messages, {
         history: [],
         primaryUserKind: 'workflow_state',

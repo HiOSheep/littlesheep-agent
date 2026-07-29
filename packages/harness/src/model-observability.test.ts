@@ -6,6 +6,7 @@ import {
   MAX_SNAPSHOT_ITEMS,
   MAX_SNAPSHOT_MESSAGES,
   MAX_SNAPSHOT_TOOLS,
+  preferDirectModelOutput,
   prepareModelRequest,
   recordModelRequest,
   recordProviderUsage,
@@ -188,6 +189,42 @@ describe('recordModelRequest', () => {
     });
   });
 
+  it('preserves a bounded direct-output override for a retry', () => {
+    const ctx = makeCtx();
+    ctx.resolvedRunConfig = {
+      version: 1,
+      runId: ctx.runId,
+      resolvedAt: '2026-07-13T00:00:00.000Z',
+      origin: 'test',
+      behaviorModeId: 'general',
+      permissionPolicyId: 'research',
+      workflowStrategyId: 'core-flow',
+      contextStrategyId: 'context-v1',
+      memoryStrategyId: 'index-first-v1',
+      toolSelectionStrategyId: 'registered-tools-v1',
+      outputContractId: 'user-reply-v1',
+      provider: 'deepseek',
+      model: 'deepseek-v4-flash',
+      reasoning: 'ultra',
+      parameters: {},
+      availableToolNames: [],
+      approvalRequiredToolNames: [],
+      userOverrides: {},
+      projectOverrides: {},
+    };
+    const direct = preferDirectModelOutput(ctx, {
+      ...request(2, 0),
+      model: 'deepseek-v4-flash',
+      max_tokens: 500,
+    });
+
+    const prepared = prepareModelRequest(ctx, 'decide', direct);
+
+    expect(prepared.reasoning_effort).toBeUndefined();
+    expect(prepared.thinking).toEqual({ type: 'disabled' });
+    expect(ctx.modelRequests?.[0]).toMatchObject({ thinkingMode: 'disabled' });
+  });
+
   it('fails closed for forbidden tools, forbidden calls, and oversized outputs', () => {
     const ctx = makeCtx({ tools: registeredTools(1) });
 
@@ -196,7 +233,7 @@ describe('recordModelRequest', () => {
     expect(() => prepareModelRequest(ctx, 'classify', {
       ...request(2, 0),
       max_tokens: 257,
-    })).toThrow(/exceeds budget 256/);
+    })).toThrow(/exceeds budget 200/);
     expect(ctx.modelRequests).toBeUndefined();
     expect(ctx.contextSnapshots).toBeUndefined();
   });

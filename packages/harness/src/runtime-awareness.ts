@@ -6,6 +6,7 @@ import {
   formatRuntimeClock,
 } from '@littlesheep/prompt';
 import type {
+  LlmCallPurpose,
   RunContext,
   SessionRunToolTiming,
 } from '@littlesheep/types';
@@ -23,13 +24,16 @@ export function injectRuntimeAwareness(
   request: ChatRequest,
   candidates: ContextMessageCandidate[] | undefined,
   requestIndex: number,
+  purpose?: LlmCallPurpose,
 ): RuntimeAwarenessInjection {
   const systemIndex = request.messages.findIndex((message) => message.role === 'system');
   if (systemIndex < 0) return { request, candidates };
 
   const now = resolveNow(ctx);
   const clock = formatRuntimeClock(now, ctx.timeZone);
-  const section = renderRuntimeAwareness(ctx, now, clock);
+  const section = shouldUseCompactRuntime(ctx, purpose)
+    ? renderCompactRuntimeAwareness(ctx, now, clock)
+    : renderRuntimeAwareness(ctx, now, clock);
   const original = request.messages[systemIndex]!;
   const originalText = typeof original.content === 'string' ? original.content : undefined;
   const separator = originalText?.includes(CACHE_BOUNDARY_MARKER)
@@ -91,6 +95,33 @@ export function injectRuntimeAwareness(
   });
 
   return { request: preparedRequest, candidates: preparedCandidates };
+}
+
+function shouldUseCompactRuntime(ctx: RunContext, purpose: LlmCallPurpose | undefined): boolean {
+  if (purpose !== 'reply') return purpose === 'classify' || purpose === 'ask_user';
+  const request = ctx.inbound.content
+    .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
+    .map((part) => part.text)
+    .join('\n');
+  return !/(?:进度|状态|完成|执行|耗时|多久|刚才|上一轮|上次|progress|status|complete|elapsed|previous run)/iu.test(request);
+}
+
+function renderCompactRuntimeAwareness(
+  ctx: RunContext,
+  now: Date,
+  clock: ReturnType<typeof formatRuntimeClock>,
+): string {
+  const runElapsedMs = elapsedSince(ctx.startedAt, now);
+  return [
+    '# Runtime Clock',
+    '',
+    `- local_datetime: ${clock.localDateTime} ${clock.utcOffset}`,
+    `- time_zone: ${clock.timeZone}`,
+    `- run_elapsed: ${runElapsedMs} ms (${formatElapsedMilliseconds(runElapsedMs)})`,
+    `- task_state: ${taskProgress(ctx).state}`,
+    '',
+    'Use these exact facts when time or current state matters. Do not volunteer them otherwise.',
+  ].join('\n');
 }
 
 function renderRuntimeAwareness(

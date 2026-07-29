@@ -36,7 +36,7 @@ function textPart(parts: ChatContentPart[]): string {
   return parts.find((part): part is Extract<ChatContentPart, { type: 'text' }> => part.type === 'text')?.text ?? '';
 }
 
-function expectCommonPayloadShape(request: ChatRequest) {
+function expectCommonPayloadShape(request: ChatRequest, options: { includesBootstrap?: boolean } = {}) {
   expect(request.model).toBe('test-model');
   expect(request.messages.map((message) => message.role)).toEqual([
     'system',
@@ -45,7 +45,9 @@ function expectCommonPayloadShape(request: ChatRequest) {
     'user',
     'user',
   ]);
-  expect(String(request.messages[0]?.content)).toContain('BOOTSTRAP_SENTINEL');
+  if (options.includesBootstrap !== false) {
+    expect(String(request.messages[0]?.content)).toContain('BOOTSTRAP_SENTINEL');
+  }
   expect(String(request.messages[0]?.content)).toContain('MEMORY_ROOT_SENTINEL');
   expect(String(request.messages[0]?.content)).toContain('PROFILE_SENTINEL');
   expect(request.messages[1]?.content).toBe('PRIOR_USER_SENTINEL');
@@ -115,7 +117,7 @@ describe('LLM request characterization', () => {
     expect(String(requests[0]!.messages[0]?.content)).toContain('DECIDE stage');
     expect(String(requests[0]!.messages[0]?.content)).toContain('REASONING_SENTINEL');
     expect(requests[0]!.temperature).toBe(0);
-    expect(requests[0]!.max_tokens).toBe(1800);
+    expect(requests[0]!.max_tokens).toBe(1_400);
     expect(requests[0]!.tools).toBeUndefined();
     expectRecordedSnapshot(ctx, 'decide');
   });
@@ -154,9 +156,13 @@ describe('LLM request characterization', () => {
     await stage(ctx);
 
     expect(requests).toHaveLength(1);
-    expectCommonPayloadShape(requests[0]!);
-    expect(String(requests[0]!.messages[0]?.content)).toContain('REASONING_SENTINEL');
+    expectCommonPayloadShape(requests[0]!, { includesBootstrap: false });
+    expect(String(requests[0]!.messages[0]?.content)).not.toContain('BOOTSTRAP_SENTINEL');
+    expect(String(requests[0]!.messages[0]?.content)).not.toContain('REASONING_SENTINEL');
+    expect(String(requests[0]!.messages[0]?.content)).not.toContain('# Core Flow');
+    expect(String(requests[0]!.messages[0]?.content)).not.toContain('# Workspace');
     expect(requests[0]!.temperature).toBe(0.7);
+    expect(requests[0]!.max_tokens).toBe(1_200);
     expect(requests[0]!.tools).toBeUndefined();
     expectRecordedSnapshot(ctx, 'reply');
   });

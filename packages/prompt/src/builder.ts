@@ -19,6 +19,8 @@ import {
   identitySection,
   coreFlowSection,
   toolingSection,
+  capabilitiesSection,
+  memoryAwarenessSection,
   safetySection,
   skillsSection,
   memoryTreeSection,
@@ -28,10 +30,11 @@ import {
   preludeSection,
   sessionSummarySection,
   outputDirectivesSection,
+  responseDirectivesSection,
 } from './sections.js';
 
 /** Prompt rendering mode. */
-export type PromptMode = 'full' | 'minimal' | 'none';
+export type PromptMode = 'full' | 'respond' | 'minimal' | 'none';
 
 /** Inputs to the pure renderer (Layer 1). */
 export interface PromptInput {
@@ -94,7 +97,8 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
     };
   }
 
-  const isMinimal = mode === 'minimal';
+  const isRespond = mode === 'respond';
+  const isFull = mode === 'full';
   const stable: Array<Omit<PromptContextSegment, 'order' | 'text'> & { content: string }> = [];
   const addStable = (
     id: string,
@@ -109,21 +113,28 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
   // ─── Stable sections (above cache boundary) ───
   addStable('identity', identitySection(input.branding));
 
-  if (!isMinimal) {
+  if (isFull) {
     addStable('core-flow', coreFlowSection());
   }
 
-  addStable('tooling', toolingSection(input.tools), 'system_prompt', 98);
-  addStable('safety', safetySection(), 'system_prompt', 100);
+  addStable(
+    isRespond ? 'capabilities' : 'tooling',
+    isRespond ? capabilitiesSection(input.tools) : toolingSection(input.tools),
+    'system_prompt',
+    98,
+  );
+  if (!isRespond) {
+    addStable('safety', safetySection(), 'system_prompt', 100);
+  }
 
-  if (!isMinimal && input.skills && input.skills.length > 0) {
+  if (isFull && input.skills && input.skills.length > 0) {
     addStable('skills-index', skillsSection(input.skills), 'system_prompt', 75, false);
   }
 
-  if (!isMinimal && input.memoryRootIndex) {
+  if ((isFull || isRespond) && input.memoryRootIndex) {
     addStable(
       'memory-root-index',
-      memoryTreeSection(input.memoryRootIndex),
+      isRespond ? memoryAwarenessSection(input.memoryRootIndex) : memoryTreeSection(input.memoryRootIndex),
       'memory_index',
       95,
       true,
@@ -132,17 +143,19 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
     );
   }
 
-  addStable(
-    'workspace',
-    workspaceSection(input.workspace),
-    'project_knowledge',
-    95,
-    true,
-    'workspace',
-    { kind: 'configuration', id: 'workspace', path: input.workspace },
-  );
+  if (!isRespond) {
+    addStable(
+      'workspace',
+      workspaceSection(input.workspace),
+      'project_knowledge',
+      95,
+      true,
+      'workspace',
+      { kind: 'configuration', id: 'workspace', path: input.workspace },
+    );
+  }
 
-  if (!isMinimal) {
+  if (isFull) {
     addStable('date-time', dateTimeSection(input.timezone), 'system_prompt', 60, false);
   }
 
@@ -150,8 +163,10 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
     addStable('runtime', runtimeSection(input.runtime), 'system_prompt', 65, false);
   }
 
-  if (!isMinimal) {
+  if (isFull) {
     addStable('output-directives', outputDirectivesSection(), 'output_constraint', 95, true);
+  } else if (isRespond) {
+    addStable('response-directives', responseDirectivesSection(), 'output_constraint', 95, true);
   }
 
   const segments: PromptContextSegment[] = stable.map((section, index) => ({
@@ -170,7 +185,7 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
   };
 
   // ─── Volatile sections (below cache boundary) ───
-  if (!isMinimal && input.sessionSummary) {
+  if (mode !== 'minimal' && input.sessionSummary) {
     segments.push({
       id: `summary-memory:${input.sessionSummary.id}`,
       order: nextOrder++,
@@ -188,7 +203,7 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
     });
   }
 
-  if (!isMinimal && input.initialMemoryContext) {
+  if (mode !== 'minimal' && input.initialMemoryContext) {
     segments.push({
       id: 'initial-memory-selection',
       order: nextOrder++,
@@ -202,7 +217,7 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
     });
   }
 
-  if (!isMinimal && Object.keys(input.bootstrap).length > 0) {
+  if (mode !== 'minimal' && Object.keys(input.bootstrap).length > 0) {
     const files = Object.entries(input.bootstrap)
       .filter(([, content]) => content && content.trim().length > 0);
     files.forEach(([name, content], index) => {
@@ -226,7 +241,7 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
     });
   }
 
-  if (!isMinimal && input.prelude) {
+  if (mode !== 'minimal' && input.prelude) {
     const content = preludeSection(input.prelude);
     if (content) {
       segments.push({
@@ -331,12 +346,12 @@ export async function assembleSystemPromptBundle(
     skills: facts.skills,
     workspace: resolved.workspace,
     timezone: resolved.timezone,
-    runtime: facts.runtime ?? {
+    runtime: facts.runtime ?? (mode === 'respond' ? undefined : {
       model: resolved.model,
       host: typeof process !== 'undefined' ? process.env.COMPUTERNAME : undefined,
       os: typeof process !== 'undefined' ? `${process.platform}/${process.arch}` : undefined,
       nodeVersion: typeof process !== 'undefined' ? process.version : undefined,
-    },
+    }),
     bootstrap: facts.bootstrap,
     prelude: facts.prelude,
     sessionSummary: facts.sessionSummary,

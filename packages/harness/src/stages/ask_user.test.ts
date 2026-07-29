@@ -82,4 +82,37 @@ describe('askUserStage', () => {
     expect(ctx.replyProvenance?.rewriteCount).toBe(1);
     expect(llm.chat).toHaveBeenCalledTimes(2);
   });
+
+  it('retries an empty high-reasoning response with a larger direct-output budget', async () => {
+    const requests: Array<{ maxTokens?: number; thinking?: string; effort?: string }> = [];
+    const llm = createMockLlm((request) => {
+      requests.push({
+        maxTokens: request.max_tokens,
+        thinking: request.thinking?.type,
+        effort: request.reasoning_effort,
+      });
+      return requests.length === 1
+        ? textResponse('')
+        : textResponse('请告诉我需要修改的目标文件。');
+    });
+    const stage = createAskUserStage({ llm, model: 'deepseek-v4-flash' });
+    const ctx = makeCtx({
+      inbound: textMessage('user', '修改那个文件'),
+      lastError: { stage: 'decide', message: 'target path missing' },
+    });
+    ctx.resolvedRunConfig = {
+      provider: 'deepseek',
+      model: 'deepseek-v4-flash',
+      reasoning: 'ultra',
+    } as NonNullable<typeof ctx.resolvedRunConfig>;
+
+    const result = await stage(ctx);
+
+    expect(result.next).toBe('finalize');
+    expect(ctx.reply).toBe('请告诉我需要修改的目标文件。');
+    expect(requests).toEqual([
+      { maxTokens: 320, thinking: 'disabled', effort: undefined },
+      { maxTokens: 640, thinking: 'disabled', effort: undefined },
+    ]);
+  });
 });

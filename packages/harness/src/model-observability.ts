@@ -82,6 +82,32 @@ export function recordProviderUsage(
   });
 }
 
+/** Use provider-native direct output for bounded routing, wording, and retries. */
+export function preferDirectModelOutput(
+  ctx: RunContext,
+  request: ChatRequest,
+  options: { force?: boolean } = {},
+): ChatRequest {
+  const resolved = ctx.resolvedRunConfig;
+  if (!resolved || (!options.force && resolved.reasoning === 'auto')) return request;
+  if (resolved.provider === 'deepseek' || resolved.provider === 'glm') {
+    return {
+      ...request,
+      temperature: undefined,
+      reasoning_effort: undefined,
+      thinking: { type: 'disabled' },
+    };
+  }
+  if (resolved.provider === 'openai') {
+    return {
+      ...request,
+      reasoning_effort: 'none',
+      thinking: undefined,
+    };
+  }
+  return request;
+}
+
 function recordPreparedRequest(
   ctx: RunContext,
   purposeOrStage: LlmCallPurpose | StageName,
@@ -112,6 +138,7 @@ function recordPreparedRequest(
     memoryAware.request,
     memoryAware.candidates,
     requestIndex,
+    callContract.purpose,
   );
   validateModelRequest(callContract, runtimeAware.request);
   const prepared = contextEngine.prepare({
@@ -179,6 +206,9 @@ function validateModelRequest(contract: LlmCallContract, request: ChatRequest): 
 function applyResolvedReasoning(ctx: RunContext, request: ChatRequest): ChatRequest {
   const resolved = ctx.resolvedRunConfig;
   if (!resolved) return request;
+  // Explicit per-request controls are used only by bounded recovery paths and
+  // must not be overwritten by the run-wide reasoning preference.
+  if (request.reasoning_effort !== undefined || request.thinking !== undefined) return request;
   const options = resolveProviderReasoningRequest(
     resolved.provider,
     resolved.model,

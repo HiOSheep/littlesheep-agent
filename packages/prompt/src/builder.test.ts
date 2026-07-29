@@ -33,7 +33,7 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('enter the active run Context working set');
     expect(prompt).toContain('Release only removes that atom from this run');
     expect(prompt).toContain('does not edit, invalidate or delete durable memory');
-    expect(prompt).toContain("turn the user's ideas and goals into reliable, verified results");
+    expect(prompt).toContain("Turn the user's ideas into reliable, verified results");
     expect(prompt).toContain('Use progressive disclosure');
     expect(prompt).toContain('Resolve shorthand and omitted subjects from supplied recent conversation');
     expect(prompt).toContain('later explicit user corrections override earlier conflicting Assistant claims');
@@ -59,6 +59,26 @@ describe('buildSystemPrompt', () => {
     expect(prompt).not.toContain('# Core Flow (hard control flow)');
     expect(prompt).not.toContain(CACHE_BOUNDARY_MARKER);
     expect(prompt).not.toContain('Project Context');
+  });
+
+  it('respond mode keeps bounded memory awareness without execution policy', () => {
+    const prompt = buildSystemPrompt({
+      branding: DEFAULT_BRANDING,
+      tools: [stubTool],
+      workspace: '/tmp/ws',
+      bootstrap: { 'USER.md': 'user preferences' },
+      memoryRootIndex: `# Memory Tree Root Index\n${'branch-entry\n'.repeat(400)}`,
+      mode: 'respond',
+    });
+
+    expect(prompt).toContain('Memory Tree Root Index');
+    expect(prompt).toContain('root index truncated');
+    expect(prompt).toContain('Registered in this run: read');
+    expect(prompt).toContain('USER.md');
+    expect(prompt).not.toContain('# Core Flow');
+    expect(prompt).not.toContain('# Workspace');
+    expect(prompt).not.toContain('# Safety');
+    expect(prompt).not.toContain('root index -> branch index -> node/query expansion');
   });
 
   it('none mode returns only identity line', () => {

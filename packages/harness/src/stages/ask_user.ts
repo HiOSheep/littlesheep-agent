@@ -4,17 +4,21 @@
 // the final wording must come from the model and active SOUL.
 
 import type {
-  ClarificationQuestion,
   ClarificationRequest,
   RunContext,
   StageResult,
 } from '@littlesheep/types';
 import type { ChatRequest, LlmClient } from '@littlesheep/llm';
 import { buildRunRequestCandidates } from '../context-candidates.js';
-import { prepareModelRequest, recordProviderUsage } from '../model-observability.js';
+import {
+  preferDirectModelOutput,
+  prepareModelRequest,
+  recordProviderUsage,
+} from '../model-observability.js';
 import { appendSystemPromptAddons, buildUserFacingVoiceAddon } from '../profile-prompt.js';
 import { textOf } from './_shared.js';
 import { acceptUniqueUserFacingReply, type ReplyRewriteInput } from '../user-facing-reply.js';
+import { renderClarificationMessage } from './clarification-message.js';
 
 export interface AskUserStageDeps {
   llm: LlmClient;
@@ -80,48 +84,65 @@ async function composeClarificationMessage(
       ? `The prior API-generated response exactly repeats a previously published LS reply. Generate the clarification again with a genuinely different opening and sentence structure while preserving every runtime fact. Do not mention the regeneration. Prior response:\n${rewrite.generatedReply}\nRecent replies to avoid repeating exactly:\n${rewrite.avoidReplies.map((reply, index) => `${index + 1}. ${reply}`).join('\n')}`
       : undefined,
   );
-  const rawRequest = {
-    model: deps.model,
-    messages: [
-      {
-        role: 'system',
-        content: system,
-      },
-      {
-        role: 'user',
-        content: JSON.stringify({
-          originalRequest: request.originalRequest,
-          blockingReason: request.blockingReason,
-          questions: request.questions,
-          runtimeDraft: fallback,
-        }),
-      },
-    ],
-    temperature: rewrite ? 0.75 : 0.65,
-    max_tokens: 500,
-    signal: ctx.signal,
-  } satisfies ChatRequest;
+  const baseMessages: ChatRequest['messages'] = [
+    {
+      role: 'system',
+      content: system,
+    },
+    {
+      role: 'user',
+      content: JSON.stringify({
+        originalRequest: request.originalRequest,
+        blockingReason: request.blockingReason,
+        questions: request.questions,
+        runtimeDraft: fallback,
+      }),
+    },
+  ];
+  let maxTokens = 320;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const messages = attempt === 1
+      ? baseMessages
+      : [
+          ...baseMessages,
+          {
+            role: 'user' as const,
+            content: 'The previous response contained no visible text. Return one concise user-facing clarification now; keep private reasoning bounded.',
+          },
+        ];
+    const rawRequest = {
+      model: deps.model,
+      messages,
+      temperature: rewrite ? 0.75 : 0.65,
+      max_tokens: maxTokens,
+      signal: ctx.signal,
+    } satisfies ChatRequest;
 
-  const prepared = prepareModelRequest(
-    ctx,
-    'ask_user',
-    rawRequest,
-    buildRunRequestCandidates(ctx, 'ask_user', rawRequest.messages, {
-      history: [],
-      primaryUserKind: 'workflow_state',
-    }),
-  );
-  const response = await deps.llm.chat(prepared);
-  recordProviderUsage(ctx, prepared, response.usage);
-  if (response.usage) {
-    ctx.usage = {
-      promptTokens: response.usage.promptTokens,
-      completionTokens: response.usage.completionTokens,
-      totalTokens: response.usage.totalTokens ?? response.usage.promptTokens + response.usage.completionTokens,
-      source: 'provider',
-    };
+    const prepared = prepareModelRequest(
+      ctx,
+      'ask_user',
+      // Clarification copy is a bounded wording task, not another reasoning
+      // phase. Keep it direct even when the run itself uses high reasoning.
+      preferDirectModelOutput(ctx, rawRequest, { force: true }),
+      buildRunRequestCandidates(ctx, 'ask_user', rawRequest.messages, {
+        history: [],
+        primaryUserKind: 'workflow_state',
+      }),
+    );
+    const response = await deps.llm.chat(prepared);
+    recordProviderUsage(ctx, prepared, response.usage);
+    if (response.usage) {
+      ctx.usage = {
+        promptTokens: response.usage.promptTokens,
+        completionTokens: response.usage.completionTokens,
+        totalTokens: response.usage.totalTokens ?? response.usage.promptTokens + response.usage.completionTokens,
+        source: 'provider',
+      };
+    }
+    if (response.content.trim()) return response.content;
+    maxTokens = 640;
   }
-  return response.content;
+  return '';
 }
 
 function ensureClarificationRequest(ctx: RunContext): ClarificationRequest {
@@ -169,32 +190,6 @@ function ensureClarificationRequest(ctx: RunContext): ClarificationRequest {
       required: true,
     }],
   };
-}
-
-function renderClarificationMessage(request: ClarificationRequest): string {
-  const chinese = usesChinese(request.originalRequest)
-    || request.questions.some((question) => usesChinese(question.prompt));
-  const reason = request.blockingReason.trim();
-  if (request.questions.length === 1) {
-    const question = formatQuestion(request.questions[0]!, chinese);
-    return reason.length > 0 ? `${reason}\n\n${question}` : question;
-  }
-  const heading = chinese ? '继续前还需要你补充以下信息：' : 'I need the following information before continuing:';
-  const questions = `${heading}\n${request.questions
-    .map((question, index) => `${index + 1}. ${formatQuestion(question, chinese)}`)
-    .join('\n')}`;
-  return reason.length > 0 ? `${reason}\n\n${questions}` : questions;
-}
-
-function formatQuestion(question: ClarificationQuestion, chinese: boolean): string {
-  const suffix: string[] = [];
-  if (question.options?.length) {
-    suffix.push(chinese ? `可选：${question.options.join('、')}` : `Options: ${question.options.join(', ')}`);
-  }
-  if (question.defaultValue) {
-    suffix.push(chinese ? `默认：${question.defaultValue}` : `Default: ${question.defaultValue}`);
-  }
-  return suffix.length > 0 ? `${question.prompt}（${suffix.join('；')}）` : question.prompt;
 }
 
 function usesChinese(text: string): boolean {

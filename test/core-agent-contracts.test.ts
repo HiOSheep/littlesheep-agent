@@ -171,7 +171,7 @@ describe('core agent behavior contracts', () => {
 
     const result = await createDecideStage({ ...stageDeps, llm })(ctx)
 
-    expect(result.next).toBe('ask_user')
+    expect(result.next).toBe('finalize')
     expect(ctx.clarificationRequest).toMatchObject({
       kind: 'missing_information',
       missingInfo: ['target path'],

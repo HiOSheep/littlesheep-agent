@@ -7,6 +7,7 @@ import type { ClarificationRequest, ClarificationResponse } from './clarificatio
 export type UserFacingReplyPurpose =
   | 'reply'
   | 'ask_user'
+  | 'decide'
   | 'execute_tool_loop'
   | 'execute_final_reply'
   | 'recover';

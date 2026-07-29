@@ -18,6 +18,7 @@ import { sanitizeOutput } from '@littlesheep/tools';
 import { shouldRequestPermissionApproval, describeToolAccess } from '@littlesheep/safety';
 import { buildRunRequestCandidates } from '../../context-candidates.js';
 import { prepareModelRequest, recordProviderUsage } from '../../model-observability.js';
+import { recentHistoryForModel } from '../_shared.js';
 import { ingestMemoryKnownState } from '../../memory-known-state.js';
 import { ingestMemoryContextToolResult } from '../../memory-context-working-set.js';
 import type {
@@ -72,6 +73,7 @@ export async function runToolLoop(
         'execute_tool_loop',
         rawRequest,
         buildRunRequestCandidates(ctx, 'execute', rawRequest.messages, {
+          history: recentHistoryForModel(ctx.history, 8),
           systemSegments,
           insertedBeforePrimary,
         }),

@@ -9,6 +9,7 @@ import {
   textOf,
   toChatMessage,
   userChatMessage,
+  recentHistoryForModel,
   type AttachmentContextMessage,
 } from '../_shared.js';
 import {
@@ -26,6 +27,7 @@ export interface DecideRequest {
   previousTaskBook: RunContext['taskBook'];
   partialReplan: RunContext['partialReplanRequest'];
   deferredRuntimeEvents: NonNullable<RunContext['deferredRuntimeEvents']>;
+  history: RunContext['history'];
   replanRequested: boolean;
 }
 
@@ -54,6 +56,7 @@ export async function buildDecideRequest(
   ]);
 
   const previousTaskBook = ctx.taskBook;
+  const history = recentHistoryForModel(ctx.history, 8);
   const partialReplan = ctx.partialReplanRequest;
   const deferredRuntimeEvents = ctx.deferredRuntimeEvents ?? [];
   const replanRequested = Boolean(
@@ -70,7 +73,7 @@ export async function buildDecideRequest(
   const runtimeEventContext = renderDeferredRuntimeEvents(deferredRuntimeEvents);
   const messages: ChatMessage[] = [
     { role: 'system', content: systemPrompt.text },
-    ...ctx.history.map(toChatMessage),
+    ...history.map(toChatMessage),
     ...attachmentMessages.map((item) => item.message),
     userChatMessage(`${inboundText}${verifyFeedback}${runtimeEventContext}`, ctx.attachments),
   ];
@@ -83,6 +86,7 @@ export async function buildDecideRequest(
     previousTaskBook,
     partialReplan,
     deferredRuntimeEvents,
+    history,
     replanRequested,
   };
 }
@@ -94,6 +98,7 @@ export function buildDecideRequestCandidates(
 ) {
   return buildRunRequestCandidates(ctx, 'decide', messages, {
     systemSegments: request.systemPrompt.segments,
+    history: request.history,
     insertedBeforePrimary: request.attachmentMessages.map((item) => item.context),
   });
 }

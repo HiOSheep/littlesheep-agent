@@ -40,6 +40,48 @@ export interface ReplyRewriteInput {
 export type ReplyRewrite = (input: ReplyRewriteInput) => Promise<string>;
 
 /**
+ * Reserve one model-authored reply without generating replacement copy.
+ * Returns undefined for a duplicate so a caller that already owns a richer
+ * compatibility path can hand off to it. Empty output and registry failures
+ * remain explicit errors.
+ */
+export async function reserveUserFacingReplyOnce(
+  ctx: RunContext,
+  purpose: UserFacingReplyPurpose,
+  apiGeneratedReply: string,
+  rewriteCount = 0,
+): Promise<string | undefined> {
+  const generatedReply = cleanModelReply(apiGeneratedReply);
+  if (!generatedReply) {
+    throw new UserFacingReplyError(
+      'empty_model_reply',
+      'The model returned no user-facing reply.',
+    );
+  }
+
+  const recentReplies = collectRecentAssistantReplies(ctx);
+  const recentNormalized = new Set(recentReplies.map(normalizeUserFacingReply));
+  if (recentNormalized.has(normalizeUserFacingReply(generatedReply))) return undefined;
+
+  if (ctx.reserveUserFacingReply) {
+    let reserved: boolean;
+    try {
+      reserved = await ctx.reserveUserFacingReply(generatedReply);
+    } catch (error) {
+      throw new UserFacingReplyError(
+        'reply_registry_failed',
+        `The reply registry could not reserve the model-authored reply: ${(error as Error).message}`,
+        { cause: error },
+      );
+    }
+    if (!reserved) return undefined;
+  }
+
+  ctx.replyProvenance = createReplyProvenance(ctx, purpose, rewriteCount);
+  return generatedReply;
+}
+
+/**
  * Publish one reply returned by the current Provider API call only after
  * atomically reserving it in the durable session registry. Runtime may reject
  * the response or request another real-time API generation, but it never owns
@@ -52,35 +94,11 @@ export async function acceptUniqueUserFacingReply(
   rewrite: ReplyRewrite,
 ): Promise<string> {
   const recentReplies = collectRecentAssistantReplies(ctx);
-  const recentNormalized = new Set(recentReplies.map(normalizeUserFacingReply));
   let generatedReply = cleanModelReply(apiGeneratedReply);
 
   for (let rewriteCount = 0; rewriteCount <= MAX_VISIBLE_REPLY_REWRITES; rewriteCount += 1) {
-    if (!generatedReply) {
-      throw new UserFacingReplyError(
-        'empty_model_reply',
-        'The model returned no user-facing reply.',
-      );
-    }
-    const provenance = createReplyProvenance(ctx, purpose, rewriteCount);
-
-    const duplicateInCurrentContext = recentNormalized.has(normalizeUserFacingReply(generatedReply));
-    let reserved = !duplicateInCurrentContext;
-    if (reserved && ctx.reserveUserFacingReply) {
-      try {
-        reserved = await ctx.reserveUserFacingReply(generatedReply);
-      } catch (error) {
-        throw new UserFacingReplyError(
-          'reply_registry_failed',
-          `The reply registry could not reserve the model-authored reply: ${(error as Error).message}`,
-          { cause: error },
-        );
-      }
-    }
-    if (reserved) {
-      ctx.replyProvenance = provenance;
-      return generatedReply;
-    }
+    const reserved = await reserveUserFacingReplyOnce(ctx, purpose, generatedReply, rewriteCount);
+    if (reserved) return reserved;
 
     if (rewriteCount >= MAX_VISIBLE_REPLY_REWRITES) {
       throw new UserFacingReplyError(

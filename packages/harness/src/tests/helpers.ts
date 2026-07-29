@@ -168,7 +168,7 @@ export function makeCtx(opts: MakeCtxOptions = {}): RunContext {
 }
 
 function replyPurposeStage(purpose: NonNullable<RunContext['replyProvenance']>['purpose']) {
-  if (purpose === 'ask_user') return 'ask_user' as const;
+  if (purpose === 'ask_user' || purpose === 'decide') return purpose;
   if (purpose === 'recover') return 'recover' as const;
   if (purpose === 'reply') return 'reply' as const;
   return 'execute' as const;

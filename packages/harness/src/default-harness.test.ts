@@ -57,6 +57,29 @@ describe('createDefaultHarness state machine', () => {
     expect(ctx.classification?.source).toBe('rules');
   });
 
+  it('answers a capability-status question without entering planning or recovery', async () => {
+    const llm = createMockLlm(textResponse('当前还没有配置网络查询工具。'));
+    const h = makeHarness(llm);
+    const ctx = makeCtx({
+      inbound: textMessage('user', '但是现在好像还没给你配置网络查询功能吧'),
+    });
+
+    const result = await h.run(ctx);
+
+    expect(result.ok).toBe(true);
+    expect(ctx.classification).toMatchObject({
+      activity: 'respond',
+      type: 'chat',
+      reason: 'capability or status question',
+    });
+    expect(ctx.reply).toBe('当前还没有配置网络查询工具。');
+    const trace = result.meta?.trace as Array<{ name: string }>;
+    expect(trace.map((item) => item.name)).toEqual([
+      'enter', 'classify', 'reply', 'finalize',
+    ]);
+    expect(llm.chat).toHaveBeenCalledTimes(1);
+  });
+
   it('problem path: enter → classify → decide → execute(stop) → verify(pass) → evolve → capture → finalize → exit', async () => {
     const tool = makeTool('read', { ok: true, output: 'data' });
     // 'read the file' doesn't match any rule → LLM classify fallback.

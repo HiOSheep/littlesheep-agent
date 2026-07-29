@@ -83,7 +83,7 @@ describe('decideStage', () => {
     expect(ctx.plan![0].tools).toEqual(['read']);
   });
 
-  it('3 parse failures → recover', async () => {
+  it('2 parse failures route to recover without a third retry', async () => {
     const llm = createMockLlm([
       textResponse('not json'),
       textResponse('still not json'),
@@ -95,7 +95,7 @@ describe('decideStage', () => {
     expect(res.next).toBe('recover');
     expect(res.ok).toBe(false);
     expect(ctx.lastError?.stage).toBe('decide');
-    expect(llm.chat).toHaveBeenCalledTimes(3);
+    expect(llm.chat).toHaveBeenCalledTimes(2);
   });
 
   it('empty response → recover', async () => {
@@ -167,7 +167,7 @@ describe('decideStage', () => {
     expect(ctx.taskBook?.steps[0].acceptanceCriteria).toEqual(['state machine files inspected']);
   });
 
-  it('routes to ask_user when demand calibration says required information is missing', async () => {
+  it('publishes model-authored clarification directly without a second ASK_USER call', async () => {
     const llm = createMockLlm(textResponse(JSON.stringify({
       assessment: {
         userNeed: 'edit a target file',
@@ -201,9 +201,10 @@ describe('decideStage', () => {
 
     const res = await stage(ctx);
 
-    expect(res.next).toBe('ask_user');
+    expect(res.next).toBe('finalize');
     expect(res.ok).toBe(true);
     expect(ctx.lastError).toBeUndefined();
+    expect(ctx.replyProvenance).toMatchObject({ purpose: 'decide', source: 'llm' });
     expect(ctx.clarificationRequest).toMatchObject({
       kind: 'missing_information',
       sourceStage: 'decide',
@@ -218,6 +219,7 @@ describe('decideStage', () => {
       options: ['README.md', 'package.json'],
       defaultValue: 'README.md',
     });
+    expect(ctx.clarificationRequest?.prompt).toBe(ctx.reply);
     expect(ctx.plan?.[0].id).toBe('clarify');
   });
 

@@ -9,7 +9,7 @@ import type {
   TaskStepResult,
   ToolResult,
 } from '@littlesheep/types';
-import { attachmentContextMessages } from '../_shared.js';
+import { attachmentContextMessages, recentHistoryForModel } from '../_shared.js';
 import type { ExecuteSanitizeOptions, ExecuteStageDeps } from './contracts.js';
 import {
   blockingToolFailureReason,
@@ -318,6 +318,7 @@ async function rewriteLegacyExecutionReply(
     'execute_tool_loop',
     rawRequest,
     buildRunRequestCandidates(ctx, 'execute', rawRequest.messages, {
+      history: recentHistoryForModel(ctx.history, 8),
       systemSegments: rewrittenSystem.segments,
       insertedBeforePrimary: attachments.map((item) => item.context),
     }),

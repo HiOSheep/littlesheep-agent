@@ -1,8 +1,8 @@
 # LittleSheep 架构评估与开发决策报告
 
-最后更新：2026-07-19 09:48:44
+最后更新：2026-07-29 10:47:00
 评估范围：当前源码、正式文档与已记录的验证结果
-执行状态：Memory v3 阶段 0-16 的工程实现、隔离演练和正式用户数据迁移已完成；正式 backend/config 为 v3，40 个业务 atom、5 个内部根、11 个资源和 45 条 BGE 512 维向量已通过真实数据根、Electron 重启、Catalog v8 integrity 与恢复源检查；多轮任务语义、压缩后任务锚点恢复、关系引导的一跳 Atom 选择、写入认识边界、Atom 关系调和和 TaskBook 二次注入均已有独立质量门
+执行状态：Memory v3 阶段 0-26 的工程实现、隔离演练和正式用户数据迁移已完成；正式 backend/config 为 v3，40 个业务 atom、5 个内部根、11 个资源和 45 条 BGE 512 维向量已通过既有真实数据根、Electron 重启、Catalog v9 integrity 与恢复源检查。当前活动路由与直接回应 Context 瘦身正在重构，typecheck、build、仓库卫生和恢复检查通过，但全量测试仍有 5 项失败，因此这一重构尚未成为新的稳定基线。
 
 ## 1. 给决策者的结论
 
@@ -12,16 +12,16 @@ LittleSheep 当前不是“只有 Prompt 的聊天壳”。它已经具备代码
 
 但当前更准确的描述是：
 
-> **包级模块骨架、调用契约与仓库质量门已经稳定；Memory v3 的动态 Atom 激活层级、真实 Provider/长期负载、工具执行、运行时连续性和 Mode Registry 仍需继续收敛。**
+> **包级模块骨架和既有调用契约已有稳定基础；Memory v3 动态 activation 的工程门已经完成。当前先恢复活动路由与 Context 重构的质量门，再完成真实 Provider/长期负载、统一工具执行、运行时连续性和 Mode Registry。**
 
 当前最重要的结构结论是：
 
 1. Context Engine 已成为独立模块并接管模型请求准备路径；每次请求现在拥有版本化 `LlmCallContract`，Context segment、工具集合、输出预算和记忆策略在发送前失败关闭。tokenizer 能力矩阵与 unavailable 模型的保守请求前预算保护已经完成，当前缺口是三家真实 Provider 对账。
 2. 每次 run 已有统一、不可变的运行决议，但 Behavior Mode 仍只是 profile 与策略 id 的组合结果，尚没有可注册、可迁移的 Mode Registry。
 3. Tool Manager 只有注册与基础 wrapper，完整的授权、调用、超时、流式事件和执行证据仍主要位于 Harness/App。
-4. 正式 Memory v3 已通过同一 Repository facade 接管 Memory Service、Runner、Harness、工具和 UI；迁移前的 V2 源与 snapshot 继续保留为来源和受约束回滚证据。v3 已实现语义 atom、稳定 parent、认识状态、实体引用、可重建 catalog、真实本地 Embedding、统一检索、版本化 KnownState、有界维护、事务恢复，以及当前请求自足/多轮指代/否定条件/任务转向/版本化摘要回退共用的有界任务语义。
+4. 正式 Memory v3 已通过同一 Repository facade 接管 Memory Service、Runner、Harness、工具和 UI；迁移前的 V2 源与 snapshot 继续保留为来源和受约束回滚证据。v3 已实现语义 atom、稳定 parent、认识状态、实体引用、可重建 Catalog v9、真实本地 Embedding、统一检索、版本化 KnownState、有界维护、事务恢复、动态 activation，以及当前请求自足/多轮指代/否定条件/任务转向/版本化摘要回退共用的有界任务语义。
 
-因此，不再在集中式 Memory v2 文档上叠加新能力。Memory v3 阶段 0-16 已完成 Runtime 同源 D0-D3 读取、正式迁移/回滚生命周期、实时安全预检、本地向量资产、Atom 高级治理、working set、release、恢复、来源、反馈、commit receipt、动态 routing、关系引导候选发现、语义向量哈希、多轮任务语义、压缩后任务锚点恢复、写入认识元数据对账、自动实体/关系投影、提交后关系激活、启动补偿、冲突/替代调和、TaskBook 驱动的二次 Atom 选择、隔离 soak 和正式数据迁移。首次选择仍基于用户原始请求；DECIDE 明确 goal、验收标准和目标步骤后，Runtime 可在硬次数、Atom 数和 token 预算内补充高相关 Atom，并同步 working set、KnownState 与账本。关系从高任务相关种子出发，只在同 branch/scope/subtree 内做有方向、有证据的一跳扩展；邻接 Atom 仍须独立通过任务价值和预算。记忆文件与层级负责持久化、恢复、人工治理和候选导航，Runtime 才负责决定本轮发现、采用、保留、释放和重新激活哪些 Atom。现有 routing feedback、verified usefulness 和时间衰减已能让持久 Atom 动态升降，但还需要阶段 17 把这种能力抽象成持久记忆与语义缓存共用的连续 activation score；固定 `T0-T3` 仅保留为策略类别，不再承担动态热度语义。历史 Atom Renderer 原型已完成验证但不再作为产品入口；普通 GUI 只展示六份记忆文件并仅允许编辑 `SOUL.md`。当前 45 个 atom 的本地向量均已就绪；阶段 17 完成后再结合可用密钥验证真实 Provider、正式 V3 写入、活动长任务和持续用户负载。
+因此，不再在集中式 Memory v2 文档上叠加新能力。Memory v3 阶段 0-26 已完成 Runtime 同源 D0-D3 读取、正式迁移/回滚生命周期、本地向量资产、Atom 高级治理、working set、release、反馈、动态 routing、关系引导候选发现、多轮任务语义、压缩后任务锚点恢复、写入认识元数据、自动实体/关系投影、冲突/替代调和、TaskBook 二次选择、跨持久记忆与语义缓存的连续 activation、前端三层只读投影、真实负载观测、daily 提升、重复 Atom 合并、叶子/非叶子层级调整、同陈述修订和有证据事实替代。首次与二次选择仍受 scope、任务价值、证据和 token 预算约束；关系只在同 branch/scope/subtree 内做有方向、有证据的一跳扩展。固定 `T0-T3` 只表示注入策略类别，不承担动态热度语义。普通 GUI 只展示六份记忆文件并仅允许编辑 `SOUL.md`。当前未完成的是实际 Provider 提案质量、长期用户负载校准、活动长任务和跨陈述语义重写，而不是阶段 17 的 activation 工程基元。
 
 ## 2. 评估口径
 
@@ -64,7 +64,7 @@ React Renderer
 
 当前主流程的结构性限制：
 
-- Stage 仍负责构造语义消息，但模型请求已统一经过 Context Engine；System Prompt segment、摘要和附件清单已经可追溯，本地与 Provider token 账本也已分开保存。非图片附件通过 run-scoped 工具按需读取；tokenizer 能力矩阵和 unavailable 模型保守预算保护已完成，运行中事件候选仍未完成。
+- Stage 仍负责构造语义消息，但模型请求已统一经过 Context Engine；System Prompt segment、摘要和附件清单已经可追溯，本地与 Provider token 账本也已分开保存。非图片附件通过 run-scoped 工具按需读取；tokenizer 能力矩阵和 unavailable 模型保守预算保护已完成。运行中事件已有有界队列、Local App API ingress、安全边界消费、TaskBookPatch 和延迟事件重规划，尚未完成普通前端生产入口与产品恢复控制面。
 - Runner 的基础设施构建同时负责 LLM、session、memory、vector、skills、tools 和 Harness 装配，改动影响面大。
 - Mode 的各组成项没有统一 schema 和解析顺序。
 - 工具完整生命周期跨 `tools`、`harness` 和 `app`，难以保证未来 MCP/插件完全复用同一行为。
@@ -75,15 +75,15 @@ React Renderer
 | 能力域 | 当前状态 | 当前真相来源 | 主要缺口 | 下一项关键决策 |
 | --- | --- | --- | --- | --- |
 | 公共契约 | 稳定基础 | `packages/types/` | 内部 v1 契约已齐，但 Context/Tools/Mode 的实际所有者尚未按契约收敛 | 保持内部版本，迁移生产者和消费者后再考虑公开 API |
-| Workflow/Harness | 稳定基础 | `packages/harness/src/default-harness.ts`、`stages/` | stage 策略与默认 Harness 装配绑定，尚不能按 Mode 选择 | 固定安全脊柱，还是允许完全自定义图；建议前者 |
+| Workflow/Harness | 稳定基础；活动语义迁移中 | `packages/harness/src/default-harness.ts`、`stages/`、`packages/types/src/agent.ts` | 代码级 stage 与安全脊柱仍固定；当前语义活动正从旧分类标签迁移为 `respond / execute / clarify`，兼容字段尚未退役，回归质量门未全绿 | 先收口活动契约，再继续评估 Mode 策略化；不开放任意工作流图 |
 | Runner | 基础可用 | `packages/runner/src/runner.ts`、`infra.ts` | 同时承担生命周期、核心装配、记忆运行时启动和工具选择 | 把 Runner 保持为应用服务，逐步下沉子系统内部逻辑 |
 | Context | 基础可用，阶段 1 待供应商验收 | `packages/context/`、`harness/context-candidates.ts`、`model-observability.ts`、`config/model-capabilities.ts` | 已有确定性候选、来源 segment、已知/未知窗口、显式 tokenizer 能力矩阵、可注入精确计数、不可展示的保守预算保护、预算淘汰、版本化摘要、附件清单、按需附件工具、压缩阈值设置和双账本 UI；缺真实 Provider 对账 | 完成 Context Engine 供应商验收 |
-| Prompt | 基础可用 | `packages/prompt/`、stage prompt | 基础 Prompt 与 stage 专用 Prompt 并存，策略来源容易重复 | Prompt 只渲染模型需要知道的策略投影 |
+| Prompt | 基础可用；直接回应路径重构中 | `packages/prompt/`、stage prompt、`harness/stages/reply.ts` | 完整执行 Prompt 与紧凑 `respond` Prompt 已分路；后者正在移除 Workflow、workspace、reasoning 和无关 bootstrap，并限制历史与记忆索引，但快照和上一轮摘要契约仍待收口 | 保持按活动渐进披露，只向模型投影完成当前决策所需信息 |
 | Behavior Mode | 职责分散 | `prompt/profiles.ts`、Runner、config、App | 不是统一配置组合，新增 Mode 仍需跨模块修改 | 建立类型化 Mode registry，并与权限正交 |
 | Permission Policy | 基础可用 | `packages/app/src/main/run-policy.ts`、ToolContext | 产品层审批与工具执行边界仍需统一 | 权限作为独立 ceiling，不进入行为 profile |
 | Tool Registry | 稳定基础 | `packages/tools/src/registry.ts` | 主要解决注册/查找，不是完整 Tool Manager | 保留 registry，增加统一 Tool Execution Service |
 | Tool Execution | 职责分散 | `packages/tools/`、`harness/stages/execute.ts`、App 审批 | timeout、授权、事件、证据和重试缺少单一所有者 | 执行机制归 `tools` 服务，Harness 只编排 |
-| Memory Tree | 基础可用，职责收敛进行中 | `packages/memory-tree/`、`memory-core/`、Runner | Memory Service 已接管首批消费者，Summary Memory、run-scoped 附件、运行时事件账本登记端口、项目记忆三层投影和稳定项目身份已统一；实时事件生产与通用资源治理尚未闭环 | 继续扩展现有门面，不新建总包 |
+| Memory Tree | 基础可用，职责收敛进行中 | `packages/memory-tree/`、`memory-core/`、Runner | Memory Service 已接管首批消费者，Summary Memory、run-scoped 附件、运行时事件账本登记端口、项目记忆三层投影和稳定项目身份已统一；运行时事件的普通前端生产入口与通用资源治理尚未闭环 | 继续扩展现有门面，不新建总包 |
 | Session | 基础可用 | `packages/session/` | 已有非破坏式版本化摘要、增量合并和压缩后任务锚点恢复门，但真实 Provider 长会话、摘要失败、工具副作用恢复与成本仍待验收 | 继续由 Context 策略驱动并补齐真实恢复场景 |
 | Execution Log | 稳定基础 | `packages/runner/src/execution-log.ts` | 已记录运行决议、请求/Context 快照和派生工具证据，但工具生命周期仍由多处生成 | 随 Tool Execution Service 收敛实时证据，不把日志默认注入上下文 |
 | LLM Provider | 基础可用 | `packages/llm/`、`packages/config/` | 真实模型能力、reasoning 和 usage 映射仍待验收 | 建立 provider capability descriptor |
@@ -98,9 +98,9 @@ React Renderer
 
 ### 5.1 Context 是最高优先级的结构问题
 
-当前 `buildRunContext()` 仍会读取最近会话、过滤工具消息、加载 bootstrap 文件并构建 `ToolContext`；`packages/prompt` 负责 System Prompt，各 stage 仍负责形成语义消息，Runner 负责注入记忆根索引。模型请求随后被映射为显式 Context 候选，并由 `@littlesheep/context` 统一排序、预算和生成脱敏快照。System Prompt 已能把基础策略、记忆根索引、bootstrap 文件、输出约束、Workflow/TaskBook、行为 profile 和 reasoning 分别登记为 segment；版本化 Summary Memory 也作为独立来源进入后续请求。
+当前 `buildRunContext()` 仍会读取最近会话、过滤工具消息、加载 bootstrap 文件并构建 `ToolContext`；`packages/prompt` 负责 System Prompt，各 stage 仍负责形成语义消息，Runner 负责注入记忆根索引。模型请求随后被映射为显式 Context 候选，并由 `@littlesheep/context` 统一排序、预算和生成脱敏快照。完整执行路径把基础策略、记忆根索引、bootstrap、输出约束、Workflow/TaskBook、行为 profile 和 reasoning 分别登记为 segment；当前工作树新增的 `respond` 路径只登记直接回答所需的紧凑策略、能力、用户资料、记忆证据、摘要和最近历史。版本化 Summary Memory 继续作为独立来源进入后续请求。
 
-阶段 1 已形成主要数据链：Provider usage 会绑定到产生它的准确 Context 快照；UI 区分供应商实测、本地精确装配和 tokenizer 不可用；长会话压缩保留原始 JSONL，只在元数据中保存版本化摘要；压缩阈值已经接入 Local App API 与设置页；非图片附件通过当前 run 专属工具按需读取，未调用时不解析正文。新导入附件已进入独立受管缓存，run 只能使用经稳定 cache id、路径、普通文件、大小和哈希重新验证的缓存项，旧 workplace 与外部用户文件不属于自动清理范围；workplace 资源索引已使用有界目录批次、持久化游标、精确变更提示和资源树元数据入口，正文仍由显式文件工具读取。完整数据根迁移已接入启动前恢复路径，失败不切换活动目录。Provider reasoning/capability 契约回归、tokenizer 能力矩阵和 unavailable 模型保守预算保护已经完成；真实 Provider 校准、运行中事件队列和安全重入协议仍未完成。
+阶段 1 已形成主要数据链：Provider usage 会绑定到产生它的准确 Context 快照；UI 区分供应商实测、本地精确装配和 tokenizer 不可用；长会话压缩保留原始 JSONL，只在元数据中保存版本化摘要；压缩阈值已经接入 Local App API 与设置页；非图片附件通过当前 run 专属工具按需读取，未调用时不解析正文。新导入附件已进入独立受管缓存，run 只能使用经稳定 cache id、路径、普通文件、大小和哈希重新验证的缓存项，旧 workplace 与外部用户文件不属于自动清理范围；workplace 资源索引已使用有界目录批次、持久化游标、精确变更提示和资源树元数据入口，正文仍由显式文件工具读取。完整数据根迁移已接入启动前恢复路径，失败不切换活动目录。Provider reasoning/capability 契约回归、tokenizer 能力矩阵和 unavailable 模型保守预算保护已经完成；真实 Provider 校准仍未完成。运行中事件的队列、ingress、安全消费和 TaskBookPatch 已形成运行时闭环，缺口是实际前端生产入口、产品级恢复控制面与步骤并行。
 
 系统现在已经可以从快照和执行日志回答大部分请求级问题，但仍需继续闭环：
 
@@ -141,7 +141,7 @@ ResolvedRunConfig
 
 所有消费者读取同一份决议，避免 UI、Runner、Prompt 和审批各自解释设置。
 
-阶段 0 已消除 DECIDE 未接收 reasoning addon 的分歧，并由 `ResolvedRunConfig` 固化本轮选择。DECIDE 当前仍使用 `1800` 的规划输出上限，但该值会被 `ModelRequestSnapshot` 如实记录；阶段 1 应结合 Provider capability、模型上下文窗口和输出预算统一解析，而不是让各 stage 长期维护独立常量。
+阶段 0 已消除 DECIDE 未接收 reasoning addon 的分歧，并由 `ResolvedRunConfig` 固化本轮选择。当前工作树把 DECIDE 模型调用拆到 `stages/decide/model-call.ts`，规划输出上限为 `1400`；直接 REPLY 与重复改写上限为 `1200`。这些值会被 `ModelRequestSnapshot` 如实记录，但仍属于 stage 局部常量；后续应结合 Provider capability、模型上下文窗口和输出预算统一解析。
 
 ### 5.3 Tool Manager 不能只是一张注册表
 
@@ -165,7 +165,7 @@ ResolvedRunConfig
 
 首批收敛已经完成：Runner 的 run 生命周期、bootstrap 注册、Agent 记忆工具、结构化写入和 App 记忆控制面都优先通过 `MemoryService`。旧 `memoryTree`、`memoryRepository` 和 `memoryWriteService` 字段暂时留在 Infrastructure 中兼容测试和迁移调用，新的第一方功能不得继续直接依赖它们。内部仍可使用 memory-tree、memory-core、vector、experience、safety 和 snapshot。
 
-版本化记忆注册表与 T0-T3 基础分级已经实现：T0 保持固定预算，普通记忆写入不能进入 T0；v1 文档在保留 T1-T3 数值的前提下迁移到 v2，并在原子切换前生成回滚备份；未知未来版本拒绝覆盖。资源注册表只保存来源元数据，`resources` 分支沿现有索引导航读取正文，UI 与运行时读取同一份注册表。Summary Memory 已按 session scope 登记并以会话元数据为正文权威来源；附件清单和单项附件按 run scope 登记，正文只存在于活动 run 内存或专用读取结果中，执行日志仅关联有界资源 ID。运行时事件账本同样使用 run scope，只登记事件数量、类型、顺序和状态；payload 值仍由未来的事件队列持有，resolver 展开只提供受控摘要。项目记忆三层策略也已落地：完整权威数据留在可整体迁移的 LS 应用数据根，`workplace/` 只是默认工作区子目录；用户明确启用后，项目目录只生成经过层级、敏感内容和路径白名单过滤的私有派生投影；共享 Markdown 使用独立、更严格的置信度白名单。控制面显示同步、缺失、冲突和 Git 忽略状态，覆盖与移除需要确认，且移除只作用于 LS 最后验证写入的文件。新项目 ID 已与路径解耦，旧 ID 保持兼容；持久化重绑定事务会在项目移动或重命名后迁移会话、归档、记忆、投影和工作区关联。实体/关系 schema、方向语义、有界关系候选发现和证据封套已经完成；仍未完成的是实时事件队列、关系长期真实负载治理，以及 Skill 的语义去重、合并、收益治理和恢复队列。
+版本化记忆注册表与 T0-T3 基础分级已经实现：T0 保持固定预算，普通记忆写入不能进入 T0；v1 文档在保留 T1-T3 数值的前提下迁移到 v2，并在原子切换前生成回滚备份；未知未来版本拒绝覆盖。资源注册表只保存来源元数据，`resources` 分支沿现有索引导航读取正文，UI 与运行时读取同一份注册表。Summary Memory 已按 session scope 登记并以会话元数据为正文权威来源；附件清单和单项附件按 run scope 登记，正文只存在于活动 run 内存或专用读取结果中，执行日志仅关联有界资源 ID。运行时事件账本同样使用 run scope，只登记事件数量、类型、顺序和状态；有界 `RuntimeEventQueue` 保存受限 payload，Context resolver 只提供类型、来源、序号和 payload key 摘要。项目记忆三层策略也已落地：完整权威数据留在可整体迁移的 LS 应用数据根，`workplace/` 只是默认工作区子目录；用户明确启用后，项目目录只生成经过层级、敏感内容和路径白名单过滤的私有派生投影；共享 Markdown 使用独立、更严格的置信度白名单。控制面显示同步、缺失、冲突和 Git 忽略状态，覆盖与移除需要确认，且移除只作用于 LS 最后验证写入的文件。新项目 ID 已与路径解耦，旧 ID 保持兼容；持久化重绑定事务会在项目移动或重命名后迁移会话、归档、记忆、投影和工作区关联。实体/关系 schema、方向语义、有界关系候选发现和证据封套已经完成；仍未完成的是事件的普通前端生产入口、关系长期真实负载治理，以及 Skill 的语义去重、合并、收益治理和恢复队列。
 
 ### 5.5 Workflow 可配置必须晚于契约稳定
 
@@ -173,7 +173,7 @@ ResolvedRunConfig
 
 推荐保留不可绕过的安全脊柱，再让 Mode 选择有限的 stage strategy 或受测模板。例如：聊天轻量流、标准任务流、长任务流可以不同，但权限、VERIFY、失败边界和 FINALIZE 仍由核心保证。
 
-长任务还需要补齐连续执行协议：用户追加消息只在安全决策边界进入，生成 TaskBook 差异而不是替换整本任务书；无依赖、无资源冲突且权限明确的就绪步骤可以在硬并发上限内并行；暂停、中断、进程异常和应用重启通过版本化检查点恢复；所有并行分支、重试、验证和重规划循环同时受次数、时间、成本和无进展上限约束。当前 `AbortSignal` 和步骤级局部恢复可作为基础，但不能等同于活动 run 重启续跑或有界并行调度。
+长任务的连续执行协议已有一部分落地：用户事件可在安全决策边界进入，有界队列、确定性 `TaskBookPatch`、延迟重规划、版本化 `RunCheckpoint` 和 Runner 显式续跑已经形成 Runtime 基元。仍需把普通追加消息、设置和工作区事件接入前端生产入口，在应用启动时提供恢复、放弃和查看现场，并为无依赖、无资源冲突且权限明确的 TaskBook 就绪步骤建立硬上限并行。`AbortSignal`、步骤级局部恢复和显式续跑仍不能冒充完整产品闭环；所有并行分支、重试、验证和重规划循环也必须继续受次数、时间、成本和无进展上限约束。
 
 ### 5.6 App 应按功能拆分，不应立即拆成更多 workspace 包
 
@@ -268,7 +268,7 @@ src/renderer/shared/
 
 目标：让记忆和会话成为 Context Engine 可控、可追溯的来源。
 
-状态：主要工程闭环与正式迁移已完成，真实 Provider/长任务验收进行中。v3 阶段 0-16 已实现投影变更记录、atom projections、journal、Catalog v8、FTS、本地 Embedding、实体关系、Repository transaction、认识状态分类与来源对账、统一检索、动态 routing、关系引导的一跳候选发现、自动关系投影、提交后激活、启动补偿、冲突/替代调和、TaskBook 二次注入调和、语义向量哈希、D0-D3、版本化 KnownState、重启恢复、内部治理、正式迁移与受约束回滚；用户 GUI 已收敛为六份记忆文件视图，当前正式数据和 45 条本地向量均由 v3 接管。
+状态：主要工程闭环与正式迁移已完成，真实 Provider/长任务验收进行中。v3 阶段 0-26 已实现投影变更记录、atom projections、journal、Catalog v9、FTS、本地 Embedding、实体关系、Repository transaction、认识状态分类与来源对账、统一检索、动态 routing、关系引导的一跳候选发现、自动关系投影、提交后激活、启动补偿、冲突/替代调和、TaskBook 二次注入、语义向量哈希、D0-D3、版本化 KnownState、连续 activation、前端三层投影、真实负载观测、daily 提升和有证据约束的合并/修订/层级调整/事实替代；用户 GUI 已收敛为六份记忆文件视图，当前正式数据和 45 条本地向量均由 v3 接管。
 
 建议边界：
 
@@ -293,7 +293,7 @@ src/renderer/shared/
 - 固定 ENTER、权限闸门、VERIFY、RECOVER 上限和 FINALIZE 语义；
 - 把可替换部分定义为 stage strategy 或受测模板；
 - 工作流定义必须声明输入、输出、失败和恢复契约。
-- 增加运行中事件队列、TaskBook 差异修订、版本化检查点和幂等副作用记录；
+- 已有运行中事件队列、TaskBook 差异修订、版本化检查点、Runner 显式续跑和幂等副作用记录；下一步补齐应用启动发现与用户恢复控制面；
 - 为 TaskBook 定义依赖、资源读写集合和有界并行调度；同一资源冲突写入和顺序验证保持串行；
 - 为重试、验证和重规划统一设置次数、时间、成本与无进展上限。
 
@@ -391,14 +391,14 @@ src/renderer/shared/
 
 ## 10. 下一阶段推进条件
 
-仓库基元化阶段 0-7 与 Memory v3 阶段 0-16 已完成，正式数据、模型和向量目录已切换并通过重启验收，多轮任务语义、压缩后任务锚点恢复、关系引导 Atom 选择、写入认识边界、Atom 关系调和和 TaskBook 二次注入也已有独立质量门。自动实体/关系投影、提交后激活、冲突与替代处理以及结构化任务锚点 refinement 已作为“最少且足够的正确 Atom”的支撑机制落地，不以关系规模或文件布局作为完成标准。下一工程门先完成阶段 17：把持久记忆和语义缓存统一到连续、可衰减且无固定层数的 activation 契约，并证明高频有用 Atom 升温、低频 Atom 降温、冷 Atom 可重新激活且无关高频 Atom 不能绕过任务门；随后再在真实 Provider、正式 V3 新写入、活动长任务与持续用户负载中验证注入准确性、关系演化和 Context 成本。之后收敛 Tool Execution Service，而不是提前扩张新插件类型或无关 UI 范围。推进时持续遵守：
+仓库基元化阶段 0-7 与 Memory v3 阶段 0-26 已完成既定工程门；阶段 17 的连续 activation、阶段 18-19 的真实负载观测和阶段 20-26 的旧写入退役、daily 提升及受约束 Atom 治理均已落地。当前第一工程门不是继续扩展 Memory 阶段，而是收口 `respond / execute / clarify` 活动语义和直接回应 Context：解决 5 项回归失败，恢复完整质量门，并把兼容字段与新语义的边界固定。其后替换无效 DeepSeek 密钥并完成真实 Provider/正式 V3 新写入/活动长任务验收，再收敛 Tool Execution Service、运行时事件产品入口和检查点恢复控制面；在这些契约稳定前不扩张新插件类型或无关 UI 范围。推进时持续遵守：
 
 - 以 [架构原则](../principles/architecture-principles.md) 作为最高层工程规范；
 - Behavior Mode 与 Permission Policy 保持正交；
 - 保留固定安全脊柱，不把 Workflow 直接开放为任意图；
 - 保护现有用户数据与插件化改动，不做破坏式迁移。
 
-Context Engine 已完成候选端口、预算器、稳定装配顺序、来源分段、版本化摘要、附件清单优先、按需附件工具、双账本展示、tokenizer 能力矩阵和不可展示的保守预算保护；版本化 LLM Call Contract 进一步约束每次调用的目的、输入、输出、工具和记忆策略。Memory v3 已接管统一 Repository facade、Memory Service、Runner 与 Harness；安全迁移器、统一检索、证据封套、KnownState、同源 D0-D3 内部读取、Atom 高级治理、run working set、对话原始来源、投影变更记录恢复、分层反馈、动态路由相关性、语义向量哈希、commit receipt、多轮指代/否定/任务转向语义、版本化摘要回退、写入认识边界、自动关系投影、提交后激活、启动补偿、冲突/替代调和、TaskBook 二次注入调和、正式迁移与本地向量回填均已完成。普通 GUI 仅呈现六份记忆文件，不展示底层原子结构。真实 Provider 对话对账、持续用户负载、活动 run 检查点、统一 Tool Execution Service 和 `RuntimeEventQueue` 仍按独立质量门推进。
+Context Engine 已完成候选端口、预算器、稳定装配顺序、来源分段、版本化摘要、附件清单优先、按需附件工具、双账本展示、tokenizer 能力矩阵和不可展示的保守预算保护；版本化 LLM Call Contract 约束每次调用的目的、输入、输出、工具和记忆策略。Memory v3 已接管统一 Repository facade、Memory Service、Runner 与 Harness，并完成阶段 0-26 的工程能力。当前 `respond` 紧凑 Prompt、活动路由兼容映射和上一轮摘要选择性介入仍在回归验收；真实 Provider 对话对账、持续用户负载、统一 Tool Execution Service、运行时事件前端生产、应用启动检查点恢复和 TaskBook 步骤并行继续按独立质量门推进。
 
 ## 11. 报告维护规则
 

@@ -71,6 +71,31 @@ describe('recoverStage', () => {
     expect(res.next).toBe('ask_user');
   });
 
+  it('publishes an escalation question from the same recovery model call', async () => {
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      action: 'escalate',
+      reason: 'A target is required before retrying.',
+      userMessage: 'Which target should I use for the retry?',
+    })));
+    const stage = createRecoverStage({ ...deps, llm });
+    const ctx = makeCtx({
+      recoveryAttempts: 0,
+      lastError: { stage: 'execute', message: 'missing target' },
+      inbound: textMessage('user', 'continue'),
+    });
+
+    const res = await stage(ctx);
+
+    expect(res.next).toBe('finalize');
+    expect(ctx.reply).toBe('Which target should I use for the retry?');
+    expect(ctx.replyProvenance).toMatchObject({ purpose: 'recover', source: 'llm' });
+    expect(ctx.clarificationRequest).toMatchObject({
+      sourceStage: 'recover',
+      copySource: 'model',
+      prompt: 'Which target should I use for the retry?',
+    });
+  });
+
   it('abort action → finalize', async () => {
     const llm = createMockLlm(textResponse('{"action":"abort","reason":"I cannot continue safely."}'));
     const stage = createRecoverStage({ ...deps, llm });

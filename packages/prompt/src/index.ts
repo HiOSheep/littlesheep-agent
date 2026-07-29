@@ -22,6 +22,8 @@ export {
   identitySection,
   coreFlowSection,
   toolingSection,
+  capabilitiesSection,
+  memoryAwarenessSection,
   safetySection,
   skillsSection,
   workspaceSection,

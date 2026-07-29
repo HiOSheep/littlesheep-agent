@@ -1,13 +1,15 @@
 # LittleSheep Agent Runtime 连续性任务书 2026-07-14
 
-状态：规划已定稿，实施中（阶段 0、阶段 2、阶段 3 已完成；阶段 1 主要数据链已完成但真实供应商校准仍未闭环；阶段 4/5 已完成部分运行时基元）
-最后更新：2026-07-17 12:55:45
+状态：规划已定稿，实施中（阶段 0、阶段 2、阶段 3 已完成；阶段 1 主要数据链已完成但真实供应商校准仍未闭环；阶段 4 已完成队列、ingress、安全边界、TaskBookPatch 与延迟重规划基元；阶段 5 已完成持久检查点和 Runner 显式续跑基元；产品控制面、步骤并行和后台执行仍未完成）
+最后更新：2026-07-29 10:47:00
 
 本文把 Context、记忆注册、附件、运行中追加要求、检查点恢复、后台执行和双向透明整理为一条可分阶段验收的开发任务书。它服从 [架构原则](../principles/architecture-principles.md) 和 [核心 Agent 流程规范](../principles/core-agent-flow-guidelines.md)，当前事实与最新测试数字仍以 [项目状态](../decision/project-status.md) 为准。
 
 > 2026-07-17 实现边界：同一模型响应中的独立工具调用已经支持有界并行；LS 数据和用户工作区已经具备 shadow Git 检查点、写前 preimage、run before/after、同步回退和退出冻结。它们不等于 TaskBook 步骤级并行，也不等于活动 run 在重启后自动续跑；后两项仍属于本任务书后续阶段。
 
 > 2026-07-16 边界更新：普通 GUI 不再展示或管理 Atom/D0-D3 内部结构，只显示六份记忆文件并仅允许编辑 `SOUL.md`。Runtime 和记忆工具继续使用完整原子树；LLM 每轮只预载树简介与根索引，再按需展开。下文旧“记忆管理页”条目视为历史实现记录。
+
+> 2026-07-29 当前边界：有界 `RuntimeEventQueue` 已接入活动 run 注册、Local App API、Harness 安全边界、确定性 `TaskBookPatch`、延迟事件重规划和检查点快照；Runner 已能显式续跑检查点并拒绝不确定外部副作用。停止按钮已走控制事件入口，但普通追加消息、设置和工作区事件尚未由 Renderer 完整生产，应用启动也没有恢复、放弃和查看现场控制面。当前工作树另在迁移 `respond / execute / clarify` 活动语义，完整测试仍有 5 项失败；最新数字只看项目状态。
 
 ## 0. 设计输入归一化结论
 
@@ -44,7 +46,7 @@
 | RT-11 | 仅在缺少关键信息、重大决策或明显风险承担时询问用户；可逆的非关键细节使用安全假设 | 阶段 4 | 澄清原因可解释；普通轻微歧义不造成不必要中断 |
 | RT-12 | 运行中追加消息或 LS 内授权事件在安全边界被消费，并只局部修订未完成步骤 | 阶段 4 | 已完成证据和副作用保留；已发出的工具调用不被静默改写 |
 | RT-13 | 相互独立的工具调用和后续 TaskBook 步骤可有界并行；冲突资源、顺序验证和共享审批保持串行 | 阶段 4、7 | 工具波次已有硬上限；TaskBook 步骤级并行仍需依赖/资源契约；串并行验收结论等价 |
-| RT-14 | 暂停、中断、故障、关闭窗口、重启、放弃任务和彻底退出拥有独立语义；可恢复任务从幂等检查点继续 | 阶段 5 | 数据/工作区检查点和退出冻结已完成；活动 run 续跑、后台可见和托盘仍待完成 |
+| RT-14 | 暂停、中断、故障、关闭窗口、重启、放弃任务和彻底退出拥有独立语义；可恢复任务从幂等检查点继续 | 阶段 5 | 数据/工作区检查点、退出冻结、持久 RunCheckpoint 和 Runner 显式续跑已完成；应用启动恢复控制面、后台可见和托盘仍待完成 |
 | RT-15 | 信息透明是双向的：Agent 只感知 LS 明确产生或用户授权的相关事件，用户能查看 Agent 的动作、依据、等待和恢复状态 | 阶段 6 | 不进行全局隐私扫描；所有用户可见状态可追溯到快照、事件、日志或检查点 |
 | RT-16 | 工具只因能够直接或间接提高任务兑现率而开发和进入默认能力集 | 阶段 7 | 每个新工具有代表性任务收益、权限面、Context 成本、维护成本和移除条件证据 |
 | RT-17 | 渐进式披露服务于用户生产力：默认给结论和当前状态，过程与细节按需展开；安全事实不能被隐藏 | 阶段 4、6、7 | 运行中、完成后、失败和重启恢复的显示层级稳定；简单任务不生成重量级输出；用户可从摘要逐层展开到证据和过程 |
@@ -86,19 +88,18 @@
 - 每次模型调用前即时生成的秒级本地时钟、时区/offset、run elapsed、TaskBook 进度和有界工具计时；工具结果 continuation 携带结构化状态与实际 `durationMs`，上一轮摘要按会话有界持久化；
 - `packages/context/` 的阶段 1 数据链：确定性候选排序、已知/未知模型窗口、可注入精确 tokenizer、可选候选按预算移除、必需内容超限错误、压缩阈值信号和脱敏请求快照；
 - Harness 已把 System Prompt、最近对话、当前输入、工具提议/结果、Workflow State、附件清单和输出约束显式映射为 Context 候选，并让现有模型请求经过 Context Engine 准备；
-- System Prompt 已以 bundle/segment 形式登记基础策略、记忆根索引、每个 bootstrap 文件、输出约束、Workflow/TaskBook、行为 profile 和 reasoning；
+- 完整执行路径的 System Prompt 已以 bundle/segment 形式登记基础策略、记忆根索引、每个 bootstrap 文件、输出约束、Workflow/TaskBook、行为 profile 和 reasoning；当前 `respond` 路径使用紧凑投影，不重复注入执行专用信息；
 - Provider usage 会绑定到产生它的准确 `ContextSnapshot`；本地精确 ledger、Provider usage 和 tokenizer unavailable 使用不同结构，UI 不再混成一个伪精确数字；
 - 会话压缩已实现非破坏式版本化 Summary Memory：原始 JSONL 消息不删除，摘要记录来源范围并支持增量合并，下一轮作为独立 `summary_memory` 来源介入；
 - Summary Memory 以 session scope 注册到统一资源目录，重启后仍按 session + summary id 从会话元数据解析，不复制摘要正文；
 - 附件清单和单项附件以 run scope 注册，正文和 data URL 不进入注册表或执行日志；活动 run 结束后内存正文清除，同会话新 run 替换旧登记；
-- CLASSIFY、DECIDE 和 REPLY 只消费附件清单，已提取正文只在 EXECUTE 的专用工具结果路径进入模型 Context；执行日志只关联有界资源 ID。
+- 活动路由（内部兼容 stage id 为 `classify`）、DECIDE 和 REPLY 只消费附件清单，已提取正文只在 EXECUTE 的专用工具结果路径进入模型 Context；执行日志只关联有界资源 ID。
 
 尚未具备：
 
 - 完整的 Context Engine 供应商验收闭环：provider/model 能力分类和 tokenizer unavailable 模型的保守预算保护已完成，真实 Provider 对账仍待验收；
-- 完整资源治理；项目记忆三层投影、稳定项目身份和路径重绑定已实现，运行时事件账本端口已具备，但实时事件队列仍未实现；
-- 运行中用户事件队列、安全重入和 `TaskBookPatch`；
-- 活动 run 检查点、应用重启续跑和副作用幂等恢复；
+- 完整资源治理；项目记忆三层投影、稳定项目身份、路径重绑定、运行时事件账本、队列、ingress、安全边界和 `TaskBookPatch` 已实现，普通前端生产入口与用户反馈仍未闭环；
+- 应用启动时的检查点发现、恢复/放弃/查看现场控制面、自动跨重启续跑产品闭环，以及 TaskBook 步骤级并行；Runtime 的持久检查点、Runner 显式续跑和不确定副作用拒绝基元已经完成；
 - 用户可操作的数据根目录迁移闭环；
 - 关闭窗口后后台执行、托盘状态和彻底退出交互；
 - 与 Codex 等成熟 Agent 可重复比较的任务效率基线。
@@ -225,10 +226,10 @@ T0-T3 是资源权威、介入优先级和预算语义的逻辑分级，不是�
 - 补齐 `ModeDefinition`、`ResolvedRunConfig`、`ModelRequestSnapshot`、`ToolInvocationRecord` 与 `ExecutionEvidence` 契约，明确行为模式不携带权限，且运行决议、模型请求、工具生命周期和验收证据不能混成一条日志；
 - 本地精确 token 与 Provider usage 使用独立的判别联合，未知 tokenizer 不会暴露为可显示数字；
 - Runner 在每次 run 开始前生成深冻结的运行决议，尊重调用方 `runId`，并将决议与结果、执行日志使用同一标识关联；
-- CLASSIFY 的 LLM fallback 以及 DECIDE、EXECUTE、RECOVER、VERIFY、EVOLVE、CAPTURE、REPLY 的每次真实模型请求都会生成有界、脱敏的 `ModelRequestSnapshot` 和 `ContextSnapshot`；快照不保存 Prompt 正文、附件 Base64 或工具 schema/参数值；
+- 活动路由的 LLM fallback（内部兼容 stage id 为 `classify`）以及 DECIDE、EXECUTE、RECOVER、VERIFY、EVOLVE、CAPTURE、REPLY 的每次真实模型请求都会生成有界、脱敏的 `ModelRequestSnapshot` 和 `ContextSnapshot`；快照不保存 Prompt 正文、附件 Base64 或工具 schema/参数值；
 - 每个 run 最多保留 64 组模型/Context 快照，每组最多保留 64 条消息、64 个 Context item 和 64 个工具名；工具统一记录最多保留 256 条并只保存输入哈希/键名和输出存在性；
 - 当前工具结果已映射为统一调用记录与执行证据，同时保留旧 `toolCalls` 读取路径供现有历史 UI 使用；
-- DECIDE 已接收与其他主决策阶段一致的 reasoning addon；当前 `1800` 规划输出上限被模型请求快照如实记录，后续由 Provider capability 与 Context Engine 统一预算；
+- DECIDE 已接收与其他主决策阶段一致的 reasoning addon；当前工作树把模型调用拆到 `stages/decide/model-call.ts`，规划输出上限为 `1400`，直接 REPLY 与重复改写上限为 `1200`。模型请求快照会如实记录这些值，后续再由 Provider capability 与 Context Engine 统一预算；
 - 阶段 0 契约、兼容和观测验证已经通过；全仓最新测试、构建和恢复检查数字只在 [项目状态](../decision/project-status.md) 维护，避免任务书复制会快速过期的统计。
 
 阶段 0 无剩余实施项。下一阶段从统一 Context 候选、预算和装配所有权开始，不在旧 stage 组装路径上继续叠加新来源。
@@ -249,7 +250,7 @@ T0-T3 是资源权威、介入优先级和预算语义的逻辑分级，不是�
 
 目标：让一次模型请求的所有 Context 来源、预算和取舍由单一模块负责。
 
-状态：进行中。主要数据链已经实现，当前工作树的测试、typecheck、build、仓库卫生和恢复源检查已恢复为绿色；真实 Provider 校准仍未完成。
+状态：进行中。主要数据链已经实现；2026-07-29 当前工作树的 typecheck、build、仓库卫生和恢复源检查通过，但全量测试为 222 个文件、1534 passed、5 failed、1 skipped，不能写成质量门绿色。真实 Provider 校准仍未完成。
 
 当前进展（2026-07-13）：
 
@@ -258,11 +259,11 @@ T0-T3 是资源权威、介入优先级和预算语义的逻辑分级，不是�
 - Context 候选具有稳定 id、顺序、来源、优先级、必需性和敏感标记；工具提议与工具结果在重复 call id 场景下仍保持唯一候选 id；
 - 已知窗口会预留输出预算；只有注册了匹配 provider/model 的精确计数器时才执行本地精确计数和预算淘汰；必需内容仍超限时明确失败；
 - 生成不保存 Prompt 正文、附件 Base64 或工具参数值的 `ContextSnapshot` 与 `ModelRequestSnapshot`；
-- Provider usage 通过有界 `WeakMap<ChatRequest, snapshotId>` 绑定到准确快照，CLASSIFY、DECIDE、EXECUTE、VERIFY、RECOVER、REPLY、EVOLVE 和 CAPTURE 的真实模型响应均接入 usage 记录；
-- System Prompt bundle 已把基础策略、记忆根索引、bootstrap、输出约束、Workflow/TaskBook、profile 与 reasoning 拆成独立 segment；
+- Provider usage 通过有界 `WeakMap<ChatRequest, snapshotId>` 绑定到准确快照，活动路由、DECIDE、EXECUTE、VERIFY、RECOVER、REPLY、EVOLVE 和 CAPTURE 的真实模型响应均接入 usage 记录；
+- 完整执行路径的 System Prompt bundle 已把基础策略、记忆根索引、bootstrap、输出约束、Workflow/TaskBook、profile 与 reasoning 拆成独立 segment；当前 `respond` 路径使用只包含直接回答所需信息的紧凑 bundle；
 - `packages/session/src/compaction.ts` 已实现非破坏式版本化压缩，支持增量合并旧摘要、消息阈值和精确 Context 占用阈值触发；Runner 在主 run 持久化完成后执行压缩，压缩失败不会把已完成任务误报为失败或中断；
 - Summary Memory 在下一轮作为独立 `summary_memory` segment 注入，原始消息继续保留；
-- 附件已实现 manifest-first 的模型介入：CLASSIFY、DECIDE、REPLY 不接收正文，EXECUTE 才接收已提取文本；图片仍按多模态输入处理；
+- 附件已实现 manifest-first 的模型介入：活动路由、DECIDE、REPLY 不接收正文，EXECUTE 才接收已提取文本；图片仍按多模态输入处理；
 - UI 上下文圆环通过纯函数区分 Provider 实测、本地精确装配和 tokenizer 不可用，显示来源、模型和时间点；
 - 新增 `agents.defaults.contextCompressionThresholdRatio`，默认 `0.8`，合法范围 `0.5-0.95`；
 - 压缩阈值已接入 Local App API、运行时配置持久化和设置页滑块，真实窗口验证 80% → 85% 保存回读后恢复原值；
@@ -301,7 +302,7 @@ T0-T3 是资源权威、介入优先级和预算语义的逻辑分级，不是�
 
 目标：把记忆树升级为 Runtime 可治理、用户前端保持简洁的索引优先 RAG 注册系统。
 
-状态：Runtime 基础契约、迁移、资源注册、统一 `MemoryService`、Summary Memory、附件、项目投影、路径重绑定、插件/Skill 所有权和恢复验收已完成。历史资源目录 UI 已由六份记忆文件视图替代；完整数据根迁移属于阶段 3，实时事件队列与安全重入属于阶段 4。
+状态：Runtime 基础契约、迁移、资源注册、统一 `MemoryService`、Summary Memory、附件、项目投影、路径重绑定、插件/Skill 所有权和恢复验收已完成。历史资源目录 UI 已由六份记忆文件视图替代；完整数据根迁移属于阶段 3，事件队列、安全重入与 TaskBookPatch 基元已在阶段 4 落地。
 
 当前已完成：
 
@@ -315,7 +316,7 @@ T0-T3 是资源权威、介入优先级和预算语义的逻辑分级，不是�
 - Summary Memory 以 session scope 登记，注册表不复制摘要正文，解析时校验 session + summary id，重启后可从 SessionManager 恢复；
 - 附件清单和单项附件以 run scope 登记，ContextSnapshot 使用同一资源 id；附件 data URL 与正文不持久化，活动 run 结束即清除内存正文，同会话下一 run 会删除旧登记；
 - 执行日志从 ContextSnapshot 和记忆访问账本去重收集有界资源 id，保持运行证据与资源目录可关联。
-- 运行时事件账本以 run scope 登记事件数量、类型、状态和 sequence 范围，拒绝错误 run/session 归属、非法序号和重复 id/sequence；注册表与资源展开均不复制 payload 值，未来 `RuntimeEventQueue` 通过 resolver 提供受控摘要。
+- 运行时事件账本以 run scope 登记事件数量、类型、状态和 sequence 范围，拒绝错误 run/session 归属、非法序号和重复 id/sequence；注册表与资源展开均不复制 payload 值，现有 `RuntimeEventQueue` 保存有界 payload，并通过 resolver 只提供受控摘要。
 - 项目记忆形成三层契约：完整权威数据留在 LS 用户数据中；用户明确启用后，项目内生成经过 T1/T2、敏感内容和路径白名单过滤的私有派生投影；共享导出使用独立 Markdown 路径和更严格的置信度白名单，且不会反向覆盖权威记忆。
 - 项目记忆投影的状态、同步、共享导出和安全清理继续由专门项目/内部维护流程承担，不再混入普通记忆文件页；Git 隐私约束保持不变。
 - 投影同步使用文件哈希保护外部修改，覆盖和移除需要确认；移除只允许作用于 LS 最后验证写入的文件。投影缺失、冲突、恢复和停用会与资源目录状态对账，注册表字段也经过完整结构校验。
@@ -411,15 +412,15 @@ T0-T3 是资源权威、介入优先级和预算语义的逻辑分级，不是�
 
 目标：用户在长任务执行中可以自然纠正方向，而不丢失现场。
 
-状态：部分前置已完成；工具调用级有界并行和有界 `RuntimeEventQueue` 基元已实现，但安全边界消费、TaskBookPatch 和 TaskBook 步骤级并行尚未开始。
+状态：运行时重入基元已完成；工具调用级有界并行、`RuntimeEventQueue`、活动 run ingress、Harness 安全边界、确定性 `TaskBookPatch`、延迟事件重规划与检查点快照均已实现。普通前端生产入口、完整用户反馈和 TaskBook 步骤级并行尚未完成。
 
 范围：
 
-- 将已有有界 `RuntimeEventQueue` 接入活动 run，支持在安全边界追加/消费消息、暂停、恢复、设置变更和 LS 内已授权文件活动；
-- 定义安全决策边界和事件优先级；
-- 重新校准需求并生成 `TaskBookPatch`；
-- 保存 TaskBook 版本链和补丁原因，使用户能追溯哪条追加消息改变了哪些未完成步骤；
-- 保护已完成步骤、证据、权限结果和副作用；
+- 已将有界 `RuntimeEventQueue` 接入活动 run、Local App API 和 Harness 安全边界，支持控制事件与任务变化事件分批消费；
+- 已定义控制事件优先级、单一批次租约、原子结算、失败释放和有界恢复；
+- 已支持携带确定性 `TaskBookPatch` 的事件原子修订任务书；未携带 patch 的追加事件进入有界延迟区并回到 DECIDE 重规划；
+- 已保存 TaskBook revision、已应用 patch id、延迟事件和事件游标，保护已完成步骤、证据、权限结果和副作用；
+- 待完成：把普通追加消息、设置变化和工作区事件接入 Renderer 实际生产入口，并展示采纳、忽略、冲突和恢复状态；
 - 为 TaskBook 增加依赖和资源冲突判定，调度无依赖、无冲突的就绪步骤并行执行；
 - 为每个并行分支建立独立取消、工具记录、证据和状态，再按稳定依赖顺序归并；
 - 事件去重、过期、队列溢出和冲突进入可解释状态。
@@ -440,7 +441,7 @@ T0-T3 是资源权威、介入优先级和预算语义的逻辑分级，不是�
 
 目标：让活动任务在中断、异常和应用重启后安全连续。
 
-状态：检查点基元已完成，活动 run 续跑未开始；已有 `AbortSignal`、步骤级局部恢复和 `RunCheckpoint` v1 契约。
+状态：检查点和 Runner 显式续跑基元已完成，应用启动恢复控制面未开始；已有 `AbortSignal`、步骤级局部恢复、`RunCheckpoint` v1、原子 store、disposition/controller 和显式 `resumeCheckpoint()`。
 
 范围：
 
@@ -453,7 +454,7 @@ T0-T3 是资源权威、介入优先级和预算语义的逻辑分级，不是�
 - 只要检查点仍在支持版本与保留期内，恢复不设置固定重启次数；检查点历史、事件和分支状态按容量及时间有界淘汰；
 - 统一限制重试、验证、重规划的次数、时间、成本和无进展轮数。
 
-已完成的检查点基元：LS 数据根和用户工作区使用独立 shadow Git；写入前保存 preimage，run 完成保存 before/after manifest，支持同步回退和 partial 诊断；Runner 关闭时先关闭 SQLite/Embedding，再执行 `shutdown-freeze`。当前回退只处理受管文件，不删除无关未跟踪文件，也不接管用户已有 `.git`。这些检查点尚未被启动流程用作活动 TaskBook 的自动续跑来源。
+已完成的检查点基元：LS 数据根和用户工作区使用独立 shadow Git；写入前保存 preimage，run 完成保存 before/after manifest，支持同步回退和 partial 诊断；Runner 关闭时先关闭 SQLite/Embedding，再执行 `shutdown-freeze`。版本化 `RunCheckpoint` 可原子保存 TaskBook、执行状态、队列快照、权限结果和副作用，Runner 显式续跑不会重复追加原始输入，并会拒绝存在不确定外部副作用的检查点。当前回退只处理受管文件，不删除无关未跟踪文件，也不接管用户已有 `.git`。尚未完成的是应用启动时发现检查点并向用户提供恢复、放弃和查看现场入口。
 
 验收标准：
 
@@ -467,7 +468,7 @@ T0-T3 是资源权威、介入优先级和预算语义的逻辑分级，不是�
 
 目标：默认安静，但让用户能查看和控制真实运行时。
 
-状态：部分前置已完成。上下文圆环与执行过程已有真实数据入口，其余事件队列、检查点、后台任务和记忆变更透明度依赖前述阶段。
+状态：部分前置已完成。上下文圆环与执行过程已有真实数据入口，事件队列和检查点已有 Runtime 数据；普通事件反馈、检查点恢复控制面、后台任务和记忆变更透明度仍依赖后续产品接入。
 
 范围：
 
@@ -522,14 +523,14 @@ T0-T3 是资源权威、介入优先级和预算语义的逻辑分级，不是�
   -> 阶段 7 效率评测
 ```
 
-阶段 1 与阶段 2 可以在契约稳定后部分并行，但阶段 4 必须基于统一 Context 与事件契约；阶段 5 必须基于 TaskBook 差异和副作用记录；阶段 6 只能展示真实底层数据，不能先做假 UI；阶段 7 需要前述能力形成可重复闭环。
+阶段 0、阶段 2、阶段 3 已完成，阶段 4-5 的 Runtime 基元已经落地；阶段 1 只剩真实 Provider 校准和当前 Context 重构收口。阶段 6 只能展示真实底层数据，不能先做假 UI；阶段 7 需要前述能力形成可重复闭环。
 
 本任务书的阶段号只表示 **Runtime 连续性工作线**，不能与 [架构决策报告](../decision/architecture-decision-report.md) 中的模块收敛阶段号混用。全局执行时采用以下协调顺序：
 
-1. 完成阶段 1 的真实 Provider 对账与模型能力校准；
-2. 完成本任务书阶段 2-3 的 T0-T3 记忆注册、现有 Summary Memory 注册、附件生命周期和数据边界，使 Context 来源完整且可控；
-3. 在进入运行中重入和检查点之前，完成架构工作线的统一 Tool Execution Service，固定权限、副作用、超时、中断和证据语义；
-4. 再执行本任务书阶段 4-6 的运行中事件、检查点、后台连续执行和透明控制面；
+1. 先收口当前 `respond / execute / clarify` 与直接回应 Context 重构，恢复完整质量门；
+2. 完成阶段 1 的真实 Provider 对账与模型能力校准；
+3. 完成架构工作线的统一 Tool Execution Service，固定权限、副作用、超时、中断和证据语义；
+4. 在现有队列、安全边界、TaskBookPatch 和 RunCheckpoint 基元上补普通前端事件生产与应用启动恢复控制面，再实现 TaskBook 步骤级并行、后台连续执行和透明控制面；
 5. 最后进行阶段 7 效率评测，并据证据决定 Mode Registry、App 拆分、MCP 和插件 API v2 的后续优先级。
 
 若两条工作线的任务发生依赖冲突，以“先固定数据与副作用契约，再实现恢复和 UI”为原则，不按文档中的数字大小机械排序。
@@ -565,4 +566,4 @@ pnpm.cmd run verify:app-recovery
 
 ## 9. 当前执行状态
 
-阶段 0 已完成；阶段 1 的 Context 候选、来源 segment、精确/不可用 tokenizer 分类、不可展示的保守预算保护、快照、Provider usage 绑定、版本化 Summary Memory、附件清单优先、按需附件工具、压缩阈值设置、双账本 UI 和供应商冒烟工具已形成主要数据链。由于真实 OpenAI、DeepSeek、GLM 校准尚未全部完成，阶段 1 继续保持“进行中”。阶段 2 的 T0-T3 基础契约、v2 迁移、资源注册、Memory Service、索引导航、管理 UI、项目记忆三层投影、稳定项目身份、可恢复路径重绑定、插件/Skill 所有权迁移和大规模资源恢复验收已经完成。阶段 3 的附件缓存、workplace 资源索引和完整数据根迁移工程闭环也已完成。阶段 4 已有工具调用级并行基元，阶段 5 已有 shadow Git 检查点与退出冻结基元；下一实施重点是统一 Tool Execution Service、RuntimeEventQueue、TaskBook 步骤级并行和活动 run 重启续跑，真实 Provider 校准可按密钥和成本条件并行验收。
+阶段 0 已完成；阶段 1 的 Context 候选、来源 segment、精确/不可用 tokenizer 分类、不可展示的保守预算保护、快照、Provider usage 绑定、版本化 Summary Memory、附件清单优先、按需附件工具、压缩阈值设置、双账本 UI 和供应商冒烟工具已形成主要数据链。由于真实 Provider 校准尚未完成，阶段 1 继续保持“进行中”；当前 DeepSeek 凭证可被应用读取，但官方端点返回 HTTP 401 `invalid key`。阶段 2 的 T0-T3 基础契约、v2 迁移、资源注册、Memory Service、索引导航、管理 UI、项目记忆三层投影、稳定项目身份、可恢复路径重绑定、插件/Skill 所有权迁移和大规模资源恢复验收已经完成。阶段 3 的附件缓存、workplace 资源索引和完整数据根迁移工程闭环也已完成。阶段 4 已完成工具调用级并行、RuntimeEventQueue、ingress、安全边界、确定性 TaskBookPatch 和延迟重规划基元；阶段 5 已完成 shadow Git、退出冻结、持久 RunCheckpoint 与 Runner 显式续跑基元。当前先恢复 `respond / execute / clarify` 与直接回应 Context 重构的全量质量门，再完成真实 Provider 校准；随后推进统一 Tool Execution Service、前端事件生产、应用启动恢复控制面、TaskBook 步骤级并行和后台运行。

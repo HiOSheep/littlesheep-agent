@@ -25,6 +25,18 @@ const baseResponse = (content: string): ChatResponse => ({
 });
 
 describe('classifyByLlm', () => {
+  it('uses the merged semantic activity contract', async () => {
+    const llm = mockLlm([baseResponse('{"activity":"respond","confidence":0.95,"reason":"capability question"}')]);
+    const msg = textMessage('user', '但是现在好像还没给你配置网络查询功能吧');
+    const result = await classifyByLlm(msg, [], llm, 'gpt-4o');
+
+    expect(result).toMatchObject({
+      activity: 'respond',
+      type: 'chat',
+      confidence: 0.95,
+    });
+  });
+
   it('parses valid JSON response', async () => {
     const llm = mockLlm([baseResponse('{"type":"problem","confidence":0.9,"reason":"task"}')]);
     const msg = textMessage('user', 'do something');
@@ -120,6 +132,7 @@ describe('classify (integration)', () => {
     });
     expect(result.source).toBe('llm');
     expect(result.type).toBe('problem');
+    expect(result.activity).toBe('execute');
     expect(llm.chat).toHaveBeenCalledTimes(1);
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({ model: 'gpt-4o', max_tokens: 200 });

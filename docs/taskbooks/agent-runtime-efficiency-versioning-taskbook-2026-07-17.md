@@ -1,8 +1,8 @@
 # LittleSheep Agent Runtime 效率与版本化连续性任务书 2026-07-17
 
-最后更新：2026-07-18 02:22:16
+最后更新：2026-07-29 10:47:00
 
-状态：本轮实现已完成工具调用级并行、数据与工作区 shadow Git 检查点、退出冻结和 LLM 调用收敛；本次已完成有界 `RuntimeEventQueue` 基元及快照/决策批次测试，但安全边界消费、TaskBookPatch、活动 run 重启续跑、TaskBook 步骤级并行和后台托盘仍未完成。
+状态：已完成工具调用级并行、数据与工作区 shadow Git 检查点、退出冻结、有界 `RuntimeEventQueue`、活动 run ingress、Harness 安全边界、确定性 `TaskBookPatch`、延迟事件重规划、持久 RunCheckpoint 和 Runner 显式续跑基元。当前工作树正在收口活动路由与直接回应 Context，完整测试仍有 5 项失败；普通前端事件生产、应用启动恢复控制面、TaskBook 步骤级并行和后台托盘仍未完成。
 
 本文是本轮“并行执行、可回退、少而有效地调用 LLM”工作的专项任务书。长期分工以 [架构原则](../principles/architecture-principles.md) 为准，当前事实以 [项目状态](../decision/project-status.md) 为准，旧连续性任务书中的阶段设计仍有效，但与本文冲突的完成状态以本文和项目状态为准。
 
@@ -48,19 +48,29 @@
 
 主要实现：`packages/harness/src/model-observability.ts`、`packages/context/src/engine.ts`、`packages/harness/src/context-candidates.ts`、`packages/harness/src/stages/capture.ts`、`packages/harness/src/stages/execute/final-reply.ts`。
 
-### 2.4 RuntimeEventQueue 基元
+### 2.4 RuntimeEventQueue 与安全重入基元
 
 - `packages/runner/src/runtime-event-queue.ts` 提供 run/session 隔离的有界事件队列；事件数量、payload 大小、事件寿命和决策批次都有硬上限。
 - 入队支持稳定 sequence、事件 id 与 `dedupKey` 幂等去重；重复且语义相同的事件返回已有记录，冲突、越界和容量不足显式拒绝，不静默丢弃。
 - 队列支持过期标记、单一决策批次租约、原子结算和失败释放；已完成事件可裁剪，`cursor` 与序号仍保持连续，避免长 run 的集合无限增长。
 - 快照只保存有界事件状态，恢复时不恢复悬挂的决策租约；`contextSummary()` 只暴露类型、来源、序号和 payload key，不把完整 payload 默认注入 LLM。
-- 当前仅完成运行时基元和隔离测试（专项 `10/10`）；它尚未接入 Harness 的安全决策边界，也不会自行生成或应用 `TaskBookPatch`。
+- `ActiveRunRegistry`、Local App API 和 Renderer API 已提供 run-scoped ingress；停止按钮会发送控制事件。Harness 在每个 stage 前先处理控制事件，再处理任务变化事件。
+- `pause / resume / interrupt` 使用独立安全批次；携带确定性 `TaskBookPatch` 的任务事件会在队列结算成功后原子更新 TaskBook，未携带 patch 的事件进入有界延迟区并回到 DECIDE 重规划。
+- 当前缺口不是队列或安全消费本身，而是普通追加消息、设置变化和工作区事件尚未由 Renderer 完整生产，用户也缺少采纳、忽略、冲突和恢复结果的完整控制面。
+
+### 2.5 持久 RunCheckpoint 与 Runner 显式续跑
+
+- `RunCheckpointStore` 原子保存版本化 TaskBook、步骤执行、事件队列、权限、循环预算和副作用状态，并对数量、大小、版本、作用域和恢复数据做有界校验。
+- disposition/controller 以 claim/complete 事务防止同一检查点并发续跑；Runner 的 `resumeCheckpoint()` 不重复追加原始用户输入，并恢复 TaskBook、事件和执行状态。
+- 不确定外部副作用、缺失原始输入或缺失工具时续跑会失败关闭，不用聊天文本猜测进度。
+- 当前尚未接入应用启动发现、Local App API/Renderer 的恢复、放弃、查看现场入口，因此这是 Runtime 基元，不是完整产品闭环。
+- 2026-07-29 定向复核覆盖队列、活动 run 注册、安全边界、TaskBookPatch、checkpoint store/controller、Runner 续跑和 App ingress，共 9 个测试文件、43 项全部通过。
 
 ## 3. 尚未完成
 
-1. **运行中事件重入**：把已有 `RuntimeEventQueue` 接入安全决策边界，消费用户追加要求、暂停、恢复和设置变更，并只生成局部 `TaskBookPatch`。
+1. **运行中事件产品接入**：把普通追加消息、设置变化和工作区事件接到现有 run-scoped ingress，并在 UI 中展示采纳、忽略、冲突和恢复状态。
 2. **TaskBook 步骤级并行**：为步骤声明依赖、读写集合、副作用和验收标准；无依赖、无冲突步骤才可并行，并按稳定依赖顺序归并结果。
-3. **活动 run 重启续跑**：把 TaskBook、分支状态、事件游标、权限结果和幂等副作用状态纳入可恢复检查点；启动时提供恢复、放弃和现场查看，而不是只恢复数据文件。
+3. **活动 run 恢复控制面**：在已有持久检查点和 Runner 显式续跑之上，启动时提供恢复、放弃和现场查看；Local App API 与 Renderer 必须展示失败关闭原因，不能自动重放不确定副作用。
 4. **后台执行控制面**：托盘状态、重新打开、暂停、中断、彻底退出和关闭窗口策略需要独立语义与 UI；在配套完成前不改变当前关闭行为。
 5. **真实 Provider 校准**：使用 OpenAI、DeepSeek、GLM 真实凭证校准模型窗口、reasoning、usage、上下文本地账本和前台表达质量；mock 只证明本地结构。
 6. **版本治理 UI**：在不把内部 Atom 结构暴露给普通记忆页的前提下，增加用户可理解的 run checkpoint、数据/工作区回退和恢复结果入口。
@@ -87,4 +97,4 @@ pnpm.cmd run verify:app-recovery
 
 ## 6. 后续顺序
 
-先完成真实 Provider 校准和统一 Tool Execution Service，再把已有 RuntimeEventQueue 接入安全消费并实现 TaskBookPatch，随后实现 TaskBook 步骤并行和活动 run 可恢复续跑，最后补后台控制面、版本治理 UI 和效率对比基线。
+先修复当前 `respond / execute / clarify` 与直接回应 Context 重构的 5 项回归，恢复完整质量门；再完成真实 Provider 校准和统一 Tool Execution Service。随后把现有 RuntimeEventQueue 与 RunCheckpoint 基元接入普通前端事件生产和应用启动恢复控制面，再实现 TaskBook 步骤并行，最后补后台控制面、版本治理 UI 和效率对比基线。

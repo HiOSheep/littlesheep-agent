@@ -1,8 +1,9 @@
 // @littlesheep/types — agent.ts
 // Core Flow state machine types: stages, harness, hooks, run lifecycle.
 //
-// This is the heart of LittleSheep. The agent loop is a HARD control-flow
-// state machine — LLM only decides WITHIN a stage, never WHICH stage comes next.
+// This is the heart of LittleSheep. Runtime owns hard control-flow boundaries;
+// the model may choose a bounded semantic activity, but cannot invent tools,
+// permissions, or transitions outside the runtime contract.
 
 import type { Message, ReplyProvenance } from './message.js';
 import type { CompactionSummary, SessionId, SessionRunSummary } from './session.js';
@@ -26,11 +27,29 @@ export type StageName =
   | 'capture'
   | 'finalize';
 
-/** Classification result from CLASSIFY stage. */
+/** The compact semantic activity route selected for an inbound message. */
+export type AgentActivity = 'respond' | 'execute' | 'clarify';
+
+/** Legacy persisted classifier labels kept for old sessions and plugins. */
 export type MessageClass = 'chat' | 'problem' | 'unclear';
 
+export function activityFromMessageClass(value: MessageClass | undefined): AgentActivity {
+  if (value === 'problem') return 'execute';
+  if (value === 'unclear') return 'clarify';
+  return 'respond';
+}
+
+export function messageClassFromActivity(value: AgentActivity): MessageClass {
+  if (value === 'execute') return 'problem';
+  if (value === 'clarify') return 'unclear';
+  return 'chat';
+}
+
 export interface Classification {
-  type: MessageClass;
+  /** New semantic route used by the runtime. */
+  activity?: AgentActivity;
+  /** Legacy route label accepted while old checkpoints and plugins drain. */
+  type?: MessageClass;
   /** 0..1 confidence. Below threshold → LLM fallback. */
   confidence: number;
   /** Which classifier produced this ('rules' | 'llm'). */

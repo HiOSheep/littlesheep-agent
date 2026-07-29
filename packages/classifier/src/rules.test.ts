@@ -44,6 +44,38 @@ describe('classifyByRules', () => {
     expect(classifyByRules('C:\\Users\\test\\file.txt')?.type).toBe('problem');
   });
 
+  it('classifies a capability-status question as chat even when it contains an action word', () => {
+    const result = classifyByRules('但是现在好像还没给你配置网络查询功能吧');
+    expect(result).toMatchObject({
+      activity: 'respond',
+      type: 'chat',
+      reason: 'capability or status question',
+    });
+  });
+
+  it('keeps an explicit configuration request on the problem path', () => {
+    expect(classifyByRules('现在帮我配置网络查询功能吧')).toMatchObject({
+      activity: 'execute',
+      type: 'problem',
+    });
+  });
+
+  it('does not treat a current imperative as a status question', () => {
+    expect(classifyByRules('现在更新这个文件吧')).toMatchObject({
+      activity: 'execute',
+      type: 'problem',
+      reason: 'action verb',
+    });
+  });
+
+  it('keeps a completed-state question on the response path', () => {
+    expect(classifyByRules('现在配置好了吗？')).toMatchObject({
+      activity: 'respond',
+      type: 'chat',
+      reason: 'capability or status question',
+    });
+  });
+
   it('classifies error keywords as problem', () => {
     expect(classifyByRules('there is an error in the log')?.type).toBe('problem');
   });
@@ -79,6 +111,6 @@ describe('classifyByRules', () => {
   it('listRules returns all rules', () => {
     const rules = listRules();
     expect(rules.length).toBeGreaterThan(0);
-    expect(rules.every((r) => r.pattern && r.type && r.confidence > 0)).toBe(true);
+    expect(rules.every((r) => r.pattern && r.activity && r.confidence > 0)).toBe(true);
   });
 });

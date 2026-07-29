@@ -6,9 +6,19 @@ import type { LlmClient, ChatMessage, ChatRequest } from '@littlesheep/llm';
 import type { Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
 import { assembleSystemPromptBundle, resolvePromptConfig } from '@littlesheep/prompt';
-import { attachmentContextMessages, toChatMessage, textOf, userChatMessage } from './_shared.js';
+import {
+  attachmentContextMessages,
+  recentHistoryForModel,
+  toChatMessage,
+  textOf,
+  userChatMessage,
+} from './_shared.js';
 import { appendSystemPromptBundleAddons, buildUserFacingVoiceAddon } from '../profile-prompt.js';
-import { prepareModelRequest, recordProviderUsage } from '../model-observability.js';
+import {
+  preferDirectModelOutput,
+  prepareModelRequest,
+  recordProviderUsage,
+} from '../model-observability.js';
 import { buildRunRequestCandidates } from '../context-candidates.js';
 import { acceptUniqueUserFacingReply, type ReplyRewriteInput } from '../user-facing-reply.js';
 
@@ -25,29 +35,28 @@ export function createReplyStage(deps: ReplyStageDeps) {
     ctx.reply = undefined;
     ctx.replyProvenance = undefined;
     const resolved = resolvePromptConfig(deps.config, deps.branding);
-    // Use 'full' mode so output directives (language, conciseness) apply to chat replies.
-    // 'minimal' mode skips outputDirectivesSection, causing language/conciseness issues.
+    // RESPOND keeps continuity, selected memory, voice and runtime capabilities,
+    // but omits execution-only workflow, memory-navigation and tool discipline.
     const baseSystemPrompt = await assembleSystemPromptBundle(resolved, {
       tools: ctx.tools,
-      bootstrap: ctx.bootstrap ?? {},
-      prelude: ctx.prelude,
+      bootstrap: respondBootstrap(ctx.bootstrap),
       sessionSummary: ctx.sessionSummary,
       memoryRootIndex: ctx.memoryRootIndex,
       initialMemoryContext: ctx.initialMemoryContext,
-    }, 'full');
+    }, 'respond');
     const systemPrompt = appendSystemPromptBundleAddons(baseSystemPrompt, [
       { id: 'profile', text: ctx.profilePromptAddon },
-      { id: 'reasoning', text: ctx.reasoningPromptAddon },
       { id: 'user-facing-voice', text: buildUserFacingVoiceAddon(ctx) },
     ]);
 
     const attachmentMessages = attachmentContextMessages(ctx.runId, ctx.attachments);
+    const history = recentHistoryForModel(ctx.history, 8, 6_000);
     const messages: ChatMessage[] = [
       {
         role: 'system',
         content: systemPrompt.text,
       },
-      ...ctx.history.map(toChatMessage),
+      ...history.map(toChatMessage),
       ...attachmentMessages.map((item) => item.message),
       userChatMessage(textOf(ctx.inbound), ctx.attachments),
     ];
@@ -60,14 +69,16 @@ export function createReplyStage(deps: ReplyStageDeps) {
         model: deps.model,
         messages,
         temperature: 0.7,
+        max_tokens: 1_200,
         signal: ctx.signal,
         stream,
       } satisfies ChatRequest;
       const req = prepareModelRequest(
         ctx,
         'reply',
-        rawRequest,
+        preferDirectModelOutput(ctx, rawRequest, { force: true }),
         buildRunRequestCandidates(ctx, 'reply', rawRequest.messages, {
+          history,
           systemSegments: systemPrompt.segments,
           insertedBeforePrimary: attachmentMessages.map((item) => item.context),
         }),
@@ -148,16 +159,16 @@ async function rewriteReply(
       },
     ],
     temperature: 0.75,
-    max_tokens: 4_096,
+    max_tokens: 1_200,
     signal: ctx.signal,
     stream: false,
   } satisfies ChatRequest;
   const request = prepareModelRequest(
     ctx,
     'reply',
-    rawRequest,
+    preferDirectModelOutput(ctx, rawRequest, { force: true }),
     buildRunRequestCandidates(ctx, 'reply', rawRequest.messages, {
-      history: ctx.history,
+      history: recentHistoryForModel(ctx.history, 8, 6_000),
       primaryUserKind: 'user_input',
     }),
   );
@@ -172,4 +183,9 @@ async function rewriteReply(
     };
   }
   return response.content;
+}
+
+function respondBootstrap(bootstrap: RunContext['bootstrap']): Record<string, string> {
+  const user = bootstrap?.['USER.md']?.trim();
+  return user ? { 'USER.md': user } : {};
 }

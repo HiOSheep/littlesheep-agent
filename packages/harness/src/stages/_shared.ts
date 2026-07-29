@@ -25,6 +25,47 @@ export function toChatMessage(m: Message): ChatMessage {
   return { role, content: text };
 }
 
+/**
+ * Keep model requests bounded while the durable transcript remains complete.
+ * Older turns are represented by the session summary or memory indexes; they
+ * should not be re-sent verbatim on every planning call.
+ */
+export function recentHistoryForModel(
+  history: Message[],
+  maxMessages = 8,
+  maxChars = 6_000,
+): Message[] {
+  const candidates = history.slice(-Math.max(0, maxMessages));
+  const selected: Message[] = [];
+  let remaining = Math.max(0, maxChars);
+
+  for (let index = candidates.length - 1; index >= 0 && remaining > 0; index -= 1) {
+    const message = candidates[index]!;
+    const length = textOf(message).length;
+    if (length <= remaining) {
+      selected.push(message);
+      remaining -= length;
+      continue;
+    }
+    if (selected.length === 0) selected.push(truncateMessageForModel(message, remaining));
+    break;
+  }
+  return selected.reverse();
+}
+
+function truncateMessageForModel(message: Message, maxChars: number): Message {
+  const budget = Math.max(0, maxChars);
+  if (budget === 0) return { ...message, content: [] };
+  const text = textOf(message);
+  if (text.length <= budget) return message;
+  const marker = '\n... [older message truncated] ...\n';
+  const contentBudget = Math.max(0, budget - marker.length);
+  const head = Math.ceil(contentBudget / 2);
+  const tail = Math.floor(contentBudget / 2);
+  const bounded = `${text.slice(0, head)}${marker}${tail > 0 ? text.slice(-tail) : ''}`;
+  return { ...message, content: [{ type: 'text', text: bounded }] };
+}
+
 /** Build the inbound user message, including image attachments as data URLs. */
 export function userChatMessage(
   text: string,
@@ -128,9 +169,12 @@ export async function callLlmForJson<T>(
     maxAttempts?: number;
     temperature?: number;
     maxTokens?: number;
+    /** Upper bound used only after an empty response exhausts the initial budget. */
+    maxTokensCeiling?: number;
     signal?: AbortSignal;
     onRequest?: (
       request: import('@littlesheep/llm').ChatRequest,
+      retry: { attempt: number; previousResponseWasEmpty: boolean },
     ) => import('@littlesheep/llm').ChatRequest | void;
     onResponse?: (
       request: import('@littlesheep/llm').ChatRequest,
@@ -139,26 +183,38 @@ export async function callLlmForJson<T>(
   } = {},
 ): Promise<{ parsed: T | null; attempts: number; lastResponse?: ChatResponse }> {
   const maxAttempts = opts.maxAttempts ?? 3;
+  const initialMaxTokens = opts.maxTokens ?? 1000;
+  const maxTokensCeiling = Math.max(initialMaxTokens, opts.maxTokensCeiling ?? initialMaxTokens);
+  let currentMaxTokens = initialMaxTokens;
   let lastResponse: ChatResponse | undefined;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const previousResponseWasEmpty = Boolean(lastResponse && !lastResponse.content.trim());
     // On retry, append corrective feedback — naive identical-message retries
     // tend to reproduce the same malformation.
     const msgs: ChatMessage[] = attempt > 1
-      ? [...messages, { role: 'user', content: 'Your previous response was not valid JSON. Return ONLY a raw JSON object — no markdown fences, no surrounding prose.' }]
+      ? [...messages, {
+          role: 'user',
+          content: previousResponseWasEmpty
+            ? 'Your previous response produced no final JSON text. Return the required raw JSON object now. Keep private reasoning bounded and leave enough output budget for the complete JSON.'
+            : 'Your previous response was not valid JSON. Return ONLY a raw JSON object — no markdown fences, no surrounding prose.',
+        }]
       : messages;
     const request = {
       model,
       messages: msgs,
       temperature: opts.temperature ?? 0,
-      max_tokens: opts.maxTokens ?? 1000,
+      max_tokens: currentMaxTokens,
       signal: opts.signal,
     };
-    const preparedRequest = opts.onRequest?.(request) ?? request;
+    const preparedRequest = opts.onRequest?.(request, { attempt, previousResponseWasEmpty }) ?? request;
     const res = await llm.chat(preparedRequest);
     opts.onResponse?.(preparedRequest, res);
     lastResponse = res;
     const parsed = extractJson(res.content) as T | null;
     if (parsed !== null) return { parsed, attempts: attempt, lastResponse: res };
+    if (!res.content.trim() && currentMaxTokens < maxTokensCeiling) {
+      currentMaxTokens = Math.min(maxTokensCeiling, Math.max(currentMaxTokens + 1, currentMaxTokens * 2));
+    }
   }
   return { parsed: null, attempts: maxAttempts, lastResponse };
 }

@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-07-19 09:48:44
+最后更新：2026-07-29 10:47:00
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
@@ -60,10 +60,10 @@
 | 包 | 归属和职责 |
 | --- | --- |
 | `packages/types/` | Agent、消息、会话、工具、记忆、澄清请求，以及 Mode、运行决议、Context、附件、运行事件、TaskBookPatch、检查点、模型请求和执行证据等内部 v1 契约。 |
-| `packages/classifier/` | 闲聊/问题/不清晰分类，含规则快速路径和模型兜底。 |
-| `packages/prompt/` | 系统提示词、行为 profile、工作区信息和记忆树根索引的装配。 |
-| `packages/harness/` | 硬控制流状态机、TaskBook、各 stage、hooks、局部重规划和验证；`src/stages/decide/`、`execute/`、`verify/` 分别拥有需求校准、工具执行和结构验收的内部基元。 |
-| `packages/runner/` | 运行时装配、单次 run、流式事件、执行日志和基础设施依赖注入。 |
+| `packages/classifier/` | `respond / execute / clarify` 语义活动路由，含规则快速路径和模型兜底；旧 `chat / problem / unclear` 只由公共契约做兼容映射。 |
+| `packages/prompt/` | 系统提示词、行为 profile、工作区信息和记忆树根索引的装配；支持完整执行、紧凑 `respond`、最小与禁用四种投影模式。 |
+| `packages/harness/` | 硬控制流状态机、TaskBook、各 stage、hooks、局部重规划和验证；`src/stages/decide/request.ts`、`model-call.ts`、`adoption.ts` 分别拥有决策请求、模型调用和采用，`execute/`、`verify/` 拥有工具执行与结构验收；`runtime-control-boundary.ts` 和 `taskbook-patch.ts` 拥有运行中事件的安全消费与确定性局部修订。 |
+| `packages/runner/` | 运行时装配、单次 run、流式事件、执行日志、活动 run 事件注册、持久检查点、显式续跑和基础设施依赖注入。 |
 | `packages/llm/` | OpenAI-compatible 客户端、供应商请求、流式输出、重试和 usage 类型。 |
 | `packages/config/` | 配置 schema、默认值、供应商预置、模型选择和用户配置加载。 |
 | `packages/context/` | Context 候选排序、模型窗口预算、可注入精确 token 计数、预算淘汰、压缩阈值信号以及脱敏 `ContextSnapshot` / `ModelRequestSnapshot`。`src/engine.ts` 是兼容 facade，内部实现位于 `src/context-engine/`；本包不负责记忆存储、会话存储或 Provider 调用。 |
@@ -107,8 +107,8 @@
 
 | 需求类型 | 主要所有者 | 首要入口 | 主要测试 |
 | --- | --- | --- | --- |
-| Agent 状态机、TaskBook、验证或恢复 | `packages/harness/` | `src/default-harness.ts`、`src/stages/*.ts`；复杂阶段内部实现位于 `src/stages/decide/`、`execute/`、`verify/` | `src/default-harness.test.ts`、`src/stages/*.test.ts`、`src/e2e.test.ts` |
-| 单次 run、流式事件、执行日志与上一轮有界摘要 | `packages/runner/` | `src/runner.ts`、`src/execution-log.ts`、`src/session-run-summary.ts` | `src/runner.test.ts`、`src/execution-log.test.ts` |
+| Agent 状态机、活动路由、TaskBook、验证或恢复 | `packages/harness/`、`packages/classifier/` | `harness/src/default-harness.ts`、`src/stages/classify.ts`、`src/stages/decide/{request,model-call,adoption}.ts`、`runtime-control-boundary.ts`、`taskbook-patch.ts`；语义路由规则位于 `classifier/src/{rules,llm}.ts` | `harness/src/default-harness.test.ts`、`src/stages/*.test.ts`、`runtime-control-boundary.test.ts`、`taskbook-patch.test.ts`、`classifier/src/*.test.ts` |
+| 单次 run、流式事件、执行日志、上一轮有界摘要与活动续跑 | `packages/runner/` | `src/runner.ts`、`src/execution-log.ts`、`src/session-run-summary.ts`、`src/runtime-event-queue.ts`、`src/active-run-registry.ts`、`src/run-checkpoint-*.ts` | `src/runner.test.ts`、`src/execution-log.test.ts`、`src/runtime-event-queue.test.ts`、`src/runner-continuation.test.ts`、`src/run-checkpoint-*.test.ts` |
 | 公共运行契约 | `packages/types/` | `src/index.ts`、`src/runtime-contracts.ts` | `src/runtime-contracts.test.ts`、`test/core-agent-contracts.test.ts` |
 | Context 候选、预算、计数和快照 | `packages/context/` | `src/engine.ts` facade、`src/context-engine/` | `src/engine.test.ts`、Harness Context/观测测试 |
 | Provider 请求、流式与 usage | `packages/llm/` | `src/client.ts` | `src/client.test.ts`、Provider smoke 脚本 |
@@ -195,7 +195,7 @@ App / CLI / Channel adapters
 7. 跨包只从公开入口导入；出现反向依赖时先定义端口，不通过深层 import 或循环依赖解决。
 8. 新建 package 需要同时满足独立职责、稳定接口、独立测试和真实复用；否则先在现有 package 内按 feature 拆分。
 
-Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约过滤、预算、淘汰、计数和双快照；provider/model tokenizer 能力矩阵强制模型声明与运行时 `counterId` 一致后才能生成精确账本，unavailable 模型只使用不可展示的保守请求前预算保护，当前仍缺真实 Provider 对账。Memory Repository 与 Memory Service 已分别把持久化和运行协调拆入同名领域目录；DECIDE、EXECUTE、VERIFY 也已把需求校准、工具循环、步骤调度和验证恢复从 stage facade 中分离。版本化 LLM Call Contract 位于 `packages/harness/src/llm-call-contracts/`，公共类型唯一来源是 `packages/types/src/runtime-contracts.ts`；EVOLVE/CAPTURE 的提交判定位于 `stages/memory-intent-gate.ts`。下一步收敛统一 Tool Execution Service、实时事件队列和 Mode Registry。不能因为已有 package 或接口就宣称真实场景已经完成，具体评估和演进顺序见 [架构决策报告](../decision/architecture-decision-report.md)。
+Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约过滤、预算、淘汰、计数和双快照；provider/model tokenizer 能力矩阵强制模型声明与运行时 `counterId` 一致后才能生成精确账本，unavailable 模型只使用不可展示的保守请求前预算保护，当前仍缺真实 Provider 对账。Memory Repository 与 Memory Service 已分别把持久化和运行协调拆入同名领域目录；DECIDE、EXECUTE、VERIFY 也已把需求校准、模型调用、工具循环、步骤调度和验证恢复从 stage facade 中分离。版本化 LLM Call Contract 位于 `packages/harness/src/llm-call-contracts/`，公共类型唯一来源是 `packages/types/src/runtime-contracts.ts`；EVOLVE/CAPTURE 的提交判定位于 `stages/memory-intent-gate.ts`。运行时事件的队列、活动 run ingress、安全边界、TaskBookPatch、持久检查点和 Runner 显式续跑已有独立模块；下一步收敛统一 Tool Execution Service、前端事件生产、应用启动恢复控制面和 Mode Registry。不能因为已有 package 或接口就宣称真实场景已经完成，具体评估和演进顺序见 [架构决策报告](../decision/architecture-decision-report.md)。
 
 ## 测试与脚本
 

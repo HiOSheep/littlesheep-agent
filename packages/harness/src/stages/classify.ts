@@ -1,18 +1,27 @@
 // @littlesheep/harness — stages/classify.ts
-// CLASSIFY: rule fast path + LLM fallback. Writes ctx.classification and
-// routes to reply (chat) / decide (problem) / ask_user (truly unclear).
+// CLASSIFY is retained as a compatibility boundary, but semantically it is a
+// compact activity router: respond / execute / clarify.
 //
 // Design principle: "understanding is the agent's job, not the user's."
 // Casual ambiguity should be classified as chat and handled naturally. The
 // classifier reserves unclear for input with no actionable meaning, which is a
 // first-class clarification request rather than an execution error.
 
-import type { RunContext, StageResult, StageName } from '@littlesheep/types';
+import {
+  activityFromMessageClass,
+  type RunContext,
+  type StageResult,
+  type StageName,
+} from '@littlesheep/types';
 import type { LlmClient } from '@littlesheep/llm';
 import { classify } from '@littlesheep/classifier';
-import { prepareModelRequest, recordProviderUsage } from '../model-observability.js';
+import {
+  preferDirectModelOutput,
+  prepareModelRequest,
+  recordProviderUsage,
+} from '../model-observability.js';
 import { buildRunRequestCandidates } from '../context-candidates.js';
-import { attachmentManifestText } from './_shared.js';
+import { attachmentManifestText, recentHistoryForModel } from './_shared.js';
 
 function inboundText(ctx: RunContext): string {
   return ctx.inbound.content
@@ -33,27 +42,28 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
   return async function classifyStage(ctx: RunContext): Promise<StageResult> {
     let next: StageName;
     try {
-      const classifierHistory = ctx.history.slice(-5);
+      const classifierHistory = recentHistoryForModel(ctx.history, 4, 1_800);
       const manifest = attachmentManifestText(ctx.attachments);
       const classificationInbound = manifest
         ? { ...ctx.inbound, content: [...ctx.inbound.content, { type: 'text' as const, text: manifest }] }
         : ctx.inbound;
-      const cls = await classify(classificationInbound, ctx.history, {
+      const cls = await classify(classificationInbound, classifierHistory, {
         llm: deps.llm,
         model: deps.model,
         rulesConfidenceThreshold: deps.rulesConfidenceThreshold ?? 0.7,
         onRequest: (request) => prepareModelRequest(
           ctx,
           'classify',
-          request,
+          preferDirectModelOutput(ctx, request, { force: true }),
           buildRunRequestCandidates(ctx, 'classify', request.messages, { history: classifierHistory }),
         ),
         onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
       });
       ctx.classification = cls;
-      if (cls.type === 'problem') {
+      const activity = cls.activity ?? activityFromMessageClass(cls.type);
+      if (activity === 'execute') {
         next = 'decide';
-      } else if (cls.type === 'unclear') {
+      } else if (activity === 'clarify') {
         const originalRequest = inboundText(ctx);
         ctx.clarificationRequest = {
           id: `${ctx.runId}:clarification`,
@@ -81,7 +91,8 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
     } catch (err) {
       // Classifier never throws in practice, but defend against transport errors.
       ctx.classification = {
-        type: 'unclear',
+        activity: 'respond',
+        type: 'chat',
         confidence: 0.3,
         source: 'llm',
         reason: `classify error: ${(err as Error).message}`,
@@ -94,7 +105,11 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
       stage: 'classify',
       next,
       ok: true,
-      meta: { classification: ctx.classification },
+      meta: {
+        activity: ctx.classification?.activity
+          ?? activityFromMessageClass(ctx.classification?.type),
+        classification: ctx.classification,
+      },
     };
   };
 }

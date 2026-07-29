@@ -73,7 +73,11 @@ describe('replyStage', () => {
       '单发是800啊',
       '假如你拥有了152，会怎么做呢？',
     ]));
-    expect(ctx.contextSnapshots?.[0]?.safetyEstimate?.estimatedPromptTokens).toBeGreaterThan(16_000);
+    expect(ctx.contextSnapshots?.[0]?.safetyEstimate?.estimatedPromptTokens).toBeLessThan(8_000);
+    const systemPrompt = String(requests[0]?.messages[0]?.content);
+    expect(systemPrompt).toContain('# Memory Tree Root Index');
+    expect(systemPrompt).toContain('root index truncated');
+    expect(systemPrompt).not.toContain('root index -> branch index -> node/query expansion');
     expect(ctx.contextSnapshots?.[0]?.items
       .filter((item) => item.kind === 'recent_message')
       .every((item) => item.disposition === 'included')).toBe(true);

@@ -2,23 +2,28 @@
 // LLM fallback classifier. Called when rules don't match or confidence is low.
 
 import type { ChatRequest, ChatResponse, LlmClient, ChatMessage } from '@littlesheep/llm';
-import type { Classification, Message, MessageClass } from '@littlesheep/types';
+import {
+  activityFromMessageClass,
+  messageClassFromActivity,
+  type AgentActivity,
+  type Classification,
+  type Message,
+  type MessageClass,
+} from '@littlesheep/types';
 
-const SYSTEM_PROMPT = `You are a message classifier for an AI agent. Classify the user's last message into exactly one of:
+const SYSTEM_PROMPT = `Choose the next LittleSheep activity for the user's latest message.
 
-- "chat": casual conversation, greetings, small talk, opinions, factual questions, confirmations, or continuations of an ongoing dialogue.
-- "problem": a task that requires tools, multi-step work, file operations, coding, debugging, or execution.
-- "unclear": the message is completely nonsensical or empty.
+- "respond": answer or continue the conversation directly. This includes questions about LS capabilities or current status.
+- "execute": the user asks LS to inspect, change, create, run, or otherwise complete a concrete task with tools.
+- "clarify": the request is genuinely impossible to understand or unsafe to act on without one missing fact.
 
-Respond ONLY with a JSON object, no markdown:
-{"type": "chat"|"problem"|"unclear", "confidence": 0.0-1.0, "reason": "short explanation"}
+Prefer "respond" when ordinary conversation can resolve the message. Do not choose "execute" merely because the message mentions an action word. Do not choose "clarify" for normal ambiguity that can be understood from recent context.
 
-Guidelines:
-- If the message asks to do something concrete → "problem".
-- If it's a greeting, chitchat, a question, a confirmation, or a response to previous context → "chat".
-- When in doubt, default to "chat" — the agent should try to understand from context, not ask the user.
-- Only use "unclear" for truly meaningless input (e.g. random characters, empty message).
-- confidence reflects how sure you are.`;
+Return only JSON:
+{"activity":"respond"|"execute"|"clarify","confidence":0.0-1.0,"reason":"short explanation"}`;
+
+const ACTIVITIES: readonly AgentActivity[] = ['respond', 'execute', 'clarify'];
+const LEGACY_TYPES: readonly MessageClass[] = ['chat', 'problem', 'unclear'];
 
 /** Extract text content from a Message. */
 function textOf(m: Message): string {
@@ -56,6 +61,7 @@ export async function classifyByLlm(
     content = res.content;
   } catch (err) {
     return {
+      activity: 'respond',
       type: 'chat',
       confidence: 0.3,
       source: 'llm',
@@ -67,11 +73,17 @@ export async function classifyByLlm(
   const jsonMatch = content.match(/\{[\s\S]*\}/);
   if (jsonMatch) {
     try {
-      const parsed = JSON.parse(jsonMatch[0]) as { type?: string; confidence?: number; reason?: string };
-      const validTypes: MessageClass[] = ['chat', 'problem', 'unclear'];
-      if (parsed.type && validTypes.includes(parsed.type as MessageClass)) {
+      const parsed = JSON.parse(jsonMatch[0]) as {
+        activity?: string;
+        type?: string;
+        confidence?: number;
+        reason?: string;
+      };
+      const activity = parseActivity(parsed.activity, parsed.type);
+      if (activity) {
         return {
-          type: parsed.type as MessageClass,
+          activity,
+          type: messageClassFromActivity(activity),
           confidence: typeof parsed.confidence === 'number'
             ? Math.max(0, Math.min(1, parsed.confidence))
             : 0.6,
@@ -85,9 +97,18 @@ export async function classifyByLlm(
   }
 
   return {
+    activity: 'respond',
     type: 'chat',
     confidence: 0.4,
     source: 'llm',
     reason: 'failed to parse LLM response',
   };
+}
+
+function parseActivity(activity: string | undefined, legacyType: string | undefined): AgentActivity | undefined {
+  if (activity && ACTIVITIES.includes(activity as AgentActivity)) return activity as AgentActivity;
+  if (legacyType && LEGACY_TYPES.includes(legacyType as MessageClass)) {
+    return activityFromMessageClass(legacyType as MessageClass);
+  }
+  return undefined;
 }

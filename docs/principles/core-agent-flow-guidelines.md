@@ -1,6 +1,6 @@
 # LittleSheep 核心 Agent 流程规范
 
-最后更新：2026-07-17 22:52:26
+最后更新：2026-07-29 10:47:00
 
 本文是 [LittleSheep 架构原则](architecture-principles.md) 在 Core Flow、TaskBook、验证、恢复和记忆运行时上的专项约束。LLM 与 Agent、Mode 与权限、Context 与 Memory、Harness 与 Tool Execution 的顶层分工以架构原则为准；本文不重复维护另一套总架构。
 
@@ -10,23 +10,27 @@
 
 ## 目标流程
 
-复杂任务的目标循环如下，简单任务可以跳过不需要的阶段：
+每次 run 先选择一个有界语义活动，复杂任务再进入完整执行循环：
 
 ```text
-用户输入
-  -> 校准需求并识别缺失信息
+ENTER -> 活动路由 -> respond ------------------------------> REPLY -> FINALIZE
+                 -> execute -> DECIDE -> EXECUTE -> VERIFY -> EVOLVE -> CAPTURE -> FINALIZE
+                 -> clarify -----------------------------> ASK_USER -> FINALIZE
+
+execute 内部：
+  校准需求并识别缺失信息
   -> 获取可靠来源并按需装配 Context
   -> 创建或修订 TaskBook
   -> 按 TaskBook 调度串行或可安全并行的步骤
   -> 在安全决策边界消费用户追加消息或 LS 事件
   -> 局部修订未完成步骤
   -> 按目标和验收标准验证
-     -> 通过：FINALIZE
+     -> 通过：EVOLVE / CAPTURE / FINALIZE
      -> 可恢复失败：RECOVER 后继续
      -> 缺少关键决策：ASK_USER
 ```
 
-这是一条可重复进入的受控循环，不是要求每个请求都完整走一遍。闲聊和简单回答走轻量路径；复杂任务可以重复“执行、接收新信息、修订、验证”，但所有循环都必须有界。
+`respond` 用于直接回答、继续对话和能力/状态说明；`execute` 用于确实需要检查、修改、创建、运行或调用工具完成的任务；`clarify` 只用于缺少一个关键事实而无法安全、可靠继续的情况。这是一条可重复进入的受控循环，不要求每个请求都完整走一遍。内部 `classify` stage id 与旧 `chat / problem / unclear` 字段暂时只承担会话、检查点和插件兼容，不再定义产品语义。
 
 ## 用户体验契约
 
@@ -181,7 +185,7 @@
 - `RECOVER` 安装修订版旧计划时会清理过期任务书。
 - 缺少信息时使用一等的 `ClarificationRequest` 和 `ClarificationResponse`，不再把正常提问伪装成 `lastError`。
 - 澄清请求及下一轮用户回答会持久化到会话消息、run 结果和执行日志。
-- 真正缺少关键决策或无法可靠判断目标的 `unclear` 输入进入 `ASK_USER`；普通歧义、轻微模糊和上下文续答留在 chat 路径，避免过度追问。
+- 真正缺少关键决策或无法可靠判断目标的输入选择 `clarify` 并进入 `ASK_USER`；普通歧义、轻微模糊、能力/状态问题和上下文续答选择 `respond`，避免过度追问或误启用 TaskBook。
 - `VERIFY` 识别失败或未完成的步骤 id，并生成有边界的 `PartialReplanRequest`，不替换整本任务书。
 - `DECIDE` 只能修改目标步骤；已完成步骤、证据、任务目标、成功标准和范围限制由代码保护。
 - `EXECUTE` 从失败或未完成步骤继续执行，并保留已完成结果。
@@ -191,15 +195,15 @@
 - 运行时强制 `root index -> branch index -> expansion -> branch-scoped deep search`；D1 只在已限定 branch/scope 内使用层级与 FTS 索引，不调用 Embedding。task relevance 由独立评分器计算，不混入 confidence、importance 或历史 usefulness；prime 检查每分支最多 80 个 D1 条目后执行 `> 0.25` admission 和最强相关簇截断。高相关种子可经同 branch/scope/subtree 的有界一跳关系发现必要候选，强关系候选只有独立通过任务门后才能进入首次 working set；路径与 route 证据进入 KnownState。版本化会话摘要已接入同一任务语义，仅在真实指代且近期锚点不足时回退。前置条件失败时记录为零注入 token，普通展开不能调用向量来源。同一次分支内深搜的查询向量必须跨已授权 scope 复用，不能因 scope 数量重复计算。
 - 结构化记忆写入具备阈值、写侧安全检查、父级索引原子更新、审计记录、恢复排队、去重和合并。
 - TaskBook、步骤、工具调用、验证结果和最终回复会进入执行日志，历史 UI 与实时过程使用同一套无气泡展示结构。
-- `@littlesheep/context` 已接管显式候选、稳定排序、窗口预算、可选项淘汰、压缩建议和脱敏 `ContextSnapshot`；System Prompt 内部已经按基础策略、记忆根索引、bootstrap 文件、行为 profile、reasoning、Workflow/TaskBook 和输出约束拆成可追溯 segment。
+- `@littlesheep/context` 已接管显式候选、稳定排序、窗口预算、可选项淘汰、压缩建议和脱敏 `ContextSnapshot`。`execute` 路径继续把基础策略、记忆根索引、bootstrap、行为 profile、reasoning、Workflow/TaskBook 和输出约束拆成可追溯 segment；`respond` 路径只投影身份、能力名、`USER.md`、受限记忆索引、相关摘要/Atom、最近历史和紧凑输出约束，不重复注入执行专用信息。
 - 每次模型请求都解析独立、版本化的 `LlmCallContract`，明确 purpose、stage、Context 来源、允许决策、输出结构、工具、记忆意图和预算；缺少必需 Context、stage 不匹配、工具越权或预算无效时在发送前失败关闭，`FINALIZE` 禁止额外模型调用。
 - `CAPTURE` 默认从已经持久化的用户可见运行事实确定性生成 daily 记录；`EVOLVE` 按复杂度和记忆信号自适应调用。用户可见的聊天回复、澄清问题、任务/步骤说明、验证说明、执行结论和交付表达必须在当次 run 中实时调用当前 Provider API，由 LLM 结合 `SOUL.md`/profile 现场生成；这不是候选文案选择流程，不能从模板库、预备文案池或历史回答选取新消息。`ReplyProvenance` 绑定真实模型请求，`FINALIZE` 必须回查请求后才可发布。已经生成的回复只能在同一 UI 回合的更新、日志和持久化中复用，不能再次作为新消息发送。API 返回在发布前通过持久化会话级注册表原子占用规范化指纹；完全重复时最多重新实时调用两次当前 Provider API，仍重复、为空、注册表不可用或模型不可用时只显示 Runtime 错误/状态，不使用确定性 Agent 降级文案。UI 控件、状态、路径、权限和进度数字仍由 Runtime 稳定提供。
 - EVOLVE/CAPTURE 只接收模型的结构化记忆建议；模型不得自报 verified 或 authority。运行时会验证 asserted source，证据不足时降级为 LS 自身的未验证陈述并丢弃不可信主体 id/label；`invalidate` 与 `conflict` 只延期审计而不直接修改记忆。`PHILOSOPHY.md` 已作为显式理念资源注册，只沿索引按任务相关性和预算展开，不进入常驻 Prompt bootstrap。
 - 本地精确 ledger 与 Provider usage 已使用不同结构保存，Provider usage 会绑定到产生它的准确 Context 快照；UI 能区分“供应商实测”“本地精确装配”和“tokenizer 不可用”，不会用字符换算冒充真实 token。
 - 会话压缩已实现为非破坏式、版本化 Summary Memory：原始 JSONL 消息保留，旧消息摘要在下一轮作为独立 `summary_memory` 来源介入，并可按消息阈值或精确 Context 占用阈值触发。
-- CLASSIFY、DECIDE 和 REPLY 只接收附件清单；非图片正文通过当前 run 专属的 `inspect_attachment` 只读工具按需解析，未调用时不会读取文件正文，工具结果再进入 Context。图片仍按受限大小读取为多模态输入。
+- 活动路由（内部兼容 stage id 为 `classify`）、DECIDE 和 REPLY 只接收附件清单；非图片正文通过当前 run 专属的 `inspect_attachment` 只读工具按需解析，未调用时不会读取文件正文，工具结果再进入 Context。图片仍按受限大小读取为多模态输入。
 - 当前记忆层级已升级为 T0-T3，并通过版本化迁移保留旧 T1-T3 数值与数据；T0 只承载固定预算的核心索引和安全信息。
-- 当前已支持 `AbortSignal`、步骤级局部恢复、工具调用级有界并行、shadow Git 数据/工作区检查点、退出冻结和历史执行记录重放；尚未实现运行中用户事件队列、安全重入协议、TaskBook 步骤级并行、活动 run 启动续跑和后台托盘。
+- 当前已支持 `AbortSignal`、步骤级局部恢复、工具调用级有界并行、shadow Git 数据/工作区检查点、退出冻结、历史执行记录重放、有界 `RuntimeEventQueue`、活动 run ingress、Harness 安全边界消费、确定性 `TaskBookPatch`、延迟事件重规划、检查点快照和 Runner 显式续跑；尚未完成普通前端事件生产、应用启动恢复控制面、TaskBook 步骤级并行和后台托盘。
 - 内置写入、编辑与命令工具已接入宿主级核心源码只读根；读、grep、glob 等诊断仍可用。第三方本地插件代码仍属于显式完全信任边界，不能把插件信任误写成系统级代码沙箱。
 
 ## 后续硬化方向
@@ -208,7 +212,7 @@
 - Provider/模型 tokenizer 能力矩阵已经建立：只有模型能力声明和运行时计数器 id 一致时才允许精确账本，当前内置模型均保持 unavailable。对于 unavailable 模型，Context Engine 已使用最终 Chat Completions 载荷的 UTF-8 保守估算和独立图片预算做请求前防溢出、可选项淘汰与压缩触发；该估算明确不可展示为真实 token。下一步完成本地装配、安全估算与 Provider usage 的真实对账验收。
 - 压缩后任务锚点的本地 BGE 与重启连续性门已经完成；继续验证真实 Provider 长会话中的任务约束、未完成步骤、记忆来源、权限结果、摘要失败回退、工具副作用恢复和成本。附件缓存、ownership 清理、workplace 索引和可回滚数据根迁移已完成工程闭环，后续只做真实用户场景验收与发布兼容。
 - 旧 `distillDailyToMemory()/markDistilled()` 原始追加 helper 已退役并由仓库卫生门阻止回流；任何未来 daily 到长期记忆的蒸馏都必须走安全、去重、可回滚的结构化写入闸门。
-- 实体/关系 catalog 与有界一跳候选发现已经实现；下一步建立自动关系投影与冲突/替代调和，关系必须经稳定实体、方向、作用域、来源和证据验证后才能激活。Skill 治理队列仍待实现，Skill 相似度不自动合并或删除。
+- 实体/关系 Catalog、有界一跳候选发现、自动关系投影、提交后激活、启动补偿和冲突/替代调和已经实现；后续重点是真实 Provider 提案质量与长期关系演化。Skill 治理队列仍待实现，Skill 相似度不自动合并或删除。
 - 实现 `packages/mcp/` 客户端，同时复用内置工具的权限、超时、清洗和执行记录契约。
 - 继续进行工作区、渠道、记忆树和重启恢复的真实用户场景验收。
 - 按 [Agent Runtime 连续性任务书 2026-07-14](../taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md) 和 [Agent Runtime 效率与版本化连续性任务书 2026-07-17](../taskbooks/agent-runtime-efficiency-versioning-taskbook-2026-07-17.md) 建立 Context、T0-T3、附件、运行中重入、有界并行、检查点、后台执行和双向透明的完整闭环；仓库拆分和 LLM Call Contract 的先行顺序见 [总基调、认知架构与仓库基元化任务书 2026-07-15](../taskbooks/foundation-cognition-repository-taskbook-2026-07-15.md)。
