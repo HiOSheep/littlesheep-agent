@@ -62,6 +62,8 @@ export interface BuildRunContextOptions {
   memoryStore: MemoryStoreLike;
   /** Tools available to EXECUTE stage. */
   tools: AgentTool[];
+  /** Registry source for every tool available to EXECUTE. */
+  toolSources?: Record<string, string>;
   /** Resolved config. */
   config: Config;
   /** Branding (for prompt assembly downstream). */
@@ -212,7 +214,10 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     workspaceContext: opts.workspaceContext,
     model: opts.model,
     tools: opts.tools,
+    toolSources: opts.toolSources,
     toolContext,
+    toolInvocations: [],
+    toolInvocationsTruncated: false,
     bootstrap,
     history,
     sessionSummary: sessionMetadata?.compaction,

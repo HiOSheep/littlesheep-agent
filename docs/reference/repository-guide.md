@@ -86,7 +86,7 @@
 
 | 包 | 归属和职责 |
 | --- | --- |
-| `packages/tools/` | 内置工具、注册表、输入 schema、基础计时/结果 wrapper、容器边界复核和核心源码只读路径闸门。完整授权、超时、流式事件、证据与恢复当前仍分散在 Tools、Harness 和 App，尚待统一 Tool Execution Service 收敛。 |
+| `packages/tools/` | 内置工具、注册表和统一 Tool Execution Service；统一拥有工具来源、输入 schema、权限与单次批准、超时/中断、调用级资源调度、结果清洗、流式事件和有界调用记录。容器边界与核心源码只读仍由宿主权限判定和工具动作前二次复核共同保护；Harness 只保留 TaskBook 编排及副作用检查点生命周期。 |
 | `packages/plugins/` | 插件 API v1、插件发现、信任闸门、生命周期宿主，以及渠道、工具和 owner-scoped Skill 贡献。它是扩展运行时，不是 Agent 任务核心。 |
 | `packages/skills/` | 技能加载、使用和自主创建；语义去重、合并、收益评估、归档/删除与回滚治理尚待后续控制面实现。 |
 | `packages/mcp/` | MCP 客户端预留包；当前仍是骨架，不应在状态文档中写成已完成。 |
@@ -117,7 +117,7 @@
 | 记忆树、资源注册与项目投影 | `packages/memory-tree/` | 稳定 facade：`src/memory-service.ts`、`src/memory-repository.ts`；对话原始来源：`src/conversation-source-store.ts`；run 反馈：`src/memory-feedback.ts`、`src/memory-repository/v3-feedback-manager.ts`；run working set：`src/memory-tree-working-set.ts`；多轮任务语义、当前任务相关度与 prime 选择：`src/task-query.ts`、`src/task-relevance.ts`、`src/memory-prime-relevance.ts`；D1/深搜候选：`src/memory-repository/v3-retrieval.ts`、`v3-retrieval-materializer.ts`；Catalog FTS/向量：`src/v3/catalog-fts.ts`、`catalog-embedding.ts`；路由/关系相关性：`src/v3/priority.ts`、`src/v3/catalog-relevance.ts`；版本后端：`src/memory-repository/v2-backend.ts`、`v3-backend.ts`、`factory.ts`；安全迁移：`repository-locator.ts`、`v3-migration*.ts`；v3 投影变更与 Atom：`src/v3/raw-record-store.ts`、`raw-record-file.ts`、`raw-record-commit-store.ts`（兼容内部命名，语义为 projection mutation records）、`atom-store.ts`、`catalog.ts`、`graph-store.ts`、`storage-coordinator.ts` | 双后端契约：`src/memory-repository.contract.test.ts`；来源与反馈：`src/conversation-source-store.test.ts`、`src/memory-feedback.test.ts`；任务语义、相关性与 D1：`src/task-query.test.ts`、`src/task-relevance.test.ts`、`src/memory-prime-relevance.test.ts`、`src/memory-tree.test.ts`、`src/memory-service-v3.test.ts`、`src/v3/catalog.test.ts`、`src/v3/contracts-priority.test.ts`、`src/memory-repository/v3-backend.test.ts`；迁移：`src/memory-repository/v3-migration.test.ts`；v3：`src/memory-repository/v3-*.test.ts`、`src/v3/*.test.ts`；Runner：`packages/runner/src/memory-v3.integration.test.ts`；VERIFY 采用过滤：`packages/harness/src/stages/verify/memory-evidence.ts` |
 | 旧文件记忆兼容读取与安全写入基元 | `packages/memory-core/` | `src/store.ts`、`src/search.ts`、`src/write-memory.ts` | 对应同名测试；旧 archive/vector 写入入口已退役 |
 | 会话、回复精确去重和长会话摘要 | `packages/session/` | `src/manager.ts`、`src/reply-fingerprint-store.ts`、`src/compaction.ts`、`src/compaction-store.ts` | 对应同名测试；用户可见回复注册表不进入 Context，摘要进入 Memory v3 的边界还需联查 `packages/runner/src/runner.ts` 与 `packages/memory-tree/src/task-query.ts` |
-| 工具注册、审批和内置工具 | `packages/tools/` | `src/registry.ts`、`src/wrapper.ts`、`src/builtin/` | `src/**/*.test.ts` |
+| 工具注册、统一执行、审批和内置工具 | `packages/tools/` | `src/registry.ts`、`src/tool-execution-service.ts`、`src/tool-execution-{scheduler,control,records,result}.ts`、`src/builtin/` | `src/**/*.test.ts` |
 | 插件发现、信任和生命周期 | `packages/plugins/` | `src/host.ts`、`src/manifest.ts` | `src/**/*.test.ts` |
 | 外部渠道协议 | `packages/channels/*` | 各包 `src/plugin.ts` | 各包 `src/plugin.test.ts`、`test/e2e-webhook.test.ts` |
 | Electron 启动、Local App API 和用户数据 adapter | `packages/app/src/main/` | `index.ts`、`local-app-api-server.ts` | `src/main/*.test.ts` |
@@ -195,7 +195,7 @@ App / CLI / Channel adapters
 7. 跨包只从公开入口导入；出现反向依赖时先定义端口，不通过深层 import 或循环依赖解决。
 8. 新建 package 需要同时满足独立职责、稳定接口、独立测试和真实复用；否则先在现有 package 内按 feature 拆分。
 
-Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约过滤、预算、淘汰、计数和双快照；provider/model tokenizer 能力矩阵强制模型声明与运行时 `counterId` 一致后才能生成精确账本，unavailable 模型只使用不可展示的保守请求前预算保护，当前仍缺真实 Provider 对账。Memory Repository 与 Memory Service 已分别把持久化和运行协调拆入同名领域目录；DECIDE、EXECUTE、VERIFY 也已把需求校准、模型调用、工具循环、步骤调度和验证恢复从 stage facade 中分离。版本化 LLM Call Contract 位于 `packages/harness/src/llm-call-contracts/`，公共类型唯一来源是 `packages/types/src/runtime-contracts.ts`；EVOLVE/CAPTURE 的提交判定位于 `stages/memory-intent-gate.ts`。运行时事件的队列、活动 run ingress、安全边界、TaskBookPatch、持久检查点和 Runner 显式续跑已有独立模块；下一步收敛统一 Tool Execution Service、前端事件生产、应用启动恢复控制面和 Mode Registry。不能因为已有 package 或接口就宣称真实场景已经完成，具体评估和演进顺序见 [架构决策报告](../decision/architecture-decision-report.md)。
+Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约过滤、预算、淘汰、计数和双快照；provider/model tokenizer 能力矩阵强制模型声明与运行时 `counterId` 一致后才能生成精确账本，unavailable 模型只使用不可展示的保守请求前预算保护，当前仍缺真实 Provider 对账。Memory Repository 与 Memory Service 已分别把持久化和运行协调拆入同名领域目录；DECIDE、EXECUTE、VERIFY 也已把需求校准、模型调用、工具循环、步骤调度和验证恢复从 stage facade 中分离。统一 Tool Execution Service 位于 `packages/tools/src/tool-execution-service.ts`，调度、中断、记录摘要和结果处理使用同目录独立模块；Harness 只通过公开入口调用。版本化 LLM Call Contract 位于 `packages/harness/src/llm-call-contracts/`，公共类型唯一来源是 `packages/types/src/runtime-contracts.ts`；EVOLVE/CAPTURE 的提交判定位于 `stages/memory-intent-gate.ts`。运行时事件的队列、活动 run ingress、安全边界、TaskBookPatch、持久检查点和 Runner 显式续跑已有独立模块；下一步是前端事件生产、应用启动恢复控制面和 Mode Registry。不能因为已有 package 或接口就宣称真实场景已经完成，具体评估和演进顺序见 [架构决策报告](../decision/architecture-decision-report.md)。
 
 ## 测试与脚本
 

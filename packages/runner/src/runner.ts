@@ -44,6 +44,7 @@ import { ActiveRunRegistry } from './active-run-registry.js';
 import { buildRunCheckpoint, shouldPersistRunCheckpoint } from './run-checkpoint.js';
 import { RunCheckpointController } from './run-checkpoint-controller.js';
 import { describeToolAccess, shouldRequestPermissionApproval } from '@littlesheep/safety';
+import { resolveRunTools } from './run-tools.js';
 /** AgentResult + sessionId (caller-friendly). */
 export type RunnerResult = AgentResult & {
   sessionId: SessionId;
@@ -262,21 +263,13 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
 
       // 3. Build RunContext (loads history WITHOUT inbound — no duplicate).
       // Apply caller-provided tool policy before the run.
-      let resolvedTools = infra.registry.list().map((r) => r.tool);
-      if (input.additionalTools && input.additionalTools.length > 0) {
-        const names = new Set(resolvedTools.map((tool) => tool.name));
-        for (const tool of input.additionalTools) {
-          if (names.has(tool.name)) throw new Error(`Additional tool name conflicts with a registered tool: ${tool.name}`);
-          names.add(tool.name);
-          resolvedTools.push(tool);
-        }
-      }
-      if (input.toolFilter) {
-        resolvedTools = resolvedTools.filter(input.toolFilter);
-      }
-      if (input.requireApprovalForAllTools) {
-        resolvedTools = resolvedTools.map((tool) => ({ ...tool, requiresApproval: true }));
-      }
+      const runTools = resolveRunTools(infra.registry.list(), {
+        additionalTools: input.additionalTools,
+        filter: input.toolFilter,
+        requireApprovalForAllTools: input.requireApprovalForAllTools,
+      });
+      const resolvedTools = runTools.tools;
+      const toolSources = runTools.sources;
 
       const behaviorProfile = getAgentProfile(input.profile ?? opts.config.agents.defaults.profile);
       let previousRun: import('@littlesheep/types').SessionRunSummary | undefined;
@@ -324,6 +317,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         sessionManager: infra.sessionManager,
         memoryStore: infra.memoryStore,
         tools: resolvedTools,
+        toolSources,
         config: opts.config,
         branding: opts.branding,
         model,
@@ -568,6 +562,8 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           runtimeEventQueue: result.runtimeEventQueue,
           runCheckpointId,
           runtimeResources: completeRuntimeResourceObservation(runtimeResourceStart),
+          toolInvocations: result.toolInvocations,
+          toolInvocationsTruncated: result.toolInvocationsTruncated,
           messages: result.messages,
           durationMs: result.durationMs,
         });
@@ -754,6 +750,8 @@ function assembleResult(
     modelRequests: ctx.modelRequests,
     contextSnapshots: ctx.contextSnapshots,
     taskExecution: ctx.taskExecution,
+    toolInvocations: ctx.toolInvocations,
+    toolInvocationsTruncated: ctx.toolInvocationsTruncated,
     taskBook: ctx.taskBook ? { ...ctx.taskBook, stageResults: undefined } : undefined,
     verificationHistory: ctx.verificationHistory,
     runtimeControl: ctx.runtimeControl,

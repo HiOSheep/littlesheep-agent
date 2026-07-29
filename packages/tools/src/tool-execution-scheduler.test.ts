@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildToolExecutionWaves, executeToolWaves, type ScheduledToolExecution } from './tool-scheduler.js';
+import {
+  buildToolExecutionWaves,
+  executeToolWaves,
+  type ScheduledToolExecution,
+} from './tool-execution-scheduler.js';
 
 describe('tool execution scheduler', () => {
   it('packs independent calls into bounded parallel waves', () => {
@@ -32,11 +36,12 @@ describe('tool execution scheduler', () => {
     expect(waves.map((wave) => wave.map((item) => item.index))).toEqual([[0], [1], [2]]);
   });
 
-  it('returns results by original call index even when completion order differs', async () => {
+  it('returns results by original index when completion order differs', async () => {
     const calls: ScheduledToolExecution<string>[] = [
       { ...call(0, 'parallel', []), execute: () => delay('first', 10) },
       { ...call(1, 'parallel', []), execute: () => delay('second', 1) },
     ];
+
     const results = await executeToolWaves(calls, 4);
 
     expect(results.get(0)).toBe('first');

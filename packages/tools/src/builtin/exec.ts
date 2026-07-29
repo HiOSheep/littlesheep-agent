@@ -55,7 +55,7 @@ export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
         const descriptor = describeToolAccess('exec', { command, cwd: workDir }, ctx);
         const policyAlreadyApproved = authorization.approvedByPolicy
           || (ctx.permissionMode === 'full' && descriptor.boundary === 'inside');
-        if (policyAlreadyApproved) {
+        if (policyAlreadyApproved || ctx.approvalGranted === true) {
           // The boundary policy already authorized this invocation. Keep the
           // blacklist check above, but do not ask for the same command twice.
         } else if (opts.interactive) {

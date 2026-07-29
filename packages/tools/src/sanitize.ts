@@ -55,15 +55,19 @@ export function binaryPreview(buffer: Buffer, maxBytes: number = 256): string {
 }
 
 /** Sanitize a tool result output (string or buffer). */
-export function sanitizeOutput(output: unknown, opts: SanitizeOptions = DEFAULT_SANITIZE): { output: string; sanitized: boolean } {
+export function sanitizeOutput(
+  output: unknown,
+  opts: SanitizeOptions = DEFAULT_SANITIZE,
+): { output: string; sanitized: boolean; truncated: boolean } {
   let text: string;
   let sanitized = false;
+  let truncated = false;
 
   if (typeof output === 'string') {
     text = output;
   } else if (output instanceof Buffer) {
     if (isBinary(output)) {
-      return { output: binaryPreview(output), sanitized: true };
+      return { output: binaryPreview(output), sanitized: true, truncated: false };
     }
     text = output.toString('utf8');
   } else if (typeof output === 'object' && output !== null) {
@@ -83,7 +87,8 @@ export function sanitizeOutput(output: unknown, opts: SanitizeOptions = DEFAULT_
   if (text.length > opts.maxOutputChars) {
     text = truncateText(text, opts.maxOutputChars);
     sanitized = true;
+    truncated = true;
   }
 
-  return { output: text, sanitized };
+  return { output: text, sanitized, truncated };
 }

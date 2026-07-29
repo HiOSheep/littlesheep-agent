@@ -5,6 +5,22 @@ export { checkApproval, interactiveApprove, DEFAULT_APPROVAL, type ApprovalConfi
 export { sanitizeOutput, truncateText, stripImages, isBinary, binaryPreview, DEFAULT_SANITIZE, type SanitizeOptions } from './sanitize.js';
 export { withToolTiming, type ToolHandler } from './wrapper.js';
 export { parallelFilePolicy } from './execution-policy.js';
+export {
+  ToolExecutionService,
+  DEFAULT_TOOL_TIMEOUT_MS,
+  DEFAULT_MAX_REPEATED_TOOL_CALLS,
+  DEFAULT_MAX_TOOL_INVOCATION_RECORDS,
+  type ToolInvocationRequest,
+  type ToolExecutionLifecycle,
+  type ToolExecutionLifecycleContext,
+  type ToolExecutionLifecycleResult,
+  type ToolExecutionServiceOptions,
+} from './tool-execution-service.js';
+export {
+  buildToolExecutionWaves,
+  executeToolWaves,
+  type ScheduledToolExecution,
+} from './tool-execution-scheduler.js';
 
 export { readTool } from './builtin/read.js';
 export { writeTool } from './builtin/write.js';

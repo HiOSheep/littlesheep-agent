@@ -125,6 +125,9 @@ export interface ExecutionLogInput {
   runCheckpointId?: string;
   runtimeResources?: RuntimeResourceObservation;
   versionCheckpoint?: VersionCheckpointSummary;
+  /** Authoritative records emitted by ToolExecutionService. */
+  toolInvocations?: ToolInvocationRecord[];
+  toolInvocationsTruncated?: boolean;
   messages: Message[];
   durationMs: number;
 }
@@ -355,6 +358,17 @@ function buildToolEvidence(
   input: ExecutionLogInput,
   pairs: ToolCallRecord[],
 ): { toolInvocations: ToolInvocationRecord[]; evidence: ExecutionEvidence[]; truncated: boolean } {
+  if (input.toolInvocations !== undefined) {
+    const selected = input.toolInvocations.slice(0, MAX_TOOL_INVOCATIONS_PER_LOG).map((record) => structuredClone(record));
+    return {
+      toolInvocations: selected,
+      evidence: buildInvocationEvidence(input, selected),
+      truncated: input.toolInvocationsTruncated === true || input.toolInvocations.length > selected.length,
+    };
+  }
+
+  // Compatibility path for logs produced before ToolExecutionService became
+  // the runtime authority. Status inference is intentionally confined here.
   const selected = pairs.slice(0, MAX_TOOL_INVOCATIONS_PER_LOG);
   const toolInvocations = selected.map(({ call, result }): ToolInvocationRecord => {
     const status = toolStatus(result);
@@ -383,9 +397,20 @@ function buildToolEvidence(
       evidenceIds: [evidenceId],
     };
   });
-  const evidence = toolInvocations.map((record): ExecutionEvidence => ({
+  return {
+    toolInvocations,
+    evidence: buildInvocationEvidence(input, toolInvocations),
+    truncated: pairs.length > selected.length,
+  };
+}
+
+function buildInvocationEvidence(
+  input: ExecutionLogInput,
+  toolInvocations: readonly ToolInvocationRecord[],
+): ExecutionEvidence[] {
+  return toolInvocations.map((record): ExecutionEvidence => ({
     version: 1,
-    id: record.evidenceIds[0]!,
+    id: record.evidenceIds[0] ?? `${input.runId}:evidence:tool:${record.id}`,
     runId: input.runId,
     sessionId: input.sessionId as import('@littlesheep/types').SessionId,
     stepId: record.stepId,
@@ -403,7 +428,6 @@ function buildToolEvidence(
       outputPresent: record.outputSummary !== undefined,
     },
   }));
-  return { toolInvocations, evidence, truncated: pairs.length > selected.length };
 }
 
 function toolStatus(result: ToolResult): ToolInvocationRecord['status'] {

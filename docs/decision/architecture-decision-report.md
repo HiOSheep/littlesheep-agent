@@ -1,8 +1,8 @@
 # LittleSheep 架构评估与开发决策报告
 
-最后更新：2026-07-29 11:15:51
+最后更新：2026-07-29 12:32:00
 评估范围：当前源码、正式文档与已记录的验证结果
-执行状态：Memory v3 阶段 0-26 的工程实现、隔离演练和正式用户数据迁移已完成；正式 backend/config 为 v3，40 个业务 atom、5 个内部根、11 个资源和 45 条 BGE 512 维向量已通过既有真实数据根、Electron 重启、Catalog v9 integrity 与恢复源检查。`respond / execute / clarify` 活动语义、直接回应 Context 瘦身和上一轮摘要选择性介入已通过本地完整质量门；真实 Provider 校准仍未完成。
+执行状态：Memory v3 阶段 0-26 的工程实现、隔离演练和正式用户数据迁移已完成；正式 backend/config 为 v3，40 个业务 atom、5 个内部根、11 个资源和 45 条 BGE 512 维向量已通过既有真实数据根、Electron 重启、Catalog v9 integrity 与恢复源检查。`respond / execute / clarify` 活动语义、直接回应 Context 瘦身、上一轮摘要选择性介入和统一 Tool Execution Service 已形成工程基线；真实 Provider 校准仍未完成。
 
 ## 1. 给决策者的结论
 
@@ -12,7 +12,7 @@ LittleSheep 当前不是“只有 Prompt 的聊天壳”。它已经具备代码
 
 但当前更准确的描述是：
 
-> **包级模块骨架和既有调用契约已有稳定基础；Memory v3 动态 activation、活动路由与直接回应 Context 的工程门已经完成。下一步完成真实 Provider/长期负载，再推进统一工具执行、运行时连续性和 Mode Registry。**
+> **包级模块骨架和既有调用契约已有稳定基础；Memory v3 动态 activation、活动路由、直接回应 Context 与统一 Tool Execution Service 的工程门已经完成。下一步完成真实 Provider/长期负载，并把运行时事件、检查点恢复和步骤并行接入产品控制面。**
 
 当前最重要的结构结论是：
 
@@ -74,22 +74,22 @@ React Renderer
 
 | 能力域 | 当前状态 | 当前真相来源 | 主要缺口 | 下一项关键决策 |
 | --- | --- | --- | --- | --- |
-| 公共契约 | 稳定基础 | `packages/types/` | 内部 v1 契约已齐，但 Context/Tools/Mode 的实际所有者尚未按契约收敛 | 保持内部版本，迁移生产者和消费者后再考虑公开 API |
+| 公共契约 | 稳定基础 | `packages/types/` | 内部 v1 契约已齐，Context 与 Tools 已有实际所有者；Mode Registry 仍未收敛 | 保持内部版本，迁移剩余生产者和消费者后再考虑公开 API |
 | Workflow/Harness | 稳定基础；活动语义迁移已完成 | `packages/harness/src/default-harness.ts`、`stages/`、`packages/types/src/agent.ts` | 代码级 stage 与安全脊柱仍固定；语义活动已迁移为 `respond / execute / clarify`，兼容字段尚未退役 | 保持兼容边界，再继续评估 Mode 策略化；不开放任意工作流图 |
 | Runner | 基础可用 | `packages/runner/src/runner.ts`、`infra.ts` | 同时承担生命周期、核心装配、记忆运行时启动和工具选择 | 把 Runner 保持为应用服务，逐步下沉子系统内部逻辑 |
 | Context | 基础可用，阶段 1 待供应商验收 | `packages/context/`、`harness/context-candidates.ts`、`model-observability.ts`、`config/model-capabilities.ts` | 已有确定性候选、来源 segment、已知/未知窗口、显式 tokenizer 能力矩阵、可注入精确计数、不可展示的保守预算保护、预算淘汰、版本化摘要、附件清单、按需附件工具、压缩阈值设置和双账本 UI；缺真实 Provider 对账 | 完成 Context Engine 供应商验收 |
 | Prompt | 基础可用；直接回应路径已收敛 | `packages/prompt/`、stage prompt、`harness/stages/reply.ts` | 完整执行 Prompt 与紧凑 `respond` Prompt 已分路；后者不含 Workflow、workspace、reasoning 和无关 bootstrap，并限制历史与记忆索引。普通回应只注入紧凑时钟，明确追问才恢复上一轮有界执行摘要 | 保持按活动渐进披露，只向模型投影完成当前决策所需信息 |
 | Behavior Mode | 职责分散 | `prompt/profiles.ts`、Runner、config、App | 不是统一配置组合，新增 Mode 仍需跨模块修改 | 建立类型化 Mode registry，并与权限正交 |
-| Permission Policy | 基础可用 | `packages/app/src/main/run-policy.ts`、ToolContext | 产品层审批与工具执行边界仍需统一 | 权限作为独立 ceiling，不进入行为 profile |
-| Tool Registry | 稳定基础 | `packages/tools/src/registry.ts` | 主要解决注册/查找，不是完整 Tool Manager | 保留 registry，增加统一 Tool Execution Service |
-| Tool Execution | 职责分散 | `packages/tools/`、`harness/stages/execute.ts`、App 审批 | timeout、授权、事件、证据和重试缺少单一所有者 | 执行机制归 `tools` 服务，Harness 只编排 |
+| Permission Policy | 基础可用 | `packages/app/src/main/run-policy.ts`、`ToolContext`、`packages/tools/src/tool-execution-service.ts` | 统一服务已消费权限决议并执行单次批准；网络资源和更强授权 token 尚未建模 | 权限作为独立 ceiling，不进入行为 profile |
+| Tool Registry | 稳定基础 | `packages/tools/src/registry.ts`、`packages/runner/src/run-tools.ts` | 注册、来源和 run-scoped 合并已保留到调用记录；插件/MCP 命名空间仍需版本化 | 保持 registry 只负责工具与来源，不吸收执行机制 |
+| Tool Execution | 工程基线已完成 | `packages/tools/src/tool-execution-service.ts`、`tool-execution-{scheduler,control,records,result}.ts` | 已统一 schema、权限、批准、超时、中断、调度、清洗、事件和记录；网络权限、MCP adapter 与更强恢复场景待补 | Harness 保持编排，所有新工具复用此服务 |
 | Memory Tree | 基础可用，职责收敛进行中 | `packages/memory-tree/`、`memory-core/`、Runner | Memory Service 已接管首批消费者，Summary Memory、run-scoped 附件、运行时事件账本登记端口、项目记忆三层投影和稳定项目身份已统一；运行时事件的普通前端生产入口与通用资源治理尚未闭环 | 继续扩展现有门面，不新建总包 |
 | Session | 基础可用 | `packages/session/` | 已有非破坏式版本化摘要、增量合并和压缩后任务锚点恢复门，但真实 Provider 长会话、摘要失败、工具副作用恢复与成本仍待验收 | 继续由 Context 策略驱动并补齐真实恢复场景 |
-| Execution Log | 稳定基础 | `packages/runner/src/execution-log.ts` | 已记录运行决议、请求/Context 快照和派生工具证据，但工具生命周期仍由多处生成 | 随 Tool Execution Service 收敛实时证据，不把日志默认注入上下文 |
+| Execution Log | 稳定基础 | `packages/runner/src/execution-log.ts` | 新日志优先持久化统一服务产生的权威调用记录；旧日志才使用消息推断兼容路径 | 保持有界、脱敏和只读重放，不把日志默认注入上下文 |
 | LLM Provider | 基础可用 | `packages/llm/`、`packages/config/` | 真实模型能力、reasoning 和 usage 映射仍待验收 | 建立 provider capability descriptor |
 | Plugin Host | 基础可用 | `packages/plugins/` | v1 已接通 `channel`/`tool`/声明式 `skill`；Skill 所有权跨 Host、Loader 和 Memory Service 协同 | 保持 owner-scoped 协议，新增贡献点前先实现完整消费方和生命周期 |
 | External Channels | 基础可用 | `packages/channels/*` | 真实凭证和异常隔离场景仍需验收 | 保持纯适配器，不回到核心网关模式 |
-| MCP | 尚未实现 | `packages/mcp/` | 只有骨架 | 必须复用 Tool Execution Service 后再实现 |
+| MCP | 尚未实现 | `packages/mcp/` | 只有骨架；统一工具执行前置条件已具备 | 以 adapter 接入 Tool Execution Service，不建立独立执行管线 |
 | Electron Main/API | 职责分散 | `packages/app/src/main/` | `local-app-api-server.ts` 路由和用例集中；开发环境管理已按定义、文件安全和管理 facade 拆分 | 先按 feature 拆 handler/service，不新建大量包 |
 | 开发环境管理 | 基础可用 | `packages/app/src/main/development-environments.ts`、`development-environment-files.ts`、设置页 | Electron 内置 Node 已可用，其他运行时的自动下载、签名校验和安装包分发未完成 | 先冻结导入/版本契约，再实现来源清单和按需下载 |
 | Renderer | 职责分散 | `packages/app/src/renderer/App.tsx`、`styles.css` | 页面状态、导航、会话、设置和工作区编排集中 | 按 feature + shared primitives 渐进拆分 |
@@ -145,11 +145,11 @@ ResolvedRunConfig
 
 ### 5.3 Tool Manager 不能只是一张注册表
 
-当前 ToolRegistry 的边界清楚，`withToolTiming()` 也统一了基础异常处理；但真正调用工具时的参数处理、权限、超时、事件、结果持久化和步骤状态主要在 `EXECUTE` 中完成。
+ToolRegistry 继续只负责注册和来源。真正调用工具时的查找、参数 schema、权限与单次批准、超时、中断、资源冲突调度、输出清洗、事件和结构化记录已经迁入 `@littlesheep/tools` 的 `ToolExecutionService`。
 
-当前已先补一条不可绕过的安全底线：Runner 自动发现实际 LS workspace 根，并把核心源码只读边界传给内置 `write`、`edit`、`exec`。这解决当前阶段的自修改风险，但还不是完整 Tool Execution Service；插件工具和未来 MCP 仍需在统一执行管线中获得同等级的路径、权限和证据控制。
+Runner 继续自动发现实际 LS workspace 根，并把核心源码只读边界传给内置 `write`、`edit`、`exec`。统一服务在调用前执行宿主权限与批准决议，内置工具仍在实际动作前执行路径二次复核；一次批准通过 `approvalGranted` 传递，避免 `exec` 重复询问。
 
-这在只有内置工具时尚可维护，但 MCP、插件工具和自动化加入后，会出现多条执行路径。正确方向不是让每种扩展自己实现审批，而是让它们都贡献工具描述和 handler，再由统一 Tool Execution Service 执行。
+插件工具和 run-scoped 工具现在与内置工具走同一服务，并在 `ToolInvocationRecord` 中保留来源。未来 MCP 和自动化只能贡献工具描述、资源声明与 handler，再由统一服务执行；不得重新实现审批、超时、清洗或日志。
 
 ### 5.4 Memory 的问题不是“能力太少”，而是缺少消费门面
 
@@ -238,18 +238,20 @@ src/renderer/shared/
 
 目标：让所有副作用共享一条执行管线。
 
+状态：工程基线已完成。统一服务已经接管内置、插件和 run-scoped 工具的查找、schema、权限、单次批准、超时、中断、调用级调度、结果清洗、事件和有界权威记录；Harness 只保留模型循环、TaskBook 编排和副作用检查点生命周期。
+
 建议边界：
 
 - ToolRegistry 继续负责注册和来源；
-- Tool Execution Service 负责解析、schema、权限、超时、中断、清洗、记录和错误分类；
+- Tool Execution Service 负责解析、schema、权限、单次批准、超时、中断、调用级调度、清洗、记录和错误分类；
 - 把现有核心源码只读闸门提升为统一路径策略，使内置、插件和未来 MCP 工具共享宿主不可写边界；
-- 当前已先落地逻辑容器边界基元：`containerRoot`、`inside/outside/unknown` 分类、动态命令 fail-closed、Main 终端复核和工具内部二次复核。后续统一服务仍需把插件/MCP 资源声明、网络权限和更强的单次授权 token 收入同一协议；
+- 逻辑容器边界基元已经接入：`containerRoot`、`inside/outside/unknown` 分类、动态命令 fail-closed、Main 终端复核和工具内部二次复核。后续仍需把网络权限和更强的单次授权 token 收入同一协议；
 - Harness 负责步骤编排，不直接实现工具机制；
 - App 只提供审批交互和 Permission Policy，不重复判断工具内部行为。
 
-验收标准：内置、插件及未来 MCP 工具使用同一种 `ToolExecutionRecord`；拒绝、中断、超时和异常都能稳定恢复并在 UI 重放。
+验收结论：内置、插件和 run-scoped 工具已使用同一种 `ToolInvocationRecord`；拒绝、中断、超时、未知工具、重复调用和异常均有稳定状态，记录有界且不保存完整输入输出。未来 MCP 复用同一服务、UI 完整重放和真实长任务恢复仍需各自验收。
 
-依赖说明：Runtime 连续性工作线可以先完成 T0-T3 记忆注册、Summary Memory 和附件清单，但在进入“运行中用户事件重入”和“检查点恢复”之前，必须完成本阶段，避免恢复逻辑建立在分散的权限与副作用语义上。
+依赖说明：本阶段前置条件已经满足。运行中用户事件、检查点恢复控制面和 TaskBook 步骤级并行应继续建立在该服务的稳定调用记录与副作用语义上。
 
 ### 阶段 3：Mode Registry 与运行决议
 
@@ -391,14 +393,14 @@ src/renderer/shared/
 
 ## 10. 下一阶段推进条件
 
-仓库基元化阶段 0-7、Memory v3 阶段 0-26、`respond / execute / clarify` 活动语义和直接回应 Context 已完成既定工程门；阶段 17 的连续 activation、阶段 18-19 的真实负载观测和阶段 20-26 的旧写入退役、daily 提升及受约束 Atom 治理均已落地。当前第一工程门是替换无效 DeepSeek 密钥并完成真实 Provider/正式 V3 新写入/活动长任务验收；其后收敛 Tool Execution Service、运行时事件产品入口和检查点恢复控制面。在这些契约稳定前不扩张新插件类型或无关 UI 范围。推进时持续遵守：
+仓库基元化阶段 0-7、Memory v3 阶段 0-26、`respond / execute / clarify` 活动语义、直接回应 Context 和统一 Tool Execution Service 已完成既定工程门；阶段 17 的连续 activation、阶段 18-19 的真实负载观测和阶段 20-26 的旧写入退役、daily 提升及受约束 Atom 治理均已落地。当前第一工程门是替换无效 DeepSeek 密钥并完成真实 Provider/正式 V3 新写入/活动长任务验收；并行工程线是运行时事件产品入口和检查点恢复控制面。在这些契约稳定前不扩张新插件类型或无关 UI 范围。推进时持续遵守：
 
 - 以 [架构原则](../principles/architecture-principles.md) 作为最高层工程规范；
 - Behavior Mode 与 Permission Policy 保持正交；
 - 保留固定安全脊柱，不把 Workflow 直接开放为任意图；
 - 保护现有用户数据与插件化改动，不做破坏式迁移。
 
-Context Engine 已完成候选端口、预算器、稳定装配顺序、来源分段、版本化摘要、附件清单优先、按需附件工具、双账本展示、tokenizer 能力矩阵和不可展示的保守预算保护；版本化 LLM Call Contract 约束每次调用的目的、输入、输出、工具和记忆策略。Memory v3 已接管统一 Repository facade、Memory Service、Runner 与 Harness，并完成阶段 0-26 的工程能力。`respond` 紧凑 Prompt、活动路由兼容映射和上一轮摘要选择性介入已经通过回归验收；真实 Provider 对话对账、持续用户负载、统一 Tool Execution Service、运行时事件前端生产、应用启动检查点恢复和 TaskBook 步骤并行继续按独立质量门推进。
+Context Engine 已完成候选端口、预算器、稳定装配顺序、来源分段、版本化摘要、附件清单优先、按需附件工具、双账本展示、tokenizer 能力矩阵和不可展示的保守预算保护；版本化 LLM Call Contract 约束每次调用的目的、输入、输出、工具和记忆策略。Memory v3 已接管统一 Repository facade、Memory Service、Runner 与 Harness，并完成阶段 0-26 的工程能力。`respond` 紧凑 Prompt、活动路由兼容映射、上一轮摘要选择性介入和统一 Tool Execution Service 已通过本地回归验收；真实 Provider 对话对账、持续用户负载、运行时事件前端生产、应用启动检查点恢复和 TaskBook 步骤并行继续按独立质量门推进。
 
 ## 11. 报告维护规则
 

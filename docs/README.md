@@ -8,7 +8,7 @@
 
 **当前阶段**：Memory v3 阶段 0-26、正式数据迁移、本地向量目录、动态 working set、关系导航、shadow Git 检查点、退出冻结、工具调用级并行、运行时事件安全边界、TaskBookPatch、Runner 检查点续跑基元、逻辑容器权限和开发环境版本管理已有工程基线。语义活动已收敛为 `respond / execute / clarify`；直接回应使用紧凑 Prompt 与有界历史，不再默认携带执行专用 workspace、Workflow、reasoning 和上一轮工具详情。这一批改动已通过本地完整质量门，具体证据只看 [项目状态](decision/project-status.md)。
 
-**推荐下一步**：替换当前无效的 DeepSeek 密钥并完成真实 Provider 校准；随后收敛统一 Tool Execution Service，再接通运行时事件的前端生产入口、检查点恢复控制面、TaskBook 步骤级并行和后台执行。权限定义继续保持“行为 profile 与权限策略正交”，不要再把编程当作权限模式。
+**推荐下一步**：替换当前无效的 DeepSeek 密钥并完成真实 Provider 校准；统一 Tool Execution Service 已形成工程基线，下一步接通运行时事件的前端生产入口、检查点恢复控制面、TaskBook 步骤级并行和后台执行。权限定义继续保持“行为 profile 与权限策略正交”，不要再把编程当作权限模式。
 
 **当前权限决策**：产品语义上 LS 是 Agent 的容器，活动完整应用数据根（默认 `.littlesheep`）是容器边界，`workplace/` 是容器内的默认工作区；当前桌面实现是 Main 的逻辑边界，不是实际 Docker/OS 进程沙箱。完全访问只对容器内读、写、改、删、执行免批准；研究只对容器内读取免批准；受限所有操作都需批准；容器外或范围不明三档都需批准。外部工作区启动 run 时先跳过自动索引，用户主动的 UI 预览/保存仍与 Agent 授权分开。核心源码另有不可绕过的宿主级只读保护。
 

@@ -8,7 +8,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { ExecutionLogStore } from './execution-log.js';
-import type { ContextSnapshot, MemoryIntentDecisionRecord, Message, SessionRunSummary } from '@littlesheep/types';
+import type {
+  ContextSnapshot,
+  MemoryIntentDecisionRecord,
+  Message,
+  SessionRunSummary,
+  ToolInvocationRecord,
+} from '@littlesheep/types';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
 
 let dir: string;
@@ -140,6 +146,65 @@ describe('ExecutionLogStore', () => {
       kind: 'tool_result',
       status: 'pass',
       metadata: { callId, toolName: 'read', outputPresent: true },
+    });
+  });
+
+  it('prefers authoritative invocation records over legacy error-text inference', async () => {
+    const callId = 'authoritative-call';
+    const messages: Message[] = [
+      {
+        id: randomUUID(), role: 'assistant', timestamp: new Date().toISOString(),
+        content: [{ type: 'tool_calls', calls: [{ id: callId, name: 'plugin_probe', input: { secret: 'hidden' } }] }],
+      },
+      {
+        id: randomUUID(), role: 'tool', timestamp: new Date().toISOString(),
+        content: [{ type: 'tool_result', result: { callId, ok: false, error: 'timed out according to legacy text' } }],
+      },
+    ];
+    const authoritative: ToolInvocationRecord = {
+      version: 1,
+      id: 'run-authoritative:tool:1',
+      callId,
+      runId: 'run-authoritative',
+      sessionId: 'session-authoritative' as import('@littlesheep/types').SessionId,
+      toolName: 'plugin_probe',
+      toolSource: 'plugin:test',
+      status: 'validation_failed',
+      proposedAt: '2026-07-20T00:00:00.000Z',
+      resolvedAt: '2026-07-20T00:00:00.001Z',
+      endedAt: '2026-07-20T00:00:00.002Z',
+      inputHash: 'a'.repeat(64),
+      inputSummary: 'object keys: secret',
+      approval: { required: 'unknown', decision: 'unknown' },
+      errorKind: 'input_validation',
+      error: 'schema rejected the request',
+      evidenceIds: ['run-authoritative:evidence:tool:1'],
+    };
+
+    await store.write({
+      runId: 'run-authoritative',
+      sessionId: 'session-authoritative',
+      startedAt: '2026-07-20T00:00:00.000Z',
+      endedAt: '2026-07-20T00:00:01.000Z',
+      status: 'error',
+      model: 'test',
+      inboundText: 'run probe',
+      reply: '',
+      trace: [],
+      toolInvocations: [authoritative],
+      messages,
+      durationMs: 1_000,
+    });
+
+    const log = await store.read('run-authoritative');
+    expect(log?.toolInvocations).toEqual([authoritative]);
+    expect(log?.toolInvocations?.[0]).toMatchObject({
+      status: 'validation_failed',
+      toolSource: 'plugin:test',
+      errorKind: 'input_validation',
+    });
+    expect(log?.evidence?.[0]).toMatchObject({
+      status: 'fail', metadata: { toolName: 'plugin_probe' },
     });
   });
 

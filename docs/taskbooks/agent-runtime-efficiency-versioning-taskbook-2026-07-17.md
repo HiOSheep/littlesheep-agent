@@ -1,8 +1,8 @@
 # LittleSheep Agent Runtime 效率与版本化连续性任务书 2026-07-17
 
-最后更新：2026-07-29 10:47:00
+最后更新：2026-07-29 12:32:00
 
-状态：已完成工具调用级并行、数据与工作区 shadow Git 检查点、退出冻结、有界 `RuntimeEventQueue`、活动 run ingress、Harness 安全边界、确定性 `TaskBookPatch`、延迟事件重规划、持久 RunCheckpoint 和 Runner 显式续跑基元。当前工作树正在收口活动路由与直接回应 Context，完整测试仍有 5 项失败；普通前端事件生产、应用启动恢复控制面、TaskBook 步骤级并行和后台托盘仍未完成。
+状态：已完成统一 Tool Execution Service、工具调用级并行、数据与工作区 shadow Git 检查点、退出冻结、有界 `RuntimeEventQueue`、活动 run ingress、Harness 安全边界、确定性 `TaskBookPatch`、延迟事件重规划、持久 RunCheckpoint 和 Runner 显式续跑基元。活动路由与直接回应 Context 已恢复完整质量门；普通前端事件生产、应用启动恢复控制面、TaskBook 步骤级并行和后台托盘仍未完成。
 
 本文是本轮“并行执行、可回退、少而有效地调用 LLM”工作的专项任务书。长期分工以 [架构原则](../principles/architecture-principles.md) 为准，当前事实以 [项目状态](../decision/project-status.md) 为准，旧连续性任务书中的阶段设计仍有效，但与本文冲突的完成状态以本文和项目状态为准。
 
@@ -24,7 +24,7 @@
 - 同一资源、重叠路径、共享审批或顺序敏感操作自动串行；结果按模型原始调用顺序归并，保证并发不会改变证据语义。
 - 每个分支保留开始、结束、状态、错误、耗时和工具结果；取消、超时和失败不会重做无关分支。
 
-主要实现：`packages/harness/src/stages/execute/tool-scheduler.ts`、`packages/harness/src/stages/execute/tool-loop.ts`。
+主要实现：`packages/tools/src/tool-execution-service.ts`、`packages/tools/src/tool-execution-scheduler.ts`、`packages/harness/src/stages/execute/tool-loop.ts`。
 
 ### 2.2 Shadow Git 与检查点
 
@@ -66,6 +66,13 @@
 - 当前尚未接入应用启动发现、Local App API/Renderer 的恢复、放弃、查看现场入口，因此这是 Runtime 基元，不是完整产品闭环。
 - 2026-07-29 定向复核覆盖队列、活动 run 注册、安全边界、TaskBookPatch、checkpoint store/controller、Runner 续跑和 App ingress，共 9 个测试文件、43 项全部通过。
 
+### 2.6 统一 Tool Execution Service
+
+- `@littlesheep/tools` 统一拥有工具查找、来源、schema 校验、Permission Policy 与单次批准、超时、中断、资源冲突调度、结果清洗、`tool_start/tool_end` 和有界 `ToolInvocationRecord`。
+- Harness 只保留模型循环、TaskBook 步骤编排和副作用检查点钩子；Runner 保留 run-scoped 工具合并及来源装配，Execution Log 优先持久化统一服务的权威记录。
+- 调用记录最多保留 256 项，重复调用索引最多 1024 项；输入指纹序列化有深度、集合项数和 64 KiB 上限，观察者异常不会破坏真实工具执行。
+- 旧 Harness 调度器已迁移删除；旧执行日志缺少权威记录时仍可从 tool message 推断兼容证据。
+
 ## 3. 尚未完成
 
 1. **运行中事件产品接入**：把普通追加消息、设置变化和工作区事件接到现有 run-scoped ingress，并在 UI 中展示采纳、忽略、冲突和恢复状态。
@@ -97,4 +104,4 @@ pnpm.cmd run verify:app-recovery
 
 ## 6. 后续顺序
 
-先修复当前 `respond / execute / clarify` 与直接回应 Context 重构的 5 项回归，恢复完整质量门；再完成真实 Provider 校准和统一 Tool Execution Service。随后把现有 RuntimeEventQueue 与 RunCheckpoint 基元接入普通前端事件生产和应用启动恢复控制面，再实现 TaskBook 步骤并行，最后补后台控制面、版本治理 UI 和效率对比基线。
+保持 `respond / execute / clarify`、直接回应 Context 与统一 Tool Execution Service 的完整质量门；完成真实 Provider 校准。随后把现有 RuntimeEventQueue 与 RunCheckpoint 基元接入普通前端事件生产和应用启动恢复控制面，再实现 TaskBook 步骤并行，最后补后台控制面、版本治理 UI 和效率对比基线。

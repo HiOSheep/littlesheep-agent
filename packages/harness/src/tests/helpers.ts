@@ -184,7 +184,7 @@ export function makeTool(
   result: Partial<ToolResult> & { ok: boolean },
   opts: { requiresApproval?: boolean; inputSchema?: z.ZodTypeAny } = {},
 ): AgentTool & { calls: Array<{ input: unknown; ctx: ToolContext }> } {
-  const schema = opts.inputSchema ?? z.object({ value: z.unknown().optional() });
+  const schema = opts.inputSchema ?? z.record(z.unknown());
   const calls: Array<{ input: unknown; ctx: ToolContext }> = [];
   return {
     name,

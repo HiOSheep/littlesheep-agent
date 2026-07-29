@@ -1,4 +1,5 @@
-// Owns the bounded model-to-tool loop, approval, timeout and persisted evidence.
+// Owns the bounded model loop and persisted messages; ToolExecutionService
+// owns invocation validation, approval, execution, events, and evidence.
 import { randomUUID } from 'node:crypto';
 import type { z } from 'zod';
 import {
@@ -11,11 +12,13 @@ import type {
   AgentTool,
   RunContext,
   ToolCall,
-  ToolResourceAccess,
+  ToolInvocationRecord,
   ToolResult,
 } from '@littlesheep/types';
-import { sanitizeOutput } from '@littlesheep/tools';
-import { shouldRequestPermissionApproval, describeToolAccess } from '@littlesheep/safety';
+import {
+  ToolExecutionService,
+  type ToolExecutionLifecycle,
+} from '@littlesheep/tools';
 import { buildRunRequestCandidates } from '../../context-candidates.js';
 import { prepareModelRequest, recordProviderUsage } from '../../model-observability.js';
 import { recentHistoryForModel } from '../_shared.js';
@@ -26,7 +29,6 @@ import type {
   ToolLoopOptions,
   ToolLoopResult,
 } from './contracts.js';
-import { executeToolWaves, type ScheduledToolExecution } from './tool-scheduler.js';
 import {
   beginSideEffect,
   describeSideEffect,
@@ -35,8 +37,7 @@ import {
 } from './side-effect-ledger.js';
 
 const MAX_ITERATIONS = 20;
-const MAX_REPEAT = 3;
-const TOOL_TIMEOUT_MS = 60_000;
+const executionServices = new WeakMap<RunContext, ToolExecutionService>();
 
 export function convertToolCall(tc: LlmToolCall): { id: string; name: string; input: unknown } {
   let input: unknown;
@@ -55,7 +56,7 @@ export async function runToolLoop(
   const { ctx, messages, tools, sanitizeOpts, stepId, systemSegments, insertedBeforePrimary } = opts;
   const toolSpecs = tools.map(toolToSpec);
   const toolResults: ToolResult[] = [];
-  const repeatMap = new Map<string, number>();
+  const executionService = toolExecutionService(deps, ctx, sanitizeOpts);
 
   for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     let response: ChatResponse;
@@ -113,54 +114,18 @@ export async function runToolLoop(
       });
       persistToolCalls(ctx, response.toolCalls.map(convertToolCall));
 
-      const immediateResults = new Map<number, ToolResult>();
-      const scheduled: ScheduledToolExecution<ToolResult>[] = [];
-      for (const [index, call] of response.toolCalls.entries()) {
-        const { id, name, input } = convertToolCall(call);
-        const tool = tools.find((candidate) => candidate.name === name);
-        if (!tool) {
-          immediateResults.set(index, failureResult(id, stepId, `unknown tool: ${name}`));
-          continue;
-        }
-
-        const approval = await checkStageApproval(tool, input, ctx);
-        if (!approval.ok) {
-          immediateResults.set(index, failureResult(id, stepId, approval.reason));
-          continue;
-        }
-
-        const callKey = `${name}:${safeStringify(input)}`;
-        const repeatCount = (repeatMap.get(callKey) ?? 0) + 1;
-        repeatMap.set(callKey, repeatCount);
-        if (repeatCount > MAX_REPEAT) {
-          immediateResults.set(index, failureResult(
-            id,
-            stepId,
-            `repeated identical call (${repeatCount}x) - refusing to re-execute; try different arguments or stop`,
-          ));
-          continue;
-        }
-        const execution = resolveToolExecution(tool, input, ctx);
-        scheduled.push({
-          index,
-          ...execution,
-          execute: () => executeToolCall(
-            tool,
-            input,
-            id,
-            stepId,
-            ctx,
-            sanitizeOpts,
-            execution.resources,
-            approval.granted,
-          ),
-        });
-      }
-
-      const executedResults = await executeToolWaves(scheduled, deps.config.tools.maxParallel);
+      const requests = response.toolCalls.map((call) => {
+        const converted = convertToolCall(call);
+        return { callId: converted.id, name: converted.name, input: converted.input, stepId };
+      });
+      const executedResults = await executionService.executeBatch(
+        requests,
+        sideEffectLifecycle(ctx),
+        new Set(tools.map((tool) => tool.name)),
+      );
       for (const [index, call] of response.toolCalls.entries()) {
         const converted = convertToolCall(call);
-        const result = immediateResults.get(index) ?? executedResults.get(index)
+        const result = executedResults.get(index)
           ?? failureResult(converted.id, stepId, 'tool scheduler returned no result');
         finalizeToolResult(ctx, messages, toolResults, converted.name, result, stepId);
       }
@@ -199,113 +164,6 @@ function failureResult(callId: string, stepId: string | undefined, error?: strin
   return stampStepMeta({ callId, ok: false, error }, stepId);
 }
 
-function resolveToolExecution(
-  tool: AgentTool,
-  input: unknown,
-  ctx: RunContext,
-): { concurrency: 'parallel' | 'exclusive'; resources: readonly ToolResourceAccess[] } {
-  if (tool.execution?.concurrency !== 'parallel') return { concurrency: 'exclusive', resources: [] };
-  try {
-    const resources = (tool.execution.resources?.(input, ctx.toolContext) ?? [])
-      .filter((resource) => resource && typeof resource.key === 'string' && resource.key.trim())
-      .map((resource) => ({ key: resource.key.trim(), mode: resource.mode === 'write' ? 'write' as const : 'read' as const }));
-    return { concurrency: 'parallel', resources };
-  } catch {
-    return { concurrency: 'exclusive', resources: [] };
-  }
-}
-
-async function executeToolCall(
-  tool: AgentTool,
-  input: unknown,
-  callId: string,
-  stepId: string | undefined,
-  ctx: RunContext,
-  sanitizeOpts: ToolLoopOptions['sanitizeOpts'],
-  resources: readonly ToolResourceAccess[],
-  approvalGranted: boolean,
-): Promise<ToolResult> {
-  const toolStartedAt = Date.now();
-  ctx.onToolEvent?.({ type: 'tool_start', callId, name: tool.name, stepId, input });
-  const sideEffect = describeSideEffect(tool, input, resources, stepId, callId);
-  if (sideEffect) {
-    const begin = beginSideEffect(ctx, sideEffect);
-    if (begin.kind === 'duplicate' || begin.kind === 'blocked') {
-      return stampStepMeta({
-        callId,
-        ok: false,
-        error: begin.kind === 'duplicate'
-          ? `side effect already recorded as succeeded; refusing to replay ${sideEffect.idempotencyKey}`
-          : begin.reason,
-        durationMs: Date.now() - toolStartedAt,
-      }, stepId);
-    }
-    try {
-      await ctx.persistRuntimeCheckpoint?.(sideEffectCheckpointReason(sideEffect, 'started'));
-    } catch (error) {
-      finishSideEffect(ctx, sideEffect, {
-        callId,
-        ok: false,
-        error: `checkpoint before side effect failed: ${(error as Error).message}`,
-      });
-      return stampStepMeta({
-        callId,
-        ok: false,
-        error: `refusing effectful tool until its checkpoint is durable: ${(error as Error).message}`,
-        durationMs: Date.now() - toolStartedAt,
-      }, stepId);
-    }
-  }
-  let result: ToolResult;
-  try {
-    result = await raceWithTimeout(
-      tool.execute(
-        input,
-        approvalGranted ? { ...ctx.toolContext, approvalGranted: true } : ctx.toolContext,
-      ),
-      TOOL_TIMEOUT_MS,
-      ctx.signal,
-    );
-  } catch (error) {
-    result = {
-      callId,
-      ok: false,
-      error: (error as Error).message,
-      durationMs: Date.now() - toolStartedAt,
-    };
-  }
-  result = {
-    ...result,
-    callId,
-    durationMs: result.durationMs ?? Date.now() - toolStartedAt,
-  };
-  if (result.output !== undefined) {
-    const sanitized = sanitizeOutput(result.output, sanitizeOpts);
-    result.output = sanitized.output;
-    result.sanitized = sanitized.sanitized || result.sanitized === true;
-  }
-  if (sideEffect) {
-    finishSideEffect(ctx, sideEffect, result);
-    try {
-      await ctx.persistRuntimeCheckpoint?.(sideEffectCheckpointReason(sideEffect, 'finished'));
-    } catch (error) {
-      // The side effect may already have happened. Keep the ledger in an
-      // uncertain state and fail closed so a later resume cannot replay it.
-      const uncertain = (ctx.sideEffects ?? []).find((item) => item.idempotencyKey === sideEffect.idempotencyKey);
-      if (uncertain) {
-        uncertain.status = 'unknown';
-        uncertain.error = `checkpoint after side effect failed: ${(error as Error).message}`;
-      }
-      result = {
-        ...result,
-        ok: false,
-        error: `side effect result is not durably checkpointed: ${(error as Error).message}`,
-      };
-    }
-  }
-  return stampStepMeta(result, stepId);
-}
-
 function finalizeToolResult(
   ctx: RunContext,
   messages: ToolLoopOptions['messages'],
@@ -318,16 +176,6 @@ function finalizeToolResult(
     ingestMemoryKnownState(ctx, result.meta?.memoryKnownState, 'execute');
     ingestMemoryContextToolResult(ctx, result.callId, result);
   }
-  ctx.onToolEvent?.({
-    type: 'tool_end',
-    callId: result.callId,
-    name,
-    stepId,
-    ok: result.ok,
-    output: result.ok && result.output !== undefined ? String(result.output).slice(0, 400) : undefined,
-    error: result.error,
-    durationMs: result.durationMs,
-  });
   results.push(result);
   persistToolResult(ctx, result);
   messages.push({
@@ -349,64 +197,117 @@ function toolToSpec(tool: AgentTool): ToolSpec {
   };
 }
 
-async function checkStageApproval(
-  tool: AgentTool,
-  input: unknown,
+function toolExecutionService(
+  deps: ExecuteStageDeps,
   ctx: RunContext,
-): Promise<{ ok: boolean; reason?: string; granted: boolean }> {
-  const mode = ctx.toolContext.permissionMode;
-  const requiresApproval = mode
-    ? shouldRequestPermissionApproval(
-        mode,
-        describeToolAccess(tool.name, input, ctx.toolContext),
-      )
-    : tool.requiresApproval === true;
-  if (!requiresApproval) return { ok: true, granted: false };
-  const approve = ctx.toolContext.approve;
-  if (!approve) return { ok: false, reason: 'approval unavailable', granted: false };
-  try {
-    return await approve(tool.name, input)
-      ? { ok: true, granted: true }
-      : { ok: false, reason: 'denied by approval gate', granted: false };
-  } catch (error) {
-    return { ok: false, reason: `approval error: ${(error as Error).message}`, granted: false };
-  }
+  sanitizeOpts: ToolLoopOptions['sanitizeOpts'],
+): ToolExecutionService {
+  const existing = executionServices.get(ctx);
+  if (existing) return existing;
+  const service = new ToolExecutionService({
+    registrations: ctx.tools.map((tool) => ({
+      tool,
+      source: ctx.toolSources?.[tool.name] ?? 'unknown',
+    })),
+    toolContext: ctx.toolContext,
+    maxParallel: deps.config.tools.maxParallel,
+    sanitize: sanitizeOpts,
+    onToolEvent: (event) => ctx.onToolEvent?.(event),
+    onRecord: (record, state) => updateInvocationRecord(ctx, record, state),
+  });
+  executionServices.set(ctx, service);
+  return service;
 }
 
-function raceWithTimeout<T>(promise: Promise<T>, timeoutMs: number, signal?: AbortSignal): Promise<T> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const cleanup = () => {
-      if (timer) clearTimeout(timer);
-      signal?.removeEventListener('abort', onAbort);
-    };
-    const settle = (kind: 'resolve' | 'reject', value: T | unknown) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      if (kind === 'resolve') resolve(value as T);
-      else reject(value);
-    };
-    const onAbort = () => settle('reject', new Error('aborted'));
-    timer = setTimeout(() => settle('reject', new Error(`tool timed out after ${timeoutMs}ms`)), timeoutMs);
-    if (signal) {
-      if (signal.aborted) {
-        onAbort();
-        return;
-      }
-      signal.addEventListener('abort', onAbort, { once: true });
-    }
-    promise.then(
-      (value) => settle('resolve', value),
-      (error) => settle('reject', error),
-    );
-  });
+function updateInvocationRecord(
+  ctx: RunContext,
+  record: ToolInvocationRecord,
+  state: { retained: boolean; truncated: boolean },
+): void {
+  if (state.truncated) ctx.toolInvocationsTruncated = true;
+  if (!state.retained) return;
+  const records = ctx.toolInvocations ?? (ctx.toolInvocations = []);
+  const index = records.findIndex((candidate) => candidate.id === record.id);
+  if (index >= 0) records[index] = record;
+  else records.push(record);
 }
 
 function stampStepMeta(result: ToolResult, stepId?: string): ToolResult {
   if (!stepId) return result;
   return { ...result, meta: { ...(result.meta ?? {}), stepId } };
+}
+
+function sideEffectLifecycle(ctx: RunContext): ToolExecutionLifecycle {
+  const effects = new Map<string, ReturnType<typeof describeSideEffect>>();
+  return {
+    async beforeInvoke(invocation) {
+      const sideEffect = describeSideEffect(
+        invocation.tool,
+        invocation.input,
+        invocation.resources,
+        invocation.request.stepId,
+        invocation.request.callId,
+      );
+      effects.set(invocation.request.callId, sideEffect);
+      if (!sideEffect) return;
+      const begin = beginSideEffect(ctx, sideEffect);
+      if (begin.kind === 'duplicate' || begin.kind === 'blocked') {
+        return {
+          result: {
+            callId: invocation.request.callId,
+            ok: false,
+            error: begin.kind === 'duplicate'
+              ? `side effect already recorded as succeeded; refusing to replay ${sideEffect.idempotencyKey}`
+              : begin.reason,
+          },
+          status: begin.kind === 'duplicate' ? 'repeated_call_blocked' : 'failed',
+          errorKind: begin.kind === 'duplicate' ? 'side_effect_replay' : 'side_effect_blocked',
+        };
+      }
+      try {
+        await ctx.persistRuntimeCheckpoint?.(sideEffectCheckpointReason(sideEffect, 'started'));
+      } catch (error) {
+        finishSideEffect(ctx, sideEffect, {
+          callId: invocation.request.callId,
+          ok: false,
+          error: `checkpoint before side effect failed: ${(error as Error).message}`,
+        });
+        return {
+          result: {
+            callId: invocation.request.callId,
+            ok: false,
+            error: `refusing effectful tool until its checkpoint is durable: ${(error as Error).message}`,
+          },
+          status: 'failed',
+          errorKind: 'checkpoint_before_effect',
+        };
+      }
+    },
+    async afterInvoke(invocation, result) {
+      const sideEffect = effects.get(invocation.request.callId);
+      if (!sideEffect) return result;
+      finishSideEffect(ctx, sideEffect, result);
+      try {
+        await ctx.persistRuntimeCheckpoint?.(sideEffectCheckpointReason(sideEffect, 'finished'));
+        return result;
+      } catch (error) {
+        const uncertain = (ctx.sideEffects ?? []).find((item) => item.idempotencyKey === sideEffect.idempotencyKey);
+        if (uncertain) {
+          uncertain.status = 'unknown';
+          uncertain.error = `checkpoint after side effect failed: ${(error as Error).message}`;
+        }
+        return {
+          result: {
+            ...result,
+            ok: false,
+            error: `side effect result is not durably checkpointed: ${(error as Error).message}`,
+          },
+          status: 'failed',
+          errorKind: 'checkpoint_after_effect',
+        };
+      }
+    },
+  };
 }
 
 function persistToolCalls(ctx: RunContext, calls: ToolCall[]): void {

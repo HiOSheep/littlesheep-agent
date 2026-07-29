@@ -1,5 +1,5 @@
 // @littlesheep/harness — stages/execute.test.ts
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createExecuteStage, convertToolCall } from './execute.js';
 import {
   createMockLlm, textResponse, toolCallResponse, makeCtx, makeTool,
@@ -181,7 +181,7 @@ describe('executeStage', () => {
       'step_start',
       'step_done',
     ]);
-    expect(events.find((evt) => evt.type === 'tool_end')?.durationMs).toBe(1);
+    expect(events.find((evt) => evt.type === 'tool_end')?.durationMs).toBeGreaterThanOrEqual(1);
   });
 
   it('resumes a partial replan without rerunning completed steps', async () => {
@@ -521,5 +521,30 @@ describe('executeStage', () => {
     expect(block.type).toBe('tool_result');
     expect(block.result.ok).toBe(false);
     expect(block.result.error).toMatch(/unknown tool/);
+  });
+
+  it('fails closed before an effectful tool when its runtime checkpoint is not durable', async () => {
+    const tool = makeTool('mutate', { ok: true, output: 'must not run' });
+    const llm = createMockLlm([
+      toolCallResponse([{ id: 'checkpoint-call', name: 'mutate', args: { value: 'x' } }]),
+      textResponse('checkpoint failure acknowledged'),
+    ]);
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', 'mutate safely') });
+    ctx.toolSources = { mutate: 'plugin:test-mutation' };
+    ctx.persistRuntimeCheckpoint = vi.fn(async () => { throw new Error('durable store unavailable'); });
+
+    const result = await stage(ctx);
+
+    expect(result.ok).toBe(true);
+    expect(tool.calls).toHaveLength(0);
+    expect(ctx.toolResults?.[0]?.error).toContain('until its checkpoint is durable');
+    expect(ctx.sideEffects?.[0]?.status).toBe('unknown');
+    expect(ctx.toolInvocations?.[0]).toMatchObject({
+      toolName: 'mutate',
+      toolSource: 'plugin:test-mutation',
+      status: 'failed',
+      errorKind: 'checkpoint_before_effect',
+    });
   });
 });

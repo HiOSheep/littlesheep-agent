@@ -282,6 +282,60 @@ describe('createRunner run', () => {
     expect(runner.infra.registry.names()).not.toContain('inspect_attachment');
   });
 
+  it('preserves plugin and run-scoped tool sources in authoritative execution records', async () => {
+    const toolResponse: ChatResponse = {
+      content: '',
+      finishReason: 'tool_calls',
+      toolCalls: [
+        { id: 'plugin-call', type: 'function', function: { name: 'plugin_probe', arguments: '{}' } },
+        { id: 'run-call', type: 'function', function: { name: 'run_probe', arguments: '{}' } },
+      ],
+    };
+    const llm = makeMockLlm([
+      textResponse('{"type":"problem","confidence":0.99,"reason":"execute probes"}'),
+      textResponse('{"plan":[{"description":"run both probes","tools":["plugin_probe","run_probe"]}]}'),
+      toolResponse,
+      textResponse('Both probes completed.'),
+      textResponse('Probe execution completed successfully.'),
+      textResponse('{"verdict":"pass","reason":"both probes completed"}'),
+      textResponse('{"memories":[],"createSkill":null}'),
+      textResponse('{"observations":[]}'),
+    ]);
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+    });
+    createdRunners.push(runner);
+    const calls: string[] = [];
+    const probe = (name: string): AgentTool => ({
+      name,
+      description: `${name} test tool`,
+      inputSchema: { parse: (input) => input, jsonSchema: { type: 'object' } },
+      execution: { concurrency: 'parallel', resources: () => [{ key: `probe:${name}`, mode: 'read' }] },
+      async execute() {
+        calls.push(name);
+        return { callId: '', ok: true, output: `${name}:ok` };
+      },
+    });
+    runner.infra.registry.register(probe('plugin_probe'), 'plugin:test-provider');
+
+    const result = await runner.run({
+      text: 'run both probes',
+      additionalTools: [probe('run_probe')],
+    });
+    const replay = await runner.replay(result.runId);
+
+    expect(result.status).toBe('ok');
+    expect(calls).toEqual(expect.arrayContaining(['plugin_probe', 'run_probe']));
+    expect(result.toolInvocations?.map((record) => [record.toolName, record.toolSource])).toEqual([
+      ['plugin_probe', 'plugin:test-provider'],
+      ['run_probe', 'run-scoped'],
+    ]);
+    expect(replay?.toolInvocations).toEqual(result.toolInvocations);
+  });
+
   it('registers attachment metadata for the run without persisting payloads and replaces it next run', async () => {
     const llm = makeMockLlm(textResponse('Attachment acknowledged.'));
     const runner = await createRunner({

@@ -151,4 +151,20 @@ describe('execTool approval gate', () => {
     const exec = createExecTool({ interactive: false });
     expect(exec.requiresApproval).toBe(true);
   });
+
+  it('does not request the same interactive approval twice', async () => {
+    const approve = vi.fn(async () => true);
+    const exec = createExecTool({
+      interactive: false,
+      approvalConfig: { whitelist: [], blacklist: [], approvalMode: 'interactive' },
+    });
+
+    const result = await exec.execute(
+      { command: 'echo service-approved' },
+      { ...baseCtx, approve, approvalGranted: true },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(approve).not.toHaveBeenCalled();
+  });
 });

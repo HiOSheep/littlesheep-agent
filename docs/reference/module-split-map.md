@@ -18,7 +18,7 @@
 
 | 当前文件 | 当前行数 | 当前责任 | 目标边界 | 所有权 |
 | --- | ---: | --- | --- | --- |
-| `packages/runner/src/runner.ts` | 815 | run 生命周期、输入装配、Memory 反馈、日志、检查点持久化/续跑和资源收尾 | 保持应用服务 facade；继续下沉日志、检查点和收尾协调 | E |
+| `packages/runner/src/runner.ts` | 812 | run 生命周期、输入装配、Memory 反馈、日志、检查点持久化/续跑和资源收尾 | 保持应用服务 facade；工具选择与来源解析已下沉，继续下沉日志、检查点和收尾协调 | E |
 | `packages/channels/qqbot/src/plugin.ts` | 801 | QQ 协议、连接、消息、发送和生命周期 | transport、protocol、message-mapper、sender、lifecycle | C |
 | `packages/memory-tree/src/project-memory-projection.ts` | 780 | 投影生成、同步、冲突、恢复和删除 | projection facade + render、sync、conflict、lifecycle | D |
 | `packages/types/src/runtime-contracts.ts` | 773 | Context、事件、检查点、执行证据和版本化运行时契约 | 按 context、event、checkpoint、execution 分组并保持 barrel | E |
@@ -34,7 +34,8 @@
 | 当前文件 | 当前行数 | 主要责任 | 处理方向 | 所有权 |
 | --- | ---: | --- | --- | --- |
 | `packages/memory-tree/src/types.ts` | 600 | 记忆树内部和持久化类型 | 按 node、resource、audit、projection 分组 | D |
-| `packages/types/src/agent.ts` | 591 | Agent、活动路由兼容、TaskBook 与 trace 契约 | 按 taskbook、trace、stage 类型分组并保持 barrel | E |
+| `packages/types/src/agent.ts` | 599 | Agent、活动路由兼容、TaskBook、工具运行记录与 trace 契约 | 按 taskbook、trace、stage 类型分组并保持 barrel | E |
+| `packages/tools/src/tool-execution-service.ts` | 521 | 工具查找、校验、审批、执行生命周期、事件与结构化记录 facade | 调度、中断、记录摘要和结果处理已拆分；facade 不吸收 Harness 编排或副作用状态所有权 | E |
 | `packages/memory-tree/src/memory-repository/v3-node-store.ts` | 581 | v3 节点查询、写入编排、层级和实体关联 | 事件与生命周期规则已拆出；后续分离 query projection 与 write coordinator | D |
 | `packages/app/src/renderer/app-shell/use-app-controller.ts` | 579 | Renderer 跨领域兼容协调、启动恢复和视图快照 | 保持装配职责；Runtime/附件 effect 契约稳定后再下沉 | B |
 | `packages/memory-tree/src/memory-repository/v3-resource-store.ts` | 575 | v3 资源元数据、生命周期事务、实体投影和恢复 | 分离 resource registry、transaction recovery 与 graph projection | D |
@@ -132,9 +133,9 @@
 | 记忆与文件视图 | `packages/app/src/shared/memory-control-contracts.ts` | `memory-tree-control.ts`、`renderer/api.ts` | 内部治理路由保持独立；普通 Renderer 只消费记忆文件契约 |
 | 附件元数据 | `packages/app/src/shared/attachment-contracts.ts` | `attachments.ts`、`renderer/api.ts` | attachment API/import service |
 | Local App API 路由 | `packages/app/src/shared/local-app-api-routes.ts` | `local-app-api-server.ts`、`renderer/api.ts` | 分域 router modules; static and dynamic path encoding remains centralized |
-| Agent 状态机、模型请求、运行时事件与检查点 | `packages/types/` | `runner`、`harness` public barrels | 统一 Tool Execution Service；事件生产与恢复控制面留在 App adapter，Runtime 契约继续由 types/runner 维护 |
+| Agent 状态机、模型请求、运行时事件与检查点 | `packages/types/` | `runner`、`harness` public barrels | Tool Execution Service 已归 `packages/tools/`；事件生产与恢复控制面留在 App adapter，Runtime 契约继续由 types/runner 维护 |
 
-当前 facade 输入输出：`startLocalAppApiServer(initialRunner, options) → LocalAppApiServer`、`createRunner(options) → AgentRunner`、`MemoryService`、`ContextEngine`、各 Harness stage function 和 renderer `api.ts` 导出函数。Call Contract 已通过这些稳定入口接入；后续工具执行与实时事件职责同样不得重新塞回 facade。
+当前 facade 输入输出：`startLocalAppApiServer(initialRunner, options) → LocalAppApiServer`、`createRunner(options) → AgentRunner`、`MemoryService`、`ContextEngine`、`ToolExecutionService`、各 Harness stage function 和 renderer `api.ts` 导出函数。Call Contract 与统一工具执行已通过稳定入口接入；后续实时事件职责同样不得重新塞回 facade。
 
 ## 受控超限清单
 

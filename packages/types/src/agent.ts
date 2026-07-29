@@ -239,8 +239,12 @@ export interface RunContext {
   model: string;
   /** Tools available to EXECUTE stage. */
   tools: AgentTool[];
+  toolSources?: Record<string, string>;
   /** Tool execution context (cwd, approve, signal, log). */
   toolContext: ToolContext;
+  /** Bounded authoritative lifecycle records produced by ToolExecutionService. */
+  toolInvocations?: import('./runtime-contracts.js').ToolInvocationRecord[];
+  toolInvocationsTruncated?: boolean;
   /** Memory prelude injected at ENTER. */
   prelude?: MemoryPrelude;
   /** Versioned non-destructive summary of older messages in this session. */
@@ -519,6 +523,10 @@ export interface AgentResult {
   contextSnapshots?: import('./runtime-contracts.js').ContextSnapshot[];
   /** Structured task execution result when DECIDE produced a task book. */
   taskExecution?: TaskExecutionResult;
+  /** Bounded authoritative tool lifecycle records for this run. */
+  toolInvocations?: import('./runtime-contracts.js').ToolInvocationRecord[];
+  /** True when additional invocation records were intentionally not retained. */
+  toolInvocationsTruncated?: boolean;
   /** Calibrated task contract used by EXECUTE/VERIFY. */
   taskBook?: TaskBook;
   /** Durable VERIFY decisions associated with this result. */
