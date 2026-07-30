@@ -20,7 +20,10 @@ async function main() {
 
   const branding = await loadBranding(join(repoRoot, 'branding.config.json'));
   const dataDir = resolveDataDir(branding);
-  injectKeys(await loadEncryptedKeys(dataDir));
+  const inheritedEnvironment = { ...process.env };
+  const storedCredentialState = await loadEncryptedKeys(dataDir);
+  const storedKeys = storedCredentialState.keys;
+  injectKeys(storedKeys);
 
   const config = await loadConfig({ dataDir });
   const provider = getProvider(config, args.provider);
@@ -30,6 +33,36 @@ async function main() {
   if (!model) throw new Error(`Provider ${provider.id} has no configured model.`);
   const apiKey = resolveApiKey(provider.apiKey);
   if (!apiKey) throw new Error(`Provider ${provider.id} has no usable API key.`);
+
+  if (args.credentialDiagnostics) {
+    const envVar = provider.apiKey?.startsWith('$') ? provider.apiKey.slice(1) : undefined;
+    const inheritedCredential = envVar ? inheritedEnvironment[envVar] : undefined;
+    console.log(JSON.stringify({
+      provider: provider.id,
+      source: envVar && Object.hasOwn(storedKeys, envVar)
+        ? 'keychain'
+        : envVar && inheritedCredential
+          ? 'environment'
+          : provider.apiKey && !envVar
+            ? 'literal'
+            : 'none',
+      credential: inspectCredential(apiKey),
+      keychain: envVar
+        ? {
+            entryPresent: storedCredentialState.entryNames.includes(envVar),
+            decryptable: Object.hasOwn(storedKeys, envVar),
+          }
+        : { entryPresent: false, decryptable: false },
+      inheritedEnvironment: inheritedCredential
+        ? {
+            present: true,
+            matchesResolvedCredential: inheritedCredential === apiKey,
+            credential: inspectCredential(inheritedCredential),
+          }
+        : { present: false },
+    }));
+    return 0;
+  }
 
   const client = createLlmClient({
     baseURL: provider.baseURL,
@@ -276,6 +309,8 @@ function parseArgs(argv) {
     if (next && !next.startsWith('--')) {
       values.set(current.slice(2), next);
       index += 1;
+    } else {
+      values.set(current.slice(2), 'true');
     }
   }
 
@@ -302,6 +337,29 @@ function parseArgs(argv) {
     reasoning,
     checks,
     timeoutSeconds,
+    credentialDiagnostics: values.has('credential-diagnostics'),
+  };
+}
+
+function inspectCredential(value) {
+  const trimmed = value.trim();
+  const wrappingQuotes = trimmed.length >= 2 && (
+    (trimmed.startsWith('"') && trimmed.endsWith('"'))
+    || (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  );
+  const unquoted = wrappingQuotes ? trimmed.slice(1, -1).trim() : trimmed;
+  const bearerPrefix = /^Bearer\s+/i.test(unquoted);
+  const normalized = unquoted.replace(/^Bearer\s+/i, '').trim();
+  return {
+    rawLength: value.length,
+    normalizedLength: normalized.length,
+    outerWhitespace: value !== trimmed,
+    wrappingQuotes,
+    bearerPrefix,
+    whitespaceAfterNormalization: /\s/.test(normalized),
+    controlCharactersAfterNormalization: [...normalized]
+      .some((character) => /[\u0000-\u001f\u007f]/.test(character)),
+    prefixClass: normalized.startsWith('sk-') ? 'sk-*' : 'other',
   };
 }
 
@@ -310,7 +368,7 @@ async function loadEncryptedKeys(dataDir) {
   try {
     store = JSON.parse(await readFile(join(dataDir, 'config', 'keys.json'), 'utf8'));
   } catch (error) {
-    if (error?.code === 'ENOENT') return {};
+    if (error?.code === 'ENOENT') return { keys: {}, entryNames: [] };
     throw new Error(`Unable to read encrypted provider keys: ${errorName(error)}`);
   }
 
@@ -332,7 +390,7 @@ async function loadEncryptedKeys(dataDir) {
     }
     if (plaintext) keys[name] = plaintext;
   }
-  return keys;
+  return { keys, entryNames: Object.keys(store) };
 }
 
 function injectKeys(keys) {

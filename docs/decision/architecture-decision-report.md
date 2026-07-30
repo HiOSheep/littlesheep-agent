@@ -1,6 +1,6 @@
 # LittleSheep 架构评估与开发决策报告
 
-最后更新：2026-07-30 13:46:22
+最后更新：2026-07-30 14:38:41
 评估范围：当前源码、正式文档与已记录的验证结果
 执行状态：Memory v3 阶段 0-26 的工程实现、隔离演练和正式用户数据迁移已完成；正式 backend/config 为 v3，40 个业务 atom、5 个内部根、11 个资源和 45 条 BGE 512 维向量已通过既有真实数据根、Electron 重启、Catalog v9 integrity 与恢复源检查。`respond / execute / clarify` 活动语义、直接回应 Context 瘦身、统一 Tool Execution Service、TaskBook 步骤级有界并行、活动任务控制、托盘、三档关闭策略和设置页“应用与后台”已形成工程基线；真实 Provider 校准和真实 Electron 长任务连续性验收仍未完成。
 
@@ -393,14 +393,14 @@ src/renderer/shared/
 
 ## 10. 下一阶段推进条件
 
-仓库基元化阶段 0-7、Memory v3 阶段 0-26、`respond / execute / clarify` 活动语义、直接回应 Context、统一 Tool Execution Service、运行时事件产品入口、TaskBook 步骤级有界并行、应用启动恢复、活动任务控制、设置页“应用与后台”、托盘和三档关闭策略已完成既定工程门；阶段 17 的连续 activation、阶段 18-19 的真实负载观测和阶段 20-26 的旧写入退役、daily 提升及受约束 Atom 治理均已落地。当前第一工程门是替换无效 DeepSeek 密钥并完成真实 Provider/正式 V3 新写入/活动长任务验收；并行工程线是真实 Electron 后台/跨重启连续性验收。在这些契约稳定前不扩张新插件类型或无关 UI 范围。推进时持续遵守：
+仓库基元化阶段 0-7、Memory v3 阶段 0-26、`respond / execute / clarify` 活动语义、直接回应 Context、统一 Tool Execution Service、运行时事件产品入口、TaskBook 步骤级有界并行、应用启动恢复、活动任务控制、设置页“应用与后台”、托盘和三档关闭策略已完成既定工程门；阶段 17 的连续 activation、阶段 18-19 的真实负载观测和阶段 20-26 的旧写入退役、daily 提升及受约束 Atom 治理均已落地。当前第一工程门是在设置页保存一把有效 DeepSeek 密钥以替换无效继承环境值和不可解密旧 keychain 条目，再完成真实 Provider/正式 V3 新写入/活动长任务验收；并行工程线是真实 Electron 后台/跨重启连续性验收。在这些契约稳定前不扩张新插件类型或无关 UI 范围。推进时持续遵守：
 
 - 以 [架构原则](../principles/architecture-principles.md) 作为最高层工程规范；
 - Behavior Mode 与 Permission Policy 保持正交；
 - 保留固定安全脊柱，不把 Workflow 直接开放为任意图；
 - 保护现有用户数据与插件化改动，不做破坏式迁移。
 
-Context Engine 已完成候选端口、预算器、稳定装配顺序、来源分段、版本化摘要、附件清单优先、按需附件工具、双账本展示、tokenizer 能力矩阵和不可展示的保守预算保护；版本化 LLM Call Contract 约束每次调用的目的、输入、输出、工具和记忆策略。Memory v3 已接管统一 Repository facade、Memory Service、Runner 与 Harness，并完成阶段 0-26 的工程能力。`respond` 紧凑 Prompt、活动路由兼容映射、上一轮摘要选择性介入、统一 Tool Execution Service、运行时事件前端生产、TaskBook 步骤并行、应用启动检查点恢复、桌面后台控制和设置页入口已通过本地回归验收；真实 Provider 对话对账、持续用户负载和真实 Electron 后台/跨重启长任务继续按独立质量门推进。2026-07-30 对 DeepSeek 的 chat、continuity、tool、abort 四项真实检查均到达官方端点，但当前凭证均返回 HTTP 401，不能标记为校准完成。
+Context Engine 已完成候选端口、预算器、稳定装配顺序、来源分段、版本化摘要、附件清单优先、按需附件工具、双账本展示、tokenizer 能力矩阵和不可展示的保守预算保护；版本化 LLM Call Contract 约束每次调用的目的、输入、输出、工具和记忆策略。Memory v3 已接管统一 Repository facade、Memory Service、Runner 与 Harness，并完成阶段 0-26 的工程能力。`respond` 紧凑 Prompt、活动路由兼容映射、上一轮摘要选择性介入、统一 Tool Execution Service、运行时事件前端生产、TaskBook 步骤并行、应用启动检查点恢复、桌面后台控制和设置页入口已通过本地回归验收；凭证保存、加载和注入已共用规范化边界，损坏密文失败关闭。真实 Provider 对话对账、持续用户负载和真实 Electron 后台/跨重启长任务继续按独立质量门推进。2026-07-30 对 DeepSeek 的 chat、continuity、tool、abort 四项真实检查均到达官方端点；脱敏诊断排除了格式和来源问题，但当前继承环境凭证仍返回 HTTP 401，旧 keychain 条目不可解密，不能标记为校准完成。
 
 ## 11. 报告维护规则
 

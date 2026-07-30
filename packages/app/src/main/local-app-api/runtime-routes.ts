@@ -12,7 +12,7 @@ import {
   type RuntimeReasoning,
 } from '../../shared/model-capabilities.js'
 import type { DataRootMigrationManager } from '../data-root-migration.js'
-import { injectKeysIntoEnv, deriveEnvVarName, saveApiKey } from '../keychain.js'
+import { injectKeysIntoEnv, deriveEnvVarName, normalizeApiKey, saveApiKey } from '../keychain.js'
 import { getAgentProfile, normalizeAgentProfileId } from '../modes.js'
 import { json, readJson, type LocalAppApiRequest } from './http.js'
 
@@ -208,12 +208,17 @@ export async function routeRuntime(
   if (method === 'POST' && path === LOCAL_APP_API_ROUTES.configApiKey) {
     const body = await readJson(req)
     const envVar = String(body.envVar ?? '').trim()
-    const key = String(body.key ?? '').trim()
+    const key = normalizeApiKey(String(body.key ?? ''))
     if (!envVar || !key) {
       json(res, 400, { error: 'envVar and key are required' })
       return true
     }
-    await saveApiKey(context.dataDir, envVar, key)
+    try {
+      await saveApiKey(context.dataDir, envVar, key)
+    } catch (error) {
+      json(res, 400, { error: (error as Error).message })
+      return true
+    }
     injectKeysIntoEnv({ [envVar]: key })
     await context.rebuildRunner()
     json(res, 200, { ok: true })

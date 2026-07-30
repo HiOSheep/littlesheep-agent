@@ -15,9 +15,53 @@ import { existsSync, readFileSync } from 'node:fs'
 /** Encrypted key store: { envVarName: base64ciphertext } */
 type EncryptedKeyStore = Record<string, string>
 
+export interface ApiKeyDiagnostics {
+  rawLength: number
+  normalizedLength: number
+  changedByNormalization: boolean
+  hadBearerPrefix: boolean
+  hadWrappingQuotes: boolean
+  hadOuterWhitespace: boolean
+  containsWhitespace: boolean
+  containsControlCharacters: boolean
+}
+
 /** File path: <dataDir>/config/keys.json */
 function keysFilePath(dataDir: string): string {
   return join(dataDir, 'config', 'keys.json')
+}
+
+export function normalizeApiKey(value: string): string {
+  let normalized = value.trim()
+  if (
+    normalized.length >= 2
+    && ((normalized.startsWith('"') && normalized.endsWith('"'))
+      || (normalized.startsWith("'") && normalized.endsWith("'")))
+  ) {
+    normalized = normalized.slice(1, -1).trim()
+  }
+  normalized = normalized.replace(/^Bearer\s+/i, '').trim()
+  return normalized
+}
+
+export function inspectApiKey(value: string): ApiKeyDiagnostics {
+  const trimmed = value.trim()
+  const hadWrappingQuotes = trimmed.length >= 2 && (
+    (trimmed.startsWith('"') && trimmed.endsWith('"'))
+    || (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  )
+  const unquoted = hadWrappingQuotes ? trimmed.slice(1, -1).trim() : trimmed
+  const normalized = normalizeApiKey(value)
+  return {
+    rawLength: value.length,
+    normalizedLength: normalized.length,
+    changedByNormalization: normalized !== value,
+    hadBearerPrefix: /^Bearer\s+/i.test(unquoted),
+    hadWrappingQuotes,
+    hadOuterWhitespace: value !== trimmed,
+    containsWhitespace: /\s/.test(normalized),
+    containsControlCharacters: [...normalized].some((character) => /[\u0000-\u001f\u007f]/.test(character)),
+  }
 }
 
 /**
@@ -38,10 +82,11 @@ function encrypt(plaintext: string): string {
  * Returns null on failure (e.g., key was encrypted on another machine/account).
  */
 function decrypt(b64: string): string | null {
+  const encoded = Buffer.from(b64, 'base64')
   // Try safeStorage decryption first
   if (safeStorage.isEncryptionAvailable()) {
     try {
-      return safeStorage.decryptString(Buffer.from(b64, 'base64'))
+      return safeStorage.decryptString(encoded)
     } catch {
       // Might be a plain base64 fallback string, or encrypted on another account
       // Fall through to plain base64 attempt
@@ -49,10 +94,20 @@ function decrypt(b64: string): string | null {
   }
   // Fallback: plain base64 decode
   try {
-    return Buffer.from(b64, 'base64').toString('utf8')
+    const candidate = encoded.toString('utf8')
+    return isPlausibleApiKey(candidate) ? candidate : null
   } catch {
     return null
   }
+}
+
+function isPlausibleApiKey(value: string): boolean {
+  const normalized = normalizeApiKey(value)
+  return normalized.length >= 8
+    && normalized.length <= 4_096
+    && !/\s/.test(normalized)
+    && !normalized.includes('\uFFFD')
+    && ![...normalized].some((character) => /[\u0000-\u001f\u007f]/.test(character))
 }
 
 /**
@@ -70,8 +125,9 @@ export function loadApiKeys(dataDir: string): Record<string, string> {
     const result: Record<string, string> = {}
     for (const [envVar, b64] of Object.entries(store)) {
       const plaintext = decrypt(b64)
-      if (plaintext) {
-        result[envVar] = plaintext
+      const normalized = plaintext ? normalizeApiKey(plaintext) : ''
+      if (normalized) {
+        result[envVar] = normalized
       } else {
         console.warn(`keychain: failed to decrypt key for ${envVar}, skipping`)
       }
@@ -92,6 +148,10 @@ export async function saveApiKey(
   envVarName: string,
   plaintextKey: string,
 ): Promise<void> {
+  const normalizedKey = normalizeApiKey(plaintextKey)
+  if (!normalizedKey) throw new Error('API key cannot be empty')
+  if (/\s/.test(normalizedKey)) throw new Error('API key cannot contain whitespace')
+
   const path = keysFilePath(dataDir)
   const dir = join(dataDir, 'config')
 
@@ -108,7 +168,7 @@ export async function saveApiKey(
   }
 
   // Encrypt and merge
-  store[envVarName] = encrypt(plaintextKey)
+  store[envVarName] = encrypt(normalizedKey)
 
   // Write atomically (mkdir + write)
   await mkdir(dir, { recursive: true })
@@ -122,7 +182,8 @@ export async function saveApiKey(
  */
 export function injectKeysIntoEnv(keys: Record<string, string>): void {
   for (const [envVar, value] of Object.entries(keys)) {
-    process.env[envVar] = value
+    const normalized = normalizeApiKey(value)
+    if (normalized) process.env[envVar] = normalized
   }
 }
 

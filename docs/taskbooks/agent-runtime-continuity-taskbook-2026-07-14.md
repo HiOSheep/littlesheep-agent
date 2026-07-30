@@ -1,11 +1,13 @@
 # LittleSheep Agent Runtime 连续性任务书 2026-07-14
 
 状态：规划已定稿，实施中（阶段 0、阶段 2、阶段 3 已完成；阶段 1 主要数据链已完成但真实供应商校准仍未闭环；阶段 4 已完成统一 Tool Execution Service、事件重入、TaskBookPatch、Renderer 入口与 TaskBook 步骤级有界并行；阶段 5 已完成持久检查点、Runner 续跑、应用启动恢复、活动任务控制、托盘、三档关闭策略和设置页后台入口的工程基线；真实 Electron 跨重启长任务验收仍未完成）
-最后更新：2026-07-30 13:46:22
+最后更新：2026-07-30 14:38:41
 
 本文把 Context、记忆注册、附件、运行中追加要求、检查点恢复、后台执行和双向透明整理为一条可分阶段验收的开发任务书。它服从 [架构原则](../principles/architecture-principles.md) 和 [核心 Agent 流程规范](../principles/core-agent-flow-guidelines.md)，当前事实与最新测试数字仍以 [项目状态](../decision/project-status.md) 为准。
 
 > 2026-07-30 实现边界：同一模型响应中的独立工具调用和显式声明依赖/资源/副作用的 TaskBook 步骤都已支持有界并行；LS 数据和用户工作区已具备 shadow Git 检查点、写前 preimage、run before/after、同步回退和退出冻结。应用已提供启动恢复、活动任务快照、暂停/继续/中断、托盘、三档关闭策略和设置页“应用与后台”；活动列表由 Main 通过 SSE 事件驱动同步。真实 Provider 长任务及实际 Electron 后台/崩溃/重启仍需后续验收。
+
+> 2026-07-30 14:38:41 校准边界：凭证保存、启动加载和环境注入已统一规范化，拒绝内部空白并阻止无法解密的密文字节回退为明文；脱敏诊断确认当前 DeepSeek 请求实际使用继承环境中的格式正常 `sk-*` 凭证，但官方端点仍返回 HTTP 401，旧 keychain 条目在独立 Electron 校准进程中不可解密。后台连续性专项 20 个文件、83 项通过；真实 Provider 和真实 Electron 活动长任务/崩溃演练仍不能标记完成。
 
 > 2026-07-16 边界更新：普通 GUI 不再展示或管理 Atom/D0-D3 内部结构，只显示六份记忆文件并仅允许编辑 `SOUL.md`。Runtime 和记忆工具继续使用完整原子树；LLM 每轮只预载树简介与根索引，再按需展开。下文旧“记忆管理页”条目视为历史实现记录。
 
@@ -455,7 +457,7 @@ T0-T3 是资源权威、介入优先级和预算语义的逻辑分级，不是�
 - 只要检查点仍在支持版本与保留期内，恢复不设置固定重启次数；检查点历史、事件和分支状态按容量及时间有界淘汰；
 - 统一限制重试、验证、重规划的次数、时间、成本和无进展轮数。
 
-已完成的检查点、启动恢复与后台控制能力：LS 数据根和用户工作区使用独立 shadow Git；写入前保存 preimage，run 完成保存 before/after manifest，支持同步回退和 partial 诊断；Runner 关闭时先关闭 SQLite/Embedding，再执行 `shutdown-freeze`。版本化 `RunCheckpoint` 可原子保存 TaskBook、执行状态、队列快照、权限结果和副作用，Runner 显式续跑不会重复追加原始输入，并会拒绝存在不确定外部副作用的检查点。Main 启动会把上一进程残留的 `resuming` 租约转为 `interrupted`，保留审计并允许新 run 原子重新领取；Local App API 提供有界发现、详情、放弃和 SSE 续跑，Renderer 提供查看现场、补充澄清、继续、停止和放弃。Runner 的活动注册表另外提供有界进度快照、订阅和暂停/继续/即时中断；暂停在安全边界保存 `paused` 检查点，历史重放不把它显示为失败或用户中断。Main 聚合当前与有界退役 Runner，托盘提供显示应用、任务状态、暂停/继续、中断和彻底退出；关闭策略固定为始终后台、仅活动任务时后台和始终退出，默认第二档，且托盘不可用时不允许隐藏。设置页通过 `active_runs` SSE 显示有界快照并调用相同控制入口；卸载时中止流、请求和重连计时器，Main 在断连时释放监听器。2026-07-30 的快捷方式真实窗口冒烟已验证设置入口、三档策略切换与恢复、同步状态、空任务态、手动刷新和全局前进/返回。当前回退只处理受管文件，不删除无关未跟踪文件，也不接管用户已有 `.git`。尚未完成的是真实活动长任务、托盘和 Electron 崩溃/重启验收。
+已完成的检查点、启动恢复与后台控制能力：LS 数据根和用户工作区使用独立 shadow Git；写入前保存 preimage，run 完成保存 before/after manifest，支持同步回退和 partial 诊断；Runner 关闭时先关闭 SQLite/Embedding，再执行 `shutdown-freeze`。版本化 `RunCheckpoint` 可原子保存 TaskBook、执行状态、队列快照、权限结果和副作用，Runner 显式续跑不会重复追加原始输入，并会拒绝存在不确定外部副作用的检查点。Main 启动会把上一进程残留的 `resuming` 租约转为 `interrupted`，保留审计并允许新 run 原子重新领取；Local App API 提供有界发现、详情、放弃和 SSE 续跑，Renderer 提供查看现场、补充澄清、继续、停止和放弃。Runner 的活动注册表另外提供有界进度快照、订阅和暂停/继续/即时中断；暂停在安全边界保存 `paused` 检查点，历史重放不把它显示为失败或用户中断。Main 聚合当前与有界退役 Runner，托盘提供显示应用、任务状态、暂停/继续、中断和彻底退出；关闭策略固定为始终后台、仅活动任务时后台和始终退出，默认第二档，且托盘不可用时不允许隐藏。设置页通过 `active_runs` SSE 显示有界快照并调用相同控制入口；卸载时中止流、请求和重连计时器，Main 在断连时释放监听器。2026-07-30 的快捷方式真实窗口冒烟已验证设置入口、三档策略切换与恢复、同步状态、空任务态、手动刷新和全局前进/返回；同日统一专项 20 个测试文件、83 项通过，覆盖关闭策略、活动任务 API/SSE、检查点租约与续跑、步骤/工具调度和监听器释放。当前回退只处理受管文件，不删除无关未跟踪文件，也不接管用户已有 `.git`。尚未完成的是真实活动长任务、托盘和 Electron 崩溃/重启验收。
 
 验收标准：
 
@@ -567,4 +569,4 @@ pnpm.cmd run verify:app-recovery
 
 ## 9. 当前执行状态
 
-阶段 0 已完成；阶段 1 的 Context 候选、来源 segment、精确/不可用 tokenizer 分类、不可展示的保守预算保护、快照、Provider usage 绑定、版本化 Summary Memory、附件清单优先、按需附件工具、压缩阈值设置、双账本 UI 和供应商冒烟工具已形成主要数据链。由于真实 Provider 校准尚未完成，阶段 1 继续保持“进行中”；2026-07-30 对 DeepSeek 的 chat、continuity、tool、abort 四项复测均到达官方端点，但当前凭证返回 HTTP 401。阶段 2 的 T0-T3 基础契约、v2 迁移、资源注册、Memory Service、索引导航、管理 UI、项目记忆三层投影、稳定项目身份、可恢复路径重绑定、插件/Skill 所有权迁移和大规模资源恢复验收已经完成。阶段 3 的附件缓存、workplace 资源索引和完整数据根迁移工程闭环也已完成。阶段 4 已完成统一 Tool Execution Service、工具调用级与 TaskBook 步骤级有界并行、RuntimeEventQueue、ingress、安全边界、确定性 TaskBookPatch、延迟事件重规划和 Renderer 事件生产/反馈入口；阶段 5 已完成 shadow Git、退出冻结、持久 RunCheckpoint、Runner 显式续跑、应用启动恢复、活动任务快照与控制、`active_runs` SSE、设置页“应用与后台”、托盘和三档关闭策略的工程基线。当前继续真实 Provider 校准与真实 Electron 连续性验收；真实崩溃/重启长任务仍需单独验收。
+阶段 0 已完成；阶段 1 的 Context 候选、来源 segment、精确/不可用 tokenizer 分类、不可展示的保守预算保护、快照、Provider usage 绑定、版本化 Summary Memory、附件清单优先、按需附件工具、压缩阈值设置、双账本 UI 和供应商冒烟工具已形成主要数据链。由于真实 Provider 校准尚未完成，阶段 1 继续保持“进行中”；2026-07-30 对 DeepSeek 的 chat、continuity、tool、abort 四项复测均到达官方端点，但格式正常的继承环境凭证仍返回 HTTP 401，旧 keychain 条目不可解密。凭证规范化、错误输入拒绝和损坏密文失败关闭已补齐，不能替代一把真实有效的 API key。阶段 2 的 T0-T3 基础契约、v2 迁移、资源注册、Memory Service、索引导航、管理 UI、项目记忆三层投影、稳定项目身份、可恢复路径重绑定、插件/Skill 所有权迁移和大规模资源恢复验收已经完成。阶段 3 的附件缓存、workplace 资源索引和完整数据根迁移工程闭环也已完成。阶段 4 已完成统一 Tool Execution Service、工具调用级与 TaskBook 步骤级有界并行、RuntimeEventQueue、ingress、安全边界、确定性 TaskBookPatch、延迟事件重规划和 Renderer 事件生产/反馈入口；阶段 5 已完成 shadow Git、退出冻结、持久 RunCheckpoint、Runner 显式续跑、应用启动恢复、活动任务快照与控制、`active_runs` SSE、设置页“应用与后台”、托盘和三档关闭策略的工程基线。本轮完整质量门为仓库卫生 33/33、237 个测试文件/1615 passed/1 skipped、27 个 workspace typecheck、Electron build 和恢复源检查通过。当前继续真实 Provider 校准与真实 Electron 连续性验收；真实崩溃/重启长任务仍需单独验收。
