@@ -46,6 +46,9 @@ export interface LocalAppApiServerOptions {
   selectDataRootTarget?: () => Promise<string | null>
   restartApplication?: () => void
   listActiveRuns?: () => RuntimeActiveRunSnapshot[]
+  subscribeActiveRuns?: (
+    listener: (runs: RuntimeActiveRunSnapshot[]) => void,
+  ) => () => void
   controlActiveRun?: (
     runId: string,
     action: RuntimeActiveRunAction,

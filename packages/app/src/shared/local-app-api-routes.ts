@@ -21,6 +21,7 @@ export const LOCAL_APP_API_ROUTES = {
   dataRootRollback: '/data-root/rollback',
   applicationRestart: '/application/restart',
   activeRuns: '/application/active-runs',
+  activeRunsStream: '/application/active-runs/stream',
   workspaceSelect: '/workspace/select',
   attachmentSelect: '/attachments/select',
   attachmentImport: '/attachments/import',

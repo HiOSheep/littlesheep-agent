@@ -46,6 +46,8 @@ describe('application lifecycle Local App API', () => {
     mkdirSync(workplaceDir, { recursive: true })
     const config = structuredClone(DEFAULT_CONFIG)
     const snapshot = activeRun()
+    let activeRunListener: ((runs: RuntimeActiveRunSnapshot[]) => void) | null = null
+    const releaseActiveRunListener = vi.fn()
     const controlActiveRun = vi.fn((
       runId: string,
       action: RuntimeActiveRunAction,
@@ -86,6 +88,11 @@ describe('application lifecycle Local App API', () => {
       rebuildRunner: vi.fn(async () => undefined),
       updateRuntimeConfig: vi.fn(async () => undefined),
       listActiveRuns: () => [snapshot],
+      subscribeActiveRuns: (listener) => {
+        activeRunListener = listener
+        listener([snapshot])
+        return releaseActiveRunListener
+      },
       controlActiveRun,
     })
     const base = `http://127.0.0.1:${server.port}`
@@ -96,6 +103,19 @@ describe('application lifecycle Local App API', () => {
       await expect(list.json()).resolves.toMatchObject({
         runs: [{ runId: 'run-1', phase: 'executing', activeToolCount: 1 }],
       })
+
+      const streamController = new AbortController()
+      const stream = await fetch(`${base}${LOCAL_APP_API_ROUTES.activeRunsStream}`, {
+        signal: streamController.signal,
+      })
+      expect(stream.status).toBe(200)
+      const reader = stream.body!.getReader()
+      const firstFrame = await reader.read()
+      expect(new TextDecoder().decode(firstFrame.value)).toContain('event: active_runs')
+      expect(activeRunListener).not.toBeNull()
+      streamController.abort()
+      await reader.read().catch(() => undefined)
+      await vi.waitFor(() => expect(releaseActiveRunListener).toHaveBeenCalledOnce())
 
       const controlPath = localAppApiItemPath(LOCAL_APP_API_PREFIXES.activeRuns, 'run-1', '/control')
       const pause = await fetch(`${base}${controlPath}`, {

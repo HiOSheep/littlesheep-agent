@@ -312,6 +312,7 @@ async function bootstrap(): Promise<void> {
     rebuildRunner,
     updateRuntimeConfig,
     listActiveRuns: () => runActivity.snapshot(),
+    subscribeActiveRuns: (listener) => runActivity.subscribe(listener),
     controlActiveRun: (runId, action, reason) => runActivity.request(runId, action, reason),
     selectWorkspace: async () => {
       const result = await dialog.showOpenDialog({

@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-07-29 17:14:25
+最后更新：2026-07-30 12:20:33
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
@@ -41,7 +41,7 @@
 | `package.json` | workspace 根脚本、测试入口、类型检查、构建和仓库卫生检查。 |
 | `pnpm-workspace.yaml` | 声明 `packages/*` 与 `packages/channels/*` 两组 workspace。 |
 | `pnpm-lock.yaml` | 依赖锁定文件；只有依赖变更时由 pnpm 更新。 |
-| `tsconfig.base.json`、`tsconfig.workspace.json`、`vitest.config.ts` | 全仓 TypeScript 基线、自动生成的 project references solution 与 Vitest 基线。`tsconfig.workspace.json` 由维护脚本生成，不手工编辑。Vitest 保留单项 30 秒超时，并把文件并发限制为 8，避免高核心数 Windows 机器上的 SQLite、文件扫描、Git 与子进程测试产生资源争用和锁清理假失败。 |
+| `tsconfig.base.json`、`tsconfig.workspace.json`、`vitest.config.ts` | 全仓 TypeScript 基线、自动生成的 project references solution 与 Vitest 基线。`tsconfig.workspace.json` 由维护脚本生成，不手工编辑。Vitest 保留单项 30 秒超时，并把文件并发限制为 4；Windows 上 8 workers 会让 SQLite、shadow Git 和 Memory 集成测试发生资源争用并出现假超时，4 workers 已由完整测试验证。 |
 | `branding.config.json`、`littlesheep.config.json` | 仓库级品牌/开发配置样例，不放用户密钥。 |
 | `README.md` | 面向开发者的入口说明和质量门。 |
 | `build-app.bat`、`start-littlesheep.bat` | Windows 兼容入口，实际逻辑委托给 `scripts/`。 |
@@ -121,7 +121,7 @@
 | 插件发现、信任和生命周期 | `packages/plugins/` | `src/host.ts`、`src/manifest.ts` | `src/**/*.test.ts` |
 | 外部渠道协议 | `packages/channels/*` | 各包 `src/plugin.ts` | 各包 `src/plugin.test.ts`、`test/e2e-webhook.test.ts` |
 | Electron 启动、Local App API 和用户数据 adapter | `packages/app/src/main/` | `index.ts`、`local-app-api-server.ts` | `src/main/*.test.ts` |
-| 窗口、托盘、关闭策略与活动任务控制 | `packages/app/src/main/`、`packages/runner/` | `desktop-shell.ts`、`tray-controller.ts`、`close-policy.ts`、`run-activity-monitor.ts`、`local-app-api/application-lifecycle-routes.ts`、`runner/src/active-run-*.ts` | `close-policy.test.ts`、`run-activity-monitor.test.ts`、`application-lifecycle-api.test.ts`、`runner/src/active-run-registry.test.ts` |
+| 窗口、托盘、关闭策略与活动任务控制 | `packages/app/src/main/`、`packages/app/src/renderer/settings/`、`packages/runner/` | `desktop-shell.ts`、`tray-controller.ts`、`close-policy.ts`、`run-activity-monitor.ts`、`local-app-api/application-lifecycle-routes.ts`、`renderer/settings/application-background*.ts(x)`、`runner/src/active-run-*.ts` | `close-policy.test.ts`、`run-activity-monitor.test.ts`、`application-lifecycle-api.test.ts`、`renderer/api/application-lifecycle.test.ts`、`renderer/settings/application-background-state.test.ts`、`runner/src/active-run-registry.test.ts` |
 | LS 开发环境、工具链版本和终端环境 | `packages/app/src/main/`、`packages/app/src/renderer/settings/` | `development-environments.ts`、`development-environment-definitions.ts`、`development-environment-files.ts`、`local-app-api/development-environment-routes.ts`、`settings/development-environments.tsx` | `development-environments.test.ts`、`development-environment-api.test.ts` |
 | 桌面 UI、导航、设置和工作区 | `packages/app/src/renderer/` | `App.tsx`、`app-shell/`、各 Renderer 领域目录、`api/` | `src/renderer/*.test.ts(x)`、领域同目录测试与真实窗口验收 |
 | CLI 与管理命令 | `packages/cli/` | `src/bin.ts`、`src/commands/` | `src/**/*.test.ts`、`test/e2e-cli.test.ts` |
@@ -139,7 +139,7 @@
 | `packages/app/src/main/run-activity-monitor.ts` | 聚合当前与有界退役 Runner 的活动任务，去重快照、路由暂停/继续/中断，并限制来源、监听器和聚合项数量。 |
 | `packages/app/src/main/builtin-plugins.ts` | 内置插件目录；具体渠道实现仍通过动态 import 按需加载。 |
 | `packages/app/src/main/local-app-api-server.ts` | renderer 与主进程之间的 loopback Local App API 组合入口和生命周期。 |
-| `packages/app/src/main/local-app-api/` | Local App API 的 HTTP 基元、公共契约及 run、应用生命周期、项目、会话、Runtime、记忆、工作区、终端和扩展领域路由；活动任务列表/控制位于 `application-lifecycle-routes.ts`，组合入口位于 `run-lifecycle-routes.ts`，atom 高级管理与证据导出位于 `memory-atom-routes.ts`。 |
+| `packages/app/src/main/local-app-api/` | Local App API 的 HTTP 基元、公共契约及 run、应用生命周期、项目、会话、Runtime、记忆、工作区、终端和扩展领域路由；活动任务快照、`active_runs` SSE 与控制位于 `application-lifecycle-routes.ts`，组合入口位于 `run-lifecycle-routes.ts`，atom 高级管理与证据导出位于 `memory-atom-routes.ts`。 |
 | `packages/app/src/main/run-policy.ts`、`local-app-api/terminal-permission.ts` | Main 侧权限策略决议、逻辑容器边界复核和终端会话/命令审批；Renderer 的批准结果不能替代这里的判定。 |
 | `packages/app/src/main/attachment-cache.ts`、`attachments.ts` | LS 受管附件缓存的稳定索引、配额/过期清理、安全删除校验，以及 run-scoped 附件解析与所有权分类。 |
 | `packages/app/src/main/data-root-migration.ts`、`data-root-metadata.ts` | 数据根 locator、迁移事务、同级 staging、流式哈希清单、启动前恢复、活动元数据内部路径重绑定和回滚；正式用户数据不得用于故障注入。 |
@@ -162,10 +162,11 @@
 | `packages/app/src/renderer/approval/`、`chat/`、`composer/`、`runtime/` | 审批展示、对话与流式 run 归并、输入栏和运行选项。 |
 | `packages/app/src/renderer/settings/`、`sidebar/`、`ui/`、`workspace/` | 设置页、项目/会话导航、通用交互基元和拓展工作区。 |
 | `packages/app/src/renderer/settings/development-environments.tsx` | 设置中的开发环境管理页：状态、目标版本、系列版本选择、导入、移除和错误/忙碌反馈。 |
+| `packages/app/src/renderer/settings/application-background.tsx`、`active-run-row.tsx` | 设置中的关闭策略和活动任务管理页：通过 SSE 接收有界 Runtime 快照，提供暂停、继续、中断和渐进式运行详情；卸载时必须释放流、请求和重连计时器。 |
 | `packages/app/src/renderer/TraceCard.tsx` | Agent 执行过程、TaskBook、工具调用和验证时间线。 |
 | `packages/app/src/renderer/MemoryTreeView.tsx`、`ArchiveManager.tsx`、`Settings.tsx` | 六份记忆文件的简洁视图、归档和设置界面；记忆页仅 `SOUL.md` 可编辑，不展示 Atom 内部结构。 |
 | `packages/app/src/renderer/chat/assistant-turn.tsx`、`Markdown.tsx`、`workspace/browser.tsx` | 思考摘要/执行过程/最终结果的渐进披露，以及链接单击内置预览、双击系统打开的全局交互。 |
-| `packages/app/src/renderer/api.ts` | renderer 对 Local App API 的兼容导出入口；领域客户端位于 `packages/app/src/renderer/api/`。活动任务查询与控制客户端位于 `api/application-lifecycle.ts`，当前尚未从兼容 barrel 导出，也尚未接入设置页。 |
+| `packages/app/src/renderer/api.ts` | renderer 对 Local App API 的兼容导出入口；领域客户端位于 `packages/app/src/renderer/api/`。活动任务快照、SSE 订阅与控制客户端位于 `api/application-lifecycle.ts`，由设置页领域组件直接使用，不要求进入旧兼容 barrel。 |
 | `packages/app/src/renderer/styles.css` | 当前深灰视觉系统、共享浮层/转场 token、折叠和工作区布局样式；后续按 feature 拆分时必须保留共享原语契约。 |
 | `packages/app/src/shared/` | renderer 与主进程共享的纯函数模型、Local App API 路由和跨进程协议；稳定跨 package 契约仍归 `packages/types/`。 |
 
@@ -198,7 +199,7 @@ App / CLI / Channel adapters
 7. 跨包只从公开入口导入；出现反向依赖时先定义端口，不通过深层 import 或循环依赖解决。
 8. 新建 package 需要同时满足独立职责、稳定接口、独立测试和真实复用；否则先在现有 package 内按 feature 拆分。
 
-Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约过滤、预算、淘汰、计数和双快照；provider/model tokenizer 能力矩阵强制模型声明与运行时 `counterId` 一致后才能生成精确账本，unavailable 模型只使用不可展示的保守请求前预算保护，当前仍缺真实 Provider 对账。Memory Repository 与 Memory Service 已分别把持久化和运行协调拆入同名领域目录；DECIDE、EXECUTE、VERIFY 也已把需求校准、模型调用、工具循环、步骤调度和验证恢复从 stage facade 中分离。TaskBook 与步骤执行公共契约位于 `packages/types/src/task.ts`，状态机与 RunContext 位于 `packages/types/src/agent.ts`。统一 Tool Execution Service 位于 `packages/tools/src/tool-execution-service.ts`，调度、中断、记录摘要和结果处理使用同目录独立模块；Harness 只通过公开入口调用。版本化 LLM Call Contract 位于 `packages/harness/src/llm-call-contracts/`，公共类型唯一来源是 `packages/types/src/runtime-contracts.ts`；EVOLVE/CAPTURE 的提交判定位于 `stages/memory-intent-gate.ts`。运行时事件队列、活动 run ingress、安全边界、TaskBookPatch、TaskBook 步骤级有界并行、持久检查点、Runner 显式续跑、Renderer 事件入口、应用启动恢复、活动任务控制、托盘和关闭策略已有独立模块；下一步是设置页后台入口、真实 Electron 后台/跨重启长任务和 Mode Registry。不能因为已有 package 或接口就宣称真实场景已经完成，具体评估和演进顺序见 [架构决策报告](../decision/architecture-decision-report.md)。
+Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约过滤、预算、淘汰、计数和双快照；provider/model tokenizer 能力矩阵强制模型声明与运行时 `counterId` 一致后才能生成精确账本，unavailable 模型只使用不可展示的保守请求前预算保护，当前仍缺真实 Provider 对账。Memory Repository 与 Memory Service 已分别把持久化和运行协调拆入同名领域目录；DECIDE、EXECUTE、VERIFY 也已把需求校准、模型调用、工具循环、步骤调度和验证恢复从 stage facade 中分离。TaskBook 与步骤执行公共契约位于 `packages/types/src/task.ts`，状态机与 RunContext 位于 `packages/types/src/agent.ts`。统一 Tool Execution Service 位于 `packages/tools/src/tool-execution-service.ts`，调度、中断、记录摘要和结果处理使用同目录独立模块；Harness 只通过公开入口调用。版本化 LLM Call Contract 位于 `packages/harness/src/llm-call-contracts/`，公共类型唯一来源是 `packages/types/src/runtime-contracts.ts`；EVOLVE/CAPTURE 的提交判定位于 `stages/memory-intent-gate.ts`。运行时事件队列、活动 run ingress、安全边界、TaskBookPatch、TaskBook 步骤级有界并行、持久检查点、Runner 显式续跑、Renderer 事件入口、应用启动恢复、活动任务 SSE、设置页后台控制、托盘和关闭策略已有独立模块；下一步是真实 Electron 后台/跨重启长任务和 Mode Registry。不能因为已有 package 或接口就宣称真实场景已经完成，具体评估和演进顺序见 [架构决策报告](../decision/architecture-decision-report.md)。
 
 ## 测试与脚本
 

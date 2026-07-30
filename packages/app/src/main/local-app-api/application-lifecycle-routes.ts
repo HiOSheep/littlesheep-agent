@@ -11,7 +11,7 @@ import {
   LOCAL_APP_API_ROUTES,
   matchLocalAppApiItemPath,
 } from '../../shared/local-app-api-routes.js'
-import { json, readJson, type LocalAppApiRequest } from './http.js'
+import { json, readJson, writeSse, type LocalAppApiRequest } from './http.js'
 
 const ACTIVE_RUN_ACTIONS: ReadonlySet<RuntimeActiveRunAction> = new Set(['pause', 'resume', 'interrupt'])
 const MAX_CONTROL_REASON_LENGTH = 1_024
@@ -19,6 +19,9 @@ const MAX_CONTROL_REASON_LENGTH = 1_024
 export interface ApplicationLifecycleRouteContext {
   getRunner: () => AgentRunner
   listActiveRuns?: () => RuntimeActiveRunSnapshot[]
+  subscribeActiveRuns?: (
+    listener: (runs: RuntimeActiveRunSnapshot[]) => void,
+  ) => () => void
   controlActiveRun?: (
     runId: string,
     action: RuntimeActiveRunAction,
@@ -34,6 +37,44 @@ export async function routeApplicationLifecycle(
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.activeRuns) {
     const runs = context.listActiveRuns?.() ?? context.getRunner().activeRuns?.list() ?? []
     json(res, 200, { runs })
+    return true
+  }
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.activeRunsStream) {
+    const activeRuns = context.getRunner().activeRuns
+    const subscribe = context.subscribeActiveRuns
+      ?? (activeRuns ? activeRuns.subscribe.bind(activeRuns) : undefined)
+    if (!subscribe) {
+      json(res, 503, { error: 'active run subscription is unavailable' })
+      return true
+    }
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    })
+    let closed = false
+    let unsubscribe: (() => void) | null = null
+    const cleanup = () => {
+      if (closed) return
+      closed = true
+      unsubscribe?.()
+      req.removeListener('aborted', cleanup)
+      res.removeListener('close', cleanup)
+    }
+    req.once('aborted', cleanup)
+    res.once('close', cleanup)
+    try {
+      const release = subscribe((runs) => {
+        if (!closed && !res.destroyed) writeSse(res, 'active_runs', { runs })
+      })
+      unsubscribe = release
+      if (closed) release()
+    } catch (error) {
+      if (!res.destroyed) writeSse(res, 'error', { error: (error as Error).message })
+      res.end()
+      cleanup()
+    }
     return true
   }
 

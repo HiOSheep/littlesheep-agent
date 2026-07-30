@@ -40,7 +40,10 @@ export function OverlaysView({ controller }: { controller: AppController }) {
           settingsEntryRippling={settingsEntryRippling}
           onOpenPage={openSettingsPage}
           onProfileChange={(profile) => void applyRuntimePatch({ profile })}
-          onContextCompressionThresholdChange={(ratio) => applyRuntimePatch({ contextCompressionThresholdRatio: ratio })}
+          onContextCompressionThresholdChange={async (ratio) => {
+            await applyRuntimePatch({ contextCompressionThresholdRatio: ratio })
+          }}
+          onClosePolicyChange={(closePolicy) => applyRuntimePatch({ closePolicy })}
           onArchiveChanged={() => {
             void refreshProjects()
             void refreshSessions()

@@ -43,7 +43,7 @@ export interface ProjectActionContext {
   alignWorkspacePanelToWorkspaceRoot: (root: string) => void
   appHistoryRef: MutableRefObject<NavigationHistoryState<AppNavigationSnapshot>>
   appMountedRef: MutableRefObject<boolean>
-  applyRuntimePatch: (patch: RuntimePatch) => Promise<void>
+  applyRuntimePatch: (patch: RuntimePatch) => Promise<boolean>
   beginDraftApprovalScope: () => void
   currentSession: string | undefined
   navigationRestoreTargetRef: MutableRefObject<AppNavigationSnapshot | null>

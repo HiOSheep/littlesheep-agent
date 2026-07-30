@@ -79,7 +79,10 @@ export default defineConfig({
     include: ['packages/**/src/**/*.test.ts', 'test/**/*.test.ts'],
     environment: 'node',
     testTimeout: 30_000,
-    maxWorkers: 8,
+    // SQLite, shadow Git and Memory v3 integration suites contend heavily on
+    // Windows above four workers and can produce false 30 s timeouts. Four is
+    // the verified local capacity while preserving useful file parallelism.
+    maxWorkers: 4,
     minWorkers: 1,
     server: {
       deps: {

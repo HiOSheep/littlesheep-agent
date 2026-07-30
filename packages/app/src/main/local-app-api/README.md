@@ -9,6 +9,7 @@
 | `contracts.ts` | Server 构造参数和生命周期公共契约。 |
 | `http.ts` | JSON、SSE、请求体上限和 HTTP 错误基元。 |
 | `run-routes.ts` / `run-support.ts` | Agent run、流式事件、审批、中断、会话归属和产物。 |
+| `application-lifecycle-routes.ts` | 活动任务快照、`active_runs` SSE、暂停/继续/中断控制；监听器生命周期归 Main 的 `RunActivityMonitor`。 |
 | `project-routes.ts` | 项目注册、重绑定、归档转换和目录创建。 |
 | `session-routes.ts` | 会话、归档和执行日志重放。 |
 | `runtime-routes.ts` | Runtime、Provider key、数据根和应用重启。 |
@@ -25,7 +26,7 @@
 
 - Run：`/run`、`/run/stream`、`/approvals/:id`。
 - 会话：`/sessions`、`/projects`、`/archive`、`/runs/:id`。
-- Runtime：`/state`、`/runtime`、`/config/*`、`/data-root/*`、`/application/restart`。
+- Runtime：`/state`、`/runtime`、`/config/*`、`/data-root/*`、`/application/restart`、`/application/active-runs`、`/application/active-runs/stream`、`/application/active-runs/:id/control`。
 - 工作区：`/workspace/*`、`/attachments/*`、`/workspace/terminal/*`。
 - 记忆：`/skills/*`、`/memory/*`。
 - 扩展：`/plugins/*`、`/channels/*`。
@@ -37,5 +38,6 @@
 - `../local-app-api-server.ts` 只负责组合和生命周期，不新增领域实现。
 - 路由返回 `true` 表示已处理；未匹配必须返回 `false`，由总入口统一生成 404。
 - 长生命周期资源必须归属一个 router/server 实例，并在 `stop()` 中释放 controller、timer、listener 和子进程。
+- SSE 路由必须同时处理请求中止、响应关闭和订阅建立期间的竞态；任何退出路径只能释放一次监听器。
 - 不复制 shared contracts，不改变既有 URL、SSE 事件名、状态码或持久化语义。
 - 修改后运行 App typecheck、对应 API 特征测试、全量测试、构建和恢复检查。

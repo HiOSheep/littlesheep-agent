@@ -302,11 +302,10 @@ export function useAppController() {
       if (appMountedRef.current) setRuntimeError((e as Error).message)
     }
   }
-
-  async function applyRuntimePatch(patch: RuntimePatch) {
+  async function applyRuntimePatch(patch: RuntimePatch): Promise<boolean> {
     try {
       const next = await updateRuntime(patch)
-      if (!appMountedRef.current) return
+      if (!appMountedRef.current) return false
       setRuntime(next)
       setRuntimeError(null)
       if (Object.prototype.hasOwnProperty.call(patch, 'workspace')) {
@@ -314,13 +313,14 @@ export function useAppController() {
       }
       void refreshProjects()
       await notifyRuntimeSettingChanges(patch, next)
+      return true
     } catch (e) {
-      if (!appMountedRef.current) return
+      if (!appMountedRef.current) return false
       setRuntimeError((e as Error).message)
       await refreshRuntime()
+      return false
     }
   }
-
   async function addAttachments() {
     try {
       const files = await selectAttachments()

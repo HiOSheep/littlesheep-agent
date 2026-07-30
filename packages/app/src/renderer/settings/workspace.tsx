@@ -14,6 +14,7 @@ import { GlobalTitlebar } from '../sidebar/global-titlebar'
 import { FloatingHelpTip } from '../ui/floating-help'
 import { SettingsGearIcon } from '../ui/icons'
 import { SettingsAgentProfilePage } from './agent-profile'
+import { SettingsApplicationBackgroundPage } from './application-background'
 import { DirectModulePageContent } from './direct-module'
 import { SettingsHome } from './home'
 import { SETTINGS_NAV_GROUPS } from './navigation'
@@ -42,6 +43,7 @@ export function SettingsWorkspace({
   onOpenPage,
   onProfileChange,
   onContextCompressionThresholdChange,
+  onClosePolicyChange,
   onArchiveChanged,
   onTipChange,
 }: {
@@ -63,6 +65,7 @@ export function SettingsWorkspace({
   onOpenPage: (page: SettingsPage) => void
   onProfileChange: (profile: AgentProfileId) => void
   onContextCompressionThresholdChange: (ratio: number) => Promise<void>
+  onClosePolicyChange: (policy: RuntimeState['closePolicy']) => Promise<boolean>
   onArchiveChanged: () => void | Promise<void>
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
@@ -162,6 +165,12 @@ export function SettingsWorkspace({
         <main className="settings-workspace-body">
           <div key={page} className={`settings-page-transition ${pageHasChangedRef.current ? 'with-motion' : ''}`}>
             {page === 'home' && <SettingsHome onOpenPage={onOpenPage} />}
+            {page === 'application' && (
+              <SettingsApplicationBackgroundPage
+                closePolicy={runtime?.closePolicy ?? null}
+                onClosePolicyChange={onClosePolicyChange}
+              />
+            )}
             {page === 'agent' && (
               <SettingsAgentProfilePage
                 profile={runtime?.profile ?? 'general'}

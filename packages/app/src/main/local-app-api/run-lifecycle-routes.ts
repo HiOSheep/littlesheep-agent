@@ -35,6 +35,7 @@ export async function routeRunLifecycle(
   return routeApplicationLifecycle(request, {
     getRunner: context.getRunner,
     listActiveRuns: options.listActiveRuns,
+    subscribeActiveRuns: options.subscribeActiveRuns,
     controlActiveRun: options.controlActiveRun,
   })
 }
