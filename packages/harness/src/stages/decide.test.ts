@@ -98,6 +98,42 @@ describe('decideStage', () => {
     expect(llm.chat).toHaveBeenCalledTimes(2);
   });
 
+  it('disables provider thinking on the first structured DECIDE request', async () => {
+    const requests: import('@littlesheep/llm').ChatRequest[] = [];
+    const llm = createMockLlm((request) => {
+      requests.push(request);
+      return textResponse('{"plan":[{"description":"inspect"}]}');
+    });
+    const stage = createDecideStage({ ...deps, llm });
+    const ctx = makeCtx({ inbound: textMessage('user', 'inspect') });
+    ctx.resolvedRunConfig = {
+      version: 1,
+      runId: ctx.runId,
+      resolvedAt: '2026-07-30T00:00:00.000Z',
+      origin: 'test',
+      behaviorModeId: 'general',
+      permissionPolicyId: 'research',
+      workflowStrategyId: 'core-flow',
+      contextStrategyId: 'context-v1',
+      memoryStrategyId: 'index-first-v1',
+      toolSelectionStrategyId: 'registered-tools-v1',
+      outputContractId: 'user-reply-v1',
+      provider: 'deepseek',
+      model: 'deepseek-v4-flash',
+      reasoning: 'ultra',
+      parameters: {},
+      availableToolNames: [],
+      approvalRequiredToolNames: [],
+      userOverrides: {},
+      projectOverrides: {},
+    };
+
+    await stage(ctx);
+
+    expect(requests[0]?.thinking).toEqual({ type: 'disabled' });
+    expect(requests[0]?.reasoning_effort).toBeUndefined();
+  });
+
   it('empty response → recover', async () => {
     const llm = createMockLlm(textResponse(''));
     const stage = createDecideStage({ ...deps, llm });
@@ -114,6 +150,57 @@ describe('decideStage', () => {
     const res = await stage(ctx);
     expect(res.next).toBe('recover');
     expect(res.ok).toBe(false);
+  });
+
+  it('uses one minimal step when a valid assessment omits simple-task steps', async () => {
+    const tool = makeTool('glob', { ok: true, output: '' });
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      assessment: {
+        userNeed: 'inspect the current directory',
+        complexity: 'simple',
+        goal: 'list the top-level directory entries',
+        successCriteria: ['top-level entries are listed'],
+        needsClarification: false,
+      },
+      taskBook: { steps: [] },
+    })));
+    const stage = createDecideStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [tool],
+      inbound: textMessage('user', 'Use the glob tool to list the top-level entries.'),
+    });
+
+    const res = await stage(ctx);
+
+    expect(res).toMatchObject({ next: 'execute', ok: true, meta: { usedMinimalFallback: true } });
+    expect(ctx.plan).toEqual([expect.objectContaining({
+      id: 'step-1',
+      description: 'list the top-level directory entries',
+      tools: ['glob'],
+    })]);
+    expect(llm.chat).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not collapse a complex assessment with missing steps into one fallback step', async () => {
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      assessment: {
+        userNeed: 'migrate a multi-package runtime',
+        complexity: 'complex',
+        goal: 'complete the runtime migration',
+        successCriteria: ['all packages are migrated and verified'],
+        needsClarification: false,
+        requiresTaskBook: true,
+      },
+      taskBook: { steps: [] },
+    })));
+    const stage = createDecideStage({ ...deps, llm });
+    const ctx = makeCtx({ inbound: textMessage('user', 'migrate the complete runtime') });
+
+    const res = await stage(ctx);
+
+    expect(res).toMatchObject({ next: 'recover', ok: false });
+    expect(ctx.plan).toBeUndefined();
+    expect(llm.chat).toHaveBeenCalledTimes(1);
   });
 
   it('preserves requiresApproval flag', async () => {

@@ -16,6 +16,7 @@
 import { app, dialog } from 'electron'
 import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
+import { randomBytes } from 'node:crypto'
 import { join } from 'node:path'
 import {
   loadConfig,
@@ -46,6 +47,7 @@ import { RunActivityMonitor } from './run-activity-monitor.js'
 import { LittleSheepDesktopShell } from './desktop-shell.js'
 import { DataRootMigrationManager } from './data-root-migration.js'
 import { prepareMemoryV3Bootstrap } from './memory-v3-bootstrap.js'
+import { removeLocalAppApiLocator, writeLocalAppApiLocator } from './local-app-api-locator.js'
 import { developmentEnvironmentLabel } from './development-environment-definitions.js'
 import {
   clearEmbeddedBrowserCache,
@@ -74,6 +76,7 @@ let currentModel: string = ''
 let currentDataDir: string = ''
 let currentBootstrapDir: string = ''
 let currentWorkplaceDir: string = ''
+let providerCalibrationToken = ''
 let rebuildMutex: Promise<void> | null = null
 const retiredRunners = new Map<AgentRunner, NodeJS.Timeout>()
 const MAX_RETIRED_RUNNERS = 4
@@ -298,6 +301,7 @@ async function bootstrap(): Promise<void> {
   currentWorkplaceDir = dataDir.workplace
 
   // 7. Start local app API server on loopback (random free port).
+  providerCalibrationToken = randomBytes(32).toString('base64url')
   server = await startLocalAppApiServer(runner, {
     port: 0,
     sessionIndex,
@@ -309,6 +313,7 @@ async function bootstrap(): Promise<void> {
     config,
     dataDir: dataDir.root,
     workplaceDir: dataDir.workplace,
+    providerCalibrationToken,
     rebuildRunner,
     updateRuntimeConfig,
     listActiveRuns: () => runActivity.snapshot(),
@@ -379,6 +384,14 @@ async function bootstrap(): Promise<void> {
       })
       return result.canceled ? null : result.filePaths[0] ?? null
     },
+  })
+  await writeLocalAppApiLocator(dataDir.root, {
+    version: 1,
+    host: '127.0.0.1',
+    port: server.port,
+    token: providerCalibrationToken,
+    pid: process.pid,
+    startedAt: new Date().toISOString(),
   })
 
   // 8. Start the optional plugin host. Built-in channel implementations use
@@ -530,6 +543,10 @@ if (gotLock) {
     shutdownStarted = true
     desktopShell.dispose()
     void runShutdownSequence([
+      {
+        name: 'local app API locator',
+        run: () => removeLocalAppApiLocator(currentDataDir, providerCalibrationToken),
+      },
       { name: 'local app API', run: () => server?.stop() },
       { name: 'plugins', run: () => pluginHost?.stop() },
       { name: 'retired runners', run: shutdownRetiredRunners },

@@ -72,6 +72,26 @@ describe('globTool', () => {
     expect(output).not.toContain('e.md');
   });
 
+  it('returns matching directories and marks them with a path separator', async () => {
+    const result = await globTool.execute({ pattern: '*', path: tmpDir }, ctx);
+
+    expect(result.ok).toBe(true);
+    const lines = String(result.output).split('\n');
+    const directorySuffix = process.platform === 'win32' ? '\\' : '/';
+    expect(lines).toContain(join(tmpDir, 'sub') + directorySuffix);
+    expect(lines).toContain(join(tmpDir, 'a.ts'));
+    expect(result.meta).toMatchObject({ count: 4, fileCount: 3, directoryCount: 1 });
+  });
+
+  it('supports directory-oriented trailing-slash patterns', async () => {
+    const result = await globTool.execute({ pattern: '*/', path: tmpDir }, ctx);
+
+    expect(result.ok).toBe(true);
+    const directorySuffix = process.platform === 'win32' ? '\\' : '/';
+    expect(result.output).toBe(join(tmpDir, 'sub') + directorySuffix);
+    expect(result.meta).toMatchObject({ count: 1, fileCount: 0, directoryCount: 1 });
+  });
+
   it('respects max_results', async () => {
     const result = await globTool.execute(
       { pattern: '**/*', path: tmpDir, max_results: 2 },
@@ -84,10 +104,10 @@ describe('globTool', () => {
     expect(meta.count).toBeLessThanOrEqual(2);
   });
 
-  it('returns "No files matched" for no hits', async () => {
+  it('returns an explicit empty result for no hits', async () => {
     const result = await globTool.execute({ pattern: '*.xyz', path: tmpDir }, ctx);
     expect(result.ok).toBe(true);
-    expect(result.output).toBe('No files matched');
+    expect(result.output).toBe('No files or directories matched');
   });
 
   it('fails for missing path', async () => {

@@ -63,6 +63,13 @@ function convert(s: z.ZodTypeAny): object {
   if (s instanceof z.ZodLiteral) {
     return { const: s.value };
   }
+  if (s instanceof z.ZodDiscriminatedUnion) {
+    const options = Array.from(s.options) as z.ZodTypeAny[];
+    return {
+      type: 'object',
+      anyOf: options.map(convert),
+    };
+  }
   if (s instanceof z.ZodUnion) {
     const options = s.options as unknown as z.ZodTypeAny[];
     return { anyOf: options.map(convert) };

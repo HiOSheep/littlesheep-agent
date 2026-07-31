@@ -10,6 +10,7 @@ import type {
   ToolResult,
 } from '@littlesheep/types';
 import type { ExecuteSanitizeOptions, ExecuteStageDeps } from './contracts.js';
+import { reserveUserFacingReplyOnce } from '../../user-facing-reply.js';
 import { orderedStepResults } from './failure-policy.js';
 import { synthesizeFinalReply } from './final-reply.js';
 import { applyUsage } from './tool-loop.js';
@@ -131,7 +132,7 @@ export async function executeTaskBook(
   syncExecutionSteps();
   ctx.toolResults = allToolResults;
   try {
-    ctx.reply = await synthesizeFinalReply(deps, ctx, taskBook, execution.steps);
+    ctx.reply = await resolveCompletedTaskReply(deps, ctx, taskBook, execution.steps);
     execution.summary = ctx.reply;
   } catch (error) {
     ctx.reply = undefined;
@@ -155,6 +156,29 @@ export async function executeTaskBook(
     ok: true,
     meta: { taskStatus: execution.status, taskSteps: execution.steps.length, toolCalls: allToolResults.length },
   };
+}
+
+async function resolveCompletedTaskReply(
+  deps: ExecuteStageDeps,
+  ctx: RunContext,
+  taskBook: TaskBook,
+  stepResults: TaskStepResult[],
+): Promise<string> {
+  const stepOutput = reusableSingleStepOutput(taskBook, stepResults);
+  if (stepOutput) {
+    const reserved = await reserveUserFacingReplyOnce(ctx, 'execute_tool_loop', stepOutput);
+    if (reserved) return reserved;
+  }
+  return synthesizeFinalReply(deps, ctx, taskBook, stepResults);
+}
+
+function reusableSingleStepOutput(taskBook: TaskBook, stepResults: TaskStepResult[]): string | undefined {
+  if (taskBook.complexity !== 'trivial' && taskBook.complexity !== 'simple') return undefined;
+  if (taskBook.steps.length !== 1 || stepResults.length !== 1) return undefined;
+  const result = stepResults[0]!;
+  if (result.status !== 'done' || result.error) return undefined;
+  const output = result.output?.trim();
+  return output || undefined;
 }
 
 function visiblePriorResults(

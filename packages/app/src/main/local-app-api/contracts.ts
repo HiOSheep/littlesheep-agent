@@ -62,6 +62,8 @@ export interface LocalAppApiServerOptions {
     environmentId: string,
     version: string | null,
   ) => Promise<string | null>
+  /** Startup-scoped secret for the loopback-only Provider calibration route. */
+  providerCalibrationToken?: string
 }
 
 export interface LocalAppApiServer {

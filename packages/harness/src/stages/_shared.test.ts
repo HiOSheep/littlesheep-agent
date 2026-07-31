@@ -75,7 +75,7 @@ describe('callLlmForJson retry budgets', () => {
     ])
   })
 
-  it('does not inflate the budget for non-empty malformed JSON', async () => {
+  it('expands the retry budget for non-empty malformed JSON', async () => {
     const maxTokens: Array<number | undefined> = []
     const llm = createMockLlm([
       textResponse('not json'),
@@ -94,7 +94,7 @@ describe('callLlmForJson retry budgets', () => {
     })
 
     expect(result.parsed).toBeNull()
-    expect(maxTokens).toEqual([100, 100])
+    expect(maxTokens).toEqual([100, 150])
   })
 })
 

@@ -36,6 +36,22 @@ const RULES: Rule[] = [
     confidence: 0.85,
     reason: 'confirmation',
   },
+  // Explicit copy/output constraints are still conversation. Words such as
+  // "测试" or "校准" describe the content, not a request to run tools.
+  {
+    pattern: /(?:请|麻烦)?(?:只|仅)(?:回复|回答|输出|返回|说)|\b(?:reply|respond|answer|output|return|say)\s+only\b/i,
+    activity: 'respond',
+    confidence: 0.98,
+    reason: 'direct response constraint',
+  },
+  // An explicit imperative to use a named tool is unambiguously executable
+  // and does not need a separate classifier model call.
+  {
+    pattern: /(?:(?:(?:请|帮我|麻烦(?:你)?|替我)(?:使用|调用|用)|^(?:使用|调用|用))\s*[A-Za-z][A-Za-z0-9_.-]{0,63}\s*(?:工具|tool\b))|(?:\b(?:please\s+)?(?:use|call|invoke)\s+(?:the\s+)?[A-Za-z][A-Za-z0-9_.-]{0,63}\s+tool\b)/i,
+    activity: 'execute',
+    confidence: 0.96,
+    reason: 'explicit tool instruction',
+  },
   // Code blocks → problem
   {
     pattern: /```/,

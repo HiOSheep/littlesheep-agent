@@ -125,6 +125,42 @@ describe('executeStage', () => {
     expect(systemPrompts[0]).toContain('It may be shown to the user directly');
   });
 
+  it('reuses the model-authored final step output for a trivial one-step task', async () => {
+    const tool = makeTool('glob', { ok: true, output: 'attachments/' });
+    const llm = createMockLlm([
+      toolCallResponse([{ id: 'glob-1', name: 'glob', args: { pattern: '*' } }]),
+      textResponse('共有 1 个条目：attachments/'),
+      textResponse('unexpected extra final reply'),
+    ]);
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [tool],
+      inbound: textMessage('user', '请使用 glob 列出顶层条目'),
+      taskBook: {
+        assessment: {
+          userNeed: '列出顶层条目',
+          complexity: 'trivial',
+          goal: '列出顶层条目',
+          successCriteria: ['返回数量和名称'],
+          requiresTaskBook: false,
+          maxExtraScopeRatio: 1,
+        },
+        goal: '列出顶层条目',
+        complexity: 'trivial',
+        successCriteria: ['返回数量和名称'],
+        steps: [{ id: 'step-1', description: '读取顶层条目', tools: ['glob'] }],
+        overdeliveryPolicy: { maxExtraScopeRatio: 1, guidance: '只返回结果' },
+      },
+    });
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ ok: true, next: 'verify' });
+    expect(ctx.reply).toBe('共有 1 个条目：attachments/');
+    expect(ctx.replyProvenance).toMatchObject({ source: 'llm', purpose: 'execute_tool_loop' });
+    expect(llm.chat).toHaveBeenCalledTimes(2);
+  });
+
   it('executes taskBook steps in order, records step results, and emits step/tool events', async () => {
     const tool = makeTool('lookup', { ok: true, output: 'found-it' });
     const llm = createMockLlm([
@@ -570,17 +606,74 @@ describe('executeStage', () => {
     expect(ctx.toolResults![0].error).toMatch(/tool boom/);
   });
 
-  it('loop exceeds 20 iterations → recover', async () => {
-    // Always returns a tool_call — never stops.
-    const llm = createMockLlm(() => toolCallResponse([{ id: 'c', name: 'lookup', args: {} }]));
+  it('forces a final response after two tool rounds add no evidence', async () => {
+    let requestIndex = 0;
+    const llm = createMockLlm((request) => {
+      requestIndex += 1;
+      if (!request.tools) return textResponse('bounded final answer');
+      return toolCallResponse([{
+        id: `c-${requestIndex}`,
+        name: 'lookup',
+        args: { attempt: requestIndex },
+      }]);
+    });
     const tool = makeTool('lookup', { ok: true, output: 'x' });
+    tool.execution = {
+      concurrency: 'parallel',
+      resources: () => [{ key: 'probe:lookup', mode: 'read' }],
+    };
     const stage = createExecuteStage({ ...deps, llm });
     const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', 'loop') });
     const res = await stage(ctx);
-    expect(res.next).toBe('recover');
-    expect(res.ok).toBe(false);
-    expect(res.error).toMatch(/exceeded 20/);
-    expect(ctx.lastError?.stage).toBe('execute');
+    expect(res.next).toBe('verify');
+    expect(res.ok).toBe(true);
+    expect(ctx.reply).toBe('bounded final answer');
+    expect(tool.calls).toHaveLength(3);
+    expect(llm.chat).toHaveBeenCalledTimes(4);
+    const finalRequest = llm.chat.mock.calls[3]?.[0] as import('@littlesheep/llm').ChatRequest;
+    expect(finalRequest.tools).toBeUndefined();
+    expect(finalRequest.messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        role: 'system',
+        content: expect.stringContaining('no new evidence'),
+      }),
+    ]));
+  });
+
+  it('treats distinct successful side effects as progress even when outputs match', async () => {
+    let requestIndex = 0;
+    const llm = createMockLlm((request) => {
+      if (!request.tools) return textResponse('forced too early');
+      requestIndex += 1;
+      if (requestIndex > 4) return textResponse('all writes complete');
+      return toolCallResponse([{
+        id: `write-${requestIndex}`,
+        name: 'write-probe',
+        args: { path: `file-${requestIndex}.txt` },
+      }]);
+    });
+    const tool = makeTool('write-probe', { ok: true, output: 'ok' });
+    tool.execution = {
+      concurrency: 'parallel',
+      resources(input) {
+        return [{
+          key: `fs:${String((input as { path?: string }).path ?? 'unknown')}`,
+          mode: 'write',
+        }];
+      },
+    };
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', 'write four files') });
+
+    const res = await stage(ctx);
+
+    expect(res).toMatchObject({ next: 'verify', ok: true });
+    expect(ctx.reply).toBe('all writes complete');
+    expect(tool.calls).toHaveLength(4);
+    expect(ctx.sideEffects?.filter((effect) => effect.status === 'succeeded')).toHaveLength(4);
+    expect(llm.chat).toHaveBeenCalledTimes(5);
+    const finalRequest = llm.chat.mock.calls[4]?.[0] as import('@littlesheep/llm').ChatRequest;
+    expect(finalRequest.tools).toBeDefined();
   });
 
   it('finishReason length → recover', async () => {

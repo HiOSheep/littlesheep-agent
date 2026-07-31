@@ -11,6 +11,7 @@ export const LOCAL_APP_API_ROUTES = {
   archive: '/archive',
   state: '/state',
   runtime: '/runtime',
+  providerCalibration: '/runtime/provider-calibration',
   developmentEnvironments: '/development-environments',
   developmentEnvironmentPreferences: '/development-environments/preferences',
   developmentEnvironmentImport: '/development-environments/import',

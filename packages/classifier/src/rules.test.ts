@@ -17,6 +17,36 @@ describe('classifyByRules', () => {
     expect(classifyByRules('hi')?.type).toBe('chat');
   });
 
+  it('keeps an exact-response calibration instruction on the response path', () => {
+    expect(classifyByRules('Provider校准测试 20260730-1610：请只回复 LS-PROVIDER-OK-20260730-1610')).toMatchObject({
+      activity: 'respond',
+      type: 'chat',
+      confidence: 0.98,
+      reason: 'direct response constraint',
+    });
+  });
+
+  it('recognizes an English reply-only constraint', () => {
+    expect(classifyByRules('For calibration, reply only with LS-OK')).toMatchObject({
+      activity: 'respond',
+      type: 'chat',
+      reason: 'direct response constraint',
+    });
+  });
+
+  it('recognizes an explicit tool instruction without a model classifier call', () => {
+    expect(classifyByRules('请使用 glob 工具读取当前文件夹')).toMatchObject({
+      activity: 'execute',
+      type: 'problem',
+      confidence: 0.96,
+      reason: 'explicit tool instruction',
+    });
+  });
+
+  it('does not mistake a requested writing style for a tool invocation', () => {
+    expect(classifyByRules('请用一句话介绍 glob 工具')).toBeNull();
+  });
+
   it('classifies action verbs as problem', () => {
     const result = classifyByRules('帮我写一个函数');
     expect(result?.type).toBe('problem');

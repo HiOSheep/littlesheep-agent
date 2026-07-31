@@ -27,12 +27,10 @@ export async function requestDecisionModel(
         maxTokens: 1_400,
         maxTokensCeiling: 2_200,
         signal: ctx.signal,
-        onRequest: (chatRequest, retry) => prepareModelRequest(
+        onRequest: (chatRequest) => prepareModelRequest(
           ctx,
           'decide',
-          retry.attempt > 1
-            ? preferDirectModelOutput(ctx, chatRequest, { force: true })
-            : chatRequest,
+          preferDirectModelOutput(ctx, chatRequest, { force: true }),
           buildDecideRequestCandidates(ctx, request, chatRequest.messages),
         ),
         onResponse: (chatRequest, response) => recordProviderUsage(ctx, chatRequest, response.usage),

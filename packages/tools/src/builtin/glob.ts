@@ -2,7 +2,7 @@
 import { z } from 'zod';
 import { readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
 import type { AgentTool } from '@littlesheep/types';
 import { authorizeToolAccess } from '@littlesheep/safety';
 import { withToolTiming } from '../wrapper.js';
@@ -28,7 +28,7 @@ export function globToRegex(pattern: string): RegExp {
 
 export const globTool: AgentTool = {
   name: 'glob',
-  description: 'Find files by glob pattern. Read-only.',
+  description: 'Find files and directories by glob pattern. Directories end with a path separator. Read-only.',
   inputSchema: GlobInput,
   execution: parallelFilePolicy('path', 'read', true),
   execute: withToolTiming(async (input, ctx) => {
@@ -43,16 +43,28 @@ export const globTool: AgentTool = {
     }
     const regex = globToRegex(pattern);
     const entries = await readdir(target, { recursive: true, withFileTypes: true });
-    const files = entries
-      .filter((e) => e.isFile())
-      .map((e) => join(e.parentPath || target, e.name))
-      .filter((full) => {
-        const rel = relative(target, full);
-        return regex.test(rel) || regex.test(rel.replace(/\\/g, '/'));
+    const matches = entries
+      .filter((entry) => entry.isFile() || entry.isDirectory())
+      .map((entry) => {
+        const fullPath = join(entry.parentPath || target, entry.name);
+        const relativePath = relative(target, fullPath).replace(/\\/g, '/');
+        return { fullPath, relativePath, directory: entry.isDirectory() };
       })
+      .filter((entry) => regex.test(entry.relativePath)
+        || (entry.directory && regex.test(`${entry.relativePath}/`)))
+      .sort((left, right) => left.relativePath.localeCompare(right.relativePath, 'en'))
       .slice(0, max_results);
 
-    const output = files.length > 0 ? files.join('\n') : 'No files matched';
-    return { output, meta: { count: files.length } };
+    const output = matches.length > 0
+      ? matches.map((entry) => entry.directory ? `${entry.fullPath}${sep}` : entry.fullPath).join('\n')
+      : 'No files or directories matched';
+    return {
+      output,
+      meta: {
+        count: matches.length,
+        fileCount: matches.filter((entry) => !entry.directory).length,
+        directoryCount: matches.filter((entry) => entry.directory).length,
+      },
+    };
   }),
 };

@@ -1,6 +1,7 @@
 # VERIFY 内部边界
 
 - `contracts.ts`：模型裁决结构和 VERIFY 最小提示契约。
+- `model-call.ts`：有界组装 Context 并执行结构化验证请求。
 - `task-state.ts`：步骤完整性、失败类型、重规划目标和已完成证据保护。
 - `evidence.ts`：有界组装 TaskBook、步骤和工具证据，不把原始长输出直接塞给模型。
 - `routing.ts`：验证记录、降级判断、局部重规划和达到上限后的用户决策路由。

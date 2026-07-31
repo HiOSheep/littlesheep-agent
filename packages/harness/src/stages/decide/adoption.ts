@@ -2,6 +2,7 @@ import type { RunContext, StageResult } from '@littlesheep/types';
 import {
   buildAssessmentAndTaskBook,
   buildClarificationRequest,
+  buildMinimalFallbackPlan,
   compactLightweightPlan,
   normalizePlan,
 } from './normalization.js';
@@ -22,6 +23,11 @@ export async function adoptDecodedDecision(
   const availableToolNames = new Set(ctx.tools.map((tool) => tool.name));
   let plan = normalizePlan(parsed.taskBook?.steps, availableToolNames);
   if (plan.length === 0) plan = normalizePlan(parsed.plan, availableToolNames);
+  let usedMinimalFallback = false;
+  if (plan.length === 0 && parsed.assessment?.needsClarification !== true) {
+    plan = buildMinimalFallbackPlan(parsed, request.inboundText, availableToolNames);
+    usedMinimalFallback = plan.length > 0;
+  }
   if (plan.length === 0 && parsed.assessment?.needsClarification === true) {
     plan = [clarificationStep()];
   }
@@ -144,6 +150,7 @@ export async function adoptDecodedDecision(
         : undefined,
       deferredRuntimeEventIds: request.deferredRuntimeEvents.map((event) => event.id),
       memoryRefinement,
+      usedMinimalFallback,
       llmAttempts: attempts,
     },
   };

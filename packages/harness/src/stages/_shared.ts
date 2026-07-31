@@ -212,8 +212,12 @@ export async function callLlmForJson<T>(
     lastResponse = res;
     const parsed = extractJson(res.content) as T | null;
     if (parsed !== null) return { parsed, attempts: attempt, lastResponse: res };
-    if (!res.content.trim() && currentMaxTokens < maxTokensCeiling) {
-      currentMaxTokens = Math.min(maxTokensCeiling, Math.max(currentMaxTokens + 1, currentMaxTokens * 2));
+    if (currentMaxTokens < maxTokensCeiling) {
+      const growth = !res.content.trim() ? 2 : 1.5;
+      currentMaxTokens = Math.min(
+        maxTokensCeiling,
+        Math.max(currentMaxTokens + 1, Math.ceil(currentMaxTokens * growth)),
+      );
     }
   }
   return { parsed: null, attempts: maxAttempts, lastResponse };

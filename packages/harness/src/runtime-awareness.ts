@@ -12,7 +12,19 @@ import type {
 } from '@littlesheep/types';
 
 const MAX_RUNTIME_TOOL_DETAILS = 8;
-const DETAILED_REPLY_RUNTIME_PATTERN = /(?:进度|状态|耗时|用时|多久|刚才|上一轮|上次|执行(?:到哪|情况|结果)|完成(?:了吗|了没|情况|进度|度)|是否完成|成功(?:了吗|了没|与否)|失败(?:了吗|原因|情况)|报错|错误(?:原因|情况)|恢复(?:情况|状态)|previous\s+run|last\s+run|just\s+now|progress|status|elapsed|duration|how\s+long|result|did\s+(?:it|that).{0,12}(?:work|finish|succeed|fail)|succeed(?:ed)?|fail(?:ed|ure)?|error|recovery)/iu;
+const REPLY_RUNTIME_CONTINUATION_PATTERNS: readonly RegExp[] = [
+  /(?:^|[，。！？!?]\s*)(?:继续|接着)(?:执行|处理|完成|刚才|上次|上一轮|之前|未完成|这个任务|那件事|吧|下去|做)?(?:[。！？!?]|$)/iu,
+  /恢复(?:执行|处理|刚才|上次|上一轮|之前|未完成|这个任务|那件事)/iu,
+  /(?:刚才|上一轮|上次|之前(?:那次)?|目前|现在|当前(?:任务|执行)|这个任务|那件事).{0,24}(?:进度|状态|结果|耗时|用时|多久|执行到哪|完成|成功|失败|报错|错误|恢复)/iu,
+  /(?:任务|工作|执行)(?:进度|状态|结果|完成情况|执行情况|恢复情况|耗时|用时)(?:如何|怎么样|到哪(?:了)?|是多少|呢|了|吗|没|$)/iu,
+  /(?:完成|成功|失败|恢复)(?:了吗|了没|没有|没|情况|进度|与否)/iu,
+  /(?:报错|错误)(?:原因|情况|是什么|了吗|了没)/iu,
+  /(?:^|[.!?]\s*)(?:continue|resume|carry\s+on|pick\s+up)(?:\s+(?:(?:the|that|this)\s+)?(?:previous|last|unfinished|current)?\s*(?:run|task|work|operation))?(?:[.!?]|$)/iu,
+  /(?:previous|last|current|this|that)\s+(?:run|task|work|operation|attempt).{0,32}(?:progress|status|result|elapsed|duration|finish|succeed|fail|error|recover)/iu,
+  /(?:progress|status|result|elapsed|duration)\s+(?:of|for)\s+(?:the\s+)?(?:previous|last|current|this|that)?\s*(?:run|task|work|operation|attempt)/iu,
+  /how\s+(?:far|long).{0,24}(?:run|task|work|operation|it|that)/iu,
+  /did\s+(?:it|that).{0,16}(?:work|finish|succeed|fail)/iu,
+];
 
 export interface RuntimeAwarenessInjection {
   request: ChatRequest;
@@ -104,7 +116,7 @@ function shouldUseCompactRuntime(ctx: RunContext, purpose: LlmCallPurpose | unde
     .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
     .map((part) => part.text)
     .join('\n');
-  return !DETAILED_REPLY_RUNTIME_PATTERN.test(request);
+  return !REPLY_RUNTIME_CONTINUATION_PATTERNS.some((pattern) => pattern.test(request));
 }
 
 function renderCompactRuntimeAwareness(

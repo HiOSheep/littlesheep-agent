@@ -438,6 +438,23 @@ describe('zodToJsonSchema', () => {
     expect(json.required ?? []).not.toContain('x');
   });
 
+  it('keeps discriminated unions rooted at an object for provider tool schemas', () => {
+    const schema = z.discriminatedUnion('action', [
+      z.object({ action: z.literal('list') }),
+      z.object({ action: z.literal('read'), path: z.string() }),
+    ]);
+    const json = zodToJsonSchema(schema) as {
+      type: string;
+      anyOf: Array<{ type: string; required: string[] }>;
+    };
+
+    expect(json.type).toBe('object');
+    expect(json.anyOf).toHaveLength(2);
+    expect(json.anyOf.every((option) => option.type === 'object')).toBe(true);
+    expect(json.anyOf[0]?.required).toEqual(['action']);
+    expect(json.anyOf[1]?.required).toEqual(['action', 'path']);
+  });
+
   it('buildToolSpec produces correct shape', () => {
     const spec = buildToolSpec('test', 'A test tool', z.object({ x: z.number() }));
     expect(spec.type).toBe('function');

@@ -1,6 +1,6 @@
 # LittleSheep 模块拆分地图
 
-最后更新：2026-07-29 17:14:25
+最后更新：2026-07-31 13:02:13
 
 本文件记录大型生产文件的当前所有权、目标边界和拆分顺序。它是仓库基元化任务书的阶段产物，不替代项目状态，也不把行数当成唯一质量指标。
 
@@ -51,6 +51,7 @@
 | `packages/memory-tree/src/memory-repository/v3-backend.ts` | 488 | v3 后端组合、检索 facade、management adapter 和写后维护协调 | 保持组合层；若继续增长，拆出生命周期与 maintenance adapter | D |
 | `packages/app/src/shared/memory-control-contracts.ts` | 486 | 记忆文件、资源、投影、迁移和治理控制面公共契约 | 按普通文件视图与内部治理契约分组，保持 shared 无运行逻辑 | C |
 | `packages/app/src/main/local-app-api/run-routes.ts` | 383 | run 流式入口、运行时事件 ingress 和收尾路由 | 保持 HTTP 路由组合；检查点恢复与应用生命周期控制面使用独立 adapter | C |
+| `packages/app/src/main/provider-calibration.ts` | 317 | 运行中 Provider 的 chat、continuity、tool、abort 有界校准 | 保持纯校准编排与脱敏结果；Provider 客户端和凭证仍由 Runner/Main 负责，不继续吸收通用运行逻辑 | C |
 | `packages/app/src/renderer/workspace/preview-pane.tsx` | 478 | 文件分派、编辑草稿、保存审批和预览错误 | 建立文件打开事务测试后再拆编辑与预览；Monaco 语言配置保持独立 | B |
 | `packages/app/src/main/memory-tree-control.ts` | 474 | 记忆控制面查询、v3 D0-D3 详情适配和既有管理命令 | 分离 query/detail、resource、projection command | C |
 | `packages/llm/src/client.ts` | 463 | 请求、流式、reasoning、重试适配 | 分离 request builder、stream parser、response mapper | E |
@@ -109,7 +110,8 @@
 | `packages/harness/src/stages/decide.ts` | 620 | 16 行 stage facade | 请求组装、模型调用和结果采用已分别下沉到 `decide/request.ts`、`decide/model-call.ts`、`decide/adoption.ts`；契约、规范化、运行时事件和局部重规划保持独立模块 | 2026-07-18 |
 | `packages/harness/src/stages/execute.ts` | 867 | 45 行 stage facade | guidance、tool-loop、权限/超时、failure-policy、TaskBook runners 与 final-reply | 2026-07-15 |
 | `packages/harness/src/stages/execute/runners.ts` | 330 | 97 行 legacy facade 与 TaskBook re-export | TaskBook 编排、步骤调度和分支执行已下沉到 `task-book-runner.ts`、`task-step-runner.ts` 与 `task-step-scheduler.ts` | 2026-07-29 |
-| `packages/harness/src/stages/verify.ts` | 473 | 145 行 stage facade | 裁决契约、结构证据、步骤状态、验证记录和恢复路由 | 2026-07-15 |
+| `packages/harness/src/stages/verify.ts` | 473 | 123 行 stage facade | 模型请求、裁决契约、结构证据、步骤状态、验证记录和恢复路由已分离 | 2026-07-31 |
+| `packages/harness/src/stages/recover.ts` | >300 | 168 行 stage facade | 恢复契约、模型请求和确定性策略已下沉到 `stages/recover/`，入口只保留状态编排 | 2026-07-31 |
 | `packages/harness/src/stages/evolve.ts` | 555 | 357 行 stage facade | 记忆/Skill 提案、写入认识解析和模型调用留在入口；Atom reconciliation、leaf reparent、same-claim revision 与 evidence-backed correction 的解析、KnownState 准入、提交和审计分别下沉到 `stages/evolve/reconciliation.ts`、`stages/evolve/hierarchy.ts`、`stages/evolve/revision.ts`、`stages/evolve/correction*.ts` | 2026-07-17 |
 | `packages/app/src/renderer/MemoryTreeView.tsx` | 1007 | 205 行用户记忆文件视图 | GUI 只展示六份记忆文件并仅允许编辑 `SOUL.md`；Atom、关系、向量、迁移和审计退回 Runtime 与内部治理 API | 2026-07-16 |
 

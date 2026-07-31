@@ -103,6 +103,56 @@ export function normalizePlan(
   return plan;
 }
 
+export function buildMinimalFallbackPlan(
+  parsed: DecodedPlan,
+  inboundText: string,
+  availableToolNames: Set<string>,
+): PlanStep[] {
+  if (!parsed.assessment || parsed.assessment.needsClarification === true) return [];
+  const complexity = parsed.assessment.complexity ?? parsed.taskBook?.complexity;
+  if ((complexity !== 'trivial' && complexity !== 'simple') || parsed.assessment.requiresTaskBook === true) {
+    return [];
+  }
+  const description = cleanString(parsed.assessment.goal)
+    ?? cleanString(parsed.taskBook?.goal)
+    ?? cleanString(parsed.assessment.userNeed);
+  if (!description) return [];
+
+  const tools = collectFallbackToolNames(parsed, inboundText, availableToolNames);
+  return [{
+    id: 'step-1',
+    title: description.slice(0, 120),
+    description: description.slice(0, 1_200),
+    tools: tools.length > 0 ? tools : undefined,
+    status: 'pending',
+  }];
+}
+
+function collectFallbackToolNames(
+  parsed: DecodedPlan,
+  inboundText: string,
+  availableToolNames: Set<string>,
+): string[] {
+  const names = new Set<string>();
+  const steps = [
+    ...(Array.isArray(parsed.taskBook?.steps) ? parsed.taskBook.steps : []),
+    ...(Array.isArray(parsed.plan) ? parsed.plan : []),
+  ];
+  for (const step of steps) {
+    if (!Array.isArray(step.tools)) continue;
+    for (const name of step.tools) {
+      if (typeof name === 'string' && availableToolNames.has(name)) names.add(name);
+    }
+  }
+  for (const name of availableToolNames) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`(?:^|[^A-Za-z0-9_])${escaped}(?=$|[^A-Za-z0-9_])`, 'i').test(inboundText)) {
+      names.add(name);
+    }
+  }
+  return [...names];
+}
+
 function normalizeStepExecution(value: DecodedPlanStep['execution']): PlanStep['execution'] {
   if (!value || (value.mode !== 'serial' && value.mode !== 'parallel')) return undefined;
   const dependsOn = Array.isArray(value.dependsOn)

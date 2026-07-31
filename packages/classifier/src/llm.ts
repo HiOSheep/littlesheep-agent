@@ -18,6 +18,7 @@ const SYSTEM_PROMPT = `Choose the next LittleSheep activity for the user's lates
 - "clarify": the request is genuinely impossible to understand or unsafe to act on without one missing fact.
 
 Prefer "respond" when ordinary conversation can resolve the message. Do not choose "execute" merely because the message mentions an action word. Do not choose "clarify" for normal ambiguity that can be understood from recent context.
+The latest user message is authoritative. A request to reply, answer, say, return, or output text is "respond" even when that text mentions testing, calibration, code, or a tool name.
 
 Return only JSON:
 {"activity":"respond"|"execute"|"clarify","confidence":0.0-1.0,"reason":"short explanation"}`;

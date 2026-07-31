@@ -37,7 +37,7 @@ function previousRunSummary(): SessionRunSummary {
 describe('runtime awareness', () => {
   it('injects exact time, progress, and tool timing below the cache boundary', () => {
     const ctx = makeCtx({
-      inbound: textMessage('user', 'what is the status?'),
+      inbound: textMessage('user', 'what is the status of the current task?'),
       taskBook: {
         assessment: {
           userNeed: 'finish two steps',
@@ -142,5 +142,45 @@ describe('runtime awareness', () => {
     expect(system).toContain('# Runtime Clock');
     expect(system).not.toContain('previous_run:');
     expect(system).not.toContain('recent_previous_tools:');
+    expect(ctx.modelRequests?.[0]?.totalMessageCount).toBe(2);
+    expect(ctx.contextSnapshots?.[0]?.safetyEstimate?.estimatedPromptTokens).toBeLessThan(1_200);
+  });
+
+  it.each([
+    '请只回复 LS-PROVIDER-OK',
+    '解释一下 HTTP status code 和 result type 的区别',
+    'How should a Result type represent an error status?',
+    '给我介绍一个新的排序算法',
+  ])('does not expose previous-run details for an independent reply: %s', (inbound) => {
+    const ctx = makeCtx({ inbound: textMessage('user', inbound) });
+    ctx.previousRun = previousRunSummary();
+
+    const prepared = prepareModelRequest(ctx, 'reply', request(inbound));
+    const system = String(prepared.messages[0]?.content);
+
+    expect(system).toContain('# Runtime Clock');
+    expect(system).not.toContain('# Live Runtime State');
+    expect(system).not.toContain('previous_run:');
+  });
+
+  it.each([
+    '继续执行',
+    '上一轮执行到哪了？',
+    '当前任务进度怎么样？',
+    '刚才的结果是什么？',
+    '恢复之前未完成的任务',
+    'Did that operation succeed?',
+    'What is the status of the previous run?',
+    'Continue the unfinished task.',
+  ])('exposes bounded previous-run details for an explicit continuation: %s', (inbound) => {
+    const ctx = makeCtx({ inbound: textMessage('user', inbound) });
+    ctx.previousRun = previousRunSummary();
+
+    const prepared = prepareModelRequest(ctx, 'reply', request(inbound));
+    const system = String(prepared.messages[0]?.content);
+
+    expect(system).toContain('# Live Runtime State');
+    expect(system).toContain('previous_run: id=previous-run');
+    expect(system).toContain('recent_previous_tools: read:succeeded:700 ms');
   });
 });

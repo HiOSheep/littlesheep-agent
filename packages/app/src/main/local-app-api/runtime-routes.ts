@@ -15,6 +15,7 @@ import type { DataRootMigrationManager } from '../data-root-migration.js'
 import { injectKeysIntoEnv, deriveEnvVarName, normalizeApiKey, saveApiKey } from '../keychain.js'
 import { getAgentProfile, normalizeAgentProfileId } from '../modes.js'
 import { json, readJson, type LocalAppApiRequest } from './http.js'
+import { routeProviderCalibration } from './provider-calibration-route.js'
 
 export interface RuntimeRouteContext {
   getRunner: () => AgentRunner
@@ -27,6 +28,7 @@ export interface RuntimeRouteContext {
   dataRootManager?: DataRootMigrationManager
   selectDataRootTarget?: () => Promise<string | null>
   restartApplication?: () => void
+  providerCalibrationToken?: string
 }
 
 export async function routeRuntime(
@@ -34,6 +36,11 @@ export async function routeRuntime(
   context: RuntimeRouteContext,
 ): Promise<boolean> {
   const { req, res, path, method } = request
+  if (await routeProviderCalibration(request, {
+    getRunner: context.getRunner,
+    getConfig: context.getConfig,
+    token: context.providerCalibrationToken,
+  })) return true
 
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.state) {
     json(res, 200, context.getRunner().state)

@@ -1,6 +1,6 @@
 // Owns the bounded model loop and persisted messages; ToolExecutionService
 // owns invocation validation, approval, execution, events, and evidence.
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { z } from 'zod';
 import {
   zodToJsonSchema,
@@ -37,6 +37,8 @@ import {
 } from './side-effect-ledger.js';
 
 const MAX_ITERATIONS = 20;
+const MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS = 2;
+const MAX_EVIDENCE_FINGERPRINTS = MAX_ITERATIONS * 8;
 const executionServices = new WeakMap<RunContext, ToolExecutionService>();
 
 export function convertToolCall(tc: LlmToolCall): { id: string; name: string; input: unknown } {
@@ -69,6 +71,9 @@ export async function runToolLoop(
   const toolSpecs = tools.map(toolToSpec);
   const toolResults: ToolResult[] = [];
   const executionService = toolExecutionService(deps, ctx, sanitizeOpts);
+  const evidenceFingerprints = new Set<string>();
+  let noProgressRounds = 0;
+  let forceFinalResponse = false;
 
   for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     let response: ChatResponse;
@@ -76,8 +81,8 @@ export async function runToolLoop(
       const rawRequest = {
         model: deps.model,
         messages,
-        tools: toolSpecs.length > 0 ? toolSpecs : undefined,
-        tool_choice: toolSpecs.length > 0 ? 'auto' : undefined,
+        tools: !forceFinalResponse && toolSpecs.length > 0 ? toolSpecs : undefined,
+        tool_choice: !forceFinalResponse && toolSpecs.length > 0 ? 'auto' : undefined,
         temperature: 0,
         signal,
       } satisfies import('@littlesheep/llm').ChatRequest;
@@ -114,6 +119,15 @@ export async function runToolLoop(
     }
 
     if (response.finishReason === 'tool_calls' && response.toolCalls.length > 0) {
+      if (forceFinalResponse) {
+        return {
+          ok: false,
+          content: '',
+          toolResults,
+          iterations: iteration,
+          error: 'llm requested more tools after the runtime no-progress budget was exhausted',
+        };
+      }
       messages.push({
         role: 'assistant',
         content: response.content,
@@ -143,11 +157,23 @@ export async function runToolLoop(
         new Set(tools.map((tool) => tool.name)),
         maxParallelTools,
       );
+      let addedEvidence = false;
       for (const [index, call] of response.toolCalls.entries()) {
         const converted = convertToolCall(call);
         const result = executedResults.get(index)
           ?? failureResult(converted.id, stepId, 'tool scheduler returned no result');
+        if (registerEvidenceFingerprint(ctx, evidenceFingerprints, converted.name, result)) {
+          addedEvidence = true;
+        }
         finalizeToolResult(ctx, produced, messages, toolResults, converted.name, result, stepId);
+      }
+      noProgressRounds = addedEvidence ? 0 : noProgressRounds + 1;
+      if (noProgressRounds >= MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS) {
+        forceFinalResponse = true;
+        messages.push({
+          role: 'system',
+          content: 'Runtime control: recent tool calls produced no new evidence. Stop calling tools and answer from the evidence already present. State any remaining uncertainty instead of probing again.',
+        });
       }
       continue;
     }
@@ -168,6 +194,27 @@ export async function runToolLoop(
     iterations: MAX_ITERATIONS,
     error: `tool loop exceeded ${MAX_ITERATIONS} iterations`,
   };
+}
+
+function registerEvidenceFingerprint(
+  ctx: RunContext,
+  fingerprints: Set<string>,
+  toolName: string,
+  result: ToolResult,
+): boolean {
+  const sideEffect = result.ok
+    ? ctx.sideEffects?.find((effect) => effect.callId === result.callId && effect.status === 'succeeded')
+    : undefined;
+  const fingerprint = createHash('sha256')
+    .update(toolName)
+    .update('\0')
+    .update(sideEffect ? 'side-effect' : result.ok ? 'ok' : 'error')
+    .update('\0')
+    .update(sideEffect?.idempotencyKey ?? safeStringify(result.ok ? result.output : result.error))
+    .digest('hex');
+  if (fingerprints.has(fingerprint)) return false;
+  if (fingerprints.size < MAX_EVIDENCE_FINGERPRINTS) fingerprints.add(fingerprint);
+  return true;
 }
 
 export function applyUsage(ctx: RunContext, usage: ChatResponse['usage'] | undefined): void {
@@ -357,7 +404,8 @@ function persistToolResult(ctx: RunContext, produced: RunContext['produced'], re
 
 function safeStringify(value: unknown): string {
   try {
-    return JSON.stringify(value);
+    const serialized = JSON.stringify(value);
+    return serialized === undefined ? String(value) : serialized;
   } catch {
     return '[non-serializable]';
   }

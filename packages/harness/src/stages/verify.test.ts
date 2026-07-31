@@ -87,6 +87,77 @@ describe('verifyStage', () => {
     expect(ctx.modelRequests?.map((request) => request.stage)).toEqual(['verify']);
   });
 
+  it('uses a structural fast path for one successful trivial read-only step', async () => {
+    const llm = createMockLlm(textResponse('{"verdict":"fail","reason":"should not run"}'));
+    const stage = createVerifyStage({ ...deps, llm });
+    const ctx = makeVerifyCtx({ reply: '共有 1 个条目：attachments/' });
+    ctx.replyProvenance = {
+      version: 1,
+      source: 'llm',
+      purpose: 'execute_tool_loop',
+      modelRequestId: 'model-request-1',
+      modelRequestIndex: 1,
+      provider: 'deepseek',
+      model: 'deepseek-v4-flash',
+      generatedAt: '2026-07-30T00:00:02.000Z',
+      rewriteCount: 0,
+    };
+    ctx.taskBook = {
+      assessment: {
+        userNeed: '列出顶层条目',
+        complexity: 'trivial',
+        goal: '列出顶层条目',
+        successCriteria: ['返回数量和名称'],
+        requiresTaskBook: false,
+        maxExtraScopeRatio: 1,
+      },
+      goal: '列出顶层条目',
+      complexity: 'trivial',
+      successCriteria: ['返回数量和名称'],
+      steps: [{ id: 'step-1', description: '读取顶层条目', tools: ['glob'] }],
+      overdeliveryPolicy: { maxExtraScopeRatio: 1, guidance: '只返回结果' },
+    };
+    const toolResult = { callId: 'glob-1', ok: true as const, output: 'attachments/' };
+    ctx.taskExecution = {
+      goal: ctx.taskBook.goal,
+      complexity: 'trivial',
+      status: 'done',
+      startedAt: '2026-07-30T00:00:00.000Z',
+      endedAt: '2026-07-30T00:00:02.000Z',
+      steps: [{
+        stepId: 'step-1',
+        description: '读取顶层条目',
+        status: 'done',
+        startedAt: '2026-07-30T00:00:00.000Z',
+        endedAt: '2026-07-30T00:00:02.000Z',
+        output: '共有 1 个条目：attachments/',
+        toolCallIds: ['glob-1'],
+        toolResults: [toolResult],
+      }],
+    };
+    ctx.toolInvocations = [{
+      version: 1,
+      id: 'invocation-1',
+      callId: 'glob-1',
+      runId: ctx.runId,
+      sessionId: ctx.sessionId,
+      stepId: 'step-1',
+      toolName: 'glob',
+      toolSource: 'builtin',
+      status: 'succeeded',
+      proposedAt: '2026-07-30T00:00:00.000Z',
+      endedAt: '2026-07-30T00:00:01.000Z',
+      approval: { required: false, decision: 'not_required' },
+      evidenceIds: [],
+    }];
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'evolve', ok: true, meta: { runtimeFastPath: true } });
+    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'pass', source: 'structural' });
+    expect(llm.chat).not.toHaveBeenCalled();
+  });
+
   it('accepts only active adopted atoms as explicit verification usage evidence', async () => {
     const llm = createMockLlm(textResponse(JSON.stringify({
       verdict: 'pass',

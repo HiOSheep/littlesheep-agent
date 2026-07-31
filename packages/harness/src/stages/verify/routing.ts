@@ -11,6 +11,16 @@ import {
   installPartialReplan,
 } from './task-state.js';
 
+const RUNTIME_VERIFIABLE_READ_ONLY_TOOLS = new Set([
+  'read',
+  'grep',
+  'glob',
+  'memory_tree',
+  'memory_search',
+  'memory_deep_search',
+  'session_status',
+]);
+
 export function recordVerification(
   ctx: RunContext,
   record: Omit<VerificationRecord, 'attempt' | 'verifiedAt'>,
@@ -29,6 +39,38 @@ export function publishVerifiedReply(ctx: RunContext): void {
   if (!ctx.reply || ctx.replyProvenance?.source !== 'llm') return;
   ctx.onToolEvent?.({ type: 'final_delta', output: ctx.reply });
   ctx.onAssistantReplace?.(ctx.reply);
+}
+
+export function verifyTrivialReadOnlyExecution(ctx: RunContext): StageResult | undefined {
+  if (ctx.taskBook?.complexity !== 'trivial' || ctx.taskBook.steps.length !== 1) return undefined;
+  const execution = ctx.taskExecution;
+  if (execution?.status !== 'done' || execution.steps.length !== 1) return undefined;
+  const step = execution.steps[0]!;
+  if (step.status !== 'done' || step.error || !step.output?.trim()) return undefined;
+  if (step.toolResults.length === 0 || step.toolResults.some((result) => !result.ok)) return undefined;
+  if ((ctx.sideEffects?.length ?? 0) > 0) return undefined;
+  if (!ctx.reply || ctx.replyProvenance?.source !== 'llm') return undefined;
+
+  const expectedCallIds = new Set(step.toolCallIds);
+  const invocations = (ctx.toolInvocations ?? []).filter((invocation) => expectedCallIds.has(invocation.callId));
+  if (expectedCallIds.size === 0 || invocations.length !== expectedCallIds.size) return undefined;
+  if (invocations.some((invocation) => (
+    invocation.status !== 'succeeded'
+    || !RUNTIME_VERIFIABLE_READ_ONLY_TOOLS.has(invocation.toolName)
+  ))) return undefined;
+
+  const chinese = /[\u3400-\u9fff]/u.test(textOf(ctx.inbound));
+  const reason = chinese
+    ? '运行时已确认唯一的只读步骤完成，工具调用全部成功，且未产生写入或外部副作用。'
+    : 'Runtime confirmed the single read-only step completed, every tool call succeeded, and no write or external side effect occurred.';
+  recordVerification(ctx, { verdict: 'pass', reason, source: 'structural' });
+  publishVerifiedReply(ctx);
+  return {
+    stage: 'verify',
+    next: 'evolve',
+    ok: true,
+    meta: { verdict: 'pass', runtimeFastPath: true, reason },
+  };
 }
 
 export function routeKnownIncompleteExecution(

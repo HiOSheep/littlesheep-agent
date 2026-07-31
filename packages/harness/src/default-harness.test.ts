@@ -6,6 +6,7 @@ import { createDefaultHarness } from './default-harness.js';
 import {
   createMockLlm,
   textResponse,
+  toolCallResponse,
   makeCtx,
   makeTool,
   createMockSessionManager,
@@ -80,6 +81,32 @@ describe('createDefaultHarness state machine', () => {
     expect(llm.chat).toHaveBeenCalledTimes(1);
   });
 
+  it('handles an exact-response calibration as one direct model call', async () => {
+    const llm = createMockLlm(textResponse('LS-PROVIDER-OK-20260730-1610'));
+    const h = makeHarness(llm);
+    const ctx = makeCtx({
+      inbound: textMessage('user', 'Provider校准测试 20260730-1610：请只回复 LS-PROVIDER-OK-20260730-1610'),
+      history: [
+        textMessage('user', '但是现在好像还没给你配置网络查询功能吧'),
+      ],
+    });
+
+    const result = await h.run(ctx);
+
+    expect(result.ok).toBe(true);
+    expect(ctx.classification).toMatchObject({
+      activity: 'respond',
+      source: 'rules',
+      reason: 'direct response constraint',
+    });
+    expect(ctx.reply).toBe('LS-PROVIDER-OK-20260730-1610');
+    expect((result.meta?.trace as Array<{ name: string }>).map((item) => item.name)).toEqual([
+      'enter', 'classify', 'reply', 'finalize',
+    ]);
+    expect(llm.chat).toHaveBeenCalledTimes(1);
+    expect(ctx.modelRequests).toHaveLength(1);
+  });
+
   it('problem path: enter → classify → decide → execute(stop) → verify(pass) → evolve → capture → finalize → exit', async () => {
     const tool = makeTool('read', { ok: true, output: 'data' });
     // 'read the file' doesn't match any rule → LLM classify fallback.
@@ -107,6 +134,50 @@ describe('createDefaultHarness state machine', () => {
       'enter', 'classify', 'decide', 'execute', 'verify', 'evolve', 'capture', 'finalize',
     ]);
     expect(ctx.classification?.type).toBe('problem');
+  });
+
+  it('completes a trivial read-only tool task in three model calls', async () => {
+    const tool = makeTool('glob', { ok: true, output: 'attachments/' });
+    const llm = createMockLlm([
+      textResponse(JSON.stringify({
+        assessment: {
+          userNeed: '列出当前文件夹顶层条目',
+          complexity: 'trivial',
+          goal: '返回顶层条目数量和名称',
+          successCriteria: ['返回数量', '返回名称', '不修改文件'],
+          needsClarification: false,
+          requiresTaskBook: false,
+          maxExtraScopeRatio: 1,
+        },
+        taskBook: {
+          goal: '返回顶层条目数量和名称',
+          complexity: 'trivial',
+          successCriteria: ['返回数量', '返回名称', '不修改文件'],
+          steps: [{ id: 'step-1', description: '使用 glob 读取顶层条目', tools: ['glob'] }],
+        },
+      })),
+      toolCallResponse([{ id: 'glob-1', name: 'glob', args: { pattern: '*' } }]),
+      textResponse('共有 1 个条目：attachments/'),
+    ]);
+    const h = makeHarness(llm);
+    const ctx = makeCtx({
+      inbound: textMessage('user', '请使用 glob 工具读取当前文件夹，只告诉我顶层条目数量和名称，不要修改任何文件。'),
+      tools: [tool],
+    });
+
+    const result = await h.run(ctx);
+
+    expect(result.ok).toBe(true);
+    expect(ctx.classification).toMatchObject({
+      activity: 'execute',
+      source: 'rules',
+      reason: 'explicit tool instruction',
+    });
+    expect(ctx.reply).toBe('共有 1 个条目：attachments/');
+    expect(ctx.replyProvenance).toMatchObject({ purpose: 'execute_tool_loop' });
+    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ source: 'structural', verdict: 'pass' });
+    expect(llm.chat).toHaveBeenCalledTimes(3);
+    expect(ctx.modelRequests).toHaveLength(3);
   });
 
   it('re-enters DECIDE for a task event received after EXECUTE and adopts a new TaskBook revision', async () => {

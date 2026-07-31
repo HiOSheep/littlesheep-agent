@@ -40,6 +40,37 @@ describe('recoverStage', () => {
     expect(ctx.plan).toEqual([{ description: 'old plan' }]);
   });
 
+  it('retries DECIDE locally after the first structured decode failure', async () => {
+    const llm = createMockLlm(textResponse('{"action":"abort","reason":"core capability damaged"}'));
+    const stage = createRecoverStage({ ...deps, llm });
+    const ctx = makeCtx({
+      recoveryAttempts: 0,
+      lastError: { stage: 'decide', message: 'failed to decode decision after 2 attempt(s)' },
+      inbound: textMessage('user', '请只回复 OK'),
+    });
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'decide', ok: true, meta: { deterministicRetry: true } });
+    expect(ctx.reply).toBeUndefined();
+    expect(llm.chat).not.toHaveBeenCalled();
+  });
+
+  it('does not publish a broad abort claim for a repeated structured decode failure', async () => {
+    const llm = createMockLlm(textResponse('{"action":"abort","reason":"core capability damaged"}'));
+    const stage = createRecoverStage({ ...deps, llm });
+    const ctx = makeCtx({
+      recoveryAttempts: 1,
+      lastError: { stage: 'decide', message: 'failed to decode decision after 2 attempt(s)' },
+      inbound: textMessage('user', '执行任务'),
+    });
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'decide', ok: true, meta: { action: 'retry', coercedAbort: true } });
+    expect(ctx.reply).toBeUndefined();
+  });
+
   it('includes the active Soul when recovery wording may reach the user', async () => {
     const systemPrompts: string[] = [];
     const llm = createMockLlm((request) => {

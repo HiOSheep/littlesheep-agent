@@ -202,6 +202,7 @@ async function route(
     setConfig,
     workplaceDir: opts.workplaceDir,
     dataDir: opts.dataDir,
+    providerCalibrationToken: opts.providerCalibrationToken,
     rebuildRunner: opts.rebuildRunner,
     updateRuntimeConfig: opts.updateRuntimeConfig,
     dataRootManager: opts.dataRootManager,

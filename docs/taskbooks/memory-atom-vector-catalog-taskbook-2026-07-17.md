@@ -1,8 +1,8 @@
 # LittleSheep 原子记忆与内置向量目录任务书 2026-07-17
 
-最后更新：2026-07-17 23:33:48
+最后更新：2026-07-31 13:02:13
 版本：v3.30
-状态：阶段 0-26 的 Runtime 工程实现、正式数据迁移、本地向量、动态路由、独立任务相关度、D1 精确候选召回、Memory v3 专属相关性门、动态 working set 与反馈演化门、多轮指代/否定条件/任务转向门、压缩后任务连续性门、关系引导的一跳 Atom 选择门、写入认识边界门、Atom 相关性与关系调和门、TaskBook 驱动的二次注入调和门、跨持久记忆/语义缓存的连续 activation、前端三层只读投影、真实负载质量/成本/资源观测、初始 KnownState、显式 Atom 使用反馈、500 Atom 确定性规模门、256 Atom 真实 BGE 恢复门、Memory v2 写入退役、结构化 daily 压缩提升、模型提案的有界重复 Atom 合并闸门、显式关系驱动的叶子 Atom 跨 parent 重组、有证据约束的同陈述内容修订、有证据约束的事实纠正/冲突替代，以及有证据约束的非叶子子树重组均已完成首版工程闭环；真实 Provider 与达到校准门槛的长期真实负载验收仍未完成
+状态：阶段 0-26 的 Runtime 工程实现、正式数据迁移、本地向量、动态路由、独立任务相关度、D1 精确候选召回、Memory v3 专属相关性门、动态 working set 与反馈演化门、多轮指代/否定条件/任务转向门、压缩后任务连续性门、关系引导的一跳 Atom 选择门、写入认识边界门、Atom 相关性与关系调和门、TaskBook 驱动的二次注入调和门、跨持久记忆/语义缓存的连续 activation、前端三层只读投影、真实负载质量/成本/资源观测、初始 KnownState、显式 Atom 使用反馈、500 Atom 确定性规模门、256 Atom 真实 BGE 恢复门、Memory v2 写入退役、结构化 daily 压缩提升、模型提案的有界重复 Atom 合并闸门、显式关系驱动的叶子 Atom 跨 parent 重组、有证据约束的同陈述内容修订、有证据约束的事实纠正/冲突替代，以及有证据约束的非叶子子树重组均已完成首版工程闭环；当前 DeepSeek 基础 chat/continuity/tool/abort 能力已完成真实校准，Provider 驱动的 Memory v3 长任务、EVOLVE/CAPTURE 提案质量与达到校准门槛的长期真实负载验收仍未完成
 
 ## 1. 目标
 
@@ -443,7 +443,7 @@ V3 backend 激活后，对话原始来源由 Runner 从用户输入和对话区�
 - 已完成：v7 Catalog 升级会从现有 FTS 内容分批补齐语义哈希，并在旧向量与当前 Atom 完整哈希一致时保留 ready 状态；缺失或不一致记录进入 stale/pending，不伪装可用；
 - 已完成：非 active Atom 不再占用可检索向量或留下无法处理的 pending 任务；归档会释放向量，恢复为 active 后重新进入有界维护队列；
 - 已验证：最新全量为 175 个测试文件、1300 passed、1 skipped；仓库卫生 32/32、27 个 workspace 类型检查、Electron main/preload/renderer 构建和恢复源检查通过。新增回归覆盖连续 activation、跨刷新三层滞回、有界投影状态、重启重置、旧高价值 D1 候选、冷 Atom FTS 召回、任务相关度优先、语义缓存隔离/重启、摘要真实使用 sidecar、前端三层 API 投影、真实负载脱敏聚合和公共聚合上限，并保持既有相关性、TaskBook、关系、迁移与重启契约。正式 Catalog 已增量升级到 v9，45 个 atom/向量全部 ready，45 条 activation 投影完整，`integrity_check=ok`。
-- 已验证：`verify:memory-v3-provider` 在进入隔离 Runner 前执行脱敏非流式预检并要求 Provider 返回真实 usage；当前 DeepSeek 官方端点返回 HTTP 401，OpenAI/GLM 无可用密钥，因此没有把状态机恢复文本或 mock 结果误报成真实 Provider 通过，也没有留下临时数据根；
+- 已验证：运行中 Main 已对当前 DeepSeek 模型完成 chat、continuity、tool、abort 四项脱敏真实校准，前端真实直接回应与 `glob` Runner 链路也已成功并记录 usage；隔离 profile、状态机恢复文本或 mock 仍不能冒充 Provider 结果，也不能留下临时数据根；
 - 已验证：统一规模 soak 的增强档使用 500 个基础 Atom、32 个关系引用 Atom、256 次 run 和双阶段共 512 条反馈。关系 relevance 从 `0.94` 调整为 `0.68` 时候选分下降但不重算向量；目标 Atom 连续 release 后让位于中性对照 Atom，验证有用后恢复首位；Catalog 删除重建后 500 个 active 向量全部 ready，最大批次 16，最近反馈 id 64、ledger 16，峰值 RSS 约 213 MiB，低于 384 MiB 门槛。该用例使用确定性本地测试 Embedding，不替代正式 BGE 大规模吞吐或真实 Provider 验收。
 - 已验证：`verify:memory-v3-bge-soak` 使用活动应用数据根中经过大小与 SHA-256 校验的固定 BGE q8 资产，只在隔离临时数据根生成 256 个基础 Atom。模型暂不可用时保留全部 256 个 pending 且零 Embed 调用；恢复后完成真实 512 维向量。语义更新注入一次瞬时失败并在同一 maintenance drain 内恢复；Catalog 删除重建、4 次重启、128 次 run 后仍为 256 ready、0 pending、0 failed。全程阻断网络且尝试数为 0，pipeline 在报告前释放，峰值 RSS 约 349 MiB，低于 512 MiB 门槛。该门不替代真实 Provider 或长期用户负载验收。
 

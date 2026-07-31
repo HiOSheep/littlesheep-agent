@@ -1,21 +1,16 @@
 // VERIFY orchestration facade over structural evidence and bounded recovery.
-import type { ChatMessage } from '@littlesheep/llm';
 import type { RunContext, StageResult } from '@littlesheep/types';
-import { buildRunRequestCandidates } from '../context-candidates.js';
-import { prepareModelRequest, recordProviderUsage } from '../model-observability.js';
-import { appendSystemPromptAddons, buildUserFacingVoiceAddon } from '../profile-prompt.js';
-import { callLlmForJson } from './_shared.js';
 import {
   type DecodedVerdict,
   type VerifyStageDeps,
-  VERIFY_SYSTEM_PROMPT,
 } from './verify/contracts.js';
-import { buildVerifyUserMessage } from './verify/evidence.js';
+import { requestVerificationVerdict } from './verify/model-call.js';
 import {
   escalateExhaustedReplan,
   publishVerifiedReply,
   recordVerification,
   routeKnownIncompleteExecution,
+  verifyTrivialReadOnlyExecution,
 } from './verify/routing.js';
 import {
   canRecoverWithPartialReplan,
@@ -30,28 +25,11 @@ export function createVerifyStage(deps: VerifyStageDeps) {
     const replanAttempts = ctx.replanAttempts ?? 0;
     const maxReplan = ctx.maxReplanAttempts ?? 2;
     ctx.onToolEvent?.({ type: 'verification_start' });
-    const messages: ChatMessage[] = [
-      { role: 'system', content: appendSystemPromptAddons(VERIFY_SYSTEM_PROMPT, ctx.profilePromptAddon, buildUserFacingVoiceAddon(ctx)) },
-      { role: 'user', content: buildVerifyUserMessage(ctx, replanAttempts, maxReplan) },
-    ];
-
+    const runtimeVerdict = verifyTrivialReadOnlyExecution(ctx);
+    if (runtimeVerdict) return runtimeVerdict;
     let parsed: DecodedVerdict | null;
     try {
-      ({ parsed } = await callLlmForJson<DecodedVerdict>(deps.llm, deps.model, messages, {
-        maxAttempts: 2,
-        maxTokens: 500,
-        signal: ctx.signal,
-        onRequest: (request) => prepareModelRequest(
-          ctx,
-          'verify',
-          request,
-          buildRunRequestCandidates(ctx, 'verify', request.messages, {
-            history: [],
-            primaryUserKind: 'workflow_state',
-          }),
-        ),
-        onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
-      }));
+      parsed = await requestVerificationVerdict(deps, ctx, replanAttempts, maxReplan);
     } catch (error) {
       return routeKnownIncompleteExecution(
         ctx,
