@@ -21,7 +21,7 @@ function openingTag(source: string, marker: string): string {
 describe('hidden interaction surfaces', () => {
   it('keeps hidden menus and disclosures out of pointer and focus routing', async () => {
     const contracts = [
-      ['./composer/runtime-picker.tsx', 'className="runtime-menu-shell"'],
+      ['./composer/runtime-picker.tsx', 'className={`runtime-menu-shell'],
       ['./composer/add-menu.tsx', 'className="add-menu-panel"'],
       ['./composer/mode-picker.tsx', 'className="model-picker-panel option-picker-panel mode-picker-panel"'],
       ['./chat/assistant-turn.tsx', 'className={`assistant-turn-process disclosure-panel'],
@@ -46,7 +46,7 @@ describe('hidden interaction surfaces', () => {
   it('prevents inert descendants and closed runtime panels from restoring pointer hits', async () => {
     const styles = await readRendererFile('./styles.css')
     expect(styles).toMatch(/\[inert\],\s*\[inert\] \*\s*\{\s*pointer-events: none !important;/u)
-    expect(styles).toMatch(/\.runtime-picker:not\(\.open\)[\s\S]*?\.runtime-picker-panel[\s\S]*?pointer-events: none;[\s\S]*?visibility: hidden;/u)
+    expect(styles).toMatch(/\.runtime-menu-shell:not\(\.open\)[\s\S]*?\.runtime-picker-panel[\s\S]*?pointer-events: none;[\s\S]*?visibility: hidden;/u)
     expect(styles).toMatch(/\.disclosure-panel:not\(\.open\)\s*\{\s*pointer-events: none;/u)
   })
 

@@ -5,10 +5,12 @@ import {
   MAX_SNAPSHOT_MESSAGES,
   MAX_SNAPSHOT_TOOLS,
   type ContextMessageCandidate,
+  type ExactContextTokenCounter,
 } from '@littlesheep/context';
 import type {
   LlmCallContract,
   LlmCallPurpose,
+  LocalTokenLedger,
   ModelRequestSnapshot,
   RunContext,
   StageName,
@@ -30,8 +32,18 @@ export {
   MAX_SNAPSHOT_TOOLS,
 };
 
-const contextEngine = new ContextEngine();
+const defaultContextEngine = new ContextEngine();
+const contextEngines = new WeakMap<RunContext, ContextEngine>();
 const requestContextSnapshotIds = new WeakMap<ChatRequest, string>();
+
+/** Bind one immutable local counter to a run without adding infrastructure to RunContext. */
+export function bindExactContextTokenCounter(
+  ctx: RunContext,
+  tokenCounter: ExactContextTokenCounter | undefined,
+): void {
+  if (!tokenCounter) return;
+  contextEngines.set(ctx, new ContextEngine({ tokenCounter }));
+}
 
 /** Prepare and record the actual outbound request through the shared Context Engine. */
 export function prepareModelRequest(
@@ -65,6 +77,7 @@ export function recordProviderUsage(
   const index = ctx.contextSnapshots.findIndex((snapshot) => snapshot.id === snapshotId);
   if (index < 0) return;
   const snapshot = ctx.contextSnapshots[index]!;
+  const localCalibration = buildLocalCalibration(snapshot.localTokenLedger, usage.promptTokens);
   ctx.contextSnapshots[index] = Object.freeze({
     ...snapshot,
     providerUsage: Object.freeze({
@@ -77,6 +90,7 @@ export function recordProviderUsage(
       totalTokens: usage.totalTokens ?? usage.promptTokens + usage.completionTokens,
       cachedPromptTokens: usage.cachedPromptTokens,
       reasoningTokens: usage.reasoningTokens,
+      localCalibration,
       reportedAt: new Date().toISOString(),
     }),
   });
@@ -141,7 +155,7 @@ function recordPreparedRequest(
     callContract.purpose,
   );
   validateModelRequest(callContract, runtimeAware.request);
-  const prepared = contextEngine.prepare({
+  const prepared = (contextEngines.get(ctx) ?? defaultContextEngine).prepare({
     runId: ctx.runId,
     sessionId: ctx.sessionId,
     stage: callContract.stage,
@@ -158,6 +172,29 @@ function recordPreparedRequest(
   pushBounded(ctx.modelRequests, prepared.modelRequestSnapshot, MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN);
   requestContextSnapshotIds.set(prepared.request, prepared.contextSnapshot.id);
   return { request: prepared.request, snapshot: prepared.modelRequestSnapshot };
+}
+
+function buildLocalCalibration(
+  ledger: LocalTokenLedger | undefined,
+  providerPromptTokens: number,
+) {
+  if (!ledger || ledger.accuracy !== 'exact') return undefined;
+  const differenceTokens = providerPromptTokens - ledger.promptTokens;
+  const relativeDifference = providerPromptTokens === 0
+    ? (differenceTokens === 0 ? 0 : 1)
+    : Math.abs(differenceTokens) / providerPromptTokens;
+  return Object.freeze({
+    version: 1 as const,
+    tokenizerId: ledger.tokenizerId,
+    localPromptTokens: ledger.promptTokens,
+    differenceTokens,
+    relativeDifference,
+    status: differenceTokens === 0
+      ? 'exact_match' as const
+      : relativeDifference <= 0.005
+        ? 'within_tolerance' as const
+        : 'drift' as const,
+  });
 }
 
 function validateModelRequest(contract: LlmCallContract, request: ChatRequest): void {

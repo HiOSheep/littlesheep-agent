@@ -1,10 +1,10 @@
 // @littlesheep/types - internal v1 contracts for observable runtime continuity.
 
-import type {
-  StageName,
-} from './agent.js';
+import type { StageName } from './agent.js';
 import type { PlanStep, TaskBook, TaskExecutionResult } from './task.js';
 import type { SessionId } from './session.js';
+import type { ContextSafetyEstimate, LocalTokenLedger, ProviderTokenLedger } from './token-ledger.js';
+export * from './token-ledger.js';
 
 export const CONTEXT_SNAPSHOT_VERSION = 1 as const;
 export const ATTACHMENT_MANIFEST_VERSION = 1 as const;
@@ -359,66 +359,6 @@ export interface UnknownContextBudget {
 }
 
 export type ContextBudget = KnownContextBudget | UnknownContextBudget;
-
-export interface ExactLocalTokenLedger {
-  version: 1;
-  source: 'local';
-  accuracy: 'exact';
-  provider: string;
-  model: string;
-  tokenizerId: string;
-  promptTokens: number;
-  countedAt: string;
-}
-
-export interface UnavailableLocalTokenLedger {
-  version: 1;
-  source: 'local';
-  accuracy: 'unavailable';
-  provider: string;
-  model: string;
-  reason: string;
-  countedAt: string;
-}
-
-export type LocalTokenLedger = ExactLocalTokenLedger | UnavailableLocalTokenLedger;
-
-/** Internal overflow protection only. This estimate is never a displayable token ledger. */
-export interface ContextSafetyEstimate {
-  version: 1;
-  source: 'local';
-  accuracy: 'conservative';
-  purpose: 'overflow_protection';
-  provider: string;
-  model: string;
-  estimatorId: string;
-  estimatedPromptTokens: number;
-  calculatedAt: string;
-  displayable: false;
-}
-
-export interface ProviderTokenLedger {
-  version: 1;
-  source: 'provider';
-  provider: string;
-  model: string;
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens?: number;
-  cachedPromptTokens?: number;
-  reasoningTokens?: number;
-  requestId?: string;
-  reportedAt: string;
-}
-
-export type TokenLedger = LocalTokenLedger | ProviderTokenLedger;
-
-/** Returns a prompt-token value only when its source is explicitly trustworthy. */
-export function getDisplayablePromptTokens(ledger: TokenLedger | undefined): number | undefined {
-  if (!ledger) return undefined;
-  if (ledger.source === 'provider') return ledger.promptTokens;
-  return ledger.accuracy === 'exact' ? ledger.promptTokens : undefined;
-}
 
 export interface ContextSnapshot {
   version: 1;

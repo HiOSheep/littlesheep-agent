@@ -41,6 +41,8 @@ import { createReplyStage } from './stages/reply.js';
 import { createAskUserStage } from './stages/ask_user.js';
 import { createFinalizeStage } from './stages/finalize.js';
 import { consumeRuntimeControlEvents, consumeRuntimeTaskEvents } from './runtime-control-boundary.js';
+import type { ExactContextTokenCounter } from '@littlesheep/context';
+import { bindExactContextTokenCounter } from './model-observability.js';
 
 export interface DefaultHarnessOptions {
   llm: LlmClient;
@@ -71,6 +73,8 @@ export interface DefaultHarnessOptions {
   createSkill?: CreateSkillFn;
   /** Rules confidence threshold for CLASSIFY fast path. Default 0.7. */
   classifierThreshold?: number;
+  /** Prepared at Runner startup; unavailable models continue with the non-displayable safety estimator. */
+  tokenCounter?: ExactContextTokenCounter;
   /** Optional logger sink forwarded to HookRunner. */
   log?: (level: 'info' | 'warn' | 'error', msg: string, data?: unknown) => void;
 }
@@ -154,6 +158,7 @@ export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness 
     name: 'core-flow',
 
     async run(ctx: RunContext): Promise<StageResult> {
+      bindExactContextTokenCounter(ctx, opts.tokenCounter);
       let current: StageName | 'exit' = ctx.entryStage ?? 'enter';
       const trace: Array<{ name: StageName; startedAt: string; endedAt: string; ok: boolean }> = [];
       let lastResult: StageResult = {

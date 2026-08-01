@@ -1,6 +1,6 @@
 # LittleSheep Agent Runtime 效率与版本化连续性任务书 2026-07-17
 
-最后更新：2026-07-29 15:01:04
+最后更新：2026-08-01 14:10:17
 
 状态：已完成统一 Tool Execution Service、工具调用级与 TaskBook 步骤级有界并行、数据与工作区 shadow Git 检查点、退出冻结、有界 `RuntimeEventQueue`、活动 run ingress、Harness 安全边界、确定性 `TaskBookPatch`、延迟事件重规划、Renderer 事件生产/反馈入口、持久 RunCheckpoint、Runner 显式续跑和应用启动恢复控制面。活动路由与直接回应 Context 已恢复完整质量门；后台托盘和真实跨重启长任务验收仍未完成。
 
@@ -88,7 +88,7 @@
 ## 3. 尚未完成
 
 1. **后台执行控制面**：托盘状态、重新打开、暂停、中断、彻底退出和关闭窗口策略需要独立语义与 UI；在配套完成前不改变当前关闭行为。
-2. **真实 Provider 校准**：使用 OpenAI、DeepSeek、GLM 真实凭证校准模型窗口、reasoning、usage、上下文本地账本和前台表达质量；mock 只证明本地结构。
+2. **其他 Provider 校准**：DeepSeek 的 chat、continuity、tool、abort、前台 Runner 与 V4 本地精确 token 对账已完成；OpenAI/GLM 只在实际配置并进入用户选择范围后校准模型窗口、reasoning、usage、模型专用本地账本和前台表达质量。mock 只证明本地结构。
 3. **真实长任务与崩溃恢复**：验证多步骤并行、并行副作用检查点、应用崩溃/重启、网络中断和恢复后验收结论，不用单元测试替代产品场景。
 4. **版本治理 UI**：在不把内部 Atom 结构暴露给普通记忆页的前提下，增加用户可理解的数据/工作区回退和恢复结果入口；run checkpoint 的启动恢复入口已经完成。
 

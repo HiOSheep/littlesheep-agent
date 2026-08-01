@@ -20,8 +20,8 @@ export function ContextUsageIndicator({ usage }: { usage: ContextUsage }) {
   const ariaLabel = !windowKnown
     ? '当前模型的上下文窗口尚未登记'
     : usage.available
-    ? `上下文${usage.source === 'provider' ? '供应商实测' : '本地精确装配'}已用 ${formatTokenCount(usage.usedTokens)}，共 ${formatTokenCount(usage.maxTokens)}，${usage.percent}% 已用`
-    : `上下文真实用量待模型供应商返回，共 ${formatTokenCount(usage.maxTokens)}`
+    ? `上下文${usage.source === 'local' ? '本地精确装配' : '供应商实测'}已用 ${formatTokenCount(usage.usedTokens)}，共 ${formatTokenCount(usage.maxTokens)}，${usage.percent}% 已用`
+    : `${formatLocalTokenizerState(usage)}，共 ${formatTokenCount(usage.maxTokens)}`
 
   return (
     <div
@@ -42,28 +42,29 @@ export function ContextUsageIndicator({ usage }: { usage: ContextUsage }) {
             </>
           ) : usage.available ? (
             <>
-              {usage.providerUsedTokens !== undefined ? (
-                <span className="context-usage-source">
-                  供应商实测 {formatTokenCount(usage.providerUsedTokens)} · {formatUsageTime(usage.providerReportedAt)}
-                </span>
-              ) : (
-                <span className="context-usage-source">供应商实测待返回</span>
-              )}
               {usage.localUsedTokens !== undefined ? (
                 <span className="context-usage-source" title={usage.localTokenizerId}>
                   本地精确装配 {formatTokenCount(usage.localUsedTokens)} · {formatUsageTime(usage.localCountedAt)}
                 </span>
               ) : (
                 <span className="context-usage-source" title={usage.localUnavailableReason}>
-                  本地精确计数不可用
+                  {formatLocalTokenizerState(usage)}
                 </span>
+              )}
+              {usage.providerUsedTokens !== undefined ? (
+                <span className="context-usage-source">
+                  供应商实测 {formatTokenCount(usage.providerUsedTokens)} · {formatUsageTime(usage.providerReportedAt)}
+                  {formatCalibrationDifference(usage.providerDifferenceTokens, usage.providerCalibrationStatus)}
+                </span>
+              ) : (
+                <span className="context-usage-source">供应商校准待返回</span>
               )}
               <span>共 {formatTokenCount(usage.maxTokens)}</span>
               <strong>{usage.percent}% 已用</strong>
             </>
           ) : (
             <>
-              <span>等待模型供应商返回真实用量</span>
+              <span title={usage.localUnavailableReason}>{formatLocalTokenizerState(usage)}</span>
               <strong>共 {formatTokenCount(usage.maxTokens)}</strong>
             </>
           )}
@@ -71,6 +72,31 @@ export function ContextUsageIndicator({ usage }: { usage: ContextUsage }) {
       </span>
     </div>
   )
+}
+
+
+export function formatLocalTokenizerState(usage: ContextUsage): string {
+  switch (usage.localTokenizerState) {
+    case 'not_counted':
+      return '本会话尚无本地计数'
+    case 'unavailable':
+      return '当前模型没有已验证的本地精确 tokenizer'
+    case 'unknown':
+      return '当前模型的 tokenizer 能力未登记'
+    case 'exact':
+      return '本地精确计数待更新'
+  }
+}
+
+
+function formatCalibrationDifference(
+  differenceTokens: number | undefined,
+  status: ContextUsage['providerCalibrationStatus'],
+): string {
+  if (differenceTokens === undefined || status === undefined) return ''
+  if (status === 'exact_match') return ' · 与本地一致'
+  const sign = differenceTokens > 0 ? '+' : ''
+  return ` · 校准差 ${sign}${differenceTokens}`
 }
 
 

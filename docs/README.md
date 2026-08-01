@@ -1,18 +1,18 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-07-31 13:02:13
+最后更新：2026-08-01 14:10:17
 
 本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
 
 ## 现在先做什么
 
-**当前阶段**：Memory v3 阶段 0-26、正式数据迁移、本地向量目录、动态 working set、关系导航、shadow Git 检查点、退出冻结、统一 Tool Execution Service、工具调用级与 TaskBook 步骤级有界并行、运行时事件安全边界、TaskBookPatch、Runner 检查点续跑、应用启动恢复控制面，以及活动任务快照、暂停/继续/中断、托盘、三档关闭策略和设置页“应用与后台”已有工程基线。语义活动已收敛为 `respond / execute / clarify`；直接回应使用紧凑 Prompt 与有界历史，只在明确追问进度、结果、耗时、错误或恢复时介入上一轮执行摘要。当前使用的 DeepSeek 模型已完成 chat、continuity、tool、abort 四项真实校准。具体证据只看 [项目状态](decision/project-status.md)。
+**当前阶段**：Memory v3 阶段 0-26、正式数据迁移、本地向量目录、动态 working set、关系导航、shadow Git 检查点、退出冻结、统一 Tool Execution Service、工具调用级与 TaskBook 步骤级有界并行、运行时事件安全边界、TaskBookPatch、Runner 检查点续跑、应用启动恢复控制面，以及活动任务快照、暂停/继续/中断、托盘、三档关闭策略和设置页“应用与后台”已有工程基线。语义活动已收敛为 `respond / execute / clarify`；直接回应使用紧凑 Prompt 与有界历史，只在明确追问进度、结果、耗时、错误或恢复时介入上一轮执行摘要。当前使用的 DeepSeek 模型已完成 chat、continuity、tool、abort 四项真实校准，V4 官方 tokenizer 的本地精确计数与同请求 Provider 对账也已完成。具体证据只看 [项目状态](decision/project-status.md)。
 
 **推荐下一步**：优先在真实 Electron 中验收活动任务 SSE、关闭到托盘、后台长任务、暂停/继续/中断、配置热重载、彻底退出及崩溃/重启续跑。并行记录单工具轻量任务的 Context 成本：当前已消除重复工具轮次和额外 VERIFY/最终回复调用，但真实 `glob` 基线仍需 `DECIDE 1 次 + EXECUTE 2 次`，后续应继续缩减这条路径的 Prompt，而不撤掉权限、工具证据和结构验证。权限定义继续保持“行为 profile 与权限策略正交”，不要再把编程当作权限模式。
 
 **当前权限决策**：产品语义上 LS 是 Agent 的容器，活动完整应用数据根（默认 `.littlesheep`）是容器边界，`workplace/` 是容器内的默认工作区；当前桌面实现是 Main 的逻辑边界，不是实际 Docker/OS 进程沙箱。完全访问只对容器内读、写、改、删、执行免批准；研究只对容器内读取免批准；受限所有操作都需批准；容器外或范围不明三档都需批准。外部工作区启动 run 时先跳过自动索引，用户主动的 UI 预览/保存仍与 Agent 授权分开。核心源码另有不可绕过的宿主级只读保护。
 
-**你现在不需要再次决定迁移或替换 DeepSeek 凭证**：迁移、模型准备、向量回填和应用重启已完成。2026-07-31 真实桌面验收中，直接回应仅发生 1 次 `reply` 模型请求，耗时 `3.727s`，Provider usage 为 `975 + 12 = 987`，精确返回指定内容；显式 `glob` 任务只调用 1 次工具，结构验证为 `0ms`，总耗时 `13.666s`，3 次模型请求累计报告 `16,316` tokens。随后运行中 Main 完成四项脱敏校准：chat `872ms`、continuity `1,140ms`、tool `1,680ms`、abort `389ms`，全部通过；中断在收到流式 chunk 后正确返回 `AbortError`。这些证据证明当前 DeepSeek 配置真实可用，不外推为 OpenAI/GLM 或真实后台长任务已验收。
+**你现在不需要再次决定迁移或替换 DeepSeek 凭证**：迁移、模型准备、向量回填和应用重启已完成。2026-07-31 真实桌面验收中，直接回应仅发生 1 次 `reply` 模型请求，耗时 `3.727s`，Provider usage 为 `975 + 12 = 987`，精确返回指定内容；显式 `glob` 任务只调用 1 次工具，结构验证为 `0ms`，总耗时 `13.666s`，3 次模型请求累计报告 `16,316` tokens。随后运行中 Main 完成四项脱敏校准：chat `872ms`、continuity `1,140ms`、tool `1,680ms`、abort `389ms`，全部通过；中断在收到流式 chunk 后正确返回 `AbortError`。2026-08-01 应用内正常 `/run` 又完成 DeepSeek V4 本地 prompt `968` 与 Provider prompt `968` 的零差值对账。这些证据证明当前 DeepSeek 配置和本地精确计数真实可用，不外推为 OpenAI/GLM 或真实后台长任务已验收。
 
 - Provider `/embeddings` 已在 v3 基础设施中默认硬关闭；BGE 是当前平衡默认，multilingual E5 是高质量可选档，两者均已通过显式资产校验和运行阶段零网络请求的真实离线基准。
 - Memory v3 使用四层语义：对话原始来源保存用户输入与对话区可见内容，写入后不改写；投影变更记录保存 `MemoryUpdateEvent + mutation`，只服务幂等、恢复和审计；atom 是可去重、合并、调层级、失效、恢复和重建的当前语义投影；run working set 只决定本轮介入。SQLite 向量目录管理 atom 的路径、层级、FTS、向量、状态和审计，但必须能从持久文件重建。
@@ -23,10 +23,10 @@
 - 迁移页独立显示固定本地 BGE 模型的资产状态。当前正式模型为固定 revision `75c43b069aac4d136ba6bc1122f995fedcfd2781`，运行阶段零网络请求；Electron 主进程将 Transformers.js 保持为外部 Node 运行依赖，避免构建时误选浏览器/WASM 后端。
 - `.littlesheep` 只是默认数据根名称，完整应用数据可整体迁移；`workplace/` 只是默认工作区子目录。
 - 当前 LS 核心源码保持只读；Skill 合并、停用、归档或删除需要来源、引用、验证和回滚证据。
-- 当前 DeepSeek 活动模型的四项 Provider 校准已完成。OpenAI/GLM 只在实际配置凭证并进入用户选择范围后再做同等校准；定位文件不存在或 Main 未运行时，`verify:provider` 应明确失败，不用 mock 冒充通过。
+- 当前 DeepSeek 活动模型的四项 Provider 校准与 V4 本地精确 token 同请求对账已完成。OpenAI/GLM 只在实际配置凭证并进入用户选择范围后再做同等校准和模型专用 tokenizer 验证；定位文件不存在或 Main 未运行时，`verify:provider` 应明确失败，不用 mock 冒充通过。
 - 暂时不用决定：更多插件类型、MCP 和发布打包。设置页后台任务控制已经作为连续性能力收口接入，不是新产品范围。
 
-到这里即可停止阅读。正式 V3 数据、桌面基线、活动路由、直接回应 Context、当前 DeepSeek 四项 Provider 能力、应用启动恢复、后台任务控制面和设置页入口已有当前证据；真实 Electron 后台/跨重启长任务、跨 Provider 能力矩阵和单工具 Context 成本仍需单独验收。
+到这里即可停止阅读。正式 V3 数据、桌面基线、活动路由、直接回应 Context、当前 DeepSeek 四项 Provider 能力与精确本地 token 对账、应用启动恢复、后台任务控制面和设置页入口已有当前证据；真实 Electron 后台/跨重启长任务、其他 Provider 能力矩阵和单工具 Context 成本仍需单独验收。
 
 ## 需要确认依据时
 

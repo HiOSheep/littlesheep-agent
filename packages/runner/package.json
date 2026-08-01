@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@littlesheep/config": "workspace:*",
+    "@littlesheep/context": "workspace:*",
     "@littlesheep/experience": "workspace:*",
     "@littlesheep/embedding": "workspace:*",
     "@littlesheep/session": "workspace:*",

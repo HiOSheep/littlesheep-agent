@@ -13,7 +13,7 @@
 //   9. Expose port to renderer via env var (preload reads it)
 //  10. Create BrowserWindow
 
-import { app, dialog } from 'electron'
+import { app, dialog, net } from 'electron'
 import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { randomBytes } from 'node:crypto'
@@ -277,6 +277,7 @@ async function bootstrap(): Promise<void> {
     model,
     bootstrapDir: dataDir.root,
     containerRoot: dataDir.root,
+    tokenizerFetch: (input, init) => net.fetch(input instanceof URL ? input.href : input, init),
   })
   runActivity.setRunners([runner])
 
@@ -456,6 +457,7 @@ async function doRebuildRunner(): Promise<void> {
     model: currentModel,
     bootstrapDir: currentBootstrapDir || currentDataDir,
     containerRoot: currentDataDir || currentBootstrapDir,
+    tokenizerFetch: (input, init) => net.fetch(input instanceof URL ? input.href : input, init),
   })
 
   // 2. Atomically swap references.

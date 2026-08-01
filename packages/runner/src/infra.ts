@@ -30,6 +30,10 @@ import {
   type SkillSourceDefinition,
 } from '@littlesheep/skills';
 import { createDefaultHarness } from '@littlesheep/harness';
+import {
+  prepareLocalExactContextTokenCounter,
+  type ExactContextTokenCounter,
+} from '@littlesheep/context';
 import { SafeMemoryStore, QuarantineStore, sanitizePreludeForInjection } from '@littlesheep/safety';
 import { GitCheckpointCoordinator, SnapshotMemoryStore } from '@littlesheep/snapshot';
 import { ExperienceStore } from '@littlesheep/experience';
@@ -101,6 +105,8 @@ export interface BuildInfrastructureOptions {
   skillsDirs?: string[];
   /** Stable user-data bootstrap directory, when provided by the owning adapter. */
   bootstrapDir?: string;
+  /** Host-aware fetch implementation used only when verified tokenizer assets are absent. */
+  tokenizerFetch?: typeof fetch;
   state: RunnerState;
   log?: LogFn;
 }
@@ -134,6 +140,16 @@ export async function buildInfrastructure(
   opts: BuildInfrastructureOptions,
 ): Promise<Infrastructure> {
   const dirs = dataSubdirs(opts.branding);
+  let tokenCounter: ExactContextTokenCounter | undefined;
+  try {
+    tokenCounter = await prepareLocalExactContextTokenCounter({
+      modelRef: opts.model,
+      modelRootDir: join(opts.bootstrapDir ?? dirs.root, 'models', 'tokenizer'),
+      fetchFn: opts.tokenizerFetch,
+    });
+  } catch (error) {
+    opts.log?.('warn', `runner: local tokenizer preparation degraded: ${(error as Error).message}`);
+  }
   const versioning = opts.config.versioning.enabled
     ? new GitCheckpointCoordinator({
         dataRoot: dirs.root,
@@ -405,6 +421,7 @@ export async function buildInfrastructure(
     branding: opts.branding,
     log: opts.log,
     createSkill: createSkillFn,
+    tokenCounter,
   });
 
   void memoryRepository.startBackgroundMaintenance().catch((error) => {

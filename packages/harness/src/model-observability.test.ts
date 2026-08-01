@@ -6,6 +6,7 @@ import {
   MAX_SNAPSHOT_ITEMS,
   MAX_SNAPSHOT_MESSAGES,
   MAX_SNAPSHOT_TOOLS,
+  bindExactContextTokenCounter,
   preferDirectModelOutput,
   prepareModelRequest,
   recordModelRequest,
@@ -168,8 +169,14 @@ describe('recordModelRequest', () => {
       projectOverrides: {},
     };
 
+    bindExactContextTokenCounter(ctx, {
+      id: 'deepseek-v4-official-encoding-tokenizer-v1',
+      supports: (provider, model) => provider === 'deepseek' && model === 'deepseek-v4-pro',
+      countRequest: () => 120,
+    });
+
     const prepared = prepareModelRequest(ctx, 'execute_tool_loop', {
-      ...request(),
+      ...request(2, 1, false),
       model: 'deepseek-v4-pro',
       temperature: 0,
     });
@@ -182,10 +189,21 @@ describe('recordModelRequest', () => {
       thinkingMode: 'enabled',
     });
     expect(ctx.contextSnapshots?.[0]?.localTokenLedger).toMatchObject({
-      accuracy: 'unavailable',
+      accuracy: 'exact',
       provider: 'deepseek',
       model: 'deepseek-v4-pro',
-      reason: expect.stringContaining('has not verified a client-side counter'),
+      tokenizerId: 'deepseek-v4-official-encoding-tokenizer-v1',
+      promptTokens: 120,
+    });
+
+    recordProviderUsage(ctx, prepared, { promptTokens: 120, completionTokens: 8 });
+    expect(ctx.contextSnapshots?.[0]?.providerUsage?.localCalibration).toEqual({
+      version: 1,
+      tokenizerId: 'deepseek-v4-official-encoding-tokenizer-v1',
+      localPromptTokens: 120,
+      differenceTokens: 0,
+      relativeDifference: 0,
+      status: 'exact_match',
     });
   });
 

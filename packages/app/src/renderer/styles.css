@@ -6312,8 +6312,10 @@ body.is-resizing-column .workspace-panel-resizer::before {
   display: grid;
   justify-items: center;
   gap: 4px;
+  flex: 0 0 auto;
   width: max-content;
   min-width: 168px;
+  max-width: min(360px, calc(100vw - 24px));
   padding: 8px 12px;
   color: var(--text);
   background: rgba(37, 37, 37, 0.98);
@@ -6324,7 +6326,10 @@ body.is-resizing-column .workspace-panel-resizer::before {
   line-height: 1.25;
   opacity: 1;
   visibility: visible;
-  white-space: nowrap;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .context-usage-title {
@@ -6508,8 +6513,8 @@ body.is-resizing-column .workspace-panel-resizer::before {
   font-family: var(--mono);
 }
 
-.runtime-provider-option span,
-.runtime-model-option span {
+.runtime-provider-option > span:not(.runtime-menu-check):not(.runtime-submenu-arrow),
+.runtime-model-option > span:not(.runtime-menu-check):not(.runtime-submenu-arrow) {
   min-width: 0;
   flex: 1;
   overflow: hidden;
@@ -6694,12 +6699,13 @@ body.is-resizing-column .workspace-panel-resizer::before {
 }
 
 .runtime-menu-shell {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 10px);
+  position: fixed;
+  z-index: 2200;
+  right: auto;
+  bottom: auto;
   display: block;
-  width: min(260px, calc(100vw - 56px));
-  max-width: min(260px, calc(100vw - 56px));
+  width: 260px;
+  max-width: calc(100vw - 24px);
   min-width: 0;
   height: auto;
   padding: 0;
@@ -6716,7 +6722,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
     visibility 0s linear var(--transient-motion);
 }
 
-.runtime-picker.open .runtime-menu-shell {
+.runtime-menu-shell.open {
   opacity: 1;
   pointer-events: auto;
   visibility: visible;
@@ -6725,9 +6731,9 @@ body.is-resizing-column .workspace-panel-resizer::before {
     visibility 0s;
 }
 
-.runtime-picker:not(.open) .runtime-menu-shell::before,
-.runtime-picker:not(.open) .runtime-menu-shell .runtime-picker-panel,
-.runtime-picker:not(.open) .runtime-menu-shell .runtime-submenu {
+.runtime-menu-shell:not(.open)::before,
+.runtime-menu-shell:not(.open) .runtime-picker-panel,
+.runtime-menu-shell:not(.open) .runtime-submenu {
   pointer-events: none;
   visibility: hidden;
 }
@@ -6736,7 +6742,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   content: "";
   position: absolute;
   top: 0;
-  right: 100%;
+  left: 100%;
   bottom: 0;
   width: 8px;
   pointer-events: auto;
@@ -6754,7 +6760,6 @@ body.is-resizing-column .workspace-panel-resizer::before {
   padding: 8px;
   overflow-x: hidden;
   overflow-y: auto;
-  scrollbar-gutter: stable;
   color: var(--text);
   background: rgba(37, 37, 37, 0.98);
   border: 1px solid var(--border-strong);
@@ -6769,17 +6774,17 @@ body.is-resizing-column .workspace-panel-resizer::before {
 
 .runtime-menu-shell .runtime-submenu {
   position: absolute;
-  right: calc(100% + 8px);
+  left: calc(100% + 8px);
+  right: auto;
   bottom: 0;
   z-index: 1;
   display: block;
-  width: min(286px, calc(100vw - 56px));
-  max-width: min(286px, calc(100vw - 56px));
+  width: var(--runtime-submenu-width, 220px);
+  max-width: calc(100vw - 24px);
   max-height: min(360px, 56vh);
   padding: 8px;
   overflow-x: hidden;
   overflow-y: auto;
-  scrollbar-gutter: stable;
   color: var(--text);
   background: rgba(37, 37, 37, 0.98);
   border: 1px solid var(--border-strong);
@@ -6793,6 +6798,10 @@ body.is-resizing-column .workspace-panel-resizer::before {
     visibility 0s linear var(--transient-motion);
 }
 
+.runtime-submenu-back {
+  display: none;
+}
+
 .runtime-menu-shell .runtime-submenu.visible {
   opacity: 1;
   pointer-events: auto;
@@ -6803,13 +6812,13 @@ body.is-resizing-column .workspace-panel-resizer::before {
 }
 
 .runtime-menu-shell .runtime-model-menu {
-  width: min(286px, calc(100vw - 56px));
-  max-width: min(286px, calc(100vw - 56px));
+  width: min(143px, var(--runtime-submenu-width, 220px));
+  max-width: calc(100vw - 24px);
 }
 
 .runtime-menu-shell .runtime-provider-menu {
-  width: min(220px, calc(100vw - 56px));
-  max-width: min(220px, calc(100vw - 56px));
+  width: min(220px, var(--runtime-submenu-width, 220px));
+  max-width: calc(100vw - 24px);
 }
 
 .runtime-submenu-trigger {
@@ -6820,7 +6829,7 @@ body.is-resizing-column .workspace-panel-resizer::before {
   justify-content: flex-start;
 }
 
-.runtime-menu-shell .runtime-provider-option span {
+.runtime-menu-shell .runtime-provider-option > span:not(.runtime-menu-check):not(.runtime-submenu-arrow) {
   flex: 1 1 auto;
 }
 
@@ -7161,13 +7170,14 @@ body.is-resizing-column .workspace-panel-resizer::before {
 .send-round {
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
   color: var(--bg);
   background: var(--accent);
   border: 1px solid var(--accent);
   border-radius: 50%;
-  font-size: 21px;
+  font-size: 15px;
   font-weight: 900;
 }
 
@@ -7189,8 +7199,8 @@ body.is-resizing-column .workspace-panel-resizer::before {
 
 .send-round-icon {
   display: block;
-  width: 18px;
-  height: 18px;
+  width: 13px;
+  height: 13px;
   overflow: visible;
   fill: none;
   stroke: currentColor;
@@ -11618,30 +11628,77 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   }
 
   .composer-controls {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
+    display: flex;
+    align-items: center;
+    flex-direction: row;
+    flex-wrap: nowrap;
     gap: 4px;
   }
 
   .composer-left,
   .composer-right {
-    width: 100%;
+    width: auto;
     gap: 4px;
+    flex-wrap: nowrap;
+  }
+
+  .composer-left {
+    flex: 0 1 auto;
   }
 
   .composer-right {
-    margin-left: 0;
+    flex: 1 1 auto;
+    margin-left: auto;
+    min-width: 0;
+    justify-content: flex-end;
+  }
+
+  .icon-btn,
+  .context-usage {
+    width: 28px;
+    height: 28px;
+    flex-basis: 28px;
+  }
+
+  .mode-picker-trigger,
+  .runtime-picker-trigger {
+    height: 28px;
+  }
+
+  .mode-picker-trigger {
+    max-width: 104px;
+    gap: 5px;
+    padding-right: 7px;
+  }
+
+  .mode-picker-mark {
+    width: 14px;
+    height: 14px;
   }
 
   .runtime-picker {
     min-width: 0;
-    flex: 1 1 auto;
+    width: fit-content;
+    max-width: 100%;
+    flex: 0 1 auto;
     margin-left: 0;
   }
 
   .runtime-picker-trigger {
-    width: 100%;
-    max-width: none;
+    width: max-content;
+    max-width: 100%;
+    gap: 6px;
+    padding: 0 7px 0 8px;
+    font-size: 11px;
+  }
+
+  .runtime-picker-model {
+    flex: 0 1 auto;
+    text-align: center;
+  }
+
+  .composer-run-actions {
+    flex: 0 0 auto;
   }
 }
 
@@ -11687,8 +11744,8 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   }
 
   .runtime-picker {
-    width: min(100%, 340px);
-    flex: 1 1 260px;
+    width: fit-content;
+    flex: 0 1 auto;
   }
 
   .workspace-context-chip {

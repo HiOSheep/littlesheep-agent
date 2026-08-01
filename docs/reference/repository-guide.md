@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-07-30 12:20:33
+最后更新：2026-08-01 14:10:17
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
@@ -59,14 +59,14 @@
 
 | 包 | 归属和职责 |
 | --- | --- |
-| `packages/types/` | Agent、消息、会话、工具、记忆、澄清请求，以及 Mode、运行决议、Context、附件、运行事件、TaskBookPatch、检查点、模型请求和执行证据等内部 v1 契约。 |
+| `packages/types/` | Agent、消息、会话、工具、记忆、澄清请求，以及 Mode、运行决议、Context、附件、运行事件、TaskBookPatch、检查点、模型请求和执行证据等内部 v1 契约；本地精确、Provider 实测与不可展示安全估算的 Token 账本独立位于 `src/token-ledger.ts`。 |
 | `packages/classifier/` | `respond / execute / clarify` 语义活动路由，含规则快速路径和模型兜底；旧 `chat / problem / unclear` 只由公共契约做兼容映射。 |
 | `packages/prompt/` | 系统提示词、行为 profile、工作区信息和记忆树根索引的装配；支持完整执行、紧凑 `respond`、最小与禁用四种投影模式。 |
 | `packages/harness/` | 硬控制流状态机、TaskBook、各 stage、hooks、局部重规划和验证；`src/stages/decide/request.ts`、`model-call.ts`、`adoption.ts` 分别拥有决策请求、模型调用和采用，`execute/`、`verify/` 拥有工具执行与结构验收；`runtime-control-boundary.ts` 和 `taskbook-patch.ts` 拥有运行中事件的安全消费与确定性局部修订。 |
 | `packages/runner/` | 运行时装配、单次 run、流式事件、执行日志、活动 run 事件注册与有界状态快照、暂停/继续/中断、持久检查点、显式续跑和基础设施依赖注入。 |
 | `packages/llm/` | OpenAI-compatible 客户端、供应商请求、流式输出、重试和 usage 类型。 |
 | `packages/config/` | 配置 schema、默认值、供应商预置、模型选择和用户配置加载。 |
-| `packages/context/` | Context 候选排序、模型窗口预算、可注入精确 token 计数、预算淘汰、压缩阈值信号以及脱敏 `ContextSnapshot` / `ModelRequestSnapshot`。`src/engine.ts` 是兼容 facade，内部实现位于 `src/context-engine/`；本包不负责记忆存储、会话存储或 Provider 调用。 |
+| `packages/context/` | Context 候选排序、模型窗口预算、可注入精确 token 计数、预算淘汰、压缩阈值信号以及脱敏 `ContextSnapshot` / `ModelRequestSnapshot`。`src/engine.ts` 是兼容 facade，内部实现位于 `src/context-engine/`；模型专用 tokenizer 资源准备与最终请求 framing 位于 `src/tokenizers/`。本包不负责记忆存储、会话存储或 Provider 调用。 |
 | `packages/branding/` | 品牌配置和用户数据目录布局。 |
 
 ### 记忆、学习与安全
@@ -109,8 +109,8 @@
 | --- | --- | --- | --- |
 | Agent 状态机、活动路由、TaskBook、验证或恢复 | `packages/harness/`、`packages/classifier/` | `harness/src/default-harness.ts`、`src/stages/classify.ts`、`src/stages/decide/{request,model-call,adoption}.ts`、`runtime-control-boundary.ts`、`taskbook-patch.ts`；语义路由规则位于 `classifier/src/{rules,llm}.ts` | `harness/src/default-harness.test.ts`、`src/stages/*.test.ts`、`runtime-control-boundary.test.ts`、`taskbook-patch.test.ts`、`classifier/src/*.test.ts` |
 | 单次 run、流式事件、执行日志、上一轮有界摘要与活动续跑 | `packages/runner/` | `src/runner.ts`、`src/execution-log.ts`、`src/session-run-summary.ts`、`src/runtime-event-queue.ts`、`src/active-run-registry.ts`、`src/active-run-activity.ts`、`src/run-abort-control.ts`、`src/run-checkpoint-*.ts` | `src/runner.test.ts`、`src/execution-log.test.ts`、`src/runtime-event-queue.test.ts`、`src/active-run-registry.test.ts`、`src/runner-continuation.test.ts`、`src/run-checkpoint-*.test.ts` |
-| 公共运行契约 | `packages/types/` | `src/index.ts`、`src/runtime-contracts.ts` | `src/runtime-contracts.test.ts`、`test/core-agent-contracts.test.ts` |
-| Context 候选、预算、计数和快照 | `packages/context/` | `src/engine.ts` facade、`src/context-engine/` | `src/engine.test.ts`、Harness Context/观测测试 |
+| 公共运行契约 | `packages/types/` | `src/index.ts`、`src/runtime-contracts.ts`、`src/token-ledger.ts` | `src/runtime-contracts.test.ts`、`test/core-agent-contracts.test.ts` |
+| Context 候选、预算、计数和快照 | `packages/context/` | `src/engine.ts` facade、`src/context-engine/`、`src/tokenizers/deepseek-v4-{encoding,counter}.ts` | `src/engine.test.ts`、`src/tokenizers/*.test.ts`、Harness Context/观测测试 |
 | Provider 请求、流式与 usage | `packages/llm/` | `src/client.ts` | `src/client.test.ts`、Provider smoke 脚本 |
 | 配置、Provider/模型能力 | `packages/config/` | `src/schema.ts`、`src/model-capabilities.ts` | `src/schema.test.ts`、App shared capability 测试 |
 | Prompt 与行为 profile | `packages/prompt/` | `src/builder.ts`、`src/profiles.ts` | `src/builder.test.ts`、`src/profiles.test.ts` |
@@ -199,7 +199,7 @@ App / CLI / Channel adapters
 7. 跨包只从公开入口导入；出现反向依赖时先定义端口，不通过深层 import 或循环依赖解决。
 8. 新建 package 需要同时满足独立职责、稳定接口、独立测试和真实复用；否则先在现有 package 内按 feature 拆分。
 
-Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约过滤、预算、淘汰、计数和双快照；provider/model tokenizer 能力矩阵强制模型声明与运行时 `counterId` 一致后才能生成精确账本，unavailable 模型只使用不可展示的保守请求前预算保护，当前仍缺真实 Provider 对账。Memory Repository 与 Memory Service 已分别把持久化和运行协调拆入同名领域目录；DECIDE、EXECUTE、VERIFY 也已把需求校准、模型调用、工具循环、步骤调度和验证恢复从 stage facade 中分离。TaskBook 与步骤执行公共契约位于 `packages/types/src/task.ts`，状态机与 RunContext 位于 `packages/types/src/agent.ts`。统一 Tool Execution Service 位于 `packages/tools/src/tool-execution-service.ts`，调度、中断、记录摘要和结果处理使用同目录独立模块；Harness 只通过公开入口调用。版本化 LLM Call Contract 位于 `packages/harness/src/llm-call-contracts/`，公共类型唯一来源是 `packages/types/src/runtime-contracts.ts`；EVOLVE/CAPTURE 的提交判定位于 `stages/memory-intent-gate.ts`。运行时事件队列、活动 run ingress、安全边界、TaskBookPatch、TaskBook 步骤级有界并行、持久检查点、Runner 显式续跑、Renderer 事件入口、应用启动恢复、活动任务 SSE、设置页后台控制、托盘和关闭策略已有独立模块；下一步是真实 Electron 后台/跨重启长任务和 Mode Registry。不能因为已有 package 或接口就宣称真实场景已经完成，具体评估和演进顺序见 [架构决策报告](../decision/architecture-decision-report.md)。
+Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约过滤、预算、淘汰、计数和双快照；provider/model tokenizer 能力矩阵强制模型声明、请求格式与运行时 `counterId` 一致后才能生成精确账本。DeepSeek V4 官方 tokenizer 与最终请求 framing 位于 `packages/context/src/tokenizers/`，已完成真实 Provider 同请求零差值对账；unavailable 模型只使用不可展示的保守请求前预算保护。Token 账本公共契约独立位于 `packages/types/src/token-ledger.ts`，避免继续放大运行时总契约文件。Memory Repository 与 Memory Service 已分别把持久化和运行协调拆入同名领域目录；DECIDE、EXECUTE、VERIFY 也已把需求校准、模型调用、工具循环、步骤调度和验证恢复从 stage facade 中分离。TaskBook 与步骤执行公共契约位于 `packages/types/src/task.ts`，状态机与 RunContext 位于 `packages/types/src/agent.ts`。统一 Tool Execution Service 位于 `packages/tools/src/tool-execution-service.ts`，调度、中断、记录摘要和结果处理使用同目录独立模块；Harness 只通过公开入口调用。版本化 LLM Call Contract 位于 `packages/harness/src/llm-call-contracts/`；EVOLVE/CAPTURE 的提交判定位于 `stages/memory-intent-gate.ts`。运行时事件队列、活动 run ingress、安全边界、TaskBookPatch、TaskBook 步骤级有界并行、持久检查点、Runner 显式续跑、Renderer 事件入口、应用启动恢复、活动任务 SSE、设置页后台控制、托盘和关闭策略已有独立模块；下一步是真实 Electron 后台/跨重启长任务和 Mode Registry。不能因为已有 package 或接口就宣称真实场景已经完成，具体评估和演进顺序见 [架构决策报告](../decision/architecture-decision-report.md)。
 
 ## 测试与脚本
 
@@ -249,12 +249,13 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 
 - 完整应用数据根由 `@littlesheep/branding` 和应用运行时解析为 `<data-root>`；默认目录名为 `.littlesheep`，但用户可迁移到其他位置，正式文档不固化真实用户绝对路径。
 - 解析优先级为 `LITTLESHEEP_DATA_DIR`、外部 locator、branding 默认目录。locator 默认位于用户主目录，保持在数据根之外，记录活动目录、待迁移/回滚事务和最近一次迁移清单。
-- 包括 API 配置、加密密钥引用、sessions、memory-tree、用户与 LS 自身记忆、Skills、plugins/plugin-data、projects、archive、execution logs、workspace layout、terminal activity、`attachment-cache/`、`workspace/resource-indexes/`，以及 `AGENTS.md`、`SOUL.md`、`USER.md`、`PHILOSOPHY.md`、`TOOLS.md`、`MEMORY.md` 等用户所有的运行时资源。
+- 包括 API 配置、加密密钥引用、sessions、memory-tree、用户与 LS 自身记忆、Skills、plugins/plugin-data、projects、archive、execution logs、workspace layout、terminal activity、`attachment-cache/`、`workspace/resource-indexes/`、`models/tokenizer/`，以及 `AGENTS.md`、`SOUL.md`、`USER.md`、`PHILOSOPHY.md`、`TOOLS.md`、`MEMORY.md` 等用户所有的运行时资源。
 - `<data-root>/workplace/` 是未选择项目或外部目录时的默认工作区，只是完整应用数据根的一个子目录。移动 workplace 不等于迁移应用数据；“存储与数据”执行的是完整数据根迁移。
 - `<data-root>` 同时是 Agent 的逻辑容器根：默认 workplace 在容器内，用户选定的数据根外项目在容器外。当前由 Main/Safety 的路径和审批闸门实现，不等同于 Docker/OS 进程沙箱；范围不明的命令按 `unknown` 处理。Agent 在外部或未知工作区启动时先跳过自动资源/文档索引，用户主动的选择、预览和保存走独立 UI 路径。
 - `PHILOSOPHY.md` 保存经用户确认的长期价值判断和设计取舍。它注册为 `philosophy` 资源但不进入每轮常驻 Prompt；Agent 必须先沿资源索引发现，再按任务相关性和 token 预算展开。
 - `attachment-cache/` 只保存 LS 通过粘贴/浏览器导入创建并登记的临时附件；自动清理只能处理索引中仍通过路径、普通文件、大小和哈希验证的缓存项。`workplace/`、项目目录和外部路径是不同所有权边界，不能因为文件名或目录名相似而由缓存清理删除。
 - `workspace/resource-indexes/` 只保存各工作区的相对路径、文件类型、大小、修改时间和 `user/agent` 来源；它不保存正文，扫描有目录、深度、条目和待处理队列上限。索引文件属于 LS 受管运行数据，项目索引以稳定 project id 关联。
+- `models/tokenizer/` 保存模型专用、固定 revision 的本地计数资源。资源只有通过登记的大小与 SHA-256 校验后才加载；下载使用同目录临时文件和原子重命名，损坏或不完整文件不会被当作可用 tokenizer，也不进入源码仓库。
 - 数据根迁移只在应用启动、Runner/Local App API/插件宿主和其他写入者创建之前执行。目标必须不存在或为空；源目录保留，符号链接与 junction 不复制，内部活动元数据只重绑定原本位于旧数据根中的绝对路径，外部项目和用户文件路径保持不变。
 - 仓库治理、构建和测试不得迁移、格式化、删除或重写该目录。需要数据治理时必须先做只读诊断，并单独获得用户授权。
 

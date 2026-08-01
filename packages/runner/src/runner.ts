@@ -2,7 +2,6 @@
 // Shared agent runner: assemble infra from config, expose run().
 // Used by the Electron app (local conversations, origin='app') and optional
 // channel plugins (channel-routed conversations, origin='channel').
-
 import type {
   AgentResult,
   Message,
@@ -83,6 +82,8 @@ export interface CreateRunnerOptions {
   protectedWriteRoots?: readonly string[];
   /** Active movable application-data root used as the logical LS container. */
   containerRoot?: string;
+  /** Host-aware fetch for immutable tokenizer assets (Electron supplies net.fetch for proxy support). */
+  tokenizerFetch?: typeof fetch;
   /** Overall run timeout in ms. Defaults to agents.defaults.timeoutSeconds.
    *  The bound applies even when a host also supplies an AbortSignal. 0
    *  disables the timeout. */
@@ -179,10 +180,8 @@ export interface AgentRunner {
 export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunner> {
   const model = opts.model ?? opts.config.agents.defaults.model;
   const state: RunnerState = { sessionId: undefined, model };
-  const protectedWriteRoots = opts.protectedWriteRoots ?? discoverLittleSheepCoreRoots([
-    process.cwd(),
-    process.argv[1] ?? '',
-  ]);
+  const protectedWriteRoots = opts.protectedWriteRoots
+    ?? discoverLittleSheepCoreRoots([process.cwd(), process.argv[1] ?? '']);
   const containerRoot = opts.containerRoot ?? opts.bootstrapDir;
   const infra = await buildInfrastructure({
     config: opts.config,
@@ -191,6 +190,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     llm: opts.llm,
     skillsDirs: opts.skillsDirs,
     bootstrapDir: opts.bootstrapDir,
+    tokenizerFetch: opts.tokenizerFetch,
     state,
     log: opts.log,
   });

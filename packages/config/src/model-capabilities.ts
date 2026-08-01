@@ -69,7 +69,10 @@ const OPENAI_54_SOURCE = 'https://developers.openai.com/api/docs/models/gpt-5.4'
 const OPENAI_52_SOURCE = 'https://developers.openai.com/api/docs/models/gpt-5.2';
 const OPENAI_41_SOURCE = 'https://developers.openai.com/api/docs/models/gpt-4.1';
 const DEEPSEEK_V4_SOURCE = 'https://api-docs.deepseek.com/quick_start/pricing';
+const DEEPSEEK_V4_ENCODING_SOURCE = 'https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/tree/60d8d70770c6776ff598c94bb586a859a38244f1/encoding';
 const GLM_52_SOURCE = 'https://docs.bigmodel.cn/cn/guide/models/text/glm-5.2';
+
+export const DEEPSEEK_V4_TOKEN_COUNTER_ID = 'deepseek-v4-official-encoding-tokenizer-v1';
 
 const MODEL_CAPABILITIES = new Map<string, ModelCapabilityRecord>([
   ...['gpt-5.6', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'].map((model) => [
@@ -107,6 +110,17 @@ const BUILTIN_TOKENIZER_MODELS = [
 const MODEL_TOKENIZER_CAPABILITIES = new Map<string, ModelTokenizerCapability>(
   BUILTIN_TOKENIZER_MODELS.map((modelRef) => [modelRef, unavailableTokenizer(modelRef)]),
 );
+
+for (const modelRef of ['deepseek/deepseek-v4-pro', 'deepseek/deepseek-v4-flash']) {
+  MODEL_TOKENIZER_CAPABILITIES.set(modelRef, {
+    status: 'exact',
+    counterId: DEEPSEEK_V4_TOKEN_COUNTER_ID,
+    requestFormat: 'openai-compatible-chat-completions',
+    source: 'official-provider-doc',
+    sourceUrl: DEEPSEEK_V4_ENCODING_SOURCE,
+    verifiedAt: '2026-07-31',
+  });
+}
 
 export function isRuntimeReasoning(value: string): value is RuntimeReasoning {
   return (RUNTIME_REASONINGS as readonly string[]).includes(value);

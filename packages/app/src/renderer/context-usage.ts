@@ -1,11 +1,18 @@
 import type { ContextSnapshot, ModelRequestSnapshot } from '@littlesheep/types'
-import { getContextWindowForModelRef } from '../shared/model-capabilities'
+import {
+  getContextWindowForModelRef,
+  resolveModelTokenizerCapabilityForModelRef,
+} from '../shared/model-capabilities'
+
+export type LocalTokenizerState = 'exact' | 'not_counted' | 'unavailable' | 'unknown'
 
 export interface ContextUsageSnapshot {
   modelRef: string
   provider?: {
     usedTokens: number
     reportedAt: string
+    localDifferenceTokens?: number
+    calibrationStatus?: 'exact_match' | 'within_tolerance' | 'drift'
   }
   local?: {
     usedTokens: number
@@ -23,9 +30,12 @@ export interface ContextUsage {
   source: 'provider' | 'local' | 'none'
   providerUsedTokens?: number
   providerReportedAt?: string
+  providerDifferenceTokens?: number
+  providerCalibrationStatus?: 'exact_match' | 'within_tolerance' | 'drift'
   localUsedTokens?: number
   localCountedAt?: string
   localTokenizerId?: string
+  localTokenizerState: LocalTokenizerState
   localUnavailableReason?: string
 }
 
@@ -44,7 +54,17 @@ export function buildContextUsage(
   const hasFreshSnapshot = snapshot?.modelRef === modelKey
   const providerUsedTokens = hasFreshSnapshot ? snapshot?.provider?.usedTokens : undefined
   const localUsedTokens = hasFreshSnapshot ? snapshot?.local?.usedTokens : undefined
-  const usedTokens = providerUsedTokens ?? localUsedTokens ?? 0
+  const tokenizerCapability = resolveModelTokenizerCapabilityForModelRef(modelRef)
+  const localTokenizerState: LocalTokenizerState = localUsedTokens !== undefined
+    ? 'exact'
+    : hasFreshSnapshot && snapshot?.localUnavailableReason
+      ? 'unavailable'
+      : tokenizerCapability?.status === 'exact'
+        ? 'not_counted'
+        : tokenizerCapability?.status === 'unavailable'
+          ? 'unavailable'
+          : 'unknown'
+  const usedTokens = localUsedTokens ?? providerUsedTokens ?? 0
   const maxTokens = getContextWindowForModelRef(modelRef)
   const percent = maxTokens > 0 ? Math.min(100, Math.round((usedTokens / maxTokens) * 100)) : 0
   return {
@@ -52,13 +72,20 @@ export function buildContextUsage(
     maxTokens,
     percent,
     available: hasFreshSnapshot && maxTokens > 0 && (providerUsedTokens !== undefined || localUsedTokens !== undefined),
-    source: providerUsedTokens !== undefined ? 'provider' : localUsedTokens !== undefined ? 'local' : 'none',
+    source: localUsedTokens !== undefined ? 'local' : providerUsedTokens !== undefined ? 'provider' : 'none',
     providerUsedTokens,
     providerReportedAt: hasFreshSnapshot ? snapshot?.provider?.reportedAt : undefined,
+    providerDifferenceTokens: hasFreshSnapshot ? snapshot?.provider?.localDifferenceTokens : undefined,
+    providerCalibrationStatus: hasFreshSnapshot ? snapshot?.provider?.calibrationStatus : undefined,
     localUsedTokens,
     localCountedAt: hasFreshSnapshot ? snapshot?.local?.countedAt : undefined,
     localTokenizerId: hasFreshSnapshot ? snapshot?.local?.tokenizerId : undefined,
-    localUnavailableReason: hasFreshSnapshot ? snapshot?.localUnavailableReason : undefined,
+    localTokenizerState,
+    localUnavailableReason: hasFreshSnapshot
+      ? snapshot?.localUnavailableReason
+      : tokenizerCapability?.status === 'unavailable'
+        ? tokenizerCapability.reason
+        : undefined,
   }
 }
 
@@ -90,7 +117,12 @@ export function buildContextUsageSnapshot(
       )
   const providerUsage = snapshot?.providerUsage
   const provider = providerUsage
-    ? { usedTokens: Math.max(0, providerUsage.promptTokens), reportedAt: providerUsage.reportedAt }
+    ? {
+        usedTokens: Math.max(0, providerUsage.promptTokens),
+        reportedAt: providerUsage.reportedAt,
+        localDifferenceTokens: providerUsage.localCalibration?.differenceTokens,
+        calibrationStatus: providerUsage.localCalibration?.status,
+      }
     : usage?.source === 'provider'
       ? { usedTokens: Math.max(0, usage.promptTokens), reportedAt: now() }
       : undefined

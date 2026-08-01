@@ -94,8 +94,10 @@ describe('model reasoning capabilities', () => {
       verifiedAt: '2026-07-13',
     })
     expect(resolveModelTokenizerCapabilityForModelRef('deepseek/deepseek-v4-flash')).toMatchObject({
-      status: 'unavailable',
-      reasonCode: 'no-verified-final-request-counter',
+      status: 'exact',
+      counterId: 'deepseek-v4-official-encoding-tokenizer-v1',
+      source: 'official-provider-doc',
+      verifiedAt: '2026-07-31',
     })
     expect(resolveModelTokenizerCapabilityForModelRef('glm/glm-5.1')).toMatchObject({
       status: 'unavailable',

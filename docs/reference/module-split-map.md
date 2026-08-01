@@ -1,6 +1,6 @@
 # LittleSheep 模块拆分地图
 
-最后更新：2026-07-31 13:02:13
+最后更新：2026-08-01 14:10:17
 
 本文件记录大型生产文件的当前所有权、目标边界和拆分顺序。它是仓库基元化任务书的阶段产物，不替代项目状态，也不把行数当成唯一质量指标。
 
@@ -18,10 +18,10 @@
 
 | 当前文件 | 当前行数 | 当前责任 | 目标边界 | 所有权 |
 | --- | ---: | --- | --- | --- |
-| `packages/runner/src/runner.ts` | 819 | run 生命周期、输入装配、Memory 反馈、日志、检查点持久化/续跑、活动任务注册和资源收尾 | 保持应用服务 facade；活动快照与中断/超时所有权已下沉，继续下沉日志、检查点和收尾协调 | E |
+| `packages/runner/src/runner.ts` | 820 | run 生命周期、输入装配、Memory 反馈、日志、检查点持久化/续跑、活动任务注册和资源收尾 | 保持应用服务 facade；活动快照与中断/超时所有权已下沉，继续下沉日志、检查点和收尾协调 | E |
 | `packages/channels/qqbot/src/plugin.ts` | 801 | QQ 协议、连接、消息、发送和生命周期 | transport、protocol、message-mapper、sender、lifecycle | C |
 | `packages/memory-tree/src/project-memory-projection.ts` | 780 | 投影生成、同步、冲突、恢复和删除 | projection facade + render、sync、conflict、lifecycle | D |
-| `packages/types/src/runtime-contracts.ts` | 820 | Context、事件、检查点、活动任务控制、执行证据和版本化运行时契约 | 按 context、event、checkpoint、active-run、execution 分组并保持 barrel | E |
+| `packages/types/src/runtime-contracts.ts` | 760 | Context、事件、检查点、活动任务控制、执行证据和版本化运行时契约 | Token 账本已迁入 `token-ledger.ts`；继续按 context、event、checkpoint、active-run、execution 分组并保持 barrel | E |
 | `packages/runner/src/runtime-event-queue.ts` | 723 | run/session 隔离、有界事件、幂等、租约、结算和快照恢复 | 将 queue codec、lease/settle 和 registry 接入边界继续下沉；保持 facade 稳定 | E |
 | `packages/runner/src/run-checkpoint-store.ts` | 675 | 检查点 codec、原子存储、校验、列表、容量和保留期 | 分离 schema/codec、store、query 与 retention policy | E |
 | `packages/memory-tree/src/memory-tree.ts` | 655 | 根索引、导航、展开和搜索；working set 预算/去重/释放已拆出 | tree facade + index、navigation、expansion、branch-search | D |
@@ -92,6 +92,9 @@
 | `packages/memory-tree/src/index.ts` | 323 | Memory Tree 公共 barrel 与稳定导出 | 保持无逻辑导出层 | D |
 | `packages/app/src/main/local-app-api/terminal-routes.ts` | 319 | 终端会话、原始 PTY 输入、权限校验和活动捕获路由 | 保持路由只做 HTTP 编排 | C |
 | `packages/channels/webhook/src/plugin.ts` | 310 | Webhook server、鉴权和消息 | 分离 server、auth、mapper、sender | C |
+| `packages/app/src/renderer/composer/runtime-picker.tsx` | 379 | 输入栏模型、供应商和推理程度选择器及二级菜单定位 | 保持选择器视图编排；继续增长时分离菜单定位与选项渲染 | B |
+| `packages/context/src/tokenizers/deepseek-v4-encoding.ts` | 396 | DeepSeek V4 消息、thinking 与 DSML 工具调用的官方请求 framing | 保持纯编码职责；继续增长时分离 DSML 工具序列化 | E |
+| `packages/context/src/tokenizers/deepseek-v4-counter.ts` | 319 | DeepSeek V4 官方 tokenizer 资源校验、下载、加载与有界精确计数缓存 | 继续增长时分离通用不可变资源下载器 | E |
 | `packages/context/src/context-engine/snapshots.ts` | 310 | Context/模型请求快照、哈希和有界裁剪 | 分离 builders 与 hash/shape codec | E |
 | `packages/experience/src/experience-store.ts` | 309 | 经验索引、备份、并发和衰减 | 分离 index、backup、mutation、decay | D |
 | `packages/memory-tree/src/memory-repository/v3-retrieval.ts` | 307 | 分支/作用域约束检索与精确治理读取路由 | 保持检索编排 | D |
