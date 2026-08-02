@@ -71,7 +71,7 @@ export function buildClarificationRequest(
 export function normalizePlan(
   raw: DecodedPlanStep[] | undefined,
   availableToolNames: Set<string>,
-  explicitToolName?: string,
+  explicitToolNames?: ReadonlySet<string>,
 ): PlanStep[] {
   if (!Array.isArray(raw)) return [];
   const plan: PlanStep[] = [];
@@ -90,7 +90,7 @@ export function normalizePlan(
       step.toolProposal,
       tools,
       availableToolNames,
-      explicitToolName,
+      explicitToolNames,
     );
     plan.push({
       id: cleanString(step.id),

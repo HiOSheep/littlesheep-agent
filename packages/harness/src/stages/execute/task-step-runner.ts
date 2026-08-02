@@ -21,7 +21,7 @@ import { runDirectToolProposal, runToolLoop } from './tool-loop.js';
 import type { ScheduledTaskStep } from './task-step-scheduler.js';
 import {
   directToolEvidenceText,
-  resolveDirectReadOnlyToolProposal,
+  resolveDirectToolProposal,
 } from './direct-tool-proposal.js';
 
 export interface TaskStepRunOutcome {
@@ -103,7 +103,11 @@ export async function executeScheduledTaskStep(options: TaskStepRunOptions): Pro
   const branch = branchAbortController(ctx.signal);
   const produced: RunContext['produced'] = [];
   try {
-    const directProposal = resolveDirectReadOnlyToolProposal(ctx, taskBook, step, previousResult);
+    const directProposal = resolveDirectToolProposal(ctx, taskBook, step, previousResult, {
+      stepId,
+      resources: scheduled.resources,
+      sideEffect: scheduled.sideEffect,
+    });
     const loopResult = directProposal
       ? await runDirectToolProposal(deps, {
           ctx,

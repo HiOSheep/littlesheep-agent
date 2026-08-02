@@ -173,6 +173,19 @@ export async function runToolLoop(
         finalizeToolResult(ctx, produced, messages, toolResults, converted.name, result, stepId);
       }
 
+      // A failed Runtime/tool boundary is authoritative for this step. Allow
+      // one final text response with tools disabled, but do not let the model
+      // probe around an unknown tool, denied permission, invalid input or
+      // blocked side effect inside the same step.
+      if (executedResults.size > 0
+        && [...executedResults.values()].some((result) => !result.ok)) {
+        forceFinalResponse = true;
+        messages.push({
+          role: 'system',
+          content: 'Runtime control: the latest tool boundary failed. Do not call another tool in this step. Return a concise step result that preserves the failure and uncertainty for VERIFY/RECOVER.',
+        });
+      }
+
       // Tool results are now authoritative for the active step. Keep the
       // current user message, system contract, latest turn, and the required
       // attachment manifest, but drop older history from later rounds. This

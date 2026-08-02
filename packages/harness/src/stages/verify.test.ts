@@ -158,6 +158,124 @@ describe('verifyStage', () => {
     expect(llm.chat).not.toHaveBeenCalled();
   });
 
+  it('uses a structural fast path for an exact write then read verification', async () => {
+    const marker = 'proof-7319';
+    const llm = createMockLlm(textResponse('{"verdict":"fail","reason":"should not run"}'));
+    const stage = createVerifyStage({ ...deps, llm });
+    const ctx = makeVerifyCtx({ reply: `proof.txt was verified as ${marker}.` });
+    ctx.inbound = textMessage('user', `Write proof.txt with ${marker}, then read it back and report both values.`);
+    ctx.replyProvenance = {
+      version: 1,
+      source: 'llm',
+      purpose: 'execute_final_reply',
+      modelRequestId: 'model-request-final',
+      modelRequestIndex: 1,
+      provider: 'deepseek',
+      model: 'deepseek-v4-flash',
+      generatedAt: '2026-08-03T00:00:03.000Z',
+      rewriteCount: 0,
+    };
+    ctx.taskBook = {
+      assessment: {
+        userNeed: 'write and verify proof.txt',
+        complexity: 'standard',
+        goal: 'write then read proof.txt',
+        successCriteria: [`proof.txt contains ${marker}`],
+        requiresTaskBook: true,
+        maxExtraScopeRatio: 1,
+      },
+      goal: 'write then read proof.txt',
+      complexity: 'standard',
+      successCriteria: [`proof.txt contains ${marker}`],
+      steps: [{
+        id: 'write-proof',
+        description: 'write proof.txt',
+        tools: ['write'],
+        toolProposal: { name: 'write', input: { file_path: 'proof.txt', content: marker } },
+      }, {
+        id: 'read-proof',
+        description: 'read proof.txt',
+        tools: ['read'],
+        toolProposal: { name: 'read', input: { file_path: 'proof.txt' } },
+      }],
+      overdeliveryPolicy: { maxExtraScopeRatio: 1, guidance: 'stay focused' },
+    };
+    const writeToolResult = { callId: 'write-call', ok: true as const, output: 'Wrote proof.txt' };
+    const readToolResult = { callId: 'read-call', ok: true as const, output: marker };
+    ctx.taskExecution = {
+      goal: ctx.taskBook.goal,
+      complexity: 'standard',
+      status: 'done',
+      startedAt: '2026-08-03T00:00:00.000Z',
+      endedAt: '2026-08-03T00:00:02.000Z',
+      steps: [{
+        stepId: 'write-proof',
+        description: 'write proof.txt',
+        status: 'done',
+        startedAt: '2026-08-03T00:00:00.000Z',
+        endedAt: '2026-08-03T00:00:01.000Z',
+        output: 'Wrote proof.txt',
+        toolCallIds: ['write-call'],
+        toolResults: [writeToolResult],
+      }, {
+        stepId: 'read-proof',
+        description: 'read proof.txt',
+        status: 'done',
+        startedAt: '2026-08-03T00:00:01.000Z',
+        endedAt: '2026-08-03T00:00:02.000Z',
+        output: marker,
+        toolCallIds: ['read-call'],
+        toolResults: [readToolResult],
+      }],
+    };
+    ctx.toolInvocations = [{
+      version: 1,
+      id: 'write-invocation',
+      callId: 'write-call',
+      runId: ctx.runId,
+      sessionId: ctx.sessionId,
+      stepId: 'write-proof',
+      toolName: 'write',
+      toolSource: 'builtin',
+      status: 'succeeded',
+      proposedAt: '2026-08-03T00:00:00.000Z',
+      endedAt: '2026-08-03T00:00:01.000Z',
+      approval: { required: false, decision: 'not_required' },
+      evidenceIds: [],
+    }, {
+      version: 1,
+      id: 'read-invocation',
+      callId: 'read-call',
+      runId: ctx.runId,
+      sessionId: ctx.sessionId,
+      stepId: 'read-proof',
+      toolName: 'read',
+      toolSource: 'builtin',
+      status: 'succeeded',
+      proposedAt: '2026-08-03T00:00:01.000Z',
+      endedAt: '2026-08-03T00:00:02.000Z',
+      approval: { required: false, decision: 'not_required' },
+      evidenceIds: [],
+    }];
+    ctx.sideEffects = [{
+      idempotencyKey: 'write-proof-side-effect',
+      toolName: 'write',
+      status: 'succeeded',
+      stepId: 'write-proof',
+      callId: 'write-call',
+    }];
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({
+      next: 'evolve',
+      ok: true,
+      meta: { runtimeFastPath: true, writeReadFastPath: true },
+    });
+    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'pass', source: 'structural' });
+    expect(llm.chat).not.toHaveBeenCalled();
+  });
+
   it('accepts only active adopted atoms as explicit verification usage evidence', async () => {
     const llm = createMockLlm(textResponse(JSON.stringify({
       verdict: 'pass',

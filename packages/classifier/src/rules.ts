@@ -17,7 +17,8 @@ export interface Rule {
   reason: string;
 }
 
-const EXPLICIT_TOOL_INSTRUCTION_PATTERN = /(?:(?:(?:请|帮我|麻烦(?:你)?|替我)(?:使用|调用|用)|^(?:使用|调用|用))\s*[A-Za-z][A-Za-z0-9_.-]{0,63}\s*(?:工具|tool\b))|(?:\b(?:please\s+)?(?:use|call|invoke)\s+(?:the\s+)?[A-Za-z][A-Za-z0-9_.-]{0,63}\s+tool\b)/i;
+const EXPLICIT_TOOL_INSTRUCTION_PATTERN = /(?:(?:(?:请|帮我|麻烦(?:你)?|替我)(?:只|仅)?(?:使用|调用|用)|^(?:只|仅)?(?:使用|调用|用)|(?:第[一二三四五六七八九十百\d]+步|然后|再|随后|接着)\s*(?:请)?(?:只|仅)?(?:使用|调用|用))\s*[A-Za-z][A-Za-z0-9_.-]{0,63}\s*(?:工具|tool\b))|(?:\b(?:please\s+|then\s+|next\s+)?(?:use|call|invoke)\s+(?:the\s+)?[A-Za-z][A-Za-z0-9_.-]{0,63}\s+tool\b)/i;
+const EXPLICIT_TOOL_LABEL_PATTERN = /([A-Za-z][A-Za-z0-9_.-]{0,63})\s*(?:工具|tool\b)/giu;
 
 /** Ordered list of rules. First match wins. */
 const RULES: Rule[] = [
@@ -109,6 +110,10 @@ export function classifyByRules(text: string): Classification | null {
   if (!trimmed) return null;
   for (const rule of RULES) {
     if (rule.pattern.test(trimmed)) {
+      if (rule.reason === 'explicit tool instruction'
+        && extractExplicitToolInstructionNames(trimmed).length === 0) {
+        continue;
+      }
       return {
         activity: rule.activity,
         type: messageClassFromActivity(rule.activity),
@@ -133,7 +138,33 @@ export function listRules(): readonly Rule[] {
 export function extractExplicitToolInstructionNames(text: string): string[] {
   const normalized = text.normalize('NFKC').trim();
   if (!normalized || !EXPLICIT_TOOL_INSTRUCTION_PATTERN.test(normalized)) return [];
-  const names = [...normalized.matchAll(/([A-Za-z][A-Za-z0-9_.-]{0,63})\s*(?:工具|tool\b)/giu)]
-    .map((match) => match[1]!.toLowerCase());
+  const names: string[] = [];
+  let previousPositiveEnd: number | undefined;
+  for (const match of normalized.matchAll(EXPLICIT_TOOL_LABEL_PATTERN)) {
+    const index = match.index;
+    const positive = isPositiveToolInstructionPrefix(normalized.slice(0, index))
+      || (previousPositiveEnd !== undefined
+        && isCoordinatedToolContinuation(normalized.slice(previousPositiveEnd, index)));
+    if (!positive) {
+      previousPositiveEnd = undefined;
+      continue;
+    }
+    names.push(match[1]!.toLowerCase());
+    previousPositiveEnd = index + match[0].length;
+  }
   return [...new Set(names)];
+}
+
+function isPositiveToolInstructionPrefix(prefix: string): boolean {
+  return /(?:请|帮我|麻烦(?:你)?|替我)\s*(?:只|仅)?(?:使用|调用|用)\s*$/iu.test(prefix)
+    || /(?:第[一二三四五六七八九十百\d]+步|然后|再|随后|接着)\s*(?:请)?(?:只|仅)?(?:使用|调用|用)\s*$/iu.test(prefix)
+    || /^(?:只|仅)?(?:使用|调用|用)\s*$/iu.test(prefix)
+    || /\bplease\s+(?:use|call|invoke)\s+(?:the\s+)?$/iu.test(prefix)
+    || /\b(?:then|next)\s+(?:please\s+)?(?:use|call|invoke)\s+(?:the\s+)?$/iu.test(prefix)
+    || /^(?:use|call|invoke)\s+(?:the\s+)?$/iu.test(prefix);
+}
+
+function isCoordinatedToolContinuation(value: string): boolean {
+  return /^\s*[,;]?\s*(?:(?:and\s+)?then|and|next)\s+(?:(?:use|call|invoke)\s+)?(?:the\s+)?$/iu.test(value)
+    || /^\s*[，、；]?\s*(?:和|及|以及|并且|并|然后|再|随后|接着)\s*(?:(?:只|仅)?(?:使用|调用|用)\s*)?$/iu.test(value);
 }

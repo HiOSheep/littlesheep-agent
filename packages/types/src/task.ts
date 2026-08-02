@@ -62,7 +62,7 @@ export interface PlanStep {
   title?: string;
   description: string;
   tools?: string[];
-  /** Optional bounded proposal for an explicitly named single tool. It is never execution authority. */
+  /** Optional bounded proposal for one explicitly named tool. It is never execution authority. */
   toolProposal?: TaskStepToolProposal;
   requiresApproval?: boolean;
   /** Optional scheduling contract. Runtime defaults missing/unsafe contracts to serial. */

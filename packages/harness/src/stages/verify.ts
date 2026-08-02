@@ -10,6 +10,7 @@ import {
   publishVerifiedReply,
   recordVerification,
   routeKnownIncompleteExecution,
+  verifyDeterministicWriteReadExecution,
   verifyTrivialReadOnlyExecution,
 } from './verify/routing.js';
 import {
@@ -25,7 +26,8 @@ export function createVerifyStage(deps: VerifyStageDeps) {
     const replanAttempts = ctx.replanAttempts ?? 0;
     const maxReplan = ctx.maxReplanAttempts ?? 2;
     ctx.onToolEvent?.({ type: 'verification_start' });
-    const runtimeVerdict = verifyTrivialReadOnlyExecution(ctx);
+    const runtimeVerdict = verifyTrivialReadOnlyExecution(ctx)
+      ?? verifyDeterministicWriteReadExecution(ctx);
     if (runtimeVerdict) return runtimeVerdict;
     let parsed: DecodedVerdict | null;
     try {

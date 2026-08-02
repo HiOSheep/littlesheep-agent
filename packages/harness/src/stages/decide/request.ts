@@ -18,7 +18,7 @@ import {
 } from './contracts.js';
 import {
   renderExplicitToolProposalContract,
-  resolveExplicitSingleToolInstruction,
+  resolveExplicitToolInstructionSet,
 } from '../../explicit-tool-instruction.js';
 import { renderReplanFeedback } from './replan.js';
 import { renderDeferredRuntimeEvents } from './runtime-events.js';
@@ -33,7 +33,7 @@ export interface DecideRequest {
   deferredRuntimeEvents: NonNullable<RunContext['deferredRuntimeEvents']>;
   history: RunContext['history'];
   replanRequested: boolean;
-  explicitToolName?: string;
+  explicitToolNames?: string[];
 }
 
 export async function buildDecideRequest(
@@ -41,9 +41,11 @@ export async function buildDecideRequest(
   ctx: RunContext,
 ): Promise<DecideRequest> {
   const resolved = resolvePromptConfig(deps.config, deps.branding);
-  const explicitToolInstruction = resolveExplicitSingleToolInstruction(ctx);
+  const explicitToolInstructions = resolveExplicitToolInstructionSet(ctx);
   const baseSystemPrompt = await assembleSystemPromptBundle(resolved, {
-    tools: explicitToolInstruction ? [explicitToolInstruction.tool] : ctx.tools,
+    tools: explicitToolInstructions
+      ? explicitToolInstructions.entries.map((entry) => entry.tool)
+      : ctx.tools,
     bootstrap: ctx.bootstrap ?? {},
     prelude: ctx.prelude,
     sessionSummary: ctx.sessionSummary,
@@ -51,7 +53,7 @@ export async function buildDecideRequest(
     initialMemoryContext: ctx.initialMemoryContext,
   });
   const systemPrompt = appendSystemPromptBundleAddons(baseSystemPrompt, [
-    ...(!explicitToolInstruction ? [{
+    ...(!explicitToolInstructions ? [{
       id: 'decide-contract',
       text: DECIDE_SYSTEM_PROMPT,
       kind: 'workflow_state' as const,
@@ -61,9 +63,9 @@ export async function buildDecideRequest(
     { id: 'reasoning', text: ctx.reasoningPromptAddon },
     // Keep the request-specific output constraint last so generic profile or
     // reasoning guidance cannot dilute the exact proposal shape.
-    ...(explicitToolInstruction ? [{
+    ...(explicitToolInstructions ? [{
       id: 'explicit-tool-proposal-contract',
-      text: renderExplicitToolProposalContract(explicitToolInstruction),
+      text: renderExplicitToolProposalContract(explicitToolInstructions),
       kind: 'workflow_state' as const,
       source: { kind: 'workflow' as const, id: 'explicit-tool-proposal-contract', runId: ctx.runId },
     }] : []),
@@ -102,7 +104,7 @@ export async function buildDecideRequest(
     deferredRuntimeEvents,
     history,
     replanRequested,
-    explicitToolName: explicitToolInstruction?.tool.name,
+    explicitToolNames: explicitToolInstructions?.names,
   };
 }
 

@@ -128,12 +128,9 @@ async function main() {
       ['recall', recalled.result],
     ])
     assertCompletedProviderUsage(completedRequests)
-    assertToolContinuationAccounting(completedRequests)
     const providerTotals = sumProviderUsage(completedRequests)
     const resumedRequests = requestMetrics('resumed', resumed.result)
-    if (resumedRequests.length > 8) {
-      throw new Error(`multi-step task exceeded the bounded model-call baseline: ${safe(resumedRequests.map((request) => request.purpose))}`)
-    }
+    assertDirectProposalAccounting(resumedRequests)
 
     await desktopAction(locator, 'quit')
     await waitForExit(electron, DEFAULT_EXIT_TIMEOUT_MS)
@@ -373,14 +370,20 @@ function assertCompletedProviderUsage(requests) {
   }
 }
 
-function assertToolContinuationAccounting(requests) {
-  const toolRequests = requests.filter((request) => request.toolNames.length > 0)
-  if (toolRequests.length < 2) {
-    throw new Error(`multi-step task did not record tool-enabled request costs: ${safe(requests)}`)
+function assertDirectProposalAccounting(requests) {
+  const purposes = requests.map((request) => request.purpose)
+  if (purposes.length !== 2
+    || purposes[0] !== 'decide'
+    || purposes[1] !== 'execute_final_reply') {
+    throw new Error(`multi-step task did not collapse to DECIDE plus final reply: ${safe(purposes)}`)
   }
-  if (toolRequests.some((request) => request.localAccuracy !== 'unavailable'
-    || !/tool-enabled requests/iu.test(request.localUnavailableReason ?? ''))) {
-    throw new Error(`uncalibrated tool requests did not fail local exact counting closed: ${safe(toolRequests)}`)
+  if (requests.some((request) => request.toolNames.length > 0)) {
+    throw new Error(`direct TaskBook proposals unexpectedly used Provider tool protocol: ${safe(requests)}`)
+  }
+  if (requests.some((request) => request.localAccuracy !== 'exact'
+    || request.calibration !== 'exact_match'
+    || request.localPromptTokens !== request.providerPromptTokens)) {
+    throw new Error(`direct proposal requests were not locally exact: ${safe(requests)}`)
   }
 }
 

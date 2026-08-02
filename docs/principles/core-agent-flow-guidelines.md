@@ -1,6 +1,6 @@
 # LittleSheep 核心 Agent 流程规范
 
-最后更新：2026-08-03 04:09:14
+最后更新：2026-08-03 06:18:45
 
 本文是 [LittleSheep 架构原则](architecture-principles.md) 在 Core Flow、TaskBook、验证、恢复和记忆运行时上的专项约束。LLM 与 Agent、Mode 与权限、Context 与 Memory、Harness 与 Tool Execution 的顶层分工以架构原则为准；本文不重复维护另一套总架构。
 
@@ -178,7 +178,7 @@ execute 内部：
 
 - `NeedAssessment` 和 `TaskBook` 核心类型。
 - `DECIDE` 输出需求校准和结构化任务书。
-- 用户明确点名唯一注册工具、任务只需一次只读调用且不属于续接/记忆追问时，DECIDE 可在唯一工具 JSON Schema 约束下输出 `toolProposal`。Runtime 必须再次校验工具名、参数 schema、资源副作用、权限和审批，再通过统一 Tool Execution Service 执行；Runtime 不得从自然语言自行猜参数。该路径完成后由真实 `execute_final_reply` API 调用组织最终回答，VERIFY 使用结构证据；任一条件不满足即回退普通工具循环。
+- 用户明确点名注册工具且不属于续接/记忆追问时，DECIDE 可在受限工具 JSON Schema 下为每个可独立验证的步骤输出一个 `toolProposal`。Runtime 最多向 DECIDE 暴露 4 种明确点名的工具，单 schema 最多 12,000 字符、总计最多 24,000 字符，TaskBook 最多接纳 8 个直接提议；随后逐项校验工具名、参数 schema、依赖、资源、副作用、权限和审批。当前直接执行只接受 Runtime 可证明、无需审批的 `read/write` 操作；Runtime 不得从自然语言自行猜参数，也不得绕过统一 Tool Execution Service。完成后由真实 `execute_final_reply` API 调用组织最终回答，VERIFY 使用结构证据；任一条件不满足即回退普通工具循环。自然语言中的并列省略可以继承明确动词，但“不要使用”或纯介绍工具的文本不得进入提议集合。
 - 继续兼容旧的 `{ "plan": [...] }` 输出格式。
 - 存在任务书时，`EXECUTE` 按 `TaskBook.steps` 逐步执行。
 - `EXECUTE` 记录包含步骤状态、输出、工具调用和失败信息的 `TaskExecutionResult`。
@@ -208,7 +208,7 @@ execute 内部：
 - 会话压缩已实现为非破坏式、版本化 Summary Memory：原始 JSONL 消息保留，旧消息摘要在下一轮作为独立 `summary_memory` 来源介入，并可按消息阈值或精确 Context 占用阈值触发。
 - 活动路由（内部兼容 stage id 为 `classify`）、DECIDE 和 REPLY 只接收附件清单；非图片正文通过当前 run 专属的 `inspect_attachment` 只读工具按需解析，未调用时不会读取文件正文，工具结果再进入 Context。图片仍按受限大小读取为多模态输入。
 - 当前记忆层级已升级为 T0-T3，并通过版本化迁移保留旧 T1-T3 数值与数据；T0 只承载固定预算的核心索引和安全信息。
-- 当前已支持 `AbortSignal`、步骤级局部恢复、工具调用级与 TaskBook 步骤级有界并行、shadow Git 数据/工作区检查点、退出冻结、历史执行记录重放、有界 `RuntimeEventQueue`、活动 run ingress、Harness 安全边界消费、确定性 `TaskBookPatch`、延迟事件重规划、Renderer 事件生产、检查点快照、Runner 显式续跑、应用启动恢复控制面、活动任务 SSE、后台托盘和三档关闭策略。隔离数据根中的真实 Electron 已通过跨重启回答连续、活动任务 SSE、关闭到托盘并恢复、暂停/继续、强制终止后 Checkpoint 恢复、模型热切换和中断 Checkpoint 七项验收；尚未完成的是真实 DeepSeek 多步骤长任务、真实外部副作用、网络断线与长期资源回落验收。
+- 当前已支持 `AbortSignal`、步骤级局部恢复、工具调用级与 TaskBook 步骤级有界并行、shadow Git 数据/工作区检查点、退出冻结、历史执行记录重放、有界 `RuntimeEventQueue`、活动 run ingress、Harness 安全边界消费、确定性 `TaskBookPatch`、延迟事件重规划、Renderer 事件生产、检查点快照、Runner 显式续跑、应用启动恢复控制面、活动任务 SSE、后台托盘和三档关闭策略。隔离数据根中的真实 Electron 已通过跨重启回答连续、活动任务 SSE、关闭到托盘并恢复、暂停/继续、强制终止后 Checkpoint 恢复、模型热切换和中断 Checkpoint 七项验收；真实 DeepSeek 基础两步 `write -> read` 也已覆盖暂停、强制终止、恢复、回答级记忆追问和彻底退出。尚未完成的是摘要压缩续答、持续/并行长任务、真实外部系统副作用、网络断线与长期资源回落验收。
 - 内置写入、编辑与命令工具已接入宿主级核心源码只读根；读、grep、glob 等诊断仍可用。第三方本地插件代码仍属于显式完全信任边界，不能把插件信任误写成系统级代码沙箱。
 
 ## 后续硬化方向

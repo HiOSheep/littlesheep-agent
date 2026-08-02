@@ -1,14 +1,21 @@
 import { describeToolAccess, shouldRequestPermissionApproval } from '@littlesheep/safety';
-import { resolveToolExecutionPolicy } from '@littlesheep/tools';
+import {
+  resolveToolExecutionPolicy,
+  toolResourceAccessCovered,
+} from '@littlesheep/tools';
 import type {
   AgentTool,
   PlanStep,
   RunContext,
   TaskBook,
+  TaskStepSideEffect,
   TaskStepResult,
+  ToolResourceAccess,
   ToolResult,
 } from '@littlesheep/types';
-import { resolveExplicitSingleToolInstruction } from '../../explicit-tool-instruction.js';
+import { resolveExplicitToolInstructionSet } from '../../explicit-tool-instruction.js';
+
+const MAX_DIRECT_PROPOSALS_PER_TASK = 8;
 
 export interface ResolvedDirectToolProposal {
   tool: AgentTool;
@@ -16,34 +23,35 @@ export interface ResolvedDirectToolProposal {
 }
 
 /**
- * Admit only a fresh, explicit, single-call read. Every rejected proposal
- * falls back to the ordinary model-driven tool loop without executing here.
+ * Admit one explicit DECIDE proposal only after Runtime revalidates its tool,
+ * schema, resource envelope, side-effect class and permission boundary.
  */
-export function resolveDirectReadOnlyToolProposal(
+export function resolveDirectToolProposal(
   ctx: RunContext,
   taskBook: TaskBook,
   step: PlanStep,
   previousResult: TaskStepResult | undefined,
+  execution: {
+    stepId: string;
+    resources: readonly ToolResourceAccess[];
+    sideEffect?: TaskStepSideEffect;
+  },
 ): ResolvedDirectToolProposal | undefined {
-  if ((taskBook.complexity !== 'trivial' && taskBook.complexity !== 'simple')
-    || taskBook.steps.length !== 1
-    || previousResult
-    || ctx.resumedFromCheckpointId) {
+  if (previousResult
+    || taskBook.steps.filter((candidate) => candidate.toolProposal).length > MAX_DIRECT_PROPOSALS_PER_TASK) {
     return undefined;
   }
 
-  const instruction = resolveExplicitSingleToolInstruction(ctx);
+  const instructions = resolveExplicitToolInstructionSet(ctx);
   const proposal = step.toolProposal;
-  if (!instruction
+  if (!instructions
     || !proposal
-    || step.requiresApproval === true
-    || (step.execution?.sideEffect !== undefined && step.execution.sideEffect !== 'read')
-    || step.execution?.resources?.some((resource) => resource.mode !== 'read')
     || step.tools?.length !== 1
-    || step.tools[0] !== instruction.tool.name
-    || proposal.name !== instruction.tool.name) {
+    || step.tools[0] !== proposal.name) {
     return undefined;
   }
+  const instruction = instructions.entries.find((entry) => entry.tool.name === proposal.name);
+  if (!instruction) return undefined;
 
   let input: unknown;
   try {
@@ -53,15 +61,55 @@ export function resolveDirectReadOnlyToolProposal(
   }
 
   const descriptor = describeToolAccess(instruction.tool.name, input, ctx.toolContext);
-  if (descriptor.action !== 'read') return undefined;
+  if (descriptor.action !== 'read' && descriptor.action !== 'write') return undefined;
   const policy = resolveToolExecutionPolicy(instruction.tool, input, ctx.toolContext);
-  if (policy.resources.some((resource) => resource.mode !== 'read')) return undefined;
+  const actualSideEffect = resolveActualSideEffect(descriptor.action, policy.resources);
+  if (actualSideEffect !== 'read' && !sideEffectCovered(execution.sideEffect, actualSideEffect)) return undefined;
+  if (actualSideEffect === 'read'
+    && execution.sideEffect
+    && !sideEffectCovered(execution.sideEffect, actualSideEffect)) return undefined;
+  if (execution.resources.length > 0
+    && policy.resources.length > 0
+    && policy.resources.some((actual) => (
+      !execution.resources.some((declared) => toolResourceAccessCovered(declared, actual))
+    ))) {
+    return undefined;
+  }
   const requiresApproval = ctx.toolContext.permissionMode
     ? shouldRequestPermissionApproval(ctx.toolContext.permissionMode, descriptor)
     : instruction.tool.requiresApproval === true;
   if (requiresApproval) return undefined;
+  if (actualSideEffect !== 'read'
+    && ctx.resumedFromCheckpointId
+    && (ctx.sideEffects ?? []).some((effect) => (
+      effect.stepId === execution.stepId && effect.status !== 'failed'
+    ))) {
+    return undefined;
+  }
 
   return { tool: instruction.tool, input };
+}
+
+function resolveActualSideEffect(
+  action: 'read' | 'write',
+  resources: readonly ToolResourceAccess[],
+): TaskStepSideEffect {
+  if (action === 'write' || resources.some((resource) => resource.mode === 'write')) return 'write';
+  return resources.length > 0 || action === 'read' ? 'read' : 'none';
+}
+
+function sideEffectCovered(
+  declared: TaskStepSideEffect | undefined,
+  actual: TaskStepSideEffect,
+): boolean {
+  if (!declared) return false;
+  const rank: Record<TaskStepSideEffect, number> = {
+    none: 0,
+    read: 1,
+    write: 2,
+    external: 3,
+  };
+  return rank[declared] >= rank[actual];
 }
 
 export function directToolEvidenceText(result: ToolResult): string {

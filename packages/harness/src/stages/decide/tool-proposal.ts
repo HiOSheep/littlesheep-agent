@@ -1,4 +1,4 @@
-// Bounds the one DECIDE-authored tool proposal that may reach Runtime validation.
+// Bounds each DECIDE-authored proposal that may reach Runtime validation.
 
 import type { PlanStep } from '@littlesheep/types';
 import type { DecodedPlanStep } from './contracts.js';
@@ -9,11 +9,12 @@ export function normalizeToolProposal(
   value: DecodedPlanStep['toolProposal'],
   stepTools: string[] | undefined,
   availableToolNames: Set<string>,
-  explicitToolName: string | undefined,
+  explicitToolNames: ReadonlySet<string> | undefined,
 ): PlanStep['toolProposal'] {
-  if (!explicitToolName || !value || typeof value !== 'object') return undefined;
+  if (!explicitToolNames || !value || typeof value !== 'object') return undefined;
   const name = cleanString(value.name);
-  if (name !== explicitToolName
+  if (!name
+    || !explicitToolNames.has(name)
     || !availableToolNames.has(name)
     || stepTools?.length !== 1
     || stepTools[0] !== name

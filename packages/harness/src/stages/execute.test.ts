@@ -201,6 +201,113 @@ describe('executeStage', () => {
     ]);
   });
 
+  it('executes explicit write and read proposals with only the final reply model call', async () => {
+    const write = makeTool('write', { ok: true, output: 'Wrote proof.txt' }, {
+      requiresApproval: true,
+      inputSchema: z.object({ file_path: z.string(), content: z.string() }),
+    });
+    write.execution = parallelFilePolicy('file_path', 'write');
+    const read = makeTool('read', { ok: true, output: 'proof-7319' }, {
+      inputSchema: z.object({ file_path: z.string() }),
+    });
+    read.execution = parallelFilePolicy('file_path', 'read');
+    const llm = createMockLlm(textResponse('proof.txt was written and verified as proof-7319.'));
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [write, read],
+      inbound: textMessage('user', 'Please use the write tool and read tool to verify proof.txt with proof-7319.'),
+      classification: explicitGlobClassification(),
+      toolContext: {
+        permissionMode: 'full',
+        containerRoot: process.cwd(),
+      },
+      taskBook: {
+        assessment: {
+          userNeed: 'write and verify proof.txt',
+          complexity: 'standard',
+          goal: 'write then read proof.txt',
+          successCriteria: ['proof.txt contains proof-7319'],
+          requiresTaskBook: true,
+          maxExtraScopeRatio: 1,
+        },
+        goal: 'write then read proof.txt',
+        complexity: 'standard',
+        successCriteria: ['proof.txt contains proof-7319'],
+        steps: [{
+          id: 'write-proof',
+          description: 'write proof.txt',
+          tools: ['write'],
+          toolProposal: { name: 'write', input: { file_path: 'proof.txt', content: 'proof-7319' } },
+          execution: {
+            mode: 'serial',
+            resources: [{ key: 'workspace:proof.txt', mode: 'write' }],
+            sideEffect: 'write',
+          },
+        }, {
+          id: 'read-proof',
+          description: 'read proof.txt',
+          tools: ['read'],
+          toolProposal: { name: 'read', input: { file_path: 'proof.txt' } },
+          execution: {
+            mode: 'serial',
+            dependsOn: ['write-proof'],
+            resources: [{ key: 'workspace:proof.txt', mode: 'read' }],
+            sideEffect: 'read',
+          },
+        }],
+        overdeliveryPolicy: { maxExtraScopeRatio: 1, guidance: 'stay focused' },
+      },
+    });
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'verify', ok: true });
+    expect(write.calls).toHaveLength(1);
+    expect(read.calls).toHaveLength(1);
+    expect(llm.chat).toHaveBeenCalledTimes(1);
+    expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
+      'execute_final_reply',
+    ]);
+    expect(ctx.taskExecution?.steps.map((step) => step.status)).toEqual(['done', 'done']);
+    expect(ctx.sideEffects).toHaveLength(1);
+    expect(ctx.sideEffects?.[0]).toMatchObject({ toolName: 'write', status: 'succeeded' });
+  });
+
+  it('allows only one final text round after an authoritative tool-boundary failure', async () => {
+    const write = makeTool('write', { ok: true, output: 'written' });
+    const llm = createMockLlm([
+      toolCallResponse([{ id: 'unexpected-read', name: 'read', args: { file_path: 'proof.txt' } }]),
+      textResponse('should not be requested'),
+    ]);
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [write],
+      inbound: textMessage('user', 'write proof.txt'),
+      taskBook: {
+        assessment: {
+          userNeed: 'write proof.txt',
+          complexity: 'simple',
+          goal: 'write proof.txt',
+          successCriteria: ['proof.txt exists'],
+          requiresTaskBook: false,
+          maxExtraScopeRatio: 1,
+        },
+        goal: 'write proof.txt',
+        complexity: 'simple',
+        successCriteria: ['proof.txt exists'],
+        steps: [{ id: 'write-proof', description: 'write proof.txt', tools: ['write'] }],
+        overdeliveryPolicy: { maxExtraScopeRatio: 1, guidance: 'stay focused' },
+      },
+    });
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'verify', ok: true });
+    expect(llm.chat).toHaveBeenCalledTimes(2);
+    expect(ctx.taskExecution?.steps[0]).toMatchObject({ status: 'failed', failureKind: 'tool_error' });
+    expect(ctx.toolInvocations?.[0]).toMatchObject({ toolName: 'read', status: 'unknown_tool' });
+  });
+
   it('keeps explicit continuation requests on the history-aware tool loop', async () => {
     const glob = makeTool('glob', { ok: true, output: 'alpha.txt' }, {
       inputSchema: z.object({ pattern: z.string(), path: z.string().optional() }),

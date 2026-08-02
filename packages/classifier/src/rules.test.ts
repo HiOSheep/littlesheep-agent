@@ -58,6 +58,27 @@ describe('classifyByRules', () => {
     expect(extractExplicitToolInstructionNames('请用一句话介绍 glob 工具')).toEqual([]);
   });
 
+  it('recognizes ordered multi-tool instructions and excludes forbidden tools', () => {
+    const text = '第一步只使用 write 工具创建文件；第二步只使用 read 工具核对。不要使用 exec 工具。';
+    expect(classifyByRules(text)).toMatchObject({
+      activity: 'execute',
+      reason: 'explicit tool instruction',
+    });
+    expect(extractExplicitToolInstructionNames(text)).toEqual(['write', 'read']);
+  });
+
+  it('inherits an explicit verb across a coordinated tool list', () => {
+    expect(extractExplicitToolInstructionNames('Please use the write tool and then the read tool.'))
+      .toEqual(['write', 'read']);
+    expect(extractExplicitToolInstructionNames('请使用 write 工具和 read 工具。'))
+      .toEqual(['write', 'read']);
+  });
+
+  it('does not treat negated or descriptive tool mentions as explicit calls', () => {
+    expect(extractExplicitToolInstructionNames('不要使用 exec 工具，只需要回答问题。')).toEqual([]);
+    expect(extractExplicitToolInstructionNames('This guide explains how to use the read tool.')).toEqual([]);
+  });
+
   it('classifies action verbs as problem', () => {
     const result = classifyByRules('帮我写一个函数');
     expect(result?.type).toBe('problem');

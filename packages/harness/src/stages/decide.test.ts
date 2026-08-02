@@ -229,6 +229,86 @@ describe('decideStage', () => {
     });
   });
 
+  it('adopts one Runtime-bounded proposal per explicitly named tool step', async () => {
+    const write = makeTool('write', { ok: true, output: 'written' }, {
+      inputSchema: z.object({ file_path: z.string(), content: z.string() }),
+    });
+    const read = makeTool('read', { ok: true, output: 'proof-7319' }, {
+      inputSchema: z.object({ file_path: z.string() }),
+    });
+    const exec = makeTool('exec', { ok: true, output: 'unused' }, {
+      inputSchema: z.object({ command: z.string() }),
+    });
+    const requests: import('@littlesheep/llm').ChatRequest[] = [];
+    const llm = createMockLlm((request) => {
+      requests.push(request);
+      return textResponse(JSON.stringify({
+        assessment: {
+          userNeed: 'create and verify a proof file',
+          complexity: 'standard',
+          goal: 'write then read proof.txt',
+          successCriteria: ['proof.txt contains proof-7319'],
+          requiresTaskBook: true,
+          maxExtraScopeRatio: 1,
+        },
+        taskBook: {
+          goal: 'write then read proof.txt',
+          complexity: 'standard',
+          successCriteria: ['proof.txt contains proof-7319'],
+          steps: [{
+            id: 'write-proof',
+            description: 'write the proof file',
+            tools: ['write'],
+            toolProposal: { name: 'write', input: { file_path: 'proof.txt', content: 'proof-7319' } },
+            execution: {
+              mode: 'serial',
+              resources: [{ key: 'workspace:proof.txt', mode: 'write' }],
+              sideEffect: 'write',
+            },
+          }, {
+            id: 'read-proof',
+            description: 'read the proof file back',
+            tools: ['read'],
+            toolProposal: { name: 'read', input: { file_path: 'proof.txt' } },
+            execution: {
+              mode: 'serial',
+              dependsOn: ['write-proof'],
+              resources: [{ key: 'workspace:proof.txt', mode: 'read' }],
+              sideEffect: 'read',
+            },
+          }],
+        },
+      }));
+    });
+    const stage = createDecideStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [write, read, exec],
+      inbound: textMessage('user', 'Please use the write tool and then the read tool in two separate steps.'),
+      classification: {
+        activity: 'execute',
+        type: 'problem',
+        confidence: 0.96,
+        source: 'rules',
+        reason: 'explicit tool instruction',
+      },
+    });
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'execute', ok: true });
+    const system = String(requests[0]?.messages[0]?.content ?? '');
+    expect(system).toContain('Explicit multi-tool DECIDE contract');
+    expect(system).toContain('"content"');
+    expect(system).toContain('"file_path"');
+    expect(system).toContain('`write`');
+    expect(system).toContain('`read`');
+    expect(system).not.toContain('exec tool (mock)');
+    expect(ctx.taskBook?.steps.map((step) => step.toolProposal)).toEqual([
+      { name: 'write', input: { file_path: 'proof.txt', content: 'proof-7319' } },
+      { name: 'read', input: { file_path: 'proof.txt' } },
+    ]);
+  });
+
   it('2 parse failures route to recover without a third retry', async () => {
     const llm = createMockLlm([
       textResponse('not json'),
