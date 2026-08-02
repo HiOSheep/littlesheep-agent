@@ -20,7 +20,12 @@ describe('finalizeStage', () => {
   it('builds assistant Message from ctx.reply, pushes to produced, transitions to exit', async () => {
     const sm = createMockSessionManager();
     const stage = createFinalizeStage({ sessionManager: sm });
-    const ctx = makeCtx({ reply: 'hello back', replyProvenance, sessionId: 's1' });
+    const ctx = makeCtx({
+      reply: 'hello back',
+      replyProvenance,
+      sessionId: 's1',
+      initialMemoryContext: 'The project uses pnpm and the repository root is the workspace.',
+    });
     const res = await stage(ctx);
     expect(res.next).toBe('exit');
     expect(res.ok).toBe(true);
@@ -28,6 +33,11 @@ describe('finalizeStage', () => {
     expect(ctx.produced[0].role).toBe('assistant');
     expect(ctx.produced[0].content).toEqual([{ type: 'text', text: 'hello back' }]);
     expect(ctx.produced[0].replyProvenance).toEqual(replyProvenance);
+    expect(ctx.memoryContinuityAssessment?.status).toBe('unavailable');
+    expect(ctx.memoryContinuityAssessment?.method).toBe('answer-evidence-v1');
+    expect(ctx.memoryContinuityAssessment?.missingSignals).toContain(
+      'reply_context_observability_unavailable',
+    );
     expect(sm.append).toHaveBeenCalledWith('s1', ctx.produced);
   });
 
@@ -39,6 +49,7 @@ describe('finalizeStage', () => {
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/missing or untraceable Provider API/);
     expect(ctx.produced).toEqual([]);
+    expect(ctx.memoryContinuityAssessment?.status).toBe('unavailable');
     expect(sm.append).not.toHaveBeenCalled();
   });
 

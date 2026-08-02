@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { InjectionTier } from '../types.js';
 import { MemoryAtomConflictError, MemoryAtomStore, memoryAtomContentHash } from './atom-store.js';
 import type { MemoryAtom } from './contracts.js';
@@ -20,7 +21,7 @@ describe('MemoryAtomStore', () => {
 
   afterEach(async () => {
     await rm(dataDir, { recursive: true, force: true });
-  });
+  }, 30_000);
 
   it('creates, updates, archives, and restores atoms across restart', async () => {
     const store = new MemoryAtomStore({ dataDir, now });
@@ -78,28 +79,32 @@ describe('MemoryAtomStore', () => {
     await store.initialize();
     const total = 10_000;
     const batchSize = 200;
+    const fixtures = Array.from({ length: total }, (_, index) => {
+      const atom = makeStoredAtom({
+        id: `scale-${String(index).padStart(5, '0')}`,
+        tier: index % 2 === 0 ? InjectionTier.T2_RELEVANT : InjectionTier.T3_DETAIL,
+        title: `Scale atom ${index}`,
+      });
+      return { atom, path: store.pathFor(atom.id, atom.branch) };
+    });
+    await Promise.all([...new Set(fixtures.map(({ path }) => dirname(path)))]
+      .map((directory) => mkdir(directory, { recursive: true })));
     for (let start = 0; start < total; start += batchSize) {
-      const writes: Promise<void>[] = [];
-      for (let index = start; index < Math.min(total, start + batchSize); index += 1) {
-        const atom = makeStoredAtom({
-          id: `scale-${String(index).padStart(5, '0')}`,
-          tier: index % 2 === 0 ? InjectionTier.T2_RELEVANT : InjectionTier.T3_DETAIL,
-          title: `Scale atom ${index}`,
-        });
-        const path = store.pathFor(atom.id, atom.branch);
-        writes.push(mkdir(dirname(path), { recursive: true })
-          .then(() => writeFile(path, `${JSON.stringify(atom)}\n`, 'utf8')));
-      }
-      await Promise.all(writes);
+      await Promise.all(fixtures
+        .slice(start, Math.min(total, start + batchSize))
+        .map(({ atom, path }) => writeFile(path, `${JSON.stringify(atom)}\n`, 'utf8')));
     }
 
     const restarted = new MemoryAtomStore({ dataDir, now, maxScanFiles: 10_100 });
+    const scanStartedAt = performance.now();
     const result = await restarted.initialize();
+    const scanDurationMs = performance.now() - scanStartedAt;
     expect(result.scannedFiles).toBe(total);
     expect(result.entries).toHaveLength(total);
     expect(result.entries[0]).not.toHaveProperty('content');
     expect(result.issues).toEqual([]);
-  }, 60_000);
+    expect(scanDurationMs).toBeLessThan(30_000);
+  }, 90_000);
 
   it('detects content tampering through the atom hash', async () => {
     const store = new MemoryAtomStore({ dataDir, now });

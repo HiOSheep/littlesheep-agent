@@ -39,6 +39,10 @@ export {
 } from './model-observability.js';
 export { buildRunRequestCandidates, type BuildRunRequestCandidatesOptions } from './context-candidates.js';
 export {
+  assessResponseMemoryContinuity,
+  type ResponseContinuityInput,
+} from './response-continuity.js';
+export {
   acceptUniqueUserFacingReply,
   collectRecentAssistantReplies,
   normalizeUserFacingReply,

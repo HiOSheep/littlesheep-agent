@@ -108,6 +108,9 @@ export interface MakeCtxOptions {
   toolContext?: Partial<ToolContext>;
   bootstrap?: Record<string, string>;
   produced?: Message[];
+  initialMemoryContext?: string;
+  sessionSummary?: RunContext['sessionSummary'];
+  memoryKnownState?: RunContext['memoryKnownState'];
 }
 
 /** Build a minimal RunContext for stage unit tests. */
@@ -154,6 +157,9 @@ export function makeCtx(opts: MakeCtxOptions = {}): RunContext {
     recoveryAttempts: opts.recoveryAttempts ?? 0,
     startedAt: new Date().toISOString(),
     bootstrap: opts.bootstrap,
+    initialMemoryContext: opts.initialMemoryContext,
+    sessionSummary: opts.sessionSummary,
+    memoryKnownState: opts.memoryKnownState,
     needAssessment: opts.needAssessment,
     taskBook: opts.taskBook,
     clarificationRequest: opts.clarificationRequest,

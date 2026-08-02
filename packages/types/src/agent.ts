@@ -190,6 +190,8 @@ export interface RunContext {
   runtimeControl?: import('./runtime-contracts.js').RuntimeControlSnapshot;
   /** Versioned run-local evidence adopted, excluded or conflicted by Memory v3. */
   memoryKnownState?: import('./memory-evidence.js').RuntimeMemoryKnownState;
+  /** Local evidence assessment of continuity between memory and the final reply. */
+  memoryContinuityAssessment?: import('./memory-continuity.js').MemoryContinuityAssessment;
   /** Run-scoped atom ownership used to add, release, and re-add memory context safely. */
   memoryContextWorkingSet?: RuntimeMemoryContextWorkingSet;
   /** Final reply text. */
@@ -404,6 +406,8 @@ export interface AgentResult {
   memoryIntentDecisions?: import('./runtime-contracts.js').MemoryIntentDecisionRecord[];
   /** Bounded Memory v3 evidence state used across DECIDE/EXECUTE/VERIFY/FINALIZE. */
   memoryKnownState?: import('./memory-evidence.js').RuntimeMemoryKnownState;
+  /** Local evidence assessment of continuity between memory and the final reply. */
+  memoryContinuityAssessment?: import('./memory-continuity.js').MemoryContinuityAssessment;
   /** Structured request when the result asks the user for information. */
   clarificationRequest?: ClarificationRequest;
   /** Previous clarification answered by this run's inbound message. */

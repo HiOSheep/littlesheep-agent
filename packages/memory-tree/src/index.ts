@@ -16,7 +16,6 @@ export {
   type MemoryRunRegistration,
   type MemoryAccessRecord,
   type MemoryAccessLedger,
-  type MemoryRunFeedbackInput,
   type MemoryExpandOptions,
   type MemorySearchOptions,
   type MemoryQueryResult,
@@ -58,6 +57,7 @@ export {
   type ProjectIndex,
   type GitLogEntry,
 } from './types.js';
+export type { MemoryRunFeedbackInput } from './memory-feedback-contract.js';
 export { MemoryTree } from './memory-tree.js';
 export {
   composeMemoryTaskQuery,

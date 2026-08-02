@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { ExecutionLogStore } from './execution-log.js';
 import type {
   ContextSnapshot,
+  MemoryContinuityAssessment,
   MemoryIntentDecisionRecord,
   Message,
   SessionRunSummary,
@@ -30,6 +31,49 @@ afterEach(() => {
 });
 
 describe('ExecutionLogStore', () => {
+  it('persists the bounded memory continuity assessment', async () => {
+    const assessment: MemoryContinuityAssessment = {
+      version: 1,
+      status: 'supported',
+      confidence: 0.82,
+      evaluatedAt: '2026-01-01T00:00:05.000Z',
+      method: 'answer-evidence-v1',
+      sources: {
+        initialContext: true,
+        sessionSummary: false,
+        recentHistoryMessages: 2,
+        contextObserved: true,
+        observedContextSnapshots: 1,
+        contextItemsTruncated: false,
+        memoryToolResults: 0,
+        activeMemoryAtoms: 1,
+        adoptedMemoryReferences: 1,
+        excludedOrConflictedReferences: 0,
+      },
+      evidence: {
+        replyTermCount: 4,
+        memoryTermCount: 10,
+        memoryAnchorCount: 3,
+        summaryAnchorCount: 0,
+        historyAnchorCount: 1,
+        taskAnchorCount: 2,
+        independentContinuityAnchorCount: 4,
+      },
+      matchedSignals: ['reply_matches_selected_memory'],
+      missingSignals: [],
+      matchedSources: ['active_memory_atom'],
+      matchedAtomIds: ['atom-1'],
+      referencedAtomIds: ['atom-1'],
+    };
+    await store.write({
+      runId: 'run-continuity', sessionId: 's1', startedAt: '', endedAt: '', status: 'ok',
+      model: 'test', inboundText: 'hello', reply: 'hi', trace: [], messages: [], durationMs: 0,
+      memoryContinuityAssessment: assessment,
+    });
+
+    expect((await store.read('run-continuity'))?.memoryContinuityAssessment).toEqual(assessment);
+  });
+
   it('write → read 往返一致', async () => {
     const input = {
       runId: 'run-1',

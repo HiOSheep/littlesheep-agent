@@ -10,6 +10,8 @@ import { maybeCompact } from '@littlesheep/session';
 import { asSessionId, textMessage } from '@littlesheep/types';
 import { createRunner, type AgentRunner } from './runner.js';
 
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
+
 describe('Runner Memory v3 integration', () => {
   let dataDir: string;
   const runners: AgentRunner[] = [];

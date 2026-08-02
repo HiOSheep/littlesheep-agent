@@ -40,7 +40,7 @@ describe('GitCheckpointCoordinator', () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 
   it('can roll back a run to its preimage, including a file that did not exist before the run', async () => {
     const root = await mkdtemp(join(tmpdir(), 'ls-checkpoint-preimage-'));

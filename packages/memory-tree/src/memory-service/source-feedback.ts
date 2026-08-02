@@ -1,6 +1,6 @@
 // Owns immutable conversation sources and evidence-bound run feedback.
 
-import type { MemoryRunFeedbackInput } from '../types.js';
+import type { MemoryRunFeedbackInput } from '../memory-feedback-contract.js';
 import type { MemoryAtom } from '../v3/contracts.js';
 import {
   MemoryConversationSourceStore,

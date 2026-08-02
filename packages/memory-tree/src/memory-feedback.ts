@@ -1,15 +1,17 @@
 // Converts one completed run into conservative, evidence-bound atom feedback.
 
 import { createHash } from 'node:crypto';
-import type { MemoryRunFeedbackInput } from './types.js';
+import type { MemoryRunFeedbackInput } from './memory-feedback-contract.js';
 import type { MemoryUseFeedback } from './v3/contracts.js';
 
 export function memoryUseFeedbackFromRun(input: MemoryRunFeedbackInput): MemoryUseFeedback[] {
   const active = new Set(input.activeAtomIds);
   const released = new Set(input.releasedAtomIds);
-  const used = new Set(input.usedAtomIds ?? []);
+  const verifyUsed = new Set(input.usedAtomIds ?? []);
+  const answerUsed = new Set(input.answerUsedAtomIds ?? []);
   const verification = input.verification;
   const passed = input.status === 'ok' && verification?.verdict === 'pass';
+  const answerSupported = input.status === 'ok' && !verification;
   const verified = Boolean(passed && verification
     && (verification.source === 'structural' || input.successfulToolCallIds.length > 0));
   const evidenceRefs = passed ? runEvidenceRefs(input) : [];
@@ -19,7 +21,7 @@ export function memoryUseFeedbackFromRun(input: MemoryRunFeedbackInput): MemoryU
   for (const reference of input.references) {
     if (!reference.atomId || seen.has(reference.atomId)) continue;
     seen.add(reference.atomId);
-    if (reference.decision === 'conflicted' && active.has(reference.atomId) && used.has(reference.atomId)) {
+    if (reference.decision === 'conflicted' && active.has(reference.atomId) && verifyUsed.has(reference.atomId)) {
       feedback.push(record(input, reference.atomId, 'conflict', false, [], reference.reason));
       continue;
     }
@@ -34,7 +36,10 @@ export function memoryUseFeedbackFromRun(input: MemoryRunFeedbackInput): MemoryU
       ));
       continue;
     }
-    if (passed && reference.decision === 'adopted' && active.has(reference.atomId) && used.has(reference.atomId)) {
+    if (passed
+      && reference.decision === 'adopted'
+      && active.has(reference.atomId)
+      && verifyUsed.has(reference.atomId)) {
       feedback.push(record(
         input,
         reference.atomId,
@@ -44,6 +49,20 @@ export function memoryUseFeedbackFromRun(input: MemoryRunFeedbackInput): MemoryU
         verified
           ? 'VERIFY explicitly identified this active adopted atom as material to a successful run with independent positive execution evidence.'
           : 'VERIFY explicitly identified this active adopted atom as material to the successful run; this updates routing only and does not verify the atom as fact.',
+      ));
+      continue;
+    }
+    if ((passed || answerSupported)
+      && reference.decision === 'adopted'
+      && active.has(reference.atomId)
+      && answerUsed.has(reference.atomId)) {
+      feedback.push(record(
+        input,
+        reference.atomId,
+        'useful',
+        false,
+        [],
+        'The final model-authored reply contained independent anchors from this active adopted atom; this updates routing only and does not verify the atom as fact.',
       ));
     }
   }

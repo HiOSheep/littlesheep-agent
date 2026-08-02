@@ -1,6 +1,6 @@
 # LittleSheep 模块拆分地图
 
-最后更新：2026-08-02 12:37:00
+最后更新：2026-08-02 19:10:25
 
 本文件记录大型生产文件的当前所有权、目标边界和拆分顺序。它是仓库基元化任务书的阶段产物，不替代项目状态，也不把行数当成唯一质量指标。
 
@@ -14,11 +14,11 @@
 
 ## 强制拆分队列
 
-下表行数是 2026-08-02 当前工作树的物理行数，不是历史完成值。生产 `.ts/.tsx` 文件超过 600 行必须进入本表；已登记不等于要求立即做无收益拆分。当前仓库卫生扫描共有 76 个生产文件超过 300 行，其中 10 个超过 600 行并进入受控清单。
+下表行数是 2026-08-02 当前工作树的物理行数，不是历史完成值。生产 `.ts/.tsx` 文件超过 600 行必须进入本表；已登记不等于要求立即做无收益拆分。当前仓库卫生扫描共有 77 个生产文件超过 300 行，其中 10 个超过 600 行并进入受控清单。
 
 | 当前文件 | 当前行数 | 当前责任 | 目标边界 | 所有权 |
 | --- | ---: | --- | --- | --- |
-| `packages/runner/src/runner.ts` | 820 | run 生命周期、输入装配、Memory 反馈、日志、检查点持久化/续跑、活动任务注册和资源收尾 | 保持应用服务 facade；活动快照与中断/超时所有权已下沉，继续下沉日志、检查点和收尾协调 | E |
+| `packages/runner/src/runner.ts` | 816 | run 生命周期、输入装配、Memory 反馈、日志、检查点持久化/续跑、活动任务注册和资源收尾 | 保持应用服务 facade；活动快照与中断/超时所有权已下沉，继续下沉日志、检查点和收尾协调 | E |
 | `packages/channels/qqbot/src/plugin.ts` | 801 | QQ 协议、连接、消息、发送和生命周期 | transport、protocol、message-mapper、sender、lifecycle | C |
 | `packages/memory-tree/src/project-memory-projection.ts` | 780 | 投影生成、同步、冲突、恢复和删除 | projection facade + render、sync、conflict、lifecycle | D |
 | `packages/types/src/runtime-contracts.ts` | 760 | Context、事件、检查点、活动任务控制、执行证据和版本化运行时契约 | Token 账本已迁入 `token-ledger.ts`；继续按 context、event、checkpoint、active-run、execution 分组并保持 barrel | E |
@@ -33,7 +33,8 @@
 
 | 当前文件 | 当前行数 | 主要责任 | 处理方向 | 所有权 |
 | --- | ---: | --- | --- | --- |
-| `packages/memory-tree/src/types.ts` | 600 | 记忆树内部和持久化类型 | 按 node、resource、audit、projection 分组 | D |
+| `packages/memory-tree/src/types.ts` | 580 | 记忆树内部和持久化类型 | 按 node、resource、audit、projection 分组 | D |
+| `packages/harness/src/tests/helpers.ts` | 306 | Harness 测试夹具与 RunContext 构造 | 按夹具领域拆分；测试 helper 不进入生产 Harness 依赖 | E |
 | `packages/types/src/agent.ts` | 464 | 状态机、活动路由兼容、RunContext、stage 与 Hook 契约 | TaskBook 已迁入 `task.ts`；继续保持状态机与运行上下文边界，不再吸收领域协议 | E |
 | `packages/tools/src/tool-execution-service.ts` | 583 | 工具查找、校验、审批、执行生命周期、事件与结构化记录 facade | 调度、中断、记录摘要和结果处理已拆分；facade 不吸收 Harness 编排或副作用状态所有权 | E |
 | `packages/memory-tree/src/memory-repository/v3-node-store.ts` | 581 | v3 节点查询、写入编排、层级和实体关联 | 事件与生命周期规则已拆出；后续分离 query projection 与 write coordinator | D |
@@ -150,7 +151,7 @@
 | --- | --- | --- | ---: | --- |
 | `packages/channels/qqbot/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与协议适配端口稳定后拆分 | 801 | 2026-08-15 |
 | `packages/memory-tree/src/project-memory-projection.ts` | D / Memory | 投影事务、冲突与恢复必须在特征测试覆盖后迁移 | 780 | 2026-08-15 |
-| `packages/runner/src/runner.ts` | E / Runtime | run 生命周期、输入装配、检查点续跑和资源收尾仍共享跨阶段不变量；先冻结恢复与幂等特征测试 | 820 | 2026-08-15 |
+| `packages/runner/src/runner.ts` | E / Runtime | run 生命周期、输入装配、检查点续跑和资源收尾仍共享跨阶段不变量；先冻结恢复与幂等特征测试 | 816 | 2026-08-15 |
 | `packages/types/src/runtime-contracts.ts` | E / Runtime | Context、事件、检查点和执行证据仍共享版本边界；拆分时必须保持现有 barrel 与持久化兼容 | 820 | 2026-08-15 |
 | `packages/runner/src/runtime-event-queue.ts` | E / Runtime | 安全边界接入已经完成；租约、结算、快照恢复与 ActiveRunRegistry 契约刚稳定，补齐拆分特征测试后再下沉 codec/registry | 760 | 2026-08-15 |
 | `packages/runner/src/run-checkpoint-store.ts` | E / Runtime | 检查点 codec、原子存储、查询、容量与保留期共享恢复不变量；应用恢复控制面完成前保持 facade 稳定 | 720 | 2026-08-15 |

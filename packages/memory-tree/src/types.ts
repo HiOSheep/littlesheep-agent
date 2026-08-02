@@ -10,6 +10,8 @@ import type {
   MemoryKnownState,
 } from './v3/contracts.js';
 
+export type { MemoryRunFeedbackInput } from './memory-feedback-contract.js';
+
 export enum InjectionTier {
   T0_CORE = 0,
   T1_ESSENTIAL = 1,
@@ -307,28 +309,6 @@ export interface MemoryAccessLedger {
   dedupKeys: string[];
   records: MemoryAccessRecord[];
   knownState: MemoryKnownState;
-}
-
-export interface MemoryRunFeedbackInput {
-  runId: string;
-  status: 'ok' | 'error' | 'aborted';
-  references: Array<{
-    atomId: string;
-    decision: 'adopted' | 'excluded' | 'conflicted';
-    reason: string;
-  }>;
-  activeAtomIds: string[];
-  releasedAtomIds: string[];
-  /** Explicitly cited by VERIFY as materially used; mere Context presence is insufficient. */
-  usedAtomIds?: string[];
-  verification?: {
-    attempt: number;
-    verdict: 'pass' | 'needs_replan' | 'fail';
-    source: 'model' | 'structural' | 'degraded';
-    verifiedAt: string;
-  };
-  successfulToolCallIds: string[];
-  recordedAt: string;
 }
 
 export interface MemoryTreeOptions {

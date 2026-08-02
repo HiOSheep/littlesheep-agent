@@ -95,6 +95,62 @@ describe('recordSessionSummaryActivation', () => {
       verifiedUseful: 0,
     });
   });
+
+  it('records answer-level summary continuity as routing-only evidence without VERIFY', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ls-runner-summary-answer-'));
+    roots.push(root);
+    const sessionManager = new SessionManager({ sessionsDir: root });
+    const session = await sessionManager.create();
+    const summary = makeSummary();
+    await sessionManager.commitCompaction(session.id, summary);
+
+    expect(await recordSessionSummaryActivation({
+      sessionManager,
+      sessionId: session.id,
+      summary,
+      answerUsedSummaryId: summary.id,
+      runId: 'run-answer',
+      status: 'ok',
+      successfulToolCallIds: [],
+      recordedAt: NOW,
+    })).toBe(true);
+    expect(await sessionManager.loadCompactionActivation(session.id, summary.id)).toMatchObject({
+      useful: 1,
+      verifiedUseful: 0,
+    });
+  });
+
+  it('does not promote answer-only summary continuity through unrelated tool evidence', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ls-runner-summary-answer-tool-'));
+    roots.push(root);
+    const sessionManager = new SessionManager({ sessionsDir: root });
+    const session = await sessionManager.create();
+    const summary = makeSummary();
+    await sessionManager.commitCompaction(session.id, summary);
+
+    await recordSessionSummaryActivation({
+      sessionManager,
+      sessionId: session.id,
+      summary,
+      answerUsedSummaryId: summary.id,
+      runId: 'run-answer-tool',
+      status: 'ok',
+      verification: {
+        attempt: 1,
+        verdict: 'pass',
+        reason: 'Unrelated structural work passed.',
+        source: 'structural',
+        verifiedAt: NOW,
+      },
+      successfulToolCallIds: ['call-1'],
+      recordedAt: NOW,
+    });
+
+    expect(await sessionManager.loadCompactionActivation(session.id, summary.id)).toMatchObject({
+      useful: 1,
+      verifiedUseful: 0,
+    });
+  });
 });
 
 function makeSummary(): CompactionSummaryV2 {

@@ -35,7 +35,10 @@ import { getAgentProfile, normalizeAgentProfileId, type AgentProfileId } from '@
 import { reasoningPromptAddon, resolveRunConfig } from './run-config.js';
 import { discoverLittleSheepCoreRoots } from './core-source-protection.js';
 import { buildSessionRunSummary } from './session-run-summary.js';
-import { independentSuccessfulToolCallIds } from './memory-feedback-evidence.js';
+import {
+  buildMemoryRunFeedbackInput,
+  independentSuccessfulToolCallIds,
+} from './memory-feedback-evidence.js';
 import { recordSessionSummaryActivation } from './session-summary-activation.js';
 import type { RunGitCheckpoint } from '@littlesheep/snapshot';
 import { completeRunVersionCheckpoint } from './version-checkpoint-lifecycle.js';
@@ -475,26 +478,13 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       const successfulToolCallIds = independentSuccessfulToolCallIds(ctx);
       const recordedAt = new Date().toISOString();
       try {
-        await infra.memoryService.recordRunFeedback({
-          runId: ctx.runId,
+        await infra.memoryService.recordRunFeedback(buildMemoryRunFeedbackInput({
+          ctx,
           status: runStopped ? 'aborted' : stageResult.ok ? 'ok' : 'error',
-          references: (ctx.memoryKnownState?.references ?? []).map((reference) => ({
-            atomId: reference.atomId,
-            decision: reference.decision,
-            reason: reference.reason,
-          })),
-          activeAtomIds: [...(ctx.memoryContextWorkingSet?.activeAtomIds ?? [])],
-          releasedAtomIds: [...(ctx.memoryContextWorkingSet?.releasedAtomIds ?? [])],
-          usedAtomIds: [...(latestVerification?.usedMemoryAtomIds ?? [])],
-          verification: latestVerification ? {
-            attempt: latestVerification.attempt,
-            verdict: latestVerification.verdict,
-            source: latestVerification.source,
-            verifiedAt: latestVerification.verifiedAt,
-          } : undefined,
+          verification: latestVerification,
           successfulToolCallIds,
           recordedAt,
-        });
+        }));
       } catch (err) {
         opts.log?.('warn', `runner: memory usefulness feedback degraded: ${(err as Error).message}`);
       }
@@ -504,6 +494,10 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           sessionId,
           summary: ctx.sessionSummary,
           usedSummaryId: usedContinuitySummaryId,
+          answerUsedSummaryId: ctx.memoryContinuityAssessment?.status === 'supported'
+            && ctx.memoryContinuityAssessment.matchedSources.includes('session_summary')
+            ? ctx.sessionSummary?.id
+            : undefined,
           runId: ctx.runId,
           status: runStopped ? 'aborted' : stageResult.ok ? 'ok' : 'error',
           verification: latestVerification,
@@ -557,6 +551,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           verificationHistory: result.verificationHistory,
           memoryIntentDecisions: result.memoryIntentDecisions,
           memoryKnownState: result.memoryKnownState,
+          memoryContinuityAssessment: result.memoryContinuityAssessment,
           clarificationRequest: result.clarificationRequest,
           clarificationResponse: result.clarificationResponse,
           memoryAccess: result.memoryAccess,
@@ -765,6 +760,7 @@ function assembleResult(
     runtimeEventQueue: snapshotRuntimeEventQueue(ctx),
     memoryIntentDecisions: ctx.memoryIntentDecisions,
     memoryKnownState: ctx.memoryKnownState,
+    memoryContinuityAssessment: ctx.memoryContinuityAssessment,
     clarificationRequest: ctx.clarificationRequest,
     clarificationResponse: ctx.clarificationResponse,
     memoryAccess,

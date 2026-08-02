@@ -56,6 +56,46 @@ describe('memoryUseFeedbackFromRun', () => {
     expect(feedback).toEqual([]);
   });
 
+  it('records answer-level continuity as routing-only usefulness without VERIFY', () => {
+    const [feedback] = memoryUseFeedbackFromRun({
+      runId: 'run-direct-reply',
+      status: 'ok',
+      references: [{ atomId: 'atom-answer', decision: 'adopted', reason: 'initial injection' }],
+      activeAtomIds: ['atom-answer'],
+      releasedAtomIds: [],
+      usedAtomIds: [],
+      answerUsedAtomIds: ['atom-answer'],
+      successfulToolCallIds: [],
+      recordedAt: '2026-08-02T06:00:00.000Z',
+    });
+
+    expect(feedback).toMatchObject({ atomId: 'atom-answer', outcome: 'useful', verified: false });
+    expect(feedback?.reason).toContain('final model-authored reply');
+  });
+
+  it('never promotes answer-level continuity to independently verified usefulness', () => {
+    const [feedback] = memoryUseFeedbackFromRun({
+      runId: 'run-answer-with-tools',
+      status: 'ok',
+      references: [{ atomId: 'atom-answer', decision: 'adopted', reason: 'selected' }],
+      activeAtomIds: ['atom-answer'],
+      releasedAtomIds: [],
+      usedAtomIds: [],
+      answerUsedAtomIds: ['atom-answer'],
+      verification: {
+        attempt: 1,
+        verdict: 'pass',
+        source: 'structural',
+        verifiedAt: '2026-08-02T06:00:00.000Z',
+      },
+      successfulToolCallIds: ['call-1'],
+      recordedAt: '2026-08-02T06:00:00.000Z',
+    });
+
+    expect(feedback).toMatchObject({ atomId: 'atom-answer', outcome: 'useful', verified: false });
+    expect(feedback?.evidenceRefs).toEqual([]);
+  });
+
   it('records explicit release as unverified routing feedback without calling it false', () => {
     const [feedback] = memoryUseFeedbackFromRun({
       runId: 'run-2',

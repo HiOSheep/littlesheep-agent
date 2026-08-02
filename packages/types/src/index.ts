@@ -11,6 +11,7 @@ export * from './session.js';
 export * from './tool.js';
 export * from './memory.js';
 export * from './memory-evidence.js';
+export * from './memory-continuity.js';
 export * from './task.js';
 export * from './agent.js';
 export * from './runtime-contracts.js';

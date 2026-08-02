@@ -33,6 +33,7 @@ import type {
   ExecutionEvidence,
   MemoryIntentDecisionRecord,
   RuntimeMemoryKnownState,
+  MemoryContinuityAssessment,
   RuntimeControlSnapshot,
   RuntimeEventQueueSnapshot,
   SessionRunSummary,
@@ -73,6 +74,7 @@ export interface ExecutionLog {
   verificationHistory?: VerificationRecord[];
   memoryIntentDecisions?: MemoryIntentDecisionRecord[];
   memoryKnownState?: RuntimeMemoryKnownState;
+  memoryContinuityAssessment?: MemoryContinuityAssessment;
   clarificationRequest?: ClarificationRequest;
   clarificationResponse?: ClarificationResponse;
   memoryAccess?: MemoryAccessLedger;
@@ -114,6 +116,7 @@ export interface ExecutionLogInput {
   verificationHistory?: VerificationRecord[];
   memoryIntentDecisions?: MemoryIntentDecisionRecord[];
   memoryKnownState?: RuntimeMemoryKnownState;
+  memoryContinuityAssessment?: MemoryContinuityAssessment;
   clarificationRequest?: ClarificationRequest;
   clarificationResponse?: ClarificationResponse;
   memoryAccess?: MemoryAccessLedger;
@@ -196,6 +199,7 @@ export class ExecutionLogStore {
       verificationHistory: input.verificationHistory,
       memoryIntentDecisions: input.memoryIntentDecisions,
       memoryKnownState: input.memoryKnownState,
+      memoryContinuityAssessment: input.memoryContinuityAssessment,
       clarificationRequest: input.clarificationRequest,
       clarificationResponse: input.clarificationResponse,
       memoryAccess: input.memoryAccess,

@@ -7,6 +7,7 @@ import type { RunContext, StageResult, Message } from '@littlesheep/types';
 import { textMessage } from '@littlesheep/types';
 import type { SessionManager } from '@littlesheep/session';
 import { markMemoryKnownStateStage } from '../memory-known-state.js';
+import { assessResponseMemoryContinuity } from '../response-continuity.js';
 
 export interface FinalizeStageDeps {
   sessionManager: SessionManager;
@@ -16,7 +17,6 @@ export interface FinalizeStageDeps {
 export function createFinalizeStage(deps: FinalizeStageDeps) {
   return async function finalizeStage(ctx: RunContext): Promise<StageResult> {
     markMemoryKnownStateStage(ctx, 'finalize');
-    // 1. Persist only a non-empty reply traceable to this run's real Provider request.
     const replyText = ctx.reply?.trim();
     const provenance = ctx.replyProvenance;
     const modelRequest = provenance
@@ -30,13 +30,31 @@ export function createFinalizeStage(deps: FinalizeStageDeps) {
       && modelRequest.model === provenance.model
       && modelRequest.callContract?.purpose === provenance.purpose,
     );
+    ctx.memoryContinuityAssessment = assessResponseMemoryContinuity({
+      reply: traceable ? replyText : undefined,
+      inbound: ctx.inbound,
+      history: ctx.history,
+      initialMemoryContext: ctx.initialMemoryContext,
+      sessionSummary: ctx.sessionSummary,
+      memoryKnownState: ctx.memoryKnownState,
+      memoryContextWorkingSet: ctx.memoryContextWorkingSet,
+      taskBook: ctx.taskBook,
+      toolResults: ctx.toolResults,
+      modelRequests: ctx.modelRequests,
+      contextSnapshots: ctx.contextSnapshots,
+      replyProvenance: ctx.replyProvenance,
+    });
+    // 1. Persist only a non-empty reply traceable to this run's real Provider request.
     if (!replyText || !traceable) {
       return {
         stage: 'finalize',
         next: 'exit',
         ok: false,
         error: 'finalize rejected a missing or untraceable Provider API user-facing reply.',
-        meta: { produced: ctx.produced.length },
+        meta: {
+          produced: ctx.produced.length,
+          memoryContinuityAssessment: ctx.memoryContinuityAssessment,
+        },
       };
     }
     const msg: Message = textMessage('assistant', replyText, {
@@ -59,7 +77,10 @@ export function createFinalizeStage(deps: FinalizeStageDeps) {
       stage: 'finalize',
       next: 'exit',
       ok: true,
-      meta: { produced: ctx.produced.length },
+      meta: {
+        produced: ctx.produced.length,
+        memoryContinuityAssessment: ctx.memoryContinuityAssessment,
+      },
     };
   };
 }
