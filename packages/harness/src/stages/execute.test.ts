@@ -9,6 +9,7 @@ import { DEFAULT_BRANDING } from '@littlesheep/branding';
 import { parallelFilePolicy } from '@littlesheep/tools';
 import { textMessage } from '@littlesheep/types';
 import type { AgentTool, TaskBook, ToolStreamEvent } from '@littlesheep/types';
+import { z } from 'zod';
 
 const deps = { model: 'test', config: DEFAULT_CONFIG, branding: DEFAULT_BRANDING };
 
@@ -31,6 +32,44 @@ function threeStepTaskBook(): TaskBook {
       { id: 'step-3', title: 'Three', description: 'complete step three' },
     ],
     overdeliveryPolicy: { maxExtraScopeRatio: 1.5, guidance: 'stay focused' },
+  };
+}
+
+function singleGlobTaskBook(input: unknown): TaskBook {
+  return {
+    assessment: {
+      userNeed: '读取工作区顶层条目',
+      complexity: 'trivial',
+      goal: '读取工作区顶层条目',
+      successCriteria: ['返回数量和名称'],
+      requiresTaskBook: false,
+      maxExtraScopeRatio: 1,
+    },
+    goal: '读取工作区顶层条目',
+    complexity: 'trivial',
+    successCriteria: ['返回数量和名称'],
+    steps: [{
+      id: 'step-1',
+      description: '使用 glob 读取顶层条目',
+      tools: ['glob'],
+      toolProposal: { name: 'glob', input },
+      execution: {
+        mode: 'serial',
+        resources: [{ key: 'workspace:.', mode: 'read' }],
+        sideEffect: 'read',
+      },
+    }],
+    overdeliveryPolicy: { maxExtraScopeRatio: 1, guidance: '只返回结果' },
+  };
+}
+
+function explicitGlobClassification() {
+  return {
+    activity: 'execute' as const,
+    type: 'problem' as const,
+    confidence: 0.96,
+    source: 'rules' as const,
+    reason: 'explicit tool instruction',
   };
 }
 
@@ -85,6 +124,114 @@ describe('executeStage', () => {
     await stage(ctx);
 
     expect(systemPrompts[0]).toContain('PROFILE_SENTINEL_EXECUTE');
+  });
+
+  it('executes an admitted explicit read proposal without an execute tool-loop model call', async () => {
+    const glob = makeTool('glob', {
+      ok: true,
+      output: 'alpha.txt\nbeta.md\nnested\\',
+    }, {
+      inputSchema: z.object({
+        pattern: z.string(),
+        path: z.string().optional(),
+        max_results: z.number().int().positive().optional().default(100),
+      }),
+    });
+    glob.execution = parallelFilePolicy('path', 'read', true);
+    const llm = createMockLlm(textResponse('共有 3 个顶层条目：alpha.txt、beta.md、nested。'));
+    const stage = createExecuteStage({ ...deps, llm });
+    const events: ToolStreamEvent[] = [];
+    const ctx = makeCtx({
+      tools: [glob],
+      inbound: textMessage('user', '请使用 glob 工具读取当前工作区顶层条目'),
+      classification: explicitGlobClassification(),
+      taskBook: singleGlobTaskBook({ pattern: '*', path: '.', max_results: 100 }),
+      toolContext: {
+        permissionMode: 'research',
+        containerRoot: process.cwd(),
+      },
+    });
+    ctx.resolvedRunConfig = {
+      version: 1,
+      runId: ctx.runId,
+      resolvedAt: '2026-08-03T00:00:00.000Z',
+      origin: 'test',
+      behaviorModeId: 'general',
+      permissionPolicyId: 'research',
+      workflowStrategyId: 'core-flow',
+      contextStrategyId: 'context-v1',
+      memoryStrategyId: 'index-first-v1',
+      toolSelectionStrategyId: 'registered-tools-v1',
+      outputContractId: 'user-reply-v1',
+      provider: 'deepseek',
+      model: 'deepseek-v4-flash',
+      reasoning: 'auto',
+      parameters: {},
+      availableToolNames: ['glob'],
+      approvalRequiredToolNames: [],
+      userOverrides: {},
+      projectOverrides: {},
+    };
+    ctx.onToolEvent = (event) => events.push(event);
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'verify', ok: true });
+    expect(glob.calls).toHaveLength(1);
+    expect(glob.calls[0]?.input).toEqual({ pattern: '*', path: '.', max_results: 100 });
+    expect(llm.chat).toHaveBeenCalledTimes(1);
+    const finalRequest = llm.chat.mock.calls[0]?.[0] as import('@littlesheep/llm').ChatRequest;
+    expect(finalRequest.tools).toBeUndefined();
+    expect(finalRequest.thinking).toEqual({ type: 'disabled' });
+    expect(finalRequest.temperature).toBeUndefined();
+    expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
+      'execute_final_reply',
+    ]);
+    expect(ctx.reply).toBe('共有 3 个顶层条目：alpha.txt、beta.md、nested。');
+    expect(ctx.replyProvenance?.purpose).toBe('execute_final_reply');
+    expect(ctx.taskExecution?.steps[0]?.output).toContain('alpha.txt');
+    expect(ctx.toolInvocations?.[0]).toMatchObject({
+      toolName: 'glob',
+      status: 'succeeded',
+      approval: { required: false, decision: 'not_required' },
+    });
+    expect(ctx.produced.map((message) => message.role)).toEqual(['assistant', 'tool']);
+    expect(events.map((event) => event.type)).toEqual([
+      'step_start', 'tool_start', 'tool_end', 'step_done',
+    ]);
+  });
+
+  it('keeps explicit continuation requests on the history-aware tool loop', async () => {
+    const glob = makeTool('glob', { ok: true, output: 'alpha.txt' }, {
+      inputSchema: z.object({ pattern: z.string(), path: z.string().optional() }),
+    });
+    glob.execution = parallelFilePolicy('path', 'read', true);
+    const llm = createMockLlm([
+      toolCallResponse([{ id: 'glob-history', name: 'glob', args: { pattern: '*', path: '.' } }]),
+      textResponse('已读取条目，并保留上一轮目标。'),
+      textResponse('最终回答承接上一轮目标。'),
+    ]);
+    const stage = createExecuteStage({ ...deps, llm });
+    const prior = textMessage('assistant', '上一轮目标是 continuity-history-anchor。');
+    const ctx = makeCtx({
+      tools: [glob],
+      history: [prior],
+      inbound: textMessage('user', '继续上一轮，请使用 glob 工具读取当前工作区顶层条目'),
+      classification: explicitGlobClassification(),
+      taskBook: singleGlobTaskBook({ pattern: '*', path: '.' }),
+    });
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'verify', ok: true });
+    expect(llm.chat).toHaveBeenCalledTimes(3);
+    const first = llm.chat.mock.calls[0]?.[0] as import('@littlesheep/llm').ChatRequest;
+    expect(first.tools?.map((tool) => tool.function.name)).toEqual(['glob']);
+    expect(first.messages.some((message) => String(message.content).includes('continuity-history-anchor'))).toBe(true);
+    expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
+      'execute_tool_loop', 'execute_tool_loop', 'execute_final_reply',
+    ]);
+    expect(glob.calls).toHaveLength(1);
   });
 
   it('includes taskBook goal, success criteria, and overdelivery limit in the execution prompt', async () => {

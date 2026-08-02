@@ -48,6 +48,6 @@ export async function classify(
   return classifyByLlm(message, history, opts.llm, opts.model, opts.onRequest, opts.onResponse);
 }
 
-export { classifyByRules, listRules } from './rules.js';
+export { classifyByRules, extractExplicitToolInstructionNames, listRules } from './rules.js';
 export { classifyByLlm } from './llm.js';
 export type { Rule } from './rules.js';

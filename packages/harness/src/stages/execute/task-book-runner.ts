@@ -175,6 +175,8 @@ async function resolveCompletedTaskReply(
 function reusableSingleStepOutput(taskBook: TaskBook, stepResults: TaskStepResult[]): string | undefined {
   if (taskBook.complexity !== 'trivial' && taskBook.complexity !== 'simple') return undefined;
   if (taskBook.steps.length !== 1 || stepResults.length !== 1) return undefined;
+  // A direct proposal result is Runtime/tool evidence, not user-facing LLM copy.
+  if (taskBook.steps[0]?.toolProposal) return undefined;
   const result = stepResults[0]!;
   if (result.status !== 'done' || result.error) return undefined;
   const output = result.output?.trim();

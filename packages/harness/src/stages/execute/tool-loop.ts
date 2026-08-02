@@ -25,6 +25,7 @@ import { recentHistoryForModel } from '../_shared.js';
 import { ingestMemoryKnownState } from '../../memory-known-state.js';
 import { ingestMemoryContextToolResult } from '../../memory-context-working-set.js';
 import type {
+  ExecuteSanitizeOptions,
   ExecuteStageDeps,
   ToolLoopOptions,
   ToolLoopResult,
@@ -219,6 +220,59 @@ export async function runToolLoop(
   };
 }
 
+/** Execute one Runtime-admitted DECIDE proposal through the same hosted tool boundary. */
+export async function runDirectToolProposal(
+  deps: ExecuteStageDeps,
+  options: {
+    ctx: RunContext;
+    tool: AgentTool;
+    input: unknown;
+    sanitizeOpts: ExecuteSanitizeOptions;
+    stepId: string;
+    signal?: AbortSignal;
+    produced?: RunContext['produced'];
+  },
+): Promise<ToolLoopResult> {
+  const produced = options.produced ?? options.ctx.produced;
+  const call: ToolCall = {
+    id: randomUUID(),
+    name: options.tool.name,
+    input: options.input,
+  };
+  persistToolCalls(options.ctx, produced, [call]);
+  const service = toolExecutionService(deps, options.ctx, options.sanitizeOpts);
+  const completed = await service.executeBatch(
+    [{
+      callId: call.id,
+      name: call.name,
+      input: call.input,
+      stepId: options.stepId,
+      signal: options.signal ?? options.ctx.signal,
+    }],
+    sideEffectLifecycle(options.ctx),
+    new Set([options.tool.name]),
+    1,
+  );
+  const result = completed.get(0)
+    ?? failureResult(call.id, options.stepId, 'tool scheduler returned no result');
+  const toolResults: ToolResult[] = [];
+  finalizeToolResult(
+    options.ctx,
+    produced,
+    undefined,
+    toolResults,
+    options.tool.name,
+    result,
+    options.stepId,
+  );
+  return {
+    ok: true,
+    content: '',
+    toolResults,
+    iterations: 0,
+  };
+}
+
 /** Keep the current request and tool evidence while dropping older pre-user history. */
 function compactToolLoopContinuation(
   messages: import('@littlesheep/llm').ChatMessage[],
@@ -272,7 +326,7 @@ function failureResult(callId: string, stepId: string | undefined, error?: strin
 function finalizeToolResult(
   ctx: RunContext,
   produced: RunContext['produced'],
-  messages: ToolLoopOptions['messages'],
+  messages: ToolLoopOptions['messages'] | undefined,
   results: ToolResult[],
   name: string,
   result: ToolResult,
@@ -284,12 +338,12 @@ function finalizeToolResult(
   }
   results.push(result);
   persistToolResult(ctx, produced, result);
-  messages.push({
-    role: 'tool',
-    tool_call_id: result.callId,
-    name,
-    content: toolResultForModel(result),
-  });
+  messages?.push({
+      role: 'tool',
+      tool_call_id: result.callId,
+      name,
+      content: toolResultForModel(result),
+    });
 }
 
 function toolToSpec(tool: AgentTool): ToolSpec {

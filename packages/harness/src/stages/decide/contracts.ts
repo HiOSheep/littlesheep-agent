@@ -55,6 +55,10 @@ export interface DecodedPlanStep {
   title?: string;
   description?: string;
   tools?: unknown;
+  toolProposal?: {
+    name?: unknown;
+    input?: unknown;
+  };
   requiresApproval?: boolean;
   execution?: {
     mode?: unknown;
@@ -134,6 +138,7 @@ Rules:
 - Clarification prompts must use the same language as the user's request. Include options/defaultValue only when they are genuinely safe.
 - Each step must have a non-empty "description".
 - "tools" lists tool names this step may use (from the available tools list). Omit if none.
+- "toolProposal" is optional and is only valid when a separate Runtime block supplies one explicit tool schema. It has shape {"name":"exactToolName","input":{...}} and remains a proposal until Runtime validation.
 - "requiresApproval" is true for steps that should pause for user approval.
 - Omit "execution" unless the scheduling contract is complete. Missing or unsafe contracts run serially.
 - Use mode="parallel" only for genuinely independent work. dependsOn may reference earlier stable step ids only.

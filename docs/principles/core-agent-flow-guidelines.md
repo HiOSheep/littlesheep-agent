@@ -1,6 +1,6 @@
 # LittleSheep 核心 Agent 流程规范
 
-最后更新：2026-08-03 01:50:17
+最后更新：2026-08-03 04:09:14
 
 本文是 [LittleSheep 架构原则](architecture-principles.md) 在 Core Flow、TaskBook、验证、恢复和记忆运行时上的专项约束。LLM 与 Agent、Mode 与权限、Context 与 Memory、Harness 与 Tool Execution 的顶层分工以架构原则为准；本文不重复维护另一套总架构。
 
@@ -151,7 +151,7 @@ execute 内部：
 - 长会话压缩后的版本化摘要只在真实指代且最近消息仍缺任务锚点时作为 `continuitySummary` 回退。摘要最多选择 4 个目标/未完成事项/下一步/约束/决定句段、总计 1,000 字符；当前请求、近期明确用户目标和任务转向优先。摘要不替代原始会话、不复制为长期记忆，也不因保存位置或新鲜度自动获得注入权重。
 - 在已导航分支和当前作用域内，候选按 scope 匹配、来源权威、task relevance、confidence、importance、新鲜度、verified usefulness、routing relevance、relationship relevance 以及冲突/失效/过期惩罚稳定排序。关系不只是排序信号：Runtime 可从 `task relevance >= 0.7` 的种子做一次有界一跳发现，但必须保持同 branch/scope/scopeKey/subtree，并检查关系方向、状态、生效/过期时间、authority、confidence、relevance 和来源/证据；邻接 Atom 仍须独立通过 task relevance 和预算。`similar-to` 只作导航，不触发自动注入。关系信号必须随当前 task relevance 降低而向中性收缩，不能让“历史关系多”替代“本轮真正相关”。高优先级记忆先介入，但不能挤掉安全规则、当前用户输入和必要工具证据。可选记忆长期没有验证收益时降低注入权重，但不自动降低 confidence；T0、安全规则和当前用户约束不参与普通使用衰减。
 - 读取次数、重复出现或仅停留在 Context 中都不产生正反馈。VERIFY 可返回 `usedMemoryAtomIds`，但 Runtime 只接受当前 working set 中同时为 active 与 adopted 的 Atom；显式使用只提高有界 routing usefulness。只有结构性 VERIFY，或 VERIFY 通过且存在非记忆导航、非 Skill 加载的独立成功工具证据时，才提高 verified usefulness；`memory_tree`、`memory_search`、`memory_deep_search` 和 `use_skill` 的成功只能证明导航或加载发生，不能冒充任务验证。两类反馈都不能自动提高事实 confidence。显式 `release` 只是未验证路由反馈，不能证明 Atom 错误；未进入 active Context 或未被明确使用的冲突候选也不能因一次检索自动生成负反馈。所有反馈必须可审计、幂等且有硬上限，防止错误记忆形成自增强循环。
-- FINALIZE 必须对实际发布且可由 `ReplyProvenance` 回查到真实 Provider 请求的 LLM 回答执行本地、有界的记忆连续性评估。当前用户输入的词面重合只能证明回答贴合本轮任务，不能证明记忆连续；TaskBook 中若含有本轮记忆介入后新增的细节，仍可作为间接承接链路。只有回答中出现当前输入之外、且真实进入本轮因果模型调用链的 active/adopted Atom、版本化会话摘要或近期跨轮对话的独立锚点，才可标记为 `supported`。任务续接与“你还记得上次的代号/颜色吗”这类直接记忆追问都属于显式连续性检查；明确字段旧值按“近期可观察消息 → 已进入调用链的版本化会话摘要 → 已采用且仍 active 的记忆”逐项解析，纯记忆追问不得因此注入无关执行耗时。最终回答必须分别肯定命中每个被追问值；只复述附带限制、漏答任一值、用否定句提到旧值、明确说忘了或请求用户重新提供，均标记为 `discontinuous`。弱改写、Context 截断或目标不可回查时保持 `uncertain / unavailable`，不得武断判为失忆。显式连续性检查只有 `supported` 可以通过；其他状态不能被 UI、Runtime 或测试报告改写为“记忆连续”。Context Engine 已裁掉的来源、缺少请求快照的来源、已释放、已排除或冲突 Atom 均不得获得连续性命中；执行中由 `memory_tree` 展开的 Atom 只有在对应工具结果确实进入后续模型请求时才可计入。该评估写入 `AgentResult` 和执行日志，不增加 Provider 调用；回答级 Atom 或摘要命中最多形成 routing/activation 反馈，不能提高事实 confidence 或 verified usefulness，也不能替代 VERIFY 的工具证据。
+- FINALIZE 必须对实际发布且可由 `ReplyProvenance` 回查到真实 Provider 请求的 LLM 回答执行本地、有界的记忆连续性评估。当前用户输入的词面重合只能证明回答贴合本轮任务，不能证明记忆连续；TaskBook 中若含有本轮记忆介入后新增的细节，仍可作为间接承接链路。只有回答中出现当前输入之外、且真实进入本轮因果模型调用链的 active/adopted Atom、版本化会话摘要或近期跨轮对话的独立锚点，才可标记为 `supported`。任务续接与“你还记得上次的代号/颜色吗”这类直接记忆追问都属于显式连续性检查；明确字段旧值按“近期可观察消息 → 已进入调用链的版本化会话摘要 → 已采用且仍 active 的记忆”逐项解析，纯记忆追问不得因此注入无关执行耗时。最终回答必须分别肯定命中每个被追问值；只复述附带限制、漏答任一值、用否定句提到旧值、明确说忘了或请求用户重新提供，均标记为 `discontinuous`。旧值全部出现也不构成例外：回答只要同时明确否认记得，就必须失败关闭，且不能登记任何记忆来源为已承接。弱改写、Context 截断或目标不可回查时保持 `uncertain / unavailable`，不得武断判为失忆。显式连续性检查只有 `supported` 可以通过；其他状态不能被 UI、Runtime 或测试报告改写为“记忆连续”。Context Engine 已裁掉的来源、缺少请求快照的来源、已释放、已排除或冲突 Atom 均不得获得连续性命中；执行中由 `memory_tree` 展开的 Atom 只有在对应工具结果确实进入后续模型请求时才可计入。该评估写入 `AgentResult` 和执行日志，不增加 Provider 调用；回答级 Atom 或摘要命中最多形成 routing/activation 反馈，不能提高事实 confidence 或 verified usefulness，也不能替代 VERIFY 的工具证据。
 - routing feedback 的历史计数用于审计，排序使用与 confidence 分离的派生相关度和有效证据权重。派生值随时间回归中性；新事件到来时先按时间衰减旧权重，再加入新证据，不能因更新时间刷新而让已经衰减的旧负反馈重新放大。
 - 实际进入请求的记忆使用有界 `MemoryEvidenceEnvelope`，至少包含 Atom 引用、branch/scope、tier、来源/权威、confidence、importance、verified usefulness 摘要、task relevance、routing relevance、relationship relevance、验证或更新时间、新鲜度、命中理由、状态、冲突和截断信息；关系发现还要使用独立 `relation` 检索路径，并记录种子 Atom、关系 id、类型、方向、confidence、relevance 和 route strength。模型据此判断“为什么介入、过去是否真正有用”和证据权重，运行时仍保留唯一元数据修改权。
 - `MemoryEvidenceEnvelope` 还必须携带 statement kind、epistemic status、authority scope、asserted by、`sourceRefs` 和 `evidenceRefs`。`sourceRefs` 只指向对话原始来源，工具、VERIFY 和外部佐证进入 `evidenceRefs`。建议、假设和未验证陈述即使相关性很高，也不能以“事实”标签注入；用户目标/偏好则在其权威范围内直接约束计划。
@@ -178,6 +178,7 @@ execute 内部：
 
 - `NeedAssessment` 和 `TaskBook` 核心类型。
 - `DECIDE` 输出需求校准和结构化任务书。
+- 用户明确点名唯一注册工具、任务只需一次只读调用且不属于续接/记忆追问时，DECIDE 可在唯一工具 JSON Schema 约束下输出 `toolProposal`。Runtime 必须再次校验工具名、参数 schema、资源副作用、权限和审批，再通过统一 Tool Execution Service 执行；Runtime 不得从自然语言自行猜参数。该路径完成后由真实 `execute_final_reply` API 调用组织最终回答，VERIFY 使用结构证据；任一条件不满足即回退普通工具循环。
 - 继续兼容旧的 `{ "plan": [...] }` 输出格式。
 - 存在任务书时，`EXECUTE` 按 `TaskBook.steps` 逐步执行。
 - `EXECUTE` 记录包含步骤状态、输出、工具调用和失败信息的 `TaskExecutionResult`。

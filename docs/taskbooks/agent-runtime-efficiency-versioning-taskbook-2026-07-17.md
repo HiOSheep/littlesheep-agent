@@ -1,6 +1,6 @@
 # LittleSheep Agent Runtime 效率与版本化连续性任务书 2026-07-17
 
-最后更新：2026-08-02 12:37:00
+最后更新：2026-08-03 04:09:14
 
 状态：已完成统一 Tool Execution Service、工具调用级与 TaskBook 步骤级有界并行、数据与工作区 shadow Git 检查点、退出冻结、有界 `RuntimeEventQueue`、活动 run ingress、Harness 安全边界、确定性 `TaskBookPatch`、延迟事件重规划、Renderer 事件生产/反馈入口、持久 RunCheckpoint、Runner 显式续跑、应用启动恢复控制面、活动任务控制、后台托盘、三档关闭策略和设置页“应用与后台”的工程基线。真实 Electron 活动长任务、托盘交互和跨重启恢复验收仍未完成。
 
@@ -44,6 +44,7 @@
 - 每轮模型调用有独立 `modelCallCount` 和默认 32 次硬上限，不依赖有界观测数组的长度。
 - `CAPTURE` 默认从已持久化的对话、步骤和工具状态生成确定性 daily 原子，不为内部流水额外调用 LLM；`EVOLVE` 使用 `adaptive/always/never`，默认只在复杂任务、持久化工具、恢复/重规划或明确记忆信号出现时调用。
 - `REPLY`、DECIDE 产生的任务说明、执行步骤结果、VERIFY 说明和多步骤 `execute_final_reply` 都必须在当次 run 中实时调用当前 Provider API 生成；运行时生成的澄清事实只能作为 `ASK_USER` 的输入，最终文本仍由 LLM 现场组织，不能直接发送，也不能从模板库、预备文案池或历史回答选取。这里不存在“LLM 生成候选文案后由 Runtime 挑选”的前台流程：Runtime 只校验真实 API 返回的来源、事实边界和唯一性。所有前台自然语言调用均注入运行时 `SOUL.md`，保证用户配置的人格、语气和渐进式披露风格；`ReplyProvenance` 绑定真实 model request，API 返回在发布前由持久化会话级注册表原子占用规范化指纹，完全重复时最多重新实时调用两次当前 Provider API，仍重复、注册表失败或生成失败只呈现 Runtime 错误/状态。按钮、状态、权限、路径和进度由 Runtime 固定提供，`FINALIZE` 禁止新增模型调用，只负责校验并持久化已经生成的回复。
+- 显式单只读工具任务已建立两调用路径：DECIDE 在唯一工具 schema 下生成 `toolProposal`，Runtime 二次校验并执行，随后只调用一次 `execute_final_reply`。续接、记忆追问、多工具、多调用、需审批或 schema 不完整时自动回退普通执行链；Runtime 不从自然语言猜参数。真实 `deepseek-v4-flash` 隔离 Electron 验收为 2 次 API、1 次 `glob`、`5.642s`，两次本地/Provider prompt 均零差值。
 - Context Engine 区分阶段软目标与模型窗口硬上限：先按优先级裁剪可选内容，必要内容在未超过真实模型窗口时可以超过软目标；未知模型不会凭软目标触发会话压缩。
 - 每次请求在缓存边界后注入精确到秒的 runtime awareness；最近对话优先于重复的静态时间段，时间、耗时和进度仍由运行时事实提供。
 - 记忆上下文继续沿 `root index -> branch index -> expand -> branch-scoped search`，只把有任务价值、作用域正确、证据可解释且预算允许的 Atom 放入请求。

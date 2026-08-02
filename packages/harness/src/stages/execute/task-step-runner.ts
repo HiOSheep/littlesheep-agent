@@ -17,8 +17,12 @@ import {
   pickStepTools,
 } from './failure-policy.js';
 import { buildBaseMessages, renderStepGuidance } from './guidance.js';
-import { runToolLoop } from './tool-loop.js';
+import { runDirectToolProposal, runToolLoop } from './tool-loop.js';
 import type { ScheduledTaskStep } from './task-step-scheduler.js';
+import {
+  directToolEvidenceText,
+  resolveDirectReadOnlyToolProposal,
+} from './direct-tool-proposal.js';
 
 export interface TaskStepRunOutcome {
   scheduled: ScheduledTaskStep;
@@ -99,23 +103,34 @@ export async function executeScheduledTaskStep(options: TaskStepRunOptions): Pro
   const branch = branchAbortController(ctx.signal);
   const produced: RunContext['produced'] = [];
   try {
-    const loopResult = await runToolLoop(deps, {
-      ctx,
-      messages: buildBaseMessages(ctx, stepSystemPrompt.text, attachmentMessages),
-      tools: pickStepTools(step, ctx.tools),
-      sanitizeOpts,
-      stepId,
-      signal: branch.controller.signal,
-      produced,
-      ...(scheduled.mode === 'parallel' && scheduled.sideEffect
-        ? {
-            parallelStep: { sideEffect: scheduled.sideEffect, resources: scheduled.resources },
-            maxParallelTools: 1,
-          }
-        : {}),
-      systemSegments: stepSystemPrompt.segments,
-      insertedBeforePrimary: attachmentMessages.map((item) => item.context),
-    });
+    const directProposal = resolveDirectReadOnlyToolProposal(ctx, taskBook, step, previousResult);
+    const loopResult = directProposal
+      ? await runDirectToolProposal(deps, {
+          ctx,
+          tool: directProposal.tool,
+          input: directProposal.input,
+          sanitizeOpts,
+          stepId,
+          signal: branch.controller.signal,
+          produced,
+        })
+      : await runToolLoop(deps, {
+          ctx,
+          messages: buildBaseMessages(ctx, stepSystemPrompt.text, attachmentMessages),
+          tools: pickStepTools(step, ctx.tools),
+          sanitizeOpts,
+          stepId,
+          signal: branch.controller.signal,
+          produced,
+          ...(scheduled.mode === 'parallel' && scheduled.sideEffect
+            ? {
+                parallelStep: { sideEffect: scheduled.sideEffect, resources: scheduled.resources },
+                maxParallelTools: 1,
+              }
+            : {}),
+          systemSegments: stepSystemPrompt.segments,
+          insertedBeforePrimary: attachmentMessages.map((item) => item.context),
+        });
     stepResult.toolResults = loopResult.toolResults;
     stepResult.toolCallIds = loopResult.toolResults.map((result) => result.callId);
     stepResult.endedAt = new Date().toISOString();
@@ -127,7 +142,9 @@ export async function executeScheduledTaskStep(options: TaskStepRunOptions): Pro
       return { scheduled, result: stepResult, toolResults: loopResult.toolResults, produced, usage: loopResult.usage, route: 'recover' };
     }
 
-    stepResult.output = loopResult.content.trim();
+    stepResult.output = directProposal
+      ? directToolEvidenceText(loopResult.toolResults[0]!)
+      : loopResult.content.trim();
     if (hasBlockingToolFailure(loopResult.toolResults)) {
       failStep(stepResult, blockingToolFailureReason(loopResult.toolResults), loopResult.toolResults);
       const blocked = stepResult.failureKind === 'permission_denied';

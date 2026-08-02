@@ -17,6 +17,8 @@ export interface Rule {
   reason: string;
 }
 
+const EXPLICIT_TOOL_INSTRUCTION_PATTERN = /(?:(?:(?:请|帮我|麻烦(?:你)?|替我)(?:使用|调用|用)|^(?:使用|调用|用))\s*[A-Za-z][A-Za-z0-9_.-]{0,63}\s*(?:工具|tool\b))|(?:\b(?:please\s+)?(?:use|call|invoke)\s+(?:the\s+)?[A-Za-z][A-Za-z0-9_.-]{0,63}\s+tool\b)/i;
+
 /** Ordered list of rules. First match wins. */
 const RULES: Rule[] = [
   // Greetings → chat (high confidence).
@@ -47,7 +49,7 @@ const RULES: Rule[] = [
   // An explicit imperative to use a named tool is unambiguously executable
   // and does not need a separate classifier model call.
   {
-    pattern: /(?:(?:(?:请|帮我|麻烦(?:你)?|替我)(?:使用|调用|用)|^(?:使用|调用|用))\s*[A-Za-z][A-Za-z0-9_.-]{0,63}\s*(?:工具|tool\b))|(?:\b(?:please\s+)?(?:use|call|invoke)\s+(?:the\s+)?[A-Za-z][A-Za-z0-9_.-]{0,63}\s+tool\b)/i,
+    pattern: EXPLICIT_TOOL_INSTRUCTION_PATTERN,
     activity: 'execute',
     confidence: 0.96,
     reason: 'explicit tool instruction',
@@ -125,4 +127,13 @@ export function listRules(): readonly Rule[] {
     ...rule,
     type: messageClassFromActivity(rule.activity),
   }));
+}
+
+/** Return every explicitly labelled tool name only for an imperative tool request. */
+export function extractExplicitToolInstructionNames(text: string): string[] {
+  const normalized = text.normalize('NFKC').trim();
+  if (!normalized || !EXPLICIT_TOOL_INSTRUCTION_PATTERN.test(normalized)) return [];
+  const names = [...normalized.matchAll(/([A-Za-z][A-Za-z0-9_.-]{0,63})\s*(?:工具|tool\b)/giu)]
+    .map((match) => match[1]!.toLowerCase());
+  return [...new Set(names)];
 }

@@ -136,7 +136,7 @@ describe('createDefaultHarness state machine', () => {
     expect(ctx.classification?.type).toBe('problem');
   });
 
-  it('completes a trivial read-only tool task in three model calls', async () => {
+  it('completes an explicit trivial read-only tool task in two model calls', async () => {
     const tool = makeTool('glob', { ok: true, output: 'attachments/' });
     const llm = createMockLlm([
       textResponse(JSON.stringify({
@@ -153,32 +153,20 @@ describe('createDefaultHarness state machine', () => {
           goal: '返回顶层条目数量和名称',
           complexity: 'trivial',
           successCriteria: ['返回数量', '返回名称', '不修改文件'],
-          steps: [{ id: 'step-1', description: '使用 glob 读取顶层条目', tools: ['glob'] }],
+          steps: [{
+            id: 'step-1',
+            description: '使用 glob 读取顶层条目',
+            tools: ['glob'],
+            toolProposal: { name: 'glob', input: { pattern: '*' } },
+          }],
         },
       })),
-      toolCallResponse([{ id: 'glob-1', name: 'glob', args: { pattern: '*' } }]),
       textResponse('共有 1 个条目：attachments/'),
     ]);
     const h = makeHarness(llm);
     const ctx = makeCtx({
       inbound: textMessage('user', '请使用 glob 工具读取当前文件夹，只告诉我顶层条目数量和名称，不要修改任何文件。'),
       tools: [tool],
-      attachments: [{
-        id: 'notes-1',
-        path: 'notes.md',
-        name: 'notes.md',
-        kind: 'document',
-        size: 128,
-        contentState: 'uninspected',
-      }],
-      history: [
-        textMessage('user', 'old turn one'),
-        textMessage('assistant', 'old answer one'),
-        textMessage('user', 'old turn two'),
-        textMessage('assistant', 'old answer two'),
-        textMessage('user', 'recent prior request'),
-        textMessage('assistant', 'recent prior answer'),
-      ],
     });
 
     const result = await h.run(ctx);
@@ -190,19 +178,15 @@ describe('createDefaultHarness state machine', () => {
       reason: 'explicit tool instruction',
     });
     expect(ctx.reply).toBe('共有 1 个条目：attachments/');
-    expect(ctx.replyProvenance).toMatchObject({ purpose: 'execute_tool_loop' });
+    expect(ctx.replyProvenance).toMatchObject({ purpose: 'execute_final_reply' });
     expect(ctx.verificationHistory?.at(-1)).toMatchObject({ source: 'structural', verdict: 'pass' });
-    expect(llm.chat).toHaveBeenCalledTimes(3);
-    expect(ctx.modelRequests).toHaveLength(3);
-    const requests = llm.chat.mock.calls.map((call) => call[0] as { messages: Array<unknown> });
-    const followUp = JSON.stringify(requests[2]?.messages);
-    expect(followUp).toContain('recent prior request');
-    expect(followUp).toContain('recent prior answer');
-    expect(followUp).not.toContain('old turn one');
-    expect(followUp).not.toContain('old answer one');
-    expect(followUp).toContain('attachments/');
-    expect(followUp).toContain('notes-1');
-    expect(followUp).toContain('inspect_attachment');
+    expect(llm.chat).toHaveBeenCalledTimes(2);
+    expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
+      'decide', 'execute_final_reply',
+    ]);
+    expect(llm.chat.mock.calls.every((call) => call[0].tools === undefined)).toBe(true);
+    expect(tool.calls).toHaveLength(1);
+    expect(tool.calls[0]?.input).toEqual({ pattern: '*' });
   });
 
   it('re-enters DECIDE for a task event received after EXECUTE and adopts a new TaskBook revision', async () => {

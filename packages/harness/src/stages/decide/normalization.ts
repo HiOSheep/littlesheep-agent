@@ -8,6 +8,7 @@ import type {
 } from '@littlesheep/types';
 import { asStringArray } from '../_shared.js';
 import type { DecodedPlan, DecodedPlanStep } from './contracts.js';
+import { normalizeToolProposal } from './tool-proposal.js';
 
 const COMPLEXITIES: readonly TaskComplexity[] = ['trivial', 'simple', 'standard', 'complex'];
 const STEP_STATUSES = new Set(['pending', 'in_progress', 'done', 'blocked', 'skipped']);
@@ -74,6 +75,7 @@ export function buildClarificationRequest(
 export function normalizePlan(
   raw: DecodedPlanStep[] | undefined,
   availableToolNames: Set<string>,
+  explicitToolName?: string,
 ): PlanStep[] {
   if (!Array.isArray(raw)) return [];
   const plan: PlanStep[] = [];
@@ -88,11 +90,18 @@ export function normalizePlan(
     const status = typeof step.status === 'string' && STEP_STATUSES.has(step.status)
       ? step.status as PlanStep['status']
       : undefined;
+    const toolProposal = normalizeToolProposal(
+      step.toolProposal,
+      tools,
+      availableToolNames,
+      explicitToolName,
+    );
     plan.push({
       id: cleanString(step.id),
       title: cleanString(step.title),
       description,
       tools,
+      toolProposal,
       requiresApproval: step.requiresApproval === true ? true : undefined,
       execution: normalizeStepExecution(step.execution),
       acceptanceCriteria: acceptanceCriteria.length > 0 ? acceptanceCriteria : undefined,
@@ -200,6 +209,7 @@ export function compactLightweightPlan(
     title: goal.slice(0, 120),
     description: goal.slice(0, 1_200),
     tools: tools.length > 0 ? tools : undefined,
+    toolProposal: plan.length === 1 ? plan[0]?.toolProposal : undefined,
     requiresApproval: plan.some((step) => step.requiresApproval) ? true : undefined,
     acceptanceCriteria: successCriteria.length > 0 ? successCriteria : undefined,
     expectedOutput,

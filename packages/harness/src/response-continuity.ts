@@ -116,15 +116,15 @@ export function assessResponseMemoryContinuity(
   if (comparison.sessionSummary) matchedSignals.push('session_summary_compared');
   if (comparison.exposure.memoryToolResults > 0) matchedSignals.push('memory_tool_results_compared');
   if (comparison.exposure.truncated) missingSignals.push('context_observability_truncated');
-  if (comparison.strongMemoryAnchor) {
+  if (comparison.strongMemoryAnchor && !comparison.replyDisclaimsContinuity) {
     matchedSignals.push('reply_uses_active_selected_memory');
     matchedSources.push('active_memory_atom');
   }
-  if (comparison.strongSummaryAnchor) {
+  if (comparison.strongSummaryAnchor && !comparison.replyDisclaimsContinuity) {
     matchedSignals.push('reply_uses_session_summary');
     matchedSources.push('session_summary');
   }
-  if (comparison.strongHistoryAnchor) {
+  if (comparison.strongHistoryAnchor && !comparison.replyDisclaimsContinuity) {
     matchedSignals.push('reply_continues_recent_conversation');
     matchedSources.push('recent_history');
   }
@@ -151,13 +151,19 @@ export function assessResponseMemoryContinuity(
   }
   const requestedValuesIncomplete = comparison.requestedValueTargetCount > 0
     && comparison.requestedValueMatchedCount < comparison.requestedValueTargetCount;
+  const continuationTargetMatched = comparison.continuationTargetMatched
+    && !comparison.replyDisclaimsContinuity;
   const discontinuous = comparison.explicitContinuationRequest
     && comparison.hasContinuationTargetEvidence
-    && !comparison.continuationTargetMatched
     && (
-      requestedValuesIncomplete
-      || comparison.replyDisclaimsContinuity
-      || comparison.continuationTargetOverlapCount === 0
+      comparison.replyDisclaimsContinuity
+      || (
+        !comparison.continuationTargetMatched
+        && (
+          requestedValuesIncomplete
+          || comparison.continuationTargetOverlapCount === 0
+        )
+      )
     )
     && !comparison.exposure.truncated;
   if (discontinuous) {
@@ -168,7 +174,7 @@ export function assessResponseMemoryContinuity(
   if (missingSignals.length === 0) missingSignals.push('no_missing_continuity_signal_detected');
 
   const supported = comparison.explicitContinuationRequest
-    ? comparison.continuationTargetMatched
+    ? continuationTargetMatched
     : matchedSources.length > 0;
   return {
     ...base,

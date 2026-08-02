@@ -69,7 +69,7 @@ describe('DeepSeek V4 tokenizer assets', () => {
     expect(requested).toBe(false);
   });
 
-  it('fails exact counting closed for uncalibrated tool continuation requests', () => {
+  it('fails exact counting closed for uncalibrated tool-enabled requests', () => {
     let tokenizerCalls = 0;
     const counter = createDeepSeekV4ExactContextTokenCounter({
       encode() {
@@ -77,6 +77,23 @@ describe('DeepSeek V4 tokenizer assets', () => {
         return { ids: [1] };
       },
     });
+
+    const tools = [{
+      type: 'function' as const,
+      function: {
+        name: 'probe',
+        description: 'Probe once.',
+        parameters: { type: 'object', properties: {} },
+      },
+    }];
+
+    expect(() => counter.countRequest({
+      model: 'deepseek-v4-flash',
+      messages: [{ role: 'user', content: 'Use the probe.' }],
+      tools,
+      tool_choice: 'auto',
+      thinking: { type: 'enabled' },
+    })).toThrow(/tool-enabled requests/);
 
     expect(() => counter.countRequest({
       model: 'deepseek-v4-flash',
@@ -93,17 +110,26 @@ describe('DeepSeek V4 tokenizer assets', () => {
         },
         { role: 'tool', tool_call_id: 'call-1', content: '{"ok":true}' },
       ],
-      tools: [{
-        type: 'function',
-        function: {
-          name: 'probe',
-          description: 'Probe once.',
-          parameters: { type: 'object', properties: {} },
-        },
-      }],
+      tools,
       tool_choice: 'auto',
       thinking: { type: 'enabled' },
-    })).toThrow(/tool continuation requests/);
+    })).toThrow(/tool-enabled requests/);
+    expect(tokenizerCalls).toBe(0);
+  });
+
+  it('fails exact counting closed when Provider thinking defaults are implicit', () => {
+    let tokenizerCalls = 0;
+    const counter = createDeepSeekV4ExactContextTokenCounter({
+      encode() {
+        tokenizerCalls++;
+        return { ids: [1] };
+      },
+    });
+
+    expect(() => counter.countRequest({
+      model: 'deepseek-v4-flash',
+      messages: [{ role: 'user', content: 'hello' }],
+    })).toThrow(/explicit thinking mode/);
     expect(tokenizerCalls).toBe(0);
   });
 });

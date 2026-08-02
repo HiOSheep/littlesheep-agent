@@ -1,6 +1,10 @@
 import type { RunContext, TaskBook, TaskStepResult } from '@littlesheep/types';
 import { buildRunRequestCandidates } from '../../context-candidates.js';
-import { prepareModelRequest, recordProviderUsage } from '../../model-observability.js';
+import {
+  preferDirectModelOutput,
+  prepareModelRequest,
+  recordProviderUsage,
+} from '../../model-observability.js';
 import { appendSystemPromptAddons, buildUserFacingVoiceAddon } from '../../profile-prompt.js';
 import { textOf } from '../_shared.js';
 import type { ExecuteStageDeps } from './contracts.js';
@@ -59,7 +63,7 @@ Follow progressive disclosure: lead with the outcome and completion status, then
     const request = prepareModelRequest(
       ctx,
       'execute_final_reply',
-      rawRequest,
+      preferDirectModelOutput(ctx, rawRequest, { force: true }),
       buildRunRequestCandidates(ctx, 'execute', rawRequest.messages, {
         history: [],
         primaryUserKind: 'workflow_state',

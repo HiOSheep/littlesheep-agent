@@ -42,7 +42,8 @@ export function publishVerifiedReply(ctx: RunContext): void {
 }
 
 export function verifyTrivialReadOnlyExecution(ctx: RunContext): StageResult | undefined {
-  if (ctx.taskBook?.complexity !== 'trivial' || ctx.taskBook.steps.length !== 1) return undefined;
+  if ((ctx.taskBook?.complexity !== 'trivial' && ctx.taskBook?.complexity !== 'simple')
+    || ctx.taskBook.steps.length !== 1) return undefined;
   const execution = ctx.taskExecution;
   if (execution?.status !== 'done' || execution.steps.length !== 1) return undefined;
   const step = execution.steps[0]!;

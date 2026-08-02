@@ -87,7 +87,7 @@ describe('verifyStage', () => {
     expect(ctx.modelRequests?.map((request) => request.stage)).toEqual(['verify']);
   });
 
-  it('uses a structural fast path for one successful trivial read-only step', async () => {
+  it('uses a structural fast path for one successful simple read-only step', async () => {
     const llm = createMockLlm(textResponse('{"verdict":"fail","reason":"should not run"}'));
     const stage = createVerifyStage({ ...deps, llm });
     const ctx = makeVerifyCtx({ reply: '共有 1 个条目：attachments/' });
@@ -105,14 +105,14 @@ describe('verifyStage', () => {
     ctx.taskBook = {
       assessment: {
         userNeed: '列出顶层条目',
-        complexity: 'trivial',
+        complexity: 'simple',
         goal: '列出顶层条目',
         successCriteria: ['返回数量和名称'],
         requiresTaskBook: false,
         maxExtraScopeRatio: 1,
       },
       goal: '列出顶层条目',
-      complexity: 'trivial',
+      complexity: 'simple',
       successCriteria: ['返回数量和名称'],
       steps: [{ id: 'step-1', description: '读取顶层条目', tools: ['glob'] }],
       overdeliveryPolicy: { maxExtraScopeRatio: 1, guidance: '只返回结果' },
@@ -120,7 +120,7 @@ describe('verifyStage', () => {
     const toolResult = { callId: 'glob-1', ok: true as const, output: 'attachments/' };
     ctx.taskExecution = {
       goal: ctx.taskBook.goal,
-      complexity: 'trivial',
+      complexity: 'simple',
       status: 'done',
       startedAt: '2026-07-30T00:00:00.000Z',
       endedAt: '2026-07-30T00:00:02.000Z',

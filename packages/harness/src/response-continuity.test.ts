@@ -519,6 +519,30 @@ describe('assessResponseMemoryContinuity', () => {
     expect(assessment.missingSignals).toContain('explicit_continuation_not_reflected_in_reply');
   });
 
+  it('does not pass continuity when the reply repeats every value but explicitly claims amnesia', () => {
+    const prior = textMessage(
+      'user',
+      'Remember code continuity-anchor-6824 and color amber.',
+      { id: 'history-values-with-amnesia' },
+    );
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage('user', 'Do you remember the code and color from the previous turn?'),
+      reply: 'I cannot remember the previous turn, but the code was continuity-anchor-6824 and the color was amber.',
+      history: [prior],
+      ...observedContext([
+        contextItem(
+          'history-values-with-amnesia',
+          'recent_message',
+          { kind: 'message', id: prior.id },
+        ),
+      ]),
+    });
+
+    expect(assessment.status).toBe('discontinuous');
+    expect(assessment.matchedSources).not.toContain('recent_history');
+    expect(assessment.missingSignals).toContain('explicit_continuation_not_reflected_in_reply');
+  });
+
   it('uses an explicit memory failure in the final reply as discontinuity evidence', () => {
     const prior = textMessage(
       'assistant',

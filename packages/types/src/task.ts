@@ -50,12 +50,20 @@ export interface TaskStepExecutionPolicy {
   sideEffect?: TaskStepSideEffect;
 }
 
+/** One DECIDE-authored tool call proposal. Runtime must validate it again before execution. */
+export interface TaskStepToolProposal {
+  name: string;
+  input: unknown;
+}
+
 /** A plan step produced by DECIDE. */
 export interface PlanStep {
   id?: string;
   title?: string;
   description: string;
   tools?: string[];
+  /** Optional bounded proposal for an explicitly named single tool. It is never execution authority. */
+  toolProposal?: TaskStepToolProposal;
   requiresApproval?: boolean;
   /** Optional scheduling contract. Runtime defaults missing/unsafe contracts to serial. */
   execution?: TaskStepExecutionPolicy;

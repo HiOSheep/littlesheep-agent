@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { classifyByRules, listRules } from './rules.js';
+import {
+  classifyByRules,
+  extractExplicitToolInstructionNames,
+  listRules,
+} from './rules.js';
 
 describe('classifyByRules', () => {
   it('classifies greetings as chat', () => {
@@ -45,6 +49,13 @@ describe('classifyByRules', () => {
 
   it('does not mistake a requested writing style for a tool invocation', () => {
     expect(classifyByRules('请用一句话介绍 glob 工具')).toBeNull();
+  });
+
+  it('extracts all explicitly requested tool labels for strict single-tool routing', () => {
+    expect(extractExplicitToolInstructionNames('请使用 glob 工具读取当前文件夹')).toEqual(['glob']);
+    expect(extractExplicitToolInstructionNames('Please use the Read tool, then call the glob tool.'))
+      .toEqual(['read', 'glob']);
+    expect(extractExplicitToolInstructionNames('请用一句话介绍 glob 工具')).toEqual([]);
   });
 
   it('classifies action verbs as problem', () => {

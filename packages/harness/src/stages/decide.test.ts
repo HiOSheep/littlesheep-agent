@@ -11,6 +11,7 @@ import {
   type RunContext,
   type RuntimeEventEnvelope,
 } from '@littlesheep/types';
+import { z } from 'zod';
 
 const deps = { model: 'test', config: DEFAULT_CONFIG, branding: DEFAULT_BRANDING };
 
@@ -81,6 +82,79 @@ describe('decideStage', () => {
     const res = await stage(ctx);
     expect(res.next).toBe('execute');
     expect(ctx.plan![0].tools).toEqual(['read']);
+  });
+
+  it('injects only the explicitly named tool schema and adopts one bounded proposal', async () => {
+    const glob = makeTool('glob', { ok: true, output: '' }, {
+      inputSchema: z.object({
+        pattern: z.string(),
+        path: z.string().optional(),
+        max_results: z.number().int().positive().optional(),
+      }),
+    });
+    const read = makeTool('read', { ok: true, output: '' }, {
+      inputSchema: z.object({ file_path: z.string() }),
+    });
+    const requests: import('@littlesheep/llm').ChatRequest[] = [];
+    const llm = createMockLlm((request) => {
+      requests.push(request);
+      return textResponse(JSON.stringify({
+        assessment: {
+          userNeed: '读取工作区顶层条目',
+          complexity: 'trivial',
+          goal: '读取工作区顶层条目',
+          successCriteria: ['返回数量和名称'],
+          requiresTaskBook: false,
+          maxExtraScopeRatio: 1,
+        },
+        taskBook: {
+          goal: '读取工作区顶层条目',
+          complexity: 'trivial',
+          successCriteria: ['返回数量和名称'],
+          steps: [{
+            id: 'step-1',
+            description: '使用 glob 读取顶层条目',
+            tools: ['glob'],
+            toolProposal: {
+              name: 'glob',
+              input: { pattern: '*', path: '.', max_results: 100 },
+            },
+          }],
+        },
+      }));
+    });
+    const stage = createDecideStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [glob, read],
+      inbound: textMessage('user', '请使用 glob 工具读取当前工作区顶层条目'),
+      classification: {
+        activity: 'execute',
+        type: 'problem',
+        confidence: 0.96,
+        source: 'rules',
+        reason: 'explicit tool instruction',
+      },
+    });
+    ctx.profilePromptAddon = 'PROFILE_SENTINEL_EXPLICIT_TOOL';
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'execute', ok: true });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.tools).toBeUndefined();
+    const system = String(requests[0]?.messages[0]?.content ?? '');
+    expect(system).toContain('Explicit single-tool DECIDE contract');
+    expect(system).toContain('without the matching `toolProposal` is invalid');
+    expect(system).not.toContain('You are the DECIDE stage of a hard-control-flow agent.');
+    expect(system).toContain('"pattern"');
+    expect(system).toContain('`glob` — glob tool (mock)');
+    expect(system).not.toContain('`read` — read tool (mock)');
+    expect(system.lastIndexOf('Explicit single-tool DECIDE contract'))
+      .toBeGreaterThan(system.lastIndexOf('PROFILE_SENTINEL_EXPLICIT_TOOL'));
+    expect(ctx.taskBook?.steps[0]?.toolProposal).toEqual({
+      name: 'glob',
+      input: { pattern: '*', path: '.', max_results: 100 },
+    });
   });
 
   it('2 parse failures route to recover without a third retry', async () => {

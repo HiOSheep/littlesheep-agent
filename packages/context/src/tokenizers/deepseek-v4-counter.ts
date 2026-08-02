@@ -85,9 +85,14 @@ export function createDeepSeekV4ExactContextTokenCounter(
       return provider.trim().toLowerCase() === 'deepseek' && isDeepSeekV4Model(model);
     },
     countRequest(request: ChatRequest): number {
-      if (containsToolContinuation(request)) {
+      if (request.thinking?.type !== 'enabled' && request.thinking?.type !== 'disabled') {
         throw new Error(
-          'DeepSeek V4 exact counting is unavailable for tool continuation requests pending Provider calibration.',
+          'DeepSeek V4 exact counting requires an explicit thinking mode because Provider defaults are not stable request framing.',
+        );
+      }
+      if (containsUncalibratedToolRequest(request)) {
+        throw new Error(
+          'DeepSeek V4 exact counting is unavailable for tool-enabled requests pending Provider calibration.',
         );
       }
       const prompt = encodeDeepSeekV4Request(request);
@@ -103,8 +108,8 @@ export function createDeepSeekV4ExactContextTokenCounter(
   });
 }
 
-function containsToolContinuation(request: ChatRequest): boolean {
-  return request.messages.some((message) => (
+function containsUncalibratedToolRequest(request: ChatRequest): boolean {
+  return (request.tools?.length ?? 0) > 0 || request.messages.some((message) => (
     message.role === 'tool' || (message.tool_calls?.length ?? 0) > 0
   ));
 }

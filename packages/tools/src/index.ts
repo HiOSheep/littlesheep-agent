@@ -23,6 +23,7 @@ export {
   toolResourcesConflict,
   type ScheduledToolExecution,
 } from './tool-execution-scheduler.js';
+export { resolveToolExecutionPolicy } from './tool-execution-result.js';
 
 export { readTool } from './builtin/read.js';
 export { writeTool } from './builtin/write.js';
