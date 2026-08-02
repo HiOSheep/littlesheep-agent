@@ -107,6 +107,28 @@ describe('assessResponseMemoryContinuity', () => {
     expect(assessment.evidence.summaryAnchorCount).toBeGreaterThanOrEqual(2);
   });
 
+  it('treats a malformed null summary body as unavailable evidence instead of crashing the run', () => {
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage('user', '继续'),
+      reply: '我会继续处理。',
+      sessionSummary: {
+        id: 'summary-null-body',
+        summary: null,
+      } as unknown as import('@littlesheep/types').CompactionSummary,
+      ...observedContext([
+        contextItem(
+          'summary-memory:summary-null-body',
+          'summary_memory',
+          { kind: 'memory', id: 'summary-null-body' },
+        ),
+      ]),
+    });
+
+    expect(assessment.status).toBe('unavailable');
+    expect(assessment.sources.sessionSummary).toBe(false);
+    expect(assessment.missingSignals).toContain('continuation_target_not_available_for_comparison');
+  });
+
   it('does not claim continuity from a history item omitted by the Context Engine', () => {
     const prior = textMessage(
       'user',

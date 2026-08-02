@@ -18,6 +18,15 @@ export interface LittleSheepDesktopShellOptions {
   onWarning?: (message: string) => void
 }
 
+export interface DesktopShellSnapshot {
+  windowExists: boolean
+  windowVisible: boolean
+  windowMinimized: boolean
+  trayAvailable: boolean
+  closePolicy: DesktopClosePolicy
+  activeRunCount: number
+}
+
 export class LittleSheepDesktopShell {
   private readonly options: LittleSheepDesktopShellOptions
   private mainWindow: BrowserWindow | null = null
@@ -33,9 +42,7 @@ export class LittleSheepDesktopShell {
   }
 
   show(): void {
-    const window = this.mainWindow && !this.mainWindow.isDestroyed()
-      ? this.mainWindow
-      : BrowserWindow.getAllWindows().find((candidate) => !candidate.isDestroyed())
+    const window = this.resolveWindow()
     if (window) {
       this.mainWindow = window
       showWindow(window)
@@ -44,9 +51,36 @@ export class LittleSheepDesktopShell {
     if (this.options.canCreateWindow()) this.mainWindow = this.createWindow()
   }
 
+  close(): boolean {
+    const window = this.resolveWindow()
+    if (!window) return false
+    window.close()
+    return true
+  }
+
+  snapshot(): DesktopShellSnapshot {
+    const window = this.resolveWindow()
+    return {
+      windowExists: Boolean(window),
+      windowVisible: window?.isVisible() ?? false,
+      windowMinimized: window?.isMinimized() ?? false,
+      trayAvailable: this.tray?.available === true,
+      closePolicy: this.options.getClosePolicy(),
+      activeRunCount: this.options.activity.snapshot().length,
+    }
+  }
+
   dispose(): void {
     this.tray?.dispose()
     this.tray = null
+  }
+
+  private resolveWindow(): BrowserWindow | undefined {
+    const window = this.mainWindow && !this.mainWindow.isDestroyed()
+      ? this.mainWindow
+      : BrowserWindow.getAllWindows().find((candidate) => !candidate.isDestroyed())
+    if (window) this.mainWindow = window
+    return window
   }
 
   private createWindow(): BrowserWindow {

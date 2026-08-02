@@ -173,6 +173,28 @@ describe('RuntimeEventQueue', () => {
     if (batch) expect(restored.snapshot().cursor).toBe(0)
   })
 
+  it('restores persisted snapshots whose omitted optional event fields were encoded as null', () => {
+    const { instance } = queue()
+    instance.append({ type: 'pause_requested', source: 'system', payload: { reason: 'pause' } })
+    const snapshot = structuredClone(instance.snapshot()) as unknown as {
+      events: Array<Record<string, unknown>>
+    }
+    Object.assign(snapshot.events[0]!, {
+      dedupKey: null,
+      expiresAt: null,
+      appliedAt: null,
+      decisionReason: null,
+    })
+
+    const restored = RuntimeEventQueue.fromSnapshot(snapshot as never, { maxEventAgeMs: null })
+    const event = restored.snapshot().events[0]!
+    expect(event).not.toHaveProperty('dedupKey')
+    expect(event).not.toHaveProperty('expiresAt')
+    expect(event).not.toHaveProperty('appliedAt')
+    expect(event).not.toHaveProperty('decisionReason')
+    expect(event).toMatchObject({ type: 'pause_requested', status: 'queued' })
+  })
+
   it('preserves a cursor after all terminal records have been pruned', () => {
     const { instance } = queue({ maxEvents: 1 })
     instance.append({ type: 'interrupt_requested', source: 'app', payload: {} })

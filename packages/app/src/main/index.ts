@@ -315,6 +315,15 @@ async function bootstrap(): Promise<void> {
     dataDir: dataDir.root,
     workplaceDir: dataDir.workplace,
     providerCalibrationToken,
+    desktopAcceptance: process.env['LITTLESHEEP_ELECTRON_ACCEPTANCE'] === '1'
+      ? {
+          token: providerCalibrationToken,
+          snapshot: () => desktopShell.snapshot(),
+          close: () => desktopShell.close(),
+          show: () => desktopShell.show(),
+          quit: requestApplicationQuit,
+        }
+      : undefined,
     rebuildRunner,
     updateRuntimeConfig,
     listActiveRuns: () => runActivity.snapshot(),

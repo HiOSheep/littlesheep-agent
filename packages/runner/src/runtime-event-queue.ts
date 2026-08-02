@@ -245,8 +245,8 @@ export class RuntimeEventQueue implements RuntimeEventQueueLike {
       status: expired ? 'expired' : 'queued',
       receivedAt,
       payload,
-      dedupKey,
-      expiresAt,
+      ...(dedupKey ? { dedupKey } : {}),
+      ...(expiresAt ? { expiresAt } : {}),
       ...(expired ? {
         appliedAt: now.toISOString(),
         decisionReason: 'expired-before-enqueue',
@@ -488,8 +488,8 @@ export class RuntimeEventQueue implements RuntimeEventQueueLike {
         || !EVENT_TYPES.has(raw.type)
         || !EVENT_SOURCES.has(raw.source)
         || !normalizeTime(raw.receivedAt)
-        || (raw.expiresAt !== undefined && !normalizeTime(raw.expiresAt))
-        || (raw.dedupKey !== undefined && !normalizeBoundedText(raw.dedupKey, MAX_DEDUP_KEY_LENGTH))
+        || (raw.expiresAt != null && !normalizeTime(raw.expiresAt))
+        || (raw.dedupKey != null && !normalizeBoundedText(raw.dedupKey, MAX_DEDUP_KEY_LENGTH))
         || !Number.isSafeInteger(raw.sequence)
         || raw.sequence <= 0
         || this.events.has(raw.id)
@@ -616,12 +616,14 @@ function requireNonEmpty(value: string, name: string): string {
   return normalized
 }
 
-function normalizeBoundedText(value: string, maximum: number): string {
+function normalizeBoundedText(value: unknown, maximum: number): string {
+  if (typeof value !== 'string') return ''
   const normalized = value.trim()
   return normalized.length > 0 && normalized.length <= maximum ? normalized : ''
 }
 
-function normalizeTime(value: string): string | undefined {
+function normalizeTime(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
   const timestamp = Date.parse(value)
   return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : undefined
 }
@@ -637,11 +639,15 @@ function boundedReason(value: string | undefined): string | undefined {
 }
 
 function cloneEvent(event: RuntimeEventEnvelope): RuntimeEventEnvelope {
-  return {
+  const cloned = {
     ...event,
     sessionId: event.sessionId,
     payload: clonePlainValue(event.payload) as Record<string, unknown>,
   }
+  for (const key of ['dedupKey', 'expiresAt', 'appliedAt', 'decisionReason'] as const) {
+    if (typeof cloned[key] !== 'string' || !cloned[key]) delete cloned[key]
+  }
+  return cloned
 }
 
 function cloneBoundedPayload(value: unknown, maxBytes: number): Record<string, unknown> {

@@ -1,14 +1,14 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-08-02 12:37:00
+最后更新：2026-08-02 22:27:11
 
 本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
 
 ## 现在先做什么
 
-**当前阶段**：Memory v3 阶段 0-26、正式数据迁移、本地向量目录、动态 working set、关系导航、shadow Git 检查点、退出冻结、统一 Tool Execution Service、工具调用级与 TaskBook 步骤级有界并行、运行时事件安全边界、TaskBookPatch、Runner 检查点续跑、应用启动恢复控制面，以及活动任务快照、暂停/继续/中断、托盘、三档关闭策略和设置页“应用与后台”已有工程基线。语义活动已收敛为 `respond / execute / clarify`；直接回应使用紧凑 Prompt 与有界历史，只在明确追问进度、结果、耗时、错误或恢复时介入上一轮执行摘要。当前使用的 DeepSeek 模型已完成 chat、continuity、tool、abort 四项真实校准，V4 官方 tokenizer 的本地精确计数与同请求 Provider 对账也已完成。具体证据只看 [项目状态](decision/project-status.md)。
+**当前阶段**：Memory v3 阶段 0-26、正式数据迁移、本地向量目录、动态 working set、关系导航、shadow Git 检查点、退出冻结、统一 Tool Execution Service、工具调用级与 TaskBook 步骤级有界并行、运行时事件安全边界、TaskBookPatch、Runner 检查点续跑、应用启动恢复控制面，以及活动任务快照、暂停/继续/中断、托盘、三档关闭策略和设置页“应用与后台”已有工程基线。语义活动已收敛为 `respond / execute / clarify`；直接回应使用紧凑 Prompt 与有界历史，只在明确追问进度、结果、耗时、错误或恢复时介入上一轮执行摘要。当前使用的 DeepSeek 模型已完成 chat、continuity、tool、abort 四项真实校准，V4 官方 tokenizer 的本地精确计数与同请求 Provider 对账也已完成。隔离数据根中的真实 Electron 已通过跨重启回答、活动任务 SSE、托盘恢复、暂停/继续、强制终止后 Checkpoint 恢复、模型热切换和中断 Checkpoint 七项验收；最终回答必须承接重启前目标且连续性状态为 `supported`。具体证据只看 [项目状态](decision/project-status.md)。
 
-**推荐下一步**：优先在真实 Electron 中验收活动任务 SSE、关闭到托盘、后台长任务、暂停/继续/中断、配置热重载、彻底退出及崩溃/重启续跑。并行记录单工具轻量任务的 Context 成本：当前已消除重复工具轮次和额外 VERIFY/最终回复调用，但真实 `glob` 基线仍需 `DECIDE 1 次 + EXECUTE 2 次`，后续应继续缩减这条路径的 Prompt，而不撤掉权限、工具证据和结构验证。权限定义继续保持“行为 profile 与权限策略正交”，不要再把编程当作权限模式。
+**推荐下一步**：优先用真实 DeepSeek 多步骤长任务验收 TaskBook、工具副作用、跨重启回答连续、网络断线恢复和长期资源回落；隔离 Electron 生命周期基线已经完成，不再重复把它列为未开始。并行记录单工具轻量任务的 Context 成本：当前已消除重复工具轮次和额外 VERIFY/最终回复调用，但真实 `glob` 基线仍需 `DECIDE 1 次 + EXECUTE 2 次`，后续应继续缩减这条路径的 Prompt，而不撤掉权限、工具证据和结构验证。权限定义继续保持“行为 profile 与权限策略正交”，不要再把编程当作权限模式。
 
 **当前权限决策**：产品语义上 LS 是 Agent 的容器，活动完整应用数据根（默认 `.littlesheep`）是容器边界，`workplace/` 是容器内的默认工作区；当前桌面实现是 Main 的逻辑边界，不是实际 Docker/OS 进程沙箱。从其他模式切换到完全访问时先用红色危险按钮确认一次；确认后容器内外及范围不明的读、写、改、删、执行均免逐次批准。研究只对容器内读取免批准；受限所有操作都需批准。外部工作区在研究/受限模式下先跳过自动索引，完全访问可直接继续。核心源码只读和危险命令硬拒绝不受模式影响。
 
@@ -24,9 +24,10 @@
 - `.littlesheep` 只是默认数据根名称，完整应用数据可整体迁移；`workplace/` 只是默认工作区子目录。
 - 当前 LS 核心源码保持只读；Skill 合并、停用、归档或删除需要来源、引用、验证和回滚证据。
 - 当前 DeepSeek 活动模型的四项 Provider 校准与 V4 本地精确 token 同请求对账已完成。OpenAI/GLM 只在实际配置凭证并进入用户选择范围后再做同等校准和模型专用 tokenizer 验证；定位文件不存在或 Main 未运行时，`verify:provider` 应明确失败，不用 mock 冒充通过。
+- 记忆连续以最终回答为准：仅保存会话、摘要、Atom 或 Checkpoint 不算通过；显式“继续/恢复”只有回答级状态 `supported` 才能称为连续。当前隔离 Electron 已通过该门，真实 DeepSeek 长任务仍需同样标准验收。
 - 暂时不用决定：更多插件类型、MCP 和发布打包。设置页后台任务控制已经作为连续性能力收口接入，不是新产品范围。
 
-到这里即可停止阅读。正式 V3 数据、桌面基线、活动路由、直接回应 Context、当前 DeepSeek 四项 Provider 能力与精确本地 token 对账、应用启动恢复、后台任务控制面和设置页入口已有当前证据；真实 Electron 后台/跨重启长任务、其他 Provider 能力矩阵和单工具 Context 成本仍需单独验收。
+到这里即可停止阅读。正式 V3 数据、桌面基线、活动路由、直接回应 Context、当前 DeepSeek 四项 Provider 能力与精确本地 token 对账、应用启动恢复、后台任务控制面、设置页入口和隔离真实 Electron 跨重启回答门已有当前证据；真实 DeepSeek 多步骤长任务、持续负载、其他 Provider 能力矩阵和单工具 Context 成本仍需单独验收。
 
 ## 需要确认依据时
 

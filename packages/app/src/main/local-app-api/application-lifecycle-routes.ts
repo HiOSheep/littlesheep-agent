@@ -12,6 +12,8 @@ import {
   matchLocalAppApiItemPath,
 } from '../../shared/local-app-api-routes.js'
 import { json, readJson, writeSse, type LocalAppApiRequest } from './http.js'
+import { hasBearerToken } from './bearer-auth.js'
+import type { LocalAppApiServerOptions } from './contracts.js'
 
 const ACTIVE_RUN_ACTIONS: ReadonlySet<RuntimeActiveRunAction> = new Set(['pause', 'resume', 'interrupt'])
 const MAX_CONTROL_REASON_LENGTH = 1_024
@@ -27,6 +29,7 @@ export interface ApplicationLifecycleRouteContext {
     action: RuntimeActiveRunAction,
     reason?: string,
   ) => RuntimeActiveRunActionOutcome
+  desktopAcceptance?: LocalAppApiServerOptions['desktopAcceptance']
 }
 
 export async function routeApplicationLifecycle(
@@ -34,6 +37,41 @@ export async function routeApplicationLifecycle(
   context: ApplicationLifecycleRouteContext,
 ): Promise<boolean> {
   const { path, method, req, res } = request
+  if (path === LOCAL_APP_API_ROUTES.desktopAcceptance && context.desktopAcceptance) {
+    if (!hasBearerToken(req.headers.authorization, context.desktopAcceptance.token)) {
+      json(res, 401, { error: 'Desktop acceptance authorization failed.' })
+      return true
+    }
+    if (method === 'GET') {
+      json(res, 200, { snapshot: context.desktopAcceptance.snapshot() })
+      return true
+    }
+    if (method !== 'POST') {
+      json(res, 405, { error: 'Method not allowed' })
+      return true
+    }
+    const body = await readJson(req, 4 * 1024)
+    if (body.action === 'close') {
+      const accepted = context.desktopAcceptance.close()
+      json(res, accepted ? 200 : 409, {
+        accepted,
+        snapshot: context.desktopAcceptance.snapshot(),
+      })
+      return true
+    }
+    if (body.action === 'show') {
+      context.desktopAcceptance.show()
+      json(res, 200, { accepted: true, snapshot: context.desktopAcceptance.snapshot() })
+      return true
+    }
+    if (body.action === 'quit') {
+      json(res, 202, { accepted: true })
+      setImmediate(() => context.desktopAcceptance?.quit())
+      return true
+    }
+    json(res, 400, { error: 'Desktop acceptance action must be close, show, or quit.' })
+    return true
+  }
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.activeRuns) {
     const runs = context.listActiveRuns?.() ?? context.getRunner().activeRuns?.list() ?? []
     json(res, 200, { runs })

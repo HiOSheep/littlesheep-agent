@@ -21,6 +21,7 @@ export const LOCAL_APP_API_ROUTES = {
   dataRootMigration: '/data-root/migration',
   dataRootRollback: '/data-root/rollback',
   applicationRestart: '/application/restart',
+  desktopAcceptance: '/application/acceptance',
   activeRuns: '/application/active-runs',
   activeRunsStream: '/application/active-runs/stream',
   workspaceSelect: '/workspace/select',

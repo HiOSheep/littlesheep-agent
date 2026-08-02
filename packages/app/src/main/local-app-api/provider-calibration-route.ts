@@ -1,4 +1,3 @@
-import { timingSafeEqual } from 'node:crypto'
 import { getProvider, parseModelRef, resolveProviderReasoningRequest, type Config } from '@littlesheep/config'
 import type { AgentRunner } from '@littlesheep/runner'
 import { LOCAL_APP_API_ROUTES } from '../../shared/local-app-api-routes.js'
@@ -8,6 +7,7 @@ import {
   type ProviderCalibrationCheck,
 } from '../provider-calibration.js'
 import { HttpError, json, readJson, type LocalAppApiRequest } from './http.js'
+import { hasBearerToken } from './bearer-auth.js'
 
 const MAX_CALIBRATION_BODY_BYTES = 16 * 1024
 const REASONING_LEVELS = ['auto', 'low', 'medium', 'high', 'ultra'] as const
@@ -29,7 +29,7 @@ export async function routeProviderCalibration(
     json(request.res, 404, { error: 'Provider calibration is not enabled.' })
     return true
   }
-  if (!isAuthorized(request.req.headers.authorization, input.token)) {
+  if (!hasBearerToken(request.req.headers.authorization, input.token)) {
     json(request.res, 401, { error: 'Provider calibration authorization failed.' })
     return true
   }
@@ -73,13 +73,6 @@ export async function routeProviderCalibration(
     results,
   })
   return true
-}
-
-function isAuthorized(header: string | undefined, token: string): boolean {
-  if (!header?.startsWith('Bearer ')) return false
-  const provided = Buffer.from(header.slice('Bearer '.length), 'utf8')
-  const expected = Buffer.from(token, 'utf8')
-  return provided.length === expected.length && timingSafeEqual(provided, expected)
 }
 
 function parseChecks(value: unknown): ProviderCalibrationCheck[] {

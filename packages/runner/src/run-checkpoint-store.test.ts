@@ -69,6 +69,30 @@ describe('RunCheckpointStore', () => {
     }
   });
 
+  it('omits undefined object fields instead of persisting them as null', async () => {
+    const { dir, store } = await tempStore();
+    try {
+      const source = {
+        ...checkpoint('checkpoint-json-semantics'),
+        runtimeControl: {
+          version: 1 as const,
+          state: 'running' as const,
+          changedAt: '2026-07-18T10:00:00.000Z',
+          reason: undefined,
+          eventIds: [],
+        },
+      };
+      await store.write(source);
+      const file = (await readdir(dir)).find((entry) => entry.endsWith('.json'))!;
+      const raw = await readFile(join(dir, file), 'utf8');
+      expect(raw).not.toContain('"reason":null');
+      expect(JSON.parse(raw).runtimeControl).not.toHaveProperty('reason');
+    } finally {
+      store.dispose();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('makes same-id writes idempotent and reports conflicting content', async () => {
     const { dir, store } = await tempStore();
     try {

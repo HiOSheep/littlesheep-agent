@@ -37,5 +37,6 @@ export async function routeRunLifecycle(
     listActiveRuns: options.listActiveRuns,
     subscribeActiveRuns: options.subscribeActiveRuns,
     controlActiveRun: options.controlActiveRun,
+    desktopAcceptance: options.desktopAcceptance,
   })
 }

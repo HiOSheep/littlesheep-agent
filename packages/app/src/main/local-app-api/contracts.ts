@@ -15,6 +15,7 @@ import type { WorkspaceLayoutIndex } from '../workspace-layout-index.js'
 import type { MemoryEmbeddingModelController } from '../memory-embedding-model-control.js'
 import type { BrowserStorageOperationResult, BrowserStorageStatus } from '../../shared/browser-control-contracts.js'
 import type { DevelopmentEnvironmentManager } from '../development-environments.js'
+import type { DesktopShellSnapshot } from '../desktop-shell.js'
 import type {
   RuntimeActiveRunAction,
   RuntimeActiveRunActionOutcome,
@@ -64,6 +65,14 @@ export interface LocalAppApiServerOptions {
   ) => Promise<string | null>
   /** Startup-scoped secret for the loopback-only Provider calibration route. */
   providerCalibrationToken?: string
+  /** Hidden, authenticated desktop lifecycle surface for isolated Electron acceptance only. */
+  desktopAcceptance?: {
+    token: string
+    snapshot: () => DesktopShellSnapshot
+    close: () => boolean
+    show: () => void
+    quit: () => void
+  }
 }
 
 export interface LocalAppApiServer {

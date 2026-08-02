@@ -84,11 +84,17 @@ export interface ResponseContinuityEvidence {
 export function collectResponseContinuityEvidence(
   input: ResponseContinuityInput,
 ): ResponseContinuityEvidence {
+  const sessionSummaryId = typeof input.sessionSummary?.id === 'string'
+    ? input.sessionSummary.id
+    : undefined;
+  const sessionSummaryText = typeof input.sessionSummary?.summary === 'string'
+    ? input.sessionSummary.summary
+    : undefined;
   const exposure = resolveResponseContinuityExposure({
     replyProvenance: input.replyProvenance,
     modelRequests: input.modelRequests,
     contextSnapshots: input.contextSnapshots,
-    sessionSummaryId: input.sessionSummary?.id,
+    sessionSummaryId,
     toolResults: input.toolResults,
   });
   const inboundText = continuityMessageText(input.inbound);
@@ -119,7 +125,7 @@ export function collectResponseContinuityEvidence(
     currentRequestTerms,
   );
   const summaryTerms = withoutContinuityTerms(
-    continuityTerms(exposure.sessionSummaryIncluded ? input.sessionSummary?.summary : undefined),
+    continuityTerms(exposure.sessionSummaryIncluded ? sessionSummaryText : undefined),
     currentRequestTerms,
   );
 
@@ -199,7 +205,7 @@ export function collectResponseContinuityEvidence(
     evaluatedAt: input.evaluatedAt ?? new Date().toISOString(),
     explicitContinuationRequest,
     initialContext: Boolean(initialMemoryContext?.trim()),
-    sessionSummary: Boolean(exposure.sessionSummaryIncluded && input.sessionSummary?.summary.trim()),
+    sessionSummary: Boolean(exposure.sessionSummaryIncluded && sessionSummaryText?.trim()),
     recentHistoryMessages: recentHistory.length,
     activeMemoryAtoms: eligibleAtomIds.size,
     adoptedMemoryReferences: adoptedReferences.length,
