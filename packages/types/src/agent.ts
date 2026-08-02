@@ -394,6 +394,8 @@ export interface AgentResult {
   toolInvocations?: import('./runtime-contracts.js').ToolInvocationRecord[];
   /** True when additional invocation records were intentionally not retained. */
   toolInvocationsTruncated?: boolean;
+  /** Bounded side-effect checkpoint ledger used by recovery and external verification. */
+  sideEffects?: import('./runtime-contracts.js').SideEffectCheckpoint[];
   /** Calibrated task contract used by EXECUTE/VERIFY. */
   taskBook?: TaskBook;
   /** Durable VERIFY decisions associated with this result. */

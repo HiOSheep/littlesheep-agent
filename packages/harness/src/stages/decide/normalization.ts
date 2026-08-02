@@ -1,10 +1,6 @@
 import type {
-  ClarificationQuestion,
-  ClarificationRequest,
-  NeedAssessment,
-  PlanStep,
-  TaskBook,
-  TaskComplexity,
+  ClarificationQuestion, ClarificationRequest, NeedAssessment,
+  PlanStep, TaskBook, TaskComplexity,
 } from '@littlesheep/types';
 import { asStringArray } from '../_shared.js';
 import type { DecodedPlan, DecodedPlanStep } from './contracts.js';
@@ -242,7 +238,9 @@ export function buildAssessmentAndTaskBook(
     rawAssessment.maxExtraScopeRatio ?? rawTaskBook.overdeliveryPolicy?.maxExtraScopeRatio,
     complexity,
   );
-  const requiresTaskBook = complexity === 'standard' || complexity === 'complex';
+  const requiresTaskBook = complexity === 'standard'
+    || complexity === 'complex'
+    || (plan.length > 1 && explicitlyRequestsStepStructure(inboundText));
   const assessment: NeedAssessment = {
     userNeed: cleanString(rawAssessment.userNeed) ?? goal,
     complexity,
@@ -280,7 +278,9 @@ function normalizeComplexity(value: unknown): TaskComplexity {
     ? value as TaskComplexity
     : 'standard';
 }
-
+function explicitlyRequestsStepStructure(value: string): boolean {
+  return /(?:分成|拆成|保留|按照|按|需要|必须|请).{0,16}(?:(?:两|二|三|四|五|六|\d+)\s*(?:个)?(?:步骤|阶段)|(?:每(?:一)?步|逐步|分步|分别(?:执行|完成|验证|验收)|可分别(?:验证|验收)))|\b(?:two|three|four|five|six|\d+)[ -]?(?:step|stage)s?\b|\b(?:separate|distinct)\s+(?:steps|stages)\b|\bstep[- ]by[- ]step\b/iu.test(value.normalize('NFKC'));
+}
 function normalizeExtraScopeRatio(value: unknown, complexity: TaskComplexity): number {
   const parsed = typeof value === 'number'
     ? value

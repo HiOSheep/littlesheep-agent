@@ -207,6 +207,51 @@ describe('recordModelRequest', () => {
     });
   });
 
+  it('makes the DeepSeek V4 auto path explicit before local token accounting', () => {
+    const ctx = makeCtx();
+    ctx.resolvedRunConfig = {
+      version: 1,
+      runId: ctx.runId,
+      resolvedAt: '2026-07-13T00:00:00.000Z',
+      origin: 'test',
+      behaviorModeId: 'general',
+      permissionPolicyId: 'research',
+      workflowStrategyId: 'core-flow',
+      contextStrategyId: 'context-v1',
+      memoryStrategyId: 'index-first-v1',
+      toolSelectionStrategyId: 'registered-tools-v1',
+      outputContractId: 'user-reply-v1',
+      provider: 'deepseek',
+      model: 'deepseek-v4-flash',
+      reasoning: 'auto',
+      parameters: {},
+      availableToolNames: [],
+      approvalRequiredToolNames: [],
+      userOverrides: {},
+      projectOverrides: {},
+    };
+    bindExactContextTokenCounter(ctx, {
+      id: 'deepseek-v4-official-encoding-tokenizer-v1',
+      supports: (provider, model) => provider === 'deepseek' && model === 'deepseek-v4-flash',
+      countRequest: (prepared) => {
+        expect(prepared.thinking).toEqual({ type: 'disabled' });
+        return 88;
+      },
+    });
+
+    const prepared = prepareModelRequest(ctx, 'reply', {
+      ...request(2, 0),
+      model: 'deepseek-v4-flash',
+    });
+
+    expect(prepared.thinking).toEqual({ type: 'disabled' });
+    expect(ctx.modelRequests?.[0]).toMatchObject({ thinkingMode: 'disabled' });
+    expect(ctx.contextSnapshots?.[0]?.localTokenLedger).toMatchObject({
+      accuracy: 'exact',
+      promptTokens: 88,
+    });
+  });
+
   it('preserves a bounded direct-output override for a retry', () => {
     const ctx = makeCtx();
     ctx.resolvedRunConfig = {

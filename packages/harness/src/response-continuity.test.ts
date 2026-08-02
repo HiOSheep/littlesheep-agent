@@ -408,6 +408,46 @@ describe('assessResponseMemoryContinuity', () => {
     expect(assessment.matchedSources).toContain('recent_history');
   });
 
+  it('judges a real Chinese Markdown recall from the final answer instead of formatting noise', () => {
+    const prior = textMessage(
+      'assistant',
+      [
+        '任务已完成。',
+        '- **文件名称**：`background-proof.txt`',
+        '- **验收代号**：`deepseek-background-anchor-7319`',
+      ].join('\n'),
+      { id: 'history-deepseek-markdown-values' },
+    );
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage(
+        'user',
+        '你还记得上一轮保存的文件名称和验收代号吗？请分别回答，不要调用工具。',
+      ),
+      reply: [
+        '是的，记得：',
+        '',
+        '- **文件名称**：`background-proof.txt`',
+        '- **验收代号**：`deepseek-background-anchor-7319`',
+        '',
+        '未调用任何工具。',
+      ].join('\n'),
+      history: [prior],
+      ...observedContext([
+        contextItem(
+          'history-deepseek-markdown-values',
+          'recent_message',
+          { kind: 'message', id: prior.id },
+        ),
+      ]),
+    });
+
+    expect(assessment.sources.explicitContinuationRequest).toBe(true);
+    expect(assessment.status).toBe('supported');
+    expect(assessment.matchedSources).toContain('recent_history');
+    expect(assessment.evidence.historyAnchorCount).toBeGreaterThanOrEqual(2);
+    expect(assessment.missingSignals).not.toContain('explicit_continuation_not_reflected_in_reply');
+  });
+
   it('uses an included versioned summary for explicit value recall when recent history has no value', () => {
     const acknowledgement = textMessage(
       'assistant',

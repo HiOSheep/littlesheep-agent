@@ -65,7 +65,13 @@ describe('runner checkpoint continuation', () => {
         eventCursor: 0,
         pendingEventIds: [],
         contextSnapshotIds: [],
-        sideEffects: [],
+        sideEffects: [{
+          idempotencyKey: 'tool:write:completed',
+          toolName: 'write',
+          status: 'succeeded',
+          effectKind: 'local_mutation',
+          evidenceRef: 'tool-result:write-completed',
+        }],
         loopBudget: {
           attemptsUsed: 0,
           maxAttempts: 8,
@@ -101,6 +107,7 @@ describe('runner checkpoint continuation', () => {
       const result = await runner.resumeCheckpoint!(checkpoint.id)
       expect(result.status).toBe('ok')
       expect(result.reply).toBe('continued reply')
+      expect(result.sideEffects).toEqual(checkpoint.sideEffects)
       const messages = await runner.sessionManager.read(session.id)
       expect(messages.filter((message) => message.id === inbound.id)).toHaveLength(1)
       expect(messages.filter((message) => message.role === 'assistant')).toHaveLength(1)

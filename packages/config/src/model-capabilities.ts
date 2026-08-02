@@ -162,11 +162,16 @@ export function resolveProviderReasoningRequest(
   model: string,
   reasoning: RuntimeReasoning,
 ): ProviderReasoningRequestOptions {
-  if (reasoning === 'auto') return {};
-
   const provider = normalizeProvider(providerId);
   const modelId = normalizeModel(model);
   const capability = MODEL_CAPABILITIES.get(`${provider}/${modelId}`);
+  if (reasoning === 'auto') {
+    // DeepSeek V4 changes prompt framing with thinking mode. Keep the default
+    // low-cost path explicit so local accounting observes the request sent.
+    return provider === 'deepseek' && capability?.thinkingControl
+      ? { thinking: { type: 'disabled' } }
+      : {};
+  }
   if (!capability || !capability.reasoningOptions.includes(reasoning)) return {};
 
   const reasoningEffort: ProviderReasoningEffort = reasoning === 'ultra'

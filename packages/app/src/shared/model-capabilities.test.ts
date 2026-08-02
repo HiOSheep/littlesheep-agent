@@ -44,6 +44,9 @@ describe('model reasoning capabilities', () => {
   })
 
   it('maps generic UI effort to each provider official request contract', () => {
+    expect(resolveProviderReasoningRequest('deepseek', 'deepseek-v4-flash', 'auto')).toEqual({
+      thinking: { type: 'disabled' },
+    })
     expect(resolveProviderReasoningRequest('openai', 'gpt-5.6', 'ultra')).toEqual({
       reasoningEffort: 'max',
       thinking: undefined,

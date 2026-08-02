@@ -30,6 +30,78 @@ describe('decideStage', () => {
     expect(ctx.taskBookRevision).toBe(1);
   });
 
+  it('preserves explicit multi-step acceptance structure for a simple task', async () => {
+    const tools = [
+      makeTool('write', { ok: true, output: 'written' }),
+      makeTool('read', { ok: true, output: 'verified' }),
+    ];
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      assessment: {
+        userNeed: '创建后读取核对',
+        complexity: 'simple',
+        goal: '创建文件并读取核对',
+        successCriteria: ['文件已创建', '内容已核对'],
+        requiresTaskBook: false,
+      },
+      taskBook: {
+        goal: '创建文件并读取核对',
+        complexity: 'simple',
+        successCriteria: ['文件已创建', '内容已核对'],
+        steps: [
+          { id: 'write-step', description: '创建文件', tools: ['write'] },
+          { id: 'read-step', description: '读取并核对文件', tools: ['read'] },
+        ],
+      },
+    })));
+    const stage = createDecideStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools,
+      inbound: textMessage('user', '请保留两个可分别验收的步骤：先创建文件，再读取核对。'),
+    });
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'execute', ok: true });
+    expect(ctx.taskBook?.assessment.requiresTaskBook).toBe(true);
+    expect(ctx.taskBook?.steps.map((step) => step.id)).toEqual(['write-step', 'read-step']);
+  });
+
+  it('still compacts an unnecessary multi-step plan for an ordinary simple request', async () => {
+    const tools = [
+      makeTool('write', { ok: true, output: 'written' }),
+      makeTool('read', { ok: true, output: 'verified' }),
+    ];
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      assessment: {
+        userNeed: '创建后读取核对',
+        complexity: 'simple',
+        goal: '创建文件并读取核对',
+        successCriteria: ['文件已创建', '内容已核对'],
+        requiresTaskBook: false,
+      },
+      taskBook: {
+        goal: '创建文件并读取核对',
+        complexity: 'simple',
+        successCriteria: ['文件已创建', '内容已核对'],
+        steps: [
+          { id: 'write-step', description: '创建文件', tools: ['write'] },
+          { id: 'read-step', description: '读取并核对文件', tools: ['read'] },
+        ],
+      },
+    })));
+    const stage = createDecideStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools,
+      inbound: textMessage('user', '创建文件并读取核对。'),
+    });
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'execute', ok: true });
+    expect(ctx.taskBook?.assessment.requiresTaskBook).toBe(false);
+    expect(ctx.taskBook?.steps).toHaveLength(1);
+  });
+
   it('includes the active behavior profile in the planning system prompt', async () => {
     const systemPrompts: string[] = [];
     const llm = createMockLlm((request) => {

@@ -57,7 +57,6 @@ export type RunnerResult = AgentResult & {
   memoryAccess?: MemoryAccessLedger;
   runCheckpointId?: string;
 };
-
 interface ContinuationInput {
   checkpoint: RunCheckpoint;
   inbound: Message;
@@ -754,6 +753,7 @@ function assembleResult(
     taskExecution: ctx.taskExecution,
     toolInvocations: ctx.toolInvocations,
     toolInvocationsTruncated: ctx.toolInvocationsTruncated,
+    sideEffects: ctx.sideEffects,
     taskBook: ctx.taskBook ? { ...ctx.taskBook, stageResults: undefined } : undefined,
     verificationHistory: ctx.verificationHistory,
     runtimeControl: ctx.runtimeControl,

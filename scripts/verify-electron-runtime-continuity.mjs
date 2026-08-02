@@ -59,13 +59,14 @@ async function main() {
     assertSupportedContinuity(continued.result, 'cross-restart reply')
 
     await provider.setDelay({ model: 'slow-a', delayMs: 4_000 })
+    const activeRunFromSse = waitForActiveRunSse(locator)
     const longRun = runStream(locator, {
       text: '继续执行。请使用 glob 工具检查当前工作区。',
       sessionId,
       permissionMode: 'full',
       workspace: workplaceDir,
     })
-    const active = await waitForActiveRun(locator)
+    const active = await activeRunFromSse
     await desktopAction(locator, 'close')
     await waitForDesktop(locator, (snapshot) => !snapshot.windowVisible && snapshot.activeRunCount >= 1)
     await desktopAction(locator, 'show')
@@ -318,6 +319,45 @@ async function waitForActiveRun(locator) {
     const payload = await getJson(locator, '/application/active-runs').catch(() => undefined)
     return payload?.runs?.[0]
   }, START_TIMEOUT_MS, 'active run')
+}
+
+async function waitForActiveRunSse(locator) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), START_TIMEOUT_MS)
+  try {
+    const response = await fetch(apiUrl(locator, '/application/active-runs/stream'), {
+      headers: authHeaders(locator),
+      signal: controller.signal,
+    })
+    if (!response.ok || !response.body) {
+      throw new Error(`active run SSE failed: ${response.status}`)
+    }
+    let buffer = ''
+    for await (const chunk of response.body) {
+      buffer += Buffer.from(chunk).toString('utf8')
+      while (true) {
+        const boundary = buffer.indexOf('\n\n')
+        if (boundary < 0) break
+        const event = parseSseBlock(buffer.slice(0, boundary))
+        buffer = buffer.slice(boundary + 2)
+        if (!event) continue
+        if (event.event === 'error') {
+          throw new Error(`active run SSE error: ${event.data?.error ?? 'unknown error'}`)
+        }
+        const run = event.event === 'active_runs' ? event.data?.runs?.[0] : undefined
+        if (run) return run
+      }
+    }
+    throw new Error('active run SSE ended before publishing a run')
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Timed out waiting for active run SSE')
+    }
+    throw error
+  } finally {
+    clearTimeout(timeout)
+    controller.abort()
+  }
 }
 
 async function desktopAction(locator, action) {

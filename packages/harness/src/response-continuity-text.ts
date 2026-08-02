@@ -211,21 +211,24 @@ function extractLabeledValue(value: string | undefined, label: string): string |
   const source = value?.normalize('NFKC') ?? '';
   if (!source) return undefined;
   const escapedLabel = escapeRegExp(label);
+  const labelSuffix = '(?:\\s|\\*\\*|__|~~)*';
   const quoted = source.match(new RegExp(
-    `${escapedLabel}\\s*(?:是|为|=|:|：)?\\s*[“"‘'\`]([^”"’'\`\\r\\n]{1,120})[”"’'\`]`,
+    `${escapedLabel}${labelSuffix}(?:是|为|=|:|：)?\\s*[“"‘'\`]([^”"’'\`\\r\\n]{1,120})[”"’'\`]`,
     'iu',
   ));
   if (quoted?.[1]?.trim()) return quoted[1].trim();
   const delimited = source.match(new RegExp(
-    `${escapedLabel}\\s*(?:是|为|=|:|：)\\s*([^，。；;、\\r\\n]{1,120})`,
+    `${escapedLabel}${labelSuffix}(?:是|为|=|:|：)\\s*([^，。；;、\\r\\n]{1,120})`,
     'iu',
   ));
-  if (delimited?.[1]?.trim()) return trimAtFollowingLabel(delimited[1], label);
+  if (delimited?.[1]?.trim()) {
+    return cleanExtractedValue(trimAtFollowingLabel(delimited[1], label));
+  }
   const compact = source.match(new RegExp(
-    `${escapedLabel}\\s*([a-z0-9][a-z0-9_+#.\\/-]{1,80}|[\\p{Script=Han}]{1,16})`,
+    `${escapedLabel}${labelSuffix}([a-z0-9][a-z0-9_+#.\\/-]{1,80}|[\\p{Script=Han}]{1,16})`,
     'iu',
   ));
-  const compactValue = compact?.[1]?.trim();
+  const compactValue = cleanExtractedValue(compact?.[1]);
   return compactValue && !looksLikeValuePlaceholder(compactValue)
     ? compactValue
     : undefined;
@@ -239,6 +242,14 @@ function requestMentionsValueLabel(request: string, label: string): boolean {
 
 function normalizeComparableValue(value: string): string {
   return value.normalize('NFKC').toLowerCase().replace(/\s+/gu, ' ').trim();
+}
+
+function cleanExtractedValue(value: string | undefined): string | undefined {
+  const normalized = value?.trim()
+    .replace(/^(?:\*\*|__|~~|`)+/gu, '')
+    .replace(/(?:\*\*|__|~~|`)+$/gu, '')
+    .trim();
+  return normalized || undefined;
 }
 
 function trimAtFollowingLabel(value: string, currentLabel: string): string {
