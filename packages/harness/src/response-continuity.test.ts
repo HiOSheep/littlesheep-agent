@@ -336,6 +336,209 @@ describe('assessResponseMemoryContinuity', () => {
     expect(assessment.matchedSources).not.toContain('recent_history');
   });
 
+  it('does not call a reply continuous when it recalls an incidental restriction but omits the requested prior values', () => {
+    const prior = textMessage(
+      'user',
+      '请记住代号 continuity-anchor-6824 和颜色琥珀色。仅本轮确认时不要复述，后续询问时必须原样回答。',
+      { id: 'history-prior-values' },
+    );
+    const acknowledgement = textMessage(
+      'assistant',
+      '记录完成。',
+      { id: 'history-prior-acknowledgement' },
+    );
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage('user', '继续上一轮。请输出上一轮让我保存的代号和颜色。'),
+      reply: '我记得上一轮要求确认时不要复述，因此不会输出。请重新告诉我。',
+      history: [prior, acknowledgement],
+      ...observedContext([
+        contextItem('history-prior-values', 'recent_message', { kind: 'message', id: prior.id }),
+        contextItem(
+          'history-prior-acknowledgement',
+          'recent_message',
+          { kind: 'message', id: acknowledgement.id },
+        ),
+      ]),
+    });
+
+    expect(assessment.status).toBe('discontinuous');
+    expect(assessment.matchedSources).not.toContain('recent_history');
+    expect(assessment.missingSignals).toContain('no_independent_recent_history_anchor');
+    expect(assessment.missingSignals).toContain('explicit_continuation_not_reflected_in_reply');
+  });
+
+  it('supports an explicit recall only when the final answer contains every requested prior value', () => {
+    const prior = textMessage(
+      'user',
+      '请记住代号 continuity-anchor-6824 和颜色琥珀色。',
+      { id: 'history-complete-values' },
+    );
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage('user', '继续上一轮。请输出上一轮让我保存的代号和颜色。'),
+      reply: '代号：continuity-anchor-6824；颜色：琥珀色。',
+      history: [prior],
+      ...observedContext([
+        contextItem('history-complete-values', 'recent_message', { kind: 'message', id: prior.id }),
+      ]),
+    });
+
+    expect(assessment.status).toBe('supported');
+    expect(assessment.matchedSources).toContain('recent_history');
+    expect(assessment.evidence.historyAnchorCount).toBeGreaterThanOrEqual(2);
+    expect(assessment.missingSignals).not.toContain('explicit_continuation_not_reflected_in_reply');
+  });
+
+  it('treats a direct memory question without the word continue as an explicit continuity check', () => {
+    const prior = textMessage(
+      'user',
+      '请记住代号 continuity-anchor-6824 和颜色琥珀色。',
+      { id: 'history-direct-recall' },
+    );
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage('user', '你还记得我上次说的代号和颜色吗？'),
+      reply: '代号是 continuity-anchor-6824，颜色是琥珀色。',
+      history: [prior],
+      ...observedContext([
+        contextItem('history-direct-recall', 'recent_message', { kind: 'message', id: prior.id }),
+      ]),
+    });
+
+    expect(assessment.sources.explicitContinuationRequest).toBe(true);
+    expect(assessment.status).toBe('supported');
+    expect(assessment.matchedSources).toContain('recent_history');
+  });
+
+  it('uses an included versioned summary for explicit value recall when recent history has no value', () => {
+    const acknowledgement = textMessage(
+      'assistant',
+      '代号和颜色都已记录完成。',
+      { id: 'history-summary-acknowledgement' },
+    );
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage('user', '你还记得我上次说的代号和颜色吗？'),
+      reply: '代号是 summary-anchor-27，颜色是海蓝色。',
+      history: [acknowledgement],
+      sessionSummary: {
+        id: 'summary-explicit-values',
+        summary: '用户要求保存的代号为 summary-anchor-27，颜色为海蓝色。',
+        collapsedCount: 6,
+        compactedAt: NOW,
+        sourceStartMessageId: 'message-1',
+        sourceEndMessageId: 'message-6',
+        sourceStartAt: NOW,
+        sourceEndAt: NOW,
+      },
+      ...observedContext([
+        contextItem(
+          'summary-memory:summary-explicit-values',
+          'summary_memory',
+          { kind: 'memory', id: 'summary-explicit-values' },
+        ),
+        contextItem(
+          'history-summary-acknowledgement',
+          'recent_message',
+          { kind: 'message', id: acknowledgement.id },
+        ),
+      ]),
+    });
+
+    expect(assessment.status).toBe('supported');
+    expect(assessment.matchedSources).toContain('session_summary');
+    expect(assessment.matchedSources).not.toContain('recent_history');
+  });
+
+  it('uses an active adopted Atom for explicit value recall after the original turn is absent', () => {
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage('user', '你还记得我之前说的代号和颜色吗？'),
+      reply: '代号是 atom-anchor-91，颜色是青绿色。',
+      initialMemoryContext: initialAtom(
+        'atom-explicit-values',
+        '用户要求保存的代号为 atom-anchor-91，颜色为青绿色。',
+      ),
+      memoryKnownState: knownState('atom-explicit-values'),
+      memoryContextWorkingSet: {
+        revision: 1,
+        activeAtomIds: ['atom-explicit-values'],
+        releasedAtomIds: [],
+        activeCallByAtom: { 'atom-explicit-values': 'initial' },
+        callAtomIds: { initial: ['atom-explicit-values'] },
+        updatedAt: NOW,
+      },
+      ...observedContext([
+        contextItem(
+          'initial-memory-selection',
+          'memory_fragment',
+          { kind: 'memory', id: 'initial-selection' },
+        ),
+      ]),
+    });
+
+    expect(assessment.status).toBe('supported');
+    expect(assessment.matchedSources).toContain('active_memory_atom');
+    expect(assessment.matchedAtomIds).toEqual(['atom-explicit-values']);
+  });
+
+  it('reports a discontinuity when an explicit multi-value recall answers only one requested value', () => {
+    const prior = textMessage(
+      'user',
+      '请记住代号 continuity-anchor-6824 和颜色琥珀色。',
+      { id: 'history-partial-values' },
+    );
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage('user', '继续上一轮。请输出上一轮让我保存的代号和颜色。'),
+      reply: '代号：continuity-anchor-6824；颜色我不记得了。',
+      history: [prior],
+      ...observedContext([
+        contextItem('history-partial-values', 'recent_message', { kind: 'message', id: prior.id }),
+      ]),
+    });
+
+    expect(assessment.status).toBe('discontinuous');
+    expect(assessment.matchedSources).not.toContain('recent_history');
+    expect(assessment.evidence.historyAnchorCount).toBeGreaterThan(0);
+    expect(assessment.missingSignals).toContain('explicit_continuation_not_reflected_in_reply');
+  });
+
+  it('does not treat prior values mentioned only in a denial as a continuous answer', () => {
+    const prior = textMessage(
+      'user',
+      '请记住代号 continuity-anchor-6824 和颜色琥珀色。',
+      { id: 'history-negated-values' },
+    );
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage('user', '你还记得我上次说的代号和颜色吗？'),
+      reply: '代号不是 continuity-anchor-6824，颜色也不是琥珀色。',
+      history: [prior],
+      ...observedContext([
+        contextItem('history-negated-values', 'recent_message', { kind: 'message', id: prior.id }),
+      ]),
+    });
+
+    expect(assessment.status).toBe('discontinuous');
+    expect(assessment.matchedSources).not.toContain('recent_history');
+    expect(assessment.missingSignals).toContain('explicit_continuation_not_reflected_in_reply');
+  });
+
+  it('uses an explicit memory failure in the final reply as discontinuity evidence', () => {
+    const prior = textMessage(
+      'assistant',
+      '下一步要验证 Electron 后台任务和跨重启检查点恢复。',
+      { id: 'history-explicit-amnesia' },
+    );
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage('user', '继续执行'),
+      reply: '我无法回忆上一轮的具体目标，请重新告诉我。',
+      history: [prior],
+      ...observedContext([
+        contextItem('history-explicit-amnesia', 'recent_message', { kind: 'message', id: prior.id }),
+      ]),
+    });
+
+    expect(assessment.status).toBe('discontinuous');
+    expect(assessment.matchedSources).not.toContain('recent_history');
+    expect(assessment.missingSignals).toContain('explicit_continuation_not_reflected_in_reply');
+  });
+
   it('does not claim amnesia when no previous task target is available to compare', () => {
     const assessment = assessResponseMemoryContinuity({
       inbound: textMessage('user', '继续执行'),

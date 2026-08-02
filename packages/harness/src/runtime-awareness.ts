@@ -10,7 +10,7 @@ import type {
   RunContext,
   SessionRunToolTiming,
 } from '@littlesheep/types';
-import { isExplicitContinuationRequest } from './continuation-intent.js';
+import { isExecutionContinuationRequest } from './continuation-intent.js';
 
 const MAX_RUNTIME_TOOL_DETAILS = 8;
 
@@ -104,7 +104,7 @@ function shouldUseCompactRuntime(ctx: RunContext, purpose: LlmCallPurpose | unde
     .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
     .map((part) => part.text)
     .join('\n');
-  return !isExplicitContinuationRequest(request);
+  return !isExecutionContinuationRequest(request);
 }
 
 function renderCompactRuntimeAwareness(

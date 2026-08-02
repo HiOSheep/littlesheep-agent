@@ -8,12 +8,12 @@ import type {
 } from '@littlesheep/types';
 import {
   collectResponseContinuityEvidence,
-  type ResponseContinuityInput,
 } from './response-continuity-evidence.js';
+import type { ResponseContinuityInput } from './response-continuity-types.js';
 
 const MAX_DIAGNOSTIC_SIGNALS = 8;
 
-export type { ResponseContinuityInput } from './response-continuity-evidence.js';
+export type { ResponseContinuityInput } from './response-continuity-types.js';
 
 /** Assess whether the actual reply remains connected to its causal prior Context. */
 export function assessResponseMemoryContinuity(
@@ -149,10 +149,16 @@ export function assessResponseMemoryContinuity(
     matchedSignals.push('explicit_continuation_requested');
     missingSignals.push('continuation_target_not_available_for_comparison');
   }
+  const requestedValuesIncomplete = comparison.requestedValueTargetCount > 0
+    && comparison.requestedValueMatchedCount < comparison.requestedValueTargetCount;
   const discontinuous = comparison.explicitContinuationRequest
     && comparison.hasContinuationTargetEvidence
     && !comparison.continuationTargetMatched
-    && comparison.continuationTargetOverlapCount === 0
+    && (
+      requestedValuesIncomplete
+      || comparison.replyDisclaimsContinuity
+      || comparison.continuationTargetOverlapCount === 0
+    )
     && !comparison.exposure.truncated;
   if (discontinuous) {
     matchedSignals.push('explicit_continuation_requested');

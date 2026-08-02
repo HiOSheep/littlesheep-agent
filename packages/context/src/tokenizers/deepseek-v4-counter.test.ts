@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  createDeepSeekV4ExactContextTokenCounter,
   prepareLocalExactContextTokenCounter,
   verifyDeepSeekV4TokenizerAssets,
 } from './deepseek-v4-counter.js';
@@ -66,6 +67,44 @@ describe('DeepSeek V4 tokenizer assets', () => {
     });
     expect(counter).toBeUndefined();
     expect(requested).toBe(false);
+  });
+
+  it('fails exact counting closed for uncalibrated tool continuation requests', () => {
+    let tokenizerCalls = 0;
+    const counter = createDeepSeekV4ExactContextTokenCounter({
+      encode() {
+        tokenizerCalls++;
+        return { ids: [1] };
+      },
+    });
+
+    expect(() => counter.countRequest({
+      model: 'deepseek-v4-flash',
+      messages: [
+        { role: 'user', content: 'Use the probe.' },
+        {
+          role: 'assistant',
+          content: '',
+          tool_calls: [{
+            id: 'call-1',
+            type: 'function',
+            function: { name: 'probe', arguments: '{}' },
+          }],
+        },
+        { role: 'tool', tool_call_id: 'call-1', content: '{"ok":true}' },
+      ],
+      tools: [{
+        type: 'function',
+        function: {
+          name: 'probe',
+          description: 'Probe once.',
+          parameters: { type: 'object', properties: {} },
+        },
+      }],
+      tool_choice: 'auto',
+      thinking: { type: 'enabled' },
+    })).toThrow(/tool continuation requests/);
+    expect(tokenizerCalls).toBe(0);
   });
 });
 

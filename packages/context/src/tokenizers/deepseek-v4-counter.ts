@@ -85,6 +85,11 @@ export function createDeepSeekV4ExactContextTokenCounter(
       return provider.trim().toLowerCase() === 'deepseek' && isDeepSeekV4Model(model);
     },
     countRequest(request: ChatRequest): number {
+      if (containsToolContinuation(request)) {
+        throw new Error(
+          'DeepSeek V4 exact counting is unavailable for tool continuation requests pending Provider calibration.',
+        );
+      }
       const prompt = encodeDeepSeekV4Request(request);
       const cacheKey = createHash('sha256').update(prompt).digest('hex');
       const cached = recentCounts.get(cacheKey);
@@ -96,6 +101,12 @@ export function createDeepSeekV4ExactContextTokenCounter(
       return count;
     },
   });
+}
+
+function containsToolContinuation(request: ChatRequest): boolean {
+  return request.messages.some((message) => (
+    message.role === 'tool' || (message.tool_calls?.length ?? 0) > 0
+  ));
 }
 
 export async function verifyDeepSeekV4TokenizerAssets(

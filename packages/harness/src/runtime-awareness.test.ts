@@ -163,6 +163,19 @@ describe('runtime awareness', () => {
     expect(system).not.toContain('previous_run:');
   });
 
+  it('keeps execution timing compact for a pure memory recall question', () => {
+    const inbound = '你还记得我上次说的代号和颜色吗？';
+    const ctx = makeCtx({ inbound: textMessage('user', inbound) });
+    ctx.previousRun = previousRunSummary();
+
+    const prepared = prepareModelRequest(ctx, 'reply', request(inbound));
+    const system = String(prepared.messages[0]?.content);
+
+    expect(system).toContain('# Runtime Clock');
+    expect(system).not.toContain('# Live Runtime State');
+    expect(system).not.toContain('previous_run:');
+  });
+
   it.each([
     '继续执行',
     '上一轮执行到哪了？',
