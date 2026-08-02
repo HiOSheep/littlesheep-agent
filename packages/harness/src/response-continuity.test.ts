@@ -127,9 +127,10 @@ describe('assessResponseMemoryContinuity', () => {
       ]),
     });
 
-    expect(assessment.status).toBe('not_applicable');
+    expect(assessment.status).toBe('unavailable');
     expect(assessment.sources.recentHistoryMessages).toBe(0);
     expect(assessment.matchedSources).not.toContain('recent_history');
+    expect(assessment.missingSignals).toContain('continuation_target_not_available_for_comparison');
   });
 
   it('recognizes an active adopted Atom exposed through a memory tool result', () => {
@@ -245,6 +246,128 @@ describe('assessResponseMemoryContinuity', () => {
 
     expect(assessment.status).toBe('uncertain');
     expect(assessment.missingSignals).toContain('no_independent_active_memory_anchor');
+  });
+
+  it('reports a discontinuity when an explicit continuation reply drops observed prior details', () => {
+    const prior = textMessage(
+      'assistant',
+      '下一步要验证 Electron 后台任务和跨重启检查点恢复。',
+      { id: 'history-continuity-required' },
+    );
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage('user', '继续执行'),
+      reply: '我已经处理好了。',
+      history: [prior],
+      ...observedContext([
+        contextItem(
+          'history-continuity-required',
+          'recent_message',
+          { kind: 'message', id: prior.id },
+        ),
+      ]),
+    });
+
+    expect(assessment.status).toBe('discontinuous');
+    expect(assessment.sources.explicitContinuationRequest).toBe(true);
+    expect(assessment.missingSignals).toContain('explicit_continuation_not_reflected_in_reply');
+  });
+
+  it('does not let an unrelated active Atom hide a dropped continuation target', () => {
+    const prior = textMessage(
+      'assistant',
+      '下一步要验证 Electron 后台任务和跨重启检查点恢复。',
+      { id: 'history-target-with-unrelated-memory' },
+    );
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage('user', '继续执行'),
+      reply: '我会继续使用 pnpm 并从仓库根目录执行。',
+      history: [prior],
+      initialMemoryContext: initialAtom(
+        'atom-pnpm-unrelated',
+        '用户长期偏好使用 pnpm，默认工作区是仓库根目录。',
+      ),
+      memoryKnownState: knownState('atom-pnpm-unrelated'),
+      memoryContextWorkingSet: {
+        revision: 1,
+        activeAtomIds: ['atom-pnpm-unrelated'],
+        releasedAtomIds: [],
+        activeCallByAtom: { 'atom-pnpm-unrelated': 'initial' },
+        callAtomIds: { initial: ['atom-pnpm-unrelated'] },
+        updatedAt: NOW,
+      },
+      ...observedContext([
+        contextItem(
+          'history-target-with-unrelated-memory',
+          'recent_message',
+          { kind: 'message', id: prior.id },
+        ),
+        contextItem(
+          'initial-memory-selection',
+          'memory_fragment',
+          { kind: 'memory', id: 'initial-selection' },
+        ),
+      ]),
+    });
+
+    expect(assessment.status).toBe('discontinuous');
+    expect(assessment.matchedSources).toContain('active_memory_atom');
+    expect(assessment.matchedSources).not.toContain('recent_history');
+  });
+
+  it('does not claim amnesia when no previous task target is available to compare', () => {
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage('user', '继续执行'),
+      reply: '我会继续处理。',
+    });
+
+    expect(assessment.status).toBe('unavailable');
+    expect(assessment.sources.explicitContinuationRequest).toBe(true);
+    expect(assessment.missingSignals).toContain('continuation_target_not_available_for_comparison');
+  });
+
+  it('keeps a weakly paraphrased continuation uncertain instead of declaring amnesia', () => {
+    const prior = textMessage(
+      'assistant',
+      '下一步要验证 Electron 后台任务和跨重启检查点恢复。',
+      { id: 'history-weak-continuity' },
+    );
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage('user', '继续执行'),
+      reply: '我会先处理 Electron。',
+      history: [prior],
+      ...observedContext([
+        contextItem(
+          'history-weak-continuity',
+          'recent_message',
+          { kind: 'message', id: prior.id },
+        ),
+      ]),
+    });
+
+    expect(assessment.status).toBe('uncertain');
+    expect(assessment.evidence.historyAnchorCount).toBe(1);
+    expect(assessment.missingSignals).not.toContain('explicit_continuation_not_reflected_in_reply');
+  });
+
+  it('keeps an explicit continuation uncertain when Context observability is truncated', () => {
+    const prior = textMessage(
+      'assistant',
+      '下一步要验证 Electron 后台任务和跨重启检查点恢复。',
+      { id: 'history-truncated' },
+    );
+    const observed = observedContext([
+      contextItem('history-truncated', 'recent_message', { kind: 'message', id: prior.id }),
+    ]);
+    observed.contextSnapshots[0]!.itemsTruncated = true;
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage('user', '继续执行'),
+      reply: '我已经处理好了。',
+      history: [prior],
+      ...observed,
+    });
+
+    expect(assessment.status).toBe('uncertain');
+    expect(assessment.missingSignals).toContain('context_observability_truncated');
   });
 
   it('reports not_applicable when there is no prior evidence', () => {

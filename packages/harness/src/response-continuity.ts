@@ -1,183 +1,60 @@
-// Local, bounded continuity assessment for the final user-visible reply.
+// Local, bounded continuity verdict for the final user-visible reply.
 // This is evidence collection, not a second model judgment. It never blocks
 // the run, changes factual confidence, or triggers another Provider request.
 
 import type {
-  CompactionSummary,
-  ContextSnapshot,
   MemoryContinuityAssessment,
   MemoryContinuitySource,
-  Message,
-  ModelRequestSnapshot,
-  ReplyProvenance,
-  RuntimeMemoryContextWorkingSet,
-  RuntimeMemoryKnownState,
-  TaskBook,
-  ToolResult,
 } from '@littlesheep/types';
-import { resolveResponseContinuityExposure } from './response-continuity-exposure.js';
 import {
-  continuityMessageText,
-  continuityOverlap,
-  continuityTerms,
-  parseMemoryAtomSections,
-  strongContinuityAnchor,
-  stripMemoryAtomSections,
-  withoutContinuityTerms,
-} from './response-continuity-text.js';
+  collectResponseContinuityEvidence,
+  type ResponseContinuityInput,
+} from './response-continuity-evidence.js';
 
-const MAX_HISTORY_MESSAGES = 8;
 const MAX_DIAGNOSTIC_SIGNALS = 8;
-const MAX_REFERENCED_ATOMS = 32;
-const MAX_MATCHED_ATOMS = 16;
 
-export interface ResponseContinuityInput {
-  reply?: string;
-  inbound?: Message;
-  history?: Message[];
-  initialMemoryContext?: string;
-  sessionSummary?: CompactionSummary;
-  memoryKnownState?: RuntimeMemoryKnownState;
-  memoryContextWorkingSet?: RuntimeMemoryContextWorkingSet;
-  taskBook?: TaskBook;
-  toolResults?: ToolResult[];
-  modelRequests?: ModelRequestSnapshot[];
-  contextSnapshots?: ContextSnapshot[];
-  replyProvenance?: ReplyProvenance;
-  evaluatedAt?: string;
-}
+export type { ResponseContinuityInput } from './response-continuity-evidence.js';
 
-/** Assess whether the actual reply contains evidence available only from prior context. */
+/** Assess whether the actual reply remains connected to its causal prior Context. */
 export function assessResponseMemoryContinuity(
   input: ResponseContinuityInput,
 ): MemoryContinuityAssessment {
-  const exposure = resolveResponseContinuityExposure({
-    replyProvenance: input.replyProvenance,
-    modelRequests: input.modelRequests,
-    contextSnapshots: input.contextSnapshots,
-    sessionSummaryId: input.sessionSummary?.id,
-    toolResults: input.toolResults,
-  });
-  const replyTerms = continuityTerms(input.reply);
-  const inboundTerms = continuityTerms(continuityMessageText(input.inbound));
-  const currentRequestTerms = continuityTerms(continuityMessageText(input.inbound));
-  const taskTerms = continuityTerms([
-    continuityMessageText(input.inbound),
-    input.taskBook?.goal,
-    ...(input.taskBook?.successCriteria ?? []),
-  ].filter(Boolean).join('\n'));
-  const recentHistory = (input.history ?? [])
-    .filter((message) => message.role === 'user' || message.role === 'assistant')
-    .filter((message) => !exposure.strict || exposure.historyMessageIds?.has(message.id))
-    .slice(-MAX_HISTORY_MESSAGES);
-  const historyTerms = withoutContinuityTerms(
-    continuityTerms(recentHistory.map(continuityMessageText).join('\n')),
-    currentRequestTerms,
-  );
-  const summaryTerms = withoutContinuityTerms(
-    continuityTerms(exposure.sessionSummaryIncluded ? input.sessionSummary?.summary : undefined),
-    currentRequestTerms,
-  );
-
-  const references = input.memoryKnownState?.references ?? [];
-  const adoptedReferences = references.filter((reference) => reference.decision === 'adopted');
-  const excludedOrConflictedReferences = references.length - adoptedReferences.length;
-  const activeAtomIds = new Set(input.memoryContextWorkingSet?.activeAtomIds ?? []);
-  const adoptedAtomIds = new Set(adoptedReferences.map((reference) => reference.atomId));
-  const eligibleAtomIds = new Set([...activeAtomIds].filter((atomId) => adoptedAtomIds.has(atomId)));
-  const initialMemoryContext = exposure.initialMemoryIncluded
-    ? input.initialMemoryContext
-    : undefined;
-  const parsedAtomTexts = parseMemoryAtomSections(initialMemoryContext);
-  const atomTexts = [...new Map(
-    parsedAtomTexts
-      .concat(exposure.memoryToolAtoms)
-      .filter((atom) => eligibleAtomIds.has(atom.atomId))
-      .map((atom) => [atom.atomId, atom]),
-  ).values()];
-  // Marked Context is authoritative per Atom. Its surrounding headings are
-  // transport scaffolding and must not keep a released Atom "continuous".
-  const unscopedInitialText = parsedAtomTexts.length > 0
-    ? ''
-    : stripMemoryAtomSections(initialMemoryContext);
-  const unscopedMemoryTerms = withoutContinuityTerms(
-    continuityTerms(unscopedInitialText),
-    currentRequestTerms,
-  );
-  const atomMatches = atomTexts.map((atom) => ({
-    atomId: atom.atomId,
-    overlap: continuityOverlap(
-      replyTerms,
-      withoutContinuityTerms(continuityTerms(atom.text), currentRequestTerms),
-    ),
-  }));
-  const matchedAtomIds = atomMatches
-    .filter((match) => strongContinuityAnchor(match.overlap))
-    .map((match) => match.atomId)
-    .slice(0, MAX_MATCHED_ATOMS);
-  const atomMemoryAnchorCount = atomMatches
-    .filter((match) => matchedAtomIds.includes(match.atomId))
-    .reduce((total, match) => total + match.overlap.count, 0);
-  const unscopedMemoryOverlap = continuityOverlap(replyTerms, unscopedMemoryTerms);
-  const memoryAnchorCount = atomMemoryAnchorCount + unscopedMemoryOverlap.count;
-  const summaryOverlap = continuityOverlap(replyTerms, summaryTerms);
-  const historyOverlap = continuityOverlap(replyTerms, historyTerms);
-  const taskOverlap = continuityOverlap(replyTerms, taskTerms);
-  const requestOverlap = continuityOverlap(replyTerms, currentRequestTerms);
-  const strongUnscopedMemoryAnchor = strongContinuityAnchor(unscopedMemoryOverlap);
-  const strongSummaryAnchor = strongContinuityAnchor(summaryOverlap);
-  const strongHistoryAnchor = strongContinuityAnchor(historyOverlap);
-  const activeMemoryAtoms = eligibleAtomIds.size;
-  const hasTextEvidence = atomTexts.length > 0
-    || unscopedMemoryTerms.size > 0
-    || summaryTerms.size > 0
-    || historyTerms.size > 0;
-  const hasMemoryMetadata = references.length > 0;
-  const initialContext = Boolean(initialMemoryContext?.trim());
-  const sessionSummary = Boolean(exposure.sessionSummaryIncluded && input.sessionSummary?.summary.trim());
-  const evaluatedAt = input.evaluatedAt ?? new Date().toISOString();
-  const referencedAtomIds = references
-    .map((reference) => reference.atomId)
-    .slice(0, MAX_REFERENCED_ATOMS);
-  const independentContinuityAnchorCount = memoryAnchorCount
-    + summaryOverlap.count
-    + historyOverlap.count;
-
+  const comparison = collectResponseContinuityEvidence(input);
   const base = {
     version: 1 as const,
     confidence: 1,
-    evaluatedAt,
+    evaluatedAt: comparison.evaluatedAt,
     method: 'answer-evidence-v1' as const,
     sources: {
-      initialContext,
-      sessionSummary,
-      recentHistoryMessages: recentHistory.length,
-      contextObserved: exposure.observed,
-      observedContextSnapshots: exposure.snapshots,
-      contextItemsTruncated: exposure.truncated,
-      memoryToolResults: exposure.memoryToolResults,
-      activeMemoryAtoms,
-      adoptedMemoryReferences: adoptedReferences.length,
-      excludedOrConflictedReferences,
+      initialContext: comparison.initialContext,
+      sessionSummary: comparison.sessionSummary,
+      recentHistoryMessages: comparison.recentHistoryMessages,
+      explicitContinuationRequest: comparison.explicitContinuationRequest,
+      contextObserved: comparison.exposure.observed,
+      observedContextSnapshots: comparison.exposure.snapshots,
+      contextItemsTruncated: comparison.exposure.truncated,
+      memoryToolResults: comparison.exposure.memoryToolResults,
+      activeMemoryAtoms: comparison.activeMemoryAtoms,
+      adoptedMemoryReferences: comparison.adoptedMemoryReferences,
+      excludedOrConflictedReferences: comparison.excludedOrConflictedReferences,
     },
     evidence: {
-      replyTermCount: replyTerms.size,
-      memoryTermCount: atomTexts.reduce((total, atom) => total + continuityTerms(atom.text).size, 0)
-        + unscopedMemoryTerms.size,
-      memoryAnchorCount,
-      summaryAnchorCount: summaryOverlap.count,
-      historyAnchorCount: historyOverlap.count,
-      taskAnchorCount: taskOverlap.count,
-      independentContinuityAnchorCount,
+      replyTermCount: comparison.replyTermCount,
+      memoryTermCount: comparison.memoryTermCount,
+      memoryAnchorCount: comparison.memoryAnchorCount,
+      summaryAnchorCount: comparison.summaryAnchorCount,
+      historyAnchorCount: comparison.historyAnchorCount,
+      taskAnchorCount: comparison.taskOverlapCount,
+      independentContinuityAnchorCount: comparison.independentContinuityAnchorCount,
     },
     matchedSignals: [] as string[],
     missingSignals: [] as string[],
     matchedSources: [] as MemoryContinuitySource[],
-    matchedAtomIds,
-    referencedAtomIds,
+    matchedAtomIds: comparison.matchedAtomIds,
+    referencedAtomIds: comparison.referencedAtomIds,
   };
 
-  if (replyTerms.size === 0) {
+  if (comparison.replyTermCount === 0) {
     return {
       ...base,
       status: 'unavailable',
@@ -186,7 +63,7 @@ export function assessResponseMemoryContinuity(
     };
   }
 
-  if (exposure.strict && !exposure.observed) {
+  if (comparison.exposure.strict && !comparison.exposure.observed) {
     return {
       ...base,
       status: 'unavailable',
@@ -195,7 +72,7 @@ export function assessResponseMemoryContinuity(
     };
   }
 
-  if (exposure.truncated && !hasTextEvidence) {
+  if (comparison.exposure.truncated && !comparison.hasTextEvidence) {
     return {
       ...base,
       status: 'unavailable',
@@ -204,7 +81,16 @@ export function assessResponseMemoryContinuity(
     };
   }
 
-  if (!hasTextEvidence && !hasMemoryMetadata) {
+  if (!comparison.hasTextEvidence && !comparison.hasMemoryMetadata) {
+    if (comparison.explicitContinuationRequest) {
+      return {
+        ...base,
+        status: 'unavailable',
+        confidence: 0.95,
+        matchedSignals: ['explicit_continuation_requested'],
+        missingSignals: ['continuation_target_not_available_for_comparison'],
+      };
+    }
     return {
       ...base,
       status: 'not_applicable',
@@ -213,7 +99,7 @@ export function assessResponseMemoryContinuity(
     };
   }
 
-  if (!hasTextEvidence && hasMemoryMetadata) {
+  if (!comparison.hasTextEvidence && comparison.hasMemoryMetadata) {
     return {
       ...base,
       status: 'unavailable',
@@ -226,40 +112,64 @@ export function assessResponseMemoryContinuity(
   const matchedSignals: string[] = [];
   const missingSignals: string[] = [];
   const matchedSources: MemoryContinuitySource[] = [];
-  if (initialContext) matchedSignals.push('initial_memory_context_compared');
-  if (sessionSummary) matchedSignals.push('session_summary_compared');
-  if (exposure.memoryToolResults > 0) matchedSignals.push('memory_tool_results_compared');
-  if (exposure.truncated) missingSignals.push('context_observability_truncated');
-  if (matchedAtomIds.length > 0 || strongUnscopedMemoryAnchor) {
+  if (comparison.initialContext) matchedSignals.push('initial_memory_context_compared');
+  if (comparison.sessionSummary) matchedSignals.push('session_summary_compared');
+  if (comparison.exposure.memoryToolResults > 0) matchedSignals.push('memory_tool_results_compared');
+  if (comparison.exposure.truncated) missingSignals.push('context_observability_truncated');
+  if (comparison.strongMemoryAnchor) {
     matchedSignals.push('reply_uses_active_selected_memory');
     matchedSources.push('active_memory_atom');
   }
-  if (strongSummaryAnchor) {
+  if (comparison.strongSummaryAnchor) {
     matchedSignals.push('reply_uses_session_summary');
     matchedSources.push('session_summary');
   }
-  if (strongHistoryAnchor) {
+  if (comparison.strongHistoryAnchor) {
     matchedSignals.push('reply_continues_recent_conversation');
     matchedSources.push('recent_history');
   }
-  if (taskOverlap.count >= 2) matchedSignals.push('reply_matches_current_task');
-  if ((activeMemoryAtoms > 0 || unscopedMemoryTerms.size > 0) && matchedSources[0] !== 'active_memory_atom') {
+  if (comparison.taskOverlapCount >= 2) matchedSignals.push('reply_matches_current_task');
+  if (comparison.memoryTermsAvailable && !matchedSources.includes('active_memory_atom')) {
     missingSignals.push('no_independent_active_memory_anchor');
   }
-  if (summaryTerms.size > 0 && !strongSummaryAnchor) missingSignals.push('no_independent_summary_anchor');
-  if (historyTerms.size > 0 && !strongHistoryAnchor) missingSignals.push('no_independent_recent_history_anchor');
-  if (inboundTerms.size > 0 && requestOverlap.count >= 2 && independentContinuityAnchorCount === 0) {
+  if (comparison.summaryTermsAvailable && !comparison.strongSummaryAnchor) {
+    missingSignals.push('no_independent_summary_anchor');
+  }
+  if (comparison.historyTermsAvailable && !comparison.strongHistoryAnchor) {
+    missingSignals.push('no_independent_recent_history_anchor');
+  }
+  if (
+    comparison.inboundTermCount > 0
+    && comparison.requestOverlapCount >= 2
+    && comparison.independentContinuityAnchorCount === 0
+  ) {
     missingSignals.push('reply_only_matches_current_request');
+  }
+  if (comparison.explicitContinuationRequest && !comparison.hasContinuationTargetEvidence) {
+    matchedSignals.push('explicit_continuation_requested');
+    missingSignals.push('continuation_target_not_available_for_comparison');
+  }
+  const discontinuous = comparison.explicitContinuationRequest
+    && comparison.hasContinuationTargetEvidence
+    && !comparison.continuationTargetMatched
+    && comparison.continuationTargetOverlapCount === 0
+    && !comparison.exposure.truncated;
+  if (discontinuous) {
+    matchedSignals.push('explicit_continuation_requested');
+    missingSignals.push('explicit_continuation_not_reflected_in_reply');
   }
   if (matchedSignals.length === 0) matchedSignals.push('continuity_sources_were_available');
   if (missingSignals.length === 0) missingSignals.push('no_missing_continuity_signal_detected');
 
-  const supported = matchedSources.length > 0;
+  const supported = comparison.explicitContinuationRequest
+    ? comparison.continuationTargetMatched
+    : matchedSources.length > 0;
   return {
     ...base,
-    status: supported ? 'supported' : 'uncertain',
+    status: supported ? 'supported' : discontinuous ? 'discontinuous' : 'uncertain',
     confidence: supported
-      ? Math.min(0.98, 0.7 + Math.min(0.2, independentContinuityAnchorCount * 0.035))
+      ? Math.min(0.98, 0.7 + Math.min(0.2, comparison.independentContinuityAnchorCount * 0.035))
+      : discontinuous ? 0.88
       : 0.46,
     matchedSignals: matchedSignals.slice(0, MAX_DIAGNOSTIC_SIGNALS),
     missingSignals: missingSignals.slice(0, MAX_DIAGNOSTIC_SIGNALS),

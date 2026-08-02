@@ -42,6 +42,7 @@ describe('ExecutionLogStore', () => {
         initialContext: true,
         sessionSummary: false,
         recentHistoryMessages: 2,
+        explicitContinuationRequest: true,
         contextObserved: true,
         observedContextSnapshots: 1,
         contextItemsTruncated: false,

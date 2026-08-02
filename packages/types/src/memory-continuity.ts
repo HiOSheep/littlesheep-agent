@@ -3,6 +3,7 @@
 
 export type MemoryContinuityStatus =
   | 'supported'
+  | 'discontinuous'
   | 'uncertain'
   | 'not_applicable'
   | 'unavailable';
@@ -26,6 +27,7 @@ export interface MemoryContinuityAssessment {
     initialContext: boolean;
     sessionSummary: boolean;
     recentHistoryMessages: number;
+    explicitContinuationRequest: boolean;
     contextObserved: boolean;
     observedContextSnapshots: number;
     contextItemsTruncated: boolean;
