@@ -1167,7 +1167,8 @@ body.is-resizing-column .window-shell.sidebar-drag-live .primary-workspace::afte
   color: var(--muted);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--radius-ui);
+  /* Small controls stay crisp at their fixed 26x24px size. */
+  border-radius: var(--radius-icon);
   cursor: pointer;
   transition:
     background-color var(--motion-fast) var(--motion-ease),

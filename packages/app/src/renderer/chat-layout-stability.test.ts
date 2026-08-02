@@ -58,7 +58,7 @@ describe('chat layout stability', () => {
     expect(panelView).not.toContain('onToggleCollapsed')
     expect(styles).toMatch(/\.workspace-panel-reopen-target\s*\{[\s\S]*?top:\s*50%;/u)
     expect(styles).toMatch(/\.workspace-panel-corner-toggle\s*\{[\s\S]*?top:\s*14px;[\s\S]*?right:\s*12px;/u)
-    expect(styles).toMatch(/\.sidebar-toggle-btn\s*\{[\s\S]*?width:\s*26px;[\s\S]*?height:\s*24px;[\s\S]*?transition:/u)
+    expect(styles).toMatch(/\.sidebar-toggle-btn\s*\{[\s\S]*?width:\s*26px;[\s\S]*?height:\s*24px;[\s\S]*?border-radius:\s*var\(--radius-icon\);[\s\S]*?transition:/u)
     expect(styles).toMatch(/\.sidebar-toggle-icon\s*\{[\s\S]*?width:\s*18px;[\s\S]*?height:\s*14px;[\s\S]*?shape-rendering:\s*geometricPrecision;/u)
     expect(styles).toMatch(/\.sidebar-toggle-outline,\s*\.sidebar-toggle-divider\s*\{[\s\S]*?stroke-width:\s*1;[\s\S]*?vector-effect:\s*non-scaling-stroke;/u)
     expect(styles).toMatch(/\.sidebar-toggle-divider\s*\{[\s\S]*?transform var\(--sidebar-collapse-motion\) var\(--motion-ease\)/u)

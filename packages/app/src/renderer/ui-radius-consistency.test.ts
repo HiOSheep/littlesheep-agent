@@ -21,6 +21,7 @@ describe('UI radius consistency', () => {
     expect(values.length).toBeGreaterThan(0)
     expect(new Set(values)).toEqual(new Set([
       'var(--radius-ui)',
+      'var(--radius-icon)',
       'var(--radius-pill)',
       'var(--radius-circle)',
       '0',
