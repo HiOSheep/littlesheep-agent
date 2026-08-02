@@ -1,6 +1,6 @@
 # LittleSheep 核心 Agent 流程规范
 
-最后更新：2026-08-02 22:27:11
+最后更新：2026-08-02 23:10:30
 
 本文是 [LittleSheep 架构原则](architecture-principles.md) 在 Core Flow、TaskBook、验证、恢复和记忆运行时上的专项约束。LLM 与 Agent、Mode 与权限、Context 与 Memory、Harness 与 Tool Execution 的顶层分工以架构原则为准；本文不重复维护另一套总架构。
 
@@ -198,6 +198,7 @@ execute 内部：
 - 结构化记忆写入具备阈值、写侧安全检查、父级索引原子更新、审计记录、恢复排队、去重和合并。
 - TaskBook、步骤、工具调用、验证结果和最终回复会进入执行日志，历史 UI 与实时过程使用同一套无气泡展示结构。
 - `@littlesheep/context` 已接管显式候选、稳定排序、窗口预算、可选项淘汰、压缩建议和脱敏 `ContextSnapshot`。`execute` 路径继续把基础策略、记忆根索引、bootstrap、行为 profile、reasoning、Workflow/TaskBook 和输出约束拆成可追溯 segment；`respond` 路径只投影身份、能力名、`USER.md`、受限记忆索引、相关摘要/Atom、最近历史和紧凑输出约束，不重复注入执行专用信息。
+- 工具循环首轮工具结果进入后，后续请求只裁剪较旧历史并保留最近 2 条历史、必需附件 manifest、当前用户消息、系统/步骤契约和已产生的工具证据；这只减少重复 Context，不减少实时 LLM 回复、工具 schema、权限判断或验证证据。真实 Provider usage/耗时收益必须另行验收，不能由字符数或保守估算冒充精确 token 节省。
 - 每次模型请求都解析独立、版本化的 `LlmCallContract`，明确 purpose、stage、Context 来源、允许决策、输出结构、工具、记忆意图和预算；缺少必需 Context、stage 不匹配、工具越权或预算无效时在发送前失败关闭，`FINALIZE` 禁止额外模型调用。
 - `CAPTURE` 默认从已经持久化的用户可见运行事实确定性生成 daily 记录；`EVOLVE` 按复杂度和记忆信号自适应调用。用户可见的聊天回复、澄清问题、任务/步骤说明、验证说明、执行结论和交付表达必须在当次 run 中实时调用当前 Provider API，由 LLM 结合 `SOUL.md`/profile 现场生成；这不是候选文案选择流程，不能从模板库、预备文案池或历史回答选取新消息。`ReplyProvenance` 绑定真实模型请求，`FINALIZE` 必须回查请求后才可发布。已经生成的回复只能在同一 UI 回合的更新、日志和持久化中复用，不能再次作为新消息发送。API 返回在发布前通过持久化会话级注册表原子占用规范化指纹；完全重复时最多重新实时调用两次当前 Provider API，仍重复、为空、注册表不可用或模型不可用时只显示 Runtime 错误/状态，不使用确定性 Agent 降级文案。UI 控件、状态、路径、权限和进度数字仍由 Runtime 稳定提供。
 - FINALIZE 已接入本地、回答级记忆连续性评估，不再只判断“本轮是否加载过记忆”。评估从 `ReplyProvenance` 回查产生最终回答的真实请求及其之前的 ContextSnapshot，只比较实际进入该因果调用链的 active/adopted Atom、版本化会话摘要、近期跨轮消息和已进入后续模型请求的记忆工具结果。回答必须承接当前请求之外的独立锚点才可标记 `supported`；显式续答优先比较最近两条可观察消息，其次摘要，最后才使用已采用记忆；目标完整可观察且零锚点时标记 `discontinuous`，弱锚点、Context 截断或无目标时不武断判为失忆。仅复述当前请求、Context 已裁剪来源、缺少快照的来源，以及 released/excluded/conflicted Atom 均不得证明连续。结果以 `supported / discontinuous / uncertain / not_applicable / unavailable` 写入 `AgentResult` 和执行日志，并只形成有界 routing/activation 反馈，不增加 Provider 调用、不提高事实 confidence，也不替代 VERIFY。

@@ -163,6 +163,22 @@ describe('createDefaultHarness state machine', () => {
     const ctx = makeCtx({
       inbound: textMessage('user', '请使用 glob 工具读取当前文件夹，只告诉我顶层条目数量和名称，不要修改任何文件。'),
       tools: [tool],
+      attachments: [{
+        id: 'notes-1',
+        path: 'notes.md',
+        name: 'notes.md',
+        kind: 'document',
+        size: 128,
+        contentState: 'uninspected',
+      }],
+      history: [
+        textMessage('user', 'old turn one'),
+        textMessage('assistant', 'old answer one'),
+        textMessage('user', 'old turn two'),
+        textMessage('assistant', 'old answer two'),
+        textMessage('user', 'recent prior request'),
+        textMessage('assistant', 'recent prior answer'),
+      ],
     });
 
     const result = await h.run(ctx);
@@ -178,6 +194,15 @@ describe('createDefaultHarness state machine', () => {
     expect(ctx.verificationHistory?.at(-1)).toMatchObject({ source: 'structural', verdict: 'pass' });
     expect(llm.chat).toHaveBeenCalledTimes(3);
     expect(ctx.modelRequests).toHaveLength(3);
+    const requests = llm.chat.mock.calls.map((call) => call[0] as { messages: Array<unknown> });
+    const followUp = JSON.stringify(requests[2]?.messages);
+    expect(followUp).toContain('recent prior request');
+    expect(followUp).toContain('recent prior answer');
+    expect(followUp).not.toContain('old turn one');
+    expect(followUp).not.toContain('old answer one');
+    expect(followUp).toContain('attachments/');
+    expect(followUp).toContain('notes-1');
+    expect(followUp).toContain('inspect_attachment');
   });
 
   it('re-enters DECIDE for a task event received after EXECUTE and adopts a new TaskBook revision', async () => {

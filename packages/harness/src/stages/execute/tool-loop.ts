@@ -39,6 +39,7 @@ import {
 const MAX_ITERATIONS = 20;
 const MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS = 2;
 const MAX_EVIDENCE_FINGERPRINTS = MAX_ITERATIONS * 8;
+const MAX_CONTINUATION_HISTORY_MESSAGES = 2;
 const executionServices = new WeakMap<RunContext, ToolExecutionService>();
 
 export function convertToolCall(tc: LlmToolCall): { id: string; name: string; input: unknown } {
@@ -72,6 +73,9 @@ export async function runToolLoop(
   const toolResults: ToolResult[] = [];
   const executionService = toolExecutionService(deps, ctx, sanitizeOpts);
   const evidenceFingerprints = new Set<string>();
+  const initialHistory = recentHistoryForModel(ctx.history, 8);
+  let requestHistory = initialHistory;
+  let continuationCompacted = false;
   let noProgressRounds = 0;
   let forceFinalResponse = false;
 
@@ -91,7 +95,7 @@ export async function runToolLoop(
         'execute_tool_loop',
         rawRequest,
         buildRunRequestCandidates(ctx, 'execute', rawRequest.messages, {
-          history: recentHistoryForModel(ctx.history, 8),
+          history: requestHistory,
           systemSegments,
           insertedBeforePrimary,
         }),
@@ -167,6 +171,25 @@ export async function runToolLoop(
         }
         finalizeToolResult(ctx, produced, messages, toolResults, converted.name, result, stepId);
       }
+
+      // Tool results are now authoritative for the active step. Keep the
+      // current user message, system contract, latest turn, and the required
+      // attachment manifest, but drop older history from later rounds. This
+      // reduces repeated prompt cost without hiding the evidence or attachment
+      // lookup entry points the model needs to decide whether another tool is
+      // necessary.
+      if (!continuationCompacted) {
+        const keptHistoryCount = Math.min(MAX_CONTINUATION_HISTORY_MESSAGES, initialHistory.length);
+        if (compactToolLoopContinuation(
+          messages,
+          initialHistory.length,
+          insertedBeforePrimary?.length ?? 0,
+          keptHistoryCount,
+        )) {
+          requestHistory = initialHistory.slice(-keptHistoryCount);
+          continuationCompacted = true;
+        }
+      }
       noProgressRounds = addedEvidence ? 0 : noProgressRounds + 1;
       if (noProgressRounds >= MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS) {
         forceFinalResponse = true;
@@ -194,6 +217,21 @@ export async function runToolLoop(
     iterations: MAX_ITERATIONS,
     error: `tool loop exceeded ${MAX_ITERATIONS} iterations`,
   };
+}
+
+/** Keep the current request and tool evidence while dropping older pre-user history. */
+function compactToolLoopContinuation(
+  messages: import('@littlesheep/llm').ChatMessage[],
+  historyCount: number,
+  insertedCount: number,
+  keptHistoryCount: number,
+): boolean {
+  const primaryUserIndex = 1 + historyCount + insertedCount;
+  if (messages[0]?.role !== 'system' || messages[primaryUserIndex]?.role !== 'user') return false;
+  const removeCount = historyCount - keptHistoryCount;
+  if (removeCount <= 0) return false;
+  messages.splice(1, removeCount);
+  return true;
 }
 
 function registerEvidenceFingerprint(

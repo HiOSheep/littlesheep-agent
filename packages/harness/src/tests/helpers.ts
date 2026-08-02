@@ -106,6 +106,7 @@ export interface MakeCtxOptions {
   recoveryAttempts?: number;
   maxRecoveryAttempts?: number;
   toolContext?: Partial<ToolContext>;
+  attachments?: RunContext['attachments'];
   bootstrap?: Record<string, string>;
   produced?: Message[];
   initialMemoryContext?: string;
@@ -152,6 +153,7 @@ export function makeCtx(opts: MakeCtxOptions = {}): RunContext {
       ...opts.toolContext,
     },
     history: opts.history ?? [],
+    attachments: opts.attachments,
     produced: opts.produced ?? [],
     maxRecoveryAttempts: opts.maxRecoveryAttempts ?? 3,
     recoveryAttempts: opts.recoveryAttempts ?? 0,
