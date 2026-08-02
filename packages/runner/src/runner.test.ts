@@ -101,7 +101,7 @@ describe('createRunner run', () => {
     ]));
   });
 
-  it('defers automatic indexing for an external workspace until access is approved', async () => {
+  it('defers external workspace indexing in research and indexes immediately in full access', async () => {
     const containerRoot = join(dataDir, 'container');
     const externalWorkspace = join(dataDir, 'external-workspace');
     mkdirSync(containerRoot, { recursive: true });
@@ -122,17 +122,16 @@ describe('createRunner run', () => {
     await runner.run({
       text: 'inspect the external workspace',
       cwd: externalWorkspace,
-      permissionPolicyId: 'full',
+      permissionPolicyId: 'research',
     });
 
     expect(syncResources).not.toHaveBeenCalled();
     expect(syncDocuments).not.toHaveBeenCalled();
 
     await runner.run({
-      text: 'continue after approval',
+      text: 'continue in full access',
       cwd: externalWorkspace,
       permissionPolicyId: 'full',
-      workspaceAccessApproved: true,
     });
 
     expect(syncResources).toHaveBeenCalledWith(externalWorkspace, undefined);

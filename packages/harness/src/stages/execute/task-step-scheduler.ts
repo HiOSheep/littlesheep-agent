@@ -107,11 +107,14 @@ function parallelDowngradeReason(
   if (step.execution?.mode !== 'parallel') return undefined;
   if (!step.execution.sideEffect) return 'parallel policy has no sideEffect';
   if (step.execution.sideEffect === 'external') return 'external effects execute serially';
-  if (step.requiresApproval) return 'approval-requiring steps execute serially';
+  if (step.requiresApproval && toolContext.permissionMode !== 'full') return 'approval-requiring steps execute serially';
   if (!Array.isArray(step.tools)) return 'parallel steps require an explicit tool list';
   const selectedTools = step.tools.map((name) => toolByName.get(name));
   if (selectedTools.some((tool) => !tool)) return 'parallel step references an unavailable tool';
-  if (selectedTools.some((tool) => tool!.requiresApproval || tool!.execution?.concurrency !== 'parallel')) {
+  if (selectedTools.some((tool) => (
+    (tool!.requiresApproval && toolContext.permissionMode !== 'full')
+    || tool!.execution?.concurrency !== 'parallel'
+  ))) {
     return 'parallel step includes a non-parallel or approval-requiring tool';
   }
   if (step.execution.sideEffect === 'none' && (resources.length > 0 || selectedTools.length > 0)) {

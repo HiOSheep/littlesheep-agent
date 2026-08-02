@@ -1,5 +1,6 @@
 // Task composer controls, attachments, runtime selection, and sizing.
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
+import { CloseIcon } from '../ui/icons'
 import { compactPath } from '../workspace/path-utils'
 
 
@@ -37,7 +38,7 @@ export function WorkspaceChip({
           void onReset()
         }}
       >
-        ×
+        <CloseIcon />
       </button>
     </span>
   )

@@ -27,13 +27,15 @@ export function resolveRunConfig(opts: ResolveRunConfigOptions): ResolvedRunConf
   const provider = slash > 0 ? opts.modelRef.slice(0, slash) : 'unknown';
   const model = slash > 0 ? opts.modelRef.slice(slash + 1) : opts.modelRef;
   const availableToolNames = unique(opts.tools.map((tool) => tool.name));
-  const approvalRequiredToolNames = unique(
-    opts.tools
-      .filter((tool) => opts.requireApprovalForAllTools || tool.requiresApproval)
-      .map((tool) => tool.name),
-  );
   const permissionPolicyId = opts.permissionPolicyId
     ?? (opts.requireApprovalForAllTools ? 'restricted' : 'research');
+  const approvalRequiredToolNames = permissionPolicyId === 'full'
+    ? []
+    : unique(
+        opts.tools
+          .filter((tool) => opts.requireApprovalForAllTools || tool.requiresApproval)
+          .map((tool) => tool.name),
+      );
   const userOverrides: Record<string, unknown> = {};
   if (opts.profile) userOverrides.profile = opts.profile;
   if (opts.reasoning) userOverrides.reasoning = opts.reasoning;

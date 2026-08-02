@@ -14,6 +14,7 @@ import { buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/flo
 import { SendRunIcon, StopRunIcon } from '../ui/icons'
 import { attachmentToArtifact } from '../workspace/path-utils'
 import { TaskProgressPresence } from '../chat/task-progress-indicator'
+import { syncComposerInputHeight } from '../composer/input-size'
 import type { AppController } from './use-app-controller'
 
 export function ComposerView({ controller }: { controller: AppController }) {
@@ -88,7 +89,10 @@ export function ComposerView({ controller }: { controller: AppController }) {
         <textarea
           ref={inputRef}
           value={input}
-          onChange={(event) => setInput(event.target.value)}
+          onChange={(event) => {
+            setInput(event.target.value)
+            syncComposerInputHeight(event.currentTarget)
+          }}
           onPaste={handleComposerPaste}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {

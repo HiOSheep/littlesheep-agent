@@ -2,6 +2,12 @@
 
 import type { SessionScope } from './session-scope'
 
+export const SESSION_TITLE_MAX_LENGTH = 60
+
+export function normalizeSessionTitle(value: string): string {
+  return value.replace(/\s+/gu, ' ').trim()
+}
+
 export interface SessionMeta {
   id: string
   title: string

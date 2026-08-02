@@ -49,7 +49,13 @@ describe('permission boundary', () => {
     expect(shouldRequestPermissionApproval('full', insideRead)).toBe(false)
     expect(shouldRequestPermissionApproval('full', insideWrite)).toBe(false)
     expect(shouldRequestPermissionApproval('full', insideExec)).toBe(false)
-    expect(shouldRequestPermissionApproval('full', outsideRead)).toBe(true)
+    expect(shouldRequestPermissionApproval('full', outsideRead)).toBe(false)
+    expect(shouldRequestPermissionApproval('full', {
+      action: 'execute',
+      boundary: 'unknown',
+      paths: [],
+      reason: 'dynamic command',
+    })).toBe(false)
     expect(shouldRequestPermissionApproval('research', insideRead)).toBe(false)
     expect(shouldRequestPermissionApproval('research', insideWrite)).toBe(true)
     expect(shouldRequestPermissionApproval('research', insideExec)).toBe(true)
@@ -115,17 +121,17 @@ describe('permission boundary', () => {
     })).resolves.toMatchObject({ allowed: false, reason: 'approval denied' })
   })
 
-  it('fails closed when a permission mode is present but the container root is missing', async () => {
+  it('lets confirmed full access cover unknown host boundaries', async () => {
     const approve = vi.fn(async () => false)
     await expect(authorizeToolAccess('read', { file_path: 'outside.txt' }, {
       cwd: process.cwd(),
       permissionMode: 'full',
       approve,
     })).resolves.toMatchObject({
-      allowed: false,
+      allowed: true,
       boundary: 'unknown',
-      reason: 'approval denied',
+      approvedByPolicy: true,
     })
-    expect(approve).toHaveBeenCalledTimes(1)
+    expect(approve).not.toHaveBeenCalled()
   })
 })

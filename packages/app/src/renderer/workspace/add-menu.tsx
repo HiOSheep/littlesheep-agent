@@ -134,7 +134,9 @@ export function WorkspaceAddMenu({
         }}
         onBlur={() => onTipChange(null)}
       >
-        <span aria-hidden="true">+</span>
+        <svg className="workspace-panel-svg-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M8 3.25v9.5M3.25 8h9.5" />
+        </svg>
       </button>
       {mounted && createPortal(
         <div

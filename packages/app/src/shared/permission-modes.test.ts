@@ -30,4 +30,10 @@ describe('permission modes', () => {
       mode: 'restricted', autoApprove: false, requireApprovalForAllTools: true,
     })
   })
+
+  it('describes full access as host-wide after explicit confirmation', () => {
+    const full = ALL_PERMISSION_MODES.find((mode) => mode.id === 'full')
+    expect(full?.description).toContain('容器内外')
+    expect(full?.description).toContain('不再逐次请求批准')
+  })
 })

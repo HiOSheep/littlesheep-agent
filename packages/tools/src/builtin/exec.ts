@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import type { AgentTool } from '@littlesheep/types';
-import { authorizeToolAccess, describeToolAccess } from '@littlesheep/safety';
+import { authorizeToolAccess } from '@littlesheep/safety';
 import { checkApproval, interactiveApprove, type ApprovalConfig, DEFAULT_APPROVAL } from '../approval.js';
 import {
   CORE_SOURCE_READ_ONLY_ERROR,
@@ -52,10 +52,7 @@ export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
         return { ok: false, error: `Approval denied: ${approval.reason}` };
       }
       if (approval.decision === 'escalate') {
-        const descriptor = describeToolAccess('exec', { command, cwd: workDir }, ctx);
-        const policyAlreadyApproved = authorization.approvedByPolicy
-          || (ctx.permissionMode === 'full' && descriptor.boundary === 'inside');
-        if (policyAlreadyApproved || ctx.approvalGranted === true) {
+        if (authorization.approvedByPolicy || ctx.approvalGranted === true) {
           // The boundary policy already authorized this invocation. Keep the
           // blacklist check above, but do not ask for the same command twice.
         } else if (opts.interactive) {

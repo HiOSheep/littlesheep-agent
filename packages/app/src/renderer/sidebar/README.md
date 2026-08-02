@@ -1,9 +1,9 @@
 # Renderer 侧边栏
 
-这里负责项目树、会话树、搜索、折叠、归档/删除菜单和侧边栏专属过渡。
+这里负责项目树、会话树、搜索、折叠、重命名、归档/删除菜单和侧边栏专属过渡。
 
 - `quick-nav.tsx`、`project-section.tsx`、`session-row.tsx`：导航树。
-- `session-actions.ts`、`project-actions.ts`：会话与项目生命周期动作。
+- `session-actions.ts`、`project-actions.ts`：会话重命名及会话/项目生命周期动作；独立对话和项目对话复用同一重命名协议。
 - `resize-interaction.ts`：两层阈值拖动和折叠动画。
 - `global-titlebar.tsx`、`feature-panel.tsx`、`action-menu.tsx`：全局入口和浮层。
 

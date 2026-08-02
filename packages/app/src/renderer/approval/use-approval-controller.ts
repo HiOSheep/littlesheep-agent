@@ -18,8 +18,10 @@ export function useApprovalController({
 }) {
   const [pendingApproval, setPendingApproval] = useState<PendingApprovalPrompt | null>(null)
   const pendingApprovalRef = useRef<PendingApprovalPrompt | null>(null)
+  const permissionModeRef = useRef(permissionMode)
   const approvalGrantsRef = useRef(new SessionApprovalGrantStore())
   const draftApprovalScopeRef = useRef(createDraftApprovalScopeKey())
+  permissionModeRef.current = permissionMode
 
   function openApprovalPrompt(prompt: PendingApprovalPrompt) {
     pendingApprovalRef.current?.resolve('deny')
@@ -37,15 +39,10 @@ export function useApprovalController({
   }
 
   async function requestApprovalForScope(request: ApprovalRequest, scopeKey: string): Promise<boolean> {
-    // Full access is scoped to the LS container. Main annotates Agent
-    // requests with the boundary it calculated; an outside/unknown request
-    // must still reach the user even when the selected mode is full.
-    const detailBoundary = request.detail && typeof request.detail === 'object' && !Array.isArray(request.detail)
-      ? (request.detail as { boundary?: unknown }).boundary
-      : undefined
-    const boundary = request.boundary
-      ?? (detailBoundary === 'inside' || detailBoundary === 'outside' || detailBoundary === 'unknown' ? detailBoundary : undefined)
-    if (request.permissionMode === 'full' && boundary !== 'outside' && boundary !== 'unknown') return true
+    // The user accepts the host-wide risk once when enabling full access.
+    // Current-mode lookup also lets an in-flight run continue without leaving
+    // an approval prompt behind after the user confirms the mode change.
+    if (permissionModeRef.current === 'full' || request.permissionMode === 'full') return true
     if (approvalGrantsRef.current.allows(scopeKey, request)) return true
     const decision = await new Promise<ApprovalDecision>((resolve) => {
       openApprovalPrompt({ request, resolve })
@@ -81,6 +78,15 @@ export function useApprovalController({
     setPendingApproval(null)
     prompt.resolve(decision)
   }
+
+  useEffect(() => {
+    if (permissionMode !== 'full') return
+    const prompt = pendingApprovalRef.current
+    if (!prompt) return
+    pendingApprovalRef.current = null
+    setPendingApproval(null)
+    prompt.resolve('once')
+  }, [permissionMode])
 
   useEffect(() => () => {
     pendingApprovalRef.current?.resolve('deny')

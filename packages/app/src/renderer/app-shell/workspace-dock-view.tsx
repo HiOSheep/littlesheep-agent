@@ -4,7 +4,8 @@ import {
   MAX_NAVIGATION_EXPANDED_PATHS,
   boundStringList
 } from '../navigation-history'
-import { WorkspacePanelIcon } from '../ui/icons'
+import { buildFloatingHelpTipFromElement } from '../ui/floating-help'
+import { SidebarToggleIcon, WorkspacePanelIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
 import {
   WORKSPACE_PANEL_WIDTH_MIN
@@ -17,6 +18,7 @@ import type { AppController } from './use-app-controller'
 
 export function WorkspaceDockView({ controller }: { controller: AppController }) {
   const { sessions, projects, currentSession, sessionOwnership, messages, setMessages, input, setInput, loading, permissionMode, setPermissionMode, runtime, attachments, setAttachments, dragActive, runtimeError, sidebarCollapsed, workspacePanelCollapsed, workspacePanelReopenActive, setWorkspacePanelReopenActive, workspacePanelFullscreen, workspacePanelTab, workspacePanelOpenTabs, workspaceBrowserTabs, workspaceBrowserUrl, workspaceBrowserHistory, navigateWorkspaceBrowser, openWorkspaceBrowserTab, updateWorkspaceBrowserTitle, moveWorkspaceBrowser, workspaceOpenRequest, setWorkspaceOpenRequest, workspaceFileDrafts, workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed, workspaceExpandedPaths, setWorkspaceExpandedPaths, pendingDirtyCloseTab, setPendingDirtyCloseTab, conversationCollapsed, setConversationCollapsed, now, pinnedSessionIds, sidebarPanel, sidebarSearch, setSidebarSearch, projectCreatorOpen, setProjectCreatorOpen, scrollRef, inputRef, shellRef, activityNow, workspaceArtifactVersion, setWorkspaceArtifactVersion, controlTip, setControlTip, pendingApproval, settingsEntryRippling, sidebarWidth, setSidebarWidth, setWorkspacePanelWidth, workspacePanelLayout, layoutStyle, settingsOpen, directModulePage, settingsPage, canNavigateBack, canNavigateForward, openSettingsFromEntry, openSettingsPage, openDirectModulePage, navigateBack, navigateForward, closeSettingsFromEntry, selectableProviders, selectedModel, displayedSessions, visibleSessions, visibleSessionMotionRef, workspaceIsWorkplace, workspaceTip, projectPath, contextUsage, latestTaskActivity, sidebarToggleTip, moreConversationTip, newConversationTip, uploadTip, sendTip, requestWorkspaceSaveApproval, requestWorkspaceCommandApproval, settleApprovalPrompt, refreshSessions, refreshProjects, applyRuntimePatch, addAttachments, chooseWorkspace, openProjectCreator, activateProjectWorkspace, chooseProjectFolder, createProjectInFolder, relocateProject, resetWorkspace, openFileInWorkspace, openHyperlinkInside, openHyperlinkWithSystem, handleComposerDragEnter, handleComposerDragOver, handleComposerDragLeave, handleComposerDrop, handleComposerPaste, send, stop, createConversationFromSidebar, openSidebarPanel, closeSidebarPanel, switchSession, archiveSession, deleteSessionPermanently, archiveProject, deleteProjectPermanently, archiveAllSessions, togglePinnedSession, beginSidebarResize, nudgeSidebar, toggleSidebar, beginWorkspacePanelResize, toggleWorkspacePanel, updateWorkspacePanelReopenPresence, toggleWorkspacePanelFullscreen, nudgeWorkspacePanel, openWorkspacePanelTab, updateWorkspaceFileDraft, closeWorkspacePanelTab, defaultWorkspacePath, workspacePanelRoot, workspacePanelUsingTemporaryRoot } = controller
+  const workspacePanelToggleTip = workspacePanelCollapsed ? '打开拓展工作区' : '收起拓展工作区'
   return (
 <>
       <div
@@ -71,7 +73,6 @@ export function WorkspaceDockView({ controller }: { controller: AppController })
         onTabChange={openWorkspacePanelTab}
         onCloseTab={closeWorkspacePanelTab}
         onFileDraftChange={updateWorkspaceFileDraft}
-        onToggleCollapsed={toggleWorkspacePanel}
         onToggleFullscreen={toggleWorkspacePanelFullscreen}
         onRememberOpenPath={(root, path) => setWorkspaceOpenRequest({ id: Date.now(), root, path })}
         onReturnToDefaultWorkspace={() => setWorkspaceOpenRequest(null)}
@@ -91,6 +92,34 @@ export function WorkspaceDockView({ controller }: { controller: AppController })
         onBrowserTitleChange={updateWorkspaceBrowserTitle}
         onTipChange={setControlTip}
       />
+      <button
+        {...transientTriggerProps()}
+        className="sidebar-toggle-btn workspace-panel-corner-toggle"
+        type="button"
+        aria-label={workspacePanelToggleTip}
+        aria-expanded={!workspacePanelCollapsed}
+        onClick={toggleWorkspacePanel}
+        onPointerMove={(event) => event.stopPropagation()}
+        onMouseEnter={(event) => {
+          setWorkspacePanelReopenActive(false)
+          setControlTip(buildFloatingHelpTipFromElement(workspacePanelToggleTip, event.currentTarget, {
+            placement: 'left',
+            avoidElement: event.currentTarget,
+          }))
+        }}
+        onMouseMove={(event) => setControlTip(buildFloatingHelpTipFromElement(workspacePanelToggleTip, event.currentTarget, {
+          placement: 'left',
+          avoidElement: event.currentTarget,
+        }))}
+        onMouseLeave={() => setControlTip(null)}
+        onFocus={(event) => setControlTip(buildFloatingHelpTipFromElement(workspacePanelToggleTip, event.currentTarget, {
+          placement: 'left',
+          avoidElement: event.currentTarget,
+        }))}
+        onBlur={() => setControlTip(null)}
+      >
+        <SidebarToggleIcon className="workspace-panel-toggle-icon" />
+      </button>
       <button
         {...transientTriggerProps()}
         className={`workspace-panel-reopen-target ${workspacePanelReopenActive ? 'reopen-visible' : ''}`}

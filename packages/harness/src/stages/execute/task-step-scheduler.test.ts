@@ -49,6 +49,19 @@ describe('TaskBook step scheduler', () => {
     expect(graph.steps.every((step) => Boolean(step.downgradeReason))).toBe(true);
   });
 
+  it('does not serialize parallel tools solely because full access metadata requires approval', () => {
+    const approvalTool = parallelTool();
+    approvalTool.requiresApproval = true;
+    const step = parallelStep('full-access', 'workspace:a', 'read', 'probe');
+    step.requiresApproval = true;
+    const graph = buildTaskStepGraph(taskBook([step]), [approvalTool], toolContext('full'));
+
+    expect(graph.ok).toBe(true);
+    if (!graph.ok) return;
+    expect(graph.steps[0]?.mode).toBe('parallel');
+    expect(graph.steps[0]?.downgradeReason).toBeUndefined();
+  });
+
   it('rejects missing and forward dependencies before execution starts', () => {
     const missing = buildTaskStepGraph(taskBook([
       { ...parallelStep('a', 'workspace:a', 'read'), execution: { ...parallelStep('a', 'workspace:a', 'read').execution!, dependsOn: ['missing'] } },

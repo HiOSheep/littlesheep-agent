@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-08-01 14:10:17
+最后更新：2026-08-02 12:37:00
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
@@ -251,7 +251,7 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 - 解析优先级为 `LITTLESHEEP_DATA_DIR`、外部 locator、branding 默认目录。locator 默认位于用户主目录，保持在数据根之外，记录活动目录、待迁移/回滚事务和最近一次迁移清单。
 - 包括 API 配置、加密密钥引用、sessions、memory-tree、用户与 LS 自身记忆、Skills、plugins/plugin-data、projects、archive、execution logs、workspace layout、terminal activity、`attachment-cache/`、`workspace/resource-indexes/`、`models/tokenizer/`，以及 `AGENTS.md`、`SOUL.md`、`USER.md`、`PHILOSOPHY.md`、`TOOLS.md`、`MEMORY.md` 等用户所有的运行时资源。
 - `<data-root>/workplace/` 是未选择项目或外部目录时的默认工作区，只是完整应用数据根的一个子目录。移动 workplace 不等于迁移应用数据；“存储与数据”执行的是完整数据根迁移。
-- `<data-root>` 同时是 Agent 的逻辑容器根：默认 workplace 在容器内，用户选定的数据根外项目在容器外。当前由 Main/Safety 的路径和审批闸门实现，不等同于 Docker/OS 进程沙箱；范围不明的命令按 `unknown` 处理。Agent 在外部或未知工作区启动时先跳过自动资源/文档索引，用户主动的选择、预览和保存走独立 UI 路径。
+- `<data-root>` 同时是 Agent 的逻辑容器根：默认 workplace 在容器内，用户选定的数据根外项目在容器外。当前由 Main/Safety 的路径分类和权限策略实现，不等同于 Docker/OS 进程沙箱；范围不明的命令按 `unknown` 处理。研究/受限模式在外部或未知工作区启动时先跳过自动资源/文档索引并等待批准，已确认的完全访问直接继续；用户主动的选择、预览和保存走独立 UI 路径。
 - `PHILOSOPHY.md` 保存经用户确认的长期价值判断和设计取舍。它注册为 `philosophy` 资源但不进入每轮常驻 Prompt；Agent 必须先沿资源索引发现，再按任务相关性和 token 预算展开。
 - `attachment-cache/` 只保存 LS 通过粘贴/浏览器导入创建并登记的临时附件；自动清理只能处理索引中仍通过路径、普通文件、大小和哈希验证的缓存项。`workplace/`、项目目录和外部路径是不同所有权边界，不能因为文件名或目录名相似而由缓存清理删除。
 - `workspace/resource-indexes/` 只保存各工作区的相对路径、文件类型、大小、修改时间和 `user/agent` 来源；它不保存正文，扫描有目录、深度、条目和待处理队列上限。索引文件属于 LS 受管运行数据，项目索引以稳定 project id 关联。

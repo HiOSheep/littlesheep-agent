@@ -124,7 +124,7 @@ export function approvalActionTitle(action: string): string {
 export function approvalModeDescription(mode: PermissionModeId): string {
   if (mode === 'restricted') return '当前为受限权限，所有工具操作都需要你批准，包括容器内查看。'
   if (mode === 'research') return '当前为研究权限，容器内读取可直接进行；修改、删除、执行和容器外访问需要你批准。'
-  return '当前为完全访问权限。LS 容器内操作可直接进行，容器外资源仍需要你批准。'
+  return '当前为完全访问权限。启用时已确认风险，普通工具操作不再逐次请求批准。'
 }
 
 

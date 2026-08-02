@@ -83,4 +83,20 @@ describe('resolveRunConfig', () => {
     expect(resolved.permissionPolicyId).toBe('restricted');
     expect(resolved.approvalRequiredToolNames).toEqual(['read', 'write']);
   });
+
+  it('does not advertise per-tool approvals in confirmed full access', () => {
+    const resolved = resolveRunConfig({
+      runId: 'run-full',
+      config: DEFAULT_CONFIG,
+      modelRef: 'deepseek/deepseek-test',
+      origin: 'app',
+      permissionPolicyId: 'full',
+      tools: [tool('read'), tool('write', true), tool('exec', true)],
+      requireApprovalForAllTools: false,
+      toolFilterApplied: false,
+      cwdOverridden: true,
+    });
+
+    expect(resolved.approvalRequiredToolNames).toEqual([]);
+  });
 });

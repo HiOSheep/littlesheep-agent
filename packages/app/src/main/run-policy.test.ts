@@ -41,7 +41,7 @@ describe('local app run policy', () => {
     expect(broker).toHaveBeenCalledTimes(2)
   })
 
-  it('allows full access only for proven container paths', async () => {
+  it('allows full access for inside, outside, and unknown host boundaries', async () => {
     const broker = vi.fn(async () => false)
     const containerRoot = process.cwd()
     await expect(createPermissionApprover('full', broker, {
@@ -52,8 +52,12 @@ describe('local app run policy', () => {
     await expect(createPermissionApprover('full', broker, {
       containerRoot,
       cwd: containerRoot,
-    })('exec', { command: 'pwd', cwd: '..' })).resolves.toBe(false)
-    expect(broker).toHaveBeenCalledWith(expect.objectContaining({ boundary: 'outside' }))
+    })('exec', { command: 'pwd', cwd: '..' })).resolves.toBe(true)
+    await expect(createPermissionApprover('full', broker, {
+      containerRoot,
+      cwd: containerRoot,
+    })('exec', { command: 'Get-Content $HOME\\secret.txt' })).resolves.toBe(true)
+    expect(broker).not.toHaveBeenCalled()
     await expect(createPermissionApprover('research')('write')).resolves.toBe(false)
     expect(resolveRunPolicy({ permissionMode: 'restricted' }, DEFAULT_CONFIG, broker).requireApprovalForAllTools).toBe(true)
   })

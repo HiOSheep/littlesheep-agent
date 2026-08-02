@@ -167,4 +167,31 @@ describe('execTool approval gate', () => {
     expect(result.ok).toBe(true);
     expect(approve).not.toHaveBeenCalled();
   });
+
+  it('does not re-prompt full access for an outside command', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ls-full-access-exec-'));
+    const approve = vi.fn(async () => false);
+    try {
+      const exec = createExecTool({
+        interactive: false,
+        approvalConfig: { whitelist: [], blacklist: [], approvalMode: 'interactive' },
+      });
+      const result = await exec.execute(
+        { command: 'echo full-access-outside', cwd: root },
+        {
+          ...baseCtx,
+          cwd: root,
+          containerRoot: join(root, 'container'),
+          permissionMode: 'full',
+          approve,
+        },
+      );
+
+      expect(result.ok).toBe(true);
+      expect(result.output).toContain('full-access-outside');
+      expect(approve).not.toHaveBeenCalled();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

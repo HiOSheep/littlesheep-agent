@@ -82,9 +82,9 @@ export function shouldRequestPermissionApproval(
   mode: PermissionPolicyId,
   descriptor: ToolAccessDescriptor,
 ): boolean {
+  if (mode === 'full') return false
   if (mode === 'restricted') return true
   if (descriptor.boundary !== 'inside') return true
-  if (mode === 'full') return false
   return descriptor.action !== 'read'
 }
 
@@ -100,8 +100,9 @@ export async function authorizeToolAccess(
   options: { defaultRequiresApproval?: boolean } = {},
 ): Promise<ToolAuthorization> {
   const descriptor = describeToolAccess(toolName, input, context)
-  // Once a permission mode is present, a missing container root is not a
-  // legacy/no-policy call: the boundary is unknown and must fail closed.
+  // A missing container root remains an unknown boundary. Research and
+  // restricted modes fail closed; confirmed full access deliberately covers
+  // host resources regardless of boundary classification.
   const hasRuntimePolicy = context.permissionMode !== undefined
   const needsApproval = hasRuntimePolicy
     ? shouldRequestPermissionApproval(context.permissionMode!, descriptor)
@@ -111,7 +112,7 @@ export async function authorizeToolAccess(
     return {
       allowed: true,
       boundary: descriptor.boundary,
-      approvedByPolicy: false,
+      approvedByPolicy: context.permissionMode === 'full',
     }
   }
   if (context.approvalGranted === true) {

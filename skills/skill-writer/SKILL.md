@@ -78,7 +78,7 @@ create_skill({
 })
 ```
 
-该工具会将文件写入 `~/.littlesheep/skills/<name>/SKILL.md` 并热加载索引。技能会立即可用并持久保存。
+该工具会将文件写入活动应用数据根的 `<data-root>/skills/<name>/SKILL.md` 并热加载索引。`<data-root>` 可以整体迁移，不能假设它固定在用户主目录。技能会立即可用并持久保存。
 
 ## 质量检查清单
 

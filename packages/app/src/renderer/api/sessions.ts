@@ -85,6 +85,19 @@ export async function deleteSession(id: string, opts: { hard?: boolean } = {}): 
   if (!res.ok) throw localApiStatusError(res.status)
 }
 
+export async function renameSession(id: string, title: string): Promise<{ session: SessionMeta }> {
+  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.sessions, id)), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
+    throw new Error((data as { error: string }).error)
+  }
+  return res.json() as Promise<{ session: SessionMeta }>
+}
+
 export async function listArchive(): Promise<ArchivePayload> {
   const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.archive))
   if (!res.ok) throw localApiStatusError(res.status)

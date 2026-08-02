@@ -25,25 +25,32 @@ describe('terminal permission boundary', () => {
     })).not.toThrow()
   })
 
-  it('requires approval for a full-mode terminal outside the container', () => {
+  it('allows a full-mode terminal outside the container without per-operation approval', () => {
     expect(() => assertTerminalSessionAllowed({
       cwd: outside,
       containerRoot,
       permissionMode: 'full',
       approved: false,
-    })).toThrow(/需要用户批准/u)
+    })).not.toThrow()
     expect(() => assertTerminalCommandAllowed({
       command: 'Get-ChildItem',
       cwd: outside,
       containerRoot,
       permissionMode: 'full',
       approved: false,
-    })).toThrow(/需要用户批准/u)
+    })).not.toThrow()
     expect(() => assertTerminalSessionAllowed({
       cwd: outside,
       containerRoot,
       permissionMode: 'full',
       approved: true,
+    })).not.toThrow()
+    expect(() => assertTerminalCommandAllowed({
+      command: 'Get-Content $HOME\\secret.txt',
+      cwd: outside,
+      containerRoot,
+      permissionMode: 'full',
+      approved: false,
     })).not.toThrow()
   })
 

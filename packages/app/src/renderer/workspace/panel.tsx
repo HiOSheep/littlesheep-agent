@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { StringListUpdater } from '../app-shell/types'
 import { ChatMessage } from '../chat/types'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { PanelFullscreenIcon, SidebarToggleIcon, WorkspaceFeatureIcon } from '../ui/icons'
+import { PanelFullscreenIcon, WorkspaceFeatureIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
 import {
   parseWorkspaceFileTabId,
@@ -48,7 +48,6 @@ export function WorkspacePanel({
   onTabChange,
   onCloseTab,
   onFileDraftChange,
-  onToggleCollapsed,
   onToggleFullscreen,
   onRememberOpenPath,
   onReturnToDefaultWorkspace,
@@ -84,7 +83,6 @@ export function WorkspacePanel({
   onTabChange: (tab: WorkspacePanelTabId) => void
   onCloseTab: (tab: WorkspacePanelTabId) => void
   onFileDraftChange: (tab: WorkspaceFileTabId, draft: WorkspaceFileDraftState | null) => void
-  onToggleCollapsed: () => void
   onToggleFullscreen: () => void
   onRememberOpenPath: (root: string, path: string) => void
   onReturnToDefaultWorkspace: () => void
@@ -189,20 +187,6 @@ export function WorkspacePanel({
               onBlur={() => onTipChange(null)}
             >
               <PanelFullscreenIcon active={fullscreen} />
-            </button>
-            <button
-              {...transientTriggerProps()}
-              className="workspace-panel-action"
-              type="button"
-              aria-label="收起拓展工作区"
-              onClick={onToggleCollapsed}
-              onMouseEnter={(event) => onTipChange(buildFloatingHelpTip('收起拓展工作区', event.clientX, event.clientY))}
-              onMouseMove={(event) => onTipChange(buildFloatingHelpTip('收起拓展工作区', event.clientX, event.clientY))}
-              onMouseLeave={() => onTipChange(null)}
-              onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement('收起拓展工作区', event.currentTarget))}
-              onBlur={() => onTipChange(null)}
-            >
-              <SidebarToggleIcon className="workspace-panel-toggle-icon" />
             </button>
           </div>
         </header>

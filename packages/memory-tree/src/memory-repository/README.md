@@ -1,6 +1,6 @@
 # Memory Repository 内部边界
 
-最后更新：2026-07-15 20:46:57
+最后更新：2026-08-02 12:37:00
 
 本目录实现 `MemoryRepository` 稳定 facade 背后的版本后端与持久化基元，不是新的平行公开 API。
 
@@ -20,4 +20,4 @@
 - `v3-migration-validation.ts`：逐节点、资源、审计、Graph、Atom Store 和 Catalog 完整性校验。
 - `v3-migration-commit.ts`、`v3-migration-files.ts`、`v3-migration.ts`：ownership 边界、同卷原子提交、故障恢复和防数据丢失回滚。
 
-迁移模块只对显式调用生效，不在 Runner 或应用启动时自动执行。正式用户数据仍由 v2 管理，直到用户单独批准阶段 6 切换。
+迁移请求只由显式控制面登记，真正的迁移或回滚在下一次应用启动、任何写入者初始化之前执行。正式活动后端已经切换为 v3；v2 源、迁移 snapshot 和兼容读取只用于校验、审计及满足防数据丢失条件时的受约束回滚，不能继续接收新正式写入。

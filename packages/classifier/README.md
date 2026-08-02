@@ -1,11 +1,11 @@
 # @littlesheep/classifier
 
-把用户输入分类为闲聊、可执行问题或真正不清晰的请求，为 Harness 提供结构化判断。
+把用户输入路由为 `respond`、`execute` 或 `clarify`，为 Harness 提供有界语义活动判断。旧 `chat / problem / unclear` 字段只用于会话、检查点和插件兼容，不再定义新产品语义。
 
 ## 职责与边界
 
 - 公开入口是 `src/index.ts`；`rules.ts` 提供快速规则，`llm.ts` 提供模型兜底。
-- 只负责分类证据和结果，不规划任务、不调用工具、不写记忆。
+- 只负责活动路由证据和结果，不规划任务、不调用工具、不写记忆。
 - 禁止把 Workflow、权限或 UI 分支塞进分类规则。
 
 ## 依赖与数据

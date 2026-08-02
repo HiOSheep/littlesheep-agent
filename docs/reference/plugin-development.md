@@ -1,6 +1,6 @@
 # LittleSheep 插件开发说明
 
-最后更新：2026-07-15 11:59:04
+最后更新：2026-08-02 12:37:00
 
 本文件定义 LittleSheep 插件系统的当前事实、开发契约和安全边界。插件用于给 LS 增加可选能力，但不能改变“本地核心在没有插件时仍可完整运行”的约束。
 
@@ -26,7 +26,7 @@ Electron Main (product composition root)
 | 贡献类型 | 状态 | 宿主接口 | 消费方 |
 | --- | --- | --- | --- |
 | `channel` | 已接通 | `registerChannelType()` | 外部渠道管理器 |
-| `tool` | 已接通 | `registerTool()` | Runner 的 ToolRegistry；完整执行生命周期仍待统一服务收敛 |
+| `tool` | 已接通 | `registerTool()` | Runner 的 ToolRegistry；通过统一 `ToolExecutionService` 执行校验、权限、超时、中断、调度、清洗、事件和调用记录 |
 | `skill` | 已接通 | manifest 中的 `contributes.skills` | SkillLoader、`use_skill` 与记忆资源目录；正文按需读取 |
 | `provider` | 未接通 | 无 | 规划中的模型供应商扩展 |
 | `memory` | 未接通 | 无 | 规划中的记忆分支扩展 |

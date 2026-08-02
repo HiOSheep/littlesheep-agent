@@ -5,6 +5,7 @@ import { projectSessions } from '../../shared/session-scope'
 import {
   deleteSession,
   getSessionMessagePage,
+  renameSession as requestSessionRename,
   updateRuntime,
   type ProjectMeta,
   type RuntimeState,
@@ -232,6 +233,20 @@ export function createSessionActions(context: SessionActionContext) {
   }
 
 
+  async function renameSession(id: string, title: string) {
+    setControlTip(null)
+    try {
+      const { session } = await requestSessionRename(id, title)
+      if (!appMountedRef.current) return
+      setSessions((items) => items.map((item) => item.id === id ? session : item))
+      setRuntimeError(null)
+    } catch (error) {
+      if (appMountedRef.current) setRuntimeError(`重命名对话失败：${(error as Error).message}`)
+      throw error
+    }
+  }
+
+
   function sessionsForProject(project: ProjectMeta): SessionMeta[] {
     return projectSessions(sessions, project.id)
   }
@@ -272,5 +287,5 @@ export function createSessionActions(context: SessionActionContext) {
       return next
     })
   }
-  return { newSession, createConversationFromSidebar, openSidebarPanel, closeSidebarPanel, switchSession, loadOlderMessages, clearSessionFromLocalState, archiveSession, deleteSessionPermanently, sessionsForProject, archiveAllSessions, togglePinnedSession }
+  return { newSession, createConversationFromSidebar, openSidebarPanel, closeSidebarPanel, switchSession, loadOlderMessages, clearSessionFromLocalState, archiveSession, deleteSessionPermanently, renameSession, sessionsForProject, archiveAllSessions, togglePinnedSession }
 }

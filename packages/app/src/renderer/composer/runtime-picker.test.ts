@@ -29,6 +29,7 @@ describe('runtime picker labels', () => {
     )
 
     expect(styles).toMatch(/\.send-round\s*\{[\s\S]*?width: 24px;[\s\S]*?height: 24px;/u)
+    expect(styles).toMatch(/\.send-round-icon\.send\s*\{[^}]*transform:\s*translateX\(0\.5px\);/u)
     expect(styles).toMatch(/@container chat-pane \(max-width: 520px\)[\s\S]*?\.composer-controls\s*\{[\s\S]*?flex-direction: row;[\s\S]*?flex-wrap: nowrap;/u)
     expect(compactComposerStyles).toMatch(/\.runtime-picker\s*\{[\s\S]*?width: fit-content;[\s\S]*?flex: 0 1 auto;/u)
     expect(compactComposerStyles).toMatch(/\.runtime-picker-trigger\s*\{[\s\S]*?width: max-content;[\s\S]*?max-width: 100%;/u)
@@ -39,7 +40,7 @@ describe('runtime picker labels', () => {
     expect(styles).toMatch(/\.runtime-menu-shell \.runtime-submenu\s*\{[\s\S]*?left: calc\(100% \+ 8px\);[\s\S]*?right: auto;/u)
     expect(styles).toMatch(/\.runtime-menu-shell \.runtime-model-menu\s*\{[\s\S]*?width: min\(143px, var\(--runtime-submenu-width, 220px\)\);/u)
     expect(styles).toMatch(/\.runtime-menu-shell \.runtime-provider-menu\s*\{[\s\S]*?width: min\(220px, var\(--runtime-submenu-width, 220px\)\);/u)
-    expect(styles).not.toContain('scrollbar-gutter: stable')
+    expect(styles).not.toMatch(/\.runtime-menu-shell(?:\s+[^,{]+)?\s*\{[^}]*scrollbar-gutter:\s*stable/u)
     expect(styles).toMatch(/\.runtime-model-option > span:not\(\.runtime-menu-check\):not\(\.runtime-submenu-arrow\)/u)
     expect(styles).toMatch(/\.runtime-menu-check,[\s\S]*?flex: 0 0 16px;/u)
     expect(styles).not.toMatch(/@container chat-pane \(max-width: 640px\)/u)

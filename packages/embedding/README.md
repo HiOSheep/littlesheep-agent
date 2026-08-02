@@ -1,6 +1,6 @@
 # @littlesheep/embedding
 
-最后更新：2026-07-16 13:08:15
+最后更新：2026-08-02 12:37:00
 
 本包拥有 LittleSheep 的本地文本 Embedding 实现、模型登记、离线资产检查和候选基准。Memory v3 只依赖 `EmbeddingEngine` 契约，不依赖具体推理框架。
 

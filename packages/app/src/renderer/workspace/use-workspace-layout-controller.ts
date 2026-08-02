@@ -168,6 +168,26 @@ export function useWorkspaceLayoutController({ runtime, currentSession, input, s
   }, [input, sidebarCollapsed, sidebarWidth, viewportWidth, workspacePanelCollapsed, workspacePanelLayout.width])
 
   useEffect(() => {
+    const textarea = inputRef.current
+    if (!textarea || typeof ResizeObserver === 'undefined') return
+
+    let observedWidth: number | undefined
+    const observer = new ResizeObserver(([entry]) => {
+      const nextWidth = entry?.contentRect.width
+      if (nextWidth === undefined) return
+      if (observedWidth !== undefined && Math.abs(nextWidth - observedWidth) < 0.5) return
+      observedWidth = nextWidth
+      scheduleComposerHeightSync()
+    })
+    observer.observe(textarea)
+
+    return () => {
+      observer.disconnect()
+      window.cancelAnimationFrame(composerSyncFrameRef.current ?? 0)
+    }
+  }, [])
+
+  useEffect(() => {
     const handleResize = () => {
       setViewportWidth(window.innerWidth)
       setSidebarWidth((value) => clampNumber(value, SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX))
@@ -343,7 +363,6 @@ export function useWorkspaceLayoutController({ runtime, currentSession, input, s
   const defaultWorkspacePath = runtime?.workspace ?? runtime?.workplace ?? projectPath
   const workspacePanelRoot = workspaceOpenRequest?.root ?? defaultWorkspacePath
   const workspacePanelUsingTemporaryRoot = !isSamePath(workspacePanelRoot, defaultWorkspacePath)
-
   useEffect(() => {
     if (!workspaceLayoutMirrorReady) return
     if (!workspacePanelRoot) return
@@ -378,7 +397,6 @@ export function useWorkspaceLayoutController({ runtime, currentSession, input, s
     workspacePanelWidth,
     workspaceLayoutMirrorReady,
   ])
-
   useEffect(() => () => {
     window.cancelAnimationFrame(composerSyncFrameRef.current ?? 0)
     window.cancelAnimationFrame(sidebarSettleFrameRef.current ?? 0)

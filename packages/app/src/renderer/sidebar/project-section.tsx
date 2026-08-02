@@ -27,6 +27,7 @@ export function SidebarProjectSection({
   onOpenWorkspace,
   onOpenSession,
   onTogglePin,
+  onRenameSession,
   onArchiveSession,
   onDeleteSession,
   onArchiveProject,
@@ -45,6 +46,7 @@ export function SidebarProjectSection({
   onOpenWorkspace: () => void
   onOpenSession: (session: SessionMeta) => void
   onTogglePin: (id: string) => void
+  onRenameSession: (id: string, title: string) => void | Promise<void>
   onArchiveSession: (id: string) => void | Promise<void>
   onDeleteSession: (id: string) => void | Promise<void>
   onArchiveProject: (project: ProjectMeta) => void | Promise<void>
@@ -236,6 +238,7 @@ export function SidebarProjectSection({
                       itemRef={projectSessionMotionRef(`${project.id}:${session.id}`)}
                       onOpen={() => onOpenSession(session)}
                       onTogglePin={() => onTogglePin(session.id)}
+                      onRename={(title) => onRenameSession(session.id, title)}
                       onArchive={() => onArchiveSession(session.id)}
                       onDelete={() => onDeleteSession(session.id)}
                       onTipChange={onTipChange}

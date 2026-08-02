@@ -4,15 +4,13 @@ import {
   type WorkspacePanelTab
 } from '../workspace-persistence'
 
-
 export function SidebarToggleIcon({ className = '' }: { className?: string }) {
   return (
-    <span className={['sidebar-toggle-icon', className].filter(Boolean).join(' ')} aria-hidden="true">
-      <span className="sidebar-toggle-divider" />
-    </span>
+    <svg className={['sidebar-toggle-icon', className].filter(Boolean).join(' ')} viewBox="0 0 18 14" aria-hidden="true" focusable="false" shapeRendering="geometricPrecision">
+      <rect className="sidebar-toggle-outline" x="0.5" y="0.5" width="17" height="13" rx="3" /><path className="sidebar-toggle-divider" d="M9.5 3v8" />
+    </svg>
   )
 }
-
 
 export function SettingsGearIcon() {
   return (
@@ -23,7 +21,6 @@ export function SettingsGearIcon() {
   )
 }
 
-
 export function NavComposeIcon() {
   return (
     <svg className="sidebar-svg-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -31,7 +28,6 @@ export function NavComposeIcon() {
     </svg>
   )
 }
-
 
 export function SearchIcon() {
   return (
@@ -116,7 +112,20 @@ export function ComposeIcon() {
 export function PinIcon({ active }: { active: boolean }) {
   return (
     <svg className={`sidebar-svg-icon pin-icon ${active ? 'active' : ''}`} viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path d="M5.15 2.75h5.7M6.25 3.1l.5 4.15-2 2.2v1.05h6.5V9.45l-2-2.2.5-4.15M8 10.5v3" />
+      {active ? (
+        <path className="pin-icon-solid" d="M5.2 2.3h5.6l-.65 4.55 2.05 2.2v1.25H8.7v3.45H7.3V10.3H3.8V9.05l2.05-2.2z" />
+      ) : (
+        <path d="M5.15 2.75h5.7M6.25 3.1l.5 4.15-2 2.2v1.05h6.5V9.45l-2-2.2.5-4.15M8 10.5v3" />
+      )}
+    </svg>
+  )
+}
+
+
+export function RenameIcon() {
+  return (
+    <svg className="sidebar-svg-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path d="m3.15 11.85.55-2.7 6.8-6.8 2.15 2.15-6.8 6.8zM9.4 3.45l2.15 2.15M3.1 13h9.8" />
     </svg>
   )
 }
@@ -231,7 +240,7 @@ export function WorkspacePanelIcon({ collapsed }: { collapsed: boolean }) {
 
 export function SendRunIcon() {
   return (
-    <svg className="send-round-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+    <svg className="send-round-icon send" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
       <path d="M8 13V3M4.5 6.5 8 3l3.5 3.5" />
     </svg>
   )

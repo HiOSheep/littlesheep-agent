@@ -122,7 +122,7 @@ export class TerminalRouter {
           const completedCommands = analysis.commands.filter((entry) => entry.command || entry.uncertain)
           const approved = body.approved === true
           for (const entry of completedCommands) {
-            if (entry.uncertain && !approved) {
+            if (entry.uncertain && session.permissionMode !== 'full' && !approved) {
               throw new HttpError(403, '无法确认当前终端编辑结果，请批准后继续。')
             }
             assertTerminalCommandAllowed({

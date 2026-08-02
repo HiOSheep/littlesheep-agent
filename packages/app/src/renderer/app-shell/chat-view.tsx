@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type MouseEvent } from 'react'
+import { useLayoutEffect, useRef, type MouseEvent } from 'react'
 import { AssistantTurnMessage } from '../chat/assistant-turn'
 import { MessageFileStrip } from '../composer/message-files'
 import { Markdown } from '../Markdown'
@@ -15,9 +15,7 @@ import type { AppController } from './use-app-controller'
 
 
 
-type ScrollRepair =
-  | { kind: 'anchor'; key: string; offset: number }
-  | { kind: 'height'; height: number; top: number }
+type ScrollRepair = { height: number; top: number }
 
 export function ChatView({ controller }: { controller: AppController }) {
   const {
@@ -34,7 +32,6 @@ export function ChatView({ controller }: { controller: AppController }) {
   const stickToBottomRef = useRef(true)
   const scrollRepairRef = useRef<ScrollRepair | null>(null)
   const repairFrameRef = useRef<number | null>(null)
-  const [disclosureInteractionVersion, setDisclosureInteractionVersion] = useState(0)
 
   useLayoutEffect(() => {
     const container = scrollRef.current
@@ -44,25 +41,10 @@ export function ChatView({ controller }: { controller: AppController }) {
     scrollRepairRef.current = null
     if (repair) {
       let settleState: DisplaySettleState | null = null
-      const readLayoutSignature = () => {
-        const dimensions = `${container.scrollHeight}:${container.clientHeight}`
-        if (repair.kind === 'height') return dimensions
-        const anchor = Array.from(container.querySelectorAll<HTMLElement>('[data-message-key]'))
-          .find((element) => element.dataset.messageKey === repair.key)
-        return anchor ? `${dimensions}:${anchor.offsetHeight}:${anchor.scrollHeight}` : dimensions
-      }
+      const readLayoutSignature = () => `${container.scrollHeight}:${container.clientHeight}`
       const apply = (timestamp: number) => {
         settleState ??= createDisplaySettleState(timestamp, readLayoutSignature())
-        if (repair.kind === 'height') {
-          container.scrollTop = repair.top + (container.scrollHeight - repair.height)
-        } else {
-          const anchor = Array.from(container.querySelectorAll<HTMLElement>('[data-message-key]'))
-            .find((element) => element.dataset.messageKey === repair.key)
-          if (anchor) {
-            const containerTop = container.getBoundingClientRect().top
-            container.scrollTop += anchor.getBoundingClientRect().top - containerTop - repair.offset
-          }
-        }
+        container.scrollTop = repair.top + (container.scrollHeight - repair.height)
         settleState = observeDisplaySettleFrame(settleState, timestamp, readLayoutSignature())
         if (shouldContinueDisplaySettle(settleState, timestamp)) {
           // The callback timestamp is tied to Chromium's active display VSync.
@@ -77,7 +59,7 @@ export function ChatView({ controller }: { controller: AppController }) {
       return
     }
     if (stickToBottomRef.current) container.scrollTop = container.scrollHeight
-  }, [messages, scrollRef, disclosureInteractionVersion])
+  }, [messages, scrollRef])
 
   useLayoutEffect(() => () => {
     if (repairFrameRef.current !== null) window.cancelAnimationFrame(repairFrameRef.current)
@@ -90,26 +72,17 @@ export function ChatView({ controller }: { controller: AppController }) {
     if (container) container.scrollTop = container.scrollHeight
   }, [currentSession, scrollRef])
 
-  function captureDisclosureAnchor(event: MouseEvent<HTMLDivElement>) {
+  function captureDisclosureInteraction(event: MouseEvent<HTMLDivElement>) {
     const target = event.target as HTMLElement
-    if (!target.closest('.assistant-turn-header, .activity-disclosure-header, .activity-command-header')) return
-    const message = target.closest<HTMLElement>('[data-message-key]')
-    const container = scrollRef.current
-    if (!message || !container || !message.dataset.messageKey) return
-    scrollRepairRef.current = {
-      kind: 'anchor',
-      key: message.dataset.messageKey,
-      offset: message.getBoundingClientRect().top - container.getBoundingClientRect().top,
-    }
+    if (!target.closest('.assistant-turn-header, .activity-disclosure-header, .activity-command-header, .trace-toggle')) return
     // Expanding a nested disclosure is a reading action, not new-message
-    // arrival. Never let the composer-follow rule move the reader to the end.
+    // arrival. Leave scrollTop untouched while CSS animates the content height.
     stickToBottomRef.current = false
-    setDisclosureInteractionVersion((value) => value + 1)
   }
 
   function prepareOlderHistoryLoad() {
     const container = scrollRef.current
-    if (container) scrollRepairRef.current = { kind: 'height', height: container.scrollHeight, top: container.scrollTop }
+    if (container) scrollRepairRef.current = { height: container.scrollHeight, top: container.scrollTop }
     void loadOlderMessages().then((loaded) => {
       if (!loaded) scrollRepairRef.current = null
     })
@@ -123,7 +96,7 @@ export function ChatView({ controller }: { controller: AppController }) {
             const element = event.currentTarget
             stickToBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 72
           }}
-          onClickCapture={captureDisclosureAnchor}
+          onClickCapture={captureDisclosureInteraction}
         >
           <div className="messages-content">
           {historyWindow.hasMore && (

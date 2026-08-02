@@ -11,7 +11,7 @@
 | `run-routes.ts` / `run-support.ts` | Agent run、流式事件、审批、中断、会话归属和产物。 |
 | `application-lifecycle-routes.ts` | 活动任务快照、`active_runs` SSE、暂停/继续/中断控制；监听器生命周期归 Main 的 `RunActivityMonitor`。 |
 | `project-routes.ts` | 项目注册、重绑定、归档转换和目录创建。 |
-| `session-routes.ts` | 会话、归档和执行日志重放。 |
+| `session-routes.ts` | 会话列表、独立/项目会话重命名、归档、删除和执行日志重放；重命名同时更新会话 metadata 与 UI 索引，索引失败时回滚 metadata。 |
 | `runtime-routes.ts` | Runtime、Provider key、数据根和应用重启。 |
 | `memory-routes.ts` | Skills、记忆树、记忆策略和项目记忆投影。 |
 | `memory-migration-routes.ts` | Memory v3 迁移、回滚和固定本地向量模型准备。 |

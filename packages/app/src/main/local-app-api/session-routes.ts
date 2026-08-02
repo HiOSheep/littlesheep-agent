@@ -8,6 +8,10 @@ import {
   LOCAL_APP_API_ROUTES,
   matchLocalAppApiItemPath,
 } from '../../shared/local-app-api-routes.js'
+import {
+  normalizeSessionTitle,
+  SESSION_TITLE_MAX_LENGTH,
+} from '../../shared/session-project-contracts.js'
 import type {
   ArchiveIndex,
   ArchivedProjectMeta,
@@ -15,7 +19,7 @@ import type {
 } from '../archive-index.js'
 import type { ProjectIndex, ProjectMeta } from '../project-index.js'
 import type { SessionIndex, SessionMeta } from '../session-index.js'
-import { json, type LocalAppApiRequest } from './http.js'
+import { json, readJson, type LocalAppApiRequest } from './http.js'
 
 export interface SessionRouteContext {
   getRunner: () => AgentRunner
@@ -60,6 +64,39 @@ export async function routeSessions(
       return true
     }
     json(res, 200, log)
+    return true
+  }
+
+  const sessionUpdateId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.sessions)
+  if (method === 'PATCH' && sessionUpdateId !== null) {
+    const existing = (await sessionIndex.list()).find((session) => session.id === sessionUpdateId)
+    if (!existing) {
+      json(res, 404, { error: `session not found: ${sessionUpdateId}` })
+      return true
+    }
+    const body = await readJson(request.req)
+    const title = typeof body.title === 'string' ? normalizeSessionTitle(body.title) : ''
+    if (!title) {
+      json(res, 400, { error: 'session title is required' })
+      return true
+    }
+    if (title.length > SESSION_TITLE_MAX_LENGTH) {
+      json(res, 400, { error: `session title must not exceed ${SESSION_TITLE_MAX_LENGTH} characters` })
+      return true
+    }
+    if (title === existing.title) {
+      json(res, 200, { session: existing })
+      return true
+    }
+
+    await runner.sessionManager.updateMetadata(asSessionId(sessionUpdateId), { title })
+    try {
+      await sessionIndex.upsert(sessionUpdateId, { title })
+    } catch (error) {
+      await runner.sessionManager.updateMetadata(asSessionId(sessionUpdateId), { title: existing.title }).catch(() => undefined)
+      throw error
+    }
+    json(res, 200, { session: { ...existing, title } })
     return true
   }
 

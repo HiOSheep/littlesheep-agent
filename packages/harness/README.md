@@ -1,6 +1,6 @@
 # @littlesheep/harness
 
-实现 LittleSheep 的硬控制流状态机，按 stage 驱动分类、决策、执行、验证、恢复、记忆和收尾。
+实现 LittleSheep 的硬控制流状态机，按 stage 驱动活动路由、决策、执行、验证、恢复、记忆和收尾。
 
 ## 职责与边界
 
