@@ -1,7 +1,7 @@
 # LittleSheep 原子记忆与内置向量目录任务书 2026-07-17
 
-最后更新：2026-08-02 12:37:00
-版本：v3.30
+最后更新：2026-08-03 12:07:47
+版本：v3.31
 状态：阶段 0-26 的 Runtime 工程实现、正式数据迁移、本地向量、动态路由、独立任务相关度、D1 精确候选召回、Memory v3 专属相关性门、动态 working set 与反馈演化门、多轮指代/否定条件/任务转向门、压缩后任务连续性门、关系引导的一跳 Atom 选择门、写入认识边界门、Atom 相关性与关系调和门、TaskBook 驱动的二次注入调和门、跨持久记忆/语义缓存的连续 activation、前端三层只读投影、真实负载质量/成本/资源观测、初始 KnownState、显式 Atom 使用反馈、500 Atom 确定性规模门、256 Atom 真实 BGE 恢复门、Memory v2 写入退役、结构化 daily 压缩提升、模型提案的有界重复 Atom 合并闸门、显式关系驱动的叶子 Atom 跨 parent 重组、有证据约束的同陈述内容修订、有证据约束的事实纠正/冲突替代，以及有证据约束的非叶子子树重组均已完成首版工程闭环；当前 DeepSeek 基础 chat/continuity/tool/abort 能力已完成真实校准，Provider 驱动的 Memory v3 长任务、EVOLVE/CAPTURE 提案质量与达到校准门槛的长期真实负载验收仍未完成
 
 > 历史证据边界：本任务书保留阶段 0-26 的专项数字和迁移证据；当前全仓质量门、正式状态和下一步只以 [项目状态](../decision/project-status.md) 为准。
@@ -795,11 +795,13 @@ V3 backend 激活后，对话原始来源由 Runner 从用户输入和对话区�
 | D43 | 同陈述内容修订 | 模型每轮最多对 1 个本轮 adopted、当前 revision、未冲突、未截断的完整 D3 KnownState Atom 提出 `same-claim-refinement`。只允许澄清、规范化和去冗余地替换 title/summary/content/retrievalKeys；Runtime 必须有当前 run 的通过验证证据，并独立校验语义保留、检索锚点、硬锚点、长度、revision、提交与恢复。来源、证据、实体/关系、层级、认识状态和生命周期不变；事实纠正、冲突替代和新增陈述使用独立协议 |
 | D44 | 事实纠正与冲突替代 | 模型每轮最多对 1 组本轮完整 D3 KnownState Atom 提出 supersede：replacement 必须 adopted，旧 Atom 可以 adopted 或 conflicted；两者保持 branch/scope/scopeKey/parent/statement kind 一致，并精确匹配 revision。Runtime 必须验证当前 run 的通过证据、replacement 权威与来源，以及方向正确、active、resolved、有证据的 `replaces`/`conflicts-with` 关系。提交只把旧 Atom 标记 superseded 并指向既有 replacement，保留旧正文、来源和历史；普通 conflict/invalidate intent、创建新 Atom、覆盖原始数据和跨边界替代均不能旁路该协议 |
 | D45 | 非叶子子树重组 | 模型每轮最多对 1 个本轮 adopted、当前 revision、未冲突且未截断的完整 D3 非叶子 Atom 提出 `move-subtree`；目标 parent 同 branch/scope/scopeKey，必须存在方向正确、active、resolved、有证据的 `belongs-to`/`derived-from` 关系。Catalog 只提供有界 active descendant 计数；根至少有 1 个且最多 128 个 active descendants，超过上限或缺少检查自动拒绝/延期。提交只改变根 `parentId`，后代父链、正文、revision、来源与关系不变；Runtime 负责循环、边界、revision、原子提交、恢复和审计，普通 `move` intent 与叶子 reparent 不能旁路该协议 |
+| D46 | 回答级记忆连续性 | 保存对话、摘要、Atom、索引命中、Checkpoint 或工具检索只算前置证据。FINALIZE 只对实际发布且可追溯到真实 Provider 请求的 LS 最终回答判定连续性，并且只允许使用真实进入该回答因果 Context 的近期历史、版本化摘要和 active/adopted Atom。明确追问多个历史值时必须逐项肯定答出；漏答、答错、否定旧值、明确失忆、要求用户重新提供或来源未进入 Context 均不能为 `supported`。概率会话摘要不能冒充精确事实；Runtime 维护最多 24 项 `label: value` 保真封套，原始会话 JSONL 保留不改写。一次真实 DeepSeek 双字段摘要续答门已通过，多轮多次压缩和更多事实形态仍须独立验收 |
 
 ## 9. 总完成门槛
 
 - 不再存在随记忆规模线性膨胀的单一权威 `index.json`；
 - 每条对话原始来源都有只追加文件、内容哈希和稳定会话/run 归属；每次 Atom 变化都有投影变更记录与 commit receipt；每个记忆 atom 有稳定 id、parent、`sourceRefs`、`evidenceRefs`、状态和独立投影生命周期；
+- 记忆连续以 LS 最终回答为验收对象；显式历史追问只有回答级状态 `supported` 才算通过，保存、检索和内部状态不能代替回答证据；
 - 经验证的高价值记忆能在匹配作用域内优先注入，排序原因和反馈证据可审计；
 - 重复访问不会自动提高可信度，错误、冲突和过期记忆不会形成自增强循环；
 - 长期低收益的可选记忆会降低注入频率，强制信息不被误衰减；每次 LLM 请求能看到所用记忆的必要证据元数据；

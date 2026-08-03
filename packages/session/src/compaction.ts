@@ -13,6 +13,9 @@ const MAX_COMPACTION_SOURCE_RUN_IDS = 64;
 export interface CompactionSummaryInput {
   sessionId: SessionId;
   previousSummary?: CompactionSummary;
+  /** Complete preserved transcript range covered by the next summary. */
+  coveredMessages: Message[];
+  /** Newly covered messages since the previous summary. */
   messages: Message[];
   signal?: AbortSignal;
 }
@@ -66,10 +69,12 @@ export async function maybeCompact(
   if (compactThroughIndex <= previousEndIndex) return null;
   const newMessages = messages.slice(previousEndIndex + 1, compactThroughIndex + 1);
   if (newMessages.length === 0) return null;
+  const coveredMessages = messages.slice(0, compactThroughIndex + 1);
 
   const output = await opts.summarize({
     sessionId,
     previousSummary: previous,
+    coveredMessages,
     messages: newMessages,
     signal: opts.signal,
   });
@@ -79,7 +84,6 @@ export async function maybeCompact(
 
   const first = messages[0]!;
   const last = messages[compactThroughIndex]!;
-  const coveredMessages = messages.slice(0, compactThroughIndex + 1);
   const sourceHash = hashMessages(coveredMessages);
   const sourceRunIds = uniqueSourceRunIds(coveredMessages);
   const sourceRunIdsTruncated = sourceRunIds.length > MAX_COMPACTION_SOURCE_RUN_IDS;

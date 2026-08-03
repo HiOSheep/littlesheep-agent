@@ -43,6 +43,17 @@ export {
   type ResponseContinuityInput,
 } from './response-continuity.js';
 export {
+  continuityLabeledValues,
+  type ContinuityLabeledValue,
+} from './response-continuity-text.js';
+export {
+  readSessionSummaryFidelityFields,
+  SESSION_SUMMARY_FIDELITY_END,
+  SESSION_SUMMARY_FIDELITY_START,
+  stripSessionSummaryFidelitySections,
+  type SessionSummaryFidelityField,
+} from './session-summary-fidelity-text.js';
+export {
   acceptUniqueUserFacingReply,
   collectRecentAssistantReplies,
   normalizeUserFacingReply,

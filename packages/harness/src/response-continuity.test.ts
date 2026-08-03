@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { assessResponseMemoryContinuity } from './response-continuity.js';
 import {
+  SESSION_SUMMARY_FIDELITY_END,
+  SESSION_SUMMARY_FIDELITY_START,
+} from './session-summary-fidelity-text.js';
+import {
   textMessage,
   type ContextSnapshot,
   type ContextSnapshotItem,
@@ -495,7 +499,11 @@ describe('assessResponseMemoryContinuity', () => {
       history: [acknowledgement],
       sessionSummary: {
         id: 'summary-explicit-values',
-        summary: '用户要求保存的代号为 summary-anchor-27，颜色为海蓝色。',
+        summary: summaryWithFidelity(
+          '用户要求保存两个字段。',
+          '代号: summary-anchor-27',
+          '颜色: 海蓝色',
+        ),
         collapsedCount: 6,
         compactedAt: NOW,
         sourceStartMessageId: 'message-1',
@@ -520,6 +528,265 @@ describe('assessResponseMemoryContinuity', () => {
     expect(assessment.status).toBe('supported');
     expect(assessment.matchedSources).toContain('session_summary');
     expect(assessment.matchedSources).not.toContain('recent_history');
+  });
+
+  it('judges the final answer against Runtime-preserved fields when the model summary conflicts', () => {
+    const acknowledgement = textMessage(
+      'assistant',
+      '记录完成。',
+      { id: 'history-summary-fidelity-acknowledgement' },
+    );
+    const summaryId = 'summary-runtime-fidelity-values';
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage('user', '你还记得我上次说的代号和颜色吗？'),
+      reply: '代号是 stable-runtime-42，颜色是雾松青。',
+      history: [acknowledgement],
+      sessionSummary: {
+        id: summaryId,
+        summary: [
+          '模型语义摘要误写为代号是 wrong-model-value，颜色是红色。',
+          SESSION_SUMMARY_FIDELITY_START,
+          '# Runtime-preserved exact fields',
+          '代号: stable-runtime-42',
+          '颜色: 雾松青',
+          SESSION_SUMMARY_FIDELITY_END,
+        ].join('\n'),
+        collapsedCount: 6,
+        compactedAt: NOW,
+        sourceStartMessageId: 'message-1',
+        sourceEndMessageId: 'message-6',
+        sourceStartAt: NOW,
+        sourceEndAt: NOW,
+      },
+      ...observedContext([
+        contextItem(
+          `summary-memory:${summaryId}`,
+          'summary_memory',
+          { kind: 'memory', id: summaryId },
+        ),
+        contextItem(
+          'history-summary-fidelity-acknowledgement',
+          'recent_message',
+          { kind: 'message', id: acknowledgement.id },
+        ),
+      ]),
+    });
+
+    expect(assessment.status).toBe('supported');
+    expect(assessment.matchedSources).toEqual(['session_summary']);
+    expect(assessment.missingSignals).not.toContain('explicit_continuation_not_reflected_in_reply');
+  });
+
+  it('does not treat a probabilistic model summary as exact recall evidence without a Runtime envelope', () => {
+    const acknowledgement = textMessage(
+      'assistant',
+      '记录完成。',
+      { id: 'history-plain-summary-acknowledgement' },
+    );
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage('user', '你还记得我上次说的代号和颜色吗？'),
+      reply: '代号是 plain-summary-42，颜色是雾松青。',
+      history: [acknowledgement],
+      sessionSummary: {
+        id: 'summary-without-runtime-fidelity',
+        summary: '模型摘要声称代号为 plain-summary-42，颜色为雾松青。',
+        collapsedCount: 6,
+        compactedAt: NOW,
+        sourceStartMessageId: 'message-1',
+        sourceEndMessageId: 'message-6',
+        sourceStartAt: NOW,
+        sourceEndAt: NOW,
+      },
+      ...observedContext([
+        contextItem(
+          'summary-memory:summary-without-runtime-fidelity',
+          'summary_memory',
+          { kind: 'memory', id: 'summary-without-runtime-fidelity' },
+        ),
+        contextItem(
+          'history-plain-summary-acknowledgement',
+          'recent_message',
+          { kind: 'message', id: acknowledgement.id },
+        ),
+      ]),
+    });
+
+    expect(assessment.status).not.toBe('supported');
+    expect(assessment.matchedSources).not.toContain('session_summary');
+    expect(assessment.missingSignals).toContain('continuation_target_not_available_for_comparison');
+  });
+
+  it('rejects a source that carries only one of two explicitly requested values', () => {
+    const acknowledgement = textMessage(
+      'assistant',
+      '记录完成。',
+      { id: 'history-incomplete-source-acknowledgement' },
+    );
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage('user', '你还记得我上次说的代号和颜色吗？'),
+      reply: '代号是 incomplete-source-42。',
+      history: [acknowledgement],
+      sessionSummary: {
+        id: 'summary-incomplete-source',
+        summary: summaryWithFidelity(
+          '用户要求保存两个字段，但精确保真数据只恢复出一个字段。',
+          '代号: incomplete-source-42',
+        ),
+        collapsedCount: 6,
+        compactedAt: NOW,
+        sourceStartMessageId: 'message-1',
+        sourceEndMessageId: 'message-6',
+        sourceStartAt: NOW,
+        sourceEndAt: NOW,
+      },
+      ...observedContext([
+        contextItem(
+          'summary-memory:summary-incomplete-source',
+          'summary_memory',
+          { kind: 'memory', id: 'summary-incomplete-source' },
+        ),
+        contextItem(
+          'history-incomplete-source-acknowledgement',
+          'recent_message',
+          { kind: 'message', id: acknowledgement.id },
+        ),
+      ]),
+    });
+
+    expect(assessment.status).toBe('discontinuous');
+    expect(assessment.matchedSources).not.toContain('session_summary');
+    expect(assessment.missingSignals).toContain('explicit_continuation_not_reflected_in_reply');
+  });
+
+  it('rejects a final answer that omits one explicitly requested value from the session summary', () => {
+    const acknowledgement = textMessage(
+      'assistant',
+      '代号和颜色都已记录完成。',
+      { id: 'history-summary-partial-acknowledgement' },
+    );
+    const summary = {
+      id: 'summary-partial-values',
+      summary: summaryWithFidelity(
+        '用户要求保存两个字段。',
+        '代号: summary-anchor-27',
+        '颜色: 海蓝色',
+      ),
+      collapsedCount: 6,
+      compactedAt: NOW,
+      sourceStartMessageId: 'message-1',
+      sourceEndMessageId: 'message-6',
+      sourceStartAt: NOW,
+      sourceEndAt: NOW,
+    };
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage('user', '你还记得我上次说的代号和颜色吗？'),
+      reply: '代号是 summary-anchor-27，颜色我没有回答。',
+      history: [acknowledgement],
+      sessionSummary: summary,
+      ...observedContext([
+        contextItem(
+          'summary-memory:summary-partial-values',
+          'summary_memory',
+          { kind: 'memory', id: 'summary-partial-values' },
+        ),
+        contextItem(
+          'history-summary-partial-acknowledgement',
+          'recent_message',
+          { kind: 'message', id: acknowledgement.id },
+        ),
+      ]),
+    });
+
+    expect(assessment.status).toBe('discontinuous');
+    expect(assessment.matchedSources).not.toContain('session_summary');
+    expect(assessment.missingSignals).toContain('explicit_continuation_not_reflected_in_reply');
+  });
+
+  it('rejects explicit amnesia even when every requested session-summary value is repeated', () => {
+    const acknowledgement = textMessage(
+      'assistant',
+      '记录完成。',
+      { id: 'history-summary-amnesia-acknowledgement' },
+    );
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage('user', '你还记得我上次说的代号和颜色吗？'),
+      reply: '我无法回忆上一轮，但代号是 summary-anchor-27，颜色是海蓝色。',
+      history: [acknowledgement],
+      sessionSummary: {
+        id: 'summary-amnesia-values',
+        summary: summaryWithFidelity(
+          '用户要求保存两个字段。',
+          '代号: summary-anchor-27',
+          '颜色: 海蓝色',
+        ),
+        collapsedCount: 6,
+        compactedAt: NOW,
+        sourceStartMessageId: 'message-1',
+        sourceEndMessageId: 'message-6',
+        sourceStartAt: NOW,
+        sourceEndAt: NOW,
+      },
+      ...observedContext([
+        contextItem(
+          'summary-memory:summary-amnesia-values',
+          'summary_memory',
+          { kind: 'memory', id: 'summary-amnesia-values' },
+        ),
+        contextItem(
+          'history-summary-amnesia-acknowledgement',
+          'recent_message',
+          { kind: 'message', id: acknowledgement.id },
+        ),
+      ]),
+    });
+
+    expect(assessment.status).toBe('discontinuous');
+    expect(assessment.matchedSources).not.toContain('session_summary');
+    expect(assessment.missingSignals).toContain('explicit_continuation_not_reflected_in_reply');
+  });
+
+  it('does not credit a session summary that was omitted from the causal reply Context', () => {
+    const acknowledgement = textMessage(
+      'assistant',
+      '记录完成。',
+      { id: 'history-summary-omitted-acknowledgement' },
+    );
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage('user', '你还记得我上次说的代号和颜色吗？'),
+      reply: '代号是 summary-anchor-27，颜色是海蓝色。',
+      history: [acknowledgement],
+      sessionSummary: {
+        id: 'summary-omitted-values',
+        summary: summaryWithFidelity(
+          '用户要求保存两个字段。',
+          '代号: summary-anchor-27',
+          '颜色: 海蓝色',
+        ),
+        collapsedCount: 6,
+        compactedAt: NOW,
+        sourceStartMessageId: 'message-1',
+        sourceEndMessageId: 'message-6',
+        sourceStartAt: NOW,
+        sourceEndAt: NOW,
+      },
+      ...observedContext([
+        contextItem(
+          'summary-memory:summary-omitted-values',
+          'summary_memory',
+          { kind: 'memory', id: 'summary-omitted-values' },
+          'omitted',
+        ),
+        contextItem(
+          'history-summary-omitted-acknowledgement',
+          'recent_message',
+          { kind: 'message', id: acknowledgement.id },
+        ),
+      ]),
+    });
+
+    expect(assessment.status).not.toBe('supported');
+    expect(assessment.sources.sessionSummary).toBe(false);
+    expect(assessment.matchedSources).not.toContain('session_summary');
   });
 
   it('uses an active adopted Atom for explicit value recall after the original turn is absent', () => {
@@ -803,4 +1070,14 @@ function contextItem(
     disposition,
     omissionReason: disposition === 'omitted' ? 'budget' : undefined,
   };
+}
+
+function summaryWithFidelity(modelSummary: string, ...fields: string[]): string {
+  return [
+    modelSummary,
+    SESSION_SUMMARY_FIDELITY_START,
+    '# Runtime-preserved exact fields',
+    ...fields,
+    SESSION_SUMMARY_FIDELITY_END,
+  ].join('\n');
 }

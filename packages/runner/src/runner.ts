@@ -512,13 +512,13 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         opts.log?.('warn', `runner: run resource cleanup degraded: ${(err as Error).message}`);
       }
       const runAborted = runStopped;
-
       // Compact only after the run has finalized and persisted its messages.
       // The transcript remains intact; failures only skip the optional summary.
       if (!runAborted) {
         await compactSessionAfterRun({
           sessionManager: infra.sessionManager, memoryService: infra.memoryService, llm: infra.llm, ctx,
-          sessionId, runId: ctx.runId, workspace: cwd, model,
+          sessionId, runId: ctx.runId, workspace: cwd,
+          model: ctx.resolvedRunConfig?.model ?? infra.state.model,
           threshold: opts.config.sessions.compaction.threshold,
           keepRecent: opts.config.sessions.compaction.keepRecent,
           force: ctx.contextSnapshots?.some((snapshot) => snapshot.compressionRecommended) === true,

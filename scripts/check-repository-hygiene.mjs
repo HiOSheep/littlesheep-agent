@@ -201,6 +201,7 @@ async function checkCanonicalFiles() {
     'scripts/run-affected-verification.mjs',
     'scripts/verify-memory-v3-soak.mjs',
     'scripts/verify-memory-v3-compaction-continuity.mjs',
+    'scripts/verify-electron-deepseek-compaction-continuity.mjs',
     'scripts/verify-memory-v3-migration-readiness.mjs',
     'tsconfig.workspace.json',
     'build-app.bat',

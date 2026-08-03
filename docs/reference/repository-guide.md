@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-08-03 09:04:52
+最后更新：2026-08-03 12:07:47
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
@@ -62,8 +62,8 @@
 | `packages/types/` | Agent、消息、会话、工具、记忆、澄清请求，以及 Mode、运行决议、Context、附件、运行事件、TaskBookPatch、检查点、模型请求和执行证据等内部 v1 契约；本地精确、Provider 实测与不可展示安全估算的 Token 账本独立位于 `src/token-ledger.ts`。 |
 | `packages/classifier/` | `respond / execute / clarify` 语义活动路由，含规则快速路径和模型兜底；旧 `chat / problem / unclear` 只由公共契约做兼容映射。 |
 | `packages/prompt/` | 系统提示词、行为 profile、工作区信息和记忆树根索引的装配；支持完整执行、紧凑 `respond`、最小与禁用四种投影模式。 |
-| `packages/harness/` | 硬控制流状态机、TaskBook、各 stage、hooks、局部重规划和验证；`src/stages/decide/request.ts`、`model-call.ts`、`adoption.ts` 分别拥有决策请求、模型调用和采用，`execute/`、`verify/` 拥有工具执行与结构验收；`checkpoint-resume.ts` 负责依据已保存步骤证据恢复，`response-continuity*.ts` 负责从最终用户可见回答反查真实 Context 来源并判定记忆连续；`runtime-control-boundary.ts` 和 `taskbook-patch.ts` 拥有运行中事件的安全消费与确定性局部修订。 |
-| `packages/runner/` | 运行时装配、单次 run、流式事件、执行日志、活动 run 事件注册与有界状态快照、暂停/继续/中断、持久检查点、显式续跑和基础设施依赖注入。 |
+| `packages/harness/` | 硬控制流状态机、TaskBook、各 stage、hooks、局部重规划和验证；`src/stages/decide/request.ts`、`model-call.ts`、`adoption.ts` 分别拥有决策请求、模型调用和采用，`execute/`、`verify/` 拥有工具执行与结构验收；`checkpoint-resume.ts` 负责依据已保存步骤证据恢复，`response-continuity*.ts` 负责从最终用户可见回答反查真实因果 Context 来源并判定记忆连续，`session-summary-fidelity-text.ts` 只解析 Runtime 精确字段封套；`runtime-control-boundary.ts` 和 `taskbook-patch.ts` 拥有运行中事件的安全消费与确定性局部修订。 |
+| `packages/runner/` | 运行时装配、单次 run、流式事件、执行日志、活动 run 事件注册与有界状态快照、暂停/继续/中断、持久检查点、显式续跑和基础设施依赖注入；`session-continuity.ts` 负责版本化会话压缩调用，`session-summary-fidelity.ts` 从保留的用户消息和旧封套重建有界精确字段。 |
 | `packages/llm/` | OpenAI-compatible 客户端、供应商请求、流式输出、重试和 usage 类型。 |
 | `packages/config/` | 配置 schema、默认值、供应商预置、模型选择和用户配置加载。 |
 | `packages/context/` | Context 候选排序、模型窗口预算、可注入精确 token 计数、预算淘汰、压缩阈值信号以及脱敏 `ContextSnapshot` / `ModelRequestSnapshot`。`src/engine.ts` 是兼容 facade，内部实现位于 `src/context-engine/`；模型专用 tokenizer 资源准备与最终请求 framing 位于 `src/tokenizers/`。本包不负责记忆存储、会话存储或 Provider 调用。 |
@@ -107,8 +107,8 @@
 
 | 需求类型 | 主要所有者 | 首要入口 | 主要测试 |
 | --- | --- | --- | --- |
-| Agent 状态机、活动路由、TaskBook、验证、恢复或回答级记忆连续性 | `packages/harness/`、`packages/classifier/` | `harness/src/default-harness.ts`、`checkpoint-resume.ts`、`response-continuity*.ts`、`src/stages/reply.ts`、`src/stages/decide/{request,model-call,adoption}.ts`、`runtime-control-boundary.ts`、`taskbook-patch.ts`；语义路由规则位于 `classifier/src/{rules,llm}.ts` | `harness/src/default-harness.test.ts`、`response-continuity.test.ts`、`continuation-intent.test.ts`、`src/stages/*.test.ts`、`runtime-control-boundary.test.ts`、`taskbook-patch.test.ts`、`classifier/src/*.test.ts` |
-| 单次 run、流式事件、执行日志、上一轮有界摘要与活动续跑 | `packages/runner/` | `src/runner.ts`、`src/execution-log.ts`、`src/session-run-summary.ts`、`src/runtime-event-queue.ts`、`src/active-run-registry.ts`、`src/active-run-activity.ts`、`src/run-abort-control.ts`、`src/run-checkpoint-*.ts` | `src/runner.test.ts`、`src/execution-log.test.ts`、`src/runtime-event-queue.test.ts`、`src/active-run-registry.test.ts`、`src/runner-continuation.test.ts`、`src/run-checkpoint-*.test.ts` |
+| Agent 状态机、活动路由、TaskBook、验证、恢复或回答级记忆连续性 | `packages/harness/`、`packages/classifier/` | `harness/src/default-harness.ts`、`checkpoint-resume.ts`、`response-continuity*.ts`、`session-summary-fidelity-text.ts`、`src/stages/reply.ts`、`src/stages/decide/{request,model-call,adoption}.ts`、`runtime-control-boundary.ts`、`taskbook-patch.ts`；语义路由规则位于 `classifier/src/{rules,llm}.ts` | `harness/src/default-harness.test.ts`、`response-continuity.test.ts`、`session-summary-fidelity-text.test.ts`、`continuation-intent.test.ts`、`src/stages/*.test.ts`、`runtime-control-boundary.test.ts`、`taskbook-patch.test.ts`、`classifier/src/*.test.ts` |
+| 单次 run、流式事件、执行日志、上一轮有界摘要与活动续跑 | `packages/runner/` | `src/runner.ts`、`src/execution-log.ts`、`src/session-run-summary.ts`、`src/session-continuity.ts`、`src/session-summary-fidelity.ts`、`src/runtime-event-queue.ts`、`src/active-run-registry.ts`、`src/active-run-activity.ts`、`src/run-abort-control.ts`、`src/run-checkpoint-*.ts` | `src/runner.test.ts`、`src/execution-log.test.ts`、`src/session-summary-fidelity.test.ts`、`src/runtime-event-queue.test.ts`、`src/active-run-registry.test.ts`、`src/runner-continuation.test.ts`、`src/run-checkpoint-*.test.ts` |
 | 公共运行契约 | `packages/types/` | `src/index.ts`、`src/runtime-contracts.ts`、`src/token-ledger.ts` | `src/runtime-contracts.test.ts`、`test/core-agent-contracts.test.ts` |
 | Context 候选、预算、计数和快照 | `packages/context/` | `src/engine.ts` facade、`src/context-engine/`、`src/tokenizers/deepseek-v4-{encoding,counter}.ts` | `src/engine.test.ts`、`src/tokenizers/*.test.ts`、Harness Context/观测测试 |
 | Provider 请求、流式与 usage | `packages/llm/` | `src/client.ts` | `src/client.test.ts`、Provider smoke 脚本 |
@@ -116,7 +116,7 @@
 | Prompt 与行为 profile | `packages/prompt/` | `src/builder.ts`、`src/profiles.ts` | `src/builder.test.ts`、`src/profiles.test.ts` |
 | 记忆树、资源注册与项目投影 | `packages/memory-tree/` | 稳定 facade：`src/memory-service.ts`、`src/memory-repository.ts`；对话原始来源：`src/conversation-source-store.ts`；run 反馈：`src/memory-feedback.ts`、`src/memory-repository/v3-feedback-manager.ts`；run working set：`src/memory-tree-working-set.ts`；多轮任务语义、当前任务相关度与 prime 选择：`src/task-query.ts`、`src/task-relevance.ts`、`src/memory-prime-relevance.ts`；D1/深搜候选：`src/memory-repository/v3-retrieval.ts`、`v3-retrieval-materializer.ts`；Catalog FTS/向量：`src/v3/catalog-fts.ts`、`catalog-embedding.ts`；路由/关系相关性：`src/v3/priority.ts`、`src/v3/catalog-relevance.ts`；版本后端：`src/memory-repository/v2-backend.ts`、`v3-backend.ts`、`factory.ts`；安全迁移：`repository-locator.ts`、`v3-migration*.ts`；v3 投影变更与 Atom：`src/v3/raw-record-store.ts`、`raw-record-file.ts`、`raw-record-commit-store.ts`（兼容内部命名，语义为 projection mutation records）、`atom-store.ts`、`catalog.ts`、`graph-store.ts`、`storage-coordinator.ts` | 双后端契约：`src/memory-repository.contract.test.ts`；来源与反馈：`src/conversation-source-store.test.ts`、`src/memory-feedback.test.ts`；任务语义、相关性与 D1：`src/task-query.test.ts`、`src/task-relevance.test.ts`、`src/memory-prime-relevance.test.ts`、`src/memory-tree.test.ts`、`src/memory-service-v3.test.ts`、`src/v3/catalog.test.ts`、`src/v3/contracts-priority.test.ts`、`src/memory-repository/v3-backend.test.ts`；迁移：`src/memory-repository/v3-migration.test.ts`；v3：`src/memory-repository/v3-*.test.ts`、`src/v3/*.test.ts`；Runner：`packages/runner/src/memory-v3.integration.test.ts`；VERIFY 采用过滤：`packages/harness/src/stages/verify/memory-evidence.ts` |
 | 旧文件记忆兼容读取与安全写入基元 | `packages/memory-core/` | `src/store.ts`、`src/search.ts`、`src/write-memory.ts` | 对应同名测试；旧 archive/vector 写入入口已退役 |
-| 会话、回复精确去重和长会话摘要 | `packages/session/` | `src/manager.ts`、`src/reply-fingerprint-store.ts`、`src/compaction.ts`、`src/compaction-store.ts` | 对应同名测试；用户可见回复注册表不进入 Context，摘要进入 Memory v3 的边界还需联查 `packages/runner/src/runner.ts` 与 `packages/memory-tree/src/task-query.ts` |
+| 会话、回复精确去重和长会话摘要 | `packages/session/` | `src/manager.ts`、`src/reply-fingerprint-store.ts`、`src/compaction.ts`、`src/compaction-store.ts` | 对应同名测试；原始 JSONL 不删除、不改写。摘要生成与精确字段保真还需联查 `packages/runner/src/session-continuity.ts`、`session-summary-fidelity.ts`，摘要进入 Memory v3 的边界联查 `packages/memory-tree/src/task-query.ts` |
 | 工具注册、统一执行、审批和内置工具 | `packages/tools/` | `src/registry.ts`、`src/tool-execution-service.ts`、`src/tool-execution-{scheduler,control,records,result}.ts`、`src/builtin/` | `src/**/*.test.ts` |
 | 插件发现、信任和生命周期 | `packages/plugins/` | `src/host.ts`、`src/manifest.ts` | `src/**/*.test.ts` |
 | 外部渠道协议 | `packages/channels/*` | 各包 `src/plugin.ts` | 各包 `src/plugin.test.ts`、`test/e2e-webhook.test.ts` |
@@ -227,6 +227,7 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 - `scripts/verify-memory-v3-soak.mjs`：Memory v3 的可重复隔离压力与恢复验收；支持确定性和真实本地 Transformers.js 两种 Embedding 模式。必须校验临时根边界，并在任何退出路径停止维护 worker、关闭 SQLite、释放 pipeline 后再清理。
 - `scripts/lib/memory-v3-runtime-soak.mjs`：soak 的公共 Repository 路径辅助验证，负责确定性本地 Embedding、候选排序翻转、routing feedback 有界性和重启恢复；不得向正式应用数据根写入合成记忆。
 - `scripts/verify-memory-v3-provider.mjs`、`scripts/lib/memory-v3-provider-acceptance.mjs`：真实 Provider 连续性门及其脱敏预检/隔离运行辅助；必须在任何失败路径清理临时数据根，且不得把凭证或完整 Provider 错误写入报告。
+- `scripts/verify-electron-deepseek-compaction-continuity.mjs`：真实 Electron + DeepSeek 的会话摘要回答连续性门；校验原始旧消息不进入重启后的回答请求、版本化摘要成为唯一命中来源、最终回答逐项命中历史值、漏答/答错/失忆/摘要未介入四类负例失败关闭，以及临时数据根和资源有界回收。
 - `scripts/verify-memory-v3-migration-readiness.mjs`：用指定真实 V2 数据的隔离副本执行迁移就绪验收；必须在复制前后复核源 manifest/index 哈希，并区分业务 atom 与内部 scope root，不得在源数据根登记迁移。
 - `scripts/build-app.ps1`：构建 Electron 应用并刷新快捷方式。
 - `scripts/prepare-littlesheep-runtime.mjs`：按当前 Electron 版本在本机生成被命名为 `LittleSheep.exe` 的运行时副本；该副本属于安装/构建产物，不进入 Git。

@@ -1,4 +1,7 @@
+// Owns bounded text parsing and exact labeled-value matching for answer-level continuity checks.
+
 import type { Message } from '@littlesheep/types';
+import { readSessionSummaryFidelityFields } from './session-summary-fidelity-text.js';
 
 const MAX_SOURCE_CHARS = 12_000;
 const MEMORY_ATOM_START = '<!-- littlesheep-memory-atom:start ';
@@ -42,6 +45,11 @@ export type ContinuityValueSource =
 export interface ContinuityValueSourceText {
   source: ContinuityValueSource;
   texts: readonly string[];
+}
+
+export interface ContinuityLabeledValue {
+  label: string;
+  value: string;
 }
 
 const CONTINUITY_VALUE_LABELS = [
@@ -153,18 +161,16 @@ export function continuityRequestedValueTargets(
   request: string | undefined,
   sources: readonly ContinuityValueSourceText[],
 ): ContinuityValueTarget[] {
-  const normalizedRequest = request?.normalize('NFKC').toLowerCase() ?? '';
-  if (!normalizedRequest) return [];
-  const requestedLabels = CONTINUITY_VALUE_LABELS.filter((label) => (
-    requestMentionsValueLabel(normalizedRequest, label)
-  ));
+  const requestedLabels = continuityRequestedValueLabels(request);
   const targets: ContinuityValueTarget[] = [];
   const seen = new Set<string>();
   for (const label of requestedLabels) {
     let resolved = false;
     for (const source of sources) {
       for (let index = source.texts.length - 1; index >= 0; index--) {
-        const value = extractLabeledValue(source.texts[index], label);
+        const value = source.source === 'session_summary'
+          ? extractSessionSummaryFidelityValue(source.texts[index], label)
+          : extractLabeledValue(source.texts[index], label);
         if (!value) continue;
         const terms = continuityTerms(value);
         const normalizedValue = normalizeComparableValue(value);
@@ -180,6 +186,21 @@ export function continuityRequestedValueTargets(
     }
   }
   return targets;
+}
+
+export function continuityRequestedValueLabels(value: string | undefined): string[] {
+  const normalized = value?.normalize('NFKC').toLowerCase() ?? '';
+  return normalized
+    ? CONTINUITY_VALUE_LABELS.filter((label) => requestMentionsValueLabel(normalized, label))
+    : [];
+}
+
+/** Extract the latest concrete value for each continuity label without normalizing its value. */
+export function continuityLabeledValues(value: string | undefined): ContinuityLabeledValue[] {
+  return CONTINUITY_VALUE_LABELS.flatMap((label) => {
+    const extracted = extractLabeledValue(value, label);
+    return extracted ? [{ label, value: extracted }] : [];
+  });
 }
 
 export function continuityValueTargetMatched(
@@ -208,30 +229,62 @@ export function replyExplicitlyDisclaimsContinuity(value: string | undefined): b
 }
 
 function extractLabeledValue(value: string | undefined, label: string): string | undefined {
-  const source = value?.normalize('NFKC') ?? '';
+  const source = value?.normalize('NFKC').slice(0, MAX_SOURCE_CHARS) ?? '';
   if (!source) return undefined;
   const escapedLabel = escapeRegExp(label);
+  const labelPattern = /^[a-z]/iu.test(label) ? `\\b${escapedLabel}\\b` : escapedLabel;
   const labelSuffix = '(?:\\s|\\*\\*|__|~~)*';
-  const quoted = source.match(new RegExp(
-    `${escapedLabel}${labelSuffix}(?:是|为|=|:|：)?\\s*[“"‘'\`]([^”"’'\`\\r\\n]{1,120})[”"’'\`]`,
-    'iu',
-  ));
-  if (quoted?.[1]?.trim()) return quoted[1].trim();
-  const delimited = source.match(new RegExp(
-    `${escapedLabel}${labelSuffix}(?:是|为|=|:|：)\\s*([^,，。；;、\\r\\n]{1,120})`,
-    'iu',
-  ));
-  if (delimited?.[1]?.trim()) {
-    return cleanExtractedValue(trimAtFollowingLabel(delimited[1], label));
+  const assignment = '(?:是|为|改成|改为|更新为|设为|设置为|调整为|换成|becomes?|is|=|:|：)';
+  const candidates: Array<{ index: number; priority: number; value: string }> = [];
+  const patterns = [
+    {
+      priority: 2,
+      regex: new RegExp(
+        `${labelPattern}${labelSuffix}(?:${assignment})?\\s*[“"‘'\`]([^”"’'\`\\r\\n]{1,120})[”"’'\`]`,
+        'giu',
+      ),
+    },
+    {
+      priority: 2,
+      regex: new RegExp(
+        `${labelPattern}${labelSuffix}${assignment}\\s*([^,，。；;、\\r\\n]{1,120})`,
+        'giu',
+      ),
+    },
+    {
+      priority: 1,
+      regex: new RegExp(
+        `${labelPattern}${labelSuffix}([a-z0-9][a-z0-9_+#.\\/-]{1,80}|[\\p{Script=Han}]{1,16})`,
+        'giu',
+      ),
+    },
+  ];
+  for (const pattern of patterns) {
+    for (const match of source.matchAll(pattern.regex)) {
+      const extracted = cleanExtractedValue(trimAtFollowingLabel(match[1] ?? '', label));
+      if (!extracted || looksLikeValuePlaceholder(extracted)) continue;
+      candidates.push({ index: match.index ?? 0, priority: pattern.priority, value: extracted });
+    }
   }
-  const compact = source.match(new RegExp(
-    `${escapedLabel}${labelSuffix}([a-z0-9][a-z0-9_+#.\\/-]{1,80}|[\\p{Script=Han}]{1,16})`,
-    'iu',
-  ));
-  const compactValue = cleanExtractedValue(compact?.[1]);
-  return compactValue && !looksLikeValuePlaceholder(compactValue)
-    ? compactValue
+  candidates.sort((left, right) => right.priority - left.priority || right.index - left.index);
+  return candidates[0]?.value;
+}
+
+function extractSessionSummaryFidelityValue(
+  value: string | undefined,
+  label: string,
+): string | undefined {
+  const authoritative = readSessionSummaryFidelityFields(value)
+    .filter((field) => comparableLabel(field.label) === comparableLabel(label))
+    .at(-1)?.value;
+  const authoritativeValue = cleanExtractedValue(authoritative);
+  return authoritativeValue && !looksLikeValuePlaceholder(authoritativeValue)
+    ? authoritativeValue
     : undefined;
+}
+
+function comparableLabel(value: string): string {
+  return value.normalize('NFKC').toLocaleLowerCase('en-US').trim();
 }
 
 function requestMentionsValueLabel(request: string, label: string): boolean {
@@ -266,8 +319,8 @@ function trimAtFollowingLabel(value: string, currentLabel: string): string {
 
 function looksLikeValuePlaceholder(value: string): boolean {
   const normalized = normalizeComparableValue(value);
-  return /^(?:和|及|以及|都|已|已经|会|将|要|需要|被|还|是否|什么|多少|哪个|哪一个|记录|保存|记住|确认)/u.test(normalized)
-    || /^(?:and|or|was|were|is|are|recorded|saved|remembered|confirmed)\b/iu.test(normalized);
+  return /^(?:\.{2,}|…+|不是|并非|不为|和|及|以及|都|已|已经|会|将|要|需要|被|还|吗|呢|嘛|是否|什么|啥|多少|哪个|哪一个|哪种|如何|怎么|怎样|记录|保存|记住|确认)/u.test(normalized)
+    || /^(?:and|or|not|was|were|is|are|recorded|saved|remembered|confirmed)\b/iu.test(normalized);
 }
 
 function replyNegatesValueTarget(reply: string, target: ContinuityValueTarget): boolean {

@@ -48,6 +48,9 @@ describe('maybeCompact', () => {
     expect(summarize.mock.calls[0]?.[0].messages.map((message: Message) => message.id)).toEqual(
       messages.slice(0, 5).map((message: Message) => message.id),
     );
+    expect(summarize.mock.calls[0]?.[0].coveredMessages.map((message: Message) => message.id)).toEqual(
+      messages.slice(0, 5).map((message: Message) => message.id),
+    );
     expect(result).toMatchObject({
       version: 2,
       collapsedCount: 5,
@@ -96,6 +99,17 @@ describe('maybeCompact', () => {
 
     expect(summarize.mock.calls[0]?.[0].previousSummary?.id).toBe(first?.id);
     expect(summarize.mock.calls[0]?.[0].messages.map((message: Message) => message.id)).toEqual([
+      'message-6',
+      'message-7',
+      'new-1',
+      'new-2',
+    ]);
+    expect(summarize.mock.calls[0]?.[0].coveredMessages.map((message: Message) => message.id)).toEqual([
+      'message-1',
+      'message-2',
+      'message-3',
+      'message-4',
+      'message-5',
       'message-6',
       'message-7',
       'new-1',

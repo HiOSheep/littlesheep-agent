@@ -2,6 +2,7 @@ import type { Message } from '@littlesheep/types';
 import {
   continuityMessageText,
   continuityOverlap,
+  continuityRequestedValueLabels,
   continuityRequestedValueTargets,
   continuityValueTargetMatched,
   type ContinuityOverlap,
@@ -17,6 +18,7 @@ export interface RequestedValueSourceEvidence {
 }
 
 export interface RequestedValueEvidence {
+  requestedLabelCount: number;
   targets: ContinuityValueTarget[];
   overlapCount: number;
   matchedCount: number;
@@ -40,6 +42,9 @@ interface RequestedValueEvidenceInput {
 export function collectRequestedValueEvidence(
   input: RequestedValueEvidenceInput,
 ): RequestedValueEvidence {
+  const requestedLabels = input.enabled
+    ? continuityRequestedValueLabels(input.request)
+    : [];
   const targets = input.enabled
     ? continuityRequestedValueTargets(input.request, [
         {
@@ -72,14 +77,17 @@ export function collectRequestedValueEvidence(
   const matchedCount = matches.filter((match) => match.matched).length;
 
   return {
+    requestedLabelCount: requestedLabels.length,
     targets,
     overlapCount: matches.reduce((total, match) => total + match.overlap.count, 0),
     matchedCount,
-    allMatched: targets.length > 0 && matchedCount === targets.length,
+    allMatched: requestedLabels.length > 0
+      && targets.length === requestedLabels.length
+      && matchedCount === requestedLabels.length,
     bySource: {
-      recent_history: sourceEvidence(matches, 'recent_history'),
-      session_summary: sourceEvidence(matches, 'session_summary'),
-      active_memory_atom: sourceEvidence(matches, 'active_memory_atom'),
+      recent_history: sourceEvidence(matches, 'recent_history', requestedLabels.length),
+      session_summary: sourceEvidence(matches, 'session_summary', requestedLabels.length),
+      active_memory_atom: sourceEvidence(matches, 'active_memory_atom', requestedLabels.length),
     },
   };
 }
@@ -91,11 +99,14 @@ function sourceEvidence(
     matched: boolean;
   }>,
   source: ContinuityValueSource,
+  requestedLabelCount: number,
 ): RequestedValueSourceEvidence {
   const selected = matches.filter((match) => match.target.source === source);
   return {
     targetCount: selected.length,
     overlapCount: selected.reduce((total, match) => total + match.overlap.count, 0),
-    allMatched: selected.length > 0 && selected.every((match) => match.matched),
+    allMatched: requestedLabelCount > 0
+      && selected.length === requestedLabelCount
+      && selected.every((match) => match.matched),
   };
 }

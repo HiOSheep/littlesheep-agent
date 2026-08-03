@@ -139,25 +139,26 @@ export function collectResponseContinuityEvidence(
   const genericStrongMemoryAnchor = matchedAtomIds.length > 0
     || strongContinuityAnchor(unscopedMemoryOverlap);
   const genericStrongSummaryAnchor = strongContinuityAnchor(summaryOverlap);
-  const memoryAnchorCount = requestedValueTargets.length > 0
+  const hasRequestedValueLabels = requestedValues.requestedLabelCount > 0;
+  const memoryAnchorCount = hasRequestedValueLabels
     ? requestedMemory.overlapCount
     : genericMemoryAnchorCount;
-  const strongMemoryAnchor = requestedValueTargets.length > 0
+  const strongMemoryAnchor = hasRequestedValueLabels
     ? requestedMemory.allMatched
     : genericStrongMemoryAnchor;
-  const strongSummaryAnchor = requestedValueTargets.length > 0
+  const strongSummaryAnchor = hasRequestedValueLabels
     ? requestedSummary.allMatched
     : genericStrongSummaryAnchor;
-  const strongHistoryAnchor = requestedValueTargets.length > 0
+  const strongHistoryAnchor = hasRequestedValueLabels
     ? requestedHistory.allMatched
     : strongContinuityAnchor(effectiveHistoryOverlap);
   const hasRequestedValueTargets = requestedValueTargets.length > 0;
-  const hasContinuationHistoryTarget = !hasRequestedValueTargets
+  const hasContinuationHistoryTarget = !hasRequestedValueLabels
     && continuationHistoryTerms.size > 0;
-  const hasContinuationSummaryTarget = !hasRequestedValueTargets
+  const hasContinuationSummaryTarget = !hasRequestedValueLabels
     && !hasContinuationHistoryTarget
     && summaryTerms.size > 0;
-  const hasContinuationMemoryTarget = !hasRequestedValueTargets
+  const hasContinuationMemoryTarget = !hasRequestedValueLabels
     && !hasContinuationHistoryTarget
     && !hasContinuationSummaryTarget
     && memoryTermCount > 0;
@@ -196,23 +197,23 @@ export function collectResponseContinuityEvidence(
     taskOverlapCount: continuityOverlap(replyTerms, taskTerms).count,
     memoryTermCount,
     memoryAnchorCount,
-    summaryAnchorCount: requestedValueTargets.length > 0
+    summaryAnchorCount: hasRequestedValueLabels
       ? requestedSummary.overlapCount
       : summaryOverlap.count,
-    historyAnchorCount: requestedValueTargets.length > 0
+    historyAnchorCount: hasRequestedValueLabels
       ? requestedHistory.overlapCount
       : effectiveHistoryOverlap.count,
-    independentContinuityAnchorCount: requestedValueTargets.length > 0
+    independentContinuityAnchorCount: hasRequestedValueLabels
       ? requestedValues.overlapCount
       : memoryAnchorCount + summaryOverlap.count + effectiveHistoryOverlap.count,
-    memoryTermsAvailable: requestedValueTargets.length > 0
+    memoryTermsAvailable: hasRequestedValueLabels
       ? requestedMemory.targetCount > 0
       : eligibleAtomIds.size > 0 || unscopedMemoryTerms.size > 0,
-    summaryTermsAvailable: requestedValueTargets.length > 0
+    summaryTermsAvailable: hasRequestedValueLabels
       ? requestedSummary.targetCount > 0
       : summaryTerms.size > 0,
     historyTermsAvailable: explicitContinuationRequest
-      ? requestedValueTargets.length > 0
+      ? hasRequestedValueLabels
         ? requestedHistory.targetCount > 0
         : continuationHistoryTerms.size > 0
       : historyTerms.size > 0,
@@ -233,7 +234,7 @@ export function collectResponseContinuityEvidence(
         : hasContinuationMemoryTarget
           ? strongMemoryAnchor
           : false,
-    requestedValueTargetCount: requestedValueTargets.length,
+    requestedValueTargetCount: requestedValues.requestedLabelCount,
     requestedValueMatchedCount: requestedValues.matchedCount,
     replyDisclaimsContinuity: replyExplicitlyDisclaimsContinuity(input.reply),
     matchedAtomIds,

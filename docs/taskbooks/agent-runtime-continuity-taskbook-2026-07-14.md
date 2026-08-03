@@ -1,7 +1,7 @@
 # LittleSheep Agent Runtime 连续性任务书 2026-07-14
 
-状态：规划已定稿，实施中（阶段 0、阶段 2、阶段 3 已完成；阶段 1 主要数据链、当前 DeepSeek 四项真实校准、普通直接回答与显式单/多工具提议路径的 V4 精确本地 tokenizer 对账已完成，含历史 Provider 工具消息的普通续轮 exact 校准、其他 Provider 与持续真实负载仍待收敛；阶段 4 已完成统一 Tool Execution Service、事件重入、TaskBookPatch、Renderer 入口与 TaskBook 步骤级有界并行；阶段 5 已完成持久检查点、Runner 续跑、应用启动恢复、活动任务控制、托盘、三档关闭策略、设置页后台入口、确定性 Electron 七场景、真实 DeepSeek 跨重启最终回答连续性、基础两步副作用恢复和短时并行压力验收；摘要压缩续答、长时间持续负载、网络恢复和真实外部系统副作用仍未完成）
-最后更新：2026-08-03 09:04:52
+状态：规划已定稿，实施中（阶段 0、阶段 2、阶段 3 已完成；阶段 1 主要数据链、当前 DeepSeek 四项真实校准、普通直接回答与显式单/多工具提议路径的 V4 精确本地 tokenizer 对账已完成，含历史 Provider 工具消息的普通续轮 exact 校准、其他 Provider 与持续真实负载仍待收敛；阶段 4 已完成统一 Tool Execution Service、事件重入、TaskBookPatch、Renderer 入口与 TaskBook 步骤级有界并行；阶段 5 已完成持久检查点、Runner 续跑、应用启动恢复、活动任务控制、托盘、三档关闭策略、设置页后台入口、确定性 Electron 七场景、真实 DeepSeek 跨重启最终回答连续性、基础两步副作用恢复、短时并行压力和一次有界双字段摘要压缩续答验收；多轮多次压缩、更多事实形态、长时间持续负载、网络恢复和真实外部系统副作用仍未完成）
+最后更新：2026-08-03 12:07:47
 
 本文把 Context、记忆注册、附件、运行中追加要求、检查点恢复、后台执行和双向透明整理为一条可分阶段验收的开发任务书。它服从 [架构原则](../principles/architecture-principles.md) 和 [核心 Agent 流程规范](../principles/core-agent-flow-guidelines.md)，当前事实与最新测试数字仍以 [项目状态](../decision/project-status.md) 为准。
 
@@ -20,6 +20,8 @@
 > 2026-08-03 06:16:25 多工具与回答连续性边界：用户明确点名的最多 4 种工具可由 DECIDE 在总 schema 预算内形成逐步骤 `toolProposal`，Runtime 最多采用 8 个提议，并逐项重验 schema、依赖、资源、副作用和权限。当前直接执行只接受可证明且无需审批的 `read/write`。真实 `write -> read` 暂停、强制终止与恢复任务从旧基线 7 次模型请求收敛为 `decide -> execute_final_reply` 两次，耗时 `6.651s`；任务与记忆追问 Provider total 为 `6,924`，四次请求本地 prompt 均为 `exact_match`。随后 LS 的最终回答逐项给出文件名与验收码，连续性为 `supported`、来源为 `recent_history`；任何漏答、答错或否认记得仍必须失败关闭。
 
 > 2026-08-03 09:04:52 并行连续性边界：最新生产构建在隔离数据根中通过真实 Electron + DeepSeek 的 10 场景短时并行压力门。三个旧 Runner 任务与热重载后的新 Runner 曾同时形成 4 个活动 run；窗口关闭到托盘后继续运行，两个已完成 `write -> read` 副作用的任务分别暂停和中断，进程强制终止并重启后并行领取 Checkpoint，恢复阶段工具调用均为 0，文件 SHA-256、大小与 mtime 不变。两条独立会话随后各用一次实时 API 回答记忆追问，分别逐项给出 `parallel-a.txt / parallel-deepseek-anchor-a-6417` 与 `parallel-b.txt / parallel-deepseek-anchor-b-5824`，两项均为 `supported`、来源为 `recent_history`；内部检索、Checkpoint 存在或关键词碰巧出现均不能替代最终回答证据。14 次代理请求中 13 次转发、1 次在延迟期取消，所有转发请求都有 Provider usage 且本地 tokenizer 全部 `exact_match`；Provider 合计 prompt `23,358`、completion `2,986`、total `26,344`。同场景 `glob` 仍只有 `DECIDE + execute_final_reply` 两次模型调用和一次工具调用，本地/Provider prompt 为 `2934/2934`、`802/802`；验收代理为每次转发主动增加 `3.5s`，因此 `12.436s` 只用于故障窗口，不与无延迟速度基线直接比较。重启后最终稳定态相对起点 RSS 增长约 `51.9 MiB`、heap 增长约 `20.7 MiB`，低于 `256/128 MiB` 预算；活动 run 和退役 Runner 均回到 0，source/listener 回到 1。该门证明有界并行、恢复和短时资源回落，不替代数小时持续负载、真实断网或外部系统副作用验收。
+
+> 2026-08-03 11:37:02 摘要回答连续性边界：隔离数据根中的真实 Electron + `deepseek-v4-flash` 已完成“首轮仅确认记录 → Runtime 生成版本化摘要 → 完整退出 → 重启 → 当前追问不包含历史值 → 原始旧用户消息不进入回答请求 → 最终回答仅由 `session_summary` 支撑”的双字段验收。历史代号为 `summary-deepseek-anchor-8427`，颜色为 `雾松青`；最终状态为 `supported`、`method=answer-evidence-v1`、`matchedSources=[session_summary]`。概率语义摘要与最多 24 项 Runtime 精确字段封套分离，旧摘要无封套时从保留的原始用户消息重建，模型伪造或残缺封套会被移除。漏答、答错、明确失忆和摘要未进入因果 Context 四类负例均未误判；4 次 Provider 请求共使用 prompt `3,301`、completion `38`、total `3,339` tokens，重启后稳定态相对基线 RSS 增长约 `15.0 MiB`、heap 增长约 `9.5 MiB`。该门只证明一次有界双字段和两级版本化摘要链，不替代多轮多次压缩、更多字段、非标签事实、任务约束或长时间负载验收。
 
 > 2026-08-03 03:45:44 单工具效率边界：隔离数据根中的真实 `deepseek-v4-flash` 已把明确单次只读 `glob` 收敛为 `DECIDE → Runtime glob → execute_final_reply`。DECIDE 只收到唯一工具 schema 并输出模型决策的 `toolProposal`；Runtime 不猜参数，只做 schema、只读资源、权限和审批复核。验收严格为 2 次 API、1 次工具、结构验证通过、工作区未变化，耗时 `5.642s`；两次本地/Provider prompt 为 `2934/2934`、`870/870`。续接和记忆追问不进入该快路径，仍按最终回答是否真正承接历史事实判定连续。
 
@@ -118,7 +120,7 @@
 尚未具备：
 
 - 完整的 Context Engine 供应商验收闭环：provider/model 能力分类和 tokenizer unavailable 请求的保守预算保护已完成，DeepSeek V4 普通请求的本地精确 ledger 与真实 Provider 同请求对账已完成；工具续轮与其他 Provider 按实际启用范围继续补齐；
-- 完整资源治理；项目记忆三层投影、稳定项目身份、路径重绑定、运行时事件账本、队列、ingress、安全边界、`TaskBookPatch`、普通 Renderer 事件入口、启动恢复控制面、步骤级有界并行、后台任务控制、隔离 Electron 跨重启验收、真实 DeepSeek 基础两步副作用恢复和短时并行压力已实现，摘要压缩续答、数小时持续负载、真实网络恢复与外部系统副作用仍未闭环；
+- 完整资源治理；项目记忆三层投影、稳定项目身份、路径重绑定、运行时事件账本、队列、ingress、安全边界、`TaskBookPatch`、普通 Renderer 事件入口、启动恢复控制面、步骤级有界并行、后台任务控制、隔离 Electron 跨重启验收、真实 DeepSeek 基础两步副作用恢复、短时并行压力和一次有界双字段摘要续答已实现；多轮多次压缩、更多事实形态、数小时持续负载、真实网络恢复与外部系统副作用仍未闭环；
 - 真实崩溃时并行副作用与多活动步骤恢复验收；设置页“应用与后台”、活动任务 SSE、Runtime 的持久检查点、Runner 显式续跑、启动恢复、活动任务控制、托盘、三档关闭策略和不确定副作用拒绝基元已经完成；
 - 数据根目录迁移的长期真实用户场景验收；工程闭环和正式迁移已经完成；
 - 真实 Electron 中关闭窗口后后台执行、托盘状态、暂停/继续/中断和彻底退出交互验收；
@@ -215,8 +217,10 @@ T0-T3 是资源权威、介入优先级和预算语义的逻辑分级，不是�
 
 - Summary Memory 的首要目标是维持决策连续性，不是单纯缩短字符数。
 - 每次摘要至少保留：当前目标、用户最新调整、已完成步骤、未完成步骤、关键事实、证据来源、权限结果、失败与恢复状态。
+- 概率语义摘要不能单独承担精确历史事实。Runtime 对用户明确要求记住的 `label: value` 维护最多 24 项有界保真封套；旧摘要无封套时从保留的原始用户消息重建，同一字段采用最新明确赋值，模型伪造或残缺封套在持久化前移除。
 - 原始会话与工具记录继续保留在各自数据层；摘要只替代后续请求中的旧 Context 片段。
 - 摘要生成失败、来源范围不一致或关键约束校验不通过时，必须回退到原始消息或较早有效摘要，不能静默覆盖。
+- 保存摘要仍不等于记忆连续。只有摘要真实进入最终回答的因果 Context，且 LS 最终回答准确承接被追问历史信息，回答级状态才可为 `supported`。
 
 ## 5. 阶段计划
 
@@ -284,7 +288,7 @@ T0-T3 是资源权威、介入优先级和预算语义的逻辑分级，不是�
 - Provider usage 通过有界 `WeakMap<ChatRequest, snapshotId>` 绑定到准确快照，活动路由、DECIDE、EXECUTE、VERIFY、RECOVER、REPLY、EVOLVE 和 CAPTURE 的真实模型响应均接入 usage 记录；
 - 完整执行路径的 System Prompt bundle 已把基础策略、记忆根索引、bootstrap、输出约束、Workflow/TaskBook、profile 与 reasoning 拆成独立 segment；当前 `respond` 路径使用只包含直接回答所需信息的紧凑 bundle；
 - `packages/session/src/compaction.ts` 已实现非破坏式版本化压缩，支持增量合并旧摘要、消息阈值和精确 Context 占用阈值触发；Runner 在主 run 持久化完成后执行压缩，压缩失败不会把已完成任务误报为失败或中断；
-- Summary Memory 在下一轮作为独立 `summary_memory` segment 注入，原始消息继续保留；
+- Summary Memory 在下一轮作为独立 `summary_memory` segment 注入，原始消息继续保留；`packages/runner/src/session-summary-fidelity.ts` 会从 Runtime 可验证的旧封套和新用户赋值重建最多 24 项精确字段，`packages/harness/src/session-summary-fidelity-text.ts` 只读取最新完整封套；
 - 附件已实现 manifest-first 的模型介入：活动路由、DECIDE、REPLY 不接收正文，EXECUTE 才接收已提取文本；图片仍按多模态输入处理；
 - UI 上下文圆环通过纯函数区分 Provider 实测、本地精确装配和 tokenizer 不可用，显示来源、模型和时间点；
 - 新增 `agents.defaults.contextCompressionThresholdRatio`，默认 `0.8`，合法范围 `0.5-0.95`；
@@ -467,7 +471,7 @@ T0-T3 是资源权威、介入优先级和预算语义的逻辑分级，不是�
 
 目标：让活动任务在中断、异常和应用重启后安全连续。
 
-状态：检查点、Runner 显式续跑、应用启动恢复、桌面后台控制、设置页入口、隔离真实 Electron 跨重启验收、真实 DeepSeek 基础两步副作用恢复和短时并行压力已形成闭环；已有 Runner 自有 `AbortController`、步骤级局部恢复、`RunCheckpoint` v1、原子 store、可中断/重领的 disposition/controller、活动任务快照/订阅、暂停/继续/即时中断、Local App API、`active_runs` SSE、托盘和三档关闭策略。摘要压缩后的真实续答、长时间持续负载、网络故障与真实外部系统副作用仍未完成。
+状态：检查点、Runner 显式续跑、应用启动恢复、桌面后台控制、设置页入口、隔离真实 Electron 跨重启验收、真实 DeepSeek 基础两步副作用恢复、短时并行压力和一次有界双字段摘要压缩续答已形成闭环；已有 Runner 自有 `AbortController`、步骤级局部恢复、`RunCheckpoint` v1、原子 store、可中断/重领的 disposition/controller、活动任务快照/订阅、暂停/继续/即时中断、Local App API、`active_runs` SSE、托盘和三档关闭策略。多轮多次压缩、更多事实形态、长时间持续负载、网络故障与真实外部系统副作用仍未完成。
 
 范围：
 
@@ -480,7 +484,7 @@ T0-T3 是资源权威、介入优先级和预算语义的逻辑分级，不是�
 - 只要检查点仍在支持版本与保留期内，恢复不设置固定重启次数；检查点历史、事件和分支状态按容量及时间有界淘汰；
 - 统一限制重试、验证、重规划的次数、时间、成本和无进展轮数。
 
-已完成的检查点、启动恢复与后台控制能力：LS 数据根和用户工作区使用独立 shadow Git；写入前保存 preimage，run 完成保存 before/after manifest，支持同步回退和 partial 诊断；Runner 关闭时先关闭 SQLite/Embedding，再执行 `shutdown-freeze`。版本化 `RunCheckpoint` 可原子保存 TaskBook、执行状态、队列快照、权限结果和副作用，Runner 显式续跑不会重复追加原始输入，并会拒绝存在不确定外部副作用的检查点。Main 启动会把上一进程残留的 `resuming` 租约转为 `interrupted`，保留审计并允许新 run 原子重新领取；Local App API 提供有界发现、详情、放弃和 SSE 续跑，Renderer 提供查看现场、补充澄清、继续、停止和放弃。Runner 的活动注册表另外提供有界进度快照、订阅和暂停/继续/即时中断；暂停在安全边界保存 `paused` 检查点，历史重放不把它显示为失败或用户中断。Main 聚合当前与有界退役 Runner，托盘提供显示应用、任务状态、暂停/继续、中断和彻底退出；关闭策略固定为始终后台、仅活动任务时后台和始终退出，默认第二档，且托盘不可用时不允许隐藏。设置页通过 `active_runs` SSE 显示有界快照并调用相同控制入口；卸载时中止流、请求和重连计时器，Main 在断连时释放监听器。2026-07-30 的快捷方式真实窗口冒烟已验证设置入口、三档策略切换与恢复、同步状态、空任务态、手动刷新和全局前进/返回；同日统一专项 20 个测试文件、83 项通过，覆盖关闭策略、活动任务 API/SSE、检查点租约与续跑、步骤/工具调度和监听器释放。2026-08-02 的隔离真实 Electron 验收进一步覆盖七个场景；Checkpoint 恢复后原始用户指令恰好保留两条，没有重复追加，最终回答明确承接跨重启前唯一目标且判定为 `supported`。2026-08-03 的真实 DeepSeek 两步 `write -> read` 又覆盖关闭到托盘、暂停、强制终止、重启领取、直接工具提议执行、记忆追问和彻底退出，最终回答逐项命中历史值且连续性为 `supported`。同日短时并行压力门又覆盖 4 个活动 run、热重载退役 Runner、SSE 反复断开重连、双 Checkpoint 并行恢复、恢复不重做工具、两条会话回答级连续性、本地/Provider Token 精确对账、监听器释放和资源回落。当前回退只处理受管文件，不删除无关未跟踪文件，也不接管用户已有 `.git`。尚未完成的是托盘不可用失败关闭、摘要压缩续答、真实网络断线、数小时持续负载、真实外部系统副作用与更长期资源回落验收。
+已完成的检查点、启动恢复与后台控制能力：LS 数据根和用户工作区使用独立 shadow Git；写入前保存 preimage，run 完成保存 before/after manifest，支持同步回退和 partial 诊断；Runner 关闭时先关闭 SQLite/Embedding，再执行 `shutdown-freeze`。版本化 `RunCheckpoint` 可原子保存 TaskBook、执行状态、队列快照、权限结果和副作用，Runner 显式续跑不会重复追加原始输入，并会拒绝存在不确定外部副作用的检查点。Main 启动会把上一进程残留的 `resuming` 租约转为 `interrupted`，保留审计并允许新 run 原子重新领取；Local App API 提供有界发现、详情、放弃和 SSE 续跑，Renderer 提供查看现场、补充澄清、继续、停止和放弃。Runner 的活动注册表另外提供有界进度快照、订阅和暂停/继续/即时中断；暂停在安全边界保存 `paused` 检查点，历史重放不把它显示为失败或用户中断。Main 聚合当前与有界退役 Runner，托盘提供显示应用、任务状态、暂停/继续、中断和彻底退出；关闭策略固定为始终后台、仅活动任务时后台和始终退出，默认第二档，且托盘不可用时不允许隐藏。设置页通过 `active_runs` SSE 显示有界快照并调用相同控制入口；卸载时中止流、请求和重连计时器，Main 在断连时释放监听器。2026-07-30 的快捷方式真实窗口冒烟已验证设置入口、三档策略切换与恢复、同步状态、空任务态、手动刷新和全局前进/返回；同日统一专项 20 个测试文件、83 项通过，覆盖关闭策略、活动任务 API/SSE、检查点租约与续跑、步骤/工具调度和监听器释放。2026-08-02 的隔离真实 Electron 验收进一步覆盖七个场景；Checkpoint 恢复后原始用户指令恰好保留两条，没有重复追加，最终回答明确承接跨重启前唯一目标且判定为 `supported`。2026-08-03 的真实 DeepSeek 两步 `write -> read` 又覆盖关闭到托盘、暂停、强制终止、重启领取、直接工具提议执行、记忆追问和彻底退出，最终回答逐项命中历史值且连续性为 `supported`。同日短时并行压力门又覆盖 4 个活动 run、热重载退役 Runner、SSE 反复断开重连、双 Checkpoint 并行恢复、恢复不重做工具、两条会话回答级连续性、本地/Provider Token 精确对账、监听器释放和资源回落。随后一次隔离真实 DeepSeek 摘要门又覆盖版本化摘要生成、完整退出、重启、原始旧消息排除、仅摘要因果来源、双字段逐项回答、四类负例和有界资源增长。当前回退只处理受管文件，不删除无关未跟踪文件，也不接管用户已有 `.git`。尚未完成的是托盘不可用失败关闭、多轮多次压缩、更多事实形态、真实网络断线、数小时持续负载、真实外部系统副作用与更长期资源回落验收。
 
 验收标准：
 
@@ -550,14 +554,14 @@ T0-T3 是资源权威、介入优先级和预算语义的逻辑分级，不是�
   -> 阶段 7 效率评测
 ```
 
-阶段 0、阶段 2、阶段 3 已完成，阶段 4 的 Runtime 基元与步骤并行已经落地，阶段 5 的检查点、后台任务控制、设置页入口、托盘、关闭策略、确定性 Electron 七场景、真实 DeepSeek 跨重启最终回答连续性、基础两步副作用恢复和短时并行压力验收已经完成；阶段 1 的当前 DeepSeek 真实校准、普通请求与显式单/多工具提议路径的 V4 精确 tokenizer 对账已完成，剩余普通工具续轮校准和其他可选 Provider 矩阵。阶段 6 已把现有真实活动状态接入设置页，下一步用真实 DeepSeek 数小时持续任务验证摘要续答、真实网络恢复、外部副作用和更长期资源回落；阶段 7 需要前述能力形成可重复闭环。
+阶段 0、阶段 2、阶段 3 已完成，阶段 4 的 Runtime 基元与步骤并行已经落地，阶段 5 的检查点、后台任务控制、设置页入口、托盘、关闭策略、确定性 Electron 七场景、真实 DeepSeek 跨重启最终回答连续性、基础两步副作用恢复、短时并行压力和一次有界双字段摘要续答验收已经完成；阶段 1 的当前 DeepSeek 真实校准、普通请求与显式单/多工具提议路径的 V4 精确 tokenizer 对账已完成，剩余普通工具续轮校准和其他可选 Provider 矩阵。阶段 6 已把现有真实活动状态接入设置页，下一步用真实 DeepSeek 数小时持续任务验证多轮多次压缩、更多事实形态、真实网络恢复、外部副作用和更长期资源回落；阶段 7 需要前述能力形成可重复闭环。
 
 本任务书的阶段号只表示 **Runtime 连续性工作线**，不能与 [架构决策报告](../decision/architecture-decision-report.md) 中的模块收敛阶段号混用。全局执行时采用以下协调顺序：
 
 1. 保持 `respond / execute / clarify`、直接回应 Context 与统一 Tool Execution Service 的完整质量门；
 2. 保持当前 DeepSeek 四项能力、跨重启回答连续性、普通请求与显式单/多工具提议路径的精确 token 对账回归，先校准含历史 Provider 工具消息的普通续轮，再按实际启用范围扩展 Provider/模型专用 tokenizer 对账；
 3. 保持现有队列、安全边界、TaskBookPatch、统一工具记录、普通 Renderer 事件生产入口和应用启动恢复控制面的完整质量门；
-4. 保持已完成的 TaskBook 步骤级并行、后台连续执行、设置页透明控制面、托盘、关闭策略、隔离 Electron 跨重启、真实 DeepSeek 基础两步副作用和短时并行压力质量门，并用数小时持续任务补齐摘要续答、真实网络故障、外部系统副作用和长期资源验收；
+4. 保持已完成的 TaskBook 步骤级并行、后台连续执行、设置页透明控制面、托盘、关闭策略、隔离 Electron 跨重启、真实 DeepSeek 基础两步副作用、短时并行压力和一次有界摘要续答质量门，并用数小时持续任务补齐多轮多次压缩、更多事实形态、真实网络故障、外部系统副作用和长期资源验收；
 5. 最后进行阶段 7 效率评测，并据证据决定 Mode Registry、App 拆分、MCP 和插件 API v2 的后续优先级；MCP 必须复用现有 Tool Execution Service。
 
 若两条工作线的任务发生依赖冲突，以“先固定数据与副作用契约，再实现恢复和 UI”为原则，不按文档中的数字大小机械排序。
@@ -593,6 +597,6 @@ pnpm.cmd run verify:app-recovery
 
 ## 9. 当前执行状态
 
-阶段 0 已完成；阶段 1 的 Context 候选、来源 segment、精确/不可用 tokenizer 分类、不可展示的保守预算保护、快照、Provider usage 绑定、版本化 Summary Memory、附件清单优先、按需附件工具、压缩阈值设置、双账本 UI 和供应商校准工具已形成主要数据链。当前 DeepSeek 的 chat、continuity、tool、abort 四项真实校准、普通请求与显式单/多工具提议路径的 V4 官方 tokenizer 最终计数和本地/Provider 同请求零差值对账已通过；含历史 Provider 工具消息的普通续轮 exact 校准和其他可选 Provider 矩阵仍未闭环。阶段 2 的 T0-T3 基础契约、v2 迁移、资源注册、Memory Service、索引导航、管理 UI、项目记忆三层投影、稳定项目身份、可恢复路径重绑定、插件/Skill 所有权迁移和大规模资源恢复验收已经完成。阶段 3 的附件缓存、workplace 资源索引和完整数据根迁移工程闭环也已完成。阶段 4 已完成统一 Tool Execution Service、工具调用级与 TaskBook 步骤级有界并行、RuntimeEventQueue、ingress、安全边界、确定性 TaskBookPatch、延迟事件重规划和 Renderer 事件生产/反馈入口；阶段 5 已完成 shadow Git、退出冻结、持久 RunCheckpoint、Runner 显式续跑、应用启动恢复、活动任务快照与控制、`active_runs` SSE、设置页“应用与后台”、托盘、三档关闭策略、确定性 Electron 七场景、真实 DeepSeek 跨重启回答连续性、基础两步副作用恢复和短时并行压力验收。最终回答必须承接旧目标或逐项答出被追问历史值，且回答级判定为 `supported`；因此本任务书不再把“保存了状态”写成“记忆连续”。当前完整质量门数字统一以 [项目状态](../decision/project-status.md) 为准。下一步继续普通工具续轮校准与真实 DeepSeek 摘要压缩续答、数小时持续负载、真实网络故障、外部副作用和更长期资源回落验收。
+阶段 0 已完成；阶段 1 的 Context 候选、来源 segment、精确/不可用 tokenizer 分类、不可展示的保守预算保护、快照、Provider usage 绑定、版本化 Summary Memory、附件清单优先、按需附件工具、压缩阈值设置、双账本 UI 和供应商校准工具已形成主要数据链。当前 DeepSeek 的 chat、continuity、tool、abort 四项真实校准、普通请求与显式单/多工具提议路径的 V4 官方 tokenizer 最终计数和本地/Provider 同请求零差值对账已通过；含历史 Provider 工具消息的普通续轮 exact 校准和其他可选 Provider 矩阵仍未闭环。阶段 2 的 T0-T3 基础契约、v2 迁移、资源注册、Memory Service、索引导航、管理 UI、项目记忆三层投影、稳定项目身份、可恢复路径重绑定、插件/Skill 所有权迁移和大规模资源恢复验收已经完成。阶段 3 的附件缓存、workplace 资源索引和完整数据根迁移工程闭环也已完成。阶段 4 已完成统一 Tool Execution Service、工具调用级与 TaskBook 步骤级有界并行、RuntimeEventQueue、ingress、安全边界、确定性 TaskBookPatch、延迟事件重规划和 Renderer 事件生产/反馈入口；阶段 5 已完成 shadow Git、退出冻结、持久 RunCheckpoint、Runner 显式续跑、应用启动恢复、活动任务快照与控制、`active_runs` SSE、设置页“应用与后台”、托盘、三档关闭策略、确定性 Electron 七场景、真实 DeepSeek 跨重启回答连续性、基础两步副作用恢复、短时并行压力和一次有界双字段摘要压缩续答验收。最终回答必须承接旧目标或逐项答出被追问历史值，且回答级判定为 `supported`；因此本任务书不再把“保存了状态”写成“记忆连续”。当前完整质量门数字统一以 [项目状态](../decision/project-status.md) 为准。下一步继续普通工具续轮校准与真实 DeepSeek 多轮多次压缩、更多事实形态、数小时持续负载、真实网络故障、外部副作用和更长期资源回落验收。
 
-本次增量已完成首轮工具结果后的历史紧凑化，并把明确多工具任务进一步收敛到受限 `toolProposal` 直接执行路径：后续普通工具续轮仍保留最近 2 条历史、必需附件 manifest、当前用户消息和工具证据；短时并行压力已确认 13 次转发请求的本地/Provider 精确对账和资源回落，下一步用数小时持续任务、摘要续答和真实网络故障继续量化收益。
+本次增量已完成首轮工具结果后的历史紧凑化，并把明确多工具任务进一步收敛到受限 `toolProposal` 直接执行路径：后续普通工具续轮仍保留最近 2 条历史、必需附件 manifest、当前用户消息和工具证据；短时并行压力已确认 13 次转发请求的本地/Provider 精确对账和资源回落，一次有界双字段摘要门已确认最终回答可仅由版本化摘要连续承接。下一步用数小时持续任务、多轮多次压缩和真实网络故障继续量化收益。

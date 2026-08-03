@@ -1,6 +1,6 @@
 # LittleSheep 模块拆分地图
 
-最后更新：2026-08-03 09:04:52
+最后更新：2026-08-03 12:07:47
 
 本文件记录大型生产文件的当前所有权、目标边界和拆分顺序。它是仓库基元化任务书的阶段产物，不替代项目状态，也不把行数当成唯一质量指标。
 
@@ -14,7 +14,7 @@
 
 ## 强制拆分队列
 
-下表行数是 2026-08-02 当前工作树的物理行数，不是历史完成值。生产 `.ts/.tsx` 文件超过 600 行必须进入本表；已登记不等于要求立即做无收益拆分。当前仓库卫生扫描共有 77 个生产文件超过 300 行，其中 10 个超过 600 行并进入受控清单。
+下表行数是 2026-08-03 当前工作树的物理行数，不是历史完成值。生产 `.ts/.tsx` 文件超过 600 行必须进入本表；已登记不等于要求立即做无收益拆分。当前仓库卫生扫描共有 78 个生产文件超过 300 行，其中 10 个超过 600 行并进入受控清单。
 
 | 当前文件 | 当前行数 | 当前责任 | 目标边界 | 所有权 |
 | --- | ---: | --- | --- | --- |
@@ -100,6 +100,7 @@
 | `packages/experience/src/experience-store.ts` | 309 | 经验索引、备份、并发和衰减 | 分离 index、backup、mutation、decay | D |
 | `packages/memory-tree/src/memory-repository/v3-retrieval.ts` | 307 | 分支/作用域约束检索与精确治理读取路由 | 保持检索编排 | D |
 | `packages/harness/src/stages/evolve/revision.ts` | 306 | Atom 内容修订提案解析、准入、提交和审计 | 后续增长时分离 parse/validate 与 commit adapter | E |
+| `packages/harness/src/response-continuity-text.ts` | 344 | 回答连续性所需的有界文本、Atom 标记、显式标签值、Runtime 摘要保真字段和否定语义解析 | 保持纯文本解析边界；若继续增长，分离标签值解析与通用连续性术语处理 | E |
 
 ## 已完成拆分
 
@@ -119,7 +120,7 @@
 | `packages/harness/src/stages/evolve.ts` | 555 | 357 行 stage facade | 记忆/Skill 提案、写入认识解析和模型调用留在入口；Atom reconciliation、leaf reparent、same-claim revision 与 evidence-backed correction 的解析、KnownState 准入、提交和审计分别下沉到 `stages/evolve/reconciliation.ts`、`stages/evolve/hierarchy.ts`、`stages/evolve/revision.ts`、`stages/evolve/correction*.ts` | 2026-07-17 |
 | `packages/app/src/renderer/MemoryTreeView.tsx` | 1007 | 205 行用户记忆文件视图 | GUI 只展示六份记忆文件并仅允许编辑 `SOUL.md`；Atom、关系、向量、迁移和审计退回 Runtime 与内部治理 API | 2026-07-16 |
 
-2026-08-03 的连续性阶段没有把新职责重新塞回组合入口：`packages/harness/src/default-harness.ts` 保持为 299 行状态机 facade，Checkpoint 证据归一与恢复入口下沉到 34 行的 `checkpoint-resume.ts`，回答连续性保持在 `response-continuity*.ts` 领域模块；`packages/app/src/main/index.ts` 为 579 行组合入口，Electron 验收资源采样下沉到 51 行的 `desktop-acceptance-snapshot.ts`，活动任务聚合与监听器统计留在 145 行的 `run-activity-monitor.ts`。这些文件目前均未越过各自登记上限，后续新增验收维度应继续进入独立采样器或领域服务。
+2026-08-03 的连续性阶段没有把新职责重新塞回组合入口：`packages/harness/src/default-harness.ts` 保持为 299 行状态机 facade，Checkpoint 证据归一与恢复入口下沉到 34 行的 `checkpoint-resume.ts`，回答连续性保持在 `response-continuity*.ts` 领域模块；Runtime 摘要精确字段的文本封套和重建逻辑分别位于 51 行的 `packages/harness/src/session-summary-fidelity-text.ts` 与 82 行的 `packages/runner/src/session-summary-fidelity.ts`。`packages/app/src/main/index.ts` 为 579 行组合入口，Electron 验收资源采样下沉到 51 行的 `desktop-acceptance-snapshot.ts`，活动任务聚合与监听器统计留在 145 行的 `run-activity-monitor.ts`。这些文件目前均未越过各自登记上限，后续新增验收维度应继续进入独立采样器或领域服务。
 
 ## 拆分顺序
 
