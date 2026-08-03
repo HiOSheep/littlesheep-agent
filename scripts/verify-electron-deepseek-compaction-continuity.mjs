@@ -25,8 +25,13 @@ import { startDelayedHttpProxy } from './lib/delayed-http-proxy.mjs'
 const RUN_TIMEOUT_MS = Math.max(DEFAULT_RUN_TIMEOUT_MS, 180_000)
 const ACCEPTANCE_CODE = 'summary-deepseek-anchor-8427'
 const ACCEPTANCE_COLOR = '雾松青'
+const ACCEPTANCE_LIMIT = '17'
+const ACCEPTANCE_SWITCH = '关闭'
+const ACCEPTANCE_SEQUENCE = '先备份再发布'
 const SEED_PROMPT = `请记住两个字段：代号是“${ACCEPTANCE_CODE}”，颜色是“${ACCEPTANCE_COLOR}”。本轮只回复“记录完成”，不要复述代号或颜色，不要调用工具；后续我追问时必须准确回答。`
 const RECALL_PROMPT = '你还记得我上次要求保存的代号和颜色吗？请按“代号：...；颜色：...”回答，不要调用工具。'
+const UPDATE_PROMPT = `请再记住三个不同形态的事实：上限是 ${ACCEPTANCE_LIMIT}，开关状态是“${ACCEPTANCE_SWITCH}”，操作顺序是“${ACCEPTANCE_SEQUENCE}”。本轮只回复“更新完成”，不要复述这些值，不要调用工具。`
+const FINAL_RECALL_PROMPT = '请分别回答最初保存的代号和颜色，以及后来约定的上限、开关状态和操作顺序。不要调用工具。'
 const MEMORY_GROWTH_BUDGET = {
   rssBytes: 256 * 1024 * 1024,
   heapUsedBytes: 128 * 1024 * 1024,
@@ -80,23 +85,36 @@ async function main() {
     await waitForDesktop(locator)
     const restartBaseline = await acceptanceSnapshot(locator)
 
+    const proxyRequestCountBeforeRecall = proxy.requests.length
+    proxy.disconnectNext()
     const recalled = await runStream(
       locator,
       runBody(RECALL_PROMPT, environment.workplaceDir, seeded.result.sessionId),
       RUN_TIMEOUT_MS,
     )
+    const networkRecovery = assertNetworkDisconnectRecovery(
+      proxy.requests.slice(proxyRequestCountBeforeRecall),
+    )
     assertSuccessfulDeepSeekRun(recalled.result, environment.model, 'post-compaction recall')
     assertIncludes(recalled.result.reply, ACCEPTANCE_CODE, 'post-compaction recall reply')
     assertIncludes(recalled.result.reply, ACCEPTANCE_COLOR, 'post-compaction recall reply')
-    const context = assertAnswerBasedSummaryContinuity(
-      recalled.result,
-      firstSummary,
-      firstSession.messages[0],
-      firstSession.messages[1],
-    )
+    const firstRecallContext = assertAnswerBasedSummaryContinuity({
+      result: recalled.result,
+      prompt: RECALL_PROMPT,
+      expectedValues: [ACCEPTANCE_CODE, ACCEPTANCE_COLOR],
+      summary: firstSummary,
+      compactedMessageIds: [firstSession.messages[0].id],
+      retainedMessageIds: [firstSession.messages[1].id],
+    })
 
     const secondSession = await readSession(environment.dataDir, recalled.result.sessionId)
-    const latestSummary = assertIncrementalCompaction(secondSession, firstSummary, recalled.result)
+    const secondSummary = assertIncrementalCompaction(secondSession, firstSummary, recalled.result, {
+      label: 'first recall compaction',
+      expectedMessageCount: 4,
+      expectedDepth: 2,
+      expectedEndMessageIndex: 2,
+      expectedValues: [ACCEPTANCE_CODE, ACCEPTANCE_COLOR],
+    })
     const negativeControls = assertNegativeControls({
       result: recalled.result,
       firstSummary,
@@ -106,11 +124,93 @@ async function main() {
       )),
     })
 
+    const updated = await runStream(
+      locator,
+      runBody(UPDATE_PROMPT, environment.workplaceDir, seeded.result.sessionId),
+      RUN_TIMEOUT_MS,
+    )
+    assertSuccessfulDeepSeekRun(updated.result, environment.model, 'multi-shape memory update')
+    assertIncludes(updated.result.reply, '更新完成', 'multi-shape memory update reply')
+    for (const value of [ACCEPTANCE_LIMIT, ACCEPTANCE_SWITCH, ACCEPTANCE_SEQUENCE]) {
+      assertNotIncludes(updated.result.reply, value, 'multi-shape memory update reply')
+    }
+    const thirdSession = await readSession(environment.dataDir, updated.result.sessionId)
+    const thirdSummary = assertIncrementalCompaction(thirdSession, secondSummary, updated.result, {
+      label: 'multi-shape update compaction',
+      expectedMessageCount: 6,
+      expectedDepth: 3,
+      expectedEndMessageIndex: 4,
+      expectedValues: [
+        ACCEPTANCE_CODE,
+        ACCEPTANCE_COLOR,
+        ACCEPTANCE_LIMIT,
+        ACCEPTANCE_SWITCH,
+        ACCEPTANCE_SEQUENCE,
+      ],
+    })
+
+    const beforeSecondRestart = await waitForIdle(locator)
+    await desktopAction(locator, 'quit')
+    await waitForExit(electron, DEFAULT_EXIT_TIMEOUT_MS)
+    await waitForMissing(join(environment.dataDir, locatorRelativePath), DEFAULT_EXIT_TIMEOUT_MS)
+    electron = undefined
+
+    electron = startObservedElectron(environment, electronLogs)
+    locator = await waitForLocator(environment.dataDir, electron.pid)
+    await waitForDesktop(locator)
+    const secondRestartBaseline = await acceptanceSnapshot(locator)
+
+    const finalRecalled = await runStream(
+      locator,
+      runBody(FINAL_RECALL_PROMPT, environment.workplaceDir, seeded.result.sessionId),
+      RUN_TIMEOUT_MS,
+    )
+    assertSuccessfulDeepSeekRun(finalRecalled.result, environment.model, 'multi-compaction final recall')
+    for (const value of [
+      ACCEPTANCE_CODE,
+      ACCEPTANCE_COLOR,
+      ACCEPTANCE_LIMIT,
+      ACCEPTANCE_SWITCH,
+      ACCEPTANCE_SEQUENCE,
+    ]) {
+      assertIncludes(finalRecalled.result.reply, value, 'multi-compaction final recall reply')
+    }
+    const finalRecallContext = assertAnswerBasedSummaryContinuity({
+      result: finalRecalled.result,
+      prompt: FINAL_RECALL_PROMPT,
+      expectedValues: [
+        ACCEPTANCE_CODE,
+        ACCEPTANCE_COLOR,
+        ACCEPTANCE_LIMIT,
+        ACCEPTANCE_SWITCH,
+        ACCEPTANCE_SEQUENCE,
+      ],
+      summary: thirdSummary,
+      compactedMessageIds: thirdSession.messages.slice(0, 5).map((message) => message.id),
+      retainedMessageIds: [thirdSession.messages[5].id],
+    })
+    const finalSession = await readSession(environment.dataDir, finalRecalled.result.sessionId)
+    const latestSummary = assertIncrementalCompaction(finalSession, thirdSummary, finalRecalled.result, {
+      label: 'final recall compaction',
+      expectedMessageCount: 8,
+      expectedDepth: 3,
+      expectedEndMessageIndex: 6,
+      expectedValues: [
+        ACCEPTANCE_CODE,
+        ACCEPTANCE_COLOR,
+        ACCEPTANCE_LIMIT,
+        ACCEPTANCE_SWITCH,
+        ACCEPTANCE_SEQUENCE,
+      ],
+    })
+
     const settled = await waitForIdle(locator)
-    const resourceGrowth = assertBoundedMemoryGrowth(restartBaseline, settled)
+    const resourceGrowth = assertBoundedMemoryGrowth(secondRestartBaseline, settled)
     const labeledResults = [
       ['seed_and_compact', seeded.result],
-      ['restart_and_recall', recalled.result],
+      ['restart_network_recovery_and_recall', recalled.result],
+      ['multi_shape_update', updated.result],
+      ['second_restart_and_final_recall', finalRecalled.result],
     ]
     const requests = labeledResults.flatMap(([label, result]) => requestMetrics(label, result))
     assertLocalProviderAccounting(requests)
@@ -120,7 +220,7 @@ async function main() {
       environment.dataDir,
       labeledResults.map(([, result]) => result.runId),
     )
-    assertExecutionLogs(executionLogs, recalled.result)
+    assertExecutionLogs(executionLogs, [recalled.result, finalRecalled.result])
 
     await desktopAction(locator, 'quit')
     await waitForExit(electron, DEFAULT_EXIT_TIMEOUT_MS)
@@ -132,24 +232,35 @@ async function main() {
       ok: true,
       provider: 'deepseek',
       model: environment.model,
-      scenario: 'cross_restart_answer_continuity_from_versioned_session_summary',
-      currentPromptContainedPriorValues: RECALL_PROMPT.includes(ACCEPTANCE_CODE)
-        || RECALL_PROMPT.includes(ACCEPTANCE_COLOR),
+      scenario: 'multi_compaction_cross_restart_answer_continuity_with_network_recovery',
+      networkRecovery,
+      currentPromptContainedPriorValues: [
+        ACCEPTANCE_CODE,
+        ACCEPTANCE_COLOR,
+        ACCEPTANCE_LIMIT,
+        ACCEPTANCE_SWITCH,
+        ACCEPTANCE_SEQUENCE,
+      ].some((value) => FINAL_RECALL_PROMPT.includes(value)),
       finalAnswerContainedEveryPriorValue: true,
-      continuity: recalled.result.memoryContinuityAssessment,
+      continuity: finalRecalled.result.memoryContinuityAssessment,
       compaction: {
         threshold: 2,
         keepRecent: 1,
         first: summaryMetrics(firstSummary),
+        second: summaryMetrics(secondSummary),
+        third: summaryMetrics(thirdSummary),
         latest: summaryMetrics(latestSummary),
-        originalTranscriptMessageCount: secondSession.messages.length,
-        originalTranscriptPreserved: secondSession.messages.some((message) => (
+        originalTranscriptMessageCount: finalSession.messages.length,
+        originalTranscriptPreserved: finalSession.messages.some((message) => (
           message.id === firstSession.messages[0].id
           && messageText(message).includes(ACCEPTANCE_CODE)
           && messageText(message).includes(ACCEPTANCE_COLOR)
         )),
       },
-      causalContext: context,
+      causalContext: {
+        firstRecall: firstRecallContext,
+        finalRecall: finalRecallContext,
+      },
       negativeControls,
       runs: labeledResults.map(([label, result]) => runMetrics(label, result)),
       providerAccounting,
@@ -157,6 +268,8 @@ async function main() {
       resources: {
         initialProcess: summarizeProcess(initialProcess),
         restartBaseline: summarizeProcess(restartBaseline),
+        beforeSecondRestart: summarizeProcess(beforeSecondRestart),
+        secondRestartBaseline: summarizeProcess(secondRestartBaseline),
         settled: summarizeProcess(settled),
         growth: resourceGrowth,
         executionLogs: executionLogs.map((log) => ({
@@ -267,27 +380,43 @@ async function assertSummaryProjection(dataDir, sessionId, summary) {
   }
 }
 
-function assertIncrementalCompaction(session, previousSummary, result) {
-  if (session.messages.length !== 4) {
-    throw new Error(`post-recall transcript lost original messages: ${session.messages.length}`)
+function assertIncrementalCompaction(session, previousSummary, result, expectations) {
+  if (session.messages.length !== expectations.expectedMessageCount) {
+    throw new Error(`${expectations.label} transcript lost original messages: ${session.messages.length}`)
   }
   const latest = session.metadata.compaction
+  const previousDepth = previousSummary?.version === 2
+    ? previousSummary.cache?.compressionDepth
+    : previousSummary
+      ? 1
+      : undefined
+  const expectedPreviousSummaryId = previousDepth === 3 ? undefined : previousSummary.id
   if (latest?.version !== 2
     || latest.id === previousSummary.id
-    || latest.previousSummaryId !== previousSummary.id
-    || latest.cache?.compressionDepth !== 2
+    || latest.previousSummaryId !== expectedPreviousSummaryId
+    || latest.cache?.compressionDepth !== expectations.expectedDepth
     || !latest.sourceSummaryIds?.includes(previousSummary.id)
-    || latest.sourceEndMessageId !== session.messages[2]?.id
+    || latest.sourceSummaryIds.length > 3
+    || latest.mergedSummaryCount !== (previousSummary.mergedSummaryCount ?? 1) + 1
+    || latest.sourceEndMessageId !== session.messages[expectations.expectedEndMessageIndex]?.id
     || !latest.sourceRunIds?.includes(result.runId)) {
-    throw new Error(`incremental compaction lineage is invalid: ${safe(latest)}`)
+    throw new Error(`${expectations.label} lineage is invalid: ${safe(latest)}`)
   }
-  assertIncludes(latest.summary, ACCEPTANCE_CODE, 'incremental summary')
-  assertIncludes(latest.summary, ACCEPTANCE_COLOR, 'incremental summary')
+  for (const value of expectations.expectedValues) {
+    assertIncludes(latest.summary, value, `${expectations.label} summary`)
+  }
   return latest
 }
 
-function assertAnswerBasedSummaryContinuity(result, summary, compactedMessage, acknowledgement) {
-  if (RECALL_PROMPT.includes(ACCEPTANCE_CODE) || RECALL_PROMPT.includes(ACCEPTANCE_COLOR)) {
+function assertAnswerBasedSummaryContinuity({
+  result,
+  prompt,
+  expectedValues,
+  summary,
+  compactedMessageIds,
+  retainedMessageIds,
+}) {
+  if (expectedValues.some((value) => prompt.includes(value))) {
     throw new Error('recall prompt leaked the expected historical values')
   }
   const assessment = result.memoryContinuityAssessment
@@ -320,11 +449,13 @@ function assertAnswerBasedSummaryContinuity(result, summary, compactedMessage, a
   const recentIds = included
     .filter((item) => item.kind === 'recent_message' && item.source.kind === 'message')
     .map((item) => item.source.id)
-  if (recentIds.includes(compactedMessage.id)) {
-    throw new Error('the compacted original message still entered the final reply request as recent history')
+  const leakedCompactedIds = compactedMessageIds.filter((id) => recentIds.includes(id))
+  if (leakedCompactedIds.length > 0) {
+    throw new Error(`compacted messages still entered the final reply request as recent history: ${safe(leakedCompactedIds)}`)
   }
-  if (!recentIds.includes(acknowledgement.id)) {
-    throw new Error(`the keepRecent acknowledgement was not represented in causal Context: ${safe(recentIds)}`)
+  const missingRetainedIds = retainedMessageIds.filter((id) => !recentIds.includes(id))
+  if (missingRetainedIds.length > 0) {
+    throw new Error(`keepRecent messages were not represented in causal Context: ${safe({ recentIds, missingRetainedIds })}`)
   }
   return {
     replyRequestIndex: request.requestIndex,
@@ -335,7 +466,9 @@ function assertAnswerBasedSummaryContinuity(result, summary, compactedMessage, a
     summaryId: summary.id,
     summaryCharacters: summaryItem.characterCount,
     recentMessageIds: recentIds,
-    compactedMessageExcluded: true,
+    compactedMessageCount: compactedMessageIds.length,
+    compactedMessagesExcluded: true,
+    retainedMessageCount: retainedMessageIds.length,
     localPromptTokens: snapshot.localTokenLedger?.accuracy === 'exact'
       ? snapshot.localTokenLedger.promptTokens
       : undefined,
@@ -455,10 +588,16 @@ function assertLocalProviderAccounting(requests) {
 function summarizeProxyAccounting(requests) {
   const forwarded = requests.filter((request) => request.forwarded)
   const withUsage = forwarded.filter((request) => request.usage)
+  const injectedDisconnects = requests.filter((request) => request.injectedFault === 'disconnect')
+  const unexpectedUnforwarded = requests.filter((request) => (
+    !request.forwarded && request.injectedFault !== 'disconnect'
+  ))
   return {
     attemptedRequests: requests.length,
     forwardedRequests: forwarded.length,
     forwardedWithoutUsage: forwarded.filter((request) => !request.usage).length,
+    injectedDisconnects: injectedDisconnects.length,
+    unexpectedUnforwarded: unexpectedUnforwarded.length,
     promptTokens: withUsage.reduce((total, request) => total + request.usage.promptTokens, 0),
     completionTokens: withUsage.reduce((total, request) => total + request.usage.completionTokens, 0),
     totalTokens: withUsage.reduce((total, request) => total + request.usage.totalTokens, 0),
@@ -468,6 +607,7 @@ function summarizeProxyAccounting(requests) {
       status: request.status,
       forwarded: request.forwarded,
       aborted: request.aborted,
+      injectedFault: request.injectedFault,
       usage: request.usage,
       durationMs: elapsedMs(request.startedAt, request.completedAt),
     })),
@@ -477,7 +617,9 @@ function summarizeProxyAccounting(requests) {
 function assertProxyAccounting(accounting, requests) {
   if (accounting.forwardedWithoutUsage !== 0
     || accounting.forwardedRequests !== requests.length
-    || accounting.attemptedRequests !== requests.length) {
+    || accounting.injectedDisconnects !== 1
+    || accounting.unexpectedUnforwarded !== 0
+    || accounting.attemptedRequests !== requests.length + accounting.injectedDisconnects) {
     throw new Error(`Provider proxy accounting differs from recorded model requests: ${safe(accounting)}`)
   }
   const observed = sumProviderUsage(requests)
@@ -485,6 +627,29 @@ function assertProxyAccounting(accounting, requests) {
     || accounting.completionTokens !== observed.completionTokens
     || accounting.totalTokens !== observed.totalTokens) {
     throw new Error(`Provider proxy totals differ from Context snapshots: ${safe({ accounting, observed })}`)
+  }
+}
+
+function assertNetworkDisconnectRecovery(requests) {
+  const [disconnected, recovered] = requests
+  if (requests.length < 2
+    || disconnected?.injectedFault !== 'disconnect'
+    || disconnected.forwarded
+    || disconnected.aborted
+    || recovered?.forwarded !== true
+    || recovered.status !== 200
+    || recovered.model !== disconnected.model
+    || recovered.stream !== disconnected.stream) {
+    throw new Error(`post-restart recall did not recover from the injected disconnect: ${safe(requests)}`)
+  }
+  return {
+    injectedRequestId: disconnected.id,
+    recoveredRequestId: recovered.id,
+    failedAttemptReachedProvider: false,
+    recoveredAttemptReachedProvider: true,
+    model: recovered.model,
+    stream: recovered.stream,
+    additionalProviderTokensFromFailedAttempt: 0,
   }
 }
 
@@ -556,17 +721,19 @@ async function readExecutionLogs(dataDir, runIds) {
   )))
 }
 
-function assertExecutionLogs(logs, recalledResult) {
-  if (logs.length !== 2) throw new Error(`expected two execution logs, received ${logs.length}`)
+function assertExecutionLogs(logs, recalledResults) {
+  if (logs.length !== 4) throw new Error(`expected four execution logs, received ${logs.length}`)
   for (const log of logs) {
     if (!log.runtimeResources?.start || !log.runtimeResources?.end) {
       throw new Error(`execution log ${log.runId} lacks runtime resource observations`)
     }
   }
-  const recallLog = logs.find((log) => log.runId === recalledResult.runId)
-  if (recallLog?.memoryContinuityAssessment?.status !== 'supported'
-    || !recallLog.memoryContinuityAssessment.matchedSources?.includes('session_summary')) {
-    throw new Error(`execution log lost answer-level summary continuity: ${safe(recallLog)}`)
+  for (const result of recalledResults) {
+    const recallLog = logs.find((log) => log.runId === result.runId)
+    if (recallLog?.memoryContinuityAssessment?.status !== 'supported'
+      || !recallLog.memoryContinuityAssessment.matchedSources?.includes('session_summary')) {
+      throw new Error(`execution log lost answer-level summary continuity: ${safe(recallLog)}`)
+    }
   }
 }
 

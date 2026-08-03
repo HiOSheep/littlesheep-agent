@@ -919,6 +919,7 @@
   --warning-soft: rgba(216, 180, 92, 0.12);
   --shadow: 0 18px 46px rgba(0, 0, 0, 0.38);
   --radius-ui: 10px;
+  --radius-composer: 12px;
   --radius-icon: 3px;
   --radius-pill: 999px;
   --radius-circle: 50%;
@@ -5914,7 +5915,7 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel
   padding: 10px 12px;
   background: var(--surface);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-ui);
+  border-radius: var(--radius-composer);
   box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
   gap: 6px;
 }

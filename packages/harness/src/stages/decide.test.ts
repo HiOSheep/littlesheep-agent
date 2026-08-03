@@ -215,9 +215,10 @@ describe('decideStage', () => {
     expect(requests).toHaveLength(1);
     expect(requests[0]?.tools).toBeUndefined();
     const system = String(requests[0]?.messages[0]?.content ?? '');
-    expect(system).toContain('# Explicit Tool Decision');
-    expect(system).toContain('Runtime supplies the locked tool name and revalidates the schema, resource boundary, permission and side effects');
-    expect(system).toContain('"summary"');
+    expect(system).toContain('# Explicit Tool Input');
+    expect(system).toContain('Runtime revalidates the schema, workspace boundary, permission, and side effects');
+    expect(system).toContain('{"input":{}}');
+    expect(system).not.toContain('"summary"');
     expect(system).not.toContain('"userNeed"');
     expect(system).not.toContain('"toolProposal"');
     expect(system).not.toContain('You are the DECIDE stage of a hard-control-flow agent.');
@@ -225,9 +226,9 @@ describe('decideStage', () => {
     expect(system).not.toContain('# Memory Tree');
     expect(system).not.toContain('# Assistant Output Directives');
     expect(system).toContain('"pattern"');
-    expect(system).toContain('Tool: glob tool (mock)');
+    expect(system).toContain('`glob` (glob tool (mock))');
     expect(system).not.toContain('read tool (mock)');
-    expect(system.lastIndexOf('# Explicit Tool Decision'))
+    expect(system.lastIndexOf('# Explicit Tool Input'))
       .toBeGreaterThan(system.lastIndexOf('PROFILE_SENTINEL_EXPLICIT_TOOL'));
     expect(ctx.modelRequests?.[0]?.callContract).toMatchObject({
       purpose: 'decide_explicit_tool',
@@ -245,8 +246,6 @@ describe('decideStage', () => {
       inputSchema: z.object({ pattern: z.string(), path: z.string().optional() }),
     });
     const llm = createMockLlm(textResponse(JSON.stringify({
-      summary: '列出工作区顶层条目',
-      successCriterion: '返回顶层条目数量和名称',
       input: { pattern: '*', path: '.' },
     })));
     const stage = createDecideStage({ ...deps, llm });
@@ -263,13 +262,12 @@ describe('decideStage', () => {
 
     expect(result).toMatchObject({ next: 'execute', ok: true });
     expect(ctx.taskBook).toMatchObject({
-      goal: '列出工作区顶层条目',
+      goal: '请使用 glob 工具读取当前工作区顶层条目',
       complexity: 'trivial',
       steps: [{
         id: 'step-1',
-        title: '列出工作区顶层条目',
-        description: '列出工作区顶层条目',
-        expectedOutput: '返回顶层条目数量和名称',
+        title: '请使用 glob 工具读取当前工作区顶层条目',
+        description: '请使用 glob 工具读取当前工作区顶层条目',
         tools: ['glob'],
         toolProposal: { name: 'glob', input: { pattern: '*', path: '.' } },
       }],

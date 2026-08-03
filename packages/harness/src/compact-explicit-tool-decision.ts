@@ -80,20 +80,18 @@ export function canUseCompactExplicitToolDecision(
 export function renderCompactExplicitToolProposalContract(
   instruction: ExplicitSingleToolInstruction,
 ): string {
-  return `# Explicit Tool Decision
+  return `# Explicit Tool Input
 
-Infer the smallest sufficient single call to the Runtime-locked tool \`${instruction.tool.name}\` from the current user message only.
-Return one raw JSON object and no markdown:
-{"summary":"one concise description in the user's language","successCriterion":"one observable completion condition","input":{}}
+The Runtime locked one built-in tool: \`${instruction.tool.name}\` (${instruction.tool.description}).
+From the current user message only, return raw JSON and no markdown:
+{"input":{}}
 
-Replace the empty input with concrete arguments satisfying the JSON Schema below. Do not invent missing required values.
-If a required value cannot be inferred safely, return only:
+Fill input with concrete values satisfying the schema. Never invent a missing required value. If one cannot be inferred safely, return only:
 {"clarification":{"blockingReason":"short reason","question":"one specific question in the user's language"}}
 
-Do not return a tool name, TaskBook, repeated goal fields, or more than one call. This is not execution authority: Runtime supplies the locked tool name and revalidates the schema, resource boundary, permission and side effects.
+Do not return a tool name, plan, summary, criterion, or multiple calls. Runtime revalidates the schema, workspace boundary, permission, and side effects before execution.
 
-Tool: ${instruction.tool.description}
-Input JSON Schema: ${JSON.stringify(instruction.schema)}`;
+Schema: ${JSON.stringify(instruction.schema)}`;
 }
 
 /** Expand the compact model shape into the existing Runtime-owned DECIDE contract. */

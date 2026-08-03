@@ -15,7 +15,7 @@ import type {
   LocalAppRunCheckpointResumeRequest,
 } from '../../shared/run-checkpoint-contracts.js'
 import { createPermissionApprover, type RunApprovalBroker } from '../run-policy.js'
-import { json, readJson, writeSse, type LocalAppApiRequest } from './http.js'
+import { json, openSse, readJson, writeSse, type LocalAppApiRequest } from './http.js'
 import type { RunRouteContext } from './run-routes.js'
 import {
   finishRunResources,
@@ -183,18 +183,7 @@ async function streamCheckpointResume(
     json(res, 429, { error: 'too many active agent runs' })
     return true
   }
-  let completed = false
-  const abortOnDisconnect = () => {
-    if (!completed) controller.abort()
-  }
-  req.once('aborted', abortOnDisconnect)
-  res.once('close', abortOnDisconnect)
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream; charset=utf-8',
-    'Cache-Control': 'no-cache, no-transform',
-    Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no',
-  })
+  const stopHeartbeat = openSse(res)
   writeSse(res, 'start', { ok: true, runId, resumedFromCheckpointId: checkpointId })
   try {
     const ownership = await resolveRunSessionOwnership(context.sessionIndex, context.projectIndex, {
@@ -229,9 +218,7 @@ async function streamCheckpointResume(
   } catch (error) {
     writeSse(res, 'error', { error: error instanceof Error ? error.message : String(error) })
   } finally {
-    completed = true
-    req.removeListener('aborted', abortOnDisconnect)
-    res.removeListener('close', abortOnDisconnect)
+    stopHeartbeat()
     host.releaseActive(runId, runner, controller)
     res.end()
   }

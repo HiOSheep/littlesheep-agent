@@ -1,6 +1,8 @@
 import { createServer } from 'node:http'
 
 const REQUEST_BODY_LIMIT_BYTES = 4 * 1024 * 1024
+const MAX_RECORDED_REQUESTS = 4_096
+const MAX_PENDING_FAULTS = 8
 
 /**
  * Start a loopback-only forwarding proxy that adds deterministic latency
@@ -11,6 +13,8 @@ export async function startDelayedHttpProxy(options) {
   const upstreamBaseURL = new URL(options.upstreamBaseURL)
   const delayMs = boundedDelay(options.delayMs)
   const requests = []
+  const pendingFaults = []
+  let requestRecordsTruncated = false
   let nextRequestId = 1
 
   const server = createServer(async (req, res) => {
@@ -24,7 +28,8 @@ export async function startDelayedHttpProxy(options) {
       forwarded: false,
       aborted: false,
     }
-    requests.push(record)
+    if (requests.length < MAX_RECORDED_REQUESTS) requests.push(record)
+    else requestRecordsTruncated = true
 
     const controller = new AbortController()
     const abort = () => {
@@ -32,7 +37,7 @@ export async function startDelayedHttpProxy(options) {
       controller.abort()
     }
     const abortOnResponseClose = () => {
-      if (!res.writableEnded) abort()
+      if (!res.writableEnded && !record.injectedFault) abort()
     }
     req.once('aborted', abort)
     res.once('close', abortOnResponseClose)
@@ -42,6 +47,13 @@ export async function startDelayedHttpProxy(options) {
       const requestMetadata = parseRequestMetadata(body)
       if (requestMetadata.model) record.model = requestMetadata.model
       if (requestMetadata.stream !== undefined) record.stream = requestMetadata.stream
+      const fault = pendingFaults.shift()
+      if (fault === 'disconnect') {
+        record.injectedFault = fault
+        record.completedAt = new Date().toISOString()
+        res.destroy()
+        return
+      }
       await abortableDelay(delayMs, controller.signal)
 
       const upstreamResponse = await fetch(resolveUpstreamURL(upstreamBaseURL, req.url), {
@@ -88,7 +100,22 @@ export async function startDelayedHttpProxy(options) {
   return {
     baseURL: `http://127.0.0.1:${address.port}`,
     requests,
+    disconnectNext(count = 1) {
+      const boundedCount = boundedFaultCount(count)
+      if (pendingFaults.length + boundedCount > MAX_PENDING_FAULTS) {
+        throw new Error(`at most ${MAX_PENDING_FAULTS} faults may be pending`)
+      }
+      for (let index = 0; index < boundedCount; index += 1) pendingFaults.push('disconnect')
+      return pendingFaults.length
+    },
+    pendingFaultCount() {
+      return pendingFaults.length
+    },
+    requestRecordsTruncated() {
+      return requestRecordsTruncated
+    },
     async close() {
+      pendingFaults.length = 0
       server.closeAllConnections?.()
       await new Promise((resolveClose) => server.close(() => resolveClose()))
     },
@@ -194,6 +221,13 @@ function finiteInteger(value) {
 
 function boundedDelay(value) {
   return Number.isFinite(value) ? Math.max(0, Math.min(30_000, Math.floor(value))) : 0
+}
+
+function boundedFaultCount(value) {
+  if (!Number.isSafeInteger(value) || value < 1 || value > MAX_PENDING_FAULTS) {
+    throw new Error(`fault count must be an integer between 1 and ${MAX_PENDING_FAULTS}`)
+  }
+  return value
 }
 
 function abortableDelay(ms, signal) {

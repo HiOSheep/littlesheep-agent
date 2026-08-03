@@ -84,8 +84,8 @@ export const ToolsConfigSchema = z.object({
   stripImages: z.boolean().default(true),
   /** Maximum independent tool calls executed concurrently. */
   maxParallel: z.number().int().min(1).max(8).default(4),
-  /** Runtime ceiling for one hosted tool invocation. */
-  invocationTimeoutMs: z.number().int().min(1_000).max(30 * 60_000).default(120_000),
+  /** Runtime ceiling for one hosted tool invocation; long jobs remain bounded by the run timeout. */
+  invocationTimeoutMs: z.number().int().min(1_000).max(24 * 60 * 60_000).default(120_000),
 });
 
 /** Memory config. */

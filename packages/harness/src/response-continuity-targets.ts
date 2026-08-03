@@ -42,7 +42,7 @@ interface RequestedValueEvidenceInput {
 export function collectRequestedValueEvidence(
   input: RequestedValueEvidenceInput,
 ): RequestedValueEvidence {
-  const requestedLabels = input.enabled
+  const staticallyRequestedLabels = input.enabled
     ? continuityRequestedValueLabels(input.request)
     : [];
   const targets = input.enabled
@@ -66,6 +66,10 @@ export function collectRequestedValueEvidence(
         },
       ])
     : [];
+  const requestedLabels = [...new Set([
+    ...staticallyRequestedLabels,
+    ...targets.map((target) => target.label),
+  ])];
   const matches = targets.map((target) => {
     const rawOverlap = continuityOverlap(input.replyTerms, target.terms);
     const matched = continuityValueTargetMatched(input.reply, target, rawOverlap);

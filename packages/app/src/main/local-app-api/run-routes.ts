@@ -25,7 +25,7 @@ import type { ProjectIndex } from '../project-index.js'
 import { resolveRunPolicy, type RunApprovalBroker, type RunApprovalRequest } from '../run-policy.js'
 import type { SessionIndex } from '../session-index.js'
 import type { WorkspaceArtifactIndex } from '../workspace-artifact-index.js'
-import { json, readJson, writeSse, type LocalAppApiRequest } from './http.js'
+import { json, openSse, readJson, writeSse, type LocalAppApiRequest } from './http.js'
 import { resolveReasoning } from './runtime-routes.js'
 import {
   finishRunResources,
@@ -187,18 +187,7 @@ export class RunRouter {
       const runner = context.getRunner()
       const active: ActiveStreamRun = { controller, runner }
       this.activeStreams.set(runId, active)
-      let completed = false
-      const abortOnDisconnect = () => {
-        if (!completed) controller.abort()
-      }
-      req.once('aborted', abortOnDisconnect)
-      res.once('close', abortOnDisconnect)
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream; charset=utf-8',
-        'Cache-Control': 'no-cache, no-transform',
-        Connection: 'keep-alive',
-        'X-Accel-Buffering': 'no',
-      })
+      const stopHeartbeat = openSse(res)
       // Let the renderer show the run immediately while workspace and
       // attachment preparation continues asynchronously below.
       writeSse(res, 'start', { ok: true, runId })
@@ -250,9 +239,7 @@ export class RunRouter {
       } catch (error) {
         writeSse(res, 'error', { error: (error as Error).message })
       } finally {
-        completed = true
-        req.removeListener('aborted', abortOnDisconnect)
-        res.removeListener('close', abortOnDisconnect)
+        stopHeartbeat()
         if (this.activeStreams.get(runId) === active) this.activeStreams.delete(runId)
         res.end()
       }

@@ -7,6 +7,7 @@ import {
 } from '../../model-observability.js';
 import {
   appendSystemPromptAddons,
+  buildCompactBehaviorProfileAddon,
   buildCompactUserFacingVoiceAddon,
   buildUserFacingVoiceAddon,
 } from '../../profile-prompt.js';
@@ -31,11 +32,10 @@ export async function synthesizeFinalReply(
   ).join('\n');
   const voiceSystemPrompt = appendSystemPromptAddons(
     compact
-      ? `Write the final LS reply for one completed Runtime-validated read-only tool call.
-Answer the user's request directly in the user's language. Preserve every supplied result fact and any truncation or uncertainty; do not invent details or discuss internal workflow. Keep the answer concise and return only the user-facing reply.`
+      ? `Write the final LS reply for one completed Runtime-validated read-only tool call. Answer exactly what the user asked, in the user's language. Preserve supplied facts, truncation, and uncertainty; invent nothing and omit internal workflow. Return only the concise reply.`
       : `You are the final response assembler. Produce the final user-facing answer from completed task-book step results.
 Follow progressive disclosure: lead with the outcome and completion status, then give key results, artifacts, evidence, and the next action only when useful. Keep detail proportional to the user's request; simple tasks should not become reports. Do not dump raw command output or private chain-of-thought. Never hide failed or partial steps, permission denials, risks, uncertainty, external side effects, or decisions required from the user. Do not claim failed steps succeeded.`,
-    ctx.profilePromptAddon,
+    compact ? buildCompactBehaviorProfileAddon(ctx) : ctx.profilePromptAddon,
     ctx.reasoningPromptAddon,
     compact ? buildCompactUserFacingVoiceAddon(ctx) : buildUserFacingVoiceAddon(ctx),
   );
@@ -54,10 +54,9 @@ Follow progressive disclosure: lead with the outcome and completion status, then
           role: 'user',
           content: [
             compact
-              ? `User request:\n${textOf(ctx.inbound)}\n\n`
-                + `Completed read tool: ${taskBook.steps[0]!.toolProposal!.name}\n`
-                + `Runtime-recorded result:\n${stepResults[0]!.output}\n\n`
-                + 'Return only the concise final reply.'
+              ? `Request: ${textOf(ctx.inbound)}\n\n`
+                + `Verified ${taskBook.steps[0]!.toolProposal!.name} result:\n${stepResults[0]!.output}\n\n`
+                + 'Reply only.'
               : `Original request:\n${textOf(ctx.inbound)}\n\n`
                 + `Task goal:\n${taskBook.goal}\n\n`
                 + `Success criteria:\n${taskBook.successCriteria.map((item) => `- ${item}`).join('\n')}\n\n`

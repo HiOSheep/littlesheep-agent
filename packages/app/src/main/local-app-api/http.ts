@@ -3,6 +3,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 
 export const MAX_JSON_BODY_BYTES = 1024 * 1024
+export const SSE_HEARTBEAT_INTERVAL_MS = 15_000
+export const MAX_SSE_BUFFERED_BYTES = 512 * 1024
 
 export interface LocalAppApiRequest {
   req: IncomingMessage
@@ -23,9 +25,51 @@ export function json(res: ServerResponse, status: number, data: unknown): void {
   res.end(JSON.stringify(data))
 }
 
-export function writeSse(res: ServerResponse, event: string, data: unknown): void {
-  res.write(`event: ${event}\n`)
-  res.write(`data: ${JSON.stringify(data)}\n\n`)
+export function openSse(
+  res: ServerResponse,
+  heartbeatIntervalMs = SSE_HEARTBEAT_INTERVAL_MS,
+): () => void {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  })
+  res.flushHeaders?.()
+  let closed = false
+  const cleanup = () => {
+    if (closed) return
+    closed = true
+    clearInterval(timer)
+    res.removeListener('close', cleanup)
+    res.removeListener('finish', cleanup)
+  }
+  const timer = setInterval(() => {
+    if (res.destroyed || res.writableEnded) {
+      cleanup()
+      return
+    }
+    if (!writeSseChunk(res, ': heartbeat\n\n')) cleanup()
+  }, Math.max(1_000, Math.min(60_000, heartbeatIntervalMs)))
+  timer.unref?.()
+  res.once('close', cleanup)
+  res.once('finish', cleanup)
+  return cleanup
+}
+
+export function writeSse(res: ServerResponse, event: string, data: unknown): boolean {
+  return writeSseChunk(res, `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+}
+
+function writeSseChunk(res: ServerResponse, chunk: string): boolean {
+  if (res.destroyed || res.writableEnded) return false
+  const writableLength = Number.isFinite(res.writableLength) ? res.writableLength : 0
+  if (writableLength + Buffer.byteLength(chunk, 'utf8') > MAX_SSE_BUFFERED_BYTES) {
+    res.destroy()
+    return false
+  }
+  res.write(chunk)
+  return true
 }
 
 export function readJson(

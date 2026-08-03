@@ -62,7 +62,8 @@ describe('config schema', () => {
   it('bounds the hosted tool invocation timeout', () => {
     expect(ConfigSchema.parse({ tools: { exec: {}, invocationTimeoutMs: 90_000 } }).tools.invocationTimeoutMs).toBe(90_000);
     expect(() => ConfigSchema.parse({ tools: { exec: {}, invocationTimeoutMs: 999 } })).toThrow();
-    expect(() => ConfigSchema.parse({ tools: { exec: {}, invocationTimeoutMs: 30 * 60_000 + 1 } })).toThrow();
+    expect(ConfigSchema.parse({ tools: { exec: {}, invocationTimeoutMs: 2 * 60 * 60_000 } }).tools.invocationTimeoutMs).toBe(2 * 60 * 60_000);
+    expect(() => ConfigSchema.parse({ tools: { exec: {}, invocationTimeoutMs: 24 * 60 * 60_000 + 1 } })).toThrow();
   });
 
   it('DEFAULT_CONFIG round-trips through schema', () => {

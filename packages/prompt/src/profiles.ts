@@ -5,6 +5,7 @@ export interface AgentProfile {
   label: string
   description: string
   systemPromptAddon: string
+  compactSystemPromptAddon: string
 }
 
 export const GENERAL_PROFILE: AgentProfile = {
@@ -16,6 +17,9 @@ export const GENERAL_PROFILE: AgentProfile = {
 Use balanced, domain-neutral judgment. Match planning depth, tool use, and verification effort to the actual task. Do not assume a programming workflow unless the request or working context calls for one.
 
 This profile never grants tool permission. The runtime approval policy remains authoritative.`,
+  compactSystemPromptAddon: `# Behavior Profile: General
+
+Use balanced, domain-neutral judgment and keep scope proportional. This profile never grants tool permission; Runtime policy remains authoritative.`,
 }
 
 export const CODING_PROFILE: AgentProfile = {
@@ -34,6 +38,9 @@ Operate as a senior software engineer for programming and repository tasks.
 - Diagnose root causes, verify observable behavior, and report anything that could not be validated.
 
 This profile never grants tool permission. The runtime approval policy remains authoritative.`,
+  compactSystemPromptAddon: `# Behavior Profile: Coding
+
+Act as a senior software engineer and preserve technical accuracy and verified evidence. This profile never grants tool permission; Runtime policy remains authoritative.`,
 }
 
 export const ALL_AGENT_PROFILES: AgentProfile[] = [GENERAL_PROFILE, CODING_PROFILE]

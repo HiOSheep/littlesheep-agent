@@ -13,7 +13,7 @@ import {
 } from '../../shared/local-app-api-routes.js'
 import type { TerminalActivityIndex } from '../terminal-activity-index.js'
 import type { DevelopmentEnvironmentManager } from '../development-environments.js'
-import { HttpError, json, readJson, writeSse, type LocalAppApiRequest } from './http.js'
+import { HttpError, json, openSse, readJson, writeSse, type LocalAppApiRequest } from './http.js'
 import {
   clampTerminalTimeout,
   MAX_TERMINAL_COMMAND_BYTES,
@@ -80,12 +80,7 @@ export class TerminalRouter {
 
       if (method === 'GET' && action === 'stream') {
         const session = this.sessions.get(terminalSessionId)
-        res.writeHead(200, {
-          'Content-Type': 'text/event-stream; charset=utf-8',
-          'Cache-Control': 'no-cache, no-transform',
-          Connection: 'keep-alive',
-          'X-Accel-Buffering': 'no',
-        })
+        const stopHeartbeat = openSse(res)
         const onStdout = (text: string) => writeSse(res, 'stdout', { text })
         const onStderr = (text: string) => writeSse(res, 'stderr', { text })
         const onExit = (event: { exitCode: number | null; signal: string | null }) => writeSse(res, 'exit', event)
@@ -96,6 +91,7 @@ export class TerminalRouter {
         session.on('error', onError)
         session.replayTo(res)
         res.on('close', () => {
+          stopHeartbeat()
           session.off('stdout', onStdout)
           session.off('stderr', onStderr)
           session.off('exit', onExit)
@@ -278,12 +274,7 @@ export class TerminalRouter {
       res.on('close', () => {
         if (!completed) cancelCommand?.()
       })
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream; charset=utf-8',
-        'Cache-Control': 'no-cache, no-transform',
-        Connection: 'keep-alive',
-        'X-Accel-Buffering': 'no',
-      })
+      const stopHeartbeat = openSse(res)
       try {
         const payload = await runWorkspaceTerminalCommand(root, command, timeoutMs, {
           onStart: (cancel) => {
@@ -304,6 +295,7 @@ export class TerminalRouter {
         writeSse(res, 'error', { error: (error as Error).message })
       } finally {
         completed = true
+        stopHeartbeat()
         res.end()
       }
       return true

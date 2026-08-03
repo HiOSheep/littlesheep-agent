@@ -202,7 +202,7 @@ describe('executeStage', () => {
     expect(finalSystem).toContain('# Runtime Clock');
     expect(finalSystem).not.toContain('# Live Runtime State');
     expect(finalSystem).not.toContain('You are the final response assembler.');
-    expect(finalInput).toContain('Runtime-recorded result:\nalpha.txt');
+    expect(finalInput).toContain('Verified glob result:\nalpha.txt');
     expect(finalInput).not.toContain('Task goal:');
     expect(finalInput).not.toContain('Step results:');
     expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([

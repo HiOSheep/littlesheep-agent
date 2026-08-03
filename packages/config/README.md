@@ -2,11 +2,11 @@
 
 负责配置 schema、默认值、Provider/模型能力声明和配置文件加载。
 
-最后更新：2026-08-03 17:35:20
+最后更新：2026-08-04 01:01:23
 
 ## 职责与边界
 
-- 公开入口是 `src/index.ts`；主要实现位于 `schema.ts`、`defaults.ts`、`loader.ts` 和 `model-capabilities.ts`。`tools.invocationTimeoutMs` 是宿主工具统一超时配置，默认 120 秒，兼容范围为 1 秒到 30 分钟。
+- 公开入口是 `src/index.ts`；主要实现位于 `schema.ts`、`defaults.ts`、`loader.ts` 和 `model-capabilities.ts`。`tools.invocationTimeoutMs` 是宿主工具统一超时配置，默认 120 秒，兼容范围为 1 秒到 24 小时；实际执行仍受 run 总超时和取消信号约束。
 - 负责验证配置形状，不负责保存明文密钥或执行 Provider 请求。
 - 禁止放入 Electron UI 状态、Runner 装配和供应商网络逻辑。
 

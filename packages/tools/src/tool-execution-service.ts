@@ -131,7 +131,7 @@ export class ToolExecutionService {
       ...options,
       maxParallel: boundedInteger(options.maxParallel, 1, 8, 4),
       maxRepeat: boundedInteger(options.maxRepeat, 1, 20, DEFAULT_MAX_REPEATED_TOOL_CALLS),
-      timeoutMs: boundedInteger(options.timeoutMs, 1, 30 * 60_000, DEFAULT_TOOL_TIMEOUT_MS),
+      timeoutMs: boundedInteger(options.timeoutMs, 1, 24 * 60 * 60_000, DEFAULT_TOOL_TIMEOUT_MS),
       maxRecords: boundedInteger(options.maxRecords, 1, 4_096, DEFAULT_MAX_TOOL_INVOCATION_RECORDS),
       sanitize: options.sanitize ?? DEFAULT_SANITIZE,
     };

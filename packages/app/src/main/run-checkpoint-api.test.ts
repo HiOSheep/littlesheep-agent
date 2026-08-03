@@ -82,7 +82,9 @@ function abandonedDisposition(): RunCheckpointDisposition {
   }
 }
 
-async function createFixture() {
+async function createFixture(
+  resumeImplementation?: NonNullable<AgentRunner['resumeCheckpoint']>,
+) {
   const dataDir = mkdtempSync(join(tmpdir(), 'ls-run-checkpoint-api-'))
   const workplaceDir = join(dataDir, 'workplace')
   mkdirSync(workplaceDir, { recursive: true })
@@ -94,7 +96,7 @@ async function createFixture() {
     kind: 'written' as const,
     disposition: abandonedDisposition(),
   }))
-  const resumeCheckpoint = vi.fn<NonNullable<AgentRunner['resumeCheckpoint']>>(async (_id, options = {}) => {
+  const defaultResume: NonNullable<AgentRunner['resumeCheckpoint']> = async (_id, options = {}) => {
     options.onToolEvent?.({ type: 'verification_start' })
     options.onAssistantDelta?.('继续完成')
     return {
@@ -106,7 +108,10 @@ async function createFixture() {
       trace: [],
       durationMs: 5,
     }
-  })
+  }
+  const resumeCheckpoint = vi.fn<NonNullable<AgentRunner['resumeCheckpoint']>>(
+    resumeImplementation ?? defaultResume,
+  )
   const runner = {
     state: { model: config.agents.defaults.model },
     runStream: vi.fn(),
@@ -222,4 +227,59 @@ describe('run checkpoint Local App API', () => {
       rmSync(fixture.dataDir, { recursive: true, force: true })
     }
   })
+
+  it('keeps checkpoint recovery alive when its observing SSE client disconnects', async () => {
+    let releaseResume!: () => void
+    let receivedSignal: AbortSignal | undefined
+    let markCompleted!: () => void
+    const resumeGate = new Promise<void>((resolve) => { releaseResume = resolve })
+    const completed = new Promise<void>((resolve) => { markCompleted = resolve })
+    const fixture = await createFixture(async (_id, options = {}) => {
+      receivedSignal = options.signal
+      await resumeGate
+      markCompleted()
+      return {
+        runId: options.runId!,
+        sessionId: asSessionId('checkpoint-session'),
+        status: 'ok',
+        reply: '恢复完成',
+        messages: [],
+        trace: [],
+        durationMs: 5,
+      }
+    })
+    const base = `http://127.0.0.1:${fixture.server.port}`
+    const itemPath = localAppApiItemPath(LOCAL_APP_API_PREFIXES.runCheckpoints, 'checkpoint-1')
+    const controller = new AbortController()
+    try {
+      const response = await fetch(`${base}${itemPath}/resume/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'detached recovery test' }),
+        signal: controller.signal,
+      })
+      expect(response.status).toBe(200)
+      controller.abort()
+      await waitFor(() => receivedSignal !== undefined)
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(receivedSignal?.aborted).toBe(false)
+
+      releaseResume()
+      await completed
+      expect(receivedSignal?.aborted).toBe(false)
+    } finally {
+      releaseResume()
+      await fixture.server.stop()
+      rmSync(fixture.dataDir, { recursive: true, force: true })
+    }
+  })
 })
+
+async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs = 2_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (await check()) return
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  throw new Error('timed out waiting for checkpoint recovery state')
+}

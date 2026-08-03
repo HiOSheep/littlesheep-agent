@@ -29,8 +29,8 @@ export async function requestDecisionModel(
       request.messages,
       {
         maxAttempts: 2,
-        maxTokens: compact ? 450 : 1_400,
-        maxTokensCeiling: compact ? 700 : 2_200,
+        maxTokens: compact ? 250 : 1_400,
+        maxTokensCeiling: compact ? 400 : 2_200,
         signal: ctx.signal,
         onRequest: (chatRequest) => prepareModelRequest(
           ctx,

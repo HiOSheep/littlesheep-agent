@@ -2,12 +2,12 @@
 
 提供内置工具、注册表，以及所有宿主工具共享的统一执行服务。
 
-最后更新：2026-08-03 17:35:20
+最后更新：2026-08-04 01:01:23
 
 ## 职责与边界
 
 - 公开入口是 `src/index.ts`；注册表在 `registry.ts`，统一服务在 `tool-execution-service.ts`，调度、中断、记录摘要和结果处理分别在 `tool-execution-scheduler.ts`、`tool-execution-control.ts`、`tool-execution-records.ts` 和 `tool-execution-result.ts`，路径只读策略在 `path-protection.ts`，内置工具在 `src/builtin/`。
-- Tool Execution Service 统一负责查找与来源、schema 校验、权限与单次批准、超时/中断、资源冲突调度、执行、结果清洗、事件和有界 `ToolInvocationRecord`。调用超时由 `tools.invocationTimeoutMs` 统一配置，默认 120 秒、范围 1 秒到 30 分钟；超时或中断后最多等待 1.5 秒让工具清理，再向上层返回确定的控制错误。并行 TaskBook 分支必须传入已校验的资源封套，实际工具访问越界或选择独占工具时由服务拒绝。Harness 只负责模型循环、TaskBook 编排与副作用检查点生命周期。
+- Tool Execution Service 统一负责查找与来源、schema 校验、权限与单次批准、超时/中断、资源冲突调度、执行、结果清洗、事件和有界 `ToolInvocationRecord`。调用超时由 `tools.invocationTimeoutMs` 统一配置，默认 120 秒、范围 1 秒到 24 小时，并继续受 run 总超时约束；超时或中断后最多等待 1.5 秒让工具清理，再向上层返回确定的控制错误。并行 TaskBook 分支必须传入已校验的资源封套，实际工具访问越界或选择独占工具时由服务拒绝。Harness 只负责模型循环、TaskBook 编排与副作用检查点生命周期。
 - 工具实现只完成受约束动作并保留动作前的路径二次复核；不得自行重复请求已经由统一服务授予的同一次批准。
 - 禁止工具自行绕过工作区、审批或执行日志，也不把长输出原样塞入 Context。
 - ToolContext 中的 `containerRoot` 是活动 `.littlesheep` 数据根的逻辑容器分类边界。完全访问经一次显式风险确认后，对容器内外及范围不明的读、写、改、删、执行免逐次批准；研究只对容器内读取免批准；受限所有操作都要批准。

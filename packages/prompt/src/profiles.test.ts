@@ -11,11 +11,15 @@ describe('agent behavior profiles', () => {
     expect(GENERAL_PROFILE.systemPromptAddon).toContain('Behavior Profile: General')
     expect(CODING_PROFILE.systemPromptAddon).toContain('Behavior Profile: Coding')
     expect(CODING_PROFILE.systemPromptAddon).toContain('senior software engineer')
+    expect(GENERAL_PROFILE.compactSystemPromptAddon).toContain('Behavior Profile: General')
+    expect(CODING_PROFILE.compactSystemPromptAddon).toContain('senior software engineer')
   })
 
   it('keeps profile prompts explicit that permissions remain runtime-owned', () => {
     expect(GENERAL_PROFILE.systemPromptAddon).toContain('never grants tool permission')
     expect(CODING_PROFILE.systemPromptAddon).toContain('never grants tool permission')
+    expect(GENERAL_PROFILE.compactSystemPromptAddon).toContain('never grants tool permission')
+    expect(CODING_PROFILE.compactSystemPromptAddon).toContain('never grants tool permission')
   })
 
   it('normalizes unknown profiles to general', () => {

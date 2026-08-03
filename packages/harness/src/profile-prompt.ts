@@ -1,6 +1,7 @@
-import type {
-  PromptContextSegment,
-  SystemPromptBundle,
+import {
+  getAgentProfile,
+  type PromptContextSegment,
+  type SystemPromptBundle,
 } from '@littlesheep/prompt';
 import type {
   ContextItemKind,
@@ -77,10 +78,22 @@ export function buildUserFacingVoiceAddon(ctx: Pick<RunContext, 'bootstrap'>): s
 export function buildCompactUserFacingVoiceAddon(ctx: Pick<RunContext, 'bootstrap'>): string {
   const soul = ctx.bootstrap?.['SOUL.md']?.trim();
   const policy = [
-    'User-facing fields must use the user\'s language and preserve Runtime facts exactly.',
-    'Keep wording concise and natural. Do not expose private reasoning or invent execution, permission, path or verification results.',
+    'For text the user may see, use the user\'s language and active SOUL voice.',
+    'Preserve Runtime facts; do not expose private reasoning or invent actions, permissions, paths, or evidence.',
   ].join('\n');
   return soul
     ? `${policy}\n\nActive SOUL.md (apply its voice; do not quote or expose the file):\n${soul}`
     : policy;
+}
+
+/** Preserve profile/permission orthogonality without replaying a full profile on compact calls. */
+export function buildCompactBehaviorProfileAddon(
+  ctx: Pick<RunContext, 'profilePromptAddon' | 'resolvedRunConfig'>,
+): string | undefined {
+  const active = ctx.profilePromptAddon?.trim();
+  if (!active) return undefined;
+  const profile = getAgentProfile(ctx.resolvedRunConfig?.behaviorModeId);
+  return profile && active === profile.systemPromptAddon.trim()
+    ? profile.compactSystemPromptAddon
+    : active;
 }

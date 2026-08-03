@@ -11,7 +11,7 @@ import {
   LOCAL_APP_API_ROUTES,
   matchLocalAppApiItemPath,
 } from '../../shared/local-app-api-routes.js'
-import { json, readJson, writeSse, type LocalAppApiRequest } from './http.js'
+import { json, openSse, readJson, writeSse, type LocalAppApiRequest } from './http.js'
 import { hasBearerToken } from './bearer-auth.js'
 import type { LocalAppApiServerOptions } from './contracts.js'
 
@@ -85,18 +85,14 @@ export async function routeApplicationLifecycle(
       json(res, 503, { error: 'active run subscription is unavailable' })
       return true
     }
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-      'X-Accel-Buffering': 'no',
-    })
+    const stopHeartbeat = openSse(res)
     let closed = false
     let unsubscribe: (() => void) | null = null
     const cleanup = () => {
       if (closed) return
       closed = true
       unsubscribe?.()
+      stopHeartbeat()
       req.removeListener('aborted', cleanup)
       res.removeListener('close', cleanup)
     }

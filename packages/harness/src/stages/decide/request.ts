@@ -5,6 +5,7 @@ import type { LlmCallPurpose, RunContext } from '@littlesheep/types';
 import { buildRunRequestCandidates } from '../../context-candidates.js';
 import {
   appendSystemPromptBundleAddons,
+  buildCompactBehaviorProfileAddon,
   buildCompactUserFacingVoiceAddon,
 } from '../../profile-prompt.js';
 import {
@@ -86,12 +87,12 @@ export async function buildDecideRequest(
     ? [
         {
           id: 'explicit-tool-workspace',
-          text: `Runtime working directory: \`${resolved.workspace}\`. Resolve relative tool paths against it.`,
+          text: 'Use relative tool paths; Runtime resolves them against the active LS workspace.',
           kind: 'project_knowledge',
           source: { kind: 'configuration', id: 'workspace', path: resolved.workspace },
           scope: 'workspace',
         },
-        { id: 'profile', text: ctx.profilePromptAddon },
+        { id: 'profile', text: buildCompactBehaviorProfileAddon(ctx) },
         { id: 'reasoning', text: ctx.reasoningPromptAddon },
         { id: 'compact-user-facing-voice', text: buildCompactUserFacingVoiceAddon(ctx) },
         {

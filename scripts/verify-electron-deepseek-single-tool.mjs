@@ -19,11 +19,13 @@ import {
 
 const PROMPT = '请使用 glob 工具读取当前工作区顶层条目，只告诉我数量和名称，不要修改任何文件。'
 const EXPECTED_ENTRIES = ['alpha.txt', 'beta.md', 'nested']
-const MAX_COMPACT_DECIDE_PROMPT_TOKENS = 750
-const MAX_COMPACT_DECIDE_CONTEXT_CHARS = 3_200
-const MAX_COMPACT_FINAL_PROMPT_TOKENS = 650
-const MAX_COMPACT_FINAL_CONTEXT_CHARS = 2_500
-const MAX_OPTIMIZED_TOTAL_PROMPT_TOKENS = 1_250
+// Keep a little headroom for tokenizer/provider metadata while catching a
+// regression toward the pre-optimization 1,021 prompt-token baseline.
+const MAX_COMPACT_DECIDE_PROMPT_TOKENS = 500
+const MAX_COMPACT_DECIDE_CONTEXT_CHARS = 2_200
+const MAX_COMPACT_FINAL_PROMPT_TOKENS = 450
+const MAX_COMPACT_FINAL_CONTEXT_CHARS = 2_000
+const MAX_OPTIMIZED_TOTAL_PROMPT_TOKENS = 950
 
 async function main() {
   const environment = await createIsolatedDeepSeekEnvironment({
@@ -79,6 +81,23 @@ async function main() {
         memoryContinuity: streamed.result.memoryContinuityAssessment,
       },
       providerTotals: sumProviderUsage(requests),
+      efficiency: {
+        promptTokens: requests.reduce(
+          (total, request) => total + (request.providerPromptTokens ?? 0),
+          0,
+        ),
+        completionTokens: requests.reduce(
+          (total, request) => total + (request.providerCompletionTokens ?? 0),
+          0,
+        ),
+        modelCalls: requests.length,
+        toolCalls: streamed.result.toolInvocations.length,
+        regressionCeilings: {
+          decidePromptTokens: MAX_COMPACT_DECIDE_PROMPT_TOKENS,
+          finalPromptTokens: MAX_COMPACT_FINAL_PROMPT_TOKENS,
+          totalPromptTokens: MAX_OPTIMIZED_TOTAL_PROMPT_TOKENS,
+        },
+      },
       requests,
       toolInvocations: streamed.result.toolInvocations.map((record) => ({
         toolName: record.toolName,

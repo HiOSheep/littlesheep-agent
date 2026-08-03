@@ -269,4 +269,77 @@ describe('run stream Local App API', () => {
       rmSync(dataDir, { recursive: true, force: true })
     }
   })
+
+  it('keeps a Main-owned run alive when the observing SSE client disconnects', async () => {
+    const sessionId = asSessionId('detached-stream-session')
+    const runtimeEvents = makeRuntimeEvents(sessionId)
+    let releaseRun!: () => void
+    let receivedSignal: AbortSignal | undefined
+    const runGate = new Promise<void>((resolve) => { releaseRun = resolve })
+    const runStream = vi.fn(async (input: Parameters<AgentRunner['runStream']>[0]) => {
+      receivedSignal = input.signal
+      await runGate
+      return {
+        runId: input.runId!,
+        sessionId,
+        status: 'ok' as const,
+        reply: '后台完成',
+        messages: [],
+        trace: [],
+        durationMs: 4,
+      }
+    })
+    const { dataDir, server } = await createFixture(runStream, runtimeEvents)
+    const base = `http://127.0.0.1:${server.port}`
+    const controller = new AbortController()
+
+    try {
+      const response = await fetch(`${base}${LOCAL_APP_API_ROUTES.runStream}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: '断开观察连接后继续运行' }),
+        signal: controller.signal,
+      })
+      expect(response.status).toBe(200)
+      const runId = runStream.mock.calls[0]?.[0].runId
+      expect(runId).toEqual(expect.any(String))
+
+      controller.abort()
+      await waitFor(() => receivedSignal !== undefined)
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(receivedSignal?.aborted).toBe(false)
+
+      const eventPath = localAppApiItemPath(LOCAL_APP_API_PREFIXES.runs, String(runId), '/events')
+      const stillActive = await fetch(`${base}${eventPath}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'setting_changed', payload: { key: 'reasoning', value: 'high' } }),
+      })
+      expect(stillActive.status).toBe(202)
+
+      releaseRun()
+      await waitFor(async () => {
+        const after = await fetch(`${base}${eventPath}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'resume_requested' }),
+        })
+        return after.status === 404
+      })
+      expect(receivedSignal?.aborted).toBe(false)
+    } finally {
+      releaseRun()
+      await server.stop()
+      rmSync(dataDir, { recursive: true, force: true })
+    }
+  })
 })
+
+async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs = 2_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (await check()) return
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  throw new Error('timed out waiting for run stream state')
+}

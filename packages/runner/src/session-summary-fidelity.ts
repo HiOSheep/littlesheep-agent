@@ -64,6 +64,11 @@ function rememberField(
   const key = fieldKey(field.label);
   fields.delete(key);
   fields.set(key, { label: field.label, value: field.value });
+  while (fields.size > MAX_FIDELITY_FIELDS) {
+    const oldest = fields.keys().next().value as string | undefined;
+    if (!oldest) break;
+    fields.delete(oldest);
+  }
 }
 
 function fieldKey(label: string): string {

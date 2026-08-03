@@ -69,11 +69,11 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     allowedDecisions: ['propose_single_tool_call', 'request_clarification'],
     outputSchema: json(
       'explicit-tool-decision.v1',
-      'One concise summary, success criterion and schema-bound input, or one focused clarification.',
+      'One schema-bound input object, or one focused clarification.',
     ),
     memoryIntents: NO_MEMORY, requiresMemoryEvidence: false,
     toolMode: 'none', runtimeApprovalRequired: false,
-    maxIterations: 0, maxAttempts: 2, maxOutputTokens: 1_000, maxPromptTokens: 4_096, temperature: 0,
+    maxIterations: 0, maxAttempts: 2, maxOutputTokens: 400, maxPromptTokens: 4_096, temperature: 0,
   }),
   execute_tool_loop: template({
     purpose: 'execute_tool_loop', stage: 'execute', modelCall: 'required',

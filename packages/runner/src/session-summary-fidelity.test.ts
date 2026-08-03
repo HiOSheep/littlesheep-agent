@@ -70,6 +70,51 @@ describe('preserveSessionSummaryFidelity', () => {
     expect(summary).not.toContain('颜色: 蓝色');
   });
 
+  it('preserves bounded arbitrary labels instead of relying on a fixed vocabulary', () => {
+    const summary = preserveSessionSummaryFidelity({
+      llmSummary: '更新完成',
+      coveredMessages: [textMessage(
+        'user',
+        '请再记住三个事实：上限是 17，开关状态是“关闭”，操作顺序是“先备份再发布”。',
+      )],
+      messages: [],
+    });
+
+    expect(summary).toContain('上限: 17');
+    expect(summary).toContain('开关状态: 关闭');
+    expect(summary).toContain('操作顺序: 先备份再发布');
+  });
+
+  it('carries arbitrary exact fields through incremental compaction', () => {
+    const previous = previousSummary(preserveSessionSummaryFidelity({
+      llmSummary: '更新完成',
+      coveredMessages: [textMessage('user', '请记住上限是 17，开关状态是关闭。')],
+      messages: [],
+    }));
+    const summary = preserveSessionSummaryFidelity({
+      llmSummary: '继续保留这些约束。',
+      previousSummary: previous,
+      coveredMessages: [],
+      messages: [],
+    });
+
+    expect(summary).toContain('上限: 17');
+    expect(summary).toContain('开关状态: 关闭');
+  });
+
+  it('keeps only the latest 24 arbitrary exact fields during one large compaction', () => {
+    const assignments = Array.from({ length: 30 }, (_, index) => `字段${index}是值${index}`);
+    const summary = preserveSessionSummaryFidelity({
+      llmSummary: '批量记录完成。',
+      coveredMessages: [textMessage('user', `请记住：${assignments.join('，')}。`)],
+      messages: [],
+    });
+
+    expect(summary).not.toContain('字段5: 值5');
+    expect(summary).toContain('字段6: 值6');
+    expect(summary).toContain('字段29: 值29');
+  });
+
   it('does not turn an ordinary explanatory sentence into an authoritative exact field', () => {
     const summary = preserveSessionSummaryFidelity({
       llmSummary: '用户询问版本选择逻辑。',

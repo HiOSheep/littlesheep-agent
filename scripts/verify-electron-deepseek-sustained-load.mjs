@@ -26,6 +26,10 @@ import {
   waitForLocator,
   waitForMissing,
 } from './lib/electron-deepseek-acceptance.mjs'
+import {
+  createSustainedResourceAggregate,
+  parseSustainedLoadOptions,
+} from './lib/sustained-load-evidence.mjs'
 
 const FIXTURE_SCRIPT = 'sustained-load-fixture.ps1'
 const COUNT_FILE = 'sustained-execution-count.txt'
@@ -41,14 +45,14 @@ const RESOURCE_GROWTH_BUDGET = {
   activeRequestCount: 8,
   electronProcessCount: 2,
 }
-
-const options = parseOptions(process.argv.slice(2))
+const options = parseSustainedLoadOptions(process.argv.slice(2))
 const durationMs = options.durationSeconds * 1_000
-const toolTimeoutMs = Math.min(30 * 60_000, durationMs + 120_000)
+const toolTimeoutMs = durationMs + 120_000
 const runTimeoutMs = toolTimeoutMs + 240_000
 const command = `& .\\${FIXTURE_SCRIPT} -DurationSeconds ${options.durationSeconds} -IntervalMilliseconds ${options.progressIntervalMs} -Anchor '${ACCEPTANCE_CODE}'`
 const taskPrompt = `这是一次真实的持续后台任务验收。请只使用 exec 工具执行下面这一条命令，不能使用其他工具，也不能把命令拆成多次调用：\n${command}\n\n请保留一个 TaskBook 步骤；toolProposal.input.command 必须完整等于上面的命令，cwd 设为 "."，timeout_ms 设为 ${toolTimeoutMs}。该步骤 execution.mode 设为 serial、execution.sideEffect 设为 external、execution.resources 设为空数组。命令会在工作区内持续写入有界进度，并自行返回 JSON 结果。最终回答必须分别说明验收代号 ${ACCEPTANCE_CODE}、executionCount、ticks 和 completed 状态。`
 const recallPrompt = `请根据上一轮真实完成结果，分别回答验收代号和 executionCount（用数字），不要调用工具。`
+let failureEvidence
 
 async function main() {
   let hotReloadModel
@@ -70,6 +74,9 @@ async function main() {
   let electron
   let activeMonitor
   let activeRunSseSummary
+  let resources
+  let lastAcceptanceSample
+  let lastProgressSample
   let report
 
   try {
@@ -117,10 +124,13 @@ async function main() {
       && snapshot.runtime.activityListenerCount === startupListenerCount + 1
     ), 'hot-reloaded runtime retaining the sustained task')
 
-    const resources = createResourceAggregate({
+    resources = createSustainedResourceAggregate({
       expectedListenerCount: startupListenerCount + 1,
       maxSourceCount: 2,
       maxRetiredRunnerCount: 1,
+      formal: options.mode === 'formal',
+      startedAtMs: observedStartedAtMs,
+      durationMs,
     })
     const observedCompletion = observeCompletion(run.completion)
     const transientPauseAtMs = observedStartedAtMs + Math.max(2_000, Math.floor(durationMs * 0.2))
@@ -135,6 +145,8 @@ async function main() {
         acceptanceSnapshot(locator),
         readProgressState(environment.workplaceDir).catch(() => undefined),
       ])
+      lastAcceptanceSample = snapshot
+      lastProgressSample = progress
       resources.add(snapshot, progress)
       if (!transientPauseRequestedAt && Date.now() >= transientPauseAtMs) {
         const outcome = await controlRun(locator, runId, 'pause')
@@ -284,7 +296,10 @@ async function main() {
     report = {
       check: 'electron-deepseek-sustained-load',
       ok: true,
-      evidenceClass: options.durationSeconds >= 60 ? 'minutes-scale' : 'diagnostic-short-run',
+      verificationMode: options.mode,
+      evidenceClass: options.mode === 'formal'
+        ? 'hours-scale'
+        : options.durationSeconds >= 60 ? 'minutes-scale' : 'diagnostic-short-run',
       provider: 'deepseek',
       model: environment.model,
       hotReloadModel,
@@ -358,6 +373,16 @@ async function main() {
       },
       copiedChromiumFiles: environment.copiedChromiumFiles,
     }
+  } catch (error) {
+    failureEvidence = {
+      verificationMode: options.mode,
+      configuredDurationSeconds: options.durationSeconds,
+      activeRunSse: activeMonitor?.summary(),
+      sampling: resources?.summary(),
+      lastAcceptance: lastAcceptanceSample ? summarizeAcceptance(lastAcceptanceSample) : undefined,
+      lastProgress: lastProgressSample,
+    }
+    throw error
   } finally {
     await activeMonitor?.stop().catch(() => undefined)
     if (electron?.exitCode === null) await forceTerminate(electron)
@@ -368,30 +393,6 @@ async function main() {
     ...report,
     isolatedDataRemoved: !existsSync(environment.root),
   }))
-}
-
-function parseOptions(args) {
-  const values = {
-    durationSeconds: 120,
-    sampleIntervalMs: 1_000,
-    progressIntervalMs: 1_000,
-  }
-  for (const arg of args) {
-    const [name, rawValue] = arg.split('=', 2)
-    if (name === '--duration-seconds') values.durationSeconds = boundedInteger(rawValue, 15, 1_200, name)
-    else if (name === '--sample-ms') values.sampleIntervalMs = boundedInteger(rawValue, 250, 10_000, name)
-    else if (name === '--progress-ms') values.progressIntervalMs = boundedInteger(rawValue, 250, 10_000, name)
-    else throw new Error(`unsupported argument: ${arg}`)
-  }
-  return values
-}
-
-function boundedInteger(value, minimum, maximum, label) {
-  const parsed = Number(value)
-  if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) {
-    throw new Error(`${label} must be an integer between ${minimum} and ${maximum}`)
-  }
-  return parsed
 }
 
 async function writeFixtureScript(workplaceDir) {
@@ -600,86 +601,6 @@ function startActiveRunMonitor(locator) {
       controller.abort()
       await completion.catch(() => undefined)
     },
-  }
-}
-
-function createResourceAggregate(expectations) {
-  const metricNames = [
-    'rssBytes',
-    'heapUsedBytes',
-    'activeHandleCount',
-    'activeRequestCount',
-    'electronWorkingSetBytes',
-    'electronPrivateBytes',
-    'electronProcessCount',
-    'activeRunCount',
-    'retiredRunnerCount',
-    'sourceCount',
-    'listenerCount',
-    'progressTick',
-  ]
-  const minimum = Object.fromEntries(metricNames.map((name) => [name, Number.POSITIVE_INFINITY]))
-  const maximum = Object.fromEntries(metricNames.map((name) => [name, Number.NEGATIVE_INFINITY]))
-  let first
-  let last
-  let count = 0
-  let previousTick = -1
-  const violations = []
-  return {
-    add(snapshot, progress) {
-      const sample = flattenSample(snapshot, progress)
-      if (!first) first = sample
-      last = sample
-      count += 1
-      for (const name of metricNames) {
-        const value = sample[name]
-        if (!Number.isFinite(value) || value < 0) rememberViolation(`${name} is invalid: ${value}`)
-        minimum[name] = Math.min(minimum[name], value)
-        maximum[name] = Math.max(maximum[name], value)
-      }
-      if (sample.progressTick < previousTick) rememberViolation(`progress tick regressed from ${previousTick} to ${sample.progressTick}`)
-      previousTick = Math.max(previousTick, sample.progressTick)
-      if (sample.activeRunCount > 1) rememberViolation(`active run count exceeded 1: ${sample.activeRunCount}`)
-      if (sample.sourceCount > expectations.maxSourceCount) rememberViolation(`activity source count exceeded ${expectations.maxSourceCount}: ${sample.sourceCount}`)
-      if (sample.retiredRunnerCount > expectations.maxRetiredRunnerCount) rememberViolation(`retired runner count exceeded ${expectations.maxRetiredRunnerCount}: ${sample.retiredRunnerCount}`)
-      if (sample.listenerCount > expectations.expectedListenerCount) rememberViolation(`activity listener count exceeded ${expectations.expectedListenerCount}: ${sample.listenerCount}`)
-    },
-    assertHealthy() {
-      if (count < 2) throw new Error(`sustained sampling retained too few aggregate samples: ${count}`)
-      if (violations.length > 0) throw new Error(`sustained resource sampling failed: ${safe(violations)}`)
-    },
-    summary() {
-      return {
-        sampleCount: count,
-        first,
-        last,
-        minimum,
-        maximum,
-        violations,
-      }
-    },
-  }
-
-  function rememberViolation(message) {
-    if (violations.length < 16 && !violations.includes(message)) violations.push(message)
-  }
-}
-
-function flattenSample(snapshot, progress) {
-  return {
-    sampledAt: snapshot.sampledAt,
-    rssBytes: snapshot.process.rssBytes,
-    heapUsedBytes: snapshot.process.heapUsedBytes,
-    activeHandleCount: snapshot.process.activeHandleCount,
-    activeRequestCount: snapshot.process.activeRequestCount,
-    electronWorkingSetBytes: snapshot.electron.workingSetBytes,
-    electronPrivateBytes: snapshot.electron.privateBytes,
-    electronProcessCount: snapshot.electron.processCount,
-    activeRunCount: snapshot.runtime.aggregatedActiveRunCount,
-    retiredRunnerCount: snapshot.runtime.retiredRunnerCount,
-    sourceCount: snapshot.runtime.activitySourceCount,
-    listenerCount: snapshot.runtime.activityListenerCount,
-    progressTick: Number.isSafeInteger(progress?.tick) ? progress.tick : 0,
   }
 }
 
@@ -1115,7 +1036,9 @@ main().catch((error) => {
   console.error(JSON.stringify({
     check: 'electron-deepseek-sustained-load',
     ok: false,
+    verificationMode: options.mode,
     configuredDurationSeconds: options.durationSeconds,
+    failureEvidence,
     error: error instanceof Error ? error.message : String(error),
   }))
   process.exitCode = 1

@@ -123,6 +123,88 @@ describe('assessResponseMemoryContinuity', () => {
     expect(assessment.evidence.summaryAnchorCount).toBeGreaterThanOrEqual(2);
   });
 
+  it('judges historical-value continuity from the final LS answer, not summary presence alone', () => {
+    const summary = summaryWithFidelity(
+      '用户先后保存并更新了多个验收字段。',
+      '代号: summary-deepseek-anchor-8427',
+      '颜色: 雾松青',
+      '上限: 17',
+      '开关状态: 关闭',
+      '操作顺序: 先备份再发布',
+    );
+    const common = {
+      inbound: textMessage(
+        'user',
+        '请分别回答最初保存的代号和颜色，以及后来约定的上限、开关状态和操作顺序。不要调用工具。',
+      ),
+      sessionSummary: {
+        id: 'summary-historical-values',
+        summary,
+        collapsedCount: 6,
+        compactedAt: NOW,
+        sourceStartMessageId: 'message-1',
+        sourceEndMessageId: 'message-6',
+        sourceStartAt: NOW,
+        sourceEndAt: NOW,
+      },
+      ...observedContext([
+        contextItem(
+          'summary-memory:summary-historical-values',
+          'summary_memory',
+          { kind: 'memory' as const, id: 'summary-historical-values' },
+        ),
+      ]),
+    };
+
+    const complete = assessResponseMemoryContinuity({
+      ...common,
+      reply: '代号：summary-deepseek-anchor-8427；颜色：雾松青；上限：17；开关状态：关闭；操作顺序：先备份再发布。',
+    });
+    expect(complete.status).toBe('supported');
+    expect(complete.sources.explicitContinuationRequest).toBe(true);
+    expect(complete.matchedSources).toEqual(['session_summary']);
+
+    const incomplete = assessResponseMemoryContinuity({
+      ...common,
+      reply: '代号：summary-deepseek-anchor-8427；颜色：雾松青。',
+    });
+    expect(incomplete.status).toBe('discontinuous');
+    expect(incomplete.missingSignals).toContain('explicit_continuation_not_reflected_in_reply');
+  });
+
+  it('requires the final LS answer to cover every arbitrary field requested from recent history', () => {
+    const prior = textMessage(
+      'user',
+      '请记住两个字段：上限是 17，开关状态是关闭。',
+      { id: 'history-dynamic-values' },
+    );
+    const common = {
+      inbound: textMessage('user', '请回答之前保存的上限和开关状态。'),
+      history: [prior],
+      ...observedContext([
+        contextItem(
+          'history-dynamic-values',
+          'recent_message',
+          { kind: 'message' as const, id: prior.id },
+        ),
+      ]),
+    };
+
+    const complete = assessResponseMemoryContinuity({
+      ...common,
+      reply: '上限：17；开关状态：关闭。',
+    });
+    expect(complete.status).toBe('supported');
+    expect(complete.matchedSources).toEqual(['recent_history']);
+
+    const incomplete = assessResponseMemoryContinuity({
+      ...common,
+      reply: '上限：17。',
+    });
+    expect(incomplete.status).toBe('discontinuous');
+    expect(incomplete.missingSignals).toContain('explicit_continuation_not_reflected_in_reply');
+  });
+
   it('treats a malformed null summary body as unavailable evidence instead of crashing the run', () => {
     const assessment = assessResponseMemoryContinuity({
       inbound: textMessage('user', '继续'),

@@ -4,6 +4,8 @@ import type { Message } from '@littlesheep/types';
 import { readSessionSummaryFidelityFields } from './session-summary-fidelity-text.js';
 
 const MAX_SOURCE_CHARS = 12_000;
+const MAX_DYNAMIC_LABELED_VALUES = 32;
+const MAX_REQUESTED_VALUE_TARGETS = 32;
 const MEMORY_ATOM_START = '<!-- littlesheep-memory-atom:start ';
 const MEMORY_ATOM_END = '<!-- littlesheep-memory-atom:end ';
 
@@ -193,7 +195,17 @@ export function continuityRequestedValueTargets(
   request: string | undefined,
   sources: readonly ContinuityValueSourceText[],
 ): ContinuityValueTarget[] {
-  const requestedLabels = continuityRequestedValueLabels(request);
+  const normalizedRequest = request?.normalize('NFKC').toLowerCase() ?? '';
+  const dynamicSourceLabels = sources.flatMap((source) => source.texts.flatMap((text) => (
+    source.source === 'session_summary'
+      ? readSessionSummaryFidelityFields(text)
+      : continuityLabeledValues(text)
+  ).map((field) => canonicalValueLabel(field.label))))
+    .filter((label) => requestMentionsValueAlias(normalizedRequest, label));
+  const requestedLabels = [...new Set([
+    ...continuityRequestedValueLabels(request),
+    ...dynamicSourceLabels,
+  ])].slice(0, MAX_REQUESTED_VALUE_TARGETS);
   const targets: ContinuityValueTarget[] = [];
   const seen = new Set<string>();
   for (const label of requestedLabels) {
@@ -233,10 +245,13 @@ export function continuityRequestedValueLabels(value: string | undefined): strin
 
 /** Extract the latest concrete value for each continuity label without normalizing its value. */
 export function continuityLabeledValues(value: string | undefined): ContinuityLabeledValue[] {
-  return CONTINUITY_VALUE_LABELS.flatMap((label) => {
+  const fields = new Map<string, ContinuityLabeledValue>();
+  for (const field of CONTINUITY_VALUE_LABELS.flatMap((label) => {
     const extracted = extractLabeledValue(value, label);
     return extracted ? [{ label, value: extracted }] : [];
-  });
+  })) rememberLabeledValue(fields, field);
+  for (const field of genericExplicitLabeledValues(value)) rememberLabeledValue(fields, field);
+  return [...fields.values()];
 }
 
 export function continuityValueTargetMatched(
@@ -315,6 +330,90 @@ function extractLabeledValue(value: string | undefined, label: string): string |
   return candidates[0]?.value;
 }
 
+function genericExplicitLabeledValues(value: string | undefined): ContinuityLabeledValue[] {
+  const source = value?.normalize('NFKC').slice(0, MAX_SOURCE_CHARS) ?? '';
+  if (!source) return [];
+  const fields: ContinuityLabeledValue[] = [];
+  for (const rawSegment of splitAssignmentSegments(source)) {
+    if (fields.length >= MAX_DYNAMIC_LABELED_VALUES) break;
+    const segment = normalizeAssignmentSegment(rawSegment);
+    const match = segment.match(
+      /^([\p{L}_][\p{L}\p{N}_ /-]{0,39}?)\s*(?:是|为|改成|改为|更新为|设为|设置为|调整为|换成|\b(?:becomes?|is)\b|=|:|：)\s*(?:[“"‘'`]([^”"’'`\r\n]{1,120})[”"’'`]|(.{1,120}))$/iu,
+    );
+    const normalizedLabel = cleanGenericLabel(match?.[1]);
+    const normalizedValue = cleanExtractedValue(match?.[2] ?? match?.[3]);
+    if (normalizedLabel && normalizedValue && !looksLikeValuePlaceholder(normalizedValue)) {
+      fields.push({ label: normalizedLabel, value: normalizedValue });
+    }
+  }
+  return fields;
+}
+
+function cleanGenericLabel(value: string | undefined): string | undefined {
+  const normalized = cleanExtractedValue(value)
+    ?.replace(/^(?:(?:随后|然后|接着|并且|同时|再)\s*)?(?:把|将)\s*/u, '')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  if (!normalized
+    || normalized.length > 40
+    || /(?:记住|记下|牢记|保存|记录|字段|事实)$/u.test(normalized)) return undefined;
+  return normalized;
+}
+
+function normalizeAssignmentSegment(value: string): string {
+  let normalized = value.trim();
+  const colon = normalized.search(/[:：]/u);
+  if (colon >= 0 && /(?:记住|记下|牢记|保存|记录|字段|事实|remember|memorize|save|store|record)/iu.test(
+    normalized.slice(0, colon),
+  )) {
+    normalized = normalized.slice(colon + 1).trim();
+  }
+  return normalized.replace(
+    /^(?:(?:请|帮我|需要你|务必|一定要)?(?:再)?(?:记住|记下|牢记|保存|记录)(?:为)?|(?:please\s+)?(?:remember|memorize|save|store|record))\s*/iu,
+    '',
+  ).trim();
+}
+
+function splitAssignmentSegments(value: string): string[] {
+  const segments: string[] = [];
+  let current = '';
+  let closingQuote: string | undefined;
+  const quotePairs = new Map([
+    ['“', '”'], ['‘', '’'], ['"', '"'], ["'", "'"], ['`', '`'],
+  ]);
+  for (const character of value) {
+    if (closingQuote) {
+      current += character;
+      if (character === closingQuote) closingQuote = undefined;
+      continue;
+    }
+    const nextClosingQuote = quotePairs.get(character);
+    if (nextClosingQuote) {
+      closingQuote = nextClosingQuote;
+      current += character;
+      continue;
+    }
+    if (/[,，。；;、\r\n]/u.test(character)) {
+      if (current.trim()) segments.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += character;
+  }
+  if (current.trim()) segments.push(current.trim());
+  return segments;
+}
+
+function rememberLabeledValue(
+  fields: Map<string, ContinuityLabeledValue>,
+  field: ContinuityLabeledValue,
+): void {
+  const label = canonicalValueLabel(field.label);
+  const key = comparableLabel(label);
+  fields.delete(key);
+  fields.set(key, { label, value: field.value });
+}
+
 function collectMarkdownTableValueCandidates(
   source: string,
   label: string,
@@ -379,6 +478,13 @@ function extractSessionSummaryFidelityValue(
 
 function comparableLabel(value: string): string {
   return value.normalize('NFKC').toLocaleLowerCase('en-US').trim();
+}
+
+function canonicalValueLabel(label: string): string {
+  const comparable = comparableLabel(label);
+  return CONTINUITY_VALUE_LABEL_DEFINITIONS.find((definition) => (
+    definition.aliases.some((alias) => comparableLabel(alias) === comparable)
+  ))?.label ?? label;
 }
 
 function requestMentionsValueLabel(request: string, label: string): boolean {

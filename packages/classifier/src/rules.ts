@@ -22,8 +22,11 @@ const EXPLICIT_TOOL_LABEL_PATTERN = /([A-Za-z][A-Za-z0-9_.-]{0,63})\s*(?:工具|
 const MEMORY_RECALL_PATTERNS: readonly RegExp[] = [
   /(?:你|还)?(?:记得|记不记得|能否回忆|能不能回忆).{0,32}(?:上次|上一轮|之前|我(?:说|提|让你|告诉)|代号|颜色|名称|名字|版本|路径|预算|时间|日期)/iu,
   /(?:上次|上一轮|之前|我(?:说|提|让你|告诉)).{0,32}(?:是什么|是多少|叫什么|哪一个|哪个|记得吗|还记得)/iu,
+  /(?:请|麻烦(?:你)?|帮我)?(?:分别|准确|直接)?(?:回答|说出|列出|告诉我|回忆)(?:[^。！？!?\r\n]{0,64})(?:最初|起初|原先|原来|先前|此前|之前|上次|上一轮|后来|后续)(?:保存|记录|约定|设定|确定|提到|说过|告诉)(?:的|过的)/iu,
+  /(?:最初|起初|原先|原来|先前|此前|之前|上次|上一轮|后来|后续)(?:保存|记录|约定|设定|确定|提到|说过|告诉)(?:的|过的)(?:[^。！？!?\r\n]{0,64})(?:是什么|是多少|叫什么|哪一个|哪个|请回答|请说出|请列出|请告诉我)/iu,
   /(?:do\s+you\s+remember|can\s+you\s+recall).{0,48}(?:last|previous|earlier|i\s+(?:said|told|asked)|code|color|name|version|path|budget|time|date)/iu,
   /(?:what|which).{0,24}(?:did\s+i|from\s+(?:the\s+)?(?:last|previous|earlier)).{0,32}(?:say|tell|ask|code|color|name|version|path|budget|time|date)/iu,
+  /(?:answer|state|list|tell\s+me|recall).{0,64}(?:initially|originally|previously|earlier|later).{0,24}(?:saved|recorded|agreed|set|specified|mentioned|said)/iu,
 ];
 
 /** Ordered list of rules. First match wins. */

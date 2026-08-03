@@ -119,12 +119,9 @@ function renderCompactRuntimeAwareness(
   return [
     '# Runtime Clock',
     '',
-    `- local_datetime: ${clock.localDateTime} ${clock.utcOffset}`,
-    `- time_zone: ${clock.timeZone}`,
-    `- run_elapsed: ${runElapsedMs} ms (${formatElapsedMilliseconds(runElapsedMs)})`,
-    `- task_state: ${taskProgress(ctx).state}`,
+    `local=${clock.localDateTime} ${clock.utcOffset} (${clock.timeZone}); elapsed_ms=${runElapsedMs}; task=${taskProgress(ctx).state}.`,
     '',
-    'Use these exact facts when time or current state matters. Do not volunteer them otherwise.',
+    'Use these exact facts only when relevant.',
   ].join('\n');
 }
 

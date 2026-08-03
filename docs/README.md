@@ -1,18 +1,18 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-08-03 18:36:14
+最后更新：2026-08-04 01:01:23
 
 本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
 
 ## 现在先做什么
 
-**当前阶段**：Memory v3 阶段 0-26、正式数据迁移、本地向量目录、动态 working set、关系导航、shadow Git 检查点、退出冻结、统一 Tool Execution Service、工具调用级与 TaskBook 步骤级有界并行、运行时事件安全边界、TaskBookPatch、Runner 检查点续跑、应用启动恢复控制面，以及活动任务快照、暂停/继续/中断、托盘、三档关闭策略和设置页“应用与后台”已有工程基线。语义活动已收敛为 `respond / execute / clarify`；直接回应使用紧凑 Prompt 与有界历史，只在明确追问进度、结果、耗时、错误或恢复时介入上一轮执行摘要。自包含且来源可证明为内置的单个 `glob / grep / read` 请求使用独立 `decide_explicit_tool` 紧凑契约；多工具、写入、执行、附件、续接、记忆介入、恢复和边界不明任务仍走完整 `decide`。当前 DeepSeek 已完成 chat、continuity、tool、abort 四项真实校准、普通直接回答 V4 本地精确 token 对账、显式工具路径、真实 Electron 完整退出/重启后的最终回答连续性、短时并行与 Checkpoint 恢复，以及单次 120 秒持续 `exec` 的安全暂停、重启不重放和资源回落验收。含历史 Provider `tool_calls`/`tool` 结果的普通工具续轮仍等待 tokenizer 校准，不显示伪精确本地数字。具体证据只看 [项目状态](decision/project-status.md)。
+**当前阶段**：Memory v3 阶段 0-26、正式数据迁移、本地向量目录、动态 working set、关系导航、shadow Git 检查点、退出冻结、统一 Tool Execution Service、工具调用级与 TaskBook 步骤级有界并行、运行时事件安全边界、TaskBookPatch、Runner 检查点续跑、应用启动恢复控制面，以及活动任务快照、暂停/继续/中断、托盘、三档关闭策略和设置页“应用与后台”已有工程基线。语义活动已收敛为 `respond / execute / clarify`；直接回应使用紧凑 Prompt 与有界历史，只在明确追问进度、结果、耗时、错误或恢复时介入上一轮执行摘要。自包含且来源可证明为内置的单个 `glob / grep / read` 请求使用独立 `decide_explicit_tool` 紧凑契约；多工具、写入、执行、附件、续接、记忆介入、恢复和边界不明任务仍走完整 `decide`。当前 DeepSeek 已完成 chat、continuity、tool、abort 四项真实校准、普通直接回答 V4 本地精确 token 对账、显式工具路径、真实 Electron 完整退出/重启后的最终回答连续性、短时并行与 Checkpoint 恢复、摘要深度 `1 -> 2 -> 3 -> 3` 的五字段连续性、一次主动断线零额外 Provider Token 恢复，以及单次 6 分钟持续 `exec` 的安全暂停、重启不重放和资源回落验收。正式 2 小时持续负载门已通过：`7200s`、`1441` 个采样、进度缺测 `0`、资源预算违规 `0`，后半程 RSS/Heap/Electron 工作集/句柄/请求趋势均在预算内，结束后恢复空闲基线。含历史 Provider `tool_calls`/`tool` 结果的普通工具续轮仍等待 tokenizer 校准，不显示伪精确本地数字。具体证据只看 [项目状态](decision/project-status.md)。
 
-**推荐下一步**：优先验证数小时持续长任务、多轮多次压缩、更多字段与非字段事实的回答连续性、真实网络断线恢复、外部系统副作用和更长期资源回落；120 秒分钟级任务、一次双字段摘要续答、短时并行压力、基础两步副作用、跨重启回答门与显式工具提议门已经完成，不再重复把它们列为未开始。下一项 Context 计量工作是校准含历史 `tool_calls`/`tool` 结果的普通工具续轮 framing。权限定义继续保持“行为 profile 与权限策略正交”，不要再把编程当作权限模式。
+**推荐下一步**：优先校准含历史 `tool_calls`/`tool` 结果的普通工具续轮 tokenizer，再验证非字段事实的回答连续性、真实外部系统副作用和更长期真实用户负载。正式 2 小时门、主动网络断线恢复、多轮摘要滚动与任意明确字段已经形成当前证据，不再重复列为未开始。权限定义继续保持“行为 profile 与权限策略正交”，不要再把编程当作权限模式。
 
 **当前权限决策**：产品语义上 LS 是 Agent 的容器，活动完整应用数据根（默认 `.littlesheep`）是容器边界，`workplace/` 是容器内的默认工作区；当前桌面实现是 Main 的逻辑边界，不是实际 Docker/OS 进程沙箱。从其他模式切换到完全访问时先用红色危险按钮确认一次；确认后容器内外及范围不明的读、写、改、删、执行均免逐次批准。研究只对容器内读取免批准；受限所有操作都需批准。外部工作区在研究/受限模式下先跳过自动索引，完全访问可直接继续。核心源码只读和危险命令硬拒绝不受模式影响。
 
-**你现在不需要再次决定迁移或替换 DeepSeek 凭证**：迁移、模型准备、向量回填和应用重启已完成。最新无延迟单 `glob` 验收为 `decide_explicit_tool -> Runtime glob -> structural VERIFY -> execute_final_reply`：2 次真实 DeepSeek API、1 次只读工具，耗时 `3.94s`；DECIDE prompt `559`、最终回答 prompt `462`、全程 prompt `1,021`、Provider total `1,084`，两次本地 tokenizer 均为 `exact_match`。同一脚本的本轮改造前记录为 prompt `1,465`、Provider total `1,645`，总 Token 下降约 `34%`；耗时受网络波动影响，不能据此宣称速度提升。最新短时并行压力门结束后 active run/retired Runner 均为 0，source/listener 回到 1，Provider total 为 `20,389`。最新 120 秒持续门中 `exec` 只执行 1 次，并完成“同进程暂停 -> 继续 -> 再暂停 -> 安全边界 Checkpoint -> 强制终止/重启恢复”链路；恢复不重放，121 次资源采样无违规，跨模型追问的 LS 最终回答连续性为 `supported`，来源为 `recent_history`，结束后活动任务、旧 Runner、事件源和监听器均回到空闲基线。最新摘要续答 Provider total 为 `3,480`；最终续答 prompt 本地/Provider 为 `1127/1129`，状态是 `within_tolerance`，不能写成零差值。含历史 Provider 工具结果的普通续轮仍失败关闭 exact 声明，等待独立校准。
+**你现在不需要再次决定迁移或替换 DeepSeek 凭证**：迁移、模型准备、向量回填和应用重启已完成。2026-08-04 最新真实单 `glob` 验收为 `decide_explicit_tool -> Runtime glob -> structural VERIFY -> execute_final_reply`：2 次真实 DeepSeek API、1 次只读工具；DECIDE prompt `417`、最终回答 prompt `382`、全程 prompt `799`、Provider total `830`，两次本地 tokenizer 均为 `exact_match`。本次耗时 `2.842s` 只作为运行记录，不作为速度结论；Prompt 成本以请求级账本为准。最新正式 2 小时门已完成，后半程资源趋势和终态均通过；短时并行压力门结束后 active run/retired Runner 均为 0，source/listener 回到 1，Provider total 为 `20,389`。最新 6 分钟持续门中 `exec` 只执行 1 次，并完成“同进程暂停 -> 继续 -> 再暂停 -> 安全边界 Checkpoint -> 强制终止/重启恢复”链路；恢复不重放，360 个进度 tick、无进度缺测且资源违规为 0，跨模型追问的 LS 最终回答连续性为 `supported`，结束后活动任务、旧 Runner、事件源和监听器均回到空闲基线。最新多轮摘要续答还验证了 5 个历史字段、三级压缩深度上限和一次主动断线恢复；失败请求未到达 Provider，额外 Provider Token 为 0。含历史 Provider 工具结果的普通续轮仍失败关闭 exact 声明，等待独立校准。
 
 - Provider `/embeddings` 已在 v3 基础设施中默认硬关闭；BGE 是当前平衡默认，multilingual E5 是高质量可选档，两者均已通过显式资产校验和运行阶段零网络请求的真实离线基准。
 - Memory v3 使用四层语义：对话原始来源保存用户输入与对话区可见内容，写入后不改写；投影变更记录保存 `MemoryUpdateEvent + mutation`，只服务幂等、恢复和审计；atom 是可去重、合并、调层级、失效、恢复和重建的当前语义投影；run working set 只决定本轮介入。SQLite 向量目录管理 atom 的路径、层级、FTS、向量、状态和审计，但必须能从持久文件重建。
@@ -24,10 +24,11 @@
 - `.littlesheep` 只是默认数据根名称，完整应用数据可整体迁移；`workplace/` 只是默认工作区子目录。
 - 当前 LS 核心源码保持只读；Skill 合并、停用、归档或删除需要来源、引用、验证和回滚证据。
 - 当前 DeepSeek 活动模型的四项 Provider 校准、普通请求、自包含单只读工具的紧凑路径、有界多工具提议路径和真实跨重启最终回答连续性均已完成。精确性按具体请求形态声明：最新单只读工具两次请求均为 `exact_match`，最新摘要续答最终请求为 `within_tolerance`；含历史 Provider 工具消息的普通续轮 exact 校准与 OpenAI/GLM 模型专用 tokenizer 验证仍待实际启用后补齐。定位文件不存在或 Main 未运行时，`verify:provider` 应明确失败，不用 mock 冒充通过。
-- 记忆连续以 LS 最终回答为准：仅保存会话、摘要、Atom、Checkpoint 或内部检索成功不算通过；任务续接和直接追问旧信息只有回答级状态 `supported` 才能称为连续。明确追问多个旧值时必须逐项肯定答出，漏答、答错、否定旧值、只记得附带限制或明确说忘了均判为断档；即使回答复述了全部旧值，只要同时声称无法回忆，也必须判为 `discontinuous`。旧值可从真实进入回答 Context 的近期历史、版本化摘要或 active/adopted Atom 证明。字段门支持 Markdown 表格、短数字、布尔值、`executionCount / ticks / completed`，但仍要求标签和值精确对应，无关位置出现同一个数字不能冒充命中。真实 DeepSeek 跨重启回答门、两步副作用后的记忆追问、两条独立会话的并行恢复追问、一次原始旧消息已被压缩且最终回答只依赖 `session_summary` 的双字段验收，以及 120 秒持续任务后的跨模型追问均已通过；多轮多次压缩、更多事实形态、数小时持续负载和外部系统副作用仍需同样标准验收。
+- 记忆连续以 LS 最终回答为准：仅保存会话、摘要、Atom、Checkpoint 或内部检索成功不算通过；任务续接和直接追问旧信息只有回答级状态 `supported` 才能称为连续。明确追问多个旧值时必须逐项肯定答出，漏答、答错、否定旧值、只记得附带限制或明确说忘了均判为断档；即使回答复述了全部旧值，只要同时声称无法回忆，也必须判为 `discontinuous`。旧值可从真实进入回答 Context 的近期历史、版本化摘要或 active/adopted Atom 证明。字段门既支持固定标签，也能从近期历史、Runtime 精确保真摘要和 active Atom 发现用户实际使用的任意明确字段；Markdown 表格、短数字、布尔值、`executionCount / ticks / completed` 仍要求标签和值精确对应，无关位置出现同一个数字不能冒充命中。真实 DeepSeek 跨重启回答门、两步副作用后的记忆追问、两条独立会话的并行恢复追问、摘要深度 `1 -> 2 -> 3 -> 3` 后仅依赖 `session_summary` 的五字段验收，以及 6 分钟持续任务后的跨模型追问均已通过；正式 2 小时持续负载门也已通过。非字段事实、外部系统副作用和其他 Provider 能力矩阵仍需单独验收。
+- Local App API 的长生命周期 SSE 统一每 15 秒发送注释心跳，并在单连接待写缓冲达到 512 KiB 前主动断开慢观察者。普通 Agent run、活动任务订阅和 Checkpoint 续跑的观察连接断开不会取消 Main 中的任务；终端主动命令仍保留断连取消语义。所有 timer、listener 和订阅都必须在关闭、完成或 server stop 时释放。
 - 暂时不用决定：更多插件类型、MCP 和发布打包。设置页后台任务控制已经作为连续性能力收口接入，不是新产品范围。
 
-到这里即可停止阅读。正式 V3 数据、桌面基线、活动路由、直接回应 Context、当前 DeepSeek 四项 Provider 能力、普通请求与显式单/多工具提议路径的精确本地 token 对账、真实 DeepSeek 跨重启回答门、一次有界摘要压缩续答、基础两步副作用、短时并行压力、120 秒持续任务、应用启动恢复和后台任务控制面已有当前证据；普通工具续轮 tokenizer、多轮多次压缩、数小时持续负载和其他 Provider 能力矩阵仍需单独验收。
+到这里即可停止阅读。正式 V3 数据、桌面基线、活动路由、直接回应 Context、当前 DeepSeek 四项 Provider 能力、普通请求与显式单/多工具提议路径的精确本地 token 对账、真实 DeepSeek 跨重启回答门、多轮五字段摘要续答、主动断线恢复、基础两步副作用、短时并行压力、6 分钟持续任务、正式 2 小时持续负载、应用启动恢复和后台任务控制面已有当前证据；普通工具续轮 tokenizer、非字段事实、外部系统副作用和其他 Provider 能力矩阵仍需单独验收。
 
 ## 需要确认依据时
 

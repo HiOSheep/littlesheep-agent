@@ -106,6 +106,54 @@ describe('delayed HTTP acceptance proxy', () => {
       usage: { promptTokens: 21, completionTokens: 4, totalTokens: 25 },
     }])
   })
+
+  it('injects a bounded one-shot disconnect without reaching the upstream', async () => {
+    let upstreamCalls = 0
+    const upstream = await startServer(async (_req, res) => {
+      upstreamCalls += 1
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+      res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'recovered' } }] }))
+    })
+    const proxy = await startDelayedHttpProxy({ upstreamBaseURL: upstream.baseURL, delayMs: 0 })
+    cleanup.push(proxy.close, upstream.close)
+
+    expect(proxy.disconnectNext()).toBe(1)
+    await expect(fetch(`${proxy.baseURL}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'recovery-model', stream: false, messages: [] }),
+    })).rejects.toBeInstanceOf(TypeError)
+
+    expect(proxy.pendingFaultCount()).toBe(0)
+    expect(upstreamCalls).toBe(0)
+    expect(proxy.requests).toMatchObject([{
+      model: 'recovery-model',
+      forwarded: false,
+      aborted: false,
+      injectedFault: 'disconnect',
+    }])
+
+    const recovered = await fetch(`${proxy.baseURL}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'recovery-model', stream: false, messages: [] }),
+    })
+    expect(recovered.status).toBe(200)
+    expect(upstreamCalls).toBe(1)
+    expect(proxy.requests[1]).toMatchObject({ forwarded: true, status: 200 })
+  })
+
+  it('rejects unbounded fault queues', async () => {
+    const upstream = await startServer((_req, res) => res.end('{}'))
+    const proxy = await startDelayedHttpProxy({ upstreamBaseURL: upstream.baseURL, delayMs: 0 })
+    cleanup.push(proxy.close, upstream.close)
+
+    expect(() => proxy.disconnectNext(0)).toThrow(/between 1 and 8/u)
+    expect(() => proxy.disconnectNext(9)).toThrow(/between 1 and 8/u)
+    expect(proxy.disconnectNext(4)).toBe(4)
+    expect(proxy.disconnectNext(4)).toBe(8)
+    expect(() => proxy.disconnectNext()).toThrow(/at most 8 faults may be pending/u)
+  })
 })
 
 async function startServer(handler) {
