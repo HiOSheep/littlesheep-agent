@@ -215,18 +215,179 @@ describe('decideStage', () => {
     expect(requests).toHaveLength(1);
     expect(requests[0]?.tools).toBeUndefined();
     const system = String(requests[0]?.messages[0]?.content ?? '');
-    expect(system).toContain('Explicit single-tool DECIDE contract');
-    expect(system).toContain('without the matching `toolProposal` is invalid');
+    expect(system).toContain('# Explicit Tool Decision');
+    expect(system).toContain('Runtime will revalidate the tool name, schema, resource boundary, permission and side effects');
     expect(system).not.toContain('You are the DECIDE stage of a hard-control-flow agent.');
+    expect(system).not.toContain('# Core Flow');
+    expect(system).not.toContain('# Memory Tree');
+    expect(system).not.toContain('# Assistant Output Directives');
     expect(system).toContain('"pattern"');
-    expect(system).toContain('`glob` — glob tool (mock)');
-    expect(system).not.toContain('`read` — read tool (mock)');
-    expect(system.lastIndexOf('Explicit single-tool DECIDE contract'))
+    expect(system).toContain('Tool: glob tool (mock)');
+    expect(system).not.toContain('read tool (mock)');
+    expect(system.lastIndexOf('# Explicit Tool Decision'))
       .toBeGreaterThan(system.lastIndexOf('PROFILE_SENTINEL_EXPLICIT_TOOL'));
+    expect(ctx.modelRequests?.[0]?.callContract).toMatchObject({
+      purpose: 'decide_explicit_tool',
+      inputs: { history: 'none', attachments: 'none' },
+      memoryIntentPolicy: { allowed: ['none'] },
+    });
     expect(ctx.taskBook?.steps[0]?.toolProposal).toEqual({
       name: 'glob',
       input: { pattern: '*', path: '.', max_results: 100 },
     });
+  });
+
+  it('uses compact explicit-tool output and expands it into the existing TaskBook contract', async () => {
+    const glob = makeTool('glob', { ok: true, output: '' }, {
+      inputSchema: z.object({ pattern: z.string(), path: z.string().optional() }),
+    });
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      userNeed: '读取工作区顶层条目',
+      goal: '列出顶层条目',
+      successCriterion: '返回顶层条目数量和名称',
+      title: '读取顶层条目',
+      description: '使用 glob 读取当前工作区顶层条目',
+      expectedOutput: '数量和名称',
+      toolProposal: { name: 'glob', input: { pattern: '*', path: '.' } },
+    })));
+    const stage = createDecideStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [glob],
+      inbound: textMessage('user', '请使用 glob 工具读取当前工作区顶层条目'),
+      classification: {
+        activity: 'execute', type: 'problem', confidence: 0.96,
+        source: 'rules', reason: 'explicit tool instruction',
+      },
+    });
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'execute', ok: true });
+    expect(ctx.taskBook).toMatchObject({
+      goal: '列出顶层条目',
+      complexity: 'trivial',
+      steps: [{
+        id: 'step-1',
+        tools: ['glob'],
+        toolProposal: { name: 'glob', input: { pattern: '*', path: '.' } },
+      }],
+    });
+  });
+
+  it.each([
+    ['history reference', '请使用 glob 工具读取刚才那个文件夹', undefined],
+    ['attachment', '请使用 glob 工具读取当前工作区', [{ path: 'a.txt', kind: 'file' as const }]],
+  ])('falls back to the full DECIDE Context for %s', async (_label, inbound, attachments) => {
+    const glob = makeTool('glob', { ok: true, output: '' }, {
+      inputSchema: z.object({ pattern: z.string() }),
+    });
+    const requests: import('@littlesheep/llm').ChatRequest[] = [];
+    const llm = createMockLlm((request) => {
+      requests.push(request);
+      return textResponse('{"plan":[{"description":"inspect","tools":["glob"]}]}');
+    });
+    const stage = createDecideStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [glob],
+      inbound: textMessage('user', inbound),
+      attachments,
+      classification: {
+        activity: 'execute', type: 'problem', confidence: 0.96,
+        source: 'rules', reason: 'explicit tool instruction',
+      },
+    });
+    ctx.memoryRootIndex = 'MEMORY_ROOT_MUST_REMAIN_AVAILABLE';
+
+    await stage(ctx);
+
+    expect(ctx.modelRequests?.[0]?.callContract?.purpose).toBe('decide');
+    expect(String(requests[0]?.messages[0]?.content)).toContain('MEMORY_ROOT_MUST_REMAIN_AVAILABLE');
+  });
+
+  it('does not compact explicit write decisions', async () => {
+    const write = makeTool('write', { ok: true, output: '' }, {
+      inputSchema: z.object({ file_path: z.string(), content: z.string() }),
+    });
+    const llm = createMockLlm(textResponse('{"plan":[{"description":"write","tools":["write"]}]}'));
+    const stage = createDecideStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [write],
+      inbound: textMessage('user', '请使用 write 工具写入 a.txt'),
+      classification: {
+        activity: 'execute', type: 'problem', confidence: 0.96,
+        source: 'rules', reason: 'explicit tool instruction',
+      },
+    });
+
+    await stage(ctx);
+
+    expect(ctx.modelRequests?.[0]?.callContract?.purpose).toBe('decide');
+  });
+
+  it('does not compact when an active memory selection may affect the decision', async () => {
+    const glob = makeTool('glob', { ok: true, output: '' }, {
+      inputSchema: z.object({ pattern: z.string() }),
+    });
+    const llm = createMockLlm(textResponse('{"plan":[{"description":"inspect","tools":["glob"]}]}'));
+    const stage = createDecideStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [glob],
+      inbound: textMessage('user', '请使用 glob 工具读取当前工作区'),
+      initialMemoryContext: '# Initially Selected Memory Atoms\n\n## [atom-1] T1\nUse a project-specific pattern.',
+      classification: {
+        activity: 'execute', type: 'problem', confidence: 0.96,
+        source: 'rules', reason: 'explicit tool instruction',
+      },
+    });
+
+    await stage(ctx);
+
+    expect(ctx.modelRequests?.[0]?.callContract?.purpose).toBe('decide');
+  });
+
+  it('does not compact a run-scoped tool that reuses a built-in read tool name', async () => {
+    const glob = makeTool('glob', { ok: true, output: '' }, {
+      inputSchema: z.object({ pattern: z.string() }),
+    });
+    const llm = createMockLlm(textResponse('{"plan":[{"description":"inspect","tools":["glob"]}]}'));
+    const stage = createDecideStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [glob],
+      toolSources: { glob: 'run-scoped' },
+      inbound: textMessage('user', '请使用 glob 工具读取当前工作区'),
+      classification: {
+        activity: 'execute', type: 'problem', confidence: 0.96,
+        source: 'rules', reason: 'explicit tool instruction',
+      },
+    });
+
+    await stage(ctx);
+
+    expect(ctx.modelRequests?.[0]?.callContract?.purpose).toBe('decide');
+  });
+
+  it.each([
+    '请使用 glob 工具读取这个目录的顶层条目',
+    '请使用 glob 工具读取刚才提到的工作区',
+    'Use glob to inspect that directory.',
+  ])('does not compact a context-dependent resource reference: %s', async (inbound) => {
+    const glob = makeTool('glob', { ok: true, output: '' }, {
+      inputSchema: z.object({ pattern: z.string() }),
+    });
+    const llm = createMockLlm(textResponse('{"plan":[{"description":"inspect","tools":["glob"]}]}'));
+    const stage = createDecideStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [glob],
+      inbound: textMessage('user', inbound),
+      classification: {
+        activity: 'execute', type: 'problem', confidence: 0.96,
+        source: 'rules', reason: 'explicit tool instruction',
+      },
+    });
+
+    await stage(ctx);
+
+    expect(ctx.modelRequests?.[0]?.callContract?.purpose).toBe('decide');
   });
 
   it('adopts one Runtime-bounded proposal per explicitly named tool step', async () => {

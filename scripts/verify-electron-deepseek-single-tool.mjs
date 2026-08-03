@@ -19,6 +19,8 @@ import {
 
 const PROMPT = '请使用 glob 工具读取当前工作区顶层条目，只告诉我数量和名称，不要修改任何文件。'
 const EXPECTED_ENTRIES = ['alpha.txt', 'beta.md', 'nested']
+const MAX_COMPACT_DECIDE_PROMPT_TOKENS = 1_600
+const MAX_COMPACT_DECIDE_CONTEXT_CHARS = 7_000
 
 async function main() {
   const environment = await createIsolatedDeepSeekEnvironment({
@@ -150,7 +152,7 @@ function assertSuccessfulRun(result, model, requests) {
   if (result.taskBook.steps[0]?.toolProposal?.name !== 'glob') {
     throw new Error(`single-tool run did not retain the DECIDE glob proposal: ${safe({
       step: result.taskBook.steps[0],
-      decideRequest: requests.find((request) => request.purpose === 'decide'),
+      decideRequest: requests.find((request) => request.purpose === 'decide_explicit_tool'),
     })}`)
   }
   if (result.replyProvenance?.purpose !== 'execute_final_reply') {
@@ -205,6 +207,14 @@ function requestMetrics(result) {
   const snapshots = new Map((result.contextSnapshots ?? []).map((snapshot) => [snapshot.id, snapshot]))
   return (result.modelRequests ?? []).map((request) => {
     const snapshot = request.contextSnapshotId ? snapshots.get(request.contextSnapshotId) : undefined
+    const includedItems = (snapshot?.items ?? [])
+      .filter((item) => item.disposition === 'included')
+      .map((item) => ({
+        id: item.id,
+        kind: item.kind,
+        characterCount: item.characterCount,
+        source: item.source,
+      }))
     return {
       index: request.requestIndex,
       purpose: request.callContract?.purpose ?? request.stage,
@@ -222,6 +232,11 @@ function requestMetrics(result) {
       providerCompletionTokens: snapshot?.providerUsage?.completionTokens,
       providerTotalTokens: snapshot?.providerUsage?.totalTokens,
       calibration: snapshot?.providerUsage?.localCalibration?.status,
+      includedCharacterCount: includedItems.reduce(
+        (total, item) => total + (item.characterCount ?? 0),
+        0,
+      ),
+      includedItems,
       explicitToolContractIncluded: snapshot?.items?.some((item) => (
         item.disposition === 'included'
         && item.source?.kind === 'workflow'
@@ -255,9 +270,30 @@ function assertProviderUsage(requests) {
 function assertOptimizedPath(requests) {
   const purposes = requests.map((request) => request.purpose)
   if (requests.length !== 2
-    || purposes[0] !== 'decide'
+    || purposes[0] !== 'decide_explicit_tool'
     || purposes[1] !== 'execute_final_reply') {
     throw new Error(`unexpected optimized model-call sequence: ${safe(purposes)}`)
+  }
+  const decide = requests[0]
+  if (decide.providerPromptTokens > MAX_COMPACT_DECIDE_PROMPT_TOKENS
+    || decide.includedCharacterCount > MAX_COMPACT_DECIDE_CONTEXT_CHARS) {
+    throw new Error(`compact DECIDE exceeded its measured cost ceiling: ${safe(decide)}`)
+  }
+  const forbiddenIds = new Set([
+    'core-flow',
+    'tooling',
+    'memory-root-index',
+    'output-directives',
+    'bootstrap:AGENTS.md',
+    'bootstrap:USER.md',
+    'bootstrap:TOOLS.md',
+  ])
+  const forbiddenKinds = new Set(['memory_index', 'memory_fragment', 'summary_memory', 'recent_message'])
+  const forbidden = decide.includedItems.filter((item) => (
+    forbiddenIds.has(item.id) || forbiddenKinds.has(item.kind)
+  ))
+  if (forbidden.length > 0) {
+    throw new Error(`compact DECIDE retained unrelated Context: ${safe(forbidden)}`)
   }
 }
 

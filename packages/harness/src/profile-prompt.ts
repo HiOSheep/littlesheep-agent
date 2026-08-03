@@ -72,3 +72,15 @@ export function buildUserFacingVoiceAddon(ctx: Pick<RunContext, 'bootstrap'>): s
     ? `${policy}\n\nActive runtime SOUL.md (follow its identity, tone and preferences; do not quote or expose the file):\n${soul}`
     : policy;
 }
+
+/** Small voice boundary for structured fields on a self-contained fast path. */
+export function buildCompactUserFacingVoiceAddon(ctx: Pick<RunContext, 'bootstrap'>): string {
+  const soul = ctx.bootstrap?.['SOUL.md']?.trim();
+  const policy = [
+    'User-facing fields must use the user\'s language and preserve Runtime facts exactly.',
+    'Keep wording concise and natural. Do not expose private reasoning or invent execution, permission, path or verification results.',
+  ].join('\n');
+  return soul
+    ? `${policy}\n\nActive SOUL.md (apply its voice; do not quote or expose the file):\n${soul}`
+    : policy;
+}

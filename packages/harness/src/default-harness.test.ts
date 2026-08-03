@@ -182,7 +182,7 @@ describe('createDefaultHarness state machine', () => {
     expect(ctx.verificationHistory?.at(-1)).toMatchObject({ source: 'structural', verdict: 'pass' });
     expect(llm.chat).toHaveBeenCalledTimes(2);
     expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
-      'decide', 'execute_final_reply',
+      'decide_explicit_tool', 'execute_final_reply',
     ]);
     expect(llm.chat.mock.calls.every((call) => call[0].tools === undefined)).toBe(true);
     expect(tool.calls).toHaveLength(1);

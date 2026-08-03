@@ -93,6 +93,7 @@ export interface MakeCtxOptions {
   inbound?: Message;
   history?: Message[];
   tools?: AgentTool[];
+  toolSources?: Record<string, string>;
   plan?: RunContext['plan'];
   needAssessment?: RunContext['needAssessment'];
   taskBook?: RunContext['taskBook'];
@@ -118,6 +119,7 @@ export interface MakeCtxOptions {
 export function makeCtx(opts: MakeCtxOptions = {}): RunContext {
   const sessionId = (opts.sessionId ?? 'test-session') as SessionId;
   const runId = randomUUID();
+  const tools = opts.tools ?? [];
   const modelRequests = opts.modelRequests ?? (opts.replyProvenance ? [{
     version: 1 as const,
     id: opts.replyProvenance.modelRequestId,
@@ -145,7 +147,8 @@ export function makeCtx(opts: MakeCtxOptions = {}): RunContext {
     inbound: opts.inbound ?? textMessage('user', 'hello'),
     cwd: process.cwd(),
     model: 'test-model',
-    tools: opts.tools ?? [],
+    tools,
+    toolSources: opts.toolSources ?? Object.fromEntries(tools.map((tool) => [tool.name, 'builtin'])),
     toolContext: {
       sessionId,
       runId,
@@ -176,7 +179,8 @@ export function makeCtx(opts: MakeCtxOptions = {}): RunContext {
 }
 
 function replyPurposeStage(purpose: NonNullable<RunContext['replyProvenance']>['purpose']) {
-  if (purpose === 'ask_user' || purpose === 'decide') return purpose;
+  if (purpose === 'ask_user') return purpose;
+  if (purpose === 'decide' || purpose === 'decide_explicit_tool') return 'decide' as const;
   if (purpose === 'recover') return 'recover' as const;
   if (purpose === 'reply') return 'reply' as const;
   return 'execute' as const;

@@ -60,6 +60,21 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     memoryIntents: ['read', 'none'], requiresMemoryEvidence: true, toolMode: 'none', runtimeApprovalRequired: false,
     maxIterations: 0, maxAttempts: 2, maxOutputTokens: 2_200, maxPromptTokens: 16_000, temperature: 0,
   }),
+  decide_explicit_tool: template({
+    purpose: 'decide_explicit_tool', stage: 'decide', modelCall: 'required',
+    goal: (ctx) => `Infer one explicitly requested tool call without replaying unrelated Context: ${inbound(ctx)}`,
+    allowedContextKinds: ['system_prompt', 'project_knowledge', 'workflow_state', 'user_input', 'runtime_event'],
+    requiredContextKinds: ['system_prompt', 'workflow_state', 'user_input'],
+    history: 'none', attachments: 'none',
+    allowedDecisions: ['propose_single_tool_call', 'request_clarification'],
+    outputSchema: json(
+      'explicit-tool-decision.v1',
+      'Minimal NeedAssessment plus one schema-bound tool proposal, or one focused clarification.',
+    ),
+    memoryIntents: NO_MEMORY, requiresMemoryEvidence: false,
+    toolMode: 'none', runtimeApprovalRequired: false,
+    maxIterations: 0, maxAttempts: 2, maxOutputTokens: 1_000, maxPromptTokens: 4_096, temperature: 0,
+  }),
   execute_tool_loop: template({
     purpose: 'execute_tool_loop', stage: 'execute', modelCall: 'required',
     goal: (ctx) => `Complete the active TaskBook step while preserving runtime control: ${activeStep(ctx)}`,

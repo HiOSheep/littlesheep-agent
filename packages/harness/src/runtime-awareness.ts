@@ -99,6 +99,7 @@ export function injectRuntimeAwareness(
 }
 
 function shouldUseCompactRuntime(ctx: RunContext, purpose: LlmCallPurpose | undefined): boolean {
+  if (purpose === 'decide_explicit_tool') return true;
   if (purpose !== 'reply') return purpose === 'classify' || purpose === 'ask_user';
   const request = ctx.inbound.content
     .filter((part): part is { type: 'text'; text: string } => part.type === 'text')

@@ -78,7 +78,7 @@ export async function adoptDecodedDecision(
       const visible = renderClarificationMessage(ctx.clarificationRequest);
       let reserved: string | undefined;
       try {
-        reserved = await reserveUserFacingReplyOnce(ctx, 'decide', visible);
+        reserved = await reserveUserFacingReplyOnce(ctx, request.callPurpose, visible);
       } catch (error) {
         return failDecision(ctx, `clarification reply reservation failed: ${(error as Error).message}`);
       }

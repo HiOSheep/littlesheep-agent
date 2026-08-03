@@ -1,9 +1,12 @@
 import type { ChatMessage } from '@littlesheep/llm';
 import type { SystemPromptBundle } from '@littlesheep/prompt';
 import { assembleSystemPromptBundle, resolvePromptConfig } from '@littlesheep/prompt';
-import type { RunContext } from '@littlesheep/types';
+import type { LlmCallPurpose, RunContext } from '@littlesheep/types';
 import { buildRunRequestCandidates } from '../../context-candidates.js';
-import { appendSystemPromptBundleAddons } from '../../profile-prompt.js';
+import {
+  appendSystemPromptBundleAddons,
+  buildCompactUserFacingVoiceAddon,
+} from '../../profile-prompt.js';
 import {
   attachmentContextMessages,
   textOf,
@@ -17,8 +20,14 @@ import {
   type DecideStageDeps,
 } from './contracts.js';
 import {
+  canUseCompactExplicitToolDecision,
+  renderCompactExplicitToolProposalContract,
+} from '../../compact-explicit-tool-decision.js';
+import {
   renderExplicitToolProposalContract,
+  resolveExplicitSingleToolInstruction,
   resolveExplicitToolInstructionSet,
+  type ExplicitSingleToolInstruction,
 } from '../../explicit-tool-instruction.js';
 import { renderReplanFeedback } from './replan.js';
 import { renderDeferredRuntimeEvents } from './runtime-events.js';
@@ -34,6 +43,8 @@ export interface DecideRequest {
   history: RunContext['history'];
   replanRequested: boolean;
   explicitToolNames?: string[];
+  callPurpose: Extract<LlmCallPurpose, 'decide' | 'decide_explicit_tool'>;
+  compactExplicitTool?: ExplicitSingleToolInstruction;
 }
 
 export async function buildDecideRequest(
@@ -42,37 +53,7 @@ export async function buildDecideRequest(
 ): Promise<DecideRequest> {
   const resolved = resolvePromptConfig(deps.config, deps.branding);
   const explicitToolInstructions = resolveExplicitToolInstructionSet(ctx);
-  const baseSystemPrompt = await assembleSystemPromptBundle(resolved, {
-    tools: explicitToolInstructions
-      ? explicitToolInstructions.entries.map((entry) => entry.tool)
-      : ctx.tools,
-    bootstrap: ctx.bootstrap ?? {},
-    prelude: ctx.prelude,
-    sessionSummary: ctx.sessionSummary,
-    memoryRootIndex: ctx.memoryRootIndex,
-    initialMemoryContext: ctx.initialMemoryContext,
-  });
-  const systemPrompt = appendSystemPromptBundleAddons(baseSystemPrompt, [
-    ...(!explicitToolInstructions ? [{
-      id: 'decide-contract',
-      text: DECIDE_SYSTEM_PROMPT,
-      kind: 'workflow_state' as const,
-      source: { kind: 'workflow' as const, id: 'decide-contract', runId: ctx.runId },
-    }] : []),
-    { id: 'profile', text: ctx.profilePromptAddon },
-    { id: 'reasoning', text: ctx.reasoningPromptAddon },
-    // Keep the request-specific output constraint last so generic profile or
-    // reasoning guidance cannot dilute the exact proposal shape.
-    ...(explicitToolInstructions ? [{
-      id: 'explicit-tool-proposal-contract',
-      text: renderExplicitToolProposalContract(explicitToolInstructions),
-      kind: 'workflow_state' as const,
-      source: { kind: 'workflow' as const, id: 'explicit-tool-proposal-contract', runId: ctx.runId },
-    }] : []),
-  ]);
-
   const previousTaskBook = ctx.taskBook;
-  const history = recentHistoryForModel(ctx.history, 8);
   const partialReplan = ctx.partialReplanRequest;
   const deferredRuntimeEvents = ctx.deferredRuntimeEvents ?? [];
   const replanRequested = Boolean(
@@ -85,7 +66,61 @@ export async function buildDecideRequest(
       ? `\n\n---\nPrevious plan did not achieve the goal. Verify feedback:\n${ctx.verifyFeedback}\nPlease produce a REVISED assessment and taskBook that addresses this feedback.`
       : '';
   const inboundText = textOf(ctx.inbound) || '(empty message)';
-  const attachmentMessages = attachmentContextMessages(ctx.runId, ctx.attachments);
+  const compactExplicitTool = canUseCompactExplicitToolDecision(ctx)
+    ? resolveExplicitSingleToolInstruction(ctx)
+    : undefined;
+  const callPurpose = compactExplicitTool ? 'decide_explicit_tool' : 'decide';
+  const baseSystemPrompt = compactExplicitTool
+    ? await assembleSystemPromptBundle(resolved, { tools: [], bootstrap: {} }, 'none')
+    : await assembleSystemPromptBundle(resolved, {
+        tools: explicitToolInstructions
+          ? explicitToolInstructions.entries.map((entry) => entry.tool)
+          : ctx.tools,
+        bootstrap: ctx.bootstrap ?? {},
+        prelude: ctx.prelude,
+        sessionSummary: ctx.sessionSummary,
+        memoryRootIndex: ctx.memoryRootIndex,
+        initialMemoryContext: ctx.initialMemoryContext,
+      });
+  const systemPrompt = appendSystemPromptBundleAddons(baseSystemPrompt, compactExplicitTool
+    ? [
+        {
+          id: 'explicit-tool-workspace',
+          text: `Runtime working directory: \`${resolved.workspace}\`. Resolve relative tool paths against it.`,
+          kind: 'project_knowledge',
+          source: { kind: 'configuration', id: 'workspace', path: resolved.workspace },
+          scope: 'workspace',
+        },
+        { id: 'profile', text: ctx.profilePromptAddon },
+        { id: 'reasoning', text: ctx.reasoningPromptAddon },
+        { id: 'compact-user-facing-voice', text: buildCompactUserFacingVoiceAddon(ctx) },
+        {
+          id: 'explicit-tool-proposal-contract',
+          text: renderCompactExplicitToolProposalContract(compactExplicitTool),
+          kind: 'workflow_state',
+          source: { kind: 'workflow', id: 'explicit-tool-proposal-contract', runId: ctx.runId },
+        },
+      ]
+    : [
+        ...(!explicitToolInstructions ? [{
+          id: 'decide-contract',
+          text: DECIDE_SYSTEM_PROMPT,
+          kind: 'workflow_state' as const,
+          source: { kind: 'workflow' as const, id: 'decide-contract', runId: ctx.runId },
+        }] : []),
+        { id: 'profile', text: ctx.profilePromptAddon },
+        { id: 'reasoning', text: ctx.reasoningPromptAddon },
+        ...(explicitToolInstructions ? [{
+          id: 'explicit-tool-proposal-contract',
+          text: renderExplicitToolProposalContract(explicitToolInstructions),
+          kind: 'workflow_state' as const,
+          source: { kind: 'workflow' as const, id: 'explicit-tool-proposal-contract', runId: ctx.runId },
+        }] : []),
+      ]);
+  const history = compactExplicitTool ? [] : recentHistoryForModel(ctx.history, 8);
+  const attachmentMessages = compactExplicitTool
+    ? []
+    : attachmentContextMessages(ctx.runId, ctx.attachments);
   const runtimeEventContext = renderDeferredRuntimeEvents(deferredRuntimeEvents);
   const messages: ChatMessage[] = [
     { role: 'system', content: systemPrompt.text },
@@ -105,6 +140,8 @@ export async function buildDecideRequest(
     history,
     replanRequested,
     explicitToolNames: explicitToolInstructions?.names,
+    callPurpose,
+    compactExplicitTool,
   };
 }
 

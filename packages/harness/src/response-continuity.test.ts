@@ -31,6 +31,18 @@ const knownState = (atomId: string, decision: 'adopted' | 'excluded' = 'adopted'
 });
 
 describe('assessResponseMemoryContinuity', () => {
+  it('observes a compact DECIDE clarification as part of the reply causal chain', () => {
+    const observed = observedContext([], 'decide_explicit_tool');
+    const assessment = assessResponseMemoryContinuity({
+      reply: '请补充要读取的文件路径。',
+      replyProvenance: observed.replyProvenance,
+      modelRequests: observed.modelRequests,
+      contextSnapshots: observed.contextSnapshots,
+    });
+
+    expect(assessment.missingSignals).not.toContain('reply_context_observability_unavailable');
+  });
+
   it('supports a reply that uses active adopted Atom details absent from the current request', () => {
     const assessment = assessResponseMemoryContinuity({
       reply: '已按你的长期偏好使用 pnpm，并在仓库根目录完成检查。',
@@ -1019,7 +1031,13 @@ function observedContext(
       id: replyProvenance.modelRequestId,
       runId: 'run-1',
       sessionId: 'session-1' as never,
-      stage: purpose === 'reply' ? 'reply' : purpose === 'recover' ? 'recover' : 'execute',
+      stage: purpose === 'reply'
+        ? 'reply'
+        : purpose === 'recover'
+          ? 'recover'
+          : purpose === 'decide' || purpose === 'decide_explicit_tool'
+            ? 'decide'
+            : 'execute',
       requestIndex: 1,
       provider: replyProvenance.provider,
       model: replyProvenance.model,

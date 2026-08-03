@@ -14,6 +14,7 @@ const CONTENT_PURPOSES = new Set<UserFacingReplyPurpose>([
   'reply',
   'ask_user',
   'decide',
+  'decide_explicit_tool',
   'execute_tool_loop',
   'execute_final_reply',
   'recover',

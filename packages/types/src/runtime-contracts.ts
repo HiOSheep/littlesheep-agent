@@ -85,6 +85,7 @@ export interface ModelMessageShape {
 export type LlmCallPurpose =
   | 'classify'
   | 'decide'
+  | 'decide_explicit_tool'
   | 'execute_tool_loop'
   | 'execute_final_reply'
   | 'recover'
