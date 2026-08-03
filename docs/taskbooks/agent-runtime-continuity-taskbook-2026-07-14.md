@@ -1,7 +1,7 @@
 # LittleSheep Agent Runtime 连续性任务书 2026-07-14
 
-状态：规划已定稿，实施中（阶段 0、阶段 2、阶段 3 已完成；阶段 1 主要数据链、当前 DeepSeek 四项真实校准、普通直接回答与显式单/多工具提议路径的 V4 精确本地 tokenizer 对账已完成，含历史 Provider 工具消息的普通续轮 exact 校准和其他 Provider 仍待收敛；阶段 4 已完成统一 Tool Execution Service、统一工具超时与清理、事件重入、TaskBookPatch、Renderer 入口与 TaskBook 步骤级有界并行；阶段 5 已完成持久检查点、Runner 续跑、应用启动恢复、活动任务控制、托盘、三档关闭策略、设置页后台入口、确定性 Electron 七场景、真实 DeepSeek 跨重启最终回答连续性、基础两步副作用恢复、短时并行压力、多轮五字段摘要压缩续答、主动断线恢复、6 分钟诊断门和正式 2 小时持续负载验收；非字段事实、真实外部系统副作用和长期真实用户负载仍未完成）
-最后更新：2026-08-04 01:01:23
+状态：规划已定稿，实施中（阶段 0、阶段 2、阶段 3 已完成；阶段 1 主要数据链、当前 DeepSeek 四项真实校准、普通直接回答、显式单/多工具提议路径及 Flash Provider 工具协议的 V4 精确本地 tokenizer 对账已完成，Pro 工具协议和其他 Provider 仍待收敛；阶段 4 已完成统一 Tool Execution Service、统一工具超时与清理、事件重入、TaskBookPatch、Renderer 入口与 TaskBook 步骤级有界并行；阶段 5 已完成持久检查点、Runner 续跑、应用启动恢复、活动任务控制、托盘、三档关闭策略、设置页后台入口、确定性 Electron 七场景、真实 DeepSeek 跨重启最终回答连续性、基础两步副作用恢复、短时并行压力、多轮五字段摘要压缩续答、主动断线恢复、6 分钟诊断门和正式 2 小时持续负载验收；非字段事实、真实外部系统副作用和长期真实用户负载仍未完成）
+最后更新：2026-08-04 03:59:20
 
 本文把 Context、记忆注册、附件、运行中追加要求、检查点恢复、后台执行和双向透明整理为一条可分阶段验收的开发任务书。它服从 [架构原则](../principles/architecture-principles.md) 和 [核心 Agent 流程规范](../principles/core-agent-flow-guidelines.md)，当前事实与最新测试数字仍以 [项目状态](../decision/project-status.md) 为准。
 
@@ -33,7 +33,9 @@
 
 > 2026-08-03 22:04:42 连续性与长连接补充：真实 DeepSeek 摘要验收扩展到五个明确字段和三级压缩滚动，深度保持 `1 -> 2 -> 3 -> 3`，原始 JSONL 未改写；第一次续答请求主动断开后，重试成功，失败尝试没有到达 Provider 且额外 Provider Token 为 `0`。回答级连续性解析不再依赖固定标签词表，可从真实进入 Context 的近期历史、Runtime 精确保真摘要或 active Atom 发现本轮实际追问的任意明确 `label: value`，最终回答漏答任一字段即为 `discontinuous`。6 分钟真实持续任务完成 360 个进度 tick、无缺测、资源违规为 0，单次 `exec` 仍只执行一次并跨暂停/终止/重启恢复；正式 2 小时门仍在运行，完成前不宣称小时级稳定性。Local App API SSE 统一使用 15 秒注释心跳、512 KiB 待写缓冲上限和幂等清理；普通 Agent/Checkpoint 观察连接断开不取消 Main 任务，终端主动命令仍保持断连取消语义。
 
-> 2026-08-04 00:34:33 正式持续负载与紧凑单工具补充：正式 Electron + DeepSeek 门在隔离数据根中持续 `7200s`，完成 `1441` 个采样，进度缺测 `0`、资源预算违规 `0`；后半程 RSS、Heap、Electron 工作集、私有工作集、句柄和请求趋势均在预算内。活动任务 SSE、关闭到托盘、同进程暂停/继续、配置和模型热重载、强制终止、重启续跑不重放、中断、彻底退出及跨模型回答级连续性均通过，最终资源状态回到空闲基线，隔离数据已清理。当前单 `glob` 紧凑 DECIDE 只返回 `input` 或澄清对象；最新真实验收保持 2 次 API、1 次工具和结构 VERIFY，DECIDE/final prompt 为 `417/382`、全程 prompt `799`、Provider total `830`，两次本地 tokenizer 均为 `exact_match`，回归上限为 `500/450/950`。权限、工具来源、schema、路径边界、副作用、调用审计和结果证据均未删除。
+> 2026-08-04 00:34:33 正式持续负载与紧凑单工具补充：正式 Electron + DeepSeek 门在隔离数据根中持续 `7200s`，完成 `1441` 个采样，进度缺测 `0`、资源预算违规 `0`；后半程 RSS、Heap、Electron 工作集、私有工作集、句柄和请求趋势均在预算内。活动任务 SSE、关闭到托盘、同进程暂停/继续、配置和模型热重载、强制终止、重启续跑不重放、中断、彻底退出及跨模型回答级连续性均通过，最终资源状态回到空闲基线，隔离数据已清理。当时单 `glob` 紧凑 DECIDE 只返回 `input` 或澄清对象；该次真实验收保持 2 次 API、1 次工具和结构 VERIFY，DECIDE/final prompt 为 `417/382`、全程 prompt `799`、Provider total `830`，两次本地 tokenizer 均为 `exact_match`，回归上限为 `500/450/950`。权限、工具来源、schema、路径边界、副作用、调用审计和结果证据均未删除。
+
+> 2026-08-04 03:51:17 Flash 工具协议与自主只读路径补充：DeepSeek V4 Flash 的 direct、tool schema、`tool_calls -> tool` 续轮、只保留历史工具消息和多工具乱序结果已在 disabled/high/max 三档完成 `15/15` 次真实请求校准，全部与 Provider prompt usage 零差值；Pro 普通请求保持 exact，Pro 工具协议继续失败关闭。用户未点名工具、但目标可证明为新鲜、自包含且只读时，DECIDE 由 LLM 在 builtin `glob / grep / read` 中自主选择，EXECUTE 使用 Provider 原生工具协议。真实 Electron 最新路径固定为 `DECIDE -> execute_tool_loop(tool_calls) -> execute_tool_loop(tool result + final answer)`，3 次 API、1 次 `glob`，prompt `663/726/936`、总计 `2,325`，相对原始 `11,050` 下降约 `79.0%`；三次均为 `exact_match`，总回归上限保持 `2,700`。SSE、权限、schema、工具证据、结构 VERIFY、调用审计和工作区无修改均保留。记忆预检只产生 `excluded` 候选时不再误阻断轻量路径；`adopted`、`conflicted`、活动 working set、历史指代、附件、恢复或写入语义仍回退完整 Context。同日当前工作树又通过确定性七场景、真实 DeepSeek 后台九场景和 120 秒持续任务门；`exec` 只执行一次，120 个 tick、121 次采样、进度缺测和资源违规均为 0，恢复不重放且最终回答连续性为 `supported`。
 
 > 2026-08-03 01:50:17 token 修正：当次普通回答三次真实请求为 `1008/1008`、`387/387`、`1292/1292`；随后当时的跨重启验收为 `1003/1003`、`387/387`、`1285/1285`，均保持本地/Provider 零差值。含历史 `tool_calls`/`tool` 结果的续轮实测本地 `3743`、Provider `3824`，差值 `81`，因此该形态不再标记 exact，本地计数失败关闭并等待 Provider usage。DeepSeek thinking 模式未显式声明时同样不再冒充 exact；这些数字只描述对应时间点，当前请求形态与校准状态以项目状态为准。
 
@@ -307,8 +309,8 @@ T0-T3 是资源权威、介入优先级和预算语义的逻辑分级，不是�
 - `@littlesheep/config/model-capabilities` 已成为显式浏览器安全子路径，Renderer 不再从配置根入口误打包 Node 文件系统加载器；仓库卫生检查只允许 `package.json#exports` 明确公开的子路径；
 - 新增 `scripts/verify-provider-smoke.mjs` 与 `pnpm run verify:provider`，能够在不输出密钥的前提下验证最小聊天、reasoning、工具调用、`reasoning_content` 续接、流式中断和 usage 对账；
 - provider/model tokenizer 能力矩阵已覆盖当前内置模型。DeepSeek V4 Flash/Pro 声明为 `exact`，并且只有能力记录、请求格式和运行时计数器 id 与 `counterId` 完全一致时，Context Engine 才允许生成精确本地账本；OpenAI/GLM 及其他未验证模型保持 unavailable；
-- DeepSeek V4 tokenizer 资源固定到官方 revision，按大小与 SHA-256 下载后原子校验；普通请求计数覆盖系统提示词、历史消息、thinking 和工具 schema。含历史 `tool_calls` 或 `tool` 结果的续轮在校准完成前失败关闭。计数缓存为 64 项有界 LRU，Context Engine 按 run 使用 `WeakMap` 绑定，不建立无界或跨 run 共享账本；
-- 应用内普通 `/run`、显式工具提议路径与真实跨重启回答均按具体请求形态保存本地/Provider 差值和 `exact_match / within_tolerance / drift` 状态；最新单只读工具为 `exact_match`，最新摘要续答最终请求为 `within_tolerance`。DeepSeek thinking 模式未显式声明时失败关闭 exact。UI 以可证明精确或已明确校准状态的本地装配驱动圆环，未校准的普通 Provider 工具续轮等待实测；
+- DeepSeek V4 tokenizer 资源固定到官方 revision，按大小与 SHA-256 下载后原子校验；普通请求计数覆盖系统提示词、历史消息、thinking 和工具 schema。Flash 的普通请求、工具 schema、单工具续轮、仅历史工具消息和多工具乱序结果已在 disabled/high/max 三档完成 `15/15 exact_match`；Pro 工具协议在独立校准完成前失败关闭。计数缓存为 64 项有界 LRU，Context Engine 按 run 使用 `WeakMap` 绑定，不建立无界或跨 run 共享账本；
+- 应用内普通 `/run`、显式工具提议、自主单只读 Provider 工具路径与真实跨重启回答均按具体请求形态保存本地/Provider 差值和 `exact_match / within_tolerance / drift` 状态；显式单工具 Prompt 为 `796`，自主单工具固定 3 次 API、1 次工具，Prompt 为 `2,325`，两条路径逐请求均为 `exact_match`；最新摘要续答最终请求仍为 `within_tolerance`。DeepSeek thinking 模式未显式声明时失败关闭 exact。UI 以可证明精确或已明确校准状态的本地装配驱动圆环；Pro 工具协议等待模型专用实测；
 - 测试已证明一个计数器不能仅凭自己的 `supports()` 自行声明精确性，计数器缺失、id 不匹配或模型未分类都会保持 unavailable；
 - unavailable 模型已接入保守请求前预算保护：Context Engine 复用 LLM Client 的最终 OpenAI-compatible Chat Completions 载荷构造器，以 UTF-8 字节保守计量文本、工具 schema 和消息 framing，并为每个图片输入预留独立安全预算；它会淘汰低优先级可选 Context、触发压缩建议，并在必需内容仍超限时阻止请求；
 - 保守结果保存为 `ContextSafetyEstimate`，固定标记 `purpose: overflow_protection` 与 `displayable: false`，不属于 `LocalTokenLedger`。Renderer 回归已证明上下文圆环仍只读取 Provider usage 或匹配 tokenizer 的精确本地账本；
@@ -317,7 +319,7 @@ T0-T3 是资源权威、介入优先级和预算语义的逻辑分级，不是�
 
 剩余工作：
 
-- 保留 DeepSeek 当前四项校准、跨重启回答连续性、官方 tokenizer 资产校验，以及普通请求和显式工具路径的分形态 `exact_match / within_tolerance / drift` 回归门；补齐含历史 Provider 工具消息的普通续轮 framing 校准后才允许该形态恢复 exact 声明。只在 OpenAI/GLM 实际配置并进入用户选择范围后运行同等校准与模型专用 tokenizer 验证；
+- 保留 DeepSeek 当前四项校准、跨重启回答连续性、官方 tokenizer 资产校验、Flash 工具协议 `15/15 exact_match`、显式单工具 Prompt `796` 和自主单工具 Prompt `2,325` 的分形态回归门；继续压缩自主路径，并为 Pro 工具协议及实际启用的 OpenAI/GLM 建立独立模型校准与专用 tokenizer 验证；
 - 正式 2 小时门已在短时并行压力门基础上量化 Context、耗时、工具副作用和长期资源回落，并保留 LLM 实时产生用户可见步骤/回复、Runtime 权限和工具证据闸门；下一步继续真实网络故障、外部系统副作用和长期真实用户负载，保守安全估算不能冒充 exact 计数。
 
 范围：
@@ -564,12 +566,12 @@ T0-T3 是资源权威、介入优先级和预算语义的逻辑分级，不是�
   -> 阶段 7 效率评测
 ```
 
-阶段 0、阶段 2、阶段 3 已完成，阶段 4 的 Runtime 基元、统一工具超时/清理与步骤并行已经落地，阶段 5 的检查点、后台任务控制、设置页入口、托盘、关闭策略、确定性 Electron 七场景、真实 DeepSeek 跨重启最终回答连续性、基础两步副作用恢复、短时并行压力、多轮五字段摘要续答、主动断线恢复、6 分钟诊断门和正式 2 小时持续任务验收已经完成；阶段 1 的当前 DeepSeek 真实校准、普通请求与显式单/多工具提议路径的 V4 精确 tokenizer 对账已完成，剩余普通工具续轮校准和其他可选 Provider 矩阵。阶段 6 已把现有真实活动状态接入设置页，随后还需验证非字段事实、真实外部副作用和更长期真实用户负载；阶段 7 需要前述能力形成可重复闭环。
+阶段 0、阶段 2、阶段 3 已完成，阶段 4 的 Runtime 基元、统一工具超时/清理与步骤并行已经落地，阶段 5 的检查点、后台任务控制、设置页入口、托盘、关闭策略、确定性 Electron 七场景、真实 DeepSeek 跨重启最终回答连续性、基础两步副作用恢复、短时并行压力、多轮五字段摘要续答、主动断线恢复、6 分钟诊断门和正式 2 小时持续任务验收已经完成；阶段 1 的当前 DeepSeek 真实校准、Flash 普通/工具协议 V4 精确 tokenizer 对账、显式单工具和 LLM 自主单只读工具路径已完成，剩余 Pro 工具协议、其他可选 Provider 矩阵和自主路径继续压缩。阶段 6 已把现有真实活动状态接入设置页，随后还需验证非字段事实、真实外部副作用和更长期真实用户负载；阶段 7 需要前述能力形成可重复闭环。
 
 本任务书的阶段号只表示 **Runtime 连续性工作线**，不能与 [架构决策报告](../decision/architecture-decision-report.md) 中的模块收敛阶段号混用。全局执行时采用以下协调顺序：
 
 1. 保持 `respond / execute / clarify`、直接回应 Context 与统一 Tool Execution Service 的完整质量门；
-2. 保持当前 DeepSeek 四项能力、跨重启回答连续性、普通请求与显式单/多工具提议路径的精确 token 对账回归，先校准含历史 Provider 工具消息的普通续轮，再按实际启用范围扩展 Provider/模型专用 tokenizer 对账；
+2. 保持当前 DeepSeek 四项能力、跨重启回答连续性、Flash 工具协议 `15/15 exact_match`、显式单工具 Prompt `796` 与自主单工具 Prompt `2,325` 的回归门；继续压缩自主路径，并按实际启用范围扩展 Pro/其他 Provider 的模型专用 tokenizer 对账；
 3. 保持现有队列、安全边界、TaskBookPatch、统一工具记录、普通 Renderer 事件生产入口和应用启动恢复控制面的完整质量门；
 4. 保持已完成的 TaskBook 步骤级并行、后台连续执行、设置页透明控制面、托盘、关闭策略、隔离 Electron 跨重启、真实 DeepSeek 基础两步副作用、短时并行压力、多轮五字段摘要续答、主动断线恢复、6 分钟诊断门和正式 2 小时持续任务质量门，随后验证非字段事实和真实外部系统副作用；
 5. 最后进行阶段 7 效率评测，并据证据决定 Mode Registry、App 拆分、MCP 和插件 API v2 的后续优先级；MCP 必须复用现有 Tool Execution Service。
@@ -607,6 +609,6 @@ pnpm.cmd run verify:app-recovery
 
 ## 9. 当前执行状态
 
-阶段 0 已完成；阶段 1 的 Context 候选、来源 segment、精确/不可用 tokenizer 分类、不可展示的保守预算保护、快照、Provider usage 绑定、版本化 Summary Memory、附件清单优先、按需附件工具、压缩阈值设置、双账本 UI 和供应商校准工具已形成主要数据链。当前 DeepSeek 的 chat、continuity、tool、abort 四项真实校准、普通请求、自包含单只读工具的 `decide_explicit_tool` 与完整显式多工具提议路径均已通过真实验收；token 精确性按请求形态记录，不能把 `within_tolerance` 改写成零差值。含历史 Provider 工具消息的普通续轮 exact 校准和其他可选 Provider 矩阵仍未闭环。阶段 2 的 T0-T3 基础契约、v2 迁移、资源注册、Memory Service、索引导航、管理 UI、项目记忆三层投影、稳定项目身份、可恢复路径重绑定、插件/Skill 所有权迁移和大规模资源恢复验收已经完成。阶段 3 的附件缓存、workplace 资源索引和完整数据根迁移工程闭环也已完成。阶段 4 已完成统一 Tool Execution Service、统一工具调用超时/清理、工具调用级与 TaskBook 步骤级有界并行、RuntimeEventQueue、ingress、安全边界、确定性 TaskBookPatch、延迟事件重规划和 Renderer 事件生产/反馈入口；阶段 5 已完成 shadow Git、退出冻结、持久 RunCheckpoint、Runner 显式续跑、应用启动恢复、活动任务快照与控制、`active_runs` SSE、设置页“应用与后台”、托盘、三档关闭策略、确定性 Electron 七场景、真实 DeepSeek 跨重启回答连续性、基础两步副作用恢复、短时并行压力、多轮五字段摘要续答、主动断线恢复、6 分钟诊断门和正式 2 小时持续任务验收。连续性字段门已支持固定标签与任意明确 `label: value`、Markdown 表格、短数字和布尔值，但仍要求标签和值精确对应；最终回答必须承接旧目标或逐项答出被追问历史值，且回答级判定为 `supported`。因此本任务书不再把“保存了状态”写成“记忆连续”。当前完整质量门数字统一以 [项目状态](../decision/project-status.md) 为准。下一步继续普通工具续轮校准、非字段事实、真实外部副作用和更长期真实用户负载验收。
+阶段 0 已完成；阶段 1 的 Context 候选、来源 segment、精确/不可用 tokenizer 分类、不可展示的保守预算保护、快照、Provider usage 绑定、版本化 Summary Memory、附件清单优先、按需附件工具、压缩阈值设置、双账本 UI 和供应商校准工具已形成主要数据链。当前 DeepSeek 的 chat、continuity、tool、abort 四项真实校准、Flash 普通请求与工具协议 `15/15 exact_match`、自包含单只读工具的 `decide_explicit_tool`、LLM 自主单只读工具路径与完整显式多工具提议路径均已通过真实验收；token 精确性按模型与请求形态记录，不能把摘要续答的 `within_tolerance` 改写成零差值。Pro 工具协议和其他可选 Provider 矩阵仍未闭环。阶段 2 的 T0-T3 基础契约、v2 迁移、资源注册、Memory Service、索引导航、管理 UI、项目记忆三层投影、稳定项目身份、可恢复路径重绑定、插件/Skill 所有权迁移和大规模资源恢复验收已经完成。阶段 3 的附件缓存、workplace 资源索引和完整数据根迁移工程闭环也已完成。阶段 4 已完成统一 Tool Execution Service、统一工具调用超时/清理、工具调用级与 TaskBook 步骤级有界并行、RuntimeEventQueue、ingress、安全边界、确定性 TaskBookPatch、延迟事件重规划和 Renderer 事件生产/反馈入口；阶段 5 已完成 shadow Git、退出冻结、持久 RunCheckpoint、Runner 显式续跑、应用启动恢复、活动任务快照与控制、`active_runs` SSE、设置页“应用与后台”、托盘、三档关闭策略、确定性 Electron 七场景、真实 DeepSeek 跨重启回答连续性、基础两步副作用恢复、短时并行压力、多轮五字段摘要续答、主动断线恢复、6 分钟诊断门和正式 2 小时持续任务验收。连续性字段门已支持固定标签与任意明确 `label: value`、Markdown 表格、短数字和布尔值，但仍要求标签和值精确对应；最终回答必须承接旧目标或逐项答出被追问历史值，且回答级判定为 `supported`。因此本任务书不再把“保存了状态”写成“记忆连续”。当前完整质量门数字统一以 [项目状态](../decision/project-status.md) 为准。下一步继续压缩自主只读路径，推进 Pro/其他 Provider 校准、非字段事实、真实外部副作用和更长期真实用户负载验收。
 
-本次增量保留统一工具调用默认超时 120 秒，将配置上限扩展到 24 小时，并保留取消后的有界清理、`exec` 首尾输出捕获和进程树关闭；同时让完全访问下的显式内置单次 `exec` 复用既有 TaskBook/权限/副作用闸门，并在工具完成后才消费暂停。真实 6 分钟诊断门和正式 2 小时门确认命令只执行一次、Checkpoint 恢复不重放、最终回答连续性为 `supported` 且资源回落。Local App API 新增统一 SSE 心跳和慢观察者缓冲上限，Agent 观察断连不再误取消 Main 任务。下一步继续普通工具续轮 tokenizer、非字段事实和真实外部副作用验收。
+本次增量保留统一工具调用默认超时 120 秒，将配置上限扩展到 24 小时，并保留取消后的有界清理、`exec` 首尾输出捕获和进程树关闭；同时让完全访问下的显式内置单次 `exec` 复用既有 TaskBook/权限/副作用闸门，并在工具完成后才消费暂停。真实 6 分钟诊断门和正式 2 小时门确认命令只执行一次、Checkpoint 恢复不重放、最终回答连续性为 `supported` 且资源回落。Local App API 新增统一 SSE 心跳和慢观察者缓冲上限，Agent 观察断连不再误取消 Main 任务。Flash 工具协议 tokenizer 已闭环；下一步继续 Pro 工具协议、非字段事实和真实外部副作用验收。

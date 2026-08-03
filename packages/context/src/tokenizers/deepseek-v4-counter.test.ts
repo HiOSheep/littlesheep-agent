@@ -69,12 +69,12 @@ describe('DeepSeek V4 tokenizer assets', () => {
     expect(requested).toBe(false);
   });
 
-  it('fails exact counting closed for uncalibrated tool-enabled requests', () => {
+  it('counts calibrated Flash tool protocol requests and applies the hosted max control cost', () => {
     let tokenizerCalls = 0;
     const counter = createDeepSeekV4ExactContextTokenCounter({
       encode() {
         tokenizerCalls++;
-        return { ids: [1] };
+        return { ids: Array.from({ length: 10 }, (_, index) => index) };
       },
     });
 
@@ -87,15 +87,22 @@ describe('DeepSeek V4 tokenizer assets', () => {
       },
     }];
 
-    expect(() => counter.countRequest({
+    const highRequest = {
       model: 'deepseek-v4-flash',
       messages: [{ role: 'user', content: 'Use the probe.' }],
       tools,
       tool_choice: 'auto',
-      thinking: { type: 'enabled' },
-    })).toThrow(/tool-enabled requests/);
+      reasoning_effort: 'high' as const,
+      thinking: { type: 'enabled' as const },
+    };
+    expect(counter.countRequest(highRequest)).toBe(10);
+    expect(counter.countRequest(highRequest)).toBe(10);
+    expect(counter.countRequest({
+      ...highRequest,
+      reasoning_effort: 'max',
+    })).toBe(23);
 
-    expect(() => counter.countRequest({
+    expect(counter.countRequest({
       model: 'deepseek-v4-flash',
       messages: [
         { role: 'user', content: 'Use the probe.' },
@@ -110,10 +117,69 @@ describe('DeepSeek V4 tokenizer assets', () => {
         },
         { role: 'tool', tool_call_id: 'call-1', content: '{"ok":true}' },
       ],
-      tools,
-      tool_choice: 'auto',
+      reasoning_effort: 'high',
       thinking: { type: 'enabled' },
-    })).toThrow(/tool-enabled requests/);
+    })).toBe(10);
+    expect(tokenizerCalls).toBe(3);
+  });
+
+  it('keeps Pro tool protocol requests failed closed pending model-specific calibration', () => {
+    let tokenizerCalls = 0;
+    const counter = createDeepSeekV4ExactContextTokenCounter({
+      encode() {
+        tokenizerCalls++;
+        return { ids: [1] };
+      },
+    });
+    expect(() => counter.countRequest({
+      model: 'deepseek-v4-pro',
+      messages: [{ role: 'user', content: 'Use the probe.' }],
+      tools: [{
+        type: 'function',
+        function: {
+          name: 'probe',
+          description: 'Probe once.',
+          parameters: { type: 'object', properties: {} },
+        },
+      }],
+      tool_choice: 'auto',
+      thinking: { type: 'disabled' },
+    })).toThrow(/Pro exact counting is unavailable for tool protocol/);
+    expect(tokenizerCalls).toBe(0);
+  });
+
+  it('fails closed for uncalibrated thinking and tool-choice combinations', () => {
+    let tokenizerCalls = 0;
+    const counter = createDeepSeekV4ExactContextTokenCounter({
+      encode() {
+        tokenizerCalls++;
+        return { ids: [1] };
+      },
+    });
+    expect(() => counter.countRequest({
+      model: 'deepseek-v4-flash',
+      messages: [{ role: 'user', content: 'hello' }],
+      thinking: { type: 'enabled' },
+    })).toThrow(/explicit reasoning_effort/);
+    expect(() => counter.countRequest({
+      model: 'deepseek-v4-flash',
+      messages: [{ role: 'user', content: 'hello' }],
+      reasoning_effort: 'high',
+      thinking: { type: 'disabled' },
+    })).toThrow(/thinking is disabled/);
+    expect(() => counter.countRequest({
+      model: 'deepseek-v4-flash',
+      messages: [{ role: 'user', content: 'hello' }],
+      tools: [{
+        type: 'function',
+        function: {
+          name: 'probe',
+          description: 'Probe once.',
+          parameters: { type: 'object', properties: {} },
+        },
+      }],
+      thinking: { type: 'disabled' },
+    })).toThrow(/tool_choice=auto/);
     expect(tokenizerCalls).toBe(0);
   });
 

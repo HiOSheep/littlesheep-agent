@@ -223,6 +223,7 @@ describe('decideStage', () => {
     expect(system).not.toContain('"toolProposal"');
     expect(system).not.toContain('You are the DECIDE stage of a hard-control-flow agent.');
     expect(system).not.toContain('# Core Flow');
+    expect(system).not.toContain('# Tools');
     expect(system).not.toContain('# Memory Tree');
     expect(system).not.toContain('# Assistant Output Directives');
     expect(system).toContain('"pattern"');
@@ -239,6 +240,77 @@ describe('decideStage', () => {
       name: 'glob',
       input: { pattern: '*', path: '.', max_results: 100 },
     });
+  });
+
+  it('uses compact autonomous read Context while leaving tool selection to the LLM', async () => {
+    const glob = makeTool('glob', { ok: true, output: '' });
+    const grep = makeTool('grep', { ok: true, output: '' });
+    const write = makeTool('write', { ok: true, output: '' });
+    const requests: import('@littlesheep/llm').ChatRequest[] = [];
+    const llm = createMockLlm((request) => {
+      requests.push(request);
+      return textResponse(JSON.stringify({
+        assessment: {
+          userNeed: '查看工作区顶层条目',
+          complexity: 'trivial',
+          goal: '列出工作区顶层条目',
+          successCriteria: ['返回数量和名称'],
+          missingInfo: [],
+          needsClarification: false,
+          requiresTaskBook: false,
+          maxExtraScopeRatio: 1,
+        },
+        taskBook: {
+          goal: '列出工作区顶层条目',
+          complexity: 'trivial',
+          successCriteria: ['返回数量和名称'],
+          steps: [{
+            id: 'step-1',
+            title: '查看条目',
+            description: '读取并列出工作区顶层条目',
+            tools: ['glob'],
+            execution: { mode: 'serial', sideEffect: 'read' },
+            acceptanceCriteria: ['数量和名称来自工具证据'],
+            expectedOutput: '条目数量和名称',
+          }],
+        },
+      }));
+    });
+    const stage = createDecideStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [glob, grep, write],
+      inbound: textMessage('user', '请查看当前工作区顶层有哪些条目，只告诉我数量和名称，不要修改任何文件。'),
+      bootstrap: { 'AGENTS.md': 'BOOTSTRAP_SENTINEL', 'SOUL.md': 'SOUL_SENTINEL' },
+      classification: {
+        activity: 'execute', type: 'problem', confidence: 0.96,
+        source: 'llm', reason: 'workspace inspection requires evidence',
+      },
+    });
+    ctx.memoryRootIndex = 'MEMORY_ROOT_SENTINEL';
+    ctx.profilePromptAddon = 'PROFILE_SENTINEL_AUTONOMOUS_READ';
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'execute', ok: true });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.tools).toBeUndefined();
+    const system = String(requests[0]?.messages[0]?.content ?? '');
+    expect(system).toContain('# Compact Read-Only Decision');
+    expect(system).toContain('glob tool (mock)');
+    expect(system).toContain('grep tool (mock)');
+    expect(system).not.toContain('write tool (mock)');
+    expect(system).not.toContain('# Core Flow');
+    expect(system).not.toContain('# Memory Tree');
+    expect(system).not.toContain('# Assistant Output Directives');
+    expect(system).not.toContain('BOOTSTRAP_SENTINEL');
+    expect(system).toContain('SOUL_SENTINEL');
+    expect(system).toContain('PROFILE_SENTINEL_AUTONOMOUS_READ');
+    expect(ctx.modelRequests?.[0]?.callContract).toMatchObject({
+      purpose: 'decide',
+      inputs: { history: 'recent', attachments: 'images_and_manifest' },
+    });
+    expect(ctx.taskBook?.steps[0]).toMatchObject({ tools: ['glob'] });
+    expect(ctx.taskBook?.steps[0]?.toolProposal).toBeUndefined();
   });
 
   it('uses compact explicit-tool output and expands it into the existing TaskBook contract', async () => {

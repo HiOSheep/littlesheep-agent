@@ -75,11 +75,13 @@ describe('DeepSeek V4 official prompt encoding', () => {
         },
       }],
       tool_choice: 'auto',
+      reasoning_effort: 'high',
       thinking: { type: 'enabled' },
     };
 
     const prompt = encodeDeepSeekV4Request(request);
 
+    expect(prompt).toMatch(/^<｜begin▁of▁sentence｜>Reasoning Effort: Absolute maximum with no shortcuts permitted\./u);
     expect(prompt).toContain(
       '{"name": "get_weather", "description": "Get weather", "parameters": '
       + '{"type": "object", "properties": {"location": {"type": "string"}, '
@@ -95,6 +97,27 @@ describe('DeepSeek V4 official prompt encoding', () => {
     expect(prompt.endsWith(
       '<｜User｜><tool_result>{"temperature":22}</tool_result><｜Assistant｜><think>',
     )).toBe(true);
+  });
+
+  it('maps hosted Flash and Pro effort framing independently', () => {
+    const request = {
+      messages: [{ role: 'user' as const, content: 'hello' }],
+      reasoning_effort: 'high' as const,
+      thinking: { type: 'enabled' as const },
+    };
+    expect(encodeDeepSeekV4Request({
+      ...request,
+      model: 'deepseek-v4-flash',
+    })).toMatch(/^<｜begin▁of▁sentence｜>Reasoning Effort: Absolute maximum with no shortcuts permitted\./u);
+    expect(encodeDeepSeekV4Request({
+      ...request,
+      model: 'deepseek-v4-pro',
+    })).toMatch(/^<｜begin▁of▁sentence｜>/u);
+    expect(encodeDeepSeekV4Request({
+      ...request,
+      model: 'deepseek-v4-pro',
+      reasoning_effort: 'max',
+    })).toMatch(/^<｜begin▁of▁sentence｜>Reasoning Effort: Absolute maximum with no shortcuts permitted\./u);
   });
 
   it('counts the token ids returned by the local tokenizer over the fully encoded prompt', () => {

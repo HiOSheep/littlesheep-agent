@@ -4,7 +4,7 @@ import { CACHE_BOUNDARY_MARKER } from '@littlesheep/prompt';
 import { textMessage, type SessionRunSummary } from '@littlesheep/types';
 import { buildRunRequestCandidates } from './context-candidates.js';
 import { prepareModelRequest } from './model-observability.js';
-import { makeCtx } from './tests/helpers.js';
+import { makeCtx, makeTool } from './tests/helpers.js';
 
 function request(content = 'what is the status?'): ChatRequest {
   return {
@@ -144,6 +144,31 @@ describe('runtime awareness', () => {
     expect(system).not.toContain('recent_previous_tools:');
     expect(ctx.modelRequests?.[0]?.totalMessageCount).toBe(2);
     expect(ctx.contextSnapshots?.[0]?.safetyEstimate?.estimatedPromptTokens).toBeLessThan(1_200);
+  });
+
+  it('uses the compact clock for a self-contained autonomous read decision', () => {
+    const inbound = '请查看当前工作区顶层有哪些条目，只告诉我数量和名称，不要修改任何文件。';
+    const tools = [
+      makeTool('glob', { ok: true, output: [] }),
+      makeTool('grep', { ok: true, output: [] }),
+      makeTool('read', { ok: true, output: '' }),
+    ];
+    const ctx = makeCtx({
+      inbound: textMessage('user', inbound),
+      tools,
+      classification: {
+        activity: 'execute', type: 'problem', confidence: 0.95,
+        source: 'llm', reason: 'workspace inspection requires evidence',
+      },
+    });
+    ctx.previousRun = previousRunSummary();
+
+    const prepared = prepareModelRequest(ctx, 'decide', request(inbound));
+    const system = String(prepared.messages[0]?.content);
+
+    expect(system).toContain('# Runtime Clock');
+    expect(system).not.toContain('# Live Runtime State');
+    expect(system).not.toContain('previous_run:');
   });
 
   it.each([

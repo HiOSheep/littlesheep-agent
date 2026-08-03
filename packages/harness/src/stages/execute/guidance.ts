@@ -112,10 +112,11 @@ export function buildBaseMessages(
   ctx: RunContext,
   systemMessage: string,
   attachments: ReturnType<typeof attachmentContextMessages>,
+  history: RunContext['history'] = recentHistoryForModel(ctx.history, 8),
 ): ChatMessage[] {
   return [
     { role: 'system', content: systemMessage },
-    ...recentHistoryForModel(ctx.history, 8).map(toChatMessage),
+    ...history.map(toChatMessage),
     ...attachments.map((item) => item.message),
     userChatMessage(textOf(ctx.inbound), ctx.attachments),
   ];

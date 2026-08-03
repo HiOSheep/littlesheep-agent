@@ -1,6 +1,6 @@
 # LittleSheep 核心 Agent 流程规范
 
-最后更新：2026-08-04 01:01:23
+最后更新：2026-08-04 03:59:20
 
 本文是 [LittleSheep 架构原则](architecture-principles.md) 在 Core Flow、TaskBook、验证、恢复和记忆运行时上的专项约束。LLM 与 Agent、Mode 与权限、Context 与 Memory、Harness 与 Tool Execution 的顶层分工以架构原则为准；本文不重复维护另一套总架构。
 
@@ -182,6 +182,7 @@ execute 内部：
 - `NeedAssessment` 和 `TaskBook` 核心类型。
 - `DECIDE` 输出需求校准和结构化任务书。
 - 用户明确点名注册工具且不属于续接/记忆追问时，DECIDE 可在受限工具 JSON Schema 下为每个可独立验证的步骤输出一个 `toolProposal`。其中，自包含且来源可证明为内置的单个 `glob / grep / read` 使用 `decide_explicit_tool`：模型只返回 `input`，或在参数无法安全确定时返回一个澄清对象；工具名由 Runtime 锁定，目标、验收标准和 TaskBook 由 Runtime 根据当前用户输入展开。旧 `summary / successCriterion / userNeed / goal / toolProposal` 响应只作兼容读取。有界多工具、写入和执行任务继续使用完整 DECIDE。Runtime 最多向完整 DECIDE 暴露 4 种明确点名的工具，单 schema 最多 12,000 字符、总计最多 24,000 字符，TaskBook 最多接纳 8 个直接提议；随后逐项校验工具名、参数 schema、依赖、资源、副作用、权限和审批。当前直接执行接受 Runtime 可证明、无需审批的 `read/write`，以及完全访问模式下来源为内置、未从 Checkpoint 恢复且参数完整的单次 `exec`；Runtime 可在模型遗漏副作用声明时把内置 `exec` 保守推导为 `external`，但模型显式给出冲突声明时必须拒绝。紧凑最终回答还必须证明任务为 trivial 单步骤、工具来源为 builtin、没有审批或副作用、结果未清洗/截断，并且 TaskBook、步骤结果、工具结果和权威调用记录的 `callId` 完整一致；否则使用完整最终回答 Context。Runtime 不得从自然语言自行猜参数，也不得绕过统一 Tool Execution Service。完成后由真实 `execute_final_reply` API 调用组织最终回答，VERIFY 使用结构证据；任一条件不满足即回退普通工具循环。自然语言中的并列省略可以继承明确动词，但“不要使用”或纯介绍工具的文本不得进入提议集合。
+- 用户没有点名工具、但目标可证明为新鲜、自包含、无附件、无续接、无实际记忆介入且只需检查当前工作区时，DECIDE 仍由 LLM 在 builtin `glob / grep / read` 中选择最小工具集合；模型不返回 `toolProposal`，EXECUTE 使用 Provider 原生 `tool_calls -> tool result -> final answer` 协议。该路径只投影当前输入、活动工作区、紧凑 profile/SOUL、只读任务契约和运行时时钟；工具 schema 由 Provider 请求携带，不再在 System Prompt 中重复。仅有 `excluded` 的记忆候选不算 Context 依赖，`adopted`、`conflicted`、活动 working set、摘要、历史指代、附件、运行时事件、写入/执行语义或恢复态都会使其失败关闭并回退完整路径。Runtime 仍负责路径、权限、schema、工具证据、SSE、结构 VERIFY 和调用审计。真实 Electron + DeepSeek 最新基线固定为 3 次模型调用、1 次 `glob`，prompt `663/726/936`、总计 `2,325`；总回归上限 `2,700`，不得通过移除安全与验证契约换取更低数字。
 - 继续兼容旧的 `{ "plan": [...] }` 输出格式。
 - 存在任务书时，`EXECUTE` 按 `TaskBook.steps` 逐步执行。
 - `EXECUTE` 记录包含步骤状态、输出、工具调用和失败信息的 `TaskExecutionResult`。
@@ -207,7 +208,7 @@ execute 内部：
 - `CAPTURE` 默认从已经持久化的用户可见运行事实确定性生成 daily 记录；`EVOLVE` 按复杂度和记忆信号自适应调用。用户可见的聊天回复、澄清问题、任务/步骤说明、验证说明、执行结论和交付表达必须在当次 run 中实时调用当前 Provider API，由 LLM 结合 `SOUL.md`/profile 现场生成；这不是候选文案选择流程，不能从模板库、预备文案池或历史回答选取新消息。`ReplyProvenance` 绑定真实模型请求，`FINALIZE` 必须回查请求后才可发布。已经生成的回复只能在同一 UI 回合的更新、日志和持久化中复用，不能再次作为新消息发送。API 返回在发布前通过持久化会话级注册表原子占用规范化指纹；完全重复时最多重新实时调用两次当前 Provider API，仍重复、为空、注册表不可用或模型不可用时只显示 Runtime 错误/状态，不使用确定性 Agent 降级文案。UI 控件、状态、路径、权限和进度数字仍由 Runtime 稳定提供。
 - FINALIZE 已接入本地、回答级记忆连续性评估，不再只判断“本轮是否加载过记忆”。评估从 `ReplyProvenance` 回查产生最终回答的真实请求及其之前的 ContextSnapshot，只比较实际进入该因果调用链的 active/adopted Atom、版本化会话摘要、近期跨轮消息和已进入后续模型请求的记忆工具结果。任务续接和直接记忆追问都进入显式门；若问题点名代号、颜色、名称、版本、路径、预算、`executionCount`、`ticks`、`completed` 等多个历史字段，回答必须按标签逐项命中。Markdown 粗体、反引号、表格、短数字和布尔值只改变展示或值形态，不放宽标签和值的精确对应；无关位置出现同一个数字不能补足错误字段。只命中附带限制、只回答部分字段、答错、否定旧值或明确否认记得均为 `discontinuous`。仅复述当前请求、Context 已裁剪来源、缺少快照的来源，以及 released/excluded/conflicted Atom 均不得证明连续。弱锚点、Context 截断或无目标时保持 `uncertain / unavailable`。普通 run 的成功状态与记忆连续性彼此独立：回答可以被正常展示和审计，但只有回答级状态 `supported` 才能称为连续。评估结果写入 `AgentResult` 和执行日志，并只形成有界 routing/activation 反馈，不增加 Provider 调用、不提高事实 confidence，也不替代 VERIFY。
 - EVOLVE/CAPTURE 只接收模型的结构化记忆建议；模型不得自报 verified 或 authority。运行时会验证 asserted source，证据不足时降级为 LS 自身的未验证陈述并丢弃不可信主体 id/label；`invalidate` 与 `conflict` 只延期审计而不直接修改记忆。`PHILOSOPHY.md` 已作为显式理念资源注册，只沿索引按任务相关性和预算展开，不进入常驻 Prompt bootstrap。
-- 本地精确 ledger、Provider usage 与不可展示的安全估算使用不同结构保存，Provider usage 绑定到产生它的准确 Context 快照。DeepSeek V4 普通直接回答使用官方固定 revision tokenizer 和最终请求 framing，本地计数优先驱动圆环，Provider usage 作同请求校准；含历史 `tool_calls` 或 `tool` 结果的续轮在校准完成前必须失败关闭 exact 计数，响应后使用真实 Provider usage。OpenAI/GLM 未经同等验证时保持 unavailable，不会用字符换算冒充真实 token。
+- 本地精确 ledger、Provider usage 与不可展示的安全估算使用不同结构保存，Provider usage 绑定到产生它的准确 Context 快照。DeepSeek V4 使用固定 revision tokenizer、Provider 校准后的最终 framing 与计数器 id；Flash 的普通请求、工具 schema、`tool_calls -> tool` 续轮、只保留历史工具消息和多工具乱序结果已在 disabled/high/max 三档完成 `15/15` 次零差值校准，本地计数优先驱动圆环，Provider usage 作同请求校准。Pro 普通请求保持 exact，但 Pro 工具协议在独立校准完成前必须失败关闭；OpenAI/GLM 未经同等验证时保持 unavailable，不会用字符换算冒充真实 token。
 - 会话压缩已实现为非破坏式、版本化 Summary Memory：原始 JSONL 消息保留，旧消息摘要在下一轮作为独立 `summary_memory` 来源介入，并可按消息阈值或精确 Context 占用阈值触发。Runner 会移除模型伪造或残缺的精确字段封套，再从 Runtime 可验证的旧字段和新用户赋值重建最多 24 项保真区；摘要模型仍负责目标、约束、进度和证据的语义压缩。
 - 活动路由（内部兼容 stage id 为 `classify`）、DECIDE 和 REPLY 只接收附件清单；非图片正文通过当前 run 专属的 `inspect_attachment` 只读工具按需解析，未调用时不会读取文件正文，工具结果再进入 Context。图片仍按受限大小读取为多模态输入。
 - 当前记忆层级已升级为 T0-T3，并通过版本化迁移保留旧 T1-T3 数值与数据；T0 只承载固定预算的核心索引和安全信息。
@@ -217,7 +218,7 @@ execute 内部：
 ## 后续硬化方向
 
 - 保持当前 DeepSeek 的最小对话、continuity、工具调用、流式中断和本地 token 对账回归；OpenAI/GLM 只在实际配置并进入用户选择范围后完成同等冒烟，确认各模型的 reasoning、上下文上限和 usage 映射。
-- Provider/模型 tokenizer 能力矩阵已经建立：只有模型能力声明、请求格式和运行时计数器 id 一致时才允许精确账本。DeepSeek V4 Flash/Pro 的普通直接回答已通过官方 tokenizer 同请求零差值对账；工具续轮仍按请求形态失败关闭。OpenAI/GLM 与其他未验证模型保持 unavailable。对于 unavailable 请求，Context Engine 使用最终 Chat Completions 载荷的 UTF-8 保守估算和独立图片预算做请求前防溢出、可选项淘汰与压缩触发；该估算明确不可展示为真实 token。
+- Provider/模型 tokenizer 能力矩阵已经建立：只有模型能力声明、请求格式和运行时计数器 id 一致时才允许精确账本。DeepSeek V4 Flash/Pro 的普通直接回答已通过同请求零差值对账，Flash 工具协议也已完成 15 请求矩阵；Pro 工具协议仍按请求形态失败关闭。OpenAI/GLM 与其他未验证模型保持 unavailable。对于 unavailable 请求，Context Engine 使用最终 Chat Completions 载荷的 UTF-8 保守估算和独立图片预算做请求前防溢出、可选项淘汰与压缩触发；该估算明确不可展示为真实 token。
 - 压缩后任务锚点的本地 BGE、Repository 重启门和真实 DeepSeek 五字段摘要续答门已经完成，压缩深度保持 `1 -> 2 -> 3 -> 3`；主动断线恢复也已通过。继续验证任务约束、未完成步骤、非字段事实、记忆来源、权限结果、摘要失败回退、工具副作用恢复和成本。附件缓存、ownership 清理、workplace 索引和可回滚数据根迁移已完成工程闭环，后续只做真实用户场景验收与发布兼容。
 - 回答级记忆连续性的本地结构门、确定性 Electron 七场景门、真实 DeepSeek 完整退出/重启回答门、多轮五字段摘要回答门、主动断线恢复门、6 分钟诊断门和正式 2 小时门已经完成。后续仍必须用真实 DeepSeek 长会话覆盖非字段事实、先记住/转题/再续答、执行中按索引补取、记忆释放后不再承接、真实工具副作用和更长期真实用户负载。任何真实验收都必须同时检查 LS 最终回答、`memoryContinuityAssessment`、ContextSnapshot、命中来源与执行日志：回答必须明确承接旧目标或逐项答出被追问旧值，且显式连续性状态必须为 `supported`；不能只凭保存了会话/Checkpoint、摘要或 Atom，也不能只凭回答听起来连贯就判定通过。
 - 旧 `distillDailyToMemory()/markDistilled()` 原始追加 helper 已退役并由仓库卫生门阻止回流；任何未来 daily 到长期记忆的蒸馏都必须走安全、去重、可回滚的结构化写入闸门。

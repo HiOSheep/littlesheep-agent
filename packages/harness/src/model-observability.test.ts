@@ -170,7 +170,7 @@ describe('recordModelRequest', () => {
     };
 
     bindExactContextTokenCounter(ctx, {
-      id: 'deepseek-v4-official-encoding-tokenizer-v1',
+      id: 'deepseek-v4-provider-calibrated-tokenizer-v2',
       supports: (provider, model) => provider === 'deepseek' && model === 'deepseek-v4-pro',
       countRequest: () => 120,
     });
@@ -192,14 +192,14 @@ describe('recordModelRequest', () => {
       accuracy: 'exact',
       provider: 'deepseek',
       model: 'deepseek-v4-pro',
-      tokenizerId: 'deepseek-v4-official-encoding-tokenizer-v1',
+      tokenizerId: 'deepseek-v4-provider-calibrated-tokenizer-v2',
       promptTokens: 120,
     });
 
     recordProviderUsage(ctx, prepared, { promptTokens: 120, completionTokens: 8 });
     expect(ctx.contextSnapshots?.[0]?.providerUsage?.localCalibration).toEqual({
       version: 1,
-      tokenizerId: 'deepseek-v4-official-encoding-tokenizer-v1',
+      tokenizerId: 'deepseek-v4-provider-calibrated-tokenizer-v2',
       localPromptTokens: 120,
       differenceTokens: 0,
       relativeDifference: 0,
@@ -231,7 +231,7 @@ describe('recordModelRequest', () => {
       projectOverrides: {},
     };
     bindExactContextTokenCounter(ctx, {
-      id: 'deepseek-v4-official-encoding-tokenizer-v1',
+      id: 'deepseek-v4-provider-calibrated-tokenizer-v2',
       supports: (provider, model) => provider === 'deepseek' && model === 'deepseek-v4-flash',
       countRequest: (prepared) => {
         expect(prepared.thinking).toEqual({ type: 'disabled' });

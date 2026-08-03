@@ -98,7 +98,7 @@ describe('model reasoning capabilities', () => {
     })
     expect(resolveModelTokenizerCapabilityForModelRef('deepseek/deepseek-v4-flash')).toMatchObject({
       status: 'exact',
-      counterId: 'deepseek-v4-official-encoding-tokenizer-v1',
+      counterId: 'deepseek-v4-provider-calibrated-tokenizer-v2',
       source: 'official-provider-doc',
       verifiedAt: '2026-07-31',
     })

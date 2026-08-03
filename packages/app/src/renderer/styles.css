@@ -7282,7 +7282,7 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel
   color: var(--bg);
   background: var(--accent);
   border: 1px solid var(--accent);
-  border-radius: var(--radius-circle);
+  border-radius: var(--radius-composer);
   font-size: 15px;
   font-weight: 900;
 }

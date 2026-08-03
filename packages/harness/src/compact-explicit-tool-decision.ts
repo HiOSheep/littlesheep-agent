@@ -33,6 +33,21 @@ export interface CompactExplicitToolDecision {
   clarification?: { blockingReason?: string; question?: string };
 }
 
+type SelfContainedCompactContext = Pick<
+  RunContext,
+  | 'inbound'
+  | 'attachments'
+  | 'taskBook'
+  | 'partialReplanRequest'
+  | 'verifyFeedback'
+  | 'deferredRuntimeEvents'
+  | 'clarificationResponse'
+  | 'initialMemoryContext'
+  | 'memoryKnownState'
+  | 'memoryContextWorkingSet'
+  | 'resumedFromCheckpointId'
+>;
+
 /** Admit only a self-contained request whose compact Context cannot hide a dependency. */
 export function canUseCompactExplicitToolDecision(
   ctx: Pick<
@@ -56,14 +71,22 @@ export function canUseCompactExplicitToolDecision(
   const instruction = resolveExplicitSingleToolInstruction(ctx);
   if (!instruction || !COMPACT_EXPLICIT_READ_TOOLS.has(instruction.tool.name)) return false;
   if (ctx.toolSources?.[instruction.tool.name] !== COMPACT_EXPLICIT_TOOL_SOURCE) return false;
+  return isSelfContainedCompactTaskContext(ctx);
+}
+
+/** Shared conservative gate for compact calls that intentionally omit history and memory. */
+export function isSelfContainedCompactTaskContext(
+  ctx: SelfContainedCompactContext,
+  options: { allowTaskBook?: boolean } = {},
+): boolean {
   if ((ctx.attachments?.length ?? 0) > 0
-    || ctx.taskBook
+    || (!options.allowTaskBook && ctx.taskBook)
     || ctx.partialReplanRequest
     || ctx.verifyFeedback
     || (ctx.deferredRuntimeEvents?.length ?? 0) > 0
     || ctx.clarificationResponse
     || ctx.initialMemoryContext?.trim()
-    || (ctx.memoryKnownState?.references.length ?? 0) > 0
+    || ctx.memoryKnownState?.references.some((reference) => reference.decision !== 'excluded')
     || (ctx.memoryContextWorkingSet?.activeAtomIds.length ?? 0) > 0
     || ctx.resumedFromCheckpointId) {
     return false;

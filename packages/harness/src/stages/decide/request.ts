@@ -25,6 +25,11 @@ import {
   renderCompactExplicitToolProposalContract,
 } from '../../compact-explicit-tool-decision.js';
 import {
+  renderCompactAutonomousReadDecisionContract,
+  renderCompactAutonomousReadWorkspace,
+  resolveCompactAutonomousReadDecisionTools,
+} from '../../compact-autonomous-read-task.js';
+import {
   renderExplicitToolProposalContract,
   resolveExplicitSingleToolInstruction,
   resolveExplicitToolInstructionSet,
@@ -46,6 +51,7 @@ export interface DecideRequest {
   explicitToolNames?: string[];
   callPurpose: Extract<LlmCallPurpose, 'decide' | 'decide_explicit_tool'>;
   compactExplicitTool?: ExplicitSingleToolInstruction;
+  compactAutonomousRead: boolean;
 }
 
 export async function buildDecideRequest(
@@ -70,9 +76,16 @@ export async function buildDecideRequest(
   const compactExplicitTool = canUseCompactExplicitToolDecision(ctx)
     ? resolveExplicitSingleToolInstruction(ctx)
     : undefined;
+  const compactAutonomousReadTools = compactExplicitTool
+    ? undefined
+    : resolveCompactAutonomousReadDecisionTools(ctx);
+  const compactAutonomousRead = Boolean(compactAutonomousReadTools);
+  const compactDecision = Boolean(compactExplicitTool) || compactAutonomousRead;
   const callPurpose = compactExplicitTool ? 'decide_explicit_tool' : 'decide';
   const baseSystemPrompt = compactExplicitTool
     ? await assembleSystemPromptBundle(resolved, { tools: [], bootstrap: {} }, 'none')
+    : compactAutonomousReadTools
+      ? await assembleSystemPromptBundle(resolved, { tools: [], bootstrap: {} }, 'none')
     : await assembleSystemPromptBundle(resolved, {
         tools: explicitToolInstructions
           ? explicitToolInstructions.entries.map((entry) => entry.tool)
@@ -102,6 +115,25 @@ export async function buildDecideRequest(
           source: { kind: 'workflow', id: 'explicit-tool-proposal-contract', runId: ctx.runId },
         },
       ]
+    : compactAutonomousReadTools
+      ? [
+          {
+            id: 'compact-read-workspace',
+            text: renderCompactAutonomousReadWorkspace(resolved.workspace),
+            kind: 'project_knowledge',
+            source: { kind: 'configuration', id: 'workspace', path: resolved.workspace },
+            scope: 'workspace',
+          },
+          { id: 'profile', text: buildCompactBehaviorProfileAddon(ctx) },
+          { id: 'reasoning', text: ctx.reasoningPromptAddon },
+          { id: 'compact-user-facing-voice', text: buildCompactUserFacingVoiceAddon(ctx) },
+          {
+            id: 'compact-read-only-decision-contract',
+            text: renderCompactAutonomousReadDecisionContract(compactAutonomousReadTools),
+            kind: 'workflow_state',
+            source: { kind: 'workflow', id: 'compact-read-only-decision-contract', runId: ctx.runId },
+          },
+        ]
     : [
         ...(!explicitToolInstructions ? [{
           id: 'decide-contract',
@@ -118,8 +150,8 @@ export async function buildDecideRequest(
           source: { kind: 'workflow' as const, id: 'explicit-tool-proposal-contract', runId: ctx.runId },
         }] : []),
       ]);
-  const history = compactExplicitTool ? [] : recentHistoryForModel(ctx.history, 8);
-  const attachmentMessages = compactExplicitTool
+  const history = compactDecision ? [] : recentHistoryForModel(ctx.history, 8);
+  const attachmentMessages = compactDecision
     ? []
     : attachmentContextMessages(ctx.runId, ctx.attachments);
   const runtimeEventContext = renderDeferredRuntimeEvents(deferredRuntimeEvents);
@@ -143,6 +175,7 @@ export async function buildDecideRequest(
     explicitToolNames: explicitToolInstructions?.names,
     callPurpose,
     compactExplicitTool,
+    compactAutonomousRead,
   };
 }
 

@@ -145,21 +145,29 @@ export function encodeDeepSeekV4Request(request: ChatRequest): string {
     throw new Error(`DeepSeek V4 exact counting does not cover tool_choice=${toolChoiceLabel(request.tool_choice)}.`);
   }
   const thinkingMode: ThinkingMode = request.thinking?.type === 'enabled' ? 'thinking' : 'chat';
-  const reasoningEffort = request.reasoning_effort === 'max'
-    ? 'max'
-    : request.reasoning_effort === 'high'
-      ? 'high'
-      : undefined;
   if (request.reasoning_effort !== undefined
     && request.reasoning_effort !== 'high'
     && request.reasoning_effort !== 'max') {
     throw new Error(`DeepSeek V4 exact counting does not cover reasoning_effort=${request.reasoning_effort}.`);
   }
+  const reasoningEffort = resolveProviderPromptReasoningEffort(request);
   return encodeDeepSeekV4Messages(messages, {
     thinkingMode,
     dropThinking: request.thinking?.clear_thinking !== false,
     reasoningEffort,
   });
+}
+
+/**
+ * DeepSeek's hosted Flash API applies the published max-effort prefix to its
+ * default/high thinking path as well. Pro follows the open-weights encoder.
+ * The remaining hosted-only max control tokens are accounted by the counter.
+ */
+function resolveProviderPromptReasoningEffort(request: ChatRequest): 'high' | 'max' | undefined {
+  if (request.thinking?.type !== 'enabled') return undefined;
+  const model = request.model.trim().toLowerCase();
+  if (model === 'deepseek-v4-flash') return 'max';
+  return request.reasoning_effort === 'max' ? 'max' : undefined;
 }
 
 function renderMessage(

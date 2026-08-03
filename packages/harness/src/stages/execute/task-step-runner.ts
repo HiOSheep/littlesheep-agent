@@ -23,6 +23,10 @@ import {
   directToolEvidenceText,
   resolveDirectToolProposal,
 } from './direct-tool-proposal.js';
+import {
+  renderCompactAutonomousReadStepGuidance,
+  resolveCompactAutonomousReadExecutionTools,
+} from '../../compact-autonomous-read-task.js';
 
 export interface TaskStepRunOutcome {
   scheduled: ScheduledTaskStep;
@@ -86,16 +90,19 @@ export async function executeScheduledTaskStep(options: TaskStepRunOptions): Pro
     summary: scheduled.mode === 'parallel' ? 'Running as a bounded parallel TaskBook branch.' : undefined,
   });
 
+  const compactReadTools = resolveCompactAutonomousReadExecutionTools(ctx);
   const stepSystemPrompt = appendSystemPromptBundleAddons(baseSystemPrompt, [{
     id: `step-contract:${stepId}`,
-    text: renderStepGuidance(
-      taskBook,
-      step,
-      stepId,
-      index,
-      taskBook.steps.length,
-      visiblePriorResults,
-    ),
+    text: compactReadTools
+      ? renderCompactAutonomousReadStepGuidance(taskBook)
+      : renderStepGuidance(
+          taskBook,
+          step,
+          stepId,
+          index,
+          taskBook.steps.length,
+          visiblePriorResults,
+        ),
     kind: 'workflow_state',
     source: { kind: 'workflow', id: `step-contract:${stepId}`, runId: ctx.runId },
   }]);
@@ -120,8 +127,13 @@ export async function executeScheduledTaskStep(options: TaskStepRunOptions): Pro
         })
       : await runToolLoop(deps, {
           ctx,
-          messages: buildBaseMessages(ctx, stepSystemPrompt.text, attachmentMessages),
-          tools: pickStepTools(step, ctx.tools),
+          messages: buildBaseMessages(
+            ctx,
+            stepSystemPrompt.text,
+            attachmentMessages,
+            compactReadTools ? [] : undefined,
+          ),
+          tools: compactReadTools ?? pickStepTools(step, ctx.tools),
           sanitizeOpts,
           stepId,
           signal: branch.controller.signal,
@@ -134,6 +146,7 @@ export async function executeScheduledTaskStep(options: TaskStepRunOptions): Pro
             : {}),
           systemSegments: stepSystemPrompt.segments,
           insertedBeforePrimary: attachmentMessages.map((item) => item.context),
+          history: compactReadTools ? [] : undefined,
         });
     stepResult.toolResults = loopResult.toolResults;
     stepResult.toolCallIds = loopResult.toolResults.map((result) => result.callId);

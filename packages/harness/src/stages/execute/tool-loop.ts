@@ -65,6 +65,7 @@ export async function runToolLoop(
     stepId,
     systemSegments,
     insertedBeforePrimary,
+    history,
     signal = ctx.signal,
     produced = ctx.produced,
     parallelStep,
@@ -74,7 +75,7 @@ export async function runToolLoop(
   const toolResults: ToolResult[] = [];
   const executionService = toolExecutionService(deps, ctx, sanitizeOpts);
   const evidenceFingerprints = new Set<string>();
-  const initialHistory = recentHistoryForModel(ctx.history, 8);
+  const initialHistory = history ?? recentHistoryForModel(ctx.history, 8);
   let requestHistory = initialHistory;
   let continuationCompacted = false;
   let noProgressRounds = 0;

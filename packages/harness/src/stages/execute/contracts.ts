@@ -4,6 +4,7 @@ import type { ChatMessage, ChatResponse, LlmClient } from '@littlesheep/llm';
 import type { SystemPromptBundle } from '@littlesheep/prompt';
 import type {
   AgentTool,
+  Message,
   RunContext,
   TaskStepSideEffect,
   ToolResourceAccess,
@@ -40,6 +41,8 @@ export interface ToolLoopOptions {
   stepId?: string;
   systemSegments?: SystemPromptBundle['segments'];
   insertedBeforePrimary?: InsertedContextMessage[];
+  /** Exact history represented in messages; compact self-contained tasks use none. */
+  history?: Message[];
   /** Branch-local cancellation; the run signal remains its parent. */
   signal?: AbortSignal;
   /** Branch-local message sink merged into the run in stable TaskBook order. */

@@ -34,6 +34,6 @@ describe('UI radius consistency', () => {
 
   it('matches the composer corner radius to the 24px send button radius', () => {
     expect(styles).toMatch(/\.composer\s*\{[^}]*border-radius:\s*var\(--radius-composer\);/u)
-    expect(styles).toMatch(/\.send-round\s*\{[^}]*width:\s*24px;[^}]*height:\s*24px;[^}]*border-radius:\s*var\(--radius-circle\);/u)
+    expect(styles).toMatch(/\.send-round\s*\{[^}]*width:\s*24px;[^}]*height:\s*24px;[^}]*border-radius:\s*var\(--radius-composer\);/u)
   })
 })

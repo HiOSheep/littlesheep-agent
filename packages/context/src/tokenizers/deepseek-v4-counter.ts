@@ -28,6 +28,11 @@ const DEEPSEEK_V4_TOKENIZER_SPEC = Object.freeze({
   ]),
 });
 
+// The hosted Flash API adds a non-public max-effort control segment after the
+// published prompt framing. Its fixed token cost is verified by the live
+// calibration matrix; it is not representable by the open-weights encoder.
+const DEEPSEEK_V4_FLASH_MAX_CONTROL_TOKENS = 13;
+
 type TokenizerFileSpec = typeof DEEPSEEK_V4_TOKENIZER_SPEC.files[number];
 
 export interface LocalTokenizerPreparationOptions {
@@ -90,16 +95,13 @@ export function createDeepSeekV4ExactContextTokenCounter(
           'DeepSeek V4 exact counting requires an explicit thinking mode because Provider defaults are not stable request framing.',
         );
       }
-      if (containsUncalibratedToolRequest(request)) {
-        throw new Error(
-          'DeepSeek V4 exact counting is unavailable for tool-enabled requests pending Provider calibration.',
-        );
-      }
+      assertCalibratedRequestShape(request);
       const prompt = encodeDeepSeekV4Request(request);
-      const cacheKey = createHash('sha256').update(prompt).digest('hex');
+      const controlTokens = providerControlTokenAdjustment(request);
+      const cacheKey = createHash('sha256').update(`${controlTokens}\0${prompt}`).digest('hex');
       const cached = recentCounts.get(cacheKey);
       if (cached !== undefined) return cached;
-      const count = tokenizer.encode(prompt, { add_special_tokens: false }).ids.length;
+      const count = tokenizer.encode(prompt, { add_special_tokens: false }).ids.length + controlTokens;
       if (!Number.isSafeInteger(count) || count < 0) throw new Error('DeepSeek V4 tokenizer returned an invalid token count.');
       recentCounts.set(cacheKey, count);
       if (recentCounts.size > 64) recentCounts.delete(recentCounts.keys().next().value!);
@@ -108,10 +110,49 @@ export function createDeepSeekV4ExactContextTokenCounter(
   });
 }
 
-function containsUncalibratedToolRequest(request: ChatRequest): boolean {
-  return (request.tools?.length ?? 0) > 0 || request.messages.some((message) => (
+function assertCalibratedRequestShape(request: ChatRequest): void {
+  const thinkingEnabled = request.thinking?.type === 'enabled';
+  if (thinkingEnabled && request.reasoning_effort !== 'high' && request.reasoning_effort !== 'max') {
+    throw new Error(
+      'DeepSeek V4 exact counting requires explicit reasoning_effort=high|max when thinking is enabled.',
+    );
+  }
+  if (!thinkingEnabled && request.reasoning_effort !== undefined) {
+    throw new Error(
+      'DeepSeek V4 exact counting does not cover reasoning_effort when thinking is disabled.',
+    );
+  }
+
+  const activeToolSchema = (request.tools?.length ?? 0) > 0;
+  const historicalToolProtocol = request.messages.some((message) => (
     message.role === 'tool' || (message.tool_calls?.length ?? 0) > 0
   ));
+  if (!activeToolSchema && !historicalToolProtocol) return;
+
+  const model = request.model.trim().toLowerCase();
+  if (model !== 'deepseek-v4-flash') {
+    throw new Error(
+      'DeepSeek V4 Pro exact counting is unavailable for tool protocol requests pending model-specific Provider calibration.',
+    );
+  }
+  if (activeToolSchema && request.tool_choice !== 'auto') {
+    throw new Error(
+      'DeepSeek V4 Flash exact counting requires tool_choice=auto when tools are present.',
+    );
+  }
+  if (!activeToolSchema && request.tool_choice !== undefined) {
+    throw new Error(
+      'DeepSeek V4 Flash exact counting does not cover tool_choice without an active tool schema.',
+    );
+  }
+}
+
+function providerControlTokenAdjustment(request: ChatRequest): number {
+  return request.model.trim().toLowerCase() === 'deepseek-v4-flash'
+    && request.thinking?.type === 'enabled'
+    && request.reasoning_effort === 'max'
+    ? DEEPSEEK_V4_FLASH_MAX_CONTROL_TOKENS
+    : 0;
 }
 
 export async function verifyDeepSeekV4TokenizerAssets(

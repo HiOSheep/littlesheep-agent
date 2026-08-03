@@ -72,7 +72,7 @@ const DEEPSEEK_V4_SOURCE = 'https://api-docs.deepseek.com/quick_start/pricing';
 const DEEPSEEK_V4_ENCODING_SOURCE = 'https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/tree/60d8d70770c6776ff598c94bb586a859a38244f1/encoding';
 const GLM_52_SOURCE = 'https://docs.bigmodel.cn/cn/guide/models/text/glm-5.2';
 
-export const DEEPSEEK_V4_TOKEN_COUNTER_ID = 'deepseek-v4-official-encoding-tokenizer-v1';
+export const DEEPSEEK_V4_TOKEN_COUNTER_ID = 'deepseek-v4-provider-calibrated-tokenizer-v2';
 
 const MODEL_CAPABILITIES = new Map<string, ModelCapabilityRecord>([
   ...['gpt-5.6', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'].map((model) => [
