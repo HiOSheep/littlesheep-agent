@@ -34,6 +34,14 @@ export interface DesktopAcceptanceSnapshot extends DesktopShellSnapshot {
     heapUsedBytes: number
     externalBytes: number
     arrayBuffersBytes: number
+    activeHandleCount: number
+    activeRequestCount: number
+  }
+  electron: {
+    processCount: number
+    workingSetBytes: number
+    peakWorkingSetBytes: number
+    privateBytes: number
   }
   runtime: {
     currentRunnerActiveRunCount: number

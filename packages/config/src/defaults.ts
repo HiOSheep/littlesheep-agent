@@ -65,6 +65,7 @@ export const DEFAULT_CONFIG: Config = {
     maxOutputChars: 10000,
     stripImages: true,
     maxParallel: 4,
+    invocationTimeoutMs: 120000,
   },
   memory: {
     repositoryBackend: 'v2' as const,

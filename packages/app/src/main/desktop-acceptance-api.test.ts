@@ -41,6 +41,14 @@ describe('desktop Electron acceptance Local App API', () => {
         heapUsedBytes: 40,
         externalBytes: 10,
         arrayBuffersBytes: 5,
+        activeHandleCount: 6,
+        activeRequestCount: 1,
+      },
+      electron: {
+        processCount: 3,
+        workingSetBytes: 300,
+        peakWorkingSetBytes: 360,
+        privateBytes: 240,
       },
       runtime: {
         currentRunnerActiveRunCount: 1,
@@ -75,7 +83,8 @@ describe('desktop Electron acceptance Local App API', () => {
     await expect(initial.json()).resolves.toMatchObject({
       snapshot: {
         windowVisible: true,
-        process: { rssBytes: 100, heapUsedBytes: 40 },
+        process: { rssBytes: 100, heapUsedBytes: 40, activeHandleCount: 6, activeRequestCount: 1 },
+        electron: { processCount: 3, workingSetBytes: 300 },
         runtime: { currentRunnerActiveRunCount: 1, activityListenerCount: 1 },
       },
     })

@@ -10,6 +10,7 @@ import type {
   ToolResult,
 } from '@littlesheep/types';
 import type { ExecuteSanitizeOptions, ExecuteStageDeps } from './contracts.js';
+import { consumeRuntimeControlEvents } from '../../runtime-control-boundary.js';
 import { reserveUserFacingReplyOnce } from '../../user-facing-reply.js';
 import { orderedStepResults } from './failure-policy.js';
 import { synthesizeFinalReply } from './final-reply.js';
@@ -125,11 +126,23 @@ export async function executeTaskBook(
 
     const failure = outcomes.find((outcome) => outcome.route !== 'continue');
     if (failure) return finishWaveFailure(ctx, taskBook, execution, allToolResults, outcomes, failure);
+
+    if (pendingIds.size === 0) {
+      execution.status = 'done';
+      execution.endedAt = new Date().toISOString();
+      syncExecutionSteps();
+    }
+    const runtimeControl = consumeRuntimeControlEvents(ctx);
+    if (runtimeControl.shouldStop) {
+      return finishRuntimeControlBoundary(ctx, taskBook, execution, allToolResults, runtimeControl);
+    }
   }
 
-  execution.status = 'done';
-  execution.endedAt = new Date().toISOString();
-  syncExecutionSteps();
+  if (execution.status !== 'done') {
+    execution.status = 'done';
+    execution.endedAt = new Date().toISOString();
+    syncExecutionSteps();
+  }
   ctx.toolResults = allToolResults;
   try {
     ctx.reply = await resolveCompletedTaskReply(deps, ctx, taskBook, execution.steps);
@@ -155,6 +168,37 @@ export async function executeTaskBook(
     next: 'verify',
     ok: true,
     meta: { taskStatus: execution.status, taskSteps: execution.steps.length, toolCalls: allToolResults.length },
+  };
+}
+
+function finishRuntimeControlBoundary(
+  ctx: RunContext,
+  taskBook: TaskBook,
+  execution: TaskExecutionResult,
+  allToolResults: ToolResult[],
+  runtimeControl: ReturnType<typeof consumeRuntimeControlEvents>,
+): StageResult {
+  taskBook.stageResults = execution.steps;
+  ctx.toolResults = allToolResults;
+  ctx.reply = undefined;
+  ctx.replyProvenance = undefined;
+  const error = runtimeControl.error
+    ?? (runtimeControl.state === 'paused'
+      ? 'run paused at a safe boundary'
+      : 'run interrupted at a safe boundary');
+  ctx.lastError = { stage: 'execute', message: error };
+  return {
+    stage: 'execute',
+    next: 'exit',
+    ok: false,
+    error,
+    meta: {
+      taskStatus: execution.status,
+      taskSteps: execution.steps.length,
+      toolCalls: allToolResults.length,
+      runtimeControl: ctx.runtimeControl,
+      runtimeEventIds: runtimeControl.settledEventIds,
+    },
   };
 }
 

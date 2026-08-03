@@ -52,10 +52,42 @@ export interface ContinuityLabeledValue {
   value: string;
 }
 
-const CONTINUITY_VALUE_LABELS = [
-  '代号', '颜色', '名称', '名字', '数值', '数字', '金额', '预算', '版本', '路径', '日期', '时间',
-  'code', 'color', 'name', 'value', 'number', 'amount', 'budget', 'version', 'path', 'date', 'time',
-] as const;
+interface ContinuityValueLabelDefinition {
+  label: string;
+  aliases: readonly string[];
+}
+
+const CONTINUITY_VALUE_LABEL_DEFINITIONS = [
+  { label: '代号', aliases: ['验收代号', '代号'] },
+  { label: '颜色', aliases: ['颜色'] },
+  { label: '名称', aliases: ['文件名称', '项目名称', '名称'] },
+  { label: '名字', aliases: ['名字'] },
+  { label: '数值', aliases: ['数值'] },
+  { label: '数字', aliases: ['数字'] },
+  { label: '金额', aliases: ['金额'] },
+  { label: '预算', aliases: ['预算'] },
+  { label: '版本', aliases: ['版本'] },
+  { label: '路径', aliases: ['文件路径', '路径'] },
+  { label: '日期', aliases: ['日期'] },
+  { label: '时间', aliases: ['时间'] },
+  { label: 'executionCount', aliases: ['executionCount', 'execution count', '执行次数'] },
+  { label: 'ticks', aliases: ['ticks', 'tick count'] },
+  { label: 'completed', aliases: ['completed', '完成状态'] },
+  { label: 'code', aliases: ['acceptance code', 'code'] },
+  { label: 'color', aliases: ['color'] },
+  { label: 'name', aliases: ['file name', 'project name', 'name'] },
+  { label: 'value', aliases: ['value'] },
+  { label: 'number', aliases: ['number'] },
+  { label: 'amount', aliases: ['amount'] },
+  { label: 'budget', aliases: ['budget'] },
+  { label: 'version', aliases: ['version'] },
+  { label: 'path', aliases: ['file path', 'path'] },
+  { label: 'date', aliases: ['date'] },
+  { label: 'time', aliases: ['time'] },
+] as const satisfies readonly ContinuityValueLabelDefinition[];
+
+const CONTINUITY_VALUE_LABELS = CONTINUITY_VALUE_LABEL_DEFINITIONS
+  .map((definition) => definition.label);
 
 export function strongContinuityAnchor(value: ContinuityOverlap): boolean {
   return value.count >= 2 && value.ratio >= 0.2;
@@ -172,10 +204,14 @@ export function continuityRequestedValueTargets(
           ? extractSessionSummaryFidelityValue(source.texts[index], label)
           : extractLabeledValue(source.texts[index], label);
         if (!value) continue;
-        const terms = continuityTerms(value);
         const normalizedValue = normalizeComparableValue(value);
+        const terms = continuityTerms(value);
         const targetKey = `${label}:${normalizedValue}`;
-        if (terms.size > 0 && normalizedValue && !seen.has(targetKey)) {
+        if (
+          normalizedValue
+          && (terms.size > 0 || isExactLabeledScalar(normalizedValue))
+          && !seen.has(targetKey)
+        ) {
           seen.add(targetKey);
           targets.push({ label, value: normalizedValue, terms, source: source.source });
         }
@@ -208,10 +244,12 @@ export function continuityValueTargetMatched(
   target: ContinuityValueTarget,
   overlap: ContinuityOverlap,
 ): boolean {
-  if (!reply || target.terms.size <= 0) return false;
+  if (!reply) return false;
+  const replyValue = extractLabeledValue(reply, target.label);
+  if (!replyValue || normalizeComparableValue(replyValue) !== target.value) return false;
   const normalizedReply = normalizeComparableValue(reply);
-  if (!normalizedReply.includes(target.value)) return false;
   if (replyNegatesValueTarget(normalizedReply, target)) return false;
+  if (target.terms.size === 0) return isExactLabeledScalar(target.value);
   return overlap.count >= Math.min(2, target.terms.size) && overlap.ratio >= 0.5;
 }
 
@@ -231,43 +269,97 @@ export function replyExplicitlyDisclaimsContinuity(value: string | undefined): b
 function extractLabeledValue(value: string | undefined, label: string): string | undefined {
   const source = value?.normalize('NFKC').slice(0, MAX_SOURCE_CHARS) ?? '';
   if (!source) return undefined;
-  const escapedLabel = escapeRegExp(label);
-  const labelPattern = /^[a-z]/iu.test(label) ? `\\b${escapedLabel}\\b` : escapedLabel;
   const labelSuffix = '(?:\\s|\\*\\*|__|~~)*';
   const assignment = '(?:是|为|改成|改为|更新为|设为|设置为|调整为|换成|becomes?|is|=|:|：)';
   const candidates: Array<{ index: number; priority: number; value: string }> = [];
-  const patterns = [
-    {
-      priority: 2,
-      regex: new RegExp(
-        `${labelPattern}${labelSuffix}(?:${assignment})?\\s*[“"‘'\`]([^”"’'\`\\r\\n]{1,120})[”"’'\`]`,
-        'giu',
-      ),
-    },
-    {
-      priority: 2,
-      regex: new RegExp(
-        `${labelPattern}${labelSuffix}${assignment}\\s*([^,，。；;、\\r\\n]{1,120})`,
-        'giu',
-      ),
-    },
-    {
-      priority: 1,
-      regex: new RegExp(
-        `${labelPattern}${labelSuffix}([a-z0-9][a-z0-9_+#.\\/-]{1,80}|[\\p{Script=Han}]{1,16})`,
-        'giu',
-      ),
-    },
-  ];
-  for (const pattern of patterns) {
-    for (const match of source.matchAll(pattern.regex)) {
-      const extracted = cleanExtractedValue(trimAtFollowingLabel(match[1] ?? '', label));
-      if (!extracted || looksLikeValuePlaceholder(extracted)) continue;
-      candidates.push({ index: match.index ?? 0, priority: pattern.priority, value: extracted });
+  collectMarkdownTableValueCandidates(source, label, candidates);
+  for (const alias of valueLabelAliases(label)) {
+    const escapedLabel = escapeRegExp(alias);
+    const labelPattern = /^[a-z]/iu.test(alias) ? `\\b${escapedLabel}\\b` : escapedLabel;
+    const patterns = [
+      {
+        priority: 3,
+        regex: new RegExp(
+          `${labelPattern}${labelSuffix}(?:${assignment})?\\s*[“"‘'\`]([^”"’'\`\\r\\n]{1,120})[”"’'\`]`,
+          'giu',
+        ),
+      },
+      {
+        priority: 3,
+        regex: new RegExp(
+          `${labelPattern}${labelSuffix}${assignment}\\s*([^,，。；;、\\r\\n]{1,120})`,
+          'giu',
+        ),
+      },
+      {
+        priority: 1,
+        regex: new RegExp(
+          `${labelPattern}${labelSuffix}([a-z0-9][a-z0-9_+#.\\/-]{1,80}|[\\p{Script=Han}]{1,16})`,
+          'giu',
+        ),
+      },
+    ];
+    for (const pattern of patterns) {
+      for (const match of source.matchAll(pattern.regex)) {
+        const extracted = cleanExtractedValue(trimAtFollowingLabel(match[1] ?? '', label));
+        if (!extracted || looksLikeValuePlaceholder(extracted)) continue;
+        candidates.push({
+          index: match.index ?? 0,
+          priority: pattern.priority + alias.length / 1_000,
+          value: extracted,
+        });
+      }
     }
   }
   candidates.sort((left, right) => right.priority - left.priority || right.index - left.index);
   return candidates[0]?.value;
+}
+
+function collectMarkdownTableValueCandidates(
+  source: string,
+  label: string,
+  candidates: Array<{ index: number; priority: number; value: string }>,
+): void {
+  let offset = 0;
+  for (const line of source.split(/\r?\n/gu)) {
+    const lineIndex = offset;
+    offset += line.length + 1;
+    const cells = markdownTableCells(line);
+    if (cells.length < 2 || isMarkdownTableDivider(cells)) continue;
+    const labelCell = cleanMarkdownTableCell(cells[0]!);
+    if (!valueLabelAliases(label).some((alias) => tableLabelMatches(labelCell, alias))) continue;
+    const extracted = cleanExtractedValue(cleanMarkdownTableCell(cells[1]!));
+    if (!extracted || looksLikeValuePlaceholder(extracted)) continue;
+    candidates.push({ index: lineIndex, priority: 4, value: extracted });
+  }
+}
+
+function markdownTableCells(line: string): string[] {
+  const trimmed = line.trim();
+  if (!trimmed.includes('|')) return [];
+  const bounded = trimmed.startsWith('|') ? trimmed.slice(1) : trimmed;
+  const withoutEnd = bounded.endsWith('|') ? bounded.slice(0, -1) : bounded;
+  return withoutEnd.split('|');
+}
+
+function cleanMarkdownTableCell(value: string): string {
+  return value.trim()
+    .replace(/^(?:\*\*|__|~~|`)+/gu, '')
+    .replace(/(?:\*\*|__|~~|`)+$/gu, '')
+    .trim();
+}
+
+function isMarkdownTableDivider(cells: readonly string[]): boolean {
+  return cells.every((cell) => /^\s*:?-{3,}:?\s*$/u.test(cell));
+}
+
+function tableLabelMatches(cell: string, alias: string): boolean {
+  const normalizedCell = comparableLabel(cell);
+  const normalizedAlias = comparableLabel(alias);
+  if (normalizedCell === normalizedAlias) return true;
+  return /^[a-z]/iu.test(alias)
+    ? new RegExp(`\\b${escapeRegExp(normalizedAlias)}\\b`, 'iu').test(normalizedCell)
+    : normalizedCell.includes(normalizedAlias);
 }
 
 function extractSessionSummaryFidelityValue(
@@ -275,7 +367,9 @@ function extractSessionSummaryFidelityValue(
   label: string,
 ): string | undefined {
   const authoritative = readSessionSummaryFidelityFields(value)
-    .filter((field) => comparableLabel(field.label) === comparableLabel(label))
+    .filter((field) => valueLabelAliases(label).some(
+      (alias) => comparableLabel(field.label) === comparableLabel(alias),
+    ))
     .at(-1)?.value;
   const authoritativeValue = cleanExtractedValue(authoritative);
   return authoritativeValue && !looksLikeValuePlaceholder(authoritativeValue)
@@ -288,9 +382,35 @@ function comparableLabel(value: string): string {
 }
 
 function requestMentionsValueLabel(request: string, label: string): boolean {
-  return /^[a-z]/iu.test(label)
-    ? new RegExp(`\\b${escapeRegExp(label)}\\b`, 'iu').test(request)
-    : request.includes(label);
+  return valueLabelAliases(label).some((alias) => requestMentionsValueAlias(request, alias));
+}
+
+function requestMentionsValueAlias(request: string, alias: string): boolean {
+  const regex = new RegExp(
+    /^[a-z]/iu.test(alias)
+      ? `\\b${escapeRegExp(alias)}\\b`
+      : escapeRegExp(alias),
+    'giu',
+  );
+  return [...request.matchAll(regex)].some((match) => !isFormattingOnlyValueLabelUse(
+    request,
+    match.index ?? 0,
+    alias,
+  ));
+}
+
+function isFormattingOnlyValueLabelUse(request: string, index: number, alias: string): boolean {
+  const before = request.slice(Math.max(0, index - 12), index);
+  const after = request.slice(index + alias.length, index + alias.length + 12);
+  if (alias === '数字' || alias === '数值') {
+    return /(?:用|以|按)(?:阿拉伯)?$/u.test(before)
+      || /^(?:形式|格式)(?:回答|输出|表示)?/u.test(after);
+  }
+  if (alias === 'number') {
+    return /(?:\bas\s+(?:a\s+)?|\bin\s+)$/iu.test(before)
+      || /^s?\s+(?:format|form)\b/iu.test(after);
+  }
+  return false;
 }
 
 function normalizeComparableValue(value: string): string {
@@ -308,6 +428,7 @@ function cleanExtractedValue(value: string | undefined): string | undefined {
 function trimAtFollowingLabel(value: string, currentLabel: string): string {
   const otherLabels = CONTINUITY_VALUE_LABELS
     .filter((label) => label !== currentLabel)
+    .flatMap(valueLabelAliases)
     .map(escapeRegExp)
     .join('|');
   const boundary = value.search(new RegExp(
@@ -324,13 +445,23 @@ function looksLikeValuePlaceholder(value: string): boolean {
 }
 
 function replyNegatesValueTarget(reply: string, target: ContinuityValueTarget): boolean {
-  const label = escapeRegExp(target.label);
+  const label = valueLabelAliases(target.label).map(escapeRegExp).join('|');
   const value = escapeRegExp(target.value);
   return [
-    new RegExp(`${label}\\s*(?:是|为|=|:|：)?\\s*(?:不是|并非|不为|≠|not\\s+)\\s*[“"'\`]?${value}`, 'iu'),
+    new RegExp(`(?:${label})\\s*(?:是|为|=|:|：)?\\s*(?:不是|并非|不为|≠|not\\s+)\\s*[“"'\`]?${value}`, 'iu'),
     new RegExp(`(?:不是|并非|不为|≠|not\\s+)\\s*[“"'\`]?${value}`, 'iu'),
     new RegExp(`${value}\\s*(?:不对|错误|并不正确|is\\s+wrong|is\\s+incorrect)`, 'iu'),
   ].some((pattern) => pattern.test(reply));
+}
+
+function valueLabelAliases(label: string): readonly string[] {
+  return CONTINUITY_VALUE_LABEL_DEFINITIONS.find(
+    (definition) => definition.label === label,
+  )?.aliases ?? [label];
+}
+
+function isExactLabeledScalar(value: string): boolean {
+  return /^(?:[-+]?(?:\d+(?:\.\d+)?|\.\d+)|true|false|yes|no|是|否|完成|未完成)$/iu.test(value);
 }
 
 function escapeRegExp(value: string): string {

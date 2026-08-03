@@ -1,3 +1,5 @@
+// Normalize decoded DECIDE output into clarification, assessment, and TaskBook contracts.
+
 import type {
   ClarificationQuestion, ClarificationRequest, NeedAssessment,
   PlanStep, TaskBook, TaskComplexity,
@@ -206,6 +208,7 @@ export function compactLightweightPlan(
     description: goal.slice(0, 1_200),
     tools: tools.length > 0 ? tools : undefined,
     toolProposal: plan.length === 1 ? plan[0]?.toolProposal : undefined,
+    execution: plan.length === 1 ? plan[0]?.execution : undefined,
     requiresApproval: plan.some((step) => step.requiresApproval) ? true : undefined,
     acceptanceCriteria: successCriteria.length > 0 ? successCriteria : undefined,
     expectedOutput,

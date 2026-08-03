@@ -2,7 +2,7 @@
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
-最后更新：2026-08-02 13:10:15
+最后更新：2026-08-03 17:35:20
 
 ## 开发
 
@@ -52,6 +52,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\refresh-deskto
 | --- | --- |
 | `src/main/index.ts` | Electron 主进程启动和退出。 |
 | `src/main/local-app-api-server.ts` | Local App API、SSE、工作区和终端。 |
+| `src/main/desktop-acceptance-snapshot.ts` | 只读桌面验收快照；采样进程/Electron 内存、句柄、活动请求、Runner、活动源和监听器，用于验证资源是否回落。 |
 | `src/main/attachment-cache.ts`、`attachments.ts` | 受管附件缓存、稳定索引、安全清理、按需解析和 run 所有权分类。 |
 | `src/main/data-root-migration.ts`、`data-root-metadata.ts` | 外部 locator、启动期 staging 复制、SHA-256 清单校验、活动元数据路径重绑定、原子切换、中断恢复和回滚。 |
 | `src/main/development-environment-definitions.ts`、`development-environment-files.ts`、`development-environments.ts` | LS 管理的运行时/工具链定义、版本检测、导入移除事务、Electron Node shim 和终端派生 PATH。 |
@@ -87,8 +88,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\refresh-deskto
 pnpm.cmd --filter @littlesheep/app typecheck
 pnpm.cmd --filter @littlesheep/app build
 pnpm.cmd run verify:app-recovery
+pnpm.cmd run verify:electron-deepseek-sustained-load
 ```
 
-涉及公共事件、持久化、权限或恢复时，还必须运行根目录的全量测试、typecheck 和 build。用户数据位置由 branding、外部 locator 或 `LITTLESHEEP_DATA_DIR` 解析；应用只在用户明确登记迁移后于下次启动执行，测试必须使用隔离临时目录。
+涉及公共事件、持久化、权限或恢复时，还必须运行根目录的全量测试、typecheck 和 build。`verify:electron-deepseek-sustained-load` 使用隔离数据根和已配置的真实 DeepSeek 凭证验证 120 秒任务、暂停、恢复不重放、最终回答连续性和资源回落；它不是数小时稳定性证明。用户数据位置由 branding、外部 locator 或 `LITTLESHEEP_DATA_DIR` 解析；应用只在用户明确登记迁移后于下次启动执行，测试必须使用隔离临时目录。
 
 常见修改位置：启动/退出看 `src/main/`，纯跨进程规则看 `src/shared/`，UI 与交互看 `src/renderer/`，最小桥接看 `src/preload/`。各目录的 README 是更细一层的所有权入口。

@@ -7,8 +7,15 @@ import {
 import { DEFAULT_CONFIG } from '@littlesheep/config';
 import { DEFAULT_BRANDING } from '@littlesheep/branding';
 import { parallelFilePolicy } from '@littlesheep/tools';
-import { textMessage } from '@littlesheep/types';
-import type { AgentTool, TaskBook, ToolStreamEvent } from '@littlesheep/types';
+import { RUNTIME_EVENT_VERSION, textMessage } from '@littlesheep/types';
+import type {
+  AgentTool,
+  RuntimeEventDecision,
+  RuntimeEventEnvelope,
+  RuntimeEventQueueLike,
+  TaskBook,
+  ToolStreamEvent,
+} from '@littlesheep/types';
 import { z } from 'zod';
 
 const deps = { model: 'test', config: DEFAULT_CONFIG, branding: DEFAULT_BRANDING };
@@ -271,6 +278,213 @@ describe('executeStage', () => {
     expect(ctx.taskExecution?.steps.map((step) => step.status)).toEqual(['done', 'done']);
     expect(ctx.sideEffects).toHaveLength(1);
     expect(ctx.sideEffects?.[0]).toMatchObject({ toolName: 'write', status: 'succeeded' });
+  });
+
+  it('passes the configured invocation timeout to explicit tools', async () => {
+    let observedAborted = false;
+    const slow = makeTool('read', { ok: true, output: 'unused' }, {
+      inputSchema: z.object({ file_path: z.string() }),
+    });
+    slow.execution = parallelFilePolicy('file_path', 'read');
+    slow.execute = async (_input, context) => new Promise((resolve) => {
+      context.signal?.addEventListener('abort', () => {
+        observedAborted = true;
+        resolve({ callId: '', ok: false, error: 'stopped' });
+      }, { once: true });
+    });
+    const llm = createMockLlm(textResponse('读取超时。'));
+    const stage = createExecuteStage({
+      ...deps,
+      config: {
+        ...DEFAULT_CONFIG,
+        tools: { ...DEFAULT_CONFIG.tools, invocationTimeoutMs: 1_000 },
+      },
+      llm,
+    });
+    const ctx = makeCtx({
+      tools: [slow],
+      toolSources: { read: 'builtin' },
+      inbound: textMessage('user', '请使用 read 工具读取 slow.txt'),
+      classification: explicitGlobClassification(),
+      taskBook: {
+        ...singleGlobTaskBook({ pattern: '*' }),
+        steps: [{
+          id: 'step-1',
+          tools: ['read'],
+          toolProposal: { name: 'read', input: { file_path: 'slow.txt' } },
+          execution: {
+            mode: 'serial',
+            resources: [{ key: 'workspace:slow.txt', mode: 'read' }],
+            sideEffect: 'read',
+          },
+        }],
+      },
+    });
+
+    await stage(ctx);
+
+    expect(observedAborted).toBe(true);
+    expect(ctx.toolInvocations?.[0]).toMatchObject({ status: 'timed_out' });
+  });
+
+  it('directly executes an explicit builtin exec proposal only with full permission', async () => {
+    const exec = makeTool('exec', { ok: true, output: 'sustained-anchor' }, {
+      requiresApproval: true,
+      inputSchema: z.object({
+        command: z.string(),
+        cwd: z.string().optional(),
+        timeout_ms: z.number().int().positive().optional().default(120_000),
+      }),
+    });
+    const llm = createMockLlm(textResponse('命令已完成并返回 sustained-anchor。'));
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [exec],
+      toolSources: { exec: 'builtin' },
+      inbound: textMessage('user', '请只使用 exec 工具执行 echo sustained-anchor'),
+      classification: explicitGlobClassification(),
+      toolContext: { permissionMode: 'full', containerRoot: process.cwd() },
+      taskBook: {
+        ...singleGlobTaskBook({ pattern: '*' }),
+        steps: [{
+          id: 'step-1',
+          tools: ['exec'],
+          toolProposal: { name: 'exec', input: { command: 'echo sustained-anchor', timeout_ms: 120_000 } },
+          execution: { mode: 'serial', resources: [], sideEffect: 'external' },
+        }],
+      },
+    });
+
+    await stage(ctx);
+
+    expect(exec.calls).toHaveLength(1);
+    expect(llm.chat).toHaveBeenCalledTimes(1);
+    expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual(['execute_final_reply']);
+    expect(ctx.sideEffects?.[0]).toMatchObject({ toolName: 'exec', status: 'succeeded', effectKind: 'external' });
+  });
+
+  it('lets Runtime derive a missing side-effect declaration for explicit builtin exec in full mode', async () => {
+    const exec = makeTool('exec', { ok: true, output: 'runtime-derived-exec' }, {
+      requiresApproval: true,
+      inputSchema: z.object({
+        command: z.string(),
+        cwd: z.string().optional(),
+        timeout_ms: z.number().int().positive().optional().default(120_000),
+      }),
+    });
+    const llm = createMockLlm(textResponse('命令完成。'));
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [exec],
+      toolSources: { exec: 'builtin' },
+      inbound: textMessage('user', '请只使用 exec 工具执行 echo runtime-derived-exec'),
+      classification: explicitGlobClassification(),
+      toolContext: { permissionMode: 'full', containerRoot: process.cwd() },
+      taskBook: {
+        ...singleGlobTaskBook({ pattern: '*' }),
+        steps: [{
+          id: 'step-1',
+          tools: ['exec'],
+          toolProposal: { name: 'exec', input: { command: 'echo runtime-derived-exec' } },
+        }],
+      },
+    });
+
+    await stage(ctx);
+
+    expect(exec.calls).toHaveLength(1);
+    expect(llm.chat).toHaveBeenCalledTimes(1);
+    expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual(['execute_final_reply']);
+    expect(ctx.sideEffects?.[0]).toMatchObject({ toolName: 'exec', status: 'succeeded', effectKind: 'external' });
+  });
+
+  it('applies a pause after the completed tool wave without requesting a final reply', async () => {
+    let pauseReady = false;
+    const exec = makeTool('exec', { ok: true, output: 'sustained-anchor' }, {
+      requiresApproval: true,
+      inputSchema: z.object({
+        command: z.string(),
+        cwd: z.string().optional(),
+        timeout_ms: z.number().int().positive().optional().default(120_000),
+      }),
+    });
+    exec.execute = vi.fn(async () => {
+      pauseReady = true;
+      return { callId: '', ok: true, output: 'sustained-anchor', durationMs: 1 };
+    });
+    const llm = createMockLlm(textResponse('must not be requested'));
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [exec],
+      toolSources: { exec: 'builtin' },
+      inbound: textMessage('user', '请只使用 exec 工具执行 echo sustained-anchor'),
+      classification: explicitGlobClassification(),
+      toolContext: { permissionMode: 'full', containerRoot: process.cwd() },
+      taskBook: {
+        ...singleGlobTaskBook({ pattern: '*' }),
+        steps: [{
+          id: 'step-1',
+          tools: ['exec'],
+          toolProposal: { name: 'exec', input: { command: 'echo sustained-anchor', timeout_ms: 120_000 } },
+          execution: { mode: 'serial', resources: [], sideEffect: 'external' },
+        }],
+      },
+    });
+    const pauseEvent: RuntimeEventEnvelope = {
+      version: RUNTIME_EVENT_VERSION,
+      id: 'pause-after-tool',
+      runId: ctx.runId,
+      sessionId: ctx.sessionId,
+      sequence: 1,
+      type: 'pause_requested',
+      source: 'app',
+      status: 'queued',
+      receivedAt: '2026-08-03T10:00:00.000Z',
+      payload: { reason: 'pause after the active tool finishes' },
+    };
+    const settleDecisionBatch = vi.fn((_token: string, decisions: readonly RuntimeEventDecision[]) => {
+      pauseReady = false;
+      return [{
+        ...pauseEvent,
+        status: decisions[0]?.status ?? 'ignored',
+        decisionReason: decisions[0]?.reason,
+      }];
+    });
+    ctx.runtimeNow = () => new Date('2026-08-03T10:00:01.000Z');
+    ctx.runtimeEventQueue = {
+      openDecisionBatchForTypes: vi.fn((types: readonly RuntimeEventEnvelope['type'][]) => (
+        pauseReady && types.includes('pause_requested')
+          ? {
+              token: 'pause-batch',
+              openedAt: '2026-08-03T10:00:01.000Z',
+              cursor: 0,
+              events: [pauseEvent],
+            }
+          : undefined
+      )),
+      settleDecisionBatch,
+      releaseDecisionBatch: vi.fn(() => true),
+    } as unknown as RuntimeEventQueueLike;
+    ctx.persistRuntimeCheckpoint = vi.fn(async () => 'effect-checkpoint');
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'exit', ok: false, error: 'run paused at a safe boundary' });
+    expect(exec.execute).toHaveBeenCalledTimes(1);
+    expect(ctx.taskExecution).toMatchObject({
+      status: 'done',
+      steps: [expect.objectContaining({ stepId: 'step-1', status: 'done' })],
+    });
+    expect(ctx.runtimeControl).toMatchObject({
+      state: 'paused',
+      reason: 'pause after the active tool finishes',
+      eventIds: ['pause-after-tool'],
+    });
+    expect(settleDecisionBatch).toHaveBeenCalledTimes(1);
+    expect(ctx.persistRuntimeCheckpoint).toHaveBeenCalledTimes(2);
+    expect(llm.chat).not.toHaveBeenCalled();
+    expect(ctx.modelRequests).toBeUndefined();
+    expect(ctx.reply).toBeUndefined();
   });
 
   it('allows only one final text round after an authoritative tool-boundary failure', async () => {

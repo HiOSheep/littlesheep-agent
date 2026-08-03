@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-08-03 13:45:32
+最后更新：2026-08-03 17:35:20
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
@@ -41,7 +41,7 @@
 | `package.json` | workspace 根脚本、测试入口、类型检查、构建和仓库卫生检查。 |
 | `pnpm-workspace.yaml` | 声明 `packages/*` 与 `packages/channels/*` 两组 workspace。 |
 | `pnpm-lock.yaml` | 依赖锁定文件；只有依赖变更时由 pnpm 更新。 |
-| `tsconfig.base.json`、`tsconfig.workspace.json`、`vitest.config.ts` | 全仓 TypeScript 基线、自动生成的 project references solution 与 Vitest 基线。`tsconfig.workspace.json` 由维护脚本生成，不手工编辑。Vitest 保留单项 30 秒超时，并把文件并发限制为 4；Windows 上 8 workers 会让 SQLite、shadow Git 和 Memory 集成测试发生资源争用并出现假超时，4 workers 已由完整测试验证。 |
+| `tsconfig.base.json`、`tsconfig.workspace.json`、`vitest.config.ts` | 全仓 TypeScript 基线、自动生成的 project references solution 与 Vitest 基线。`tsconfig.workspace.json` 由维护脚本生成，不手工编辑。Vitest 保留单项 30 秒超时，并把文件并发限制为 3；当前 8 GiB Windows 验收机在 4 workers 下仍会让 SQLite、shadow Git、Memory 和 Electron 相关回归发生资源争用，3 workers 已由 258 个测试文件的完整测试验证。 |
 | `branding.config.json`、`littlesheep.config.json` | 仓库级品牌/开发配置样例，不放用户密钥。 |
 | `README.md` | 面向开发者的入口说明和质量门。 |
 | `build-app.bat`、`start-littlesheep.bat` | Windows 兼容入口，实际逻辑委托给 `scripts/`。 |
@@ -62,10 +62,10 @@
 | `packages/types/` | Agent、消息、会话、工具、记忆、澄清请求，以及 Mode、运行决议、Context、附件、运行事件、TaskBookPatch、检查点、模型请求和执行证据等内部 v1 契约；本地精确、Provider 实测与不可展示安全估算的 Token 账本独立位于 `src/token-ledger.ts`。 |
 | `packages/classifier/` | `respond / execute / clarify` 语义活动路由，含规则快速路径和模型兜底；旧 `chat / problem / unclear` 只由公共契约做兼容映射。 |
 | `packages/prompt/` | 系统提示词、行为 profile、工作区信息和记忆树根索引的装配；支持完整执行、紧凑 `respond`、最小与禁用四种投影模式。 |
-| `packages/harness/` | 硬控制流状态机、TaskBook、各 stage、hooks、局部重规划和验证；`src/stages/decide/request.ts`、`model-call.ts`、`adoption.ts` 分别拥有决策请求、模型调用和采用，`explicit-tool-instruction.ts` 拥有完整显式工具提议契约，`compact-explicit-tool-decision.ts` 独立拥有自包含内置单只读工具的紧凑准入、输出和 TaskBook 展开，不能重新并回大 DECIDE 文件；`execute/`、`verify/` 拥有工具执行与结构验收；`checkpoint-resume.ts` 负责依据已保存步骤证据恢复，`response-continuity*.ts` 负责从最终用户可见回答反查真实因果 Context 来源并判定记忆连续，`session-summary-fidelity-text.ts` 只解析 Runtime 精确字段封套；`runtime-control-boundary.ts` 和 `taskbook-patch.ts` 拥有运行中事件的安全消费与确定性局部修订。 |
+| `packages/harness/` | 硬控制流状态机、TaskBook、各 stage、hooks、局部重规划和验证；`src/stages/decide/request.ts`、`model-call.ts`、`adoption.ts` 分别拥有决策请求、模型调用和采用，`explicit-tool-instruction.ts` 拥有完整显式工具提议契约，`compact-explicit-tool-decision.ts` 独立拥有自包含内置单只读工具的紧凑准入、输出和 TaskBook 展开，不能重新并回大 DECIDE 文件；`execute/`、`verify/` 拥有工具执行与结构验收。完全访问模式可直接采用来源明确、参数完整、非 Checkpoint 恢复态的单次内置 `exec`，其余执行仍回退普通工具循环；每个 TaskBook wave 先持久化步骤结果，再消费暂停或中断。`checkpoint-resume.ts` 负责依据已保存步骤证据恢复，`response-continuity*.ts` 负责从最终用户可见回答反查真实因果 Context 来源并判定记忆连续，`session-summary-fidelity-text.ts` 只解析 Runtime 精确字段封套；`runtime-control-boundary.ts` 和 `taskbook-patch.ts` 拥有运行中事件的安全消费与确定性局部修订。 |
 | `packages/runner/` | 运行时装配、单次 run、流式事件、执行日志、活动 run 事件注册与有界状态快照、暂停/继续/中断、持久检查点、显式续跑和基础设施依赖注入；`session-continuity.ts` 负责版本化会话压缩调用，`session-summary-fidelity.ts` 从保留的用户消息和旧封套重建有界精确字段。 |
 | `packages/llm/` | OpenAI-compatible 客户端、供应商请求、流式输出、重试和 usage 类型。 |
-| `packages/config/` | 配置 schema、默认值、供应商预置、模型选择和用户配置加载。 |
+| `packages/config/` | 配置 schema、默认值、供应商预置、模型选择和用户配置加载；`tools.invocationTimeoutMs` 统一约束宿主工具调用超时，默认 120 秒，可配置 1 秒到 30 分钟。 |
 | `packages/context/` | Context 候选排序、模型窗口预算、可注入精确 token 计数、预算淘汰、压缩阈值信号以及脱敏 `ContextSnapshot` / `ModelRequestSnapshot`。`src/engine.ts` 是兼容 facade，内部实现位于 `src/context-engine/`；模型专用 tokenizer 资源准备与最终请求 framing 位于 `src/tokenizers/`。本包不负责记忆存储、会话存储或 Provider 调用。 |
 | `packages/branding/` | 品牌配置和用户数据目录布局。 |
 
@@ -86,7 +86,7 @@
 
 | 包 | 归属和职责 |
 | --- | --- |
-| `packages/tools/` | 内置工具、注册表和统一 Tool Execution Service；统一拥有工具来源、输入 schema、权限与单次批准、超时/中断、调用级资源调度、结果清洗、流式事件和有界调用记录。容器边界与核心源码只读仍由宿主权限判定和工具动作前二次复核共同保护；Harness 只保留 TaskBook 编排及副作用检查点生命周期。 |
+| `packages/tools/` | 内置工具、注册表和统一 Tool Execution Service；统一拥有工具来源、输入 schema、权限与单次批准、超时/中断、调用级资源调度、结果清洗、流式事件和有界调用记录。超时或中断后只等待 1.5 秒有界清理；内置 `exec` 对 stdout/stderr 分别保留最多 64 KiB 首尾内容，记录原始/保留长度、截断和进程关闭证据，并在 Windows 关闭进程树。容器边界与核心源码只读仍由宿主权限判定和工具动作前二次复核共同保护；Harness 只保留 TaskBook 编排及副作用检查点生命周期。 |
 | `packages/plugins/` | 插件 API v1、插件发现、信任闸门、生命周期宿主，以及渠道、工具和 owner-scoped Skill 贡献。它是扩展运行时，不是 Agent 任务核心。 |
 | `packages/skills/` | 技能加载、使用和自主创建；语义去重、合并、收益评估、归档/删除与回滚治理尚待后续控制面实现。 |
 | `packages/mcp/` | MCP 客户端预留包；当前仍是骨架，不应在状态文档中写成已完成。 |
@@ -117,7 +117,7 @@
 | 记忆树、资源注册与项目投影 | `packages/memory-tree/` | 稳定 facade：`src/memory-service.ts`、`src/memory-repository.ts`；对话原始来源：`src/conversation-source-store.ts`；run 反馈：`src/memory-feedback.ts`、`src/memory-repository/v3-feedback-manager.ts`；run working set：`src/memory-tree-working-set.ts`；多轮任务语义、当前任务相关度与 prime 选择：`src/task-query.ts`、`src/task-relevance.ts`、`src/memory-prime-relevance.ts`；D1/深搜候选：`src/memory-repository/v3-retrieval.ts`、`v3-retrieval-materializer.ts`；Catalog FTS/向量：`src/v3/catalog-fts.ts`、`catalog-embedding.ts`；路由/关系相关性：`src/v3/priority.ts`、`src/v3/catalog-relevance.ts`；版本后端：`src/memory-repository/v2-backend.ts`、`v3-backend.ts`、`factory.ts`；安全迁移：`repository-locator.ts`、`v3-migration*.ts`；v3 投影变更与 Atom：`src/v3/raw-record-store.ts`、`raw-record-file.ts`、`raw-record-commit-store.ts`（兼容内部命名，语义为 projection mutation records）、`atom-store.ts`、`catalog.ts`、`graph-store.ts`、`storage-coordinator.ts` | 双后端契约：`src/memory-repository.contract.test.ts`；来源与反馈：`src/conversation-source-store.test.ts`、`src/memory-feedback.test.ts`；任务语义、相关性与 D1：`src/task-query.test.ts`、`src/task-relevance.test.ts`、`src/memory-prime-relevance.test.ts`、`src/memory-tree.test.ts`、`src/memory-service-v3.test.ts`、`src/v3/catalog.test.ts`、`src/v3/contracts-priority.test.ts`、`src/memory-repository/v3-backend.test.ts`；迁移：`src/memory-repository/v3-migration.test.ts`；v3：`src/memory-repository/v3-*.test.ts`、`src/v3/*.test.ts`；Runner：`packages/runner/src/memory-v3.integration.test.ts`；VERIFY 采用过滤：`packages/harness/src/stages/verify/memory-evidence.ts` |
 | 旧文件记忆兼容读取与安全写入基元 | `packages/memory-core/` | `src/store.ts`、`src/search.ts`、`src/write-memory.ts` | 对应同名测试；旧 archive/vector 写入入口已退役 |
 | 会话、回复精确去重和长会话摘要 | `packages/session/` | `src/manager.ts`、`src/reply-fingerprint-store.ts`、`src/compaction.ts`、`src/compaction-store.ts` | 对应同名测试；原始 JSONL 不删除、不改写。摘要生成与精确字段保真还需联查 `packages/runner/src/session-continuity.ts`、`session-summary-fidelity.ts`，摘要进入 Memory v3 的边界联查 `packages/memory-tree/src/task-query.ts` |
-| 工具注册、统一执行、审批和内置工具 | `packages/tools/` | `src/registry.ts`、`src/tool-execution-service.ts`、`src/tool-execution-{scheduler,control,records,result}.ts`、`src/builtin/` | `src/**/*.test.ts` |
+| 工具注册、统一执行、审批、超时清理和内置工具 | `packages/tools/` | `src/registry.ts`、`src/tool-execution-service.ts`、`src/tool-execution-{scheduler,control,records,result}.ts`、`src/builtin/exec.ts`、其余 `src/builtin/` | `src/tool-execution-service.test.ts`、`src/builtin/exec.test.ts`、其余 `src/**/*.test.ts` |
 | 插件发现、信任和生命周期 | `packages/plugins/` | `src/host.ts`、`src/manifest.ts` | `src/**/*.test.ts` |
 | 外部渠道协议 | `packages/channels/*` | 各包 `src/plugin.ts` | 各包 `src/plugin.test.ts`、`test/e2e-webhook.test.ts` |
 | Electron 启动、Local App API、验收采样和用户数据 adapter | `packages/app/src/main/` | `index.ts`、`local-app-api-server.ts`、`desktop-acceptance-snapshot.ts` | `src/main/*.test.ts`、`scripts/verify-electron-*.mjs` |
@@ -199,7 +199,7 @@ App / CLI / Channel adapters
 7. 跨包只从公开入口导入；出现反向依赖时先定义端口，不通过深层 import 或循环依赖解决。
 8. 新建 package 需要同时满足独立职责、稳定接口、独立测试和真实复用；否则先在现有 package 内按 feature 拆分。
 
-Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约过滤、预算、淘汰、计数和双快照；provider/model tokenizer 能力矩阵强制模型声明、请求格式与运行时 `counterId` 一致后才能生成精确账本。DeepSeek V4 官方 tokenizer 与最终请求 framing 位于 `packages/context/src/tokenizers/`；精确性按请求形态记录，不能把 `within_tolerance` 写成零差值。Token 账本公共契约独立位于 `packages/types/src/token-ledger.ts`。Memory Repository 与 Memory Service 已分别把持久化和运行协调拆入同名领域目录；DECIDE、EXECUTE、VERIFY 也已把需求校准、模型调用、工具循环、步骤调度和验证恢复从 stage facade 中分离。自包含内置单只读工具的准入与紧凑协议必须保留在 `compact-explicit-tool-decision.ts`，完整显式工具 schema 契约保留在 `explicit-tool-instruction.ts`；两者都只产出提议，执行权仍属于统一 Tool Execution Service。TaskBook 与步骤执行公共契约位于 `packages/types/src/task.ts`，状态机与 RunContext 位于 `packages/types/src/agent.ts`。版本化 LLM Call Contract 位于 `packages/harness/src/llm-call-contracts/`；EVOLVE/CAPTURE 的提交判定位于 `stages/memory-intent-gate.ts`。运行时事件队列、活动 run ingress、安全边界、TaskBookPatch、TaskBook 步骤级有界并行、持久检查点、Runner 显式续跑、Renderer 事件入口、应用启动恢复、活动任务 SSE、设置页后台控制、托盘和关闭策略已有独立模块；下一步是真实 Electron 后台/跨重启长任务和 Mode Registry。不能因为已有 package 或接口就宣称真实场景已经完成，具体评估和演进顺序见 [架构决策报告](../decision/architecture-decision-report.md)。
+Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约过滤、预算、淘汰、计数和双快照；provider/model tokenizer 能力矩阵强制模型声明、请求格式与运行时 `counterId` 一致后才能生成精确账本。DeepSeek V4 官方 tokenizer 与最终请求 framing 位于 `packages/context/src/tokenizers/`；精确性按请求形态记录，不能把 `within_tolerance` 写成零差值。Token 账本公共契约独立位于 `packages/types/src/token-ledger.ts`。Memory Repository 与 Memory Service 已分别把持久化和运行协调拆入同名领域目录；DECIDE、EXECUTE、VERIFY 也已把需求校准、模型调用、工具循环、步骤调度和验证恢复从 stage facade 中分离。自包含内置单只读工具的准入与紧凑协议必须保留在 `compact-explicit-tool-decision.ts`，完整显式工具 schema 契约保留在 `explicit-tool-instruction.ts`；两者都只产出提议，执行权仍属于统一 Tool Execution Service。TaskBook 与步骤执行公共契约位于 `packages/types/src/task.ts`，状态机与 RunContext 位于 `packages/types/src/agent.ts`。版本化 LLM Call Contract 位于 `packages/harness/src/llm-call-contracts/`；EVOLVE/CAPTURE 的提交判定位于 `stages/memory-intent-gate.ts`。运行时事件队列、活动 run ingress、安全边界、TaskBookPatch、统一工具超时与清理、TaskBook 步骤级有界并行、持久检查点、Runner 显式续跑、Renderer 事件入口、应用启动恢复、活动任务 SSE、设置页后台控制、托盘和关闭策略已有独立模块。真实 Electron + DeepSeek 已完成基础跨重启、短时并行、一次有界摘要压缩和 120 秒持续任务门；下一步是普通工具续轮 tokenizer、多轮多次压缩、数小时持续负载、真实网络故障、外部系统副作用和 Mode Registry。不能因为已有 package 或接口就宣称真实场景已经完成，具体评估和演进顺序见 [架构决策报告](../decision/architecture-decision-report.md)。
 
 ## 测试与脚本
 
@@ -228,6 +228,7 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 - `scripts/lib/memory-v3-runtime-soak.mjs`：soak 的公共 Repository 路径辅助验证，负责确定性本地 Embedding、候选排序翻转、routing feedback 有界性和重启恢复；不得向正式应用数据根写入合成记忆。
 - `scripts/verify-memory-v3-provider.mjs`、`scripts/lib/memory-v3-provider-acceptance.mjs`：真实 Provider 连续性门及其脱敏预检/隔离运行辅助；必须在任何失败路径清理临时数据根，且不得把凭证或完整 Provider 错误写入报告。
 - `scripts/verify-electron-deepseek-compaction-continuity.mjs`：真实 Electron + DeepSeek 的会话摘要回答连续性门；校验原始旧消息不进入重启后的回答请求、版本化摘要成为唯一命中来源、最终回答逐项命中历史值、漏答/答错/失忆/摘要未介入四类负例失败关闭，以及临时数据根和资源有界回收。
+- `scripts/verify-electron-deepseek-sustained-load.mjs`：真实 Electron + DeepSeek 的 120 秒持续任务门；验证单次副作用只执行一次、工具完成后安全暂停、Checkpoint 恢复不重放、最终回答逐项给出 `executionCount / ticks / completed` 并判定为 `supported`，同时采样进程/Electron 内存、句柄、请求、Runner、活动源和监听器回落。它只证明分钟级持续任务，不替代数小时负载。
 - `scripts/verify-memory-v3-migration-readiness.mjs`：用指定真实 V2 数据的隔离副本执行迁移就绪验收；必须在复制前后复核源 manifest/index 哈希，并区分业务 atom 与内部 scope root，不得在源数据根登记迁移。
 - `scripts/build-app.ps1`：构建 Electron 应用并刷新快捷方式。
 - `scripts/prepare-littlesheep-runtime.mjs`：按当前 Electron 版本在本机生成被命名为 `LittleSheep.exe` 的运行时副本；该副本属于安装/构建产物，不进入 Git。
@@ -272,5 +273,5 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 8. 插件变更必须同时验证 manifest 校验、未启用插件不加载、失败隔离、Runner 重建迁移和停用清理；本地代码默认不信任。
 9. 日常修改先运行 `verify:changed`；核心协议和 Agent 流程运行 `verify:core`；阶段完成运行 `verify:full`。完整门内部顺序仍为 `check:repo`、全量测试、增量 typecheck、Electron build 和恢复源检查。失败时记录真实原因，不用快速门替代阶段完成证据。
 10. 当前运行时的 LS 核心源码是只读安全边界：内置 `write`、`edit`、`exec` 不得修改自动发现的核心源码根。未来开放自我修改前，必须先建立隔离工作树、检查点、完整验证、用户审查和自动回滚，不能删除现有闸门后直接开放。
-10. workspace package 依赖变化后运行 `sync:tsconfig`，不要手改生成的 references。`typecheck` 会产生被忽略的声明和 `.tsbuildinfo`，用于保证跨包契约正确并加速下一轮。
-11. 说明文档默认使用中文；代码标识、协议字段、命令、路径和供应商产品名保留英文。确有维护价值的英文内容只能作为补充版本，不能取代中文正式文档。
+11. workspace package 依赖变化后运行 `sync:tsconfig`，不要手改生成的 references。`typecheck` 会产生被忽略的声明和 `.tsbuildinfo`，用于保证跨包契约正确并加速下一轮。
+12. 说明文档默认使用中文；代码标识、协议字段、命令、路径和供应商产品名保留英文。确有维护价值的英文内容只能作为补充版本，不能取代中文正式文档。

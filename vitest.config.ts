@@ -80,9 +80,10 @@ export default defineConfig({
     environment: 'node',
     testTimeout: 30_000,
     // SQLite, shadow Git and Memory v3 integration suites contend heavily on
-    // Windows above four workers and can produce false 30 s timeouts. Four is
-    // the verified local capacity while preserving useful file parallelism.
-    maxWorkers: 4,
+    // an 8 GiB Windows host at four workers and can starve otherwise small
+    // Runner cases past the unchanged 30 s test ceiling. Three keeps the full
+    // gate resource-bounded while preserving useful file parallelism.
+    maxWorkers: 3,
     minWorkers: 1,
     server: {
       deps: {

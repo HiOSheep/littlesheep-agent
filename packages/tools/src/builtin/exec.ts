@@ -2,6 +2,7 @@
 import { z } from 'zod';
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 import type { AgentTool } from '@littlesheep/types';
 import { authorizeToolAccess } from '@littlesheep/safety';
 import { checkApproval, interactiveApprove, type ApprovalConfig, DEFAULT_APPROVAL } from '../approval.js';
@@ -19,6 +20,10 @@ const ExecInput = z.object({
   cwd: z.string().optional().describe('Working directory.'),
   timeout_ms: z.number().int().positive().optional().default(120000).describe('Timeout in ms.'),
 });
+
+const MAX_CAPTURED_STREAM_CHARS = 64 * 1024;
+const FORCE_KILL_DELAY_MS = 5_000;
+const FORCE_SETTLE_DELAY_MS = 1_000;
 
 export interface ExecToolOptions {
   approvalConfig?: ApprovalConfig;
@@ -79,46 +84,100 @@ export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
         ? ['-NoProfile', '-Command', command]
         : ['-c', command];
 
-      // Return a Promise that resolves from the spawn exit/error callback.
-      // withToolTiming awaits this Promise, so the callback's resolve value
-      // is correctly covered by the wrapper's timing + error handling.
       return await new Promise((resolve) => {
         const proc = spawn(shell, shellArgs, {
           cwd: workDir,
           stdio: ['ignore', 'pipe', 'pipe'],
-          signal: ctx.signal,
+          detached: process.platform !== 'win32',
+          windowsHide: true,
         });
 
-        let stdout = '';
-        let stderr = '';
-        const timer = setTimeout(() => {
-          proc.kill('SIGTERM');
-          setTimeout(() => proc.kill('SIGKILL'), 5000);
+        const stdout = new BoundedTextCapture(MAX_CAPTURED_STREAM_CHARS);
+        const stderr = new BoundedTextCapture(MAX_CAPTURED_STREAM_CHARS);
+        let settled = false;
+        let terminationReason: 'timed_out' | 'aborted' | undefined;
+        let forceKillTimer: NodeJS.Timeout | undefined;
+        let forceSettleTimer: NodeJS.Timeout | undefined;
+        const timeoutTimer = setTimeout(() => {
+          requestTermination('timed_out');
         }, timeout_ms);
 
-        proc.stdout?.on('data', (d) => (stdout += d.toString()));
-        proc.stderr?.on('data', (d) => (stderr += d.toString()));
+        const cleanup = () => {
+          clearTimeout(timeoutTimer);
+          if (forceKillTimer) clearTimeout(forceKillTimer);
+          if (forceSettleTimer) clearTimeout(forceSettleTimer);
+          ctx.signal?.removeEventListener('abort', onAbort);
+          proc.stdout?.removeListener('data', onStdout);
+          proc.stderr?.removeListener('data', onStderr);
+          proc.removeListener('error', onError);
+          proc.removeListener('close', onClose);
+        };
+        const settle = (result: Parameters<typeof resolve>[0]) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve(result);
+        };
+        const capturedResult = (
+          code: number | null | undefined,
+          signal: NodeJS.Signals | null | undefined,
+          processClosed: boolean,
+          spawnError?: Error,
+        ) => {
+          const stdoutText = stdout.finish();
+          const stderrText = stderr.finish();
+          const combined = stdoutText + (stderrText ? `\n[stderr]\n${stderrText}` : '');
+          const sanitizedOutput = sanitizeOutput(combined, DEFAULT_SANITIZE);
+          const succeeded = !terminationReason && !spawnError && code === 0;
+          return {
+            ok: succeeded,
+            output: sanitizedOutput.output,
+            error: terminationReason === 'timed_out'
+              ? `command timed out after ${timeout_ms}ms`
+              : terminationReason === 'aborted'
+                ? 'command aborted'
+                : spawnError?.message
+                  ?? (code !== 0 ? `exit code ${code ?? 'unknown'}${signal ? ` (${signal})` : ''}` : undefined),
+            sanitized: sanitizedOutput.sanitized || stdout.truncated || stderr.truncated,
+            meta: {
+              ...streamMeta(stdout, stderr, code, terminationReason, processClosed),
+              ...(signal ? { signal } : {}),
+              outputTruncated: sanitizedOutput.truncated || stdout.truncated || stderr.truncated,
+            },
+          };
+        };
+        const requestTermination = (reason: 'timed_out' | 'aborted') => {
+          if (settled || terminationReason) return;
+          terminationReason = reason;
+          terminateProcessTree(proc, false);
+          forceKillTimer = setTimeout(() => {
+            terminateProcessTree(proc, true);
+            forceSettleTimer = setTimeout(() => {
+              proc.stdout?.destroy();
+              proc.stderr?.destroy();
+              proc.unref();
+              settle(capturedResult(proc.exitCode, proc.signalCode, false));
+            }, FORCE_SETTLE_DELAY_MS);
+            forceSettleTimer.unref?.();
+          }, FORCE_KILL_DELAY_MS);
+          forceKillTimer.unref?.();
+        };
+        const onAbort = () => requestTermination('aborted');
+        const onStdout = (chunk: Buffer) => stdout.append(chunk);
+        const onStderr = (chunk: Buffer) => stderr.append(chunk);
+        const onError = (error: Error) => {
+          settle(capturedResult(proc.exitCode, proc.signalCode, false, error));
+        };
+        const onClose = (code: number | null, signal: NodeJS.Signals | null) => {
+          settle(capturedResult(code, signal, true));
+        };
 
-        proc.on('error', (err) => {
-          clearTimeout(timer);
-          // Resolve (don't throw) so the Promise settles exactly once — the
-          // 'exit' handler below may also fire on some platforms. withToolTiming
-          // still wraps this in ok:false + durationMs either way.
-          resolve({ ok: false, error: err.message });
-        });
-
-        proc.on('exit', (code) => {
-          clearTimeout(timer);
-          const combined = stdout + (stderr ? `\n[stderr]\n${stderr}` : '');
-          const { output, sanitized } = sanitizeOutput(combined, DEFAULT_SANITIZE);
-          resolve({
-            ok: code === 0,
-            output,
-            error: code !== 0 ? `exit code ${code}` : undefined,
-            sanitized,
-            meta: { exitCode: code, stdoutLen: stdout.length, stderrLen: stderr.length },
-          });
-        });
+        proc.stdout?.on('data', onStdout);
+        proc.stderr?.on('data', onStderr);
+        proc.once('error', onError);
+        proc.once('close', onClose);
+        if (ctx.signal?.aborted) onAbort();
+        else ctx.signal?.addEventListener('abort', onAbort, { once: true });
       });
     }),
   };
@@ -134,4 +193,98 @@ function isLikelyReadOnlyCommand(command: string): boolean {
     || /^git\s+(?:status|log|diff|show)(?:\s|$)/iu.test(value)
     || /^(?:node|npm|pnpm)\s+--version(?:\s|$)/iu.test(value)
     || /^echo(?:\s|$)/iu.test(value);
+}
+
+class BoundedTextCapture {
+  private readonly decoder = new StringDecoder('utf8');
+  private readonly headLimit: number;
+  private readonly tailLimit: number;
+  private head = '';
+  private tail = '';
+  private ended = false;
+  totalChars = 0;
+
+  constructor(maxChars: number) {
+    this.headLimit = Math.max(1, Math.floor(maxChars * 0.75));
+    this.tailLimit = Math.max(1, maxChars - this.headLimit);
+  }
+
+  get retainedChars(): number {
+    return this.head.length + this.tail.length;
+  }
+
+  get truncated(): boolean {
+    return this.totalChars > this.retainedChars;
+  }
+
+  append(chunk: Buffer): void {
+    if (this.ended) return;
+    this.appendText(this.decoder.write(chunk));
+  }
+
+  finish(): string {
+    if (!this.ended) {
+      this.ended = true;
+      this.appendText(this.decoder.end());
+    }
+    if (!this.truncated) return this.head + this.tail;
+    const omitted = this.totalChars - this.retainedChars;
+    return `${this.head}\n\n... [stream capture truncated: ${omitted} chars omitted] ...\n\n${this.tail}`;
+  }
+
+  private appendText(text: string): void {
+    if (!text) return;
+    this.totalChars += text.length;
+    if (this.head.length < this.headLimit) {
+      const take = Math.min(this.headLimit - this.head.length, text.length);
+      this.head += text.slice(0, take);
+      text = text.slice(take);
+    }
+    if (text) this.tail = (this.tail + text).slice(-this.tailLimit);
+  }
+}
+
+function streamMeta(
+  stdout: BoundedTextCapture,
+  stderr: BoundedTextCapture,
+  exitCode: number | null | undefined,
+  terminationReason: 'timed_out' | 'aborted' | undefined,
+  processClosed: boolean,
+): Record<string, unknown> {
+  return {
+    exitCode: exitCode ?? null,
+    stdoutLen: stdout.totalChars,
+    stderrLen: stderr.totalChars,
+    stdoutRetainedChars: stdout.retainedChars,
+    stderrRetainedChars: stderr.retainedChars,
+    captureTruncated: stdout.truncated || stderr.truncated,
+    timedOut: terminationReason === 'timed_out',
+    aborted: terminationReason === 'aborted',
+    processClosed,
+  };
+}
+
+function terminateProcessTree(
+  proc: ReturnType<typeof spawn>,
+  force: boolean,
+): void {
+  if (proc.exitCode !== null || proc.signalCode !== null || !proc.pid) return;
+  if (process.platform === 'win32') {
+    try {
+      const killer = spawn('taskkill.exe', ['/pid', String(proc.pid), '/t', '/f'], {
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+      killer.once('error', () => proc.kill(force ? 'SIGKILL' : 'SIGTERM'));
+      killer.unref();
+    } catch {
+      proc.kill(force ? 'SIGKILL' : 'SIGTERM');
+    }
+    return;
+  }
+  try {
+    process.kill(-proc.pid, force ? 'SIGKILL' : 'SIGTERM');
+  } catch {
+    proc.kill(force ? 'SIGKILL' : 'SIGTERM');
+  }
 }

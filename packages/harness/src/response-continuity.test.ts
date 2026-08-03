@@ -404,6 +404,151 @@ describe('assessResponseMemoryContinuity', () => {
     expect(assessment.missingSignals).not.toContain('explicit_continuation_not_reflected_in_reply');
   });
 
+  it('supports exact short execution values in the real sustained-task reply', () => {
+    const prior = textMessage(
+      'assistant',
+      [
+        '- 验收代号：sustained-deepseek-anchor-8426',
+        '- executionCount：1',
+        '- ticks：30',
+        '- completed：true',
+      ].join('\n'),
+      { id: 'history-sustained-task-values' },
+    );
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage(
+        'user',
+        '请根据上一轮真实完成结果，分别回答验收代号和 executionCount（用数字），不要调用工具。',
+      ),
+      reply: [
+        '- 验收代号：sustained-deepseek-anchor-8426',
+        '- executionCount：1',
+      ].join('\n'),
+      history: [prior],
+      ...observedContext([
+        contextItem(
+          'history-sustained-task-values',
+          'recent_message',
+          { kind: 'message', id: prior.id },
+        ),
+      ]),
+    });
+
+    expect(assessment.status).toBe('supported');
+    expect(assessment.evidence.independentContinuityAnchorCount).toBeGreaterThanOrEqual(2);
+    expect(assessment.evidence.historyAnchorCount).toBeGreaterThanOrEqual(2);
+    expect(assessment.matchedSources).toContain('recent_history');
+    expect(assessment.missingSignals).not.toContain('explicit_continuation_not_reflected_in_reply');
+  });
+
+  it('supports the Markdown-formatted sustained-task recall reply', () => {
+    const prior = textMessage(
+      'assistant',
+      [
+        '- **验收代号**：`sustained-deepseek-anchor-8426`',
+        '- **executionCount**：1',
+      ].join('\n'),
+      { id: 'history-sustained-task-markdown-values' },
+    );
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage(
+        'user',
+        '请根据上一轮真实完成结果，分别回答验收代号和 executionCount（用数字），不要调用工具。',
+      ),
+      reply: [
+        '- **验收代号**：`sustained-deepseek-anchor-8426`',
+        '- **executionCount**：1',
+      ].join('\n'),
+      history: [prior],
+      ...observedContext([
+        contextItem(
+          'history-sustained-task-markdown-values',
+          'recent_message',
+          { kind: 'message', id: prior.id },
+        ),
+      ]),
+    });
+
+    expect(assessment.status).toBe('supported');
+    expect(assessment.evidence.historyAnchorCount).toBeGreaterThanOrEqual(2);
+    expect(assessment.matchedSources).toContain('recent_history');
+  });
+
+  it('supports exact values recalled from the real sustained-task Markdown table', () => {
+    const prior = textMessage(
+      'assistant',
+      [
+        '验收完成。',
+        '',
+        '| 字段 | 值 |',
+        '|------|-----|',
+        '| 验收代号 anchor | `sustained-deepseek-anchor-8426` |',
+        '| executionCount | `1` |',
+        '| ticks | `30` |',
+        '| completed | `true` |',
+      ].join('\n'),
+      { id: 'history-sustained-task-table-values' },
+    );
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage(
+        'user',
+        '请根据上一轮真实完成结果，分别回答验收代号和 executionCount（用数字），不要调用工具。',
+      ),
+      reply: [
+        '- 验收代号：`sustained-deepseek-anchor-8426`',
+        '- executionCount：`1`',
+      ].join('\n'),
+      history: [prior],
+      ...observedContext([
+        contextItem(
+          'history-sustained-task-table-values',
+          'recent_message',
+          { kind: 'message', id: prior.id },
+        ),
+      ]),
+    });
+
+    expect(assessment.status).toBe('supported');
+    expect(assessment.evidence.historyAnchorCount).toBeGreaterThanOrEqual(2);
+    expect(assessment.matchedSources).toContain('recent_history');
+    expect(assessment.missingSignals).not.toContain('explicit_continuation_not_reflected_in_reply');
+  });
+
+  it('does not use an unrelated short number when the requested executionCount is wrong', () => {
+    const prior = textMessage(
+      'assistant',
+      [
+        '- 验收代号：sustained-deepseek-anchor-8426',
+        '- executionCount：1',
+      ].join('\n'),
+      { id: 'history-sustained-task-wrong-count' },
+    );
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage(
+        'user',
+        '请根据上一轮真实完成结果，分别回答验收代号和 executionCount（用数字）。',
+      ),
+      reply: [
+        '- 验收代号：sustained-deepseek-anchor-8426',
+        '- executionCount：2',
+        '- ticks：1',
+      ].join('\n'),
+      history: [prior],
+      ...observedContext([
+        contextItem(
+          'history-sustained-task-wrong-count',
+          'recent_message',
+          { kind: 'message', id: prior.id },
+        ),
+      ]),
+    });
+
+    expect(assessment.status).toBe('discontinuous');
+    expect(assessment.evidence.historyAnchorCount).toBe(1);
+    expect(assessment.matchedSources).not.toContain('recent_history');
+    expect(assessment.missingSignals).toContain('explicit_continuation_not_reflected_in_reply');
+  });
+
   it('treats a direct memory question without the word continue as an explicit continuity check', () => {
     const prior = textMessage(
       'user',

@@ -156,6 +156,31 @@ describe('ToolExecutionService', () => {
     expect(service.snapshot().records[0]?.status).toBe('timed_out');
   });
 
+  it('waits briefly for an aborted tool to finish cleanup before recording timeout', async () => {
+    let cleanupFinishedAt = 0;
+    const execute = vi.fn(async (_input: unknown, context: ToolContext) => new Promise<ToolResult>((resolve) => {
+      context.signal?.addEventListener('abort', () => {
+        setTimeout(() => {
+          cleanupFinishedAt = Date.now();
+          resolve({ callId: '', ok: false, error: 'stopped after cleanup' });
+        }, 40);
+      }, { once: true });
+    }));
+    const service = createService([
+      registration(tool('cleanup-aware', execute), 'plugin:sample'),
+    ], { timeoutMs: 10 });
+
+    await service.executeBatch([
+      { callId: 'cleanup-timeout', name: 'cleanup-aware', input: { value: 'x' } },
+    ]);
+
+    expect(cleanupFinishedAt).toBeGreaterThan(0);
+    expect(service.snapshot().records[0]).toMatchObject({
+      status: 'timed_out',
+      errorKind: 'timed_out',
+    });
+  });
+
   it('records a parent-run abort independently from timeout', async () => {
     const controller = new AbortController();
     const execute = vi.fn(async (_input: unknown, context: ToolContext) => new Promise<ToolResult>((_resolve, reject) => {

@@ -10,6 +10,8 @@ export class ToolControlError extends Error {
   }
 }
 
+const TOOL_ABORT_SETTLE_GRACE_MS = 1_500;
+
 export function invokeWithTimeout<T>(
   execute: (signal: AbortSignal) => Promise<T>,
   timeoutMs: number,
@@ -18,8 +20,11 @@ export function invokeWithTimeout<T>(
   return new Promise((resolve, reject) => {
     const controller = new AbortController();
     let settled = false;
+    let controlError: ToolControlError | undefined;
+    let graceTimer: NodeJS.Timeout | undefined;
     const cleanup = () => {
       clearTimeout(timer);
+      if (graceTimer) clearTimeout(graceTimer);
       parentSignal?.removeEventListener('abort', onAbort);
     };
     const settle = (kind: 'resolve' | 'reject', value: T | unknown) => {
@@ -29,13 +34,18 @@ export function invokeWithTimeout<T>(
       if (kind === 'resolve') resolve(value as T);
       else reject(value);
     };
+    const stop = (error: ToolControlError) => {
+      if (settled || controlError) return;
+      controlError = error;
+      controller.abort(error);
+      graceTimer = setTimeout(() => settle('reject', error), TOOL_ABORT_SETTLE_GRACE_MS);
+      graceTimer.unref?.();
+    };
     const onAbort = () => {
-      controller.abort(parentSignal?.reason);
-      settle('reject', new ToolControlError('aborted', 'aborted'));
+      stop(new ToolControlError('aborted', 'aborted'));
     };
     const timer = setTimeout(() => {
-      controller.abort(new Error(`tool timed out after ${timeoutMs}ms`));
-      settle('reject', new ToolControlError(`tool timed out after ${timeoutMs}ms`, 'timed_out'));
+      stop(new ToolControlError(`tool timed out after ${timeoutMs}ms`, 'timed_out'));
     }, timeoutMs);
     if (parentSignal) {
       if (parentSignal.aborted) {
@@ -47,8 +57,8 @@ export function invokeWithTimeout<T>(
     Promise.resolve()
       .then(() => execute(controller.signal))
       .then(
-        (value) => settle('resolve', value),
-        (error) => settle('reject', error),
+        (value) => controlError ? settle('reject', controlError) : settle('resolve', value),
+        (error) => settle('reject', controlError ?? error),
       );
   });
 }

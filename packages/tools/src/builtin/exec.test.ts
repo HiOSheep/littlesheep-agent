@@ -194,4 +194,44 @@ describe('execTool approval gate', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it('bounds retained stdout while preserving total output evidence', async () => {
+    const exec = createExecTool({
+      interactive: false,
+      approvalConfig: { whitelist: [], blacklist: [], approvalMode: 'auto-approve' },
+    });
+    const command = process.platform === 'win32'
+      ? "$chunk = 'x' * 4096; 1..40 | ForEach-Object { [Console]::Out.Write($chunk) }"
+      : "i=0; while [ $i -lt 40 ]; do printf '%04096d' 0; i=$((i+1)); done";
+
+    const result = await exec.execute({ command, timeout_ms: 30_000 }, baseCtx);
+    const meta = result.meta as Record<string, unknown>;
+
+    expect(result.ok).toBe(true);
+    expect(result.sanitized).toBe(true);
+    expect(String(result.output).length).toBeLessThan(20_000);
+    expect(meta.captureTruncated).toBe(true);
+    expect(Number(meta.stdoutLen)).toBeGreaterThan(64 * 1024);
+    expect(Number(meta.stdoutRetainedChars)).toBeLessThanOrEqual(64 * 1024);
+  });
+
+  it('terminates a timed-out shell process and reports closed process evidence', async () => {
+    const exec = createExecTool({
+      interactive: false,
+      approvalConfig: { whitelist: [], blacklist: [], approvalMode: 'auto-approve' },
+    });
+    const command = process.platform === 'win32'
+      ? 'Start-Sleep -Seconds 30'
+      : 'sleep 30';
+    const startedAt = Date.now();
+
+    const result = await exec.execute({ command, timeout_ms: 100 }, baseCtx);
+    const meta = result.meta as Record<string, unknown>;
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('timed out');
+    expect(meta.timedOut).toBe(true);
+    expect(meta.processClosed).toBe(true);
+    expect(Date.now() - startedAt).toBeLessThan(10_000);
+  });
 });

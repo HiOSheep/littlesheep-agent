@@ -61,6 +61,8 @@ export async function createIsolatedDeepSeekEnvironment(options = {}) {
     model,
     closePolicy: options.closePolicy,
     maxModelCallsPerRun: options.maxModelCallsPerRun,
+    runTimeoutSeconds: options.runTimeoutSeconds,
+    toolInvocationTimeoutMs: options.toolInvocationTimeoutMs,
   })
   const config = options.configureConfig
     ? await options.configureConfig(structuredClone(baseConfig))
@@ -94,7 +96,7 @@ function buildAcceptanceConfig(options) {
         model: `deepseek/${options.model}`,
         reasoning: 'auto',
         profile: 'general',
-        timeoutSeconds: 120,
+        timeoutSeconds: options.runTimeoutSeconds ?? 120,
         maxRecoveryAttempts: 1,
         timeFormat: 'auto',
         bootstrapMaxChars: 20_000,
@@ -105,6 +107,13 @@ function buildAcceptanceConfig(options) {
       },
     },
     desktop: { closePolicy: options.closePolicy ?? 'always-background' },
+    tools: {
+      exec: {},
+      maxOutputChars: 10_000,
+      stripImages: true,
+      maxParallel: 4,
+      invocationTimeoutMs: options.toolInvocationTimeoutMs ?? 120_000,
+    },
     memory: {
       repositoryBackend: 'v2',
       llmCapture: false,

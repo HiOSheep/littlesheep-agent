@@ -67,11 +67,19 @@ export function collectRequestedValueEvidence(
       ])
     : [];
   const matches = targets.map((target) => {
-    const overlap = continuityOverlap(input.replyTerms, target.terms);
+    const rawOverlap = continuityOverlap(input.replyTerms, target.terms);
+    const matched = continuityValueTargetMatched(input.reply, target, rawOverlap);
+    const overlap = matched && rawOverlap.count === 0
+      ? {
+          count: 1,
+          ratio: 1,
+          terms: [`${target.label}:${target.value}`],
+        }
+      : rawOverlap;
     return {
       target,
       overlap,
-      matched: continuityValueTargetMatched(input.reply, target, overlap),
+      matched,
     };
   });
   const matchedCount = matches.filter((match) => match.matched).length;

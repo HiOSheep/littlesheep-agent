@@ -324,6 +324,68 @@ describe('decideStage', () => {
     expect(ctx.modelRequests?.[0]?.callContract?.purpose).toBe('decide');
   });
 
+  it('preserves the execution safety contract when a single explicit exec step is compacted', async () => {
+    const exec = makeTool('exec', { ok: true, output: 'done' }, {
+      inputSchema: z.object({
+        command: z.string(),
+        cwd: z.string().optional(),
+        timeout_ms: z.number().int().positive().optional(),
+      }),
+    });
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      assessment: {
+        userNeed: '执行一条持续命令',
+        complexity: 'simple',
+        goal: '执行测试命令',
+        successCriteria: ['命令成功返回'],
+        needsClarification: false,
+        requiresTaskBook: false,
+        maxExtraScopeRatio: 1,
+      },
+      taskBook: {
+        goal: '执行测试命令',
+        complexity: 'simple',
+        successCriteria: ['命令成功返回'],
+        steps: [{
+          id: 'step-1',
+          description: '执行测试命令',
+          tools: ['exec'],
+          toolProposal: {
+            name: 'exec',
+            input: { command: 'echo done', cwd: '.', timeout_ms: 120_000 },
+          },
+          execution: {
+            mode: 'serial',
+            resources: [],
+            sideEffect: 'external',
+          },
+        }],
+      },
+    })));
+    const stage = createDecideStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [exec],
+      inbound: textMessage('user', '请只使用 exec 工具执行 echo done'),
+      classification: {
+        activity: 'execute', type: 'problem', confidence: 0.96,
+        source: 'rules', reason: 'explicit tool instruction',
+      },
+    });
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'execute', ok: true });
+    expect(ctx.needAssessment?.requiresTaskBook).toBe(false);
+    expect(ctx.taskBook?.steps).toEqual([expect.objectContaining({
+      tools: ['exec'],
+      toolProposal: {
+        name: 'exec',
+        input: { command: 'echo done', cwd: '.', timeout_ms: 120_000 },
+      },
+      execution: { mode: 'serial', sideEffect: 'external' },
+    })]);
+  });
+
   it('does not compact when an active memory selection may affect the decision', async () => {
     const glob = makeTool('glob', { ok: true, output: '' }, {
       inputSchema: z.object({ pattern: z.string() }),

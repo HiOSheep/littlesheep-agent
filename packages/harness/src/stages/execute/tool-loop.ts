@@ -384,6 +384,7 @@ function toolExecutionService(
     })),
     toolContext: ctx.toolContext,
     maxParallel: deps.config.tools.maxParallel,
+    timeoutMs: deps.config.tools.invocationTimeoutMs,
     sanitize: sanitizeOpts,
     onToolEvent: (event) => ctx.onToolEvent?.(event),
     onRecord: (record, state) => updateInvocationRecord(ctx, record, state),

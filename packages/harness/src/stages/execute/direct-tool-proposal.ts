@@ -61,10 +61,21 @@ export function resolveDirectToolProposal(
   }
 
   const descriptor = describeToolAccess(instruction.tool.name, input, ctx.toolContext);
-  if (descriptor.action !== 'read' && descriptor.action !== 'write') return undefined;
+  if (descriptor.action === 'unknown') return undefined;
+  const directExec = descriptor.action === 'execute'
+    && instruction.tool.name === 'exec'
+    && ctx.toolSources?.[instruction.tool.name] === 'builtin'
+    && ctx.toolContext.permissionMode === 'full'
+    && !ctx.resumedFromCheckpointId;
+  if (descriptor.action !== 'read' && descriptor.action !== 'write' && !directExec) return undefined;
   const policy = resolveToolExecutionPolicy(instruction.tool, input, ctx.toolContext);
   const actualSideEffect = resolveActualSideEffect(descriptor.action, policy.resources);
-  if (actualSideEffect !== 'read' && !sideEffectCovered(execution.sideEffect, actualSideEffect)) return undefined;
+  if (actualSideEffect !== 'read'
+    && !directExec
+    && !sideEffectCovered(execution.sideEffect, actualSideEffect)) return undefined;
+  if (directExec
+    && execution.sideEffect
+    && !sideEffectCovered(execution.sideEffect, actualSideEffect)) return undefined;
   if (actualSideEffect === 'read'
     && execution.sideEffect
     && !sideEffectCovered(execution.sideEffect, actualSideEffect)) return undefined;
@@ -91,9 +102,10 @@ export function resolveDirectToolProposal(
 }
 
 function resolveActualSideEffect(
-  action: 'read' | 'write',
+  action: 'read' | 'write' | 'execute',
   resources: readonly ToolResourceAccess[],
 ): TaskStepSideEffect {
+  if (action === 'execute') return 'external';
   if (action === 'write' || resources.some((resource) => resource.mode === 'write')) return 'write';
   return resources.length > 0 || action === 'read' ? 'read' : 'none';
 }

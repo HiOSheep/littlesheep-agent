@@ -15,6 +15,7 @@ describe('config schema', () => {
     expect(cfg.agents.defaults.profile).toBe('general');
     expect(cfg.desktop.closePolicy).toBe('background-while-active');
     expect(cfg.tools.exec.approvalMode).toBe('interactive');
+    expect(cfg.tools.invocationTimeoutMs).toBe(120_000);
     expect(cfg.memory.preludeDays).toBe(3);
     expect(cfg.memory.repositoryBackend).toBe('v2');
     expect(cfg.memory.treeRunTokenBudget).toBe(3200);
@@ -56,6 +57,12 @@ describe('config schema', () => {
     expect(() =>
       ConfigSchema.parse({ tools: { exec: { approvalMode: 'invalid' } } })
     ).toThrow();
+  });
+
+  it('bounds the hosted tool invocation timeout', () => {
+    expect(ConfigSchema.parse({ tools: { exec: {}, invocationTimeoutMs: 90_000 } }).tools.invocationTimeoutMs).toBe(90_000);
+    expect(() => ConfigSchema.parse({ tools: { exec: {}, invocationTimeoutMs: 999 } })).toThrow();
+    expect(() => ConfigSchema.parse({ tools: { exec: {}, invocationTimeoutMs: 30 * 60_000 + 1 } })).toThrow();
   });
 
   it('DEFAULT_CONFIG round-trips through schema', () => {
