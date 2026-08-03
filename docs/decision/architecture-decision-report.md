@@ -1,6 +1,6 @@
 # LittleSheep 架构评估与开发决策报告
 
-最后更新：2026-08-04 05:59:33
+最后更新：2026-08-04 06:23:36
 评估范围：当前源码、正式文档与已记录的验证结果
 执行状态：Memory v3 阶段 0-26 的工程实现、隔离演练和正式用户数据迁移已完成；正式 backend/config 为 v3，40 个业务 atom、5 个内部根、11 个资源和 45 条 BGE 512 维向量已通过既有真实数据根、Electron 重启、Catalog v9 integrity 与恢复源检查。`respond / execute / clarify` 活动语义、直接回应 Context 瘦身、统一 Tool Execution Service、自包含单只读工具的 `decide_explicit_tool`、用户只表达目标时由 LLM 自主选择 builtin `glob / grep / read` 的紧凑只读路径、完整显式多工具提议、完全访问下受限内置 `exec` 直接执行、TaskBook 步骤级有界并行、活动任务控制、托盘、三档关闭策略和设置页“应用与后台”已形成工程基线。显式与自主单只读路径当前均固定为 2 次 API、1 次工具；显式 Prompt 为 `796`，自主 Prompt 为 `1,120`、总回归上限 `1,400`。自主 DECIDE 同时提交工具、参数、步骤摘要与验收标准，Runtime 直执行前继续重验权限、schema、路径和副作用；两条路径均保留工具证据和结构 VERIFY。DeepSeek V4 Flash 普通请求与工具协议已在 disabled/high/max 三档完成 `15/15 exact_match`，Pro 工具协议和其他 Provider 仍失败关闭。确定性 Electron 七场景、真实 DeepSeek 后台九场景、当前 120 秒持续任务、完整退出/重启后的回答级记忆连续性、真实两步 `write -> read` 恢复、短时并行压力、摘要深度 `1 -> 2 -> 3 -> 3` 的五字段续答、主动网络断线恢复和正式 2 小时持续任务已经通过。FINALIZE 以 LS 最终回答和真实因果 Context 判断是否连续，能从近期历史、Runtime 精确保真摘要和 active/adopted Atom 发现被追问的任意明确字段；保存、检索或摘要存在不能替代回答证据。Local App API 的长连接已经统一使用 15 秒 SSE 心跳、512 KiB 缓冲上限和确定性资源清理。OpenAI/GLM 同等能力矩阵、Pro 工具协议、非字段事实、真实外部系统副作用和长期用户负载仍未完成。
 

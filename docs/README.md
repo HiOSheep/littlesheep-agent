@@ -1,6 +1,6 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-08-04 05:59:33
+最后更新：2026-08-04 06:23:36
 
 本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
 
@@ -12,7 +12,7 @@
 
 **当前权限决策**：产品语义上 LS 是 Agent 的容器，活动完整应用数据根（默认 `.littlesheep`）是容器边界，`workplace/` 是容器内的默认工作区；当前桌面实现是 Main 的逻辑边界，不是实际 Docker/OS 进程沙箱。从其他模式切换到完全访问时先用红色危险按钮确认一次；确认后容器内外及范围不明的读、写、改、删、执行均免逐次批准。研究只对容器内读取免批准；受限所有操作都需批准。外部工作区在研究/受限模式下先跳过自动索引，完全访问可直接继续。核心源码只读和危险命令硬拒绝不受模式影响。
 
-**你现在不需要再次决定迁移或替换 DeepSeek 凭证**：迁移、模型准备、向量回填和应用重启已完成。2026-08-04 最新显式 `glob` 验收为 `decide_explicit_tool -> Runtime glob -> execute_final_reply`，随后通过 structural VERIFY：2 次真实 DeepSeek API、1 次只读工具，DECIDE/final prompt `417/379`、全程 prompt `796`、Provider total `837`，两次本地 tokenizer 均为 `exact_match`。同日最新自主选工具验收为 `decide -> Runtime glob -> execute_final_reply`，随后通过 structural VERIFY：2 次真实 API、1 次 `glob`，DECIDE/final prompt `744/376`、合计 `1,120`、Provider total `1,185`，相对原始 `11,050` 下降约 `89.9%`，相对上一版 `2,325` 再下降约 `51.8%`；两次均为 `exact_match`，Provider 工具协议请求数为 0。SSE、权限、工具 schema、路径、工具证据、结构 VERIFY、调用审计和工作区无修改全部通过。耗时只作为运行记录，不作为速度结论；Prompt 成本以请求级账本为准。最新正式 2 小时门已完成，后半程资源趋势和终态均通过；当前工作树又通过 120 秒持续门，`exec` 只执行 1 次，完成“同进程暂停 -> 继续 -> 再暂停 -> 安全边界 Checkpoint -> 强制终止/重启恢复”链路，120 个进度 tick、121 次采样、无进度缺测且资源违规为 0，跨模型追问的 LS 最终回答连续性为 `supported`。最新多轮摘要续答还验证了 5 个历史字段、三级压缩深度上限和一次主动断线恢复；失败请求未到达 Provider，额外 Provider Token 为 0。
+**你现在不需要再次决定迁移或替换 DeepSeek 凭证**：迁移、模型准备、向量回填和应用重启已完成。2026-08-04 最新显式 `glob` 验收为 `decide_explicit_tool -> Runtime glob -> execute_final_reply`，随后通过 structural VERIFY：2 次真实 DeepSeek API、1 次只读工具，DECIDE/final prompt `417/379`、全程 prompt `796`、Provider total `826`，两次本地 tokenizer 均为 `exact_match`。同日最新自主选工具验收为 `decide -> Runtime glob -> execute_final_reply`，随后通过 structural VERIFY：2 次真实 API、1 次 `glob`，DECIDE/final prompt `744/376`、合计 `1,120`、Provider total `1,196`，相对原始 `11,050` 下降约 `89.9%`，相对上一版 `2,325` 再下降约 `51.8%`；两次均为 `exact_match`，Provider 工具协议请求数为 0。SSE、权限、工具 schema、路径、工具证据、结构 VERIFY、调用审计和工作区无修改全部通过。耗时只作为运行记录，不作为速度结论；Prompt 成本以请求级账本为准。最新正式 2 小时门已完成，后半程资源趋势和终态均通过；当前工作树又通过 120 秒持续门，`exec` 只执行 1 次，完成“同进程暂停 -> 继续 -> 再暂停 -> 安全边界 Checkpoint -> 强制终止/重启恢复”链路，120 个进度 tick、121 次采样、无进度缺测且资源违规为 0，跨模型追问的 LS 最终回答连续性为 `supported`。06:17 的真实后台九场景复跑还发现并修复了 `**字段：** \`值\`` 形态被误判为失忆的问题；修复后文件名和验收代号均从真实近期历史命中，连续性恢复为 `supported`。最新多轮摘要续答还验证了 5 个历史字段、三级压缩深度上限和一次主动断线恢复；失败请求未到达 Provider，额外 Provider Token 为 0。
 
 - Provider `/embeddings` 已在 v3 基础设施中默认硬关闭；BGE 是当前平衡默认，multilingual E5 是高质量可选档，两者均已通过显式资产校验和运行阶段零网络请求的真实离线基准。
 - Memory v3 使用四层语义：对话原始来源保存用户输入与对话区可见内容，写入后不改写；投影变更记录保存 `MemoryUpdateEvent + mutation`，只服务幂等、恢复和审计；atom 是可去重、合并、调层级、失效、恢复和重建的当前语义投影；run working set 只决定本轮介入。SQLite 向量目录管理 atom 的路径、层级、FTS、向量、状态和审计，但必须能从持久文件重建。

@@ -1,7 +1,7 @@
 # LittleSheep Agent Runtime 连续性任务书 2026-07-14
 
 状态：规划已定稿，实施中（阶段 0、阶段 2、阶段 3 已完成；阶段 1 主要数据链、当前 DeepSeek 四项真实校准、普通直接回答、显式单/多工具提议、自主单只读两请求路径及 Flash Provider 工具协议的 V4 精确本地 tokenizer 对账已完成，Pro 工具协议和其他 Provider 仍待收敛；阶段 4 已完成统一 Tool Execution Service、统一工具超时与清理、事件重入、TaskBookPatch、Renderer 入口与 TaskBook 步骤级有界并行；阶段 5 已完成持久检查点、Runner 续跑、应用启动恢复、活动任务控制、托盘、三档关闭策略、设置页后台入口、确定性 Electron 七场景、真实 DeepSeek 跨重启最终回答连续性、基础两步副作用恢复、短时并行压力、多轮五字段摘要压缩续答、主动断线恢复、6 分钟诊断门和正式 2 小时持续负载验收；非字段事实、真实外部系统副作用和长期真实用户负载仍未完成）
-最后更新：2026-08-04 05:59:33
+最后更新：2026-08-04 06:23:36
 
 本文把 Context、记忆注册、附件、运行中追加要求、检查点恢复、后台执行和双向透明整理为一条可分阶段验收的开发任务书。它服从 [架构原则](../principles/architecture-principles.md) 和 [核心 Agent 流程规范](../principles/core-agent-flow-guidelines.md)，当前事实与最新测试数字仍以 [项目状态](../decision/project-status.md) 为准。
 
@@ -38,6 +38,8 @@
 > 2026-08-04 03:51:17 Flash 工具协议与自主只读路径补充：DeepSeek V4 Flash 的 direct、tool schema、`tool_calls -> tool` 续轮、只保留历史工具消息和多工具乱序结果已在 disabled/high/max 三档完成 `15/15` 次真实请求校准，全部与 Provider prompt usage 零差值；Pro 普通请求保持 exact，Pro 工具协议继续失败关闭。用户未点名工具、但目标可证明为新鲜、自包含且只读时，DECIDE 由 LLM 在 builtin `glob / grep / read` 中自主选择，EXECUTE 使用 Provider 原生工具协议。真实 Electron 最新路径固定为 `DECIDE -> execute_tool_loop(tool_calls) -> execute_tool_loop(tool result + final answer)`，3 次 API、1 次 `glob`，prompt `663/726/936`、总计 `2,325`，相对原始 `11,050` 下降约 `79.0%`；三次均为 `exact_match`，总回归上限保持 `2,700`。SSE、权限、schema、工具证据、结构 VERIFY、调用审计和工作区无修改均保留。记忆预检只产生 `excluded` 候选时不再误阻断轻量路径；`adopted`、`conflicted`、活动 working set、历史指代、附件、恢复或写入语义仍回退完整 Context。同日当前工作树又通过确定性七场景、真实 DeepSeek 后台九场景和 120 秒持续任务门；`exec` 只执行一次，120 个 tick、121 次采样、进度缺测和资源违规均为 0，恢复不重放且最终回答连续性为 `supported`。
 
 > 2026-08-04 05:16:39 自主只读两请求补充：上一段三请求基线已被当前实现替代。DECIDE 现在在同一次紧凑请求中选择一个 builtin `glob / grep / read`，并返回满足有界 JSON Schema 的具体参数、简短步骤摘要和验收标准；Runtime 重新校验工具来源、名称、schema、路径、权限和只读副作用后直接调用统一 Tool Execution Service，最终回答仍由独立实时 `execute_final_reply` API 生成。真实 Electron 路径固定为 `decide -> Runtime glob -> execute_final_reply`，随后通过 structural VERIFY；2 次 API、1 次 `glob`，prompt `744/376`、总计 `1,120`、Provider total `1,185`，相对原始 `11,050` 下降约 `89.9%`，相对上一段 `2,325` 再下降约 `51.8%`。两次本地 tokenizer 均为 `exact_match`，Provider 工具协议请求数为 0，回归上限为 `900/450/1,400`。SSE、权限、schema、工具证据、结构 VERIFY、调用审计和工作区无修改仍全部通过；提议无法安全采用时失败关闭或回退既有工具循环，不猜参数。本场景没有历史或记忆来源，回答级连续性正确记录为 `not_applicable`，不能伪称 `supported`。
+
+> 2026-08-04 06:17:07 回答格式与真实生命周期复跑补充：确定性 Electron 七场景先通过；真实 DeepSeek 后台九场景首次复跑时，LS 已正确回答 `background-proof.txt` 和 `deepseek-background-anchor-7319`，但回答采用 `**字段：** \`值\`` 后，连续性解析残留前导 Markdown 标记并误判为 `discontinuous`。修复只清理值外围格式，不放宽值本身的逐项相等、否定和明确失忆检查；43 项连续性测试及全量 263 个测试文件通过。随后相同真实门复跑成功：活动任务 SSE、托盘后台、profile 热重载、暂停 Checkpoint、强制终止、重启续跑、两步 `write -> read`、回答连续性、中断 Checkpoint 和彻底退出全部通过；恢复任务 2 次 API，工具各执行 1 次，回答连续性为 `supported` 且来源为 `recent_history`。同一构建下自主/显式单 `glob` 继续保持 2 次 API，Prompt 分别为 `1,120` 和 `796`。
 
 > 2026-08-03 01:50:17 token 修正：当次普通回答三次真实请求为 `1008/1008`、`387/387`、`1292/1292`；随后当时的跨重启验收为 `1003/1003`、`387/387`、`1285/1285`，均保持本地/Provider 零差值。含历史 `tool_calls`/`tool` 结果的续轮实测本地 `3743`、Provider `3824`，差值 `81`，因此该形态不再标记 exact，本地计数失败关闭并等待 Provider usage。DeepSeek thinking 模式未显式声明时同样不再冒充 exact；这些数字只描述对应时间点，当前请求形态与校准状态以项目状态为准。
 

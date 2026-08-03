@@ -525,8 +525,8 @@ function normalizeComparableValue(value: string): string {
 
 function cleanExtractedValue(value: string | undefined): string | undefined {
   const normalized = value?.trim()
-    .replace(/^(?:\*\*|__|~~|`)+/gu, '')
-    .replace(/(?:\*\*|__|~~|`)+$/gu, '')
+    .replace(/^(?:(?:\*\*|__|~~|`)\s*)+/gu, '')
+    .replace(/(?:\s*(?:\*\*|__|~~|`))+$/gu, '')
     .trim();
   return normalized || undefined;
 }

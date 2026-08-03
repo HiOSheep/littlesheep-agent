@@ -486,6 +486,39 @@ describe('assessResponseMemoryContinuity', () => {
     expect(assessment.missingSignals).not.toContain('explicit_continuation_not_reflected_in_reply');
   });
 
+  it('supports the real DeepSeek recall shape with bold labels and code-formatted values', () => {
+    const prior = textMessage(
+      'assistant',
+      '任务已完成：文件名称为 background-proof.txt，验收代号为 deepseek-background-anchor-7319，读取核对一致。',
+      { id: 'history-background-task-values' },
+    );
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage(
+        'user',
+        '你还记得上一轮保存的文件名称和验收代号吗？请分别回答，不要调用工具。',
+      ),
+      reply: [
+        '记得，上一轮保存的文件名称和验收代号分别是：',
+        '',
+        '- **文件名称：** `background-proof.txt`',
+        '- **验收代号：** `deepseek-background-anchor-7319`',
+      ].join('\n'),
+      history: [prior],
+      ...observedContext([
+        contextItem(
+          'history-background-task-values',
+          'recent_message',
+          { kind: 'message', id: prior.id },
+        ),
+      ]),
+    });
+
+    expect(assessment.status).toBe('supported');
+    expect(assessment.matchedSources).toContain('recent_history');
+    expect(assessment.evidence.historyAnchorCount).toBe(2);
+    expect(assessment.missingSignals).not.toContain('explicit_continuation_not_reflected_in_reply');
+  });
+
   it('supports exact short execution values in the real sustained-task reply', () => {
     const prior = textMessage(
       'assistant',
