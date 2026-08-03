@@ -5,11 +5,16 @@ import {
   prepareModelRequest,
   recordProviderUsage,
 } from '../../model-observability.js';
-import { appendSystemPromptAddons, buildUserFacingVoiceAddon } from '../../profile-prompt.js';
+import {
+  appendSystemPromptAddons,
+  buildCompactUserFacingVoiceAddon,
+  buildUserFacingVoiceAddon,
+} from '../../profile-prompt.js';
 import { textOf } from '../_shared.js';
 import type { ExecuteStageDeps } from './contracts.js';
 import { applyUsage } from './tool-loop.js';
 import { acceptUniqueUserFacingReply, type ReplyRewriteInput } from '../../user-facing-reply.js';
+import { isCompactReadOnlyResult } from '../../compact-read-only-result.js';
 
 export async function synthesizeFinalReply(
   deps: ExecuteStageDeps,
@@ -17,6 +22,7 @@ export async function synthesizeFinalReply(
   taskBook: TaskBook,
   stepResults: TaskStepResult[],
 ): Promise<string> {
+  const compact = isCompactReadOnlyResult(ctx, taskBook, stepResults);
   const stepSummary = stepResults.map((step, index) =>
     `${index + 1}. ${step.title ?? step.stepId} [${step.status}]\n`
     + `Description: ${step.description}\n`
@@ -24,11 +30,14 @@ export async function synthesizeFinalReply(
     + (step.error ? `Error: ${step.error}\n` : ''),
   ).join('\n');
   const voiceSystemPrompt = appendSystemPromptAddons(
-    `You are the final response assembler. Produce the final user-facing answer from completed task-book step results.
+    compact
+      ? `Write the final LS reply for one completed Runtime-validated read-only tool call.
+Answer the user's request directly in the user's language. Preserve every supplied result fact and any truncation or uncertainty; do not invent details or discuss internal workflow. Keep the answer concise and return only the user-facing reply.`
+      : `You are the final response assembler. Produce the final user-facing answer from completed task-book step results.
 Follow progressive disclosure: lead with the outcome and completion status, then give key results, artifacts, evidence, and the next action only when useful. Keep detail proportional to the user's request; simple tasks should not become reports. Do not dump raw command output or private chain-of-thought. Never hide failed or partial steps, permission denials, risks, uncertainty, external side effects, or decisions required from the user. Do not claim failed steps succeeded.`,
     ctx.profilePromptAddon,
     ctx.reasoningPromptAddon,
-    buildUserFacingVoiceAddon(ctx),
+    compact ? buildCompactUserFacingVoiceAddon(ctx) : buildUserFacingVoiceAddon(ctx),
   );
 
   const requestFinalReply = async (rewrite?: ReplyRewriteInput): Promise<string> => {
@@ -44,11 +53,16 @@ Follow progressive disclosure: lead with the outcome and completion status, then
         {
           role: 'user',
           content: [
-            `Original request:\n${textOf(ctx.inbound)}\n\n`
-            + `Task goal:\n${taskBook.goal}\n\n`
-            + `Success criteria:\n${taskBook.successCriteria.map((item) => `- ${item}`).join('\n')}\n\n`
-            + `Step results:\n${stepSummary}\n\n`
-            + `Write the final reply in the user's language.`,
+            compact
+              ? `User request:\n${textOf(ctx.inbound)}\n\n`
+                + `Completed read tool: ${taskBook.steps[0]!.toolProposal!.name}\n`
+                + `Runtime-recorded result:\n${stepResults[0]!.output}\n\n`
+                + 'Return only the concise final reply.'
+              : `Original request:\n${textOf(ctx.inbound)}\n\n`
+                + `Task goal:\n${taskBook.goal}\n\n`
+                + `Success criteria:\n${taskBook.successCriteria.map((item) => `- ${item}`).join('\n')}\n\n`
+                + `Step results:\n${stepSummary}\n\n`
+                + `Write the final reply in the user's language.`,
             ...(rewrite ? [
               `Prior API-generated response:\n${rewrite.generatedReply}`,
               `Recent replies to avoid repeating exactly:\n${rewrite.avoidReplies.map((reply, index) => `${index + 1}. ${reply}`).join('\n')}`,
@@ -57,7 +71,7 @@ Follow progressive disclosure: lead with the outcome and completion status, then
         },
       ],
       temperature: rewrite ? 0.75 : 0.65,
-      max_tokens: 900,
+      max_tokens: compact ? 300 : 900,
       signal: ctx.signal,
     } satisfies import('@littlesheep/llm').ChatRequest;
     const request = prepareModelRequest(

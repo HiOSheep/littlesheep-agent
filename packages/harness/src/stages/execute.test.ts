@@ -179,6 +179,8 @@ describe('executeStage', () => {
       userOverrides: {},
       projectOverrides: {},
     };
+    ctx.profilePromptAddon = 'PROFILE_SENTINEL_COMPACT_FINAL';
+    ctx.bootstrap = { 'SOUL.md': 'SOUL_SENTINEL_COMPACT_FINAL' };
     ctx.onToolEvent = (event) => events.push(event);
 
     const result = await stage(ctx);
@@ -191,6 +193,18 @@ describe('executeStage', () => {
     expect(finalRequest.tools).toBeUndefined();
     expect(finalRequest.thinking).toEqual({ type: 'disabled' });
     expect(finalRequest.temperature).toBeUndefined();
+    expect(finalRequest.max_tokens).toBe(300);
+    const finalSystem = String(finalRequest.messages[0]?.content ?? '');
+    const finalInput = String(finalRequest.messages[1]?.content ?? '');
+    expect(finalSystem).toContain('one completed Runtime-validated read-only tool call');
+    expect(finalSystem).toContain('PROFILE_SENTINEL_COMPACT_FINAL');
+    expect(finalSystem).toContain('SOUL_SENTINEL_COMPACT_FINAL');
+    expect(finalSystem).toContain('# Runtime Clock');
+    expect(finalSystem).not.toContain('# Live Runtime State');
+    expect(finalSystem).not.toContain('You are the final response assembler.');
+    expect(finalInput).toContain('Runtime-recorded result:\nalpha.txt');
+    expect(finalInput).not.toContain('Task goal:');
+    expect(finalInput).not.toContain('Step results:');
     expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
       'execute_final_reply',
     ]);

@@ -19,8 +19,11 @@ import {
 
 const PROMPT = '请使用 glob 工具读取当前工作区顶层条目，只告诉我数量和名称，不要修改任何文件。'
 const EXPECTED_ENTRIES = ['alpha.txt', 'beta.md', 'nested']
-const MAX_COMPACT_DECIDE_PROMPT_TOKENS = 1_600
-const MAX_COMPACT_DECIDE_CONTEXT_CHARS = 7_000
+const MAX_COMPACT_DECIDE_PROMPT_TOKENS = 750
+const MAX_COMPACT_DECIDE_CONTEXT_CHARS = 3_200
+const MAX_COMPACT_FINAL_PROMPT_TOKENS = 650
+const MAX_COMPACT_FINAL_CONTEXT_CHARS = 2_500
+const MAX_OPTIMIZED_TOTAL_PROMPT_TOKENS = 1_250
 
 async function main() {
   const environment = await createIsolatedDeepSeekEnvironment({
@@ -278,6 +281,18 @@ function assertOptimizedPath(requests) {
   if (decide.providerPromptTokens > MAX_COMPACT_DECIDE_PROMPT_TOKENS
     || decide.includedCharacterCount > MAX_COMPACT_DECIDE_CONTEXT_CHARS) {
     throw new Error(`compact DECIDE exceeded its measured cost ceiling: ${safe(decide)}`)
+  }
+  const finalReply = requests[1]
+  if (finalReply.providerPromptTokens > MAX_COMPACT_FINAL_PROMPT_TOKENS
+    || finalReply.includedCharacterCount > MAX_COMPACT_FINAL_CONTEXT_CHARS) {
+    throw new Error(`compact final reply exceeded its measured cost ceiling: ${safe(finalReply)}`)
+  }
+  const totalPromptTokens = requests.reduce(
+    (total, request) => total + (request.providerPromptTokens ?? 0),
+    0,
+  )
+  if (totalPromptTokens > MAX_OPTIMIZED_TOTAL_PROMPT_TOKENS) {
+    throw new Error(`optimized single-tool prompt cost regressed: ${safe({ totalPromptTokens, requests })}`)
   }
   const forbiddenIds = new Set([
     'core-flow',

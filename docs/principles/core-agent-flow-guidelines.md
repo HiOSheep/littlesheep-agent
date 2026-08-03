@@ -1,6 +1,6 @@
 # LittleSheep 核心 Agent 流程规范
 
-最后更新：2026-08-03 17:35:20
+最后更新：2026-08-03 18:36:14
 
 本文是 [LittleSheep 架构原则](architecture-principles.md) 在 Core Flow、TaskBook、验证、恢复和记忆运行时上的专项约束。LLM 与 Agent、Mode 与权限、Context 与 Memory、Harness 与 Tool Execution 的顶层分工以架构原则为准；本文不重复维护另一套总架构。
 
@@ -181,7 +181,7 @@ execute 内部：
 
 - `NeedAssessment` 和 `TaskBook` 核心类型。
 - `DECIDE` 输出需求校准和结构化任务书。
-- 用户明确点名注册工具且不属于续接/记忆追问时，DECIDE 可在受限工具 JSON Schema 下为每个可独立验证的步骤输出一个 `toolProposal`。其中，自包含且来源可证明为内置的单个 `glob / grep / read` 使用 `decide_explicit_tool` 紧凑输出，再展开为既有 `NeedAssessment + TaskBook`；有界多工具、写入和执行任务继续使用完整 DECIDE。Runtime 最多向完整 DECIDE 暴露 4 种明确点名的工具，单 schema 最多 12,000 字符、总计最多 24,000 字符，TaskBook 最多接纳 8 个直接提议；随后逐项校验工具名、参数 schema、依赖、资源、副作用、权限和审批。当前直接执行接受 Runtime 可证明、无需审批的 `read/write`，以及完全访问模式下来源为内置、未从 Checkpoint 恢复且参数完整的单次 `exec`；Runtime 可在模型遗漏副作用声明时把内置 `exec` 保守推导为 `external`，但模型显式给出冲突声明时必须拒绝。Runtime 不得从自然语言自行猜参数，也不得绕过统一 Tool Execution Service。完成后由真实 `execute_final_reply` API 调用组织最终回答，VERIFY 使用结构证据；任一条件不满足即回退普通工具循环。自然语言中的并列省略可以继承明确动词，但“不要使用”或纯介绍工具的文本不得进入提议集合。
+- 用户明确点名注册工具且不属于续接/记忆追问时，DECIDE 可在受限工具 JSON Schema 下为每个可独立验证的步骤输出一个 `toolProposal`。其中，自包含且来源可证明为内置的单个 `glob / grep / read` 使用 `decide_explicit_tool`：模型只返回 `summary / successCriterion / input`，工具名由 Runtime 锁定，再展开为既有 `NeedAssessment + TaskBook`；旧 `userNeed / goal / toolProposal` 响应只作兼容读取。有界多工具、写入和执行任务继续使用完整 DECIDE。Runtime 最多向完整 DECIDE 暴露 4 种明确点名的工具，单 schema 最多 12,000 字符、总计最多 24,000 字符，TaskBook 最多接纳 8 个直接提议；随后逐项校验工具名、参数 schema、依赖、资源、副作用、权限和审批。当前直接执行接受 Runtime 可证明、无需审批的 `read/write`，以及完全访问模式下来源为内置、未从 Checkpoint 恢复且参数完整的单次 `exec`；Runtime 可在模型遗漏副作用声明时把内置 `exec` 保守推导为 `external`，但模型显式给出冲突声明时必须拒绝。紧凑最终回答还必须证明任务为 trivial 单步骤、工具来源为 builtin、没有审批或副作用、结果未清洗/截断，并且 TaskBook、步骤结果、工具结果和权威调用记录的 `callId` 完整一致；否则使用完整最终回答 Context。Runtime 不得从自然语言自行猜参数，也不得绕过统一 Tool Execution Service。完成后由真实 `execute_final_reply` API 调用组织最终回答，VERIFY 使用结构证据；任一条件不满足即回退普通工具循环。自然语言中的并列省略可以继承明确动词，但“不要使用”或纯介绍工具的文本不得进入提议集合。
 - 继续兼容旧的 `{ "plan": [...] }` 输出格式。
 - 存在任务书时，`EXECUTE` 按 `TaskBook.steps` 逐步执行。
 - `EXECUTE` 记录包含步骤状态、输出、工具调用和失败信息的 `TaskExecutionResult`。

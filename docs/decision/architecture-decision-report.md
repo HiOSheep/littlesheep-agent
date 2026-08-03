@@ -1,6 +1,6 @@
 # LittleSheep 架构评估与开发决策报告
 
-最后更新：2026-08-03 17:35:20
+最后更新：2026-08-03 18:36:14
 评估范围：当前源码、正式文档与已记录的验证结果
 执行状态：Memory v3 阶段 0-26 的工程实现、隔离演练和正式用户数据迁移已完成；正式 backend/config 为 v3，40 个业务 atom、5 个内部根、11 个资源和 45 条 BGE 512 维向量已通过既有真实数据根、Electron 重启、Catalog v9 integrity 与恢复源检查。`respond / execute / clarify` 活动语义、直接回应 Context 瘦身、统一 Tool Execution Service、自包含单只读工具的 `decide_explicit_tool`、完整显式多工具提议、完全访问下受限内置 `exec` 直接执行、TaskBook 步骤级有界并行、活动任务控制、托盘、三档关闭策略和设置页“应用与后台”已形成工程基线。紧凑工具契约只接受来源明确为内置的单个 `glob / grep / read`，其他任务失败关闭并回退完整 DECIDE。确定性 Electron 七场景、真实 DeepSeek 完整退出/重启后的回答级记忆连续性、真实两步 `write -> read` 恢复、短时并行压力门和 120 秒分钟级持续任务已经通过。FINALIZE 仍以 LS 最终回答和真实因果 Context 判断是否连续，并支持按标签识别 Markdown 表格、短数字、布尔值和执行证据字段；保存、检索或摘要存在不能替代回答证据。多轮多次压缩、更多事实形态、含历史 Provider 工具消息的普通续轮 tokenizer、OpenAI/GLM 同等能力矩阵、数小时持续负载、真实网络故障和外部系统副作用验收仍未完成。
 
@@ -77,7 +77,7 @@ React Renderer
 | 公共契约 | 稳定基础 | `packages/types/` | 内部 v1 契约已齐，Context 与 Tools 已有实际所有者；Mode Registry 仍未收敛 | 保持内部版本，迁移剩余生产者和消费者后再考虑公开 API |
 | Workflow/Harness | 稳定基础；活动语义迁移已完成 | `packages/harness/src/default-harness.ts`、`stages/`、`packages/types/src/agent.ts` | 代码级 stage 与安全脊柱仍固定；语义活动已迁移为 `respond / execute / clarify`，兼容字段尚未退役 | 保持兼容边界，再继续评估 Mode 策略化；不开放任意工作流图 |
 | Runner | 基础可用 | `packages/runner/src/runner.ts`、`infra.ts` | 同时承担生命周期、核心装配、记忆运行时启动和工具选择 | 把 Runner 保持为应用服务，逐步下沉子系统内部逻辑 |
-| Context | 基础可用，DeepSeek V4 普通请求、自包含单只读工具与有界多工具请求已按形态实测 | `packages/context/`、`context/tokenizers/`、`types/token-ledger.ts`、`harness/context-candidates.ts`、`model-observability.ts`、`config/model-capabilities.ts` | 已有确定性候选、来源 segment、显式 tokenizer 能力矩阵、不可展示的保守预算保护、预算淘汰、版本化摘要、附件清单、按需附件工具、压缩阈值设置和双账本 UI。最新单 `glob` 紧凑决策 prompt 为 `629`，全程 prompt `1,479`、Provider total `1,702`，两次本地 tokenizer 均为 `exact_match`；最新摘要续答最终 prompt `1127/1129` 为 `within_tolerance`。DeepSeek thinking 未显式声明时失败关闭 exact；含历史 `tool_calls`/`tool` 结果的普通续轮仍未校准 | 先校准普通工具续轮 framing；实际启用其他 Provider 时复用同一计数与校准门 |
+| Context | 基础可用，DeepSeek V4 普通请求、自包含单只读工具与有界多工具请求已按形态实测 | `packages/context/`、`context/tokenizers/`、`types/token-ledger.ts`、`harness/context-candidates.ts`、`model-observability.ts`、`config/model-capabilities.ts` | 已有确定性候选、来源 segment、显式 tokenizer 能力矩阵、不可展示的保守预算保护、预算淘汰、版本化摘要、附件清单、按需附件工具、压缩阈值设置和双账本 UI。最新单 `glob` 的 DECIDE/final prompt 为 `559/462`，全程 prompt `1,021`、Provider total `1,084`，两次本地 tokenizer 均为 `exact_match`；紧凑最终回答只接受 TaskBook、步骤结果、工具结果和调用审计 `callId` 完整关联，且无审批、无副作用、未清洗/截断的 trivial builtin 单只读结果。最新摘要续答最终 prompt `1127/1129` 为 `within_tolerance`。DeepSeek thinking 未显式声明时失败关闭 exact；含历史 `tool_calls`/`tool` 结果的普通续轮仍未校准 | 先校准普通工具续轮 framing；实际启用其他 Provider 时复用同一计数与校准门 |
 | Prompt | 基础可用；直接回应路径已收敛 | `packages/prompt/`、stage prompt、`harness/stages/reply.ts` | 完整执行 Prompt 与紧凑 `respond` Prompt 已分路；后者不含 Workflow、workspace、reasoning 和无关 bootstrap，并限制历史与记忆索引。普通回应只注入紧凑时钟，明确追问才恢复上一轮有界执行摘要 | 保持按活动渐进披露，只向模型投影完成当前决策所需信息 |
 | Behavior Mode | 职责分散 | `prompt/profiles.ts`、Runner、config、App | 不是统一配置组合，新增 Mode 仍需跨模块修改 | 建立类型化 Mode registry，并与权限正交 |
 | Permission Policy | 基础可用 | `packages/app/src/main/run-policy.ts`、`ToolContext`、`packages/tools/src/tool-execution-service.ts` | 统一服务已消费权限决议并执行单次批准；网络资源和更强授权 token 尚未建模 | 权限作为独立 ceiling，不进入行为 profile |

@@ -29,8 +29,8 @@ export async function requestDecisionModel(
       request.messages,
       {
         maxAttempts: 2,
-        maxTokens: compact ? 700 : 1_400,
-        maxTokensCeiling: compact ? 1_000 : 2_200,
+        maxTokens: compact ? 450 : 1_400,
+        maxTokensCeiling: compact ? 700 : 2_200,
         signal: ctx.signal,
         onRequest: (chatRequest) => prepareModelRequest(
           ctx,
@@ -48,6 +48,7 @@ export async function requestDecisionModel(
           ? expandCompactExplicitToolDecision(
               parsed as CompactExplicitToolDecision,
               request.compactExplicitTool,
+              request.inboundText,
             )
           : parsed as DecodedPlan,
         attempts,

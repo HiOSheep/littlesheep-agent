@@ -1,7 +1,7 @@
 # LittleSheep Agent Runtime 连续性任务书 2026-07-14
 
 状态：规划已定稿，实施中（阶段 0、阶段 2、阶段 3 已完成；阶段 1 主要数据链、当前 DeepSeek 四项真实校准、普通直接回答与显式单/多工具提议路径的 V4 精确本地 tokenizer 对账已完成，含历史 Provider 工具消息的普通续轮 exact 校准、其他 Provider 与数小时真实负载仍待收敛；阶段 4 已完成统一 Tool Execution Service、统一工具超时与清理、事件重入、TaskBookPatch、Renderer 入口与 TaskBook 步骤级有界并行；阶段 5 已完成持久检查点、Runner 续跑、应用启动恢复、活动任务控制、托盘、三档关闭策略、设置页后台入口、确定性 Electron 七场景、真实 DeepSeek 跨重启最终回答连续性、基础两步副作用恢复、短时并行压力、一次有界双字段摘要压缩续答和 120 秒分钟级持续任务验收；多轮多次压缩、更多事实形态、数小时持续负载、网络恢复和真实外部系统副作用仍未完成）
-最后更新：2026-08-03 17:35:20
+最后更新：2026-08-03 18:36:14
 
 本文把 Context、记忆注册、附件、运行中追加要求、检查点恢复、后台执行和双向透明整理为一条可分阶段验收的开发任务书。它服从 [架构原则](../principles/architecture-principles.md) 和 [核心 Agent 流程规范](../principles/core-agent-flow-guidelines.md)，当前事实与最新测试数字仍以 [项目状态](../decision/project-status.md) 为准。
 
@@ -28,6 +28,8 @@
 > 2026-08-03 13:45:32 紧凑单工具与连续性可观测边界：当前实现把自包含、来源为内置且只需一次 `glob / grep / read` 的请求分流到 `decide_explicit_tool`，只注入当前输入、工作目录、最小 profile/reasoning/语气约束、唯一 schema 和 Runtime awareness；其他显式工具任务仍走完整 `decide`。最新真实 `glob` 为 2 次 API、1 次工具、`2.901s`，紧凑决策 prompt `629`、全程 prompt `1,479`、Provider total `1,702`，两次本地 tokenizer 均为 `exact_match`。该新调用目的已纳入回答因果链，因此紧凑 DECIDE 直接产生的澄清不会被误判为 Context 不可观测。记忆连续仍只以最终 LS 回答为准：`supported` 才通过；漏答、答错、否认记得或来源未进入实际回答请求均为 `discontinuous`。最新并行复跑 Provider total 为 `20,389`，最新压缩续答 Provider total 为 `3,480`；后者最终 prompt `1127/1129` 仅为 `within_tolerance`，不是零差值。
 
 > 2026-08-03 17:11:41 分钟级持续任务边界：隔离数据根中的真实 Electron + DeepSeek 使用一个内置 `exec` 持续运行 120 秒并每秒写入有界进度。工具只执行一次，`executionCount=1`、`ticks=120`、`completed=true`，执行前只产生一次 `decide` 请求。运行中暂停请求不会杀死工具或提前生成回复，而是在工具结束、步骤完成状态和副作用证据持久化后进入安全暂停边界；完全退出并重启后恢复没有重放命令，产物哈希、大小和 mtime 保持不变。随后切换模型进行追问，LS 最终回答准确给出验收代号和 `executionCount=1`，`memoryContinuityAssessment.status=supported`。采样期间没有资源违规，RSS 约从 316 MiB 回落到 251 MiB，活动句柄从 12 回落到 4、最终空闲为 3，Runner、监听器和活动源恢复基线。该门只证明分钟级单副作用、检查点和资源收尾，不替代数小时、真实断网、并行外部系统副作用或更多事实形态。
+
+> 2026-08-03 18:36:14 效率与同进程控制补充：紧凑单只读 DECIDE 协议收缩为 `summary / successCriterion / input`，工具名由 Runtime 锁定；旧 Provider 响应继续兼容。紧凑最终回答新增独立证据闸门，只有 trivial 单步骤、builtin `glob / grep / read`、无审批、无副作用、未清洗/截断，且 TaskBook、步骤结果、工具结果和权威调用记录 `callId` 完整关联时才启用。真实 `glob` 仍为 2 次 API、1 次工具，DECIDE/final prompt 为 `559/462`、全程 prompt `1,021`、Provider total `1,084`，两次本地 tokenizer 均为 `exact_match`；同一脚本改造前记录为 prompt `1,465`、total `1,645`，总 Token 下降约 `34%`。耗时 `3.94s` 不优于旧样本 `3.14s`，因此只证明成本下降，不宣称网络速度提升。120 秒持续门同时新增“暂停 -> `pause_requested` -> 同进程继续 -> `running` -> 再暂停”的完整控制循环；三个事件在安全边界应用并生成 Checkpoint，`exec` 仍只执行一次，强制终止/重启后不重放。121 次资源采样无违规，结束后活动任务、旧 Runner、事件源和监听器回到空闲基线。跨模型追问的 LS 最终回答准确承接验收代号与 `executionCount=1`，连续性为 `supported`、来源为 `recent_history`；内部保存或 Checkpoint 存在仍不能替代回答证据。
 
 > 2026-08-03 01:50:17 token 修正：当次普通回答三次真实请求为 `1008/1008`、`387/387`、`1292/1292`；随后当时的跨重启验收为 `1003/1003`、`387/387`、`1285/1285`，均保持本地/Provider 零差值。含历史 `tool_calls`/`tool` 结果的续轮实测本地 `3743`、Provider `3824`，差值 `81`，因此该形态不再标记 exact，本地计数失败关闭并等待 Provider usage。DeepSeek thinking 模式未显式声明时同样不再冒充 exact；这些数字只描述对应时间点，当前请求形态与校准状态以项目状态为准。
 

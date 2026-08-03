@@ -20,9 +20,12 @@ const CONTEXT_DEPENDENT_RESOURCE_PATTERNS: readonly RegExp[] = [
 ];
 
 export interface CompactExplicitToolDecision {
+  summary?: string;
+  successCriterion?: string;
+  input?: unknown;
+  /** Legacy fields remain readable while older Provider responses age out. */
   userNeed?: string;
   goal?: string;
-  successCriterion?: string;
   title?: string;
   description?: string;
   expectedOutput?: string;
@@ -79,23 +82,15 @@ export function renderCompactExplicitToolProposalContract(
 ): string {
   return `# Explicit Tool Decision
 
-The user explicitly requested exactly one call to the registered tool \`${instruction.tool.name}\`.
-Infer the smallest sufficient call from the current user message only. Return one raw JSON object and no markdown:
-{
-  "userNeed": "precise need in the user's language",
-  "goal": "concrete goal in the user's language",
-  "successCriterion": "one observable completion condition",
-  "title": "short user-language label",
-  "description": "one concise step",
-  "expectedOutput": "what the user asked to receive",
-  "toolProposal": {"name":"${instruction.tool.name}","input":{}}
-}
+Infer the smallest sufficient single call to the Runtime-locked tool \`${instruction.tool.name}\` from the current user message only.
+Return one raw JSON object and no markdown:
+{"summary":"one concise description in the user's language","successCriterion":"one observable completion condition","input":{}}
 
-Replace the empty input with concrete arguments that satisfy the JSON Schema below. Do not invent missing required values.
-If a required value cannot be inferred safely, omit toolProposal and return:
-{"userNeed":"...","goal":"...","clarification":{"blockingReason":"...","question":"one specific question in the user's language"}}
+Replace the empty input with concrete arguments satisfying the JSON Schema below. Do not invent missing required values.
+If a required value cannot be inferred safely, return only:
+{"clarification":{"blockingReason":"short reason","question":"one specific question in the user's language"}}
 
-This is not execution authority. Runtime will revalidate the tool name, schema, resource boundary, permission and side effects. Never propose another tool or more than one call.
+Do not return a tool name, TaskBook, repeated goal fields, or more than one call. This is not execution authority: Runtime supplies the locked tool name and revalidates the schema, resource boundary, permission and side effects.
 
 Tool: ${instruction.tool.description}
 Input JSON Schema: ${JSON.stringify(instruction.schema)}`;
@@ -105,14 +100,25 @@ Input JSON Schema: ${JSON.stringify(instruction.schema)}`;
 export function expandCompactExplicitToolDecision(
   decision: CompactExplicitToolDecision,
   instruction: ExplicitSingleToolInstruction,
+  inboundText?: string,
 ): DecodedPlan {
-  const userNeed = cleanText(decision.userNeed);
-  const goal = cleanText(decision.goal) ?? userNeed;
+  const summary = cleanText(decision.summary)
+    ?? cleanText(decision.goal)
+    ?? cleanText(decision.userNeed)
+    ?? cleanText(decision.title)
+    ?? cleanText(decision.description)
+    ?? cleanText(inboundText)
+    ?? `Use ${instruction.tool.name}`;
+  const userNeed = cleanText(decision.userNeed) ?? summary;
+  const goal = cleanText(decision.goal) ?? summary;
   const criterion = cleanText(decision.successCriterion);
   const question = cleanText(decision.clarification?.question);
   const blockingReason = cleanText(decision.clarification?.blockingReason);
-  const proposal = decision.toolProposal;
-  if (question || blockingReason || !proposal) {
+  const legacyProposal = decision.toolProposal;
+  const hasDirectInput = hasOwn(decision, 'input');
+  const hasLegacyInput = Boolean(legacyProposal && hasOwn(legacyProposal, 'input'));
+  const input = hasDirectInput ? decision.input : legacyProposal?.input;
+  if (question || blockingReason || (!hasDirectInput && !hasLegacyInput)) {
     return {
       assessment: {
         userNeed,
@@ -131,8 +137,8 @@ export function expandCompactExplicitToolDecision(
       taskBook: { goal, complexity: 'simple', successCriteria: criterion ? [criterion] : [], steps: [] },
     };
   }
-  const title = cleanText(decision.title) ?? goal;
-  const description = cleanText(decision.description) ?? goal;
+  const title = cleanText(decision.title) ?? summary;
+  const description = cleanText(decision.description) ?? summary;
   return {
     assessment: {
       userNeed,
@@ -153,9 +159,9 @@ export function expandCompactExplicitToolDecision(
         title,
         description,
         tools: [instruction.tool.name],
-        toolProposal: { name: proposal.name, input: proposal.input },
+        toolProposal: { name: instruction.tool.name, input },
         acceptanceCriteria: criterion ? [criterion] : undefined,
-        expectedOutput: cleanText(decision.expectedOutput),
+        expectedOutput: cleanText(decision.expectedOutput) ?? criterion,
       }],
     },
   };
@@ -163,4 +169,8 @@ export function expandCompactExplicitToolDecision(
 
 function cleanText(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function hasOwn(value: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
 }

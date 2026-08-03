@@ -1,6 +1,6 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-08-03 17:35:20
+最后更新：2026-08-03 18:36:14
 
 本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
 
@@ -12,7 +12,7 @@
 
 **当前权限决策**：产品语义上 LS 是 Agent 的容器，活动完整应用数据根（默认 `.littlesheep`）是容器边界，`workplace/` 是容器内的默认工作区；当前桌面实现是 Main 的逻辑边界，不是实际 Docker/OS 进程沙箱。从其他模式切换到完全访问时先用红色危险按钮确认一次；确认后容器内外及范围不明的读、写、改、删、执行均免逐次批准。研究只对容器内读取免批准；受限所有操作都需批准。外部工作区在研究/受限模式下先跳过自动索引，完全访问可直接继续。核心源码只读和危险命令硬拒绝不受模式影响。
 
-**你现在不需要再次决定迁移或替换 DeepSeek 凭证**：迁移、模型准备、向量回填和应用重启已完成。最新无延迟单 `glob` 验收为 `decide_explicit_tool -> Runtime glob -> structural VERIFY -> execute_final_reply`：2 次真实 DeepSeek API、1 次只读工具，耗时 `2.901s`；紧凑决策 prompt 为 `629` tokens，全程 prompt `1,479`、Provider total `1,702`，两次本地 tokenizer 均为 `exact_match`。最新短时并行压力门结束后 active run/retired Runner 均为 0，source/listener 回到 1，Provider total 为 `20,389`。最新 120 秒持续门中 `exec` 只执行 1 次、产生 120 个进度 tick，恢复不重放，跨模型追问连续性为 `supported`，最终资源回到有界空闲状态。最新摘要续答 Provider total 为 `3,480`；最终续答 prompt 本地/Provider 为 `1127/1129`，状态是 `within_tolerance`，不能写成零差值。含历史 Provider 工具结果的普通续轮仍失败关闭 exact 声明，等待独立校准。
+**你现在不需要再次决定迁移或替换 DeepSeek 凭证**：迁移、模型准备、向量回填和应用重启已完成。最新无延迟单 `glob` 验收为 `decide_explicit_tool -> Runtime glob -> structural VERIFY -> execute_final_reply`：2 次真实 DeepSeek API、1 次只读工具，耗时 `3.94s`；DECIDE prompt `559`、最终回答 prompt `462`、全程 prompt `1,021`、Provider total `1,084`，两次本地 tokenizer 均为 `exact_match`。同一脚本的本轮改造前记录为 prompt `1,465`、Provider total `1,645`，总 Token 下降约 `34%`；耗时受网络波动影响，不能据此宣称速度提升。最新短时并行压力门结束后 active run/retired Runner 均为 0，source/listener 回到 1，Provider total 为 `20,389`。最新 120 秒持续门中 `exec` 只执行 1 次，并完成“同进程暂停 -> 继续 -> 再暂停 -> 安全边界 Checkpoint -> 强制终止/重启恢复”链路；恢复不重放，121 次资源采样无违规，跨模型追问的 LS 最终回答连续性为 `supported`，来源为 `recent_history`，结束后活动任务、旧 Runner、事件源和监听器均回到空闲基线。最新摘要续答 Provider total 为 `3,480`；最终续答 prompt 本地/Provider 为 `1127/1129`，状态是 `within_tolerance`，不能写成零差值。含历史 Provider 工具结果的普通续轮仍失败关闭 exact 声明，等待独立校准。
 
 - Provider `/embeddings` 已在 v3 基础设施中默认硬关闭；BGE 是当前平衡默认，multilingual E5 是高质量可选档，两者均已通过显式资产校验和运行阶段零网络请求的真实离线基准。
 - Memory v3 使用四层语义：对话原始来源保存用户输入与对话区可见内容，写入后不改写；投影变更记录保存 `MemoryUpdateEvent + mutation`，只服务幂等、恢复和审计；atom 是可去重、合并、调层级、失效、恢复和重建的当前语义投影；run working set 只决定本轮介入。SQLite 向量目录管理 atom 的路径、层级、FTS、向量、状态和审计，但必须能从持久文件重建。

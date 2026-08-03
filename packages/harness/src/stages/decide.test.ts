@@ -216,7 +216,10 @@ describe('decideStage', () => {
     expect(requests[0]?.tools).toBeUndefined();
     const system = String(requests[0]?.messages[0]?.content ?? '');
     expect(system).toContain('# Explicit Tool Decision');
-    expect(system).toContain('Runtime will revalidate the tool name, schema, resource boundary, permission and side effects');
+    expect(system).toContain('Runtime supplies the locked tool name and revalidates the schema, resource boundary, permission and side effects');
+    expect(system).toContain('"summary"');
+    expect(system).not.toContain('"userNeed"');
+    expect(system).not.toContain('"toolProposal"');
     expect(system).not.toContain('You are the DECIDE stage of a hard-control-flow agent.');
     expect(system).not.toContain('# Core Flow');
     expect(system).not.toContain('# Memory Tree');
@@ -242,13 +245,9 @@ describe('decideStage', () => {
       inputSchema: z.object({ pattern: z.string(), path: z.string().optional() }),
     });
     const llm = createMockLlm(textResponse(JSON.stringify({
-      userNeed: '读取工作区顶层条目',
-      goal: '列出顶层条目',
+      summary: '列出工作区顶层条目',
       successCriterion: '返回顶层条目数量和名称',
-      title: '读取顶层条目',
-      description: '使用 glob 读取当前工作区顶层条目',
-      expectedOutput: '数量和名称',
-      toolProposal: { name: 'glob', input: { pattern: '*', path: '.' } },
+      input: { pattern: '*', path: '.' },
     })));
     const stage = createDecideStage({ ...deps, llm });
     const ctx = makeCtx({
@@ -264,14 +263,82 @@ describe('decideStage', () => {
 
     expect(result).toMatchObject({ next: 'execute', ok: true });
     expect(ctx.taskBook).toMatchObject({
-      goal: '列出顶层条目',
+      goal: '列出工作区顶层条目',
       complexity: 'trivial',
       steps: [{
         id: 'step-1',
+        title: '列出工作区顶层条目',
+        description: '列出工作区顶层条目',
+        expectedOutput: '返回顶层条目数量和名称',
         tools: ['glob'],
         toolProposal: { name: 'glob', input: { pattern: '*', path: '.' } },
       }],
     });
+  });
+
+  it('keeps legacy compact responses compatible while Runtime owns the tool name', async () => {
+    const glob = makeTool('glob', { ok: true, output: '' }, {
+      inputSchema: z.object({ pattern: z.string(), path: z.string().optional() }),
+    });
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      userNeed: '读取工作区顶层条目',
+      goal: '列出顶层条目',
+      successCriterion: '返回顶层条目数量和名称',
+      title: '读取顶层条目',
+      description: '使用 glob 读取当前工作区顶层条目',
+      expectedOutput: '数量和名称',
+      toolProposal: { name: 'untrusted-provider-name', input: { pattern: '*', path: '.' } },
+    })));
+    const stage = createDecideStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [glob],
+      inbound: textMessage('user', '请使用 glob 工具读取当前工作区顶层条目'),
+      classification: {
+        activity: 'execute', type: 'problem', confidence: 0.96,
+        source: 'rules', reason: 'explicit tool instruction',
+      },
+    });
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'execute', ok: true });
+    expect(ctx.taskBook?.steps[0]?.toolProposal).toEqual({
+      name: 'glob',
+      input: { pattern: '*', path: '.' },
+    });
+  });
+
+  it('turns a compact missing-input response into one focused clarification', async () => {
+    const read = makeTool('read', { ok: true, output: '' }, {
+      inputSchema: z.object({ file_path: z.string() }),
+    });
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      clarification: {
+        blockingReason: '没有目标文件路径。',
+        question: '需要读取哪个文件？',
+      },
+    })));
+    const stage = createDecideStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [read],
+      inbound: textMessage('user', '请使用 read 工具读取文件'),
+      classification: {
+        activity: 'execute', type: 'problem', confidence: 0.96,
+        source: 'rules', reason: 'explicit tool instruction',
+      },
+    });
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'finalize', ok: true });
+    expect(ctx.replyProvenance).toMatchObject({ purpose: 'decide_explicit_tool', source: 'llm' });
+    expect(ctx.clarificationRequest).toMatchObject({
+      blockingReason: '没有目标文件路径。',
+      questions: [{ prompt: '需要读取哪个文件？', required: true }],
+    });
+    expect(ctx.taskBook?.steps).toEqual([
+      expect.objectContaining({ id: 'clarify', status: 'pending' }),
+    ]);
   });
 
   it.each([

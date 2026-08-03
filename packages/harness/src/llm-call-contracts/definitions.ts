@@ -69,7 +69,7 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     allowedDecisions: ['propose_single_tool_call', 'request_clarification'],
     outputSchema: json(
       'explicit-tool-decision.v1',
-      'Minimal NeedAssessment plus one schema-bound tool proposal, or one focused clarification.',
+      'One concise summary, success criterion and schema-bound input, or one focused clarification.',
     ),
     memoryIntents: NO_MEMORY, requiresMemoryEvidence: false,
     toolMode: 'none', runtimeApprovalRequired: false,

@@ -123,7 +123,12 @@ async function main() {
       maxRetiredRunnerCount: 1,
     })
     const observedCompletion = observeCompletion(run.completion)
-    const pauseAtMs = observedStartedAtMs + Math.max(10_000, Math.floor(durationMs * 0.35))
+    const transientPauseAtMs = observedStartedAtMs + Math.max(2_000, Math.floor(durationMs * 0.2))
+    const finalPauseAtMs = observedStartedAtMs + Math.max(5_000, Math.floor(durationMs * 0.7))
+    let transientPauseRequestedAt
+    let resumedAt
+    let transientPausedRun
+    let resumedRun
     let pauseRequestedAt
     while (!observedCompletion.done()) {
       const [snapshot, progress] = await Promise.all([
@@ -131,16 +136,35 @@ async function main() {
         readProgressState(environment.workplaceDir).catch(() => undefined),
       ])
       resources.add(snapshot, progress)
-      if (!pauseRequestedAt && Date.now() >= pauseAtMs) {
+      if (!transientPauseRequestedAt && Date.now() >= transientPauseAtMs) {
         const outcome = await controlRun(locator, runId, 'pause')
         if (outcome.outcome?.kind !== 'accepted') {
-          throw new Error(`pause request was not accepted: ${safe(outcome)}`)
+          throw new Error(`transient pause request was not accepted: ${safe(outcome)}`)
         }
+        transientPausedRun = await waitForActiveRunControlStatus(locator, runId, 'pause_requested')
+        transientPauseRequestedAt = new Date().toISOString()
+
+        const resumeOutcome = await controlRun(locator, runId, 'resume')
+        if (resumeOutcome.outcome?.kind !== 'accepted') {
+          throw new Error(`in-process resume request was not accepted: ${safe(resumeOutcome)}`)
+        }
+        resumedRun = await waitForActiveRunControlStatus(locator, runId, 'running')
+        resumedAt = new Date().toISOString()
+      }
+      if (resumedAt && !pauseRequestedAt && Date.now() >= finalPauseAtMs) {
+        const outcome = await controlRun(locator, runId, 'pause')
+        if (outcome.outcome?.kind !== 'accepted') {
+          throw new Error(`final pause request was not accepted: ${safe(outcome)}`)
+        }
+        await waitForActiveRunControlStatus(locator, runId, 'pause_requested')
         pauseRequestedAt = new Date().toISOString()
       }
       await Promise.race([observedCompletion.settled, delay(options.sampleIntervalMs)])
     }
     const initial = await observedCompletion.value()
+    if (!transientPauseRequestedAt || !resumedAt || !transientPausedRun || !resumedRun) {
+      throw new Error('sustained run finished before the in-process pause/resume cycle completed')
+    }
     if (!pauseRequestedAt) throw new Error('sustained run finished before the pause request boundary')
     assertPausedSustainedRun(initial.result, environment.model)
     resources.add(await acceptanceSnapshot(locator), await readProgressState(environment.workplaceDir))
@@ -273,6 +297,7 @@ async function main() {
         'active_run_sse_continuous_observation',
         'close_to_tray_while_running',
         'model_and_profile_hot_reload_with_retired_runner',
+        'in_process_pause_resume_without_stopping_tool',
         'pause_requested_during_tool_and_applied_at_safe_boundary',
         'checkpoint_model_restored_before_restart',
         'forced_termination_restart',
@@ -287,6 +312,10 @@ async function main() {
         sessionId: initial.result.sessionId,
         status: initial.result.status,
         checkpointId: initial.result.runCheckpointId,
+        transientPauseRequestedAt,
+        transientPauseStatus: transientPausedRun.controlStatus,
+        resumedAt,
+        resumedStatus: resumedRun.controlStatus,
         pauseRequestedAt,
         toolDurationMs: toolRecord?.durationMs,
         taskBookSteps: initial.result.taskBook?.steps?.length ?? 0,
@@ -724,6 +753,10 @@ function assertPausedSustainedRun(result, model) {
     || result.taskExecution.steps[0]?.status !== 'done') {
     throw new Error(`sustained TaskBook step did not finish before the pause boundary: ${safe(result.taskExecution)}`)
   }
+  if (result.runtimeControl?.state !== 'paused'
+    || (result.runtimeControl.eventIds?.length ?? 0) < 3) {
+    throw new Error(`pause/resume/pause events were not applied at the safe boundary: ${safe(result.runtimeControl)}`)
+  }
   const sideEffects = result.sideEffects ?? []
   if (sideEffects.length !== 1
     || sideEffects[0]?.toolName !== 'exec'
@@ -833,6 +866,14 @@ async function waitForRunIds(locator, runIds) {
       ? payload.runs
       : undefined
   }, 60_000, `active runs ${runIds.join(', ')}`)
+}
+
+async function waitForActiveRunControlStatus(locator, runId, controlStatus) {
+  return waitFor(async () => {
+    const payload = await getJson(locator, '/application/active-runs').catch(() => undefined)
+    const run = payload?.runs?.find((candidate) => candidate.runId === runId)
+    return run?.controlStatus === controlStatus ? run : undefined
+  }, 10_000, `active run ${runId} control status ${controlStatus}`)
 }
 
 function controlRun(locator, runId, action) {
