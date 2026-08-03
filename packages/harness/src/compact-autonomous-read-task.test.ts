@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { textMessage, type RuntimeMemoryKnownState, type TaskBook } from '@littlesheep/types';
 import { makeCtx, makeTool } from './tests/helpers.js';
 import {
+  renderCompactAutonomousReadDecisionContract,
   resolveCompactAutonomousReadDecisionTools,
   resolveCompactAutonomousReadExecutionTools,
 } from './compact-autonomous-read-task.js';
@@ -9,9 +10,14 @@ import {
 describe('compact autonomous read task', () => {
   it('offers a small builtin catalog for a self-contained read-only goal', () => {
     const ctx = context('请查看当前工作区顶层有哪些条目，只告诉我数量和名称，不要修改任何文件。');
-    expect(resolveCompactAutonomousReadDecisionTools(ctx)?.map((tool) => tool.name)).toEqual([
+    const tools = resolveCompactAutonomousReadDecisionTools(ctx);
+    expect(tools?.map((tool) => tool.name)).toEqual([
       'glob', 'grep', 'read',
     ]);
+    const contract = renderCompactAutonomousReadDecisionContract(tools!);
+    expect(contract).toContain('# Compact Read-Only Tool Decision');
+    expect(contract).toContain('Input JSON Schema:');
+    expect(contract).toContain('{"tool":"toolName","input":{}');
   });
 
   it('ignores memory candidates that were inspected but excluded from Context', () => {
@@ -59,7 +65,7 @@ describe('compact autonomous read task', () => {
     expect(resolveCompactAutonomousReadExecutionTools(ctx)?.map((tool) => tool.name)).toEqual(['glob']);
   });
 
-  it('rejects direct proposals and non-read-only TaskBooks', () => {
+  it('admits one matching direct proposal and rejects unsafe TaskBooks', () => {
     const direct = context('请查看当前工作区文件。', taskBook({
       tools: ['glob'],
       toolProposal: { name: 'glob', input: { pattern: '*' } },
@@ -68,7 +74,7 @@ describe('compact autonomous read task', () => {
       tools: ['write'],
       sideEffect: 'write',
     }));
-    expect(resolveCompactAutonomousReadExecutionTools(direct)).toBeUndefined();
+    expect(resolveCompactAutonomousReadExecutionTools(direct)?.map((tool) => tool.name)).toEqual(['glob']);
     expect(resolveCompactAutonomousReadExecutionTools(write)).toBeUndefined();
   });
 });

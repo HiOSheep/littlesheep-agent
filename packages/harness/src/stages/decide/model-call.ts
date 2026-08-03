@@ -11,6 +11,10 @@ import {
   expandCompactExplicitToolDecision,
   type CompactExplicitToolDecision,
 } from '../../compact-explicit-tool-decision.js';
+import {
+  expandCompactAutonomousReadDecision,
+  type CompactAutonomousReadDecision,
+} from '../../compact-autonomous-read-task.js';
 
 export type DecisionModelResult =
   | { ok: true; parsed: DecodedPlan; attempts: number }
@@ -21,9 +25,14 @@ export async function requestDecisionModel(
   ctx: RunContext,
   request: DecideRequest,
 ): Promise<DecisionModelResult> {
+  let modelResult: Awaited<ReturnType<typeof callLlmForJson<
+    DecodedPlan | CompactExplicitToolDecision | CompactAutonomousReadDecision
+  >>>;
   try {
-    const compact = Boolean(request.compactExplicitTool);
-    const { parsed, attempts } = await callLlmForJson<DecodedPlan | CompactExplicitToolDecision>(
+    const compact = Boolean(request.compactExplicitTool || request.compactAutonomousReadTools);
+    modelResult = await callLlmForJson<
+      DecodedPlan | CompactExplicitToolDecision | CompactAutonomousReadDecision
+    >(
       deps.llm,
       deps.model,
       request.messages,
@@ -41,26 +50,49 @@ export async function requestDecisionModel(
         onResponse: (chatRequest, response) => recordProviderUsage(ctx, chatRequest, response.usage),
       },
     );
-    if (parsed) {
-      return {
-        ok: true,
-        parsed: request.compactExplicitTool && !isDecodedPlan(parsed)
-          ? expandCompactExplicitToolDecision(
-              parsed as CompactExplicitToolDecision,
-              request.compactExplicitTool,
-              request.inboundText,
-            )
-          : parsed as DecodedPlan,
-        attempts,
-      };
-    }
-    return failure(ctx, `failed to decode decision after ${attempts} attempt(s)`);
   } catch (error) {
     return failure(ctx, `transport error: ${(error as Error).message}`);
   }
+
+  const { parsed, attempts } = modelResult;
+  if (!parsed) return failure(ctx, `failed to decode decision after ${attempts} attempt(s)`);
+
+  try {
+    return {
+      ok: true,
+      parsed: expandCompactDecision(request, parsed),
+      attempts,
+    };
+  } catch (error) {
+    return failure(ctx, `decision contract error: ${(error as Error).message}`);
+  }
 }
 
-function isDecodedPlan(value: DecodedPlan | CompactExplicitToolDecision): value is DecodedPlan {
+function expandCompactDecision(
+  request: DecideRequest,
+  parsed: DecodedPlan | CompactExplicitToolDecision | CompactAutonomousReadDecision,
+): DecodedPlan {
+  if (isDecodedPlan(parsed)) return parsed;
+  if (request.compactExplicitTool) {
+    return expandCompactExplicitToolDecision(
+      parsed as CompactExplicitToolDecision,
+      request.compactExplicitTool,
+      request.inboundText,
+    );
+  }
+  if (request.compactAutonomousReadTools) {
+    return expandCompactAutonomousReadDecision(
+      parsed as CompactAutonomousReadDecision,
+      request.compactAutonomousReadTools,
+      request.inboundText,
+    );
+  }
+  return parsed as DecodedPlan;
+}
+
+function isDecodedPlan(
+  value: DecodedPlan | CompactExplicitToolDecision | CompactAutonomousReadDecision,
+): value is DecodedPlan {
   return Boolean(
     value
     && typeof value === 'object'

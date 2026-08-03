@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { RunContext, TaskBook, TaskStepResult, ToolInvocationRecord } from '@littlesheep/types';
-import { makeCtx } from './tests/helpers.js';
+import { textMessage, type RunContext, type TaskBook, type TaskStepResult, type ToolInvocationRecord } from '@littlesheep/types';
+import { makeCtx, makeTool } from './tests/helpers.js';
 import { isCompactReadOnlyResult } from './compact-read-only-result.js';
 
 const CALL_ID = 'call-glob-1';
@@ -8,6 +8,10 @@ const CALL_ID = 'call-glob-1';
 describe('isCompactReadOnlyResult', () => {
   it('accepts only a fully correlated builtin read-only result', () => {
     expect(isCompactReadOnlyResult(makeEligibleContext())).toBe(true);
+  });
+
+  it('accepts a fully correlated autonomous builtin read-only result', () => {
+    expect(isCompactReadOnlyResult(makeEligibleContext('autonomous'))).toBe(true);
   });
 
   it.each([
@@ -25,19 +29,32 @@ describe('isCompactReadOnlyResult', () => {
   });
 });
 
-function makeEligibleContext(): RunContext {
+function makeEligibleContext(kind: 'explicit' | 'autonomous' = 'explicit'): RunContext {
   const taskBook = makeTaskBook();
   const result = makeStepResult();
+  const glob = makeTool('glob', { ok: true, output: 'alpha.txt' });
   const ctx = makeCtx({
+    inbound: textMessage('user', kind === 'explicit'
+      ? '请使用 glob 工具查看当前工作区顶层条目。'
+      : '请查看当前工作区顶层有哪些条目，只告诉我数量和名称，不要修改任何文件。'),
     taskBook,
+    tools: [glob],
     toolSources: { glob: 'builtin' },
-    classification: {
-      activity: 'execute',
-      type: 'problem',
-      confidence: 0.99,
-      source: 'rules',
-      reason: 'explicit tool instruction',
-    },
+    classification: kind === 'explicit'
+      ? {
+          activity: 'execute',
+          type: 'problem',
+          confidence: 0.99,
+          source: 'rules',
+          reason: 'explicit tool instruction',
+        }
+      : {
+          activity: 'execute',
+          type: 'problem',
+          confidence: 0.99,
+          source: 'llm',
+          reason: 'workspace inspection requires evidence',
+        },
   });
   ctx.taskExecution = {
     goal: taskBook.goal,

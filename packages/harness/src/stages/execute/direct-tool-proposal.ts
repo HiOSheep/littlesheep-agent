@@ -13,6 +13,7 @@ import type {
   ToolResourceAccess,
   ToolResult,
 } from '@littlesheep/types';
+import { resolveCompactAutonomousReadProposalTool } from '../../compact-autonomous-read-task.js';
 import { resolveExplicitToolInstructionSet } from '../../explicit-tool-instruction.js';
 
 const MAX_DIRECT_PROPOSALS_PER_TASK = 8;
@@ -23,7 +24,7 @@ export interface ResolvedDirectToolProposal {
 }
 
 /**
- * Admit one explicit DECIDE proposal only after Runtime revalidates its tool,
+ * Admit one bounded DECIDE proposal only after Runtime revalidates its tool,
  * schema, resource envelope, side-effect class and permission boundary.
  */
 export function resolveDirectToolProposal(
@@ -42,33 +43,36 @@ export function resolveDirectToolProposal(
     return undefined;
   }
 
-  const instructions = resolveExplicitToolInstructionSet(ctx);
   const proposal = step.toolProposal;
-  if (!instructions
-    || !proposal
+  if (!proposal
     || step.tools?.length !== 1
     || step.tools[0] !== proposal.name) {
     return undefined;
   }
-  const instruction = instructions.entries.find((entry) => entry.tool.name === proposal.name);
-  if (!instruction) return undefined;
+  const instructions = resolveExplicitToolInstructionSet(ctx);
+  const explicitTool = instructions?.entries.find((entry) => entry.tool.name === proposal.name)?.tool;
+  const autonomousReadTool = explicitTool
+    ? undefined
+    : resolveCompactAutonomousReadProposalTool(ctx, taskBook, step);
+  const tool = explicitTool ?? autonomousReadTool;
+  if (!tool) return undefined;
 
   let input: unknown;
   try {
-    input = instruction.tool.inputSchema.parse(proposal.input);
+    input = tool.inputSchema.parse(proposal.input);
   } catch {
     return undefined;
   }
 
-  const descriptor = describeToolAccess(instruction.tool.name, input, ctx.toolContext);
+  const descriptor = describeToolAccess(tool.name, input, ctx.toolContext);
   if (descriptor.action === 'unknown') return undefined;
   const directExec = descriptor.action === 'execute'
-    && instruction.tool.name === 'exec'
-    && ctx.toolSources?.[instruction.tool.name] === 'builtin'
+    && tool.name === 'exec'
+    && ctx.toolSources?.[tool.name] === 'builtin'
     && ctx.toolContext.permissionMode === 'full'
     && !ctx.resumedFromCheckpointId;
   if (descriptor.action !== 'read' && descriptor.action !== 'write' && !directExec) return undefined;
-  const policy = resolveToolExecutionPolicy(instruction.tool, input, ctx.toolContext);
+  const policy = resolveToolExecutionPolicy(tool, input, ctx.toolContext);
   const actualSideEffect = resolveActualSideEffect(descriptor.action, policy.resources);
   if (actualSideEffect !== 'read'
     && !directExec
@@ -88,7 +92,7 @@ export function resolveDirectToolProposal(
   }
   const requiresApproval = ctx.toolContext.permissionMode
     ? shouldRequestPermissionApproval(ctx.toolContext.permissionMode, descriptor)
-    : instruction.tool.requiresApproval === true;
+    : tool.requiresApproval === true;
   if (requiresApproval) return undefined;
   if (actualSideEffect !== 'read'
     && ctx.resumedFromCheckpointId
@@ -98,7 +102,7 @@ export function resolveDirectToolProposal(
     return undefined;
   }
 
-  return { tool: instruction.tool, input };
+  return { tool, input };
 }
 
 function resolveActualSideEffect(

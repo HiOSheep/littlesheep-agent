@@ -222,6 +222,52 @@ describe('executeStage', () => {
     ]);
   });
 
+  it('executes an admitted autonomous read proposal without an execute tool-loop model call', async () => {
+    const glob = makeTool('glob', {
+      ok: true,
+      output: 'alpha.txt\nbeta.md\nnested\\',
+    }, {
+      inputSchema: z.object({
+        pattern: z.string(),
+        path: z.string().optional(),
+        max_results: z.number().int().positive().optional().default(100),
+      }),
+    });
+    glob.execution = parallelFilePolicy('path', 'read', true);
+    const llm = createMockLlm(textResponse('共有 3 个顶层条目：alpha.txt、beta.md、nested。'));
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [glob],
+      toolSources: { glob: 'builtin' },
+      inbound: textMessage('user', '请查看当前工作区顶层有哪些条目，只告诉我数量和名称，不要修改任何文件。'),
+      classification: {
+        activity: 'execute',
+        type: 'problem',
+        confidence: 0.96,
+        source: 'llm',
+        reason: 'workspace inspection requires evidence',
+      },
+      taskBook: singleGlobTaskBook({ pattern: '*', path: '.', max_results: 100 }),
+      toolContext: {
+        permissionMode: 'research',
+        containerRoot: process.cwd(),
+      },
+    });
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'verify', ok: true });
+    expect(glob.calls).toHaveLength(1);
+    expect(glob.calls[0]?.input).toEqual({ pattern: '*', path: '.', max_results: 100 });
+    expect(llm.chat).toHaveBeenCalledTimes(1);
+    expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
+      'execute_final_reply',
+    ]);
+    expect(ctx.replyProvenance?.purpose).toBe('execute_final_reply');
+    expect(ctx.taskExecution?.steps[0]?.output).toContain('alpha.txt');
+    expect(ctx.toolInvocations).toHaveLength(1);
+  });
+
   it('executes explicit write and read proposals with only the final reply model call', async () => {
     const write = makeTool('write', { ok: true, output: 'Wrote proof.txt' }, {
       requiresApproval: true,

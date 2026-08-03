@@ -17,14 +17,15 @@ import {
   waitForMissing,
 } from './lib/electron-deepseek-acceptance.mjs'
 
-const PROVIDER_TOOL_LOOP = process.argv.includes('--provider-tool-loop')
-const CHECK_NAME = PROVIDER_TOOL_LOOP
-  ? 'electron-deepseek-provider-tool-loop'
+const AUTONOMOUS_READ = process.argv.includes('--autonomous-read')
+  || process.argv.includes('--provider-tool-loop')
+const CHECK_NAME = AUTONOMOUS_READ
+  ? 'electron-deepseek-autonomous-read'
   : 'electron-deepseek-single-tool'
-const SCENARIO = PROVIDER_TOOL_LOOP
+const SCENARIO = AUTONOMOUS_READ
   ? 'llm_selected_single_read_only_glob'
   : 'explicit_single_read_only_glob'
-const PROMPT = PROVIDER_TOOL_LOOP
+const PROMPT = AUTONOMOUS_READ
   ? '请查看当前工作区顶层有哪些条目，只告诉我数量和名称，不要修改任何文件。'
   : '请使用 glob 工具读取当前工作区顶层条目，只告诉我数量和名称，不要修改任何文件。'
 const EXPECTED_ENTRIES = ['alpha.txt', 'beta.md', 'nested']
@@ -35,18 +36,17 @@ const MAX_COMPACT_DECIDE_CONTEXT_CHARS = 2_200
 const MAX_COMPACT_FINAL_PROMPT_TOKENS = 450
 const MAX_COMPACT_FINAL_CONTEXT_CHARS = 2_000
 const MAX_OPTIMIZED_TOTAL_PROMPT_TOKENS = 950
-const MAX_PROVIDER_TOOL_LOOP_MODEL_CALLS = 3
-// The current real Electron + DeepSeek baseline is 2,325 prompt tokens.
-// Keep bounded headroom without allowing the old 11,050-token path back in.
-const MAX_PROVIDER_TOOL_LOOP_DECIDE_PROMPT_TOKENS = 750
-const MAX_PROVIDER_TOOL_LOOP_INITIAL_PROMPT_TOKENS = 850
-const MAX_PROVIDER_TOOL_LOOP_FINAL_PROMPT_TOKENS = 1_100
-const MAX_PROVIDER_TOOL_LOOP_TOTAL_PROMPT_TOKENS = 2_700
+const MAX_AUTONOMOUS_READ_MODEL_CALLS = 2
+// The autonomous path must remain materially below the former 2,325-prompt-token
+// three-call baseline while keeping schemas, permissions, evidence, and VERIFY.
+const MAX_AUTONOMOUS_DECIDE_PROMPT_TOKENS = 900
+const MAX_AUTONOMOUS_FINAL_PROMPT_TOKENS = 450
+const MAX_AUTONOMOUS_TOTAL_PROMPT_TOKENS = 1_400
 
 async function main() {
   const environment = await createIsolatedDeepSeekEnvironment({
     prefix: 'littlesheep-deepseek-single-tool-',
-    maxModelCallsPerRun: PROVIDER_TOOL_LOOP ? MAX_PROVIDER_TOOL_LOOP_MODEL_CALLS : 4,
+    maxModelCallsPerRun: AUTONOMOUS_READ ? MAX_AUTONOMOUS_READ_MODEL_CALLS : 4,
   })
   let electron
   let report
@@ -65,13 +65,13 @@ async function main() {
     })
     const after = await snapshotTree(environment.workplaceDir)
     const requests = requestMetrics(streamed.result)
-    assertSuccessfulRun(streamed.result, environment.model, requests, PROVIDER_TOOL_LOOP)
+    assertSuccessfulRun(streamed.result, environment.model, requests, AUTONOMOUS_READ)
     assertSingleGlobExecution(streamed.result)
     assertStructuralVerification(streamed.result)
     assertWorkspaceUnchanged(before, after)
     assertReply(streamed.result.reply)
-    assertProviderUsage(requests, PROVIDER_TOOL_LOOP)
-    if (PROVIDER_TOOL_LOOP) assertProviderToolLoopPath(requests)
+    assertProviderUsage(requests)
+    if (AUTONOMOUS_READ) assertAutonomousReadPath(requests)
     else assertOptimizedPath(requests)
 
     await desktopAction(locator, 'quit')
@@ -109,13 +109,12 @@ async function main() {
         ),
         modelCalls: requests.length,
         toolCalls: streamed.result.toolInvocations.length,
-        regressionCeilings: PROVIDER_TOOL_LOOP
+        regressionCeilings: AUTONOMOUS_READ
           ? {
-              modelCalls: MAX_PROVIDER_TOOL_LOOP_MODEL_CALLS,
-              decidePromptTokens: MAX_PROVIDER_TOOL_LOOP_DECIDE_PROMPT_TOKENS,
-              initialToolPromptTokens: MAX_PROVIDER_TOOL_LOOP_INITIAL_PROMPT_TOKENS,
-              finalToolPromptTokens: MAX_PROVIDER_TOOL_LOOP_FINAL_PROMPT_TOKENS,
-              totalPromptTokens: MAX_PROVIDER_TOOL_LOOP_TOTAL_PROMPT_TOKENS,
+              modelCalls: MAX_AUTONOMOUS_READ_MODEL_CALLS,
+              decidePromptTokens: MAX_AUTONOMOUS_DECIDE_PROMPT_TOKENS,
+              finalPromptTokens: MAX_AUTONOMOUS_FINAL_PROMPT_TOKENS,
+              totalPromptTokens: MAX_AUTONOMOUS_TOTAL_PROMPT_TOKENS,
             }
           : {
               decidePromptTokens: MAX_COMPACT_DECIDE_PROMPT_TOKENS,
@@ -182,7 +181,7 @@ async function snapshotTree(root) {
   }
 }
 
-function assertSuccessfulRun(result, model, requests, providerToolLoop) {
+function assertSuccessfulRun(result, model, requests, autonomousRead) {
   if (result?.status !== 'ok') throw new Error(`single-tool run failed: ${safe(result)}`)
   if (result.replyProvenance?.source !== 'llm'
     || result.replyProvenance.provider !== 'deepseek'
@@ -197,9 +196,11 @@ function assertSuccessfulRun(result, model, requests, providerToolLoop) {
     throw new Error(`single-tool run did not retain one valid TaskBook step: ${safe(result.taskBook)}`)
   }
   const step = result.taskBook.steps[0]
-  if (providerToolLoop) {
-    if (step?.toolProposal !== undefined || !step?.tools?.includes('glob')) {
-      throw new Error(`Provider tool-loop run did not retain an LLM-selected glob step: ${safe({
+  if (autonomousRead) {
+    if (step?.toolProposal?.name !== 'glob'
+      || step?.tools?.length !== 1
+      || step.tools[0] !== 'glob') {
+      throw new Error(`autonomous read did not retain the DECIDE glob proposal: ${safe({
         step,
         requests,
       })}`)
@@ -210,7 +211,7 @@ function assertSuccessfulRun(result, model, requests, providerToolLoop) {
       decideRequest: requests.find((request) => request.purpose === 'decide_explicit_tool'),
     })}`)
   }
-  const expectedReplyPurpose = providerToolLoop ? 'execute_tool_loop' : 'execute_final_reply'
+  const expectedReplyPurpose = 'execute_final_reply'
   if (result.replyProvenance?.purpose !== expectedReplyPurpose) {
     throw new Error(`single-tool final reply came from an unexpected API call: ${safe({
       expectedReplyPurpose,
@@ -301,11 +302,16 @@ function requestMetrics(result) {
         && item.source?.kind === 'workflow'
         && item.source.id === 'explicit-tool-proposal-contract'
       )) ?? false,
+      compactReadContractIncluded: snapshot?.items?.some((item) => (
+        item.disposition === 'included'
+        && item.source?.kind === 'workflow'
+        && item.source.id === 'compact-read-only-decision-contract'
+      )) ?? false,
     }
   })
 }
 
-function assertProviderUsage(requests, providerToolLoop) {
+function assertProviderUsage(requests) {
   if (requests.length === 0) throw new Error('single-tool run recorded no model requests')
   for (const request of requests) {
     if (!Number.isSafeInteger(request.providerPromptTokens) || request.providerPromptTokens <= 0
@@ -320,12 +326,7 @@ function assertProviderUsage(requests, providerToolLoop) {
       || request.localPromptTokens !== request.providerPromptTokens) {
       throw new Error(`request ${request.index} was not locally exact against Provider usage: ${safe(request)}`)
     }
-    const expectedToolProtocol = providerToolLoop && request.purpose === 'execute_tool_loop'
-    if (expectedToolProtocol) {
-      if (request.toolNames?.length !== 1 || request.toolNames[0] !== 'glob') {
-        throw new Error(`request ${request.index} did not expose only the admitted glob schema: ${safe(request)}`)
-      }
-    } else if ((request.toolNames?.length ?? 0) !== 0) {
+    if ((request.toolNames?.length ?? 0) !== 0) {
       throw new Error(`request ${request.index} unexpectedly used Provider tool protocol: ${safe({
         request,
         requests,
@@ -334,44 +335,35 @@ function assertProviderUsage(requests, providerToolLoop) {
   }
 }
 
-function assertProviderToolLoopPath(requests) {
+function assertAutonomousReadPath(requests) {
   const purposes = requests.map((request) => request.purpose)
-  const loopRequests = requests.filter((request) => request.purpose === 'execute_tool_loop')
-  if (requests.length !== MAX_PROVIDER_TOOL_LOOP_MODEL_CALLS
+  if (requests.length !== MAX_AUTONOMOUS_READ_MODEL_CALLS
     || purposes[0] !== 'decide'
-    || purposes[1] !== 'execute_tool_loop'
-    || purposes[2] !== 'execute_tool_loop'
-    || loopRequests.length !== 2) {
-    throw new Error(`unexpected Provider tool-loop model-call sequence: ${safe(purposes)}`)
+    || purposes[1] !== 'execute_final_reply') {
+    throw new Error(`unexpected autonomous-read model-call sequence: ${safe(purposes)}`)
   }
-  if (!loopRequests.slice(1).some((request) => (
-    request.includedItems.some((item) => item.kind === 'tool_result')
-  ))) {
-    throw new Error(`Provider continuation did not retain the Runtime tool result: ${safe(loopRequests)}`)
+  const decide = requests[0]
+  if (!decide.compactReadContractIncluded) {
+    throw new Error(`autonomous DECIDE omitted the compact read contract: ${safe(decide)}`)
   }
-  const requestCeilings = [
-    MAX_PROVIDER_TOOL_LOOP_DECIDE_PROMPT_TOKENS,
-    MAX_PROVIDER_TOOL_LOOP_INITIAL_PROMPT_TOKENS,
-    MAX_PROVIDER_TOOL_LOOP_FINAL_PROMPT_TOKENS,
-  ]
-  requests.forEach((request, index) => {
-    if (request.providerPromptTokens > requestCeilings[index]) {
-      throw new Error(`Provider tool-loop request ${index + 1} exceeded its measured ceiling: ${safe({
-        ceiling: requestCeilings[index],
-        request,
-      })}`)
-    }
-  })
+  if (decide.providerPromptTokens > MAX_AUTONOMOUS_DECIDE_PROMPT_TOKENS) {
+    throw new Error(`autonomous DECIDE exceeded its measured ceiling: ${safe(decide)}`)
+  }
+  const finalReply = requests[1]
+  if (finalReply.providerPromptTokens > MAX_AUTONOMOUS_FINAL_PROMPT_TOKENS) {
+    throw new Error(`autonomous final reply exceeded its measured ceiling: ${safe(finalReply)}`)
+  }
   const totalPromptTokens = requests.reduce(
     (total, request) => total + (request.providerPromptTokens ?? 0),
     0,
   )
-  if (totalPromptTokens > MAX_PROVIDER_TOOL_LOOP_TOTAL_PROMPT_TOKENS) {
-    throw new Error(`Provider tool-loop prompt cost regressed beyond its measured ceiling: ${safe({
+  if (totalPromptTokens > MAX_AUTONOMOUS_TOTAL_PROMPT_TOKENS) {
+    throw new Error(`autonomous read prompt cost regressed beyond its measured ceiling: ${safe({
       totalPromptTokens,
       requests,
     })}`)
   }
+  assertCompactContext(decide, 'autonomous DECIDE')
 }
 
 function assertOptimizedPath(requests) {
@@ -398,6 +390,10 @@ function assertOptimizedPath(requests) {
   if (totalPromptTokens > MAX_OPTIMIZED_TOTAL_PROMPT_TOKENS) {
     throw new Error(`optimized single-tool prompt cost regressed: ${safe({ totalPromptTokens, requests })}`)
   }
+  assertCompactContext(decide, 'compact explicit DECIDE')
+}
+
+function assertCompactContext(request, label) {
   const forbiddenIds = new Set([
     'core-flow',
     'tooling',
@@ -408,11 +404,11 @@ function assertOptimizedPath(requests) {
     'bootstrap:TOOLS.md',
   ])
   const forbiddenKinds = new Set(['memory_index', 'memory_fragment', 'summary_memory', 'recent_message'])
-  const forbidden = decide.includedItems.filter((item) => (
+  const forbidden = request.includedItems.filter((item) => (
     forbiddenIds.has(item.id) || forbiddenKinds.has(item.kind)
   ))
   if (forbidden.length > 0) {
-    throw new Error(`compact DECIDE retained unrelated Context: ${safe(forbidden)}`)
+    throw new Error(`${label} retained unrelated Context: ${safe(forbidden)}`)
   }
 }
 

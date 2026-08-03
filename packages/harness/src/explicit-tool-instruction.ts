@@ -49,7 +49,7 @@ export function resolveExplicitToolInstructionSet(
     const matches = ctx.tools.filter((tool) => tool.name.toLowerCase() === requestedName);
     if (matches.length !== 1) return undefined;
     const tool = matches[0]!;
-    const schema = resolveToolSchema(tool);
+    const schema = resolveBoundedToolJsonSchema(tool);
     if (!schema) return undefined;
     totalSchemaChars += JSON.stringify(schema).length;
     if (totalSchemaChars > MAX_EXPLICIT_TOOL_SCHEMA_TOTAL_CHARS) return undefined;
@@ -176,7 +176,8 @@ Infer every required argument from the user's request and the schemas below. If 
 ${schemas}`;
 }
 
-function resolveToolSchema(tool: AgentTool): object | undefined {
+/** Build a bounded JSON Schema before exposing any Runtime tool to a model. */
+export function resolveBoundedToolJsonSchema(tool: AgentTool): object | undefined {
   const explicit = tool.inputSchema.jsonSchema;
   let schema: object;
   try {

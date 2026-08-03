@@ -1,6 +1,10 @@
 import type { AgentTool, RunContext, TaskBook } from '@littlesheep/types';
 import { isSelfContainedCompactTaskContext } from './compact-explicit-tool-decision.js';
-import { resolveExplicitSingleToolInstruction } from './explicit-tool-instruction.js';
+import {
+  resolveBoundedToolJsonSchema,
+  resolveExplicitSingleToolInstruction,
+} from './explicit-tool-instruction.js';
+import type { DecodedPlan } from './stages/decide/contracts.js';
 
 const COMPACT_AUTONOMOUS_READ_TOOLS = new Set(['glob', 'grep', 'read']);
 const READ_ONLY_INTENT_PATTERNS: readonly RegExp[] = [
@@ -10,6 +14,17 @@ const READ_ONLY_INTENT_PATTERNS: readonly RegExp[] = [
 ];
 const MUTATING_INTENT_PATTERN = /(?:修改|写入|创建|新建|删除|移除|重命名|移动|复制|执行|运行|安装|更新|提交|推送|下载|上传|保存|编辑|修复|调整|替换)|\b(?:write|edit|modify|create|delete|remove|rename|move|copy|execute|run|install|update|commit|push|download|upload|save|fix|replace)\b/iu;
 const NEGATED_MUTATION_PATTERN = /(?:不要|请勿|无需|不需要|禁止)\s*(?:修改|写入|创建|新建|删除|移除|重命名|移动|复制|执行|运行|安装|更新|提交|推送|下载|上传|保存|编辑|修复|调整|替换)|\b(?:do\s+not|don't|without)\s+(?:write|edit|modify|create|delete|remove|rename|move|copy|execute|run|install|update|commit|push|download|upload|save|fix|replace)\b/giu;
+
+export interface CompactAutonomousReadDecision {
+  tool?: unknown;
+  input?: unknown;
+  summary?: unknown;
+  successCriterion?: unknown;
+  clarification?: {
+    blockingReason?: unknown;
+    question?: unknown;
+  };
+}
 
 /** Select the small read-tool catalog for a fresh goal while leaving the choice to the LLM. */
 export function resolveCompactAutonomousReadDecisionTools(ctx: RunContext): AgentTool[] | undefined {
@@ -23,7 +38,7 @@ export function resolveCompactAutonomousReadDecisionTools(ctx: RunContext): Agen
   return tools.length > 0 ? tools : undefined;
 }
 
-/** Revalidate the model-authored TaskBook before omitting unrelated execution Context. */
+/** Revalidate the model-authored TaskBook before direct execution or compact fallback execution. */
 export function resolveCompactAutonomousReadExecutionTools(ctx: RunContext): AgentTool[] | undefined {
   if (ctx.classification?.activity !== 'execute'
     || !isSelfContainedCompactTaskContext(ctx, { allowTaskBook: true })
@@ -37,9 +52,8 @@ export function resolveCompactAutonomousReadExecutionTools(ctx: RunContext): Age
     return undefined;
   }
   const step = taskBook.steps[0]!;
-  if (step.toolProposal
-    || step.requiresApproval
-    || !step.tools?.length
+  if (step.requiresApproval
+    || step.tools?.length !== 1
     || (step.execution?.sideEffect !== undefined
       && step.execution.sideEffect !== 'none'
       && step.execution.sideEffect !== 'read')) {
@@ -54,25 +68,114 @@ export function resolveCompactAutonomousReadExecutionTools(ctx: RunContext): Age
   return selected.length === requested.size ? selected : undefined;
 }
 
+/** Resolve the single autonomous proposal that Runtime may attempt to execute directly. */
+export function resolveCompactAutonomousReadProposalTool(
+  ctx: RunContext,
+  taskBook: TaskBook,
+  step: TaskBook['steps'][number],
+): AgentTool | undefined {
+  if (ctx.taskBook !== taskBook || taskBook.steps[0] !== step) return undefined;
+  const proposal = step.toolProposal;
+  if (!proposal || step.tools?.length !== 1 || step.tools[0] !== proposal.name) return undefined;
+  const selected = resolveCompactAutonomousReadExecutionTools(ctx);
+  return selected?.length === 1 && selected[0]?.name === proposal.name
+    ? selected[0]
+    : undefined;
+}
+
 export function renderCompactAutonomousReadDecisionContract(tools: readonly AgentTool[]): string {
   const names = tools.map((tool) => tool.name);
-  const catalog = tools.map((tool) => `- ${tool.name}: ${tool.description}`).join('\n');
-  return `# Compact Read-Only Decision
+  const catalog = tools.map((tool) => {
+    const schema = resolveBoundedToolJsonSchema(tool);
+    if (!schema) throw new Error(`compact read tool has no bounded schema: ${tool.name}`);
+    return `- ${tool.name}: ${tool.description}\n  Input JSON Schema: ${JSON.stringify(schema)}`;
+  }).join('\n');
+  return `# Compact Read-Only Tool Decision
 
-The user supplied a fresh, self-contained workspace inspection request. Choose the smallest sufficient read-only TaskBook while preserving the user's language and active SOUL voice.
+The user supplied a fresh, self-contained workspace inspection request. Choose exactly one smallest sufficient read-only tool and provide its concrete input.
 
 Available read tools:
 ${catalog}
 
 Return raw JSON and no markdown:
-{"assessment":{"userNeed":"...","complexity":"trivial|simple","goal":"...","successCriteria":["..."],"missingInfo":[],"needsClarification":false,"requiresTaskBook":false,"maxExtraScopeRatio":1,"rationale":"..."},"taskBook":{"goal":"...","complexity":"trivial|simple","successCriteria":["..."],"overdeliveryPolicy":{"maxExtraScopeRatio":1,"guidance":"stay within the requested read-only scope"},"steps":[{"id":"step-1","title":"...","description":"...","tools":["toolName"],"requiresApproval":false,"execution":{"mode":"serial","resources":[{"key":"workspace:relative/path","mode":"read"}],"sideEffect":"read"},"acceptanceCriteria":["..."],"expectedOutput":"..."}]}}
+{"tool":"toolName","input":{},"summary":"one short action summary in the user's language","successCriterion":"one observable result criterion in the user's language"}
 
 Rules:
-- Select only the read tools needed from: ${names.join(', ')}.
-- Do not return toolProposal or tool input. The Provider tool loop chooses concrete calls during EXECUTE.
-- Keep exactly one step. Do not add writes, commands, downloads, external actions, memory work, or unrelated analysis.
-- If a required path or search target is genuinely missing, return needsClarification=true with one focused clarification question instead of guessing.
-- Runtime still revalidates tool schemas, paths, permissions, results, and completion evidence.`;
+- Select exactly one tool from: ${names.join(', ')}.
+- Fill input with concrete values satisfying that tool's schema. Do not copy an empty object when required fields exist.
+- Keep summary and successCriterion concise, evidence-oriented, in the user's language, and consistent with the active SOUL voice.
+- Do not add writes, commands, downloads, external actions, memory work, or unrelated analysis.
+- If a required path or search target cannot be inferred safely, return only {"clarification":{"blockingReason":"short reason","question":"one focused question in the user's language"}}.
+- Runtime still revalidates the selected name, input schema, workspace path, permission, side effects, result, and completion evidence. This response grants no execution authority.`;
+}
+
+/** Expand the compact model response into the existing Runtime-owned TaskBook contract. */
+export function expandCompactAutonomousReadDecision(
+  decision: CompactAutonomousReadDecision,
+  tools: readonly AgentTool[],
+  inboundText: string,
+): DecodedPlan {
+  const question = cleanText(decision.clarification?.question);
+  const blockingReason = cleanText(decision.clarification?.blockingReason);
+  if (question || blockingReason) {
+    const prompt = question ?? blockingReason!;
+    return {
+      assessment: {
+        userNeed: inboundText,
+        complexity: 'simple',
+        goal: inboundText,
+        missingInfo: [prompt],
+        needsClarification: true,
+        requiresTaskBook: false,
+        maxExtraScopeRatio: 1,
+      },
+      clarification: {
+        blockingReason,
+        questions: question ? [{ field: 'toolInput', prompt: question, required: true }] : [],
+      },
+      taskBook: { goal: inboundText, complexity: 'simple', successCriteria: [], steps: [] },
+    };
+  }
+
+  const toolName = cleanText(decision.tool);
+  const tool = toolName ? tools.find((candidate) => candidate.name === toolName) : undefined;
+  const summary = cleanText(decision.summary);
+  const successCriterion = cleanText(decision.successCriterion);
+  if (!tool || !summary || !successCriterion) {
+    throw new Error('compact autonomous read decision omitted a valid tool, summary, or success criterion');
+  }
+  const hasInput = hasOwn(decision, 'input');
+  return {
+    assessment: {
+      userNeed: summary,
+      complexity: 'trivial',
+      goal: summary,
+      successCriteria: [successCriterion],
+      missingInfo: [],
+      needsClarification: false,
+      requiresTaskBook: false,
+      maxExtraScopeRatio: 1,
+    },
+    taskBook: {
+      goal: summary,
+      complexity: 'trivial',
+      successCriteria: [successCriterion],
+      overdeliveryPolicy: {
+        maxExtraScopeRatio: 1,
+        guidance: 'stay within the requested read-only scope',
+      },
+      steps: [{
+        id: 'step-1',
+        title: summary,
+        description: summary,
+        tools: [tool.name],
+        ...(hasInput ? { toolProposal: { name: tool.name, input: decision.input } } : {}),
+        execution: { mode: 'serial', sideEffect: 'read' },
+        acceptanceCriteria: [successCriterion],
+        expectedOutput: successCriterion,
+      }],
+    },
+  };
 }
 
 export function renderCompactAutonomousReadWorkspace(workspace: string): string {
@@ -117,4 +220,12 @@ function inboundText(ctx: RunContext): string {
     .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
     .map((block) => block.text)
     .join('\n');
+}
+
+function cleanText(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function hasOwn(value: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
 }

@@ -21,11 +21,11 @@ export async function adoptDecodedDecision(
   attempts: number,
 ): Promise<StageResult> {
   const availableToolNames = new Set(ctx.tools.map((tool) => tool.name));
-  const explicitToolNames = request.explicitToolNames
-    ? new Set(request.explicitToolNames)
+  const proposalToolNames = request.proposalToolNames
+    ? new Set(request.proposalToolNames)
     : undefined;
-  let plan = normalizePlan(parsed.taskBook?.steps, availableToolNames, explicitToolNames);
-  if (plan.length === 0) plan = normalizePlan(parsed.plan, availableToolNames, explicitToolNames);
+  let plan = normalizePlan(parsed.taskBook?.steps, availableToolNames, proposalToolNames);
+  if (plan.length === 0) plan = normalizePlan(parsed.plan, availableToolNames, proposalToolNames);
   let usedMinimalFallback = false;
   if (plan.length === 0 && parsed.assessment?.needsClarification !== true) {
     plan = buildMinimalFallbackPlan(parsed, request.inboundText, availableToolNames);

@@ -250,30 +250,10 @@ describe('decideStage', () => {
     const llm = createMockLlm((request) => {
       requests.push(request);
       return textResponse(JSON.stringify({
-        assessment: {
-          userNeed: '查看工作区顶层条目',
-          complexity: 'trivial',
-          goal: '列出工作区顶层条目',
-          successCriteria: ['返回数量和名称'],
-          missingInfo: [],
-          needsClarification: false,
-          requiresTaskBook: false,
-          maxExtraScopeRatio: 1,
-        },
-        taskBook: {
-          goal: '列出工作区顶层条目',
-          complexity: 'trivial',
-          successCriteria: ['返回数量和名称'],
-          steps: [{
-            id: 'step-1',
-            title: '查看条目',
-            description: '读取并列出工作区顶层条目',
-            tools: ['glob'],
-            execution: { mode: 'serial', sideEffect: 'read' },
-            acceptanceCriteria: ['数量和名称来自工具证据'],
-            expectedOutput: '条目数量和名称',
-          }],
-        },
+        tool: 'glob',
+        input: { pattern: '*', path: '.' },
+        summary: '读取并列出工作区顶层条目',
+        successCriterion: '数量和名称来自工具证据',
       }));
     });
     const stage = createDecideStage({ ...deps, llm });
@@ -295,9 +275,12 @@ describe('decideStage', () => {
     expect(requests).toHaveLength(1);
     expect(requests[0]?.tools).toBeUndefined();
     const system = String(requests[0]?.messages[0]?.content ?? '');
-    expect(system).toContain('# Compact Read-Only Decision');
+    expect(requests[0]?.max_tokens).toBe(250);
+    expect(system).toContain('# Compact Read-Only Tool Decision');
     expect(system).toContain('glob tool (mock)');
     expect(system).toContain('grep tool (mock)');
+    expect(system).toContain('Input JSON Schema:');
+    expect(system).toContain('{"tool":"toolName","input":{}');
     expect(system).not.toContain('write tool (mock)');
     expect(system).not.toContain('# Core Flow');
     expect(system).not.toContain('# Memory Tree');
@@ -309,8 +292,39 @@ describe('decideStage', () => {
       purpose: 'decide',
       inputs: { history: 'recent', attachments: 'images_and_manifest' },
     });
-    expect(ctx.taskBook?.steps[0]).toMatchObject({ tools: ['glob'] });
-    expect(ctx.taskBook?.steps[0]?.toolProposal).toBeUndefined();
+    expect(ctx.taskBook?.steps[0]).toMatchObject({
+      tools: ['glob'],
+      toolProposal: { name: 'glob', input: { pattern: '*', path: '.' } },
+      execution: { mode: 'serial', sideEffect: 'read' },
+      acceptanceCriteria: ['数量和名称来自工具证据'],
+    });
+  });
+
+  it('classifies an invalid compact decision as a contract error instead of a transport error', async () => {
+    const glob = makeTool('glob', { ok: true, output: '' });
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      tool: 'glob',
+      input: { pattern: '*', path: '.' },
+    })));
+    const stage = createDecideStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [glob],
+      inbound: textMessage('user', '请查看当前工作区顶层条目，不要修改任何文件。'),
+      classification: {
+        activity: 'execute', type: 'problem', confidence: 0.96,
+        source: 'llm', reason: 'workspace inspection requires evidence',
+      },
+    });
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'recover', ok: false });
+    expect(result.error).toContain('decision contract error:');
+    expect(result.error).not.toContain('transport error:');
+    expect(ctx.lastError).toEqual({
+      stage: 'decide',
+      message: expect.stringContaining('omitted a valid tool, summary, or success criterion'),
+    });
   });
 
   it('uses compact explicit-tool output and expands it into the existing TaskBook contract', async () => {

@@ -9,12 +9,12 @@ export function normalizeToolProposal(
   value: DecodedPlanStep['toolProposal'],
   stepTools: string[] | undefined,
   availableToolNames: Set<string>,
-  explicitToolNames: ReadonlySet<string> | undefined,
+  proposalToolNames: ReadonlySet<string> | undefined,
 ): PlanStep['toolProposal'] {
-  if (!explicitToolNames || !value || typeof value !== 'object') return undefined;
+  if (!proposalToolNames || !value || typeof value !== 'object') return undefined;
   const name = cleanString(value.name);
   if (!name
-    || !explicitToolNames.has(name)
+    || !proposalToolNames.has(name)
     || !availableToolNames.has(name)
     || stepTools?.length !== 1
     || stepTools[0] !== name

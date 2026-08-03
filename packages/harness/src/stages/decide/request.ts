@@ -1,7 +1,7 @@
 import type { ChatMessage } from '@littlesheep/llm';
 import type { SystemPromptBundle } from '@littlesheep/prompt';
 import { assembleSystemPromptBundle, resolvePromptConfig } from '@littlesheep/prompt';
-import type { LlmCallPurpose, RunContext } from '@littlesheep/types';
+import type { AgentTool, LlmCallPurpose, RunContext } from '@littlesheep/types';
 import { buildRunRequestCandidates } from '../../context-candidates.js';
 import {
   appendSystemPromptBundleAddons,
@@ -48,10 +48,10 @@ export interface DecideRequest {
   deferredRuntimeEvents: NonNullable<RunContext['deferredRuntimeEvents']>;
   history: RunContext['history'];
   replanRequested: boolean;
-  explicitToolNames?: string[];
+  proposalToolNames?: string[];
   callPurpose: Extract<LlmCallPurpose, 'decide' | 'decide_explicit_tool'>;
   compactExplicitTool?: ExplicitSingleToolInstruction;
-  compactAutonomousRead: boolean;
+  compactAutonomousReadTools?: AgentTool[];
 }
 
 export async function buildDecideRequest(
@@ -172,10 +172,11 @@ export async function buildDecideRequest(
     deferredRuntimeEvents,
     history,
     replanRequested,
-    explicitToolNames: explicitToolInstructions?.names,
+    proposalToolNames: explicitToolInstructions?.names
+      ?? compactAutonomousReadTools?.map((tool) => tool.name),
     callPurpose,
     compactExplicitTool,
-    compactAutonomousRead,
+    compactAutonomousReadTools,
   };
 }
 

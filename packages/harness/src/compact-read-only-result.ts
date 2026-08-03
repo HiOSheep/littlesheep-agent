@@ -1,4 +1,5 @@
 import type { RunContext, TaskBook, TaskStepResult } from '@littlesheep/types';
+import { resolveCompactAutonomousReadProposalTool } from './compact-autonomous-read-task.js';
 
 const COMPACT_READ_ONLY_TOOLS = new Set(['glob', 'grep', 'read']);
 
@@ -23,13 +24,6 @@ export function isCompactReadOnlyResult(
     return false;
   }
 
-  const classification = ctx.classification;
-  if (classification?.activity !== 'execute'
-    || classification.source !== 'rules'
-    || classification.reason !== 'explicit tool instruction') {
-    return false;
-  }
-
   const step = taskBook.steps[0]!;
   const proposal = step.toolProposal;
   if (!proposal
@@ -42,6 +36,14 @@ export function isCompactReadOnlyResult(
       && step.execution.sideEffect !== 'read')) {
     return false;
   }
+
+  const classification = ctx.classification;
+  const explicitInstruction = classification?.activity === 'execute'
+    && classification.source === 'rules'
+    && classification.reason === 'explicit tool instruction';
+  const autonomousRead = classification?.activity === 'execute'
+    && resolveCompactAutonomousReadProposalTool(ctx, taskBook, step)?.name === proposal.name;
+  if (!explicitInstruction && !autonomousRead) return false;
 
   const result = stepResults[0]!;
   const toolResult = result.toolResults[0];
