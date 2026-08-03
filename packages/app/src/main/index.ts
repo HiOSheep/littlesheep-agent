@@ -45,6 +45,7 @@ import { loadApiKeys, injectKeysIntoEnv } from './keychain.js'
 import { runShutdownSequence } from './shutdown-sequence.js'
 import { RunActivityMonitor } from './run-activity-monitor.js'
 import { LittleSheepDesktopShell } from './desktop-shell.js'
+import { createDesktopAcceptanceSnapshotProvider } from './desktop-acceptance-snapshot.js'
 import { DataRootMigrationManager } from './data-root-migration.js'
 import { prepareMemoryV3Bootstrap } from './memory-v3-bootstrap.js'
 import { removeLocalAppApiLocator, writeLocalAppApiLocator } from './local-app-api-locator.js'
@@ -88,6 +89,13 @@ const desktopShell = new LittleSheepDesktopShell({
   isQuitting: () => quitRequested || shutdownStarted,
   onQuit: requestApplicationQuit,
   onWarning: (message) => console.warn(`[desktop] ${message}`),
+})
+
+const desktopAcceptanceSnapshot = createDesktopAcceptanceSnapshotProvider({
+  desktopShell,
+  runActivity,
+  getCurrentRunner: () => runner,
+  getRetiredRunnerCount: () => retiredRunners.size,
 })
 
 const BOOTSTRAP_TEMPLATES: Record<string, string> = {
@@ -318,7 +326,7 @@ async function bootstrap(): Promise<void> {
     desktopAcceptance: process.env['LITTLESHEEP_ELECTRON_ACCEPTANCE'] === '1'
       ? {
           token: providerCalibrationToken,
-          snapshot: () => desktopShell.snapshot(),
+          snapshot: desktopAcceptanceSnapshot,
           close: () => desktopShell.close(),
           show: () => desktopShell.show(),
           quit: requestApplicationQuit,

@@ -95,6 +95,11 @@ describe('RunActivityMonitor', () => {
     ])
     expect(current.listenerCount()).toBe(1)
     expect(retired.listenerCount()).toBe(1)
+    expect(monitor.diagnostics()).toEqual({
+      sourceCount: 2,
+      listenerCount: 1,
+      activeRunCount: 2,
+    })
     expect(monitor.request('run-old', 'pause')).toMatchObject({ kind: 'accepted', action: 'pause' })
     expect(retired.request).toHaveBeenCalledWith('run-old', 'pause', undefined)
 
@@ -106,9 +111,15 @@ describe('RunActivityMonitor', () => {
 
     unsubscribe()
     expect(observed.length).toBeGreaterThan(1)
+    expect(monitor.diagnostics().listenerCount).toBe(0)
     monitor.dispose()
     expect(retired.listenerCount()).toBe(0)
     expect(monitor.snapshot()).toEqual([])
+    expect(monitor.diagnostics()).toEqual({
+      sourceCount: 0,
+      listenerCount: 0,
+      activeRunCount: 0,
+    })
   })
 
   it('bounds observer retention and clears every observer on disposal', () => {

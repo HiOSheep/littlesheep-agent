@@ -448,6 +448,41 @@ describe('assessResponseMemoryContinuity', () => {
     expect(assessment.missingSignals).not.toContain('explicit_continuation_not_reflected_in_reply');
   });
 
+  it('separates adjacent labeled values after NFKC normalizes Chinese punctuation', () => {
+    const prior = textMessage(
+      'user',
+      [
+        '这是一个标准复杂度的两步验收任务。',
+        '文件名称是 parallel-a.txt，验收代号是 parallel-deepseek-anchor-a-6417。',
+        '第一步使用 write，第二步使用 read；不要使用 exec、edit 或 glob。',
+      ].join(''),
+      { id: 'history-nfkc-labeled-values' },
+    );
+    const assessment = assessResponseMemoryContinuity({
+      inbound: textMessage(
+        'user',
+        '你还记得上一轮保存的文件名称和验收代号吗？请分别回答，不要调用工具。',
+      ),
+      reply: [
+        '记得。上一轮保存的：',
+        '- **文件名称**：`parallel-a.txt`',
+        '- **验收代号**：`parallel-deepseek-anchor-a-6417`',
+      ].join('\n'),
+      history: [prior],
+      ...observedContext([
+        contextItem(
+          'history-nfkc-labeled-values',
+          'recent_message',
+          { kind: 'message', id: prior.id },
+        ),
+      ]),
+    });
+
+    expect(assessment.status).toBe('supported');
+    expect(assessment.matchedSources).toContain('recent_history');
+    expect(assessment.missingSignals).not.toContain('explicit_continuation_not_reflected_in_reply');
+  });
+
   it('uses an included versioned summary for explicit value recall when recent history has no value', () => {
     const acknowledgement = textMessage(
       'assistant',

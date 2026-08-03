@@ -189,6 +189,67 @@ describe('createDefaultHarness state machine', () => {
     expect(tool.calls[0]?.input).toEqual({ pattern: '*' });
   });
 
+  it('regenerates and verifies a traceable task reply when an interrupted checkpoint points at ask_user', async () => {
+    const llm = createMockLlm(textResponse('文件 resume-proof.txt 已核对，内容为 resume-anchor-4812。'));
+    const h = makeHarness(llm);
+    h.registerStage('verify', async () => ({ stage: 'verify', next: 'evolve', ok: true }));
+    h.registerStage('evolve', async () => ({ stage: 'evolve', next: 'capture', ok: true }));
+    h.registerStage('capture', async () => ({ stage: 'capture', next: 'finalize', ok: true }));
+    const ctx = makeCtx({
+      inbound: textMessage('user', '创建并核对 resume-proof.txt。'),
+    });
+    ctx.entryStage = 'ask_user';
+    ctx.resumedFromCheckpointId = 'checkpoint-after-execute';
+    ctx.taskBook = {
+      goal: '创建并核对 resume-proof.txt',
+      complexity: 'standard',
+      successCriteria: ['文件内容为 resume-anchor-4812'],
+      steps: [{
+        id: 'step-1',
+        description: '核对文件内容',
+        acceptanceCriteria: ['读取内容匹配'],
+        status: 'done',
+      }],
+    };
+    ctx.taskExecution = {
+      goal: ctx.taskBook.goal,
+      complexity: 'standard',
+      status: 'failed',
+      startedAt: '2026-08-03T00:00:00.000Z',
+      endedAt: '2026-08-03T00:00:01.000Z',
+      steps: [{
+        stepId: 'step-1',
+        description: '核对文件内容',
+        status: 'done',
+        startedAt: '2026-08-03T00:00:00.000Z',
+        endedAt: '2026-08-03T00:00:01.000Z',
+        acceptanceCriteria: ['读取内容匹配'],
+        toolCallIds: ['read-resume-proof'],
+        toolResults: [{
+          callId: 'read-resume-proof',
+          ok: true,
+          output: 'resume-anchor-4812',
+        }],
+        output: 'resume-anchor-4812',
+      }],
+    };
+
+    const result = await h.run(ctx);
+
+    expect(result.ok).toBe(true);
+    expect(ctx.reply).toContain('resume-anchor-4812');
+    expect(ctx.taskExecution.status).toBe('done');
+    expect(ctx.replyProvenance).toMatchObject({ purpose: 'execute_final_reply' });
+    expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
+      'execute_final_reply',
+    ]);
+    expect((result.meta?.trace as Array<{ name: string }>).map((item) => item.name)).toEqual([
+      'reply', 'verify', 'evolve', 'capture', 'finalize',
+    ]);
+    const requestText = String(llm.chat.mock.calls[0]?.[0].messages.at(-1)?.content ?? '');
+    expect(requestText).toContain('resume-anchor-4812');
+  });
+
   it('re-enters DECIDE for a task event received after EXECUTE and adopts a new TaskBook revision', async () => {
     const planningPrompts: string[] = [];
     const llm = createMockLlm((request) => {

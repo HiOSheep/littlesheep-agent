@@ -139,11 +139,12 @@ export interface MemoryDocumentMutation<T> {
   changed: boolean;
 }
 
+const writeChainsByPath = new Map<string, Promise<void>>();
+
 export class MemoryDocumentStore {
   readonly rootDir: string;
   readonly indexPath: string;
   private readonly log?: LogFn;
-  private writeChain: Promise<void> = Promise.resolve();
 
   constructor(options: MemoryDocumentStoreOptions) {
     this.rootDir = join(options.dataDir, 'memory-tree');
@@ -153,11 +154,11 @@ export class MemoryDocumentStore {
 
   async initialize(): Promise<void> {
     await mkdir(this.rootDir, { recursive: true });
-    if (!existsSync(this.indexPath)) {
-      await atomicWrite(this.indexPath, JSON.stringify(createMemoryTreeDocument(), null, 2));
-      return;
-    }
     await this.exclusive(async () => {
+      if (!existsSync(this.indexPath)) {
+        await atomicWrite(this.indexPath, JSON.stringify(createMemoryTreeDocument(), null, 2));
+        return;
+      }
       let document = await this.readStoredDocument();
       let changed = false;
       const legacy = validateV1Document(document);
@@ -271,14 +272,18 @@ export class MemoryDocumentStore {
   }
 
   private async exclusive<T>(operation: () => Promise<T>): Promise<T> {
-    const previous = this.writeChain;
+    const previous = writeChainsByPath.get(this.indexPath) ?? Promise.resolve();
     let release!: () => void;
-    this.writeChain = new Promise<void>((resolve) => { release = resolve; });
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    writeChainsByPath.set(this.indexPath, current);
     await previous;
     try {
       return await operation();
     } finally {
       release();
+      if (writeChainsByPath.get(this.indexPath) === current) {
+        writeChainsByPath.delete(this.indexPath);
+      }
     }
   }
 }

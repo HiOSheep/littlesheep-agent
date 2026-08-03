@@ -1,8 +1,8 @@
 # LittleSheep 架构评估与开发决策报告
 
-最后更新：2026-08-03 06:18:45
+最后更新：2026-08-03 09:04:52
 评估范围：当前源码、正式文档与已记录的验证结果
-执行状态：Memory v3 阶段 0-26 的工程实现、隔离演练和正式用户数据迁移已完成；正式 backend/config 为 v3，40 个业务 atom、5 个内部根、11 个资源和 45 条 BGE 512 维向量已通过既有真实数据根、Electron 重启、Catalog v9 integrity 与恢复源检查。`respond / execute / clarify` 活动语义、直接回应 Context 瘦身、统一 Tool Execution Service、显式单工具与有界多工具提议路径、TaskBook 步骤级有界并行、活动任务控制、托盘、三档关闭策略和设置页“应用与后台”已形成工程基线；确定性 Electron 七场景、真实 DeepSeek 完整退出/重启后的回答级记忆连续性，以及真实两步 `write -> read` 暂停/强制终止/恢复任务已经通过。当前 DeepSeek 活动模型的 chat、continuity、tool、abort 四项真实校准、普通请求及显式工具提议路径的 DeepSeek V4 官方 tokenizer 本地精确计数与同请求 Provider 对账已通过。摘要压缩后的真实续答、含历史 Provider 工具消息的普通续轮 tokenizer、OpenAI/GLM 同等能力矩阵、持续/并行负载和真实外部系统副作用验收仍未完成。
+执行状态：Memory v3 阶段 0-26 的工程实现、隔离演练和正式用户数据迁移已完成；正式 backend/config 为 v3，40 个业务 atom、5 个内部根、11 个资源和 45 条 BGE 512 维向量已通过既有真实数据根、Electron 重启、Catalog v9 integrity 与恢复源检查。`respond / execute / clarify` 活动语义、直接回应 Context 瘦身、统一 Tool Execution Service、显式单工具与有界多工具提议路径、TaskBook 步骤级有界并行、活动任务控制、托盘、三档关闭策略和设置页“应用与后台”已形成工程基线；确定性 Electron 七场景、真实 DeepSeek 完整退出/重启后的回答级记忆连续性、真实两步 `write -> read` 暂停/强制终止/恢复任务，以及 4 个活动 run、双 Checkpoint 并行恢复和双会话回答连续性组成的短时压力门已经通过。当前 DeepSeek 活动模型的 chat、continuity、tool、abort 四项真实校准、普通请求及显式工具提议路径的 DeepSeek V4 官方 tokenizer 本地精确计数与同请求 Provider 对账已通过。摘要压缩后的真实续答、含历史 Provider 工具消息的普通续轮 tokenizer、OpenAI/GLM 同等能力矩阵、数小时持续负载、真实网络故障和外部系统副作用验收仍未完成。
 
 ## 1. 给决策者的结论
 
@@ -12,7 +12,7 @@ LittleSheep 当前不是“只有 Prompt 的聊天壳”。它已经具备代码
 
 但当前更准确的描述是：
 
-> **包级模块骨架和既有调用契约已有稳定基础；Memory v3 动态 activation、活动路由、直接回应 Context、统一 Tool Execution Service、显式单/多工具提议路径、运行时事件、检查点恢复、步骤并行、桌面后台控制与设置页入口的工程门已经完成，确定性 Electron 七场景、真实 DeepSeek 跨重启回答门、基础两步副作用任务、当前 DeepSeek 四项能力和普通/提议路径 V4 精确本地 token 对账也已通过。下一步收敛普通工具续轮 tokenizer、摘要压缩续答、持续/并行负载、网络恢复和真实外部系统副作用。**
+> **包级模块骨架和既有调用契约已有稳定基础；Memory v3 动态 activation、活动路由、直接回应 Context、统一 Tool Execution Service、显式单/多工具提议路径、运行时事件、检查点恢复、步骤并行、桌面后台控制与设置页入口的工程门已经完成，确定性 Electron 七场景、真实 DeepSeek 跨重启回答门、基础两步副作用任务、短时并行压力、当前 DeepSeek 四项能力和普通/提议路径 V4 精确本地 token 对账也已通过。记忆连续必须由 LS 最终回答准确承接历史值并能追溯到真实 Context 来源，内部检索成功不能代替。下一步收敛普通工具续轮 tokenizer、摘要压缩续答、数小时持续负载、真实网络恢复和外部系统副作用。**
 
 当前最重要的结构结论是：
 
@@ -64,7 +64,7 @@ React Renderer
 
 当前主流程的结构性限制：
 
-- Stage 仍负责构造语义消息，但模型请求已统一经过 Context Engine；System Prompt segment、摘要和附件清单已经可追溯，本地与 Provider token 账本也已分开保存。非图片附件通过 run-scoped 工具按需读取；tokenizer 能力矩阵和 unavailable 模型保守预算保护已完成。运行中事件已有有界队列、Local App API ingress、安全边界消费、TaskBookPatch、延迟事件重规划、Renderer 生产/反馈入口和应用启动恢复控制面；基础跨重启回答、两步副作用任务与桌面生命周期门已完成，当前缺口是摘要压缩后的真实续答、网络故障、持续/并行负载和真实外部系统副作用验收。
+- Stage 仍负责构造语义消息，但模型请求已统一经过 Context Engine；System Prompt segment、摘要和附件清单已经可追溯，本地与 Provider token 账本也已分开保存。非图片附件通过 run-scoped 工具按需读取；tokenizer 能力矩阵和 unavailable 模型保守预算保护已完成。运行中事件已有有界队列、Local App API ingress、安全边界消费、TaskBookPatch、延迟事件重规划、Renderer 生产/反馈入口和应用启动恢复控制面；基础跨重启回答、两步副作用任务、短时并行压力与桌面生命周期门已完成，当前缺口是摘要压缩后的真实续答、真实网络故障、数小时持续负载和外部系统副作用验收。
 - Runner 的基础设施构建同时负责 LLM、session、memory、vector、skills、tools 和 Harness 装配，改动影响面大。
 - Mode 的各组成项没有统一 schema 和解析顺序。
 - 工具运行时生命周期已收敛到 `@littlesheep/tools`，但网络资源权限、更强授权 token 和 MCP adapter 仍需在同一执行协议上补齐。
@@ -77,7 +77,7 @@ React Renderer
 | 公共契约 | 稳定基础 | `packages/types/` | 内部 v1 契约已齐，Context 与 Tools 已有实际所有者；Mode Registry 仍未收敛 | 保持内部版本，迁移剩余生产者和消费者后再考虑公开 API |
 | Workflow/Harness | 稳定基础；活动语义迁移已完成 | `packages/harness/src/default-harness.ts`、`stages/`、`packages/types/src/agent.ts` | 代码级 stage 与安全脊柱仍固定；语义活动已迁移为 `respond / execute / clarify`，兼容字段尚未退役 | 保持兼容边界，再继续评估 Mode 策略化；不开放任意工作流图 |
 | Runner | 基础可用 | `packages/runner/src/runner.ts`、`infra.ts` | 同时承担生命周期、核心装配、记忆运行时启动和工具选择 | 把 Runner 保持为应用服务，逐步下沉子系统内部逻辑 |
-| Context | 基础可用，DeepSeek V4 普通请求与显式单/多工具提议路径精确本地计数已实测 | `packages/context/`、`context/tokenizers/`、`types/token-ledger.ts`、`harness/context-candidates.ts`、`model-observability.ts`、`config/model-capabilities.ts` | 已有确定性候选、来源 segment、已知/未知窗口、显式 tokenizer 能力矩阵、不可展示的保守预算保护、预算淘汰、版本化摘要、附件清单、按需附件工具、压缩阈值设置和双账本 UI。单工具两调用请求已实现 `2934/2934`、`870/870` 本地/Provider prompt 零差值；最新两步任务为 `3250/3250`、`1024/1024`，随后记忆追问为 `506/506`、`1244/1244`；跨重启验收为 `1003/1003`、`387/387`、`1285/1285`。DeepSeek thinking 未显式声明时失败关闭 exact；含历史 `tool_calls`/`tool` 结果的普通续轮仍未校准 | 先校准普通工具续轮 framing；实际启用其他 Provider 时复用同一计数与校准门 |
+| Context | 基础可用，DeepSeek V4 普通请求与显式单/多工具提议路径精确本地计数已实测 | `packages/context/`、`context/tokenizers/`、`types/token-ledger.ts`、`harness/context-candidates.ts`、`model-observability.ts`、`config/model-capabilities.ts` | 已有确定性候选、来源 segment、已知/未知窗口、显式 tokenizer 能力矩阵、不可展示的保守预算保护、预算淘汰、版本化摘要、附件清单、按需附件工具、压缩阈值设置和双账本 UI。单工具无延迟基线为 `2934/2934`、`870/870`；最新并行压力场景仍只有两次调用，并为 `2934/2934`、`802/802`。最新两步任务为 `3250/3250`、`1024/1024`，随后记忆追问为 `506/506`、`1244/1244`；跨重启验收为 `1003/1003`、`387/387`、`1285/1285`。DeepSeek thinking 未显式声明时失败关闭 exact；含历史 `tool_calls`/`tool` 结果的普通续轮仍未校准 | 先校准普通工具续轮 framing；实际启用其他 Provider 时复用同一计数与校准门 |
 | Prompt | 基础可用；直接回应路径已收敛 | `packages/prompt/`、stage prompt、`harness/stages/reply.ts` | 完整执行 Prompt 与紧凑 `respond` Prompt 已分路；后者不含 Workflow、workspace、reasoning 和无关 bootstrap，并限制历史与记忆索引。普通回应只注入紧凑时钟，明确追问才恢复上一轮有界执行摘要 | 保持按活动渐进披露，只向模型投影完成当前决策所需信息 |
 | Behavior Mode | 职责分散 | `prompt/profiles.ts`、Runner、config、App | 不是统一配置组合，新增 Mode 仍需跨模块修改 | 建立类型化 Mode registry，并与权限正交 |
 | Permission Policy | 基础可用 | `packages/app/src/main/run-policy.ts`、`ToolContext`、`packages/tools/src/tool-execution-service.ts` | 统一服务已消费权限决议并执行单次批准；网络资源和更强授权 token 尚未建模 | 权限作为独立 ceiling，不进入行为 profile |
@@ -100,7 +100,7 @@ React Renderer
 
 当前 `buildRunContext()` 仍会读取最近会话、过滤工具消息、加载 bootstrap 文件并构建 `ToolContext`；`packages/prompt` 负责 System Prompt，各 stage 仍负责形成语义消息，Runner 负责注入记忆根索引。模型请求随后被映射为显式 Context 候选，并由 `@littlesheep/context` 统一排序、预算和生成脱敏快照。完整执行路径把基础策略、记忆根索引、bootstrap、输出约束、Workflow/TaskBook、行为 profile 和 reasoning 分别登记为 segment；当前工作树新增的 `respond` 路径只登记直接回答所需的紧凑策略、能力、用户资料、记忆证据、摘要和最近历史。版本化 Summary Memory 继续作为独立来源进入后续请求。
 
-阶段 1 已形成主要数据链：Provider usage 会绑定到产生它的准确 Context 快照；UI 优先显示本地精确装配并单独显示供应商实测、差值和校准状态；长会话压缩保留原始 JSONL，只在元数据中保存版本化摘要；压缩阈值已经接入 Local App API 与设置页；非图片附件通过当前 run 专属工具按需读取，未调用时不解析正文。新导入附件已进入独立受管缓存，run 只能使用经稳定 cache id、路径、普通文件、大小和哈希重新验证的缓存项，旧 workplace 与外部用户文件不属于自动清理范围；workplace 资源索引已使用有界目录批次、持久化游标、精确变更提示和资源树元数据入口，正文仍由显式文件工具读取。完整数据根迁移已接入启动前恢复路径，失败不切换活动目录。Provider reasoning/capability 契约回归、tokenizer 能力矩阵和 unavailable 模型保守预算保护已完成；DeepSeek V4 使用固定官方 revision、大小和 SHA-256 资源，普通请求与显式单/多工具提议路径已完成本地与 Provider 零差值对账，含历史 Provider 工具消息的普通续轮在校准前失败关闭 exact。OpenAI/GLM 等其他模型仍按实际能力补齐，不得外推精确性。运行中事件队列、ingress、安全消费、TaskBookPatch、Renderer 事件生产、步骤级有界并行、应用启动恢复、活动任务控制、托盘、关闭策略和设置页活动任务入口已形成运行时闭环，确定性 Electron 七场景、真实 DeepSeek 跨重启回答门与基础两步副作用任务已完成；剩余缺口是普通工具续轮 tokenizer、摘要压缩后的真实续答、持续/并行负载和真实外部系统副作用。
+阶段 1 已形成主要数据链：Provider usage 会绑定到产生它的准确 Context 快照；UI 优先显示本地精确装配并单独显示供应商实测、差值和校准状态；长会话压缩保留原始 JSONL，只在元数据中保存版本化摘要；压缩阈值已经接入 Local App API 与设置页；非图片附件通过当前 run 专属工具按需读取，未调用时不解析正文。新导入附件已进入独立受管缓存，run 只能使用经稳定 cache id、路径、普通文件、大小和哈希重新验证的缓存项，旧 workplace 与外部用户文件不属于自动清理范围；workplace 资源索引已使用有界目录批次、持久化游标、精确变更提示和资源树元数据入口，正文仍由显式文件工具读取。完整数据根迁移已接入启动前恢复路径，失败不切换活动目录。Provider reasoning/capability 契约回归、tokenizer 能力矩阵和 unavailable 模型保守预算保护已完成；DeepSeek V4 使用固定官方 revision、大小和 SHA-256 资源，普通请求与显式单/多工具提议路径已完成本地与 Provider 零差值对账，含历史 Provider 工具消息的普通续轮在校准前失败关闭 exact。OpenAI/GLM 等其他模型仍按实际能力补齐，不得外推精确性。运行中事件队列、ingress、安全消费、TaskBookPatch、Renderer 事件生产、步骤级有界并行、应用启动恢复、活动任务控制、托盘、关闭策略和设置页活动任务入口已形成运行时闭环，确定性 Electron 七场景、真实 DeepSeek 跨重启回答门、基础两步副作用任务与短时并行压力已完成；剩余缺口是普通工具续轮 tokenizer、摘要压缩后的真实续答、数小时持续负载、真实网络故障和外部系统副作用。
 
 系统现在已经可以从快照和执行日志回答大部分请求级问题，但仍需继续闭环：
 

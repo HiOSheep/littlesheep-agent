@@ -305,6 +305,33 @@ describe('MemoryRepository indexed writes', () => {
     expect(Object.keys(parsed.nodes)).toHaveLength(16);
   });
 
+  it('serializes writes across repository instances that share one data root', async () => {
+    const peer = new MemoryRepository({ dataDir });
+    await peer.initialize();
+    await Promise.all([
+      repository.write(intent({
+        id: 'primary-instance',
+        summary: 'Primary runner update',
+        content: 'The primary runner retained this memory update.',
+        retrievalKeys: ['primary-runner'],
+        sourceRunId: 'run-primary',
+      })),
+      peer.write(intent({
+        id: 'retired-instance',
+        summary: 'Retired runner update',
+        content: 'The retired runner retained this memory update.',
+        retrievalKeys: ['retired-runner'],
+        sourceRunId: 'run-retired',
+      })),
+    ]);
+
+    const nodes = await repository.listNodes('long-term');
+    expect(nodes.map((node) => node.summary).sort()).toEqual([
+      'Primary runner update',
+      'Retired runner update',
+    ]);
+  });
+
   it('persists reversible management actions and their audit trail', async () => {
     const created = await repository.write(intent());
     const nodeId = created.node!.id;

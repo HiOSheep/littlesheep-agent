@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   classifyByRules,
   extractExplicitToolInstructionNames,
+  isMemoryRecallRequest,
   listRules,
 } from './rules.js';
 
@@ -35,6 +36,17 @@ describe('classifyByRules', () => {
       activity: 'respond',
       type: 'chat',
       reason: 'direct response constraint',
+    });
+  });
+
+  it('routes an explicit prior-turn memory question directly to a response', () => {
+    const prompt = '你还记得上一轮保存的文件名称和验收代号吗？请分别回答，不要调用工具。';
+    expect(isMemoryRecallRequest(prompt)).toBe(true);
+    expect(classifyByRules(prompt)).toMatchObject({
+      activity: 'respond',
+      type: 'chat',
+      confidence: 0.98,
+      reason: 'memory recall question',
     });
   });
 

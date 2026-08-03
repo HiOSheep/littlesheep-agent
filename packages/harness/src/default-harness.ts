@@ -5,10 +5,10 @@
 //
 // Stage deps (llm/sessionManager/memoryStore/config/branding) are captured by
 // the stage factories here; RunContext stays free of infrastructure.
-
 import type {
   AgentHarness,
   AnyHook,
+  MemoryStoreLike,
   RunContext,
   Stage,
   StageName,
@@ -16,7 +16,6 @@ import type {
 } from '@littlesheep/types';
 import type { LlmClient } from '@littlesheep/llm';
 import type { SessionManager } from '@littlesheep/session';
-import type { MemoryStoreLike } from '@littlesheep/types';
 import type { Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
 import type {
@@ -43,6 +42,7 @@ import { createFinalizeStage } from './stages/finalize.js';
 import { consumeRuntimeControlEvents, consumeRuntimeTaskEvents } from './runtime-control-boundary.js';
 import type { ExactContextTokenCounter } from '@littlesheep/context';
 import { bindExactContextTokenCounter } from './model-observability.js';
+import { resolveCheckpointResumeStage } from './checkpoint-resume.js';
 
 export interface DefaultHarnessOptions {
   llm: LlmClient;
@@ -159,7 +159,7 @@ export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness 
 
     async run(ctx: RunContext): Promise<StageResult> {
       bindExactContextTokenCounter(ctx, opts.tokenCounter);
-      let current: StageName | 'exit' = ctx.entryStage ?? 'enter';
+      let current: StageName | 'exit' = resolveCheckpointResumeStage(ctx, ctx.entryStage ?? 'enter');
       const trace: Array<{ name: StageName; startedAt: string; endedAt: string; ok: boolean }> = [];
       let lastResult: StageResult = {
         stage: 'enter',
@@ -169,6 +169,7 @@ export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness 
       };
 
       while (current !== 'exit') {
+        current = resolveCheckpointResumeStage(ctx, current);
         const stageName = current as StageName;
         const stage = stages.get(stageName);
         const startedAt = new Date().toISOString();

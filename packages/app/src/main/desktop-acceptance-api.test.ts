@@ -35,6 +35,20 @@ describe('desktop Electron acceptance Local App API', () => {
       trayAvailable: true,
       closePolicy: 'always-background' as const,
       activeRunCount: 1,
+      sampledAt: '2026-08-03T06:30:00.000Z',
+      process: {
+        rssBytes: 100,
+        heapUsedBytes: 40,
+        externalBytes: 10,
+        arrayBuffersBytes: 5,
+      },
+      runtime: {
+        currentRunnerActiveRunCount: 1,
+        aggregatedActiveRunCount: 1,
+        retiredRunnerCount: 0,
+        activitySourceCount: 1,
+        activityListenerCount: 1,
+      },
     }
     const close = vi.fn(() => {
       snapshot.windowVisible = false
@@ -58,7 +72,13 @@ describe('desktop Electron acceptance Local App API', () => {
       'Content-Type': 'application/json',
     }
     const initial = await fetch(`${fixture.baseUrl}/application/acceptance`, { headers })
-    await expect(initial.json()).resolves.toMatchObject({ snapshot: { windowVisible: true } })
+    await expect(initial.json()).resolves.toMatchObject({
+      snapshot: {
+        windowVisible: true,
+        process: { rssBytes: 100, heapUsedBytes: 40 },
+        runtime: { currentRunnerActiveRunCount: 1, activityListenerCount: 1 },
+      },
+    })
 
     const closed = await fetch(`${fixture.baseUrl}/application/acceptance`, {
       method: 'POST', headers, body: JSON.stringify({ action: 'close' }),

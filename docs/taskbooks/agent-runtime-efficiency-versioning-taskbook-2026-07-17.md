@@ -1,8 +1,8 @@
 # LittleSheep Agent Runtime 效率与版本化连续性任务书 2026-07-17
 
-最后更新：2026-08-03 06:18:45
+最后更新：2026-08-03 09:04:52
 
-状态：已完成统一 Tool Execution Service、工具调用级与 TaskBook 步骤级有界并行、数据与工作区 shadow Git 检查点、退出冻结、有界 `RuntimeEventQueue`、活动 run ingress、Harness 安全边界、确定性 `TaskBookPatch`、延迟事件重规划、Renderer 事件生产/反馈入口、持久 RunCheckpoint、Runner 显式续跑、应用启动恢复控制面、活动任务控制、后台托盘、三档关闭策略和设置页“应用与后台”的工程基线。确定性 Electron 七场景及真实 DeepSeek 两步后台任务、暂停、强制终止、跨重启恢复和回答级记忆连续性均已通过；持续并行负载、网络抖动和真实外部系统副作用仍待验收。
+状态：已完成统一 Tool Execution Service、工具调用级与 TaskBook 步骤级有界并行、数据与工作区 shadow Git 检查点、退出冻结、有界 `RuntimeEventQueue`、活动 run ingress、Harness 安全边界、确定性 `TaskBookPatch`、延迟事件重规划、Renderer 事件生产/反馈入口、持久 RunCheckpoint、Runner 显式续跑、应用启动恢复控制面、活动任务控制、后台托盘、三档关闭策略和设置页“应用与后台”的工程基线。确定性 Electron 七场景，以及真实 DeepSeek 两步后台任务、暂停/中断、强制终止、跨重启恢复、回答级记忆连续性和短时并行压力均已通过；数小时持续负载、真实网络抖动和外部系统副作用仍待验收。
 
 > 历史证据边界：本任务书保留各阶段当时的测试数字，不代表当前质量门；最新源码状态、测试数量和下一步只以 [项目状态](../decision/project-status.md) 为准。
 
@@ -45,6 +45,7 @@
 - `CAPTURE` 默认从已持久化的对话、步骤和工具状态生成确定性 daily 原子，不为内部流水额外调用 LLM；`EVOLVE` 使用 `adaptive/always/never`，默认只在复杂任务、持久化工具、恢复/重规划或明确记忆信号出现时调用。
 - `REPLY`、DECIDE 产生的任务说明、执行步骤结果、VERIFY 说明和多步骤 `execute_final_reply` 都必须在当次 run 中实时调用当前 Provider API 生成；运行时生成的澄清事实只能作为 `ASK_USER` 的输入，最终文本仍由 LLM 现场组织，不能直接发送，也不能从模板库、预备文案池或历史回答选取。这里不存在“LLM 生成候选文案后由 Runtime 挑选”的前台流程：Runtime 只校验真实 API 返回的来源、事实边界和唯一性。所有前台自然语言调用均注入运行时 `SOUL.md`，保证用户配置的人格、语气和渐进式披露风格；`ReplyProvenance` 绑定真实 model request，API 返回在发布前由持久化会话级注册表原子占用规范化指纹，完全重复时最多重新实时调用两次当前 Provider API，仍重复、注册表失败或生成失败只呈现 Runtime 错误/状态。按钮、状态、权限、路径和进度由 Runtime 固定提供，`FINALIZE` 禁止新增模型调用，只负责校验并持久化已经生成的回复。
 - 显式工具任务已建立有界提议路径：DECIDE 只接收用户明确点名的最多 4 种工具 schema，为每个可分别验证的步骤生成一个 `toolProposal`；单 schema 最多 12,000 字符、总计最多 24,000 字符，每个 TaskBook 最多采用 8 个提议。Runtime 再校验名称、schema、依赖、资源、副作用、权限和审批；当前直接执行只接受可证明且无需审批的 `read/write`，随后只调用一次 `execute_final_reply`。续接、记忆追问、需审批、参数不完整或边界不可证明时自动回退普通执行链；Runtime 不从自然语言猜参数。真实 `glob` 验收为 2 次 API、1 次工具调用、`5.642s`；最新真实两步 `write -> read` 恢复任务同样只有 `decide -> execute_final_reply` 两次 API，耗时 `6.651s`，两次工具各成功一次。任务与记忆追问合计 Provider total 从旧基线 `26,481` 降为 `6,924`，四个请求的本地 prompt 均为 `exact_match`；该对比只覆盖固定验收场景，不外推为所有任务的节省比例。
+- 2026-08-03 的短时并行压力门通过延迟代理制造取消、后台与重启窗口：14 次请求中 13 次实际转发、1 次在转发前取消，所有已转发请求都取得 Provider usage 并与本地 tokenizer `exact_match`，Provider 合计 prompt `23,358`、completion `2,986`、total `26,344`。同场景 `glob` 仍只有 `DECIDE + execute_final_reply` 两次模型调用和一次工具调用，本地/Provider prompt 为 `2934/2934`、`802/802`，没有重新引入额外工具循环或 VERIFY 模型调用。两条恢复会话的最终回答各自准确承接历史文件名和验收码并判定 `supported`；这项用户可见证据是“不失忆”的验收主体，内部检索成功不能替代。
 - Context Engine 区分阶段软目标与模型窗口硬上限：先按优先级裁剪可选内容，必要内容在未超过真实模型窗口时可以超过软目标；未知模型不会凭软目标触发会话压缩。
 - 每次请求在缓存边界后注入精确到秒的 runtime awareness；最近对话优先于重复的静态时间段，时间、耗时和进度仍由运行时事实提供。
 - 记忆上下文继续沿 `root index -> branch index -> expand -> branch-scoped search`，只把有任务价值、作用域正确、证据可解释且预算允许的 Atom 放入请求。
@@ -60,14 +61,14 @@
 - `ActiveRunRegistry`、Local App API 和 Renderer API 已提供 run-scoped ingress；停止按钮会发送控制事件，活动 run 中的普通输入会发送任务变化事件而不创建第二个 run。Harness 在每个 stage 前先处理控制事件，再处理任务变化事件。
 - `pause / resume / interrupt` 使用独立安全批次；携带确定性 `TaskBookPatch` 的任务事件会在队列结算成功后原子更新 TaskBook，未携带 patch 的事件进入有界延迟区并回到 DECIDE 重规划。
 - 普通追加消息、设置变化和工作区文件保存已由 Renderer 生产；文件事件只携带路径、类型、大小和修改时间，不携带文件正文。只有 `accepted`、`duplicate` 清空输入，网络失败、过期、冲突、拒绝和队列满均保留输入；响应丢失重试复用同一事件 id 与 `dedupKey`。
-- 事件结果使用 Runtime 状态提示，不伪装成 Agent 对话；提示共用一个有清理路径的计时器。真实 DeepSeek 后台两步任务已通过，当前缺口转为持续并行负载、断线重连压力和长期资源回落。
+- 事件结果使用 Runtime 状态提示，不伪装成 Agent 对话；提示共用一个有清理路径的计时器。真实 DeepSeek 后台两步任务和短时并行压力已通过；SSE 反复断开重连后 listener 回到基线，当前缺口转为真实断网、数小时持续负载和更长期资源回落。
 
 ### 2.5 持久 RunCheckpoint 与 Runner 显式续跑
 
 - `RunCheckpointStore` 原子保存版本化 TaskBook、步骤执行、事件队列、权限、循环预算和副作用状态，并对数量、大小、版本、作用域和恢复数据做有界校验。
 - disposition/controller 以 claim/interrupt/complete 事务防止同一检查点并发续跑；旧进程残留的 `resuming` 租约会转换为可审计、可重新领取的 `interrupted`。Runner 的 `resumeCheckpoint()` 不重复追加原始用户输入，并恢复 TaskBook、事件和执行状态。
 - 不确定外部副作用、缺失原始输入或缺失工具时续跑会失败关闭，不用聊天文本猜测进度。
-- Main 启动发现、Local App API 有界列表/详情/放弃/SSE 续跑和 Renderer 恢复控制面已经接通；用户可查看现场、补充信息、继续、停止或放弃，恢复后会强制重载对应会话。真实 Electron + DeepSeek 已验证暂停后强制终止、重启领取原检查点、保留成功副作用账本并完成后续步骤；并行副作用和真实外部系统副作用仍需独立验收，因此当前不是生产就绪声明。
+- Main 启动发现、Local App API 有界列表/详情/放弃/SSE 续跑和 Renderer 恢复控制面已经接通；用户可查看现场、补充信息、继续、停止或放弃，恢复后会强制重载对应会话。真实 Electron + DeepSeek 已验证两个独立任务分别暂停/中断后强制终止、重启并行领取原检查点，恢复工具调用均为 0，成功副作用文件的哈希、大小和 mtime 不变；真实外部系统副作用仍需独立验收，因此当前不是生产就绪声明。
 - 2026-07-29 定向复核覆盖队列、活动 run 注册、安全边界、TaskBookPatch、checkpoint store/controller、Runner 续跑和 App ingress，共 9 个测试文件、43 项全部通过。
 
 ### 2.6 统一 Tool Execution Service
@@ -90,9 +91,9 @@
 
 ## 3. 尚未完成
 
-1. **后台持续负载验收**：真实 DeepSeek 两步任务已覆盖托盘、窗口关闭、暂停、强制终止、重启续跑、中断和彻底退出；仍需验证持续并行负载、断线重连压力和长期资源回落。
+1. **后台持续负载验收**：真实 DeepSeek 两步任务和短时并行压力已覆盖托盘、窗口关闭、4 个活动 run、暂停/中断、强制终止、双 Checkpoint 并行续跑、SSE 重连、配置热重载和彻底退出；仍需验证数小时持续负载、真实断网和更长期资源回落。
 2. **其他 Provider 校准**：DeepSeek 的 chat、continuity、tool、abort、前台 Runner 与 V4 本地精确 token 对账已完成；OpenAI/GLM 只在实际配置并进入用户选择范围后校准模型窗口、reasoning、usage、模型专用本地账本和前台表达质量。mock 只证明本地结构。
-3. **并行长任务与外部副作用恢复**：串行两步 `write -> read` 已真实通过；下一步验证多步骤并行、并行副作用检查点、网络中断和真实外部系统副作用恢复，不用单元测试替代产品场景。
+3. **长任务与外部副作用恢复**：两个独立 `write -> read` 任务的并行 Checkpoint 恢复已真实通过，且没有重复工具或文件改写；下一步验证更长的多步骤依赖图、真实网络中断和外部系统副作用恢复，不用单元测试替代产品场景。
 4. **版本治理 UI**：在不把内部 Atom 结构暴露给普通记忆页的前提下，增加用户可理解的数据/工作区回退和恢复结果入口；run checkpoint 的启动恢复入口已经完成。
 
 ## 4. 验收标准
@@ -111,10 +112,11 @@ pnpm.cmd test
 pnpm.cmd run typecheck
 pnpm.cmd run build
 pnpm.cmd run verify:app-recovery
+pnpm.cmd run verify:electron-deepseek-parallel-load
 ```
 
 涉及正式用户数据时，只读记录 `<用户目录>/.littlesheep` 基线并使用隔离目录验证；未经单独授权不得迁移、重写或清理正式数据。每次桌面构建完成后刷新 `%USERPROFILE%\Desktop\LittleSheep.lnk`，快捷方式必须指向最新本地构建并能直接启动应用。
 
 ## 6. 后续顺序
 
-保持 `respond / execute / clarify`、直接回应 Context、统一 Tool Execution Service、TaskBook 步骤级并行、Renderer 运行时事件入口、应用启动恢复和后台控制面的完整质量门；继续工具续轮 tokenizer 与其他 Provider 校准，随后完成持续并行长任务、网络中断/外部副作用恢复、版本治理 UI 和严格效率对比基线。
+保持 `respond / execute / clarify`、直接回应 Context、统一 Tool Execution Service、TaskBook 步骤级并行、Renderer 运行时事件入口、应用启动恢复、回答级连续性和后台控制面的完整质量门；继续工具续轮 tokenizer 与其他 Provider 校准，随后完成数小时持续任务、真实网络中断/外部副作用恢复、版本治理 UI 和严格效率对比基线。

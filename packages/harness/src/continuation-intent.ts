@@ -1,3 +1,5 @@
+import { isMemoryRecallRequest } from '@littlesheep/classifier';
+
 const EXECUTION_CONTINUATION_PATTERNS: readonly RegExp[] = [
   /(?:^|[，,。；;！？!?]\s*)(?:继续|接着)(?:执行|处理|完成|刚才|上次|上一轮|之前|未完成|这个任务|那件事|吧|下去|做)?(?:[，,。；;！？!?]|$)/iu,
   /恢复(?:执行|处理|刚才|上次|上一轮|之前|未完成|这个任务|那件事)/iu,
@@ -12,18 +14,11 @@ const EXECUTION_CONTINUATION_PATTERNS: readonly RegExp[] = [
   /did\s+(?:it|that).{0,16}(?:work|finish|succeed|fail)/iu,
 ];
 
-const MEMORY_RECALL_PATTERNS: readonly RegExp[] = [
-  /(?:你|还)?(?:记得|记不记得|能否回忆|能不能回忆).{0,32}(?:上次|上一轮|之前|我(?:说|提|让你|告诉)|代号|颜色|名称|名字|版本|路径|预算|时间|日期)/iu,
-  /(?:上次|上一轮|之前|我(?:说|提|让你|告诉)).{0,32}(?:是什么|是多少|叫什么|哪一个|哪个|记得吗|还记得)/iu,
-  /(?:do\s+you\s+remember|can\s+you\s+recall).{0,48}(?:last|previous|earlier|i\s+(?:said|told|asked)|code|color|name|version|path|budget|time|date)/iu,
-  /(?:what|which).{0,24}(?:did\s+i|from\s+(?:the\s+)?(?:last|previous|earlier)).{0,32}(?:say|tell|ask|code|color|name|version|path|budget|time|date)/iu,
-];
-
 export function isExplicitContinuationRequest(value: string | undefined): boolean {
   const normalized = value?.trim();
   return Boolean(normalized && (
     isExecutionContinuationRequest(normalized)
-    || MEMORY_RECALL_PATTERNS.some((pattern) => pattern.test(normalized))
+    || isMemoryRecallRequest(normalized)
   ));
 }
 

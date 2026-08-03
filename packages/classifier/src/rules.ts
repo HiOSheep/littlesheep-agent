@@ -19,6 +19,12 @@ export interface Rule {
 
 const EXPLICIT_TOOL_INSTRUCTION_PATTERN = /(?:(?:(?:请|帮我|麻烦(?:你)?|替我)(?:只|仅)?(?:使用|调用|用)|^(?:只|仅)?(?:使用|调用|用)|(?:第[一二三四五六七八九十百\d]+步|然后|再|随后|接着)\s*(?:请)?(?:只|仅)?(?:使用|调用|用))\s*[A-Za-z][A-Za-z0-9_.-]{0,63}\s*(?:工具|tool\b))|(?:\b(?:please\s+|then\s+|next\s+)?(?:use|call|invoke)\s+(?:the\s+)?[A-Za-z][A-Za-z0-9_.-]{0,63}\s+tool\b)/i;
 const EXPLICIT_TOOL_LABEL_PATTERN = /([A-Za-z][A-Za-z0-9_.-]{0,63})\s*(?:工具|tool\b)/giu;
+const MEMORY_RECALL_PATTERNS: readonly RegExp[] = [
+  /(?:你|还)?(?:记得|记不记得|能否回忆|能不能回忆).{0,32}(?:上次|上一轮|之前|我(?:说|提|让你|告诉)|代号|颜色|名称|名字|版本|路径|预算|时间|日期)/iu,
+  /(?:上次|上一轮|之前|我(?:说|提|让你|告诉)).{0,32}(?:是什么|是多少|叫什么|哪一个|哪个|记得吗|还记得)/iu,
+  /(?:do\s+you\s+remember|can\s+you\s+recall).{0,48}(?:last|previous|earlier|i\s+(?:said|told|asked)|code|color|name|version|path|budget|time|date)/iu,
+  /(?:what|which).{0,24}(?:did\s+i|from\s+(?:the\s+)?(?:last|previous|earlier)).{0,32}(?:say|tell|ask|code|color|name|version|path|budget|time|date)/iu,
+];
 
 /** Ordered list of rules. First match wins. */
 const RULES: Rule[] = [
@@ -46,6 +52,15 @@ const RULES: Rule[] = [
     activity: 'respond',
     confidence: 0.98,
     reason: 'direct response constraint',
+  },
+  // A direct recall question is answerable from the current session Context.
+  // It must never become a generic clarification merely because the router
+  // model overlooks an available prior-turn anchor.
+  {
+    pattern: memoryRecallPattern(),
+    activity: 'respond',
+    confidence: 0.98,
+    reason: 'memory recall question',
   },
   // An explicit imperative to use a named tool is unambiguously executable
   // and does not need a separate classifier model call.
@@ -134,6 +149,11 @@ export function listRules(): readonly Rule[] {
   }));
 }
 
+export function isMemoryRecallRequest(value: string | undefined): boolean {
+  const normalized = value?.normalize('NFKC').trim();
+  return Boolean(normalized && MEMORY_RECALL_PATTERNS.some((pattern) => pattern.test(normalized)));
+}
+
 /** Return every explicitly labelled tool name only for an imperative tool request. */
 export function extractExplicitToolInstructionNames(text: string): string[] {
   const normalized = text.normalize('NFKC').trim();
@@ -167,4 +187,8 @@ function isPositiveToolInstructionPrefix(prefix: string): boolean {
 function isCoordinatedToolContinuation(value: string): boolean {
   return /^\s*[,;]?\s*(?:(?:and\s+)?then|and|next)\s+(?:(?:use|call|invoke)\s+)?(?:the\s+)?$/iu.test(value)
     || /^\s*[，、；]?\s*(?:和|及|以及|并且|并|然后|再|随后|接着)\s*(?:(?:只|仅)?(?:使用|调用|用)\s*)?$/iu.test(value);
+}
+
+function memoryRecallPattern(): RegExp {
+  return new RegExp(MEMORY_RECALL_PATTERNS.map((pattern) => `(?:${pattern.source})`).join('|'), 'iu');
 }

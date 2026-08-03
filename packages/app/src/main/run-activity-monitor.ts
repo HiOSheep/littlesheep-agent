@@ -10,6 +10,12 @@ const MAX_ACTIVITY_SOURCES = 8
 const MAX_ACTIVITY_LISTENERS = 16
 const MAX_AGGREGATED_ACTIVE_RUNS = 128
 
+export interface RunActivityMonitorDiagnostics {
+  sourceCount: number
+  listenerCount: number
+  activeRunCount: number
+}
+
 /** Aggregates current and draining Runner instances without making Renderer state authoritative. */
 export class RunActivityMonitor {
   private readonly sources = new Map<RuntimeActiveRunControl, () => void>()
@@ -57,6 +63,14 @@ export class RunActivityMonitor {
     }
     return [...byRunId.values()]
       .sort((left, right) => left.startedAt.localeCompare(right.startedAt) || left.runId.localeCompare(right.runId))
+  }
+
+  diagnostics(): RunActivityMonitorDiagnostics {
+    return {
+      sourceCount: this.disposed ? 0 : this.sources.size,
+      listenerCount: this.disposed ? 0 : this.listeners.size,
+      activeRunCount: this.snapshot().length,
+    }
   }
 
   request(runId: string, action: RuntimeActiveRunAction, reason?: string): RuntimeActiveRunActionOutcome {

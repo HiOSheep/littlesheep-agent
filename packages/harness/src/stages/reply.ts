@@ -21,6 +21,7 @@ import {
 } from '../model-observability.js';
 import { buildRunRequestCandidates } from '../context-candidates.js';
 import { acceptUniqueUserFacingReply, type ReplyRewriteInput } from '../user-facing-reply.js';
+import { synthesizeFinalReply } from './execute/final-reply.js';
 
 export interface ReplyStageDeps {
   llm: LlmClient;
@@ -34,6 +35,30 @@ export function createReplyStage(deps: ReplyStageDeps) {
   return async function replyStage(ctx: RunContext): Promise<StageResult> {
     ctx.reply = undefined;
     ctx.replyProvenance = undefined;
+    if (ctx.resumedFromCheckpointId && ctx.taskBook && (ctx.taskExecution?.steps.length ?? 0) > 0) {
+      try {
+        ctx.reply = await synthesizeFinalReply(deps, ctx, ctx.taskBook, ctx.taskExecution!.steps);
+        return {
+          stage: 'reply',
+          next: 'verify',
+          ok: true,
+          meta: { resumedTaskFinalReply: true },
+        };
+      } catch (err) {
+        ctx.reply = undefined;
+        ctx.replyProvenance = undefined;
+        ctx.lastError = {
+          stage: 'reply',
+          message: `resumed task final reply generation failed: ${(err as Error).message}`,
+        };
+        return {
+          stage: 'reply',
+          next: 'exit',
+          ok: false,
+          error: ctx.lastError.message,
+        };
+      }
+    }
     const resolved = resolvePromptConfig(deps.config, deps.branding);
     // RESPOND keeps continuity, selected memory, voice and runtime capabilities,
     // but omits execution-only workflow, memory-navigation and tool discipline.

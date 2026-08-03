@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-08-02 12:37:00
+最后更新：2026-08-03 09:04:52
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
@@ -62,7 +62,7 @@
 | `packages/types/` | Agent、消息、会话、工具、记忆、澄清请求，以及 Mode、运行决议、Context、附件、运行事件、TaskBookPatch、检查点、模型请求和执行证据等内部 v1 契约；本地精确、Provider 实测与不可展示安全估算的 Token 账本独立位于 `src/token-ledger.ts`。 |
 | `packages/classifier/` | `respond / execute / clarify` 语义活动路由，含规则快速路径和模型兜底；旧 `chat / problem / unclear` 只由公共契约做兼容映射。 |
 | `packages/prompt/` | 系统提示词、行为 profile、工作区信息和记忆树根索引的装配；支持完整执行、紧凑 `respond`、最小与禁用四种投影模式。 |
-| `packages/harness/` | 硬控制流状态机、TaskBook、各 stage、hooks、局部重规划和验证；`src/stages/decide/request.ts`、`model-call.ts`、`adoption.ts` 分别拥有决策请求、模型调用和采用，`execute/`、`verify/` 拥有工具执行与结构验收；`runtime-control-boundary.ts` 和 `taskbook-patch.ts` 拥有运行中事件的安全消费与确定性局部修订。 |
+| `packages/harness/` | 硬控制流状态机、TaskBook、各 stage、hooks、局部重规划和验证；`src/stages/decide/request.ts`、`model-call.ts`、`adoption.ts` 分别拥有决策请求、模型调用和采用，`execute/`、`verify/` 拥有工具执行与结构验收；`checkpoint-resume.ts` 负责依据已保存步骤证据恢复，`response-continuity*.ts` 负责从最终用户可见回答反查真实 Context 来源并判定记忆连续；`runtime-control-boundary.ts` 和 `taskbook-patch.ts` 拥有运行中事件的安全消费与确定性局部修订。 |
 | `packages/runner/` | 运行时装配、单次 run、流式事件、执行日志、活动 run 事件注册与有界状态快照、暂停/继续/中断、持久检查点、显式续跑和基础设施依赖注入。 |
 | `packages/llm/` | OpenAI-compatible 客户端、供应商请求、流式输出、重试和 usage 类型。 |
 | `packages/config/` | 配置 schema、默认值、供应商预置、模型选择和用户配置加载。 |
@@ -107,7 +107,7 @@
 
 | 需求类型 | 主要所有者 | 首要入口 | 主要测试 |
 | --- | --- | --- | --- |
-| Agent 状态机、活动路由、TaskBook、验证或恢复 | `packages/harness/`、`packages/classifier/` | `harness/src/default-harness.ts`、`src/stages/classify.ts`、`src/stages/decide/{request,model-call,adoption}.ts`、`runtime-control-boundary.ts`、`taskbook-patch.ts`；语义路由规则位于 `classifier/src/{rules,llm}.ts` | `harness/src/default-harness.test.ts`、`src/stages/*.test.ts`、`runtime-control-boundary.test.ts`、`taskbook-patch.test.ts`、`classifier/src/*.test.ts` |
+| Agent 状态机、活动路由、TaskBook、验证、恢复或回答级记忆连续性 | `packages/harness/`、`packages/classifier/` | `harness/src/default-harness.ts`、`checkpoint-resume.ts`、`response-continuity*.ts`、`src/stages/reply.ts`、`src/stages/decide/{request,model-call,adoption}.ts`、`runtime-control-boundary.ts`、`taskbook-patch.ts`；语义路由规则位于 `classifier/src/{rules,llm}.ts` | `harness/src/default-harness.test.ts`、`response-continuity.test.ts`、`continuation-intent.test.ts`、`src/stages/*.test.ts`、`runtime-control-boundary.test.ts`、`taskbook-patch.test.ts`、`classifier/src/*.test.ts` |
 | 单次 run、流式事件、执行日志、上一轮有界摘要与活动续跑 | `packages/runner/` | `src/runner.ts`、`src/execution-log.ts`、`src/session-run-summary.ts`、`src/runtime-event-queue.ts`、`src/active-run-registry.ts`、`src/active-run-activity.ts`、`src/run-abort-control.ts`、`src/run-checkpoint-*.ts` | `src/runner.test.ts`、`src/execution-log.test.ts`、`src/runtime-event-queue.test.ts`、`src/active-run-registry.test.ts`、`src/runner-continuation.test.ts`、`src/run-checkpoint-*.test.ts` |
 | 公共运行契约 | `packages/types/` | `src/index.ts`、`src/runtime-contracts.ts`、`src/token-ledger.ts` | `src/runtime-contracts.test.ts`、`test/core-agent-contracts.test.ts` |
 | Context 候选、预算、计数和快照 | `packages/context/` | `src/engine.ts` facade、`src/context-engine/`、`src/tokenizers/deepseek-v4-{encoding,counter}.ts` | `src/engine.test.ts`、`src/tokenizers/*.test.ts`、Harness Context/观测测试 |
@@ -120,8 +120,8 @@
 | 工具注册、统一执行、审批和内置工具 | `packages/tools/` | `src/registry.ts`、`src/tool-execution-service.ts`、`src/tool-execution-{scheduler,control,records,result}.ts`、`src/builtin/` | `src/**/*.test.ts` |
 | 插件发现、信任和生命周期 | `packages/plugins/` | `src/host.ts`、`src/manifest.ts` | `src/**/*.test.ts` |
 | 外部渠道协议 | `packages/channels/*` | 各包 `src/plugin.ts` | 各包 `src/plugin.test.ts`、`test/e2e-webhook.test.ts` |
-| Electron 启动、Local App API 和用户数据 adapter | `packages/app/src/main/` | `index.ts`、`local-app-api-server.ts` | `src/main/*.test.ts` |
-| 窗口、托盘、关闭策略与活动任务控制 | `packages/app/src/main/`、`packages/app/src/renderer/settings/`、`packages/runner/` | `desktop-shell.ts`、`tray-controller.ts`、`close-policy.ts`、`run-activity-monitor.ts`、`local-app-api/application-lifecycle-routes.ts`、`renderer/settings/application-background*.ts(x)`、`runner/src/active-run-*.ts` | `close-policy.test.ts`、`run-activity-monitor.test.ts`、`application-lifecycle-api.test.ts`、`renderer/api/application-lifecycle.test.ts`、`renderer/settings/application-background-state.test.ts`、`runner/src/active-run-registry.test.ts` |
+| Electron 启动、Local App API、验收采样和用户数据 adapter | `packages/app/src/main/` | `index.ts`、`local-app-api-server.ts`、`desktop-acceptance-snapshot.ts` | `src/main/*.test.ts`、`scripts/verify-electron-*.mjs` |
+| 窗口、托盘、关闭策略与活动任务控制 | `packages/app/src/main/`、`packages/app/src/renderer/settings/`、`packages/runner/` | `desktop-shell.ts`、`tray-controller.ts`、`close-policy.ts`、`run-activity-monitor.ts`、`desktop-acceptance-snapshot.ts`、`local-app-api/application-lifecycle-routes.ts`、`renderer/settings/application-background*.ts(x)`、`runner/src/active-run-*.ts` | `close-policy.test.ts`、`run-activity-monitor.test.ts`、`desktop-acceptance-api.test.ts`、`application-lifecycle-api.test.ts`、`renderer/api/application-lifecycle.test.ts`、`renderer/settings/application-background-state.test.ts`、`runner/src/active-run-registry.test.ts`、`scripts/verify-electron-deepseek-parallel-load.mjs` |
 | LS 开发环境、工具链版本和终端环境 | `packages/app/src/main/`、`packages/app/src/renderer/settings/` | `development-environments.ts`、`development-environment-definitions.ts`、`development-environment-files.ts`、`local-app-api/development-environment-routes.ts`、`settings/development-environments.tsx` | `development-environments.test.ts`、`development-environment-api.test.ts` |
 | 桌面 UI、导航、设置和工作区 | `packages/app/src/renderer/` | `App.tsx`、`app-shell/`、各 Renderer 领域目录、`api/` | `src/renderer/*.test.ts(x)`、领域同目录测试与真实窗口验收 |
 | CLI 与管理命令 | `packages/cli/` | `src/bin.ts`、`src/commands/` | `src/**/*.test.ts`、`test/e2e-cli.test.ts` |

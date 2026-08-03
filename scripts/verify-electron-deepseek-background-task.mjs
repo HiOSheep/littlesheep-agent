@@ -128,7 +128,13 @@ async function main() {
       ['recall', recalled.result],
     ])
     assertCompletedProviderUsage(completedRequests)
-    const providerTotals = sumProviderUsage(completedRequests)
+    const allRequests = uniqueRequestMetrics([
+      ['paused', paused.result],
+      ['resumed', resumed.result],
+      ['recall', recalled.result],
+      ['interrupted', interrupted.result],
+    ])
+    const providerAccounting = summarizeProviderAccounting(allRequests)
     const resumedRequests = requestMetrics('resumed', resumed.result)
     assertDirectProposalAccounting(resumedRequests)
 
@@ -167,8 +173,8 @@ async function main() {
         })) ?? [],
       },
       continuity: recalled.result.memoryContinuityAssessment,
-      providerTotals,
-      requests: completedRequests,
+      providerAccounting,
+      requests: allRequests,
       interrupted: {
         status: interrupted.result.status,
         checkpointId: interrupted.result.runCheckpointId,
@@ -327,6 +333,7 @@ function requestMetrics(runLabel, result) {
     return {
       key: request.id ?? `${runLabel}:${request.requestIndex}`,
       runLabel,
+      runStatus: result.status,
       index: request.requestIndex,
       purpose: request.callContract?.purpose ?? request.stage,
       stage: request.stage,
@@ -345,6 +352,16 @@ function requestMetrics(runLabel, result) {
       calibration: snapshot?.providerUsage?.localCalibration?.status,
     }
   })
+}
+
+function summarizeProviderAccounting(requests) {
+  const withUsage = requests.filter((request) => Number.isSafeInteger(request.providerPromptTokens))
+  return {
+    attemptedRequests: requests.length,
+    requestsWithAuthoritativeUsage: withUsage.length,
+    requestsWithoutAuthoritativeUsage: requests.length - withUsage.length,
+    confirmedTotals: sumProviderUsage(withUsage),
+  }
 }
 
 function uniqueRequestMetrics(results) {

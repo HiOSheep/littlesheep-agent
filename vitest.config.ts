@@ -76,7 +76,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ['packages/**/src/**/*.test.ts', 'test/**/*.test.ts'],
+    include: ['packages/**/src/**/*.test.ts', 'test/**/*.test.ts', 'scripts/**/*.test.mjs'],
     environment: 'node',
     testTimeout: 30_000,
     // SQLite, shadow Git and Memory v3 integration suites contend heavily on

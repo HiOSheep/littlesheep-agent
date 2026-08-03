@@ -27,6 +27,23 @@ export interface DesktopShellSnapshot {
   activeRunCount: number
 }
 
+export interface DesktopAcceptanceSnapshot extends DesktopShellSnapshot {
+  sampledAt: string
+  process: {
+    rssBytes: number
+    heapUsedBytes: number
+    externalBytes: number
+    arrayBuffersBytes: number
+  }
+  runtime: {
+    currentRunnerActiveRunCount: number
+    aggregatedActiveRunCount: number
+    retiredRunnerCount: number
+    activitySourceCount: number
+    activityListenerCount: number
+  }
+}
+
 export class LittleSheepDesktopShell {
   private readonly options: LittleSheepDesktopShellOptions
   private mainWindow: BrowserWindow | null = null

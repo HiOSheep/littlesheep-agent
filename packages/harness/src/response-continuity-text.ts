@@ -218,7 +218,7 @@ function extractLabeledValue(value: string | undefined, label: string): string |
   ));
   if (quoted?.[1]?.trim()) return quoted[1].trim();
   const delimited = source.match(new RegExp(
-    `${escapedLabel}${labelSuffix}(?:是|为|=|:|：)\\s*([^，。；;、\\r\\n]{1,120})`,
+    `${escapedLabel}${labelSuffix}(?:是|为|=|:|：)\\s*([^,，。；;、\\r\\n]{1,120})`,
     'iu',
   ));
   if (delimited?.[1]?.trim()) {
