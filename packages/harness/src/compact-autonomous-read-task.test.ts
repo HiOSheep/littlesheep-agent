@@ -15,14 +15,26 @@ describe('compact autonomous read task', () => {
       'glob', 'grep', 'read',
     ]);
     const contract = renderCompactAutonomousReadDecisionContract(tools!);
-    expect(contract).toContain('# Compact Read-Only Tool Decision');
-    expect(contract).toContain('Input JSON Schema:');
+    expect(contract).toContain('# Read-only tool decision');
+    expect(contract).toContain('Tools (exact schemas):');
+    expect(contract).toContain('Return exactly one complete raw JSON object');
     expect(contract).toContain('{"tool":"toolName","input":{}');
+    expect(contract).toContain('Names: glob, grep, read.');
+    expect(contract.length).toBeLessThan(1_500);
   });
 
   it('ignores memory candidates that were inspected but excluded from Context', () => {
     const ctx = context('请查看当前工作区顶层有哪些条目，只告诉我数量和名称，不要修改任何文件。');
     ctx.memoryKnownState = knownState('excluded');
+    expect(resolveCompactAutonomousReadDecisionTools(ctx)?.map((tool) => tool.name)).toEqual([
+      'glob', 'grep', 'read',
+    ]);
+  });
+
+  it('keeps long search terms on the compact read-only path', () => {
+    const ctx = context(
+      '请在当前工作区搜索文本 LS_ACCEPTANCE_NEEDLE_42 出现在哪个文件和第几行，只告诉我匹配结果，不要修改任何文件。',
+    );
     expect(resolveCompactAutonomousReadDecisionTools(ctx)?.map((tool) => tool.name)).toEqual([
       'glob', 'grep', 'read',
     ]);

@@ -83,6 +83,79 @@ describe('replyStage', () => {
       .every((item) => item.disposition === 'included')).toBe(true);
   });
 
+  it('repairs one discontinuous continuation before reserving or publishing it', async () => {
+    const llm = createMockLlm([
+      textResponse('我无法回忆上一轮保存的内容。'),
+      textResponse('代号：continuity-anchor-6824；颜色：琥珀色'),
+    ]);
+    const stage = createReplyStage({
+      llm,
+      model: 'deepseek/deepseek-v4-flash',
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+    });
+    const ctx = makeCtx({
+      history: [
+        textMessage('user', '请记住代号 continuity-anchor-6824 和颜色琥珀色。'),
+        textMessage('assistant', '记录完成。'),
+      ],
+      inbound: textMessage(
+        'user',
+        '继续上一轮。请输出上一轮让我保存的代号和颜色，格式为“代号：...；颜色：...”。',
+      ),
+    });
+    ctx.reserveUserFacingReply = vi.fn(async () => true);
+
+    const result = await stage(ctx);
+
+    expect(result.ok).toBe(true);
+    expect(ctx.reply).toBe('代号：continuity-anchor-6824；颜色：琥珀色');
+    expect(llm.chat).toHaveBeenCalledTimes(2);
+    expect(String(llm.chat.mock.calls[1]?.[0].messages[0]?.content))
+      .toContain('Continuity correction contract');
+    expect(ctx.reserveUserFacingReply).toHaveBeenCalledTimes(1);
+    expect(ctx.reserveUserFacingReply).toHaveBeenCalledWith(
+      '代号：continuity-anchor-6824；颜色：琥珀色',
+    );
+    expect(ctx.replyProvenance).toMatchObject({
+      source: 'llm',
+      purpose: 'reply',
+      modelRequestIndex: 2,
+    });
+  });
+
+  it('fails closed when one continuity correction still contradicts visible history', async () => {
+    const llm = createMockLlm([
+      textResponse('我无法回忆上一轮保存的内容。'),
+      textResponse('代号和颜色都没有记录。'),
+    ]);
+    const stage = createReplyStage({
+      llm,
+      model: 'deepseek/deepseek-v4-flash',
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+    });
+    const ctx = makeCtx({
+      history: [
+        textMessage('user', '请记住代号 continuity-anchor-6824 和颜色琥珀色。'),
+        textMessage('assistant', '记录完成。'),
+      ],
+      inbound: textMessage(
+        'user',
+        '继续上一轮。请输出上一轮让我保存的代号和颜色，格式为“代号：...；颜色：...”。',
+      ),
+    });
+    ctx.reserveUserFacingReply = vi.fn(async () => true);
+
+    const result = await stage(ctx);
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('still omitted or contradicted');
+    expect(ctx.reply).toBeUndefined();
+    expect(ctx.reserveUserFacingReply).not.toHaveBeenCalled();
+    expect(llm.chat).toHaveBeenCalledTimes(2);
+  });
+
   it('streams provider deltas and replaces provisional text with the canonical reply', async () => {
     const llm = createMockLlm(textResponse('Hello '));
     llm.chatStream.mockImplementationOnce(async (_request, onChunk) => {

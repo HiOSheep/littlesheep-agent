@@ -19,15 +19,12 @@ import {
 
 const AUTONOMOUS_READ = process.argv.includes('--autonomous-read')
   || process.argv.includes('--provider-tool-loop')
+const REQUESTED_TOOL = resolveRequestedTool(process.argv)
 const CHECK_NAME = AUTONOMOUS_READ
-  ? 'electron-deepseek-autonomous-read'
-  : 'electron-deepseek-single-tool'
-const SCENARIO = AUTONOMOUS_READ
-  ? 'llm_selected_single_read_only_glob'
-  : 'explicit_single_read_only_glob'
-const PROMPT = AUTONOMOUS_READ
-  ? '请查看当前工作区顶层有哪些条目，只告诉我数量和名称，不要修改任何文件。'
-  : '请使用 glob 工具读取当前工作区顶层条目，只告诉我数量和名称，不要修改任何文件。'
+  ? `electron-deepseek-autonomous-read${REQUESTED_TOOL === 'glob' ? '' : `-${REQUESTED_TOOL}`}`
+  : `electron-deepseek-single-tool${REQUESTED_TOOL === 'glob' ? '' : `-${REQUESTED_TOOL}`}`
+const SCENARIO = `${AUTONOMOUS_READ ? 'llm_selected' : 'explicit'}_single_read_only_${REQUESTED_TOOL}`
+const PROMPT = scenarioPrompt(REQUESTED_TOOL, AUTONOMOUS_READ)
 const EXPECTED_ENTRIES = ['alpha.txt', 'beta.md', 'nested']
 // Keep a little headroom for tokenizer/provider metadata while catching a
 // regression toward the pre-optimization 1,021 prompt-token baseline.
@@ -39,9 +36,9 @@ const MAX_OPTIMIZED_TOTAL_PROMPT_TOKENS = 950
 const MAX_AUTONOMOUS_READ_MODEL_CALLS = 2
 // The autonomous path must remain materially below the former 2,325-prompt-token
 // three-call baseline while keeping schemas, permissions, evidence, and VERIFY.
-const MAX_AUTONOMOUS_DECIDE_PROMPT_TOKENS = 900
+const MAX_AUTONOMOUS_DECIDE_PROMPT_TOKENS = 750
 const MAX_AUTONOMOUS_FINAL_PROMPT_TOKENS = 450
-const MAX_AUTONOMOUS_TOTAL_PROMPT_TOKENS = 1_400
+const MAX_AUTONOMOUS_TOTAL_PROMPT_TOKENS = 1_200
 
 async function main() {
   const environment = await createIsolatedDeepSeekEnvironment({
@@ -66,10 +63,10 @@ async function main() {
     const after = await snapshotTree(environment.workplaceDir)
     const requests = requestMetrics(streamed.result)
     assertSuccessfulRun(streamed.result, environment.model, requests, AUTONOMOUS_READ)
-    assertSingleGlobExecution(streamed.result)
+    assertSingleToolExecution(streamed.result, REQUESTED_TOOL)
     assertStructuralVerification(streamed.result)
     assertWorkspaceUnchanged(before, after)
-    assertReply(streamed.result.reply)
+    assertReply(streamed.result.reply, REQUESTED_TOOL)
     assertProviderUsage(requests)
     if (AUTONOMOUS_READ) assertAutonomousReadPath(requests)
     else assertOptimizedPath(requests)
@@ -85,6 +82,7 @@ async function main() {
       provider: 'deepseek',
       model: environment.model,
       scenario: SCENARIO,
+      requestedTool: REQUESTED_TOOL,
       prompt: PROMPT,
       result: {
         status: streamed.result.status,
@@ -147,7 +145,11 @@ async function main() {
 async function prepareFixture(workplaceDir) {
   await mkdir(join(workplaceDir, 'nested'), { recursive: true })
   await Promise.all([
-    writeFile(join(workplaceDir, 'alpha.txt'), 'alpha\n', 'utf8'),
+    writeFile(
+      join(workplaceDir, 'alpha.txt'),
+      'alpha\n颜色：青色\nLS_ACCEPTANCE_NEEDLE_42\n编号：LS-2048\n',
+      'utf8',
+    ),
     writeFile(join(workplaceDir, 'beta.md'), '# beta\n', 'utf8'),
     writeFile(join(workplaceDir, 'nested', 'ignored.txt'), 'nested\n', 'utf8'),
   ])
@@ -197,16 +199,16 @@ function assertSuccessfulRun(result, model, requests, autonomousRead) {
   }
   const step = result.taskBook.steps[0]
   if (autonomousRead) {
-    if (step?.toolProposal?.name !== 'glob'
+    if (step?.toolProposal?.name !== REQUESTED_TOOL
       || step?.tools?.length !== 1
-      || step.tools[0] !== 'glob') {
-      throw new Error(`autonomous read did not retain the DECIDE glob proposal: ${safe({
+      || step.tools[0] !== REQUESTED_TOOL) {
+      throw new Error(`autonomous read did not retain the DECIDE ${REQUESTED_TOOL} proposal: ${safe({
         step,
         requests,
       })}`)
     }
-  } else if (step?.toolProposal?.name !== 'glob') {
-    throw new Error(`single-tool run did not retain the DECIDE glob proposal: ${safe({
+  } else if (step?.toolProposal?.name !== REQUESTED_TOOL) {
+    throw new Error(`single-tool run did not retain the DECIDE ${REQUESTED_TOOL} proposal: ${safe({
       step,
       decideRequest: requests.find((request) => request.purpose === 'decide_explicit_tool'),
     })}`)
@@ -220,12 +222,12 @@ function assertSuccessfulRun(result, model, requests, autonomousRead) {
   }
 }
 
-function assertSingleGlobExecution(result) {
+function assertSingleToolExecution(result, expectedTool) {
   const invocations = result.toolInvocations ?? []
   if (invocations.length !== 1
-    || invocations[0]?.toolName !== 'glob'
+    || invocations[0]?.toolName !== expectedTool
     || invocations[0]?.status !== 'succeeded') {
-    throw new Error(`expected exactly one successful glob invocation: ${safe(invocations)}`)
+    throw new Error(`expected exactly one successful ${expectedTool} invocation: ${safe(invocations)}`)
   }
   if (invocations[0].approval?.decision !== 'not_required') {
     throw new Error(`container-local read unexpectedly required approval: ${safe(invocations[0].approval)}`)
@@ -253,14 +255,52 @@ function assertWorkspaceUnchanged(before, after) {
   }
 }
 
-function assertReply(reply) {
+function assertReply(reply, expectedTool) {
   if (typeof reply !== 'string') throw new Error('single-tool reply is missing')
-  for (const entry of EXPECTED_ENTRIES) {
-    if (!reply.includes(entry)) throw new Error(`single-tool reply omitted ${entry}: ${reply}`)
+  if (expectedTool === 'glob') {
+    for (const entry of EXPECTED_ENTRIES) {
+      if (!reply.includes(entry)) throw new Error(`single-tool reply omitted ${entry}: ${reply}`)
+    }
+    if (!/(?:3|三)\s*(?:个|項|项|entries|items)?/iu.test(reply)) {
+      throw new Error(`single-tool reply did not report three top-level entries: ${reply}`)
+    }
+    return
   }
-  if (!/(?:3|三)\s*(?:个|項|项|entries|items)?/iu.test(reply)) {
-    throw new Error(`single-tool reply did not report three top-level entries: ${reply}`)
+  if (expectedTool === 'grep') {
+    if (!reply.includes('alpha.txt')) throw new Error(`grep reply omitted alpha.txt: ${reply}`)
+    if (!/(?:第?\s*3\s*行|:3(?::|\b)|line\s*3)/iu.test(reply)) {
+      throw new Error(`grep reply omitted the matching line number: ${reply}`)
+    }
+    return
   }
+  for (const value of ['青色', 'LS-2048']) {
+    if (!reply.includes(value)) throw new Error(`read reply omitted ${value}: ${reply}`)
+  }
+}
+
+function resolveRequestedTool(argv) {
+  const option = argv.find((value) => value.startsWith('--tool='))
+  const value = option?.slice('--tool='.length) || 'glob'
+  if (!['glob', 'grep', 'read'].includes(value)) {
+    throw new Error(`unsupported --tool value: ${value}; expected glob, grep, or read`)
+  }
+  return value
+}
+
+function scenarioPrompt(toolName, autonomousRead) {
+  if (toolName === 'glob') {
+    return autonomousRead
+      ? '请查看当前工作区顶层有哪些条目，只告诉我数量和名称，不要修改任何文件。'
+      : '请使用 glob 工具读取当前工作区顶层条目，只告诉我数量和名称，不要修改任何文件。'
+  }
+  if (toolName === 'grep') {
+    return autonomousRead
+      ? '请在当前工作区搜索文本 LS_ACCEPTANCE_NEEDLE_42 出现在哪个文件和第几行，只告诉我匹配结果，不要修改任何文件。'
+      : '请使用 grep 工具搜索当前工作区中的文本 LS_ACCEPTANCE_NEEDLE_42，只告诉我匹配文件和行号，不要修改任何文件。'
+  }
+  return autonomousRead
+    ? '请读取当前工作区的 alpha.txt，只告诉我其中记录的颜色和编号，不要修改任何文件。'
+    : '请使用 read 工具读取当前工作区的 alpha.txt，只告诉我其中记录的颜色和编号，不要修改任何文件。'
 }
 
 function requestMetrics(result) {

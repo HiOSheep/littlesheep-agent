@@ -1,6 +1,6 @@
-// Local, bounded continuity verdict for the final user-visible reply.
-// This is evidence collection, not a second model judgment. It never blocks
-// the run, changes factual confidence, or triggers another Provider request.
+// Local, bounded continuity verdict for a user-visible reply candidate.
+// This pure evidence check does not call a model or mutate the run. A caller
+// may use a discontinuous verdict to request one bounded Provider correction.
 
 import type {
   MemoryContinuityAssessment,

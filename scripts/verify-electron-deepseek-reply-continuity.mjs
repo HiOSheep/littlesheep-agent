@@ -368,7 +368,8 @@ function runMetrics(label, result) {
 
 function assertIncludes(value, expected, label) {
   if (typeof value !== 'string' || !value.includes(expected)) {
-    throw new Error(`${label} did not include the required prior value`)
+    const bounded = typeof value === 'string' ? value.slice(0, 500) : value
+    throw new Error(`${label} did not include the required prior value: ${JSON.stringify(bounded)}`)
   }
 }
 

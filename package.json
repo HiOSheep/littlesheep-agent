@@ -34,6 +34,7 @@
     "verify:electron-deepseek-compaction-continuity": "pnpm --filter @littlesheep/app... run build && node scripts/verify-electron-deepseek-compaction-continuity.mjs",
     "verify:electron-deepseek-single-tool": "pnpm --filter @littlesheep/app... run build && node scripts/verify-electron-deepseek-single-tool.mjs",
     "verify:electron-deepseek-autonomous-read": "pnpm --filter @littlesheep/app... run build && node scripts/verify-electron-deepseek-single-tool.mjs --autonomous-read",
+    "verify:electron-deepseek-autonomous-read-matrix": "pnpm --filter @littlesheep/app... run build && node scripts/verify-electron-deepseek-single-tool.mjs --autonomous-read --tool=glob && node scripts/verify-electron-deepseek-single-tool.mjs --autonomous-read --tool=grep && node scripts/verify-electron-deepseek-single-tool.mjs --autonomous-read --tool=read",
     "verify:electron-deepseek-tool-loop": "pnpm run verify:electron-deepseek-autonomous-read",
     "verify:electron-deepseek-background-task": "pnpm --filter @littlesheep/app... run build && node scripts/verify-electron-deepseek-background-task.mjs",
     "verify:electron-deepseek-parallel-load": "pnpm --filter @littlesheep/app... run build && node scripts/verify-electron-deepseek-parallel-load.mjs",

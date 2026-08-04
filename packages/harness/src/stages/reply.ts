@@ -20,8 +20,12 @@ import {
   recordProviderUsage,
 } from '../model-observability.js';
 import { buildRunRequestCandidates } from '../context-candidates.js';
-import { acceptUniqueUserFacingReply, type ReplyRewriteInput } from '../user-facing-reply.js';
+import {
+  acceptUniqueUserFacingReply,
+  type ReplyRewriteInput,
+} from '../user-facing-reply.js';
 import { synthesizeFinalReply } from './execute/final-reply.js';
+import { repairDiscontinuousReply } from './reply/continuity-repair.js';
 
 export interface ReplyStageDeps {
   llm: LlmClient;
@@ -130,7 +134,14 @@ export function createReplyStage(deps: ReplyStageDeps) {
           source: 'provider',
         };
       }
-      const apiGeneratedReply = res.content || streamed;
+      const apiGeneratedReply = await repairDiscontinuousReply(
+        deps,
+        ctx,
+        systemPrompt.text,
+        messages,
+        history,
+        res.content || streamed,
+      );
       reply = await acceptUniqueUserFacingReply(
         ctx,
         'reply',

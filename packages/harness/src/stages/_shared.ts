@@ -133,15 +133,54 @@ export function attachmentContextMessages(
   return messages;
 }
 
-/** Extract the first JSON object {...} from a string (handles markdown wraps). */
+/** Extract the last complete JSON object from plain text or markdown output. */
 export function extractJson(content: string): unknown | null {
-  const match = content.match(/\{[\s\S]*\}/);
-  if (!match) return null;
-  try {
-    return JSON.parse(match[0]);
-  } catch {
-    return null;
+  const parsedObjects: unknown[] = [];
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = 0; index < content.length; index += 1) {
+    const character = content[index]!;
+    if (start < 0) {
+      if (character === '{') {
+        start = index;
+        depth = 1;
+      }
+      continue;
+    }
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+      continue;
+    }
+    if (character === '{') depth += 1;
+    if (character !== '}') continue;
+    depth -= 1;
+    if (depth > 0) continue;
+
+    try {
+      parsedObjects.push(JSON.parse(content.slice(start, index + 1)));
+    } catch {
+      // Continue scanning in case a later complete object is valid.
+    }
+    start = -1;
+    depth = 0;
+    inString = false;
+    escaped = false;
   }
+
+  return parsedObjects.at(-1) ?? null;
 }
 
 /**

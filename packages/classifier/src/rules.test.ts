@@ -61,6 +61,17 @@ describe('classifyByRules', () => {
     });
   });
 
+  it('routes an explicit output request for prior saved values without a classifier model call', () => {
+    const prompt = '继续上一轮。请输出上一轮让我保存的代号和颜色，格式为“代号：...；颜色：...”，不要调用工具。';
+    expect(isMemoryRecallRequest(prompt)).toBe(true);
+    expect(classifyByRules(prompt)).toMatchObject({
+      activity: 'respond',
+      type: 'chat',
+      confidence: 0.98,
+      reason: 'memory recall question',
+    });
+  });
+
   it('does not mistake a current save or agreement request for historical recall', () => {
     expect(isMemoryRecallRequest('请保存当前代号和颜色，稍后我会追问。')).toBe(false);
     expect(isMemoryRecallRequest('请和我约定新的上限，并更新开关状态。')).toBe(false);

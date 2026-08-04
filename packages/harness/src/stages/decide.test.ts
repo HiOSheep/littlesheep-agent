@@ -276,11 +276,12 @@ describe('decideStage', () => {
     expect(requests[0]?.tools).toBeUndefined();
     const system = String(requests[0]?.messages[0]?.content ?? '');
     expect(requests[0]?.max_tokens).toBe(250);
-    expect(system).toContain('# Compact Read-Only Tool Decision');
+    expect(system).toContain('# Read-only tool decision');
     expect(system).toContain('glob tool (mock)');
     expect(system).toContain('grep tool (mock)');
-    expect(system).toContain('Input JSON Schema:');
+    expect(system).toContain('Tools (exact schemas):');
     expect(system).toContain('{"tool":"toolName","input":{}');
+    expect(system).toContain('Names: glob, grep.');
     expect(system).not.toContain('write tool (mock)');
     expect(system).not.toContain('# Core Flow');
     expect(system).not.toContain('# Memory Tree');

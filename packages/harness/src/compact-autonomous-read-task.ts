@@ -8,9 +8,9 @@ import type { DecodedPlan } from './stages/decide/contracts.js';
 
 const COMPACT_AUTONOMOUS_READ_TOOLS = new Set(['glob', 'grep', 'read']);
 const READ_ONLY_INTENT_PATTERNS: readonly RegExp[] = [
-  /(?:查看|列出|显示|读取|查找|搜索|检索|统计|确认|检查|告诉我).{0,40}(?:工作区|目录|文件夹|文件|路径|条目|内容|名称|数量)/u,
-  /(?:工作区|目录|文件夹|文件|路径|条目|内容).{0,40}(?:有哪些|是什么|多少|列出|查看|显示|查找|搜索|读取|统计)/u,
-  /\b(?:list|show|inspect|read|find|search|count|check)\b.{0,80}\b(?:workspace|directory|folder|file|path|entry|entries|content|name|names)\b/iu,
+  /(?:查看|列出|显示|读取|查找|搜索|检索|统计|确认|检查)[\s\S]*?(?:工作区|目录|文件夹|文件|路径|条目|内容|名称|数量)/u,
+  /(?:工作区|目录|文件夹|文件|路径|条目|内容)[\s\S]*?(?:有哪些|是什么|多少|列出|查看|显示|查找|搜索|读取|统计)/u,
+  /\b(?:list|show|inspect|read|find|search|count|check)\b[\s\S]*?\b(?:workspace|directory|folder|file|path|entry|entries|content|name|names)\b/iu,
 ];
 const MUTATING_INTENT_PATTERN = /(?:修改|写入|创建|新建|删除|移除|重命名|移动|复制|执行|运行|安装|更新|提交|推送|下载|上传|保存|编辑|修复|调整|替换)|\b(?:write|edit|modify|create|delete|remove|rename|move|copy|execute|run|install|update|commit|push|download|upload|save|fix|replace)\b/iu;
 const NEGATED_MUTATION_PATTERN = /(?:不要|请勿|无需|不需要|禁止)\s*(?:修改|写入|创建|新建|删除|移除|重命名|移动|复制|执行|运行|安装|更新|提交|推送|下载|上传|保存|编辑|修复|调整|替换)|\b(?:do\s+not|don't|without)\s+(?:write|edit|modify|create|delete|remove|rename|move|copy|execute|run|install|update|commit|push|download|upload|save|fix|replace)\b/giu;
@@ -88,25 +88,23 @@ export function renderCompactAutonomousReadDecisionContract(tools: readonly Agen
   const catalog = tools.map((tool) => {
     const schema = resolveBoundedToolJsonSchema(tool);
     if (!schema) throw new Error(`compact read tool has no bounded schema: ${tool.name}`);
-    return `- ${tool.name}: ${tool.description}\n  Input JSON Schema: ${JSON.stringify(schema)}`;
+    return `- ${tool.name} (${compactToolDescription(tool.description)}): ${JSON.stringify(schema)}`;
   }).join('\n');
-  return `# Compact Read-Only Tool Decision
+  return `# Read-only tool decision
 
-The user supplied a fresh, self-contained workspace inspection request. Choose exactly one smallest sufficient read-only tool and provide its concrete input.
+Choose one smallest sufficient tool for this request.
 
-Available read tools:
+Tools (exact schemas):
 ${catalog}
 
-Return raw JSON and no markdown:
-{"tool":"toolName","input":{},"summary":"one short action summary in the user's language","successCriterion":"one observable result criterion in the user's language"}
+Return exactly one complete raw JSON object, with no markdown or prose:
+{"tool":"toolName","input":{},"summary":"brief user-language action","successCriterion":"observable user-language result"}
+Names: ${names.join(', ')}.
 
-Rules:
-- Select exactly one tool from: ${names.join(', ')}.
-- Fill input with concrete values satisfying that tool's schema. Do not copy an empty object when required fields exist.
-- Keep summary and successCriterion concise, evidence-oriented, in the user's language, and consistent with the active SOUL voice.
-- Do not add writes, commands, downloads, external actions, memory work, or unrelated analysis.
-- If a required path or search target cannot be inferred safely, return only {"clarification":{"blockingReason":"short reason","question":"one focused question in the user's language"}}.
-- Runtime still revalidates the selected name, input schema, workspace path, permission, side effects, result, and completion evidence. This response grants no execution authority.`;
+If required input is unknown:
+{"clarification":{"blockingReason":"brief reason","question":"one user-language question"}}
+
+Input must match its schema. summary and successCriterion must be concise, evidence-based, in the user's language and SOUL voice. No write, command, network, memory, or extra scope. Runtime rechecks tool, schema, path, permission, side effects, result, and evidence; JSON is not execution authority.`;
 }
 
 /** Expand the compact model response into the existing Runtime-owned TaskBook contract. */
@@ -224,6 +222,10 @@ function inboundText(ctx: RunContext): string {
 
 function cleanText(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function compactToolDescription(value: string): string {
+  return value.split(/\.\s/u, 1)[0]?.replace(/\.$/u, '').trim() || 'read-only';
 }
 
 function hasOwn(value: object, key: string): boolean {

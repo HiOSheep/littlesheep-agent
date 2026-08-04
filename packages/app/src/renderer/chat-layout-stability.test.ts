@@ -46,6 +46,15 @@ describe('chat layout stability', () => {
     expect(styles).toMatch(/\.primary-workspace:has\(\.sidebar-resizer:focus-visible\)::after/u)
   })
 
+  it('keeps the settings entry equally inset from the sidebar left and bottom edges', async () => {
+    const styles = await readRendererFile('./styles.css')
+
+    expect(styles).toMatch(/\.sidebar-contents\s*\{[^}]*padding:\s*18px 14px;/u)
+    expect(styles).toMatch(/\.settings-sidebar-contents\s*\{[^}]*padding:\s*18px 14px;/u)
+    expect(styles).toMatch(/\.sidebar-footer\s*\{[^}]*padding-left:\s*4px;/u)
+    expect(styles).not.toMatch(/\.settings-sidebar-footer\s*\{[^}]*padding-left:\s*0;/u)
+  })
+
   it('keeps the edge reveal entry and one stationary animated corner toggle above chat', async () => {
     const styles = await readRendererFile('./styles.css')
     const dockView = await readRendererFile('./app-shell/workspace-dock-view.tsx')

@@ -18,6 +18,7 @@ export type UserFacingReplyFailureReason =
   | 'empty_model_reply'
   | 'duplicate_model_reply'
   | 'rewrite_failed'
+  | 'continuity_repair_failed'
   | 'reply_registry_failed'
   | 'missing_model_request_provenance';
 

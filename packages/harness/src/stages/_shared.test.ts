@@ -5,6 +5,7 @@ import {
   attachmentContextMessages,
   attachmentManifestText,
   callLlmForJson,
+  extractJson,
   recentHistoryForModel,
   textOf,
 } from './_shared.js'
@@ -95,6 +96,25 @@ describe('callLlmForJson retry budgets', () => {
 
     expect(result.parsed).toBeNull()
     expect(maxTokens).toEqual([100, 150])
+  })
+})
+
+describe('extractJson', () => {
+  it('handles nested braces and escaped quotes inside JSON strings', () => {
+    expect(extractJson('result: {"input":{"pattern":"{*.ts,*.tsx}"},"note":"say \\"ok\\""}')).toEqual({
+      input: { pattern: '{*.ts,*.tsx}' },
+      note: 'say "ok"',
+    })
+  })
+
+  it('uses the final complete JSON object when prose contains an earlier example', () => {
+    expect(extractJson([
+      'Example: {"tool":"toolName","input":{}}',
+      'Final:',
+      '```json',
+      '{"tool":"glob","input":{"pattern":"*"}}',
+      '```',
+    ].join('\n'))).toEqual({ tool: 'glob', input: { pattern: '*' } })
   })
 })
 

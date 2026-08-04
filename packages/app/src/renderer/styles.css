@@ -1874,6 +1874,8 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   flex: 0 0 auto;
   margin-top: auto;
   padding-top: 14px;
+  /* Parent left inset is 14px; this makes the entry's left edge match the 18px bottom inset. */
+  padding-left: 4px;
 }
 
 .settings-entry-btn {
@@ -7784,10 +7786,6 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   border-right: 1.5px solid currentColor;
   border-bottom: 1.5px solid currentColor;
   transform: rotate(-45deg);
-}
-
-.settings-sidebar-footer {
-  padding-left: 0;
 }
 
 .settings-workspace-body {
