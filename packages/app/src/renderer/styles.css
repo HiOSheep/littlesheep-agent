@@ -931,6 +931,9 @@
   --motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --font: "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", "Microsoft YaHei", "Noto Sans SC", sans-serif;
   --mono: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  --sidebar-content-block-inset: 18px;
+  --sidebar-content-inline-inset: 14px;
+  --settings-entry-height: 34px;
   --sidebar-width: 276px;
   --sidebar-min-readable-width: 220px;
   --sidebar-resizer-width: 1px;
@@ -1375,7 +1378,7 @@ body.is-resizing-column .window-shell.sidebar-drag-live .primary-workspace::afte
   min-width: var(--sidebar-min-readable-width);
   height: 100%;
   min-height: 0;
-  padding: 18px 14px;
+  padding: var(--sidebar-content-block-inset) var(--sidebar-content-inline-inset);
   opacity: var(--sidebar-content-opacity);
   transition:
     opacity var(--sidebar-collapse-motion) var(--motion-ease);
@@ -1873,9 +1876,10 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
 .sidebar-footer {
   flex: 0 0 auto;
   margin-top: auto;
-  padding-top: 14px;
-  /* Parent left inset is 14px; this makes the entry's left edge match the 18px bottom inset. */
-  padding-left: 4px;
+  /* Keep the button's left and bottom edges on the same inset grid. */
+  min-height: calc(var(--settings-entry-height) + var(--sidebar-content-inline-inset));
+  padding-top: var(--sidebar-content-inline-inset);
+  padding-left: calc(var(--sidebar-content-block-inset) - var(--sidebar-content-inline-inset));
 }
 
 .settings-entry-btn {
@@ -1884,7 +1888,7 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   align-items: center;
   width: fit-content;
   max-width: 100%;
-  height: 34px;
+  height: var(--settings-entry-height);
   padding: 0 8px;
   color: var(--text);
   background: transparent;
@@ -1983,10 +1987,6 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   margin-left: 7px;
   max-width: 64px;
   opacity: 1;
-}
-
-.sidebar-footer {
-  min-height: 48px;
 }
 
 .session-item {
@@ -7625,7 +7625,7 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel
   min-width: var(--sidebar-min-readable-width);
   height: 100%;
   min-height: 0;
-  padding: 18px 14px;
+  padding: var(--sidebar-content-block-inset) var(--sidebar-content-inline-inset);
   opacity: var(--sidebar-content-opacity);
   transition:
     opacity var(--sidebar-collapse-motion) var(--motion-ease);

@@ -1,8 +1,10 @@
 # LittleSheep 核心 Agent 流程规范
 
-最后更新：2026-08-04 09:15:48
+最后更新：2026-08-04 10:10:04
 
 本文是 [LittleSheep 架构原则](architecture-principles.md) 在 Core Flow、TaskBook、验证、恢复和记忆运行时上的专项约束。LLM 与 Agent、Mode 与权限、Context 与 Memory、Harness 与 Tool Execution 的顶层分工以架构原则为准；本文不重复维护另一套总架构。
+
+> 当前复跑证据（2026-08-04 09:31）：真实 Electron + DeepSeek 的 `glob / grep / read` 均保持 2 次 API、1 次工具、`exact_match`和结构 VERIFY；最新 Prompt 分别为 `1,009 / 979 / 924`，它们只是采样点值，回归以 `2 API / 1 tool / 1,200 total prompt` 为准。
 
 ## 核心原则
 
@@ -182,7 +184,7 @@ execute 内部：
 - `NeedAssessment` 和 `TaskBook` 核心类型。
 - `DECIDE` 输出需求校准和结构化任务书。
 - 用户明确点名注册工具且不属于续接/记忆追问时，DECIDE 可在受限工具 JSON Schema 下为每个可独立验证的步骤输出一个 `toolProposal`。其中，自包含且来源可证明为内置的单个 `glob / grep / read` 使用 `decide_explicit_tool`：模型只返回 `input`，或在参数无法安全确定时返回一个澄清对象；工具名由 Runtime 锁定，目标、验收标准和 TaskBook 由 Runtime 根据当前用户输入展开。旧 `summary / successCriterion / userNeed / goal / toolProposal` 响应只作兼容读取。有界多工具、写入和执行任务继续使用完整 DECIDE。Runtime 最多向完整 DECIDE 暴露 4 种明确点名的工具，单 schema 最多 12,000 字符、总计最多 24,000 字符，TaskBook 最多接纳 8 个直接提议；随后逐项校验工具名、参数 schema、依赖、资源、副作用、权限和审批。当前直接执行接受 Runtime 可证明、无需审批的 `read/write`，以及完全访问模式下来源为内置、未从 Checkpoint 恢复且参数完整的单次 `exec`；Runtime 可在模型遗漏副作用声明时把内置 `exec` 保守推导为 `external`，但模型显式给出冲突声明时必须拒绝。紧凑最终回答还必须证明任务为 trivial 单步骤、工具来源为 builtin、没有审批或副作用、结果未清洗/截断，并且 TaskBook、步骤结果、工具结果和权威调用记录的 `callId` 完整一致；否则使用完整最终回答 Context。Runtime 不得从自然语言自行猜参数，也不得绕过统一 Tool Execution Service。完成后由真实 `execute_final_reply` API 调用组织最终回答，VERIFY 使用结构证据；任一条件不满足即回退普通工具循环。自然语言中的并列省略可以继承明确动词，但“不要使用”或纯介绍工具的文本不得进入提议集合。
-- 用户没有点名工具、但目标可证明为新鲜、自包含、无附件、无续接、无实际记忆介入且只需检查当前工作区时，DECIDE 仍由 LLM 在 builtin `glob / grep / read` 中选择一个最小工具，并返回满足对应有界 JSON Schema 的具体参数、简短步骤摘要和可观察验收标准。Runtime 将该结果展开为既有 TaskBook，再重新校验工具来源、名称、schema、路径、权限、资源和只读副作用；通过后直接调用统一 Tool Execution Service，不再开启 Provider 工具协议循环。该路径只投影当前输入、活动工作区、紧凑 profile/SOUL、三个只读工具的有界 schema、任务契约和运行时时钟。仅有 `excluded` 的记忆候选不算 Context 依赖，`adopted`、`conflicted`、活动 working set、摘要、历史指代、附件、运行时事件、写入/执行语义或恢复态都会使其失败关闭并回退完整路径。Runtime 仍负责工具证据、SSE、结构 VERIFY 和调用审计；提议无法安全采用时失败关闭或回退既有工具循环，不得猜参数。真实 Electron + DeepSeek 当前矩阵固定为 2 次模型调用、1 次工具：`glob` DECIDE/final prompt `629/376`、总计 `1,005`；`grep` 为 `645/332`、总计 `977`；`read` 为 `632/292`、总计 `924`。回归上限为 DECIDE `750`、最终回答 `450`、总 Prompt `1,200`，不得通过移除安全、证据、结构验证或实时最终回复契约换取更低数字。
+- 用户没有点名工具、但目标可证明为新鲜、自包含、无附件、无续接、无实际记忆介入且只需检查当前工作区时，DECIDE 仍由 LLM 在 builtin `glob / grep / read` 中选择一个最小工具，并返回满足对应有界 JSON Schema 的具体参数、简短步骤摘要和可观察验收标准。Runtime 将该结果展开为既有 TaskBook，再重新校验工具来源、名称、schema、路径、权限、资源和只读副作用；通过后直接调用统一 Tool Execution Service，不再开启 Provider 工具协议循环。该路径只投影当前输入、活动工作区、紧凑 profile/SOUL、三个只读工具的有界 schema、任务契约和运行时时钟。仅有 `excluded` 的记忆候选不算 Context 依赖，`adopted`、`conflicted`、活动 working set、摘要、历史指代、附件、运行时事件、写入/执行语义或恢复态都会使其失败关闭并回退完整路径。Runtime 仍负责工具证据、SSE、结构 VERIFY 和调用审计；提议无法安全采用时失败关闭或回退既有工具循环，不得猜参数。真实 Electron + DeepSeek 当前矩阵固定为 2 次模型调用、1 次工具：最新 `glob` DECIDE/final prompt `630/379`、总计 `1,009`；`grep` 为 `646/333`、总计 `979`；`read` 为 `632/292`、总计 `924`。回归上限为 DECIDE `750`、最终回答 `450`、总 Prompt `1,200`，不得通过移除安全、证据、结构验证或实时最终回复契约换取更低数字。
 - 继续兼容旧的 `{ "plan": [...] }` 输出格式。
 - 存在任务书时，`EXECUTE` 按 `TaskBook.steps` 逐步执行。
 - `EXECUTE` 记录包含步骤状态、输出、工具调用和失败信息的 `TaskExecutionResult`。

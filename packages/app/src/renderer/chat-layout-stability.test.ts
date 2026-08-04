@@ -49,9 +49,13 @@ describe('chat layout stability', () => {
   it('keeps the settings entry equally inset from the sidebar left and bottom edges', async () => {
     const styles = await readRendererFile('./styles.css')
 
-    expect(styles).toMatch(/\.sidebar-contents\s*\{[^}]*padding:\s*18px 14px;/u)
-    expect(styles).toMatch(/\.settings-sidebar-contents\s*\{[^}]*padding:\s*18px 14px;/u)
-    expect(styles).toMatch(/\.sidebar-footer\s*\{[^}]*padding-left:\s*4px;/u)
+    expect(styles).toMatch(/--sidebar-content-block-inset:\s*18px;/u)
+    expect(styles).toMatch(/--sidebar-content-inline-inset:\s*14px;/u)
+    expect(styles).toMatch(/--settings-entry-height:\s*34px;/u)
+    expect(styles).toMatch(/\.sidebar-contents\s*\{[^}]*padding:\s*var\(--sidebar-content-block-inset\) var\(--sidebar-content-inline-inset\);/u)
+    expect(styles).toMatch(/\.settings-sidebar-contents\s*\{[^}]*padding:\s*var\(--sidebar-content-block-inset\) var\(--sidebar-content-inline-inset\);/u)
+    expect(styles).toMatch(/\.sidebar-footer\s*\{[^}]*min-height:\s*calc\(var\(--settings-entry-height\) \+ var\(--sidebar-content-inline-inset\)\);[^}]*padding-top:\s*var\(--sidebar-content-inline-inset\);[^}]*padding-left:\s*calc\(var\(--sidebar-content-block-inset\) - var\(--sidebar-content-inline-inset\)\);/u)
+    expect(styles).toMatch(/\.settings-entry-btn\s*\{[^}]*height:\s*var\(--settings-entry-height\);/u)
     expect(styles).not.toMatch(/\.settings-sidebar-footer\s*\{[^}]*padding-left:\s*0;/u)
   })
 
