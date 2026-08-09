@@ -24,33 +24,26 @@ import type { Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
 import type { LlmClient } from '@littlesheep/llm';
 import type { SessionManager } from '@littlesheep/session';
-import {
-  buildRunContext,
-  collectConversationSourceRecords,
-} from '@littlesheep/harness';
+import { buildRunContext } from '@littlesheep/harness';
 import { buildInfrastructure, type RunnerState, type LogFn } from './infra.js';
 import type { ExecutionLog } from './execution-log.js';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
 import { getAgentProfile, normalizeAgentProfileId, type AgentProfileId } from '@littlesheep/prompt';
 import { reasoningPromptAddon, resolveRunConfig } from './run-config.js';
 import { discoverLittleSheepCoreRoots } from './core-source-protection.js';
-import { buildSessionRunSummary } from './session-run-summary.js';
-import {
-  buildMemoryRunFeedbackInput,
-  independentSuccessfulToolCallIds,
-} from './memory-feedback-evidence.js';
-import { recordSessionSummaryActivation } from './session-summary-activation.js';
 import type { RunGitCheckpoint } from '@littlesheep/snapshot';
-import { completeRunVersionCheckpoint } from './version-checkpoint-lifecycle.js';
 import { beginRuntimeResourceObservation, completeRuntimeResourceObservation } from './runtime-resource-observation.js';
-import { compactSessionAfterRun } from './session-continuity.js';
 import { ActiveRunRegistry } from './active-run-registry.js';
-import { buildRunCheckpoint, shouldPersistRunCheckpoint } from './run-checkpoint.js';
+import { buildRunCheckpoint } from './run-checkpoint.js';
 import { RunCheckpointController } from './run-checkpoint-controller.js';
 import { createRunCheckpointControl, type RunCheckpointControl } from './run-checkpoint-control.js';
 import { createRunAbortControl, resolveRunTimeoutMs } from './run-abort-control.js';
 import { describeToolAccess, shouldRequestPermissionApproval } from '@littlesheep/safety';
 import { resolveRunTools } from './run-tools.js';
+import { runRunnerCoordinator } from './runner-coordinator.js';
+import { executeRunnerPhase } from './runner-execute.js';
+import { finalizeRunnerPhase } from './runner-finalize.js';
+import { persistRunnerPhase } from './runner-persist.js';
 /** AgentResult + sessionId (caller-friendly). */
 export type RunnerResult = AgentResult & {
   sessionId: SessionId;
@@ -428,173 +421,58 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         }
       }
 
-      // 5. Run the state machine.
-      let stageResult: StageResult;
-      let memoryAccess: MemoryAccessLedger | undefined;
-      try {
-        stageResult = await infra.harness.run(ctx);
-      } catch (err) {
-        stageResult = {
-          stage: 'execute',
-          next: 'exit',
-          ok: false,
-          error: `harness threw: ${(err as Error).message}`,
-        };
-      }
-      const runInterrupted = signal?.aborted === true || ctx.runtimeControl?.state === 'interrupted';
-      const runPaused = ctx.runtimeControl?.state === 'paused';
-      const runStopped = runInterrupted || runPaused;
-      if (infra.runCheckpointStore && shouldPersistRunCheckpoint(ctx, stageResult, runInterrupted)) {
-        try {
-          const checkpoint = buildRunCheckpoint({
-            ctx,
-            stageResult,
-            interrupted: runInterrupted,
-            reason: checkpointReason(ctx, stageResult, runInterrupted),
+      // 5. Execute the state machine and checkpoint recovery state.
+      const prepared = { ctx, sessionId, inboundText: input.text, usedContinuitySummaryId };
+      const result = await runRunnerCoordinator<RunContext, RunnerResult, MemoryAccessLedger | undefined>({
+        prepare: async () => prepared,
+        execute: async (preparedRun) => {
+          const executedRun = await executeRunnerPhase({
+            ctx: preparedRun.ctx,
+            harness: infra.harness,
+            signal,
+            runCheckpointStore: infra.runCheckpointStore,
+            log: opts.log,
+            checkpointReason,
+            onCheckpointId: (id) => { runCheckpointId = id; },
           });
-          const outcome = await infra.runCheckpointStore.write(checkpoint);
-          if (outcome.kind === 'conflict') {
-            throw new Error(`run checkpoint id conflict: ${outcome.checkpointId}`);
-          }
-          runCheckpointId = checkpoint.id;
-        } catch (error) {
-          const message = `run checkpoint persistence failed: ${(error as Error).message}`;
-          opts.log?.('error', `runner: ${message}`);
-          ctx.lastError = { stage: stageResult.stage, message };
-          stageResult = {
-            ...stageResult,
-            ok: false,
-            error: stageResult.error ? `${stageResult.error}; ${message}` : message,
-          };
-        }
-      }
-      try {
-        await infra.memoryService.captureConversationSources(collectConversationSourceRecords(ctx));
-      } catch (err) {
-        opts.log?.('warn', `runner: conversation source capture degraded: ${(err as Error).message}`);
-      }
-      const latestVerification = ctx.verificationHistory?.at(-1);
-      const successfulToolCallIds = independentSuccessfulToolCallIds(ctx);
-      const recordedAt = new Date().toISOString();
-      try {
-        await infra.memoryService.recordRunFeedback(buildMemoryRunFeedbackInput({
-          ctx,
-          status: runStopped ? 'aborted' : stageResult.ok ? 'ok' : 'error',
-          verification: latestVerification,
-          successfulToolCallIds,
-          recordedAt,
-        }));
-      } catch (err) {
-        opts.log?.('warn', `runner: memory usefulness feedback degraded: ${(err as Error).message}`);
-      }
-      try {
-        await recordSessionSummaryActivation({
-          sessionManager: infra.sessionManager,
-          sessionId,
-          summary: ctx.sessionSummary,
-          usedSummaryId: usedContinuitySummaryId,
-          answerUsedSummaryId: ctx.memoryContinuityAssessment?.status === 'supported'
-            && ctx.memoryContinuityAssessment.matchedSources.includes('session_summary')
-            ? ctx.sessionSummary?.id
-            : undefined,
-          runId: ctx.runId,
-          status: runStopped ? 'aborted' : stageResult.ok ? 'ok' : 'error',
-          verification: latestVerification,
-          successfulToolCallIds,
-          recordedAt,
-        });
-      } catch (err) {
-        opts.log?.('warn', `runner: session summary activation degraded: ${(err as Error).message}`);
-      }
-      try {
-        memoryAccess = await infra.memoryService.finishRun(ctx.runId);
-      } catch (err) {
-        opts.log?.('warn', `runner: run resource cleanup degraded: ${(err as Error).message}`);
-      }
-      const runAborted = runStopped;
-      // Compact only after the run has finalized and persisted its messages.
-      // The transcript remains intact; failures only skip the optional summary.
-      if (!runAborted) {
-        await compactSessionAfterRun({
-          sessionManager: infra.sessionManager, memoryService: infra.memoryService, llm: infra.llm, ctx,
-          sessionId, runId: ctx.runId, workspace: cwd,
-          model: ctx.resolvedRunConfig?.model ?? infra.state.model,
-          threshold: opts.config.sessions.compaction.threshold,
-          keepRecent: opts.config.sessions.compaction.keepRecent,
-          force: ctx.contextSnapshots?.some((snapshot) => snapshot.compressionRecommended) === true,
-          signal, log: opts.log,
-        });
-      }
-
-      // 6. Wrap into RunnerResult.
-      const result = assembleResult(stageResult, ctx, sessionId, startedAt, runAborted, memoryAccess);
-      if (runCheckpointId) result.runCheckpointId = runCheckpointId;
-
-      // 7. M3: persist execution log (one JSON per run). Failure is non-fatal —
-      //    the run result is still returned; only the audit log is lost.
-      try {
-        await infra.executionLogStore.write({
-          runId: result.runId,
-          sessionId: result.sessionId,
-          startedAt: new Date(startedAt).toISOString(),
-          endedAt: new Date().toISOString(),
-          status: result.status,
-          model,
-          inboundText: input.text,
-          reply: result.reply ?? '',
-          replyProvenance: result.replyProvenance,
-          error: result.error,
-          trace: result.trace,
-          taskExecution: result.taskExecution,
-          taskBook: result.taskBook,
-          verificationHistory: result.verificationHistory,
-          memoryIntentDecisions: result.memoryIntentDecisions,
-          memoryKnownState: result.memoryKnownState,
-          memoryContinuityAssessment: result.memoryContinuityAssessment,
-          clarificationRequest: result.clarificationRequest,
-          clarificationResponse: result.clarificationResponse,
-          memoryAccess: result.memoryAccess,
-          resolvedRunConfig: result.resolvedRunConfig,
-          modelRequests: result.modelRequests,
-          contextSnapshots: result.contextSnapshots,
-          runtimeControl: result.runtimeControl,
-          runtimeEventQueue: result.runtimeEventQueue,
-          runCheckpointId,
-          runtimeResources: completeRuntimeResourceObservation(runtimeResourceStart),
-          toolInvocations: result.toolInvocations,
-          toolInvocationsTruncated: result.toolInvocationsTruncated,
-          messages: result.messages,
-          durationMs: result.durationMs,
-        });
-      } catch (err) {
-        opts.log?.('error', `runner: failed to write execution log: ${(err as Error).message}`);
-      }
-
-      try {
-        await infra.executionLogStore.writeLatestForSession(sessionId, buildSessionRunSummary({
-          runId: result.runId,
-          status: result.status,
-          startedAtMs: startedAt,
-          durationMs: result.durationMs,
-          messages: result.messages,
-          taskExecution: result.taskExecution,
-          taskBook: result.taskBook,
-        }));
-      } catch (err) {
-        opts.log?.('warn', `runner: failed to persist last-run timing summary: ${(err as Error).message}`);
-      }
-
-      if (activeCheckpoint) {
-        checkpointCompleted = await completeRunVersionCheckpoint({
-          checkpoint: activeCheckpoint,
-          result,
-          sessionId,
-          startedAtMs: startedAt,
-          executionLogStore: infra.executionLogStore,
-          log: opts.log,
-        });
-      }
-
+          return { prepared: preparedRun, ...executedRun, runCheckpointId };
+        },
+        finalize: async (executedRun) => {
+          const finalizedRun = await finalizeRunnerPhase({
+            ctx: executedRun.prepared.ctx,
+            stageResult: executedRun.stageResult,
+            runStopped: executedRun.runStopped,
+            sessionId,
+            runId: ctx.runId,
+            cwd,
+            usedContinuitySummaryId,
+            signal,
+            runCheckpointId,
+            startedAt,
+            model,
+            compact: opts.config.sessions.compaction,
+            infra,
+            assembleResult,
+            log: opts.log,
+          });
+          return { ...executedRun, result: finalizedRun.result, memoryAccess: finalizedRun.memoryAccess };
+        },
+        persist: async (finalizedRun) => {
+          await persistRunnerPhase({
+            result: finalizedRun.result,
+            sessionId,
+            startedAt,
+            inputText: input.text,
+            model,
+            runCheckpointId,
+            runtimeResourceObservation: completeRuntimeResourceObservation(runtimeResourceStart),
+            executionLogStore: infra.executionLogStore,
+            activeCheckpoint,
+            onCheckpointCompleted: (completed) => { checkpointCompleted = completed; },
+            log: opts.log,
+          });
+        },
+      });
       return result;
     } finally {
       if (runtimeQueueRegistered) activeRuns.unregister(runId);

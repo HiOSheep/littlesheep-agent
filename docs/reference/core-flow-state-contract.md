@@ -44,6 +44,10 @@ stateDiagram-v2
 
 扩展 stage 时必须先为边补 manifest 和回归测试，再注册 stage。不要在模型输出、hook 或临时分支中增加未登记的 `next`；`StageResult.next` 不是自由路由字段。
 
+## Runner Coordinator
+
+Runner 的最小 coordinator 由 `packages/runner/src/runner-coordinator.ts` 约束，固定执行 `prepare -> execute -> finalize -> persist`。`runner-execute.ts` 只负责 Harness 与运行时 checkpoint，`runner-finalize.ts` 负责记忆/会话收尾与结果装配，`runner-persist.ts` 负责 execution log、上一轮摘要和版本 checkpoint 完成；这些 helper 不重新承担 LLM 语义决策。
+
 ## RunContext Ownership
 
 Ownership manifest 目前先覆盖四组高频共享状态。它不是把已有 `RunContext` 改成代理对象，而是给后续拆分提供可审计的字段 owner、读阶段、写阶段和生命周期边界。
