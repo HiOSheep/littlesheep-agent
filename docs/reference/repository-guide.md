@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-08-09 17:38:00
+最后更新：2026-08-09 18:32:00
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
@@ -203,7 +203,7 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 
 ## 测试与脚本
 
-- `pnpm.cmd run verify:changed`：默认以 `origin/main` 为基线，合并已提交、暂存、未暂存和未跟踪文件，计算变更 package 及其传递依赖方；单进程增量 typecheck 后，只运行与变更源文件相关的 Vitest，并在存在 App build-sensitive 输入时执行 `build:app`。脚本先解析并固定 merge-base 提交；基线不存在或无法解析时会 fail-closed 停止，避免漏掉已提交变更。需要其他基线时设置 `LITTLESHEEP_BASE_REF`。
+- `pnpm.cmd run verify:changed`：默认以 `origin/main` 为基线，合并已提交、暂存、未暂存和未跟踪文件，计算变更 package 及其传递依赖方；单进程增量 typecheck 后，只运行与变更源文件相关的 Vitest，并在存在 App build-sensitive 输入时执行 `build:app`。runner 与测量器共用同一测试选择计划。脚本先解析并固定 merge-base 提交；基线不存在或无法解析时会 fail-closed 停止，避免漏掉已提交变更。需要其他基线时设置 `LITTLESHEEP_BASE_REF`。
 - `pnpm.cmd run verify:core`：仓库门、全工作区增量 typecheck 与 `test:core-eval` 列出的核心 Agent 契约测试，适用于 Harness、Runner、Context、Memory 和公共协议变更。2026-08-09 当前该集合实跑为 7 个测试文件、127 项；测试数量随源码变化，以 Vitest 实际输出为准。
 - `pnpm.cmd run verify:full`：阶段结束的完整测试、类型、Electron 构建和恢复源检查，不用于每次小改动。
 - `pnpm.cmd run verify:memory-v3-soak`：只在系统临时目录创建隔离 Memory v3 数据，重复验证只追加投影变更记录/commit receipt、atom 治理、journal 裁剪、重启、catalog 重建、向量有界批处理、关系相关性、routing feedback、run working set 和 RSS 上限；默认完成后删除临时根，不迁移或改写正式用户数据。增强档可使用 `--atoms=500 --runs=256 --feedback-events=256`，并可通过 `--related-atoms`、`--embedding-batch`、`--max-rss-mib` 调整验收边界。确定性测试 Embedding 只用于可重复规模门，不替代正式 BGE 或 Provider 验收。

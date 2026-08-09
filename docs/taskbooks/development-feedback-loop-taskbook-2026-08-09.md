@@ -1,10 +1,10 @@
 # LS 开发反馈环提速任务书 2026-08-09
 
-最后更新：2026-08-09 17:38:00
+最后更新：2026-08-09 18:32:00
 
 ## 状态
 
-进行中。阶段 0 已完成并已形成独立提交；阶段 2 的统一选择计划和 fail-closed 边界已落地，最终语义验收仍在进行；阶段 3 的重复 typecheck 局部修正已完成，专项构建新鲜度和复用仍未完成。本文是一个可单独设置为阶段目标的执行基线；完成任一阶段后，必须更新本文的状态、证据和实际边界，并提交、推送一次，再决定是否进入下一阶段。
+进行中。阶段 0、阶段 2 已完成并分别形成独立提交；阶段 3 的重复 typecheck 局部修正已完成，专项构建新鲜度和复用仍未完成。本文是一个可单独设置为阶段目标的执行基线；完成任一阶段后，必须更新本文的状态、证据和实际边界，并提交、推送一次，再决定是否进入下一阶段。
 
 ## Goal
 
@@ -64,7 +64,7 @@
 
 本轮证据（2026-08-09）：`pnpm.cmd run measure:verification` 已支持 JSON/Markdown 摘要、显式文件/package/manifest 样本、分段 timing 和受控 `--run` 阶段执行。单文件 `packages/harness/src/default-harness.ts` 两次 dry-run 的 planning 为 `24.56ms / 14.01ms`，fingerprint 为 `66.37ms / 64.71ms`，selection total 为 `90.96ms / 78.74ms`，直接包 `1`、传递受影响包 `9`、测试模式 `related`；当前单包 Harness 样本 selection total 约 `93.52ms`，直接/传递受影响包 `1/9`。脏工作树样本为 `14` 个变更文件、直接/传递受影响包 `0/0`，模式 `changed-fallback`，显式选择器回归 `4` 个，related 输入 `1` 个（用户已有 `test/e2e-webhook.test.ts`），fallback 原因 `verification-script-changed`；一次 `--run=affected` 的 planning/fingerprint/selection total/命令耗时约为 `350.46ms / 57.24ms / 407.72ms / 153.48s`。命令状态现在明确区分 `executed`、`skipped` 和 `failed`：本轮无 affected package 的 typecheck 为 `exitCode=0`、`signal=null`、状态 `skipped`，不能当作实际执行的 typecheck 通过。
 
-质量门计时证据：`pnpm.cmd run check:repo` 为 `1.78s`，仓库卫生 `33/33`、TypeScript references `27/27`；`pnpm.cmd run verify:changed` 为 `145.34s`、退出码 `0`，运行 274 个测试文件并完成一次 App-only build；`pnpm.cmd run build` 为 `27.43s`、退出码 `0`；`pnpm.cmd run verify:app-recovery` 为 `0.49s`、退出码 `0`；`pnpm.cmd run verify:full` 为 `134.23s`、退出码 `0`，包含完整测试、typecheck、App build 和 recovery。完整测试的通过数随运行时状态有小幅波动，本轮两次均为 274 个测试文件、退出码 `0`，因此不把单次 passed 数写成固定契约。定向回归为 4 个文件、41/41；测量器回归为 15/15。
+质量门计时证据：`pnpm.cmd run check:repo` 为 `1.78s`，仓库卫生 `33/33`、TypeScript references `27/27`；`pnpm.cmd run verify:changed` 为 `145.34s`、退出码 `0`，运行 274 个测试文件并完成一次 App-only build；`pnpm.cmd run build` 为 `27.43s`、退出码 `0`；`pnpm.cmd run verify:app-recovery` 为 `0.49s`、退出码 `0`；`pnpm.cmd run verify:full` 为 `134.23s`、退出码 `0`，包含完整测试、typecheck、App build 和 recovery。完整测试的通过数随运行时状态有小幅波动，本轮两次均为 274 个测试文件、退出码 `0`，因此不把单次 passed 数写成固定契约。阶段 2 最终定向回归为 4 个文件、44/44；其中选择器与测量器边界回归为 16/16，workspace 图与执行器回归为 12/12；相关脚本语法和 `git diff --check` 均通过。
 
 ### 阶段 1：任务级内循环
 
@@ -77,7 +77,7 @@
 
 ### 阶段 2：修正 affected 选择器
 
-状态：进行中。统一 selector plan、merge-base fail-closed、根 `package.json` 脚本分类、workspace manifest 图校验和 App build-sensitive 映射已落地；仍需完成共享常量收敛、边界输入补齐和独立阶段提交验收。
+状态：已完成。runner 与测量器现在共用同一份测试计划、显式选择器测试集、related 输入排除规则、删除输入和宽范围 fallback 语义；无法解析 merge-base、Git change-set、workspace manifest 图或依赖形状时均 fail-closed。根 `package.json` 脚本-only 变化不再误触发全 workspace typecheck，构建脚本和 App 源码/CSS/HTML/资源/Electron 配置按 build-sensitive 规则触发 App-only build。
 
 - 将根级输入分类为：依赖/lockfile/workspace/TypeScript 配置、运行时脚本、测试配置、App 构建配置、文档/非运行时元数据；不同类别采用不同失效范围。
 - 独立增加根验证脚本不应自动触发 27 个包全量 typecheck；依赖和编译契约变化仍可触发全量。
@@ -86,7 +86,7 @@
 - 为选择器增加回归测试，至少覆盖：单脚本改动、单 TS 文件、公共 `types` 改动、CSS/资源改动、删除测试输入、浅克隆/缺失 base。
 - 验收：单脚本改动不触发无关 package typecheck；公共契约改动仍传播到所有真实 dependents；构建敏感文件不会静默跳过 App build 检查。
 
-本轮已完成子项：`scripts/run-affected-verification.mjs` 不再将无法解析的基线静默回退为 `HEAD`；真实 CLI 在缺失 base 时以退出码 `1` fail-closed，并明确提示获取基线或传入 `--base=<ref>`。Vitest changed fallback 使用已解析的 merge-base SHA。根 `package.json` 仅脚本变化时不再触发全 workspace typecheck，而是输出 `scripts-only` 并把构建脚本变化映射为 App build-sensitive；workspace manifest 变化先校验 base/working 两侧图，再扩大 typecheck 和测试 fallback。当前真实 `verify:changed` 显示 `typecheck skipped: no affected package`，随后按共享计划运行显式选择器回归和 related 输入，并执行一次 App-only build。阶段 2 的最终回归和独立提交仍待完成。
+本轮已完成子项：`scripts/run-affected-verification.mjs` 不再将无法解析的基线静默回退为 `HEAD`；真实 CLI 在缺失 base 时以退出码 `1` fail-closed，并明确提示获取基线或传入 `--base=<ref>`。Vitest changed fallback 使用已解析的 merge-base SHA。根 `package.json` 仅脚本变化时不再触发全 workspace typecheck，而是输出 `scripts-only` 并把构建脚本变化映射为 App build-sensitive；workspace manifest 变化先校验 base/working 两侧图，再扩大 typecheck 和测试 fallback。runner 与 `measure:verification` 共用 `createAffectedTestPlan`、`GLOBAL_TYPECHECK_FILES` 和 `RUNTIME_CONFIG_FILES`；顶层 `branding.config.json`、`littlesheep.config.json` 变化会进入 `runtime-config-changed` fallback，不再静默跳过。阶段 2 定向回归为 `44/44`，`pnpm.cmd run check:repo` 为 `33/33`，相关脚本语法检查通过；随后真实 `pnpm.cmd run verify:changed` 以退出码 `0` 完成 274 个测试文件（1937 passed、1 skipped）和一次 App-only build。无 affected package 的 typecheck 明确报告为 `skipped`，不会冒充实际 typecheck 通过。
 
 ### 阶段 3：消除验证入口重复
 
@@ -168,6 +168,6 @@ pnpm.cmd run verify:full
 ## 本轮剩余边界
 
 - 阶段 0 已完成；剩余风险是完整测试计数随运行时数据状态小幅波动，及 fingerprint 扫描仍明显高于纯 planning 成本。报告已拆分两者，后续优化应针对扫描范围而不是误判 selector。
-- 阶段 2 的主要执行映射已接入；剩余边界包括顶层品牌/开发配置、共享 `globalTypecheckFiles` 常量、特殊 Git 状态和更严格的 workspace dependency 形状校验，需在阶段 2 独立提交前补齐或明确保守降级。
+- 阶段 2 已完成并单独提交；顶层 `branding.config.json`、`littlesheep.config.json` 不属于当前编译输入，故保持在阶段 3 fingerprint 范围之外。workspace manifest、特殊 Git 状态、共享 `GLOBAL_TYPECHECK_FILES` 和非字符串 dependency 形状均已纳入保守校验或 fail-closed 处理。
 - 阶段 3 尚未实现跨多个 Electron/Memory 专项门的 build-once/fingerprint 复用或过期产物拒绝。
 - 阶段 4、5 仍未开始。

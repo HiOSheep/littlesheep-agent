@@ -12,7 +12,8 @@
     "littlesheep": "./packages/cli/dist/bin.js"
   },
   "scripts": {
-    "build": "pnpm run typecheck && pnpm --filter @littlesheep/app run build",
+    "build": "pnpm run typecheck && pnpm run build:app",
+    "build:app": "pnpm --filter @littlesheep/app run build",
     "check:repo": "node scripts/check-repository-hygiene.mjs && node scripts/sync-typescript-projects.mjs --check",
     "sync:tsconfig": "node scripts/sync-typescript-projects.mjs",
     "start": "node packages/cli/dist/bin.js",
@@ -25,9 +26,10 @@
     "clean": "pnpm -r run clean && rimraf node_modules",
     "typecheck": "tsc -b tsconfig.workspace.json --pretty false",
     "typecheck:changed": "node scripts/run-affected-verification.mjs --typecheck-only",
+    "measure:verification": "node scripts/measure-verification-baseline.mjs",
     "verify:changed": "pnpm run check:repo && node scripts/run-affected-verification.mjs",
     "verify:core": "pnpm run check:repo && pnpm run typecheck && pnpm run test:core-eval",
-    "verify:full": "pnpm run check:repo && pnpm run test && pnpm run typecheck && pnpm run build && pnpm run verify:app-recovery",
+    "verify:full": "pnpm run check:repo && pnpm run test && pnpm run typecheck && pnpm run build:app && pnpm run verify:app-recovery",
     "verify:provider": "node scripts/verify-provider-smoke.mjs",
     "verify:electron-continuity": "pnpm --filter @littlesheep/app... run build && node scripts/verify-electron-runtime-continuity.mjs",
     "verify:electron-deepseek-reply-continuity": "pnpm --filter @littlesheep/app... run build && node scripts/verify-electron-deepseek-reply-continuity.mjs",

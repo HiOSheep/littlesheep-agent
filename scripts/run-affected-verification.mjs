@@ -1,5 +1,4 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -8,7 +7,16 @@ import {
   normalizeRepoPath,
   projectConfigPaths,
   projectsForFiles,
+  isWorkspacePackageManifestPath,
+  validateWorkspaceManifestGraphs,
 } from './workspace-projects.mjs';
+import { readGitLines, resolveGitMergeBase } from './lib/affected-verification-base.mjs';
+import {
+  createAffectedTestPlan,
+  classifyRootPackageChange,
+  GLOBAL_TYPECHECK_FILES,
+  isAppBuildSensitivePath,
+} from './lib/affected-verification-inputs.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = new Set(process.argv.slice(2));
@@ -16,6 +24,7 @@ const baseArg = process.argv.find((value) => value.startsWith('--base='));
 const base = baseArg?.slice('--base='.length) || process.env.LITTLESHEEP_BASE_REF || 'origin/main';
 const runTypecheck = !args.has('--tests-only');
 const runTests = !args.has('--typecheck-only');
+const runBuildSensitive = !args.has('--tests-only') && !args.has('--typecheck-only');
 const listOnly = args.has('--list');
 const pnpmCli = process.env.npm_execpath;
 
@@ -40,43 +49,79 @@ function runPnpm(commandArgs) {
   return run(process.execPath, [pnpmCli, ...commandArgs], { label: `pnpm ${commandArgs[0]}` });
 }
 
-function gitLines(commandArgs, allowFailure = false) {
-  const output = run('git', commandArgs, { capture: true, allowFailure });
-  return output ? output.split(/\r?\n/).map(normalizeRepoPath).filter(Boolean) : [];
+let mergeBase;
+try {
+  mergeBase = resolveGitMergeBase(base, repoRoot);
+} catch (error) {
+  console.error(`[affected] ${error instanceof Error ? error.message : String(error)}`);
+  process.exit(1);
+}
+let changedFiles;
+try {
+  changedFiles = new Set([
+    ...readGitLines(['diff', '--name-only', '--diff-filter=ACMRD', `${mergeBase}..HEAD`], repoRoot).map(normalizeRepoPath),
+    ...readGitLines(['diff', '--name-only', '--diff-filter=ACMRD'], repoRoot).map(normalizeRepoPath),
+    ...readGitLines(['diff', '--cached', '--name-only', '--diff-filter=ACMRD'], repoRoot).map(normalizeRepoPath),
+    ...readGitLines(['ls-files', '--others', '--exclude-standard'], repoRoot).map(normalizeRepoPath),
+  ]);
+} catch (error) {
+  console.error(`[affected] Git change-set discovery failed: ${error instanceof Error ? error.message : String(error)}`);
+  process.exit(1);
 }
 
-const mergeBase = run('git', ['merge-base', base, 'HEAD'], { capture: true, allowFailure: true }) || 'HEAD';
-const changedFiles = new Set([
-  ...gitLines(['diff', '--name-only', '--diff-filter=ACMRD', `${mergeBase}..HEAD`], true),
-  ...gitLines(['diff', '--name-only', '--diff-filter=ACMRD'], true),
-  ...gitLines(['diff', '--cached', '--name-only', '--diff-filter=ACMRD'], true),
-  ...gitLines(['ls-files', '--others', '--exclude-standard'], true),
-]);
-
-const projects = await discoverWorkspaceProjects(repoRoot);
-const globalTypecheckFiles = new Set([
-  'package.json',
-  'pnpm-lock.yaml',
-  'pnpm-workspace.yaml',
-  'tsconfig.base.json',
-  'tsconfig.workspace.json',
-]);
+let projects;
+try {
+  projects = await discoverWorkspaceProjects(repoRoot);
+} catch (error) {
+  console.error(`[affected] Workspace project discovery failed: ${error instanceof Error ? error.message : String(error)}`);
+  process.exit(1);
+}
+const globalTypecheckFiles = new Set(GLOBAL_TYPECHECK_FILES);
 const changedProjectNames = projectsForFiles(projects, changedFiles);
 const allProjectNames = new Set(projects.map((project) => project.name));
-const affectedProjectNames = [...changedFiles].some((file) => globalTypecheckFiles.has(file))
+const rootPackageChange = changedFiles.has('package.json')
+  ? classifyRootPackageChange(repoRoot, mergeBase)
+  : null;
+const workspaceManifestFiles = [...changedFiles].filter(isWorkspacePackageManifestPath);
+let workspaceManifestGraph = null;
+if (workspaceManifestFiles.length > 0) {
+  try {
+    workspaceManifestGraph = await validateWorkspaceManifestGraphs(repoRoot, mergeBase, projects);
+  } catch (error) {
+    console.error(`[affected] Workspace manifest graph validation failed: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  }
+}
+const globalTypecheck = [...changedFiles].some((file) => globalTypecheckFiles.has(file))
+  || workspaceManifestFiles.length > 0
+  || Boolean(rootPackageChange?.requiresGlobalTypecheck);
+const affectedProjectNames = globalTypecheck
   ? allProjectNames
   : includeDependents(projects, changedProjectNames);
 const configPaths = projectConfigPaths(repoRoot, projects, affectedProjectNames);
-const testRelevantFiles = [...changedFiles].filter((file) => {
-  if (!/^(packages|scripts|test)\/.*\.(?:[cm]?[jt]sx?|json)$/.test(file)) return false;
-  return !/(?:^|\/)(?:package|tsconfig(?:\.[^/]+)?)\.json$/.test(file);
-});
-const fullTests = changedFiles.has('vitest.config.ts');
-const hasDeletedTestInput = testRelevantFiles.some((file) => !existsSync(resolve(repoRoot, file)));
-
+const testPlan = createAffectedTestPlan(
+  [...changedFiles],
+  mergeBase,
+  repoRoot,
+  { rootPackageChange, workspaceManifestFiles },
+);
+const appBuildSensitiveFiles = [...changedFiles].filter((file) => (
+  isAppBuildSensitivePath(file, affectedProjectNames, rootPackageChange)
+));
 console.log(`[affected] base: ${base} (${mergeBase})`);
 console.log(`[affected] files: ${changedFiles.size}`);
 console.log(`[affected] packages: ${[...affectedProjectNames].sort().join(', ') || 'none'}`);
+if (rootPackageChange) console.log(`[affected] package.json classification: ${rootPackageChange.reason}`);
+if (rootPackageChange?.testInvalidatingScriptKeys.length > 0) {
+  console.log(`[affected] test-invalidating scripts: ${rootPackageChange.testInvalidatingScriptKeys.join(', ')}`);
+}
+if (workspaceManifestGraph?.pathSetChanged) {
+  const { added, removed } = workspaceManifestGraph.pathChanges;
+  console.log(`[affected] workspace manifest paths: +${added.length} / -${removed.length}`);
+}
+if (appBuildSensitiveFiles.length > 0) {
+  console.log(`[affected] app build-sensitive files: ${appBuildSensitiveFiles.sort().join(', ')}`);
+}
 
 if (listOnly) process.exit(0);
 
@@ -86,11 +131,20 @@ if (runTypecheck) {
 }
 
 if (runTests) {
-  if (fullTests) runPnpm(['test']);
-  else if (testRelevantFiles.length === 0) console.log('[affected] tests skipped: no related source or test file');
-  else if (hasDeletedTestInput || testRelevantFiles.length > 100) {
-    runPnpm(['exec', 'vitest', 'run', `--changed=${base}`, '--passWithNoTests']);
-  } else {
-    runPnpm(['exec', 'vitest', 'related', ...testRelevantFiles, '--run', '--passWithNoTests']);
+  if (testPlan.fullTests) runPnpm(['exec', 'vitest', 'run']);
+  else if (testPlan.explicitSelectorTests.length > 0) {
+    runPnpm(['exec', 'vitest', 'run', ...testPlan.explicitSelectorTests]);
   }
+  if (!testPlan.fullTests && testPlan.mode === 'changed-fallback') {
+    runPnpm(['exec', 'vitest', 'run', `--changed=${mergeBase}`, '--passWithNoTests']);
+  } else if (!testPlan.fullTests && testPlan.relatedTestRelevantFiles.length > 0) {
+    runPnpm(['exec', 'vitest', 'related', ...testPlan.relatedTestRelevantFiles, '--run', '--passWithNoTests']);
+  } else if (!testPlan.fullTests && testPlan.explicitSelectorTests.length === 0) {
+    console.log('[affected] tests skipped: no related source or test file');
+  }
+}
+
+if (runBuildSensitive && appBuildSensitiveFiles.length > 0) {
+  console.log(`[affected] build-sensitive verification required for ${appBuildSensitiveFiles.length} file(s)`);
+  runPnpm(['run', 'build:app']);
 }

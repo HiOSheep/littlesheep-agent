@@ -65,6 +65,23 @@ describe('verification baseline measurement', () => {
     expect(report.testSelection.mode).toBe('skip');
   });
 
+  it('routes top-level runtime configuration through changed fallback', async () => {
+    for (const file of ['branding.config.json', 'littlesheep.config.json']) {
+      const report = await buildSelection(parseArgs([
+        '--sample=single-file',
+        `--files=${file}`,
+      ]));
+      expect(report.categoryCounts).toEqual({ 'runtime-config': 1 });
+      expect(report.appBuildSensitive).toBe(false);
+      expect(report.testSelection).toMatchObject({
+        mode: 'changed-fallback',
+        runtimeConfigChanged: true,
+        fallbackReasons: ['runtime-config-changed'],
+        changedSelector: '--changed=unresolved',
+      });
+    }
+  });
+
   it('fails closed for a synthetic package manifest without a baseline', async () => {
     const report = await buildSelection(parseArgs([
       '--sample=single-file',

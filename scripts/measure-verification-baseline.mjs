@@ -26,18 +26,15 @@ import { resolveGitMergeBase } from './lib/affected-verification-base.mjs';
 import {
   createAffectedTestPlan,
   classifyRootPackageChange,
+  GLOBAL_TYPECHECK_FILES,
+  RUNTIME_CONFIG_FILES,
   isAppBuildSensitivePath,
 } from './lib/affected-verification-inputs.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const canonicalRepoRoot = realpathSync(repoRoot);
 const defaultBase = process.env.LITTLESHEEP_BASE_REF || 'origin/main';
-const globalTypecheckFiles = new Set([
-  'pnpm-lock.yaml',
-  'pnpm-workspace.yaml',
-  'tsconfig.base.json',
-  'tsconfig.workspace.json',
-]);
+const globalTypecheckFiles = new Set(GLOBAL_TYPECHECK_FILES);
 const runNames = new Set(['selector', 'typecheck', 'tests', 'affected', 'full', 'build', 'recovery']);
 
 function canonicalPathForBoundary(path) {
@@ -264,6 +261,7 @@ function syntheticFiles(options, projects) {
 }
 
 function classifyFile(file, rootPackageChange = null) {
+  if (RUNTIME_CONFIG_FILES.includes(file)) return 'runtime-config';
   if (file === 'package.json') {
     if (rootPackageChange?.requiresGlobalTypecheck) return 'global-typecheck-config';
     if (rootPackageChange?.scriptsChanged) return 'verification-script';
