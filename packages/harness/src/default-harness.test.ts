@@ -396,6 +396,26 @@ describe('createDefaultHarness state machine', () => {
     // enter ran, then classify threw → loop exits
     expect(trace.map((t) => t.name)).toEqual(['enter', 'classify']);
   });
+
+  it('rejects a custom stage or hook that invents an unregistered transition', async () => {
+    const llm = createMockLlm(textResponse('unused'));
+    const h = makeHarness(llm);
+    h.registerStage('classify', async () => ({
+      stage: 'classify',
+      next: 'finalize',
+      ok: true,
+    }));
+
+    const result = await h.run(makeCtx({ inbound: textMessage('user', 'hello') }));
+
+    expect(result.ok).toBe(false);
+    expect(result.next).toBe('exit');
+    expect(result.error).toContain("invalid stage transition 'classify' -> 'finalize'");
+    expect(result.meta?.transitionViolation).toMatchObject({
+      from: 'classify',
+      attempted: 'finalize',
+    });
+  });
 });
 
 function createMutableRuntimeTaskQueue(): {

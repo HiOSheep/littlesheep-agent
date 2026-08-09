@@ -1,16 +1,16 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-08-09 23:25:00
+最后更新：2026-08-10 00:10:00
 
 本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
 
 ## 现在先做什么
 
-**当前开发效率阶段**：开发反馈环提速任务书的阶段 0、阶段 1、阶段 2、阶段 3、阶段 4 已完成并分别提交推送到 GitHub；阶段 5 尚未开始。当前首要问题已经从“构建入口重复、产物是否可信”推进到“把已有验证门接入日常流程并让失败阶段可定位”，不是 README 或注释数量。
+**当前开发效率阶段**：开发反馈环提速任务书的阶段 0、阶段 1、阶段 2、阶段 3、阶段 4 已完成并分别提交推送到 GitHub；阶段 5 正在进行，当前已完成状态转移 manifest、运行时非法边拒绝和四组高频 RunContext ownership/lifecycle 契约，Runner coordinator 拆分尚未开始。当前首要问题已经从“构建入口重复、产物是否可信”推进到“状态边和共享字段的责任边界缺少单一可验证来源”，不是 README 或注释数量。
 
 **当前阶段**：Memory v3 阶段 0-26、正式数据迁移、本地向量目录、动态 working set、关系导航、shadow Git 检查点、退出冻结、统一 Tool Execution Service、工具调用级与 TaskBook 步骤级有界并行、运行时事件安全边界、TaskBookPatch、Runner 检查点续跑、应用启动恢复控制面，以及活动任务快照、暂停/继续/中断、托盘、三档关闭策略和设置页“应用与后台”已有工程基线。语义活动已收敛为 `respond / execute / clarify`；直接回应使用紧凑 Prompt 与有界历史，只在明确追问进度、结果、耗时、错误或恢复时介入上一轮执行摘要。用户明确点名且可证明为新鲜、自包含、内置的单个 `glob / grep / read` 请求使用 `decide_explicit_tool`；没有点名工具的同类只读目标由 LLM 在三种内置读工具中自主选择，并在同一次 DECIDE 中给出有界参数提议，Runtime 重验后直接执行。多工具、写入、执行、附件、续接、已采用/冲突记忆、恢复和边界不明任务仍走完整 `decide`。直接续答在发布前使用本地回答连续性证据检查；普通回答不增加调用，只有明确续接且首个实时 API 回答被判为 `discontinuous` 时，才允许一次有界实时 API 纠偏，纠偏仍断档则失败关闭。当前 DeepSeek 已完成 chat、continuity、tool、abort 四项真实校准、普通直接回答与 Flash 工具协议的 V4 本地精确 token 对账、真实 Electron 完整退出/重启后的最终回答连续性、短时并行与 Checkpoint 恢复、摘要深度 `1 -> 2 -> 3 -> 3` 的五字段连续性、一次主动断线零额外 Provider Token 恢复，以及单次 6 分钟持续 `exec` 的安全暂停、重启不重放和资源回落验收。正式 2 小时持续负载门已通过：`7200s`、`1441` 个采样、进度缺测 `0`、资源预算违规 `0`，后半程 RSS/Heap/Electron 工作集/句柄/请求趋势均在预算内，结束后恢复空闲基线。Flash 的 direct、tool schema、单工具续轮、仅历史工具消息和多工具乱序结果在 disabled/high/max 三档共 `15/15` 次请求与 Provider prompt usage 零差值；Pro 普通请求保持精确，Pro 工具协议仍失败关闭。具体证据只看 [项目状态](decision/project-status.md)。
 
-**推荐下一步**：阶段 1 和阶段 4 已完成，下一步是否进入阶段 5 由你决定。纯逻辑单文件先运行 `pnpm.cmd run verify:task -- --files=<path>`；包级契约先运行 `pnpm.cmd run verify:task -- --package=<name>`（默认只做包级 typecheck，重型整包测试必须显式加 `--package-tests`）；公共契约或 Harness/Runner/Context/Memory 改动升级到 `pnpm.cmd run verify:core`，阶段结束或发布前运行 `pnpm.cmd run verify:full`。任务门与阶段门都会保留机器可读本地报告；不要把已经完成的 Memory v3/Provider 基线扩展重新当作本仓库当前开发瓶颈。
+**推荐下一步**：阶段 5 的第一里程碑已经完成，下一步应围绕 Runner 的 prepare/execute/finalize/persist coordinator 做最小抽取，并用同一组核心回归证明行为不变。纯逻辑单文件先运行 `pnpm.cmd run verify:task -- --files=<path>`；包级契约先运行 `pnpm.cmd run verify:task -- --package=<name>`（默认只做包级 typecheck，重型整包测试必须显式加 `--package-tests`）；公共契约或 Harness/Runner/Context/Memory 改动升级到 `pnpm.cmd run verify:core`，阶段结束或发布前运行 `pnpm.cmd run verify:full`。任务门与阶段门都会保留机器可读本地报告；不要把已经完成的 Memory v3/Provider 基线扩展重新当作本仓库当前开发瓶颈。
 
 **当前权限决策**：产品语义上 LS 是 Agent 的容器，活动完整应用数据根（默认 `.littlesheep`）是容器边界，`workplace/` 是容器内的默认工作区；当前桌面实现是 Main 的逻辑边界，不是实际 Docker/OS 进程沙箱。从其他模式切换到完全访问时先用红色危险按钮确认一次；确认后容器内外及范围不明的读、写、改、删、执行均免逐次批准。研究只对容器内读取免批准；受限所有操作都需批准。外部工作区在研究/受限模式下先跳过自动索引，完全访问可直接继续。核心源码只读和危险命令硬拒绝不受模式影响。
 
@@ -79,6 +79,7 @@
 
 - [仓库指南](reference/repository-guide.md)：需求类型对应的 package、入口、测试、依赖和维护流程。
 - [模块拆分地图](reference/module-split-map.md)：大型生产文件的所有权、上限和拆分边界。
+- [Core Flow 状态契约](reference/core-flow-state-contract.md)：唯一 Stage 转移 manifest、非法边拒绝和 RunContext ownership/lifecycle 边界。
 - [插件开发说明](reference/plugin-development.md)：插件贡献、权限、生命周期和兼容规则。
 
 ## 文档冲突规则

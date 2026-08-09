@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-08-09 23:25:00
+最后更新：2026-08-10 00:10:00
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
@@ -14,7 +14,7 @@
 | L1 当前依据 | `docs/decision/` | 需要核实现状或理解推荐顺序时 | [项目状态](../decision/project-status.md) 维护当前事实与验证；[架构决策报告](../decision/architecture-decision-report.md) 维护演进顺序与风险 |
 | L2 稳定原则 | `docs/principles/` | 修改产品方向、流程或交互规则时 | [架构原则](../principles/architecture-principles.md)、[核心流程规范](../principles/core-agent-flow-guidelines.md) 和 [UI 交互规范](../principles/ui-interaction-guidelines.md) |
 | L3 执行细节 | `docs/taskbooks/` | 方向已确定并准备实施具体阶段时 | 版本化任务书、阶段验收标准和历史完成证据 |
-| L4 工程参考 | `docs/reference/` | 定位代码、维护仓库或开发插件时 | 本指南、[模块拆分地图](module-split-map.md) 和 [插件开发说明](plugin-development.md) |
+| L4 工程参考 | `docs/reference/` | 定位代码、维护仓库或开发插件时 | 本指南、[模块拆分地图](module-split-map.md)、[Core Flow 状态契约](core-flow-state-contract.md) 和 [插件开发说明](plugin-development.md) |
 
 同一事实只在其责任文档中维护，其他文档使用链接引用。冲突时，长期约束看架构原则，当前事实和验证数字看项目状态，演进顺序看架构决策报告，目录归属看本指南，专项交互和流程看对应规范。任务书不维护全局最新状态，也不要创建另一份一次性总结复制决策入口。
 
@@ -59,10 +59,10 @@
 
 | 包 | 归属和职责 |
 | --- | --- |
-| `packages/types/` | Agent、消息、会话、工具、记忆、澄清请求，以及 Mode、运行决议、Context、附件、运行事件、TaskBookPatch、检查点、模型请求和执行证据等内部 v1 契约；本地精确、Provider 实测与不可展示安全估算的 Token 账本独立位于 `src/token-ledger.ts`。 |
+| `packages/types/` | Agent、消息、会话、工具、记忆、澄清请求，以及 Mode、运行决议、Context、附件、运行事件、TaskBookPatch、检查点、模型请求和执行证据等内部 v1 契约；`src/stage-transitions.ts` 是唯一 Core Flow 允许边 manifest，`src/run-context-contract.ts` 维护高频 RunContext 字段 owner、读写阶段和生命周期；本地精确、Provider 实测与不可展示安全估算的 Token 账本独立位于 `src/token-ledger.ts`。 |
 | `packages/classifier/` | `respond / execute / clarify` 语义活动路由，含规则快速路径和模型兜底；旧 `chat / problem / unclear` 只由公共契约做兼容映射。 |
 | `packages/prompt/` | 系统提示词、行为 profile、工作区信息和记忆树根索引的装配；支持完整执行、紧凑 `respond`、最小与禁用四种投影模式。 |
-| `packages/harness/` | 硬控制流状态机、TaskBook、各 stage、hooks、局部重规划和验证；`src/stages/decide/request.ts`、`model-call.ts`、`adoption.ts` 分别拥有决策请求、模型调用和采用，`explicit-tool-instruction.ts` 拥有完整显式工具提议契约与有界工具 JSON Schema 转换，`compact-explicit-tool-decision.ts` 拥有用户点名 builtin 单只读工具时的紧凑准入，`compact-autonomous-read-task.ts` 拥有用户只表达目标时由 LLM 在 builtin `glob / grep / read` 中自主选择并提交一个参数提议的保守准入、紧凑 DECIDE 契约与回退条件，`stages/execute/direct-tool-proposal.ts` 负责在统一 schema、权限、路径、资源和副作用闸门后直执行显式或自主提议，`compact-read-only-result.ts` 依据 TaskBook、结果、调用审计、审批、清洗和副作用证据决定最终回答能否使用紧凑 Context；这些边界不能重新并回大 DECIDE/EXECUTE 文件。普通工具循环仍由 `stages/execute/tool-loop.ts` 拥有，`execute/`、`verify/` 其余模块分别负责步骤调度与结构验收。完全访问模式可直接采用来源明确、参数完整、非 Checkpoint 恢复态的单次内置 `exec`，其余执行仍回退普通工具循环；每个 TaskBook wave 先持久化步骤结果，再消费暂停或中断。`checkpoint-resume.ts` 负责依据已保存步骤证据恢复，`response-continuity*.ts` 负责从最终用户可见回答反查真实因果 Context 来源并判定记忆连续，`stages/reply/continuity-repair.ts` 只负责直接续答在发布前的一次有界实时纠偏，`session-summary-fidelity-text.ts` 只解析 Runtime 精确字段封套；`runtime-control-boundary.ts` 和 `taskbook-patch.ts` 拥有运行中事件的安全消费与确定性局部修订。 |
+| `packages/harness/` | 硬控制流状态机、TaskBook、各 stage、hooks、局部重规划和验证；Stage 边由 `@littlesheep/types` 的 `allowedTransitions` 统一校验，导航说明见 [Core Flow 状态契约](core-flow-state-contract.md)。`src/stages/decide/request.ts`、`model-call.ts`、`adoption.ts` 分别拥有决策请求、模型调用和采用，`explicit-tool-instruction.ts` 拥有完整显式工具提议契约与有界工具 JSON Schema 转换，`compact-explicit-tool-decision.ts` 拥有用户点名 builtin 单只读工具时的紧凑准入，`compact-autonomous-read-task.ts` 拥有用户只表达目标时由 LLM 在 builtin `glob / grep / read` 中自主选择并提交一个参数提议的保守准入、紧凑 DECIDE 契约与回退条件，`stages/execute/direct-tool-proposal.ts` 负责在统一 schema、权限、路径、资源和副作用闸门后直执行显式或自主提议，`compact-read-only-result.ts` 依据 TaskBook、结果、调用审计、审批、清洗和副作用证据决定最终回答能否使用紧凑 Context；这些边界不能重新并回大 DECIDE/EXECUTE 文件。普通工具循环仍由 `stages/execute/tool-loop.ts` 拥有，`execute/`、`verify/` 其余模块分别负责步骤调度与结构验收。完全访问模式可直接采用来源明确、参数完整、非 Checkpoint 恢复态的单次内置 `exec`，其余执行仍回退普通工具循环；每个 TaskBook wave 先持久化步骤结果，再消费暂停或中断。`checkpoint-resume.ts` 负责依据已保存步骤证据恢复，`response-continuity*.ts` 负责从最终用户可见回答反查真实因果 Context 来源并判定记忆连续，`stages/reply/continuity-repair.ts` 只负责直接续答在发布前的一次有界实时纠偏，`session-summary-fidelity-text.ts` 只解析 Runtime 精确字段封套；`runtime-control-boundary.ts` 和 `taskbook-patch.ts` 拥有运行中事件的安全消费与确定性局部修订。 |
 | `packages/runner/` | 运行时装配、单次 run、流式事件、执行日志、活动 run 事件注册与有界状态快照、暂停/继续/中断、持久检查点、显式续跑和基础设施依赖注入；`session-continuity.ts` 负责版本化会话压缩调用，`session-summary-fidelity.ts` 从保留的用户消息和旧封套重建有界精确字段。 |
 | `packages/llm/` | OpenAI-compatible 客户端、供应商请求、流式输出、重试和 usage 类型。 |
 | `packages/config/` | 配置 schema、默认值、供应商预置、模型选择和用户配置加载；`tools.invocationTimeoutMs` 统一约束宿主工具调用超时，默认 120 秒，可配置 1 秒到 24 小时；实际调用仍同时受 run 总超时、AbortSignal 和取消后的有界清理约束。 |
@@ -211,8 +211,8 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 - `pnpm.cmd run verify:task -- --files=<path>`：不读取 `origin/main`，只按显式任务文件执行直接同名测试或必要的 related fallback，并对所属 package 做局部 typecheck；同目录存在 `<name>.test.*`/`<name>.spec.*` 时优先只运行它。Renderer 或 shared 输入会单独执行 App web typecheck。该入口不会读取其他脏文件，也不会传播到 dependents，因此完成后仍需运行 `verify:changed`。
 - `pnpm.cmd run verify:task -- --package=<name>`：包级快速入口，默认只做该 package 的 typecheck；需要整包测试时显式加 `--package-tests`，因为 Runner 等包包含 30 秒以上的 Memory/Runner 集成套件。`--manifest=<path>` 可把文件、测试、typecheck 和 App web typecheck 边界固定为 JSON。
 - `pnpm.cmd run verify:changed`：日常源码/测试改动的提交前门。默认以 `origin/main` 为基线，合并已提交、暂存、未暂存和未跟踪文件，计算变更 package 及其传递依赖方；一次 selector 计划同时驱动受影响 typecheck、Vitest 和必要的 `ensure:app-build`，避免重复计算。可用 `pnpm.cmd run verify:changed -- --base=<ref>` 或环境变量 `LITTLESHEEP_BASE_REF=<ref>` 指定基线；基线缺失时先获取基线或显式传入 ref，不能把缺失基线当作无变更。报告保存在被忽略的 `.codex_tmp/verification-reports/`，包含每阶段 `status`、`durationMs`、命令和输出摘要；`skipped` 只表示该阶段无适用输入，不等于通过。
-- `pnpm.cmd run verify:core`：核心契约升级门，依次执行 `check:repo`、全 workspace typecheck 和 `test:core-eval`，适用于 Harness、Runner、Context、Memory、公共协议和跨包依赖变更；不执行 App build 或 recovery。2026-08-09 当前该集合实跑为 7 个测试文件、127 项；测试数量随源码变化，以 Vitest 实际输出为准。
-- `pnpm.cmd run verify:full`：阶段结束或发布前门，依次执行 `check:repo`、完整测试、一次全 workspace typecheck、`build:app` 和 `verify:app-recovery`；不包含 Provider、Electron continuity 或 Memory soak 专项门。失败时以报告中的 `failedStage` 为准，不用最终摘要掩盖前置阶段失败。
+- `pnpm.cmd run verify:core`：核心契约升级门，依次执行 `check:repo`、全 workspace typecheck 和 `test:core-eval`，适用于 Harness、Runner、Context、Memory、公共协议和跨包依赖变更；不执行 App build 或 recovery。2026-08-10 阶段 5A 实跑为 7 个测试文件、127 项，退出码 `0`、`failedStage=null`；阶段耗时约 `38.98s`。测试数量随源码变化，以 Vitest 实际输出为准。
+- `pnpm.cmd run verify:full`：阶段结束或发布前门，依次执行 `check:repo`、完整测试、一次全 workspace typecheck、`build:app` 和 `verify:app-recovery`；不包含 Provider、Electron continuity 或 Memory soak 专项门。2026-08-10 阶段 5A 实跑退出码 `0`、`failedStage=null`，共 280 个测试文件、1974 passed、1 skipped，总耗时约 `312.01s`；阶段耗时约为 `check:repo 5.71s`、`tests 210.89s`、`typecheck 1.08s`、`build 93.87s`、`recovery 0.46s`。失败时以报告中的 `failedStage` 为准，不用最终摘要掩盖前置阶段失败。
 - `pnpm.cmd run verify:memory-v3-soak`：只在系统临时目录创建隔离 Memory v3 数据，重复验证只追加投影变更记录/commit receipt、atom 治理、journal 裁剪、重启、catalog 重建、向量有界批处理、关系相关性、routing feedback、run working set 和 RSS 上限；默认完成后删除临时根，不迁移或改写正式用户数据。增强档可使用 `--atoms=500 --runs=256 --feedback-events=256`，并可通过 `--related-atoms`、`--embedding-batch`、`--max-rss-mib` 调整验收边界。确定性测试 Embedding 只用于可重复规模门，不替代正式 BGE 或 Provider 验收。
 - `pnpm.cmd run verify:memory-v3-relevance`：使用正式本地 BGE 和系统临时数据根，分开测量 D1 admission 与 branch-scoped deep search 的 Recall@K、负例、多余注入、scope 泄漏、token、query Embedding 次数和零网络边界。D1 必须保持零向量；同一次深搜只允许生成一次查询向量。该门不读取或修改正式用户 Atom/Catalog。
 - `pnpm.cmd run verify:memory-v3-evolution`：使用正式本地 BGE 和系统临时数据根，验证 Atom 初始准入、run 内 release/readmit、真实请求正文移除、KnownState/ledger 一致、未见冲突零反馈、历史 routing 衰减、routing-only 与 verified usefulness 分层、重启保持和 vector deep search。该门要求正文、confidence 与 embedding hash 不因路由反馈变化，运行阶段零网络请求，完成后删除临时数据根。

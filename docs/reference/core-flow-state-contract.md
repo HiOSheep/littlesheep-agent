@@ -1,0 +1,65 @@
+# Core Flow 状态契约
+
+最后更新：2026-08-10 00:10:00
+
+本页是 Harness 状态边和高频 `RunContext` 字段责任的导航入口。可执行契约位于 `packages/types/src/stage-transitions.ts` 与 `packages/types/src/run-context-contract.ts`；本页只解释如何阅读和扩展它们，不复制运行时实现。
+
+## 状态边
+
+`allowedTransitions` 是 Core Flow 唯一允许的 Stage 边表。每次 stage 或 hook 返回 `StageResult` 后，Harness 在进入下一轮前调用 `inspectStageTransition`。边不在 manifest 中时，Runtime 会把结果收敛为 `ok: false`、`next: 'exit'`，并在 `meta.transitionViolation` 中保留来源、目标和允许目标；不会让自定义 stage 或 hook 静默跳过安全流程。
+
+```mermaid
+stateDiagram-v2
+  enter --> classify
+  classify --> decide
+  classify --> reply
+  classify --> ask_user
+  decide --> execute
+  decide --> ask_user
+  decide --> finalize
+  decide --> recover
+  execute --> verify
+  execute --> recover
+  execute --> finalize
+  recover --> classify
+  recover --> decide
+  recover --> execute
+  recover --> verify
+  recover --> reply
+  recover --> ask_user
+  recover --> finalize
+  verify --> evolve
+  verify --> recover
+  verify --> decide
+  verify --> ask_user
+  evolve --> capture
+  capture --> finalize
+  reply --> verify
+  reply --> finalize
+  ask_user --> finalize
+  [*] --> exit
+```
+
+每个 stage 都保留 `exit` 终止边，因为运行时暂停、中断、异常和 Provider 失败必须有明确的终态出口。`execute -> finalize` 是自定义轻量执行 stage 的兼容边：默认 TaskBook/工具循环仍然经过 `verify`。
+
+扩展 stage 时必须先为边补 manifest 和回归测试，再注册 stage。不要在模型输出、hook 或临时分支中增加未登记的 `next`；`StageResult.next` 不是自由路由字段。
+
+## RunContext Ownership
+
+Ownership manifest 目前先覆盖四组高频共享状态。它不是把已有 `RunContext` 改成代理对象，而是给后续拆分提供可审计的字段 owner、读阶段、写阶段和生命周期边界。
+
+| 分组 | 代表字段 | owner | 主要写入阶段 | 生命周期 |
+| --- | --- | --- | --- | --- |
+| `reply` | `reply`、`replyProvenance`、`usage` | `user-facing-reply-boundary` / `model-observability` | `reply`、`execute`、`recover`、`ask_user`；usage 由模型观测边界写入 | `run-local` |
+| `replan` | `taskBook`、`plan`、`taskExecution`、`partialReplanRequest`、`replanHistory` | `decide-taskbook-boundary` / `execute-taskbook-boundary` / `verify-replan-boundary` | `decide`、`execute`、`verify`、`recover`、`runtime-boundary` | `checkpoint-carried` |
+| `runtimeControl` | `runtimeControl`、`runtimeEventQueue`、`deferredRuntimeEvents`、`loopBudget` | `runtime-control-boundary` / `runner-runtime-queue` / `runner-runtime-budget` | Runtime safe boundary、Runner 初始化/恢复 | `run-local` 或 `checkpoint-carried` |
+| `memory` | `prelude`、`sessionSummary`、`memoryRootIndex`、`memoryKnownState`、`memoryContextWorkingSet`、`evolutionNotes`、`insights` | Runner memory bootstrap、memory evidence、EVOLVE/CAPTURE boundary | Runner 初始化/恢复、Runtime boundary、`evolve`、`capture`、`finalize` | `run-local`、`checkpoint-carried` 或 `session-persisted` |
+
+机器可读字段表通过 `getRunContextFieldContract`、`runContextFieldsForGroup` 和 `assertRunContextFieldWriteAllowed` 查询。当前写入检查是供新 coordinator 和特征测试使用的显式边界；阶段 5 后续拆分不得绕过 owner 直接复制字段逻辑。
+
+## 修改规则
+
+1. 先修改 manifest，再修改使用方；保持公共 `RunContext` 字段和 checkpoint 格式兼容。
+2. 新增 Stage 边必须增加非法边拒绝测试和至少一条真实流程回归。
+3. 新增高频共享字段必须登记 group、owner、读写阶段、生命周期和 purpose；未知字段不能被 ownership 查询假装为已治理。
+4. Harness/Runner/Context/Memory 公共契约变更运行 `pnpm.cmd run verify:core`；阶段结束再运行 `pnpm.cmd run verify:full`。

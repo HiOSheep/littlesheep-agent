@@ -14,6 +14,7 @@ import type {
   StageName,
   StageResult,
 } from '@littlesheep/types';
+import { inspectStageTransition, stageNames } from '@littlesheep/types';
 import type { LlmClient } from '@littlesheep/llm';
 import type { SessionManager } from '@littlesheep/session';
 import type { Config } from '@littlesheep/config';
@@ -78,13 +79,6 @@ export interface DefaultHarnessOptions {
   /** Optional logger sink forwarded to HookRunner. */
   log?: (level: 'info' | 'warn' | 'error', msg: string, data?: unknown) => void;
 }
-
-/** All stage names in the Core Flow (used to seed the registry). */
-const ALL_STAGES: readonly StageName[] = [
-  'enter', 'classify', 'decide', 'execute', 'recover',
-  'verify',
-  'evolve', 'capture', 'reply', 'ask_user', 'finalize',
-];
 
 /**
  * Build the default Core Flow harness. Stages close over the supplied deps.
@@ -263,6 +257,27 @@ export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness 
         // Normalize the stage tag in case a hook replaced result without it.
         result = { ...result, stage: stageName };
 
+        const transition = inspectStageTransition(stageName, result.next);
+        if (!transition.ok) {
+          const attempted = String(transition.violation.attempted);
+          const allowed = transition.violation.allowed.join(', ');
+          const error = `invalid stage transition '${stageName}' -> '${attempted}'; allowed targets: ${allowed}`;
+          result = {
+            stage: stageName,
+            next: 'exit',
+            ok: false,
+            error,
+            meta: {
+              ...(result.meta ?? {}),
+              transitionViolation: {
+                from: stageName,
+                attempted: transition.violation.attempted,
+                allowed: transition.violation.allowed,
+              },
+            },
+          };
+        }
+
         const endedAt = new Date().toISOString();
         trace.push({ name: stageName, startedAt, endedAt, ok: result.ok });
 
@@ -290,7 +305,7 @@ export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness 
     },
 
     registerStage(name: StageName, stage: Stage): void {
-      if (!ALL_STAGES.includes(name)) {
+      if (!stageNames.includes(name)) {
         throw new Error(`registerStage: unknown stage '${name}'`);
       }
       stages.set(name, stage);

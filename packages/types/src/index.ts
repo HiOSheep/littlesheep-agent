@@ -15,3 +15,5 @@ export * from './memory-continuity.js';
 export * from './task.js';
 export * from './agent.js';
 export * from './runtime-contracts.js';
+export * from './stage-transitions.js';
+export * from './run-context-contract.js';

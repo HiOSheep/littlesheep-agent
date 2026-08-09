@@ -1,10 +1,10 @@
 # LS 开发反馈环提速任务书 2026-08-09
 
-最后更新：2026-08-09 23:25:00
+最后更新：2026-08-10 00:10:00
 
 ## 状态
 
-进行中。阶段 0、阶段 1、阶段 2、阶段 3、阶段 4 已完成并分别形成独立提交且推送到 GitHub；阶段 5 尚未开始。本文是一个可单独设置为阶段目标的执行基线；完成任一阶段后，必须更新本文的状态、证据和实际边界，并提交、推送一次，再决定是否进入下一阶段。
+进行中。阶段 0、阶段 1、阶段 2、阶段 3、阶段 4 已完成并分别形成独立提交且推送到 GitHub；阶段 5 正在进行，阶段 5A（状态转移与 RunContext ownership 第一里程碑）质量门、提交和推送已完成。本文是一个可单独设置为阶段目标的执行基线；完成任一阶段后，必须更新本文的状态、证据和实际边界，并提交、推送一次，再决定是否进入下一阶段。
 
 ## Goal
 
@@ -137,12 +137,22 @@
 
 ### 阶段 5：状态契约重构（后续阶段，不与本任务前四阶段合并）
 
-状态：未开始，依赖阶段 0-4 完成。
+状态：进行中。阶段 5A 已完成；Runner coordinator 拆分和更深的字段收敛仍未开始。
 
 - 建立唯一 `allowedTransitions` manifest，运行时校验非法 Stage 边，并生成状态图。
 - 为 `RunContext` 建立字段 owner、读写阶段和生命周期表；先收敛 `reply`、`replan`、`runtimeControl`、`memory` 四组高频共享状态。
 - 保持 `createRunner()`、Harness 公共入口和持久化格式兼容；先抽取 Runner 的 prepare/execute/finalize/persist coordinator，再评估更深拆分。
 - 该阶段的验收不以文件行数为主，而以非法转移可拒绝、字段写入边界可测试、核心流程回归和认知导航时间下降为主。
+
+阶段 5A 本轮实现与证据（2026-08-10）：
+
+- `packages/types/src/stage-transitions.ts` 提供唯一 `allowedTransitions`、稳定 `stageNames`、边检查和 Mermaid 状态图生成；每个 Stage 保留 `exit` 终止边，兼容 `execute -> finalize` 的自定义轻量执行出口。
+- `packages/harness/src/default-harness.ts` 在默认 stage、claiming hook 和 modifying hook 结果归并后统一调用 `inspectStageTransition`；非法边收敛为 `ok: false`、`next: 'exit'`，并保留 `meta.transitionViolation`，不再静默进入任意 Stage。
+- `packages/types/src/run-context-contract.ts` 提供四组高频字段的 owner、read/write stage、lifecycle 和 purpose；`getRunContextFieldContract`、`runContextFieldsForGroup`、`assertRunContextFieldWriteAllowed` 为后续 coordinator 拆分提供机器可读写入边界。没有改变现有 `RunContext` 公共字段形状或 checkpoint 持久化格式。
+- `docs/reference/core-flow-state-contract.md` 提供渐进式披露的状态图、ownership 表和扩展规则，仓库指南已指向该入口。
+- 定向回归：`packages/types/src/stage-transitions.test.ts`、`run-context-contract.test.ts` 和 `packages/harness/src/default-harness.test.ts` 共 19 项通过；连同既有验证门和 selector 回归，本轮 6 个定向测试文件共 51 项通过；types/harness TypeScript project check 通过。`check:repo` 为 33/33，27 个 TypeScript project references 通过。`verify:core` 退出码 `0`、`failedStage=null`，7 个测试文件、127 项通过，总耗时 `38.98s`。`verify:full` 退出码 `0`、`failedStage=null`，280 个测试文件、1974 passed、1 skipped，总耗时 `312.01s`；阶段为 `check:repo 5.71s`、`tests 210.89s`、`typecheck 1.08s`、`build 93.87s`、`recovery 0.46s`。
+
+阶段 5A 尚未覆盖 Runner coordinator 的行为拆分，也未宣称阶段 5 整体完成；下一里程碑必须在 `packages/runner/src/runner.ts` 抽取最小 prepare/execute/finalize/persist 协调边界后，重新运行 core/full 质量门。
 
 ## Acceptance Matrix
 
@@ -161,6 +171,8 @@
 | Electron 专项门 | 多个命令重复 build | build once, verify many 或 fingerprint 复用 | 专项套件日志 |
 | 状态转移可解释性 | `next` 分散、无唯一允许边表 | manifest + runtime validation + graph | Harness 特征测试 |
 | RunContext ownership | 74 字段、跨 61 个生产文件访问 | 分域 owner 表，先收敛四组高频状态 | 类型/特征测试 + 导航文档 |
+
+阶段 5A 当前证据：状态 manifest 覆盖 11 个 Stage、每个 Stage 的终止 `exit` 边及 38 条显式边；非法 `finalize -> reply` 自定义转移被拒绝，兼容 `execute -> finalize` 路径有回归保护。四组 ownership manifest 共登记 25 个高频字段，读写阶段、owner、lifecycle 和 purpose 均可由 types API 查询。阶段质量门已通过，报告位于 `.codex_tmp/verification-reports/latest.json`；报告中的 `skipped` 仅为 full gate 不适用 selector，不影响已执行的测试、typecheck、build 和 recovery。
 
 ## Verification Order
 
@@ -210,4 +222,4 @@ pnpm.cmd run verify:full
 - 阶段 0 已完成；剩余风险是完整测试计数随运行时数据状态小幅波动，及 fingerprint 扫描仍明显高于纯 planning 成本。报告已拆分两者，后续优化应针对扫描范围而不是误判 selector。
 - 阶段 2 已完成并单独提交；顶层 `branding.config.json`、`littlesheep.config.json` 不属于当前编译输入，故保持在阶段 3 fingerprint 范围之外。workspace manifest、特殊 Git 状态、共享 `GLOBAL_TYPECHECK_FILES` 和非字符串 dependency 形状均已纳入保守校验或 fail-closed 处理。
 - 阶段 3 已实现跨 Electron/Memory 入口的 App/workspace build-once/fingerprint 复用和过期产物拒绝；仍不把外部 Provider 运行时版本纳入本地 sidecar 的证明范围。
-- 阶段 1 的任务级入口和直接测试优先策略已完成，阶段 4 的代码实现、定向回归、`verify:changed`、`verify:core` 和 `verify:full` 已完成；阶段 1 质量门、提交和推送已完成，阶段 5 仍未开始。本阶段提交时必须排除用户已有的 `test/e2e-webhook.test.ts` 改动。
+- 阶段 1 的任务级入口和直接测试优先策略已完成，阶段 4 的代码实现、定向回归、`verify:changed`、`verify:core` 和 `verify:full` 已完成；阶段 5A 的状态契约第一里程碑已完成，质量门、提交和推送已完成；Runner coordinator 拆分仍未开始。本阶段提交时必须排除用户已有的 `test/e2e-webhook.test.ts` 改动。
