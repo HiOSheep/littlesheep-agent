@@ -1,10 +1,10 @@
 # LS 开发反馈环提速任务书 2026-08-09
 
-最后更新：2026-08-09 20:30:00
+最后更新：2026-08-09 21:15:00
 
 ## 状态
 
-进行中。阶段 0、阶段 2、阶段 3 已完成并分别形成独立提交且推送到 GitHub；阶段 1 尚未开始。本文是一个可单独设置为阶段目标的执行基线；完成任一阶段后，必须更新本文的状态、证据和实际边界，并提交、推送一次，再决定是否进入下一阶段。
+进行中。阶段 0、阶段 2、阶段 3、阶段 4 已完成并分别形成独立提交且推送到 GitHub；阶段 1 和阶段 5 尚未开始。本文是一个可单独设置为阶段目标的执行基线；完成任一阶段后，必须更新本文的状态、证据和实际边界，并提交、推送一次，再决定是否进入下一阶段。
 
 ## Goal
 
@@ -111,12 +111,20 @@
 
 ### 阶段 4：把反馈环与质量门接入日常流程
 
-状态：未开始。
+状态：已完成。本阶段将以独立提交提交并推送；阶段 5 不因本阶段完成而自动开始。
 
 - README 和仓库指南只补充命令选择规则、预计成本和失败时的升级路径，不复制实现细节。
 - 将 `verify:changed` 定义为提交前门，`verify:core` 定义为核心契约门，`verify:full` 定义为阶段/发布门；明确三者不是简单的包含关系。
 - 为每次验证输出机器可读摘要，并保留最近若干次本地结果用于比较冷/热反馈。
 - 验收：开发者可根据改动类型在 30 秒内选出正确命令；一次失败能明确定位到 selector、typecheck、test、build 或 recovery 阶段。
+
+本轮实现与证据（2026-08-09）：
+
+- `package.json` 的三个入口统一由 `scripts/run-verification-gate.mjs` 编排。`verify:changed` 只运行一次 `check:repo` 和一次 selector，并复用 selector 计划执行受影响 typecheck、测试及必要的 App build；不再把 `typecheck:changed`、`test:changed` 作为嵌套步骤重复调用。`verify:core` 依次执行仓库门、全 workspace typecheck、核心契约测试；`verify:full` 依次执行仓库门、完整测试、一次全 workspace typecheck、`build:app` 和 recovery。
+- 每个阶段均记录 `status`、`reason`、`exitCode`、`signal`、`durationMs`、命令、stdout/stderr 摘要及结构化 `details`；失败报告包含 `failedStage`，后续阶段明确标记为 `skipped` 并记录阻塞原因。`skipped` 不等于通过。
+- 每次运行写入被 `.gitignore` 忽略的 `.codex_tmp/verification-reports/latest.json`，并保留最近 5 份带时间戳的历史报告；报告不进入 Git，不依赖用户运行时数据根，避免把诊断产物混入正式应用数据。
+- `scripts/run-affected-verification.mjs --list --json` 输出纯 JSON 的 `affected-verification-plan`，人类输出不会污染机器结果；验证门脚本和其测试已加入 affected selector 的显式回归测试集，后续改动会自动扩大到选择器回归范围。
+- 定向回归：`scripts/run-verification-gate.test.mjs` 8/8，连同 selector 输入回归共 24/24；`node --check` 和 `git diff --check` 通过；`pnpm.cmd run check:repo` 为 33/33。`verify:core` 真实退出码为 0，总耗时 `10.38s`，`check:repo`、`typecheck`、`tests` 分别为 `1.86s`、`1.58s`、`6.74s`，核心集合为 7 个测试文件、127 项。`verify:full` 真实退出码为 0，总耗时 `191.58s`，阶段为 `check:repo 1.86s`、`tests 115.02s`、`typecheck 0.61s`、`build 73.62s`、`recovery 0.48s`，完整测试为 277 个测试文件、1958 passed、1 skipped；只出现一次明确 workspace typecheck，App build 和 recovery 均通过。最终 `verify:changed` 真实退出码为 0，总耗时 `121.08s`；本次工作树 10 个变更文件、0 个 affected package，因验证脚本变化进入 `changed-fallback`，selector 回归 5 个文件/52 项和 fallback 完整测试均通过，typecheck 因无 affected package 标记为 `skipped`，build 因无 App build-sensitive 输入标记为 `skipped`。
 
 ### 阶段 5：状态契约重构（后续阶段，不与本任务前四阶段合并）
 
@@ -137,21 +145,32 @@
 | 长脏树行为 | 历史样本为 177 文件/27 包、182.01 秒；当前样本为 14 文件/0 affected package，changed-fallback，planning/fingerprint/selection total 约 `350.46ms / 57.24ms / 407.72ms`，实际 affected 门约 153.48 秒 | 不再默认为日常内循环；显式升级到提交前/阶段门 | 命令模式和日期化测量报告 |
 | 根脚本改动失效范围 | 初始规则中任意 `package.json` 可能触发全量 typecheck | 按语义分类 | 当前脚本-only 工作树已收窄为 `0` affected package；契约变化回归仍保留 `27/27` |
 | CSS/资源构建敏感性 | 本轮 CSS 样本被识别为 App build-sensitive，未启动测试 | 显式触发 App build-sensitive 检查 | selector 报告 + App build 证据 |
-| 完整门 typecheck | 初始 `build` 与 `verify:full` 存在重复入口 | 一次明确 typecheck | `build:app` 已拆出；阶段 3 已通过 App-only 构建冒烟，完整门仍由阶段 0 的全门证据和后续阶段复核 |
+| 完整门 typecheck | 初始 `build` 与 `verify:full` 存在重复入口 | 一次明确 typecheck | `verify:full` 现在直接调用 `build:app`；阶段 3 App-only 构建和阶段 4 完整门日志共同证明只保留一次明确 workspace typecheck |
 | Electron 专项门 | 多个命令重复 build | build once, verify many 或 fingerprint 复用 | 专项套件日志 |
 | 状态转移可解释性 | `next` 分散、无唯一允许边表 | manifest + runtime validation + graph | Harness 特征测试 |
 | RunContext ownership | 74 字段、跨 61 个生产文件访问 | 分域 owner 表，先收敛四组高频状态 | 类型/特征测试 + 导航文档 |
 
 ## Verification Order
 
+日常小改动只运行：
+
 ```powershell
-pnpm.cmd run check:repo
-pnpm.cmd run typecheck:changed
-pnpm.cmd run test:changed
 pnpm.cmd run verify:changed
+```
+
+公共契约、workspace manifest、Harness、Runner、Context 或 Memory 改动升级为：
+
+```powershell
 pnpm.cmd run verify:core
+```
+
+阶段完成或发布前运行：
+
+```powershell
 pnpm.cmd run verify:full
 ```
+
+`check:repo`、`typecheck:changed`、`test:changed` 仍保留为隔离诊断入口，不应与 `verify:changed` 连续执行而重复计算。`verify:changed` 默认基线为 `origin/main`，可用 `pnpm.cmd run verify:changed -- --base=<ref>` 或 `LITTLESHEEP_BASE_REF=<ref> pnpm.cmd run verify:changed` 覆盖；基线缺失时先获取基线或显式指定 ref。selector 无法证明范围时扩大验证或进入 fallback；报告中的 `skipped` 必须结合 reason 解读，不等于成功。
 
 阶段 0-4 的日常开发不得因为一次小改动直接运行所有真实 Provider、Electron 长负载和 Memory soak 门；这些专项门在阶段完成或发布前按其自身任务书执行。阶段 5 任何公共契约或状态机变更仍必须至少执行 `verify:core`，并在阶段结束执行 `verify:full`。
 
@@ -179,4 +198,4 @@ pnpm.cmd run verify:full
 - 阶段 0 已完成；剩余风险是完整测试计数随运行时数据状态小幅波动，及 fingerprint 扫描仍明显高于纯 planning 成本。报告已拆分两者，后续优化应针对扫描范围而不是误判 selector。
 - 阶段 2 已完成并单独提交；顶层 `branding.config.json`、`littlesheep.config.json` 不属于当前编译输入，故保持在阶段 3 fingerprint 范围之外。workspace manifest、特殊 Git 状态、共享 `GLOBAL_TYPECHECK_FILES` 和非字符串 dependency 形状均已纳入保守校验或 fail-closed 处理。
 - 阶段 3 已实现跨 Electron/Memory 入口的 App/workspace build-once/fingerprint 复用和过期产物拒绝；仍不把外部 Provider 运行时版本纳入本地 sidecar 的证明范围。
-- 阶段 4、5 仍未开始。
+- 阶段 4 的代码实现、定向回归、`verify:changed`、`verify:core` 和 `verify:full` 已完成；阶段 5 仍未开始。本阶段提交时必须排除用户已有的 `test/e2e-webhook.test.ts` 改动。

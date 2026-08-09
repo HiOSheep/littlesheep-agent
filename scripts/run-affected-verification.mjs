@@ -19,13 +19,14 @@ import {
 } from './lib/affected-verification-inputs.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const args = new Set(process.argv.slice(2));
+const args = new Set(process.argv.slice(2).filter((value) => value !== '--'));
 const baseArg = process.argv.find((value) => value.startsWith('--base='));
 const base = baseArg?.slice('--base='.length) || process.env.LITTLESHEEP_BASE_REF || 'origin/main';
 const runTypecheck = !args.has('--tests-only');
 const runTests = !args.has('--typecheck-only');
 const runBuildSensitive = !args.has('--tests-only') && !args.has('--typecheck-only');
 const listOnly = args.has('--list');
+const jsonOnly = args.has('--json');
 const pnpmCli = process.env.npm_execpath;
 
 function run(command, commandArgs, options = {}) {
@@ -108,19 +109,54 @@ const testPlan = createAffectedTestPlan(
 const appBuildSensitiveFiles = [...changedFiles].filter((file) => (
   isAppBuildSensitivePath(file, affectedProjectNames, rootPackageChange)
 ));
-console.log(`[affected] base: ${base} (${mergeBase})`);
-console.log(`[affected] files: ${changedFiles.size}`);
-console.log(`[affected] packages: ${[...affectedProjectNames].sort().join(', ') || 'none'}`);
-if (rootPackageChange) console.log(`[affected] package.json classification: ${rootPackageChange.reason}`);
-if (rootPackageChange?.testInvalidatingScriptKeys.length > 0) {
-  console.log(`[affected] test-invalidating scripts: ${rootPackageChange.testInvalidatingScriptKeys.join(', ')}`);
+if (!jsonOnly) {
+  console.log(`[affected] base: ${base} (${mergeBase})`);
+  console.log(`[affected] files: ${changedFiles.size}`);
+  console.log(`[affected] packages: ${[...affectedProjectNames].sort().join(', ') || 'none'}`);
+  if (rootPackageChange) console.log(`[affected] package.json classification: ${rootPackageChange.reason}`);
+  if (rootPackageChange?.testInvalidatingScriptKeys.length > 0) {
+    console.log(`[affected] test-invalidating scripts: ${rootPackageChange.testInvalidatingScriptKeys.join(', ')}`);
+  }
+  if (workspaceManifestGraph?.pathSetChanged) {
+    const { added, removed } = workspaceManifestGraph.pathChanges;
+    console.log(`[affected] workspace manifest paths: +${added.length} / -${removed.length}`);
+  }
+  if (appBuildSensitiveFiles.length > 0) {
+    console.log(`[affected] app build-sensitive files: ${appBuildSensitiveFiles.sort().join(', ')}`);
+  }
 }
-if (workspaceManifestGraph?.pathSetChanged) {
-  const { added, removed } = workspaceManifestGraph.pathChanges;
-  console.log(`[affected] workspace manifest paths: +${added.length} / -${removed.length}`);
-}
-if (appBuildSensitiveFiles.length > 0) {
-  console.log(`[affected] app build-sensitive files: ${appBuildSensitiveFiles.sort().join(', ')}`);
+
+const planReport = {
+  schemaVersion: 1,
+  report: 'affected-verification-plan',
+  base,
+  mergeBase,
+  changedFiles: [...changedFiles].sort(),
+  directPackages: [...changedProjectNames].sort(),
+  affectedPackages: [...affectedProjectNames].sort(),
+  typecheckConfigPaths: configPaths,
+  testPlan,
+  appBuildSensitiveFiles: [...appBuildSensitiveFiles].sort(),
+  appBuildSensitive: appBuildSensitiveFiles.length > 0,
+  rootPackageChange: rootPackageChange
+    ? {
+      reason: rootPackageChange.reason,
+      requiresGlobalTypecheck: Boolean(rootPackageChange.requiresGlobalTypecheck),
+      testInvalidatingScriptKeys: rootPackageChange.testInvalidatingScriptKeys ?? [],
+    }
+    : null,
+  workspaceManifestFiles: workspaceManifestFiles.sort(),
+  workspaceManifestGraph: workspaceManifestGraph
+    ? {
+      pathSetChanged: Boolean(workspaceManifestGraph.pathSetChanged),
+      pathChanges: workspaceManifestGraph.pathChanges,
+    }
+    : null,
+};
+
+if (jsonOnly) {
+  console.log(JSON.stringify(planReport, null, 2));
+  process.exit(0);
 }
 
 if (listOnly) process.exit(0);
