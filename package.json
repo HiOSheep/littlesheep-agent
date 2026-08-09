@@ -34,6 +34,7 @@
     "verify:changed": "node scripts/run-verification-gate.mjs --gate=changed",
     "verify:core": "node scripts/run-verification-gate.mjs --gate=core",
     "verify:full": "node scripts/run-verification-gate.mjs --gate=full",
+    "verify:task": "node scripts/run-task-verification.mjs",
     "verify:provider": "node scripts/verify-provider-smoke.mjs",
     "verify:electron-continuity": "pnpm run ensure:app-build && node scripts/verify-electron-runtime-continuity.mjs",
     "verify:electron-deepseek-reply-continuity": "pnpm run ensure:app-build && node scripts/verify-electron-deepseek-reply-continuity.mjs",

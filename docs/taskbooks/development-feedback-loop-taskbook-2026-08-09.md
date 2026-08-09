@@ -1,10 +1,10 @@
 # LS 开发反馈环提速任务书 2026-08-09
 
-最后更新：2026-08-09 21:15:00
+最后更新：2026-08-09 23:25:00
 
 ## 状态
 
-进行中。阶段 0、阶段 2、阶段 3、阶段 4 已完成并分别形成独立提交且推送到 GitHub；阶段 1 和阶段 5 尚未开始。本文是一个可单独设置为阶段目标的执行基线；完成任一阶段后，必须更新本文的状态、证据和实际边界，并提交、推送一次，再决定是否进入下一阶段。
+进行中。阶段 0、阶段 1、阶段 2、阶段 3、阶段 4 已完成并分别形成独立提交且推送到 GitHub；阶段 5 尚未开始。本文是一个可单独设置为阶段目标的执行基线；完成任一阶段后，必须更新本文的状态、证据和实际边界，并提交、推送一次，再决定是否进入下一阶段。
 
 ## Goal
 
@@ -68,12 +68,21 @@
 
 ### 阶段 1：任务级内循环
 
-状态：未开始。
+状态：已完成。本阶段将以独立提交提交并推送；阶段 5 不因本阶段完成而自动开始。
 
 - 增加不依赖 `origin/main` 的任务级入口，允许显式传入文件、package 或 task manifest。
 - 为 Harness、Runner、Memory、App Renderer/Main 分别提供最小可执行示例：单文件相关测试、包级 typecheck、必要时 App web typecheck。
 - 保留 `vitest` watch/related 的源码别名路径，避免为了单元测试先构建所有 workspace 包。
 - 验收目标：典型单文件纯逻辑改动的首次反馈 <= 10 秒；热反馈中位数 <= 3 秒；典型单包改动不超过 30 秒。超出时必须在报告中指出具体阶段。
+
+本轮实现与证据（2026-08-09）：
+
+- 新增 `pnpm.cmd run verify:task` 与 `scripts/run-task-verification.mjs`。入口必须接收显式 `--files=<path>`、`--package=<name>` 或 `--manifest=<path>`，不读取 `origin/main`，不合并工作树其他改动；越界、缺失文件、空任务或无可执行输入均 fail-closed。
+- 单文件任务优先寻找同路径的 `.test.*`/`.spec.*`，例如 `continuation-intent.ts` 只运行 `continuation-intent.test.ts`；找不到直接测试时才使用 `vitest related`，并把 fallback 写入计划。Harness、Runner、Memory 和 App Main 的最小文件任务均可执行；App Renderer/shared 输入会分离执行 `packages/app/tsconfig.web.json`，不会重复 typecheck 同一配置。
+- package 任务默认只做包级 typecheck，避免 Runner 的整包测试自动触发 Memory v3 和 Runner 集成套件；需整包测试时使用 `--package-tests`，任务 manifest 可固定显式测试文件、typecheck 和 App web typecheck。
+- 每次任务执行保存 `task-verification` JSON 报告，包含 explicit task boundary、测试计划、typecheck config、阶段耗时、失败阶段和最近历史；报告写入被忽略的 `.codex_tmp/verification-reports/task/`。
+- 真实样本：Harness 单文件 `continuation-intent.ts` 为 `2.70s`，直接测试 5/5；App Renderer 单文件 `input-size.ts` 为 `2.94s`，直接测试 5/5 并完成 App web typecheck；App Main `close-policy.ts` 为 `2.86s`，直接测试 2/2；Memory `task-relevance.ts` 为 `2.52s`，直接测试 8/8；Runner 包级 typecheck 为 `1.25s`。此前未收敛的 `vitest related` 样本约 `59.08s`、28 个测试文件，已作为诊断证据保留，不能冒充任务级目标达成。
+- 定向回归：`scripts/run-task-verification.test.mjs` 8/8，连同阶段 4 验证门和 selector 回归共 32/32；验证门脚本语法通过。Harness 单文件热反馈连续三次为 `2.924s / 2.695s / 2.693s`，中位数 `2.695s`，每次均实际执行直接测试和 package typecheck；因此满足热反馈中位数 <= 3 秒。阶段 1 最终 `verify:changed` 退出码为 0，总耗时 `127.51s`，278 个测试文件、1966 passed、1 skipped；`verify:core` 退出码为 0，总耗时 `11.45s`，7 个测试文件、127 passed；`verify:full` 退出码为 0，总耗时 `205.55s`，278 个测试文件、1966 passed、1 skipped，包含一次 workspace typecheck、App build 和 recovery。用户已有 `test/e2e-webhook.test.ts` 仍被纳入 changed fallback 的测试输入，但没有被本阶段暂存或提交。
 
 ### 阶段 2：修正 affected 选择器
 
@@ -142,6 +151,9 @@
 | 单文件热反馈 | selector dry-run planning/fingerprint/selection total 两次 `24.56/66.37/90.96ms`、`14.01/64.71/78.74ms`；完整 related 门不以 selector 代替 | 中位数 <= 3 秒 | `measure:verification` 重复报告 + 定向门日志 |
 | 单文件冷反馈 | selector planning/selection total 约 `24.56/90.96ms`；完整冷启动反馈由阶段门实跑记录 | <= 10 秒 | `measure:verification` 报告；不得用 selector 单独替代完整反馈 |
 | 单包 affected 反馈 | selector selection total 约 `93.52ms`，直接/受影响包 `1/9`；完整 changed 门单独记录 | <= 30 秒（不含真实外部 Provider） | 选择器报告 + 定向门日志 |
+| 任务级单文件冷反馈 | 初次 related fallback `59.08s`；直接测试优先后 Harness `2.70s`、App Renderer `2.94s`、App Main `2.86s`、Memory `2.52s` | <= 10 秒 | `verify:task` task JSON 报告；必须包含测试和 typecheck 阶段 |
+| 任务级单文件热反馈 | Harness 直接测试任务三次总耗时 `2.924s / 2.695s / 2.693s`，中位数 `2.695s`；阶段 selector `17-18ms`、测试约 `1.33-1.59s`、typecheck 约 `1.31-1.35s` | 中位数 <= 3 秒 | 三份 `task-verification` JSON 报告 `heat-1/2/3.json` |
+| 任务级单包 typecheck | Runner package task `1.25s`；整包测试曾为 `48.05s`，包含重型集成套件 | <= 30 秒 | 默认 package task 只做 typecheck；整包测试必须显式升级 |
 | 长脏树行为 | 历史样本为 177 文件/27 包、182.01 秒；当前样本为 14 文件/0 affected package，changed-fallback，planning/fingerprint/selection total 约 `350.46ms / 57.24ms / 407.72ms`，实际 affected 门约 153.48 秒 | 不再默认为日常内循环；显式升级到提交前/阶段门 | 命令模式和日期化测量报告 |
 | 根脚本改动失效范围 | 初始规则中任意 `package.json` 可能触发全量 typecheck | 按语义分类 | 当前脚本-only 工作树已收窄为 `0` affected package；契约变化回归仍保留 `27/27` |
 | CSS/资源构建敏感性 | 本轮 CSS 样本被识别为 App build-sensitive，未启动测试 | 显式触发 App build-sensitive 检查 | selector 报告 + App build 证据 |
@@ -198,4 +210,4 @@ pnpm.cmd run verify:full
 - 阶段 0 已完成；剩余风险是完整测试计数随运行时数据状态小幅波动，及 fingerprint 扫描仍明显高于纯 planning 成本。报告已拆分两者，后续优化应针对扫描范围而不是误判 selector。
 - 阶段 2 已完成并单独提交；顶层 `branding.config.json`、`littlesheep.config.json` 不属于当前编译输入，故保持在阶段 3 fingerprint 范围之外。workspace manifest、特殊 Git 状态、共享 `GLOBAL_TYPECHECK_FILES` 和非字符串 dependency 形状均已纳入保守校验或 fail-closed 处理。
 - 阶段 3 已实现跨 Electron/Memory 入口的 App/workspace build-once/fingerprint 复用和过期产物拒绝；仍不把外部 Provider 运行时版本纳入本地 sidecar 的证明范围。
-- 阶段 4 的代码实现、定向回归、`verify:changed`、`verify:core` 和 `verify:full` 已完成；阶段 5 仍未开始。本阶段提交时必须排除用户已有的 `test/e2e-webhook.test.ts` 改动。
+- 阶段 1 的任务级入口和直接测试优先策略已完成，阶段 4 的代码实现、定向回归、`verify:changed`、`verify:core` 和 `verify:full` 已完成；阶段 1 质量门、提交和推送已完成，阶段 5 仍未开始。本阶段提交时必须排除用户已有的 `test/e2e-webhook.test.ts` 改动。

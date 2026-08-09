@@ -88,6 +88,7 @@ const FULL_TEST_SCRIPT_KEYS = new Set([
 export const AFFECTED_SELECTOR_IMPLEMENTATION_FILES = Object.freeze([
   'scripts/run-affected-verification.mjs',
   'scripts/run-verification-gate.mjs',
+  'scripts/run-task-verification.mjs',
   'scripts/lib/affected-verification-base.mjs',
   'scripts/lib/affected-verification-inputs.mjs',
   'scripts/measure-verification-baseline.mjs',
@@ -97,6 +98,7 @@ export const AFFECTED_SELECTOR_IMPLEMENTATION_FILES = Object.freeze([
 export const AFFECTED_SELECTOR_REGRESSION_TESTS = Object.freeze([
   'scripts/run-affected-verification.test.mjs',
   'scripts/run-verification-gate.test.mjs',
+  'scripts/run-task-verification.test.mjs',
   'scripts/lib/affected-verification-inputs.test.mjs',
   'scripts/measure-verification-baseline.test.mjs',
   'test/development-workflow.test.ts',

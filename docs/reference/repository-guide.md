@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-08-09 18:32:00
+最后更新：2026-08-09 23:25:00
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
@@ -208,6 +208,8 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 - `pnpm.cmd run ensure:app-build`：准备并校验 Electron 运行时；App 输入和 `out/**` fingerprint 新鲜时返回 `reused`，否则构建并原子写入 sidecar。`pnpm.cmd run assert:app-build` 只读断言，不会触发构建，过期、缺失、篡改或来源不明的 App 产物会 fail-closed。
 - `pnpm.cmd run ensure:workspace-build -- --package=@littlesheep/runner`：构建或复用目标包及其传递 workspace 依赖闭包，并在各目标 `dist/` 写入独立 sidecar；`pnpm.cmd run assert:workspace-build -- --package=<name>` 只断言，不会构建。App `out` sidecar 证明桌面应用入口与 Electron runtime 契约；workspace `dist` sidecar 证明声明的源码/依赖闭包和本地产物，两者不能互相替代。
 - `node scripts/run-verified-electron.mjs <script> [args...]`：在启动 Electron 专项脚本前只读断言 App fingerprint，并使用 sidecar 绑定且重新校验过的 prepared Electron 可执行文件；DeepSeek V4 tokenizer 和 Memory Provider 门通过此入口运行。
+- `pnpm.cmd run verify:task -- --files=<path>`：不读取 `origin/main`，只按显式任务文件执行直接同名测试或必要的 related fallback，并对所属 package 做局部 typecheck；同目录存在 `<name>.test.*`/`<name>.spec.*` 时优先只运行它。Renderer 或 shared 输入会单独执行 App web typecheck。该入口不会读取其他脏文件，也不会传播到 dependents，因此完成后仍需运行 `verify:changed`。
+- `pnpm.cmd run verify:task -- --package=<name>`：包级快速入口，默认只做该 package 的 typecheck；需要整包测试时显式加 `--package-tests`，因为 Runner 等包包含 30 秒以上的 Memory/Runner 集成套件。`--manifest=<path>` 可把文件、测试、typecheck 和 App web typecheck 边界固定为 JSON。
 - `pnpm.cmd run verify:changed`：日常源码/测试改动的提交前门。默认以 `origin/main` 为基线，合并已提交、暂存、未暂存和未跟踪文件，计算变更 package 及其传递依赖方；一次 selector 计划同时驱动受影响 typecheck、Vitest 和必要的 `ensure:app-build`，避免重复计算。可用 `pnpm.cmd run verify:changed -- --base=<ref>` 或环境变量 `LITTLESHEEP_BASE_REF=<ref>` 指定基线；基线缺失时先获取基线或显式传入 ref，不能把缺失基线当作无变更。报告保存在被忽略的 `.codex_tmp/verification-reports/`，包含每阶段 `status`、`durationMs`、命令和输出摘要；`skipped` 只表示该阶段无适用输入，不等于通过。
 - `pnpm.cmd run verify:core`：核心契约升级门，依次执行 `check:repo`、全 workspace typecheck 和 `test:core-eval`，适用于 Harness、Runner、Context、Memory、公共协议和跨包依赖变更；不执行 App build 或 recovery。2026-08-09 当前该集合实跑为 7 个测试文件、127 项；测试数量随源码变化，以 Vitest 实际输出为准。
 - `pnpm.cmd run verify:full`：阶段结束或发布前门，依次执行 `check:repo`、完整测试、一次全 workspace typecheck、`build:app` 和 `verify:app-recovery`；不包含 Provider、Electron continuity 或 Memory soak 专项门。失败时以报告中的 `failedStage` 为准，不用最终摘要掩盖前置阶段失败。
@@ -228,6 +230,7 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 - `scripts/sync-typescript-projects.mjs`：同步或检查 TypeScript project references，避免手工维护的引用图与 package manifest 分叉。
 - `scripts/run-affected-verification.mjs`：按 Git 变更执行受影响 typecheck 与 related tests；配置文件变化不应误触发全部运行时测试；缺失 Git 基线必须 fail-closed，Vitest fallback 使用已解析的 merge-base 提交。
 - `scripts/run-verification-gate.mjs`：统一 changed/core/full 三层门的阶段编排、计时、失败定位和本地 JSON 历史；它只负责调用既有命令，不把报告目录中的生成物纳入 Git。
+- `scripts/run-task-verification.mjs`：按显式文件、package 或 JSON manifest 执行任务级内循环；不依赖 Git 基线，直接测试优先，任务范围无法生成测试或 typecheck 时 fail-closed。
 - `scripts/measure-verification-baseline.mjs`：只读生成任务级/脏工作树验证选择和阶段耗时摘要；默认 dry-run，支持显式文件、package 或 JSON manifest 样本，报告 planning/fingerprint/command/total 分段耗时、变更来源、full/explicit/related/deleted 测试输入、fallback、缓存线索和构建 fingerprint；`--run` 才执行既有质量门，不替代 `verify:changed` 或 `verify:full`。命令状态明确区分 `executed`、`skipped` 和 `failed`；例如无 affected package 的 `--run=typecheck` 可以是 `exitCode=0`、`signal=null` 但状态为 `skipped`，不能把 skipped 当作实际 typecheck 通过。
 - `scripts/verify-app-recovery-sources.mjs`：只读检查用户数据中的工作区、会话、执行日志和恢复索引。
 - `scripts/verify-provider-smoke.mjs`：使用本机安全存储中的凭证执行脱敏 Provider 冒烟，覆盖最小聊天、reasoning、工具调用、流式中断和 usage 对账；不得输出或写入明文密钥。
@@ -282,7 +285,7 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 6. UI 变更遵守 [ui-interaction-guidelines.md](../principles/ui-interaction-guidelines.md)；核心流程变更遵守 [core-agent-flow-guidelines.md](../principles/core-agent-flow-guidelines.md)；跨模块重构同步更新 [架构决策报告](../decision/architecture-decision-report.md)。
 7. 每次应用构建都通过 `scripts/build-app.ps1` 或根 `build-app.bat` 刷新快捷方式；不得把机器绝对路径写进脚本。
 8. 插件变更必须同时验证 manifest 校验、未启用插件不加载、失败隔离、Runner 重建迁移和停用清理；本地代码默认不信任。
-9. 日常修改先运行 `verify:changed`；公共契约、workspace manifest、Harness、Runner、Context 或 Memory 改动升级到 `verify:core`；阶段完成或发布前运行 `verify:full`。三者是按风险升级的入口，不是简单的包含关系。完整门内部顺序为 `check:repo`、全量测试、一次全 workspace typecheck、App build 和恢复源检查；失败时根据报告的 `failedStage` 继续定位，不用快速门替代阶段完成证据。若 selector 无法证明范围，扩大验证或进入 fallback；若报告为 `skipped`，需确认其 reason 后再判断是否满足验收。
+9. 纯逻辑单文件先运行 `verify:task -- --files=<path>`，包级契约先运行 `verify:task -- --package=<name>`；公共契约、workspace manifest、Harness、Runner、Context 或 Memory 改动升级到 `verify:core`；阶段完成或发布前运行 `verify:full`。任务门不替代 affected 门，三层阶段门也不是简单的包含关系。完整门内部顺序为 `check:repo`、全量测试、一次全 workspace typecheck、App build 和恢复源检查；失败时根据报告的 `failedStage` 继续定位，不用快速门替代阶段完成证据。若 selector 无法证明范围，扩大验证或进入 fallback；若报告为 `skipped`，需确认其 reason 后再判断是否满足验收。
 10. 当前运行时的 LS 核心源码是只读安全边界：内置 `write`、`edit`、`exec` 不得修改自动发现的核心源码根。未来开放自我修改前，必须先建立隔离工作树、检查点、完整验证、用户审查和自动回滚，不能删除现有闸门后直接开放。
 11. workspace package 依赖变化后运行 `sync:tsconfig`，不要手改生成的 references。`typecheck` 会产生被忽略的声明和 `.tsbuildinfo`，用于保证跨包契约正确并加速下一轮。
 12. 说明文档默认使用中文；代码标识、协议字段、命令、路径和供应商产品名保留英文。确有维护价值的英文内容只能作为补充版本，不能取代中文正式文档。

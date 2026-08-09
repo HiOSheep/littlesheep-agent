@@ -200,6 +200,7 @@ async function checkCanonicalFiles() {
     'scripts/sync-typescript-projects.mjs',
     'scripts/run-affected-verification.mjs',
     'scripts/run-verification-gate.mjs',
+    'scripts/run-task-verification.mjs',
     'scripts/verify-memory-v3-soak.mjs',
     'scripts/verify-memory-v3-compaction-continuity.mjs',
     'scripts/verify-electron-deepseek-compaction-continuity.mjs',
