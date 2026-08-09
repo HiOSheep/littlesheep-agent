@@ -6,6 +6,12 @@ export const MAX_JSON_BODY_BYTES = 1024 * 1024
 export const SSE_HEARTBEAT_INTERVAL_MS = 15_000
 export const MAX_SSE_BUFFERED_BYTES = 512 * 1024
 
+// A response can report a pipe failure on a later turn of the event loop,
+// after the state checks in writeSseChunk have passed. Keep one error listener
+// per SSE response so that late client disconnects never become uncaught Main
+// process exceptions.
+const sseResponseStates = new WeakMap<ServerResponse, { closed: boolean }>()
+
 export interface LocalAppApiRequest {
   req: IncomingMessage
   res: ServerResponse
@@ -29,6 +35,7 @@ export function openSse(
   res: ServerResponse,
   heartbeatIntervalMs = SSE_HEARTBEAT_INTERVAL_MS,
 ): () => void {
+  const responseState = ensureSseResponseState(res)
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
     'Cache-Control': 'no-cache, no-transform',
@@ -40,6 +47,7 @@ export function openSse(
   const cleanup = () => {
     if (closed) return
     closed = true
+    responseState.closed = true
     clearInterval(timer)
     res.removeListener('close', cleanup)
     res.removeListener('finish', cleanup)
@@ -62,14 +70,39 @@ export function writeSse(res: ServerResponse, event: string, data: unknown): boo
 }
 
 function writeSseChunk(res: ServerResponse, chunk: string): boolean {
-  if (res.destroyed || res.writableEnded) return false
+  const responseState = ensureSseResponseState(res)
+  if (responseState.closed || res.destroyed || res.writableEnded) return false
   const writableLength = Number.isFinite(res.writableLength) ? res.writableLength : 0
   if (writableLength + Buffer.byteLength(chunk, 'utf8') > MAX_SSE_BUFFERED_BYTES) {
     res.destroy()
     return false
   }
-  res.write(chunk)
-  return true
+  try {
+    res.write(chunk)
+    return true
+  } catch {
+    // The client may close the socket between the state check and write().
+    // Treat that race as a closed observer instead of an uncaught Main error.
+    responseState.closed = true
+    return false
+  }
+}
+
+function ensureSseResponseState(res: ServerResponse): { closed: boolean } {
+  const existing = sseResponseStates.get(res)
+  if (existing) return existing
+  const state = { closed: false }
+  const markClosed = () => {
+    state.closed = true
+  }
+  // Deliberately retain this listener for the response lifetime. A queued
+  // write can fail after close/finish, and removing the listener too early
+  // would reintroduce an uncaught EventEmitter error.
+  res.on('error', markClosed)
+  res.once('close', markClosed)
+  res.once('finish', markClosed)
+  sseResponseStates.set(res, state)
+  return state
 }
 
 export function readJson(

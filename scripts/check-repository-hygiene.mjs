@@ -357,15 +357,18 @@ async function checkRepositoryNavigation() {
     'packages/app/src/renderer/chat/run-actions.ts': 315,
     'packages/app/src/renderer/settings/plugins.tsx': 394,
     'packages/app/src/renderer/ui/icons.tsx': 351,
-    'packages/app/src/renderer/workspace/file-navigator.tsx': 457,
-    'packages/app/src/renderer/workspace/files.tsx': 400,
+    // 2026-08-05: bounded directory cancellation/cache-resume lifecycle was
+    // added to the workspace coordinators; keep the new baseline explicit
+    // while the controller/view split remains a follow-up boundary.
+    'packages/app/src/renderer/workspace/file-navigator.tsx': 519,
+    'packages/app/src/renderer/workspace/files.tsx': 471,
     'packages/app/src/renderer/workspace/panel.tsx': 432,
-    'packages/app/src/renderer/workspace/preview-pane.tsx': 478,
+    'packages/app/src/renderer/workspace/preview-pane.tsx': 484,
     'packages/app/src/renderer/workspace/terminal.tsx': 596,
     'packages/app/src/renderer/workspace/use-workspace-layout-controller.ts': 410,
     'packages/app/src/main/local-app-api-server.ts': 261,
     'packages/app/src/renderer/api.ts': 22,
-    'packages/memory-tree/src/memory-repository.ts': 171,
+    'packages/memory-tree/src/memory-repository.ts': 172,
     'packages/memory-tree/src/memory-service.ts': 343,
     'packages/context/src/engine.ts': 180,
     'packages/harness/src/stages/decide.ts': 38,

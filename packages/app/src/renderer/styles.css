@@ -11877,3 +11877,490 @@ body.is-resizing-column .settings-sidebar-resizer::before {
   }
 
 }
+
+/* Git-backed workspace review. Kept isolated from the existing file editor styles. */
+.workspace-review {
+  container-type: inline-size;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  flex-direction: column;
+  color: var(--text);
+  background: var(--bg);
+}
+
+.workspace-review-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 39px;
+  padding: 5px 7px;
+  border-bottom: 1px solid var(--border);
+}
+
+.workspace-review-view-switch {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  padding: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ui);
+}
+
+.workspace-review-view-switch button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 48px;
+  height: 25px;
+  padding: 0 8px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-ui);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.workspace-review-view-switch button:hover,
+.workspace-review-view-switch button:focus-visible {
+  color: var(--text);
+  background: var(--control-hover);
+}
+
+.workspace-review-view-switch button.active {
+  color: var(--text-strong);
+  background: var(--surface-2);
+}
+
+.workspace-review-view-switch small {
+  min-width: 16px;
+  color: var(--muted-2);
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.workspace-review-repository-meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.workspace-review-repository-meta > span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-review-repository-meta small {
+  flex: 0 0 auto;
+  color: var(--muted-2);
+  font-size: 10px;
+}
+
+.workspace-review-icon-button {
+  display: inline-grid;
+  width: 27px;
+  height: 27px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-ui);
+  cursor: pointer;
+}
+
+.workspace-review-icon-button:hover,
+.workspace-review-icon-button:focus-visible {
+  color: var(--text);
+  background: var(--control-hover);
+  border-color: var(--border);
+}
+
+.workspace-review-icon-button:disabled {
+  color: var(--muted-2);
+  background: transparent;
+  border-color: transparent;
+  cursor: default;
+  opacity: 0.55;
+}
+
+.workspace-review-icon-button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.workspace-review-icon-button.refreshing svg {
+  animation: workspace-review-spin 900ms linear infinite;
+}
+
+@keyframes workspace-review-spin {
+  to { transform: rotate(360deg); }
+}
+
+.workspace-review-content,
+.workspace-review-activity {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.workspace-review-content {
+  display: flex;
+  overflow: hidden;
+}
+
+.workspace-review-content > .workspace-placeholder {
+  flex: 1 1 auto;
+}
+
+.workspace-review-activity {
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.workspace-review-layout {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: minmax(190px, 28%) minmax(0, 1fr);
+}
+
+.workspace-review-tree {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+
+.workspace-review-tree-summary {
+  display: flex;
+  min-height: 34px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 9px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.workspace-review-tree-summary > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-review-tree-scroll {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 4px 0 8px;
+}
+
+.workspace-review-tree-branch {
+  min-width: 0;
+}
+
+.workspace-review-tree-row {
+  --review-tree-indent: calc(var(--review-tree-depth, 0) * 13px);
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 27px;
+  grid-template-columns: 17px 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px 2px calc(7px + var(--review-tree-indent));
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.workspace-review-tree-row.file {
+  grid-template-columns: 17px 16px minmax(0, 1fr) auto;
+}
+
+.workspace-review-tree-row:hover,
+.workspace-review-tree-row:focus-visible {
+  color: var(--text);
+  background: var(--control-hover);
+}
+
+.workspace-review-tree-row.selected {
+  color: var(--text-strong);
+  background: rgba(255, 255, 255, 0.075);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.workspace-review-tree-row > .workspace-tree-glyph-icon {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+}
+
+.workspace-review-tree-chevron {
+  display: grid;
+  width: 15px;
+  height: 15px;
+  place-items: center;
+  transition: transform var(--motion-fast) var(--motion-ease);
+}
+
+.workspace-review-tree-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.workspace-review-tree-chevron svg {
+  width: 12px;
+  height: 12px;
+}
+
+.workspace-review-tree-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-review-file-status {
+  display: inline-grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  color: var(--muted-2);
+  font-family: Consolas, ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.workspace-review-file-status.added,
+.workspace-review-file-status.untracked,
+.workspace-review-file-status.copied {
+  color: var(--success);
+}
+
+.workspace-review-file-status.deleted,
+.workspace-review-file-status.conflicted {
+  color: var(--danger);
+}
+
+.workspace-review-file-status.modified,
+.workspace-review-file-status.renamed,
+.workspace-review-file-status.type-changed {
+  color: #e3b861;
+}
+
+.workspace-review-line-counts {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  font-family: Consolas, ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.workspace-review-line-counts.compact {
+  gap: 4px;
+  font-size: 9px;
+}
+
+.workspace-review-line-counts .additions {
+  color: var(--success);
+}
+
+.workspace-review-line-counts .deletions {
+  color: var(--danger);
+}
+
+.workspace-review-diff {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  background: #181818;
+}
+
+.workspace-review-diff-header {
+  display: flex;
+  min-width: 0;
+  min-height: 42px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 8px 5px 10px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.workspace-review-diff-title {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.workspace-review-diff-title strong,
+.workspace-review-diff-title small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-review-diff-title strong {
+  color: var(--text-strong);
+  font-size: 12px;
+}
+
+.workspace-review-diff-title small {
+  color: var(--muted-2);
+  font-size: 10px;
+}
+
+.workspace-review-diff-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.workspace-review-diff-scroll {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+  font-family: Consolas, ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.workspace-review-hunk {
+  min-width: max-content;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.035);
+}
+
+.workspace-review-hunk-header {
+  position: sticky;
+  left: 0;
+  min-width: 100%;
+  padding: 3px 10px;
+  color: #8ab7ff;
+  background: #202a37;
+  border-top: 1px solid rgba(138, 183, 255, 0.12);
+  border-bottom: 1px solid rgba(138, 183, 255, 0.12);
+  white-space: pre;
+}
+
+.workspace-review-diff-line {
+  display: grid;
+  min-width: max-content;
+  grid-template-columns: 42px 42px 18px minmax(max-content, 1fr);
+  min-height: 18px;
+  color: #cfcfcf;
+}
+
+.workspace-review-diff-line.addition {
+  color: #d4f4dc;
+  background: rgba(46, 160, 67, 0.16);
+}
+
+.workspace-review-diff-line.deletion {
+  color: #ffd9d9;
+  background: rgba(218, 54, 51, 0.16);
+}
+
+.workspace-review-diff-line.meta {
+  color: var(--muted-2);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.workspace-review-line-number {
+  display: block;
+  padding: 0 7px 0 4px;
+  color: #777;
+  background: rgba(0, 0, 0, 0.12);
+  border-right: 1px solid rgba(255, 255, 255, 0.04);
+  text-align: right;
+  user-select: none;
+}
+
+.workspace-review-line-marker {
+  color: currentColor;
+  text-align: center;
+  user-select: none;
+}
+
+.workspace-review-diff-line code {
+  display: block;
+  min-width: max-content;
+  padding-right: 16px;
+  font: inherit;
+  white-space: pre;
+}
+
+.workspace-review-notice {
+  margin: 8px;
+  padding: 7px 9px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ui);
+  font-size: 11px;
+}
+
+@container (max-width: 620px) {
+  .workspace-review-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(92px, 34%) minmax(0, 1fr);
+  }
+
+  .workspace-review-tree {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .workspace-review-tree-summary {
+    min-height: 30px;
+  }
+
+  .workspace-review-diff-line {
+    grid-template-columns: 34px 34px 16px minmax(max-content, 1fr);
+  }
+
+  .workspace-review-diff-actions > .workspace-review-line-counts {
+    display: none;
+  }
+}

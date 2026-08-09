@@ -296,6 +296,11 @@ function openRuntime(onCheckpoint) {
     eventJournal,
     embeddingBatchSize: args.embeddingBatch,
     now,
+    // This script explicitly drives each bounded drain and measures storage
+    // behavior, so it opts out of the desktop's quiet-period/idle admission.
+    // Idle gating is covered independently by the isolated acceptance test;
+    // leaving the default here would add 60 seconds to every drain trigger.
+    backgroundSchedule: { initialDelayMs: 0, idlePollMs: 0, backoffMs: 0 },
   });
   return {
     atomStore,

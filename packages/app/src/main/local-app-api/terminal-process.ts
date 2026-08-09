@@ -65,12 +65,37 @@ function createPtyTerminalProcess(
   })
   const dataListeners = new Set<(stream: 'stdout' | 'stderr', text: string) => void>()
   const exitListeners = new Set<(event: { exitCode: number | null; signal: string | null }) => void>()
+  const errorListeners = new Set<(error: Error) => void>()
   let disposed = false
+  let closing = false
+  const emitError = (value: unknown) => {
+    if (disposed) return
+    closing = true
+    const error = toTerminalError(value)
+    for (const listener of errorListeners) listener(error)
+  }
+
+  // node-pty's public typings do not expose errors, but the runtime forwards
+  // output socket errors through EventEmitter. Keep this listener attached for
+  // the lifetime of the PTY so a late ConPTY error cannot become uncaught.
+  const onTerminalError = (error: unknown) => emitError(error)
+  const runtimeTerminal = terminal as typeof terminal & {
+    on?: (event: string, listener: (error: unknown) => void) => unknown
+    _agent?: { inSocket?: { on?: (event: string, listener: (error: unknown) => void) => unknown } }
+  }
+  runtimeTerminal.on?.('error', onTerminalError)
+  // Windows ConPTY writes use a private input socket in node-pty 1.x. It has
+  // no default error handler, so attach one defensively to consume late EOFs.
+  runtimeTerminal._agent?.inSocket?.on?.('error', onTerminalError)
+
   const dataDisposable = terminal.onData((text) => {
     if (disposed) return
     for (const listener of dataListeners) listener('stdout', text)
   })
   const exitDisposable = terminal.onExit((event) => {
+    // Stop accepting input as soon as node-pty reports exit. The underlying
+    // ConPTY input socket can close slightly later and reject queued writes.
+    closing = true
     if (disposed) return
     const signal = event.signal === undefined ? null : String(event.signal)
     for (const listener of exitListeners) listener({ exitCode: event.exitCode, signal })
@@ -83,90 +108,39 @@ function createPtyTerminalProcess(
     dataDisposable.dispose()
     exitDisposable.dispose()
   }
+  const safeWrite = (data: string) => {
+    if (disposed || closing) throw new HttpError(410, 'terminal session has exited')
+    try {
+      terminal.write(data)
+    } catch (error) {
+      emitError(error)
+      throw terminalClosedError(error)
+    }
+  }
   return {
     kind: 'pty',
     label: `${shellConfig.label} PTY`,
-    write: (data) => terminal.write(data),
-    resize: (cols, rows) => terminal.resize(cols, rows),
-    interrupt: () => terminal.write('\x03'),
-    kill: () => {
-      terminal.kill()
-      dispose()
-    },
-    dispose,
-    onData: (listener) => {
-      dataListeners.add(listener)
-      return () => dataListeners.delete(listener)
-    },
-    onExit: (listener) => {
-      exitListeners.add(listener)
-      return () => exitListeners.delete(listener)
-    },
-    onError: () => () => undefined,
-  }
-}
-
-function createSpawnTerminalProcess(root: string, env: NodeJS.ProcessEnv): WorkspaceTerminalProcess {
-  const shellConfig = workspaceShellConfig()
-  const child = spawn(shellConfig.command, shellConfig.args, {
-    cwd: root,
-    env,
-    windowsHide: true,
-  })
-  const dataListeners = new Set<(stream: 'stdout' | 'stderr', text: string) => void>()
-  const exitListeners = new Set<(event: { exitCode: number | null; signal: string | null }) => void>()
-  const errorListeners = new Set<(error: Error) => void>()
-  let disposed = false
-  const onStdout = (chunk: Buffer) => {
-    if (disposed) return
-    for (const listener of dataListeners) listener('stdout', chunk.toString('utf8'))
-  }
-  const onStderr = (chunk: Buffer) => {
-    if (disposed) return
-    for (const listener of dataListeners) listener('stderr', chunk.toString('utf8'))
-  }
-  child.stdout?.on('data', onStdout)
-  child.stderr?.on('data', onStderr)
-  const onError = (error: Error) => {
-    if (disposed) return
-    for (const listener of errorListeners) listener(error)
-  }
-  child.once('error', onError)
-  const onClose = (exitCode: number | null, signal: NodeJS.Signals | null) => {
-    if (disposed) return
-    for (const listener of exitListeners) listener({ exitCode, signal })
-  }
-  child.once('close', onClose)
-  const dispose = () => {
-    if (disposed) return
-    disposed = true
-    dataListeners.clear()
-    exitListeners.clear()
-    errorListeners.clear()
-    child.stdout?.off('data', onStdout)
-    child.stderr?.off('data', onStderr)
-    child.off('error', onError)
-    child.off('close', onClose)
-  }
-  return {
-    kind: 'spawn',
-    label: `${shellConfig.label} fallback`,
-    write: (data) => {
-      const stdin = child.stdin
-      if (!stdin?.writable) throw new HttpError(410, 'terminal session has exited')
-      stdin.write(data)
-    },
-    resize: () => undefined,
-    interrupt: () => {
-      if (process.platform === 'win32' && child.pid) {
-        spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true })
-        return
+    write: safeWrite,
+    resize: (cols, rows) => {
+      if (disposed || closing) throw new HttpError(410, 'terminal session has exited')
+      try {
+        terminal.resize(cols, rows)
+      } catch (error) {
+        emitError(error)
+        throw terminalClosedError(error)
       }
-      child.kill('SIGINT')
     },
+    interrupt: () => safeWrite('\x03'),
     kill: () => {
-      killSpawnedProcessTree(child)
-      dispose()
+      if (disposed) return
+      closing = true
+      try {
+        terminal.kill()
+      } catch (error) {
+        emitError(error)
+      } finally {
+        dispose()
+      }
     },
     dispose,
     onData: (listener) => {
@@ -182,6 +156,141 @@ function createSpawnTerminalProcess(root: string, env: NodeJS.ProcessEnv): Works
       return () => errorListeners.delete(listener)
     },
   }
+}
+
+function createSpawnTerminalProcess(root: string, env: NodeJS.ProcessEnv): WorkspaceTerminalProcess {
+  const shellConfig = workspaceShellConfig()
+  const child = spawn(shellConfig.command, shellConfig.args, {
+    cwd: root,
+    env,
+    windowsHide: true,
+  })
+  const dataListeners = new Set<(stream: 'stdout' | 'stderr', text: string) => void>()
+  const exitListeners = new Set<(event: { exitCode: number | null; signal: string | null }) => void>()
+  const errorListeners = new Set<(error: Error) => void>()
+  let disposed = false
+  let closing = false
+  const onStdout = (chunk: Buffer) => {
+    if (disposed) return
+    for (const listener of dataListeners) listener('stdout', chunk.toString('utf8'))
+  }
+  const onStderr = (chunk: Buffer) => {
+    if (disposed) return
+    for (const listener of dataListeners) listener('stderr', chunk.toString('utf8'))
+  }
+  child.stdout?.on('data', onStdout)
+  child.stderr?.on('data', onStderr)
+  const onError = (error: Error) => {
+    if (disposed) return
+    closing = true
+    for (const listener of errorListeners) listener(toTerminalError(error))
+  }
+  // Keep the process error listener attached through disposal. A kill can
+  // complete asynchronously and removing the last listener reintroduces an
+  // uncaught 'error' event on the child process.
+  child.on('error', onError)
+  const onStdinError = (error: Error) => onError(error)
+  child.stdin?.on('error', onStdinError)
+  const onClose = (exitCode: number | null, signal: NodeJS.Signals | null) => {
+    closing = true
+    if (disposed) return
+    for (const listener of exitListeners) listener({ exitCode, signal })
+  }
+  child.once('close', onClose)
+  const dispose = () => {
+    if (disposed) return
+    disposed = true
+    dataListeners.clear()
+    exitListeners.clear()
+    errorListeners.clear()
+    child.stdout?.off('data', onStdout)
+    child.stderr?.off('data', onStderr)
+    child.off('close', onClose)
+  }
+  return {
+    kind: 'spawn',
+    label: `${shellConfig.label} fallback`,
+    write: (data) => {
+      const stdin = child.stdin
+      if (
+        disposed
+        || closing
+        || !stdin?.writable
+        || stdin.destroyed
+        || stdin.writableEnded
+        || stdin.writableFinished
+      ) {
+        throw new HttpError(410, 'terminal session has exited')
+      }
+      try {
+        stdin.write(data)
+      } catch (error) {
+        onError(error as Error)
+        throw terminalClosedError(error)
+      }
+    },
+    resize: () => undefined,
+    interrupt: () => {
+      if (disposed || closing) return
+      if (process.platform === 'win32' && child.pid) {
+        spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true })
+        return
+      }
+      child.kill('SIGINT')
+    },
+    kill: () => {
+      if (disposed) return
+      closing = true
+      try {
+        killSpawnedProcessTree(child)
+      } finally {
+        dispose()
+      }
+    },
+    dispose,
+    onData: (listener) => {
+      dataListeners.add(listener)
+      return () => dataListeners.delete(listener)
+    },
+    onExit: (listener) => {
+      exitListeners.add(listener)
+      return () => exitListeners.delete(listener)
+    },
+    onError: (listener) => {
+      errorListeners.add(listener)
+      return () => errorListeners.delete(listener)
+    },
+  }
+}
+
+function toTerminalError(value: unknown): Error {
+  if (value instanceof Error) return value
+  return new Error(typeof value === 'string' ? value : 'terminal process failed')
+}
+
+function terminalClosedError(value: unknown): Error {
+  const error = toTerminalError(value)
+  const code = typeof (error as NodeJS.ErrnoException).code === 'string'
+    ? (error as NodeJS.ErrnoException).code!.toUpperCase()
+    : ''
+  const message = error.message.toLowerCase()
+  if (
+    code === 'EOP'
+    || code === 'EPIPE'
+    || code === 'EOF'
+    || code === 'EIO'
+    || code === 'ERR_STREAM_DESTROYED'
+    || code === 'ERR_STREAM_WRITE_AFTER_END'
+    || message.includes('eof')
+    || message.includes('eio')
+    || message.includes('eop')
+    || message.includes('epipe')
+    || message.includes('closed')
+    || message.includes('broken pipe')
+  ) {
+    return new HttpError(410, 'terminal session has exited')
+  }
+  return error
 }
 
 function killSpawnedProcessTree(child: ReturnType<typeof spawn>): void {

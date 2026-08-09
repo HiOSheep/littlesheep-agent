@@ -1,12 +1,15 @@
 # Dependencies
 node_modules/
 .pnpm-store/
+node_modules.link-damaged-*/
+.local/node_modules-recovery-backup-*/
 
 # Build output
 dist/
 packages/*/dist/
 packages/channels/*/dist/
 packages/app/out/
+packages/app/runtime/
 *.tsbuildinfo
 build/
 release/
@@ -28,6 +31,7 @@ memory/*.md.bak
 *.swo
 
 # Caches and temporary files
+.codex_tmp/
 .cache/
 .vite/
 .turbo/

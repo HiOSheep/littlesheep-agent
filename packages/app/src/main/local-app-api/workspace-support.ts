@@ -11,6 +11,15 @@ export function resolveWorkspaceRoot(url: URL, config: Config, workplaceDir: str
   return resolveWorkspaceRootFromValue(url.searchParams.get('root'), config, workplaceDir)
 }
 
+export function resolveActiveWorkspaceRoot(url: URL, config: Config, workplaceDir: string): string {
+  const requested = resolveWorkspaceRoot(url, config, workplaceDir)
+  const active = resolve(config.agents.defaults.workspace || workplaceDir)
+  if (!sameBoundPath(requested, active)) {
+    throw new HttpError(403, 'workspace review is limited to the active workspace')
+  }
+  return requested
+}
+
 export function resolveWorkspaceRootFromValue(
   value: unknown,
   config: Config,

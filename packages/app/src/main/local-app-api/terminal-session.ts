@@ -49,6 +49,7 @@ export class WorkspaceTerminalSession extends EventEmitter<WorkspaceTerminalSess
   private size: { cols: number; rows: number }
   private inputState = { ...EMPTY_TERMINAL_INPUT_STATE }
   private exited = false
+  private closing = false
   private exitInfo: { exitCode: number | null; signal: string | null } | null = null
 
   private constructor(
@@ -65,8 +66,33 @@ export class WorkspaceTerminalSession extends EventEmitter<WorkspaceTerminalSess
     this.backend = terminal.kind
     this.shellLabel = terminal.label
     terminal.onData((stream, text) => this.pushOutput(stream, text))
-    terminal.onError((error) => this.emit('error', error))
+    terminal.onError((error) => {
+      if (this.closing || this.exitInfo) return
+      this.closing = true
+      // EventEmitter treats 'error' specially. A terminal can fail before an
+      // SSE observer is attached, so never emit an unhandled error event.
+      this.exited = true
+      this.inputState = { ...EMPTY_TERMINAL_INPUT_STATE }
+      // A process error is terminal even when the child does not emit a
+      // subsequent close event. Publish one normalized exit so the session
+      // manager can apply its normal bounded cleanup timer.
+      this.exitInfo = { exitCode: null, signal: null }
+      try {
+        if (this.listenerCount('error') > 0) this.emit('error', error)
+        this.emit('exit', this.exitInfo)
+      } finally {
+        // Stop a process whose stream failed even if it never produces a
+        // separate close event. The closing flag suppresses recursive events.
+        try {
+          this.terminal.kill()
+        } catch {
+          this.terminal.dispose()
+        }
+      }
+    })
     terminal.onExit((event) => {
+      if (this.exitInfo) return
+      this.closing = true
       this.exited = true
       this.exitInfo = event
       this.inputState = { ...EMPTY_TERMINAL_INPUT_STATE }
@@ -110,7 +136,7 @@ export class WorkspaceTerminalSession extends EventEmitter<WorkspaceTerminalSess
   }
 
   writeInput(data: string): void {
-    if (this.exited) throw new HttpError(410, 'terminal session has exited')
+    if (this.exited || this.closing) throw new HttpError(410, 'terminal session has exited')
     this.terminal.write(data)
   }
 
@@ -127,18 +153,31 @@ export class WorkspaceTerminalSession extends EventEmitter<WorkspaceTerminalSess
   }
 
   resize(cols: number, rows: number): WorkspaceTerminalSessionSnapshot {
+    if (this.exited || this.closing) throw new HttpError(410, 'terminal session has exited')
     this.size = normalizeTerminalSize({ cols, rows })
     this.terminal.resize(this.size.cols, this.size.rows)
     return this.snapshot()
   }
 
   interrupt(): void {
-    if (!this.exited) this.terminal.interrupt()
+    if (!this.exited && !this.closing) this.terminal.interrupt()
   }
 
   kill(): void {
-    if (!this.exited) this.terminal.kill()
-    this.terminal.dispose()
+    if (this.closing) {
+      // Natural exit/error already stopped the process; still release the
+      // adapter's listeners and stream resources when the manager closes it.
+      this.terminal.dispose()
+      return
+    }
+    this.closing = true
+    this.exited = true
+    this.inputState = { ...EMPTY_TERMINAL_INPUT_STATE }
+    try {
+      this.terminal.kill()
+    } finally {
+      this.terminal.dispose()
+    }
   }
 
   private pushOutput(stream: 'stdout' | 'stderr', text: string): void {

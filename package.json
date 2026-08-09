@@ -57,7 +57,8 @@
     "report:memory-v3-workload": "pnpm --filter @littlesheep/runner... run build && node scripts/report-memory-v3-workload.mjs",
     "verify:memory-v3-readiness": "pnpm --filter @littlesheep/runner... run build && node scripts/verify-memory-v3-migration-readiness.mjs",
     "benchmark:embedding": "pnpm --filter @littlesheep/embedding run build && node scripts/benchmark-local-embedding.mjs",
-    "verify:app-recovery": "node scripts/verify-app-recovery-sources.mjs"
+    "verify:app-recovery": "node scripts/verify-app-recovery-sources.mjs",
+    "verify:workspace-performance": "node scripts/verify-workspace-performance.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

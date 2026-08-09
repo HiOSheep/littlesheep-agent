@@ -49,6 +49,22 @@ describe('Local App API SSE primitives', () => {
     expect(response.destroy).not.toHaveBeenCalled()
     expect(response.writes).toHaveLength(1)
   })
+
+  it('swallows a synchronous write race after the response closes', () => {
+    const response = new FakeResponse()
+    response.throwOnWrite = true
+
+    expect(() => writeSse(response as unknown as ServerResponse, 'delta', { text: 'late' })).not.toThrow()
+    expect(writeSse(response as unknown as ServerResponse, 'delta', { text: 'later' })).toBe(false)
+  })
+
+  it('handles an asynchronous response error without throwing from the process', () => {
+    const response = new FakeResponse()
+    expect(writeSse(response as unknown as ServerResponse, 'delta', { text: 'queued' })).toBe(true)
+
+    expect(() => response.emit('error', Object.assign(new Error('write EOP'), { code: 'EOP' }))).not.toThrow()
+    expect(writeSse(response as unknown as ServerResponse, 'delta', { text: 'late' })).toBe(false)
+  })
 })
 
 class FakeResponse extends EventEmitter {
@@ -56,6 +72,7 @@ class FakeResponse extends EventEmitter {
   writableEnded = false
   writableLength = 0
   writeResult = true
+  throwOnWrite = false
   writes: string[] = []
   writeHead = vi.fn()
   flushHeaders = vi.fn()
@@ -66,6 +83,7 @@ class FakeResponse extends EventEmitter {
   })
 
   write(value: string): boolean {
+    if (this.throwOnWrite) throw new Error('write EOP')
     this.writes.push(value)
     return this.writeResult
   }

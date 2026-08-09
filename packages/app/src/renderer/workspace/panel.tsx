@@ -22,6 +22,7 @@ import { WorkspaceOverview } from './overview'
 import { isSamePath, lastPathSegment } from './path-utils'
 import { WorkspacePlaceholder } from './placeholder'
 import { WorkspaceFileView } from './preview-pane'
+import { WorkspaceReview } from './review'
 import { WorkspaceTerminal } from './terminal'
 import type { WorkspaceBrowserHistory } from './browser-history'
 import { isWorkspaceBrowserTabId, type WorkspaceBrowserTab, type WorkspaceBrowserTabId } from './browser-tabs'
@@ -105,7 +106,7 @@ export function WorkspacePanel({
     label: string
     desc: string
   }> = [
-    { id: 'review', label: '审查', desc: '当前工作现场、任务阶段和产物入口' },
+    { id: 'review', label: '审阅', desc: '审阅当前 Git 更改与工作现场' },
     { id: 'artifacts', label: '产物', desc: '按项目、来源和类型管理生成或保存的文件' },
     { id: 'terminal', label: '终端', desc: 'LS 内置 PowerShell，命令执行受权限控制' },
     { id: 'browser', label: '浏览器', desc: '在拓展工作区预览对话中的网页链接' },
@@ -116,7 +117,7 @@ export function WorkspacePanel({
     ? lastPathSegment(activeFileTab.path)
     : isWorkspaceBrowserTabId(activeTab)
       ? browserTabs.find((tab) => tab.id === activeTab)?.title || '浏览器'
-      : workspaceEntries.find((entry) => entry.id === activeTab)?.label || '审查'
+      : workspaceEntries.find((entry) => entry.id === activeTab)?.label || '审阅'
   const fullscreenTip = fullscreen ? '退出全屏工作区' : '全屏展开工作区'
   const workspaceIsDefault = isSamePath(workspacePath, workplacePath)
   const [warmTab, setWarmTab] = useState<WorkspacePanelTabId | null>(null)
@@ -144,6 +145,7 @@ export function WorkspacePanel({
     ? previousTabRef.current
     : warmTab
   const warmFileTab = transitionWarmTab ? parseWorkspaceFileTabId(transitionWarmTab) : null
+  const showSharedFileNavigator = !activeFileTab && activeTab !== 'files' && activeTab !== 'review'
 
   return (
     <aside
@@ -202,22 +204,30 @@ export function WorkspacePanel({
           {!panelSuspended && hasOpenTabs && (
             <div
               key={activeTab}
-              className={`workspace-panel-view content-fade ${!activeFileTab && activeTab !== 'files' ? 'with-file-navigator' : ''}`}
+              className={`workspace-panel-view content-fade ${showSharedFileNavigator ? 'with-file-navigator' : ''}`}
             >
             {activeTab === 'review' && (
-              <WorkspaceOverview
+              <WorkspaceReview
                 workspacePath={workspacePath}
-                workplacePath={workplacePath}
-                activeTab={activeTab}
-                activeTabLabel={activeTabLabel}
-                openTabs={openTabs}
-                openRequest={openRequest}
-                sessionId={sessionId}
-                sessionTitle={sessionTitle}
-                messages={messages}
                 artifactVersion={artifactVersion}
-                fileDrafts={fileDrafts}
                 onOpenFile={onOpenFile}
+                onTipChange={onTipChange}
+                activityView={(
+                  <WorkspaceOverview
+                    workspacePath={workspacePath}
+                    workplacePath={workplacePath}
+                    activeTab={activeTab}
+                    activeTabLabel={activeTabLabel}
+                    openTabs={openTabs}
+                    openRequest={openRequest}
+                    sessionId={sessionId}
+                    sessionTitle={sessionTitle}
+                    messages={messages}
+                    artifactVersion={artifactVersion}
+                    fileDrafts={fileDrafts}
+                    onOpenFile={onOpenFile}
+                  />
+                )}
               />
             )}
             {activeTab === 'files' && (
@@ -317,7 +327,7 @@ export function WorkspacePanel({
             )}
             </div>
           )}
-          {!panelSuspended && hasOpenTabs && !activeFileTab && activeTab !== 'files' && (
+          {!panelSuspended && hasOpenTabs && showSharedFileNavigator && (
             <WorkspaceFileNavigator
               workspacePath={workspacePath}
               defaultWorkspacePath={defaultWorkspacePath}

@@ -1,6 +1,6 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-08-04 10:10:04
+最后更新：2026-08-04 17:25:11
 
 本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
 
@@ -51,6 +51,7 @@
 
 ### 当前主线
 
+- [拓展工作区性能任务书 2026-08-04](taskbooks/workspace-performance-taskbook-2026-08-04.md)：文件树、代码首帧、Monaco 接管、Git 审阅缓存、后台资源和生产构建体积的专项验收。
 - [原子记忆与内置向量目录任务书 2026-07-17](taskbooks/memory-atom-vector-catalog-taskbook-2026-07-17.md)：Memory v3 原子文件、层级、本地向量目录、三层视图边界、动态注入、压缩连续性、迁移与验收。
 - [Agent Runtime 连续性任务书 2026-07-14](taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md)：Provider 校准、Context、附件、运行中重入、检查点、后台执行和有界并行。
 - [Agent Runtime 效率与版本化连续性任务书 2026-07-17](taskbooks/agent-runtime-efficiency-versioning-taskbook-2026-07-17.md)：工具调用并行、shadow Git、检查点、退出冻结、LLM 调用预算和前台 `SOUL` 表达边界。

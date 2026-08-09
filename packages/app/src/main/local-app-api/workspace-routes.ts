@@ -17,9 +17,11 @@ import {
   previewWorkspaceFile,
   saveWorkspaceTextFile,
 } from './workspace-file-service.js'
+import { readWorkspaceReview, readWorkspaceReviewDiff } from './workspace-git-review.js'
 import {
   normalizeOptionalSessionId,
   normalizePositiveInt,
+  resolveActiveWorkspaceRoot,
   resolveWorkspaceContextForPath,
   resolveWorkspaceRoot,
   resolveWorkspaceRootFromValue,
@@ -83,6 +85,23 @@ export async function routeWorkspace(
     const root = resolveWorkspaceRoot(url, context.getConfig(), context.workplaceDir)
     const target = resolveWorkspaceTarget(root, url.searchParams.get('path') ?? '')
     json(res, 200, await previewWorkspaceFile(root, target))
+    return true
+  }
+
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.workspaceReview) {
+    const root = resolveActiveWorkspaceRoot(url, context.getConfig(), context.workplaceDir)
+    json(res, 200, await withRequestAbortSignal(req, res, (signal) => readWorkspaceReview(root, { signal })))
+    return true
+  }
+
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.workspaceReviewDiff) {
+    const root = resolveActiveWorkspaceRoot(url, context.getConfig(), context.workplaceDir)
+    const target = resolveWorkspaceTarget(root, url.searchParams.get('path') ?? '')
+    json(res, 200, await withRequestAbortSignal(
+      req,
+      res,
+      (signal) => readWorkspaceReviewDiff(root, target, { signal }),
+    ))
     return true
   }
 
@@ -183,4 +202,24 @@ function normalizeExternalHref(value: unknown): string {
     throw new HttpError(400, `external protocol is not allowed: ${url.protocol}`)
   }
   return url.href
+}
+
+async function withRequestAbortSignal<T>(
+  req: LocalAppApiRequest['req'],
+  res: LocalAppApiRequest['res'],
+  task: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController()
+  const abort = () => controller.abort()
+  if (req.aborted || res.destroyed) controller.abort()
+  else {
+    req.once('aborted', abort)
+    res.once('close', abort)
+  }
+  try {
+    return await task(controller.signal)
+  } finally {
+    req.off('aborted', abort)
+    res.off('close', abort)
+  }
 }
