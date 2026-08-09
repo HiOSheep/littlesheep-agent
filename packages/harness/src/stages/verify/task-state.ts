@@ -3,6 +3,7 @@ import type {
   RunContext,
   TaskStepFailureKind,
 } from '@littlesheep/types';
+import { writeReplanState } from '../../replan-state.js';
 
 export function deriveReplanTargets(ctx: RunContext, requested: unknown): string[] {
   const knownIds = taskStepIds(ctx);
@@ -58,12 +59,15 @@ export function installPartialReplan(
       .map((step) => step.stepId),
   );
   const preservedStepIds = taskStepIds(ctx).filter((id) => completed.has(id) && !targets.has(id));
-  ctx.partialReplanRequest = request;
-  ctx.replanHistory = [
+  const replanHistory = [
     ...(ctx.replanHistory ?? ctx.taskExecution?.replanHistory ?? []),
     { ...request, preservedStepIds },
   ];
-  if (ctx.taskExecution) ctx.taskExecution.replanHistory = ctx.replanHistory;
+  writeReplanState(ctx, 'verify', {
+    partialReplanRequest: request,
+    replanHistory,
+    ...(ctx.taskExecution ? { taskExecution: { ...ctx.taskExecution, replanHistory } } : {}),
+  });
   return request;
 }
 

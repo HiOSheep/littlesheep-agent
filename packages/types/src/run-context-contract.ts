@@ -1,3 +1,4 @@
+// @littlesheep/types - machine-readable ownership and lifecycle contracts for high-churn RunContext fields.
 import type { RunContext, StageName } from './agent.js';
 
 export type RunContextFieldGroup = 'reply' | 'replan' | 'runtimeControl' | 'memory';
@@ -65,9 +66,9 @@ export const runContextFieldOwnership: readonly RunContextFieldContract[] = Obje
     group: 'replan',
     owner: 'decide-taskbook-boundary',
     readStages: ['decide', 'execute', 'verify', 'evolve', 'capture', 'finalize', 'runner-restore'],
-    writeStages: ['decide', 'recover', 'runtime-boundary', 'runner-restore'],
+    writeStages: ['decide', 'execute', 'recover', 'runtime-boundary', 'runner-restore'],
     lifecycle: 'checkpoint-carried',
-    purpose: 'Authoritative normalized task contract; model output is only a proposal.',
+    purpose: 'Authoritative normalized task contract; model output is only a proposal; EXECUTE adds step evidence to stageResults.',
   }),
   field({
     field: 'plan',
@@ -92,9 +93,9 @@ export const runContextFieldOwnership: readonly RunContextFieldContract[] = Obje
     group: 'replan',
     owner: 'execute-taskbook-boundary',
     readStages: ['execute', 'verify', 'evolve', 'capture', 'finalize', 'runner-restore'],
-    writeStages: ['execute', 'runner-restore'],
+    writeStages: ['execute', 'verify', 'runner-restore'],
     lifecycle: 'checkpoint-carried',
-    purpose: 'Step-level execution evidence and status, including preserved completed work.',
+    purpose: 'Step-level execution evidence and status, including the VERIFY-owned replan history projection.',
   }),
   field({
     field: 'replanAttempts',
@@ -128,9 +129,18 @@ export const runContextFieldOwnership: readonly RunContextFieldContract[] = Obje
     group: 'replan',
     owner: 'verify-replan-boundary',
     readStages: ['decide', 'execute', 'verify', 'finalize', 'runner-restore'],
-    writeStages: ['verify', 'decide', 'runner-restore'],
+    writeStages: ['verify', 'decide', 'execute', 'runner-restore'],
     lifecycle: 'checkpoint-carried',
     purpose: 'Bounded audit trail for re-plan decisions and resumed steps.',
+  }),
+  field({
+    field: 'appliedTaskBookPatchIds',
+    group: 'replan',
+    owner: 'runtime-taskbook-boundary',
+    readStages: ['runtime-boundary', 'decide', 'execute', 'runner-restore'],
+    writeStages: ['runtime-boundary', 'runner-restore'],
+    lifecycle: 'checkpoint-carried',
+    purpose: 'Bounded idempotency ledger for runtime TaskBook patches.',
   }),
   field({
     field: 'runtimeControl',

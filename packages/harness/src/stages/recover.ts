@@ -15,6 +15,7 @@ import {
   normalizeRecoveryPlan,
   retryStageFor,
 } from './recover/policy.js';
+import { writeReplanState } from '../replan-state.js';
 
 export type { RecoverStageDeps } from './recover/contracts.js';
 
@@ -84,8 +85,7 @@ export function createRecoverStage(deps: RecoverStageDeps) {
     if (action === 'retry') {
       const revised = normalizeRecoveryPlan(parsed.revisedPlan, availableToolNames);
       if (revised) {
-        ctx.plan = revised;
-        ctx.taskBook = undefined;
+        writeReplanState(ctx, 'recover', { plan: revised, taskBook: undefined });
         next = 'execute';
       } else {
         next = retryStageFor(lastError?.stage);

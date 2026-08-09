@@ -11,6 +11,7 @@ import type {
 } from '@littlesheep/types';
 import type { ExecuteSanitizeOptions, ExecuteStageDeps } from './contracts.js';
 import { consumeRuntimeControlEvents } from '../../runtime-control-boundary.js';
+import { updateReplanHistory, writeReplanState } from '../../replan-state.js';
 import { reserveUserFacingReplyOnce } from '../../user-facing-reply.js';
 import { orderedStepResults } from './failure-policy.js';
 import { synthesizeFinalReply } from './final-reply.js';
@@ -49,7 +50,7 @@ export async function executeTaskBook(
     steps: orderedStepResults(taskBook, resultsById),
     replanHistory: ctx.replanHistory ?? previousExecution?.replanHistory,
   };
-  ctx.taskExecution = execution;
+  writeReplanState(ctx, 'execute', { taskExecution: execution });
   taskBook.stageResults = execution.steps;
 
   const graph = buildTaskStepGraph(taskBook, ctx.tools, ctx.toolContext);
@@ -62,9 +63,15 @@ export async function executeTaskBook(
     const record = [...(ctx.replanHistory ?? [])]
       .reverse()
       .find((item) => item.attempt === resumeRequest.attempt && item.requestedAt === resumeRequest.requestedAt);
-    if (record) record.resumedAt = startedAt;
+    if (record) {
+      updateReplanHistory(ctx, 'execute', (item) => item.attempt === resumeRequest.attempt
+        && item.requestedAt === resumeRequest.requestedAt
+        ? { ...item, resumedAt: startedAt }
+        : item);
+      execution.replanHistory = ctx.replanHistory;
+    }
   }
-  ctx.partialReplanRequest = undefined;
+  writeReplanState(ctx, 'execute', { partialReplanRequest: undefined });
 
   const syncExecutionSteps = () => {
     execution.steps = orderedStepResults(taskBook, resultsById);

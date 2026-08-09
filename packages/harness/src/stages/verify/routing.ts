@@ -4,6 +4,7 @@ import type {
   StageResult,
   VerificationRecord,
 } from '@littlesheep/types';
+import { writeReplanState } from '../../replan-state.js';
 import { textOf } from '../_shared.js';
 import {
   canRecoverWithPartialReplan,
@@ -228,9 +229,12 @@ export function routeKnownIncompleteExecution(
   }
   if (replanAttempts >= maxReplan) return escalateExhaustedReplan(ctx, reason, feedback);
 
-  ctx.replanAttempts = replanAttempts + 1;
-  ctx.verifyFeedback = feedback;
-  installPartialReplan(ctx, targetStepIds, reason, feedback, ctx.replanAttempts);
+  const nextReplanAttempts = replanAttempts + 1;
+  writeReplanState(ctx, 'verify', {
+    replanAttempts: nextReplanAttempts,
+    verifyFeedback: feedback,
+  });
+  installPartialReplan(ctx, targetStepIds, reason, feedback, nextReplanAttempts);
   recordVerification(ctx, {
     verdict: 'needs_replan',
     reason,
@@ -254,7 +258,7 @@ export function routeKnownIncompleteExecution(
 export function escalateExhaustedReplan(ctx: RunContext, reason: string, feedback: string): StageResult {
   const originalRequest = textOf(ctx.inbound);
   const chinese = /[\u3400-\u9fff]/u.test(originalRequest);
-  ctx.partialReplanRequest = undefined;
+  writeReplanState(ctx, 'verify', { partialReplanRequest: undefined });
   ctx.clarificationRequest = {
     id: `${ctx.runId}:clarification`,
     kind: 'recovery_decision',

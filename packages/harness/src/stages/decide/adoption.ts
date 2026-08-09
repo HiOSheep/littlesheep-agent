@@ -12,6 +12,7 @@ import type { DecideRequest } from './request.js';
 import { maybeRefineMemoryForTaskBook } from '../../memory-taskbook-refinement.js';
 import { renderClarificationMessage } from '../clarification-message.js';
 import { reserveUserFacingReplyOnce } from '../../user-facing-reply.js';
+import { writeReplanState } from '../../replan-state.js';
 
 export async function adoptDecodedDecision(
   deps: DecideStageDeps,
@@ -58,9 +59,7 @@ export async function adoptDecodedDecision(
 
   if (assessment.needsClarification && !reusedExistingTaskBook) {
     ctx.needAssessment = assessment;
-    ctx.taskBook = taskBook;
-    ctx.plan = plan;
-    ctx.taskBookRevision = taskBookRevision;
+    writeReplanState(ctx, 'decide', { taskBook, plan, taskBookRevision });
     consumeDecisionInputs(ctx, request.deferredRuntimeEvents);
     ctx.clarificationRequest = buildClarificationRequest(
       parsed,
@@ -132,9 +131,7 @@ export async function adoptDecodedDecision(
     deps.log,
   );
   ctx.needAssessment = assessment;
-  ctx.taskBook = taskBook;
-  ctx.plan = plan;
-  ctx.taskBookRevision = taskBookRevision;
+  writeReplanState(ctx, 'decide', { taskBook, plan, taskBookRevision });
   consumeDecisionInputs(ctx, request.deferredRuntimeEvents);
   ctx.onToolEvent?.({ type: 'task_book', taskBook });
   return {
@@ -202,5 +199,5 @@ function consumeDecisionInputs(
   }
   // Payloads are no longer needed in the active prompt after adoption.
   ctx.deferredRuntimeEvents = [];
-  ctx.verifyFeedback = undefined;
+  writeReplanState(ctx, 'decide', { verifyFeedback: undefined });
 }

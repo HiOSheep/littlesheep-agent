@@ -4,6 +4,7 @@ import type {
   RunContext,
   TaskBook,
 } from '@littlesheep/types';
+import { updateReplanHistory } from '../../replan-state.js';
 
 export function renderReplanFeedback(ctx: RunContext, request: PartialReplanRequest): string {
   return `\n\n---\nPartial re-plan request (attempt ${request.attempt}):
@@ -50,12 +51,11 @@ export function mergePartialTaskBook(
     return { ...step, ...(replacement ?? {}), id, status: 'pending' };
   });
 
-  const record = [...(ctx.replanHistory ?? [])]
-    .reverse()
-    .find((item) => item.attempt === request.attempt && item.requestedAt === request.requestedAt);
-  if (record) {
-    record.revisedStepIds = revisedStepIds;
-    record.decidedAt = new Date().toISOString();
+  const decidedAt = new Date().toISOString();
+  if ((ctx.replanHistory ?? []).some((item) => item.attempt === request.attempt && item.requestedAt === request.requestedAt)) {
+    updateReplanHistory(ctx, 'decide', (record) => record.attempt === request.attempt && record.requestedAt === request.requestedAt
+      ? { ...record, revisedStepIds, decidedAt }
+      : record);
   }
   return {
     ...previous,

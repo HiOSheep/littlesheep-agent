@@ -36,6 +36,7 @@
 | `packages/memory-tree/src/types.ts` | 580 | 记忆树内部和持久化类型 | 按 node、resource、audit、projection 分组 | D |
 | `packages/harness/src/tests/helpers.ts` | 308 | Harness 测试夹具与 RunContext 构造 | 按夹具领域拆分；测试 helper 不进入生产 Harness 依赖 | E |
 | `packages/types/src/agent.ts` | 470 | 状态机、活动路由兼容、RunContext、stage 与 Hook 契约 | TaskBook 已迁入 `task.ts`；继续保持状态机与运行上下文边界，不再吸收领域协议 | E |
+| `packages/types/src/run-context-contract.ts` | 302 | 四组高频 RunContext 字段的 owner、读写阶段、生命周期和写入查询 | 保持 machine-readable manifest；继续由 `replan-state.ts` 等领域边界消费，不把具体状态写入逻辑吸回 types | E |
 | `packages/tools/src/tool-execution-service.ts` | 583 | 工具查找、校验、审批、执行生命周期、事件与结构化记录 facade | 调度、中断、记录摘要和结果处理已拆分；facade 不吸收 Harness 编排或副作用状态所有权 | E |
 | `packages/memory-tree/src/memory-repository/v3-node-store.ts` | 581 | v3 节点查询、写入编排、层级和实体关联 | 事件与生命周期规则已拆出；后续分离 query projection 与 write coordinator | D |
 | `packages/app/src/renderer/app-shell/use-app-controller.ts` | 580 | Renderer 跨领域兼容协调、启动恢复和视图快照 | 保持装配职责；Runtime/附件 effect 契约稳定后再下沉 | B |

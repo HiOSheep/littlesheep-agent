@@ -24,7 +24,7 @@ import type { Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
 import type { LlmClient } from '@littlesheep/llm';
 import type { SessionManager } from '@littlesheep/session';
-import { buildRunContext } from '@littlesheep/harness';
+import { buildRunContext, writeReplanState } from '@littlesheep/harness';
 import { buildInfrastructure, type RunnerState, type LogFn } from './infra.js';
 import type { ExecutionLog } from './execution-log.js';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
@@ -668,20 +668,22 @@ function restoreContinuationContext(ctx: RunContext, checkpoint: RunCheckpoint):
     ? checkpoint.currentStage === 'enter' ? 'classify' : 'reply'
     : checkpoint.currentStage;
   ctx.resumedFromCheckpointId = checkpoint.id;
-  ctx.taskBook = checkpoint.taskBook ? structuredClone(checkpoint.taskBook) : undefined;
-  ctx.taskBookRevision = checkpoint.taskBookRevision;
-  ctx.taskExecution = checkpoint.taskExecution ? structuredClone(checkpoint.taskExecution) : undefined;
-  ctx.plan = state.plan ? structuredClone(state.plan) : undefined;
+  writeReplanState(ctx, 'runner-restore', {
+    taskBook: checkpoint.taskBook ? structuredClone(checkpoint.taskBook) : undefined,
+    taskBookRevision: checkpoint.taskBookRevision,
+    taskExecution: checkpoint.taskExecution ? structuredClone(checkpoint.taskExecution) : undefined,
+    plan: state.plan ? structuredClone(state.plan) : undefined,
+    appliedTaskBookPatchIds: [...state.appliedTaskBookPatchIds],
+    replanAttempts: state.replanAttempts,
+  });
   ctx.classification = state.classification ? structuredClone(state.classification) : undefined;
   ctx.needAssessment = state.needAssessment ? structuredClone(state.needAssessment) : undefined;
-  ctx.appliedTaskBookPatchIds = [...state.appliedTaskBookPatchIds];
   ctx.deferredRuntimeEventIds = [...checkpoint.pendingEventIds];
   ctx.deferredRuntimeEvents = structuredClone(state.deferredRuntimeEvents);
   ctx.sideEffects = structuredClone(checkpoint.sideEffects);
   ctx.loopBudget = structuredClone(checkpoint.loopBudget);
   ctx.modelCallCount = checkpoint.loopBudget.attemptsUsed;
   ctx.recoveryAttempts = state.recoveryAttempts;
-  ctx.replanAttempts = state.replanAttempts;
   ctx.maxReplanAttempts = state.maxReplanAttempts;
   ctx.verificationHistory = structuredClone(state.verificationHistory);
   // A paused/interrupted control snapshot must not immediately stop the new

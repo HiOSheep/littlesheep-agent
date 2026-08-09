@@ -20,6 +20,7 @@ import {
   installPartialReplan,
 } from './verify/task-state.js';
 import { acceptedUsedMemoryAtomIds } from './verify/memory-evidence.js';
+import { writeReplanState } from '../replan-state.js';
 export type { VerifyStageDeps } from './verify/contracts.js';
 export function createVerifyStage(deps: VerifyStageDeps) {
   return async function verifyStage(ctx: RunContext): Promise<StageResult> {
@@ -97,10 +98,13 @@ export function createVerifyStage(deps: VerifyStageDeps) {
     const feedback = parsed.feedback ?? reason;
     if (replanAttempts >= maxReplan) return escalateExhaustedReplan(ctx, reason, feedback);
 
-    ctx.replanAttempts = replanAttempts + 1;
-    ctx.verifyFeedback = feedback;
+    const nextReplanAttempts = replanAttempts + 1;
+    writeReplanState(ctx, 'verify', {
+      replanAttempts: nextReplanAttempts,
+      verifyFeedback: feedback,
+    });
     if (ctx.taskBook && targetStepIds.length > 0) {
-      installPartialReplan(ctx, targetStepIds, reason, feedback, ctx.replanAttempts);
+      installPartialReplan(ctx, targetStepIds, reason, feedback, nextReplanAttempts);
     }
     recordVerification(ctx, {
       verdict: 'needs_replan',

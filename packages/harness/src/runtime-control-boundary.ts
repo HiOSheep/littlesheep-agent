@@ -11,6 +11,7 @@ import {
   type RuntimeEventType,
 } from '@littlesheep/types';
 import { applyTaskBookPatch } from './taskbook-patch.js';
+import { writeReplanState } from './replan-state.js';
 
 export const RUNTIME_CONTROL_EVENT_TYPES = [
   'pause_requested',
@@ -179,10 +180,12 @@ export function consumeRuntimeTaskEvents(ctx: RunContext): RuntimeTaskBoundaryRe
   }
 
   if (taskBookChanged && stagedTaskBook) {
-    ctx.taskBook = stagedTaskBook;
-    ctx.plan = stagedTaskBook.steps;
-    ctx.taskBookRevision = stagedRevision;
-    ctx.appliedTaskBookPatchIds = stagedPatchIds;
+    writeReplanState(ctx, 'runtime-boundary', {
+      taskBook: stagedTaskBook,
+      plan: stagedTaskBook.steps,
+      taskBookRevision: stagedRevision,
+      appliedTaskBookPatchIds: stagedPatchIds,
+    });
   }
   if (shouldReplan) {
     ctx.deferredRuntimeEvents = stagedDeferredEvents.slice(-MAX_DEFERRED_RUNTIME_EVENTS);

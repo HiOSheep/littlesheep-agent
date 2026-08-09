@@ -137,7 +137,7 @@
 
 ### 阶段 5：状态契约重构（后续阶段，不与本任务前四阶段合并）
 
-状态：进行中。阶段 5A、阶段 5B 已完成；更深的 RunContext 字段收敛仍未开始，阶段 5 整体尚未完成。
+状态：进行中。阶段 5A、阶段 5B、阶段 5C 已完成；`reply`、`runtimeControl` 和 `memory` 组的生产写入收敛仍未开始，阶段 5 整体尚未完成。
 
 - 建立唯一 `allowedTransitions` manifest，运行时校验非法 Stage 边，并生成状态图。
 - 为 `RunContext` 建立字段 owner、读写阶段和生命周期表；先收敛 `reply`、`replan`、`runtimeControl`、`memory` 四组高频共享状态。
@@ -152,7 +152,7 @@
 - `docs/reference/core-flow-state-contract.md` 提供渐进式披露的状态图、ownership 表和扩展规则，仓库指南已指向该入口。
 - 定向回归：`packages/types/src/stage-transitions.test.ts`、`run-context-contract.test.ts` 和 `packages/harness/src/default-harness.test.ts` 共 19 项通过；连同既有验证门和 selector 回归，本轮 6 个定向测试文件共 51 项通过；types/harness TypeScript project check 通过。`check:repo` 为 33/33，27 个 TypeScript project references 通过。`verify:core` 退出码 `0`、`failedStage=null`，7 个测试文件、127 项通过，总耗时 `38.98s`。`verify:full` 退出码 `0`、`failedStage=null`，280 个测试文件、1974 passed、1 skipped，总耗时 `312.01s`；阶段为 `check:repo 5.71s`、`tests 210.89s`、`typecheck 1.08s`、`build 93.87s`、`recovery 0.46s`。
 
-阶段 5A 尚未覆盖 Runner coordinator 的行为拆分，也未宣称阶段 5 整体完成；下一里程碑必须在 `packages/runner/src/runner.ts` 抽取最小 prepare/execute/finalize/persist 协调边界后，重新运行 core/full 质量门。
+阶段 5A 尚未覆盖 Runner coordinator 的行为拆分，也未宣称阶段 5 整体完成；阶段 5B 已完成该最小抽取并重新运行 core/full 质量门。
 
 阶段 5B：Runner coordinator 最小抽取
 
@@ -161,6 +161,14 @@
 阶段 5B 实现边界：准备逻辑仍由 `runner.ts` 完成；execute helper 负责 Harness throw 转换与 checkpoint 写入；finalize helper 负责 conversation source、memory feedback、session summary activation、memory finish、compaction 和 `RunnerResult` 装配；persist helper 负责 execution log、latest session summary 和版本 checkpoint 完成。通用 coordinator 只负责阶段顺序和数据传递。
 
 阶段 5B 定向证据（2026-08-10）：Runner coordinator 3 项、Runner continuation 2 项、Runner 主回归 26 项全部通过；Runner 包 typecheck 通过。阶段质量门：`check:repo` 为 33/33 且 27/27 TypeScript project references 通过；`verify:core` 为 7 个测试文件、127 项通过、`failedStage=null`；`verify:full` 为 281 个测试文件、1977 passed、1 skipped、`failedStage=null`，并完成 typecheck、App build 和 recovery。唯一 skipped 是 selector 不属于 full gate；recovery 的已有 sampled runIds/existing optional artifact warning 不构成阶段失败。用户已有 `test/e2e-webhook.test.ts` 改动未纳入本阶段。
+
+阶段 5C：replan-state 写入边界
+
+状态：已完成。实际盘点显示，replan 组是当前最分散的生产写入域：TaskBook、plan、revision、partial request、replan history 和 execution projection 横跨 DECIDE、VERIFY、EXECUTE、runtime boundary、TaskBook patch、RECOVER 与 Runner restore。原 ownership manifest 只能查询/断言，不能阻止生产代码绕过它；这正是当前开发反馈不可信的具体瓶颈。
+
+本阶段新增 `packages/harness/src/replan-state.ts`，提供 `writeReplanState()` 和 `updateReplanHistory()`。写入前先完整校验每个字段在当前契约 stage 是否允许，全部通过后才以一个批次提交；因此非法调用不会留下半更新状态。已接入 DECIDE adoption、DECIDE partial merge、VERIFY replan、EXECUTE task-book runner、runtime control boundary、TaskBook patch、RECOVER plan retry 和 Runner checkpoint restore；新增 `replan-state.test.ts` 覆盖合法批次、非法阶段原子拒绝和历史复制更新。
+
+阶段 5C 定向证据（2026-08-10）：replan-state、DECIDE、VERIFY、runtime-control-boundary、TaskBook patch 共 5 个测试文件、74 项通过；Harness 与 Runner typecheck 通过。公共门：`verify:core` 为 7 个测试文件、127 项通过、`failedStage=null`；`verify:full` 为 282 个测试文件、1980 passed、1 skipped、`failedStage=null`，完整测试、27/27 project references、App build 和 recovery 均执行成功。唯一 skipped 是 selector 不属于 full gate；recovery 的已有 sampled runIds/optional artifact warning 不构成阶段失败。测试夹具仍允许直接构造 `RunContext`，不纳入生产写入边界；用户已有 `test/e2e-webhook.test.ts` 改动未纳入本阶段。
 
 ## Acceptance Matrix
 
@@ -180,7 +188,7 @@
 | 状态转移可解释性 | `next` 分散、无唯一允许边表 | manifest + runtime validation + graph | Harness 特征测试 |
 | RunContext ownership | 74 字段、跨 61 个生产文件访问 | 分域 owner 表，先收敛四组高频状态 | 类型/特征测试 + 导航文档 |
 
-阶段 5A 当前证据：状态 manifest 覆盖 11 个 Stage、每个 Stage 的终止 `exit` 边及 38 条显式边；非法 `finalize -> reply` 自定义转移被拒绝，兼容 `execute -> finalize` 路径有回归保护。四组 ownership manifest 共登记 25 个高频字段，读写阶段、owner、lifecycle 和 purpose 均可由 types API 查询。阶段质量门已通过，报告位于 `.codex_tmp/verification-reports/latest.json`；报告中的 `skipped` 仅为 full gate 不适用 selector，不影响已执行的测试、typecheck、build 和 recovery。
+阶段 5A/5C 当前证据：状态 manifest 覆盖 11 个 Stage、每个 Stage 的终止 `exit` 边及 38 条显式边；非法 `finalize -> reply` 自定义转移被拒绝，兼容 `execute -> finalize` 路径有回归保护。ownership manifest 现登记 26 个高频字段，其中 replan 组的顶层生产写入已通过 `replan-state.ts` 统一校验；剩余 `reply`、`runtimeControl` 和 `memory` 组仍需后续单独收敛。阶段质量门和本地报告必须随阶段提交更新；报告中的 `skipped` 仅为 full gate 不适用 selector，不影响已执行的测试、typecheck、build 和 recovery。
 
 ## Verification Order
 
@@ -230,4 +238,4 @@ pnpm.cmd run verify:full
 - 阶段 0 已完成；剩余风险是完整测试计数随运行时数据状态小幅波动，及 fingerprint 扫描仍明显高于纯 planning 成本。报告已拆分两者，后续优化应针对扫描范围而不是误判 selector。
 - 阶段 2 已完成并单独提交；顶层 `branding.config.json`、`littlesheep.config.json` 不属于当前编译输入，故保持在阶段 3 fingerprint 范围之外。workspace manifest、特殊 Git 状态、共享 `GLOBAL_TYPECHECK_FILES` 和非字符串 dependency 形状均已纳入保守校验或 fail-closed 处理。
 - 阶段 3 已实现跨 Electron/Memory 入口的 App/workspace build-once/fingerprint 复用和过期产物拒绝；仍不把外部 Provider 运行时版本纳入本地 sidecar 的证明范围。
-- 阶段 1 的任务级入口和直接测试优先策略已完成，阶段 4 的代码实现、定向回归、`verify:changed`、`verify:core` 和 `verify:full` 已完成；阶段 5A 的状态契约第一里程碑和阶段 5B 的 Runner coordinator 最小抽取已完成，质量门、提交和推送按阶段独立执行；后续更深字段收敛仍未开始。本阶段提交时必须排除用户已有的 `test/e2e-webhook.test.ts` 改动。
+- 阶段 1 的任务级入口和直接测试优先策略已完成，阶段 4 的代码实现、定向回归、`verify:changed`、`verify:core` 和 `verify:full` 已完成；阶段 5A 的状态契约第一里程碑、阶段 5B 的 Runner coordinator 最小抽取和阶段 5C 的 replan-state 写入边界已完成，质量门、提交和推送按阶段独立执行；`reply`、`runtimeControl` 和 `memory` 组的更深字段收敛仍未开始。本阶段提交时必须排除用户已有的 `test/e2e-webhook.test.ts` 改动。
