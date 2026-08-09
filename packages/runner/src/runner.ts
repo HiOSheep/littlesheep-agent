@@ -24,7 +24,12 @@ import type { Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
 import type { LlmClient } from '@littlesheep/llm';
 import type { SessionManager } from '@littlesheep/session';
-import { buildRunContext, clearReplyState, writeReplanState } from '@littlesheep/harness';
+import {
+  buildRunContext,
+  clearReplyState,
+  writeReplanState,
+  writeRuntimeState,
+} from '@littlesheep/harness';
 import { buildInfrastructure, type RunnerState, type LogFn } from './infra.js';
 import type { ExecutionLog } from './execution-log.js';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
@@ -678,10 +683,12 @@ function restoreContinuationContext(ctx: RunContext, checkpoint: RunCheckpoint):
   });
   ctx.classification = state.classification ? structuredClone(state.classification) : undefined;
   ctx.needAssessment = state.needAssessment ? structuredClone(state.needAssessment) : undefined;
-  ctx.deferredRuntimeEventIds = [...checkpoint.pendingEventIds];
-  ctx.deferredRuntimeEvents = structuredClone(state.deferredRuntimeEvents);
+  writeRuntimeState(ctx, 'runner-restore', {
+    deferredRuntimeEventIds: [...checkpoint.pendingEventIds],
+    deferredRuntimeEvents: structuredClone(state.deferredRuntimeEvents),
+    loopBudget: structuredClone(checkpoint.loopBudget),
+  });
   ctx.sideEffects = structuredClone(checkpoint.sideEffects);
-  ctx.loopBudget = structuredClone(checkpoint.loopBudget);
   ctx.modelCallCount = checkpoint.loopBudget.attemptsUsed;
   ctx.recoveryAttempts = state.recoveryAttempts;
   ctx.maxReplanAttempts = state.maxReplanAttempts;
@@ -689,7 +696,7 @@ function restoreContinuationContext(ctx: RunContext, checkpoint: RunCheckpoint):
   // A paused/interrupted control snapshot must not immediately stop the new
   // continuation at its first safe boundary. The original event evidence is
   // retained in the restored queue; the new run starts in a clean state.
-  ctx.runtimeControl = undefined;
+  writeRuntimeState(ctx, 'runner-restore', { runtimeControl: undefined });
   ctx.lastError = undefined;
   clearReplyState(ctx, 'runner-restore');
 }

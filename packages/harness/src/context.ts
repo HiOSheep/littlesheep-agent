@@ -29,6 +29,7 @@ import type { Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
 import { applyBootstrapLimits } from '@littlesheep/prompt';
 import { resolveRuntimeTimeZone } from '@littlesheep/prompt';
+import { writeRuntimeState } from './runtime-state.js';
 
 /** Bootstrap file names (in priority order). Read from bootstrapDir. */
 const BOOTSTRAP_FILES = ['AGENTS.md', 'SOUL.md', 'USER.md', 'TOOLS.md'] as const;
@@ -225,17 +226,7 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     produced: [],
     taskBookRevision: 0,
     appliedTaskBookPatchIds: [],
-    deferredRuntimeEventIds: [],
-    deferredRuntimeEvents: [],
     sideEffects: [],
-    loopBudget: {
-      attemptsUsed: 0,
-      maxAttempts: opts.config.agents.defaults.maxModelCallsPerRun,
-      elapsedMs: 0,
-      maxElapsedMs: 0,
-      noProgressRounds: 0,
-      maxNoProgressRounds: 2,
-    },
     maxRecoveryAttempts: opts.config.agents.defaults.maxRecoveryAttempts,
     recoveryAttempts: 0,
     // VERIFY bounded iteration: replan budget (default 2). When exhausted,
@@ -253,7 +244,6 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     reasoningPromptAddon: opts.reasoningPromptAddon,
     attachments: opts.attachments,
     resolvedRunConfig: opts.resolvedRunConfig,
-    runtimeEventQueue: opts.runtimeEventQueue,
     reserveUserFacingReply: typeof opts.sessionManager.reserveAssistantReply === 'function'
       ? (reply) => opts.sessionManager.reserveAssistantReply(opts.sessionId, reply)
       : undefined,
@@ -263,6 +253,20 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     contextCompressionThresholdRatio: opts.config.agents.defaults.contextCompressionThresholdRatio,
     signal: opts.signal,
   };
+
+  writeRuntimeState(ctx, 'runner-init', {
+    runtimeEventQueue: opts.runtimeEventQueue,
+    deferredRuntimeEventIds: [],
+    deferredRuntimeEvents: [],
+    loopBudget: {
+      attemptsUsed: 0,
+      maxAttempts: opts.config.agents.defaults.maxModelCallsPerRun,
+      elapsedMs: 0,
+      maxElapsedMs: 0,
+      noProgressRounds: 0,
+      maxNoProgressRounds: 2,
+    },
+  });
 
   return ctx;
 }

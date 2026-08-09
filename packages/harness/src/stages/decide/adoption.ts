@@ -13,6 +13,7 @@ import { maybeRefineMemoryForTaskBook } from '../../memory-taskbook-refinement.j
 import { renderClarificationMessage } from '../clarification-message.js';
 import { reserveUserFacingReplyOnce } from '../../user-facing-reply.js';
 import { writeReplanState } from '../../replan-state.js';
+import { writeRuntimeState } from '../../runtime-state.js';
 
 export async function adoptDecodedDecision(
   deps: DecideStageDeps,
@@ -189,14 +190,18 @@ function consumeDecisionInputs(
   ctx: RunContext,
   events: RunContext['deferredRuntimeEvents'],
 ): void {
+  const update: {
+    deferredRuntimeEvents: [];
+    deferredRuntimeEventIds?: string[];
+  } = { deferredRuntimeEvents: [] };
   if (events && events.length > 0) {
     const ids = [
       ...(ctx.deferredRuntimeEventIds ?? []),
       ...events.map((event) => event.id),
     ];
-    ctx.deferredRuntimeEventIds = [...new Set(ids)].slice(-128);
+    update.deferredRuntimeEventIds = [...new Set(ids)].slice(-128);
   }
   // Payloads are no longer needed in the active prompt after adoption.
-  ctx.deferredRuntimeEvents = [];
+  writeRuntimeState(ctx, 'decide', update);
   writeReplanState(ctx, 'decide', { verifyFeedback: undefined });
 }

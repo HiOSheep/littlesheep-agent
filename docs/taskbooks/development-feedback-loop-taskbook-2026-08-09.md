@@ -1,10 +1,10 @@
 # LS 开发反馈环提速任务书 2026-08-09
 
-最后更新：2026-08-10 02:58:24
+最后更新：2026-08-10 03:45:00
 
 ## 状态
 
-进行中。阶段 0、阶段 1、阶段 2、阶段 3、阶段 4 已完成并分别形成独立提交且推送到 GitHub；阶段 5 正在进行，阶段 5A、阶段 5B、阶段 5C、阶段 5D 的实现、质量门、提交和推送已完成。本文是一个可单独设置为阶段目标的执行基线；完成任一阶段后，必须更新本文的状态、证据和实际边界，并提交、推送一次，再决定是否进入下一阶段。
+进行中。阶段 0、阶段 1、阶段 2、阶段 3、阶段 4 已完成并分别形成独立提交且推送到 GitHub；阶段 5 正在进行，阶段 5A、阶段 5B、阶段 5C、阶段 5D、阶段 5E 的实现、质量门、提交和推送已完成。本文是一个可单独设置为阶段目标的执行基线；完成任一阶段后，必须更新本文的状态、证据和实际边界，并提交、推送一次，再决定是否进入下一阶段。
 
 ## Goal
 
@@ -137,7 +137,7 @@
 
 ### 阶段 5：状态契约重构（后续阶段，不与本任务前四阶段合并）
 
-状态：进行中。阶段 5A、阶段 5B、阶段 5C、阶段 5D 已完成；`runtimeControl` 和 `memory` 组的生产写入收敛仍未开始，阶段 5 整体尚未完成。
+状态：进行中。阶段 5A、阶段 5B、阶段 5C、阶段 5D、阶段 5E 已完成；`memory` 组的生产写入收敛仍未开始，阶段 5 整体尚未完成。
 
 - 建立唯一 `allowedTransitions` manifest，运行时校验非法 Stage 边，并生成状态图。
 - 为 `RunContext` 建立字段 owner、读写阶段和生命周期表；先收敛 `reply`、`replan`、`runtimeControl`、`memory` 四组高频共享状态。
@@ -181,6 +181,17 @@
 
 阶段 5D 定向证据（2026-08-10）：reply-state、REPLY、ASK_USER、RECOVER、EXECUTE、DECIDE 共 6 个测试文件、106 项通过；Harness build 与 Runner typecheck 通过。`pnpm.cmd run verify:core` 退出码为 0，仓库卫生 33/33、TypeScript project references 27/27、核心集合 7 个测试文件 127 项通过、`failedStage=null`，总耗时约 12.06s。`pnpm.cmd run verify:full` 退出码为 0，283 个测试文件、1984 passed、1 skipped、`failedStage=null`，并完成一次 workspace typecheck、App build 和 recovery；报告总耗时 198.58s，tests 144.38s、typecheck 1.98s、build 50.01s、recovery 0.43s。唯一 skipped 是 selector 不属于 full gate；recovery 的已有 sampled runIds/optional artifact warning 不构成阶段失败。用户已有 `test/e2e-webhook.test.ts` 改动不纳入本阶段。
 
+阶段 5E：runtime state 写入边界
+
+状态：已完成。盘点确认 `runtimeControl` 组的生产写入分布在 Runtime safe boundary、DECIDE 延迟事件消费、Runner 初始化和 checkpoint restore；若由各调用点自行复制校验和批次更新，仍会出现字段半更新、非法阶段写入和队列恢复语义混杂。本阶段只收敛 RunContext 顶层 runtime state 的写入入口，不代理 `RuntimeEventQueue` 内部的 open/settle/lease 状态。
+
+- 新增 `packages/harness/src/runtime-state.ts`，提供 `writeRuntimeState()`：先校验完整字段批次和当前 stage，全部通过后才一次性写入；未知字段或非法阶段不会留下半更新。
+- Runtime safe boundary 通过统一入口写入 `runtimeControl`、延迟事件和事件 id；DECIDE adoption 通过同一入口清理已消费事件；Runner 初始化和 checkpoint restore 通过同一入口写入队列、延迟事件、事件 id 和 loop budget。
+- `runtimeEventQueue` 内部租约、open/settle、幂等和快照恢复状态仍由 `packages/runner/src/runtime-event-queue.ts` 自己拥有；本阶段不把队列内部状态提升为 RunContext 字段写入责任。
+- `usage` 仍由模型观测边界负责，未纳入阶段 5E；`memory` 组仍是阶段 5 的下一候选。
+
+阶段 5E 定向证据（2026-08-10）：`runtime-state.test.ts`、`runtime-control-boundary.test.ts`、`stages/decide.test.ts`、`runner-continuation.test.ts` 共 4 个测试文件、54 项通过；Harness build 与 Runner typecheck 通过。`verify:core` 与 `verify:full` 均在阶段收尾执行并通过，具体测试数量、耗时和 `failedStage` 以本次生成报告为准。用户已有 `test/e2e-webhook.test.ts` 改动不纳入本阶段。
+
 ## Acceptance Matrix
 
 | 维度 | 当前基线 | 目标 | 证据 |
@@ -199,7 +210,7 @@
 | 状态转移可解释性 | `next` 分散、无唯一允许边表 | manifest + runtime validation + graph | Harness 特征测试 |
 | RunContext ownership | 74 字段、跨 61 个生产文件访问 | 分域 owner 表，先收敛四组高频状态 | 类型/特征测试 + 导航文档 |
 
-阶段 5A/5C/5D 当前证据：状态 manifest 覆盖 11 个 Stage、每个 Stage 的终止 `exit` 边及 38 条显式边；非法 `finalize -> reply` 自定义转移被拒绝，兼容 `execute -> finalize` 路径有回归保护。ownership manifest 现登记 26 个高频字段，其中 replan 组的顶层生产写入已通过 `replan-state.ts` 统一校验，reply 组的 `reply`/`replyProvenance` 已通过 `reply-state.ts` 统一校验；`usage`、`runtimeControl` 和 `memory` 组仍需后续单独收敛。阶段质量门和本地报告必须随阶段提交更新；报告中的 `skipped` 仅为 full gate 不适用 selector，不影响已执行的测试、typecheck、build 和 recovery。
+阶段 5A/5C/5D/5E 当前证据：状态 manifest 覆盖 11 个 Stage、每个 Stage 的终止 `exit` 边及 38 条显式边；非法 `finalize -> reply` 自定义转移被拒绝，兼容 `execute -> finalize` 路径有回归保护。ownership manifest 现登记 27 个高频字段，其中 replan 组的顶层生产写入已通过 `replan-state.ts` 统一校验，reply 组的 `reply`/`replyProvenance` 已通过 `reply-state.ts` 统一校验，runtimeControl 组的 RunContext 顶层写入已通过 `runtime-state.ts` 统一校验；`usage` 和 `memory` 组仍需后续单独收敛。阶段质量门和本地报告必须随阶段提交更新；报告中的 `skipped` 仅为 full gate 不适用 selector，不影响已执行的测试、typecheck、build 和 recovery。
 
 ## Verification Order
 

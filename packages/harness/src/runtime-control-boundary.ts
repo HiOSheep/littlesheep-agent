@@ -12,6 +12,7 @@ import {
 } from '@littlesheep/types';
 import { applyTaskBookPatch } from './taskbook-patch.js';
 import { writeReplanState } from './replan-state.js';
+import { writeRuntimeState } from './runtime-state.js';
 
 export const RUNTIME_CONTROL_EVENT_TYPES = [
   'pause_requested',
@@ -91,13 +92,15 @@ export function consumeRuntimeControlEvents(ctx: RunContext): RuntimeControlBoun
       ...(ctx.runtimeControl?.eventIds ?? []),
       ...appliedIds,
     ].slice(-MAX_CONTROL_EVENT_IDS);
-    ctx.runtimeControl = {
-      version: RUNTIME_CONTROL_VERSION,
-      state,
-      changedAt: runtimeNow(ctx).toISOString(),
-      reason: eventReason(lastApplied) ?? lastApplied.type,
-      eventIds,
-    };
+    writeRuntimeState(ctx, 'runtime-boundary', {
+      runtimeControl: {
+        version: RUNTIME_CONTROL_VERSION,
+        state,
+        changedAt: runtimeNow(ctx).toISOString(),
+        reason: eventReason(lastApplied) ?? lastApplied.type,
+        eventIds,
+      },
+    });
   }
 
   return result(state, batch.events.map((event) => event.id));
@@ -188,8 +191,10 @@ export function consumeRuntimeTaskEvents(ctx: RunContext): RuntimeTaskBoundaryRe
     });
   }
   if (shouldReplan) {
-    ctx.deferredRuntimeEvents = stagedDeferredEvents.slice(-MAX_DEFERRED_RUNTIME_EVENTS);
-    ctx.deferredRuntimeEventIds = stagedDeferredIds.slice(-MAX_DEFERRED_RUNTIME_EVENT_IDS);
+    writeRuntimeState(ctx, 'runtime-boundary', {
+      deferredRuntimeEvents: stagedDeferredEvents.slice(-MAX_DEFERRED_RUNTIME_EVENTS),
+      deferredRuntimeEventIds: stagedDeferredIds.slice(-MAX_DEFERRED_RUNTIME_EVENT_IDS),
+    });
   }
   return taskResult(
     batch.events.map((event) => event.id),

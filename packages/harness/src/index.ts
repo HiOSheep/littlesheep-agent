@@ -79,6 +79,7 @@ export {
 } from './runtime-control-boundary.js';
 export { writeReplanState, type ReplanStateUpdate } from './replan-state.js';
 export { clearReplyState, writeReplyState, type ReplyStateUpdate } from './reply-state.js';
+export { writeRuntimeState, type RuntimeStateUpdate } from './runtime-state.js';
 export {
   applyTaskBookPatch,
   applyTaskBookPatchToContext,
