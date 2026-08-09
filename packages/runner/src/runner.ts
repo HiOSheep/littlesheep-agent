@@ -30,6 +30,7 @@ import {
   writeReplanState,
   writeRuntimeState,
   writeMemoryState,
+  writeDecisionState,
 } from '@littlesheep/harness';
 import { buildInfrastructure, type RunnerState, type LogFn } from './infra.js';
 import type { ExecutionLog } from './execution-log.js';
@@ -683,8 +684,10 @@ function restoreContinuationContext(ctx: RunContext, checkpoint: RunCheckpoint):
     appliedTaskBookPatchIds: [...state.appliedTaskBookPatchIds],
     replanAttempts: state.replanAttempts,
   });
-  ctx.classification = state.classification ? structuredClone(state.classification) : undefined;
-  ctx.needAssessment = state.needAssessment ? structuredClone(state.needAssessment) : undefined;
+  writeDecisionState(ctx, 'runner-restore', {
+    classification: state.classification ? structuredClone(state.classification) : undefined,
+    needAssessment: state.needAssessment ? structuredClone(state.needAssessment) : undefined,
+  });
   writeRuntimeState(ctx, 'runner-restore', {
     deferredRuntimeEventIds: [...checkpoint.pendingEventIds],
     deferredRuntimeEvents: structuredClone(state.deferredRuntimeEvents),

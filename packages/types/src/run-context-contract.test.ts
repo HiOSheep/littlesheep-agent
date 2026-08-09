@@ -8,7 +8,7 @@ import {
 
 describe('RunContext ownership contract', () => {
   it('assigns the four high-churn groups to explicit owners', () => {
-    for (const group of ['reply', 'replan', 'runtimeControl', 'memory'] as const) {
+    for (const group of ['reply', 'replan', 'decision', 'runtimeControl', 'memory'] as const) {
       const definitions = runContextFieldsForGroup(group);
       expect(definitions.length).toBeGreaterThan(0);
       expect(definitions.every((definition) => definition.owner.length > 0)).toBe(true);
@@ -26,6 +26,11 @@ describe('RunContext ownership contract', () => {
     expect(getRunContextFieldContract('taskBook')).toMatchObject({
       group: 'replan',
       owner: 'decide-taskbook-boundary',
+      lifecycle: 'checkpoint-carried',
+    });
+    expect(getRunContextFieldContract('clarificationRequest')).toMatchObject({
+      group: 'decision',
+      owner: 'clarification-boundary',
       lifecycle: 'checkpoint-carried',
     });
   });

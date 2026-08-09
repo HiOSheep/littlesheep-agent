@@ -5,6 +5,7 @@ import type {
   VerificationRecord,
 } from '@littlesheep/types';
 import { writeReplanState } from '../../replan-state.js';
+import { writeDecisionState } from '../../decision-state.js';
 import { textOf } from '../_shared.js';
 import {
   canRecoverWithPartialReplan,
@@ -259,7 +260,7 @@ export function escalateExhaustedReplan(ctx: RunContext, reason: string, feedbac
   const originalRequest = textOf(ctx.inbound);
   const chinese = /[\u3400-\u9fff]/u.test(originalRequest);
   writeReplanState(ctx, 'verify', { partialReplanRequest: undefined });
-  ctx.clarificationRequest = {
+  writeDecisionState(ctx, 'verify', { clarificationRequest: {
     id: `${ctx.runId}:clarification`,
     kind: 'recovery_decision',
     sourceStage: 'verify',
@@ -278,7 +279,7 @@ export function escalateExhaustedReplan(ctx: RunContext, reason: string, feedbac
         ? ['保留已完成部分并说明现状', '再尝试一次', '停止任务']
         : ['Keep completed work and explain the status', 'Try once more', 'Stop the task'],
     }],
-  };
+  } });
   recordVerification(ctx, {
     verdict: 'fail',
     reason,

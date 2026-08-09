@@ -82,6 +82,11 @@ export { clearReplyState, writeReplyState, type ReplyStateUpdate } from './reply
 export { writeRuntimeState, type RuntimeStateUpdate } from './runtime-state.js';
 export { writeMemoryState, type MemoryStateUpdate } from './memory-state.js';
 export {
+  writeDecisionState,
+  updateClarificationRequest,
+  type DecisionStateUpdate,
+} from './decision-state.js';
+export {
   writeUsageState,
   writeProviderUsageState,
   type UsageStateUpdate,

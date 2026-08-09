@@ -22,6 +22,7 @@ import {
 } from '../model-observability.js';
 import { buildRunRequestCandidates } from '../context-candidates.js';
 import { attachmentManifestText, recentHistoryForModel } from './_shared.js';
+import { writeDecisionState } from '../decision-state.js';
 
 function inboundText(ctx: RunContext): string {
   return ctx.inbound.content
@@ -59,13 +60,15 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
         ),
         onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
       });
-      ctx.classification = cls;
       const activity = cls.activity ?? activityFromMessageClass(cls.type);
       if (activity === 'execute') {
+        writeDecisionState(ctx, 'classify', { classification: cls });
         next = 'decide';
       } else if (activity === 'clarify') {
         const originalRequest = inboundText(ctx);
-        ctx.clarificationRequest = {
+        writeDecisionState(ctx, 'classify', {
+          classification: cls,
+          clarificationRequest: {
           id: `${ctx.runId}:clarification`,
           kind: 'ambiguous_request',
           sourceStage: 'classify',
@@ -83,20 +86,22 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
               : 'What would you like LS to help you accomplish?',
             required: true,
           }],
-        };
+          },
+        });
         next = 'ask_user';
       } else {
+        writeDecisionState(ctx, 'classify', { classification: cls });
         next = 'reply';
       }
     } catch (err) {
       // Classifier never throws in practice, but defend against transport errors.
-      ctx.classification = {
+      writeDecisionState(ctx, 'classify', { classification: {
         activity: 'respond',
         type: 'chat',
         confidence: 0.3,
         source: 'llm',
         reason: `classify error: ${(err as Error).message}`,
-      };
+      } });
       // A classifier transport failure is internal; do not make the user
       // clarify a message that may already be clear.
       next = 'reply';

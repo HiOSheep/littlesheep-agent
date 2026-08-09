@@ -1,7 +1,7 @@
 // @littlesheep/types - machine-readable ownership and lifecycle contracts for high-churn RunContext fields.
 import type { RunContext, StageName } from './agent.js';
 
-export type RunContextFieldGroup = 'reply' | 'replan' | 'runtimeControl' | 'memory';
+export type RunContextFieldGroup = 'reply' | 'replan' | 'decision' | 'runtimeControl' | 'memory';
 export type RunContextLifecycle = 'run-local' | 'checkpoint-carried' | 'session-persisted';
 export type RunContextContractStage = StageName | 'runner-init' | 'runner-restore' | 'runtime-boundary' | 'post-run';
 
@@ -141,6 +141,42 @@ export const runContextFieldOwnership: readonly RunContextFieldContract[] = Obje
     writeStages: ['runtime-boundary', 'runner-restore'],
     lifecycle: 'checkpoint-carried',
     purpose: 'Bounded idempotency ledger for runtime TaskBook patches.',
+  }),
+  field({
+    field: 'classification',
+    group: 'decision',
+    owner: 'activity-routing-boundary',
+    readStages: ['classify', 'decide', 'execute', 'reply', 'ask_user', 'runner-restore'],
+    writeStages: ['classify', 'runner-restore'],
+    lifecycle: 'checkpoint-carried',
+    purpose: 'Validated semantic activity route used to select the next stage.',
+  }),
+  field({
+    field: 'needAssessment',
+    group: 'decision',
+    owner: 'decide-demand-boundary',
+    readStages: ['decide', 'execute', 'verify', 'reply', 'finalize', 'runner-restore'],
+    writeStages: ['decide', 'runner-restore'],
+    lifecycle: 'checkpoint-carried',
+    purpose: 'Demand calibration and acceptance contract adopted from the DECIDE proposal.',
+  }),
+  field({
+    field: 'clarificationRequest',
+    group: 'decision',
+    owner: 'clarification-boundary',
+    readStages: ['classify', 'decide', 'execute', 'recover', 'verify', 'ask_user', 'finalize', 'runner-restore', 'post-run'],
+    writeStages: ['classify', 'decide', 'recover', 'verify', 'ask_user', 'runner-restore'],
+    lifecycle: 'checkpoint-carried',
+    purpose: 'Structured request that blocks unsafe continuation and carries the user-facing question.',
+  }),
+  field({
+    field: 'clarificationResponse',
+    group: 'decision',
+    owner: 'clarification-boundary',
+    readStages: ['classify', 'decide', 'execute', 'reply', 'ask_user', 'finalize', 'post-run'],
+    writeStages: ['runner-init'],
+    lifecycle: 'run-local',
+    purpose: 'Answer linked to the prior persisted clarification request for this run.',
   }),
   field({
     field: 'runtimeControl',

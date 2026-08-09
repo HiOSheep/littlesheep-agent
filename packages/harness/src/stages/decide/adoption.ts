@@ -14,6 +14,7 @@ import { renderClarificationMessage } from '../clarification-message.js';
 import { reserveUserFacingReplyOnce } from '../../user-facing-reply.js';
 import { writeReplanState } from '../../replan-state.js';
 import { writeRuntimeState } from '../../runtime-state.js';
+import { writeDecisionState } from '../../decision-state.js';
 
 export async function adoptDecodedDecision(
   deps: DecideStageDeps,
@@ -59,23 +60,24 @@ export async function adoptDecodedDecision(
   });
 
   if (assessment.needsClarification && !reusedExistingTaskBook) {
-    ctx.needAssessment = assessment;
+    writeDecisionState(ctx, 'decide', { needAssessment: assessment });
     writeReplanState(ctx, 'decide', { taskBook, plan, taskBookRevision });
     consumeDecisionInputs(ctx, request.deferredRuntimeEvents);
-    ctx.clarificationRequest = buildClarificationRequest(
-      parsed,
-      assessment,
-      request.inboundText,
-      ctx.runId,
-      new Date().toISOString(),
-    );
+    const clarificationRequest = buildClarificationRequest(
+        parsed,
+        assessment,
+        request.inboundText,
+        ctx.runId,
+        new Date().toISOString(),
+      );
+    writeDecisionState(ctx, 'decide', { clarificationRequest });
 
     // DECIDE already received and validated model-authored clarification copy.
     // Publish it directly when it is complete; the separate ASK_USER model
     // call remains the compatibility path for runtime-generated fallbacks or
     // duplicate text that needs a fresh wording pass.
-    if (ctx.clarificationRequest.copySource === 'model') {
-      const visible = renderClarificationMessage(ctx.clarificationRequest);
+    if (clarificationRequest.copySource === 'model') {
+      const visible = renderClarificationMessage(clarificationRequest);
       let reserved: string | undefined;
       try {
         reserved = await reserveUserFacingReplyOnce(ctx, request.callPurpose, visible);
@@ -83,7 +85,9 @@ export async function adoptDecodedDecision(
         return failDecision(ctx, `clarification reply reservation failed: ${(error as Error).message}`);
       }
       if (reserved) {
-        ctx.clarificationRequest.prompt = reserved;
+        writeDecisionState(ctx, 'decide', {
+          clarificationRequest: { ...clarificationRequest, prompt: reserved },
+        });
         return {
           stage: 'decide',
           next: 'finalize',
@@ -93,7 +97,7 @@ export async function adoptDecodedDecision(
             needsClarification: true,
             directClarification: true,
             missingInfo: assessment.missingInfo,
-            clarificationRequestId: ctx.clarificationRequest.id,
+            clarificationRequestId: clarificationRequest.id,
             taskBookRevision,
             deferredRuntimeEventIds: request.deferredRuntimeEvents.map((event) => event.id),
             llmAttempts: attempts,
@@ -109,7 +113,7 @@ export async function adoptDecodedDecision(
         complexity: assessment.complexity,
         needsClarification: true,
         missingInfo: assessment.missingInfo,
-        clarificationRequestId: ctx.clarificationRequest.id,
+        clarificationRequestId: clarificationRequest.id,
         taskBookRevision,
         deferredRuntimeEventIds: request.deferredRuntimeEvents.map((event) => event.id),
         llmAttempts: attempts,
@@ -130,7 +134,7 @@ export async function adoptDecodedDecision(
     request.partialReplan?.targetStepIds,
     deps.log,
   );
-  ctx.needAssessment = assessment;
+  writeDecisionState(ctx, 'decide', { needAssessment: assessment });
   writeReplanState(ctx, 'decide', { taskBook, plan, taskBookRevision });
   consumeDecisionInputs(ctx, request.deferredRuntimeEvents);
   ctx.onToolEvent?.({ type: 'task_book', taskBook });

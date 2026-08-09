@@ -31,6 +31,7 @@ import { applyBootstrapLimits } from '@littlesheep/prompt';
 import { resolveRuntimeTimeZone } from '@littlesheep/prompt';
 import { writeRuntimeState } from './runtime-state.js';
 import { writeMemoryState } from './memory-state.js';
+import { writeDecisionState } from './decision-state.js';
 
 /** Bootstrap file names (in priority order). Read from bootstrapDir. */
 const BOOTSTRAP_FILES = ['AGENTS.md', 'SOUL.md', 'USER.md', 'TOOLS.md'] as const;
@@ -233,7 +234,6 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     // VERIFY force-passes to EVOLVE to avoid infinite DECIDE↔VERIFY loops.
     replanAttempts: 0,
     maxReplanAttempts: 2,
-    clarificationResponse,
     startedAt: opts.startedAt ?? new Date().toISOString(),
     timeZone: resolveRuntimeTimeZone(opts.config.agents.defaults.userTimezone),
     timeFormat: opts.config.agents.defaults.timeFormat,
@@ -253,6 +253,8 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     contextCompressionThresholdRatio: opts.config.agents.defaults.contextCompressionThresholdRatio,
     signal: opts.signal,
   };
+
+  writeDecisionState(ctx, 'runner-init', { clarificationResponse });
 
   writeRuntimeState(ctx, 'runner-init', {
     runtimeEventQueue: opts.runtimeEventQueue,

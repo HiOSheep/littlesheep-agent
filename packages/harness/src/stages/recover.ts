@@ -17,6 +17,7 @@ import {
 } from './recover/policy.js';
 import { writeReplanState } from '../replan-state.js';
 import { clearReplyState } from '../reply-state.js';
+import { updateClarificationRequest, writeDecisionState } from '../decision-state.js';
 
 export type { RecoverStageDeps } from './recover/contracts.js';
 
@@ -95,7 +96,7 @@ export function createRecoverStage(deps: RecoverStageDeps) {
       const visibleMessage = parsed.userMessage?.trim();
       const originalRequest = textOf(ctx.inbound);
       const chinese = /[\u3400-\u9fff]/u.test(originalRequest);
-      ctx.clarificationRequest = {
+      writeDecisionState(ctx, 'recover', { clarificationRequest: {
         id: `${ctx.runId}:clarification`,
         kind: 'recovery_decision',
         sourceStage: 'recover',
@@ -110,7 +111,7 @@ export function createRecoverStage(deps: RecoverStageDeps) {
           prompt: visibleMessage ?? (chinese ? '你希望我接下来如何处理？' : 'How would you like me to proceed?'),
           required: true,
         }],
-      };
+      } });
       if (visibleMessage) {
         let reserved: string | undefined;
         try {
@@ -120,7 +121,7 @@ export function createRecoverStage(deps: RecoverStageDeps) {
           return { stage: 'recover', next: 'exit', ok: false, error: ctx.lastError.message };
         }
         if (reserved) {
-          ctx.clarificationRequest.prompt = reserved;
+          updateClarificationRequest(ctx, 'recover', (value) => ({ ...value, prompt: reserved }));
           next = 'finalize';
           return {
             stage: 'recover',
