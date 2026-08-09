@@ -18,6 +18,7 @@ import {
 import { appendSystemPromptAddons, buildUserFacingVoiceAddon } from '../profile-prompt.js';
 import { textOf } from './_shared.js';
 import { acceptUniqueUserFacingReply, type ReplyRewriteInput } from '../user-facing-reply.js';
+import { clearReplyState } from '../reply-state.js';
 import { renderClarificationMessage } from './clarification-message.js';
 
 export interface AskUserStageDeps {
@@ -33,8 +34,7 @@ export interface AskUserStageDeps {
  */
 export function createAskUserStage(deps?: AskUserStageDeps) {
   return async function askUserStage(ctx: RunContext): Promise<StageResult> {
-    ctx.reply = undefined;
-    ctx.replyProvenance = undefined;
+    clearReplyState(ctx, 'ask_user');
     const request = ensureClarificationRequest(ctx);
     const fallback = renderClarificationMessage(request);
     if (!deps) {
@@ -52,7 +52,6 @@ export function createAskUserStage(deps?: AskUserStageDeps) {
       request.prompt = question;
       request.copySource = 'model';
       ctx.clarificationRequest = request;
-      ctx.reply = question;
     } catch (error) {
       ctx.lastError = { stage: 'ask_user', message: `user-facing clarification generation failed: ${(error as Error).message}` };
       return { stage: 'ask_user', next: 'exit', ok: false, error: ctx.lastError.message };

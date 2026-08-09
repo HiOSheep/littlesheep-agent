@@ -12,6 +12,7 @@ import type {
 import type { ExecuteSanitizeOptions, ExecuteStageDeps } from './contracts.js';
 import { consumeRuntimeControlEvents } from '../../runtime-control-boundary.js';
 import { updateReplanHistory, writeReplanState } from '../../replan-state.js';
+import { clearReplyState } from '../../reply-state.js';
 import { reserveUserFacingReplyOnce } from '../../user-facing-reply.js';
 import { orderedStepResults } from './failure-policy.js';
 import { synthesizeFinalReply } from './final-reply.js';
@@ -152,11 +153,10 @@ export async function executeTaskBook(
   }
   ctx.toolResults = allToolResults;
   try {
-    ctx.reply = await resolveCompletedTaskReply(deps, ctx, taskBook, execution.steps);
+    await resolveCompletedTaskReply(deps, ctx, taskBook, execution.steps);
     execution.summary = ctx.reply;
   } catch (error) {
-    ctx.reply = undefined;
-    ctx.replyProvenance = undefined;
+    clearReplyState(ctx, 'execute');
     execution.status = 'failed';
     execution.endedAt = new Date().toISOString();
     syncExecutionSteps();
@@ -187,8 +187,7 @@ function finishRuntimeControlBoundary(
 ): StageResult {
   taskBook.stageResults = execution.steps;
   ctx.toolResults = allToolResults;
-  ctx.reply = undefined;
-  ctx.replyProvenance = undefined;
+  clearReplyState(ctx, 'execute');
   const error = runtimeControl.error
     ?? (runtimeControl.state === 'paused'
       ? 'run paused at a safe boundary'
@@ -269,8 +268,7 @@ function finishWaveFailure(
   execution.endedAt = new Date().toISOString();
   taskBook.stageResults = execution.steps;
   ctx.toolResults = allToolResults;
-  ctx.reply = undefined;
-  ctx.replyProvenance = undefined;
+  clearReplyState(ctx, 'execute');
   const error = failure.result.error ?? 'TaskBook step failed.';
   if (failure.route === 'recover') {
     ctx.lastError = { stage: 'execute', message: error };
@@ -294,8 +292,7 @@ function structuralFailure(
   execution.status = 'failed';
   execution.endedAt = new Date().toISOString();
   taskBook.stageResults = execution.steps;
-  ctx.reply = undefined;
-  ctx.replyProvenance = undefined;
+  clearReplyState(ctx, 'execute');
   ctx.lastError = { stage: 'execute', message: error };
   return { stage: 'execute', next: 'recover', ok: false, error, meta: { taskStatus: execution.status } };
 }

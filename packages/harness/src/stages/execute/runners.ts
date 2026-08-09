@@ -12,6 +12,7 @@ import { applyUsage, runToolLoop } from './tool-loop.js';
 import { acceptUniqueUserFacingReply, type ReplyRewriteInput } from '../../user-facing-reply.js';
 import { buildRunRequestCandidates } from '../../context-candidates.js';
 import { prepareModelRequest, recordProviderUsage } from '../../model-observability.js';
+import { clearReplyState } from '../../reply-state.js';
 export { executeTaskBook } from './task-book-runner.js';
 
 export async function executeLegacyLoop(
@@ -36,15 +37,14 @@ export async function executeLegacyLoop(
   }
   applyUsage(ctx, result.usage);
   try {
-    ctx.reply = await acceptUniqueUserFacingReply(
+    await acceptUniqueUserFacingReply(
       ctx,
       'execute_tool_loop',
       result.content,
       (input) => rewriteLegacyExecutionReply(deps, ctx, systemPrompt, input),
     );
   } catch (error) {
-    ctx.reply = undefined;
-    ctx.replyProvenance = undefined;
+    clearReplyState(ctx, 'execute');
     ctx.lastError = { stage: 'execute', message: `user-facing execution reply generation failed: ${(error as Error).message}` };
     return { stage: 'execute', next: 'recover', ok: false, error: ctx.lastError.message };
   }

@@ -16,6 +16,7 @@ import {
   retryStageFor,
 } from './recover/policy.js';
 import { writeReplanState } from '../replan-state.js';
+import { clearReplyState } from '../reply-state.js';
 
 export type { RecoverStageDeps } from './recover/contracts.js';
 
@@ -120,7 +121,6 @@ export function createRecoverStage(deps: RecoverStageDeps) {
         }
         if (reserved) {
           ctx.clarificationRequest.prompt = reserved;
-          ctx.reply = reserved;
           next = 'finalize';
           return {
             stage: 'recover',
@@ -138,15 +138,14 @@ export function createRecoverStage(deps: RecoverStageDeps) {
       next = 'ask_user';
     } else {
       try {
-        ctx.reply = await acceptUniqueUserFacingReply(
+        await acceptUniqueUserFacingReply(
           ctx,
           'recover',
           parsed.reason ?? '',
           (input) => rewriteAbortReason(deps, ctx, lastError, input),
         );
       } catch (error) {
-        ctx.reply = undefined;
-        ctx.replyProvenance = undefined;
+        clearReplyState(ctx, 'recover');
         ctx.lastError = { stage: 'recover', message: `user-facing recovery reply generation failed: ${(error as Error).message}` };
         return { stage: 'recover', next: 'exit', ok: false, error: ctx.lastError.message };
       }

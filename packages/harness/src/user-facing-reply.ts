@@ -2,10 +2,12 @@ import type {
   Message,
   ReplyProvenance,
   RunContext,
+  RunContextContractStage,
   UserFacingReplyPurpose,
 } from '@littlesheep/types';
 import { normalizeUserFacingReply } from '@littlesheep/types';
 import { textOf } from './stages/_shared.js';
+import { writeReplyState } from './reply-state.js';
 
 export { normalizeUserFacingReply } from '@littlesheep/types';
 
@@ -51,6 +53,7 @@ export async function reserveUserFacingReplyOnce(
   purpose: UserFacingReplyPurpose,
   apiGeneratedReply: string,
   rewriteCount = 0,
+  stage?: RunContextContractStage,
 ): Promise<string | undefined> {
   const generatedReply = cleanModelReply(apiGeneratedReply);
   if (!generatedReply) {
@@ -78,7 +81,10 @@ export async function reserveUserFacingReplyOnce(
     if (!reserved) return undefined;
   }
 
-  ctx.replyProvenance = createReplyProvenance(ctx, purpose, rewriteCount);
+  writeReplyState(ctx, stage ?? replyStageForPurpose(purpose), {
+    reply: generatedReply,
+    replyProvenance: createReplyProvenance(ctx, purpose, rewriteCount),
+  });
   return generatedReply;
 }
 
@@ -93,12 +99,13 @@ export async function acceptUniqueUserFacingReply(
   purpose: UserFacingReplyPurpose,
   apiGeneratedReply: string,
   rewrite: ReplyRewrite,
+  stage?: RunContextContractStage,
 ): Promise<string> {
   const recentReplies = collectRecentAssistantReplies(ctx);
   let generatedReply = cleanModelReply(apiGeneratedReply);
 
   for (let rewriteCount = 0; rewriteCount <= MAX_VISIBLE_REPLY_REWRITES; rewriteCount += 1) {
-    const reserved = await reserveUserFacingReplyOnce(ctx, purpose, generatedReply, rewriteCount);
+    const reserved = await reserveUserFacingReplyOnce(ctx, purpose, generatedReply, rewriteCount, stage);
     if (reserved) return reserved;
 
     if (rewriteCount >= MAX_VISIBLE_REPLY_REWRITES) {
@@ -172,4 +179,23 @@ function createReplyProvenance(
     generatedAt: (ctx.runtimeNow?.() ?? new Date()).toISOString(),
     rewriteCount,
   };
+}
+
+function replyStageForPurpose(
+  purpose: UserFacingReplyPurpose,
+): 'decide' | 'execute' | 'recover' | 'reply' | 'ask_user' {
+  switch (purpose) {
+    case 'decide':
+    case 'decide_explicit_tool':
+      return 'decide';
+    case 'execute_tool_loop':
+    case 'execute_final_reply':
+      return 'execute';
+    case 'recover':
+      return 'recover';
+    case 'ask_user':
+      return 'ask_user';
+    case 'reply':
+      return 'reply';
+  }
 }

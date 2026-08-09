@@ -83,7 +83,6 @@ export async function adoptDecodedDecision(
       }
       if (reserved) {
         ctx.clarificationRequest.prompt = reserved;
-        ctx.reply = reserved;
         return {
           stage: 'decide',
           next: 'finalize',

@@ -24,7 +24,7 @@ import type { Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
 import type { LlmClient } from '@littlesheep/llm';
 import type { SessionManager } from '@littlesheep/session';
-import { buildRunContext, writeReplanState } from '@littlesheep/harness';
+import { buildRunContext, clearReplyState, writeReplanState } from '@littlesheep/harness';
 import { buildInfrastructure, type RunnerState, type LogFn } from './infra.js';
 import type { ExecutionLog } from './execution-log.js';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
@@ -691,6 +691,5 @@ function restoreContinuationContext(ctx: RunContext, checkpoint: RunCheckpoint):
   // retained in the restored queue; the new run starts in a clean state.
   ctx.runtimeControl = undefined;
   ctx.lastError = undefined;
-  ctx.reply = undefined;
-  ctx.replyProvenance = undefined;
+  clearReplyState(ctx, 'runner-restore');
 }

@@ -22,6 +22,7 @@ export async function synthesizeFinalReply(
   ctx: RunContext,
   taskBook: TaskBook,
   stepResults: TaskStepResult[],
+  replyStage: 'execute' | 'reply' = 'execute',
 ): Promise<string> {
   const compact = isCompactReadOnlyResult(ctx, taskBook, stepResults);
   const stepSummary = stepResults.map((step, index) =>
@@ -94,5 +95,6 @@ Follow progressive disclosure: lead with the outcome and completion status, then
     'execute_final_reply',
     initial,
     requestFinalReply,
+    replyStage,
   );
 }

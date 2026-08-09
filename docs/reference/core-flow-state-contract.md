@@ -54,12 +54,12 @@ Ownership manifest 目前先覆盖四组高频共享状态。它不是把已有 
 
 | 分组 | 代表字段 | owner | 主要写入阶段 | 生命周期 |
 | --- | --- | --- | --- | --- |
-| `reply` | `reply`、`replyProvenance`、`usage` | `user-facing-reply-boundary` / `model-observability` | `reply`、`execute`、`recover`、`ask_user`；usage 由模型观测边界写入 | `run-local` |
+| `reply` | `reply`、`replyProvenance`、`usage` | `user-facing-reply-boundary` / `model-observability` | `reply`、`execute`、`recover`、`ask_user`、`runner-restore`；`reply` 与 `replyProvenance` 通过 `reply-state.ts` 批次写入，usage 仍由模型观测边界写入 | `run-local` |
 | `replan` | `taskBook`、`plan`、`taskBookRevision`、`taskExecution`、`replanAttempts`、`verifyFeedback`、`partialReplanRequest`、`replanHistory`、`appliedTaskBookPatchIds` | `decide-taskbook-boundary` / `execute-taskbook-boundary` / `verify-replan-boundary` / `runtime-taskbook-boundary` | `decide`、`execute`、`verify`、`recover`、`runtime-boundary`、`runner-restore` | `checkpoint-carried` |
 | `runtimeControl` | `runtimeControl`、`runtimeEventQueue`、`deferredRuntimeEvents`、`loopBudget` | `runtime-control-boundary` / `runner-runtime-queue` / `runner-runtime-budget` | Runtime safe boundary、Runner 初始化/恢复 | `run-local` 或 `checkpoint-carried` |
 | `memory` | `prelude`、`sessionSummary`、`memoryRootIndex`、`memoryKnownState`、`memoryContextWorkingSet`、`evolutionNotes`、`insights` | Runner memory bootstrap、memory evidence、EVOLVE/CAPTURE boundary | Runner 初始化/恢复、Runtime boundary、`evolve`、`capture`、`finalize` | `run-local`、`checkpoint-carried` 或 `session-persisted` |
 
-机器可读字段表通过 `getRunContextFieldContract`、`runContextFieldsForGroup` 和 `assertRunContextFieldWriteAllowed` 查询。阶段 5C 已将 replan 组的顶层生产写入集中到 `packages/harness/src/replan-state.ts`：DECIDE、VERIFY、EXECUTE、runtime boundary 和 Runner restore 先完成整批字段校验，再一次性写入；非法阶段不会留下半更新状态。TaskBook 内部的 `stageResults` 仍由 EXECUTE 在同一 TaskBook 内更新，这是本阶段明确保留的嵌套执行证据边界。测试夹具仍可直接构造 `RunContext`，但生产路径不得绕过 owner 直接复制字段逻辑。
+机器可读字段表通过 `getRunContextFieldContract`、`runContextFieldsForGroup` 和 `assertRunContextFieldWriteAllowed` 查询。阶段 5C 已将 replan 组的顶层生产写入集中到 `packages/harness/src/replan-state.ts`：DECIDE、VERIFY、EXECUTE、runtime boundary 和 Runner restore 先完成整批字段校验，再一次性写入；非法阶段不会留下半更新状态。阶段 5D 已将 `reply` 与 `replyProvenance` 的生产写入集中到 `packages/harness/src/reply-state.ts`：唯一性闸门提交可见文本和模型来源证明，阶段清理也通过同一入口，避免文本和审计字段分离。`usage` 尚未纳入该边界。TaskBook 内部的 `stageResults` 仍由 EXECUTE 在同一 TaskBook 内更新，这是明确保留的嵌套执行证据边界。测试夹具仍可直接构造 `RunContext`，但生产路径不得绕过 owner 直接复制字段逻辑。
 
 ## 修改规则
 

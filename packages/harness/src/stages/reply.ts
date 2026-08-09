@@ -24,6 +24,7 @@ import {
   acceptUniqueUserFacingReply,
   type ReplyRewriteInput,
 } from '../user-facing-reply.js';
+import { clearReplyState } from '../reply-state.js';
 import { synthesizeFinalReply } from './execute/final-reply.js';
 import { repairDiscontinuousReply } from './reply/continuity-repair.js';
 
@@ -37,11 +38,10 @@ export interface ReplyStageDeps {
 /** Factory: creates a reply stage. */
 export function createReplyStage(deps: ReplyStageDeps) {
   return async function replyStage(ctx: RunContext): Promise<StageResult> {
-    ctx.reply = undefined;
-    ctx.replyProvenance = undefined;
+    clearReplyState(ctx, 'reply');
     if (ctx.resumedFromCheckpointId && ctx.taskBook && (ctx.taskExecution?.steps.length ?? 0) > 0) {
       try {
-        ctx.reply = await synthesizeFinalReply(deps, ctx, ctx.taskBook, ctx.taskExecution!.steps);
+        await synthesizeFinalReply(deps, ctx, ctx.taskBook, ctx.taskExecution!.steps, 'reply');
         return {
           stage: 'reply',
           next: 'verify',
@@ -49,8 +49,7 @@ export function createReplyStage(deps: ReplyStageDeps) {
           meta: { resumedTaskFinalReply: true },
         };
       } catch (err) {
-        ctx.reply = undefined;
-        ctx.replyProvenance = undefined;
+        clearReplyState(ctx, 'reply');
         ctx.lastError = {
           stage: 'reply',
           message: `resumed task final reply generation failed: ${(err as Error).message}`,
@@ -162,7 +161,6 @@ export function createReplyStage(deps: ReplyStageDeps) {
       };
     }
 
-    ctx.reply = reply;
     return {
       stage: 'reply',
       next: 'finalize',

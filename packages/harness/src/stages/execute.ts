@@ -3,12 +3,12 @@ import type { RunContext, StageResult } from '@littlesheep/types';
 import type { ExecuteStageDeps } from './execute/contracts.js';
 import { buildExecuteSystemPrompt } from './execute/prompt.js';
 import { executeLegacyLoop, executeTaskBook } from './execute/runners.js';
+import { clearReplyState } from '../reply-state.js';
 export type { ExecuteStageDeps } from './execute/contracts.js';
 export { convertToolCall } from './execute/tool-loop.js';
 export function createExecuteStage(deps: ExecuteStageDeps) {
   return async function executeStage(ctx: RunContext): Promise<StageResult> {
-    ctx.reply = undefined;
-    ctx.replyProvenance = undefined;
+    clearReplyState(ctx, 'execute');
     const systemPrompt = await buildExecuteSystemPrompt(deps, ctx);
     const sanitizeOpts = {
       maxOutputChars: deps.config.tools.maxOutputChars,
