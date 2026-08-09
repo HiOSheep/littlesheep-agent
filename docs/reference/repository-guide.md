@@ -38,7 +38,7 @@
 
 | 文件 | 用途 |
 | --- | --- |
-| `package.json` | workspace 根脚本、测试入口、类型检查、构建和仓库卫生检查；`build:app` 是不含根 workspace typecheck 的 App-only 构建入口，`build` 保持完整构建语义。 |
+| `package.json` | workspace 根脚本、测试入口、类型检查、构建和仓库卫生检查；`build:app` 是不含根 workspace typecheck 的 App-only 构建入口，`build` 保持完整构建语义。`ensure:app-build` 会在 App fingerprint 新鲜时复用产物，`assert:app-build` 只断言并在缺失或过期时失败；`ensure:workspace-build`/`assert:workspace-build` 对指定包及其依赖闭包的 `dist` 使用独立 sidecar。 |
 | `pnpm-workspace.yaml` | 声明 `packages/*` 与 `packages/channels/*` 两组 workspace。 |
 | `pnpm-lock.yaml` | 依赖锁定文件；只有依赖变更时由 pnpm 更新。 |
 | `tsconfig.base.json`、`tsconfig.workspace.json`、`vitest.config.ts` | 全仓 TypeScript 基线、自动生成的 project references solution 与 Vitest 基线。`tsconfig.workspace.json` 由维护脚本生成，不手工编辑。Vitest 保留单项 30 秒超时，并把文件并发限制为 3；历史完整测试曾在 258 个测试文件上验证该并发上限，当前测试文件数量和结果以实际命令输出为准。 |
@@ -203,7 +203,12 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 
 ## 测试与脚本
 
-- `pnpm.cmd run verify:changed`：默认以 `origin/main` 为基线，合并已提交、暂存、未暂存和未跟踪文件，计算变更 package 及其传递依赖方；单进程增量 typecheck 后，只运行与变更源文件相关的 Vitest，并在存在 App build-sensitive 输入时执行 `build:app`。runner 与测量器共用同一测试选择计划。脚本先解析并固定 merge-base 提交；基线不存在或无法解析时会 fail-closed 停止，避免漏掉已提交变更。需要其他基线时设置 `LITTLESHEEP_BASE_REF`。
+- `pnpm.cmd run build`：完整构建入口，先执行全 workspace typecheck，再执行 App 构建；阶段门使用它的完整语义，不用于每次小改动。
+- `pnpm.cmd run build:app`：强制执行一次 App-only 构建，并写入 `packages/app/out/.littlesheep-build-fingerprint.json`；它不替代根 `build` 的全 workspace typecheck。
+- `pnpm.cmd run ensure:app-build`：准备并校验 Electron 运行时；App 输入和 `out/**` fingerprint 新鲜时返回 `reused`，否则构建并原子写入 sidecar。`pnpm.cmd run assert:app-build` 只读断言，不会触发构建，过期、缺失、篡改或来源不明的 App 产物会 fail-closed。
+- `pnpm.cmd run ensure:workspace-build -- --package=@littlesheep/runner`：构建或复用目标包及其传递 workspace 依赖闭包，并在各目标 `dist/` 写入独立 sidecar；`pnpm.cmd run assert:workspace-build -- --package=<name>` 只断言，不会构建。App `out` sidecar 证明桌面应用入口与 Electron runtime 契约；workspace `dist` sidecar 证明声明的源码/依赖闭包和本地产物，两者不能互相替代。
+- `node scripts/run-verified-electron.mjs <script> [args...]`：在启动 Electron 专项脚本前只读断言 App fingerprint，并使用 sidecar 绑定且重新校验过的 prepared Electron 可执行文件；DeepSeek V4 tokenizer 和 Memory Provider 门通过此入口运行。
+- `pnpm.cmd run verify:changed`：默认以 `origin/main` 为基线，合并已提交、暂存、未暂存和未跟踪文件，计算变更 package 及其传递依赖方；单进程增量 typecheck 后，只运行与变更源文件相关的 Vitest，并在存在 App build-sensitive 输入时执行 `ensure:app-build`。runner 与测量器共用同一测试选择计划。脚本先解析并固定 merge-base 提交；基线不存在或无法解析时会 fail-closed 停止，避免漏掉已提交变更。需要其他基线时设置 `LITTLESHEEP_BASE_REF`。
 - `pnpm.cmd run verify:core`：仓库门、全工作区增量 typecheck 与 `test:core-eval` 列出的核心 Agent 契约测试，适用于 Harness、Runner、Context、Memory 和公共协议变更。2026-08-09 当前该集合实跑为 7 个测试文件、127 项；测试数量随源码变化，以 Vitest 实际输出为准。
 - `pnpm.cmd run verify:full`：阶段结束的完整测试、类型、Electron 构建和恢复源检查，不用于每次小改动。
 - `pnpm.cmd run verify:memory-v3-soak`：只在系统临时目录创建隔离 Memory v3 数据，重复验证只追加投影变更记录/commit receipt、atom 治理、journal 裁剪、重启、catalog 重建、向量有界批处理、关系相关性、routing feedback、run working set 和 RSS 上限；默认完成后删除临时根，不迁移或改写正式用户数据。增强档可使用 `--atoms=500 --runs=256 --feedback-events=256`，并可通过 `--related-atoms`、`--embedding-batch`、`--max-rss-mib` 调整验收边界。确定性测试 Embedding 只用于可重复规模门，不替代正式 BGE 或 Provider 验收。
@@ -232,6 +237,7 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 - `scripts/verify-electron-deepseek-compaction-continuity.mjs`：真实 Electron + DeepSeek 的会话摘要回答连续性门；校验原始旧消息不进入重启后的回答请求、压缩深度按 `1 -> 2 -> 3 -> 3` 有界滚动、Runtime 精确保真封套保留五个不同字段、版本化摘要成为唯一命中来源、最终回答逐项命中历史值，以及首次续答请求被主动断开后重试成功且失败尝试不触达 Provider。
 - `scripts/verify-electron-deepseek-single-tool.mjs`：默认验证用户明确点名 builtin 单只读工具的 2 次 API 紧凑路径；使用 `--autonomous-read` 时验证用户只表达目标、LLM 自主选择并提交一个只读工具提议、Runtime 直执行的 2 次 API 路径。`--tool=glob|grep|read` 选择固定验收工具，根脚本 `verify:electron-deepseek-autonomous-read-matrix` 依次覆盖三种工具。所有模式都要求只执行一次对应工具、Provider 工具协议请求数为 0、工作区不变、结构 VERIFY 通过、本地/Provider prompt 逐请求一致，并用 DECIDE `750`、最终回答 `450`、总 Prompt `1,200` 的自主路径上限防止回退到完整 Context。旧 `--provider-tool-loop` 参数只保留兼容映射，不再代表当前实现。
 - `scripts/verify-electron-deepseek-sustained-load.mjs`：真实 Electron + DeepSeek 的持续任务门。默认 diagnostic 为 120 秒，可显式运行 15-1200 秒；`--mode=formal` 默认 2 小时、允许 1-6 小时。两种模式都验证单次副作用只执行一次、安全暂停、Checkpoint 恢复不重放、最终回答连续性和资源回落；formal 另外按最多 24 个窗口检查后半程资源趋势。分钟级结果不能替代 formal 小时级结论。
+- `pnpm.cmd run verify:workspace-performance`：先只读断言 App fingerprint，再启动 Electron 性能测量；不会在性能门内隐式构建未知或过期的 `packages/app/out`。
 - `scripts/lib/sustained-load-evidence.mjs`：持续任务参数、资源聚合和 formal 趋势窗口的唯一实现；临时进度文件短暂不可读时沿用上一已确认 tick，真正回退仍失败。对应测试为 `scripts/lib/sustained-load-evidence.test.mjs`。
 - `scripts/verify-memory-v3-migration-readiness.mjs`：用指定真实 V2 数据的隔离副本执行迁移就绪验收；必须在复制前后复核源 manifest/index 哈希，并区分业务 atom 与内部 scope root，不得在源数据根登记迁移。
 - `scripts/build-app.ps1`：构建 Electron 应用并刷新快捷方式。

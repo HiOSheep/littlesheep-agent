@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadBranding, resolveDataDir } from '../../packages/branding/dist/index.js'
 import { getProvider, loadConfig, withProviderPresets } from '../../packages/config/dist/index.js'
+import { resolveVerifiedElectronExecutable } from './electron-runtime.mjs'
 
 export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 export const appRoot = join(repoRoot, 'packages', 'app')
@@ -146,23 +147,12 @@ export function startElectron(options) {
   }
   delete env.DEEPSEEK_API_KEY
   delete env.ELECTRON_RUN_AS_NODE
-  return spawn(resolveElectronExecutable(), ['.', `--user-data-dir=${options.chromiumDir}`], {
+  return spawn(resolveVerifiedElectronExecutable(repoRoot), ['.', `--user-data-dir=${options.chromiumDir}`], {
     cwd: appRoot,
     env,
     stdio: options.stdio ?? 'ignore',
     windowsHide: true,
   })
-}
-
-function resolveElectronExecutable() {
-  const candidates = [
-    join(appRoot, 'node_modules', 'electron', 'dist', 'LittleSheep.exe'),
-    join(appRoot, 'node_modules', 'electron', 'dist', 'electron.exe'),
-    join(repoRoot, 'node_modules', '.pnpm', 'electron@36.9.5', 'node_modules', 'electron', 'dist', 'LittleSheep.exe'),
-  ]
-  const executable = candidates.find(existsSync)
-  if (!executable) throw new Error('Electron runtime not found; build the app first')
-  return executable
 }
 
 export async function waitForLocator(dataDir, expectedPid, timeoutMs = DEFAULT_START_TIMEOUT_MS) {

@@ -1,11 +1,12 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { createServer } from 'node:net'
-import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { inflateSync } from 'node:zlib'
+import { assertAppBuildFresh } from './lib/app-build-fingerprint.mjs'
+import { resolveVerifiedElectronExecutable } from './lib/electron-runtime.mjs'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const appRoot = join(repoRoot, 'packages', 'app')
@@ -39,6 +40,7 @@ const budgets = {
 }
 
 async function main() {
+  await assertAppBuildFresh(repoRoot)
   const root = await mkdtemp(join(tmpdir(), 'littlesheep-workspace-performance-'))
   const dataDir = join(root, 'data')
   const chromiumDir = join(root, 'chromium')
@@ -249,7 +251,7 @@ function buildConfig(workspaceDir) {
 }
 
 async function startElectron({ dataDir, chromiumDir, debuggingPort, logPath }) {
-  const executable = resolveElectronExecutable()
+  const executable = resolveVerifiedElectronExecutable(repoRoot, { requireAppBuildManifest: true })
   const log = await import('node:fs').then(({ createWriteStream }) => createWriteStream(logPath, { flags: 'a' }))
   const env = { ...process.env, LITTLESHEEP_DATA_DIR: dataDir, LITTLESHEEP_ELECTRON_ACCEPTANCE: '1' }
   delete env.ELECTRON_RUN_AS_NODE
@@ -267,17 +269,6 @@ async function startElectron({ dataDir, chromiumDir, debuggingPort, logPath }) {
   child.stderr.pipe(log, { end: false })
   child.once('exit', () => log.end())
   return child
-}
-
-function resolveElectronExecutable() {
-  const candidates = [
-    join(appRoot, 'node_modules', 'electron', 'dist', 'LittleSheep.exe'),
-    join(appRoot, 'node_modules', 'electron', 'dist', 'electron.exe'),
-    join(repoRoot, 'node_modules', '.pnpm', 'electron@36.9.5', 'node_modules', 'electron', 'dist', 'LittleSheep.exe'),
-  ]
-  const executable = candidates.find(existsSync)
-  if (!executable) throw new Error('Electron runtime not found; build the app first')
-  return executable
 }
 
 async function connectRenderer(port) {

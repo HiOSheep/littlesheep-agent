@@ -1,10 +1,10 @@
 # LS 开发反馈环提速任务书 2026-08-09
 
-最后更新：2026-08-09 18:32:00
+最后更新：2026-08-09 20:30:00
 
 ## 状态
 
-进行中。阶段 0、阶段 2 已完成并分别形成独立提交；阶段 3 的重复 typecheck 局部修正已完成，专项构建新鲜度和复用仍未完成。本文是一个可单独设置为阶段目标的执行基线；完成任一阶段后，必须更新本文的状态、证据和实际边界，并提交、推送一次，再决定是否进入下一阶段。
+进行中。阶段 0、阶段 2、阶段 3 已完成并分别形成独立提交且推送到 GitHub；阶段 1 尚未开始。本文是一个可单独设置为阶段目标的执行基线；完成任一阶段后，必须更新本文的状态、证据和实际边界，并提交、推送一次，再决定是否进入下一阶段。
 
 ## Goal
 
@@ -90,7 +90,7 @@
 
 ### 阶段 3：消除验证入口重复
 
-状态：进行中。重复 typecheck 子项已完成，专项门 build-once/fingerprint 复用仍未完成。
+状态：已完成。App 与 workspace 构建产物现在各自拥有可验证的新鲜度凭证；Electron 专项门复用同一份 App 产物，性能门只断言而不隐式构建。
 
 - 从根 `build` 中拆出明确的 `build:app` 或等价 App-only build 入口。
 - 让 `verify:full` 在一次全工作区 typecheck 后复用 App build，不再通过嵌套 `build` 重复调用 typecheck。
@@ -98,7 +98,16 @@
 - `verify:workspace-performance` 必须验证构建 fingerprint，不能直接启动未知是否过期的 `packages/app/out`。
 - 验收：完整门日志中 typecheck 只有一个明确阶段；连续运行两个依赖相同 App 构建的专项门时不重复构建，或报告明确说明为何失效；过期产物被拒绝而不是被测量。
 
-本轮已完成子项：新增根 `build:app`（仅 App 构建），根 `build` 保持“全工作区 typecheck + `build:app`”兼容语义；`verify:full` 改为在一次全工作区 typecheck 后直接调用 `build:app`。`pnpm.cmd run build:app` 和根 `pnpm.cmd run build` 均已成功冒烟；此前单次 App Renderer 构建约 `21.53s` 属于历史样本，当前 `verify:changed` 的 App-only build 日志约 `28.66s`（renderer Vite 阶段约 `22.34s`）。完整 `verify:full` 尚未重跑，专项门 build-once/fingerprint 复用仍未完成，因此阶段 3 继续保持进行中。
+本轮验收证据（2026-08-09）：
+
+- 新增 `scripts/lib/app-build-fingerprint.mjs`、`scripts/ensure-app-build.mjs`：App 必需入口、`out/**` 输出摘要、App 及传递 workspace 依赖闭包输入、根构建输入和 Electron 安装/准备运行时契约共同生成 `packages/app/out/.littlesheep-build-fingerprint.json`。`--build` 强制构建，`--ensure` 新鲜时复用，`--assert` 只断言，构建失败、构建期间输入变化、缺失/篡改输出、损坏 sidecar、符号链接和越界路径均 fail-closed。
+- 新增 `scripts/lib/workspace-artifact-fingerprint.mjs`、`scripts/ensure-workspace-artifacts.mjs`：目标包的完整 workspace 依赖闭包生成 `packages/<package>/dist/.littlesheep-build-fingerprint.json`；输入、闭包、目标集合和所有 `dist/**` 输出均参与摘要。实际 `@littlesheep/runner` 验证为首次 `built`、再次 `reused`、`assert` 返回 `fresh`，一次构建覆盖 19 个闭包包。
+- Electron 运行时解析统一读取 Electron 包的 `path.txt`，并校验版本、平台、架构、安装/准备可执行文件摘要、`version`、`locales`、`resources` 和 `default_app.asar`；不再依赖固定版本或候选路径。Windows `.cmd` 构建入口通过 `cmd.exe /c` 调用，确保真实构建可执行。DeepSeek V4 tokenizer 和 Memory Provider 两个 Electron 专项入口改用 `scripts/run-verified-electron.mjs`，不再让 Electron CLI 自己重新解析运行时。
+- `verify:electron-*` 专项门及 `run-affected-verification.mjs` 改用 `ensure:app-build`；`verify:workspace-performance` 先 `assertAppBuildFresh`，过期或未知 `packages/app/out` 时拒绝测量，不偷偷触发构建。
+- 定向测试：`app-build-fingerprint.test.mjs` 6/6、`workspace-artifact-fingerprint.test.mjs` 7/7，共 13/13；真实 `pnpm.cmd run build:app`/`ensure:app-build` 成功，最终 `assert:app-build` 为 `fresh`；相关脚本 `node --check` 全部通过。
+- 阶段门：最终 `pnpm.cmd run verify:changed` 退出码 `0`，运行 276 个测试文件（1950 passed、1 skipped），命中 `package.json` 的 App build-sensitive 检查并复用新鲜 App 产物；此前完成的 `pnpm.cmd run verify:full` 退出码 `0`，运行 276 个测试文件（1949 passed、1 skipped），只出现一次显式 `tsc -b tsconfig.workspace.json`，随后完成 App build 和 `LittleSheep recovery sources: ok`。测试计数随运行时状态可能变化，以上数字仅作为本轮证据，不是固定契约。
+
+实际边界：App sidecar 与 workspace `dist` sidecar 是两类独立凭证，不能互相替代；workspace sidecar 只证明声明的源码/依赖闭包和本地产物，不证明外部 Provider 进程或长负载状态；Electron runtime contract 当前证明安装/准备可执行文件和必需目录入口，不把外部 Provider 进程版本或全部运行时负载趋势写入本地 sidecar；性能门仍是只读断言，不负责修复过期产物。新鲜命中目前仍会重新扫描并哈希输入/输出以及 Electron 可执行文件，这是可观测的验证成本，后续可在阶段 4 之后单独优化；它不会触发重复编译。生成的 `out`、`dist` 和 sidecar 留在本机，不进入 Git。
 
 ### 阶段 4：把反馈环与质量门接入日常流程
 
@@ -128,7 +137,7 @@
 | 长脏树行为 | 历史样本为 177 文件/27 包、182.01 秒；当前样本为 14 文件/0 affected package，changed-fallback，planning/fingerprint/selection total 约 `350.46ms / 57.24ms / 407.72ms`，实际 affected 门约 153.48 秒 | 不再默认为日常内循环；显式升级到提交前/阶段门 | 命令模式和日期化测量报告 |
 | 根脚本改动失效范围 | 初始规则中任意 `package.json` 可能触发全量 typecheck | 按语义分类 | 当前脚本-only 工作树已收窄为 `0` affected package；契约变化回归仍保留 `27/27` |
 | CSS/资源构建敏感性 | 本轮 CSS 样本被识别为 App build-sensitive，未启动测试 | 显式触发 App build-sensitive 检查 | selector 报告 + App build 证据 |
-| 完整门 typecheck | 初始 `build` 与 `verify:full` 存在重复入口 | 一次明确 typecheck | `build:app` 已拆出；完整门日志待补 |
+| 完整门 typecheck | 初始 `build` 与 `verify:full` 存在重复入口 | 一次明确 typecheck | `build:app` 已拆出；阶段 3 已通过 App-only 构建冒烟，完整门仍由阶段 0 的全门证据和后续阶段复核 |
 | Electron 专项门 | 多个命令重复 build | build once, verify many 或 fingerprint 复用 | 专项套件日志 |
 | 状态转移可解释性 | `next` 分散、无唯一允许边表 | manifest + runtime validation + graph | Harness 特征测试 |
 | RunContext ownership | 74 字段、跨 61 个生产文件访问 | 分域 owner 表，先收敛四组高频状态 | 类型/特征测试 + 导航文档 |
@@ -169,5 +178,5 @@ pnpm.cmd run verify:full
 
 - 阶段 0 已完成；剩余风险是完整测试计数随运行时数据状态小幅波动，及 fingerprint 扫描仍明显高于纯 planning 成本。报告已拆分两者，后续优化应针对扫描范围而不是误判 selector。
 - 阶段 2 已完成并单独提交；顶层 `branding.config.json`、`littlesheep.config.json` 不属于当前编译输入，故保持在阶段 3 fingerprint 范围之外。workspace manifest、特殊 Git 状态、共享 `GLOBAL_TYPECHECK_FILES` 和非字符串 dependency 形状均已纳入保守校验或 fail-closed 处理。
-- 阶段 3 尚未实现跨多个 Electron/Memory 专项门的 build-once/fingerprint 复用或过期产物拒绝。
+- 阶段 3 已实现跨 Electron/Memory 入口的 App/workspace build-once/fingerprint 复用和过期产物拒绝；仍不把外部 Provider 运行时版本纳入本地 sidecar 的证明范围。
 - 阶段 4、5 仍未开始。

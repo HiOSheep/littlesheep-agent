@@ -146,5 +146,5 @@ if (runTests) {
 
 if (runBuildSensitive && appBuildSensitiveFiles.length > 0) {
   console.log(`[affected] build-sensitive verification required for ${appBuildSensitiveFiles.length} file(s)`);
-  runPnpm(['run', 'build:app']);
+  runPnpm(['run', 'ensure:app-build']);
 }

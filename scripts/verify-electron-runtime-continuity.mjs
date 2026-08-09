@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { startElectronAcceptanceProvider } from './lib/electron-acceptance-provider.mjs'
+import { resolveVerifiedElectronExecutable } from './lib/electron-runtime.mjs'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const appRoot = join(repoRoot, 'packages', 'app')
@@ -263,7 +264,7 @@ function buildConfig(baseURL, workplaceDir) {
 }
 
 async function startElectron({ dataDir, chromiumDir, logPath }) {
-  const executable = resolveElectronExecutable()
+  const executable = resolveVerifiedElectronExecutable(repoRoot)
   const log = await import('node:fs').then(({ createWriteStream }) => createWriteStream(logPath, { flags: 'a' }))
   const env = {
     ...process.env,
@@ -281,17 +282,6 @@ async function startElectron({ dataDir, chromiumDir, logPath }) {
   child.stderr.pipe(log, { end: false })
   child.once('exit', () => log.end())
   return { child, log }
-}
-
-function resolveElectronExecutable() {
-  const candidates = [
-    join(appRoot, 'node_modules', 'electron', 'dist', 'LittleSheep.exe'),
-    join(appRoot, 'node_modules', 'electron', 'dist', 'electron.exe'),
-    join(repoRoot, 'node_modules', '.pnpm', 'electron@36.9.5', 'node_modules', 'electron', 'dist', 'LittleSheep.exe'),
-  ]
-  const executable = candidates.find(existsSync)
-  if (!executable) throw new Error('Electron runtime not found; run the app build first')
-  return executable
 }
 
 async function waitForLocator(dataDir, expectedPid) {
