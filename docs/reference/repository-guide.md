@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-08-04 09:15:48
+最后更新：2026-08-09 17:38:00
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
@@ -38,10 +38,10 @@
 
 | 文件 | 用途 |
 | --- | --- |
-| `package.json` | workspace 根脚本、测试入口、类型检查、构建和仓库卫生检查。 |
+| `package.json` | workspace 根脚本、测试入口、类型检查、构建和仓库卫生检查；`build:app` 是不含根 workspace typecheck 的 App-only 构建入口，`build` 保持完整构建语义。 |
 | `pnpm-workspace.yaml` | 声明 `packages/*` 与 `packages/channels/*` 两组 workspace。 |
 | `pnpm-lock.yaml` | 依赖锁定文件；只有依赖变更时由 pnpm 更新。 |
-| `tsconfig.base.json`、`tsconfig.workspace.json`、`vitest.config.ts` | 全仓 TypeScript 基线、自动生成的 project references solution 与 Vitest 基线。`tsconfig.workspace.json` 由维护脚本生成，不手工编辑。Vitest 保留单项 30 秒超时，并把文件并发限制为 3；当前 8 GiB Windows 验收机在 4 workers 下仍会让 SQLite、shadow Git、Memory 和 Electron 相关回归发生资源争用，3 workers 已由 258 个测试文件的完整测试验证。 |
+| `tsconfig.base.json`、`tsconfig.workspace.json`、`vitest.config.ts` | 全仓 TypeScript 基线、自动生成的 project references solution 与 Vitest 基线。`tsconfig.workspace.json` 由维护脚本生成，不手工编辑。Vitest 保留单项 30 秒超时，并把文件并发限制为 3；历史完整测试曾在 258 个测试文件上验证该并发上限，当前测试文件数量和结果以实际命令输出为准。 |
 | `branding.config.json`、`littlesheep.config.json` | 仓库级品牌/开发配置样例，不放用户密钥。 |
 | `README.md` | 面向开发者的入口说明和质量门。 |
 | `build-app.bat`、`start-littlesheep.bat` | Windows 兼容入口，实际逻辑委托给 `scripts/`。 |
@@ -203,8 +203,8 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 
 ## 测试与脚本
 
-- `pnpm.cmd run verify:changed`：默认以 `origin/main` 为基线，合并已提交、暂存、未暂存和未跟踪文件，计算变更 package 及其传递依赖方；单进程增量 typecheck 后，只运行与变更源文件相关的 Vitest。需要其他基线时设置 `LITTLESHEEP_BASE_REF`。
-- `pnpm.cmd run verify:core`：仓库门、全工作区增量 typecheck 与 69 项核心 Agent 契约测试，适用于 Harness、Runner、Context、Memory 和公共协议变更。
+- `pnpm.cmd run verify:changed`：默认以 `origin/main` 为基线，合并已提交、暂存、未暂存和未跟踪文件，计算变更 package 及其传递依赖方；单进程增量 typecheck 后，只运行与变更源文件相关的 Vitest，并在存在 App build-sensitive 输入时执行 `build:app`。脚本先解析并固定 merge-base 提交；基线不存在或无法解析时会 fail-closed 停止，避免漏掉已提交变更。需要其他基线时设置 `LITTLESHEEP_BASE_REF`。
+- `pnpm.cmd run verify:core`：仓库门、全工作区增量 typecheck 与 `test:core-eval` 列出的核心 Agent 契约测试，适用于 Harness、Runner、Context、Memory 和公共协议变更。2026-08-09 当前该集合实跑为 7 个测试文件、127 项；测试数量随源码变化，以 Vitest 实际输出为准。
 - `pnpm.cmd run verify:full`：阶段结束的完整测试、类型、Electron 构建和恢复源检查，不用于每次小改动。
 - `pnpm.cmd run verify:memory-v3-soak`：只在系统临时目录创建隔离 Memory v3 数据，重复验证只追加投影变更记录/commit receipt、atom 治理、journal 裁剪、重启、catalog 重建、向量有界批处理、关系相关性、routing feedback、run working set 和 RSS 上限；默认完成后删除临时根，不迁移或改写正式用户数据。增强档可使用 `--atoms=500 --runs=256 --feedback-events=256`，并可通过 `--related-atoms`、`--embedding-batch`、`--max-rss-mib` 调整验收边界。确定性测试 Embedding 只用于可重复规模门，不替代正式 BGE 或 Provider 验收。
 - `pnpm.cmd run verify:memory-v3-relevance`：使用正式本地 BGE 和系统临时数据根，分开测量 D1 admission 与 branch-scoped deep search 的 Recall@K、负例、多余注入、scope 泄漏、token、query Embedding 次数和零网络边界。D1 必须保持零向量；同一次深搜只允许生成一次查询向量。该门不读取或修改正式用户 Atom/Catalog。
@@ -221,7 +221,8 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 - `scripts/check-repository-hygiene.mjs`：仓库结构质量门，不参与运行时；检查正式文档、任务书日期、生成物、300/600 行登记、受控超限、热点增长、workspace 清单、深层 import、运行时依赖环和核心协议唯一来源。
 - `scripts/workspace-projects.mjs`：workspace 包发现、依赖图、受影响包传播和 TypeScript config 路径的唯一实现。
 - `scripts/sync-typescript-projects.mjs`：同步或检查 TypeScript project references，避免手工维护的引用图与 package manifest 分叉。
-- `scripts/run-affected-verification.mjs`：按 Git 变更执行受影响 typecheck 与 related tests；配置文件变化不应误触发全部运行时测试。
+- `scripts/run-affected-verification.mjs`：按 Git 变更执行受影响 typecheck 与 related tests；配置文件变化不应误触发全部运行时测试；缺失 Git 基线必须 fail-closed，Vitest fallback 使用已解析的 merge-base 提交。
+- `scripts/measure-verification-baseline.mjs`：只读生成任务级/脏工作树验证选择和阶段耗时摘要；默认 dry-run，支持显式文件、package 或 JSON manifest 样本，报告 planning/fingerprint/command/total 分段耗时、变更来源、full/explicit/related/deleted 测试输入、fallback、缓存线索和构建 fingerprint；`--run` 才执行既有质量门，不替代 `verify:changed` 或 `verify:full`。命令状态明确区分 `executed`、`skipped` 和 `failed`；例如无 affected package 的 `--run=typecheck` 可以是 `exitCode=0`、`signal=null` 但状态为 `skipped`，不能把 skipped 当作实际 typecheck 通过。
 - `scripts/verify-app-recovery-sources.mjs`：只读检查用户数据中的工作区、会话、执行日志和恢复索引。
 - `scripts/verify-provider-smoke.mjs`：使用本机安全存储中的凭证执行脱敏 Provider 冒烟，覆盖最小聊天、reasoning、工具调用、流式中断和 usage 对账；不得输出或写入明文密钥。
 - `scripts/verify-deepseek-v4-tool-tokenizer.mjs`：DeepSeek V4 Flash 工具协议的真实 Provider 校准矩阵，覆盖 disabled/high/max 下的普通请求、tool schema、单工具续轮、仅历史工具消息和多工具乱序结果；任何非零差值都失败。Pro 工具协议必须使用独立校准，不能沿用 Flash 结果。

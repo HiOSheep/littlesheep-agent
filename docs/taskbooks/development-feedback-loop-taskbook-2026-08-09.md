@@ -1,0 +1,173 @@
+# LS 开发反馈环提速任务书 2026-08-09
+
+最后更新：2026-08-09 17:38:00
+
+## 状态
+
+进行中。阶段 0 已完成并已形成独立提交；阶段 2 的统一选择计划和 fail-closed 边界已落地，最终语义验收仍在进行；阶段 3 的重复 typecheck 局部修正已完成，专项构建新鲜度和复用仍未完成。本文是一个可单独设置为阶段目标的执行基线；完成任一阶段后，必须更新本文的状态、证据和实际边界，并提交、推送一次，再决定是否进入下一阶段。
+
+## Goal
+
+把 LittleSheep 的日常开发反馈环从“长期脏工作树触发近似全量验证”收敛为可解释、可分层、可重复的任务级验证流程，使开发者能在一次小改动后快速得到可信反馈，同时不降低提交前和阶段发布前的质量门。
+
+本任务书优先处理已经测得的直接瓶颈：验证选择与验证编排。状态机、Runner 和 `RunContext` 的结构重构只在反馈环稳定后进入后续阶段，不把所有问题一次性合并成大重构。
+
+## Current Baseline
+
+基线以 2026-08-09 当前工作树为准，工作树可能包含用户未提交改动；以下数字只用于本任务书的起始比较，不代表发布状态：
+
+- 历史基线的 `node scripts/run-affected-verification.mjs --list` 在干净基线下曾显示仅有 1 个变更文件、无受影响 package；历史长期脏工作树样本曾达到 177 个变更文件、27/27 个 package。这些数字不是当前工作树的测量结果。
+- 历史长期脏工作树样本中的 `pnpm.cmd run verify:changed` 总耗时为 182.01 秒，其中 affected typecheck 约 0.67 秒，Vitest 约 178.12 秒；实际运行 283 个测试文件、1992 passed、1 skipped。该样本只用于说明原始瓶颈，不作为当前速度结论。
+- 仓库导航现状不是“没有 README”：当前有 56 份 README，覆盖 27 个 workspace package 和多个领域子目录；源码、脚本和测试约 899 个文件，已有约 4,900 行注释。短期瓶颈是验证反馈闭环不可信，而不是全仓文档或注释数量不足。
+- 初始基线中根脚本的 `build` 先执行全工作区 typecheck，`verify:full` 又显式执行 typecheck 后再调用 `build`，存在重复入口；该问题已在本轮拆出 `build:app` 后局部修正，完整门仍需重跑确认。
+- `run-affected-verification.mjs` 会合并 committed、staged、unstaged 和 untracked 文件；lockfile、workspace 与 TypeScript 配置变化，以及无法确认根 `package.json` 契约快照的情况，会把类型检查扩大到全部 workspace package。根 `package.json` 仅脚本变化时现在按 `scripts-only` 分类，不再默认触发全量 typecheck，但构建脚本仍会触发 App build-sensitive 检查。
+- 当前仓库已有增量 TypeScript project references、Vitest source alias、`verify:changed`、`verify:core` 和 `verify:full`，因此本任务应优先修正既有机制，不先引入 Turbo/Nx 等新编排层。
+
+## Non-Goals
+
+- 不进行全仓 README 补写或注释普查。
+- 不以“所有生产文件低于 300 行”为验收目标，不做只为降低行数的机械拆分。
+- 不在本阶段重写 Memory v3、替换 Runner 公共 API 或改变 Agent 的权限、记忆、工具和用户数据语义。
+- 不把阶段验证改成只跑单元测试；涉及构建输入、跨包契约、Electron 生命周期或用户数据恢复的风险仍必须保留对应质量门。
+- 每个阶段完成并通过验收后，必须只提交该阶段相关变更并推送到 GitHub；用户已有改动必须排除，不得用宽泛的全量暂存覆盖它们。
+
+## Guardrails
+
+- 保留用户当前工作树中的 staged、unstaged 和 untracked 改动；验证工具不得清理、回滚或重写这些改动。
+- 验证选择器必须 fail-closed：无法确定基线、依赖传播或构建敏感性时，应扩大验证或明确失败，不能静默跳过。
+- 快速门可以减少范围，但不能绕过类型契约、权限边界、工具证据、结构 VERIFY、恢复语义和必要的构建检查。
+- 所有缓存、测试分层和构建复用都必须有明确失效条件；不能用过期产物冒充当前源码验证结果。
+- 任何新增脚本或报告都必须遵守仓库位置无关、无本机路径泄漏、中文正式文档和生成物不入 Git 的约定。
+
+## Target Workflow
+
+```text
+编辑单个任务
+  -> 任务级内循环（watch / related test / package typecheck）
+  -> 提交前 affected 门（按任务边界和依赖传播）
+  -> 阶段门（完整 test + typecheck + app build + recovery）
+  -> 发布前真实 Electron / Provider / 长负载专项门
+```
+
+快速门的目标不是替代完整门，而是让开发者尽早得到可信的局部反馈；阶段门和发布门仍是唯一的交付依据。
+
+## Work Plan
+
+### 阶段 0：建立可复现计时基线
+
+状态：已完成。已建立 dry-run/受控执行报告入口，并完成完整测试、恢复检查、changed fallback 和完整门的统一计时采证。
+
+- 为 `check:repo`、affected project discovery、typecheck、related tests、changed fallback、full tests、app build 和 recovery check 记录统一的阶段耗时。
+- 报告至少包含：基线 ref、变更文件数、直接 package 数、传递受影响 package 数、测试文件数、是否触发 fallback、是否使用增量缓存、构建产物 fingerprint。
+- 记录三种样本：单文件小改动、跨一个公共包的改动、长期脏工作树改动。
+- 验收：同一机器、同一命令、同一 fixture 重复两次，报告字段完整；不能只给总耗时。
+
+本轮证据（2026-08-09）：`pnpm.cmd run measure:verification` 已支持 JSON/Markdown 摘要、显式文件/package/manifest 样本、分段 timing 和受控 `--run` 阶段执行。单文件 `packages/harness/src/default-harness.ts` 两次 dry-run 的 planning 为 `24.56ms / 14.01ms`，fingerprint 为 `66.37ms / 64.71ms`，selection total 为 `90.96ms / 78.74ms`，直接包 `1`、传递受影响包 `9`、测试模式 `related`；当前单包 Harness 样本 selection total 约 `93.52ms`，直接/传递受影响包 `1/9`。脏工作树样本为 `14` 个变更文件、直接/传递受影响包 `0/0`，模式 `changed-fallback`，显式选择器回归 `4` 个，related 输入 `1` 个（用户已有 `test/e2e-webhook.test.ts`），fallback 原因 `verification-script-changed`；一次 `--run=affected` 的 planning/fingerprint/selection total/命令耗时约为 `350.46ms / 57.24ms / 407.72ms / 153.48s`。命令状态现在明确区分 `executed`、`skipped` 和 `failed`：本轮无 affected package 的 typecheck 为 `exitCode=0`、`signal=null`、状态 `skipped`，不能当作实际执行的 typecheck 通过。
+
+质量门计时证据：`pnpm.cmd run check:repo` 为 `1.78s`，仓库卫生 `33/33`、TypeScript references `27/27`；`pnpm.cmd run verify:changed` 为 `145.34s`、退出码 `0`，运行 274 个测试文件并完成一次 App-only build；`pnpm.cmd run build` 为 `27.43s`、退出码 `0`；`pnpm.cmd run verify:app-recovery` 为 `0.49s`、退出码 `0`；`pnpm.cmd run verify:full` 为 `134.23s`、退出码 `0`，包含完整测试、typecheck、App build 和 recovery。完整测试的通过数随运行时状态有小幅波动，本轮两次均为 274 个测试文件、退出码 `0`，因此不把单次 passed 数写成固定契约。定向回归为 4 个文件、41/41；测量器回归为 15/15。
+
+### 阶段 1：任务级内循环
+
+状态：未开始。
+
+- 增加不依赖 `origin/main` 的任务级入口，允许显式传入文件、package 或 task manifest。
+- 为 Harness、Runner、Memory、App Renderer/Main 分别提供最小可执行示例：单文件相关测试、包级 typecheck、必要时 App web typecheck。
+- 保留 `vitest` watch/related 的源码别名路径，避免为了单元测试先构建所有 workspace 包。
+- 验收目标：典型单文件纯逻辑改动的首次反馈 <= 10 秒；热反馈中位数 <= 3 秒；典型单包改动不超过 30 秒。超出时必须在报告中指出具体阶段。
+
+### 阶段 2：修正 affected 选择器
+
+状态：进行中。统一 selector plan、merge-base fail-closed、根 `package.json` 脚本分类、workspace manifest 图校验和 App build-sensitive 映射已落地；仍需完成共享常量收敛、边界输入补齐和独立阶段提交验收。
+
+- 将根级输入分类为：依赖/lockfile/workspace/TypeScript 配置、运行时脚本、测试配置、App 构建配置、文档/非运行时元数据；不同类别采用不同失效范围。
+- 独立增加根验证脚本不应自动触发 27 个包全量 typecheck；依赖和编译契约变化仍可触发全量。
+- CSS、HTML、资源、Electron/Vite 配置和原生依赖变化必须映射到 App build-sensitive 检查，即使没有对应 Vitest 文件。
+- `merge-base` 无法解析时必须 fail-closed 或退化到完整门；Vitest fallback 使用解析后的有效 base。
+- 为选择器增加回归测试，至少覆盖：单脚本改动、单 TS 文件、公共 `types` 改动、CSS/资源改动、删除测试输入、浅克隆/缺失 base。
+- 验收：单脚本改动不触发无关 package typecheck；公共契约改动仍传播到所有真实 dependents；构建敏感文件不会静默跳过 App build 检查。
+
+本轮已完成子项：`scripts/run-affected-verification.mjs` 不再将无法解析的基线静默回退为 `HEAD`；真实 CLI 在缺失 base 时以退出码 `1` fail-closed，并明确提示获取基线或传入 `--base=<ref>`。Vitest changed fallback 使用已解析的 merge-base SHA。根 `package.json` 仅脚本变化时不再触发全 workspace typecheck，而是输出 `scripts-only` 并把构建脚本变化映射为 App build-sensitive；workspace manifest 变化先校验 base/working 两侧图，再扩大 typecheck 和测试 fallback。当前真实 `verify:changed` 显示 `typecheck skipped: no affected package`，随后按共享计划运行显式选择器回归和 related 输入，并执行一次 App-only build。阶段 2 的最终回归和独立提交仍待完成。
+
+### 阶段 3：消除验证入口重复
+
+状态：进行中。重复 typecheck 子项已完成，专项门 build-once/fingerprint 复用仍未完成。
+
+- 从根 `build` 中拆出明确的 `build:app` 或等价 App-only build 入口。
+- 让 `verify:full` 在一次全工作区 typecheck 后复用 App build，不再通过嵌套 `build` 重复调用 typecheck。
+- 为多个 Electron/Memory 专项门增加“build once, verify many”入口，或者通过构建 fingerprint 明确复用当前产物。
+- `verify:workspace-performance` 必须验证构建 fingerprint，不能直接启动未知是否过期的 `packages/app/out`。
+- 验收：完整门日志中 typecheck 只有一个明确阶段；连续运行两个依赖相同 App 构建的专项门时不重复构建，或报告明确说明为何失效；过期产物被拒绝而不是被测量。
+
+本轮已完成子项：新增根 `build:app`（仅 App 构建），根 `build` 保持“全工作区 typecheck + `build:app`”兼容语义；`verify:full` 改为在一次全工作区 typecheck 后直接调用 `build:app`。`pnpm.cmd run build:app` 和根 `pnpm.cmd run build` 均已成功冒烟；此前单次 App Renderer 构建约 `21.53s` 属于历史样本，当前 `verify:changed` 的 App-only build 日志约 `28.66s`（renderer Vite 阶段约 `22.34s`）。完整 `verify:full` 尚未重跑，专项门 build-once/fingerprint 复用仍未完成，因此阶段 3 继续保持进行中。
+
+### 阶段 4：把反馈环与质量门接入日常流程
+
+状态：未开始。
+
+- README 和仓库指南只补充命令选择规则、预计成本和失败时的升级路径，不复制实现细节。
+- 将 `verify:changed` 定义为提交前门，`verify:core` 定义为核心契约门，`verify:full` 定义为阶段/发布门；明确三者不是简单的包含关系。
+- 为每次验证输出机器可读摘要，并保留最近若干次本地结果用于比较冷/热反馈。
+- 验收：开发者可根据改动类型在 30 秒内选出正确命令；一次失败能明确定位到 selector、typecheck、test、build 或 recovery 阶段。
+
+### 阶段 5：状态契约重构（后续阶段，不与本任务前四阶段合并）
+
+状态：未开始，依赖阶段 0-4 完成。
+
+- 建立唯一 `allowedTransitions` manifest，运行时校验非法 Stage 边，并生成状态图。
+- 为 `RunContext` 建立字段 owner、读写阶段和生命周期表；先收敛 `reply`、`replan`、`runtimeControl`、`memory` 四组高频共享状态。
+- 保持 `createRunner()`、Harness 公共入口和持久化格式兼容；先抽取 Runner 的 prepare/execute/finalize/persist coordinator，再评估更深拆分。
+- 该阶段的验收不以文件行数为主，而以非法转移可拒绝、字段写入边界可测试、核心流程回归和认知导航时间下降为主。
+
+## Acceptance Matrix
+
+| 维度 | 当前基线 | 目标 | 证据 |
+| --- | ---: | ---: | --- |
+| 单文件热反馈 | selector dry-run planning/fingerprint/selection total 两次 `24.56/66.37/90.96ms`、`14.01/64.71/78.74ms`；完整 related 门不以 selector 代替 | 中位数 <= 3 秒 | `measure:verification` 重复报告 + 定向门日志 |
+| 单文件冷反馈 | selector planning/selection total 约 `24.56/90.96ms`；完整冷启动反馈由阶段门实跑记录 | <= 10 秒 | `measure:verification` 报告；不得用 selector 单独替代完整反馈 |
+| 单包 affected 反馈 | selector selection total 约 `93.52ms`，直接/受影响包 `1/9`；完整 changed 门单独记录 | <= 30 秒（不含真实外部 Provider） | 选择器报告 + 定向门日志 |
+| 长脏树行为 | 历史样本为 177 文件/27 包、182.01 秒；当前样本为 14 文件/0 affected package，changed-fallback，planning/fingerprint/selection total 约 `350.46ms / 57.24ms / 407.72ms`，实际 affected 门约 153.48 秒 | 不再默认为日常内循环；显式升级到提交前/阶段门 | 命令模式和日期化测量报告 |
+| 根脚本改动失效范围 | 初始规则中任意 `package.json` 可能触发全量 typecheck | 按语义分类 | 当前脚本-only 工作树已收窄为 `0` affected package；契约变化回归仍保留 `27/27` |
+| CSS/资源构建敏感性 | 本轮 CSS 样本被识别为 App build-sensitive，未启动测试 | 显式触发 App build-sensitive 检查 | selector 报告 + App build 证据 |
+| 完整门 typecheck | 初始 `build` 与 `verify:full` 存在重复入口 | 一次明确 typecheck | `build:app` 已拆出；完整门日志待补 |
+| Electron 专项门 | 多个命令重复 build | build once, verify many 或 fingerprint 复用 | 专项套件日志 |
+| 状态转移可解释性 | `next` 分散、无唯一允许边表 | manifest + runtime validation + graph | Harness 特征测试 |
+| RunContext ownership | 74 字段、跨 61 个生产文件访问 | 分域 owner 表，先收敛四组高频状态 | 类型/特征测试 + 导航文档 |
+
+## Verification Order
+
+```powershell
+pnpm.cmd run check:repo
+pnpm.cmd run typecheck:changed
+pnpm.cmd run test:changed
+pnpm.cmd run verify:changed
+pnpm.cmd run verify:core
+pnpm.cmd run verify:full
+```
+
+阶段 0-4 的日常开发不得因为一次小改动直接运行所有真实 Provider、Electron 长负载和 Memory soak 门；这些专项门在阶段完成或发布前按其自身任务书执行。阶段 5 任何公共契约或状态机变更仍必须至少执行 `verify:core`，并在阶段结束执行 `verify:full`。
+
+## Stop Conditions
+
+- 选择器无法证明变更范围时，扩大验证而不是跳过验证。
+- 任务级入口与现有 `verify:changed` 的结果不一致且没有解释性报告时，暂停推广新入口。
+- 构建 fingerprint 与源码/配置不匹配时，拒绝运行 Electron 性能或连续性验收。
+- 为了缩短时间而删除权限、schema、工具证据、结构 VERIFY、恢复检查或真实最终回答时，立即停止该方向。
+- 阶段 0-4 未完成前，不把状态机或 Memory 大重构标记为本任务已完成。
+
+## Risks And Open Decisions
+
+- “任务级”边界需要决定由显式文件列表、临时 task manifest 还是独立 worktree 表达；实现阶段应优先选择可审计且不改写用户工作树的方案。
+- 复杂跨包改动可能天然需要较宽验证；目标是让扩大范围可解释，不是假装所有改动都能在秒级完成。
+- 测试并发上限受 Windows SQLite/Git/Electron 资源竞争约束；提高 worker 数不是默认优化方向，必须以资源证据证明。
+- 构建复用必须区分源码、配置、依赖和运行时资产 fingerprint；仅比较文件时间戳不足以证明可复用。
+
+## Deliverable
+
+完成后应交付：任务级/affected/full 三层命令、选择器回归测试、统一阶段计时摘要、无重复 typecheck 的完整门、至少一个 build-once 验收套件、状态转移 manifest 与 RunContext ownership 说明，以及更新后的项目状态证据。未完成的阶段必须明确标为进行中或未开始。
+
+## 本轮剩余边界
+
+- 阶段 0 已完成；剩余风险是完整测试计数随运行时数据状态小幅波动，及 fingerprint 扫描仍明显高于纯 planning 成本。报告已拆分两者，后续优化应针对扫描范围而不是误判 selector。
+- 阶段 2 的主要执行映射已接入；剩余边界包括顶层品牌/开发配置、共享 `globalTypecheckFiles` 常量、特殊 Git 状态和更严格的 workspace dependency 形状校验，需在阶段 2 独立提交前补齐或明确保守降级。
+- 阶段 3 尚未实现跨多个 Electron/Memory 专项门的 build-once/fingerprint 复用或过期产物拒绝。
+- 阶段 4、5 仍未开始。
