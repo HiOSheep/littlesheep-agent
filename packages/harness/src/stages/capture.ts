@@ -19,6 +19,7 @@ import {
 } from './memory-intent-gate.js';
 import { resolveMemoryWriteEpistemic } from './memory-epistemic-policy.js';
 import { CAPTURE_MEMORY_PROMPT } from './memory-stage-prompts.js';
+import { writeMemoryState } from '../memory-state.js';
 
 export interface CaptureStageDeps {
   llm: LlmClient;
@@ -156,9 +157,11 @@ export function createCaptureStage(deps: CaptureStageDeps) {
         deps.memoryWriter,
         proposals,
       );
-      ctx.insights = records
-        .filter((record) => record.decision === 'committed' && record.summary)
-        .map((record) => record.summary!);
+      writeMemoryState(ctx, 'capture', {
+        insights: records
+          .filter((record) => record.decision === 'committed' && record.summary)
+          .map((record) => record.summary!),
+      });
       return {
         stage: 'capture',
         next: 'finalize',
@@ -214,9 +217,11 @@ export function createCaptureStage(deps: CaptureStageDeps) {
       deps.memoryWriter,
       proposals,
     );
-    ctx.insights = records
-      .filter((record) => record.decision === 'committed' && record.summary)
-      .map((record) => record.summary!);
+    writeMemoryState(ctx, 'capture', {
+      insights: records
+        .filter((record) => record.decision === 'committed' && record.summary)
+        .map((record) => record.summary!),
+    });
     return {
       stage: 'capture',
       next: 'finalize',

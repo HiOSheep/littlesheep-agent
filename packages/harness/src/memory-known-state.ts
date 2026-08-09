@@ -7,6 +7,7 @@ import type {
   RuntimeMemoryKnownState,
   StageName,
 } from '@littlesheep/types';
+import { writeMemoryState } from './memory-state.js';
 
 const MAX_STATE_REFERENCES = 128;
 const MAX_PROMPT_REFERENCES = 12;
@@ -33,13 +34,15 @@ export function ingestMemoryKnownState(
   const references = [...byAtom.values()]
     .sort(compareReferences)
     .slice(0, MAX_STATE_REFERENCES);
-  ctx.memoryKnownState = {
-    version: 1,
-    runId: ctx.runId,
-    revision: Math.max(current?.revision ?? 0, incoming.revision) + 1,
-    updatedAt: new Date().toISOString(),
-    references,
-  };
+  writeMemoryState(ctx, stage, {
+    memoryKnownState: {
+      version: 1,
+      runId: ctx.runId,
+      revision: Math.max(current?.revision ?? 0, incoming.revision) + 1,
+      updatedAt: new Date().toISOString(),
+      references,
+    },
+  });
 }
 
 export function markMemoryKnownStateStage(ctx: RunContext, stage: StageName): void {
@@ -52,12 +55,14 @@ export function markMemoryKnownStateStage(ctx: RunContext, stage: StageName): vo
     return { ...reference, stages: [...reference.stages, stage], updatedAt: new Date().toISOString() };
   });
   if (!changed) return;
-  ctx.memoryKnownState = {
-    ...state,
-    revision: state.revision + 1,
-    updatedAt: new Date().toISOString(),
-    references,
-  };
+  writeMemoryState(ctx, stage, {
+    memoryKnownState: {
+      ...state,
+      revision: state.revision + 1,
+      updatedAt: new Date().toISOString(),
+      references,
+    },
+  });
 }
 
 export function injectMemoryKnownState(

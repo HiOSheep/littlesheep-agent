@@ -33,6 +33,7 @@ import { processEvolveRevisions } from './evolve/revision.js';
 import { processEvolveCorrections } from './evolve/correction.js';
 import { hasReusableEvolutionSignal } from './evolve/signal.js';
 import { parseSkillProposal } from './evolve/skill-proposal.js';
+import { writeMemoryState } from '../memory-state.js';
 
 export type CreateSkillFn = (opts: {
   name: string;
@@ -180,7 +181,7 @@ export function createEvolveStage(deps: EvolveStageDeps) {
   return async function evolveStage(ctx: RunContext): Promise<StageResult> {
     const policy = deps.llmPolicy ?? 'always';
     if (policy === 'never' || (policy === 'adaptive' && !hasReusableEvolutionSignal(ctx))) {
-      ctx.evolutionNotes = [];
+      writeMemoryState(ctx, 'evolve', { evolutionNotes: [] });
       return {
         stage: 'evolve',
         next: 'capture',
@@ -257,10 +258,12 @@ export function createEvolveStage(deps: EvolveStageDeps) {
       ctx,
       deps.memoryCorrector,
     );
-    ctx.evolutionNotes = records
-      .filter((record) => record.decision === 'committed' && record.summary)
-      .map((record) => record.summary!)
-      .concat(legacyNotes);
+    writeMemoryState(ctx, 'evolve', {
+      evolutionNotes: records
+        .filter((record) => record.decision === 'committed' && record.summary)
+        .map((record) => record.summary!)
+        .concat(legacyNotes),
+    });
 
     let skillCreated: string | null = null;
     const proposal = parseSkillProposal(parsed?.createSkill);

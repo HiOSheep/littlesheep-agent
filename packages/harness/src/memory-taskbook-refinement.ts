@@ -8,6 +8,7 @@ import {
 } from '@littlesheep/memory-tree';
 import type { RunContext, TaskBook } from '@littlesheep/types';
 import { ingestMemoryKnownState } from './memory-known-state.js';
+import { writeMemoryState } from './memory-state.js';
 
 const MAX_REFINEMENT_QUERY_CHARS = 1_600;
 const MAX_REFINEMENT_STEPS = 6;
@@ -109,19 +110,19 @@ export async function refineMemoryForTaskBook(
     return { query, addedAtomIds: [], skippedReason: refinement.skippedReason };
   }
 
-  const state = ctx.memoryContextWorkingSet ??= {
+  const state = structuredClone(ctx.memoryContextWorkingSet ?? {
     revision: 0,
     activeAtomIds: [],
     releasedAtomIds: [],
     activeCallByAtom: {},
     callAtomIds: {},
     updatedAt: new Date().toISOString(),
-  };
+  });
   const atomIds = unique(refinement.context.atomIds).slice(0, MAX_CONTEXT_ATOMS);
   const addedAtomIds = atomIds.filter((atomId) => state.activeCallByAtom[atomId] !== 'initial');
   if (addedAtomIds.length === 0) return { query, addedAtomIds: [] };
 
-  ctx.initialMemoryContext = [ctx.initialMemoryContext, refinement.context.content]
+  const initialMemoryContext = [ctx.initialMemoryContext, refinement.context.content]
     .filter((value): value is string => Boolean(value))
     .join('\n\n---\n\n');
   state.callAtomIds.initial = unique([...(state.callAtomIds.initial ?? []), ...addedAtomIds])
@@ -133,6 +134,7 @@ export async function refineMemoryForTaskBook(
   state.releasedAtomIds = state.releasedAtomIds.filter((atomId) => !state.activeCallByAtom[atomId]);
   state.revision += 1;
   state.updatedAt = new Date().toISOString();
+  writeMemoryState(ctx, 'decide', { initialMemoryContext, memoryContextWorkingSet: state });
   return { query, addedAtomIds };
 }
 

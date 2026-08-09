@@ -29,6 +29,7 @@ import {
   clearReplyState,
   writeReplanState,
   writeRuntimeState,
+  writeMemoryState,
 } from '@littlesheep/harness';
 import { buildInfrastructure, type RunnerState, type LogFn } from './infra.js';
 import type { ExecutionLog } from './execution-log.js';
@@ -397,20 +398,21 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           workspace: cwd,
           signal,
         });
-        ctx.memoryRootIndex = memoryRun.rootIndex;
         usedContinuitySummaryId = memoryRun.continuitySummaryId;
-        ctx.initialMemoryContext = memoryRun.initialContext?.content;
-        ctx.memoryKnownState = structuredClone(memoryRun.ledger.knownState);
-        if (memoryRun.initialContext) {
-          ctx.memoryContextWorkingSet = {
+        const memoryContextWorkingSet = memoryRun.initialContext ? {
             revision: 1,
             activeAtomIds: [...memoryRun.initialContext.atomIds],
             releasedAtomIds: [],
             activeCallByAtom: Object.fromEntries(memoryRun.initialContext.atomIds.map((atomId) => [atomId, 'initial'])),
             callAtomIds: { initial: [...memoryRun.initialContext.atomIds] },
             updatedAt: new Date().toISOString(),
-          };
-        }
+          } : undefined;
+        writeMemoryState(ctx, 'runner-init', {
+          memoryRootIndex: memoryRun.rootIndex,
+          initialMemoryContext: memoryRun.initialContext?.content,
+          memoryKnownState: structuredClone(memoryRun.ledger.knownState),
+          memoryContextWorkingSet,
+        });
       } catch (err) {
         opts.log?.('warn', `runner: memory tree start degraded: ${(err as Error).message}`);
       }

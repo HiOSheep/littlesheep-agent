@@ -348,7 +348,7 @@ function finalizeToolResult(
 ): void {
   if (name === 'memory_tree' || name === 'memory_search' || name === 'memory_deep_search') {
     ingestMemoryKnownState(ctx, result.meta?.memoryKnownState, 'execute');
-    ingestMemoryContextToolResult(ctx, result.callId, result);
+    ingestMemoryContextToolResult(ctx, result.callId, result, 'execute');
   }
   results.push(result);
   persistToolResult(ctx, produced, result);

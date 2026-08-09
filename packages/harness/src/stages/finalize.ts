@@ -8,6 +8,7 @@ import { textMessage } from '@littlesheep/types';
 import type { SessionManager } from '@littlesheep/session';
 import { markMemoryKnownStateStage } from '../memory-known-state.js';
 import { assessResponseMemoryContinuity } from '../response-continuity.js';
+import { writeMemoryState } from '../memory-state.js';
 
 export interface FinalizeStageDeps {
   sessionManager: SessionManager;
@@ -30,7 +31,7 @@ export function createFinalizeStage(deps: FinalizeStageDeps) {
       && modelRequest.model === provenance.model
       && modelRequest.callContract?.purpose === provenance.purpose,
     );
-    ctx.memoryContinuityAssessment = assessResponseMemoryContinuity({
+    const memoryContinuityAssessment = assessResponseMemoryContinuity({
       reply: traceable ? replyText : undefined,
       inbound: ctx.inbound,
       history: ctx.history,
@@ -44,6 +45,7 @@ export function createFinalizeStage(deps: FinalizeStageDeps) {
       contextSnapshots: ctx.contextSnapshots,
       replyProvenance: ctx.replyProvenance,
     });
+    writeMemoryState(ctx, 'finalize', { memoryContinuityAssessment });
     // 1. Persist only a non-empty reply traceable to this run's real Provider request.
     if (!replyText || !traceable) {
       return {

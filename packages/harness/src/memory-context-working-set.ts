@@ -1,6 +1,8 @@
 import type { ChatMessage, ChatRequest } from '@littlesheep/llm';
 import type { ContextMessageCandidate } from '@littlesheep/context';
-import type { RunContext, ToolResult } from '@littlesheep/types';
+import type { RunContext, RuntimeMemoryContextWorkingSet, ToolResult } from '@littlesheep/types';
+import { writeMemoryState } from './memory-state.js';
+import type { RunContextContractStage } from '@littlesheep/types';
 
 const MAX_MEMORY_CONTEXT_ATOMS = 128;
 const MAX_MEMORY_CONTEXT_CALLS = 64;
@@ -9,15 +11,16 @@ export function ingestMemoryContextToolResult(
   ctx: RunContext,
   callId: string,
   result: ToolResult,
+  stage: RunContextContractStage = 'execute',
 ): void {
-  const state = ctx.memoryContextWorkingSet ??= {
+  const state: RuntimeMemoryContextWorkingSet = structuredClone(ctx.memoryContextWorkingSet ?? {
     revision: 0,
     activeAtomIds: [],
     releasedAtomIds: [],
     activeCallByAtom: {},
     callAtomIds: {},
     updatedAt: new Date().toISOString(),
-  };
+  });
   const fragmentIds = stringArray(result.meta?.memoryFragmentIds);
   const releasedIds = stringArray(result.meta?.memoryReleasedAtomIds);
   let changed = false;
@@ -41,6 +44,7 @@ export function ingestMemoryContextToolResult(
   ]).filter((atomId) => !state.activeCallByAtom[atomId]).slice(-MAX_MEMORY_CONTEXT_ATOMS);
   state.revision += 1;
   state.updatedAt = new Date().toISOString();
+  writeMemoryState(ctx, stage, { memoryContextWorkingSet: state });
 }
 
 export function applyMemoryContextWorkingSet(

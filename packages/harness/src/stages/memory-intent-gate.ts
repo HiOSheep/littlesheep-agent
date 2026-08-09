@@ -14,6 +14,7 @@ import {
   collectConversationSourceRecords,
   conversationSourceRefs,
 } from '../conversation-source-records.js';
+import { writeMemoryState } from '../memory-state.js';
 
 const MAX_MEMORY_INTENT_DECISIONS_PER_RUN = 64;
 const MAX_EVIDENCE_REFS_PER_INTENT = 32;
@@ -163,23 +164,32 @@ export async function commitMemoryIntentBatch(
       sourceCaptureError,
     );
   });
-  appendMemoryIntentDecisionRecords(ctx, records);
+  appendMemoryIntentDecisionRecords(ctx, stage, records);
   return { records, writeResults };
 }
 
 export function appendMemoryIntentDecisionRecords(
   ctx: RunContext,
   records: readonly MemoryIntentDecisionRecord[],
+): void;
+export function appendMemoryIntentDecisionRecords(
+  ctx: RunContext,
+  stage: 'evolve' | 'capture',
+  records: readonly MemoryIntentDecisionRecord[],
+): void;
+export function appendMemoryIntentDecisionRecords(
+  ctx: RunContext,
+  stageOrRecords: 'evolve' | 'capture' | readonly MemoryIntentDecisionRecord[],
+  maybeRecords?: readonly MemoryIntentDecisionRecord[],
 ): void {
+  const hasExplicitStage = typeof stageOrRecords === 'string';
+  const stage: 'evolve' | 'capture' = hasExplicitStage ? stageOrRecords : 'evolve';
+  const records = hasExplicitStage ? (maybeRecords ?? []) : stageOrRecords;
   if (records.length === 0) return;
-  ctx.memoryIntentDecisions ??= [];
-  if (ctx.memoryIntentDecisions.length + records.length > MAX_MEMORY_INTENT_DECISIONS_PER_RUN) {
-    ctx.memoryIntentDecisions.splice(
-      0,
-      ctx.memoryIntentDecisions.length + records.length - MAX_MEMORY_INTENT_DECISIONS_PER_RUN,
-    );
-  }
-  ctx.memoryIntentDecisions.push(...records);
+  const next = [...(ctx.memoryIntentDecisions ?? []), ...records]
+    .slice(-MAX_MEMORY_INTENT_DECISIONS_PER_RUN)
+    .map((record) => structuredClone(record));
+  writeMemoryState(ctx, stage, { memoryIntentDecisions: next });
 }
 
 export function memoryWriteEvidenceRefs(proposal: GatedMemoryProposal): string[] {

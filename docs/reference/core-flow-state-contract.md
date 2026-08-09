@@ -50,16 +50,16 @@ Runner 的最小 coordinator 由 `packages/runner/src/runner-coordinator.ts` 约
 
 ## RunContext Ownership
 
-Ownership manifest 目前先覆盖四组高频共享状态。它不是把已有 `RunContext` 改成代理对象，而是给后续拆分提供可审计的字段 owner、读阶段、写阶段和生命周期边界。
+Ownership manifest 目前登记 27 个字段，按四组高频共享状态提供可审计的字段 owner、读阶段、写阶段和生命周期边界。它不是把已有 `RunContext` 改成代理对象，而是要求生产写入经过对应领域边界；测试夹具仍可直接构造上下文。
 
 | 分组 | 代表字段 | owner | 主要写入阶段 | 生命周期 |
 | --- | --- | --- | --- | --- |
 | `reply` | `reply`、`replyProvenance`、`usage` | `user-facing-reply-boundary` / `model-observability` | `reply`、`execute`、`recover`、`ask_user`、`runner-restore`；`reply` 与 `replyProvenance` 通过 `reply-state.ts` 批次写入，usage 仍由模型观测边界写入 | `run-local` |
 | `replan` | `taskBook`、`plan`、`taskBookRevision`、`taskExecution`、`replanAttempts`、`verifyFeedback`、`partialReplanRequest`、`replanHistory`、`appliedTaskBookPatchIds` | `decide-taskbook-boundary` / `execute-taskbook-boundary` / `verify-replan-boundary` / `runtime-taskbook-boundary` | `decide`、`execute`、`verify`、`recover`、`runtime-boundary`、`runner-restore` | `checkpoint-carried` |
 | `runtimeControl` | `runtimeControl`、`runtimeEventQueue`、`deferredRuntimeEvents`、`deferredRuntimeEventIds`、`loopBudget` | `runtime-control-boundary` / `runtime-state` / `runner-runtime-queue` / `runner-runtime-budget` | Runtime safe boundary、DECIDE 延迟事件消费、Runner 初始化/恢复；顶层批次写入统一经过 `runtime-state.ts` | `run-local` 或 `checkpoint-carried` |
-| `memory` | `prelude`、`sessionSummary`、`memoryRootIndex`、`memoryKnownState`、`memoryContextWorkingSet`、`evolutionNotes`、`insights` | Runner memory bootstrap、memory evidence、EVOLVE/CAPTURE boundary | Runner 初始化/恢复、Runtime boundary、`evolve`、`capture`、`finalize` | `run-local`、`checkpoint-carried` 或 `session-persisted` |
+| `memory` | `prelude`、`sessionSummary`、`memoryRootIndex`、`initialMemoryContext`、`memoryKnownState`、`memoryContinuityAssessment`、`memoryContextWorkingSet`、`evolutionNotes`、`insights`、`memoryIntentDecisions` | `runner-memory-bootstrap` / `memory-evidence-boundary` / `memory-context-boundary` / `evolve-memory-boundary` / `capture-memory-boundary` / `finalize-memory-continuity` / `memory-intent-gate` | Runner 初始化/恢复、DECIDE、EXECUTE、VERIFY、REPLY、EVOLVE、CAPTURE、FINALIZE；所有顶层 Memory 批次写入统一经过 `packages/harness/src/memory-state.ts` | `run-local`、`checkpoint-carried` 或 `session-persisted` |
 
-机器可读字段表通过 `getRunContextFieldContract`、`runContextFieldsForGroup` 和 `assertRunContextFieldWriteAllowed` 查询。阶段 5C 已将 replan 组的顶层生产写入集中到 `packages/harness/src/replan-state.ts`：DECIDE、VERIFY、EXECUTE、runtime boundary 和 Runner restore 先完成整批字段校验，再一次性写入；阶段 5D 已将 `reply` 与 `replyProvenance` 的生产写入集中到 `packages/harness/src/reply-state.ts`；阶段 5E 已将 `runtimeControl` 组的 RunContext 顶层字段集中到 `packages/harness/src/runtime-state.ts`，Runtime boundary、DECIDE adoption 和 Runner init/restore 共享同一批次校验入口。非法阶段不会留下半更新。`runtimeEventQueue` 内部的 open/settle/lease、幂等和快照恢复状态仍由 `packages/runner/src/runtime-event-queue.ts` 自己拥有，不属于 RunContext 写入边界；`usage` 尚未纳入统一边界。TaskBook 内部的 `stageResults` 仍由 EXECUTE 在同一 TaskBook 内更新，这是明确保留的嵌套执行证据边界。测试夹具仍可直接构造 `RunContext`，但生产路径不得绕过 owner 直接复制字段逻辑。
+机器可读字段表通过 `getRunContextFieldContract`、`runContextFieldsForGroup` 和 `assertRunContextFieldWriteAllowed` 查询。阶段 5C 已将 replan 组的顶层生产写入集中到 `packages/harness/src/replan-state.ts`；阶段 5D 已将 `reply` 与 `replyProvenance` 集中到 `packages/harness/src/reply-state.ts`；阶段 5E 已将 runtimeControl 组集中到 `packages/harness/src/runtime-state.ts`；阶段 5F 已将 Memory 顶层字段集中到 `packages/harness/src/memory-state.ts`。这些入口都会先完成整批字段校验，再一次性写入，非法阶段不会留下半更新。`memory-state.ts` 只负责 RunContext 顶层状态，不代理 Memory Repository/Service 的持久化事务；`runtimeEventQueue` 内部的 open/settle/lease、幂等和快照恢复状态仍由 `packages/runner/src/runtime-event-queue.ts` 自己拥有，不属于 RunContext 写入边界；`usage` 尚未纳入统一边界。TaskBook 内部的 `stageResults` 仍由 EXECUTE 在同一 TaskBook 内更新，这是明确保留的嵌套执行证据边界。
 
 ## 修改规则
 

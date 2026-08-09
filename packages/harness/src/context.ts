@@ -30,6 +30,7 @@ import type { BrandingConfig } from '@littlesheep/branding';
 import { applyBootstrapLimits } from '@littlesheep/prompt';
 import { resolveRuntimeTimeZone } from '@littlesheep/prompt';
 import { writeRuntimeState } from './runtime-state.js';
+import { writeMemoryState } from './memory-state.js';
 
 /** Bootstrap file names (in priority order). Read from bootstrapDir. */
 const BOOTSTRAP_FILES = ['AGENTS.md', 'SOUL.md', 'USER.md', 'TOOLS.md'] as const;
@@ -221,7 +222,6 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     toolInvocationsTruncated: false,
     bootstrap,
     history,
-    sessionSummary: sessionMetadata?.compaction,
     previousRun: opts.previousRun,
     produced: [],
     taskBookRevision: 0,
@@ -267,6 +267,7 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
       maxNoProgressRounds: 2,
     },
   });
+  writeMemoryState(ctx, 'runner-init', { sessionSummary: sessionMetadata?.compaction });
 
   return ctx;
 }
