@@ -251,7 +251,7 @@ function mergeWave(ctx: RunContext, outcomes: readonly TaskStepRunOutcome[], all
   for (const outcome of [...outcomes].sort((left, right) => left.scheduled.index - right.scheduled.index)) {
     ctx.produced.push(...outcome.produced);
     allToolResults.push(...outcome.toolResults);
-    applyUsage(ctx, outcome.usage);
+    applyUsage(ctx, outcome.usage, 'execute');
   }
 }
 

@@ -35,7 +35,7 @@ export async function executeLegacyLoop(
     ctx.lastError = { stage: 'execute', message: result.error ?? 'execute failed' };
     return { stage: 'execute', next: 'recover', ok: false, error: ctx.lastError.message };
   }
-  applyUsage(ctx, result.usage);
+  applyUsage(ctx, result.usage, 'execute');
   try {
     await acceptUniqueUserFacingReply(
       ctx,
@@ -92,6 +92,6 @@ async function rewriteLegacyExecutionReply(
   );
   const response = await deps.llm.chat(request);
   recordProviderUsage(ctx, request, response.usage);
-  applyUsage(ctx, response.usage);
+    applyUsage(ctx, response.usage, 'execute');
   return response.content;
 }

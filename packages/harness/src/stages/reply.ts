@@ -19,6 +19,7 @@ import {
   prepareModelRequest,
   recordProviderUsage,
 } from '../model-observability.js';
+import { writeProviderUsageState } from '../usage-state.js';
 import { buildRunRequestCandidates } from '../context-candidates.js';
 import {
   acceptUniqueUserFacingReply,
@@ -125,14 +126,7 @@ export function createReplyStage(deps: ReplyStageDeps) {
           })
         : await deps.llm.chat(req);
       recordProviderUsage(ctx, req, res.usage);
-      if (res.usage) {
-        ctx.usage = {
-          promptTokens: res.usage.promptTokens,
-          completionTokens: res.usage.completionTokens,
-          totalTokens: res.usage.totalTokens ?? res.usage.promptTokens + res.usage.completionTokens,
-          source: 'provider',
-        };
-      }
+      writeProviderUsageState(ctx, 'reply', res.usage);
       const apiGeneratedReply = await repairDiscontinuousReply(
         deps,
         ctx,
@@ -208,14 +202,7 @@ async function rewriteReply(
   );
   const response = await deps.llm.chat(request);
   recordProviderUsage(ctx, request, response.usage);
-  if (response.usage) {
-    ctx.usage = {
-      promptTokens: response.usage.promptTokens,
-      completionTokens: response.usage.completionTokens,
-      totalTokens: response.usage.totalTokens ?? response.usage.promptTokens + response.usage.completionTokens,
-      source: 'provider',
-    };
-  }
+  writeProviderUsageState(ctx, 'reply', response.usage);
   return response.content;
 }
 

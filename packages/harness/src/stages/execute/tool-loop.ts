@@ -21,6 +21,7 @@ import {
 } from '@littlesheep/tools';
 import { buildRunRequestCandidates } from '../../context-candidates.js';
 import { prepareModelRequest, recordProviderUsage } from '../../model-observability.js';
+import { writeProviderUsageState } from '../../usage-state.js';
 import { recentHistoryForModel } from '../_shared.js';
 import { ingestMemoryKnownState } from '../../memory-known-state.js';
 import { ingestMemoryContextToolResult } from '../../memory-context-working-set.js';
@@ -323,14 +324,12 @@ function registerEvidenceFingerprint(
   return true;
 }
 
-export function applyUsage(ctx: RunContext, usage: ChatResponse['usage'] | undefined): void {
-  if (!usage) return;
-  ctx.usage = {
-    promptTokens: usage.promptTokens,
-    completionTokens: usage.completionTokens,
-    totalTokens: usage.totalTokens ?? usage.promptTokens + usage.completionTokens,
-    source: 'provider',
-  };
+export function applyUsage(
+  ctx: RunContext,
+  usage: ChatResponse['usage'] | undefined,
+  stage: 'execute',
+): void {
+  writeProviderUsageState(ctx, stage, usage);
 }
 
 function failureResult(callId: string, stepId: string | undefined, error?: string): ToolResult {

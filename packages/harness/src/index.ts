@@ -82,6 +82,11 @@ export { clearReplyState, writeReplyState, type ReplyStateUpdate } from './reply
 export { writeRuntimeState, type RuntimeStateUpdate } from './runtime-state.js';
 export { writeMemoryState, type MemoryStateUpdate } from './memory-state.js';
 export {
+  writeUsageState,
+  writeProviderUsageState,
+  type UsageStateUpdate,
+} from './usage-state.js';
+export {
   applyTaskBookPatch,
   applyTaskBookPatchToContext,
   MAX_APPLIED_TASK_BOOK_PATCH_IDS,

@@ -8,6 +8,7 @@ import {
   prepareModelRequest,
   recordProviderUsage,
 } from '../../model-observability.js';
+import { writeProviderUsageState } from '../../usage-state.js';
 import { assessResponseMemoryContinuity } from '../../response-continuity.js';
 import { UserFacingReplyError } from '../../user-facing-reply.js';
 
@@ -56,14 +57,7 @@ export async function repairDiscontinuousReply(
   );
   const response = await deps.llm.chat(request);
   recordProviderUsage(ctx, request, response.usage);
-  if (response.usage) {
-    ctx.usage = {
-      promptTokens: response.usage.promptTokens,
-      completionTokens: response.usage.completionTokens,
-      totalTokens: response.usage.totalTokens ?? response.usage.promptTokens + response.usage.completionTokens,
-      source: 'provider',
-    };
-  }
+  writeProviderUsageState(ctx, 'reply', response.usage);
 
   const repaired = response.content.trim();
   if (assess(ctx, visibleHistory, repaired) === 'discontinuous') {

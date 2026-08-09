@@ -15,6 +15,7 @@ import {
   prepareModelRequest,
   recordProviderUsage,
 } from '../model-observability.js';
+import { writeProviderUsageState } from '../usage-state.js';
 import { appendSystemPromptAddons, buildUserFacingVoiceAddon } from '../profile-prompt.js';
 import { textOf } from './_shared.js';
 import { acceptUniqueUserFacingReply, type ReplyRewriteInput } from '../user-facing-reply.js';
@@ -130,14 +131,7 @@ async function composeClarificationMessage(
     );
     const response = await deps.llm.chat(prepared);
     recordProviderUsage(ctx, prepared, response.usage);
-    if (response.usage) {
-      ctx.usage = {
-        promptTokens: response.usage.promptTokens,
-        completionTokens: response.usage.completionTokens,
-        totalTokens: response.usage.totalTokens ?? response.usage.promptTokens + response.usage.completionTokens,
-        source: 'provider',
-      };
-    }
+    writeProviderUsageState(ctx, 'ask_user', response.usage);
     if (response.content.trim()) return response.content;
     maxTokens = 640;
   }

@@ -57,7 +57,7 @@ export const runContextFieldOwnership: readonly RunContextFieldContract[] = Obje
     group: 'reply',
     owner: 'model-observability',
     readStages: ['finalize', 'post-run'],
-    writeStages: ['classify', 'decide', 'execute', 'evolve', 'capture', 'reply', 'ask_user'],
+    writeStages: ['execute', 'reply', 'ask_user'],
     lifecycle: 'run-local',
     purpose: 'Provider-reported token usage for the reply-bearing call.',
   }),

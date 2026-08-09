@@ -69,7 +69,7 @@
 | `packages/context/` | Context 候选排序、模型窗口预算、可注入精确 token 计数、预算淘汰、压缩阈值信号以及脱敏 `ContextSnapshot` / `ModelRequestSnapshot`。`src/engine.ts` 是兼容 facade，内部实现位于 `src/context-engine/`；模型专用 tokenizer 资源准备与最终请求 framing 位于 `src/tokenizers/`。本包不负责记忆存储、会话存储或 Provider 调用。 |
 | `packages/branding/` | 品牌配置和用户数据目录布局。 |
 
-`packages/harness/src/memory-state.ts` 是 Memory 顶层 `RunContext` 状态的统一写入边界：它覆盖 Runner bootstrap/restore、DECIDE refinement、KnownState、working set、EVOLVE/CAPTURE、FINALIZE 和 memory intent audit 的批次校验与提交。该入口不代理 `packages/memory-tree/` 的 Repository/Service 持久化事务；`usage` 仍属于模型观测边界，尚未统一收敛。
+`packages/harness/src/memory-state.ts` 是 Memory 顶层 `RunContext` 状态的统一写入边界：它覆盖 Runner bootstrap/restore、DECIDE refinement、KnownState、working set、EVOLVE/CAPTURE、FINALIZE 和 memory intent audit 的批次校验与提交。该入口不代理 `packages/memory-tree/` 的 Repository/Service 持久化事务。`packages/harness/src/usage-state.ts` 只负责顶层 `RunContext.usage` 快照的 stage 校验和 provider usage 规范化；请求级 usage 仍由 `model-observability.ts` 绑定到 context snapshot。
 
 ### 记忆、学习与安全
 

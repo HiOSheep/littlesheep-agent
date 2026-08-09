@@ -85,7 +85,7 @@ Follow progressive disclosure: lead with the outcome and completion status, then
     );
     const response = await deps.llm.chat(request);
     recordProviderUsage(ctx, request, response.usage);
-    applyUsage(ctx, response.usage);
+    applyUsage(ctx, response.usage, 'execute');
     return response.content;
   };
 
