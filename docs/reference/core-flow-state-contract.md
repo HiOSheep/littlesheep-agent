@@ -65,6 +65,8 @@ Ownership manifest 目前登记 40 个字段，按八组高频共享状态提供
 
 机器可读字段表通过 `getRunContextFieldContract`、`runContextFieldsForGroup` 和 `assertRunContextFieldWriteAllowed` 查询。阶段 5C 已将 replan 组的顶层生产写入集中到 `packages/harness/src/replan-state.ts`；阶段 5D 已将 `reply` 与 `replyProvenance` 集中到 `packages/harness/src/reply-state.ts`；阶段 5E 已将 runtimeControl 组集中到 `packages/harness/src/runtime-state.ts`；阶段 5F 已将 Memory 顶层字段集中到 `packages/harness/src/memory-state.ts`；阶段 5G 已将顶层 `usage` 快照集中到 `packages/harness/src/usage-state.ts`；阶段 5H 已将决策与澄清字段集中到 `packages/harness/src/decision-state.ts`；阶段 5I 已将 `lastError` 与 `recoveryAttempts` 集中到 `packages/harness/src/failure-state.ts`；阶段 5J 已将执行证据字段集中到 `packages/harness/src/execution-evidence-state.ts`；阶段 5K 已将模型观测字段集中到 `packages/harness/src/model-observability-state.ts`。这些入口都会先完成整批字段校验，再一次性写入，非法阶段不会留下半更新。`decision-state.ts` 负责活动路由、需求评估和澄清请求/响应的 RunContext 顶层状态；`failure-state.ts` 负责跨阶段失败证据和有界恢复计数，不负责模型观测或执行证据；`execution-evidence-state.ts` 负责顶层执行证据投影、调用记录有界 upsert 和副作用账本的不可变替换，不代理 TaskBook 内部 `stageResults[*].toolResults`；`model-observability-state.ts` 负责三个顶层模型观测字段的批次校验、有界追加和不可变快照更新，不代理模型请求构造语义；`usage-state.ts` 不代理请求级 `contextSnapshots[].providerUsage` 观测；`memory-state.ts` 只负责 RunContext 顶层状态，不代理 Memory Repository/Service 的持久化事务；`runtimeEventQueue` 内部的 open/settle/lease、幂等和快照恢复状态仍由 `packages/runner/src/runtime-event-queue.ts` 自己拥有，不属于 RunContext 写入边界。TaskBook 内部的 `stageResults` 仍由 EXECUTE 在同一 TaskBook 内更新，这是明确保留的嵌套执行证据边界。
 
+阶段 5L 的 checkpoint 边界会把当前 `modelCallCount` 重concile 到持久化 `loopBudget.attemptsUsed`，并把 `maxModelCalls` 重concile 到 `loopBudget.maxAttempts`；这只是两个既有 owner 之间的确定性映射，不新增 ownership group，也不让 `model-observability-state.ts` 直接写入 runtime 字段。
+
 ## 修改规则
 
 1. 先修改 manifest，再修改使用方；保持公共 `RunContext` 字段和 checkpoint 格式兼容。

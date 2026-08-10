@@ -4,7 +4,7 @@
 
 ## 状态
 
-进行中。阶段 0、阶段 1、阶段 2、阶段 3、阶段 4 已完成并分别形成独立提交且推送到 GitHub；阶段 5 正在进行，阶段 5A、阶段 5B、阶段 5C、阶段 5D、阶段 5E、阶段 5F、阶段 5G、阶段 5H、阶段 5I、阶段 5J、阶段 5K 的实现、质量门、提交和推送已完成。本文是一个可单独设置为阶段目标的执行基线；完成任一阶段后，必须更新本文的状态、证据和实际边界，并提交、推送一次，再决定是否进入下一阶段。
+进行中。阶段 0、阶段 1、阶段 2、阶段 3、阶段 4 已完成并分别形成独立提交且推送到 GitHub；阶段 5 正在进行，阶段 5A、阶段 5B、阶段 5C、阶段 5D、阶段 5E、阶段 5F、阶段 5G、阶段 5H、阶段 5I、阶段 5J、阶段 5K、阶段 5L 的实现、质量门、提交和推送已完成。本文是一个可单独设置为阶段目标的执行基线；完成任一阶段后，必须更新本文的状态、证据和实际边界，并提交、推送一次，再决定是否进入下一阶段。
 
 ## Goal
 
@@ -137,7 +137,7 @@
 
 ### 阶段 5：状态契约重构（后续阶段，不与本任务前四阶段合并）
 
-状态：进行中。阶段 5A、阶段 5B、阶段 5C、阶段 5D、阶段 5E、阶段 5F、阶段 5G、阶段 5H、阶段 5I、阶段 5J、阶段 5K 已完成；阶段 5 整体尚未完成，下一候选是验证请求级 `contextSnapshots[].providerUsage` 与 runtime `loopBudget` 的跨域一致性。
+状态：进行中。阶段 5A、阶段 5B、阶段 5C、阶段 5D、阶段 5E、阶段 5F、阶段 5G、阶段 5H、阶段 5I、阶段 5J、阶段 5K、阶段 5L 已完成；阶段 5 整体尚未完成，下一候选是审计 checkpoint `contextSnapshotIds` 与 execution log `contextSnapshots` 的生命周期和截断一致性。
 
 - 建立唯一 `allowedTransitions` manifest，运行时校验非法 Stage 边，并生成状态图。
 - 为 `RunContext` 建立字段 owner、读写阶段和生命周期表；先收敛 `reply`、`replan`、`decision`、`failure`、`executionEvidence`、`runtimeControl`、`memory`、`modelObservability` 八组高频共享状态。
@@ -254,6 +254,15 @@
 
 阶段 5K 定向证据（2026-08-10）：`model-observability-state.test.ts`、`model-observability.test.ts`、`run-context-contract.test.ts`、`context.test.ts` 共 4 个文件、24 项通过；Harness build 通过。跨阶段回归：`default-harness.test.ts`、`e2e.test.ts`、`runner-continuation.test.ts`、`runner.test.ts` 共 4 个文件、45 项通过；生产源码扫描未发现模型观测三个顶层字段的直接赋值或原地数组写入。最终质量门：`check:repo` 为 33/33、27/27 个 TypeScript project references 通过；`verify:core` 退出码为 0，核心集合 127 项通过，`failedStage=null`；`verify:full` 退出码为 0，290 个测试文件、2006 passed、1 skipped，workspace typecheck、App build 和 recovery 均通过，`failedStage=null`，总耗时约 259.07 秒。唯一 skipped 是 selector 不属于 full gate；recovery 中既有 sampled runIds 缺失 execution log 或可选 `workspace/artifacts.json` 的警告不构成阶段失败。阶段 5K 完成后，下一候选是验证请求级 `contextSnapshots[].providerUsage` 与 runtime `loopBudget` 的跨域一致性，避免重复创建顶层 owner。
 
+阶段 5L：checkpoint 预算一致性边界
+
+状态：已完成。本阶段修复阶段 5K 审计发现的跨域一致性缺口：模型观测域实时递增 `modelCallCount`，但 Runtime 初始化的 `loopBudget.attemptsUsed` 不随模型请求更新；checkpoint 构造若直接复用陈旧的 runtime 快照，会在暂停/恢复时丢失已消耗的模型调用次数。本阶段不新增 ownership group，不把 `loopBudget` 迁移到模型观测域，也不改变 checkpoint schema。
+
+- `packages/runner/src/run-checkpoint.ts` 新增 checkpoint 边界重concile：以当前 `modelCallCount` 覆盖 `loopBudget.attemptsUsed`，以 `maxModelCalls` 覆盖 `loopBudget.maxAttempts`，其余 runtime budget 字段继续保留原有快照值并更新 elapsed time。
+- 恢复路径继续由 `writeRuntimeState(ctx, 'runner-restore', { loopBudget })` 和 `writeModelObservabilityState(ctx, 'runner-restore', { modelCallCount })` 分别拥有两个字段；本阶段只在持久化边界建立确定性映射。
+
+阶段 5L 定向证据（2026-08-10）：`run-checkpoint.test.ts`、`runner-continuation.test.ts`、`model-observability-state.test.ts`、`model-observability.test.ts`、`runtime-state.test.ts`、`run-context-contract.test.ts` 共 6 个文件、22 项通过；新增特征测试证明陈旧 `loopBudget.attemptsUsed=0` 会在 checkpoint 中重concile 为当前 `modelCallCount=3`，恢复回归保持通过。最终质量门：`check:repo` 为 33/33、27/27 个 TypeScript project references 通过；`verify:core` 退出码为 0，核心集合 127 项通过，`failedStage=null`；`verify:full` 退出码为 0，290 个测试文件、2007 passed、1 skipped，workspace typecheck、App build 和 recovery 均通过，`failedStage=null`，总耗时约 239.91 秒。唯一 skipped 是 selector 不属于 full gate；recovery 中既有 sampled runIds 缺失 execution log 或可选 `workspace/artifacts.json` 的警告不构成阶段失败。阶段 5L 完成后，下一候选是审计 checkpoint `contextSnapshotIds` 与 execution log `contextSnapshots` 的生命周期和截断一致性。
+
 ## Acceptance Matrix
 
 | 维度 | 当前基线 | 目标 | 证据 |
@@ -272,7 +281,7 @@
 | 状态转移可解释性 | `next` 分散、无唯一允许边表 | manifest + runtime validation + graph | Harness 特征测试 |
 | RunContext ownership | 74 字段、跨 61 个生产文件访问 | 分域 owner 表，先收敛八组高频状态 | 类型/特征测试 + 导航文档 |
 
-阶段 5A/5C/5D/5E/5F/5G/5H/5I/5J/5K 当前证据：状态 manifest 覆盖 11 个 Stage、每个 Stage 的终止 `exit` 边及 38 条显式边；非法 `finalize -> reply` 自定义转移被拒绝，兼容 `execute -> finalize` 路径有回归保护。ownership manifest 现登记 40 个高频字段，其中 replan 组、reply 组、decision 组、failure 组、executionEvidence 组、runtimeControl 组、memory 组、usage 顶层快照和 modelObservability 组的生产写入分别已通过 `replan-state.ts`、`reply-state.ts`、`decision-state.ts`、`failure-state.ts`、`execution-evidence-state.ts`、`runtime-state.ts`、`memory-state.ts`、`usage-state.ts` 和 `model-observability-state.ts` 统一校验；请求级 `contextSnapshots[].providerUsage` 与 TaskBook 内部嵌套步骤证据仍由各自领域拥有，`loopBudget` 继续属于 runtimeControl。阶段质量门和本地报告必须随阶段提交更新；报告中的 `skipped` 仅为 full gate 不适用 selector，不影响已执行的测试、typecheck、build 和 recovery。
+阶段 5A/5C/5D/5E/5F/5G/5H/5I/5J/5K/5L 当前证据：状态 manifest 覆盖 11 个 Stage、每个 Stage 的终止 `exit` 边及 38 条显式边；非法 `finalize -> reply` 自定义转移被拒绝，兼容 `execute -> finalize` 路径有回归保护。ownership manifest 现登记 40 个高频字段，其中 replan 组、reply 组、decision 组、failure 组、executionEvidence 组、runtimeControl 组、memory 组、usage 顶层快照和 modelObservability 组的生产写入分别已通过 `replan-state.ts`、`reply-state.ts`、`decision-state.ts`、`failure-state.ts`、`execution-evidence-state.ts`、`runtime-state.ts`、`memory-state.ts`、`usage-state.ts` 和 `model-observability-state.ts` 统一校验；阶段 5L 额外在 checkpoint 边界验证 `modelCallCount -> loopBudget.attemptsUsed` 的确定性映射。请求级 `contextSnapshots[].providerUsage` 与 TaskBook 内部嵌套步骤证据仍由各自领域拥有，`loopBudget` 继续属于 runtimeControl。阶段质量门和本地报告必须随阶段提交更新；报告中的 `skipped` 仅为 full gate 不适用 selector，不影响已执行的测试、typecheck、build 和 recovery。
 
 ## Verification Order
 
@@ -322,4 +331,4 @@ pnpm.cmd run verify:full
 - 阶段 0 已完成；剩余风险是完整测试计数随运行时数据状态小幅波动，及 fingerprint 扫描仍明显高于纯 planning 成本。报告已拆分两者，后续优化应针对扫描范围而不是误判 selector。
 - 阶段 2 已完成并单独提交；顶层 `branding.config.json`、`littlesheep.config.json` 不属于当前编译输入，故保持在阶段 3 fingerprint 范围之外。workspace manifest、特殊 Git 状态、共享 `GLOBAL_TYPECHECK_FILES` 和非字符串 dependency 形状均已纳入保守校验或 fail-closed 处理。
 - 阶段 3 已实现跨 Electron/Memory 入口的 App/workspace build-once/fingerprint 复用和过期产物拒绝；仍不把外部 Provider 运行时版本纳入本地 sidecar 的证明范围。
-- 阶段 1 的任务级入口和直接测试优先策略已完成，阶段 4 的代码实现、定向回归、`verify:changed`、`verify:core` 和 `verify:full` 已完成；阶段 5A 的状态契约第一里程碑、阶段 5B 的 Runner coordinator 最小抽取、阶段 5C 的 replan-state 写入边界、阶段 5D 的 reply/replyProvenance 写入边界、阶段 5E 的 runtime state 写入边界、阶段 5F 的 Memory 顶层 RunContext 写入边界、阶段 5G 的 usage 顶层快照写入边界、阶段 5H 的决策与澄清状态写入边界、阶段 5I 的失败与恢复状态写入边界和阶段 5J 的执行证据状态写入边界已完成，质量门、提交和推送按阶段独立执行；下一候选是模型观测与预算状态边界。本阶段提交时必须排除用户已有的 `test/e2e-webhook.test.ts` 改动。
+- 阶段 1 的任务级入口和直接测试优先策略已完成，阶段 4 的代码实现、定向回归、`verify:changed`、`verify:core` 和 `verify:full` 已完成；阶段 5A 的状态契约第一里程碑、阶段 5B 的 Runner coordinator 最小抽取、阶段 5C 的 replan-state 写入边界、阶段 5D 的 reply/replyProvenance 写入边界、阶段 5E 的 runtime state 写入边界、阶段 5F 的 Memory 顶层 RunContext 写入边界、阶段 5G 的 usage 顶层快照写入边界、阶段 5H 的决策与澄清状态写入边界、阶段 5I 的失败与恢复状态写入边界、阶段 5J 的执行证据状态写入边界、阶段 5K 的模型观测与预算状态写入边界和阶段 5L 的 checkpoint 预算一致性边界已完成，质量门、提交和推送按阶段独立执行；下一候选是 checkpoint Context snapshot ID 与 execution log 快照生命周期审计。本阶段提交时必须排除用户已有的 `test/e2e-webhook.test.ts` 改动。

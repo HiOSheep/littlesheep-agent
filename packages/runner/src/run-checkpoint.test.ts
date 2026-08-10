@@ -76,4 +76,29 @@ describe('buildRunCheckpoint', () => {
 
     expect(checkpoint.activeStepIds).toBeUndefined();
   });
+
+  it('reconciles model-call observability into the durable loop budget', () => {
+    const ctx = contextWithSteps([step('active', 'in_progress')]);
+    ctx.modelCallCount = 3;
+    ctx.maxModelCalls = 8;
+    ctx.loopBudget = {
+      attemptsUsed: 0,
+      maxAttempts: 8,
+      elapsedMs: 10,
+      maxElapsedMs: 60_000,
+      noProgressRounds: 0,
+      maxNoProgressRounds: 2,
+    };
+
+    const checkpoint = buildRunCheckpoint({
+      ctx,
+      stageResult: { stage: 'execute', next: 'exit', ok: false },
+      reason: 'model call budget reconciliation',
+      now: new Date('2026-07-29T10:00:01.000Z'),
+    });
+
+    expect(checkpoint.loopBudget.attemptsUsed).toBe(3);
+    expect(checkpoint.loopBudget.maxAttempts).toBe(8);
+    expect(checkpoint.loopBudget.elapsedMs).toBeGreaterThanOrEqual(1_000);
+  });
 });

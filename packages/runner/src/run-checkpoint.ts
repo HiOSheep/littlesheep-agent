@@ -52,14 +52,7 @@ export function buildRunCheckpoint(options: BuildRunCheckpointOptions): RunCheck
   const currentStepId = activeStepIds[0]
     ?? ctx.taskBook?.steps.find((step) => (step.status ?? 'pending') === 'pending')?.id;
   const elapsedMs = Math.max(0, now.getTime() - Date.parse(ctx.startedAt));
-  const loopBudget = ctx.loopBudget ?? {
-    attemptsUsed: ctx.modelCallCount ?? 0,
-    maxAttempts: ctx.maxModelCalls ?? 0,
-    elapsedMs,
-    maxElapsedMs: 0,
-    noProgressRounds: 0,
-    maxNoProgressRounds: 2,
-  };
+  const loopBudget = reconcileLoopBudget(ctx, elapsedMs);
   const pendingEventIds = queue?.events
     .filter((event) => event.status === 'queued')
     .map((event) => event.id)
@@ -121,6 +114,28 @@ function snapshotQueue(ctx: RunContext): RuntimeEventQueueSnapshot | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Model observability owns the live call counter while runtime owns the
+ * checkpoint budget shape. Reconcile them at the durable boundary so a stale
+ * in-memory runtime snapshot cannot erase calls during continuation.
+ */
+function reconcileLoopBudget(ctx: RunContext, elapsedMs: number) {
+  const existing = ctx.loopBudget ?? {
+    attemptsUsed: 0,
+    maxAttempts: 0,
+    elapsedMs,
+    maxElapsedMs: 0,
+    noProgressRounds: 0,
+    maxNoProgressRounds: 2,
+  };
+  return {
+    ...existing,
+    attemptsUsed: ctx.modelCallCount ?? existing.attemptsUsed,
+    maxAttempts: ctx.maxModelCalls ?? existing.maxAttempts,
+    elapsedMs: Math.max(existing.elapsedMs, elapsedMs),
+  };
 }
 
 function clone<T>(value: T): T {
