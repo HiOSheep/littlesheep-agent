@@ -14,6 +14,7 @@ import { consumeRuntimeControlEvents } from '../../runtime-control-boundary.js';
 import { updateReplanHistory, writeReplanState } from '../../replan-state.js';
 import { clearReplyState } from '../../reply-state.js';
 import { recordFailure, clearFailure } from '../../failure-state.js';
+import { replaceToolResults } from '../../execution-evidence-state.js';
 import { reserveUserFacingReplyOnce } from '../../user-facing-reply.js';
 import { orderedStepResults } from './failure-policy.js';
 import { synthesizeFinalReply } from './final-reply.js';
@@ -152,7 +153,7 @@ export async function executeTaskBook(
     execution.endedAt = new Date().toISOString();
     syncExecutionSteps();
   }
-  ctx.toolResults = allToolResults;
+  replaceToolResults(ctx, 'execute', allToolResults);
   try {
     await resolveCompletedTaskReply(deps, ctx, taskBook, execution.steps);
     execution.summary = ctx.reply;
@@ -188,7 +189,7 @@ function finishRuntimeControlBoundary(
   runtimeControl: ReturnType<typeof consumeRuntimeControlEvents>,
 ): StageResult {
   taskBook.stageResults = execution.steps;
-  ctx.toolResults = allToolResults;
+  replaceToolResults(ctx, 'execute', allToolResults);
   clearReplyState(ctx, 'execute');
   const error = runtimeControl.error
     ?? (runtimeControl.state === 'paused'
@@ -269,7 +270,7 @@ function finishWaveFailure(
   execution.status = blocked ? 'blocked' : 'failed';
   execution.endedAt = new Date().toISOString();
   taskBook.stageResults = execution.steps;
-  ctx.toolResults = allToolResults;
+  replaceToolResults(ctx, 'execute', allToolResults);
   clearReplyState(ctx, 'execute');
   const error = failure.result.error ?? 'TaskBook step failed.';
   if (failure.route === 'recover') {

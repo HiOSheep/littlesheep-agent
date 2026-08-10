@@ -32,6 +32,7 @@ import {
   writeMemoryState,
   writeDecisionState,
   writeFailureState,
+  replaceSideEffectEvidence,
 } from '@littlesheep/harness';
 import { buildInfrastructure, type RunnerState, type LogFn } from './infra.js';
 import type { ExecutionLog } from './execution-log.js';
@@ -694,7 +695,7 @@ function restoreContinuationContext(ctx: RunContext, checkpoint: RunCheckpoint):
     deferredRuntimeEvents: structuredClone(state.deferredRuntimeEvents),
     loopBudget: structuredClone(checkpoint.loopBudget),
   });
-  ctx.sideEffects = structuredClone(checkpoint.sideEffects);
+  replaceSideEffectEvidence(ctx, 'runner-restore', checkpoint.sideEffects);
   ctx.modelCallCount = checkpoint.loopBudget.attemptsUsed;
   writeFailureState(ctx, 'runner-restore', { recoveryAttempts: state.recoveryAttempts });
   ctx.maxReplanAttempts = state.maxReplanAttempts;

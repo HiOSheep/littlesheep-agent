@@ -14,6 +14,7 @@ import { buildRunRequestCandidates } from '../../context-candidates.js';
 import { prepareModelRequest, recordProviderUsage } from '../../model-observability.js';
 import { clearReplyState } from '../../reply-state.js';
 import { recordFailure } from '../../failure-state.js';
+import { replaceToolResults } from '../../execution-evidence-state.js';
 export { executeTaskBook } from './task-book-runner.js';
 
 export async function executeLegacyLoop(
@@ -31,7 +32,7 @@ export async function executeLegacyLoop(
     systemSegments: systemPrompt.segments,
     insertedBeforePrimary: attachmentMessages.map((item) => item.context),
   });
-  ctx.toolResults = result.toolResults;
+  replaceToolResults(ctx, 'execute', result.toolResults);
   if (!result.ok) {
     const message = result.error ?? 'execute failed';
     recordFailure(ctx, 'execute', 'execute', message);

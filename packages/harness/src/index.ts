@@ -94,6 +94,13 @@ export {
   type FailureStateUpdate,
 } from './failure-state.js';
 export {
+  writeExecutionEvidenceState,
+  replaceToolResults,
+  upsertToolInvocationEvidence,
+  replaceSideEffectEvidence,
+  type ExecutionEvidenceStateUpdate,
+} from './execution-evidence-state.js';
+export {
   writeUsageState,
   writeProviderUsageState,
   type UsageStateUpdate,

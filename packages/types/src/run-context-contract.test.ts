@@ -7,8 +7,8 @@ import {
 } from './run-context-contract.js';
 
 describe('RunContext ownership contract', () => {
-  it('assigns the four high-churn groups to explicit owners', () => {
-    for (const group of ['reply', 'replan', 'decision', 'failure', 'runtimeControl', 'memory'] as const) {
+  it('assigns the registered high-churn groups to explicit owners', () => {
+    for (const group of ['reply', 'replan', 'decision', 'failure', 'executionEvidence', 'runtimeControl', 'memory'] as const) {
       const definitions = runContextFieldsForGroup(group);
       expect(definitions.length).toBeGreaterThan(0);
       expect(definitions.every((definition) => definition.owner.length > 0)).toBe(true);
@@ -37,6 +37,11 @@ describe('RunContext ownership contract', () => {
       group: 'failure',
       owner: 'failure-recovery-boundary',
       lifecycle: 'run-local',
+    });
+    expect(getRunContextFieldContract('sideEffects')).toMatchObject({
+      group: 'executionEvidence',
+      owner: 'side-effect-ledger',
+      lifecycle: 'checkpoint-carried',
     });
   });
 

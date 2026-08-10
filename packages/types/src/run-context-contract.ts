@@ -1,7 +1,7 @@
 // @littlesheep/types - machine-readable ownership and lifecycle contracts for high-churn RunContext fields.
 import type { RunContext, StageName } from './agent.js';
 
-export type RunContextFieldGroup = 'reply' | 'replan' | 'decision' | 'failure' | 'runtimeControl' | 'memory';
+export type RunContextFieldGroup = 'reply' | 'replan' | 'decision' | 'failure' | 'executionEvidence' | 'runtimeControl' | 'memory';
 export type RunContextLifecycle = 'run-local' | 'checkpoint-carried' | 'session-persisted';
 export type RunContextContractStage = StageName | 'runner-init' | 'runner-restore' | 'runtime-boundary' | 'post-run';
 
@@ -195,6 +195,42 @@ export const runContextFieldOwnership: readonly RunContextFieldContract[] = Obje
     writeStages: ['runner-init', 'recover', 'runner-restore'],
     lifecycle: 'checkpoint-carried',
     purpose: 'Bounded RECOVER attempt counter carried through resumable checkpoints.',
+  }),
+  field({
+    field: 'toolResults',
+    group: 'executionEvidence',
+    owner: 'execute-result-boundary',
+    readStages: ['execute', 'recover', 'verify', 'evolve', 'capture', 'reply', 'finalize', 'post-run'],
+    writeStages: ['execute'],
+    lifecycle: 'run-local',
+    purpose: 'Top-level projection of authoritative EXECUTE tool results; TaskBook step evidence remains nested in taskExecution.',
+  }),
+  field({
+    field: 'toolInvocations',
+    group: 'executionEvidence',
+    owner: 'tool-invocation-evidence',
+    readStages: ['execute', 'verify', 'finalize', 'post-run'],
+    writeStages: ['runner-init', 'execute'],
+    lifecycle: 'run-local',
+    purpose: 'Bounded authoritative tool lifecycle records retained by ToolExecutionService.',
+  }),
+  field({
+    field: 'toolInvocationsTruncated',
+    group: 'executionEvidence',
+    owner: 'tool-invocation-evidence',
+    readStages: ['execute', 'verify', 'finalize', 'post-run'],
+    writeStages: ['runner-init', 'execute'],
+    lifecycle: 'run-local',
+    purpose: 'Monotonic latch proving that additional invocation records were intentionally not retained.',
+  }),
+  field({
+    field: 'sideEffects',
+    group: 'executionEvidence',
+    owner: 'side-effect-ledger',
+    readStages: ['execute', 'verify', 'finalize', 'runtime-boundary', 'runner-restore', 'post-run'],
+    writeStages: ['runner-init', 'execute', 'runner-restore'],
+    lifecycle: 'checkpoint-carried',
+    purpose: 'Bounded side-effect ledger used to prevent unsafe replay and support checkpoint recovery.',
   }),
   field({
     field: 'runtimeControl',

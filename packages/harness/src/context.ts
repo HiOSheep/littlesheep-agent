@@ -33,6 +33,7 @@ import { writeRuntimeState } from './runtime-state.js';
 import { writeMemoryState } from './memory-state.js';
 import { writeDecisionState } from './decision-state.js';
 import { writeFailureState } from './failure-state.js';
+import { writeExecutionEvidenceState } from './execution-evidence-state.js';
 
 /** Bootstrap file names (in priority order). Read from bootstrapDir. */
 const BOOTSTRAP_FILES = ['AGENTS.md', 'SOUL.md', 'USER.md', 'TOOLS.md'] as const;
@@ -220,15 +221,12 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     tools: opts.tools,
     toolSources: opts.toolSources,
     toolContext,
-    toolInvocations: [],
-    toolInvocationsTruncated: false,
     bootstrap,
     history,
     previousRun: opts.previousRun,
     produced: [],
     taskBookRevision: 0,
     appliedTaskBookPatchIds: [],
-    sideEffects: [],
     maxRecoveryAttempts: opts.config.agents.defaults.maxRecoveryAttempts,
     // VERIFY bounded iteration: replan budget (default 2). When exhausted,
     // VERIFY force-passes to EVOLVE to avoid infinite DECIDE↔VERIFY loops.
@@ -256,6 +254,11 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
 
   writeDecisionState(ctx, 'runner-init', { clarificationResponse });
   writeFailureState(ctx, 'runner-init', { recoveryAttempts: 0 });
+  writeExecutionEvidenceState(ctx, 'runner-init', {
+    toolInvocations: [],
+    toolInvocationsTruncated: false,
+    sideEffects: [],
+  });
 
   writeRuntimeState(ctx, 'runner-init', {
     runtimeEventQueue: opts.runtimeEventQueue,

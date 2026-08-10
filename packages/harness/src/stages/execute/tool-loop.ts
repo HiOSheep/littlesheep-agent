@@ -22,6 +22,7 @@ import {
 import { buildRunRequestCandidates } from '../../context-candidates.js';
 import { prepareModelRequest, recordProviderUsage } from '../../model-observability.js';
 import { writeProviderUsageState } from '../../usage-state.js';
+import { upsertToolInvocationEvidence } from '../../execution-evidence-state.js';
 import { recentHistoryForModel } from '../_shared.js';
 import { ingestMemoryKnownState } from '../../memory-known-state.js';
 import { ingestMemoryContextToolResult } from '../../memory-context-working-set.js';
@@ -35,6 +36,7 @@ import {
   beginSideEffect,
   describeSideEffect,
   finishSideEffect,
+  markSideEffectUnknown,
   sideEffectCheckpointReason,
 } from './side-effect-ledger.js';
 
@@ -398,12 +400,7 @@ function updateInvocationRecord(
   record: ToolInvocationRecord,
   state: { retained: boolean; truncated: boolean },
 ): void {
-  if (state.truncated) ctx.toolInvocationsTruncated = true;
-  if (!state.retained) return;
-  const records = ctx.toolInvocations ?? (ctx.toolInvocations = []);
-  const index = records.findIndex((candidate) => candidate.id === record.id);
-  if (index >= 0) records[index] = record;
-  else records.push(record);
+  upsertToolInvocationEvidence(ctx, 'execute', record, state);
 }
 
 function stampStepMeta(result: ToolResult, stepId?: string): ToolResult {
@@ -465,11 +462,11 @@ function sideEffectLifecycle(ctx: RunContext): ToolExecutionLifecycle {
         await ctx.persistRuntimeCheckpoint?.(sideEffectCheckpointReason(sideEffect, 'finished'));
         return result;
       } catch (error) {
-        const uncertain = (ctx.sideEffects ?? []).find((item) => item.idempotencyKey === sideEffect.idempotencyKey);
-        if (uncertain) {
-          uncertain.status = 'unknown';
-          uncertain.error = `checkpoint after side effect failed: ${(error as Error).message}`;
-        }
+        markSideEffectUnknown(
+          ctx,
+          sideEffect,
+          `checkpoint after side effect failed: ${(error as Error).message}`,
+        );
         return {
           result: {
             ...result,

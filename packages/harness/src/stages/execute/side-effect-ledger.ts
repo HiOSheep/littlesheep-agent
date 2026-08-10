@@ -12,6 +12,7 @@ import type {
   ToolResourceAccess,
   ToolResult,
 } from '@littlesheep/types'
+import { replaceSideEffectEvidence } from '../../execution-evidence-state.js'
 
 const MAX_SIDE_EFFECTS = 256
 const MAX_RESOURCE_KEYS = 32
@@ -93,23 +94,41 @@ export function beginSideEffect(ctx: RunContext, descriptor: SideEffectDescripto
     status: 'in_progress',
     startedAt: new Date().toISOString(),
   }
-  const effects = ctx.sideEffects ?? (ctx.sideEffects = [])
+  const effects = [...(ctx.sideEffects ?? [])]
   if (effects.length >= MAX_SIDE_EFFECTS) {
     const terminal = effects.findIndex((item) => item.status === 'succeeded' || item.status === 'failed')
     if (terminal < 0) return { kind: 'blocked', descriptor, reason: 'side-effect ledger capacity is exhausted' }
     effects.splice(terminal, 1)
   }
   effects.push(entry)
+  replaceSideEffectEvidence(ctx, 'execute', effects)
   return { kind: 'started', descriptor }
 }
 
 export function finishSideEffect(ctx: RunContext, descriptor: SideEffectDescriptor, result: ToolResult): void {
-  const entry = (ctx.sideEffects ?? []).find((item) => item.idempotencyKey === descriptor.idempotencyKey)
-  if (!entry) return
-  entry.status = result.ok ? 'succeeded' : 'unknown'
-  entry.endedAt = new Date().toISOString()
-  entry.evidenceRef = `tool:${descriptor.callId}`
-  if (!result.ok && result.error) entry.error = result.error.slice(0, 2_048)
+  const effects = ctx.sideEffects ?? []
+  const index = effects.findIndex((item) => item.idempotencyKey === descriptor.idempotencyKey)
+  if (index < 0) return
+  const current = effects[index]!
+  const entry: SideEffectCheckpoint = {
+    ...current,
+    status: result.ok ? 'succeeded' : 'unknown',
+    endedAt: new Date().toISOString(),
+    evidenceRef: `tool:${descriptor.callId}`,
+    ...(!result.ok && result.error ? { error: result.error.slice(0, 2_048) } : {}),
+  }
+  const updated = [...effects]
+  updated[index] = entry
+  replaceSideEffectEvidence(ctx, 'execute', updated)
+}
+
+export function markSideEffectUnknown(ctx: RunContext, descriptor: SideEffectDescriptor, error: string): void {
+  const effects = ctx.sideEffects ?? []
+  const index = effects.findIndex((item) => item.idempotencyKey === descriptor.idempotencyKey)
+  if (index < 0) return
+  const updated = [...effects]
+  updated[index] = { ...effects[index]!, status: 'unknown', error: error.slice(0, 2_048) }
+  replaceSideEffectEvidence(ctx, 'execute', updated)
 }
 
 export function sideEffectCheckpointReason(descriptor: SideEffectDescriptor, phase: 'started' | 'finished'): string {
