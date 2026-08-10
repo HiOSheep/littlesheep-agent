@@ -1,6 +1,6 @@
 # Core Flow 状态契约
 
-最后更新：2026-08-10 00:10:00
+最后更新：2026-08-10 15:57:32
 
 本页是 Harness 状态边和高频 `RunContext` 字段责任的导航入口。可执行契约位于 `packages/types/src/stage-transitions.ts` 与 `packages/types/src/run-context-contract.ts`；本页只解释如何阅读和扩展它们，不复制运行时实现。
 

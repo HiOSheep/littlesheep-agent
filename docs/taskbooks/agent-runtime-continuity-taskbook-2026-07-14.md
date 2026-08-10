@@ -1,7 +1,7 @@
 # LittleSheep Agent Runtime 连续性任务书 2026-07-14
 
 状态：规划已定稿，实施中（阶段 0、阶段 2、阶段 3 已完成；阶段 1 主要数据链、当前 DeepSeek 四项真实校准、普通直接回答、显式单/多工具提议、自主 `glob / grep / read` 两请求矩阵及 Flash Provider 工具协议的 V4 精确本地 tokenizer 对账已完成，Pro 工具协议和其他 Provider 仍待收敛；阶段 4 已完成统一 Tool Execution Service、统一工具超时与清理、事件重入、TaskBookPatch、Renderer 入口与 TaskBook 步骤级有界并行；阶段 5 已完成持久检查点、Runner 续跑、应用启动恢复、活动任务控制、托盘、三档关闭策略、设置页后台入口、确定性 Electron 七场景、真实 DeepSeek 跨重启最终回答连续性、直接续答一次有界断档纠偏、基础两步副作用恢复、短时并行压力、多轮五字段摘要压缩续答、主动断线恢复、6 分钟诊断门和正式 2 小时持续负载验收；非字段事实、真实外部系统副作用和长期真实用户负载仍未完成）
-最后更新：2026-08-04 10:10:04
+最后更新：2026-08-10 15:57:32
 
 > 2026-08-04 09:31 当前提交复跑：跨重启回答首轮/重启轮各 1 次 API，Prompt `974 / 1,286`，最终 `supported`；后台九场景恢复任务 2 次 API、`write/read` 各一次、耗时 `6.863s`，具有权威 usage 的请求合计 prompt `5,477` / completion `934` / total `6,411`；中断分支不伪造 usage。同时三工具矩阵保持 `2 API / 1 tool / exact_match` 和工作区哈希不变。
 

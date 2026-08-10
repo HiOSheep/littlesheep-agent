@@ -1,6 +1,6 @@
 # LittleSheep 核心 Agent 流程规范
 
-最后更新：2026-08-04 10:10:04
+最后更新：2026-08-10 15:57:32
 
 本文是 [LittleSheep 架构原则](architecture-principles.md) 在 Core Flow、TaskBook、验证、恢复和记忆运行时上的专项约束。LLM 与 Agent、Mode 与权限、Context 与 Memory、Harness 与 Tool Execution 的顶层分工以架构原则为准；本文不重复维护另一套总架构。
 
