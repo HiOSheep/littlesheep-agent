@@ -50,7 +50,6 @@ export function OverlaysView({ controller }: { controller: AppController }) {
           }}
           onTipChange={setControlTip}
         />
-        <div className="settings-transition-edge" aria-hidden="true" />
         <SettingsEntryBridge
           settingsOpen={settingsOpen}
           onOpen={openSettingsFromEntry}

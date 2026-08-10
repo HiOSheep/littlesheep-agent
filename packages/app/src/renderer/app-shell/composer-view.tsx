@@ -1,5 +1,6 @@
 // Stable composer surface shared by every conversation.
 // Conversation switching updates the message viewport, not this component's DOM.
+import { useLayoutEffect, useRef } from 'react'
 import {
   coerceReasoningForModelRef,
 } from '../../shared/model-capabilities'
@@ -22,6 +23,7 @@ export function ComposerView({ controller }: { controller: AppController }) {
     input,
     setInput,
     inputRef,
+    scrollRef,
     loading,
     permissionMode,
     setPermissionMode,
@@ -56,8 +58,44 @@ export function ComposerView({ controller }: { controller: AppController }) {
     stop,
   } = controller
 
+  const composerShellRef = useRef<HTMLElement>(null)
+
+  useLayoutEffect(() => {
+    const shell = composerShellRef.current
+    const chat = shell?.parentElement
+    if (!shell || !chat?.classList.contains('chat')) return
+
+    let measuredHeight = -1
+    const updateOverlayClearance = () => {
+      const nextHeight = Math.ceil(shell.getBoundingClientRect().height)
+      if (nextHeight <= 0 || nextHeight === measuredHeight) return
+
+      const messagesViewport = scrollRef.current
+      const shouldStickToBottom = messagesViewport !== null
+        && messagesViewport.scrollHeight - messagesViewport.scrollTop - messagesViewport.clientHeight < 72
+
+      measuredHeight = nextHeight
+      chat.style.setProperty('--composer-overlay-height', `${nextHeight}px`)
+      if (shouldStickToBottom && messagesViewport) {
+        messagesViewport.scrollTop = messagesViewport.scrollHeight
+      }
+    }
+
+    updateOverlayClearance()
+    if (typeof ResizeObserver === 'undefined') {
+      return () => chat.style.removeProperty('--composer-overlay-height')
+    }
+
+    const observer = new ResizeObserver(updateOverlayClearance)
+    observer.observe(shell)
+    return () => {
+      observer.disconnect()
+      chat.style.removeProperty('--composer-overlay-height')
+    }
+  }, [scrollRef])
+
   return (
-    <section className="composer-shell">
+    <section ref={composerShellRef} className="composer-shell">
       <TaskProgressPresence activity={latestTaskActivity} now={activityNow} />
       <div
         className={`composer ${dragActive ? 'drag-active' : ''}`}

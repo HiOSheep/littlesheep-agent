@@ -933,6 +933,16 @@
   --mono: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
   --sidebar-content-block-inset: 18px;
   --sidebar-content-inline-inset: 14px;
+  --settings-entry-left: var(--sidebar-content-block-inset);
+  --settings-entry-bottom: var(--sidebar-content-block-inset);
+  --settings-entry-collapsed-width: 37px;
+  --settings-origin-x: calc(var(--settings-entry-left) + (var(--settings-entry-collapsed-width) / 2));
+  --settings-origin-y: calc(100% - var(--settings-entry-bottom) - (var(--settings-entry-height) / 2));
+  --settings-reveal-motion: 750ms;
+  --sidebar-glass-texture: url("./assets/sidebar-wash-dithered.png");
+  --sidebar-glass-texture-width: 512px;
+  --sidebar-glass-texture-height: 1536px;
+  --sidebar-glass-opacity: 0.5;
   --settings-entry-height: 34px;
   --sidebar-width: 276px;
   --sidebar-min-readable-width: 220px;
@@ -945,11 +955,12 @@ html,
 body,
 #root {
   height: 100%;
+  background: transparent;
 }
 
 body {
   font-family: var(--font);
-  background: var(--bg);
+  background: transparent;
   color: var(--text);
   overflow: hidden;
   font-synthesis: none;
@@ -1062,14 +1073,32 @@ input:focus-visible {
   --workspace-panel-motion: var(--two-stage-resize-motion);
   --sidebar-content-opacity: 1;
   --sidebar-content-shift: 0px;
-  --sidebar-cover-opacity: 0;
   --sidebar-resizer-opacity: 1;
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100vh;
   min-width: 0;
   overflow: hidden;
-  background: var(--bg);
+  background: transparent;
+  isolation: isolate;
+}
+
+/* One fixed material layer is shared by the normal and settings sidebars. */
+.window-shell::before {
+  content: "";
+  position: absolute;
+  inset: 32px auto 0 0;
+  z-index: 0;
+  width: var(--sidebar-active-width);
+  background-color: var(--bg);
+  background-image: var(--sidebar-glass-texture);
+  background-repeat: no-repeat;
+  background-position: 0 0;
+  background-size: var(--sidebar-glass-texture-width) var(--sidebar-glass-texture-height);
+  opacity: var(--sidebar-glass-opacity);
+  pointer-events: none;
+  transition: width var(--sidebar-collapse-motion) var(--motion-ease);
 }
 
 .window-shell.sidebar-collapsed,
@@ -1084,19 +1113,15 @@ input:focus-visible {
 }
 
 .primary-workspace {
-  --settings-origin-x: 31px;
-  --settings-origin-y: calc(100% - 35px);
-  --settings-reveal-motion: 750ms;
   position: relative;
+  z-index: 1;
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--bg);
-  clip-path: circle(150vmax at var(--settings-origin-x) var(--settings-origin-y));
-  transition: clip-path var(--settings-reveal-motion) cubic-bezier(0.22, 0.72, 0.2, 1);
+  background: transparent;
 }
 
 .primary-workspace::after {
@@ -1125,10 +1150,6 @@ body.is-resizing-column .window-shell.sidebar-drag-live .primary-workspace::afte
   opacity: 0;
 }
 
-.window-shell.settings-open .primary-workspace {
-  clip-path: circle(0px at var(--settings-origin-x) var(--settings-origin-y));
-}
-
 .window-titlebar {
   position: relative;
   display: flex;
@@ -1141,16 +1162,6 @@ body.is-resizing-column .window-shell.sidebar-drag-live .primary-workspace::afte
   background: var(--bg);
   -webkit-app-region: drag;
   user-select: none;
-}
-
-.window-titlebar::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: var(--sidebar-active-width);
-  background: var(--surface);
-  pointer-events: none;
-  transition: width var(--sidebar-collapse-motion) var(--motion-ease);
 }
 
 .app-nav-controls {
@@ -1321,7 +1332,7 @@ body.is-resizing-column .window-shell.sidebar-drag-live .primary-workspace::afte
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  background: var(--bg);
+  background: transparent;
   transition: grid-template-columns var(--sidebar-collapse-motion) var(--motion-ease);
 }
 
@@ -1346,27 +1357,13 @@ body.is-resizing-column .window-shell.sidebar-drag-live .primary-workspace::afte
   min-width: 0;
   padding: 0;
   overflow: hidden;
-  background: var(--surface);
+  background: transparent;
   border-right: 0;
   opacity: 1;
   transition:
     border-color var(--motion-fast) var(--motion-ease),
     border-right-width var(--motion-fast) var(--motion-ease),
     opacity 260ms var(--motion-ease);
-}
-
-.sidebar::after {
-  content: "";
-  position: absolute;
-  inset: 0 0 0 auto;
-  z-index: 2;
-  width: min(92px, 100%);
-  background:
-    linear-gradient(90deg, rgba(32, 32, 32, 0), rgba(24, 24, 24, 0.48)),
-    radial-gradient(circle at 100% 50%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 58%);
-  opacity: var(--sidebar-cover-opacity);
-  pointer-events: none;
-  transition: opacity var(--sidebar-collapse-motion) var(--motion-ease);
 }
 
 .sidebar-contents {
@@ -1382,6 +1379,16 @@ body.is-resizing-column .window-shell.sidebar-drag-live .primary-workspace::afte
   opacity: var(--sidebar-content-opacity);
   transition:
     opacity var(--sidebar-collapse-motion) var(--motion-ease);
+}
+
+/* The settings sidebar is translucent, so the ordinary sidebar stays hidden
+   for the full presence lifecycle instead of showing through during exit. */
+.window-shell.settings-open .primary-workspace .sidebar-contents,
+.window-shell:has(> .presence-layer .settings-workspace) .primary-workspace .sidebar-contents {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: none;
 }
 
 .window-shell.sidebar-collapsed .sidebar,
@@ -1439,24 +1446,18 @@ body.is-resizing-column * {
 body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating) .app,
 body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating) .settings-layout,
 body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating) .sidebar,
-body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating) .sidebar::after,
 body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating) .sidebar-contents,
 body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating) .settings-sidebar,
-body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating) .settings-sidebar::after,
 body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating) .settings-sidebar-contents,
 body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating) .sidebar-resizer,
 body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating) .settings-sidebar-resizer,
+body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating)::before,
 body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-panel-threshold-animating) .workspace-panel,
 body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-panel-threshold-animating) .workspace-panel-contents,
 body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-panel-threshold-animating) .workspace-panel-header,
 body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-panel-threshold-animating) .workspace-panel-resizer,
-body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating) .window-titlebar::before,
 body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating) .primary-workspace::after {
   transition-duration: 0ms !important;
-}
-
-.sidebar::before {
-  display: none;
 }
 
 .brand-block {
@@ -1874,6 +1875,8 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
 }
 
 .sidebar-footer {
+  display: flex;
+  align-items: flex-start;
   flex: 0 0 auto;
   margin-top: auto;
   /* Keep the button's left and bottom edges on the same inset grid. */
@@ -1887,6 +1890,7 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   display: inline-flex;
   align-items: center;
   width: fit-content;
+  min-width: var(--settings-entry-collapsed-width);
   max-width: 100%;
   height: var(--settings-entry-height);
   padding: 0 8px;
@@ -1910,7 +1914,7 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
 .settings-entry-bridge::after {
   content: "";
   position: absolute;
-  left: 17px;
+  left: calc(var(--settings-entry-collapsed-width) / 2);
   top: 50%;
   z-index: 0;
   width: 9px;
@@ -2518,6 +2522,8 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   position: relative;
   --chat-content-max-width: 980px;
   --chat-content-gutter: clamp(18px, 2.6vw, 40px);
+  --composer-overlay-height: 116px;
+  --composer-message-gap: 32px;
   flex: 1 1 0;
   width: 0;
   container-name: chat-pane;
@@ -5077,8 +5083,11 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel
   overflow-anchor: none;
   overscroll-behavior: contain;
   scrollbar-gutter: stable both-edges;
-  padding: 24px var(--chat-content-gutter);
+  padding: 24px var(--chat-content-gutter)
+    calc(var(--composer-overlay-height) + var(--composer-message-gap));
   background: var(--bg);
+  scroll-padding-bottom:
+    calc(var(--composer-overlay-height) + var(--composer-message-gap));
   transition: padding-top var(--workspace-panel-motion) var(--motion-ease);
 }
 
@@ -5126,7 +5135,8 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel
 
 .messages.is-empty {
   display: block;
-  padding: clamp(24px, 5vh, 64px) var(--chat-content-gutter);
+  padding: clamp(24px, 5vh, 64px) var(--chat-content-gutter)
+    calc(var(--composer-overlay-height) + var(--composer-message-gap));
 }
 
 .messages.is-empty .messages-content {
@@ -5306,6 +5316,13 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel
   white-space: normal;
 }
 
+.message .markdown hr {
+  height: 0;
+  margin: 14px 0;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.5);
+}
+
 .markdown p,
 .markdown ul,
 .markdown ol,
@@ -5448,17 +5465,26 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel
 }
 
 .composer-shell {
-  flex: 0 0 auto;
-  position: relative;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 40;
   display: flex;
   flex-direction: column;
   min-height: 0;
   max-height: min(52vh, 440px);
   padding: 8px var(--chat-content-gutter) 12px;
-  background: rgba(24, 24, 24, 0.98);
+  background: transparent;
+  pointer-events: none;
   transition:
     padding var(--motion-fast) var(--motion-ease),
     border-color var(--motion-fast) var(--motion-ease);
+}
+
+.composer-shell > .composer,
+.composer-shell > .task-progress-anchor {
+  pointer-events: auto;
 }
 
 .task-progress-anchor {
@@ -5915,10 +5941,12 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel
   width: min(var(--chat-content-max-width), 100%);
   margin: 0 auto;
   padding: 10px 12px;
-  background: var(--surface);
+  background: rgba(32, 32, 32, 0.75);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-composer);
   box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+  backdrop-filter: blur(18px) saturate(135%);
   gap: 6px;
 }
 
@@ -7373,9 +7401,6 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel
 }
 
 .presence-layer {
-  --settings-origin-x: 31px;
-  --settings-origin-y: calc(100% - 35px);
-  --settings-reveal-motion: 750ms;
   position: fixed;
   inset: 0;
   z-index: 1000;
@@ -7437,9 +7462,6 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel
 }
 
 .settings-workspace {
-  --settings-origin-x: 31px;
-  --settings-origin-y: calc(100% - 35px);
-  --settings-reveal-motion: 750ms;
   position: fixed;
   inset: 0;
   z-index: 1001;
@@ -7448,7 +7470,7 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel
   min-width: 0;
   min-height: 0;
   color: var(--text);
-  background: var(--bg);
+  background: transparent;
   clip-path: circle(0 at var(--settings-origin-x) var(--settings-origin-y));
   overflow: hidden;
   isolation: isolate;
@@ -7464,55 +7486,19 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel
   clip-path: circle(150vmax at var(--settings-origin-x) var(--settings-origin-y));
 }
 
-.settings-transition-edge {
-  --settings-origin-x: 31px;
-  --settings-origin-y: calc(100% - 35px);
-  --settings-reveal-motion: 750ms;
-  position: fixed;
-  left: var(--settings-origin-x);
-  top: var(--settings-origin-y);
-  z-index: 1002;
-  width: 300vmax;
-  height: 300vmax;
-  border: 2px solid rgba(235, 235, 235, 0.78);
-  border-radius: var(--radius-circle);
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.18),
-    0 0 24px rgba(255, 255, 255, 0.28),
-    0 0 54px rgba(255, 255, 255, 0.14);
-  opacity: 0;
-  pointer-events: none;
-  transform: translate(-50%, -50%) translateZ(0) scale(0);
-  backface-visibility: hidden;
-  will-change: opacity, transform;
-  transition:
-    opacity 120ms linear,
-    transform var(--settings-reveal-motion) cubic-bezier(0.22, 0.72, 0.2, 1);
-}
-
-.presence-layer.visible .settings-transition-edge {
-  opacity: 0.95;
-  transform: translate(-50%, -50%) translateZ(0) scale(1);
-}
-
-.presence-layer.presence-exiting .settings-transition-edge {
-  opacity: 0.95;
-}
-
 .settings-entry-bridge {
-  --settings-origin-x: 31px;
-  --settings-origin-y: calc(100% - 35px);
-  --settings-reveal-motion: 750ms;
   position: fixed;
-  left: calc(var(--settings-origin-x) - 17px);
-  top: calc(var(--settings-origin-y) - 17px);
+  left: var(--settings-entry-left);
+  top: auto;
+  bottom: var(--settings-entry-bottom);
   z-index: 1003;
   isolation: isolate;
   display: inline-flex;
   align-items: center;
   width: fit-content;
-  max-width: 35px;
-  height: 34px;
+  min-width: var(--settings-entry-collapsed-width);
+  max-width: var(--settings-entry-collapsed-width);
+  height: var(--settings-entry-height);
   padding: 0 8px;
   color: var(--text-strong);
   background: var(--control-hover);
@@ -7531,7 +7517,7 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel
 
 .presence-layer.presence-entering .settings-entry-bridge,
 .presence-layer.presence-exiting .settings-entry-bridge {
-  max-width: 35px;
+  max-width: var(--settings-entry-collapsed-width);
   opacity: 1;
   pointer-events: auto;
   visibility: visible;
@@ -7586,7 +7572,7 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--bg);
+  background: transparent;
   transition: grid-template-columns var(--sidebar-collapse-motion) var(--motion-ease);
 }
 
@@ -7597,23 +7583,9 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  background: var(--surface);
+  background: transparent;
   opacity: 1;
   transition: opacity 260ms var(--motion-ease);
-}
-
-.settings-sidebar::after {
-  content: "";
-  position: absolute;
-  inset: 0 0 0 auto;
-  z-index: 2;
-  width: min(92px, 100%);
-  background:
-    linear-gradient(90deg, rgba(32, 32, 32, 0), rgba(24, 24, 24, 0.48)),
-    radial-gradient(circle at 100% 50%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 58%);
-  opacity: var(--sidebar-cover-opacity);
-  pointer-events: none;
-  transition: opacity var(--sidebar-collapse-motion) var(--motion-ease);
 }
 
 .settings-sidebar-contents {

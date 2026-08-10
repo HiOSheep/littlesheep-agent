@@ -52,7 +52,7 @@ export function SidebarView({ controller }: { controller: AppController }) {
           <button
           className={`settings-entry-btn ${settingsEntryRippling ? 'rippling' : ''}`}
           type="button"
-          onMouseDown={() => {
+          onClick={() => {
             if (settingsOpen) closeSettingsFromEntry()
             else openSettingsFromEntry()
           }}

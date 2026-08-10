@@ -117,12 +117,17 @@ export class LittleSheepDesktopShell {
       title: 'LittleSheep',
       icon: resolveDesktopIcon(),
       titleBarStyle: 'hidden',
+      transparent: false,
+      backgroundMaterial: 'acrylic',
+      roundedCorners: true,
+      thickFrame: true,
+      hasShadow: true,
       titleBarOverlay: {
         color: '#181818',
         symbolColor: '#e8e8e8',
         height: 32,
       },
-      backgroundColor: '#181818',
+      backgroundColor: process.platform === 'win32' ? '#00000000' : '#181818',
       autoHideMenuBar: true,
       show: false,
       webPreferences: {

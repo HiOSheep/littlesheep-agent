@@ -40,10 +40,50 @@ describe('chat layout stability', () => {
     const styles = await readRendererFile('./styles.css')
 
     expect(styles).not.toMatch(/\.sidebar-resizer::before\s*\{/u)
-    expect(styles).toMatch(/\.window-titlebar::before\s*\{[\s\S]*?width:\s*var\(--sidebar-active-width\);/u)
+    expect(styles).toMatch(/\.window-shell::before\s*\{[\s\S]*?inset:\s*32px auto 0 0;[\s\S]*?width:\s*var\(--sidebar-active-width\);[\s\S]*?background-image:\s*var\(--sidebar-glass-texture\);/u)
+    expect(styles).not.toMatch(/\.window-titlebar::before\s*\{/u)
     expect(styles).toMatch(/\.primary-workspace::after\s*\{[\s\S]*?inset:\s*0 auto 0 var\(--sidebar-active-width\);[\s\S]*?width:\s*1px;[\s\S]*?background:\s*var\(--border\);/u)
     expect(styles).toMatch(/\.primary-workspace:has\(\.sidebar-resizer:hover\)::after/u)
     expect(styles).toMatch(/\.primary-workspace:has\(\.sidebar-resizer:focus-visible\)::after/u)
+  })
+
+  it('keeps the composer above messages with dynamic clearance and glass material', async () => {
+    const styles = await readRendererFile('./styles.css')
+    const composer = await readRendererFile('./app-shell/composer-view.tsx')
+
+    expect(styles).toMatch(/--composer-overlay-height:\s*116px;/u)
+    expect(styles).toMatch(/\.messages\s*\{[\s\S]*?calc\(var\(--composer-overlay-height\) \+ var\(--composer-message-gap\)\);[\s\S]*?scroll-padding-bottom:[\s\S]*?var\(--composer-overlay-height\)/u)
+    expect(styles).toMatch(/\.composer-shell\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?bottom:\s*0;[\s\S]*?z-index:\s*40;[\s\S]*?pointer-events:\s*none;/u)
+    expect(styles).toMatch(/\.composer\s*\{[\s\S]*?background:\s*rgba\(32, 32, 32, 0\.75\);[\s\S]*?-webkit-backdrop-filter:\s*blur\(18px\) saturate\(135%\);[\s\S]*?backdrop-filter:\s*blur\(18px\) saturate\(135%\);/u)
+    expect(composer).toContain('useLayoutEffect')
+    expect(composer).toContain('ResizeObserver')
+    expect(composer).toContain('--composer-overlay-height')
+  })
+
+  it('keeps the shared sidebar material transparent to content and native-window backed', async () => {
+    const styles = await readRendererFile('./styles.css')
+    const desktopShell = await readRendererFile('../main/desktop-shell.ts')
+    const texture = await readFile(new URL('./assets/sidebar-wash-dithered.png', import.meta.url))
+
+    expect(texture.byteLength).toBeGreaterThan(10_000)
+    expect(styles).toMatch(/--sidebar-glass-opacity:\s*0\.5;/u)
+    expect(styles).toMatch(/\.sidebar\s*\{[\s\S]*?background:\s*transparent;[\s\S]*?opacity:\s*1;/u)
+    expect(styles).toMatch(/\.settings-sidebar\s*\{[\s\S]*?background:\s*transparent;[\s\S]*?opacity:\s*1;/u)
+    expect(styles).toMatch(/\.window-titlebar\s*\{[\s\S]*?background:\s*var\(--bg\);/u)
+    expect(styles).not.toContain('mask-image')
+    expect(styles).not.toContain('sidebar-corner-mask')
+    expect(desktopShell).toContain("transparent: false")
+    expect(desktopShell).toContain("backgroundMaterial: 'acrylic'")
+    expect(desktopShell).toContain('roundedCorners: true')
+    expect(desktopShell).toContain('thickFrame: true')
+    expect(desktopShell).toContain('hasShadow: true')
+    expect(desktopShell).not.toContain('transparent: true')
+  })
+
+  it('keeps answer separators as a single soft 50 percent white rule', async () => {
+    const styles = await readRendererFile('./styles.css')
+
+    expect(styles).toMatch(/\.message \.markdown hr\s*\{[\s\S]*?height:\s*0;[\s\S]*?border:\s*0;[\s\S]*?border-top:\s*1px solid rgba\(255, 255, 255, 0\.5\);/u)
   })
 
   it('keeps the settings entry equally inset from the sidebar left and bottom edges', async () => {
@@ -51,12 +91,33 @@ describe('chat layout stability', () => {
 
     expect(styles).toMatch(/--sidebar-content-block-inset:\s*18px;/u)
     expect(styles).toMatch(/--sidebar-content-inline-inset:\s*14px;/u)
+    expect(styles).toMatch(/--settings-entry-left:\s*var\(--sidebar-content-block-inset\);/u)
+    expect(styles).toMatch(/--settings-entry-bottom:\s*var\(--sidebar-content-block-inset\);/u)
+    expect(styles).toMatch(/--settings-entry-collapsed-width:\s*37px;/u)
+    expect(styles).toMatch(/--settings-origin-x:\s*calc\(var\(--settings-entry-left\) \+ \(var\(--settings-entry-collapsed-width\) \/ 2\)\);/u)
+    expect(styles).toMatch(/--settings-origin-y:\s*calc\(100% - var\(--settings-entry-bottom\) - \(var\(--settings-entry-height\) \/ 2\)\);/u)
     expect(styles).toMatch(/--settings-entry-height:\s*34px;/u)
     expect(styles).toMatch(/\.sidebar-contents\s*\{[^}]*padding:\s*var\(--sidebar-content-block-inset\) var\(--sidebar-content-inline-inset\);/u)
     expect(styles).toMatch(/\.settings-sidebar-contents\s*\{[^}]*padding:\s*var\(--sidebar-content-block-inset\) var\(--sidebar-content-inline-inset\);/u)
     expect(styles).toMatch(/\.sidebar-footer\s*\{[^}]*min-height:\s*calc\(var\(--settings-entry-height\) \+ var\(--sidebar-content-inline-inset\)\);[^}]*padding-top:\s*var\(--sidebar-content-inline-inset\);[^}]*padding-left:\s*calc\(var\(--sidebar-content-block-inset\) - var\(--sidebar-content-inline-inset\)\);/u)
-    expect(styles).toMatch(/\.settings-entry-btn\s*\{[^}]*height:\s*var\(--settings-entry-height\);/u)
+    expect(styles).not.toMatch(/\.sidebar-footer\s*\{[^}]*padding-bottom:/u)
+    expect(styles).toMatch(/\.settings-entry-btn\s*\{[^}]*min-width:\s*var\(--settings-entry-collapsed-width\);[^}]*height:\s*var\(--settings-entry-height\);/u)
+    expect(styles).toMatch(/\.sidebar-footer\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*flex-start;/u)
+    expect(styles).toMatch(/\.settings-entry-bridge\s*\{[^}]*left:\s*var\(--settings-entry-left\);[^}]*top:\s*auto;[^}]*bottom:\s*var\(--settings-entry-bottom\);[^}]*min-width:\s*var\(--settings-entry-collapsed-width\);[^}]*max-width:\s*var\(--settings-entry-collapsed-width\);[^}]*height:\s*var\(--settings-entry-height\);/u)
+    expect(styles).toMatch(/\.settings-entry-btn::after,\s*\.settings-entry-bridge::after\s*\{[^}]*left:\s*calc\(var\(--settings-entry-collapsed-width\) \/ 2\);/u)
     expect(styles).not.toMatch(/\.settings-sidebar-footer\s*\{[^}]*padding-left:\s*0;/u)
+  })
+
+  it('does not paint the ordinary sidebar beneath translucent settings content', async () => {
+    const styles = await readRendererFile('./styles.css')
+
+    const sidebarView = await readRendererFile('./app-shell/sidebar-view.tsx')
+
+    expect(styles).toMatch(/\.window-shell\.settings-open \.primary-workspace \.sidebar-contents,\s*\.window-shell:has\(> \.presence-layer \.settings-workspace\) \.primary-workspace \.sidebar-contents\s*\{[^}]*opacity:\s*0;[^}]*visibility:\s*hidden;[^}]*pointer-events:\s*none;[^}]*transition:\s*none;/u)
+    expect(styles).not.toMatch(/\.window-shell\.settings-open \.primary-workspace\s*\{[^}]*display:\s*none;/u)
+    expect(styles).toMatch(/\.presence-layer\.visible \.settings-workspace\s*\{[^}]*clip-path:\s*circle\(150vmax at var\(--settings-origin-x\) var\(--settings-origin-y\)\);/u)
+    expect(sidebarView).toContain('onClick={() => {')
+    expect(sidebarView).not.toContain('onMouseDown={() => {')
   })
 
   it('keeps the edge reveal entry and one stationary animated corner toggle above chat', async () => {

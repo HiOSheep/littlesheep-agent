@@ -56,6 +56,7 @@ export function useWorkspaceLayoutController({ runtime, currentSession, input, s
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const shellRef = useRef<HTMLDivElement>(null)
   const composerSyncFrameRef = useRef<number>()
+  const viewportResizeFrameRef = useRef<number>()
   const activeDragCleanupRef = useRef<(() => void) | null>(null)
   const sidebarSettleFrameRef = useRef<number>()
   const sidebarSettleTimerRef = useRef<number>()
@@ -188,14 +189,25 @@ export function useWorkspaceLayoutController({ runtime, currentSession, input, s
   }, [])
 
   useEffect(() => {
-    const handleResize = () => {
-      setViewportWidth(window.innerWidth)
-      setSidebarWidth((value) => clampNumber(value, SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX))
+    const commitResize = () => {
+      viewportResizeFrameRef.current = undefined
+      const nextViewportWidth = window.innerWidth
+      setViewportWidth((current) => current === nextViewportWidth ? current : nextViewportWidth)
+      setSidebarWidth((value) => {
+        const next = clampNumber(value, SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX)
+        return next === value ? value : next
+      })
       scheduleComposerHeightSync()
+    }
+    const handleResize = () => {
+      if (viewportResizeFrameRef.current !== undefined) return
+      viewportResizeFrameRef.current = window.requestAnimationFrame(commitResize)
     }
     window.addEventListener('resize', handleResize)
     return () => {
       window.removeEventListener('resize', handleResize)
+      window.cancelAnimationFrame(viewportResizeFrameRef.current ?? 0)
+      viewportResizeFrameRef.current = undefined
       window.cancelAnimationFrame(composerSyncFrameRef.current ?? 0)
     }
   }, [])
