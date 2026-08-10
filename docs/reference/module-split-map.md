@@ -139,6 +139,8 @@
 
 阶段 5O 的窗口防护留在 `packages/harness/src/model-observability-state.ts`，由共享 `@littlesheep/context` 常量约束公开 `appendModelObservations()` 参数；模型观测语义仍由 `model-observability.ts` 拥有，Runner/Context 不新增中间 facade。
 
+阶段 5P 的关联保留留在 `packages/runner/src/execution-log.ts` 的持久化边界：该模块先截取 request tail，再按 request 的 `contextSnapshotId` 保留必要 snapshot，最后用最新未引用 snapshot 填充 64 条容量。checkpoint 仍只负责 snapshot ID 窗口，Harness 仍负责运行时观测窗口；不新增跨域 facade、ownership group 或 checkpoint schema 字段。
+
 ## 拆分顺序
 
 1. 阶段 2 先冻结共享契约、兼容 facade 和特征测试。

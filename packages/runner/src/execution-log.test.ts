@@ -496,6 +496,68 @@ describe('ExecutionLogStore', () => {
     ))).toBe(true);
   });
 
+  it('retains an older snapshot referenced by the persisted request tail', async () => {
+    const createdAt = '2026-07-13T00:00:01.000Z';
+    const modelRequests: ModelRequestSnapshot[] = Array.from({ length: MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN + 6 }, (_, index) => ({
+      version: 1,
+      id: `association-request-${index}`,
+      runId: 'run-observation-association',
+      sessionId: 'session-observation-association' as import('@littlesheep/types').SessionId,
+      stage: 'execute',
+      requestIndex: index,
+      provider: 'test',
+      model: 'model',
+      createdAt,
+      messages: [],
+      totalMessageCount: 0,
+      messagesTruncated: false,
+      toolNames: [],
+      totalToolCount: 0,
+      toolsTruncated: false,
+      stream: false,
+      contextSnapshotId: index === 6 ? 'association-snapshot-0' : `association-snapshot-${index}`,
+      payloadHash: `association-hash-${index}`,
+    }));
+    const contextSnapshots: ContextSnapshot[] = modelRequests.map((request, index) => ({
+      version: 1,
+      id: `association-snapshot-${index}`,
+      runId: request.runId,
+      sessionId: request.sessionId,
+      provider: request.provider,
+      model: request.model,
+      createdAt,
+      budget: { status: 'unknown', reason: 'test' },
+      items: [],
+      totalItemCount: 0,
+      itemsTruncated: false,
+      compressionRecommended: false,
+    }));
+
+    await store.write({
+      runId: 'run-observation-association',
+      sessionId: 'session-observation-association',
+      startedAt: createdAt,
+      endedAt: createdAt,
+      status: 'ok',
+      model: 'test/model',
+      inboundText: 'associate',
+      reply: 'done',
+      trace: [],
+      modelRequests,
+      contextSnapshots,
+      messages: [],
+      durationMs: 1,
+    });
+
+    const log = await store.read('run-observation-association');
+    expect(log?.modelRequests).toHaveLength(MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN);
+    expect(log?.contextSnapshots).toHaveLength(MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN);
+    expect(log?.modelRequests?.[0]?.requestIndex).toBe(6);
+    expect(log?.modelRequests?.[0]?.contextSnapshotId).toBe('association-snapshot-0');
+    expect(log?.contextSnapshots?.some((snapshot) => snapshot.id === 'association-snapshot-0')).toBe(true);
+    expect(log?.contextSnapshots?.some((snapshot) => snapshot.id === 'association-snapshot-6')).toBe(false);
+  });
+
   it('未配对的 call（无 result）被忽略', async () => {
     const messages: Message[] = [
       {

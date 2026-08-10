@@ -4,7 +4,7 @@
 
 ## 状态
 
-进行中。阶段 0、阶段 1、阶段 2、阶段 3、阶段 4 已完成并分别形成独立提交且推送到 GitHub；阶段 5 正在进行，阶段 5A、阶段 5B、阶段 5C、阶段 5D、阶段 5E、阶段 5F、阶段 5G、阶段 5H、阶段 5I、阶段 5J、阶段 5K、阶段 5L、阶段 5M、阶段 5N、阶段 5O 的实现、质量门、提交和推送已完成。本文是一个可单独设置为阶段目标的执行基线；完成任一阶段后，必须更新本文的状态、证据和实际边界，并提交、推送一次，再决定是否进入下一阶段。
+进行中。阶段 0、阶段 1、阶段 2、阶段 3、阶段 4 已完成并分别形成独立提交且推送到 GitHub；阶段 5 正在进行，阶段 5A、阶段 5B、阶段 5C、阶段 5D、阶段 5E、阶段 5F、阶段 5G、阶段 5H、阶段 5I、阶段 5J、阶段 5K、阶段 5L、阶段 5M、阶段 5N、阶段 5O、阶段 5P 的实现、质量门、提交和推送已完成。本文是一个可单独设置为阶段目标的执行基线；完成任一阶段后，必须更新本文的状态、证据和实际边界，并提交、推送一次，再决定是否进入下一阶段。
 
 ## Goal
 
@@ -137,7 +137,7 @@
 
 ### 阶段 5：状态契约重构（后续阶段，不与本任务前四阶段合并）
 
-状态：进行中。阶段 5A、阶段 5B、阶段 5C、阶段 5D、阶段 5E、阶段 5F、阶段 5G、阶段 5H、阶段 5I、阶段 5J、阶段 5K、阶段 5L、阶段 5M、阶段 5N、阶段 5O 已完成；阶段 5 整体尚未完成，下一候选需根据本轮状态边界审计结果重新决定。
+状态：进行中。阶段 5A、阶段 5B、阶段 5C、阶段 5D、阶段 5E、阶段 5F、阶段 5G、阶段 5H、阶段 5I、阶段 5J、阶段 5K、阶段 5L、阶段 5M、阶段 5N、阶段 5O、阶段 5P 已完成；阶段 5 整体尚未完成，下一候选需根据本轮状态边界审计结果重新决定。
 
 - 建立唯一 `allowedTransitions` manifest，运行时校验非法 Stage 边，并生成状态图。
 - 为 `RunContext` 建立字段 owner、读写阶段和生命周期表；先收敛 `reply`、`replan`、`decision`、`failure`、`executionEvidence`、`runtimeControl`、`memory`、`modelObservability` 八组高频共享状态。
@@ -289,6 +289,15 @@
 - 阶段 5M 的 checkpoint、execution log 和阶段 5N 的 checkpoint store 写入闸门保持不变。
 
 阶段 5O 定向证据（2026-08-10）：`model-observability-state.test.ts`、`model-observability.test.ts`、`execution-log.test.ts`、`run-checkpoint.test.ts` 共 4 个文件、32 项通过；`check:repo` 为 33/33，27/27 个 TypeScript project references 通过；`verify:core` 退出码为 0，核心集合 7 个测试文件、127 项通过，`failedStage=null`。完整门沿用本轮既有全量运行约束：最近一次 `verify:full` 在未修改的 App Git review edge-case 测试上超时，阶段 5O 未扩大范围重复该已确认失败；用户已有的 `test/e2e-webhook.test.ts` 改动不纳入提交。
+
+阶段 5P：execution log 的 request/context snapshot 关联保留边界
+
+状态：已完成。本阶段审计发现 execution log 对 `modelRequests` 与 `contextSnapshots` 分别独立取最近 64 条时，request 尾部可能继续引用已被 snapshot tail 裁掉的旧 snapshot，形成 dangling `contextSnapshotId`。现由 `packages/runner/src/execution-log.ts` 在持久化边界执行关联感知保留：先保留 request tail 实际引用的 snapshot，再以最新未引用 snapshot 填充剩余容量，结果最多 64 条并保持原始 snapshot 顺序；不改变 execution log/checkpoint schema、公共 `RunContext` 字段形状、`providerUsage` 嵌套位置或 ownership group。
+
+- 新增回归覆盖 request tail 中的 request-6 引用旧的 `association-snapshot-0`，验证持久化 snapshot 集合保留该旧 snapshot、丢弃无引用的 `association-snapshot-6`，且 request 引用均可解析。
+- 修复 `unreferencedCapacity === 0` 时的 `slice(-0)` JavaScript 边界，避免在所有容量由关联 snapshot 占用时错误保留完整输入数组。
+
+阶段 5P 定向证据（2026-08-10）：`execution-log.test.ts`、`run-checkpoint.test.ts`、`runner-continuation.test.ts` 共 3 个文件、24 项通过；扩展跨域回归 `execution-log.test.ts`、`run-checkpoint.test.ts`、`runner-continuation.test.ts`、`memory-workload-observability.test.ts`、`model-observability.test.ts`、`model-observability-state.test.ts` 共 6 个文件、39 项通过；`check:repo` 为 33/33、27/27 个 TypeScript project references 通过；`verify:core` 退出码为 0，核心集合 7 个测试文件、127 项通过，`failedStage=null`。`verify:full` 的既有资源竞争失败路径仍为 `packages/app/src/main/local-app-api/workspace-git-review-edge-cases.test.ts` 的 30 秒 timeout；该文件未修改且单独重跑可通过，因此不扩大阶段范围修复，不能将 full gate 记为通过。用户已有的 `test/e2e-webhook.test.ts` 改动不纳入提交。
 
 ## Acceptance Matrix
 

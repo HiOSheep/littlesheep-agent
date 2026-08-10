@@ -73,6 +73,8 @@ Ownership manifest 目前登记 40 个字段，按八组高频共享状态提供
 
 阶段 5O 将 `appendModelObservations()` 的调用参数视为提示而不是权限：入口内部把非有限值、非整数值和过大值归一化到 `1..MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN`，因此公开状态 API 无法扩大模型 request/context snapshot 的运行时窗口。两个观测数组继续使用同一归一化后的上限，保持尾部关联和不可变批次写入。
 
+阶段 5P 进一步约束 execution log 的持久化关联：`modelRequests` 继续保留最近 64 条，但 `contextSnapshots` 不再仅按独立 tail 截断。持久化前先收集 request tail 中的 `contextSnapshotId`，优先保留仍被引用的 snapshot，再从最新未引用 tail 填充剩余容量；结果最多 64 条并保持原始 snapshot 顺序。这样恢复、日志审计和资源索引不会出现 request 引用已被裁掉 snapshot 的 dangling ID；`contextSnapshots[].providerUsage` 仍保持请求级嵌套观测。
+
 ## 修改规则
 
 1. 先修改 manifest，再修改使用方；保持公共 `RunContext` 字段和 checkpoint 格式兼容。

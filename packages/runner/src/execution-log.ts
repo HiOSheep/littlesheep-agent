@@ -183,7 +183,7 @@ export class ExecutionLogStore {
     const toolCalls = this.extractToolCallPairs(input.messages);
     const { toolInvocations, evidence, truncated } = buildToolEvidence(input, toolCalls);
     const modelRequests = boundedTail(input.modelRequests);
-    const contextSnapshots = boundedTail(input.contextSnapshots);
+    const contextSnapshots = retainContextSnapshotAssociations(input.contextSnapshots, modelRequests);
     const resources = collectResourceIds({ ...input, contextSnapshots });
     const log: ExecutionLog = {
       runId: input.runId,
@@ -366,6 +366,40 @@ function boundedTail<T>(values: readonly T[] | undefined): T[] | undefined {
   return values.length <= MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN
     ? [...values]
     : values.slice(-MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN);
+}
+
+/**
+ * Keep the request tail's referenced snapshots even when legacy callers supply
+ * arrays with different windows or ordering. Unreferenced snapshots still use
+ * the newest tail, and the result never exceeds the shared observation cap.
+ */
+function retainContextSnapshotAssociations(
+  snapshots: readonly ContextSnapshot[] | undefined,
+  requests: readonly ModelRequestSnapshot[] | undefined,
+): ContextSnapshot[] | undefined {
+  if (!snapshots) return undefined;
+  if (snapshots.length <= MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN) return [...snapshots];
+
+  const availableIds = new Set(snapshots.map((snapshot) => snapshot.id));
+  const requiredIds = new Set(
+    (requests ?? [])
+      .map((request) => request.contextSnapshotId)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0 && availableIds.has(id)),
+  );
+  const tail = snapshots.slice(-MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN);
+  const retainedUnreferenced = tail.filter((snapshot) => !requiredIds.has(snapshot.id));
+  const unreferencedCapacity = Math.max(0, MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN - requiredIds.size);
+  const retainedUnreferencedIds = new Set(
+    (unreferencedCapacity > 0 ? retainedUnreferenced.slice(-unreferencedCapacity) : [])
+      .map((snapshot) => snapshot.id),
+  );
+  const selectedIds = new Set([...requiredIds, ...retainedUnreferencedIds]);
+
+  // Preserve source order so request/context timelines stay readable.
+  return snapshots
+    .filter((snapshot) => selectedIds.has(snapshot.id))
+    .filter((snapshot, index, all) => all.findIndex((candidate) => candidate.id === snapshot.id) === index)
+    .slice(-MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN);
 }
 
 function buildToolEvidence(
