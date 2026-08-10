@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   asSessionId,
   textMessage,
+  type ContextSnapshot,
   type RunContext,
   type TaskStepResult,
 } from '@littlesheep/types';
+import { MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN } from '@littlesheep/context';
 import { buildRunCheckpoint } from './run-checkpoint.js';
 
 function contextWithSteps(steps: TaskStepResult[]): RunContext {
@@ -100,5 +102,34 @@ describe('buildRunCheckpoint', () => {
     expect(checkpoint.loopBudget.attemptsUsed).toBe(3);
     expect(checkpoint.loopBudget.maxAttempts).toBe(8);
     expect(checkpoint.loopBudget.elapsedMs).toBeGreaterThanOrEqual(1_000);
+  });
+
+  it('references only the persisted tail of bounded Context snapshots', () => {
+    const ctx = contextWithSteps([step('active', 'in_progress')]);
+    ctx.contextSnapshots = Array.from({ length: MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN + 6 }, (_, index) => ({
+      version: 1,
+      id: `snapshot-${index}`,
+      runId: ctx.runId,
+      sessionId: ctx.sessionId,
+      provider: 'test',
+      model: 'model',
+      createdAt: ctx.startedAt,
+      budget: { status: 'unknown', reason: 'test' },
+      items: [],
+      totalItemCount: 0,
+      itemsTruncated: false,
+      compressionRecommended: false,
+    } satisfies ContextSnapshot));
+
+    const checkpoint = buildRunCheckpoint({
+      ctx,
+      stageResult: { stage: 'execute', next: 'exit', ok: false },
+      reason: 'snapshot window',
+      now: new Date('2026-07-29T10:00:01.000Z'),
+    });
+
+    expect(checkpoint.contextSnapshotIds).toHaveLength(MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN);
+    expect(checkpoint.contextSnapshotIds[0]).toBe('snapshot-6');
+    expect(checkpoint.contextSnapshotIds.at(-1)).toBe(`snapshot-${MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN + 5}`);
   });
 });

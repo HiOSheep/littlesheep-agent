@@ -67,6 +67,8 @@ Ownership manifest 目前登记 40 个字段，按八组高频共享状态提供
 
 阶段 5L 的 checkpoint 边界会把当前 `modelCallCount` 重concile 到持久化 `loopBudget.attemptsUsed`，并把 `maxModelCalls` 重concile 到 `loopBudget.maxAttempts`；这只是两个既有 owner 之间的确定性映射，不新增 ownership group，也不让 `model-observability-state.ts` 直接写入 runtime 字段。
 
+阶段 5M 的 snapshot 生命周期边界统一使用 `MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN = 64`：`RunContext` 的模型观测入口、checkpoint 的 `contextSnapshotIds` 和 execution log 的 `modelRequests`/`contextSnapshots` 都以最近 64 条为有效窗口。checkpoint 只保存 ID，不改变既有 schema；execution log 在持久化边界再次截断，并以截断后的 snapshot 集合建立资源索引，避免引用窗口和实际持久化内容分叉。`contextSnapshots[].providerUsage` 仍是请求级嵌套观测，不提升为顶层字段。
+
 ## 修改规则
 
 1. 先修改 manifest，再修改使用方；保持公共 `RunContext` 字段和 checkpoint 格式兼容。

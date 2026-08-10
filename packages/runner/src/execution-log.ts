@@ -14,6 +14,7 @@ import { readFile, writeFile, mkdir, rename, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
+import { MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN } from '@littlesheep/context';
 import type {
   Message,
   ReplyProvenance,
@@ -181,7 +182,9 @@ export class ExecutionLogStore {
   async write(input: ExecutionLogInput): Promise<ExecutionLog> {
     const toolCalls = this.extractToolCallPairs(input.messages);
     const { toolInvocations, evidence, truncated } = buildToolEvidence(input, toolCalls);
-    const resources = collectResourceIds(input);
+    const modelRequests = boundedTail(input.modelRequests);
+    const contextSnapshots = boundedTail(input.contextSnapshots);
+    const resources = collectResourceIds({ ...input, contextSnapshots });
     const log: ExecutionLog = {
       runId: input.runId,
       sessionId: input.sessionId,
@@ -204,8 +207,8 @@ export class ExecutionLogStore {
       clarificationResponse: input.clarificationResponse,
       memoryAccess: input.memoryAccess,
       resolvedRunConfig: input.resolvedRunConfig,
-      modelRequests: input.modelRequests,
-      contextSnapshots: input.contextSnapshots,
+      modelRequests,
+      contextSnapshots,
       runtimeControl: input.runtimeControl,
       runtimeEventQueue: input.runtimeEventQueue,
       runCheckpointId: input.runCheckpointId,
@@ -356,6 +359,13 @@ function collectResourceIds(input: ExecutionLogInput): { ids: string[]; truncate
   }
   const all = [...uniqueIds];
   return { ids: all.slice(0, MAX_RESOURCE_IDS_PER_LOG), truncated: all.length > MAX_RESOURCE_IDS_PER_LOG };
+}
+
+function boundedTail<T>(values: readonly T[] | undefined): T[] | undefined {
+  if (!values) return undefined;
+  return values.length <= MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN
+    ? [...values]
+    : values.slice(-MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN);
 }
 
 function buildToolEvidence(

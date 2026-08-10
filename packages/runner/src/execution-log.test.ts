@@ -13,9 +13,11 @@ import type {
   MemoryContinuityAssessment,
   MemoryIntentDecisionRecord,
   Message,
+  ModelRequestSnapshot,
   SessionRunSummary,
   ToolInvocationRecord,
 } from '@littlesheep/types';
+import { MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN } from '@littlesheep/context';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
 
 let dir: string;
@@ -428,6 +430,70 @@ describe('ExecutionLogStore', () => {
     ]);
     expect(log?.resourceIdsTruncated).toBe(true);
     expect(JSON.stringify(log)).not.toContain('PRIVATE-RESOURCE-BODY');
+  });
+
+  it('keeps persisted model observations aligned with the bounded checkpoint window', async () => {
+    const createdAt = '2026-07-13T00:00:01.000Z';
+    const modelRequests: ModelRequestSnapshot[] = Array.from({ length: MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN + 6 }, (_, index) => ({
+      version: 1,
+      id: `request-${index}`,
+      runId: 'run-observation-window',
+      sessionId: 'session-observation-window' as import('@littlesheep/types').SessionId,
+      stage: 'execute',
+      requestIndex: index,
+      provider: 'test',
+      model: 'model',
+      createdAt,
+      messages: [],
+      totalMessageCount: 0,
+      messagesTruncated: false,
+      toolNames: [],
+      totalToolCount: 0,
+      toolsTruncated: false,
+      stream: false,
+      contextSnapshotId: `snapshot-${index}`,
+      payloadHash: `hash-${index}`,
+    }));
+    const contextSnapshots: ContextSnapshot[] = modelRequests.map((request) => ({
+      version: 1,
+      id: request.contextSnapshotId!,
+      runId: request.runId,
+      sessionId: request.sessionId,
+      provider: request.provider,
+      model: request.model,
+      createdAt,
+      budget: { status: 'unknown', reason: 'test' },
+      items: [],
+      totalItemCount: 0,
+      itemsTruncated: false,
+      compressionRecommended: false,
+    }));
+
+    await store.write({
+      runId: 'run-observation-window',
+      sessionId: 'session-observation-window',
+      startedAt: createdAt,
+      endedAt: createdAt,
+      status: 'ok',
+      model: 'test/model',
+      inboundText: 'observe',
+      reply: 'done',
+      trace: [],
+      modelRequests,
+      contextSnapshots,
+      messages: [],
+      durationMs: 1,
+    });
+
+    const log = await store.read('run-observation-window');
+    expect(log?.modelRequests).toHaveLength(MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN);
+    expect(log?.contextSnapshots).toHaveLength(MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN);
+    expect(log?.modelRequests?.[0]?.requestIndex).toBe(6);
+    expect(log?.contextSnapshots?.[0]?.id).toBe('snapshot-6');
+    expect(log?.modelRequests?.every((request) => (
+      request.contextSnapshotId !== undefined
+      && log.contextSnapshots?.some((snapshot) => snapshot.id === request.contextSnapshotId)
+    ))).toBe(true);
   });
 
   it('未配对的 call（无 result）被忽略', async () => {

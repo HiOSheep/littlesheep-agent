@@ -2,6 +2,7 @@
 // This is runtime continuity evidence, not a shadow Git rollback manifest.
 
 import { randomUUID } from 'node:crypto';
+import { MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN } from '@littlesheep/context';
 import type {
   RunCheckpoint,
   RunContext,
@@ -9,7 +10,8 @@ import type {
   StageResult,
 } from '@littlesheep/types';
 
-const MAX_CHECKPOINT_IDS = 128;
+// Keep checkpoint references aligned with the bounded Context/model snapshots.
+const MAX_CHECKPOINT_IDS = MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN;
 const MAX_SIDE_EFFECTS = 256;
 const MAX_ACTIVE_STEP_IDS = 4;
 const MAX_DEFERRED_EVENTS = 128;

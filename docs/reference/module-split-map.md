@@ -133,6 +133,8 @@
 
 2026-08-03 的连续性阶段没有把新职责重新塞回组合入口：`packages/harness/src/default-harness.ts` 保持为 299 行状态机 facade，Checkpoint 证据归一与恢复入口下沉到 34 行的 `checkpoint-resume.ts`，回答连续性保持在 `response-continuity*.ts` 领域模块；Runtime 摘要精确字段的文本封套和重建逻辑分别位于 51 行的 `packages/harness/src/session-summary-fidelity-text.ts` 与 82 行的 `packages/runner/src/session-summary-fidelity.ts`。`packages/app/src/main/index.ts` 为 579 行组合入口，Electron 验收资源采样下沉到 81 行的 `desktop-acceptance-snapshot.ts`，活动任务聚合与监听器统计留在 145 行的 `run-activity-monitor.ts`。这些文件目前均未越过各自登记上限，后续新增验收维度应继续进入独立采样器或领域服务。
 
+阶段 5M 的生命周期责任保持在现有模块：`packages/runner/src/run-checkpoint.ts` 负责 checkpoint snapshot ID 的最近 64 条引用窗口，`packages/runner/src/execution-log.ts` 负责 execution log 持久化边界的最近 64 条 request/context snapshot 窗口；两者共享 `@littlesheep/context` 的上限常量，不新增 facade 或 ownership group。资源索引从截断后的 snapshot 集合生成，保证日志内容与索引来源一致。
+
 ## 拆分顺序
 
 1. 阶段 2 先冻结共享契约、兼容 facade 和特征测试。
