@@ -135,6 +135,8 @@
 
 阶段 5M 的生命周期责任保持在现有模块：`packages/runner/src/run-checkpoint.ts` 负责 checkpoint snapshot ID 的最近 64 条引用窗口，`packages/runner/src/execution-log.ts` 负责 execution log 持久化边界的最近 64 条 request/context snapshot 窗口；两者共享 `@littlesheep/context` 的上限常量，不新增 facade 或 ownership group。资源索引从截断后的 snapshot 集合生成，保证日志内容与索引来源一致。
 
+阶段 5N 继续由 `packages/runner/src/run-checkpoint-store.ts` 负责持久化闸门：`write()` 使用 64 条新窗口，`read()`/`list()` 使用 128 条历史兼容窗口。读写边界在同一 codec 校验函数中显式传入，避免把兼容读取上限误当作新数据生产上限；不新增模块或 ownership group。
+
 ## 拆分顺序
 
 1. 阶段 2 先冻结共享契约、兼容 facade 和特征测试。

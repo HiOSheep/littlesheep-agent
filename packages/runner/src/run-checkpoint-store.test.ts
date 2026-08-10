@@ -3,6 +3,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { asSessionId, type RunCheckpoint } from '@littlesheep/types';
+import { MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN } from '@littlesheep/context';
 import {
   RunCheckpointStore,
   RunCheckpointValidationError,
@@ -174,6 +175,45 @@ describe('RunCheckpointStore', () => {
         activeStepIds: ['step-1', 'step-2', 'step-3', 'step-4', 'step-5'],
       })).rejects.toBeInstanceOf(RunCheckpointValidationError);
       expect((await readdir(dir))).toEqual([]);
+    } finally {
+      store.dispose();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('enforces the current snapshot window for new writes', async () => {
+    const { dir, store } = await tempStore();
+    try {
+      const oversized = {
+        ...checkpoint('oversized-snapshot-write'),
+        contextSnapshotIds: Array.from(
+          { length: MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN + 1 },
+          (_, index) => `context-${index}`,
+        ),
+      };
+      await expect(store.write(oversized)).rejects.toThrow(/contextSnapshotIds.*limit/);
+      expect(await readdir(dir)).toEqual([]);
+    } finally {
+      store.dispose();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps the legacy read boundary for pre-5M checkpoints', async () => {
+    const { dir, store } = await tempStore();
+    try {
+      const legacy = {
+        ...checkpoint('legacy-snapshot-window'),
+        contextSnapshotIds: Array.from({ length: 128 }, (_, index) => `legacy-context-${index}`),
+      };
+      const hash = (await import('node:crypto')).createHash('sha256')
+        .update(legacy.id, 'utf8')
+        .digest('hex');
+      await writeFile(join(dir, `${hash}.json`), JSON.stringify(legacy), 'utf8');
+
+      const loaded = await store.read(legacy.id);
+      expect(loaded?.contextSnapshotIds).toHaveLength(128);
+      expect(loaded?.contextSnapshotIds.at(-1)).toBe('legacy-context-127');
     } finally {
       store.dispose();
       await rm(dir, { recursive: true, force: true });

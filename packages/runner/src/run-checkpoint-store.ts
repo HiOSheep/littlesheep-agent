@@ -8,6 +8,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
+import { MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN } from '@littlesheep/context';
 import type {
   RunCheckpoint,
   RunCheckpointResumeState,
@@ -29,7 +30,10 @@ const MAX_ID_LENGTH = 256;
 const MAX_REASON_LENGTH = 4_096;
 const MAX_ACTIVE_STEP_IDS = 4;
 const MAX_PENDING_EVENT_IDS = 128;
-const MAX_CONTEXT_SNAPSHOT_IDS = 128;
+// New writes use the same 64-entry observation window as Context/model logs.
+// Reads retain the older 128-entry limit so pre-5M checkpoints remain inspectable.
+const MAX_PERSISTED_CONTEXT_SNAPSHOT_IDS = MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN;
+const MAX_LEGACY_CONTEXT_SNAPSHOT_IDS = 128;
 const MAX_SIDE_EFFECTS = 256;
 const MAX_SIDE_EFFECT_RESOURCE_KEYS = 32;
 const MAX_RESUME_TOOL_NAMES = 256;
@@ -185,7 +189,7 @@ export class RunCheckpointStore {
 
   async write(input: RunCheckpoint): Promise<RunCheckpointWriteOutcome> {
     this.ensureUsable();
-    const checkpoint = validateCheckpoint(input, this.maxFileBytes);
+    const checkpoint = validateCheckpoint(input, this.maxFileBytes, MAX_PERSISTED_CONTEXT_SNAPSHOT_IDS);
     const serialized = stableSerialize(checkpoint);
     return this.enqueueWrite(async () => {
       await mkdir(this.rootDir, { recursive: true });
@@ -361,7 +365,7 @@ export class RunCheckpointStore {
       return { kind: 'invalid' };
     }
     try {
-      const checkpoint = validateCheckpoint(parsed, this.maxFileBytes);
+      const checkpoint = validateCheckpoint(parsed, this.maxFileBytes, MAX_LEGACY_CONTEXT_SNAPSHOT_IDS);
       if (expectedId !== undefined && checkpoint.id !== expectedId) {
         this.invalidFiles += 1;
         this.recordDiagnostic('invalid_name', file, 'Checkpoint id does not match its hashed filename lookup.');
@@ -414,7 +418,7 @@ export class RunCheckpointStore {
   }
 }
 
-function validateCheckpoint(value: unknown, maxFileBytes: number): RunCheckpoint {
+function validateCheckpoint(value: unknown, maxFileBytes: number, maxContextSnapshotIds: number): RunCheckpoint {
   if (!isRecord(value)) throw new RunCheckpointValidationError('Checkpoint must be an object.');
   if (value.version !== RUN_CHECKPOINT_VERSION) {
     throw new RunCheckpointValidationError(`Unsupported run checkpoint version: ${String(value.version)}.`);
@@ -431,7 +435,7 @@ function validateCheckpoint(value: unknown, maxFileBytes: number): RunCheckpoint
   const taskBookRevision = boundedSafeInteger(value.taskBookRevision, 'checkpoint.taskBookRevision', 0);
   const eventCursor = boundedSafeInteger(value.eventCursor, 'checkpoint.eventCursor', 0);
   const pendingEventIds = boundedStringArray(value.pendingEventIds, MAX_PENDING_EVENT_IDS, 'checkpoint.pendingEventIds');
-  const contextSnapshotIds = boundedStringArray(value.contextSnapshotIds, MAX_CONTEXT_SNAPSHOT_IDS, 'checkpoint.contextSnapshotIds');
+  const contextSnapshotIds = boundedStringArray(value.contextSnapshotIds, maxContextSnapshotIds, 'checkpoint.contextSnapshotIds');
   const sideEffects = Array.isArray(value.sideEffects) ? value.sideEffects : null;
   if (!sideEffects || sideEffects.length > MAX_SIDE_EFFECTS) {
     throw new RunCheckpointValidationError('checkpoint.sideEffects is missing or exceeds its limit.');
