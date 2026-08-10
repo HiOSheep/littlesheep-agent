@@ -75,6 +75,8 @@ Ownership manifest 目前登记 40 个字段，按八组高频共享状态提供
 
 阶段 5P 进一步约束 execution log 的持久化关联：`modelRequests` 继续保留最近 64 条，但 `contextSnapshots` 不再仅按独立 tail 截断。持久化前先收集 request tail 中的 `contextSnapshotId`，优先保留仍被引用的 snapshot，再从最新未引用 tail 填充剩余容量；结果最多 64 条并保持原始 snapshot 顺序。这样恢复、日志审计和资源索引不会出现 request 引用已被裁掉 snapshot 的 dangling ID；`contextSnapshots[].providerUsage` 仍保持请求级嵌套观测。
 
+阶段 5 暂停审计（2026-08-10）：对 Harness/Runner 的 128 个生产 TypeScript 文件进行静态扫描，ownership manifest 登记的 40 个字段没有发现 `ctx.field =` 或原地数组写入绕过。`verificationHistory` 仍由 VERIFY 记录函数追加、由 Runner restore 恢复，并在 checkpoint/store 与 execution log 中有独立边界；它是后续可观察项，但当前没有可复现的恢复错误、引用断裂或任务反馈性能问题，因此不新增第九个 ownership group，也不启动 5Q。
+
 ## 修改规则
 
 1. 先修改 manifest，再修改使用方；保持公共 `RunContext` 字段和 checkpoint 格式兼容。

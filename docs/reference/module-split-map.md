@@ -141,6 +141,8 @@
 
 阶段 5P 的关联保留留在 `packages/runner/src/execution-log.ts` 的持久化边界：该模块先截取 request tail，再按 request 的 `contextSnapshotId` 保留必要 snapshot，最后用最新未引用 snapshot 填充 64 条容量。checkpoint 仍只负责 snapshot ID 窗口，Harness 仍负责运行时观测窗口；不新增跨域 facade、ownership group 或 checkpoint schema 字段。
 
+阶段 5 暂停审计的结论是保持当前模块边界：`verificationHistory` 继续由 VERIFY 记录语义、Runner 负责恢复装配、checkpoint/store 与 execution log 各自负责持久化边界；静态扫描未发现已登记字段的生产绕过，当前也没有证据表明需要再抽象一个跨域 facade。只有出现可复现的历史丢失、恢复行为错误或可测量的开发反馈成本，才重新评估是否需要新的阶段。
+
 ## 拆分顺序
 
 1. 阶段 2 先冻结共享契约、兼容 facade 和特征测试。
