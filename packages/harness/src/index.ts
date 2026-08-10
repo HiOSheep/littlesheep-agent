@@ -101,6 +101,13 @@ export {
   type ExecutionEvidenceStateUpdate,
 } from './execution-evidence-state.js';
 export {
+  writeModelObservabilityState,
+  incrementModelCallCount,
+  appendModelObservations,
+  updateContextSnapshot,
+  type ModelObservabilityStateUpdate,
+} from './model-observability-state.js';
+export {
   writeUsageState,
   writeProviderUsageState,
   type UsageStateUpdate,

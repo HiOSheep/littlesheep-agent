@@ -34,6 +34,7 @@ import { writeMemoryState } from './memory-state.js';
 import { writeDecisionState } from './decision-state.js';
 import { writeFailureState } from './failure-state.js';
 import { writeExecutionEvidenceState } from './execution-evidence-state.js';
+import { writeModelObservabilityState } from './model-observability-state.js';
 
 /** Bootstrap file names (in priority order). Read from bootstrapDir. */
 const BOOTSTRAP_FILES = ['AGENTS.md', 'SOUL.md', 'USER.md', 'TOOLS.md'] as const;
@@ -245,9 +246,7 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     reserveUserFacingReply: typeof opts.sessionManager.reserveAssistantReply === 'function'
       ? (reply) => opts.sessionManager.reserveAssistantReply(opts.sessionId, reply)
       : undefined,
-    modelRequests: [],
     maxModelCalls: opts.config.agents.defaults.maxModelCallsPerRun,
-    contextSnapshots: [],
     contextCompressionThresholdRatio: opts.config.agents.defaults.contextCompressionThresholdRatio,
     signal: opts.signal,
   };
@@ -258,6 +257,11 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     toolInvocations: [],
     toolInvocationsTruncated: false,
     sideEffects: [],
+  });
+  writeModelObservabilityState(ctx, 'runner-init', {
+    modelCallCount: 0,
+    modelRequests: [],
+    contextSnapshots: [],
   });
 
   writeRuntimeState(ctx, 'runner-init', {

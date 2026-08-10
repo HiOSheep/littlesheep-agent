@@ -24,6 +24,11 @@ import {
 import { injectRuntimeAwareness } from './runtime-awareness.js';
 import { injectMemoryKnownState } from './memory-known-state.js';
 import { applyMemoryContextWorkingSet } from './memory-context-working-set.js';
+import {
+  appendModelObservations,
+  incrementModelCallCount,
+  updateContextSnapshot,
+} from './model-observability-state.js';
 
 export {
   MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN,
@@ -77,14 +82,16 @@ export function recordProviderUsage(
   const index = ctx.contextSnapshots.findIndex((snapshot) => snapshot.id === snapshotId);
   if (index < 0) return;
   const snapshot = ctx.contextSnapshots[index]!;
+  const requestSnapshot = ctx.modelRequests?.find((request) => request.contextSnapshotId === snapshotId);
+  if (!requestSnapshot) return;
   const localCalibration = buildLocalCalibration(snapshot.localTokenLedger, usage.promptTokens);
-  ctx.contextSnapshots[index] = Object.freeze({
-    ...snapshot,
+  updateContextSnapshot(ctx, requestSnapshot.stage, snapshotId, (current) => Object.freeze({
+    ...current,
     providerUsage: Object.freeze({
       version: 1 as const,
       source: 'provider' as const,
-      provider: snapshot.provider,
-      model: snapshot.model,
+      provider: current.provider,
+      model: current.model,
       promptTokens: usage.promptTokens,
       completionTokens: usage.completionTokens,
       totalTokens: usage.totalTokens ?? usage.promptTokens + usage.completionTokens,
@@ -93,7 +100,7 @@ export function recordProviderUsage(
       localCalibration,
       reportedAt: new Date().toISOString(),
     }),
-  });
+  }));
 }
 
 /** Use provider-native direct output for bounded routing, wording, and retries. */
@@ -128,12 +135,12 @@ function recordPreparedRequest(
   request: ChatRequest,
   candidates?: ContextMessageCandidate[],
 ): { request: ChatRequest; snapshot: ModelRequestSnapshot } {
+  const modelCallBudgetEnabled = ctx.maxModelCalls !== undefined;
   if (ctx.maxModelCalls !== undefined) {
     const maxModelCalls = Math.max(1, ctx.maxModelCalls);
     if ((ctx.modelCallCount ?? 0) >= maxModelCalls) {
       throw new Error(`model call budget exhausted (${maxModelCalls} calls per run)`);
     }
-    ctx.modelCallCount = (ctx.modelCallCount ?? 0) + 1;
   }
   const resolvedRequest = applyResolvedReasoning(ctx, request);
   const workingSetAware = applyMemoryContextWorkingSet(ctx, resolvedRequest, candidates);
@@ -144,6 +151,7 @@ function recordPreparedRequest(
     maxOutputTokens: resolvedRequest.max_tokens,
     temperature: resolvedRequest.temperature,
   });
+  if (modelCallBudgetEnabled) incrementModelCallCount(ctx, callContract.stage);
   const memoryAware = callContract.inputs.allowedContextKinds.includes('memory_fragment')
     ? injectMemoryKnownState(ctx, callContract.stage, workingSetAware.request, workingSetAware.candidates, requestIndex)
     : workingSetAware;
@@ -166,10 +174,13 @@ function recordPreparedRequest(
     callContract,
     compressionThresholdRatio: callContract.budget.contextCompressionThresholdRatio,
   });
-  ctx.contextSnapshots ??= [];
-  ctx.modelRequests ??= [];
-  pushBounded(ctx.contextSnapshots, prepared.contextSnapshot, MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN);
-  pushBounded(ctx.modelRequests, prepared.modelRequestSnapshot, MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN);
+  appendModelObservations(
+    ctx,
+    callContract.stage,
+    prepared.modelRequestSnapshot,
+    prepared.contextSnapshot,
+    MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN,
+  );
   requestContextSnapshotIds.set(prepared.request, prepared.contextSnapshot.id);
   return { request: prepared.request, snapshot: prepared.modelRequestSnapshot };
 }
@@ -266,9 +277,4 @@ function applyResolvedReasoning(ctx: RunContext, request: ChatRequest): ChatRequ
         }
       : undefined,
   };
-}
-
-function pushBounded<T>(values: T[], value: T, max: number): void {
-  if (values.length >= max) values.splice(0, values.length - max + 1);
-  values.push(value);
 }

@@ -8,7 +8,7 @@ import {
 
 describe('RunContext ownership contract', () => {
   it('assigns the registered high-churn groups to explicit owners', () => {
-    for (const group of ['reply', 'replan', 'decision', 'failure', 'executionEvidence', 'runtimeControl', 'memory'] as const) {
+    for (const group of ['reply', 'replan', 'decision', 'failure', 'executionEvidence', 'modelObservability', 'runtimeControl', 'memory'] as const) {
       const definitions = runContextFieldsForGroup(group);
       expect(definitions.length).toBeGreaterThan(0);
       expect(definitions.every((definition) => definition.owner.length > 0)).toBe(true);
@@ -41,6 +41,11 @@ describe('RunContext ownership contract', () => {
     expect(getRunContextFieldContract('sideEffects')).toMatchObject({
       group: 'executionEvidence',
       owner: 'side-effect-ledger',
+      lifecycle: 'checkpoint-carried',
+    });
+    expect(getRunContextFieldContract('modelCallCount')).toMatchObject({
+      group: 'modelObservability',
+      owner: 'model-observability-budget',
       lifecycle: 'checkpoint-carried',
     });
   });

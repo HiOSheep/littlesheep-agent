@@ -1,7 +1,7 @@
 // @littlesheep/types - machine-readable ownership and lifecycle contracts for high-churn RunContext fields.
 import type { RunContext, StageName } from './agent.js';
 
-export type RunContextFieldGroup = 'reply' | 'replan' | 'decision' | 'failure' | 'executionEvidence' | 'runtimeControl' | 'memory';
+export type RunContextFieldGroup = 'reply' | 'replan' | 'decision' | 'failure' | 'executionEvidence' | 'modelObservability' | 'runtimeControl' | 'memory';
 export type RunContextLifecycle = 'run-local' | 'checkpoint-carried' | 'session-persisted';
 export type RunContextContractStage = StageName | 'runner-init' | 'runner-restore' | 'runtime-boundary' | 'post-run';
 
@@ -231,6 +231,33 @@ export const runContextFieldOwnership: readonly RunContextFieldContract[] = Obje
     writeStages: ['runner-init', 'execute', 'runner-restore'],
     lifecycle: 'checkpoint-carried',
     purpose: 'Bounded side-effect ledger used to prevent unsafe replay and support checkpoint recovery.',
+  }),
+  field({
+    field: 'modelCallCount',
+    group: 'modelObservability',
+    owner: 'model-observability-budget',
+    readStages: ['execute', 'recover', 'finalize', 'runner-restore', 'post-run'],
+    writeStages: ['runner-init', 'classify', 'decide', 'execute', 'recover', 'verify', 'evolve', 'capture', 'reply', 'ask_user', 'runner-restore'],
+    lifecycle: 'checkpoint-carried',
+    purpose: 'Monotonic provider-call budget counter restored from the checkpoint loop budget.',
+  }),
+  field({
+    field: 'modelRequests',
+    group: 'modelObservability',
+    owner: 'model-observability-records',
+    readStages: ['execute', 'recover', 'verify', 'evolve', 'capture', 'reply', 'ask_user', 'finalize', 'post-run'],
+    writeStages: ['runner-init', 'classify', 'decide', 'execute', 'recover', 'verify', 'evolve', 'capture', 'reply', 'ask_user'],
+    lifecycle: 'run-local',
+    purpose: 'Bounded redacted snapshots of actual model requests and their call contracts.',
+  }),
+  field({
+    field: 'contextSnapshots',
+    group: 'modelObservability',
+    owner: 'model-observability-records',
+    readStages: ['execute', 'recover', 'verify', 'evolve', 'capture', 'reply', 'ask_user', 'finalize', 'post-run'],
+    writeStages: ['runner-init', 'classify', 'decide', 'execute', 'recover', 'verify', 'evolve', 'capture', 'reply', 'ask_user'],
+    lifecycle: 'run-local',
+    purpose: 'Bounded context snapshots linked to model requests; nested provider usage remains request-level observation.',
   }),
   field({
     field: 'runtimeControl',
