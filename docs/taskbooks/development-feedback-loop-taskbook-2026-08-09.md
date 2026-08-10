@@ -4,7 +4,7 @@
 
 ## 状态
 
-进行中。阶段 0、阶段 1、阶段 2、阶段 3、阶段 4 已完成并分别形成独立提交且推送到 GitHub；阶段 5 正在进行，阶段 5A、阶段 5B、阶段 5C、阶段 5D、阶段 5E、阶段 5F、阶段 5G、阶段 5H、阶段 5I、阶段 5J、阶段 5K、阶段 5L、阶段 5M、阶段 5N 的实现、质量门、提交和推送已完成。本文是一个可单独设置为阶段目标的执行基线；完成任一阶段后，必须更新本文的状态、证据和实际边界，并提交、推送一次，再决定是否进入下一阶段。
+进行中。阶段 0、阶段 1、阶段 2、阶段 3、阶段 4 已完成并分别形成独立提交且推送到 GitHub；阶段 5 正在进行，阶段 5A、阶段 5B、阶段 5C、阶段 5D、阶段 5E、阶段 5F、阶段 5G、阶段 5H、阶段 5I、阶段 5J、阶段 5K、阶段 5L、阶段 5M、阶段 5N、阶段 5O 的实现、质量门、提交和推送已完成。本文是一个可单独设置为阶段目标的执行基线；完成任一阶段后，必须更新本文的状态、证据和实际边界，并提交、推送一次，再决定是否进入下一阶段。
 
 ## Goal
 
@@ -137,7 +137,7 @@
 
 ### 阶段 5：状态契约重构（后续阶段，不与本任务前四阶段合并）
 
-状态：进行中。阶段 5A、阶段 5B、阶段 5C、阶段 5D、阶段 5E、阶段 5F、阶段 5G、阶段 5H、阶段 5I、阶段 5J、阶段 5K、阶段 5L、阶段 5M、阶段 5N 已完成；阶段 5 整体尚未完成，下一候选需根据本轮状态边界审计结果重新决定。
+状态：进行中。阶段 5A、阶段 5B、阶段 5C、阶段 5D、阶段 5E、阶段 5F、阶段 5G、阶段 5H、阶段 5I、阶段 5J、阶段 5K、阶段 5L、阶段 5M、阶段 5N、阶段 5O 已完成；阶段 5 整体尚未完成，下一候选需根据本轮状态边界审计结果重新决定。
 
 - 建立唯一 `allowedTransitions` manifest，运行时校验非法 Stage 边，并生成状态图。
 - 为 `RunContext` 建立字段 owner、读写阶段和生命周期表；先收敛 `reply`、`replan`、`decision`、`failure`、`executionEvidence`、`runtimeControl`、`memory`、`modelObservability` 八组高频共享状态。
@@ -281,6 +281,15 @@
 
 阶段 5N 定向证据（2026-08-10）：`run-checkpoint-store.test.ts`、`run-checkpoint.test.ts`、`runner-continuation.test.ts` 共 3 个文件、15 项通过；`check:repo` 为 33/33，27/27 个 TypeScript project references 通过；`verify:core` 退出码为 0，核心集合 7 个测试文件、127 项通过，`failedStage=null`。`verify:full` 在同一既有 `packages/app/src/main/local-app-api/workspace-git-review-edge-cases.test.ts` 用例上发生 30 秒超时，报告为 290 个测试文件、2010 passed、1 skipped、`failedStage=tests`，总耗时约 484.60 秒；该文件单独重跑此前通过，表明是全量运行时资源竞争/波动，且本阶段没有修改 App 路径，因此不纳入本阶段修复范围。完整门因测试阶段失败而未执行 typecheck、build、recovery；核心门已覆盖本阶段公共 Runner/Context 契约。用户已有的 `test/e2e-webhook.test.ts` 改动不纳入提交。
 
+阶段 5O：模型观测入口的共享窗口防绕过边界
+
+状态：已完成。本阶段审计发现 `appendModelObservations()` 作为公开 Harness 状态入口接受调用方传入的 `maxSnapshots`，生产调用虽然固定使用 64，但外部/测试调用可以传入更大值，使 `RunContext.modelRequests` 与 `contextSnapshots` 超过统一 retention 窗口。现由入口内部将参数归一化到 `1..MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN`，非有限值回退到 64，两个数组共享同一归一化上限；不改变函数签名、公共字段形状、checkpoint schema 或 ownership group。
+
+- 新增特征测试证明传入 `Number.MAX_SAFE_INTEGER` 仍只保留最近 64 个 request/context snapshot。
+- 阶段 5M 的 checkpoint、execution log 和阶段 5N 的 checkpoint store 写入闸门保持不变。
+
+阶段 5O 定向证据（2026-08-10）：`model-observability-state.test.ts`、`model-observability.test.ts`、`execution-log.test.ts`、`run-checkpoint.test.ts` 共 4 个文件、32 项通过；`check:repo` 为 33/33，27/27 个 TypeScript project references 通过；`verify:core` 退出码为 0，核心集合 7 个测试文件、127 项通过，`failedStage=null`。完整门沿用本轮既有全量运行约束：最近一次 `verify:full` 在未修改的 App Git review edge-case 测试上超时，阶段 5O 未扩大范围重复该已确认失败；用户已有的 `test/e2e-webhook.test.ts` 改动不纳入提交。
+
 ## Acceptance Matrix
 
 | 维度 | 当前基线 | 目标 | 证据 |
@@ -349,4 +358,4 @@ pnpm.cmd run verify:full
 - 阶段 0 已完成；剩余风险是完整测试计数随运行时数据状态小幅波动，及 fingerprint 扫描仍明显高于纯 planning 成本。报告已拆分两者，后续优化应针对扫描范围而不是误判 selector。
 - 阶段 2 已完成并单独提交；顶层 `branding.config.json`、`littlesheep.config.json` 不属于当前编译输入，故保持在阶段 3 fingerprint 范围之外。workspace manifest、特殊 Git 状态、共享 `GLOBAL_TYPECHECK_FILES` 和非字符串 dependency 形状均已纳入保守校验或 fail-closed 处理。
 - 阶段 3 已实现跨 Electron/Memory 入口的 App/workspace build-once/fingerprint 复用和过期产物拒绝；仍不把外部 Provider 运行时版本纳入本地 sidecar 的证明范围。
-- 阶段 1 的任务级入口和直接测试优先策略已完成，阶段 4 的代码实现、定向回归、`verify:changed`、`verify:core` 和 `verify:full` 已完成；阶段 5A 的状态契约第一里程碑、阶段 5B 的 Runner coordinator 最小抽取、阶段 5C 的 replan-state 写入边界、阶段 5D 的 reply/replyProvenance 写入边界、阶段 5E 的 runtime state 写入边界、阶段 5F 的 Memory 顶层 RunContext 写入边界、阶段 5G 的 usage 顶层快照写入边界、阶段 5H 的决策与澄清状态写入边界、阶段 5I 的失败与恢复状态写入边界、阶段 5J 的执行证据状态写入边界、阶段 5K 的模型观测与预算状态写入边界、阶段 5L 的 checkpoint 预算一致性边界、阶段 5M 的 Context snapshot 生命周期与截断一致性边界和阶段 5N 的 checkpoint store 新写入与历史读取边界已完成，质量门、提交和推送按阶段独立执行；下一候选根据实际审计结果重新决定。本阶段提交时必须排除用户已有的 `test/e2e-webhook.test.ts` 改动。
+- 阶段 1 的任务级入口和直接测试优先策略已完成，阶段 4 的代码实现、定向回归、`verify:changed`、`verify:core` 和 `verify:full` 已完成；阶段 5A 的状态契约第一里程碑、阶段 5B 的 Runner coordinator 最小抽取、阶段 5C 的 replan-state 写入边界、阶段 5D 的 reply/replyProvenance 写入边界、阶段 5E 的 runtime state 写入边界、阶段 5F 的 Memory 顶层 RunContext 写入边界、阶段 5G 的 usage 顶层快照写入边界、阶段 5H 的决策与澄清状态写入边界、阶段 5I 的失败与恢复状态写入边界、阶段 5J 的执行证据状态写入边界、阶段 5K 的模型观测与预算状态写入边界、阶段 5L 的 checkpoint 预算一致性边界、阶段 5M 的 Context snapshot 生命周期与截断一致性边界、阶段 5N 的 checkpoint store 新写入与历史读取边界和阶段 5O 的模型观测入口共享窗口防绕过边界已完成，质量门、提交和推送按阶段独立执行；下一候选根据实际审计结果重新决定。本阶段提交时必须排除用户已有的 `test/e2e-webhook.test.ts` 改动。

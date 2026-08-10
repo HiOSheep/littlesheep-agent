@@ -137,6 +137,8 @@
 
 阶段 5N 继续由 `packages/runner/src/run-checkpoint-store.ts` 负责持久化闸门：`write()` 使用 64 条新窗口，`read()`/`list()` 使用 128 条历史兼容窗口。读写边界在同一 codec 校验函数中显式传入，避免把兼容读取上限误当作新数据生产上限；不新增模块或 ownership group。
 
+阶段 5O 的窗口防护留在 `packages/harness/src/model-observability-state.ts`，由共享 `@littlesheep/context` 常量约束公开 `appendModelObservations()` 参数；模型观测语义仍由 `model-observability.ts` 拥有，Runner/Context 不新增中间 facade。
+
 ## 拆分顺序
 
 1. 阶段 2 先冻结共享契约、兼容 facade 和特征测试。

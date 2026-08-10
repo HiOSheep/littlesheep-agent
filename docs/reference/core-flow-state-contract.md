@@ -71,6 +71,8 @@ Ownership manifest 目前登记 40 个字段，按八组高频共享状态提供
 
 阶段 5N 将 checkpoint store 的读写边界明确分离：新写入通过 `MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN = 64` 校验，防止绕过 `buildRunCheckpoint()` 的统一窗口；读取和诊断继续接受最多 128 条历史 `contextSnapshotIds`，保证 5M 以前的 checkpoint 可检查和迁移。该兼容分支只影响输入校验，不改变公共 checkpoint schema 或恢复 owner。
 
+阶段 5O 将 `appendModelObservations()` 的调用参数视为提示而不是权限：入口内部把非有限值、非整数值和过大值归一化到 `1..MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN`，因此公开状态 API 无法扩大模型 request/context snapshot 的运行时窗口。两个观测数组继续使用同一归一化后的上限，保持尾部关联和不可变批次写入。
+
 ## 修改规则
 
 1. 先修改 manifest，再修改使用方；保持公共 `RunContext` 字段和 checkpoint 格式兼容。

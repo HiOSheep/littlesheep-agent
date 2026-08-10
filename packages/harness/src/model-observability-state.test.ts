@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ContextSnapshot, ModelRequestSnapshot, RunContext } from '@littlesheep/types';
+import { MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN } from '@littlesheep/context';
 import {
   appendModelObservations,
   incrementModelCallCount,
@@ -84,5 +85,17 @@ describe('model observability state boundary', () => {
 
     expect(ctx.contextSnapshots).not.toBe(before);
     expect(ctx.contextSnapshots?.[0]?.itemsTruncated).toBe(true);
+  });
+
+  it('never lets a caller expand the shared observation window', () => {
+    const ctx = makeContext();
+    for (let index = 1; index <= MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN + 4; index += 1) {
+      appendModelObservations(ctx, 'execute', request(index), snapshot(index), Number.MAX_SAFE_INTEGER);
+    }
+
+    expect(ctx.modelRequests).toHaveLength(MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN);
+    expect(ctx.contextSnapshots).toHaveLength(MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN);
+    expect(ctx.modelRequests?.[0]?.requestIndex).toBe(5);
+    expect(ctx.contextSnapshots?.[0]?.requestIndex).toBe(5);
   });
 });

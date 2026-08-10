@@ -4,6 +4,7 @@ import type {
   RunContext,
   StageName,
 } from '@littlesheep/types';
+import { MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN } from '@littlesheep/context';
 import {
   assertRunContextFieldWriteAllowed,
   type RunContextContractStage,
@@ -56,8 +57,9 @@ export function appendModelObservations(
   snapshot: ContextSnapshot,
   maxSnapshots: number,
 ): void {
-  const modelRequests = boundedAppend(ctx.modelRequests ?? [], request, maxSnapshots);
-  const contextSnapshots = boundedAppend(ctx.contextSnapshots ?? [], snapshot, maxSnapshots);
+  const boundedLimit = normalizeObservationLimit(maxSnapshots);
+  const modelRequests = boundedAppend(ctx.modelRequests ?? [], request, boundedLimit);
+  const contextSnapshots = boundedAppend(ctx.contextSnapshots ?? [], snapshot, boundedLimit);
   writeModelObservabilityState(ctx, stage, { modelRequests, contextSnapshots });
 }
 
@@ -81,4 +83,12 @@ function boundedAppend<T>(values: readonly T[], value: T, max: number): T[] {
   if (next.length >= max) next.splice(0, next.length - max + 1);
   next.push(value);
   return next;
+}
+
+function normalizeObservationLimit(value: number): number {
+  if (!Number.isFinite(value)) return MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN;
+  return Math.min(
+    MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN,
+    Math.max(1, Math.floor(value)),
+  );
 }
