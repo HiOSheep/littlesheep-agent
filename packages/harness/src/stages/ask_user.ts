@@ -22,6 +22,7 @@ import { acceptUniqueUserFacingReply, type ReplyRewriteInput } from '../user-fac
 import { clearReplyState } from '../reply-state.js';
 import { renderClarificationMessage } from './clarification-message.js';
 import { updateClarificationRequest, writeDecisionState } from '../decision-state.js';
+import { recordFailure } from '../failure-state.js';
 
 export interface AskUserStageDeps {
   llm: LlmClient;
@@ -43,8 +44,9 @@ export function createAskUserStage(deps?: AskUserStageDeps) {
     }
     const fallback = renderClarificationMessage(request);
     if (!deps) {
-      ctx.lastError = { stage: 'ask_user', message: 'user-facing clarification generation requires an LLM.' };
-      return { stage: 'ask_user', next: 'exit', ok: false, error: ctx.lastError.message };
+      const message = 'user-facing clarification generation requires an LLM.';
+      recordFailure(ctx, 'ask_user', 'ask_user', message);
+      return { stage: 'ask_user', next: 'exit', ok: false, error: message };
     }
 
     try {
@@ -60,8 +62,9 @@ export function createAskUserStage(deps?: AskUserStageDeps) {
         copySource: 'model',
       }));
     } catch (error) {
-      ctx.lastError = { stage: 'ask_user', message: `user-facing clarification generation failed: ${(error as Error).message}` };
-      return { stage: 'ask_user', next: 'exit', ok: false, error: ctx.lastError.message };
+      const message = `user-facing clarification generation failed: ${(error as Error).message}`;
+      recordFailure(ctx, 'ask_user', 'ask_user', message);
+      return { stage: 'ask_user', next: 'exit', ok: false, error: message };
     }
     return {
       stage: 'ask_user',

@@ -31,6 +31,7 @@ import {
   writeRuntimeState,
   writeMemoryState,
   writeDecisionState,
+  writeFailureState,
 } from '@littlesheep/harness';
 import { buildInfrastructure, type RunnerState, type LogFn } from './infra.js';
 import type { ExecutionLog } from './execution-log.js';
@@ -695,13 +696,13 @@ function restoreContinuationContext(ctx: RunContext, checkpoint: RunCheckpoint):
   });
   ctx.sideEffects = structuredClone(checkpoint.sideEffects);
   ctx.modelCallCount = checkpoint.loopBudget.attemptsUsed;
-  ctx.recoveryAttempts = state.recoveryAttempts;
+  writeFailureState(ctx, 'runner-restore', { recoveryAttempts: state.recoveryAttempts });
   ctx.maxReplanAttempts = state.maxReplanAttempts;
   ctx.verificationHistory = structuredClone(state.verificationHistory);
   // A paused/interrupted control snapshot must not immediately stop the new
   // continuation at its first safe boundary. The original event evidence is
   // retained in the restored queue; the new run starts in a clean state.
   writeRuntimeState(ctx, 'runner-restore', { runtimeControl: undefined });
-  ctx.lastError = undefined;
+  writeFailureState(ctx, 'runner-restore', { lastError: undefined });
   clearReplyState(ctx, 'runner-restore');
 }

@@ -13,6 +13,7 @@ import { acceptUniqueUserFacingReply, type ReplyRewriteInput } from '../../user-
 import { buildRunRequestCandidates } from '../../context-candidates.js';
 import { prepareModelRequest, recordProviderUsage } from '../../model-observability.js';
 import { clearReplyState } from '../../reply-state.js';
+import { recordFailure } from '../../failure-state.js';
 export { executeTaskBook } from './task-book-runner.js';
 
 export async function executeLegacyLoop(
@@ -32,8 +33,9 @@ export async function executeLegacyLoop(
   });
   ctx.toolResults = result.toolResults;
   if (!result.ok) {
-    ctx.lastError = { stage: 'execute', message: result.error ?? 'execute failed' };
-    return { stage: 'execute', next: 'recover', ok: false, error: ctx.lastError.message };
+    const message = result.error ?? 'execute failed';
+    recordFailure(ctx, 'execute', 'execute', message);
+    return { stage: 'execute', next: 'recover', ok: false, error: message };
   }
   applyUsage(ctx, result.usage, 'execute');
   try {
@@ -45,8 +47,9 @@ export async function executeLegacyLoop(
     );
   } catch (error) {
     clearReplyState(ctx, 'execute');
-    ctx.lastError = { stage: 'execute', message: `user-facing execution reply generation failed: ${(error as Error).message}` };
-    return { stage: 'execute', next: 'recover', ok: false, error: ctx.lastError.message };
+    const message = `user-facing execution reply generation failed: ${(error as Error).message}`;
+    recordFailure(ctx, 'execute', 'execute', message);
+    return { stage: 'execute', next: 'recover', ok: false, error: message };
   }
   return {
     stage: 'execute',

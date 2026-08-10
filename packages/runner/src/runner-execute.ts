@@ -1,6 +1,7 @@
 import type { RunContext, StageResult } from '@littlesheep/types';
 import type { RunCheckpointStore } from './run-checkpoint-store.js';
 import { buildRunCheckpoint, shouldPersistRunCheckpoint } from './run-checkpoint.js';
+import { recordFailure } from '@littlesheep/harness';
 
 export interface ExecuteRunnerPhaseOptions {
   ctx: RunContext;
@@ -50,7 +51,7 @@ export async function executeRunnerPhase(options: ExecuteRunnerPhaseOptions): Pr
     } catch (error) {
       const message = `run checkpoint persistence failed: ${(error as Error).message}`;
       options.log?.('error', `runner: ${message}`);
-      options.ctx.lastError = { stage: stageResult.stage, message };
+      recordFailure(options.ctx, 'post-run', stageResult.stage, message);
       stageResult = {
         ...stageResult,
         ok: false,

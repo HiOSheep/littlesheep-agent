@@ -21,6 +21,7 @@ import {
 } from './verify/task-state.js';
 import { acceptedUsedMemoryAtomIds } from './verify/memory-evidence.js';
 import { writeReplanState } from '../replan-state.js';
+import { recordFailure } from '../failure-state.js';
 export type { VerifyStageDeps } from './verify/contracts.js';
 export function createVerifyStage(deps: VerifyStageDeps) {
   return async function verifyStage(ctx: RunContext): Promise<StageResult> {
@@ -75,10 +76,8 @@ export function createVerifyStage(deps: VerifyStageDeps) {
     const shouldPartialReplan = parsed.verdict === 'needs_replan'
       || (parsed.verdict === 'fail' && canRecoverWithPartialReplan(ctx, targetStepIds));
     if (parsed.verdict === 'fail' && !shouldPartialReplan) {
-      ctx.lastError = {
-        stage: 'verify',
-        message: `verify failed: ${parsed.reason ?? 'tool error detected'}`,
-      };
+      const message = `verify failed: ${parsed.reason ?? 'tool error detected'}`;
+      recordFailure(ctx, 'verify', 'verify', message);
       recordVerification(ctx, {
         verdict: 'fail',
         reason: parsed.reason ?? 'Tool error detected.',
@@ -89,7 +88,7 @@ export function createVerifyStage(deps: VerifyStageDeps) {
         stage: 'verify',
         next: 'recover',
         ok: false,
-        error: ctx.lastError.message,
+        error: message,
         meta: { verdict: 'fail', reason: parsed.reason, failedStepIds: targetStepIds },
       };
     }

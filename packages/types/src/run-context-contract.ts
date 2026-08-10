@@ -1,7 +1,7 @@
 // @littlesheep/types - machine-readable ownership and lifecycle contracts for high-churn RunContext fields.
 import type { RunContext, StageName } from './agent.js';
 
-export type RunContextFieldGroup = 'reply' | 'replan' | 'decision' | 'runtimeControl' | 'memory';
+export type RunContextFieldGroup = 'reply' | 'replan' | 'decision' | 'failure' | 'runtimeControl' | 'memory';
 export type RunContextLifecycle = 'run-local' | 'checkpoint-carried' | 'session-persisted';
 export type RunContextContractStage = StageName | 'runner-init' | 'runner-restore' | 'runtime-boundary' | 'post-run';
 
@@ -29,7 +29,7 @@ const coreStages: readonly StageName[] = Object.freeze([
 ]);
 
 /**
- * Machine-readable ownership for the four high-churn RunContext domains.
+ * Machine-readable ownership for high-churn RunContext domains.
  * This is deliberately additive: existing callers can keep using RunContext,
  * while new code can validate a write before mutating a shared field.
  */
@@ -177,6 +177,24 @@ export const runContextFieldOwnership: readonly RunContextFieldContract[] = Obje
     writeStages: ['runner-init'],
     lifecycle: 'run-local',
     purpose: 'Answer linked to the prior persisted clarification request for this run.',
+  }),
+  field({
+    field: 'lastError',
+    group: 'failure',
+    owner: 'failure-recovery-boundary',
+    readStages: ['classify', 'decide', 'execute', 'recover', 'verify', 'evolve', 'capture', 'reply', 'ask_user', 'finalize', 'post-run'],
+    writeStages: [...coreStages, 'runner-restore', 'post-run'],
+    lifecycle: 'run-local',
+    purpose: 'Latest bounded failure evidence consumed by RECOVER and final status assembly.',
+  }),
+  field({
+    field: 'recoveryAttempts',
+    group: 'failure',
+    owner: 'failure-recovery-boundary',
+    readStages: ['recover', 'evolve', 'finalize', 'runner-restore'],
+    writeStages: ['runner-init', 'recover', 'runner-restore'],
+    lifecycle: 'checkpoint-carried',
+    purpose: 'Bounded RECOVER attempt counter carried through resumable checkpoints.',
   }),
   field({
     field: 'runtimeControl',

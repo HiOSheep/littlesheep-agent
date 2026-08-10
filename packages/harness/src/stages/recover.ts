@@ -18,35 +18,36 @@ import {
 import { writeReplanState } from '../replan-state.js';
 import { clearReplyState } from '../reply-state.js';
 import { updateClarificationRequest, writeDecisionState } from '../decision-state.js';
+import { incrementRecoveryAttempts, recordFailure } from '../failure-state.js';
 
 export type { RecoverStageDeps } from './recover/contracts.js';
 
 /** Factory: creates a recover stage. */
 export function createRecoverStage(deps: RecoverStageDeps) {
   return async function recoverStage(ctx: RunContext): Promise<StageResult> {
-    ctx.recoveryAttempts = (ctx.recoveryAttempts ?? 0) + 1;
+    const recoveryAttempts = incrementRecoveryAttempts(ctx, 'recover');
 
     // Force-escalate once we've exhausted retries.
-    if (ctx.recoveryAttempts > ctx.maxRecoveryAttempts) {
+    if (recoveryAttempts > ctx.maxRecoveryAttempts) {
       return {
         stage: 'recover',
         next: 'ask_user',
         ok: true,
-        meta: { forcedEscalate: true, attempts: ctx.recoveryAttempts },
+        meta: { forcedEscalate: true, attempts: recoveryAttempts },
       };
     }
 
     const lastError = ctx.lastError;
     const availableToolNames = new Set(ctx.tools.map((t) => t.name));
 
-    if (isStructuredDecodeFailure(lastError) && ctx.recoveryAttempts === 1) {
+    if (isStructuredDecodeFailure(lastError) && recoveryAttempts === 1) {
       return {
         stage: 'recover',
         next: retryStageFor(lastError?.stage),
         ok: true,
         meta: {
           deterministicRetry: true,
-          attempts: ctx.recoveryAttempts,
+          attempts: recoveryAttempts,
           failedStage: lastError?.stage,
         },
       };
@@ -65,7 +66,7 @@ export function createRecoverStage(deps: RecoverStageDeps) {
         ok: true,
         meta: {
           fallbackEscalate: true,
-          attempts: ctx.recoveryAttempts,
+          attempts: recoveryAttempts,
           transportError: (e as Error).message,
         },
       };
@@ -77,7 +78,7 @@ export function createRecoverStage(deps: RecoverStageDeps) {
         stage: 'recover',
         next: 'ask_user',
         ok: true,
-        meta: { fallbackEscalate: true, attempts: ctx.recoveryAttempts },
+        meta: { fallbackEscalate: true, attempts: recoveryAttempts },
       };
     }
 
@@ -117,8 +118,9 @@ export function createRecoverStage(deps: RecoverStageDeps) {
         try {
           reserved = await reserveUserFacingReplyOnce(ctx, 'recover', visibleMessage);
         } catch (error) {
-          ctx.lastError = { stage: 'recover', message: `user-facing recovery reply generation failed: ${(error as Error).message}` };
-          return { stage: 'recover', next: 'exit', ok: false, error: ctx.lastError.message };
+          const message = `user-facing recovery reply generation failed: ${(error as Error).message}`;
+          recordFailure(ctx, 'recover', 'recover', message);
+          return { stage: 'recover', next: 'exit', ok: false, error: message };
         }
         if (reserved) {
           updateClarificationRequest(ctx, 'recover', (value) => ({ ...value, prompt: reserved }));
@@ -129,7 +131,7 @@ export function createRecoverStage(deps: RecoverStageDeps) {
             ok: true,
             meta: {
               action: parsed.action,
-              attempts: ctx.recoveryAttempts,
+              attempts: recoveryAttempts,
               reason: parsed.reason,
               directClarification: true,
             },
@@ -147,8 +149,9 @@ export function createRecoverStage(deps: RecoverStageDeps) {
         );
       } catch (error) {
         clearReplyState(ctx, 'recover');
-        ctx.lastError = { stage: 'recover', message: `user-facing recovery reply generation failed: ${(error as Error).message}` };
-        return { stage: 'recover', next: 'exit', ok: false, error: ctx.lastError.message };
+        const message = `user-facing recovery reply generation failed: ${(error as Error).message}`;
+        recordFailure(ctx, 'recover', 'recover', message);
+        return { stage: 'recover', next: 'exit', ok: false, error: message };
       }
       next = 'finalize';
     }
@@ -159,7 +162,7 @@ export function createRecoverStage(deps: RecoverStageDeps) {
       ok: true,
       meta: {
         action,
-        attempts: ctx.recoveryAttempts,
+        attempts: recoveryAttempts,
         reason: parsed.reason,
         ...(coercedAbort ? { coercedAbort: true } : {}),
       },

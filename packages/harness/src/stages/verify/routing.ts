@@ -1,3 +1,6 @@
+// @littlesheep/harness - stages/verify/routing.ts
+// VERIFY routing: records evidence, publishes verified replies, and routes bounded recovery outcomes.
+
 import { basename, resolve } from 'node:path';
 import type {
   RunContext,
@@ -6,6 +9,7 @@ import type {
 } from '@littlesheep/types';
 import { writeReplanState } from '../../replan-state.js';
 import { writeDecisionState } from '../../decision-state.js';
+import { recordFailure } from '../../failure-state.js';
 import { textOf } from '../_shared.js';
 import {
   canRecoverWithPartialReplan,
@@ -219,7 +223,7 @@ export function routeKnownIncompleteExecution(
       failedStepIds: targetStepIds,
       source: 'structural',
     });
-    ctx.lastError = { stage: 'verify', message: feedback };
+    recordFailure(ctx, 'verify', 'verify', feedback);
     return {
       stage: 'verify',
       next: 'recover',

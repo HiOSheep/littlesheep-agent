@@ -26,6 +26,7 @@ import {
   type ReplyRewriteInput,
 } from '../user-facing-reply.js';
 import { clearReplyState } from '../reply-state.js';
+import { recordFailure } from '../failure-state.js';
 import { synthesizeFinalReply } from './execute/final-reply.js';
 import { repairDiscontinuousReply } from './reply/continuity-repair.js';
 
@@ -51,15 +52,13 @@ export function createReplyStage(deps: ReplyStageDeps) {
         };
       } catch (err) {
         clearReplyState(ctx, 'reply');
-        ctx.lastError = {
-          stage: 'reply',
-          message: `resumed task final reply generation failed: ${(err as Error).message}`,
-        };
+        const message = `resumed task final reply generation failed: ${(err as Error).message}`;
+        recordFailure(ctx, 'reply', 'reply', message);
         return {
           stage: 'reply',
           next: 'exit',
           ok: false,
-          error: ctx.lastError.message,
+          error: message,
         };
       }
     }
@@ -146,12 +145,13 @@ export function createReplyStage(deps: ReplyStageDeps) {
       if (reply !== streamed.trim()) ctx.onAssistantReplace?.(reply);
     } catch (err) {
       if (streamed) ctx.onAssistantReplace?.('');
-      ctx.lastError = { stage: 'reply', message: `user-facing reply generation failed: ${(err as Error).message}` };
+      const message = `user-facing reply generation failed: ${(err as Error).message}`;
+      recordFailure(ctx, 'reply', 'reply', message);
       return {
         stage: 'reply',
         next: 'exit',
         ok: false,
-        error: ctx.lastError.message,
+        error: message,
       };
     }
 

@@ -87,6 +87,13 @@ export {
   type DecisionStateUpdate,
 } from './decision-state.js';
 export {
+  writeFailureState,
+  recordFailure,
+  clearFailure,
+  incrementRecoveryAttempts,
+  type FailureStateUpdate,
+} from './failure-state.js';
+export {
   writeUsageState,
   writeProviderUsageState,
   type UsageStateUpdate,

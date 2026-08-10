@@ -13,6 +13,7 @@ import type { ExecuteSanitizeOptions, ExecuteStageDeps } from './contracts.js';
 import { consumeRuntimeControlEvents } from '../../runtime-control-boundary.js';
 import { updateReplanHistory, writeReplanState } from '../../replan-state.js';
 import { clearReplyState } from '../../reply-state.js';
+import { recordFailure, clearFailure } from '../../failure-state.js';
 import { reserveUserFacingReplyOnce } from '../../user-facing-reply.js';
 import { orderedStepResults } from './failure-policy.js';
 import { synthesizeFinalReply } from './final-reply.js';
@@ -160,16 +161,17 @@ export async function executeTaskBook(
     execution.status = 'failed';
     execution.endedAt = new Date().toISOString();
     syncExecutionSteps();
-    ctx.lastError = { stage: 'execute', message: `user-facing final reply generation failed: ${(error as Error).message}` };
+    const message = `user-facing final reply generation failed: ${(error as Error).message}`;
+    recordFailure(ctx, 'execute', 'execute', message);
     return {
       stage: 'execute',
       next: 'recover',
       ok: false,
-      error: ctx.lastError.message,
+      error: message,
       meta: { taskStatus: execution.status, taskSteps: execution.steps.length, toolCalls: allToolResults.length },
     };
   }
-  ctx.lastError = undefined;
+  clearFailure(ctx, 'execute');
   return {
     stage: 'execute',
     next: 'verify',
@@ -192,7 +194,7 @@ function finishRuntimeControlBoundary(
     ?? (runtimeControl.state === 'paused'
       ? 'run paused at a safe boundary'
       : 'run interrupted at a safe boundary');
-  ctx.lastError = { stage: 'execute', message: error };
+  recordFailure(ctx, 'execute', 'execute', error);
   return {
     stage: 'execute',
     next: 'exit',
@@ -271,7 +273,7 @@ function finishWaveFailure(
   clearReplyState(ctx, 'execute');
   const error = failure.result.error ?? 'TaskBook step failed.';
   if (failure.route === 'recover') {
-    ctx.lastError = { stage: 'execute', message: error };
+    recordFailure(ctx, 'execute', 'execute', error);
     return {
       stage: 'execute', next: 'recover', ok: false, error,
       meta: { taskStatus: execution.status, failedStepId: failure.result.stepId, toolCalls: allToolResults.length },
@@ -293,7 +295,7 @@ function structuralFailure(
   execution.endedAt = new Date().toISOString();
   taskBook.stageResults = execution.steps;
   clearReplyState(ctx, 'execute');
-  ctx.lastError = { stage: 'execute', message: error };
+  recordFailure(ctx, 'execute', 'execute', error);
   return { stage: 'execute', next: 'recover', ok: false, error, meta: { taskStatus: execution.status } };
 }
 

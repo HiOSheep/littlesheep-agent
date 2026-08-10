@@ -15,6 +15,7 @@ import {
   expandCompactAutonomousReadDecision,
   type CompactAutonomousReadDecision,
 } from '../../compact-autonomous-read-task.js';
+import { recordFailure } from '../../failure-state.js';
 
 export type DecisionModelResult =
   | { ok: true; parsed: DecodedPlan; attempts: number }
@@ -101,7 +102,7 @@ function isDecodedPlan(
 }
 
 function failure(ctx: RunContext, message: string): DecisionModelResult {
-  ctx.lastError = { stage: 'decide', message };
+  recordFailure(ctx, 'decide', 'decide', message);
   return {
     ok: false,
     result: { stage: 'decide', next: 'recover', ok: false, error: message },

@@ -44,6 +44,7 @@ import { consumeRuntimeControlEvents, consumeRuntimeTaskEvents } from './runtime
 import type { ExactContextTokenCounter } from '@littlesheep/context';
 import { bindExactContextTokenCounter } from './model-observability.js';
 import { resolveCheckpointResumeStage } from './checkpoint-resume.js';
+import { recordFailure } from './failure-state.js';
 
 export interface DefaultHarnessOptions {
   llm: LlmClient;
@@ -197,7 +198,7 @@ export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness 
             },
           };
           trace.push({ name: stageName, startedAt, endedAt, ok: false });
-          ctx.lastError = { stage: stageName, message: error };
+          recordFailure(ctx, stageName, stageName, error);
           lastResult = controlResult;
           current = 'exit';
           continue;
@@ -219,7 +220,7 @@ export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness 
             },
           };
           trace.push({ name: stageName, startedAt, endedAt, ok: false });
-          ctx.lastError = { stage: stageName, message: error };
+          recordFailure(ctx, stageName, stageName, error);
           lastResult = boundaryResult;
           current = 'exit';
           continue;
@@ -284,7 +285,7 @@ export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness 
         // Record lastError for RECOVER (only if the stage set one isn't already present).
         if (!result.ok && result.error) {
           if (!ctx.lastError || ctx.lastError.stage !== stageName) {
-            ctx.lastError = { stage: stageName, message: result.error };
+            recordFailure(ctx, stageName, stageName, result.error);
           }
         }
 

@@ -15,6 +15,7 @@ import { reserveUserFacingReplyOnce } from '../../user-facing-reply.js';
 import { writeReplanState } from '../../replan-state.js';
 import { writeRuntimeState } from '../../runtime-state.js';
 import { writeDecisionState } from '../../decision-state.js';
+import { recordFailure } from '../../failure-state.js';
 
 export async function adoptDecodedDecision(
   deps: DecideStageDeps,
@@ -171,7 +172,7 @@ function clarificationStep() {
 }
 
 function failDecision(ctx: RunContext, message: string): StageResult {
-  ctx.lastError = { stage: 'decide', message };
+  recordFailure(ctx, 'decide', 'decide', message);
   return { stage: 'decide', next: 'recover', ok: false, error: message };
 }
 
