@@ -36,13 +36,16 @@ describe('chat layout stability', () => {
     expect(styles).toMatch(/\.window-shell\.workspace-panel-fullscreen \.workspace-panel,\s*\.window-shell\.workspace-panel-drag-fullscreen \.workspace-panel\s*\{[^}]*border-top-left-radius:\s*0;/u)
   })
 
-  it('draws one full-height sidebar separator on the shared color boundary', async () => {
+  it('cuts the sidebar corner into the shared background and starts its separator below the radius', async () => {
     const styles = await readRendererFile('./styles.css')
 
     expect(styles).not.toMatch(/\.sidebar-resizer::before\s*\{/u)
     expect(styles).toMatch(/\.window-shell::before\s*\{[\s\S]*?inset:\s*32px auto 0 0;[\s\S]*?width:\s*var\(--sidebar-active-width\);[\s\S]*?background-image:\s*var\(--sidebar-glass-texture\);/u)
+    expect(styles).not.toMatch(/\.window-shell::before\s*\{[^}]*border-top-right-radius:/u)
+    expect(styles).toMatch(/\.primary-workspace::before\s*\{[^}]*inset:\s*32px auto auto calc\(var\(--sidebar-active-width\) - var\(--radius-ui\)\);[^}]*width:\s*calc\(var\(--radius-ui\) \+ var\(--sidebar-resizer-width\)\);[^}]*height:\s*var\(--radius-ui\);/u)
+    expect(styles).toMatch(/\.primary-workspace::before\s*\{[^}]*background:\s*radial-gradient\([\s\S]*?circle at bottom left,[\s\S]*?transparent calc\(var\(--radius-ui\) - 0\.5px\),[\s\S]*?var\(--bg\) calc\(var\(--radius-ui\) \+ 0\.5px\)[\s\S]*?\);/u)
     expect(styles).not.toMatch(/\.window-titlebar::before\s*\{/u)
-    expect(styles).toMatch(/\.primary-workspace::after\s*\{[\s\S]*?inset:\s*0 auto 0 var\(--sidebar-active-width\);[\s\S]*?width:\s*1px;[\s\S]*?background:\s*var\(--border\);/u)
+    expect(styles).toMatch(/\.primary-workspace::after\s*\{[\s\S]*?inset:\s*calc\(32px \+ var\(--radius-ui\)\) auto 0 var\(--sidebar-active-width\);[\s\S]*?width:\s*1px;[\s\S]*?background:\s*var\(--border\);/u)
     expect(styles).toMatch(/\.primary-workspace:has\(\.sidebar-resizer:hover\)::after/u)
     expect(styles).toMatch(/\.primary-workspace:has\(\.sidebar-resizer:focus-visible\)::after/u)
   })

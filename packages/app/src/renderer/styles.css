@@ -1124,10 +1124,32 @@ input:focus-visible {
   background: transparent;
 }
 
+.primary-workspace::before {
+  content: "";
+  position: absolute;
+  inset: 32px auto auto calc(var(--sidebar-active-width) - var(--radius-ui));
+  z-index: 21;
+  width: calc(var(--radius-ui) + var(--sidebar-resizer-width));
+  height: var(--radius-ui);
+  /* Cut the material with the exact chat color so native acrylic cannot show
+     through the antialiased corner edge. */
+  background: radial-gradient(
+    circle at bottom left,
+    transparent calc(var(--radius-ui) - 0.5px),
+    var(--bg) calc(var(--radius-ui) + 0.5px)
+  );
+  opacity: 1;
+  pointer-events: none;
+  transition:
+    left var(--sidebar-collapse-motion) var(--motion-ease),
+    opacity var(--motion-fast) var(--motion-ease);
+}
+
 .primary-workspace::after {
   content: "";
   position: absolute;
-  inset: 0 auto 0 var(--sidebar-active-width);
+  /* Leave the rounded corner clear below the native-height titlebar. */
+  inset: calc(32px + var(--radius-ui)) auto 0 var(--sidebar-active-width);
   z-index: 21;
   width: 1px;
   background: var(--border);
@@ -1145,6 +1167,8 @@ body.is-resizing-column .window-shell.sidebar-drag-live .primary-workspace::afte
   background: var(--border-strong);
 }
 
+.window-shell.sidebar-collapsed .primary-workspace::before,
+.window-shell.sidebar-drag-collapsed .primary-workspace::before,
 .window-shell.sidebar-collapsed .primary-workspace::after,
 .window-shell.sidebar-drag-collapsed .primary-workspace::after {
   opacity: 0;
@@ -1456,6 +1480,7 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-panel-threshold-animating) .workspace-panel-contents,
 body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-panel-threshold-animating) .workspace-panel-header,
 body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-panel-threshold-animating) .workspace-panel-resizer,
+body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating) .primary-workspace::before,
 body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating) .primary-workspace::after {
   transition-duration: 0ms !important;
 }
