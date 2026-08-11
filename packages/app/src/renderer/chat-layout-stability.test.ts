@@ -25,15 +25,19 @@ describe('chat layout stability', () => {
     expect(chatView).not.toContain('disclosureInteractionVersion')
   })
 
-  it('draws one workspace separator on the actual panel color boundary', async () => {
+  it('matches the workspace edge and hover highlight to the sidebar treatment', async () => {
     const styles = await readRendererFile('./styles.css')
 
     expect(styles).not.toMatch(/\.workspace-panel-resizer::before\s*\{/u)
-    expect(styles).toMatch(/\.workspace-panel::before\s*\{[\s\S]*?inset:\s*0 auto 0 0;[\s\S]*?width:\s*1px;[\s\S]*?background:\s*var\(--border\);/u)
+    expect(styles).toMatch(/\.sidebar::after,\s*\.settings-sidebar::after,\s*\.workspace-panel::before\s*\{[^}]*z-index:\s*2;[^}]*width:\s*2px;[^}]*background:\s*var\(--sidebar-resizer-active-color\);[^}]*opacity:\s*0;[^}]*transition:\s*opacity var\(--motion-fast\) var\(--motion-ease\);/u)
+    expect(styles).toMatch(/\.workspace-panel::before\s*\{[^}]*inset:\s*0 auto 0 0;/u)
+    expect(styles).not.toMatch(/\.workspace-panel::before\s*\{[^}]*background:\s*var\(--border\);/u)
     expect(styles).toMatch(/\.workspace-panel-resizer:hover \+ \.workspace-panel::before/u)
     expect(styles).toMatch(/\.workspace-panel-resizer:focus-visible \+ \.workspace-panel::before/u)
+    expect(styles).toMatch(/\.workspace-panel-resizer:hover \+ \.workspace-panel::before,[\s\S]*?body\.is-resizing-column \.window-shell\.workspace-panel-drag-live:not\(\.workspace-panel-drag-collapsed\):not\(\.workspace-panel-drag-fullscreen\) \.workspace-panel::before\s*\{[^}]*opacity:\s*1;/u)
     expect(styles).toMatch(/\.workspace-panel\s*\{[^}]*border-top-left-radius:\s*var\(--radius-ui\);/u)
     expect(styles).toMatch(/\.window-shell\.workspace-panel-fullscreen \.workspace-panel,\s*\.window-shell\.workspace-panel-drag-fullscreen \.workspace-panel\s*\{[^}]*border-top-left-radius:\s*0;/u)
+    expect(styles).toMatch(/\.window-shell\.workspace-panel-collapsed \.workspace-panel::before,[\s\S]*?\.window-shell\.workspace-panel-drag-fullscreen \.workspace-panel::before\s*\{[^}]*opacity:\s*0;/u)
   })
 
   it('keeps one native sidebar corner and a flush track until resize is active', async () => {
@@ -48,11 +52,14 @@ describe('chat layout stability', () => {
     expect(styles).not.toMatch(/\.sidebar::before\s*\{/u)
     expect(styles).not.toMatch(/\.settings-sidebar::before\s*\{/u)
     expect(styles).toMatch(/\.primary-workspace::after\s*\{[\s\S]*?inset:\s*calc\(32px \+ var\(--radius-ui\)\) auto 0 var\(--sidebar-active-width\);[\s\S]*?width:\s*1px;[\s\S]*?background:\s*var\(--bg\);[\s\S]*?opacity:\s*1;/u)
-    expect(styles).toMatch(/\.primary-workspace:has\(\.sidebar-resizer:hover\)::after/u)
-    expect(styles).toMatch(/\.primary-workspace:has\(\.sidebar-resizer:focus-visible\)::after/u)
-    expect(styles).toMatch(/\.primary-workspace:has\(\.sidebar-resizer:hover\)::after,[\s\S]*?body\.is-resizing-column \.window-shell\.sidebar-drag-live \.primary-workspace::after\s*\{[^}]*left:\s*calc\(var\(--sidebar-active-width\) - 1px\);[^}]*width:\s*3px;[^}]*background:\s*var\(--sidebar-resizer-active-color\);[^}]*opacity:\s*1;/u)
-    expect(styles).toMatch(/\.settings-sidebar-resizer::before\s*\{[^}]*top:\s*var\(--radius-ui\);[^}]*width:\s*1px;[^}]*background:\s*var\(--bg\);[^}]*opacity:\s*1;[^}]*transition:[^}]*opacity var\(--motion-fast\) var\(--motion-ease\);/u)
-    expect(styles).toMatch(/\.settings-sidebar-resizer:hover::before,[\s\S]*?body\.is-resizing-column \.settings-sidebar-resizer::before\s*\{[^}]*width:\s*3px;[^}]*background:\s*var\(--sidebar-resizer-active-color\);[^}]*opacity:\s*1;/u)
+    expect(styles).toMatch(/\.sidebar\s*\{[^}]*overflow:\s*hidden;[^}]*border-top-right-radius:\s*var\(--radius-ui\);/u)
+    expect(styles).toMatch(/\.settings-sidebar\s*\{[^}]*overflow:\s*hidden;[^}]*border-top-right-radius:\s*var\(--radius-ui\);/u)
+    expect(styles).toMatch(/\.sidebar::after,\s*\.settings-sidebar::after,\s*\.workspace-panel::before\s*\{[^}]*z-index:\s*2;[^}]*width:\s*2px;[^}]*background:\s*var\(--sidebar-resizer-active-color\);[^}]*opacity:\s*0;[^}]*transition:\s*opacity var\(--motion-fast\) var\(--motion-ease\);/u)
+    expect(styles).toMatch(/\.sidebar::after,\s*\.settings-sidebar::after\s*\{[^}]*inset:\s*0 0 0 auto;/u)
+    expect(styles).toMatch(/\.primary-workspace:has\(\.sidebar-resizer:hover\) \.sidebar::after/u)
+    expect(styles).toMatch(/\.settings-layout:has\(\.settings-sidebar-resizer:hover\) \.settings-sidebar::after/u)
+    expect(styles).toMatch(/\.primary-workspace:has\(\.sidebar-resizer:hover\) \.sidebar::after,[\s\S]*?body\.is-resizing-column \.window-shell\.sidebar-drag-live \.settings-sidebar::after,[\s\S]*?body\.is-resizing-column \.window-shell\.workspace-panel-drag-live:not\(\.workspace-panel-drag-collapsed\):not\(\.workspace-panel-drag-fullscreen\) \.workspace-panel::before\s*\{[^}]*opacity:\s*1;/u)
+    expect(styles).toMatch(/\.settings-sidebar-resizer::before\s*\{[^}]*top:\s*var\(--radius-ui\);[^}]*left:\s*calc\(50% - 0\.5px\);[^}]*width:\s*1px;[^}]*background:\s*var\(--bg\);[^}]*opacity:\s*1;/u)
   })
 
   it('keeps the composer above messages with dynamic clearance and glass material', async () => {

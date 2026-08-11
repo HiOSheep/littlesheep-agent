@@ -1168,17 +1168,40 @@ input:focus-visible {
   pointer-events: none;
   transition:
     left var(--sidebar-collapse-motion) var(--motion-ease),
-    width var(--motion-fast) var(--motion-ease),
-    background-color var(--motion-fast) var(--motion-ease),
     opacity var(--motion-fast) var(--motion-ease);
 }
 
-.primary-workspace:has(.sidebar-resizer:hover)::after,
-.primary-workspace:has(.sidebar-resizer:focus-visible)::after,
-body.is-resizing-column .window-shell.sidebar-drag-live .primary-workspace::after {
-  left: calc(var(--sidebar-active-width) - 1px);
-  width: 3px;
+.sidebar::after,
+.settings-sidebar::after,
+.workspace-panel::before {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  width: 2px;
   background: var(--sidebar-resizer-active-color);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-fast) var(--motion-ease);
+}
+
+.sidebar::after,
+.settings-sidebar::after {
+  inset: 0 0 0 auto;
+}
+
+.workspace-panel::before {
+  inset: 0 auto 0 0;
+}
+
+.primary-workspace:has(.sidebar-resizer:hover) .sidebar::after,
+.primary-workspace:has(.sidebar-resizer:focus-visible) .sidebar::after,
+.settings-layout:has(.settings-sidebar-resizer:hover) .settings-sidebar::after,
+.settings-layout:has(.settings-sidebar-resizer:focus-visible) .settings-sidebar::after,
+body.is-resizing-column .window-shell.sidebar-drag-live .sidebar::after,
+body.is-resizing-column .window-shell.sidebar-drag-live .settings-sidebar::after,
+.workspace-panel-resizer:hover + .workspace-panel::before,
+.workspace-panel-resizer:focus-visible + .workspace-panel::before,
+body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-panel-drag-collapsed):not(.workspace-panel-drag-fullscreen) .workspace-panel::before {
   opacity: 1;
 }
 
@@ -1398,6 +1421,7 @@ body.is-resizing-column .window-shell.sidebar-drag-live .primary-workspace::afte
   overflow: hidden;
   background: transparent;
   border-right: 0;
+  border-top-right-radius: var(--radius-ui);
   opacity: 1;
   transition:
     border-color var(--motion-fast) var(--motion-ease),
@@ -2626,12 +2650,6 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   cursor: default;
 }
 
-.workspace-panel-resizer:hover + .workspace-panel::before,
-.workspace-panel-resizer:focus-visible + .workspace-panel::before,
-body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel::before {
-  background: var(--border-strong);
-}
-
 .workspace-panel {
   position: relative;
   display: flex;
@@ -2657,19 +2675,6 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel
   border-top-left-radius: 0;
 }
 
-.workspace-panel::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 1px;
-  background: var(--border);
-  opacity: 1;
-  pointer-events: none;
-  transition:
-    background-color var(--motion-fast) var(--motion-ease),
-    opacity var(--workspace-panel-motion) var(--motion-ease);
-}
-
 .workspace-panel::after {
   content: "";
   position: absolute;
@@ -2692,7 +2697,9 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel
 }
 
 .window-shell.workspace-panel-collapsed .workspace-panel::before,
-.window-shell.workspace-panel-drag-collapsed .workspace-panel::before {
+.window-shell.workspace-panel-drag-collapsed .workspace-panel::before,
+.window-shell.workspace-panel-fullscreen .workspace-panel::before,
+.window-shell.workspace-panel-drag-fullscreen .workspace-panel::before {
   opacity: 0;
 }
 
@@ -7636,6 +7643,7 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel
   min-width: 0;
   overflow: hidden;
   background: transparent;
+  border-top-right-radius: var(--radius-ui);
   opacity: 1;
   transition: opacity 260ms var(--motion-ease);
 }
@@ -7691,29 +7699,16 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel
   position: absolute;
   top: var(--radius-ui);
   bottom: 0;
-  left: 50%;
+  left: calc(50% - 0.5px);
   width: 1px;
   background: var(--bg);
   opacity: 1;
-  transform: translateX(-50%);
-  transition:
-    width var(--motion-fast) var(--motion-ease),
-    background-color var(--motion-fast) var(--motion-ease),
-    opacity var(--motion-fast) var(--motion-ease);
 }
 
 .settings-sidebar-resizer:hover,
 .settings-sidebar-resizer:focus-visible,
 body.is-resizing-column .settings-sidebar-resizer {
   background: transparent;
-}
-
-.settings-sidebar-resizer:hover::before,
-.settings-sidebar-resizer:focus-visible::before,
-body.is-resizing-column .settings-sidebar-resizer::before {
-  width: 3px;
-  background: var(--sidebar-resizer-active-color);
-  opacity: 1;
 }
 
 .window-shell.sidebar-collapsed .settings-sidebar-resizer,
