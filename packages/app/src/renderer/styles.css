@@ -945,6 +945,7 @@
   --sidebar-glass-texture-width: 512px;
   --sidebar-glass-texture-height: 1536px;
   --sidebar-glass-opacity: 0.5;
+  --sidebar-resizer-active-color: rgba(255, 255, 255, 0.72);
   --settings-entry-height: 34px;
   --sidebar-width: 276px;
   --sidebar-min-readable-width: 220px;
@@ -1091,16 +1092,44 @@ input:focus-visible {
   content: "";
   position: absolute;
   inset: 32px auto 0 0;
-  z-index: 0;
+  z-index: 1;
   width: var(--sidebar-active-width);
   background-color: var(--bg);
   background-image: var(--sidebar-glass-texture);
   background-repeat: no-repeat;
   background-position: 0 0;
   background-size: var(--sidebar-glass-texture-width) var(--sidebar-glass-texture-height);
+  border-top-right-radius: var(--radius-ui);
   opacity: var(--sidebar-glass-opacity);
   pointer-events: none;
   transition: width var(--sidebar-collapse-motion) var(--motion-ease);
+}
+
+/* Paint only outside the native glass radius. The circle remains transparent,
+   so the backing color cannot darken a rectangular patch inside the sidebar.
+   The half-pixel overlap prevents fractional Windows DPI scales from leaving
+   one antialiased dot where the arc meets the solid vertical track. */
+.window-shell::after {
+  content: "";
+  position: absolute;
+  inset: 32px auto auto calc(
+    var(--sidebar-active-width) - var(--radius-ui) - var(--radius-ui)
+  );
+  z-index: 0;
+  width: calc(var(--radius-ui) + var(--radius-ui));
+  height: calc(var(--radius-ui) + var(--radius-ui));
+  background: transparent;
+  border-radius: var(--radius-circle);
+  box-shadow: 0 0 0 calc(var(--radius-ui) + var(--sidebar-resizer-width)) var(--bg);
+  clip-path: inset(
+    0 calc(0px - var(--sidebar-resizer-width))
+    calc(var(--radius-ui) - 0.5px) var(--radius-ui)
+  );
+  opacity: 1;
+  pointer-events: none;
+  transition:
+    left var(--sidebar-collapse-motion) var(--motion-ease),
+    opacity var(--motion-fast) var(--motion-ease);
 }
 
 .window-shell.sidebar-collapsed,
@@ -1116,7 +1145,7 @@ input:focus-visible {
 
 .primary-workspace {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
@@ -1126,39 +1155,20 @@ input:focus-visible {
   background: transparent;
 }
 
-.primary-workspace::before {
+.primary-workspace::after {
   content: "";
   position: absolute;
-  inset: 32px auto auto calc(var(--sidebar-active-width) - var(--radius-ui));
+  /* Fill the one-pixel layout track with the chat surface so the native
+     backdrop cannot leak through beside the rounded mask. */
+  inset: calc(32px + var(--radius-ui)) auto 0 var(--sidebar-active-width);
   z-index: 21;
-  width: calc(var(--radius-ui) + var(--sidebar-resizer-width));
-  height: var(--radius-ui);
-  /* Cut the material with the exact chat color so native acrylic cannot show
-     through the antialiased corner edge. */
-  background: radial-gradient(
-    circle at bottom left,
-    transparent calc(var(--radius-ui) - 0.5px),
-    var(--bg) calc(var(--radius-ui) + 0.5px)
-  );
+  width: 1px;
+  background: var(--bg);
   opacity: 1;
   pointer-events: none;
   transition:
     left var(--sidebar-collapse-motion) var(--motion-ease),
-    opacity var(--motion-fast) var(--motion-ease);
-}
-
-.primary-workspace::after {
-  content: "";
-  position: absolute;
-  /* Leave the rounded corner clear below the native-height titlebar. */
-  inset: calc(32px + var(--radius-ui)) auto 0 var(--sidebar-active-width);
-  z-index: 21;
-  width: 1px;
-  background: var(--border);
-  opacity: var(--sidebar-resizer-opacity);
-  pointer-events: none;
-  transition:
-    left var(--sidebar-collapse-motion) var(--motion-ease),
+    width var(--motion-fast) var(--motion-ease),
     background-color var(--motion-fast) var(--motion-ease),
     opacity var(--motion-fast) var(--motion-ease);
 }
@@ -1166,11 +1176,14 @@ input:focus-visible {
 .primary-workspace:has(.sidebar-resizer:hover)::after,
 .primary-workspace:has(.sidebar-resizer:focus-visible)::after,
 body.is-resizing-column .window-shell.sidebar-drag-live .primary-workspace::after {
-  background: var(--border-strong);
+  left: calc(var(--sidebar-active-width) - 1px);
+  width: 3px;
+  background: var(--sidebar-resizer-active-color);
+  opacity: 1;
 }
 
-.window-shell.sidebar-collapsed .primary-workspace::before,
-.window-shell.sidebar-drag-collapsed .primary-workspace::before,
+.window-shell.sidebar-collapsed::after,
+.window-shell.sidebar-drag-collapsed::after,
 .window-shell.sidebar-collapsed .primary-workspace::after,
 .window-shell.sidebar-drag-collapsed .primary-workspace::after {
   opacity: 0;
@@ -1490,11 +1503,11 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
 body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating) .sidebar-resizer,
 body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating) .settings-sidebar-resizer,
 body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating)::before,
+body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating)::after,
 body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-panel-threshold-animating) .workspace-panel,
 body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-panel-threshold-animating) .workspace-panel-contents,
 body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-panel-threshold-animating) .workspace-panel-header,
 body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-panel-threshold-animating) .workspace-panel-resizer,
-body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating) .primary-workspace::before,
 body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating) .primary-workspace::after {
   transition-duration: 0ms !important;
 }
@@ -7676,14 +7689,15 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel
 .settings-sidebar-resizer::before {
   content: "";
   position: absolute;
-  top: 0;
+  top: var(--radius-ui);
   bottom: 0;
   left: 50%;
   width: 1px;
-  background: var(--border);
+  background: var(--bg);
   opacity: 1;
   transform: translateX(-50%);
   transition:
+    width var(--motion-fast) var(--motion-ease),
     background-color var(--motion-fast) var(--motion-ease),
     opacity var(--motion-fast) var(--motion-ease);
 }
@@ -7697,7 +7711,8 @@ body.is-resizing-column .settings-sidebar-resizer {
 .settings-sidebar-resizer:hover::before,
 .settings-sidebar-resizer:focus-visible::before,
 body.is-resizing-column .settings-sidebar-resizer::before {
-  background: var(--border-strong);
+  width: 3px;
+  background: var(--sidebar-resizer-active-color);
   opacity: 1;
 }
 

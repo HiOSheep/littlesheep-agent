@@ -4,6 +4,7 @@ import { app, BrowserWindow } from 'electron'
 import { join } from 'node:path'
 import type { DesktopClosePolicy } from '@littlesheep/config'
 import { resolveAppIconPath } from './app-icon.js'
+import { APPLICATION_ZOOM_FACTOR, isApplicationZoomShortcut } from './application-zoom.js'
 import { decideLastWindowClose } from './close-policy.js'
 import { configureEmbeddedBrowserWindow } from './embedded-browser.js'
 import type { RunActivityMonitor } from './run-activity-monitor.js'
@@ -137,6 +138,7 @@ export class LittleSheepDesktopShell {
         sandbox: false,
         backgroundThrottling: true,
         webviewTag: true,
+        zoomFactor: APPLICATION_ZOOM_FACTOR,
       },
     })
 
@@ -168,13 +170,25 @@ export class LittleSheepDesktopShell {
     })
     win.webContents.on('before-input-event', (event, input) => {
       if (input.type !== 'keyDown') return
+      if (isApplicationZoomShortcut(input)) {
+        win.webContents.setZoomFactor(APPLICATION_ZOOM_FACTOR)
+        event.preventDefault()
+        return
+      }
       if (input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i')) {
         win.webContents.toggleDevTools()
         event.preventDefault()
       }
     })
+    win.webContents.on('zoom-changed', (event) => {
+      event.preventDefault()
+      win.webContents.setZoomFactor(APPLICATION_ZOOM_FACTOR)
+    })
     win.once('ready-to-show', showInitialWindow)
-    win.webContents.once('did-finish-load', showInitialWindow)
+    win.webContents.once('did-finish-load', () => {
+      win.webContents.setZoomFactor(APPLICATION_ZOOM_FACTOR)
+      showInitialWindow()
+    })
     showFallbackTimer = setTimeout(showInitialWindow, 4000)
     win.once('closed', () => {
       cancelInitialShow()
