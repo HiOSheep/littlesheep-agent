@@ -939,6 +939,8 @@
   --settings-origin-x: calc(var(--settings-entry-left) + (var(--settings-entry-collapsed-width) / 2));
   --settings-origin-y: calc(100% - var(--settings-entry-bottom) - (var(--settings-entry-height) / 2));
   --settings-reveal-motion: 750ms;
+  --settings-sidebar-exit-content-motion: var(--motion-fast);
+  --settings-sidebar-exit-reveal-delay: var(--motion-base);
   --sidebar-glass-texture: url("./assets/sidebar-wash-dithered.png");
   --sidebar-glass-texture-width: 512px;
   --sidebar-glass-texture-height: 1536px;
@@ -1405,14 +1407,26 @@ body.is-resizing-column .window-shell.sidebar-drag-live .primary-workspace::afte
     opacity var(--sidebar-collapse-motion) var(--motion-ease);
 }
 
-/* The settings sidebar is translucent, so the ordinary sidebar stays hidden
-   for the full presence lifecycle instead of showing through during exit. */
+/* Keep the ordinary sidebar hidden while settings enters or remains open. */
 .window-shell.settings-open .primary-workspace .sidebar-contents,
-.window-shell:has(> .presence-layer .settings-workspace) .primary-workspace .sidebar-contents {
+.window-shell:has(> .presence-layer:not(.presence-exiting) .settings-workspace) .primary-workspace .sidebar-contents {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
   transition: none;
+}
+
+/* During exit, clear the settings labels first and reveal the ordinary labels
+   only after that short fade has completed. The settings surface itself keeps
+   shrinking for the longer circular transition, but its text cannot overlap
+   the sidebar underneath. */
+.window-shell:has(> .presence-layer.presence-exiting .settings-workspace) .primary-workspace .sidebar-contents {
+  opacity: var(--sidebar-content-opacity);
+  visibility: visible;
+  pointer-events: none;
+  transition:
+    opacity var(--sidebar-collapse-motion) var(--motion-ease) var(--settings-sidebar-exit-reveal-delay),
+    visibility 0s linear var(--settings-sidebar-exit-reveal-delay);
 }
 
 .window-shell.sidebar-collapsed .sidebar,
@@ -7626,6 +7640,14 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel
   opacity: var(--sidebar-content-opacity);
   transition:
     opacity var(--sidebar-collapse-motion) var(--motion-ease);
+}
+
+.presence-layer.presence-exiting .settings-sidebar-contents {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity var(--settings-sidebar-exit-content-motion) var(--motion-ease),
+    visibility 0s linear var(--settings-sidebar-exit-content-motion);
 }
 
 .window-shell.sidebar-collapsed .settings-sidebar,

@@ -116,7 +116,10 @@ describe('chat layout stability', () => {
 
     const sidebarView = await readRendererFile('./app-shell/sidebar-view.tsx')
 
-    expect(styles).toMatch(/\.window-shell\.settings-open \.primary-workspace \.sidebar-contents,\s*\.window-shell:has\(> \.presence-layer \.settings-workspace\) \.primary-workspace \.sidebar-contents\s*\{[^}]*opacity:\s*0;[^}]*visibility:\s*hidden;[^}]*pointer-events:\s*none;[^}]*transition:\s*none;/u)
+    expect(styles).toMatch(/\.window-shell\.settings-open \.primary-workspace \.sidebar-contents,\s*\.window-shell:has\(> \.presence-layer:not\(\.presence-exiting\) \.settings-workspace\) \.primary-workspace \.sidebar-contents\s*\{[^}]*opacity:\s*0;[^}]*visibility:\s*hidden;[^}]*pointer-events:\s*none;[^}]*transition:\s*none;/u)
+    expect(styles).not.toMatch(/\.window-shell:has\(> \.presence-layer \.settings-workspace\) \.primary-workspace \.sidebar-contents/u)
+    expect(styles).toMatch(/\.window-shell:has\(> \.presence-layer\.presence-exiting \.settings-workspace\) \.primary-workspace \.sidebar-contents\s*\{[^}]*opacity:\s*var\(--sidebar-content-opacity\);[^}]*visibility:\s*visible;[^}]*pointer-events:\s*none;[^}]*transition:[\s\S]*?var\(--settings-sidebar-exit-reveal-delay\)/u)
+    expect(styles).toMatch(/\.presence-layer\.presence-exiting \.settings-sidebar-contents\s*\{[^}]*opacity:\s*0;[^}]*visibility:\s*hidden;[^}]*transition:[\s\S]*?var\(--settings-sidebar-exit-content-motion\)/u)
     expect(styles).not.toMatch(/\.window-shell\.settings-open \.primary-workspace\s*\{[^}]*display:\s*none;/u)
     expect(styles).toMatch(/\.presence-layer\.visible \.settings-workspace\s*\{[^}]*clip-path:\s*circle\(150vmax at var\(--settings-origin-x\) var\(--settings-origin-y\)\);/u)
     expect(sidebarView).toContain('onClick={() => {')
