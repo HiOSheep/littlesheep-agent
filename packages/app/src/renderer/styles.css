@@ -1105,10 +1105,11 @@ input:focus-visible {
   transition: width var(--sidebar-collapse-motion) var(--motion-ease);
 }
 
-/* Paint only outside the native glass radius. The circle remains transparent,
-   so the backing color cannot darken a rectangular patch inside the sidebar.
-   The half-pixel overlap prevents fractional Windows DPI scales from leaving
-   one antialiased dot where the arc meets the solid vertical track. */
+/* Paint only outside the native glass radius. Keep the circle transparent so
+   this backing layer cannot darken the glass inside the rounded sidebar. The
+   clip edge sits one layout track past the panel boundary; keeping the shadow
+   itself at exactly one radius prevents that off-panel edge from becoming a
+   visible grey compositor line at fractional Windows DPI scales. */
 .window-shell::after {
   content: "";
   position: absolute;
@@ -1120,7 +1121,7 @@ input:focus-visible {
   height: calc(var(--radius-ui) + var(--radius-ui));
   background: transparent;
   border-radius: var(--radius-circle);
-  box-shadow: 0 0 0 calc(var(--radius-ui) + var(--sidebar-resizer-width)) var(--bg);
+  box-shadow: 0 0 0 var(--radius-ui) var(--bg);
   clip-path: inset(
     0 calc(0px - var(--sidebar-resizer-width))
     calc(var(--radius-ui) - 0.5px) var(--radius-ui)
@@ -1567,12 +1568,12 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   min-height: 28px;
   gap: 8px;
   padding: 0 7px;
-  color: var(--muted);
+  color: var(--text);
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-ui);
   font-size: 13px;
-  font-weight: 720;
+  font-weight: 400;
   line-height: 18px;
   text-align: left;
 }
@@ -1580,7 +1581,7 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
 .sidebar-nav-button:hover,
 .sidebar-nav-button:focus-visible,
 .sidebar-nav-button.active {
-  color: var(--text-strong);
+  color: var(--text);
   background: var(--control-hover);
   border-color: var(--border-strong);
 }
@@ -1705,13 +1706,13 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   min-width: 0;
   gap: 7px;
   padding: 0 6px;
-  color: var(--muted);
+  color: var(--text);
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-ui);
   cursor: pointer;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 400;
   line-height: 26px;
   transition:
     background-color var(--motion-fast) var(--motion-ease),
@@ -1760,7 +1761,7 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   place-items: center;
   width: var(--sidebar-action-size);
   height: var(--sidebar-action-size);
-  color: var(--muted);
+  color: var(--text);
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-ui);
@@ -1852,7 +1853,7 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   min-width: 0;
   min-height: 30px;
   padding: 0 8px;
-  color: var(--muted);
+  color: var(--text);
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-ui);
@@ -1902,7 +1903,7 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   display: block;
   width: 7px;
   height: 7px;
-  color: var(--muted-2);
+  color: var(--text);
   font-size: 0;
   border-right: 1.5px solid currentColor;
   border-bottom: 1.5px solid currentColor;
@@ -2079,7 +2080,7 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   padding: 0 11px 0 18px;
   border: 1px solid transparent;
   border-radius: var(--radius-ui);
-  color: var(--muted);
+  color: var(--text);
   cursor: pointer;
   font-size: 13px;
   line-height: 1;
@@ -2098,7 +2099,7 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
 }
 
 .session-item.active {
-  color: var(--text-strong);
+  color: var(--text);
   background: var(--control);
   border-color: transparent;
 }
@@ -2161,6 +2162,7 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
 .project-row-title {
   min-width: 0;
   overflow: hidden;
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2169,7 +2171,7 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   display: inline-block;
   width: 6px;
   height: 6px;
-  color: var(--muted-2);
+  color: var(--text);
   border-right: 1.4px solid currentColor;
   border-bottom: 1.4px solid currentColor;
   transform: translateX(1px) rotate(-45deg);
@@ -2220,6 +2222,7 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   grid-column: 1;
   grid-row: 1;
   padding-block: 1px;
+  font-weight: 400;
   line-height: 18px;
   white-space: nowrap;
   overflow: hidden;
@@ -7651,6 +7654,9 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
 .settings-sidebar-contents {
   position: relative;
   z-index: 1;
+  /* Keep the settings rail on the same three-level type palette as the
+     ordinary sidebar. Brand titles opt back into --text-strong below. */
+  color: var(--text);
   display: flex;
   flex-direction: column;
   width: max(var(--sidebar-width), var(--sidebar-min-readable-width));
@@ -7745,9 +7751,9 @@ body.is-resizing-column .settings-sidebar-resizer {
 .settings-nav-group-title {
   min-height: 18px;
   padding: 0 8px;
-  color: var(--muted-2);
+  color: var(--text);
   font-size: 11px;
-  font-weight: 820;
+  font-weight: 400;
   line-height: 18px;
 }
 
@@ -7758,7 +7764,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   min-height: 44px;
   gap: 10px;
   padding: 0 8px;
-  color: var(--muted);
+  color: var(--text);
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-ui);
@@ -7773,7 +7779,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 .settings-nav-item:hover,
 .settings-nav-item:focus-visible,
 .settings-nav-item.active {
-  color: var(--text-strong);
+  color: var(--text);
   background: var(--control-hover);
   border-color: var(--border-strong);
 }
@@ -7788,8 +7794,9 @@ body.is-resizing-column .settings-sidebar-resizer {
 .settings-nav-item strong {
   min-width: 0;
   overflow: hidden;
+  color: var(--text);
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -7811,7 +7818,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   width: 7px;
   height: 7px;
   flex: 0 0 auto;
-  color: var(--muted-2);
+  color: var(--text);
   border-right: 1.5px solid currentColor;
   border-bottom: 1.5px solid currentColor;
   transform: rotate(-45deg);

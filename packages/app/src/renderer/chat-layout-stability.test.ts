@@ -45,7 +45,8 @@ describe('chat layout stability', () => {
 
     expect(styles).not.toMatch(/\.sidebar-resizer::before\s*\{/u)
     expect(styles).toMatch(/\.window-shell::before\s*\{[\s\S]*?inset:\s*32px auto 0 0;[\s\S]*?z-index:\s*1;[\s\S]*?width:\s*var\(--sidebar-active-width\);[\s\S]*?background-image:\s*var\(--sidebar-glass-texture\);[\s\S]*?border-top-right-radius:\s*var\(--radius-ui\);/u)
-    expect(styles).toMatch(/\.window-shell::after\s*\{[^}]*inset:\s*32px auto auto calc\([\s\S]*?var\(--sidebar-active-width\) - var\(--radius-ui\) - var\(--radius-ui\)[\s\S]*?\);[^}]*z-index:\s*0;[^}]*width:\s*calc\(var\(--radius-ui\) \+ var\(--radius-ui\)\);[^}]*height:\s*calc\(var\(--radius-ui\) \+ var\(--radius-ui\)\);[^}]*background:\s*transparent;[^}]*border-radius:\s*var\(--radius-circle\);[^}]*box-shadow:\s*0 0 0 calc\(var\(--radius-ui\) \+ var\(--sidebar-resizer-width\)\) var\(--bg\);[^}]*clip-path:\s*inset\([\s\S]*?calc\(var\(--radius-ui\) - 0\.5px\) var\(--radius-ui\)[\s\S]*?\);/u)
+    expect(styles).toMatch(/\.window-shell::after\s*\{[^}]*inset:\s*32px auto auto calc\([\s\S]*?var\(--sidebar-active-width\) - var\(--radius-ui\) - var\(--radius-ui\)[\s\S]*?\);[^}]*z-index:\s*0;[^}]*width:\s*calc\(var\(--radius-ui\) \+ var\(--radius-ui\)\);[^}]*height:\s*calc\(var\(--radius-ui\) \+ var\(--radius-ui\)\);[^}]*background:\s*transparent;[^}]*border-radius:\s*var\(--radius-circle\);[^}]*box-shadow:\s*0 0 0 var\(--radius-ui\) var\(--bg\);[^}]*clip-path:\s*inset\(\s*0 calc\(0px - var\(--sidebar-resizer-width\)\)\s*calc\(var\(--radius-ui\) - 0\.5px\) var\(--radius-ui\)\s*\);/u)
+    expect(styles).not.toMatch(/\.window-shell::after\s*\{[^}]*box-shadow:[^;]*var\(--sidebar-resizer-width\)/u)
     expect(styles).not.toMatch(/\.primary-workspace::before\s*\{/u)
     expect(styles).not.toMatch(/\.window-shell::after\s*\{[^}]*radial-gradient/u)
     expect(styles).not.toMatch(/\.window-titlebar::before\s*\{/u)

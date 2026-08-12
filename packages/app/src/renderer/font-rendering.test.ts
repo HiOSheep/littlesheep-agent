@@ -103,13 +103,51 @@ describe('frontend font rendering baseline', () => {
     expect(label).toContain('overflow: hidden')
   })
 
+  it('keeps brand titles bright while sidebar navigation is a softer white', () => {
+    const sidebar = ruleBody('.sidebar-contents')
+    const settingsSidebar = ruleBody('.settings-sidebar-contents')
+
+    expect(sidebar).not.toContain('--text: var(--text-strong)')
+    expect(sidebar).not.toContain('--muted: var(--text-strong)')
+    expect(sidebar).not.toContain('--muted-2: var(--text-strong)')
+    expect(settingsSidebar).not.toContain('--text: var(--text-strong)')
+    expect(settingsSidebar).not.toContain('--muted-2: var(--text-strong)')
+    expect(settingsSidebar).not.toContain('--muted: var(--text-strong)')
+    expect(settingsSidebar).toContain('color: var(--text)')
+    expect(ruleBody('.sidebar-nav-button')).toContain('color: var(--text)')
+    expect(ruleBody('.sidebar-section-toggle')).toContain('color: var(--text)')
+    expect(ruleBody('.session-item')).toContain('color: var(--text)')
+    expect(ruleBody('.project-row-arrow')).toContain('color: var(--text)')
+    expect(ruleBody('.settings-nav-group-title')).toContain('color: var(--text)')
+    expect(ruleBody('.settings-nav-item')).toContain('color: var(--text)')
+    expect(ruleBody('.settings-nav-item strong')).toContain('color: var(--text)')
+    expect(ruleBody('.settings-nav-arrow')).toContain('color: var(--text)')
+    expect(ruleBody('.settings-nav-item small')).toContain('color: var(--muted)')
+    expect(ruleBody('.brand-subtitle')).toContain('color: var(--muted)')
+    expect(ruleBody('.brand-title')).toContain('color: var(--text-strong)')
+    expect(ruleBody('.sidebar-svg-icon')).toContain('stroke: currentColor')
+  })
+
   it('keeps session titles inside a padded line box before clipping', () => {
     const title = ruleBody('.session-title')
 
     expect(title).toContain('display: block')
     expect(title).toContain('padding-block: 1px')
+    expect(title).toContain('font-weight: 400')
     expect(title).toContain('line-height: 18px')
     expect(title).toContain('overflow: hidden')
+  })
+
+  it('uses the regular conversation-title weight across sidebar navigation copy', () => {
+    for (const selector of [
+      '.sidebar-nav-button',
+      '.sidebar-section-toggle',
+      '.project-row-title',
+      '.settings-nav-group-title',
+      '.settings-nav-item strong',
+    ]) {
+      expect(ruleBody(selector)).toContain('font-weight: 400')
+    }
   })
 
   it('pixel-aligns centered settings and direct-module text surfaces', () => {
