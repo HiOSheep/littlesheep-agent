@@ -87,6 +87,14 @@ export class RunRouter {
     } catch (error) {
       console.error(`[run-checkpoints] startup lease recovery failed: ${(error as Error).message}`)
     }
+    try {
+      const reconciled = await initialRunner.runCheckpoints?.reconcileCompletedRuns(
+        'startup reconciled checkpoint with successful execution log',
+      ) ?? 0
+      if (reconciled > 0) console.info(`[run-checkpoints] sealed ${reconciled} checkpoint(s) from successful execution logs`)
+    } catch (error) {
+      console.error(`[run-checkpoints] startup completion reconciliation failed: ${(error as Error).message}`)
+    }
     return router
   }
 

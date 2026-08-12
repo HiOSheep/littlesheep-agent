@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { asSessionId, type RunCheckpoint } from '@littlesheep/types'
 import { RunCheckpointController } from './run-checkpoint-controller.js'
+import { createRunCheckpointControl } from './run-checkpoint-control.js'
 import { RunCheckpointDispositionStore } from './run-checkpoint-disposition-store.js'
 import { RunCheckpointStore } from './run-checkpoint-store.js'
 
@@ -61,6 +62,43 @@ async function stores() {
 }
 
 describe('RunCheckpointController', () => {
+  it('reconciles a successful execution log into a completed checkpoint disposition', async () => {
+    const state = await stores()
+    try {
+      await state.checkpointStore.write(checkpoint('completed-head'))
+      await state.dispositionStore.claimResume('completed-head', 'stale resume', 'stale-resume-run')
+      await state.dispositionStore.interruptResume(
+        'completed-head',
+        'stale-resume-run',
+        'application restarted',
+      )
+      const readExecutionLog = vi.fn(async (runId: string) => ({
+        runId,
+        status: 'ok',
+        runCheckpointId: 'completed-head',
+      }))
+      const control = createRunCheckpointControl(
+        state.controller,
+        state.checkpointStore,
+        { read: readExecutionLog } as never,
+        'test/model',
+      )!
+
+      expect(await control.reconcileCompletedRuns('startup reconciliation')).toBe(1)
+      expect(await state.dispositionStore.read('completed-head')).toMatchObject({
+        status: 'completed',
+        resultStatus: 'ok',
+      })
+      expect((await state.controller.inspect('completed-head', 'test/model'))?.resumable).toBe(false)
+      expect(await control.reconcileCompletedRuns('duplicate startup reconciliation')).toBe(0)
+      expect(readExecutionLog).toHaveBeenCalledWith('source-completed-head')
+    } finally {
+      state.checkpointStore.dispose()
+      state.dispositionStore.dispose()
+      await rm(state.dir, { recursive: true, force: true })
+    }
+  })
+
   it('keeps inspect side-effect free and reports inspect-only legacy checkpoints', async () => {
     const state = await stores()
     try {

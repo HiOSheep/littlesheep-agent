@@ -23,11 +23,11 @@ export function CheckpointRecovery({ recovery }: { recovery: CheckpointRecoveryC
       <button
         type="button"
         className="checkpoint-recovery-trigger"
-        title="查看未完成任务"
+        title={recovery.busy === 'resuming' ? '查看正在恢复的任务' : '查看未完成任务'}
         onClick={recovery.open}
       >
         <RefreshIcon />
-        <span>待恢复任务</span>
+        <span>{recovery.stopRequested ? '正在停止恢复' : recovery.busy === 'resuming' ? '任务恢复中' : '待恢复任务'}</span>
         <strong>{recovery.checkpoints.length}</strong>
       </button>
     )}
@@ -45,7 +45,7 @@ export function CheckpointRecovery({ recovery }: { recovery: CheckpointRecoveryC
               <small>启动恢复</small>
               <h2>未完成任务</h2>
             </span>
-            <button type="button" aria-label="稍后处理" onClick={recovery.dismiss} disabled={recovery.busy === 'resuming'}>
+            <button type="button" aria-label="稍后处理" onClick={recovery.dismiss}>
               <CloseIcon />
             </button>
           </header>
@@ -108,8 +108,8 @@ export function CheckpointRecovery({ recovery }: { recovery: CheckpointRecoveryC
                 <div className="checkpoint-recovery-progress" role="status" aria-live="polite">
                   <span className="checkpoint-recovery-spinner" aria-hidden="true" />
                   <span>
-                    <strong>{recovery.progress.label}</strong>
-                    {recovery.progress.detail && <small>{recovery.progress.detail}</small>}
+                    <strong>{recovery.stopRequested ? '正在停止并保存执行现场' : recovery.progress.label}</strong>
+                    {!recovery.stopRequested && recovery.progress.detail && <small>{recovery.progress.detail}</small>}
                   </span>
                 </div>
               )}
@@ -134,7 +134,15 @@ export function CheckpointRecovery({ recovery }: { recovery: CheckpointRecoveryC
                     <button type="button" className="danger" onClick={() => void recovery.abandonSelected()}>确认放弃</button>
                   </div>
                 ) : recovery.busy === 'resuming' ? (
-                  <button type="button" className="danger" onClick={recovery.stopRecovery}>停止恢复</button>
+                  <button
+                    type="button"
+                    className="danger"
+                    onClick={recovery.stopRecovery}
+                    disabled={recovery.stopRequested}
+                    aria-busy={recovery.stopRequested}
+                  >
+                    {recovery.stopRequested ? '正在停止…' : '停止恢复'}
+                  </button>
                 ) : (
                   <>
                     <button type="button" onClick={() => setConfirmAbandon(true)} disabled={Boolean(recovery.busy)}>放弃任务</button>

@@ -85,6 +85,7 @@ export function checkpointBlockerLabel(reason: string): string {
   if (reason.includes('without verified completion evidence')) return '存在无法确认是否完成的外部操作，LS 不会自动重放。'
   if (reason.includes('active resume lease')) return '这个任务正在另一个恢复流程中执行。'
   if (reason.includes('already been resumed')) return '这个检查点已经恢复过。'
+  if (reason.includes('source run has already completed')) return '原任务已经完成，这个检查点不需要恢复。'
   if (reason.includes('explicitly abandoned')) return '这个检查点已经被放弃。'
   return reason
 }

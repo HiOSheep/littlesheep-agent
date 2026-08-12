@@ -61,11 +61,12 @@ describe('run checkpoint renderer view', () => {
     const completed = inspection('new-head', 'source-1', {
       version: 1,
       checkpointId: 'new-head',
-      status: 'resumed',
+      status: 'completed',
       decidedAt: '2026-07-29T10:02:00.000Z',
       updatedAt: '2026-07-29T10:02:00.000Z',
       reason: 'completed',
-      history: [{ status: 'resumed', at: '2026-07-29T10:02:00.000Z', reason: 'completed' }],
+      resultStatus: 'ok',
+      history: [{ status: 'completed', at: '2026-07-29T10:02:00.000Z', reason: 'completed', resultStatus: 'ok' }],
     })
     const old = inspection('old-head', 'source-1')
     const pending = inspection('other-head', 'source-2')

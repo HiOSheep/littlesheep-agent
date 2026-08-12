@@ -91,6 +91,7 @@ async function createFixture(
   const config = structuredClone(DEFAULT_CONFIG)
   config.agents.defaults.workspace = workplaceDir
   const inspection = checkpointInspection(dataDir)
+  const reconcileCompletedRuns = vi.fn(async () => 1)
   const recoverInterruptedResumes = vi.fn(async () => 1)
   const abandon = vi.fn(async () => ({
     kind: 'written' as const,
@@ -120,6 +121,7 @@ async function createFixture(
       list: vi.fn(async () => [inspection]),
       inspect: vi.fn(async (id: string) => id === inspection.checkpoint.id ? inspection : null),
       abandon,
+      reconcileCompletedRuns,
       recoverInterruptedResumes,
       diagnostics: () => ({
         rootDir: join(dataDir, 'run-checkpoints'),
@@ -154,6 +156,7 @@ async function createFixture(
     abandon,
     dataDir,
     inspection,
+    reconcileCompletedRuns,
     recoverInterruptedResumes,
     resumeCheckpoint,
     server,
@@ -166,9 +169,14 @@ describe('run checkpoint Local App API', () => {
     const fixture = await createFixture()
     const base = `http://127.0.0.1:${fixture.server.port}`
     try {
+      expect(fixture.reconcileCompletedRuns).toHaveBeenCalledWith(
+        'startup reconciled checkpoint with successful execution log',
+      )
       expect(fixture.recoverInterruptedResumes).toHaveBeenCalledWith(
         'application restarted before checkpoint continuation completed',
       )
+      expect(fixture.recoverInterruptedResumes.mock.invocationCallOrder[0])
+        .toBeLessThan(fixture.reconcileCompletedRuns.mock.invocationCallOrder[0]!)
 
       const listResponse = await fetch(`${base}${LOCAL_APP_API_ROUTES.runCheckpoints}`)
       expect(listResponse.status).toBe(200)

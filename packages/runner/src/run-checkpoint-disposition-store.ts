@@ -122,6 +122,53 @@ export class RunCheckpointDispositionStore {
     })
   }
 
+  /** Seal an intermediate checkpoint after its original source run completed successfully. */
+  async completeSourceRun(
+    checkpointId: string,
+    reason: string,
+  ): Promise<RunCheckpointDispositionOutcome> {
+    this.ensureUsable()
+    const id = normalizeId(checkpointId)
+    const normalizedReason = boundedReason(reason)
+    return this.enqueueWrite(async () => {
+      const existing = await this.readUnsafe(id)
+      if (existing?.status === 'completed') return { kind: 'duplicate', disposition: clone(existing) }
+      if (existing?.status === 'interrupted') {
+        return this.update(existing, {
+          status: 'completed',
+          reason: normalizedReason,
+          resultStatus: 'ok',
+        })
+      }
+      if (existing) {
+        return {
+          kind: 'conflict',
+          disposition: clone(existing),
+          message: `checkpoint is already ${existing.status}`,
+        }
+      }
+      const now = this.now().toISOString()
+      const disposition: RunCheckpointDisposition = {
+        version: RUN_CHECKPOINT_DISPOSITION_VERSION,
+        checkpointId: id,
+        status: 'completed',
+        decidedAt: now,
+        updatedAt: now,
+        reason: normalizedReason,
+        resultStatus: 'ok',
+        history: [{
+          status: 'completed',
+          at: now,
+          reason: normalizedReason,
+          resultStatus: 'ok',
+        }],
+      }
+      await this.writeAtomic(disposition)
+      await this.pruneUnsafe()
+      return { kind: 'written', disposition: clone(disposition) }
+    })
+  }
+
   /** Release a resume lease that belonged to a process which no longer exists. */
   async interruptResume(
     checkpointId: string,
@@ -155,6 +202,7 @@ export class RunCheckpointDispositionStore {
       const existing = await this.readUnsafe(id)
       if (existing?.status === 'abandoned') return { kind: 'duplicate', disposition: clone(existing) }
       if (existing?.status === 'resumed') return { kind: 'conflict', disposition: clone(existing), message: 'checkpoint has already been resumed' }
+      if (existing?.status === 'completed') return { kind: 'conflict', disposition: clone(existing), message: 'checkpoint source run has already completed' }
       if (!existing) {
         const now = this.now().toISOString()
         const disposition: RunCheckpointDisposition = {
@@ -301,7 +349,7 @@ function validateDisposition(value: unknown, expectedId: string): RunCheckpointD
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid disposition')
   const record = value as Record<string, unknown>
   if (record.version !== RUN_CHECKPOINT_DISPOSITION_VERSION || record.checkpointId !== expectedId) throw new Error('invalid disposition version or id')
-  if (record.status !== 'resuming' && record.status !== 'interrupted' && record.status !== 'resumed' && record.status !== 'abandoned') throw new Error('invalid disposition status')
+  if (record.status !== 'resuming' && record.status !== 'interrupted' && record.status !== 'resumed' && record.status !== 'completed' && record.status !== 'abandoned') throw new Error('invalid disposition status')
   const history = Array.isArray(record.history) ? record.history : []
   if (history.length === 0 || history.length > MAX_HISTORY) throw new Error('invalid disposition history')
   return {
@@ -318,7 +366,7 @@ function validateDisposition(value: unknown, expectedId: string): RunCheckpointD
     history: history.map((item) => {
       if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error('invalid disposition history entry')
       const entry = item as Record<string, unknown>
-      if (entry.status !== 'resuming' && entry.status !== 'interrupted' && entry.status !== 'resumed' && entry.status !== 'abandoned') throw new Error('invalid disposition history status')
+      if (entry.status !== 'resuming' && entry.status !== 'interrupted' && entry.status !== 'resumed' && entry.status !== 'completed' && entry.status !== 'abandoned') throw new Error('invalid disposition history status')
       return {
         status: entry.status,
         at: validTime(entry.at),

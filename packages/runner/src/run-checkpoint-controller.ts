@@ -122,6 +122,19 @@ export class RunCheckpointController {
     )
   }
 
+  async completeSourceRun(
+    checkpointId: string,
+    sourceRunId: string,
+    reason: string,
+  ): Promise<RunCheckpointDispositionOutcome> {
+    const checkpoint = await this.checkpointStore.read(checkpointId)
+    if (!checkpoint) throw new Error(`run checkpoint not found: ${checkpointId}`)
+    if (String(checkpoint.runId) !== sourceRunId) {
+      throw new Error(`run checkpoint ${checkpointId} does not belong to source run ${sourceRunId}`)
+    }
+    return this.dispositionStore.completeSourceRun(checkpointId, reason)
+  }
+
   async interruptResume(
     checkpointId: string,
     resumeRunId: string,
@@ -156,6 +169,7 @@ function inspectCheckpoint(
   }
   if (disposition?.status === 'resuming') reasons.push('checkpoint has an active resume lease')
   if (disposition?.status === 'resumed') reasons.push('checkpoint has already been resumed')
+  if (disposition?.status === 'completed') reasons.push('checkpoint source run has already completed')
   if (disposition?.status === 'abandoned') reasons.push('checkpoint was explicitly abandoned')
   return {
     checkpoint,

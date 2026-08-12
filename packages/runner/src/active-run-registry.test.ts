@@ -130,4 +130,29 @@ describe('ActiveRunRegistry', () => {
     });
     registry.dispose();
   });
+
+  it('turns an appended interrupt event into an immediate host abort while retaining the queued audit event', () => {
+    const interrupt = vi.fn();
+    const registry = new ActiveRunRegistry({ queueOptions: { maxEventAgeMs: null } });
+    registry.register('run-event-interrupt', asSessionId('session-event-interrupt'), { interrupt });
+
+    const input = {
+      id: 'interrupt-event-1',
+      type: 'interrupt_requested' as const,
+      source: 'app' as const,
+      payload: { reason: 'stop checkpoint recovery now' },
+    };
+    expect(registry.append('run-event-interrupt', input)).toMatchObject({
+      kind: 'accepted',
+      event: { type: 'interrupt_requested', status: 'queued' },
+    });
+    expect(interrupt).toHaveBeenCalledTimes(1);
+    expect(interrupt).toHaveBeenCalledWith('stop checkpoint recovery now');
+    expect(registry.list()[0]).toMatchObject({ controlStatus: 'interrupt_requested' });
+    expect(registry.summary('run-event-interrupt')).toMatchObject({ queued: 1 });
+
+    expect(registry.append('run-event-interrupt', input)).toMatchObject({ kind: 'duplicate' });
+    expect(interrupt).toHaveBeenCalledTimes(1);
+    registry.dispose();
+  });
 });

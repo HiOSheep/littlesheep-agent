@@ -206,7 +206,12 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         dispositionStore: infra.runCheckpointDispositionStore,
       })
     : undefined;
-  const runCheckpoints = createRunCheckpointControl(checkpointController, infra.runCheckpointStore, model);
+  const runCheckpoints = createRunCheckpointControl(
+    checkpointController,
+    infra.runCheckpointStore,
+    infra.executionLogStore,
+    model,
+  );
 
   const RUN_TIMEOUT_MS = resolveRunTimeoutMs(opts.runTimeoutMs, opts.config.agents.defaults.timeoutSeconds);
 
@@ -484,6 +489,22 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           });
         },
       });
+      if (result.status === 'ok' && runCheckpointId && checkpointController) {
+        try {
+          const outcome = await checkpointController.completeSourceRun(
+            runCheckpointId,
+            runId,
+            'source run completed successfully',
+          );
+          if (outcome.kind === 'conflict') {
+            opts.log?.('warn', `runner: completed run checkpoint disposition conflict: ${outcome.message}`);
+          }
+        } catch (error) {
+          // The execution log is already durable and startup reconciliation can
+          // repair this marker without turning a successful user run into an error.
+          opts.log?.('error', `runner: failed to seal completed run checkpoint: ${(error as Error).message}`);
+        }
+      }
       return result;
     } finally {
       if (runtimeQueueRegistered) activeRuns.unregister(runId);

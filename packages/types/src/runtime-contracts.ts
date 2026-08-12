@@ -736,7 +736,7 @@ export interface RunCheckpoint {
   reason: string;
 }
 
-export type RunCheckpointDispositionStatus = 'resuming' | 'interrupted' | 'resumed' | 'abandoned';
+export type RunCheckpointDispositionStatus = 'resuming' | 'interrupted' | 'resumed' | 'completed' | 'abandoned';
 
 /** Mutable, append-audited decision kept separate from immutable checkpoint data. */
 export interface RunCheckpointDisposition {

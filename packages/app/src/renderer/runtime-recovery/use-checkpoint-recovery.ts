@@ -72,6 +72,7 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
   const [error, setError] = useState<string | null>(null)
   const [clarificationText, setClarificationText] = useState('')
   const [progress, setProgress] = useState<CheckpointRecoveryProgress>(INITIAL_CHECKPOINT_RECOVERY_PROGRESS)
+  const [stopRequested, setStopRequested] = useState(false)
   const inspectionRequestRef = useRef(0)
 
   useEffect(() => {
@@ -171,6 +172,7 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
     setActivityNow(Date.now())
     setError(null)
     setProgress(INITIAL_CHECKPOINT_RECOVERY_PROGRESS)
+    setStopRequested(false)
     try {
       const result = await resumeRunCheckpointStream(selected.id, {
         ...(clarification ? { text: clarification } : {}),
@@ -218,6 +220,7 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
       activeRunIdRef.current = null
       stopRequestedRunIdRef.current = null
       if (appMountedRef.current) {
+        setStopRequested(false)
         setBusy(null)
         setLoading(false)
       }
@@ -225,6 +228,8 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
   }
 
   function stopRecovery() {
+    if (stopRequested) return
+    setStopRequested(true)
     const runId = activeRunIdRef.current
     if (!runId) {
       abortRef.current?.abort()
@@ -250,8 +255,9 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
     error,
     clarificationText,
     progress,
+    stopRequested,
     open: () => setVisible(true),
-    dismiss: () => { if (busy !== 'resuming' && busy !== 'abandoning') setVisible(false) },
+    dismiss: () => setVisible(false),
     selectCheckpoint,
     setClarificationText,
     toggleDetails,

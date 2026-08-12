@@ -31,7 +31,7 @@ export function pendingCheckpointHeads(
     if (seenRuns.has(runId)) continue
     seenRuns.add(runId)
     const status = inspection.disposition?.status
-    if (status === 'resumed' || status === 'abandoned') continue
+    if (status === 'resumed' || status === 'completed' || status === 'abandoned') continue
     result.push(inspection)
   }
   return result

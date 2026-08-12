@@ -1,7 +1,7 @@
 // Bounded startup-recovery payloads shared by Main and Renderer.
 
 export type LocalAppRunCheckpointStatus = 'paused' | 'waiting_user' | 'recoverable'
-export type LocalAppRunCheckpointDispositionStatus = 'resuming' | 'interrupted' | 'resumed' | 'abandoned'
+export type LocalAppRunCheckpointDispositionStatus = 'resuming' | 'interrupted' | 'resumed' | 'completed' | 'abandoned'
 
 export interface LocalAppRunCheckpointDisposition {
   status: LocalAppRunCheckpointDispositionStatus

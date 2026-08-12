@@ -117,8 +117,12 @@ export class ActiveRunRegistry implements RuntimeEventIngress, RuntimeActiveRunC
     }
     const outcome = queue.append({ ...input, runId });
     if (outcome.kind === 'accepted' || outcome.kind === 'duplicate') {
-      const status = controlStatusForEvent(outcome.event.type);
-      if (status) this.activities.setControlStatus(runId, status);
+      if (outcome.event.type === 'interrupt_requested') {
+        this.activities.interrupt(runId, eventReason(outcome.event.payload));
+      } else {
+        const status = controlStatusForEvent(outcome.event.type);
+        if (status) this.activities.setControlStatus(runId, status);
+      }
     }
     return outcome;
   }
@@ -255,4 +259,8 @@ function controlStatusForEvent(
   if (type === 'resume_requested') return 'running';
   if (type === 'interrupt_requested') return 'interrupt_requested';
   return undefined;
+}
+
+function eventReason(payload: Record<string, unknown>): string | undefined {
+  return typeof payload.reason === 'string' ? boundedReason(payload.reason) : undefined;
 }

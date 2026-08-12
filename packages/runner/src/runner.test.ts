@@ -335,6 +335,59 @@ describe('createRunner run', () => {
     expect(replay?.toolInvocations).toEqual(result.toolInvocations);
   });
 
+  it('seals intermediate side-effect checkpoints when the source run finishes successfully', async () => {
+    const toolResponse: ChatResponse = {
+      content: '',
+      finishReason: 'tool_calls',
+      toolCalls: [
+        { id: 'checkpoint-write-call', type: 'function', function: { name: 'checkpoint_write', arguments: '{}' } },
+      ],
+    };
+    const llm = makeMockLlm([
+      textResponse('{"type":"problem","confidence":0.99,"reason":"execute checkpoint write"}'),
+      textResponse('{"plan":[{"description":"write checkpoint proof","tools":["checkpoint_write"]}]}'),
+      toolResponse,
+      textResponse('Checkpoint write completed.'),
+      textResponse('Checkpoint proof was written successfully.'),
+      textResponse('{"verdict":"pass","reason":"checkpoint proof exists"}'),
+      textResponse('{"memories":[],"createSkill":null}'),
+      textResponse('{"observations":[]}'),
+    ]);
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+    });
+    createdRunners.push(runner);
+    const checkpointWrite: AgentTool = {
+      name: 'checkpoint_write',
+      description: 'Create a checkpointed test mutation.',
+      inputSchema: { parse: (input) => input, jsonSchema: { type: 'object' } },
+      execution: {
+        concurrency: 'exclusive',
+        resources: () => [{ key: 'workspace:checkpoint-proof', mode: 'write' }],
+      },
+      async execute() {
+        return { callId: '', ok: true, output: 'checkpoint-proof' };
+      },
+    };
+
+    const result = await runner.run({
+      runId: 'successful-checkpoint-source',
+      text: 'write checkpoint proof',
+      additionalTools: [checkpointWrite],
+    });
+
+    expect(result.status).toBe('ok');
+    expect(result.runCheckpointId).toEqual(expect.any(String));
+    expect(await runner.infra.runCheckpointDispositionStore.read(result.runCheckpointId!)).toMatchObject({
+      status: 'completed',
+      resultStatus: 'ok',
+    });
+    expect((await runner.runCheckpoints!.inspect(result.runCheckpointId!))?.resumable).toBe(false);
+  });
+
   it('registers attachment metadata for the run without persisting payloads and replaces it next run', async () => {
     const llm = makeMockLlm(textResponse('Attachment acknowledged.'));
     const runner = await createRunner({

@@ -158,6 +158,21 @@ async function main() {
     : new Set()
   pass('execution log directory readable', `${executionFiles.size} log(s)`)
 
+  const checkpointAudit = await auditRunCheckpointCompletion(dataDir, executionDir)
+  if (checkpointAudit.invalidFiles.length > 0) {
+    fail('run checkpoint records are readable', checkpointAudit.invalidFiles.slice(0, 5).join(', '))
+  } else {
+    pass('run checkpoint records are readable', `${checkpointAudit.headCount} source run head(s)`)
+  }
+  if (checkpointAudit.unsealedSuccessfulHeads.length > 0) {
+    fail(
+      'successful run checkpoints are sealed',
+      checkpointAudit.unsealedSuccessfulHeads.slice(0, 5).join(', '),
+    )
+  } else {
+    pass('successful run checkpoints are sealed')
+  }
+
   const sampledRunIds = await sampleRunIdsFromSessions(sessionDir, sessionFiles.slice(0, 20))
   const missingRunLogs = sampledRunIds.filter((runId) => !executionFiles.has(runId))
   if (sampledRunIds.length === 0) warn('session runId sampling', 'no runId found in sampled sessions')
@@ -247,6 +262,62 @@ async function sampleRunIdsFromSessions(sessionDir, sessionFiles) {
     }
   }
   return [...runIds]
+}
+
+async function auditRunCheckpointCompletion(dataDir, executionDir) {
+  const checkpoints = await readJsonDirectory(join(dataDir, 'run-checkpoints'))
+  const dispositions = await readJsonDirectory(join(dataDir, 'run-checkpoint-dispositions'))
+  const dispositionByCheckpointId = new Map(dispositions.records
+    .filter((record) => typeof record?.checkpointId === 'string')
+    .map((record) => [record.checkpointId, record]))
+  const heads = new Map()
+  for (const checkpoint of checkpoints.records) {
+    if (typeof checkpoint?.id !== 'string' || typeof checkpoint?.runId !== 'string') continue
+    const existing = heads.get(checkpoint.runId)
+    const createdAt = Date.parse(checkpoint.createdAt)
+    if (!existing || createdAt > existing.createdAt) {
+      heads.set(checkpoint.runId, {
+        checkpoint,
+        createdAt: Number.isFinite(createdAt) ? createdAt : 0,
+      })
+    }
+  }
+
+  const unsealedSuccessfulHeads = []
+  for (const { checkpoint } of heads.values()) {
+    const disposition = dispositionByCheckpointId.get(checkpoint.id)
+    if (disposition && ['resumed', 'completed', 'abandoned'].includes(disposition.status)) continue
+    const executionLog = await readJsonQuiet(join(executionDir, `${checkpoint.runId}.json`))
+    if (executionLog?.status === 'ok' && executionLog.runCheckpointId === checkpoint.id) {
+      unsealedSuccessfulHeads.push(`${checkpoint.runId}:${checkpoint.id}`)
+    }
+  }
+
+  return {
+    headCount: heads.size,
+    invalidFiles: [...checkpoints.invalidFiles, ...dispositions.invalidFiles],
+    unsealedSuccessfulHeads,
+  }
+}
+
+async function readJsonDirectory(directory) {
+  if (!existsSync(directory)) return { records: [], invalidFiles: [] }
+  const records = []
+  const invalidFiles = []
+  for (const name of (await readdir(directory)).filter((entry) => entry.endsWith('.json'))) {
+    const parsed = await readJsonQuiet(join(directory, name))
+    if (parsed) records.push(parsed)
+    else invalidFiles.push(name)
+  }
+  return { records, invalidFiles }
+}
+
+async function readJsonQuiet(path) {
+  try {
+    return JSON.parse(await readFile(path, 'utf8'))
+  } catch {
+    return null
+  }
 }
 
 function samePath(left, right) {

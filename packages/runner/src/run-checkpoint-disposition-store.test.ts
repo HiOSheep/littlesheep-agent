@@ -23,6 +23,42 @@ async function tempStore(maxRecords?: number) {
 }
 
 describe('RunCheckpointDispositionStore', () => {
+  it('seals a source-run checkpoint as completed and keeps the decision idempotent', async () => {
+    const { dir, store } = await tempStore()
+    try {
+      expect(await store.completeSourceRun('checkpoint-complete', 'source run completed'))
+        .toMatchObject({
+          kind: 'written',
+          disposition: { status: 'completed', resultStatus: 'ok' },
+        })
+      expect(await store.completeSourceRun('checkpoint-complete', 'duplicate completion'))
+        .toMatchObject({ kind: 'duplicate', disposition: { status: 'completed' } })
+      expect(await store.claimResume('checkpoint-complete', 'should not resume', 'resume-after-complete'))
+        .toMatchObject({ kind: 'conflict', disposition: { status: 'completed' } })
+      expect(await store.abandon('checkpoint-complete', 'should not abandon'))
+        .toMatchObject({ kind: 'conflict', disposition: { status: 'completed' } })
+
+      await store.claimResume('checkpoint-interrupted', 'stale resume', 'resume-before-restart')
+      await store.interruptResume('checkpoint-interrupted', 'resume-before-restart', 'application restarted')
+      expect(await store.completeSourceRun('checkpoint-interrupted', 'successful source log is authoritative'))
+        .toMatchObject({
+          kind: 'written',
+          disposition: {
+            status: 'completed',
+            resultStatus: 'ok',
+            history: [
+              { status: 'resuming' },
+              { status: 'interrupted' },
+              { status: 'completed', resultStatus: 'ok' },
+            ],
+          },
+        })
+    } finally {
+      store.dispose()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('atomically claims one resume decision and rejects conflicting claims', async () => {
     const { dir, store } = await tempStore()
     try {
