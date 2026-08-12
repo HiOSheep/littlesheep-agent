@@ -4654,14 +4654,23 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   height: 100%;
   min-height: 280px;
   overflow: hidden;
-  background: rgba(0, 0, 0, 0.18);
-  border: 1px solid var(--border);
+  background: #101010;
+  border: 1px solid #303030;
   border-radius: var(--radius-ui);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
 }
 
 .workspace-editor-monaco {
   min-width: 0;
   min-height: 0;
+  background: #101010;
+}
+
+.workspace-editor-monaco > .workspace-placeholder {
+  height: 100%;
+  min-height: 280px;
+  color: #a3a3a3;
+  background: #101010;
 }
 
 .workspace-editor-statusbar {
@@ -4672,9 +4681,9 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   min-width: 0;
   min-height: 24px;
   padding: 0 8px;
-  color: var(--muted-2);
-  background: rgba(255, 255, 255, 0.025);
-  border-top: 1px solid rgba(255, 255, 255, 0.055);
+  color: #b0b0b0;
+  background: #171717;
+  border-top: 1px solid #303030;
   font-size: 11px;
   font-weight: 760;
   line-height: 1;
@@ -4693,8 +4702,8 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
 }
 
 .workspace-editor-statusbar span:hover {
-  color: var(--text-strong);
-  background: var(--control-hover);
+  color: #ffffff;
+  background: #262626;
 }
 
 .workspace-preview-markdown {
@@ -4709,9 +4718,9 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
   margin: 0;
   padding: 10px;
   overflow: auto;
-  color: var(--text);
-  background: rgba(0, 0, 0, 0.18);
-  border: 1px solid var(--border);
+  color: #f2f2f2;
+  background: #101010;
+  border: 1px solid #303030;
   border-radius: var(--radius-ui);
   font-family: var(--mono);
   font-size: 12px;

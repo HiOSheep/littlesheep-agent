@@ -16,6 +16,7 @@ import {
 import { attachmentFileUrl, countEditorLines, detectEditorEol, formatDateTime, formatEditorLanguageLabel, formatFileSize, lastPathSegment, shouldOfferExternalVSCode, utf8ByteLength, workspaceBreadcrumbs } from './path-utils'
 import { WorkspacePlaceholder } from './placeholder'
 import { configureLittleSheepMonaco } from './monaco-language-support'
+import { LITTLE_SHEEP_MONACO_THEME } from './monaco-theme'
 
 export const MonacoEditor = lazy(async () => {
   const [monacoReact, monaco] = await Promise.all([
@@ -351,7 +352,7 @@ export function WorkspacePreviewPane({
                   height="100%"
                   language={editorLanguage}
                   value={editorText}
-                  theme="vs-dark"
+                  theme={LITTLE_SHEEP_MONACO_THEME}
                   beforeMount={configureLittleSheepMonaco}
                   onChange={(value) => updateEditorText(value ?? '')}
                   options={{
@@ -362,6 +363,7 @@ export function WorkspacePreviewPane({
                     folding: true,
                     fontFamily: 'Consolas, ui-monospace, SFMono-Regular, Menlo, Monaco, monospace',
                     fontSize: 12,
+                    fontWeight: '500',
                     formatOnPaste: true,
                     guides: { bracketPairs: true, indentation: true },
                     lineDecorationsWidth: 8,

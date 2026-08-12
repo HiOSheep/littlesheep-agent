@@ -2,12 +2,14 @@
 
 import type * as Monaco from 'monaco-editor'
 import { LS_CUSTOM_LANGUAGE_IDS } from '../../shared/workspace-languages'
+import { registerLittleSheepMonacoTheme } from './monaco-theme'
 
 const configuredMonaco = new WeakSet<object>()
 
 export function configureLittleSheepMonaco(monaco: typeof Monaco): void {
   if (configuredMonaco.has(monaco)) return
   configuredMonaco.add(monaco)
+  registerLittleSheepMonacoTheme(monaco)
 
   for (const languageId of LS_CUSTOM_LANGUAGE_IDS) {
     if (!monaco.languages.getLanguages().some((language) => language.id === languageId)) {

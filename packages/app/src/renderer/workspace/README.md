@@ -4,6 +4,7 @@
 
 - `panel.tsx`、`add-menu.tsx`、`overview.tsx`：工作区壳和标签内容。
 - `files.tsx`、`file-navigator.tsx`、`preview-pane.tsx`、`terminal.tsx`、`browser.tsx`：文件、终端和内置浏览器能力。
+- `monaco-language-support.ts`、`monaco-theme.ts`：Monaco 的补充语言注册和 LS 中性黑灰高对比主题；主题底色、加载占位和状态栏必须保持一致且不引入蓝色背景偏向，普通代码、注释、行号和主要语法色不得退化为低对比或低饱和灰色。
 - `tab-strip.tsx`：拓展工作区标签条；`use-browser-controller.ts`、`browser-persistence.ts` 和 `browser-tabs.ts`：浏览器标签状态、恢复元数据和有界导航历史。
 - `resize-interaction.ts`、`use-workspace-layout-controller.ts`：独立于左侧栏的布局、拖动、折叠和恢复。
 - `activity.ts`、`path-utils.ts`、`directory-cache.ts`、`types.ts`：纯数据与路径边界。
