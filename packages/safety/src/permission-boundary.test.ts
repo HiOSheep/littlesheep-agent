@@ -63,6 +63,18 @@ describe('permission boundary', () => {
     expect(shouldRequestPermissionApproval('restricted', insideRead)).toBe(true)
   })
 
+  it('classifies document tools with the same read and write policy as filesystem tools', async () => {
+    const fixture = await makeFixture()
+    const documentRead = describeToolAccess('document_read', { file_path: fixture.insideFile }, fixture)
+    const documentCreate = describeToolAccess('document_create', { file_path: fixture.insideFile }, fixture)
+
+    expect(documentRead).toMatchObject({ action: 'read', boundary: 'inside' })
+    expect(documentCreate).toMatchObject({ action: 'write', boundary: 'inside' })
+    expect(shouldRequestPermissionApproval('research', documentRead)).toBe(false)
+    expect(shouldRequestPermissionApproval('research', documentCreate)).toBe(true)
+    expect(shouldRequestPermissionApproval('restricted', documentRead)).toBe(true)
+  })
+
   it('treats explicit external command paths and dynamic shell access conservatively', async () => {
     const fixture = await makeFixture()
     const explicit = describeToolAccess('exec', {

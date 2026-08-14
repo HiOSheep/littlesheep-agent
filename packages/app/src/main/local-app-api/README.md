@@ -2,7 +2,7 @@
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 
-最后更新：2026-08-04 01:01:23
+最后更新：2026-08-14 01:10:00
 
 ## 结构
 
@@ -19,6 +19,7 @@
 | `memory-migration-routes.ts` | Memory v3 迁移、回滚和固定本地向量模型准备。 |
 | `workspace-routes.ts` | 附件导入、文件、布局和产物路由。 |
 | `workspace-file-service.ts` | 安全目录列表、预览和文本保存。 |
+| `workspace-git-repository.ts` / `workspace-git-review.ts` / `workspace-git-review-cache.ts` | Git 仓库定位、过滤器安全策略、分层 staged/unstaged/untracked 审阅快照和按 revision 绑定的 Diff；状态扫描按工作区有界缓存并合并 in-flight 请求，Diff 并发受限，调用方取消不会取消其他观察者。 |
 | `workspace-support.ts` | 工作区边界、scope 和资源索引同步。 |
 | `terminal-*.ts` | PTY/进程、终端会话、命令捕获、一次性命令和终端路由。 |
 | `extension-routes.ts` | 插件与外部渠道控制面。 |
@@ -43,5 +44,6 @@
 - SSE 路由统一调用 `openSse()`，不能复制响应头、心跳或缓冲策略；必须同时处理请求中止、响应关闭和订阅建立期间的竞态，任何退出路径只能释放一次 timer、listener 和订阅。
 - 普通 Agent run、Checkpoint 续跑和活动任务订阅的 SSE 只是观察连接；观察者断开不会取消 Main 持有的任务。显式中断必须走活动任务控制入口。终端主动命令保持独立语义，观察连接断开时仍取消对应命令。
 - `writeSse()` 在响应已关闭时安全返回；Node 的普通背压不会立即断流，只有累计待写数据越过 512 KiB 上限才关闭该观察连接。不得通过无界排队补偿慢客户端。
+- Git 审阅必须复用同一份仓库快照：普通仓库使用一次带 `--branch --ahead-behind` 的状态查询解析分支、upstream 和 ahead/behind，staged Diff 同时兼容无首个 commit 的仓库；文件 Diff 必须携带快照 revision，陈旧 revision 返回 409，不能为旧树隐式重扫仓库。
 - 不复制 shared contracts，不改变既有 URL、SSE 事件名、状态码或持久化语义。
 - 修改后运行 App typecheck、对应 API 特征测试、全量测试、构建和恢复检查。

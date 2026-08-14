@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import * as XLSX from 'xlsx'
+import { createDocument } from '@littlesheep/documents'
 import { asSessionId } from '@littlesheep/types'
 import {
   classifyAttachment,
@@ -65,11 +66,16 @@ describe('main attachment helpers', () => {
     }
   })
 
-  it('keeps pdf path context when pdf text extraction is unavailable', async () => {
+  it('extracts text and page metadata from PDF attachments', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ls-att-pdf-'))
     try {
       const file = join(dir, 'paper.pdf')
-      writeFileSync(file, '%PDF-1.4 fake', 'utf8')
+      await createDocument({
+        filePath: file,
+        format: 'pdf',
+        title: '附件 PDF',
+        blocks: [{ type: 'paragraph', text: 'LS 可以直接读取这份 PDF。' }],
+      })
       const prepared = await prepareRunAttachments([await classifyAttachment(file)])
       expect(prepared[0]?.contentState).toBe('uninspected')
       const tool = createInspectAttachmentTool(prepared)!
@@ -78,8 +84,8 @@ describe('main attachment helpers', () => {
         { sessionId: asSessionId('session-1'), runId: 'run-1', cwd: dir },
       )
       expect(result.ok).toBe(true)
-      expect(String(result.output)).toContain('PDF text extraction is not enabled yet')
-      expect(prepared[0]?.contentState).toBe('unavailable')
+      expect(String(result.output)).toContain('LS 可以直接读取')
+      expect(prepared[0]?.contentState).toBe('loaded')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

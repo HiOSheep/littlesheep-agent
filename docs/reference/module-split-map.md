@@ -57,17 +57,17 @@
 | `packages/app/src/main/local-app-api/terminal-process.ts` | 305 | PTY、ConPTY 与 spawn fallback 的终端进程适配、关闭状态和输入错误收敛 | 保持进程适配器边界；继续将平台差异和 write-after-close 保护留在此层 | C |
 | `packages/app/src/main/provider-calibration.ts` | 318 | 运行中 Provider 的 chat、continuity、tool、abort 有界校准 | 保持纯校准编排与脱敏结果；Provider 客户端和凭证仍由 Runner/Main 负责，不继续吸收通用运行逻辑 | C |
 | `packages/app/src/renderer/workspace/preview-pane.tsx` | 484 | 文件分派、编辑草稿、保存审批、预览错误和首帧状态 | 建立文件打开事务测试后再拆编辑与预览；Monaco 语言配置保持独立；取消链路稳定后优先下沉 view/controller | B |
-| `packages/app/src/main/local-app-api/workspace-git-review-cache.ts` | 324 | Main Git 审阅快照缓存、并发、取消、TTL 和容量预算 | 保持缓存策略与 Git 解析、路由分离 | C |
+| `packages/app/src/main/local-app-api/workspace-git-review-cache.ts` | 272 | Main Git 审阅快照缓存、revision、并发、取消、TTL 和容量预算 | 保持缓存策略与 Git 解析、路由分离 | C |
 | `packages/memory-tree/src/v3/storage-coordinator.ts` | 308 | v3 raw/event/operation/atom/catalog 事务协调与恢复 | 保持事务边界；后续拆 recovery replay 与 commit projection | D |
 | `packages/app/src/renderer/api/workspace-files.ts` | 337 | Renderer 工作区文件 API、目录有界缓存与失效 | 若继续增长，拆分缓存与请求 helper | B |
-| `packages/app/src/renderer/workspace/review.tsx` | 339 | 审阅可见生命周期、single-flight 刷新和树/差异选择 | 保持 policy、model 与 view helper 分离 | B |
+| `packages/app/src/renderer/workspace/review.tsx` | 316 | 审阅可见生命周期、single-flight 刷新、共享导航装配和树/差异选择 | 保持 policy、model 与 view helper 分离；单双列偏好留在 Renderer UI 层 | B |
 | `packages/app/src/main/memory-tree-control.ts` | 474 | 记忆控制面查询、v3 D0-D3 详情适配和既有管理命令 | 分离 query/detail、resource、projection command | C |
 | `packages/llm/src/client.ts` | 463 | 请求、流式、reasoning、重试适配 | 分离 request builder、stream parser、response mapper | E |
 | `packages/harness/src/stages/execute/tool-loop.ts` | 529 | 单步模型工具循环、审批、失败记录、时间感知、消息续接和紧凑后续请求 | 分离 loop policy、invocation adapter 与 transcript；不得继续吸收检查点恢复或回答连续性判定 | E |
 | `packages/memory-tree/src/memory-repository/resource-store.ts` | 454 | 资源注册、生命周期、重绑定和审计 | 分离 registry、lifecycle、rebind、audit | D |
 | `packages/memory-tree/src/v3/event-journal.ts` | 451 | Memory v3 event 与 operation journal 的同构恢复语义 | 契约稳定后拆为两个 store，共享 bounded journal codec | D |
 | `packages/memory-tree/src/workspace-resource-index.ts` | 448 | 工作区资源索引、游标和更新 | 分离 store、scanner state、change-set | D |
-| `packages/app/src/renderer/workspace/file-navigator.tsx` | 519 | 目录缓存、筛选、展开路径、文件树和可见性取消 | 建立树状态特征测试后再拆 controller/view；目录请求取消与缓存恢复保持在独立 loader 边界 | B |
+| `packages/app/src/renderer/workspace/file-navigator.tsx` | 436 | 目录缓存、筛选、展开路径、文件树和可见性取消 | 与 `navigator-frame.tsx` 共享壳；建立树状态特征测试后再拆 controller/view；目录请求取消与缓存恢复保持在独立 loader 边界 | B |
 | `packages/harness/src/taskbook-patch.ts` | 525 | TaskBook 局部修订契约、校验和合并 | 保持纯任务书补丁边界；若继续增长，分离 schema、merge 和 validation | E |
 | `packages/memory-tree/src/memory-repository/v3-atom-management.ts` | 443 | Atom move/merge/revise/invalidate/reactivate 原子 mutation 与审计 | 保持持久化 mutation 边界；语义准入留在独立 service | D |
 | `packages/runner/src/execution-log.ts` | 469 | 执行日志 schema、写入、查询与按会话原子摘要 sidecar | 分离 codec、store、query 与 latest-summary store | E |
@@ -80,10 +80,9 @@
 | `packages/app/src/renderer/workspace-persistence.ts` | 404 | 工作区恢复快照与规范化 | 分离 schema、normalize、serialize | B |
 | `packages/prompt/src/builder.ts` | 401 | Prompt 分段、完整执行与紧凑 respond 装配 | 保留 builder facade，复杂 section 移入 `sections` | E |
 | `packages/app/src/renderer/settings/plugins.tsx` | 394 | 插件发现、筛选、启停、来源确认和代码授权 | 新能力进入插件宿主或独立设置组件 | B |
-| `packages/app/src/renderer/workspace/use-workspace-layout-controller.ts` | 410 | 布局恢复、标签/草稿持久化和拖动入口 | 两级阈值算法保持在独立 interaction 模块 | B |
+| `packages/app/src/renderer/workspace/use-workspace-layout-controller.ts` | 422 | 布局恢复、标签/草稿持久化和拖动入口 | 两级阈值算法保持在独立 interaction 模块 | B |
 | `packages/types/src/activation.ts` | 390 | 持久 Atom 与语义缓存共用的连续 activation 契约和纯计算 | 按 evidence、scoring、projection 分组并保持 barrel | E |
 | `packages/app/src/renderer/chat/assistant-turn.tsx` | 381 | 思考摘要、执行过程、验证与最终产物的渐进式披露 | 持续拆出纯展示段；禁止吸收状态决策 | B |
-| `packages/app/src/renderer/workspace/files.tsx` | 471 | 文件工作面组合、目录缓存恢复、预览请求取消和保存后刷新 | 保持组合职责，不接收标签壳或终端逻辑；取消链路稳定后优先下沉 loader/view | B |
 | `packages/app/src/renderer/ArchiveManager.tsx` | 369 | 归档加载、树和操作 | controller + project/session 视图 | B |
 | `packages/plugins/src/channel/manager.ts` | 366 | 渠道调度、会话和发送 | 分离 dispatch、session、delivery | C |
 | `packages/harness/src/stages/evolve.ts` | 357 | 记忆/Skill 提案和多个受约束治理 service 的组合 facade | 保持组合层；新增治理进入独立模块 | E |

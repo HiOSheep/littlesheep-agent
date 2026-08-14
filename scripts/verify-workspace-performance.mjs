@@ -18,6 +18,8 @@ const idleSampleMs = 5_000
 // intentionally waits past the TTL so the next mount exercises stale-while-
 // revalidate instead of only measuring a hot cache hit.
 const workspaceDirectoryCacheTtlMs = 5_000
+const profileMainProcess = process.env.LITTLESHEEP_PROFILE_MAIN === '1'
+const diagnoseIdleBaseline = process.env.LITTLESHEEP_IDLE_BASELINE === '1'
 
 const budgets = {
   startupProcessToLocatorMs: 15_000,
@@ -47,13 +49,15 @@ async function main() {
   const workspaceDir = join(root, 'workspace')
   const logPath = join(root, 'electron.log')
   const debuggingPort = await reservePort()
+  const mainDebuggingPort = profileMainProcess ? await reservePort() : undefined
   let electron
   let client
+  let mainClient
   let preserve = false
 
   try {
     await prepareFixture(dataDir, chromiumDir, workspaceDir)
-    electron = await startElectron({ dataDir, chromiumDir, debuggingPort, logPath })
+    electron = await startElectron({ dataDir, chromiumDir, debuggingPort, mainDebuggingPort, logPath })
     const processCreatedAt = Date.now()
     const locator = await waitForLocator(dataDir, electron.pid)
     const locatorReadyAt = Date.now()
@@ -63,16 +67,25 @@ async function main() {
     client = await connectRenderer(debuggingPort)
     await client.send('Page.enable')
     await client.send('Runtime.enable')
+    await client.send('Log.enable')
+    if (mainDebuggingPort) mainClient = await connectDebugger(mainDebuggingPort, 'Main inspector target')
 
     await seedPreferences(client, workspaceDir, 'review')
-    await client.send('Page.reload', { ignoreCache: true })
+    await reloadRenderer(client, 'review workspace reload')
     const workspaceFrameCold = await measureVisible(client, '.workspace-panel', 0, actionTimeoutMs)
     const reviewCold = await measureVisible(client, '.workspace-review-tree-row.file', 0, actionTimeoutMs)
-    const reviewDiffCold = await measureVisible(client, '.workspace-review-diff-line', reviewCold.visibleAt, actionTimeoutMs)
+    const reviewDiffCold = await measureVisible(
+      client,
+      '.workspace-review-monaco-diff .monaco-diff-editor',
+      reviewCold.visibleAt,
+      actionTimeoutMs,
+    )
+    const reviewEditorContract = await readReviewEditorContract(client)
+    const reviewPersistenceContract = await verifyReviewPersistence(client)
     const reviewWarm = await measureReviewWarm(client)
 
     await seedPreferences(client, workspaceDir, 'artifacts')
-    await client.send('Page.reload', { ignoreCache: true })
+    await reloadRenderer(client, 'file tree workspace reload')
     const fileTreeCold = await measureVisible(client, '.workspace-tree-row', 0, actionTimeoutMs)
     const fileTreeWarm = await measureFileTreeWarm(client)
     const staleWorkspaceTree = await measureFileTreeStale(client)
@@ -81,6 +94,12 @@ async function main() {
     const editorWarm = await measureEditorWarm(client, workspaceDir)
     const fontContract = editorCold.fontContract ?? editorWarm.fontContract
     const fontAssertions = evaluateFontContract(fontContract)
+    const rendererDiagnostics = summarizeRendererDiagnostics(client.events)
+    // The DevTools transport exists only for this benchmark's visual probes.
+    // Disconnect it before the hidden-window interval so Main is measured in
+    // the same state as a normal desktop session without an attached debugger.
+    client.close()
+    client = undefined
     const resourcesBeforeHidden = await desktopSnapshot(locator)
     await desktopAction(locator, 'close')
     await delay(1_000)
@@ -91,13 +110,21 @@ async function main() {
     const hiddenProcessBreakdown = hiddenProcessDiagnostics(hiddenProcessStart, hiddenProcessEnd)
     const hiddenStableStart = await desktopSnapshot(locator)
     const hiddenStableProcessStart = processTreeSample(electron.pid)
+    if (mainClient) {
+      await mainClient.send('Profiler.enable')
+      await mainClient.send('Profiler.start')
+    }
     await delay(idleSampleMs)
+    const mainProfile = mainClient
+      ? summarizeCpuProfile((await mainClient.send('Profiler.stop')).profile)
+      : undefined
     const hiddenStableProcessEnd = processTreeSample(electron.pid)
     // Keep the acceptance sampler itself outside the idle CPU interval. The
     // endpoint gathers Electron process metrics and would otherwise make the
     // diagnostic look like hidden-window work.
     const hiddenStableEnd = await desktopSnapshot(locator)
     const hiddenStableProcessBreakdown = hiddenProcessDiagnostics(hiddenStableProcessStart, hiddenStableProcessEnd)
+    const bootstrapTimings = await readBootstrapTimings(logPath)
 
     const measurements = {
       startupProcessToLocatorMs: roundMs(locatorReadyAt - processCreatedAt),
@@ -130,8 +157,13 @@ async function main() {
       && Object.values(fontAssertions).every((assertion) => assertion.ok)
       && staleWorkspaceTree.visibleBeforeRevalidation
       && staleWorkspaceTree.requestObserved
+      && reviewEditorContract.syntaxColourCount >= 3
+      && reviewEditorContract.hasInsertedBackground
+      && reviewEditorContract.hasRemovedBackground
+      && Object.values(reviewPersistenceContract).every(Boolean)
       && editorCold.monacoInk.hasInk
       && editorWarm.monacoInk.hasInk
+      && rendererDiagnostics.unknownServiceErrors.length === 0
       && hiddenResources.activeRequestDelta <= 0
       && hiddenResources.activeHandleDelta <= 1
       && hiddenResources.workingSetDeltaBytes <= 32 * 1024 * 1024
@@ -146,6 +178,7 @@ async function main() {
         processCreatedAt,
         locatorReadyAt,
         windowVisibleAt,
+        bootstrapTimings,
       },
       staleWorkspaceTree,
       fontContract,
@@ -154,27 +187,34 @@ async function main() {
         cold: editorCold.monacoInk,
         warm: editorWarm.monacoInk,
       },
+      reviewEditorContract,
+      reviewPersistenceContract,
+      rendererDiagnostics,
       resourcesBeforeHidden,
       hiddenResources,
       hiddenDiagnostics: {
         closing: hiddenProcessBreakdown,
         stable: hiddenStableProcessBreakdown,
+        ...(mainProfile ? { mainProfile } : {}),
       },
       outputBytes: await directoryBytes(join(appRoot, 'out')),
     }, null, 2))
     if (!ok) process.exitCode = 1
   } catch (error) {
     preserve = true
+    const bootstrapTimings = await readBootstrapTimings(logPath).catch(() => [])
     console.error(JSON.stringify({
       check: 'workspace-performance',
       ok: false,
       root,
       logPath,
+      bootstrapTimings,
       error: error instanceof Error ? error.stack ?? error.message : String(error),
     }, null, 2))
     process.exitCode = 1
   } finally {
     client?.close()
+    mainClient?.close()
     if (electron?.exitCode === null) await forceTerminate(electron)
     if (!preserve) await removeTemporaryRoot(root)
   }
@@ -250,15 +290,21 @@ function buildConfig(workspaceDir) {
   }
 }
 
-async function startElectron({ dataDir, chromiumDir, debuggingPort, logPath }) {
+async function startElectron({ dataDir, chromiumDir, debuggingPort, mainDebuggingPort, logPath }) {
   const executable = resolveVerifiedElectronExecutable(repoRoot, { requireAppBuildManifest: true })
   const log = await import('node:fs').then(({ createWriteStream }) => createWriteStream(logPath, { flags: 'a' }))
-  const env = { ...process.env, LITTLESHEEP_DATA_DIR: dataDir, LITTLESHEEP_ELECTRON_ACCEPTANCE: '1' }
+  const env = {
+    ...process.env,
+    LITTLESHEEP_DATA_DIR: dataDir,
+    LITTLESHEEP_ELECTRON_ACCEPTANCE: '1',
+    LITTLESHEEP_BOOTSTRAP_TIMING: '1',
+  }
   delete env.ELECTRON_RUN_AS_NODE
   const child = spawn(executable, [
     '.',
     `--user-data-dir=${chromiumDir}`,
-    `--remote-debugging-port=${debuggingPort}`,
+    ...(debuggingPort ? [`--remote-debugging-port=${debuggingPort}`] : []),
+    ...(mainDebuggingPort ? [`--inspect=${mainDebuggingPort}`] : []),
   ], {
     cwd: appRoot,
     env,
@@ -281,10 +327,21 @@ async function connectRenderer(port) {
   return new CdpClient(targets.webSocketDebuggerUrl)
 }
 
+async function connectDebugger(port, label) {
+  const target = await waitFor(async () => {
+    const response = await fetch(`http://127.0.0.1:${port}/json/list`).catch(() => undefined)
+    if (!response?.ok) return undefined
+    const values = await response.json()
+    return values.find((candidate) => candidate.webSocketDebuggerUrl)
+  }, startTimeoutMs, label)
+  return new CdpClient(target.webSocketDebuggerUrl)
+}
+
 class CdpClient {
   constructor(url) {
     this.nextId = 1
     this.pending = new Map()
+    this.events = []
     this.socket = new WebSocket(url)
     this.opened = new Promise((resolvePromise, reject) => {
       this.socket.addEventListener('open', resolvePromise, { once: true })
@@ -292,7 +349,11 @@ class CdpClient {
     })
     this.socket.addEventListener('message', (event) => {
       const message = JSON.parse(event.data)
-      if (!message.id) return
+      if (!message.id) {
+        this.events.push(message)
+        if (this.events.length > 2_000) this.events.shift()
+        return
+      }
       const pending = this.pending.get(message.id)
       if (!pending) return
       this.pending.delete(message.id)
@@ -320,6 +381,29 @@ class CdpClient {
   }
 }
 
+function summarizeRendererDiagnostics(events) {
+  const messages = events.flatMap((event) => {
+    if (event.method === 'Runtime.consoleAPICalled') {
+      return [event.params?.args?.map((arg) => arg.value ?? arg.description ?? '').join(' ') ?? '']
+    }
+    if (event.method === 'Runtime.exceptionThrown') {
+      return [
+        event.params?.exceptionDetails?.exception?.description
+          ?? event.params?.exceptionDetails?.text
+          ?? '',
+      ]
+    }
+    if (event.method === 'Log.entryAdded') return [event.params?.entry?.text ?? '']
+    return []
+  }).filter(Boolean)
+  return {
+    observedEventCount: events.length,
+    unknownServiceErrors: [...new Set(messages.filter((message) =>
+      /depends on UNKNOWN service|Missing service /u.test(message),
+    ))].slice(0, 20),
+  }
+}
+
 async function seedPreferences(client, workspaceDir, tab) {
   const filePath = join(workspaceDir, 'src', 'sample.ts')
   const preferences = {
@@ -330,6 +414,7 @@ async function seedPreferences(client, workspaceDir, tab) {
     'littlesheep.ui.workspacePanelOpenRoot': workspaceDir,
     'littlesheep.ui.workspacePanelOpenPath': filePath,
     'littlesheep.ui.workspaceFileNavigatorCollapsed': 'false',
+    'littlesheep.ui.workspaceReviewSideBySide': 'true',
   }
   await client.evaluate(`(() => {
     const values = ${JSON.stringify(preferences)};
@@ -353,6 +438,21 @@ async function measureVisible(client, selector, start, timeoutMs) {
     return typeof current === 'number' ? current : undefined
   }, timeoutMs, selector)
   return { visibleAt: result, elapsedMs: roundMs(result - start) }
+}
+
+async function reloadRenderer(client, label) {
+  const previousTimeOrigin = await client.evaluate('performance.timeOrigin')
+  await client.send('Page.reload', { ignoreCache: true })
+  return waitFor(async () => {
+    const state = await client.evaluate(`(() => ({
+      readyState: document.readyState,
+      timeOrigin: performance.timeOrigin,
+    }))()`).catch(() => undefined)
+    if (!state) return undefined
+    return state.readyState === 'complete' && state.timeOrigin !== previousTimeOrigin
+      ? state.timeOrigin
+      : undefined
+  }, actionTimeoutMs, label)
 }
 
 async function measureFileTreeWarm(client) {
@@ -402,6 +502,98 @@ async function measureReviewWarm(client) {
   return (await measureVisible(client, '.workspace-review-tree-row.file', start, actionTimeoutMs)).elapsedMs
 }
 
+async function readReviewEditorContract(client) {
+  return waitFor(async () => {
+    const contract = await client.evaluate(`(() => {
+      const root = document.querySelector('.workspace-review-monaco-diff .monaco-diff-editor')
+      if (!root) return null
+      const visibleStyles = (selector, property) => Array.from(root.querySelectorAll(selector))
+        .filter((element) => {
+          const rect = element.getBoundingClientRect()
+          const style = getComputedStyle(element)
+          return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
+        })
+        .map((element) => getComputedStyle(element)[property])
+        .filter((value) => value && value !== 'rgba(0, 0, 0, 0)' && value !== 'transparent')
+      const syntaxColours = new Set(visibleStyles('.view-line span', 'color'))
+      const insertedBackgrounds = new Set(visibleStyles('.line-insert, .char-insert', 'backgroundColor'))
+      const removedBackgrounds = new Set(visibleStyles('.line-delete, .char-delete', 'backgroundColor'))
+      return {
+        diffEditorCount: root.querySelectorAll('.editor.modified, .editor.original').length,
+        syntaxColours: [...syntaxColours],
+        insertedBackgrounds: [...insertedBackgrounds],
+        removedBackgrounds: [...removedBackgrounds],
+      }
+    })()`)
+    if (
+      !contract
+      || contract.syntaxColours.length < 3
+      || contract.insertedBackgrounds.length === 0
+      || contract.removedBackgrounds.length === 0
+    ) return undefined
+    return {
+      diffEditorCount: contract.diffEditorCount,
+      syntaxColourCount: contract.syntaxColours.length,
+      syntaxColours: contract.syntaxColours,
+      hasInsertedBackground: true,
+      insertedBackgrounds: contract.insertedBackgrounds,
+      hasRemovedBackground: true,
+      removedBackgrounds: contract.removedBackgrounds,
+    }
+  }, actionTimeoutMs, 'Monaco review syntax and red/green diff surfaces')
+}
+
+async function verifyReviewPersistence(client) {
+  await client.evaluate(`(() => {
+    document.querySelector('.workspace-review-diff-actions [aria-pressed]')?.click();
+    document.querySelector('.workspace-files-navigator-rail')?.click();
+    return true;
+  })()`)
+  await waitForReviewPreferenceState(client, false, true)
+  await reloadRenderer(client, 'single-column review preference reload')
+  const singleColumn = await waitForReviewPreferenceState(client, false, true)
+
+  await client.evaluate(`(() => {
+    document.querySelector('.workspace-review-diff-actions [aria-pressed]')?.click();
+    document.querySelector('.workspace-files-navigator-rail')?.click();
+    return true;
+  })()`)
+  await waitForReviewPreferenceState(client, true, false)
+  await reloadRenderer(client, 'side-by-side review preference reload')
+  const sideBySide = await waitForReviewPreferenceState(client, true, false)
+
+  return {
+    singleColumnAfterReload: singleColumn.sideBySide === false,
+    navigatorCollapsedAfterReload: singleColumn.navigatorCollapsed === true,
+    sideBySideAfterReload: sideBySide.sideBySide === true,
+    navigatorExpandedAfterReload: sideBySide.navigatorCollapsed === false,
+  }
+}
+
+async function waitForReviewPreferenceState(client, sideBySide, navigatorCollapsed) {
+  return waitFor(async () => {
+    const state = await client.evaluate(`(() => {
+      const layout = document.querySelector('.workspace-review-diff-actions [aria-pressed]');
+      const navigator = document.querySelector('.workspace-files-navigator');
+      if (!layout || !navigator) return null;
+      return {
+        sideBySide: layout.getAttribute('aria-pressed') === 'true',
+        navigatorCollapsed: navigator.getAttribute('aria-expanded') === 'false',
+        storedSideBySide: localStorage.getItem('littlesheep.ui.workspaceReviewSideBySide'),
+        storedNavigatorCollapsed: localStorage.getItem('littlesheep.ui.workspaceFileNavigatorCollapsed'),
+      };
+    })()`)
+    if (
+      !state
+      || state.sideBySide !== sideBySide
+      || state.navigatorCollapsed !== navigatorCollapsed
+      || state.storedSideBySide !== String(sideBySide)
+      || state.storedNavigatorCollapsed !== String(navigatorCollapsed)
+    ) return undefined
+    return state
+  }, actionTimeoutMs, 'review layout persistence state')
+}
+
 async function measureEditorCold(client, workspaceDir) {
   const filePath = join(workspaceDir, 'src', 'sample.ts')
   const tab = `file:${encodeURIComponent(workspaceDir)}|${encodeURIComponent(filePath)}`
@@ -411,10 +603,10 @@ async function measureEditorCold(client, workspaceDir) {
     localStorage.setItem('littlesheep.ui.workspacePanelOpenTabs', JSON.stringify(['review', ${JSON.stringify(tab)}]));
     localStorage.setItem('littlesheep.ui.workspacePanelOpenRoot', ${JSON.stringify(workspaceDir)});
     localStorage.setItem('littlesheep.ui.workspacePanelOpenPath', ${JSON.stringify(filePath)});
-    location.reload();
   })()`)
+  await reloadRenderer(client, 'cold editor reload')
   const start = 0
-  const coloured = await measureVisible(client, '.workspace-editor-first-frame code span[style]', start, actionTimeoutMs)
+  const coloured = await measureMonacoSyntaxColours(client, start, actionTimeoutMs)
   const fontContract = await readFontContract(client)
   const monaco = await measureVisible(client, '.monaco-editor', start, actionTimeoutMs)
   const monacoInk = await measureMonacoInk(client, start, actionTimeoutMs)
@@ -439,7 +631,7 @@ async function measureEditorWarm(client, workspaceDir) {
     const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
     tabs.find((element) => element.textContent?.includes('sample.ts'))?.click();
   })()`)
-  const firstFrame = await measureVisible(client, '.workspace-editor-first-frame, .monaco-editor', start, actionTimeoutMs)
+  const firstFrame = await measureVisible(client, '.workspace-editor-monaco .monaco-editor', start, actionTimeoutMs)
   const monaco = await measureVisible(client, '.monaco-editor', start, actionTimeoutMs)
   const monacoInk = await measureMonacoInk(client, start, actionTimeoutMs)
   return {
@@ -450,6 +642,26 @@ async function measureEditorWarm(client, workspaceDir) {
     fontContract: await readFontContract(client),
     filePath,
   }
+}
+
+async function measureMonacoSyntaxColours(client, start, timeoutMs) {
+  const visibleAt = await waitFor(async () => {
+    const result = await client.evaluate(`(() => {
+      const root = document.querySelector('.workspace-editor-monaco .monaco-editor')
+      if (!root) return null
+      const colours = new Set(Array.from(root.querySelectorAll('.view-line span'))
+        .filter((element) => {
+          const rect = element.getBoundingClientRect()
+          const style = getComputedStyle(element)
+          return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
+        })
+        .map((element) => getComputedStyle(element).color)
+        .filter(Boolean))
+      return colours.size >= 3 ? performance.now() : null
+    })()`)
+    return typeof result === 'number' ? result : undefined
+  }, timeoutMs, 'Monaco editor syntax colours')
+  return { visibleAt, elapsedMs: roundMs(visibleAt - start) }
 }
 
 async function installWorkspaceFetchProbe(client) {
@@ -527,6 +739,7 @@ async function readFontContract(client) {
         selector,
         family: style.fontFamily,
         size: style.fontSize,
+        lineHeight: style.lineHeight,
         weight: style.fontWeight,
       }
     }
@@ -540,6 +753,7 @@ async function readFontContract(client) {
         selector: '.' + className + ' (computed probe)',
         family: style.fontFamily,
         size: style.fontSize,
+        lineHeight: style.lineHeight,
         weight: style.fontWeight,
       }
       element.remove()
@@ -557,7 +771,7 @@ async function readFontContract(client) {
         size: body.fontSize,
         weight: body.fontWeight,
       },
-      preview: pick('.workspace-editor-first-frame, .workspace-preview-code, .monaco-editor'),
+      preview: pick('.workspace-editor-monaco .monaco-editor .view-lines, .workspace-preview-code'),
       markdown: pick('.workspace-preview-markdown') ?? probeClass('workspace-preview-markdown'),
       office: pick('.workspace-office-preview') ?? probeClass('workspace-office-preview'),
     }
@@ -581,6 +795,14 @@ function evaluateFontContract(contract) {
       ok: Boolean(previewFamily),
       value: previewFamily,
       budget: 'non-empty computed workspace preview font family',
+    },
+    codeDensity: {
+      ok: !previewFamily || (contract?.preview?.size === '13px' && contract?.preview?.lineHeight === '23px'),
+      value: {
+        size: contract?.preview?.size,
+        lineHeight: contract?.preview?.lineHeight,
+      },
+      budget: 'shared Monaco code surface uses 13px font and 23px line height',
     },
     previewUsesMonoContract: {
       ok: !mono || !previewFamily || fontFamilyContainsSameStack(previewFamily, mono),
@@ -824,9 +1046,11 @@ function runGit(cwd, args) {
 function processTreeSample(rootPid) {
   if (process.platform !== 'win32') return null
   const script = [
-    '$all = Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine,HandleCount,UserModeTime,KernelModeTime,ReadTransferCount,WriteTransferCount,WorkingSetSize',
+    '$all = Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CreationDate,Name,CommandLine,HandleCount,UserModeTime,KernelModeTime,ReadTransferCount,WriteTransferCount,WorkingSetSize',
+    `$rootProcess = $all | Where-Object { [uint32]$_.ProcessId -eq [uint32]${rootPid} } | Select-Object -First 1`,
+    'if ($null -eq $rootProcess) { exit 3 }; $rootCreated = $rootProcess.CreationDate',
     `$ids = [System.Collections.Generic.HashSet[uint32]]::new(); [void]$ids.Add([uint32]${rootPid})`,
-    'do { $added = $false; foreach ($item in $all) { if ($ids.Contains([uint32]$item.ParentProcessId) -and $ids.Add([uint32]$item.ProcessId)) { $added = $true } } } while ($added)',
+    'do { $added = $false; foreach ($item in $all) { if ($item.CreationDate -ge $rootCreated -and $ids.Contains([uint32]$item.ParentProcessId) -and $ids.Add([uint32]$item.ProcessId)) { $added = $true } } } while ($added)',
     '$all | Where-Object { $ids.Contains([uint32]$_.ProcessId) } | ConvertTo-Json -Compress',
   ].join('; ')
   const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
@@ -950,6 +1174,56 @@ function hiddenProcessDiagnostics(start, end) {
   }
 }
 
+function summarizeCpuProfile(profile) {
+  const nodes = new Map((profile?.nodes ?? []).map((node) => [node.id, node]))
+  const totals = new Map()
+  const samples = Array.isArray(profile?.samples) ? profile.samples : []
+  const deltas = Array.isArray(profile?.timeDeltas) ? profile.timeDeltas : []
+  let sampledMicros = 0
+  let activeMicros = 0
+  for (let index = 0; index < samples.length; index += 1) {
+    const node = nodes.get(samples[index])
+    if (!node) continue
+    const micros = Math.max(0, numeric(deltas[index]))
+    sampledMicros += micros
+    const functionName = boundedProfileText(node.callFrame?.functionName || '(anonymous)', 120)
+    const script = profileScriptName(node.callFrame?.url)
+    const key = `${functionName}\u0000${script}`
+    const idle = functionName === '(idle)'
+    if (!idle) activeMicros += micros
+    const current = totals.get(key) ?? { functionName, script, samples: 0, micros: 0, idle }
+    current.samples += 1
+    current.micros += micros
+    totals.set(key, current)
+  }
+  return {
+    sampledMs: roundMs(sampledMicros / 1_000),
+    activeMs: roundMs(activeMicros / 1_000),
+    top: [...totals.values()]
+      .sort((left, right) => right.micros - left.micros || right.samples - left.samples)
+      .slice(0, 30)
+      .map((entry) => ({
+        functionName: entry.functionName,
+        script: entry.script,
+        selfMs: roundMs(entry.micros / 1_000),
+        samples: entry.samples,
+        idle: entry.idle,
+      })),
+  }
+}
+
+function profileScriptName(value) {
+  if (typeof value !== 'string' || !value) return ''
+  const normalized = value.replaceAll('\\', '/').split(/[?#]/u, 1)[0]
+  const parts = normalized.split('/').filter(Boolean)
+  return boundedProfileText(parts.slice(-2).join('/'), 160)
+}
+
+function boundedProfileText(value, maxLength) {
+  const normalized = String(value).replace(/[\u0000-\u001f\u007f]/gu, '').trim()
+  return normalized.length <= maxLength ? normalized : `${normalized.slice(0, maxLength - 3)}...`
+}
+
 function classifyElectronProcess(item, rootPid) {
   const pid = numeric(item.ProcessId)
   if (pid === rootPid) return 'main'
@@ -999,6 +1273,26 @@ async function directoryBytes(path) {
   return total
 }
 
+async function readBootstrapTimings(logPath) {
+  const contents = await readFile(logPath, 'utf8').catch(() => '')
+  const prefix = '[bootstrap-timing] '
+  return contents.split(/\r?\n/u).flatMap((line) => {
+    const offset = line.indexOf(prefix)
+    if (offset < 0) return []
+    try {
+      const entry = JSON.parse(line.slice(offset + prefix.length))
+      if (!entry || typeof entry.stage !== 'string') return []
+      return [{
+        stage: entry.stage,
+        processUptimeMs: roundMs(entry.processUptimeMs),
+        ...(Number.isFinite(Number(entry.durationMs)) ? { durationMs: roundMs(entry.durationMs) } : {}),
+      }]
+    } catch {
+      return []
+    }
+  })
+}
+
 async function waitFor(read, timeoutMs, label) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -1038,4 +1332,44 @@ async function removeTemporaryRoot(path) {
   }
 }
 
-await main()
+async function runIdleBaselineDiagnostic() {
+  await assertAppBuildFresh(repoRoot)
+  const root = await mkdtemp(join(tmpdir(), 'littlesheep-idle-baseline-'))
+  const dataDir = join(root, 'data')
+  const chromiumDir = join(root, 'chromium')
+  const workspaceDir = join(root, 'workspace')
+  const logPath = join(root, 'electron.log')
+  let electron
+  try {
+    await prepareFixture(dataDir, chromiumDir, workspaceDir)
+    const startedAt = Date.now()
+    electron = await startElectron({ dataDir, chromiumDir, logPath })
+    const locator = await waitForLocator(dataDir, electron.pid)
+    const locatorAt = Date.now()
+    await waitForDesktop(locator)
+    const visibleAt = Date.now()
+    await desktopAction(locator, 'close')
+    await delay(6_000)
+    const snapshotStart = await desktopSnapshot(locator)
+    const processStart = processTreeSample(electron.pid)
+    await delay(idleSampleMs)
+    const processEnd = processTreeSample(electron.pid)
+    const snapshotEnd = await desktopSnapshot(locator)
+    console.log(JSON.stringify({
+      check: 'workspace-idle-baseline-diagnostic',
+      startupProcessToLocatorMs: locatorAt - startedAt,
+      startupLocatorToWindowVisibleMs: visibleAt - locatorAt,
+      resources: resourceDelta(snapshotStart, snapshotEnd, idleSampleMs),
+      process: hiddenProcessDiagnostics(processStart, processEnd),
+      snapshotStart,
+      snapshotEnd,
+      logPath,
+    }, null, 2))
+  } finally {
+    if (electron?.exitCode === null) await forceTerminate(electron)
+    await removeTemporaryRoot(root)
+  }
+}
+
+if (diagnoseIdleBaseline) await runIdleBaselineDiagnostic()
+else await main()

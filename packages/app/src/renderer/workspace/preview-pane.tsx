@@ -1,8 +1,7 @@
 // Extension workspace panels, files, terminal, artifacts, and view helpers.
-import { Suspense, lazy, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   openWorkspacePathInVSCode,
-  previewWorkspaceFile,
   saveWorkspaceFile,
   type WorkspacePreview
 } from '../api'
@@ -13,19 +12,10 @@ import {
   type WorkspaceFileDraftState,
   type WorkspaceFileTabId
 } from '../workspace-persistence'
-import { attachmentFileUrl, countEditorLines, detectEditorEol, formatDateTime, formatEditorLanguageLabel, formatFileSize, lastPathSegment, shouldOfferExternalVSCode, utf8ByteLength, workspaceBreadcrumbs } from './path-utils'
+import { WorkspaceCodeEditor, workspaceEditorModelPath } from './code-editor'
+import { workspaceFilePreviewCache } from './file-preview-cache'
+import { attachmentFileUrl, countEditorLines, detectEditorEol, formatDateTime, formatEditorLanguageLabel, formatFileSize, shouldOfferExternalVSCode, utf8ByteLength, workspaceBreadcrumbs } from './path-utils'
 import { WorkspacePlaceholder } from './placeholder'
-import { configureLittleSheepMonaco } from './monaco-language-support'
-import { LITTLE_SHEEP_MONACO_THEME } from './monaco-theme'
-
-export const MonacoEditor = lazy(async () => {
-  const [monacoReact, monaco] = await Promise.all([
-    import('@monaco-editor/react'),
-    import('monaco-editor'),
-  ])
-  monacoReact.loader.config({ monaco })
-  return { default: monacoReact.default }
-})
 
 export function WorkspaceFileView({
   tabId,
@@ -50,18 +40,21 @@ export function WorkspaceFileView({
   onWorkspaceFileSaved: (root: string, path: string, preview: WorkspacePreview) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
-  const [preview, setPreview] = useState<WorkspacePreview | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [preview, setPreview] = useState<WorkspacePreview | null>(() => (
+    workspaceFilePreviewCache.read(root, path)
+  ))
+  const [loading, setLoading] = useState(() => !workspaceFilePreviewCache.read(root, path))
   const [error, setError] = useState('')
   const requestRef = useRef(0)
 
   useEffect(() => {
     let alive = true
     const requestId = ++requestRef.current
-    setPreview(null)
+    const cached = workspaceFilePreviewCache.read(root, path)
+    setPreview(cached)
     setError('')
-    setLoading(true)
-    previewWorkspaceFile(root, path)
+    setLoading(!cached)
+    workspaceFilePreviewCache.load(root, path)
       .then((result) => {
         if (!alive || requestId !== requestRef.current) return
         setPreview(result)
@@ -95,6 +88,7 @@ export function WorkspaceFileView({
     })
     if (!approved) throw new Error('已取消保存。')
     const nextPreview = await saveWorkspaceFile(root, nextPath, content, expectedModifiedAt, sessionId)
+    workspaceFilePreviewCache.store(root, nextPath, nextPreview)
     setPreview(nextPreview)
     onWorkspaceArtifactsChanged()
     onWorkspaceFileSaved(root, nextPath, nextPreview)
@@ -143,9 +137,10 @@ export function WorkspacePreviewPane({
   onDraftChange?: (tab: WorkspaceFileTabId, draft: WorkspaceFileDraftState | null) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
-  const title = preview?.name ?? (selectedPath ? lastPathSegment(selectedPath) : '预览')
-  const meta = preview ? `${formatFileSize(preview.size)}${preview.modifiedAt ? ` · ${formatDateTime(preview.modifiedAt)}` : ''}` : ''
   const breadcrumbs = selectedPath ? workspaceBreadcrumbs(workspacePath, selectedPath) : []
+  const pathParts = breadcrumbs.length > 0
+    ? breadcrumbs
+    : [preview?.relativePath || selectedPath || '选择一个文件查看内容']
   const editable = preview?.kind === 'text' || preview?.kind === 'markdown'
   const editorLanguage = preview?.kind === 'markdown'
     ? 'markdown'
@@ -164,6 +159,8 @@ export function WorkspacePreviewPane({
   const editorLineCount = editable ? countEditorLines(editorText) : 0
   const editorEol = editable ? detectEditorEol(editorText) : ''
   const editorSize = editable ? formatFileSize(utf8ByteLength(editorText)) : ''
+  const previewSize = preview ? formatFileSize(preview.size) : ''
+  const previewModifiedAt = preview?.modifiedAt ? formatDateTime(preview.modifiedAt) : ''
 
   function emitDraft(next: {
     editorText?: string
@@ -252,24 +249,14 @@ export function WorkspacePreviewPane({
 
   return (
     <div className="workspace-preview-pane">
-      <div className="workspace-preview-header">
-        <div className="workspace-preview-title">
-          <span>
-            {title}
-            {editable && <b className="workspace-preview-editor-badge">内置 VS Code · {editorLanguageLabel}</b>}
-          </span>
-          {breadcrumbs.length > 0 ? (
-            <div className="workspace-preview-breadcrumbs" aria-label="文件路径">
-              {breadcrumbs.map((part, index) => (
-                <span key={`${part}-${index}`}>
-                  {index > 0 && <i aria-hidden="true">/</i>}
-                  <em>{part}</em>
-                </span>
-              ))}
-            </div>
-          ) : (
-            <small>{preview?.relativePath || (selectedPath ? selectedPath : '选择一个文件查看内容')}</small>
-          )}
+      <div className="workspace-preview-header workspace-page-leading-row">
+        <div className="workspace-preview-breadcrumbs" aria-label="文件路径">
+          {pathParts.map((part, index) => (
+            <span key={`${part}-${index}`}>
+              {index > 0 && <i aria-hidden="true">/</i>}
+              <em>{part}</em>
+            </span>
+          ))}
         </div>
         {selectedPath && (
           <div className="workspace-preview-actions">
@@ -324,14 +311,13 @@ export function WorkspacePreviewPane({
           </div>
         )}
       </div>
-      {meta && <div className="workspace-preview-meta">{meta}</div>}
       {(saveMessage || saveError) && (
         <div className={`workspace-editor-status ${saveError ? 'error' : ''}`}>
           {saveError || saveMessage}
         </div>
       )}
       <div
-        className="workspace-preview-body"
+        className={`workspace-preview-body ${editable ? 'editor' : ''}`}
         onKeyDownCapture={(event) => {
           if (!editable || !dirty || saving) return
           const key = event.key.toLowerCase()
@@ -345,52 +331,28 @@ export function WorkspacePreviewPane({
         {!loading && error && <WorkspacePlaceholder title="预览失败" text={error} />}
         {!loading && !error && !preview && <WorkspacePlaceholder title="文件预览" text="代码和文本进入内置 VS Code 工作台；图片、PDF 和 Office 文件在 LS 内部预览。" />}
         {!loading && !error && editable && (
-          <div className="workspace-editor-shell">
-            <div className="workspace-editor-monaco">
-              <Suspense fallback={<WorkspacePlaceholder title="载入编辑器" text="正在打开内置代码编辑器。" />}>
-                <MonacoEditor
-                  height="100%"
-                  language={editorLanguage}
-                  value={editorText}
-                  theme={LITTLE_SHEEP_MONACO_THEME}
-                  beforeMount={configureLittleSheepMonaco}
-                  onChange={(value) => updateEditorText(value ?? '')}
-                  options={{
-                    automaticLayout: true,
-                    bracketPairColorization: { enabled: true },
-                    cursorBlinking: 'smooth',
-                    detectIndentation: true,
-                    folding: true,
-                    fontFamily: 'Consolas, ui-monospace, SFMono-Regular, Menlo, Monaco, monospace',
-                    fontSize: 12,
-                    fontWeight: '500',
-                    formatOnPaste: true,
-                    guides: { bracketPairs: true, indentation: true },
-                    lineDecorationsWidth: 8,
-                    lineNumbers: 'on',
-                    lineNumbersMinChars: 3,
-                    minimap: { enabled: false },
-                    overviewRulerBorder: false,
-                    padding: { top: 10, bottom: 10 },
-                    readOnly: !editing,
-                    renderLineHighlight: editing ? 'all' : 'none',
-                    renderWhitespace: 'selection',
-                    scrollBeyondLastLine: false,
-                    smoothScrolling: true,
-                    tabSize: 2,
-                    wordWrap: 'on',
-                  }}
-                />
-              </Suspense>
-            </div>
-            <div className="workspace-editor-statusbar" aria-label="内置代码工作台状态">
-              <span>{editing ? (dirty ? '编辑中*' : '编辑中') : '只读'}</span>
-              <span>{editorLanguageLabel}</span>
-              <span>{editorLineCount} 行</span>
-              <span>{editorSize}</span>
-              <span>{editorEol}</span>
-              <span>{dirty ? '未保存' : '已同步'}</span>
-            </div>
+          <div className="workspace-editor-monaco">
+            <WorkspaceCodeEditor
+              height="100%"
+              language={editorLanguage}
+              path={workspaceEditorModelPath(workspacePath, preview.path)}
+              value={editorText}
+              loading={<WorkspacePlaceholder title="载入编辑器" text="正在打开内置代码编辑器。" />}
+              onChange={(value) => updateEditorText(value ?? '')}
+              options={{
+                bracketPairColorization: { enabled: true },
+                cursorBlinking: 'smooth',
+                detectIndentation: true,
+                folding: true,
+                formatOnPaste: true,
+                guides: { bracketPairs: true, indentation: true },
+                lineNumbers: 'on',
+                readOnly: !editing,
+                renderLineHighlight: editing ? 'all' : 'none',
+                renderWhitespace: 'selection',
+                tabSize: 2,
+              }}
+            />
           </div>
         )}
         {!loading && !error && preview?.kind === 'image' && (
@@ -419,6 +381,17 @@ export function WorkspacePreviewPane({
           </div>
         )}
       </div>
+      {preview && (
+        <div className="workspace-preview-statusbar" aria-label="文件预览状态">
+          {editable && <span>{editing ? (dirty ? '编辑中*' : '编辑中') : '只读'}</span>}
+          {editable && <span>{editorLanguageLabel}</span>}
+          {editable && <span>{editorLineCount} 行</span>}
+          <span>{editable ? editorSize : previewSize}</span>
+          {previewModifiedAt && <span>{previewModifiedAt}</span>}
+          {editable && <span>{editorEol}</span>}
+          {editable && <span>{dirty ? '未保存' : '已同步'}</span>}
+        </div>
+      )}
     </div>
   )
 }

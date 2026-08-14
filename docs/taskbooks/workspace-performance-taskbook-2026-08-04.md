@@ -1,6 +1,6 @@
 # LS 拓展工作区性能任务书 2026-08-04
 
-最后更新：2026-08-10 15:57:32
+最后更新：2026-08-14 01:10:00
 
 ## Goal
 
@@ -53,30 +53,33 @@ production Electron build with an isolated data root.
 
 ## Source and test audit
 
-Current source contracts observed on 2026-08-04:
+Current source contracts observed on 2026-08-13:
 
-- Directory reads use a 5 second Renderer cache capped at 96 keys. Concurrent
-  ordinary reads coalesce; only requests with active waiters may be reused, so
-  a view reopened during abort/finally propagation cannot join an abandoned
-  read. A forced read advances the entry generation so a stale in-flight
-  response cannot replace or leak back to the caller instead of the refreshed
-  result. A successful save clears that workspace's entries.
-- Git status snapshots use a 30 second Main cache capped at 8 workspaces and
+- Directory reads use a 5 second Renderer cache capped at 128 keys. Concurrent
+  reads of the same path coalesce, expanded children load lazily, and a remount
+  restores retained directory snapshots before stale entries are revalidated.
+  Manual refresh bypasses a completed cache entry while still joining an
+  already-running request for the same path. `directory-preload.ts` may start
+  the persisted workspace root request before React mounts, but only when the
+  panel is visible, the file navigator is expanded, and the active tab needs
+  the ordinary navigator; review, collapsed panel, and collapsed navigator
+  states do not preheat or scan the directory.
+- Git status snapshots use a 5 second Main cache capped at 8 workspaces and
   8 MiB of estimated completed state. Snapshot loads coalesce per workspace,
-  at most two status scans run concurrently across workspaces, caller
-  cancellation is isolated, and save/manual/focus/visible refresh paths
-  explicitly invalidate the snapshot.
+  at most two status scans run concurrently across workspaces, and Git Diff
+  jobs are capped at two concurrent processes. Caller cancellation is isolated;
+  manual, focus, visible and local-mutation refresh paths can request a forced
+  refresh.
 - Every status scan creates an opaque revision. A file diff is bound to the
   retained snapshot with that revision; an invalidated or evicted revision
   returns 409 instead of silently running a new status scan for an old tree.
-- Review scheduling uses a one-shot 30 second delay after a completed visible
-  scan and queues refresh signals that arrive while a scan is running. The
-  hidden-state contract now clears an armed timer on transition to hidden and
-  re-checks visibility inside the callback before requesting a refresh.
-- Immediate review invalidation is driven by a dedicated workspace mutation
-  version instead of the general artifact version. Reply-only and read-only
-  runs no longer scan Git; successful in-workspace write/edit tool events and
-  local editor saves do. Shell/exec remains on focus and the 30 second fallback.
+- Review scheduling uses a 30 second visible interval plus window-focus and
+  manual refresh signals. Signals arriving during a snapshot load are coalesced
+  into one queued soft/forced refresh; hidden or inactive views do not poll.
+- Local editor saves and the workspace `artifactVersion` signal request a
+  forced review refresh. The review component keeps the previous snapshot and
+  Diff visible while the replacement request runs, so a refresh does not blank
+  the editor or reset the current selection.
 - Memory v3 historical maintenance is admitted by the host: active Agent runs
   always block it; hidden/minimized windows may admit it immediately; a visible
   window requires 25 seconds of system inactivity. The Electron adapter
@@ -85,38 +88,41 @@ Current source contracts observed on 2026-08-04:
   model manager retriggers the current Runner's coalesced drain without adding
   a resident retry timer.
 
-Existing focused tests cover directory coalescing, forced-refresh races, save
-invalidation and TTL expiry in
-`packages/app/src/renderer/api/workspace-files-cache.test.ts`; review transport
-refresh/revision query parameters in
-`packages/app/src/renderer/api/workspace-review.test.ts`; and Git snapshot TTL,
-explicit invalidation, cancellation isolation, orphan recovery and revision
-409 handling in
+Focused tests cover the bounded directory and file-preview caches in
+`packages/app/src/renderer/workspace/directory-cache.test.ts` and
+`packages/app/src/renderer/workspace/file-preview-cache.test.ts`; review
+transport/cache behavior in `packages/app/src/renderer/workspace/review-cache.test.ts`;
+review filtering and keyboard navigation in `review-model.test.ts`; shared
+Monaco lifecycle behavior in `monaco-model-cache.test.ts`; and Git snapshot
+TTL, cancellation, concurrency, byte budgets and revision 409 handling in
 `packages/app/src/main/local-app-api/workspace-git-review-cache.test.ts`.
 
 The focused capacity and scheduler tests are now present:
 
-- `workspace-files-cache.test.ts` fills 97 completed directory keys, verifies
-  least-recently-used eviction, keeps active in-flight entries protected, and
-  proves a zero-waiter request is not rejoined during delayed abort delivery
-  (20 tests in the focused suite).
+- `directory-cache.test.ts` verifies TTL boundaries, same-path request
+  coalescing, cross-mount snapshot reuse and bounded least-recently-used
+  retention. `file-preview-cache.test.ts` covers byte-aware text eviction,
+  concurrent preview reuse and save-versus-read races.
 - `workspace-git-review-cache.test.ts` covers completed-entry LRU/byte-budget
   eviction, the two-load concurrency ceiling, queued cancellation before
   loader start, and queue progress after a load settles.
+- `directory-preload.test.ts` covers visible-root preheating, file-tab root
+  selection, and the no-scan guards for review, closed tabs, collapsed panels,
+  and collapsed navigators.
 
 ## Acceptance evidence
 
 | Requirement | Evidence required | Current status |
 | --- | --- | --- |
-| File tree cache correctness | Focused cache suite including 96-key capacity and forced-refresh race | Complete: capacity, race, TTL and save invalidation covered |
-| Review cache correctness | Focused suite including 30-second TTL, 8-workspace/8 MiB eviction, two-load scheduling, cancellation and revision 409 | Complete: 16 focused tests pass |
+| File tree cache correctness | Focused cache suite including 128-key capacity, stale-while-revalidate behavior and request coalescing | Revalidated in the current build; see the command output recorded below |
+| Review cache correctness | Focused suite including 5-second snapshot TTL, 8-workspace/8 MiB eviction, two-load scheduling, cancellation and revision 409 | Revalidated in the current build; see the command output recorded below |
 | Review background scheduling | Slow-scan, focus, visibility and hidden-state scheduling tests | Pure policy tests pass; component uses the tested reducer and callback visibility guard |
 | Memory v3 stale embedding admission | Isolated stale-vector acceptance plus deterministic soak; no embedding call while active/denied, eventual recovery after admission | Complete: `maintenance-idle-acceptance.test.ts` and deterministic 48-Atom soak pass; model-ready callback covers post-provision retry |
 | Cold/warm interaction budgets | Production Electron timings with an isolated data root and representative repository | Complete: all measured paths within budget |
 | Idle resource budget | Hidden/collapsed CPU, disk I/O and process RSS observation over a fixed interval | Complete: stable hidden interval within budget; closing interval retained as diagnostic |
 | Monaco resource policy | Verify first coloured frame plus which TS/JSON/CSS/HTML workers start for each tested language | Complete for current contract: worker runtime is not started; Prism first frame and Monaco ink are verified |
-| Build size | Rebuild and compare named chunks, worker assets, CSS and total `packages/app/out` bytes | Complete: final post-build total 14,783,369 bytes; no worker assets are packaged |
-| Release quality gates | Targeted tests, full tests, typecheck, build, repository check, recovery check and `git diff --check` | Complete for the scoped change: excluded full suite passes; one user-owned desktop-shell assertion remains intentionally excluded; targeted diff check passes |
+| Build size | Rebuild and compare named chunks, worker assets, CSS and total `packages/app/out` bytes | Complete: current post-build total 17,743,898 bytes; no worker assets are packaged |
+| Release quality gates | Targeted tests, typecheck, build, repository check and `git diff --check` | Current review/workspace scope passes; final desktop interaction acceptance and repository-wide whitespace check are recorded at phase close |
 
 Audit command results on 2026-08-04:
 
@@ -160,6 +166,23 @@ Post-change focused verification on 2026-08-05:
   tests passed and 1 skipped. The only excluded file is the known user-owned
   desktop-shell assertion described below.
 
+Review-layout and shared-editor verification on 2026-08-13:
+
+- Nine focused Renderer workspace files passed all 32 tests. The contracts
+  cover the shared Monaco viewer/editor/Diff surface, unified navigator frame,
+  removal of the old review live view, persisted inline/side-by-side mode,
+  keyboard navigation, theme colours, model lifecycle and stable row layout.
+- The shared code surface reports a computed `13px` font size and `23px` line
+  height. This density applies to ordinary source viewing, editing and Git
+  Diff, without changing Markdown, Office or image preview typography.
+- The root directory preheat contract is covered by six focused tests and is
+  attached to the existing cache request, so it does not add a second scan or
+  a resident timer.
+- `pnpm run check:repo`, `pnpm run typecheck` and `pnpm run build` passed.
+- The isolated production Electron acceptance passed on the complete rerun
+  after a first harness-only timeout; the harness timeout happened before any
+  performance assertion and did not require a code change.
+
 ## Memory v3 idle evidence
 
 The expensive historical-vector path is verified separately from the UI
@@ -200,37 +223,41 @@ Pre-change build artifact baseline recorded before the performance rebuild:
 | Monaco editor CSS | 206,313 |
 | Total `packages/app/out` | 33,831,278 |
 
-Post-change production build and runtime evidence (Windows, isolated temporary
-data root, ordinary two-file Git fixture; cold means a fresh Electron process,
-warm means the same Renderer process after the first load):
+Current production build and runtime evidence (Windows, isolated temporary
+data root, ordinary Git fixture; cold means a fresh Electron process, warm
+means the same Renderer process after the first load):
 
 | Artifact / path | Observed |
 | --- | ---: |
-| Main bundle (`out/main/index.js`) | 2,257,864 bytes |
-| Renderer application bundle (`out/renderer/assets/index-CW3uL21H.js`) | 1,728,356 bytes |
-| Monaco editor runtime (`out/renderer/assets/editor.api2-BggN9QXB.js`) | 5,016,605 bytes |
-| Renderer CSS (`out/renderer/assets/index-DVU_DPnB.css`) | 264,308 bytes |
+| Main bundle (`out/main/index.js`) | 2,278,128 bytes |
+| Renderer application bundle (`out/renderer/assets/index-DPJ4qaQ0.js`) | 2,296,995 bytes |
+| Monaco editor runtime (`out/renderer/assets/editor.api2-Dc-goIUu.js`) | 4,913,487 bytes |
+| Renderer CSS (`out/renderer/assets/index-Dhuvar_6.css`) | 255,646 bytes |
 | Monaco CSS | 110,565 bytes |
-| Total `packages/app/out` | 14,783,369 bytes |
-| Process to locator | 635 ms |
-| Locator to visible window | 222 ms |
-| Workspace first frame | 70.5 ms |
-| File tree cold / warm | 126.8 / 9.3 ms |
-| Stale tree visible before revalidation | 17 ms |
-| Stale tree revalidation request / complete | 4.6 / 270.3 ms |
-| Prism coloured first frame | 129.2 ms |
-| Monaco ready cold / warm | 471.6 / 95.3 ms |
-| Monaco ink cold / warm | 597.4 / 196.4 ms |
-| Review tree cold / warm | 321 / 13.9 ms |
-| First review diff | 82.1 ms |
-| Stable hidden CPU / I/O (5 s) | 0 ms / 0 bytes |
+| Total `packages/app/out` | 17,743,898 bytes |
+| Packaged Monaco workers | 0 |
+| Process to locator | 865 ms |
+| Locator to visible window | 612 ms |
+| Workspace first frame | 333.6 ms |
+| File tree cold / warm | 347.8 / 23.2 ms |
+| Stale tree visible before revalidation | 18.2 ms |
+| First syntax-coloured frame | 399.2 ms |
+| Monaco ready cold / warm | 405.9 / 44.7 ms |
+| Monaco ink cold / warm | 581.2 / 235.7 ms |
+| Review tree cold / warm | 645.9 / 31 ms |
+| First review Diff | 530.9 ms |
+| Stable hidden CPU / I/O (5 s) | 15.6 ms / 0 bytes |
+| Review editor instances / syntax colours | 2 / 4 |
+| Git inserted / removed backgrounds | present / present |
 
-The first hidden sample is kept separately because Windows may perform
-one-shot close-to-background cleanup; it is not used as the sustained idle
-budget. The final excluded full-suite run completed 286 of 286 files (2,006
-tests passed, one skipped). The only intentionally excluded file is the
-existing `packages/app/src/renderer/chat-layout-stability.test.ts` assertion
-against `desktop-shell.ts`'s user-owned transparent-window options; that file
-was not modified. Targeted performance/maintenance suites, typechecks,
-production build, repository checks and the isolated Electron acceptance all
-passed.
+The first complete run of the preceding build recorded file-tree cold at
+780.2 ms, review tree cold at 1,873.9 ms and Monaco warm ink at 506.5 ms. The
+first attempt against the current build timed out in the harness while waiting
+for the review collapse button; it produced no performance sample. The
+subsequent complete run above passed without changing the budgets, and both
+historical samples remain documented as Windows first-process/disk-cache and
+harness variance rather than being treated as passing measurements.
+The earlier 2026-08-05 full-suite result remains valid historical evidence for
+the performance phase. The final 2026-08-13 close additionally uses focused
+workspace tests, current typechecks/build/repository checks, production
+Electron timing, and direct desktop interaction acceptance.

@@ -18,7 +18,10 @@ const DEFAULT_MAX_CACHE_BYTES = 512 * 1024 * 1024
 const DEFAULT_MAX_CACHE_ENTRIES = 256
 const DEFAULT_MAX_CACHE_AGE_MS = 30 * 24 * 60 * 60 * 1000
 const IMAGE_ATTACHMENT_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff', '.svg'])
-const DOCUMENT_ATTACHMENT_EXTS = new Set(['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx'])
+const DOCUMENT_ATTACHMENT_EXTS = new Set([
+  '.pdf', '.doc', '.docx', '.docm', '.dotx', '.ppt', '.pptx', '.pptm', '.pps', '.ppsx',
+  '.xls', '.xlsx', '.xlsm', '.xlsb', '.xltx',
+])
 
 const EXT_BY_MIME: Record<string, string> = {
   'image/png': '.png',

@@ -2,24 +2,61 @@
 
 import type * as Monaco from 'monaco-editor'
 import { LS_CUSTOM_LANGUAGE_IDS } from '../../shared/workspace-languages'
+import { loadWorkspaceMonacoLanguageModule } from './monaco-language-loaders'
 import { registerLittleSheepMonacoTheme } from './monaco-theme'
 
 const configuredMonaco = new WeakSet<object>()
+const languageRequests = new WeakMap<object, Map<string, Promise<void>>>()
 
 export function configureLittleSheepMonaco(monaco: typeof Monaco): void {
   if (configuredMonaco.has(monaco)) return
   configuredMonaco.add(monaco)
   registerLittleSheepMonacoTheme(monaco)
 
-  for (const languageId of LS_CUSTOM_LANGUAGE_IDS) {
+  for (const languageId of [...LS_CUSTOM_LANGUAGE_IDS, 'json', 'plaintext']) {
     if (!monaco.languages.getLanguages().some((language) => language.id === languageId)) {
       monaco.languages.register({ id: languageId })
     }
-    monaco.languages.setMonarchTokensProvider(languageId, createTokenizer(languageId))
+    if (languageId !== 'plaintext') {
+      monaco.languages.setMonarchTokensProvider(languageId, createTokenizer(languageId))
+    }
   }
 }
 
+export async function prepareLittleSheepMonacoLanguages(
+  monaco: typeof Monaco,
+  languageIds: readonly string[],
+): Promise<void> {
+  configureLittleSheepMonaco(monaco)
+  await Promise.all([...new Set(languageIds)].map((languageId) => prepareLanguage(monaco, languageId)))
+}
+
+function prepareLanguage(monaco: typeof Monaco, languageId: string): Promise<void> {
+  if (LS_CUSTOM_LANGUAGE_IDS.has(languageId) || languageId === 'json' || languageId === 'plaintext') {
+    return Promise.resolve()
+  }
+  let requests = languageRequests.get(monaco)
+  if (!requests) {
+    requests = new Map()
+    languageRequests.set(monaco, requests)
+  }
+  const existing = requests.get(languageId)
+  if (existing) return existing
+  const module = loadWorkspaceMonacoLanguageModule(languageId)
+  if (!module) return Promise.resolve()
+  const request = module.then(({ conf, language }) => {
+    if (!monaco.languages.getLanguages().some((candidate) => candidate.id === languageId)) {
+      monaco.languages.register({ id: languageId })
+    }
+    monaco.languages.setLanguageConfiguration(languageId, conf)
+    monaco.languages.setMonarchTokensProvider(languageId, language)
+  })
+  requests.set(languageId, request)
+  return request
+}
+
 function createTokenizer(languageId: string): Monaco.languages.IMonarchLanguage {
+  if (languageId === 'json') return JSON_TOKENIZER
   const keywords = KEYWORDS[languageId] ?? COMMON_KEYWORDS
   const lineComment = languageId === 'haskell' || languageId === 'erlang'
     ? '--'
@@ -67,6 +104,21 @@ function createTokenizer(languageId: string): Monaco.languages.IMonarchLanguage 
       ],
     },
   }
+}
+
+const JSON_TOKENIZER: Monaco.languages.IMonarchLanguage = {
+  defaultToken: '',
+  tokenizer: {
+    root: [
+      [/\s+/, 'white'],
+      [/"(?:[^"\\]|\\.)*"(?=\s*:)/, 'key'],
+      [/"(?:[^"\\]|\\.)*"/, 'string'],
+      [/-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/, 'number'],
+      [/\b(?:true|false|null)\b/, 'keyword'],
+      [/[{}[\]]/, '@brackets'],
+      [/[,:]/, 'delimiter'],
+    ],
+  },
 }
 
 const COMMON_KEYWORDS = [

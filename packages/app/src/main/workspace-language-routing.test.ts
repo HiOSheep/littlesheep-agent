@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { previewLanguageForWorkspaceFile } from './workspace-file-routing'
-import { normalizeWorkspaceLanguageId, workspaceLanguageForFile } from '../shared/workspace-languages'
+import {
+  normalizeWorkspaceLanguageId,
+  workspaceLanguageForFile,
+  workspaceLanguageForPath,
+} from '../shared/workspace-languages'
 
 describe('workspace language registry', () => {
   it.each([
@@ -21,6 +25,12 @@ describe('workspace language registry', () => {
   it('uses the same registry from the main-process preview route', () => {
     expect(previewLanguageForWorkspaceFile('server.py', '.py')).toBe('python')
     expect(previewLanguageForWorkspaceFile('lib.rs', '.rs')).toBe('rust')
+  })
+
+  it('routes review model paths through the same registry', () => {
+    expect(workspaceLanguageForPath('src/components/Panel.tsx')).toBe('typescript')
+    expect(workspaceLanguageForPath('config\\settings.toml')).toBe('toml')
+    expect(workspaceLanguageForPath('Dockerfile')).toBe('dockerfile')
   })
 
   it('normalizes unknown language ids to plaintext', () => {

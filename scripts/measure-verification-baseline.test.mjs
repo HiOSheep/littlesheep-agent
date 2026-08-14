@@ -91,7 +91,7 @@ describe('verification baseline measurement', () => {
       available: false,
       requiresGlobalTypecheck: true,
     });
-    expect(report.affectedPackageCount).toBe(27);
+    expect(report.affectedPackageCount).toBe(28);
     expect(report.appBuildSensitive).toBe(true);
     expect(report.testSelection.mode).toBe('full');
   });

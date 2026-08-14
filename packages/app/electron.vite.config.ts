@@ -72,6 +72,52 @@ export default defineConfig({
         input: { index: resolve(__dirname, 'src/renderer/index.html') },
       },
     },
-    plugins: [react()],
+    plugins: [
+      isolateMonacoLanguageDefinitions(),
+      react(),
+      rejectMonacoLanguageWorkers(),
+    ],
   },
 })
+
+const monacoLanguageDefinitionPath =
+  /[\\/]monaco-editor[\\/]esm[\\/]vs[\\/]basic-languages[\\/]([^\\/]+)[\\/]\1\.js(?:\?.*)?$/u
+const monacoLanguageContributionImport =
+  /^\s*import\s+(['"])\.\.\/\.\.\/(?:editor|base)\/[^'"\r\n]+\1;?\s*$/gmu
+
+function isolateMonacoLanguageDefinitions() {
+  return {
+    name: 'isolate-monaco-language-definitions',
+    enforce: 'pre' as const,
+    transform(code: string, id: string) {
+      if (!monacoLanguageDefinitionPath.test(id)) return null
+      const isolated = code.replace(monacoLanguageContributionImport, '')
+      if (isolated === code) return null
+      return { code: isolated, map: null }
+    },
+  }
+}
+
+function rejectMonacoLanguageWorkers() {
+  return {
+    name: 'reject-monaco-language-workers',
+    generateBundle(_options: unknown, bundle: Record<string, unknown>) {
+      const workers = Object.keys(bundle).filter((file) => /(?:^|\/)(?:editor|ts|json|css|html)\.worker-[^/]+\.js$/u.test(file))
+      if (workers.length > 0) {
+        throw new Error(`Monaco language workers are outside the LS workspace contract: ${workers.join(', ')}`)
+      }
+      const contributionLeaks = Object.entries(bundle)
+        .filter(([, output]) => output && typeof output === 'object' && 'code' in output)
+        .filter(([, output]) => {
+          const code = (output as { code?: unknown }).code
+          return typeof code === 'string' && /ISuggestMemories|actionWidgetService/u.test(code)
+        })
+        .map(([file]) => file)
+      if (contributionLeaks.length > 0) {
+        throw new Error(
+          `Monaco language definitions pulled editor contributions into the worker-free runtime: ${contributionLeaks.join(', ')}`,
+        )
+      }
+    },
+  }
+}

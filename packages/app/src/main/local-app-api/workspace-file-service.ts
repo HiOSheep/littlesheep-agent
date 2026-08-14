@@ -9,7 +9,6 @@ import {
 } from '../workspace-file-routing.js'
 import { HttpError } from './http.js'
 import { isPathInsideOrSame } from './workspace-support.js'
-import { previewWorkspaceOfficeFile } from '../workspace-office-preview.js'
 
 const MAX_WORKSPACE_DIR_ENTRIES = 320
 const MAX_TEXT_PREVIEW_BYTES = 512 * 1024
@@ -94,6 +93,7 @@ export async function previewWorkspaceFile(root: string, target: string) {
   if (surface === 'imagePreview') return { ...base, kind: 'image' as const }
   if (surface === 'pdfPreview') return { ...base, kind: 'pdf' as const }
   if (surface === 'documentCard') {
+    const { previewWorkspaceOfficeFile } = await import('../workspace-office-preview.js')
     return { ...base, ...await previewWorkspaceOfficeFile(target, ext) }
   }
   if (info.size > MAX_TEXT_PREVIEW_BYTES) {

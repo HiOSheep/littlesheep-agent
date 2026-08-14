@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@littlesheep/config": "workspace:*",
+    "@littlesheep/documents": "workspace:*",
     "@littlesheep/experience": "workspace:*",
     "@littlesheep/types": "workspace:*",
     "@littlesheep/memory-core": "workspace:*",

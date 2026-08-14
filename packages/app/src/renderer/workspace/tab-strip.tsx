@@ -1,4 +1,5 @@
 // Workspace tab strip: feature tabs, file tabs, and persistent browser tabs.
+import { useLayoutEffect, useRef } from 'react'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { CloseMiniIcon, FileGlyphIcon, WorkspaceFeatureIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
@@ -12,6 +13,7 @@ import {
 import { WorkspaceAddMenu } from './add-menu'
 import { isWorkspaceBrowserTabId, type WorkspaceBrowserTab, type WorkspaceBrowserTabId } from './browser-tabs'
 import { lastPathSegment } from './path-utils'
+import { resolveWorkspaceTabLabelMotion } from './tab-label-motion'
 
 type WorkspaceEntry = { id: WorkspacePanelTab; label: string; desc: string }
 
@@ -92,7 +94,7 @@ export function WorkspaceTabStrip({
             {entry.kind === 'file'
               ? <FileGlyphIcon />
               : <WorkspaceFeatureIcon id={entry.kind === 'browser' ? 'browser' : entry.id} />}
-            <span className="workspace-active-label">{entry.label}</span>
+            <WorkspaceTabLabel label={entry.label} />
             <button
               {...transientTriggerProps()}
               className="workspace-active-close"
@@ -123,5 +125,47 @@ export function WorkspaceTabStrip({
         onTipChange={onTipChange}
       />
     </div>
+  )
+}
+
+function WorkspaceTabLabel({ label }: { label: string }) {
+  const viewportRef = useRef<HTMLSpanElement>(null)
+  const textRef = useRef<HTMLSpanElement>(null)
+
+  useLayoutEffect(() => {
+    let active = true
+    const viewport = viewportRef.current
+    const text = textRef.current
+    if (!viewport || !text) return
+
+    const updateMotion = () => {
+      if (!active) return
+      const motion = resolveWorkspaceTabLabelMotion(viewport.clientWidth, text.scrollWidth)
+      viewport.classList.toggle('is-overflowing', motion.overflowPx > 0)
+      viewport.style.setProperty('--workspace-tab-label-offset', `${motion.offsetPx}px`)
+      viewport.style.setProperty('--workspace-tab-label-scroll-duration', `${motion.durationMs}ms`)
+    }
+
+    const frame = window.requestAnimationFrame(updateMotion)
+    const observer = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(updateMotion)
+    observer?.observe(viewport)
+    observer?.observe(text)
+    window.addEventListener('resize', updateMotion)
+    void document.fonts?.ready.then(updateMotion)
+
+    return () => {
+      active = false
+      window.cancelAnimationFrame(frame)
+      observer?.disconnect()
+      window.removeEventListener('resize', updateMotion)
+    }
+  }, [label])
+
+  return (
+    <span ref={viewportRef} className="workspace-active-label">
+      <span ref={textRef} className="workspace-active-label-text">{label}</span>
+    </span>
   )
 }

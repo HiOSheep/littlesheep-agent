@@ -45,6 +45,19 @@ export interface LocalTokenizerPreparationOptions {
   onProgress?: (progress: { file: string; completedBytes: number; totalBytes: number }) => void;
 }
 
+export interface LazyLocalTokenizerCounterOptions extends LocalTokenizerPreparationOptions {
+  /** Minimum delay before a failed preparation may start another network request. */
+  retryBackoffMs?: number;
+  onPreparationError?: (error: Error) => void;
+}
+
+export interface LazyExactContextTokenCounter extends ExactContextTokenCounter {
+  readonly ready: boolean;
+  /** Starts or joins verified asset preparation without blocking application startup. */
+  prepare(): Promise<void>;
+  dispose(): void;
+}
+
 export interface LocalTokenizerVerification {
   available: boolean;
   modelRoot: string;
@@ -78,6 +91,83 @@ export async function prepareLocalExactContextTokenCounter(
     if (cachedCounter?.promise === promise) cachedCounter = undefined;
     throw error;
   }
+}
+
+/**
+ * Return a synchronous Context Engine counter facade while keeping immutable
+ * tokenizer verification/provisioning off the application startup path.
+ * Until preparation completes, countRequest fails closed and Context Engine
+ * uses its conservative request-size safety estimator.
+ */
+export function createLazyLocalExactContextTokenCounter(
+  options: LazyLocalTokenizerCounterOptions,
+): LazyExactContextTokenCounter | undefined {
+  if (!isDeepSeekV4ModelRef(options.modelRef)) return undefined;
+
+  const lifecycle = new AbortController();
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, lifecycle.signal])
+    : lifecycle.signal;
+  const retryBackoffMs = Math.max(0, options.retryBackoffMs ?? 60_000);
+  let counter: ExactContextTokenCounter | undefined;
+  let preparation: Promise<void> | undefined;
+  let lastFailure: { error: Error; at: number } | undefined;
+  let disposed = false;
+
+  const prepare = (): Promise<void> => {
+    if (counter) return Promise.resolve();
+    if (disposed) return Promise.reject(new Error('Exact token counter has been disposed.'));
+    if (preparation) return preparation;
+    if (lastFailure && Date.now() - lastFailure.at < retryBackoffMs) {
+      return Promise.reject(lastFailure.error);
+    }
+
+    lastFailure = undefined;
+    const pending = prepareLocalExactContextTokenCounter({ ...options, signal })
+      .then((prepared) => {
+        if (!prepared) throw new Error(`No exact token counter is registered for ${options.modelRef}.`);
+        if (!disposed) counter = prepared;
+      })
+      .catch((error: unknown) => {
+        const normalized = error instanceof Error ? error : new Error(String(error));
+        if (!disposed) {
+          lastFailure = { error: normalized, at: Date.now() };
+          options.onPreparationError?.(normalized);
+        }
+        throw normalized;
+      })
+      .finally(() => {
+        if (preparation === pending) preparation = undefined;
+      });
+    preparation = pending;
+    return pending;
+  };
+
+  return {
+    id: DEEPSEEK_V4_TOKEN_COUNTER_ID,
+    get ready(): boolean {
+      return counter !== undefined;
+    },
+    supports(provider: string, model: string): boolean {
+      return provider.trim().toLowerCase() === 'deepseek' && isDeepSeekV4Model(model);
+    },
+    countRequest(request: ChatRequest): number {
+      if (counter) return counter.countRequest(request);
+      const failure = lastFailure;
+      void prepare().catch(() => undefined);
+      if (failure && Date.now() - failure.at < retryBackoffMs) {
+        throw new Error(`Verified exact tokenizer is temporarily unavailable: ${failure.error.message}`);
+      }
+      throw new Error('Verified exact tokenizer is preparing; conservative context estimation is active.');
+    },
+    prepare,
+    dispose(): void {
+      if (disposed) return;
+      disposed = true;
+      lifecycle.abort(new Error('Exact token counter lifecycle ended.'));
+      counter = undefined;
+    },
+  };
 }
 
 export function createDeepSeekV4ExactContextTokenCounter(

@@ -5,14 +5,10 @@ import { basename, extname, isAbsolute, relative, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { AgentTool, AttachmentOwnership, RunAttachment } from '@littlesheep/types'
 import type { AttachmentRef } from '../shared/attachment-contracts.js'
-import mammoth from 'mammoth'
-import * as XLSX from 'xlsx'
 
 const MAX_ATTACHMENT_PREVIEW_CHARS = 8000
 const MAX_EXTRACTED_DOCUMENT_CHARS = 24000
 const MAX_IMAGE_ATTACHMENT_BYTES = 10 * 1024 * 1024
-const MAX_WORKBOOK_SHEETS = 5
-const MAX_WORKBOOK_ROWS_PER_SHEET = 120
 
 const TEXT_ATTACHMENT_EXTS = new Set([
   '.txt', '.md', '.markdown', '.json', '.jsonl', '.csv', '.tsv', '.yaml', '.yml',
@@ -21,7 +17,10 @@ const TEXT_ATTACHMENT_EXTS = new Set([
   '.bat', '.sql', '.log',
 ])
 const IMAGE_ATTACHMENT_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff', '.svg'])
-const DOCUMENT_ATTACHMENT_EXTS = new Set(['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx'])
+const DOCUMENT_ATTACHMENT_EXTS = new Set([
+  '.pdf', '.doc', '.docx', '.docm', '.dotx', '.ppt', '.pptx', '.pptm', '.pps', '.ppsx',
+  '.xls', '.xlsx', '.xlsm', '.xlsb', '.xltx',
+])
 const IMAGE_MIME_BY_EXT: Record<string, string> = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -237,58 +236,29 @@ async function extractAttachmentText(filePath: string): Promise<{ text?: string;
   if (TEXT_ATTACHMENT_EXTS.has(ext)) {
     return { text: await readTextPreview(filePath) ?? undefined }
   }
-  if (ext === '.docx') {
-    return extractDocxText(filePath)
-  }
-  if (ext === '.xlsx' || ext === '.xls') {
-    return extractWorkbookText(filePath)
-  }
-  if (ext === '.pdf') {
-    return { note: 'PDF text extraction is not enabled yet; the file path is available for tool-based follow-up.' }
-  }
-  if (ext === '.doc' || ext === '.ppt' || ext === '.pptx') {
-    return { note: `${ext.slice(1).toUpperCase()} text extraction is not enabled yet; the file path is available for tool-based follow-up.` }
-  }
-  return {}
-}
-
-async function extractDocxText(filePath: string): Promise<{ text?: string; note?: string }> {
   try {
-    const result = await mammoth.extractRawText({ path: filePath })
-    const text = clip(result.value.trim(), MAX_EXTRACTED_DOCUMENT_CHARS)
-    const note = result.messages.length > 0 ? `DOCX extracted with ${result.messages.length} parser warning(s).` : undefined
-    return { text: text || undefined, note }
-  } catch (err) {
-    return { note: `DOCX extraction failed: ${(err as Error).message}` }
-  }
-}
-
-async function extractWorkbookText(filePath: string): Promise<{ text?: string; note?: string }> {
-  try {
-    const workbook = XLSX.readFile(filePath, { cellDates: true })
-    const sheetNames = workbook.SheetNames.slice(0, MAX_WORKBOOK_SHEETS)
-    const chunks: string[] = []
-    for (const sheetName of sheetNames) {
-      const sheet = workbook.Sheets[sheetName]
-      if (!sheet) continue
-      const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, blankrows: false, raw: false })
-      const limited = rows
-        .slice(0, MAX_WORKBOOK_ROWS_PER_SHEET)
-        .map((row) => row.map((cell) => String(cell ?? '').trim()).join('\t'))
-        .filter((row) => row.trim().length > 0)
-      chunks.push(`# Sheet: ${sheetName}\n${limited.join('\n')}`)
+    const { extractDocument, UnsupportedDocumentFormatError } = await import('@littlesheep/documents')
+    const extracted = await extractDocument(filePath, {
+      maxChars: MAX_EXTRACTED_DOCUMENT_CHARS,
+      maxSections: 50,
+      maxRowsPerSheet: 120,
+    })
+    const notes = [...extracted.notes]
+    if (extracted.truncated && !notes.some((note) => note.includes('截断'))) {
+      notes.push('内容已按附件读取预算截断。')
     }
-    const skippedSheets = workbook.SheetNames.length > sheetNames.length
-      ? ` Workbook has ${workbook.SheetNames.length} sheets; only first ${sheetNames.length} were extracted.`
-      : ''
-    const text = clip(chunks.join('\n\n').trim(), MAX_EXTRACTED_DOCUMENT_CHARS)
     return {
-      text: text || undefined,
-      note: skippedSheets.trim() || undefined,
+      text: extracted.text || undefined,
+      note: notes.join(' ') || undefined,
     }
   } catch (err) {
-    return { note: `Workbook extraction failed: ${(err as Error).message}` }
+    if (isUnsupportedDocumentFormatError(err)) return { note: (err as Error).message }
+    return { note: `文档解析失败：${(err as Error).message}` }
   }
+}
+
+function isUnsupportedDocumentFormatError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'UnsupportedDocumentFormatError'
 }
 
 async function readImageDataUrl(filePath: string): Promise<{ mimeType?: string; dataUrl?: string; reason?: string }> {

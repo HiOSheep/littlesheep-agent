@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ToolRegistry } from './registry.js';
+import { registerBuiltinTools } from './index.js';
 import type { AgentTool } from '@littlesheep/types';
 import { z } from 'zod';
 
@@ -74,5 +75,10 @@ describe('ToolRegistry', () => {
     registry.register(makeTool('y'));
     registry.clear();
     expect(registry.names()).toHaveLength(0);
+  });
+
+  it('registers structured document readers and creators as core builtins', () => {
+    registerBuiltinTools(registry);
+    expect(registry.names()).toEqual(expect.arrayContaining(['document_read', 'document_create']));
   });
 });

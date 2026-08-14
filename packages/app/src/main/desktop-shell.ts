@@ -37,6 +37,8 @@ export interface DesktopAcceptanceSnapshot extends DesktopShellSnapshot {
     arrayBuffersBytes: number
     activeHandleCount: number
     activeRequestCount: number
+    activeHandleTypes: DesktopAcceptanceResourceType[]
+    activeRequestTypes: DesktopAcceptanceResourceType[]
   }
   electron: {
     processCount: number
@@ -51,6 +53,11 @@ export interface DesktopAcceptanceSnapshot extends DesktopShellSnapshot {
     activitySourceCount: number
     activityListenerCount: number
   }
+}
+
+export interface DesktopAcceptanceResourceType {
+  type: string
+  count: number
 }
 
 export class LittleSheepDesktopShell {

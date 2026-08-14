@@ -27,8 +27,27 @@ export interface WorkspaceReviewParsedDiff {
   truncated: boolean
 }
 
+export interface WorkspaceReviewBranchStatus {
+  records: WorkspaceReviewStatusRecord[]
+  branch?: string
+  upstream?: string
+  ahead: number
+  behind: number
+  detached: boolean
+}
+
 export function parsePorcelainStatus(buffer: Buffer): WorkspaceReviewStatusRecord[] {
+  return parsePorcelainStatusFields(splitNullFields(buffer))
+}
+
+export function parsePorcelainBranchStatus(buffer: Buffer): WorkspaceReviewBranchStatus {
   const fields = splitNullFields(buffer)
+  const header = fields[0]?.startsWith('## ') ? fields.shift()?.slice(3) : undefined
+  const metadata = parseBranchHeader(header)
+  return { records: parsePorcelainStatusFields(fields), ...metadata }
+}
+
+function parsePorcelainStatusFields(fields: string[]): WorkspaceReviewStatusRecord[] {
   const records: WorkspaceReviewStatusRecord[] = []
   for (let index = 0; index < fields.length; index += 1) {
     const field = fields[index]
@@ -52,6 +71,34 @@ export function parsePorcelainStatus(buffer: Buffer): WorkspaceReviewStatusRecor
     })
   }
   return records
+}
+
+function parseBranchHeader(header: string | undefined): Omit<WorkspaceReviewBranchStatus, 'records'> {
+  if (!header) return { ahead: 0, behind: 0, detached: false }
+  if (header === 'HEAD (no branch)' || header.startsWith('HEAD (detached ')) {
+    return { ahead: 0, behind: 0, detached: true }
+  }
+  for (const prefix of ['No commits yet on ', 'Initial commit on ']) {
+    if (header.startsWith(prefix)) {
+      return { branch: header.slice(prefix.length) || undefined, ahead: 0, behind: 0, detached: false }
+    }
+  }
+
+  const trackingOffset = header.lastIndexOf(' [')
+  const tracking = trackingOffset >= 0 && header.endsWith(']')
+    ? header.slice(trackingOffset + 2, -1)
+    : ''
+  const refs = tracking ? header.slice(0, trackingOffset) : header
+  const upstreamOffset = refs.indexOf('...')
+  const branch = (upstreamOffset >= 0 ? refs.slice(0, upstreamOffset) : refs) || undefined
+  const upstream = upstreamOffset >= 0 ? refs.slice(upstreamOffset + 3) || undefined : undefined
+  return {
+    branch,
+    ...(upstream ? { upstream } : {}),
+    ahead: Number(/(?:^|, )ahead (\d+)/u.exec(tracking)?.[1]) || 0,
+    behind: Number(/(?:^|, )behind (\d+)/u.exec(tracking)?.[1]) || 0,
+    detached: false,
+  }
 }
 
 export function parseNumstat(buffer: Buffer): WorkspaceReviewNumstatRecord[] {

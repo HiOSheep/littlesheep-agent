@@ -29,6 +29,8 @@ export interface WorkspaceReviewFile {
 }
 
 export interface WorkspaceReviewSnapshot {
+  /** Opaque identity for the Main-process snapshot used by detail requests. */
+  revision: string
   availability: WorkspaceReviewAvailability
   workspacePath: string
   repositoryRoot?: string
@@ -75,6 +77,8 @@ export interface WorkspaceReviewDiffLayer {
 }
 
 export interface WorkspaceReviewFileDiff {
+  /** Snapshot identity that produced this file selection and layer request. */
+  revision: string
   workspacePath: string
   repositoryRoot: string
   file: WorkspaceReviewFile

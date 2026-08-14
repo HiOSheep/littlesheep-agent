@@ -20,7 +20,7 @@ export interface WorkspaceFileDraftState {
   editing: boolean
 }
 
-export type WorkspacePanelTab = 'review' | 'artifacts' | 'terminal' | 'browser' | 'files' | 'sideChat'
+export type WorkspacePanelTab = 'review' | 'artifacts' | 'terminal' | 'browser' | 'sideChat'
 export type WorkspaceFileTabId = `file:${string}`
 export type WorkspacePanelTabId = WorkspacePanelTab | WorkspaceFileTabId | WorkspaceBrowserTabId
 
@@ -100,7 +100,6 @@ export function parseWorkspaceFileTabId(value: unknown): { root: string; path: s
 export function isWorkspacePanelTab(value: unknown): value is WorkspacePanelTab {
   return value === 'review' ||
     value === 'artifacts' ||
-    value === 'files' ||
     value === 'terminal' ||
     value === 'browser' ||
     value === 'sideChat'

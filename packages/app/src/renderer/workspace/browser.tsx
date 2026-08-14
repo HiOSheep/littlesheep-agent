@@ -298,7 +298,7 @@ export function WorkspaceBrowser({
 
   return (
     <section className="workspace-browser" aria-busy={loading}>
-      <div className="workspace-browser-toolbar">
+      <div className="workspace-browser-toolbar workspace-page-leading-row">
         <div className="workspace-browser-nav" aria-label="网页导航">
           <button
             {...transientTriggerProps()}

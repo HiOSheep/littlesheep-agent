@@ -32,11 +32,11 @@ export interface ToolAuthorization {
 
 const READ_TOOLS = new Set([
   'read', 'glob', 'grep', 'memory_search', 'memory_deep_search',
-  'memory_tree', 'session_status', 'inspect_attachment', 'use_skill',
+  'memory_tree', 'session_status', 'inspect_attachment', 'use_skill', 'document_read',
 ])
 const WRITE_TOOLS = new Set([
   'write', 'edit', 'write_file', 'edit_file', 'save_file',
-  'write_memory', 'record_experience', 'create_skill',
+  'write_memory', 'record_experience', 'create_skill', 'document_create',
 ])
 
 /**

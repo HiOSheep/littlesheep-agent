@@ -98,7 +98,7 @@ export function WorkspaceArtifacts({
 
   return (
     <div className="workspace-artifacts">
-      <header className="workspace-artifacts-header">
+      <header className="workspace-artifacts-header workspace-page-leading-row">
         <div className="workspace-artifacts-title">
           <strong>产物管理</strong>
           <small>{compactPath(workspacePath)}</small>

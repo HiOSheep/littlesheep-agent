@@ -2,13 +2,15 @@
 
 主进程是桌面产品组合根：负责启动顺序、用户数据基础设施、Runner/PluginHost 装配、Local App API、窗口和退出。
 
-最后更新：2026-08-02 12:37:00
+最后更新：2026-08-14 01:11:06
 
 ## 入口与所有权
 
 - `index.ts`：启动与关闭编排；不得继续吸收领域实现。
+- `bootstrap-timing.ts`：仅在 `LITTLESHEEP_BOOTSTRAP_TIMING=1` 时记录无用户正文的结构化启动阶段耗时；正常启动不输出、不轮询。
 - `local-app-api-server.ts`：兼容 facade，只负责 loopback server、领域路由装配和关闭顺序。
 - `local-app-api/`：HTTP/SSE 基元、公共契约与各领域路由；新增接口必须进入对应领域。
+- `local-app-api/workspace-git-*.ts`：工作区 Git 仓库定位、分层审阅、opaque revision、状态/Diff 有界缓存和子进程并发控制；详细契约由 `local-app-api/README.md` 维护。
 - `session-index.ts`、`project-index.ts`、`archive-index.ts`：UI 元数据索引。
 - `attachment-cache.ts`、`data-root-*.ts`、`workspace-*.ts`：各自受管数据和资源生命周期。
 - `development-environment-definitions.ts`、`development-environment-files.ts`、`development-environments.ts`：LS 工具链定义、版本检测、导入/移除事务、版本偏好和终端派生环境；设置页面通过 Local App API 访问，不直接触碰文件系统。

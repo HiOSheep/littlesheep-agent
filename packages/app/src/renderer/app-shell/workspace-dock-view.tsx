@@ -57,15 +57,12 @@ export function WorkspaceDockView({ controller }: { controller: AppController })
         browserTabs={workspaceBrowserTabs}
         browserUrl={workspaceBrowserUrl}
         browserHistory={workspaceBrowserHistory}
-        messages={messages}
         workspacePath={workspacePanelRoot}
         defaultWorkspacePath={defaultWorkspacePath}
         usingTemporaryRoot={workspacePanelUsingTemporaryRoot}
-        workplacePath={runtime?.workplace ?? projectPath}
         openRequest={workspaceOpenRequest}
         sessionId={currentSession}
         permissionMode={permissionMode}
-        sessionTitle={currentSession ? sessions.find((session) => session.id === currentSession)?.title : undefined}
         artifactVersion={workspaceArtifactVersion}
         fileDrafts={workspaceFileDrafts}
         fileNavigatorCollapsed={workspaceFileNavigatorCollapsed}
@@ -94,7 +91,7 @@ export function WorkspaceDockView({ controller }: { controller: AppController })
       />
       <button
         {...transientTriggerProps()}
-        className="sidebar-toggle-btn workspace-panel-corner-toggle"
+        className="sidebar-toggle-btn workspace-panel-corner-toggle workspace-tab-row-control"
         type="button"
         aria-label={workspacePanelToggleTip}
         aria-expanded={!workspacePanelCollapsed}

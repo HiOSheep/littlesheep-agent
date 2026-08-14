@@ -35,6 +35,9 @@
       "path": "packages/context/tsconfig.json"
     },
     {
+      "path": "packages/documents/tsconfig.json"
+    },
+    {
       "path": "packages/embedding/tsconfig.json"
     },
     {

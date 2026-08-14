@@ -14,6 +14,7 @@
 
 - Runner 可以组合基础设施，但跨领域只使用公开入口。
 - 拥有 execution log 与 run checkpoint 生命周期协调；检查点同时保存最多 4 个并行活动步骤，旧 `currentStepId` 继续作为兼容入口。会话、记忆、配置和 shadow Git 存储仍由各自服务拥有。Runner 关闭时先释放 SQLite/Embedding，再请求版本服务执行退出冻结。
+- 精确 tokenizer 不属于桌面启动前置条件。Runner 创建只装配轻量惰性代理，首次真实 run 与会话装配并行预热经过校验的本地资源；准备中的请求由 Context Engine 保守估算保护，重复准备合并，失败重试退避，关闭时取消未完成准备。
 
 ## 测试与修改定位
 

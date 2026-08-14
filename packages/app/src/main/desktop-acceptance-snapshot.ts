@@ -3,7 +3,11 @@
 
 import type { AgentRunner } from '@littlesheep/runner'
 import { app } from 'electron'
-import type { LittleSheepDesktopShell, DesktopAcceptanceSnapshot } from './desktop-shell.js'
+import type {
+  DesktopAcceptanceResourceType,
+  LittleSheepDesktopShell,
+  DesktopAcceptanceSnapshot,
+} from './desktop-shell.js'
 import type { RunActivityMonitor } from './run-activity-monitor.js'
 
 interface DesktopAcceptanceSnapshotOptions {
@@ -24,6 +28,8 @@ export function createDesktopAcceptanceSnapshotProvider(
     }
     const activity = options.runActivity.diagnostics()
     const electronMetrics = app.getAppMetrics()
+    const activeHandles = diagnostics._getActiveHandles?.()
+    const activeRequests = diagnostics._getActiveRequests?.()
     return {
       ...options.desktopShell.snapshot(),
       sampledAt: new Date().toISOString(),
@@ -32,8 +38,10 @@ export function createDesktopAcceptanceSnapshotProvider(
         heapUsedBytes: finiteBytes(processMemory.heapUsed),
         externalBytes: finiteBytes(processMemory.external),
         arrayBuffersBytes: finiteBytes(processMemory.arrayBuffers),
-        activeHandleCount: boundedCount(diagnostics._getActiveHandles?.()),
-        activeRequestCount: boundedCount(diagnostics._getActiveRequests?.()),
+        activeHandleCount: boundedCount(activeHandles),
+        activeRequestCount: boundedCount(activeRequests),
+        activeHandleTypes: boundedResourceTypes(activeHandles),
+        activeRequestTypes: boundedResourceTypes(activeRequests),
       },
       electron: {
         processCount: electronMetrics.length,
@@ -66,6 +74,25 @@ function finiteBytes(value: number): number {
 
 function boundedCount(value: unknown[] | undefined): number {
   return Array.isArray(value) ? Math.min(100_000, value.length) : 0
+}
+
+function boundedResourceTypes(value: unknown[] | undefined): DesktopAcceptanceResourceType[] {
+  if (!Array.isArray(value)) return []
+  const counts = new Map<string, number>()
+  for (const resource of value.slice(0, 100_000)) {
+    const rawName = resource && (typeof resource === 'object' || typeof resource === 'function')
+      ? (resource as { constructor?: { name?: unknown } }).constructor?.name
+      : undefined
+    const normalized = typeof rawName === 'string'
+      ? rawName.replace(/[^A-Za-z0-9_$.-]/gu, '').slice(0, 80)
+      : ''
+    const type = normalized || 'Unknown'
+    counts.set(type, (counts.get(type) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .map(([type, count]) => ({ type, count }))
+    .sort((left, right) => right.count - left.count || left.type.localeCompare(right.type))
+    .slice(0, 16)
 }
 
 function sumMetricBytes(

@@ -1,5 +1,6 @@
 // Coordinates bounded, layered Git review snapshots and per-file diffs for the Local App API.
 
+import { randomUUID } from 'node:crypto'
 import { relative, resolve } from 'node:path'
 import type {
   WorkspaceReviewDiffLayerKind,
@@ -7,7 +8,12 @@ import type {
   WorkspaceReviewFileDiff,
   WorkspaceReviewSnapshot,
 } from '../../shared/workspace-review-contracts.js'
-import { GIT_NULL_DEVICE, isGitUnavailable, runReadOnlyGit } from './workspace-git-command.js'
+import {
+  GIT_NULL_DEVICE,
+  isGitUnavailable,
+  runReadOnlyGit,
+  type GitConfigOverride,
+} from './workspace-git-command.js'
 import {
   findNumstat,
   indexNumstat,
@@ -16,16 +22,17 @@ import {
 } from './workspace-git-diff.js'
 import { readDisabledFilterOverrides } from './workspace-git-filters.js'
 import {
-  readRepositoryMetadata,
+  readDetachedHead,
   repositoryDiffArgs,
   resolveRepositoryContext,
+  type RepositoryContext,
 } from './workspace-git-repository.js'
 import {
   compareReviewFiles,
   literalGitPathspec,
   nativeRelativePathToGitPath,
   normalizeGitPath,
-  parsePorcelainStatus,
+  parsePorcelainBranchStatus,
   scopeStatusRecord,
   toRepositoryPath,
   toWorkspaceRelativePath,
@@ -45,30 +52,55 @@ export interface WorkspaceReviewReadOptions {
   signal?: AbortSignal
 }
 
+export interface WorkspaceReviewSnapshotRecord {
+  snapshot: WorkspaceReviewSnapshot
+  repository: RepositoryContext | null
+  filterOverrides: readonly GitConfigOverride[]
+}
+
 export async function readWorkspaceReview(
   workspacePath: string,
   options: WorkspaceReviewReadOptions = {},
 ): Promise<WorkspaceReviewSnapshot> {
+  return (await readWorkspaceReviewSnapshotRecord(workspacePath, options)).snapshot
+}
+
+export async function readWorkspaceReviewSnapshotRecord(
+  workspacePath: string,
+  options: WorkspaceReviewReadOptions = {},
+): Promise<WorkspaceReviewSnapshotRecord> {
   const root = resolve(workspacePath)
   const generatedAt = new Date().toISOString()
-  let repository: Awaited<ReturnType<typeof resolveRepositoryContext>>
-  try {
-    repository = await resolveRepositoryContext(root, options.signal)
-  } catch (error) {
-    if (isGitUnavailable(error)) {
-      return emptySnapshot(root, generatedAt, 'git-unavailable', 'Git 不可用。')
+  const revision = randomUUID()
+  const [repositoryResult, filterOverridesResult] = await Promise.allSettled([
+    resolveRepositoryContext(root, options.signal),
+    readDisabledFilterOverrides(root, options.signal),
+  ])
+  if (repositoryResult.status === 'rejected') {
+    if (isGitUnavailable(repositoryResult.reason)) {
+      return {
+        snapshot: emptySnapshot(root, revision, generatedAt, 'git-unavailable', 'Git 不可用。'),
+        repository: null,
+        filterOverrides: [],
+      }
     }
-    throw error
+    throw repositoryResult.reason
   }
+  const repository = repositoryResult.value
   if (!repository) {
-    return emptySnapshot(root, generatedAt, 'not-repository', '当前工作区不是 Git 仓库。')
+    return {
+      snapshot: emptySnapshot(root, revision, generatedAt, 'not-repository', '当前工作区不是 Git 仓库。'),
+      repository: null,
+      filterOverrides: [],
+    }
   }
+  if (filterOverridesResult.status === 'rejected') throw filterOverridesResult.reason
 
-  const filterOverrides = await readDisabledFilterOverrides(repository.repositoryRoot, options.signal)
+  const filterOverrides = filterOverridesResult.value
   const gitOptions = { configOverrides: filterOverrides, signal: options.signal }
-  const [statusResult, stagedResult, unstagedResult, metadata] = await Promise.all([
+  const [statusResult, stagedResult, unstagedResult] = await Promise.all([
     runReadOnlyGit(repository.repositoryRoot, [
-      'status', '--porcelain=v1', '-z', '--untracked-files=all',
+      'status', '--porcelain=v1', '--branch', '--ahead-behind', '-z', '--untracked-files=all',
       '--ignore-submodules=dirty', '--', repository.scopePathspec,
     ], gitOptions),
     runReadOnlyGit(
@@ -81,10 +113,13 @@ export async function readWorkspaceReview(
       repositoryDiffArgs(repository, 'unstaged', true),
       gitOptions,
     ),
-    readRepositoryMetadata(repository.repositoryRoot, options.signal),
   ])
 
-  const allRecords = parsePorcelainStatus(statusResult.stdout)
+  const branchStatus = parsePorcelainBranchStatus(statusResult.stdout)
+  const branch = branchStatus.detached
+    ? await readDetachedHead(repository.repositoryRoot, options.signal)
+    : branchStatus.branch
+  const allRecords = branchStatus.records
     .map((record) => scopeStatusRecord(record, repository.scopePrefix))
     .filter((record): record is NonNullable<typeof record> => record !== null)
   const records = allRecords.slice(0, MAX_REVIEW_FILES)
@@ -123,22 +158,27 @@ export async function readWorkspaceReview(
   }).sort(compareReviewFiles)
 
   return {
-    availability: 'ready',
-    workspacePath: root,
-    repositoryRoot: repository.repositoryRoot,
-    branch: metadata.branch,
-    ...(metadata.upstream ? { upstream: metadata.upstream } : {}),
-    ahead: metadata.ahead,
-    behind: metadata.behind,
-    additions: files.reduce((total, file) => total + file.additions, 0),
-    deletions: files.reduce((total, file) => total + file.deletions, 0),
-    countsComplete: files.every((file) => file.countAvailable)
-      && !untrackedScan.limited
-      && allRecords.length === records.length,
-    totalFiles: allRecords.length,
-    filesTruncated: allRecords.length > records.length,
-    files,
-    generatedAt,
+    snapshot: {
+      revision,
+      availability: 'ready',
+      workspacePath: root,
+      repositoryRoot: repository.repositoryRoot,
+      branch,
+      ...(branchStatus.upstream ? { upstream: branchStatus.upstream } : {}),
+      ahead: branchStatus.ahead,
+      behind: branchStatus.behind,
+      additions: files.reduce((total, file) => total + file.additions, 0),
+      deletions: files.reduce((total, file) => total + file.deletions, 0),
+      countsComplete: files.every((file) => file.countAvailable)
+        && !untrackedScan.limited
+        && allRecords.length === records.length,
+      totalFiles: allRecords.length,
+      filesTruncated: allRecords.length > records.length,
+      files,
+      generatedAt,
+    },
+    repository,
+    filterOverrides,
   }
 }
 
@@ -147,19 +187,26 @@ export async function readWorkspaceReviewDiff(
   targetPath: string,
   options: WorkspaceReviewReadOptions = {},
 ): Promise<WorkspaceReviewFileDiff> {
-  const snapshot = await readWorkspaceReview(workspacePath, options)
+  const record = await readWorkspaceReviewSnapshotRecord(workspacePath, options)
+  return readWorkspaceReviewDiffFromSnapshot(record, targetPath, options)
+}
+
+export async function readWorkspaceReviewDiffFromSnapshot(
+  record: WorkspaceReviewSnapshotRecord,
+  targetPath: string,
+  options: WorkspaceReviewReadOptions = {},
+): Promise<WorkspaceReviewFileDiff> {
+  const { snapshot, repository, filterOverrides } = record
   if (snapshot.availability !== 'ready' || !snapshot.repositoryRoot) {
     throw new Error(snapshot.message ?? 'Git 审阅不可用。')
   }
-  const root = resolve(workspacePath)
+  if (!repository) throw new Error('当前工作区不是 Git 仓库。')
+  const root = resolve(snapshot.workspacePath)
   const target = resolve(targetPath)
   const displayPath = normalizeGitPath(nativeRelativePathToGitPath(relative(root, target)))
   const file = snapshot.files.find((candidate) => candidate.path === displayPath)
   if (!file) throw new Error('所选文件已不在当前 Git 更改中。')
 
-  const repository = await resolveRepositoryContext(root, options.signal)
-  if (!repository) throw new Error('当前工作区不是 Git 仓库。')
-  const filterOverrides = await readDisabledFilterOverrides(repository.repositoryRoot, options.signal)
   const repoPath = toRepositoryPath(file.path, repository.scopePrefix)
   const oldRepoPath = file.oldPath ? toRepositoryPath(file.oldPath, repository.scopePrefix) : undefined
   const pathspecs = oldRepoPath && oldRepoPath !== repoPath
@@ -181,6 +228,7 @@ export async function readWorkspaceReviewDiff(
   const hunks = layers.flatMap((layer) => layer.hunks)
   const notice = layers.map((layer) => layer.notice).filter(Boolean).join(' ') || undefined
   return {
+    revision: snapshot.revision,
     workspacePath: root,
     repositoryRoot: snapshot.repositoryRoot,
     file,
@@ -220,11 +268,13 @@ function diffRequests(
 
 function emptySnapshot(
   workspacePath: string,
+  revision: string,
   generatedAt: string,
   availability: WorkspaceReviewSnapshot['availability'],
   message: string,
 ): WorkspaceReviewSnapshot {
   return {
+    revision,
     availability,
     workspacePath,
     ahead: 0,

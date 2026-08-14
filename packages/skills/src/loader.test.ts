@@ -113,6 +113,32 @@ describe('loadSkillIndex', () => {
     ]));
   });
 
+  it('keeps developer-owned builtin skills active when a user skill has the same name', async () => {
+    const builtin = makeTempDir();
+    const user = makeTempDir();
+    writeSkill(builtin, 'office-files', 'name: office-files\ndescription: Builtin.', 'developer body');
+    writeSkill(user, 'office-files', 'name: office-files\ndescription: User override.', 'evolved body');
+
+    const index = await loadSkillIndex({
+      sources: [
+        { id: 'builtin', kind: 'builtin', dir: builtin },
+        { id: 'user', kind: 'user', dir: user },
+      ],
+    });
+
+    expect(index.skills).toEqual([
+      expect.objectContaining({
+        name: 'office-files',
+        description: 'Builtin.',
+        source: expect.objectContaining({ kind: 'builtin' }),
+      }),
+    ]);
+    expect(index.discovered).toEqual(expect.arrayContaining([
+      expect.objectContaining({ description: 'User override.', availability: 'shadowed' }),
+    ]));
+    await expect(loadSkillBody('office-files', index)).resolves.toBe('developer body');
+  });
+
   it('tracks owner-controlled plugin sources and replaces them atomically', async () => {
     const base = makeTempDir();
     writeSkill(base, 'planner', 'name: planner\ndescription: Plan work.', 'Plan body.');

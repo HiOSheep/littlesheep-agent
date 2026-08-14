@@ -102,7 +102,7 @@ describe('workspace persistence helpers', () => {
       },
     }
 
-    expect(serializeWorkspaceFileDrafts(drafts, ['files', openTab])).toEqual({
+    expect(serializeWorkspaceFileDrafts(drafts, ['review', openTab])).toEqual({
       [openTab]: drafts[openTab],
     })
   })
@@ -113,7 +113,7 @@ describe('workspace persistence helpers', () => {
     const secondTab = workspaceFileTabId(root, 'D:\\work\\b.ts')
     const snapshot = buildWorkspaceRecoverySnapshot({
       activeTab: secondTab,
-      openTabs: ['files', firstTab, secondTab],
+      openTabs: ['review', firstTab, secondTab],
       openRequest: {
         id: 1,
         root,

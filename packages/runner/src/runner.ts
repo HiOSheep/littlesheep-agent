@@ -217,6 +217,10 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
 
   async function run(input: RunInput, continuation?: ContinuationInput): Promise<RunnerResult> {
     const startedAt = Date.now();
+    // A real Agent run may need exact model framing. Warm verified assets in
+    // parallel with session/context assembly; Context Engine remains protected
+    // by its conservative estimator until the counter becomes ready.
+    void infra.prepareTokenCounter?.().catch(() => undefined);
     const runtimeResourceStart = beginRuntimeResourceObservation();
     const runId = input.runId ?? randomUUID();
     const origin = input.origin ?? continuation?.checkpoint.resumeState?.origin ?? 'cli';
@@ -613,6 +617,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     activeRuns,
     shutdown: async () => {
       activeRuns.dispose();
+      infra.disposeTokenCounter();
       // Close long-lived SQLite connections before adapters replace or delete the data root.
       await infra.memoryRepository.shutdown();
       await infra.disposeEmbedding();

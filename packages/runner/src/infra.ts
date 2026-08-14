@@ -31,8 +31,9 @@ import {
 } from '@littlesheep/skills';
 import { createDefaultHarness } from '@littlesheep/harness';
 import {
-  prepareLocalExactContextTokenCounter,
+  createLazyLocalExactContextTokenCounter,
   type ExactContextTokenCounter,
+  type LazyExactContextTokenCounter,
 } from '@littlesheep/context';
 import { SafeMemoryStore, QuarantineStore, sanitizePreludeForInjection } from '@littlesheep/safety';
 import { GitCheckpointCoordinator, SnapshotMemoryStore } from '@littlesheep/snapshot';
@@ -92,6 +93,9 @@ export interface Infrastructure {
   memoryWriteService: MemoryWriteService;
   memoryService: MemoryService;
   versioning?: GitCheckpointCoordinator;
+  /** Starts tokenizer preparation only after an Agent run actually begins. */
+  prepareTokenCounter?: () => Promise<void>;
+  disposeTokenCounter: () => void;
   state: RunnerState;
 }
 
@@ -140,16 +144,15 @@ export async function buildInfrastructure(
   opts: BuildInfrastructureOptions,
 ): Promise<Infrastructure> {
   const dirs = dataSubdirs(opts.branding);
-  let tokenCounter: ExactContextTokenCounter | undefined;
-  try {
-    tokenCounter = await prepareLocalExactContextTokenCounter({
-      modelRef: opts.model,
-      modelRootDir: join(opts.bootstrapDir ?? dirs.root, 'models', 'tokenizer'),
-      fetchFn: opts.tokenizerFetch,
-    });
-  } catch (error) {
-    opts.log?.('warn', `runner: local tokenizer preparation degraded: ${(error as Error).message}`);
-  }
+  const lazyTokenCounter: LazyExactContextTokenCounter | undefined = createLazyLocalExactContextTokenCounter({
+    modelRef: opts.model,
+    modelRootDir: join(opts.bootstrapDir ?? dirs.root, 'models', 'tokenizer'),
+    fetchFn: opts.tokenizerFetch,
+    onPreparationError: (error) => {
+      opts.log?.('warn', `runner: local tokenizer preparation degraded: ${error.message}`);
+    },
+  });
+  const tokenCounter: ExactContextTokenCounter | undefined = lazyTokenCounter;
   const versioning = opts.config.versioning.enabled
     ? new GitCheckpointCoordinator({
         dataRoot: dirs.root,
@@ -445,6 +448,10 @@ export async function buildInfrastructure(
     memoryWriteService,
     memoryService,
     versioning,
+    prepareTokenCounter: lazyTokenCounter
+      ? () => lazyTokenCounter.prepare()
+      : undefined,
+    disposeTokenCounter: () => lazyTokenCounter?.dispose(),
     state: opts.state,
   };
 }

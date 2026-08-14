@@ -17,7 +17,7 @@ import {
   previewWorkspaceFile,
   saveWorkspaceTextFile,
 } from './workspace-file-service.js'
-import { readWorkspaceReview, readWorkspaceReviewDiff } from './workspace-git-review.js'
+import { workspaceGitReviewCache } from './workspace-git-review-cache.js'
 import {
   normalizeOptionalSessionId,
   normalizePositiveInt,
@@ -90,17 +90,24 @@ export async function routeWorkspace(
 
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.workspaceReview) {
     const root = resolveActiveWorkspaceRoot(url, context.getConfig(), context.workplaceDir)
-    json(res, 200, await withRequestAbortSignal(req, res, (signal) => readWorkspaceReview(root, { signal })))
+    json(res, 200, await withRequestAbortSignal(req, res, (signal) => (
+      workspaceGitReviewCache.readSnapshot(root, {
+        signal,
+        force: url.searchParams.get('force') === '1',
+      })
+    )))
     return true
   }
 
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.workspaceReviewDiff) {
     const root = resolveActiveWorkspaceRoot(url, context.getConfig(), context.workplaceDir)
     const target = resolveWorkspaceTarget(root, url.searchParams.get('path') ?? '')
+    const revision = url.searchParams.get('revision') ?? ''
+    if (!revision) throw new HttpError(400, 'Git 审阅 revision 缺失。')
     json(res, 200, await withRequestAbortSignal(
       req,
       res,
-      (signal) => readWorkspaceReviewDiff(root, target, { signal }),
+      (signal) => workspaceGitReviewCache.readDiff(root, target, revision, { signal }),
     ))
     return true
   }

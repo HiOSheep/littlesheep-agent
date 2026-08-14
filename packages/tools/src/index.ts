@@ -31,6 +31,8 @@ export { editTool } from './builtin/edit.js';
 export { execTool, createExecTool, type ExecToolOptions } from './builtin/exec.js';
 export { grepTool } from './builtin/grep.js';
 export { globTool } from './builtin/glob.js';
+export { documentReadTool } from './builtin/document-read.js';
+export { documentCreateTool } from './builtin/document-create.js';
 /** @deprecated Legacy library adapter. The LS runtime does not register this agent tool. */
 export { createMemorySearchTool } from './builtin/memory_search.js';
 /** @deprecated Legacy library adapter. The LS runtime does not register this agent tool. */
@@ -45,6 +47,8 @@ import { editTool } from './builtin/edit.js';
 import { execTool } from './builtin/exec.js';
 import { grepTool } from './builtin/grep.js';
 import { globTool } from './builtin/glob.js';
+import { documentReadTool } from './builtin/document-read.js';
+import { documentCreateTool } from './builtin/document-create.js';
 
 /** Register core built-ins only. Memory tools are supplied by the index-first runtime. */
 export function registerBuiltinTools(registry: ToolRegistry, extra: AgentTool[] = []): void {
@@ -54,6 +58,8 @@ export function registerBuiltinTools(registry: ToolRegistry, extra: AgentTool[] 
   registry.register(execTool);
   registry.register(grepTool);
   registry.register(globTool);
+  registry.register(documentReadTool);
+  registry.register(documentCreateTool);
   for (const tool of extra) {
     registry.register(tool);
   }

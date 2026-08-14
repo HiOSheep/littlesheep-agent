@@ -56,6 +56,7 @@ import {
   getBrowserStorageStatus,
   getEmbeddedBrowserSession,
 } from './embedded-browser.js'
+import { recordBootstrapTiming } from './bootstrap-timing.js'
 
 let runner: AgentRunner | null = null
 let server: LocalAppApiServer | null = null
@@ -69,6 +70,8 @@ let workspaceLayoutIndex: WorkspaceLayoutIndex | null = null
 let shutdownStarted = false
 let quitRequested = false
 const runActivity = new RunActivityMonitor()
+
+recordBootstrapTiming('main-module-ready')
 
 // Module-level state for runner rebuild (triggered by API key change).
 let currentConfig: Config | null = null
@@ -235,11 +238,14 @@ async function updateRuntimeConfig(config: Config): Promise<void> {
 }
 
 async function bootstrap(): Promise<void> {
+  let stageStartedAt = recordBootstrapTiming('bootstrap-start')
   // 1. Load branding and complete any registered data-root operation before
   //    creating a writer, opening SQLite, or materializing the user layout.
   const branding = await loadBranding()
+  stageStartedAt = recordBootstrapTiming('branding-ready', stageStartedAt)
   const dataRootManager = new DataRootMigrationManager({ branding })
   const dataRootPreparation = await dataRootManager.prepareForBootstrap()
+  stageStartedAt = recordBootstrapTiming('data-root-ready', stageStartedAt)
   if (dataRootPreparation.status.pendingMigration?.error) {
     console.error(`[data-root] migration pending: ${dataRootPreparation.status.pendingMigration.error}`)
   }
@@ -248,14 +254,17 @@ async function bootstrap(): Promise<void> {
   }
   const dataDir = dataSubdirs(branding)
   await ensureUserDataLayout(dataDir)
+  stageStartedAt = recordBootstrapTiming('user-data-layout-ready', stageStartedAt)
 
   // 2. Load + decrypt API keys from keychain → inject into process.env.
   //    Must happen BEFORE loadConfig so resolveApiKey("$VAR") finds the key.
   const keys = loadApiKeys(dataDir.root)
   injectKeysIntoEnv(keys)
+  stageStartedAt = recordBootstrapTiming('keychain-ready', stageStartedAt)
 
   // 3. Load config (env vars are now set, $VAR references resolve correctly).
   const runtime = prepareRuntimeConfig(await loadConfig({ dataDir: dataDir.root }), dataDir.workplace)
+  stageStartedAt = recordBootstrapTiming('config-ready', stageStartedAt)
   let config = runtime.config
   const model = runtime.model
   const memoryV3MigrationManager = new MemoryV2ToV3MigrationManager({
@@ -267,6 +276,7 @@ async function bootstrap(): Promise<void> {
     config,
     manager: memoryV3MigrationManager,
   })
+  stageStartedAt = recordBootstrapTiming('memory-v3-ready', stageStartedAt)
   config = memoryPreparation.config
   if (memoryPreparation.error) {
     console.error(`[memory-v3] ${memoryPreparation.operation} recovery pending: ${memoryPreparation.error}`)
@@ -274,6 +284,7 @@ async function bootstrap(): Promise<void> {
   if (runtime.migratedDefaultWorkspace || memoryPreparation.configChanged) {
     await saveConfig(config, join(dataDir.root, 'config.json'))
   }
+  stageStartedAt = recordBootstrapTiming('durable-config-ready', stageStartedAt)
 
   // 4. Any registered Memory v3 operation has now completed or failed closed;
   //    config follows the durable locator before the first runtime writer starts.
@@ -287,19 +298,24 @@ async function bootstrap(): Promise<void> {
     containerRoot: dataDir.root,
     tokenizerFetch: (input, init) => net.fetch(input instanceof URL ? input.href : input, init),
   })
+  stageStartedAt = recordBootstrapTiming('runner-ready', stageStartedAt)
   runActivity.setRunners([runner])
 
   // 6. Project + session + archive indexes for UI sidebar and settings.
   projectIndex = new ProjectIndex({ dataDir: dataDir.root })
   await projectIndex.removeManagedWorkspaceShells(dataDir.workplace)
+  stageStartedAt = recordBootstrapTiming('project-index-ready', stageStartedAt)
   sessionIndex = new SessionIndex({ dataDir: dataDir.root, workplaceDir: dataDir.workplace })
   await sessionIndex.list()
+  stageStartedAt = recordBootstrapTiming('session-index-ready', stageStartedAt)
   archiveIndex = new ArchiveIndex({ dataDir: dataDir.root, workplaceDir: dataDir.workplace })
   await archiveIndex.migrateManagedWorkspaceMetadata()
+  stageStartedAt = recordBootstrapTiming('archive-index-ready', stageStartedAt)
   terminalActivityIndex = new TerminalActivityIndex({ dataDir: dataDir.root })
   workspaceArtifactIndex = new WorkspaceArtifactIndex({ dataDir: dataDir.root })
   workspaceLayoutIndex = new WorkspaceLayoutIndex({ dataDir: dataDir.root })
   getEmbeddedBrowserSession()
+  stageStartedAt = recordBootstrapTiming('ui-indexes-ready', stageStartedAt)
 
   // Save module-level state for rebuildRunner.
   currentConfig = config
@@ -403,6 +419,7 @@ async function bootstrap(): Promise<void> {
       return result.canceled ? null : result.filePaths[0] ?? null
     },
   })
+  stageStartedAt = recordBootstrapTiming('local-api-ready', stageStartedAt)
   await writeLocalAppApiLocator(dataDir.root, {
     version: 1,
     host: '127.0.0.1',
@@ -411,6 +428,7 @@ async function bootstrap(): Promise<void> {
     pid: process.pid,
     startedAt: new Date().toISOString(),
   })
+  stageStartedAt = recordBootstrapTiming('locator-written', stageStartedAt)
 
   // 8. Start the optional plugin host. Built-in channel implementations use
   //    dynamic imports and are activated only when their channel type is enabled.
@@ -425,6 +443,7 @@ async function bootstrap(): Promise<void> {
       console.log(`[plugins:${level}] ${msg}`)) as LogFn,
   })
   server.setPluginHost(pluginHost)
+  stageStartedAt = recordBootstrapTiming('plugin-host-ready', stageStartedAt)
   void pluginHost.start().catch((err) => {
     console.error('[plugins] host failed to start:', err)
   })
@@ -434,6 +453,7 @@ async function bootstrap(): Promise<void> {
 
   // 10. Create the visible shell and its explicit background control surface.
   desktopShell.initialize()
+  recordBootstrapTiming('desktop-shell-initialized', stageStartedAt)
 }
 
 /**
@@ -541,6 +561,7 @@ async function shutdownRetiredRunners(): Promise<void> {
 // The losing instance calls app.quit() above and never reaches here.
 if (gotLock) {
   app.whenReady().then(() => {
+    recordBootstrapTiming('electron-app-ready')
     void bootstrap()
   })
 

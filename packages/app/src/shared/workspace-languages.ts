@@ -195,6 +195,13 @@ export function workspaceLanguageForFile(lowerName: string, ext: string): string
   return language && WORKSPACE_LANGUAGE_IDS.has(language) ? language : 'plaintext'
 }
 
+export function workspaceLanguageForPath(path: string): string {
+  const lowerName = path.split(/[\\/]/u).at(-1)?.toLocaleLowerCase('en-US') ?? ''
+  const extensionIndex = lowerName.lastIndexOf('.')
+  const ext = extensionIndex >= 0 ? lowerName.slice(extensionIndex) : ''
+  return workspaceLanguageForFile(lowerName, ext)
+}
+
 export function normalizeWorkspaceLanguageId(language: string | undefined): string {
   const normalized = language?.trim().toLocaleLowerCase('en-US') ?? ''
   return WORKSPACE_LANGUAGE_IDS.has(normalized) ? normalized : 'plaintext'

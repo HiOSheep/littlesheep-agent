@@ -1,9 +1,10 @@
 import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createDeepSeekV4ExactContextTokenCounter,
+  createLazyLocalExactContextTokenCounter,
   prepareLocalExactContextTokenCounter,
   verifyDeepSeekV4TokenizerAssets,
 } from './deepseek-v4-counter.js';
@@ -67,6 +68,61 @@ describe('DeepSeek V4 tokenizer assets', () => {
     });
     expect(counter).toBeUndefined();
     expect(requested).toBe(false);
+  });
+
+  it('prepares lazily, coalesces callers, backs off after failure, and disposes cleanly', async () => {
+    const root = await temporaryRoot();
+    let requestCount = 0;
+    let releaseResponse!: () => void;
+    const responseReady = new Promise<void>((resolve) => {
+      releaseResponse = resolve;
+    });
+    const counter = createLazyLocalExactContextTokenCounter({
+      modelRef: 'deepseek/deepseek-v4-flash',
+      modelRootDir: root,
+      retryBackoffMs: 60_000,
+      fetchFn: (async () => {
+        requestCount++;
+        await responseReady;
+        return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+      }) as typeof fetch,
+    });
+
+    expect(counter).toBeDefined();
+    expect(counter!.ready).toBe(false);
+    expect(requestCount).toBe(0);
+    expect(() => counter!.countRequest({
+      model: 'deepseek-v4-flash',
+      messages: [{ role: 'user', content: 'hello' }],
+      thinking: { type: 'disabled' },
+    })).toThrow(/preparing/);
+
+    const first = counter!.prepare();
+    const second = counter!.prepare();
+    expect(first).toBe(second);
+    await vi.waitFor(() => expect(requestCount).toBe(1));
+    releaseResponse();
+    await expect(first).rejects.toThrow(/size mismatch/);
+    await expect(second).rejects.toThrow(/size mismatch/);
+
+    expect(() => counter!.countRequest({
+      model: 'deepseek-v4-flash',
+      messages: [{ role: 'user', content: 'hello' }],
+      thinking: { type: 'disabled' },
+    })).toThrow(/temporarily unavailable/);
+    expect(requestCount).toBe(1);
+
+    counter!.dispose();
+    await expect(counter!.prepare()).rejects.toThrow(/disposed/);
+  });
+
+  it('does not create a lazy counter for unsupported models', async () => {
+    const counter = createLazyLocalExactContextTokenCounter({
+      modelRef: 'openai/gpt-5.6',
+      modelRootDir: await temporaryRoot(),
+      fetchFn: (() => { throw new Error('unexpected request'); }) as typeof fetch,
+    });
+    expect(counter).toBeUndefined();
   });
 
   it('counts calibrated Flash tool protocol requests and applies the hosted max control cost', () => {

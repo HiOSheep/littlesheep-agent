@@ -34,6 +34,14 @@ describe('LittleSheep Monaco theme', () => {
     const vividForegrounds = tokens('keyword.control', 'number', 'string', 'type', 'tag', 'invalid')
     for (const foreground of vividForegrounds) expect(colourSaturation(foreground)).toBeGreaterThanOrEqual(0.7)
   })
+
+  it('uses distinct red and green review surfaces from the shared theme', () => {
+    const inserted = LITTLE_SHEEP_MONACO_THEME_DATA.colors['diffEditor.insertedLineBackground']
+    const removed = LITTLE_SHEEP_MONACO_THEME_DATA.colors['diffEditor.removedLineBackground']
+    expect(inserted).toMatch(/^#153F2B/iu)
+    expect(removed).toMatch(/^#4B2025/iu)
+    expect(inserted).not.toBe(removed)
+  })
 })
 
 function tokens(...names: string[]): string[] {

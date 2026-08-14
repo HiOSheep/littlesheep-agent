@@ -1,10 +1,12 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-08-10 15:57:32
+最后更新：2026-08-13 14:12:56
 
 本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
 
 ## 现在先做什么
+
+**当前 P0 阻断项（2026-08-13）**：已确认普通聊天回答没有自动绑定同会话的 `waiting_user` Checkpoint。故障不是历史文本缺失，而是任务、执行现场、附件、临时工具和恢复阶段没有随回答一起续接；因此用户补充权限和工具后仍可能被当成独立新请求重新澄清。专项修复尚未开始，实施与验收以 [对话任务连续性 P0 专项任务书](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md) 为准；在文本、任务、执行现场、资源和最终回答五层全部通过前，不得宣称连续性问题已解决。
 
 **阶段 5M 状态覆盖（2026-08-10）**：阶段 5M 已完成并已独立提交、推送。审计确认 checkpoint 的 `contextSnapshotIds`、`RunContext` 的 `contextSnapshots` 与 execution log 的模型观测此前没有共享同一截断边界；现统一使用 `MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN = 64`，checkpoint 和 execution log 均只保留最近 64 条，request 的 `contextSnapshotId` 仍与持久化 snapshot 保持关联，checkpoint schema 与 ownership group 不变。
 
@@ -17,7 +19,7 @@
 
 **当前阶段**：Memory v3 阶段 0-26、正式数据迁移、本地向量目录、动态 working set、关系导航、shadow Git 检查点、退出冻结、统一 Tool Execution Service、工具调用级与 TaskBook 步骤级有界并行、运行时事件安全边界、TaskBookPatch、Runner 检查点续跑、应用启动恢复控制面，以及活动任务快照、暂停/继续/中断、托盘、三档关闭策略和设置页“应用与后台”已有工程基线。语义活动已收敛为 `respond / execute / clarify`；直接回应使用紧凑 Prompt 与有界历史，只在明确追问进度、结果、耗时、错误或恢复时介入上一轮执行摘要。用户明确点名且可证明为新鲜、自包含、内置的单个 `glob / grep / read` 请求使用 `decide_explicit_tool`；没有点名工具的同类只读目标由 LLM 在三种内置读工具中自主选择，并在同一次 DECIDE 中给出有界参数提议，Runtime 重验后直接执行。多工具、写入、执行、附件、续接、已采用/冲突记忆、恢复和边界不明任务仍走完整 `decide`。直接续答在发布前使用本地回答连续性证据检查；普通回答不增加调用，只有明确续接且首个实时 API 回答被判为 `discontinuous` 时，才允许一次有界实时 API 纠偏，纠偏仍断档则失败关闭。当前 DeepSeek 已完成 chat、continuity、tool、abort 四项真实校准、普通直接回答与 Flash 工具协议的 V4 本地精确 token 对账、真实 Electron 完整退出/重启后的最终回答连续性、短时并行与 Checkpoint 恢复、摘要深度 `1 -> 2 -> 3 -> 3` 的五字段连续性、一次主动断线零额外 Provider Token 恢复，以及单次 6 分钟持续 `exec` 的安全暂停、重启不重放和资源回落验收。正式 2 小时持续负载门已通过：`7200s`、`1441` 个采样、进度缺测 `0`、资源预算违规 `0`，后半程 RSS/Heap/Electron 工作集/句柄/请求趋势均在预算内，结束后恢复空闲基线。Flash 的 direct、tool schema、单工具续轮、仅历史工具消息和多工具乱序结果在 disabled/high/max 三档共 `15/15` 次请求与 Provider prompt usage 零差值；Pro 普通请求保持精确，Pro 工具协议仍失败关闭。具体证据只看 [项目状态](decision/project-status.md)。
 
-**推荐下一步**：阶段 5 暂停。后续工作优先测量任务级反馈耗时、affected 选择器是否误扩大范围、重复构建和 full gate 资源竞争；只有出现可复现的跨模块状态错误，且现有 owner 无法在原边界内解决时，才重新开启新的状态阶段。纯逻辑单文件先运行 `pnpm.cmd run verify:task -- --files=<path>`；包级契约先运行 `pnpm.cmd run verify:task -- --package=<name>`；公共契约或 Harness/Runner/Context/Memory 改动升级到 `pnpm.cmd run verify:core`，阶段结束或发布前运行 `pnpm.cmd run verify:full`。必须明确失败和 skipped 原因，不把已完成的 Memory v3/Provider 基线重新当作当前瓶颈。
+**推荐下一步**：立即执行对话任务连续性 P0 专项的阶段 0，先建立脱敏失败夹具、冻结 continuation 契约并封住“waiting-user 回答被当作普通新 run”的错误入口；开发反馈环的后续测量暂不抢占这一阻断项。纯逻辑单文件先运行 `pnpm.cmd run verify:task -- --files=<path>`；包级契约先运行 `pnpm.cmd run verify:task -- --package=<name>`；公共契约或 Harness/Runner/Context/Memory 改动升级到 `pnpm.cmd run verify:core`，阶段结束或发布前运行 `pnpm.cmd run verify:full`。必须明确失败和 skipped 原因，不把已完成的 Memory v3、Provider、跨重启回答或显式 Checkpoint 恢复基线误当成普通聊天任务续接已经通过。
 
 **当前权限决策**：产品语义上 LS 是 Agent 的容器，活动完整应用数据根（默认 `.littlesheep`）是容器边界，`workplace/` 是容器内的默认工作区；当前桌面实现是 Main 的逻辑边界，不是实际 Docker/OS 进程沙箱。从其他模式切换到完全访问时先用红色危险按钮确认一次；确认后容器内外及范围不明的读、写、改、删、执行均免逐次批准。研究只对容器内读取免批准；受限所有操作都需批准。外部工作区在研究/受限模式下先跳过自动索引，完全访问可直接继续。核心源码只读和危险命令硬拒绝不受模式影响。
 
@@ -37,7 +39,7 @@
 - Local App API 的长生命周期 SSE 统一每 15 秒发送注释心跳，并在单连接待写缓冲达到 512 KiB 前主动断开慢观察者。普通 Agent run、活动任务订阅和 Checkpoint 续跑的观察连接断开不会取消 Main 中的任务；终端主动命令仍保留断连取消语义。所有 timer、listener 和订阅都必须在关闭、完成或 server stop 时释放。
 - 暂时不用决定：更多插件类型、MCP 和发布打包。设置页后台任务控制已经作为连续性能力收口接入，不是新产品范围。
 
-到这里即可停止阅读。正式 V3 数据、桌面基线、活动路由、直接回应 Context、当前 DeepSeek 四项 Provider 能力、普通请求、Flash 工具协议、显式单只读与自主 `glob / grep / read` 矩阵、显式多工具提议路径的精确本地 token 对账、真实 DeepSeek 跨重启回答门、有界连续性纠偏、多轮五字段摘要续答、主动断线恢复、基础两步副作用、短时并行压力、6 分钟持续任务、正式 2 小时持续负载、应用启动恢复和后台任务控制面已有当前证据；Pro 工具协议、非字段事实、真实外部系统副作用和其他 Provider 能力矩阵仍需单独验收。
+到这里即可停止阅读。正式 V3 数据、桌面基线、活动路由、直接回应 Context、当前 DeepSeek 四项 Provider 能力、普通请求、Flash 工具协议、显式单只读与自主 `glob / grep / read` 矩阵、显式多工具提议路径的精确本地 token 对账、真实 DeepSeek 跨重启回答门、有界连续性纠偏、多轮五字段摘要续答、主动断线恢复、基础两步副作用、短时并行压力、6 分钟持续任务、正式 2 小时持续负载、应用启动恢复和后台任务控制面已有当前证据；这些证据不覆盖 `ASK_USER -> 普通聊天回答 -> waiting_user Checkpoint` 的自然续接。后者当前为 P0 阻断；Pro 工具协议、非字段事实、真实外部系统副作用和其他 Provider 能力矩阵仍需单独验收。
 
 ## 需要确认依据时
 
@@ -60,6 +62,8 @@
 
 ### 当前主线
 
+- [OpenCode VS Code 对标记录 2026-08-13](reference/opencode-vscode-comparison-2026-08-13.md)：记录官方源码、许可证、LS 差异、已直接吸收的缓存/模型/审阅交互，以及待产品选择的虚拟化、评论和真正 VS Code 扩展路线。
+- [对话任务连续性 P0 专项任务书 2026-08-13](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md)：修复普通聊天未绑定 waiting-user Checkpoint、执行现场与附件/临时工具无法自然恢复、权限未按当前状态重验及最终回答断档；当前为最高优先级阻断项。
 - [开发反馈环提速任务书 2026-08-09](taskbooks/development-feedback-loop-taskbook-2026-08-09.md)：任务级内循环、affected 选择器、重复构建消除和后续状态契约收敛；用于决定下一阶段开发效率工作。
 - [拓展工作区性能任务书 2026-08-04](taskbooks/workspace-performance-taskbook-2026-08-04.md)：文件树、代码首帧、Monaco 接管、Git 审阅缓存、后台资源和生产构建体积的专项验收。
 - [原子记忆与内置向量目录任务书 2026-07-17](taskbooks/memory-atom-vector-catalog-taskbook-2026-07-17.md)：Memory v3 原子文件、层级、本地向量目录、三层视图边界、动态注入、压缩连续性、迁移与验收。
@@ -88,6 +92,7 @@
 - [模块拆分地图](reference/module-split-map.md)：大型生产文件的所有权、上限和拆分边界。
 - [Core Flow 状态契约](reference/core-flow-state-contract.md)：唯一 Stage 转移 manifest、非法边拒绝和 RunContext ownership/lifecycle 边界。
 - [插件开发说明](reference/plugin-development.md)：插件贡献、权限、生命周期和兼容规则。
+- [论文材料入口](paper/README.md)：论文正文、图表和复核材料的范围及提交前边界；正文源稿见 [LittleSheep 论文初稿](paper/littlesheep-thesis.md)。
 
 ## 文档冲突规则
 

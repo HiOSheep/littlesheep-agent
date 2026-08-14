@@ -428,7 +428,7 @@ export function WorkspaceTerminal({
 
   return (
     <div className="workspace-terminal">
-      <header className="workspace-terminal-header">
+      <header className="workspace-terminal-header workspace-page-leading-row">
         <div className="workspace-terminal-title">
           <span>终端</span>
           <small>{compactPath(workspacePath)}{terminalBackend ? ` · ${terminalBackend === 'pty' ? 'PTY' : 'fallback'}` : ''}</small>

@@ -3,6 +3,9 @@ import type { WorkspaceReviewFile } from '../../shared/workspace-review-contract
 import {
   buildWorkspaceReviewTree,
   collectWorkspaceReviewFolderPaths,
+  filterWorkspaceReviewFiles,
+  filterWorkspaceReviewTree,
+  navigateWorkspaceReviewPath,
   selectWorkspaceReviewPath,
 } from './review-model'
 
@@ -46,6 +49,37 @@ describe('workspace review tree', () => {
       deletions: 0,
       countAvailable: false,
     })
+  })
+
+  it('filters files by path or status while retaining matching folder ancestors', () => {
+    const files = [
+      reviewFile('src/main/a.ts', 3, 1),
+      { ...reviewFile('src/ui/b.tsx', 5, 2), status: 'untracked' as const },
+      reviewFile('README.md', 1, 0),
+    ]
+    const tree = buildWorkspaceReviewTree(files)
+    expect(filterWorkspaceReviewFiles(files, 'untracked').map((file) => file.path)).toEqual(['src/ui/b.tsx'])
+    expect(filterWorkspaceReviewTree(tree, 'untracked')).toMatchObject([
+      {
+        kind: 'folder',
+        path: 'src',
+        children: [{ kind: 'folder', path: 'src/ui', children: [{ path: 'src/ui/b.tsx' }] }],
+      },
+    ])
+    expect(filterWorkspaceReviewTree(tree, 'src/ui')).toMatchObject([
+      { kind: 'folder', path: 'src', children: [{ kind: 'folder', path: 'src/ui' }] },
+    ])
+    expect(filterWorkspaceReviewTree(tree, '   ')).toEqual(tree)
+  })
+
+  it('navigates predictably when the current file is outside the filtered result', () => {
+    const files = [reviewFile('a.ts', 1, 0), reviewFile('b.ts', 1, 0), reviewFile('c.ts', 1, 0)]
+    expect(navigateWorkspaceReviewPath(files, 'missing.ts', 1)).toBe('a.ts')
+    expect(navigateWorkspaceReviewPath(files, 'missing.ts', -1)).toBe('c.ts')
+    expect(navigateWorkspaceReviewPath(files, 'b.ts', 1)).toBe('c.ts')
+    expect(navigateWorkspaceReviewPath(files, 'a.ts', -1)).toBe('c.ts')
+    expect(navigateWorkspaceReviewPath(files, 'b.ts', 0)).toBe('b.ts')
+    expect(navigateWorkspaceReviewPath([], null, 1)).toBeNull()
   })
 })
 

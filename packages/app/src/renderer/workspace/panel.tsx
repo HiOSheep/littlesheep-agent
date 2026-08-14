@@ -1,7 +1,6 @@
 // Extension workspace panels, files, terminal, artifacts, and view helpers.
 import { useEffect, useRef, useState } from 'react'
 import { StringListUpdater } from '../app-shell/types'
-import { ChatMessage } from '../chat/types'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { PanelFullscreenIcon, WorkspaceFeatureIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
@@ -17,9 +16,7 @@ import {
 import { WorkspaceArtifacts } from './artifacts'
 import { WorkspaceBrowser } from './browser'
 import { WorkspaceFileNavigator } from './file-navigator'
-import { WorkspaceFiles } from './files'
-import { WorkspaceOverview } from './overview'
-import { isSamePath, lastPathSegment } from './path-utils'
+import { isSamePath } from './path-utils'
 import { WorkspacePlaceholder } from './placeholder'
 import { WorkspaceFileView } from './preview-pane'
 import { WorkspaceReview } from './review'
@@ -33,15 +30,12 @@ export function WorkspacePanel({
   collapsed,
   fullscreen,
   activeTab, openTabs, browserTabs, browserUrl, browserHistory,
-  messages,
   workspacePath,
   defaultWorkspacePath,
   usingTemporaryRoot,
-  workplacePath,
   openRequest,
   sessionId,
   permissionMode,
-  sessionTitle,
   artifactVersion,
   fileDrafts,
   fileNavigatorCollapsed,
@@ -68,15 +62,12 @@ export function WorkspacePanel({
   browserTabs: WorkspaceBrowserTab[]
   browserUrl: string
   browserHistory: WorkspaceBrowserHistory
-  messages: ChatMessage[]
   workspacePath: string
   defaultWorkspacePath: string
   usingTemporaryRoot: boolean
-  workplacePath: string
   openRequest: WorkspaceOpenRequest | null
   sessionId?: string
   permissionMode: PermissionModeId
-  sessionTitle?: string
   artifactVersion: number
   fileDrafts: Record<string, WorkspaceFileDraftState>
   fileNavigatorCollapsed: boolean
@@ -106,20 +97,15 @@ export function WorkspacePanel({
     label: string
     desc: string
   }> = [
-    { id: 'review', label: '审阅', desc: '审阅当前 Git 更改与工作现场' },
+    { id: 'review', label: '审阅', desc: '审阅当前 Git 更改' },
     { id: 'artifacts', label: '产物', desc: '按项目、来源和类型管理生成或保存的文件' },
     { id: 'terminal', label: '终端', desc: 'LS 内置 PowerShell，命令执行受权限控制' },
     { id: 'browser', label: '浏览器', desc: '在拓展工作区预览对话中的网页链接' },
     { id: 'sideChat', label: '侧边聊天', desc: '后续承载与当前文件或产物相关的局部对话' },
   ]
   const activeFileTab = parseWorkspaceFileTabId(activeTab)
-  const activeTabLabel = activeFileTab
-    ? lastPathSegment(activeFileTab.path)
-    : isWorkspaceBrowserTabId(activeTab)
-      ? browserTabs.find((tab) => tab.id === activeTab)?.title || '浏览器'
-      : workspaceEntries.find((entry) => entry.id === activeTab)?.label || '审阅'
   const fullscreenTip = fullscreen ? '退出全屏工作区' : '全屏展开工作区'
-  const workspaceIsDefault = isSamePath(workspacePath, workplacePath)
+  const workspaceIsDefault = isSamePath(workspacePath, defaultWorkspacePath)
   const [warmTab, setWarmTab] = useState<WorkspacePanelTabId | null>(null)
   const previousTabRef = useRef<WorkspacePanelTabId>(activeTab)
 
@@ -145,7 +131,7 @@ export function WorkspacePanel({
     ? previousTabRef.current
     : warmTab
   const warmFileTab = transitionWarmTab ? parseWorkspaceFileTabId(transitionWarmTab) : null
-  const showSharedFileNavigator = !activeFileTab && activeTab !== 'files' && activeTab !== 'review'
+  const showSharedFileNavigator = !activeFileTab && activeTab !== 'review'
 
   return (
     <aside
@@ -170,11 +156,8 @@ export function WorkspacePanel({
               onOpenBrowserTab={onBrowserOpenNewTab}
               onTipChange={onTipChange}
             />
-            <div className="workspace-context-line">
-              {workspaceIsDefault ? '默认工作区' : '目标工作区'}
-            </div>
           </div>
-          <div className="workspace-panel-actions">
+          <div className="workspace-panel-actions workspace-tab-row-control">
             <button
               {...transientTriggerProps()}
               className="workspace-panel-action workspace-panel-collapse-action"
@@ -203,53 +186,15 @@ export function WorkspacePanel({
           )}
           {!panelSuspended && hasOpenTabs && (
             <div
-              key={activeTab}
               className={`workspace-panel-view content-fade ${showSharedFileNavigator ? 'with-file-navigator' : ''}`}
             >
             {activeTab === 'review' && (
               <WorkspaceReview
                 workspacePath={workspacePath}
                 artifactVersion={artifactVersion}
+                fileNavigatorCollapsed={fileNavigatorCollapsed}
+                onFileNavigatorCollapsedChange={onFileNavigatorCollapsedChange}
                 onOpenFile={onOpenFile}
-                onTipChange={onTipChange}
-                activityView={(
-                  <WorkspaceOverview
-                    workspacePath={workspacePath}
-                    workplacePath={workplacePath}
-                    activeTab={activeTab}
-                    activeTabLabel={activeTabLabel}
-                    openTabs={openTabs}
-                    openRequest={openRequest}
-                    sessionId={sessionId}
-                    sessionTitle={sessionTitle}
-                    messages={messages}
-                    artifactVersion={artifactVersion}
-                    fileDrafts={fileDrafts}
-                    onOpenFile={onOpenFile}
-                  />
-                )}
-              />
-            )}
-            {activeTab === 'files' && (
-              <WorkspaceFiles
-                workspacePath={workspacePath}
-                defaultWorkspacePath={defaultWorkspacePath}
-                usingTemporaryRoot={usingTemporaryRoot}
-                navigatorCollapsed={fileNavigatorCollapsed}
-                expandedPaths={expandedPaths}
-                openRequest={openRequest}
-                sessionId={sessionId}
-                onRememberOpenPath={onRememberOpenPath}
-                onReturnToDefaultWorkspace={onReturnToDefaultWorkspace}
-                onRequestFileSaveApproval={onRequestFileSaveApproval}
-                onWorkspaceArtifactsChanged={onWorkspaceArtifactsChanged}
-                onWorkspaceFileSaved={onWorkspaceFileSaved}
-                onNavigatorCollapsedChange={onFileNavigatorCollapsedChange}
-                onExpandedPathsChange={onExpandedPathsChange}
-                onOpenFileTab={(root, path) => {
-                  onRememberOpenPath(root, path)
-                  onTabChange(workspaceFileTabId(root, path))
-                }}
                 onTipChange={onTipChange}
               />
             )}

@@ -10,6 +10,7 @@ import {
 } from './workspace-git-review.js'
 import {
   parseNumstat,
+  parsePorcelainBranchStatus,
   parsePorcelainStatus,
   parseUnifiedDiff,
 } from './workspace-git-review-parsers.js'
@@ -33,6 +34,28 @@ describe('workspace Git review parsers', () => {
       { path: 'new.ts', code: '??', staged: false, unstaged: true },
       { path: 'moved.ts', oldPath: 'old.ts', code: 'R ', staged: true, unstaged: false },
     ])
+  })
+
+  it('parses branch, upstream and divergence from the status process', () => {
+    expect(parsePorcelainBranchStatus(Buffer.from(
+      '## feature/review...origin/feature/review [ahead 2, behind 3]\0 M edited.ts\0?? new.ts\0',
+      'utf8',
+    ))).toEqual({
+      branch: 'feature/review',
+      upstream: 'origin/feature/review',
+      ahead: 2,
+      behind: 3,
+      detached: false,
+      records: [
+        { path: 'edited.ts', code: ' M', staged: false, unstaged: true },
+        { path: 'new.ts', code: '??', staged: false, unstaged: true },
+      ],
+    })
+    expect(parsePorcelainBranchStatus(Buffer.from('## No commits yet on main\0', 'utf8')))
+      .toMatchObject({ branch: 'main', ahead: 0, behind: 0, detached: false })
+    const detached = parsePorcelainBranchStatus(Buffer.from('## HEAD (no branch)\0', 'utf8'))
+    expect(detached).toMatchObject({ ahead: 0, behind: 0, detached: true })
+    expect(detached).not.toHaveProperty('branch')
   })
 
   it('parses normal, binary and rename numstat fields', () => {
@@ -74,6 +97,30 @@ describe('workspace Git review parsers', () => {
 })
 
 describe('workspace Git review integration', () => {
+  it('reviews staged files before the repository has its first commit', async () => {
+    const repository = await mkdtemp(join(tmpdir(), 'ls-review-unborn-git-'))
+    cleanup.push(repository)
+    await git(repository, ['init'])
+    const target = join(repository, 'first.ts')
+    await writeFile(target, 'export const first = true\n', 'utf8')
+    await git(repository, ['add', 'first.ts'])
+
+    const snapshot = await readWorkspaceReview(repository)
+    expect(snapshot.availability).toBe('ready')
+    expect(snapshot.files).toMatchObject([{
+      path: 'first.ts',
+      status: 'added',
+      staged: true,
+      unstaged: false,
+    }])
+
+    const diff = await readWorkspaceReviewDiff(repository, target)
+    expect(diff.layers).toMatchObject([{ kind: 'staged', binary: false }])
+    expect(diff.hunks[0]?.lines.some((line) => (
+      line.kind === 'addition' && line.content === 'export const first = true'
+    ))).toBe(true)
+  })
+
   it('lists tracked and untracked changes and returns a structured file diff', async () => {
     const repository = await createRepository()
     await writeFile(join(repository, 'tracked.txt'), 'one\nchanged\n', 'utf8')

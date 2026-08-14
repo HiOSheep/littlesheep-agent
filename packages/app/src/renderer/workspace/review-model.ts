@@ -62,11 +62,61 @@ export function collectWorkspaceReviewFolderPaths(nodes: WorkspaceReviewTreeNode
 }
 
 export function selectWorkspaceReviewPath(
-  files: WorkspaceReviewFile[],
+  files: readonly WorkspaceReviewFile[],
   currentPath: string | null,
 ): string | null {
   if (currentPath && files.some((file) => file.path === currentPath)) return currentPath
   return files[0]?.path ?? null
+}
+
+export function navigateWorkspaceReviewPath(
+  files: readonly WorkspaceReviewFile[],
+  currentPath: string | null,
+  direction: -1 | 0 | 1,
+): string | null {
+  if (files.length === 0) return null
+  const currentIndex = files.findIndex((file) => file.path === currentPath)
+  if (currentIndex < 0) return direction < 0 ? files.at(-1)!.path : files[0]!.path
+  if (direction === 0) return files[currentIndex]!.path
+  return files[(currentIndex + direction + files.length) % files.length]!.path
+}
+
+export function filterWorkspaceReviewFiles(
+  files: readonly WorkspaceReviewFile[],
+  query: string,
+): WorkspaceReviewFile[] {
+  const normalized = query.trim().toLocaleLowerCase()
+  if (!normalized) return [...files]
+  return files.filter((file) => [file.path, file.oldPath, file.status, workspaceReviewStatusText(file.status)]
+    .filter(Boolean)
+    .join(' ')
+    .toLocaleLowerCase()
+    .includes(normalized))
+}
+
+export function filterWorkspaceReviewTree(
+  nodes: readonly WorkspaceReviewTreeNode[],
+  query: string,
+): WorkspaceReviewTreeNode[] {
+  const normalized = query.trim().toLocaleLowerCase()
+  if (!normalized) return [...nodes]
+  return nodes.flatMap((node): WorkspaceReviewTreeNode[] => {
+    if (node.kind === 'file') {
+      const haystack = [
+        node.path,
+        node.name,
+        node.file.oldPath,
+        node.file.status,
+        workspaceReviewStatusText(node.file.status),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLocaleLowerCase()
+      return haystack.includes(normalized) ? [node] : []
+    }
+    const children = filterWorkspaceReviewTree(node.children, normalized)
+    return children.length > 0 ? [{ ...node, children }] : []
+  })
 }
 
 export function workspaceReviewStatusLabel(status: WorkspaceReviewFileStatus): string {

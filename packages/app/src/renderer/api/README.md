@@ -12,6 +12,7 @@
 | `runtime.ts` | Provider、Runtime、API key、数据根和应用重启。 |
 | `attachments.ts` | 附件选择、浏览器文件导入和本地路径解析。 |
 | `workspace-files.ts` | 工作区选择、目录、预览、保存、布局和产物。 |
+| `workspace-review.ts` | Git 审阅 snapshot/revision 查询与按 revision 绑定的 Diff 请求；支持 `AbortSignal` 与 `force` 刷新。Renderer 只负责 fetch，不直接访问文件系统。 |
 | `terminal.ts` | 一次性命令、终端活动和交互式终端会话。 |
 | `extensions.ts` | 插件和外部渠道控制面。 |
 | `memory.ts` | 记忆树查询、资源管理和项目记忆投影。 |

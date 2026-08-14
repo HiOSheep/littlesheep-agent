@@ -37,6 +37,8 @@ export const WORKSPACE_FILE_DRAFTS_KEY = 'littlesheep.ui.workspaceFileDrafts'
 
 export const WORKSPACE_FILE_NAVIGATOR_COLLAPSED_KEY = 'littlesheep.ui.workspaceFileNavigatorCollapsed'
 
+export const WORKSPACE_REVIEW_SIDE_BY_SIDE_KEY = 'littlesheep.ui.workspaceReviewSideBySide'
+
 export const PINNED_SESSIONS_KEY = 'littlesheep.ui.pinnedSessions'
 
 export const PROJECT_SORT_KEY = 'littlesheep.ui.projectSort'

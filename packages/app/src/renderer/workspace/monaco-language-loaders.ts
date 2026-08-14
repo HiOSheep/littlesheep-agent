@@ -1,0 +1,101 @@
+// Maps declared workspace languages to worker-free Monaco Monarch modules.
+import type * as Monaco from 'monaco-editor'
+
+export interface WorkspaceMonacoLanguageModule {
+  conf: Monaco.languages.LanguageConfiguration
+  language: Monaco.languages.IMonarchLanguage
+}
+
+type LanguageLoader = () => Promise<WorkspaceMonacoLanguageModule>
+
+const LANGUAGE_LOADERS: Record<string, LanguageLoader> = {
+  abap: () => import('monaco-editor/esm/vs/basic-languages/abap/abap.js'),
+  apex: () => import('monaco-editor/esm/vs/basic-languages/apex/apex.js'),
+  azcli: () => import('monaco-editor/esm/vs/basic-languages/azcli/azcli.js'),
+  bat: () => import('monaco-editor/esm/vs/basic-languages/bat/bat.js'),
+  bicep: () => import('monaco-editor/esm/vs/basic-languages/bicep/bicep.js'),
+  cameligo: () => import('monaco-editor/esm/vs/basic-languages/cameligo/cameligo.js'),
+  clojure: () => import('monaco-editor/esm/vs/basic-languages/clojure/clojure.js'),
+  coffee: () => import('monaco-editor/esm/vs/basic-languages/coffee/coffee.js'),
+  cpp: () => import('monaco-editor/esm/vs/basic-languages/cpp/cpp.js'),
+  csharp: () => import('monaco-editor/esm/vs/basic-languages/csharp/csharp.js'),
+  csp: () => import('monaco-editor/esm/vs/basic-languages/csp/csp.js'),
+  css: () => import('monaco-editor/esm/vs/basic-languages/css/css.js'),
+  cypher: () => import('monaco-editor/esm/vs/basic-languages/cypher/cypher.js'),
+  dart: () => import('monaco-editor/esm/vs/basic-languages/dart/dart.js'),
+  dockerfile: () => import('monaco-editor/esm/vs/basic-languages/dockerfile/dockerfile.js'),
+  ecl: () => import('monaco-editor/esm/vs/basic-languages/ecl/ecl.js'),
+  elixir: () => import('monaco-editor/esm/vs/basic-languages/elixir/elixir.js'),
+  flow9: () => import('monaco-editor/esm/vs/basic-languages/flow9/flow9.js'),
+  freemarker2: () => import('monaco-editor/esm/vs/basic-languages/freemarker2/freemarker2.js'),
+  fsharp: () => import('monaco-editor/esm/vs/basic-languages/fsharp/fsharp.js'),
+  go: () => import('monaco-editor/esm/vs/basic-languages/go/go.js'),
+  graphql: () => import('monaco-editor/esm/vs/basic-languages/graphql/graphql.js'),
+  handlebars: () => import('monaco-editor/esm/vs/basic-languages/handlebars/handlebars.js'),
+  hcl: () => import('monaco-editor/esm/vs/basic-languages/hcl/hcl.js'),
+  html: () => import('monaco-editor/esm/vs/basic-languages/html/html.js'),
+  ini: () => import('monaco-editor/esm/vs/basic-languages/ini/ini.js'),
+  java: () => import('monaco-editor/esm/vs/basic-languages/java/java.js'),
+  javascript: () => import('monaco-editor/esm/vs/basic-languages/javascript/javascript.js'),
+  julia: () => import('monaco-editor/esm/vs/basic-languages/julia/julia.js'),
+  kotlin: () => import('monaco-editor/esm/vs/basic-languages/kotlin/kotlin.js'),
+  less: () => import('monaco-editor/esm/vs/basic-languages/less/less.js'),
+  lexon: () => import('monaco-editor/esm/vs/basic-languages/lexon/lexon.js'),
+  liquid: () => import('monaco-editor/esm/vs/basic-languages/liquid/liquid.js'),
+  lua: () => import('monaco-editor/esm/vs/basic-languages/lua/lua.js'),
+  m3: () => import('monaco-editor/esm/vs/basic-languages/m3/m3.js'),
+  markdown: () => import('monaco-editor/esm/vs/basic-languages/markdown/markdown.js'),
+  mdx: () => import('monaco-editor/esm/vs/basic-languages/mdx/mdx.js'),
+  mips: () => import('monaco-editor/esm/vs/basic-languages/mips/mips.js'),
+  msdax: () => import('monaco-editor/esm/vs/basic-languages/msdax/msdax.js'),
+  mysql: () => import('monaco-editor/esm/vs/basic-languages/mysql/mysql.js'),
+  'objective-c': () => import('monaco-editor/esm/vs/basic-languages/objective-c/objective-c.js'),
+  pascal: () => import('monaco-editor/esm/vs/basic-languages/pascal/pascal.js'),
+  pascaligo: () => import('monaco-editor/esm/vs/basic-languages/pascaligo/pascaligo.js'),
+  perl: () => import('monaco-editor/esm/vs/basic-languages/perl/perl.js'),
+  pgsql: () => import('monaco-editor/esm/vs/basic-languages/pgsql/pgsql.js'),
+  php: () => import('monaco-editor/esm/vs/basic-languages/php/php.js'),
+  pla: () => import('monaco-editor/esm/vs/basic-languages/pla/pla.js'),
+  postiats: () => import('monaco-editor/esm/vs/basic-languages/postiats/postiats.js'),
+  powerquery: () => import('monaco-editor/esm/vs/basic-languages/powerquery/powerquery.js'),
+  powershell: () => import('monaco-editor/esm/vs/basic-languages/powershell/powershell.js'),
+  protobuf: () => import('monaco-editor/esm/vs/basic-languages/protobuf/protobuf.js'),
+  pug: () => import('monaco-editor/esm/vs/basic-languages/pug/pug.js'),
+  python: () => import('monaco-editor/esm/vs/basic-languages/python/python.js'),
+  qsharp: () => import('monaco-editor/esm/vs/basic-languages/qsharp/qsharp.js'),
+  r: () => import('monaco-editor/esm/vs/basic-languages/r/r.js'),
+  razor: () => import('monaco-editor/esm/vs/basic-languages/razor/razor.js'),
+  redis: () => import('monaco-editor/esm/vs/basic-languages/redis/redis.js'),
+  redshift: () => import('monaco-editor/esm/vs/basic-languages/redshift/redshift.js'),
+  restructuredtext: () => import('monaco-editor/esm/vs/basic-languages/restructuredtext/restructuredtext.js'),
+  ruby: () => import('monaco-editor/esm/vs/basic-languages/ruby/ruby.js'),
+  rust: () => import('monaco-editor/esm/vs/basic-languages/rust/rust.js'),
+  sb: () => import('monaco-editor/esm/vs/basic-languages/sb/sb.js'),
+  scala: () => import('monaco-editor/esm/vs/basic-languages/scala/scala.js'),
+  scheme: () => import('monaco-editor/esm/vs/basic-languages/scheme/scheme.js'),
+  scss: () => import('monaco-editor/esm/vs/basic-languages/scss/scss.js'),
+  shell: () => import('monaco-editor/esm/vs/basic-languages/shell/shell.js'),
+  solidity: () => import('monaco-editor/esm/vs/basic-languages/solidity/solidity.js'),
+  sophia: () => import('monaco-editor/esm/vs/basic-languages/sophia/sophia.js'),
+  sparql: () => import('monaco-editor/esm/vs/basic-languages/sparql/sparql.js'),
+  sql: () => import('monaco-editor/esm/vs/basic-languages/sql/sql.js'),
+  st: () => import('monaco-editor/esm/vs/basic-languages/st/st.js'),
+  swift: () => import('monaco-editor/esm/vs/basic-languages/swift/swift.js'),
+  systemverilog: () => import('monaco-editor/esm/vs/basic-languages/systemverilog/systemverilog.js'),
+  tcl: () => import('monaco-editor/esm/vs/basic-languages/tcl/tcl.js'),
+  twig: () => import('monaco-editor/esm/vs/basic-languages/twig/twig.js'),
+  typescript: () => import('monaco-editor/esm/vs/basic-languages/typescript/typescript.js'),
+  typespec: () => import('monaco-editor/esm/vs/basic-languages/typespec/typespec.js'),
+  vb: () => import('monaco-editor/esm/vs/basic-languages/vb/vb.js'),
+  wgsl: () => import('monaco-editor/esm/vs/basic-languages/wgsl/wgsl.js'),
+  xml: () => import('monaco-editor/esm/vs/basic-languages/xml/xml.js'),
+  yaml: () => import('monaco-editor/esm/vs/basic-languages/yaml/yaml.js'),
+}
+
+export const WORKSPACE_MONACO_LAZY_LANGUAGE_IDS = Object.freeze(Object.keys(LANGUAGE_LOADERS))
+
+export function loadWorkspaceMonacoLanguageModule(
+  languageId: string,
+): Promise<WorkspaceMonacoLanguageModule> | null {
+  return LANGUAGE_LOADERS[languageId]?.() ?? null
+}

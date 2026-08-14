@@ -1,17 +1,20 @@
 // Extension workspace panels, files, terminal, artifacts, and view helpers.
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
-  listWorkspaceDirectory,
   openWorkspacePathInVSCode,
-  type WorkspaceDirectory,
   type WorkspaceEntry
 } from '../api'
 import { StringListUpdater } from '../app-shell/types'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { FileGlyphIcon, FolderGlyphIcon, RefreshIcon, SearchIcon, TreeChevronIcon, VSCodeIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
-import { WorkspaceDirectoryState, updateWorkspaceDirectoryCache } from './directory-cache'
+import {
+  type WorkspaceDirectoryState,
+  updateWorkspaceDirectoryCache,
+  workspaceDirectoryCache,
+} from './directory-cache'
 import { compactPath, formatFileSize, workspaceAncestorPaths } from './path-utils'
+import { WorkspaceNavigatorFrame } from './navigator-frame'
 
 
 export function WorkspaceFileNavigator({
@@ -39,7 +42,9 @@ export function WorkspaceFileNavigator({
   onExpandedPathsChange: (update: StringListUpdater) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
-  const [directories, setDirectories] = useState<Record<string, WorkspaceDirectoryState>>({})
+  const [directories, setDirectories] = useState<Record<string, WorkspaceDirectoryState>>(
+    () => workspaceDirectoryCache.read(workspacePath),
+  )
   const expanded = useMemo(() => new Set(expandedPaths), [expandedPaths])
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(() => new Set())
   const [treeError, setTreeError] = useState('')
@@ -55,14 +60,16 @@ export function WorkspaceFileNavigator({
     }
   }, [])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (navigatorCollapsed) return
     let alive = true
     const requestId = ++directoryRequestRef.current
-    setDirectories({})
+    const cachedDirectories = workspaceDirectoryCache.read(workspacePath)
+    setDirectories(cachedDirectories)
     onExpandedPathsChange((paths) => paths.includes(workspacePath) ? paths : [...paths, workspacePath])
     setTreeError('')
     setDirectoryLoading(workspacePath, true)
-    listWorkspaceDirectory(workspacePath, workspacePath)
+    workspaceDirectoryCache.load(workspacePath, workspacePath)
       .then((directory) => {
         if (!alive || requestId !== directoryRequestRef.current) return
         commitDirectory(workspacePath, directory)
@@ -78,16 +85,17 @@ export function WorkspaceFileNavigator({
     return () => {
       alive = false
     }
-  }, [workspacePath])
+  }, [navigatorCollapsed, workspacePath])
 
   useEffect(() => {
+    if (navigatorCollapsed) return
     const ancestors = workspaceAncestorPaths(workspacePath, selectedPath)
     if (ancestors.length === 0) return
     onExpandedPathsChange((paths) => [...paths, ...ancestors])
     for (const path of ancestors) {
       if (!directories[path]) void loadDirectory(path)
     }
-  }, [selectedPath, workspacePath])
+  }, [navigatorCollapsed, selectedPath, workspacePath])
 
   function setDirectoryLoading(path: string, loading: boolean) {
     setLoadingDirs((value) => {
@@ -98,7 +106,10 @@ export function WorkspaceFileNavigator({
     })
   }
 
-  function commitDirectory(requestedPath: string, directory: WorkspaceDirectory) {
+  function commitDirectory(
+    requestedPath: string,
+    directory: Awaited<ReturnType<typeof workspaceDirectoryCache.load>>,
+  ) {
     if (!mountedRef.current) return
     const state: WorkspaceDirectoryState = {
       entries: directory.entries,
@@ -114,12 +125,12 @@ export function WorkspaceFileNavigator({
     ))
   }
 
-  async function loadDirectory(path: string) {
+  async function loadDirectory(path: string, force = false) {
     const requestId = directoryRequestRef.current
     setTreeError('')
     setDirectoryLoading(path, true)
     try {
-      const directory = await listWorkspaceDirectory(workspacePath, path)
+      const directory = await workspaceDirectoryCache.load(workspacePath, path, { force })
       if (!mountedRef.current || requestId !== directoryRequestRef.current) return
       commitDirectory(path, directory)
     } catch (err) {
@@ -157,9 +168,9 @@ export function WorkspaceFileNavigator({
   }
 
   function refreshTree() {
-    void loadDirectory(workspacePath)
+    void loadDirectory(workspacePath, true)
     const ancestors = workspaceAncestorPaths(workspacePath, selectedPath)
-    for (const path of ancestors) void loadDirectory(path)
+    for (const path of ancestors) void loadDirectory(path, true)
   }
 
   const rootInfo = directories[workspacePath]
@@ -170,32 +181,13 @@ export function WorkspaceFileNavigator({
     : false
 
   return (
-    <aside
-      className={`workspace-files-navigator ${navigatorCollapsed ? 'navigator-collapsed' : ''}`}
-      aria-label="文件管理"
-      aria-expanded={!navigatorCollapsed}
+    <WorkspaceNavigatorFrame
+      collapsed={navigatorCollapsed}
+      ariaLabel="文件管理"
+      onCollapsedChange={onNavigatorCollapsedChange}
+      onTipChange={onTipChange}
     >
-      <button
-        {...transientTriggerProps()}
-        className="workspace-files-navigator-rail"
-        type="button"
-        aria-label={navigatorCollapsed ? '展开文件管理' : '折叠文件管理'}
-        aria-expanded={!navigatorCollapsed}
-        onClick={() => onNavigatorCollapsedChange(!navigatorCollapsed)}
-        onMouseEnter={(event) => onTipChange(buildFloatingHelpTip(navigatorCollapsed ? '展开文件管理' : '折叠文件管理', event.clientX, event.clientY))}
-        onMouseMove={(event) => onTipChange(buildFloatingHelpTip(navigatorCollapsed ? '展开文件管理' : '折叠文件管理', event.clientX, event.clientY))}
-        onMouseLeave={() => onTipChange(null)}
-        onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement(navigatorCollapsed ? '展开文件管理' : '折叠文件管理', event.currentTarget))}
-        onBlur={() => onTipChange(null)}
-      >
-        <FolderGlyphIcon />
-      </button>
-      <div
-        className="workspace-files-navigator-inner"
-        aria-hidden={navigatorCollapsed}
-        {...(navigatorCollapsed ? { inert: '' } : {})}
-      >
-        <div className="workspace-files-toolbar">
+        <div className="workspace-files-toolbar workspace-page-leading-row">
           <div className="workspace-files-root">
             <span>
               {compactPath(workspacePath)}
@@ -289,8 +281,7 @@ export function WorkspaceFileNavigator({
             />
           )}
         </div>
-      </div>
-    </aside>
+    </WorkspaceNavigatorFrame>
   )
 }
 

@@ -43,6 +43,8 @@ describe('desktop Electron acceptance Local App API', () => {
         arrayBuffersBytes: 5,
         activeHandleCount: 6,
         activeRequestCount: 1,
+        activeHandleTypes: [{ type: 'Socket', count: 6 }],
+        activeRequestTypes: [{ type: 'FSReqCallback', count: 1 }],
       },
       electron: {
         processCount: 3,
@@ -83,7 +85,14 @@ describe('desktop Electron acceptance Local App API', () => {
     await expect(initial.json()).resolves.toMatchObject({
       snapshot: {
         windowVisible: true,
-        process: { rssBytes: 100, heapUsedBytes: 40, activeHandleCount: 6, activeRequestCount: 1 },
+        process: {
+          rssBytes: 100,
+          heapUsedBytes: 40,
+          activeHandleCount: 6,
+          activeRequestCount: 1,
+          activeHandleTypes: [{ type: 'Socket', count: 6 }],
+          activeRequestTypes: [{ type: 'FSReqCallback', count: 1 }],
+        },
         electron: { processCount: 3, workingSetBytes: 300 },
         runtime: { currentRunnerActiveRunCount: 1, activityListenerCount: 1 },
       },

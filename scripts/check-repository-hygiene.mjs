@@ -359,15 +359,14 @@ async function checkRepositoryNavigation() {
     'packages/app/src/renderer/chat/run-actions.ts': 315,
     'packages/app/src/renderer/settings/plugins.tsx': 394,
     'packages/app/src/renderer/ui/icons.tsx': 351,
-    // 2026-08-05: bounded directory cancellation/cache-resume lifecycle was
-    // added to the workspace coordinators; keep the new baseline explicit
-    // while the controller/view split remains a follow-up boundary.
-    'packages/app/src/renderer/workspace/file-navigator.tsx': 519,
-    'packages/app/src/renderer/workspace/files.tsx': 471,
-    'packages/app/src/renderer/workspace/panel.tsx': 432,
-    'packages/app/src/renderer/workspace/preview-pane.tsx': 484,
-    'packages/app/src/renderer/workspace/terminal.tsx': 596,
-    'packages/app/src/renderer/workspace/use-workspace-layout-controller.ts': 410,
+    // 2026-08-13: the old files.tsx coordinator was removed. The remaining
+    // workspace ownership boundaries are explicit and may only shrink.
+    'packages/app/src/renderer/workspace/file-navigator.tsx': 455,
+    'packages/app/src/renderer/workspace/panel.tsx': 396,
+    'packages/app/src/renderer/workspace/preview-pane.tsx': 453,
+    'packages/app/src/renderer/workspace/review.tsx': 383,
+    'packages/app/src/renderer/workspace/terminal.tsx': 557,
+    'packages/app/src/renderer/workspace/use-workspace-layout-controller.ts': 422,
     'packages/app/src/main/local-app-api-server.ts': 261,
     'packages/app/src/renderer/api.ts': 22,
     'packages/memory-tree/src/memory-repository.ts': 172,
