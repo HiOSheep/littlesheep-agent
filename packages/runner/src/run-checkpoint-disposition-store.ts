@@ -9,6 +9,7 @@ import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/p
 import { basename, join } from 'node:path'
 import type { RunCheckpointDisposition } from '@littlesheep/types'
 import { RUN_CHECKPOINT_DISPOSITION_VERSION } from '@littlesheep/types'
+import { acquireLock } from '@littlesheep/session'
 
 export const DEFAULT_RUN_CHECKPOINT_DISPOSITION_MAX_RECORDS = 512 as const
 export const MAX_RUN_CHECKPOINT_DISPOSITION_MAX_RECORDS = 2_048 as const
@@ -16,6 +17,7 @@ const MAX_REASON_LENGTH = 4_096
 const MAX_HISTORY = 8
 const MAX_FILE_BYTES = 128 * 1024
 const STALE_TEMP_FILE_AGE_MS = 60 * 60 * 1_000
+const STORE_LOCK_TIMEOUT_MS = 60_000
 
 export interface RunCheckpointDispositionStoreOptions {
   rootDir: string
@@ -27,6 +29,25 @@ export type RunCheckpointDispositionOutcome =
   | { kind: 'written'; disposition: RunCheckpointDisposition }
   | { kind: 'duplicate'; disposition: RunCheckpointDisposition }
   | { kind: 'conflict'; disposition: RunCheckpointDisposition; message: string }
+
+export interface RunCheckpointAnswerClaimIdentity {
+  requestId: string
+  answerMessageId: string
+  requestKey: string
+  continuationDisposition?: import('@littlesheep/types').RunCheckpointContinuationDisposition
+}
+
+export interface RunCheckpointResumeClaimOptions {
+  /** Only an explicit recovery selection may reactivate a previously deferred task. */
+  allowDeferred?: boolean
+}
+
+export interface RunCheckpointDispositionListOptions {
+  statuses?: RunCheckpointDisposition['status'][]
+  resumeRunId?: string
+  requestKey?: string
+  limit?: number
+}
 
 export class RunCheckpointDispositionStore {
   private readonly rootDir: string
@@ -72,20 +93,91 @@ export class RunCheckpointDispositionStore {
     }
   }
 
-  async claimResume(checkpointId: string, reason: string, resumeRunId: string = randomUUID()): Promise<RunCheckpointDispositionOutcome> {
+  /** Bounded newest-first scan used by startup recovery and checkpoint retention. */
+  async list(options: RunCheckpointDispositionListOptions = {}): Promise<RunCheckpointDisposition[]> {
+    this.ensureUsable()
+    const statuses = options.statuses ? new Set(options.statuses) : undefined
+    const resumeRunId = options.resumeRunId === undefined ? undefined : normalizeId(options.resumeRunId)
+    const requestKey = options.requestKey === undefined ? undefined : normalizeId(options.requestKey)
+    const limit = boundedInteger(options.limit, this.maxRecords, 1, this.maxRecords)
+    const entries = await readdir(this.rootDir, { withFileTypes: true }).catch(() => [])
+    const records = await Promise.all(entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+      .slice(0, this.maxRecords)
+      .map(async (entry) => {
+        try {
+          const parsed = JSON.parse(await readFile(join(this.rootDir, entry.name), 'utf8')) as unknown
+          if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined
+          const checkpointId = normalizeId((parsed as Record<string, unknown>).checkpointId)
+          return validateDisposition(parsed, checkpointId)
+        } catch {
+          return undefined
+        }
+      }))
+    return records
+      .filter((record): record is RunCheckpointDisposition => Boolean(record))
+      .filter((record) => !statuses || statuses.has(record.status))
+      .filter((record) => resumeRunId === undefined || record.resumeRunId === resumeRunId)
+      .filter((record) => requestKey === undefined || record.requestKey === requestKey)
+      .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
+      .slice(0, limit)
+      .map(clone)
+  }
+
+  async claimResume(
+    checkpointId: string,
+    reason: string,
+    resumeRunId: string = randomUUID(),
+    identity?: RunCheckpointAnswerClaimIdentity,
+    options: RunCheckpointResumeClaimOptions = {},
+  ): Promise<RunCheckpointDispositionOutcome> {
     this.ensureUsable()
     const id = normalizeId(checkpointId)
     const normalizedReason = boundedReason(reason)
     const normalizedRunId = normalizeId(resumeRunId)
+    const normalizedIdentity = identity ? validateClaimIdentity(identity) : undefined
     return this.enqueueWrite(async () => {
       const existing = await this.readUnsafe(id)
       if (existing) {
-        if (existing.status === 'resuming') return { kind: 'duplicate', disposition: clone(existing) }
+        if (existing.status === 'resuming') {
+          if (!normalizedIdentity || sameClaimIdentity(existing, normalizedIdentity)) {
+            return { kind: 'duplicate', disposition: clone(existing) }
+          }
+          return {
+            kind: 'conflict',
+            disposition: clone(existing),
+            message: 'checkpoint has an active resume lease for a different conversation turn',
+          }
+        }
         if (existing.status === 'interrupted') {
+          if (existing.requestKey
+            && (!normalizedIdentity || !sameClaimIdentity(existing, normalizedIdentity))) {
+            return {
+              kind: 'conflict',
+              disposition: clone(existing),
+              message: 'interrupted checkpoint belongs to a different conversation turn',
+            }
+          }
           return this.update(existing, {
             status: 'resuming',
             reason: normalizedReason,
             resumeRunId: normalizedRunId,
+            ...normalizedIdentity,
+          })
+        }
+        if (existing.status === 'deferred') {
+          if (!options.allowDeferred) {
+            return {
+              kind: 'conflict',
+              disposition: clone(existing),
+              message: 'checkpoint is deferred and requires an explicit recovery selection',
+            }
+          }
+          return this.update(existing, {
+            status: 'resuming',
+            reason: normalizedReason,
+            resumeRunId: normalizedRunId,
+            ...normalizedIdentity,
           })
         }
         return { kind: 'conflict', disposition: clone(existing), message: `checkpoint is already ${existing.status}` }
@@ -99,7 +191,14 @@ export class RunCheckpointDispositionStore {
         updatedAt: now,
         reason: normalizedReason,
         resumeRunId: normalizedRunId,
-        history: [{ status: 'resuming', at: now, reason: normalizedReason, resumeRunId: normalizedRunId }],
+        ...normalizedIdentity,
+        history: [{
+          status: 'resuming',
+          at: now,
+          reason: normalizedReason,
+          resumeRunId: normalizedRunId,
+          ...normalizedIdentity,
+        }],
       }
       await this.writeAtomic(disposition)
       await this.pruneUnsafe()
@@ -119,6 +218,44 @@ export class RunCheckpointDispositionStore {
       resultStatus,
       reason,
       ...(nextCheckpointId ? { nextCheckpointId } : {}),
+    })
+  }
+
+  /** Seal a lease after a durable session completion receipt proves the run finished. */
+  async reconcileCompletedResume(
+    checkpointId: string,
+    resumeRunId: string,
+    resultStatus: 'ok' | 'error' | 'aborted',
+    reason: string,
+    nextCheckpointId?: string,
+  ): Promise<RunCheckpointDispositionOutcome> {
+    this.ensureUsable()
+    const id = normalizeId(checkpointId)
+    const runId = normalizeId(resumeRunId)
+    const normalizedReason = boundedReason(reason)
+    return this.enqueueWrite(async () => {
+      const existing = await this.readUnsafe(id)
+      if (!existing) {
+        return { kind: 'conflict', disposition: emptyConflict(id), message: 'resume disposition is missing' }
+      }
+      if (existing.status === 'resumed') return { kind: 'duplicate', disposition: clone(existing) }
+      if (
+        (existing.status !== 'resuming' && existing.status !== 'interrupted')
+        || existing.resumeRunId !== runId
+      ) {
+        return {
+          kind: 'conflict',
+          disposition: clone(existing),
+          message: 'completion receipt does not belong to this resume lease',
+        }
+      }
+      return this.update(existing, {
+        status: 'resumed',
+        resultStatus,
+        reason: normalizedReason,
+        resumeRunId: runId,
+        ...(nextCheckpointId ? { nextCheckpointId: normalizeId(nextCheckpointId) } : {}),
+      })
     })
   }
 
@@ -174,6 +311,7 @@ export class RunCheckpointDispositionStore {
     checkpointId: string,
     resumeRunId: string,
     reason: string,
+    nextCheckpointId?: string,
   ): Promise<RunCheckpointDispositionOutcome> {
     this.ensureUsable()
     const id = normalizeId(checkpointId)
@@ -190,17 +328,28 @@ export class RunCheckpointDispositionStore {
         status: 'interrupted',
         reason: normalizedReason,
         resumeRunId: runId,
+        ...(nextCheckpointId ? { nextCheckpointId: normalizeId(nextCheckpointId) } : {}),
       })
     })
   }
 
-  async abandon(checkpointId: string, reason: string): Promise<RunCheckpointDispositionOutcome> {
+  async abandon(
+    checkpointId: string,
+    reason: string,
+    identity?: RunCheckpointAnswerClaimIdentity,
+  ): Promise<RunCheckpointDispositionOutcome> {
     this.ensureUsable()
     const id = normalizeId(checkpointId)
     const normalizedReason = boundedReason(reason)
+    const normalizedIdentity = identity ? validateClaimIdentity(identity) : undefined
     return this.enqueueWrite(async () => {
       const existing = await this.readUnsafe(id)
-      if (existing?.status === 'abandoned') return { kind: 'duplicate', disposition: clone(existing) }
+      if (existing?.status === 'abandoned') {
+        if (!normalizedIdentity || sameClaimIdentity(existing, normalizedIdentity)) {
+          return { kind: 'duplicate', disposition: clone(existing) }
+        }
+        return { kind: 'conflict', disposition: clone(existing), message: 'checkpoint was abandoned by another conversation turn' }
+      }
       if (existing?.status === 'resumed') return { kind: 'conflict', disposition: clone(existing), message: 'checkpoint has already been resumed' }
       if (existing?.status === 'completed') return { kind: 'conflict', disposition: clone(existing), message: 'checkpoint source run has already completed' }
       if (!existing) {
@@ -212,13 +361,53 @@ export class RunCheckpointDispositionStore {
           decidedAt: now,
           updatedAt: now,
           reason: normalizedReason,
-          history: [{ status: 'abandoned', at: now, reason: normalizedReason }],
+          ...normalizedIdentity,
+          history: [{ status: 'abandoned', at: now, reason: normalizedReason, ...normalizedIdentity }],
         }
         await this.writeAtomic(disposition)
         await this.pruneUnsafe()
         return { kind: 'written', disposition: clone(disposition) }
       }
-      return this.update(existing, { status: 'abandoned', reason: normalizedReason })
+      return this.update(existing, { status: 'abandoned', reason: normalizedReason, ...normalizedIdentity })
+    })
+  }
+
+  /** Remove a waiting task from automatic binding while keeping explicit recovery available. */
+  async defer(
+    checkpointId: string,
+    reason: string,
+    identity?: RunCheckpointAnswerClaimIdentity,
+  ): Promise<RunCheckpointDispositionOutcome> {
+    this.ensureUsable()
+    const id = normalizeId(checkpointId)
+    const normalizedReason = boundedReason(reason)
+    const normalizedIdentity = identity ? validateClaimIdentity(identity) : undefined
+    return this.enqueueWrite(async () => {
+      const existing = await this.readUnsafe(id)
+      if (existing?.status === 'deferred') {
+        if (!normalizedIdentity || sameClaimIdentity(existing, normalizedIdentity)) {
+          return { kind: 'duplicate', disposition: clone(existing) }
+        }
+        return { kind: 'conflict', disposition: clone(existing), message: 'checkpoint was deferred by another conversation turn' }
+      }
+      if (existing?.status === 'resuming' || existing?.status === 'resumed' || existing?.status === 'completed' || existing?.status === 'abandoned') {
+        return { kind: 'conflict', disposition: clone(existing), message: `checkpoint is already ${existing.status}` }
+      }
+      if (existing) return this.update(existing, { status: 'deferred', reason: normalizedReason, ...normalizedIdentity })
+      const now = this.now().toISOString()
+      const disposition: RunCheckpointDisposition = {
+        version: RUN_CHECKPOINT_DISPOSITION_VERSION,
+        checkpointId: id,
+        status: 'deferred',
+        decidedAt: now,
+        updatedAt: now,
+        reason: normalizedReason,
+        ...normalizedIdentity,
+        history: [{ status: 'deferred', at: now, reason: normalizedReason, ...normalizedIdentity }],
+      }
+      await this.writeAtomic(disposition)
+      await this.pruneUnsafe()
+      return { kind: 'written', disposition: clone(disposition) }
     })
   }
 
@@ -263,6 +452,10 @@ export class RunCheckpointDispositionStore {
       resumeRunId?: string
       nextCheckpointId?: string
       resultStatus?: 'ok' | 'error' | 'aborted'
+      requestId?: string
+      answerMessageId?: string
+      requestKey?: string
+      continuationDisposition?: import('@littlesheep/types').RunCheckpointContinuationDisposition
     },
   ): Promise<RunCheckpointDispositionOutcome> {
     const now = this.now().toISOString()
@@ -273,6 +466,14 @@ export class RunCheckpointDispositionStore {
       ...(transition.resumeRunId ? { resumeRunId: transition.resumeRunId } : existing.resumeRunId ? { resumeRunId: existing.resumeRunId } : {}),
       ...(transition.nextCheckpointId ? { nextCheckpointId: transition.nextCheckpointId } : {}),
       ...(transition.resultStatus ? { resultStatus: transition.resultStatus } : {}),
+      ...(transition.requestId ? { requestId: transition.requestId } : existing.requestId ? { requestId: existing.requestId } : {}),
+      ...(transition.answerMessageId ? { answerMessageId: transition.answerMessageId } : existing.answerMessageId ? { answerMessageId: existing.answerMessageId } : {}),
+      ...(transition.requestKey ? { requestKey: transition.requestKey } : existing.requestKey ? { requestKey: existing.requestKey } : {}),
+      ...(transition.continuationDisposition
+        ? { continuationDisposition: transition.continuationDisposition }
+        : existing.continuationDisposition
+          ? { continuationDisposition: existing.continuationDisposition }
+          : {}),
     }
     const next: RunCheckpointDisposition = {
       ...existing,
@@ -282,6 +483,10 @@ export class RunCheckpointDispositionStore {
       ...(entry.resumeRunId ? { resumeRunId: entry.resumeRunId } : {}),
       ...(entry.nextCheckpointId ? { nextCheckpointId: entry.nextCheckpointId } : {}),
       ...(entry.resultStatus ? { resultStatus: entry.resultStatus } : {}),
+      ...(entry.requestId ? { requestId: entry.requestId } : {}),
+      ...(entry.answerMessageId ? { answerMessageId: entry.answerMessageId } : {}),
+      ...(entry.requestKey ? { requestKey: entry.requestKey } : {}),
+      ...(entry.continuationDisposition ? { continuationDisposition: entry.continuationDisposition } : {}),
       history: [...existing.history, entry].slice(-MAX_HISTORY),
     }
     await this.writeAtomic(next)
@@ -335,7 +540,15 @@ export class RunCheckpointDispositionStore {
 
   private enqueueWrite<T>(operation: () => Promise<T>): Promise<T> {
     this.ensureUsable()
-    const current = this.writeTail.catch(() => undefined).then(operation)
+    const current = this.writeTail.catch(() => undefined).then(async () => {
+      await mkdir(this.rootDir, { recursive: true })
+      const lock = await acquireLock(join(this.rootDir, '.checkpoint-dispositions'), STORE_LOCK_TIMEOUT_MS)
+      try {
+        return await operation()
+      } finally {
+        await lock.release()
+      }
+    })
     this.writeTail = current.then(() => undefined, () => undefined)
     return current
   }
@@ -349,7 +562,7 @@ function validateDisposition(value: unknown, expectedId: string): RunCheckpointD
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid disposition')
   const record = value as Record<string, unknown>
   if (record.version !== RUN_CHECKPOINT_DISPOSITION_VERSION || record.checkpointId !== expectedId) throw new Error('invalid disposition version or id')
-  if (record.status !== 'resuming' && record.status !== 'interrupted' && record.status !== 'resumed' && record.status !== 'completed' && record.status !== 'abandoned') throw new Error('invalid disposition status')
+  if (record.status !== 'resuming' && record.status !== 'interrupted' && record.status !== 'resumed' && record.status !== 'completed' && record.status !== 'abandoned' && record.status !== 'deferred') throw new Error('invalid disposition status')
   const history = Array.isArray(record.history) ? record.history : []
   if (history.length === 0 || history.length > MAX_HISTORY) throw new Error('invalid disposition history')
   return {
@@ -360,24 +573,71 @@ function validateDisposition(value: unknown, expectedId: string): RunCheckpointD
     updatedAt: validTime(record.updatedAt),
     reason: boundedReason(record.reason),
     ...(record.resumeRunId ? { resumeRunId: normalizeId(record.resumeRunId) } : {}),
+    ...(record.requestId ? { requestId: normalizeId(record.requestId) } : {}),
+    ...(record.answerMessageId ? { answerMessageId: normalizeId(record.answerMessageId) } : {}),
+    ...(record.requestKey ? { requestKey: normalizeId(record.requestKey) } : {}),
+    ...(validContinuationDisposition(record.continuationDisposition)
+      ? { continuationDisposition: record.continuationDisposition } : {}),
     ...(record.nextCheckpointId ? { nextCheckpointId: normalizeId(record.nextCheckpointId) } : {}),
     ...(record.resultStatus === 'ok' || record.resultStatus === 'error' || record.resultStatus === 'aborted'
       ? { resultStatus: record.resultStatus } : {}),
     history: history.map((item) => {
       if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error('invalid disposition history entry')
       const entry = item as Record<string, unknown>
-      if (entry.status !== 'resuming' && entry.status !== 'interrupted' && entry.status !== 'resumed' && entry.status !== 'completed' && entry.status !== 'abandoned') throw new Error('invalid disposition history status')
+      if (entry.status !== 'resuming' && entry.status !== 'interrupted' && entry.status !== 'resumed' && entry.status !== 'completed' && entry.status !== 'abandoned' && entry.status !== 'deferred') throw new Error('invalid disposition history status')
       return {
         status: entry.status,
         at: validTime(entry.at),
         reason: boundedReason(entry.reason),
         ...(entry.resumeRunId ? { resumeRunId: normalizeId(entry.resumeRunId) } : {}),
+        ...(entry.requestId ? { requestId: normalizeId(entry.requestId) } : {}),
+        ...(entry.answerMessageId ? { answerMessageId: normalizeId(entry.answerMessageId) } : {}),
+        ...(entry.requestKey ? { requestKey: normalizeId(entry.requestKey) } : {}),
+        ...(validContinuationDisposition(entry.continuationDisposition)
+          ? { continuationDisposition: entry.continuationDisposition } : {}),
         ...(entry.nextCheckpointId ? { nextCheckpointId: normalizeId(entry.nextCheckpointId) } : {}),
         ...(entry.resultStatus === 'ok' || entry.resultStatus === 'error' || entry.resultStatus === 'aborted'
           ? { resultStatus: entry.resultStatus } : {}),
       }
     }),
   }
+}
+
+function validateClaimIdentity(identity: RunCheckpointAnswerClaimIdentity): RunCheckpointAnswerClaimIdentity {
+  return {
+    requestId: normalizeId(identity.requestId),
+    answerMessageId: normalizeId(identity.answerMessageId),
+    requestKey: normalizeId(identity.requestKey),
+    ...(identity.continuationDisposition
+      ? { continuationDisposition: validateContinuationDisposition(identity.continuationDisposition) }
+      : {}),
+  }
+}
+
+function sameClaimIdentity(
+  disposition: RunCheckpointDisposition,
+  identity: RunCheckpointAnswerClaimIdentity,
+): boolean {
+  return disposition.requestId === identity.requestId
+    && disposition.answerMessageId === identity.answerMessageId
+    && disposition.requestKey === identity.requestKey
+}
+
+function validContinuationDisposition(
+  value: unknown,
+): value is import('@littlesheep/types').RunCheckpointContinuationDisposition {
+  return value === 'answer'
+    || value === 'retry'
+    || value === 'revise_goal'
+    || value === 'cancel'
+    || value === 'new_task'
+}
+
+function validateContinuationDisposition(
+  value: unknown,
+): import('@littlesheep/types').RunCheckpointContinuationDisposition {
+  if (!validContinuationDisposition(value)) throw new Error('invalid continuation disposition')
+  return value
 }
 
 function emptyConflict(checkpointId: string): RunCheckpointDisposition {

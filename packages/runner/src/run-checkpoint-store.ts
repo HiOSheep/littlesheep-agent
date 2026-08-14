@@ -37,6 +37,8 @@ const MAX_LEGACY_CONTEXT_SNAPSHOT_IDS = 128;
 const MAX_SIDE_EFFECTS = 256;
 const MAX_SIDE_EFFECT_RESOURCE_KEYS = 32;
 const MAX_RESUME_TOOL_NAMES = 256;
+const MAX_RESUME_ATTACHMENTS = 256;
+const MAX_RESUME_TOOL_RECIPES = 8;
 const MAX_RESUME_EVENTS = 32;
 const MAX_RESUME_PATCH_IDS = 128;
 const MAX_RESUME_VERIFICATION = 32;
@@ -59,6 +61,10 @@ export interface RunCheckpointStoreOptions {
   maxFileBytes?: number;
   maxReadEntries?: number;
   maxPerRun?: number;
+  /** Mutable checkpoint ids that must survive ordinary history pruning. */
+  protectedCheckpointIds?: () => Promise<ReadonlySet<string>>;
+  /** Active continuation run ids whose latest durable boundaries must survive pruning. */
+  protectedRunIds?: () => Promise<ReadonlySet<string>>;
   now?: () => Date;
 }
 
@@ -119,6 +125,8 @@ export class RunCheckpointStore {
   private readonly maxFileBytes: number;
   private readonly maxReadEntries: number;
   private readonly maxPerRun: number;
+  private readonly protectedCheckpointIds?: () => Promise<ReadonlySet<string>>;
+  private readonly protectedRunIds?: () => Promise<ReadonlySet<string>>;
   private readonly now: () => Date;
   private writeTail: Promise<void> = Promise.resolve();
   private disposed = false;
@@ -156,6 +164,8 @@ export class RunCheckpointStore {
       1,
       MAX_RUN_CHECKPOINT_MAX_PER_RUN,
     );
+    this.protectedCheckpointIds = options.protectedCheckpointIds;
+    this.protectedRunIds = options.protectedRunIds;
     this.now = options.now ?? (() => new Date());
   }
 
@@ -238,13 +248,21 @@ export class RunCheckpointStore {
     return records[0] ? cloneCheckpoint(records[0]) : null;
   }
 
-  async list(options: { runId?: string; limit?: number } = {}): Promise<RunCheckpoint[]> {
+  async list(options: {
+    runId?: string;
+    sessionId?: SessionId;
+    status?: RunCheckpoint['status'];
+    limit?: number;
+  } = {}): Promise<RunCheckpoint[]> {
     this.ensureUsable();
     const runId = options.runId === undefined ? undefined : normalizeId(options.runId, 'runId');
+    const sessionId = options.sessionId === undefined ? undefined : String(options.sessionId);
     const limit = boundedInteger(options.limit, this.maxCheckpoints, 1, this.maxCheckpoints);
     const records = await this.scanRecords();
     return records
       .filter((record) => runId === undefined || String(record.checkpoint.runId) === runId)
+      .filter((record) => sessionId === undefined || String(record.checkpoint.sessionId) === sessionId)
+      .filter((record) => options.status === undefined || record.checkpoint.status === options.status)
       .sort(compareNewest)
       .slice(0, limit)
       .map((record) => cloneCheckpoint(record.checkpoint));
@@ -286,10 +304,30 @@ export class RunCheckpointStore {
     const records = (await this.scanRecords()).sort(compareNewest);
     const keep = new Set<string>();
     const perRun = new Map<string, number>();
+    let protectedIds: ReadonlySet<string> = new Set();
+    let protectedRunIds: ReadonlySet<string> = new Set();
+    if (this.protectedCheckpointIds || this.protectedRunIds) {
+      try {
+        protectedIds = await this.protectedCheckpointIds?.() ?? new Set();
+        protectedRunIds = await this.protectedRunIds?.() ?? new Set();
+      } catch (error) {
+        this.recordDiagnostic('io', this.rootDir, `Unable to resolve protected checkpoints; pruning skipped: ${errorMessage(error)}`);
+        return 0;
+      }
+    }
     for (const record of records) {
-      const count = perRun.get(String(record.checkpoint.runId)) ?? 0;
-      if (keep.size >= this.maxCheckpoints || count >= this.maxPerRun) continue;
+      if (!protectedIds.has(record.checkpoint.id) && !protectedRunIds.has(String(record.checkpoint.runId))) continue;
       keep.add(record.file);
+      const runId = String(record.checkpoint.runId);
+      perRun.set(runId, (perRun.get(runId) ?? 0) + 1);
+    }
+    let retainedHistory = 0;
+    for (const record of records) {
+      if (keep.has(record.file)) continue;
+      const count = perRun.get(String(record.checkpoint.runId)) ?? 0;
+      if (retainedHistory >= this.maxCheckpoints || count >= this.maxPerRun) continue;
+      keep.add(record.file);
+      retainedHistory += 1;
       perRun.set(String(record.checkpoint.runId), count + 1);
     }
     let removed = 0;
@@ -528,6 +566,21 @@ function validateResumeState(value: unknown): RunCheckpointResumeState {
     throw new RunCheckpointValidationError('checkpoint.resumeState.reasoning is invalid.');
   }
   const attachmentCount = boundedSafeInteger(value.attachmentCount, 'checkpoint.resumeState.attachmentCount', 0);
+  if (attachmentCount > MAX_RESUME_ATTACHMENTS) {
+    throw new RunCheckpointValidationError('checkpoint.resumeState.attachmentCount exceeds its limit.');
+  }
+  const attachments = value.attachments === undefined
+    ? undefined
+    : validateResumeAttachments(value.attachments);
+  const toolRecipes = value.toolRecipes === undefined
+    ? undefined
+    : validateToolRecipes(value.toolRecipes);
+  const continuation = value.continuation === undefined
+    ? undefined
+    : validateContinuation(value.continuation);
+  const lastError = value.lastError === undefined
+    ? undefined
+    : validateResumeLastError(value.lastError);
   const workspaceContext = value.workspaceContext === undefined
     ? undefined
     : validateWorkspaceContext(value.workspaceContext);
@@ -554,6 +607,10 @@ function validateResumeState(value: unknown): RunCheckpointResumeState {
     behaviorModeId: boundedText(value.behaviorModeId, MAX_ID_LENGTH, 'checkpoint.resumeState.behaviorModeId'),
     availableToolNames,
     attachmentCount,
+    ...(attachments ? { attachments } : {}),
+    ...(toolRecipes ? { toolRecipes } : {}),
+    ...(continuation ? { continuation } : {}),
+    ...(lastError ? { lastError } : {}),
     ...(value.classification === undefined ? {} : { classification: cloneJson(value.classification) as RunCheckpointResumeState['classification'] }),
     ...(value.needAssessment === undefined ? {} : { needAssessment: cloneJson(value.needAssessment) as RunCheckpointResumeState['needAssessment'] }),
     ...(value.plan === undefined ? {} : { plan: cloneJson(value.plan) as RunCheckpointResumeState['plan'] }),
@@ -563,6 +620,92 @@ function validateResumeState(value: unknown): RunCheckpointResumeState {
     replanAttempts,
     maxReplanAttempts,
     verificationHistory: cloneJson(value.verificationHistory) as RunCheckpointResumeState['verificationHistory'],
+  };
+}
+
+function validateResumeAttachments(value: unknown): NonNullable<RunCheckpointResumeState['attachments']> {
+  if (!Array.isArray(value) || value.length > MAX_RESUME_ATTACHMENTS) {
+    throw new RunCheckpointValidationError('checkpoint.resumeState.attachments exceeds its limit.');
+  }
+  const attachments = value.map((item, index) => {
+    if (!isRecord(item) || item.version !== 1) {
+      throw new RunCheckpointValidationError(`checkpoint.resumeState.attachments[${index}] is invalid.`);
+    }
+    if (item.kind !== 'image' && item.kind !== 'document' && item.kind !== 'file') {
+      throw new RunCheckpointValidationError(`checkpoint.resumeState.attachments[${index}].kind is invalid.`);
+    }
+    const contentHash = boundedText(
+      item.contentHash,
+      64,
+      `checkpoint.resumeState.attachments[${index}].contentHash`,
+    );
+    if (!/^[a-f0-9]{64}$/u.test(contentHash)) {
+      throw new RunCheckpointValidationError(`checkpoint.resumeState.attachments[${index}].contentHash is invalid.`);
+    }
+    const size = item.size === undefined
+      ? undefined
+      : boundedSafeInteger(item.size, `checkpoint.resumeState.attachments[${index}].size`, 0);
+    return {
+      version: 1 as const,
+      attachmentId: boundedText(item.attachmentId, MAX_ID_LENGTH, `checkpoint.resumeState.attachments[${index}].attachmentId`),
+      cacheId: boundedText(item.cacheId, MAX_ID_LENGTH, `checkpoint.resumeState.attachments[${index}].cacheId`),
+      contentHash,
+      name: boundedText(item.name, 512, `checkpoint.resumeState.attachments[${index}].name`),
+      kind: item.kind as 'image' | 'document' | 'file',
+      ...(item.mimeType === undefined ? {} : {
+        mimeType: boundedText(item.mimeType, 256, `checkpoint.resumeState.attachments[${index}].mimeType`),
+      }),
+      ...(size === undefined ? {} : { size }),
+    };
+  });
+  const ids = attachments.map((attachment) => attachment.attachmentId);
+  if (new Set(ids).size !== ids.length) {
+    throw new RunCheckpointValidationError('checkpoint.resumeState.attachments contains duplicate attachment ids.');
+  }
+  return attachments;
+}
+
+function validateToolRecipes(value: unknown): NonNullable<RunCheckpointResumeState['toolRecipes']> {
+  if (!Array.isArray(value) || value.length > MAX_RESUME_TOOL_RECIPES) {
+    throw new RunCheckpointValidationError('checkpoint.resumeState.toolRecipes exceeds its limit.');
+  }
+  const recipes = value.map((item, index) => {
+    if (!isRecord(item) || item.version !== 1 || item.factory !== 'inspect_attachment') {
+      throw new RunCheckpointValidationError(`checkpoint.resumeState.toolRecipes[${index}] is invalid.`);
+    }
+    return { version: 1 as const, factory: 'inspect_attachment' as const };
+  });
+  if (new Set(recipes.map((recipe) => recipe.factory)).size !== recipes.length) {
+    throw new RunCheckpointValidationError('checkpoint.resumeState.toolRecipes contains duplicates.');
+  }
+  return recipes;
+}
+
+function validateContinuation(value: unknown): NonNullable<RunCheckpointResumeState['continuation']> {
+  if (!isRecord(value) || value.version !== 1) {
+    throw new RunCheckpointValidationError('checkpoint.resumeState.continuation is invalid.');
+  }
+  if (value.sourceStage !== 'classify'
+    && value.sourceStage !== 'decide'
+    && value.sourceStage !== 'execute'
+    && value.sourceStage !== 'recover'
+    && value.sourceStage !== 'verify') {
+    throw new RunCheckpointValidationError('checkpoint.resumeState.continuation.sourceStage is invalid.');
+  }
+  return {
+    version: 1,
+    requestId: boundedText(value.requestId, MAX_ID_LENGTH, 'checkpoint.resumeState.continuation.requestId'),
+    sourceStage: value.sourceStage,
+  };
+}
+
+function validateResumeLastError(value: unknown): NonNullable<RunCheckpointResumeState['lastError']> {
+  if (!isRecord(value) || typeof value.stage !== 'string' || !STAGE_NAMES.has(value.stage as StageName)) {
+    throw new RunCheckpointValidationError('checkpoint.resumeState.lastError is invalid.');
+  }
+  return {
+    stage: value.stage as StageName,
+    message: boundedText(value.message, 2_048, 'checkpoint.resumeState.lastError.message'),
   };
 }
 

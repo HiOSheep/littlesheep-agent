@@ -17,12 +17,17 @@ import type {
   LocalAppRunCheckpointSummary,
 } from '../../shared/run-checkpoint-contracts'
 import { sessionApprovalScopeKey, type ApprovalDecision } from '../approval-grants'
+import type { PermissionModeId } from '../../shared/permission-modes'
 import { buildContextUsageSnapshot, type ContextUsageSnapshot } from '../context-usage'
 import {
   checkpointRecoveryProgressForEvent,
   INITIAL_CHECKPOINT_RECOVERY_PROGRESS,
   type CheckpointRecoveryProgress,
 } from './checkpoint-recovery-state'
+import {
+  resolveCheckpointRecoveryTurnIdentity,
+  type CheckpointRecoveryTurnIdentity,
+} from './checkpoint-recovery-request'
 
 type RecoveryBusyState = 'loading' | 'inspecting' | 'abandoning' | 'resuming' | null
 
@@ -31,6 +36,7 @@ export interface UseCheckpointRecoveryOptions {
   activeRunIdRef: MutableRefObject<string | null>
   appMountedRef: MutableRefObject<boolean>
   loading: boolean
+  permissionMode: PermissionModeId
   runtime: RuntimeState | null
   stopRequestedRunIdRef: MutableRefObject<string | null>
   refreshProjects: () => Promise<void>
@@ -50,6 +56,7 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
     activeRunIdRef,
     appMountedRef,
     loading,
+    permissionMode,
     runtime,
     stopRequestedRunIdRef,
     refreshProjects,
@@ -74,6 +81,7 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
   const [progress, setProgress] = useState<CheckpointRecoveryProgress>(INITIAL_CHECKPOINT_RECOVERY_PROGRESS)
   const [stopRequested, setStopRequested] = useState(false)
   const inspectionRequestRef = useRef(0)
+  const pendingRecoveryTurnRef = useRef<CheckpointRecoveryTurnIdentity | null>(null)
 
   useEffect(() => {
     void refreshCheckpoints(true)
@@ -135,6 +143,7 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
 
   function selectCheckpoint(checkpointId: string) {
     inspectionRequestRef.current += 1
+    pendingRecoveryTurnRef.current = null
     setSelectedId(checkpointId)
     setDetail(null)
     setDetailsOpen(false)
@@ -148,6 +157,7 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
     setError(null)
     try {
       await abandonRunCheckpoint(selected.id)
+      pendingRecoveryTurnRef.current = null
       await refreshCheckpoints(false, { preserveBusy: true })
     } catch (cause) {
       if (appMountedRef.current) setError((cause as Error).message)
@@ -173,10 +183,23 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
     setError(null)
     setProgress(INITIAL_CHECKPOINT_RECOVERY_PROGRESS)
     setStopRequested(false)
+    const turnIdentity = resolveCheckpointRecoveryTurnIdentity(pendingRecoveryTurnRef.current, {
+      checkpointId: selected.id,
+      text: clarification,
+      permissionMode,
+      reasoning: runtime?.reasoning,
+      profile: runtime?.profile,
+    })
+    pendingRecoveryTurnRef.current = turnIdentity
     try {
       const result = await resumeRunCheckpointStream(selected.id, {
         ...(clarification ? { text: clarification } : {}),
         reason: 'user resumed checkpoint from the desktop recovery control',
+        permissionMode,
+        reasoning: runtime?.reasoning,
+        profile: runtime?.profile,
+        requestKey: turnIdentity.requestKey,
+        continuationDirective: 'answer',
       }, {
         signal: controller.signal,
         onStart: ({ runId }) => { activeRunIdRef.current = runId },
@@ -189,6 +212,9 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
           ? requestApprovalForScope(request, sessionApprovalScopeKey(selected.sessionId))
           : Promise.resolve(false),
       })
+      if (pendingRecoveryTurnRef.current?.requestKey === turnIdentity.requestKey) {
+        pendingRecoveryTurnRef.current = null
+      }
       if (!appMountedRef.current) return
       setContextUsageSnapshot(buildContextUsageSnapshot(
         runtime?.model,
@@ -209,6 +235,12 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
         await refreshCheckpoints(true, { preserveBusy: true, preserveError: true })
       }
     } catch (cause) {
+      if (
+        ((cause as Error).name === 'AbortError' || (cause as Error).name === 'RunStreamServerError')
+        && pendingRecoveryTurnRef.current?.requestKey === turnIdentity.requestKey
+      ) {
+        pendingRecoveryTurnRef.current = null
+      }
       if (!appMountedRef.current) return
       setError((cause as Error).name === 'AbortError'
         ? '恢复已停止，现场仍然保留。'

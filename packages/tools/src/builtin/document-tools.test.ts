@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -26,6 +26,26 @@ function fixture(): { dir: string; ctx: ToolContext } {
       permissionMode: 'full',
     },
   }
+}
+
+function writeTextlessPdf(filePath: string): void {
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> /Contents 4 0 R >>',
+    '<< /Length 0 >>\nstream\n\nendstream',
+  ]
+  let content = '%PDF-1.4\n'
+  const offsets = [0]
+  objects.forEach((body, index) => {
+    offsets.push(Buffer.byteLength(content, 'ascii'))
+    content += `${index + 1} 0 obj\n${body}\nendobj\n`
+  })
+  const xrefOffset = Buffer.byteLength(content, 'ascii')
+  content += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+  content += offsets.slice(1).map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')
+  content += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`
+  writeFileSync(filePath, content, 'ascii')
 }
 
 describe('document tools', () => {
@@ -83,6 +103,21 @@ describe('document tools', () => {
 
     expect(result.ok).toBe(false)
     expect(result.error).toContain('value')
+  })
+
+  it('reports OCR and legacy Office conversion requirements as read failures', async () => {
+    const { dir, ctx } = fixture()
+    const scanPath = join(dir, 'scan.pdf')
+    writeTextlessPdf(scanPath)
+
+    const scan = await documentReadTool.execute({ file_path: scanPath }, ctx)
+    expect(scan.ok).toBe(false)
+    expect(scan.error).toMatch(/OCR/u)
+    expect(scan.meta).toMatchObject({ format: 'pdf', contentAvailable: false, pageCount: 1 })
+
+    const legacy = await documentReadTool.execute({ file_path: join(dir, 'legacy.doc') }, ctx)
+    expect(legacy.ok).toBe(false)
+    expect(legacy.error).toMatch(/DOCX.*PPTX/u)
   })
 
   it('uses the permission boundary for reads and writes', async () => {

@@ -18,11 +18,28 @@ describe('chat layout stability', () => {
     const chatView = await readRendererFile('./app-shell/chat-view.tsx')
 
     expect(chatView).toContain('captureDisclosureInteraction')
-    expect(chatView).toContain('.assistant-turn-header, .activity-disclosure-header, .activity-command-header, .trace-toggle')
+    expect(chatView).toContain('.agent-reasoning-toggle, .agent-tool-row, .trace-toggle')
     expect(chatView).toContain('stickToBottomRef.current = false')
     expect(chatView).not.toContain("kind: 'anchor'")
     expect(chatView).not.toContain('anchor.getBoundingClientRect()')
     expect(chatView).not.toContain('disclosureInteractionVersion')
+  })
+
+  it('keeps Agent activity in one flat immediate flow with a stable Markdown reply surface', async () => {
+    const styles = await readRendererFile('./styles.css')
+    const assistantTurn = await readRendererFile('./chat/assistant-turn.tsx')
+    const toolRow = await readRendererFile('./chat/agent-tool-row.tsx')
+
+    expect(assistantTurn).toContain('className="assistant-activity-flow"')
+    expect(assistantTurn).toContain('className="message assistant assistant-final assistant-response-stream"')
+    expect(assistantTurn).toContain('<Markdown text={message.text} />')
+    expect(assistantTurn).not.toContain('Boolean(message.activityCollapsed)')
+    expect(assistantTurn).not.toContain('ActivityDisclosure')
+    expect(toolRow).toContain('data-call-id={tool.callId}')
+    expect(styles).toMatch(/\.agent-flow-row\s*\{[^}]*min-height:\s*24px;[^}]*background:\s*transparent;[^}]*border:\s*0;/u)
+    expect(styles).toMatch(/\.agent-flow-row\.is-active::after\s*\{[^}]*animation:\s*agent-flow-sweep 2\.6s ease-out infinite;/u)
+    expect(styles).not.toContain('.assistant-turn-header')
+    expect(styles).not.toContain('.activity-command-header')
   })
 
   it('matches the workspace edge and hover highlight to the sidebar treatment', async () => {
@@ -173,16 +190,16 @@ describe('chat layout stability', () => {
     expect(styles).toMatch(/\.window-shell\.workspace-panel-collapsed \.messages,\s*\.window-shell\.workspace-panel-drag-collapsed \.messages\s*\{[^}]*padding-top:\s*52px;/u)
   })
 
-  it('keeps the fullscreen control anchored while workspace content padding changes', async () => {
+  it('reuses the compact split layout when the workspace becomes fullscreen', async () => {
     const styles = await readRendererFile('./styles.css')
 
     expect(styles).toMatch(/\.workspace-panel-contents\s*\{[^}]*padding:\s*var\(--workspace-tab-row-inset\) 12px 12px var\(--workspace-tab-row-inset\);/u)
-    expect(styles).toMatch(/\.window-shell\.workspace-panel-fullscreen \.workspace-panel-contents,\s*\.window-shell\.workspace-panel-drag-fullscreen \.workspace-panel-contents\s*\{[^}]*padding:\s*var\(--workspace-tab-row-inset\)\s*clamp\(16px, 2\.6vw, 36px\)\s*16px\s*var\(--workspace-tab-row-inset\);/u)
     expect(styles).toMatch(/\.workspace-panel-body\s*\{[^}]*margin:\s*8px 0 0 8px;/u)
-    expect(styles).toMatch(/\.window-shell\.workspace-panel-fullscreen \.workspace-panel-body,\s*\.window-shell\.workspace-panel-drag-fullscreen \.workspace-panel-body\s*\{[^}]*margin-top:\s*12px;[^}]*margin-left:\s*calc\(clamp\(16px, 2\.6vw, 36px\) - 4px\);/u)
     expect(styles).toMatch(/\.workspace-panel-actions\s*\{[^}]*right:\s*41px;[^}]*display:\s*inline-flex;[^}]*align-items:\s*center;/u)
-    expect(styles).toMatch(/\.workspace-panel-header\s*\{[^}]*height:\s*var\(--workspace-tab-row-height\);[^}]*padding-right:\s*67px;[^}]*transition:\s*padding-right var\(--workspace-panel-motion\) var\(--motion-ease\);/u)
+    expect(styles).toMatch(/\.workspace-panel-header\s*\{[^}]*height:\s*var\(--workspace-tab-row-height\);[^}]*padding-right:\s*67px;/u)
     expect(styles).toMatch(/\.workspace-panel-topbar\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*height:\s*var\(--workspace-tab-row-height\);/u)
-    expect(styles).toMatch(/\.window-shell\.workspace-panel-fullscreen \.workspace-panel-header,\s*\.window-shell\.workspace-panel-drag-fullscreen \.workspace-panel-header\s*\{[^}]*padding-right:\s*calc\(79px - clamp\(16px, 2\.6vw, 36px\)\);/u)
+    expect(styles).not.toMatch(/\.window-shell\.workspace-panel-(?:drag-)?fullscreen \.workspace-panel-(?:contents|header|body)/u)
+    expect(styles).not.toMatch(/\.workspace-panel-contents\s*\{[^}]*transition:[^}]*padding/u)
+    expect(styles).not.toMatch(/\.workspace-panel-header\s*\{[^}]*transition:[^}]*padding-right/u)
   })
 })

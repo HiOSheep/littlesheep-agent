@@ -574,6 +574,7 @@ export class QqbotChannelPlugin implements ChannelPlugin {
 
     const inbound: InboundChannelMessage = {
       text,
+      requestKey: `qqbot:${messageId}`,
       externalConversationId: groupOpenId,
       externalUserId: userId,
       isGroup: true,
@@ -596,6 +597,7 @@ export class QqbotChannelPlugin implements ChannelPlugin {
 
     const inbound: InboundChannelMessage = {
       text,
+      requestKey: `qqbot:${messageId}`,
       externalConversationId: userOpenId,
       externalUserId: userOpenId,
       isGroup: false,

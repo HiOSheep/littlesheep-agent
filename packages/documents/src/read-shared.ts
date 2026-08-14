@@ -21,7 +21,7 @@ export function buildExtracted(
       const body = section.rows
         ? section.rows.map((row) => row.join('\t')).join('\n')
         : (section.paragraphs ?? []).join('\n')
-      return `# ${section.title}\n${body}`.trim()
+      return body.trim() ? `# ${section.title}\n${body}`.trim() : ''
     }).filter(Boolean).join('\n\n'),
     truncated,
     notes,

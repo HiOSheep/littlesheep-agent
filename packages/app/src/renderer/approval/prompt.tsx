@@ -77,38 +77,6 @@ export function ApprovalPromptSurface({
 }
 
 
-export function DirtyFileClosePrompt({
-  file,
-  onCancel,
-  onConfirm,
-}: {
-  file: { root: string; path: string } | null
-  onCancel: () => void
-  onConfirm: () => void
-}) {
-  if (!file) return null
-  return createPortal(
-    <div className="approval-layer" role="presentation">
-      <section className="approval-prompt dirty-file-prompt" role="dialog" aria-modal="true" aria-label="关闭未保存文件">
-        <div className="approval-kicker">未保存修改</div>
-        <h2>关闭这个文件？</h2>
-        <p>这个文件还有未保存的修改。继续关闭会放弃当前标签里的编辑内容。</p>
-        <pre>{file.path}</pre>
-        <div className="approval-actions">
-          <button type="button" className="approval-action" onClick={onCancel}>
-            返回编辑
-          </button>
-          <button type="button" className="approval-action primary danger" onClick={onConfirm}>
-            继续关闭
-          </button>
-        </div>
-      </section>
-    </div>,
-    document.body,
-  )
-}
-
-
 export function approvalActionTitle(action: string): string {
   if (action === 'exec') return '允许执行命令？'
   if (action === 'write') return '允许写入文件？'

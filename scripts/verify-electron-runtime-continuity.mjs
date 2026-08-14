@@ -60,6 +60,7 @@ async function main() {
     assertSupportedContinuity(continued.result, 'cross-restart reply')
 
     await provider.setDelay({ model: 'slow-a', delayMs: 4_000 })
+    const providerRequestCountBeforeLongRun = provider.requests.length
     const activeRunFromSse = waitForActiveRunSse(locator)
     const longRun = runStream(locator, {
       text: '继续执行。请使用 glob 工具检查当前工作区。',
@@ -68,6 +69,11 @@ async function main() {
       workspace: workplaceDir,
     })
     const active = await activeRunFromSse
+    await waitFor(
+      () => provider.requests.length > providerRequestCountBeforeLongRun,
+      RUN_TIMEOUT_MS,
+      'background long run provider request',
+    )
     await desktopAction(locator, 'close')
     await waitForDesktop(locator, (snapshot) => !snapshot.windowVisible && snapshot.activeRunCount >= 1)
     await desktopAction(locator, 'show')

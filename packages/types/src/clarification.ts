@@ -31,6 +31,20 @@ export interface ClarificationQuestion {
   defaultValue?: string;
 }
 
+/** Bounded structural context for a follow-up clarification. */
+export interface ClarificationChain {
+  version: 1;
+  previousRequestId: string;
+  previousSourceStage?: ClarificationSourceStage;
+  answeredAt: string;
+  answeredFields: string[];
+  remainingFields: string[];
+  taskGoal?: string;
+  failureStage?: ClarificationSourceStage;
+  attachmentCount: number;
+  permissionPolicyId?: 'full' | 'research' | 'restricted';
+}
+
 /** First-class, persisted request produced before ASK_USER. */
 export interface ClarificationRequest {
   id: string;
@@ -47,6 +61,8 @@ export interface ClarificationRequest {
   copySource?: 'model' | 'runtime_fallback';
   /** Exact text shown to the user after ASK_USER renders the request. */
   prompt?: string;
+  /** Bounded prior-request facts used to avoid losing correction context. */
+  clarificationChain?: ClarificationChain;
 }
 
 /** The next user turn linked back to the request it answers. */

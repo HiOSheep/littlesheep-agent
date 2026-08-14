@@ -1,8 +1,7 @@
 // Startup checkpoint discovery, inspection, abandonment and streamed continuation.
 
 import { randomUUID } from 'node:crypto'
-import type { AgentRunner, RunnerResult } from '@littlesheep/runner'
-import type { PermissionModeId } from '../../shared/permission-modes.js'
+import { conversationTurnRunId, type AgentRunner, type RunnerResult } from '@littlesheep/runner'
 import {
   LOCAL_APP_API_PREFIXES,
   LOCAL_APP_API_ROUTES,
@@ -14,7 +13,8 @@ import type {
   LocalAppRunCheckpointListResponse,
   LocalAppRunCheckpointResumeRequest,
 } from '../../shared/run-checkpoint-contracts.js'
-import { createPermissionApprover, type RunApprovalBroker } from '../run-policy.js'
+import { createCheckpointResourceResolver } from '../attachments.js'
+import { resolveRunPolicy, type RunApprovalBroker } from '../run-policy.js'
 import { json, openSse, readJson, writeSse, type LocalAppApiRequest } from './http.js'
 import type { RunRouteContext } from './run-routes.js'
 import {
@@ -22,6 +22,7 @@ import {
   resolveRunSessionOwnership,
   resolveRunWorkspaceContext,
 } from './run-support.js'
+import { resolveReasoning } from './runtime-routes.js'
 import {
   pendingCheckpointHeads,
   toCheckpointDetail,
@@ -78,10 +79,6 @@ export async function routeRunCheckpoints(
       json(res, 404, { error: `run checkpoint not found: ${resumeId}` })
       return true
     }
-    if (!inspection.resumable) {
-      json(res, 409, { error: `run checkpoint cannot be resumed: ${inspection.reasons.join('; ')}` })
-      return true
-    }
     const text = parseBoundedOptional(body.text, MAX_CLARIFICATION_TEXT_LENGTH)
     if (!text.ok) {
       json(res, 400, { error: text.error })
@@ -98,7 +95,37 @@ export async function routeRunCheckpoints(
     }
     const reason = parsedReason.value
       ?? 'user requested checkpoint continuation from the desktop app'
-    return streamCheckpointResume(request, context, host, runner, resumeId, text.value, reason)
+    const requestKey = parseBoundedOptional(body.requestKey, 256)
+    if (!requestKey.ok) {
+      json(res, 400, { error: requestKey.error })
+      return true
+    }
+    const stableRunId = conversationTurnRunId(inspection.checkpoint.sessionId, requestKey.value)
+    const disposition = inspection.disposition
+    const repeatsSameTurn = Boolean(
+      stableRunId
+      && disposition?.requestKey === requestKey.value
+      && disposition?.resumeRunId === stableRunId,
+    )
+    if (!inspection.resumable && !repeatsSameTurn) {
+      json(res, 409, { error: `run checkpoint cannot be resumed: ${inspection.reasons.join('; ')}` })
+      return true
+    }
+    if (body.continuationDirective !== undefined && body.continuationDirective !== 'answer') {
+      json(res, 400, { error: 'explicit checkpoint recovery only accepts the answer directive' })
+      return true
+    }
+    return streamCheckpointResume(
+      request,
+      context,
+      host,
+      runner,
+      resumeId,
+      text.value,
+      reason,
+      requestKey.value,
+      body,
+    )
   }
 
   const abandonId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.runCheckpoints, '/abandon')
@@ -169,6 +196,8 @@ async function streamCheckpointResume(
   checkpointId: string,
   text: string | undefined,
   reason: string,
+  requestKey: string | undefined,
+  body: LocalAppRunCheckpointResumeRequest,
 ): Promise<true> {
   const { req, res } = request
   const inspection = await runner.runCheckpoints!.inspect(checkpointId)
@@ -177,9 +206,10 @@ async function streamCheckpointResume(
     json(res, 409, { error: 'run checkpoint has no resumable runtime state' })
     return true
   }
-  const runId = randomUUID()
+  const runId = conversationTurnRunId(inspection.checkpoint.sessionId, requestKey) ?? randomUUID()
   const controller = new AbortController()
-  if (!host.registerActive(runId, runner, controller)) {
+  const ownsActiveRun = host.registerActive(runId, runner, controller)
+  if (!ownsActiveRun && !host.isRunActive(runId)) {
     json(res, 429, { error: 'too many active agent runs' })
     return true
   }
@@ -195,31 +225,49 @@ async function streamCheckpointResume(
       (approval) => writeSse(res, 'approval_request', approval),
       controller.signal,
     )
-    const approve = createPermissionApprover(
-      state.permissionPolicyId as PermissionModeId,
+    const runPolicy = resolveRunPolicy(
+      body as unknown as Record<string, unknown>,
+      context.getConfig(),
       approvalBroker,
       { containerRoot: context.dataDir ?? context.workplaceDir, cwd: state.cwd },
     )
+    const restoreCheckpointResources = createCheckpointResourceResolver({
+      managedCache: context.attachmentCache,
+      workplaceDir: context.workplaceDir,
+      workspaceDir: state.cwd,
+      projectId: ownership.projectId,
+    })
     const result = await runner.resumeCheckpoint!(checkpointId, {
       runId,
       text,
       reason,
       signal: controller.signal,
-      approve,
+      approve: runPolicy.approve,
+      permissionPolicyId: runPolicy.permissionPolicyId,
+      requireApprovalForAllTools: runPolicy.requireApprovalForAllTools,
+      profile: runPolicy.profile,
+      reasoning: resolveReasoning(body as unknown as Record<string, unknown>, context.getConfig()),
+      cwd: state.cwd,
+      workspaceContext,
+      restoreCheckpointResources,
+      requestKey,
+      continuationDirective: 'answer',
       onAssistantDelta: (delta) => writeSse(res, 'delta', { delta }),
       onAssistantReplace: (replacement) => writeSse(res, 'replace', { text: replacement }),
       onToolEvent: (event) => writeSse(res, event.type, event),
     })
     if (result.runId !== runId) throw new Error('runner returned an unexpected resumed run id')
-    await finishRunResources(context, runner, result, {
-      sessionId: String(inspection.checkpoint.sessionId),
-    }, ownership, state.cwd, workspaceContext)
+    if (ownsActiveRun) {
+      await finishRunResources(context, runner, result, {
+        sessionId: String(inspection.checkpoint.sessionId),
+      }, ownership, state.cwd, workspaceContext)
+    }
     writeSse(res, 'result', result)
   } catch (error) {
     writeSse(res, 'error', { error: error instanceof Error ? error.message : String(error) })
   } finally {
     stopHeartbeat()
-    host.releaseActive(runId, runner, controller)
+    if (ownsActiveRun) host.releaseActive(runId, runner, controller)
     res.end()
   }
   return true

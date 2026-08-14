@@ -44,6 +44,10 @@ export interface RunActionContext {
     text: string
     identity: RuntimeTaskEventIdentity
   } | null>
+  pendingConversationTurnRef: MutableRefObject<{
+    fingerprint: string
+    requestKey: string
+  } | null>
   publishRuntimeEventNotice: (notice: RuntimeTaskEventNotice | null) => void
   refreshProjects: () => Promise<void>
   refreshSessions: () => Promise<SessionMeta[]>
@@ -63,7 +67,7 @@ export interface RunActionContext {
 }
 
 export function createRunActions(context: RunActionContext) {
-  const { abortRef, activeRunIdRef, activeApprovalScopeKey, appMountedRef, approvalGrantsRef, attachments, currentSession, input, liveToolStepRef, loading, permissionMode, pendingRuntimeMessageRef, publishRuntimeEventNotice, refreshProjects, refreshSessions, requestApprovalForScope, runtime, sessionOwnership, setActivityNow, setAttachments, setContextUsageSnapshot, setCurrentSession, setInput, setLoading, setMessages, setWorkspaceArtifactVersion, settleApprovalPrompt, stopRequestedRunIdRef } = context
+  const { abortRef, activeRunIdRef, activeApprovalScopeKey, appMountedRef, approvalGrantsRef, attachments, currentSession, input, liveToolStepRef, loading, permissionMode, pendingConversationTurnRef, pendingRuntimeMessageRef, publishRuntimeEventNotice, refreshProjects, refreshSessions, requestApprovalForScope, runtime, sessionOwnership, setActivityNow, setAttachments, setContextUsageSnapshot, setCurrentSession, setInput, setLoading, setMessages, setWorkspaceArtifactVersion, settleApprovalPrompt, stopRequestedRunIdRef } = context
 
 
   async function send() {
@@ -81,6 +85,21 @@ export function createRunActions(context: RunActionContext) {
     }
     if (!text && attachments.length === 0) return
     const activeAttachments = attachments
+    const turnFingerprint = conversationTurnFingerprint({
+      text: text || '请根据附件继续处理。',
+      sessionId: currentSession,
+      permissionMode,
+      workspace: runtime?.workspace,
+      sessionScope: sessionOwnership.scope,
+      projectId: sessionOwnership.projectId,
+      reasoning: runtime?.reasoning,
+      profile: runtime?.profile,
+      attachments: activeAttachments,
+    })
+    const requestKey = pendingConversationTurnRef.current?.fingerprint === turnFingerprint
+      ? pendingConversationTurnRef.current.requestKey
+      : crypto.randomUUID()
+    pendingConversationTurnRef.current = { fingerprint: turnFingerprint, requestKey }
     const displayText = formatUserMessage(text, activeAttachments)
     const controller = new AbortController()
     const activityStartedAt = Date.now()
@@ -143,7 +162,11 @@ export function createRunActions(context: RunActionContext) {
         reasoning: runtime?.reasoning,
         profile: runtime?.profile,
         attachments: activeAttachments,
+        requestKey,
       })
+      if (pendingConversationTurnRef.current?.requestKey === requestKey) {
+        pendingConversationTurnRef.current = null
+      }
       if (!appMountedRef.current) return
       deltaBuffer.flush()
       approvalGrantsRef.current.promote(approvalScopeKey, sessionApprovalScopeKey(result.sessionId))
@@ -197,8 +220,16 @@ export function createRunActions(context: RunActionContext) {
       void refreshSessions()
       void refreshProjects()
     } catch (e) {
+      if (
+        ((e as Error).name === 'AbortError' || (e as Error).name === 'RunStreamServerError')
+        && pendingConversationTurnRef.current?.requestKey === requestKey
+      ) {
+        pendingConversationTurnRef.current = null
+      }
       if (!appMountedRef.current) return
       deltaBuffer.clear()
+      setInput((current) => current.trim() ? current : text)
+      setAttachments((current) => current.length > 0 ? current : activeAttachments)
       if ((e as Error).name === 'AbortError') {
         setMessages((m) => {
           const next = [...m]
@@ -264,6 +295,38 @@ export function createRunActions(context: RunActionContext) {
       })
   }
   return { send, stop }
+}
+
+function conversationTurnFingerprint(input: {
+  text: string
+  sessionId?: string
+  permissionMode: PermissionModeId
+  workspace?: string
+  sessionScope: RunActionContext['sessionOwnership']['scope']
+  projectId?: string
+  reasoning?: RuntimeState['reasoning']
+  profile?: RuntimeState['profile']
+  attachments: AttachmentRef[]
+}): string {
+  return JSON.stringify({
+    text: input.text,
+    sessionId: input.sessionId ?? null,
+    permissionMode: input.permissionMode,
+    workspace: input.workspace ?? null,
+    sessionScope: input.sessionScope,
+    projectId: input.projectId ?? null,
+    reasoning: input.reasoning ?? null,
+    profile: input.profile ?? null,
+    attachments: input.attachments.map((attachment) => ({
+      cacheId: attachment.cacheId ?? null,
+      contentHash: attachment.contentHash ?? null,
+      path: attachment.path,
+      name: attachment.name ?? null,
+      kind: attachment.kind,
+      mimeType: attachment.mimeType ?? null,
+      size: attachment.size ?? null,
+    })),
+  })
 }
 
 function localMessageId(role: 'user' | 'assistant'): string {

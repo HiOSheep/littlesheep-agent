@@ -184,6 +184,8 @@ export interface RunContext {
   entryStage?: StageName;
   /** Original checkpoint identity when this context is a continuation run. */
   resumedFromCheckpointId?: string;
+  /** Redacted structural evidence for the authoritative conversation-turn decision. */
+  conversationContinuation?: import('./runtime-contracts.js').ConversationContinuationEvidence;
   /** Persist a bounded runtime checkpoint before/after an effectful tool call. */
   persistRuntimeCheckpoint?: (reason: string) => Promise<string | undefined>;
   /** Deterministic control state applied by the Harness at a safe boundary. */
@@ -252,6 +254,8 @@ export interface RunAttachment {
   kind: 'image' | 'document' | 'file';
   mimeType?: string;
   size?: number;
+  /** Stable identity inside the LS-managed attachment cache. */
+  cacheId?: string;
   /** Stable digest for a verified LS-managed cache entry. */
   contentHash?: string;
   /** Data URL for image inputs when the selected model supports vision. */
@@ -414,6 +418,8 @@ export interface AgentResult {
   clarificationRequest?: ClarificationRequest;
   /** Previous clarification answered by this run's inbound message. */
   clarificationResponse?: ClarificationResponse;
+  /** Redacted structural evidence for conversation-task continuity. */
+  conversationContinuation?: import('./runtime-contracts.js').ConversationContinuationEvidence;
   /** Linked local data/workspace rollback point created for this run. */
   versionCheckpoint?: import('./versioning.js').VersionCheckpointSummary;
 }

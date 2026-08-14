@@ -77,11 +77,60 @@ describe('run actions active-run updates', () => {
     expect(fixture.input()).toBe('wait for startup')
     expect(fixture.notices.at(-1)?.text).toContain('仍在启动')
   })
+
+  it('restores idle-run input and attachments when continuation binding is blocked', async () => {
+    const blocked = new Error('multiple waiting tasks require explicit selection')
+    blocked.name = 'RunStreamServerError'
+    apiMocks.runAgentStream.mockRejectedValue(blocked)
+    const attachment = {
+      path: 'C:\\managed\\source.pdf',
+      name: 'source.pdf',
+      kind: 'document' as const,
+      cacheId: 'cache-1',
+    }
+    const fixture = contextFixture('do not lose this turn', null, {
+      loading: false,
+      attachments: [attachment],
+    })
+
+    await createRunActions(fixture.context).send()
+
+    expect(apiMocks.runAgentStream).toHaveBeenCalledOnce()
+    expect(apiMocks.runAgentStream.mock.calls[0]?.[4]).toMatchObject({
+      attachments: [attachment],
+      requestKey: expect.any(String),
+    })
+    expect(fixture.input()).toBe('do not lose this turn')
+    expect(fixture.attachments()).toEqual([attachment])
+  })
+
+  it('reuses the same conversation request key after an uncertain stream transport failure', async () => {
+    apiMocks.runAgentStream.mockRejectedValue(new Error('connection closed before result'))
+    const fixture = contextFixture('retry the same turn safely', null, { loading: false })
+    const actions = createRunActions(fixture.context)
+
+    await actions.send()
+    await actions.send()
+
+    const firstOptions = apiMocks.runAgentStream.mock.calls[0]?.[4]
+    const retryOptions = apiMocks.runAgentStream.mock.calls[1]?.[4]
+    expect(firstOptions?.requestKey).toEqual(expect.any(String))
+    expect(retryOptions?.requestKey).toBe(firstOptions?.requestKey)
+    expect(fixture.context.pendingConversationTurnRef.current).toMatchObject({
+      requestKey: firstOptions?.requestKey,
+    })
+    expect(fixture.input()).toBe('retry the same turn safely')
+  })
 })
 
 
-function contextFixture(initialInput: string, runId: string | null) {
+function contextFixture(
+  initialInput: string,
+  runId: string | null,
+  options: { loading?: boolean; attachments?: RunActionContext['attachments'] } = {},
+) {
   let input = initialInput
+  let currentAttachments = options.attachments ?? []
   const notices: Array<{ tone: string; text: string } | null> = []
   const context = {
     abortRef: { current: null },
@@ -89,13 +138,14 @@ function contextFixture(initialInput: string, runId: string | null) {
     activeApprovalScopeKey: () => 'draft',
     appMountedRef: { current: true },
     approvalGrantsRef: { current: {} },
-    attachments: [],
+    attachments: currentAttachments,
     currentSession: 'session-1',
     input: initialInput,
     liveToolStepRef: { current: new Map() },
-    loading: true,
+    loading: options.loading ?? true,
     permissionMode: 'research',
     pendingRuntimeMessageRef: { current: null },
+    pendingConversationTurnRef: { current: null },
     publishRuntimeEventNotice: (notice: { tone: string; text: string } | null) => notices.push(notice),
     refreshProjects: vi.fn(),
     refreshSessions: vi.fn(),
@@ -103,7 +153,9 @@ function contextFixture(initialInput: string, runId: string | null) {
     runtime: null,
     sessionOwnership: { scope: 'standalone' },
     setActivityNow: vi.fn(),
-    setAttachments: vi.fn(),
+    setAttachments: vi.fn((next: RunActionContext['attachments'] | ((current: RunActionContext['attachments']) => RunActionContext['attachments'])) => {
+      currentAttachments = typeof next === 'function' ? next(currentAttachments) : next
+    }),
     setContextUsageSnapshot: vi.fn(),
     setCurrentSession: vi.fn(),
     setInput: vi.fn((next: string | ((current: string) => string)) => {
@@ -115,7 +167,7 @@ function contextFixture(initialInput: string, runId: string | null) {
     settleApprovalPrompt: vi.fn(),
     stopRequestedRunIdRef: { current: null },
   } as unknown as RunActionContext
-  return { context, input: () => input, notices }
+  return { context, input: () => input, attachments: () => currentAttachments, notices }
 }
 
 

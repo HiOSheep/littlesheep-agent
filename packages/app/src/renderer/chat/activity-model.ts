@@ -122,16 +122,6 @@ export function updateLastAssistantActivity(
 }
 
 
-export function assistantTurnStatusLabel(activity: AssistantTurnActivity, now: number): string {
-  const duration = formatDurationMs(activity.durationMs ?? ((activity.endedAt ?? now) - activity.startedAt))
-  if (activity.status === 'running') return `处理中 ${duration}`
-  if (activity.status === 'failed') return `处理失败 ${duration}`
-  if (activity.status === 'paused') return `已暂停 ${duration}`
-  if (activity.status === 'aborted') return `已停止 ${duration}`
-  return `已处理 ${duration}`
-}
-
-
 export function formatMaybeDuration(startedAt: number | undefined, endedAt: number | undefined, now: number): string {
   if (!startedAt) return ''
   return formatDurationMs((endedAt ?? now) - startedAt)
@@ -198,13 +188,6 @@ export function verificationVerdictLabel(verdict: VerificationRecord['verdict'])
   if (verdict === 'pass') return '验证通过'
   if (verdict === 'needs_replan') return '需要调整'
   return '验证失败'
-}
-
-
-export function verificationSummary(records: VerificationRecord[] | undefined): string {
-  const last = records?.at(-1)
-  if (!last) return '等待验证'
-  return verificationVerdictLabel(last.verdict)
 }
 
 
@@ -278,6 +261,9 @@ export function buildArtifactsFromLiveTools(tools?: LiveToolEvent[]): WorkspaceA
 export function toolFilePath(input: unknown): string {
   if (!input || typeof input !== 'object') return ''
   const record = input as Record<string, unknown>
-  const value = record.file_path ?? record.path ?? record.filePath
-  return typeof value === 'string' ? value.trim() : ''
+  for (const key of ['file_path', 'path', 'filePath', 'target', 'targetPath']) {
+    const value = record[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return ''
 }

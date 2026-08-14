@@ -35,12 +35,29 @@ describe('LittleSheep Monaco theme', () => {
     for (const foreground of vividForegrounds) expect(colourSaturation(foreground)).toBeGreaterThanOrEqual(0.7)
   })
 
-  it('uses distinct red and green review surfaces from the shared theme', () => {
+  it('composites one 50%-opaque review surface to the reference row tints', () => {
     const inserted = LITTLE_SHEEP_MONACO_THEME_DATA.colors['diffEditor.insertedLineBackground']
     const removed = LITTLE_SHEEP_MONACO_THEME_DATA.colors['diffEditor.removedLineBackground']
-    expect(inserted).toMatch(/^#153F2B/iu)
-    expect(removed).toMatch(/^#4B2025/iu)
+
+    expect(inserted).toBe('#23452780')
+    expect(removed).toBe('#5D291D80')
+    expect(alpha(inserted)).toBe(0x80)
+    expect(alpha(removed)).toBe(0x80)
+    expect(compositeOver(inserted, '#101010')).toBe('#1A2B1C')
+    expect(compositeOver(removed, '#101010')).toBe('#371D17')
     expect(inserted).not.toBe(removed)
+  })
+
+  it('keeps character and gutter overlays transparent so each row has only one tint', () => {
+    const insertedText = LITTLE_SHEEP_MONACO_THEME_DATA.colors['diffEditor.insertedTextBackground']
+    const removedText = LITTLE_SHEEP_MONACO_THEME_DATA.colors['diffEditor.removedTextBackground']
+
+    expect(insertedText).toBe('#00000000')
+    expect(removedText).toBe('#00000000')
+    expect(LITTLE_SHEEP_MONACO_THEME_DATA.colors).not.toHaveProperty('diffEditor.insertedTextBorder')
+    expect(LITTLE_SHEEP_MONACO_THEME_DATA.colors).not.toHaveProperty('diffEditor.removedTextBorder')
+    expect(LITTLE_SHEEP_MONACO_THEME_DATA.colors['diffEditorGutter.insertedLineBackground']).toBe('#00000000')
+    expect(LITTLE_SHEEP_MONACO_THEME_DATA.colors['diffEditorGutter.removedLineBackground']).toBe('#00000000')
   })
 })
 
@@ -84,8 +101,22 @@ function colourSaturation(hex: string): number {
   return (maximum - minimum) / (1 - Math.abs(2 * lightness - 1))
 }
 
-function rgb(hex: string): number[] {
+function rgb(hex: string): [number, number, number] {
   const channels = hex.slice(1, 7).match(/.{2}/gu)?.map((channel) => Number.parseInt(channel, 16) / 255)
   if (!channels || channels.length !== 3) throw new Error(`Invalid colour: ${hex}`)
-  return channels
+  return [channels[0]!, channels[1]!, channels[2]!]
+}
+
+function alpha(hex: string): number {
+  return hex.length >= 9 ? Number.parseInt(hex.slice(7, 9), 16) : 255
+}
+
+function compositeOver(foreground: string, background: string): string {
+  const foregroundChannels = rgb(foreground)
+  const backgroundChannels = rgb(background)
+  const opacity = alpha(foreground) / 255
+  const channels = foregroundChannels.map((channel, index) => (
+    Math.round((channel * opacity + backgroundChannels[index]! * (1 - opacity)) * 255)
+  ))
+  return `#${channels.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`.toUpperCase()
 }

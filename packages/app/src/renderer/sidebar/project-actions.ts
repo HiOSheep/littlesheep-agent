@@ -23,12 +23,9 @@ import {
 } from '../navigation-history'
 import { FloatingHelpTip } from '../ui/floating-help'
 import {
-  parseWorkspaceFileTabId,
   rebindWorkspacePanelState,
   rebindWorkspacePath,
-  workspaceFileTabId,
   type WorkspaceFileDraftState,
-  type WorkspaceFileTabId,
   type WorkspaceOpenRequest,
   type WorkspacePanelTabId
 } from '../workspace-persistence'
@@ -61,7 +58,6 @@ export interface ProjectActionContext {
   setConversationCollapsed: Dispatch<SetStateAction<boolean>>
   setCurrentSession: Dispatch<SetStateAction<string | undefined>>
   setMessages: Dispatch<SetStateAction<ChatMessage[]>>
-  setPendingDirtyCloseTab: Dispatch<SetStateAction<WorkspaceFileTabId | null>>
   setPinnedSessionIds: Dispatch<SetStateAction<Set<string>>>
   setProjectCreatorOpen: Dispatch<SetStateAction<boolean>>
   setProjects: Dispatch<SetStateAction<ProjectMeta[]>>
@@ -82,7 +78,7 @@ export interface ProjectActionContext {
 }
 
 export function createProjectActions(context: ProjectActionContext) {
-  const { abortRef, alignWorkspacePanelToWorkspaceRoot, appHistoryRef, appMountedRef, applyRuntimePatch, beginDraftApprovalScope, currentSession, navigationRestoreTargetRef, pushRoute, refreshProjects, refreshSessions, runtime, sessionLoadRequestRef, sessionOwnership, sessions, sessionsForProject, setAppHistory, setContextUsageSnapshot, setControlTip, setConversationCollapsed, setCurrentSession, setMessages, setPendingDirtyCloseTab, setPinnedSessionIds, setProjectCreatorOpen, setProjects, setRuntime, setRuntimeError, setSessionOwnership, setSessions, setSidebarPanel, setWorkspaceExpandedPaths, setWorkspaceFileDrafts, setWorkspaceOpenRequest, setWorkspacePanelOpenTabs, setWorkspacePanelTab, workspaceFileDrafts, workspaceOpenRequest, workspacePanelOpenTabs, workspacePanelTab } = context
+  const { abortRef, alignWorkspacePanelToWorkspaceRoot, appHistoryRef, appMountedRef, applyRuntimePatch, beginDraftApprovalScope, currentSession, navigationRestoreTargetRef, pushRoute, refreshProjects, refreshSessions, runtime, sessionLoadRequestRef, sessionOwnership, sessions, sessionsForProject, setAppHistory, setContextUsageSnapshot, setControlTip, setConversationCollapsed, setCurrentSession, setMessages, setPinnedSessionIds, setProjectCreatorOpen, setProjects, setRuntime, setRuntimeError, setSessionOwnership, setSessions, setSidebarPanel, setWorkspaceExpandedPaths, setWorkspaceFileDrafts, setWorkspaceOpenRequest, setWorkspacePanelOpenTabs, setWorkspacePanelTab, workspaceFileDrafts, workspaceOpenRequest, workspacePanelOpenTabs, workspacePanelTab } = context
 
 
   function openProjectCreator() {
@@ -149,17 +145,6 @@ export function createProjectActions(context: ProjectActionContext) {
       setWorkspaceExpandedPaths((paths) => paths.map((entry) => (
         rebindWorkspacePath(entry, project.path, result.project.path)
       )))
-      setPendingDirtyCloseTab((tab) => {
-        if (!tab) return null
-        const file = parseWorkspaceFileTabId(tab)
-        return file
-          ? workspaceFileTabId(
-              rebindWorkspacePath(file.root, project.path, result.project.path),
-              rebindWorkspacePath(file.path, project.path, result.project.path),
-            )
-          : tab
-      })
-
       const reboundHistory: NavigationHistoryState<AppNavigationSnapshot> = {
         ...appHistoryRef.current,
         entries: appHistoryRef.current.entries.map((entry) => (

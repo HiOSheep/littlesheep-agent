@@ -213,6 +213,11 @@ export class WebhookChannelPlugin implements ChannelPlugin {
     // Construct InboundChannelMessage.
     const message = {
       text: payload.text,
+      requestKey: typeof payload.messageId === 'string' && payload.messageId.trim()
+        ? `webhook:${payload.messageId.trim()}`
+        : typeof req.headers['idempotency-key'] === 'string' && req.headers['idempotency-key'].trim()
+          ? `webhook:${req.headers['idempotency-key'].trim()}`
+          : undefined,
       externalConversationId: payload.conversationId,
       externalUserId: payload.userId,
       isGroup: payload.isGroup === true,
@@ -300,6 +305,7 @@ export class WebhookChannelPlugin implements ChannelPlugin {
 /** Expected shape of the webhook POST body. */
 interface WebhookPayload {
   text: string;
+  messageId?: string;
   conversationId: string;
   userId: string;
   isGroup?: boolean;

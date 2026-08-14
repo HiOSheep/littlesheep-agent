@@ -326,7 +326,7 @@ export function RuntimePicker({
         <button
           {...transientTriggerProps()}
           type="button"
-          className="runtime-picker-trigger"
+          className="runtime-picker-trigger composer-tab-control"
           ref={triggerRef}
           disabled={disabled}
           aria-haspopup="menu"

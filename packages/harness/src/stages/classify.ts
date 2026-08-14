@@ -41,6 +41,21 @@ export interface ClassifyStageDeps {
 /** Factory: creates a classify stage that closes over the LLM deps. */
 export function createClassifyStage(deps: ClassifyStageDeps) {
   return async function classifyStage(ctx: RunContext): Promise<StageResult> {
+    // Structural continuation binding is Runtime authority. If a future
+    // coordinator accidentally sends a bound answer through this compatibility
+    // stage, bypass the probabilistic activity router and re-enter planning.
+    if (ctx.resumedFromCheckpointId && ctx.clarificationResponse) {
+      return {
+        stage: 'classify',
+        next: 'decide',
+        ok: true,
+        meta: {
+          continuationGuard: true,
+          checkpointId: ctx.resumedFromCheckpointId,
+          requestId: ctx.clarificationResponse.requestId,
+        },
+      };
+    }
     let next: StageName;
     try {
       const classifierHistory = recentHistoryForModel(ctx.history, 4, 1_800);

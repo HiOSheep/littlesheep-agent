@@ -155,6 +155,8 @@ export interface SessionManagerLike {
   create(model?: string, title?: string, meta?: Partial<SessionMetadata>): Promise<Session>;
   loadMetadata(sessionId: SessionId): Promise<SessionMetadata | null>;
   append(sessionId: SessionId, messages: Message[]): Promise<void>;
+  /** Atomically reserve and append a stable inbound conversation message. */
+  appendIfAbsent?(sessionId: SessionId, messages: Message[], uniqueMessageId: string): Promise<boolean>;
   /** Reserve a never-published Assistant reply for this session. */
   reserveAssistantReply?(sessionId: SessionId, reply: string): Promise<boolean>;
   read(sessionId: SessionId): Promise<Message[]>;

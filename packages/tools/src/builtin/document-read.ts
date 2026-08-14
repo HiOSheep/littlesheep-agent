@@ -36,6 +36,21 @@ export const documentReadTool: AgentTool = {
       sheetNames: parsed.sheet_names,
       maxChars: parsed.max_chars ?? 60_000,
     })
+    if (!extracted.text.trim()) {
+      return {
+        ok: false,
+        error: [
+          `No readable text was extracted from ${targetPath}.`,
+          ...extracted.notes,
+        ].join('\n'),
+        meta: {
+          filePath: targetPath,
+          format: extracted.format,
+          contentAvailable: false,
+          ...extracted.metadata,
+        },
+      }
+    }
     const header = [
       `Document: ${targetPath}`,
       `Format: ${extracted.format}`,

@@ -21,7 +21,6 @@ export function ChatView({ controller }: { controller: AppController }) {
   const {
     currentSession,
     messages,
-    setMessages,
     historyWindow,
     loadOlderMessages,
     scrollRef,
@@ -74,7 +73,7 @@ export function ChatView({ controller }: { controller: AppController }) {
 
   function captureDisclosureInteraction(event: MouseEvent<HTMLDivElement>) {
     const target = event.target as HTMLElement
-    if (!target.closest('.assistant-turn-header, .activity-disclosure-header, .activity-command-header, .trace-toggle')) return
+    if (!target.closest('.agent-reasoning-toggle, .agent-tool-row, .trace-toggle')) return
     // Expanding a nested disclosure is a reading action, not new-message
     // arrival. Leave scrollTop untouched while CSS animates the content height.
     stickToBottomRef.current = false
@@ -128,11 +127,6 @@ export function ChatView({ controller }: { controller: AppController }) {
                 messageKey={m.id ?? `message-${i}`}
                 now={activityNow}
                 onOpenFile={openFileInWorkspace}
-                onToggleActivity={() => {
-                  setMessages((items) => items.map((item, index) =>
-                    (m.id ? item.id === m.id : index === i) ? { ...item, activityCollapsed: !item.activityCollapsed } : item,
-                  ))
-                }}
               />
             ) : (
               <div key={m.id ?? i} data-message-key={m.id ?? `message-${i}`} className={`message ${m.role}`}>

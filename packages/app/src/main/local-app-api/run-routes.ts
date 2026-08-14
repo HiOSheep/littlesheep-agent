@@ -2,7 +2,7 @@
 
 import { randomUUID } from 'node:crypto'
 import type { Config } from '@littlesheep/config'
-import type { AgentRunner } from '@littlesheep/runner'
+import { conversationTurnRunId, type AgentRunner } from '@littlesheep/runner'
 import { asSessionId, type RuntimeEventIngressOutcome } from '@littlesheep/types'
 import {
   LOCAL_APP_API_PREFIXES,
@@ -17,6 +17,7 @@ import {
 } from '../../shared/runtime-event-contracts.js'
 import {
   createInspectAttachmentTool,
+  createCheckpointResourceResolver,
   parseAttachments,
   prepareRunAttachments,
 } from '../attachments.js'
@@ -185,16 +186,20 @@ export class RunRouter {
     }
 
     if (method === 'POST' && path === LOCAL_APP_API_ROUTES.runStream) {
-      if (this.activeStreams.size >= MAX_ACTIVE_STREAM_RUNS) {
+      const body = await readJson(req)
+      const requestKey = parseRequestKey(body.requestKey)
+      const sessionId = body.sessionId ? asSessionId(String(body.sessionId)) : undefined
+      const runId = (sessionId ? conversationTurnRunId(sessionId, requestKey) : undefined) ?? randomUUID()
+      const existingActive = this.activeStreams.get(runId)
+      if (!existingActive && this.activeStreams.size >= MAX_ACTIVE_STREAM_RUNS) {
         json(res, 429, { error: 'too many active agent runs' })
         return true
       }
-      const body = await readJson(req)
-      const runId = randomUUID()
       const controller = new AbortController()
-      const runner = context.getRunner()
-      const active: ActiveStreamRun = { controller, runner }
-      this.activeStreams.set(runId, active)
+      const runner = existingActive?.runner ?? context.getRunner()
+      const active: ActiveStreamRun = existingActive ?? { controller, runner }
+      const ownsActiveRun = !existingActive
+      if (ownsActiveRun) this.activeStreams.set(runId, active)
       const stopHeartbeat = openSse(res)
       // Let the renderer show the run immediately while workspace and
       // attachment preparation continues asynchronously below.
@@ -203,13 +208,19 @@ export class RunRouter {
         const cwd = resolveRunWorkspace(body, context.getConfig(), context.workplaceDir)
         const ownership = await resolveRunSessionOwnership(context.sessionIndex, context.projectIndex, body)
         const workspaceContext = resolveRunWorkspaceContext(cwd, ownership, context.workplaceDir)
-        const attachments = await prepareRunAttachments(parseAttachments(body.attachments), {
+        const attachmentOptions = {
           managedCache: context.attachmentCache,
           workplaceDir: context.workplaceDir,
           workspaceDir: cwd,
           projectId: ownership.projectId,
-        })
+        }
+        const attachmentRefs = await ensureManagedAttachmentRefs(
+          parseAttachments(body.attachments),
+          context.attachmentCache,
+        )
+        const attachments = await prepareRunAttachments(attachmentRefs, attachmentOptions)
         const inspectAttachmentTool = createInspectAttachmentTool(attachments)
+        const restoreCheckpointResources = createCheckpointResourceResolver(attachmentOptions)
         // Publish the run identity before Runner can emit step/tool deltas.
         // A synchronous portion of a runner may produce events immediately;
         // the renderer must be able to address the run for interruption from
@@ -218,12 +229,14 @@ export class RunRouter {
           {
             runId,
             text: String(body.text ?? ''),
-            sessionId: body.sessionId ? asSessionId(String(body.sessionId)) : undefined,
+            sessionId,
             origin: 'app',
             cwd,
             reasoning: resolveReasoning(body, context.getConfig()),
             attachments,
             additionalTools: inspectAttachmentTool ? [inspectAttachmentTool] : undefined,
+            restoreCheckpointResources,
+            requestKey,
             workspaceContext,
             signal: controller.signal,
             onToolEvent: (event) => writeSse(res, event.type, event),
@@ -242,13 +255,15 @@ export class RunRouter {
         )
         const result = await runPromise
         if (result.runId !== runId) throw new Error(`runner returned an unexpected run id: ${result.runId}`)
-        await finishRunResources(context, runner, result, body, ownership, cwd, workspaceContext)
+        if (ownsActiveRun) {
+          await finishRunResources(context, runner, result, body, ownership, cwd, workspaceContext)
+        }
         writeSse(res, 'result', result)
       } catch (error) {
         writeSse(res, 'error', { error: (error as Error).message })
       } finally {
         stopHeartbeat()
-        if (this.activeStreams.get(runId) === active) this.activeStreams.delete(runId)
+        if (ownsActiveRun && this.activeStreams.get(runId) === active) this.activeStreams.delete(runId)
         res.end()
       }
       return true
@@ -260,12 +275,17 @@ export class RunRouter {
       const cwd = resolveRunWorkspace(body, context.getConfig(), context.workplaceDir)
       const ownership = await resolveRunSessionOwnership(context.sessionIndex, context.projectIndex, body)
       const workspaceContext = resolveRunWorkspaceContext(cwd, ownership, context.workplaceDir)
-      const attachments = await prepareRunAttachments(parseAttachments(body.attachments), {
+      const attachmentOptions = {
         managedCache: context.attachmentCache,
         workplaceDir: context.workplaceDir,
         workspaceDir: cwd,
         projectId: ownership.projectId,
-      })
+      }
+      const attachmentRefs = await ensureManagedAttachmentRefs(
+        parseAttachments(body.attachments),
+        context.attachmentCache,
+      )
+      const attachments = await prepareRunAttachments(attachmentRefs, attachmentOptions)
       const inspectAttachmentTool = createInspectAttachmentTool(attachments)
       const result = await runner.run({
         text: String(body.text ?? ''),
@@ -275,6 +295,8 @@ export class RunRouter {
         reasoning: resolveReasoning(body, context.getConfig()),
         attachments,
         additionalTools: inspectAttachmentTool ? [inspectAttachmentTool] : undefined,
+        restoreCheckpointResources: createCheckpointResourceResolver(attachmentOptions),
+        requestKey: parseRequestKey(body.requestKey),
         workspaceContext,
         ...resolveRunPolicy(body, context.getConfig(), undefined, {
           containerRoot: context.dataDir ?? context.workplaceDir,
@@ -375,4 +397,22 @@ export class RunRouter {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function ensureManagedAttachmentRefs(
+  attachments: ReturnType<typeof parseAttachments>,
+  cache: ManagedAttachmentCache,
+) {
+  return Promise.all(attachments.map(async (attachment) => (
+    attachment.cacheId ? attachment : cache.importFile(attachment)
+  )))
+}
+
+function parseRequestKey(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== 'string') throw new Error('conversation requestKey must be a string')
+  const normalized = value.trim()
+  if (!normalized) return undefined
+  if (normalized.length > 256) throw new Error('conversation requestKey exceeds 256 characters')
+  return normalized
 }

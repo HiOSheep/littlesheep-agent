@@ -10,6 +10,7 @@ import {
 } from '../../shared/local-app-api-routes'
 import type {
   ContextSnapshot,
+  ConversationContinuationEvidence,
   ModelRequestSnapshot,
   ReplyProvenance,
   RuntimeControlSnapshot,
@@ -49,6 +50,7 @@ export interface RunResult {
   taskBook?: TaskBook
   verificationHistory?: VerificationRecord[]
   runtimeControl?: RuntimeControlSnapshot
+  conversationContinuation?: ConversationContinuationEvidence
   runCheckpointId?: string
   taskExecution?: {
     goal: string
@@ -135,6 +137,17 @@ export interface RunStreamStart {
   runId: string
 }
 
+/** A definitive HTTP/SSE rejection; callers may keep draft content but start a new turn after remediation. */
+export class RunStreamServerError extends Error {
+  readonly runId?: string
+
+  constructor(message: string, runId?: string) {
+    super(message)
+    this.name = 'RunStreamServerError'
+    this.runId = runId
+  }
+}
+
 export interface ApprovalRequest {
   id: string
   action: string
@@ -152,6 +165,7 @@ export interface RunOptions {
   reasoning?: RuntimeReasoning
   profile?: AgentProfileId
   attachments?: AttachmentRef[]
+  requestKey?: string
 }
 
 export async function runAgentStream(
@@ -174,7 +188,10 @@ export async function consumeRunStream(
   res: Response,
   handlers: RunStreamHandlers,
 ): Promise<RunResult> {
-  if (!res.ok) throw await localApiResponseError(res)
+  if (!res.ok) {
+    const error = await localApiResponseError(res)
+    throw new RunStreamServerError(error.message)
+  }
   if (!res.body) throw new Error('Local app API stream has no body')
 
   const reader = res.body.getReader()
@@ -233,7 +250,10 @@ export async function consumeRunStream(
       } else if (event.name === 'result') {
         finalResult = event.data as RunResult
       } else if (event.name === 'error') {
-        throw new Error(String((event.data as { error?: string }).error ?? 'stream failed'))
+        throw new RunStreamServerError(
+          String((event.data as { error?: string }).error ?? 'stream failed'),
+          activeRunId || undefined,
+        )
       }
     }
     if (done) break

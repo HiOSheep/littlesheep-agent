@@ -332,6 +332,7 @@ export class DefaultChannelManager {
         origin: 'channel',
         channelId,
         externalConversationId: message.externalConversationId,
+        requestKey: message.requestKey,
       });
       return {
         reply: result.reply ?? '',

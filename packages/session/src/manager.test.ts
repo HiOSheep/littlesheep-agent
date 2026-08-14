@@ -53,6 +53,20 @@ describe('SessionManager', () => {
     expect(recent[1]!.content[0]).toMatchObject({ type: 'text', text: 'msg 4' });
   });
 
+  it('atomically accepts a stable inbound message only once', async () => {
+    const sm = new SessionManager({ sessionsDir: tmpDir });
+    const session = await sm.create();
+    const attempts = await Promise.all(Array.from({ length: 6 }, (_, index) => (
+      sm.appendIfAbsent(session.id, [textMessage('user', `attempt ${index}`, {
+        id: 'stable-conversation-turn',
+      })], 'stable-conversation-turn')
+    )));
+
+    expect(attempts.filter(Boolean)).toHaveLength(1);
+    expect((await sm.read(session.id)).filter((message) => message.id === 'stable-conversation-turn'))
+      .toHaveLength(1);
+  });
+
   it('pages backward from a stable message id without loading the full transcript', async () => {
     const sm = new SessionManager({ sessionsDir: tmpDir });
     const session = await sm.create();

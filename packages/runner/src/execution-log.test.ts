@@ -3,11 +3,11 @@
 // tool-call pairing, and list() behavior.
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { ExecutionLogStore } from './execution-log.js';
+import { ExecutionLogStore, type ExecutionLogInput } from './execution-log.js';
 import type {
   ContextSnapshot,
   MemoryContinuityAssessment,
@@ -33,6 +33,111 @@ afterEach(() => {
 });
 
 describe('ExecutionLogStore', () => {
+  const continuationControlFailure = (runId: string): ExecutionLogInput => ({
+    runId,
+    sessionId: 'session-continuation-log',
+    startedAt: '2026-08-14T00:00:00.000Z',
+    endedAt: '2026-08-14T00:00:00.100Z',
+    status: 'error',
+    model: 'runtime/control',
+    inboundText: '[redacted continuation answer]',
+    reply: '',
+    error: 'continuation claim is already active',
+    trace: [],
+    messages: [],
+    durationMs: 100,
+    conversationContinuation: {
+      version: 1,
+      resolution: 'conflict',
+      turnId: 'conversation-turn-stable',
+      inputDigest: 'input-digest-stable',
+      failure: {
+        code: 'claim_conflict',
+        detail: 'continuation claim is already active',
+        recoverable: true,
+      },
+    },
+  });
+
+  const completedContinuation = (runId: string): ExecutionLogInput => ({
+    runId,
+    sessionId: 'session-continuation-log',
+    startedAt: '2026-08-14T00:00:00.000Z',
+    endedAt: '2026-08-14T00:00:01.000Z',
+    status: 'ok',
+    model: 'test/model',
+    inboundText: 'continue the original task',
+    reply: 'original task completed',
+    trace: [],
+    messages: [],
+    durationMs: 1_000,
+    usage: {
+      promptTokens: 21,
+      completionTokens: 8,
+      totalTokens: 29,
+      source: 'provider',
+    },
+    sideEffects: [{
+      idempotencyKey: 'effect-stable',
+      toolName: 'write_pdf',
+      status: 'succeeded',
+      effectKind: 'local_mutation',
+      evidenceRef: 'artifact:translated.pdf',
+    }],
+    conversationContinuation: {
+      version: 1,
+      resolution: 'bound',
+      turnId: 'conversation-turn-stable',
+      inputDigest: 'input-digest-stable',
+      checkpointId: 'checkpoint-stable',
+      disposition: 'retry',
+      dispositionSource: 'directive',
+    },
+  });
+
+  it('replaces an early continuation control failure with the completed execution result', async () => {
+    const runId = 'run-control-before-completion';
+    await store.write(continuationControlFailure(runId));
+    await store.write(completedContinuation(runId));
+
+    const log = await store.read(runId);
+    expect(log).toMatchObject({
+      status: 'ok',
+      reply: 'original task completed',
+      usage: { promptTokens: 21, completionTokens: 8, totalTokens: 29 },
+      sideEffects: [{ idempotencyKey: 'effect-stable', status: 'succeeded' }],
+      conversationContinuation: { resolution: 'bound' },
+    });
+    expect(log?.conversationContinuation?.failure).toBeUndefined();
+  });
+
+  it('does not let a late continuation control failure overwrite a completed execution result', async () => {
+    const runId = 'run-completion-before-control';
+    await store.write(completedContinuation(runId));
+    const retained = await store.write(continuationControlFailure(runId));
+
+    expect(retained).toMatchObject({ status: 'ok', reply: 'original task completed' });
+    expect((await store.read(runId))?.conversationContinuation).toMatchObject({
+      resolution: 'bound',
+      checkpointId: 'checkpoint-stable',
+    });
+  });
+
+  it('serializes competing stores without corrupting the stable run log or leaking temp files', async () => {
+    const runId = 'run-cross-store-race';
+    const competingStore = new ExecutionLogStore({ rootDir: dir });
+
+    await Promise.all([
+      store.write(continuationControlFailure(runId)),
+      competingStore.write(completedContinuation(runId)),
+    ]);
+
+    const raw = readFileSync(join(dir, `${runId}.json`), 'utf8');
+    const parsed = JSON.parse(raw) as { status: string; reply: string };
+    expect(parsed).toMatchObject({ status: 'ok', reply: 'original task completed' });
+    expect(readdirSync(dir).filter((name) => name.endsWith('.tmp'))).toEqual([]);
+  });
+
   it('persists the bounded memory continuity assessment', async () => {
     const assessment: MemoryContinuityAssessment = {
       version: 1,
@@ -630,6 +735,44 @@ describe('ExecutionLogStore', () => {
     const log = await store.read('run-4');
     expect(log?.clarificationRequest).toEqual(clarificationRequest);
     expect(log?.clarificationResponse).toEqual(clarificationResponse);
+  });
+
+  it('persists redacted conversation continuation evidence', async () => {
+    const conversationContinuation = {
+      version: 1 as const,
+      resolution: 'bound' as const,
+      checkpointId: 'checkpoint-1',
+      sourceRunId: 'source-run-1',
+      requestId: 'request-1',
+      answerMessageId: 'answer-1',
+      resumeRunId: 'resume-run-1',
+      disposition: 'retry' as const,
+      dispositionSource: 'model' as const,
+      resumeStage: 'recover' as const,
+      resumeRule: 'recover->recover',
+      resources: {
+        status: 'restored' as const,
+        attachmentCount: 1,
+        toolRecipeCount: 1,
+        restoredToolCount: 1,
+      },
+      permissions: { checkpoint: 'restricted' as const, current: 'full' as const },
+      replayPrevention: {
+        completedStepCountPreserved: 2,
+        succeededSideEffectCountPreserved: 1,
+        uncertainSideEffectCount: 0,
+        answerMessageAlreadyPersisted: true,
+      },
+    };
+    await store.write({
+      runId: 'continuation-run', sessionId: 's', startedAt: '', endedAt: '', status: 'ok',
+      model: '', inboundText: 'private user text is stored only in the existing inbound field',
+      reply: 'done', trace: [], messages: [], durationMs: 0,
+      conversationContinuation,
+    });
+
+    expect((await store.read('continuation-run'))?.conversationContinuation)
+      .toEqual(conversationContinuation);
   });
 
   it('persists partial replan history inside task execution evidence', async () => {

@@ -19,6 +19,26 @@ export function Markdown({ text }: MarkdownProps) {
   )
 }
 
+
+/**
+ * Markdown for a single activity row. Block elements are deliberately
+ * unwrapped so the result remains valid phrasing content inside a button.
+ */
+export function InlineMarkdown({ text }: MarkdownProps) {
+  return (
+    <span className="markdown markdown-inline">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        allowedElements={['p', 'strong', 'em', 'del', 'code', 'a', 'br']}
+        unwrapDisallowed
+        components={inlineComponents}
+      >
+        {text}
+      </ReactMarkdown>
+    </span>
+  )
+}
+
 const components: Components = {
   a({ href, children }) {
     return <MarkdownLink href={href}>{children}</MarkdownLink>
@@ -34,6 +54,23 @@ const components: Components = {
       )
     }
     return <CodeBlock code={code} language={language} />
+  },
+}
+
+const inlineComponents: Components = {
+  p({ children }) {
+    return <>{children}</>
+  },
+  a({ children }) {
+    // Activity summaries are labels, not navigation targets. Keeping links
+    // as spans also avoids nested interactive elements inside the row button.
+    return <span className="markdown-inline-link">{children}</span>
+  },
+  br() {
+    return <span aria-hidden="true"> </span>
+  },
+  code({ children }) {
+    return <code>{children}</code>
   },
 }
 

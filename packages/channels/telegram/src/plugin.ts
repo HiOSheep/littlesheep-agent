@@ -236,6 +236,7 @@ export class TelegramChannelPlugin implements ChannelPlugin {
     // Construct InboundChannelMessage.
     const inbound = {
       text: message.text,
+      requestKey: `telegram:${message.message_id}`,
       // Use chat.id as conversation id — same chat = same session.
       externalConversationId: String(message.chat.id),
       externalUserId: String(message.from?.id ?? 'unknown'),

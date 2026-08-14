@@ -25,7 +25,7 @@ export function ContextUsageIndicator({ usage }: { usage: ContextUsage }) {
 
   return (
     <div
-      className={`context-usage tone-${tone}`}
+      className={`context-usage composer-tab-control tone-${tone}`}
       style={style}
       role="status"
       tabIndex={0}

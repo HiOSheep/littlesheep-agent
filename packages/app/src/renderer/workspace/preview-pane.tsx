@@ -5,9 +5,9 @@ import {
   saveWorkspaceFile,
   type WorkspacePreview
 } from '../api'
-import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { FileGlyphIcon, VSCodeIcon } from '../ui/icons'
-import { transientTriggerProps } from '../ui/transient'
+import { Markdown } from '../Markdown'
+import type { FloatingHelpTip } from '../ui/floating-help'
+import { FileGlyphIcon } from '../ui/icons'
 import {
   type WorkspaceFileDraftState,
   type WorkspaceFileTabId
@@ -16,6 +16,7 @@ import { WorkspaceCodeEditor, workspaceEditorModelPath } from './code-editor'
 import { workspaceFilePreviewCache } from './file-preview-cache'
 import { attachmentFileUrl, countEditorLines, detectEditorEol, formatDateTime, formatEditorLanguageLabel, formatFileSize, shouldOfferExternalVSCode, utf8ByteLength, workspaceBreadcrumbs } from './path-utils'
 import { WorkspacePlaceholder } from './placeholder'
+import { WorkspacePreviewActions } from './preview-actions'
 
 export function WorkspaceFileView({
   tabId,
@@ -141,7 +142,8 @@ export function WorkspacePreviewPane({
   const pathParts = breadcrumbs.length > 0
     ? breadcrumbs
     : [preview?.relativePath || selectedPath || '选择一个文件查看内容']
-  const editable = preview?.kind === 'text' || preview?.kind === 'markdown'
+  const isMarkdown = preview?.kind === 'markdown'
+  const editable = preview?.kind === 'text' || isMarkdown
   const editorLanguage = preview?.kind === 'markdown'
     ? 'markdown'
     : preview?.kind === 'text'
@@ -150,11 +152,17 @@ export function WorkspacePreviewPane({
   const editorLanguageLabel = formatEditorLanguageLabel(editorLanguage)
   const canOpenExternalVSCode = preview ? shouldOfferExternalVSCode(preview) : false
   const [editing, setEditing] = useState(false)
-  const [editorText, setEditorText] = useState('')
-  const [savedText, setSavedText] = useState('')
+  const [showMarkdownSource, setShowMarkdownSource] = useState(false)
+  const [editorText, setEditorText] = useState(() => (
+    preview?.kind === 'text' || preview?.kind === 'markdown' ? preview.content : ''
+  ))
+  const [savedText, setSavedText] = useState(() => (
+    preview?.kind === 'text' || preview?.kind === 'markdown' ? preview.content : ''
+  ))
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
   const [saveError, setSaveError] = useState('')
+  const editorVisible = editable && (!isMarkdown || showMarkdownSource)
   const dirty = editable && editorText !== savedText
   const editorLineCount = editable ? countEditorLines(editorText) : 0
   const editorEol = editable ? detectEditorEol(editorText) : ''
@@ -176,9 +184,9 @@ export function WorkspacePreviewPane({
     }
     onDraftChange(tabId, {
       path: next.path ?? preview.path,
-      modifiedAt: next.modifiedAt ?? preview.modifiedAt,
+      modifiedAt: next.modifiedAt ?? draft?.modifiedAt ?? preview.modifiedAt,
       editorText: next.editorText ?? editorText,
-      savedText: next.savedText ?? savedText,
+      savedText: next.savedText ?? draft?.savedText ?? savedText,
       editing: next.editing ?? editing,
     })
   }
@@ -193,6 +201,18 @@ export function WorkspacePreviewPane({
     emitDraft({ editing: nextEditing })
   }
 
+  function toggleMarkdownSource() {
+    if (!isMarkdown) return
+    const nextSourceVisible = !showMarkdownSource
+    setShowMarkdownSource(nextSourceVisible)
+    if (!nextSourceVisible && editing) updateEditing(false)
+  }
+
+  function toggleEditing() {
+    if (isMarkdown && !showMarkdownSource) setShowMarkdownSource(true)
+    updateEditing(!editing)
+  }
+
   useEffect(() => {
     const content = editable ? preview.content : ''
     const canRestoreDraft = editable && preview && draft?.path === preview.path && draft.modifiedAt === preview.modifiedAt
@@ -202,6 +222,7 @@ export function WorkspacePreviewPane({
     setEditorText(nextEditorText)
     setSavedText(nextSavedText)
     setEditing(nextEditing)
+    setShowMarkdownSource(isMarkdown && nextEditing)
     setSaving(false)
     setSaveMessage('')
     setSaveError('')
@@ -216,7 +237,7 @@ export function WorkspacePreviewPane({
     } else {
       if (tabId && onDraftChange) onDraftChange(tabId, null)
     }
-  }, [preview?.path, preview?.modifiedAt, editable])
+  }, [preview?.path, preview?.modifiedAt, editable, isMarkdown])
 
   async function saveEditorContent() {
     if (!editable || !preview || !dirty || saving) return
@@ -224,7 +245,7 @@ export function WorkspacePreviewPane({
     setSaveError('')
     setSaveMessage('')
     try {
-      const nextPreview = await onSaveFile(preview.path, editorText, preview.modifiedAt)
+      const nextPreview = await onSaveFile(preview.path, editorText, draft?.modifiedAt ?? preview.modifiedAt)
       if (nextPreview.kind === 'text' || nextPreview.kind === 'markdown') {
         setEditorText(nextPreview.content)
         setSavedText(nextPreview.content)
@@ -259,56 +280,20 @@ export function WorkspacePreviewPane({
           ))}
         </div>
         {selectedPath && (
-          <div className="workspace-preview-actions">
-            {editable && (
-              <>
-                <button
-                  {...transientTriggerProps()}
-                  className={`workspace-files-text-btn ${editing ? 'active' : ''}`}
-                  type="button"
-                  aria-pressed={editing}
-                  onClick={() => updateEditing(!editing)}
-                  onMouseEnter={(event) => onTipChange(buildFloatingHelpTip(editing ? '切换到只读代码视图' : '在内置 VS Code 编辑器中编辑', event.clientX, event.clientY))}
-                  onMouseMove={(event) => onTipChange(buildFloatingHelpTip(editing ? '切换到只读代码视图' : '在内置 VS Code 编辑器中编辑', event.clientX, event.clientY))}
-                  onMouseLeave={() => onTipChange(null)}
-                  onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement(editing ? '切换到只读代码视图' : '在内置 VS Code 编辑器中编辑', event.currentTarget))}
-                  onBlur={() => onTipChange(null)}
-                >
-                  {editing ? '只读' : '编辑'}
-                </button>
-                <button
-                  {...transientTriggerProps()}
-                  className="workspace-files-text-btn"
-                  type="button"
-                  disabled={!dirty || saving}
-                  onClick={() => void saveEditorContent()}
-                  onMouseEnter={(event) => onTipChange(buildFloatingHelpTip('保存当前文件', event.clientX, event.clientY))}
-                  onMouseMove={(event) => onTipChange(buildFloatingHelpTip('保存当前文件', event.clientX, event.clientY))}
-                  onMouseLeave={() => onTipChange(null)}
-                  onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement('保存当前文件', event.currentTarget))}
-                  onBlur={() => onTipChange(null)}
-                >
-                  {saving ? '保存中' : dirty ? '保存*' : '保存'}
-                </button>
-              </>
-            )}
-            {canOpenExternalVSCode && (
-              <button
-                {...transientTriggerProps()}
-                className="workspace-files-icon-btn"
-                type="button"
-                aria-label="用外部 VS Code 打开文件"
-                onClick={() => void onOpenInVSCode()}
-                onMouseEnter={(event) => onTipChange(buildFloatingHelpTip('用外部 VS Code 打开文件', event.clientX, event.clientY))}
-                onMouseMove={(event) => onTipChange(buildFloatingHelpTip('用外部 VS Code 打开文件', event.clientX, event.clientY))}
-                onMouseLeave={() => onTipChange(null)}
-                onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement('用外部 VS Code 打开文件', event.currentTarget))}
-                onBlur={() => onTipChange(null)}
-              >
-                <VSCodeIcon />
-              </button>
-            )}
-          </div>
+          <WorkspacePreviewActions
+            editable={editable}
+            isMarkdown={isMarkdown}
+            editing={editing}
+            showMarkdownSource={showMarkdownSource}
+            dirty={dirty}
+            saving={saving}
+            canOpenExternalVSCode={canOpenExternalVSCode}
+            onToggleMarkdownSource={toggleMarkdownSource}
+            onToggleEditing={toggleEditing}
+            onSave={() => void saveEditorContent()}
+            onOpenInVSCode={onOpenInVSCode}
+            onTipChange={onTipChange}
+          />
         )}
       </div>
       {(saveMessage || saveError) && (
@@ -317,7 +302,7 @@ export function WorkspacePreviewPane({
         </div>
       )}
       <div
-        className={`workspace-preview-body ${editable ? 'editor' : ''}`}
+        className={`workspace-preview-body ${editorVisible ? 'editor' : ''}`}
         onKeyDownCapture={(event) => {
           if (!editable || !dirty || saving) return
           const key = event.key.toLowerCase()
@@ -330,7 +315,12 @@ export function WorkspacePreviewPane({
         {loading && <WorkspacePlaceholder title="读取中" text="正在读取文件预览。" />}
         {!loading && error && <WorkspacePlaceholder title="预览失败" text={error} />}
         {!loading && !error && !preview && <WorkspacePlaceholder title="文件预览" text="代码和文本进入内置 VS Code 工作台；图片、PDF 和 Office 文件在 LS 内部预览。" />}
-        {!loading && !error && editable && (
+        {!loading && !error && isMarkdown && !showMarkdownSource && (
+          <div className="workspace-preview-markdown">
+            <Markdown text={editorText} />
+          </div>
+        )}
+        {!loading && !error && editorVisible && (
           <div className="workspace-editor-monaco">
             <WorkspaceCodeEditor
               height="100%"
@@ -383,7 +373,7 @@ export function WorkspacePreviewPane({
       </div>
       {preview && (
         <div className="workspace-preview-statusbar" aria-label="文件预览状态">
-          {editable && <span>{editing ? (dirty ? '编辑中*' : '编辑中') : '只读'}</span>}
+          {editable && <span>{isMarkdown && !showMarkdownSource ? '预览' : editing ? (dirty ? '编辑中*' : '编辑中') : '只读'}</span>}
           {editable && <span>{editorLanguageLabel}</span>}
           {editable && <span>{editorLineCount} 行</span>}
           <span>{editable ? editorSize : previewSize}</span>

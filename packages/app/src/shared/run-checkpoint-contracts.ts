@@ -1,7 +1,7 @@
 // Bounded startup-recovery payloads shared by Main and Renderer.
 
 export type LocalAppRunCheckpointStatus = 'paused' | 'waiting_user' | 'recoverable'
-export type LocalAppRunCheckpointDispositionStatus = 'resuming' | 'interrupted' | 'resumed' | 'completed' | 'abandoned'
+export type LocalAppRunCheckpointDispositionStatus = 'resuming' | 'interrupted' | 'resumed' | 'completed' | 'abandoned' | 'deferred'
 
 export interface LocalAppRunCheckpointDisposition {
   status: LocalAppRunCheckpointDispositionStatus
@@ -112,4 +112,10 @@ export interface LocalAppRunCheckpointAbandonResponse {
 export interface LocalAppRunCheckpointResumeRequest {
   text?: string
   reason?: string
+  permissionMode?: import('./permission-modes.js').PermissionModeId
+  reasoning?: import('./model-capabilities.js').RuntimeReasoning
+  profile?: import('@littlesheep/prompt').AgentProfileId
+  requestKey?: string
+  /** Explicit recovery answers the selected task; ordinary chat uses auto. */
+  continuationDirective?: 'answer'
 }

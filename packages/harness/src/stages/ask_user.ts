@@ -5,8 +5,10 @@
 
 import type {
   ClarificationRequest,
+  ClarificationChain,
   RunContext,
   StageResult,
+  StageName,
 } from '@littlesheep/types';
 import type { ChatRequest, LlmClient } from '@littlesheep/llm';
 import { buildRunRequestCandidates } from '../context-candidates.js';
@@ -38,10 +40,8 @@ export interface AskUserStageDeps {
 export function createAskUserStage(deps?: AskUserStageDeps) {
   return async function askUserStage(ctx: RunContext): Promise<StageResult> {
     clearReplyState(ctx, 'ask_user');
-    const request = ensureClarificationRequest(ctx);
-    if (!ctx.clarificationRequest) {
-      writeDecisionState(ctx, 'ask_user', { clarificationRequest: request });
-    }
+    const request = attachClarificationChain(ctx, ensureClarificationRequest(ctx));
+    writeDecisionState(ctx, 'ask_user', { clarificationRequest: request });
     const fallback = renderClarificationMessage(request);
     if (!deps) {
       const message = 'user-facing clarification generation requires an LLM.';
@@ -104,6 +104,7 @@ async function composeClarificationMessage(
         originalRequest: request.originalRequest,
         blockingReason: request.blockingReason,
         questions: request.questions,
+        clarificationChain: request.clarificationChain,
         runtimeDraft: fallback,
       }),
     },
@@ -145,6 +146,59 @@ async function composeClarificationMessage(
     maxTokens = 640;
   }
   return '';
+}
+
+function attachClarificationChain(
+  ctx: RunContext,
+  request: ClarificationRequest,
+): ClarificationRequest {
+  const response = ctx.clarificationResponse;
+  if (!response) return request;
+  const prior = [...ctx.history]
+    .reverse()
+    .find((message) => (
+      message.role === 'assistant'
+      && message.clarificationRequest?.id === response.requestId
+    ))
+    ?.clarificationRequest;
+  const remainingFields = [...new Set(request.questions.map((question) => boundedField(question.field)))].slice(0, 16);
+  const remaining = new Set(remainingFields);
+  const answeredFields = [...new Set((prior?.questions ?? [])
+    .map((question) => boundedField(question.field))
+    .filter((field) => !remaining.has(field)))].slice(0, 16);
+  const failureStage = clarificationFailureStage(ctx.lastError?.stage);
+  const chain: ClarificationChain = {
+    version: 1,
+    previousRequestId: response.requestId.slice(0, 512),
+    ...(prior?.sourceStage ? { previousSourceStage: prior.sourceStage } : {}),
+    answeredAt: response.answeredAt,
+    answeredFields,
+    remainingFields,
+    ...(ctx.taskBook?.goal ? { taskGoal: ctx.taskBook.goal.slice(0, 1_024) } : {}),
+    ...(failureStage ? { failureStage } : {}),
+    attachmentCount: Math.min(64, ctx.attachments?.length ?? 0),
+    ...(ctx.resolvedRunConfig?.permissionPolicyId
+      ? { permissionPolicyId: ctx.resolvedRunConfig.permissionPolicyId }
+      : {}),
+  };
+  return {
+    ...request,
+    id: request.id === response.requestId ? `${request.id}:follow-up` : request.id,
+    clarificationChain: chain,
+  };
+}
+
+function clarificationFailureStage(
+  stage: StageName | undefined,
+): ClarificationChain['failureStage'] | undefined {
+  if (stage === 'classify' || stage === 'decide' || stage === 'execute' || stage === 'recover' || stage === 'verify') {
+    return stage;
+  }
+  return undefined;
+}
+
+function boundedField(value: string): string {
+  return value.trim().slice(0, 128);
 }
 
 function ensureClarificationRequest(ctx: RunContext): ClarificationRequest {

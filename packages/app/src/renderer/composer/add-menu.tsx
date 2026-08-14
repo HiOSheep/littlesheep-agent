@@ -39,7 +39,7 @@ export function AddMenu({
     <div ref={rootRef} className={`add-menu ${open ? 'open' : ''}`}>
       <button
         {...transientTriggerProps()}
-        className="icon-btn add-menu-trigger"
+        className="icon-btn add-menu-trigger composer-tab-control"
         type="button"
         aria-label={label}
         aria-haspopup="menu"

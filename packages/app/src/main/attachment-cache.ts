@@ -40,6 +40,10 @@ const EXT_BY_MIME: Record<string, string> = {
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
 }
 
+const MIME_BY_EXT: Record<string, string> = Object.fromEntries(
+  Object.entries(EXT_BY_MIME).map(([mimeType, extension]) => [extension, mimeType]),
+)
+
 interface AttachmentCacheEntry {
   id: string
   fileName: string
@@ -102,11 +106,11 @@ export class ManagedAttachmentCache implements ManagedAttachmentResolver {
     this.now = options.now ?? Date.now
   }
 
-  async initialize(): Promise<AttachmentCacheCleanupReport> {
+  async initialize(protectedIds: ReadonlySet<string> = new Set()): Promise<AttachmentCacheCleanupReport> {
     return this.exclusive(async () => {
       await this.ensureLayout()
       const index = await this.readIndex()
-      const report = await this.cleanupIndex(index, new Set())
+      const report = await this.cleanupIndex(index, protectedIds)
       await this.writeIndex(index)
       return report
     })
@@ -162,6 +166,68 @@ export class ManagedAttachmentCache implements ManagedAttachmentResolver {
         path: filePath,
         name: entry.originalName,
         kind: inferAttachmentKind(filePath),
+        mimeType: entry.mimeType,
+        size: entry.size,
+        cacheId: entry.id,
+        contentHash: entry.contentHash,
+        ownership: 'cache',
+      }
+    })
+  }
+
+  /** Copy an explicitly user-selected file into the verified managed cache. */
+  async importFile(ref: AttachmentRef): Promise<AttachmentRef> {
+    const sourcePath = resolve(ref.path)
+    const before = await lstat(sourcePath)
+    if (!before.isFile() || before.isSymbolicLink()) throw new Error('附件必须是普通文件，不能是符号链接')
+    if (before.size > MAX_IMPORTED_ATTACHMENT_BYTES) {
+      throw new Error(`附件不能超过 ${MAX_IMPORTED_ATTACHMENT_BYTES} 字节`)
+    }
+    const data = await readFile(sourcePath)
+    const after = await lstat(sourcePath)
+    if (!after.isFile()
+      || after.isSymbolicLink()
+      || after.size !== before.size
+      || after.mtimeMs !== before.mtimeMs
+      || after.ino !== before.ino) {
+      throw new Error('读取附件时源文件发生变化，请重新选择')
+    }
+    const requestedName = sanitizeDisplayName(ref.name ?? basename(sourcePath))
+    const mimeType = ref.mimeType
+      ?? MIME_BY_EXT[extname(requestedName).toLowerCase()]
+      ?? 'application/octet-stream'
+    return this.exclusive(async () => {
+      await this.ensureLayout()
+      const index = await this.readIndex()
+      const id = randomUUID()
+      const fileName = buildManagedFileName(id, requestedName, mimeType)
+      const filePath = this.resolveEntryPath(fileName)
+      if (!filePath) throw new Error('无法创建受管附件路径')
+      const timestamp = new Date(this.now()).toISOString()
+      const entry: AttachmentCacheEntry = {
+        id,
+        fileName,
+        originalName: requestedName,
+        mimeType,
+        size: data.byteLength,
+        contentHash: hashBuffer(data),
+        createdAt: timestamp,
+        lastAccessedAt: timestamp,
+      }
+      await writeBufferAtomically(filePath, data)
+      index.entries[id] = entry
+      try {
+        await this.cleanupIndex(index, new Set([id]))
+        await this.writeIndex(index)
+      } catch (error) {
+        delete index.entries[id]
+        await unlink(filePath).catch(() => undefined)
+        throw error
+      }
+      return {
+        path: filePath,
+        name: entry.originalName,
+        kind: ref.kind ?? inferAttachmentKind(filePath),
         mimeType: entry.mimeType,
         size: entry.size,
         cacheId: entry.id,

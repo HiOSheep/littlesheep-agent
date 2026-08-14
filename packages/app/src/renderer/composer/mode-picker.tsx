@@ -51,7 +51,7 @@ export function ModePicker({
       <button
         {...transientTriggerProps()}
         type="button"
-        className="model-picker-trigger mode-picker-trigger"
+        className="model-picker-trigger mode-picker-trigger composer-tab-control"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`${selected.label}: ${selected.riskLabel}，${selected.desc}`}

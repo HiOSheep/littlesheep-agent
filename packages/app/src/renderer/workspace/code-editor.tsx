@@ -12,6 +12,12 @@ import { LITTLE_SHEEP_MONACO_THEME } from './monaco-theme'
 export const WORKSPACE_MONACO_FONT_FAMILY =
   'Consolas, ui-monospace, SFMono-Regular, Menlo, Monaco, monospace'
 
+// Keep the editor gutter stable across ordinary files and Git review. A
+// four-character line-number reserve plus a wider decoration gutter leaves a
+// deliberate visual pause before code without consuming a full editor column.
+export const WORKSPACE_MONACO_LINE_NUMBERS_MIN_CHARS = 4
+export const WORKSPACE_MONACO_LINE_DECORATIONS_WIDTH = 12
+
 export function workspaceEditorModelPath(root: string, path: string): string {
   const safeRoot = root.split(/[\\/]+/u).map(encodeURIComponent).join('/')
   const safePath = path.split(/[\\/]+/u).map(encodeURIComponent).join('/')
@@ -24,13 +30,18 @@ export const WORKSPACE_MONACO_BASE_OPTIONS = {
   fontSize: 13,
   fontWeight: '500',
   lineHeight: 23,
-  lineDecorationsWidth: 8,
-  lineNumbersMinChars: 3,
+  lineDecorationsWidth: WORKSPACE_MONACO_LINE_DECORATIONS_WIDTH,
+  lineNumbersMinChars: WORKSPACE_MONACO_LINE_NUMBERS_MIN_CHARS,
   minimap: { enabled: false },
   overviewRulerBorder: false,
-  padding: { top: 10, bottom: 10 },
+  padding: { top: 12, bottom: 12 },
   renderLineHighlight: 'none',
   scrollBeyondLastLine: false,
+  scrollbar: {
+    horizontalScrollbarSize: 10,
+    useShadows: false,
+    verticalScrollbarSize: 10,
+  },
   smoothScrolling: true,
   wordWrap: 'on',
 } satisfies Monaco.editor.IStandaloneEditorConstructionOptions

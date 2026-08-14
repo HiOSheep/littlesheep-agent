@@ -205,23 +205,10 @@ export function liveToolStatusClass(tool: LiveToolEvent): 'pending' | 'pass' | '
 }
 
 
-export function liveToolGlyph(tool: LiveToolEvent): string {
-  if (tool.ok === undefined) return '·'
-  return tool.ok ? '✓' : '!'
-}
-
-
 export function shortActivityText(value: string, maxLength: number): string {
   const text = value.replace(/\s+/g, ' ').trim()
   if (text.length <= maxLength) return text
   return `${text.slice(0, Math.max(0, maxLength - 1))}…`
-}
-
-
-export function toolShellTitle(name: string): string {
-  const lower = name.toLowerCase()
-  if (lower.includes('exec') || lower.includes('shell') || lower.includes('command')) return 'Shell'
-  return name
 }
 
 

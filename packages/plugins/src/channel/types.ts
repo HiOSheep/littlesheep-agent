@@ -26,6 +26,8 @@ export type ChannelId = string;
 export interface InboundChannelMessage {
   /** User's text input. */
   text: string;
+  /** Stable platform message identity used to join retries without replaying effects. */
+  requestKey?: string;
   /** External conversation id (e.g. Telegram chat.id, QQ group id). */
   externalConversationId: string;
   /** External user id (e.g. Telegram user.id). */

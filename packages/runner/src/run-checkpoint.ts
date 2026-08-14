@@ -60,6 +60,26 @@ export function buildRunCheckpoint(options: BuildRunCheckpointOptions): RunCheck
     .map((event) => event.id)
     .slice(0, MAX_DEFERRED_EVENTS)
     ?? [...(ctx.deferredRuntimeEventIds ?? [])].slice(-MAX_DEFERRED_EVENTS);
+  const restorableAttachments = (ctx.attachments ?? [])
+    .filter((attachment) => (
+      Boolean(attachment.id)
+      && Boolean(attachment.cacheId)
+      && Boolean(attachment.contentHash)
+    ))
+    .slice(0, 256)
+    .map((attachment) => ({
+      version: 1 as const,
+      attachmentId: attachment.id!,
+      cacheId: attachment.cacheId!,
+      contentHash: attachment.contentHash!,
+      name: attachment.name ?? 'attachment',
+      kind: attachment.kind,
+      ...(attachment.mimeType ? { mimeType: attachment.mimeType } : {}),
+      ...(attachment.size !== undefined ? { size: attachment.size } : {}),
+    }));
+  const toolRecipes = ctx.toolSources?.inspect_attachment === 'run-scoped'
+    ? [{ version: 1 as const, factory: 'inspect_attachment' as const }]
+    : [];
 
   return {
     version: 1,
@@ -95,6 +115,21 @@ export function buildRunCheckpoint(options: BuildRunCheckpointOptions): RunCheck
       behaviorModeId: ctx.resolvedRunConfig?.behaviorModeId ?? 'general',
       availableToolNames: [...new Set(ctx.tools.map((tool) => tool.name))].slice(0, 256),
       attachmentCount: Math.min(256, ctx.attachments?.length ?? 0),
+      ...(restorableAttachments.length > 0 ? { attachments: restorableAttachments } : {}),
+      ...(toolRecipes.length > 0 ? { toolRecipes } : {}),
+      ...(ctx.clarificationRequest ? {
+        continuation: {
+          version: 1,
+          requestId: ctx.clarificationRequest.id,
+          sourceStage: ctx.clarificationRequest.sourceStage,
+        },
+      } : {}),
+      ...(ctx.lastError ? {
+        lastError: {
+          stage: ctx.lastError.stage,
+          message: ctx.lastError.message.slice(0, 2_048),
+        },
+      } : {}),
       ...(ctx.classification ? { classification: clone(ctx.classification) } : {}),
       ...(ctx.needAssessment ? { needAssessment: clone(ctx.needAssessment) } : {}),
       ...(ctx.plan ? { plan: clone(ctx.plan).slice(0, 64) } : {}),

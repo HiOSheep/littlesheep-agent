@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { AgentToolRow } from './chat/agent-tool-row'
+import type { LiveToolEvent } from './chat/types'
 
 interface StageEntry { name: string; ok: boolean }
 interface ToolEntry { name: string; input: unknown; output?: unknown; error?: string; ok: boolean }
@@ -52,9 +54,9 @@ export function TraceCard({ trace, toolCalls, durationMs, onOpenFile }: TraceCar
             </div>
           )}
           {toolCalls && toolCalls.length > 0 && (
-            <div className="trace-tools">
+            <div className="trace-tools agent-tool-list">
               {toolCalls.map((t, i) => (
-                <TraceToolItem key={i} tool={t} onOpenFile={onOpenFile} />
+                <AgentToolRow key={i} tool={historyToolEvent(t, i)} now={0} onOpenFile={onOpenFile} />
               ))}
             </div>
           )}
@@ -67,81 +69,24 @@ export function TraceCard({ trace, toolCalls, durationMs, onOpenFile }: TraceCar
   )
 }
 
-function TraceToolItem({
-  tool,
-  onOpenFile,
-}: {
-  tool: ToolEntry
-  onOpenFile?: (path: string) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const targetPath = legacyToolFilePath(tool.input)
-
-  return (
-    <section className={`trace-tool activity-command ${tool.ok ? 'pass' : 'fail'} ${open ? 'open' : ''}`}>
-      <button
-        type="button"
-        className="activity-command-header"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-      >
-        <span className="activity-command-icon" aria-hidden="true" />
-        <span className="activity-command-label">{tool.ok ? '已运行' : '运行失败'} {tool.name}</span>
-        <span className="activity-command-duration">历史</span>
-        <span className="activity-command-chevron" aria-hidden="true" />
-      </button>
-      <div
-        className={`activity-command-body disclosure-panel ${open ? 'open' : ''}`}
-        aria-hidden={!open}
-        {...(!open ? { inert: '' } : {})}
-      >
-        <div className="activity-command-shell">
-          <div className="activity-command-shell-title">
-            <span>{tool.name}</span>
-            {targetPath && onOpenFile && (
-              <button
-                type="button"
-                className="activity-command-file-action"
-                onClick={() => onOpenFile(targetPath)}
-              >
-                <span>打开文件</span>
-              </button>
-            )}
-          </div>
-          <div className="trace-tool-label">输入</div>
-          <pre>{fmt(tool.input)}</pre>
-          {tool.output !== undefined && (
-            <>
-              <div className="trace-tool-label">输出</div>
-              <pre>{fmt(tool.output)}</pre>
-            </>
-          )}
-          {tool.error && (
-            <>
-              <div className="trace-tool-label">错误</div>
-              <pre className="error">{tool.error}</pre>
-            </>
-          )}
-          <div className={`activity-command-shell-status ${tool.ok ? 'pass' : 'fail'}`}>
-            {tool.ok ? '成功' : '失败'}
-          </div>
-        </div>
-      </div>
-    </section>
-  )
-}
-
-function fmt(v: unknown): string {
-  if (typeof v === 'string') return v.length > 600 ? `${v.slice(0, 600)}...` : v
-  return JSON.stringify(v, null, 2).slice(0, 600)
-}
-
-function legacyToolFilePath(input: unknown): string | null {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) return null
-  const value = input as Record<string, unknown>
-  for (const key of ['path', 'filePath', 'target', 'targetPath']) {
-    const candidate = value[key]
-    if (typeof candidate === 'string' && candidate.trim()) return candidate
+function historyToolEvent(tool: ToolEntry, index: number): LiveToolEvent {
+  return {
+    callId: `history-tool-${index}`,
+    name: tool.name,
+    input: tool.input,
+    output: stringifyActivityValue(tool.output),
+    error: tool.error,
+    ok: tool.ok,
   }
-  return null
+}
+
+
+function stringifyActivityValue(value: unknown): string | undefined {
+  if (value === undefined) return undefined
+  if (typeof value === 'string') return value
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
 }

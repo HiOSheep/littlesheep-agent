@@ -201,6 +201,7 @@ describe('WebhookChannelPlugin', () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             text: 'hello world',
+            messageId: 'webhook-message-1',
             conversationId: 'chat-1',
             userId: 'user-1',
             isGroup: false,
@@ -218,6 +219,7 @@ describe('WebhookChannelPlugin', () => {
         expect(runCalls).toHaveLength(1);
         expect(runCalls[0]!.message.text).toBe('hello world');
         expect(runCalls[0]!.message.externalConversationId).toBe('chat-1');
+        expect(runCalls[0]!.message.requestKey).toBe('webhook:webhook-message-1');
         expect(runCalls[0]!.message.externalUserId).toBe('user-1');
         expect(runCalls[0]!.message.isGroup).toBe(false);
         expect(runCalls[0]!.message.userName).toBe('Alice');

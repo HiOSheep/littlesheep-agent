@@ -1,7 +1,7 @@
 // @littlesheep/harness — stages/recover.test.ts
 import { describe, it, expect } from 'vitest';
 import { createRecoverStage } from './recover.js';
-import { createMockLlm, textResponse, makeCtx } from '../tests/helpers.js';
+import { createMockLlm, textResponse, makeCtx, makeTool } from '../tests/helpers.js';
 import { textMessage } from '@littlesheep/types';
 
 const deps = { model: 'test' };
@@ -90,6 +90,35 @@ describe('recoverStage', () => {
     expect(systemPrompts[0]).toContain('SOUL_SENTINEL_RECOVER_VOICE');
   });
 
+  it('tells recovery which run tools can be added to a revised TaskBook step', async () => {
+    const recoveryPrompts: string[] = [];
+    const llm = createMockLlm((request) => {
+      recoveryPrompts.push(String(request.messages.at(-1)?.content ?? ''));
+      return textResponse(JSON.stringify({
+        action: 'retry',
+        revisedPlan: [{ description: 'read the document', tools: ['document_read'] }],
+      }));
+    });
+    const stage = createRecoverStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [makeTool('document_read', { ok: true, output: 'document body' })],
+      recoveryAttempts: 0,
+      lastError: {
+        stage: 'execute',
+        message: 'tool is registered for this run but not available in the current TaskBook step: document_read',
+      },
+      plan: [{ description: 'create the document', tools: ['document_create'] }],
+      inbound: textMessage('user', '读取并生成文档'),
+    });
+
+    const result = await stage(ctx);
+
+    expect(result.next).toBe('execute');
+    expect(ctx.plan).toEqual([{ description: 'read the document', tools: ['document_read'] }]);
+    expect(recoveryPrompts[0]).toContain('Available run tools: document_read');
+    expect(recoveryPrompts[0]).toContain('"tools":["document_create"]');
+  });
+
   it('escalate action → ask_user', async () => {
     const llm = createMockLlm(textResponse('{"action":"escalate","reason":"stuck"}'));
     const stage = createRecoverStage({ ...deps, llm });
@@ -154,6 +183,54 @@ describe('recoverStage', () => {
     expect(res.meta).toMatchObject({ forcedEscalate: true });
     expect(ctx.recoveryAttempts).toBe(4);
     expect(llm.chat).not.toHaveBeenCalled(); // short-circuits before LLM
+  });
+
+  it('honors one bound user retry after the checkpoint exhausted autonomous recovery', async () => {
+    const llm = createMockLlm(textResponse('{"action":"escalate","reason":"do not call"}'));
+    const stage = createRecoverStage({ ...deps, llm });
+    const ctx = makeCtx({
+      recoveryAttempts: 3,
+      maxRecoveryAttempts: 3,
+      lastError: { stage: 'execute', message: 'document_create was denied' },
+      inbound: textMessage('user', '权限已经打开了，再试一次'),
+    });
+    ctx.entryStage = 'recover';
+    ctx.resumedFromCheckpointId = 'waiting-document-checkpoint';
+    ctx.conversationContinuation = {
+      version: 1,
+      resolution: 'bound',
+      checkpointId: 'waiting-document-checkpoint',
+      sourceRunId: 'source-run',
+      disposition: 'retry',
+      dispositionSource: 'model',
+      resumeStage: 'recover',
+      resumeRule: 'recover->recover',
+    };
+
+    const first = await stage(ctx);
+
+    expect(first).toMatchObject({
+      next: 'execute',
+      ok: true,
+      meta: {
+        deterministicContinuationRetry: true,
+        attempts: 4,
+        failedStage: 'execute',
+        resumedFromCheckpointId: 'waiting-document-checkpoint',
+      },
+    });
+    expect(ctx.lastError).toEqual({ stage: 'execute', message: 'document_create was denied' });
+    expect(ctx.recoveryAttempts).toBe(4);
+    expect(llm.chat).not.toHaveBeenCalled();
+
+    const second = await stage(ctx);
+
+    expect(second).toMatchObject({
+      next: 'ask_user',
+      ok: true,
+      meta: { forcedEscalate: true, attempts: 5 },
+    });
+    expect(llm.chat).not.toHaveBeenCalled();
   });
 
   it('LLM returns non-JSON → fallback escalate', async () => {

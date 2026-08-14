@@ -155,9 +155,7 @@ export class ToolExecutionService {
     for (const [index, request] of requests.entries()) {
       const record = this.createRecord(request);
       const retained = this.retainRecord(record);
-      const registration = allowedToolNames && !allowedToolNames.has(request.name)
-        ? undefined
-        : this.registrations.get(request.name);
+      const registration = this.registrations.get(request.name);
       if (!registration) {
         record.resolvedAt = this.timestamp();
         this.publishRecord(record, retained);
@@ -174,6 +172,17 @@ export class ToolExecutionService {
       record.resolvedAt = this.timestamp();
       record.toolSource = registration.source;
       this.publishRecord(record, retained);
+      if (allowedToolNames && !allowedToolNames.has(request.name)) {
+        immediate.set(index, this.finishWithoutExecution(
+          record,
+          retained,
+          request,
+          'validation_failed',
+          `tool is registered for this run but not available in the current TaskBook step: ${request.name}`,
+          'step_tool_not_allowed',
+        ));
+        continue;
+      }
 
       let input: unknown;
       try {

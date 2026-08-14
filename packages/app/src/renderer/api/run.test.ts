@@ -109,6 +109,9 @@ describe('renderer run API', () => {
     const result = await api.resumeRunCheckpointStream('checkpoint/a', {
       text: '继续',
       reason: 'user resumed',
+      permissionMode: 'full',
+      requestKey: 'stable-recovery-key',
+      continuationDirective: 'answer',
     }, {
       onStart: ({ runId }) => started.push(runId),
       onDelta: () => undefined,
@@ -121,7 +124,13 @@ describe('renderer run API', () => {
       'http://127.0.0.1:43127/run-checkpoints/checkpoint%2Fa/resume/stream',
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ text: '继续', reason: 'user resumed' }),
+        body: JSON.stringify({
+          text: '继续',
+          reason: 'user resumed',
+          permissionMode: 'full',
+          requestKey: 'stable-recovery-key',
+          continuationDirective: 'answer',
+        }),
       }),
     )
     expect(fetchMock).toHaveBeenNthCalledWith(

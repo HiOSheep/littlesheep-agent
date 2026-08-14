@@ -169,14 +169,6 @@ export async function buildInfrastructure(
 
   // M3: execution log store — one JSON file per run, for replay/audit.
   const executionLogStore = new ExecutionLogStore({ rootDir: dirs.executionLogs });
-  const runCheckpointStore = new RunCheckpointStore({
-    rootDir: join(dirs.root, 'run-checkpoints'),
-  });
-  try {
-    await runCheckpointStore.initialize();
-  } catch (error) {
-    opts.log?.('warn', `runner: run checkpoint store initialization degraded: ${(error as Error).message}`);
-  }
   const runCheckpointDispositionStore = new RunCheckpointDispositionStore({
     rootDir: join(dirs.root, 'run-checkpoint-dispositions'),
   });
@@ -184,6 +176,26 @@ export async function buildInfrastructure(
     await runCheckpointDispositionStore.initialize();
   } catch (error) {
     opts.log?.('warn', `runner: run checkpoint disposition initialization degraded: ${(error as Error).message}`);
+  }
+  const runCheckpointStore = new RunCheckpointStore({
+    rootDir: join(dirs.root, 'run-checkpoints'),
+    protectedCheckpointIds: async () => {
+      const active = await runCheckpointDispositionStore.list({
+        statuses: ['resuming', 'interrupted', 'deferred'],
+      });
+      return new Set(active.flatMap((disposition) => [
+        disposition.checkpointId,
+        ...(disposition.nextCheckpointId ? [disposition.nextCheckpointId] : []),
+      ]));
+    },
+    protectedRunIds: async () => new Set((await runCheckpointDispositionStore.list({
+      statuses: ['resuming'],
+    })).flatMap((disposition) => disposition.resumeRunId ? [disposition.resumeRunId] : [])),
+  });
+  try {
+    await runCheckpointStore.initialize();
+  } catch (error) {
+    opts.log?.('warn', `runner: run checkpoint store initialization degraded: ${(error as Error).message}`);
   }
 
   const sessionManager = new SessionManager({

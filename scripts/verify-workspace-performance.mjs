@@ -160,6 +160,8 @@ async function main() {
       && reviewEditorContract.syntaxColourCount >= 3
       && reviewEditorContract.hasInsertedBackground
       && reviewEditorContract.hasRemovedBackground
+      && reviewEditorContract.hasInsertedLineNumberColour
+      && reviewEditorContract.hasRemovedLineNumberColour
       && Object.values(reviewPersistenceContract).every(Boolean)
       && editorCold.monacoInk.hasInk
       && editorWarm.monacoInk.hasInk
@@ -231,6 +233,11 @@ async function prepareFixture(dataDir, chromiumDir, workspaceDir) {
     '  id: number',
     '  label: string',
     '}',
+    '',
+    'const legacyLabels = [',
+    '  "alpha",',
+    '  "beta",',
+    ']',
     '',
     'export function describe(sample: Sample): string {',
     '  return `${sample.id}: ${sample.label}`',
@@ -507,29 +514,66 @@ async function readReviewEditorContract(client) {
     const contract = await client.evaluate(`(() => {
       const root = document.querySelector('.workspace-review-monaco-diff .monaco-diff-editor')
       if (!root) return null
-      const visibleStyles = (selector, property) => Array.from(root.querySelectorAll(selector))
+      const visibleElements = (selector) => Array.from(root.querySelectorAll(selector))
         .filter((element) => {
           const rect = element.getBoundingClientRect()
           const style = getComputedStyle(element)
           return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
         })
+      const visibleStyles = (selector, property, includeTransparent = false) => visibleElements(selector)
         .map((element) => getComputedStyle(element)[property])
-        .filter((value) => value && value !== 'rgba(0, 0, 0, 0)' && value !== 'transparent')
+        .filter((value) => value && (includeTransparent || (value !== 'rgba(0, 0, 0, 0)' && value !== 'transparent')))
       const syntaxColours = new Set(visibleStyles('.view-line span', 'color'))
-      const insertedBackgrounds = new Set(visibleStyles('.line-insert, .char-insert', 'backgroundColor'))
-      const removedBackgrounds = new Set(visibleStyles('.line-delete, .char-delete', 'backgroundColor'))
+      const insertedBackgrounds = new Set(visibleStyles('.line-insert', 'backgroundColor'))
+      const removedBackgrounds = new Set(visibleStyles('.line-delete', 'backgroundColor'))
+      const insertedCharacterBackgrounds = new Set(visibleStyles('.char-insert', 'backgroundColor', true))
+      const removedCharacterBackgrounds = new Set(visibleStyles(
+        '.char-delete, .inline-deleted-text',
+        'backgroundColor',
+        true,
+      ))
+      const insertedLineNumberColours = new Set(visibleStyles(
+        '.margin-view-overlays > div:has(> .gutter-insert) > .line-numbers',
+        'color',
+      ))
+      const removedLineNumberColours = new Set(visibleStyles(
+        '.margin-view-overlays > div:has(> .gutter-delete) > .line-numbers',
+        'color',
+      ))
+      const tintedLayerCounts = visibleElements('.line-insert, .line-delete').map((element) => {
+        const rect = element.getBoundingClientRect()
+        const x = Math.min(rect.right - 1, rect.left + Math.max(1, rect.width / 2))
+        const y = Math.min(rect.bottom - 1, rect.top + Math.max(1, rect.height / 2))
+        return document.elementsFromPoint(x, y).filter((candidate) => {
+          if (!root.contains(candidate) || !candidate.matches('.line-insert, .line-delete, .char-insert, .char-delete, .inline-deleted-text')) return false
+          const colour = getComputedStyle(candidate).backgroundColor
+          return colour !== 'rgba(0, 0, 0, 0)' && colour !== 'transparent'
+        }).length
+      })
       return {
         diffEditorCount: root.querySelectorAll('.editor.modified, .editor.original').length,
         syntaxColours: [...syntaxColours],
         insertedBackgrounds: [...insertedBackgrounds],
         removedBackgrounds: [...removedBackgrounds],
+        insertedCharacterBackgrounds: [...insertedCharacterBackgrounds],
+        removedCharacterBackgrounds: [...removedCharacterBackgrounds],
+        insertedLineNumberColours: [...insertedLineNumberColours],
+        removedLineNumberColours: [...removedLineNumberColours],
+        maxTintedLayerCount: Math.max(0, ...tintedLayerCounts),
       }
     })()`)
     if (
       !contract
       || contract.syntaxColours.length < 3
-      || contract.insertedBackgrounds.length === 0
-      || contract.removedBackgrounds.length === 0
+      || !contract.insertedBackgrounds.includes('rgba(35, 69, 39, 0.5)')
+      || !contract.removedBackgrounds.includes('rgba(93, 41, 29, 0.5)')
+      || contract.insertedCharacterBackgrounds.length === 0
+      || contract.removedCharacterBackgrounds.length === 0
+      || contract.insertedCharacterBackgrounds.some((colour) => colour !== 'rgba(0, 0, 0, 0)')
+      || contract.removedCharacterBackgrounds.some((colour) => colour !== 'rgba(0, 0, 0, 0)')
+      || !contract.insertedLineNumberColours.includes('rgb(2, 162, 67)')
+      || !contract.removedLineNumberColours.includes('rgb(222, 53, 46)')
+      || contract.maxTintedLayerCount !== 1
     ) return undefined
     return {
       diffEditorCount: contract.diffEditorCount,
@@ -539,8 +583,16 @@ async function readReviewEditorContract(client) {
       insertedBackgrounds: contract.insertedBackgrounds,
       hasRemovedBackground: true,
       removedBackgrounds: contract.removedBackgrounds,
+      characterBackgroundsTransparent: true,
+      insertedCharacterBackgrounds: contract.insertedCharacterBackgrounds,
+      removedCharacterBackgrounds: contract.removedCharacterBackgrounds,
+      maxTintedLayerCount: contract.maxTintedLayerCount,
+      hasInsertedLineNumberColour: true,
+      insertedLineNumberColours: contract.insertedLineNumberColours,
+      hasRemovedLineNumberColour: true,
+      removedLineNumberColours: contract.removedLineNumberColours,
     }
-  }, actionTimeoutMs, 'Monaco review syntax and red/green diff surfaces')
+  }, actionTimeoutMs, 'Monaco single-layer 50% review surfaces and changed line numbers')
 }
 
 async function verifyReviewPersistence(client) {
@@ -552,6 +604,7 @@ async function verifyReviewPersistence(client) {
   await waitForReviewPreferenceState(client, false, true)
   await reloadRenderer(client, 'single-column review preference reload')
   const singleColumn = await waitForReviewPreferenceState(client, false, true)
+  const singleColumnDeletedMarginConnected = await readSingleColumnDeletedMarginContract(client)
 
   await client.evaluate(`(() => {
     document.querySelector('.workspace-review-diff-actions [aria-pressed]')?.click();
@@ -567,7 +620,43 @@ async function verifyReviewPersistence(client) {
     navigatorCollapsedAfterReload: singleColumn.navigatorCollapsed === true,
     sideBySideAfterReload: sideBySide.sideBySide === true,
     navigatorExpandedAfterReload: sideBySide.navigatorCollapsed === false,
+    singleColumnDeletedMarginConnected,
   }
+}
+
+async function readSingleColumnDeletedMarginContract(client) {
+  return waitFor(async () => {
+    const contract = await client.evaluate(`(() => {
+      const zones = Array.from(document.querySelectorAll(
+        '.workspace-review-monaco-diff .monaco-editor .inline-deleted-margin-view-zone',
+      )).filter((element) => {
+        const rect = element.getBoundingClientRect()
+        const style = getComputedStyle(element)
+        return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
+      })
+      if (zones.length === 0) return null
+      return zones.map((element) => {
+        const rect = element.getBoundingClientRect()
+        const style = getComputedStyle(element)
+        return {
+          height: rect.height,
+          backgroundImage: style.backgroundImage,
+          backgroundPosition: style.backgroundPosition,
+          backgroundRepeat: style.backgroundRepeat,
+          backgroundSize: style.backgroundSize,
+        }
+      })
+    })()`)
+    if (!contract) return undefined
+    const connected = contract.every((zone) => (
+      zone.height > 0
+      && zone.backgroundImage.includes('rgb(222, 53, 46)')
+      && zone.backgroundPosition === '0% 0%'
+      && zone.backgroundRepeat === 'no-repeat'
+      && zone.backgroundSize === '100% 100%'
+    ))
+    return connected || undefined
+  }, actionTimeoutMs, 'single-column deleted view-zone continuous red edge')
 }
 
 async function waitForReviewPreferenceState(client, sideBySide, navigatorCollapsed) {

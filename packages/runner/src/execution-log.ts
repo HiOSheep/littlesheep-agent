@@ -39,8 +39,12 @@ import type {
   RuntimeEventQueueSnapshot,
   SessionRunSummary,
   VersionCheckpointSummary,
+  ConversationContinuationEvidence,
+  RunUsage,
+  SideEffectCheckpoint,
 } from '@littlesheep/types';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
+import { acquireLock } from '@littlesheep/session';
 import type { RuntimeResourceObservation } from './runtime-resource-observation.js';
 
 /** A single tool call + its result, paired by id. */
@@ -78,6 +82,9 @@ export interface ExecutionLog {
   memoryContinuityAssessment?: MemoryContinuityAssessment;
   clarificationRequest?: ClarificationRequest;
   clarificationResponse?: ClarificationResponse;
+  conversationContinuation?: ConversationContinuationEvidence;
+  usage?: RunUsage;
+  sideEffects?: SideEffectCheckpoint[];
   memoryAccess?: MemoryAccessLedger;
   resolvedRunConfig?: ResolvedRunConfig;
   modelRequests?: ModelRequestSnapshot[];
@@ -120,6 +127,9 @@ export interface ExecutionLogInput {
   memoryContinuityAssessment?: MemoryContinuityAssessment;
   clarificationRequest?: ClarificationRequest;
   clarificationResponse?: ClarificationResponse;
+  conversationContinuation?: ConversationContinuationEvidence;
+  usage?: RunUsage;
+  sideEffects?: SideEffectCheckpoint[];
   memoryAccess?: MemoryAccessLedger;
   resolvedRunConfig?: ResolvedRunConfig;
   modelRequests?: ModelRequestSnapshot[];
@@ -205,6 +215,9 @@ export class ExecutionLogStore {
       memoryContinuityAssessment: input.memoryContinuityAssessment,
       clarificationRequest: input.clarificationRequest,
       clarificationResponse: input.clarificationResponse,
+      conversationContinuation: input.conversationContinuation,
+      usage: input.usage,
+      sideEffects: input.sideEffects,
       memoryAccess: input.memoryAccess,
       resolvedRunConfig: input.resolvedRunConfig,
       modelRequests,
@@ -223,8 +236,23 @@ export class ExecutionLogStore {
       durationMs: input.durationMs,
     };
     await mkdir(this.rootDir, { recursive: true });
-    await writeFile(this.filePath(input.runId), JSON.stringify(log, null, 2), 'utf8');
-    return log;
+    const file = this.filePath(input.runId);
+    const lock = await acquireLock(file, 60_000);
+    try {
+      const existing = await this.read(input.runId);
+      if (existing && shouldRetainExecutionLog(existing, log)) return existing;
+      const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
+      try {
+        await writeFile(temporary, JSON.stringify(log, null, 2), { encoding: 'utf8', flag: 'wx' });
+        await rename(temporary, file);
+      } catch (error) {
+        await rm(temporary, { force: true }).catch(() => undefined);
+        throw error;
+      }
+      return log;
+    } finally {
+      await lock.release();
+    }
   }
 
   /** Attach the post-run checkpoint after the audit record itself has been written. */
@@ -316,6 +344,13 @@ export class ExecutionLogStore {
     const key = createHash('sha256').update(sessionId).digest('hex');
     return join(this.rootDir, 'latest-by-session', `${key}.json`);
   }
+}
+
+function shouldRetainExecutionLog(existing: ExecutionLog, incoming: ExecutionLog): boolean {
+  const existingControlFailure = Boolean(existing.conversationContinuation?.failure);
+  const incomingControlFailure = Boolean(incoming.conversationContinuation?.failure);
+  if (existingControlFailure && !incomingControlFailure) return false;
+  return !existingControlFailure || incomingControlFailure;
 }
 
 const MAX_TOOL_INVOCATIONS_PER_LOG = 256;

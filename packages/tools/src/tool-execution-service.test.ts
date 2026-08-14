@@ -226,7 +226,12 @@ describe('ToolExecutionService', () => {
     ], undefined, new Set());
 
     expect([...results.values()].every((result) => result.ok === false)).toBe(true);
-    expect(service.snapshot().records.map((record) => record.status)).toEqual(['unknown_tool', 'unknown_tool']);
+    expect(service.snapshot().records).toMatchObject([
+      { toolName: 'missing', toolSource: 'unknown', status: 'unknown_tool', errorKind: 'unknown_tool' },
+      { toolName: 'known', toolSource: 'plugin:known', status: 'validation_failed', errorKind: 'step_tool_not_allowed' },
+    ]);
+    expect(results.get(1)?.error).toContain('registered for this run');
+    expect(results.get(1)?.error).toContain('current TaskBook step');
     expect(execute).not.toHaveBeenCalled();
   });
 

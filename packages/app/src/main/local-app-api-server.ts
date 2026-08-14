@@ -76,7 +76,16 @@ export async function startLocalAppApiServer(
   const runRouter = await RunRouter.create(initialRunner)
   const terminalRouter = new TerminalRouter()
   try {
-    await attachmentCache.initialize()
+    const protectedAttachmentIds = new Set<string>()
+    for (const inspection of await initialRunner.runCheckpoints?.list(128) ?? []) {
+      if (inspection.disposition?.status === 'resumed'
+        || inspection.disposition?.status === 'completed'
+        || inspection.disposition?.status === 'abandoned') continue
+      for (const reference of inspection.checkpoint.resumeState?.attachments ?? []) {
+        protectedAttachmentIds.add(reference.cacheId)
+      }
+    }
+    await attachmentCache.initialize(protectedAttachmentIds)
   } catch (error) {
     console.error(`[attachments] managed cache initialization failed: ${(error as Error).message}`)
   }

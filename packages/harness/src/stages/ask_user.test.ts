@@ -64,6 +64,86 @@ describe('askUserStage', () => {
     expect(ctx.replyProvenance?.purpose).toBe('ask_user');
   });
 
+  it('passes a bounded clarification chain instead of dropping prior correction context', async () => {
+    const payloads: string[] = [];
+    const llm = createMockLlm((request) => {
+      payloads.push(String(request.messages[1]?.content ?? ''));
+      return textResponse('Please confirm the remaining output format.');
+    });
+    const stage = createAskUserStage({ llm, model: 'test' });
+    const priorRequest = {
+      id: 'prior-request',
+      kind: 'recovery_decision' as const,
+      sourceStage: 'recover' as const,
+      createdAt: '2026-08-14T00:00:00.000Z',
+      originalRequest: 'Complete the PDF task.',
+      blockingReason: 'Permission and output format were missing.',
+      questions: [
+        { id: 'q1', field: 'permission', prompt: 'Enable permission.', required: true },
+        { id: 'q2', field: 'outputFormat', prompt: 'Choose the output format.', required: true },
+      ],
+    };
+    const ctx = makeCtx({
+      inbound: textMessage('user', 'SECRET_ANSWER_PERMISSION_ENABLED', {
+        clarificationResponse: {
+          requestId: priorRequest.id,
+          answer: 'SECRET_ANSWER_PERMISSION_ENABLED',
+          answeredAt: '2026-08-14T00:01:00.000Z',
+        },
+      }),
+      history: [textMessage('assistant', 'Need more information.', { clarificationRequest: priorRequest })],
+      clarificationResponse: {
+        requestId: priorRequest.id,
+        answer: 'SECRET_ANSWER_PERMISSION_ENABLED',
+        answeredAt: '2026-08-14T00:01:00.000Z',
+      },
+      clarificationRequest: {
+        id: 'follow-up-request',
+        kind: 'missing_information',
+        sourceStage: 'decide',
+        createdAt: '2026-08-14T00:02:00.000Z',
+        originalRequest: 'Complete the PDF task.',
+        blockingReason: 'The output format is still missing.',
+        questions: [{
+          id: 'q3',
+          field: 'outputFormat',
+          prompt: 'Choose the remaining output format.',
+          required: true,
+        }],
+      },
+      taskBook: {
+        assessment: {
+          userNeed: 'Complete the PDF task.',
+          complexity: 'standard',
+          goal: 'Complete the PDF task.',
+          successCriteria: ['A PDF is delivered.'],
+          requiresTaskBook: true,
+          maxExtraScopeRatio: 1.2,
+        },
+        goal: 'Complete the PDF task.',
+        complexity: 'standard',
+        successCriteria: ['A PDF is delivered.'],
+        steps: [],
+        overdeliveryPolicy: { maxExtraScopeRatio: 1.2, guidance: 'Stay focused.' },
+      },
+      lastError: { stage: 'execute', message: 'output format unavailable' },
+    });
+
+    await stage(ctx);
+
+    expect(ctx.clarificationRequest?.clarificationChain).toMatchObject({
+      previousRequestId: 'prior-request',
+      previousSourceStage: 'recover',
+      answeredFields: ['permission'],
+      remainingFields: ['outputFormat'],
+      taskGoal: 'Complete the PDF task.',
+      failureStage: 'execute',
+      attachmentCount: 0,
+    });
+    expect(payloads[0]).toContain('clarificationChain');
+    expect(payloads[0]).not.toContain('SECRET_ANSWER_PERMISSION_ENABLED');
+  });
+
   it('rewrites a model reply when it exactly repeats a recent assistant message', async () => {
     const llm = createMockLlm([
       textResponse('请告诉我目标文件。'),

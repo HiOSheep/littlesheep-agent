@@ -18,7 +18,7 @@ import {
   type SessionMeta
 } from '../api'
 import { useApprovalController } from '../approval/use-approval-controller'
-import { createRunActions } from '../chat/run-actions'
+import { createRunActions, type RunActionContext } from '../chat/run-actions'
 import { ChatMessage } from '../chat/types'
 import { splitModelRef } from '../composer/runtime-picker'
 import { buildContextUsage, type ContextUsageSnapshot } from '../context-usage'
@@ -61,6 +61,7 @@ export function useAppController() {
   const abortRef = useRef<AbortController | null>(null)
   const activeRunIdRef = useRef<string | null>(null)
   const stopRequestedRunIdRef = useRef<string | null>(null)
+  const pendingConversationTurnRef = useRef<RunActionContext['pendingConversationTurnRef']['current']>(null)
   const wasSettingsOpenRef = useRef(false)
   const appMountedRef = useRef(true)
   const sessionLoadRequestRef = useRef(0)
@@ -73,6 +74,16 @@ export function useAppController() {
   const [controlTip, setControlTip] = useFrameCoalescedState<FloatingHelpTip | null>(null)
   const { runtimeEventNotice, pendingRuntimeMessageRef, publishRuntimeEventNotice,
     notifyRuntimeSettingChanges, notifyRuntimeWorkspaceFileSaved } = useRuntimeTaskEvents({ activeRunIdRef, appMountedRef, loading })
+  const {
+    pendingApproval,
+    approvalGrantsRef,
+    activeApprovalScopeKey,
+    beginDraftApprovalScope,
+    requestApprovalForScope,
+    requestWorkspaceSaveApproval,
+    requestWorkspaceCommandApproval,
+    settleApprovalPrompt,
+  } = useApprovalController({ currentSession, permissionMode })
   const {
     sidebarCollapsed,
     setSidebarCollapsed,
@@ -96,8 +107,6 @@ export function useAppController() {
     setWorkspaceFileNavigatorCollapsed,
     workspaceExpandedPaths,
     setWorkspaceExpandedPaths,
-    pendingDirtyCloseTab,
-    setPendingDirtyCloseTab,
     inputRef,
     shellRef,
     sidebarWidth,
@@ -126,6 +135,9 @@ export function useAppController() {
     input,
     setControlTip,
     setRuntimeError,
+    onRequestFileSaveApproval: requestWorkspaceSaveApproval,
+    onWorkspaceArtifactsChanged: () => setWorkspaceArtifactVersion((value) => value + 1),
+    onWorkspaceFileSaved: notifyRuntimeWorkspaceFileSaved,
   })
   const {
     appHistoryRef,
@@ -153,17 +165,6 @@ export function useAppController() {
     setWorkspaceOpenRequest, workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed,
     workspaceExpandedPaths, setWorkspaceExpandedPaths,
   })
-  const {
-    pendingApproval,
-    approvalGrantsRef,
-    activeApprovalScopeKey,
-    beginDraftApprovalScope,
-    requestApprovalForScope,
-    requestWorkspaceSaveApproval,
-    requestWorkspaceCommandApproval,
-    settleApprovalPrompt,
-  } = useApprovalController({ currentSession, permissionMode })
-
   useEffect(() => {
     void refreshSessions()
     void refreshProjects()
@@ -434,7 +435,7 @@ export function useAppController() {
     e.preventDefault()
     void addAttachmentFiles(files)
   }
-  const { send, stop } = createRunActions({ abortRef, activeRunIdRef, activeApprovalScopeKey, appMountedRef, approvalGrantsRef, attachments, currentSession, input, liveToolStepRef, loading, permissionMode, pendingRuntimeMessageRef, publishRuntimeEventNotice, refreshProjects, refreshSessions, requestApprovalForScope, runtime, sessionOwnership, setActivityNow, setAttachments, setContextUsageSnapshot, setCurrentSession, setInput, setLoading, setMessages, setWorkspaceArtifactVersion, settleApprovalPrompt, stopRequestedRunIdRef })
+  const { send, stop } = createRunActions({ abortRef, activeRunIdRef, activeApprovalScopeKey, appMountedRef, approvalGrantsRef, attachments, currentSession, input, liveToolStepRef, loading, permissionMode, pendingConversationTurnRef, pendingRuntimeMessageRef, publishRuntimeEventNotice, refreshProjects, refreshSessions, requestApprovalForScope, runtime, sessionOwnership, setActivityNow, setAttachments, setContextUsageSnapshot, setCurrentSession, setInput, setLoading, setMessages, setWorkspaceArtifactVersion, settleApprovalPrompt, stopRequestedRunIdRef })
   const {
     newSession,
     createConversationFromSidebar,
@@ -482,7 +483,7 @@ export function useAppController() {
     sessionOwnership,
     visibleSessions,
   })
-  const checkpointRecovery = useCheckpointRecovery({ abortRef, activeRunIdRef, appMountedRef, loading, runtime, stopRequestedRunIdRef, refreshProjects, refreshSessions, requestApprovalForScope, settleApprovalPrompt, switchSession, setActivityNow, setContextUsageSnapshot, setLoading, setWorkspaceArtifactVersion })
+  const checkpointRecovery = useCheckpointRecovery({ abortRef, activeRunIdRef, appMountedRef, loading, permissionMode, runtime, stopRequestedRunIdRef, refreshProjects, refreshSessions, requestApprovalForScope, settleApprovalPrompt, switchSession, setActivityNow, setContextUsageSnapshot, setLoading, setWorkspaceArtifactVersion })
   const {
     openProjectCreator,
     activateProjectWorkspace,
@@ -516,7 +517,6 @@ export function useAppController() {
     setConversationCollapsed,
     setCurrentSession,
     setMessages,
-    setPendingDirtyCloseTab,
     setPinnedSessionIds,
     setProjectCreatorOpen,
     setProjects,
@@ -575,6 +575,6 @@ export function useAppController() {
       }, normalizedRoot).drafts
     })
   }
-  return { sessions, projects, currentSession, sessionOwnership, messages, setMessages, historyWindow, loadOlderMessages, input, setInput, loading, permissionMode, setPermissionMode, runtime, attachments, setAttachments, dragActive, runtimeError, runtimeEventNotice, checkpointRecovery, sidebarCollapsed, workspacePanelCollapsed, workspacePanelReopenActive, setWorkspacePanelReopenActive, workspacePanelFullscreen, workspacePanelTab, workspacePanelOpenTabs, workspaceBrowserTabs, workspaceBrowserUrl, workspaceBrowserHistory, navigateWorkspaceBrowser, openWorkspaceBrowser, openWorkspaceBrowserTab, updateWorkspaceBrowserTitle, moveWorkspaceBrowser, workspaceOpenRequest, setWorkspaceOpenRequest, workspaceFileDrafts, workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed, workspaceExpandedPaths, setWorkspaceExpandedPaths, pendingDirtyCloseTab, setPendingDirtyCloseTab, conversationCollapsed, setConversationCollapsed, now, pinnedSessionIds, sidebarPanel, sidebarSearch, setSidebarSearch, projectCreatorOpen, setProjectCreatorOpen, scrollRef, inputRef, shellRef, activityNow, workspaceArtifactVersion, setWorkspaceArtifactVersion, controlTip, setControlTip, pendingApproval, settingsEntryRippling, sidebarWidth, setSidebarWidth, setWorkspacePanelWidth, workspacePanelLayout, layoutStyle, settingsOpen, directModulePage, settingsPage, canNavigateBack, canNavigateForward, openSettingsFromEntry, openSettingsPage, openDirectModulePage, navigateBack, navigateForward, closeSettingsFromEntry, selectableProviders, selectedModel, displayedSessions, visibleSessions, visibleSessionMotionRef, workspaceIsWorkplace, workspaceTip, projectPath, contextUsage, latestTaskActivity, sidebarToggleTip, moreConversationTip, newConversationTip, uploadTip, sendTip, stopTip, requestWorkspaceSaveApproval, requestWorkspaceCommandApproval, settleApprovalPrompt, refreshSessions, refreshProjects, applyRuntimePatch, addAttachments, chooseWorkspace, openProjectCreator, activateProjectWorkspace, chooseProjectFolder, createProjectInFolder, relocateProject, resetWorkspace, openFileInWorkspace, openHyperlinkInside, openHyperlinkWithSystem, handleComposerDragEnter, handleComposerDragOver, handleComposerDragLeave, handleComposerDrop, handleComposerPaste, send, stop, notifyRuntimeWorkspaceFileSaved, createConversationFromSidebar, openSidebarPanel, closeSidebarPanel, switchSession, renameSession, archiveSession, deleteSessionPermanently, archiveProject, deleteProjectPermanently, archiveAllSessions, togglePinnedSession, beginSidebarResize, nudgeSidebar, toggleSidebar, beginWorkspacePanelResize, toggleWorkspacePanel, updateWorkspacePanelReopenPresence, toggleWorkspacePanelFullscreen, nudgeWorkspacePanel, openWorkspacePanelTab, updateWorkspaceFileDraft, closeWorkspacePanelTab, defaultWorkspacePath, workspacePanelRoot, workspacePanelUsingTemporaryRoot }
+  return { sessions, projects, currentSession, sessionOwnership, messages, setMessages, historyWindow, loadOlderMessages, input, setInput, loading, permissionMode, setPermissionMode, runtime, attachments, setAttachments, dragActive, runtimeError, runtimeEventNotice, checkpointRecovery, sidebarCollapsed, workspacePanelCollapsed, workspacePanelReopenActive, setWorkspacePanelReopenActive, workspacePanelFullscreen, workspacePanelTab, workspacePanelOpenTabs, workspaceBrowserTabs, workspaceBrowserUrl, workspaceBrowserHistory, navigateWorkspaceBrowser, openWorkspaceBrowser, openWorkspaceBrowserTab, updateWorkspaceBrowserTitle, moveWorkspaceBrowser, workspaceOpenRequest, setWorkspaceOpenRequest, workspaceFileDrafts, workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed, workspaceExpandedPaths, setWorkspaceExpandedPaths, conversationCollapsed, setConversationCollapsed, now, pinnedSessionIds, sidebarPanel, sidebarSearch, setSidebarSearch, projectCreatorOpen, setProjectCreatorOpen, scrollRef, inputRef, shellRef, activityNow, workspaceArtifactVersion, setWorkspaceArtifactVersion, controlTip, setControlTip, pendingApproval, settingsEntryRippling, sidebarWidth, setSidebarWidth, setWorkspacePanelWidth, workspacePanelLayout, layoutStyle, settingsOpen, directModulePage, settingsPage, canNavigateBack, canNavigateForward, openSettingsFromEntry, openSettingsPage, openDirectModulePage, navigateBack, navigateForward, closeSettingsFromEntry, selectableProviders, selectedModel, displayedSessions, visibleSessions, visibleSessionMotionRef, workspaceIsWorkplace, workspaceTip, projectPath, contextUsage, latestTaskActivity, sidebarToggleTip, moreConversationTip, newConversationTip, uploadTip, sendTip, stopTip, requestWorkspaceSaveApproval, requestWorkspaceCommandApproval, settleApprovalPrompt, refreshSessions, refreshProjects, applyRuntimePatch, addAttachments, chooseWorkspace, openProjectCreator, activateProjectWorkspace, chooseProjectFolder, createProjectInFolder, relocateProject, resetWorkspace, openFileInWorkspace, openHyperlinkInside, openHyperlinkWithSystem, handleComposerDragEnter, handleComposerDragOver, handleComposerDragLeave, handleComposerDrop, handleComposerPaste, send, stop, notifyRuntimeWorkspaceFileSaved, createConversationFromSidebar, openSidebarPanel, closeSidebarPanel, switchSession, renameSession, archiveSession, deleteSessionPermanently, archiveProject, deleteProjectPermanently, archiveAllSessions, togglePinnedSession, beginSidebarResize, nudgeSidebar, toggleSidebar, beginWorkspacePanelResize, toggleWorkspacePanel, updateWorkspacePanelReopenPresence, toggleWorkspacePanelFullscreen, nudgeWorkspacePanel, openWorkspacePanelTab, updateWorkspaceFileDraft, closeWorkspacePanelTab, defaultWorkspacePath, workspacePanelRoot, workspacePanelUsingTemporaryRoot }
 }
 export type AppController = ReturnType<typeof useAppController>

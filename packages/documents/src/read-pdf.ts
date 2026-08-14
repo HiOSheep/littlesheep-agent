@@ -5,6 +5,12 @@ import type { DocumentSection, ExtractDocumentOptions, ExtractedDocument } from 
 
 const MAX_PDF_PAGES = 2_000
 
+interface PdfWorkerGlobal {
+  WorkerMessageHandler: unknown
+}
+
+let pdfRuntimePromise: Promise<typeof import('pdfjs-dist/legacy/build/pdf.mjs')> | undefined
+
 interface PdfTextItem {
   str?: string
   hasEOL?: boolean
@@ -33,7 +39,7 @@ export async function extractPdf(
   options: ExtractDocumentOptions,
   limits: EffectiveReadLimits,
 ): Promise<ExtractedDocument> {
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+  const pdfjs = await loadPdfRuntime()
   const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(buffer),
     isEvalSupported: false,
@@ -78,6 +84,26 @@ export async function extractPdf(
     await pdf.cleanup().catch(() => undefined)
     await pdf.destroy().catch(() => undefined)
   }
+}
+
+async function loadPdfRuntime(): Promise<typeof import('pdfjs-dist/legacy/build/pdf.mjs')> {
+  if (!pdfRuntimePromise) {
+    pdfRuntimePromise = Promise.all([
+      import('pdfjs-dist/legacy/build/pdf.mjs'),
+      import('pdfjs-dist/legacy/build/pdf.worker.mjs'),
+    ]).then(([pdfjs, worker]) => {
+      if (!worker.WorkerMessageHandler) {
+        throw new Error('PDF.js worker module does not export WorkerMessageHandler.')
+      }
+      const runtime = globalThis as typeof globalThis & { pdfjsWorker?: PdfWorkerGlobal }
+      runtime.pdfjsWorker = { WorkerMessageHandler: worker.WorkerMessageHandler }
+      return pdfjs
+    }).catch((error) => {
+      pdfRuntimePromise = undefined
+      throw error
+    })
+  }
+  return pdfRuntimePromise
 }
 
 function pdfItemsToText(items: PdfTextItem[]): string {

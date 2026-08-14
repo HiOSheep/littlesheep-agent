@@ -63,6 +63,9 @@ export function renderStepGuidance(
   total: number,
   previousResults: TaskStepResult[],
 ): string {
+  const allowedTools = step.tools && step.tools.length > 0
+    ? step.tools.join(', ')
+    : '(none; return a model-only step result)';
   const criteria = step.acceptanceCriteria && step.acceptanceCriteria.length > 0
     ? step.acceptanceCriteria.map((item) => `- ${item}`).join('\n')
     : '- Complete the described step well enough to advance the task.';
@@ -78,6 +81,7 @@ Current step: ${index + 1}/${total}
 Step id: ${stepId}
 Step title: ${step.title ?? '(untitled)'}
 Step description: ${step.description}
+Allowed tools for this step: ${allowedTools}
 Step acceptance criteria:
 ${criteria}
 Expected output: ${step.expectedOutput ?? '(not specified)'}
@@ -87,8 +91,10 @@ ${previous}
 
 Instructions:
 - Complete only this step.
+- Use only the tools listed under "Allowed tools for this step". Tools from earlier or later TaskBook steps are unavailable here; never request them.
 - Use tools when they reduce uncertainty or are required by the step.
 - Request independent tool calls together; keep dependent calls in separate rounds.
+- As soon as this step's acceptance criteria are satisfied, stop using tools and return the step result immediately. Do not start a later TaskBook step.
 - Return a concise step result when the step is complete. It may be shown to the user directly, so use the user's language, follow the active SOUL.md voice, preserve runtime facts, and do not expose private chain-of-thought.
 - Do not claim the whole task is complete unless this is the final step.`;
 }

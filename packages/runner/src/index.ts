@@ -16,9 +16,25 @@ export {
   type RunInput,
   type RunOrigin,
   type ResumeCheckpointOptions,
+  type RestoredCheckpointResources,
+  type CheckpointResourceResolver,
 } from './runner.js';
 
+export {
+  conversationTurnInputDigest,
+  conversationTurnMessageId,
+  conversationTurnRunId,
+  type ConversationTurnFingerprintInput,
+} from './conversation-turn.js';
+
 export { resolveRunConfig, type ResolveRunConfigOptions } from './run-config.js';
+export { resolveSemanticResumeStage } from './continuation-stage.js';
+export {
+  resolveContinuationDisposition,
+  type ContinuationDirective,
+  type ContinuationDispositionDecision,
+  type ContinuationDispositionKind,
+} from './continuation-disposition.js';
 
 export {
   buildInfrastructure,
@@ -93,6 +109,7 @@ export {
   type RunCheckpointClaimOutcome,
   type RunCheckpointControllerOptions,
   type RunCheckpointInspection,
+  type WaitingUserHeadResolution,
 } from './run-checkpoint-controller.js';
 
 export {
@@ -105,6 +122,9 @@ export {
   DEFAULT_RUN_CHECKPOINT_DISPOSITION_MAX_RECORDS,
   MAX_RUN_CHECKPOINT_DISPOSITION_MAX_RECORDS,
   type RunCheckpointDispositionOutcome,
+  type RunCheckpointAnswerClaimIdentity,
+  type RunCheckpointDispositionListOptions,
+  type RunCheckpointResumeClaimOptions,
   type RunCheckpointDispositionStoreOptions,
 } from './run-checkpoint-disposition-store.js';
 

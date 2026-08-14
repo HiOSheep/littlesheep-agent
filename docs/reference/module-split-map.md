@@ -1,6 +1,6 @@
 # LittleSheep 模块拆分地图
 
-最后更新：2026-08-10 15:57:32
+最后更新：2026-08-14 12:50:00
 
 本文件记录大型生产文件的当前所有权、目标边界和拆分顺序。它是仓库基元化任务书的阶段产物，不替代项目状态，也不把行数当成唯一质量指标。
 
@@ -14,20 +14,21 @@
 
 ## 强制拆分队列
 
-下表行数是 2026-08-03 当前工作树的物理行数，不是历史完成值。生产 `.ts/.tsx` 文件超过 600 行必须进入本表；已登记不等于要求立即做无收益拆分。当前仓库卫生扫描共有 80 个生产文件超过 300 行，其中 10 个超过 600 行并进入受控清单。
+下表行数是 2026-08-14 当前工作树的物理行数，不是历史完成值。生产 `.ts/.tsx` 文件超过 600 行必须进入本表；已登记不等于要求立即做无收益拆分。当前仓库卫生扫描共有 89 个生产文件超过 300 行，其中 11 个超过 600 行并进入受控清单。
 
 | 当前文件 | 当前行数 | 当前责任 | 目标边界 | 所有权 |
 | --- | ---: | --- | --- | --- |
-| `packages/runner/src/runner.ts` | 818 | run 生命周期、输入装配、Memory 反馈、日志、检查点持久化/续跑、活动任务注册、后台维护准入透传和资源收尾 | 保持应用服务 facade；活动快照与中断/超时所有权已下沉，继续下沉日志、检查点和收尾协调；checkpoint 预算重concile 保持在 `run-checkpoint.ts` 边界 | E |
-| `packages/channels/qqbot/src/plugin.ts` | 801 | QQ 协议、连接、消息、发送和生命周期 | transport、protocol、message-mapper、sender、lifecycle | C |
+| `packages/runner/src/runner.ts` | 2055 | run 生命周期、输入装配、Memory 反馈、日志、检查点持久化/续跑、活动任务注册、后台维护准入透传和资源收尾 | 保持应用服务 facade；活动快照与中断/超时所有权已下沉，继续下沉日志、检查点和收尾协调；checkpoint 预算重concile 保持在 `run-checkpoint.ts` 边界 | E |
+| `packages/channels/qqbot/src/plugin.ts` | 803 | QQ 协议、连接、消息、发送和生命周期 | transport、protocol、message-mapper、sender、lifecycle | C |
 | `packages/memory-tree/src/project-memory-projection.ts` | 780 | 投影生成、同步、冲突、恢复和删除 | projection facade + render、sync、conflict、lifecycle | D |
-| `packages/types/src/runtime-contracts.ts` | 760 | Context、事件、检查点、活动任务控制、执行证据和版本化运行时契约 | Token 账本已迁入 `token-ledger.ts`；继续按 context、event、checkpoint、active-run、execution 分组并保持 barrel | E |
+| `packages/types/src/runtime-contracts.ts` | 859 | Context、事件、检查点、活动任务控制、执行证据和版本化运行时契约 | Token 账本已迁入 `token-ledger.ts`；继续按 context、event、checkpoint、active-run、execution 分组并保持 barrel | E |
 | `packages/runner/src/runtime-event-queue.ts` | 729 | run/session 隔离、有界事件、幂等、租约、结算和快照恢复 | `RunContext` 顶层 runtime state 已由 Harness `runtime-state.ts` 统一批次写入；本文件继续独占 queue codec、lease/settle、registry 和快照恢复内部状态，保持 facade 稳定 | E |
-| `packages/runner/src/run-checkpoint-store.ts` | 678 | 检查点 codec、原子存储、校验、列表、容量和保留期 | 分离 schema/codec、store、query 与 retention policy | E |
+| `packages/runner/src/run-checkpoint-store.ts` | 825 | 检查点 codec、原子存储、校验、列表、容量和保留期 | 分离 schema/codec、store、query 与 retention policy | E |
 | `packages/memory-tree/src/memory-tree.ts` | 655 | 根索引、导航、展开和搜索；working set 预算/去重/释放已拆出 | tree facade + index、navigation、expansion、branch-search | D |
-| `packages/channels/feishu/src/plugin.ts` | 632 | 飞书验签、事件、消息、发送和生命周期 | verification、transport、message-mapper、sender、lifecycle | C |
+| `packages/channels/feishu/src/plugin.ts` | 633 | 飞书验签、事件、消息、发送和生命周期 | verification、transport、message-mapper、sender、lifecycle | C |
 | `packages/app/src/main/data-root-migration.ts` | 628 | locator、清单、复制、重绑定、提交、恢复和回滚 | migration facade + plan、manifest、copy、rebind、commit、recovery | C |
 | `packages/memory-tree/src/v3/catalog.ts` | 626 | Memory v3 Catalog facade、Atom/FTS/账本/due/激活投影 | ledger/due 管理与 management projection 继续下沉 | D |
+| `packages/runner/src/run-checkpoint-disposition-store.ts` | 683 | waiting-user disposition、claim、恢复租约与有界审计持久化 | 分离 disposition codec、query 与 retention；保持原子 claim facade | E |
 
 ## 软上限审查队列
 
@@ -80,7 +81,7 @@
 | `packages/app/src/renderer/workspace-persistence.ts` | 404 | 工作区恢复快照与规范化 | 分离 schema、normalize、serialize | B |
 | `packages/prompt/src/builder.ts` | 401 | Prompt 分段、完整执行与紧凑 respond 装配 | 保留 builder facade，复杂 section 移入 `sections` | E |
 | `packages/app/src/renderer/settings/plugins.tsx` | 394 | 插件发现、筛选、启停、来源确认和代码授权 | 新能力进入插件宿主或独立设置组件 | B |
-| `packages/app/src/renderer/workspace/use-workspace-layout-controller.ts` | 422 | 布局恢复、标签/草稿持久化和拖动入口 | 两级阈值算法保持在独立 interaction 模块 | B |
+| `packages/app/src/renderer/workspace/use-workspace-layout-controller.ts` | 538 | 布局恢复、标签/草稿持久化、关闭前保存和拖动入口 | 保存/关闭事务已进入独立 helper；继续下沉工作区文件状态与布局副作用 | B |
 | `packages/types/src/activation.ts` | 390 | 持久 Atom 与语义缓存共用的连续 activation 契约和纯计算 | 按 evidence、scoring、projection 分组并保持 barrel | E |
 | `packages/app/src/renderer/chat/assistant-turn.tsx` | 381 | 思考摘要、执行过程、验证与最终产物的渐进式披露 | 持续拆出纯展示段；禁止吸收状态决策 | B |
 | `packages/app/src/renderer/ArchiveManager.tsx` | 369 | 归档加载、树和操作 | controller + project/session 视图 | B |
@@ -89,7 +90,10 @@
 | `packages/app/src/main/local-app-api/memory-routes.ts` | 349 | 记忆文件、旧控制面兼容、资源、项目投影及迁移子路由组合 | 保持纯路由组合；新增治理进入独立子路由 | C |
 | `packages/memory-tree/src/task-query.ts` | 345 | 当前请求、有限近期历史、版本化摘要、排除和任务转向语义 | 按 reference、negative/contrast、summary continuity 拆分 | D |
 | `packages/app/src/main/attachments.ts` | 344 | run 附件解析和所有权分类 | 分离 ownership、metadata、content resolver | C |
-| `packages/runner/src/run-checkpoint-disposition-store.ts` | 375 | 检查点 resuming/resumed/abandoned 决策的原子持久化 | 保持有界审计 store；后续分离 codec 与 retention | E |
+| `packages/app/src/renderer/api/run.ts` | 316 | Renderer 普通 run、SSE、稳定 request key 与 continuation failure 映射 | 保持传输 facade；继续将响应 codec 和重连观察下沉 | B |
+| `packages/app/src/renderer/chat/run-actions.ts` | 349 | 聊天发送、流式归并、稳定 turn fingerprint、输入/附件重试保留 | 保持发送 facade；继续下沉 turn identity 与 stream observer | B |
+| `packages/app/src/renderer/runtime-recovery/use-checkpoint-recovery.ts` | 302 | Checkpoint 恢复面板、续跑请求和资源/权限状态展示 | 保持恢复控制器；将状态选择与展示 helper 分离 | B |
+| `packages/runner/src/run-checkpoint-controller.ts` | 306 | Checkpoint inspect、唯一 head、claim 和 durable resume identity 查询 | 保持控制面 facade；后续分离 query/claim policy | E |
 | `packages/app/src/renderer/ui/icons.tsx` | 351 | 无状态声明式图标集合 | 浏览器图标家族已拆出；其余继续按家族拆分 | B |
 | `packages/memory-tree/src/memory-service.ts` | 342 | Memory Service facade 与运行协调器组合 | 保持 facade；新增能力进入领域协调器 | D |
 | `packages/app/src/main/workspace-office-preview.ts` | 339 | 有界 Office/OpenDocument 只读文本预览 | 分离格式解析器与统一预览预算 | C |
@@ -172,13 +176,14 @@
 
 | 文件 | 所有者 | 暂缓原因 | 行数上限 | 复查日期 |
 | --- | --- | --- | ---: | --- |
-| `packages/channels/qqbot/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与协议适配端口稳定后拆分 | 801 | 2026-08-15 |
+| `packages/channels/qqbot/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与协议适配端口稳定后拆分；本轮只补充连续性 request identity 透传 | 820 | 2026-08-20 |
 | `packages/memory-tree/src/project-memory-projection.ts` | D / Memory | 投影事务、冲突与恢复必须在特征测试覆盖后迁移 | 780 | 2026-08-15 |
-| `packages/runner/src/runner.ts` | E / Runtime | run 生命周期、输入装配、检查点续跑、后台维护准入透传和资源收尾仍共享跨阶段不变量；先冻结恢复与幂等特征测试 | 830 | 2026-08-20 |
-| `packages/types/src/runtime-contracts.ts` | E / Runtime | Context、事件、检查点和执行证据仍共享版本边界；拆分时必须保持现有 barrel 与持久化兼容 | 820 | 2026-08-15 |
+| `packages/runner/src/runner.ts` | E / Runtime | run 生命周期、输入装配、检查点续跑、后台维护准入透传和资源收尾仍共享跨阶段不变量；先冻结恢复与幂等特征测试，连续性恢复入口完成后再拆分 | 2120 | 2026-08-20 |
+| `packages/types/src/runtime-contracts.ts` | E / Runtime | Context、事件、检查点和执行证据仍共享版本边界；拆分时必须保持现有 barrel 与持久化兼容 | 900 | 2026-08-20 |
 | `packages/runner/src/runtime-event-queue.ts` | E / Runtime | 安全边界接入已经完成；租约、结算、快照恢复与 ActiveRunRegistry 契约刚稳定，补齐拆分特征测试后再下沉 codec/registry | 760 | 2026-08-15 |
-| `packages/runner/src/run-checkpoint-store.ts` | E / Runtime | 检查点 codec、原子存储、查询、容量与保留期共享恢复不变量；应用恢复控制面完成前保持 facade 稳定 | 720 | 2026-08-15 |
+| `packages/runner/src/run-checkpoint-store.ts` | E / Runtime | 检查点 codec、原子存储、查询、容量与保留期共享恢复不变量；应用恢复控制面完成前保持 facade 稳定 | 860 | 2026-08-20 |
 | `packages/memory-tree/src/memory-tree.ts` | D / Memory | 根索引、导航和预算状态共享不变量，先冻结 facade | 660 | 2026-08-15 |
-| `packages/channels/feishu/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与事件验签端口稳定后拆分 | 632 | 2026-08-15 |
+| `packages/channels/feishu/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与事件验签端口稳定后拆分；本轮只补充连续性 request identity 透传 | 640 | 2026-08-20 |
+| `packages/runner/src/run-checkpoint-disposition-store.ts` | E / Runtime | disposition claim、跨进程锁、有界历史和续跑 identity 查询共享原子写入不变量；先冻结 P0 连续性矩阵再拆 codec/query/retention | 740 | 2026-08-20 |
 | `packages/app/src/main/data-root-migration.ts` | C / App Main | 数据迁移事务需保持恢复与回滚原子性，先补齐阶段检查点 | 637 | 2026-08-15 |
 | `packages/memory-tree/src/v3/catalog.ts` | D / Memory | activation schema 与检索投影刚稳定，先保持 Catalog facade 和恢复契约；本轮新增激活与关系投影后复查 | 640 | 2026-08-15 |

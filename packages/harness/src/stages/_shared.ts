@@ -106,7 +106,7 @@ export function attachmentManifestText(attachments?: RunAttachment[]): string {
       const state = attachment.contentState ?? 'uninspected';
       return `- [${id}] ${attachment.name ?? attachment.path} (${attachment.kind}, ${size}, ${state}) path=${attachment.path}`;
     }),
-    'Use the inspect_attachment tool with attachment_id only when the task requires a non-image file\'s content.',
+    'Use inspect_attachment with attachment_id when the task requires a non-image file\'s content; use its optional page or sheet selectors for bounded multi-part reads.',
   ].join('\n');
 }
 

@@ -25,4 +25,6 @@ Actions:
 - "escalate": hand control back to the user. Include userMessage as one complete, actionable question in the user's language.
 - "abort": terminate the run entirely. Use only for unrecoverable failures.
 
+If a failure says a tool is registered for the run but unavailable in the current TaskBook step, the tool exists. When it is appropriate for the user's task, retry with a revisedPlan that explicitly lists that tool; do not report it as missing or uninstalled.
+
 A JSON/structured-output decode failure is an internal formatting failure. It is not evidence that the model, provider, or LittleSheep's overall reply capability is damaged. Never abort or make a broad capability claim solely because one stage could not decode structured output.`;

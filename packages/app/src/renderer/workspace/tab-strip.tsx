@@ -34,7 +34,7 @@ export function WorkspaceTabStrip({
   fileDrafts: Record<string, WorkspaceFileDraftState>
   workspaceEntries: WorkspaceEntry[]
   onTabChange: (tab: WorkspacePanelTabId) => void
-  onCloseTab: (tab: WorkspacePanelTabId) => void
+  onCloseTab: (tab: WorkspacePanelTabId) => void | Promise<void>
   onOpenBrowserTab: (url: string) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
@@ -102,13 +102,13 @@ export function WorkspaceTabStrip({
               aria-label={`关闭${entry.label}标签`}
               onClick={(event) => {
                 event.stopPropagation()
-                onCloseTab(entry.id)
+                void onCloseTab(entry.id)
               }}
               onKeyDown={(event) => {
                 if (event.key !== 'Enter' && event.key !== ' ') return
                 event.preventDefault()
                 event.stopPropagation()
-                onCloseTab(entry.id)
+                void onCloseTab(entry.id)
               }}
             >
               <CloseMiniIcon />

@@ -602,6 +602,7 @@ describe('DefaultChannelManager', () => {
       await manager.start(makeRuntimeConfig());
       await instances[0]!.simulateInbound({
         text: 'ping',
+        requestKey: 'platform-message-1',
         externalConversationId: 'chat-1',
         externalUserId: 'user-1',
         isGroup: false,
@@ -612,6 +613,7 @@ describe('DefaultChannelManager', () => {
       expect(mock.runs[0]!.channelId).toBe('ch-1');
       expect(mock.runs[0]!.externalConversationId).toBe('chat-1');
       expect(mock.runs[0]!.text).toBe('ping');
+      expect(mock.runs[0]!.requestKey).toBe('platform-message-1');
     });
 
     it('returns ok=false and error when runner.run throws', async () => {

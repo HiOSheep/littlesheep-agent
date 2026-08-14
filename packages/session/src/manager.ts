@@ -141,6 +141,32 @@ export class SessionManager implements SessionManagerLike {
   }
 
   /**
+   * Atomically append a conversation turn only when its stable message id has
+   * not already been accepted. The check and append share the session lock so
+   * concurrent HTTP/SSE retries cannot both enter an effectful Agent run.
+   */
+  async appendIfAbsent(
+    sessionId: SessionId,
+    messages: Message[],
+    uniqueMessageId: string,
+  ): Promise<boolean> {
+    const normalizedId = uniqueMessageId.trim();
+    if (!normalizedId) throw new Error('unique conversation message id must be non-empty');
+    const file = this.sessionFile(sessionId);
+    let handle: LockHandle | null = null;
+    try {
+      handle = await acquireLock(file, this.opts.lockTimeoutMs ?? 60000);
+      if (await this.findMessage(sessionId, normalizedId)) return false;
+      await mkdir(this.opts.sessionsDir, { recursive: true });
+      const lines = messages.map((message) => JSON.stringify(message)).join('\n') + '\n';
+      await appendFile(file, lines, 'utf8');
+      return true;
+    } finally {
+      await handle?.release();
+    }
+  }
+
+  /**
    * Find one message without materializing the whole transcript. This is
    * used by checkpoint continuation, where the original inbound message may
    * be far outside the normal recent-history window.

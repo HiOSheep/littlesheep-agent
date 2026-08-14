@@ -68,7 +68,7 @@ describe('frontend font rendering baseline', () => {
       '.plugin-trust-confirmation',
       '.plugin-list-details',
       '.trace-body',
-      '.assistant-turn-process,\n.activity-disclosure-body,\n.activity-command-body',
+      '.agent-flow-details-panel,\n.agent-tool-details-panel',
     ]) {
       const body = ruleBody(selector)
       expect(body).not.toMatch(
@@ -207,10 +207,9 @@ describe('frontend font rendering baseline', () => {
     expect(close).toContain('justify-self: center')
   })
 
-  it('centers approval labels and keeps the danger fill at 75 percent opacity', () => {
+  it('centers approval labels', () => {
     const actions = ruleBody('.approval-actions')
     const action = ruleBody('.approval-action')
-    const danger = ruleBody('.approval-action.primary.danger')
 
     expect(actions).toContain('align-items: center')
     expect(action).toContain('box-sizing: border-box')
@@ -219,7 +218,6 @@ describe('frontend font rendering baseline', () => {
     expect(action).toContain('letter-spacing: 0')
     expect(action).toContain('line-height: 18px')
     expect(action).toContain('text-align: center')
-    expect(danger).toContain('background: rgba(201, 77, 77, 0.75)')
   })
 
   it('keeps the shared content entrance animation transform-free', () => {

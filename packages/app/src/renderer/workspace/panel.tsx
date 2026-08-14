@@ -73,7 +73,7 @@ export function WorkspacePanel({
   fileNavigatorCollapsed: boolean
   expandedPaths: string[]
   onTabChange: (tab: WorkspacePanelTabId) => void
-  onCloseTab: (tab: WorkspacePanelTabId) => void
+  onCloseTab: (tab: WorkspacePanelTabId) => void | Promise<void>
   onFileDraftChange: (tab: WorkspaceFileTabId, draft: WorkspaceFileDraftState | null) => void
   onToggleFullscreen: () => void
   onRememberOpenPath: (root: string, path: string) => void

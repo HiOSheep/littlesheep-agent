@@ -19,7 +19,7 @@ export function WorkspaceChip({
 
   return (
     <span
-      className="workspace-context-chip"
+      className="workspace-context-chip composer-tab-control"
       aria-label={`目标工作区: ${tip}`}
       onMouseEnter={(event) => onTipChange(buildFloatingHelpTip(tip, event.clientX, event.clientY))}
       onMouseMove={(event) => onTipChange(buildFloatingHelpTip(tip, event.clientX, event.clientY))}

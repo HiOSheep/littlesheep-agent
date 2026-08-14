@@ -1,7 +1,8 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import JSZip from 'jszip'
 import * as XLSX from 'xlsx'
 import { createDocument, extractDocument, verifyDocument } from './index.js'
 
@@ -15,6 +16,40 @@ function tempDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'ls-documents-'))
   tempDirs.push(dir)
   return dir
+}
+
+function writeTextlessPdf(filePath: string): void {
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> /Contents 4 0 R >>',
+    '<< /Length 0 >>\nstream\n\nendstream',
+  ]
+  let content = '%PDF-1.4\n'
+  const offsets = [0]
+  objects.forEach((body, index) => {
+    offsets.push(Buffer.byteLength(content, 'ascii'))
+    content += `${index + 1} 0 obj\n${body}\nendobj\n`
+  })
+  const xrefOffset = Buffer.byteLength(content, 'ascii')
+  content += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+  content += offsets.slice(1).map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')
+  content += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`
+  writeFileSync(filePath, content, 'ascii')
+}
+
+async function writeMinimalPptx(filePath: string): Promise<void> {
+  const zip = new JSZip()
+  zip.file('ppt/slides/slide1.xml', [
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+    '<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"',
+    ' xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">',
+    '<p:cSld><p:spTree><p:sp><p:txBody><a:bodyPr/><a:lstStyle/>',
+    '<a:p><a:r><a:t>季度复盘</a:t></a:r></a:p>',
+    '<a:p><a:r><a:t>营收增长 18%</a:t></a:r></a:p>',
+    '</p:txBody></p:sp></p:spTree></p:cSld></p:sld>',
+  ].join(''))
+  writeFileSync(filePath, await zip.generateAsync({ type: 'nodebuffer' }))
 }
 
 describe('@littlesheep/documents', () => {
@@ -40,6 +75,17 @@ describe('@littlesheep/documents', () => {
     expect(extracted.metadata.pageCount).toBe(1)
     expect(extracted.text).toContain('项目简报')
     expect(extracted.text).toContain('重新打开')
+  })
+
+  it('does not treat page labels as readable content in a textless PDF', async () => {
+    const filePath = join(tempDir(), 'scan.pdf')
+    writeTextlessPdf(filePath)
+
+    const extracted = await extractDocument(filePath)
+
+    expect(extracted.metadata.pageCount).toBe(1)
+    expect(extracted.text).toBe('')
+    expect(extracted.notes.join(' ')).toContain('OCR')
   })
 
   it('creates and extracts DOCX paragraphs, lists and tables', async () => {
@@ -94,6 +140,41 @@ describe('@littlesheep/documents', () => {
     expect(readFileSync(filePath).subarray(0, 3)).toEqual(Buffer.from([0xEF, 0xBB, 0xBF]))
     const extracted = await extractDocument(filePath)
     expect(extracted.sections[0]?.rows).toEqual([['名称', '数量'], ['中文', '3']])
+  })
+
+  it('reads legacy XLS, UTF-8 TSV, and PPTX slide text', async () => {
+    const dir = tempDir()
+    const xlsPath = join(dir, 'legacy.xls')
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      ['项目', '金额'],
+      ['历史预算', 320],
+    ]), '预算')
+    writeFileSync(xlsPath, XLSX.write(workbook, { type: 'buffer', bookType: 'biff8' }))
+
+    const tsvPath = join(dir, 'records.tsv')
+    writeFileSync(tsvPath, '\uFEFF名称\t状态\n文档\t已完成\n', 'utf8')
+
+    const pptxPath = join(dir, 'review.pptx')
+    await writeMinimalPptx(pptxPath)
+
+    const xls = await extractDocument(xlsPath)
+    expect(xls.format).toBe('xls')
+    expect(xls.text).toContain('历史预算\t320')
+
+    const tsv = await extractDocument(tsvPath)
+    expect(tsv.format).toBe('tsv')
+    expect(tsv.sections[0]?.rows).toEqual([['名称', '状态'], ['文档', '已完成']])
+
+    const pptx = await extractDocument(pptxPath)
+    expect(pptx.format).toBe('pptx')
+    expect(pptx.metadata.slideCount).toBe(1)
+    expect(pptx.text).toContain('季度复盘')
+    expect(pptx.text).toContain('营收增长 18%')
+  })
+
+  it.each(['.doc', '.ppt', '.pps'])('requires conversion for legacy Office format %s', async (extension) => {
+    await expect(extractDocument(join(tempDir(), `legacy${extension}`))).rejects.toThrow(/DOCX.*PPTX/u)
   })
 
   it('rejects mismatched extensions and oversized values', async () => {

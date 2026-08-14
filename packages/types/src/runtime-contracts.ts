@@ -21,10 +21,61 @@ export const LLM_CALL_CONTRACT_VERSION = 1 as const;
 export const MEMORY_INTENT_DECISION_VERSION = 1 as const;
 export const TOOL_INVOCATION_RECORD_VERSION = 1 as const;
 export const EXECUTION_EVIDENCE_VERSION = 1 as const;
+export const CONVERSATION_CONTINUATION_EVIDENCE_VERSION = 1 as const;
 
 export type PermissionPolicyId = 'full' | 'research' | 'restricted';
 export type ReasoningLevel = 'auto' | 'low' | 'medium' | 'high' | 'ultra';
 export type RunConfigOrigin = 'app' | 'channel' | 'cli' | 'test';
+
+/** Redacted audit evidence for one authoritative conversation-turn decision. */
+export interface ConversationContinuationEvidence {
+  version: typeof CONVERSATION_CONTINUATION_EVIDENCE_VERSION;
+  resolution: 'none' | 'eligible' | 'bound' | 'blocked' | 'conflict' | 'deferred' | 'abandoned';
+  /** Stable, hashed identity shared by HTTP/SSE retries of the same turn. */
+  turnId?: string;
+  /** Digest used to reject reuse of the same key for different turn content. */
+  inputDigest?: string;
+  checkpointId?: string;
+  candidateCheckpointIds?: string[];
+  sourceRunId?: string;
+  requestId?: string;
+  answerMessageId?: string;
+  resumeRunId?: string;
+  disposition?: RunCheckpointContinuationDisposition;
+  dispositionSource?: 'directive' | 'model' | 'runtime_fallback';
+  resumeStage?: StageName;
+  resumeRule?: string;
+  resources?: {
+    status: 'not_required' | 'restored' | 'failed' | 'skipped_for_disposition';
+    attachmentCount: number;
+    toolRecipeCount: number;
+    restoredToolCount: number;
+  };
+  permissions?: {
+    checkpoint: PermissionPolicyId;
+    current: PermissionPolicyId;
+  };
+  replayPrevention?: {
+    completedStepCountPreserved: number;
+    succeededSideEffectCountPreserved: number;
+    uncertainSideEffectCount: number;
+    answerMessageAlreadyPersisted: boolean;
+  };
+  /** Present when the authoritative coordinator rejected the turn before execution. */
+  failure?: {
+    code:
+      | 'multiple_waiting_heads'
+      | 'checkpoint_not_resumable'
+      | 'ambiguous_disposition'
+      | 'resource_restore_failed'
+      | 'required_tool_unavailable'
+      | 'claim_conflict'
+      | 'turn_identity_conflict'
+      | 'continuation_runtime_error';
+    detail: string;
+    recoverable: boolean;
+  };
+}
 
 /** Declarative behavior-mode contract. Permission is intentionally excluded. */
 export interface ModeDefinition {
@@ -674,6 +725,31 @@ export interface LoopBudgetSnapshot {
   maxCost?: number;
 }
 
+/** Minimal, path-free reference used to rebuild a run-scoped attachment. */
+export interface RunCheckpointAttachmentReference {
+  version: 1;
+  attachmentId: string;
+  cacheId: string;
+  contentHash: string;
+  name: string;
+  kind: 'image' | 'document' | 'file';
+  mimeType?: string;
+  size?: number;
+}
+
+/** Trusted factory recipes are a closed enum; arbitrary code is never persisted. */
+export interface RunCheckpointToolRecipe {
+  version: 1;
+  factory: 'inspect_attachment';
+}
+
+/** Structural clarification binding captured at the waiting-user boundary. */
+export interface RunCheckpointContinuationState {
+  version: 1;
+  requestId: string;
+  sourceStage: import('./clarification.js').ClarificationSourceStage;
+}
+
 /**
  * Resume metadata captured alongside a v1 checkpoint. It deliberately keeps
  * the original inbound message as a reference rather than duplicating its
@@ -697,6 +773,17 @@ export interface RunCheckpointResumeState {
   behaviorModeId: string;
   availableToolNames: string[];
   attachmentCount: number;
+  /** Present for checkpoints written after restorable resource support. */
+  attachments?: RunCheckpointAttachmentReference[];
+  /** Closed, versioned recipes for run-scoped tools. */
+  toolRecipes?: RunCheckpointToolRecipe[];
+  /** Pending structured request answered by the next bound user turn. */
+  continuation?: RunCheckpointContinuationState;
+  /** Bounded failure facts required to choose RECOVER without guessing. */
+  lastError?: {
+    stage: StageName;
+    message: string;
+  };
   classification?: import('./agent.js').Classification;
   needAssessment?: import('./task.js').NeedAssessment;
   plan?: PlanStep[];
@@ -736,7 +823,8 @@ export interface RunCheckpoint {
   reason: string;
 }
 
-export type RunCheckpointDispositionStatus = 'resuming' | 'interrupted' | 'resumed' | 'completed' | 'abandoned';
+export type RunCheckpointDispositionStatus = 'resuming' | 'interrupted' | 'resumed' | 'completed' | 'abandoned' | 'deferred';
+export type RunCheckpointContinuationDisposition = 'answer' | 'retry' | 'revise_goal' | 'cancel' | 'new_task';
 
 /** Mutable, append-audited decision kept separate from immutable checkpoint data. */
 export interface RunCheckpointDisposition {
@@ -747,6 +835,12 @@ export interface RunCheckpointDisposition {
   updatedAt: string;
   reason: string;
   resumeRunId?: string;
+  /** Idempotency identity of the user answer that acquired the resume lease. */
+  requestId?: string;
+  answerMessageId?: string;
+  requestKey?: string;
+  /** Bounded semantic decision made after structural task binding. */
+  continuationDisposition?: RunCheckpointContinuationDisposition;
   nextCheckpointId?: string;
   resultStatus?: 'ok' | 'error' | 'aborted';
   history: Array<{
@@ -755,6 +849,10 @@ export interface RunCheckpointDisposition {
     at: string;
     reason: string;
     resumeRunId?: string;
+    requestId?: string;
+    answerMessageId?: string;
+    requestKey?: string;
+    continuationDisposition?: RunCheckpointContinuationDisposition;
     nextCheckpointId?: string;
     resultStatus?: 'ok' | 'error' | 'aborted';
   }>;

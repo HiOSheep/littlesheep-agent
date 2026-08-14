@@ -4,6 +4,7 @@ import type {
   RuntimeControlSnapshot,
   RuntimeEventEnvelope,
   RuntimeEventQueueLike,
+  ConversationContinuationEvidence,
 } from '@littlesheep/types';
 import {
   assertRunContextFieldWriteAllowed,
@@ -17,6 +18,7 @@ export interface RuntimeStateUpdate {
   deferredRuntimeEvents?: RuntimeEventEnvelope[];
   deferredRuntimeEventIds?: string[];
   loopBudget?: LoopBudgetSnapshot;
+  conversationContinuation?: ConversationContinuationEvidence;
 }
 
 const RUNTIME_FIELDS = [
@@ -25,6 +27,7 @@ const RUNTIME_FIELDS = [
   'deferredRuntimeEvents',
   'deferredRuntimeEventIds',
   'loopBudget',
+  'conversationContinuation',
 ] as const satisfies readonly (keyof RuntimeStateUpdate)[];
 
 /**

@@ -43,6 +43,32 @@ describe('ManagedAttachmentCache', () => {
     }
   })
 
+  it('copies selected files into managed storage and preserves checkpoint-referenced entries during startup cleanup', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ls-att-selected-'))
+    let now = Date.UTC(2026, 0, 1)
+    try {
+      const source = join(dir, 'selected.txt')
+      writeFileSync(source, 'selected source', 'utf8')
+      const rootDir = join(dir, 'attachment-cache')
+      const cache = new ManagedAttachmentCache({ rootDir, maxAgeMs: 100, now: () => now })
+      await cache.initialize()
+      const managed = await cache.importFile({ path: source, name: 'selected.txt', kind: 'file' })
+      writeFileSync(source, 'changed source', 'utf8')
+      expect(readFileSync(managed.path, 'utf8')).toBe('selected source')
+
+      now += 1_000
+      const restarted = new ManagedAttachmentCache({ rootDir, maxAgeMs: 100, now: () => now })
+      const report = await restarted.initialize(new Set([managed.cacheId!]))
+      expect(report).toMatchObject({ removed: 0, retained: 1 })
+      await expect(restarted.resolve(managed)).resolves.toMatchObject({
+        cacheId: managed.cacheId,
+        contentHash: managed.contentHash,
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('removes only expired indexed files and preserves workplace and unindexed files', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ls-att-clean-'))
     let now = Date.UTC(2026, 0, 1)

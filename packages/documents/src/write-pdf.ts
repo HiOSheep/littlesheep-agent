@@ -11,10 +11,12 @@ const BODY_WIDTH = PAGE_WIDTH - MARGIN * 2
 
 export async function buildPdf(input: CreateDocumentInput): Promise<Buffer> {
   const chunks: Buffer[] = []
+  const font = resolvePdfFont(collectDocumentText(input))
   const doc = new PDFDocument({
     size: 'A4',
     margins: { top: MARGIN, right: MARGIN, bottom: MARGIN, left: MARGIN },
     info: { Title: input.title || 'LittleSheep document', Creator: 'LittleSheep' },
+    font,
     autoFirstPage: true,
     bufferPages: true,
   })
@@ -24,8 +26,7 @@ export async function buildPdf(input: CreateDocumentInput): Promise<Buffer> {
     doc.once('error', reject)
   })
 
-  const font = resolvePdfFont(collectDocumentText(input))
-  if (font) doc.font(font)
+  doc.font(font)
   if (input.title) {
     doc.fontSize(22).fillColor('#111827').text(input.title, { width: BODY_WIDTH })
     doc.moveDown(0.35)
@@ -110,20 +111,25 @@ function ensureSpace(doc: PDFKit.PDFDocument, requiredHeight: number): void {
   if (doc.y + requiredHeight > PAGE_HEIGHT - MARGIN) doc.addPage()
 }
 
-function resolvePdfFont(text: string): string | undefined {
+function resolvePdfFont(text: string): string {
   const containsNonLatin = /[^\u0000-\u00ff]/u.test(text)
   const windowsFonts = process.env.WINDIR ? join(process.env.WINDIR, 'Fonts') : 'C:\\Windows\\Fonts'
   const candidates = [
     join(windowsFonts, 'NotoSansSC-VF.ttf'),
     join(windowsFonts, 'ARIALUNI.ttf'),
     join(windowsFonts, 'Deng.ttf'),
+    join(windowsFonts, 'arial.ttf'),
     '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttf',
     '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+    '/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf',
     '/Library/Fonts/Arial Unicode.ttf',
+    '/Library/Fonts/Arial.ttf',
   ]
   const font = candidates.find((candidate) => existsSync(candidate))
-  if (containsNonLatin && !font) {
-    throw new Error('生成包含中文或其他非拉丁文字的 PDF 需要系统安装 Noto Sans CJK 或 Arial Unicode 字体。')
+  if (!font) {
+    throw new Error(containsNonLatin
+      ? '生成包含中文或其他非拉丁文字的 PDF 需要系统安装 Noto Sans CJK 或 Arial Unicode 字体。'
+      : '生成 PDF 需要系统安装 Arial、DejaVu Sans 或其他受支持的 TrueType 字体。')
   }
   return font
 }

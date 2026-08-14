@@ -124,6 +124,59 @@ describe('RunCheckpointStore', () => {
     }
   });
 
+  it('retains disposition-protected checkpoint ids and active resume runs beyond ordinary history limits', async () => {
+    const protectedIds = new Set<string>(['active-source'])
+    const protectedRunIds = new Set<string>(['active-resume'])
+    const { dir, store } = await tempStore({
+      maxCheckpoints: 2,
+      maxPerRun: 1,
+      protectedCheckpointIds: async () => protectedIds,
+      protectedRunIds: async () => protectedRunIds,
+    });
+    try {
+      await store.write(checkpoint('active-source', 'source-run', '2026-07-18T09:00:00.000Z'));
+      await store.write(checkpoint('active-started', 'active-resume', '2026-07-18T09:01:00.000Z'));
+      await store.write(checkpoint('active-finished', 'active-resume', '2026-07-18T09:02:00.000Z'));
+      await store.write(checkpoint('history-1', 'history-1', '2026-07-18T10:01:00.000Z'));
+      await store.write(checkpoint('history-2', 'history-2', '2026-07-18T10:02:00.000Z'));
+      await store.write(checkpoint('history-3', 'history-3', '2026-07-18T10:03:00.000Z'));
+
+      await expect(store.read('active-source')).resolves.toMatchObject({ id: 'active-source' });
+      await expect(store.read('active-started')).resolves.toMatchObject({ id: 'active-started' });
+      await expect(store.read('active-finished')).resolves.toMatchObject({ id: 'active-finished' });
+      await expect(store.read('history-1')).resolves.toBeNull();
+
+      protectedIds.clear();
+      protectedRunIds.clear();
+      await store.prune();
+      await expect(store.read('active-source')).resolves.toBeNull();
+      expect((await readdir(dir)).filter((file) => file.endsWith('.json'))).toHaveLength(2);
+    } finally {
+      store.dispose();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('skips pruning when protected checkpoint resolution is unavailable', async () => {
+    const { dir, store } = await tempStore({
+      maxCheckpoints: 1,
+      protectedCheckpointIds: async () => { throw new Error('disposition store unavailable') },
+    });
+    try {
+      await store.write(checkpoint('retained-old', 'run-old', '2026-07-18T10:00:00.000Z'));
+      await store.write(checkpoint('retained-new', 'run-new', '2026-07-18T10:01:00.000Z'));
+
+      await expect(store.read('retained-old')).resolves.toMatchObject({ id: 'retained-old' });
+      await expect(store.read('retained-new')).resolves.toMatchObject({ id: 'retained-new' });
+      expect(store.diagnostics().diagnostics.some((item) => (
+        item.kind === 'io' && item.message.includes('pruning skipped')
+      ))).toBe(true);
+    } finally {
+      store.dispose();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('diagnoses corrupt, incompatible, and temporary files without blocking valid reads', async () => {
     const { dir, store } = await tempStore();
     try {

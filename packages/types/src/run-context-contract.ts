@@ -305,6 +305,15 @@ export const runContextFieldOwnership: readonly RunContextFieldContract[] = Obje
     purpose: 'Provider/tool loop budget snapshot used by recovery diagnostics.',
   }),
   field({
+    field: 'conversationContinuation',
+    group: 'runtimeControl',
+    owner: 'runner-continuation-coordinator',
+    readStages: [...coreStages, 'post-run'],
+    writeStages: ['runner-init', 'runner-restore'],
+    lifecycle: 'run-local',
+    purpose: 'Redacted binding, disposition, resource, permission and replay-prevention evidence for this turn.',
+  }),
+  field({
     field: 'prelude',
     group: 'memory',
     owner: 'runner-memory-bootstrap',

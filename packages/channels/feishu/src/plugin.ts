@@ -498,6 +498,7 @@ export class FeishuChannelPlugin implements ChannelPlugin {
 
     const inbound = {
       text,
+      requestKey: `feishu:${event.message.message_id}`,
       externalConversationId: chatId,
       externalUserId: openId,
       isGroup,

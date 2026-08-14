@@ -3,9 +3,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CONFIG } from '@littlesheep/config'
-import type { AgentRunner, RunCheckpointInspection } from '@littlesheep/runner'
+import { createRunner, type AgentRunner, type CreateRunnerOptions, type RunCheckpointInspection } from '@littlesheep/runner'
+import { DEFAULT_BRANDING } from '@littlesheep/branding'
 import {
   asSessionId,
+  textMessage,
   type RunCheckpoint,
   type RunCheckpointDisposition,
 } from '@littlesheep/types'
@@ -21,6 +23,33 @@ import { TerminalActivityIndex } from './terminal-activity-index.js'
 import { WorkspaceArtifactIndex } from './workspace-artifact-index.js'
 import { WorkspaceLayoutIndex } from './workspace-layout-index.js'
 import { startLocalAppApiServer } from './local-app-api-server.js'
+
+type LlmClient = NonNullable<CreateRunnerOptions['llm']>
+type ChatRequest = Parameters<LlmClient['chat']>[0]
+type ChatResponse = Awaited<ReturnType<LlmClient['chat']>>
+type StreamChunk = Parameters<Parameters<LlmClient['chatStream']>[1]>[0]
+
+function textResponse(content: string): ChatResponse {
+  return { content, toolCalls: [], finishReason: 'stop' }
+}
+
+function queuedLlm(responses: ChatResponse[]): LlmClient {
+  const next = (): ChatResponse => {
+    const response = responses.shift()
+    if (!response) throw new Error('unexpected LLM request')
+    return response
+  }
+  return {
+    chat: vi.fn(async (_request: ChatRequest) => next()),
+    chatStream: vi.fn(async (_request: ChatRequest, onDelta: (chunk: StreamChunk) => void) => {
+      const response = next()
+      if (response.content) onDelta({ type: 'delta', delta: response.content })
+      onDelta({ type: 'done', finishReason: response.finishReason })
+      return response
+    }),
+    embed: vi.fn(async () => ({ embeddings: [], model: 'test', usage: { promptTokens: 0 } })),
+  }
+}
 
 function checkpointInspection(dataDir: string): RunCheckpointInspection {
   const checkpoint: RunCheckpoint = {
@@ -195,7 +224,14 @@ describe('run checkpoint Local App API', () => {
       const resumeResponse = await fetch(`${base}${itemPath}/resume/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: 'resume from test' }),
+        body: JSON.stringify({
+          reason: 'resume from test',
+          permissionMode: 'research',
+          reasoning: 'auto',
+          profile: 'general',
+          requestKey: 'explicit-resume-turn',
+          continuationDirective: 'answer',
+        }),
       })
       expect(resumeResponse.status).toBe(200)
       const stream = await resumeResponse.text()
@@ -205,6 +241,13 @@ describe('run checkpoint Local App API', () => {
       expect(stream).toContain('event: result')
       const resumeOptions = fixture.resumeCheckpoint.mock.calls[0]?.[1]
       expect(resumeOptions?.runId).toEqual(expect.any(String))
+      expect(resumeOptions).toMatchObject({
+        permissionPolicyId: 'research',
+        reasoning: 'auto',
+        profile: 'general',
+        requestKey: 'explicit-resume-turn',
+        continuationDirective: 'answer',
+      })
       expect(stream).toContain(`"runId":"${resumeOptions?.runId}"`)
       expect((await fixture.sessionIndex.list()).find((session) => session.id === 'checkpoint-session')).toMatchObject({
         id: 'checkpoint-session',
@@ -213,6 +256,177 @@ describe('run checkpoint Local App API', () => {
     } finally {
       await fixture.server.stop()
       rmSync(fixture.dataDir, { recursive: true, force: true })
+    }
+  })
+
+  it('joins concurrent explicit retries and replays the completed stable request without another execution', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'ls-run-checkpoint-real-'))
+    const workplaceDir = join(dataDir, 'workplace')
+    mkdirSync(workplaceDir, { recursive: true })
+    const previousDataDir = process.env.LITTLESHEEP_DATA_DIR
+    process.env.LITTLESHEEP_DATA_DIR = dataDir
+    const config = structuredClone(DEFAULT_CONFIG)
+    config.agents.defaults.workspace = workplaceDir
+    const llm = queuedLlm([
+      textResponse('{"plan":[{"description":"continue the original PDF task","tools":[]}]}'),
+      textResponse('Original PDF work continued once.'),
+      textResponse('The original PDF task is complete.'),
+      textResponse('{"verdict":"pass","reason":"original goal completed"}'),
+      textResponse('{"memories":[],"createSkill":null}'),
+      textResponse('{"observations":[]}'),
+    ])
+    const runner = await createRunner({
+      config,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+      skillsDirs: [],
+      containerRoot: dataDir,
+    })
+    let server: Awaited<ReturnType<typeof startLocalAppApiServer>> | undefined
+    try {
+      const session = await runner.sessionManager.create('test/model')
+      const original = textMessage('user', 'Translate the PDF and deliver the translated PDF.', {
+        sessionId: session.id,
+      })
+      const clarificationRequest = {
+        id: 'explicit-retry-request',
+        kind: 'recovery_decision' as const,
+        sourceStage: 'classify' as const,
+        createdAt: new Date().toISOString(),
+        originalRequest: 'Translate the PDF and deliver the translated PDF.',
+        blockingReason: 'Permission was unavailable.',
+        questions: [{
+          id: 'question-1',
+          field: 'permission',
+          prompt: 'Enable permission, then continue.',
+          required: true,
+        }],
+      }
+      await runner.sessionManager.append(session.id, [
+        original,
+        textMessage('assistant', clarificationRequest.questions[0]!.prompt, {
+          sessionId: session.id,
+          clarificationRequest,
+        }),
+      ])
+      const checkpoint: RunCheckpoint = {
+        version: 1,
+        id: 'explicit-retry-checkpoint',
+        runId: 'explicit-retry-source-run',
+        sessionId: session.id,
+        status: 'waiting_user',
+        currentStage: 'finalize',
+        taskBookRevision: 0,
+        eventCursor: 0,
+        pendingEventIds: [],
+        contextSnapshotIds: [],
+        sideEffects: [],
+        loopBudget: {
+          attemptsUsed: 0,
+          maxAttempts: 12,
+          elapsedMs: 0,
+          maxElapsedMs: 60_000,
+          noProgressRounds: 0,
+          maxNoProgressRounds: 2,
+        },
+        resumeState: {
+          version: 1,
+          inboundMessageId: original.id,
+          cwd: workplaceDir,
+          workspaceContext: { boundaryKind: 'agent_workplace' },
+          model: 'test/model',
+          origin: 'app',
+          permissionPolicyId: 'restricted',
+          reasoning: 'auto',
+          behaviorModeId: 'general',
+          availableToolNames: [],
+          attachmentCount: 0,
+          continuation: {
+            version: 1,
+            requestId: clarificationRequest.id,
+            sourceStage: clarificationRequest.sourceStage,
+          },
+          appliedTaskBookPatchIds: [],
+          deferredRuntimeEvents: [],
+          recoveryAttempts: 0,
+          replanAttempts: 0,
+          maxReplanAttempts: 2,
+          verificationHistory: [],
+        },
+        createdAt: new Date().toISOString(),
+        reason: 'waiting for permission',
+      }
+      await runner.infra.runCheckpointStore!.write(checkpoint)
+      server = await startLocalAppApiServer(runner, {
+        port: 0,
+        sessionIndex: new SessionIndex({ dataDir, workplaceDir }),
+        projectIndex: new ProjectIndex({ dataDir }),
+        archiveIndex: new ArchiveIndex({ dataDir, workplaceDir }),
+        terminalActivityIndex: new TerminalActivityIndex({ dataDir }),
+        workspaceArtifactIndex: new WorkspaceArtifactIndex({ dataDir }),
+        workspaceLayoutIndex: new WorkspaceLayoutIndex({ dataDir }),
+        config,
+        dataDir,
+        workplaceDir,
+        rebuildRunner: vi.fn(async () => undefined),
+        updateRuntimeConfig: vi.fn(async () => undefined),
+      })
+
+      const path = localAppApiItemPath(
+        LOCAL_APP_API_PREFIXES.runCheckpoints,
+        checkpoint.id,
+        '/resume/stream',
+      )
+      const requestBody = JSON.stringify({
+        text: 'Permission is enabled. Continue the original task.',
+        reason: 'explicit stable retry test',
+        permissionMode: 'full',
+        requestKey: 'explicit-stable-turn',
+        continuationDirective: 'answer',
+      })
+      const request = () => fetch(`http://127.0.0.1:${server!.port}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: requestBody,
+      })
+      const [firstResponse, joinedResponse] = await Promise.all([request(), request()])
+      const [firstStream, joinedStream] = await Promise.all([firstResponse.text(), joinedResponse.text()])
+      const firstRunId = firstStream.match(/event: start\ndata: \{"ok":true,"runId":"([^"]+)"/)?.[1]
+      const joinedRunId = joinedStream.match(/event: start\ndata: \{"ok":true,"runId":"([^"]+)"/)?.[1]
+
+      expect(firstResponse.status).toBe(200)
+      expect(joinedResponse.status).toBe(200)
+      expect(firstRunId).toMatch(/^conversation-run-[a-f0-9]{64}$/u)
+      expect(joinedRunId).toBe(firstRunId)
+      expect(firstStream).toContain('event: result')
+      expect(joinedStream).toContain('event: result')
+      const modelCallsAfterCompletion = vi.mocked(llm.chat).mock.calls.length
+        + vi.mocked(llm.chatStream).mock.calls.length
+
+      const replayResponse = await request()
+      const replayStream = await replayResponse.text()
+      const replayRunId = replayStream.match(/event: start\ndata: \{"ok":true,"runId":"([^"]+)"/)?.[1]
+      expect(replayResponse.status).toBe(200)
+      expect(replayRunId).toBe(firstRunId)
+      expect(replayStream).toContain('event: result')
+      expect(vi.mocked(llm.chat).mock.calls.length + vi.mocked(llm.chatStream).mock.calls.length)
+        .toBe(modelCallsAfterCompletion)
+      expect((await runner.sessionManager.read(session.id))
+        .filter((message) => message.clarificationResponse?.requestId === clarificationRequest.id))
+        .toHaveLength(1)
+      expect(await runner.infra.runCheckpointDispositionStore.read(checkpoint.id)).toMatchObject({
+        status: 'resumed',
+        requestKey: 'explicit-stable-turn',
+        continuationDisposition: 'answer',
+        resumeRunId: firstRunId,
+      })
+    } finally {
+      await server?.stop()
+      await runner.shutdown()
+      if (previousDataDir === undefined) delete process.env.LITTLESHEEP_DATA_DIR
+      else process.env.LITTLESHEEP_DATA_DIR = previousDataDir
+      rmSync(dataDir, { recursive: true, force: true })
     }
   })
 

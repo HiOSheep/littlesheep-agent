@@ -85,10 +85,10 @@ describe('development workspace graph', () => {
     expect(result.workingPaths).toContain('packages/documents/package.json');
     expect(result.workingPaths).toContain('packages/channels/webhook/package.json');
     expect(result.pathChanges).toEqual({
-      added: ['packages/documents/package.json'],
+      added: [],
       removed: [],
     });
-    expect(result.pathSetChanged).toBe(true);
+    expect(result.pathSetChanged).toBe(false);
   });
 
   it('reports added and removed workspace manifest paths in an isolated repository', async () => {

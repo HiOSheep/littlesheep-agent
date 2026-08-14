@@ -24,8 +24,31 @@ export type { RecoverStageDeps } from './recover/contracts.js';
 
 /** Factory: creates a recover stage. */
 export function createRecoverStage(deps: RecoverStageDeps) {
+  const consumedContinuationRetries = new WeakSet<RunContext>();
+
   return async function recoverStage(ctx: RunContext): Promise<StageResult> {
     const recoveryAttempts = incrementRecoveryAttempts(ctx, 'recover');
+    const lastError = ctx.lastError;
+
+    // A bound user retry is a new runtime decision, even when the checkpoint
+    // already exhausted its autonomous recovery budget. Runner has already
+    // restored and revalidated resources and current permissions before this
+    // boundary. Consume exactly one deterministic retry for this resumed run;
+    // a subsequent EXECUTE failure returns here under the normal recovery cap.
+    if (isBoundContinuationRetry(ctx) && !consumedContinuationRetries.has(ctx)) {
+      consumedContinuationRetries.add(ctx);
+      return {
+        stage: 'recover',
+        next: 'execute',
+        ok: true,
+        meta: {
+          deterministicContinuationRetry: true,
+          attempts: recoveryAttempts,
+          failedStage: lastError?.stage,
+          resumedFromCheckpointId: ctx.resumedFromCheckpointId,
+        },
+      };
+    }
 
     // Force-escalate once we've exhausted retries.
     if (recoveryAttempts > ctx.maxRecoveryAttempts) {
@@ -37,7 +60,6 @@ export function createRecoverStage(deps: RecoverStageDeps) {
       };
     }
 
-    const lastError = ctx.lastError;
     const availableToolNames = new Set(ctx.tools.map((t) => t.name));
 
     if (isStructuredDecodeFailure(lastError) && recoveryAttempts === 1) {
@@ -168,4 +190,14 @@ export function createRecoverStage(deps: RecoverStageDeps) {
       },
     };
   };
+}
+
+function isBoundContinuationRetry(ctx: RunContext): boolean {
+  const continuation = ctx.conversationContinuation;
+  return Boolean(
+    ctx.resumedFromCheckpointId
+    && continuation?.resolution === 'bound'
+    && continuation.disposition === 'retry'
+    && continuation.resumeStage === 'recover',
+  );
 }
