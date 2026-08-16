@@ -35,9 +35,11 @@ export function conversationTurnInputDigest(input: ConversationTurnFingerprintIn
     id: attachment.id,
     cacheId: attachment.cacheId,
     contentHash: attachment.contentHash,
+    contextPath: attachment.contextPath,
     kind: attachment.kind,
     mimeType: attachment.mimeType,
     size: attachment.size,
+    lineComments: attachment.lineComments,
   }))
   return createHash('sha256').update(JSON.stringify({
     sessionId: String(input.sessionId),

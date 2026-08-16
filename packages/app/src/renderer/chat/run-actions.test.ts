@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RuntimeEventIngressOutcome } from '@littlesheep/types'
 import { createRunActions, type RunActionContext } from './run-actions'
+import type { ChatMessage } from './types'
 
 
 const apiMocks = vi.hoisted(() => ({
@@ -78,6 +79,18 @@ describe('run actions active-run updates', () => {
     expect(fixture.notices.at(-1)?.text).toContain('仍在启动')
   })
 
+  it('does not send a new conversation message to an aborted previous run', async () => {
+    const fixture = contextFixture('belongs to session B', 'run-session-a')
+    const controller = new AbortController()
+    controller.abort()
+    fixture.context.abortRef.current = controller
+
+    await createRunActions(fixture.context).send()
+
+    expect(apiMocks.sendRuntimeTaskEvent).not.toHaveBeenCalled()
+    expect(fixture.input()).toBe('belongs to session B')
+  })
+
   it('restores idle-run input and attachments when continuation binding is blocked', async () => {
     const blocked = new Error('multiple waiting tasks require explicit selection')
     blocked.name = 'RunStreamServerError'
@@ -121,6 +134,42 @@ describe('run actions active-run updates', () => {
     })
     expect(fixture.input()).toBe('retry the same turn safely')
   })
+
+  it('does not publish a stopped conversation into a newly selected conversation view', async () => {
+    let rejectRun!: (error: Error) => void
+    apiMocks.runAgentStream.mockImplementation(() => new Promise((_resolve, reject) => {
+      rejectRun = reject
+    }))
+    const fixture = contextFixture('session A message', null, { loading: false })
+
+    const pending = createRunActions(fixture.context).send()
+    await vi.waitFor(() => expect(apiMocks.runAgentStream).toHaveBeenCalledOnce())
+    fixture.context.conversationViewRequestRef.current += 1
+    const aborted = new Error('stopped after switching conversations')
+    aborted.name = 'AbortError'
+    rejectRun(aborted)
+    await pending
+
+    expect(fixture.context.setMessages).toHaveBeenCalledTimes(1)
+    expect(fixture.context.setContextUsageSnapshot).not.toHaveBeenCalled()
+    expect(fixture.input()).toBe('')
+    expect(fixture.context.setLoading).toHaveBeenLastCalledWith(false)
+  })
+
+  it('settles public reasoning when the visible stream aborts locally', async () => {
+    const aborted = new Error('stopped locally')
+    aborted.name = 'AbortError'
+    apiMocks.runAgentStream.mockRejectedValue(aborted)
+    const fixture = contextFixture('stop this run', null, { loading: false })
+
+    await createRunActions(fixture.context).send()
+
+    const activity = fixture.messages().at(-1)?.activity
+    expect(activity).toMatchObject({ status: 'aborted', error: '本次运行已停止。' })
+    expect(activity?.reasoning).toEqual([
+      expect.objectContaining({ phaseId: 'enter:1', status: 'failed', endedAt: expect.any(Number) }),
+    ])
+  })
 })
 
 
@@ -131,6 +180,7 @@ function contextFixture(
 ) {
   let input = initialInput
   let currentAttachments = options.attachments ?? []
+  let currentMessages: ChatMessage[] = []
   const notices: Array<{ tone: string; text: string } | null> = []
   const context = {
     abortRef: { current: null },
@@ -139,6 +189,7 @@ function contextFixture(
     appMountedRef: { current: true },
     approvalGrantsRef: { current: {} },
     attachments: currentAttachments,
+    conversationViewRequestRef: { current: 0 },
     currentSession: 'session-1',
     input: initialInput,
     liveToolStepRef: { current: new Map() },
@@ -162,12 +213,20 @@ function contextFixture(
       input = typeof next === 'function' ? next(input) : next
     }),
     setLoading: vi.fn(),
-    setMessages: vi.fn(),
+    setMessages: vi.fn((next: ChatMessage[] | ((current: ChatMessage[]) => ChatMessage[])) => {
+      currentMessages = typeof next === 'function' ? next(currentMessages) : next
+    }),
     setWorkspaceArtifactVersion: vi.fn(),
     settleApprovalPrompt: vi.fn(),
     stopRequestedRunIdRef: { current: null },
   } as unknown as RunActionContext
-  return { context, input: () => input, attachments: () => currentAttachments, notices }
+  return {
+    context,
+    input: () => input,
+    attachments: () => currentAttachments,
+    messages: () => currentMessages,
+    notices,
+  }
 }
 
 

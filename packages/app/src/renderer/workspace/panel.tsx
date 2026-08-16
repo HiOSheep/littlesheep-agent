@@ -1,5 +1,6 @@
 // Extension workspace panels, files, terminal, artifacts, and view helpers.
 import { useEffect, useRef, useState } from 'react'
+import type { AttachmentRef } from '../api'
 import { StringListUpdater } from '../app-shell/types'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { PanelFullscreenIcon, WorkspaceFeatureIcon } from '../ui/icons'
@@ -15,17 +16,20 @@ import {
 } from '../workspace-persistence'
 import { WorkspaceArtifacts } from './artifacts'
 import { WorkspaceBrowser } from './browser'
+import { WorkspaceFileView } from './file-view'
 import { WorkspaceFileNavigator } from './file-navigator'
 import { isSamePath } from './path-utils'
 import { WorkspacePlaceholder } from './placeholder'
-import { WorkspaceFileView } from './preview-pane'
+import type { WorkspaceLineComment } from './line-comments'
 import { WorkspaceReview } from './review'
+import { workspaceFileLineCommentScope } from './review-line-comments'
 import { WorkspaceTerminal } from './terminal'
 import type { WorkspaceBrowserHistory } from './browser-history'
 import { isWorkspaceBrowserTabId, type WorkspaceBrowserTab, type WorkspaceBrowserTabId } from './browser-tabs'
 import { resolveWorkspaceEntrySelection } from './entry-selection'
 import { WorkspaceTabStrip } from './tab-strip'
-import type { PermissionModeId } from '../../shared/permission-modes'
+
+const EMPTY_LINE_COMMENTS: WorkspaceLineComment[] = []
 export function WorkspacePanel({
   collapsed,
   fullscreen,
@@ -35,22 +39,24 @@ export function WorkspacePanel({
   usingTemporaryRoot,
   openRequest,
   sessionId,
-  permissionMode,
   artifactVersion,
   fileDrafts,
   fileNavigatorCollapsed,
+  fileNavigatorWidth,
   expandedPaths,
   onTabChange,
+  onTabsReorder,
   onCloseTab,
   onFileDraftChange,
   onToggleFullscreen,
   onRememberOpenPath,
   onReturnToDefaultWorkspace,
   onRequestFileSaveApproval,
-  onRequestCommandApproval,
   onWorkspaceArtifactsChanged,
   onWorkspaceFileSaved,
+  onAddAttachment,
   onFileNavigatorCollapsedChange,
+  onFileNavigatorWidthChange,
   onExpandedPathsChange,
   onOpenFile, onNavigateLink, onBrowserNavigate, onBrowserHistoryMove, onBrowserOpenNewTab, onBrowserTitleChange,
   onTipChange,
@@ -67,22 +73,24 @@ export function WorkspacePanel({
   usingTemporaryRoot: boolean
   openRequest: WorkspaceOpenRequest | null
   sessionId?: string
-  permissionMode: PermissionModeId
   artifactVersion: number
   fileDrafts: Record<string, WorkspaceFileDraftState>
   fileNavigatorCollapsed: boolean
+  fileNavigatorWidth: number
   expandedPaths: string[]
   onTabChange: (tab: WorkspacePanelTabId) => void
+  onTabsReorder: (tabs: WorkspacePanelTabId[]) => void
   onCloseTab: (tab: WorkspacePanelTabId) => void | Promise<void>
   onFileDraftChange: (tab: WorkspaceFileTabId, draft: WorkspaceFileDraftState | null) => void
   onToggleFullscreen: () => void
   onRememberOpenPath: (root: string, path: string) => void
   onReturnToDefaultWorkspace: () => void
   onRequestFileSaveApproval: (detail: unknown) => Promise<boolean>
-  onRequestCommandApproval: (detail: unknown) => Promise<boolean>
   onWorkspaceArtifactsChanged: () => void
   onWorkspaceFileSaved: (root: string, path: string, preview: import('../api').WorkspacePreview) => void
+  onAddAttachment: (attachment: AttachmentRef) => void
   onFileNavigatorCollapsedChange: (collapsed: boolean) => void
+  onFileNavigatorWidthChange: (width: number) => void
   onExpandedPathsChange: (update: StringListUpdater) => void
   onOpenFile: (path: string) => void
   onNavigateLink: (href: string) => void
@@ -99,15 +107,19 @@ export function WorkspacePanel({
   }> = [
     { id: 'review', label: '审阅', desc: '审阅当前 Git 更改' },
     { id: 'artifacts', label: '产物', desc: '按项目、来源和类型管理生成或保存的文件' },
-    { id: 'terminal', label: '终端', desc: 'LS 内置 PowerShell，命令执行受权限控制' },
+    { id: 'terminal', label: '终端', desc: '直接使用 LS 内置 PowerShell' },
     { id: 'browser', label: '浏览器', desc: '在拓展工作区预览对话中的网页链接' },
     { id: 'sideChat', label: '侧边聊天', desc: '后续承载与当前文件或产物相关的局部对话' },
   ]
   const activeFileTab = parseWorkspaceFileTabId(activeTab)
   const fullscreenTip = fullscreen ? '退出全屏工作区' : '全屏展开工作区'
-  const workspaceIsDefault = isSamePath(workspacePath, defaultWorkspacePath)
   const [warmTab, setWarmTab] = useState<WorkspacePanelTabId | null>(null)
   const previousTabRef = useRef<WorkspacePanelTabId>(activeTab)
+  const [lineCommentsByScope, setLineCommentsByScope] = useState<Record<string, WorkspaceLineComment[]>>({})
+
+  function updateLineComments(scope: string, comments: WorkspaceLineComment[]) {
+    setLineCommentsByScope((current) => ({ ...current, [scope]: comments }))
+  }
 
   useEffect(() => {
     const previousTab = previousTabRef.current
@@ -132,6 +144,7 @@ export function WorkspacePanel({
     : warmTab
   const warmFileTab = transitionWarmTab ? parseWorkspaceFileTabId(transitionWarmTab) : null
   const showSharedFileNavigator = !activeFileTab && activeTab !== 'review'
+  const usesEdgeToEdgeFileSurface = Boolean(activeFileTab) || activeTab === 'review'
 
   return (
     <aside
@@ -152,6 +165,7 @@ export function WorkspacePanel({
               fileDrafts={fileDrafts}
               workspaceEntries={workspaceEntries}
               onTabChange={onTabChange}
+              onTabsReorder={onTabsReorder}
               onCloseTab={onCloseTab}
               onOpenBrowserTab={onBrowserOpenNewTab}
               onTipChange={onTipChange}
@@ -175,7 +189,7 @@ export function WorkspacePanel({
             </button>
           </div>
         </header>
-        <div className="workspace-panel-body">
+        <div className={`workspace-panel-body ${usesEdgeToEdgeFileSurface ? 'file-surface-active' : ''}`}>
           {!panelSuspended && !hasOpenTabs && (
             <WorkspaceEmptyLauncher
               entries={workspaceEntries}
@@ -185,15 +199,18 @@ export function WorkspacePanel({
             />
           )}
           {!panelSuspended && hasOpenTabs && (
-            <div
-              className={`workspace-panel-view content-fade ${showSharedFileNavigator ? 'with-file-navigator' : ''}`}
-            >
+            <div className="workspace-panel-view content-fade">
             {activeTab === 'review' && (
               <WorkspaceReview
                 workspacePath={workspacePath}
                 artifactVersion={artifactVersion}
                 fileNavigatorCollapsed={fileNavigatorCollapsed}
+                fileNavigatorWidth={fileNavigatorWidth}
+                lineCommentsByScope={lineCommentsByScope}
                 onFileNavigatorCollapsedChange={onFileNavigatorCollapsedChange}
+                onFileNavigatorWidthChange={onFileNavigatorWidthChange}
+                onLineCommentsChange={updateLineComments}
+                onAddAttachment={onAddAttachment}
                 onOpenFile={onOpenFile}
                 onTipChange={onTipChange}
               />
@@ -217,15 +234,22 @@ export function WorkspacePanel({
                   draft={fileDrafts[activeTab]}
                   onDraftChange={onFileDraftChange}
                   onRequestFileSaveApproval={onRequestFileSaveApproval}
-                  onWorkspaceArtifactsChanged={onWorkspaceArtifactsChanged}
-                  onWorkspaceFileSaved={onWorkspaceFileSaved}
-                  onTipChange={onTipChange}
+                   onWorkspaceArtifactsChanged={onWorkspaceArtifactsChanged}
+                   onWorkspaceFileSaved={onWorkspaceFileSaved}
+                   comments={lineCommentsByScope[workspaceFileLineCommentScope(activeFileTab.root, activeFileTab.path)] ?? EMPTY_LINE_COMMENTS}
+                   onCommentsChange={(comments) => updateLineComments(
+                     workspaceFileLineCommentScope(activeFileTab.root, activeFileTab.path),
+                     comments,
+                   )}
+                   onAddAttachment={onAddAttachment}
+                   onTipChange={onTipChange}
                 />
                 <WorkspaceFileNavigator
                   workspacePath={activeFileTab.root}
                   defaultWorkspacePath={defaultWorkspacePath}
                   usingTemporaryRoot={!isSamePath(activeFileTab.root, defaultWorkspacePath)}
                   navigatorCollapsed={fileNavigatorCollapsed}
+                  navigatorWidth={fileNavigatorWidth}
                   expandedPaths={expandedPaths}
                   selectedPath={activeFileTab.path}
                   onOpenFileTab={(root, path) => {
@@ -237,6 +261,7 @@ export function WorkspacePanel({
                     onTabChange('review')
                   }}
                   onNavigatorCollapsedChange={onFileNavigatorCollapsedChange}
+                  onNavigatorWidthChange={onFileNavigatorWidthChange}
                   onExpandedPathsChange={onExpandedPathsChange}
                   onTipChange={onTipChange}
                 />
@@ -246,9 +271,6 @@ export function WorkspacePanel({
               <WorkspaceTerminal
                 workspacePath={workspacePath}
                 sessionId={sessionId}
-                permissionMode={permissionMode}
-                workspaceBoundary={workspaceIsDefault ? 'inside' : 'outside'}
-                onRequestCommandApproval={onRequestCommandApproval}
                 onTipChange={onTipChange}
               />
             )}
@@ -278,6 +300,7 @@ export function WorkspacePanel({
               defaultWorkspacePath={defaultWorkspacePath}
               usingTemporaryRoot={usingTemporaryRoot}
               navigatorCollapsed={fileNavigatorCollapsed}
+              navigatorWidth={fileNavigatorWidth}
               expandedPaths={expandedPaths}
               selectedPath={openRequest?.root === workspacePath ? openRequest.path : ''}
               onOpenFileTab={(root, path) => {
@@ -286,6 +309,7 @@ export function WorkspacePanel({
               }}
               onReturnToDefaultWorkspace={onReturnToDefaultWorkspace}
               onNavigatorCollapsedChange={onFileNavigatorCollapsedChange}
+              onNavigatorWidthChange={onFileNavigatorWidthChange}
               onExpandedPathsChange={onExpandedPathsChange}
               onTipChange={onTipChange}
             />
@@ -302,9 +326,15 @@ export function WorkspacePanel({
                     draft={fileDrafts[transitionWarmTab]}
                     onDraftChange={onFileDraftChange}
                     onRequestFileSaveApproval={onRequestFileSaveApproval}
-                    onWorkspaceArtifactsChanged={onWorkspaceArtifactsChanged}
-                    onWorkspaceFileSaved={onWorkspaceFileSaved}
-                    onTipChange={onTipChange}
+                     onWorkspaceArtifactsChanged={onWorkspaceArtifactsChanged}
+                     onWorkspaceFileSaved={onWorkspaceFileSaved}
+                     comments={lineCommentsByScope[workspaceFileLineCommentScope(warmFileTab.root, warmFileTab.path)] ?? EMPTY_LINE_COMMENTS}
+                     onCommentsChange={(comments) => updateLineComments(
+                       workspaceFileLineCommentScope(warmFileTab.root, warmFileTab.path),
+                       comments,
+                     )}
+                     onAddAttachment={onAddAttachment}
+                     onTipChange={onTipChange}
                   />
                 </div>
               )}
@@ -312,9 +342,6 @@ export function WorkspacePanel({
                 <WorkspaceTerminal
                   workspacePath={workspacePath}
                   sessionId={sessionId}
-                  permissionMode={permissionMode}
-                  workspaceBoundary={workspaceIsDefault ? 'inside' : 'outside'}
-                  onRequestCommandApproval={onRequestCommandApproval}
                   onTipChange={onTipChange}
                 />
               )}

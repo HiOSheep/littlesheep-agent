@@ -1,11 +1,22 @@
 // Owns the visible Electron window, tray, and close-to-background behavior.
 
-import { app, BrowserWindow } from 'electron'
+import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
+import { app, BrowserWindow, ipcMain, screen } from 'electron'
 import type { DesktopClosePolicy } from '@littlesheep/config'
+import {
+  APPLICATION_STATE_FLUSH_ACK_CHANNEL,
+  APPLICATION_STATE_FLUSH_CHANNEL,
+} from '../shared/application-state-contracts.js'
 import { resolveAppIconPath } from './app-icon.js'
 import { APPLICATION_ZOOM_FACTOR, isApplicationZoomShortcut } from './application-zoom.js'
 import { decideLastWindowClose } from './close-policy.js'
+import {
+  createDesktopWindowState,
+  loadDesktopWindowState,
+  saveDesktopWindowState,
+  type DesktopWindowState,
+} from './desktop-window-state.js'
 import { configureEmbeddedBrowserWindow } from './embedded-browser.js'
 import type { RunActivityMonitor } from './run-activity-monitor.js'
 import { LittleSheepTrayController } from './tray-controller.js'
@@ -15,6 +26,7 @@ export interface LittleSheepDesktopShellOptions {
   getClosePolicy: () => DesktopClosePolicy
   canCreateWindow: () => boolean
   isQuitting: () => boolean
+  getWindowStateFilePath: () => string | undefined
   onQuit: () => void
   onWarning?: (message: string) => void
 }
@@ -64,6 +76,9 @@ export class LittleSheepDesktopShell {
   private readonly options: LittleSheepDesktopShellOptions
   private mainWindow: BrowserWindow | null = null
   private tray: LittleSheepTrayController | null = null
+  private pendingWindowState: DesktopWindowState | null = null
+  private windowStateSaveTimer: ReturnType<typeof setTimeout> | undefined
+  private windowStateWriteTail: Promise<void> = Promise.resolve()
 
   constructor(options: LittleSheepDesktopShellOptions) {
     this.options = options
@@ -91,6 +106,23 @@ export class LittleSheepDesktopShell {
     return true
   }
 
+  async prepareToQuit(): Promise<void> {
+    const window = this.resolveWindow()
+    if (window) this.captureWindowState(window)
+    await Promise.all([
+      this.requestRendererStateFlush(window),
+      this.flushWindowState(),
+    ])
+  }
+
+  async shutdown(): Promise<void> {
+    try {
+      await this.prepareToQuit()
+    } finally {
+      this.dispose()
+    }
+  }
+
   snapshot(): DesktopShellSnapshot {
     const window = this.resolveWindow()
     return {
@@ -104,6 +136,8 @@ export class LittleSheepDesktopShell {
   }
 
   dispose(): void {
+    if (this.windowStateSaveTimer) clearTimeout(this.windowStateSaveTimer)
+    this.windowStateSaveTimer = undefined
     this.tray?.dispose()
     this.tray = null
   }
@@ -117,9 +151,12 @@ export class LittleSheepDesktopShell {
   }
 
   private createWindow(): BrowserWindow {
+    const restoredState = loadDesktopWindowState(
+      this.options.getWindowStateFilePath(),
+      screen.getAllDisplays().map((display) => display.workArea),
+    )
     const win = new BrowserWindow({
-      width: 1280,
-      height: 820,
+      ...(restoredState?.bounds ?? { width: 1280, height: 820 }),
       minWidth: 800,
       minHeight: 600,
       title: 'LittleSheep',
@@ -131,11 +168,11 @@ export class LittleSheepDesktopShell {
       thickFrame: true,
       hasShadow: true,
       titleBarOverlay: {
-        color: '#181818',
+        color: '#141414',
         symbolColor: '#e8e8e8',
         height: 32,
       },
-      backgroundColor: process.platform === 'win32' ? '#00000000' : '#181818',
+      backgroundColor: process.platform === 'win32' ? '#00000000' : '#141414',
       autoHideMenuBar: true,
       show: false,
       webPreferences: {
@@ -163,6 +200,7 @@ export class LittleSheepDesktopShell {
     }
 
     win.on('close', (event) => {
+      this.captureWindowState(win)
       if (this.options.isQuitting()) return
       const closeAction = decideLastWindowClose({
         policy: this.options.getClosePolicy(),
@@ -175,6 +213,11 @@ export class LittleSheepDesktopShell {
         win.hide()
       }
     })
+    const scheduleWindowStateSave = () => this.captureWindowState(win)
+    win.on('move', scheduleWindowStateSave)
+    win.on('resize', scheduleWindowStateSave)
+    win.on('maximize', scheduleWindowStateSave)
+    win.on('unmaximize', scheduleWindowStateSave)
     win.webContents.on('before-input-event', (event, input) => {
       if (input.type !== 'keyDown') return
       if (isApplicationZoomShortcut(input)) {
@@ -202,10 +245,66 @@ export class LittleSheepDesktopShell {
       if (this.mainWindow === win) this.mainWindow = null
     })
 
+    if (restoredState?.maximized) win.maximize()
+
     const devUrl = process.env['ELECTRON_RENDERER_URL']
     if (devUrl) void win.loadURL(devUrl)
     else void win.loadFile(join(__dirname, '../renderer/index.html'))
     return win
+  }
+
+  private captureWindowState(win: BrowserWindow): void {
+    if (win.isDestroyed()) return
+    this.pendingWindowState = createDesktopWindowState(win.getNormalBounds(), win.isMaximized())
+    if (this.windowStateSaveTimer) clearTimeout(this.windowStateSaveTimer)
+    this.windowStateSaveTimer = setTimeout(() => {
+      this.windowStateSaveTimer = undefined
+      void this.flushWindowState()
+    }, 240)
+  }
+
+  private async flushWindowState(): Promise<void> {
+    if (this.windowStateSaveTimer) clearTimeout(this.windowStateSaveTimer)
+    this.windowStateSaveTimer = undefined
+    const state = this.pendingWindowState
+    this.pendingWindowState = null
+    if (state) {
+      const filePath = this.options.getWindowStateFilePath()
+      this.windowStateWriteTail = this.windowStateWriteTail
+        .catch(() => undefined)
+        .then(() => saveDesktopWindowState(filePath, state))
+        .catch((error) => {
+          this.options.onWarning?.(`window state could not be saved: ${(error as Error).message}`)
+        })
+    }
+    await this.windowStateWriteTail
+    if (this.pendingWindowState) await this.flushWindowState()
+  }
+
+  private async requestRendererStateFlush(win: BrowserWindow | undefined): Promise<void> {
+    if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return
+    const requestId = randomUUID()
+    await new Promise<void>((resolve) => {
+      let settled = false
+      const finish = () => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        ipcMain.removeListener(APPLICATION_STATE_FLUSH_ACK_CHANNEL, onAck)
+        resolve()
+      }
+      const onAck = (event: Electron.IpcMainEvent, receivedId: unknown) => {
+        if (event.sender !== win.webContents || receivedId !== requestId) return
+        finish()
+      }
+      const timer = setTimeout(finish, 500)
+      ipcMain.on(APPLICATION_STATE_FLUSH_ACK_CHANNEL, onAck)
+      try {
+        win.webContents.send(APPLICATION_STATE_FLUSH_CHANNEL, requestId)
+      } catch {
+        finish()
+      }
+    })
   }
 
   private initializeTray(): void {

@@ -1,7 +1,6 @@
-// Owns embedded-browser tabs, bounded URL history, and renderer persistence.
-import { useEffect, useRef, useState } from 'react'
+// Owns embedded-browser tabs and bounded URL history for the active conversation.
+import { useRef } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
-import { readWorkspaceBrowserTabsPreference, writeWorkspaceBrowserTabsPreference } from './browser-persistence'
 import {
   createNewWorkspaceBrowserTab,
   createWorkspaceBrowserTab,
@@ -26,6 +25,8 @@ import {
 } from '../workspace-persistence'
 
 export function useWorkspaceBrowserController({
+  workspaceBrowserTabs,
+  setWorkspaceBrowserTabs,
   workspacePanelTab,
   setWorkspacePanelTab,
   workspacePanelOpenTabs,
@@ -33,6 +34,8 @@ export function useWorkspaceBrowserController({
   setWorkspacePanelCollapsed,
   setRuntimeError,
 }: {
+  workspaceBrowserTabs: WorkspaceBrowserTab[]
+  setWorkspaceBrowserTabs: Dispatch<SetStateAction<WorkspaceBrowserTab[]>>
   workspacePanelTab: WorkspacePanelTabId
   setWorkspacePanelTab: Dispatch<SetStateAction<WorkspacePanelTabId>>
   workspacePanelOpenTabs: WorkspacePanelTabId[]
@@ -40,29 +43,14 @@ export function useWorkspaceBrowserController({
   setWorkspacePanelCollapsed: Dispatch<SetStateAction<boolean>>
   setRuntimeError: Dispatch<SetStateAction<string | null>>
 }) {
-  const [workspaceBrowserTabs, setWorkspaceBrowserTabs] = useState<WorkspaceBrowserTab[]>(() => readWorkspaceBrowserTabsPreference())
   const workspaceBrowserTabsRef = useRef(workspaceBrowserTabs)
+  workspaceBrowserTabsRef.current = workspaceBrowserTabs
   const activeBrowserTabId: WorkspaceBrowserTabId | null = isWorkspaceBrowserTabId(workspacePanelTab)
     ? workspacePanelTab
     : null
   const activeBrowserTab = activeBrowserTabId
     ? workspaceBrowserTabs.find((tab) => tab.id === activeBrowserTabId) ?? null
     : null
-
-  useEffect(() => {
-    workspaceBrowserTabsRef.current = workspaceBrowserTabs
-    writeWorkspaceBrowserTabsPreference(workspaceBrowserTabs)
-  }, [workspaceBrowserTabs])
-
-  useEffect(() => {
-    const flush = () => writeWorkspaceBrowserTabsPreference(workspaceBrowserTabsRef.current)
-    window.addEventListener('pagehide', flush)
-    window.addEventListener('beforeunload', flush)
-    return () => {
-      window.removeEventListener('pagehide', flush)
-      window.removeEventListener('beforeunload', flush)
-    }
-  }, [])
 
   function commitBrowserTabs(next: WorkspaceBrowserTab[]) {
     workspaceBrowserTabsRef.current = next

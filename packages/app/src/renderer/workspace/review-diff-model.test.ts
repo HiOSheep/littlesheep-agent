@@ -20,6 +20,8 @@ describe('workspace review Monaco model', () => {
     expect(model.modified).toBe('const answer = 42\nreturn newValue\n}')
     expect([1, 2, 3].map(model.originalLineNumber)).toEqual(['10', '11', '12'])
     expect([1, 2, 3].map(model.modifiedLineNumber)).toEqual(['10', '11', '12'])
+    expect([1, 2, 3].map(model.originalSourceLine)).toEqual([10, 11, 12])
+    expect([10, 11, 12].map(model.originalModelLine)).toEqual([1, 2, 3])
   })
 
   it('separates distant hunks without inventing source line numbers', () => {
@@ -40,6 +42,8 @@ describe('workspace review Monaco model', () => {
 
     expect(model.original).toBe('first\n\nlast')
     expect([1, 2, 3].map(model.originalLineNumber)).toEqual(['1', '...', '90'])
+    expect([1, 2, 3].map(model.originalSourceLine)).toEqual([1, null, 90])
+    expect([1, 50, 90].map(model.originalModelLine)).toEqual([1, null, 3])
     expect(model.modified).toBe('first\n\nlast')
     expect([1, 2, 3].map(model.modifiedLineNumber)).toEqual(['1', '...', '90'])
   })

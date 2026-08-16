@@ -1,4 +1,4 @@
-// Conservative input-line tracking for interactive terminal authorization.
+// Bounded input-line tracking for interactive terminal activity capture.
 
 export type TerminalEscapeMode = 'none' | 'escape' | 'csi' | 'osc'
 
@@ -27,8 +27,8 @@ export const EMPTY_TERMINAL_INPUT_STATE: TerminalInputState = {
 }
 
 /**
- * Track only enough of the local editing state to authorize a line before its
- * Enter key reaches the shell. Unknown editing sequences fail closed.
+ * Track enough local editing state to associate completed user commands with
+ * terminal activity records. Unknown editing sequences remain marked as such.
  */
 export function analyzeTerminalInput(
   state: TerminalInputState,

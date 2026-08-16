@@ -245,6 +245,13 @@ describe('run stream Local App API', () => {
     const sessionId = asSessionId('stream-session')
     const runStream = vi.fn(async (input: Parameters<AgentRunner['runStream']>[0], onDelta: (delta: string) => void) => {
       input.onToolEvent?.({
+        type: 'reasoning',
+        phaseId: 'classify:2',
+        stage: 'classify',
+        reasoningStatus: 'running',
+        summary: '正在判断本轮处理路径',
+      })
+      input.onToolEvent?.({
         type: 'step_start',
         stepId: 'step-1',
         title: '执行步骤',
@@ -280,7 +287,10 @@ describe('run stream Local App API', () => {
       expect(response.headers.get('content-type')).toContain('text/event-stream')
       const body = await response.text()
       expect(body).toContain('event: start')
-      expect(body.indexOf('event: start')).toBeLessThan(body.indexOf('event: step_start'))
+      expect(body.indexOf('event: start')).toBeLessThan(body.indexOf('event: reasoning'))
+      expect(body.indexOf('event: reasoning')).toBeLessThan(body.indexOf('event: step_start'))
+      expect(body).toContain('event: reasoning')
+      expect(body).toContain('"phaseId":"classify:2"')
       expect(body).toContain('event: step_start')
       expect(body).toContain('event: delta')
       expect(body).toContain('"delta":"完成"')

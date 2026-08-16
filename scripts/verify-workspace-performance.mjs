@@ -20,6 +20,12 @@ const idleSampleMs = 5_000
 const workspaceDirectoryCacheTtlMs = 5_000
 const profileMainProcess = process.env.LITTLESHEEP_PROFILE_MAIN === '1'
 const diagnoseIdleBaseline = process.env.LITTLESHEEP_IDLE_BASELINE === '1'
+const fixturePreludeLineCount = 12
+// The first addition is guaranteed to be in the initial Monaco viewport. The
+// model rebuild starts at line 1 while its source hunk starts after the fixed
+// prelude, so this one value detects any fallback to model-relative numbering.
+const expectedReviewAdditionLineNumbers = [4]
+  .map((lineNumber) => String(lineNumber + fixturePreludeLineCount))
 
 const budgets = {
   startupProcessToLocatorMs: 15_000,
@@ -70,8 +76,7 @@ async function main() {
     await client.send('Log.enable')
     if (mainDebuggingPort) mainClient = await connectDebugger(mainDebuggingPort, 'Main inspector target')
 
-    await seedPreferences(client, workspaceDir, 'review')
-    await reloadRenderer(client, 'review workspace reload')
+    await seedPreferences(client, workspaceDir, 'review', 'review workspace reload')
     const workspaceFrameCold = await measureVisible(client, '.workspace-panel', 0, actionTimeoutMs)
     const reviewCold = await measureVisible(client, '.workspace-review-tree-row.file', 0, actionTimeoutMs)
     const reviewDiffCold = await measureVisible(
@@ -81,16 +86,28 @@ async function main() {
       actionTimeoutMs,
     )
     const reviewEditorContract = await readReviewEditorContract(client)
+    const reviewLineCommentContract = await verifyReviewLineComments(client)
+    const navigatorMotionContract = await verifyWorkspaceNavigatorMotion(client)
+    const chatWorkspaceLayoutContract = await verifyChatWorkspaceLayoutStability(client)
+    const reviewSurfaceContract = await readEdgeToEdgeFileSurfaceContract(
+      client,
+      '.workspace-review-diff',
+      'edge-to-edge review surface',
+    )
     const reviewPersistenceContract = await verifyReviewPersistence(client)
     const reviewWarm = await measureReviewWarm(client)
 
-    await seedPreferences(client, workspaceDir, 'artifacts')
-    await reloadRenderer(client, 'file tree workspace reload')
+    await seedPreferences(client, workspaceDir, 'artifacts', 'file tree workspace reload')
     const fileTreeCold = await measureVisible(client, '.workspace-tree-row', 0, actionTimeoutMs)
     const fileTreeWarm = await measureFileTreeWarm(client)
     const staleWorkspaceTree = await measureFileTreeStale(client)
 
     const editorCold = await measureEditorCold(client, workspaceDir)
+    const fileSurfaceContract = await readEdgeToEdgeFileSurfaceContract(
+      client,
+      '.workspace-preview-pane',
+      'edge-to-edge file preview surface',
+    )
     const editorWarm = await measureEditorWarm(client, workspaceDir)
     const fontContract = editorCold.fontContract ?? editorWarm.fontContract
     const fontAssertions = evaluateFontContract(fontContract)
@@ -162,7 +179,20 @@ async function main() {
       && reviewEditorContract.hasRemovedBackground
       && reviewEditorContract.hasInsertedLineNumberColour
       && reviewEditorContract.hasRemovedLineNumberColour
+      && reviewEditorContract.hasModifiedSourceLineNumbers
+      && Object.values(reviewLineCommentContract).every(Boolean)
+      && Object.values(navigatorMotionContract.assertions).every(Boolean)
+      && chatWorkspaceLayoutContract.sharedPaddingTop
+      && chatWorkspaceLayoutContract.collapsedContentTopStable
+      && chatWorkspaceLayoutContract.restoredContentTopStable
+      && reviewSurfaceContract.edgeToEdge
+      && reviewSurfaceContract.surfaceUnframed
+      && reviewSurfaceContract.navigatorAttached
       && Object.values(reviewPersistenceContract).every(Boolean)
+      && fileSurfaceContract.edgeToEdge
+      && fileSurfaceContract.surfaceUnframed
+      && fileSurfaceContract.navigatorAttached
+      && fileSurfaceContract.statusMetadataStatic
       && editorCold.monacoInk.hasInk
       && editorWarm.monacoInk.hasInk
       && rendererDiagnostics.unknownServiceErrors.length === 0
@@ -190,7 +220,12 @@ async function main() {
         warm: editorWarm.monacoInk,
       },
       reviewEditorContract,
+      reviewLineCommentContract,
+      navigatorMotionContract,
+      chatWorkspaceLayoutContract,
+      reviewSurfaceContract,
       reviewPersistenceContract,
+      fileSurfaceContract,
       rendererDiagnostics,
       resourcesBeforeHidden,
       hiddenResources,
@@ -205,12 +240,25 @@ async function main() {
   } catch (error) {
     preserve = true
     const bootstrapTimings = await readBootstrapTimings(logPath).catch(() => [])
+    const rendererState = client
+      ? await client.evaluate(`(() => ({
+          url: location.href,
+          readyState: document.readyState,
+          title: document.title,
+          bodyClass: document.body?.className ?? '',
+          bodyText: document.body?.innerText?.slice(0, 2_000) ?? '',
+          bodyHtml: document.body?.innerHTML?.slice(0, 2_000) ?? '',
+          activeWorkspaceTab: localStorage.getItem('littlesheep.ui.workspacePanelTab'),
+        }))()`).catch((stateError) => ({ error: String(stateError) }))
+      : undefined
     console.error(JSON.stringify({
       check: 'workspace-performance',
       ok: false,
       root,
       logPath,
       bootstrapTimings,
+      rendererState,
+      rendererDiagnostics: client ? summarizeRendererDiagnostics(client.events) : undefined,
       error: error instanceof Error ? error.stack ?? error.message : String(error),
     }, null, 2))
     process.exitCode = 1
@@ -228,7 +276,12 @@ async function prepareFixture(dataDir, chromiumDir, workspaceDir) {
     mkdir(chromiumDir, { recursive: true }),
     mkdir(join(workspaceDir, 'src'), { recursive: true }),
   ])
+  const unchangedPrelude = Array.from(
+    { length: fixturePreludeLineCount },
+    (_, index) => `const fixturePrelude${String(index + 1).padStart(2, '0')} = ${index + 1}`,
+  )
   await writeFile(join(workspaceDir, 'src', 'sample.ts'), [
+    ...unchangedPrelude,
     'export interface Sample {',
     '  id: number',
     '  label: string',
@@ -251,6 +304,7 @@ async function prepareFixture(dataDir, chromiumDir, workspaceDir) {
   runGit(workspaceDir, ['add', '.'])
   runGit(workspaceDir, ['commit', '-m', 'fixture'])
   await writeFile(join(workspaceDir, 'src', 'sample.ts'), [
+    ...unchangedPrelude,
     'export interface Sample {',
     '  id: number',
     '  label: string',
@@ -411,8 +465,19 @@ function summarizeRendererDiagnostics(events) {
   }
 }
 
-async function seedPreferences(client, workspaceDir, tab) {
+async function seedPreferences(client, workspaceDir, tab, reloadLabel) {
   const filePath = join(workspaceDir, 'src', 'sample.ts')
+  const sessionLayout = {
+    collapsed: false,
+    fullscreen: false,
+    activeTab: tab,
+    openTabs: [tab],
+    openRequest: { root: workspaceDir, path: filePath },
+    fileNavigatorCollapsed: false,
+    expandedPaths: [],
+    drafts: {},
+    browserTabs: [],
+  }
   const preferences = {
     'littlesheep.ui.workspacePanelCollapsed': 'false',
     'littlesheep.ui.workspacePanelFullscreen': 'false',
@@ -422,13 +487,14 @@ async function seedPreferences(client, workspaceDir, tab) {
     'littlesheep.ui.workspacePanelOpenPath': filePath,
     'littlesheep.ui.workspaceFileNavigatorCollapsed': 'false',
     'littlesheep.ui.workspaceReviewSideBySide': 'true',
+    'littlesheep.ui.workspaceSessionLayouts': JSON.stringify({ __draft__: sessionLayout }),
   }
-  await client.evaluate(`(() => {
+  await reloadRendererWithSetup(client, `(() => {
     const values = ${JSON.stringify(preferences)};
     for (const [key, value] of Object.entries(values)) localStorage.setItem(key, value);
     localStorage.removeItem('littlesheep.ui.workspaceFileDrafts');
     return true;
-  })()`)
+  })()`, reloadLabel)
 }
 
 async function measureVisible(client, selector, start, timeoutMs) {
@@ -460,6 +526,18 @@ async function reloadRenderer(client, label) {
       ? state.timeOrigin
       : undefined
   }, actionTimeoutMs, label)
+}
+
+async function reloadRendererWithSetup(client, expression, label) {
+  const { identifier } = await client.send('Page.addScriptToEvaluateOnNewDocument', {
+    source: expression,
+  })
+  try {
+    await client.evaluate(expression)
+    return await reloadRenderer(client, label)
+  } finally {
+    await client.send('Page.removeScriptToEvaluateOnNewDocument', { identifier }).catch(() => undefined)
+  }
 }
 
 async function measureFileTreeWarm(client) {
@@ -509,6 +587,140 @@ async function measureReviewWarm(client) {
   return (await measureVisible(client, '.workspace-review-tree-row.file', start, actionTimeoutMs)).elapsedMs
 }
 
+async function verifyChatWorkspaceLayoutStability(client) {
+  const expanded = await readChatWorkspaceLayoutSnapshot(client, 'expanded chat layout')
+  await client.evaluate(`document.querySelector('.workspace-panel-corner-toggle')?.click()`)
+  await waitFor(
+    async () => client.evaluate("document.querySelector('.workspace-panel')?.classList.contains('collapsed') || null"),
+    actionTimeoutMs,
+    'workspace collapse for chat layout',
+  )
+  await delay(400)
+  const collapsed = await readChatWorkspaceLayoutSnapshot(client, 'collapsed chat layout')
+  await client.evaluate(`document.querySelector('.workspace-panel-reopen-target')?.click()`)
+  await waitFor(
+    async () => client.evaluate("document.querySelector('.workspace-panel:not(.collapsed)')?.getBoundingClientRect().width > 0 || null"),
+    actionTimeoutMs,
+    'workspace restore for chat layout',
+  )
+  await delay(400)
+  const restored = await readChatWorkspaceLayoutSnapshot(client, 'restored chat layout')
+  const close = (left, right) => Math.abs(left - right) <= 0.5
+  const sharedPaddingTop = close(expanded.paddingTop, collapsed.paddingTop)
+    && close(expanded.paddingTop, restored.paddingTop)
+  const collapsedContentTopStable = close(expanded.contentTop, collapsed.contentTop)
+  const restoredContentTopStable = close(expanded.contentTop, restored.contentTop)
+  const result = {
+    sharedPaddingTop,
+    collapsedContentTopStable,
+    restoredContentTopStable,
+    expanded,
+    collapsed,
+    restored,
+  }
+  if (!sharedPaddingTop || !collapsedContentTopStable || !restoredContentTopStable) {
+    throw new Error(`chat workspace layout shifted: ${JSON.stringify(result)}`)
+  }
+  return result
+}
+
+async function readChatWorkspaceLayoutSnapshot(client, label) {
+  return waitFor(async () => client.evaluate(`(() => {
+    const messages = document.querySelector('.messages')
+    if (!messages) return null
+    const rect = messages.getBoundingClientRect()
+    const paddingTop = Number.parseFloat(getComputedStyle(messages).paddingTop)
+    if (!Number.isFinite(paddingTop) || rect.width <= 0 || rect.height <= 0) return null
+    return {
+      top: rect.top,
+      paddingTop,
+      contentTop: rect.top + paddingTop,
+    }
+  })()`), actionTimeoutMs, label)
+}
+
+async function readEdgeToEdgeFileSurfaceContract(client, surfaceSelector, label) {
+  let latestContract
+  try {
+    return await waitFor(async () => {
+      const contract = await client.evaluate(`(() => {
+        const panel = document.querySelector('.workspace-panel-contents')
+        const body = document.querySelector('.workspace-panel-body.file-surface-active')
+        const surface = document.querySelector(${JSON.stringify(surfaceSelector)})
+        const navigator = document.querySelector('.workspace-files-navigator')
+        const statusItem = document.querySelector('.workspace-preview-statusbar span')
+        if (!panel || !body || !surface || !navigator) return null
+        const rect = (element) => {
+          const value = element.getBoundingClientRect()
+          return { left: value.left, right: value.right, bottom: value.bottom }
+        }
+        const frame = (element) => {
+          const style = getComputedStyle(element)
+          return {
+            borderTopWidth: style.borderTopWidth,
+            borderRightWidth: style.borderRightWidth,
+            borderBottomWidth: style.borderBottomWidth,
+            borderLeftWidth: style.borderLeftWidth,
+            borderRadius: style.borderRadius,
+            boxShadow: style.boxShadow,
+            transitionDuration: style.transitionDuration,
+            backgroundColor: style.backgroundColor,
+          }
+        }
+        return {
+          panel: rect(panel),
+          body: rect(body),
+          surface: frame(surface),
+          navigator: frame(navigator),
+          statusItem: statusItem ? frame(statusItem) : null,
+        }
+      })()`)
+      if (!contract) return undefined
+      latestContract = contract
+      const close = (left, right) => Math.abs(left - right) <= 1
+      const edgeToEdge = close(contract.body.left, contract.panel.left)
+        && close(contract.body.right, contract.panel.right)
+        && close(contract.body.bottom, contract.panel.bottom)
+      const surfaceUnframed = [
+        contract.surface.borderTopWidth,
+        contract.surface.borderRightWidth,
+        contract.surface.borderBottomWidth,
+        contract.surface.borderLeftWidth,
+      ].every((width) => width === '0px')
+        && contract.surface.borderRadius === '0px'
+        && contract.surface.boxShadow === 'none'
+        && contract.surface.transitionDuration === '0s'
+      const navigatorBorderLeftWidth = Number.parseFloat(contract.navigator.borderLeftWidth)
+      const navigatorAttached = contract.navigator.borderTopWidth === '0px'
+        && contract.navigator.borderRightWidth === '0px'
+        && contract.navigator.borderBottomWidth === '0px'
+        && navigatorBorderLeftWidth > 0
+        && navigatorBorderLeftWidth <= 1.25
+        && contract.navigator.borderRadius === '0px'
+        && contract.navigator.boxShadow === 'none'
+      const statusMetadataStatic = !contract.statusItem || (
+        contract.statusItem.borderRadius === '0px'
+        && contract.statusItem.transitionDuration === '0s'
+        && contract.statusItem.backgroundColor === 'rgba(0, 0, 0, 0)'
+      )
+      if (!edgeToEdge || !surfaceUnframed || !navigatorAttached || !statusMetadataStatic) return undefined
+      return {
+        edgeToEdge,
+        surfaceUnframed,
+        navigatorAttached,
+        statusMetadataStatic,
+        panelRect: contract.panel,
+        bodyRect: contract.body,
+        surfaceFrame: contract.surface,
+        navigatorFrame: contract.navigator,
+        statusItemFrame: contract.statusItem,
+      }
+    }, actionTimeoutMs, label)
+  } catch (error) {
+    throw new Error(`${label} failed: ${JSON.stringify(latestContract)}`, { cause: error })
+  }
+}
+
 async function readReviewEditorContract(client) {
   return waitFor(async () => {
     const contract = await client.evaluate(`(() => {
@@ -540,6 +752,9 @@ async function readReviewEditorContract(client) {
         '.margin-view-overlays > div:has(> .gutter-delete) > .line-numbers',
         'color',
       ))
+      const modifiedAdditionLineNumbers = visibleElements(
+        '.editor.modified .margin-view-overlays > div:has(> .gutter-insert) > .line-numbers',
+      ).map((element) => element.textContent?.trim() ?? '')
       const tintedLayerCounts = visibleElements('.line-insert, .line-delete').map((element) => {
         const rect = element.getBoundingClientRect()
         const x = Math.min(rect.right - 1, rect.left + Math.max(1, rect.width / 2))
@@ -559,6 +774,7 @@ async function readReviewEditorContract(client) {
         removedCharacterBackgrounds: [...removedCharacterBackgrounds],
         insertedLineNumberColours: [...insertedLineNumberColours],
         removedLineNumberColours: [...removedLineNumberColours],
+        modifiedAdditionLineNumbers,
         maxTintedLayerCount: Math.max(0, ...tintedLayerCounts),
       }
     })()`)
@@ -573,6 +789,9 @@ async function readReviewEditorContract(client) {
       || contract.removedCharacterBackgrounds.some((colour) => colour !== 'rgba(0, 0, 0, 0)')
       || !contract.insertedLineNumberColours.includes('rgb(2, 162, 67)')
       || !contract.removedLineNumberColours.includes('rgb(222, 53, 46)')
+      || expectedReviewAdditionLineNumbers.some((lineNumber) => (
+        !contract.modifiedAdditionLineNumbers.includes(lineNumber)
+      ))
       || contract.maxTintedLayerCount !== 1
     ) return undefined
     return {
@@ -591,8 +810,636 @@ async function readReviewEditorContract(client) {
       insertedLineNumberColours: contract.insertedLineNumberColours,
       hasRemovedLineNumberColour: true,
       removedLineNumberColours: contract.removedLineNumberColours,
+      hasModifiedSourceLineNumbers: true,
+      modifiedAdditionLineNumbers: contract.modifiedAdditionLineNumbers,
+      expectedModifiedAdditionLineNumbers: expectedReviewAdditionLineNumbers,
     }
   }, actionTimeoutMs, 'Monaco single-layer 50% review surfaces and changed line numbers')
+}
+
+async function verifyReviewLineComments(client) {
+  const sideBySidePoint = await readReviewCommentPoint(
+    client,
+    '.workspace-review-monaco-diff .editor.modified .line-insert',
+    'side-by-side modified review line',
+  )
+  await moveMouse(client, sideBySidePoint)
+  const sideBySideHover = await waitForVisibleReviewElement(
+    client,
+    '.workspace-line-comment-layer .workspace-line-comment-add',
+    'side-by-side line comment add button',
+  )
+  const sideBySideAddButtonGeometry = await verifyLineCommentAddButtonGeometry(
+    client,
+    '.workspace-line-comment-layer .workspace-line-comment-add',
+    'side-by-side line comment add button geometry',
+  )
+
+  await clickMouse(client, sideBySidePoint)
+  const sideBySideOpened = await waitForVisibleReviewElement(
+    client,
+    '.workspace-line-comment-editor',
+    'side-by-side line comment editor',
+  )
+  const sideBySideStableAcrossFrames = await verifyReviewElementStability(
+    client,
+    '.workspace-line-comment-editor',
+    'side-by-side comment editor frame stability',
+  )
+  await client.evaluate(`document.querySelector('.workspace-files-navigator-rail')?.click()`)
+  await waitForReviewNavigatorState(client, false, 'collapse navigator while comment editor is open')
+  const sideBySideStableAfterParentRender = await verifyReviewElementStability(
+    client,
+    '.workspace-line-comment-editor',
+    'side-by-side comment editor after parent render',
+  )
+  await client.evaluate(`document.querySelector('.workspace-files-navigator-rail')?.click()`)
+  await waitForReviewNavigatorState(client, true, 'restore navigator while comment editor is open')
+  const sideBySideStableAfterRestore = await verifyReviewElementStability(
+    client,
+    '.workspace-line-comment-editor',
+    'side-by-side comment editor after navigator restore',
+  )
+  await clickMouse(client, await readReviewCommentPoint(
+    client,
+    '.workspace-review-monaco-diff .editor.modified .line-insert',
+    'side-by-side modified review line after opening',
+  ))
+  const sideBySideToggledClosed = await waitForReviewElementCount(
+    client,
+    '.workspace-line-comment-editor',
+    0,
+    'side-by-side row toggles comment editor closed',
+  )
+
+  await clickMouse(client, await readReviewCommentPoint(
+    client,
+    '.workspace-review-monaco-diff .editor.modified .line-insert',
+    'side-by-side modified review line before cancel',
+  ))
+  await waitForVisibleReviewElement(client, '.workspace-line-comment-editor', 'side-by-side editor before cancel')
+  await client.evaluate(`document.querySelector('.workspace-line-comment-editor-actions button[type="button"]')?.click()`)
+  const sideBySideCancelled = await waitForReviewElementCount(
+    client,
+    '.workspace-line-comment-editor',
+    0,
+    'side-by-side comment cancel',
+  )
+
+  await clickMouse(client, await readReviewCommentPoint(
+    client,
+    '.workspace-review-monaco-diff .editor.modified .line-insert',
+    'side-by-side modified review line before publish',
+  ))
+  await typeReviewComment(client, '双列审阅评论')
+  await client.evaluate(`document.querySelector('.workspace-line-comment-editor-actions button[type="submit"]')?.click()`)
+  const sideBySidePublished = await waitFor(async () => client.evaluate(`(() => {
+    const cards = Array.from(document.querySelectorAll('.workspace-line-comment-card'))
+      .filter((element) => {
+        const rect = element.getBoundingClientRect()
+        return rect.width > 0 && rect.height > 0
+      })
+    const attachmentCount = Array.from(document.querySelectorAll('.attachment-preview-meta small'))
+      .map((element) => element.textContent?.trim() ?? '')
+      .find((text) => text === '1 条行评论')
+    return cards.some((card) => card.textContent?.includes('双列审阅评论')) && attachmentCount ? true : null
+  })()`), actionTimeoutMs, 'side-by-side published review comment and composer attachment')
+
+  await client.evaluate(`document.querySelector('.workspace-review-diff-actions [aria-pressed]')?.click()`)
+  await waitFor(async () => client.evaluate(`
+    document.querySelector('.workspace-review-diff-actions [aria-pressed]')?.getAttribute('aria-pressed') === 'false'
+      ? true
+      : null
+  `), actionTimeoutMs, 'single-column review mode for comments')
+  const deletedRows = await readInlineDeletedCommentPoints(client)
+  const firstDeleted = deletedRows[0]
+  if (!firstDeleted) throw new Error('single-column review has no deleted rows')
+  const secondDeleted = deletedRows.find((row) => row.sourceLine === firstDeleted.sourceLine + 1)
+  if (!secondDeleted) throw new Error('single-column review has no contiguous deleted rows')
+  await moveMouse(client, firstDeleted)
+  const inlineHover = await waitForVisibleReviewElement(
+    client,
+    '.workspace-review-inline-deleted-comments .workspace-line-comment-add',
+    'inline deleted line comment add button',
+  )
+  const inlineAddButtonGeometry = await verifyLineCommentAddButtonGeometry(
+    client,
+    '.workspace-review-inline-deleted-comments .workspace-line-comment-add',
+    'inline deleted line comment add button geometry',
+  )
+
+  await dragMouse(client, firstDeleted, secondDeleted)
+  const inlineDragOpened = await waitFor(async () => client.evaluate(`(() => {
+    const editor = Array.from(document.querySelectorAll('.workspace-line-comment-editor'))
+      .find((element) => element.getBoundingClientRect().height > 0)
+    return editor?.textContent?.includes(${JSON.stringify(`第 ${firstDeleted.sourceLine}-${secondDeleted.sourceLine} 行`)})
+      ? true
+      : null
+  })()`), actionTimeoutMs, 'inline deleted multi-line comment editor')
+  await client.evaluate(`document.querySelector('.workspace-line-comment-editor-actions button[type="button"]')?.click()`)
+  const inlineCancelled = await waitForReviewElementCount(
+    client,
+    '.workspace-line-comment-editor',
+    0,
+    'inline deleted comment cancel',
+  )
+
+  const refreshedDeletedRows = await readInlineDeletedCommentPoints(client)
+  const publishDeleted = refreshedDeletedRows.find((row) => row.sourceLine === firstDeleted.sourceLine)
+  if (!publishDeleted) throw new Error('single-column deleted row disappeared before publish')
+  await clickMouse(client, publishDeleted)
+  await typeReviewComment(client, '单列删除行评论')
+  await client.evaluate(`document.querySelector('.workspace-line-comment-editor-actions button[type="submit"]')?.click()`)
+  const inlinePublished = await waitFor(async () => client.evaluate(`(() => {
+    const cards = Array.from(document.querySelectorAll('.workspace-line-comment-card'))
+      .filter((element) => element.getBoundingClientRect().height > 0)
+    const attachmentCount = Array.from(document.querySelectorAll('.attachment-preview-meta small'))
+      .map((element) => element.textContent?.trim() ?? '')
+      .find((text) => text === '2 条行评论')
+    return cards.some((card) => card.textContent?.includes('单列删除行评论')) && attachmentCount ? true : null
+  })()`), actionTimeoutMs, 'inline deleted published comment and merged composer attachment')
+
+  await client.evaluate(`document.querySelector('.workspace-review-diff-actions [aria-pressed]')?.click()`)
+  const sideBySideRestored = await waitFor(async () => client.evaluate(`
+    document.querySelector('.workspace-review-diff-actions [aria-pressed]')?.getAttribute('aria-pressed') === 'true'
+      ? true
+      : null
+  `), actionTimeoutMs, 'restore side-by-side review after comment checks')
+
+  return {
+    sideBySideHover: Boolean(sideBySideHover),
+    sideBySideAddButtonGeometry,
+    sideBySideOpened: Boolean(sideBySideOpened),
+    sideBySideStableAcrossFrames,
+    sideBySideStableAfterParentRender,
+    sideBySideStableAfterRestore,
+    sideBySideToggledClosed: Boolean(sideBySideToggledClosed),
+    sideBySideCancelled: Boolean(sideBySideCancelled),
+    sideBySidePublished: Boolean(sideBySidePublished),
+    inlineHover: Boolean(inlineHover),
+    inlineAddButtonGeometry,
+    inlineDragOpened: Boolean(inlineDragOpened),
+    inlineCancelled: Boolean(inlineCancelled),
+    inlinePublished: Boolean(inlinePublished),
+    sideBySideRestored: Boolean(sideBySideRestored),
+  }
+}
+
+async function verifyLineCommentAddButtonGeometry(client, selector, label) {
+  const contract = await waitFor(async () => client.evaluate(`(() => {
+    const button = Array.from(document.querySelectorAll(${JSON.stringify(selector)}))
+      .find((candidate) => {
+        const rect = candidate.getBoundingClientRect()
+        const style = getComputedStyle(candidate)
+        return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
+      })
+    const layer = button?.closest('.workspace-line-comment-layer')
+    if (!button || !layer) return null
+
+    const layerRect = layer.getBoundingClientRect()
+    const editors = Array.from(document.querySelectorAll('.workspace-review-monaco-diff .monaco-editor'))
+      .map((editor) => ({ editor, rect: editor.getBoundingClientRect() }))
+      .filter(({ rect }) => rect.width > 0 && rect.height > 0)
+      .sort((left, right) => {
+        const score = ({ rect }) => Math.abs(rect.left - layerRect.left)
+          + Math.abs(rect.top - layerRect.top)
+          + Math.abs(rect.width - layerRect.width)
+          + Math.abs(rect.height - layerRect.height)
+        return score(left) - score(right)
+      })
+    const editor = editors[0]?.editor
+    const margin = editor?.querySelector('.margin')
+    const icon = button.querySelector('.workspace-line-comment-add-icon')
+    if (!editor || !margin || !icon) return null
+
+    const buttonRect = button.getBoundingClientRect()
+    const marginRect = margin.getBoundingClientRect()
+    const iconRect = icon.getBoundingClientRect()
+    const buttonCenterY = buttonRect.top + buttonRect.height / 2
+    const lineNumber = Array.from(editor.querySelectorAll(
+      '.line-numbers, .workspace-review-inline-deleted-line-number',
+    ))
+      .map((element) => ({ element, rect: element.getBoundingClientRect() }))
+      .filter(({ rect }) => rect.width > 0
+        && rect.height > 0
+        && buttonCenterY >= rect.top - 0.5
+        && buttonCenterY <= rect.bottom + 0.5)
+      .sort((left, right) => {
+        const center = ({ rect }) => rect.top + rect.height / 2
+        return Math.abs(center(left) - buttonCenterY) - Math.abs(center(right) - buttonCenterY)
+      })[0]
+    if (!lineNumber) return null
+
+    const style = getComputedStyle(button)
+    const before = getComputedStyle(icon, '::before')
+    const after = getComputedStyle(icon, '::after')
+    const borderWidths = [
+      style.borderTopWidth,
+      style.borderRightWidth,
+      style.borderBottomWidth,
+      style.borderLeftWidth,
+    ].map((value) => Number.parseFloat(value))
+    const lineNumberRight = lineNumber.rect.right
+    const contentLeft = marginRect.right
+    const buttonCenterX = buttonRect.left + buttonRect.width / 2
+    const buttonCenter = {
+      x: buttonCenterX,
+      y: buttonCenterY,
+    }
+    const iconCenter = {
+      x: iconRect.left + iconRect.width / 2,
+      y: iconRect.top + iconRect.height / 2,
+    }
+    const expectedCenterX = lineNumberRight + (contentLeft - lineNumberRight) / 2
+    const tolerance = 0.75
+    return {
+      button: {
+        left: buttonRect.left,
+        right: buttonRect.right,
+        width: buttonRect.width,
+        height: buttonRect.height,
+      },
+      lineNumberRight,
+      contentLeft,
+      expectedCenterX,
+      buttonCenter,
+      iconCenter,
+      borderWidths,
+      plusBars: {
+        horizontal: { width: before.width, height: before.height },
+        vertical: { width: after.width, height: after.height },
+      },
+      assertions: {
+        afterLineNumber: buttonRect.left >= lineNumberRight - tolerance,
+        beforeContent: buttonRect.right <= contentLeft + tolerance,
+        centredInGutter: Math.abs(buttonCenterX - expectedCenterX) <= tolerance,
+        borderless: borderWidths.every((width) => width === 0),
+        iconCentred: Math.abs(buttonCenter.x - iconCenter.x) <= tolerance
+          && Math.abs(buttonCenter.y - iconCenter.y) <= tolerance,
+        horizontalBar: Number.parseFloat(before.width) > Number.parseFloat(before.height),
+        verticalBar: Number.parseFloat(after.height) > Number.parseFloat(after.width),
+      },
+    }
+  })()`), actionTimeoutMs, label)
+  const failed = Object.entries(contract.assertions).filter(([, ok]) => !ok)
+  if (failed.length > 0) {
+    throw new Error(`${label} failed: ${JSON.stringify({ failed, contract })}`)
+  }
+  return contract
+}
+
+async function readReviewCommentPoint(client, selector, label) {
+  return waitFor(async () => client.evaluate(`(() => {
+    const element = Array.from(document.querySelectorAll(${JSON.stringify(selector)}))
+      .find((candidate) => {
+        const rect = candidate.getBoundingClientRect()
+        const style = getComputedStyle(candidate)
+        return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
+      })
+    if (!element) return null
+    const rect = element.getBoundingClientRect()
+    return {
+      x: Math.min(rect.right - 4, rect.left + Math.max(4, Math.min(48, rect.width / 2))),
+      y: rect.top + rect.height / 2,
+    }
+  })()`), actionTimeoutMs, label)
+}
+
+async function readInlineDeletedCommentPoints(client) {
+  return waitFor(async () => client.evaluate(`(() => {
+    const bySourceLine = new Map()
+    document.querySelectorAll('[data-workspace-review-deleted-source-line]').forEach((element) => {
+      const sourceLine = Number(element.dataset.workspaceReviewDeletedSourceLine)
+      const rect = element.getBoundingClientRect()
+      if (!Number.isSafeInteger(sourceLine) || rect.width <= 0 || rect.height <= 0 || bySourceLine.has(sourceLine)) return
+      bySourceLine.set(sourceLine, {
+        sourceLine,
+        x: Math.min(rect.right - 4, rect.left + Math.max(4, Math.min(48, rect.width / 2))),
+        y: rect.top + rect.height / 2,
+      })
+    })
+    const rows = [...bySourceLine.values()].sort((left, right) => left.sourceLine - right.sourceLine)
+    return rows.length > 1 ? rows : null
+  })()`), actionTimeoutMs, 'interactive inline deleted review rows')
+}
+
+async function typeReviewComment(client, text) {
+  await waitFor(async () => client.evaluate(`(() => {
+    const textarea = Array.from(document.querySelectorAll('.workspace-line-comment-editor textarea'))
+      .find((element) => element.getBoundingClientRect().height > 0)
+    if (!textarea) return null
+    textarea.focus()
+    return document.activeElement === textarea ? true : null
+  })()`), actionTimeoutMs, 'focus review comment textarea')
+  await client.send('Input.insertText', { text })
+  await waitFor(async () => client.evaluate(`(() => {
+    const textarea = Array.from(document.querySelectorAll('.workspace-line-comment-editor textarea'))
+      .find((element) => element.getBoundingClientRect().height > 0)
+    const submit = document.querySelector('.workspace-line-comment-editor-actions button[type="submit"]')
+    return textarea?.value === ${JSON.stringify(text)} && submit && !submit.disabled ? true : null
+  })()`), actionTimeoutMs, 'review comment text input')
+}
+
+async function waitForVisibleReviewElement(client, selector, label) {
+  return waitFor(async () => client.evaluate(`(() => {
+    const element = Array.from(document.querySelectorAll(${JSON.stringify(selector)}))
+      .find((candidate) => {
+        const rect = candidate.getBoundingClientRect()
+        return rect.width > 0 && rect.height > 0
+      })
+    return element ? true : null
+  })()`), actionTimeoutMs, label)
+}
+
+async function waitForReviewElementCount(client, selector, expected, label) {
+  return waitFor(async () => client.evaluate(`(() => {
+    const count = Array.from(document.querySelectorAll(${JSON.stringify(selector)}))
+      .filter((element) => element.getBoundingClientRect().height > 0).length
+    return count === ${expected} ? true : null
+  })()`), actionTimeoutMs, label)
+}
+
+async function verifyReviewElementStability(client, selector, label, frameCount = 12) {
+  const result = await client.evaluate(`new Promise((resolve) => {
+    const visibleElement = () => Array.from(document.querySelectorAll(${JSON.stringify(selector)}))
+      .find((candidate) => {
+        const rect = candidate.getBoundingClientRect()
+        const style = getComputedStyle(candidate)
+        return rect.width > 0
+          && rect.height > 0
+          && style.display !== 'none'
+          && style.visibility !== 'hidden'
+      })
+    const initial = visibleElement()
+    if (!initial) {
+      resolve({ visibleEveryFrame: false, sameElement: false, sampledFrames: 0 })
+      return
+    }
+    let sampledFrames = 0
+    let visibleEveryFrame = true
+    let sameElement = true
+    const sample = () => {
+      const current = visibleElement()
+      visibleEveryFrame &&= Boolean(current)
+      sameElement &&= current === initial
+      sampledFrames += 1
+      if (sampledFrames >= ${frameCount}) {
+        resolve({ visibleEveryFrame, sameElement, sampledFrames })
+        return
+      }
+      requestAnimationFrame(sample)
+    }
+    requestAnimationFrame(sample)
+  })`)
+  if (!result?.visibleEveryFrame || !result?.sameElement || result.sampledFrames !== frameCount) {
+    throw new Error(`${label} failed: ${JSON.stringify(result)}`)
+  }
+  return true
+}
+
+async function verifyWorkspaceNavigatorMotion(client) {
+  const contract = await client.evaluate(`(async () => {
+    const navigator = document.querySelector('.workspace-files-navigator')
+    const inner = navigator?.querySelector('.workspace-files-navigator-inner')
+    const button = navigator?.querySelector('.workspace-files-navigator-rail')
+    const surface = navigator?.parentElement
+    const content = navigator?.previousElementSibling
+    const stableReviewSurface = document.querySelector('.workspace-review-monaco-diff')
+    if (!navigator || !inner || !button || !surface || !content || !stableReviewSurface) return null
+
+    const frame = (element) => {
+      const rect = element.getBoundingClientRect()
+      return {
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+      }
+    }
+    const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
+    const summarizeFrames = (timestamps) => {
+      const intervals = timestamps.slice(1).map((time, index) => time - timestamps[index])
+      const sorted = [...intervals].sort((left, right) => left - right)
+      const percentileIndex = Math.max(0, Math.ceil(sorted.length * 0.95) - 1)
+      return {
+        frameCount: timestamps.length,
+        meanIntervalMs: intervals.length > 0
+          ? intervals.reduce((total, value) => total + value, 0) / intervals.length
+          : 0,
+        p95IntervalMs: sorted[percentileIndex] ?? 0,
+        maxIntervalMs: sorted.at(-1) ?? 0,
+        intervalsOver34ms: intervals.filter((value) => value > 34).length,
+      }
+    }
+    const sampleToggle = async () => {
+      const timestamps = []
+      const longTasks = []
+      const animatedProperties = new Set()
+      let animationObserved = false
+      let observer = null
+      if (typeof PerformanceObserver !== 'undefined') {
+        try {
+          observer = new PerformanceObserver((list) => {
+            for (const entry of list.getEntries()) {
+              longTasks.push({ startTime: entry.startTime, duration: entry.duration })
+            }
+          })
+          observer.observe({ type: 'longtask', buffered: false })
+        } catch {
+          observer?.disconnect()
+          observer = null
+        }
+      }
+      const startedAt = performance.now()
+      button.click()
+      while (performance.now() - startedAt < 420) {
+        timestamps.push(await nextFrame())
+        for (const animation of inner.getAnimations()) {
+          const keyframes = animation.effect?.getKeyframes?.() ?? []
+          if (keyframes.length === 0) continue
+          animationObserved = true
+          for (const keyframe of keyframes) {
+            for (const property of Object.keys(keyframe)) {
+              if (!['offset', 'computedOffset', 'easing', 'composite'].includes(property)) {
+                animatedProperties.add(property)
+              }
+            }
+          }
+        }
+      }
+      observer?.disconnect()
+      return {
+        frames: summarizeFrames(timestamps),
+        longTasks,
+        animationObserved,
+        animatedProperties: [...animatedProperties],
+      }
+    }
+
+    if (navigator.getAttribute('aria-expanded') !== 'true') {
+      button.click()
+      await new Promise((resolve) => setTimeout(resolve, 360))
+    }
+
+    const outerStyle = getComputedStyle(navigator)
+    const innerStyle = getComputedStyle(inner)
+    const expandedBefore = {
+      surface: frame(surface),
+      content: frame(content),
+      navigator: frame(navigator),
+      rail: frame(button),
+    }
+    const collapse = await sampleToggle()
+    const collapsed = {
+      surface: frame(surface),
+      content: frame(content),
+      navigator: frame(navigator),
+      rail: frame(button),
+    }
+    const expand = await sampleToggle()
+    const expandedAfter = {
+      surface: frame(surface),
+      content: frame(content),
+      navigator: frame(navigator),
+      rail: frame(button),
+    }
+
+    const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
+    const reversalRailBefore = frame(button)
+    button.click()
+    await nextFrame()
+    await nextFrame()
+    const closingAnimationObserved = inner.getAnimations().length > 0
+    const reversalRailDuring = frame(button)
+    button.click()
+    await nextFrame()
+    const reversedAnimationObserved = inner.getAnimations().length > 0
+    await new Promise((resolve) => setTimeout(resolve, 360))
+    const reversalRailAfter = frame(button)
+
+    const closeFramesHealthy = collapse.frames.frameCount >= 12
+      && collapse.frames.p95IntervalMs <= 50
+      && collapse.frames.maxIntervalMs <= 100
+    const openFramesHealthy = expand.frames.frameCount >= 12
+      && expand.frames.p95IntervalMs <= 50
+      && expand.frames.maxIntervalMs <= 100
+    const outerLayoutTransitionDisabled = outerStyle.transitionDuration
+      .split(',')
+      .every((duration) => Number.parseFloat(duration) === 0)
+    const compositorOnly = reducedMotion || [collapse, expand].every((sample) => (
+      sample.animationObserved
+      && sample.animatedProperties.length > 0
+      && sample.animatedProperties.every((property) => ['opacity', 'transform'].includes(property))
+    ))
+    const railStationary = [reversalRailDuring, reversalRailAfter].every((rail) => (
+      Math.abs(rail.left - reversalRailBefore.left) <= 0.5
+      && Math.abs(rail.top - reversalRailBefore.top) <= 0.5
+    ))
+
+    return {
+      reducedMotion,
+      outerTransitionProperty: outerStyle.transitionProperty,
+      outerTransitionDuration: outerStyle.transitionDuration,
+      innerTransitionProperty: innerStyle.transitionProperty,
+      innerTransitionDuration: innerStyle.transitionDuration,
+      innerWillChange: innerStyle.willChange,
+      expandedBefore,
+      collapsed,
+      expandedAfter,
+      collapse,
+      expand,
+      assertions: {
+        outerLayoutTransitionDisabled,
+        compositorOnly,
+        closeFramesHealthy,
+        openFramesHealthy,
+        noLongTasks: collapse.longTasks.length === 0 && expand.longTasks.length === 0,
+        collapsedContentReachesEdge: Math.abs(collapsed.content.right - collapsed.surface.right) <= 1.5,
+        collapsedNavigatorReleasesSpace: collapsed.navigator.width <= 0.5,
+        expandedNavigatorOccupiesSiblingSpace: expandedAfter.navigator.width >= 200
+          && Math.abs(expandedAfter.content.right - expandedAfter.navigator.left) <= 1.5
+          && Math.abs(expandedAfter.navigator.right - expandedAfter.surface.right) <= 1.5,
+        restoredGeometry: Math.abs(expandedAfter.navigator.width - expandedBefore.navigator.width) <= 1.5
+          && Math.abs(expandedAfter.content.width - expandedBefore.content.width) <= 1.5,
+        stableReviewDom: document.querySelector('.workspace-review-monaco-diff') === stableReviewSurface,
+        rapidReverseSupported: reducedMotion || (closingAnimationObserved && reversedAnimationObserved),
+        railStationary,
+        rapidReverseRestoredExpandedState: navigator.getAttribute('aria-expanded') === 'true',
+        restingTextLayerReleased: inner.getAnimations().length === 0
+          && getComputedStyle(inner).transform === 'none'
+          && getComputedStyle(inner).willChange === 'auto',
+      },
+    }
+  })()`)
+  if (!contract) throw new Error('workspace navigator motion surface is unavailable')
+  const failed = Object.entries(contract.assertions).filter(([, ok]) => !ok)
+  if (failed.length > 0) {
+    throw new Error(`workspace navigator motion failed: ${JSON.stringify({ failed, contract })}`)
+  }
+  return contract
+}
+
+async function waitForReviewNavigatorState(client, expanded, label) {
+  return waitFor(async () => client.evaluate(`
+    document.querySelector('.workspace-files-navigator')?.getAttribute('aria-expanded') === ${JSON.stringify(String(expanded))}
+      ? true
+      : null
+  `), actionTimeoutMs, label)
+}
+
+async function moveMouse(client, point, buttons = 0) {
+  await client.send('Input.dispatchMouseEvent', {
+    type: 'mouseMoved',
+    x: point.x,
+    y: point.y,
+    buttons,
+  })
+}
+
+async function clickMouse(client, point) {
+  await moveMouse(client, point)
+  await client.send('Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    x: point.x,
+    y: point.y,
+    button: 'left',
+    buttons: 1,
+    clickCount: 1,
+  })
+  await client.send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    x: point.x,
+    y: point.y,
+    button: 'left',
+    buttons: 0,
+    clickCount: 1,
+  })
+}
+
+async function dragMouse(client, start, end) {
+  await moveMouse(client, start)
+  await client.send('Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    x: start.x,
+    y: start.y,
+    button: 'left',
+    buttons: 1,
+    clickCount: 1,
+  })
+  await moveMouse(client, {
+    x: start.x + (end.x - start.x) / 2,
+    y: start.y + (end.y - start.y) / 2,
+  }, 1)
+  await moveMouse(client, end, 1)
+  await client.send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    x: end.x,
+    y: end.y,
+    button: 'left',
+    buttons: 0,
+    clickCount: 1,
+  })
 }
 
 async function verifyReviewPersistence(client) {
@@ -604,7 +1451,7 @@ async function verifyReviewPersistence(client) {
   await waitForReviewPreferenceState(client, false, true)
   await reloadRenderer(client, 'single-column review preference reload')
   const singleColumn = await waitForReviewPreferenceState(client, false, true)
-  const singleColumnDeletedMarginConnected = await readSingleColumnDeletedMarginContract(client)
+  const singleColumnDeletedMargin = await readSingleColumnDeletedMarginContract(client)
 
   await client.evaluate(`(() => {
     document.querySelector('.workspace-review-diff-actions [aria-pressed]')?.click();
@@ -620,7 +1467,8 @@ async function verifyReviewPersistence(client) {
     navigatorCollapsedAfterReload: singleColumn.navigatorCollapsed === true,
     sideBySideAfterReload: sideBySide.sideBySide === true,
     navigatorExpandedAfterReload: sideBySide.navigatorCollapsed === false,
-    singleColumnDeletedMarginConnected,
+    singleColumnDeletedMarginConnected: singleColumnDeletedMargin.connected,
+    singleColumnDeletedSourceLineNumbers: singleColumnDeletedMargin.lineNumbers,
   }
 }
 
@@ -644,6 +1492,9 @@ async function readSingleColumnDeletedMarginContract(client) {
           backgroundPosition: style.backgroundPosition,
           backgroundRepeat: style.backgroundRepeat,
           backgroundSize: style.backgroundSize,
+          lineNumbers: Array.from(element.querySelectorAll(
+            '.workspace-review-inline-deleted-line-number',
+          )).map((lineNumber) => lineNumber.textContent?.trim() ?? ''),
         }
       })
     })()`)
@@ -654,9 +1505,16 @@ async function readSingleColumnDeletedMarginContract(client) {
       && zone.backgroundPosition === '0% 0%'
       && zone.backgroundRepeat === 'no-repeat'
       && zone.backgroundSize === '100% 100%'
+      && zone.lineNumbers.length > 0
+      && zone.lineNumbers.every((lineNumber) => /^\d+$/u.test(lineNumber))
     ))
-    return connected || undefined
-  }, actionTimeoutMs, 'single-column deleted view-zone continuous red edge')
+    return connected
+      ? {
+        connected: true,
+        lineNumbers: contract.flatMap((zone) => zone.lineNumbers),
+      }
+      : undefined
+  }, actionTimeoutMs, 'single-column deleted view-zone red edge and original line numbers')
 }
 
 async function waitForReviewPreferenceState(client, sideBySide, navigatorCollapsed) {
@@ -665,11 +1523,14 @@ async function waitForReviewPreferenceState(client, sideBySide, navigatorCollaps
       const layout = document.querySelector('.workspace-review-diff-actions [aria-pressed]');
       const navigator = document.querySelector('.workspace-files-navigator');
       if (!layout || !navigator) return null;
+      const sessionLayouts = JSON.parse(
+        localStorage.getItem('littlesheep.ui.workspaceSessionLayouts') || '{}',
+      );
       return {
         sideBySide: layout.getAttribute('aria-pressed') === 'true',
         navigatorCollapsed: navigator.getAttribute('aria-expanded') === 'false',
         storedSideBySide: localStorage.getItem('littlesheep.ui.workspaceReviewSideBySide'),
-        storedNavigatorCollapsed: localStorage.getItem('littlesheep.ui.workspaceFileNavigatorCollapsed'),
+        storedNavigatorCollapsed: String(sessionLayouts.__draft__?.fileNavigatorCollapsed),
       };
     })()`)
     if (
@@ -686,14 +1547,32 @@ async function waitForReviewPreferenceState(client, sideBySide, navigatorCollaps
 async function measureEditorCold(client, workspaceDir) {
   const filePath = join(workspaceDir, 'src', 'sample.ts')
   const tab = `file:${encodeURIComponent(workspaceDir)}|${encodeURIComponent(filePath)}`
-  await client.evaluate(`(() => {
+  await reloadRendererWithSetup(client, `(() => {
+    const sessionLayouts = JSON.parse(
+      localStorage.getItem('littlesheep.ui.workspaceSessionLayouts') || '{}',
+    );
+    sessionLayouts.__draft__ = {
+      ...(sessionLayouts.__draft__ || {}),
+      collapsed: false,
+      fullscreen: false,
+      activeTab: ${JSON.stringify(tab)},
+      openTabs: ['review', ${JSON.stringify(tab)}],
+      openRequest: {
+        root: ${JSON.stringify(workspaceDir)},
+        path: ${JSON.stringify(filePath)},
+      },
+      fileNavigatorCollapsed: false,
+      expandedPaths: [],
+      drafts: {},
+      browserTabs: [],
+    };
+    localStorage.setItem('littlesheep.ui.workspaceSessionLayouts', JSON.stringify(sessionLayouts));
     localStorage.setItem('littlesheep.ui.workspacePanelCollapsed', 'false');
     localStorage.setItem('littlesheep.ui.workspacePanelTab', ${JSON.stringify(tab)});
     localStorage.setItem('littlesheep.ui.workspacePanelOpenTabs', JSON.stringify(['review', ${JSON.stringify(tab)}]));
     localStorage.setItem('littlesheep.ui.workspacePanelOpenRoot', ${JSON.stringify(workspaceDir)});
     localStorage.setItem('littlesheep.ui.workspacePanelOpenPath', ${JSON.stringify(filePath)});
-  })()`)
-  await reloadRenderer(client, 'cold editor reload')
+  })()`, 'cold editor reload')
   const start = 0
   const coloured = await measureMonacoSyntaxColours(client, start, actionTimeoutMs)
   const fontContract = await readFontContract(client)

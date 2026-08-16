@@ -37,6 +37,7 @@
     "verify:task": "node scripts/run-task-verification.mjs",
     "verify:provider": "node scripts/verify-provider-smoke.mjs",
     "verify:electron-continuity": "pnpm run ensure:app-build && node scripts/verify-electron-runtime-continuity.mjs",
+    "verify:electron-ui-state-continuity": "pnpm run ensure:app-build && node scripts/verify-electron-ui-state-continuity.mjs",
     "verify:electron-documents": "pnpm run ensure:app-build && node scripts/run-verified-electron.mjs scripts/verify-electron-document-runtime.mjs",
     "verify:electron-deepseek-reply-continuity": "pnpm run ensure:app-build && node scripts/verify-electron-deepseek-reply-continuity.mjs",
     "verify:electron-deepseek-compaction-continuity": "pnpm run ensure:app-build && node scripts/verify-electron-deepseek-compaction-continuity.mjs",

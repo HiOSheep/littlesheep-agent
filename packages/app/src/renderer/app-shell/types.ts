@@ -18,6 +18,7 @@ export type StringListUpdater = (current: string[]) => string[]
 
 export interface AppNavigationSnapshot {
   route: AppRoute
+  workspaceScopeKey: string
   sidebarCollapsed: boolean
   sidebarWidth: number
   conversationCollapsed: boolean

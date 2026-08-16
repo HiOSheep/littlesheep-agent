@@ -54,6 +54,7 @@ export function navigationSnapshotsEqual(
 ): boolean {
   if (!left) return false
   return routesEqual(left.route, right.route)
+    && left.workspaceScopeKey === right.workspaceScopeKey
     && left.sidebarCollapsed === right.sidebarCollapsed
     && left.sidebarWidth === right.sidebarWidth
     && left.conversationCollapsed === right.conversationCollapsed
@@ -67,6 +68,14 @@ export function navigationSnapshotsEqual(
     && left.workspaceOpenRequest?.path === right.workspaceOpenRequest?.path
     && left.workspaceFileNavigatorCollapsed === right.workspaceFileNavigatorCollapsed
     && stringListsEqual(left.workspaceExpandedPaths, right.workspaceExpandedPaths)
+}
+
+
+export function navigationSnapshotOwnsWorkspace(
+  snapshot: AppNavigationSnapshot,
+  workspaceScopeKey: string,
+): boolean {
+  return snapshot.workspaceScopeKey === workspaceScopeKey
 }
 
 

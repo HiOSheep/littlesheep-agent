@@ -27,6 +27,7 @@ describe('composer control surfaces', () => {
     }
 
     const sharedSurface = styles.match(/\.composer-tab-control\s*\{([^}]*)\}/u)?.[1] ?? ''
+    expect(sharedSurface).toContain('height: var(--composer-control-surface-size);')
     expect(sharedSurface).toContain('background: transparent;')
     expect(sharedSurface).toContain('border: 0;')
     expect(sharedSurface).toContain('border-radius: var(--radius-ui);')
@@ -37,6 +38,15 @@ describe('composer control surfaces', () => {
       /\.composer-tab-control:hover:not\(:disabled\),\s*\.composer-tab-control:focus-visible,\s*\.workspace-context-chip\.composer-tab-control:focus-within,\s*\.composer-tab-control\[aria-expanded="true"\]\s*\{[^}]*background:\s*var\(--control-hover\);/u,
     )
     expect(styles.indexOf('.composer-tab-control {')).toBeGreaterThan(styles.indexOf('.workspace-context-chip {'))
+    expect(styles).toMatch(
+      /\.model-picker-trigger\s*\{[^}]*padding:\s*0 var\(--composer-control-padding-inline\);/u,
+    )
+    expect(styles).toMatch(
+      /\.runtime-picker-trigger\s*\{[^}]*padding:\s*0 var\(--composer-control-padding-inline\);/u,
+    )
+    expect(styles).toMatch(
+      /\.workspace-context-chip\s*\{[^}]*padding:\s*0 28px 0 var\(--composer-control-padding-inline\);/u,
+    )
     expect(composerView).not.toMatch(/className="send-round[^"]*composer-tab-control/u)
   })
 })

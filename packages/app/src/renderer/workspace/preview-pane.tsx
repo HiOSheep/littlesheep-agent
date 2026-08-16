@@ -1,117 +1,26 @@
 // Extension workspace panels, files, terminal, artifacts, and view helpers.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type * as Monaco from 'monaco-editor'
 import {
-  openWorkspacePathInVSCode,
-  saveWorkspaceFile,
+  type AttachmentRef,
   type WorkspacePreview
 } from '../api'
 import { Markdown } from '../Markdown'
 import type { FloatingHelpTip } from '../ui/floating-help'
 import { FileGlyphIcon } from '../ui/icons'
 import {
+  workspaceSessionKey,
   type WorkspaceFileDraftState,
   type WorkspaceFileTabId
 } from '../workspace-persistence'
 import { WorkspaceCodeEditor, workspaceEditorModelPath } from './code-editor'
-import { workspaceFilePreviewCache } from './file-preview-cache'
 import { attachmentFileUrl, countEditorLines, detectEditorEol, formatDateTime, formatEditorLanguageLabel, formatFileSize, shouldOfferExternalVSCode, utf8ByteLength, workspaceBreadcrumbs } from './path-utils'
 import { WorkspacePlaceholder } from './placeholder'
+import { resolveWorkspacePreviewEditorState } from './preview-draft'
 import { WorkspacePreviewActions } from './preview-actions'
+import { WorkspaceLineCommentOverlay, type WorkspaceLineComment } from './line-comments'
 
-export function WorkspaceFileView({
-  tabId,
-  root,
-  path,
-  sessionId,
-  draft,
-  onDraftChange,
-  onRequestFileSaveApproval,
-  onWorkspaceArtifactsChanged,
-  onWorkspaceFileSaved,
-  onTipChange,
-}: {
-  tabId: WorkspaceFileTabId
-  root: string
-  path: string
-  sessionId?: string
-  draft?: WorkspaceFileDraftState
-  onDraftChange: (tab: WorkspaceFileTabId, draft: WorkspaceFileDraftState | null) => void
-  onRequestFileSaveApproval: (detail: unknown) => Promise<boolean>
-  onWorkspaceArtifactsChanged: () => void
-  onWorkspaceFileSaved: (root: string, path: string, preview: WorkspacePreview) => void
-  onTipChange: (tip: FloatingHelpTip | null) => void
-}) {
-  const [preview, setPreview] = useState<WorkspacePreview | null>(() => (
-    workspaceFilePreviewCache.read(root, path)
-  ))
-  const [loading, setLoading] = useState(() => !workspaceFilePreviewCache.read(root, path))
-  const [error, setError] = useState('')
-  const requestRef = useRef(0)
-
-  useEffect(() => {
-    let alive = true
-    const requestId = ++requestRef.current
-    const cached = workspaceFilePreviewCache.read(root, path)
-    setPreview(cached)
-    setError('')
-    setLoading(!cached)
-    workspaceFilePreviewCache.load(root, path)
-      .then((result) => {
-        if (!alive || requestId !== requestRef.current) return
-        setPreview(result)
-      })
-      .catch((err) => {
-        if (!alive || requestId !== requestRef.current) return
-        setError((err as Error).message)
-      })
-      .finally(() => {
-        if (!alive || requestId !== requestRef.current) return
-        setLoading(false)
-      })
-    return () => {
-      alive = false
-    }
-  }, [root, path])
-
-  async function openInVSCode() {
-    try {
-      await openWorkspacePathInVSCode(root, path)
-    } catch (err) {
-      setError((err as Error).message)
-    }
-  }
-
-  async function saveFile(nextPath: string, content: string, expectedModifiedAt?: number): Promise<WorkspacePreview> {
-    const approved = await onRequestFileSaveApproval({
-      path: nextPath,
-      root,
-      relativePath: workspaceBreadcrumbs(root, nextPath).join('/'),
-    })
-    if (!approved) throw new Error('已取消保存。')
-    const nextPreview = await saveWorkspaceFile(root, nextPath, content, expectedModifiedAt, sessionId)
-    workspaceFilePreviewCache.store(root, nextPath, nextPreview)
-    setPreview(nextPreview)
-    onWorkspaceArtifactsChanged()
-    onWorkspaceFileSaved(root, nextPath, nextPreview)
-    return nextPreview
-  }
-
-  return (
-    <WorkspacePreviewPane
-      preview={preview}
-      loading={loading}
-      error={error}
-      selectedPath={path}
-      workspacePath={root}
-      tabId={tabId}
-      draft={draft}
-      onOpenInVSCode={openInVSCode}
-      onSaveFile={saveFile}
-      onDraftChange={onDraftChange}
-      onTipChange={onTipChange}
-    />
-  )
-}
+const EMPTY_LINE_COMMENTS: WorkspaceLineComment[] = []
 
 export function WorkspacePreviewPane({
   preview,
@@ -119,11 +28,15 @@ export function WorkspacePreviewPane({
   error,
   selectedPath,
   workspacePath,
+  sessionId,
   tabId,
   draft,
   onOpenInVSCode,
   onSaveFile,
   onDraftChange,
+  comments,
+  onCommentsChange,
+  onAddAttachment,
   onTipChange,
 }: {
   preview: WorkspacePreview | null
@@ -131,11 +44,15 @@ export function WorkspacePreviewPane({
   error: string
   selectedPath: string
   workspacePath: string
+  sessionId?: string
   tabId?: WorkspaceFileTabId
   draft?: WorkspaceFileDraftState
   onOpenInVSCode: () => void | Promise<void>
   onSaveFile: (path: string, content: string, expectedModifiedAt?: number) => Promise<WorkspacePreview>
   onDraftChange?: (tab: WorkspaceFileTabId, draft: WorkspaceFileDraftState | null) => void
+  comments?: WorkspaceLineComment[]
+  onCommentsChange?: (comments: WorkspaceLineComment[]) => void
+  onAddAttachment?: (attachment: AttachmentRef) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const breadcrumbs = selectedPath ? workspaceBreadcrumbs(workspacePath, selectedPath) : []
@@ -151,17 +68,20 @@ export function WorkspacePreviewPane({
       : ''
   const editorLanguageLabel = formatEditorLanguageLabel(editorLanguage)
   const canOpenExternalVSCode = preview ? shouldOfferExternalVSCode(preview) : false
-  const [editing, setEditing] = useState(false)
-  const [showMarkdownSource, setShowMarkdownSource] = useState(false)
-  const [editorText, setEditorText] = useState(() => (
-    preview?.kind === 'text' || preview?.kind === 'markdown' ? preview.content : ''
-  ))
-  const [savedText, setSavedText] = useState(() => (
-    preview?.kind === 'text' || preview?.kind === 'markdown' ? preview.content : ''
-  ))
+  const initialEditorState = resolveWorkspacePreviewEditorState(preview, draft)
+  const [editing, setEditing] = useState(initialEditorState.editing)
+  const [showMarkdownSource, setShowMarkdownSource] = useState(
+    isMarkdown && initialEditorState.editing,
+  )
+  const [editorText, setEditorText] = useState(initialEditorState.editorText)
+  const [savedText, setSavedText] = useState(initialEditorState.savedText)
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
   const [saveError, setSaveError] = useState('')
+  const [editorHandle, setEditorHandle] = useState<{
+    editor: Monaco.editor.IStandaloneCodeEditor
+    monaco: typeof Monaco
+  } | null>(null)
   const editorVisible = editable && (!isMarkdown || showMarkdownSource)
   const dirty = editable && editorText !== savedText
   const editorLineCount = editable ? countEditorLines(editorText) : 0
@@ -169,6 +89,21 @@ export function WorkspacePreviewPane({
   const editorSize = editable ? formatFileSize(utf8ByteLength(editorText)) : ''
   const previewSize = preview ? formatFileSize(preview.size) : ''
   const previewModifiedAt = preview?.modifiedAt ? formatDateTime(preview.modifiedAt) : ''
+  const editorOptions = useMemo<Monaco.editor.IStandaloneEditorConstructionOptions>(() => ({
+    bracketPairColorization: { enabled: true },
+    cursorBlinking: 'smooth',
+    detectIndentation: true,
+    domReadOnly: !editing,
+    extraEditorClassName: editing ? '' : 'workspace-monaco-readonly',
+    folding: true,
+    formatOnPaste: true,
+    guides: { bracketPairs: true, indentation: true },
+    lineNumbers: 'on',
+    readOnly: !editing,
+    renderLineHighlight: editing ? 'all' : 'none',
+    renderWhitespace: 'selection',
+    tabSize: 2,
+  }), [editing])
 
   function emitDraft(next: {
     editorText?: string
@@ -214,11 +149,10 @@ export function WorkspacePreviewPane({
   }
 
   useEffect(() => {
-    const content = editable ? preview.content : ''
-    const canRestoreDraft = editable && preview && draft?.path === preview.path && draft.modifiedAt === preview.modifiedAt
-    const nextEditorText = canRestoreDraft ? draft.editorText : content
-    const nextSavedText = canRestoreDraft ? draft.savedText : content
-    const nextEditing = canRestoreDraft ? draft.editing : false
+    const nextState = resolveWorkspacePreviewEditorState(preview, draft)
+    const nextEditorText = nextState.editorText
+    const nextSavedText = nextState.savedText
+    const nextEditing = nextState.editing
     setEditorText(nextEditorText)
     setSavedText(nextSavedText)
     setEditing(nextEditing)
@@ -237,7 +171,7 @@ export function WorkspacePreviewPane({
     } else {
       if (tabId && onDraftChange) onDraftChange(tabId, null)
     }
-  }, [preview?.path, preview?.modifiedAt, editable, isMarkdown])
+  }, [sessionId, preview?.path, preview?.modifiedAt, editable, isMarkdown])
 
   async function saveEditorContent() {
     if (!editable || !preview || !dirty || saving) return
@@ -322,28 +256,29 @@ export function WorkspacePreviewPane({
         )}
         {!loading && !error && editorVisible && (
           <div className="workspace-editor-monaco">
-            <WorkspaceCodeEditor
+              <WorkspaceCodeEditor
               height="100%"
               language={editorLanguage}
-              path={workspaceEditorModelPath(workspacePath, preview.path)}
+              path={workspaceEditorModelPath(workspacePath, preview.path, workspaceSessionKey(sessionId))}
               value={editorText}
               loading={<WorkspacePlaceholder title="载入编辑器" text="正在打开内置代码编辑器。" />}
-              onChange={(value) => updateEditorText(value ?? '')}
-              options={{
-                bracketPairColorization: { enabled: true },
-                cursorBlinking: 'smooth',
-                detectIndentation: true,
-                folding: true,
-                formatOnPaste: true,
-                guides: { bracketPairs: true, indentation: true },
-                lineNumbers: 'on',
-                readOnly: !editing,
-                renderLineHighlight: editing ? 'all' : 'none',
-                renderWhitespace: 'selection',
-                tabSize: 2,
-              }}
-            />
-          </div>
+                onChange={(value) => updateEditorText(value ?? '')}
+                onMount={(editor, monaco) => setEditorHandle({ editor, monaco })}
+              options={editorOptions}
+              />
+              {preview && onCommentsChange && onAddAttachment && (
+                <WorkspaceLineCommentOverlay
+                  editor={editorHandle?.editor ?? null}
+                  monaco={editorHandle?.monaco ?? null}
+                  readOnly={!editing}
+                  filePath={preview.path}
+                  fileName={preview.name}
+                  comments={comments ?? EMPTY_LINE_COMMENTS}
+                  onCommentsChange={onCommentsChange}
+                  onAddAttachment={onAddAttachment}
+                />
+              )}
+            </div>
         )}
         {!loading && !error && preview?.kind === 'image' && (
           <div className="workspace-preview-media">

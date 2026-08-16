@@ -5,12 +5,15 @@ import { basename, extname, isAbsolute, relative, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { AgentTool, AttachmentOwnership, RunAttachment } from '@littlesheep/types'
 import type { CheckpointResourceResolver } from '@littlesheep/runner'
-import type { AttachmentRef } from '../shared/attachment-contracts.js'
+import type { AttachmentLineComment, AttachmentRef } from '../shared/attachment-contracts.js'
 
 const MAX_ATTACHMENT_PREVIEW_CHARS = 8000
 const MAX_EXTRACTED_DOCUMENT_CHARS = 24000
 const MAX_REQUESTED_DOCUMENT_CHARS = 100000
 const MAX_IMAGE_ATTACHMENT_BYTES = 10 * 1024 * 1024
+const MAX_LINE_COMMENTS_PER_ATTACHMENT = 64
+const MAX_LINE_COMMENT_CHARS = 4000
+const MAX_INLINE_ATTACHMENT_TEXT_CHARS = 100_000
 
 const TEXT_ATTACHMENT_EXTS = new Set([
   '.txt', '.md', '.markdown', '.json', '.jsonl', '.csv', '.tsv', '.yaml', '.yml',
@@ -81,11 +84,18 @@ export function parseAttachments(value: unknown): AttachmentRef[] {
         : inferAttachmentKind(filePath)
       return {
         path: filePath,
+        contextPath: typeof raw.contextPath === 'string'
+          ? raw.contextPath.trim().slice(0, 2048) || undefined
+          : undefined,
         name: typeof raw.name === 'string' ? raw.name : basename(filePath),
         kind,
         mimeType: typeof raw.mimeType === 'string' ? raw.mimeType : undefined,
         size: typeof raw.size === 'number' ? raw.size : undefined,
         cacheId: typeof raw.cacheId === 'string' ? raw.cacheId.trim() || undefined : undefined,
+        lineComments: parseLineComments(raw.lineComments),
+        inlineText: typeof raw.inlineText === 'string'
+          ? raw.inlineText.slice(0, MAX_INLINE_ATTACHMENT_TEXT_CHARS) || undefined
+          : undefined,
       }
     })
     .filter((item): item is AttachmentRef => item !== null)
@@ -128,6 +138,8 @@ export async function prepareRunAttachments(
       contentHash,
       ownership,
       contentState: 'uninspected',
+      contextPath: resolveAttachmentContextPath(attachment.contextPath, options.workspaceDir),
+      lineComments: attachment.lineComments,
     }
     if (kind === 'image') {
       const data = await readImageDataUrl(source.path)
@@ -187,6 +199,8 @@ export function createCheckpointResourceResolver(
           cacheId: reference.cacheId,
           contentHash: reference.contentHash,
           ownership: 'cache',
+          contextPath: reference.contextPath,
+          lineComments: reference.lineComments,
         }], options)
         attachment = prepared[0]!
       }
@@ -339,9 +353,10 @@ export function createInspectAttachmentTool(attachments: RunAttachment[]): Agent
       }
       const header = [
         `Attachment [${attachmentId}] ${loaded.name ?? loaded.path}`,
-        `Path: ${loaded.path}`,
+        `Path: ${loaded.contextPath ?? loaded.path}`,
         `State: ${loaded.contentState ?? 'unavailable'}`,
       ]
+      appendLineCommentHeader(header, loaded.lineComments)
       if (loaded.extractionNote) header.push(`Note: ${loaded.extractionNote}`)
       const extractedText = loaded.extractedText?.trim()
       const contentAvailable = loaded.contentState === 'loaded' && !!extractedText
@@ -373,6 +388,50 @@ export function createInspectAttachmentTool(attachments: RunAttachment[]): Agent
       }
     },
   }
+}
+
+function parseLineComments(value: unknown): AttachmentLineComment[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const comments = value
+    .slice(0, MAX_LINE_COMMENTS_PER_ATTACHMENT)
+    .map((item): AttachmentLineComment | null => {
+      if (!item || typeof item !== 'object') return null
+      const raw = item as Record<string, unknown>
+      const startLine = toPositiveInteger(raw.startLine)
+      const endLine = raw.endLine === undefined ? undefined : toPositiveInteger(raw.endLine)
+      const text = typeof raw.text === 'string' ? raw.text.trim().slice(0, MAX_LINE_COMMENT_CHARS) : ''
+      if (!startLine || !text || (endLine !== undefined && (!endLine || endLine < startLine))) return null
+      return { startLine, ...(endLine === undefined ? {} : { endLine }), text }
+    })
+    .filter((item): item is AttachmentLineComment => item !== null)
+  return comments.length > 0 ? comments : undefined
+}
+
+function toPositiveInteger(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : undefined
+}
+
+function appendLineCommentHeader(
+  header: string[],
+  comments: RunAttachment['lineComments'],
+): void {
+  if (!comments || comments.length === 0) return
+  header.push('Line comments:')
+  for (const comment of comments) {
+    const range = comment.endLine && comment.endLine !== comment.startLine
+      ? `${comment.startLine}-${comment.endLine}`
+      : String(comment.startLine)
+    header.push(`- Lines ${range}: ${comment.text}`)
+  }
+}
+
+function resolveAttachmentContextPath(value: string | undefined, workspaceDir: string | undefined): string | undefined {
+  const sourcePath = value?.trim()
+  if (!sourcePath) return undefined
+  if (!workspaceDir || !isAbsolute(sourcePath)) return sourcePath
+  const relativePath = relative(resolve(workspaceDir), resolve(sourcePath))
+  if (!relativePath || relativePath.startsWith('..') || isAbsolute(relativePath)) return sourcePath
+  return relativePath.replace(/\\/g, '/')
 }
 
 export async function loadRunAttachmentContent(

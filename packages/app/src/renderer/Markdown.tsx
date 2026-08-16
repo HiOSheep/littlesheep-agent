@@ -1,30 +1,55 @@
-import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { memo, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useLinkNavigation } from './link-navigation'
+import { StreamingMarkdownPartitioner } from './streaming-markdown'
 
 interface MarkdownProps {
   text: string
+  streaming?: boolean
 }
 
-export function Markdown({ text }: MarkdownProps) {
+export const Markdown = memo(function Markdown({ text, streaming = false }: MarkdownProps) {
+  if (streaming) return <StreamingMarkdown text={text} />
   return (
     <div className="markdown">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {text}
-      </ReactMarkdown>
+      <MarkdownFragment source={text} />
+    </div>
+  )
+})
+
+
+function StreamingMarkdown({ text }: { text: string }) {
+  const partitionerRef = useRef<StreamingMarkdownPartitioner>()
+  partitionerRef.current ??= new StreamingMarkdownPartitioner()
+  const partition = partitionerRef.current.update(text)
+  return (
+    <div className="markdown markdown-streaming">
+      {partition.frozen.map((segment) => (
+        <MarkdownFragment key={segment.key} source={segment.source} />
+      ))}
+      {partition.tail && <MarkdownFragment key="stream-tail" source={partition.tail} />}
     </div>
   )
 }
+
+
+const MarkdownFragment = memo(function MarkdownFragment({ source }: { source: string }) {
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      {source}
+    </ReactMarkdown>
+  )
+})
 
 
 /**
  * Markdown for a single activity row. Block elements are deliberately
  * unwrapped so the result remains valid phrasing content inside a button.
  */
-export function InlineMarkdown({ text }: MarkdownProps) {
+export const InlineMarkdown = memo(function InlineMarkdown({ text }: MarkdownProps) {
   return (
     <span className="markdown markdown-inline">
       <ReactMarkdown
@@ -37,23 +62,24 @@ export function InlineMarkdown({ text }: MarkdownProps) {
       </ReactMarkdown>
     </span>
   )
-}
+})
 
 const components: Components = {
   a({ href, children }) {
     return <MarkdownLink href={href}>{children}</MarkdownLink>
   },
   code({ className, children, ...props }) {
-    const code = String(children).replace(/\n$/, '')
+    const rawCode = String(children)
+    const code = rawCode.replace(/\n$/, '')
     const language = /language-(\w+)/.exec(className ?? '')?.[1]
-    if (!language) {
+    if (!language && !rawCode.endsWith('\n')) {
       return (
-        <code className={className} {...props}>
+        <code className="markdown-inline-code" {...props}>
           {children}
         </code>
       )
     }
-    return <CodeBlock code={code} language={language} />
+    return <CodeBlock code={code} language={language ?? 'text'} />
   },
 }
 
@@ -70,7 +96,7 @@ const inlineComponents: Components = {
     return <span aria-hidden="true"> </span>
   },
   code({ children }) {
-    return <code>{children}</code>
+    return <code className="markdown-inline-code">{children}</code>
   },
 }
 

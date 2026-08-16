@@ -2,7 +2,57 @@
 import type { TaskBook, VerificationRecord } from '@littlesheep/types'
 import { lastPathSegment } from '../workspace/path-utils'
 import { WorkspaceArtifactRef } from '../workspace/types'
-import { AssistantTurnActivity, ChatMessage, LiveStepEvent, LiveStepStatus, LiveToolEvent } from './types'
+import { AssistantTurnActivity, ChatMessage, LiveReasoningEvent, LiveStepEvent, LiveStepStatus, LiveToolEvent } from './types'
+
+
+export function upsertLiveReasoning(
+  events: LiveReasoningEvent[],
+  next: Omit<LiveReasoningEvent, 'startedAt'> & { startedAt?: number },
+): LiveReasoningEvent[] {
+  const now = Date.now()
+  const existingIndex = events.findIndex((event) => event.phaseId === next.phaseId)
+  if (existingIndex >= 0) {
+    return events.map((event, index) => index === existingIndex
+      ? {
+        ...event,
+        ...next,
+        startedAt: event.startedAt,
+        endedAt: next.endedAt ?? (next.status === 'running' ? undefined : event.endedAt ?? now),
+      }
+      : event)
+  }
+
+  const settled = next.status === 'running'
+    ? events.map((event) => event.status === 'running'
+      ? { ...event, status: 'done' as const, endedAt: event.endedAt ?? next.startedAt ?? now }
+      : event)
+    : events
+  return [
+    ...settled,
+    {
+      ...next,
+      startedAt: next.startedAt ?? now,
+      endedAt: next.endedAt ?? (next.status === 'running' ? undefined : now),
+    },
+  ]
+}
+
+
+export function settleLiveReasoning(
+  events: LiveReasoningEvent[] | undefined,
+  status: 'done' | 'failed',
+  endedAt: number,
+): LiveReasoningEvent[] | undefined {
+  if (!events) return undefined
+  return events.map((event) => event.status === 'running'
+    ? {
+      ...event,
+      status,
+      endedAt,
+      durationMs: Math.max(0, endedAt - event.startedAt),
+    }
+    : event)
+}
 
 
 export function upsertLiveStep(

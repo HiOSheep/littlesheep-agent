@@ -121,8 +121,11 @@ export async function saveWorkspaceFile(
   return res.json() as Promise<WorkspacePreview>
 }
 
-export async function readWorkspaceLayoutSnapshot(): Promise<WorkspaceLayoutSnapshot | null> {
-  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.workspaceLayout))
+export async function readWorkspaceLayoutSnapshot(sessionId?: string): Promise<WorkspaceLayoutSnapshot | null> {
+  const params = new URLSearchParams()
+  if (sessionId) params.set('sessionId', sessionId)
+  const query = params.size > 0 ? `?${params.toString()}` : ''
+  const res = await fetch(`${localApiUrl(LOCAL_APP_API_ROUTES.workspaceLayout)}${query}`)
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
     throw new Error((data as { error: string }).error)

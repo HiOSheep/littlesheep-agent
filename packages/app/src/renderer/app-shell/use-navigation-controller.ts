@@ -17,11 +17,13 @@ import {
   type WorkspaceOpenRequest,
   type WorkspacePanelTabId
 } from '../workspace-persistence'
-import { navigationSnapshotsEqual, routesEqual } from './navigation'
+import { navigationSnapshotOwnsWorkspace, navigationSnapshotsEqual, routesEqual } from './navigation'
 import { AppNavigationSnapshot, AppRoute, SidebarPanel } from './types'
 
 export interface NavigationControllerInput {
+  initialRoute: AppRoute
   setControlTip: Dispatch<SetStateAction<FloatingHelpTip | null>>
+  workspaceScopeKey: string
   sidebarCollapsed: boolean
   setSidebarCollapsed: Dispatch<SetStateAction<boolean>>
   sidebarWidth: number
@@ -49,7 +51,7 @@ export interface NavigationControllerInput {
 }
 
 export function useNavigationController({
-  setControlTip, sidebarCollapsed, setSidebarCollapsed, sidebarWidth, setSidebarWidth,
+  initialRoute, setControlTip, workspaceScopeKey, sidebarCollapsed, setSidebarCollapsed, sidebarWidth, setSidebarWidth,
   conversationCollapsed, setConversationCollapsed, sidebarPanel, setSidebarPanel,
   workspacePanelCollapsed, setWorkspacePanelCollapsed, workspacePanelFullscreen,
   setWorkspacePanelFullscreen, workspacePanelWidth, setWorkspacePanelWidth, workspacePanelTab,
@@ -58,7 +60,7 @@ export function useNavigationController({
   workspaceExpandedPaths, setWorkspaceExpandedPaths,
 }: NavigationControllerInput) {
 
-  const [activeRoute, setActiveRoute] = useState<AppRoute>({ section: 'chat' })
+  const [activeRoute, setActiveRoute] = useState<AppRoute>(initialRoute)
   const [appHistory, setAppHistory] = useState<NavigationHistoryState<AppNavigationSnapshot>>({
     entries: [],
     index: -1,
@@ -83,6 +85,7 @@ export function useNavigationController({
 
   const navigationSnapshot = useMemo<AppNavigationSnapshot>(() => ({
     route: activeRoute,
+    workspaceScopeKey,
     sidebarCollapsed,
     sidebarWidth,
     conversationCollapsed,
@@ -111,6 +114,7 @@ export function useNavigationController({
     workspacePanelOpenTabs,
     workspacePanelTab,
     workspacePanelWidth,
+    workspaceScopeKey,
   ])
 
   appHistoryRef.current = appHistory
@@ -209,16 +213,18 @@ export function useNavigationController({
     setSidebarWidth(snapshot.sidebarWidth)
     setConversationCollapsed(snapshot.conversationCollapsed)
     setSidebarPanel(snapshot.sidebarPanel)
-    setWorkspacePanelCollapsed(snapshot.workspacePanelCollapsed)
-    setWorkspacePanelFullscreen(snapshot.workspacePanelFullscreen)
     setWorkspacePanelWidth(snapshot.workspacePanelWidth)
-    setWorkspacePanelTab(snapshot.workspacePanelTab)
-    setWorkspacePanelOpenTabs(snapshot.workspacePanelOpenTabs)
-    setWorkspaceOpenRequest(snapshot.workspaceOpenRequest
-      ? { id: Date.now(), ...snapshot.workspaceOpenRequest }
-      : null)
-    setWorkspaceFileNavigatorCollapsed(snapshot.workspaceFileNavigatorCollapsed)
-    setWorkspaceExpandedPaths(snapshot.workspaceExpandedPaths)
+    if (navigationSnapshotOwnsWorkspace(snapshot, workspaceScopeKey)) {
+      setWorkspacePanelCollapsed(snapshot.workspacePanelCollapsed)
+      setWorkspacePanelFullscreen(snapshot.workspacePanelFullscreen)
+      setWorkspacePanelTab(snapshot.workspacePanelTab)
+      setWorkspacePanelOpenTabs(snapshot.workspacePanelOpenTabs)
+      setWorkspaceOpenRequest(snapshot.workspaceOpenRequest
+        ? { id: Date.now(), ...snapshot.workspaceOpenRequest }
+        : null)
+      setWorkspaceFileNavigatorCollapsed(snapshot.workspaceFileNavigatorCollapsed)
+      setWorkspaceExpandedPaths(snapshot.workspaceExpandedPaths)
+    }
   }
 
   function closeSettingsWorkspace() {
@@ -248,7 +254,7 @@ export function useNavigationController({
     window.cancelAnimationFrame(settingsEntryRippleFrameRef.current ?? 0)
   }, [])
 
-  return { appHistoryRef, navigationRestoreTargetRef, setAppHistory, settingsEntryRippling, settingsOpen, directModulePage, settingsPage, canNavigateBack, canNavigateForward, pushRoute, openSettingsFromEntry, openSettingsPage, openDirectModulePage, navigateBack, navigateForward, closeSettingsFromEntry }
+  return { activeRoute, appHistoryRef, navigationRestoreTargetRef, setAppHistory, settingsEntryRippling, settingsOpen, directModulePage, settingsPage, canNavigateBack, canNavigateForward, pushRoute, openSettingsFromEntry, openSettingsPage, openDirectModulePage, navigateBack, navigateForward, closeSettingsFromEntry }
 }
 
 export type NavigationController = ReturnType<typeof useNavigationController>

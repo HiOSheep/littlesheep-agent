@@ -120,7 +120,7 @@ export async function listWorkspaceTerminalActivity(
 export interface WorkspaceTerminalSession {
   sessionId: string
   cwd: string
-  permissionMode: PermissionModeId
+  source: 'workspace-user'
   shell: string
   backend?: 'pty' | 'spawn'
   cols: number
@@ -139,13 +139,11 @@ export interface WorkspaceTerminalSessionHandlers {
 export async function createWorkspaceTerminalSession(
   root: string,
   size?: { cols: number; rows: number },
-  permissionMode?: PermissionModeId,
-  approved = false,
 ): Promise<WorkspaceTerminalSession> {
   const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.terminalSession), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ root, cols: size?.cols, rows: size?.rows, permissionMode, approved }),
+    body: JSON.stringify({ root, cols: size?.cols, rows: size?.rows }),
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
@@ -199,12 +197,11 @@ export async function writeWorkspaceTerminalSession(
   terminalSessionId: string,
   command: string,
   appSessionId?: string,
-  options: { permissionMode?: PermissionModeId; approved?: boolean } = {},
 ): Promise<void> {
   const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.terminalSessions, terminalSessionId, '/input')), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ command, sessionId: appSessionId, ...options }),
+    body: JSON.stringify({ command, sessionId: appSessionId }),
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
@@ -217,12 +214,11 @@ export async function writeWorkspaceTerminalInput(
   terminalSessionId: string,
   data: string,
   appSessionId?: string,
-  options: { permissionMode?: PermissionModeId; approved?: boolean } = {},
 ): Promise<{ completed: number }> {
   const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.terminalSessions, terminalSessionId, '/input')), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ data, sessionId: appSessionId, ...options }),
+    body: JSON.stringify({ data, sessionId: appSessionId }),
   })
   if (!res.ok) {
     const response = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))

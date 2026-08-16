@@ -1,5 +1,9 @@
 // Stable workspace records shared by persistence adapters and renderer clients.
 
+export const WORKSPACE_FILE_NAVIGATOR_WIDTH_DEFAULT = 214
+export const WORKSPACE_FILE_NAVIGATOR_WIDTH_MIN = 160
+export const WORKSPACE_FILE_NAVIGATOR_WIDTH_MAX = 520
+
 export type WorkspaceArtifactAction = 'created' | 'modified' | 'attached'
 export type WorkspaceArtifactSource = 'agent' | 'user'
 
@@ -32,6 +36,16 @@ export interface WorkspaceLayoutFileDraft {
   editing: boolean
 }
 
+export interface WorkspaceLayoutBrowserTab {
+  id: string
+  title: string
+  url: string
+  history: {
+    entries: string[]
+    index: number
+  }
+}
+
 export interface WorkspaceLayoutSnapshot {
   version: 1
   updatedAt: string
@@ -44,7 +58,10 @@ export interface WorkspaceLayoutSnapshot {
   openTabs: WorkspaceLayoutTabId[]
   openRequest: WorkspaceLayoutOpenRequest | null
   fileNavigatorCollapsed: boolean
+  fileNavigatorWidth?: number
+  expandedPaths?: string[]
   drafts: Record<string, WorkspaceLayoutFileDraft>
+  browserTabs?: WorkspaceLayoutBrowserTab[]
 }
 
 export interface TerminalActivityRecord {

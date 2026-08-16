@@ -10,4 +10,13 @@ describe('workspace editor model paths', () => {
     expect(first).not.toBe(second)
     expect(first).toContain('inmemory://littlesheep-file/')
   })
+
+  it('keeps Monaco models and undo history distinct between conversations', () => {
+    const sessionA = workspaceEditorModelPath('D:\\work', 'src\\main.ts', 'session:a')
+    const sessionB = workspaceEditorModelPath('D:\\work', 'src\\main.ts', 'session:b')
+
+    expect(sessionA).not.toBe(sessionB)
+    expect(sessionA).toContain('session%3Aa')
+    expect(sessionB).toContain('session%3Ab')
+  })
 })

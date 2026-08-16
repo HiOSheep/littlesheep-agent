@@ -18,13 +18,12 @@ function openingTag(source: string, marker: string): string {
 }
 
 
-describe('hidden interaction surfaces', () => {
-  it('keeps hidden menus and disclosures out of pointer and focus routing', async () => {
+describe('interaction surface visibility', () => {
+  it('keeps hidden menus and private disclosures out of pointer and focus routing', async () => {
     const contracts = [
       ['./composer/runtime-picker.tsx', 'className={`runtime-menu-shell'],
       ['./composer/add-menu.tsx', 'className="add-menu-panel"'],
       ['./composer/mode-picker.tsx', 'className="model-picker-panel option-picker-panel mode-picker-panel"'],
-      ['./chat/assistant-turn.tsx', 'className={`agent-flow-details-panel disclosure-panel'],
       ['./chat/agent-tool-row.tsx', 'className={`agent-tool-details-panel disclosure-panel'],
       ['./TraceCard.tsx', 'className={`trace-body disclosure-panel'],
       ['./sidebar/feature-panel.tsx', 'className={`sidebar-feature-panel'],
@@ -39,6 +38,11 @@ describe('hidden interaction surfaces', () => {
       expect(tag, `${path}: ${marker} needs aria-hidden`).toContain('aria-hidden=')
       expect(tag, `${path}: ${marker} needs inert`).toContain("inert: ''")
     }
+
+    const assistantTurn = await readRendererFile('./chat/assistant-turn.tsx')
+    expect(assistantTurn).toContain('className="agent-flow-details agent-reasoning-public-details"')
+    expect(assistantTurn).not.toContain('agent-reasoning-toggle')
+    expect(assistantTurn).not.toContain('agent-flow-details-panel')
   })
 
   it('prevents inert descendants and closed runtime panels from restoring pointer hits', async () => {

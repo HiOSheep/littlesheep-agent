@@ -1,14 +1,26 @@
 // Primary navigation, project/session trees, and sidebar actions.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { APPLICATION_PERSISTENCE_FLUSH_EVENT } from '../../shared/application-state-contracts'
 import { projectSessions } from '../../shared/session-scope'
 import {
   type ProjectMeta,
   type SessionMeta
 } from '../api'
 import { formatRelativeSessionTime, sortProjectsForSidebar, useListReorderAnimation } from '../app-shell/list-motion'
-import { PROJECT_SORT_KEY, readProjectSortPreference, writeStringPreference } from '../app-shell/preferences'
+import {
+  EXPANDED_PROJECT_IDS_KEY,
+  PROJECT_SECTION_COLLAPSED_KEY,
+  PROJECT_SORT_KEY,
+  readBooleanPreference,
+  readProjectSortPreference,
+  readStringSetPreference,
+  writeBooleanPreference,
+  writeStringPreference,
+  writeStringSetPreference,
+} from '../app-shell/preferences'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { ArchiveIcon, CheckIcon, ComposeIcon, MoreIcon, ProjectIcon, SortIcon, TrashIcon } from '../ui/icons'
+import { OverflowingLabel } from '../ui/overflowing-label'
 import { isSamePath, lastPathSegment } from '../workspace/path-utils'
 import { SidebarActionMenu } from './action-menu'
 import { SessionRow } from './session-row'
@@ -54,9 +66,13 @@ export function SidebarProjectSection({
   onDeleteProject: (project: ProjectMeta) => void | Promise<void>
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
-  const [collapsed, setCollapsed] = useState(false)
-  const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(() => new Set())
+  const [collapsed, setCollapsed] = useState(() => readBooleanPreference(PROJECT_SECTION_COLLAPSED_KEY, false))
+  const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(() => (
+    readStringSetPreference(EXPANDED_PROJECT_IDS_KEY)
+  ))
   const [sortMode, setSortMode] = useState<ProjectSortMode>(() => readProjectSortPreference(PROJECT_SORT_KEY))
+  const durableProjectSectionRef = useRef({ collapsed, expandedProjectIds, sortMode })
+  durableProjectSectionRef.current = { collapsed, expandedProjectIds, sortMode }
   const baseProjects = useMemo(
     () => projects.filter((project) => !isSamePath(project.path, fallbackPath)),
     [fallbackPath, projects],
@@ -72,6 +88,25 @@ export function SidebarProjectSection({
   useEffect(() => {
     writeStringPreference(PROJECT_SORT_KEY, sortMode)
   }, [sortMode])
+
+  useEffect(() => {
+    writeBooleanPreference(PROJECT_SECTION_COLLAPSED_KEY, collapsed)
+  }, [collapsed])
+
+  useEffect(() => {
+    writeStringSetPreference(EXPANDED_PROJECT_IDS_KEY, expandedProjectIds)
+  }, [expandedProjectIds])
+
+  useEffect(() => {
+    const flushProjectSectionPreferences = () => {
+      const state = durableProjectSectionRef.current
+      writeBooleanPreference(PROJECT_SECTION_COLLAPSED_KEY, state.collapsed)
+      writeStringSetPreference(EXPANDED_PROJECT_IDS_KEY, state.expandedProjectIds)
+      writeStringPreference(PROJECT_SORT_KEY, state.sortMode)
+    }
+    window.addEventListener(APPLICATION_PERSISTENCE_FLUSH_EVENT, flushProjectSectionPreferences)
+    return () => window.removeEventListener(APPLICATION_PERSISTENCE_FLUSH_EVENT, flushProjectSectionPreferences)
+  }, [])
 
   useEffect(() => {
     if (!activeProject) return
@@ -187,7 +222,11 @@ export function SidebarProjectSection({
                 >
                   <span className="project-row-arrow" aria-hidden="true" />
                   <ProjectIcon />
-                  <span className="project-row-title">{project.name || lastPathSegment(project.path)}</span>
+                  <OverflowingLabel
+                    label={project.name || lastPathSegment(project.path)}
+                    className="sidebar-overflowing-label project-row-title"
+                    textClassName="sidebar-overflowing-label-text"
+                  />
                 </button>
                 <span className="session-tail" aria-hidden="true">
                   <span className="session-time">

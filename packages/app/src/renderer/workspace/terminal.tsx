@@ -19,7 +19,6 @@ import { transientTriggerProps } from '../ui/transient'
 import { compactPath } from './path-utils'
 import { createTerminalFitScheduler } from './terminal-fit'
 import { createTerminalInputController, type TerminalInputController } from './terminal-input-controller'
-import type { PermissionModeId } from '../../shared/permission-modes'
 
 const TERMINAL_FONT_FAMILY = '"SimSun", "宋体", monospace'
 const TERMINAL_FONT_SIZE = 12
@@ -28,16 +27,10 @@ const TERMINAL_LINE_HEIGHT = 1.34
 export function WorkspaceTerminal({
   workspacePath,
   sessionId,
-  permissionMode,
-  workspaceBoundary,
-  onRequestCommandApproval,
   onTipChange,
 }: {
   workspacePath: string
   sessionId?: string
-  permissionMode: PermissionModeId
-  workspaceBoundary: 'inside' | 'outside'
-  onRequestCommandApproval: (detail: unknown) => Promise<boolean>
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const hostRef = useRef<HTMLDivElement>(null)
@@ -80,10 +73,7 @@ export function WorkspaceTerminal({
     const inputController = createTerminalInputController({
       getTerminalSessionId: () => terminalSessionRef.current,
       getAppSessionId: () => sessionId,
-      getPermissionMode: () => permissionMode,
-      getWorkspacePath: () => workspacePath,
       isDisposed: () => disposed || !mountedRef.current,
-      requestApproval: onRequestCommandApproval,
       writeLine: writeTerminalNotice,
       setStatus,
       onCompletedCommand: () => void refreshTerminalActivities(),
@@ -230,7 +220,7 @@ export function WorkspaceTerminal({
       if (terminalRef.current === terminal) terminalRef.current = null
       fitAddonRef.current = null
     }
-  }, [permissionMode, workspaceBoundary, workspacePath])
+  }, [sessionId, workspacePath])
 
   async function startTerminalSession(isDisposed: () => boolean) {
     streamAbortRef.current?.abort()
@@ -251,29 +241,7 @@ export function WorkspaceTerminal({
       const size = terminalSizeRef.current.cols > 0 && terminalSizeRef.current.rows > 0
         ? terminalSizeRef.current
         : undefined
-      let terminalSession
-      try {
-        // Main performs the exact boundary check. A successful first request
-        // means no prompt is needed, including full mode inside the container.
-        terminalSession = await createWorkspaceTerminalSession(workspacePath, size, permissionMode, false)
-      } catch (error) {
-        if ((error as { status?: number }).status !== 403) throw error
-        const approved = await onRequestCommandApproval({
-          action: 'terminal_session',
-          command: '打开 LS 内置终端',
-          cwd: workspacePath,
-          root: workspacePath,
-          boundary: workspaceBoundary,
-        })
-        if (!approved) {
-          if (!isDisposed()) {
-            writeTerminalLine('\x1b[33m已取消打开终端。\x1b[0m')
-            setStatus('已取消')
-          }
-          return
-        }
-        terminalSession = await createWorkspaceTerminalSession(workspacePath, size, permissionMode, true)
-      }
+      const terminalSession = await createWorkspaceTerminalSession(workspacePath, size)
       if (isDisposed()) {
         await closeWorkspaceTerminalSession(terminalSession.sessionId).catch(() => undefined)
         return

@@ -28,7 +28,7 @@ import { isSamePath } from '../workspace/path-utils'
 export interface SessionActionContext {
   abortRef: MutableRefObject<AbortController | null>
   activeApprovalScopeKey: (sessionId?: string) => string
-  alignWorkspacePanelToWorkspaceRoot: (root: string) => void
+  alignWorkspacePanelToWorkspaceRoot: (root: string, sessionId?: string | null) => void
   appMountedRef: MutableRefObject<boolean>
   approvalGrantsRef: MutableRefObject<SessionApprovalGrantStore>
   beginDraftApprovalScope: () => void
@@ -37,6 +37,8 @@ export interface SessionActionContext {
   refreshProjects: () => Promise<void>
   refreshRuntime: () => Promise<void>
   refreshSessions: () => Promise<SessionMeta[]>
+  removeWorkspaceSessionLayout: (sessionId: string) => void
+  resetWorkspaceSessionLayout: (sessionId?: string) => void
   runtime: RuntimeState | null
   sessionLoadRequestRef: MutableRefObject<number>
   historyLoadRequestRef: MutableRefObject<number>
@@ -69,21 +71,25 @@ const SESSION_HISTORY_PAGE_SIZE = 120
 const SESSION_HISTORY_MEMORY_MAX = 480
 
 export function createSessionActions(context: SessionActionContext) {
-  const { abortRef, activeApprovalScopeKey, alignWorkspacePanelToWorkspaceRoot, appMountedRef, approvalGrantsRef, beginDraftApprovalScope, currentSession, historyLoadRequestRef, historyWindow, pushRoute, refreshProjects, refreshRuntime, refreshSessions, runtime, sessionLoadRequestRef, sessions, setContextUsageSnapshot, setConversationCollapsed, setControlTip, setCurrentSession, setHistoryWindow, setMessages, setPinnedSessionIds, setRuntime, setRuntimeError, setSessionOwnership, setSessions, setSidebarPanel, settleApprovalPrompt, sessionOwnership, visibleSessions } = context
+  const { abortRef, activeApprovalScopeKey, alignWorkspacePanelToWorkspaceRoot, appMountedRef, approvalGrantsRef, beginDraftApprovalScope, currentSession, historyLoadRequestRef, historyWindow, pushRoute, refreshProjects, refreshRuntime, refreshSessions, removeWorkspaceSessionLayout, resetWorkspaceSessionLayout, runtime, sessionLoadRequestRef, sessions, setContextUsageSnapshot, setConversationCollapsed, setControlTip, setCurrentSession, setHistoryWindow, setMessages, setPinnedSessionIds, setRuntime, setRuntimeError, setSessionOwnership, setSessions, setSidebarPanel, settleApprovalPrompt, sessionOwnership, visibleSessions } = context
 
+  function invalidateConversationView() {
+    sessionLoadRequestRef.current += 1
+    historyLoadRequestRef.current = 0
+    abortRef.current?.abort()
+  }
 
   function newSession(ownership: Pick<SessionMeta, 'scope' | 'projectId'> = { scope: 'standalone' }) {
-    sessionLoadRequestRef.current += 1
-    historyLoadRequestRef.current += 1
+    invalidateConversationView()
     pushRoute({ section: 'chat' })
     beginDraftApprovalScope()
+    resetWorkspaceSessionLayout()
     setCurrentSession(undefined)
     setSessionOwnership(ownership)
     setMessages([])
     setHistoryWindow({ hasMore: false, beforeId: undefined, loading: false })
     setContextUsageSnapshot(null)
     settleApprovalPrompt('deny')
-    abortRef.current?.abort()
   }
 
 
@@ -107,7 +113,7 @@ export function createSessionActions(context: SessionActionContext) {
 
   async function switchSession(session: SessionMeta, options: { forceReload?: boolean } = {}) {
     const requestId = ++sessionLoadRequestRef.current
-    historyLoadRequestRef.current += 1
+    historyLoadRequestRef.current = 0
     const { id, workspacePath } = session
     setSidebarPanel(null)
     pushRoute({ section: 'chat' })
@@ -117,7 +123,6 @@ export function createSessionActions(context: SessionActionContext) {
         if (!appMountedRef.current || requestId !== sessionLoadRequestRef.current) return
         setRuntime(next)
         setRuntimeError(null)
-        alignWorkspacePanelToWorkspaceRoot(next.workspace)
         void refreshProjects()
       } catch (e) {
         if (!appMountedRef.current || requestId !== sessionLoadRequestRef.current) return
@@ -126,6 +131,8 @@ export function createSessionActions(context: SessionActionContext) {
         return
       }
     }
+    const sessionWorkspace = workspacePath ?? runtime?.workspace
+    if (sessionWorkspace) alignWorkspacePanelToWorkspaceRoot(sessionWorkspace, id)
     setSessionOwnership({ scope: session.scope, projectId: session.projectId })
     const sessionChanged = id !== currentSession
     if (!sessionChanged && !options.forceReload) return
@@ -163,13 +170,18 @@ export function createSessionActions(context: SessionActionContext) {
     if (!currentSession || historyLoadRequestRef.current !== 0 || historyWindow.loading || !historyWindow.hasMore || !cursor) return false
     setHistoryWindow({ ...historyWindow, loading: true })
 
+    const sessionRequestId = sessionLoadRequestRef.current
     const requestId = ++historyLoadRequestRef.current
     try {
       const page = await getSessionMessagePage(currentSession, {
         limit: SESSION_HISTORY_PAGE_SIZE,
         beforeId: cursor,
       })
-      if (!appMountedRef.current || requestId !== historyLoadRequestRef.current) return false
+      if (
+        !appMountedRef.current
+        || sessionRequestId !== sessionLoadRequestRef.current
+        || requestId !== historyLoadRequestRef.current
+      ) return false
       const older = page.messages.map(historyMessageToChatMessage)
       setMessages((current) => {
         const seen = new Set<string>()
@@ -186,18 +198,27 @@ export function createSessionActions(context: SessionActionContext) {
       setHistoryWindow({ hasMore: page.hasMore, beforeId: page.beforeId, loading: false })
       return older.length > 0
     } catch (error) {
-      if (appMountedRef.current && requestId === historyLoadRequestRef.current) {
+      if (
+        appMountedRef.current
+        && sessionRequestId === sessionLoadRequestRef.current
+        && requestId === historyLoadRequestRef.current
+      ) {
         setHistoryWindow((state) => ({ ...state, loading: false }))
         setRuntimeError(`加载更早对话失败: ${(error as Error).message}`)
       }
       return false
     } finally {
-      if (historyLoadRequestRef.current === requestId) historyLoadRequestRef.current = 0
+      if (
+        sessionRequestId === sessionLoadRequestRef.current
+        && historyLoadRequestRef.current === requestId
+      ) {
+        historyLoadRequestRef.current = 0
+      }
     }
   }
 
 
-  function clearSessionFromLocalState(id: string) {
+  function clearSessionFromLocalState(id: string, options: { forgetWorkspace?: boolean } = {}) {
     approvalGrantsRef.current.clear(sessionApprovalScopeKey(id))
     setSessions((items) => items.filter((item) => item.id !== id))
     setPinnedSessionIds((ids) => {
@@ -205,7 +226,9 @@ export function createSessionActions(context: SessionActionContext) {
       next.delete(id)
       return next
     })
+    if (options.forgetWorkspace) removeWorkspaceSessionLayout(id)
     if (id === currentSession) {
+      invalidateConversationView()
       beginDraftApprovalScope()
       setCurrentSession(undefined)
       setMessages([])
@@ -228,7 +251,7 @@ export function createSessionActions(context: SessionActionContext) {
     setControlTip(null)
     await deleteSession(id, { hard: true })
     if (!appMountedRef.current) return
-    clearSessionFromLocalState(id)
+    clearSessionFromLocalState(id, { forgetWorkspace: true })
     void refreshSessions()
   }
 
@@ -265,6 +288,7 @@ export function createSessionActions(context: SessionActionContext) {
       return next
     })
     if (currentSession && ids.includes(currentSession)) {
+      invalidateConversationView()
       beginDraftApprovalScope()
       setCurrentSession(undefined)
       setMessages([])

@@ -2,15 +2,26 @@
 import '@xterm/xterm/css/xterm.css'
 import type { Dispatch, SetStateAction } from 'react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { APPLICATION_PERSISTENCE_FLUSH_EVENT } from '../../shared/application-state-contracts'
 import {
-  readWorkspaceLayoutSnapshot,
   saveWorkspaceFile,
-  saveWorkspaceLayoutSnapshot,
   type RuntimeState,
   type WorkspacePreview,
 } from '../api'
 import { clampNumber } from '../app-shell/navigation'
-import { SIDEBAR_COLLAPSED_KEY, SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_KEY, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, TWO_STAGE_RESIZE_MOTION_MS, WORKSPACE_FILE_NAVIGATOR_COLLAPSED_KEY, WORKSPACE_PANEL_COLLAPSED_KEY, WORKSPACE_PANEL_FULLSCREEN_KEY, WORKSPACE_PANEL_TAB_KEY, WORKSPACE_PANEL_WIDTH_KEY, readBooleanPreference, readNumberPreference, readWorkspaceFileDraftsPreference, readWorkspaceLayoutFallbackMarkers, readWorkspaceOpenRequestPreference, readWorkspacePanelOpenTabsPreference, readWorkspacePanelTabPreference, shouldApplyWorkspaceLayoutFallback, writeBooleanPreference, writeNumberPreference, writeStringPreference, writeWorkspaceFileDraftsPreference, writeWorkspaceOpenRequestPreference, writeWorkspacePanelOpenTabsPreference } from '../app-shell/preferences'
+import {
+  SIDEBAR_COLLAPSED_KEY,
+  SIDEBAR_WIDTH_DEFAULT,
+  SIDEBAR_WIDTH_KEY,
+  SIDEBAR_WIDTH_MAX,
+  SIDEBAR_WIDTH_MIN,
+  TWO_STAGE_RESIZE_MOTION_MS,
+  WORKSPACE_PANEL_WIDTH_KEY,
+  readBooleanPreference,
+  readNumberPreference,
+  writeBooleanPreference,
+  writeNumberPreference,
+} from '../app-shell/preferences'
 import { syncComposerInputHeight } from '../composer/input-size'
 import { beginSidebarResizeInteraction } from '../sidebar/resize-interaction'
 import { FloatingHelpTip } from '../ui/floating-help'
@@ -24,15 +35,10 @@ import {
 import {
   DEFAULT_WORKSPACE_PANEL_TABS,
   WORKSPACE_PANEL_OPEN_TABS_MAX,
-  dedupeWorkspacePanelTabs,
-  hydrateWorkspaceLayoutFallbackSnapshot,
   parseWorkspaceFileTabId,
-  serializeWorkspaceFileDrafts,
-  shouldUseWorkspaceLayoutFallback,
   type WorkspaceFileDraftState,
   type WorkspaceFileTabId,
-  type WorkspaceOpenRequest,
-  type WorkspacePanelTabId
+  type WorkspacePanelTabId,
 } from '../workspace-persistence'
 import { saveWorkspaceFileBeforeClose } from './file-close'
 import { workspaceFilePreviewCache } from './file-preview-cache'
@@ -40,6 +46,7 @@ import { isSamePath, workspaceBreadcrumbs } from './path-utils'
 import { beginWorkspacePanelResizeInteraction } from './resize-interaction'
 import { useWorkspaceBrowserController } from './use-browser-controller'
 import { isWorkspaceBrowserTabId } from './browser-tabs'
+import { useWorkspaceSessionLayouts } from './use-workspace-session-layouts'
 
 export function useWorkspaceLayoutController({
   runtime,
@@ -60,18 +67,10 @@ export function useWorkspaceLayoutController({
   onWorkspaceArtifactsChanged: () => void
   onWorkspaceFileSaved: (root: string, path: string, preview: WorkspacePreview) => void
 }) {
-  const projectPath = runtime?.workplace ?? runtime?.workspace ?? ''
+  const defaultWorkspacePath = runtime?.workspace ?? runtime?.workplace ?? ''
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readBooleanPreference(SIDEBAR_COLLAPSED_KEY, false))
-  const [workspacePanelCollapsed, setWorkspacePanelCollapsed] = useState(() => readBooleanPreference(WORKSPACE_PANEL_COLLAPSED_KEY, true))
   const [workspacePanelReopenActive, setWorkspacePanelReopenActive] = useState(false)
-  const [workspacePanelFullscreen, setWorkspacePanelFullscreen] = useState(() => readBooleanPreference(WORKSPACE_PANEL_FULLSCREEN_KEY, false))
-  const [workspacePanelTab, setWorkspacePanelTab] = useState<WorkspacePanelTabId>(() => readWorkspacePanelTabPreference(WORKSPACE_PANEL_TAB_KEY))
-  const [workspacePanelOpenTabs, setWorkspacePanelOpenTabs] = useState<WorkspacePanelTabId[]>(() => readWorkspacePanelOpenTabsPreference())
-  const [workspaceOpenRequest, setWorkspaceOpenRequest] = useState<WorkspaceOpenRequest | null>(() => readWorkspaceOpenRequestPreference())
-  const [workspaceFileDrafts, setWorkspaceFileDraftsState] = useState<Record<string, WorkspaceFileDraftState>>(() => readWorkspaceFileDraftsPreference())
-  const [workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed] = useState(() => readBooleanPreference(WORKSPACE_FILE_NAVIGATOR_COLLAPSED_KEY, false))
-  const [workspaceExpandedPaths, setWorkspaceExpandedPaths] = useState<string[]>([])
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const shellRef = useRef<HTMLDivElement>(null)
   const composerSyncFrameRef = useRef<number>()
@@ -79,17 +78,6 @@ export function useWorkspaceLayoutController({
   const activeDragCleanupRef = useRef<(() => void) | null>(null)
   const sidebarSettleFrameRef = useRef<number>()
   const sidebarSettleTimerRef = useRef<number>()
-  const workspaceFileDraftsRef = useRef(workspaceFileDrafts)
-  const workspacePanelOpenTabsRef = useRef(workspacePanelOpenTabs)
-  const workspacePanelTabRef = useRef(workspacePanelTab)
-  const closingWorkspaceFileTabsRef = useRef(new Map<WorkspaceFileTabId, {
-    hasSavedVersion: boolean
-    savedText: string
-    modifiedAt?: number
-  }>())
-  const workspaceLayoutFallbackNeededRef = useRef(shouldUseWorkspaceLayoutFallback(readWorkspaceLayoutFallbackMarkers()))
-  const workspaceLayoutMirrorReadyRef = useRef(false)
-  const [workspaceLayoutMirrorReady, setWorkspaceLayoutMirrorReady] = useState(false)
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
   const [sidebarWidth, setSidebarWidth] = useState(() =>
     readNumberPreference(SIDEBAR_WIDTH_KEY, SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX),
@@ -102,11 +90,52 @@ export function useWorkspaceLayoutController({
       WORKSPACE_PANEL_WIDTH_MAX,
     ),
   )
-  workspaceFileDraftsRef.current = workspaceFileDrafts
-  workspacePanelOpenTabsRef.current = workspacePanelOpenTabs
-  workspacePanelTabRef.current = workspacePanelTab
+  const durableLayoutRef = useRef({ sidebarCollapsed, sidebarWidth, workspacePanelWidth })
+  durableLayoutRef.current = { sidebarCollapsed, sidebarWidth, workspacePanelWidth }
+  const {
+    activeWorkspaceSessionKey,
+    activeWorkspaceSessionKeyRef,
+    workspaceSessionLayoutsRef,
+    closingWorkspaceFileTabsRef,
+    workspacePanelRoot,
+    workspacePanelCollapsed,
+    workspacePanelFullscreen,
+    workspacePanelTab,
+    workspacePanelOpenTabs,
+    workspaceOpenRequest,
+    workspaceFileDrafts,
+    workspaceFileNavigatorCollapsed,
+    workspaceFileNavigatorWidth,
+    workspaceExpandedPaths,
+    workspaceBrowserTabs,
+    setWorkspacePanelCollapsed,
+    setWorkspacePanelFullscreen,
+    setWorkspacePanelTab,
+    setWorkspacePanelOpenTabs,
+    setWorkspaceOpenRequest,
+    setWorkspaceFileDrafts,
+    setWorkspaceSessionFileDrafts,
+    setWorkspaceFileNavigatorCollapsed,
+    setWorkspaceFileNavigatorWidth,
+    setWorkspaceExpandedPaths,
+    setWorkspaceBrowserTabs,
+    commitWorkspaceSessionLayout,
+    resetWorkspaceSessionLayout,
+    removeWorkspaceSessionLayout,
+    alignWorkspaceSessionToRoot,
+    rebindWorkspaceSessionLayouts,
+  } = useWorkspaceSessionLayouts({
+    runtime,
+    currentSession,
+    defaultWorkspacePath,
+    workspacePanelWidth,
+    setWorkspacePanelWidth,
+    setWorkspacePanelReopenActive,
+  })
 
   const browserController = useWorkspaceBrowserController({
+    workspaceBrowserTabs,
+    setWorkspaceBrowserTabs,
     workspacePanelTab,
     setWorkspacePanelTab,
     workspacePanelOpenTabs,
@@ -139,60 +168,15 @@ export function useWorkspaceLayoutController({
   }, [sidebarCollapsed])
 
   useEffect(() => {
-    writeBooleanPreference(WORKSPACE_PANEL_COLLAPSED_KEY, workspacePanelCollapsed)
-  }, [workspacePanelCollapsed])
-
-  useEffect(() => {
-    writeBooleanPreference(WORKSPACE_PANEL_FULLSCREEN_KEY, workspacePanelFullscreen)
-  }, [workspacePanelFullscreen])
-
-  useEffect(() => {
-    writeStringPreference(WORKSPACE_PANEL_TAB_KEY, workspacePanelTab)
-  }, [workspacePanelTab])
-
-  useEffect(() => {
-    writeWorkspacePanelOpenTabsPreference(workspacePanelOpenTabs)
-  }, [workspacePanelOpenTabs])
-
-  useEffect(() => {
-    if (workspacePanelOpenTabs.length === 0) return
-    setWorkspacePanelOpenTabs((tabs) => (
-      tabs.includes(workspacePanelTab)
-        ? tabs
-        : dedupeWorkspacePanelTabs(
-          tabs.length >= WORKSPACE_PANEL_OPEN_TABS_MAX
-            ? [...tabs.slice(1), workspacePanelTab]
-            : [...tabs, workspacePanelTab],
-        )
-    ))
-  }, [workspacePanelTab])
-
-  useEffect(() => {
-    writeWorkspaceOpenRequestPreference(workspaceOpenRequest)
-  }, [workspaceOpenRequest])
-
-  useEffect(() => {
-    writeBooleanPreference(WORKSPACE_FILE_NAVIGATOR_COLLAPSED_KEY, workspaceFileNavigatorCollapsed)
-  }, [workspaceFileNavigatorCollapsed])
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      writeWorkspaceFileDraftsPreference(workspaceFileDrafts, workspacePanelOpenTabs)
-    }, 250)
-    return () => window.clearTimeout(timer)
-  }, [workspaceFileDrafts, workspacePanelOpenTabs])
-
-  useEffect(() => {
-    function flushWorkspaceFileDrafts() {
-      writeWorkspaceFileDraftsPreference(workspaceFileDrafts, workspacePanelOpenTabs)
+    const flushLayoutPreferences = () => {
+      const state = durableLayoutRef.current
+      writeBooleanPreference(SIDEBAR_COLLAPSED_KEY, state.sidebarCollapsed)
+      writeNumberPreference(SIDEBAR_WIDTH_KEY, state.sidebarWidth)
+      writeNumberPreference(WORKSPACE_PANEL_WIDTH_KEY, state.workspacePanelWidth)
     }
-    window.addEventListener('pagehide', flushWorkspaceFileDrafts)
-    window.addEventListener('beforeunload', flushWorkspaceFileDrafts)
-    return () => {
-      window.removeEventListener('pagehide', flushWorkspaceFileDrafts)
-      window.removeEventListener('beforeunload', flushWorkspaceFileDrafts)
-    }
-  }, [workspaceFileDrafts, workspacePanelOpenTabs])
+    window.addEventListener(APPLICATION_PERSISTENCE_FLUSH_EVENT, flushLayoutPreferences)
+    return () => window.removeEventListener(APPLICATION_PERSISTENCE_FLUSH_EVENT, flushLayoutPreferences)
+  }, [])
 
   useLayoutEffect(() => {
     syncComposerInputHeight(inputRef.current)
@@ -242,46 +226,6 @@ export function useWorkspaceLayoutController({
     }
   }, [])
 
-  useEffect(() => {
-    if (!runtime || workspaceLayoutMirrorReadyRef.current) return
-    let disposed = false
-    async function recoverWorkspaceLayoutFromMirror() {
-      try {
-        const snapshot = await readWorkspaceLayoutSnapshot()
-        if (disposed) return
-        const fallback = workspaceLayoutFallbackNeededRef.current
-          ? hydrateWorkspaceLayoutFallbackSnapshot(snapshot)
-          : null
-        const defaultRoot = runtime?.workspace ?? runtime?.workplace ?? projectPath
-        if (fallback && shouldApplyWorkspaceLayoutFallback(fallback.workspacePath, defaultRoot, fallback.openRequest)) {
-          setWorkspacePanelWidth(clampNumber(
-            fallback.width ?? WORKSPACE_PANEL_WIDTH_DEFAULT,
-            WORKSPACE_PANEL_WIDTH_MIN,
-            WORKSPACE_PANEL_WIDTH_MAX,
-          ))
-          setWorkspacePanelCollapsed(fallback.collapsed)
-          setWorkspacePanelFullscreen(fallback.fullscreen)
-          setWorkspacePanelOpenTabs(fallback.openTabs)
-          setWorkspacePanelTab(fallback.activeTab)
-          setWorkspaceOpenRequest(fallback.openRequest)
-          setWorkspaceFileDrafts(fallback.drafts)
-          setWorkspaceFileNavigatorCollapsed(fallback.fileNavigatorCollapsed)
-        }
-      } catch {
-        // Layout mirror recovery is best-effort; localStorage remains the primary fast path.
-      } finally {
-        if (!disposed) {
-          workspaceLayoutMirrorReadyRef.current = true
-          setWorkspaceLayoutMirrorReady(true)
-        }
-      }
-    }
-    void recoverWorkspaceLayoutFromMirror()
-    return () => {
-      disposed = true
-    }
-  }, [projectPath, runtime])
-
   function scheduleComposerHeightSync() {
     window.cancelAnimationFrame(composerSyncFrameRef.current ?? 0)
     composerSyncFrameRef.current = window.requestAnimationFrame(() => {
@@ -290,15 +234,6 @@ export function useWorkspaceLayoutController({
     })
   }
 
-  function setWorkspaceFileDrafts(
-    update: SetStateAction<Record<string, WorkspaceFileDraftState>>,
-  ) {
-    const nextDrafts = typeof update === 'function'
-      ? update(workspaceFileDraftsRef.current)
-      : update
-    workspaceFileDraftsRef.current = nextDrafts
-    setWorkspaceFileDraftsState(nextDrafts)
-  }
   function beginSidebarResize(event: React.PointerEvent<HTMLDivElement>) {
     beginSidebarResizeInteraction(event, { activeDragCleanupRef, setControlTip, sidebarCollapsed, sidebarWidth, shellRef, sidebarSettleTimerRef, sidebarSettleFrameRef, setSidebarWidth, setSidebarCollapsed, scheduleComposerHeightSync })
   }
@@ -363,7 +298,7 @@ export function useWorkspaceLayoutController({
   }
 
   function updateWorkspaceFileDraft(tab: WorkspaceFileTabId, draft: WorkspaceFileDraftState | null) {
-    const closingState = closingWorkspaceFileTabsRef.current.get(tab)
+    const closingState = findClosingWorkspaceFileState(activeWorkspaceSessionKey, tab)
     const nextDraft = draft && closingState?.hasSavedVersion
       ? {
           ...draft,
@@ -383,19 +318,22 @@ export function useWorkspaceLayoutController({
   }
 
   function recordSavedWorkspaceFileDraft(
+    layoutKey: string,
     tab: WorkspaceFileTabId,
     savedText: string,
     preview: WorkspacePreview,
+    closingState: {
+      hasSavedVersion: boolean
+      savedText: string
+      modifiedAt?: number
+    },
   ): WorkspaceFileDraftState | undefined {
-    const closingState = closingWorkspaceFileTabsRef.current.get(tab)
-    if (closingState) {
-      closingState.hasSavedVersion = true
-      closingState.savedText = savedText
-      closingState.modifiedAt = preview.modifiedAt
-    }
+    closingState.hasSavedVersion = true
+    closingState.savedText = savedText
+    closingState.modifiedAt = preview.modifiedAt
 
     let recordedDraft: WorkspaceFileDraftState | undefined
-    setWorkspaceFileDrafts((drafts) => {
+    setWorkspaceSessionFileDrafts(layoutKey, (drafts) => {
       const currentDraft = drafts[tab]
       if (!currentDraft) return drafts
       recordedDraft = {
@@ -408,55 +346,71 @@ export function useWorkspaceLayoutController({
     return recordedDraft
   }
 
-  function finalizeWorkspacePanelTabClose(tab: WorkspacePanelTabId) {
-    const currentTabs = workspacePanelOpenTabsRef.current
+  function finalizeWorkspacePanelTabClose(layoutKey: string, tab: WorkspacePanelTabId) {
+    const layout = workspaceSessionLayoutsRef.current[layoutKey]
+    if (!layout) return
+    const currentTabs = layout.openTabs
     const tabIndex = currentTabs.indexOf(tab)
     const nextTabs = currentTabs.filter((item) => item !== tab)
-    if (isWorkspaceBrowserTabId(tab)) browserController.removeWorkspaceBrowserTab(tab)
+    const browserTabs = isWorkspaceBrowserTabId(tab)
+      ? layout.browserTabs.filter((item) => item.id !== tab)
+      : layout.browserTabs
+    let drafts = layout.drafts
     if (parseWorkspaceFileTabId(tab)) {
-      setWorkspaceFileDrafts((drafts) => {
-        if (!drafts[tab]) return drafts
+      if (drafts[tab]) {
         const next = { ...drafts }
         delete next[tab]
-        return next
-      })
+        drafts = next
+      }
     }
-    if (tabIndex < 0) return
-    workspacePanelOpenTabsRef.current = nextTabs
-    if (nextTabs.length === 0) {
-      setWorkspacePanelOpenTabs([])
-      const nextTab = DEFAULT_WORKSPACE_PANEL_TABS[0] ?? 'review'
-      workspacePanelTabRef.current = nextTab
-      setWorkspacePanelTab(nextTab)
-      setWorkspacePanelCollapsed(false)
+    if (tabIndex < 0) {
+      if (browserTabs !== layout.browserTabs || drafts !== layout.drafts) {
+        commitWorkspaceSessionLayout(layoutKey, { ...layout, browserTabs, drafts })
+      }
       return
     }
-    setWorkspacePanelOpenTabs(nextTabs)
-    if (workspacePanelTabRef.current === tab) {
-      const nextTab = nextTabs[Math.max(0, tabIndex - 1)] ?? nextTabs[0] ?? 'review'
-      workspacePanelTabRef.current = nextTab
-      setWorkspacePanelTab(nextTab)
+    let activeTab = layout.activeTab
+    let collapsed = layout.collapsed
+    if (nextTabs.length === 0) {
+      activeTab = DEFAULT_WORKSPACE_PANEL_TABS[0] ?? 'review'
+      collapsed = false
+    } else if (activeTab === tab) {
+      activeTab = nextTabs[Math.max(0, tabIndex - 1)] ?? nextTabs[0] ?? 'review'
     }
+    commitWorkspaceSessionLayout(layoutKey, {
+      ...layout,
+      activeTab,
+      openTabs: nextTabs,
+      collapsed,
+      drafts,
+      browserTabs,
+    })
   }
 
   async function closeWorkspacePanelTab(tab: WorkspacePanelTabId) {
     setControlTip(null)
+    const layoutKey = activeWorkspaceSessionKey
     const fileTab = parseWorkspaceFileTabId(tab)
-    const draft = fileTab ? workspaceFileDraftsRef.current[tab] : undefined
+    const draft = fileTab ? workspaceSessionLayoutsRef.current[layoutKey]?.drafts[tab] : undefined
     if (!fileTab || !draft || draft.editorText === draft.savedText) {
-      finalizeWorkspacePanelTabClose(tab)
+      finalizeWorkspacePanelTabClose(layoutKey, tab)
       return
     }
     const fileTabId = tab as WorkspaceFileTabId
-    if (closingWorkspaceFileTabsRef.current.has(fileTabId)) return
+    const operationKey = `${layoutKey}\0${fileTabId}`
+    if (closingWorkspaceFileTabsRef.current.has(operationKey)) return
 
-    closingWorkspaceFileTabsRef.current.set(fileTabId, {
+    const closingState = {
+      layoutKey,
+      sessionId: currentSession,
+      fileTabId,
       hasSavedVersion: false,
       savedText: '',
-    })
+    }
+    closingWorkspaceFileTabsRef.current.set(operationKey, closingState)
     try {
       await saveWorkspaceFileBeforeClose({
-        getDraft: () => workspaceFileDraftsRef.current[fileTabId],
+        getDraft: () => workspaceSessionLayoutsRef.current[closingState.layoutKey]?.drafts[fileTabId],
         requestSaveApproval: () => onRequestFileSaveApproval({
           path: fileTab.path,
           root: fileTab.root,
@@ -468,63 +422,38 @@ export function useWorkspaceLayoutController({
             fileTab.path,
             content,
             expectedModifiedAt,
-            currentSession,
+            closingState.sessionId,
           )
           workspaceFilePreviewCache.store(fileTab.root, fileTab.path, preview)
           onWorkspaceArtifactsChanged()
-          onWorkspaceFileSaved(fileTab.root, fileTab.path, preview)
+          if (activeWorkspaceSessionKeyRef.current === closingState.layoutKey) {
+            onWorkspaceFileSaved(fileTab.root, fileTab.path, preview)
+          }
           return preview
         },
         recordSavedDraft: (savedText, preview) => (
-          recordSavedWorkspaceFileDraft(fileTabId, savedText, preview)
+          recordSavedWorkspaceFileDraft(closingState.layoutKey, fileTabId, savedText, preview, closingState)
         ),
-        closeTab: () => finalizeWorkspacePanelTabClose(tab),
+        closeTab: () => finalizeWorkspacePanelTabClose(closingState.layoutKey, tab),
       })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      setRuntimeError(`自动保存失败，文件仍保持打开：${message}`)
+      if (activeWorkspaceSessionKeyRef.current === closingState.layoutKey) {
+        setRuntimeError(`自动保存失败，文件仍保持打开：${message}`)
+      }
     } finally {
-      closingWorkspaceFileTabsRef.current.delete(fileTabId)
+      closingWorkspaceFileTabsRef.current.delete(operationKey)
     }
   }
 
-  const defaultWorkspacePath = runtime?.workspace ?? runtime?.workplace ?? projectPath
-  const workspacePanelRoot = workspaceOpenRequest?.root ?? defaultWorkspacePath
+  function findClosingWorkspaceFileState(layoutKey: string, tab: WorkspaceFileTabId) {
+    for (const state of closingWorkspaceFileTabsRef.current.values()) {
+      if (state.layoutKey === layoutKey && state.fileTabId === tab) return state
+    }
+    return undefined
+  }
+
   const workspacePanelUsingTemporaryRoot = !isSamePath(workspacePanelRoot, defaultWorkspacePath)
-  useEffect(() => {
-    if (!workspaceLayoutMirrorReady) return
-    if (!workspacePanelRoot) return
-    const timer = window.setTimeout(() => {
-      const openRequest = workspaceOpenRequest
-        ? { root: workspaceOpenRequest.root, path: workspaceOpenRequest.path }
-        : null
-      void saveWorkspaceLayoutSnapshot({
-        workspacePath: workspacePanelRoot,
-        sessionId: currentSession,
-        width: workspacePanelWidth,
-        collapsed: workspacePanelCollapsed,
-        fullscreen: workspacePanelFullscreen,
-        activeTab: workspacePanelTab,
-        openTabs: workspacePanelOpenTabs,
-        openRequest,
-        fileNavigatorCollapsed: workspaceFileNavigatorCollapsed,
-        drafts: serializeWorkspaceFileDrafts(workspaceFileDrafts, workspacePanelOpenTabs),
-      }).catch(() => undefined)
-    }, 500)
-    return () => window.clearTimeout(timer)
-  }, [
-    currentSession,
-    workspaceFileDrafts,
-    workspaceFileNavigatorCollapsed,
-    workspaceOpenRequest,
-    workspacePanelCollapsed,
-    workspacePanelFullscreen,
-    workspacePanelOpenTabs,
-    workspacePanelRoot,
-    workspacePanelTab,
-    workspacePanelWidth,
-    workspaceLayoutMirrorReady,
-  ])
   useEffect(() => () => {
     window.cancelAnimationFrame(composerSyncFrameRef.current ?? 0)
     window.cancelAnimationFrame(sidebarSettleFrameRef.current ?? 0)
@@ -532,7 +461,7 @@ export function useWorkspaceLayoutController({
     activeDragCleanupRef.current?.()
   }, [])
 
-  return { sidebarCollapsed, setSidebarCollapsed, workspacePanelCollapsed, setWorkspacePanelCollapsed, workspacePanelReopenActive, setWorkspacePanelReopenActive, workspacePanelFullscreen, setWorkspacePanelFullscreen, workspacePanelTab, setWorkspacePanelTab, workspacePanelOpenTabs, setWorkspacePanelOpenTabs, ...browserController, workspaceOpenRequest, setWorkspaceOpenRequest, workspaceFileDrafts, setWorkspaceFileDrafts, workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed, workspaceExpandedPaths, setWorkspaceExpandedPaths, inputRef, shellRef, sidebarWidth, setSidebarWidth, workspacePanelWidth, setWorkspacePanelWidth, workspacePanelLayout, layoutStyle, beginSidebarResize, nudgeSidebar, toggleSidebar, beginWorkspacePanelResize, toggleWorkspacePanel, updateWorkspacePanelReopenPresence, toggleWorkspacePanelFullscreen, nudgeWorkspacePanel, openWorkspacePanelTab, updateWorkspaceFileDraft, closeWorkspacePanelTab, defaultWorkspacePath, workspacePanelRoot, workspacePanelUsingTemporaryRoot }
+  return { sidebarCollapsed, setSidebarCollapsed, workspacePanelCollapsed, setWorkspacePanelCollapsed, workspacePanelReopenActive, setWorkspacePanelReopenActive, workspacePanelFullscreen, setWorkspacePanelFullscreen, workspacePanelTab, setWorkspacePanelTab, workspacePanelOpenTabs, setWorkspacePanelOpenTabs, ...browserController, workspaceOpenRequest, setWorkspaceOpenRequest, workspaceFileDrafts, setWorkspaceFileDrafts, workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed, workspaceFileNavigatorWidth, setWorkspaceFileNavigatorWidth, workspaceExpandedPaths, setWorkspaceExpandedPaths, inputRef, shellRef, sidebarWidth, setSidebarWidth, workspacePanelWidth, setWorkspacePanelWidth, workspacePanelLayout, layoutStyle, beginSidebarResize, nudgeSidebar, toggleSidebar, beginWorkspacePanelResize, toggleWorkspacePanel, updateWorkspacePanelReopenPresence, toggleWorkspacePanelFullscreen, nudgeWorkspacePanel, openWorkspacePanelTab, updateWorkspaceFileDraft, closeWorkspacePanelTab, resetWorkspaceSessionLayout, removeWorkspaceSessionLayout, alignWorkspaceSessionToRoot, rebindWorkspaceSessionLayouts, defaultWorkspacePath, workspacePanelRoot, workspacePanelUsingTemporaryRoot }
 }
 
 export type WorkspaceLayoutController = ReturnType<typeof useWorkspaceLayoutController>

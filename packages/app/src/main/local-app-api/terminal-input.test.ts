@@ -19,7 +19,7 @@ describe('interactive terminal input tracking', () => {
     expect(result.commands).toEqual([{ command: 'Write-Output', uncertain: false }])
   })
 
-  it('fails closed after an escape sequence that may replace the shell line', () => {
+  it('marks a command uncertain after an escape sequence that may replace the shell line', () => {
     const result = analyzeTerminalInput(EMPTY_TERMINAL_INPUT_STATE, '\x1b[AGet-ChildItem\r')
     expect(result.commands).toEqual([{ command: 'Get-ChildItem', uncertain: true }])
   })

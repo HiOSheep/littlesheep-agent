@@ -1,8 +1,22 @@
+import {
+  WORKSPACE_FILE_NAVIGATOR_WIDTH_DEFAULT,
+  WORKSPACE_FILE_NAVIGATOR_WIDTH_MAX,
+  WORKSPACE_FILE_NAVIGATOR_WIDTH_MIN,
+} from '../shared/workspace-contracts'
+
+export {
+  WORKSPACE_FILE_NAVIGATOR_WIDTH_DEFAULT,
+  WORKSPACE_FILE_NAVIGATOR_WIDTH_MAX,
+  WORKSPACE_FILE_NAVIGATOR_WIDTH_MIN,
+} from '../shared/workspace-contracts'
+
 export const WORKSPACE_PANEL_WIDTH_DEFAULT = 360
 export const WORKSPACE_PANEL_WIDTH_MIN = 280
 export const WORKSPACE_PANEL_WIDTH_MAX = 4096
 export const WORKSPACE_CHAT_MIN_WIDTH = 420
 export const WORKSPACE_PANEL_REOPEN_HOTZONE_WIDTH = 96
+export const WORKSPACE_FILE_CONTENT_MIN_WIDTH = 96
+export const WORKSPACE_FILE_NAVIGATOR_MAX_RATIO = 0.68
 
 const SIDEBAR_RESIZER_WIDTH = 1
 const WORKSPACE_PANEL_RESIZER_WIDTH = 1
@@ -27,6 +41,18 @@ export type WorkspacePanelDragMode = 'split' | 'collapsed' | 'fullscreen'
 
 export interface WorkspacePanelDragResult {
   mode: WorkspacePanelDragMode
+  width: number
+}
+
+export interface WorkspaceFileNavigatorLayout {
+  width: number
+  minWidth: number
+  maxWidth: number
+  collapseThreshold: number
+}
+
+export interface WorkspaceFileNavigatorDragResult {
+  collapsed: boolean
   width: number
 }
 
@@ -77,6 +103,52 @@ export function resolveWorkspacePanelDrag(
   return {
     mode: 'split',
     width: clamp(rawWidth, WORKSPACE_PANEL_WIDTH_MIN, layout.maxSplitWidth),
+  }
+}
+
+/** Keeps the right-side file navigator usable without consuming the entire file surface. */
+export function resolveWorkspaceFileNavigatorLayout(
+  availableWidth: number,
+  preferredWidth: number,
+): WorkspaceFileNavigatorLayout {
+  const finiteAvailableWidth = finitePositive(availableWidth)
+  const maxWidth = finiteAvailableWidth > 0
+    ? Math.max(
+        0,
+        Math.min(
+          WORKSPACE_FILE_NAVIGATOR_WIDTH_MAX,
+          Math.floor(finiteAvailableWidth - WORKSPACE_FILE_CONTENT_MIN_WIDTH),
+          Math.floor(finiteAvailableWidth * WORKSPACE_FILE_NAVIGATOR_MAX_RATIO),
+        ),
+      )
+    : WORKSPACE_FILE_NAVIGATOR_WIDTH_MAX
+  const minWidth = Math.min(WORKSPACE_FILE_NAVIGATOR_WIDTH_MIN, maxWidth)
+  const width = clamp(
+    Number.isFinite(preferredWidth) ? preferredWidth : WORKSPACE_FILE_NAVIGATOR_WIDTH_DEFAULT,
+    minWidth,
+    maxWidth,
+  )
+
+  return {
+    width,
+    minWidth,
+    maxWidth,
+    collapseThreshold: minWidth / 2,
+  }
+}
+
+/** Mirrors the sidebar dead zone: stay readable until the second threshold, then collapse. */
+export function resolveWorkspaceFileNavigatorDrag(
+  rawWidth: number,
+  layout: WorkspaceFileNavigatorLayout,
+): WorkspaceFileNavigatorDragResult {
+  const width = Number.isFinite(rawWidth) ? rawWidth : layout.width
+  if (width < layout.collapseThreshold) {
+    return { collapsed: true, width: layout.minWidth }
+  }
+  return {
+    collapsed: false,
+    width: clamp(width, layout.minWidth, layout.maxWidth),
   }
 }
 

@@ -1,5 +1,5 @@
 // Renders Git's sparse changed-file tree inside the shared workspace navigator.
-import type { CSSProperties, FocusEvent, KeyboardEvent, MouseEvent } from 'react'
+import type { CSSProperties, KeyboardEvent } from 'react'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { FileGlyphIcon, FolderGlyphIcon, RefreshIcon, SearchIcon, TreeChevronIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
@@ -29,6 +29,7 @@ interface WorkspaceReviewTreeProps {
   filterText: string
   refreshing: boolean
   navigatorCollapsed: boolean
+  navigatorWidth: number
   emptyText?: string
   onFilterTextChange: (value: string) => void
   onFilterKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void
@@ -36,6 +37,7 @@ interface WorkspaceReviewTreeProps {
   onToggleFolder: (path: string) => void
   onSelectFile: (path: string) => void
   onNavigatorCollapsedChange: (collapsed: boolean) => void
+  onNavigatorWidthChange: (width: number) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }
 
@@ -56,6 +58,7 @@ export function WorkspaceReviewTree({
   filterText,
   refreshing,
   navigatorCollapsed,
+  navigatorWidth,
   emptyText,
   onFilterTextChange,
   onFilterKeyDown,
@@ -63,22 +66,25 @@ export function WorkspaceReviewTree({
   onToggleFolder,
   onSelectFile,
   onNavigatorCollapsedChange,
+  onNavigatorWidthChange,
   onTipChange,
 }: WorkspaceReviewTreeProps) {
   return (
     <WorkspaceNavigatorFrame
       collapsed={navigatorCollapsed}
+      width={navigatorWidth}
       ariaLabel="Git 更改文件"
       onCollapsedChange={onNavigatorCollapsedChange}
+      onWidthChange={onNavigatorWidthChange}
       onTipChange={onTipChange}
     >
       <div className="workspace-files-toolbar workspace-page-leading-row">
         <div className="workspace-files-root">
-          <span title={repositoryLabel}>
+          <span>
             {repositoryLabel}
             <b className="workspace-root-badge">Git 审阅</b>
           </span>
-          <small title={workspacePath}>
+          <small>
             {compactPath(workspacePath)}
             {ahead > 0 ? ` · 领先 ${ahead}` : ''}
             {behind > 0 ? ` · 落后 ${behind}` : ''}
@@ -130,7 +136,6 @@ export function WorkspaceReviewTree({
             expandedFolders={expandedFolders}
             onToggleFolder={onToggleFolder}
             onSelectFile={onSelectFile}
-            onTipChange={onTipChange}
           />
         ))}
       </div>
@@ -145,22 +150,12 @@ function WorkspaceReviewTreeRow({
   expandedFolders,
   onToggleFolder,
   onSelectFile,
-  onTipChange,
 }: Pick<WorkspaceReviewTreeProps,
-  'selectedPath' | 'expandedFolders' | 'onToggleFolder' | 'onSelectFile' | 'onTipChange'
+  'selectedPath' | 'expandedFolders' | 'onToggleFolder' | 'onSelectFile'
 > & {
   node: WorkspaceReviewTreeNode
   depth: number
 }) {
-  const rowTip = node.path
-  const tipHandlers = {
-    onMouseEnter: (event: MouseEvent<HTMLElement>) => onTipChange(buildFloatingHelpTip(rowTip, event.clientX, event.clientY)),
-    onMouseMove: (event: MouseEvent<HTMLElement>) => onTipChange(buildFloatingHelpTip(rowTip, event.clientX, event.clientY)),
-    onMouseLeave: () => onTipChange(null),
-    onFocus: (event: FocusEvent<HTMLElement>) => onTipChange(buildFloatingHelpTipFromElement(rowTip, event.currentTarget)),
-    onBlur: () => onTipChange(null),
-  }
-
   if (node.kind === 'folder') {
     const expanded = expandedFolders.has(node.path)
     return (
@@ -172,7 +167,6 @@ function WorkspaceReviewTreeRow({
           aria-expanded={expanded}
           style={{ '--workspace-tree-depth': depth } as CSSProperties}
           onClick={() => onToggleFolder(node.path)}
-          {...tipHandlers}
         >
           <span className={`workspace-tree-chevron ${expanded ? 'open' : ''}`} aria-hidden="true">
             <TreeChevronIcon />
@@ -195,7 +189,6 @@ function WorkspaceReviewTreeRow({
             expandedFolders={expandedFolders}
             onToggleFolder={onToggleFolder}
             onSelectFile={onSelectFile}
-            onTipChange={onTipChange}
           />
         ))}
       </div>
@@ -212,9 +205,8 @@ function WorkspaceReviewTreeRow({
       aria-selected={selected}
       style={{ '--workspace-tree-depth': depth } as CSSProperties}
       onClick={() => onSelectFile(node.path)}
-      {...tipHandlers}
     >
-      <span className={`workspace-review-file-status ${node.file.status}`} aria-label={statusText} title={statusText}>
+      <span className={`workspace-review-file-status ${node.file.status}`} aria-label={statusText}>
         {workspaceReviewStatusLabel(node.file.status)}
       </span>
       <span className="workspace-tree-glyph"><FileGlyphIcon /></span>

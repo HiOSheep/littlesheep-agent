@@ -138,7 +138,8 @@ export async function routeWorkspace(
   }
 
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.workspaceLayout) {
-    json(res, 200, { snapshot: await context.workspaceLayoutIndex.read() })
+    const sessionId = normalizeOptionalSessionId(url.searchParams.get('sessionId'))
+    json(res, 200, { snapshot: await context.workspaceLayoutIndex.read(sessionId ?? null) })
     return true
   }
 

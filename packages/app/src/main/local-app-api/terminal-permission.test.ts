@@ -1,22 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import {
-  assertTerminalCommandAllowed,
-  assertTerminalSessionAllowed,
-} from './terminal-permission.js'
+import { assertTerminalOperationAllowed } from './terminal-permission.js'
 
 const containerRoot = 'C:\\LS-data'
 const inside = 'C:\\LS-data\\workplace'
 const outside = 'C:\\Users\\Public\\project'
 
-describe('terminal permission boundary', () => {
-  it('allows full mode to start and use a terminal inside the LS container', () => {
-    expect(() => assertTerminalSessionAllowed({
-      cwd: inside,
-      containerRoot,
-      permissionMode: 'full',
-      approved: false,
+describe('terminal operation authority', () => {
+  it('allows the user-owned workspace terminal without consulting Agent permission mode', () => {
+    expect(() => assertTerminalOperationAllowed({
+      source: 'workspace-user',
     })).not.toThrow()
-    expect(() => assertTerminalCommandAllowed({
+  })
+
+  it('allows Agent commands in full mode inside the LS container', () => {
+    expect(() => assertTerminalOperationAllowed({
+      source: 'agent',
       command: 'Get-ChildItem',
       cwd: inside,
       containerRoot,
@@ -25,27 +23,17 @@ describe('terminal permission boundary', () => {
     })).not.toThrow()
   })
 
-  it('allows a full-mode terminal outside the container without per-operation approval', () => {
-    expect(() => assertTerminalSessionAllowed({
-      cwd: outside,
-      containerRoot,
-      permissionMode: 'full',
-      approved: false,
-    })).not.toThrow()
-    expect(() => assertTerminalCommandAllowed({
+  it('allows Agent commands in full mode outside the container without per-operation approval', () => {
+    expect(() => assertTerminalOperationAllowed({
+      source: 'agent',
       command: 'Get-ChildItem',
       cwd: outside,
       containerRoot,
       permissionMode: 'full',
       approved: false,
     })).not.toThrow()
-    expect(() => assertTerminalSessionAllowed({
-      cwd: outside,
-      containerRoot,
-      permissionMode: 'full',
-      approved: true,
-    })).not.toThrow()
-    expect(() => assertTerminalCommandAllowed({
+    expect(() => assertTerminalOperationAllowed({
+      source: 'agent',
       command: 'Get-Content $HOME\\secret.txt',
       cwd: outside,
       containerRoot,
@@ -54,28 +42,26 @@ describe('terminal permission boundary', () => {
     })).not.toThrow()
   })
 
-  it('requires approval for research execution and restricted reads', () => {
-    expect(() => assertTerminalSessionAllowed({
-      cwd: inside,
-      containerRoot,
-      permissionMode: 'research',
-      approved: false,
-    })).toThrow()
-    expect(() => assertTerminalCommandAllowed({
+  it('continues to require approval for Agent commands in research and restricted modes', () => {
+    expect(() => assertTerminalOperationAllowed({
+      source: 'agent',
       command: 'Get-ChildItem',
       cwd: inside,
       containerRoot,
       permissionMode: 'research',
       approved: false,
     })).toThrow()
-    expect(() => assertTerminalCommandAllowed({
+    expect(() => assertTerminalOperationAllowed({
+      source: 'agent',
       command: 'Get-ChildItem',
       cwd: inside,
       containerRoot,
       permissionMode: 'research',
       approved: true,
     })).not.toThrow()
-    expect(() => assertTerminalSessionAllowed({
+    expect(() => assertTerminalOperationAllowed({
+      source: 'agent',
+      command: 'Get-ChildItem',
       cwd: inside,
       containerRoot,
       permissionMode: 'restricted',

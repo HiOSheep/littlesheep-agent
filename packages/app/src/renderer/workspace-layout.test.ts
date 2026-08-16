@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
+  WORKSPACE_FILE_NAVIGATOR_WIDTH_DEFAULT,
+  WORKSPACE_FILE_NAVIGATOR_MAX_RATIO,
+  WORKSPACE_FILE_NAVIGATOR_WIDTH_MAX,
+  WORKSPACE_FILE_NAVIGATOR_WIDTH_MIN,
   WORKSPACE_PANEL_REOPEN_HOTZONE_WIDTH,
   WORKSPACE_PANEL_WIDTH_MAX,
   WORKSPACE_PANEL_WIDTH_MIN,
   isWorkspacePanelReopenHotzone,
+  resolveWorkspaceFileNavigatorDrag,
+  resolveWorkspaceFileNavigatorLayout,
   resolveWorkspacePanelDrag,
   resolveWorkspacePanelLayout,
 } from './workspace-layout'
@@ -123,5 +129,48 @@ describe('workspace panel responsive layout', () => {
     expect(isWorkspacePanelReopenHotzone(revealStart, coreLeft, coreRight)).toBe(true)
     expect(isWorkspacePanelReopenHotzone(coreRight, coreLeft, coreRight)).toBe(true)
     expect(isWorkspacePanelReopenHotzone(coreRight + 1, coreLeft, coreRight)).toBe(false)
+  })
+})
+
+describe('workspace file navigator responsive layout', () => {
+  it('keeps the compact legacy width until the user resizes it', () => {
+    expect(resolveWorkspaceFileNavigatorLayout(720, WORKSPACE_FILE_NAVIGATOR_WIDTH_DEFAULT)).toEqual({
+      width: 214,
+      minWidth: WORKSPACE_FILE_NAVIGATOR_WIDTH_MIN,
+      maxWidth: 489,
+      collapseThreshold: WORKSPACE_FILE_NAVIGATOR_WIDTH_MIN / 2,
+    })
+  })
+
+  it('caps a custom width so the file surface retains readable space', () => {
+    expect(resolveWorkspaceFileNavigatorLayout(360, 480)).toMatchObject({
+      width: 244,
+      maxWidth: 244,
+    })
+  })
+
+  it('never lets the navigator fully expand over the file surface', () => {
+    const layout = resolveWorkspaceFileNavigatorLayout(600, WORKSPACE_FILE_NAVIGATOR_WIDTH_MAX)
+
+    expect(layout.maxWidth).toBe(Math.floor(600 * WORKSPACE_FILE_NAVIGATOR_MAX_RATIO))
+    expect(layout.width).toBe(layout.maxWidth)
+    expect(600 - layout.width).toBeGreaterThanOrEqual(192)
+  })
+
+  it('adapts below the nominal minimum only when the whole panel is narrow', () => {
+    expect(resolveWorkspaceFileNavigatorLayout(230, 214)).toEqual({
+      width: 134,
+      minWidth: 134,
+      maxWidth: 134,
+      collapseThreshold: 67,
+    })
+  })
+
+  it('uses the same readable dead zone before threshold collapse', () => {
+    const layout = resolveWorkspaceFileNavigatorLayout(720, 286)
+
+    expect(resolveWorkspaceFileNavigatorDrag(159, layout)).toEqual({ collapsed: false, width: 160 })
+    expect(resolveWorkspaceFileNavigatorDrag(80, layout)).toEqual({ collapsed: false, width: 160 })
+    expect(resolveWorkspaceFileNavigatorDrag(79, layout)).toEqual({ collapsed: true, width: 160 })
   })
 })

@@ -45,6 +45,7 @@ import type { ExactContextTokenCounter } from '@littlesheep/context';
 import { bindExactContextTokenCounter } from './model-observability.js';
 import { resolveCheckpointResumeStage } from './checkpoint-resume.js';
 import { recordFailure } from './failure-state.js';
+import { emitPublicReasoningProgress } from './public-reasoning-progress.js';
 
 export interface DefaultHarnessOptions {
   llm: LlmClient;
@@ -234,6 +235,9 @@ export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness 
           continue;
         }
 
+        const phaseId = `${stageName}:${trace.length + 1}`;
+        emitPublicReasoningProgress(ctx, stageName, phaseId, 'running');
+
         // before hooks (void → modifying → claiming)
         const before = await hooks.runBefore(ctx, stageName);
         let result: StageResult;
@@ -280,6 +284,13 @@ export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness 
         }
 
         const endedAt = new Date().toISOString();
+        emitPublicReasoningProgress(
+          ctx,
+          stageName,
+          phaseId,
+          result.ok ? 'done' : 'failed',
+          Math.max(0, Date.parse(endedAt) - Date.parse(startedAt)),
+        );
         trace.push({ name: stageName, startedAt, endedAt, ok: result.ok });
 
         // Record lastError for RECOVER (only if the stage set one isn't already present).

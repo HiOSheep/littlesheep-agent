@@ -12,6 +12,8 @@ describe('composer control row layout', () => {
 
     expect(composerRule).toContain('--composer-padding-block: 10px;')
     expect(composerRule).toContain('--composer-padding-inline: 12px;')
+    expect(composerRule).toContain('--composer-control-surface-size: 34px;')
+    expect(composerRule).toContain('--composer-control-padding-inline: 10px;')
     expect(composerRule).toContain('--composer-control-row-height: 34px;')
     expect(composerRule).toContain('--composer-control-row-half-height: 17px;')
     expect(composerRule).toContain('--composer-leading-control-half-size: 17px;')
@@ -23,22 +25,22 @@ describe('composer control row layout', () => {
       'padding: var(--composer-padding-block) var(--composer-padding-inline);',
     )
     expect(controlsRule).toContain('min-height: var(--composer-control-row-height);')
+    expect(controlsRule).toContain('transform: translateY(4px);')
     expect(addMenuRule).toMatch(
       /margin-left:\s*calc\(\s*var\(--composer-control-center-inset\)\s*-\s*var\(--composer-padding-inline\)\s*-\s*var\(--composer-leading-control-half-size\)\s*\);/u,
     )
     expect(runActionsRule).toMatch(
       /margin-right:\s*calc\(\s*var\(--composer-control-center-inset\)\s*-\s*var\(--composer-padding-inline\)\s*-\s*var\(--composer-trailing-control-half-size\)\s*\);/u,
     )
-    expect(styles).toMatch(/\.icon-btn\s*\{[^}]*width:\s*34px;[^}]*height:\s*34px;/u)
+    expect(styles).toMatch(
+      /\.icon-btn\s*\{[^}]*width:\s*var\(--composer-control-surface-size\);/u,
+    )
     expect(styles).toMatch(/\.send-round\s*\{[^}]*width:\s*24px;[^}]*height:\s*24px;/u)
     expect(styles).toMatch(
       /\.composer-run-actions\s*>\s*\.send-round:last-child:hover:not\(:disabled\)\s*\{[^}]*transform:\s*translate\(-1px, -1px\);/u,
     )
     expect(narrowWindowStyles).toMatch(
-      /\.composer\s*\{[^}]*--composer-leading-control-half-size:\s*14px;/u,
-    )
-    expect(narrowWindowStyles).toMatch(
-      /\.icon-btn,[^}]*\.context-usage\s*\{[^}]*width:\s*28px;[^}]*height:\s*28px;/u,
+      /\.composer\s*\{[^}]*--composer-control-surface-size:\s*28px;[^}]*--composer-control-padding-inline:\s*8px;[^}]*--composer-leading-control-half-size:\s*14px;/u,
     )
   })
 

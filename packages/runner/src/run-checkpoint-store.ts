@@ -645,6 +645,7 @@ function validateResumeAttachments(value: unknown): NonNullable<RunCheckpointRes
     const size = item.size === undefined
       ? undefined
       : boundedSafeInteger(item.size, `checkpoint.resumeState.attachments[${index}].size`, 0);
+    const lineComments = validateCheckpointLineComments(item.lineComments, index);
     return {
       version: 1 as const,
       attachmentId: boundedText(item.attachmentId, MAX_ID_LENGTH, `checkpoint.resumeState.attachments[${index}].attachmentId`),
@@ -656,6 +657,14 @@ function validateResumeAttachments(value: unknown): NonNullable<RunCheckpointRes
         mimeType: boundedText(item.mimeType, 256, `checkpoint.resumeState.attachments[${index}].mimeType`),
       }),
       ...(size === undefined ? {} : { size }),
+      ...(item.contextPath === undefined ? {} : {
+        contextPath: boundedText(
+          item.contextPath,
+          2048,
+          `checkpoint.resumeState.attachments[${index}].contextPath`,
+        ),
+      }),
+      ...(lineComments.length === 0 ? {} : { lineComments }),
     };
   });
   const ids = attachments.map((attachment) => attachment.attachmentId);
@@ -663,6 +672,47 @@ function validateResumeAttachments(value: unknown): NonNullable<RunCheckpointRes
     throw new RunCheckpointValidationError('checkpoint.resumeState.attachments contains duplicate attachment ids.');
   }
   return attachments;
+}
+
+function validateCheckpointLineComments(value: unknown, attachmentIndex: number): Array<{
+  startLine: number;
+  endLine?: number;
+  text: string;
+}> {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 64) {
+    throw new RunCheckpointValidationError(
+      `checkpoint.resumeState.attachments[${attachmentIndex}].lineComments is invalid.`,
+    );
+  }
+  return value.map((item, commentIndex) => {
+    if (!isRecord(item)) {
+      throw new RunCheckpointValidationError(
+        `checkpoint.resumeState.attachments[${attachmentIndex}].lineComments[${commentIndex}] is invalid.`,
+      );
+    }
+    const startLine = item.startLine;
+    const endLine = item.endLine;
+    if (typeof startLine !== 'number'
+      || !Number.isSafeInteger(startLine)
+      || startLine < 1
+      || (endLine !== undefined
+        && (typeof endLine !== 'number' || !Number.isSafeInteger(endLine) || endLine < startLine))) {
+      throw new RunCheckpointValidationError(
+        `checkpoint.resumeState.attachments[${attachmentIndex}].lineComments[${commentIndex}] is invalid.`,
+      );
+    }
+    const text = boundedText(
+      item.text,
+      4000,
+      `checkpoint.resumeState.attachments[${attachmentIndex}].lineComments[${commentIndex}].text`,
+    );
+    return {
+      startLine,
+      ...(endLine === undefined ? {} : { endLine }),
+      text,
+    };
+  });
 }
 
 function validateToolRecipes(value: unknown): NonNullable<RunCheckpointResumeState['toolRecipes']> {

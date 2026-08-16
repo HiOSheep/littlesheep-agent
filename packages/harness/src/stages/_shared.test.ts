@@ -28,6 +28,24 @@ describe('attachment context helpers', () => {
     expect(manifest).toContain('inspect_attachment')
   })
 
+  it('publishes source line comments with their exact path and range', () => {
+    const manifest = attachmentManifestText([{
+      ...attachment,
+      path: 'D:/managed-cache/app.ts',
+      contextPath: 'src/app.ts',
+      name: 'app.ts',
+      lineComments: [{
+        startLine: 42,
+        endLine: 45,
+        text: 'Keep this update inside the transaction.',
+      }],
+    }])
+
+    expect(manifest).toContain('path=src/app.ts')
+    expect(manifest).not.toContain('path=D:/managed-cache/app.ts')
+    expect(manifest).toContain('lines 42-45: Keep this update inside the transaction.')
+  })
+
   it('does not inject extracted text outside the tool result path', () => {
     const messages = attachmentContextMessages('run-attachments', [{
       ...attachment,

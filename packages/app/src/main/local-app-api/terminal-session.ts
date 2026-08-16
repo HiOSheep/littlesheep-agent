@@ -10,7 +10,6 @@ import {
   EMPTY_TERMINAL_INPUT_STATE,
   type TerminalInputAnalysis,
 } from './terminal-input.js'
-import type { PermissionPolicyId } from '@littlesheep/types'
 
 const MAX_TERMINAL_OUTPUT_BYTES = 512 * 1024
 const MAX_WORKSPACE_TERMINAL_SESSIONS = 16
@@ -23,7 +22,7 @@ const MAX_TERMINAL_ROWS = 120
 export interface WorkspaceTerminalSessionSnapshot {
   sessionId: string
   cwd: string
-  permissionMode: PermissionPolicyId
+  source: 'workspace-user'
   shell: string
   backend: 'pty' | 'spawn'
   cols: number
@@ -41,7 +40,7 @@ interface WorkspaceTerminalSessionEvents {
 export class WorkspaceTerminalSession extends EventEmitter<WorkspaceTerminalSessionEvents> {
   readonly sessionId = randomUUID()
   readonly root: string
-  readonly permissionMode: PermissionPolicyId
+  readonly source = 'workspace-user' as const
   readonly shellLabel: string
   readonly backend: 'pty' | 'spawn'
   private readonly terminal: WorkspaceTerminalProcess
@@ -56,11 +55,9 @@ export class WorkspaceTerminalSession extends EventEmitter<WorkspaceTerminalSess
     root: string,
     size: { cols: number; rows: number },
     terminal: WorkspaceTerminalProcess,
-    permissionMode: PermissionPolicyId,
   ) {
     super()
     this.root = root
-    this.permissionMode = permissionMode
     this.size = size
     this.terminal = terminal
     this.backend = terminal.kind
@@ -104,19 +101,18 @@ export class WorkspaceTerminalSession extends EventEmitter<WorkspaceTerminalSess
   static async create(
     root: string,
     size = DEFAULT_TERMINAL_SIZE,
-    permissionMode: PermissionPolicyId = 'research',
     env: NodeJS.ProcessEnv = process.env,
   ): Promise<WorkspaceTerminalSession> {
     const normalizedSize = normalizeTerminalSize(size)
     const terminal = await createWorkspaceTerminalProcess(root, normalizedSize, env)
-    return new WorkspaceTerminalSession(root, normalizedSize, terminal, permissionMode)
+    return new WorkspaceTerminalSession(root, normalizedSize, terminal)
   }
 
   snapshot(): WorkspaceTerminalSessionSnapshot {
     return {
       sessionId: this.sessionId,
       cwd: this.root,
-      permissionMode: this.permissionMode,
+      source: this.source,
       shell: this.shellLabel,
       backend: this.backend,
       cols: this.size.cols,
@@ -199,14 +195,13 @@ export class WorkspaceTerminalSessionManager {
   async create(
     root: string,
     size = DEFAULT_TERMINAL_SIZE,
-    permissionMode: PermissionPolicyId = 'research',
     env: NodeJS.ProcessEnv = process.env,
   ): Promise<WorkspaceTerminalSession> {
     if (this.closed) throw new HttpError(503, 'terminal session manager is stopped')
     if (this.sessions.size >= MAX_WORKSPACE_TERMINAL_SESSIONS) {
       throw new HttpError(429, 'too many workspace terminal sessions')
     }
-    const session = await WorkspaceTerminalSession.create(root, size, permissionMode, env)
+    const session = await WorkspaceTerminalSession.create(root, size, env)
     this.sessions.set(session.sessionId, session)
     session.once('exit', () => {
       if (this.closed) return

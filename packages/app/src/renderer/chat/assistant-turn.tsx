@@ -1,5 +1,5 @@
 // Conversation rendering and execution-progress presentation.
-import { useState } from 'react'
+import { memo } from 'react'
 import type { TaskComplexity } from '@littlesheep/types'
 import type { HistoryMessage } from '../api'
 import { MessageFileStrip } from '../composer/message-files'
@@ -7,6 +7,7 @@ import { InlineMarkdown, Markdown } from '../Markdown'
 import { TraceCard } from '../TraceCard'
 import {
   buildArtifactsFromLiveTools,
+  formatDurationMs,
   formatMaybeDuration,
   liveStepStatusLabel,
   verificationVerdictLabel,
@@ -16,22 +17,26 @@ import { AgentToolRow } from './agent-tool-row'
 import type {
   AssistantTurnActivity,
   ChatMessage,
+  LiveReasoningEvent,
   LiveStepEvent,
   LiveToolEvent,
 } from './types'
 
 
-export function AssistantTurnMessage({
-  message,
-  messageKey,
-  now,
-  onOpenFile,
-}: {
+interface AssistantTurnMessageProps {
   message: ChatMessage
   messageKey?: string
   now: number
   onOpenFile: (path: string) => void
-}) {
+}
+
+
+export const AssistantTurnMessage = memo(function AssistantTurnMessage({
+  message,
+  messageKey,
+  now,
+  onOpenFile,
+}: AssistantTurnMessageProps) {
   const activity = message.activity
   if (!activity) {
     return (
@@ -59,7 +64,7 @@ export function AssistantTurnMessage({
           data-stream-state={activity.status === 'running' ? 'streaming' : 'settled'}
           aria-live={activity.status === 'running' ? 'polite' : undefined}
         >
-          <Markdown text={message.text} />
+          <Markdown text={message.text} streaming={activity.status === 'running'} />
           {!message.text && activity.error && (
             <span className="run-status-error">{activity.error}</span>
           )}
@@ -70,6 +75,19 @@ export function AssistantTurnMessage({
       )}
     </section>
   )
+}, sameAssistantTurnProps)
+
+
+function sameAssistantTurnProps(
+  previous: AssistantTurnMessageProps,
+  next: AssistantTurnMessageProps,
+): boolean {
+  if (
+    previous.message !== next.message
+    || previous.messageKey !== next.messageKey
+    || previous.onOpenFile !== next.onOpenFile
+  ) return false
+  return previous.message.activity?.status !== 'running' || previous.now === next.now
 }
 
 
@@ -114,38 +132,32 @@ function AgentReasoningRow({
   activity: AssistantTurnActivity
   now: number
 }) {
-  const [open, setOpen] = useState(false)
   const assessment = activity.taskBook?.assessment
-  const executionStarted = visibleActivitySteps(activity).length > 0
-    || activity.tools.length > 0
-    || activity.verificationRunning === true
-    || (activity.verificationHistory?.length ?? 0) > 0
-  const running = activity.status === 'running' && !activity.taskBook && !executionStarted
-  const summary = assessment?.rationale
+  const reasoning = activity.reasoning ?? []
+  const currentReasoning = reasoning.at(-1)
+  const running = activity.status === 'running' && currentReasoning?.status !== 'failed'
+  const settledSummary = assessment?.rationale
     || assessment?.userNeed
     || assessment?.goal
-    || (executionStarted
-      ? '已确定执行路径'
-      : activity.status === 'running'
-        ? '正在理解需求并确定执行范围'
-        : '已完成响应判断')
-  const detail = assessment ? reasoningMarkdown(assessment) : ''
-  const taskMeta = activity.taskBook
-    ? `${taskComplexityLabel(activity.taskBook.complexity)} · ${activity.taskBook.steps.length} 步`
-    : running || activity.status !== 'running'
-      ? formatMaybeDuration(activity.startedAt, activity.endedAt, now)
-      : ''
+    || reasoning[0]?.summary
+    || '已完成响应判断'
+  const summary = activity.status === 'running'
+    ? currentReasoning?.summary
+      || assessment?.rationale
+      || assessment?.userNeed
+      || '正在理解需求并确定执行范围'
+    : settledSummary
+  const assessmentDetail = assessment ? reasoningMarkdown(assessment) : ''
+  const hasDetails = reasoning.length > 0 || Boolean(assessmentDetail)
+  const taskMeta = currentReasoning?.status === 'running'
+    ? formatMaybeDuration(currentReasoning.startedAt, currentReasoning.endedAt, now)
+    : activity.taskBook
+      ? `${taskComplexityLabel(activity.taskBook.complexity)} · ${activity.taskBook.steps.length} 步`
+      : formatMaybeDuration(activity.startedAt, activity.endedAt, now)
 
   return (
-    <section className={`agent-reasoning ${open ? 'open' : ''}`}>
-      <button
-        type="button"
-        className={`agent-flow-row agent-reasoning-toggle ${running ? 'is-active' : ''} ${detail ? '' : 'no-details'}`}
-        {...(detail ? { 'aria-expanded': open } : {})}
-        onClick={() => {
-          if (detail) setOpen((value) => !value)
-        }}
-      >
+    <section className="agent-reasoning">
+      <div className={`agent-flow-row agent-reasoning-heading ${running ? 'is-active' : ''}`}>
         <span className="agent-flow-glyph agent-reasoning-glyph" aria-hidden="true">...</span>
         <span className={`agent-flow-title ${running ? 'is-running' : ''}`}>思考</span>
         <span className="agent-flow-separator" aria-hidden="true" />
@@ -153,27 +165,46 @@ function AgentReasoningRow({
           <InlineMarkdown text={summary} />
         </span>
         <span className="agent-flow-meta">{taskMeta}</span>
-        <span className={`agent-flow-chevron ${detail && open ? 'open' : ''}`} aria-hidden="true" />
         {running && (
           <span className="agent-flow-sr-only" role="status" aria-live="polite">
             正在思考：{summary}
           </span>
         )}
-      </button>
-      {detail && (
-        <div
-          className={`agent-flow-details-panel disclosure-panel ${open ? 'open' : ''}`}
-          aria-hidden={!open}
-          {...(!open ? { inert: '' } : {})}
-        >
-          <div className="agent-flow-details-panel-inner">
-            <div className="agent-flow-details">
-              <Markdown text={detail} />
+      </div>
+      {hasDetails && (
+        <div className="agent-flow-details agent-reasoning-public-details">
+          {reasoning.length > 0 && (
+            <ReasoningTimeline events={reasoning} now={now} />
+          )}
+          {assessmentDetail && (
+            <div className="agent-reasoning-assessment">
+              <Markdown text={assessmentDetail} />
             </div>
-          </div>
+          )}
         </div>
       )}
     </section>
+  )
+}
+
+
+function ReasoningTimeline({ events, now }: { events: LiveReasoningEvent[]; now: number }) {
+  return (
+    <div className="agent-reasoning-timeline" aria-label="思考与执行判断轨迹">
+      {events.map((event) => (
+        <div key={event.phaseId} className={`agent-reasoning-entry ${event.status}`}>
+          <span className="agent-reasoning-entry-state" aria-hidden="true" />
+          <span className="agent-reasoning-entry-summary">
+            <InlineMarkdown text={event.summary} />
+          </span>
+          <span className="agent-reasoning-entry-meta">
+            {event.durationMs === undefined
+              ? formatMaybeDuration(event.startedAt, event.endedAt, now)
+              : formatDurationMs(event.durationMs)}
+          </span>
+        </div>
+      ))}
+    </div>
   )
 }
 

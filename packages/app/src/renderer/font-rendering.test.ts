@@ -68,7 +68,7 @@ describe('frontend font rendering baseline', () => {
       '.plugin-trust-confirmation',
       '.plugin-list-details',
       '.trace-body',
-      '.agent-flow-details-panel,\n.agent-tool-details-panel',
+      '.agent-tool-details-panel',
     ]) {
       const body = ruleBody(selector)
       expect(body).not.toMatch(
@@ -128,14 +128,30 @@ describe('frontend font rendering baseline', () => {
     expect(ruleBody('.sidebar-svg-icon')).toContain('stroke: currentColor')
   })
 
-  it('keeps session titles inside a padded line box before clipping', () => {
+  it('keeps sidebar names padded, faded, and borderless while they scroll', () => {
+    const label = ruleBody('.overflowing-label')
+    const labelText = ruleBody('.overflowing-label-text')
     const title = ruleBody('.session-title')
+    const hoveredItem = ruleBody('.session-item:hover,\n.session-item:focus-visible,\n.session-item:focus-within')
 
-    expect(title).toContain('display: block')
+    expect(label).toContain('display: block')
+    expect(label).toContain('min-width: 0')
+    expect(label).toContain('overflow: hidden')
+    expect(label).not.toContain('text-overflow: ellipsis')
+    expect(labelText).toContain('width: max-content')
     expect(title).toContain('padding-block: 1px')
     expect(title).toContain('font-weight: 400')
     expect(title).toContain('line-height: 18px')
-    expect(title).toContain('overflow: hidden')
+    expect(hoveredItem).toContain('background: var(--control-hover)')
+    expect(hoveredItem).not.toContain('border-color')
+    expect(styles).toContain('.sidebar-overflowing-label.is-overflowing')
+    expect(styles).toContain('-webkit-mask: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%) -14px 0 / calc(100% + 14px) 100% no-repeat')
+    expect(styles).toContain('mask: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%) -14px 0 / calc(100% + 14px) 100% no-repeat')
+    expect(styles).toContain('mask-position: -14px 0')
+    expect(styles).toContain('transform: translateX(var(--overflowing-label-offset))')
+    expect(styles).toContain('transition-duration: var(--overflowing-label-scroll-duration)')
+    expect(styles).toContain('--overflowing-label-hover-delay: 450ms')
+    expect(styles).toContain('transition-delay: var(--overflowing-label-hover-delay)')
   })
 
   it('uses the regular conversation-title weight across sidebar navigation copy', () => {
@@ -174,8 +190,9 @@ describe('frontend font rendering baseline', () => {
   it('keeps workspace tab text and glyphs on one centered row without clipping descenders', () => {
     const strip = ruleBody('.workspace-tab-strip')
     const tab = ruleBody('.workspace-active-item')
-    const label = ruleBody('.workspace-active-label')
-    const labelText = ruleBody('.workspace-active-label-text')
+    const label = ruleBody('.overflowing-label')
+    const labelText = ruleBody('.overflowing-label-text')
+    const workspaceLabel = ruleBody('.workspace-active-label')
     const close = ruleBody('.workspace-active-close')
 
     expect(strip).toContain('height: var(--workspace-tab-row-height)')
@@ -196,11 +213,12 @@ describe('frontend font rendering baseline', () => {
     expect(activeTab).toContain('color: var(--text)')
     expect(activeTab).toContain('background: var(--control-hover)')
     expect(label).toContain('display: block')
-    expect(label).toContain('line-height: 18px')
+    expect(workspaceLabel).toContain('line-height: 18px')
     expect(label).not.toContain('text-overflow: ellipsis')
     expect(labelText).toContain('width: max-content')
     expect(styles).toContain('.workspace-active-label.is-overflowing::before,\n.workspace-active-label.is-overflowing::after')
-    expect(styles).toContain('transition-duration: var(--workspace-tab-label-scroll-duration)')
+    expect(styles).toContain('transition-delay: var(--overflowing-label-hover-delay)')
+    expect(styles).toContain('transition-duration: var(--overflowing-label-scroll-duration)')
     expect(styles).toContain('transition-timing-function: linear')
     expect(styles).toContain('.workspace-active-item > .workspace-panel-svg-icon,\n.workspace-active-item > .workspace-tree-glyph-icon')
     expect(close).toContain('align-self: center')

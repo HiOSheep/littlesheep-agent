@@ -217,15 +217,26 @@ async function main() {
   const terminalItems = Array.isArray(terminalIndex?.records) ? terminalIndex.records : []
   if (terminalIndex) pass('terminal activity index readable', `${terminalItems.length} command(s)`)
 
-  const layoutSnapshot = await readJsonIfExists(join(dataDir, 'workspace', 'layout.json'), 'workspace/layout.json', false)
-  if (layoutSnapshot) {
-    if (layoutSnapshot.version === 1 && typeof layoutSnapshot.workspacePath === 'string' && Array.isArray(layoutSnapshot.openTabs)) {
-      pass('workspace layout snapshot readable', `${layoutSnapshot.openTabs.length} tab(s), active=${layoutSnapshot.activeTab ?? 'unknown'}`)
-      if (workspace && layoutSnapshot.workspacePath && !samePath(layoutSnapshot.workspacePath, workspace)) {
-        warn('workspace layout snapshot uses a non-default root', layoutSnapshot.workspacePath)
-      }
+  const layoutDocument = await readJsonIfExists(join(dataDir, 'workspace', 'layout.json'), 'workspace/layout.json', false)
+  if (layoutDocument) {
+    const layoutAudit = auditWorkspaceLayoutDocument(layoutDocument)
+    if (!layoutAudit.ok) {
+      fail('workspace layout snapshot readable', layoutAudit.error)
     } else {
-      fail('workspace layout snapshot readable', 'layout snapshot shape is invalid')
+      const tabCount = layoutAudit.snapshots.reduce((count, snapshot) => count + snapshot.openTabs.length, 0)
+      pass(
+        'workspace layout snapshot readable',
+        `${layoutAudit.snapshots.length} session(s), ${tabCount} tab(s), format=v${layoutDocument.version}`,
+      )
+      const nonDefaultRoots = [...new Set(layoutAudit.snapshots
+        .map((snapshot) => snapshot.workspacePath)
+        .filter((path) => workspace && !samePath(path, workspace)))]
+      if (nonDefaultRoots.length > 0) {
+        warn(
+          'workspace layout snapshot uses non-default roots',
+          `${nonDefaultRoots.length} root(s), first=${nonDefaultRoots[0]}`,
+        )
+      }
     }
   }
 
@@ -345,6 +356,65 @@ function isSafeWorkspaceIndexFile(file) {
   if (typeof file.size !== 'number' || file.size < 0 || typeof file.mtimeMs !== 'number' || file.mtimeMs < 0) return false
   if (Object.hasOwn(file, 'content') || Object.hasOwn(file, 'body') || Object.hasOwn(file, 'dataUrl')) return false
   return true
+}
+
+function auditWorkspaceLayoutDocument(document) {
+  if (isWorkspaceLayoutSnapshot(document)) {
+    return { ok: true, snapshots: [document] }
+  }
+  if (!document || typeof document !== 'object' || Array.isArray(document)) {
+    return { ok: false, error: 'layout snapshot must be an object' }
+  }
+  if (document.version !== 2 || typeof document.updatedAt !== 'string') {
+    return { ok: false, error: 'layout snapshot version or timestamp is invalid' }
+  }
+  if (!document.snapshots || typeof document.snapshots !== 'object' || Array.isArray(document.snapshots)) {
+    return { ok: false, error: 'layout snapshot session map is invalid' }
+  }
+  const entries = Object.entries(document.snapshots)
+  if (entries.length > 96) {
+    return { ok: false, error: `layout snapshot exceeds the 96-session bound (${entries.length})` }
+  }
+  for (const [key, snapshot] of entries) {
+    if (!isWorkspaceLayoutSnapshot(snapshot)) {
+      return { ok: false, error: `layout snapshot session is invalid: ${key}` }
+    }
+    const expectedKey = snapshot.sessionId
+      ? `session:${encodeURIComponent(snapshot.sessionId.trim())}`
+      : 'draft'
+    if (key !== expectedKey) {
+      return { ok: false, error: `layout snapshot session key is invalid: ${key}` }
+    }
+  }
+  return { ok: true, snapshots: entries.map(([, snapshot]) => snapshot) }
+}
+
+function isWorkspaceLayoutSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return false
+  return snapshot.version === 1
+    && typeof snapshot.updatedAt === 'string'
+    && typeof snapshot.workspacePath === 'string'
+    && typeof snapshot.width === 'number'
+    && typeof snapshot.collapsed === 'boolean'
+    && typeof snapshot.fullscreen === 'boolean'
+    && typeof snapshot.activeTab === 'string'
+    && Array.isArray(snapshot.openTabs)
+    && snapshot.openTabs.length <= 64
+    && snapshot.openTabs.every((tab) => typeof tab === 'string')
+    && typeof snapshot.fileNavigatorCollapsed === 'boolean'
+    && (snapshot.fileNavigatorWidth === undefined || typeof snapshot.fileNavigatorWidth === 'number')
+    && (snapshot.expandedPaths === undefined || (
+      Array.isArray(snapshot.expandedPaths)
+      && snapshot.expandedPaths.length <= 256
+      && snapshot.expandedPaths.every((path) => typeof path === 'string')
+    ))
+    && snapshot.drafts
+    && typeof snapshot.drafts === 'object'
+    && !Array.isArray(snapshot.drafts)
+    && (snapshot.browserTabs === undefined || (
+      Array.isArray(snapshot.browserTabs)
+      && snapshot.browserTabs.length <= 12
+    ))
 }
 
 function printAndExit() {

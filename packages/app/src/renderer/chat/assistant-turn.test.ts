@@ -49,6 +49,33 @@ describe('assistant activity flow', () => {
     expect(html).toContain('agent-flow-row agent-step-row is-active')
   })
 
+  it('shows the latest public reasoning phase and keeps its full trajectory directly visible', () => {
+    const html = renderFlow({
+      reasoning: [{
+        phaseId: 'classify:2',
+        stage: 'classify',
+        summary: '已确定本轮处理路径',
+        status: 'done',
+        startedAt: 200,
+        endedAt: 400,
+      }, {
+        phaseId: 'decide:3',
+        stage: 'decide',
+        summary: '正在校准目标、范围和验收标准',
+        status: 'running',
+        startedAt: 500,
+      }],
+    })
+
+    expect(html).toContain('正在校准目标、范围和验收标准')
+    expect(html).toContain('已确定本轮处理路径')
+    expect(html).toContain('agent-reasoning-entry running')
+    expect(html).toContain('aria-label="思考与执行判断轨迹"')
+    expect(html).toContain('agent-reasoning-public-details')
+    expect(html).not.toContain('agent-reasoning-toggle')
+    expect(html).not.toContain('disclosure-panel')
+  })
+
   it('renders a tool start as one compact row and preserves the row identity on completion', () => {
     const running = renderFlow({
       tools: [{

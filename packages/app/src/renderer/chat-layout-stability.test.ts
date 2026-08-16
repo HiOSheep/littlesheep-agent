@@ -8,21 +8,35 @@ async function readRendererFile(path: string): Promise<string> {
 
 
 describe('chat layout stability', () => {
-  it('reserves symmetric scrollbar space before disclosures change content height', async () => {
+  it('reserves symmetric scrollbar space and keeps the chat thumb visible', async () => {
     const styles = await readRendererFile('./styles.css')
 
     expect(styles).toMatch(/\.messages\s*\{[\s\S]*?scrollbar-gutter:\s*stable both-edges;/u)
+    expect(styles).toMatch(/::-webkit-scrollbar-thumb\s*\{[^}]*background:\s*#383838;[^}]*background-clip:\s*content-box;/u)
+    expect(styles).toMatch(/::-webkit-scrollbar-thumb:hover\s*\{[^}]*background:\s*#484848;[^}]*background-clip:\s*content-box;/u)
+    expect(styles).not.toContain('.messages::-webkit-scrollbar-thumb')
   })
 
   it('does not fight disclosure height animations with per-frame anchor repairs', async () => {
     const chatView = await readRendererFile('./app-shell/chat-view.tsx')
 
     expect(chatView).toContain('captureDisclosureInteraction')
-    expect(chatView).toContain('.agent-reasoning-toggle, .agent-tool-row, .trace-toggle')
+    expect(chatView).toContain('.agent-tool-row, .trace-toggle')
+    expect(chatView).not.toContain('.agent-reasoning-toggle')
     expect(chatView).toContain('stickToBottomRef.current = false')
     expect(chatView).not.toContain("kind: 'anchor'")
     expect(chatView).not.toContain('anchor.getBoundingClientRect()')
     expect(chatView).not.toContain('disclosureInteractionVersion')
+  })
+
+  it('anchors viewport reflow to the currently visible bottom edge', async () => {
+    const styles = await readRendererFile('./styles.css')
+    const chatView = await readRendererFile('./app-shell/chat-view.tsx')
+
+    expect(styles).toMatch(/\.messages\s*\{[^}]*overflow-anchor:\s*none;/u)
+    expect(chatView).toContain('new ResizeObserver')
+    expect(chatView).toContain('didChatViewportResize(previous, current)')
+    expect(chatView).toContain('resolveBottomAnchoredScrollTop(previous, current)')
   })
 
   it('keeps Agent activity in one flat immediate flow with a stable Markdown reply surface', async () => {
@@ -42,16 +56,22 @@ describe('chat layout stability', () => {
     expect(styles).not.toContain('.activity-command-header')
   })
 
+  it('matches user messages to the active workspace-tab surface without inheriting tab geometry', async () => {
+    const styles = await readRendererFile('./styles.css')
+
+    expect(styles).toMatch(/\.workspace-active-item:hover,[\s\S]*?\.workspace-active-item\.active\s*\{[^}]*color:\s*var\(--text\);[^}]*background:\s*var\(--control-hover\);/u)
+    expect(styles).toMatch(/\.message\.user\s*\{[^}]*margin-left:\s*auto;[^}]*padding:\s*4px 8px;[^}]*color:\s*var\(--text\);[^}]*background:\s*var\(--control-hover\);[^}]*border:\s*0;[^}]*box-shadow:\s*none;/u)
+    expect(styles).toMatch(/\.message\s*\{[^}]*max-width:\s*min\(820px, 78%\);[^}]*border-radius:\s*var\(--radius-ui\);[^}]*overflow-wrap:\s*anywhere;/u)
+  })
+
   it('matches the workspace edge and hover highlight to the sidebar treatment', async () => {
     const styles = await readRendererFile('./styles.css')
 
     expect(styles).not.toMatch(/\.workspace-panel-resizer::before\s*\{/u)
-    expect(styles).toMatch(/\.sidebar::after,\s*\.settings-sidebar::after,\s*\.workspace-panel::before\s*\{[^}]*z-index:\s*2;[^}]*width:\s*2px;[^}]*background:\s*var\(--sidebar-resizer-active-color\);[^}]*opacity:\s*0;[^}]*transition:\s*opacity var\(--motion-fast\) var\(--motion-ease\);/u)
-    expect(styles).toMatch(/\.workspace-panel::before\s*\{[^}]*inset:\s*0 auto 0 0;/u)
-    expect(styles).not.toMatch(/\.workspace-panel::before\s*\{[^}]*background:\s*var\(--border\);/u)
+    expect(styles).toMatch(/\.workspace-panel::before\s*\{[^}]*inset:\s*0 auto 0 0;[^}]*z-index:\s*25;[^}]*width:\s*1px;[^}]*background:\s*var\(--border\);[^}]*opacity:\s*1;[^}]*pointer-events:\s*none;/u)
     expect(styles).toMatch(/\.workspace-panel-resizer:hover \+ \.workspace-panel::before/u)
     expect(styles).toMatch(/\.workspace-panel-resizer:focus-visible \+ \.workspace-panel::before/u)
-    expect(styles).toMatch(/\.workspace-panel-resizer:hover \+ \.workspace-panel::before,[\s\S]*?body\.is-resizing-column \.window-shell\.workspace-panel-drag-live:not\(\.workspace-panel-drag-collapsed\):not\(\.workspace-panel-drag-fullscreen\) \.workspace-panel::before\s*\{[^}]*opacity:\s*1;/u)
+    expect(styles).toMatch(/\.workspace-panel-resizer:hover \+ \.workspace-panel::before,[\s\S]*?body\.is-resizing-column \.window-shell\.workspace-panel-drag-live:not\(\.workspace-panel-drag-collapsed\):not\(\.workspace-panel-drag-fullscreen\) \.workspace-panel::before\s*\{[^}]*width:\s*2px;[^}]*background:\s*var\(--sidebar-resizer-active-color\);/u)
     expect(styles).toMatch(/\.workspace-panel\s*\{[^}]*border-top-left-radius:\s*var\(--radius-ui\);/u)
     expect(styles).toMatch(/\.workspace-panel\s*\{[^}]*background:\s*var\(--bg\);[^}]*box-shadow:\s*inset 0 0 0 1px var\(--border\);/u)
     expect(styles).not.toMatch(/\.workspace-panel\s*\{[^}]*background:\s*var\(--surface\);/u)
@@ -61,9 +81,10 @@ describe('chat layout stability', () => {
     expect(styles).toMatch(/\.window-shell\.workspace-panel-collapsed \.workspace-panel::before,[\s\S]*?\.window-shell\.workspace-panel-drag-fullscreen \.workspace-panel::before\s*\{[^}]*opacity:\s*0;/u)
   })
 
-  it('keeps one native sidebar corner and a flush track until resize is active', async () => {
+  it('keeps one native sidebar corner without an idle divider until resize is active', async () => {
     const styles = await readRendererFile('./styles.css')
 
+    expect(styles).toMatch(/--sidebar-resizer-width:\s*0px;/u)
     expect(styles).not.toMatch(/\.sidebar-resizer::before\s*\{/u)
     expect(styles).toMatch(/\.window-shell::before\s*\{[\s\S]*?inset:\s*32px auto 0 0;[\s\S]*?z-index:\s*1;[\s\S]*?width:\s*var\(--sidebar-active-width\);[\s\S]*?background-image:\s*var\(--sidebar-glass-texture\);[\s\S]*?border-top-right-radius:\s*var\(--radius-ui\);/u)
     expect(styles).toMatch(/\.window-shell::after\s*\{[^}]*inset:\s*32px auto auto calc\([\s\S]*?var\(--sidebar-active-width\) - var\(--radius-ui\) - var\(--radius-ui\)[\s\S]*?\);[^}]*z-index:\s*0;[^}]*width:\s*calc\(var\(--radius-ui\) \+ var\(--radius-ui\)\);[^}]*height:\s*calc\(var\(--radius-ui\) \+ var\(--radius-ui\)\);[^}]*background:\s*transparent;[^}]*border-radius:\s*var\(--radius-circle\);[^}]*box-shadow:\s*0 0 0 var\(--radius-ui\) var\(--bg\);[^}]*clip-path:\s*inset\(\s*0 calc\(0px - var\(--sidebar-resizer-width\)\)\s*calc\(var\(--radius-ui\) - 0\.5px\) var\(--radius-ui\)\s*\);/u)
@@ -73,15 +94,17 @@ describe('chat layout stability', () => {
     expect(styles).not.toMatch(/\.window-titlebar::before\s*\{/u)
     expect(styles).not.toMatch(/\.sidebar::before\s*\{/u)
     expect(styles).not.toMatch(/\.settings-sidebar::before\s*\{/u)
-    expect(styles).toMatch(/\.primary-workspace::after\s*\{[\s\S]*?inset:\s*calc\(32px \+ var\(--radius-ui\)\) auto 0 var\(--sidebar-active-width\);[\s\S]*?width:\s*1px;[\s\S]*?background:\s*var\(--bg\);[\s\S]*?opacity:\s*1;/u)
+    expect(styles).not.toMatch(/\.primary-workspace::after\s*\{/u)
+    expect(styles).not.toMatch(/\.settings-sidebar-resizer::before\s*\{/u)
+    expect(styles).toMatch(/\.sidebar-resizer\s*\{[^}]*width:\s*8px;[^}]*margin-left:\s*-4px;[^}]*margin-right:\s*-4px;/u)
+    expect(styles).toMatch(/\.settings-sidebar-resizer\s*\{[^}]*width:\s*8px;[^}]*margin-left:\s*-4px;[^}]*margin-right:\s*-4px;/u)
     expect(styles).toMatch(/\.sidebar\s*\{[^}]*overflow:\s*hidden;[^}]*border-top-right-radius:\s*var\(--radius-ui\);/u)
     expect(styles).toMatch(/\.settings-sidebar\s*\{[^}]*overflow:\s*hidden;[^}]*border-top-right-radius:\s*var\(--radius-ui\);/u)
-    expect(styles).toMatch(/\.sidebar::after,\s*\.settings-sidebar::after,\s*\.workspace-panel::before\s*\{[^}]*z-index:\s*2;[^}]*width:\s*2px;[^}]*background:\s*var\(--sidebar-resizer-active-color\);[^}]*opacity:\s*0;[^}]*transition:\s*opacity var\(--motion-fast\) var\(--motion-ease\);/u)
+    expect(styles).toMatch(/\.sidebar::after,\s*\.settings-sidebar::after\s*\{[^}]*z-index:\s*2;[^}]*width:\s*2px;[^}]*background:\s*var\(--sidebar-resizer-active-color\);[^}]*opacity:\s*0;[^}]*transition:\s*opacity var\(--motion-fast\) var\(--motion-ease\);/u)
     expect(styles).toMatch(/\.sidebar::after,\s*\.settings-sidebar::after\s*\{[^}]*inset:\s*0 0 0 auto;/u)
     expect(styles).toMatch(/\.primary-workspace:has\(\.sidebar-resizer:hover\) \.sidebar::after/u)
     expect(styles).toMatch(/\.settings-layout:has\(\.settings-sidebar-resizer:hover\) \.settings-sidebar::after/u)
-    expect(styles).toMatch(/\.primary-workspace:has\(\.sidebar-resizer:hover\) \.sidebar::after,[\s\S]*?body\.is-resizing-column \.window-shell\.sidebar-drag-live \.settings-sidebar::after,[\s\S]*?body\.is-resizing-column \.window-shell\.workspace-panel-drag-live:not\(\.workspace-panel-drag-collapsed\):not\(\.workspace-panel-drag-fullscreen\) \.workspace-panel::before\s*\{[^}]*opacity:\s*1;/u)
-    expect(styles).toMatch(/\.settings-sidebar-resizer::before\s*\{[^}]*top:\s*var\(--radius-ui\);[^}]*left:\s*calc\(50% - 0\.5px\);[^}]*width:\s*1px;[^}]*background:\s*var\(--bg\);[^}]*opacity:\s*1;/u)
+    expect(styles).toMatch(/\.primary-workspace:has\(\.sidebar-resizer:hover\) \.sidebar::after,[\s\S]*?body\.is-resizing-column \.window-shell\.sidebar-drag-live \.settings-sidebar::after\s*\{[^}]*opacity:\s*1;/u)
   })
 
   it('keeps the composer above messages with dynamic clearance and glass material', async () => {
@@ -92,6 +115,8 @@ describe('chat layout stability', () => {
     expect(styles).toMatch(/\.messages\s*\{[\s\S]*?calc\(var\(--composer-overlay-height\) \+ var\(--composer-message-gap\)\);[\s\S]*?scroll-padding-bottom:[\s\S]*?var\(--composer-overlay-height\)/u)
     expect(styles).toMatch(/\.composer-shell\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?bottom:\s*0;[\s\S]*?z-index:\s*40;[\s\S]*?pointer-events:\s*none;/u)
     expect(styles).toMatch(/\.composer\s*\{[\s\S]*?background:\s*rgba\(32, 32, 32, 0\.75\);[\s\S]*?-webkit-backdrop-filter:\s*blur\(18px\) saturate\(135%\);[\s\S]*?backdrop-filter:\s*blur\(18px\) saturate\(135%\);/u)
+    expect(styles).toMatch(/\.composer\s*\{[^}]*border:\s*0;/u)
+    expect(styles).not.toMatch(/\.composer\.drag-active\s*\{[^}]*border-color:/u)
     expect(composer).toContain('useLayoutEffect')
     expect(composer).toContain('ResizeObserver')
     expect(composer).toContain('--composer-overlay-height')
@@ -103,6 +128,7 @@ describe('chat layout stability', () => {
     const texture = await readFile(new URL('./assets/sidebar-wash-dithered.png', import.meta.url))
 
     expect(texture.byteLength).toBeGreaterThan(10_000)
+    expect(styles).toMatch(/--bg:\s*#141414;/u)
     expect(styles).toMatch(/--sidebar-glass-opacity:\s*0\.5;/u)
     expect(styles).toMatch(/\.sidebar\s*\{[\s\S]*?background:\s*transparent;[\s\S]*?opacity:\s*1;/u)
     expect(styles).toMatch(/\.settings-sidebar\s*\{[\s\S]*?background:\s*transparent;[\s\S]*?opacity:\s*1;/u)
@@ -111,6 +137,8 @@ describe('chat layout stability', () => {
     expect(styles).not.toContain('sidebar-corner-mask')
     expect(desktopShell).toContain("transparent: false")
     expect(desktopShell).toContain("backgroundMaterial: 'acrylic'")
+    expect(desktopShell).toContain("color: '#141414'")
+    expect(desktopShell).toContain("process.platform === 'win32' ? '#00000000' : '#141414'")
     expect(desktopShell).toContain('roundedCorners: true')
     expect(desktopShell).toContain('thickFrame: true')
     expect(desktopShell).toContain('hasShadow: true')
@@ -187,7 +215,10 @@ describe('chat layout stability', () => {
     expect(styles).toMatch(/\.sidebar-toggle-divider\s*\{[\s\S]*?transform var\(--sidebar-collapse-motion\) var\(--motion-ease\)/u)
     expect(styles).toMatch(/\.workspace-panel-toggle-icon \.sidebar-toggle-divider\s*\{[^}]*transform:\s*translateX\(-4px\);/u)
     expect(styles).toMatch(/\.window-shell\.workspace-panel-collapsed \.workspace-panel-toggle-icon \.sidebar-toggle-divider,[\s\S]*?transform:\s*translateX\(0\);/u)
-    expect(styles).toMatch(/\.window-shell\.workspace-panel-collapsed \.messages,\s*\.window-shell\.workspace-panel-drag-collapsed \.messages\s*\{[^}]*padding-top:\s*52px;/u)
+    expect(styles).toMatch(/\.messages\s*\{[^}]*padding:\s*24px var\(--chat-content-gutter\)/u)
+    expect(styles).not.toContain('.window-shell.workspace-panel-collapsed .messages')
+    expect(styles).not.toContain('.window-shell.workspace-panel-drag-collapsed .messages')
+    expect(styles).not.toContain('transition: padding-top var(--workspace-panel-motion)')
   })
 
   it('reuses the compact split layout when the workspace becomes fullscreen', async () => {

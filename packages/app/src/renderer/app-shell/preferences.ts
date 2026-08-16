@@ -6,11 +6,16 @@ import {
   dedupeWorkspacePanelTabs,
   hydrateWorkspaceFileDrafts,
   hydrateWorkspacePanelTabs,
+  hydrateWorkspaceSessionLayouts,
   normalizeWorkspacePanelTabId,
   serializeWorkspaceFileDrafts,
+  serializeWorkspaceSessionLayouts,
+  shouldUseWorkspaceLayoutFallback,
+  createDefaultWorkspaceSessionLayout,
   type WorkspaceFileDraftState,
   type WorkspaceOpenRequest,
-  type WorkspacePanelTabId
+  type WorkspacePanelTabId,
+  type WorkspaceSessionLayouts,
 } from '../workspace-persistence'
 import { isSamePath } from '../workspace/path-utils'
 import { clampNumber } from './navigation'
@@ -37,11 +42,17 @@ export const WORKSPACE_FILE_DRAFTS_KEY = 'littlesheep.ui.workspaceFileDrafts'
 
 export const WORKSPACE_FILE_NAVIGATOR_COLLAPSED_KEY = 'littlesheep.ui.workspaceFileNavigatorCollapsed'
 
+export const WORKSPACE_SESSION_LAYOUTS_KEY = 'littlesheep.ui.workspaceSessionLayouts'
+
 export const WORKSPACE_REVIEW_SIDE_BY_SIDE_KEY = 'littlesheep.ui.workspaceReviewSideBySide'
 
 export const PINNED_SESSIONS_KEY = 'littlesheep.ui.pinnedSessions'
 
 export const PROJECT_SORT_KEY = 'littlesheep.ui.projectSort'
+
+export const PROJECT_SECTION_COLLAPSED_KEY = 'littlesheep.ui.projectSectionCollapsed'
+
+export const EXPANDED_PROJECT_IDS_KEY = 'littlesheep.ui.expandedProjectIds'
 
 export const ACTIVE_SESSION_KEY = 'littlesheep.ui.activeSession'
 
@@ -201,6 +212,48 @@ export function writeWorkspaceFileDraftsPreference(
     window.localStorage.setItem(WORKSPACE_FILE_DRAFTS_KEY, JSON.stringify(payload))
   } catch {
     // Draft recovery is best-effort; the source files remain authoritative.
+  }
+}
+
+
+export function readWorkspaceSessionLayoutsPreference(): WorkspaceSessionLayouts {
+  try {
+    const raw = window.localStorage.getItem(WORKSPACE_SESSION_LAYOUTS_KEY)
+    if (!raw) return {}
+    return hydrateWorkspaceSessionLayouts(JSON.parse(raw) as unknown)
+  } catch {
+    return {}
+  }
+}
+
+
+export function writeWorkspaceSessionLayoutsPreference(layouts: WorkspaceSessionLayouts): void {
+  try {
+    const payload = serializeWorkspaceSessionLayouts(layouts)
+    if (Object.keys(payload).length === 0) {
+      window.localStorage.removeItem(WORKSPACE_SESSION_LAYOUTS_KEY)
+      return
+    }
+    window.localStorage.setItem(WORKSPACE_SESSION_LAYOUTS_KEY, JSON.stringify(payload))
+  } catch {
+    // Session workspace recovery is best-effort; the backend mirror remains available.
+  }
+}
+
+
+export function readLegacyWorkspaceSessionLayout() {
+  const markers = readWorkspaceLayoutFallbackMarkers()
+  if (shouldUseWorkspaceLayoutFallback(markers)) return null
+  const fallback = createDefaultWorkspaceSessionLayout()
+  return {
+    ...fallback,
+    collapsed: readBooleanPreference(WORKSPACE_PANEL_COLLAPSED_KEY, true),
+    fullscreen: readBooleanPreference(WORKSPACE_PANEL_FULLSCREEN_KEY, false),
+    activeTab: readWorkspacePanelTabPreference(WORKSPACE_PANEL_TAB_KEY),
+    openTabs: readWorkspacePanelOpenTabsPreference(),
+    openRequest: readWorkspaceOpenRequestPreference(),
+    fileNavigatorCollapsed: readBooleanPreference(WORKSPACE_FILE_NAVIGATOR_COLLAPSED_KEY, false),
+    drafts: readWorkspaceFileDraftsPreference(),
   }
 }
 

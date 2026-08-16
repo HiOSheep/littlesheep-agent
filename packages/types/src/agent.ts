@@ -250,6 +250,8 @@ export interface RunUsage {
 export interface RunAttachment {
   id?: string;
   path: string;
+  /** User-facing source path; `path` may point at the managed cache copy. */
+  contextPath?: string;
   name?: string;
   kind: 'image' | 'document' | 'file';
   mimeType?: string;
@@ -265,6 +267,12 @@ export interface RunAttachment {
   extractionNote?: string;
   ownership?: import('./runtime-contracts.js').AttachmentOwnership;
   contentState?: import('./runtime-contracts.js').AttachmentContentState;
+  /** User-authored line comments attached to a source file for this run. */
+  lineComments?: Array<{
+    startLine: number;
+    endLine?: number;
+    text: string;
+  }>;
 }
 
 // ─── Stage contract ──────────────────────────────────────────────────────
@@ -431,9 +439,15 @@ export type StreamEvent =
   | { stream: 'assistant'; runId: string; delta: string; stage?: StageName }
   | { stream: 'tool'; runId: string; event: 'start' | 'update' | 'end'; callId: string; name: string; data?: unknown };
 
-/** Lightweight run event for real-time SSE streaming. */
+/** Lightweight run-progress event for real-time SSE streaming. */
 export interface ToolStreamEvent {
-  type: 'task_book' | 'step_start' | 'step_done' | 'step_failed' | 'step_skipped' | 'tool_start' | 'tool_end' | 'verification_start' | 'verification' | 'final_delta'
+  type: 'reasoning' | 'task_book' | 'step_start' | 'step_done' | 'step_failed' | 'step_skipped' | 'tool_start' | 'tool_end' | 'verification_start' | 'verification' | 'final_delta'
+  /** Stable identity for one public, user-visible Harness phase occurrence. */
+  phaseId?: string
+  /** Harness stage that owns a public reasoning/progress update. */
+  stage?: StageName
+  /** Lifecycle of a public reasoning/progress update. Raw provider reasoning is never carried here. */
+  reasoningStatus?: 'running' | 'done' | 'failed'
   callId?: string
   name?: string
   stepId?: string

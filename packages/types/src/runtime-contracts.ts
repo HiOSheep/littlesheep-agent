@@ -725,7 +725,7 @@ export interface LoopBudgetSnapshot {
   maxCost?: number;
 }
 
-/** Minimal, path-free reference used to rebuild a run-scoped attachment. */
+/** Minimal reference used to rebuild a run-scoped attachment. */
 export interface RunCheckpointAttachmentReference {
   version: 1;
   attachmentId: string;
@@ -735,6 +735,13 @@ export interface RunCheckpointAttachmentReference {
   kind: 'image' | 'document' | 'file';
   mimeType?: string;
   size?: number;
+  /** Display-only source path for line-comment context; never used to restore content. */
+  contextPath?: string;
+  lineComments?: Array<{
+    startLine: number;
+    endLine?: number;
+    text: string;
+  }>;
 }
 
 /** Trusted factory recipes are a closed enum; arbitrary code is never persisted. */

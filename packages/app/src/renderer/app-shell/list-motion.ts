@@ -9,12 +9,23 @@ import { ProjectSortMode } from '../sidebar/types'
 import { lastPathSegment } from '../workspace/path-utils'
 
 
-export function useListReorderAnimation<T extends HTMLElement>(keys: string[]) {
+export function useListReorderAnimation<T extends HTMLElement>(
+  keys: string[],
+  options: { duration?: number; easing?: string } = {},
+) {
   const nodesRef = useRef(new Map<string, T>())
   const positionsRef = useRef(new Map<string, DOMRect>())
+  const animationsRef = useRef(new Map<string, Animation>())
   const keySignature = keys.join('\u001f')
+  const duration = options.duration ?? 240
+  const easing = options.easing ?? 'cubic-bezier(0.22, 0.72, 0.2, 1)'
 
   useLayoutEffect(() => {
+    // Cancel the previous FLIP pass before measuring. Otherwise getBoundingClientRect()
+    // includes the old animation's transform and the next pass can chase a moving target.
+    for (const animation of animationsRef.current.values()) animation.cancel()
+    animationsRef.current.clear()
+
     const previous = positionsRef.current
     const next = new Map<string, DOMRect>()
 
@@ -28,20 +39,30 @@ export function useListReorderAnimation<T extends HTMLElement>(keys: string[]) {
       const dx = oldRect.left - rect.left
       const dy = oldRect.top - rect.top
       if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue
-      node.animate(
+      const animation = node.animate(
         [
           { transform: `translate(${dx}px, ${dy}px)` },
           { transform: 'translate(0, 0)' },
         ],
         {
-          duration: 240,
-          easing: 'cubic-bezier(0.22, 0.72, 0.2, 1)',
+          duration,
+          easing,
         },
       )
+      animationsRef.current.set(key, animation)
+      void animation.finished.then(() => {
+        if (animationsRef.current.get(key) === animation) animationsRef.current.delete(key)
+      }).catch(() => {
+        // Cancellation is expected when the pointer crosses another tab mid-animation.
+      })
     }
 
     positionsRef.current = next
-  }, [keySignature])
+    return () => {
+      for (const animation of animationsRef.current.values()) animation.cancel()
+      animationsRef.current.clear()
+    }
+  }, [duration, easing, keySignature])
 
   return (key: string) => (node: T | null) => {
     if (node) {

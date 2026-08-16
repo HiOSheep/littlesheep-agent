@@ -2,22 +2,35 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  adoptWorkspaceDraftSessionLayout,
   alignWorkspacePanelStateToRoot,
   buildWorkspaceRecoverySnapshot,
   hydrateWorkspaceLayoutFallbackSnapshot,
   hydrateWorkspaceFileDrafts,
   hydrateWorkspacePanelTabs,
+  hydrateWorkspaceSessionLayouts,
+  normalizeWorkspaceFileNavigatorWidth,
+  normalizeWorkspaceSessionLayout,
   parseWorkspaceFileTabId,
   rebindWorkspacePanelState,
   rebindWorkspacePath,
   serializeWorkspaceFileDrafts,
+  serializeWorkspaceSessionLayouts,
   shouldUseWorkspaceLayoutFallback,
+  workspaceSessionKey,
   workspaceFileTabId,
   WORKSPACE_PANEL_OPEN_TABS_MAX,
 } from './workspace-persistence'
 import { LEGACY_WORKSPACE_BROWSER_TAB_ID } from './workspace/browser-tabs'
 
 describe('workspace persistence helpers', () => {
+  it('restores old navigator snapshots and bounds custom widths', () => {
+    expect(normalizeWorkspaceSessionLayout({}).fileNavigatorWidth).toBe(214)
+    expect(normalizeWorkspaceFileNavigatorWidth(120)).toBe(160)
+    expect(normalizeWorkspaceFileNavigatorWidth(348.6)).toBe(349)
+    expect(normalizeWorkspaceFileNavigatorWidth(900)).toBe(520)
+  })
+
   it('roundtrips Windows file tab ids without losing path characters', () => {
     const root = 'D:\\tools\\Little Sheep'
     const path = 'D:\\tools\\Little Sheep\\src\\带 空格.tsx'
@@ -48,6 +61,101 @@ describe('workspace persistence helpers', () => {
     ))
 
     expect(hydrateWorkspacePanelTabs(tabs)).toHaveLength(WORKSPACE_PANEL_OPEN_TABS_MAX)
+  })
+
+  it('keeps extension workspace tabs, drafts, tree paths, and browser tabs isolated by session', () => {
+    const root = 'D:\\work'
+    const firstFile = workspaceFileTabId(root, `${root}\\first.ts`)
+    const secondFile = workspaceFileTabId(root, `${root}\\second.ts`)
+    const layouts = serializeWorkspaceSessionLayouts({
+      [workspaceSessionKey('session-a')]: {
+        collapsed: false,
+        fullscreen: false,
+        activeTab: firstFile,
+        openTabs: ['review', firstFile],
+        openRequest: { id: 1, root, path: `${root}\\first.ts` },
+        fileNavigatorCollapsed: false,
+        fileNavigatorWidth: 246,
+        expandedPaths: [root, `${root}\\src`],
+        drafts: {
+          [firstFile]: {
+            path: `${root}\\first.ts`,
+            editorText: 'changed-a',
+            savedText: 'saved-a',
+            editing: true,
+          },
+        },
+        browserTabs: [{
+          id: 'browser:session-a',
+          title: 'A',
+          url: 'https://a.example/',
+          history: { entries: ['https://a.example/'], index: 0 },
+        }],
+      },
+      [workspaceSessionKey('session-b')]: {
+        collapsed: true,
+        fullscreen: true,
+        activeTab: secondFile,
+        openTabs: [secondFile],
+        openRequest: { id: 2, root, path: `${root}\\second.ts` },
+        fileNavigatorCollapsed: true,
+        fileNavigatorWidth: 318,
+        expandedPaths: [`${root}\\other`],
+        drafts: {},
+        browserTabs: [],
+      },
+    })
+    const restored = hydrateWorkspaceSessionLayouts(JSON.parse(JSON.stringify(layouts)))
+
+    expect(restored[workspaceSessionKey('session-a')]).toMatchObject({
+      activeTab: firstFile,
+      openTabs: ['review', firstFile],
+      fileNavigatorWidth: 246,
+      expandedPaths: [root, `${root}\\src`],
+    })
+    expect(restored[workspaceSessionKey('session-a')]?.browserTabs[0]?.url).toBe('https://a.example/')
+    expect(restored[workspaceSessionKey('session-a')]?.drafts[firstFile]?.editorText).toBe('changed-a')
+    expect(restored[workspaceSessionKey('session-b')]).toMatchObject({
+      collapsed: true,
+      fullscreen: true,
+      activeTab: secondFile,
+      openTabs: [secondFile],
+      fileNavigatorWidth: 318,
+      expandedPaths: [`${root}\\other`],
+    })
+    expect(restored[workspaceSessionKey('session-b')]?.drafts[firstFile]).toBeUndefined()
+  })
+
+  it('adopts a persisted draft workspace when the first message creates a session', () => {
+    const draftLayout = normalizeWorkspaceSessionLayout({
+      collapsed: false,
+      activeTab: 'terminal',
+      openTabs: ['review', 'terminal'],
+      expandedPaths: ['D:\\work\\src'],
+    })
+    const layouts = { [workspaceSessionKey()]: draftLayout }
+
+    const adopted = adoptWorkspaceDraftSessionLayout(layouts, 'session-created-after-send')
+
+    expect(adopted[workspaceSessionKey('session-created-after-send')]).toBe(draftLayout)
+    expect(adopted[workspaceSessionKey()]).toMatchObject({
+      collapsed: true,
+      activeTab: 'review',
+      openTabs: ['review'],
+    })
+    expect(layouts[workspaceSessionKey()]).toBe(draftLayout)
+  })
+
+  it('does not overwrite a session workspace that was already restored', () => {
+    const draftLayout = normalizeWorkspaceSessionLayout({ activeTab: 'terminal', openTabs: ['terminal'] })
+    const restoredLayout = normalizeWorkspaceSessionLayout({ activeTab: 'artifacts', openTabs: ['artifacts'] })
+    const layouts = {
+      [workspaceSessionKey()]: draftLayout,
+      [workspaceSessionKey('session-a')]: restoredLayout,
+    }
+
+    expect(adoptWorkspaceDraftSessionLayout(layouts, 'session-a')).toBe(layouts)
+    expect(layouts[workspaceSessionKey('session-a')]).toBe(restoredLayout)
   })
 
   it('recovers only dirty drafts that match their file tab', () => {

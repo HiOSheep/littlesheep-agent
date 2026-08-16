@@ -22,6 +22,7 @@ import {
   prepareRunAttachments,
 } from '../attachments.js'
 import type { ManagedAttachmentCache } from '../attachment-cache.js'
+import { ensureManagedAttachmentRefs } from '../attachment-materialization.js'
 import type { ProjectIndex } from '../project-index.js'
 import { resolveRunPolicy, type RunApprovalBroker, type RunApprovalRequest } from '../run-policy.js'
 import type { SessionIndex } from '../session-index.js'
@@ -397,15 +398,6 @@ export class RunRouter {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-async function ensureManagedAttachmentRefs(
-  attachments: ReturnType<typeof parseAttachments>,
-  cache: ManagedAttachmentCache,
-) {
-  return Promise.all(attachments.map(async (attachment) => (
-    attachment.cacheId ? attachment : cache.importFile(attachment)
-  )))
 }
 
 function parseRequestKey(value: unknown): string | undefined {

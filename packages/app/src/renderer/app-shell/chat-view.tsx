@@ -1,5 +1,11 @@
-import { useLayoutEffect, useRef, type MouseEvent } from 'react'
+import { useCallback, useLayoutEffect, useRef, type MouseEvent } from 'react'
 import { AssistantTurnMessage } from '../chat/assistant-turn'
+import {
+  didChatViewportResize,
+  readChatScrollGeometry,
+  resolveBottomAnchoredScrollTop,
+  type ChatScrollGeometry,
+} from '../chat/chat-scroll-anchor'
 import { MessageFileStrip } from '../composer/message-files'
 import { Markdown } from '../Markdown'
 import { TraceCard } from '../TraceCard'
@@ -15,8 +21,6 @@ import type { AppController } from './use-app-controller'
 
 
 
-type ScrollRepair = { height: number; top: number }
-
 export function ChatView({ controller }: { controller: AppController }) {
   const {
     currentSession,
@@ -29,8 +33,23 @@ export function ChatView({ controller }: { controller: AppController }) {
   } = controller
 
   const stickToBottomRef = useRef(true)
-  const scrollRepairRef = useRef<ScrollRepair | null>(null)
+  const scrollRepairRef = useRef<ChatScrollGeometry | null>(null)
+  const scrollGeometryRef = useRef<ChatScrollGeometry | null>(null)
   const repairFrameRef = useRef<number | null>(null)
+
+  const rememberScrollGeometry = useCallback((container: HTMLElement) => {
+    scrollGeometryRef.current = readChatScrollGeometry(container)
+  }, [])
+
+  const rememberScrollEventGeometry = useCallback((container: HTMLElement) => {
+    const previous = scrollGeometryRef.current
+    const current = readChatScrollGeometry(container)
+    // A resize can queue a scroll event before ResizeObserver repairs the
+    // viewport. Keep the pre-resize geometry until that repair runs.
+    if (!previous || !didChatViewportResize(previous, current)) {
+      scrollGeometryRef.current = current
+    }
+  }, [])
 
   useLayoutEffect(() => {
     const container = scrollRef.current
@@ -43,7 +62,8 @@ export function ChatView({ controller }: { controller: AppController }) {
       const readLayoutSignature = () => `${container.scrollHeight}:${container.clientHeight}`
       const apply = (timestamp: number) => {
         settleState ??= createDisplaySettleState(timestamp, readLayoutSignature())
-        container.scrollTop = repair.top + (container.scrollHeight - repair.height)
+        container.scrollTop = resolveBottomAnchoredScrollTop(repair, readChatScrollGeometry(container))
+        rememberScrollGeometry(container)
         settleState = observeDisplaySettleFrame(settleState, timestamp, readLayoutSignature())
         if (shouldContinueDisplaySettle(settleState, timestamp)) {
           // The callback timestamp is tied to Chromium's active display VSync.
@@ -58,7 +78,8 @@ export function ChatView({ controller }: { controller: AppController }) {
       return
     }
     if (stickToBottomRef.current) container.scrollTop = container.scrollHeight
-  }, [messages, scrollRef])
+    rememberScrollGeometry(container)
+  }, [messages, rememberScrollGeometry, scrollRef])
 
   useLayoutEffect(() => () => {
     if (repairFrameRef.current !== null) window.cancelAnimationFrame(repairFrameRef.current)
@@ -68,12 +89,33 @@ export function ChatView({ controller }: { controller: AppController }) {
     stickToBottomRef.current = true
     scrollRepairRef.current = null
     const container = scrollRef.current
-    if (container) container.scrollTop = container.scrollHeight
-  }, [currentSession, scrollRef])
+    if (container) {
+      container.scrollTop = container.scrollHeight
+      rememberScrollGeometry(container)
+    }
+  }, [currentSession, rememberScrollGeometry, scrollRef])
+
+  useLayoutEffect(() => {
+    const container = scrollRef.current
+    if (!container) return
+    rememberScrollGeometry(container)
+    if (typeof ResizeObserver === 'undefined') return
+
+    const observer = new ResizeObserver(() => {
+      const previous = scrollGeometryRef.current
+      const current = readChatScrollGeometry(container)
+      if (previous && didChatViewportResize(previous, current)) {
+        container.scrollTop = resolveBottomAnchoredScrollTop(previous, current)
+      }
+      rememberScrollGeometry(container)
+    })
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [rememberScrollGeometry, scrollRef])
 
   function captureDisclosureInteraction(event: MouseEvent<HTMLDivElement>) {
     const target = event.target as HTMLElement
-    if (!target.closest('.agent-reasoning-toggle, .agent-tool-row, .trace-toggle')) return
+    if (!target.closest('.agent-tool-row, .trace-toggle')) return
     // Expanding a nested disclosure is a reading action, not new-message
     // arrival. Leave scrollTop untouched while CSS animates the content height.
     stickToBottomRef.current = false
@@ -81,7 +123,7 @@ export function ChatView({ controller }: { controller: AppController }) {
 
   function prepareOlderHistoryLoad() {
     const container = scrollRef.current
-    if (container) scrollRepairRef.current = { height: container.scrollHeight, top: container.scrollTop }
+    if (container) scrollRepairRef.current = readChatScrollGeometry(container)
     void loadOlderMessages().then((loaded) => {
       if (!loaded) scrollRepairRef.current = null
     })
@@ -94,6 +136,7 @@ export function ChatView({ controller }: { controller: AppController }) {
           onScroll={(event) => {
             const element = event.currentTarget
             stickToBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 72
+            rememberScrollEventGeometry(element)
           }}
           onClickCapture={captureDisclosureInteraction}
         >

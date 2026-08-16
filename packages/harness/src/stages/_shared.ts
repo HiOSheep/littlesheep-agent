@@ -104,7 +104,17 @@ export function attachmentManifestText(attachments?: RunAttachment[]): string {
       const id = attachment.id ?? `attachment-${index + 1}`;
       const size = attachment.size === undefined ? 'unknown size' : `${attachment.size} bytes`;
       const state = attachment.contentState ?? 'uninspected';
-      return `- [${id}] ${attachment.name ?? attachment.path} (${attachment.kind}, ${size}, ${state}) path=${attachment.path}`;
+      const contextPath = attachment.contextPath ?? attachment.path;
+      const lines = (attachment.lineComments ?? []).map((comment) => {
+        const range = comment.endLine && comment.endLine !== comment.startLine
+          ? `${comment.startLine}-${comment.endLine}`
+          : String(comment.startLine);
+        return `    - lines ${range}: ${comment.text}`;
+      });
+      return [
+        `- [${id}] ${attachment.name ?? contextPath} (${attachment.kind}, ${size}, ${state}) path=${contextPath}`,
+        ...(lines.length > 0 ? ['  User line comments:', ...lines] : []),
+      ].join('\n');
     }),
     'Use inspect_attachment with attachment_id when the task requires a non-image file\'s content; use its optional page or sheet selectors for bounded multi-part reads.',
   ].join('\n');

@@ -108,7 +108,17 @@ export function AttachmentPreviewCard({
   const name = file.name ?? lastPathSegment(file.path)
   const kind = file.kind ?? inferAttachmentKind(name || file.path)
   const isImage = kind === 'image'
-  const tip = `${name}\n${file.path}`
+  const lineComments = file.lineComments ?? []
+  const tip = [
+    name,
+    file.contextPath ?? file.path,
+    ...lineComments.map((comment) => {
+      const range = comment.endLine && comment.endLine !== comment.startLine
+        ? `${comment.startLine}-${comment.endLine}`
+        : String(comment.startLine)
+      return `第 ${range} 行：${comment.text}`
+    }),
+  ].join('\n')
   const [imagePreviewOpen, setImagePreviewOpen] = useState(false)
 
   function handleOpen() {
@@ -141,7 +151,7 @@ export function AttachmentPreviewCard({
               <div className="attachment-preview-file-icon">{attachmentExtLabel(name)}</div>
               <div className="attachment-preview-meta">
                 <span>{name}</span>
-                <small>{formatFileSize(file.size)}</small>
+                <small>{lineComments.length > 0 ? `${lineComments.length} 条行评论` : formatFileSize(file.size)}</small>
               </div>
             </>
           )}

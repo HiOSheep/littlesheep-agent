@@ -7,6 +7,7 @@ declare global {
       apiBase: string
       getPathForFile?: (file: unknown) => string
       onBrowserOpenNewTab?: (listener: (event: { url: string; disposition?: string }) => void) => () => void
+      onApplicationStateFlush?: (listener: () => void) => () => void
     }
   }
 }

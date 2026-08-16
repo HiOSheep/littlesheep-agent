@@ -21,8 +21,10 @@ import {
   type ContextUsageSnapshot
 } from '../context-usage'
 import { createAssistantDeltaBuffer } from './assistant-delta-buffer'
-import { buildArtifactsFromToolCalls, buildTraceData, taskStepToLiveStep } from './activity-model'
+import { settleLiveReasoning } from './activity-model'
 import { handleRunToolEvent } from './run-event-handlers'
+import { reduceCompletedRunMessages } from './run-result-reducer'
+import { conversationTurnFingerprint } from './conversation-turn-fingerprint'
 import { ChatMessage } from './types'
 import { sendActiveRunUpdate } from './active-run-update'
 import type { RuntimeTaskEventIdentity, RuntimeTaskEventNotice } from '../runtime-events/runtime-task-events'
@@ -34,6 +36,7 @@ export interface RunActionContext {
   appMountedRef: MutableRefObject<boolean>
   approvalGrantsRef: MutableRefObject<SessionApprovalGrantStore>
   attachments: AttachmentRef[]
+  conversationViewRequestRef: MutableRefObject<number>
   currentSession: string | undefined
   input: string
   liveToolStepRef: MutableRefObject<Map<string, string>>
@@ -67,12 +70,16 @@ export interface RunActionContext {
 }
 
 export function createRunActions(context: RunActionContext) {
-  const { abortRef, activeRunIdRef, activeApprovalScopeKey, appMountedRef, approvalGrantsRef, attachments, currentSession, input, liveToolStepRef, loading, permissionMode, pendingConversationTurnRef, pendingRuntimeMessageRef, publishRuntimeEventNotice, refreshProjects, refreshSessions, requestApprovalForScope, runtime, sessionOwnership, setActivityNow, setAttachments, setContextUsageSnapshot, setCurrentSession, setInput, setLoading, setMessages, setWorkspaceArtifactVersion, settleApprovalPrompt, stopRequestedRunIdRef } = context
+  const { abortRef, activeRunIdRef, activeApprovalScopeKey, appMountedRef, approvalGrantsRef, attachments, conversationViewRequestRef, currentSession, input, liveToolStepRef, loading, permissionMode, pendingConversationTurnRef, pendingRuntimeMessageRef, publishRuntimeEventNotice, refreshProjects, refreshSessions, requestApprovalForScope, runtime, sessionOwnership, setActivityNow, setAttachments, setContextUsageSnapshot, setCurrentSession, setInput, setLoading, setMessages, setWorkspaceArtifactVersion, settleApprovalPrompt, stopRequestedRunIdRef } = context
 
 
   async function send() {
     const text = input.trim()
     if (loading) {
+      // Session switching aborts the previous controller before its SSE
+      // finally block releases the shared loading flag. Keep the new
+      // conversation's input local during that narrow handoff window.
+      if (abortRef.current?.signal.aborted) return
       await sendActiveRunUpdate(text, {
         activeRunIdRef,
         appMountedRef,
@@ -102,6 +109,10 @@ export function createRunActions(context: RunActionContext) {
     pendingConversationTurnRef.current = { fingerprint: turnFingerprint, requestKey }
     const displayText = formatUserMessage(text, activeAttachments)
     const controller = new AbortController()
+    const conversationViewRequest = conversationViewRequestRef.current
+    const ownsVisibleConversation = () => (
+      appMountedRef.current && conversationViewRequestRef.current === conversationViewRequest
+    )
     const activityStartedAt = Date.now()
     const approvalScopeKey = activeApprovalScopeKey()
     abortRef.current = controller
@@ -125,6 +136,15 @@ export function createRunActions(context: RunActionContext) {
           status: 'running',
           instruction: displayText,
           startedAt: activityStartedAt,
+          reasoning: [{
+            phaseId: 'enter:1',
+            stage: 'enter',
+            summary: /[\u3400-\u9fff]/u.test(text)
+              ? '正在准备本轮任务上下文'
+              : 'Preparing the context for this run',
+            status: 'running',
+            startedAt: activityStartedAt,
+          }],
           steps: [],
           tools: [],
         },
@@ -133,25 +153,29 @@ export function createRunActions(context: RunActionContext) {
     liveToolStepRef.current.clear()
     setLoading(true)
     const deltaBuffer = createAssistantDeltaBuffer((delta) => {
-      if (!appMountedRef.current) return
+      if (!ownsVisibleConversation()) return
       setMessages((messages) => updateLastAssistantText(messages, (text) => text + delta))
     })
     try {
       const result = await runAgentStream(text || '请根据附件继续处理。', currentSession, permissionMode, {
         signal: controller.signal,
         onStart: ({ runId }) => {
-          activeRunIdRef.current = runId
+          if (ownsVisibleConversation()) activeRunIdRef.current = runId
         },
-        onApprovalRequest: (request) => appMountedRef.current
+        onApprovalRequest: (request) => ownsVisibleConversation()
           ? requestApprovalForScope(request, approvalScopeKey)
           : Promise.resolve(false),
-        onToolEvent: (evt) => handleRunToolEvent(evt, { appMountedRef, liveToolStepRef, setMessages }),
+        onToolEvent: (evt) => {
+          if (ownsVisibleConversation()) {
+            handleRunToolEvent(evt, { appMountedRef, liveToolStepRef, setMessages })
+          }
+        },
         onDelta: (delta) => {
-          if (!appMountedRef.current) return
+          if (!ownsVisibleConversation()) return
           deltaBuffer.push(delta)
         },
         onReplace: (text) => {
-          if (!appMountedRef.current) return
+          if (!ownsVisibleConversation()) return
           deltaBuffer.clear()
           setMessages((messages) => updateLastAssistantText(messages, () => text))
         },
@@ -168,55 +192,21 @@ export function createRunActions(context: RunActionContext) {
         pendingConversationTurnRef.current = null
       }
       if (!appMountedRef.current) return
-      deltaBuffer.flush()
       approvalGrantsRef.current.promote(approvalScopeKey, sessionApprovalScopeKey(result.sessionId))
-      setCurrentSession(result.sessionId)
-      setContextUsageSnapshot(buildContextUsageSnapshot(
-        runtime?.model,
-        result.usage,
-        result.contextSnapshots,
-        result.modelRequests,
-      ))
       setWorkspaceArtifactVersion((value) => value + 1)
-      setMessages((m) => {
-        const next = [...m]
-        const last = next[next.length - 1]
-        const traceData = buildTraceData(result)
-        const artifacts = buildArtifactsFromToolCalls(traceData.toolCalls)
-        if (last?.role === 'assistant') {
-          const endedAt = Date.now()
-          const taskSteps = result.taskExecution?.steps?.map((step) => taskStepToLiveStep(step)) ?? []
-          const currentActivity = last.activity
-          const paused = result.runtimeControl?.state === 'paused'
-          next[next.length - 1] = {
-            ...last,
-            text: last.text || (result.status === 'ok' ? result.reply : ''),
-            ...traceData,
-            artifacts,
-            activityCollapsed: true,
-            activity: currentActivity
-              ? {
-                ...currentActivity,
-                status: paused ? 'paused' : result.status === 'ok' ? 'done' : result.status === 'aborted' ? 'aborted' : 'failed',
-                endedAt,
-                durationMs: result.durationMs || endedAt - currentActivity.startedAt,
-                taskBook: result.taskBook ?? currentActivity.taskBook,
-                verificationHistory: result.verificationHistory ?? currentActivity.verificationHistory,
-                verificationRunning: false,
-                error: paused
-                  ? '任务已暂停，现场已保存。'
-                  : result.status === 'ok'
-                    ? undefined
-                    : result.status === 'aborted'
-                      ? result.error || '本次运行已停止。'
-                      : result.error || '本次运行未生成可展示的回复。',
-                steps: currentActivity.steps.length > 0 ? currentActivity.steps : taskSteps,
-              }
-              : undefined,
-          }
-        }
-        return next
-      })
+      if (ownsVisibleConversation()) {
+        deltaBuffer.flush()
+        setCurrentSession(result.sessionId)
+        setContextUsageSnapshot(buildContextUsageSnapshot(
+          runtime?.model,
+          result.usage,
+          result.contextSnapshots,
+          result.modelRequests,
+        ))
+        setMessages((messages) => reduceCompletedRunMessages(messages, result))
+      } else {
+        deltaBuffer.clear()
+      }
       void refreshSessions()
       void refreshProjects()
     } catch (e) {
@@ -226,7 +216,7 @@ export function createRunActions(context: RunActionContext) {
       ) {
         pendingConversationTurnRef.current = null
       }
-      if (!appMountedRef.current) return
+      if (!ownsVisibleConversation()) return
       deltaBuffer.clear()
       setInput((current) => current.trim() ? current : text)
       setAttachments((current) => current.length > 0 ? current : activeAttachments)
@@ -241,7 +231,14 @@ export function createRunActions(context: RunActionContext) {
               text: '',
               activityCollapsed: true,
               activity: last.activity
-                ? { ...last.activity, status: 'aborted', error: '本次运行已停止。', endedAt, durationMs: endedAt - last.activity.startedAt }
+                ? {
+                  ...last.activity,
+                  status: 'aborted',
+                  error: '本次运行已停止。',
+                  endedAt,
+                  durationMs: endedAt - last.activity.startedAt,
+                  reasoning: settleLiveReasoning(last.activity.reasoning, 'failed', endedAt),
+                }
                 : undefined,
             }
           }
@@ -260,7 +257,14 @@ export function createRunActions(context: RunActionContext) {
             text: '',
             activityCollapsed: true,
             activity: last.activity
-              ? { ...last.activity, status: 'failed', error, endedAt, durationMs: endedAt - last.activity.startedAt }
+              ? {
+                ...last.activity,
+                status: 'failed',
+                error,
+                endedAt,
+                durationMs: endedAt - last.activity.startedAt,
+                reasoning: settleLiveReasoning(last.activity.reasoning, 'failed', endedAt),
+              }
               : undefined,
           }
         }
@@ -268,12 +272,14 @@ export function createRunActions(context: RunActionContext) {
       })
     } finally {
       deltaBuffer.dispose()
-      settleApprovalPrompt('deny')
-      abortRef.current = null
-      activeRunIdRef.current = null
-      stopRequestedRunIdRef.current = null
-      liveToolStepRef.current.clear()
-      if (appMountedRef.current) setLoading(false)
+      if (abortRef.current === controller) {
+        settleApprovalPrompt('deny')
+        abortRef.current = null
+        activeRunIdRef.current = null
+        stopRequestedRunIdRef.current = null
+        liveToolStepRef.current.clear()
+        if (appMountedRef.current) setLoading(false)
+      }
     }
   }
 
@@ -295,38 +301,6 @@ export function createRunActions(context: RunActionContext) {
       })
   }
   return { send, stop }
-}
-
-function conversationTurnFingerprint(input: {
-  text: string
-  sessionId?: string
-  permissionMode: PermissionModeId
-  workspace?: string
-  sessionScope: RunActionContext['sessionOwnership']['scope']
-  projectId?: string
-  reasoning?: RuntimeState['reasoning']
-  profile?: RuntimeState['profile']
-  attachments: AttachmentRef[]
-}): string {
-  return JSON.stringify({
-    text: input.text,
-    sessionId: input.sessionId ?? null,
-    permissionMode: input.permissionMode,
-    workspace: input.workspace ?? null,
-    sessionScope: input.sessionScope,
-    projectId: input.projectId ?? null,
-    reasoning: input.reasoning ?? null,
-    profile: input.profile ?? null,
-    attachments: input.attachments.map((attachment) => ({
-      cacheId: attachment.cacheId ?? null,
-      contentHash: attachment.contentHash ?? null,
-      path: attachment.path,
-      name: attachment.name ?? null,
-      kind: attachment.kind,
-      mimeType: attachment.mimeType ?? null,
-      size: attachment.size ?? null,
-    })),
-  })
 }
 
 function localMessageId(role: 'user' | 'assistant'): string {

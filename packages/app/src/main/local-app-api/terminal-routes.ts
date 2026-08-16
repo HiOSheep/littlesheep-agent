@@ -4,8 +4,7 @@ import { stat } from 'node:fs/promises'
 import type { Config } from '@littlesheep/config'
 import {
   resolveTerminalPermissionMode,
-  assertTerminalCommandAllowed,
-  assertTerminalSessionAllowed,
+  assertTerminalOperationAllowed,
 } from './terminal-permission.js'
 import {
   LOCAL_APP_API_PREFIXES,
@@ -52,19 +51,15 @@ export class TerminalRouter {
     if (method === 'POST' && path === LOCAL_APP_API_ROUTES.terminalSession) {
       const body = await readJson(req)
       const root = resolveWorkspaceRootFromValue(body.root, context.getConfig(), context.workplaceDir)
-      const permissionMode = resolveTerminalPermissionMode(body.permissionMode)
-      assertTerminalSessionAllowed({
-        cwd: root,
-        containerRoot: context.dataDir ?? context.workplaceDir,
-        permissionMode,
-        approved: body.approved === true,
-      })
+      // This route creates the terminal the user directly controls in the
+      // workspace. Agent commands use the controlled run/stream or exec path.
+      assertTerminalOperationAllowed({ source: 'workspace-user' })
       const info = await stat(root)
       if (!info.isDirectory()) throw new HttpError(400, 'workspace root is not a directory')
       const terminalEnvironment = context.developmentEnvironmentManager
         ? await context.developmentEnvironmentManager.terminalEnvironment()
         : process.env
-      const session = await this.sessions.create(root, normalizeTerminalSize(body), permissionMode, terminalEnvironment)
+      const session = await this.sessions.create(root, normalizeTerminalSize(body), terminalEnvironment)
       json(res, 200, session.snapshot())
       return true
     }
@@ -116,19 +111,7 @@ export class TerminalRouter {
           const session = this.sessions.get(terminalSessionId)
           const analysis = session.analyzeInput(rawInput)
           const completedCommands = analysis.commands.filter((entry) => entry.command || entry.uncertain)
-          const approved = body.approved === true
-          for (const entry of completedCommands) {
-            if (entry.uncertain && session.permissionMode !== 'full' && !approved) {
-              throw new HttpError(403, '无法确认当前终端编辑结果，请批准后继续。')
-            }
-            assertTerminalCommandAllowed({
-              command: entry.command,
-              cwd: session.root,
-              containerRoot: context.dataDir ?? context.workplaceDir,
-              permissionMode: session.permissionMode,
-              approved,
-            })
-          }
+          assertTerminalOperationAllowed({ source: session.source })
 
           if (completedCommands.length > 0) {
             const command = completedCommands.map((entry) => entry.command || '[interactive terminal input]').join('\n')
@@ -156,13 +139,7 @@ export class TerminalRouter {
         }
         if (command.includes('\u0000')) throw new HttpError(400, 'command contains invalid characters')
         const session = this.sessions.get(terminalSessionId)
-        assertTerminalCommandAllowed({
-          command,
-          cwd: session.root,
-          containerRoot: context.dataDir ?? context.workplaceDir,
-          permissionMode: session.permissionMode,
-          approved: body.approved === true,
-        })
+        assertTerminalOperationAllowed({ source: session.source })
         await this.captures.finalize(terminalSessionId, activityIndex, { signal: 'next-command' })
         this.captures.start(session, command, normalizeOptionalSessionId(body.sessionId), activityIndex)
         try {
@@ -210,7 +187,8 @@ export class TerminalRouter {
         return true
       }
       const permissionMode = resolveTerminalPermissionMode(body.permissionMode)
-      assertTerminalCommandAllowed({
+      assertTerminalOperationAllowed({
+        source: 'agent',
         command,
         cwd: root,
         containerRoot: context.dataDir ?? context.workplaceDir,
@@ -258,7 +236,8 @@ export class TerminalRouter {
         return true
       }
       const permissionMode = resolveTerminalPermissionMode(body.permissionMode)
-      assertTerminalCommandAllowed({
+      assertTerminalOperationAllowed({
+        source: 'agent',
         command,
         cwd: root,
         containerRoot: context.dataDir ?? context.workplaceDir,

@@ -23,11 +23,7 @@ import {
 } from '../navigation-history'
 import { FloatingHelpTip } from '../ui/floating-help'
 import {
-  rebindWorkspacePanelState,
-  rebindWorkspacePath,
-  type WorkspaceFileDraftState,
   type WorkspaceOpenRequest,
-  type WorkspacePanelTabId
 } from '../workspace-persistence'
 import { isSamePath } from '../workspace/path-utils'
 
@@ -37,16 +33,20 @@ type RuntimePatch = Partial<Pick<RuntimeState,
 
 export interface ProjectActionContext {
   abortRef: MutableRefObject<AbortController | null>
-  alignWorkspacePanelToWorkspaceRoot: (root: string) => void
+  alignWorkspacePanelToWorkspaceRoot: (root: string, sessionId?: string | null) => void
   appHistoryRef: MutableRefObject<NavigationHistoryState<AppNavigationSnapshot>>
   appMountedRef: MutableRefObject<boolean>
   applyRuntimePatch: (patch: RuntimePatch) => Promise<boolean>
   beginDraftApprovalScope: () => void
   currentSession: string | undefined
+  historyLoadRequestRef: MutableRefObject<number>
   navigationRestoreTargetRef: MutableRefObject<AppNavigationSnapshot | null>
   pushRoute: (route: AppRoute) => void
+  rebindWorkspaceSessionLayouts: (fromRoot: string, toRoot: string) => void
   refreshProjects: () => Promise<void>
   refreshSessions: () => Promise<SessionMeta[]>
+  removeWorkspaceSessionLayout: (sessionId: string) => void
+  resetWorkspaceSessionLayout: (sessionId?: string) => void
   runtime: RuntimeState | null
   sessionLoadRequestRef: MutableRefObject<number>
   sessionOwnership: Pick<SessionMeta, 'scope' | 'projectId'>
@@ -66,20 +66,17 @@ export interface ProjectActionContext {
   setSessionOwnership: Dispatch<SetStateAction<Pick<SessionMeta, 'scope' | 'projectId'>>>
   setSessions: Dispatch<SetStateAction<SessionMeta[]>>
   setSidebarPanel: Dispatch<SetStateAction<SidebarPanel>>
-  setWorkspaceExpandedPaths: Dispatch<SetStateAction<string[]>>
-  setWorkspaceFileDrafts: Dispatch<SetStateAction<Record<string, WorkspaceFileDraftState>>>
   setWorkspaceOpenRequest: Dispatch<SetStateAction<WorkspaceOpenRequest | null>>
-  setWorkspacePanelOpenTabs: Dispatch<SetStateAction<WorkspacePanelTabId[]>>
-  setWorkspacePanelTab: Dispatch<SetStateAction<WorkspacePanelTabId>>
-  workspaceFileDrafts: Record<string, WorkspaceFileDraftState>
-  workspaceOpenRequest: WorkspaceOpenRequest | null
-  workspacePanelOpenTabs: WorkspacePanelTabId[]
-  workspacePanelTab: WorkspacePanelTabId
 }
 
 export function createProjectActions(context: ProjectActionContext) {
-  const { abortRef, alignWorkspacePanelToWorkspaceRoot, appHistoryRef, appMountedRef, applyRuntimePatch, beginDraftApprovalScope, currentSession, navigationRestoreTargetRef, pushRoute, refreshProjects, refreshSessions, runtime, sessionLoadRequestRef, sessionOwnership, sessions, sessionsForProject, setAppHistory, setContextUsageSnapshot, setControlTip, setConversationCollapsed, setCurrentSession, setMessages, setPinnedSessionIds, setProjectCreatorOpen, setProjects, setRuntime, setRuntimeError, setSessionOwnership, setSessions, setSidebarPanel, setWorkspaceExpandedPaths, setWorkspaceFileDrafts, setWorkspaceOpenRequest, setWorkspacePanelOpenTabs, setWorkspacePanelTab, workspaceFileDrafts, workspaceOpenRequest, workspacePanelOpenTabs, workspacePanelTab } = context
+  const { abortRef, alignWorkspacePanelToWorkspaceRoot, appHistoryRef, appMountedRef, applyRuntimePatch, beginDraftApprovalScope, currentSession, historyLoadRequestRef, navigationRestoreTargetRef, pushRoute, rebindWorkspaceSessionLayouts, refreshProjects, refreshSessions, removeWorkspaceSessionLayout, resetWorkspaceSessionLayout, runtime, sessionLoadRequestRef, sessionOwnership, sessions, sessionsForProject, setAppHistory, setContextUsageSnapshot, setControlTip, setConversationCollapsed, setCurrentSession, setMessages, setPinnedSessionIds, setProjectCreatorOpen, setProjects, setRuntime, setRuntimeError, setSessionOwnership, setSessions, setSidebarPanel, setWorkspaceOpenRequest } = context
 
+  function invalidateConversationView() {
+    sessionLoadRequestRef.current += 1
+    historyLoadRequestRef.current = 0
+    abortRef.current?.abort()
+  }
 
   function openProjectCreator() {
     setControlTip(null)
@@ -89,14 +86,14 @@ export function createProjectActions(context: ProjectActionContext) {
 
 
   async function activateProjectWorkspace(project: ProjectMeta) {
-    sessionLoadRequestRef.current += 1
+    invalidateConversationView()
     const next = await updateRuntime({ workspace: project.path })
     if (!appMountedRef.current) return
     pushRoute({ section: 'chat' })
     setRuntime(next)
     setRuntimeError(null)
-    alignWorkspacePanelToWorkspaceRoot(next.workspace)
-    setWorkspaceOpenRequest(null)
+    resetWorkspaceSessionLayout()
+    alignWorkspacePanelToWorkspaceRoot(next.workspace, null)
     setProjectCreatorOpen(false)
     setConversationCollapsed(false)
     beginDraftApprovalScope()
@@ -104,7 +101,6 @@ export function createProjectActions(context: ProjectActionContext) {
     setSessionOwnership({ scope: 'project', projectId: project.id })
     setMessages([])
     setContextUsageSnapshot(null)
-    abortRef.current?.abort()
     await refreshProjects()
     await refreshSessions()
   }
@@ -132,19 +128,7 @@ export function createProjectActions(context: ProjectActionContext) {
       const result = await rebindProject(project.id, path)
       if (!appMountedRef.current) return
 
-      const reboundWorkspace = rebindWorkspacePanelState({
-        openRequest: workspaceOpenRequest,
-        openTabs: workspacePanelOpenTabs,
-        activeTab: workspacePanelTab,
-        drafts: workspaceFileDrafts,
-      }, project.path, result.project.path)
-      setWorkspaceOpenRequest(reboundWorkspace.openRequest)
-      setWorkspacePanelOpenTabs(reboundWorkspace.openTabs)
-      setWorkspacePanelTab(reboundWorkspace.activeTab)
-      setWorkspaceFileDrafts(reboundWorkspace.drafts)
-      setWorkspaceExpandedPaths((paths) => paths.map((entry) => (
-        rebindWorkspacePath(entry, project.path, result.project.path)
-      )))
+      rebindWorkspaceSessionLayouts(project.path, result.project.path)
       const reboundHistory: NavigationHistoryState<AppNavigationSnapshot> = {
         ...appHistoryRef.current,
         entries: appHistoryRef.current.entries.map((entry) => (
@@ -187,11 +171,13 @@ export function createProjectActions(context: ProjectActionContext) {
 
   async function resetWorkspaceAfterProjectRemoval(project: ProjectMeta, wasActiveProject: boolean) {
     if (!wasActiveProject) return
+    invalidateConversationView()
     const next = await updateRuntime({ workspace: '' })
     if (!appMountedRef.current) return
     setRuntime(next)
     setRuntimeError(null)
-    alignWorkspacePanelToWorkspaceRoot(next.workspace)
+    resetWorkspaceSessionLayout()
+    alignWorkspacePanelToWorkspaceRoot(next.workspace, null)
     beginDraftApprovalScope()
     setCurrentSession(undefined)
     setSessionOwnership({ scope: 'standalone' })
@@ -242,6 +228,7 @@ export function createProjectActions(context: ProjectActionContext) {
       setMessages([])
       setContextUsageSnapshot(null)
     }
+    for (const sessionId of removedSessionIds) removeWorkspaceSessionLayout(sessionId)
     await resetWorkspaceAfterProjectRemoval(project, wasActiveProject)
     void refreshProjects()
     void refreshSessions()

@@ -6,6 +6,7 @@ import {
   bumpLiveStepTools,
   mergeTaskBookIntoLiveSteps,
   updateLastAssistantActivity,
+  upsertLiveReasoning,
   upsertLiveStep,
   upsertLiveTool,
 } from './activity-model'
@@ -22,6 +23,29 @@ export function handleRunToolEvent(
   context: RunEventHandlerContext,
 ): void {
   if (!context.appMountedRef.current) return
+
+  if (
+    evt.type === 'reasoning'
+    && evt.phaseId
+    && evt.stage
+    && evt.summary
+    && evt.reasoningStatus
+  ) {
+    const eventTime = Date.now()
+    updateLastAssistantActivity(context.setMessages, (activity) => ({
+      ...activity,
+      reasoning: upsertLiveReasoning(activity.reasoning ?? [], {
+        phaseId: evt.phaseId!,
+        stage: evt.stage!,
+        summary: evt.summary!,
+        status: evt.reasoningStatus!,
+        startedAt: evt.reasoningStatus === 'running' ? eventTime : undefined,
+        endedAt: evt.reasoningStatus === 'running' ? undefined : eventTime,
+        durationMs: evt.durationMs,
+      }),
+    }))
+    return
+  }
 
   if (evt.type === 'task_book' && evt.taskBook) {
     const taskBook = evt.taskBook

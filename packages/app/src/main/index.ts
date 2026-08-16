@@ -90,10 +90,10 @@ const desktopShell = new LittleSheepDesktopShell({
   getClosePolicy: () => currentConfig?.desktop.closePolicy ?? 'background-while-active',
   canCreateWindow: () => !shutdownStarted && currentConfig !== null,
   isQuitting: () => quitRequested || shutdownStarted,
+  getWindowStateFilePath: () => currentDataDir ? join(currentDataDir, 'ui', 'desktop-window.json') : undefined,
   onQuit: requestApplicationQuit,
   onWarning: (message) => console.warn(`[desktop] ${message}`),
 })
-
 const desktopAcceptanceSnapshot = createDesktopAcceptanceSnapshotProvider({
   desktopShell,
   runActivity,
@@ -581,8 +581,8 @@ if (gotLock) {
     event.preventDefault()
     quitRequested = true
     shutdownStarted = true
-    desktopShell.dispose()
     void runShutdownSequence([
+      { name: 'desktop state', run: () => desktopShell.shutdown() },
       {
         name: 'local app API locator',
         run: () => removeLocalAppApiLocator(currentDataDir, providerCalibrationToken),

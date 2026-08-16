@@ -1,6 +1,8 @@
 // Owns workspace Git review data loading, selection, refresh, and view composition.
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { APPLICATION_PERSISTENCE_FLUSH_EVENT } from '../../shared/application-state-contracts'
 import {
+  type AttachmentRef,
   type WorkspaceReviewFileDiff,
   type WorkspaceReviewSnapshot,
 } from '../api'
@@ -21,6 +23,7 @@ import {
   selectWorkspaceReviewPath,
 } from './review-model'
 import { WorkspaceReviewDiff } from './review-diff'
+import type { WorkspaceLineComment } from './line-comments'
 import { WorkspaceReviewTree } from './review-tree'
 import { preloadWorkspaceCodeEditor } from './code-editor'
 import { workspaceReviewCache } from './review-cache'
@@ -31,14 +34,24 @@ export function WorkspaceReview({
   workspacePath,
   artifactVersion,
   fileNavigatorCollapsed,
+  fileNavigatorWidth,
+  lineCommentsByScope,
   onFileNavigatorCollapsedChange,
+  onFileNavigatorWidthChange,
+  onLineCommentsChange,
+  onAddAttachment,
   onOpenFile,
   onTipChange,
 }: {
   workspacePath: string
   artifactVersion: number
   fileNavigatorCollapsed: boolean
+  fileNavigatorWidth: number
+  lineCommentsByScope: Record<string, WorkspaceLineComment[]>
   onFileNavigatorCollapsedChange: (collapsed: boolean) => void
+  onFileNavigatorWidthChange: (width: number) => void
+  onLineCommentsChange: (scope: string, comments: WorkspaceLineComment[]) => void
+  onAddAttachment: (attachment: AttachmentRef) => void
   onOpenFile: (path: string) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
@@ -81,6 +94,14 @@ export function WorkspaceReview({
 
   useEffect(() => {
     writeBooleanPreference(WORKSPACE_REVIEW_SIDE_BY_SIDE_KEY, sideBySide)
+  }, [sideBySide])
+
+  useEffect(() => {
+    const flushReviewPreference = () => {
+      writeBooleanPreference(WORKSPACE_REVIEW_SIDE_BY_SIDE_KEY, sideBySide)
+    }
+    window.addEventListener(APPLICATION_PERSISTENCE_FLUSH_EVENT, flushReviewPreference)
+    return () => window.removeEventListener(APPLICATION_PERSISTENCE_FLUSH_EVENT, flushReviewPreference)
   }, [sideBySide])
 
   useEffect(() => {
@@ -266,7 +287,7 @@ export function WorkspaceReview({
           : undefined
 
   return (
-    <div className={`workspace-review workspace-files ${fileNavigatorCollapsed ? 'navigator-collapsed' : ''}`}>
+    <div className="workspace-review workspace-files">
       <div className="workspace-review-content">
         <WorkspaceReviewDiff
           file={selectedFile}
@@ -275,7 +296,10 @@ export function WorkspaceReview({
           emptyState={emptyState}
           loading={diffLoading}
           error={diffError}
+          lineCommentsByScope={lineCommentsByScope}
           onSideBySideChange={setSideBySide}
+          onLineCommentsChange={onLineCommentsChange}
+          onAddAttachment={onAddAttachment}
           onOpenFile={() => selectedFile && onOpenFile(selectedFile.absolutePath)}
           onTipChange={onTipChange}
         />
@@ -297,6 +321,7 @@ export function WorkspaceReview({
         filterText={filterText}
         refreshing={refreshing}
         navigatorCollapsed={fileNavigatorCollapsed}
+        navigatorWidth={fileNavigatorWidth}
         emptyText={filterText.trim() ? '没有匹配的更改' : snapshotReady ? '没有未提交更改' : '正在读取 Git 更改...'}
         onFilterTextChange={setFilterText}
         onFilterKeyDown={handleFilterKeyDown}
@@ -309,6 +334,7 @@ export function WorkspaceReview({
         })}
         onSelectFile={setSelectedPath}
         onNavigatorCollapsedChange={onFileNavigatorCollapsedChange}
+        onNavigatorWidthChange={onFileNavigatorWidthChange}
         onTipChange={onTipChange}
       />
     </div>

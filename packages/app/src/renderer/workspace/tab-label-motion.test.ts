@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 import {
   WORKSPACE_TAB_LABEL_SCROLL_SPEED_PX_PER_SECOND,
@@ -35,5 +36,19 @@ describe('workspace tab label motion', () => {
     expect(longOverflow.overflowPx / (longOverflow.durationMs / 1_000)).toBe(
       WORKSPACE_TAB_LABEL_SCROLL_SPEED_PX_PER_SECOND,
     )
+  })
+
+  it('shares one overflow renderer across workspace and sidebar names', async () => {
+    const component = await readFile(new URL('../ui/overflowing-label.tsx', import.meta.url), 'utf8')
+    const tabStrip = await readFile(new URL('./tab-strip.tsx', import.meta.url), 'utf8')
+    const sessionRow = await readFile(new URL('../sidebar/session-row.tsx', import.meta.url), 'utf8')
+    const projectSection = await readFile(new URL('../sidebar/project-section.tsx', import.meta.url), 'utf8')
+
+    expect(component).toContain('export function OverflowingLabel')
+    expect(component).toContain('new ResizeObserver(updateMotion)')
+    expect(component).toContain("viewport.classList.toggle('is-overflowing'")
+    expect(tabStrip).toContain('<OverflowingLabel')
+    expect(sessionRow).toContain('<OverflowingLabel')
+    expect(projectSection).toContain('<OverflowingLabel')
   })
 })

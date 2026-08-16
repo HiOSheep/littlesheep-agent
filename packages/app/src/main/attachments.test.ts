@@ -35,6 +35,40 @@ function writeTextlessPdf(filePath: string): void {
 }
 
 describe('main attachment helpers', () => {
+  it('validates line comments and exposes the exact file location to the Agent', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ls-att-line-comment-'))
+    try {
+      const file = join(dir, 'source.ts')
+      writeFileSync(file, 'const answer = 42\nexport { answer }\n', 'utf8')
+      const refs = parseAttachments([{
+        path: file,
+        contextPath: file,
+        name: 'source.ts',
+        lineComments: [
+          { startLine: 1, text: '  Explain why this value is fixed.  ' },
+          { startLine: 2, endLine: 1, text: 'invalid range' },
+          { startLine: 0, text: 'invalid line' },
+        ],
+      }])
+      expect(refs[0]?.lineComments).toEqual([
+        { startLine: 1, text: 'Explain why this value is fixed.' },
+      ])
+
+      const prepared = await prepareRunAttachments(refs, { workspaceDir: dir })
+      expect(prepared[0]?.lineComments).toEqual(refs[0]?.lineComments)
+      expect(prepared[0]?.contextPath).toBe('source.ts')
+      const result = await createInspectAttachmentTool(prepared)!.execute(
+        { attachment_id: prepared[0]!.id },
+        { sessionId: asSessionId('session-1'), runId: 'run-1', cwd: dir },
+      )
+      expect(result.ok).toBe(true)
+      expect(String(result.output)).toContain('Path: source.ts')
+      expect(String(result.output)).toContain('Lines 1: Explain why this value is fixed.')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('keeps document content uninspected until the scoped tool reads it', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ls-att-'))
     try {

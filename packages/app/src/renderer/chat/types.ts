@@ -1,5 +1,6 @@
 // Conversation rendering and execution-progress presentation.
 import type { HistoryActivity } from '../../shared/history-activity'
+import type { StageName } from '@littlesheep/types'
 import {
   type AttachmentRef
 } from '../api'
@@ -55,8 +56,20 @@ export interface LiveStepEvent {
 export type AssistantTurnStatus = 'running' | 'done' | 'failed' | 'aborted' | 'paused'
 
 
+export interface LiveReasoningEvent {
+  phaseId: string
+  stage: StageName
+  summary: string
+  status: 'running' | 'done' | 'failed'
+  startedAt: number
+  endedAt?: number
+  durationMs?: number
+}
+
+
 export interface AssistantTurnActivity extends Omit<HistoryActivity, 'status' | 'steps' | 'tools'> {
   status: AssistantTurnStatus
+  reasoning?: LiveReasoningEvent[]
   steps: LiveStepEvent[]
   tools: LiveToolEvent[]
 }

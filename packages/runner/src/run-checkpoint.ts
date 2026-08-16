@@ -76,6 +76,10 @@ export function buildRunCheckpoint(options: BuildRunCheckpointOptions): RunCheck
       kind: attachment.kind,
       ...(attachment.mimeType ? { mimeType: attachment.mimeType } : {}),
       ...(attachment.size !== undefined ? { size: attachment.size } : {}),
+      ...(attachment.contextPath ? { contextPath: attachment.contextPath } : {}),
+      ...(attachment.lineComments && attachment.lineComments.length > 0
+        ? { lineComments: attachment.lineComments }
+        : {}),
     }));
   const toolRecipes = ctx.toolSources?.inspect_attachment === 'run-scoped'
     ? [{ version: 1 as const, factory: 'inspect_attachment' as const }]

@@ -9,14 +9,15 @@ describe('workspace chip remove control', () => {
 
     expect(source).toContain('<CloseIcon />')
     expect(source).not.toMatch(/>\s*×\s*</u)
-    expect(styles).toMatch(/\.workspace-context-remove\s*\{[\s\S]*?display:\s*grid;[\s\S]*?place-items:\s*center;[\s\S]*?font-size:\s*0;[\s\S]*?line-height:\s*0;/u)
-    expect(styles).toMatch(/\.workspace-context-remove \.sidebar-svg-icon\s*\{[^}]*width:\s*12px;[^}]*height:\s*12px;/u)
+    expect(styles).toMatch(/\.workspace-context-remove\s*\{[\s\S]*?display:\s*grid;[\s\S]*?place-items:\s*center;[\s\S]*?width:\s*18px;[\s\S]*?height:\s*18px;[\s\S]*?font-size:\s*0;[\s\S]*?line-height:\s*0;/u)
+    expect(styles).toMatch(/\.workspace-context-remove \.sidebar-svg-icon\s*\{[^}]*width:\s*10px;[^}]*height:\s*10px;/u)
   })
 
   it('sizes to its path content without consuming the remaining control row', async () => {
     const styles = await readFile(new URL('../styles.css', import.meta.url), 'utf8')
 
     expect(styles).toMatch(/\.workspace-context-chip\s*\{[^}]*width:\s*fit-content;[^}]*max-width:\s*min\(280px, 34vw\);[^}]*flex:\s*0 1 auto;/u)
+    expect(styles).toMatch(/\.workspace-context-chip\s*\{[^}]*padding:\s*0 28px 0 var\(--composer-control-padding-inline\);/u)
     expect(styles).toMatch(/\.workspace-context-path\s*\{[^}]*flex:\s*0 1 auto;[^}]*text-overflow:\s*ellipsis;/u)
   })
 })

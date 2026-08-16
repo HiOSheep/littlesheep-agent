@@ -69,7 +69,8 @@ describe('e2e agent loop', () => {
     expect(trace.map((t) => t.name)).toEqual([
       'enter', 'classify', 'decide', 'execute', 'verify', 'evolve', 'capture', 'finalize',
     ]);
-    expect(events.map((event) => event.type)).toEqual([
+    const businessEvents = events.filter((event) => event.type !== 'reasoning');
+    expect(businessEvents.map((event) => event.type)).toEqual([
       'task_book',
       'step_start',
       'step_done',
@@ -77,6 +78,13 @@ describe('e2e agent loop', () => {
       'verification',
       'final_delta',
     ]);
+    const reasoningEvents = events.filter((event) => event.type === 'reasoning');
+    expect(reasoningEvents.filter((event) => event.reasoningStatus === 'running').map((event) => event.stage)).toEqual(
+      ['enter', 'classify', 'decide', 'execute', 'verify', 'evolve', 'capture', 'finalize'],
+    );
+    expect(reasoningEvents.filter((event) => event.reasoningStatus === 'done').map((event) => event.stage)).toEqual(
+      ['enter', 'classify', 'decide', 'execute', 'verify', 'evolve', 'capture', 'finalize'],
+    );
     expect(deltas).toEqual([]);
     expect(replacements).toEqual(['final assembled answer']);
     expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
@@ -146,7 +154,7 @@ describe('e2e agent loop', () => {
     expect(deltas).toEqual([]);
     expect(replacements).toEqual(['verified final answer']);
     expect(events.filter((event) => event.type === 'final_delta')).toHaveLength(1);
-    expect(events.map((event) => event.type)).toEqual([
+    expect(events.filter((event) => event.type !== 'reasoning').map((event) => event.type)).toEqual([
       'task_book', 'step_start', 'step_done', 'verification_start', 'verification',
       'task_book', 'step_start', 'step_done', 'verification_start', 'verification', 'final_delta',
     ]);

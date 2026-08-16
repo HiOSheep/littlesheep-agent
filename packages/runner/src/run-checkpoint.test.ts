@@ -132,4 +132,30 @@ describe('buildRunCheckpoint', () => {
     expect(checkpoint.contextSnapshotIds[0]).toBe('snapshot-6');
     expect(checkpoint.contextSnapshotIds.at(-1)).toBe(`snapshot-${MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN + 5}`);
   });
+
+  it('keeps source line comments with restorable attachment references', () => {
+    const ctx = contextWithSteps([step('active', 'in_progress')]);
+    ctx.attachments = [{
+      id: 'attachment-source',
+      path: 'D:/work/src/app.ts',
+      name: 'app.ts',
+      kind: 'file',
+      cacheId: 'cache-source',
+      contentHash: 'a'.repeat(64),
+      contextPath: 'src/app.ts',
+      lineComments: [{ startLine: 42, endLine: 45, text: 'Keep this range atomic.' }],
+    }];
+
+    const checkpoint = buildRunCheckpoint({
+      ctx,
+      stageResult: { stage: 'execute', next: 'exit', ok: false },
+      reason: 'attachment continuation',
+      now: new Date('2026-07-29T10:00:01.000Z'),
+    });
+
+    expect(checkpoint.resumeState?.attachments?.[0]?.lineComments).toEqual([
+      { startLine: 42, endLine: 45, text: 'Keep this range atomic.' },
+    ]);
+    expect(checkpoint.resumeState?.attachments?.[0]?.contextPath).toBe('src/app.ts');
+  });
 });

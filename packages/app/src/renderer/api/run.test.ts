@@ -29,6 +29,10 @@ describe('renderer run API', () => {
     const api = await loadRunApi()
     fetchMock.mockResolvedValueOnce(streamResponse([
       { name: 'start', data: { ok: true, runId: 'run-1' } },
+      { name: 'reasoning', data: {
+        type: 'reasoning', phaseId: 'classify:2', stage: 'classify',
+        reasoningStatus: 'running', summary: 'Choosing the route',
+      } },
       { name: 'step_start', data: { type: 'step_start', stepId: 'step-1', title: 'Read' } },
       { name: 'delta', data: { delta: 'done' } },
       { name: 'replace', data: { text: 'done!' } },
@@ -55,7 +59,10 @@ describe('renderer run API', () => {
     expect(started).toEqual(['run-1'])
     expect(deltas).toEqual(['done'])
     expect(replacements).toEqual(['done!'])
-    expect(events).toEqual([expect.objectContaining({ type: 'step_start', stepId: 'step-1' })])
+    expect(events).toEqual([
+      expect.objectContaining({ type: 'reasoning', phaseId: 'classify:2' }),
+      expect.objectContaining({ type: 'step_start', stepId: 'step-1' }),
+    ])
     expect(result).toMatchObject({ runId: 'run-1', status: 'ok', reply: 'done' })
   })
 
@@ -141,6 +148,52 @@ describe('renderer run API', () => {
     expect(started).toEqual(['resume-run-1'])
     expect(events).toEqual([{ type: 'verification_start' }])
     expect(result).toMatchObject({ runId: 'resume-run-1', sessionId: 'session-1', status: 'ok' })
+  })
+
+  it('keeps consuming an interrupted result while its cancelled approval prompt is unresolved', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+    vi.stubGlobal('fetch', fetchMock)
+    const api = await loadRunApi()
+    fetchMock
+      .mockResolvedValueOnce(streamResponse([
+        { name: 'start', data: { ok: true, runId: 'run-interrupted' } },
+        { name: 'approval_request', data: {
+          id: 'approval-cancelled',
+          action: 'read',
+          permissionMode: 'research',
+          boundary: 'outside',
+          source: 'agent',
+        } },
+        { name: 'result', data: {
+          runId: 'run-interrupted',
+          sessionId: 'session-1',
+          status: 'aborted',
+          reply: '',
+          error: 'interrupted while awaiting approval',
+          durationMs: 14,
+        } },
+      ]))
+      .mockResolvedValueOnce(new Response('{}', { status: 404 }))
+    let settleApproval!: (approved: boolean) => void
+    const approval = new Promise<boolean>((resolve) => {
+      settleApproval = resolve
+    })
+
+    const result = await api.runAgentStream('read', undefined, 'research', {
+      onDelta: () => undefined,
+      onApprovalRequest: () => approval,
+    })
+
+    expect(result).toMatchObject({ runId: 'run-interrupted', status: 'aborted' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    settleApproval(false)
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'http://127.0.0.1:43127/approvals/approval-cancelled',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ approved: false }) }),
+    )
   })
 
   it('sends a bounded runtime control event to the run-specific endpoint', async () => {

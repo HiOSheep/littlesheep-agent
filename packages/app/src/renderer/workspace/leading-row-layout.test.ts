@@ -15,6 +15,14 @@ function ruleBody(selector: string): string {
   return styles.slice(start, end)
 }
 
+function lastRuleBody(selector: string): string {
+  const start = styles.lastIndexOf(`${selector} {`)
+  expect(start, `${selector} rule should exist`).toBeGreaterThanOrEqual(0)
+  const end = styles.indexOf('\n}', start)
+  expect(end, `${selector} rule should close`).toBeGreaterThan(start)
+  return styles.slice(start, end)
+}
+
 describe('workspace page leading row alignment', () => {
   it('derives every page leading row from the fixed file navigator control center', () => {
     const body = ruleBody('.workspace-panel-body')
@@ -24,9 +32,9 @@ describe('workspace page leading row alignment', () => {
     expect(body).toContain('--workspace-files-control-size: 25px')
     expect(body).toContain('--workspace-files-control-top: 5px')
     expect(body).toContain('--workspace-page-inline-inset: 6px')
-    expect(body).toContain('--workspace-files-surface-border-width: 1px')
+    expect(body).toContain('--workspace-files-navigator-width: 214px')
     expect(body).toMatch(/--workspace-files-content-reserve:\s*calc\(\s*var\(--workspace-files-control-size\) \+\s*var\(--workspace-files-control-gap\)\s*\)/u)
-    expect(body).toMatch(/--workspace-files-navigator-collapsed-width:\s*calc\(\s*var\(--workspace-files-control-size\) \+\s*var\(--workspace-files-control-edge\) \+\s*var\(--workspace-files-control-edge\)\s*\)/u)
+    expect(body).not.toContain('--workspace-files-navigator-collapsed-width')
     expect(body).toMatch(/--workspace-page-leading-row-height:\s*calc\(\s*var\(--workspace-files-control-top\) \+\s*var\(--workspace-files-control-size\) \+\s*var\(--workspace-files-control-top\)\s*\)/u)
     expect(body).not.toContain('padding-top:')
     expect(leadingRow).toContain('height: var(--workspace-page-leading-row-height)')
@@ -34,7 +42,7 @@ describe('workspace page leading row alignment', () => {
     expect(leadingRow).toContain('padding-inline: var(--workspace-page-inline-inset)')
     expect(leadingRow).toContain('padding-block: 0')
     expect(navigatorControl).toContain('top: var(--workspace-files-control-top, 5px)')
-    expect(navigatorControl).toMatch(/right:\s*calc\(\s*var\(--workspace-files-control-edge, 6px\) -\s*var\(--workspace-files-surface-border-width, 1px\)\s*\)/u)
+    expect(navigatorControl).toContain('right: var(--workspace-files-control-edge, 6px)')
     expect(navigatorControl).toContain('height: var(--workspace-files-control-size, 25px)')
   })
 
@@ -69,12 +77,15 @@ describe('workspace page leading row alignment', () => {
 
     expect(ruleBody('.workspace-files-actions')).not.toContain('align-self:')
     expect(ruleBody('.workspace-preview-actions')).not.toContain('align-self:')
-    expect(ruleBody('.workspace-panel-view.with-file-navigator')).toContain('padding-right: var(--workspace-files-content-reserve)')
-    expect(ruleBody('.workspace-files > .workspace-preview-pane')).not.toContain('padding-right:')
-    expect(styles).toMatch(/\.workspace-preview-header\s*\{[^}]*padding-right:\s*calc\(\s*var\(--workspace-page-inline-inset\) \+\s*var\(--workspace-files-content-reserve\)\s*\);/u)
+    expect(ruleBody('.workspace-files > .workspace-preview-pane')).toContain('flex: 1 1 0')
+    expect(ruleBody('.workspace-review-content')).toContain('flex: 1 1 0')
+    expect(ruleBody('.workspace-files-navigator.navigator-collapsed')).toContain('flex-basis: 0')
     expect(ruleBody('.workspace-files')).not.toContain('--workspace-files-control-')
+    expect(styles).not.toContain('.workspace-panel-view.with-file-navigator')
+    expect(styles).not.toContain('.workspace-files.navigator-collapsed .workspace-files-navigator')
+    expect(lastRuleBody('.workspace-preview-header')).not.toContain('padding-right:')
+    expect(lastRuleBody('.workspace-review-diff-header')).not.toContain('padding-right:')
     expect(styles).not.toContain('padding-right: 34px')
-    expect(styles).toMatch(/\.workspace-files\.navigator-collapsed \.workspace-files-navigator,[\s\S]*?\.workspace-files-navigator\.navigator-collapsed\s*\{[^}]*width:\s*var\(--workspace-files-navigator-collapsed-width, 37px\);/u)
   })
 
   it('uses one compact file-preview surface with metadata only in the bottom status row', async () => {
@@ -95,5 +106,74 @@ describe('workspace page leading row alignment', () => {
     expect(styles).not.toContain('.workspace-preview-editor-badge')
     expect(styles).not.toContain('.workspace-preview-meta')
     expect(styles).not.toContain('.workspace-editor-shell')
+  })
+
+  it('fills file and review pages without a floating or hover-reactive surface', async () => {
+    const panel = await readFile(new URL('./panel.tsx', import.meta.url), 'utf8')
+    const reviewSource = await readFile(new URL('./review.tsx', import.meta.url), 'utf8')
+    const fileSurfaceBody = ruleBody('.workspace-panel-body.file-surface-active')
+    const files = ruleBody('.workspace-files')
+    const sharedSurface = ruleBody('.workspace-files-navigator,\n.workspace-preview-pane')
+    const navigator = ruleBody('.workspace-files-navigator')
+    const review = ruleBody('.workspace-review-diff')
+    const statusItem = ruleBody('.workspace-preview-statusbar span')
+
+    expect(panel).toContain("const usesEdgeToEdgeFileSurface = Boolean(activeFileTab) || activeTab === 'review'")
+    expect(panel).toContain("usesEdgeToEdgeFileSurface ? 'file-surface-active' : ''")
+    expect(panel).toContain('<div className="workspace-panel-view content-fade">')
+    expect(panel).not.toContain('with-file-navigator')
+    expect(reviewSource).toContain('<div className="workspace-review workspace-files">')
+    expect(reviewSource).not.toContain("'navigator-collapsed'")
+    expect(fileSurfaceBody).toMatch(/margin:\s*8px\s*-12px\s*-12px\s*calc\(0px - var\(--workspace-tab-row-inset\)\)/u)
+    expect(files).toContain('display: flex')
+    expect(files).toContain('width: 100%')
+    expect(sharedSurface).not.toContain('border:')
+    expect(sharedSurface).not.toContain('border-radius:')
+    expect(sharedSurface).not.toContain('transition:')
+    expect(navigator).toContain('position: relative')
+    expect(navigator).toContain('flex: 0 0 var(--workspace-files-navigator-width)')
+    expect(navigator).toContain('background: var(--bg)')
+    expect(navigator).toContain('border-left: 1px solid var(--border)')
+    expect(navigator).not.toMatch(/(?:top|right|bottom):/u)
+    expect(navigator).not.toContain('box-shadow:')
+    expect(review).not.toContain('border:')
+    expect(review).not.toContain('border-radius:')
+    expect(review).not.toContain('transition:')
+    expect(statusItem).not.toContain('border-radius:')
+    expect(statusItem).not.toContain('transition:')
+    expect(styles).not.toContain('.workspace-preview-pane:hover')
+    expect(styles).not.toContain('.workspace-review-diff:hover')
+    expect(styles).not.toContain('.workspace-preview-statusbar span:hover')
+    expect(styles).not.toContain('.workspace-files-tree')
+    expect(styles).not.toContain('.workspace-review > .workspace-files-navigator')
+    expect(styles).not.toContain('--workspace-files-surface-border-width')
+  })
+
+  it('lets file content reach the right edge while the navigator is collapsed', () => {
+    const collapsedNavigator = ruleBody('.workspace-files-navigator.navigator-collapsed')
+    const collapsedHeaderReserve = ruleBody(
+      '.workspace-files:has(> .workspace-files-navigator.navigator-collapsed) .workspace-preview-header,\n.workspace-files:has(> .workspace-files-navigator.navigator-collapsed) .workspace-review-diff-header',
+    )
+
+    expect(collapsedNavigator).toContain('width: 0')
+    expect(collapsedNavigator).toContain('flex-basis: 0')
+    expect(collapsedNavigator).toContain('overflow: visible')
+    expect(collapsedNavigator).toContain('border-left: 0')
+    expect(collapsedHeaderReserve).toContain(
+      'var(--workspace-page-inline-inset) +\n    var(--workspace-files-content-reserve)',
+    )
+    expect(styles).not.toContain('--workspace-files-navigator-collapsed-width')
+  })
+
+  it('keeps file tree hover and selection surfaces borderless without shifting their contents', () => {
+    const treeRow = ruleBody('.workspace-tree-row')
+    const treeRowInteraction = ruleBody(
+      '.workspace-tree-row:hover,\n.workspace-tree-row:focus-visible,\n.workspace-tree-row.selected',
+    )
+
+    expect(treeRow).toContain('padding: 0 7px 0 calc(5px + var(--workspace-tree-indent))')
+    expect(treeRow).toContain('border: 0')
+    expect(treeRow).not.toContain('border-color')
+    expect(treeRowInteraction).not.toContain('border')
   })
 })

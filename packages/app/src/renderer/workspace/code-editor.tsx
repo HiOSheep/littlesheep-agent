@@ -1,5 +1,5 @@
 // Shared Monaco loader, theme, and editor defaults for workspace code surfaces.
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { DiffEditorProps, EditorProps } from '@monaco-editor/react'
 import type * as Monaco from 'monaco-editor'
 import {
@@ -13,15 +13,16 @@ export const WORKSPACE_MONACO_FONT_FAMILY =
   'Consolas, ui-monospace, SFMono-Regular, Menlo, Monaco, monospace'
 
 // Keep the editor gutter stable across ordinary files and Git review. A
-// four-character line-number reserve plus a wider decoration gutter leaves a
-// deliberate visual pause before code without consuming a full editor column.
+// four-character line-number reserve plus a dedicated decoration gutter keeps
+// line-comment controls between the number and code without covering either.
 export const WORKSPACE_MONACO_LINE_NUMBERS_MIN_CHARS = 4
-export const WORKSPACE_MONACO_LINE_DECORATIONS_WIDTH = 12
+export const WORKSPACE_MONACO_LINE_DECORATIONS_WIDTH = 28
 
-export function workspaceEditorModelPath(root: string, path: string): string {
+export function workspaceEditorModelPath(root: string, path: string, scopeKey = 'shared'): string {
+  const safeScopeKey = encodeURIComponent(scopeKey)
   const safeRoot = root.split(/[\\/]+/u).map(encodeURIComponent).join('/')
   const safePath = path.split(/[\\/]+/u).map(encodeURIComponent).join('/')
-  return `inmemory://littlesheep-file/${safeRoot}/${safePath}`
+  return `inmemory://littlesheep-file/${safeScopeKey}/${safeRoot}/${safePath}`
 }
 
 export const WORKSPACE_MONACO_BASE_OPTIONS = {
@@ -33,6 +34,7 @@ export const WORKSPACE_MONACO_BASE_OPTIONS = {
   lineDecorationsWidth: WORKSPACE_MONACO_LINE_DECORATIONS_WIDTH,
   lineNumbersMinChars: WORKSPACE_MONACO_LINE_NUMBERS_MIN_CHARS,
   minimap: { enabled: false },
+  hideCursorInOverviewRuler: true,
   overviewRulerBorder: false,
   padding: { top: 12, bottom: 12 },
   renderLineHighlight: 'none',
@@ -76,6 +78,10 @@ export function WorkspaceCodeEditor({
 }: WorkspaceCodeEditorProps) {
   const lifecycleRef = useRef<EditorModelLifecycle | null>(null)
   const languageReady = usePreparedWorkspaceMonacoLanguages([props.language ?? 'plaintext'])
+  const mergedOptions = useMemo(
+    () => ({ ...WORKSPACE_MONACO_BASE_OPTIONS, ...options }),
+    [options],
+  )
   useLayoutEffect(() => {
     const lifecycle = lifecycleRef.current
     if (lifecycle && path && lifecycle.modelUri() !== path) lifecycle.saveViewState()
@@ -100,7 +106,7 @@ export function WorkspaceCodeEditor({
           lifecycleRef.current = trackCodeEditorModel(editor, true)
           onMount?.(editor, monaco)
         }}
-        options={{ ...WORKSPACE_MONACO_BASE_OPTIONS, ...options }}
+        options={mergedOptions}
       />
     </Suspense>
   )
@@ -119,6 +125,10 @@ export function WorkspaceCodeDiffEditor({
     originalLanguage ?? 'plaintext',
     modifiedLanguage ?? 'plaintext',
   ])
+  const mergedOptions = useMemo(
+    () => ({ ...WORKSPACE_MONACO_BASE_OPTIONS, ...options }),
+    [options],
+  )
   useEffect(() => () => {
     lifecycleRef.current?.dispose()
     lifecycleRef.current = null
@@ -149,7 +159,7 @@ export function WorkspaceCodeDiffEditor({
           }
           onMount?.(editor, monaco)
         }}
-        options={{ ...WORKSPACE_MONACO_BASE_OPTIONS, ...options }}
+        options={mergedOptions}
       />
     </Suspense>
   )

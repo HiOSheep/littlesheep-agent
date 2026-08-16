@@ -199,9 +199,14 @@ export async function consumeRunStream(
   let buffer = ''
   let finalResult: RunResult | undefined
   let activeRunId = ''
+  let approvalError: unknown
+  let rejectApprovalFailure: (error: unknown) => void = () => undefined
+  const approvalFailure = new Promise<never>((_resolve, reject) => {
+    rejectApprovalFailure = reject
+  })
 
   while (true) {
-    const { value, done } = await reader.read()
+    const { value, done } = await Promise.race([reader.read(), approvalFailure])
     buffer += decoder.decode(value, { stream: !done })
     const frames = buffer.split('\n\n')
     buffer = frames.pop() ?? ''
@@ -234,6 +239,7 @@ export async function consumeRunStream(
         })
       } else if (
         event.name === 'task_book'
+        || event.name === 'reasoning'
         || event.name === 'step_start'
         || event.name === 'step_done'
         || event.name === 'step_failed'
@@ -245,8 +251,16 @@ export async function consumeRunStream(
         handlers.onToolEvent?.(event.data as ToolStreamEvent)
       } else if (event.name === 'approval_request') {
         const d = event.data as ApprovalRequest
-        const approved = await handlers.onApprovalRequest?.(d) ?? false
-        await respondApproval(String(d.id), approved)
+        void Promise.resolve(handlers.onApprovalRequest?.(d) ?? false)
+          .then((approved) => respondApproval(String(d.id), approved))
+          .catch((error: unknown) => {
+            // An interrupt can settle the server-side approval while its local
+            // prompt is still visible. Keep consuming the authoritative result;
+            // the run owner will dismiss that stale prompt in its finally path.
+            if (isStaleApprovalResponse(error)) return
+            approvalError = error
+            rejectApprovalFailure(error)
+          })
       } else if (event.name === 'result') {
         finalResult = event.data as RunResult
       } else if (event.name === 'error') {
@@ -256,6 +270,7 @@ export async function consumeRunStream(
         )
       }
     }
+    if (approvalError) throw approvalError
     if (done) break
   }
 
@@ -313,4 +328,11 @@ async function respondApproval(id: string, approved: boolean): Promise<void> {
     body: JSON.stringify({ approved }),
   })
   if (!res.ok) throw localApiStatusError(res.status)
+}
+
+function isStaleApprovalResponse(error: unknown): boolean {
+  return typeof error === 'object'
+    && error !== null
+    && 'status' in error
+    && (error as { status?: unknown }).status === 404
 }

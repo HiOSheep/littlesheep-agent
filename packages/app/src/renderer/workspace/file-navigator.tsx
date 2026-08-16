@@ -22,11 +22,13 @@ export function WorkspaceFileNavigator({
   defaultWorkspacePath,
   usingTemporaryRoot,
   navigatorCollapsed,
+  navigatorWidth,
   expandedPaths,
   selectedPath,
   onOpenFileTab,
   onReturnToDefaultWorkspace,
   onNavigatorCollapsedChange,
+  onNavigatorWidthChange,
   onExpandedPathsChange,
   onTipChange,
 }: {
@@ -34,11 +36,13 @@ export function WorkspaceFileNavigator({
   defaultWorkspacePath: string
   usingTemporaryRoot: boolean
   navigatorCollapsed: boolean
+  navigatorWidth: number
   expandedPaths: string[]
   selectedPath: string
   onOpenFileTab: (root: string, path: string) => void
   onReturnToDefaultWorkspace: () => void
   onNavigatorCollapsedChange: (collapsed: boolean) => void
+  onNavigatorWidthChange: (width: number) => void
   onExpandedPathsChange: (update: StringListUpdater) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
@@ -183,8 +187,10 @@ export function WorkspaceFileNavigator({
   return (
     <WorkspaceNavigatorFrame
       collapsed={navigatorCollapsed}
+      width={navigatorWidth}
       ariaLabel="文件管理"
       onCollapsedChange={onNavigatorCollapsedChange}
+      onWidthChange={onNavigatorWidthChange}
       onTipChange={onTipChange}
     >
         <div className="workspace-files-toolbar workspace-page-leading-row">
@@ -269,7 +275,6 @@ export function WorkspaceFileNavigator({
               filterText={normalizedFilter}
               onToggleDirectory={toggleDirectory}
               onOpenFile={openFile}
-              onTipChange={onTipChange}
             />
           )}
           {rootInfo && (rootInfo.hiddenCount > 0 || rootInfo.truncated) && (
@@ -299,7 +304,6 @@ export function WorkspaceTreeRows({
   filterText,
   onToggleDirectory,
   onOpenFile,
-  onTipChange,
 }: {
   dirPath: string
   depth: number
@@ -310,7 +314,6 @@ export function WorkspaceTreeRows({
   filterText: string
   onToggleDirectory: (entry: WorkspaceEntry) => void
   onOpenFile: (entry: WorkspaceEntry) => void
-  onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const directory = directories[dirPath]
   if (!directory) return null
@@ -326,7 +329,6 @@ export function WorkspaceTreeRows({
         )
         const selected = entry.path === selectedPath
         const loading = loadingDirs.has(entry.path)
-        const tip = `${entry.name}\n${entry.path}`
         return (
           <div key={entry.path}>
             <button
@@ -337,11 +339,6 @@ export function WorkspaceTreeRows({
               aria-selected={!directoryEntry ? selected : undefined}
               style={{ '--workspace-tree-depth': depth } as CSSProperties}
               onClick={() => directoryEntry ? onToggleDirectory(entry) : onOpenFile(entry)}
-              onMouseEnter={(event) => onTipChange(buildFloatingHelpTip(tip, event.clientX, event.clientY))}
-              onMouseMove={(event) => onTipChange(buildFloatingHelpTip(tip, event.clientX, event.clientY))}
-              onMouseLeave={() => onTipChange(null)}
-              onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement(tip, event.currentTarget))}
-              onBlur={() => onTipChange(null)}
             >
               <span className={`workspace-tree-chevron ${open ? 'open' : ''}`}>
                 {directoryEntry ? <TreeChevronIcon /> : null}
@@ -368,7 +365,6 @@ export function WorkspaceTreeRows({
                     filterText={filterText}
                     onToggleDirectory={onToggleDirectory}
                     onOpenFile={onOpenFile}
-                    onTipChange={onTipChange}
                   />
                 )
                 : <WorkspaceTreeNotice text="正在读取..." indent={depth + 1} />

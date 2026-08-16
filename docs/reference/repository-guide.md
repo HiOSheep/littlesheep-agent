@@ -142,7 +142,7 @@
 | `packages/app/src/main/builtin-plugins.ts` | 内置插件目录；具体渠道实现仍通过动态 import 按需加载。 |
 | `packages/app/src/main/local-app-api-server.ts` | renderer 与主进程之间的 loopback Local App API 组合入口和生命周期。 |
 | `packages/app/src/main/local-app-api/` | Local App API 的 HTTP 基元、公共契约及 run、应用生命周期、项目、会话、Runtime、记忆、工作区、终端和扩展领域路由；`http.ts` 统一拥有 SSE 响应头、15 秒注释心跳、512 KiB 单连接待写上限和幂等清理。普通 Agent run 与 Checkpoint 续跑的观察连接断开不取消 Main 任务，终端主动命令仍保留断连取消。活动任务快照、`active_runs` SSE 与控制位于 `application-lifecycle-routes.ts`，组合入口位于 `run-lifecycle-routes.ts`，atom 高级管理与证据导出位于 `memory-atom-routes.ts`。 |
-| `packages/app/src/main/run-policy.ts`、`local-app-api/terminal-permission.ts` | Main 侧权限策略决议、逻辑容器边界复核和终端会话/命令审批；Renderer 的批准结果不能替代这里的判定。 |
+| `packages/app/src/main/run-policy.ts`、`local-app-api/terminal-permission.ts` | Main 侧 Agent 权限策略决议、逻辑容器边界复核和受控终端命令审批；用户交互终端固定使用 `workspace-user` 来源直接操作，Agent 命令固定使用 `agent` 来源，Renderer 不能改写来源或替代 Main 判定。 |
 | `packages/app/src/main/attachment-cache.ts`、`attachments.ts` | LS 受管附件缓存的稳定索引、配额/过期清理、安全删除校验，以及 run-scoped 附件解析与所有权分类。 |
 | `packages/app/src/main/data-root-migration.ts`、`data-root-metadata.ts` | 数据根 locator、迁移事务、同级 staging、流式哈希清单、启动前恢复、活动元数据内部路径重绑定和回滚；正式用户数据不得用于故障注入。 |
 | `packages/app/src/main/development-environment-definitions.ts` | 可管理开发环境的稳定 ID、中文标签、检测命令、可执行文件候选和分类；新增环境先在这里登记。 |

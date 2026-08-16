@@ -7,6 +7,7 @@ import { buildRunContext, readBootstrapFiles } from './context.js';
 import { createMockSessionManager, createMockMemoryStore } from './tests/helpers.js';
 import { DEFAULT_CONFIG } from '@littlesheep/config';
 import { DEFAULT_BRANDING } from '@littlesheep/branding';
+import { SessionManager } from '@littlesheep/session';
 import { textMessage } from '@littlesheep/types';
 import type { Message, RuntimeEventQueueLike } from '@littlesheep/types';
 
@@ -122,6 +123,81 @@ describe('buildRunContext', () => {
 
     expect(ctx.sessionSummary).toEqual(compaction);
     expect(ctx.history).toEqual([prior]);
+  });
+
+  it('keeps recent history and compaction summaries isolated between sessions', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ls-ctx-session-isolation-'));
+    try {
+      const sm = new SessionManager({ sessionsDir: dir });
+      const [sessionA, sessionB] = await Promise.all([
+        sm.create('test/model', 'Session A'),
+        sm.create('test/model', 'Session B'),
+      ]);
+      const historyA = textMessage('user', 'A_ONLY_SECRET', { sessionId: sessionA.id });
+      const historyB = textMessage('user', 'B_ONLY_SECRET', { sessionId: sessionB.id });
+      await Promise.all([
+        sm.append(sessionA.id, [historyA]),
+        sm.append(sessionB.id, [historyB]),
+      ]);
+      await Promise.all([
+        sm.updateMetadata(sessionA.id, {
+          compacted: true,
+          compaction: {
+            version: 1,
+            id: 'summary-a',
+            collapsedCount: 1,
+            summary: 'A_ONLY_SUMMARY',
+            compactedAt: '2026-08-14T00:00:00.000Z',
+          },
+        }),
+        sm.updateMetadata(sessionB.id, {
+          compacted: true,
+          compaction: {
+            version: 1,
+            id: 'summary-b',
+            collapsedCount: 1,
+            summary: 'B_ONLY_SUMMARY',
+            compactedAt: '2026-08-14T00:00:00.000Z',
+          },
+        }),
+      ]);
+
+      const [ctxA, ctxB] = await Promise.all([
+        buildRunContext({
+          sessionId: sessionA.id,
+          inbound: textMessage('user', 'continue A', { sessionId: sessionA.id }),
+          sessionManager: sm,
+          memoryStore: createMockMemoryStore(),
+          tools: [],
+          config: DEFAULT_CONFIG,
+          branding: DEFAULT_BRANDING,
+          model: 'test/model',
+          bootstrapDir: dir,
+        }),
+        buildRunContext({
+          sessionId: sessionB.id,
+          inbound: textMessage('user', 'continue B', { sessionId: sessionB.id }),
+          sessionManager: sm,
+          memoryStore: createMockMemoryStore(),
+          tools: [],
+          config: DEFAULT_CONFIG,
+          branding: DEFAULT_BRANDING,
+          model: 'test/model',
+          bootstrapDir: dir,
+        }),
+      ]);
+
+      expect(JSON.stringify(ctxA.history)).toContain('A_ONLY_SECRET');
+      expect(JSON.stringify(ctxA.history)).not.toContain('B_ONLY_SECRET');
+      expect(ctxA.sessionSummary?.summary).toBe('A_ONLY_SUMMARY');
+      expect(ctxA.sessionSummary?.summary).not.toContain('B_ONLY_SUMMARY');
+      expect(JSON.stringify(ctxB.history)).toContain('B_ONLY_SECRET');
+      expect(JSON.stringify(ctxB.history)).not.toContain('A_ONLY_SECRET');
+      expect(ctxB.sessionSummary?.summary).toBe('B_ONLY_SUMMARY');
+      expect(ctxB.sessionSummary?.summary).not.toContain('A_ONLY_SUMMARY');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('loads the preceding run summary and exact runtime clock configuration', async () => {

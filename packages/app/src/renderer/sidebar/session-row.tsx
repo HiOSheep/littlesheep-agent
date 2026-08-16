@@ -10,6 +10,7 @@ import {
 import { formatRelativeSessionTime } from '../app-shell/list-motion'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { ArchiveIcon, MoreIcon, PinIcon, RenameIcon, TrashIcon } from '../ui/icons'
+import { OverflowingLabel } from '../ui/overflowing-label'
 import { SidebarActionMenu } from './action-menu'
 
 
@@ -143,7 +144,11 @@ export function SessionRow({
         />
       ) : (
         <>
-          <span className="session-title">{session.title}</span>
+          <OverflowingLabel
+            label={session.title}
+            className="sidebar-overflowing-label session-title"
+            textClassName="sidebar-overflowing-label-text"
+          />
           <span className="session-tail" aria-hidden="true">
             <span className="session-time">{formatRelativeSessionTime(lastActiveAt, now)}</span>
           </span>
