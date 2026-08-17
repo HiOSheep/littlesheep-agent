@@ -104,7 +104,7 @@ describe('main attachment helpers', () => {
         ['Ship parser', 'LittleSheep'],
       ])
       XLSX.utils.book_append_sheet(workbook, sheet, 'Plan')
-      XLSX.writeFile(workbook, file)
+      writeFileSync(file, XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }))
 
       const attachment = await classifyAttachment(file)
       const prepared = await prepareRunAttachments([attachment])
