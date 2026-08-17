@@ -1,17 +1,34 @@
 // Owns Monaco-backed line comment interaction, view zones, and attachment publication.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type * as Monaco from 'monaco-editor'
-import type { AttachmentRef, AttachmentLineComment } from '../api'
+import type { AttachmentRef } from '../api'
 import {
   didLineCommentGestureDrag,
   resolveLineCommentGesture,
   type LineCommentRange,
 } from './line-comment-gesture'
+import {
+  createLineCommentFromDraft,
+  LINE_COMMENT_EDITOR_INITIAL_ZONE_HEIGHT,
+  lineCommentZoneHeight,
+  resolveLineCommentAddButtonLeft,
+  sameLineCommentRange,
+  LineCommentAddButton,
+  LineCommentCard,
+  LineCommentEditor,
+  useEditorAlignedLayerBounds,
+  useLineCommentDraft,
+  useLineCommentEditorAutoSize,
+  useLineCommentViewZones,
+  type LineCommentViewZoneSpec,
+  type WorkspaceLineComment,
+} from './line-comment-surface'
 
-export interface WorkspaceLineComment extends AttachmentLineComment {
-  id: string
-  createdAt: number
-}
+export {
+  LINE_COMMENT_ADD_BUTTON_SIZE,
+  resolveLineCommentAddButtonLeft,
+  type WorkspaceLineComment,
+} from './line-comment-model'
 
 export interface WorkspaceLineNumberMapping {
   toSourceLine: (modelLineNumber: number) => number | null
@@ -37,20 +54,6 @@ interface LineMetric {
   height: number
 }
 
-type LineCommentZoneHost = {
-  key: string
-  startLine: number
-  endLine: number
-  modelStartLine: number
-  modelEndLine: number
-  top: number
-  height: number
-  host: HTMLDivElement
-} & (
-  | { kind: 'editor' }
-  | { kind: 'comment'; comment: WorkspaceLineComment }
-)
-
 interface PendingLineCommentGesture {
   pointerId: number
   pressedLine: number
@@ -59,15 +62,6 @@ interface PendingLineCommentGesture {
   didDrag: boolean
 }
 
-interface LineCommentEditorZoneRecord {
-  id: string
-  key: string
-  viewZone: Monaco.editor.IViewZone
-}
-
-export const LINE_COMMENT_EDITOR_INITIAL_ZONE_HEIGHT = 152
-export const LINE_COMMENT_TEXTAREA_MIN_HEIGHT = 62
-export const LINE_COMMENT_ADD_BUTTON_SIZE = 22
 const IDENTITY_LINE_NUMBERS: WorkspaceLineNumberMapping = {
   toSourceLine: (lineNumber) => lineNumber,
   toModelLine: (lineNumber) => lineNumber,
@@ -91,15 +85,10 @@ export function WorkspaceLineCommentOverlay({
   buildAttachment,
 }: WorkspaceLineCommentOverlayProps) {
   const [hoveredLine, setHoveredLine] = useState<number | null>(null)
-  const [editingRange, setEditingRange] = useState<LineCommentRange | null>(null)
-  const [draftText, setDraftText] = useState('')
+  const draft = useLineCommentDraft()
+  const { editingRange, draftText } = draft
   const [layoutVersion, setLayoutVersion] = useState(0)
-  const [zoneHosts, setZoneHosts] = useState<LineCommentZoneHost[]>([])
   const draftRef = useRef<HTMLTextAreaElement>(null)
-  const editorZoneRecordRef = useRef<LineCommentEditorZoneRecord | null>(null)
-  const editorSizeFrameRef = useRef<number>()
-  const layerRef = useRef<HTMLDivElement>(null)
-  const [layerBounds, setLayerBounds] = useState<CSSProperties>()
   const mappedEditingRange = useMemo(
     () => editingRange ? mapModelRangeToSource(editingRange, lineNumbers) : null,
     [editingRange, lineNumbers],
@@ -113,61 +102,51 @@ export function WorkspaceLineCommentOverlay({
     }, lineNumbers)
     return modelRange ? [{ comment, modelRange }] : []
   }), [comments, lineNumbers])
+  const zoneSpecs = useMemo<LineCommentViewZoneSpec[]>(() => {
+    const model = editor?.getModel()
+    if (!model) return []
+    const specs: LineCommentViewZoneSpec[] = []
+    if (activeEditingRange && activeSourceRange) {
+      const modelEndLine = Math.min(activeEditingRange.endLine, model.getLineCount())
+      specs.push({
+        key: `editor:${activeEditingRange.startLine}-${modelEndLine}`,
+        kind: 'editor',
+        range: activeSourceRange,
+        afterLineNumber: modelEndLine,
+        height: LINE_COMMENT_EDITOR_INITIAL_ZONE_HEIGHT,
+      })
+    }
+    for (const { comment, modelRange } of mappedComments) {
+      specs.push({
+        key: comment.id,
+        kind: 'comment',
+        range: { startLine: comment.startLine, endLine: comment.endLine ?? comment.startLine },
+        afterLineNumber: Math.min(modelRange.endLine, model.getLineCount()),
+        height: lineCommentZoneHeight(comment.text),
+        comment,
+      })
+    }
+    return specs
+  }, [activeEditingRange, activeSourceRange, editor, mappedComments])
+  const { zoneHosts, setZoneHosts, editorZoneRecordRef, editorZoneHost }
+    = useLineCommentViewZones(editor, zoneSpecs)
   const visibleZoneHosts = activeEditingRange === null
     ? zoneHosts.filter((zone) => zone.kind !== 'editor')
     : zoneHosts
-  const editorZoneHost = zoneHosts.find((zone) => zone.kind === 'editor')?.host ?? null
-
-  const syncLayerBounds = useCallback(() => {
-    if (!alignToEditor) {
-      setLayerBounds((current) => current === undefined ? current : undefined)
-      return
-    }
-    const layer = layerRef.current
-    const editorNode = editor?.getDomNode()
-    const offsetParent = layer?.offsetParent
-    if (!layer || !editorNode || !(offsetParent instanceof HTMLElement)) return
-    const editorRect = editorNode.getBoundingClientRect()
-    const parentRect = offsetParent.getBoundingClientRect()
-    const next = {
-      top: editorRect.top - parentRect.top,
-      left: editorRect.left - parentRect.left,
-      width: editorRect.width,
-      height: editorRect.height,
-      display: editorRect.width > 0.5 && editorRect.height > 0.5 ? undefined : 'none',
-    } satisfies CSSProperties
-    setLayerBounds((current) => sameLayerBounds(current, next) ? current : next)
-  }, [alignToEditor, editor])
-
-  const syncDraftEditorSize = useCallback(() => {
-    const textarea = draftRef.current
-    const record = editorZoneRecordRef.current
-    if (!editor || !textarea || !record) return
-
-    textarea.style.height = '0px'
-    const textareaHeight = Math.max(
-      LINE_COMMENT_TEXTAREA_MIN_HEIGHT,
-      Math.ceil(textarea.scrollHeight),
-    )
-    textarea.style.height = `${textareaHeight}px`
-
-    const form = textarea.closest<HTMLFormElement>('.workspace-line-comment-editor')
-    const overlay = form?.parentElement
-    if (!form || !overlay) return
-    const formHeight = form.getBoundingClientRect().height
-    if (!Number.isFinite(formHeight) || formHeight <= 0) return
-    const overlayStyle = window.getComputedStyle(overlay)
-    const nextZoneHeight = Math.ceil(
-      formHeight
-      + readCssPixelValue(overlayStyle.paddingTop)
-      + readCssPixelValue(overlayStyle.paddingBottom),
-    )
-    if (record.viewZone.heightInPx === nextZoneHeight) return
-
-    record.viewZone.heightInPx = nextZoneHeight
-    editor.changeViewZones((accessor) => accessor.layoutZone(record.id))
-    setZoneHosts((current) => updateZoneHeight(current, record.key, nextZoneHeight))
-  }, [editor])
+  const { layerRef, layerBounds } = useEditorAlignedLayerBounds({
+    editor,
+    enabled: alignToEditor,
+    visible: true,
+    refreshKey: layoutVersion,
+  })
+  useLineCommentEditorAutoSize({
+    editor,
+    editorZoneHost,
+    draftText,
+    textareaRef: draftRef,
+    editorZoneRecordRef,
+    setZoneHosts,
+  })
 
   useEffect(() => {
     if (!editor || !monaco) return
@@ -195,21 +174,6 @@ export function WorkspaceLineCommentOverlay({
       subscriptions.forEach((subscription) => subscription.dispose())
     }
   }, [editor, lineNumbers, monaco])
-
-  useLayoutEffect(() => {
-    syncLayerBounds()
-  }, [layoutVersion, syncLayerBounds])
-
-  useEffect(() => {
-    if (!alignToEditor || typeof ResizeObserver === 'undefined') return
-    const editorNode = editor?.getDomNode()
-    const offsetParent = layerRef.current?.offsetParent
-    if (!editorNode || !(offsetParent instanceof HTMLElement)) return
-    const observer = new ResizeObserver(syncLayerBounds)
-    observer.observe(editorNode)
-    observer.observe(offsetParent)
-    return () => observer.disconnect()
-  }, [alignToEditor, editor, syncLayerBounds])
 
   useEffect(() => {
     if (!editor || !monaco || !readOnly) return
@@ -292,130 +256,8 @@ export function WorkspaceLineCommentOverlay({
   }, [editingRange, editor, lineNumbers, monaco, readOnly])
 
   useEffect(() => {
-    if (readOnly) return
-    if (editingRange !== null) setEditingRange(null)
-    if (draftText !== '') setDraftText('')
-  }, [draftText, editingRange, readOnly])
-
-  useEffect(() => {
-    if (activeEditingRange === null) return
-    const frame = window.requestAnimationFrame(() => draftRef.current?.focus())
-    return () => window.cancelAnimationFrame(frame)
-  }, [activeEditingRange, editorZoneHost])
-
-  useLayoutEffect(() => {
-    if (!editorZoneHost) return
-    syncDraftEditorSize()
-  }, [draftText, editorZoneHost, syncDraftEditorSize])
-
-  useEffect(() => {
-    const textarea = draftRef.current
-    if (!editorZoneHost || !textarea || typeof ResizeObserver === 'undefined') return
-    let observedWidth = textarea.getBoundingClientRect().width
-    const observer = new ResizeObserver(([entry]) => {
-      const nextWidth = entry?.contentRect.width
-      if (nextWidth === undefined || Math.abs(nextWidth - observedWidth) < 0.5) return
-      observedWidth = nextWidth
-      window.cancelAnimationFrame(editorSizeFrameRef.current ?? 0)
-      editorSizeFrameRef.current = window.requestAnimationFrame(syncDraftEditorSize)
-    })
-    observer.observe(textarea)
-    return () => {
-      observer.disconnect()
-      window.cancelAnimationFrame(editorSizeFrameRef.current ?? 0)
-      editorSizeFrameRef.current = undefined
-    }
-  }, [editorZoneHost, syncDraftEditorSize])
-
-  useLayoutEffect(() => {
-    if (!editor) {
-      editorZoneRecordRef.current = null
-      setZoneHosts([])
-      return
-    }
-    const model = editor.getModel()
-    if (!model) {
-      editorZoneRecordRef.current = null
-      setZoneHosts([])
-      return
-    }
-    const nextHosts: LineCommentZoneHost[] = []
-    const zoneIds: string[] = []
-    let nextEditorZoneRecord: LineCommentEditorZoneRecord | null = null
-    let disposed = false
-    editor.changeViewZones((accessor) => {
-      if (activeEditingRange !== null && activeSourceRange !== null) {
-        const host = createZoneHost('editor')
-        const modelStartLine = Math.min(activeEditingRange.startLine, model.getLineCount())
-        const modelEndLine = Math.min(activeEditingRange.endLine, model.getLineCount())
-        const height = LINE_COMMENT_EDITOR_INITIAL_ZONE_HEIGHT
-        const key = `editor:${modelStartLine}-${modelEndLine}`
-        const zone: LineCommentZoneHost = {
-          key,
-          kind: 'editor',
-          startLine: activeSourceRange.startLine,
-          endLine: activeSourceRange.endLine,
-          modelStartLine,
-          modelEndLine,
-          top: -height,
-          height,
-          host,
-        }
-        const viewZone: Monaco.editor.IViewZone = {
-          afterLineNumber: modelEndLine,
-          heightInPx: height,
-          domNode: host,
-          onDomNodeTop: (top) => {
-            zone.top = top
-            if (!disposed) setZoneHosts((current) => updateZoneTop(current, zone.key, top))
-          },
-        }
-        const id = accessor.addZone(viewZone)
-        nextEditorZoneRecord = { id, key, viewZone }
-        zoneIds.push(id)
-        nextHosts.push(zone)
-      }
-      for (const { comment, modelRange } of mappedComments) {
-        const host = createZoneHost('comment')
-        const modelStartLine = Math.min(modelRange.startLine, model.getLineCount())
-        const modelEndLine = Math.min(modelRange.endLine, model.getLineCount())
-        const height = lineCommentZoneHeight(comment.text)
-        const zone: LineCommentZoneHost = {
-          key: comment.id,
-          kind: 'comment',
-          startLine: comment.startLine,
-          endLine: comment.endLine ?? comment.startLine,
-          modelStartLine,
-          modelEndLine,
-          top: -height,
-          height,
-          comment,
-          host,
-        }
-        zoneIds.push(accessor.addZone({
-          afterLineNumber: modelEndLine,
-          heightInPx: height,
-          domNode: host,
-          onDomNodeTop: (top) => {
-            zone.top = top
-            if (!disposed) setZoneHosts((current) => updateZoneTop(current, zone.key, top))
-          },
-        }))
-        nextHosts.push(zone)
-      }
-    })
-    editorZoneRecordRef.current = nextEditorZoneRecord
-    setZoneHosts(nextHosts)
-    return () => {
-      disposed = true
-      if (editorZoneRecordRef.current === nextEditorZoneRecord) {
-        editorZoneRecordRef.current = null
-      }
-      editor.changeViewZones((accessor) => {
-        for (const zoneId of zoneIds) accessor.removeZone(zoneId)
-      })
-    }
-  }, [activeEditingRange, activeSourceRange, editor, mappedComments])
+    if (!readOnly) draft.cancel()
+  }, [draft.cancel, readOnly])
 
   useEffect(() => {
     if (!editor || !monaco) return
@@ -459,19 +301,17 @@ export function WorkspaceLineCommentOverlay({
   function beginComment(range: LineCommentRange) {
     if (!readOnly || !mapModelRangeToSource(range, lineNumbers)) return
     setHoveredLine(range.endLine)
-    setEditingRange(range)
-    setDraftText('')
+    draft.begin(range)
     editor?.revealLineInCenterIfOutsideViewport(range.endLine)
   }
 
   function cancelComment() {
-    setEditingRange(null)
-    setDraftText('')
+    draft.cancel()
   }
 
   function toggleComment(range: LineCommentRange) {
     if (!readOnly) return
-    if (editingRange?.startLine === range.startLine && editingRange.endLine === range.endLine) {
+    if (sameLineCommentRange(editingRange, range)) {
       cancelComment()
       return
     }
@@ -482,15 +322,8 @@ export function WorkspaceLineCommentOverlay({
     if (!readOnly || editingRange === null) return
     const sourceRange = mapModelRangeToSource(editingRange, lineNumbers)
     if (!sourceRange) return
-    const text = draftText.trim()
-    if (!text) return
-    const comment: WorkspaceLineComment = {
-      id: createCommentId(),
-      startLine: sourceRange.startLine,
-      ...(sourceRange.endLine === sourceRange.startLine ? {} : { endLine: sourceRange.endLine }),
-      text,
-      createdAt: Date.now(),
-    }
+    const comment = createLineCommentFromDraft({ ...draft.state, editingRange: sourceRange })
+    if (!comment) return
     onCommentsChange([...comments, comment])
     onAddAttachment(buildAttachment?.(comment) ?? {
       path: filePath,
@@ -515,18 +348,13 @@ export function WorkspaceLineCommentOverlay({
     >
       {readOnly && hoveredLine !== null && hoveredSourceLine !== null && hoveredMetric
         && addButtonLeft !== null && activeEditingRange === null && (
-        <button
-          className="workspace-line-comment-add"
-          type="button"
-          aria-label={`为第 ${hoveredSourceLine} 行添加评论`}
-          style={{
-            top: hoveredMetric.top + Math.max(0, (hoveredMetric.height - LINE_COMMENT_ADD_BUTTON_SIZE) / 2),
-            left: addButtonLeft,
-          }}
+        <LineCommentAddButton
+          sourceLine={hoveredSourceLine}
+          top={hoveredMetric.top}
+          lineHeight={hoveredMetric.height}
+          left={addButtonLeft}
           onClick={() => toggleComment({ startLine: hoveredLine, endLine: hoveredLine })}
-        >
-          <span className="workspace-line-comment-add-icon" aria-hidden="true" />
-        </button>
+        />
       )}
 
       {visibleZoneHosts.map((zone) => (
@@ -536,51 +364,16 @@ export function WorkspaceLineCommentOverlay({
           style={{ top: zone.top, height: zone.height }}
         >
           {zone.kind === 'editor' ? (
-            <form
-              className="workspace-line-comment-editor"
-              onSubmit={(event) => {
-                event.preventDefault()
-                publishComment()
-              }}
-            >
-              <div className="workspace-line-comment-editor-heading">
-                <strong>发布评论</strong>
-              </div>
-              <textarea
-                ref={draftRef}
-                value={draftText}
-                onChange={(event) => setDraftText(event.target.value)}
-                placeholder="添加此更改的上下文"
-                rows={3}
-                maxLength={4000}
-              />
-              <div className="workspace-line-comment-editor-actions">
-                <span>{formatLineRange(zone.startLine, zone.endLine)}</span>
-                <button
-                  type="button"
-                  onClick={cancelComment}
-                >
-                  取消
-                </button>
-                <button
-                  type="submit"
-                  disabled={!draftText.trim()}
-                >
-                  发布评论
-                </button>
-              </div>
-            </form>
+            <LineCommentEditor
+              textareaRef={draftRef}
+              draftText={draftText}
+              range={{ startLine: zone.startLine, endLine: zone.endLine }}
+              onDraftChange={draft.change}
+              onCancel={cancelComment}
+              onPublish={publishComment}
+            />
           ) : (
-            <article
-              className="workspace-line-comment-card"
-              data-comment-line={zone.comment.startLine}
-            >
-              <p>{zone.comment.text}</p>
-              <div className="workspace-line-comment-card-meta">
-                <span>{formatLineRange(zone.comment.startLine, zone.comment.endLine ?? zone.comment.startLine)}</span>
-                <span>已发布</span>
-              </div>
-            </article>
+            <LineCommentCard comment={zone.comment} />
           )}
         </div>
       ))}
@@ -618,20 +411,6 @@ function readLineMetric(
   return { top: position.top, height: position.height }
 }
 
-export function resolveLineCommentAddButtonLeft(
-  layout: Pick<
-    Monaco.editor.EditorLayoutInfo,
-    'lineNumbersLeft' | 'lineNumbersWidth' | 'decorationsLeft' | 'decorationsWidth' | 'contentLeft'
-  >,
-): number | null {
-  const lineNumberRight = layout.lineNumbersLeft + layout.lineNumbersWidth
-  const gutterLeft = Math.max(lineNumberRight, layout.decorationsLeft)
-  const gutterRight = Math.min(layout.contentLeft, layout.decorationsLeft + layout.decorationsWidth)
-  const gutterWidth = gutterRight - gutterLeft
-  if (gutterWidth < LINE_COMMENT_ADD_BUTTON_SIZE) return null
-  return gutterLeft + (gutterWidth - LINE_COMMENT_ADD_BUTTON_SIZE) / 2
-}
-
 export function mapModelRangeToSource(
   range: LineCommentRange,
   lineNumbers: WorkspaceLineNumberMapping,
@@ -666,65 +445,4 @@ export function mapSourceRangeToModel(
     startLine: modelLines[0]!,
     endLine: modelLines[modelLines.length - 1]!,
   }
-}
-
-function sameLayerBounds(current: CSSProperties | undefined, next: CSSProperties): boolean {
-  if (!current) return false
-  return current.top === next.top
-    && current.left === next.left
-    && current.width === next.width
-    && current.height === next.height
-    && current.display === next.display
-}
-
-export function createCommentId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return `line-comment-${crypto.randomUUID()}`
-  }
-  return `line-comment-${Date.now()}-${Math.random().toString(36).slice(2)}`
-}
-
-function createZoneHost(kind: 'editor' | 'comment'): HTMLDivElement {
-  const host = document.createElement('div')
-  host.className = `workspace-line-comment-zone ${kind}`
-  host.setAttribute('aria-hidden', 'true')
-  return host
-}
-
-export function updateZoneTop<T extends { key: string; top: number }>(
-  zones: T[],
-  key: string,
-  top: number,
-): T[] {
-  const index = zones.findIndex((zone) => zone.key === key)
-  if (index < 0 || zones[index]?.top === top) return zones
-  const next = [...zones]
-  next[index] = { ...next[index]!, top }
-  return next
-}
-
-export function updateZoneHeight<T extends { key: string; height: number }>(
-  zones: T[],
-  key: string,
-  height: number,
-): T[] {
-  const index = zones.findIndex((zone) => zone.key === key)
-  if (index < 0 || zones[index]?.height === height) return zones
-  const next = [...zones]
-  next[index] = { ...next[index]!, height }
-  return next
-}
-
-export function readCssPixelValue(value: string): number {
-  const parsed = Number.parseFloat(value)
-  return Number.isFinite(parsed) ? parsed : 0
-}
-
-export function lineCommentZoneHeight(text: string): number {
-  const estimatedLines = Math.max(1, Math.ceil(text.length / 72))
-  return Math.min(132, 58 + estimatedLines * 18)
-}
-
-export function formatLineRange(startLine: number, endLine: number): string {
-  return startLine === endLine ? `第 ${startLine} 行` : `第 ${startLine}-${endLine} 行`
 }

@@ -15,6 +15,8 @@ import {
 describe('workspace line comments', () => {
   it('uses Monaco line events and inline view zones instead of covering later code', async () => {
     const source = await readFile(new URL('./line-comments.tsx', import.meta.url), 'utf8')
+    const surface = await readFile(new URL('./line-comment-surface.tsx', import.meta.url), 'utf8')
+    const viewZones = await readFile(new URL('./line-comment-view-zones.ts', import.meta.url), 'utf8')
     const styles = await readRendererStyleSource()
 
     expect(source).toContain('editor.onMouseMove')
@@ -25,11 +27,12 @@ describe('workspace line comments', () => {
     expect(source).toContain('else toggleComment(range)')
     expect(source).toContain("targetElement?.closest('.workspace-line-comment-add, .workspace-line-comment-overlay-zone')")
     expect(source).not.toContain('pointerEvent.preventDefault()')
-    expect(source).toContain('editor.changeViewZones')
+    expect(source).toContain('useLineCommentViewZones(editor, zoneSpecs)')
+    expect(viewZones).toContain('editor.changeViewZones')
     expect(source).toContain('afterLineNumber: modelEndLine')
-    expect(source).toContain('onDomNodeTop: (top) => {')
-    expect(source).toContain('workspace-line-comment-add')
-    expect(source).toContain('workspace-line-comment-zone')
+    expect(viewZones).toContain('zone.viewZone.onDomNodeTop = (top) => {')
+    expect(surface).toContain('workspace-line-comment-add')
+    expect(viewZones).toContain('workspace-line-comment-zone')
     expect(source).toContain('workspace-line-comment-overlay-zone')
     expect(source).toContain('comment.endLine === undefined ? {} : { endLine: comment.endLine }')
     expect(styles).toContain('.workspace-comment-hover-line')
@@ -95,11 +98,13 @@ describe('workspace line comments', () => {
 
     const source = await readFile(new URL('./line-comments.tsx', import.meta.url), 'utf8')
     const deletedSource = await readFile(new URL('./review-inline-deleted-comments.tsx', import.meta.url), 'utf8')
+    const surface = await readFile(new URL('./line-comment-surface.tsx', import.meta.url), 'utf8')
     const styles = await readRendererStyleSource()
-    expect(source).toContain('left: addButtonLeft')
-    expect(deletedSource).toContain('left: addButtonLeft')
-    expect(source).toContain('workspace-line-comment-add-icon')
-    expect(deletedSource).toContain('workspace-line-comment-add-icon')
+    expect(source).toContain('left={addButtonLeft}')
+    expect(deletedSource).toContain('left={addButtonLeft}')
+    expect(source).toContain('<LineCommentAddButton')
+    expect(deletedSource).toContain('<LineCommentAddButton')
+    expect(surface.split('workspace-line-comment-add-icon').length - 1).toBe(1)
     expect(styles).toMatch(/\.workspace-line-comment-add\s*\{[^}]*border:\s*0;/s)
     expect(styles).toMatch(/\.workspace-line-comment-add-icon::before\s*\{[^}]*width:\s*10px;[^}]*height:\s*2px;/s)
     expect(styles).toMatch(/\.workspace-line-comment-add-icon::after\s*\{[^}]*width:\s*2px;[^}]*height:\s*10px;/s)
@@ -125,14 +130,19 @@ describe('workspace line comments', () => {
 
   it('keeps native controls outside Monaco while view zones only reserve layout space', async () => {
     const source = await readFile(new URL('./line-comments.tsx', import.meta.url), 'utf8')
+    const deletedSource = await readFile(new URL('./review-inline-deleted-comments.tsx', import.meta.url), 'utf8')
+    const surface = await readFile(new URL('./line-comment-surface.tsx', import.meta.url), 'utf8')
+    const viewZones = await readFile(new URL('./line-comment-view-zones.ts', import.meta.url), 'utf8')
     const styles = await readRendererStyleSource()
 
     expect(source).not.toContain("import { createPortal } from 'react-dom'")
-    expect(source).not.toContain('host.addEventListener')
+    expect(viewZones).not.toContain('host.addEventListener')
     expect(source).toContain('className={`workspace-line-comment-overlay-zone ${zone.kind}`}')
-    expect(source).toContain("host.setAttribute('aria-hidden', 'true')")
-    expect(source).toContain('onClick={cancelComment}')
-    expect(source).toContain('onSubmit={(event) => {')
+    expect(viewZones).toContain("host.setAttribute('aria-hidden', 'true')")
+    expect(surface).toContain('onClick={onCancel}')
+    expect(surface).toContain('onSubmit={(event) => {')
+    expect(source).not.toContain('<form')
+    expect(deletedSource).not.toContain('<form')
     expect(source).not.toContain('data-line-comment-action')
     expect(source).not.toContain('actionButton.dataset.lineCommentAction')
     expect(styles).toMatch(/\.workspace-line-comment-zone\s*\{[^}]*pointer-events:\s*none/s)
@@ -140,22 +150,23 @@ describe('workspace line comments', () => {
   })
 
   it('keeps the comment editor as one flat surface with one line-range label', async () => {
-    const source = await readFile(new URL('./line-comments.tsx', import.meta.url), 'utf8')
+    const source = await readFile(new URL('./line-comment-surface.tsx', import.meta.url), 'utf8')
     const styles = await readRendererStyleSource()
 
-    const lineRangeLabel = '<span>{formatLineRange(zone.startLine, zone.endLine)}</span>'
+    const lineRangeLabel = '<span>{formatLineRange(range.startLine, range.endLine)}</span>'
     expect(source.split(lineRangeLabel).length - 1).toBe(1)
+    expect(source.split('<form').length - 1).toBe(1)
     expect(styles).toMatch(/\.workspace-line-comment-editor,[\s\S]*?background:\s*var\(--surface\);[\s\S]*?border:\s*0;[\s\S]*?box-shadow:\s*none;/s)
     expect(styles).toMatch(/\.workspace-line-comment-editor textarea\s*\{[\s\S]*?background:\s*transparent;[\s\S]*?border:\s*0;[\s\S]*?border-radius:\s*0;[\s\S]*?box-shadow:\s*none;/s)
   })
 
   it('auto-sizes the draft and its Monaco view zone without a resize handle', async () => {
-    const source = await readFile(new URL('./line-comments.tsx', import.meta.url), 'utf8')
+    const source = await readFile(new URL('./line-comment-surface.tsx', import.meta.url), 'utf8')
     const styles = await readRendererStyleSource()
 
     expect(source).toContain("textarea.style.height = '0px'")
     expect(source).toContain('Math.ceil(textarea.scrollHeight)')
-    expect(source).toContain('record.viewZone.heightInPx = nextZoneHeight')
+    expect(source).toContain('record.zone.viewZone.heightInPx = nextZoneHeight')
     expect(source).toContain('accessor.layoutZone(record.id)')
     expect(source).toContain('new ResizeObserver')
     expect(source).not.toContain('const height = 190')
@@ -176,7 +187,7 @@ describe('workspace line comments', () => {
     expect(source).toContain('const mappedEditingRange = useMemo')
     expect(source).toContain('const activeEditingRange = readOnly && mappedEditingRange')
     expect(source).toContain('if (!readOnly) return')
-    expect(source).toContain('setEditingRange(null)')
+    expect(source).toContain('if (!readOnly) draft.cancel()')
     expect(source).toContain('readOnly && hoveredLine !== null')
     expect(source).toContain("className: 'workspace-comment-hover-line'")
   })

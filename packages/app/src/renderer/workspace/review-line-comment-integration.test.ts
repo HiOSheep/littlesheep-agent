@@ -8,6 +8,9 @@ describe('review line comment integration', () => {
     const diffSource = await readFile(new URL('./review-diff.tsx', import.meta.url), 'utf8')
     const panelSource = await readFile(new URL('./panel.tsx', import.meta.url), 'utf8')
     const previewSource = await readFile(new URL('./preview-pane.tsx', import.meta.url), 'utf8')
+    const commentSource = await readFile(new URL('./line-comments.tsx', import.meta.url), 'utf8')
+    const deletedSource = await readFile(new URL('./review-inline-deleted-comments.tsx', import.meta.url), 'utf8')
+    const surfaceSource = await readFile(new URL('./line-comment-surface.tsx', import.meta.url), 'utf8')
 
     expect(diffSource.split('<WorkspaceLineCommentOverlay').length - 1).toBe(2)
     expect(diffSource).toContain('<WorkspaceReviewInlineDeletedComments')
@@ -23,6 +26,16 @@ describe('review line comment integration', () => {
     expect(diffSource).not.toContain('?? []')
     expect(panelSource).not.toContain('?? []')
     expect(previewSource).not.toContain('comments={comments ?? []}')
+    expect(surfaceSource.split('export function LineCommentEditor(').length - 1).toBe(1)
+    expect(surfaceSource.split('export function LineCommentCard(').length - 1).toBe(1)
+    expect(commentSource).toContain('<LineCommentEditor')
+    expect(deletedSource).toContain('<LineCommentEditor')
+    expect(commentSource).not.toContain('className="workspace-line-comment-editor"')
+    expect(deletedSource).not.toContain('className="workspace-line-comment-editor"')
+    expect(commentSource).toContain('mapModelRangeToSource')
+    expect(commentSource).toContain('afterLineNumber: modelEndLine')
+    expect(deletedSource).toContain('resolveDeletedLineRange')
+    expect(deletedSource).toContain('afterLineNumber: targetMap.get(range.endLine)!.modifiedAnchorModelLine')
   })
 
   it('opens contiguous deleted rows on click or drag and rejects gaps', () => {
