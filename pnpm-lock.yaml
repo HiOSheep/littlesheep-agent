@@ -544,9 +544,6 @@ importers:
       '@littlesheep/llm':
         specifier: workspace:*
         version: link:../llm
-      '@littlesheep/types':
-        specifier: workspace:*
-        version: link:../types
 
 packages:
 

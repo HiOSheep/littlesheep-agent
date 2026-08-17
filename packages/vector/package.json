@@ -17,7 +17,6 @@
         "typecheck": "tsc -p tsconfig.json --noEmit"
     },
     "dependencies": {
-        "@littlesheep/llm": "workspace:*",
-        "@littlesheep/types": "workspace:*"
+        "@littlesheep/llm": "workspace:*"
     }
 }
