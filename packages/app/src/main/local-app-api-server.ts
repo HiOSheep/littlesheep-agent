@@ -2,6 +2,7 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { closeHttpServer } from './http-server-shutdown.js'
+import { bindFetchCompatibleHttpServer } from './fetch-compatible-port.js'
 import { join } from 'node:path'
 import type { AgentRunner } from '@littlesheep/runner'
 import type { Config } from '@littlesheep/config'
@@ -91,64 +92,59 @@ export async function startLocalAppApiServer(
   }
   await developmentEnvironmentManager.initialize()
 
-  return new Promise<LocalAppApiServer>((resolve, reject) => {
-    const server = createServer((req, res) => {
-      res.setHeader('Access-Control-Allow-Origin', '*')
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
-      if (req.method === 'OPTIONS') {
-        res.writeHead(204)
+  const server = createServer((req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204)
+      res.end()
+      return
+    }
+
+    route(
+      req,
+      res,
+      () => currentRunner,
+      () => currentPluginHost,
+      () => currentConfig,
+      (c: Config) => { currentConfig = c },
+      routeOptions,
+      projectRebinding,
+      attachmentCache,
+      runRouter,
+      terminalRouter,
+      developmentEnvironmentManager,
+    ).catch((err) => {
+      const status = err instanceof HttpError ? err.status : 500
+      if (!res.headersSent) {
+        json(res, status, { error: (err as Error).message })
+      } else {
         res.end()
-        return
       }
-
-      route(
-        req,
-        res,
-        () => currentRunner,
-        () => currentPluginHost,
-        () => currentConfig,
-        (c: Config) => { currentConfig = c },
-        routeOptions,
-        projectRebinding,
-        attachmentCache,
-        runRouter,
-        terminalRouter,
-        developmentEnvironmentManager,
-      ).catch((err) => {
-        const status = err instanceof HttpError ? err.status : 500
-        if (!res.headersSent) {
-          json(res, status, { error: (err as Error).message })
-        } else {
-          res.end()
-        }
-      })
-    })
-
-    server.on('error', reject)
-    server.listen(opts.port ?? 0, '127.0.0.1', () => {
-      const addr = server.address()
-      const port = typeof addr === 'object' && addr ? addr.port : 0
-      resolve({
-        port,
-        setRunner: (r: AgentRunner) => {
-          currentRunner = r
-        },
-        setPluginHost: (host: PluginHost) => {
-          currentPluginHost = host
-        },
-        setConfig: (c: Config) => {
-          currentConfig = c
-        },
-        stop: async () => {
-          runRouter.stop()
-          terminalRouter.stop()
-          await embeddingModelManager.shutdown()
-          await closeHttpServer(server)
-        },
-      })
     })
   })
+
+  const port = await bindFetchCompatibleHttpServer(server, opts.port ?? 0)
+
+  return {
+    port,
+    setRunner: (r: AgentRunner) => {
+      currentRunner = r
+    },
+    setPluginHost: (host: PluginHost) => {
+      currentPluginHost = host
+    },
+    setConfig: (c: Config) => {
+      currentConfig = c
+    },
+    stop: async () => {
+      runRouter.stop()
+      terminalRouter.stop()
+      await embeddingModelManager.shutdown()
+      await closeHttpServer(server)
+    },
+  }
 }
 
 type RunnerGetter = () => AgentRunner
