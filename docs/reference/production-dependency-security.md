@@ -1,6 +1,6 @@
 # 生产依赖安全记录
 
-最后更新：2026-08-17 10:39:01
+最后更新：2026-08-17 11:15:44
 
 本文件只记录无法立即由上游依赖图自然修复、因而需要在 workspace 配置精确固定的生产依赖。每项必须给出来源、完整性、兼容边界、移除条件和复查日期；上游满足安全版本后应删除 override，而不是把临时固定永久化。
 
@@ -13,7 +13,7 @@
 | `adm-zip` | `0.6.0` | npm registry；lockfile integrity `sha512-XleryMhbuksdKtofnWZ9Sk+4CUTbms4Mb/EU32SZwToAyZ5RgVos/ki8n+yr0LWHOGKuakbXTuuYNHLQjhddgg==` | MIT；Node `>=14.0` | 修复低于 `0.6.0` 的恶意 ZIP 超大内存分配问题 |
 | `sharp` | `0.35.0` | npm registry；lockfile integrity `sha512-BqvG5XbwPZ4NV0DK90d86leEECMsoa8bO0nqnKWlBDYxri4GJ7c4EDInaF6q20lTh/mATmnDIKWJFfXnoVfH5g==` | Apache-2.0；Node `>=20.9.0` | 修复低于 `0.35.0` 的继承 libvips 漏洞 |
 
-兼容约束：仓库最低 Node 版本仍是 `>=20`，但安装 `sharp@0.35.0` 实际要求 Node `>=20.9.0`；正式验证环境为 Node `v26.4.0` 和 Electron `36.9.5`。升级必须通过本地 Embedding、ONNX 加载、图片处理和实际 Electron runtime 验证。
+兼容约束：根清单最低 Node 版本同步调整为 `>=20.9.0`，与 `sharp@0.35.0` 的真实 engine 要求一致，避免向 Node 20.0-20.8 做出错误兼容承诺；正式验证环境为 Node `v26.4.0` 和 Electron `36.9.5`。升级必须通过本地 Embedding、ONNX 加载、图片处理和实际 Electron runtime 验证。
 
 移除条件：当受支持的 Transformers/ONNX 版本在无 override 情况下自然解析到 `adm-zip>=0.6.0`，且 Transformers 对 `sharp` 的声明范围包含已修复版本时，分别删除对应 override 并重新执行生产审计和运行时验证。
 

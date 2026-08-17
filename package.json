@@ -5,7 +5,7 @@
   "description": "LittleSheep 是一个本地部署、索引优先记忆、硬控制流驱动的桌面 Agent 工作台。",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=20.9.0"
   },
   "packageManager": "pnpm@11.9.0",
   "bin": {
