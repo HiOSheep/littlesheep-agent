@@ -171,7 +171,6 @@ async function route(
   const url = new URL(req.url ?? '/', 'http://127.0.0.1')
   const path = url.pathname
   const method = req.method ?? 'GET'
-  const runner = getRunner()
   const sessionIndex = opts.sessionIndex
   const projectIndex = opts.projectIndex
   const archiveIndex = opts.archiveIndex

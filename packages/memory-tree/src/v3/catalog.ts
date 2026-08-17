@@ -37,7 +37,6 @@ import {
   pruneTable,
   rowToEntry,
   scalarCount,
-  scopedAtomQuery,
   type AtomRow,
 } from './catalog-helpers.js';
 import {

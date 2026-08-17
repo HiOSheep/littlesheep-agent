@@ -174,7 +174,7 @@ export async function runToolLoop(
         if (registerEvidenceFingerprint(ctx, evidenceFingerprints, converted.name, result)) {
           addedEvidence = true;
         }
-        finalizeToolResult(ctx, produced, messages, toolResults, converted.name, result, stepId);
+        finalizeToolResult(ctx, produced, messages, toolResults, converted.name, result);
       }
 
       // A failed Runtime/tool boundary is authoritative for this step. Allow
@@ -280,7 +280,6 @@ export async function runDirectToolProposal(
     toolResults,
     options.tool.name,
     result,
-    options.stepId,
   );
   return {
     ok: true,
@@ -345,7 +344,6 @@ function finalizeToolResult(
   results: ToolResult[],
   name: string,
   result: ToolResult,
-  stepId?: string,
 ): void {
   if (name === 'memory_tree' || name === 'memory_search' || name === 'memory_deep_search') {
     ingestMemoryKnownState(ctx, result.meta?.memoryKnownState, 'execute');

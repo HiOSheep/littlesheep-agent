@@ -12,7 +12,6 @@ import {
   type WorkspaceLayoutFileDraft,
   type WorkspaceLayoutOpenRequest,
   type WorkspaceLayoutSnapshot,
-  type WorkspaceLayoutTabId,
 } from '../shared/workspace-contracts.js'
 import { rebaseBoundPath, sameBoundPath } from './path-rebinding.js'
 

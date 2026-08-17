@@ -4,7 +4,7 @@
 
 import type { RunContext, StageResult } from '@littlesheep/types';
 
-export async function enterStage(ctx: RunContext): Promise<StageResult> {
+export async function enterStage(_ctx: RunContext): Promise<StageResult> {
   return {
     stage: 'enter',
     next: 'classify',

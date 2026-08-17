@@ -1,7 +1,7 @@
 // Runs bounded Memory v3 startup/background maintenance without long-lived polling timers.
 
 import { randomUUID } from 'node:crypto';
-import type { MemoryAtom, MemoryCatalogEntry, MemoryDueRecord, MemoryUpdateEvent } from './contracts.js';
+import type { MemoryAtom, MemoryDueRecord, MemoryUpdateEvent } from './contracts.js';
 import { MEMORY_EVENT_VERSION } from './contracts.js';
 import { MemoryAtomStore } from './atom-store.js';
 import { MemoryCatalog } from './catalog.js';

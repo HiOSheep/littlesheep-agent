@@ -15,7 +15,6 @@ import type {
   MemoryWriteIntent,
   MemoryWritePolicy,
   MemoryWriteResult,
-  QueuedMemoryWrite,
 } from '../types.js';
 import { MemoryAtomStore } from '../v3/atom-store.js';
 import { MemoryCatalog } from '../v3/catalog.js';
@@ -45,7 +44,6 @@ import {
   isMemoryV3InternalRootId,
   memoryAtomToNode,
   memoryV3ScopeRootId,
-  mergedIntentEvidence,
 } from './v3-node-mapping.js';
 import {
   MemoryV3WriteGraphProjection,

@@ -1,5 +1,5 @@
 import type { LittleSheepPlugin, PluginManifest } from '@littlesheep/plugins'
-import { TelegramChannelPlugin, createTelegramPlugin } from './plugin.js'
+import { createTelegramPlugin } from './plugin.js'
 
 export const pluginManifest: PluginManifest = {
   id: 'littlesheep.channel.telegram',

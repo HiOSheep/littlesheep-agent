@@ -9,7 +9,6 @@ import { DEFAULT_CONFIG } from '@littlesheep/config'
 import { DEFAULT_BRANDING } from '@littlesheep/branding'
 import {
   textMessage,
-  asSessionId,
   type AgentTool,
   type ClarificationRequest,
   type RunCheckpoint,

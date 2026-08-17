@@ -220,8 +220,6 @@ export function makeTool(
 
 // ─── Mock SessionManager ─────────────────────────────────────────────────
 
-import type { SessionManager } from '@littlesheep/session';
-
 export interface MockSessionManager {
   readRecent: ReturnType<typeof vi.fn>;
   append: ReturnType<typeof vi.fn>;
@@ -278,8 +276,6 @@ export function createMockSessionManager(opts: {
 }
 
 // ─── Mock MemoryStore ─────────────────────────────────────────────────────
-
-import type { MemoryStore } from '@littlesheep/memory-core';
 
 export interface MockMemoryStore {
   appendLongTerm: ReturnType<typeof vi.fn>;

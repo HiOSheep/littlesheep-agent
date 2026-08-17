@@ -2,7 +2,7 @@
 
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdir, readFile, readdir, rename } from 'node:fs/promises';
-import { basename, dirname, join, relative, resolve } from 'node:path';
+import { basename, join, relative, resolve } from 'node:path';
 import type { CreateMemoryAtomInput, MemoryAtom, MemoryAtomPatch } from './contracts.js';
 import { durableAtomicWriteJson, sha256Canonical } from './durable-json.js';
 import { parseMemoryAtom } from './validation.js';

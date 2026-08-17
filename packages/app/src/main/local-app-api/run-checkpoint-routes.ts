@@ -1,7 +1,7 @@
 // Startup checkpoint discovery, inspection, abandonment and streamed continuation.
 
 import { randomUUID } from 'node:crypto'
-import { conversationTurnRunId, type AgentRunner, type RunnerResult } from '@littlesheep/runner'
+import { conversationTurnRunId, type AgentRunner } from '@littlesheep/runner'
 import {
   LOCAL_APP_API_PREFIXES,
   LOCAL_APP_API_ROUTES,
@@ -199,7 +199,7 @@ async function streamCheckpointResume(
   requestKey: string | undefined,
   body: LocalAppRunCheckpointResumeRequest,
 ): Promise<true> {
-  const { req, res } = request
+  const { res } = request
   const inspection = await runner.runCheckpoints!.inspect(checkpointId)
   const state = inspection?.checkpoint.resumeState
   if (!inspection || !state) {

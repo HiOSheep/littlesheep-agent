@@ -464,7 +464,7 @@ async function extractAttachmentText(
     return { text: await readTextPreview(filePath, selection.maxChars) ?? undefined }
   }
   try {
-    const { extractDocument, UnsupportedDocumentFormatError } = await import('@littlesheep/documents')
+    const { extractDocument } = await import('@littlesheep/documents')
     const extracted = await extractDocument(filePath, {
       pageStart: selection.pageStart,
       pageEnd: selection.pageEnd,

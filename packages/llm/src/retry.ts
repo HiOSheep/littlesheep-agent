@@ -19,7 +19,7 @@ export const DEFAULT_RETRY: RetryOptions = {
 };
 
 /** Check if an error is retryable (LlmError with retryable=true, or network error). */
-export function isRetryable(err: unknown, opts: RetryOptions = DEFAULT_RETRY): boolean {
+export function isRetryable(err: unknown, _opts: RetryOptions = DEFAULT_RETRY): boolean {
   if (err && typeof err === 'object' && 'retryable' in err) {
     return (err as { retryable: boolean }).retryable;
   }

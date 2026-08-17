@@ -14,7 +14,7 @@ import {
   stat,
   utimes,
 } from 'node:fs/promises'
-import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, dirname, join, relative, resolve } from 'node:path'
 import {
   dataRootLocatorPath,
   parseDataRootLocator,

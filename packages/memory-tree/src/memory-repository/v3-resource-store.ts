@@ -58,7 +58,6 @@ export class MemoryV3ResourceStore {
   private readonly catalog: MemoryCatalog;
   private readonly graphStore: MemoryV3GraphStore;
   private readonly ledger: MemoryV3RepositoryLedger;
-  private readonly policy: MemoryWritePolicy;
   private readonly log?: LogFn;
   private readonly resources = new Map<string, MemoryResourceRegistration>();
   private initialized = false;
@@ -70,7 +69,6 @@ export class MemoryV3ResourceStore {
     this.catalog = options.catalog;
     this.graphStore = options.graphStore;
     this.ledger = options.ledger;
-    this.policy = options.policy;
     this.log = options.log;
   }
 

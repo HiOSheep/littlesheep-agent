@@ -226,7 +226,7 @@ function partitionTaskText(value: string): { positiveText: string; excludedPhras
   if (!/(?:not\s+only|不仅|不只是)/iu.test(value)) {
     for (const pattern of NEGATIVE_SEGMENT_PATTERNS) {
       pattern.lastIndex = 0;
-      positive = positive.replace(pattern, (match, captured: string) => {
+      positive = positive.replace(pattern, (_match, captured: string) => {
         const phrase = cleanExcludedPhrase(captured);
         if (phrase) excludedPhrases.push(phrase);
         return ' ';

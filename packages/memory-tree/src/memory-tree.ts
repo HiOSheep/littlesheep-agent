@@ -9,7 +9,6 @@ import type {
   MemoryAccessLedger,
   MemoryAccessRecord,
   MemoryBranch,
-  MemoryBranchContext,
   MemoryExpandOptions,
   MemoryFragment,
   MemoryPrimeOptions,

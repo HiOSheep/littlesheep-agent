@@ -19,7 +19,6 @@ export interface MemoryV3GraphStoreOptions {
 export class MemoryV3GraphStore {
   readonly rootDir: string;
   private readonly catalog: MemoryCatalog;
-  private readonly log?: LogFn;
   private readonly entities = new Map<string, MemoryEntity>();
   private readonly relations = new Map<string, MemoryRelation>();
   private initialized = false;
@@ -29,7 +28,6 @@ export class MemoryV3GraphStore {
   constructor(options: MemoryV3GraphStoreOptions) {
     this.rootDir = join(options.dataDir, 'memory-tree', 'v3', 'graph');
     this.catalog = options.catalog;
-    this.log = options.log;
   }
 
   async initialize(): Promise<void> {

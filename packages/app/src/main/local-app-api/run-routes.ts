@@ -34,13 +34,11 @@ import {
   resolveRunSessionOwnership,
   resolveRunWorkspace,
   resolveRunWorkspaceContext,
-  updateSessionIndex,
 } from './run-support.js'
 import { routeRunCheckpoints } from './run-checkpoint-routes.js'
 import {
   MAX_RUNTIME_EVENT_REASON_LENGTH,
   parseRuntimeTaskEventBody,
-  type RuntimeEventInput,
 } from './runtime-event-request.js'
 
 const MAX_ACTIVE_STREAM_RUNS = 16

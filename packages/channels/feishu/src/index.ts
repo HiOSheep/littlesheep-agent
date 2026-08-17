@@ -1,5 +1,5 @@
 import type { LittleSheepPlugin, PluginManifest } from '@littlesheep/plugins'
-import { FeishuChannelPlugin, createFeishuPlugin } from './plugin.js'
+import { createFeishuPlugin } from './plugin.js'
 
 export const pluginManifest: PluginManifest = {
   id: 'littlesheep.channel.feishu',

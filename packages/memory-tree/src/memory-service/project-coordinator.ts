@@ -7,7 +7,6 @@ import {
   type ProjectMemoryShareableExportResult,
   type ProjectMemoryTarget,
 } from '../project-memory-projection.js';
-import type { WorkspaceResourceSyncResult } from '../workspace-resource-index.js';
 import type { WorkspaceDocumentCoordinator } from './workspace-documents.js';
 import type { WorkspaceIndexResourceCoordinator } from './workspace-index-resources.js';
 

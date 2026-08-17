@@ -4,9 +4,7 @@
 // Acquire: try to create `<target>.lock` with O_EXCL. If it exists, check
 // whether the owning PID is alive; if dead, steal. Poll until timeout.
 
-import { open, unlink, readFile, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { open, unlink, readFile } from 'node:fs/promises';
 import type { LockHandle } from '@littlesheep/types';
 
 const LOCK_SUFFIX = '.lock';

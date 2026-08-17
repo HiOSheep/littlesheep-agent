@@ -1,5 +1,5 @@
 import type { LittleSheepPlugin, PluginManifest } from '@littlesheep/plugins'
-import { QqbotChannelPlugin, createQqbotPlugin } from './plugin.js'
+import { createQqbotPlugin } from './plugin.js'
 
 export const pluginManifest: PluginManifest = {
   id: 'littlesheep.channel.qqbot',

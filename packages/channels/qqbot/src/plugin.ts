@@ -192,9 +192,6 @@ export class QqbotChannelPlugin implements ChannelPlugin {
   private _lastSeq: number | null = null;
   private _heartbeatAcked = true;
 
-  // Session tracking
-  private _sessionId: string | null = null;
-
   get running(): boolean {
     return this._running;
   }
@@ -356,7 +353,6 @@ export class QqbotChannelPlugin implements ChannelPlugin {
       }
 
       // Clear state before reconnecting.
-      this._sessionId = null;
       this._lastSeq = null;
 
       // Wait before reconnecting (exponential backoff).
@@ -510,9 +506,8 @@ export class QqbotChannelPlugin implements ChannelPlugin {
       }
 
       case OP_INVALID_SESSION: {
-        // Session is invalid — clear session_id and re-identify.
+        // Session is invalid; always re-identify.
         ctx_log(this._ctx, 'warn', 'qqbot: invalid session, re-identifying');
-        this._sessionId = null;
         // The d field indicates whether resumable (boolean). We always re-identify.
         await this.sendIdentify();
         break;
@@ -529,7 +524,6 @@ export class QqbotChannelPlugin implements ChannelPlugin {
       case 'READY': {
         const ready = data as ReadyData | undefined;
         if (ready?.session_id) {
-          this._sessionId = ready.session_id;
           ctx_log(
             this._ctx,
             'info',

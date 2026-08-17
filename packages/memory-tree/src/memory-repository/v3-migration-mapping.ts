@@ -8,7 +8,6 @@ import {
   createMemoryAtomInput,
   legacySourceEvidence,
   memoryV3ScopeRootId,
-  mergedIntentEvidence,
   scopeEntity,
   sourceEntity,
   sourceRefEntityType,

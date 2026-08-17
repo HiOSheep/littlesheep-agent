@@ -6,7 +6,7 @@
 
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { join } from 'node:path'
 import type { RunCheckpointDisposition } from '@littlesheep/types'
 import { RUN_CHECKPOINT_DISPOSITION_VERSION } from '@littlesheep/types'
 import { acquireLock } from '@littlesheep/session'

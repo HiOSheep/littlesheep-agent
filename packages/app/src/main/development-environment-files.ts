@@ -1,8 +1,7 @@
 // Bounded filesystem, version detection and import helpers for toolchains.
 
 import { execFile } from 'node:child_process'
-import { chmod } from 'node:fs/promises'
-import { lstat, mkdir, readdir, readFile, stat } from 'node:fs/promises'
+import { lstat, readdir, readFile } from 'node:fs/promises'
 import { promisify } from 'node:util'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { atomicWrite } from '@littlesheep/memory-core'

@@ -578,7 +578,7 @@ describe('run stream Local App API', () => {
     const runtimeEvents = makeRuntimeEvents(sessionId)
     const firstAppend = runtimeEvents.append
     firstAppend
-      .mockImplementationOnce((runId, input) => ({
+      .mockImplementationOnce((runId) => ({
         kind: 'rejected',
         reason: 'run-not-active',
         message: `queue not registered yet: ${runId}`,

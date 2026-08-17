@@ -4,7 +4,7 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import type { Dirent, Stats } from 'node:fs';
-import { lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import type { VersionCheckpointManifest, VersionCheckpointSummary } from '@littlesheep/types';
 

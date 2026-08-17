@@ -1,7 +1,7 @@
 // @littlesheep/types — tool.ts
 // AgentTool contract + execution context + results.
 
-import type { ToolCall, ToolResult } from './message.js';
+import type { ToolResult } from './message.js';
 import type { SessionId } from './session.js';
 import type { PermissionPolicyId } from './runtime-contracts.js';
 

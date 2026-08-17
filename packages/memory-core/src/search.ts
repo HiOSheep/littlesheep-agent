@@ -3,7 +3,6 @@
 // No FTS5 / sqlite-vec in MVP — pure file grep.
 
 import { spawn } from 'node:child_process';
-import { join } from 'node:path';
 import type { MemoryHit, SearchQuery, MemoryTier, MemoryStoreLike } from '@littlesheep/types';
 
 /** Check if ripgrep (rg) is available on PATH. */

@@ -23,7 +23,7 @@ export class MemoryStore implements MemoryStoreLike {
   private longTermFile: string;
   private dailyDir: string;
 
-  constructor(private opts: MemoryStoreOptions) {
+  constructor(opts: MemoryStoreOptions) {
     this.longTermFile = join(opts.rootDir, opts.longTermFile ?? DEFAULT_LONG_TERM);
     this.dailyDir = join(opts.rootDir, opts.dailyDir ?? DEFAULT_DAILY_DIR);
   }
