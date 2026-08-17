@@ -1,11 +1,12 @@
 import { readFile } from 'node:fs/promises'
+import { readRendererStyleSource } from '../style-source-test-utils'
 import { describe, expect, it } from 'vitest'
 
 
 describe('workspace tab pointer reordering', () => {
   it('keeps the dragged tab under the pointer while its source remains a layout placeholder', async () => {
     const tabStrip = await readFile(new URL('./tab-strip.tsx', import.meta.url), 'utf8')
-    const styles = await readFile(new URL('../styles.css', import.meta.url), 'utf8')
+    const styles = await readRendererStyleSource()
 
     expect(tabStrip).toContain('WORKSPACE_TAB_DRAG_THRESHOLD_PX = 4')
     expect(tabStrip).toContain('sourceElement.cloneNode(true)')

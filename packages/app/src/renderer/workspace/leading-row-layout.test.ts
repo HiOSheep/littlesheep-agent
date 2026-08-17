@@ -1,10 +1,11 @@
 import { readFile } from 'node:fs/promises'
+import { readRendererStyleSource } from '../style-source-test-utils'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 let styles = ''
 
 beforeAll(async () => {
-  styles = await readFile(new URL('../styles.css', import.meta.url), 'utf8')
+  styles = await readRendererStyleSource()
 })
 
 function ruleBody(selector: string): string {

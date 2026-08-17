@@ -1,8 +1,8 @@
-import { readFile } from 'node:fs/promises'
+import { readRendererStyleSource } from './style-source-test-utils'
 import { describe, expect, it } from 'vitest'
 
 
-const styles = await readFile(new URL('./styles.css', import.meta.url), 'utf8')
+const styles = await readRendererStyleSource()
 
 
 describe('UI radius consistency', () => {

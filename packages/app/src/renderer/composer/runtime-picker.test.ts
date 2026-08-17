@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { readRendererStyleSource } from '../style-source-test-utils'
 import { describe, expect, it } from 'vitest'
 import { formatRuntimeModelLabel, splitModelRef } from './runtime-picker'
 
@@ -21,7 +22,7 @@ describe('runtime picker labels', () => {
   })
 
   it('keeps narrow composer controls aligned and opens submenus to the right', async () => {
-    const styles = await readFile(new URL('../styles.css', import.meta.url), 'utf8')
+    const styles = await readRendererStyleSource()
     const source = await readFile(new URL('./runtime-picker.tsx', import.meta.url), 'utf8')
     const compactComposerStyles = styles.slice(
       styles.indexOf('@container chat-pane (max-width: 520px)'),

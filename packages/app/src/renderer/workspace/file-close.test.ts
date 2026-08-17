@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { readRendererStyleSource } from '../style-source-test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import type { WorkspacePreview } from '../api'
 import type { WorkspaceFileDraftState } from '../workspace-persistence'
@@ -166,7 +167,7 @@ describe('saveWorkspaceFileBeforeClose', () => {
       source('../approval/prompt.tsx'),
       source('../app-shell/overlays-view.tsx'),
       source('./use-workspace-layout-controller.ts'),
-      source('../styles.css'),
+      readRendererStyleSource(),
     ])
     const implementation = [prompt, overlays, controller, styles].join('\n')
 

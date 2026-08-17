@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { readRendererStyleSource } from './style-source-test-utils'
 import { describe, expect, it } from 'vitest'
 
 
@@ -46,14 +47,14 @@ describe('interaction surface visibility', () => {
   })
 
   it('prevents inert descendants and closed runtime panels from restoring pointer hits', async () => {
-    const styles = await readRendererFile('./styles.css')
+    const styles = await readRendererStyleSource()
     expect(styles).toMatch(/\[inert\],\s*\[inert\] \*\s*\{\s*pointer-events: none !important;/u)
     expect(styles).toMatch(/\.runtime-menu-shell:not\(\.open\)[\s\S]*?\.runtime-picker-panel[\s\S]*?pointer-events: none;[\s\S]*?visibility: hidden;/u)
     expect(styles).toMatch(/\.disclosure-panel:not\(\.open\)\s*\{\s*pointer-events: none;/u)
   })
 
   it('keeps long message content from creating a chat-wide horizontal scrollbar', async () => {
-    const styles = await readRendererFile('./styles.css')
+    const styles = await readRendererStyleSource()
     expect(styles).toMatch(/\.messages\s*\{[\s\S]*?overflow-x: hidden;[\s\S]*?overflow-y: auto;/u)
     expect(styles).toMatch(/\.markdown pre > code\s*\{[\s\S]*?white-space: pre-wrap;[\s\S]*?overflow-wrap: anywhere;/u)
 

@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { readRendererStyleSource } from '../style-source-test-utils'
 import { describe, expect, it } from 'vitest'
 import { workspaceLanguageForPath } from '../../shared/workspace-languages'
 
@@ -44,7 +45,7 @@ describe('workspace Markdown preview modes', () => {
   it('shares one opaque borderless gray code surface with conversation Markdown', async () => {
     const previewPane = await source('./preview-pane.tsx')
     const assistantTurn = await source('../chat/assistant-turn.tsx')
-    const styles = await source('../styles.css')
+    const styles = await readRendererStyleSource()
     const markdown = await source('../Markdown.tsx')
     const inlineCodeRule = styles.match(/\.markdown-inline-code\s*\{([^}]*)\}/u)?.[1] ?? ''
     const blockRule = styles.match(/\.code-block\s*\{([^}]*)\}/u)?.[1] ?? ''

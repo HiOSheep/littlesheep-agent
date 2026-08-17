@@ -1,4 +1,5 @@
 import { access, readFile } from 'node:fs/promises'
+import { readRendererStyleSource } from '../style-source-test-utils'
 import { describe, expect, it } from 'vitest'
 
 describe('workspace review layout unification', () => {
@@ -7,7 +8,7 @@ describe('workspace review layout unification', () => {
     const fileNavigator = await source('./file-navigator.tsx')
     const reviewTree = await source('./review-tree.tsx')
     const panel = await source('./panel.tsx')
-    const styles = await source('../styles.css')
+    const styles = await readRendererStyleSource()
 
     expect(fileNavigator).toContain('<WorkspaceNavigatorFrame')
     expect(reviewTree).toContain('<WorkspaceNavigatorFrame')

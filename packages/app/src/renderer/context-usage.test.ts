@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { readRendererStyleSource } from './style-source-test-utils'
 import { describe, expect, it } from 'vitest'
 import type { ContextSnapshot } from '@littlesheep/types'
 import { formatLocalTokenizerState } from './composer/context-usage-indicator'
@@ -30,7 +30,7 @@ function contextSnapshot(overrides: Partial<ContextSnapshot> = {}): ContextSnaps
 
 describe('context usage presentation model', () => {
   it('keeps the usage popover content-sized and wraps it at the viewport boundary', async () => {
-    const styles = await readFile(new URL('./styles.css', import.meta.url), 'utf8')
+    const styles = await readRendererStyleSource()
     const popoverRule = styles.match(/\.context-usage-popover\s*\{([\s\S]*?)\n\}/u)?.[1] ?? ''
 
     expect(popoverRule).toContain('flex: 0 0 auto')

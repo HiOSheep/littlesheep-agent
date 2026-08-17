@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { readRendererStyleSource } from '../style-source-test-utils'
 import { describe, expect, it } from 'vitest'
 
 
@@ -13,7 +14,7 @@ describe('composer control surfaces', () => {
       contextUsage,
       composerView,
     ] = await Promise.all([
-      readFile(new URL('../styles.css', import.meta.url), 'utf8'),
+      readRendererStyleSource(),
       readFile(new URL('./add-menu.tsx', import.meta.url), 'utf8'),
       readFile(new URL('./mode-picker.tsx', import.meta.url), 'utf8'),
       readFile(new URL('./runtime-picker.tsx', import.meta.url), 'utf8'),

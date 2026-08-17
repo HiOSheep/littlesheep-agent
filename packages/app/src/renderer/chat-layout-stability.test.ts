@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { readRendererStyleSource } from './style-source-test-utils'
 import { describe, expect, it } from 'vitest'
 
 
@@ -9,7 +10,7 @@ async function readRendererFile(path: string): Promise<string> {
 
 describe('chat layout stability', () => {
   it('reserves symmetric scrollbar space and keeps the chat thumb visible', async () => {
-    const styles = await readRendererFile('./styles.css')
+    const styles = await readRendererStyleSource()
 
     expect(styles).toMatch(/\.messages\s*\{[\s\S]*?scrollbar-gutter:\s*stable both-edges;/u)
     expect(styles).toMatch(/::-webkit-scrollbar-thumb\s*\{[^}]*background:\s*#383838;[^}]*background-clip:\s*content-box;/u)
@@ -30,7 +31,7 @@ describe('chat layout stability', () => {
   })
 
   it('anchors viewport reflow to the currently visible bottom edge', async () => {
-    const styles = await readRendererFile('./styles.css')
+    const styles = await readRendererStyleSource()
     const chatView = await readRendererFile('./app-shell/chat-view.tsx')
 
     expect(styles).toMatch(/\.messages\s*\{[^}]*overflow-anchor:\s*none;/u)
@@ -40,7 +41,7 @@ describe('chat layout stability', () => {
   })
 
   it('keeps Agent activity in one flat immediate flow with a stable Markdown reply surface', async () => {
-    const styles = await readRendererFile('./styles.css')
+    const styles = await readRendererStyleSource()
     const assistantTurn = await readRendererFile('./chat/assistant-turn.tsx')
     const toolRow = await readRendererFile('./chat/agent-tool-row.tsx')
 
@@ -57,7 +58,7 @@ describe('chat layout stability', () => {
   })
 
   it('matches user messages to the active workspace-tab surface without inheriting tab geometry', async () => {
-    const styles = await readRendererFile('./styles.css')
+    const styles = await readRendererStyleSource()
 
     expect(styles).toMatch(/\.workspace-active-item:hover,[\s\S]*?\.workspace-active-item\.active\s*\{[^}]*color:\s*var\(--text\);[^}]*background:\s*var\(--control-hover\);/u)
     expect(styles).toMatch(/\.message\.user\s*\{[^}]*margin-left:\s*auto;[^}]*padding:\s*4px 8px;[^}]*color:\s*var\(--text\);[^}]*background:\s*var\(--control-hover\);[^}]*border:\s*0;[^}]*box-shadow:\s*none;/u)
@@ -65,7 +66,7 @@ describe('chat layout stability', () => {
   })
 
   it('matches the workspace edge and hover highlight to the sidebar treatment', async () => {
-    const styles = await readRendererFile('./styles.css')
+    const styles = await readRendererStyleSource()
 
     expect(styles).not.toMatch(/\.workspace-panel-resizer::before\s*\{/u)
     expect(styles).toMatch(/\.workspace-panel::before\s*\{[^}]*inset:\s*0 auto 0 0;[^}]*z-index:\s*25;[^}]*width:\s*1px;[^}]*background:\s*var\(--border\);[^}]*opacity:\s*1;[^}]*pointer-events:\s*none;/u)
@@ -82,7 +83,7 @@ describe('chat layout stability', () => {
   })
 
   it('keeps one native sidebar corner without an idle divider until resize is active', async () => {
-    const styles = await readRendererFile('./styles.css')
+    const styles = await readRendererStyleSource()
 
     expect(styles).toMatch(/--sidebar-resizer-width:\s*0px;/u)
     expect(styles).not.toMatch(/\.sidebar-resizer::before\s*\{/u)
@@ -108,7 +109,7 @@ describe('chat layout stability', () => {
   })
 
   it('keeps the composer above messages with dynamic clearance and glass material', async () => {
-    const styles = await readRendererFile('./styles.css')
+    const styles = await readRendererStyleSource()
     const composer = await readRendererFile('./app-shell/composer-view.tsx')
 
     expect(styles).toMatch(/--composer-overlay-height:\s*116px;/u)
@@ -123,7 +124,7 @@ describe('chat layout stability', () => {
   })
 
   it('keeps the shared sidebar material transparent to content and native-window backed', async () => {
-    const styles = await readRendererFile('./styles.css')
+    const styles = await readRendererStyleSource()
     const desktopShell = await readRendererFile('../main/desktop-shell.ts')
     const texture = await readFile(new URL('./assets/sidebar-wash-dithered.png', import.meta.url))
 
@@ -146,13 +147,13 @@ describe('chat layout stability', () => {
   })
 
   it('keeps answer separators as a single soft 50 percent white rule', async () => {
-    const styles = await readRendererFile('./styles.css')
+    const styles = await readRendererStyleSource()
 
     expect(styles).toMatch(/\.message \.markdown hr\s*\{[\s\S]*?height:\s*0;[\s\S]*?border:\s*0;[\s\S]*?border-top:\s*1px solid rgba\(255, 255, 255, 0\.5\);/u)
   })
 
   it('keeps the settings entry equally inset from the sidebar left and bottom edges', async () => {
-    const styles = await readRendererFile('./styles.css')
+    const styles = await readRendererStyleSource()
 
     expect(styles).toMatch(/--sidebar-content-block-inset:\s*18px;/u)
     expect(styles).toMatch(/--sidebar-content-inline-inset:\s*14px;/u)
@@ -174,7 +175,7 @@ describe('chat layout stability', () => {
   })
 
   it('does not paint the ordinary sidebar beneath translucent settings content', async () => {
-    const styles = await readRendererFile('./styles.css')
+    const styles = await readRendererStyleSource()
 
     const sidebarView = await readRendererFile('./app-shell/sidebar-view.tsx')
 
@@ -189,7 +190,7 @@ describe('chat layout stability', () => {
   })
 
   it('keeps the edge reveal entry and one stationary animated corner toggle above chat', async () => {
-    const styles = await readRendererFile('./styles.css')
+    const styles = await readRendererStyleSource()
     const dockView = await readRendererFile('./app-shell/workspace-dock-view.tsx')
     const panelView = await readRendererFile('./workspace/panel.tsx')
 
@@ -222,7 +223,7 @@ describe('chat layout stability', () => {
   })
 
   it('reuses the compact split layout when the workspace becomes fullscreen', async () => {
-    const styles = await readRendererFile('./styles.css')
+    const styles = await readRendererStyleSource()
 
     expect(styles).toMatch(/\.workspace-panel-contents\s*\{[^}]*padding:\s*var\(--workspace-tab-row-inset\) 12px 12px var\(--workspace-tab-row-inset\);/u)
     expect(styles).toMatch(/\.workspace-panel-body\s*\{[^}]*margin:\s*8px 0 0 8px;/u)

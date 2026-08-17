@@ -1,9 +1,9 @@
-import { readFile } from 'node:fs/promises'
+import { readRendererStyleSource } from '../style-source-test-utils'
 import { describe, expect, it } from 'vitest'
 
 describe('composer control row layout', () => {
   it('keeps the outer control centers on the 45-degree corner axes', async () => {
-    const styles = await readFile(new URL('../styles.css', import.meta.url), 'utf8')
+    const styles = await readRendererStyleSource()
     const composerRule = styles.match(/\.composer\s*\{([^}]*)\}/u)?.[1] ?? ''
     const controlsRule = styles.match(/\.composer-controls\s*\{([^}]*)\}/u)?.[1] ?? ''
     const addMenuRule = styles.match(/\.add-menu\s*\{([^}]*)\}/u)?.[1] ?? ''
@@ -45,7 +45,7 @@ describe('composer control row layout', () => {
   })
 
   it('keeps controls on one shrinkable row without painting into adjacent controls', async () => {
-    const styles = await readFile(new URL('../styles.css', import.meta.url), 'utf8')
+    const styles = await readRendererStyleSource()
     const narrowWindowStyles = styles.slice(styles.indexOf('@media (max-width: 860px)'))
 
     expect(styles).toMatch(/\.composer-controls\s*\{[^}]*min-width:\s*0;[^}]*flex-wrap:\s*nowrap;/u)

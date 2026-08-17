@@ -1,11 +1,12 @@
 import { readFile } from 'node:fs/promises'
+import { readRendererStyleSource } from '../style-source-test-utils'
 import { describe, expect, it } from 'vitest'
 
 
 describe('workspace chip remove control', () => {
   it('uses a centered SVG close icon instead of a baseline-aligned text glyph', async () => {
     const source = await readFile(new URL('./workspace-chip.tsx', import.meta.url), 'utf8')
-    const styles = await readFile(new URL('../styles.css', import.meta.url), 'utf8')
+    const styles = await readRendererStyleSource()
 
     expect(source).toContain('<CloseIcon />')
     expect(source).not.toMatch(/>\s*×\s*</u)
@@ -14,7 +15,7 @@ describe('workspace chip remove control', () => {
   })
 
   it('sizes to its path content without consuming the remaining control row', async () => {
-    const styles = await readFile(new URL('../styles.css', import.meta.url), 'utf8')
+    const styles = await readRendererStyleSource()
 
     expect(styles).toMatch(/\.workspace-context-chip\s*\{[^}]*width:\s*fit-content;[^}]*max-width:\s*min\(280px, 34vw\);[^}]*flex:\s*0 1 auto;/u)
     expect(styles).toMatch(/\.workspace-context-chip\s*\{[^}]*padding:\s*0 28px 0 var\(--composer-control-padding-inline\);/u)

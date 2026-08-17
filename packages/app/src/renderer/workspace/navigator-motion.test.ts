@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { readRendererStyleSource } from '../style-source-test-utils'
 import { describe, expect, it } from 'vitest'
 
 describe('workspace navigator motion', () => {
@@ -17,7 +18,7 @@ describe('workspace navigator motion', () => {
   it('uses a compositor-paced inward resize with the right-edge drag direction', async () => {
     const frame = await source('./navigator-frame.tsx')
     const interaction = await source('./navigator-resize-interaction.ts')
-    const styles = await source('../styles.css')
+    const styles = await readRendererStyleSource()
     const resizer = ruleBody(styles, '.workspace-files-navigator-resizer')
     const highlight = ruleBody(styles, '.workspace-files-navigator-resizer::after')
 
@@ -36,7 +37,7 @@ describe('workspace navigator motion', () => {
 
   it('commits the flex layout once and animates only compositor properties', async () => {
     const frame = await source('./navigator-frame.tsx')
-    const styles = await source('../styles.css')
+    const styles = await readRendererStyleSource()
     const navigator = ruleBody(styles, '.workspace-files-navigator')
     const inner = ruleBody(styles, '.workspace-files-navigator-inner')
     const collapsedInner = ruleBody(
@@ -61,7 +62,7 @@ describe('workspace navigator motion', () => {
 
   it('bypasses transient motion when the OS requests reduced motion', async () => {
     const frame = await source('./navigator-frame.tsx')
-    const styles = await source('../styles.css')
+    const styles = await readRendererStyleSource()
     expect(frame).toContain("matchMedia('(prefers-reduced-motion: reduce)').matches")
     expect(styles).toMatch(
       /@media \(prefers-reduced-motion: reduce\)[\s\S]*?transition-duration:\s*1ms !important;/u,

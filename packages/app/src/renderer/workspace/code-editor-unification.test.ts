@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { readRendererStyleSource } from '../style-source-test-utils'
 import { describe, expect, it } from 'vitest'
 import { MONACO_BUILTIN_LANGUAGE_IDS } from '../../shared/workspace-languages'
 import { WORKSPACE_MONACO_LAZY_LANGUAGE_IDS } from './monaco-language-loaders'
@@ -43,7 +44,7 @@ describe('workspace code editor unification', () => {
 
   it('does not retain the handwritten review code-line renderer', async () => {
     const review = await source('./review-diff.tsx')
-    const styles = await source('../styles.css')
+    const styles = await readRendererStyleSource()
 
     expect(review).not.toContain('<code>')
     expect(review).not.toContain('workspace-review-diff-line')

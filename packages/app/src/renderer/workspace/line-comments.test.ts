@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { readRendererStyleSource } from '../style-source-test-utils'
 import { describe, expect, it } from 'vitest'
 import {
   didLineCommentGestureDrag,
@@ -14,7 +15,7 @@ import {
 describe('workspace line comments', () => {
   it('uses Monaco line events and inline view zones instead of covering later code', async () => {
     const source = await readFile(new URL('./line-comments.tsx', import.meta.url), 'utf8')
-    const styles = await readFile(new URL('../styles.css', import.meta.url), 'utf8')
+    const styles = await readRendererStyleSource()
 
     expect(source).toContain('editor.onMouseMove')
     expect(source).toContain("editorHost.addEventListener('pointerdown', beginReadOnlyLineGesture, true)")
@@ -94,7 +95,7 @@ describe('workspace line comments', () => {
 
     const source = await readFile(new URL('./line-comments.tsx', import.meta.url), 'utf8')
     const deletedSource = await readFile(new URL('./review-inline-deleted-comments.tsx', import.meta.url), 'utf8')
-    const styles = await readFile(new URL('../styles.css', import.meta.url), 'utf8')
+    const styles = await readRendererStyleSource()
     expect(source).toContain('left: addButtonLeft')
     expect(deletedSource).toContain('left: addButtonLeft')
     expect(source).toContain('workspace-line-comment-add-icon')
@@ -124,7 +125,7 @@ describe('workspace line comments', () => {
 
   it('keeps native controls outside Monaco while view zones only reserve layout space', async () => {
     const source = await readFile(new URL('./line-comments.tsx', import.meta.url), 'utf8')
-    const styles = await readFile(new URL('../styles.css', import.meta.url), 'utf8')
+    const styles = await readRendererStyleSource()
 
     expect(source).not.toContain("import { createPortal } from 'react-dom'")
     expect(source).not.toContain('host.addEventListener')
@@ -140,7 +141,7 @@ describe('workspace line comments', () => {
 
   it('keeps the comment editor as one flat surface with one line-range label', async () => {
     const source = await readFile(new URL('./line-comments.tsx', import.meta.url), 'utf8')
-    const styles = await readFile(new URL('../styles.css', import.meta.url), 'utf8')
+    const styles = await readRendererStyleSource()
 
     const lineRangeLabel = '<span>{formatLineRange(zone.startLine, zone.endLine)}</span>'
     expect(source.split(lineRangeLabel).length - 1).toBe(1)
@@ -150,7 +151,7 @@ describe('workspace line comments', () => {
 
   it('auto-sizes the draft and its Monaco view zone without a resize handle', async () => {
     const source = await readFile(new URL('./line-comments.tsx', import.meta.url), 'utf8')
-    const styles = await readFile(new URL('../styles.css', import.meta.url), 'utf8')
+    const styles = await readRendererStyleSource()
 
     expect(source).toContain("textarea.style.height = '0px'")
     expect(source).toContain('Math.ceil(textarea.scrollHeight)')
