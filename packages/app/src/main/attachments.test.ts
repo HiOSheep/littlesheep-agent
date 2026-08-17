@@ -2,7 +2,6 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import * as XLSX from 'xlsx'
 import { createDocument } from '@littlesheep/documents'
 import { asSessionId, type RunCheckpoint } from '@littlesheep/types'
 import { ManagedAttachmentCache } from './attachment-cache.js'
@@ -98,13 +97,17 @@ describe('main attachment helpers', () => {
     const dir = mkdtempSync(join(tmpdir(), 'ls-att-xlsx-'))
     try {
       const file = join(dir, 'tasks.xlsx')
-      const workbook = XLSX.utils.book_new()
-      const sheet = XLSX.utils.aoa_to_sheet([
-        ['Task', 'Owner'],
-        ['Ship parser', 'LittleSheep'],
-      ])
-      XLSX.utils.book_append_sheet(workbook, sheet, 'Plan')
-      writeFileSync(file, XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }))
+      await createDocument({
+        filePath: file,
+        format: 'xlsx',
+        sheets: [{
+          name: 'Plan',
+          rows: [
+            ['Task', 'Owner'],
+            ['Ship parser', 'LittleSheep'],
+          ],
+        }],
+      })
 
       const attachment = await classifyAttachment(file)
       const prepared = await prepareRunAttachments([attachment])

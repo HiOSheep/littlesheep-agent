@@ -11,6 +11,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const appRoot = join(repoRoot, 'packages', 'app')
 const chunksDir = join(appRoot, 'out', 'main', 'chunks')
 const appRequire = createRequire(join(appRoot, 'package.json'))
+const documentsRequire = createRequire(join(repoRoot, 'packages', 'documents', 'package.json'))
 
 async function main() {
   await app.whenReady()
@@ -102,7 +103,7 @@ async function createGeneratedDocuments(runtime, root) {
   assert.deepEqual(csvRead.sections[0].rows, [['名称', '数量'], ['中文', '3']])
   assert.deepEqual([...new Uint8Array(await readFile(csv)).slice(0, 3)], [0xEF, 0xBB, 0xBF])
 
-  const XLSX = appRequire('xlsx')
+  const XLSX = documentsRequire('xlsx')
   const workbook = XLSX.read(await readFile(xlsx), { type: 'buffer', cellFormula: true })
   assert.equal(workbook.Sheets['模型'].C2.f, 'A2*B2')
   assert.equal(workbook.Sheets['模型'].C2.v, 50)
@@ -111,8 +112,8 @@ async function createGeneratedDocuments(runtime, root) {
 }
 
 async function createAndReadInputMatrix(runtime, root) {
-  const XLSX = appRequire('xlsx')
-  const JSZip = appRequire('jszip')
+  const XLSX = documentsRequire('xlsx')
+  const JSZip = documentsRequire('jszip')
 
   const xls = join(root, 'legacy.xls')
   const workbook = XLSX.utils.book_new()

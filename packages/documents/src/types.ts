@@ -15,6 +15,21 @@ export interface DocumentSection {
   rows?: string[][]
 }
 
+export type OfficePreviewKind = 'document' | 'spreadsheet' | 'presentation'
+
+export interface OfficePreviewInput {
+  extension: string
+  byteLength: number
+  load: () => Promise<Buffer>
+}
+
+export interface OfficePreview {
+  officeKind: OfficePreviewKind
+  sections: DocumentSection[]
+  truncated: boolean
+  note?: string
+}
+
 export interface ExtractedDocument {
   format: ReadableDocumentFormat
   sections: DocumentSection[]

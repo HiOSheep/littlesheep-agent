@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./office-preview": {
+      "types": "./dist/office-preview-api.d.ts",
+      "import": "./dist/office-preview-api.js"
     }
   },
   "dependencies": {

@@ -46,12 +46,6 @@ importers:
       '@xterm/xterm':
         specifier: ^6.0.0
         version: 6.0.0
-      jszip:
-        specifier: ^3.10.1
-        version: 3.10.1
-      mammoth:
-        specifier: ^1.12.0
-        version: 1.12.0
       monaco-editor:
         specifier: ^0.55.1
         version: 0.55.1
@@ -73,9 +67,6 @@ importers:
       unified:
         specifier: ^11.0.5
         version: 11.0.5
-      xlsx:
-        specifier: https://cdn.sheetjs.com/xlsx-0.20.2/xlsx-0.20.2.tgz
-        version: https://cdn.sheetjs.com/xlsx-0.20.2/xlsx-0.20.2.tgz
     devDependencies:
       '@littlesheep/branding':
         specifier: workspace:*
