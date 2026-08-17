@@ -241,9 +241,6 @@ importers:
       '@littlesheep/snapshot':
         specifier: workspace:*
         version: link:../snapshot
-      '@littlesheep/tools':
-        specifier: workspace:*
-        version: link:../tools
       '@littlesheep/types':
         specifier: workspace:*
         version: link:../types

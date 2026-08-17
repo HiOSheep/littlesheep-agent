@@ -19,7 +19,6 @@
     "@littlesheep/harness": "workspace:*",
     "@littlesheep/llm": "workspace:*",
     "@littlesheep/types": "workspace:*",
-    "@littlesheep/tools": "workspace:*",
     "@littlesheep/memory-core": "workspace:*",
     "@littlesheep/snapshot": "workspace:*"
   },

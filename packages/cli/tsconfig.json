@@ -33,9 +33,6 @@
       "path": "../snapshot"
     },
     {
-      "path": "../tools"
-    },
-    {
       "path": "../types"
     }
   ]
