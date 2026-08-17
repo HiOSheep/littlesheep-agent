@@ -226,6 +226,6 @@ execute 内部：
 - 回答级记忆连续性的本地结构门、确定性 Electron 七场景门、真实 DeepSeek 完整退出/重启回答门、多轮五字段摘要回答门、主动断线恢复门、6 分钟诊断门和正式 2 小时门已经完成。后续仍必须用真实 DeepSeek 长会话覆盖非字段事实、先记住/转题/再续答、执行中按索引补取、记忆释放后不再承接、真实工具副作用和更长期真实用户负载。任何真实验收都必须同时检查 LS 最终回答、`memoryContinuityAssessment`、ContextSnapshot、命中来源与执行日志：回答必须明确承接旧目标或逐项答出被追问旧值，且显式连续性状态必须为 `supported`；不能只凭保存了会话/Checkpoint、摘要或 Atom，也不能只凭回答听起来连贯就判定通过。
 - 旧 `distillDailyToMemory()/markDistilled()` 原始追加 helper 已退役并由仓库卫生门阻止回流；任何未来 daily 到长期记忆的蒸馏都必须走安全、去重、可回滚的结构化写入闸门。
 - 实体/关系 Catalog、有界一跳候选发现、自动关系投影、提交后激活、启动补偿和冲突/替代调和已经实现；后续重点是真实 Provider 提案质量与长期关系演化。Skill 治理队列仍待实现，Skill 相似度不自动合并或删除。
-- 实现 `packages/mcp/` 客户端，同时复用内置工具的权限、超时、清洗和执行记录契约。
+- MCP 客户端当前尚未实现；未来从经过验证的稳定 adapter 开始，并复用内置工具的权限、超时、清洗和执行记录契约，不先建立空 workspace 包。
 - 继续进行工作区、渠道、记忆树和重启恢复的真实用户场景验收。
 - 按 [Agent Runtime 连续性任务书 2026-07-14](../taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md) 和 [Agent Runtime 效率与版本化连续性任务书 2026-07-17](../taskbooks/agent-runtime-efficiency-versioning-taskbook-2026-07-17.md) 建立 Context、T0-T3、附件、运行中重入、有界并行、检查点、后台执行和双向透明的完整闭环；仓库拆分和 LLM Call Contract 的先行顺序见 [总基调、认知架构与仓库基元化任务书 2026-07-15](../taskbooks/foundation-cognition-repository-taskbook-2026-07-15.md)。

@@ -89,7 +89,7 @@ React Renderer
 | LLM Provider | DeepSeek 基础能力已实测 | `packages/llm/`、`packages/config/`、`packages/app/src/main/provider-calibration.ts` | 当前 `deepseek-v4-flash` 的 chat、continuity、tool、abort、reasoning 续接和 usage 已通过运行中 Main 校准；未配置的 OpenAI/GLM 不冒充已验收 | 保持 provider capability descriptor，按实际启用范围增加校准证据 |
 | Plugin Host | 基础可用 | `packages/plugins/` | v1 已接通 `channel`/`tool`/声明式 `skill`；Skill 所有权跨 Host、Loader 和 Memory Service 协同 | 保持 owner-scoped 协议，新增贡献点前先实现完整消费方和生命周期 |
 | External Channels | 基础可用 | `packages/channels/*` | 真实凭证和异常隔离场景仍需验收 | 保持纯适配器，不回到核心网关模式 |
-| MCP | 尚未实现 | `packages/mcp/` | 只有骨架；统一工具执行前置条件已具备 | 以 adapter 接入 Tool Execution Service，不建立独立执行管线 |
+| MCP | 尚未实现 | 当前无生产实现 | 原空骨架包已移除；统一工具执行前置条件已具备 | 从稳定 adapter 开始接入 Tool Execution Service，不建立独立执行管线 |
 | Electron Main/API | 主要组合边界已分域 | `packages/app/src/main/` | `local-app-api-server.ts` 保持薄组合；窗口/托盘/关闭行为、活动任务聚合和生命周期路由已拆为独立模块，`index.ts` 仍承担全局启动装配 | 保持现有 feature 边界，继续缩小启动组合入口，不新建无复用价值的包 |
 | 开发环境管理 | 基础可用 | `packages/app/src/main/development-environments.ts`、`development-environment-files.ts`、设置页 | Electron 内置 Node 已可用，其他运行时的自动下载、签名校验和安装包分发未完成 | 先冻结导入/版本契约，再实现来源清单和按需下载 |
 | Renderer | 职责分散 | `packages/app/src/renderer/App.tsx`、`styles.css` | 页面状态、导航、会话、设置和工作区编排集中 | 按 feature + shared primitives 渐进拆分 |

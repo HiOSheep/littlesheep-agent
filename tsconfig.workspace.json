@@ -50,9 +50,6 @@
       "path": "packages/llm/tsconfig.json"
     },
     {
-      "path": "packages/mcp/tsconfig.json"
-    },
-    {
       "path": "packages/memory-core/tsconfig.json"
     },
     {
