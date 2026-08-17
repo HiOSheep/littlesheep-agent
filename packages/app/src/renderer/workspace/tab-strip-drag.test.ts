@@ -31,6 +31,6 @@ describe('workspace tab pointer reordering', () => {
     expect(tabStrip).toContain('onTabsReorder(reorderedOpenTabs)')
     expect(tabStrip).toContain('onPointerDown={(event) => event.stopPropagation()}')
     expect(panel).toContain('onTabsReorder={onTabsReorder}')
-    expect(dock).toContain('onTabsReorder={controller.setWorkspacePanelOpenTabs}')
+    expect(dock).toContain('onTabsReorder={setWorkspacePanelOpenTabs}')
   })
 })

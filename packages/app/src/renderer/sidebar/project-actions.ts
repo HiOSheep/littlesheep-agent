@@ -47,10 +47,8 @@ export interface ProjectActionContext {
   refreshSessions: () => Promise<SessionMeta[]>
   removeWorkspaceSessionLayout: (sessionId: string) => void
   resetWorkspaceSessionLayout: (sessionId?: string) => void
-  runtime: RuntimeState | null
   sessionLoadRequestRef: MutableRefObject<number>
   sessionOwnership: Pick<SessionMeta, 'scope' | 'projectId'>
-  sessions: SessionMeta[]
   sessionsForProject: (project: ProjectMeta) => SessionMeta[]
   setAppHistory: Dispatch<SetStateAction<NavigationHistoryState<AppNavigationSnapshot>>>
   setContextUsageSnapshot: Dispatch<SetStateAction<ContextUsageSnapshot | null>>
@@ -70,7 +68,18 @@ export interface ProjectActionContext {
 }
 
 export function createProjectActions(context: ProjectActionContext) {
-  const { abortRef, alignWorkspacePanelToWorkspaceRoot, appHistoryRef, appMountedRef, applyRuntimePatch, beginDraftApprovalScope, currentSession, historyLoadRequestRef, navigationRestoreTargetRef, pushRoute, rebindWorkspaceSessionLayouts, refreshProjects, refreshSessions, removeWorkspaceSessionLayout, resetWorkspaceSessionLayout, runtime, sessionLoadRequestRef, sessionOwnership, sessions, sessionsForProject, setAppHistory, setContextUsageSnapshot, setControlTip, setConversationCollapsed, setCurrentSession, setMessages, setPinnedSessionIds, setProjectCreatorOpen, setProjects, setRuntime, setRuntimeError, setSessionOwnership, setSessions, setSidebarPanel, setWorkspaceOpenRequest } = context
+  const {
+    abortRef, appHistoryRef, appMountedRef, historyLoadRequestRef, navigationRestoreTargetRef,
+    sessionLoadRequestRef,
+    alignWorkspacePanelToWorkspaceRoot, pushRoute, rebindWorkspaceSessionLayouts,
+    removeWorkspaceSessionLayout, resetWorkspaceSessionLayout,
+    applyRuntimePatch, beginDraftApprovalScope, refreshProjects, refreshSessions,
+    currentSession, sessionOwnership, sessionsForProject,
+    setAppHistory, setContextUsageSnapshot, setControlTip, setConversationCollapsed,
+    setCurrentSession, setMessages, setPinnedSessionIds, setProjectCreatorOpen, setProjects,
+    setRuntime, setRuntimeError, setSessionOwnership, setSessions, setSidebarPanel,
+    setWorkspaceOpenRequest,
+  } = context
 
   function invalidateConversationView() {
     sessionLoadRequestRef.current += 1
@@ -169,7 +178,7 @@ export function createProjectActions(context: ProjectActionContext) {
   }
 
 
-  async function resetWorkspaceAfterProjectRemoval(project: ProjectMeta, wasActiveProject: boolean) {
+  async function resetWorkspaceAfterProjectRemoval(wasActiveProject: boolean) {
     if (!wasActiveProject) return
     invalidateConversationView()
     const next = await updateRuntime({ workspace: '' })
@@ -202,7 +211,7 @@ export function createProjectActions(context: ProjectActionContext) {
       setMessages([])
       setContextUsageSnapshot(null)
     }
-    await resetWorkspaceAfterProjectRemoval(project, wasActiveProject)
+    await resetWorkspaceAfterProjectRemoval(wasActiveProject)
     void refreshProjects()
     void refreshSessions()
   }
@@ -229,9 +238,9 @@ export function createProjectActions(context: ProjectActionContext) {
       setContextUsageSnapshot(null)
     }
     for (const sessionId of removedSessionIds) removeWorkspaceSessionLayout(sessionId)
-    await resetWorkspaceAfterProjectRemoval(project, wasActiveProject)
+    await resetWorkspaceAfterProjectRemoval(wasActiveProject)
     void refreshProjects()
     void refreshSessions()
   }
-  return { openProjectCreator, activateProjectWorkspace, chooseProjectFolder, createProjectInFolder, relocateProject, resetWorkspace, resetWorkspaceAfterProjectRemoval, archiveProject, deleteProjectPermanently }
+  return { openProjectCreator, activateProjectWorkspace, chooseProjectFolder, createProjectInFolder, relocateProject, resetWorkspace, archiveProject, deleteProjectPermanently }
 }

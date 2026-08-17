@@ -4,13 +4,31 @@ import { SidebarActionMenu } from '../sidebar/action-menu'
 import { SessionRow } from '../sidebar/session-row'
 import { buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { ArchiveIcon, ComposeIcon, MoreIcon } from '../ui/icons'
-import type { AppController } from './use-app-controller'
+import type { ConversationSectionViewController } from './app-controller-projections'
 
 
 
 
-export function ConversationSectionView({ controller }: { controller: AppController }) {
-  const { sessions, projects, currentSession, sessionOwnership, messages, setMessages, input, setInput, loading, permissionMode, setPermissionMode, runtime, attachments, setAttachments, dragActive, runtimeError, sidebarCollapsed, workspacePanelCollapsed, workspacePanelReopenActive, setWorkspacePanelReopenActive, workspacePanelFullscreen, workspacePanelTab, workspacePanelOpenTabs, workspaceOpenRequest, setWorkspaceOpenRequest, workspaceFileDrafts, workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed, workspaceExpandedPaths, setWorkspaceExpandedPaths, conversationCollapsed, setConversationCollapsed, now, pinnedSessionIds, sidebarPanel, sidebarSearch, setSidebarSearch, projectCreatorOpen, setProjectCreatorOpen, scrollRef, inputRef, shellRef, activityNow, workspaceArtifactVersion, setWorkspaceArtifactVersion, controlTip, setControlTip, pendingApproval, settingsEntryRippling, sidebarWidth, setSidebarWidth, setWorkspacePanelWidth, workspacePanelLayout, layoutStyle, settingsOpen, directModulePage, settingsPage, canNavigateBack, canNavigateForward, openSettingsFromEntry, openSettingsPage, openDirectModulePage, navigateBack, navigateForward, closeSettingsFromEntry, selectableProviders, selectedModel, displayedSessions, visibleSessions, visibleSessionMotionRef, workspaceIsWorkplace, workspaceTip, projectPath, contextUsage, latestTaskActivity, sidebarToggleTip, moreConversationTip, newConversationTip, uploadTip, sendTip, requestWorkspaceSaveApproval, requestWorkspaceCommandApproval, settleApprovalPrompt, refreshSessions, refreshProjects, applyRuntimePatch, addAttachments, chooseWorkspace, openProjectCreator, activateProjectWorkspace, chooseProjectFolder, createProjectInFolder, relocateProject, resetWorkspace, openFileInWorkspace, handleComposerDragEnter, handleComposerDragOver, handleComposerDragLeave, handleComposerDrop, handleComposerPaste, send, stop, createConversationFromSidebar, openSidebarPanel, closeSidebarPanel, switchSession, renameSession, archiveSession, deleteSessionPermanently, archiveProject, deleteProjectPermanently, archiveAllSessions, togglePinnedSession, beginSidebarResize, nudgeSidebar, toggleSidebar, beginWorkspacePanelResize, toggleWorkspacePanel, updateWorkspacePanelReopenPresence, toggleWorkspacePanelFullscreen, nudgeWorkspacePanel, openWorkspacePanelTab, updateWorkspaceFileDraft, closeWorkspacePanelTab, defaultWorkspacePath, workspacePanelRoot, workspacePanelUsingTemporaryRoot } = controller
+export function ConversationSectionView({ controller }: { controller: ConversationSectionViewController }) {
+  const {
+    conversationCollapsed,
+    setConversationCollapsed,
+    moreConversationTip,
+    setControlTip,
+    archiveAllSessions,
+    newConversationTip,
+    createConversationFromSidebar,
+    visibleSessions,
+    currentSession,
+    pinnedSessionIds,
+    now,
+    visibleSessionMotionRef,
+    switchSession,
+    togglePinnedSession,
+    renameSession,
+    archiveSession,
+    deleteSessionPermanently,
+  } = controller
   return (
         <section
           className={`sidebar-section conversation-section ${conversationCollapsed ? 'collapsed' : ''}`}

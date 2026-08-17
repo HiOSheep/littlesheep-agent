@@ -58,7 +58,7 @@ export function WorkspacePanel({
   onFileNavigatorCollapsedChange,
   onFileNavigatorWidthChange,
   onExpandedPathsChange,
-  onOpenFile, onNavigateLink, onBrowserNavigate, onBrowserHistoryMove, onBrowserOpenNewTab, onBrowserTitleChange,
+  onOpenFile, onBrowserNavigate, onBrowserHistoryMove, onBrowserOpenNewTab, onBrowserTitleChange,
   onTipChange,
 }: {
   collapsed: boolean
@@ -93,7 +93,6 @@ export function WorkspacePanel({
   onFileNavigatorWidthChange: (width: number) => void
   onExpandedPathsChange: (update: StringListUpdater) => void
   onOpenFile: (path: string) => void
-  onNavigateLink: (href: string) => void
   onBrowserNavigate: (url: string, mode?: 'push' | 'replace') => void
   onBrowserHistoryMove: (delta: number) => void
   onBrowserOpenNewTab: (url: string) => void

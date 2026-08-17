@@ -17,7 +17,6 @@ import {
   createWorkspaceBrowserHistory,
   moveWorkspaceBrowserHistory,
   replaceWorkspaceBrowserHistory,
-  type WorkspaceBrowserHistory,
 } from './browser-history'
 import {
   WORKSPACE_PANEL_OPEN_TABS_MAX,

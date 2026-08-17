@@ -70,7 +70,15 @@ export interface RunActionContext {
 }
 
 export function createRunActions(context: RunActionContext) {
-  const { abortRef, activeRunIdRef, activeApprovalScopeKey, appMountedRef, approvalGrantsRef, attachments, conversationViewRequestRef, currentSession, input, liveToolStepRef, loading, permissionMode, pendingConversationTurnRef, pendingRuntimeMessageRef, publishRuntimeEventNotice, refreshProjects, refreshSessions, requestApprovalForScope, runtime, sessionOwnership, setActivityNow, setAttachments, setContextUsageSnapshot, setCurrentSession, setInput, setLoading, setMessages, setWorkspaceArtifactVersion, settleApprovalPrompt, stopRequestedRunIdRef } = context
+  const {
+    abortRef, activeRunIdRef, appMountedRef, conversationViewRequestRef, liveToolStepRef,
+    pendingConversationTurnRef, pendingRuntimeMessageRef, stopRequestedRunIdRef,
+    activeApprovalScopeKey, approvalGrantsRef, permissionMode, requestApprovalForScope, settleApprovalPrompt,
+    attachments, currentSession, input, loading, runtime, sessionOwnership,
+    publishRuntimeEventNotice, refreshProjects, refreshSessions,
+    setActivityNow, setAttachments, setContextUsageSnapshot, setCurrentSession, setInput,
+    setLoading, setMessages, setWorkspaceArtifactVersion,
+  } = context
 
 
   async function send() {

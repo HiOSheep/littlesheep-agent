@@ -27,7 +27,6 @@ import { isSamePath } from '../workspace/path-utils'
 
 export interface SessionActionContext {
   abortRef: MutableRefObject<AbortController | null>
-  activeApprovalScopeKey: (sessionId?: string) => string
   alignWorkspacePanelToWorkspaceRoot: (root: string, sessionId?: string | null) => void
   appMountedRef: MutableRefObject<boolean>
   approvalGrantsRef: MutableRefObject<SessionApprovalGrantStore>
@@ -57,7 +56,6 @@ export interface SessionActionContext {
   setSessions: Dispatch<SetStateAction<SessionMeta[]>>
   setSidebarPanel: Dispatch<SetStateAction<SidebarPanel>>
   settleApprovalPrompt: (decision: ApprovalDecision) => void
-  sessionOwnership: Pick<SessionMeta, 'scope' | 'projectId'>
   visibleSessions: SessionMeta[]
 }
 
@@ -71,7 +69,16 @@ const SESSION_HISTORY_PAGE_SIZE = 120
 const SESSION_HISTORY_MEMORY_MAX = 480
 
 export function createSessionActions(context: SessionActionContext) {
-  const { abortRef, activeApprovalScopeKey, alignWorkspacePanelToWorkspaceRoot, appMountedRef, approvalGrantsRef, beginDraftApprovalScope, currentSession, historyLoadRequestRef, historyWindow, pushRoute, refreshProjects, refreshRuntime, refreshSessions, removeWorkspaceSessionLayout, resetWorkspaceSessionLayout, runtime, sessionLoadRequestRef, sessions, setContextUsageSnapshot, setConversationCollapsed, setControlTip, setCurrentSession, setHistoryWindow, setMessages, setPinnedSessionIds, setRuntime, setRuntimeError, setSessionOwnership, setSessions, setSidebarPanel, settleApprovalPrompt, sessionOwnership, visibleSessions } = context
+  const {
+    abortRef, appMountedRef, approvalGrantsRef, historyLoadRequestRef, sessionLoadRequestRef,
+    alignWorkspacePanelToWorkspaceRoot, pushRoute, removeWorkspaceSessionLayout,
+    resetWorkspaceSessionLayout,
+    beginDraftApprovalScope, refreshProjects, refreshRuntime, refreshSessions, settleApprovalPrompt,
+    currentSession, historyWindow, runtime, sessions, visibleSessions,
+    setContextUsageSnapshot, setConversationCollapsed, setControlTip, setCurrentSession,
+    setHistoryWindow, setMessages, setPinnedSessionIds, setRuntime, setRuntimeError,
+    setSessionOwnership, setSessions, setSidebarPanel,
+  } = context
 
   function invalidateConversationView() {
     sessionLoadRequestRef.current += 1
@@ -311,5 +318,5 @@ export function createSessionActions(context: SessionActionContext) {
       return next
     })
   }
-  return { newSession, createConversationFromSidebar, openSidebarPanel, closeSidebarPanel, switchSession, loadOlderMessages, clearSessionFromLocalState, archiveSession, deleteSessionPermanently, renameSession, sessionsForProject, archiveAllSessions, togglePinnedSession }
+  return { createConversationFromSidebar, openSidebarPanel, closeSidebarPanel, switchSession, loadOlderMessages, archiveSession, deleteSessionPermanently, renameSession, sessionsForProject, archiveAllSessions, togglePinnedSession }
 }

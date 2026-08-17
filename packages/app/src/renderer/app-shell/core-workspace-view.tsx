@@ -4,13 +4,28 @@ import { DirectModuleWorkspace } from '../settings/direct-module'
 import { SidebarFeaturePanel } from '../sidebar/feature-panel'
 import { ChatView } from './chat-view'
 import { ComposerView } from './composer-view'
-import type { AppController } from './use-app-controller'
+import type { CoreWorkspaceViewController } from './app-controller-projections'
 import { WorkspaceDockView } from './workspace-dock-view'
 
 
 
-export function CoreWorkspaceView({ controller }: { controller: AppController }) {
-  const { sessions, projects, currentSession, sessionOwnership, messages, setMessages, input, setInput, loading, permissionMode, setPermissionMode, runtime, attachments, setAttachments, dragActive, runtimeError, sidebarCollapsed, workspacePanelCollapsed, workspacePanelReopenActive, setWorkspacePanelReopenActive, workspacePanelFullscreen, workspacePanelTab, workspacePanelOpenTabs, workspaceOpenRequest, setWorkspaceOpenRequest, workspaceFileDrafts, workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed, workspaceExpandedPaths, setWorkspaceExpandedPaths, conversationCollapsed, setConversationCollapsed, now, pinnedSessionIds, sidebarPanel, sidebarSearch, setSidebarSearch, projectCreatorOpen, setProjectCreatorOpen, scrollRef, inputRef, shellRef, activityNow, workspaceArtifactVersion, setWorkspaceArtifactVersion, controlTip, setControlTip, pendingApproval, settingsEntryRippling, sidebarWidth, setSidebarWidth, setWorkspacePanelWidth, workspacePanelLayout, layoutStyle, settingsOpen, directModulePage, settingsPage, canNavigateBack, canNavigateForward, openSettingsFromEntry, openSettingsPage, openDirectModulePage, navigateBack, navigateForward, closeSettingsFromEntry, selectableProviders, selectedModel, displayedSessions, visibleSessions, visibleSessionMotionRef, workspaceIsWorkplace, workspaceTip, projectPath, contextUsage, latestTaskActivity, sidebarToggleTip, moreConversationTip, newConversationTip, uploadTip, sendTip, requestWorkspaceSaveApproval, requestWorkspaceCommandApproval, settleApprovalPrompt, refreshSessions, refreshProjects, applyRuntimePatch, addAttachments, chooseWorkspace, openProjectCreator, activateProjectWorkspace, chooseProjectFolder, createProjectInFolder, relocateProject, resetWorkspace, openFileInWorkspace, handleComposerDragEnter, handleComposerDragOver, handleComposerDragLeave, handleComposerDrop, handleComposerPaste, send, stop, createConversationFromSidebar, openSidebarPanel, closeSidebarPanel, switchSession, archiveSession, deleteSessionPermanently, archiveProject, deleteProjectPermanently, archiveAllSessions, togglePinnedSession, beginSidebarResize, nudgeSidebar, toggleSidebar, beginWorkspacePanelResize, toggleWorkspacePanel, updateWorkspacePanelReopenPresence, toggleWorkspacePanelFullscreen, nudgeWorkspacePanel, openWorkspacePanelTab, updateWorkspaceFileDraft, closeWorkspacePanelTab, defaultWorkspacePath, workspacePanelRoot, workspacePanelUsingTemporaryRoot } = controller
+export function CoreWorkspaceView({ controller }: { controller: CoreWorkspaceViewController }) {
+  const {
+    updateWorkspacePanelReopenPresence,
+    setWorkspacePanelReopenActive,
+    directModulePage,
+    sidebarPanel,
+    sidebarSearch,
+    visibleSessions,
+    currentSession,
+    now,
+    setSidebarSearch,
+    closeSidebarPanel,
+    switchSession,
+    chat,
+    composer,
+    workspaceDock,
+  } = controller
   return (
       <section
         className="core-workspace"
@@ -23,11 +38,11 @@ export function CoreWorkspaceView({ controller }: { controller: AppController })
       ) : (
       <>
       <main className="chat">
-        <ChatView controller={controller} />
-        <ComposerView controller={controller} />
+        <ChatView controller={chat} />
+        <ComposerView controller={composer} />
       </main>
 
-      <WorkspaceDockView controller={controller} />
+      <WorkspaceDockView controller={workspaceDock} />
       </>
       )}
       <SidebarFeaturePanel

@@ -1,5 +1,5 @@
 // Owns conversation-scoped workspace layout buckets, draft adoption, persistence, and mirror recovery.
-import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { APPLICATION_PERSISTENCE_FLUSH_EVENT } from '../../shared/application-state-contracts'
 import {

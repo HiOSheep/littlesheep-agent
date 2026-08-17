@@ -16,12 +16,12 @@ import {
   type DisplaySettleState,
 } from '../ui/display-synced-settle'
 import { attachmentToArtifact } from '../workspace/path-utils'
-import type { AppController } from './use-app-controller'
+import type { ChatViewController } from './app-controller-projections'
 
 
 
 
-export function ChatView({ controller }: { controller: AppController }) {
+export function ChatView({ controller }: { controller: ChatViewController }) {
   const {
     currentSession,
     messages,

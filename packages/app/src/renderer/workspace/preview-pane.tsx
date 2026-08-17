@@ -1,5 +1,5 @@
 // Extension workspace panels, files, terminal, artifacts, and view helpers.
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type * as Monaco from 'monaco-editor'
 import {
   type AttachmentRef,

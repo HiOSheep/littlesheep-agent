@@ -13,13 +13,57 @@ import {
 import { workspaceSessionKey } from '../workspace-persistence'
 import { WorkspacePanel } from '../workspace/panel'
 import { mergeLineCommentAttachment } from '../workspace/line-comment-attachments'
-import type { AppController } from './use-app-controller'
+import type { WorkspaceDockViewController } from './app-controller-projections'
 
 
 
 
-export function WorkspaceDockView({ controller }: { controller: AppController }) {
-  const { sessions, projects, currentSession, sessionOwnership, messages, setMessages, input, setInput, loading, permissionMode, setPermissionMode, runtime, attachments, setAttachments, dragActive, runtimeError, sidebarCollapsed, workspacePanelCollapsed, workspacePanelReopenActive, setWorkspacePanelReopenActive, workspacePanelFullscreen, workspacePanelTab, workspacePanelOpenTabs, workspaceBrowserTabs, workspaceBrowserUrl, workspaceBrowserHistory, navigateWorkspaceBrowser, openWorkspaceBrowserTab, updateWorkspaceBrowserTitle, moveWorkspaceBrowser, workspaceOpenRequest, setWorkspaceOpenRequest, workspaceFileDrafts, workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed, workspaceFileNavigatorWidth, setWorkspaceFileNavigatorWidth, workspaceExpandedPaths, setWorkspaceExpandedPaths, conversationCollapsed, setConversationCollapsed, now, pinnedSessionIds, sidebarPanel, sidebarSearch, setSidebarSearch, projectCreatorOpen, setProjectCreatorOpen, scrollRef, inputRef, shellRef, activityNow, workspaceArtifactVersion, setWorkspaceArtifactVersion, controlTip, setControlTip, pendingApproval, settingsEntryRippling, sidebarWidth, setSidebarWidth, setWorkspacePanelWidth, workspacePanelLayout, layoutStyle, settingsOpen, directModulePage, settingsPage, canNavigateBack, canNavigateForward, openSettingsFromEntry, openSettingsPage, openDirectModulePage, navigateBack, navigateForward, closeSettingsFromEntry, selectableProviders, selectedModel, displayedSessions, visibleSessions, visibleSessionMotionRef, workspaceIsWorkplace, workspaceTip, projectPath, contextUsage, latestTaskActivity, sidebarToggleTip, moreConversationTip, newConversationTip, uploadTip, sendTip, requestWorkspaceSaveApproval, requestWorkspaceCommandApproval, settleApprovalPrompt, refreshSessions, refreshProjects, applyRuntimePatch, addAttachments, chooseWorkspace, openProjectCreator, activateProjectWorkspace, chooseProjectFolder, createProjectInFolder, relocateProject, resetWorkspace, openFileInWorkspace, openHyperlinkInside, openHyperlinkWithSystem, handleComposerDragEnter, handleComposerDragOver, handleComposerDragLeave, handleComposerDrop, handleComposerPaste, send, stop, createConversationFromSidebar, openSidebarPanel, closeSidebarPanel, switchSession, archiveSession, deleteSessionPermanently, archiveProject, deleteProjectPermanently, archiveAllSessions, togglePinnedSession, beginSidebarResize, nudgeSidebar, toggleSidebar, beginWorkspacePanelResize, toggleWorkspacePanel, updateWorkspacePanelReopenPresence, toggleWorkspacePanelFullscreen, nudgeWorkspacePanel, openWorkspacePanelTab, updateWorkspaceFileDraft, closeWorkspacePanelTab, defaultWorkspacePath, workspacePanelRoot, workspacePanelUsingTemporaryRoot } = controller
+export function WorkspaceDockView({ controller }: { controller: WorkspaceDockViewController }) {
+  const {
+    currentSession,
+    workspacePanelCollapsed,
+    workspacePanelReopenActive,
+    setWorkspacePanelReopenActive,
+    workspacePanelFullscreen,
+    workspacePanelTab,
+    workspacePanelOpenTabs,
+    setWorkspacePanelOpenTabs,
+    workspaceBrowserTabs,
+    workspaceBrowserUrl,
+    workspaceBrowserHistory,
+    navigateWorkspaceBrowser,
+    openWorkspaceBrowserTab,
+    updateWorkspaceBrowserTitle,
+    moveWorkspaceBrowser,
+    workspaceOpenRequest,
+    setWorkspaceOpenRequest,
+    workspaceFileDrafts,
+    workspaceFileNavigatorCollapsed,
+    setWorkspaceFileNavigatorCollapsed,
+    workspaceFileNavigatorWidth,
+    setWorkspaceFileNavigatorWidth,
+    workspaceExpandedPaths,
+    setWorkspaceExpandedPaths,
+    workspaceArtifactVersion,
+    setWorkspaceArtifactVersion,
+    setAttachments,
+    setControlTip,
+    setWorkspacePanelWidth,
+    workspacePanelLayout,
+    requestWorkspaceSaveApproval,
+    openFileInWorkspace,
+    beginWorkspacePanelResize,
+    toggleWorkspacePanel,
+    toggleWorkspacePanelFullscreen,
+    nudgeWorkspacePanel,
+    openWorkspacePanelTab,
+    updateWorkspaceFileDraft,
+    closeWorkspacePanelTab,
+    notifyRuntimeWorkspaceFileSaved,
+    defaultWorkspacePath,
+    workspacePanelRoot,
+    workspacePanelUsingTemporaryRoot,
+  } = controller
   const workspacePanelToggleTip = workspacePanelCollapsed ? '打开拓展工作区' : '收起拓展工作区'
   return (
 <>
@@ -71,7 +115,7 @@ export function WorkspaceDockView({ controller }: { controller: AppController })
         fileNavigatorWidth={workspaceFileNavigatorWidth}
         expandedPaths={workspaceExpandedPaths}
         onTabChange={openWorkspacePanelTab}
-        onTabsReorder={controller.setWorkspacePanelOpenTabs}
+        onTabsReorder={setWorkspacePanelOpenTabs}
         onCloseTab={closeWorkspacePanelTab}
         onFileDraftChange={updateWorkspaceFileDraft}
         onToggleFullscreen={toggleWorkspacePanelFullscreen}
@@ -79,7 +123,7 @@ export function WorkspaceDockView({ controller }: { controller: AppController })
         onReturnToDefaultWorkspace={() => setWorkspaceOpenRequest(null)}
         onRequestFileSaveApproval={requestWorkspaceSaveApproval}
          onWorkspaceArtifactsChanged={() => setWorkspaceArtifactVersion((value) => value + 1)}
-         onWorkspaceFileSaved={controller.notifyRuntimeWorkspaceFileSaved}
+         onWorkspaceFileSaved={notifyRuntimeWorkspaceFileSaved}
          onAddAttachment={(attachment) => setAttachments((current) => (
            mergeLineCommentAttachment(current, attachment)
          ))}
@@ -89,7 +133,6 @@ export function WorkspaceDockView({ controller }: { controller: AppController })
           boundStringList(update(paths), MAX_NAVIGATION_EXPANDED_PATHS),
         )}
         onOpenFile={openFileInWorkspace}
-        onNavigateLink={openHyperlinkInside}
         onBrowserNavigate={navigateWorkspaceBrowser}
         onBrowserHistoryMove={moveWorkspaceBrowser}
         onBrowserOpenNewTab={openWorkspaceBrowserTab}

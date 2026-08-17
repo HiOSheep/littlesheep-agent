@@ -13,12 +13,11 @@ import { RuntimePicker } from '../composer/runtime-picker'
 import { WorkspaceChip } from '../composer/workspace-chip'
 import { buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { SendRunIcon, StopRunIcon } from '../ui/icons'
-import { attachmentToArtifact } from '../workspace/path-utils'
 import { TaskProgressPresence } from '../chat/task-progress-indicator'
 import { syncComposerInputHeight } from '../composer/input-size'
-import type { AppController } from './use-app-controller'
+import type { ComposerViewController } from './app-controller-projections'
 
-export function ComposerView({ controller }: { controller: AppController }) {
+export function ComposerView({ controller }: { controller: ComposerViewController }) {
   const {
     input,
     setInput,

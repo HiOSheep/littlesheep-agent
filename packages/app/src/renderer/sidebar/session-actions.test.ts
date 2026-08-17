@@ -14,7 +14,6 @@ const mockedDeleteSession = vi.mocked(deleteSession)
 function createSwitchContext(overrides: Partial<SessionActionContext> = {}): SessionActionContext {
   return {
     abortRef: { current: null },
-    activeApprovalScopeKey: () => 'session:test',
     alignWorkspacePanelToWorkspaceRoot: vi.fn(),
     appMountedRef: { current: true },
     approvalGrantsRef: { current: { clear: vi.fn() } },
@@ -44,7 +43,6 @@ function createSwitchContext(overrides: Partial<SessionActionContext> = {}): Ses
     setSessions: vi.fn(),
     setSidebarPanel: vi.fn(),
     settleApprovalPrompt: vi.fn(),
-    sessionOwnership: { scope: 'standalone' },
     visibleSessions: [],
     ...overrides,
   } as SessionActionContext

@@ -1,7 +1,6 @@
 // Renderer client for LS-managed development environment settings.
 
 import type {
-  DevelopmentEnvironmentId,
   DevelopmentEnvironmentPreferencePatch,
   DevelopmentEnvironmentSnapshot,
 } from '../../shared/development-environment-contracts'

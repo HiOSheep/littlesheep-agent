@@ -5,14 +5,34 @@ import { GlobalTitlebar } from '../sidebar/global-titlebar'
 import { CoreWorkspaceView } from './core-workspace-view'
 import { OverlaysView } from './overlays-view'
 import { SidebarView } from './sidebar-view'
-import type { AppController } from './use-app-controller'
+import type { AppViewController } from './app-controller-projections'
 
-export function AppView({ controller }: { controller: AppController }) {
-  const { sessions, projects, currentSession, sessionOwnership, messages, setMessages, input, setInput, loading, permissionMode, setPermissionMode, runtime, attachments, setAttachments, dragActive, runtimeError, sidebarCollapsed, workspacePanelCollapsed, workspacePanelReopenActive, setWorkspacePanelReopenActive, workspacePanelFullscreen, workspacePanelTab, workspacePanelOpenTabs, workspaceOpenRequest, setWorkspaceOpenRequest, workspaceFileDrafts, workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed, workspaceExpandedPaths, setWorkspaceExpandedPaths, conversationCollapsed, setConversationCollapsed, now, pinnedSessionIds, sidebarPanel, sidebarSearch, setSidebarSearch, projectCreatorOpen, setProjectCreatorOpen, scrollRef, inputRef, shellRef, activityNow, workspaceArtifactVersion, setWorkspaceArtifactVersion, controlTip, setControlTip, pendingApproval, settingsEntryRippling, sidebarWidth, setSidebarWidth, setWorkspacePanelWidth, workspacePanelLayout, layoutStyle, settingsOpen, directModulePage, settingsPage, canNavigateBack, canNavigateForward, openSettingsFromEntry, openSettingsPage, openDirectModulePage, navigateBack, navigateForward, closeSettingsFromEntry, selectableProviders, selectedModel, displayedSessions, visibleSessions, visibleSessionMotionRef, workspaceIsWorkplace, workspaceTip, projectPath, contextUsage, latestTaskActivity, sidebarToggleTip, moreConversationTip, newConversationTip, uploadTip, sendTip, requestWorkspaceSaveApproval, requestWorkspaceCommandApproval, settleApprovalPrompt, refreshSessions, refreshProjects, applyRuntimePatch, addAttachments, chooseWorkspace, openProjectCreator, activateProjectWorkspace, chooseProjectFolder, createProjectInFolder, relocateProject, resetWorkspace, openFileInWorkspace, handleComposerDragEnter, handleComposerDragOver, handleComposerDragLeave, handleComposerDrop, handleComposerPaste, send, stop, createConversationFromSidebar, openSidebarPanel, closeSidebarPanel, switchSession, archiveSession, deleteSessionPermanently, archiveProject, deleteProjectPermanently, archiveAllSessions, togglePinnedSession, beginSidebarResize, nudgeSidebar, toggleSidebar, beginWorkspacePanelResize, toggleWorkspacePanel, updateWorkspacePanelReopenPresence, toggleWorkspacePanelFullscreen, nudgeWorkspacePanel, openWorkspacePanelTab, updateWorkspaceFileDraft, closeWorkspacePanelTab, defaultWorkspacePath, workspacePanelRoot, workspacePanelUsingTemporaryRoot } = controller
+export function AppView({ controller }: { controller: AppViewController }) {
+  const {
+    shellRef,
+    sidebarCollapsed,
+    workspacePanelCollapsed,
+    workspacePanelFullscreen,
+    directModulePage,
+    settingsOpen,
+    layoutStyle,
+    sidebarToggleTip,
+    canNavigateBack,
+    canNavigateForward,
+    toggleSidebar,
+    navigateBack,
+    navigateForward,
+    setControlTip,
+    openHyperlinkInside,
+    openHyperlinkWithSystem,
+    sidebar,
+    coreWorkspace,
+    overlays,
+  } = controller
   return (
     <LinkNavigationProvider value={{
-      openInside: controller.openHyperlinkInside,
-      openWithSystem: controller.openHyperlinkWithSystem,
+      openInside: openHyperlinkInside,
+      openWithSystem: openHyperlinkWithSystem,
     }}>
       <div
         ref={shellRef}
@@ -38,11 +58,11 @@ export function AppView({ controller }: { controller: AppController }) {
             onTipChange={setControlTip}
           />
           <div className="app">
-            <SidebarView controller={controller} />
-            <CoreWorkspaceView controller={controller} />
+            <SidebarView controller={sidebar} />
+            <CoreWorkspaceView controller={coreWorkspace} />
           </div>
         </div>
-        <OverlaysView controller={controller} />
+        <OverlaysView controller={overlays} />
       </div>
     </LinkNavigationProvider>
   )

@@ -461,7 +461,31 @@ export function useWorkspaceLayoutController({
     activeDragCleanupRef.current?.()
   }, [])
 
-  return { sidebarCollapsed, setSidebarCollapsed, workspacePanelCollapsed, setWorkspacePanelCollapsed, workspacePanelReopenActive, setWorkspacePanelReopenActive, workspacePanelFullscreen, setWorkspacePanelFullscreen, workspacePanelTab, setWorkspacePanelTab, workspacePanelOpenTabs, setWorkspacePanelOpenTabs, ...browserController, workspaceOpenRequest, setWorkspaceOpenRequest, workspaceFileDrafts, setWorkspaceFileDrafts, workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed, workspaceFileNavigatorWidth, setWorkspaceFileNavigatorWidth, workspaceExpandedPaths, setWorkspaceExpandedPaths, inputRef, shellRef, sidebarWidth, setSidebarWidth, workspacePanelWidth, setWorkspacePanelWidth, workspacePanelLayout, layoutStyle, beginSidebarResize, nudgeSidebar, toggleSidebar, beginWorkspacePanelResize, toggleWorkspacePanel, updateWorkspacePanelReopenPresence, toggleWorkspacePanelFullscreen, nudgeWorkspacePanel, openWorkspacePanelTab, updateWorkspaceFileDraft, closeWorkspacePanelTab, resetWorkspaceSessionLayout, removeWorkspaceSessionLayout, alignWorkspaceSessionToRoot, rebindWorkspaceSessionLayouts, defaultWorkspacePath, workspacePanelRoot, workspacePanelUsingTemporaryRoot }
+  return {
+    sidebarCollapsed, setSidebarCollapsed,
+    workspacePanelCollapsed, setWorkspacePanelCollapsed,
+    workspacePanelReopenActive, setWorkspacePanelReopenActive,
+    workspacePanelFullscreen, setWorkspacePanelFullscreen,
+    workspacePanelTab, setWorkspacePanelTab,
+    workspacePanelOpenTabs, setWorkspacePanelOpenTabs,
+    ...browserController,
+    workspaceOpenRequest, setWorkspaceOpenRequest,
+    workspaceFileDrafts, setWorkspaceFileDrafts,
+    workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed,
+    workspaceFileNavigatorWidth, setWorkspaceFileNavigatorWidth,
+    workspaceExpandedPaths, setWorkspaceExpandedPaths,
+    inputRef, shellRef,
+    sidebarWidth, setSidebarWidth,
+    workspacePanelWidth, setWorkspacePanelWidth,
+    workspacePanelLayout, layoutStyle,
+    beginSidebarResize, nudgeSidebar, toggleSidebar,
+    beginWorkspacePanelResize, toggleWorkspacePanel, updateWorkspacePanelReopenPresence,
+    toggleWorkspacePanelFullscreen, nudgeWorkspacePanel,
+    openWorkspacePanelTab, updateWorkspaceFileDraft, closeWorkspacePanelTab,
+    resetWorkspaceSessionLayout, removeWorkspaceSessionLayout,
+    alignWorkspaceSessionToRoot, rebindWorkspaceSessionLayouts,
+    defaultWorkspacePath, workspacePanelRoot, workspacePanelUsingTemporaryRoot,
+  }
 }
 
 export type WorkspaceLayoutController = ReturnType<typeof useWorkspaceLayoutController>

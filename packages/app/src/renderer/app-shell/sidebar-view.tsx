@@ -5,12 +5,43 @@ import { SidebarQuickNav } from '../sidebar/quick-nav'
 import { SettingsGearIcon } from '../ui/icons'
 import { ConversationSectionView } from './conversation-section-view'
 import { SidebarResizerView } from './sidebar-resizer-view'
-import type { AppController } from './use-app-controller'
+import type { SidebarViewController } from './app-controller-projections'
 
 
 
-export function SidebarView({ controller }: { controller: AppController }) {
-  const { sessions, projects, currentSession, sessionOwnership, messages, setMessages, input, setInput, loading, permissionMode, setPermissionMode, runtime, attachments, setAttachments, dragActive, runtimeError, sidebarCollapsed, workspacePanelCollapsed, workspacePanelReopenActive, setWorkspacePanelReopenActive, workspacePanelFullscreen, workspacePanelTab, workspacePanelOpenTabs, workspaceOpenRequest, setWorkspaceOpenRequest, workspaceFileDrafts, workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed, workspaceExpandedPaths, setWorkspaceExpandedPaths, conversationCollapsed, setConversationCollapsed, now, pinnedSessionIds, sidebarPanel, sidebarSearch, setSidebarSearch, projectCreatorOpen, setProjectCreatorOpen, scrollRef, inputRef, shellRef, activityNow, workspaceArtifactVersion, setWorkspaceArtifactVersion, controlTip, setControlTip, pendingApproval, settingsEntryRippling, sidebarWidth, setSidebarWidth, setWorkspacePanelWidth, workspacePanelLayout, layoutStyle, settingsOpen, directModulePage, settingsPage, canNavigateBack, canNavigateForward, openSettingsFromEntry, openSettingsPage, openDirectModulePage, navigateBack, navigateForward, closeSettingsFromEntry, selectableProviders, selectedModel, displayedSessions, visibleSessions, visibleSessionMotionRef, workspaceIsWorkplace, workspaceTip, projectPath, contextUsage, latestTaskActivity, sidebarToggleTip, moreConversationTip, newConversationTip, uploadTip, sendTip, requestWorkspaceSaveApproval, requestWorkspaceCommandApproval, settleApprovalPrompt, refreshSessions, refreshProjects, applyRuntimePatch, addAttachments, chooseWorkspace, openProjectCreator, activateProjectWorkspace, chooseProjectFolder, createProjectInFolder, relocateProject, resetWorkspace, openFileInWorkspace, handleComposerDragEnter, handleComposerDragOver, handleComposerDragLeave, handleComposerDrop, handleComposerPaste, send, stop, createConversationFromSidebar, openSidebarPanel, closeSidebarPanel, switchSession, renameSession, archiveSession, deleteSessionPermanently, archiveProject, deleteProjectPermanently, archiveAllSessions, togglePinnedSession, beginSidebarResize, nudgeSidebar, toggleSidebar, beginWorkspacePanelResize, toggleWorkspacePanel, updateWorkspacePanelReopenPresence, toggleWorkspacePanelFullscreen, nudgeWorkspacePanel, openWorkspacePanelTab, updateWorkspaceFileDraft, closeWorkspacePanelTab, defaultWorkspacePath, workspacePanelRoot, workspacePanelUsingTemporaryRoot } = controller
+export function SidebarView({ controller }: { controller: SidebarViewController }) {
+  const {
+    sidebarCollapsed,
+    sidebarPanel,
+    directModulePage,
+    createConversationFromSidebar,
+    openSidebarPanel,
+    openDirectModulePage,
+    setControlTip,
+    projects,
+    displayedSessions,
+    currentSession,
+    pinnedSessionIds,
+    now,
+    sessionOwnership,
+    projectPath,
+    activateProjectWorkspace,
+    openProjectCreator,
+    switchSession,
+    togglePinnedSession,
+    renameSession,
+    archiveSession,
+    deleteSessionPermanently,
+    archiveProject,
+    relocateProject,
+    deleteProjectPermanently,
+    settingsEntryRippling,
+    settingsOpen,
+    closeSettingsFromEntry,
+    openSettingsFromEntry,
+    conversation,
+    resizer,
+  } = controller
   return (
     <>
       <aside className="sidebar" aria-hidden={sidebarCollapsed} {...(sidebarCollapsed ? { inert: '' } : {})}>
@@ -47,7 +78,7 @@ export function SidebarView({ controller }: { controller: AppController }) {
           onDeleteProject={(project) => void deleteProjectPermanently(project)}
           onTipChange={setControlTip}
         />
-      <ConversationSectionView controller={controller} />
+      <ConversationSectionView controller={conversation} />
         <div className="sidebar-footer">
           <button
           className={`settings-entry-btn ${settingsEntryRippling ? 'rippling' : ''}`}
@@ -65,7 +96,7 @@ export function SidebarView({ controller }: { controller: AppController }) {
         </div>
         </div>
       </aside>
-      <SidebarResizerView controller={controller} />
+      <SidebarResizerView controller={resizer} />
     </>
   )
 }
