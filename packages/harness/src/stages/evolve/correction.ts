@@ -12,9 +12,13 @@ import {
   type MemoryAtomCorrectionServiceLike,
 } from '@littlesheep/memory-tree';
 import {
-  appendMemoryIntentDecisionRecords,
   collectRunEvidence,
 } from '../memory-intent-gate.js';
+import {
+  commitAtomProposalPlan,
+  type AtomProposalCommitPlan,
+  type EvolveAtomProposalResult,
+} from './atom-proposal-commit.js';
 import {
   atomProposalDecisionRecord,
   cleanString,
@@ -28,24 +32,32 @@ import {
   type RawCorrectionProposal,
 } from './correction-validation.js';
 
-interface CorrectionPlan {
-  proposals: MemoryAtomCorrectionProposal[];
-  decisions: MemoryIntentDecisionRecord[];
-}
+type CorrectionPlan = AtomProposalCommitPlan<MemoryAtomCorrectionProposal>;
 
 const MAX_AUDITED_CORRECTION_PROPOSALS = MAX_CORRECTION_PROPOSALS + 1;
 
-export interface EvolveCorrectionResult {
-  results: MemoryAtomCorrectionResult[];
-  decisions: MemoryIntentDecisionRecord[];
-}
+export type EvolveCorrectionResult = EvolveAtomProposalResult<MemoryAtomCorrectionResult>;
 
 export async function processEvolveCorrections(
   value: unknown,
   ctx: RunContext,
   corrector?: MemoryAtomCorrectionServiceLike,
 ): Promise<EvolveCorrectionResult> {
-  return commitPlan(ctx, corrector, parsePlan(value, ctx));
+  return commitAtomProposalPlan<MemoryAtomCorrectionProposal, MemoryAtomCorrectionResult>({
+    ctx,
+    plan: parsePlan(value, ctx),
+    proposedIntent: 'conflict',
+    serviceName: 'Correction',
+    commit: corrector ? (proposals) => corrector.resolve(proposals) : undefined,
+    summarizeProposal: (proposal) => correctionSummary(
+      proposal.superseded.atomId,
+      proposal.replacement.atomId,
+    ),
+    summarizeResult: (result) => correctionSummary(
+      result.supersededAtomId,
+      result.replacementAtomId,
+    ),
+  });
 }
 
 function parsePlan(value: unknown, ctx: RunContext): CorrectionPlan {
@@ -145,90 +157,6 @@ function parsePlan(value: unknown, ctx: RunContext): CorrectionPlan {
   }
 
   return { proposals, decisions };
-}
-
-async function commitPlan(
-  ctx: RunContext,
-  corrector: MemoryAtomCorrectionServiceLike | undefined,
-  plan: CorrectionPlan,
-): Promise<EvolveCorrectionResult> {
-  const decisions = [...plan.decisions];
-  if (plan.proposals.length === 0) {
-    appendMemoryIntentDecisionRecords(ctx, decisions);
-    return { results: [], decisions };
-  }
-  if (!corrector) {
-    for (const proposal of plan.proposals) {
-      decisions.push(decision(
-        ctx,
-        proposal.id,
-        'deferred',
-        'The runtime has no Atom correction service.',
-        undefined,
-        correctionSummary(proposal.superseded.atomId, proposal.replacement.atomId),
-        proposal.evidenceRefs,
-        'deferred',
-      ));
-    }
-    appendMemoryIntentDecisionRecords(ctx, decisions);
-    return { results: [], decisions };
-  }
-
-  let results: MemoryAtomCorrectionResult[];
-  try {
-    results = await corrector.resolve(plan.proposals);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    for (const proposal of plan.proposals) {
-      decisions.push(decision(
-        ctx,
-        proposal.id,
-        'deferred',
-        `Correction service failed before commit: ${message}`,
-        undefined,
-        correctionSummary(proposal.superseded.atomId, proposal.replacement.atomId),
-        proposal.evidenceRefs,
-        'deferred',
-      ));
-    }
-    appendMemoryIntentDecisionRecords(ctx, decisions);
-    return { results: [], decisions };
-  }
-
-  const resultById = new Map(results.map((result) => [result.proposalId, result]));
-  for (const proposal of plan.proposals) {
-    const result = resultById.get(proposal.id);
-    if (!result) {
-      decisions.push(decision(
-        ctx,
-        proposal.id,
-        'deferred',
-        'The correction service returned no result for the proposal.',
-        undefined,
-        correctionSummary(proposal.superseded.atomId, proposal.replacement.atomId),
-        proposal.evidenceRefs,
-        'deferred',
-      ));
-      continue;
-    }
-    const runtimeDecision = result.status === 'rejected'
-      ? 'rejected'
-      : result.status === 'deferred'
-        ? 'deferred'
-        : 'committed';
-    decisions.push(decision(
-      ctx,
-      proposal.id,
-      runtimeDecision,
-      result.reason,
-      undefined,
-      correctionSummary(result.supersededAtomId, result.replacementAtomId),
-      proposal.evidenceRefs,
-      result.status,
-    ));
-  }
-  appendMemoryIntentDecisionRecords(ctx, decisions);
-  return { results, decisions };
 }
 
 function decision(

@@ -14,16 +14,23 @@ import {
   type MemoryAtomRevisionServiceLike,
 } from '@littlesheep/memory-tree';
 import {
-  appendMemoryIntentDecisionRecords,
   collectRunEvidence,
 } from '../memory-intent-gate.js';
 import {
   atomProposalDecisionRecord,
   cleanString,
+  hasCompleteD3Envelope,
   isCurrentAdopted,
   isRecord,
+  knownStateEnvelopeMatches,
   parseAtomReference,
+  validateEvolveAtomProposalGate,
 } from './atom-proposal-support.js';
+import {
+  commitAtomProposalPlan,
+  type AtomProposalCommitPlan,
+  type EvolveAtomProposalResult,
+} from './atom-proposal-commit.js';
 
 interface RawRevisionProposal {
   action?: unknown;
@@ -33,24 +40,26 @@ interface RawRevisionProposal {
   reason?: unknown;
 }
 
-interface RevisionPlan {
-  proposals: MemoryAtomRevisionProposal[];
-  decisions: MemoryIntentDecisionRecord[];
-}
+type RevisionPlan = AtomProposalCommitPlan<MemoryAtomRevisionProposal>;
 
 const MAX_AUDITED_REVISION_PROPOSALS = MAX_REVISION_PROPOSALS + 1;
 
-export interface EvolveRevisionResult {
-  results: MemoryAtomRevisionResult[];
-  decisions: MemoryIntentDecisionRecord[];
-}
+export type EvolveRevisionResult = EvolveAtomProposalResult<MemoryAtomRevisionResult>;
 
 export async function processEvolveRevisions(
   value: unknown,
   ctx: RunContext,
   reviser?: MemoryAtomRevisionServiceLike,
 ): Promise<EvolveRevisionResult> {
-  return commitPlan(ctx, reviser, parsePlan(value, ctx));
+  return commitAtomProposalPlan<MemoryAtomRevisionProposal, MemoryAtomRevisionResult>({
+    ctx,
+    plan: parsePlan(value, ctx),
+    proposedIntent: 'revise',
+    serviceName: 'Revision',
+    commit: reviser ? (proposals) => reviser.revise(proposals) : undefined,
+    summarizeProposal: (proposal) => `Refine the projection for ${proposal.atom.atomId}`,
+    summarizeResult: (result) => `Refine the projection for ${result.atomId}`,
+  });
 }
 
 function parsePlan(value: unknown, ctx: RunContext): RevisionPlan {
@@ -143,90 +152,6 @@ function parsePlan(value: unknown, ctx: RunContext): RevisionPlan {
   return { proposals, decisions };
 }
 
-async function commitPlan(
-  ctx: RunContext,
-  reviser: MemoryAtomRevisionServiceLike | undefined,
-  plan: RevisionPlan,
-): Promise<EvolveRevisionResult> {
-  const decisions = [...plan.decisions];
-  if (plan.proposals.length === 0) {
-    appendMemoryIntentDecisionRecords(ctx, decisions);
-    return { results: [], decisions };
-  }
-  if (!reviser) {
-    for (const proposal of plan.proposals) {
-      decisions.push(decision(
-        ctx,
-        proposal.id,
-        'deferred',
-        'The runtime has no Atom revision service.',
-        undefined,
-        `Refine the projection for ${proposal.atom.atomId}`,
-        proposal.evidenceRefs,
-        'deferred',
-      ));
-    }
-    appendMemoryIntentDecisionRecords(ctx, decisions);
-    return { results: [], decisions };
-  }
-
-  let results: MemoryAtomRevisionResult[];
-  try {
-    results = await reviser.revise(plan.proposals);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    for (const proposal of plan.proposals) {
-      decisions.push(decision(
-        ctx,
-        proposal.id,
-        'deferred',
-        `Revision service failed before commit: ${message}`,
-        undefined,
-        `Refine the projection for ${proposal.atom.atomId}`,
-        proposal.evidenceRefs,
-        'deferred',
-      ));
-    }
-    appendMemoryIntentDecisionRecords(ctx, decisions);
-    return { results: [], decisions };
-  }
-
-  const resultById = new Map(results.map((result) => [result.proposalId, result]));
-  for (const proposal of plan.proposals) {
-    const result = resultById.get(proposal.id);
-    if (!result) {
-      decisions.push(decision(
-        ctx,
-        proposal.id,
-        'deferred',
-        'The revision service returned no result for the proposal.',
-        undefined,
-        `Refine the projection for ${proposal.atom.atomId}`,
-        proposal.evidenceRefs,
-        'deferred',
-      ));
-      continue;
-    }
-    const runtimeDecision = result.status === 'rejected'
-      ? 'rejected'
-      : result.status === 'deferred'
-        ? 'deferred'
-        : 'committed';
-    decisions.push(decision(
-      ctx,
-      proposal.id,
-      runtimeDecision,
-      result.reason,
-      undefined,
-      `Refine the projection for ${result.atomId}`,
-      proposal.evidenceRefs,
-      result.status,
-    ));
-  }
-  appendMemoryIntentDecisionRecords(ctx, decisions);
-  return { results, decisions };
-}
-
 function validateProposal(input: {
   raw?: RawRevisionProposal;
   atom?: MemoryAtomRevisionProposal['atom'];
@@ -239,21 +164,22 @@ function validateProposal(input: {
   if (!input.raw || input.raw.action !== 'revise' || input.raw.basis !== 'same-claim-refinement') {
     return 'Only same-claim-refinement Atom revision proposals are accepted.';
   }
-  if (!input.contractAllowsRevise) return 'The evolve call contract does not allow Atom revision proposals.';
-  if (!input.evidence.verified || input.evidence.refs.length === 0) {
-    return 'An Atom revision proposal requires a passing verification record and runtime evidence.';
-  }
+  const gateReason = validateEvolveAtomProposalGate({
+    proposalKind: 'revision',
+    contractAllowed: input.contractAllowsRevise,
+    evidence: input.evidence,
+  });
+  if (gateReason) return gateReason;
   if (!input.atom || !input.replacement || !input.reason || input.reason.length < 12) {
     return 'An Atom revision proposal needs one Atom, a complete replacement projection and a concrete reason.';
   }
   if (!input.atomKnown || !isCurrentAdopted(input.atomKnown, input.atom.expectedRevision)) {
     return `Memory atom ${input.atom.atomId} is not an adopted, current, unconflicted KnownState reference.`;
   }
-  if (input.atomKnown.envelope.disclosureLevel !== 'D3' || input.atomKnown.envelope.truncated) {
+  if (!hasCompleteD3Envelope(input.atomKnown)) {
     return `Memory atom ${input.atom.atomId} must be a complete D3 KnownState reference before revision.`;
   }
-  if (input.atomKnown.envelope.atomId !== input.atom.atomId
-    || input.atomKnown.envelope.atomRevision !== input.atom.expectedRevision) {
+  if (!knownStateEnvelopeMatches(input.atomKnown, input.atom.atomId, input.atom.expectedRevision)) {
     return `Memory atom ${input.atom.atomId} does not match its KnownState envelope revision.`;
   }
   return undefined;

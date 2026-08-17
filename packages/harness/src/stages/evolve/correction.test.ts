@@ -38,6 +38,8 @@ describe('EVOLVE Atom correction proposals', () => {
       memoryCorrector: { resolve },
     })(ctx);
 
+    expect(llm.chat).toHaveBeenCalledTimes(1);
+    expect(resolve).toHaveBeenCalledTimes(1);
     expect(resolve).toHaveBeenCalledWith([
       expect.objectContaining({
         action: 'supersede',
@@ -57,6 +59,7 @@ describe('EVOLVE Atom correction proposals', () => {
       proposedIntent: 'conflict',
       decision: 'committed',
       reconciliationDecision: 'committed',
+      summary: 'Supersede atom-old with atom-new',
     }));
     expect(result.meta?.memoryAtomCorrections).toEqual([
       expect.objectContaining({
@@ -80,6 +83,10 @@ describe('EVOLVE Atom correction proposals', () => {
       },
       (oldReference: RuntimeKnownStateMemoryReference, replacement: RuntimeKnownStateMemoryReference) => {
         replacement.atomRevision += 1;
+        return [oldReference, replacement];
+      },
+      (oldReference: RuntimeKnownStateMemoryReference, replacement: RuntimeKnownStateMemoryReference) => {
+        replacement.envelope.atomId = 'atom-other';
         return [oldReference, replacement];
       },
     ]) {

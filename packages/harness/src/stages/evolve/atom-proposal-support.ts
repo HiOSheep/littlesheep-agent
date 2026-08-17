@@ -24,6 +24,34 @@ export function isCurrentAdopted(reference: RuntimeKnownStateMemoryReference, re
     && !reference.envelope.expired;
 }
 
+export function hasCompleteD3Envelope(reference: RuntimeKnownStateMemoryReference): boolean {
+  return reference.envelope.disclosureLevel === 'D3'
+    && !reference.envelope.truncated;
+}
+
+export function knownStateEnvelopeMatches(
+  reference: RuntimeKnownStateMemoryReference,
+  atomId: string,
+  revision: number,
+): boolean {
+  return reference.envelope.atomId === atomId
+    && reference.envelope.atomRevision === revision;
+}
+
+export function validateEvolveAtomProposalGate(input: {
+  proposalKind: 'correction' | 'revision';
+  contractAllowed: boolean;
+  evidence: { refs: readonly string[]; verified: boolean };
+}): string | undefined {
+  if (!input.contractAllowed) {
+    return `The evolve call contract does not allow Atom ${input.proposalKind} proposals.`;
+  }
+  if (!input.evidence.verified || input.evidence.refs.length === 0) {
+    return `An Atom ${input.proposalKind} proposal requires a passing verification record and runtime evidence.`;
+  }
+  return undefined;
+}
+
 export function atomProposalDecisionRecord(input: {
   ctx: RunContext;
   id: string;

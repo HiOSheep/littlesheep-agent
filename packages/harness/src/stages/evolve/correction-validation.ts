@@ -3,7 +3,13 @@ import type {
   MemoryAtomCorrectionBasis,
   MemoryAtomCorrectionProposal,
 } from '@littlesheep/memory-tree';
-import { cleanString, isCurrentAdopted } from './atom-proposal-support.js';
+import {
+  cleanString,
+  hasCompleteD3Envelope,
+  isCurrentAdopted,
+  knownStateEnvelopeMatches,
+  validateEvolveAtomProposalGate,
+} from './atom-proposal-support.js';
 
 export interface RawCorrectionProposal {
   action?: unknown;
@@ -39,10 +45,12 @@ export function validateEvolveCorrectionProposal(input: {
   if (!input.raw || input.raw.action !== 'supersede' || !input.basis) {
     return 'Only evidence-backed-correction or conflict-replacement Atom correction proposals are accepted.';
   }
-  if (!input.contractAllowsConflict) return 'The evolve call contract does not allow Atom correction proposals.';
-  if (!input.evidence.verified || input.evidence.refs.length === 0) {
-    return 'An Atom correction proposal requires a passing verification record and runtime evidence.';
-  }
+  const gateReason = validateEvolveAtomProposalGate({
+    proposalKind: 'correction',
+    contractAllowed: input.contractAllowsConflict,
+    evidence: input.evidence,
+  });
+  if (gateReason) return gateReason;
   if (!input.superseded || !input.replacement || !input.relationId || !input.reason || input.reason.length < 12) {
     return 'An Atom correction proposal needs two Atom revisions, one relation id and a concrete reason.';
   }
@@ -78,7 +86,8 @@ function isCurrentCompleteAdopted(
   revision: number,
 ): boolean {
   return isCurrentAdopted(reference, revision)
-    && completeEnvelopeMatches(reference, revision);
+    && hasCompleteD3Envelope(reference)
+    && knownStateEnvelopeMatches(reference, reference.atomId, revision);
 }
 
 function isCurrentCompleteSupersededCandidate(
@@ -90,17 +99,8 @@ function isCurrentCompleteSupersededCandidate(
     && reference.envelope.conflict
     && !reference.envelope.expired;
   return (isCurrentAdopted(reference, revision) || currentConflicted)
-    && completeEnvelopeMatches(reference, revision);
-}
-
-function completeEnvelopeMatches(
-  reference: RuntimeKnownStateMemoryReference,
-  revision: number,
-): boolean {
-  return reference.envelope.disclosureLevel === 'D3'
-    && !reference.envelope.truncated
-    && reference.envelope.atomId === reference.atomId
-    && reference.envelope.atomRevision === revision;
+    && hasCompleteD3Envelope(reference)
+    && knownStateEnvelopeMatches(reference, reference.atomId, revision);
 }
 
 function sameKnownStateBoundary(

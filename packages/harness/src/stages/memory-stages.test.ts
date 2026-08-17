@@ -583,6 +583,8 @@ describe('EVOLVE structured memory intents', () => {
 
     const result = await createEvolveStage({ llm, model: 'test', memoryReviser: { revise } })(ctx);
 
+    expect(llm.chat).toHaveBeenCalledTimes(1);
+    expect(revise).toHaveBeenCalledTimes(1);
     expect(revise).toHaveBeenCalledWith([
       expect.objectContaining({
         action: 'revise',
@@ -598,19 +600,34 @@ describe('EVOLVE structured memory intents', () => {
       proposedIntent: 'revise',
       decision: 'committed',
       reconciliationDecision: 'committed',
+      summary: 'Refine the projection for atom-revision',
     }));
     expect(result.meta?.memoryAtomRevisions).toEqual([
       expect.objectContaining({ atomId: 'atom-revision', status: 'committed', revision: 5 }),
     ]);
   });
 
-  it('rejects D2 or truncated revision targets before calling the revision service', async () => {
-    for (const mutate of [
-      (reference: RuntimeKnownStateMemoryReference) => reference,
-      (reference: RuntimeKnownStateMemoryReference) => {
-        reference.envelope.disclosureLevel = 'D3';
-        reference.envelope.truncated = true;
-        return reference;
+  it('rejects incomplete or mismatched revision targets before calling the revision service', async () => {
+    for (const { mutate, reason } of [
+      {
+        mutate: (reference: RuntimeKnownStateMemoryReference) => reference,
+        reason: 'complete D3',
+      },
+      {
+        mutate: (reference: RuntimeKnownStateMemoryReference) => {
+          reference.envelope.disclosureLevel = 'D3';
+          reference.envelope.truncated = true;
+          return reference;
+        },
+        reason: 'complete D3',
+      },
+      {
+        mutate: (reference: RuntimeKnownStateMemoryReference) => {
+          reference.envelope.disclosureLevel = 'D3';
+          reference.envelope.atomId = 'atom-other';
+          return reference;
+        },
+        reason: 'does not match',
       },
     ]) {
       const revise = vi.fn();
@@ -634,7 +651,7 @@ describe('EVOLVE structured memory intents', () => {
       expect(ctx.memoryIntentDecisions).toContainEqual(expect.objectContaining({
         proposedIntent: 'revise',
         decision: 'rejected',
-        reason: expect.stringContaining('complete D3'),
+        reason: expect.stringContaining(reason),
       }));
     }
   });
