@@ -16,7 +16,6 @@
     }
   },
   "dependencies": {
-    "@littlesheep/types": "workspace:*",
     "zod": "^3.23.0"
   },
   "scripts": {

@@ -12,10 +12,5 @@
     "src/**/*.test.js",
     "dist",
     "node_modules"
-  ],
-  "references": [
-    {
-      "path": "../types"
-    }
   ]
 }
