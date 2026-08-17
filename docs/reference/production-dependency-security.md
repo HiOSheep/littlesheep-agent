@@ -18,3 +18,17 @@
 移除条件：当受支持的 Transformers/ONNX 版本在无 override 情况下自然解析到 `adm-zip>=0.6.0`，且 Transformers 对 `sharp` 的声明范围包含已修复版本时，分别删除对应 override 并重新执行生产审计和运行时验证。
 
 复查日期：2026-09-17，所有者：Embedding / Electron runtime。
+
+## Monaco 间接依赖
+
+`monaco-editor@0.55.1` 直接声明 `dompurify@3.2.7`。2026-08-17 的 npm 最新版 Monaco `0.56.0` 也只把该依赖提升到 `3.4.8`，仍低于当前 advisory 要求的 `3.4.13`，因此本阶段不扩大 Monaco 升级面，而由 `pnpm-workspace.yaml` 精确固定 `dompurify@3.4.13`。
+
+| 依赖 | 固定版本 | 来源与完整性 | 许可证 | 原因 |
+| --- | --- | --- | --- | --- |
+| `dompurify` | `3.4.13` | npm registry；lockfile integrity `sha512-2vmYIoqjze2d+kakP8S/nS5shfsl587kzwEjcGlTdiksUVgFHnFCsLYDVj/JNqJVOQZGSYBTmuycv0PodwmnMQ==` | MPL-2.0 OR Apache-2.0 | 覆盖截至 2026-08-17 解析到的 DOMPurify XSS、配置污染、危险属性和 mutation-XSS advisory |
+
+兼容约束：Monaco 的编辑器加载、语言 worker、Markdown/HTML、链接、粘贴、评论和审阅行为必须保持；真实 Electron Renderer 专项门必须使用 Monaco 解析上下文中的 DOMPurify，而不是另装测试副本。
+
+移除条件：当受支持的 Monaco 版本自然解析到 `dompurify>=3.4.13`，且升级后的 Monaco/UI/性能门全部通过时删除 override。
+
+复查日期：2026-09-17，所有者：Renderer / Monaco。

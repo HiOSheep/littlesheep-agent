@@ -15,6 +15,20 @@ describe('Electron main-process runtime dependencies', () => {
     expect(configSource).toContain("'@huggingface/transformers'")
     expect(configSource).toContain("'onnxruntime-node'")
     expect(packageJson.dependencies?.['@huggingface/transformers']).toBe('4.2.0')
-    expect(workspaceSource).toMatch(/overrides:\s*\n\s+adm-zip: 0\.6\.0\s*\n\s+sharp: 0\.35\.0/u)
+    expect(workspaceSource).toMatch(/^\s+adm-zip: 0\.6\.0$/mu)
+    expect(workspaceSource).toMatch(/^\s+sharp: 0\.35\.0$/mu)
+  })
+
+  it('pins Monaco DOMPurify to the reviewed security floor', async () => {
+    const [packageSource, workspaceSource] = await Promise.all([
+      readFile(new URL('../../package.json', import.meta.url), 'utf8'),
+      readFile(new URL('../../../../pnpm-workspace.yaml', import.meta.url), 'utf8'),
+    ])
+    const packageJson = JSON.parse(packageSource) as {
+      dependencies?: Record<string, string>
+    }
+
+    expect(packageJson.dependencies?.['monaco-editor']).toBe('^0.55.1')
+    expect(workspaceSource).toMatch(/^\s+dompurify: 3\.4\.13$/mu)
   })
 })
