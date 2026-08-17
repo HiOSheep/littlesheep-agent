@@ -15,6 +15,7 @@
     "@huggingface/tokenizers": "0.1.3",
     "@littlesheep/config": "workspace:*",
     "@littlesheep/llm": "workspace:*",
+    "@littlesheep/safety": "workspace:*",
     "@littlesheep/types": "workspace:*"
   },
   "scripts": {

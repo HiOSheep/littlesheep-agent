@@ -21,6 +21,9 @@
       "path": "../llm"
     },
     {
+      "path": "../safety"
+    },
+    {
       "path": "../types"
     }
   ]

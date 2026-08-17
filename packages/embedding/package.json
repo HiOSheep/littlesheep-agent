@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@huggingface/transformers": "4.2.0",
-    "@littlesheep/memory-tree": "workspace:*"
+    "@littlesheep/memory-tree": "workspace:*",
+    "@littlesheep/safety": "workspace:*"
   }
 }

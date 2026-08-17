@@ -9,6 +9,10 @@
         ".": {
             "types": "./dist/index.d.ts",
             "import": "./dist/index.js"
+        },
+        "./verified-asset": {
+            "types": "./dist/verified-asset.d.ts",
+            "import": "./dist/verified-asset.js"
         }
     },
     "scripts": {

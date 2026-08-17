@@ -1,12 +1,16 @@
 // Owns verified DeepSeek V4 tokenizer assets, bounded count caching, and the
 // exact request-counter adapter used by Context Engine.
-import { createHash, randomBytes } from 'node:crypto';
-import { createReadStream } from 'node:fs';
-import { mkdir, open, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { Tokenizer } from '@huggingface/tokenizers';
 import { DEEPSEEK_V4_TOKEN_COUNTER_ID } from '@littlesheep/config';
 import type { ChatRequest } from '@littlesheep/llm';
+import {
+  cleanupVerifiedAssetTemporaryFiles,
+  downloadVerifiedAsset,
+  inspectVerifiedAssetFile,
+} from '@littlesheep/safety/verified-asset';
 import type { ExactContextTokenCounter } from '../context-engine/contracts.js';
 import { encodeDeepSeekV4Request } from './deepseek-v4-encoding.js';
 
@@ -32,8 +36,6 @@ const DEEPSEEK_V4_TOKENIZER_SPEC = Object.freeze({
 // published prompt framing. Its fixed token cost is verified by the live
 // calibration matrix; it is not representable by the open-weights encoder.
 const DEEPSEEK_V4_FLASH_MAX_CONTROL_TOKENS = 13;
-
-type TokenizerFileSpec = typeof DEEPSEEK_V4_TOKENIZER_SPEC.files[number];
 
 export interface LocalTokenizerPreparationOptions {
   modelRef: string;
@@ -255,17 +257,10 @@ export async function verifyDeepSeekV4TokenizerAssets(
   let totalBytes = 0;
   for (const file of DEEPSEEK_V4_TOKENIZER_SPEC.files) {
     const path = join(repositoryRoot, file.path);
-    try {
-      const info = await stat(path);
-      if (!info.isFile() || info.size !== file.bytes || await hashFile(path) !== file.sha256) {
-        invalid.push(file.path);
-      } else {
-        totalBytes += info.size;
-      }
-    } catch (error) {
-      if (errorCode(error) === 'ENOENT') missing.push(file.path);
-      else throw error;
-    }
+    const status = await inspectVerifiedAssetFile(path, file);
+    if (status === 'missing') missing.push(file.path);
+    else if (status === 'invalid') invalid.push(file.path);
+    else totalBytes += file.bytes;
   }
   return {
     available: missing.length === 0 && invalid.length === 0,
@@ -308,7 +303,8 @@ async function provisionDeepSeekV4TokenizerAssets(
   try {
     for (const file of DEEPSEEK_V4_TOKENIZER_SPEC.files) {
       const destination = join(repositoryRoot, file.path);
-      if (await fileMatches(destination, file)) {
+      if (await inspectVerifiedAssetFile(destination, file) === 'valid') {
+        await cleanupVerifiedAssetTemporaryFiles(destination, timeout.signal);
         completedBytes += file.bytes;
         options.onProgress?.({ file: file.path, completedBytes, totalBytes });
         continue;
@@ -317,8 +313,16 @@ async function provisionDeepSeekV4TokenizerAssets(
         `${DEEPSEEK_V4_TOKENIZER_SPEC.repository}/resolve/${DEEPSEEK_V4_TOKENIZER_SPEC.revision}/${file.path}`,
         remoteHost,
       ).toString();
-      await downloadVerifiedFile(fetchFn, url, destination, file, timeout.signal, (written) => {
-        options.onProgress?.({ file: file.path, completedBytes: completedBytes + written, totalBytes });
+      await downloadVerifiedAsset({
+        fetchFn,
+        url,
+        destination,
+        expected: file,
+        signal: timeout.signal,
+        label: 'Tokenizer asset',
+        onBytes: (written) => {
+          options.onProgress?.({ file: file.path, completedBytes: completedBytes + written, totalBytes });
+        },
       });
       completedBytes += file.bytes;
       options.onProgress?.({ file: file.path, completedBytes, totalBytes });
@@ -341,74 +345,6 @@ async function provisionDeepSeekV4TokenizerAssets(
     verifiedAt: new Date().toISOString(),
   }, null, 2)}\n`, 'utf8');
   return verification;
-}
-
-async function downloadVerifiedFile(
-  fetchFn: typeof fetch,
-  url: string,
-  destination: string,
-  file: TokenizerFileSpec,
-  signal: AbortSignal,
-  onBytes: (bytes: number) => void,
-): Promise<void> {
-  await mkdir(dirname(destination), { recursive: true });
-  const temporary = `${destination}.${randomBytes(8).toString('hex')}.tmp`;
-  let handle: Awaited<ReturnType<typeof open>> | undefined;
-  try {
-    const response = await fetchFn(url, { signal, redirect: 'follow' });
-    if (!response.ok || !response.body) throw new Error(`Tokenizer asset request failed: HTTP ${response.status} ${url}`);
-    handle = await open(temporary, 'wx');
-    const reader = response.body.getReader();
-    const hash = createHash('sha256');
-    let written = 0;
-    while (true) {
-      const chunk = await reader.read();
-      if (chunk.done) break;
-      written += chunk.value.byteLength;
-      if (written > file.bytes) throw new Error(`Tokenizer asset exceeded expected size: ${url}`);
-      hash.update(chunk.value);
-      await writeAll(handle, chunk.value);
-      onBytes(written);
-    }
-    if (written !== file.bytes) throw new Error(`Tokenizer asset size mismatch for ${url}: ${written} != ${file.bytes}`);
-    const digest = hash.digest('hex');
-    if (digest !== file.sha256) throw new Error(`Tokenizer asset hash mismatch for ${url}`);
-    await handle.sync();
-    await handle.close();
-    handle = undefined;
-    await unlink(destination).catch((error) => {
-      if (errorCode(error) !== 'ENOENT') throw error;
-    });
-    await rename(temporary, destination);
-  } catch (error) {
-    await handle?.close().catch(() => undefined);
-    await unlink(temporary).catch(() => undefined);
-    throw error;
-  }
-}
-
-async function writeAll(handle: Awaited<ReturnType<typeof open>>, bytes: Uint8Array): Promise<void> {
-  let offset = 0;
-  while (offset < bytes.byteLength) {
-    const result = await handle.write(bytes, offset, bytes.byteLength - offset);
-    if (result.bytesWritten <= 0) throw new Error('Tokenizer asset write made no progress.');
-    offset += result.bytesWritten;
-  }
-}
-
-async function fileMatches(path: string, file: TokenizerFileSpec): Promise<boolean> {
-  try {
-    const info = await stat(path);
-    return info.isFile() && info.size === file.bytes && await hashFile(path) === file.sha256;
-  } catch {
-    return false;
-  }
-}
-
-async function hashFile(path: string): Promise<string> {
-  const hash = createHash('sha256');
-  for await (const chunk of createReadStream(path)) hash.update(chunk);
-  return hash.digest('hex');
 }
 
 async function readJson(path: string): Promise<object> {
@@ -457,10 +393,4 @@ function createTimeoutSignal(parent: AbortSignal | undefined, timeoutMs: number)
 
 function ensureTrailingSlash(value: string): string {
   return value.endsWith('/') ? value : `${value}/`;
-}
-
-function errorCode(error: unknown): string | undefined {
-  return typeof error === 'object' && error !== null && 'code' in error
-    ? String((error as { code?: unknown }).code)
-    : undefined;
 }

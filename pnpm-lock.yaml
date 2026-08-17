@@ -253,6 +253,9 @@ importers:
       '@littlesheep/llm':
         specifier: workspace:*
         version: link:../llm
+      '@littlesheep/safety':
+        specifier: workspace:*
+        version: link:../safety
       '@littlesheep/types':
         specifier: workspace:*
         version: link:../types
@@ -302,6 +305,9 @@ importers:
       '@littlesheep/memory-tree':
         specifier: workspace:*
         version: link:../memory-tree
+      '@littlesheep/safety':
+        specifier: workspace:*
+        version: link:../safety
 
   packages/experience:
     dependencies:

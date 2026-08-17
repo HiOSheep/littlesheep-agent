@@ -66,6 +66,7 @@ export default defineConfig({
       '@littlesheep/memory-core': pkg('memory-core'),
       '@littlesheep/memory-tree': pkg('memory-tree'),
       '@littlesheep/prompt': pkg('prompt'),
+      '@littlesheep/safety/verified-asset': pkgFile('safety', 'verified-asset'),
       '@littlesheep/safety': pkg('safety'),
       '@littlesheep/snapshot': pkg('snapshot'),
       '@littlesheep/session': pkg('session'),

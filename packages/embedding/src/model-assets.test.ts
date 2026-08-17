@@ -45,6 +45,8 @@ describe('local embedding model assets', () => {
       modelRootDir,
       fetchFn: fetchFn as typeof fetch,
     });
+    const destination = join(first.modelRoot, 'test', 'tiny-embedding', 'config.json');
+    await writeFile(`${destination}.${process.pid}.0123456789abcdef.tmp`, 'partial', 'utf8');
     const second = await provisionLocalEmbeddingModel({
       model: testModel.id,
       modelRootDir,
@@ -54,9 +56,46 @@ describe('local embedding model assets', () => {
     expect(first.available).toBe(true);
     expect(second.available).toBe(true);
     expect(fetchFn).toHaveBeenCalledTimes(1);
-    expect(await readFile(join(first.modelRoot, 'test', 'tiny-embedding', 'config.json'), 'utf8')).toBe('hello');
+    expect(await readFile(destination, 'utf8')).toBe('hello');
+    expect((await readdir(join(first.modelRoot, 'test', 'tiny-embedding')))
+      .filter((name) => name.endsWith('.tmp'))).toEqual([]);
     expect(JSON.parse(await readFile(join(first.modelRoot, 'model-manifest.json'), 'utf8')))
       .toMatchObject({ model: testModel.id, revision: testModel.revision });
+  });
+
+  it('lets concurrent provisions converge on one verified model without publication races', async () => {
+    const modelRootDir = await temporaryDirectory();
+    let release!: () => void;
+    const released = new Promise<void>((resolveRelease) => {
+      release = resolveRelease;
+    });
+    const fetchFn = vi.fn(async () => {
+      await released;
+      return new Response(new TextEncoder().encode('hello'));
+    });
+
+    const first = provisionLocalEmbeddingModel({
+      model: testModel.id,
+      modelRootDir,
+      fetchFn: fetchFn as typeof fetch,
+    });
+    const second = provisionLocalEmbeddingModel({
+      model: testModel.id,
+      modelRootDir,
+      fetchFn: fetchFn as typeof fetch,
+    });
+    await vi.waitFor(() => expect(fetchFn).toHaveBeenCalledTimes(2));
+    release();
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    expect(firstResult.available).toBe(true);
+    expect(secondResult.available).toBe(true);
+    const destination = join(firstResult.modelRoot, 'test', 'tiny-embedding', 'config.json');
+    expect(await readFile(destination, 'utf8')).toBe('hello');
+    expect(JSON.parse(await readFile(join(firstResult.modelRoot, 'model-manifest.json'), 'utf8')))
+      .toMatchObject({ model: testModel.id, revision: testModel.revision });
+    expect((await readdir(join(firstResult.modelRoot, 'test', 'tiny-embedding')))
+      .filter((name) => name.endsWith('.tmp'))).toEqual([]);
   });
 
   it('rejects a hash mismatch and removes temporary files', async () => {
