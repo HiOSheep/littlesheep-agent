@@ -12,5 +12,6 @@
     "src/**/*.test.js",
     "dist",
     "node_modules"
-  ]
+  ],
+  "references": []
 }
