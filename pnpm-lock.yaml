@@ -196,9 +196,6 @@ importers:
 
   packages/channels/webhook:
     dependencies:
-      '@littlesheep/config':
-        specifier: workspace:*
-        version: link:../../config
       '@littlesheep/plugins':
         specifier: workspace:*
         version: link:../../plugins
