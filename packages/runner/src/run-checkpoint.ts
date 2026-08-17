@@ -42,11 +42,13 @@ export function buildRunCheckpoint(options: BuildRunCheckpointOptions): RunCheck
   const { ctx, stageResult } = options;
   const now = options.now ?? (ctx.runtimeNow?.() ?? new Date());
   const queue = snapshotQueue(ctx);
-  const status: RunCheckpoint['status'] = ctx.clarificationRequest
-    ? 'waiting_user'
-    : ctx.runtimeControl?.state === 'paused'
-      ? 'paused'
-      : 'recoverable';
+  const status: RunCheckpoint['status'] = ctx.runtimeControl?.state === 'paused'
+    ? 'paused'
+    : options.interrupted || ctx.runtimeControl?.state === 'interrupted'
+      ? 'recoverable'
+      : ctx.clarificationRequest
+        ? 'waiting_user'
+        : 'recoverable';
   const activeStepIds = (ctx.taskExecution?.steps ?? [])
     .filter((step) => step.status === 'in_progress')
     .map((step) => step.stepId)

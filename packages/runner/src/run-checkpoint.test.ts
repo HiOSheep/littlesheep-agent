@@ -79,6 +79,63 @@ describe('buildRunCheckpoint', () => {
     expect(checkpoint.activeStepIds).toBeUndefined();
   });
 
+  it('lets explicit runtime control outrank an unpublished clarification state', () => {
+    const waiting = contextWithSteps([step('done', 'done')]);
+    waiting.clarificationRequest = {
+      id: 'pending-clarification',
+      kind: 'recovery_decision',
+      sourceStage: 'verify',
+      createdAt: '2026-07-29T10:00:00.000Z',
+      originalRequest: 'continue the task',
+      blockingReason: 'verification needs a decision',
+      questions: [{
+        id: 'decision',
+        field: 'recoveryDecision',
+        prompt: 'How should verification continue?',
+        required: true,
+      }],
+    };
+
+    const ordinary = buildRunCheckpoint({
+      ctx: waiting,
+      stageResult: { stage: 'finalize', next: 'exit', ok: true },
+      reason: 'waiting for a bound answer',
+      now: new Date('2026-07-29T10:00:01.000Z'),
+    });
+    expect(ordinary.status).toBe('waiting_user');
+
+    waiting.runtimeControl = {
+      version: 1,
+      state: 'paused',
+      changedAt: '2026-07-29T10:00:01.000Z',
+      reason: 'user requested pause',
+      eventIds: ['pause-event'],
+    };
+    const paused = buildRunCheckpoint({
+      ctx: waiting,
+      stageResult: { stage: 'ask_user', next: 'exit', ok: false },
+      reason: 'paused before clarification publication',
+      now: new Date('2026-07-29T10:00:01.000Z'),
+    });
+    expect(paused.status).toBe('paused');
+
+    waiting.runtimeControl = {
+      version: 1,
+      state: 'interrupted',
+      changedAt: '2026-07-29T10:00:01.000Z',
+      reason: 'user requested interrupt',
+      eventIds: ['interrupt-event'],
+    };
+    const interrupted = buildRunCheckpoint({
+      ctx: waiting,
+      stageResult: { stage: 'ask_user', next: 'exit', ok: false },
+      reason: 'interrupted before clarification publication',
+      interrupted: true,
+      now: new Date('2026-07-29T10:00:01.000Z'),
+    });
+    expect(interrupted.status).toBe('recoverable');
+  });
+
   it('reconciles model-call observability into the durable loop budget', () => {
     const ctx = contextWithSteps([step('active', 'in_progress')]);
     ctx.modelCallCount = 3;

@@ -225,8 +225,12 @@ async function streamCheckpointResume(
       (approval) => writeSse(res, 'approval_request', approval),
       controller.signal,
     )
-    const runPolicy = resolveRunPolicy(
+    const resumeBody = checkpointResumeDefaults(
       body as unknown as Record<string, unknown>,
+      state,
+    )
+    const runPolicy = resolveRunPolicy(
+      resumeBody,
       context.getConfig(),
       approvalBroker,
       { containerRoot: context.dataDir ?? context.workplaceDir, cwd: state.cwd },
@@ -246,7 +250,7 @@ async function streamCheckpointResume(
       permissionPolicyId: runPolicy.permissionPolicyId,
       requireApprovalForAllTools: runPolicy.requireApprovalForAllTools,
       profile: runPolicy.profile,
-      reasoning: resolveReasoning(body as unknown as Record<string, unknown>, context.getConfig()),
+      reasoning: resolveReasoning(resumeBody, context.getConfig()),
       cwd: state.cwd,
       workspaceContext,
       restoreCheckpointResources,
@@ -271,6 +275,22 @@ async function streamCheckpointResume(
     res.end()
   }
   return true
+}
+
+function checkpointResumeDefaults(
+  body: Record<string, unknown>,
+  state: NonNullable<import('@littlesheep/types').RunCheckpoint['resumeState']>,
+): Record<string, unknown> {
+  const effective = { ...body }
+  const hasLegacyMode = typeof body.mode === 'string'
+  if (body.permissionMode === undefined && !hasLegacyMode) {
+    effective.permissionMode = state.permissionPolicyId
+  }
+  if (body.profile === undefined && !hasLegacyMode) {
+    effective.profile = state.behaviorModeId
+  }
+  if (body.reasoning === undefined) effective.reasoning = state.reasoning
+  return effective
 }
 
 function parseBoundedOptional(

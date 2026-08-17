@@ -51,7 +51,10 @@ function queuedLlm(responses: ChatResponse[]): LlmClient {
   }
 }
 
-function checkpointInspection(dataDir: string): RunCheckpointInspection {
+function checkpointInspection(
+  dataDir: string,
+  resumeStateOverrides: Partial<NonNullable<RunCheckpoint['resumeState']>> = {},
+): RunCheckpointInspection {
   const checkpoint: RunCheckpoint = {
     version: 1,
     id: 'checkpoint-1',
@@ -91,6 +94,7 @@ function checkpointInspection(dataDir: string): RunCheckpointInspection {
       maxReplanAttempts: 2,
       verificationHistory: [],
       workspaceContext: { boundaryKind: 'agent_workplace' },
+      ...resumeStateOverrides,
     },
     createdAt: '2026-07-29T10:00:00.000Z',
     reason: 'application closed during execution',
@@ -113,13 +117,14 @@ function abandonedDisposition(): RunCheckpointDisposition {
 
 async function createFixture(
   resumeImplementation?: NonNullable<AgentRunner['resumeCheckpoint']>,
+  resumeStateOverrides: Partial<NonNullable<RunCheckpoint['resumeState']>> = {},
 ) {
   const dataDir = mkdtempSync(join(tmpdir(), 'ls-run-checkpoint-api-'))
   const workplaceDir = join(dataDir, 'workplace')
   mkdirSync(workplaceDir, { recursive: true })
   const config = structuredClone(DEFAULT_CONFIG)
   config.agents.defaults.workspace = workplaceDir
-  const inspection = checkpointInspection(dataDir)
+  const inspection = checkpointInspection(dataDir, resumeStateOverrides)
   const reconcileCompletedRuns = vi.fn(async () => 1)
   const recoverInterruptedResumes = vi.fn(async () => 1)
   const abandon = vi.fn(async () => ({
@@ -252,6 +257,38 @@ describe('run checkpoint Local App API', () => {
       expect((await fixture.sessionIndex.list()).find((session) => session.id === 'checkpoint-session')).toMatchObject({
         id: 'checkpoint-session',
         workspacePath: join(fixture.dataDir, 'workplace'),
+      })
+    } finally {
+      await fixture.server.stop()
+      rmSync(fixture.dataDir, { recursive: true, force: true })
+    }
+  })
+
+  it('inherits checkpoint policy, profile, and reasoning when resume overrides are omitted', async () => {
+    const fixture = await createFixture(undefined, {
+      permissionPolicyId: 'full',
+      behaviorModeId: 'coding',
+      reasoning: 'high',
+    })
+    const base = `http://127.0.0.1:${fixture.server.port}`
+    const itemPath = localAppApiItemPath(LOCAL_APP_API_PREFIXES.runCheckpoints, 'checkpoint-1')
+    try {
+      const response = await fetch(`${base}${itemPath}/resume/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reason: 'resume with checkpoint defaults',
+          requestKey: 'checkpoint-defaults-turn',
+          continuationDirective: 'answer',
+        }),
+      })
+
+      expect(response.status).toBe(200)
+      expect(await response.text()).toContain('event: result')
+      expect(fixture.resumeCheckpoint.mock.calls[0]?.[1]).toMatchObject({
+        permissionPolicyId: 'full',
+        reasoning: 'high',
+        profile: 'coding',
       })
     } finally {
       await fixture.server.stop()
