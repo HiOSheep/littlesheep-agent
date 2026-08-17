@@ -9,9 +9,6 @@
   "extends": "../../tsconfig.base.json",
   "references": [
     {
-      "path": "../config"
-    },
-    {
       "path": "../documents"
     },
     {

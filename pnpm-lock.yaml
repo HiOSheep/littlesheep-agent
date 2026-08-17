@@ -512,9 +512,6 @@ importers:
 
   packages/tools:
     dependencies:
-      '@littlesheep/config':
-        specifier: workspace:*
-        version: link:../config
       '@littlesheep/documents':
         specifier: workspace:*
         version: link:../documents
