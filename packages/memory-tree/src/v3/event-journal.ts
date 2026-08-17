@@ -1,8 +1,8 @@
 // Owns bounded, durable Memory v3 event and operation recovery journals.
 
-import { createHash, randomBytes } from 'node:crypto';
-import { mkdir, readFile, readdir, rename, unlink } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { createHash } from 'node:crypto';
+import { mkdir, unlink } from 'node:fs/promises';
+import { join } from 'node:path';
 import type {
   MemoryEventJournalRecord,
   MemoryJournalState,
@@ -11,6 +11,11 @@ import type {
   MemoryUpdateEvent,
 } from './contracts.js';
 import { durableAtomicWriteJson } from './durable-json.js';
+import {
+  collectStorageFiles,
+  quarantineStorageFile,
+  readBoundedJsonFile,
+} from './storage-file-io.js';
 import {
   parseMemoryEventJournalRecord,
   parseMemoryOperationRecord,
@@ -73,9 +78,12 @@ export class MemoryEventJournal {
       this.idempotency.clear();
       for (const path of await collectJournalFiles(this.rootDir, '.event.json', this.maxTotalRecords)) {
         try {
-          const bytes = await readFile(path);
-          assertRecordBytes(bytes.byteLength, this.maxRecordBytes, 'event');
-          const record = parseMemoryEventJournalRecord(JSON.parse(bytes.toString('utf8')) as unknown);
+          const value = await readBoundedJsonFile<unknown>(
+            path,
+            this.maxRecordBytes,
+            (actual, maximum) => assertRecordBytes(actual, maximum, 'event'),
+          );
+          const record = parseMemoryEventJournalRecord(value);
           if (this.records.has(record.event.id) || this.idempotency.has(record.event.idempotencyKey)) {
             await quarantine(path, this.quarantineDir, 'duplicate event id or idempotency key', this.now);
             continue;
@@ -253,9 +261,12 @@ export class MemoryOperationJournal {
       this.idempotency.clear();
       for (const path of await collectJournalFiles(this.rootDir, '.operation.json', this.maxTotalRecords)) {
         try {
-          const bytes = await readFile(path);
-          assertRecordBytes(bytes.byteLength, this.maxRecordBytes, 'operation');
-          const record = parseMemoryOperationRecord(JSON.parse(bytes.toString('utf8')) as unknown);
+          const value = await readBoundedJsonFile<unknown>(
+            path,
+            this.maxRecordBytes,
+            (actual, maximum) => assertRecordBytes(actual, maximum, 'operation'),
+          );
+          const record = parseMemoryOperationRecord(value);
           if (this.records.has(record.id) || this.idempotency.has(record.idempotencyKey)) {
             await quarantine(path, this.quarantineDir, 'duplicate operation id or idempotency key', this.now);
             continue;
@@ -398,36 +409,20 @@ export class MemoryOperationJournal {
 }
 
 async function collectJournalFiles(root: string, suffix: string, limit: number): Promise<string[]> {
-  const pending = [root];
-  const files: string[] = [];
-  while (pending.length > 0) {
-    const directory = pending.pop()!;
-    const entries = await readdir(directory, { withFileTypes: true }).catch((error: unknown) => {
-      if (errorCode(error) === 'ENOENT') return [];
-      throw error;
-    });
-    for (const entry of entries) {
-      if (entry.isSymbolicLink()) continue;
-      const path = join(directory, entry.name);
-      if (entry.isDirectory()) pending.push(path);
-      else if (entry.isFile() && entry.name.endsWith(suffix)) files.push(path);
-      if (files.length > limit) throw new Error(`Memory journal scan exceeded the ${limit} record safety limit.`);
-    }
-  }
-  return files.sort((left, right) => left.localeCompare(right));
+  return collectStorageFiles({
+    root,
+    suffix,
+    maximumFiles: limit,
+    limitMessage: (maximum) => `Memory journal scan exceeded the ${maximum} record safety limit.`,
+  });
 }
 
 async function quarantine(path: string, destinationDir: string, reason: string, now: () => Date): Promise<void> {
-  await mkdir(destinationDir, { recursive: true });
-  const destination = join(
+  await quarantineStorageFile({
+    source: path,
     destinationDir,
-    `${basename(path)}.${now().toISOString().replace(/[:.]/gu, '-')}-${randomBytes(4).toString('hex')}`,
-  );
-  await rename(path, destination);
-  await durableAtomicWriteJson(`${destination}.reason.json`, {
-    version: 1,
-    reason,
-    quarantinedAt: now().toISOString(),
+    details: { reason },
+    now,
   });
 }
 

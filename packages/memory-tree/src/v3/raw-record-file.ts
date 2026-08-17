@@ -1,12 +1,27 @@
 // Owns projection mutation record validation, scanning, hashing, and quarantine.
 
-import { randomBytes } from 'node:crypto';
-import { mkdir, readFile, readdir, rename } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import type { MemoryRawRecord, MemoryStorageMutation } from './contracts.js';
 import { MEMORY_RAW_RECORD_VERSION } from './contracts.js';
 import { durableAtomicWriteJson, sha256Canonical } from './durable-json.js';
+import {
+  collectStorageFiles,
+  quarantineStorageFile,
+  readBoundedJsonFile,
+} from './storage-file-io.js';
 import { parseMemoryUpdateEvent } from './validation.js';
+
+const IDEMPOTENCY_INDEX_VERSION = 1 as const;
+
+export interface RawRecordIdempotencyEntry {
+  version: typeof IDEMPOTENCY_INDEX_VERSION;
+  idempotencyKey: string;
+  rawRecordId: string;
+  rawRecordContentHash: string;
+  capturedAt: string;
+}
 
 export function rawRecordContentHash(
   record: Omit<MemoryRawRecord, 'contentHash'> | MemoryRawRecord,
@@ -31,9 +46,7 @@ export function rawRecordMutationAtomIds(mutation: MemoryStorageMutation): strin
 }
 
 export async function readRawRecord(path: string, maxBytes: number): Promise<MemoryRawRecord> {
-  const bytes = await readFile(path);
-  assertRawRecordBytes(bytes.byteLength, maxBytes);
-  const value = JSON.parse(bytes.toString('utf8')) as Partial<MemoryRawRecord>;
+  const value = await readBoundedJsonFile<Partial<MemoryRawRecord>>(path, maxBytes, assertRawRecordBytes);
   if (value.version !== MEMORY_RAW_RECORD_VERSION
     || typeof value.id !== 'string'
     || typeof value.idempotencyKey !== 'string'
@@ -70,23 +83,47 @@ export async function readRawRecord(path: string, maxBytes: number): Promise<Mem
 }
 
 export async function collectRawRecordFiles(root: string, limit: number): Promise<string[]> {
-  const pending = [root];
-  const files: string[] = [];
-  while (pending.length > 0) {
-    const directory = pending.pop()!;
-    const entries = await readdir(directory, { withFileTypes: true }).catch((error: unknown) => {
-      if (errorCode(error) === 'ENOENT') return [];
-      throw error;
-    });
-    for (const entry of entries) {
-      if (entry.isSymbolicLink()) continue;
-      const path = join(directory, entry.name);
-      if (entry.isDirectory()) pending.push(path);
-      else if (entry.isFile() && entry.name.endsWith('.raw-record.json')) files.push(path);
-      if (files.length > limit) throw new Error(`Memory raw record scan exceeded the ${limit} file safety limit.`);
-    }
+  return collectStorageFiles({
+    root,
+    suffix: '.raw-record.json',
+    maximumFiles: limit,
+    limitMessage: (maximum) => `Memory raw record scan exceeded the ${maximum} file safety limit.`,
+  });
+}
+
+export async function readRawRecordIdempotencyEntry(
+  path: string,
+  idempotencyKey: string,
+  maxBytes: number,
+): Promise<RawRecordIdempotencyEntry | undefined> {
+  if (!existsSync(path)) return undefined;
+  const value = await readBoundedJsonFile<Partial<RawRecordIdempotencyEntry>>(
+    path,
+    maxBytes,
+    assertIdempotencyEntryBytes,
+  );
+  if (value.version !== IDEMPOTENCY_INDEX_VERSION
+    || value.idempotencyKey !== idempotencyKey
+    || typeof value.rawRecordId !== 'string'
+    || typeof value.rawRecordContentHash !== 'string'
+    || typeof value.capturedAt !== 'string') {
+    throw new Error('Invalid projection record idempotency entry.');
   }
-  return files.sort((left, right) => left.localeCompare(right));
+  return value as RawRecordIdempotencyEntry;
+}
+
+export async function writeRawRecordIdempotencyEntry(
+  path: string,
+  record: MemoryRawRecord,
+): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  await durableAtomicWriteJson(path, {
+    version: IDEMPOTENCY_INDEX_VERSION,
+    idempotencyKey: record.idempotencyKey,
+    rawRecordId: record.id,
+    rawRecordContentHash: record.contentHash,
+    capturedAt: record.capturedAt,
+  } satisfies RawRecordIdempotencyEntry);
 }
 
 export async function quarantineRawRecord(
@@ -95,16 +132,11 @@ export async function quarantineRawRecord(
   reason: string,
   now: () => Date,
 ): Promise<void> {
-  await mkdir(destinationDir, { recursive: true });
-  const destination = join(
+  await quarantineStorageFile({
+    source: path,
     destinationDir,
-    `${basename(path)}.${now().toISOString().replace(/[:.]/gu, '-')}-${randomBytes(4).toString('hex')}`,
-  );
-  await rename(path, destination);
-  await durableAtomicWriteJson(`${destination}.reason.json`, {
-    version: 1,
-    reason,
-    quarantinedAt: now().toISOString(),
+    details: { reason },
+    now,
   });
 }
 
@@ -113,8 +145,11 @@ export function assertRawRecordBytes(actual: number, maximum: number): void {
   if (actual > maximum) throw new Error(`Memory raw record exceeds the ${maximum} byte safety limit.`);
 }
 
-function errorCode(error: unknown): string | undefined {
-  return typeof error === 'object' && error !== null && 'code' in error
-    ? String((error as { code?: unknown }).code)
-    : undefined;
+function assertIdempotencyEntryBytes(actual: number, maximum: number): void {
+  if (!Number.isInteger(maximum) || maximum <= 0) {
+    throw new Error(`Invalid projection record idempotency size limit: ${maximum}`);
+  }
+  if (actual > maximum) {
+    throw new Error(`Projection record idempotency entry exceeds the ${maximum} byte safety limit.`);
+  }
 }

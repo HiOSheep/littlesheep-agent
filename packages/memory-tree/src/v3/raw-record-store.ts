@@ -2,8 +2,8 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, unlink } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { mkdir, unlink } from 'node:fs/promises';
+import { join } from 'node:path';
 import type {
   MemoryRawRecord,
   MemoryRawRecordCommitReceipt,
@@ -16,27 +16,22 @@ import {
   assertRawRecordBytes,
   cloneRawRecordStorageMutation,
   collectRawRecordFiles,
+  type RawRecordIdempotencyEntry,
   rawRecordMutationAtomIds,
   rawRecordContentHash,
   quarantineRawRecord,
   readRawRecord,
+  readRawRecordIdempotencyEntry,
+  writeRawRecordIdempotencyEntry,
 } from './raw-record-file.js';
 import { MemoryRawRecordCommitStore } from './raw-record-commit-store.js';
+import { quarantineStorageFile } from './storage-file-io.js';
 import { parseMemoryUpdateEvent } from './validation.js';
 
 export { rawRecordContentHash } from './raw-record-file.js';
 
 const DEFAULT_MAX_RAW_RECORD_BYTES = 3_000_000;
 const DEFAULT_MAX_SCAN_FILES = 1_000_000;
-const IDEMPOTENCY_INDEX_VERSION = 1 as const;
-
-interface RawRecordIdempotencyEntry {
-  version: typeof IDEMPOTENCY_INDEX_VERSION;
-  idempotencyKey: string;
-  rawRecordId: string;
-  rawRecordContentHash: string;
-  capturedAt: string;
-}
 
 export interface MemoryRawRecordStoreOptions {
   dataDir: string;
@@ -67,6 +62,7 @@ export class MemoryRawRecordStore {
   readonly rootDir: string;
   readonly quarantineDir: string;
   readonly idempotencyDir: string;
+  private readonly idempotencyQuarantineDir: string;
   private readonly now: () => Date;
   private readonly maxRawRecordBytes: number;
   private readonly maxScanFiles: number;
@@ -79,6 +75,7 @@ export class MemoryRawRecordStore {
     this.rootDir = join(options.dataDir, 'memory-tree', 'v3', 'raw-records');
     this.quarantineDir = join(options.dataDir, 'memory-tree', 'v3', 'quarantine', 'raw-records');
     this.idempotencyDir = join(options.dataDir, 'memory-tree', 'v3', 'raw-record-idempotency');
+    this.idempotencyQuarantineDir = join(options.dataDir, 'memory-tree', 'v3', 'quarantine', 'raw-record-idempotency');
     this.now = options.now ?? (() => new Date());
     this.maxRawRecordBytes = options.maxRawRecordBytes ?? DEFAULT_MAX_RAW_RECORD_BYTES;
     this.maxScanFiles = options.maxScanFiles ?? DEFAULT_MAX_SCAN_FILES;
@@ -98,6 +95,7 @@ export class MemoryRawRecordStore {
         mkdir(this.rootDir, { recursive: true }),
         mkdir(this.quarantineDir, { recursive: true }),
         mkdir(this.idempotencyDir, { recursive: true }),
+        mkdir(this.idempotencyQuarantineDir, { recursive: true }),
       ]);
       let count = 0;
       let quarantined = 0;
@@ -107,6 +105,7 @@ export class MemoryRawRecordStore {
           await this.reconcileIdempotencyEntry(record);
           count += 1;
         } catch (error) {
+          if (errorCode(error)) throw error;
           quarantined += 1;
           await quarantineRawRecord(path, this.quarantineDir, errorMessage(error), this.now);
         }
@@ -132,7 +131,11 @@ export class MemoryRawRecordStore {
         if (sameRawRecordPayload(existingById, event, mutation)) return existingById;
         throw new MemoryRawRecordConflictError(existingById.id);
       }
-      const indexed = await this.readIdempotencyEntry(event.idempotencyKey);
+      const indexed = await readRawRecordIdempotencyEntry(
+        this.idempotencyPath(event.idempotencyKey),
+        event.idempotencyKey,
+        this.maxRawRecordBytes,
+      );
       if (indexed) {
         const existing = await this.readRecordDirect(indexed.rawRecordId);
         if (existing && sameRawRecordPayload(existing, event, mutation)) return existing;
@@ -156,7 +159,7 @@ export class MemoryRawRecordStore {
       };
       assertRawRecordBytes(Buffer.byteLength(JSON.stringify(record), 'utf8'), this.maxRawRecordBytes);
       await durableAtomicWriteJson(this.pathFor(record.id), record);
-      await this.writeIdempotencyEntry(record);
+      await writeRawRecordIdempotencyEntry(this.idempotencyPath(record.idempotencyKey), record);
       return structuredClone(record);
     });
   }
@@ -224,41 +227,32 @@ export class MemoryRawRecordStore {
     return existsSync(path) ? readRawRecord(path, this.maxRawRecordBytes) : undefined;
   }
 
-  private async readIdempotencyEntry(idempotencyKey: string): Promise<RawRecordIdempotencyEntry | undefined> {
-    const path = this.idempotencyPath(idempotencyKey);
-    if (!existsSync(path)) return undefined;
-    const value = JSON.parse(await readFile(path, 'utf8')) as Partial<RawRecordIdempotencyEntry>;
-    if (value.version !== IDEMPOTENCY_INDEX_VERSION
-      || value.idempotencyKey !== idempotencyKey
-      || typeof value.rawRecordId !== 'string'
-      || typeof value.rawRecordContentHash !== 'string'
-      || typeof value.capturedAt !== 'string') {
-      throw new Error('Invalid projection record idempotency entry.');
-    }
-    return value as RawRecordIdempotencyEntry;
-  }
-
   private async reconcileIdempotencyEntry(record: MemoryRawRecord): Promise<void> {
-    const existing = await this.readIdempotencyEntry(record.idempotencyKey);
+    let existing: RawRecordIdempotencyEntry | undefined;
+    try {
+      existing = await readRawRecordIdempotencyEntry(
+        this.idempotencyPath(record.idempotencyKey),
+        record.idempotencyKey,
+        this.maxRawRecordBytes,
+      );
+    } catch (error) {
+      const code = errorCode(error);
+      if (code === 'ENOENT') existing = undefined;
+      else if (code) throw error;
+      else await quarantineStorageFile({
+        source: this.idempotencyPath(record.idempotencyKey),
+        destinationDir: this.idempotencyQuarantineDir,
+        details: { reason: errorMessage(error) },
+        now: this.now,
+      });
+    }
     if (!existing) {
-      await this.writeIdempotencyEntry(record);
+      await writeRawRecordIdempotencyEntry(this.idempotencyPath(record.idempotencyKey), record);
       return;
     }
     if (existing.rawRecordId !== record.id || existing.rawRecordContentHash !== record.contentHash) {
       throw new Error('duplicate record idempotency key');
     }
-  }
-
-  private async writeIdempotencyEntry(record: MemoryRawRecord): Promise<void> {
-    const path = this.idempotencyPath(record.idempotencyKey);
-    await mkdir(dirname(path), { recursive: true });
-    await durableAtomicWriteJson(path, {
-      version: IDEMPOTENCY_INDEX_VERSION,
-      idempotencyKey: record.idempotencyKey,
-      rawRecordId: record.id,
-      rawRecordContentHash: record.contentHash,
-      capturedAt: record.capturedAt,
-    } satisfies RawRecordIdempotencyEntry);
   }
 
   private async ensureInitialized(): Promise<void> {
@@ -296,4 +290,10 @@ function compareNewestRecord(left: MemoryRawRecord, right: MemoryRawRecord): num
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function errorCode(error: unknown): string | undefined {
+  return typeof error === 'object' && error !== null && 'code' in error
+    ? String((error as { code?: unknown }).code)
+    : undefined;
 }

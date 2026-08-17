@@ -1,10 +1,15 @@
 // Owns durable Memory v3 atom files, lightweight headers, hierarchy validation, and quarantine.
 
-import { createHash, randomBytes } from 'node:crypto';
-import { mkdir, readFile, readdir, rename } from 'node:fs/promises';
-import { basename, join, relative, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
+import { mkdir } from 'node:fs/promises';
+import { join, relative, resolve } from 'node:path';
 import type { CreateMemoryAtomInput, MemoryAtom, MemoryAtomPatch } from './contracts.js';
 import { durableAtomicWriteJson, sha256Canonical } from './durable-json.js';
+import {
+  collectStorageFiles,
+  quarantineStorageFile,
+  readBoundedJsonFile,
+} from './storage-file-io.js';
 import { parseMemoryAtom } from './validation.js';
 
 const DEFAULT_MAX_ATOM_BYTES = 2_500_000;
@@ -194,9 +199,8 @@ export class MemoryAtomStore {
     const byId = new Map<string, MemoryAtomIndexEntry>();
     const loaded = await concurrentMap(paths, DEFAULT_SCAN_CONCURRENCY, async (path) => {
       try {
-        const bytes = await readFile(path);
-        if (bytes.byteLength > this.maxAtomBytes) throw new Error(`atom exceeds ${this.maxAtomBytes} bytes`);
-        const parsed = parseMemoryAtom(JSON.parse(bytes.toString('utf8')) as unknown);
+        const value = await readBoundedJsonFile<unknown>(path, this.maxAtomBytes, assertAtomBytes);
+        const parsed = parseMemoryAtom(value);
         if (memoryAtomContentHash(parsed) !== parsed.contentHash) throw new Error('content hash mismatch');
         return { ok: true, entry: atomIndexEntry(parsed, path) } as const;
       } catch (error) {
@@ -262,19 +266,17 @@ export class MemoryAtomStore {
     atomId?: string,
   ): Promise<string> {
     const destinationDir = join(this.quarantineDir, category);
-    await mkdir(destinationDir, { recursive: true });
-    const suffix = `${this.now().toISOString().replace(/[:.]/gu, '-')}-${randomBytes(4).toString('hex')}`;
-    const destination = join(destinationDir, `${basename(source)}.${suffix}`);
-    await rename(source, destination);
-    await durableAtomicWriteJson(`${destination}.reason.json`, {
-      version: 1,
-      category,
-      message,
-      atomId,
-      originalPath: relative(this.rootDir, source).replace(/\\/gu, '/'),
-      quarantinedAt: this.now().toISOString(),
+    return quarantineStorageFile({
+      source,
+      destinationDir,
+      details: {
+        category,
+        message,
+        atomId,
+        originalPath: relative(this.rootDir, source).replace(/\\/gu, '/'),
+      },
+      now: this.now,
     });
-    return destination;
   }
 
   private validateParent(atom: Omit<MemoryAtom, 'contentHash'>, updatingId?: string): void {
@@ -335,23 +337,12 @@ export function atomFileDigest(atomId: string): string {
 }
 
 async function collectAtomFiles(root: string, limit: number): Promise<string[]> {
-  const pending = [root];
-  const files: string[] = [];
-  while (pending.length > 0) {
-    const directory = pending.pop()!;
-    const entries = await readdir(directory, { withFileTypes: true }).catch((error: unknown) => {
-      if (errorCode(error) === 'ENOENT') return [];
-      throw error;
-    });
-    for (const entry of entries) {
-      if (entry.isSymbolicLink()) continue;
-      const path = join(directory, entry.name);
-      if (entry.isDirectory()) pending.push(path);
-      else if (entry.isFile() && entry.name.endsWith('.memory.json')) files.push(path);
-      if (files.length > limit) throw new Error(`Memory atom scan exceeded the ${limit} file safety limit.`);
-    }
-  }
-  return files.sort((left, right) => left.localeCompare(right));
+  return collectStorageFiles({
+    root,
+    suffix: '.memory.json',
+    maximumFiles: limit,
+    limitMessage: (maximum) => `Memory atom scan exceeded the ${maximum} file safety limit.`,
+  });
 }
 
 function invalidHierarchyReason(atom: MemoryAtomIndexEntry, atoms: Map<string, MemoryAtomIndexEntry>): string | undefined {
@@ -385,11 +376,14 @@ function atomIndexEntry(atom: MemoryAtom, path: string): MemoryAtomIndexEntry {
 }
 
 async function readAndVerifyAtom(path: string, maxAtomBytes: number): Promise<MemoryAtom> {
-  const bytes = await readFile(path);
-  if (bytes.byteLength > maxAtomBytes) throw new Error(`atom exceeds ${maxAtomBytes} bytes`);
-  const atom = parseMemoryAtom(JSON.parse(bytes.toString('utf8')) as unknown);
+  const atom = parseMemoryAtom(await readBoundedJsonFile<unknown>(path, maxAtomBytes, assertAtomBytes));
   if (memoryAtomContentHash(atom) !== atom.contentHash) throw new Error(`Memory atom content hash mismatch: ${atom.id}`);
   return atom;
+}
+
+function assertAtomBytes(actual: number, maximum: number): void {
+  if (!Number.isInteger(maximum) || maximum <= 0) throw new Error(`invalid atom size limit: ${maximum}`);
+  if (actual > maximum) throw new Error(`atom exceeds ${maximum} bytes`);
 }
 
 function assertPatchDoesNotChangeBoundary(patch: MemoryAtomPatch): void {
@@ -428,10 +422,4 @@ function samePath(left: string, right: string): boolean {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function errorCode(error: unknown): string | undefined {
-  return typeof error === 'object' && error !== null && 'code' in error
-    ? String((error as { code?: unknown }).code)
-    : undefined;
 }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { MemoryStorageMutation, MemoryUpdateEvent } from './contracts.js';
@@ -9,6 +9,7 @@ import {
   MemoryRawRecordConflictError,
   MemoryRawRecordStore,
 } from './raw-record-store.js';
+import { collectStorageFiles } from './storage-file-io.js';
 import { makeAtomInput } from './test-fixtures.js';
 
 describe('MemoryRawRecordStore', () => {
@@ -78,6 +79,92 @@ describe('MemoryRawRecordStore', () => {
     await restarted.initialize();
     expect(await restarted.getCommitReceipt(event.id)).toEqual(receipt);
     expect((await restarted.get(event.id))?.contentHash).toBe(record.contentHash);
+  });
+
+  it('isolates an oversized persisted raw record before parsing it', async () => {
+    const store = new MemoryRawRecordStore({ dataDir, now });
+    await store.initialize();
+    await store.capture(makeEvent('event-oversized-record'), createMutation('atom-oversized-record'));
+
+    const restarted = new MemoryRawRecordStore({ dataDir, now, maxRawRecordBytes: 64 });
+    expect(await restarted.initialize()).toEqual({ count: 0, quarantined: 1 });
+    expect(await restarted.count()).toBe(0);
+    const quarantineDir = join(dataDir, 'memory-tree', 'v3', 'quarantine', 'raw-records');
+    const reasons = (await readdir(quarantineDir)).filter((name) => name.endsWith('.reason.json'));
+    expect(reasons).toHaveLength(1);
+    expect(await readFile(join(quarantineDir, reasons[0]!), 'utf8')).toMatch(/byte safety limit/iu);
+  });
+
+  it('isolates a damaged commit receipt without changing its raw record', async () => {
+    const store = new MemoryRawRecordStore({ dataDir, now });
+    await store.initialize();
+    const event = makeEvent('event-damaged-receipt');
+    const record = await store.capture(event, createMutation('atom-damaged-receipt'));
+    await store.markCommitted(event.id, 'operation:event-damaged-receipt');
+    const commitRoot = join(dataDir, 'memory-tree', 'v3', 'raw-record-commits');
+    const [receiptPath] = await collectStorageFiles({
+      root: commitRoot,
+      suffix: '.commit.json',
+      maximumFiles: 1,
+      limitMessage: () => 'unexpected extra receipt',
+    });
+    await writeFile(receiptPath!, '{broken', 'utf8');
+
+    const restarted = new MemoryRawRecordStore({ dataDir, now });
+    await restarted.initialize();
+
+    expect(await restarted.get(event.id)).toEqual(record);
+    expect(await restarted.getCommitReceipt(event.id)).toBeUndefined();
+    const quarantineDir = join(dataDir, 'memory-tree', 'v3', 'quarantine', 'raw-record-commits');
+    expect((await readdir(quarantineDir)).filter((name) => name.endsWith('.reason.json'))).toHaveLength(1);
+  });
+
+  it('rebuilds a damaged idempotency index without isolating its authoritative raw record', async () => {
+    const store = new MemoryRawRecordStore({ dataDir, now });
+    await store.initialize();
+    const event = makeEvent('event-damaged-idempotency');
+    const mutation = createMutation('atom-damaged-idempotency');
+    const record = await store.capture(event, mutation);
+    const [indexPath] = await collectStorageFiles({
+      root: store.idempotencyDir,
+      suffix: '.idempotency.json',
+      maximumFiles: 1,
+      limitMessage: () => 'unexpected extra idempotency index',
+    });
+    await writeFile(indexPath!, '{broken', 'utf8');
+
+    const restarted = new MemoryRawRecordStore({ dataDir, now });
+    expect(await restarted.initialize()).toEqual({ count: 1, quarantined: 0 });
+    expect(await restarted.get(event.id)).toEqual(record);
+    expect(await restarted.capture(event, mutation)).toEqual(record);
+    const quarantineDir = join(dataDir, 'memory-tree', 'v3', 'quarantine', 'raw-record-idempotency');
+    expect((await readdir(quarantineDir))
+      .filter((name) => name.endsWith('.reason.json'))).toHaveLength(1);
+  });
+
+  it('fails initialization on idempotency index I/O errors without isolating the raw record', async () => {
+    const store = new MemoryRawRecordStore({ dataDir, now });
+    await store.initialize();
+    await store.capture(makeEvent('event-idempotency-io'), createMutation('atom-idempotency-io'));
+    const [indexPath] = await collectStorageFiles({
+      root: store.idempotencyDir,
+      suffix: '.idempotency.json',
+      maximumFiles: 1,
+      limitMessage: () => 'unexpected extra idempotency index',
+    });
+    await rm(indexPath!);
+    await mkdir(indexPath!);
+
+    const restarted = new MemoryRawRecordStore({ dataDir, now });
+    await expect(restarted.initialize()).rejects.toThrow();
+
+    expect(await collectStorageFiles({
+      root: store.rootDir,
+      suffix: '.raw-record.json',
+      maximumFiles: 1,
+      limitMessage: () => 'unexpected extra raw record',
+    })).toHaveLength(1);
+    expect(await readdir(store.quarantineDir)).toHaveLength(0);
   });
 });
 

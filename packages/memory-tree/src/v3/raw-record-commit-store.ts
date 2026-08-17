@@ -1,12 +1,17 @@
 // Persists append-only proof that projection mutations reached the commit boundary.
 
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, readdir, rename } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { MemoryRawRecord, MemoryRawRecordCommitReceipt } from './contracts.js';
 import { MEMORY_RAW_RECORD_COMMIT_VERSION } from './contracts.js';
 import { durableAtomicWriteJson, sha256Canonical } from './durable-json.js';
+import {
+  collectStorageFiles,
+  quarantineStorageFile,
+  readBoundedJsonFile,
+} from './storage-file-io.js';
 
 export interface MemoryRawRecordCommitStoreOptions {
   dataDir: string;
@@ -133,9 +138,11 @@ export function rawRecordCommitReceiptContentHash(
 }
 
 async function readReceipt(path: string, maxBytes: number): Promise<MemoryRawRecordCommitReceipt> {
-  const bytes = await readFile(path);
-  assertReceiptBytes(bytes.byteLength, maxBytes);
-  const value = JSON.parse(bytes.toString('utf8')) as Partial<MemoryRawRecordCommitReceipt>;
+  const value = await readBoundedJsonFile<Partial<MemoryRawRecordCommitReceipt>>(
+    path,
+    maxBytes,
+    assertReceiptBytes,
+  );
   if (value.version !== MEMORY_RAW_RECORD_COMMIT_VERSION
     || typeof value.rawRecordId !== 'string'
     || typeof value.rawRecordContentHash !== 'string'
@@ -152,36 +159,20 @@ async function readReceipt(path: string, maxBytes: number): Promise<MemoryRawRec
 }
 
 async function collectReceiptFiles(root: string, limit: number): Promise<string[]> {
-  const pending = [root];
-  const files: string[] = [];
-  while (pending.length > 0) {
-    const directory = pending.pop()!;
-    const entries = await readdir(directory, { withFileTypes: true }).catch((error: unknown) => {
-      if (errorCode(error) === 'ENOENT') return [];
-      throw error;
-    });
-    for (const entry of entries) {
-      if (entry.isSymbolicLink()) continue;
-      const path = join(directory, entry.name);
-      if (entry.isDirectory()) pending.push(path);
-      else if (entry.isFile() && entry.name.endsWith('.commit.json')) files.push(path);
-      if (files.length > limit) throw new Error(`Memory raw record commit scan exceeded the ${limit} file safety limit.`);
-    }
-  }
-  return files.sort((left, right) => left.localeCompare(right));
+  return collectStorageFiles({
+    root,
+    suffix: '.commit.json',
+    maximumFiles: limit,
+    limitMessage: (maximum) => `Memory raw record commit scan exceeded the ${maximum} file safety limit.`,
+  });
 }
 
 async function quarantine(path: string, destinationDir: string, reason: string, now: () => Date): Promise<void> {
-  await mkdir(destinationDir, { recursive: true });
-  const destination = join(
+  await quarantineStorageFile({
+    source: path,
     destinationDir,
-    `${basename(path)}.${now().toISOString().replace(/[:.]/gu, '-')}-${randomBytes(4).toString('hex')}`,
-  );
-  await rename(path, destination);
-  await durableAtomicWriteJson(`${destination}.reason.json`, {
-    version: 1,
-    reason,
-    quarantinedAt: now().toISOString(),
+    details: { reason },
+    now,
   });
 }
 
@@ -192,10 +183,4 @@ function assertReceiptBytes(actual: number, maximum: number): void {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function errorCode(error: unknown): string | undefined {
-  return typeof error === 'object' && error !== null && 'code' in error
-    ? String((error as { code?: unknown }).code)
-    : undefined;
 }

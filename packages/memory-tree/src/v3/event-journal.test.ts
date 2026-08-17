@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MemoryEventJournal, MemoryOperationJournal } from './event-journal.js';
@@ -82,6 +82,24 @@ describe('Memory v3 event and operation journals', () => {
       payload: { body: 'x'.repeat(2_000) },
     })).rejects.toThrow(/byte safety limit/i);
     expect(await journal.count()).toBe(0);
+  });
+
+  it('isolates corrupt and oversized persisted events without indexing either record', async () => {
+    const journal = new MemoryEventJournal({ dataDir, now, maxRecordBytes: 128 });
+    const shard = join(journal.rootDir, '00');
+    await mkdir(shard, { recursive: true });
+    await Promise.all([
+      writeFile(join(shard, 'broken.event.json'), '{broken', 'utf8'),
+      writeFile(join(shard, 'oversized.event.json'), JSON.stringify({ body: 'x'.repeat(256) }), 'utf8'),
+    ]);
+
+    await journal.initialize();
+
+    expect(await journal.count()).toBe(0);
+    const quarantineDir = join(dataDir, 'memory-tree', 'v3', 'quarantine', 'events');
+    const quarantined = await readdir(quarantineDir);
+    expect(quarantined.filter((name) => name.endsWith('.reason.json'))).toHaveLength(2);
+    expect(quarantined.filter((name) => !name.endsWith('.reason.json'))).toHaveLength(2);
   });
 });
 
