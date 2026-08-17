@@ -368,12 +368,6 @@ importers:
 
   packages/llm:
     dependencies:
-      '@littlesheep/config':
-        specifier: workspace:*
-        version: link:../config
-      '@littlesheep/types':
-        specifier: workspace:*
-        version: link:../types
       zod:
         specifier: ^3.23.0
         version: 3.25.76
