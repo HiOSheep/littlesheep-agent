@@ -18,7 +18,6 @@
     "@littlesheep/memory-core": "workspace:*",
     "@littlesheep/memory-tree": "workspace:*",
     "@littlesheep/config": "workspace:*",
-    "@littlesheep/experience": "workspace:*",
     "@littlesheep/tools": "workspace:*",
     "@littlesheep/prompt": "workspace:*",
     "@littlesheep/classifier": "workspace:*",

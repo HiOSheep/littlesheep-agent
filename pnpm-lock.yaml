@@ -341,9 +341,6 @@ importers:
       '@littlesheep/context':
         specifier: workspace:*
         version: link:../context
-      '@littlesheep/experience':
-        specifier: workspace:*
-        version: link:../experience
       '@littlesheep/llm':
         specifier: workspace:*
         version: link:../llm
