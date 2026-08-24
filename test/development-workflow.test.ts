@@ -43,7 +43,7 @@ async function createWorkspaceFixture() {
 describe('development workspace graph', () => {
   it('discovers every maintained package without descending into generated directories', async () => {
     const projects = await discoverWorkspaceProjects(repoRoot);
-    expect(projects).toHaveLength(28);
+    expect(projects).toHaveLength(27);
     expect(projects.find((project) => project.name === '@littlesheep/app')?.tsconfigs).toEqual([
       'tsconfig.json',
       'tsconfig.web.json',
@@ -81,7 +81,7 @@ describe('development workspace graph', () => {
     const projects = await discoverWorkspaceProjects(repoRoot);
     const result = await validateWorkspaceManifestGraphs(repoRoot, 'HEAD', projects);
     expect(result.basePaths.length).toBeGreaterThan(0);
-    expect(result.workingPaths.length).toBe(28);
+    expect(result.workingPaths.length).toBe(27);
     expect(result.workingPaths).toContain('packages/documents/package.json');
     expect(result.workingPaths).toContain('packages/channels/webhook/package.json');
     expect(result.pathChanges).toEqual({
