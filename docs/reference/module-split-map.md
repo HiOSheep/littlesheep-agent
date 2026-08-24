@@ -1,6 +1,6 @@
 # LittleSheep 模块拆分地图
 
-最后更新：2026-08-16 22:42:00
+最后更新：2026-08-24 12:00:00
 
 本文件记录大型生产文件的当前所有权、目标边界和拆分顺序。它是仓库基元化任务书的阶段产物，不替代项目状态，也不把行数当成唯一质量指标。
 
@@ -43,6 +43,7 @@
 | `packages/memory-tree/src/memory-repository/v3-node-store.ts` | 581 | v3 节点查询、写入编排、层级和实体关联 | 事件与生命周期规则已拆出；后续分离 query projection 与 write coordinator | D |
 | `packages/app/src/renderer/app-shell/use-app-controller.ts` | 575 | Renderer 跨领域兼容协调、启动恢复和视图快照 | 应用持久化副作用已下沉到 `use-app-persistence.ts`；保持装配职责 | B |
 | `packages/app/src/renderer/sidebar/session-actions.ts` | 315 | 对话切换、历史分页、归档/删除及会话视图令牌失效 | 保持会话生命周期 facade；历史加载和视图令牌继续共享同一会话代次边界 | B |
+| `packages/app/src/main/local-app-api/run-checkpoint-routes.ts` | 304 | checkpoint 发现、详情、补充信息、续跑、停止和放弃路由 | 保持路由 facade；将恢复准入和响应投影继续下沉到独立 adapter | C |
 | `packages/memory-tree/src/memory-repository/v3-resource-store.ts` | 575 | v3 资源元数据、生命周期事务、实体投影和恢复 | 分离 resource registry、transaction recovery 与 graph projection | D |
 | `packages/app/src/main/index.ts` | 600 | Electron 启动和组合；窗口、托盘、关闭策略、活动任务聚合、Memory v3、桌面验收采样与内置浏览器宿主已下沉；后台维护准入由 `background-maintenance-policy.ts` 提供 | 继续抽取 bootstrap 服务，入口只保留装配顺序 | C |
 | `packages/app/src/renderer/workspace/terminal.tsx` | 557 | 用户交互 PTY 生命周期、SSE、尺寸、命令历史和输入队列 | 保持终端事务边界，禁止吸收工作区导航或 Agent 审批职责；来源与 Agent 权限语义由 Main 明确拥有 | B |
@@ -188,14 +189,14 @@
 
 | 文件 | 所有者 | 暂缓原因 | 行数上限 | 复查日期 |
 | --- | --- | --- | ---: | --- |
-| `packages/channels/qqbot/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与协议适配端口稳定后拆分；本轮只补充连续性 request identity 透传 | 820 | 2026-08-20 |
+| `packages/channels/qqbot/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与协议适配端口稳定后拆分；本轮只补充连续性 request identity 透传 | 820 | 2026-09-24 |
 | `packages/memory-tree/src/project-memory-projection.ts` | D / Memory | 投影事务、冲突与恢复必须在特征测试覆盖后迁移 | 780 | 2026-08-30 |
-| `packages/runner/src/runner.ts` | E / Runtime | run 生命周期、输入装配、检查点续跑、后台维护准入透传和资源收尾仍共享跨阶段不变量；先冻结恢复与幂等特征测试，连续性恢复入口完成后再拆分 | 2120 | 2026-08-20 |
-| `packages/types/src/runtime-contracts.ts` | E / Runtime | Context、事件、检查点和执行证据仍共享版本边界；拆分时必须保持现有 barrel 与持久化兼容 | 900 | 2026-08-20 |
+| `packages/runner/src/runner.ts` | E / Runtime | run 生命周期、输入装配、检查点续跑、后台维护准入透传和资源收尾仍共享跨阶段不变量；先冻结恢复与幂等特征测试，连续性恢复入口完成后再拆分 | 2120 | 2026-09-24 |
+| `packages/types/src/runtime-contracts.ts` | E / Runtime | Context、事件、检查点和执行证据仍共享版本边界；拆分时必须保持现有 barrel 与持久化兼容 | 900 | 2026-09-24 |
 | `packages/runner/src/runtime-event-queue.ts` | E / Runtime | 安全边界接入已经完成；租约、结算、快照恢复与 ActiveRunRegistry 契约刚稳定，补齐拆分特征测试后再下沉 codec/registry | 760 | 2026-08-30 |
 | `packages/runner/src/run-checkpoint-store.ts` | E / Runtime | 检查点 codec、原子存储、查询、容量、保留期和稳定 conversation-turn identity 共享恢复不变量；完成查询拆分前保持 facade 稳定 | 900 | 2026-08-30 |
 | `packages/memory-tree/src/memory-tree.ts` | D / Memory | 根索引、导航和预算状态共享不变量，先冻结 facade | 660 | 2026-08-30 |
-| `packages/channels/feishu/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与事件验签端口稳定后拆分；本轮只补充连续性 request identity 透传 | 640 | 2026-08-20 |
-| `packages/runner/src/run-checkpoint-disposition-store.ts` | E / Runtime | disposition claim、跨进程锁、有界历史和续跑 identity 查询共享原子写入不变量；先冻结 P0 连续性矩阵再拆 codec/query/retention | 740 | 2026-08-20 |
+| `packages/channels/feishu/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与事件验签端口稳定后拆分；本轮只补充连续性 request identity 透传 | 640 | 2026-09-24 |
+| `packages/runner/src/run-checkpoint-disposition-store.ts` | E / Runtime | disposition claim、跨进程锁、有界历史和续跑 identity 查询共享原子写入不变量；先冻结 P0 连续性矩阵再拆 codec/query/retention | 740 | 2026-09-24 |
 | `packages/app/src/main/data-root-migration.ts` | C / App Main | 数据迁移事务需保持恢复与回滚原子性，先补齐阶段检查点 | 637 | 2026-08-30 |
 | `packages/memory-tree/src/v3/catalog.ts` | D / Memory | activation schema 与检索投影刚稳定，先保持 Catalog facade 和恢复契约；本轮新增激活与关系投影后复查 | 640 | 2026-08-30 |

@@ -64,7 +64,6 @@
 
 - [OpenCode VS Code 对标记录 2026-08-13](reference/opencode-vscode-comparison-2026-08-13.md)：记录官方源码、许可证、LS 差异、已直接吸收的缓存/模型/审阅交互，以及待产品选择的虚拟化、评论和真正 VS Code 扩展路线。
 - [对话任务连续性 P0 专项任务书 2026-08-13](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md)：修复普通聊天未绑定 waiting-user Checkpoint、执行现场与附件/临时工具无法自然恢复、权限未按当前状态重验及最终回答断档；当前为最高优先级阻断项。
-- [仓库清理与重构任务书 2026-08-17](taskbooks/repository-cleanup-refactor-taskbook-2026-08-17.md)：全仓只读审计后的清理、去重、职责拆分、安全和性能护栏；用户已授权执行，当前严格推进 P0 基线与护栏。
 - [生产依赖安全记录](reference/production-dependency-security.md)：记录临时间接依赖 override 的固定版本、来源、许可证、移除条件与复查日期，避免安全修复变成无所有者的永久配置。
 - [开发反馈环提速任务书 2026-08-09](taskbooks/development-feedback-loop-taskbook-2026-08-09.md)：任务级内循环、affected 选择器、重复构建消除和后续状态契约收敛；用于决定下一阶段开发效率工作。
 - [拓展工作区性能任务书 2026-08-04](taskbooks/workspace-performance-taskbook-2026-08-04.md)：文件树、代码首帧、Monaco 接管、Git 审阅缓存、后台资源和生产构建体积的专项验收。
@@ -93,7 +92,6 @@
 - [仓库指南](reference/repository-guide.md)：需求类型对应的 package、入口、测试、依赖和维护流程。
 - [模块拆分地图](reference/module-split-map.md)：大型生产文件的所有权、上限和拆分边界。
 - [Core Flow 状态契约](reference/core-flow-state-contract.md)：唯一 Stage 转移 manifest、非法边拒绝和 RunContext ownership/lifecycle 边界。
-- [仓库功能与契约基线](reference/repository-contract-baseline.json)：P0 冻结的 package exports、Local App API、CLI、配置、持久化、文档格式、渠道、权限和 Electron 机器清单；使用 `pnpm run verify:repository-contracts` 检查，只有审核契约变化后才显式 `node scripts/verify-repository-contracts.mjs --write` 更新。
 - [插件开发说明](reference/plugin-development.md)：插件贡献、权限、生命周期和兼容规则。
 - [论文材料入口](paper/README.md)：论文正文、图表和复核材料的范围及提交前边界；正文源稿见 [LittleSheep 论文初稿](paper/littlesheep-thesis.md)。
 
