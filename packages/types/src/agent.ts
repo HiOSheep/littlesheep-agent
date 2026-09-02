@@ -195,6 +195,10 @@ export interface RunContext {
   memoryIntentDecisions?: import('./runtime-contracts.js').MemoryIntentDecisionRecord[];
   /** Run-owned bounded event queue; payloads are only opened at safe boundaries. */
   runtimeEventQueue?: import('./runtime-contracts.js').RuntimeEventQueueLike;
+  /** Ordered, durable next-Harness event sink. Runtime owns persistence. */
+  appendDurableEvent?: (
+    event: Omit<import('./durable-harness.js').DurableHarnessEventAppendInput, 'sessionId' | 'runId'>,
+  ) => Promise<void>;
   /** Start the harness at a recovered stage instead of always entering fresh. */
   entryStage?: StageName;
   /** Original checkpoint identity when this context is a continuation run. */

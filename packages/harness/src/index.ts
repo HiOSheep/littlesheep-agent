@@ -135,3 +135,11 @@ export {
   type TaskBookPatchApplyResult,
   type TaskBookPatchRejectReason,
 } from './taskbook-patch.js';
+
+export {
+  DurableHarnessKernel,
+  DurableKernelError,
+  reduceDurableRunProjection,
+  type DurableHarnessKernelOptions,
+  type DurableInboxProcessResult,
+} from './durable-kernel.js';

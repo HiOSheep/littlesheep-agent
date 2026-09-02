@@ -64,6 +64,7 @@
 
 ### 当前主线
 
+- [Harness 开源底座评估 2026-09-02](reference/harness-open-source-evaluation-2026-09-02.md)：固定 DeepSeek Harness、Pi 与 nanoDeepSeekHarness 版本、许可证、供应链证据和 LS adapter 边界；当前决定保留自有 kernel、只吸收 durable event/session/stream 设计。
 - [OpenCode VS Code 对标记录 2026-08-13](reference/opencode-vscode-comparison-2026-08-13.md)：记录官方源码、许可证、LS 差异、已直接吸收的缓存/模型/审阅交互，以及待产品选择的虚拟化、评论和真正 VS Code 扩展路线。
 - [对话任务连续性 P0 专项任务书 2026-08-13](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md)：修复普通聊天未绑定 waiting-user Checkpoint、执行现场与附件/临时工具无法自然恢复、权限未按当前状态重验及最终回答断档；当前为最高优先级阻断项。
 - [新 Harness 重建与 Prompt Cache 收敛任务书 2026-09-02](taskbooks/harness-rebuild-and-cache-taskbook-2026-09-02.md)：以冻结提交/tag 为回滚锚点，评估开源 Agent runtime，重建 durable event/inbox/replay、effect intent/settlement 和 authoritative final settlement，并以 `CACHE-01` 至 `CACHE-10` 观测和修复上下文注入造成的 Provider prompt-cache 低命中率。

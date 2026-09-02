@@ -102,10 +102,29 @@ export function beginSideEffect(ctx: RunContext, descriptor: SideEffectDescripto
   }
   effects.push(entry)
   replaceSideEffectEvidence(ctx, 'execute', effects)
+  void ctx.appendDurableEvent?.({
+    type: 'effect_intent_created',
+    source: 'runtime',
+    eventId: `${ctx.runId}:effect:${descriptor.idempotencyKey}:intent`,
+    idempotencyKey: `${ctx.runId}:effect:${descriptor.idempotencyKey}:intent`,
+    payload: {
+      effectId: descriptor.idempotencyKey,
+      idempotencyKey: descriptor.idempotencyKey,
+      toolName: descriptor.toolName,
+      inputHash: descriptor.inputHash,
+      effectKind: descriptor.effectKind,
+      ...(descriptor.stepId ? { stepId: descriptor.stepId } : {}),
+    },
+  }).catch(() => undefined);
   return { kind: 'started', descriptor }
 }
 
-export function finishSideEffect(ctx: RunContext, descriptor: SideEffectDescriptor, result: ToolResult): void {
+export function finishSideEffect(
+  ctx: RunContext,
+  descriptor: SideEffectDescriptor,
+  result: ToolResult,
+  durable = true,
+): void {
   const effects = ctx.sideEffects ?? []
   const index = effects.findIndex((item) => item.idempotencyKey === descriptor.idempotencyKey)
   if (index < 0) return
@@ -120,6 +139,19 @@ export function finishSideEffect(ctx: RunContext, descriptor: SideEffectDescript
   const updated = [...effects]
   updated[index] = entry
   replaceSideEffectEvidence(ctx, 'execute', updated)
+  if (!durable) return
+  void ctx.appendDurableEvent?.({
+    type: 'effect_settled',
+    source: 'tool',
+    eventId: `${ctx.runId}:effect:${descriptor.idempotencyKey}:settled`,
+    idempotencyKey: `${ctx.runId}:effect:${descriptor.idempotencyKey}:settled`,
+    payload: {
+      effectId: descriptor.idempotencyKey,
+      status: result.ok ? 'succeeded' : 'unknown',
+      evidenceRef: entry.evidenceRef,
+      ...(entry.error ? { errorHash: hashText(entry.error), errorLength: entry.error.length } : {}),
+    },
+  }).catch(() => undefined);
 }
 
 export function markSideEffectUnknown(ctx: RunContext, descriptor: SideEffectDescriptor, error: string): void {
@@ -129,6 +161,18 @@ export function markSideEffectUnknown(ctx: RunContext, descriptor: SideEffectDes
   const updated = [...effects]
   updated[index] = { ...effects[index]!, status: 'unknown', error: error.slice(0, 2_048) }
   replaceSideEffectEvidence(ctx, 'execute', updated)
+  void ctx.appendDurableEvent?.({
+    type: 'effect_settled',
+    source: 'runtime',
+    eventId: `${ctx.runId}:effect:${descriptor.idempotencyKey}:unknown`,
+    idempotencyKey: `${ctx.runId}:effect:${descriptor.idempotencyKey}:unknown`,
+    payload: {
+      effectId: descriptor.idempotencyKey,
+      status: 'unknown',
+      errorHash: hashText(error),
+      errorLength: error.length,
+    },
+  }).catch(() => undefined);
 }
 
 export function sideEffectCheckpointReason(descriptor: SideEffectDescriptor, phase: 'started' | 'finished'): string {
@@ -137,6 +181,10 @@ export function sideEffectCheckpointReason(descriptor: SideEffectDescriptor, pha
 
 function hashInput(input: unknown): string {
   return createHash('sha256').update(stableSerialize(input), 'utf8').digest('hex')
+}
+
+function hashText(value: string): string {
+  return createHash('sha256').update(value, 'utf8').digest('hex')
 }
 
 function stableSerialize(value: unknown): string {

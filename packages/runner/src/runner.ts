@@ -8,7 +8,6 @@ import type {
   RunContext,
   SessionId,
   SessionMetadata,
-  StageResult,
   ToolContext,
   PermissionPolicyId,
   RunConfigOrigin,
@@ -72,6 +71,19 @@ import {
   conversationTurnMessageId,
   conversationTurnRunId,
 } from './conversation-turn.js';
+import {
+  DurableRunRecorder,
+  createDurableRunRecorder,
+  recordDurableRunOutcome,
+  recordDurableUserInput,
+  durableTextDigest,
+} from './durable-run-recorder.js';
+import {
+  assembleResult,
+  checkpointReason,
+  messageText,
+  resolveConversationContinuationMode,
+} from './runner-support.js';
 /** AgentResult + sessionId (caller-friendly). */
 export type RunnerResult = AgentResult & {
   sessionId: SessionId;
@@ -326,6 +338,8 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     let runtimeQueueRegistered = false;
     let runCheckpointId: string | undefined;
     let webRetrievalRuntime: WebRetrievalRuntime | undefined;
+    let durableRecorder: DurableRunRecorder | undefined;
+    let durableOutcomeRecorded = false;
 
     const abortControl = createRunAbortControl({ signal: input.signal, timeoutMs: RUN_TIMEOUT_MS, origin, startedAt });
     const signal = abortControl.signal;
@@ -359,6 +373,10 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         sessionId = session.id;
       }
       state.sessionId = sessionId;
+      durableRecorder = createDurableRunRecorder({
+        eventStore: infra.durableEventStore,
+        sessionId: String(sessionId), runId, origin, model, log: opts.log,
+      });
       const runtimeEventQueue = activeRuns.registerRun(runId, sessionId, continuation?.checkpoint.runtimeEventQueue, abortControl.registration);
       runtimeQueueRegistered = true;
       const onToolEvent = (event: ToolStreamEvent): void => {
@@ -377,6 +395,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
             runId,
             timestamp: new Date(startedAt).toISOString(),
           });
+      recordDurableUserInput(durableRecorder, origin, runId, inbound);
 
       // 3. Build RunContext (loads history WITHOUT inbound — no duplicate).
       // Apply caller-provided tool policy before the run.
@@ -500,6 +519,9 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         reasoningPromptAddon: reasoningPromptAddon(resolvedRunConfig.reasoning),
         attachments: input.attachments,
         resolvedRunConfig,
+        appendDurableEvent: durableRecorder
+          ? (event) => durableRecorder!.appendObserved(event)
+          : undefined,
         cacheObservationKey: infra.cacheObservationKey,
         capabilitySnapshot,
         capabilityPermissionEvent,
@@ -549,6 +571,18 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         const outcome = await infra.runCheckpointStore.write(checkpoint);
         if (outcome.kind === 'conflict') throw new Error(`run checkpoint id conflict: ${outcome.checkpointId}`);
         runCheckpointId = checkpoint.id;
+        void ctx.appendDurableEvent?.({
+          type: 'checkpoint_written',
+          source: 'runtime',
+          eventId: `${ctx.runId}:checkpoint:${checkpoint.id}`,
+          idempotencyKey: `${ctx.runId}:checkpoint:${checkpoint.id}`,
+          payload: {
+            checkpointId: checkpoint.id,
+            reasonHash: durableTextDigest(reason),
+            reasonLength: reason.length,
+            stage: 'execute',
+          },
+        }).catch(() => undefined);
         return checkpoint.id;
       };
       let usedContinuitySummaryId: string | undefined;
@@ -677,6 +711,8 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           });
         },
       });
+      await recordDurableRunOutcome(durableRecorder, result);
+      durableOutcomeRecorded = true;
       if (result.status === 'ok' && runCheckpointId && checkpointController) {
         try {
           const outcome = await checkpointController.completeSourceRun(
@@ -695,6 +731,13 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       }
       return result;
     } finally {
+      if (durableRecorder && !durableOutcomeRecorded) {
+        await recordDurableRunOutcome(durableRecorder, {
+          status: signal.aborted ? 'aborted' : 'error',
+          error: 'run ended before the coordinator produced a settled result',
+        });
+      }
+      await durableRecorder?.flushBestEffort();
       webRetrievalRuntime?.dispose();
       if (runtimeQueueRegistered) activeRuns.unregister(runId);
       if (activeCheckpoint && !checkpointCompleted) {
@@ -1923,78 +1966,6 @@ function shadowContinuationEvidence(
       },
     } : {}),
   }
-}
-
-function resolveConversationContinuationMode(
-  value: string | undefined,
-): 'off' | 'shadow' | 'full' {
-  return value === 'off' || value === 'shadow' || value === 'full' ? value : 'full'
-}
-
-function checkpointReason(ctx: RunContext, stageResult: StageResult, interrupted: boolean): string {
-  if (ctx.runtimeControl?.state === 'paused') return ctx.runtimeControl.reason ?? 'run paused at a safe boundary';
-  if (interrupted) return ctx.runtimeControl?.reason ?? 'run interrupted before completion';
-  if (ctx.clarificationRequest) return 'run is waiting for user clarification';
-  return stageResult.error ?? ctx.lastError?.message ?? 'run requires recovery';
-}
-
-function assembleResult(
-  stageResult: StageResult,
-  ctx: RunContext,
-  sessionId: SessionId,
-  startedAtMs: number,
-  aborted = false,
-  memoryAccess?: MemoryAccessLedger,
-): RunnerResult {
-  const status: AgentResult['status'] = aborted ? 'aborted' : stageResult.ok ? 'ok' : 'error';
-  const trace = (stageResult.meta?.trace as AgentResult['trace']) ?? [];
-  return {
-    runId: ctx.runId,
-    sessionId,
-    status,
-    reply: ctx.reply ?? '',
-    replyProvenance: ctx.replyProvenance,
-    error: stageResult.error,
-    messages: ctx.produced,
-    trace,
-    durationMs: Date.now() - startedAtMs,
-    usage: ctx.usage,
-    resolvedRunConfig: ctx.resolvedRunConfig,
-    capabilitySnapshot: ctx.capabilitySnapshot, capabilityProbe: ctx.capabilityProbe, capabilityPermissionEvent: ctx.capabilityPermissionEvent,
-    modelRequests: ctx.modelRequests,
-    contextSnapshots: ctx.contextSnapshots,
-    taskExecution: ctx.taskExecution,
-    toolInvocations: ctx.toolInvocations,
-    toolInvocationsTruncated: ctx.toolInvocationsTruncated,
-    sideEffects: ctx.sideEffects,
-    taskBook: ctx.taskBook ? { ...ctx.taskBook, stageResults: undefined } : undefined,
-    verificationHistory: ctx.verificationHistory,
-    runtimeControl: ctx.runtimeControl,
-    runtimeEventQueue: snapshotRuntimeEventQueue(ctx),
-    memoryIntentDecisions: ctx.memoryIntentDecisions,
-    memoryKnownState: ctx.memoryKnownState,
-    memoryContinuityAssessment: ctx.memoryContinuityAssessment,
-    clarificationRequest: ctx.clarificationRequest,
-    clarificationResponse: ctx.clarificationResponse,
-    conversationContinuation: ctx.conversationContinuation,
-    webEvidence: sanitizeWebEvidenceProjection(ctx.webEvidence),
-    memoryAccess,
-  };
-}
-
-function snapshotRuntimeEventQueue(ctx: RunContext) {
-  try {
-    return ctx.runtimeEventQueue?.snapshot();
-  } catch {
-    return undefined;
-  }
-}
-
-function messageText(message: Message): string {
-  return message.content
-    .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
-    .map((block) => block.text)
-    .join('\n')
 }
 
 function buildConversationContinuationEvidence(input: {

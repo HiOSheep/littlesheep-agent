@@ -128,6 +128,8 @@ export interface BuildRunContextOptions {
   webEvidenceSink?: ToolContext['webEvidenceSink'];
   /** Run-owned bounded event queue consumed only at Harness safe boundaries. */
   runtimeEventQueue?: RuntimeEventQueueLike;
+  /** Ordered durable event sink owned by the Runner/runtime adapter. */
+  appendDurableEvent?: RunContext['appendDurableEvent'];
   /** Directory containing bootstrap .md files (defaults to cwd). */
   bootstrapDir?: string;
   /** Unified memory/resource service used to register and load bootstrap authorities. */
@@ -260,6 +262,7 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     reasoningPromptAddon: opts.reasoningPromptAddon,
     attachments: opts.attachments,
     resolvedRunConfig: opts.resolvedRunConfig,
+    appendDurableEvent: opts.appendDurableEvent,
     ...(opts.cacheObservationKey !== undefined ? { cacheObservationKey: opts.cacheObservationKey } : {}),
     ...(opts.capabilitySnapshot ? { capabilitySnapshot: opts.capabilitySnapshot } : {}),
     ...(opts.capabilityProbe ? { capabilityProbe: opts.capabilityProbe } : {}),

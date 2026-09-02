@@ -94,7 +94,24 @@ export function recordProviderUsage(
     ...current,
     providerPrompt: cacheUsage.ledger,
   }));
-  if (!cacheUsage.validUsage) return;
+  if (!cacheUsage.validUsage) {
+    void ctx.appendDurableEvent?.({
+      type: 'model_response_received',
+      source: 'runtime',
+      eventId: `${ctx.runId}:model-request:${requestSnapshot.id}:response`,
+      idempotencyKey: `${ctx.runId}:model-request:${requestSnapshot.id}:response`,
+      payload: {
+        requestId: requestSnapshot.id,
+        requestIndex: requestSnapshot.requestIndex,
+        stage: requestSnapshot.stage,
+        provider: requestSnapshot.provider,
+        model: requestSnapshot.model,
+        usageStatus: 'unavailable',
+        cacheStatus: cacheUsage.ledger.status,
+      },
+    }).catch(() => undefined);
+    return;
+  }
   usage = cacheUsage.validUsage;
   const localCalibration = buildLocalCalibration(snapshot.localTokenLedger, usage.promptTokens);
   updateContextSnapshot(ctx, requestSnapshot.stage, snapshotId, (current) => Object.freeze({
@@ -113,6 +130,23 @@ export function recordProviderUsage(
       reportedAt: new Date().toISOString(),
     }),
   }));
+  void ctx.appendDurableEvent?.({
+    type: 'model_response_received',
+    source: 'runtime',
+    eventId: `${ctx.runId}:model-request:${requestSnapshot.id}:response`,
+    idempotencyKey: `${ctx.runId}:model-request:${requestSnapshot.id}:response`,
+    payload: {
+      requestId: requestSnapshot.id,
+      requestIndex: requestSnapshot.requestIndex,
+      stage: requestSnapshot.stage,
+      provider: requestSnapshot.provider,
+      model: requestSnapshot.model,
+      promptTokens: usage.promptTokens,
+      completionTokens: usage.completionTokens,
+      totalTokens: usage.totalTokens ?? usage.promptTokens + usage.completionTokens,
+      cachedPromptTokens: usage.cachedPromptTokens,
+    },
+  }).catch(() => undefined);
 }
 
 /** Use provider-native direct output for bounded routing, wording, and retries. */
@@ -210,6 +244,22 @@ function recordPreparedRequest(
     prepared.contextSnapshot,
     MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN,
   );
+  void ctx.appendDurableEvent?.({
+    type: 'model_request_started',
+    source: 'runtime',
+    eventId: `${ctx.runId}:model-request:${prepared.modelRequestSnapshot.id}:started`,
+    idempotencyKey: `${ctx.runId}:model-request:${prepared.modelRequestSnapshot.id}:started`,
+    payload: {
+      requestId: prepared.modelRequestSnapshot.id,
+      requestIndex,
+      stage: callContract.stage,
+      purpose: callContract.purpose,
+      provider: prepared.modelRequestSnapshot.provider,
+      model: prepared.modelRequestSnapshot.model,
+      payloadHash: prepared.modelRequestSnapshot.payloadHash,
+      cacheObservation: observedSnapshot.cacheObservation,
+    },
+  }).catch(() => undefined);
   requestContextSnapshotIds.set(prepared.request, prepared.contextSnapshot.id);
   return { request: prepared.request, snapshot: observedSnapshot };
 }

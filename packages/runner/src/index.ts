@@ -164,3 +164,24 @@ export {
   type RuntimeEventQueueSummary,
   type RuntimeEventDecisionStatus,
 } from './runtime-event-queue.js';
+
+export {
+  DurableEventStore,
+  DurableEventStoreError,
+  DEFAULT_DURABLE_EVENT_MAX_EVENTS_PER_RUN,
+  DEFAULT_DURABLE_EVENT_MAX_PAYLOAD_BYTES,
+  type DurableEventStoreOptions,
+} from './durable-event-store.js';
+
+export {
+  DurableInboxStore,
+  DurableInboxError,
+  type DurableInboxStoreOptions,
+} from './durable-inbox-store.js';
+
+export {
+  DurableRunRecorder,
+  durableEvent,
+  type DurableRunEventInput,
+  type DurableRunRecorderOptions,
+} from './durable-run-recorder.js';

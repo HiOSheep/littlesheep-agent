@@ -91,6 +91,13 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
           });
         }
         writeDecisionState(ctx, 'classify', { classification: routed });
+        void ctx.appendDurableEvent?.({
+          type: 'route_decided',
+          source: 'runtime',
+          eventId: `${ctx.runId}:route:${routed.activity}`,
+          idempotencyKey: `${ctx.runId}:route:${routed.activity}`,
+          payload: { route: routed.activity, source: routed.source, retrievalIntent: routed.retrievalIntent },
+        }).catch(() => undefined);
         next = 'reply';
         return {
           stage: 'classify',
@@ -156,6 +163,13 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
         writeDecisionState(ctx, 'classify', { classification: routed });
         next = 'reply';
       }
+      void ctx.appendDurableEvent?.({
+        type: 'route_decided',
+        source: 'runtime',
+        eventId: `${ctx.runId}:route:${activity}`,
+        idempotencyKey: `${ctx.runId}:route:${activity}`,
+        payload: { route: activity, source: routed.source, retrievalIntent: routed.retrievalIntent },
+      }).catch(() => undefined);
     } catch (err) {
       // Classifier never throws in practice, but defend against transport errors.
       writeDecisionState(ctx, 'classify', { classification: {
@@ -168,6 +182,13 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
       // A classifier transport failure is internal; do not make the user
       // clarify a message that may already be clear.
       next = 'reply';
+      void ctx.appendDurableEvent?.({
+        type: 'route_decided',
+        source: 'runtime',
+        eventId: `${ctx.runId}:route:respond`,
+        idempotencyKey: `${ctx.runId}:route:respond`,
+        payload: { route: 'respond', source: 'runtime_fallback', error: 'classifier_failed' },
+      }).catch(() => undefined);
     }
     return {
       stage: 'classify',

@@ -113,6 +113,7 @@ export interface MakeCtxOptions {
   initialMemoryContext?: string;
   sessionSummary?: RunContext['sessionSummary'];
   memoryKnownState?: RunContext['memoryKnownState'];
+  appendDurableEvent?: RunContext['appendDurableEvent'];
 }
 
 /** Build a minimal RunContext for stage unit tests. */
@@ -175,6 +176,7 @@ export function makeCtx(opts: MakeCtxOptions = {}): RunContext {
     replyProvenance: opts.replyProvenance,
     modelRequests,
     lastError: opts.lastError,
+    appendDurableEvent: opts.appendDurableEvent,
   };
 }
 

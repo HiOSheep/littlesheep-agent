@@ -2,6 +2,7 @@ import type { RunContext, StageResult } from '@littlesheep/types';
 import type { RunCheckpointStore } from './run-checkpoint-store.js';
 import { buildRunCheckpoint, shouldPersistRunCheckpoint } from './run-checkpoint.js';
 import { recordFailure } from '@littlesheep/harness';
+import { durableTextDigest } from './durable-run-recorder.js';
 
 export interface ExecuteRunnerPhaseOptions {
   ctx: RunContext;
@@ -48,6 +49,20 @@ export async function executeRunnerPhase(options: ExecuteRunnerPhaseOptions): Pr
         throw new Error(`run checkpoint id conflict: ${outcome.checkpointId}`);
       }
       options.onCheckpointId(checkpoint.id);
+      const checkpointReason = options.checkpointReason(options.ctx, stageResult, runInterrupted);
+      void options.ctx.appendDurableEvent?.({
+        type: 'checkpoint_written',
+        source: 'runtime',
+        eventId: `${options.ctx.runId}:checkpoint:${checkpoint.id}`,
+        idempotencyKey: `${options.ctx.runId}:checkpoint:${checkpoint.id}`,
+        payload: {
+          checkpointId: checkpoint.id,
+          stage: checkpoint.currentStage,
+          status: checkpoint.status,
+          reasonHash: durableTextDigest(checkpointReason),
+          reasonLength: checkpointReason.length,
+        },
+      }).catch(() => undefined);
     } catch (error) {
       const message = `run checkpoint persistence failed: ${(error as Error).message}`;
       options.log?.('error', `runner: ${message}`);

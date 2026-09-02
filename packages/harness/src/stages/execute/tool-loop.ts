@@ -177,6 +177,7 @@ export async function runToolLoop(
         })),
       });
       persistToolCalls(ctx, produced, response.toolCalls.map(convertToolCall));
+      recordDurableToolCalls(ctx, response.toolCalls.map(convertToolCall), stepId);
 
       const requests = response.toolCalls.map((call) => {
         const converted = convertToolCall(call);
@@ -286,6 +287,7 @@ export async function runDirectToolProposal(
     input: options.input,
   };
   persistToolCalls(options.ctx, produced, [call]);
+  recordDurableToolCalls(options.ctx, [call], options.stepId);
   const service = toolExecutionService(deps, options.ctx, options.sanitizeOpts);
   const completed = await service.executeBatch(
     [{
@@ -488,9 +490,10 @@ function sideEffectLifecycle(ctx: RunContext): ToolExecutionLifecycle {
     async afterInvoke(invocation, result) {
       const sideEffect = effects.get(invocation.request.callId);
       if (!sideEffect) return result;
-      finishSideEffect(ctx, sideEffect, result);
+      finishSideEffect(ctx, sideEffect, result, false);
       try {
         await ctx.persistRuntimeCheckpoint?.(sideEffectCheckpointReason(sideEffect, 'finished'));
+        finishSideEffect(ctx, sideEffect, result);
         return result;
       } catch (error) {
         markSideEffectUnknown(
@@ -529,6 +532,28 @@ function persistToolCalls(ctx: RunContext, produced: RunContext['produced'], cal
     runId: ctx.runId,
     stage: 'execute',
   });
+}
+
+function recordDurableToolCalls(
+  ctx: RunContext,
+  calls: readonly ToolCall[],
+  stepId?: string,
+): void {
+  for (const call of calls) {
+    const inputHash = createHash('sha256').update(safeStringify(call.input), 'utf8').digest('hex');
+    void ctx.appendDurableEvent?.({
+      type: 'tool_call_proposed',
+      source: 'model',
+      eventId: `${ctx.runId}:tool-call:${call.id}`,
+      idempotencyKey: `${ctx.runId}:tool-call:${call.id}`,
+      payload: {
+        callId: call.id,
+        toolName: call.name,
+        inputHash,
+        ...(stepId ? { stepId } : {}),
+      },
+    }).catch(() => undefined);
+  }
 }
 
 function persistToolResult(ctx: RunContext, produced: RunContext['produced'], result: ToolResult): void {

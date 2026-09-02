@@ -1,6 +1,7 @@
 // @littlesheep/harness - stages/verify/routing.ts
 // VERIFY routing: records evidence, publishes verified replies, and routes bounded recovery outcomes.
 
+import { createHash } from 'node:crypto';
 import { basename, resolve } from 'node:path';
 import type {
   RunContext,
@@ -38,6 +39,20 @@ export function recordVerification(
     verifiedAt: new Date().toISOString(),
   };
   ctx.verificationHistory = [...(ctx.verificationHistory ?? []), verification];
+  void ctx.appendDurableEvent?.({
+    type: 'verification_recorded',
+    source: 'runtime',
+    eventId: `${ctx.runId}:verification:${verification.attempt}`,
+    idempotencyKey: `${ctx.runId}:verification:${verification.attempt}`,
+    payload: {
+      attempt: verification.attempt,
+      verdict: verification.verdict,
+      source: verification.source,
+      reasonHash: createHash('sha256').update(verification.reason, 'utf8').digest('hex'),
+      reasonLength: verification.reason.length,
+      failedStepIds: verification.failedStepIds?.slice(0, 64),
+    },
+  }).catch(() => undefined);
   ctx.onToolEvent?.({ type: 'verification', visibility: 'silent', verification });
   return verification;
 }

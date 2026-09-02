@@ -70,14 +70,34 @@ describe('finalizeStage', () => {
     expect(sm.append).not.toHaveBeenCalled();
   });
 
-  it('sessionManager.append failure does NOT block (returns ok:true)', async () => {
+  it('treats sessionManager.append failure as a runtime failure', async () => {
     const sm = createMockSessionManager({ appendThrows: new Error('disk full') });
     const stage = createFinalizeStage({ sessionManager: sm });
     const ctx = makeCtx({ reply: 'ok', replyProvenance });
     const res = await stage(ctx);
-    expect(res.ok).toBe(true);
+    expect(res.ok).toBe(false);
     expect(res.next).toBe('exit');
     expect(ctx.produced).toHaveLength(1); // msg still pushed before persist
+    expect(res.error).toMatch(/could not persist/);
+  });
+
+  it('settles the durable final reply only after the session write', async () => {
+    const sm = createMockSessionManager();
+    const events: string[] = [];
+    const stage = createFinalizeStage({ sessionManager: sm });
+    const ctx = makeCtx({
+      reply: 'durable answer',
+      replyProvenance,
+      appendDurableEvent: async (event) => {
+        events.push(event.type);
+      },
+    });
+
+    const res = await stage(ctx);
+
+    expect(res.ok).toBe(true);
+    expect(events).toEqual(['final_reply_proposed', 'final_reply_settled']);
+    expect(sm.append).toHaveBeenCalledTimes(1);
   });
 
   it('meta.produced reflects produced count (preexisting + new)', async () => {

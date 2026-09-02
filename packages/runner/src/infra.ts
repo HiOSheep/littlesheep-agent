@@ -55,6 +55,8 @@ import { ExecutionLogStore } from './execution-log.js';
 import { loadCacheObservationKey } from './cache-observation-key.js';
 import { RunCheckpointStore } from './run-checkpoint-store.js';
 import { RunCheckpointDispositionStore } from './run-checkpoint-disposition-store.js';
+import { DurableEventStore } from './durable-event-store.js';
+import { DurableInboxStore } from './durable-inbox-store.js';
 import {
   CompositeMemoryBranch,
   DEFAULT_BRANCH_SPECS,
@@ -97,6 +99,10 @@ export interface Infrastructure {
   harness: AgentHarness;
   skillLoader: SkillLoader;
   executionLogStore: ExecutionLogStore;
+  /** Next Harness event log; legacy execution log remains authoritative until cutover. */
+  durableEventStore: DurableEventStore;
+  /** Persistent next-Harness inbox; no command is auto-executed by legacy runs. */
+  durableInboxStore: DurableInboxStore;
   /** Activity checkpoints are separate from shadow Git rollback points. */
   runCheckpointStore?: RunCheckpointStore;
   /** Mutable resume/abandon decisions kept separate from immutable checkpoints. */
@@ -220,6 +226,16 @@ export async function buildInfrastructure(
 
   // M3: execution log store — one JSON file per run, for replay/audit.
   const executionLogStore = new ExecutionLogStore({ rootDir: dirs.executionLogs });
+  const durableEventStore = new DurableEventStore({ rootDir: join(dirs.root, 'durable-events') });
+  const durableInboxStore = new DurableInboxStore({ rootDir: join(dirs.root, 'durable-inbox') });
+  try {
+    await durableEventStore.initialize();
+    await durableInboxStore.initialize();
+  } catch (error) {
+    // Legacy Harness remains usable while the next-path durable stores report
+    // a startup diagnostic. New-path callers must still fail closed on use.
+    opts.log?.('warn', `runner: durable Harness stores unavailable: ${(error as Error).message}`);
+  }
   const runCheckpointDispositionStore = new RunCheckpointDispositionStore({
     rootDir: join(dirs.root, 'run-checkpoint-dispositions'),
   });
@@ -503,6 +519,8 @@ export async function buildInfrastructure(
     harness,
     skillLoader,
     executionLogStore,
+    durableEventStore,
+    durableInboxStore,
     runCheckpointStore,
     runCheckpointDispositionStore,
     experienceStore,
