@@ -1,8 +1,8 @@
 # LittleSheep 新 Harness 重建与 Prompt Cache 收敛任务书 2026-09-02
 
-状态：规划已定稿，阶段 0 冻结已完成，阶段 1 评估与观测尚未开始
+状态：规划已定稿，阶段 0 冻结已完成，阶段 1 开源底座评估已完成；阶段 2 观测与后续重构仍在进行
 
-最后更新：2026-09-02 18:42:00
+最后更新：2026-09-03 03:12:00
 
 本文是新 Harness 重建和上下文缓存专项的唯一执行入口。它记录目标架构、开源底座评估、迁移顺序、回滚边界、缓存观测与验收；当前事实和最新质量门仍以[项目状态](../decision/project-status.md)为准。
 
@@ -302,17 +302,21 @@ Ingress
 
 ### 阶段 1：开源底座与边界评估
 
-状态：未开始。
+状态：已完成（保留自有 kernel，仅吸收已核验的 durable event/session/stream 设计）。
 
 工作项：固定候选 commit；完成许可证/NOTICE/依赖/漏洞/维护性审查；运行最小 Agent/session/tool/stream/cancel/reload 夹具；绘制 LS adapter 边界和不采用理由。
 
 完成门：至少一个候选通过采用门，或者有证据决定保持自有 kernel、只吸收可验证设计；没有未登记的 transitive dependency、遥测、凭证读取或权限旁路。
 
+证据：候选固定版本、许可证、供应链缺口、最小运行能力、LS adapter 边界和不采用理由已记录在[开源底座评估记录](../reference/harness-open-source-evaluation-2026-09-02.md)。三个候选均未同时满足生产采用门，因此本阶段不新增第三方 Harness 依赖。
+
 ### 阶段 2：CACHE-01 至 CACHE-07 观测基础
 
-状态：未开始，优先级 P0。
+状态：进行中，优先级 P0。
 
 工作项：实现 request snapshot 关联、三套 cache ledger、脱敏 HMAC 指纹、stable/dynamic boundary、Provider usage reconciliation 和失效原因枚举。先接入旧 Harness 的只读观测适配，不改变旧请求语义。
+
+当前增量：已接入 request-bound HMAC 观测、prompt source 失效原因、稳定/动态 addon 分层和 Provider usage 对账；完整 CACHE-03/04/05/06/07/08 矩阵、真实 Provider usage 和跨重启/并发证据仍待完成，不能据此宣称缓存问题已解决。
 
 完成门：同一请求可在不暴露 prompt 的前提下解释 prefix/suffix、Provider usage、local ledger、scope 和 invalidation reason；缺指标时安全降级；没有因观测而增加第二份用户文案或 Provider 请求。
 

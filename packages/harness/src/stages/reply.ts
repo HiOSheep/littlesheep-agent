@@ -74,7 +74,7 @@ export function createReplyStage(deps: ReplyStageDeps) {
       initialMemoryContext: ctx.initialMemoryContext,
     }, 'respond');
     const systemPrompt = appendSystemPromptBundleAddons(baseSystemPrompt, [
-      { id: 'profile', text: ctx.profilePromptAddon },
+      { id: 'profile', text: ctx.profilePromptAddon, placement: 'stable' },
       { id: 'user-facing-voice', text: buildUserFacingVoiceAddon(ctx) },
     ]);
 

@@ -11,6 +11,7 @@ import type {
   CacheInvalidationReason,
   CacheLedgerObservation,
   CacheObservation,
+  CachePromptComponentFingerprints,
   CacheObservationStatus,
   CacheScopePartition,
   PermissionPolicyId,
@@ -57,9 +58,13 @@ export interface CacheObservationInput {
   readonly workspaceScope: string;
   readonly permissionPolicyId?: PermissionPolicyId;
   readonly previous?: CacheObservation;
+  /** Raw component values are accepted only in memory and emitted as HMACs. */
+  readonly promptComponents?: CachePromptComponentInput;
   /** null explicitly disables hashing; undefined uses the process key. */
   readonly key?: string | null;
 }
+
+export type CachePromptComponentInput = Partial<Record<keyof CachePromptComponentFingerprints, string | number | null>>;
 
 /**
  * Return a deterministic copy of a provider tool schema array. The secondary
@@ -110,10 +115,12 @@ export function buildCacheObservation(input: CacheObservationInput): CacheObserv
     toolSchema: componentFingerprint(key, scopeToken, 'tool-schema', normalizeTools(input.request.tools, true)),
     scope: scope.partitionDigest ?? 'unavailable',
   });
+  const promptComponents = fingerprintPromptComponents(key, scopeToken, input.promptComponents);
   const invalidationReasons = resolveInvalidationReasons(
     input,
     scope,
     components,
+    promptComponents,
     fingerprint(key, scopeToken, 'stable-prefix', stableSerialized, keySourceOf(key), parts.stableMessages.length),
   );
   const keySource = keySourceOf(key);
@@ -135,6 +142,7 @@ export function buildCacheObservation(input: CacheObservationInput): CacheObserv
     dynamicSuffix: fingerprint(key, scopeToken, 'dynamic-suffix', dynamicSerialized, keySource, parts.dynamicMessages.length),
     normalizedRequest: fingerprint(key, scopeToken, 'normalized-request', normalizedSerialized, keySource, input.request.messages.length + (input.request.tools?.length ?? 0)),
     components,
+    ...(promptComponents ? { promptComponents } : {}),
     invalidationReasons,
     ...(invalidationReasons[0] ? { primaryInvalidationReason: invalidationReasons[0] } : {}),
     providerPrompt: pendingProviderCache(),
@@ -276,11 +284,14 @@ function resolveInvalidationReasons(
   input: CacheObservationInput,
   scope: CacheScopePartition,
   components: CacheComponentFingerprints,
+  promptComponents: CachePromptComponentFingerprints | undefined,
   currentStablePrefix: CacheFingerprint,
 ): readonly CacheInvalidationReason[] {
   const previous = input.previous;
   if (!previous) return Object.freeze([]);
   const reasons = new Set<CacheInvalidationReason>();
+  const sameScope = previous.scope.partitionDigest !== undefined
+    && previous.scope.partitionDigest === scope.partitionDigest;
   if (previous.adapter !== 'llm-chat') reasons.add('adapter_changed');
   if (previous.provider !== input.provider) reasons.add('provider_changed');
   if (previous.model !== input.model) reasons.add('model_changed');
@@ -288,10 +299,22 @@ function resolveInvalidationReasons(
   if (previous.scope.permissionPolicyId !== scope.permissionPolicyId) reasons.add('permission_changed');
   if (previous.scope.sessionDigest !== scope.sessionDigest) reasons.add('session_reset');
   if (previous.scope.workspaceDigest !== scope.workspaceDigest) reasons.add('workspace_changed');
-  const sameScope = previous.scope.partitionDigest !== undefined
-    && previous.scope.partitionDigest === scope.partitionDigest;
+  if (sameScope) {
+    comparePromptComponent(previous, promptComponents, 'promptVersion', 'prompt_version_changed', reasons);
+    comparePromptComponent(previous, promptComponents, 'systemPolicy', 'system_policy_changed', reasons);
+    comparePromptComponent(previous, promptComponents, 'soul', 'soul_changed', reasons);
+    comparePromptComponent(previous, promptComponents, 'userProfile', 'user_profile_changed', reasons);
+    comparePromptComponent(previous, promptComponents, 'memoryRevision', 'memory_revision_changed', reasons);
+    comparePromptComponent(previous, promptComponents, 'summary', 'summary_compacted', reasons);
+    comparePromptComponent(previous, promptComponents, 'locale', 'locale_changed', reasons);
+  }
   if (sameScope && previous.components.toolSchema !== components.toolSchema) reasons.add('tool_schema_changed');
-  if (sameScope && previous.components.systemPrompt !== components.systemPrompt) reasons.add('prompt_version_changed');
+  if (sameScope
+    && previous.components.systemPrompt !== components.systemPrompt
+    && !reasons.has('system_policy_changed')
+    && !reasons.has('prompt_version_changed')) {
+    reasons.add('prompt_version_changed');
+  }
   if (previous.stablePrefixVersion !== STABLE_PREFIX_VERSION || previous.boundaryMarker !== CACHE_BOUNDARY_MARKER) {
     reasons.add('prompt_version_changed');
   }
@@ -301,6 +324,38 @@ function resolveInvalidationReasons(
     if (!reasons.has('tool_schema_changed') && !reasons.has('prompt_version_changed')) reasons.add('unknown');
   }
   return Object.freeze([...reasons].sort((left, right) => INVALIDATION_ORDER.indexOf(left) - INVALIDATION_ORDER.indexOf(right)));
+}
+
+function comparePromptComponent(
+  previous: CacheObservation,
+  current: CachePromptComponentFingerprints | undefined,
+  key: keyof CachePromptComponentFingerprints,
+  reason: CacheInvalidationReason,
+  reasons: Set<CacheInvalidationReason>,
+): void {
+  const currentValue = current?.[key];
+  const previousValue = previous.promptComponents?.[key];
+  if (currentValue === undefined && previousValue === undefined) return;
+  if (currentValue !== previousValue) reasons.add(reason);
+}
+
+function fingerprintPromptComponents(
+  key: ResolvedKey,
+  scopeToken: string,
+  components: CachePromptComponentInput | undefined,
+): CachePromptComponentFingerprints | undefined {
+  if (!components) return undefined;
+  const result: Record<string, string> = {};
+  for (const [name, value] of Object.entries(components)) {
+    if (value === undefined || value === null) continue;
+    result[name] = componentFingerprint(
+      key,
+      scopeToken,
+      `prompt-component:${name}`,
+      value,
+    );
+  }
+  return Object.keys(result).length > 0 ? Object.freeze(result as CachePromptComponentFingerprints) : undefined;
 }
 
 function buildScopePartition(

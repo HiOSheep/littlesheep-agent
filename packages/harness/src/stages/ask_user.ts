@@ -88,9 +88,12 @@ async function composeClarificationMessage(
 ): Promise<string> {
   const system = appendSystemPromptAddons(
     `You are the ASK_USER stage of a hard-control-flow agent. Compose one concise, actionable clarification message for the user from the supplied runtime facts. Return only the message text, with no preamble or JSON. Preserve every option and required decision; do not add facts, risks, permissions, paths or claims that are not present in the input.`,
-    buildUserFacingVoiceAddon(ctx),
+    { id: 'user-facing-voice', text: buildUserFacingVoiceAddon(ctx) },
     rewrite
-      ? `The prior API-generated response exactly repeats a previously published LS reply. Generate the clarification again with a genuinely different opening and sentence structure while preserving every runtime fact. Do not mention the regeneration. Prior response:\n${rewrite.generatedReply}\nRecent replies to avoid repeating exactly:\n${rewrite.avoidReplies.map((reply, index) => `${index + 1}. ${reply}`).join('\n')}`
+      ? {
+          id: 'user-facing-rewrite',
+          text: `The prior API-generated response exactly repeats a previously published LS reply. Generate the clarification again with a genuinely different opening and sentence structure while preserving every runtime fact. Do not mention the regeneration. Prior response:\n${rewrite.generatedReply}\nRecent replies to avoid repeating exactly:\n${rewrite.avoidReplies.map((reply, index) => `${index + 1}. ${reply}`).join('\n')}`,
+        }
       : undefined,
   );
   const baseMessages: ChatRequest['messages'] = [

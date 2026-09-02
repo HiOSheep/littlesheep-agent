@@ -31,8 +31,8 @@ export async function requestRecoveryDecision(
       role: 'system',
       content: appendSystemPromptAddons(
         RECOVER_SYSTEM_PROMPT,
-        ctx.profilePromptAddon,
-        buildUserFacingVoiceAddon(ctx),
+        { id: 'profile', text: ctx.profilePromptAddon, placement: 'stable' },
+        { id: 'user-facing-voice', text: buildUserFacingVoiceAddon(ctx) },
       ),
     },
     ...recoveryHistory.map(toChatMessage),
@@ -80,8 +80,12 @@ export async function rewriteAbortReason(
       role: 'system',
       content: appendSystemPromptAddons(
         RECOVER_SYSTEM_PROMPT,
-        buildUserFacingVoiceAddon(ctx),
-        'The previous abort reason exactly repeats a previously published LS reply. Return action "abort" again, but rewrite reason with a genuinely different opening and sentence structure. Preserve the same failure facts and do not mention the rewrite.',
+        { id: 'profile', text: ctx.profilePromptAddon, placement: 'stable' },
+        { id: 'user-facing-voice', text: buildUserFacingVoiceAddon(ctx) },
+        {
+          id: 'user-facing-rewrite',
+          text: 'The previous abort reason exactly repeats a previously published LS reply. Return action "abort" again, but rewrite reason with a genuinely different opening and sentence structure. Preserve the same failure facts and do not mention the rewrite.',
+        },
       ),
     },
     {

@@ -73,6 +73,17 @@ export interface CacheComponentFingerprints {
   readonly scope: string;
 }
 
+/** HMAC-only fingerprints for prompt sources whose changes explain misses. */
+export interface CachePromptComponentFingerprints {
+  readonly promptVersion?: string;
+  readonly systemPolicy?: string;
+  readonly soul?: string;
+  readonly userProfile?: string;
+  readonly memoryRevision?: string;
+  readonly summary?: string;
+  readonly locale?: string;
+}
+
 /**
  * Redacted, request-bound cache evidence. No field contains prompt text,
  * user content, URLs, credentials, tool arguments, or provider raw JSON.
@@ -95,6 +106,7 @@ export interface CacheObservation {
   readonly dynamicSuffix: CacheFingerprint;
   readonly normalizedRequest: CacheFingerprint;
   readonly components: CacheComponentFingerprints;
+  readonly promptComponents?: CachePromptComponentFingerprints;
   readonly invalidationReasons: readonly CacheInvalidationReason[];
   readonly primaryInvalidationReason?: CacheInvalidationReason;
   readonly providerPrompt: CacheLedgerObservation;

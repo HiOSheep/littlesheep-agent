@@ -36,6 +36,7 @@ import {
   buildCacheObservation,
   classifyProviderCacheUsage,
   orderToolSpecs,
+  type CachePromptComponentInput,
 } from './cache-observability.js';
 
 export {
@@ -396,6 +397,7 @@ function recordPreparedRequest(
     workspaceScope: ctx.cwd,
     permissionPolicyId: ctx.resolvedRunConfig?.permissionPolicyId,
     previous: ctx.modelRequests?.at(-1)?.cacheObservation,
+    promptComponents: buildPromptComponentInput(ctx),
     key: ctx.cacheObservationKey,
   });
   const observedSnapshot = Object.freeze({
@@ -433,6 +435,36 @@ function recordPreparedRequest(
   runRequests.add(prepared.request);
   contextRequestLifecycles.set(ctx, runRequests);
   return { request: prepared.request, snapshot: observedSnapshot };
+}
+
+/** Collect only prompt-source revisions; cache-observability hashes values before persistence. */
+function buildPromptComponentInput(
+  ctx: RunContext,
+): CachePromptComponentInput {
+  const resolved = ctx.resolvedRunConfig;
+  return {
+    promptVersion: 'prompt-assembly-v3',
+    systemPolicy: JSON.stringify({
+      workflowStrategyId: resolved?.workflowStrategyId,
+      contextStrategyId: resolved?.contextStrategyId,
+      memoryStrategyId: resolved?.memoryStrategyId,
+      outputContractId: resolved?.outputContractId,
+      behaviorModeId: resolved?.behaviorModeId,
+      profilePromptAddon: ctx.profilePromptAddon,
+      reasoningPromptAddon: ctx.reasoningPromptAddon,
+    }),
+    soul: ctx.bootstrap?.['SOUL.md'],
+    userProfile: ctx.bootstrap?.['USER.md'],
+    memoryRevision: JSON.stringify({
+      rootIndex: ctx.memoryRootIndex,
+      knownStateRevision: ctx.memoryKnownState?.revision,
+      workingSet: ctx.memoryContextWorkingSet?.revision,
+    }),
+    summary: ctx.sessionSummary
+      ? `${ctx.sessionSummary.id}:${ctx.sessionSummary.compactedAt}:${ctx.sessionSummary.sourceEndMessageId}`
+      : undefined,
+    locale: JSON.stringify({ timeZone: ctx.timeZone, timeFormat: ctx.timeFormat }),
+  };
 }
 
 function updateModelRequestCacheObservation(

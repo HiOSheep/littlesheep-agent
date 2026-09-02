@@ -28,8 +28,8 @@ export async function requestVerificationVerdict(
       role: 'system',
       content: appendSystemPromptAddons(
         VERIFY_SYSTEM_PROMPT,
-        ctx.profilePromptAddon,
-        buildUserFacingVoiceAddon(ctx),
+        { id: 'profile', text: ctx.profilePromptAddon, placement: 'stable' },
+        { id: 'user-facing-voice', text: buildUserFacingVoiceAddon(ctx) },
       ),
     },
     { role: 'user', content: buildVerifyUserMessage(ctx, replanAttempts, maxReplan) },

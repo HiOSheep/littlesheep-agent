@@ -120,6 +120,38 @@ describe('cache observability', () => {
     expect(classifyProviderCacheUsage({ promptTokens: 10, completionTokens: 1, cachedPromptTokens: 11 }).ledger).toMatchObject({ status: 'unknown' });
   });
 
+  it('attributes same-scope prompt source changes without exposing their content', () => {
+    const first = observation(cacheRequest(), {
+      promptComponents: {
+        promptVersion: 'prompt-assembly-v3',
+        systemPolicy: 'policy-a',
+        soul: 'soul-a',
+        userProfile: 'user-a',
+        memoryRevision: 1,
+        summary: 'summary-a',
+        locale: 'zh-HK/24',
+      },
+    });
+    const changed = observation(cacheRequest({ volatile: 'new memory revision' }), {
+      previous: first,
+      promptComponents: {
+        promptVersion: 'prompt-assembly-v3',
+        systemPolicy: 'policy-a',
+        soul: 'soul-b',
+        userProfile: 'user-a',
+        memoryRevision: 2,
+        summary: 'summary-b',
+        locale: 'zh-HK/24',
+      },
+      requestIndex: 2,
+      modelRequestId: 'request-2',
+    });
+    expect(changed.invalidationReasons).toEqual(['soul_changed', 'memory_revision_changed', 'summary_compacted']);
+    const serialized = JSON.stringify(changed);
+    expect(serialized).not.toContain('soul-b');
+    expect(serialized).not.toContain('new memory revision');
+  });
+
   it('binds cache evidence to the prepared request and updates it after provider usage', () => {
     const ctx = makeCtx();
     ctx.cacheObservationKey = 'test-cache-observation-key';

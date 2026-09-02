@@ -48,6 +48,7 @@ export async function buildExecuteSystemPrompt(
       kind: 'project_knowledge' as const,
       source: { kind: 'configuration' as const, id: 'workspace', path: resolved.workspace },
       scope: 'workspace' as const,
+      placement: 'stable' as const,
     }] : []),
     ...(!compactReadTools ? [{
       id: 'retrieval-intent-contract',
@@ -64,8 +65,9 @@ export async function buildExecuteSystemPrompt(
     {
       id: 'profile',
       text: compactReadTools ? buildCompactBehaviorProfileAddon(ctx) : ctx.profilePromptAddon,
+      placement: 'stable',
     },
-    { id: 'reasoning', text: ctx.reasoningPromptAddon },
+    { id: 'reasoning', text: ctx.reasoningPromptAddon, placement: 'stable' },
     ...(compactReadTools ? [{
       id: 'compact-user-facing-voice',
       text: buildCompactUserFacingVoiceAddon(ctx),

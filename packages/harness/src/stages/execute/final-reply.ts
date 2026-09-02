@@ -39,9 +39,16 @@ export async function synthesizeFinalReply(
       ? `Write the final LS reply for one completed Runtime-validated read-only tool call. Answer exactly what the user asked, in the user's language. Preserve supplied facts, truncation, and uncertainty; invent nothing and omit internal workflow. Return only the concise reply.`
       : `You are the final response assembler. Produce the final user-facing answer from completed task-book step results.
 Follow progressive disclosure: lead with the outcome and completion status, then give key results, artifacts, evidence, and the next action only when useful. Keep detail proportional to the user's request; simple tasks should not become reports. Do not dump raw command output or private chain-of-thought. Never hide failed or partial steps, permission denials, risks, uncertainty, external side effects, or decisions required from the user. Do not claim failed steps succeeded.`,
-    compact ? buildCompactBehaviorProfileAddon(ctx) : ctx.profilePromptAddon,
-    ctx.reasoningPromptAddon,
-    compact ? buildCompactUserFacingVoiceAddon(ctx) : buildUserFacingVoiceAddon(ctx),
+    {
+      id: 'profile',
+      text: compact ? buildCompactBehaviorProfileAddon(ctx) : ctx.profilePromptAddon,
+      placement: 'stable',
+    },
+    { id: 'reasoning', text: ctx.reasoningPromptAddon, placement: 'stable' },
+    {
+      id: 'user-facing-voice',
+      text: compact ? buildCompactUserFacingVoiceAddon(ctx) : buildUserFacingVoiceAddon(ctx),
+    },
   );
 
   const requestFinalReply = async (
