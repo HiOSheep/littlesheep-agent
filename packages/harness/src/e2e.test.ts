@@ -44,6 +44,46 @@ describe('e2e agent loop', () => {
     expect(trace.map((t) => t.name)).toEqual(['enter', 'classify', 'reply', 'finalize']);
   });
 
+  it('capability-question regression keeps Runtime progress out of the chat reply', async () => {
+    const llm = createMockLlm(textResponse('当前只根据 Runtime 能力快照回答，尚未执行网络查询。'));
+    const h = makeHarness(llm);
+    const durableTypes: string[] = [];
+    const snapshot = {
+      version: 1 as const,
+      epoch: 'capability-epoch-1',
+      generatedAt: '2026-09-02T00:00:00.000Z',
+      permissionPolicyId: 'research' as const,
+      workspace: 'available' as const,
+      tools: [],
+      network: { enabled: false, status: 'disabled' as const },
+    };
+    const ctx = makeCtx({
+      inbound: textMessage('user', '你能调用网络了吗？'),
+      appendDurableEvent: async (event) => { durableTypes.push(event.type); },
+    });
+    ctx.capabilitySnapshot = snapshot;
+    const events: ToolStreamEvent[] = [];
+    ctx.onToolEvent = (event) => events.push(event);
+
+    const result = await h.run(ctx);
+
+    expect(result.ok).toBe(true);
+    expect(result.next).toBe('exit');
+    expect(ctx.produced).toHaveLength(1);
+    expect(ctx.produced[0]?.content).toEqual([{ type: 'text', text: '当前只根据 Runtime 能力快照回答，尚未执行网络查询。' }]);
+    expect(events.filter((event) => event.visibility === 'progress')).toHaveLength(0);
+    expect(events.filter((event) => event.type === 'capability_snapshot' || event.type === 'capability_probe')).toHaveLength(0);
+    expect(events.filter((event) => event.type === 'reasoning').every((event) => event.visibility === 'silent')).toBe(true);
+    expect(durableTypes.slice(0, 2)).toEqual(['capability_snapshot_read', 'route_decided']);
+    expect(durableTypes.slice(-5)).toEqual([
+      'model_request_started',
+      'model_response_received',
+      'model_request_settled',
+      'final_reply_proposed',
+      'final_reply_settled',
+    ]);
+  });
+
   it('problem: LLM classifies as problem → full loop through verify/evolve/capture', async () => {
     // 'solve P vs NP' matches no rule → LLM classify fallback.
     const llm = createMockLlm([

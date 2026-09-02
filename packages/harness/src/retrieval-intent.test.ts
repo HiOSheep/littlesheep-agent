@@ -5,6 +5,9 @@ import { textMessage, type AgentTool } from '@littlesheep/types';
 describe('retrieval intent boundary', () => {
   it.each([
     ['LS 支持网络搜索吗？', 'capability_question', false],
+    ['你能调用网络了吗？', 'capability_question', false],
+    ['现在呢', 'capability_question', false],
+    ['权限给你了啊', 'capability_probe', false],
     ['但是现在好像还没给你配置网络查询功能吧', 'capability_question', false],
     ['你查询过了吗？', 'capability_probe', false],
     ['基于事实，因此你需要实际查一下', 'capability_probe', false],
@@ -64,5 +67,11 @@ describe('Runtime retrieval tool admission', () => {
     const ctx = context('登录后点击下载', 'browser_required');
     expect(toolsForRetrievalIntent(ctx).map((item) => item.name)).toEqual(['read', 'memory_search']);
     expect(renderRetrievalIntentContract(ctx)).toContain('Do not substitute anonymous web_fetch/web_search');
+  });
+
+  it('keeps capability probes on Runtime facts and does not admit Web tools', () => {
+    const ctx = context('你查询过了吗？', 'capability_probe');
+    expect(toolsForRetrievalIntent(ctx).map((item) => item.name)).toEqual(['read', 'memory_search']);
+    expect(renderRetrievalIntentContract(ctx)).toContain('Do not claim a Web query');
   });
 });

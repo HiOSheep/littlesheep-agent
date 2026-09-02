@@ -10,6 +10,8 @@ export const DURABLE_HARNESS_INBOX_VERSION = 1 as const;
 export type DurableHarnessEventType =
   | 'run_accepted'
   | 'user_input_appended'
+  | 'capability_snapshot_read'
+  | 'capability_probe_settled'
   | 'route_decided'
   | 'model_request_started'
   | 'model_response_received'
@@ -159,6 +161,31 @@ export interface DurableFinalReplyProjection {
   readonly state: DurableFinalReplyState;
 }
 
+/** Redacted Runtime capability evidence retained by the durable projection. */
+export interface DurableCapabilitySnapshotProjection {
+  readonly capabilityEpoch: string;
+  readonly permissionPolicyId: string;
+  readonly workspace: 'available' | 'approval_required' | 'denied' | 'unavailable';
+  readonly tools: readonly {
+    readonly name: string;
+    readonly status: 'available' | 'approval_required';
+    readonly source: 'builtin' | 'external';
+  }[];
+  readonly network: {
+    readonly enabled: boolean;
+    readonly status: string;
+    readonly providerId?: string;
+  };
+}
+
+export interface DurableCapabilityProbeProjection {
+  readonly probeId: string;
+  readonly status: 'observed' | 'unavailable';
+  readonly capabilityEpoch: string;
+  readonly evidence: 'runtime_snapshot';
+  readonly permissionDecision: 'allow' | 'approval_required' | 'deny' | 'unavailable';
+}
+
 export interface DurableRunProjection {
   readonly version: 1;
   readonly sessionId: string;
@@ -168,6 +195,8 @@ export interface DurableRunProjection {
   readonly route?: 'respond' | 'execute' | 'clarify';
   readonly eventCount: number;
   readonly finalReply: DurableFinalReplyProjection;
+  readonly capabilitySnapshot?: DurableCapabilitySnapshotProjection;
+  readonly capabilityProbe?: DurableCapabilityProbeProjection;
   readonly modelRequests: readonly DurableModelRequestProjection[];
   readonly pendingModelRequestIds: readonly string[];
   readonly effects: readonly DurableEffectProjection[];

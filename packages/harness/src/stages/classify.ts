@@ -26,7 +26,11 @@ import { buildRunRequestCandidates } from '../context-candidates.js';
 import { attachmentManifestText, recentHistoryForModel } from './_shared.js';
 import { writeDecisionState } from '../decision-state.js';
 import { assessRetrievalIntent } from '../retrieval-intent.js';
-import { capabilityProbeEvent } from '../capability-events.js';
+import {
+  capabilityProbeDurablePayload,
+  capabilityProbeEvent,
+  capabilitySnapshotDurablePayload,
+} from '../capability-events.js';
 import { writeCapabilityState } from '../capability-state.js';
 
 function inboundText(ctx: RunContext): string {
@@ -78,6 +82,25 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
             : 'capability or status question',
           retrievalIntent: retrieval.intent,
         };
+        // Persist the exact, redacted Runtime snapshot before routing. This is
+        // the authority for capability answers; it is deliberately distinct
+        // from a Web tool call and contains no model/user text.
+        try {
+          await ctx.appendDurableEvent?.({
+            type: 'capability_snapshot_read',
+            source: 'runtime',
+            eventId: `${ctx.runId}:capability-snapshot:${ctx.capabilitySnapshot?.epoch ?? 'unavailable'}`,
+            idempotencyKey: `${ctx.runId}:capability-snapshot`,
+            payload: capabilitySnapshotDurablePayload(ctx.capabilitySnapshot),
+          });
+        } catch (error) {
+          return {
+            stage: 'classify',
+            next: 'exit',
+            ok: false,
+            error: `capability snapshot could not be durably recorded: ${(error as Error).message}`,
+          };
+        }
         if (retrieval.intent === 'capability_probe') {
           const probe = capabilityProbeEvent(ctx.capabilitySnapshot, `${ctx.runId}:capability-probe`);
           writeCapabilityState(ctx, 'classify', {
@@ -91,6 +114,22 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
             capabilityProbe: probe.probe,
             permissionEvent: probe.permission,
           });
+          try {
+            await ctx.appendDurableEvent?.({
+              type: 'capability_probe_settled',
+              source: 'runtime',
+              eventId: `${ctx.runId}:capability-probe-settled`,
+              idempotencyKey: `${ctx.runId}:capability-probe-settled`,
+              payload: capabilityProbeDurablePayload(probe.probe, probe.permission),
+            });
+          } catch (error) {
+            return {
+              stage: 'classify',
+              next: 'exit',
+              ok: false,
+              error: `capability probe could not be durably recorded: ${(error as Error).message}`,
+            };
+          }
         }
         writeDecisionState(ctx, 'classify', { classification: routed });
         await ctx.appendDurableEvent?.({

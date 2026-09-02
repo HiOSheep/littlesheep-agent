@@ -179,4 +179,77 @@ describe('DurableHarnessKernel', () => {
     expect(reduceDurableRunProjection(events).cursor).toBe(1);
     expect(() => reduceDurableRunProjection([{ ...events[0]!, version: 99 as 1 }])).toThrow(/unknown durable event version/);
   });
+
+  it('records capability snapshots and probes as separate replayable Runtime facts', async () => {
+    const store = new MemoryEventStore();
+    const kernel = new DurableHarnessKernel({ eventStore: store });
+    await kernel.append(event('run_accepted', {}, 'runtime', 'accept'));
+    await kernel.append(event('user_input_appended', { contentLength: 8 }, 'app', 'input'));
+    await kernel.append(event('capability_snapshot_read', {
+      snapshot: {
+        capabilityEpoch: 'epoch-1',
+        permissionPolicyId: 'research',
+        workspace: 'available',
+        tools: [{ name: 'web_search', status: 'approval_required', source: 'builtin' }],
+        network: { enabled: false, status: 'disabled' },
+      },
+    }, 'runtime', 'snapshot'));
+    await kernel.append(event('capability_probe_settled', {
+      probeId: 'probe-1',
+      status: 'observed',
+      capabilityEpoch: 'epoch-1',
+      evidence: 'runtime_snapshot',
+      permissionDecision: 'allow',
+    }, 'runtime', 'probe'));
+    await kernel.append(event('route_decided', {
+      route: 'respond',
+      source: 'rules',
+      retrievalIntent: 'capability_probe',
+    }, 'runtime', 'route'));
+
+    const projection = await kernel.replay(sessionId, runId);
+    expect(projection.capabilitySnapshot).toMatchObject({
+      capabilityEpoch: 'epoch-1',
+      permissionPolicyId: 'research',
+      network: { enabled: false, status: 'disabled' },
+    });
+    expect(projection.capabilityProbe).toMatchObject({
+      probeId: 'probe-1',
+      capabilityEpoch: 'epoch-1',
+      permissionDecision: 'allow',
+    });
+  });
+
+  it('rejects a probe without a matching snapshot and does not accept a second probe', async () => {
+    const store = new MemoryEventStore();
+    const kernel = new DurableHarnessKernel({ eventStore: store });
+    await kernel.append(event('run_accepted', {}, 'runtime', 'accept'));
+    await expect(kernel.append(event('capability_probe_settled', {
+      probeId: 'probe-1', status: 'observed', capabilityEpoch: 'epoch-1',
+      evidence: 'runtime_snapshot', permissionDecision: 'allow',
+    }, 'runtime', 'probe-before-snapshot'))).rejects.toMatchObject({ kind: 'transition' });
+    await kernel.append(event('capability_snapshot_read', {
+      snapshot: {
+        capabilityEpoch: 'epoch-1', permissionPolicyId: 'research', workspace: 'unavailable',
+        tools: [], network: { enabled: false, status: 'unavailable' },
+      },
+    }, 'runtime', 'snapshot'));
+    await kernel.append(event('capability_probe_settled', {
+      probeId: 'probe-1', status: 'observed', capabilityEpoch: 'epoch-1',
+      evidence: 'runtime_snapshot', permissionDecision: 'unavailable',
+    }, 'runtime', 'probe'));
+    await expect(kernel.append(event('capability_probe_settled', {
+      probeId: 'probe-2', status: 'observed', capabilityEpoch: 'epoch-1',
+      evidence: 'runtime_snapshot', permissionDecision: 'unavailable',
+    }, 'runtime', 'probe-again'))).rejects.toMatchObject({ kind: 'transition' });
+  });
+
+  it('requires a capability snapshot before a capability route is durable', async () => {
+    const store = new MemoryEventStore();
+    const kernel = new DurableHarnessKernel({ eventStore: store });
+    await kernel.append(event('run_accepted', {}, 'runtime', 'accept'));
+    await expect(kernel.append(event('route_decided', {
+      route: 'respond', source: 'rules', retrievalIntent: 'capability_question',
+    }, 'runtime', 'route'))).rejects.toMatchObject({ kind: 'transition' });
+  });
 });

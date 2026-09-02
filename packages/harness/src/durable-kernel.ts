@@ -1,6 +1,8 @@
 // Durable Harness kernel: versioned event validation, effect lifecycle,
 // projection rebuild and one authoritative final-reply settlement.
 import type {
+  DurableCapabilityProbeProjection,
+  DurableCapabilitySnapshotProjection,
   DurableEffectProjection,
   DurableEffectStatus,
   DurableHarnessEvent,
@@ -200,6 +202,8 @@ function applyDurableHarnessEvent(
     pendingEffectIds: [...projection.pendingEffectIds],
     unknownEffectIds: [...projection.unknownEffectIds],
     finalReply: { ...projection.finalReply },
+    ...(projection.capabilitySnapshot ? { capabilitySnapshot: { ...projection.capabilitySnapshot } } : {}),
+    ...(projection.capabilityProbe ? { capabilityProbe: { ...projection.capabilityProbe } } : {}),
     modelRequests: projection.modelRequests.map((request) => ({ ...request })),
     pendingModelRequestIds: [...projection.pendingModelRequestIds],
   };
@@ -207,6 +211,23 @@ function applyDurableHarnessEvent(
     case 'run_accepted':
       next.status = 'accepted';
       break;
+    case 'capability_snapshot_read': {
+      next.capabilitySnapshot = readCapabilitySnapshot(event);
+      if (next.status === 'accepted') next.status = 'running';
+      break;
+    }
+    case 'capability_probe_settled': {
+      const probe = readCapabilityProbe(event);
+      if (!next.capabilitySnapshot) {
+        throw new DurableKernelError('capability probe requires a capability snapshot', 'transition');
+      }
+      if (probe.capabilityEpoch !== next.capabilitySnapshot.capabilityEpoch) {
+        throw new DurableKernelError('capability probe epoch does not match its snapshot', 'transition');
+      }
+      next.capabilityProbe = probe;
+      if (next.status === 'accepted') next.status = 'running';
+      break;
+    }
     case 'user_input_appended':
     case 'route_decided':
     case 'model_request_started':
@@ -373,6 +394,24 @@ function validateTransition(projection: DurableRunProjection, event: DurableHarn
     const idempotencyKey = requiredString(event.payload.idempotencyKey, 'effect_intent_created.idempotencyKey');
     if (projection.effects.some((effect) => effect.idempotencyKey === idempotencyKey)) throw new DurableKernelError(`effect idempotency key already exists: ${idempotencyKey}`, 'transition');
   }
+  if (event.type === 'capability_snapshot_read') {
+    readCapabilitySnapshot(event);
+    if (projection.capabilitySnapshot) {
+      throw new DurableKernelError('capability snapshot has already been read', 'transition');
+    }
+  }
+  if (event.type === 'capability_probe_settled') {
+    const probe = readCapabilityProbe(event);
+    if (!projection.capabilitySnapshot) {
+      throw new DurableKernelError('capability probe requires a capability snapshot', 'transition');
+    }
+    if (projection.capabilityProbe) {
+      throw new DurableKernelError('capability probe has already settled', 'transition');
+    }
+    if (probe.capabilityEpoch !== projection.capabilitySnapshot.capabilityEpoch) {
+      throw new DurableKernelError('capability probe epoch does not match its snapshot', 'transition');
+    }
+  }
   if (event.type === 'model_request_started') {
     const requestId = requiredString(event.payload.requestId, 'model_request_started.requestId');
     if (projection.modelRequests.some((request) => request.requestId === requestId)) {
@@ -435,6 +474,11 @@ function validateTransition(projection: DurableRunProjection, event: DurableHarn
   if (event.type === 'route_decided' && projection.route !== undefined) {
     throw new DurableKernelError('route has already been decided', 'transition');
   }
+  if (event.type === 'route_decided'
+    && (event.payload.retrievalIntent === 'capability_question' || event.payload.retrievalIntent === 'capability_probe')
+    && !projection.capabilitySnapshot) {
+    throw new DurableKernelError('capability route requires a capability snapshot', 'transition');
+  }
   validateSource(event);
 }
 
@@ -451,6 +495,8 @@ function validateSource(event: DurableHarnessEventAppendInput | DurableHarnessEv
   const expected: Partial<Record<DurableHarnessEvent['type'], readonly string[]>> = {
     run_accepted: ['runtime', 'app', 'channel'],
     user_input_appended: ['app', 'channel'],
+    capability_snapshot_read: ['runtime'],
+    capability_probe_settled: ['runtime'],
     route_decided: ['runtime'],
     model_request_started: ['runtime'],
     model_response_received: ['model', 'runtime'],
@@ -485,6 +531,59 @@ function readEffectIntent(event: DurableHarnessEvent): DurableEffectProjection {
     intentEventId: event.eventId,
     ...(typeof event.payload.inputHash === 'string' ? { inputHash: event.payload.inputHash } : {}),
   };
+}
+
+function readCapabilitySnapshot(event: { payload: Record<string, unknown> }): DurableCapabilitySnapshotProjection {
+  const snapshot = event.payload.snapshot;
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+    throw new DurableKernelError('capability_snapshot_read.snapshot must be an object', 'invalid');
+  }
+  const record = snapshot as Record<string, unknown>;
+  const capabilityEpoch = requiredString(record.capabilityEpoch, 'capability_snapshot_read.capabilityEpoch');
+  const permissionPolicyId = requiredString(record.permissionPolicyId, 'capability_snapshot_read.permissionPolicyId');
+  const workspace = record.workspace;
+  if (workspace !== 'available' && workspace !== 'approval_required' && workspace !== 'denied' && workspace !== 'unavailable') {
+    throw new DurableKernelError('invalid capability workspace status', 'invalid');
+  }
+  if (!Array.isArray(record.tools)) throw new DurableKernelError('capability_snapshot_read.tools must be an array', 'invalid');
+  const tools = record.tools.map((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new DurableKernelError(`invalid capability tool at ${index}`, 'invalid');
+    const tool = item as Record<string, unknown>;
+    const name = requiredString(tool.name, `capability_snapshot_read.tools[${index}].name`);
+    const status = tool.status;
+    if (status !== 'available' && status !== 'approval_required') throw new DurableKernelError(`invalid capability tool status at ${index}`, 'invalid');
+    const source = tool.source;
+    if (source !== 'builtin' && source !== 'external') throw new DurableKernelError(`invalid capability tool source at ${index}`, 'invalid');
+    return { name, status, source } as const;
+  });
+  const network = record.network;
+  if (!network || typeof network !== 'object' || Array.isArray(network)) throw new DurableKernelError('invalid capability network state', 'invalid');
+  const networkRecord = network as Record<string, unknown>;
+  if (typeof networkRecord.enabled !== 'boolean') throw new DurableKernelError('capability network enabled must be boolean', 'invalid');
+  const networkStatus = requiredString(networkRecord.status, 'capability_snapshot_read.network.status');
+  const providerId = typeof networkRecord.providerId === 'string' && networkRecord.providerId.trim()
+    ? networkRecord.providerId.trim()
+    : undefined;
+  return {
+    capabilityEpoch,
+    permissionPolicyId,
+    workspace,
+    tools,
+    network: { enabled: networkRecord.enabled, status: networkStatus, ...(providerId ? { providerId } : {}) },
+  };
+}
+
+function readCapabilityProbe(event: { payload: Record<string, unknown> }): DurableCapabilityProbeProjection {
+  const probeId = requiredString(event.payload.probeId, 'capability_probe_settled.probeId');
+  const status = event.payload.status;
+  if (status !== 'observed' && status !== 'unavailable') throw new DurableKernelError('invalid capability probe status', 'invalid');
+  const capabilityEpoch = requiredString(event.payload.capabilityEpoch, 'capability_probe_settled.capabilityEpoch');
+  if (event.payload.evidence !== 'runtime_snapshot') throw new DurableKernelError('invalid capability probe evidence', 'invalid');
+  const permissionDecision = event.payload.permissionDecision;
+  if (permissionDecision !== 'allow' && permissionDecision !== 'approval_required' && permissionDecision !== 'deny' && permissionDecision !== 'unavailable') {
+    throw new DurableKernelError('invalid capability probe permission decision', 'invalid');
+  }
+  return { probeId, status, capabilityEpoch, evidence: 'runtime_snapshot', permissionDecision };
 }
 
 function requiredString(value: unknown, label: string): string {

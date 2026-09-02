@@ -2,7 +2,7 @@
 
 状态：规划已定稿，阶段 0 冻结已完成，阶段 1 开源底座评估已完成；阶段 2 观测与后续重构仍在进行
 
-最后更新：2026-09-03 03:12:00
+最后更新：2026-09-03 03:36:00
 
 本文是新 Harness 重建和上下文缓存专项的唯一执行入口。它记录目标架构、开源底座评估、迁移顺序、回滚边界、缓存观测与验收；当前事实和最新质量门仍以[项目状态](../decision/project-status.md)为准。
 
@@ -316,9 +316,11 @@ Ingress
 
 工作项：实现 request snapshot 关联、三套 cache ledger、脱敏 HMAC 指纹、stable/dynamic boundary、Provider usage reconciliation 和失效原因枚举。先接入旧 Harness 的只读观测适配，不改变旧请求语义。
 
-当前增量：已接入 request-bound HMAC 观测、prompt source 失效原因、稳定/动态 addon 分层和 Provider usage 对账；完整 CACHE-03/04/05/06/07/08 矩阵、真实 Provider usage 和跨重启/并发证据仍待完成，不能据此宣称缓存问题已解决。
+当前增量：已接入 request-bound HMAC 观测、prompt source 失效原因、稳定/动态 addon 分层和 Provider usage 对账；本轮又把 Runtime capability snapshot/probe 接入版本化 durable event 链，并用真实对话回归夹具验证 capability question、capability probe 与 Web query 的分层；完整 CACHE-03/04/05/06/07/08 矩阵、真实 Provider usage 和跨重启/并发证据仍待完成，不能据此宣称缓存问题已解决。
 
 完成门：同一请求可在不暴露 prompt 的前提下解释 prefix/suffix、Provider usage、local ledger、scope 和 invalidation reason；缺指标时安全降级；没有因观测而增加第二份用户文案或 Provider 请求。
+
+本轮能力事实链增量（2026-09-03）：`capability_snapshot_read` 和 `capability_probe_settled` 已纳入 durable event protocol、append-only store、inbox codec 和 projection reducer。能力路由必须先记录脱敏 snapshot；probe 只能引用同一 capability epoch，且 capability probe 不得放行 `web_search`/`web_fetch`。附件中的“你能调用网络了吗/现在呢/你查询过了吗/基于事实，因此你需要查询/权限给你了啊”序列已形成固定回归，断言内部 reasoning、TaskBook、验收和伪造网络错误不会进入聊天区；这只证明事实分层与审计链行为，不证明真实 Provider 可用或缓存专项完成。
 
 ### 阶段 3：确定性 Context 与请求形态矩阵
 

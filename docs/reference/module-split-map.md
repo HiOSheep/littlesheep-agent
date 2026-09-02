@@ -1,6 +1,6 @@
 # LittleSheep 模块拆分地图
 
-最后更新：2026-09-02 20:45:00
+最后更新：2026-09-03 03:29:00
 
 本文件记录大型生产文件的当前所有权、目标边界和拆分顺序。它是仓库基元化任务书的阶段产物，不替代项目状态，也不把行数当成唯一质量指标。
 
@@ -19,7 +19,7 @@
 | 当前文件 | 当前行数 | 当前责任 | 目标边界 | 所有权 |
 | --- | ---: | --- | --- | --- |
 | `packages/runner/src/runner.ts` | 2144 | run 生命周期、输入装配、Memory 反馈、日志、检查点持久化/续跑、活动任务注册、后台维护准入透传和资源收尾 | 保持应用服务 facade；活动快照与中断/超时所有权已下沉，继续下沉日志、检查点和收尾协调；checkpoint 预算重concile 保持在 `run-checkpoint.ts` 边界 | E |
-| `packages/harness/src/durable-kernel.ts` | 412 | durable event command validation、effect lifecycle、projection rebuild 和 final settlement reducer | 保持纯协议/kernel 边界；Runner 只提供 event store/inbox adapter，后续拆分 event reducer 与 settlement policy | E |
+| `packages/harness/src/durable-kernel.ts` | 639 | durable event command validation、capability evidence、effect lifecycle、projection rebuild 和 final settlement reducer | 保持纯协议/kernel 边界；Runner 只提供 event store/inbox adapter，后续拆分 event reducer 与 settlement policy | E |
 | `packages/runner/src/durable-event-store.ts` | 289 | 哈希分区、append-only event 文件、cursor/idempotency 校验和 fail-closed replay | 保持文件 store facade；后续按 codec、partition IO、replay query 拆分 | E |
 | `packages/runner/src/durable-inbox-store.ts` | 338 | 持久 command inbox、claim lease、重启 requeue、complete/fail 和幂等校验 | 保持 inbox facade；后续按 codec、lease policy、query 拆分 | E |
 | `packages/app/src/renderer/app-shell/use-app-controller.ts` | 656 | Renderer 跨领域兼容协调、启动恢复、Runtime 设置和视图快照 | 保持装配 facade；启动恢复、持久化和领域投影继续下沉，冻结期间不得继续吸收新职责 | B |
@@ -73,6 +73,7 @@
 | `packages/app/src/main/memory-tree-control.ts` | 474 | 记忆控制面查询、v3 D0-D3 详情适配和既有管理命令 | 分离 query/detail、resource、projection command | C |
 | `packages/llm/src/client.ts` | 463 | 请求、流式、reasoning、重试适配 | 分离 request builder、stream parser、response mapper | E |
 | `packages/harness/src/stages/execute/tool-loop.ts` | 604 | 单步模型工具循环、审批、失败记录、时间感知、消息续接和紧凑后续请求 | 受控超限复查：2026-09-03；分离 loop policy、invocation adapter 与 transcript；不得继续吸收检查点恢复或回答连续性判定 | E |
+| `packages/harness/src/durable-kernel.ts` | E / Harness | capability snapshot/probe durable evidence was added to the existing pure kernel; freeze the protocol and reducer feature tests before extracting event validation/reduction from settlement policy | 700 | 2026-09-24 |
 | `packages/harness/src/cache-observability.ts` | 485 | Provider、Context、Memory/Embedding 三套缓存账本、脱敏指纹和失效原因 | 保持观测适配器边界；真实 Provider 对账与 durable event log 接入后再按 ledger、fingerprint、report 拆分 | E |
 | `packages/harness/src/model-observability.ts` | 325 | 模型请求快照、Context 关联、Provider usage 与缓存观测绑定 | 保持请求观测 facade；后续将 provider reconciliation 与 request snapshot projection 下沉 | E |
 | `packages/memory-tree/src/memory-repository/resource-store.ts` | 454 | 资源注册、生命周期、重绑定和审计 | 分离 registry、lifecycle、rebind、audit | D |
