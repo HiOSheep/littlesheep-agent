@@ -366,6 +366,7 @@ function isEventType(value: unknown): value is DurableInboxCommand['type'] {
     || value === 'user_input_appended'
     || value === 'capability_snapshot_read'
     || value === 'capability_probe_settled'
+    || value === 'stage_transition_recorded'
     || value === 'route_decided'
     || value === 'model_request_started'
     || value === 'model_response_received'

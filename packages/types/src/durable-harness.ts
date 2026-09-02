@@ -2,6 +2,8 @@
 // The types package owns the protocol; filesystem and model adapters stay in
 // higher-level packages so the event contract cannot depend on infrastructure.
 
+import type { CacheObservation } from './cache-observability.js';
+
 export const DURABLE_HARNESS_EVENT_VERSION = 1 as const;
 export const DURABLE_HARNESS_EVENT_MAX_PAYLOAD_BYTES = 64 * 1024;
 export const DURABLE_HARNESS_EVENT_MAX_EVENTS_PER_RUN = 4096;
@@ -12,6 +14,7 @@ export type DurableHarnessEventType =
   | 'user_input_appended'
   | 'capability_snapshot_read'
   | 'capability_probe_settled'
+  | 'stage_transition_recorded'
   | 'route_decided'
   | 'model_request_started'
   | 'model_response_received'
@@ -124,6 +127,29 @@ export type DurableModelRequestStatus =
   | 'connection_reset'
   | 'failed';
 
+/** Runtime-owned transport state for one Provider attempt. */
+export type DurableModelTransportStatus =
+  | 'not_started'
+  | 'streaming'
+  | 'completed'
+  | 'aborted'
+  | 'timeout'
+  | 'rate_limit'
+  | 'connection_reset'
+  | 'failed'
+  | 'unknown';
+
+/** Provider usage and local-token reconciliation, with no raw prompt data. */
+export interface DurableProviderUsageProjection {
+  readonly promptTokens: number;
+  readonly completionTokens: number;
+  readonly totalTokens?: number;
+  readonly cachedPromptTokens?: number;
+  readonly reasoningTokens?: number;
+  readonly cacheStatus: 'hit' | 'miss' | 'partial' | 'unavailable' | 'unknown';
+  readonly reconciliation: 'exact_match' | 'within_tolerance' | 'mismatch' | 'unavailable';
+}
+
 export interface DurableModelRequestProjection {
   readonly requestId: string;
   readonly requestIndex?: number;
@@ -131,6 +157,13 @@ export interface DurableModelRequestProjection {
   readonly purpose?: string;
   readonly provider?: string;
   readonly model?: string;
+  readonly stream?: boolean;
+  readonly transportStatus?: DurableModelTransportStatus;
+  /** Whether the request reached the Provider; unknown is intentionally explicit. */
+  readonly providerReachStatus?: 'reached' | 'not_reached' | 'unknown';
+  /** Redacted request-bound prefix/suffix and independent cache ledgers. */
+  readonly cacheObservation?: CacheObservation;
+  readonly providerUsage?: DurableProviderUsageProjection;
   readonly status: DurableModelRequestStatus;
   readonly startedEventId: string;
   readonly settlementEventId?: string;
@@ -186,6 +219,15 @@ export interface DurableCapabilityProbeProjection {
   readonly permissionDecision: 'allow' | 'approval_required' | 'deny' | 'unavailable';
 }
 
+/** Redacted audit record for one next-Harness stage transition. */
+export interface DurableStageTransitionProjection {
+  readonly stage: string;
+  readonly next: string;
+  readonly ok: boolean;
+  readonly attempt: number;
+  readonly transitionEventId: string;
+}
+
 export interface DurableRunProjection {
   readonly version: 1;
   readonly sessionId: string;
@@ -197,6 +239,7 @@ export interface DurableRunProjection {
   readonly finalReply: DurableFinalReplyProjection;
   readonly capabilitySnapshot?: DurableCapabilitySnapshotProjection;
   readonly capabilityProbe?: DurableCapabilityProbeProjection;
+  readonly stageTransitions: readonly DurableStageTransitionProjection[];
   readonly modelRequests: readonly DurableModelRequestProjection[];
   readonly pendingModelRequestIds: readonly string[];
   readonly effects: readonly DurableEffectProjection[];

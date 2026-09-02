@@ -14,8 +14,10 @@ export { HookRunner } from './hooks/runner.js';
 // Default Core Flow harness + registry (Layers 1/2 entry points).
 export {
   createDefaultHarness,
+  createHarnessStages,
   type DefaultHarnessOptions,
 } from './default-harness.js';
+export { createNextHarness } from './durable-harness.js';
 export {
   HarnessRegistryImpl,
   createHarnessRegistry,
@@ -45,10 +47,15 @@ export {
 } from './model-observability.js';
 export {
   buildCacheObservation,
+  buildCacheScopePartition,
   canonicalSerialize,
   classifyProviderCacheUsage,
+  authorizeCacheObservationScope,
+  assertCacheObservationScope,
   orderToolSpecs,
   type CacheObservationInput,
+  type CacheScopeInput,
+  type CacheScopeAccessDecision,
   type ValidProviderUsage,
 } from './cache-observability.js';
 export { buildRunRequestCandidates, type BuildRunRequestCandidatesOptions } from './context-candidates.js';

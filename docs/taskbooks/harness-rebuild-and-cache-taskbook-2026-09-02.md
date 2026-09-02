@@ -2,7 +2,7 @@
 
 状态：规划已定稿，阶段 0 冻结已完成，阶段 1 开源底座评估已完成；阶段 2 观测与后续重构仍在进行
 
-最后更新：2026-09-03 03:36:00
+最后更新：2026-09-03 04:45:00
 
 本文是新 Harness 重建和上下文缓存专项的唯一执行入口。它记录目标架构、开源底座评估、迁移顺序、回滚边界、缓存观测与验收；当前事实和最新质量门仍以[项目状态](../decision/project-status.md)为准。
 
@@ -316,7 +316,7 @@ Ingress
 
 工作项：实现 request snapshot 关联、三套 cache ledger、脱敏 HMAC 指纹、stable/dynamic boundary、Provider usage reconciliation 和失效原因枚举。先接入旧 Harness 的只读观测适配，不改变旧请求语义。
 
-当前增量：已接入 request-bound HMAC 观测、prompt source 失效原因、稳定/动态 addon 分层和 Provider usage 对账；本轮又把 Runtime capability snapshot/probe 接入版本化 durable event 链，并用真实对话回归夹具验证 capability question、capability probe 与 Web query 的分层；完整 CACHE-03/04/05/06/07/08 矩阵、真实 Provider usage 和跨重启/并发证据仍待完成，不能据此宣称缓存问题已解决。
+当前增量：已接入 request-bound HMAC 观测、prompt source 失效原因、稳定/动态 addon 分层和 Provider usage 对账；本轮又把 Runtime capability snapshot/probe 接入版本化 durable event 链，并用真实对话回归夹具验证 capability question、capability probe 与 Web query 的分层。新增 CACHE-03/04/05 确定性矩阵夹具：100 次字节级重复、并发顺序反转、同 key 重启、Windows 路径大小写、动态字段隔离、静态字段/工具 schema 失效原因均已通过；完整 CACHE-06/07/08 矩阵、真实 Provider usage 和跨重启/并发故障证据仍待完成，不能据此宣称缓存问题已解决。
 
 完成门：同一请求可在不暴露 prompt 的前提下解释 prefix/suffix、Provider usage、local ledger、scope 和 invalidation reason；缺指标时安全降级；没有因观测而增加第二份用户文案或 Provider 请求。
 
@@ -324,17 +324,17 @@ Ingress
 
 ### 阶段 3：确定性 Context 与请求形态矩阵
 
-状态：未开始，优先级 P0。
+状态：进行中，优先级 P0。
 
-工作项：完成 CACHE-03、CACHE-04、CACHE-08 的确定性序列化、候选裁剪和 stage/request kind 规划；用 fake provider 覆盖 memory、summary、tools、retry、streaming、restart、concurrency；再在凭证/网络可用时运行真实 Provider usage 对账。
+工作项：完成 CACHE-03、CACHE-04、CACHE-08 的确定性序列化、候选裁剪和 stage/request kind 规划；用 fake provider 覆盖 memory、summary、tools、retry、streaming、restart、concurrency；再在凭证/网络可用时运行真实 Provider usage 对账。当前已完成第一批 CACHE-03/04/05 夹具和字段级差异断言，尚未覆盖完整 CACHE-08 请求形态矩阵。
 
 完成门：所有前缀变化可由字节差异和失效原因解释；未发现原因的 miss 明确标 `unknown`；只有在数据支持时才决定修改 Context Engine、Prompt assembler、Provider adapter 或请求数量。
 
 ### 阶段 4：Durable Harness kernel
 
-状态：未开始。
+状态：进行中，优先级 P0。
 
-工作项：实现 append-only event store、持久 inbox、cursor replay、幂等 projection、事件版本和 crash recovery；为旧 `RunContext` 建立只读 projection，不让新 kernel 直接改旧数据结构。
+工作项：实现 append-only event store、持久 inbox、cursor replay、幂等 projection、事件版本和 crash recovery；为旧 `RunContext` 建立只读 projection，不让新 kernel 直接改旧数据结构。当前已新增独立 `createNextHarness` 阶段驱动、`stage_transition_recorded` 审计事件和 Runner `durableHarnessMode: 'next'` 真实选择路径；effect crash/replay、Renderer/CLI/Webhook settlement replay 和旧/新完整双路径门仍未完成。
 
 完成门：随机断电/进程杀死/连接断开/重复投递后，run、session、checkpoint、execution log 和最终状态可重建；已完成工具和 settlement 不重复执行；未知事件不被静默丢弃。
 

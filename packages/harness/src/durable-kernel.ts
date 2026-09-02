@@ -1,24 +1,41 @@
 // Durable Harness kernel: versioned event validation, effect lifecycle,
 // projection rebuild and one authoritative final-reply settlement.
 import type {
-  DurableCapabilityProbeProjection,
-  DurableCapabilitySnapshotProjection,
   DurableEffectProjection,
-  DurableEffectStatus,
   DurableHarnessEvent,
   DurableHarnessEventAppendInput,
   DurableHarnessEventAppendOutcome,
   DurableHarnessEventStoreLike,
-  DurableInboxCommand,
   DurableInboxEnqueueInput,
   DurableInboxEnqueueOutcome,
   DurableInboxStoreLike,
-  DurableModelRequestStatus,
   DurableRunProjection,
-  DurableRunStatus,
   FinalReplyReservation,
 } from '@littlesheep/types';
 import { DURABLE_HARNESS_EVENT_VERSION } from '@littlesheep/types';
+import { DurableKernelError } from './durable-kernel-error.js';
+import {
+  freezeDurableRunProjection,
+  isModelTransportStatus,
+  isProviderReachStatus,
+  type MutableDurableRunProjection,
+  readCacheObservation,
+  readCapabilityProbe,
+  readCapabilitySnapshot,
+  readEffectIntent,
+  readProviderUsage,
+  requiredEffectStatus,
+  requiredModelRequestStatus,
+  requiredRoute,
+  requiredRuntimeStatus,
+  requiredString,
+  sourceForInboxCommand,
+  sourceForInboxType,
+  validateEventInput,
+  validateSource,
+} from './durable-projection-codec.js';
+
+export { DurableKernelError } from './durable-kernel-error.js';
 
 export interface DurableHarnessKernelOptions {
   eventStore: DurableHarnessEventStoreLike;
@@ -149,12 +166,6 @@ export class DurableHarnessKernel {
   }
 }
 
-export class DurableKernelError extends Error {
-  constructor(message: string, readonly kind: 'invalid' | 'conflict' | 'duplicate_final_reply' | 'inbox_unavailable' | 'transition') {
-    super(message);
-    this.name = 'DurableKernelError';
-  }
-}
 
 export function reduceDurableRunProjection(events: readonly DurableHarnessEvent[]): DurableRunProjection {
   let projection = emptyProjection(events[0]?.sessionId ?? '', events[0]?.runId ?? '');
@@ -180,6 +191,7 @@ function emptyProjection(sessionId: string, runId: string): DurableRunProjection
     status: 'accepted',
     eventCount: 0,
     finalReply: { state: 'none' },
+    stageTransitions: [],
     modelRequests: [],
     pendingModelRequestIds: [],
     effects: [],
@@ -193,7 +205,7 @@ function applyDurableHarnessEvent(
   event: DurableHarnessEvent,
 ): DurableRunProjection {
   validateTransition(projection, event);
-  const next: MutableProjection = {
+  const next: MutableDurableRunProjection = {
     ...projection,
     cursor: event.cursor,
     eventCount: projection.eventCount + 1,
@@ -204,6 +216,7 @@ function applyDurableHarnessEvent(
     finalReply: { ...projection.finalReply },
     ...(projection.capabilitySnapshot ? { capabilitySnapshot: { ...projection.capabilitySnapshot } } : {}),
     ...(projection.capabilityProbe ? { capabilityProbe: { ...projection.capabilityProbe } } : {}),
+    stageTransitions: projection.stageTransitions.map((transition) => ({ ...transition })),
     modelRequests: projection.modelRequests.map((request) => ({ ...request })),
     pendingModelRequestIds: [...projection.pendingModelRequestIds],
   };
@@ -229,6 +242,7 @@ function applyDurableHarnessEvent(
       break;
     }
     case 'user_input_appended':
+    case 'stage_transition_recorded':
     case 'route_decided':
     case 'model_request_started':
     case 'model_response_received':
@@ -236,7 +250,28 @@ function applyDurableHarnessEvent(
     case 'tool_call_proposed':
     case 'verification_recorded':
     case 'checkpoint_written':
-      if (event.type === 'route_decided') {
+      if (event.type === 'stage_transition_recorded') {
+        const stage = event.payload.stage;
+        const nextStage = event.payload.next;
+        const attempt = event.payload.attempt;
+        if (typeof stage !== 'string' || !stage.trim() || typeof nextStage !== 'string' || !nextStage.trim()) {
+          throw new DurableKernelError('stage transition names must be non-empty', 'invalid');
+        }
+        if (!Number.isSafeInteger(attempt) || (attempt as number) < 1) {
+          throw new DurableKernelError('stage transition attempt must be a positive integer', 'invalid');
+        }
+        if (typeof event.payload.ok !== 'boolean') {
+          throw new DurableKernelError('stage transition ok must be boolean', 'invalid');
+        }
+        next.stageTransitions.push({
+          stage: stage.trim(),
+          next: nextStage.trim(),
+          ok: event.payload.ok,
+          attempt: attempt as number,
+          transitionEventId: event.eventId,
+        });
+        if (next.status === 'accepted') next.status = 'running';
+      } else if (event.type === 'route_decided') {
         const route = requiredRoute(event.payload.route);
         next.route = route;
         next.status = route === 'clarify' ? 'waiting_user' : 'running';
@@ -252,6 +287,16 @@ function applyDurableHarnessEvent(
           ...(typeof event.payload.purpose === 'string' ? { purpose: event.payload.purpose } : {}),
           ...(typeof event.payload.provider === 'string' ? { provider: event.payload.provider } : {}),
           ...(typeof event.payload.model === 'string' ? { model: event.payload.model } : {}),
+          ...(typeof event.payload.stream === 'boolean' ? { stream: event.payload.stream } : {}),
+          ...(isModelTransportStatus(event.payload.transportStatus)
+            ? { transportStatus: event.payload.transportStatus }
+            : {}),
+          ...(isProviderReachStatus(event.payload.providerReachStatus)
+            ? { providerReachStatus: event.payload.providerReachStatus }
+            : {}),
+          ...(event.payload.cacheObservation !== undefined
+            ? { cacheObservation: readCacheObservation(event.payload.cacheObservation, requestId) }
+            : {}),
           status: 'started',
           startedEventId: event.eventId,
         });
@@ -262,9 +307,21 @@ function applyDurableHarnessEvent(
         if (index < 0) throw new DurableKernelError(`model response has no request: ${requestId}`, 'transition');
         const current = next.modelRequests[index]!;
         if (current.status !== 'started') throw new DurableKernelError(`model response already settled: ${requestId}`, 'transition');
+        const providerUsage = readProviderUsage(event.payload);
         next.modelRequests[index] = {
           ...current,
           status: 'received',
+          ...(typeof event.payload.stream === 'boolean' ? { stream: event.payload.stream } : {}),
+          ...(isModelTransportStatus(event.payload.transportStatus)
+            ? { transportStatus: event.payload.transportStatus }
+            : {}),
+          ...(isProviderReachStatus(event.payload.providerReachStatus)
+            ? { providerReachStatus: event.payload.providerReachStatus }
+            : {}),
+          ...(event.payload.cacheObservation !== undefined
+            ? { cacheObservation: readCacheObservation(event.payload.cacheObservation, requestId) }
+            : {}),
+          ...(providerUsage ? { providerUsage } : {}),
           ...(event.payload.usageStatus === 'unavailable' ? { usageStatus: 'unavailable' as const } : {}),
           ...(event.payload.usageStatus === 'unknown' ? { usageStatus: 'unknown' as const } : {}),
         };
@@ -280,6 +337,15 @@ function applyDurableHarnessEvent(
           status,
           settlementEventId: event.eventId,
           ...(typeof event.payload.providerReached === 'boolean' ? { providerReached: event.payload.providerReached } : {}),
+          ...(isModelTransportStatus(event.payload.transportStatus)
+            ? { transportStatus: event.payload.transportStatus }
+            : {}),
+          ...(isProviderReachStatus(event.payload.providerReachStatus)
+            ? { providerReachStatus: event.payload.providerReachStatus }
+            : {}),
+          ...(event.payload.cacheObservation !== undefined
+            ? { cacheObservation: readCacheObservation(event.payload.cacheObservation, requestId) }
+            : {}),
           ...(typeof event.payload.retryOf === 'string' ? { retryOf: event.payload.retryOf } : {}),
           ...(typeof event.payload.errorKind === 'string' ? { errorKind: event.payload.errorKind } : {}),
           ...(event.payload.usageStatus === 'available' ? { usageStatus: 'available' as const } : {}),
@@ -362,14 +428,15 @@ function applyDurableHarnessEvent(
     default:
       return assertNeverEvent(event as never);
   }
-  return freezeProjection(next);
+  return freezeDurableRunProjection(next);
 }
 
 function validateTransition(projection: DurableRunProjection, event: DurableHarnessEventAppendInput | DurableHarnessEvent): void {
   const isFirst = projection.eventCount === 0;
   if (isFirst && event.type !== 'run_accepted') throw new DurableKernelError('run must begin with run_accepted', 'transition');
   if (!isFirst && event.type === 'run_accepted') throw new DurableKernelError('run_accepted may only be appended once', 'transition');
-  if (projection.status === 'completed' || projection.status === 'failed' || projection.status === 'interrupted') {
+  const auditOnlyTransition = event.type === 'stage_transition_recorded';
+  if (!auditOnlyTransition && (projection.status === 'completed' || projection.status === 'failed' || projection.status === 'interrupted')) {
     throw new DurableKernelError(`run is already terminal: ${projection.status}`, 'transition');
   }
   if (event.type === 'final_reply_settled') {
@@ -417,12 +484,19 @@ function validateTransition(projection: DurableRunProjection, event: DurableHarn
     if (projection.modelRequests.some((request) => request.requestId === requestId)) {
       throw new DurableKernelError(`model request already exists: ${requestId}`, 'transition');
     }
+    if (event.payload.cacheObservation !== undefined) {
+      readCacheObservation(event.payload.cacheObservation, requestId);
+    }
   }
   if (event.type === 'model_response_received') {
     const requestId = requiredString(event.payload.requestId, 'model_response_received.requestId');
     const request = projection.modelRequests.find((candidate) => candidate.requestId === requestId);
     if (!request || request.status !== 'started') {
       throw new DurableKernelError(`model response requires an unsettled request: ${requestId}`, 'transition');
+    }
+    readProviderUsage(event.payload);
+    if (event.payload.cacheObservation !== undefined) {
+      readCacheObservation(event.payload.cacheObservation, requestId);
     }
   }
   if (event.type === 'model_request_settled') {
@@ -431,7 +505,13 @@ function validateTransition(projection: DurableRunProjection, event: DurableHarn
     if (!request || request.settlementEventId) {
       throw new DurableKernelError(`model settlement requires one unsettled request: ${requestId}`, 'transition');
     }
-    requiredModelRequestStatus(event.payload.status);
+    const status = requiredModelRequestStatus(event.payload.status);
+    if (status === 'received' && request.status !== 'received') {
+      throw new DurableKernelError(`received model settlement requires a response event: ${requestId}`, 'transition');
+    }
+    if (event.payload.cacheObservation !== undefined) {
+      readCacheObservation(event.payload.cacheObservation, requestId);
+    }
   }
   if (event.type === 'effect_settled') {
     const effectId = requiredString(event.payload.effectId, 'effect_settled.effectId');
@@ -480,163 +560,6 @@ function validateTransition(projection: DurableRunProjection, event: DurableHarn
     throw new DurableKernelError('capability route requires a capability snapshot', 'transition');
   }
   validateSource(event);
-}
-
-function validateEventInput(input: DurableHarnessEventAppendInput): void {
-  if (typeof input.sessionId !== 'string' || typeof input.runId !== 'string' || typeof input.idempotencyKey !== 'string'
-    || !input.sessionId.trim() || !input.runId.trim() || !input.idempotencyKey.trim()) {
-    throw new DurableKernelError('event identity fields must be non-empty strings', 'invalid');
-  }
-  if (!input.payload || typeof input.payload !== 'object' || Array.isArray(input.payload)) throw new DurableKernelError('event payload must be an object', 'invalid');
-}
-
-function validateSource(event: DurableHarnessEventAppendInput | DurableHarnessEvent): void {
-  const source = event.source;
-  const expected: Partial<Record<DurableHarnessEvent['type'], readonly string[]>> = {
-    run_accepted: ['runtime', 'app', 'channel'],
-    user_input_appended: ['app', 'channel'],
-    capability_snapshot_read: ['runtime'],
-    capability_probe_settled: ['runtime'],
-    route_decided: ['runtime'],
-    model_request_started: ['runtime'],
-    model_response_received: ['model', 'runtime'],
-    model_request_settled: ['runtime'],
-    tool_call_proposed: ['model', 'runtime'],
-    effect_intent_created: ['runtime'],
-    effect_settled: ['tool', 'runtime'],
-    verification_recorded: ['runtime'],
-    checkpoint_written: ['runtime'],
-    final_reply_proposed: ['model', 'runtime'],
-    final_reply_settled: ['runtime'],
-    runtime_status_settled: ['runtime'],
-    run_failed: ['runtime'],
-    run_interrupted: ['runtime'],
-    run_completed: ['runtime'],
-  };
-  if (!expected[event.type]?.includes(source)) throw new DurableKernelError(`invalid source ${source} for ${event.type}`, 'invalid');
-}
-
-function readEffectIntent(event: DurableHarnessEvent): DurableEffectProjection {
-  const effectId = requiredString(event.payload.effectId, 'effect_intent_created.effectId');
-  const idempotencyKey = requiredString(event.payload.idempotencyKey, 'effect_intent_created.idempotencyKey');
-  const toolName = requiredString(event.payload.toolName, 'effect_intent_created.toolName');
-  const effectKind = event.payload.effectKind;
-  if (effectKind !== 'local_mutation' && effectKind !== 'external' && effectKind !== 'unknown') throw new DurableKernelError('invalid effect kind', 'invalid');
-  return {
-    effectId,
-    idempotencyKey,
-    toolName,
-    effectKind,
-    status: 'planned',
-    intentEventId: event.eventId,
-    ...(typeof event.payload.inputHash === 'string' ? { inputHash: event.payload.inputHash } : {}),
-  };
-}
-
-function readCapabilitySnapshot(event: { payload: Record<string, unknown> }): DurableCapabilitySnapshotProjection {
-  const snapshot = event.payload.snapshot;
-  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
-    throw new DurableKernelError('capability_snapshot_read.snapshot must be an object', 'invalid');
-  }
-  const record = snapshot as Record<string, unknown>;
-  const capabilityEpoch = requiredString(record.capabilityEpoch, 'capability_snapshot_read.capabilityEpoch');
-  const permissionPolicyId = requiredString(record.permissionPolicyId, 'capability_snapshot_read.permissionPolicyId');
-  const workspace = record.workspace;
-  if (workspace !== 'available' && workspace !== 'approval_required' && workspace !== 'denied' && workspace !== 'unavailable') {
-    throw new DurableKernelError('invalid capability workspace status', 'invalid');
-  }
-  if (!Array.isArray(record.tools)) throw new DurableKernelError('capability_snapshot_read.tools must be an array', 'invalid');
-  const tools = record.tools.map((item, index) => {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new DurableKernelError(`invalid capability tool at ${index}`, 'invalid');
-    const tool = item as Record<string, unknown>;
-    const name = requiredString(tool.name, `capability_snapshot_read.tools[${index}].name`);
-    const status = tool.status;
-    if (status !== 'available' && status !== 'approval_required') throw new DurableKernelError(`invalid capability tool status at ${index}`, 'invalid');
-    const source = tool.source;
-    if (source !== 'builtin' && source !== 'external') throw new DurableKernelError(`invalid capability tool source at ${index}`, 'invalid');
-    return { name, status, source } as const;
-  });
-  const network = record.network;
-  if (!network || typeof network !== 'object' || Array.isArray(network)) throw new DurableKernelError('invalid capability network state', 'invalid');
-  const networkRecord = network as Record<string, unknown>;
-  if (typeof networkRecord.enabled !== 'boolean') throw new DurableKernelError('capability network enabled must be boolean', 'invalid');
-  const networkStatus = requiredString(networkRecord.status, 'capability_snapshot_read.network.status');
-  const providerId = typeof networkRecord.providerId === 'string' && networkRecord.providerId.trim()
-    ? networkRecord.providerId.trim()
-    : undefined;
-  return {
-    capabilityEpoch,
-    permissionPolicyId,
-    workspace,
-    tools,
-    network: { enabled: networkRecord.enabled, status: networkStatus, ...(providerId ? { providerId } : {}) },
-  };
-}
-
-function readCapabilityProbe(event: { payload: Record<string, unknown> }): DurableCapabilityProbeProjection {
-  const probeId = requiredString(event.payload.probeId, 'capability_probe_settled.probeId');
-  const status = event.payload.status;
-  if (status !== 'observed' && status !== 'unavailable') throw new DurableKernelError('invalid capability probe status', 'invalid');
-  const capabilityEpoch = requiredString(event.payload.capabilityEpoch, 'capability_probe_settled.capabilityEpoch');
-  if (event.payload.evidence !== 'runtime_snapshot') throw new DurableKernelError('invalid capability probe evidence', 'invalid');
-  const permissionDecision = event.payload.permissionDecision;
-  if (permissionDecision !== 'allow' && permissionDecision !== 'approval_required' && permissionDecision !== 'deny' && permissionDecision !== 'unavailable') {
-    throw new DurableKernelError('invalid capability probe permission decision', 'invalid');
-  }
-  return { probeId, status, capabilityEpoch, evidence: 'runtime_snapshot', permissionDecision };
-}
-
-function requiredString(value: unknown, label: string): string {
-  if (typeof value !== 'string' || !value.trim()) throw new DurableKernelError(`${label} must be non-empty`, 'invalid');
-  return value.trim();
-}
-
-function requiredRoute(value: unknown): NonNullable<DurableRunProjection['route']> {
-  if (value !== 'respond' && value !== 'execute' && value !== 'clarify') throw new DurableKernelError('invalid route', 'invalid');
-  return value;
-}
-
-function requiredEffectStatus(value: unknown): DurableEffectStatus {
-  if (value !== 'succeeded' && value !== 'failed' && value !== 'cancelled' && value !== 'unknown') throw new DurableKernelError('invalid effect settlement status', 'invalid');
-  return value;
-}
-
-function requiredModelRequestStatus(value: unknown): DurableModelRequestStatus {
-  if (value !== 'received' && value !== 'missing' && value !== 'aborted' && value !== 'timeout'
-    && value !== 'rate_limit' && value !== 'connection_reset' && value !== 'failed') {
-    throw new DurableKernelError('invalid model request settlement status', 'invalid');
-  }
-  return value;
-}
-
-function requiredRuntimeStatus(value: unknown): DurableRunStatus {
-  if (value !== 'waiting_user' && value !== 'failed' && value !== 'interrupted') throw new DurableKernelError('invalid runtime status settlement', 'invalid');
-  return value;
-}
-
-function sourceForInboxCommand(command: DurableInboxCommand): DurableHarnessEvent['source'] {
-  return sourceForInboxType(command.type);
-}
-
-function sourceForInboxType(type: DurableHarnessEvent['type']): DurableHarnessEvent['source'] {
-  if (type === 'user_input_appended') return 'app';
-  if (type === 'model_response_received' || type === 'final_reply_proposed') return 'model';
-  if (type === 'effect_settled') return 'tool';
-  return 'runtime';
-}
-
-type MutableProjection = {
-  -readonly [Key in keyof DurableRunProjection]: DurableRunProjection[Key] extends readonly (infer Item)[] ? Item[] : DurableRunProjection[Key];
-};
-
-function freezeProjection(projection: MutableProjection): DurableRunProjection {
-  return {
-    ...projection,
-    effects: projection.effects.map((effect) => Object.freeze({ ...effect })),
-    pendingEffectIds: [...projection.pendingEffectIds],
-    unknownEffectIds: [...projection.unknownEffectIds],
-    finalReply: Object.freeze({ ...projection.finalReply }),
-  };
 }
 
 function assertNeverEvent(event: never): never {

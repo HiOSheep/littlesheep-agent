@@ -12,6 +12,7 @@ import { DEFAULT_CONFIG } from '@littlesheep/config';
 import { DEFAULT_BRANDING, dataSubdirs } from '@littlesheep/branding';
 import { textMessage, type AgentTool } from '@littlesheep/types';
 import { attachmentManifestResourceId, attachmentResourceId } from '@littlesheep/memory-tree';
+import { reduceDurableRunProjection } from '@littlesheep/harness';
 
 // ─── Mock LlmClient ─────────────────────────────────────────────────────
 
@@ -170,6 +171,35 @@ describe('createRunner run', () => {
     expect(String(replyRequest.messages[0]?.content)).toContain('Memory Tree Root Index');
     const trace = result.trace as Array<{ name: string }>;
     expect(trace.map((t) => t.name)).toEqual(['enter', 'classify', 'reply', 'finalize']);
+  });
+
+  it('next durable Harness drives an independent transition path and replays one settlement', async () => {
+    const llm = makeMockLlm(textResponse('Next path reply'));
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(runner);
+
+    const result = await runner.run({ text: 'hello' });
+    expect(result.status).toBe('ok');
+    expect(result.reply).toBe('Next path reply');
+    expect(llm.chat).toHaveBeenCalledTimes(1);
+    expect(result.messages.filter((message) => message.role === 'assistant')).toHaveLength(1);
+
+    const events = await runner.infra.durableEventStore.read(String(result.sessionId), result.runId);
+    expect(events.filter((event) => event.type === 'stage_transition_recorded').length).toBeGreaterThan(0);
+    expect(events.filter((event) => event.type === 'final_reply_settled')).toHaveLength(1);
+    expect(events.at(-1)?.type).toBe('run_completed');
+    const projection = reduceDurableRunProjection(events);
+    expect(projection.status).toBe('completed');
+    expect(projection.finalReply.state).toBe('settled');
+    expect(projection.stageTransitions.map((transition) => transition.stage)).toEqual(
+      result.trace.map((transition) => transition.name),
+    );
   });
 
   it('rewrites an exact reply from older session history after runner restart', async () => {

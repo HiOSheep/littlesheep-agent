@@ -680,7 +680,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         execute: async (preparedRun) => {
           const executedRun = await executeRunnerPhase({
             ctx: preparedRun.ctx,
-            harness: infra.harness,
+            harness: opts.durableHarnessMode === 'next' ? infra.nextHarness : infra.harness,
             signal,
             runCheckpointStore: infra.runCheckpointStore,
             log: opts.log,

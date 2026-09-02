@@ -97,9 +97,12 @@ export async function settleModelRequest(
   status: DurableModelRequestStatus,
   details: {
     providerReached?: boolean;
+    providerReachStatus?: 'reached' | 'not_reached' | 'unknown';
     retryOf?: string;
     errorKind?: string;
     usageStatus?: 'available' | 'unavailable' | 'unknown';
+    transportStatus?: import('@littlesheep/types').DurableModelTransportStatus;
+    cacheObservation?: NonNullable<ModelRequestSnapshot['cacheObservation']>;
   } = {},
 ): Promise<void> {
   const lifecycle = requestLifecycles.get(request);
@@ -118,9 +121,12 @@ export async function settleModelRequest(
         requestIndex: lifecycle.snapshot.requestIndex,
         status,
         ...(details.providerReached === undefined ? {} : { providerReached: details.providerReached }),
+        ...(details.providerReachStatus ? { providerReachStatus: details.providerReachStatus } : {}),
         ...(details.retryOf ? { retryOf: details.retryOf } : {}),
         ...(details.errorKind ? { errorKind: details.errorKind.slice(0, 128) } : {}),
         ...(details.usageStatus ? { usageStatus: details.usageStatus } : {}),
+        ...(details.transportStatus ? { transportStatus: details.transportStatus } : {}),
+        ...(details.cacheObservation ? { cacheObservation: details.cacheObservation } : {}),
       },
     });
   });
@@ -180,10 +186,39 @@ export async function recordModelRequestFailure(
         : lower.includes('connection') || lower.includes('reset') || lower.includes('fetch failed')
           ? 'connection_reset'
           : 'failed';
+  const lifecycle = requestLifecycles.get(request);
+  if (lifecycle) {
+    updateModelRequestCacheObservation(ctx, lifecycle.snapshot.stage, lifecycle.snapshot.id, (current) => ({
+      ...current,
+      providerPrompt: {
+        kind: 'provider_prompt',
+        status: 'unavailable',
+        reason: `provider_request_${status}`,
+        requestCount: 1,
+      },
+    }));
+  }
   await settleModelRequest(ctx, request, status, {
-    providerReached: !['aborted', 'connection_reset'].includes(status),
+    ...(status === 'rate_limit' ? { providerReached: true } : status === 'aborted' ? { providerReached: false } : {}),
+    providerReachStatus: status === 'aborted'
+      ? 'not_reached'
+      : status === 'connection_reset' || status === 'timeout' || status === 'failed'
+        ? 'unknown'
+        : 'reached',
     errorKind: status,
     usageStatus: 'unavailable',
+    transportStatus: status === 'aborted'
+      ? 'aborted'
+      : status === 'timeout'
+        ? 'timeout'
+        : status === 'rate_limit'
+          ? 'rate_limit'
+          : status === 'connection_reset'
+            ? 'connection_reset'
+            : 'failed',
+    ...(lifecycle
+      ? { cacheObservation: currentCacheObservation(ctx, lifecycle.snapshot.id) }
+      : {}),
   });
 }
 
@@ -238,6 +273,7 @@ export function recordProviderUsage(
     queueModelResponseReceived(ctx, request, requestSnapshot, {
       usageStatus: 'unavailable',
       cacheStatus: cacheUsage.ledger.status,
+      cacheObservation: currentCacheObservation(ctx, requestSnapshot.id),
     });
     return;
   }
@@ -261,10 +297,16 @@ export function recordProviderUsage(
   }));
   queueModelResponseReceived(ctx, request, requestSnapshot, {
     usageStatus: 'available',
+    cacheStatus: cacheUsage.ledger.status,
     promptTokens: usage.promptTokens,
     completionTokens: usage.completionTokens,
     totalTokens: usage.totalTokens ?? usage.promptTokens + usage.completionTokens,
     cachedPromptTokens: usage.cachedPromptTokens,
+    reasoningTokens: usage.reasoningTokens,
+    reconciliation: localCalibration?.status === 'drift'
+      ? 'mismatch'
+      : localCalibration?.status ?? 'unavailable',
+    cacheObservation: currentCacheObservation(ctx, requestSnapshot.id),
   });
 }
 
@@ -288,6 +330,9 @@ function queueModelResponseReceived(
         stage: snapshot.stage,
         provider: snapshot.provider,
         model: snapshot.model,
+        stream: snapshot.stream,
+        transportStatus: 'completed',
+        providerReachStatus: 'reached',
         ...payload,
       },
     });
@@ -303,6 +348,8 @@ function queueModelResponseReceived(
         requestIndex: snapshot.requestIndex,
         status: 'received',
         providerReached: true,
+        providerReachStatus: 'reached',
+        transportStatus: 'completed',
         usageStatus: payload.usageStatus === 'available'
           ? 'available'
           : payload.usageStatus === 'unknown' ? 'unknown' : 'unavailable',
@@ -425,6 +472,8 @@ function recordPreparedRequest(
         purpose: callContract.purpose,
         provider: prepared.modelRequestSnapshot.provider,
         model: prepared.modelRequestSnapshot.model,
+        stream: prepared.modelRequestSnapshot.stream,
+        transportStatus: prepared.modelRequestSnapshot.stream ? 'streaming' : 'not_started',
         payloadHash: prepared.modelRequestSnapshot.payloadHash,
         cacheObservation: observedSnapshot.cacheObservation,
       },
@@ -482,6 +531,13 @@ function updateModelRequestCacheObservation(
     cacheObservation: Object.freeze(update(requests[index]!.cacheObservation!)),
   });
   writeModelObservabilityState(ctx, stage, { modelRequests: next });
+}
+
+function currentCacheObservation(
+  ctx: RunContext,
+  requestId: string,
+): NonNullable<ModelRequestSnapshot['cacheObservation']> | undefined {
+  return ctx.modelRequests?.find((request) => request.id === requestId)?.cacheObservation;
 }
 
 function buildLocalCalibration(

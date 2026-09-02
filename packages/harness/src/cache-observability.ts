@@ -64,7 +64,68 @@ export interface CacheObservationInput {
   readonly key?: string | null;
 }
 
+/** The non-content scope identity used before reading a cache entry. */
+export interface CacheScopeInput {
+  readonly sessionId: string;
+  readonly workspaceScope: string;
+  readonly permissionPolicyId?: PermissionPolicyId;
+  /** null disables hashing and therefore cannot authorize a cache read. */
+  readonly key?: string | null;
+}
+
+export type CacheScopeAccessDecision =
+  | {
+      readonly allowed: true;
+      readonly reason: 'scope_match';
+    }
+  | {
+      readonly allowed: false;
+      readonly reason: 'key_unavailable' | 'scope_mismatch' | 'key_source_mismatch';
+    };
+
 export type CachePromptComponentInput = Partial<Record<keyof CachePromptComponentFingerprints, string | number | null>>;
+
+/**
+ * Build the redacted cache partition without assembling or exposing a prompt.
+ * This is deliberately a separate API so cache adapters can authorize a read
+ * before looking up or returning an entry.
+ */
+export function buildCacheScopePartition(input: CacheScopeInput): CacheScopePartition {
+  const key = resolveKey(input.key);
+  return buildScopePartition(input, key);
+}
+
+/**
+ * Verify that a cache observation belongs to the current Runtime scope.
+ * A matching prompt prefix alone is insufficient: session, workspace and
+ * permission scope must all be proven first.
+ */
+export function authorizeCacheObservationScope(
+  observation: CacheObservation,
+  input: CacheScopeInput,
+): CacheScopeAccessDecision {
+  const expected = buildCacheScopePartition(input);
+  if (!observation.scope.partitionDigest || !expected.partitionDigest) {
+    return { allowed: false, reason: 'key_unavailable' };
+  }
+  if (observation.scope.keySource !== expected.keySource) {
+    return { allowed: false, reason: 'key_source_mismatch' };
+  }
+  return observation.scope.partitionDigest === expected.partitionDigest
+    ? { allowed: true, reason: 'scope_match' }
+    : { allowed: false, reason: 'scope_mismatch' };
+}
+
+/** Fail-closed assertion for adapters that cannot continue after a mismatch. */
+export function assertCacheObservationScope(
+  observation: CacheObservation,
+  input: CacheScopeInput,
+): void {
+  const decision = authorizeCacheObservationScope(observation, input);
+  if (!decision.allowed) {
+    throw new Error(`cache scope authorization denied: ${decision.reason}`);
+  }
+}
 
 /**
  * Return a deterministic copy of a provider tool schema array. The secondary
@@ -311,8 +372,12 @@ function resolveInvalidationReasons(
   if (sameScope && previous.components.toolSchema !== components.toolSchema) reasons.add('tool_schema_changed');
   if (sameScope
     && previous.components.systemPrompt !== components.systemPrompt
-    && !reasons.has('system_policy_changed')
-    && !reasons.has('prompt_version_changed')) {
+    && ![
+      'prompt_version_changed',
+      'system_policy_changed',
+      'soul_changed',
+      'user_profile_changed',
+    ].some((reason) => reasons.has(reason as CacheInvalidationReason))) {
     reasons.add('prompt_version_changed');
   }
   if (previous.stablePrefixVersion !== STABLE_PREFIX_VERSION || previous.boundaryMarker !== CACHE_BOUNDARY_MARKER) {
@@ -321,7 +386,7 @@ function resolveInvalidationReasons(
   if (sameScope && previous.stablePrefix.fingerprint !== currentStablePrefix.fingerprint) {
     // A stable prefix changed without a component-level explanation. Keep the
     // reason explicit instead of attributing the miss to Context or Provider.
-    if (!reasons.has('tool_schema_changed') && !reasons.has('prompt_version_changed')) reasons.add('unknown');
+    if (reasons.size === 0) reasons.add('unknown');
   }
   return Object.freeze([...reasons].sort((left, right) => INVALIDATION_ORDER.indexOf(left) - INVALIDATION_ORDER.indexOf(right)));
 }
@@ -359,7 +424,7 @@ function fingerprintPromptComponents(
 }
 
 function buildScopePartition(
-  input: CacheObservationInput,
+  input: Pick<CacheObservationInput, 'sessionId' | 'workspaceScope' | 'permissionPolicyId'>,
   key: ResolvedKey,
 ): CacheScopePartition {
   const session = normalizeText(input.sessionId);

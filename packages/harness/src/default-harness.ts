@@ -82,11 +82,8 @@ export interface DefaultHarnessOptions {
   log?: (level: 'info' | 'warn' | 'error', msg: string, data?: unknown) => void;
 }
 
-/**
- * Build the default Core Flow harness. Stages close over the supplied deps.
- */
-export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness {
-  const hooks = new HookRunner(opts.log);
+/** Build the shared stage registry used by legacy and next Harness drivers. */
+export function createHarnessStages(opts: DefaultHarnessOptions): Map<StageName, Stage> {
   const stages = new Map<StageName, Stage>();
 
   // enter is a plain function (no deps); the rest are factory-built closures.
@@ -149,6 +146,16 @@ export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness 
   stages.set('finalize', createFinalizeStage({
     sessionManager: opts.sessionManager,
   }));
+
+  return stages;
+}
+
+/**
+ * Build the default Core Flow harness. Stages close over the supplied deps.
+ */
+export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness {
+  const hooks = new HookRunner(opts.log);
+  const stages = createHarnessStages(opts);
 
   return {
     name: 'core-flow',

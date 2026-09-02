@@ -35,7 +35,7 @@ import {
   type SkillLoader,
   type SkillSourceDefinition,
 } from '@littlesheep/skills';
-import { createDefaultHarness } from '@littlesheep/harness';
+import { createDefaultHarness, createNextHarness } from '@littlesheep/harness';
 import {
   createLazyLocalExactContextTokenCounter,
   type ExactContextTokenCounter,
@@ -97,6 +97,8 @@ export interface Infrastructure {
   disposeEmbedding: () => Promise<void>;
   registry: ToolRegistry;
   harness: AgentHarness;
+  /** Independent durable transition driver used only after next-mode admission. */
+  nextHarness: AgentHarness;
   skillLoader: SkillLoader;
   executionLogStore: ExecutionLogStore;
   /** Next Harness event log; legacy execution log remains authoritative until cutover. */
@@ -509,6 +511,24 @@ export async function buildInfrastructure(
     createSkill: createSkillFn,
     tokenCounter,
   });
+  const nextHarness = createNextHarness({
+    llm,
+    model: modelName,
+    sessionManager,
+    memoryStore,
+    memoryWriter: memoryService,
+    memoryRefiner: memoryService,
+    memoryReconciler: memoryReconciliationService,
+    memoryHierarchy: memoryHierarchyService,
+    memorySubtree: memorySubtreeService,
+    memoryReviser: memoryRevisionService,
+    memoryCorrector: memoryCorrectionService,
+    config: opts.config,
+    branding: opts.branding,
+    log: opts.log,
+    createSkill: createSkillFn,
+    tokenCounter,
+  });
 
   void memoryRepository.startBackgroundMaintenance().catch((error) => {
     opts.log?.('warn', `memory-v3: background maintenance stopped: ${(error as Error).message}`);
@@ -521,6 +541,7 @@ export async function buildInfrastructure(
     disposeEmbedding,
     registry,
     harness,
+    nextHarness,
     skillLoader,
     executionLogStore,
     durableEventStore,

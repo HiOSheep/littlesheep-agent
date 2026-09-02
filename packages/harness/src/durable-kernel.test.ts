@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { ChatRequest } from '@littlesheep/llm';
 import type {
   DurableHarnessEvent,
   DurableHarnessEventAppendInput,
@@ -10,6 +11,7 @@ import type {
   DurableInboxStoreLike,
 } from '@littlesheep/types';
 import { DurableHarnessKernel, DurableKernelError, reduceDurableRunProjection } from './durable-kernel.js';
+import { buildCacheObservation } from './cache-observability.js';
 
 class MemoryEventStore implements DurableHarnessEventStoreLike {
   events: DurableHarnessEvent[] = [];
@@ -94,6 +96,32 @@ class MemoryInboxStore implements DurableInboxStoreLike {
 
 const sessionId = 'session-a';
 const runId = 'run-a';
+
+function validCacheObservation(modelRequestId = 'model-1') {
+  const request: ChatRequest = {
+    model: 'openai/gpt-test',
+    messages: [
+      { role: 'system', content: 'Stable policy\n<!-- LITTLESHEEP_CACHE_BOUNDARY -->\nrun state' },
+      { role: 'user', content: 'current user input' },
+    ],
+    stream: true,
+    temperature: 0,
+    max_tokens: 128,
+  };
+  return buildCacheObservation({
+    request,
+    provider: 'openai',
+    model: request.model,
+    requestKind: 'reply',
+    requestIndex: 1,
+    modelRequestId,
+    sessionId,
+    workspaceScope: 'C:\\Work\\LittleSheep',
+    permissionPolicyId: 'research',
+    key: 'durable-kernel-test-key',
+  });
+}
+
 function event<T extends DurableHarnessEvent['type']>(type: T, payload: Record<string, unknown>, source: DurableHarnessEvent['source'], id: string): DurableHarnessEventAppendInput {
   return { eventId: id, idempotencyKey: id, sessionId, runId, type, source, payload, occurredAt: '2026-09-02T00:00:00.000Z' };
 }
@@ -251,5 +279,63 @@ describe('DurableHarnessKernel', () => {
     await expect(kernel.append(event('route_decided', {
       route: 'respond', source: 'rules', retrievalIntent: 'capability_question',
     }, 'runtime', 'route'))).rejects.toMatchObject({ kind: 'transition' });
+  });
+
+  it('rejects cache observations that contain raw prompt fields', async () => {
+    const store = new MemoryEventStore();
+    const kernel = new DurableHarnessKernel({ eventStore: store });
+    await kernel.append(event('run_accepted', {}, 'runtime', 'accept'));
+    const cache = validCacheObservation();
+    await expect(kernel.append(event('model_request_started', {
+      requestId: 'model-1',
+      cacheObservation: { ...cache, rawPrompt: 'SECRET_USER_PROMPT' },
+    }, 'runtime', 'model-start'))).rejects.toMatchObject({ kind: 'invalid' });
+    expect(store.events).toHaveLength(1);
+  });
+
+  it('rejects non-HMAC cache fingerprints and request-id mismatches', async () => {
+    const store = new MemoryEventStore();
+    const kernel = new DurableHarnessKernel({ eventStore: store });
+    await kernel.append(event('run_accepted', {}, 'runtime', 'accept'));
+    const cache = validCacheObservation();
+    await expect(kernel.append(event('model_request_started', {
+      requestId: 'model-1',
+      cacheObservation: {
+        ...cache,
+        stablePrefix: { ...cache.stablePrefix, algorithm: 'sha256' },
+      },
+    }, 'runtime', 'bad-algorithm'))).rejects.toMatchObject({ kind: 'invalid' });
+    await expect(kernel.append(event('model_request_started', {
+      requestId: 'model-1',
+      cacheObservation: validCacheObservation('other-request'),
+    }, 'runtime', 'bad-request-id'))).rejects.toMatchObject({ kind: 'invalid' });
+    expect(store.events).toHaveLength(1);
+  });
+
+  it('rejects Provider usage without reconciliation evidence', async () => {
+    const store = new MemoryEventStore();
+    const kernel = new DurableHarnessKernel({ eventStore: store });
+    await kernel.append(event('run_accepted', {}, 'runtime', 'accept'));
+    await kernel.append(event('model_request_started', { requestId: 'model-1' }, 'runtime', 'model-start'));
+    await expect(kernel.append(event('model_response_received', {
+      requestId: 'model-1',
+      promptTokens: 10,
+      completionTokens: 2,
+      totalTokens: 12,
+      cacheStatus: 'miss',
+    }, 'runtime', 'model-response'))).rejects.toMatchObject({ kind: 'invalid' });
+    expect(store.events).toHaveLength(2);
+  });
+
+  it('requires a response event before a received model settlement', async () => {
+    const store = new MemoryEventStore();
+    const kernel = new DurableHarnessKernel({ eventStore: store });
+    await kernel.append(event('run_accepted', {}, 'runtime', 'accept'));
+    await kernel.append(event('model_request_started', { requestId: 'model-1' }, 'runtime', 'model-start'));
+    await expect(kernel.append(event('model_request_settled', {
+      requestId: 'model-1',
+      status: 'received',
+    }, 'runtime', 'model-settled'))).rejects.toMatchObject({ kind: 'transition' });
+    expect(store.events).toHaveLength(2);
   });
 });
