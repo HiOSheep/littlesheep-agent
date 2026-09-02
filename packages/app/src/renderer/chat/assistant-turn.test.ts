@@ -96,7 +96,7 @@ describe('assistant activity flow', () => {
     expect(html).toContain('agent-flow-row agent-step-row is-active')
   })
 
-  it('shows the latest public reasoning phase and keeps its full trajectory directly visible', () => {
+  it('keeps internal reasoning and task assessment out of the conversation area', () => {
     const html = renderFlow({
       reasoning: [{
         phaseId: 'classify:2',
@@ -114,13 +114,40 @@ describe('assistant activity flow', () => {
       }],
     })
 
-    expect(html).toContain('正在校准目标、范围和验收标准')
-    expect(html).toContain('已确定本轮处理路径')
-    expect(html).toContain('agent-reasoning-entry running')
-    expect(html).toContain('aria-label="思考与执行判断轨迹"')
-    expect(html).toContain('agent-reasoning-public-details')
-    expect(html).not.toContain('agent-reasoning-toggle')
-    expect(html).not.toContain('disclosure-panel')
+    expect(html).toBe('')
+  })
+
+  it('shows only runtime-owned step and tool progress when explicitly disclosed', () => {
+    const html = renderFlow({
+      visibility: 'progress',
+      steps: [{
+        stepId: 'step-1',
+        title: '读取文件',
+        status: 'running',
+        toolCount: 0,
+        activeTools: 0,
+      }],
+      reasoning: [{
+        phaseId: 'decide:1',
+        stage: 'decide',
+        summary: '内部判断不应显示',
+        status: 'done',
+        startedAt: 200,
+      }],
+      verificationHistory: [{
+        verdict: 'pass',
+        reason: '内部验收不应显示',
+        attempt: 1,
+        verifiedAt: '2026-09-02T00:00:00.000Z',
+        source: 'structural',
+      }],
+    })
+
+    expect(html).toContain('读取文件')
+    expect(html).not.toContain('内部判断不应显示')
+    expect(html).not.toContain('内部验收不应显示')
+    expect(html).not.toContain('思考')
+    expect(html).not.toContain('验证通过')
   })
 
   it('renders a tool start as one compact row and preserves the row identity on completion', () => {

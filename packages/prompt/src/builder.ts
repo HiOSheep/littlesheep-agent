@@ -211,7 +211,7 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
       kind: 'memory_fragment',
       source: { kind: 'memory', id: 'initial-selection' },
       priority: 92,
-      required: false,
+      required: true,
       sensitive: true,
       scope: 'run',
     });

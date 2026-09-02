@@ -1,5 +1,5 @@
 // Conversation rendering and execution-progress presentation.
-import type { HistoryActivity } from '../../shared/history-activity'
+import type { ActivityVisibility, HistoryActivity } from '../../shared/history-activity'
 import type { StageName, WebEvidenceProjection } from '@littlesheep/types'
 import {
   type AttachmentRef
@@ -70,6 +70,7 @@ export interface LiveReasoningEvent {
 
 export interface AssistantTurnActivity extends Omit<HistoryActivity, 'status' | 'steps' | 'tools'> {
   status: AssistantTurnStatus
+  visibility?: ActivityVisibility
   reasoning?: LiveReasoningEvent[]
   steps: LiveStepEvent[]
   tools: LiveToolEvent[]

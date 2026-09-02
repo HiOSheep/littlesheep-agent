@@ -89,6 +89,7 @@ export async function executeTaskBook(
       completedIds.add(scheduled.id);
       ctx.onToolEvent?.({
         type: 'step_skipped',
+        visibility: 'progress',
         stepId: scheduled.id,
         title: scheduled.step.title,
         description: scheduled.step.description,
@@ -323,7 +324,7 @@ function rejectedStepOutcome(
   result.endedAt = new Date().toISOString();
   scheduled.step.status = 'failed';
   results.set(scheduled.id, result);
-  ctx.onToolEvent?.({ type: 'step_failed', stepId: scheduled.id, status: 'failed', error });
+  ctx.onToolEvent?.({ type: 'step_failed', visibility: 'progress', stepId: scheduled.id, status: 'failed', error });
   return { scheduled, result, toolResults: result.toolResults, produced: [], route: 'recover' };
 }
 

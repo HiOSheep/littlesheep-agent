@@ -15,6 +15,16 @@ export function reduceCompletedRunMessages(
   const artifacts = buildArtifactsFromToolCalls(traceData.toolCalls)
   const taskSteps = result.taskExecution?.steps?.map((step) => taskStepToLiveStep(step)) ?? []
   const currentActivity = last.activity
+  const hasExecutionProgress = Boolean(
+    result.taskExecution?.steps?.length
+      || result.toolInvocations?.length
+      || result.messages?.some((message) => message.content.some((block) => (
+        typeof block === 'object'
+        && block !== null
+        && 'type' in block
+        && ((block as { type?: unknown }).type === 'tool_calls' || (block as { type?: unknown }).type === 'tool_result')
+      ))),
+  )
   const paused = result.runtimeControl?.state === 'paused'
   const activityStatus = paused
     ? 'paused'
@@ -35,6 +45,7 @@ export function reduceCompletedRunMessages(
     activity: currentActivity
       ? {
         ...currentActivity,
+        visibility: hasExecutionProgress ? 'progress' : currentActivity.visibility,
         status: activityStatus,
         endedAt,
         durationMs: result.durationMs || endedAt - currentActivity.startedAt,

@@ -27,7 +27,7 @@ export function createVerifyStage(deps: VerifyStageDeps) {
   return async function verifyStage(ctx: RunContext): Promise<StageResult> {
     const replanAttempts = ctx.replanAttempts ?? 0;
     const maxReplan = ctx.maxReplanAttempts ?? 2;
-    ctx.onToolEvent?.({ type: 'verification_start' });
+    ctx.onToolEvent?.({ type: 'verification_start', visibility: 'silent' });
     const runtimeVerdict = verifyTrivialReadOnlyExecution(ctx)
       ?? verifyDeterministicWriteReadExecution(ctx);
     if (runtimeVerdict) return runtimeVerdict;

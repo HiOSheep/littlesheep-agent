@@ -83,6 +83,7 @@ export async function executeScheduledTaskStep(options: TaskStepRunOptions): Pro
   syncExecutionSteps();
   ctx.onToolEvent?.({
     type: 'step_start',
+    visibility: 'progress',
     stepId,
     title: step.title,
     description: step.description,
@@ -177,6 +178,7 @@ export async function executeScheduledTaskStep(options: TaskStepRunOptions): Pro
     syncExecutionSteps();
     ctx.onToolEvent?.({
       type: 'step_done',
+      visibility: 'progress',
       stepId,
       title: step.title,
       description: step.description,
@@ -198,6 +200,7 @@ function failStep(step: TaskStepResult, error: string, results: ToolResult[]): v
 function emitFailure(ctx: RunContext, step: TaskStepResult): void {
   ctx.onToolEvent?.({
     type: 'step_failed',
+    visibility: 'progress',
     stepId: step.stepId,
     title: step.title,
     description: step.description,

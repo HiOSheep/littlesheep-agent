@@ -59,6 +59,14 @@ export {
 } from './execution-log.js';
 
 export {
+  buildCapabilitySnapshot,
+  buildRunnerCapabilityState,
+  workspacePermissionEvent,
+  type BuildCapabilitySnapshotOptions,
+  type BuildRunnerCapabilityStateOptions,
+} from './capability-snapshot.js';
+
+export {
   MEMORY_WORKLOAD_OBSERVATION_VERSION,
   observeMemoryWorkload,
   type MemoryWorkloadObservation,

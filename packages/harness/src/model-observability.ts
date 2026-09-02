@@ -1,3 +1,4 @@
+// Model request observation owns request-bound cache evidence and provider usage reconciliation.
 import {
   ContextEngine,
   MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN,
@@ -28,7 +29,12 @@ import {
   appendModelObservations,
   incrementModelCallCount,
   updateContextSnapshot,
+  writeModelObservabilityState,
 } from './model-observability-state.js';
+import {
+  buildCacheObservation,
+  classifyProviderCacheUsage,
+} from './cache-observability.js';
 
 export {
   MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN,
@@ -76,7 +82,6 @@ export function recordProviderUsage(
   request: ChatRequest,
   usage: ChatResponse['usage'] | undefined,
 ): void {
-  if (!usage) return;
   const snapshotId = requestContextSnapshotIds.get(request);
   if (!snapshotId || !ctx.contextSnapshots) return;
   const index = ctx.contextSnapshots.findIndex((snapshot) => snapshot.id === snapshotId);
@@ -84,6 +89,13 @@ export function recordProviderUsage(
   const snapshot = ctx.contextSnapshots[index]!;
   const requestSnapshot = ctx.modelRequests?.find((request) => request.contextSnapshotId === snapshotId);
   if (!requestSnapshot) return;
+  const cacheUsage = classifyProviderCacheUsage(usage);
+  updateModelRequestCacheObservation(ctx, requestSnapshot.stage, requestSnapshot.id, (current) => ({
+    ...current,
+    providerPrompt: cacheUsage.ledger,
+  }));
+  if (!cacheUsage.validUsage) return;
+  usage = cacheUsage.validUsage;
   const localCalibration = buildLocalCalibration(snapshot.localTokenLedger, usage.promptTokens);
   updateContextSnapshot(ctx, requestSnapshot.stage, snapshotId, (current) => Object.freeze({
     ...current,
@@ -174,15 +186,49 @@ function recordPreparedRequest(
     callContract,
     compressionThresholdRatio: callContract.budget.contextCompressionThresholdRatio,
   });
+  const cacheObservation = buildCacheObservation({
+    request: prepared.request,
+    provider: prepared.modelRequestSnapshot.provider,
+    model: prepared.modelRequestSnapshot.model,
+    requestKind: callContract.purpose,
+    requestIndex,
+    modelRequestId: prepared.modelRequestSnapshot.id,
+    sessionId: ctx.sessionId,
+    workspaceScope: ctx.cwd,
+    permissionPolicyId: ctx.resolvedRunConfig?.permissionPolicyId,
+    previous: ctx.modelRequests?.at(-1)?.cacheObservation,
+    key: ctx.cacheObservationKey,
+  });
+  const observedSnapshot = Object.freeze({
+    ...prepared.modelRequestSnapshot,
+    cacheObservation,
+  });
   appendModelObservations(
     ctx,
     callContract.stage,
-    prepared.modelRequestSnapshot,
+    observedSnapshot,
     prepared.contextSnapshot,
     MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN,
   );
   requestContextSnapshotIds.set(prepared.request, prepared.contextSnapshot.id);
-  return { request: prepared.request, snapshot: prepared.modelRequestSnapshot };
+  return { request: prepared.request, snapshot: observedSnapshot };
+}
+
+function updateModelRequestCacheObservation(
+  ctx: RunContext,
+  stage: StageName,
+  requestId: string,
+  update: (observation: NonNullable<ModelRequestSnapshot['cacheObservation']>) => NonNullable<ModelRequestSnapshot['cacheObservation']>,
+): void {
+  const requests = ctx.modelRequests ?? [];
+  const index = requests.findIndex((request) => request.id === requestId);
+  if (index < 0 || !requests[index]?.cacheObservation) return;
+  const next = [...requests];
+  next[index] = Object.freeze({
+    ...requests[index]!,
+    cacheObservation: Object.freeze(update(requests[index]!.cacheObservation!)),
+  });
+  writeModelObservabilityState(ctx, stage, { modelRequests: next });
 }
 
 function buildLocalCalibration(

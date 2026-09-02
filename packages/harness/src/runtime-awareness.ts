@@ -126,6 +126,7 @@ function renderCompactRuntimeAwareness(
     '# Runtime Clock',
     '',
     `local=${clock.localDateTime} ${clock.utcOffset} (${clock.timeZone}); elapsed_ms=${runElapsedMs}; task=${taskProgress(ctx).state}.`,
+    ...renderCapabilityLines(ctx, true),
     '',
     'Use these exact facts only when relevant.',
   ].join('\n');
@@ -151,6 +152,7 @@ function renderRuntimeAwareness(
     `- run_elapsed: ${runElapsedMs} ms (${formatElapsedMilliseconds(runElapsedMs)})`,
     `- task_state: ${progress.state}`,
   ];
+  lines.push(...renderCapabilityLines(ctx, false));
 
   if (progress.total > 0) {
     lines.push(`- task_progress: ${progress.completed}/${progress.total} completed (${progress.percent}%)`);
@@ -185,6 +187,30 @@ function renderRuntimeAwareness(
     '- Do not volunteer elapsed time, percentages, or tool timing when they add no value. Surface them when the user asks or when they materially explain status, failure, cost, or risk.',
   );
   return lines.join('\n');
+}
+
+function renderCapabilityLines(ctx: RunContext, compact: boolean): string[] {
+  const snapshot = ctx.capabilitySnapshot;
+  if (!snapshot) return compact ? [] : ['', '- capability_snapshot: unavailable (no Runtime snapshot was supplied)'];
+  const toolSummary = snapshot.tools
+    .map((tool) => `${cleanInline(tool.name)}=${tool.status}`)
+    .join(', ');
+  if (compact) {
+    return [
+      `capability_epoch=${snapshot.epoch}; permission=${snapshot.permissionPolicyId}; workspace=${snapshot.workspace}; network=${snapshot.network.enabled ? 'enabled' : 'disabled'}/${snapshot.network.status}; tools=${toolSummary || 'none'}`,
+    ];
+  }
+  return [
+    '',
+    '# Runtime Capability Snapshot',
+    '',
+    `- capability_epoch: ${snapshot.epoch}`,
+    `- permission_policy: ${snapshot.permissionPolicyId}`,
+    `- workspace_access: ${snapshot.workspace}`,
+    `- network: ${snapshot.network.enabled ? 'enabled' : 'disabled'} (${snapshot.network.status})${snapshot.network.providerId ? ` provider=${cleanInline(snapshot.network.providerId)}` : ''}`,
+    `- registered_tools: ${toolSummary || 'none'}`,
+    '- Capability facts above are Runtime-owned. A capability probe or Web query may only be claimed when its corresponding Runtime event exists.',
+  ];
 }
 
 function appendSystemText(message: ChatMessage, suffix: string): ChatMessage {

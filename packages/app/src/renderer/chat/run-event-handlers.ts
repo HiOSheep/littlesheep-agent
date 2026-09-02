@@ -24,6 +24,9 @@ export function handleRunToolEvent(
 ): void {
   if (!context.appMountedRef.current) return
 
+  // Capability facts/probes are Runtime projections, never conversation text.
+  if (evt.type === 'capability_snapshot' || evt.type === 'capability_probe') return
+
   if (
     evt.type === 'reasoning'
     && evt.phaseId
@@ -34,6 +37,7 @@ export function handleRunToolEvent(
     const eventTime = Date.now()
     updateLastAssistantActivity(context.setMessages, (activity) => ({
       ...activity,
+      ...mergeVisibility(activity.visibility, evt.visibility),
       reasoning: upsertLiveReasoning(activity.reasoning ?? [], {
         phaseId: evt.phaseId!,
         stage: evt.stage!,
@@ -51,6 +55,7 @@ export function handleRunToolEvent(
     const taskBook = evt.taskBook
     updateLastAssistantActivity(context.setMessages, (activity) => ({
       ...activity,
+      ...mergeVisibility(activity.visibility, evt.visibility),
       taskBook,
       steps: mergeTaskBookIntoLiveSteps(activity.steps, taskBook),
     }))
@@ -59,6 +64,7 @@ export function handleRunToolEvent(
   if (evt.type === 'step_start' && evt.stepId) {
     updateLastAssistantActivity(context.setMessages, (activity) => ({
       ...activity,
+      ...mergeVisibility(activity.visibility, evt.visibility),
       steps: upsertLiveStep(activity.steps, {
         stepId: evt.stepId ?? '',
         title: evt.title || evt.description || '执行步骤',
@@ -70,12 +76,17 @@ export function handleRunToolEvent(
     return
   }
   if (evt.type === 'verification_start') {
-    updateLastAssistantActivity(context.setMessages, (activity) => ({ ...activity, verificationRunning: true }))
+    updateLastAssistantActivity(context.setMessages, (activity) => ({
+      ...activity,
+      ...mergeVisibility(activity.visibility, evt.visibility),
+      verificationRunning: true,
+    }))
     return
   }
   if (evt.type === 'verification' && evt.verification) {
     updateLastAssistantActivity(context.setMessages, (activity) => ({
       ...activity,
+      ...mergeVisibility(activity.visibility, evt.visibility),
       verificationRunning: false,
       verificationHistory: [...(activity.verificationHistory ?? []), evt.verification!],
     }))
@@ -88,6 +99,7 @@ export function handleRunToolEvent(
       : evt.type === 'step_failed' ? 'failed' : 'skipped'
     updateLastAssistantActivity(context.setMessages, (activity) => ({
       ...activity,
+      ...mergeVisibility(activity.visibility, evt.visibility),
       steps: upsertLiveStep(activity.steps, {
         stepId: evt.stepId ?? '',
         title: evt.title || evt.description || '执行步骤',
@@ -105,6 +117,7 @@ export function handleRunToolEvent(
     if (evt.stepId) context.liveToolStepRef.current.set(evt.callId, evt.stepId)
     updateLastAssistantActivity(context.setMessages, (activity) => ({
       ...activity,
+      ...mergeVisibility(activity.visibility, evt.visibility),
       tools: upsertLiveTool(activity.tools, {
         callId: evt.callId ?? '',
         name: evt.name ?? '',
@@ -123,6 +136,7 @@ export function handleRunToolEvent(
     context.liveToolStepRef.current.delete(evt.callId)
     updateLastAssistantActivity(context.setMessages, (activity) => ({
       ...activity,
+      ...mergeVisibility(activity.visibility, evt.visibility),
       tools: upsertLiveTool(activity.tools, {
         callId: evt.callId ?? '',
         name: evt.name ?? '',
@@ -135,4 +149,13 @@ export function handleRunToolEvent(
       steps: stepId ? bumpLiveStepTools(activity.steps, stepId, -1) : activity.steps,
     }))
   }
+}
+
+function mergeVisibility(
+  current: 'silent' | 'progress' | undefined,
+  next: 'silent' | 'progress' | undefined,
+): { visibility?: 'silent' | 'progress' } {
+  if (current === 'progress' || next === 'progress') return { visibility: 'progress' }
+  if (next) return { visibility: next }
+  return {}
 }

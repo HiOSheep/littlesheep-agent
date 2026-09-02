@@ -24,6 +24,8 @@ import { buildRunRequestCandidates } from '../context-candidates.js';
 import { attachmentManifestText, recentHistoryForModel } from './_shared.js';
 import { writeDecisionState } from '../decision-state.js';
 import { assessRetrievalIntent } from '../retrieval-intent.js';
+import { capabilityProbeEvent } from '../capability-events.js';
+import { writeCapabilityState } from '../capability-state.js';
 
 function inboundText(ctx: RunContext): string {
   return ctx.inbound.content
@@ -59,6 +61,44 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
     }
     let next: StageName;
     try {
+      // Capability questions and probes are Runtime-owned facts. Route them
+      // deterministically before the generic classifier so a repeated status
+      // question does not spend another model call or alter cache shape.
+      const retrieval = assessRetrievalIntent(inboundText(ctx));
+      if (retrieval.intent === 'capability_question' || retrieval.intent === 'capability_probe') {
+        const routed = {
+          activity: 'respond' as const,
+          type: 'chat' as const,
+          confidence: 1,
+          source: 'rules' as const,
+          reason: retrieval.intent === 'capability_probe'
+            ? 'capability probe requested'
+            : 'capability or status question',
+          retrievalIntent: retrieval.intent,
+        };
+        if (retrieval.intent === 'capability_probe') {
+          const probe = capabilityProbeEvent(ctx.capabilitySnapshot, `${ctx.runId}:capability-probe`);
+          writeCapabilityState(ctx, 'classify', {
+            capabilityProbe: probe.probe,
+            capabilityPermissionEvent: probe.permission,
+          });
+          ctx.onToolEvent?.({
+            type: 'capability_probe',
+            visibility: 'silent',
+            capabilitySnapshot: ctx.capabilitySnapshot,
+            capabilityProbe: probe.probe,
+            permissionEvent: probe.permission,
+          });
+        }
+        writeDecisionState(ctx, 'classify', { classification: routed });
+        next = 'reply';
+        return {
+          stage: 'classify',
+          next,
+          ok: true,
+          meta: { activity: routed.activity, classification: routed, deterministic: true },
+        };
+      }
       const classifierHistory = recentHistoryForModel(ctx.history, 4, 1_800);
       const manifest = attachmentManifestText(ctx.attachments);
       const classificationInbound = manifest
@@ -76,11 +116,8 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
         ),
         onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
       });
-      const retrieval = assessRetrievalIntent(inboundText(ctx));
       const classifiedActivity = cls.activity ?? activityFromMessageClass(cls.type);
-      const activity = retrieval.intent === 'capability_question'
-        ? 'respond'
-        : retrieval.intent === 'web_search'
+      const activity = retrieval.intent === 'web_search'
           || retrieval.intent === 'web_fetch'
           || retrieval.intent === 'combined_memory_web'
           || retrieval.intent === 'browser_required'

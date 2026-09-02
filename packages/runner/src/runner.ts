@@ -55,6 +55,7 @@ import { createRunCheckpointControl, type RunCheckpointControl } from './run-che
 import { createRunAbortControl, resolveRunTimeoutMs } from './run-abort-control.js';
 import { describeToolAccess, shouldRequestPermissionApproval } from '@littlesheep/safety';
 import { resolveRunTools } from './run-tools.js';
+import { buildRunnerCapabilityState } from './capability-snapshot.js';
 import { runRunnerCoordinator } from './runner-coordinator.js';
 import { executeRunnerPhase } from './runner-execute.js';
 import { finalizeRunnerPhase } from './runner-finalize.js';
@@ -464,6 +465,13 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       } else {
         opts.log?.('info', `runner: deferred workspace indexing until approved access (${workspaceScan?.boundary})`);
       }
+      const { snapshot: capabilitySnapshot, permissionEvent: capabilityPermissionEvent } = buildRunnerCapabilityState({
+        tools: resolvedTools, toolSources, approvalRequiredToolNames: resolvedRunConfig.approvalRequiredToolNames,
+        permissionPolicyId: resolvedRunConfig.permissionPolicyId,
+        workspaceAccess: !containerRoot ? 'unavailable' : workspaceScan?.hardDecision === 'deny' ? 'denied' : workspaceScanNeedsApproval ? 'approval_required' : 'available',
+        networkEnabled: resolvedRunConfig.networkPolicy?.enabled === true, webProvider: resolvedRunConfig.webProvider,
+        now: new Date(startedAt), permissionEventId: `${runId}:workspace-scan-permission`,
+      });
       const ctx: RunContext = await buildRunContext({
         sessionId,
         inbound,
@@ -491,14 +499,23 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         profilePromptAddon: behaviorProfile?.systemPromptAddon,
         reasoningPromptAddon: reasoningPromptAddon(resolvedRunConfig.reasoning),
         attachments: input.attachments,
-         resolvedRunConfig,
-         runtimeEventQueue,
-         bootstrapDir: opts.bootstrapDir,
-         memoryResources: infra.memoryService,
-         workspaceContext: input.workspaceContext,
+        resolvedRunConfig,
+        cacheObservationKey: infra.cacheObservationKey,
+        capabilitySnapshot,
+        capabilityPermissionEvent,
+        runtimeEventQueue,
+        bootstrapDir: opts.bootstrapDir,
+        memoryResources: infra.memoryService,
+        workspaceContext: input.workspaceContext,
           historyExcludeMessageIds: continuation?.historyExcludeMessageIds,
           webRetrieval: webRetrievalRuntime,
         });
+      onToolEvent({
+        type: 'capability_snapshot',
+        visibility: 'silent',
+        capabilitySnapshot,
+        permissionEvent: capabilityPermissionEvent,
+      });
       if (continuation) {
         if (continuation.restoreState === false) {
           ctx.entryStage = continuation.resumeStage;
@@ -1662,6 +1679,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       durationMs: log.durationMs,
       usage: log.usage,
       resolvedRunConfig: log.resolvedRunConfig,
+      capabilitySnapshot: log.capabilitySnapshot, capabilityProbe: log.capabilityProbe, capabilityPermissionEvent: log.capabilityPermissionEvent,
       modelRequests: log.modelRequests,
       contextSnapshots: log.contextSnapshots,
       taskExecution: log.taskExecution,
@@ -1942,6 +1960,7 @@ function assembleResult(
     durationMs: Date.now() - startedAtMs,
     usage: ctx.usage,
     resolvedRunConfig: ctx.resolvedRunConfig,
+    capabilitySnapshot: ctx.capabilitySnapshot, capabilityProbe: ctx.capabilityProbe, capabilityPermissionEvent: ctx.capabilityPermissionEvent,
     modelRequests: ctx.modelRequests,
     contextSnapshots: ctx.contextSnapshots,
     taskExecution: ctx.taskExecution,

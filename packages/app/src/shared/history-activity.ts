@@ -3,9 +3,12 @@ import type { Message, TaskBook, VerificationRecord, WebEvidenceProjection } fro
 
 export type HistoryActivityStatus = 'running' | 'done' | 'failed' | 'aborted' | 'paused'
 export type HistoryStepStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped'
+export type ActivityVisibility = 'silent' | 'progress'
 
 export interface HistoryActivity {
   status: HistoryActivityStatus
+  /** Runtime-owned disclosure policy for non-message run activity. */
+  visibility?: ActivityVisibility
   instruction: string
   /** Runtime failure/abort state; this is not an assistant-authored reply. */
   error?: string
@@ -139,6 +142,7 @@ export function executionLogToHistoryActivity(log: ExecutionLog): HistoryActivit
   const paused = log.runtimeControl?.state === 'paused'
   return {
     status: paused ? 'paused' : log.status === 'ok' ? 'done' : log.status === 'aborted' ? 'aborted' : 'failed',
+    visibility: hasExecutionActivity(log) ? 'progress' : 'silent',
     instruction: log.inboundText,
     error: paused ? '任务已暂停，现场已保存。' : log.error,
     startedAt,

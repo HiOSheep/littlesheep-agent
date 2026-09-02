@@ -6,6 +6,8 @@ describe('retrieval intent boundary', () => {
   it.each([
     ['LS 支持网络搜索吗？', 'capability_question', false],
     ['但是现在好像还没给你配置网络查询功能吧', 'capability_question', false],
+    ['你查询过了吗？', 'capability_probe', false],
+    ['基于事实，因此你需要实际查一下', 'capability_probe', false],
     ['搜索我的项目文件里有哪些 web_search 调用', 'local_workspace', true],
     ['你还记得我上次的决定吗？', 'local_memory', false],
     ['查一下今天的公开新闻', 'web_search', true],

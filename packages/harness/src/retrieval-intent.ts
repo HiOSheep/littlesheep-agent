@@ -2,6 +2,7 @@ import type { AgentTool, RetrievalIntent, RunContext } from '@littlesheep/types'
 
 const URL_PATTERN = /https?:\/\/[^\s<>()"']+/iu;
 const CAPABILITY_PATTERN = /(?:(?:LS|LittleSheep|你|系统).{0,16}(?:(?:还|尚)?没(?:有)?|未曾?|暂未|不再?|支持|能否|能不能|可以|会不会|有没有).{0,16}(?:配置|提供|启用|联网|网络搜索|网页搜索|实时搜索|网络查询|搜索能力|搜索功能)|(?:(?:还|尚)?没(?:有)?|未曾?|暂未).{0,16}(?:给(?:你|LS|系统)?|为(?:你|LS|系统)?)?.{0,16}(?:配置|提供|启用).{0,16}(?:联网|网络搜索|网页搜索|实时搜索|网络查询|搜索能力|搜索功能)|(?:LS|LittleSheep|你|系统).{0,16}(?:支持|能否|能不能|可以|会不会|有没有).{0,16}(?:联网|网络搜索|网页搜索|实时搜索|网络查询|搜索能力|搜索功能)|\b(?:can|does|is)\s+(?:LS|LittleSheep|the agent|you)\s+(?:search|browse|access the web)\b)/iu;
+const CAPABILITY_PROBE_PATTERN = /(?:查询过了吗|查过了吗|实际(?:查|测)一下|实测(?:一下)?(?:网络|联网|搜索|查询)?|验证一下(?:联网|网络|搜索|查询|能力)|测试一下(?:联网|网络|搜索|查询|能力)|基于事实.{0,24}(?:需要|请).{0,8}(?:查询|搜索|联网)|你(?:到底|真的)?查(?:过|一下)|\b(?:probe|test|verify)\b.{0,24}\b(?:web|network|search|internet|capability)\b)/iu;
 const WORKSPACE_PATTERN = /(?:工作区|项目|仓库|目录|文件夹|本地文件|代码|源码)|\b(?:workspace|repository|repo|project files?|local files?|source code)\b/iu;
 const MEMORY_PATTERN = /(?:记得|记忆|上次|之前的决定|我的偏好|历史约定|项目约定|长期记忆)|\b(?:remember|memory|previous decision|my preference|project convention)\b/iu;
 const WEB_PATTERN = /(?:联网|网上|网络|网页|公开来源|官方来源|找来源|查资料|新闻|政策|价格|赛事|天气|版本|今天|今日|最新|实时|刚刚|近期)|\b(?:online|web|internet|source|news|policy|price|weather|version|today|current|latest|real[- ]?time|recent)\b/iu;
@@ -61,6 +62,8 @@ export function renderRetrievalIntentContract(
       return 'Runtime retrieval intent: browser_required. This requires interactive or authenticated browser state. Do not substitute anonymous web_fetch/web_search or claim that the interaction was completed.';
     case 'capability_question':
       return 'Runtime retrieval intent: capability_question. Explain capability from Runtime state; do not retrieve from the Web.';
+    case 'capability_probe':
+      return 'Runtime retrieval intent: capability_probe. Emit and rely on a real Runtime capability probe event. Do not claim a Web query unless a real web_search/web_fetch event exists.';
     case 'none':
     default:
       return 'Runtime retrieval intent: none. Web tools are not admitted for this request.';
@@ -71,6 +74,9 @@ export function renderRetrievalIntentContract(
 export function assessRetrievalIntent(text: string): RetrievalIntentAssessment {
   const value = text.normalize('NFKC').trim();
   if (!value) return { intent: 'none', compact: false, reason: 'empty request' };
+  if (CAPABILITY_PROBE_PATTERN.test(value)) {
+    return { intent: 'capability_probe', compact: false, reason: 'requests an observable Runtime capability probe' };
+  }
   if (CAPABILITY_PATTERN.test(value)) {
     return { intent: 'capability_question', compact: false, reason: 'asks about capability rather than requesting retrieval' };
   }

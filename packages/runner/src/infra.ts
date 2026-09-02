@@ -52,6 +52,7 @@ import {
   type WebCache,
 } from '@littlesheep/web';
 import { ExecutionLogStore } from './execution-log.js';
+import { loadCacheObservationKey } from './cache-observation-key.js';
 import { RunCheckpointStore } from './run-checkpoint-store.js';
 import { RunCheckpointDispositionStore } from './run-checkpoint-disposition-store.js';
 import {
@@ -115,6 +116,8 @@ export interface Infrastructure {
   /** Starts tokenizer preparation only after an Agent run actually begins. */
   prepareTokenCounter?: () => Promise<void>;
   disposeTokenCounter: () => void;
+  /** Process-held reference to the data-root-local cache HMAC key. */
+  cacheObservationKey: string | null;
   state: RunnerState;
 }
 
@@ -163,6 +166,7 @@ export async function buildInfrastructure(
   opts: BuildInfrastructureOptions,
 ): Promise<Infrastructure> {
   const dirs = dataSubdirs(opts.branding);
+  const cacheObservationKey = await loadCacheObservationKey(dirs.root);
   const lazyTokenCounter: LazyExactContextTokenCounter | undefined = createLazyLocalExactContextTokenCounter({
     modelRef: opts.model,
     modelRootDir: join(opts.bootstrapDir ?? dirs.root, 'models', 'tokenizer'),
@@ -514,6 +518,7 @@ export async function buildInfrastructure(
       ? () => lazyTokenCounter.prepare()
       : undefined,
     disposeTokenCounter: () => lazyTokenCounter?.dispose(),
+    cacheObservationKey,
     state: opts.state,
   };
 }

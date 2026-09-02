@@ -142,6 +142,7 @@ export function createRunActions(context: RunActionContext) {
         activityCollapsed: false,
         activity: {
           status: 'running',
+          visibility: 'silent',
           instruction: displayText,
           startedAt: activityStartedAt,
           reasoning: [{

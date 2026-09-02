@@ -38,18 +38,20 @@ export function TaskProgressPresence({
     exitTimerRef.current = undefined
   }
 
+  const disclosedActivity = activity?.visibility === 'progress' ? activity : null
+
   useEffect(() => {
-    const key = activity ? `${activity.startedAt}:${activity.instruction}` : undefined
-    if (activity?.status === 'running' && key) {
+    const key = disclosedActivity ? `${disclosedActivity.startedAt}:${disclosedActivity.instruction}` : undefined
+    if (disclosedActivity?.status === 'running' && key) {
       clearTimers()
       activeKeyRef.current = key
       completedKeyRef.current = undefined
-      setPresentation({ activity, exiting: false })
+      setPresentation({ activity: disclosedActivity, exiting: false })
       return
     }
 
-    if (activity && key && key === activeKeyRef.current) {
-      setPresentation((current) => current ? { ...current, activity, exiting: false } : { activity, exiting: false })
+    if (disclosedActivity && key && key === activeKeyRef.current) {
+      setPresentation((current) => current ? { ...current, activity: disclosedActivity, exiting: false } : { activity: disclosedActivity, exiting: false })
       if (completedKeyRef.current === key) return
       completedKeyRef.current = key
       holdTimerRef.current = window.setTimeout(() => {
@@ -67,7 +69,7 @@ export function TaskProgressPresence({
     activeKeyRef.current = undefined
     completedKeyRef.current = undefined
     setPresentation(null)
-  }, [activity])
+  }, [disclosedActivity])
 
   useEffect(() => () => clearTimers(), [])
 

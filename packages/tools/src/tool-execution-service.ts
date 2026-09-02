@@ -426,6 +426,7 @@ export class ToolExecutionService {
     this.publishRecord(record, retained);
     this.emitToolEvent({
       type: 'tool_start',
+      visibility: 'progress',
       callId: request.callId,
       name: request.name,
       stepId: request.stepId,
@@ -471,6 +472,7 @@ export class ToolExecutionService {
     this.finishRecord(record, retained, status, result, outcome.errorKind);
     this.emitToolEvent({
       type: 'tool_end',
+      visibility: 'progress',
       callId: request.callId,
       name: request.name,
       stepId: request.stepId,

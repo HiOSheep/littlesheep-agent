@@ -19,6 +19,7 @@ import type {
   ToolStreamEvent,
   VerificationRecord,
   WebEvidenceProjection,
+  RuntimeCapabilitySnapshot,
 } from '@littlesheep/types'
 import type { AgentProfileId } from '@littlesheep/prompt'
 import type { PermissionModeId } from '../../shared/permission-modes'
@@ -48,12 +49,25 @@ export interface RunResult {
   modelRequests?: ModelRequestSnapshot[]
   trace?: { name: string; ok: boolean }[]
   messages?: { role: string; content: unknown[] }[]
+  toolInvocations?: Array<{
+    callId: string
+    name: string
+    input?: unknown
+    output?: string
+    error?: string
+    ok?: boolean
+    startedAt?: string
+    endedAt?: string
+  }>
   taskBook?: TaskBook
   verificationHistory?: VerificationRecord[]
   runtimeControl?: RuntimeControlSnapshot
   conversationContinuation?: ConversationContinuationEvidence
   runCheckpointId?: string
   webEvidence?: WebEvidenceProjection
+  capabilitySnapshot?: RuntimeCapabilitySnapshot
+  capabilityProbe?: import('@littlesheep/types').RuntimeCapabilityProbe
+  capabilityPermissionEvent?: import('@littlesheep/types').RuntimePermissionEvent
   taskExecution?: {
     goal: string
     complexity: string
@@ -249,6 +263,8 @@ export async function consumeRunStream(
         || event.name === 'verification_start'
         || event.name === 'verification'
         || event.name === 'final_delta'
+        || event.name === 'capability_snapshot'
+        || event.name === 'capability_probe'
       ) {
         handlers.onToolEvent?.(event.data as ToolStreamEvent)
       } else if (event.name === 'approval_request') {

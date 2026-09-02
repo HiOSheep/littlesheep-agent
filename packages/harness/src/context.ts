@@ -20,6 +20,9 @@ import type {
   ClarificationRequest,
   ClarificationResponse,
   ResolvedRunConfig,
+  RuntimeCapabilitySnapshot,
+  RuntimeCapabilityProbe,
+  RuntimePermissionEvent,
   RuntimeEventQueueLike,
   SessionRunSummary,
 } from '@littlesheep/types';
@@ -113,6 +116,12 @@ export interface BuildRunContextOptions {
   attachments?: import('@littlesheep/types').RunAttachment[];
   /** Immutable configuration resolved by Runner before the harness starts. */
   resolvedRunConfig?: ResolvedRunConfig;
+  /** Process-held data-root-local HMAC key; never copied into checkpoints. */
+  cacheObservationKey?: string | null;
+  /** Runtime-owned path-free capability facts resolved before the run starts. */
+  capabilitySnapshot?: RuntimeCapabilitySnapshot;
+  capabilityProbe?: RuntimeCapabilityProbe;
+  capabilityPermissionEvent?: RuntimePermissionEvent;
   /** Host-owned per-run public web retrieval port. */
   webRetrieval?: ToolContext['webRetrieval'];
   /** Host-owned bounded web evidence sink. */
@@ -251,6 +260,10 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     reasoningPromptAddon: opts.reasoningPromptAddon,
     attachments: opts.attachments,
     resolvedRunConfig: opts.resolvedRunConfig,
+    ...(opts.cacheObservationKey !== undefined ? { cacheObservationKey: opts.cacheObservationKey } : {}),
+    ...(opts.capabilitySnapshot ? { capabilitySnapshot: opts.capabilitySnapshot } : {}),
+    ...(opts.capabilityProbe ? { capabilityProbe: opts.capabilityProbe } : {}),
+    ...(opts.capabilityPermissionEvent ? { capabilityPermissionEvent: opts.capabilityPermissionEvent } : {}),
     reserveUserFacingReply: typeof opts.sessionManager.reserveAssistantReply === 'function'
       ? (reply) => opts.sessionManager.reserveAssistantReply(opts.sessionId, reply)
       : undefined,

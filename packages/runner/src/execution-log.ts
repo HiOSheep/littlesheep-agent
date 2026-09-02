@@ -28,6 +28,7 @@ import type {
   ClarificationRequest,
   ClarificationResponse,
   ResolvedRunConfig,
+  RuntimeCapabilitySnapshot,
   ModelRequestSnapshot,
   ContextSnapshot,
   ToolInvocationRecord,
@@ -89,6 +90,9 @@ export interface ExecutionLog {
   sideEffects?: SideEffectCheckpoint[];
   memoryAccess?: MemoryAccessLedger;
   resolvedRunConfig?: ResolvedRunConfig;
+  capabilitySnapshot?: RuntimeCapabilitySnapshot;
+  capabilityProbe?: import('@littlesheep/types').RuntimeCapabilityProbe;
+  capabilityPermissionEvent?: import('@littlesheep/types').RuntimePermissionEvent;
   modelRequests?: ModelRequestSnapshot[];
   contextSnapshots?: ContextSnapshot[];
   runtimeControl?: RuntimeControlSnapshot;
@@ -136,6 +140,9 @@ export interface ExecutionLogInput {
   sideEffects?: SideEffectCheckpoint[];
   memoryAccess?: MemoryAccessLedger;
   resolvedRunConfig?: ResolvedRunConfig;
+  capabilitySnapshot?: RuntimeCapabilitySnapshot;
+  capabilityProbe?: import('@littlesheep/types').RuntimeCapabilityProbe;
+  capabilityPermissionEvent?: import('@littlesheep/types').RuntimePermissionEvent;
   modelRequests?: ModelRequestSnapshot[];
   contextSnapshots?: ContextSnapshot[];
   runtimeControl?: RuntimeControlSnapshot;
@@ -226,6 +233,9 @@ export class ExecutionLogStore {
       sideEffects: input.sideEffects,
       memoryAccess: input.memoryAccess,
       resolvedRunConfig: input.resolvedRunConfig,
+      capabilitySnapshot: input.capabilitySnapshot,
+      capabilityProbe: input.capabilityProbe,
+      capabilityPermissionEvent: input.capabilityPermissionEvent,
       modelRequests,
       contextSnapshots,
       runtimeControl: input.runtimeControl,

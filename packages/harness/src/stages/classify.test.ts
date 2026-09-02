@@ -49,6 +49,35 @@ describe('classifyStage', () => {
     expect(ctx.classification).toMatchObject({ activity: 'respond', retrievalIntent: 'capability_question' });
   });
 
+  it('routes a requested capability probe deterministically and emits probe evidence', async () => {
+    const llm = createMockLlm(textResponse('should not be called'));
+    const events: import('@littlesheep/types').ToolStreamEvent[] = [];
+    const stage = createClassifyStage({ llm, model: 'test/model' });
+    const ctx = makeCtx({
+      inbound: textMessage('user', '你查询过了吗？'),
+    });
+    ctx.onToolEvent = (event) => events.push(event);
+    ctx.capabilitySnapshot = {
+      version: 1,
+      epoch: 'epoch-1',
+      generatedAt: '2026-09-02T00:00:00.000Z',
+      permissionPolicyId: 'research',
+      workspace: 'available',
+      tools: [],
+      network: { enabled: false, status: 'disabled' },
+    };
+    await expect(stage(ctx)).resolves.toMatchObject({ next: 'reply', ok: true });
+    expect(llm.chat).not.toHaveBeenCalled();
+    expect(ctx.classification).toMatchObject({
+      activity: 'respond',
+      retrievalIntent: 'capability_probe',
+    });
+    expect(ctx.capabilityProbe).toMatchObject({ status: 'observed', capabilityEpoch: 'epoch-1' });
+    expect(ctx.capabilityPermissionEvent).toMatchObject({ action: 'capability_probe', decision: 'allow' });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: 'capability_probe', visibility: 'silent' });
+  });
+
   it.each([
     ['搜索我的项目文件里有哪些 web_search 调用', 'local_workspace'],
     ['你还记得我上次的决定吗？', 'local_memory'],

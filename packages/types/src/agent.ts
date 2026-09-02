@@ -46,6 +46,7 @@ export type MessageClass = 'chat' | 'problem' | 'unclear';
 export type RetrievalIntent =
   | 'none'
   | 'capability_question'
+  | 'capability_probe'
   | 'local_workspace'
   | 'local_memory'
   | 'web_search'
@@ -228,6 +229,14 @@ export interface RunContext {
   modelCallCount?: number;
   /** Bounded, redacted context snapshots linked from model request snapshots. */
   contextSnapshots?: import('./runtime-contracts.js').ContextSnapshot[];
+  /** Runtime-only HMAC key for cache observations; never persisted in checkpoints or logs. */
+  cacheObservationKey?: string | null;
+  /** Versioned Runtime capability facts used for truthful capability answers. */
+  capabilitySnapshot?: import('./capability.js').RuntimeCapabilitySnapshot;
+  /** Durable probe evidence, present only after a real capability probe. */
+  capabilityProbe?: import('./capability.js').RuntimeCapabilityProbe;
+  /** Permission decision paired with the capability probe/snapshot. */
+  capabilityPermissionEvent?: import('./capability.js').RuntimePermissionEvent;
   /** Configured request occupancy ratio that recommends context compaction. */
   contextCompressionThresholdRatio?: number;
   /** Optional streaming callback for assistant text deltas. */
@@ -411,6 +420,10 @@ export interface AgentResult {
   usage?: RunUsage;
   /** Immutable configuration used for this run. */
   resolvedRunConfig?: import('./runtime-contracts.js').ResolvedRunConfig;
+  /** Runtime-owned capability facts and epoch used by this run. */
+  capabilitySnapshot?: import('./capability.js').RuntimeCapabilitySnapshot;
+  capabilityProbe?: import('./capability.js').RuntimeCapabilityProbe;
+  capabilityPermissionEvent?: import('./capability.js').RuntimePermissionEvent;
   /** Bounded, redacted request observations. */
   modelRequests?: import('./runtime-contracts.js').ModelRequestSnapshot[];
   /** Bounded, redacted context observations. */
@@ -458,7 +471,9 @@ export type StreamEvent =
 
 /** Lightweight run-progress event for real-time SSE streaming. */
 export interface ToolStreamEvent {
-  type: 'reasoning' | 'task_book' | 'step_start' | 'step_done' | 'step_failed' | 'step_skipped' | 'tool_start' | 'tool_end' | 'verification_start' | 'verification' | 'final_delta'
+  type: 'reasoning' | 'task_book' | 'step_start' | 'step_done' | 'step_failed' | 'step_skipped' | 'tool_start' | 'tool_end' | 'verification_start' | 'verification' | 'final_delta' | 'capability_snapshot' | 'capability_probe'
+  /** Runtime-owned disclosure policy; this is never inferred from model text. */
+  visibility?: 'silent' | 'progress'
   /** Stable identity for one public, user-visible Harness phase occurrence. */
   phaseId?: string
   /** Harness stage that owns a public reasoning/progress update. */
@@ -479,6 +494,9 @@ export interface ToolStreamEvent {
   durationMs?: number
   taskBook?: TaskBook
   verification?: VerificationRecord
+  capabilitySnapshot?: import('./capability.js').RuntimeCapabilitySnapshot
+  capabilityProbe?: import('./capability.js').RuntimeCapabilityProbe
+  permissionEvent?: import('./capability.js').RuntimePermissionEvent
 }
 
 // ─── Post-MVP: multi-agent extension points ──────────────────────────────

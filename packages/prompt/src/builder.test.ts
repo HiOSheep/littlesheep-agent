@@ -144,7 +144,7 @@ describe('buildSystemPrompt', () => {
     expect(segment).toMatchObject({
       kind: 'memory_fragment',
       scope: 'run',
-      required: false,
+      required: true,
       source: { kind: 'memory', id: 'initial-selection' },
     });
     const parts = splitAtBoundary(bundle.text);

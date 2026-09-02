@@ -4,6 +4,7 @@ import type { StageName } from './agent.js';
 import type { PlanStep, TaskBook, TaskExecutionResult } from './task.js';
 import type { SessionId } from './session.js';
 import type { ContextSafetyEstimate, LocalTokenLedger, ProviderTokenLedger } from './token-ledger.js';
+import type { CacheObservation } from './cache-observability.js';
 import type { NetworkReadPolicy, WebEvidenceProjection, WebProviderRuntimeSnapshot } from './web-retrieval.js';
 export * from './token-ledger.js';
 
@@ -245,6 +246,8 @@ export interface ModelRequestSnapshot {
   callContract?: LlmCallContract;
   contextSnapshotId?: string;
   payloadHash?: string;
+  /** Redacted, request-bound evidence for the three independent cache ledgers. */
+  cacheObservation?: CacheObservation;
 }
 
 export type MemoryIntentRuntimeDecision = 'committed' | 'deferred' | 'rejected' | 'ignored';

@@ -41,7 +41,9 @@ describe('interaction surface visibility', () => {
     }
 
     const assistantTurn = await readRendererFile('./chat/assistant-turn.tsx')
-    expect(assistantTurn).toContain('className="agent-flow-details agent-reasoning-public-details"')
+    expect(assistantTurn).toContain("activity.visibility === 'progress'")
+    expect(assistantTurn).toContain('activity.steps.length > 0 || activity.tools.length > 0')
+    expect(assistantTurn).not.toContain('agent-reasoning-public-details')
     expect(assistantTurn).not.toContain('agent-reasoning-toggle')
     expect(assistantTurn).not.toContain('agent-flow-details-panel')
   })

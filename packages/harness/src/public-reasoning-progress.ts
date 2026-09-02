@@ -50,6 +50,7 @@ export function emitPublicReasoningProgress(
   try {
     ctx.onToolEvent?.({
       type: 'reasoning',
+      visibility: 'silent',
       phaseId,
       stage,
       reasoningStatus: status,

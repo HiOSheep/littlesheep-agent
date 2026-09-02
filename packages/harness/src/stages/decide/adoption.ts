@@ -138,7 +138,9 @@ export async function adoptDecodedDecision(
   writeDecisionState(ctx, 'decide', { needAssessment: assessment });
   writeReplanState(ctx, 'decide', { taskBook, plan, taskBookRevision });
   consumeDecisionInputs(ctx, request.deferredRuntimeEvents);
-  ctx.onToolEvent?.({ type: 'task_book', taskBook });
+  // TaskBook/assessment is Runtime state. Actual step events opt into the
+  // compact progress projection once execution has started.
+  ctx.onToolEvent?.({ type: 'task_book', visibility: 'silent', taskBook });
   return {
     stage: 'decide',
     next: 'execute',

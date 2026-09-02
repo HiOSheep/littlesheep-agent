@@ -526,11 +526,21 @@ describe('createRunner run', () => {
     expect(result.modelRequests?.map((request) => request.stage)).toEqual(['reply']);
     expect(result.modelRequests?.[0]?.contextSnapshotId).toBe(result.contextSnapshots?.[0]?.id);
     expect(result.contextSnapshots?.[0]?.budget.status).toBe('unknown');
+    expect(result.capabilitySnapshot?.epoch).toMatch(/^[a-f0-9]{64}$/u);
+    expect(result.capabilityPermissionEvent).toMatchObject({
+      eventId: 'run-observed-fixed:workspace-scan-permission',
+      action: 'workspace_scan',
+      capabilityEpoch: result.capabilitySnapshot?.epoch,
+      permissionPolicyId: 'research',
+      source: 'runtime',
+    });
 
     const replay = await runner.replay(result.runId);
     expect(replay?.resolvedRunConfig).toEqual(result.resolvedRunConfig);
     expect(replay?.modelRequests).toEqual(result.modelRequests);
     expect(replay?.contextSnapshots).toEqual(result.contextSnapshots);
+    expect(replay?.capabilitySnapshot).toEqual(result.capabilitySnapshot);
+    expect(replay?.capabilityPermissionEvent).toEqual(result.capabilityPermissionEvent);
   });
 
   it('applies the coding behavior profile without changing tool permission policy', async () => {

@@ -37,7 +37,15 @@ export {
   MAX_SNAPSHOT_ITEMS,
   MAX_SNAPSHOT_TOOLS,
 } from './model-observability.js';
+export {
+  buildCacheObservation,
+  canonicalSerialize,
+  classifyProviderCacheUsage,
+  type CacheObservationInput,
+  type ValidProviderUsage,
+} from './cache-observability.js';
 export { buildRunRequestCandidates, type BuildRunRequestCandidatesOptions } from './context-candidates.js';
+export { capabilityProbeEvent } from './capability-events.js';
 export {
   assessResponseMemoryContinuity,
   type ResponseContinuityInput,
@@ -80,6 +88,7 @@ export {
 export { writeReplanState, type ReplanStateUpdate } from './replan-state.js';
 export { clearReplyState, writeReplyState, type ReplyStateUpdate } from './reply-state.js';
 export { writeRuntimeState, type RuntimeStateUpdate } from './runtime-state.js';
+export { writeCapabilityState, type CapabilityStateUpdate } from './capability-state.js';
 export { writeMemoryState, type MemoryStateUpdate } from './memory-state.js';
 export {
   writeDecisionState,

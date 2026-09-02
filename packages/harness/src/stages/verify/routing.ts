@@ -38,13 +38,13 @@ export function recordVerification(
     verifiedAt: new Date().toISOString(),
   };
   ctx.verificationHistory = [...(ctx.verificationHistory ?? []), verification];
-  ctx.onToolEvent?.({ type: 'verification', verification });
+  ctx.onToolEvent?.({ type: 'verification', visibility: 'silent', verification });
   return verification;
 }
 
 export function publishVerifiedReply(ctx: RunContext): void {
   if (!ctx.reply || ctx.replyProvenance?.source !== 'llm') return;
-  ctx.onToolEvent?.({ type: 'final_delta', output: ctx.reply });
+  ctx.onToolEvent?.({ type: 'final_delta', visibility: 'silent', output: ctx.reply });
   ctx.onAssistantReplace?.(ctx.reply);
 }
 
