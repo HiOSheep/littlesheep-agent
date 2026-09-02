@@ -1,4 +1,4 @@
-import type { ReplyProvenance, RunContext } from '@littlesheep/types';
+import type { FinalReplySettlement, ReplyProvenance, RunContext } from '@littlesheep/types';
 import {
   assertRunContextFieldWriteAllowed,
   type RunContextContractStage,
@@ -8,9 +8,10 @@ import {
 export interface ReplyStateUpdate {
   reply?: string;
   replyProvenance?: ReplyProvenance;
+  finalReplySettlement?: FinalReplySettlement;
 }
 
-const REPLY_FIELDS = ['reply', 'replyProvenance'] as const satisfies readonly (keyof ReplyStateUpdate)[];
+const REPLY_FIELDS = ['reply', 'replyProvenance', 'finalReplySettlement'] as const satisfies readonly (keyof ReplyStateUpdate)[];
 
 /**
  * Commit one validated reply update. Validate the complete batch before
@@ -37,5 +38,6 @@ export function clearReplyState(ctx: RunContext, stage: RunContextContractStage)
   writeReplyState(ctx, stage, {
     reply: undefined,
     replyProvenance: undefined,
+    finalReplySettlement: undefined,
   });
 }

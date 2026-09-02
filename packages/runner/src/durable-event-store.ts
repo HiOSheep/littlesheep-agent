@@ -49,6 +49,8 @@ export class DurableEventStore implements DurableHarnessEventStoreLike {
   private readonly maxEventsPerRun: number;
   private readonly now: () => Date;
   private readonly writeTails = new Map<string, Promise<void>>();
+  private initialized = false;
+  private initializationFailure: Error | undefined;
 
   constructor(options: DurableEventStoreOptions) {
     const root = options.rootDir.trim();
@@ -70,14 +72,33 @@ export class DurableEventStore implements DurableHarnessEventStoreLike {
   }
 
   async initialize(): Promise<void> {
-    await mkdir(this.rootDir, { recursive: true });
-    // Scan now so startup fails closed for a corrupt or unknown event file.
-    const entries = await readdir(this.rootDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      if (!/^[a-f0-9]{64}$/.test(entry.name)) throw new DurableEventStoreError(`invalid event partition: ${entry.name}`, 'corrupt');
-      await this.readPartition(join(this.rootDir, entry.name));
+    if (this.initialized) return;
+    if (this.initializationFailure) throw this.initializationFailure;
+    try {
+      await mkdir(this.rootDir, { recursive: true });
+      // Scan now so startup fails closed for a corrupt or unknown event file.
+      const entries = await readdir(this.rootDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        if (!/^[a-f0-9]{64}$/.test(entry.name)) throw new DurableEventStoreError(`invalid event partition: ${entry.name}`, 'corrupt');
+        await this.readPartition(join(this.rootDir, entry.name));
+      }
+      this.initialized = true;
+    } catch (error) {
+      const normalized = error instanceof Error ? error : new Error(String(error));
+      this.initializationFailure = normalized;
+      throw normalized;
     }
+  }
+
+  /** Startup state is intentionally observable so strict callers cannot
+   * mistake a failed scan for a store that merely happens to append later. */
+  get initializationError(): Error | undefined {
+    return this.initializationFailure;
+  }
+
+  get isInitialized(): boolean {
+    return this.initialized;
   }
 
   async append<TPayload extends Record<string, unknown>>(
@@ -290,6 +311,7 @@ function isEventType(value: unknown): value is DurableHarnessEvent['type'] {
     || value === 'route_decided'
     || value === 'model_request_started'
     || value === 'model_response_received'
+    || value === 'model_request_settled'
     || value === 'tool_call_proposed'
     || value === 'effect_intent_created'
     || value === 'effect_settled'

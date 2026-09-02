@@ -2,13 +2,15 @@
 // FINALIZE: assemble the final assistant Message and settle it durably only
 // after the session write succeeds. A persistence failure is a runtime error.
 
-import { createHash } from 'node:crypto';
-import type { RunContext, StageResult, Message } from '@littlesheep/types';
-import { normalizeUserFacingReply, textMessage } from '@littlesheep/types';
+import type { FinalReplyReservation, FinalReplySettlement, RunContext, StageResult, Message } from '@littlesheep/types';
+import { textMessage } from '@littlesheep/types';
 import type { SessionManager } from '@littlesheep/session';
 import { markMemoryKnownStateStage } from '../memory-known-state.js';
 import { assessResponseMemoryContinuity } from '../response-continuity.js';
 import { writeMemoryState } from '../memory-state.js';
+import { flushModelRequestLifecycles } from '../model-observability.js';
+import { finalReplyFingerprint, finalReplySettlementId } from '../final-reply-identity.js';
+import { writeReplyState } from '../reply-state.js';
 
 export interface FinalizeStageDeps {
   sessionManager: SessionManager;
@@ -18,6 +20,15 @@ export interface FinalizeStageDeps {
 export function createFinalizeStage(deps: FinalizeStageDeps) {
   return async function finalizeStage(ctx: RunContext): Promise<StageResult> {
     markMemoryKnownStateStage(ctx, 'finalize');
+    try {
+      // FINALIZE is the first authoritative publication boundary. Do not
+      // propose or settle a reply while any model request from this run is
+      // still missing its response/settlement event.
+      await flushModelRequestLifecycles(ctx);
+    } catch (error) {
+      ctx.toolContext.log?.('error', `finalize: model request lifecycle flush failed: ${(error as Error).message}`);
+      return runtimeFailure(ctx, 'finalize could not durably settle model request lifecycles.');
+    }
     const replyText = ctx.reply?.trim();
     const provenance = ctx.replyProvenance;
     const modelRequest = provenance
@@ -59,7 +70,32 @@ export function createFinalizeStage(deps: FinalizeStageDeps) {
         },
       };
     }
-    const replyFingerprint = fingerprint(replyText);
+    const replyFingerprint = finalReplyFingerprint(replyText);
+    const settlementId = finalReplySettlementId(ctx.runId, replyFingerprint);
+    const reservation: FinalReplyReservation = {
+      version: 1,
+      settlementId,
+      reply: replyText,
+      replyFingerprint,
+      modelRequestId: provenance.modelRequestId,
+    };
+    const proposedSettlement: FinalReplySettlement = {
+      ...reservation,
+      status: 'proposed',
+    };
+    // Most replies are reserved when the model candidate is accepted. The
+    // FINALIZE boundary repeats the operation idempotently for direct callers
+    // and old integrations that set ctx.reply themselves.
+    if (ctx.reserveUserFacingReplySettlement) {
+      try {
+        if (!await ctx.reserveUserFacingReplySettlement(reservation)) {
+          return runtimeFailure(ctx, 'finalize rejected a duplicate or conflicting final reply settlement.');
+        }
+      } catch (error) {
+        ctx.toolContext.log?.('error', `finalize: reply reservation failed: ${(error as Error).message}`);
+        return runtimeFailure(ctx, 'finalize could not reserve the final reply settlement.');
+      }
+    }
     try {
       await ctx.appendDurableEvent?.({
         type: 'final_reply_proposed',
@@ -71,6 +107,7 @@ export function createFinalizeStage(deps: FinalizeStageDeps) {
           replyFingerprint,
           modelRequestId: provenance.modelRequestId,
           modelRequestIndex: provenance.modelRequestIndex,
+          settlementId,
         },
       });
     } catch (error) {
@@ -83,6 +120,7 @@ export function createFinalizeStage(deps: FinalizeStageDeps) {
       stage: 'finalize',
       clarificationRequest: ctx.clarificationRequest,
       replyProvenance: provenance,
+      finalReplySettlement: proposedSettlement,
     });
     ctx.produced.push(msg);
 
@@ -96,6 +134,9 @@ export function createFinalizeStage(deps: FinalizeStageDeps) {
       return runtimeFailure(ctx, `finalize could not persist the assistant reply: ${(err as Error).message}`);
     }
     try {
+      if (ctx.settleUserFacingReplySettlement) {
+        await ctx.settleUserFacingReplySettlement(reservation);
+      }
       await ctx.appendDurableEvent?.({
         type: 'final_reply_settled',
         source: 'runtime',
@@ -106,6 +147,13 @@ export function createFinalizeStage(deps: FinalizeStageDeps) {
           replyFingerprint,
           modelRequestId: provenance.modelRequestId,
           modelRequestIndex: provenance.modelRequestIndex,
+          settlementId,
+        },
+      });
+      writeReplyState(ctx, 'finalize', {
+        finalReplySettlement: {
+          ...proposedSettlement,
+          status: 'settled',
         },
       });
     } catch (error) {
@@ -124,10 +172,6 @@ export function createFinalizeStage(deps: FinalizeStageDeps) {
       },
     };
   };
-}
-
-function fingerprint(reply: string): string {
-  return createHash('sha256').update(normalizeUserFacingReply(reply), 'utf8').digest('hex');
 }
 
 async function settleRuntimeFailure(ctx: RunContext, reason: string): Promise<void> {

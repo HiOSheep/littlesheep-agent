@@ -39,6 +39,7 @@ export async function persistRunnerPhase<TResult extends PersistableRunnerResult
       inboundText: options.inputText,
       reply: result.reply ?? '',
       replyProvenance: result.replyProvenance as never,
+      finalReplySettlement: result.finalReplySettlement as never,
       error: result.error,
       trace: result.trace as never,
       taskExecution: result.taskExecution as never,

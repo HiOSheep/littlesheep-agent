@@ -5,7 +5,7 @@
 // the model may choose a bounded semantic activity, but cannot invent tools,
 // permissions, or transitions outside the runtime contract.
 
-import type { Message, ReplyProvenance } from './message.js';
+import type { FinalReplyReservation, FinalReplySettlement, Message, ReplyProvenance } from './message.js';
 import type { CompactionSummary, SessionId, SessionRunSummary } from './session.js';
 import type { AgentTool, ToolContext } from './tool.js';
 import type { MemoryPrelude } from './memory.js';
@@ -221,6 +221,12 @@ export interface RunContext {
   replyProvenance?: ReplyProvenance;
   /** Atomically reserves a never-published reply in the durable session registry. */
   reserveUserFacingReply?: (reply: string) => Promise<boolean>;
+  /** Reserves one candidate with the same identity used by FINALIZE/durable log. */
+  reserveUserFacingReplySettlement?: (reservation: FinalReplyReservation) => Promise<boolean>;
+  /** Commits the registry reservation after the session message is durable. */
+  settleUserFacingReplySettlement?: (reservation: FinalReplyReservation) => Promise<void>;
+  /** Authoritative final-reply identity carried through FINALIZE and replay. */
+  finalReplySettlement?: FinalReplySettlement;
   /** Token usage reported by the model provider for the reply-bearing call. */
   usage?: RunUsage;
   /** Immutable per-run configuration resolved before the harness starts. */
@@ -402,6 +408,7 @@ export interface AgentRun {
   reply?: string;
   /** LLM provenance for the final user-visible reply. */
   replyProvenance?: ReplyProvenance;
+  finalReplySettlement?: FinalReplySettlement;
   /** Error text (when status === 'error'). */
   error?: string;
 }
@@ -413,6 +420,8 @@ export interface AgentResult {
   reply?: string;
   /** LLM provenance for the final user-visible reply. */
   replyProvenance?: ReplyProvenance;
+  /** Authoritative final reply settlement; streams are only provisional views. */
+  finalReplySettlement?: FinalReplySettlement;
   error?: string;
   /** Messages to persist. */
   messages: Message[];

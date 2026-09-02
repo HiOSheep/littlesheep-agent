@@ -225,10 +225,16 @@ export async function callLlmForJson<T>(
       request: import('@littlesheep/llm').ChatRequest,
       retry: { attempt: number; previousResponseWasEmpty: boolean },
     ) => import('@littlesheep/llm').ChatRequest | void;
+    /** Durable request-start gate, awaited immediately before Provider I/O. */
+    beforeRequest?: (request: import('@littlesheep/llm').ChatRequest, attempt: number) => Promise<void>;
     onResponse?: (
       request: import('@littlesheep/llm').ChatRequest,
       response: ChatResponse,
-    ) => void;
+    ) => void | Promise<void>;
+    onError?: (
+      request: import('@littlesheep/llm').ChatRequest,
+      error: unknown,
+    ) => void | Promise<void>;
   } = {},
 ): Promise<{ parsed: T | null; attempts: number; lastResponse?: ChatResponse }> {
   const maxAttempts = opts.maxAttempts ?? 3;
@@ -256,8 +262,15 @@ export async function callLlmForJson<T>(
       signal: opts.signal,
     };
     const preparedRequest = opts.onRequest?.(request, { attempt, previousResponseWasEmpty }) ?? request;
-    const res = await llm.chat(preparedRequest);
-    opts.onResponse?.(preparedRequest, res);
+    await opts.beforeRequest?.(preparedRequest, attempt);
+    let res: ChatResponse;
+    try {
+      res = await llm.chat(preparedRequest);
+    } catch (error) {
+      await opts.onError?.(preparedRequest, error);
+      throw error;
+    }
+    await opts.onResponse?.(preparedRequest, res);
     lastResponse = res;
     const parsed = extractJson(res.content) as T | null;
     if (parsed !== null) return { parsed, attempts: attempt, lastResponse: res };

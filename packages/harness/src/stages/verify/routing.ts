@@ -29,17 +29,17 @@ const RUNTIME_VERIFIABLE_READ_ONLY_TOOLS = new Set([
   'session_status',
 ]);
 
-export function recordVerification(
+export async function recordVerification(
   ctx: RunContext,
   record: Omit<VerificationRecord, 'attempt' | 'verifiedAt'>,
-): VerificationRecord {
+): Promise<VerificationRecord> {
   const verification: VerificationRecord = {
     ...record,
     attempt: (ctx.verificationHistory?.length ?? 0) + 1,
     verifiedAt: new Date().toISOString(),
   };
   ctx.verificationHistory = [...(ctx.verificationHistory ?? []), verification];
-  void ctx.appendDurableEvent?.({
+  await ctx.appendDurableEvent?.({
     type: 'verification_recorded',
     source: 'runtime',
     eventId: `${ctx.runId}:verification:${verification.attempt}`,
@@ -52,18 +52,20 @@ export function recordVerification(
       reasonLength: verification.reason.length,
       failedStepIds: verification.failedStepIds?.slice(0, 64),
     },
-  }).catch(() => undefined);
+  });
   ctx.onToolEvent?.({ type: 'verification', visibility: 'silent', verification });
   return verification;
 }
 
-export function publishVerifiedReply(ctx: RunContext): void {
-  if (!ctx.reply || ctx.replyProvenance?.source !== 'llm') return;
-  ctx.onToolEvent?.({ type: 'final_delta', visibility: 'silent', output: ctx.reply });
-  ctx.onAssistantReplace?.(ctx.reply);
+/**
+ * VERIFY records evidence only. FINALIZE owns the sole user-facing settlement
+ * and channel projections consume that settlement from the completed result.
+ */
+export function publishVerifiedReply(_ctx: RunContext): void {
+  return;
 }
 
-export function verifyTrivialReadOnlyExecution(ctx: RunContext): StageResult | undefined {
+export async function verifyTrivialReadOnlyExecution(ctx: RunContext): Promise<StageResult | undefined> {
   if ((ctx.taskBook?.complexity !== 'trivial' && ctx.taskBook?.complexity !== 'simple')
     || ctx.taskBook.steps.length !== 1) return undefined;
   const execution = ctx.taskExecution;
@@ -86,7 +88,7 @@ export function verifyTrivialReadOnlyExecution(ctx: RunContext): StageResult | u
   const reason = chinese
     ? '运行时已确认唯一的只读步骤完成，工具调用全部成功，且未产生写入或外部副作用。'
     : 'Runtime confirmed the single read-only step completed, every tool call succeeded, and no write or external side effect occurred.';
-  recordVerification(ctx, { verdict: 'pass', reason, source: 'structural' });
+  await recordVerification(ctx, { verdict: 'pass', reason, source: 'structural' });
   publishVerifiedReply(ctx);
   return {
     stage: 'verify',
@@ -97,7 +99,7 @@ export function verifyTrivialReadOnlyExecution(ctx: RunContext): StageResult | u
 }
 
 /** Verify narrowly structured write-then-read tasks from Runtime evidence. */
-export function verifyDeterministicWriteReadExecution(ctx: RunContext): StageResult | undefined {
+export async function verifyDeterministicWriteReadExecution(ctx: RunContext): Promise<StageResult | undefined> {
   const taskBook = ctx.taskBook;
   const execution = ctx.taskExecution;
   if (!taskBook
@@ -179,7 +181,7 @@ export function verifyDeterministicWriteReadExecution(ctx: RunContext): StageRes
   const reason = chinese
     ? 'Runtime 已确认写入步骤成功并持久记录副作用，随后只读步骤从同一路径读回了完全一致的内容；最终回答也包含用户要求的文件名和核对值。'
     : 'Runtime confirmed the write side effect, read the exact content back from the same path, and found the requested file name and verification value in the final reply.';
-  recordVerification(ctx, { verdict: 'pass', reason, source: 'structural' });
+  await recordVerification(ctx, { verdict: 'pass', reason, source: 'structural' });
   publishVerifiedReply(ctx);
   return {
     stage: 'verify',
@@ -210,15 +212,15 @@ function onlySuccessfulToolResult(
   return results.length === 1 && results[0]?.ok ? results[0] : undefined;
 }
 
-export function routeKnownIncompleteExecution(
+export async function routeKnownIncompleteExecution(
   ctx: RunContext,
   replanAttempts: number,
   maxReplan: number,
   reason: string,
   meta: Record<string, unknown>,
-): StageResult {
+): Promise<StageResult> {
   if (!hasIncompleteTaskExecution(ctx)) {
-    recordVerification(ctx, { verdict: 'pass', reason, source: 'degraded' });
+    await recordVerification(ctx, { verdict: 'pass', reason, source: 'degraded' });
     publishVerifiedReply(ctx);
     return {
       stage: 'verify',
@@ -231,7 +233,7 @@ export function routeKnownIncompleteExecution(
   const targetStepIds = deriveReplanTargets(ctx, undefined);
   const feedback = `Recorded step evidence is incomplete: ${reason}`;
   if (!canRecoverWithPartialReplan(ctx, targetStepIds)) {
-    recordVerification(ctx, {
+    await recordVerification(ctx, {
       verdict: 'fail',
       reason,
       feedback,
@@ -255,7 +257,7 @@ export function routeKnownIncompleteExecution(
     verifyFeedback: feedback,
   });
   installPartialReplan(ctx, targetStepIds, reason, feedback, nextReplanAttempts);
-  recordVerification(ctx, {
+  await recordVerification(ctx, {
     verdict: 'needs_replan',
     reason,
     feedback,
@@ -275,7 +277,7 @@ export function routeKnownIncompleteExecution(
   };
 }
 
-export function escalateExhaustedReplan(ctx: RunContext, reason: string, feedback: string): StageResult {
+export async function escalateExhaustedReplan(ctx: RunContext, reason: string, feedback: string): Promise<StageResult> {
   const originalRequest = textOf(ctx.inbound);
   const chinese = /[\u3400-\u9fff]/u.test(originalRequest);
   writeReplanState(ctx, 'verify', { partialReplanRequest: undefined });
@@ -299,7 +301,7 @@ export function escalateExhaustedReplan(ctx: RunContext, reason: string, feedbac
         : ['Keep completed work and explain the status', 'Try once more', 'Stop the task'],
     }],
   } });
-  recordVerification(ctx, {
+  await recordVerification(ctx, {
     verdict: 'fail',
     reason,
     feedback,

@@ -103,6 +103,8 @@ export interface Infrastructure {
   durableEventStore: DurableEventStore;
   /** Persistent next-Harness inbox; no command is auto-executed by legacy runs. */
   durableInboxStore: DurableInboxStore;
+  /** Preserved startup failure for strict next-Harness admission. */
+  durableHarnessInitializationError?: Error;
   /** Activity checkpoints are separate from shadow Git rollback points. */
   runCheckpointStore?: RunCheckpointStore;
   /** Mutable resume/abandon decisions kept separate from immutable checkpoints. */
@@ -228,13 +230,15 @@ export async function buildInfrastructure(
   const executionLogStore = new ExecutionLogStore({ rootDir: dirs.executionLogs });
   const durableEventStore = new DurableEventStore({ rootDir: join(dirs.root, 'durable-events') });
   const durableInboxStore = new DurableInboxStore({ rootDir: join(dirs.root, 'durable-inbox') });
+  let durableHarnessInitializationError: Error | undefined;
   try {
     await durableEventStore.initialize();
     await durableInboxStore.initialize();
   } catch (error) {
     // Legacy Harness remains usable while the next-path durable stores report
     // a startup diagnostic. New-path callers must still fail closed on use.
-    opts.log?.('warn', `runner: durable Harness stores unavailable: ${(error as Error).message}`);
+    durableHarnessInitializationError = error instanceof Error ? error : new Error(String(error));
+    opts.log?.('warn', `runner: durable Harness stores unavailable: ${durableHarnessInitializationError.message}`);
   }
   const runCheckpointDispositionStore = new RunCheckpointDispositionStore({
     rootDir: join(dirs.root, 'run-checkpoint-dispositions'),
@@ -521,6 +525,7 @@ export async function buildInfrastructure(
     executionLogStore,
     durableEventStore,
     durableInboxStore,
+    ...(durableHarnessInitializationError ? { durableHarnessInitializationError } : {}),
     runCheckpointStore,
     runCheckpointDispositionStore,
     experienceStore,

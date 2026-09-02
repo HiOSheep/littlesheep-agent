@@ -38,6 +38,8 @@ import {
   writeFailureState,
   replaceSideEffectEvidence,
   writeModelObservabilityState,
+  flushModelRequestLifecycles,
+  reduceDurableRunProjection,
 } from '@littlesheep/harness';
 import { buildInfrastructure, type RunnerState, type LogFn } from './infra.js';
 import type { ExecutionLog } from './execution-log.js';
@@ -159,6 +161,8 @@ export interface CreateRunnerOptions {
   maxActiveRuns?: number;
   /** Rollout gate for ordinary-chat checkpoint binding. Defaults to `full`. */
   conversationContinuationMode?: 'off' | 'shadow' | 'full';
+  /** Durable Harness rollout mode. Defaults to observational `shadow`. */
+  durableHarnessMode?: 'shadow' | 'next';
   log?: LogFn;
 }
 
@@ -340,6 +344,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     let webRetrievalRuntime: WebRetrievalRuntime | undefined;
     let durableRecorder: DurableRunRecorder | undefined;
     let durableOutcomeRecorded = false;
+    let runContext: RunContext | undefined;
 
     const abortControl = createRunAbortControl({ signal: input.signal, timeoutMs: RUN_TIMEOUT_MS, origin, startedAt });
     const signal = abortControl.signal;
@@ -375,8 +380,16 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       state.sessionId = sessionId;
       durableRecorder = createDurableRunRecorder({
         eventStore: infra.durableEventStore,
-        sessionId: String(sessionId), runId, origin, model, log: opts.log,
+        inboxStore: infra.durableInboxStore,
+        sessionId: String(sessionId), runId, origin, model,
+        mode: opts.durableHarnessMode ?? 'shadow',
+        initializationError: infra.durableHarnessInitializationError,
+        reserveFinalReply: (replySessionId, reservation) => infra.sessionManager.reserveAssistantReplySettlement(
+          asSessionId(replySessionId), reservation,
+        ),
+        log: opts.log,
       });
+      await durableRecorder.ready;
       const runtimeEventQueue = activeRuns.registerRun(runId, sessionId, continuation?.checkpoint.runtimeEventQueue, abortControl.registration);
       runtimeQueueRegistered = true;
       const onToolEvent = (event: ToolStreamEvent): void => {
@@ -395,7 +408,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
             runId,
             timestamp: new Date(startedAt).toISOString(),
           });
-      recordDurableUserInput(durableRecorder, origin, runId, inbound);
+      await recordDurableUserInput(durableRecorder, origin, runId, inbound);
 
       // 3. Build RunContext (loads history WITHOUT inbound — no duplicate).
       // Apply caller-provided tool policy before the run.
@@ -532,6 +545,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           historyExcludeMessageIds: continuation?.historyExcludeMessageIds,
           webRetrieval: webRetrievalRuntime,
         });
+      runContext = ctx;
       onToolEvent({
         type: 'capability_snapshot',
         visibility: 'silent',
@@ -571,7 +585,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         const outcome = await infra.runCheckpointStore.write(checkpoint);
         if (outcome.kind === 'conflict') throw new Error(`run checkpoint id conflict: ${outcome.checkpointId}`);
         runCheckpointId = checkpoint.id;
-        void ctx.appendDurableEvent?.({
+        await ctx.appendDurableEvent?.({
           type: 'checkpoint_written',
           source: 'runtime',
           eventId: `${ctx.runId}:checkpoint:${checkpoint.id}`,
@@ -582,7 +596,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
             reasonLength: reason.length,
             stage: 'execute',
           },
-        }).catch(() => undefined);
+        });
         return checkpoint.id;
       };
       let usedContinuitySummaryId: string | undefined;
@@ -711,6 +725,10 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           });
         },
       });
+      // Post-finalize work (notably session compaction) can prepare additional
+      // model requests. Close every lifecycle before the terminal run event so
+      // replay never observes a completed run with a pending request.
+      await flushModelRequestLifecycles(ctx);
       await recordDurableRunOutcome(durableRecorder, result);
       durableOutcomeRecorded = true;
       if (result.status === 'ok' && runCheckpointId && checkpointController) {
@@ -732,9 +750,18 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       return result;
     } finally {
       if (durableRecorder && !durableOutcomeRecorded) {
+        if (runContext) {
+          await flushModelRequestLifecycles(runContext).catch((error) => {
+            opts.log?.('error', `runner: model request lifecycle flush during cleanup failed: ${(error as Error).message}`);
+          });
+        }
         await recordDurableRunOutcome(durableRecorder, {
           status: signal.aborted ? 'aborted' : 'error',
           error: 'run ended before the coordinator produced a settled result',
+        });
+      } else if (runContext) {
+        await flushModelRequestLifecycles(runContext).catch((error) => {
+          opts.log?.('error', `runner: model request lifecycle cleanup failed: ${(error as Error).message}`);
         });
       }
       await durableRecorder?.flushBestEffort();
@@ -1471,6 +1498,30 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     ))
     if (!finalReply) return null
 
+    // A new-path transcript message is only a proposal until both the session
+    // settlement registry and durable event projection confirm the same
+    // identity. Legacy messages without this field retain their old replay
+    // behavior for backward compatibility.
+    if (finalReply.finalReplySettlement) {
+      const settlement = finalReply.finalReplySettlement;
+      const registryStatus = await infra.sessionManager.assistantReplySettlementStatus?.(
+        input.sessionId,
+        settlement.settlementId,
+      );
+      if (registryStatus !== 'settled') return null;
+      let projection: import('@littlesheep/types').DurableRunProjection;
+      try {
+        projection = reduceDurableRunProjection(await infra.durableEventStore.read(
+          String(input.sessionId),
+          stableRunId,
+        ));
+      } catch {
+        return null;
+      }
+      if (projection.finalReply.state !== 'settled'
+        || projection.finalReply.settlementId !== settlement.settlementId) return null;
+    }
+
     let sourceInspection = explicitCheckpointId
       ? await checkpointController?.inspect(explicitCheckpointId, model)
       : null
@@ -1564,6 +1615,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       status: 'ok',
       reply,
       replyProvenance: finalReply.replyProvenance,
+      finalReplySettlement: finalReply.finalReplySettlement,
       messages: runMessages,
       trace: [],
       durationMs,
@@ -1586,6 +1638,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       inboundText: input.text,
       reply,
       replyProvenance: finalReply.replyProvenance,
+      finalReplySettlement: finalReply.finalReplySettlement,
       trace: [],
       taskExecution: recoveredState?.taskExecution,
       taskBook: recoveredState?.taskBook,
@@ -1716,6 +1769,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       status: log.status,
       reply: log.reply,
       replyProvenance: log.replyProvenance,
+      finalReplySettlement: log.finalReplySettlement,
       error: log.error,
       messages: [],
       trace: log.trace,

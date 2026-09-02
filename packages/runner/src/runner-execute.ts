@@ -50,7 +50,7 @@ export async function executeRunnerPhase(options: ExecuteRunnerPhaseOptions): Pr
       }
       options.onCheckpointId(checkpoint.id);
       const checkpointReason = options.checkpointReason(options.ctx, stageResult, runInterrupted);
-      void options.ctx.appendDurableEvent?.({
+      await options.ctx.appendDurableEvent?.({
         type: 'checkpoint_written',
         source: 'runtime',
         eventId: `${options.ctx.runId}:checkpoint:${checkpoint.id}`,
@@ -62,7 +62,7 @@ export async function executeRunnerPhase(options: ExecuteRunnerPhaseOptions): Pr
           reasonHash: durableTextDigest(checkpointReason),
           reasonLength: checkpointReason.length,
         },
-      }).catch(() => undefined);
+      });
     } catch (error) {
       const message = `run checkpoint persistence failed: ${(error as Error).message}`;
       options.log?.('error', `runner: ${message}`);

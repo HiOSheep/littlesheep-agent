@@ -29,6 +29,29 @@ export interface ReplyProvenance {
   rewriteCount: number;
 }
 
+/**
+ * Identity shared by the session registry, durable event log and every
+ * channel projection for one user-facing reply. The text is authored by the
+ * Provider; Runtime owns the lifecycle and status.
+ */
+export interface FinalReplySettlement {
+  version: 1;
+  settlementId: string;
+  reply: string;
+  replyFingerprint: string;
+  modelRequestId: string;
+  status: 'proposed' | 'settled' | 'runtime_status';
+}
+
+/** Data used to reserve/commit one candidate in the session reply registry. */
+export interface FinalReplyReservation {
+  version: 1;
+  settlementId: string;
+  reply: string;
+  replyFingerprint: string;
+  modelRequestId: string;
+}
+
 /** Who authored a message. */
 export type Role = 'system' | 'user' | 'assistant' | 'tool';
 
@@ -95,6 +118,8 @@ export interface Message {
   clarificationResponse?: ClarificationResponse;
   /** Source contract for natural language rendered as an LS reply. */
   replyProvenance?: ReplyProvenance;
+  /** Durable identity for the final user-facing settlement, when present. */
+  finalReplySettlement?: FinalReplySettlement;
 }
 
 /** Convenience: a plain text message. */

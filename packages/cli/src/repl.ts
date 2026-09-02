@@ -73,7 +73,12 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         origin: 'cli',
       });
       sessionId = result.sessionId;
-      out.write(`${result.reply || '(no reply)'}\n`);
+      const reply = result.finalReplySettlement?.status === 'settled'
+        ? result.finalReplySettlement.reply
+        : result.finalReplySettlement
+          ? ''
+          : result.reply;
+      out.write(`${reply || '(no reply)'}\n`);
       const sources = formatWebEvidenceSources(result.webEvidence);
       if (sources) out.write(`${sources}\n`);
       if (result.status === 'error') {

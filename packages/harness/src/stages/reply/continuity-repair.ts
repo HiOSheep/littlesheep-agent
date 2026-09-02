@@ -6,7 +6,7 @@ import { buildRunRequestCandidates } from '../../context-candidates.js';
 import {
   preferDirectModelOutput,
   prepareModelRequest,
-  recordProviderUsage,
+  callModelChat,
 } from '../../model-observability.js';
 import { writeProviderUsageState } from '../../usage-state.js';
 import { assessResponseMemoryContinuity } from '../../response-continuity.js';
@@ -55,8 +55,7 @@ export async function repairDiscontinuousReply(
       primaryUserKind: 'user_input',
     }),
   );
-  const response = await deps.llm.chat(request);
-  recordProviderUsage(ctx, request, response.usage);
+  const response = await callModelChat(ctx, deps.llm, request);
   writeProviderUsageState(ctx, 'reply', response.usage);
 
   const repaired = response.content.trim();

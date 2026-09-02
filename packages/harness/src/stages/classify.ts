@@ -19,6 +19,8 @@ import {
   preferDirectModelOutput,
   prepareModelRequest,
   recordProviderUsage,
+  ensureModelRequestStarted,
+  recordModelRequestFailure,
 } from '../model-observability.js';
 import { buildRunRequestCandidates } from '../context-candidates.js';
 import { attachmentManifestText, recentHistoryForModel } from './_shared.js';
@@ -91,13 +93,13 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
           });
         }
         writeDecisionState(ctx, 'classify', { classification: routed });
-        void ctx.appendDurableEvent?.({
+        await ctx.appendDurableEvent?.({
           type: 'route_decided',
           source: 'runtime',
           eventId: `${ctx.runId}:route:${routed.activity}`,
           idempotencyKey: `${ctx.runId}:route:${routed.activity}`,
           payload: { route: routed.activity, source: routed.source, retrievalIntent: routed.retrievalIntent },
-        }).catch(() => undefined);
+        });
         next = 'reply';
         return {
           stage: 'classify',
@@ -122,6 +124,8 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
           buildRunRequestCandidates(ctx, 'classify', request.messages, { history: classifierHistory }),
         ),
         onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
+        beforeRequest: (request) => ensureModelRequestStarted(ctx, request),
+        onError: (request, error) => recordModelRequestFailure(ctx, request, error, ctx.signal),
       });
       const classifiedActivity = cls.activity ?? activityFromMessageClass(cls.type);
       const activity = retrieval.intent === 'web_search'
@@ -163,13 +167,13 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
         writeDecisionState(ctx, 'classify', { classification: routed });
         next = 'reply';
       }
-      void ctx.appendDurableEvent?.({
+      await ctx.appendDurableEvent?.({
         type: 'route_decided',
         source: 'runtime',
         eventId: `${ctx.runId}:route:${activity}`,
         idempotencyKey: `${ctx.runId}:route:${activity}`,
         payload: { route: activity, source: routed.source, retrievalIntent: routed.retrievalIntent },
-      }).catch(() => undefined);
+      });
     } catch (err) {
       // Classifier never throws in practice, but defend against transport errors.
       writeDecisionState(ctx, 'classify', { classification: {
@@ -182,13 +186,13 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
       // A classifier transport failure is internal; do not make the user
       // clarify a message that may already be clear.
       next = 'reply';
-      void ctx.appendDurableEvent?.({
+      await ctx.appendDurableEvent?.({
         type: 'route_decided',
         source: 'runtime',
         eventId: `${ctx.runId}:route:respond`,
         idempotencyKey: `${ctx.runId}:route:respond`,
         payload: { route: 'respond', source: 'runtime_fallback', error: 'classifier_failed' },
-      }).catch(() => undefined);
+      });
     }
     return {
       stage: 'classify',

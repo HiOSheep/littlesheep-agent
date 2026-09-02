@@ -5,6 +5,8 @@ import {
   preferDirectModelOutput,
   prepareModelRequest,
   recordProviderUsage,
+  ensureModelRequestStarted,
+  recordModelRequestFailure,
 } from '../../model-observability.js';
 import { appendSystemPromptAddons, buildUserFacingVoiceAddon } from '../../profile-prompt.js';
 import { callLlmForJson } from '../_shared.js';
@@ -47,6 +49,8 @@ export async function requestVerificationVerdict(
       }),
     ),
     onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
+    beforeRequest: (request) => ensureModelRequestStarted(ctx, request),
+    onError: (request, error) => recordModelRequestFailure(ctx, request, error, ctx.signal),
   });
   return parsed;
 }

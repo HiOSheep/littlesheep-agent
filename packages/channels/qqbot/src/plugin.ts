@@ -618,7 +618,9 @@ export class QqbotChannelPlugin implements ChannelPlugin {
       const result = await this._ctx!.runAgent(inbound, sessionId);
 
       const replyText = result.ok
-        ? result.reply
+        ? result.finalReplySettlement
+          ? result.finalReplySettlement.status === 'settled' ? result.finalReplySettlement.reply : ''
+          : result.reply
         : `⚠️ Error: ${result.error ?? 'processing failed'}`;
 
       if (replyText && replyText.length > 0) {

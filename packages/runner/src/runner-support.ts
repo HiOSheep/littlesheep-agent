@@ -29,6 +29,7 @@ export function assembleResult(
     status,
     reply: ctx.reply ?? '',
     replyProvenance: ctx.replyProvenance,
+    finalReplySettlement: ctx.finalReplySettlement,
     error: stageResult.error,
     messages: ctx.produced,
     trace,

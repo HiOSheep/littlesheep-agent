@@ -40,8 +40,10 @@ export async function classifyByLlm(
   history: Message[],
   llm: LlmClient,
   model: string,
-  onRequest?: (request: ChatRequest) => ChatRequest | void,
-  onResponse?: (request: ChatRequest, response: ChatResponse) => void,
+  onRequest?: (request: ChatRequest) => ChatRequest | void | Promise<ChatRequest | void>,
+  onResponse?: (request: ChatRequest, response: ChatResponse) => void | Promise<void>,
+  beforeRequest?: (request: ChatRequest) => void | Promise<void>,
+  onError?: (request: ChatRequest, error: unknown) => void | Promise<void>,
 ): Promise<Classification> {
   const recentHistory = history.slice(-5);
   const messages: ChatMessage[] = [
@@ -54,13 +56,16 @@ export async function classifyByLlm(
   ];
 
   let content: string;
+  let preparedRequest: ChatRequest | undefined;
   try {
     const request: ChatRequest = { model, messages, temperature: 0, max_tokens: 200 };
-    const preparedRequest = onRequest?.(request) ?? request;
+    preparedRequest = await onRequest?.(request) ?? request;
+    await beforeRequest?.(preparedRequest);
     const res = await llm.chat(preparedRequest);
-    onResponse?.(preparedRequest, res);
+    await onResponse?.(preparedRequest, res);
     content = res.content;
   } catch (err) {
+    if (preparedRequest) await onError?.(preparedRequest, err);
     return {
       activity: 'respond',
       type: 'chat',

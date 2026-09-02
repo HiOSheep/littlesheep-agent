@@ -82,7 +82,7 @@ describe('cache observability', () => {
     expect(changedSession.invalidationReasons).toEqual(['session_reset']);
   });
 
-  it('treats provider-facing tool order as an explicit stable-prefix difference', () => {
+  it('canonicalizes provider-facing tool order in the stable prefix', () => {
     const first = observation(cacheRequest({ tools: [
       { type: 'function', function: { name: 'a', description: 'a', parameters: {} } },
       { type: 'function', function: { name: 'b', description: 'b', parameters: {} } },
@@ -91,8 +91,8 @@ describe('cache observability', () => {
       { type: 'function', function: { name: 'b', description: 'b', parameters: {} } },
       { type: 'function', function: { name: 'a', description: 'a', parameters: {} } },
     ] }), { previous: first, requestIndex: 2, modelRequestId: 'request-2' });
-    expect(reordered.stablePrefix.fingerprint).not.toBe(first.stablePrefix.fingerprint);
-    expect(reordered.invalidationReasons).toEqual(['tool_schema_changed']);
+    expect(reordered.stablePrefix.fingerprint).toBe(first.stablePrefix.fingerprint);
+    expect(reordered.invalidationReasons).toEqual([]);
   });
 
   it('partitions fingerprints by session, workspace and permission without exposing content', () => {

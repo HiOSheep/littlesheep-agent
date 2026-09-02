@@ -8,7 +8,12 @@ import {
   type MemoryWriteServiceLike,
 } from '@littlesheep/memory-tree';
 import { textOf, callLlmForJson, asStringArray } from './_shared.js';
-import { prepareModelRequest, recordProviderUsage } from '../model-observability.js';
+import {
+  prepareModelRequest,
+  recordProviderUsage,
+  ensureModelRequestStarted,
+  recordModelRequestFailure,
+} from '../model-observability.js';
 import { buildRunRequestCandidates } from '../context-candidates.js';
 import {
   commitMemoryIntentBatch,
@@ -206,6 +211,8 @@ export function createCaptureStage(deps: CaptureStageDeps) {
           }),
         ),
         onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
+        beforeRequest: (request) => ensureModelRequestStarted(ctx, request),
+        onError: (request, error) => recordModelRequestFailure(ctx, request, error, ctx.signal),
       }));
     } catch {
       // Capture is useful but non-blocking for the completed user task.

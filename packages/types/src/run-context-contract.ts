@@ -53,6 +53,15 @@ export const runContextFieldOwnership: readonly RunContextFieldContract[] = Obje
     purpose: 'Binds visible reply text to the real model request that produced it.',
   }),
   field({
+    field: 'finalReplySettlement',
+    group: 'reply',
+    owner: 'final-reply-settlement-boundary',
+    readStages: ['verify', 'finalize', 'capture', 'post-run', 'runner-restore'],
+    writeStages: ['decide', 'execute', 'recover', 'reply', 'ask_user', 'finalize', 'runner-restore'],
+    lifecycle: 'session-persisted',
+    purpose: 'Shared identity for the proposed/settled final reply across session, durable events and channel projections.',
+  }),
+  field({
     field: 'usage',
     group: 'reply',
     owner: 'model-observability',

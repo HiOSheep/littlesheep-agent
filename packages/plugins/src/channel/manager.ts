@@ -324,7 +324,7 @@ export class DefaultChannelManager {
     channelId: ChannelId,
     message: InboundChannelMessage,
     sessionId: SessionId,
-  ): Promise<{ reply: string; ok: boolean; error?: string }> {
+  ): Promise<{ reply: string; ok: boolean; error?: string; finalReplySettlement?: import('@littlesheep/types').FinalReplySettlement }> {
     try {
       const result = await this.runner.run({
         sessionId,
@@ -335,9 +335,17 @@ export class DefaultChannelManager {
         requestKey: message.requestKey,
       });
       return {
-        reply: appendWebSources(result.reply ?? '', formatWebEvidenceSources(result.webEvidence)),
+        reply: appendWebSources(
+          result.finalReplySettlement?.status === 'settled'
+            ? result.finalReplySettlement.reply
+            : result.finalReplySettlement
+              ? ''
+              : result.reply ?? '',
+          formatWebEvidenceSources(result.webEvidence),
+        ),
         ok: result.status === 'ok',
         error: result.error,
+        finalReplySettlement: result.finalReplySettlement,
       };
     } catch (err) {
       return {

@@ -263,7 +263,9 @@ export class TelegramChannelPlugin implements ChannelPlugin {
 
       // Send reply.
       const replyText = result.ok
-        ? result.reply
+        ? result.finalReplySettlement
+          ? result.finalReplySettlement.status === 'settled' ? result.finalReplySettlement.reply : ''
+          : result.reply
         : `⚠️ Error: ${result.error ?? 'processing failed'}`;
 
       if (replyText && replyText.length > 0) {

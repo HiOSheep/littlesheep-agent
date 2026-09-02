@@ -17,7 +17,8 @@ import { appendSystemPromptBundleAddons, buildUserFacingVoiceAddon } from '../pr
 import {
   preferDirectModelOutput,
   prepareModelRequest,
-  recordProviderUsage,
+  callModelChat,
+  callModelChatStream,
 } from '../model-observability.js';
 import { writeProviderUsageState } from '../usage-state.js';
 import { buildRunRequestCandidates } from '../context-candidates.js';
@@ -112,7 +113,7 @@ export function createReplyStage(deps: ReplyStageDeps) {
         }),
       );
       const res = stream
-        ? await deps.llm.chatStream(req, (chunk) => {
+        ? await callModelChatStream(ctx, deps.llm, req, (chunk) => {
             if (chunk.type === 'reset') {
               streamed = '';
               ctx.onAssistantReplace?.('');
@@ -123,8 +124,7 @@ export function createReplyStage(deps: ReplyStageDeps) {
               ctx.onAssistantDelta?.(chunk.delta);
             }
           })
-        : await deps.llm.chat(req);
-      recordProviderUsage(ctx, req, res.usage);
+        : await callModelChat(ctx, deps.llm, req);
       writeProviderUsageState(ctx, 'reply', res.usage);
       const apiGeneratedReply = await repairDiscontinuousReply(
         deps,
@@ -200,8 +200,7 @@ async function rewriteReply(
       primaryUserKind: 'user_input',
     }),
   );
-  const response = await deps.llm.chat(request);
-  recordProviderUsage(ctx, request, response.usage);
+  const response = await callModelChat(ctx, deps.llm, request);
   writeProviderUsageState(ctx, 'reply', response.usage);
   return response.content;
 }

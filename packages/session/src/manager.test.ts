@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SessionManager } from './manager.js';
-import { asSessionId, textMessage, type CompactionSummaryV2 } from '@littlesheep/types';
+import { asSessionId, textMessage, type CompactionSummaryV2, type FinalReplyReservation } from '@littlesheep/types';
 import { SessionCompactionStore } from './compaction-store.js';
 
 let tmpDir: string;
@@ -122,6 +122,36 @@ describe('SessionManager', () => {
 
     expect(results.filter(Boolean)).toHaveLength(1);
   });
+
+  it('reserves and settles a final reply identity idempotently across restarts', async () => {
+    const first = new SessionManager({ sessionsDir: tmpDir });
+    const session = await first.create();
+    const reservation: FinalReplyReservation = {
+      version: 1,
+      settlementId: 'run-1:final-reply:' + 'a'.repeat(64),
+      reply: 'A durable answer',
+      replyFingerprint: 'a'.repeat(64),
+      modelRequestId: 'request-1',
+    };
+
+    await expect(first.reserveAssistantReplySettlement(session.id, reservation)).resolves.toBe(true);
+    await expect(first.reserveAssistantReplySettlement(session.id, reservation)).resolves.toBe(true);
+    await expect(first.settleAssistantReplySettlement(session.id, reservation)).resolves.toBeUndefined();
+    await expect(first.settleAssistantReplySettlement(session.id, reservation)).resolves.toBeUndefined();
+
+    const restarted = new SessionManager({ sessionsDir: tmpDir });
+    await expect(restarted.reserveAssistantReplySettlement(session.id, reservation)).resolves.toBe(true);
+    await expect(restarted.reserveAssistantReplySettlement(session.id, {
+      ...reservation,
+      reply: 'A different answer',
+    })).resolves.toBe(false);
+    await expect(restarted.reserveAssistantReplySettlement(session.id, {
+      ...reservation,
+      settlementId: 'run-2:final-reply:' + 'b'.repeat(64),
+      replyFingerprint: 'b'.repeat(64),
+    })).resolves.toBe(true);
+  });
+
 
   it('replaces an interrupted registry initialization temporary file', async () => {
     const sm = new SessionManager({ sessionsDir: tmpDir });

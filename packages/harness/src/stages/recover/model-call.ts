@@ -5,6 +5,8 @@ import {
   preferDirectModelOutput,
   prepareModelRequest,
   recordProviderUsage,
+  ensureModelRequestStarted,
+  recordModelRequestFailure,
 } from '../../model-observability.js';
 import { appendSystemPromptAddons, buildUserFacingVoiceAddon } from '../../profile-prompt.js';
 import type { ReplyRewriteInput } from '../../user-facing-reply.js';
@@ -61,6 +63,8 @@ export async function requestRecoveryDecision(
       }),
     ),
     onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
+    beforeRequest: (request) => ensureModelRequestStarted(ctx, request),
+    onError: (request, error) => recordModelRequestFailure(ctx, request, error, ctx.signal),
   });
   return parsed;
 }
@@ -104,6 +108,8 @@ export async function rewriteAbortReason(
       }),
     ),
     onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
+    beforeRequest: (request) => ensureModelRequestStarted(ctx, request),
+    onError: (request, error) => recordModelRequestFailure(ctx, request, error, ctx.signal),
   });
   return parsed?.action === 'abort' ? parsed.reason ?? '' : '';
 }

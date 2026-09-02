@@ -17,6 +17,7 @@ import type {
   CompactionSummaryV2,
   LockHandle,
   Message,
+  FinalReplyReservation,
   Session,
   SessionId,
   SessionManagerLike,
@@ -315,6 +316,29 @@ export class SessionManager implements SessionManagerLike {
   /** Atomically reserve text that is about to become visible as an Assistant reply. */
   reserveAssistantReply(sessionId: SessionId, reply: string): Promise<boolean> {
     return this.replyFingerprints.reserve(sessionId, reply);
+  }
+
+  /** Reserve a final reply under its durable settlement identity. */
+  reserveAssistantReplySettlement(
+    sessionId: SessionId,
+    reservation: FinalReplyReservation,
+  ): Promise<boolean> {
+    return this.replyFingerprints.reserveSettlement(sessionId, reservation);
+  }
+
+  /** Mark a previously reserved final reply settled after transcript append. */
+  settleAssistantReplySettlement(
+    sessionId: SessionId,
+    reservation: FinalReplyReservation,
+  ): Promise<void> {
+    return this.replyFingerprints.settleSettlement(sessionId, reservation);
+  }
+
+  assistantReplySettlementStatus(
+    sessionId: SessionId,
+    settlementId: string,
+  ): Promise<'reserved' | 'settled' | undefined> {
+    return this.replyFingerprints.settlementStatus(sessionId, settlementId);
   }
 
   async commitCompaction(sessionId: SessionId, summary: CompactionSummaryV2): Promise<void> {

@@ -44,6 +44,7 @@ import type {
   RunUsage,
   SideEffectCheckpoint,
   WebEvidenceProjection,
+  FinalReplySettlement,
 } from '@littlesheep/types';
 import { sanitizeWebEvidenceProjection } from '@littlesheep/types';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
@@ -75,6 +76,7 @@ export interface ExecutionLog {
   inboundText: string;
   reply: string;
   replyProvenance?: ReplyProvenance;
+  finalReplySettlement?: FinalReplySettlement;
   error?: string;
   trace: StageTraceEntry[];
   taskExecution?: TaskExecutionResult;
@@ -125,6 +127,7 @@ export interface ExecutionLogInput {
   inboundText: string;
   reply: string;
   replyProvenance?: ReplyProvenance;
+  finalReplySettlement?: FinalReplySettlement;
   error?: string;
   trace: StageTraceEntry[];
   taskExecution?: TaskExecutionResult;
@@ -218,6 +221,7 @@ export class ExecutionLogStore {
       inboundText: input.inboundText,
       reply: input.reply,
       replyProvenance: input.replyProvenance,
+      finalReplySettlement: input.finalReplySettlement,
       error: input.error,
       trace: input.trace,
       taskExecution: input.taskExecution,

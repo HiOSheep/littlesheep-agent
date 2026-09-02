@@ -12,7 +12,7 @@
 //   4. Channel sends the reply back via plugin.send() or directly
 
 import type { ZodSchema } from 'zod';
-import type { SessionId } from '@littlesheep/types';
+import type { FinalReplySettlement, SessionId } from '@littlesheep/types';
 import type { ChannelConfig, ConversationPolicy } from '@littlesheep/config';
 import type { LogFn } from '@littlesheep/runner';
 
@@ -97,7 +97,7 @@ export interface ChannelContext {
   runAgent(
     message: InboundChannelMessage,
     sessionId: SessionId,
-  ): Promise<{ reply: string; ok: boolean; error?: string }>;
+  ): Promise<{ reply: string; ok: boolean; error?: string; finalReplySettlement?: FinalReplySettlement }>;
   /** Structured logger. */
   log: LogFn;
   /** Abort signal — fired when the channel is stopping. */

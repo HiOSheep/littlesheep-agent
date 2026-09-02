@@ -23,7 +23,7 @@ import {
   type ToolExecutionLifecycle,
 } from '@littlesheep/tools';
 import { buildRunRequestCandidates } from '../../context-candidates.js';
-import { prepareModelRequest, recordProviderUsage } from '../../model-observability.js';
+import { prepareModelRequest, callModelChat } from '../../model-observability.js';
 import { writeProviderUsageState } from '../../usage-state.js';
 import { upsertToolInvocationEvidence } from '../../execution-evidence-state.js';
 import { recentHistoryForModel } from '../_shared.js';
@@ -111,8 +111,7 @@ export async function runToolLoop(
           insertedBeforePrimary,
         }),
       );
-      response = await deps.llm.chat(request);
-      recordProviderUsage(ctx, request, response.usage);
+      response = await callModelChat(ctx, deps.llm, request);
     } catch (error) {
       return {
         ok: false,
@@ -177,7 +176,7 @@ export async function runToolLoop(
         })),
       });
       persistToolCalls(ctx, produced, response.toolCalls.map(convertToolCall));
-      recordDurableToolCalls(ctx, response.toolCalls.map(convertToolCall), stepId);
+      await recordDurableToolCalls(ctx, response.toolCalls.map(convertToolCall), stepId);
 
       const requests = response.toolCalls.map((call) => {
         const converted = convertToolCall(call);
@@ -287,7 +286,7 @@ export async function runDirectToolProposal(
     input: options.input,
   };
   persistToolCalls(options.ctx, produced, [call]);
-  recordDurableToolCalls(options.ctx, [call], options.stepId);
+  await recordDurableToolCalls(options.ctx, [call], options.stepId);
   const service = toolExecutionService(deps, options.ctx, options.sanitizeOpts);
   const completed = await service.executeBatch(
     [{
@@ -454,7 +453,22 @@ function sideEffectLifecycle(ctx: RunContext): ToolExecutionLifecycle {
       );
       effects.set(invocation.request.callId, sideEffect);
       if (!sideEffect) return;
-      const begin = beginSideEffect(ctx, sideEffect);
+      let begin: Awaited<ReturnType<typeof beginSideEffect>>;
+      try {
+        // The intent must be durable before Tool Execution Service is allowed
+        // to invoke a write-capable or external tool.
+        begin = await beginSideEffect(ctx, sideEffect);
+      } catch (error) {
+        return {
+          result: {
+            callId: invocation.request.callId,
+            ok: false,
+            error: `refusing effectful tool until its intent is durable: ${(error as Error).message}`,
+          },
+          status: 'failed',
+          errorKind: 'effect_intent_persistence',
+        };
+      }
       if (begin.kind === 'duplicate' || begin.kind === 'blocked') {
         return {
           result: {
@@ -471,7 +485,7 @@ function sideEffectLifecycle(ctx: RunContext): ToolExecutionLifecycle {
       try {
         await ctx.persistRuntimeCheckpoint?.(sideEffectCheckpointReason(sideEffect, 'started'));
       } catch (error) {
-        finishSideEffect(ctx, sideEffect, {
+        await finishSideEffect(ctx, sideEffect, {
           callId: invocation.request.callId,
           ok: false,
           error: `checkpoint before side effect failed: ${(error as Error).message}`,
@@ -490,13 +504,13 @@ function sideEffectLifecycle(ctx: RunContext): ToolExecutionLifecycle {
     async afterInvoke(invocation, result) {
       const sideEffect = effects.get(invocation.request.callId);
       if (!sideEffect) return result;
-      finishSideEffect(ctx, sideEffect, result, false);
+      await finishSideEffect(ctx, sideEffect, result, false);
       try {
         await ctx.persistRuntimeCheckpoint?.(sideEffectCheckpointReason(sideEffect, 'finished'));
-        finishSideEffect(ctx, sideEffect, result);
+        await finishSideEffect(ctx, sideEffect, result);
         return result;
       } catch (error) {
-        markSideEffectUnknown(
+        await markSideEffectUnknown(
           ctx,
           sideEffect,
           `checkpoint after side effect failed: ${(error as Error).message}`,
@@ -534,14 +548,14 @@ function persistToolCalls(ctx: RunContext, produced: RunContext['produced'], cal
   });
 }
 
-function recordDurableToolCalls(
+async function recordDurableToolCalls(
   ctx: RunContext,
   calls: readonly ToolCall[],
   stepId?: string,
-): void {
+): Promise<void> {
   for (const call of calls) {
     const inputHash = createHash('sha256').update(safeStringify(call.input), 'utf8').digest('hex');
-    void ctx.appendDurableEvent?.({
+    await ctx.appendDurableEvent?.({
       type: 'tool_call_proposed',
       source: 'model',
       eventId: `${ctx.runId}:tool-call:${call.id}`,
@@ -552,7 +566,7 @@ function recordDurableToolCalls(
         inputHash,
         ...(stepId ? { stepId } : {}),
       },
-    }).catch(() => undefined);
+    });
   }
 }
 

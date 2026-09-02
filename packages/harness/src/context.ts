@@ -270,6 +270,12 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     reserveUserFacingReply: typeof opts.sessionManager.reserveAssistantReply === 'function'
       ? (reply) => opts.sessionManager.reserveAssistantReply(opts.sessionId, reply)
       : undefined,
+    reserveUserFacingReplySettlement: typeof opts.sessionManager.reserveAssistantReplySettlement === 'function'
+      ? (reservation) => opts.sessionManager.reserveAssistantReplySettlement!(opts.sessionId, reservation)
+      : undefined,
+    settleUserFacingReplySettlement: typeof opts.sessionManager.settleAssistantReplySettlement === 'function'
+      ? (reservation) => opts.sessionManager.settleAssistantReplySettlement!(opts.sessionId, reservation)
+      : undefined,
     maxModelCalls: opts.config.agents.defaults.maxModelCallsPerRun,
     contextCompressionThresholdRatio: opts.config.agents.defaults.contextCompressionThresholdRatio,
     signal: opts.signal,

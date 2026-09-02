@@ -15,7 +15,7 @@ import { buildRunRequestCandidates } from '../context-candidates.js';
 import {
   preferDirectModelOutput,
   prepareModelRequest,
-  recordProviderUsage,
+  callModelChat,
 } from '../model-observability.js';
 import { writeProviderUsageState } from '../usage-state.js';
 import { appendSystemPromptAddons, buildUserFacingVoiceAddon } from '../profile-prompt.js';
@@ -139,8 +139,7 @@ async function composeClarificationMessage(
         primaryUserKind: 'workflow_state',
       }),
     );
-    const response = await deps.llm.chat(prepared);
-    recordProviderUsage(ctx, prepared, response.usage);
+    const response = await callModelChat(ctx, deps.llm, prepared);
     writeProviderUsageState(ctx, 'ask_user', response.usage);
     if (response.content.trim()) return response.content;
     maxTokens = 640;

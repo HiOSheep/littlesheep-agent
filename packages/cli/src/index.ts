@@ -131,7 +131,12 @@ export async function runCli(argv: string[]): Promise<void> {
       text: args.text,
       origin: 'cli',
     });
-    process.stdout.write(`${result.reply || '(no reply)'}\n`);
+    const reply = result.finalReplySettlement?.status === 'settled'
+      ? result.finalReplySettlement.reply
+      : result.finalReplySettlement
+        ? ''
+        : result.reply;
+    process.stdout.write(`${reply || '(no reply)'}\n`);
     const sources = formatWebEvidenceSources(result.webEvidence);
     if (sources) process.stdout.write(`${sources}\n`);
     if (result.status === 'error') {

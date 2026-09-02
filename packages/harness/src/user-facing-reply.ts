@@ -1,4 +1,6 @@
 import type {
+  FinalReplyReservation,
+  FinalReplySettlement,
   Message,
   ReplyProvenance,
   RunContext,
@@ -8,6 +10,7 @@ import type {
 import { normalizeUserFacingReply } from '@littlesheep/types';
 import { textOf } from './stages/_shared.js';
 import { writeReplyState } from './reply-state.js';
+import { finalReplyFingerprint, finalReplySettlementId } from './final-reply-identity.js';
 
 export { normalizeUserFacingReply } from '@littlesheep/types';
 
@@ -67,7 +70,29 @@ export async function reserveUserFacingReplyOnce(
   const recentNormalized = new Set(recentReplies.map(normalizeUserFacingReply));
   if (recentNormalized.has(normalizeUserFacingReply(generatedReply))) return undefined;
 
-  if (ctx.reserveUserFacingReply) {
+  const provenance = createReplyProvenance(ctx, purpose, rewriteCount);
+  const replyFingerprint = finalReplyFingerprint(generatedReply);
+  const reservation: FinalReplyReservation = {
+    version: 1,
+    settlementId: finalReplySettlementId(ctx.runId, replyFingerprint),
+    reply: generatedReply,
+    replyFingerprint,
+    modelRequestId: provenance.modelRequestId,
+  };
+
+  if (ctx.reserveUserFacingReplySettlement) {
+    let reserved: boolean;
+    try {
+      reserved = await ctx.reserveUserFacingReplySettlement(reservation);
+    } catch (error) {
+      throw new UserFacingReplyError(
+        'reply_registry_failed',
+        `The reply registry could not reserve the model-authored reply: ${(error as Error).message}`,
+        { cause: error },
+      );
+    }
+    if (!reserved) return undefined;
+  } else if (ctx.reserveUserFacingReply) {
     let reserved: boolean;
     try {
       reserved = await ctx.reserveUserFacingReply(generatedReply);
@@ -81,9 +106,18 @@ export async function reserveUserFacingReplyOnce(
     if (!reserved) return undefined;
   }
 
+  const finalReplySettlement: FinalReplySettlement = {
+    version: 1,
+    settlementId: reservation.settlementId,
+    reply: generatedReply,
+    replyFingerprint,
+    modelRequestId: provenance.modelRequestId,
+    status: 'proposed',
+  };
   writeReplyState(ctx, stage ?? replyStageForPurpose(purpose), {
     reply: generatedReply,
-    replyProvenance: createReplyProvenance(ctx, purpose, rewriteCount),
+    replyProvenance: provenance,
+    finalReplySettlement,
   });
   return generatedReply;
 }

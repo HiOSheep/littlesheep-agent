@@ -3,7 +3,7 @@ import { buildRunRequestCandidates } from '../../context-candidates.js';
 import {
   preferDirectModelOutput,
   prepareModelRequest,
-  recordProviderUsage,
+  callModelChat,
 } from '../../model-observability.js';
 import {
   appendSystemPromptAddons,
@@ -100,8 +100,7 @@ Follow progressive disclosure: lead with the outcome and completion status, then
         primaryUserKind: 'workflow_state',
       }),
     );
-    const response = await deps.llm.chat(request);
-    recordProviderUsage(ctx, request, response.usage);
+    const response = await callModelChat(ctx, deps.llm, request);
     applyUsage(ctx, response.usage, 'execute');
     return response.content;
   };

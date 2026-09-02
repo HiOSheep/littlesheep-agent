@@ -7,7 +7,7 @@ import type { MemoryService } from '@littlesheep/memory-tree';
 import {
   buildRunRequestCandidates,
   prepareModelRequest,
-  recordProviderUsage,
+  callModelChat,
 } from '@littlesheep/harness';
 import type { LogFn } from './infra.js';
 import { preserveSessionSummaryFidelity } from './session-summary-fidelity.js';
@@ -72,8 +72,7 @@ export async function compactSessionAfterRun(options: RunSessionCompactionOption
             primaryUserKind: 'workflow_state',
           }),
         );
-        const response = await options.llm.chat(request);
-        recordProviderUsage(options.ctx, request, response.usage);
+        const response = await callModelChat(options.ctx, options.llm, request);
         return {
           summary: preserveSessionSummaryFidelity({
             llmSummary: response.content,

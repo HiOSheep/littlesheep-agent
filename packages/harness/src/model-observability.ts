@@ -9,6 +9,7 @@ import {
   type ExactContextTokenCounter,
 } from '@littlesheep/context';
 import type {
+  DurableModelRequestStatus,
   LlmCallContract,
   LlmCallPurpose,
   LocalTokenLedger,
@@ -16,7 +17,7 @@ import type {
   RunContext,
   StageName,
 } from '@littlesheep/types';
-import type { ChatRequest, ChatResponse } from '@littlesheep/llm';
+import type { ChatRequest, ChatResponse, LlmClient, StreamChunk } from '@littlesheep/llm';
 import { resolveProviderReasoningRequest } from '@littlesheep/config';
 import {
   LlmCallContractViolationError,
@@ -34,6 +35,7 @@ import {
 import {
   buildCacheObservation,
   classifyProviderCacheUsage,
+  orderToolSpecs,
 } from './cache-observability.js';
 
 export {
@@ -46,6 +48,143 @@ export {
 const defaultContextEngine = new ContextEngine();
 const contextEngines = new WeakMap<RunContext, ContextEngine>();
 const requestContextSnapshotIds = new WeakMap<ChatRequest, string>();
+interface ModelRequestLifecycle {
+  readonly snapshot: ModelRequestSnapshot;
+  readonly started: Promise<void>;
+  response?: Promise<void>;
+  settled?: Promise<void>;
+}
+const requestLifecycles = new WeakMap<ChatRequest, ModelRequestLifecycle>();
+const contextRequestLifecycles = new WeakMap<RunContext, Set<ChatRequest>>();
+
+/** Await the durable request-start boundary before entering a Provider call. */
+export async function ensureModelRequestStarted(_ctx: RunContext, request: ChatRequest): Promise<void> {
+  const lifecycle = requestLifecycles.get(request);
+  if (!lifecycle) return;
+  await lifecycle.started;
+}
+
+/**
+ * Close every model request prepared by a run before a terminal boundary.
+ *
+ * A response callback normally creates the response and settled events. If a
+ * direct caller forgets that callback, the request is deliberately settled as
+ * `missing` so the durable projection exposes the lifecycle gap instead of
+ * leaving an apparently successful run with a pending request forever.
+ */
+export async function flushModelRequestLifecycles(ctx: RunContext): Promise<void> {
+  const requests = [...(contextRequestLifecycles.get(ctx) ?? [])];
+  for (const request of requests) {
+    const lifecycle = requestLifecycles.get(request);
+    if (!lifecycle) continue;
+    await lifecycle.started;
+    if (!lifecycle.settled) {
+      await settleModelRequest(ctx, request, 'missing', {
+        providerReached: false,
+        errorKind: 'missing_response_settlement',
+        usageStatus: 'unknown',
+      });
+    }
+    await lifecycle.settled;
+  }
+}
+
+/** Record a terminal model request outcome, preserving retry/abort evidence. */
+export async function settleModelRequest(
+  ctx: RunContext,
+  request: ChatRequest,
+  status: DurableModelRequestStatus,
+  details: {
+    providerReached?: boolean;
+    retryOf?: string;
+    errorKind?: string;
+    usageStatus?: 'available' | 'unavailable' | 'unknown';
+  } = {},
+): Promise<void> {
+  const lifecycle = requestLifecycles.get(request);
+  if (!lifecycle || lifecycle.settled) {
+    if (lifecycle?.settled) await lifecycle.settled;
+    return;
+  }
+  lifecycle.settled = lifecycle.started.then(async () => {
+    await ctx.appendDurableEvent?.({
+      type: 'model_request_settled',
+      source: 'runtime',
+      eventId: `${ctx.runId}:model-request:${lifecycle.snapshot.id}:settled`,
+      idempotencyKey: `${ctx.runId}:model-request:${lifecycle.snapshot.id}:settled`,
+      payload: {
+        requestId: lifecycle.snapshot.id,
+        requestIndex: lifecycle.snapshot.requestIndex,
+        status,
+        ...(details.providerReached === undefined ? {} : { providerReached: details.providerReached }),
+        ...(details.retryOf ? { retryOf: details.retryOf } : {}),
+        ...(details.errorKind ? { errorKind: details.errorKind.slice(0, 128) } : {}),
+        ...(details.usageStatus ? { usageStatus: details.usageStatus } : {}),
+      },
+    });
+  });
+  await lifecycle.settled;
+}
+
+/** Execute a prepared non-streaming Provider request with lifecycle evidence. */
+export async function callModelChat(
+  ctx: RunContext,
+  llm: LlmClient,
+  request: ChatRequest,
+): Promise<ChatResponse> {
+  await ensureModelRequestStarted(ctx, request);
+  try {
+    const response = await llm.chat(request);
+    recordProviderUsage(ctx, request, response.usage);
+    return response;
+  } catch (error) {
+    await recordModelRequestFailure(ctx, request, error, ctx.signal);
+    throw error;
+  }
+}
+
+/** Execute a prepared streaming Provider request with lifecycle evidence. */
+export async function callModelChatStream(
+  ctx: RunContext,
+  llm: LlmClient,
+  request: ChatRequest,
+  onDelta: (chunk: StreamChunk) => void,
+): Promise<ChatResponse> {
+  await ensureModelRequestStarted(ctx, request);
+  try {
+    const response = await llm.chatStream(request, onDelta);
+    recordProviderUsage(ctx, request, response.usage);
+    return response;
+  } catch (error) {
+    await recordModelRequestFailure(ctx, request, error, ctx.signal);
+    throw error;
+  }
+}
+
+/** Best-effort error settlement helper for transport and cancellation paths. */
+export async function recordModelRequestFailure(
+  ctx: RunContext,
+  request: ChatRequest,
+  error: unknown,
+  signal?: AbortSignal,
+): Promise<void> {
+  const message = error instanceof Error ? error.message : String(error);
+  const lower = message.toLowerCase();
+  const status: DurableModelRequestStatus = signal?.aborted || lower.includes('abort')
+    ? 'aborted'
+    : lower.includes('timeout') || lower.includes('timed out')
+      ? 'timeout'
+      : lower.includes('rate limit') || lower.includes('429')
+        ? 'rate_limit'
+        : lower.includes('connection') || lower.includes('reset') || lower.includes('fetch failed')
+          ? 'connection_reset'
+          : 'failed';
+  await settleModelRequest(ctx, request, status, {
+    providerReached: !['aborted', 'connection_reset'].includes(status),
+    errorKind: status,
+    usageStatus: 'unavailable',
+  });
+}
 
 /** Bind one immutable local counter to a run without adding infrastructure to RunContext. */
 export function bindExactContextTokenCounter(
@@ -95,21 +234,10 @@ export function recordProviderUsage(
     providerPrompt: cacheUsage.ledger,
   }));
   if (!cacheUsage.validUsage) {
-    void ctx.appendDurableEvent?.({
-      type: 'model_response_received',
-      source: 'runtime',
-      eventId: `${ctx.runId}:model-request:${requestSnapshot.id}:response`,
-      idempotencyKey: `${ctx.runId}:model-request:${requestSnapshot.id}:response`,
-      payload: {
-        requestId: requestSnapshot.id,
-        requestIndex: requestSnapshot.requestIndex,
-        stage: requestSnapshot.stage,
-        provider: requestSnapshot.provider,
-        model: requestSnapshot.model,
-        usageStatus: 'unavailable',
-        cacheStatus: cacheUsage.ledger.status,
-      },
-    }).catch(() => undefined);
+    queueModelResponseReceived(ctx, request, requestSnapshot, {
+      usageStatus: 'unavailable',
+      cacheStatus: cacheUsage.ledger.status,
+    });
     return;
   }
   usage = cacheUsage.validUsage;
@@ -130,23 +258,57 @@ export function recordProviderUsage(
       reportedAt: new Date().toISOString(),
     }),
   }));
-  void ctx.appendDurableEvent?.({
-    type: 'model_response_received',
-    source: 'runtime',
-    eventId: `${ctx.runId}:model-request:${requestSnapshot.id}:response`,
-    idempotencyKey: `${ctx.runId}:model-request:${requestSnapshot.id}:response`,
-    payload: {
-      requestId: requestSnapshot.id,
-      requestIndex: requestSnapshot.requestIndex,
-      stage: requestSnapshot.stage,
-      provider: requestSnapshot.provider,
-      model: requestSnapshot.model,
-      promptTokens: usage.promptTokens,
-      completionTokens: usage.completionTokens,
-      totalTokens: usage.totalTokens ?? usage.promptTokens + usage.completionTokens,
-      cachedPromptTokens: usage.cachedPromptTokens,
-    },
-  }).catch(() => undefined);
+  queueModelResponseReceived(ctx, request, requestSnapshot, {
+    usageStatus: 'available',
+    promptTokens: usage.promptTokens,
+    completionTokens: usage.completionTokens,
+    totalTokens: usage.totalTokens ?? usage.promptTokens + usage.completionTokens,
+    cachedPromptTokens: usage.cachedPromptTokens,
+  });
+}
+
+function queueModelResponseReceived(
+  ctx: RunContext,
+  request: ChatRequest,
+  snapshot: ModelRequestSnapshot,
+  payload: Record<string, unknown>,
+): void {
+  const lifecycle = requestLifecycles.get(request);
+  if (!lifecycle || lifecycle.response || lifecycle.settled) return;
+  lifecycle.response = lifecycle.started.then(async () => {
+    await ctx.appendDurableEvent?.({
+      type: 'model_response_received',
+      source: 'runtime',
+      eventId: `${ctx.runId}:model-request:${snapshot.id}:response`,
+      idempotencyKey: `${ctx.runId}:model-request:${snapshot.id}:response`,
+      payload: {
+        requestId: snapshot.id,
+        requestIndex: snapshot.requestIndex,
+        stage: snapshot.stage,
+        provider: snapshot.provider,
+        model: snapshot.model,
+        ...payload,
+      },
+    });
+  });
+  lifecycle.settled = lifecycle.response.then(async () => {
+    await ctx.appendDurableEvent?.({
+      type: 'model_request_settled',
+      source: 'runtime',
+      eventId: `${ctx.runId}:model-request:${snapshot.id}:settled`,
+      idempotencyKey: `${ctx.runId}:model-request:${snapshot.id}:settled`,
+      payload: {
+        requestId: snapshot.id,
+        requestIndex: snapshot.requestIndex,
+        status: 'received',
+        providerReached: true,
+        usageStatus: payload.usageStatus === 'available'
+          ? 'available'
+          : payload.usageStatus === 'unknown' ? 'unknown' : 'unavailable',
+      },
+    });
+  });
+  void lifecycle.settled.catch(() => undefined);
 }
 
 /** Use provider-native direct output for bounded routing, wording, and retries. */
@@ -188,7 +350,10 @@ function recordPreparedRequest(
       throw new Error(`model call budget exhausted (${maxModelCalls} calls per run)`);
     }
   }
-  const resolvedRequest = applyResolvedReasoning(ctx, request);
+  // Provider tool arrays are part of the stable prefix. Sort a copy before
+  // context assembly so registry discovery/concurrency cannot change bytes.
+  const canonicalRequest = { ...request, tools: orderToolSpecs(request.tools) };
+  const resolvedRequest = applyResolvedReasoning(ctx, canonicalRequest);
   const workingSetAware = applyMemoryContextWorkingSet(ctx, resolvedRequest, candidates);
   const requestIndex = (ctx.modelRequests?.at(-1)?.requestIndex ?? 0) + 1;
   const requestedToolNames = workingSetAware.request.tools?.map((tool) => tool.function.name) ?? [];
@@ -244,23 +409,29 @@ function recordPreparedRequest(
     prepared.contextSnapshot,
     MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN,
   );
-  void ctx.appendDurableEvent?.({
-    type: 'model_request_started',
-    source: 'runtime',
-    eventId: `${ctx.runId}:model-request:${prepared.modelRequestSnapshot.id}:started`,
-    idempotencyKey: `${ctx.runId}:model-request:${prepared.modelRequestSnapshot.id}:started`,
-    payload: {
-      requestId: prepared.modelRequestSnapshot.id,
-      requestIndex,
-      stage: callContract.stage,
-      purpose: callContract.purpose,
-      provider: prepared.modelRequestSnapshot.provider,
-      model: prepared.modelRequestSnapshot.model,
-      payloadHash: prepared.modelRequestSnapshot.payloadHash,
-      cacheObservation: observedSnapshot.cacheObservation,
-    },
-  }).catch(() => undefined);
   requestContextSnapshotIds.set(prepared.request, prepared.contextSnapshot.id);
+  const started = Promise.resolve().then(async () => {
+    await ctx.appendDurableEvent?.({
+      type: 'model_request_started',
+      source: 'runtime',
+      eventId: `${ctx.runId}:model-request:${prepared.modelRequestSnapshot.id}:started`,
+      idempotencyKey: `${ctx.runId}:model-request:${prepared.modelRequestSnapshot.id}:started`,
+      payload: {
+        requestId: prepared.modelRequestSnapshot.id,
+        requestIndex,
+        stage: callContract.stage,
+        purpose: callContract.purpose,
+        provider: prepared.modelRequestSnapshot.provider,
+        model: prepared.modelRequestSnapshot.model,
+        payloadHash: prepared.modelRequestSnapshot.payloadHash,
+        cacheObservation: observedSnapshot.cacheObservation,
+      },
+    });
+  });
+  requestLifecycles.set(prepared.request, { snapshot: observedSnapshot, started });
+  const runRequests = contextRequestLifecycles.get(ctx) ?? new Set<ChatRequest>();
+  runRequests.add(prepared.request);
+  contextRequestLifecycles.set(ctx, runRequests);
   return { request: prepared.request, snapshot: observedSnapshot };
 }
 

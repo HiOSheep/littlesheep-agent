@@ -11,6 +11,7 @@ import {
 import type {
   ContextSnapshot,
   ConversationContinuationEvidence,
+  FinalReplySettlement,
   ModelRequestSnapshot,
   ReplyProvenance,
   RuntimeControlSnapshot,
@@ -37,6 +38,8 @@ export interface RunResult {
   status: 'ok' | 'error' | 'aborted'
   reply: string
   replyProvenance?: ReplyProvenance
+  /** Only a settled value is authoritative; streamed deltas are previews. */
+  finalReplySettlement?: FinalReplySettlement
   error?: string
   durationMs: number
   usage?: {
@@ -295,6 +298,15 @@ export async function consumeRunStream(
   if (!finalResult) throw new Error('Local app API stream ended without result')
   if (!activeRunId) throw new Error('Local app API stream ended without start metadata')
   if (finalResult.runId !== activeRunId) throw new Error('Local app API stream result run id does not match start metadata')
+  if (finalResult.status === 'ok' && finalResult.finalReplySettlement
+    && finalResult.finalReplySettlement.status !== 'settled') {
+    return {
+      ...finalResult,
+      status: 'error',
+      reply: '',
+      error: 'The run ended without a settled final reply.',
+    }
+  }
   return finalResult
 }
 

@@ -241,7 +241,10 @@ export class WebhookChannelPlugin implements ChannelPlugin {
 
       this.sendJson(res, 200, {
         ok: result.ok,
-        reply: result.reply,
+        reply: result.ok && result.finalReplySettlement
+          ? result.finalReplySettlement.status === 'settled' ? result.finalReplySettlement.reply : ''
+          : result.reply,
+        finalReplySettlement: result.finalReplySettlement,
         sessionId,
         error: result.error,
       });

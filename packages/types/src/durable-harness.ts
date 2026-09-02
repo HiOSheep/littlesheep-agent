@@ -13,6 +13,7 @@ export type DurableHarnessEventType =
   | 'route_decided'
   | 'model_request_started'
   | 'model_response_received'
+  | 'model_request_settled'
   | 'tool_call_proposed'
   | 'effect_intent_created'
   | 'effect_settled'
@@ -111,6 +112,31 @@ export interface DurableInboxStoreLike {
 export type DurableRunStatus = 'accepted' | 'running' | 'waiting_user' | 'completed' | 'failed' | 'interrupted';
 export type DurableFinalReplyState = 'none' | 'proposed' | 'settled' | 'runtime_status';
 export type DurableEffectStatus = 'planned' | 'in_progress' | 'succeeded' | 'failed' | 'cancelled' | 'unknown';
+export type DurableModelRequestStatus =
+  | 'started'
+  | 'received'
+  | 'missing'
+  | 'aborted'
+  | 'timeout'
+  | 'rate_limit'
+  | 'connection_reset'
+  | 'failed';
+
+export interface DurableModelRequestProjection {
+  readonly requestId: string;
+  readonly requestIndex?: number;
+  readonly stage?: string;
+  readonly purpose?: string;
+  readonly provider?: string;
+  readonly model?: string;
+  readonly status: DurableModelRequestStatus;
+  readonly startedEventId: string;
+  readonly settlementEventId?: string;
+  readonly providerReached?: boolean;
+  readonly retryOf?: string;
+  readonly usageStatus?: 'available' | 'unavailable' | 'unknown';
+  readonly errorKind?: string;
+}
 
 export interface DurableEffectProjection {
   readonly effectId: string;
@@ -142,6 +168,8 @@ export interface DurableRunProjection {
   readonly route?: 'respond' | 'execute' | 'clarify';
   readonly eventCount: number;
   readonly finalReply: DurableFinalReplyProjection;
+  readonly modelRequests: readonly DurableModelRequestProjection[];
+  readonly pendingModelRequestIds: readonly string[];
   readonly effects: readonly DurableEffectProjection[];
   readonly pendingEffectIds: readonly string[];
   readonly unknownEffectIds: readonly string[];

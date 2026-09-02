@@ -33,11 +33,22 @@ export function reduceCompletedRunMessages(
       : result.status === 'aborted'
         ? 'aborted'
         : 'failed'
+  const settledReply = result.finalReplySettlement?.status === 'settled'
+    ? result.finalReplySettlement.reply
+    : result.finalReplySettlement === undefined
+      ? result.reply
+      : ''
   const next = [...messages]
   next[next.length - 1] = {
     ...last,
     timestamp: new Date(endedAt).toISOString(),
-    text: last.text || (result.status === 'ok' ? result.reply : ''),
+    // A streamed delta/replace is a preview. Once the run settles, the
+    // authoritative settlement must replace that preview even when it differs.
+    text: result.status === 'ok'
+      ? result.finalReplySettlement
+        ? settledReply
+        : last.text || settledReply
+      : '',
     ...traceData,
     artifacts,
     activityCollapsed: true,

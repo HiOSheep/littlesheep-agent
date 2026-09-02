@@ -11,8 +11,10 @@ import type {
   DurableInboxEnqueueInput,
   DurableInboxEnqueueOutcome,
   DurableInboxStoreLike,
+  DurableModelRequestStatus,
   DurableRunProjection,
   DurableRunStatus,
+  FinalReplyReservation,
 } from '@littlesheep/types';
 import { DURABLE_HARNESS_EVENT_VERSION } from '@littlesheep/types';
 
@@ -20,7 +22,7 @@ export interface DurableHarnessKernelOptions {
   eventStore: DurableHarnessEventStoreLike;
   inboxStore?: DurableInboxStoreLike;
   /** Optional adapter to the persistent session-level reply registry. */
-  reserveFinalReply?: (sessionId: string, reply: string, fingerprint: string) => Promise<boolean>;
+  reserveFinalReply?: (sessionId: string, reservation: FinalReplyReservation) => Promise<boolean>;
 }
 
 export interface DurableInboxProcessResult {
@@ -71,7 +73,17 @@ export class DurableHarnessKernel {
         if (input.type === 'final_reply_settled' && this.reserveFinalReply) {
           const reply = requiredString(input.payload.reply, 'final_reply_settled.reply');
           const fingerprint = requiredString(input.payload.replyFingerprint, 'final_reply_settled.replyFingerprint');
-          if (!await this.reserveFinalReply(input.sessionId, reply, fingerprint)) {
+          const modelRequestId = requiredString(input.payload.modelRequestId, 'final_reply_settled.modelRequestId');
+          const settlementId = typeof input.payload.settlementId === 'string' && input.payload.settlementId.trim()
+            ? input.payload.settlementId.trim()
+            : input.eventId ?? `${input.runId}:final-reply-settled`;
+          if (!await this.reserveFinalReply(input.sessionId, {
+            version: 1,
+            settlementId,
+            reply,
+            replyFingerprint: fingerprint,
+            modelRequestId,
+          })) {
             throw new DurableKernelError('final reply fingerprint is already reserved', 'duplicate_final_reply');
           }
         }
@@ -166,6 +178,8 @@ function emptyProjection(sessionId: string, runId: string): DurableRunProjection
     status: 'accepted',
     eventCount: 0,
     finalReply: { state: 'none' },
+    modelRequests: [],
+    pendingModelRequestIds: [],
     effects: [],
     pendingEffectIds: [],
     unknownEffectIds: [],
@@ -186,6 +200,8 @@ function applyDurableHarnessEvent(
     pendingEffectIds: [...projection.pendingEffectIds],
     unknownEffectIds: [...projection.unknownEffectIds],
     finalReply: { ...projection.finalReply },
+    modelRequests: projection.modelRequests.map((request) => ({ ...request })),
+    pendingModelRequestIds: [...projection.pendingModelRequestIds],
   };
   switch (event.type) {
     case 'run_accepted':
@@ -195,6 +211,7 @@ function applyDurableHarnessEvent(
     case 'route_decided':
     case 'model_request_started':
     case 'model_response_received':
+    case 'model_request_settled':
     case 'tool_call_proposed':
     case 'verification_recorded':
     case 'checkpoint_written':
@@ -204,6 +221,51 @@ function applyDurableHarnessEvent(
         next.status = route === 'clarify' ? 'waiting_user' : 'running';
       } else if (next.status === 'accepted') {
         next.status = 'running';
+      }
+      if (event.type === 'model_request_started') {
+        const requestId = requiredString(event.payload.requestId, 'model_request_started.requestId');
+        next.modelRequests.push({
+          requestId,
+          ...(typeof event.payload.requestIndex === 'number' ? { requestIndex: event.payload.requestIndex } : {}),
+          ...(typeof event.payload.stage === 'string' ? { stage: event.payload.stage } : {}),
+          ...(typeof event.payload.purpose === 'string' ? { purpose: event.payload.purpose } : {}),
+          ...(typeof event.payload.provider === 'string' ? { provider: event.payload.provider } : {}),
+          ...(typeof event.payload.model === 'string' ? { model: event.payload.model } : {}),
+          status: 'started',
+          startedEventId: event.eventId,
+        });
+        next.pendingModelRequestIds.push(requestId);
+      } else if (event.type === 'model_response_received') {
+        const requestId = requiredString(event.payload.requestId, 'model_response_received.requestId');
+        const index = next.modelRequests.findIndex((request) => request.requestId === requestId);
+        if (index < 0) throw new DurableKernelError(`model response has no request: ${requestId}`, 'transition');
+        const current = next.modelRequests[index]!;
+        if (current.status !== 'started') throw new DurableKernelError(`model response already settled: ${requestId}`, 'transition');
+        next.modelRequests[index] = {
+          ...current,
+          status: 'received',
+          ...(event.payload.usageStatus === 'unavailable' ? { usageStatus: 'unavailable' as const } : {}),
+          ...(event.payload.usageStatus === 'unknown' ? { usageStatus: 'unknown' as const } : {}),
+        };
+      } else if (event.type === 'model_request_settled') {
+        const requestId = requiredString(event.payload.requestId, 'model_request_settled.requestId');
+        const index = next.modelRequests.findIndex((request) => request.requestId === requestId);
+        if (index < 0) throw new DurableKernelError(`model settlement has no request: ${requestId}`, 'transition');
+        const current = next.modelRequests[index]!;
+        if (current.settlementEventId) throw new DurableKernelError(`model request already settled: ${requestId}`, 'transition');
+        const status = requiredModelRequestStatus(event.payload.status);
+        next.modelRequests[index] = {
+          ...current,
+          status,
+          settlementEventId: event.eventId,
+          ...(typeof event.payload.providerReached === 'boolean' ? { providerReached: event.payload.providerReached } : {}),
+          ...(typeof event.payload.retryOf === 'string' ? { retryOf: event.payload.retryOf } : {}),
+          ...(typeof event.payload.errorKind === 'string' ? { errorKind: event.payload.errorKind } : {}),
+          ...(event.payload.usageStatus === 'available' ? { usageStatus: 'available' as const } : {}),
+          ...(event.payload.usageStatus === 'unavailable' ? { usageStatus: 'unavailable' as const } : {}),
+          ...(event.payload.usageStatus === 'unknown' ? { usageStatus: 'unknown' as const } : {}),
+        };
+        next.pendingModelRequestIds = next.pendingModelRequestIds.filter((id) => id !== requestId);
       }
       break;
     case 'effect_intent_created': {
@@ -239,6 +301,9 @@ function applyDurableHarnessEvent(
       next.finalReply = {
         ...next.finalReply,
         state: 'proposed',
+        ...(typeof event.payload.settlementId === 'string' && event.payload.settlementId.trim()
+          ? { settlementId: event.payload.settlementId.trim() }
+          : {}),
         reply: requiredString(event.payload.reply, 'final_reply_proposed.reply'),
         replyFingerprint: requiredString(event.payload.replyFingerprint, 'final_reply_proposed.replyFingerprint'),
         modelRequestId: requiredString(event.payload.modelRequestId, 'final_reply_proposed.modelRequestId'),
@@ -247,7 +312,9 @@ function applyDurableHarnessEvent(
     case 'final_reply_settled':
       next.finalReply = {
         state: 'settled',
-        settlementId: event.eventId,
+        settlementId: typeof event.payload.settlementId === 'string' && event.payload.settlementId.trim()
+          ? event.payload.settlementId.trim()
+          : event.eventId,
         reply: requiredString(event.payload.reply, 'final_reply_settled.reply'),
         replyFingerprint: requiredString(event.payload.replyFingerprint, 'final_reply_settled.replyFingerprint'),
         modelRequestId: requiredString(event.payload.modelRequestId, 'final_reply_settled.modelRequestId'),
@@ -267,6 +334,7 @@ function applyDurableHarnessEvent(
       break;
     case 'run_completed':
       if (projection.finalReply.state !== 'settled') throw new DurableKernelError('run completion requires a settled final reply', 'transition');
+      if (projection.pendingModelRequestIds.length > 0) throw new DurableKernelError('run completion requires all model requests settled', 'transition');
       if (projection.pendingEffectIds.length > 0 || projection.unknownEffectIds.length > 0) throw new DurableKernelError('run completion requires all effects settled', 'transition');
       next.status = 'completed';
       break;
@@ -287,6 +355,7 @@ function validateTransition(projection: DurableRunProjection, event: DurableHarn
     if (projection.finalReply.state === 'settled' || projection.finalReply.state === 'runtime_status') throw new DurableKernelError('final reply already settled', 'transition');
     if (projection.finalReply.state !== 'proposed') throw new DurableKernelError('final reply settlement requires a proposal', 'transition');
     if (projection.pendingEffectIds.length > 0 || projection.unknownEffectIds.length > 0) throw new DurableKernelError('cannot settle reply while effects are pending or unknown', 'transition');
+    if (projection.pendingModelRequestIds.length > 0) throw new DurableKernelError('cannot settle reply while model requests are pending', 'transition');
   }
   if (event.type === 'runtime_status_settled' && (projection.finalReply.state === 'settled' || projection.finalReply.state === 'runtime_status')) {
     throw new DurableKernelError('runtime status already settled', 'transition');
@@ -304,6 +373,27 @@ function validateTransition(projection: DurableRunProjection, event: DurableHarn
     const idempotencyKey = requiredString(event.payload.idempotencyKey, 'effect_intent_created.idempotencyKey');
     if (projection.effects.some((effect) => effect.idempotencyKey === idempotencyKey)) throw new DurableKernelError(`effect idempotency key already exists: ${idempotencyKey}`, 'transition');
   }
+  if (event.type === 'model_request_started') {
+    const requestId = requiredString(event.payload.requestId, 'model_request_started.requestId');
+    if (projection.modelRequests.some((request) => request.requestId === requestId)) {
+      throw new DurableKernelError(`model request already exists: ${requestId}`, 'transition');
+    }
+  }
+  if (event.type === 'model_response_received') {
+    const requestId = requiredString(event.payload.requestId, 'model_response_received.requestId');
+    const request = projection.modelRequests.find((candidate) => candidate.requestId === requestId);
+    if (!request || request.status !== 'started') {
+      throw new DurableKernelError(`model response requires an unsettled request: ${requestId}`, 'transition');
+    }
+  }
+  if (event.type === 'model_request_settled') {
+    const requestId = requiredString(event.payload.requestId, 'model_request_settled.requestId');
+    const request = projection.modelRequests.find((candidate) => candidate.requestId === requestId);
+    if (!request || request.settlementEventId) {
+      throw new DurableKernelError(`model settlement requires one unsettled request: ${requestId}`, 'transition');
+    }
+    requiredModelRequestStatus(event.payload.status);
+  }
   if (event.type === 'effect_settled') {
     const effectId = requiredString(event.payload.effectId, 'effect_settled.effectId');
     const effect = projection.effects.find((candidate) => candidate.effectId === effectId);
@@ -319,6 +409,13 @@ function validateTransition(projection: DurableRunProjection, event: DurableHarn
       || projection.finalReply.modelRequestId !== modelRequestId) {
       throw new DurableKernelError('final reply settlement does not match its proposal', 'transition');
     }
+    const proposalSettlementId = projection.finalReply.settlementId;
+    const settlementId = typeof event.payload.settlementId === 'string' && event.payload.settlementId.trim()
+      ? event.payload.settlementId.trim()
+      : event.eventId;
+    if (proposalSettlementId && proposalSettlementId !== settlementId) {
+      throw new DurableKernelError('final reply settlement identity does not match its proposal', 'transition');
+    }
   }
   if (event.type === 'final_reply_proposed') {
     if (projection.finalReply.state !== 'none') {
@@ -327,9 +424,13 @@ function validateTransition(projection: DurableRunProjection, event: DurableHarn
     if (projection.pendingEffectIds.length > 0 || projection.unknownEffectIds.length > 0) {
       throw new DurableKernelError('cannot propose a final reply while effects are pending or unknown', 'transition');
     }
+    if (projection.pendingModelRequestIds.length > 0) {
+      throw new DurableKernelError('cannot propose a final reply while model requests are pending', 'transition');
+    }
     requiredString(event.payload.reply, 'final_reply_proposed.reply');
     requiredString(event.payload.replyFingerprint, 'final_reply_proposed.replyFingerprint');
     requiredString(event.payload.modelRequestId, 'final_reply_proposed.modelRequestId');
+    if (event.payload.settlementId !== undefined) requiredString(event.payload.settlementId, 'final_reply_proposed.settlementId');
   }
   if (event.type === 'route_decided' && projection.route !== undefined) {
     throw new DurableKernelError('route has already been decided', 'transition');
@@ -353,6 +454,7 @@ function validateSource(event: DurableHarnessEventAppendInput | DurableHarnessEv
     route_decided: ['runtime'],
     model_request_started: ['runtime'],
     model_response_received: ['model', 'runtime'],
+    model_request_settled: ['runtime'],
     tool_call_proposed: ['model', 'runtime'],
     effect_intent_created: ['runtime'],
     effect_settled: ['tool', 'runtime'],
@@ -397,6 +499,14 @@ function requiredRoute(value: unknown): NonNullable<DurableRunProjection['route'
 
 function requiredEffectStatus(value: unknown): DurableEffectStatus {
   if (value !== 'succeeded' && value !== 'failed' && value !== 'cancelled' && value !== 'unknown') throw new DurableKernelError('invalid effect settlement status', 'invalid');
+  return value;
+}
+
+function requiredModelRequestStatus(value: unknown): DurableModelRequestStatus {
+  if (value !== 'received' && value !== 'missing' && value !== 'aborted' && value !== 'timeout'
+    && value !== 'rate_limit' && value !== 'connection_reset' && value !== 'failed') {
+    throw new DurableKernelError('invalid model request settlement status', 'invalid');
+  }
   return value;
 }
 

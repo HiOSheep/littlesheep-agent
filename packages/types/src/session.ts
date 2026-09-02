@@ -2,7 +2,7 @@
 // Session identity + transcript shape.
 
 import type { AtomicCacheMetadata } from './cache.js';
-import type { Message } from './message.js';
+import type { FinalReplyReservation, Message } from './message.js';
 
 /** Branded session id (string). */
 export type SessionId = string & { readonly __brand: 'SessionId' };
@@ -159,6 +159,15 @@ export interface SessionManagerLike {
   appendIfAbsent?(sessionId: SessionId, messages: Message[], uniqueMessageId: string): Promise<boolean>;
   /** Reserve a never-published Assistant reply for this session. */
   reserveAssistantReply?(sessionId: SessionId, reply: string): Promise<boolean>;
+  /** Reserve a reply candidate under a durable settlement identity. */
+  reserveAssistantReplySettlement?(sessionId: SessionId, reservation: FinalReplyReservation): Promise<boolean>;
+  /** Mark a previously reserved candidate as settled after session persistence. */
+  settleAssistantReplySettlement?(sessionId: SessionId, reservation: FinalReplyReservation): Promise<void>;
+  /** Read the durable registry state for a settlement during recovery. */
+  assistantReplySettlementStatus?(
+    sessionId: SessionId,
+    settlementId: string,
+  ): Promise<'reserved' | 'settled' | undefined>;
   read(sessionId: SessionId): Promise<Message[]>;
   readRecent(sessionId: SessionId, count: number): Promise<Message[]>;
   updateMetadata(sessionId: SessionId, patch: Partial<SessionMetadata>): Promise<void>;

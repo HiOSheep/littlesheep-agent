@@ -61,6 +61,16 @@ export interface CacheObservationInput {
   readonly key?: string | null;
 }
 
+/**
+ * Return a deterministic copy of a provider tool schema array. The secondary
+ * canonical comparison handles the invalid-but-observable case of duplicate
+ * tool names with different schemas without depending on insertion order.
+ */
+export function orderToolSpecs(tools: readonly ToolSpec[] | undefined): ToolSpec[] | undefined {
+  if (!tools) return undefined;
+  return [...tools].sort((left, right) => compareToolSpecs(left, right));
+}
+
 /** Build redacted stable-prefix, dynamic-suffix and complete-request evidence. */
 export function buildCacheObservation(input: CacheObservationInput): CacheObservation {
   const key = resolveKey(input.key);
@@ -75,9 +85,10 @@ export function buildCacheObservation(input: CacheObservationInput): CacheObserv
     model: input.model,
     requestKind: input.requestKind,
     messages: parts.stableMessages,
-    // Preserve the provider-facing array order. Ordering is part of the
-    // stable prefix until a future assembler explicitly canonicalizes it.
-    tools: normalizeTools(input.request.tools, false),
+    // Tool registration can arrive in a different order after a restart or
+    // concurrent discovery. Canonicalize it before hashing so order alone
+    // cannot invalidate the Provider's stable prefix.
+    tools: normalizeTools(input.request.tools, true),
   };
   const dynamicPayload = {
     version: DYNAMIC_SUFFIX_VERSION,
@@ -96,7 +107,7 @@ export function buildCacheObservation(input: CacheObservationInput): CacheObserv
     model: componentFingerprint(key, scopeToken, 'model', input.model),
     requestKind: componentFingerprint(key, scopeToken, 'request-kind', input.requestKind),
     systemPrompt: componentFingerprint(key, scopeToken, 'system-prompt', parts.stableMessages),
-    toolSchema: componentFingerprint(key, scopeToken, 'tool-schema', normalizeTools(input.request.tools, false)),
+    toolSchema: componentFingerprint(key, scopeToken, 'tool-schema', normalizeTools(input.request.tools, true)),
     scope: scope.partitionDigest ?? 'unavailable',
   });
   const invalidationReasons = resolveInvalidationReasons(
@@ -351,7 +362,7 @@ function normalizeRequest(request: ChatRequest): {
   const full = {
     ...providerRequest,
     messages: request.messages.map(normalizeMessage),
-    tools: normalizeTools(request.tools, false),
+    tools: normalizeTools(request.tools, true),
   };
   return { full, requestParameters };
 }
@@ -391,8 +402,34 @@ function normalizeTools(tools: ToolSpec[] | undefined, sortByName = true): unkno
       },
     }));
   return sortByName
-    ? normalized.sort((left, right) => compareCodePoints(left.function.name, right.function.name))
+    ? normalized.sort((left, right) => (
+        compareCodePoints(left.function.name, right.function.name)
+        || compareCodePoints(canonicalSerialize(left), canonicalSerialize(right))
+      ))
     : normalized;
+}
+
+function compareToolSpecs(left: ToolSpec, right: ToolSpec): number {
+  const nameOrder = compareCodePoints(normalizeText(left.function.name), normalizeText(right.function.name));
+  if (nameOrder !== 0) return nameOrder;
+  return compareCodePoints(
+    canonicalSerialize({
+      type: left.type,
+      function: {
+        name: normalizeText(left.function.name),
+        description: normalizeText(left.function.description),
+        parameters: left.function.parameters,
+      },
+    }),
+    canonicalSerialize({
+      type: right.type,
+      function: {
+        name: normalizeText(right.function.name),
+        description: normalizeText(right.function.description),
+        parameters: right.function.parameters,
+      },
+    }),
+  );
 }
 
 function pendingProviderCache(): CacheLedgerObservation {

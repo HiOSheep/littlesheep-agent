@@ -6,7 +6,9 @@ import type {
   DurableHarnessEventStoreLike,
   DurableHarnessEventType,
   DurableHarnessEventSource,
+  DurableInboxStoreLike,
   Message,
+  FinalReplyReservation,
 } from '@littlesheep/types';
 import { DurableHarnessKernel } from '@littlesheep/harness';
 
@@ -16,6 +18,14 @@ export interface DurableRunRecorderOptions {
   eventStore: DurableHarnessEventStoreLike;
   sessionId: string;
   runId: string;
+  /** `shadow` never changes legacy outcomes; `next` fails closed on durable errors. */
+  mode?: 'shadow' | 'next';
+  /** Optional persistent inbox used as part of strict-path startup readiness. */
+  inboxStore?: DurableInboxStoreLike;
+  /** Session-level reservation owner used by the authoritative settlement. */
+  reserveFinalReply?: (sessionId: string, reservation: FinalReplyReservation) => Promise<boolean>;
+  /** Preserved startup failure from infrastructure initialization. */
+  initializationError?: Error;
   log?: (level: 'info' | 'warn' | 'error', msg: string, data?: unknown) => void;
 }
 
@@ -25,6 +35,10 @@ export interface DurableRunAcceptedOptions {
   runId: string;
   origin: string;
   model: string;
+  mode?: 'shadow' | 'next';
+  inboxStore?: DurableInboxStoreLike;
+  reserveFinalReply?: DurableRunRecorderOptions['reserveFinalReply'];
+  initializationError?: Error;
   log?: DurableRunRecorderOptions['log'];
 }
 
@@ -36,9 +50,28 @@ export class DurableRunRecorder {
   readonly kernel: DurableHarnessKernel;
   private tail: Promise<void> = Promise.resolve();
   private failure: Error | undefined;
+  readonly mode: 'shadow' | 'next';
+  private readonly initialization: Promise<void>;
+  /** Resolves after the ingress run_accepted event has been attempted. */
+  ready: Promise<void>;
 
   constructor(private readonly options: DurableRunRecorderOptions) {
-    this.kernel = new DurableHarnessKernel({ eventStore: options.eventStore });
+    this.mode = options.mode ?? 'shadow';
+    this.kernel = new DurableHarnessKernel({
+      eventStore: options.eventStore,
+      inboxStore: options.inboxStore,
+      reserveFinalReply: options.reserveFinalReply,
+    });
+    this.initialization = this.mode === 'next'
+      ? options.initializationError
+        ? Promise.resolve().then(() => { throw options.initializationError; })
+        : this.kernel.initialize()
+      : Promise.resolve();
+    this.initialization.catch((error: unknown) => {
+      this.failure ??= error instanceof Error ? error : new Error(String(error));
+      this.options.log?.('error', `runner: durable Harness initialization failed: ${this.failure.message}`);
+    });
+    this.ready = this.initialization;
   }
 
   get runId(): string {
@@ -47,6 +80,7 @@ export class DurableRunRecorder {
 
   append(event: DurableRunEventInput): Promise<void> {
     const operation = this.tail.catch(() => undefined).then(async () => {
+      if (this.mode === 'next') await this.initialization;
       const outcome = await this.kernel.append({
         ...event,
         sessionId: this.options.sessionId,
@@ -64,12 +98,19 @@ export class DurableRunRecorder {
     return operation;
   }
 
+  /** Queue the immutable ingress event after strict-path initialization. */
+  startIngress(event: DurableRunEventInput): void {
+    const accepted = this.append(event);
+    this.ready = this.mode === 'next' ? accepted : accepted.catch(() => undefined);
+  }
+
   appendBestEffort(event: DurableRunEventInput): void {
     void this.append(event).catch(() => undefined);
   }
 
   /** Shadow adapter: enqueue evidence without changing legacy run semantics. */
   appendObserved(event: DurableRunEventInput): Promise<void> {
+    if (this.mode === 'next') return this.append(event);
     this.appendBestEffort(event);
     return Promise.resolve();
   }
@@ -111,12 +152,16 @@ export function durableTextDigest(value: string): string {
 /** Create the observational recorder and queue the immutable ingress events. */
 export function createDurableRunRecorder(options: DurableRunAcceptedOptions): DurableRunRecorder {
   const recorder = new DurableRunRecorder(options);
-  recorder.appendBestEffort(durableEvent(
+  const ingress = durableEvent(
     'run_accepted',
     'runtime',
     `${options.runId}:run-accepted`,
     { origin: options.origin, model: options.model.slice(0, 256) },
-  ));
+  );
+  // Keep construction synchronous for the legacy Runner, but expose the
+  // ingress promise so next-mode callers can await the durable acceptance
+  // boundary before writing user input or invoking a model.
+  recorder.startIngress(ingress);
   return recorder;
 }
 
@@ -126,15 +171,16 @@ export function recordDurableUserInput(
   origin: string,
   runId: string,
   inbound: Message,
-): void {
-  recorder.appendBestEffort(durableEvent(
+): Promise<void> {
+  const event = durableEvent(
     'user_input_appended',
     origin === 'channel' ? 'channel' : 'app',
     `${runId}:user-input`,
     { messageId: inbound.id, contentLength: inbound.content
       .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
       .reduce((total, block) => total + block.text.length, 0) },
-  ));
+  );
+  return recorder.mode === 'next' ? recorder.append(event) : (recorder.appendBestEffort(event), Promise.resolve());
 }
 
 /** Append a terminal receipt after the legacy coordinator has settled. */
@@ -148,12 +194,17 @@ export async function recordDurableRunOutcome(
     : result.status === 'aborted' || result.status === 'timeout'
       ? 'run_interrupted'
       : 'run_failed';
-  await recorder.append(durableEvent(
+  const append = recorder.append(durableEvent(
     type,
     'runtime',
     `${recorder.runId}:${type}`,
     result.error
       ? { errorHash: durableTextDigest(result.error), errorLength: result.error.length }
       : {},
-  )).catch(() => undefined);
+  ));
+  if (recorder.mode === 'next') {
+    await append;
+  } else {
+    await append.catch(() => undefined);
+  }
 }

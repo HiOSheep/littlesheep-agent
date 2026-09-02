@@ -32,6 +32,12 @@ export {
   prepareModelRequest,
   recordModelRequest,
   recordProviderUsage,
+  ensureModelRequestStarted,
+  settleModelRequest,
+  recordModelRequestFailure,
+  flushModelRequestLifecycles,
+  callModelChat,
+  callModelChatStream,
   MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN,
   MAX_SNAPSHOT_MESSAGES,
   MAX_SNAPSHOT_ITEMS,
@@ -41,6 +47,7 @@ export {
   buildCacheObservation,
   canonicalSerialize,
   classifyProviderCacheUsage,
+  orderToolSpecs,
   type CacheObservationInput,
   type ValidProviderUsage,
 } from './cache-observability.js';
@@ -87,6 +94,7 @@ export {
 } from './runtime-control-boundary.js';
 export { writeReplanState, type ReplanStateUpdate } from './replan-state.js';
 export { clearReplyState, writeReplyState, type ReplyStateUpdate } from './reply-state.js';
+export { finalReplyFingerprint, finalReplySettlementId } from './final-reply-identity.js';
 export { writeRuntimeState, type RuntimeStateUpdate } from './runtime-state.js';
 export { writeCapabilityState, type CapabilityStateUpdate } from './capability-state.js';
 export { writeMemoryState, type MemoryStateUpdate } from './memory-state.js';

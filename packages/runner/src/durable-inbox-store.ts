@@ -48,6 +48,8 @@ export class DurableInboxStore implements DurableInboxStoreLike {
   private readonly maxClaim: number;
   private readonly now: () => Date;
   private writeTail: Promise<void> = Promise.resolve();
+  private initialized = false;
+  private initializationFailure: Error | undefined;
 
   constructor(options: DurableInboxStoreOptions) {
     const root = options.rootDir.trim();
@@ -59,11 +61,28 @@ export class DurableInboxStore implements DurableInboxStoreLike {
   }
 
   async initialize(): Promise<void> {
-    await mkdir(this.rootDir, { recursive: true });
-    await this.withWriteLock(async () => {
-      const commands = await this.readCommands();
-      await this.requeueExpired(commands, this.now());
-    });
+    if (this.initialized) return;
+    if (this.initializationFailure) throw this.initializationFailure;
+    try {
+      await mkdir(this.rootDir, { recursive: true });
+      await this.withWriteLock(async () => {
+        const commands = await this.readCommands();
+        await this.requeueExpired(commands, this.now());
+      });
+      this.initialized = true;
+    } catch (error) {
+      const normalized = error instanceof Error ? error : new Error(String(error));
+      this.initializationFailure = normalized;
+      throw normalized;
+    }
+  }
+
+  get initializationError(): Error | undefined {
+    return this.initializationFailure;
+  }
+
+  get isInitialized(): boolean {
+    return this.initialized;
   }
 
   async enqueue(input: DurableInboxEnqueueInput): Promise<DurableInboxEnqueueOutcome> {
@@ -348,6 +367,7 @@ function isEventType(value: unknown): value is DurableInboxCommand['type'] {
     || value === 'route_decided'
     || value === 'model_request_started'
     || value === 'model_response_received'
+    || value === 'model_request_settled'
     || value === 'tool_call_proposed'
     || value === 'effect_intent_created'
     || value === 'effect_settled'

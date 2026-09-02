@@ -16,9 +16,13 @@ export interface ClassifierOptions {
   /** Recent history (for LLM context). */
   history?: Message[];
   /** Observe the actual fallback request before it is sent. */
-  onRequest?: (request: ChatRequest) => ChatRequest | void;
+  onRequest?: (request: ChatRequest) => ChatRequest | void | Promise<ChatRequest | void>;
   /** Observe the fallback response with the exact prepared request. */
-  onResponse?: (request: ChatRequest, response: ChatResponse) => void;
+  onResponse?: (request: ChatRequest, response: ChatResponse) => void | Promise<void>;
+  /** Durable gate awaited immediately before Provider I/O. */
+  beforeRequest?: (request: ChatRequest) => void | Promise<void>;
+  /** Record transport/cancellation failures for the exact prepared request. */
+  onError?: (request: ChatRequest, error: unknown) => void | Promise<void>;
 }
 
 /** Extract text from a Message. */
@@ -45,7 +49,7 @@ export async function classify(
   if (ruleResult && ruleResult.confidence >= threshold) {
     return ruleResult;
   }
-  return classifyByLlm(message, history, opts.llm, opts.model, opts.onRequest, opts.onResponse);
+  return classifyByLlm(message, history, opts.llm, opts.model, opts.onRequest, opts.onResponse, opts.beforeRequest, opts.onError);
 }
 
 export {

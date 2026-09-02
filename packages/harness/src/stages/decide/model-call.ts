@@ -3,6 +3,8 @@ import {
   preferDirectModelOutput,
   prepareModelRequest,
   recordProviderUsage,
+  ensureModelRequestStarted,
+  recordModelRequestFailure,
 } from '../../model-observability.js';
 import { callLlmForJson } from '../_shared.js';
 import type { DecideStageDeps, DecodedPlan } from './contracts.js';
@@ -49,6 +51,8 @@ export async function requestDecisionModel(
           buildDecideRequestCandidates(ctx, request, chatRequest.messages),
         ),
         onResponse: (chatRequest, response) => recordProviderUsage(ctx, chatRequest, response.usage),
+        beforeRequest: (chatRequest) => ensureModelRequestStarted(ctx, chatRequest),
+        onError: (chatRequest, error) => recordModelRequestFailure(ctx, chatRequest, error, ctx.signal),
       },
     );
   } catch (error) {

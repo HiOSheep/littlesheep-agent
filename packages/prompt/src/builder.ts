@@ -131,18 +131,6 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
     addStable('skills-index', skillsSection(input.skills), 'system_prompt', 75, false);
   }
 
-  if ((isFull || isRespond) && input.memoryRootIndex) {
-    addStable(
-      'memory-root-index',
-      isRespond ? memoryAwarenessSection(input.memoryRootIndex) : memoryTreeSection(input.memoryRootIndex),
-      'memory_index',
-      95,
-      true,
-      'global',
-      { kind: 'memory', id: 'root-index' },
-    );
-  }
-
   if (!isRespond) {
     addStable(
       'workspace',
@@ -185,6 +173,20 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
   };
 
   // ─── Volatile sections (below cache boundary) ───
+  if (mode !== 'minimal' && (isFull || isRespond) && input.memoryRootIndex) {
+    segments.push({
+      id: 'memory-root-index',
+      order: nextOrder++,
+      text: `${volatilePrefix()}${isRespond ? memoryAwarenessSection(input.memoryRootIndex) : memoryTreeSection(input.memoryRootIndex)}`,
+      kind: 'memory_index',
+      source: { kind: 'memory', id: 'root-index' },
+      priority: 95,
+      required: true,
+      sensitive: true,
+      scope: 'global',
+    });
+  }
+
   if (mode !== 'minimal' && input.sessionSummary) {
     segments.push({
       id: `summary-memory:${input.sessionSummary.id}`,

@@ -259,7 +259,7 @@ export function createRunActions(context: RunActionContext) {
         const next = [...m]
         const last = next[next.length - 1]
         const error = (e as Error).message
-        if (last?.role === 'assistant' && !last.text) {
+        if (last?.role === 'assistant') {
           const endedAt = Date.now()
           next[next.length - 1] = {
             ...last,

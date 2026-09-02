@@ -41,8 +41,8 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('answer with hour and minute only');
     expect(prompt).toContain('Do not volunteer low-value timing or percentage details');
     const parts = splitAtBoundary(prompt);
-    expect(parts.stable).toContain('Memory Tree Root Index');
-    expect(parts.volatile).not.toContain('Memory Tree Root Index');
+    expect(parts.stable).not.toContain('Memory Tree Root Index');
+    expect(parts.volatile).toContain('Memory Tree Root Index');
   });
 
   it('minimal mode omits Core Flow section heading and prelude', () => {
@@ -116,6 +116,7 @@ describe('buildSystemPrompt', () => {
       scope: 'global',
       required: true,
     });
+    expect(bundle.segments.find((segment) => segment.id === 'memory-root-index')?.text.startsWith(`\n\n${CACHE_BOUNDARY_MARKER}`)).toBe(true);
     expect(bundle.segments.find((segment) => segment.id === 'bootstrap:AGENTS.md')).toMatchObject({
       kind: 'project_knowledge',
       scope: 'workspace',

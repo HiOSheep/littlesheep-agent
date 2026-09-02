@@ -18,7 +18,7 @@
 
 | 当前文件 | 当前行数 | 当前责任 | 目标边界 | 所有权 |
 | --- | ---: | --- | --- | --- |
-| `packages/runner/src/runner.ts` | 2055 | run 生命周期、输入装配、Memory 反馈、日志、检查点持久化/续跑、活动任务注册、后台维护准入透传和资源收尾 | 保持应用服务 facade；活动快照与中断/超时所有权已下沉，继续下沉日志、检查点和收尾协调；checkpoint 预算重concile 保持在 `run-checkpoint.ts` 边界 | E |
+| `packages/runner/src/runner.ts` | 2144 | run 生命周期、输入装配、Memory 反馈、日志、检查点持久化/续跑、活动任务注册、后台维护准入透传和资源收尾 | 保持应用服务 facade；活动快照与中断/超时所有权已下沉，继续下沉日志、检查点和收尾协调；checkpoint 预算重concile 保持在 `run-checkpoint.ts` 边界 | E |
 | `packages/harness/src/durable-kernel.ts` | 412 | durable event command validation、effect lifecycle、projection rebuild 和 final settlement reducer | 保持纯协议/kernel 边界；Runner 只提供 event store/inbox adapter，后续拆分 event reducer 与 settlement policy | E |
 | `packages/runner/src/durable-event-store.ts` | 289 | 哈希分区、append-only event 文件、cursor/idempotency 校验和 fail-closed replay | 保持文件 store facade；后续按 codec、partition IO、replay query 拆分 | E |
 | `packages/runner/src/durable-inbox-store.ts` | 338 | 持久 command inbox、claim lease、重启 requeue、complete/fail 和幂等校验 | 保持 inbox facade；后续按 codec、lease policy、query 拆分 | E |
@@ -72,7 +72,7 @@
 | `packages/app/src/renderer/workspace/review.tsx` | 316 | 审阅可见生命周期、single-flight 刷新、共享导航装配和树/差异选择 | 保持 policy、model 与 view helper 分离；单双列偏好留在 Renderer UI 层 | B |
 | `packages/app/src/main/memory-tree-control.ts` | 474 | 记忆控制面查询、v3 D0-D3 详情适配和既有管理命令 | 分离 query/detail、resource、projection command | C |
 | `packages/llm/src/client.ts` | 463 | 请求、流式、reasoning、重试适配 | 分离 request builder、stream parser、response mapper | E |
-| `packages/harness/src/stages/execute/tool-loop.ts` | 529 | 单步模型工具循环、审批、失败记录、时间感知、消息续接和紧凑后续请求 | 分离 loop policy、invocation adapter 与 transcript；不得继续吸收检查点恢复或回答连续性判定 | E |
+| `packages/harness/src/stages/execute/tool-loop.ts` | 604 | 单步模型工具循环、审批、失败记录、时间感知、消息续接和紧凑后续请求 | 受控超限复查：2026-09-03；分离 loop policy、invocation adapter 与 transcript；不得继续吸收检查点恢复或回答连续性判定 | E |
 | `packages/harness/src/cache-observability.ts` | 485 | Provider、Context、Memory/Embedding 三套缓存账本、脱敏指纹和失效原因 | 保持观测适配器边界；真实 Provider 对账与 durable event log 接入后再按 ledger、fingerprint、report 拆分 | E |
 | `packages/harness/src/model-observability.ts` | 325 | 模型请求快照、Context 关联、Provider usage 与缓存观测绑定 | 保持请求观测 facade；后续将 provider reconciliation 与 request snapshot projection 下沉 | E |
 | `packages/memory-tree/src/memory-repository/resource-store.ts` | 454 | 资源注册、生命周期、重绑定和审计 | 分离 registry、lifecycle、rebind、audit | D |
@@ -83,6 +83,7 @@
 | `packages/memory-tree/src/memory-repository/v3-atom-management.ts` | 443 | Atom move/merge/revise/invalidate/reactivate 原子 mutation 与审计 | 保持持久化 mutation 边界；语义准入留在独立 service | D |
 | `packages/runner/src/execution-log.ts` | 469 | 执行日志 schema、写入、查询与按会话原子摘要 sidecar | 分离 codec、store、query 与 latest-summary store | E |
 | `packages/session/src/manager.ts` | 438 | 会话 JSONL、metadata、回复指纹、压缩投影与摘要 activation facade | 保持 facade；继续增长时拆 compaction/activation adapter | E |
+| `packages/session/src/reply-fingerprint-store.ts` | 307 | 旧文本回复去重、final settlement reservation/settle sidecar、会话重启恢复与原子锁 | 保持会话级幂等存储边界；继续增长时分离 legacy fingerprint 与 settlement registry codec | E |
 | `packages/memory-tree/src/v3/atom-store.ts` | 437 | atom 原子读写、轻量索引、扫描、层级和隔离 | 保持 store facade；规模验收稳定后分离 scanner/quarantine | D |
 | `packages/runner/src/infra.ts` | 450 | 默认基础设施创建与 Memory v3 后台维护准入回调注入 | 按 memory、tools、session、skills adapter 分组 | E |
 | `packages/app/src/renderer/workspace/tab-strip.tsx` | 410 | 工作区标签渲染、关闭、重排、拖拽和溢出标签 | 将拖拽 controller 与标签视图继续保持独立，禁止吸收面板状态 | B |
@@ -208,7 +209,7 @@
 | `packages/app/src/renderer/app-shell/use-app-controller.ts` | B / Renderer | 启动恢复、Runtime 设置与会话投影仍共享跨领域不变量；先冻结兼容 facade 和状态快照特征测试，再下沉持久化与恢复编排 | 700 | 2026-09-24 |
 | `packages/channels/qqbot/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与协议适配端口稳定后拆分；本轮只补充连续性 request identity 透传 | 820 | 2026-09-24 |
 | `packages/memory-tree/src/project-memory-projection.ts` | D / Memory | 投影事务、冲突与恢复必须在特征测试覆盖后迁移 | 780 | 2026-09-24 |
-| `packages/runner/src/runner.ts` | E / Runtime | run 生命周期、输入装配、检查点续跑、后台维护准入透传和资源收尾仍共享跨阶段不变量；先冻结恢复与幂等特征测试，连续性恢复入口完成后再拆分 | 2120 | 2026-09-24 |
+| `packages/runner/src/runner.ts` | E / Runtime | run 生命周期、输入装配、检查点续跑、后台维护准入透传和资源收尾仍共享跨阶段不变量；本轮 durable settlement/replay 接入后上限调整，先冻结恢复与幂等特征测试，连续性恢复入口完成后再拆分 | 2180 | 2026-09-24 |
 | `packages/types/src/runtime-contracts.ts` | E / Runtime | Context、事件、检查点和执行证据仍共享版本边界；拆分时必须保持现有 barrel 与持久化兼容 | 900 | 2026-09-24 |
 | `packages/runner/src/runtime-event-queue.ts` | E / Runtime | 安全边界接入已经完成；租约、结算、快照恢复与 ActiveRunRegistry 契约刚稳定，补齐拆分特征测试后再下沉 codec/registry | 760 | 2026-09-24 |
 | `packages/runner/src/run-checkpoint-store.ts` | E / Runtime | 检查点 codec、原子存储、查询、容量、保留期和稳定 conversation-turn identity 共享恢复不变量；完成查询拆分前保持 facade 稳定 | 900 | 2026-09-24 |
@@ -220,3 +221,4 @@
 | `packages/safety/src/permission-boundary.ts` | C / Safety | 网络 safe-read descriptor、路径边界、SSRF 前置语法和 hard-deny 统一判定刚接入；先冻结三档权限矩阵和网络 contract，再拆 network descriptor adapter | 660 | 2026-09-24 |
 | `packages/tools/src/tool-execution-service.ts` | E / Tools | Web 工具接线需要保持统一校验、审批、事件、取消和持久化投影不变量；先完成 WB-09 发布矩阵，再拆 invocation lifecycle 与 Web result projection | 660 | 2026-09-24 |
 | `packages/app/src/main/index.ts` | C / App Main | Electron 启动装配仍需以严格顺序协调数据根、窗口状态恢复、Local App API、Runner 和插件宿主；新增启动可见性与窗口状态调用使入口越过原 600 行软上限，后续将 bootstrap orchestration 下沉到独立服务 | 620 | 2026-09-24 |
+| `packages/harness/src/stages/execute/tool-loop.ts` | E / Harness | 工具循环的审批、调用、失败与消息续接不变量刚完成 durable 观测接入；先冻结特征测试与 effect 生命周期，再拆 loop policy、invocation adapter 和 transcript | 620 | 2026-09-24 |
