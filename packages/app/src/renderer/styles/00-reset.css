@@ -3,3 +3,23 @@
   padding: 0;
   box-sizing: border-box;
 }
+
+/* Hover surfaces already communicate ordinary actions. Reserve cursor changes
+ * for precision interactions such as resizing and text entry. */
+button,
+a[href],
+summary,
+select,
+input[type='button'],
+input[type='checkbox'],
+input[type='radio'],
+input[type='range'],
+input[type='reset'],
+input[type='submit'],
+[role='button'],
+[role='menuitem'],
+[role='option'],
+[role='switch'],
+[role='tab'] {
+  cursor: default;
+}

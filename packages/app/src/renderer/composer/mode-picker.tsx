@@ -5,7 +5,6 @@ import {
   type PermissionModeId
 } from '../api'
 import { MODE_OPTIONS } from '../runtime/options'
-import { FloatingHelpTip, FloatingHelpTooltip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { ModeRiskIcon } from '../ui/icons'
 import { FadePresence, useDismissOnOutside } from '../ui/presence'
 import { COMPOSER_MENU_EVENT, transientTriggerProps } from '../ui/transient'
@@ -20,17 +19,8 @@ export function ModePicker({
 }) {
   const [open, setOpen] = useState(false)
   const [confirmingFullAccess, setConfirmingFullAccess] = useState(false)
-  const [tip, setTip] = useState<FloatingHelpTip | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
-  const panelRef = useRef<HTMLDivElement>(null)
   const selected = MODE_OPTIONS.find((item) => item.id === value) ?? MODE_OPTIONS[0]!
-
-  function buildModeOptionTip(text: string, element: HTMLElement): FloatingHelpTip {
-    return buildFloatingHelpTipFromElement(text, element, {
-      placement: 'right',
-      avoidElement: panelRef.current,
-    })
-  }
 
   useDismissOnOutside(open, [rootRef], () => setOpen(false))
 
@@ -42,10 +32,6 @@ export function ModePicker({
     return () => window.removeEventListener(COMPOSER_MENU_EVENT, handleComposerMenuOpen)
   }, [])
 
-  useEffect(() => {
-    if (!open) setTip(null)
-  }, [open])
-
   return (
     <div ref={rootRef} className={`model-picker option-picker mode-picker risk-${selected.risk} ${open ? 'open' : ''}`}>
       <button
@@ -55,20 +41,7 @@ export function ModePicker({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`${selected.label}: ${selected.riskLabel}，${selected.desc}`}
-        onMouseEnter={(event) => {
-          if (!open && selected?.desc) setTip(buildFloatingHelpTip(selected.desc, event.clientX, event.clientY))
-        }}
-        onMouseMove={(event) => {
-          if (!open && selected?.desc) setTip(buildFloatingHelpTip(selected.desc, event.clientX, event.clientY))
-        }}
-        onMouseLeave={() => setTip(null)}
-        onFocus={(event) => {
-          if (open || !selected?.desc) return
-          setTip(buildFloatingHelpTipFromElement(selected.desc, event.currentTarget))
-        }}
-        onBlur={() => setTip(null)}
         onClick={() => {
-          setTip(null)
           setOpen((current) => {
             const next = !current
             if (next) window.dispatchEvent(new CustomEvent(COMPOSER_MENU_EVENT, { detail: 'mode' }))
@@ -76,11 +49,12 @@ export function ModePicker({
           })
         }}
       >
-        <ModeRiskIcon risk={selected.risk} className="mode-picker-mark" />
-        <span className="model-picker-current">{selected.label}</span>
+        <span className="mode-picker-content">
+          <ModeRiskIcon risk={selected.risk} className="mode-picker-mark" />
+          <span className="model-picker-current">{selected.label}</span>
+        </span>
       </button>
       <div
-        ref={panelRef}
         className="model-picker-panel option-picker-panel mode-picker-panel"
         role="dialog"
         aria-label="权限模式选择"
@@ -96,15 +70,7 @@ export function ModePicker({
                 type="button"
                 className={`model-option option-picker-option mode-option risk-${item.risk} ${isActive ? 'active' : ''}`}
                 aria-label={`${item.label}: ${item.riskLabel}，${item.desc}`}
-                onMouseEnter={(event) => setTip(buildModeOptionTip(item.desc, event.currentTarget))}
-                onMouseMove={(event) => setTip(buildModeOptionTip(item.desc, event.currentTarget))}
-                onMouseLeave={() => setTip(null)}
-                onFocus={(event) => {
-                  setTip(buildModeOptionTip(item.desc, event.currentTarget))
-                }}
-                onBlur={() => setTip(null)}
                 onClick={() => {
-                  setTip(null)
                   setOpen(false)
                   if (isActive) return
                   if (requiresFullAccessConfirmation(value, item.id)) {
@@ -115,13 +81,15 @@ export function ModePicker({
                 }}
               >
                 <ModeRiskIcon risk={item.risk} className="mode-option-mark" />
-                <span>{item.label}</span>
+                <span className="mode-option-copy">
+                  <span>{item.label}</span>
+                  <small>{item.desc}</small>
+                </span>
               </button>
             )
           })}
         </div>
       </div>
-      <FloatingHelpTooltip tip={tip} />
       <FullAccessWarning
         show={confirmingFullAccess}
         onCancel={() => setConfirmingFullAccess(false)}

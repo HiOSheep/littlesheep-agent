@@ -84,6 +84,9 @@
     },
     {
       "path": "packages/vector/tsconfig.json"
+    },
+    {
+      "path": "packages/web/tsconfig.json"
     }
   ]
 }

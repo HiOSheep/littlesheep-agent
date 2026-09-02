@@ -42,7 +42,7 @@ export function WorkspaceAddMenu({
     if (!trigger) return
     const rect = trigger.getBoundingClientRect()
     const margin = 10
-    const panelWidth = panelRef.current?.offsetWidth || 352
+    const panelWidth = panelRef.current?.offsetWidth || 282
     const panelHeight = panelRef.current?.offsetHeight || entries.length * 36 + 16
     const x = clampNumber(rect.left, margin, window.innerWidth - panelWidth - margin)
     const below = rect.bottom + 5

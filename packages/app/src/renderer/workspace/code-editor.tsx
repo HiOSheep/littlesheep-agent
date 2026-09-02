@@ -8,6 +8,11 @@ import {
 } from './monaco-language-support'
 import { workspaceMonacoModelRegistry } from './monaco-model-cache'
 import { LITTLE_SHEEP_MONACO_THEME } from './monaco-theme'
+import {
+  COLUMN_RESIZE_END_EVENT,
+  WORKSPACE_NAVIGATOR_MOTION_END_EVENT,
+  WORKSPACE_NAVIGATOR_MOTION_START_EVENT,
+} from '../ui/resize'
 
 export const WORKSPACE_MONACO_FONT_FAMILY =
   'Consolas, ui-monospace, SFMono-Regular, Menlo, Monaco, monospace'
@@ -26,7 +31,10 @@ export function workspaceEditorModelPath(root: string, path: string, scopeKey = 
 }
 
 export const WORKSPACE_MONACO_BASE_OPTIONS = {
-  automaticLayout: true,
+  // Automatic layout recalculates Monaco's canvas on every resize-observer
+  // notification. Column drags can produce one notification per frame, so the
+  // shared scheduler below defers that expensive work until pointer release.
+  automaticLayout: false,
   fontFamily: WORKSPACE_MONACO_FONT_FAMILY,
   fontSize: 13,
   fontWeight: '500',
@@ -77,7 +85,7 @@ export function WorkspaceCodeEditor({
   ...props
 }: WorkspaceCodeEditorProps) {
   const lifecycleRef = useRef<EditorModelLifecycle | null>(null)
-  const languageReady = usePreparedWorkspaceMonacoLanguages([props.language ?? 'plaintext'])
+  const monacoReady = usePreparedWorkspaceMonacoLanguages([props.language ?? 'plaintext'])
   const mergedOptions = useMemo(
     () => ({ ...WORKSPACE_MONACO_BASE_OPTIONS, ...options }),
     [options],
@@ -90,7 +98,7 @@ export function WorkspaceCodeEditor({
     lifecycleRef.current?.dispose()
     lifecycleRef.current = null
   }, [])
-  if (!languageReady) return <>{loading}</>
+  if (!monacoReady) return <>{loading}</>
   return (
     <Suspense fallback={loading}>
       <MonacoEditor
@@ -103,7 +111,7 @@ export function WorkspaceCodeEditor({
         saveViewState={false}
         onMount={(editor, monaco) => {
           lifecycleRef.current?.dispose()
-          lifecycleRef.current = trackCodeEditorModel(editor, true)
+          lifecycleRef.current = trackWorkspaceEditorLifecycle(editor, true)
           onMount?.(editor, monaco)
         }}
         options={mergedOptions}
@@ -121,7 +129,7 @@ export function WorkspaceCodeDiffEditor({
   ...props
 }: WorkspaceCodeDiffEditorProps) {
   const lifecycleRef = useRef<EditorModelLifecycle | null>(null)
-  const languageReady = usePreparedWorkspaceMonacoLanguages([
+  const monacoReady = usePreparedWorkspaceMonacoLanguages([
     originalLanguage ?? 'plaintext',
     modifiedLanguage ?? 'plaintext',
   ])
@@ -133,7 +141,7 @@ export function WorkspaceCodeDiffEditor({
     lifecycleRef.current?.dispose()
     lifecycleRef.current = null
   }, [])
-  if (!languageReady) return <>{loading}</>
+  if (!monacoReady) return <>{loading}</>
   return (
     <Suspense fallback={loading}>
       <MonacoDiffEditor
@@ -149,8 +157,13 @@ export function WorkspaceCodeDiffEditor({
           lifecycleRef.current?.dispose()
           const original = trackCodeEditorModel(editor.getOriginalEditor(), false)
           const modified = trackCodeEditorModel(editor.getModifiedEditor(), false)
+          const stopLayoutTracking = trackWorkspaceEditorLayout(
+            editor.getModifiedEditor(),
+            editor,
+          )
           lifecycleRef.current = {
             dispose: () => {
+              stopLayoutTracking()
               original.dispose()
               modified.dispose()
             },
@@ -170,10 +183,12 @@ type MonacoReactModule = typeof import('@monaco-editor/react')
 let monacoReactPromise: Promise<MonacoReactModule> | null = null
 let monacoCorePromise: Promise<typeof Monaco> | null = null
 let monacoReactLoaded = false
-const preparedLanguages = new Set<string>()
 
 function loadMonacoCore(): Promise<typeof Monaco> {
-  monacoCorePromise ??= import('monaco-editor/esm/vs/editor/editor.api.js')
+  monacoCorePromise ??= import('monaco-editor/esm/vs/editor/editor.api.js').catch((error) => {
+    monacoCorePromise = null
+    throw error
+  })
   return monacoCorePromise
 }
 
@@ -185,6 +200,10 @@ function loadMonacoReact(): Promise<MonacoReactModule> {
     monacoReact.loader.config({ monaco })
     monacoReactLoaded = true
     return monacoReact
+  }).catch((error) => {
+    monacoReactPromise = null
+    monacoReactLoaded = false
+    throw error
   })
   return monacoReactPromise
 }
@@ -193,26 +212,40 @@ export async function preloadWorkspaceCodeEditor(...languageIds: string[]): Prom
   await loadMonacoReact()
   const monaco = await loadMonacoCore()
   const normalized = normalizeLanguageIds(languageIds)
-  await prepareLittleSheepMonacoLanguages(monaco, normalized)
-  for (const languageId of normalized) preparedLanguages.add(languageId)
+  try {
+    await prepareLittleSheepMonacoLanguages(monaco, normalized)
+  } catch (error) {
+    // A language definition is optional. Keep the editor usable as plaintext
+    // when a production chunk is unavailable or a definition is malformed.
+    console.warn('Workspace Monaco language preparation failed; continuing without enhanced syntax support.', error)
+  }
 }
 
 function usePreparedWorkspaceMonacoLanguages(languageIds: string[]): boolean {
   const normalized = normalizeLanguageIds(languageIds)
   const key = normalized.join('\u0000')
-  const [, setCompletedVersion] = useState(0)
-  const ready = monacoReactLoaded && normalized.every((languageId) => preparedLanguages.has(languageId))
+  const [monacoReady, setMonacoReady] = useState(monacoReactLoaded)
+  // Loading the editor core is required for the surface to mount. Language
+  // tokenizers are optional enhancements and must not keep a file preview in
+  // its loading placeholder when one language chunk is unavailable.
   useEffect(() => {
-    if (ready) return
     let alive = true
-    void preloadWorkspaceCodeEditor(...normalized).then(() => {
-      if (alive) setCompletedVersion((value) => value + 1)
-    })
+    void loadMonacoReact()
+      .then(() => {
+        if (alive) setMonacoReady(true)
+      })
+      .catch((error) => {
+        console.warn('Workspace Monaco core failed to load.', error)
+      })
+    void preloadWorkspaceCodeEditor(...normalized)
+      .catch((error) => {
+        console.warn('Workspace Monaco language preparation failed; continuing without enhanced syntax support.', error)
+      })
     return () => {
       alive = false
     }
-  }, [key, ready])
-  return ready
+  }, [key])
+  return monacoReady
 }
 
 function normalizeLanguageIds(languageIds: readonly string[]): string[] {
@@ -223,6 +256,64 @@ interface EditorModelLifecycle {
   dispose: () => void
   modelUri: () => string
   saveViewState: () => void
+}
+
+function trackWorkspaceEditorLifecycle(
+  editor: Monaco.editor.IStandaloneCodeEditor,
+  preserveViewState: boolean,
+): EditorModelLifecycle {
+  const modelLifecycle = trackCodeEditorModel(editor, preserveViewState)
+  const stopLayoutTracking = trackWorkspaceEditorLayout(editor)
+  return {
+    ...modelLifecycle,
+    dispose: () => {
+      stopLayoutTracking()
+      modelLifecycle.dispose()
+    },
+  }
+}
+
+type WorkspaceEditorLayoutTarget = Pick<Monaco.editor.IStandaloneCodeEditor, 'layout'>
+  | Pick<Monaco.editor.IStandaloneDiffEditor, 'layout'>
+
+function trackWorkspaceEditorLayout(
+  hostEditor: Monaco.editor.IStandaloneCodeEditor,
+  layoutTarget: WorkspaceEditorLayoutTarget = hostEditor,
+): () => void {
+  let frame: number | undefined
+  const scheduleLayout = (force = false) => {
+    if (!force && (
+      document.body.classList.contains('is-resizing-column')
+      || document.body.classList.contains('is-workspace-navigator-motion')
+    )) return
+    window.cancelAnimationFrame(frame ?? 0)
+    frame = window.requestAnimationFrame(() => {
+      frame = undefined
+      layoutTarget.layout()
+    })
+  }
+  const host = hostEditor.getDomNode()?.parentElement
+  const observer = typeof ResizeObserver === 'undefined'
+    ? null
+    : new ResizeObserver(() => scheduleLayout())
+  if (host) observer?.observe(host)
+  const handleColumnResizeEnd = () => scheduleLayout(true)
+  const handleNavigatorMotionStart = () => {
+    window.cancelAnimationFrame(frame ?? 0)
+    frame = undefined
+  }
+  const handleNavigatorMotionEnd = () => scheduleLayout(true)
+  window.addEventListener(COLUMN_RESIZE_END_EVENT, handleColumnResizeEnd)
+  window.addEventListener(WORKSPACE_NAVIGATOR_MOTION_START_EVENT, handleNavigatorMotionStart)
+  window.addEventListener(WORKSPACE_NAVIGATOR_MOTION_END_EVENT, handleNavigatorMotionEnd)
+  scheduleLayout(true)
+  return () => {
+    observer?.disconnect()
+    window.removeEventListener(COLUMN_RESIZE_END_EVENT, handleColumnResizeEnd)
+    window.removeEventListener(WORKSPACE_NAVIGATOR_MOTION_START_EVENT, handleNavigatorMotionStart)
+    window.removeEventListener(WORKSPACE_NAVIGATOR_MOTION_END_EVENT, handleNavigatorMotionEnd)
+    window.cancelAnimationFrame(frame ?? 0)
+  }
 }
 
 function trackCodeEditorModel(

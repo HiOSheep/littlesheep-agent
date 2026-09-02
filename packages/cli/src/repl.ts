@@ -6,7 +6,7 @@
 import { createInterface } from 'node:readline';
 import type { AgentRunner, RunnerResult } from '@littlesheep/runner';
 import type { BrandingConfig } from '@littlesheep/branding';
-import type { SessionId } from '@littlesheep/types';
+import { formatWebEvidenceSources, type SessionId } from '@littlesheep/types';
 
 export interface ReplOptions {
   runner: AgentRunner;
@@ -74,6 +74,8 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
       });
       sessionId = result.sessionId;
       out.write(`${result.reply || '(no reply)'}\n`);
+      const sources = formatWebEvidenceSources(result.webEvidence);
+      if (sources) out.write(`${sources}\n`);
       if (result.status === 'error') {
         out.write(`[error] ${result.error ?? 'unknown'}\n`);
       }

@@ -58,6 +58,29 @@ function executionLog(overrides: Partial<ExecutionLog> = {}): ExecutionLog {
 }
 
 describe('durable history activity reconstruction', () => {
+  it('restores bounded Web source metadata without any live retrieval', () => {
+    const log = executionLog({
+      webEvidence: {
+        version: 1, providerId: 'fake', generatedAt: '2026-08-29T00:00:00.000Z', completeness: 'complete',
+        citationIds: ['web-run-source'], citationCount: 1, documentCount: 1, cached: false,
+        partial: false, truncated: false, blocked: false, stale: false,
+        citations: [{
+          id: 'web-run-source', origin: 'https://example.com', urlHash: 'a'.repeat(64),
+          title: 'Public source', fetchedAt: '2026-08-29T00:00:00.000Z', status: 'fetched', truncated: false,
+        }],
+      },
+    })
+    const messages: Message[] = [{
+      id: 'assistant-final', role: 'assistant', runId: 'run-1', stage: 'finalize',
+      timestamp: log.endedAt, content: [{ type: 'text', text: log.reply }],
+    }]
+
+    const history = buildHistoryMessages(messages, new Map([['run-1', log]]))
+
+    expect(history[0]?.webEvidence).toMatchObject({ citationIds: ['web-run-source'] })
+    expect(JSON.stringify(history)).not.toContain('query')
+  })
+
   it('attaches one recovered process to the final assistant message for a run', () => {
     const messages: Message[] = [
       {

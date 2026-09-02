@@ -1,0 +1,17 @@
+{
+  "query": "current official documentation",
+  "follow_up_questions": null,
+  "answer": null,
+  "images": [],
+  "results": [
+    {
+      "title": "Official documentation",
+      "url": "https://example.com/docs/current",
+      "content": "A bounded provider fixture result.",
+      "score": 0.95,
+      "raw_content": null
+    }
+  ],
+  "response_time": 0.12,
+  "request_id": "fixture-request-id"
+}

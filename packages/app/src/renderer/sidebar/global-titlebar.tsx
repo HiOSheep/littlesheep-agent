@@ -1,8 +1,32 @@
 // Primary navigation, project/session trees, and sidebar actions.
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { SettingsGearIcon, SidebarToggleIcon } from '../ui/icons'
+import { HistoryBackIcon, HistoryForwardIcon } from '../ui/browser-icons'
 import appIconUrl from '../../../resources/littlesheep-icon.png'
 
+function canBeginWindowDrag(target: EventTarget | null): boolean {
+  return !(target instanceof Element && target.closest('[data-window-drag-ignore], button, a, input, textarea, select, [contenteditable="true"]'))
+}
+
+function startWindowDrag(event: React.PointerEvent<HTMLElement>): void {
+  if (event.button !== 0 || !canBeginWindowDrag(event.target)) return
+  const bridge = window.littlesheep
+  if (!bridge?.startWindowDrag) return
+  event.preventDefault()
+  event.currentTarget.setPointerCapture(event.pointerId)
+  bridge.startWindowDrag({ screenX: event.screenX, screenY: event.screenY })
+}
+
+function moveWindowDrag(event: React.PointerEvent<HTMLElement>): void {
+  if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
+  window.littlesheep?.moveWindowDrag?.({ screenX: event.screenX, screenY: event.screenY })
+}
+
+function endWindowDrag(event: React.PointerEvent<HTMLElement>): void {
+  if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
+  event.currentTarget.releasePointerCapture(event.pointerId)
+  window.littlesheep?.endWindowDrag?.()
+}
 
 export function GlobalTitlebar({
   sidebarCollapsed,
@@ -24,8 +48,15 @@ export function GlobalTitlebar({
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   return (
-    <header className="window-titlebar" aria-label="LittleSheep titlebar">
-      <div className="app-nav-controls" aria-label="全局导航">
+    <header
+      className="window-titlebar"
+      aria-label="LittleSheep titlebar"
+      onPointerDown={startWindowDrag}
+      onPointerMove={moveWindowDrag}
+      onPointerUp={endWindowDrag}
+      onPointerCancel={endWindowDrag}
+    >
+      <div className="app-nav-controls" data-window-drag-ignore aria-label="全局导航">
         <button
           className="sidebar-toggle-btn"
           type="button"
@@ -41,22 +72,22 @@ export function GlobalTitlebar({
           <SidebarToggleIcon />
         </button>
         <button
-          className="app-nav-btn nav-back"
+          className="app-nav-btn history-nav-btn nav-back"
           type="button"
           disabled={!canNavigateBack}
           onClick={onBack}
           aria-label="返回"
         >
-          ←
+          <HistoryBackIcon />
         </button>
         <button
-          className="app-nav-btn nav-forward"
+          className="app-nav-btn history-nav-btn nav-forward"
           type="button"
           disabled={!canNavigateForward}
           onClick={onForward}
           aria-label="前进"
         >
-          →
+          <HistoryForwardIcon />
         </button>
       </div>
       <div className="window-titlebar-brand">
@@ -68,7 +99,7 @@ export function GlobalTitlebar({
 }
 
 
-export function SettingsEntryBridge({
+export function SettingsEntryButton({
   settingsOpen,
   onOpen,
   onClose,
@@ -81,14 +112,13 @@ export function SettingsEntryBridge({
 }) {
   return (
     <button
-      className={`settings-entry-bridge ${rippling ? 'rippling' : ''}`}
+      className={`settings-entry-btn settings-entry-global ${rippling ? 'rippling' : ''}`}
       type="button"
-      tabIndex={-1}
-      aria-hidden="true"
+      aria-label={settingsOpen ? '关闭设置' : '设置'}
+      aria-expanded={settingsOpen}
       onClick={settingsOpen ? onClose : onOpen}
     >
       <SettingsGearIcon />
-      <span className="settings-entry-bridge-label">设置</span>
     </button>
   )
 }

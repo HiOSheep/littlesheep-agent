@@ -36,7 +36,7 @@ export interface UseCheckpointRecoveryOptions {
   activeRunIdRef: MutableRefObject<string | null>
   appMountedRef: MutableRefObject<boolean>
   loading: boolean
-  permissionMode: PermissionModeId
+  getSessionPermissionMode: (sessionId: string) => PermissionModeId
   runtime: RuntimeState | null
   stopRequestedRunIdRef: MutableRefObject<string | null>
   refreshProjects: () => Promise<void>
@@ -55,8 +55,8 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
     abortRef,
     activeRunIdRef,
     appMountedRef,
+    getSessionPermissionMode,
     loading,
-    permissionMode,
     runtime,
     stopRequestedRunIdRef,
     refreshProjects,
@@ -183,10 +183,11 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
     setError(null)
     setProgress(INITIAL_CHECKPOINT_RECOVERY_PROGRESS)
     setStopRequested(false)
+    const recoveryPermissionMode = getSessionPermissionMode(selected.sessionId)
     const turnIdentity = resolveCheckpointRecoveryTurnIdentity(pendingRecoveryTurnRef.current, {
       checkpointId: selected.id,
       text: clarification,
-      permissionMode,
+      permissionMode: recoveryPermissionMode,
       reasoning: runtime?.reasoning,
       profile: runtime?.profile,
     })
@@ -195,7 +196,7 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
       const result = await resumeRunCheckpointStream(selected.id, {
         ...(clarification ? { text: clarification } : {}),
         reason: 'user resumed checkpoint from the desktop recovery control',
-        permissionMode,
+        permissionMode: recoveryPermissionMode,
         reasoning: runtime?.reasoning,
         profile: runtime?.profile,
         requestKey: turnIdentity.requestKey,

@@ -2,6 +2,7 @@
 
 import { isAbsolute, relative, resolve } from 'node:path';
 import { toolResourcesConflict } from '@littlesheep/tools';
+import { describeToolAccess, resolvePermissionDecision } from '@littlesheep/safety';
 import type {
   AgentTool,
   PlanStep,
@@ -111,6 +112,11 @@ function parallelDowngradeReason(
   if (!Array.isArray(step.tools)) return 'parallel steps require an explicit tool list';
   const selectedTools = step.tools.map((name) => toolByName.get(name));
   if (selectedTools.some((tool) => !tool)) return 'parallel step references an unavailable tool';
+  if (toolContext.permissionMode !== 'full'
+    && toolContext.networkPolicy?.strictReadApproval === true
+    && selectedTools.some((tool) => tool !== undefined && isStrictReadTool(tool.name))) {
+    return 'strict read approval requires serial approval for runtime-owned read tools';
+  }
   if (selectedTools.some((tool) => (
     (tool!.requiresApproval && toolContext.permissionMode !== 'full')
     || tool!.execution?.concurrency !== 'parallel'
@@ -129,8 +135,15 @@ function parallelDowngradeReason(
   if (step.execution.sideEffect === 'write' && !resources.some((resource) => resource.mode === 'write')) {
     return 'write parallel step has no write resource';
   }
-  if (toolContext.permissionMode === 'restricted' && selectedTools.length > 0) {
-    return 'restricted permission mode requires serial approval';
+  if (toolContext.permissionMode === 'restricted'
+    && selectedTools.length > 0
+    && selectedTools.some((tool, index) => tool !== undefined && plannedToolRequiresApproval(
+      tool,
+      step,
+      toolContext,
+      index,
+    ))) {
+    return 'restricted permission mode requires serial approval for non-safe or unproven tool access';
   }
   if (toolContext.permissionMode === 'research' && step.execution.sideEffect === 'write') {
     return 'research permission mode requires serial approval for writes';
@@ -139,6 +152,44 @@ function parallelDowngradeReason(
     return 'container-external resources require serial approval';
   }
   return undefined;
+}
+
+function isStrictReadTool(toolName: string): boolean {
+  return toolName === 'web_search'
+    || toolName === 'web_fetch'
+    || toolName === 'memory_tree'
+    || toolName === 'memory_search'
+    || toolName === 'memory_deep_search'
+    || toolName === 'session_status'
+}
+
+function plannedToolRequiresApproval(
+  tool: AgentTool,
+  step: PlanStep,
+  toolContext: ToolContext,
+  toolIndex: number,
+): boolean {
+  if (toolContext.permissionMode === 'full') return false;
+  const proposalInput = step.toolProposal
+    && step.toolProposal.name === tool.name
+    && step.tools?.length === 1
+    ? step.toolProposal.input
+    : undefined;
+  const descriptor = describeToolAccess(tool.name, proposalInput, toolContext);
+  if (descriptor.hardDecision === 'deny') return true;
+  const decision = resolvePermissionDecision(toolContext.permissionMode ?? 'restricted', descriptor, {
+    strictReadApproval: toolContext.networkPolicy?.strictReadApproval === true,
+  });
+  if (decision === 'approval' || decision === 'deny') return true;
+  if (tool.requiresApproval === true && descriptor.safeReadClass === 'none') return true;
+  // A multi-tool parallel step cannot prove which input will be used for a
+  // URL-sensitive read; keep it serial until Runtime has a concrete proposal.
+  if (isUrlSensitiveWebTool(tool.name) && proposalInput === undefined) return true;
+  return toolIndex < 0;
+}
+
+function isUrlSensitiveWebTool(toolName: string): boolean {
+  return toolName === 'web_fetch';
 }
 
 function normalizeStepResources(resources: readonly ToolResourceAccess[], cwd: string): ToolResourceAccess[] {

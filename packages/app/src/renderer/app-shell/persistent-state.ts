@@ -17,6 +17,7 @@ const SETTINGS_PAGES = new Set<SettingsPage>([
   'application',
   'agent',
   'api',
+  'web',
   'storage',
   'browser',
   'developmentEnvironments',

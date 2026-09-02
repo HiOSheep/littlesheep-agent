@@ -1,8 +1,10 @@
 import type { Config } from '@littlesheep/config'
 import type { AgentProfileId } from '@littlesheep/prompt'
+import type { NetworkReadPolicy } from '@littlesheep/types'
+import { resolveNetworkReadPolicy } from '@littlesheep/runner'
 import {
   describeToolAccess,
-  shouldRequestPermissionApproval,
+  resolvePermissionDecision,
   type ContainerBoundary,
 } from '@littlesheep/safety'
 import type { PermissionModeId } from '../shared/permission-modes.js'
@@ -27,6 +29,8 @@ export interface RunPolicyBoundaryOptions {
   containerRoot?: string
   /** Run cwd used when a tool detail contains a relative path. */
   cwd?: string
+  /** Resolved network policy used for the Main-process recheck of web input. */
+  networkPolicy?: Readonly<NetworkReadPolicy>
 }
 
 export interface ResolvedRunPolicy {
@@ -55,10 +59,14 @@ export function resolveRunPolicy(
       ? 'coding'
       : config.agents.defaults.profile
   const profile = getAgentProfile(normalizeAgentProfileId(requestedProfile))
+  const networkPolicy = boundaryOptions.networkPolicy ?? resolveNetworkReadPolicy(config)
 
   return {
     requireApprovalForAllTools: permissionPolicy.requireApprovalForAllTools,
-    approve: createPermissionApprover(permissionPolicy.mode, approvalBroker, boundaryOptions),
+    approve: createPermissionApprover(permissionPolicy.mode, approvalBroker, {
+      ...boundaryOptions,
+      networkPolicy,
+    }),
     profile: profile?.id,
     permissionPolicyId: permissionPolicy.mode,
   }
@@ -71,9 +79,14 @@ export function createPermissionApprover(
 ): (action: string, detail?: unknown) => Promise<boolean> {
   const containerRoot = boundaryOptions.containerRoot
   const cwd = boundaryOptions.cwd ?? containerRoot ?? process.cwd()
+  const networkPolicy = boundaryOptions.networkPolicy
   return async (action, detail) => {
-    const descriptor = describeToolAccess(action, detail, { cwd, containerRoot })
-    if (!shouldRequestPermissionApproval(permissionMode, descriptor)) return true
+    const descriptor = describeToolAccess(action, detail, { cwd, containerRoot, networkPolicy })
+    const decision = resolvePermissionDecision(permissionMode, descriptor, {
+      strictReadApproval: networkPolicy?.strictReadApproval === true,
+    })
+    if (decision === 'deny') return false
+    if (decision === 'allow') return true
     if (!approvalBroker) return false
     return approvalBroker({ action, detail, permissionMode, boundary: descriptor.boundary })
   }

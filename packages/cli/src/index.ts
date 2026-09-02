@@ -10,7 +10,7 @@ import {
 } from '@littlesheep/config';
 import { loadBranding, dataSubdirs } from '@littlesheep/branding';
 import { createRunner, resolveLlm } from '@littlesheep/runner';
-import { asSessionId } from '@littlesheep/types';
+import { asSessionId, formatWebEvidenceSources } from '@littlesheep/types';
 import { parseArgs, USAGE, VERSION } from './args.js';
 import { startRepl } from './repl.js';
 import { parseMemoryRollbackFlags, runMemoryRollback } from './commands/memory.js';
@@ -132,6 +132,8 @@ export async function runCli(argv: string[]): Promise<void> {
       origin: 'cli',
     });
     process.stdout.write(`${result.reply || '(no reply)'}\n`);
+    const sources = formatWebEvidenceSources(result.webEvidence);
+    if (sources) process.stdout.write(`${sources}\n`);
     if (result.status === 'error') {
       process.exitCode = 1;
     }

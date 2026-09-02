@@ -64,7 +64,7 @@ export default defineConfig({
     root: resolve(__dirname, 'src/renderer'),
     server: {
       fs: {
-        allow: [resolve(__dirname, 'resources')],
+        allow: [resolve(__dirname)],
       },
     },
     build: {

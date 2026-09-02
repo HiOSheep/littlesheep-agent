@@ -15,7 +15,10 @@ import type {
   ToolInvocationRecord,
   ToolResult,
 } from '@littlesheep/types';
+import { sanitizeWebEvidenceProjection } from '@littlesheep/types';
 import {
+  durableToolResult,
+  projectToolInput,
   ToolExecutionService,
   type ToolExecutionLifecycle,
 } from '@littlesheep/tools';
@@ -26,6 +29,7 @@ import { upsertToolInvocationEvidence } from '../../execution-evidence-state.js'
 import { recentHistoryForModel } from '../_shared.js';
 import { ingestMemoryKnownState } from '../../memory-known-state.js';
 import { ingestMemoryContextToolResult } from '../../memory-context-working-set.js';
+import { validateWebCitations, webCitationRepairContract } from '../../web-citation-validation.js';
 import type {
   ExecuteSanitizeOptions,
   ExecuteStageDeps,
@@ -44,6 +48,7 @@ const MAX_ITERATIONS = 20;
 const MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS = 2;
 const MAX_EVIDENCE_FINGERPRINTS = MAX_ITERATIONS * 8;
 const MAX_CONTINUATION_HISTORY_MESSAGES = 2;
+const MAX_WEB_CITATION_REPAIRS = 2;
 const executionServices = new WeakMap<RunContext, ToolExecutionService>();
 
 export function convertToolCall(tc: LlmToolCall): { id: string; name: string; input: unknown } {
@@ -83,6 +88,7 @@ export async function runToolLoop(
   let continuationCompacted = false;
   let noProgressRounds = 0;
   let forceFinalResponse = false;
+  let citationRepairAttempts = 0;
 
   for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     let response: ChatResponse;
@@ -118,6 +124,29 @@ export async function runToolLoop(
     }
 
     if (response.finishReason === 'stop') {
+      const citationValidation = validateWebCitations(response.content, ctx.webEvidence);
+      if (!citationValidation.ok && ctx.webEvidence && citationRepairAttempts < MAX_WEB_CITATION_REPAIRS) {
+        citationRepairAttempts += 1;
+        messages.push({
+          role: 'assistant',
+          content: response.content,
+        });
+        messages.push({
+          role: 'system',
+          content: `${webCitationRepairContract(ctx.webEvidence)}\n\nValidation failure: ${citationValidation.reason}`,
+        });
+        forceFinalResponse = true;
+        continue;
+      }
+      if (!citationValidation.ok && ctx.webEvidence) {
+        return {
+          ok: false,
+          content: '',
+          toolResults,
+          iterations: iteration,
+          error: `web citation validation failed after ${MAX_WEB_CITATION_REPAIRS} repair attempts: ${citationValidation.reason}`,
+        };
+      }
       return {
         ok: true,
         content: response.content,
@@ -349,8 +378,12 @@ function finalizeToolResult(
     ingestMemoryKnownState(ctx, result.meta?.memoryKnownState, 'execute');
     ingestMemoryContextToolResult(ctx, result.callId, result, 'execute');
   }
-  results.push(result);
-  persistToolResult(ctx, produced, result);
+  if (result.webEvidence) {
+    ctx.webEvidence = sanitizeWebEvidenceProjection(result.webEvidence);
+  }
+  const durable = durableToolResult(result);
+  results.push(durable);
+  persistToolResult(ctx, produced, durable);
   messages?.push({
       role: 'tool',
       tool_call_id: result.callId,
@@ -480,10 +513,17 @@ function sideEffectLifecycle(ctx: RunContext): ToolExecutionLifecycle {
 }
 
 function persistToolCalls(ctx: RunContext, produced: RunContext['produced'], calls: ToolCall[]): void {
+  const durableCalls = calls.map((call) => {
+    const tool = ctx.tools.find((candidate) => candidate.name === call.name);
+    return {
+      ...call,
+      input: tool ? projectToolInput(tool, call.input) : { redacted: true, unknownTool: true },
+    };
+  });
   produced.push({
     id: randomUUID(),
     role: 'assistant',
-    content: [{ type: 'tool_calls', calls }],
+    content: [{ type: 'tool_calls', calls: durableCalls }],
     timestamp: new Date().toISOString(),
     sessionId: ctx.sessionId,
     runId: ctx.runId,
@@ -518,7 +558,7 @@ function toolResultForModel(result: ToolResult): string {
     status: result.ok ? 'succeeded' : 'failed',
     durationMs: result.durationMs,
     stepId: typeof result.meta?.stepId === 'string' ? result.meta.stepId : undefined,
-    output: result.ok ? result.output : undefined,
+    output: result.ok ? (result.modelOutput ?? result.output) : undefined,
     error: result.ok ? undefined : result.error,
     sanitized: result.sanitized === true || undefined,
   });

@@ -161,6 +161,23 @@ Context Engine 只把本轮需要的投影装配给模型。上述资源被注�
 
 简言之，Prompt 是面向模型的 Policy 投影；Agent Runtime 是执行和守住该 Policy 的 Mechanism。不能用“模型通常会遵守”代替代码可证明的约束。
 
+### 4.1 本地记忆与实时网络必须分层
+
+LS 不在本机维护完整互联网索引。实时资料能力由 Runtime 的本地检索网关统一治理，并明确区分以下四种能力：
+
+| 能力 | 实现位置 | 数据边界 |
+| --- | --- | --- |
+| 本地 Memory Tree、会话和经验查询 | 本地 Memory/Context Runtime | 默认不产生网络 egress；沿索引导航和分支预算读取 |
+| `web_search` | 已配置的 SearchProvider adapter | 只发送经策略允许的最小公开 query；Provider 不接收完整会话或 Memory |
+| `web_fetch` | LS 本地匿名 HTTP(S) 栈 | 只做受控公共 GET；执行 scheme、DNS/IP、SSRF、redirect、大小、超时和取消检查 |
+| 浏览器交互 | 独立 Browser Adapter | 登录态、Cookie、JS、验证码、表单、POST、上传和交互页面需独立授权 |
+
+公共 Web safe read 可以免除每次调用的交互批准，但必须经过显式网络启用、Provider 配置、最小化 egress、敏感 query 策略、配额、审计和安全硬规则。它不能继承浏览器登录态，也不能把浏览器、高风险外部操作或任意网络请求纳入普通只读能力。
+
+SearchProvider 负责发现和排序，不是 LS 的证据真相来源；Runtime 负责归一化结果、绑定 citation、限制 fetch、抽取正文、标记 `external_untrusted`、管理缓存和生成有界 evidence projection。网页内容只能作为当前 run 的不可信外部资料进入模型，不能改变权限、工具集、状态机或 Memory 写入策略。长期记忆默认不保存网页正文；只有用户明确要求且经过现有 Memory Write Gate 的外部证据，才可形成带来源、时间和失效信息的记忆投影。
+
+最终回答中的来源必须能回溯到本轮 Runtime evidence。`partial`、`truncated`、`blocked`、`stale`、timeout、限流和关闭状态必须保留，不能将不完整资料表述为完整核验。durable store、checkpoint、execution log、UI 和渠道只保存有界、脱敏 projection，不保存 Provider 原始 JSON、完整 query、网页正文、凭证或认证头；模型专用 projection 也不得接收仅供 Runtime/UI 诊断的内部错误标识。
+
 ## 5. Mode 与权限必须正交
 
 LS 需要区分 **Behavior Mode（行为模式）** 和 **Permission Policy（权限策略）**，避免一个“模式”概念同时改变行为和授权。

@@ -6,6 +6,7 @@ import type {
   ToolResourceAccess,
   ToolResult,
 } from '@littlesheep/types';
+import { sanitizeWebEvidenceProjection } from '@littlesheep/types';
 import { sanitizeOutput, type SanitizeOptions } from './sanitize.js';
 
 export function resolveToolExecutionPolicy(
@@ -33,15 +34,33 @@ export function stampToolStep(result: ToolResult, stepId?: string): ToolResult {
 }
 
 export function sanitizeToolResult(result: ToolResult, options: SanitizeOptions): ToolResult {
-  if (result.output === undefined) return result;
-  const sanitized = sanitizeOutput(result.output, options);
+  const durable = result.output === undefined ? undefined : sanitizeOutput(result.output, options);
+  const model = result.modelOutput === undefined ? undefined : sanitizeOutput(result.modelOutput, options);
+  if (!durable && !model) return result;
   return {
     ...result,
-    output: sanitized.output,
-    sanitized: sanitized.sanitized || result.sanitized === true,
+    ...(durable ? { output: durable.output } : {}),
+    ...(model ? { modelOutput: model.output } : {}),
+    sanitized: durable?.sanitized === true || model?.sanitized === true || result.sanitized === true,
     meta: {
       ...(result.meta ?? {}),
-      ...(sanitized.truncated ? { outputTruncated: true } : {}),
+      ...(durable?.truncated ? { outputTruncated: true } : {}),
+      ...(model?.truncated ? { modelOutputTruncated: true } : {}),
     },
   };
+}
+
+/** Remove run-local model evidence before any durable or returned projection. */
+export function durableToolResult(result: ToolResult): ToolResult {
+  const { modelOutput: _modelOutput, webEvidence: rawWebEvidence, ...durable } = result;
+  const webEvidence = sanitizeWebEvidenceProjection(rawWebEvidence);
+  return { ...durable, ...(webEvidence ? { webEvidence } : {}) };
+}
+
+export function projectToolInput(tool: AgentTool, input: unknown): unknown {
+  try {
+    return tool.persistence?.projectInput(input) ?? input;
+  } catch {
+    return { redacted: true, projectionError: true };
+  }
 }

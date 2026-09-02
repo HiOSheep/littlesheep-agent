@@ -12,7 +12,7 @@ export function resolveWorkspacePreviewEditorState(
   preview: WorkspacePreview | null,
   draft?: WorkspaceFileDraftState,
 ): WorkspacePreviewEditorState {
-  if (!preview || (preview.kind !== 'text' && preview.kind !== 'markdown')) {
+  if (!preview || (preview.kind !== 'text' && preview.kind !== 'markdown' && preview.kind !== 'html')) {
     return { editorText: '', savedText: '', editing: false }
   }
   if (draft?.path === preview.path && draft.modifiedAt === preview.modifiedAt) {

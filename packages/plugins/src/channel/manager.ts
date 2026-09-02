@@ -12,7 +12,7 @@
 // Cascade delete flow (remove):
 //   plugin.stop() → sessionStore.findByChannel() → sessionManager.delete(each) → sessionStore.unbindChannel()
 
-import type { SessionId } from '@littlesheep/types';
+import { formatWebEvidenceSources, type SessionId } from '@littlesheep/types';
 import type { AgentRunner, LogFn } from '@littlesheep/runner';
 import type { ChannelConfig } from '@littlesheep/config';
 import { ChannelSessionStore } from './session-binding.js';
@@ -335,7 +335,7 @@ export class DefaultChannelManager {
         requestKey: message.requestKey,
       });
       return {
-        reply: result.reply ?? '',
+        reply: appendWebSources(result.reply ?? '', formatWebEvidenceSources(result.webEvidence)),
         ok: result.status === 'ok',
         error: result.error,
       };
@@ -347,6 +347,11 @@ export class DefaultChannelManager {
       };
     }
   }
+}
+
+function appendWebSources(reply: string, sources: string): string {
+  if (!sources) return reply;
+  return reply ? `${reply}\n\n${sources}` : sources;
 }
 
 /** Build ChannelRuntimeConfig from a ChannelConfig + resolved secrets. */

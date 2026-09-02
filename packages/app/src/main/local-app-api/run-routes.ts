@@ -34,6 +34,7 @@ import {
   resolveRunSessionOwnership,
   resolveRunWorkspace,
   resolveRunWorkspaceContext,
+  withPersistedSessionPermissionMode,
 } from './run-support.js'
 import { routeRunCheckpoints } from './run-checkpoint-routes.js'
 import {
@@ -186,6 +187,7 @@ export class RunRouter {
 
     if (method === 'POST' && path === LOCAL_APP_API_ROUTES.runStream) {
       const body = await readJson(req)
+      const effectiveBody = await withPersistedSessionPermissionMode(context.sessionIndex, body)
       const requestKey = parseRequestKey(body.requestKey)
       const sessionId = body.sessionId ? asSessionId(String(body.sessionId)) : undefined
       const runId = (sessionId ? conversationTurnRunId(sessionId, requestKey) : undefined) ?? randomUUID()
@@ -204,8 +206,8 @@ export class RunRouter {
       // attachment preparation continues asynchronously below.
       writeSse(res, 'start', { ok: true, runId })
       try {
-        const cwd = resolveRunWorkspace(body, context.getConfig(), context.workplaceDir)
-        const ownership = await resolveRunSessionOwnership(context.sessionIndex, context.projectIndex, body)
+        const cwd = resolveRunWorkspace(effectiveBody, context.getConfig(), context.workplaceDir)
+        const ownership = await resolveRunSessionOwnership(context.sessionIndex, context.projectIndex, effectiveBody)
         const workspaceContext = resolveRunWorkspaceContext(cwd, ownership, context.workplaceDir)
         const attachmentOptions = {
           managedCache: context.attachmentCache,
@@ -214,7 +216,7 @@ export class RunRouter {
           projectId: ownership.projectId,
         }
         const attachmentRefs = await ensureManagedAttachmentRefs(
-          parseAttachments(body.attachments),
+          parseAttachments(effectiveBody.attachments),
           context.attachmentCache,
         )
         const attachments = await prepareRunAttachments(attachmentRefs, attachmentOptions)
@@ -241,7 +243,7 @@ export class RunRouter {
             onToolEvent: (event) => writeSse(res, event.type, event),
             onAssistantReplace: (text) => writeSse(res, 'replace', { text }),
             ...resolveRunPolicy(
-              body,
+              effectiveBody,
               context.getConfig(),
               this.buildApprovalBroker(
                 (approval) => writeSse(res, 'approval_request', approval),
@@ -255,7 +257,7 @@ export class RunRouter {
         const result = await runPromise
         if (result.runId !== runId) throw new Error(`runner returned an unexpected run id: ${result.runId}`)
         if (ownsActiveRun) {
-          await finishRunResources(context, runner, result, body, ownership, cwd, workspaceContext)
+          await finishRunResources(context, runner, result, effectiveBody, ownership, cwd, workspaceContext)
         }
         writeSse(res, 'result', result)
       } catch (error) {
@@ -270,9 +272,10 @@ export class RunRouter {
 
     if (method === 'POST' && path === LOCAL_APP_API_ROUTES.run) {
       const body = await readJson(req)
+      const effectiveBody = await withPersistedSessionPermissionMode(context.sessionIndex, body)
       const runner = context.getRunner()
-      const cwd = resolveRunWorkspace(body, context.getConfig(), context.workplaceDir)
-      const ownership = await resolveRunSessionOwnership(context.sessionIndex, context.projectIndex, body)
+      const cwd = resolveRunWorkspace(effectiveBody, context.getConfig(), context.workplaceDir)
+      const ownership = await resolveRunSessionOwnership(context.sessionIndex, context.projectIndex, effectiveBody)
       const workspaceContext = resolveRunWorkspaceContext(cwd, ownership, context.workplaceDir)
       const attachmentOptions = {
         managedCache: context.attachmentCache,
@@ -281,7 +284,7 @@ export class RunRouter {
         projectId: ownership.projectId,
       }
       const attachmentRefs = await ensureManagedAttachmentRefs(
-        parseAttachments(body.attachments),
+        parseAttachments(effectiveBody.attachments),
         context.attachmentCache,
       )
       const attachments = await prepareRunAttachments(attachmentRefs, attachmentOptions)
@@ -297,12 +300,12 @@ export class RunRouter {
         restoreCheckpointResources: createCheckpointResourceResolver(attachmentOptions),
         requestKey: parseRequestKey(body.requestKey),
         workspaceContext,
-        ...resolveRunPolicy(body, context.getConfig(), undefined, {
+        ...resolveRunPolicy(effectiveBody, context.getConfig(), undefined, {
           containerRoot: context.dataDir ?? context.workplaceDir,
           cwd,
         }),
       })
-      await finishRunResources(context, runner, result, body, ownership, cwd, workspaceContext)
+      await finishRunResources(context, runner, result, effectiveBody, ownership, cwd, workspaceContext)
       json(res, 200, result)
       return true
     }

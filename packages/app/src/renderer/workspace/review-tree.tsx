@@ -159,7 +159,11 @@ function WorkspaceReviewTreeRow({
   if (node.kind === 'folder') {
     const expanded = expandedFolders.has(node.path)
     return (
-      <div className="workspace-review-tree-branch" role="none">
+      <div
+        className={`workspace-review-tree-branch ${expanded ? 'expanded' : ''}`}
+        role="none"
+        style={{ '--workspace-tree-depth': depth } as CSSProperties}
+      >
         <button
           className="workspace-tree-row workspace-review-tree-row directory"
           type="button"
@@ -209,7 +213,7 @@ function WorkspaceReviewTreeRow({
       <span className={`workspace-review-file-status ${node.file.status}`} aria-label={statusText}>
         {workspaceReviewStatusLabel(node.file.status)}
       </span>
-      <span className="workspace-tree-glyph"><FileGlyphIcon /></span>
+      <span className="workspace-tree-glyph"><FileGlyphIcon name={node.name} /></span>
       <span className="workspace-tree-name">{node.name}</span>
       <ReviewLineCounts
         additions={node.additions}

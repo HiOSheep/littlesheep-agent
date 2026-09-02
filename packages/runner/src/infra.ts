@@ -11,7 +11,13 @@ import type { Config, ModelProvider } from '@littlesheep/config';
 import { parseModelRef, getProvider, resolveApiKey } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
 import { dataSubdirs } from '@littlesheep/branding';
-import type { AgentTool, AgentHarness, SessionId, MemoryStoreLike } from '@littlesheep/types';
+import type {
+  AgentTool,
+  AgentHarness,
+  SessionId,
+  MemoryStoreLike,
+  WebProviderRuntimeSnapshot,
+} from '@littlesheep/types';
 import { asSessionId } from '@littlesheep/types';
 import {
   ToolRegistry,
@@ -38,6 +44,13 @@ import {
 import { SafeMemoryStore, QuarantineStore, sanitizePreludeForInjection } from '@littlesheep/safety';
 import { GitCheckpointCoordinator, SnapshotMemoryStore } from '@littlesheep/snapshot';
 import { ExperienceStore } from '@littlesheep/experience';
+import {
+  buildProviderRegistry,
+  MemoryWebCache,
+  SearchProviderRegistry,
+  type ProviderRegistry,
+  type WebCache,
+} from '@littlesheep/web';
 import { ExecutionLogStore } from './execution-log.js';
 import { RunCheckpointStore } from './run-checkpoint-store.js';
 import { RunCheckpointDispositionStore } from './run-checkpoint-disposition-store.js';
@@ -92,6 +105,12 @@ export interface Infrastructure {
   memoryRepository: MemoryRepository;
   memoryWriteService: MemoryWriteService;
   memoryService: MemoryService;
+  /** Only explicitly selected providers are assembled; credentials never leave this boundary. */
+  webProviders: ProviderRegistry;
+  /** Redacted startup state used to freeze per-run configuration. */
+  webProviderSnapshots: readonly WebProviderRuntimeSnapshot[];
+  /** Process-local, bounded anonymous page cache. Quotas remain run-scoped. */
+  webCache?: WebCache;
   versioning?: GitCheckpointCoordinator;
   /** Starts tokenizer preparation only after an Agent run actually begins. */
   prepareTokenCounter?: () => Promise<void>;
@@ -166,6 +185,34 @@ export async function buildInfrastructure(
   await versioning?.initialize();
   const { llm, modelName } = resolveLlm(opts.config, opts.model, opts.llm);
   opts.state.model = modelName;
+
+  // Do not resolve a key, select an adapter, or send any request while public
+  // retrieval is disabled. When enabled, only the explicit default provider
+  // is assembled; configuring a future fallback does not activate it.
+  const webEnabled = opts.config.web.enabled && opts.config.web.readMode !== 'disabled';
+  const selectedWebProviders = webEnabled && opts.config.web.defaultProvider
+    ? opts.config.web.providers.filter((provider) => provider.id === opts.config.web.defaultProvider)
+    : [];
+  const webProviderBuild = webEnabled
+    ? await buildProviderRegistry({
+        providers: selectedWebProviders,
+        defaultProvider: opts.config.web.defaultProvider,
+        log: opts.log,
+      })
+    : {
+        registry: new SearchProviderRegistry(),
+        snapshots: opts.config.web.providers.map((provider) => ({
+          id: provider.id,
+          adapterType: provider.type,
+          status: 'disabled' as const,
+        })),
+      };
+  const webCache = webEnabled && opts.config.web.cache.enabled
+    ? new MemoryWebCache(
+        opts.config.web.cache.maxBytes,
+        opts.config.web.cache.ttlSeconds * 1_000,
+      )
+    : undefined;
 
   // M3: execution log store — one JSON file per run, for replay/audit.
   const executionLogStore = new ExecutionLogStore({ rootDir: dirs.executionLogs });
@@ -459,6 +506,9 @@ export async function buildInfrastructure(
     memoryRepository,
     memoryWriteService,
     memoryService,
+    webProviders: webProviderBuild.registry,
+    webProviderSnapshots: webProviderBuild.snapshots,
+    webCache,
     versioning,
     prepareTokenCounter: lazyTokenCounter
       ? () => lazyTokenCounter.prepare()

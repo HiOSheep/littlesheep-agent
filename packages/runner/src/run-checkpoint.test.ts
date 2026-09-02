@@ -215,4 +215,35 @@ describe('buildRunCheckpoint', () => {
     ]);
     expect(checkpoint.resumeState?.attachments?.[0]?.contextPath).toBe('src/app.ts');
   });
+
+  it('whitelists Web evidence before checkpoint persistence', () => {
+    const ctx = contextWithSteps([step('active', 'in_progress')]);
+    ctx.webEvidence = {
+      version: 1,
+      generatedAt: '2026-08-29T00:00:00.000Z',
+      completeness: 'complete',
+      citationIds: ['web-run-1-source'],
+      citationCount: 1,
+      documentCount: 1,
+      cached: false,
+      partial: false,
+      truncated: false,
+      blocked: false,
+      stale: false,
+      query: 'CHECKPOINT_PRIVATE_QUERY',
+      documents: [{ content: 'CHECKPOINT_WEB_BODY' }],
+    } as never;
+
+    const checkpoint = buildRunCheckpoint({
+      ctx,
+      stageResult: { stage: 'execute', next: 'exit', ok: false },
+      reason: 'web evidence checkpoint',
+      now: new Date('2026-08-29T00:00:01.000Z'),
+    });
+
+    const durable = JSON.stringify(checkpoint);
+    expect(durable).not.toContain('CHECKPOINT_PRIVATE_QUERY');
+    expect(durable).not.toContain('CHECKPOINT_WEB_BODY');
+    expect(checkpoint.webEvidence?.citationIds).toEqual(['web-run-1-source']);
+  });
 });

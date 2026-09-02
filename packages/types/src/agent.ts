@@ -43,6 +43,16 @@ export type AgentActivity = 'respond' | 'execute' | 'clarify';
 /** Legacy persisted classifier labels kept for old sessions and plugins. */
 export type MessageClass = 'chat' | 'problem' | 'unclear';
 
+export type RetrievalIntent =
+  | 'none'
+  | 'capability_question'
+  | 'local_workspace'
+  | 'local_memory'
+  | 'web_search'
+  | 'web_fetch'
+  | 'combined_memory_web'
+  | 'browser_required';
+
 export function activityFromMessageClass(value: MessageClass | undefined): AgentActivity {
   if (value === 'problem') return 'execute';
   if (value === 'unclear') return 'clarify';
@@ -66,6 +76,8 @@ export interface Classification {
   source: 'rules' | 'llm';
   /** Optional reason for debugging. */
   reason?: string;
+  /** Runtime-owned retrieval boundary inferred only from the inbound user message. */
+  retrievalIntent?: RetrievalIntent;
 }
 
 /** A recovery decision from RECOVER. */
@@ -150,6 +162,8 @@ export interface RunContext {
   plan?: PlanStep[];
   /** Tool results from EXECUTE. */
   toolResults?: import('./message.js').ToolResult[];
+  /** Bounded network retrieval evidence accumulated by Runtime-owned tools. */
+  webEvidence?: import('./web-retrieval.js').WebEvidenceProjection;
   /** Recovery attempt count (incremented in RECOVER). */
   recoveryAttempts?: number;
   /** Max recovery attempts before escalation. */
@@ -269,6 +283,7 @@ export interface RunAttachment {
   contentState?: import('./runtime-contracts.js').AttachmentContentState;
   /** User-authored line comments attached to a source file for this run. */
   lineComments?: Array<{
+    id?: string;
     startLine: number;
     endLine?: number;
     text: string;
@@ -404,6 +419,8 @@ export interface AgentResult {
   taskExecution?: TaskExecutionResult;
   /** Bounded authoritative tool lifecycle records for this run. */
   toolInvocations?: import('./runtime-contracts.js').ToolInvocationRecord[];
+  /** Bounded network retrieval evidence; never contains fetched page bodies or raw queries. */
+  webEvidence?: import('./web-retrieval.js').WebEvidenceProjection;
   /** True when additional invocation records were intentionally not retained. */
   toolInvocationsTruncated?: boolean;
   /** Bounded side-effect checkpoint ledger used by recovery and external verification. */

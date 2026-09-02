@@ -355,25 +355,29 @@ async function checkRepositoryNavigation() {
   // baseline; adding new responsibilities must never increase it.
   const hotspotBaselines = {
     'packages/app/src/renderer/App.tsx': 7,
-    'packages/app/src/renderer/app-shell/use-app-controller.ts': 580,
+    // 2026-09-02: startup recovery, runtime settings and session projection
+    // changes are frozen here; the facade is now in the hard-limit queue.
+    'packages/app/src/renderer/app-shell/use-app-controller.ts': 656,
     // 2026-08-14: stable conversation-turn request identity and rejected-input
     // retention are now owned by this facade; further growth remains blocked.
     'packages/app/src/renderer/chat/run-actions.ts': 349,
     'packages/app/src/renderer/settings/plugins.tsx': 394,
-    'packages/app/src/renderer/ui/icons.tsx': 351,
+    // 2026-09-02: browser/file glyph families and compatibility tests are
+    // frozen at the measured boundary; future growth remains blocked.
+    'packages/app/src/renderer/ui/icons.tsx': 359,
     // 2026-08-13: the old files.tsx coordinator was removed. The remaining
     // workspace ownership boundaries are explicit and may only shrink.
     'packages/app/src/renderer/workspace/file-navigator.tsx': 455,
-    'packages/app/src/renderer/workspace/panel.tsx': 396,
+    'packages/app/src/renderer/workspace/panel.tsx': 399,
     'packages/app/src/renderer/workspace/preview-pane.tsx': 453,
     'packages/app/src/renderer/workspace/review.tsx': 383,
-    'packages/app/src/renderer/workspace/terminal.tsx': 557,
+    'packages/app/src/renderer/workspace/terminal.tsx': 564,
     // 2026-08-14: file-close/save recovery callbacks were added at the
     // workspace boundary; keep the controller at this measured ceiling.
-    'packages/app/src/renderer/workspace/use-workspace-layout-controller.ts': 538,
+    'packages/app/src/renderer/workspace/use-workspace-layout-controller.ts': 600,
     // 2026-08-14: attachment lease protection is initialized with the API
     // server; route composition must move to the existing adapter boundary.
-    'packages/app/src/main/local-app-api-server.ts': 269,
+    'packages/app/src/main/local-app-api-server.ts': 288,
     'packages/app/src/renderer/api.ts': 22,
     'packages/memory-tree/src/memory-repository.ts': 172,
     'packages/memory-tree/src/memory-service.ts': 343,

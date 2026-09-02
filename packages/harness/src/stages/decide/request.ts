@@ -37,6 +37,7 @@ import {
 } from '../../explicit-tool-instruction.js';
 import { renderReplanFeedback } from './replan.js';
 import { renderDeferredRuntimeEvents } from './runtime-events.js';
+import { renderRetrievalIntentContract, toolsForRetrievalIntent } from '../../retrieval-intent.js';
 
 export interface DecideRequest {
   systemPrompt: SystemPromptBundle;
@@ -52,6 +53,7 @@ export interface DecideRequest {
   callPurpose: Extract<LlmCallPurpose, 'decide' | 'decide_explicit_tool'>;
   compactExplicitTool?: ExplicitSingleToolInstruction;
   compactAutonomousReadTools?: AgentTool[];
+  decisionToolNames: string[];
 }
 
 export async function buildDecideRequest(
@@ -81,6 +83,7 @@ export async function buildDecideRequest(
     : resolveCompactAutonomousReadDecisionTools(ctx);
   const compactAutonomousRead = Boolean(compactAutonomousReadTools);
   const compactDecision = Boolean(compactExplicitTool) || compactAutonomousRead;
+  const retrievalTools = toolsForRetrievalIntent(ctx);
   const callPurpose = compactExplicitTool ? 'decide_explicit_tool' : 'decide';
   const baseSystemPrompt = compactExplicitTool
     ? await assembleSystemPromptBundle(resolved, { tools: [], bootstrap: {} }, 'none')
@@ -89,7 +92,7 @@ export async function buildDecideRequest(
     : await assembleSystemPromptBundle(resolved, {
         tools: explicitToolInstructions
           ? explicitToolInstructions.entries.map((entry) => entry.tool)
-          : ctx.tools,
+          : retrievalTools,
         bootstrap: ctx.bootstrap ?? {},
         prelude: ctx.prelude,
         sessionSummary: ctx.sessionSummary,
@@ -119,7 +122,7 @@ export async function buildDecideRequest(
       ? [
           {
             id: 'compact-read-workspace',
-            text: renderCompactAutonomousReadWorkspace(resolved.workspace),
+            text: renderCompactAutonomousReadWorkspace(resolved.workspace, compactAutonomousReadTools),
             kind: 'project_knowledge',
             source: { kind: 'configuration', id: 'workspace', path: resolved.workspace },
             scope: 'workspace',
@@ -140,6 +143,12 @@ export async function buildDecideRequest(
           text: DECIDE_SYSTEM_PROMPT,
           kind: 'workflow_state' as const,
           source: { kind: 'workflow' as const, id: 'decide-contract', runId: ctx.runId },
+        }] : []),
+        ...(!explicitToolInstructions ? [{
+          id: 'retrieval-intent-contract',
+          text: renderRetrievalIntentContract(ctx),
+          kind: 'workflow_state' as const,
+          source: { kind: 'workflow' as const, id: 'retrieval-intent-contract', runId: ctx.runId },
         }] : []),
         { id: 'profile', text: ctx.profilePromptAddon },
         { id: 'reasoning', text: ctx.reasoningPromptAddon },
@@ -177,6 +186,9 @@ export async function buildDecideRequest(
     callPurpose,
     compactExplicitTool,
     compactAutonomousReadTools,
+    decisionToolNames: explicitToolInstructions?.entries.map((entry) => entry.tool.name)
+      ?? compactAutonomousReadTools?.map((tool) => tool.name)
+      ?? retrievalTools.map((tool) => tool.name),
   };
 }
 

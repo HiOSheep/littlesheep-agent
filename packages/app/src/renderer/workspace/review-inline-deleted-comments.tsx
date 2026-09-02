@@ -7,6 +7,7 @@ import {
 } from 'react'
 import type * as Monaco from 'monaco-editor'
 import type { AttachmentRef } from '../api'
+import type { FloatingHelpTip } from '../ui/floating-help'
 import { didLineCommentGestureDrag, type LineCommentRange } from './line-comment-gesture'
 import {
   createLineCommentFromDraft,
@@ -39,19 +40,26 @@ export function WorkspaceReviewInlineDeletedComments({
   targets,
   comments,
   onCommentsChange,
+  onCommentUpdate,
+  onCommentDelete,
   onAddAttachment,
   buildAttachment,
+  onTipChange,
 }: {
   editor: Monaco.editor.ICodeEditor | null
   targets: InlineDeletedLineTarget[]
   comments: WorkspaceLineComment[]
   onCommentsChange: (comments: WorkspaceLineComment[]) => void
+  onCommentUpdate: (previous: WorkspaceLineComment, next: WorkspaceLineComment, attachment: AttachmentRef) => void
+  onCommentDelete: (comment: WorkspaceLineComment) => void
   onAddAttachment: (attachment: AttachmentRef) => void
   buildAttachment: (comment: WorkspaceLineComment) => AttachmentRef
+  onTipChange?: (tip: FloatingHelpTip | null) => void
 }) {
   const [hoveredLine, setHoveredLine] = useState<number | null>(null)
   const draft = useLineCommentDraft()
   const { editingRange, draftText } = draft
+  const editingCommentId = draft.state.commentId
   const [layoutVersion, setLayoutVersion] = useState(0)
   const draftRef = useRef<HTMLTextAreaElement>(null)
   const targetBySourceLine = useMemo(
@@ -76,6 +84,7 @@ export function WorkspaceReviewInlineDeletedComments({
       })
     }
     for (const comment of comments) {
+      if (comment.id === editingCommentId) continue
       const range = { startLine: comment.startLine, endLine: comment.endLine ?? comment.startLine }
       if (!hasDeletedLineRange(range, targetMap)) continue
       specs.push({
@@ -88,7 +97,7 @@ export function WorkspaceReviewInlineDeletedComments({
       })
     }
     return specs
-  }, [comments, editingRange, targetAnchorKey])
+  }, [comments, editingCommentId, editingRange, targetAnchorKey])
   const {
     zoneHosts,
     setZoneHosts,
@@ -123,10 +132,13 @@ export function WorkspaceReviewInlineDeletedComments({
     const editorHost = editor?.getDomNode()
     if (!editorHost) return
     let pendingGesture: PendingDeletedLineGesture | null = null
-    const readTarget = (eventTarget: EventTarget | null) => readDeletedLineTarget(
-      eventTarget,
-      targetBySourceLineRef.current,
-    )
+    const readTargetAtClientPoint = (eventTarget: EventTarget | null, clientY: number) =>
+      readDeletedLineTargetAtClientPoint(
+        eventTarget,
+        clientY,
+        editorHost,
+        targetBySourceLineRef.current,
+      )
     const updatePendingGesture = (pointerEvent: PointerEvent) => {
       if (!pendingGesture || pointerEvent.pointerId !== pendingGesture.pointerId || pendingGesture.didDrag) return
       pendingGesture.didDrag = didLineCommentGestureDrag(
@@ -138,7 +150,7 @@ export function WorkspaceReviewInlineDeletedComments({
     }
     const handleEditorPointerMove = (event: Event) => {
       const pointerEvent = event as PointerEvent
-      const target = readTarget(pointerEvent.target)
+      const target = readTargetAtClientPoint(pointerEvent.target, pointerEvent.clientY)
       setHoveredLine(target?.sourceLineNumber ?? null)
       updatePendingGesture(pointerEvent)
     }
@@ -147,7 +159,7 @@ export function WorkspaceReviewInlineDeletedComments({
       if (!pointerEvent.isPrimary || pointerEvent.button !== 0 || pointerEvent.defaultPrevented) return
       const targetElement = pointerEvent.target instanceof Element ? pointerEvent.target : null
       if (targetElement?.closest('.workspace-line-comment-add, .workspace-line-comment-overlay-zone')) return
-      const target = readTarget(pointerEvent.target)
+      const target = readTargetAtClientPoint(pointerEvent.target, pointerEvent.clientY)
       if (!target) return
       pendingGesture = {
         pointerId: pointerEvent.pointerId,
@@ -162,7 +174,7 @@ export function WorkspaceReviewInlineDeletedComments({
       if (!pendingGesture || pointerEvent.pointerId !== pendingGesture.pointerId) return
       const gesture = pendingGesture
       pendingGesture = null
-      const releasedLine = readTarget(pointerEvent.target)?.sourceLineNumber ?? null
+      const releasedLine = readTargetAtClientPoint(pointerEvent.target, pointerEvent.clientY)?.sourceLineNumber ?? null
       const range = resolveDeletedLineRange(
         gesture.pressedLine,
         releasedLine,
@@ -225,6 +237,17 @@ export function WorkspaceReviewInlineDeletedComments({
     if (anchor > 0) editor?.revealLineInCenterIfOutsideViewport(anchor)
   }
 
+  function beginEditComment(comment: WorkspaceLineComment) {
+    if (!hasDeletedLineRange({
+      startLine: comment.startLine,
+      endLine: comment.endLine ?? comment.startLine,
+    }, targetBySourceLineRef.current)) return
+    draft.beginEdit(comment)
+    setHoveredLine(comment.endLine ?? comment.startLine)
+    const anchor = targetBySourceLineRef.current.get(comment.endLine ?? comment.startLine)?.modifiedAnchorModelLine ?? 0
+    if (anchor > 0) editor?.revealLineInCenterIfOutsideViewport(anchor)
+  }
+
   function cancelComment() {
     draft.cancel()
   }
@@ -238,11 +261,29 @@ export function WorkspaceReviewInlineDeletedComments({
   }
 
   function publishComment() {
-    const comment = createLineCommentFromDraft(draft.state)
+    const comment = createLineCommentFromDraft(
+      draft.state,
+      draft.state.commentId || draft.state.commentCreatedAt !== undefined
+        ? { id: draft.state.commentId, createdAt: draft.state.commentCreatedAt }
+        : undefined,
+    )
     if (!comment) return
-    onCommentsChange([...comments, comment])
-    onAddAttachment(buildAttachment(comment))
+    const previousComment = draft.state.commentId
+      ? comments.find((current) => current.id === draft.state.commentId)
+      : undefined
+    const nextComments = draft.state.commentId
+      ? comments.map((current) => current.id === draft.state.commentId ? comment : current)
+      : [...comments, comment]
+    onCommentsChange(nextComments)
+    const attachment = buildAttachment(comment)
+    if (previousComment) onCommentUpdate(previousComment, comment, attachment)
+    else onAddAttachment(attachment)
     cancelComment()
+  }
+
+  function deleteComment(comment: WorkspaceLineComment) {
+    onCommentsChange(comments.filter((current) => current.id !== comment.id))
+    onCommentDelete(comment)
   }
 
   return (
@@ -257,6 +298,15 @@ export function WorkspaceReviewInlineDeletedComments({
           className="workspace-review-inline-deleted-comment-state published"
           style={{ top: target.top, height: target.height }}
           key={`published:${target.sourceLineNumber}`}
+        />
+      ))}
+      {targets.map((target) => editingRange
+        && target.sourceLineNumber >= editingRange.startLine
+        && target.sourceLineNumber <= editingRange.endLine && (
+        <div
+          className="workspace-review-inline-deleted-comment-state selected"
+          style={{ top: target.top, height: target.height }}
+          key={`selected:${target.sourceLineNumber}`}
         />
       ))}
       {hoveredTarget && !editingRange && addButtonLeft !== null && (
@@ -291,9 +341,15 @@ export function WorkspaceReviewInlineDeletedComments({
               onDraftChange={draft.change}
               onCancel={cancelComment}
               onPublish={publishComment}
+              editing={editingCommentId !== undefined}
             />
           ) : (
-            <LineCommentCard comment={zone.comment} />
+            <LineCommentCard
+              comment={zone.comment}
+              onEdit={() => beginEditComment(zone.comment)}
+              onDelete={() => deleteComment(zone.comment)}
+              onTipChange={onTipChange}
+            />
           )}
         </div>
       ))}
@@ -309,6 +365,23 @@ function readDeletedLineTarget(
   const row = eventTarget.closest<HTMLElement>('[data-workspace-review-deleted-source-line]')
   const sourceLine = Number.parseInt(row?.dataset.workspaceReviewDeletedSourceLine ?? '', 10)
   return Number.isSafeInteger(sourceLine) ? targets.get(sourceLine) ?? null : null
+}
+
+function readDeletedLineTargetAtClientPoint(
+  eventTarget: EventTarget | null,
+  clientY: number,
+  editorHost: HTMLElement,
+  targets: Map<number, InlineDeletedLineTarget>,
+): InlineDeletedLineTarget | null {
+  const directTarget = readDeletedLineTarget(eventTarget, targets)
+  if (directTarget) return directTarget
+
+  const editorRect = editorHost.getBoundingClientRect()
+  const editorY = clientY - editorRect.top
+  for (const target of targets.values()) {
+    if (editorY >= target.top && editorY < target.top + target.height) return target
+  }
+  return null
 }
 
 export function resolveDeletedLineRange(

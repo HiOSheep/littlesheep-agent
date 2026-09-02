@@ -14,11 +14,13 @@ import {
   type WorkspaceFileTabId
 } from '../workspace-persistence'
 import { WorkspaceCodeEditor, workspaceEditorModelPath } from './code-editor'
-import { attachmentFileUrl, countEditorLines, detectEditorEol, formatDateTime, formatEditorLanguageLabel, formatFileSize, shouldOfferExternalVSCode, utf8ByteLength, workspaceBreadcrumbs } from './path-utils'
+import { WorkspaceHtmlPreview } from './html-preview'
+import { attachmentExtLabel, attachmentFileUrl, countEditorLines, formatDateTime, formatEditorLanguageLabel, shouldOfferExternalVSCode, workspaceBreadcrumbs } from './path-utils'
 import { WorkspacePlaceholder } from './placeholder'
 import { resolveWorkspacePreviewEditorState } from './preview-draft'
 import { WorkspacePreviewActions } from './preview-actions'
 import { WorkspaceLineCommentOverlay, type WorkspaceLineComment } from './line-comments'
+import { workspaceErrorMessage } from './workspace-errors'
 
 const EMPTY_LINE_COMMENTS: WorkspaceLineComment[] = []
 
@@ -36,6 +38,8 @@ export function WorkspacePreviewPane({
   onDraftChange,
   comments,
   onCommentsChange,
+  onCommentUpdate,
+  onCommentDelete,
   onAddAttachment,
   onTipChange,
 }: {
@@ -52,6 +56,8 @@ export function WorkspacePreviewPane({
   onDraftChange?: (tab: WorkspaceFileTabId, draft: WorkspaceFileDraftState | null) => void
   comments?: WorkspaceLineComment[]
   onCommentsChange?: (comments: WorkspaceLineComment[]) => void
+  onCommentUpdate?: (previous: WorkspaceLineComment, next: WorkspaceLineComment, attachment: AttachmentRef) => void
+  onCommentDelete?: (comment: WorkspaceLineComment) => void
   onAddAttachment?: (attachment: AttachmentRef) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
@@ -60,9 +66,12 @@ export function WorkspacePreviewPane({
     ? breadcrumbs
     : [preview?.relativePath || selectedPath || '选择一个文件查看内容']
   const isMarkdown = preview?.kind === 'markdown'
-  const editable = preview?.kind === 'text' || isMarkdown
+  const isHtml = preview?.kind === 'html'
+  const editable = preview?.kind === 'text' || isMarkdown || isHtml
   const editorLanguage = preview?.kind === 'markdown'
     ? 'markdown'
+    : preview?.kind === 'html'
+      ? 'html'
     : preview?.kind === 'text'
       ? preview.language || 'text'
       : ''
@@ -73,6 +82,9 @@ export function WorkspacePreviewPane({
   const [showMarkdownSource, setShowMarkdownSource] = useState(
     isMarkdown && initialEditorState.editing,
   )
+  const [showHtmlSource, setShowHtmlSource] = useState(
+    isHtml && initialEditorState.editing,
+  )
   const [editorText, setEditorText] = useState(initialEditorState.editorText)
   const [savedText, setSavedText] = useState(initialEditorState.savedText)
   const [saving, setSaving] = useState(false)
@@ -82,12 +94,10 @@ export function WorkspacePreviewPane({
     editor: Monaco.editor.IStandaloneCodeEditor
     monaco: typeof Monaco
   } | null>(null)
-  const editorVisible = editable && (!isMarkdown || showMarkdownSource)
+  const editorVisible = editable && (!isMarkdown || showMarkdownSource) && (!isHtml || showHtmlSource)
   const dirty = editable && editorText !== savedText
-  const editorLineCount = editable ? countEditorLines(editorText) : 0
-  const editorEol = editable ? detectEditorEol(editorText) : ''
-  const editorSize = editable ? formatFileSize(utf8ByteLength(editorText)) : ''
-  const previewSize = preview ? formatFileSize(preview.size) : ''
+  const editorLineCount = editable ? countEditorLines(editorText) : null
+  const fileTypeLabel = editable ? editorLanguageLabel : (preview ? attachmentExtLabel(preview.name) : '')
   const previewModifiedAt = preview?.modifiedAt ? formatDateTime(preview.modifiedAt) : ''
   const editorOptions = useMemo<Monaco.editor.IStandaloneEditorConstructionOptions>(() => ({
     bracketPairColorization: { enabled: true },
@@ -113,7 +123,7 @@ export function WorkspacePreviewPane({
     path?: string
   }) {
     if (!tabId || !onDraftChange) return
-    if (!editable || !preview || (preview.kind !== 'text' && preview.kind !== 'markdown')) {
+    if (!editable || !preview || (preview.kind !== 'text' && preview.kind !== 'markdown' && preview.kind !== 'html')) {
       onDraftChange(tabId, null)
       return
     }
@@ -145,7 +155,15 @@ export function WorkspacePreviewPane({
 
   function toggleEditing() {
     if (isMarkdown && !showMarkdownSource) setShowMarkdownSource(true)
+    if (isHtml && !showHtmlSource) setShowHtmlSource(true)
     updateEditing(!editing)
+  }
+
+  function toggleHtmlSource() {
+    if (!isHtml) return
+    const nextSourceVisible = !showHtmlSource
+    setShowHtmlSource(nextSourceVisible)
+    if (!nextSourceVisible && editing) updateEditing(false)
   }
 
   useEffect(() => {
@@ -157,10 +175,11 @@ export function WorkspacePreviewPane({
     setSavedText(nextSavedText)
     setEditing(nextEditing)
     setShowMarkdownSource(isMarkdown && nextEditing)
+    setShowHtmlSource(isHtml && nextEditing)
     setSaving(false)
     setSaveMessage('')
     setSaveError('')
-    if (editable && preview && (preview.kind === 'text' || preview.kind === 'markdown')) {
+    if (editable && preview && (preview.kind === 'text' || preview.kind === 'markdown' || preview.kind === 'html')) {
       if (tabId && onDraftChange) onDraftChange(tabId, {
         path: preview.path,
         modifiedAt: preview.modifiedAt,
@@ -171,7 +190,7 @@ export function WorkspacePreviewPane({
     } else {
       if (tabId && onDraftChange) onDraftChange(tabId, null)
     }
-  }, [sessionId, preview?.path, preview?.modifiedAt, editable, isMarkdown])
+  }, [sessionId, preview?.path, preview?.modifiedAt, editable, isMarkdown, isHtml])
 
   async function saveEditorContent() {
     if (!editable || !preview || !dirty || saving) return
@@ -180,7 +199,7 @@ export function WorkspacePreviewPane({
     setSaveMessage('')
     try {
       const nextPreview = await onSaveFile(preview.path, editorText, draft?.modifiedAt ?? preview.modifiedAt)
-      if (nextPreview.kind === 'text' || nextPreview.kind === 'markdown') {
+      if (nextPreview.kind === 'text' || nextPreview.kind === 'markdown' || nextPreview.kind === 'html') {
         setEditorText(nextPreview.content)
         setSavedText(nextPreview.content)
         if (tabId && onDraftChange) onDraftChange(tabId, {
@@ -196,7 +215,8 @@ export function WorkspacePreviewPane({
       }
       setSaveMessage('已保存')
     } catch (err) {
-      setSaveError((err as Error).message)
+      console.debug('[workspace-preview-pane] file save failed', err)
+      setSaveError(workspaceErrorMessage(err, '文件保存失败，请稍后重试。'))
     } finally {
       setSaving(false)
     }
@@ -217,14 +237,14 @@ export function WorkspacePreviewPane({
           <WorkspacePreviewActions
             editable={editable}
             isMarkdown={isMarkdown}
+            isHtml={isHtml}
             editing={editing}
             showMarkdownSource={showMarkdownSource}
-            dirty={dirty}
-            saving={saving}
+            showHtmlSource={showHtmlSource}
             canOpenExternalVSCode={canOpenExternalVSCode}
             onToggleMarkdownSource={toggleMarkdownSource}
+            onToggleHtmlSource={toggleHtmlSource}
             onToggleEditing={toggleEditing}
-            onSave={() => void saveEditorContent()}
             onOpenInVSCode={onOpenInVSCode}
             onTipChange={onTipChange}
           />
@@ -248,11 +268,14 @@ export function WorkspacePreviewPane({
       >
         {loading && <WorkspacePlaceholder title="读取中" text="正在读取文件预览。" />}
         {!loading && error && <WorkspacePlaceholder title="预览失败" text={error} />}
-        {!loading && !error && !preview && <WorkspacePlaceholder title="文件预览" text="代码和文本进入内置 VS Code 工作台；图片、PDF 和 Office 文件在 LS 内部预览。" />}
+        {!loading && !error && !preview && <WorkspacePlaceholder title="文件预览" text="代码和文本进入内置 VS Code 工作台；HTML、图片、PDF 和 Office 文件在 LS 内部预览。" />}
         {!loading && !error && isMarkdown && !showMarkdownSource && (
           <div className="workspace-preview-markdown">
             <Markdown text={editorText} />
           </div>
+        )}
+        {!loading && !error && isHtml && !showHtmlSource && (
+          <WorkspaceHtmlPreview path={preview.path} name={preview.name} content={editorText} />
         )}
         {!loading && !error && editorVisible && (
           <div className="workspace-editor-monaco">
@@ -266,7 +289,7 @@ export function WorkspacePreviewPane({
                 onMount={(editor, monaco) => setEditorHandle({ editor, monaco })}
               options={editorOptions}
               />
-              {preview && onCommentsChange && onAddAttachment && (
+              {preview && onCommentsChange && onCommentUpdate && onCommentDelete && onAddAttachment && (
                 <WorkspaceLineCommentOverlay
                   editor={editorHandle?.editor ?? null}
                   monaco={editorHandle?.monaco ?? null}
@@ -275,7 +298,10 @@ export function WorkspacePreviewPane({
                   fileName={preview.name}
                   comments={comments ?? EMPTY_LINE_COMMENTS}
                   onCommentsChange={onCommentsChange}
+                  onCommentUpdate={onCommentUpdate}
+                  onCommentDelete={onCommentDelete}
                   onAddAttachment={onAddAttachment}
+                  onTipChange={onTipChange}
                 />
               )}
             </div>
@@ -293,7 +319,7 @@ export function WorkspacePreviewPane({
         )}
         {!loading && !error && preview?.kind === 'unsupported' && (
           <div className="workspace-preview-unsupported">
-            <FileGlyphIcon />
+            <FileGlyphIcon name={preview.name} />
             <strong>{preview.name}</strong>
             <span>{preview.reason ?? '这个文件类型暂不支持内联预览。'}</span>
             {canOpenExternalVSCode && (
@@ -308,13 +334,9 @@ export function WorkspacePreviewPane({
       </div>
       {preview && (
         <div className="workspace-preview-statusbar" aria-label="文件预览状态">
-          {editable && <span>{isMarkdown && !showMarkdownSource ? '预览' : editing ? (dirty ? '编辑中*' : '编辑中') : '只读'}</span>}
-          {editable && <span>{editorLanguageLabel}</span>}
-          {editable && <span>{editorLineCount} 行</span>}
-          <span>{editable ? editorSize : previewSize}</span>
+          <span>{fileTypeLabel}</span>
+          {editorLineCount !== null && <span>{editorLineCount} 行</span>}
           {previewModifiedAt && <span>{previewModifiedAt}</span>}
-          {editable && <span>{editorEol}</span>}
-          {editable && <span>{dirty ? '未保存' : '已同步'}</span>}
         </div>
       )}
     </div>

@@ -81,10 +81,19 @@ describe('session rename Local App API', () => {
         expect(response.status).toBe(200)
       }
 
+      const modeResponse = await fetch(`${base}${localAppApiItemPath(LOCAL_APP_API_PREFIXES.sessions, 'standalone')}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'restricted' }),
+      })
+      expect(modeResponse.status).toBe(200)
+      await expect(modeResponse.json()).resolves.toMatchObject({ session: { id: 'standalone', mode: 'restricted' } })
+
       const sessions = await sessionIndex.list()
       expect(sessions.find((session) => session.id === 'standalone')).toMatchObject({
         title: '独立 对话',
         lastMessageAt: 10,
+        mode: 'restricted',
         scope: 'standalone',
       })
       expect(sessions.find((session) => session.id === 'project-session')).toMatchObject({
@@ -117,6 +126,85 @@ describe('session rename Local App API', () => {
       })
       expect(tooLong.status).toBe(400)
       expect(updateMetadata).toHaveBeenCalledTimes(2)
+    } finally {
+      await server.stop()
+      rmSync(dataDir, { recursive: true, force: true })
+    }
+  })
+
+  it('returns canonical metadata when title and permission patches overlap', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'ls-session-patch-concurrent-api-'))
+    const workplaceDir = join(dataDir, 'workplace')
+    mkdirSync(workplaceDir, { recursive: true })
+    const config = structuredClone(DEFAULT_CONFIG)
+    const sessionIndex = new SessionIndex({ dataDir, workplaceDir })
+    await sessionIndex.upsert('session-1', {
+      title: 'Original',
+      createdAt: 1,
+      lastMessageAt: 1,
+      mode: 'research',
+      scope: 'standalone',
+      workspacePath: workplaceDir,
+    })
+    let releaseTitleUpdate!: () => void
+    let signalTitleUpdateStarted!: () => void
+    const titleUpdateRelease = new Promise<void>((resolve) => { releaseTitleUpdate = resolve })
+    const titleUpdateStarted = new Promise<void>((resolve) => { signalTitleUpdateStarted = resolve })
+    const updateMetadata = vi.fn(async (_id: ReturnType<typeof asSessionId>, metadata: { title?: string }) => {
+      if (metadata.title === 'Renamed') {
+        signalTitleUpdateStarted()
+        await titleUpdateRelease
+      }
+    })
+    const runner = {
+      state: { model: config.agents.defaults.model },
+      sessionManager: { updateMetadata },
+    } as unknown as AgentRunner
+    const server = await startLocalAppApiServer(runner, {
+      port: 0,
+      sessionIndex,
+      projectIndex: new ProjectIndex({ dataDir }),
+      archiveIndex: new ArchiveIndex({ dataDir, workplaceDir }),
+      terminalActivityIndex: new TerminalActivityIndex({ dataDir }),
+      workspaceArtifactIndex: new WorkspaceArtifactIndex({ dataDir }),
+      workspaceLayoutIndex: new WorkspaceLayoutIndex({ dataDir }),
+      config,
+      dataDir,
+      workplaceDir,
+      rebuildRunner: vi.fn(async () => undefined),
+      updateRuntimeConfig: vi.fn(async () => undefined),
+    })
+
+    try {
+      const base = `http://127.0.0.1:${server.port}`
+      const titleRequest = fetch(`${base}${localAppApiItemPath(LOCAL_APP_API_PREFIXES.sessions, 'session-1')}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Renamed' }),
+      })
+      await titleUpdateStarted
+      const modeRequest = fetch(`${base}${localAppApiItemPath(LOCAL_APP_API_PREFIXES.sessions, 'session-1')}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'full' }),
+      })
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      releaseTitleUpdate()
+
+      const [titleResponse, modeResponse] = await Promise.all([titleRequest, modeRequest])
+      expect(titleResponse.status).toBe(200)
+      expect(modeResponse.status).toBe(200)
+      await expect(titleResponse.json()).resolves.toMatchObject({
+        session: { id: 'session-1', title: 'Renamed', mode: 'research' },
+      })
+      await expect(modeResponse.json()).resolves.toMatchObject({
+        session: { id: 'session-1', title: 'Renamed', mode: 'full' },
+      })
+      await expect(sessionIndex.list()).resolves.toMatchObject([{
+        id: 'session-1',
+        title: 'Renamed',
+        mode: 'full',
+      }])
     } finally {
       await server.stop()
       rmSync(dataDir, { recursive: true, force: true })

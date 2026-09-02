@@ -88,6 +88,66 @@ export const ToolsConfigSchema = z.object({
   invocationTimeoutMs: z.number().int().min(1_000).max(24 * 60 * 60_000).default(120_000),
 });
 
+const WebProviderOptionValueSchema = z.union([
+  z.string().max(2_048),
+  z.number().finite(),
+  z.boolean(),
+  z.null(),
+]);
+
+/** Search-provider adapter configuration. API keys are references, not execution-log data. */
+export const WebProviderConfigSchema = z.object({
+  id: z.string().trim().min(1).max(64).regex(/^[a-z0-9][a-z0-9._-]*$/u),
+  type: z.string().trim().min(1).max(64).regex(/^[a-z0-9][a-z0-9._-]*$/u),
+  baseURL: z.string().url().max(2_048).optional(),
+  apiKeyRef: z.string().trim().min(1).max(256).optional(),
+  options: z.record(WebProviderOptionValueSchema).default({}),
+});
+
+export const WebCacheConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  ttlSeconds: z.number().int().min(0).max(7 * 24 * 60 * 60).default(300),
+  maxBytes: z.number().int().min(0).max(1024 * 1024 * 1024).default(64 * 1024 * 1024),
+}).default({});
+
+/** Network retrieval is opt-in and provider-neutral. Missing legacy fields resolve to disabled. */
+export const WebConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  defaultProvider: z.string().trim().min(1).max(64).optional(),
+  readMode: z.enum(['disabled', 'public_anonymous', 'configured_allowlist']).default('public_anonymous'),
+  strictReadApproval: z.boolean().default(false),
+  allowDomains: z.array(z.string().trim().min(1).max(253)).max(128).default([]),
+  blockDomains: z.array(z.string().trim().min(1).max(253)).max(128).default([]),
+  dnsResolver: z.enum(['system', 'cloudflare_doh']).default('system'),
+  maxQueryChars: z.number().int().min(1).max(2_000).default(2_000),
+  maxResults: z.number().int().min(1).max(20).default(10),
+  maxFetchesPerRun: z.number().int().min(0).max(32).default(4),
+  maxQueriesPerRun: z.number().int().min(0).max(32).default(4),
+  maxConcurrentRequests: z.number().int().min(1).max(8).default(4),
+  searchTimeoutMs: z.number().int().min(1_000).max(120_000).default(15_000),
+  fetchTimeoutMs: z.number().int().min(1_000).max(120_000).default(20_000),
+  totalTimeoutMs: z.number().int().min(1_000).max(10 * 60_000).default(90_000),
+  maxResponseBytes: z.number().int().min(1_024).max(32 * 1024 * 1024).default(2 * 1024 * 1024),
+  maxExtractedChars: z.number().int().min(1_000).max(500_000).default(40_000),
+  maxRedirects: z.number().int().min(0).max(10).default(5),
+  cache: WebCacheConfigSchema,
+  browserFallback: z.enum(['disabled', 'approval_required', 'full_only']).default('approval_required'),
+  sensitiveQueryPolicy: z.enum(['allow', 'redact', 'approve', 'deny']).default('approve'),
+  providers: z.array(WebProviderConfigSchema).max(16).default([]),
+}).superRefine((value, ctx) => {
+  const providerIds = new Set<string>();
+  for (const [index, provider] of value.providers.entries()) {
+    if (providerIds.has(provider.id)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['providers', index, 'id'],
+        message: `duplicate web provider id: ${provider.id}`,
+      });
+    }
+    providerIds.add(provider.id);
+  }
+}).default({});
+
 /** Memory config. */
 export const MemoryConfigSchema = z.object({
   /** Experimental repository backend. v3 also requires an isolated-data marker in the selected data root. */
@@ -116,6 +176,8 @@ export const MemoryConfigSchema = z.object({
   llmCapture: z.boolean().default(false),
   /** EVOLVE calls the model only when the verified run has reusable value by default. */
   llmEvolve: z.enum(['adaptive', 'always', 'never']).default('adaptive'),
+  /** Embedding stays host-local. Future remote adapters require a separate egress contract. */
+  embeddingMode: z.literal('local').default('local'),
 });
 
 /** Local shadow-Git checkpoint policy. */
@@ -264,6 +326,8 @@ export const ConfigSchema = z.object({
   tools: ToolsConfigSchema.default({ exec: {} }),
   /** Memory config. */
   memory: MemoryConfigSchema.default({}),
+  /** Opt-in public network retrieval. */
+  web: WebConfigSchema,
   /** Safety config (Phase A: injection defence + quarantine). */
   safety: SafetyConfigSchema.default({}),
   /** Session config. */
@@ -287,6 +351,9 @@ export type DesktopConfig = z.infer<typeof DesktopConfigSchema>;
 export type DesktopClosePolicy = DesktopConfig['closePolicy'];
 export type ToolsConfig = z.infer<typeof ToolsConfigSchema>;
 export type MemoryConfig = z.infer<typeof MemoryConfigSchema>;
+export type WebProviderConfig = z.infer<typeof WebProviderConfigSchema>;
+export type WebCacheConfig = z.infer<typeof WebCacheConfigSchema>;
+export type WebConfig = z.infer<typeof WebConfigSchema>;
 export type SafetyConfig = z.infer<typeof SafetyConfigSchema>;
 export type SessionConfig = z.infer<typeof SessionConfigSchema>;
 export type CompactionConfig = z.infer<typeof CompactionConfigSchema>;

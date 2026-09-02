@@ -1,5 +1,4 @@
 // Task composer controls, attachments, runtime selection, and sizing.
-import { type CSSProperties } from 'react'
 import {
   type RuntimeState
 } from '../api'
@@ -14,24 +13,33 @@ export type RuntimeProvider = RuntimeState['providers'][number]
 export function ContextUsageIndicator({ usage }: { usage: ContextUsage }) {
   const windowKnown = usage.maxTokens > 0
   const tone = usage.available && usage.percent >= 90 ? 'danger' : usage.available && usage.percent >= 70 ? 'warning' : 'normal'
-  const style = {
-    '--context-usage-angle': `${usage.available ? Math.max(0, Math.min(100, usage.percent)) * 3.6 : 0}deg`,
-  } as CSSProperties
+  const usagePercent = usage.available ? Math.max(0, Math.min(100, usage.percent)) : 0
   const ariaLabel = !windowKnown
     ? '当前模型的上下文窗口尚未登记'
     : usage.available
-    ? `上下文${usage.source === 'local' ? '本地精确装配' : '供应商实测'}已用 ${formatTokenCount(usage.usedTokens)}，共 ${formatTokenCount(usage.maxTokens)}，${usage.percent}% 已用`
+    ? `上下文已用 ${formatTokenCount(usage.usedTokens)} / ${formatTokenCount(usage.maxTokens)}，${usage.percent}% 已用`
     : `${formatLocalTokenizerState(usage)}，共 ${formatTokenCount(usage.maxTokens)}`
 
   return (
     <div
       className={`context-usage composer-tab-control tone-${tone}`}
-      style={style}
       role="status"
       tabIndex={0}
       aria-label={ariaLabel}
     >
-      <span className="context-usage-ring" aria-hidden="true" />
+      <svg className="context-usage-ring" viewBox="0 0 16 16" aria-hidden="true">
+        <circle className="context-usage-ring-track" cx="8" cy="8" r="6.5" />
+        <circle
+          className="context-usage-ring-progress"
+          cx="8"
+          cy="8"
+          r="6.5"
+          pathLength="100"
+          strokeDasharray="100"
+          strokeDashoffset={100 - usagePercent}
+          transform="rotate(-90 8 8)"
+        />
+      </svg>
       <span className="context-usage-popover-shell">
         <span className="context-usage-popover" aria-hidden="true">
           <span className="context-usage-title">上下文窗口：</span>
@@ -42,24 +50,7 @@ export function ContextUsageIndicator({ usage }: { usage: ContextUsage }) {
             </>
           ) : usage.available ? (
             <>
-              {usage.localUsedTokens !== undefined ? (
-                <span className="context-usage-source" title={usage.localTokenizerId}>
-                  本地精确装配 {formatTokenCount(usage.localUsedTokens)} · {formatUsageTime(usage.localCountedAt)}
-                </span>
-              ) : (
-                <span className="context-usage-source" title={usage.localUnavailableReason}>
-                  {formatLocalTokenizerState(usage)}
-                </span>
-              )}
-              {usage.providerUsedTokens !== undefined ? (
-                <span className="context-usage-source">
-                  供应商实测 {formatTokenCount(usage.providerUsedTokens)} · {formatUsageTime(usage.providerReportedAt)}
-                  {formatCalibrationDifference(usage.providerDifferenceTokens, usage.providerCalibrationStatus)}
-                </span>
-              ) : (
-                <span className="context-usage-source">供应商校准待返回</span>
-              )}
-              <span>共 {formatTokenCount(usage.maxTokens)}</span>
+              <span>已用 {formatTokenCount(usage.usedTokens)} / {formatTokenCount(usage.maxTokens)}</span>
               <strong>{usage.percent}% 已用</strong>
             </>
           ) : (
@@ -86,25 +77,6 @@ export function formatLocalTokenizerState(usage: ContextUsage): string {
     case 'exact':
       return '本地精确计数待更新'
   }
-}
-
-
-function formatCalibrationDifference(
-  differenceTokens: number | undefined,
-  status: ContextUsage['providerCalibrationStatus'],
-): string {
-  if (differenceTokens === undefined || status === undefined) return ''
-  if (status === 'exact_match') return ' · 与本地一致'
-  const sign = differenceTokens > 0 ? '+' : ''
-  return ` · 校准差 ${sign}${differenceTokens}`
-}
-
-
-export function formatUsageTime(value: string | undefined): string {
-  if (!value) return '本轮'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '本轮'
-  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 
 

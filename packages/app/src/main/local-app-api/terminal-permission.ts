@@ -1,7 +1,7 @@
 import type { PermissionPolicyId } from '@littlesheep/types'
 import {
   describeToolAccess,
-  shouldRequestPermissionApproval,
+  resolvePermissionDecision,
 } from '@littlesheep/safety'
 import { normalizePermissionModeId } from '../modes.js'
 import { HttpError } from './http.js'
@@ -34,7 +34,11 @@ export function assertTerminalOperationAllowed(options: TerminalOperationAuthori
     { command: options.command, cwd: options.cwd },
     { cwd: options.cwd, containerRoot: options.containerRoot },
   )
-  if (shouldRequestPermissionApproval(options.permissionMode, descriptor) && !options.approved) {
+  const decision = resolvePermissionDecision(options.permissionMode, descriptor)
+  if (decision === 'deny') {
+    throw new HttpError(403, '当前终端操作被运行时安全策略拒绝。')
+  }
+  if (decision === 'approval' && !options.approved) {
     throw new HttpError(403, '当前终端操作超出自动授权范围，需要用户批准。')
   }
 }

@@ -1,5 +1,11 @@
 // Primary navigation, project/session trees, and sidebar actions.
-import { useEffect, useRef, useState } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import {
   normalizeSessionTitle,
   SESSION_TITLE_MAX_LENGTH,
@@ -21,6 +27,9 @@ export function SessionRow({
   now,
   className,
   itemRef,
+  dragging = false,
+  onDragPointerDown,
+  onDragClickCapture,
   onOpen,
   onTogglePin,
   onRename,
@@ -34,6 +43,9 @@ export function SessionRow({
   now: number
   className?: string
   itemRef?: (node: HTMLDivElement | null) => void
+  dragging?: boolean
+  onDragPointerDown?: (event: ReactPointerEvent<HTMLDivElement>) => void
+  onDragClickCapture?: (event: ReactMouseEvent<HTMLDivElement>) => void
   onOpen: () => void
   onTogglePin: () => void
   onRename: (title: string) => void | Promise<void>
@@ -105,10 +117,13 @@ export function SessionRow({
   return (
     <div
       ref={itemRef}
-      className={`session-item ${className ?? ''} ${active ? 'active' : ''} ${pinned ? 'pinned' : ''} ${renaming ? 'renaming' : ''}`}
+      className={`session-item ${className ?? ''} ${active ? 'active' : ''} ${pinned ? 'pinned' : ''} ${renaming ? 'renaming' : ''} ${dragging ? 'is-dragging' : ''}`}
       role={renaming ? undefined : 'button'}
       tabIndex={renaming ? -1 : 0}
       aria-current={active ? 'page' : undefined}
+      aria-grabbed={dragging || undefined}
+      onPointerDown={onDragPointerDown}
+      onClickCapture={onDragClickCapture}
       onClick={() => {
         if (!renaming) onOpen()
       }}

@@ -19,6 +19,23 @@ export interface RunResourceContext {
   workspaceArtifactIndex: WorkspaceArtifactIndex
 }
 
+/**
+ * Keep older/partial run callers aligned with the session's persisted policy.
+ * The renderer normally sends permissionMode explicitly, but a missing field
+ * must never silently downgrade a session or overwrite its mode on completion.
+ */
+export async function withPersistedSessionPermissionMode(
+  sessionIndex: SessionIndex,
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  if (hasExplicitPermissionMode(body)) return body
+  const sessionId = typeof body.sessionId === 'string' ? body.sessionId.trim() : ''
+  if (!sessionId) return body
+  const existing = (await sessionIndex.list()).find((session) => session.id === sessionId)
+  if (!existing) return body
+  return { ...body, permissionMode: normalizePermissionModeId(existing.mode) }
+}
+
 export async function finishRunResources(
   context: RunResourceContext,
   runner: AgentRunner,
@@ -61,13 +78,29 @@ export async function updateSessionIndex(
     workspacePath: string
   } = {
     lastMessageAt: Date.now(),
-    mode: normalizePermissionModeId(typeof body.permissionMode === 'string' ? body.permissionMode : String(body.mode ?? '')),
+    mode: normalizePermissionModeId(
+      explicitPermissionMode(body) ?? existing?.mode,
+    ),
     scope: ownership.scope,
     projectId: ownership.projectId,
     workspacePath,
   }
   if (!existing) updates.title = String(body.text ?? '').slice(0, 60) || 'New session'
   await sessionIndex.upsert(sessionId, updates)
+}
+
+function hasExplicitPermissionMode(body: Record<string, unknown>): boolean {
+  return explicitPermissionMode(body) !== undefined
+}
+
+function explicitPermissionMode(body: Record<string, unknown>): string | undefined {
+  if (typeof body.permissionMode === 'string' && body.permissionMode.trim()) {
+    return body.permissionMode.trim()
+  }
+  if (typeof body.mode === 'string' && body.mode.trim() && body.mode.trim() !== 'coding') {
+    return body.mode.trim()
+  }
+  return undefined
 }
 
 export async function resolveRunSessionOwnership(

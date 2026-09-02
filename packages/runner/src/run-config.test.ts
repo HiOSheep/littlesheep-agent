@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG } from '@littlesheep/config';
 import type { AgentTool } from '@littlesheep/types';
-import { resolveRunConfig } from './run-config.js';
+import { resolveNetworkReadPolicy, resolveRunConfig } from './run-config.js';
 
 function tool(name: string, requiresApproval = false): AgentTool {
   return { name, requiresApproval } as AgentTool;
@@ -34,6 +34,13 @@ describe('resolveRunConfig', () => {
       reasoning: 'high',
       availableToolNames: ['read', 'write'],
       approvalRequiredToolNames: ['write'],
+      networkPolicy: {
+        version: 1,
+        enabled: false,
+        mode: 'disabled',
+        dnsResolver: 'system',
+        strictReadApproval: false,
+      },
       userOverrides: {
         profile: 'coding',
         reasoning: 'high',
@@ -62,6 +69,8 @@ describe('resolveRunConfig', () => {
     expect(Object.isFrozen(resolved)).toBe(true);
     expect(Object.isFrozen(resolved.parameters)).toBe(true);
     expect(Object.isFrozen(resolved.availableToolNames)).toBe(true);
+    expect(Object.isFrozen(resolved.networkPolicy)).toBe(true);
+    expect(Object.isFrozen(resolved.networkPolicy?.allowDomains)).toBe(true);
     expect(Object.isFrozen(resolved.userOverrides)).toBe(true);
     expect(() => {
       (resolved.parameters as Record<string, unknown>).changed = true;
@@ -98,5 +107,73 @@ describe('resolveRunConfig', () => {
     });
 
     expect(resolved.approvalRequiredToolNames).toEqual([]);
+  });
+
+  it('resolves an opt-in web policy and a redacted provider snapshot', () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      web: {
+        ...DEFAULT_CONFIG.web,
+        enabled: true,
+        defaultProvider: 'tavily',
+        dnsResolver: 'cloudflare_doh' as const,
+        allowDomains: ['docs.example.com'],
+        providers: [{
+          id: 'tavily',
+          type: 'tavily-search-v1',
+          apiKeyRef: '$TAVILY_API_KEY',
+          options: {},
+        }],
+      },
+    };
+    const resolved = resolveRunConfig({
+      runId: 'run-web',
+      config,
+      modelRef: 'deepseek/deepseek-test',
+      origin: 'app',
+      tools: [tool('web_search')],
+      requireApprovalForAllTools: false,
+      toolFilterApplied: false,
+      cwdOverridden: false,
+    });
+
+    expect(resolved.networkPolicy).toMatchObject({
+      enabled: true,
+      providerId: 'tavily',
+      mode: 'public_anonymous',
+      dnsResolver: 'cloudflare_doh',
+      allowDomains: ['docs.example.com'],
+      maxQueriesPerRun: 4,
+    });
+    expect(resolved.webProvider).toEqual({
+      id: 'tavily',
+      adapterType: 'tavily-search-v1',
+      status: 'configured_unchecked',
+    });
+    expect(JSON.stringify(resolved)).not.toContain('TAVILY_API_KEY');
+  });
+
+  it('keeps disabled and missing-provider states explicit', () => {
+    const disabled = resolveNetworkReadPolicy(DEFAULT_CONFIG);
+    expect(disabled).toMatchObject({ enabled: false, mode: 'disabled' });
+
+    const configuredMissing = resolveRunConfig({
+      runId: 'run-web-missing',
+      config: {
+        ...DEFAULT_CONFIG,
+        web: { ...DEFAULT_CONFIG.web, enabled: true, defaultProvider: 'missing' },
+      },
+      modelRef: 'deepseek/deepseek-test',
+      origin: 'test',
+      tools: [],
+      requireApprovalForAllTools: false,
+      toolFilterApplied: false,
+      cwdOverridden: false,
+    });
+    expect(configuredMissing.webProvider).toMatchObject({
+      id: 'missing',
+      status: 'unconfigured',
+      detailCode: 'web_provider_unconfigured',
+    });
   });
 });

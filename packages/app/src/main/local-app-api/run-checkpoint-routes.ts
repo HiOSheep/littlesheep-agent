@@ -21,6 +21,7 @@ import {
   finishRunResources,
   resolveRunSessionOwnership,
   resolveRunWorkspaceContext,
+  withPersistedSessionPermissionMode,
 } from './run-support.js'
 import { resolveReasoning } from './runtime-routes.js'
 import {
@@ -226,7 +227,10 @@ async function streamCheckpointResume(
       controller.signal,
     )
     const resumeBody = checkpointResumeDefaults(
-      body as unknown as Record<string, unknown>,
+      await withPersistedSessionPermissionMode(
+        context.sessionIndex,
+        body as unknown as Record<string, unknown>,
+      ),
       state,
     )
     const runPolicy = resolveRunPolicy(
@@ -264,6 +268,7 @@ async function streamCheckpointResume(
     if (ownsActiveRun) {
       await finishRunResources(context, runner, result, {
         sessionId: String(inspection.checkpoint.sessionId),
+        permissionMode: runPolicy.permissionPolicyId,
       }, ownership, state.cwd, workspaceContext)
     }
     writeSse(res, 'result', result)

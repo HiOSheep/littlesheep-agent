@@ -1,5 +1,5 @@
 // Settings navigation and page composition.
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import {
   type AgentProfileId,
   type RuntimeState
@@ -10,9 +10,6 @@ import { ArchiveManager } from '../ArchiveManager'
 import { ChannelConnections } from '../ChannelConnections'
 import { MemorySkills } from '../MemorySkills'
 import { Settings } from '../Settings'
-import { GlobalTitlebar } from '../sidebar/global-titlebar'
-import { FloatingHelpTip } from '../ui/floating-help'
-import { SettingsGearIcon } from '../ui/icons'
 import { SettingsAgentProfilePage } from './agent-profile'
 import { SettingsApplicationBackgroundPage } from './application-background'
 import { DirectModulePageContent } from './direct-module'
@@ -21,7 +18,9 @@ import { SETTINGS_NAV_GROUPS } from './navigation'
 import { SettingsStoragePage } from './storage'
 import { SettingsBrowserPage } from './browser'
 import { SettingsDevelopmentEnvironmentsPage } from './development-environments'
+import { SettingsWebPage } from './web'
 import { SettingsPage } from './types'
+import { CloseIcon, SearchIcon, SettingsNavArrowIcon } from '../ui/icons'
 
 
 export function SettingsWorkspace({
@@ -29,75 +28,81 @@ export function SettingsWorkspace({
   runtime,
   sidebarCollapsed,
   sidebarWidth,
-  sidebarToggleTip,
-  canBack,
-  canForward,
   onBeginSidebarResize,
   onNudgeSidebar,
   onSetSidebarWidth,
-  onToggleSidebar,
-  onBack,
-  onForward,
-  onClose,
-  settingsEntryRippling,
   onOpenPage,
+  onCloseSettings,
   onProfileChange,
   onContextCompressionThresholdChange,
   onClosePolicyChange,
   onArchiveChanged,
-  onTipChange,
 }: {
   page: SettingsPage
   runtime: RuntimeState | null
   sidebarCollapsed: boolean
   sidebarWidth: number
-  sidebarToggleTip: string
-  canBack: boolean
-  canForward: boolean
   onBeginSidebarResize: (event: React.PointerEvent<HTMLDivElement>) => void
   onNudgeSidebar: (delta: number) => void
   onSetSidebarWidth: (width: number) => void
-  onToggleSidebar: () => void
-  onBack: () => void
-  onForward: () => void
-  onClose: () => void
-  settingsEntryRippling: boolean
   onOpenPage: (page: SettingsPage) => void
+  onCloseSettings: () => void
   onProfileChange: (profile: AgentProfileId) => void
   onContextCompressionThresholdChange: (ratio: number) => Promise<void>
   onClosePolicyChange: (policy: RuntimeState['closePolicy']) => Promise<boolean>
   onArchiveChanged: () => void | Promise<void>
-  onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const returnHome = () => onOpenPage('home')
   const initialPageRef = useRef(page)
   const pageHasChangedRef = useRef(false)
+  const [settingsQuery, setSettingsQuery] = useState('')
 
   if (page !== initialPageRef.current) {
     pageHasChangedRef.current = true
   }
 
+  const normalizedQuery = settingsQuery.trim().toLocaleLowerCase()
+  const filteredNavGroups = SETTINGS_NAV_GROUPS.map((group) => {
+    if (!normalizedQuery || group.title.toLocaleLowerCase().includes(normalizedQuery)) {
+      return group
+    }
+    return {
+      ...group,
+      items: group.items.filter((item) => (
+        `${item.title} ${item.desc}`.toLocaleLowerCase().includes(normalizedQuery)
+      )),
+    }
+  }).filter((group) => group.items.length > 0)
+
   return (
     <div className="settings-workspace">
-      <GlobalTitlebar
-        sidebarCollapsed={sidebarCollapsed}
-        sidebarToggleTip={sidebarToggleTip}
-        canNavigateBack={canBack}
-        canNavigateForward={canForward}
-        onToggleSidebar={onToggleSidebar}
-        onBack={onBack}
-        onForward={onForward}
-        onTipChange={onTipChange}
-      />
       <div className="settings-layout">
-        <aside className="settings-sidebar" aria-hidden={sidebarCollapsed} {...(sidebarCollapsed ? { inert: '' } : {})}>
-          <div className="settings-sidebar-contents">
-            <div className="brand-block">
-              <div className="brand-title">设置</div>
-              <div className="brand-subtitle">系统能力与本地工作台</div>
+        <div className="settings-sidebar-track" aria-hidden={sidebarCollapsed} {...(sidebarCollapsed ? { inert: '' } : {})}>
+          <aside className="sidebar-surface settings-sidebar">
+            <div className="settings-sidebar-contents">
+            <div className="settings-sidebar-toolbar">
+              <label className="settings-sidebar-search">
+                <SearchIcon />
+                <input
+                  type="search"
+                  value={settingsQuery}
+                  onChange={(event) => setSettingsQuery(event.target.value)}
+                  placeholder="搜索设置"
+                  aria-label="搜索设置"
+                />
+              </label>
+              <button
+                className="settings-sidebar-exit"
+                type="button"
+                aria-label="退出设置页"
+                onClick={onCloseSettings}
+              >
+                <CloseIcon />
+                <span>退出设置</span>
+              </button>
             </div>
             <section className="settings-nav-section" aria-label="设置分组">
-              {SETTINGS_NAV_GROUPS.map((group) => (
+              {filteredNavGroups.map((group) => (
                 <div key={group.title} className="settings-nav-group">
                   <div className="settings-nav-group-title">{group.title}</div>
                   <div className="settings-nav-group-items">
@@ -111,29 +116,20 @@ export function SettingsWorkspace({
                       >
                         <span>
                           <strong>{item.title}</strong>
-                          <small>{item.desc}</small>
                         </span>
-                        <span className="settings-nav-arrow" aria-hidden="true" />
+                        <SettingsNavArrowIcon />
                       </button>
                     ))}
                   </div>
                 </div>
               ))}
+              {filteredNavGroups.length === 0 && (
+                <div className="settings-nav-empty">没有匹配的设置</div>
+              )}
             </section>
-            <div className="sidebar-footer settings-sidebar-footer">
-              <button
-                className={`settings-entry-btn active ${settingsEntryRippling ? 'rippling' : ''}`}
-                type="button"
-                onClick={onClose}
-                aria-label="关闭设置"
-                aria-expanded="true"
-              >
-                <SettingsGearIcon />
-                <span className="settings-entry-label">设置</span>
-              </button>
             </div>
-          </div>
-        </aside>
+          </aside>
+        </div>
         <div
           className="settings-sidebar-resizer"
           role="separator"
@@ -180,6 +176,7 @@ export function SettingsWorkspace({
               />
             )}
             {page === 'api' && <Settings onClose={returnHome} embedded />}
+            {page === 'web' && <SettingsWebPage />}
             {page === 'storage' && <SettingsStoragePage />}
             {page === 'browser' && <SettingsBrowserPage />}
             {page === 'developmentEnvironments' && <SettingsDevelopmentEnvironmentsPage />}

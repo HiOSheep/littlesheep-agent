@@ -5,12 +5,14 @@ import { workspaceLanguageForFile } from '../shared/workspace-languages.js'
 
 export type WorkspaceFileSurface =
   | 'builtinEditor'
+  | 'htmlPreview'
   | 'imagePreview'
   | 'pdfPreview'
   | 'documentCard'
   | 'sniffText'
 
 export const WORKSPACE_MARKDOWN_EXTS = new Set(['.md', '.markdown', '.mdx'])
+export const WORKSPACE_HTML_EXTS = new Set(['.html', '.htm', '.xhtml'])
 export const WORKSPACE_IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff', '.svg'])
 export const WORKSPACE_PDF_EXTS = new Set(['.pdf'])
 export const WORKSPACE_OFFICE_EXTS = new Set([
@@ -253,6 +255,7 @@ export function classifyWorkspaceFileSurface(lowerName: string, ext: string): Wo
   if (WORKSPACE_IMAGE_EXTS.has(ext)) return 'imagePreview'
   if (WORKSPACE_PDF_EXTS.has(ext)) return 'pdfPreview'
   if (WORKSPACE_OFFICE_EXTS.has(ext)) return 'documentCard'
+  if (WORKSPACE_HTML_EXTS.has(ext)) return 'htmlPreview'
   if (WORKSPACE_MARKDOWN_EXTS.has(ext) || isWorkspaceTextLikeFile(lowerName, ext)) return 'builtinEditor'
   return 'sniffText'
 }

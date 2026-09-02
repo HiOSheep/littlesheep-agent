@@ -16,9 +16,10 @@ import {
   writeWorkspaceSessionLayoutsPreference,
 } from '../app-shell/preferences'
 import {
+  RESPONSIVE_LAYOUT_PREFERENCE_MAX,
+  RESPONSIVE_LAYOUT_PREFERENCE_MIN,
   WORKSPACE_PANEL_WIDTH_DEFAULT,
   WORKSPACE_PANEL_WIDTH_MAX,
-  WORKSPACE_PANEL_WIDTH_MIN,
 } from '../workspace-layout'
 import {
   WORKSPACE_PANEL_OPEN_TABS_MAX,
@@ -57,8 +58,8 @@ interface WorkspaceSessionLayoutOptions {
   runtime: RuntimeState | null
   currentSession: string | undefined
   defaultWorkspacePath: string
-  workspacePanelWidth: number
-  setWorkspacePanelWidth: Dispatch<SetStateAction<number>>
+  workspacePanelWidthPreference: number
+  setWorkspacePanelWidthPreference: Dispatch<SetStateAction<number>>
   setWorkspacePanelReopenActive: Dispatch<SetStateAction<boolean>>
 }
 
@@ -66,8 +67,8 @@ export function useWorkspaceSessionLayouts({
   runtime,
   currentSession,
   defaultWorkspacePath,
-  workspacePanelWidth,
-  setWorkspacePanelWidth,
+  workspacePanelWidthPreference,
+  setWorkspacePanelWidthPreference,
   setWorkspacePanelReopenActive,
 }: WorkspaceSessionLayoutOptions) {
   const initialLayouts = useMemo(readInitialWorkspaceSessionLayouts, [])
@@ -182,10 +183,10 @@ export function useWorkspaceSessionLayouts({
           )
           const widthMarker = readWorkspaceLayoutFallbackMarkers().width
           if (!(typeof widthMarker === 'string' && Number.isFinite(Number(widthMarker)))) {
-            setWorkspacePanelWidth(clampNumber(
+            setWorkspacePanelWidthPreference(clampNumber(
               fallback.width ?? WORKSPACE_PANEL_WIDTH_DEFAULT,
-              WORKSPACE_PANEL_WIDTH_MIN,
-              WORKSPACE_PANEL_WIDTH_MAX,
+              RESPONSIVE_LAYOUT_PREFERENCE_MIN,
+              Math.max(RESPONSIVE_LAYOUT_PREFERENCE_MAX, WORKSPACE_PANEL_WIDTH_MAX),
             ))
           }
         } else if (!layoutsRef.current[key]) {
@@ -213,7 +214,7 @@ export function useWorkspaceSessionLayouts({
     return () => {
       disposed = true
     }
-  }, [activeWorkspaceSessionKey, currentSession, defaultWorkspacePath, runtime, setWorkspacePanelWidth])
+  }, [activeWorkspaceSessionKey, currentSession, defaultWorkspacePath, runtime, setWorkspacePanelWidthPreference])
 
   const workspacePanelRoot = activeLayout.openRequest?.root ?? defaultWorkspacePath
   useEffect(() => {
@@ -225,7 +226,9 @@ export function useWorkspaceSessionLayouts({
       void saveWorkspaceLayoutSnapshot({
         workspacePath: workspacePanelRoot,
         sessionId: currentSession,
-        width: workspacePanelWidth,
+        // Width mirrors use the same 1280px reference basis as the renderer
+        // preference so recovery does not depend on the previous window size.
+        width: workspacePanelWidthPreference,
         collapsed: activeLayout.collapsed,
         fullscreen: activeLayout.fullscreen,
         activeTab: activeLayout.activeTab,
@@ -245,7 +248,7 @@ export function useWorkspaceSessionLayouts({
     currentSession,
     readyKey,
     workspacePanelRoot,
-    workspacePanelWidth,
+    workspacePanelWidthPreference,
   ])
 
   function commitLayout(key: string, layout: WorkspaceSessionLayout, markTouched = true) {

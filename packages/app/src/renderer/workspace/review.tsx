@@ -27,6 +27,8 @@ import type { WorkspaceLineComment } from './line-comments'
 import { WorkspaceReviewTree } from './review-tree'
 import { preloadWorkspaceCodeEditor } from './code-editor'
 import { workspaceReviewCache } from './review-cache'
+import { workspaceErrorMessage } from './workspace-errors'
+import { WorkspaceReviewScrollRail } from './review-scroll-rail'
 
 const REVIEW_REFRESH_INTERVAL_MS = 30_000
 
@@ -39,6 +41,8 @@ export function WorkspaceReview({
   onFileNavigatorCollapsedChange,
   onFileNavigatorWidthChange,
   onLineCommentsChange,
+  onLineCommentUpdate,
+  onLineCommentDelete,
   onAddAttachment,
   onOpenFile,
   onTipChange,
@@ -51,6 +55,13 @@ export function WorkspaceReview({
   onFileNavigatorCollapsedChange: (collapsed: boolean) => void
   onFileNavigatorWidthChange: (width: number) => void
   onLineCommentsChange: (scope: string, comments: WorkspaceLineComment[]) => void
+  onLineCommentUpdate: (
+    scope: string,
+    previous: WorkspaceLineComment,
+    next: WorkspaceLineComment,
+    attachment: AttachmentRef,
+  ) => void
+  onLineCommentDelete: (scope: string, comment: WorkspaceLineComment) => void
   onAddAttachment: (attachment: AttachmentRef) => void
   onOpenFile: (path: string) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
@@ -79,6 +90,7 @@ export function WorkspaceReview({
   const [diffError, setDiffError] = useState('')
   const snapshotRequestRef = useRef(0)
   const diffRequestRef = useRef(0)
+  const reviewScrollRef = useRef<HTMLDivElement>(null)
   const artifactVersionRef = useRef(artifactVersion)
   const completedRefreshVersionRef = useRef(0)
   const snapshotInFlightRef = useRef(false)
@@ -171,7 +183,10 @@ export function WorkspaceReview({
           && requestId === snapshotRequestRef.current
           && (reason as Error).name !== 'AbortError'
           && !hasSnapshot
-        ) setError((reason as Error).message)
+        ) {
+          console.debug('[workspace-review] review snapshot request failed', reason)
+          setError(workspaceErrorMessage(reason, 'Git 审阅暂时无法读取，请稍后重试。'))
+        }
       })
       .finally(() => {
         if (requestId !== snapshotRequestRef.current) return
@@ -227,7 +242,8 @@ export function WorkspaceReview({
         }
         if (!cached && !stale) {
           setDiff(null)
-          setDiffError((reason as Error).message)
+          console.debug('[workspace-review] review diff request failed', reason)
+          setDiffError(workspaceErrorMessage(reason, '文件差异暂时无法读取，请稍后重试。'))
         }
       })
       .finally(() => {
@@ -287,7 +303,7 @@ export function WorkspaceReview({
           : undefined
 
   return (
-    <div className="workspace-review workspace-files">
+    <div className={`workspace-review workspace-files ${sideBySide ? 'is-side-by-side' : ''}`}>
       <div className="workspace-review-content">
         <WorkspaceReviewDiff
           file={selectedFile}
@@ -299,10 +315,14 @@ export function WorkspaceReview({
           lineCommentsByScope={lineCommentsByScope}
           onSideBySideChange={setSideBySide}
           onLineCommentsChange={onLineCommentsChange}
+          onLineCommentUpdate={onLineCommentUpdate}
+          onLineCommentDelete={onLineCommentDelete}
           onAddAttachment={onAddAttachment}
           onOpenFile={() => selectedFile && onOpenFile(selectedFile.absolutePath)}
           onTipChange={onTipChange}
+          scrollRef={reviewScrollRef}
         />
+        {sideBySide && <WorkspaceReviewScrollRail targetRef={reviewScrollRef} />}
       </div>
       <WorkspaceReviewTree
         workspacePath={workspacePath}

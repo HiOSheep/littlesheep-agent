@@ -2,6 +2,7 @@
 import '@xterm/xterm/css/xterm.css'
 import { LinkNavigationProvider } from '../link-navigation'
 import { GlobalTitlebar } from '../sidebar/global-titlebar'
+import { SettingsEntryButton } from '../sidebar/global-titlebar'
 import { CoreWorkspaceView } from './core-workspace-view'
 import { OverlaysView } from './overlays-view'
 import { SidebarView } from './sidebar-view'
@@ -15,10 +16,14 @@ export function AppView({ controller }: { controller: AppViewController }) {
     workspacePanelFullscreen,
     directModulePage,
     settingsOpen,
+    settingsReturning,
     layoutStyle,
     sidebarToggleTip,
     canNavigateBack,
     canNavigateForward,
+    settingsEntryRippling,
+    openSettingsFromEntry,
+    closeSettingsFromEntry,
     toggleSidebar,
     navigateBack,
     navigateForward,
@@ -43,10 +48,11 @@ export function AppView({ controller }: { controller: AppViewController }) {
           workspacePanelFullscreen ? 'workspace-panel-fullscreen' : '',
           directModulePage ? 'direct-module-open' : '',
           settingsOpen ? 'settings-open' : '',
+          settingsReturning ? 'settings-returning' : '',
         ].filter(Boolean).join(' ')}
         style={layoutStyle}
       >
-        <div className="primary-workspace" aria-hidden={settingsOpen} {...(settingsOpen ? { inert: '' } : {})}>
+        <div className="primary-workspace">
           <GlobalTitlebar
             sidebarCollapsed={sidebarCollapsed}
             sidebarToggleTip={sidebarToggleTip}
@@ -57,11 +63,17 @@ export function AppView({ controller }: { controller: AppViewController }) {
             onForward={navigateForward}
             onTipChange={setControlTip}
           />
-          <div className="app">
+          <div className="app" aria-hidden={settingsOpen} {...(settingsOpen ? { inert: '' } : {})}>
             <SidebarView controller={sidebar} />
             <CoreWorkspaceView controller={coreWorkspace} />
           </div>
         </div>
+        <SettingsEntryButton
+          settingsOpen={settingsOpen}
+          onOpen={openSettingsFromEntry}
+          onClose={closeSettingsFromEntry}
+          rippling={settingsEntryRippling}
+        />
         <OverlaysView controller={overlays} />
       </div>
     </LinkNavigationProvider>

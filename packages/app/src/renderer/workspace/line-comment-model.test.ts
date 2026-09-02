@@ -63,4 +63,29 @@ describe('line comment model', () => {
       createdAt: 456,
     })
   })
+
+  it('starts an edit draft with the original identity and text', () => {
+    const edited = reduceLineCommentDraft(EMPTY_LINE_COMMENT_DRAFT, {
+      type: 'begin',
+      range: { startLine: 5, endLine: 6 },
+      comment: { id: 'comment-5', createdAt: 123, text: 'existing comment' },
+    })
+
+    expect(edited).toEqual({
+      editingRange: { startLine: 5, endLine: 6 },
+      draftText: 'existing comment',
+      commentId: 'comment-5',
+      commentCreatedAt: 123,
+    })
+    expect(createLineCommentFromDraft(edited, {
+      id: edited.commentId,
+      createdAt: edited.commentCreatedAt,
+    })).toEqual({
+      id: 'comment-5',
+      startLine: 5,
+      endLine: 6,
+      text: 'existing comment',
+      createdAt: 123,
+    })
+  })
 })

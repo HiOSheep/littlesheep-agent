@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  CHAT_COMPOSER_OVERLAY_RESIZE_EVENT,
+  CHAT_STICKY_BOTTOM_THRESHOLD,
+  CHAT_GEOMETRY_EPSILON,
+  didChatViewportHeightChange,
   didChatViewportResize,
+  didChatViewportWidthChange,
+  isChatNearBottom,
+  resolveChatResizeScrollTop,
   resolveBottomAnchoredScrollTop,
   type ChatScrollGeometry,
 } from './chat-scroll-anchor'
@@ -65,7 +72,34 @@ describe('chat bottom scroll anchor', () => {
     const previous = geometry()
 
     expect(didChatViewportResize(previous, geometry({ scrollHeight: 1_080 }))).toBe(false)
+    expect(didChatViewportWidthChange(previous, geometry({ viewportWidth: 699.5 }))).toBe(true)
+    expect(didChatViewportHeightChange(previous, geometry({ viewportHeight: 399.5 }))).toBe(true)
     expect(didChatViewportResize(previous, geometry({ viewportWidth: 699.5 }))).toBe(true)
     expect(didChatViewportResize(previous, geometry({ viewportHeight: 399.5 }))).toBe(true)
+  })
+
+  it('does not move a non-bottom reader during a width-only reflow', () => {
+    const previous = geometry({ scrollTop: 420 })
+    const current = geometry({ scrollHeight: 1_160, clientWidth: 520, viewportWidth: 520 })
+
+    expect(resolveChatResizeScrollTop(previous, current, false)).toBeNull()
+  })
+
+  it('repairs a bottom-pinned chat once after a width-only reflow', () => {
+    const previous = geometry({ scrollTop: 600 })
+    const current = geometry({ scrollHeight: 1_180, clientWidth: 520, viewportWidth: 520 })
+
+    expect(resolveChatResizeScrollTop(previous, current, true)).toBe(780)
+    expect(isChatNearBottom(previous)).toBe(true)
+    expect(CHAT_STICKY_BOTTOM_THRESHOLD).toBe(72)
+    expect(CHAT_GEOMETRY_EPSILON).toBe(0.5)
+    expect(CHAT_COMPOSER_OVERLAY_RESIZE_EVENT).toBe('littlesheep:chat-composer-overlay-resize')
+  })
+
+  it('keeps height-change repairs available for intentional viewport resizing', () => {
+    const previous = geometry({ scrollTop: 420 })
+    const current = geometry({ clientHeight: 360, viewportHeight: 360 })
+
+    expect(resolveChatResizeScrollTop(previous, current, false)).toBe(460)
   })
 })

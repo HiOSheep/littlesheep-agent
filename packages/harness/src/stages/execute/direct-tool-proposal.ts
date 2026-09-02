@@ -65,7 +65,7 @@ export function resolveDirectToolProposal(
   }
 
   const descriptor = describeToolAccess(tool.name, input, ctx.toolContext);
-  if (descriptor.action === 'unknown') return undefined;
+  if (descriptor.action === 'unknown' || descriptor.hardDecision === 'deny') return undefined;
   const directExec = descriptor.action === 'execute'
     && tool.name === 'exec'
     && ctx.toolSources?.[tool.name] === 'builtin'
@@ -91,7 +91,9 @@ export function resolveDirectToolProposal(
     return undefined;
   }
   const requiresApproval = ctx.toolContext.permissionMode
-    ? shouldRequestPermissionApproval(ctx.toolContext.permissionMode, descriptor)
+    ? shouldRequestPermissionApproval(ctx.toolContext.permissionMode, descriptor, {
+        strictReadApproval: ctx.toolContext.networkPolicy?.strictReadApproval === true,
+      })
     : tool.requiresApproval === true;
   if (requiresApproval) return undefined;
   if (actualSideEffect !== 'read'

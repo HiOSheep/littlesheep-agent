@@ -23,7 +23,7 @@ import type {
   RunCheckpointContinuationDisposition,
   ConversationContinuationEvidence,
 } from '@littlesheep/types';
-import { asSessionId, textMessage } from '@littlesheep/types';
+import { asSessionId, sanitizeWebEvidenceProjection, textMessage } from '@littlesheep/types';
 import { randomUUID } from 'node:crypto';
 import { parseModelRef, type Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
@@ -60,6 +60,7 @@ import { executeRunnerPhase } from './runner-execute.js';
 import { finalizeRunnerPhase } from './runner-finalize.js';
 import { persistRunnerPhase } from './runner-persist.js';
 import { resolveSemanticResumeStage } from './continuation-stage.js';
+import { WebRetrievalRuntime } from '@littlesheep/web';
 import {
   resolveContinuationDisposition,
   type ContinuationDirective,
@@ -323,6 +324,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     let checkpointCompleted = false;
     let runtimeQueueRegistered = false;
     let runCheckpointId: string | undefined;
+    let webRetrievalRuntime: WebRetrievalRuntime | undefined;
 
     const abortControl = createRunAbortControl({ signal: input.signal, timeoutMs: RUN_TIMEOUT_MS, origin, startedAt });
     const signal = abortControl.signal;
@@ -377,9 +379,25 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
 
       // 3. Build RunContext (loads history WITHOUT inbound — no duplicate).
       // Apply caller-provided tool policy before the run.
-      const runTools = resolveRunTools(infra.registry.list(), {
+      const selectedWebProviderSnapshot = opts.config.web.defaultProvider
+        ? infra.webProviderSnapshots.find((snapshot) => snapshot.id === opts.config.web.defaultProvider)
+        : undefined;
+      const webToolsAvailable = opts.config.web.enabled
+        && opts.config.web.readMode !== 'disabled'
+        && Boolean(opts.config.web.defaultProvider)
+        && Boolean(infra.webProviders.get(opts.config.web.defaultProvider))
+        && (selectedWebProviderSnapshot?.status === 'configured_unchecked'
+          || selectedWebProviderSnapshot?.status === 'ready'
+          || selectedWebProviderSnapshot?.status === 'degraded');
+      const runRegistrations = infra.registry.list().filter(({ tool }) => (
+        webToolsAvailable || (tool.name !== 'web_search' && tool.name !== 'web_fetch')
+      ));
+      const runTools = resolveRunTools(runRegistrations, {
         additionalTools: input.additionalTools,
-        filter: input.toolFilter,
+        filter: (tool) => (
+          (webToolsAvailable || (tool.name !== 'web_search' && tool.name !== 'web_fetch'))
+          && (input.toolFilter?.(tool) ?? true)
+        ),
         requireApprovalForAllTools: input.requireApprovalForAllTools,
       });
       const resolvedTools = runTools.tools;
@@ -404,7 +422,28 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         requireApprovalForAllTools: input.requireApprovalForAllTools === true,
         toolFilterApplied: input.toolFilter !== undefined,
         cwdOverridden: input.cwd !== undefined,
+        webProviderSnapshot: selectedWebProviderSnapshot,
       });
+      const selectedProviderStatus = resolvedRunConfig.webProvider?.status;
+      const selectedProvider = resolvedRunConfig.networkPolicy?.providerId
+        ? infra.webProviders.get(resolvedRunConfig.networkPolicy.providerId)
+        : undefined;
+      if (
+        resolvedRunConfig.networkPolicy?.enabled
+        && selectedProvider
+        && (selectedProviderStatus === 'configured_unchecked'
+          || selectedProviderStatus === 'ready'
+          || selectedProviderStatus === 'degraded')
+      ) {
+        webRetrievalRuntime = new WebRetrievalRuntime({
+          runId,
+          policy: resolvedRunConfig.networkPolicy,
+          providers: infra.webProviders,
+          signal,
+          cache: infra.webCache,
+          log: opts.log,
+        });
+      }
       const permissionMode = containerRoot
         ? (input.permissionPolicyId ?? (input.requireApprovalForAllTools ? 'restricted' : 'research'))
         : undefined;
@@ -458,7 +497,8 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
          memoryResources: infra.memoryService,
          workspaceContext: input.workspaceContext,
           historyExcludeMessageIds: continuation?.historyExcludeMessageIds,
-       });
+          webRetrieval: webRetrievalRuntime,
+        });
       if (continuation) {
         if (continuation.restoreState === false) {
           ctx.entryStage = continuation.resumeStage;
@@ -638,6 +678,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       }
       return result;
     } finally {
+      webRetrievalRuntime?.dispose();
       if (runtimeQueueRegistered) activeRuns.unregister(runId);
       if (activeCheckpoint && !checkpointCompleted) {
         try {
@@ -1637,6 +1678,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       clarificationRequest: log.clarificationRequest,
       clarificationResponse: log.clarificationResponse,
       conversationContinuation: log.conversationContinuation,
+      webEvidence: log.webEvidence,
       memoryAccess: log.memoryAccess,
       versionCheckpoint: log.versionCheckpoint,
       runCheckpointId: log.runCheckpointId,
@@ -1916,6 +1958,7 @@ function assembleResult(
     clarificationRequest: ctx.clarificationRequest,
     clarificationResponse: ctx.clarificationResponse,
     conversationContinuation: ctx.conversationContinuation,
+    webEvidence: sanitizeWebEvidenceProjection(ctx.webEvidence),
     memoryAccess,
   };
 }
@@ -2033,6 +2076,7 @@ function restoreContinuationContext(
   // continuation at its first safe boundary. The original event evidence is
   // retained in the restored queue; the new run starts in a clean state.
   writeRuntimeState(ctx, 'runner-restore', { runtimeControl: undefined });
+  ctx.webEvidence = sanitizeWebEvidenceProjection(checkpoint.webEvidence);
   clearReplyState(ctx, 'runner-restore');
 }
 

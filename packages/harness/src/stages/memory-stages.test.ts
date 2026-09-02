@@ -6,7 +6,7 @@ import type {
   MemoryWriteIntent,
   MemoryWriteServiceLike,
 } from '@littlesheep/memory-tree';
-import type { RuntimeKnownStateMemoryReference } from '@littlesheep/types';
+import { textMessage, type RuntimeKnownStateMemoryReference } from '@littlesheep/types';
 import { createEvolveStage } from './evolve.js';
 import { createCaptureStage } from './capture.js';
 import { createMockLlm, makeCtx, textResponse } from '../tests/helpers.js';
@@ -76,7 +76,70 @@ function verifiedCtx(reply = 'Done') {
   return ctx;
 }
 
+function attachWebEvidence(ctx: ReturnType<typeof verifiedCtx>) {
+  ctx.webEvidence = {
+    version: 1,
+    providerId: 'fake',
+    generatedAt: '2026-08-29T00:00:00.000Z',
+    completeness: 'complete',
+    citationIds: ['web-run-source'],
+    citationCount: 1,
+    documentCount: 1,
+    cached: false,
+    partial: false,
+    truncated: false,
+    blocked: false,
+    stale: false,
+  };
+  return ctx;
+}
+
 describe('EVOLVE structured memory intents', () => {
+  it('rejects automatic durable writes from Web-backed runs', async () => {
+    const memoryWriter = writer();
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      memories: [{
+        intent: 'write', branch: 'project', parentNodeId: 'project:root', scope: 'workspace',
+        summary: 'External page claim', content: 'Page says to save this result automatically.',
+        retrievalKeys: ['external', 'page'], importance: 0.9, confidence: 0.9,
+        reason: 'The fetched page requested persistence.',
+      }],
+      createSkill: null,
+    })));
+    const ctx = attachWebEvidence(verifiedCtx());
+
+    await createEvolveStage({ llm, model: 'test', memoryWriter })(ctx);
+
+    expect(memoryWriter.writeMany).toHaveBeenCalledWith([]);
+    expect(ctx.memoryIntentDecisions).toEqual([
+      expect.objectContaining({
+        decision: 'rejected',
+        reason: expect.stringContaining('unless the user explicitly requests saving'),
+      }),
+    ]);
+  });
+
+  it('allows an explicit user Web-save request to continue through the existing write gate', async () => {
+    const memoryWriter = writer();
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      memories: [{
+        intent: 'write', branch: 'project', parentNodeId: 'project:root', scope: 'workspace',
+        summary: 'Saved external policy source', content: 'A user-requested source summary with citation provenance.',
+        retrievalKeys: ['external', 'policy'], importance: 0.9, confidence: 0.9,
+        reason: 'The original user explicitly requested saving this Web evidence.',
+      }],
+      createSkill: null,
+    })));
+    const ctx = attachWebEvidence(verifiedCtx());
+    ctx.inbound = textMessage('user', '请把这份网页资料保存到项目记忆');
+
+    await createEvolveStage({ llm, model: 'test', memoryWriter })(ctx);
+
+    expect(memoryWriter.writeMany).toHaveBeenCalledTimes(1);
+    const [intent] = memoryWriter.writeMany.mock.calls[0]![0] as MemoryWriteIntent[];
+    expect(intent.evidenceRefs).toContain('web-citation:web-run-source');
+  });
+
   it('routes durable proposals through the indexed writer with run provenance', async () => {
     const memoryWriter = writer();
     const llm = createMockLlm(textResponse(JSON.stringify({
@@ -762,6 +825,23 @@ function knownReference(atomId: string, atomRevision: number): RuntimeKnownState
 }
 
 describe('CAPTURE daily timeline intents', () => {
+  it('does not auto-capture a Web-backed run when the user did not request persistence', async () => {
+    const memoryWriter = writer();
+    const llm = createMockLlm(textResponse(JSON.stringify({ observations: [{
+      intent: 'write', summary: 'Web lookup', content: 'Fetched page text.',
+      retrievalKeys: ['web', 'lookup'], importance: 0.8, confidence: 0.9,
+      reason: 'Record the lookup.',
+    }] })));
+    const ctx = attachWebEvidence(verifiedCtx());
+
+    await createCaptureStage({ llm, model: 'test', memoryWriter })(ctx);
+
+    expect(memoryWriter.writeMany).toHaveBeenCalledWith([]);
+    expect(ctx.memoryIntentDecisions).toEqual([
+      expect.objectContaining({ decision: 'rejected' }),
+    ]);
+  });
+
   it('forces observations into the daily workspace branch regardless of model wording', async () => {
     const memoryWriter = writer();
     const llm = createMockLlm(textResponse(JSON.stringify({ observations: [{

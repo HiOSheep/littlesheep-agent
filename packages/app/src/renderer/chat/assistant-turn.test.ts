@@ -2,7 +2,9 @@ import React, { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { AssistantActivityFlow, AssistantTurnMessage } from './assistant-turn'
+import { WebSources, webErrorLabel, webEvidenceStateLabel } from './assistant-turn'
 import type { AssistantTurnActivity, ChatMessage } from './types'
+import type { WebEvidenceProjection } from '@littlesheep/types'
 
 beforeAll(() => vi.stubGlobal('React', React))
 afterAll(() => vi.unstubAllGlobals())
@@ -30,6 +32,51 @@ function renderFlow(next: Partial<AssistantTurnActivity> = {}): string {
 
 
 describe('assistant activity flow', () => {
+  it('renders partial web evidence and stable safe error labels without exposing raw error ids', () => {
+    const evidence: WebEvidenceProjection = {
+      version: 1,
+      generatedAt: '2026-08-29T00:00:00.000Z',
+      completeness: 'partial',
+      citationIds: ['web-ui-source'],
+      citationCount: 1,
+      documentCount: 1,
+      cached: false,
+      partial: true,
+      truncated: true,
+      blocked: false,
+      stale: false,
+      citations: [{
+        id: 'web-ui-source',
+        origin: 'https://example.com',
+        urlHash: 'a'.repeat(64),
+        title: 'Partial source',
+        fetchedAt: '2026-08-29T00:00:00.000Z',
+        status: 'partial',
+        truncated: true,
+      }],
+      errorKinds: ['web_fetch_timeout', 'web_provider_rate_limited'],
+    }
+    const html = renderToStaticMarkup(createElement(WebSources, { evidence }))
+
+    expect(webEvidenceStateLabel(evidence)).toBe('部分资料')
+    expect(html).toContain('部分资料 · 1 项')
+    expect(html).toContain('页面读取超时 · 搜索服务限流')
+    expect(html).not.toContain('web_fetch_timeout')
+    expect(html).not.toContain('web_provider_rate_limited')
+    expect(html).not.toContain('token=')
+  })
+
+  it('maps every Runtime error category to a non-empty user-facing label', () => {
+    const kinds = [
+      'web_disabled', 'web_provider_unconfigured', 'web_provider_auth_failed', 'web_provider_rate_limited',
+      'web_provider_unavailable', 'web_provider_invalid_response', 'web_invalid_query', 'web_sensitive_query_blocked',
+      'web_url_invalid', 'web_scheme_blocked', 'web_ssrf_blocked', 'web_dns_check_failed', 'web_redirect_blocked',
+      'web_fetch_timeout', 'web_fetch_cancelled', 'web_response_too_large', 'web_content_unsupported',
+      'web_extraction_failed', 'web_cache_unavailable', 'web_partial', 'web_citation_invalid',
+    ]
+    expect(kinds.map(webErrorLabel)).not.toContain('网络资料读取失败')
+  })
+
   it('renders a running step as soon as the first step event arrives', () => {
     const html = renderFlow({
       steps: [{

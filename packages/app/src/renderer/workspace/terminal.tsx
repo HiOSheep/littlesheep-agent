@@ -16,8 +16,18 @@ import { formatDurationMs } from '../chat/activity-model'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { RefreshIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
+import {
+  LITTLE_SHEEP_SELECTION_BACKGROUND,
+  LITTLE_SHEEP_SELECTION_BACKGROUND_INACTIVE,
+  LITTLE_SHEEP_SELECTION_FOREGROUND,
+} from '../selection-style'
 import { compactPath } from './path-utils'
 import { createTerminalFitScheduler } from './terminal-fit'
+import {
+  COLUMN_RESIZE_END_EVENT,
+  WORKSPACE_NAVIGATOR_MOTION_END_EVENT,
+  WORKSPACE_NAVIGATOR_MOTION_START_EVENT,
+} from '../ui/resize'
 import { createTerminalInputController, type TerminalInputController } from './terminal-input-controller'
 
 const TERMINAL_FONT_FAMILY = '"SimSun", "宋体", monospace'
@@ -27,10 +37,12 @@ const TERMINAL_LINE_HEIGHT = 1.34
 export function WorkspaceTerminal({
   workspacePath,
   sessionId,
+  active = true,
   onTipChange,
 }: {
   workspacePath: string
   sessionId?: string
+  active?: boolean
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const hostRef = useRef<HTMLDivElement>(null)
@@ -48,6 +60,9 @@ export function WorkspaceTerminal({
   const activityRequestRef = useRef(0)
   const mountedRef = useRef(true)
   const inputControllerRef = useRef<TerminalInputController | null>(null)
+  const activeRef = useRef(active)
+  const terminalInputEnabledRef = useRef(false)
+  activeRef.current = active
 
   useEffect(() => {
     void refreshTerminalActivities()
@@ -102,6 +117,9 @@ export function WorkspaceTerminal({
           theme: {
             background: '#1f1f1f',
             foreground: '#d7d7d7',
+            selectionBackground: LITTLE_SHEEP_SELECTION_BACKGROUND,
+            selectionForeground: LITTLE_SHEEP_SELECTION_FOREGROUND,
+            selectionInactiveBackground: LITTLE_SHEEP_SELECTION_BACKGROUND_INACTIVE,
             cursor: '#d7d7d7',
             black: '#1f1f1f',
             red: '#d86666',
@@ -127,7 +145,7 @@ export function WorkspaceTerminal({
         terminalRef.current = terminal
         fitAddonRef.current = fitAddon
         inputDisposable = terminal.onData((data) => {
-          if (!disposed) inputController.queue(data)
+          if (!disposed && activeRef.current) inputController.queue(data)
         })
         const fitTerminal = () => {
           if (disposed || !terminalRef.current || !fitAddonRef.current) return
@@ -165,9 +183,19 @@ export function WorkspaceTerminal({
         fitTerminal()
         scheduler.schedule(true)
         resizeObserver = new ResizeObserver(() => {
-          scheduler.schedule()
+          if (
+            !document.body.classList.contains('is-resizing-column')
+            && !document.body.classList.contains('is-workspace-navigator-motion')
+          ) scheduler.schedule()
         })
         resizeObserver.observe(hostRef.current)
+
+        const handleColumnResizeEnd = () => scheduler.schedule(true)
+        const handleNavigatorMotionStart = () => scheduler.cancel()
+        const handleNavigatorMotionEnd = () => scheduler.schedule(true)
+        window.addEventListener(COLUMN_RESIZE_END_EVENT, handleColumnResizeEnd)
+        window.addEventListener(WORKSPACE_NAVIGATOR_MOTION_START_EVENT, handleNavigatorMotionStart)
+        window.addEventListener(WORKSPACE_NAVIGATOR_MOTION_END_EVENT, handleNavigatorMotionEnd)
 
         const scheduleDisplayRefresh = () => scheduler.schedule(true)
         const handleVisibilityChange = () => {
@@ -193,6 +221,9 @@ export function WorkspaceTerminal({
           window.removeEventListener('resize', scheduleDisplayRefresh)
           window.visualViewport?.removeEventListener('resize', scheduleDisplayRefresh)
           document.removeEventListener('visibilitychange', handleVisibilityChange)
+          window.removeEventListener(COLUMN_RESIZE_END_EVENT, handleColumnResizeEnd)
+          window.removeEventListener(WORKSPACE_NAVIGATOR_MOTION_START_EVENT, handleNavigatorMotionStart)
+          window.removeEventListener(WORKSPACE_NAVIGATOR_MOTION_END_EVENT, handleNavigatorMotionEnd)
         }
         // The PTY owns the XTerm cursor. Renderer-written banners would move
         // XTerm without moving PowerShell's PSReadLine cursor model, causing
@@ -221,6 +252,13 @@ export function WorkspaceTerminal({
       fitAddonRef.current = null
     }
   }, [sessionId, workspacePath])
+
+  useEffect(() => {
+    const terminal = terminalRef.current
+    if (!terminal) return
+    terminal.options.disableStdin = !terminalInputEnabledRef.current || !active
+    if (active && terminalInputEnabledRef.current) terminal.focus()
+  }, [active])
 
   async function startTerminalSession(isDisposed: () => boolean) {
     streamAbortRef.current?.abort()
@@ -352,10 +390,11 @@ export function WorkspaceTerminal({
   }
 
   function setTerminalInputEnabled(enabled: boolean) {
+    terminalInputEnabledRef.current = enabled
     const terminal = terminalRef.current
     if (!terminal) return
-    terminal.options.disableStdin = !enabled
-    if (enabled) terminal.focus()
+    terminal.options.disableStdin = !enabled || !activeRef.current
+    if (enabled && activeRef.current) terminal.focus()
   }
 
   async function interruptTerminal() {

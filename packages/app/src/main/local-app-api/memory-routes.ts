@@ -36,7 +36,8 @@ export interface MemoryRouteContext {
   projectIndex: ProjectIndex
   getConfig: () => Config
   setConfig: (config: Config) => void
-  updateRuntimeConfig: (config: Config) => Promise<void>
+  updateRuntimeConfig: (config: Config) => Promise<Config | void>
+  mutateRuntimeConfig?: <T>(operation: () => Promise<T>) => Promise<T>
   memoryV3MigrationManager?: MemoryV2ToV3MigrationManager
   memoryEmbeddingModelManager: MemoryEmbeddingModelController
   selectProjectMemoryExport?: (projectName: string, projectPath: string) => Promise<string | null>
@@ -66,6 +67,7 @@ export async function routeMemory(
 ): Promise<boolean> {
   const { req, res, url, path, method } = request
   const runner = context.getRunner()
+  const mutateRuntimeConfig = context.mutateRuntimeConfig ?? (<T>(operation: () => Promise<T>) => operation())
 
   if (await routeMemoryAtom(request, {
     runner,
@@ -157,18 +159,20 @@ export async function routeMemory(
       json(res, 400, { error: 'experienceWriteThreshold must be a number between 0 and 1' })
       return true
     }
-    const current = context.getConfig()
-    const next: Config = {
-      ...current,
-      memory: {
-        ...current.memory,
-        experienceWriteThreshold: threshold,
-      },
-    }
-    context.setConfig(next)
-    await context.updateRuntimeConfig(next)
-    json(res, 200, { experienceWriteThreshold: threshold })
-    return true
+    return mutateRuntimeConfig(async () => {
+      const current = context.getConfig()
+      const next: Config = {
+        ...current,
+        memory: {
+          ...current.memory,
+          experienceWriteThreshold: threshold,
+        },
+      }
+      const applied = await context.updateRuntimeConfig(next) ?? next
+      context.setConfig(applied)
+      json(res, 200, { experienceWriteThreshold: threshold })
+      return true
+    })
   }
 
   const memoryNodeId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.memoryNodes, '/manage')

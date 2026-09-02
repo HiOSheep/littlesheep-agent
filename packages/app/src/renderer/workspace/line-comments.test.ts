@@ -20,9 +20,12 @@ describe('workspace line comments', () => {
     const styles = await readRendererStyleSource()
 
     expect(source).toContain('editor.onMouseMove')
+    expect(source).toContain('readCommentableLineAtClientPoint')
+    expect(source).toContain('browserEvent.clientX')
     expect(source).toContain("editorHost.addEventListener('pointerdown', beginReadOnlyLineGesture, true)")
     expect(source).toContain("window.addEventListener('pointerup', finishReadOnlyLineGesture, true)")
     expect(source).toContain('editor.getTargetAtClientPoint')
+    expect(source).toContain('if (!gesture.didDrag) {')
     expect(source).toContain('if (gesture.didDrag) beginComment(range)')
     expect(source).toContain('else toggleComment(range)')
     expect(source).toContain("targetElement?.closest('.workspace-line-comment-add, .workspace-line-comment-overlay-zone')")
@@ -35,10 +38,28 @@ describe('workspace line comments', () => {
     expect(viewZones).toContain('workspace-line-comment-zone')
     expect(source).toContain('workspace-line-comment-overlay-zone')
     expect(source).toContain('comment.endLine === undefined ? {} : { endLine: comment.endLine }')
-    expect(styles).toContain('.workspace-comment-hover-line')
+    expect(styles).toContain('.workspace-line-comment-hover-state')
+    expect(styles).toContain('.workspace-line-comment-selected-state')
+    expect(styles).toMatch(/\.workspace-line-comment-selected-state\s*\{[\s\S]*?background:\s*rgba\(121, 174, 255, 0\.12\);/s)
     expect(styles).toContain('.workspace-line-comment-zone')
     expect(styles).toContain('.workspace-line-comment-overlay-zone')
+    expect(styles).toContain('.workspace-comment-published-margin')
+    expect(source).toContain('workspace-line-comment-selected-state')
+    expect(source).not.toContain("className: 'workspace-comment-selected-line'")
+    expect(source).toContain("marginClassName: 'workspace-comment-published-margin'")
+    expect(source).not.toContain('linesDecorationsClassName')
     expect(styles).toContain('.monaco-editor.workspace-monaco-readonly .cursor')
+    expect(styles).toMatch(/\.workspace-line-comment-editor-heading strong\s*\{[\s\S]*?font-size:\s*13px;/s)
+    expect(surface).toContain('useLayoutEffect(() => {')
+    expect(surface).toContain('input.textareaRef.current?.focus()')
+  })
+
+  it('resolves deleted-line comments from the full row width', async () => {
+    const source = await readFile(new URL('./review-inline-deleted-comments.tsx', import.meta.url), 'utf8')
+
+    expect(source).toContain('readDeletedLineTargetAtClientPoint')
+    expect(source).toContain('clientY - editorRect.top')
+    expect(source).toContain('target.top + target.height')
   })
 
   it('opens one line on click and waits until pointer release for multi-line drag selection', () => {
@@ -108,6 +129,9 @@ describe('workspace line comments', () => {
     expect(styles).toMatch(/\.workspace-line-comment-add\s*\{[^}]*border:\s*0;/s)
     expect(styles).toMatch(/\.workspace-line-comment-add-icon::before\s*\{[^}]*width:\s*10px;[^}]*height:\s*2px;/s)
     expect(styles).toMatch(/\.workspace-line-comment-add-icon::after\s*\{[^}]*width:\s*2px;[^}]*height:\s*10px;/s)
+    expect(source).toContain("marginClassName: 'workspace-comment-published-margin'")
+    expect(source).not.toContain('workspace-comment-line-marker')
+    expect(deletedSource).toContain('workspace-review-inline-deleted-comment-state selected')
   })
 
   it('maps diff model lines to source lines without crossing omitted regions', () => {
@@ -140,7 +164,10 @@ describe('workspace line comments', () => {
     expect(source).toContain('className={`workspace-line-comment-overlay-zone ${zone.kind}`}')
     expect(viewZones).toContain("host.setAttribute('aria-hidden', 'true')")
     expect(surface).toContain('onClick={onCancel}')
+    expect(surface).toContain("if (event.key !== 'Escape') return")
+    expect(surface).toContain('event.stopPropagation()')
     expect(surface).toContain('onSubmit={(event) => {')
+    expect(source).toContain('editor.setSelection(new monaco.Selection(')
     expect(source).not.toContain('<form')
     expect(deletedSource).not.toContain('<form')
     expect(source).not.toContain('data-line-comment-action')
@@ -158,6 +185,13 @@ describe('workspace line comments', () => {
     expect(source.split('<form').length - 1).toBe(1)
     expect(styles).toMatch(/\.workspace-line-comment-editor,[\s\S]*?background:\s*var\(--surface\);[\s\S]*?border:\s*0;[\s\S]*?box-shadow:\s*none;/s)
     expect(styles).toMatch(/\.workspace-line-comment-editor textarea\s*\{[\s\S]*?background:\s*transparent;[\s\S]*?border:\s*0;[\s\S]*?border-radius:\s*0;[\s\S]*?box-shadow:\s*none;/s)
+    expect(styles).toMatch(/\.workspace-line-comment-editor textarea:focus-visible\s*\{[\s\S]*?outline:\s*0;[\s\S]*?outline-offset:\s*0;/s)
+  })
+
+  it('centers the comment editor action labels inside their buttons', async () => {
+    const styles = await readRendererStyleSource()
+
+    expect(styles).toMatch(/\.workspace-line-comment-editor-actions button\s*\{[\s\S]*?display:\s*inline-flex;[\s\S]*?align-items:\s*center;[\s\S]*?justify-content:\s*center;[\s\S]*?line-height:\s*1;/s)
   })
 
   it('auto-sizes the draft and its Monaco view zone without a resize handle', async () => {
@@ -189,7 +223,8 @@ describe('workspace line comments', () => {
     expect(source).toContain('if (!readOnly) return')
     expect(source).toContain('if (!readOnly) draft.cancel()')
     expect(source).toContain('readOnly && hoveredLine !== null')
-    expect(source).toContain("className: 'workspace-comment-hover-line'")
+    expect(source).toContain('className="workspace-line-comment-hover-state"')
+    expect(source).toContain('style={{ top: hoveredMetric.top, height: hoveredMetric.height }}')
   })
 
   it('routes published comments through the existing composer attachment state', async () => {

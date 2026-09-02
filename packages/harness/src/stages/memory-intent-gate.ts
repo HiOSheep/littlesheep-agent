@@ -1,3 +1,4 @@
+// Memory write intent admission, including the Web evidence write boundary.
 import {
   MEMORY_INTENT_DECISION_VERSION,
   type LlmMemoryIntentKind,
@@ -15,6 +16,7 @@ import {
   conversationSourceRefs,
 } from '../conversation-source-records.js';
 import { writeMemoryState } from '../memory-state.js';
+import { textOf } from './_shared.js';
 
 const MAX_MEMORY_INTENT_DECISIONS_PER_RUN = 64;
 const MAX_EVIDENCE_REFS_PER_INTENT = 32;
@@ -60,6 +62,13 @@ export function evaluateMemoryIntent(input: MemoryIntentGateInput): GatedMemoryP
   }
   if (runtimeCapture && (input.intent !== 'write' || input.branch !== 'daily')) {
     return rejected(input, [], 'Runtime CAPTURE may only propose daily write intents.');
+  }
+  if (input.ctx.webEvidence && !explicitWebMemoryWriteRequested(input.ctx)) {
+    return rejected(
+      input,
+      webEvidenceRefs(input.ctx),
+      'Web-backed runs do not write daily or durable Memory unless the user explicitly requests saving the Web evidence.',
+    );
   }
   if (contract && !contract.memoryIntentPolicy.allowed.includes(input.intent)) {
     return rejected(input, [], `Intent ${input.intent} is not allowed by ${contract.id}.`);
@@ -211,11 +220,23 @@ export function collectRunEvidence(ctx: RunContext): { refs: string[]; verified:
   for (const result of ctx.toolResults ?? []) {
     refs.add(`run:${ctx.runId}:tool:${result.callId}:${result.ok ? 'succeeded' : 'failed'}`);
   }
+  for (const ref of webEvidenceRefs(ctx)) refs.add(ref);
   const latestVerification = ctx.verificationHistory?.at(-1);
   return {
     refs: [...refs].slice(0, MAX_EVIDENCE_REFS_PER_INTENT),
     verified: latestVerification?.verdict === 'pass',
   };
+}
+
+export function explicitWebMemoryWriteRequested(ctx: Pick<RunContext, 'inbound'>): boolean {
+  const inbound = textOf(ctx.inbound).normalize('NFKC');
+  return /(?:记住|保存|存入|写入|加入|沉淀).{0,20}(?:网页|网络|来源|资料|证据|搜索结果|这份|这些)|(?:网页|网络|来源|资料|证据|搜索结果|这份|这些).{0,20}(?:记住|保存|存入|写入|加入|沉淀)|\b(?:remember|save|store|persist)\b.{0,40}\b(?:web|source|evidence|search results?|these|this)\b|\b(?:web|source|evidence|search results?|these|this)\b.{0,40}\b(?:remember|save|store|persist)\b/iu.test(inbound);
+}
+
+function webEvidenceRefs(ctx: Pick<RunContext, 'webEvidence'>): string[] {
+  return (ctx.webEvidence?.citationIds ?? [])
+    .slice(0, MAX_EVIDENCE_REFS_PER_INTENT)
+    .map((id) => `web-citation:${id}`);
 }
 
 function base(input: MemoryIntentGateInput, evidenceRefs: string[]): Omit<GatedMemoryProposal, 'action' | 'reason'> {

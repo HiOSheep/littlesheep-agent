@@ -2,7 +2,6 @@
 import '@xterm/xterm/css/xterm.css'
 import { SidebarProjectSection } from '../sidebar/project-section'
 import { SidebarQuickNav } from '../sidebar/quick-nav'
-import { SettingsGearIcon } from '../ui/icons'
 import { ConversationSectionView } from './conversation-section-view'
 import { SidebarResizerView } from './sidebar-resizer-view'
 import type { SidebarViewController } from './app-controller-projections'
@@ -15,6 +14,7 @@ export function SidebarView({ controller }: { controller: SidebarViewController 
     sidebarPanel,
     directModulePage,
     createConversationFromSidebar,
+    createProjectConversationFromSidebar,
     openSidebarPanel,
     openDirectModulePage,
     setControlTip,
@@ -29,23 +29,21 @@ export function SidebarView({ controller }: { controller: SidebarViewController 
     openProjectCreator,
     switchSession,
     togglePinnedSession,
+    reorderSidebarSessions,
     renameSession,
     archiveSession,
     deleteSessionPermanently,
     archiveProject,
     relocateProject,
     deleteProjectPermanently,
-    settingsEntryRippling,
-    settingsOpen,
-    closeSettingsFromEntry,
-    openSettingsFromEntry,
     conversation,
     resizer,
   } = controller
   return (
     <>
       <aside className="sidebar" aria-hidden={sidebarCollapsed} {...(sidebarCollapsed ? { inert: '' } : {})}>
-        <div className="sidebar-contents">
+        <div className="sidebar-surface">
+          <div className="sidebar-contents">
         <div className="brand-block">
           <div className="brand-title">LittleSheep</div>
           <div className="brand-subtitle">本地 Agent 工作台</div>
@@ -67,9 +65,17 @@ export function SidebarView({ controller }: { controller: SidebarViewController 
           activeProjectId={sessionOwnership.scope === 'project' ? sessionOwnership.projectId : undefined}
           fallbackPath={projectPath}
           onOpenProject={(project) => void activateProjectWorkspace(project)}
+          onCreateProjectConversation={(project) => {
+            if (sessionOwnership.scope === 'project' && sessionOwnership.projectId === project.id) {
+              createProjectConversationFromSidebar(project.id)
+            } else {
+              void activateProjectWorkspace(project)
+            }
+          }}
           onOpenWorkspace={openProjectCreator}
           onOpenSession={(session) => void switchSession(session)}
           onTogglePin={togglePinnedSession}
+          onReorderSessions={reorderSidebarSessions}
           onRenameSession={renameSession}
           onArchiveSession={archiveSession}
           onDeleteSession={deleteSessionPermanently}
@@ -79,21 +85,7 @@ export function SidebarView({ controller }: { controller: SidebarViewController 
           onTipChange={setControlTip}
         />
       <ConversationSectionView controller={conversation} />
-        <div className="sidebar-footer">
-          <button
-          className={`settings-entry-btn ${settingsEntryRippling ? 'rippling' : ''}`}
-          type="button"
-          onClick={() => {
-            if (settingsOpen) closeSettingsFromEntry()
-            else openSettingsFromEntry()
-          }}
-          aria-label="设置"
-          aria-expanded={settingsOpen}
-          >
-            <SettingsGearIcon />
-            <span className="settings-entry-label">设置</span>
-          </button>
-        </div>
+          </div>
         </div>
       </aside>
       <SidebarResizerView controller={resizer} />

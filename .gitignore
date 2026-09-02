@@ -10,6 +10,8 @@ packages/*/dist/
 packages/channels/*/dist/
 packages/app/out/
 packages/app/runtime/
+packages/app/.release-staging*/
+packages/app/.release-staging/
 *.tsbuildinfo
 build/
 release/
@@ -53,7 +55,13 @@ pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# One-off local diagnostics
+scripts/debug-sidebar-corner.mjs
+
 # Env
 .env
 .env.local
 .env.*.local
+
+# Generated PDFs
+*.pdf

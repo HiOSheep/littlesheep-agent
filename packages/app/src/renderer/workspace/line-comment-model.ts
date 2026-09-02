@@ -3,10 +3,21 @@ import type { LineCommentRange } from './line-comment-gesture'
 
 export type WorkspaceLineComment = AttachmentLineComment & { id: string; createdAt: number }
 
-export type LineCommentDraftState = { editingRange: LineCommentRange | null; draftText: string }
+export type LineCommentDraftState = {
+  editingRange: LineCommentRange | null
+  draftText: string
+  commentId?: string
+  commentCreatedAt?: number
+}
+
+export type LineCommentDraftComment = {
+  id: string
+  createdAt: number
+  text: string
+}
 
 export type LineCommentDraftAction =
-  | { type: 'begin'; range: LineCommentRange }
+  | { type: 'begin'; range: LineCommentRange; comment?: LineCommentDraftComment }
   | { type: 'change'; text: string }
   | { type: 'cancel' }
 
@@ -27,11 +38,25 @@ export function reduceLineCommentDraft(
   state: LineCommentDraftState,
   action: LineCommentDraftAction,
 ): LineCommentDraftState {
-  if (action.type === 'begin') return { editingRange: action.range, draftText: '' }
+  if (action.type === 'begin') {
+    return {
+      editingRange: action.range,
+      draftText: action.comment?.text ?? '',
+      ...(action.comment ? {
+        commentId: action.comment.id,
+        commentCreatedAt: action.comment.createdAt,
+      } : {}),
+    }
+  }
   if (action.type === 'change') {
     return state.draftText === action.text ? state : { ...state, draftText: action.text }
   }
-  return state.editingRange === null && state.draftText === '' ? state : EMPTY_LINE_COMMENT_DRAFT
+  return state.editingRange === null
+    && state.draftText === ''
+    && state.commentId === undefined
+    && state.commentCreatedAt === undefined
+    ? state
+    : EMPTY_LINE_COMMENT_DRAFT
 }
 
 export function createLineCommentFromDraft(

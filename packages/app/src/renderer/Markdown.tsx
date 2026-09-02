@@ -1,10 +1,12 @@
-import { memo, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+// Markdown rendering, safe links, streaming partitions, code blocks, and Mermaid diagrams for chat and previews.
+import { memo, useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useLinkNavigation } from './link-navigation'
 import { StreamingMarkdownPartitioner } from './streaming-markdown'
+import { CheckIcon, CopyIcon } from './ui/icons'
 
 interface MarkdownProps {
   text: string
@@ -64,20 +66,118 @@ export const InlineMarkdown = memo(function InlineMarkdown({ text }: MarkdownPro
   )
 })
 
+const MERMAID_LANGUAGE_ALIASES = new Set([
+  'mermaid',
+  'mmd',
+  'flowchart',
+  'graph',
+  'statediagram',
+  'statediagram-v2',
+  'sequencediagram',
+  'classdiagram',
+  'classdiagram-v2',
+  'erdiagram',
+  'journey',
+  'gantt',
+  'pie',
+  'mindmap',
+  'timeline',
+  'gitgraph',
+  'quadrantchart',
+  'requirementdiagram',
+  'c4context',
+  'packet-beta',
+  'block-beta',
+  'architecture-beta',
+])
+
+const MERMAID_DEFINITION_PATTERN = /^\s*(?:stateDiagram(?:-v2)?|flowchart|graph|sequenceDiagram|classDiagram(?:-v2)?|erDiagram|journey|gantt|pie|mindmap|timeline|gitGraph|quadrantChart|requirementDiagram|c4Context|packet-beta|block-beta|architecture-beta)\b/iu
+
+let mermaidModulePromise: Promise<typeof import('mermaid')> | undefined
+let mermaidConfigured = false
+
+function isMermaidCodeBlock(language: string | undefined, code: string): boolean {
+  const normalizedLanguage = language?.trim().toLowerCase()
+  if (normalizedLanguage) return MERMAID_LANGUAGE_ALIASES.has(normalizedLanguage)
+  return MERMAID_DEFINITION_PATTERN.test(code)
+}
+
+async function renderMermaid(id: string, definition: string): Promise<string> {
+  mermaidModulePromise ??= import('mermaid')
+  const { default: mermaid } = await mermaidModulePromise
+
+  if (!mermaidConfigured) {
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: 'strict',
+      theme: 'base',
+      themeVariables: {
+        background: 'transparent',
+        primaryColor: '#2f2f2f',
+        primaryTextColor: '#f4f4f4',
+        primaryBorderColor: '#5a5a5a',
+        lineColor: '#a8a8a8',
+        secondaryColor: '#282828',
+        tertiaryColor: '#202020',
+        edgeLabelBackground: '#202020',
+        clusterBkg: '#202020',
+        clusterBorder: '#5a5a5a',
+        textColor: '#f4f4f4',
+        fontFamily: 'Arial, "Microsoft YaHei", sans-serif',
+        fontSize: '14px',
+      },
+      themeCSS: `
+        .node rect, .node circle, .node ellipse, .node polygon,
+        .stateGroup rect, .stateGroup circle, .stateGroup ellipse {
+          rx: 7px;
+          ry: 7px;
+          stroke-width: 1px;
+        }
+        .edgePath .path, .flowchart-link, .transition {
+          stroke-width: 1.2px;
+        }
+        .marker, .arrowheadPath {
+          fill: #a8a8a8;
+          stroke: #a8a8a8;
+        }
+        .label, .nodeLabel, .edgeLabel, text, tspan {
+          color: #f4f4f4;
+          fill: #f4f4f4;
+        }
+      `,
+    })
+    mermaidConfigured = true
+  }
+
+  await mermaid.parse(definition)
+  const result = await mermaid.render(id, definition)
+  return result.svg
+}
+
 const components: Components = {
   a({ href, children }) {
     return <MarkdownLink href={href}>{children}</MarkdownLink>
   },
+  table({ children }) {
+    return (
+      <div className="markdown-table-wrap">
+        <table>{children}</table>
+      </div>
+    )
+  },
   code({ className, children, ...props }) {
     const rawCode = String(children)
     const code = rawCode.replace(/\n$/, '')
-    const language = /language-(\w+)/.exec(className ?? '')?.[1]
+    const language = /language-([\w-]+)/u.exec(className ?? '')?.[1]?.toLowerCase()
     if (!language && !rawCode.endsWith('\n')) {
       return (
         <code className="markdown-inline-code" {...props}>
           {children}
         </code>
       )
+    }
+    if (isMermaidCodeBlock(language, code)) {
+      return <MermaidBlock code={code} />
     }
     return <CodeBlock code={code} language={language ?? 'text'} />
   },
@@ -133,34 +233,108 @@ function MarkdownLink({ href, children }: { href?: string; children: ReactNode }
 }
 
 function CodeBlock({ code, language }: { code: string; language: string }) {
+  return (
+    <div className="code-block">
+      <div className="code-toolbar">
+        <CopyButton text={code} label="代码" />
+      </div>
+      <SyntaxHighlighter
+        className="code-block-source"
+        language={language}
+        style={oneDark}
+        PreTag="div"
+        wrapLongLines
+        codeTagProps={{
+          className: `language-${language}`,
+          style: {
+            background: 'transparent',
+            backgroundColor: 'transparent',
+            whiteSpace: 'pre-wrap',
+            overflowWrap: 'anywhere',
+            wordBreak: 'break-word',
+          },
+        }}
+        customStyle={{
+          margin: 0,
+          maxWidth: '100%',
+          overflow: 'hidden',
+          overflowWrap: 'anywhere',
+          background: 'transparent',
+          backgroundColor: 'transparent',
+          padding: 'var(--code-block-inset)',
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+          paddingRight: 'calc(var(--code-block-inset) + var(--code-copy-button-size) + var(--code-copy-safe-gap))',
+        }}
+      >
+        {code}
+      </SyntaxHighlighter>
+    </div>
+  )
+}
+
+function MermaidBlock({ code }: { code: string }) {
+  const reactId = useId()
+  const renderId = `littlesheep-mermaid-${reactId.replace(/[^a-zA-Z0-9_-]/gu, '')}`
+  const [svg, setSvg] = useState<string | null>(null)
+  const [renderFailed, setRenderFailed] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setSvg(null)
+    setRenderFailed(false)
+
+    void renderMermaid(renderId, code)
+      .then((nextSvg) => {
+        if (!cancelled) setSvg(nextSvg)
+      })
+      .catch(() => {
+        if (!cancelled) setRenderFailed(true)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [code, renderId])
+
+  if (renderFailed || !svg) return <CodeBlock code={code} language="text" />
+
+  return (
+    <div className="code-block mermaid-block">
+      <div className="code-toolbar">
+        <CopyButton text={code} label="图表代码" />
+      </div>
+      <div
+        className="mermaid-block-surface"
+        role="img"
+        aria-label="Mermaid 图表"
+        dangerouslySetInnerHTML={{ __html: svg }}
+      />
+    </div>
+  )
+}
+
+function CopyButton({ text, label }: { text: string; label: string }) {
   const [copied, setCopied] = useState(false)
   const copiedTimerRef = useRef<number>()
 
   useEffect(() => () => window.clearTimeout(copiedTimerRef.current), [])
 
   async function copy() {
-    await navigator.clipboard.writeText(code)
+    await navigator.clipboard.writeText(text)
     setCopied(true)
     window.clearTimeout(copiedTimerRef.current)
     copiedTimerRef.current = window.setTimeout(() => setCopied(false), 1200)
   }
 
   return (
-    <div className="code-block">
-      <div className="code-toolbar">
-        <span>{language}</span>
-        <button type="button" onClick={() => void copy()}>
-          {copied ? '已复制' : '复制'}
-        </button>
-      </div>
-      <SyntaxHighlighter
-        language={language}
-        style={oneDark}
-        PreTag="div"
-        customStyle={{ margin: 0, background: 'transparent', padding: '12px' }}
-      >
-        {code}
-      </SyntaxHighlighter>
-    </div>
+    <button
+      type="button"
+      aria-label={copied ? `${label}已复制` : `复制${label}`}
+      data-copied={copied ? 'true' : 'false'}
+      onClick={() => void copy()}
+    >
+      {copied ? <CheckIcon /> : <CopyIcon />}
+    </button>
   )
 }

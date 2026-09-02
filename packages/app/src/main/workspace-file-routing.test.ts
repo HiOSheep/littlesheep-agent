@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   WORKSPACE_IMAGE_EXTS,
+  WORKSPACE_HTML_EXTS,
   WORKSPACE_MARKDOWN_EXTS,
   WORKSPACE_OFFICE_EXTS,
   WORKSPACE_PDF_EXTS,
@@ -47,6 +48,15 @@ describe('workspace file routing', () => {
 
     expect(isWorkspaceTextLikeFile('slides.pptx', '.pptx')).toBe(false)
     expect(isWorkspaceTextLikeFile('photo.png', '.png')).toBe(false)
+  })
+
+  it('routes HTML documents to the rendered HTML preview surface', () => {
+    expect(WORKSPACE_HTML_EXTS.has('.html')).toBe(true)
+    expect(WORKSPACE_HTML_EXTS.has('.htm')).toBe(true)
+    expect(WORKSPACE_HTML_EXTS.has('.xhtml')).toBe(true)
+    expect(classifyWorkspaceFileSurface('snake-game.html', '.html')).toBe('htmlPreview')
+    expect(classifyWorkspaceFileSurface('legacy.htm', '.htm')).toBe('htmlPreview')
+    expect(classifyWorkspaceFileSurface('document.xhtml', '.xhtml')).toBe('htmlPreview')
   })
 
   it('sniffs unknown extensions before falling back to an unsupported file card', () => {

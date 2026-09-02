@@ -1,20 +1,20 @@
 // Extension workspace panels, files, terminal, artifacts, and view helpers.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   openWorkspacePathInVSCode,
   type WorkspaceEntry
 } from '../api'
 import { StringListUpdater } from '../app-shell/types'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { FileGlyphIcon, FolderGlyphIcon, RefreshIcon, SearchIcon, TreeChevronIcon, VSCodeIcon } from '../ui/icons'
+import { RefreshIcon, SearchIcon, VSCodeIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
-import {
-  type WorkspaceDirectoryState,
-  updateWorkspaceDirectoryCache,
-  workspaceDirectoryCache,
-} from './directory-cache'
-import { compactPath, formatFileSize, workspaceAncestorPaths } from './path-utils'
+import { updateWorkspaceDirectoryCache, workspaceDirectoryCache, type WorkspaceDirectoryState } from './directory-cache'
+import { compactPath, isPathInsideOrSameClient, workspaceAncestorPaths } from './path-utils'
 import { WorkspaceNavigatorFrame } from './navigator-frame'
+import { isMissingWorkspacePathError } from './workspace-errors'
+import { WorkspaceTreeNotice, WorkspaceTreeRows, normalizeWorkspaceFilter, workspaceEntryMatchesFilter, MAX_WORKSPACE_DIR_ENTRIES_LABEL } from './workspace-tree-rows'
+
+export { MAX_WORKSPACE_DIR_ENTRIES_LABEL, WorkspaceTreeNotice, WorkspaceTreeRows, normalizeWorkspaceFilter, workspaceDirectoryHasFilterMatch, workspaceEntryMatchesFilter } from './workspace-tree-rows'
 
 
 export function WorkspaceFileNavigator({
@@ -72,7 +72,10 @@ export function WorkspaceFileNavigator({
     setDirectories(cachedDirectories)
     onExpandedPathsChange((paths) => paths.includes(workspacePath) ? paths : [...paths, workspacePath])
     setTreeError('')
-    setDirectoryLoading(workspacePath, true)
+    // Keep cached rows visible while a stale entry is refreshed. Toggling a
+    // workspace tab should not briefly replace the tree with a loading state.
+    const hasCachedRoot = Boolean(cachedDirectories[workspacePath])
+    if (!hasCachedRoot) setDirectoryLoading(workspacePath, true)
     workspaceDirectoryCache.load(workspacePath, workspacePath)
       .then((directory) => {
         if (!alive || requestId !== directoryRequestRef.current) return
@@ -80,7 +83,7 @@ export function WorkspaceFileNavigator({
       })
       .catch((err) => {
         if (!alive || requestId !== directoryRequestRef.current) return
-        setTreeError((err as Error).message)
+        handleDirectoryError(err, workspacePath)
       })
       .finally(() => {
         if (!alive || requestId !== directoryRequestRef.current) return
@@ -88,6 +91,8 @@ export function WorkspaceFileNavigator({
       })
     return () => {
       alive = false
+      if (requestId === directoryRequestRef.current) directoryRequestRef.current += 1
+      setLoadingDirs((value) => value.size === 0 ? value : new Set())
     }
   }, [navigatorCollapsed, workspacePath])
 
@@ -100,6 +105,14 @@ export function WorkspaceFileNavigator({
       if (!directories[path]) void loadDirectory(path)
     }
   }, [navigatorCollapsed, selectedPath, workspacePath])
+
+  useEffect(() => {
+    if (navigatorCollapsed) return
+    for (const path of expandedPaths) {
+      if (!isPathInsideOrSameClient(path, workspacePath) || directories[path]) continue
+      void loadDirectory(path)
+    }
+  }, [directories, expandedPaths, navigatorCollapsed, workspacePath])
 
   function setDirectoryLoading(path: string, loading: boolean) {
     setLoadingDirs((value) => {
@@ -139,7 +152,7 @@ export function WorkspaceFileNavigator({
       commitDirectory(path, directory)
     } catch (err) {
       if (!mountedRef.current || requestId !== directoryRequestRef.current) return
-      setTreeError((err as Error).message)
+      handleDirectoryError(err, path)
     } finally {
       if (!mountedRef.current || requestId !== directoryRequestRef.current) return
       setDirectoryLoading(path, false)
@@ -147,16 +160,17 @@ export function WorkspaceFileNavigator({
   }
 
   function toggleDirectory(entry: WorkspaceEntry) {
+    const shouldLoad = !expanded.has(entry.path) && !directories[entry.path]
     onExpandedPathsChange((paths) => {
       const next = new Set(paths)
       if (next.has(entry.path)) {
         next.delete(entry.path)
       } else {
         next.add(entry.path)
-        if (!directories[entry.path]) void loadDirectory(entry.path)
       }
       return [...next]
     })
+    if (shouldLoad) void loadDirectory(entry.path)
   }
 
   function openFile(entry: WorkspaceEntry) {
@@ -167,8 +181,30 @@ export function WorkspaceFileNavigator({
     try {
       await openWorkspacePathInVSCode(workspacePath)
     } catch (err) {
-      setTreeError((err as Error).message)
+      handleWorkspaceActionError(err)
     }
+  }
+
+  function handleDirectoryError(error: unknown, path: string) {
+    if (isMissingWorkspacePathError(error)) {
+      // A file can disappear between the tree read and the child request. Keep
+      // the detail in the developer console, but do not expose OS internals in
+      // the navigator or leave the vanished branch in a loading state.
+      console.debug('[workspace-file-navigator] directory is unavailable', error)
+      setTreeError('')
+      onExpandedPathsChange((paths) => paths.filter((item) => item !== path))
+      return
+    }
+    setTreeError('文件夹暂时无法读取，请点击刷新重试。')
+  }
+
+  function handleWorkspaceActionError(error: unknown) {
+    if (isMissingWorkspacePathError(error)) {
+      console.debug('[workspace-file-navigator] workspace action target is unavailable', error)
+      setTreeError('')
+      return
+    }
+    setTreeError('无法打开当前工作区，请稍后重试。')
   }
 
   function refreshTree() {
@@ -287,148 +323,5 @@ export function WorkspaceFileNavigator({
           )}
         </div>
     </WorkspaceNavigatorFrame>
-  )
-}
-
-
-export const MAX_WORKSPACE_DIR_ENTRIES_LABEL = 320
-
-
-export function WorkspaceTreeRows({
-  dirPath,
-  depth,
-  directories,
-  expanded,
-  loadingDirs,
-  selectedPath,
-  filterText,
-  onToggleDirectory,
-  onOpenFile,
-}: {
-  dirPath: string
-  depth: number
-  directories: Record<string, WorkspaceDirectoryState>
-  expanded: Set<string>
-  loadingDirs: Set<string>
-  selectedPath: string
-  filterText: string
-  onToggleDirectory: (entry: WorkspaceEntry) => void
-  onOpenFile: (entry: WorkspaceEntry) => void
-}) {
-  const directory = directories[dirPath]
-  if (!directory) return null
-
-  return (
-    <>
-      {directory.entries.map((entry) => {
-        if (!workspaceEntryMatchesFilter(entry, directories, filterText)) return null
-        const directoryEntry = entry.kind === 'directory'
-        const open = directoryEntry && (
-          expanded.has(entry.path) ||
-          (Boolean(filterText) && workspaceDirectoryHasFilterMatch(entry.path, directories, filterText))
-        )
-        const selected = entry.path === selectedPath
-        const loading = loadingDirs.has(entry.path)
-        return (
-          <div key={entry.path}>
-            <button
-              className={`workspace-tree-row ${directoryEntry ? 'directory' : 'file'} ${selected ? 'selected' : ''}`}
-              type="button"
-              role="treeitem"
-              aria-expanded={directoryEntry ? open : undefined}
-              aria-selected={!directoryEntry ? selected : undefined}
-              style={{ '--workspace-tree-depth': depth } as CSSProperties}
-              onClick={() => directoryEntry ? onToggleDirectory(entry) : onOpenFile(entry)}
-            >
-              <span className={`workspace-tree-chevron ${open ? 'open' : ''}`}>
-                {directoryEntry ? <TreeChevronIcon /> : null}
-              </span>
-              <span className="workspace-tree-glyph">
-                {directoryEntry ? <FolderGlyphIcon /> : <FileGlyphIcon />}
-              </span>
-              <span className="workspace-tree-name">{entry.name}</span>
-              {!directoryEntry && entry.size !== undefined && (
-                <span className="workspace-tree-size">{formatFileSize(entry.size)}</span>
-              )}
-              {loading && <span className="workspace-tree-loading" />}
-            </button>
-            {directoryEntry && open && (
-              directories[entry.path]
-                ? (
-                  <WorkspaceTreeRows
-                    dirPath={entry.path}
-                    depth={depth + 1}
-                    directories={directories}
-                    expanded={expanded}
-                    loadingDirs={loadingDirs}
-                    selectedPath={selectedPath}
-                    filterText={filterText}
-                    onToggleDirectory={onToggleDirectory}
-                    onOpenFile={onOpenFile}
-                  />
-                )
-                : <WorkspaceTreeNotice text="正在读取..." indent={depth + 1} />
-            )}
-          </div>
-        )
-      })}
-      {directory.entries.length > 0 && (directory.hiddenCount > 0 || directory.truncated) && depth > 0 && (
-        <WorkspaceTreeNotice
-          indent={depth + 1}
-          text={[
-            directory.hiddenCount > 0 ? `隐藏 ${directory.hiddenCount} 项` : '',
-            directory.truncated ? '列表已截断' : '',
-          ].filter(Boolean).join('，')}
-        />
-      )}
-    </>
-  )
-}
-
-
-export function normalizeWorkspaceFilter(value: string): string {
-  return value.trim().toLowerCase()
-}
-
-
-export function workspaceEntryMatchesFilter(
-  entry: WorkspaceEntry,
-  directories: Record<string, WorkspaceDirectoryState>,
-  filterText: string,
-): boolean {
-  if (!filterText) return true
-  const entryText = `${entry.name} ${entry.relativePath} ${entry.path}`.toLowerCase()
-  if (entryText.includes(filterText)) return true
-  return entry.kind === 'directory' && workspaceDirectoryHasFilterMatch(entry.path, directories, filterText)
-}
-
-
-export function workspaceDirectoryHasFilterMatch(
-  path: string,
-  directories: Record<string, WorkspaceDirectoryState>,
-  filterText: string,
-): boolean {
-  const directory = directories[path]
-  if (!directory) return false
-  return directory.entries.some((entry) => workspaceEntryMatchesFilter(entry, directories, filterText))
-}
-
-
-export function WorkspaceTreeNotice({
-  text,
-  tone = 'muted',
-  indent = 0,
-}: {
-  text: string
-  tone?: 'muted' | 'error'
-  indent?: number
-}) {
-  return (
-    <div
-      className={`workspace-tree-notice ${tone}`}
-      style={{ '--workspace-tree-depth': indent } as CSSProperties}
-    >
-      {text}
-    </div>
   )
 }

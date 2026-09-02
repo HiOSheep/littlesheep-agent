@@ -1,4 +1,4 @@
-import type { RunContext, TaskBook, TaskStepResult } from '@littlesheep/types';
+import type { RunContext, TaskBook, TaskStepResult, WebEvidenceProjection } from '@littlesheep/types';
 import { buildRunRequestCandidates } from '../../context-candidates.js';
 import {
   preferDirectModelOutput,
@@ -16,6 +16,9 @@ import type { ExecuteStageDeps } from './contracts.js';
 import { applyUsage } from './tool-loop.js';
 import { acceptUniqueUserFacingReply, type ReplyRewriteInput } from '../../user-facing-reply.js';
 import { isCompactReadOnlyResult } from '../../compact-read-only-result.js';
+import { validateWebCitations, webCitationRepairContract } from '../../web-citation-validation.js';
+
+const MAX_WEB_CITATION_REPAIRS = 2;
 
 export async function synthesizeFinalReply(
   deps: ExecuteStageDeps,
@@ -41,7 +44,11 @@ Follow progressive disclosure: lead with the outcome and completion status, then
     compact ? buildCompactUserFacingVoiceAddon(ctx) : buildUserFacingVoiceAddon(ctx),
   );
 
-  const requestFinalReply = async (rewrite?: ReplyRewriteInput): Promise<string> => {
+  const requestFinalReply = async (
+    rewrite?: ReplyRewriteInput,
+    citationRepair?: { generatedReply: string; reason: string },
+  ): Promise<string> => {
+    const webContract = ctx.webEvidence ? webCitationRepairContract(ctx.webEvidence) : undefined;
     const rawRequest = {
       model: deps.model,
       messages: [
@@ -49,7 +56,13 @@ Follow progressive disclosure: lead with the outcome and completion status, then
           role: 'system',
           content: rewrite
             ? `${voiceSystemPrompt}\n\nRegeneration contract:\n- The prior API-generated response exactly repeats a previously published LS reply.\n- Generate the final answer again with a genuinely different opening and sentence structure.\n- Preserve every runtime fact, result, failure, permission decision and uncertainty.\n- Do not mention the regeneration or comparison.\n- Return only the final user-facing answer.`
-            : voiceSystemPrompt,
+            : [
+              voiceSystemPrompt,
+              webContract,
+              citationRepair
+                ? `The previous draft failed Runtime citation validation: ${citationRepair.reason}`
+                : undefined,
+            ].filter(Boolean).join('\n\n'),
         },
         {
           role: 'user',
@@ -66,6 +79,10 @@ Follow progressive disclosure: lead with the outcome and completion status, then
             ...(rewrite ? [
               `Prior API-generated response:\n${rewrite.generatedReply}`,
               `Recent replies to avoid repeating exactly:\n${rewrite.avoidReplies.map((reply, index) => `${index + 1}. ${reply}`).join('\n')}`,
+            ] : []),
+            ...(citationRepair ? [`Invalid prior draft:\n${citationRepair.generatedReply}`] : []),
+            ...(ctx.webEvidence ? [
+              `Durable Web evidence projection:\n${JSON.stringify(modelFacingWebEvidence(ctx.webEvidence))}`,
             ] : []),
           ].join('\n\n'),
         },
@@ -89,12 +106,34 @@ Follow progressive disclosure: lead with the outcome and completion status, then
     return response.content;
   };
 
-  const initial = await requestFinalReply();
+  const requestCitationValidReply = async (rewrite?: ReplyRewriteInput): Promise<string> => {
+    let generated = await requestFinalReply(rewrite);
+    for (let attempt = 0; attempt <= MAX_WEB_CITATION_REPAIRS; attempt += 1) {
+      const validation = validateWebCitations(generated, ctx.webEvidence);
+      if (validation.ok) return generated;
+      if (!ctx.webEvidence || attempt >= MAX_WEB_CITATION_REPAIRS) {
+        throw new Error(`web citation validation failed: ${validation.reason}`);
+      }
+      generated = await requestFinalReply(rewrite, {
+        generatedReply: generated,
+        reason: validation.reason ?? 'invalid citation',
+      });
+    }
+    return generated;
+  };
+
+  const initial = await requestCitationValidReply();
   return acceptUniqueUserFacingReply(
     ctx,
     'execute_final_reply',
     initial,
-    requestFinalReply,
+    requestCitationValidReply,
     replyStage,
   );
+}
+
+/** Keep diagnostic error ids in Runtime/UI only; the model receives user-visible evidence state. */
+function modelFacingWebEvidence(evidence: WebEvidenceProjection): Omit<WebEvidenceProjection, 'errorKinds'> {
+  const { errorKinds: _errorKinds, ...visible } = evidence;
+  return visible;
 }

@@ -2,6 +2,7 @@
 // Core message types persisted in session JSONL transcripts.
 
 import type { ClarificationRequest, ClarificationResponse } from './clarification.js';
+import type { WebEvidenceProjection } from './web-retrieval.js';
 
 /** LLM call categories that may author natural language shown as an LS reply. */
 export type UserFacingReplyPurpose =
@@ -49,6 +50,11 @@ export interface ToolResult {
   ok: boolean;
   /** Structured output (string for text tools, object for rich tools). Omitted on failure. */
   output?: unknown;
+  /**
+   * Run-local content for the current model tool loop. Harness must remove it
+   * before writing ToolResult into messages, checkpoints, logs or AgentResult.
+   */
+  modelOutput?: unknown;
   /** Human-readable error text when ok === false. */
   error?: string;
   /** Wall-clock duration in ms. */
@@ -57,6 +63,8 @@ export interface ToolResult {
   sanitized?: boolean;
   /** Optional structured metadata (counts, exit codes, etc.). */
   meta?: Record<string, unknown>;
+  /** Bounded network evidence summary. Full queries and fetched content are forbidden here. */
+  webEvidence?: WebEvidenceProjection;
 }
 
 /** A block of content within a message. */

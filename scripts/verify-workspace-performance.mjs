@@ -172,8 +172,8 @@ async function main() {
     const hiddenResources = resourceDelta(hiddenStableStart, hiddenStableEnd, idleSampleMs)
     const ok = Object.values(assertions).every((assertion) => assertion.ok)
       && Object.values(fontAssertions).every((assertion) => assertion.ok)
-      && staleWorkspaceTree.visibleBeforeRevalidation
-      && staleWorkspaceTree.requestObserved
+      && staleWorkspaceTree.retainedAfterExpiry
+      && !staleWorkspaceTree.requestObserved
       && reviewEditorContract.syntaxColourCount >= 3
       && reviewEditorContract.hasInsertedBackground
       && reviewEditorContract.hasRemovedBackground
@@ -379,13 +379,50 @@ async function startElectron({ dataDir, chromiumDir, debuggingPort, mainDebuggin
 }
 
 async function connectRenderer(port) {
-  const targets = await waitFor(async () => {
+  return waitFor(async () => {
     const response = await fetch(`http://127.0.0.1:${port}/json/list`).catch(() => undefined)
     if (!response?.ok) return undefined
     const values = await response.json()
-    return values.find((target) => target.type === 'page' && target.webSocketDebuggerUrl)
+    // The window becomes visible on the lightweight data: startup page before
+    // the real React renderer is ready. Only attach after the production
+    // renderer page has replaced that transient document.
+    const target = values.find((candidate) => (
+      candidate.type === 'page'
+      && candidate.webSocketDebuggerUrl
+      && /\/renderer\/index\.html(?:[?#]|$)/u.test(candidate.url ?? '')
+    ))
+    if (!target) return undefined
+
+    const client = new CdpClient(target.webSocketDebuggerUrl)
+    try {
+      const state = await client.evaluate(`(() => ({
+        url: location.href,
+        readyState: document.readyState,
+        hasRoot: Boolean(document.querySelector('#root')),
+      }))()`)
+      if (
+        state?.readyState === 'complete'
+        && state.hasRoot
+        && /\/renderer\/index\.html(?:[?#]|$)/u.test(state.url ?? '')
+      ) {
+        await delay(80)
+        const stable = await client.evaluate(`(() => ({
+          url: location.href,
+          readyState: document.readyState,
+          hasRoot: Boolean(document.querySelector('#root')),
+        }))()`)
+        if (
+          stable?.readyState === 'complete'
+          && stable.hasRoot
+          && /\/renderer\/index\.html(?:[?#]|$)/u.test(stable.url ?? '')
+        ) return client
+      }
+    } catch {
+      // The target may still be navigating from the startup page.
+    }
+    client.close()
+    return undefined
   }, startTimeoutMs, 'renderer debug target')
-  return new CdpClient(targets.webSocketDebuggerUrl)
 }
 
 async function connectDebugger(port, label) {
@@ -433,7 +470,14 @@ class CdpClient {
 
   async evaluate(expression) {
     const result = await this.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
-    if (result.exceptionDetails) throw new Error(result.exceptionDetails.text ?? 'Renderer evaluation failed')
+    if (result.exceptionDetails) {
+      const details = result.exceptionDetails
+      const description = details.exception?.description ?? details.text ?? 'Renderer evaluation failed'
+      const location = [details.url, details.lineNumber, details.columnNumber]
+        .filter((value) => value !== undefined && value !== '')
+        .join(':')
+      throw new Error(location ? `${description} (${location})` : description)
+    }
     return result.result.value
   }
 
@@ -549,11 +593,15 @@ async function measureFileTreeWarm(client) {
 }
 
 async function measureFileTreeStale(client) {
-  // Let the short-lived directory entry expire, then remount the navigator.
-  // The fetch probe tells us that a refresh really happened and adds a small,
-  // benchmark-only response delay. The cached row must remain visible while
-  // that request is still pending to prove stale-while-revalidate behavior.
+  // Workspace panel collapse now preserves mounted tabs so terminal sessions,
+  // editor models, file trees, and their scroll state are not recreated on
+  // reopen. The directory cache may expire while hidden, but reopening must
+  // retain the existing rows instead of causing a redundant request or flash.
   await delay(workspaceDirectoryCacheTtlMs + 250)
+  await client.evaluate(`(() => {
+    window.__littlesheepWorkspaceTreeRow = document.querySelector('.workspace-tree-row')
+    return true
+  })()`)
   await client.evaluate(`document.querySelector('.workspace-panel-corner-toggle')?.click()`)
   await waitFor(async () => await client.evaluate("document.querySelector('.workspace-panel')?.classList.contains('collapsed') || null"), actionTimeoutMs, 'workspace collapse before stale probe')
   await installWorkspaceFetchProbe(client)
@@ -561,21 +609,16 @@ async function measureFileTreeStale(client) {
   const start = await client.evaluate('performance.now()')
   await client.evaluate(`document.querySelector('.workspace-panel-reopen-target')?.click()`)
   const visible = await measureVisible(client, '.workspace-tree-row', start, actionTimeoutMs)
-  const request = await waitFor(async () => {
-    const probe = await readWorkspaceFetchProbe(client)
-    return probe.workspaceListStart !== null ? probe : undefined
-  }, actionTimeoutMs, 'stale workspace directory refresh')
-  const completed = await waitFor(async () => {
-    const probe = await readWorkspaceFetchProbe(client)
-    return probe.workspaceListPending === 0 && probe.workspaceListEnd !== null ? probe : undefined
-  }, actionTimeoutMs, 'stale workspace directory refresh completion')
+  await delay(320)
+  const [probe, sameRow] = await Promise.all([
+    readWorkspaceFetchProbe(client),
+    client.evaluate(`document.querySelector('.workspace-tree-row') === window.__littlesheepWorkspaceTreeRow`),
+  ])
   return {
     visibleMs: visible.elapsedMs,
-    requestMs: roundMs(request.workspaceListStart - start),
-    revalidatedMs: roundMs(completed.workspaceListEnd - start),
-    visibleBeforeRevalidation: visible.visibleAt <= completed.workspaceListEnd + 1,
-    requestObserved: request.workspaceListCount > 0,
-    requestCount: request.workspaceListCount,
+    retainedAfterExpiry: sameRow,
+    requestObserved: probe.workspaceListCount > 0,
+    requestCount: probe.workspaceListCount,
   }
 }
 

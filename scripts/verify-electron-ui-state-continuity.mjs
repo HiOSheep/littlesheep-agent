@@ -61,11 +61,21 @@ async function main() {
       textarea.dispatchEvent(new Event('input', { bubbles: true }))
       conversation.click()
       project.click()
+      const initialSidebarWidth = Number(resizer.getAttribute('aria-valuenow'))
       resizer.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
-      settings.click()
-      return true
+      return {
+        ok: true,
+        initialSidebarWidth,
+      }
     })()`)
-    if (!changed) throw new Error('renderer controls were not ready for the continuity fixture')
+    if (!changed?.ok || !Number.isFinite(changed.initialSidebarWidth)) {
+      throw new Error('renderer controls were not ready for the continuity fixture')
+    }
+    const expectedChangedSidebarWidth = Math.min(460, Math.round(changed.initialSidebarWidth + 12))
+    await waitFor(async () => client.evaluate(`Number(document.querySelector('.sidebar-resizer')?.getAttribute('aria-valuenow')) === ${expectedChangedSidebarWidth} || null`), START_TIMEOUT_MS, 'sidebar width nudge')
+    const sidebarPreference = await client.evaluate(`Number(localStorage.getItem('littlesheep.ui.sidebarWidth'))`)
+    if (!Number.isFinite(sidebarPreference)) throw new Error('responsive sidebar width preference was not persisted')
+    await client.evaluate(`document.querySelector('.settings-entry-btn')?.click()`)
     await waitFor(async () => client.evaluate(`Boolean(document.querySelector('.settings-workspace'))`), START_TIMEOUT_MS, 'settings workspace')
     const browserOpened = await client.evaluate(`(() => {
       const item = [...document.querySelectorAll('.settings-nav-item')]
@@ -105,11 +115,14 @@ async function main() {
       workspaceLayouts: JSON.parse(localStorage.getItem('littlesheep.ui.workspaceSessionLayouts') ?? 'null'),
     }))()`)
     const secondWindow = await readWindowGeometry(client)
+    const expectedRestoredSidebarWidth = Math.round(Math.min(460, Math.max(220, sidebarPreference * secondWindow.innerWidth / 1280)))
 
     if (restored.composerDraft !== COMPOSER_DRAFT) throw new Error('composer draft was not restored')
     if (!restored.conversationCollapsed) throw new Error('conversation section state was not restored')
     if (!restored.projectCollapsed) throw new Error('project section state was not restored')
-    if (restored.sidebarWidth !== '288') throw new Error(`sidebar width was not restored: ${restored.sidebarWidth}`)
+    if (restored.sidebarWidth !== String(expectedRestoredSidebarWidth)) {
+      throw new Error(`sidebar width was not restored: ${restored.sidebarWidth} !== ${expectedRestoredSidebarWidth}`)
+    }
     if (!restored.settingsOpen || !restored.activeSettingsPage.includes('浏览器')) {
       throw new Error(`settings route was not restored: ${JSON.stringify(restored)}`)
     }
@@ -138,7 +151,7 @@ async function main() {
         composerDraft: true,
         conversationCollapsed: true,
         projectCollapsed: true,
-        sidebarWidth: 288,
+        sidebarWidth: expectedRestoredSidebarWidth,
         chatBottomGap,
         fileNavigatorWidth,
         settingsPage: 'browser',
@@ -218,9 +231,23 @@ async function connectRenderer(port) {
     const response = await fetch(`http://127.0.0.1:${port}/json/list`).catch(() => undefined)
     if (!response?.ok) return undefined
     const values = await response.json()
-    return values.find((candidate) => candidate.type === 'page' && candidate.webSocketDebuggerUrl)
+    return values.find((candidate) => candidate.type === 'page'
+      && candidate.webSocketDebuggerUrl
+      && candidate.url
+      && !candidate.url?.startsWith('data:text/html'))
   }, START_TIMEOUT_MS, 'renderer debug target')
-  return new CdpClient(target.webSocketDebuggerUrl)
+  const client = new CdpClient(target.webSocketDebuggerUrl)
+  await client.enableRuntime()
+  await waitFor(async () => {
+    try {
+      return await client.evaluate(`Boolean(document.querySelector('.composer textarea') && document.querySelector('.sidebar-resizer'))`)
+    } catch {
+      // The startup page and the renderer share a WebContents. Navigation can
+      // replace the execution context between target discovery and evaluation.
+      return undefined
+    }
+  }, START_TIMEOUT_MS, 'renderer UI context')
+  return client
 }
 
 async function waitForRendererReady(client) {
@@ -228,7 +255,7 @@ async function waitForRendererReady(client) {
 }
 
 async function readWindowGeometry(client) {
-  return client.evaluate(`({ x: window.screenX, y: window.screenY, width: window.outerWidth, height: window.outerHeight })`)
+  return client.evaluate(`({ x: window.screenX, y: window.screenY, width: window.outerWidth, height: window.outerHeight, innerWidth: window.innerWidth })`)
 }
 
 async function verifyChatBottomAnchor(client) {
@@ -250,16 +277,28 @@ async function verifyChatBottomAnchor(client) {
     requestAnimationFrame(() => requestAnimationFrame(() => {
       const expectedGap = 137
       messages.scrollTop = messages.scrollHeight - messages.clientHeight - expectedGap
+      // Programmatic scrollTop assignment does not reliably emit a native
+      // scroll event in every Electron/Chromium build. Tell the renderer that
+      // this fixture represents an intentional reading position, not a
+      // bottom-pinned chat waiting for new content.
+      messages.dispatchEvent(new Event('scroll', { bubbles: true }))
       requestAnimationFrame(() => {
         const beforeGap = messages.scrollHeight - messages.scrollTop - messages.clientHeight
         messages.style.flexBasis = '360px'
-        requestAnimationFrame(() => requestAnimationFrame(() => {
+        const startedAt = performance.now()
+        const deadline = startedAt + 1_000
+        const readSettledGap = () => {
           const afterGap = messages.scrollHeight - messages.scrollTop - messages.clientHeight
+          if (Math.abs(beforeGap - afterGap) > 1 && performance.now() < deadline) {
+            requestAnimationFrame(readSettledGap)
+            return
+          }
           messages.style.removeProperty('flex')
           messages.style.removeProperty('flex-basis')
           probe.remove()
-          resolvePromise({ beforeGap, afterGap })
-        }))
+          resolvePromise({ beforeGap, afterGap, settleMs: performance.now() - startedAt })
+        }
+        requestAnimationFrame(() => requestAnimationFrame(readSettledGap))
       })
     }))
   })`)
@@ -332,7 +371,9 @@ async function verifyFileNavigatorResize(client) {
 
 async function revealWorkspaceAndReadNavigatorWidth(client) {
   await client.evaluate(`document.querySelector('.settings-entry-btn')?.click()`)
-  await waitFor(async () => client.evaluate(`!document.querySelector('.settings-workspace') || null`), START_TIMEOUT_MS, 'restored workspace route')
+  // Settings uses a keep-mounted presence layer. Closing it does not remove
+  // the workspace node; wait for the authoritative hidden phase instead.
+  await waitFor(async () => client.evaluate(`document.querySelector('.settings-presence')?.classList.contains('presence-hidden') || null`), START_TIMEOUT_MS, 'restored workspace route')
   await client.evaluate(`(() => {
     const panel = document.querySelector('.workspace-panel')
     if (panel?.classList.contains('collapsed')) {
@@ -456,6 +497,10 @@ class CdpClient {
   constructor(url) {
     this.nextId = 1
     this.pending = new Map()
+    this.defaultExecutionContext = undefined
+    this.defaultExecutionContextReady = new Promise((resolvePromise) => {
+      this.resolveDefaultExecutionContext = resolvePromise
+    })
     this.socket = new WebSocket(url)
     this.opened = new Promise((resolvePromise, reject) => {
       this.socket.addEventListener('open', resolvePromise, { once: true })
@@ -463,6 +508,18 @@ class CdpClient {
     })
     this.socket.addEventListener('message', (event) => {
       const message = JSON.parse(event.data)
+      if (message.method === 'Runtime.executionContextCreated') {
+        const context = message.params?.context
+        if (context?.auxData?.isDefault || context?.name === '') {
+          this.defaultExecutionContext = context.id
+          this.resolveDefaultExecutionContext?.(context.id)
+        }
+        return
+      }
+      if (message.method === 'Runtime.executionContextsCleared') {
+        this.defaultExecutionContext = undefined
+        return
+      }
       if (!message.id) return
       const pending = this.pending.get(message.id)
       if (!pending) return
@@ -470,6 +527,15 @@ class CdpClient {
       if (message.error) pending.reject(new Error(message.error.message))
       else pending.resolve(message.result)
     })
+  }
+
+  async enableRuntime() {
+    await this.send('Runtime.enable')
+  }
+
+  async waitForDefaultExecutionContext() {
+    if (this.defaultExecutionContext !== undefined) return this.defaultExecutionContext
+    return this.defaultExecutionContextReady
   }
 
   async send(method, params = {}) {
@@ -481,7 +547,13 @@ class CdpClient {
   }
 
   async evaluate(expression) {
-    const result = await this.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+    await this.waitForDefaultExecutionContext()
+    const result = await this.send('Runtime.evaluate', {
+      expression,
+      awaitPromise: true,
+      returnByValue: true,
+      ...(this.defaultExecutionContext === undefined ? {} : { contextId: this.defaultExecutionContext }),
+    })
     if (result.exceptionDetails) throw new Error(result.exceptionDetails.text ?? 'Renderer evaluation failed')
     return result.result.value
   }

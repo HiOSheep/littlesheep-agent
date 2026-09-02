@@ -51,6 +51,52 @@ async function tempStore(options: Omit<RunCheckpointStoreOptions, 'rootDir'> = {
 }
 
 describe('RunCheckpointStore', () => {
+  it('preserves only the bounded web evidence projection across reload', async () => {
+    const { dir, store } = await tempStore();
+    try {
+      const source = {
+        ...checkpoint('checkpoint-web-evidence'),
+        webEvidence: {
+          version: 1 as const,
+          providerId: 'tavily',
+          generatedAt: '2026-07-18T10:00:00.000Z',
+          completeness: 'complete' as const,
+          citationIds: ['web-checkpoint-citation'],
+          citations: [{
+            id: 'web-checkpoint-citation',
+            origin: 'https://example.com',
+            url: 'https://example.com/article',
+            urlHash: 'a'.repeat(64),
+            title: 'Checkpoint source',
+            fetchedAt: '2026-07-18T10:00:00.000Z',
+            status: 'fetched' as const,
+            truncated: false,
+          }],
+          citationCount: 1,
+          documentCount: 1,
+          cached: false,
+          partial: false,
+          truncated: false,
+          blocked: false,
+          stale: false,
+        },
+      };
+      await expect(store.write(source)).resolves.toMatchObject({ kind: 'written' });
+      const reloaded = new RunCheckpointStore({ rootDir: dir });
+      await expect(reloaded.read(source.id)).resolves.toMatchObject({
+        webEvidence: {
+          citationIds: ['web-checkpoint-citation'],
+          citationCount: 1,
+          documentCount: 1,
+        },
+      });
+      reloaded.dispose();
+    } finally {
+      store.dispose();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('writes atomically, uses hashed filenames, and can be read after recreation', async () => {
     const { dir, store } = await tempStore();
     try {

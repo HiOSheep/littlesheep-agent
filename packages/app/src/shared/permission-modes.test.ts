@@ -15,6 +15,7 @@ describe('permission modes', () => {
 
   it('migrates legacy ids without reintroducing coding as a permission mode', () => {
     expect(normalizePermissionModeId('coding')).toBe('research')
+    expect(normalizePermissionModeId('full-access')).toBe('full')
     expect(normalizePermissionModeId('info')).toBe('full')
     expect(normalizePermissionModeId('physical')).toBe('restricted')
   })

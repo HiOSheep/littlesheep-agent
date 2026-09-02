@@ -56,8 +56,10 @@ export function buildWorkspaceReviewCommentAttachment({
     contextPath: sourcePath,
     name: sourcePath.split('/').at(-1) ?? sourcePath,
     kind: 'file',
+    lineCommentOnly: true,
     inlineText: reviewContext,
     lineComments: [{
+      id: comment.id,
       startLine: comment.startLine,
       ...(comment.endLine === undefined ? {} : { endLine: comment.endLine }),
       text: `${comment.text}\n\n${reviewContext}`.slice(0, 4000),

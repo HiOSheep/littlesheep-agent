@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "provider": "fake",
+  "query": "current official documentation",
+  "results": [
+    {
+      "rank": 1,
+      "title": "Official documentation",
+      "url": "https://example.com/docs/current",
+      "snippet": "A bounded fixture result.",
+      "publishedAt": "2026-08-29T00:00:00.000Z",
+      "siteName": "example.com",
+      "language": "en",
+      "citationId": "web-1",
+      "sourceStatus": "search_result"
+    }
+  ],
+  "fetchedAt": "2026-08-29T00:00:01.000Z",
+  "cached": false,
+  "partial": false,
+  "warnings": []
+}

@@ -689,6 +689,135 @@ describe('executeStage', () => {
     expect(llm.chat).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps rich web evidence in the current model turn while persisting only durable projections', async () => {
+    const pageBody = 'CURRENT_PUBLIC_PAGE_BODY_SENTINEL';
+    const rawQuery = 'latest private-looking project query';
+    const citationId = 'web-test-run-citation-1';
+    const projection = {
+      version: 1 as const,
+      providerId: 'fixture',
+      generatedAt: '2026-08-29T00:00:00.000Z',
+      citationIds: [citationId],
+      citationCount: 1,
+      documentCount: 0,
+      cached: false,
+      partial: false,
+      truncated: false,
+      blocked: false,
+      stale: false,
+      completeness: 'complete' as const,
+      citations: [{
+        id: citationId,
+        url: 'https://example.com/',
+        origin: 'https://example.com',
+        urlHash: 'a'.repeat(64),
+        provider: 'fixture',
+        fetchedAt: '2026-08-29T00:00:00.000Z',
+        status: 'search_result' as const,
+        truncated: false,
+      }],
+    };
+    const webTool: AgentTool = {
+      name: 'web_search',
+      description: 'fixture web search',
+      inputSchema: z.object({ query: z.string() }).strict(),
+      persistence: {
+        projectInput(input) {
+          const query = String((input as { query?: unknown }).query ?? '');
+          return { queryHash: `hash:${query.length}`, queryChars: query.length, sensitiveQuery: false };
+        },
+      },
+      async execute() {
+        return {
+          callId: '',
+          ok: true,
+          output: JSON.stringify({ kind: 'web_search', citationIds: [citationId] }),
+          modelOutput: {
+            kind: 'web_search_results',
+            externalUntrusted: true,
+            results: [{ citationId, snippet: pageBody }],
+          },
+          webEvidence: projection,
+        };
+      },
+    };
+    const events: ToolStreamEvent[] = [];
+    let webReplyAttempts = 0;
+    const llm = createMockLlm((request) => {
+      const toolMessage = request.messages.find((message) => message.role === 'tool');
+      if (!toolMessage) {
+        return toolCallResponse([{ id: 'web-call-1', name: 'web_search', args: { query: rawQuery } }]);
+      }
+      expect(String(toolMessage.content)).toContain(pageBody);
+      expect(String(toolMessage.content)).toContain('externalUntrusted');
+      webReplyAttempts += 1;
+      if (webReplyAttempts === 1) return textResponse('citation missing on first attempt');
+      return textResponse(`citation-backed result [citation:${citationId}]`);
+    });
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [webTool],
+      inbound: textMessage('user', '查最新公开资料'),
+      toolContext: {
+        permissionMode: 'restricted',
+        networkPolicy: {
+          version: 1,
+          enabled: true,
+          providerId: 'fixture',
+          mode: 'public_anonymous',
+          allowDomains: [],
+          blockDomains: [],
+          strictReadApproval: false,
+          maxResults: 10,
+          maxQueryChars: 2_000,
+          maxQueriesPerRun: 4,
+          maxFetchesPerRun: 4,
+          maxConcurrentRequests: 4,
+          searchTimeoutMs: 15_000,
+          fetchTimeoutMs: 20_000,
+          totalTimeoutMs: 90_000,
+          maxResponseBytes: 2 * 1024 * 1024,
+          maxExtractedChars: 40_000,
+          maxRedirects: 5,
+          cacheEnabled: true,
+          cacheTtlSeconds: 300,
+          cacheMaxBytes: 64 * 1024 * 1024,
+          browserFallback: 'approval_required',
+          sensitiveQueryPolicy: 'approve',
+        },
+      },
+      taskBook: {
+        assessment: {
+          userNeed: '查最新公开资料', complexity: 'trivial', goal: '查证公开资料',
+          successCriteria: ['返回有引用的结论'], requiresTaskBook: false, maxExtraScopeRatio: 1,
+        },
+        goal: '查证公开资料', complexity: 'trivial', successCriteria: ['返回有引用的结论'],
+        steps: [{ id: 'web-step', description: '搜索公开资料', tools: ['web_search'] }],
+        overdeliveryPolicy: { maxExtraScopeRatio: 1, guidance: '只返回查证结果' },
+      },
+    });
+    ctx.onToolEvent = (event) => events.push(event);
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ ok: true, next: 'verify' });
+    expect(ctx.reply).toBe(`citation-backed result [citation:${citationId}]`);
+    expect(llm.chat).toHaveBeenCalledTimes(3);
+    expect(ctx.webEvidence).toEqual(projection);
+    expect(ctx.toolResults?.[0]).not.toHaveProperty('modelOutput');
+    const durableState = JSON.stringify({
+      produced: ctx.produced,
+      toolResults: ctx.toolResults,
+      taskExecution: ctx.taskExecution,
+      toolInvocations: ctx.toolInvocations,
+      events,
+    });
+    expect(durableState).not.toContain(pageBody);
+    expect(durableState).not.toContain(rawQuery);
+    expect(durableState).toContain(citationId);
+    expect(durableState).toContain('queryHash');
+  });
+
   it('executes taskBook steps in order, records step results, and emits step/tool events', async () => {
     const tool = makeTool('lookup', { ok: true, output: 'found-it' });
     const llm = createMockLlm([

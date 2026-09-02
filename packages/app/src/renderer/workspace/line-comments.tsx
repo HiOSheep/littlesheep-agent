@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type * as Monaco from 'monaco-editor'
 import type { AttachmentRef } from '../api'
+import type { FloatingHelpTip } from '../ui/floating-help'
 import {
   didLineCommentGestureDrag,
   resolveLineCommentGesture,
@@ -43,7 +44,10 @@ interface WorkspaceLineCommentOverlayProps {
   fileName: string
   comments: WorkspaceLineComment[]
   onCommentsChange: (comments: WorkspaceLineComment[]) => void
+  onCommentUpdate: (previous: WorkspaceLineComment, next: WorkspaceLineComment, attachment: AttachmentRef) => void
+  onCommentDelete: (comment: WorkspaceLineComment) => void
   onAddAttachment: (attachment: AttachmentRef) => void
+  onTipChange?: (tip: FloatingHelpTip | null) => void
   lineNumbers?: WorkspaceLineNumberMapping
   alignToEditor?: boolean
   buildAttachment?: (comment: WorkspaceLineComment) => AttachmentRef
@@ -79,7 +83,10 @@ export function WorkspaceLineCommentOverlay({
   fileName,
   comments,
   onCommentsChange,
+  onCommentUpdate,
+  onCommentDelete,
   onAddAttachment,
+  onTipChange,
   lineNumbers = IDENTITY_LINE_NUMBERS,
   alignToEditor = false,
   buildAttachment,
@@ -87,6 +94,7 @@ export function WorkspaceLineCommentOverlay({
   const [hoveredLine, setHoveredLine] = useState<number | null>(null)
   const draft = useLineCommentDraft()
   const { editingRange, draftText } = draft
+  const editingCommentId = draft.state.commentId
   const [layoutVersion, setLayoutVersion] = useState(0)
   const draftRef = useRef<HTMLTextAreaElement>(null)
   const mappedEditingRange = useMemo(
@@ -117,6 +125,7 @@ export function WorkspaceLineCommentOverlay({
       })
     }
     for (const { comment, modelRange } of mappedComments) {
+      if (comment.id === editingCommentId) continue
       specs.push({
         key: comment.id,
         kind: 'comment',
@@ -127,7 +136,7 @@ export function WorkspaceLineCommentOverlay({
       })
     }
     return specs
-  }, [activeEditingRange, activeSourceRange, editor, mappedComments])
+  }, [activeEditingRange, activeSourceRange, editor, editingCommentId, mappedComments])
   const { zoneHosts, setZoneHosts, editorZoneRecordRef, editorZoneHost }
     = useLineCommentViewZones(editor, zoneSpecs)
   const visibleZoneHosts = activeEditingRange === null
@@ -159,7 +168,14 @@ export function WorkspaceLineCommentOverlay({
     editorHost?.addEventListener('pointerleave', clearHoveredLine)
     const subscriptions = [
       editor.onMouseMove((event) => {
-        const modelLine = readCommentableLine(event.target, monaco)
+        const browserEvent = event.event.browserEvent
+        const modelLine = readCommentableLineAtClientPoint(
+          editor,
+          monaco,
+          event.target,
+          browserEvent.clientX,
+          browserEvent.clientY,
+        )
         setHoveredLine(modelLine !== null && lineNumbers.toSourceLine(modelLine) !== null
           ? modelLine
           : null)
@@ -187,7 +203,13 @@ export function WorkspaceLineCommentOverlay({
       const targetElement = pointerEvent.target instanceof Element ? pointerEvent.target : null
       if (targetElement?.closest('.workspace-line-comment-add, .workspace-line-comment-overlay-zone')) return
       const mouseTarget = editor.getTargetAtClientPoint(pointerEvent.clientX, pointerEvent.clientY)
-      const line = readCommentableLine(mouseTarget, monaco)
+      const line = readCommentableLineAtClientPoint(
+        editor,
+        monaco,
+        mouseTarget,
+        pointerEvent.clientX,
+        pointerEvent.clientY,
+      )
       if (line === null || lineNumbers.toSourceLine(line) === null) return
       pendingGesture = {
         pointerId: pointerEvent.pointerId,
@@ -213,13 +235,17 @@ export function WorkspaceLineCommentOverlay({
       const gesture = pendingGesture
       pendingGesture = null
       const releaseTarget = editor.getTargetAtClientPoint(pointerEvent.clientX, pointerEvent.clientY)
-      const rawReleasedLine = readCommentableLine(releaseTarget, monaco)
+      const rawReleasedLine = readCommentableLineAtClientPoint(
+        editor,
+        monaco,
+        releaseTarget,
+        pointerEvent.clientX,
+        pointerEvent.clientY,
+      )
       const releasedLine = rawReleasedLine !== null && lineNumbers.toSourceLine(rawReleasedLine) !== null
         ? rawReleasedLine
         : null
-      if (resolutionFrame !== null) window.cancelAnimationFrame(resolutionFrame)
-      resolutionFrame = window.requestAnimationFrame(() => {
-        resolutionFrame = null
+      const resolveGesture = () => {
         const selection = editor.getSelection()
         const range = resolveLineCommentGesture({
           didDrag: gesture.didDrag,
@@ -236,6 +262,15 @@ export function WorkspaceLineCommentOverlay({
         if (!range) return
         if (gesture.didDrag) beginComment(range)
         else toggleComment(range)
+      }
+      if (!gesture.didDrag) {
+        resolveGesture()
+        return
+      }
+      if (resolutionFrame !== null) window.cancelAnimationFrame(resolutionFrame)
+      resolutionFrame = window.requestAnimationFrame(() => {
+        resolutionFrame = null
+        resolveGesture()
       })
     }
     const cancelReadOnlyLineGesture = (event: Event) => {
@@ -264,48 +299,81 @@ export function WorkspaceLineCommentOverlay({
     const decorations = editor.createDecorationsCollection()
     const update = () => {
       const next = [] as Monaco.editor.IModelDeltaDecoration[]
-      if (hoveredLine) {
-        next.push({
-          range: new monaco.Range(hoveredLine, 1, hoveredLine, 1),
-          options: {
-            isWholeLine: true,
-            className: 'workspace-comment-hover-line',
-          },
-        })
-      }
       for (const { modelRange } of mappedComments) {
-        next.push({
-          range: new monaco.Range(modelRange.startLine, 1, modelRange.endLine, 1),
-          options: {
-            isWholeLine: true,
-            className: 'workspace-comment-published-line',
-            linesDecorationsClassName: 'workspace-comment-line-marker',
-          },
-        })
+        const endLine = Math.min(modelRange.endLine, editor.getModel()?.getLineCount() ?? modelRange.endLine)
+        for (let line = modelRange.startLine; line <= endLine; line += 1) {
+          next.push({
+            range: new monaco.Range(line, 1, line, 1),
+            options: {
+              isWholeLine: true,
+              className: 'workspace-comment-published-line',
+              marginClassName: 'workspace-comment-published-margin',
+            },
+          })
+        }
       }
       decorations.set(next)
     }
     update()
     return () => decorations.clear()
-  }, [editor, hoveredLine, mappedComments, monaco])
+  }, [editor, mappedComments, monaco])
 
   const hoveredMetric = useMemo(
     () => hoveredLine === null ? null : readLineMetric(editor, hoveredLine),
     [editor, hoveredLine, layoutVersion],
   )
+  const selectedLineMetrics = useMemo(() => {
+    if (!activeEditingRange || !editor) return []
+    const model = editor.getModel()
+    if (!model) return []
+    const endLine = Math.min(activeEditingRange.endLine, model.getLineCount())
+    const metrics: Array<LineMetric & { line: number }> = []
+    for (let line = activeEditingRange.startLine; line <= endLine; line += 1) {
+      const metric = readLineMetric(editor, line)
+      if (metric) metrics.push({ line, ...metric })
+    }
+    return metrics
+  }, [activeEditingRange, editor, layoutVersion])
   const addButtonLeft = useMemo(
     () => editor ? resolveLineCommentAddButtonLeft(editor.getLayoutInfo()) : null,
     [editor, layoutVersion],
   )
   const hoveredSourceLine = hoveredLine === null ? null : lineNumbers.toSourceLine(hoveredLine)
+  function clearEditorSelection() {
+    if (!editor || !monaco) return
+    const position = editor.getPosition()
+    if (!position) return
+    editor.setSelection(new monaco.Selection(
+      position.lineNumber,
+      position.column,
+      position.lineNumber,
+      position.column,
+    ))
+  }
+
   function beginComment(range: LineCommentRange) {
     if (!readOnly || !mapModelRangeToSource(range, lineNumbers)) return
+    clearEditorSelection()
     setHoveredLine(range.endLine)
     draft.begin(range)
     editor?.revealLineInCenterIfOutsideViewport(range.endLine)
   }
 
+  function beginEditComment(comment: WorkspaceLineComment) {
+    if (!readOnly) return
+    const modelRange = mapSourceRangeToModel({
+      startLine: comment.startLine,
+      endLine: comment.endLine ?? comment.startLine,
+    }, lineNumbers)
+    if (!modelRange) return
+    clearEditorSelection()
+    setHoveredLine(modelRange.endLine)
+    draft.beginEdit(comment, modelRange)
+    editor?.revealLineInCenterIfOutsideViewport(modelRange.endLine)
+  }
+
   function cancelComment() {
+    clearEditorSelection()
     draft.cancel()
   }
 
@@ -322,21 +390,41 @@ export function WorkspaceLineCommentOverlay({
     if (!readOnly || editingRange === null) return
     const sourceRange = mapModelRangeToSource(editingRange, lineNumbers)
     if (!sourceRange) return
-    const comment = createLineCommentFromDraft({ ...draft.state, editingRange: sourceRange })
+    const comment = createLineCommentFromDraft(
+      { ...draft.state, editingRange: sourceRange },
+      draft.state.commentId || draft.state.commentCreatedAt !== undefined
+        ? { id: draft.state.commentId, createdAt: draft.state.commentCreatedAt }
+        : undefined,
+    )
     if (!comment) return
-    onCommentsChange([...comments, comment])
-    onAddAttachment(buildAttachment?.(comment) ?? {
+    const previousComment = draft.state.commentId
+      ? comments.find((current) => current.id === draft.state.commentId)
+      : undefined
+    const nextComments = draft.state.commentId
+      ? comments.map((current) => current.id === draft.state.commentId ? comment : current)
+      : [...comments, comment]
+    onCommentsChange(nextComments)
+    const attachment = buildAttachment?.(comment) ?? {
       path: filePath,
       contextPath: filePath,
       name: fileName,
       kind: 'file',
+      lineCommentOnly: true,
       lineComments: [{
+        id: comment.id,
         startLine: comment.startLine,
         ...(comment.endLine === undefined ? {} : { endLine: comment.endLine }),
         text: comment.text,
       }],
-    })
+    }
+    if (previousComment) onCommentUpdate(previousComment, comment, attachment)
+    else onAddAttachment(attachment)
     cancelComment()
+  }
+
+  function deleteComment(comment: WorkspaceLineComment) {
+    onCommentsChange(comments.filter((current) => current.id !== comment.id))
+    onCommentDelete(comment)
   }
 
   return (
@@ -346,6 +434,21 @@ export function WorkspaceLineCommentOverlay({
       style={layerBounds}
       aria-label="代码行评论"
     >
+      {activeEditingRange ? selectedLineMetrics.map((metric) => (
+        <div
+          className="workspace-line-comment-selected-state"
+          style={{ top: metric.top, height: metric.height }}
+          key={`selected:${metric.line}`}
+          aria-hidden="true"
+        />
+      )) : hoveredMetric && (
+        <div
+          className="workspace-line-comment-hover-state"
+          style={{ top: hoveredMetric.top, height: hoveredMetric.height }}
+          aria-hidden="true"
+        />
+      )}
+
       {readOnly && hoveredLine !== null && hoveredSourceLine !== null && hoveredMetric
         && addButtonLeft !== null && activeEditingRange === null && (
         <LineCommentAddButton
@@ -371,9 +474,15 @@ export function WorkspaceLineCommentOverlay({
               onDraftChange={draft.change}
               onCancel={cancelComment}
               onPublish={publishComment}
+              editing={editingCommentId !== undefined}
             />
           ) : (
-            <LineCommentCard comment={zone.comment} />
+            <LineCommentCard
+              comment={zone.comment}
+              onEdit={() => beginEditComment(zone.comment)}
+              onDelete={() => deleteComment(zone.comment)}
+              onTipChange={onTipChange}
+            />
           )}
         </div>
       ))}
@@ -396,6 +505,33 @@ function readCommentableLine(
     return target.detail.isAfterLines ? null : target.position.lineNumber
   }
   return null
+}
+
+function readCommentableLineAtClientPoint(
+  editor: Monaco.editor.ICodeEditor,
+  monaco: typeof Monaco,
+  target: Monaco.editor.IMouseTarget | null,
+  clientX: number,
+  clientY: number,
+): number | null {
+  const directLine = readCommentableLine(target, monaco)
+  if (directLine !== null) return directLine
+
+  const editorNode = editor.getDomNode()
+  if (!editorNode) return null
+  const editorRect = editorNode.getBoundingClientRect()
+  if (
+    clientX < editorRect.left
+    || clientX >= editorRect.right
+    || clientY < editorRect.top
+    || clientY >= editorRect.bottom
+  ) return null
+
+  const contentX = Math.min(
+    editorRect.right - 1,
+    Math.max(editorRect.left, editorRect.left + editor.getLayoutInfo().contentLeft + 1),
+  )
+  return readCommentableLine(editor.getTargetAtClientPoint(contentX, clientY), monaco)
 }
 
 function readLineMetric(

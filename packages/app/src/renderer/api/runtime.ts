@@ -35,6 +35,21 @@ export async function updateRuntime(patch: RuntimePatch): Promise<RuntimeState> 
   return res.json() as Promise<RuntimeState>
 }
 
+export async function clearWebCache(): Promise<{ ok: boolean; cleared: boolean }> {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.webCache), { method: 'DELETE' })
+  if (!res.ok) throw await localApiResponseError(res)
+  return res.json() as Promise<{ ok: boolean; cleared: boolean }>
+}
+
+export async function checkWebProvider(): Promise<RuntimeState> {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.webProviderCheck), { method: 'POST' })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
+    throw new Error((data as { error: string }).error)
+  }
+  return res.json() as Promise<RuntimeState>
+}
+
 export async function getDataRootStatus(): Promise<DataRootStatus> {
   const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.dataRoot))
   return parseDataRootResponse(res)
@@ -86,4 +101,17 @@ export async function saveApiKey(envVar: string, key: string): Promise<void> {
     const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
     throw new Error((data as { error: string }).error)
   }
+}
+
+export async function saveWebProvider(key: string): Promise<RuntimeState> {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.configWebProvider), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
+    throw new Error((data as { error: string }).error)
+  }
+  return res.json() as Promise<RuntimeState>
 }

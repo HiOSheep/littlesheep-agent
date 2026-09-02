@@ -314,6 +314,55 @@ describe('run stream Local App API', () => {
     }
   })
 
+  it('uses the persisted session permission mode when the stream request omits it', async () => {
+    const sessionId = asSessionId('persisted-permission-session')
+    const runStream = vi.fn(async (input: Parameters<AgentRunner['runStream']>[0]) => ({
+      runId: input.runId!,
+      sessionId,
+      status: 'ok' as const,
+      reply: '已完成',
+      messages: [],
+      trace: [],
+      durationMs: 1,
+    }))
+    const runtimeEvents = makeRuntimeEvents(sessionId)
+    const { dataDir, workplaceDir, server } = await createFixture(runStream, runtimeEvents)
+    const sessionIndex = new SessionIndex({ dataDir, workplaceDir })
+    await sessionIndex.upsert(String(sessionId), {
+      title: '权限同步回归',
+      createdAt: 1,
+      lastMessageAt: 1,
+      mode: 'full',
+      scope: 'standalone',
+      workspacePath: workplaceDir,
+    })
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.port}${LOCAL_APP_API_ROUTES.runStream}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: '执行权限同步回归',
+          sessionId,
+          requestKey: 'persisted-permission-turn',
+        }),
+      })
+
+      expect(response.status).toBe(200)
+      await response.text()
+      expect(runStream).toHaveBeenCalledWith(expect.objectContaining({
+        sessionId,
+        permissionPolicyId: 'full',
+      }), expect.any(Function))
+      expect(await sessionIndex.list()).toEqual([
+        expect.objectContaining({ id: sessionId, mode: 'full' }),
+      ])
+    } finally {
+      await server.stop()
+      rmSync(dataDir, { recursive: true, force: true })
+    }
+  })
+
   it('uses the real Runner coordinator to bind an ordinary stream turn to the waiting task', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'ls-run-stream-continuation-'))
     const workplaceDir = join(dataDir, 'workplace')

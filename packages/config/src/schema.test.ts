@@ -22,6 +22,30 @@ describe('config schema', () => {
     expect(cfg.memory.treeBranchTokenBudget).toBe(1200);
     expect(cfg.memory.treeRootIndexMaxChars).toBe(1600);
     expect(cfg.memory.experienceWriteThreshold).toBe(0.65);
+    expect(cfg.memory.embeddingMode).toBe('local');
+    expect(cfg.web).toEqual({
+      enabled: false,
+      readMode: 'public_anonymous',
+      strictReadApproval: false,
+      allowDomains: [],
+      blockDomains: [],
+      dnsResolver: 'system',
+      maxQueryChars: 2_000,
+      maxResults: 10,
+      maxFetchesPerRun: 4,
+      maxQueriesPerRun: 4,
+      maxConcurrentRequests: 4,
+      searchTimeoutMs: 15_000,
+      fetchTimeoutMs: 20_000,
+      totalTimeoutMs: 90_000,
+      maxResponseBytes: 2 * 1024 * 1024,
+      maxExtractedChars: 40_000,
+      maxRedirects: 5,
+      cache: { enabled: true, ttlSeconds: 300, maxBytes: 64 * 1024 * 1024 },
+      browserFallback: 'approval_required',
+      sensitiveQueryPolicy: 'approve',
+      providers: [],
+    });
   });
 
   it('accepts full config and merges defaults', () => {
@@ -41,6 +65,11 @@ describe('config schema', () => {
       agents: { defaults: { profile: 'coding' } },
     });
     expect(cfg.agents.defaults.profile).toBe('coding');
+  });
+
+  it('keeps memory embedding local until a separate remote egress contract exists', () => {
+    expect(ConfigSchema.parse({ memory: { embeddingMode: 'local' } }).memory.embeddingMode).toBe('local');
+    expect(() => ConfigSchema.parse({ memory: { embeddingMode: 'remote' } })).toThrow();
   });
 
   it('keeps desktop close policy separate from behavior and permission settings', () => {
@@ -140,5 +169,69 @@ describe('config schema', () => {
     expect(() =>
       ConfigSchema.parse({ safety: { maxEntryChars: 0 } })
     ).toThrow();
+  });
+
+  it('migrates old configs to disabled web retrieval without inventing a provider', () => {
+    const cfg = ConfigSchema.parse({ version: 1, providers: [] });
+    expect(cfg.web.enabled).toBe(false);
+    expect(cfg.web.defaultProvider).toBeUndefined();
+    expect(cfg.web.providers).toEqual([]);
+  });
+
+  it('accepts bounded provider-neutral web configuration', () => {
+    const cfg = ConfigSchema.parse({
+      web: {
+        enabled: true,
+        defaultProvider: 'tavily',
+        readMode: 'configured_allowlist',
+        dnsResolver: 'cloudflare_doh',
+        allowDomains: ['example.com'],
+        maxResults: 6,
+        providers: [{
+          id: 'tavily',
+          type: 'tavily-search-v1',
+          apiKeyRef: '$TAVILY_API_KEY',
+          options: { searchDepth: 'basic' },
+        }],
+      },
+    });
+    expect(cfg.web.enabled).toBe(true);
+    expect(cfg.web.defaultProvider).toBe('tavily');
+    expect(cfg.web.dnsResolver).toBe('cloudflare_doh');
+    expect(cfg.web.providers[0]).toEqual({
+      id: 'tavily',
+      type: 'tavily-search-v1',
+      apiKeyRef: '$TAVILY_API_KEY',
+      options: { searchDepth: 'basic' },
+    });
+  });
+
+  it('rejects invalid, duplicate, and over-limit web configuration', () => {
+    expect(() => ConfigSchema.parse({ web: { maxResults: 21 } })).toThrow();
+    expect(() => ConfigSchema.parse({ web: { maxResponseBytes: 33 * 1024 * 1024 } })).toThrow();
+    expect(() => ConfigSchema.parse({ web: { dnsResolver: 'arbitrary_endpoint' } })).toThrow();
+    expect(() => ConfigSchema.parse({
+      web: {
+        providers: [
+          { id: 'same', type: 'tavily-search-v1' },
+          { id: 'same', type: 'tavily-search-v1' },
+        ],
+      },
+    })).toThrow(/duplicate web provider id/u);
+    expect(() => ConfigSchema.parse({
+      web: { providers: [{ id: 'UPPER CASE', type: 'adapter' }] },
+    })).toThrow();
+  });
+
+  it('strips unknown web fields while preserving explicit adapter options', () => {
+    const cfg = ConfigSchema.parse({
+      web: {
+        hiddenEndpoint: 'https://should-not-survive.example',
+        providers: [{ id: 'test', type: 'fake', options: { fixture: true }, secret: 'drop-me' }],
+      },
+    });
+    expect('hiddenEndpoint' in cfg.web).toBe(false);
+    expect('secret' in cfg.web.providers[0]!).toBe(false);
+    expect(cfg.web.providers[0]?.options).toEqual({ fixture: true });
   });
 });

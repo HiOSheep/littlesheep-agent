@@ -1,6 +1,6 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-08-17 00:19:29
+最后更新：2026-08-30 16:36:07
 
 本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
 
@@ -64,6 +64,11 @@
 
 - [OpenCode VS Code 对标记录 2026-08-13](reference/opencode-vscode-comparison-2026-08-13.md)：记录官方源码、许可证、LS 差异、已直接吸收的缓存/模型/审阅交互，以及待产品选择的虚拟化、评论和真正 VS Code 扩展路线。
 - [对话任务连续性 P0 专项任务书 2026-08-13](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md)：修复普通聊天未绑定 waiting-user Checkpoint、执行现场与附件/临时工具无法自然恢复、权限未按当前状态重验及最终回答断档；当前为最高优先级阻断项。
+- [实时网络检索与安全读取任务书 2026-08-28](taskbooks/web-search-and-safe-retrieval-taskbook-2026-08-28.md)：实施 `web_search`、`web_fetch`、Provider、受控本地抓取、safe read、证据引用、记忆协同、UI 与发布验收；WB-01 至 WB-08 已完成，WB-09 发布门实施中。真实匿名 `web_fetch` smoke、当前 release 候选扫描和离线渠道门已通过；真实 Tavily search/citation、正式渠道、签名最终包和干净 Windows 环境仍待验收。
+- [网络检索冻结契约与威胁模型](reference/web-retrieval-security-contract.md)：固定 safe read、网络配置、Tavily 首个 Provider、SSRF/DNS/注入/外发威胁、引用和日志语义。
+- [网络检索安全合并验收 2026-08-29](reference/web-retrieval-security-acceptance-2026-08-29.md)：记录离线安全矩阵、迁移/回退、构建产物扫描和仍阻断 ready 的真实 Provider/正式渠道门。
+- [网络检索供应链审查 2026-08-29](reference/web-retrieval-supply-chain-review-2026-08-29.md)：记录 Web 包依赖、许可证、漏洞快照、发布扫描边界与复核条件。
+- [网络检索发布清单 2026-08-29](reference/web-retrieval-release-checklist-2026-08-29.md)：列出离线门、发布当天真实 Provider/渠道/release 包验证和明确的禁止发布条件。
 - [生产依赖安全记录](reference/production-dependency-security.md)：记录临时间接依赖 override 的固定版本、来源、许可证、移除条件与复查日期，避免安全修复变成无所有者的永久配置。
 - [开发反馈环提速任务书 2026-08-09](taskbooks/development-feedback-loop-taskbook-2026-08-09.md)：任务级内循环、affected 选择器、重复构建消除和后续状态契约收敛；用于决定下一阶段开发效率工作。
 - [拓展工作区性能任务书 2026-08-04](taskbooks/workspace-performance-taskbook-2026-08-04.md)：文件树、代码首帧、Monaco 接管、Git 审阅缓存、后台资源和生产构建体积的专项验收。

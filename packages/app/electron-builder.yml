@@ -1,0 +1,43 @@
+appId: com.littlesheep.desktop
+productName: LittleSheep
+copyright: Copyright (c) 2026 LittleSheep
+
+directories:
+  output: ../../release
+  buildResources: resources
+
+files:
+  - from: .release-staging/out
+    to: out
+    filter:
+      - '**/*'
+  - package.json
+  - '!**/*.cov.*'
+
+extraResources:
+  - from: resources
+    to: resources
+    filter:
+      - littlesheep.ico
+      - littlesheep-icon.png
+
+asar: true
+npmRebuild: false
+buildDependenciesFromSource: false
+asarUnpack:
+  - node_modules/node-pty/**
+  - node_modules/onnxruntime-node/**
+  - node_modules/sharp/**
+  - node_modules/@huggingface/transformers/**
+
+win:
+  icon: resources/littlesheep.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ${productName}-${version}-${arch}-Setup.${ext}

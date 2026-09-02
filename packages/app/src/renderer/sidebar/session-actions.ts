@@ -20,6 +20,7 @@ import {
 import { historyMessageToChatMessage } from '../chat/assistant-turn'
 import { ChatMessage } from '../chat/types'
 import {
+  buildContextUsageSnapshotFromSession,
   type ContextUsageSnapshot
 } from '../context-usage'
 import { FloatingHelpTip } from '../ui/floating-help'
@@ -55,6 +56,8 @@ export interface SessionActionContext {
   setSessionOwnership: Dispatch<SetStateAction<Pick<SessionMeta, 'scope' | 'projectId'>>>
   setSessions: Dispatch<SetStateAction<SessionMeta[]>>
   setSidebarPanel: Dispatch<SetStateAction<SidebarPanel>>
+  resetDraftPermissionMode: () => void
+  forgetSessionPermissionMode: (sessionId: string) => void
   settleApprovalPrompt: (decision: ApprovalDecision) => void
   visibleSessions: SessionMeta[]
 }
@@ -77,7 +80,8 @@ export function createSessionActions(context: SessionActionContext) {
     currentSession, historyWindow, runtime, sessions, visibleSessions,
     setContextUsageSnapshot, setConversationCollapsed, setControlTip, setCurrentSession,
     setHistoryWindow, setMessages, setPinnedSessionIds, setRuntime, setRuntimeError,
-    setSessionOwnership, setSessions, setSidebarPanel,
+    setSessionOwnership, setSessions, setSidebarPanel, resetDraftPermissionMode,
+    forgetSessionPermissionMode,
   } = context
 
   function invalidateConversationView() {
@@ -90,6 +94,7 @@ export function createSessionActions(context: SessionActionContext) {
     invalidateConversationView()
     pushRoute({ section: 'chat' })
     beginDraftApprovalScope()
+    resetDraftPermissionMode()
     resetWorkspaceSessionLayout()
     setCurrentSession(undefined)
     setSessionOwnership(ownership)
@@ -104,6 +109,13 @@ export function createSessionActions(context: SessionActionContext) {
     setSidebarPanel(null)
     setConversationCollapsed(false)
     newSession({ scope: 'standalone' })
+  }
+
+
+  function createProjectConversationFromSidebar(projectId: string) {
+    setSidebarPanel(null)
+    setConversationCollapsed(false)
+    newSession({ scope: 'project', projectId })
   }
 
 
@@ -162,6 +174,12 @@ export function createSessionActions(context: SessionActionContext) {
           ? history.messages.map(historyMessageToChatMessage)
           : [],
       )
+      // A force reload can follow checkpoint recovery, which has already
+      // installed the completed run's live snapshot. Preserve it when the
+      // history payload has no newer durable counter to restore.
+      if (history.contextUsage) {
+        setContextUsageSnapshot(buildContextUsageSnapshotFromSession(history.contextUsage))
+      }
       setHistoryWindow({ hasMore: history.hasMore, beforeId: history.beforeId, loading: false })
     } catch (e) {
       if (!appMountedRef.current || requestId !== sessionLoadRequestRef.current) return
@@ -227,6 +245,7 @@ export function createSessionActions(context: SessionActionContext) {
 
   function clearSessionFromLocalState(id: string, options: { forgetWorkspace?: boolean } = {}) {
     approvalGrantsRef.current.clear(sessionApprovalScopeKey(id))
+    forgetSessionPermissionMode(id)
     setSessions((items) => items.filter((item) => item.id !== id))
     setPinnedSessionIds((ids) => {
       const next = new Set(ids)
@@ -237,6 +256,7 @@ export function createSessionActions(context: SessionActionContext) {
     if (id === currentSession) {
       invalidateConversationView()
       beginDraftApprovalScope()
+      resetDraftPermissionMode()
       setCurrentSession(undefined)
       setMessages([])
       setHistoryWindow({ hasMore: false, beforeId: undefined, loading: false })
@@ -297,11 +317,13 @@ export function createSessionActions(context: SessionActionContext) {
     if (currentSession && ids.includes(currentSession)) {
       invalidateConversationView()
       beginDraftApprovalScope()
+      resetDraftPermissionMode()
       setCurrentSession(undefined)
       setMessages([])
       setHistoryWindow({ hasMore: false, beforeId: undefined, loading: false })
       setContextUsageSnapshot(null)
     }
+    for (const id of ids) forgetSessionPermissionMode(id)
     void refreshSessions()
   }
 
@@ -318,5 +340,5 @@ export function createSessionActions(context: SessionActionContext) {
       return next
     })
   }
-  return { createConversationFromSidebar, openSidebarPanel, closeSidebarPanel, switchSession, loadOlderMessages, archiveSession, deleteSessionPermanently, renameSession, sessionsForProject, archiveAllSessions, togglePinnedSession }
+  return { createConversationFromSidebar, createProjectConversationFromSidebar, openSidebarPanel, closeSidebarPanel, switchSession, loadOlderMessages, archiveSession, deleteSessionPermanently, renameSession, sessionsForProject, archiveAllSessions, togglePinnedSession }
 }

@@ -38,6 +38,64 @@ describe('workspace review layout unification', () => {
     expect(diff).toContain('onSideBySideChange(!sideBySide)')
     expect(diff).toContain('aria-pressed={sideBySide}')
   })
+
+  it('keeps the side-by-side scroll rail out of the shared horizontal layout', async () => {
+    const review = await source('./review.tsx')
+    const styles = await readRendererStyleSource()
+
+    expect(review).toMatch(/<div className="workspace-review-content">[\s\S]*?<WorkspaceReviewDiff[\s\S]*?\{sideBySide && <WorkspaceReviewScrollRail targetRef=\{reviewScrollRef\} \/>\}[\s\S]*?<\/div>/u)
+    expect(styles).toMatch(/\.workspace-review-content\s*\{[\s\S]*?position:\s*relative;[\s\S]*?flex:\s*1 1 0;/u)
+    expect(styles).toMatch(/\.workspace-review-scroll-rail\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?right:\s*0;[\s\S]*?bottom:\s*0;/u)
+  })
+
+  it('keeps review line-change totals while excluding per-file size metadata', async () => {
+    const reviewTree = await source('./review-tree.tsx')
+    const review = await source('./review.tsx')
+    const lineCounts = await source('./review-line-counts.tsx')
+    const fileTree = await source('./workspace-tree-rows.tsx')
+    const styles = await readRendererStyleSource()
+
+    expect(reviewTree).toContain("import { ReviewLineCounts } from './review-line-counts'")
+    expect(reviewTree).toContain('<ReviewLineCounts additions={additions} deletions={deletions} available={countsComplete} />')
+    expect(reviewTree).toContain('additions={node.additions}')
+    expect(reviewTree).toContain('deletions={node.deletions}')
+    expect(reviewTree).toContain('available={node.countAvailable}')
+    expect(review).toContain('countsComplete={snapshot?.countsComplete ?? false}')
+    expect(review).toContain('additions={filteredFiles.reduce((total, file) => total + file.additions, 0)}')
+    expect(review).toContain('deletions={filteredFiles.reduce((total, file) => total + file.deletions, 0)}')
+    expect(lineCounts).toContain("+{available ? additions : '?'}")
+    expect(lineCounts).toContain("-{available ? deletions : '?'}")
+    expect(fileTree).not.toContain('formatFileSize')
+    expect(fileTree).not.toContain('workspace-tree-size')
+    expect(styles).toMatch(/\.workspace-review-tree-row\s*\{[\s\S]*?grid-template-columns:\s*15px 18px minmax\(0, 1fr\) auto;/u)
+    expect(styles).toMatch(/\.workspace-review-tree-row\.file\s*\{[\s\S]*?grid-template-columns:\s*18px 18px minmax\(0, 1fr\) auto;/u)
+    expect(styles).not.toContain('.workspace-tree-size {')
+  })
+
+  it('draws the same depth guides for expanded review folders as the file navigator', async () => {
+    const reviewTree = await source('./review-tree.tsx')
+    const styles = await readRendererStyleSource()
+
+    expect(reviewTree).toContain("className={`workspace-review-tree-branch ${expanded ? 'expanded' : ''}`}")
+    expect(reviewTree).toContain("'--workspace-tree-depth': depth")
+    expect(styles).toMatch(/\.workspace-tree-entry\.expanded::before,\s*\.workspace-review-tree-branch\.expanded::before\s*\{/u)
+    expect(styles).toContain('.workspace-review-tree-branch {\n  position: relative;')
+  })
+
+  it('keeps review layer status in the file header without a separate tinted row', async () => {
+    const reviewDiff = await source('./review-diff.tsx')
+    const styles = await readRendererStyleSource()
+
+    expect(reviewDiff).toContain('const EMPTY_LAYER_KINDS: WorkspaceReviewDiffLayer[\'kind\'][] = []')
+    expect(reviewDiff).toContain('layerKinds={diff?.layers.map((layer) => layer.kind) ?? EMPTY_LAYER_KINDS}')
+    expect(reviewDiff).toContain('className="workspace-review-diff-title-main"')
+    expect(reviewDiff).toContain('className="workspace-review-diff-layer-status"')
+    expect(reviewDiff).toContain('layerKinds.map((kind) => LAYER_LABELS[kind]).join(\' / \')')
+    expect(reviewDiff).not.toContain('workspace-review-layer-header')
+    expect(styles).toMatch(/\.workspace-review-diff-title-main\s*\{[\s\S]*?display:\s*inline-flex;[\s\S]*?gap:\s*6px;/u)
+    expect(styles).toMatch(/\.workspace-review-diff-layer-status\s*\{[\s\S]*?flex:\s*0 0 auto;[\s\S]*?text-overflow:\s*ellipsis;/u)
+    expect(styles).not.toContain('.workspace-review-layer-header')
+  })
 })
 
 function source(path: string): Promise<string> {

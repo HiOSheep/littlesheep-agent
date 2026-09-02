@@ -24,7 +24,7 @@ export async function adoptDecodedDecision(
   parsed: DecodedPlan,
   attempts: number,
 ): Promise<StageResult> {
-  const availableToolNames = new Set(ctx.tools.map((tool) => tool.name));
+  const availableToolNames = new Set(request.decisionToolNames);
   const proposalToolNames = request.proposalToolNames
     ? new Set(request.proposalToolNames)
     : undefined;

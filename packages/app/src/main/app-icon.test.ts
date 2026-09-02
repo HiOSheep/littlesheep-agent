@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { join } from 'node:path'
 import { resolve } from 'node:path'
-import { appIconCandidates, resolveAppIconPath } from './app-icon.js'
+import { appIconCandidates, resolveAppIconPath, resolveAppPngIconPath } from './app-icon.js'
 
 describe('app icon resolution', () => {
   it('orders repository resources before packaged resources', () => {
@@ -23,6 +23,16 @@ describe('app icon resolution', () => {
 
   it('falls back to the PNG when the ICO is unavailable', () => {
     const resolved = resolveAppIconPath({
+      appPath: '/app',
+      resourcesPath: '/packaged/resources',
+      exists: (path) => path.endsWith('littlesheep-icon.png'),
+    })
+
+    expect(resolved).toBe(join('/app', 'resources', 'littlesheep-icon.png'))
+  })
+
+  it('resolves the PNG when a renderer surface needs a raster icon', () => {
+    const resolved = resolveAppPngIconPath({
       appPath: '/app',
       resourcesPath: '/packaged/resources',
       exists: (path) => path.endsWith('littlesheep-icon.png'),

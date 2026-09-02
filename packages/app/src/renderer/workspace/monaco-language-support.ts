@@ -50,6 +50,11 @@ function prepareLanguage(monaco: typeof Monaco, languageId: string): Promise<voi
     }
     monaco.languages.setLanguageConfiguration(languageId, conf)
     monaco.languages.setMonarchTokensProvider(languageId, language)
+  }).catch((error) => {
+    // Do not retain a rejected dynamic import. A transient chunk failure
+    // should be recoverable when the file is opened again.
+    requests?.delete(languageId)
+    throw error
   })
   requests.set(languageId, request)
   return request

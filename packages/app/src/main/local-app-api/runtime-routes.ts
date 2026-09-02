@@ -1,9 +1,9 @@
 // Runtime, provider credentials, data-root and application lifecycle routes.
 
 import type { Config } from '@littlesheep/config'
-import { parseModelRef, resolveApiKey } from '@littlesheep/config'
+import { ConfigSchema, parseModelRef, resolveApiKey } from '@littlesheep/config'
 import type { AgentRunner } from '@littlesheep/runner'
-import type { ProviderInfo, RuntimeState } from '../../shared/runtime-api-contracts.js'
+import type { ProviderInfo, RuntimeState, RuntimeWebProviderCheck } from '../../shared/runtime-api-contracts.js'
 import { LOCAL_APP_API_ROUTES } from '../../shared/local-app-api-routes.js'
 import {
   coerceReasoningForModelRef,
@@ -16,6 +16,7 @@ import { injectKeysIntoEnv, deriveEnvVarName, normalizeApiKey, saveApiKey } from
 import { getAgentProfile, normalizeAgentProfileId } from '../modes.js'
 import { json, readJson, type LocalAppApiRequest } from './http.js'
 import { routeProviderCalibration } from './provider-calibration-route.js'
+export { runWebProviderCheck } from './web-provider-check.js'
 
 export interface RuntimeRouteContext {
   getRunner: () => AgentRunner
@@ -24,11 +25,14 @@ export interface RuntimeRouteContext {
   workplaceDir: string
   dataDir: string
   rebuildRunner: () => Promise<void>
-  updateRuntimeConfig: (config: Config) => Promise<void>
+  updateRuntimeConfig: (config: Config) => Promise<Config | void>
+  mutateRuntimeConfig?: <T>(operation: () => Promise<T>) => Promise<T>
   dataRootManager?: DataRootMigrationManager
   selectDataRootTarget?: () => Promise<string | null>
   restartApplication?: () => void
   providerCalibrationToken?: string
+  getWebProviderCheck?: () => RuntimeWebProviderCheck | undefined
+  checkWebProvider?: () => Promise<RuntimeWebProviderCheck>
 }
 
 export async function routeRuntime(
@@ -36,6 +40,7 @@ export async function routeRuntime(
   context: RuntimeRouteContext,
 ): Promise<boolean> {
   const { req, res, path, method } = request
+  const mutateRuntimeConfig = context.mutateRuntimeConfig ?? (<T>(operation: () => Promise<T>) => operation())
   if (await routeProviderCalibration(request, {
     getRunner: context.getRunner,
     getConfig: context.getConfig,
@@ -48,88 +53,122 @@ export async function routeRuntime(
   }
 
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.runtime) {
-    json(res, 200, buildRuntimePayload(context.getConfig(), context.workplaceDir))
+    json(res, 200, buildRuntimePayload(context.getConfig(), context.workplaceDir, context.getWebProviderCheck?.()))
+    return true
+  }
+
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.webProviderCheck) {
+    if (!context.checkWebProvider) {
+      json(res, 501, { error: 'Web provider checking is not available.' })
+      return true
+    }
+    await context.checkWebProvider()
+    json(res, 200, buildRuntimePayload(context.getConfig(), context.workplaceDir, context.getWebProviderCheck?.()))
     return true
   }
 
   if (method === 'POST' && path === LOCAL_APP_API_ROUTES.runtime) {
     const body = await readJson(req)
-    const current = context.getConfig()
-    const nextDefaults = { ...current.agents.defaults }
-    const nextDesktop = { ...current.desktop }
+    return mutateRuntimeConfig(async () => {
+      const current = context.getConfig()
+      const nextDefaults = { ...current.agents.defaults }
+      const nextDesktop = { ...current.desktop }
+      const nextWeb = { ...current.web, cache: { ...current.web.cache } }
 
-    if (typeof body.model === 'string' && body.model.trim()) {
-      const model = body.model.trim()
-      const validation = validateModelRef(current, model)
-      if (validation) {
-        json(res, 400, { error: validation })
+      if (typeof body.model === 'string' && body.model.trim()) {
+        const model = body.model.trim()
+        const validation = validateModelRef(current, model)
+        if (validation) {
+          json(res, 400, { error: validation })
+          return true
+        }
+        nextDefaults.model = model
+      }
+
+      if (typeof body.reasoning === 'string' && body.reasoning.trim()) {
+        const reasoning = body.reasoning.trim()
+        if (!isReasoning(reasoning)) {
+          json(res, 400, { error: `invalid reasoning value: ${reasoning}` })
+          return true
+        }
+        if (!isReasoningSupportedForModelRef(reasoning, nextDefaults.model)) {
+          json(res, 400, { error: `reasoning "${reasoning}" is not supported by model "${nextDefaults.model}"` })
+          return true
+        }
+        nextDefaults.reasoning = reasoning
+      }
+
+      if (typeof body.profile === 'string' && body.profile.trim()) {
+        const profile = body.profile.trim()
+        if (!getAgentProfile(profile)) {
+          json(res, 400, { error: `invalid profile value: ${profile}` })
+          return true
+        }
+        nextDefaults.profile = normalizeAgentProfileId(profile)
+      }
+
+      nextDefaults.reasoning = coerceReasoningForModelRef(nextDefaults.reasoning, nextDefaults.model)
+
+      if (Object.prototype.hasOwnProperty.call(body, 'workspace')) {
+        const workspace = typeof body.workspace === 'string' ? body.workspace.trim() : ''
+        nextDefaults.workspace = workspace || context.workplaceDir
+      }
+
+      if (Object.prototype.hasOwnProperty.call(body, 'contextCompressionThresholdRatio')) {
+        const ratio = body.contextCompressionThresholdRatio
+        if (typeof ratio !== 'number' || !Number.isFinite(ratio) || ratio < 0.5 || ratio > 0.95) {
+          json(res, 400, { error: 'contextCompressionThresholdRatio must be a number between 0.5 and 0.95' })
+          return true
+        }
+        nextDefaults.contextCompressionThresholdRatio = ratio
+      }
+
+      if (Object.prototype.hasOwnProperty.call(body, 'closePolicy')) {
+        const closePolicy = body.closePolicy
+        if (
+          closePolicy !== 'always-background'
+          && closePolicy !== 'background-while-active'
+          && closePolicy !== 'always-quit'
+        ) {
+          json(res, 400, { error: 'closePolicy must be always-background, background-while-active, or always-quit' })
+          return true
+        }
+        nextDesktop.closePolicy = closePolicy
+      }
+
+      if (Object.prototype.hasOwnProperty.call(body, 'web')) {
+        const validation = applyWebPatch(nextWeb, body.web)
+        if (validation) {
+          json(res, 400, { error: validation })
+          return true
+        }
+      }
+
+      const parsed = ConfigSchema.safeParse({
+        ...current,
+        agents: {
+          ...current.agents,
+          defaults: nextDefaults,
+        },
+        desktop: nextDesktop,
+        web: nextWeb,
+      })
+      if (!parsed.success) {
+        json(res, 400, { error: parsed.error.issues[0]?.message ?? 'invalid runtime configuration' })
         return true
       }
-      nextDefaults.model = model
-    }
+      const next: Config = parsed.data
+      const applied = await context.updateRuntimeConfig(next) ?? next
+      context.setConfig(applied)
+      json(res, 200, buildRuntimePayload(applied, context.workplaceDir, context.getWebProviderCheck?.()))
+      return true
+    })
+  }
 
-    if (typeof body.reasoning === 'string' && body.reasoning.trim()) {
-      const reasoning = body.reasoning.trim()
-      if (!isReasoning(reasoning)) {
-        json(res, 400, { error: `invalid reasoning value: ${reasoning}` })
-        return true
-      }
-      if (!isReasoningSupportedForModelRef(reasoning, nextDefaults.model)) {
-        json(res, 400, { error: `reasoning "${reasoning}" is not supported by model "${nextDefaults.model}"` })
-        return true
-      }
-      nextDefaults.reasoning = reasoning
-    }
-
-    if (typeof body.profile === 'string' && body.profile.trim()) {
-      const profile = body.profile.trim()
-      if (!getAgentProfile(profile)) {
-        json(res, 400, { error: `invalid profile value: ${profile}` })
-        return true
-      }
-      nextDefaults.profile = normalizeAgentProfileId(profile)
-    }
-
-    nextDefaults.reasoning = coerceReasoningForModelRef(nextDefaults.reasoning, nextDefaults.model)
-
-    if (Object.prototype.hasOwnProperty.call(body, 'workspace')) {
-      const workspace = typeof body.workspace === 'string' ? body.workspace.trim() : ''
-      nextDefaults.workspace = workspace || context.workplaceDir
-    }
-
-    if (Object.prototype.hasOwnProperty.call(body, 'contextCompressionThresholdRatio')) {
-      const ratio = body.contextCompressionThresholdRatio
-      if (typeof ratio !== 'number' || !Number.isFinite(ratio) || ratio < 0.5 || ratio > 0.95) {
-        json(res, 400, { error: 'contextCompressionThresholdRatio must be a number between 0.5 and 0.95' })
-        return true
-      }
-      nextDefaults.contextCompressionThresholdRatio = ratio
-    }
-
-    if (Object.prototype.hasOwnProperty.call(body, 'closePolicy')) {
-      const closePolicy = body.closePolicy
-      if (
-        closePolicy !== 'always-background'
-        && closePolicy !== 'background-while-active'
-        && closePolicy !== 'always-quit'
-      ) {
-        json(res, 400, { error: 'closePolicy must be always-background, background-while-active, or always-quit' })
-        return true
-      }
-      nextDesktop.closePolicy = closePolicy
-    }
-
-    const next: Config = {
-      ...current,
-      agents: {
-        ...current.agents,
-        defaults: nextDefaults,
-      },
-      desktop: nextDesktop,
-    }
-    context.setConfig(next)
-    await context.updateRuntimeConfig(next)
-    json(res, 200, buildRuntimePayload(next, context.workplaceDir))
+  if (method === 'DELETE' && path === LOCAL_APP_API_ROUTES.webCache) {
+    const cache = context.getRunner().infra.webCache
+    if (cache) await cache.clear()
+    json(res, 200, { ok: true, cleared: Boolean(cache), stats: cache?.stats() ?? { entries: 0, bytes: 0, hits: 0, misses: 0 } })
     return true
   }
 
@@ -232,10 +271,33 @@ export async function routeRuntime(
     return true
   }
 
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.configWebProvider) {
+    const body = await readJson(req)
+    const key = normalizeApiKey(String(body.key ?? ''))
+    if (!key) {
+      json(res, 400, { error: 'Tavily API key is required' })
+      return true
+    }
+    try {
+      await saveApiKey(context.dataDir, 'TAVILY_API_KEY', key)
+      injectKeysIntoEnv({ TAVILY_API_KEY: key })
+      await mutateRuntimeConfig(async () => {
+        const current = context.getConfig()
+        const next = configureTavilyWeb(current)
+        const applied = await context.updateRuntimeConfig(next) ?? next
+        context.setConfig(applied)
+        json(res, 200, buildRuntimePayload(applied, context.workplaceDir, context.getWebProviderCheck?.()))
+      })
+    } catch {
+      json(res, 400, { error: 'Unable to configure Tavily.' })
+    }
+    return true
+  }
+
   return false
 }
 
-export function buildRuntimePayload(config: Config, workplaceDir: string): RuntimeState {
+export function buildRuntimePayload(config: Config, workplaceDir: string, webProviderCheck?: RuntimeWebProviderCheck): RuntimeState {
   return {
     model: config.agents.defaults.model,
     reasoning: coerceReasoningForModelRef(config.agents.defaults.reasoning, config.agents.defaults.model),
@@ -258,7 +320,79 @@ export function buildRuntimePayload(config: Config, workplaceDir: string): Runti
         hasKey,
       }
     }),
+    web: buildRuntimeWebPayload(config, webProviderCheck),
   }
+}
+
+export function buildRuntimeWebPayload(config: Config, webProviderCheck?: RuntimeWebProviderCheck): RuntimeState['web'] {
+  const provider = config.web.defaultProvider
+    ? config.web.providers.find((candidate) => candidate.id === config.web.defaultProvider)
+    : undefined
+  const providerConfigured = Boolean(provider && (!provider.apiKeyRef || resolveApiKey(provider.apiKeyRef)))
+  const status = !config.web.enabled || config.web.readMode === 'disabled'
+    ? 'disabled' as const
+    : !providerConfigured
+      ? 'unconfigured' as const
+      : webProviderCheck?.providerId !== config.web.defaultProvider || !webProviderCheck
+        ? 'configured_unchecked' as const
+        : webProviderCheck.status === 'healthy'
+          ? 'ready' as const
+          : webProviderCheck.status
+  return {
+    enabled: config.web.enabled,
+    status,
+    ...(config.web.defaultProvider ? { providerId: config.web.defaultProvider } : {}),
+    providerConfigured,
+    readMode: config.web.readMode,
+    dnsResolver: config.web.dnsResolver,
+    strictReadApproval: config.web.strictReadApproval,
+    allowDomains: [...config.web.allowDomains],
+    blockDomains: [...config.web.blockDomains],
+    cacheEnabled: config.web.cache.enabled,
+    cacheTtlSeconds: config.web.cache.ttlSeconds,
+    cacheMaxBytes: config.web.cache.maxBytes,
+    browserFallback: config.web.browserFallback,
+    sensitiveQueryPolicy: config.web.sensitiveQueryPolicy,
+    ...(webProviderCheck?.providerId === config.web.defaultProvider ? { providerCheck: webProviderCheck } : {}),
+    egress: ['query_to_search_provider', 'url_to_target_site', 'evidence_to_current_llm_provider'],
+  }
+}
+
+
+/** Add the fixed MVP adapter while keeping the credential out of Config. */
+export function configureTavilyWeb(config: Config): Config {
+  return ConfigSchema.parse({
+    ...config,
+    web: {
+      ...config.web,
+      defaultProvider: 'tavily',
+      providers: [
+        ...config.web.providers.filter((provider) => provider.id !== 'tavily'),
+        { id: 'tavily', type: 'tavily-search-v1', apiKeyRef: '$TAVILY_API_KEY', options: {} },
+      ],
+    },
+  })
+}
+
+export function applyWebPatch(target: Config['web'], value: unknown): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return 'web must be an object'
+  const patch = value as Record<string, unknown>
+  for (const key of ['enabled', 'strictReadApproval', 'cacheEnabled'] as const) {
+    if (!Object.prototype.hasOwnProperty.call(patch, key)) continue
+    if (typeof patch[key] !== 'boolean') return `${key} must be boolean`
+  }
+  if (typeof patch.enabled === 'boolean') target.enabled = patch.enabled
+  if (typeof patch.strictReadApproval === 'boolean') target.strictReadApproval = patch.strictReadApproval
+  if (typeof patch.cacheEnabled === 'boolean') target.cache.enabled = patch.cacheEnabled
+  if (Object.prototype.hasOwnProperty.call(patch, 'readMode')) target.readMode = patch.readMode as Config['web']['readMode']
+  if (Object.prototype.hasOwnProperty.call(patch, 'dnsResolver')) target.dnsResolver = patch.dnsResolver as Config['web']['dnsResolver']
+  if (Object.prototype.hasOwnProperty.call(patch, 'browserFallback')) target.browserFallback = patch.browserFallback as Config['web']['browserFallback']
+  if (Object.prototype.hasOwnProperty.call(patch, 'sensitiveQueryPolicy')) target.sensitiveQueryPolicy = patch.sensitiveQueryPolicy as Config['web']['sensitiveQueryPolicy']
+  if (Object.prototype.hasOwnProperty.call(patch, 'allowDomains')) target.allowDomains = patch.allowDomains as string[]
+  if (Object.prototype.hasOwnProperty.call(patch, 'blockDomains')) target.blockDomains = patch.blockDomains as string[]
+  if (Object.prototype.hasOwnProperty.call(patch, 'cacheTtlSeconds')) target.cache.ttlSeconds = patch.cacheTtlSeconds as number
+  if (Object.prototype.hasOwnProperty.call(patch, 'cacheMaxBytes')) target.cache.maxBytes = patch.cacheMaxBytes as number
+  return null
 }
 
 export function resolveReasoning(

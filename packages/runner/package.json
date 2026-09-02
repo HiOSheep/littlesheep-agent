@@ -24,6 +24,7 @@
     "@littlesheep/memory-tree": "workspace:*",
     "@littlesheep/prompt": "workspace:*",
     "@littlesheep/tools": "workspace:*",
+    "@littlesheep/web": "workspace:*",
     "@littlesheep/branding": "workspace:*",
     "@littlesheep/skills": "workspace:*",
     "@littlesheep/safety": "workspace:*",

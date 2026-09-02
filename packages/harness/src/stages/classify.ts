@@ -23,6 +23,7 @@ import {
 import { buildRunRequestCandidates } from '../context-candidates.js';
 import { attachmentManifestText, recentHistoryForModel } from './_shared.js';
 import { writeDecisionState } from '../decision-state.js';
+import { assessRetrievalIntent } from '../retrieval-intent.js';
 
 function inboundText(ctx: RunContext): string {
   return ctx.inbound.content
@@ -75,14 +76,24 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
         ),
         onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
       });
-      const activity = cls.activity ?? activityFromMessageClass(cls.type);
+      const retrieval = assessRetrievalIntent(inboundText(ctx));
+      const classifiedActivity = cls.activity ?? activityFromMessageClass(cls.type);
+      const activity = retrieval.intent === 'capability_question'
+        ? 'respond'
+        : retrieval.intent === 'web_search'
+          || retrieval.intent === 'web_fetch'
+          || retrieval.intent === 'combined_memory_web'
+          || retrieval.intent === 'browser_required'
+          ? 'execute'
+          : classifiedActivity;
+      const routed = { ...cls, activity, retrievalIntent: retrieval.intent };
       if (activity === 'execute') {
-        writeDecisionState(ctx, 'classify', { classification: cls });
+        writeDecisionState(ctx, 'classify', { classification: routed });
         next = 'decide';
       } else if (activity === 'clarify') {
         const originalRequest = inboundText(ctx);
         writeDecisionState(ctx, 'classify', {
-          classification: cls,
+          classification: routed,
           clarificationRequest: {
           id: `${ctx.runId}:clarification`,
           kind: 'ambiguous_request',
@@ -105,7 +116,7 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
         });
         next = 'ask_user';
       } else {
-        writeDecisionState(ctx, 'classify', { classification: cls });
+        writeDecisionState(ctx, 'classify', { classification: routed });
         next = 'reply';
       }
     } catch (err) {

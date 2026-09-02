@@ -71,6 +71,7 @@ export function resolvePermissionModePolicy(id: string | undefined): PermissionM
 }
 
 function migrateLegacyModeId(id: string | undefined): string | undefined {
+  if (id === 'full-access') return 'full'
   if (id === 'info') return 'full'
   if (id === 'physical') return 'restricted'
   if (id === 'coding') return 'research'

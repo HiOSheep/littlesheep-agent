@@ -11,6 +11,7 @@ import { asSessionId, type SessionId, type Session, type SessionMetadata } from 
 import type { AgentRunner, RunnerResult, RunInput } from '@littlesheep/runner';
 import { SessionManager } from '@littlesheep/session';
 import type { ChannelConfig } from '@littlesheep/config';
+import type { WebEvidenceProjection } from '@littlesheep/types';
 import { ChannelSessionStore } from './session-binding.js';
 import { DefaultChannelManager, buildRuntimeConfig } from './manager.js';
 import type {
@@ -614,6 +615,65 @@ describe('DefaultChannelManager', () => {
       expect(mock.runs[0]!.externalConversationId).toBe('chat-1');
       expect(mock.runs[0]!.text).toBe('ping');
       expect(mock.runs[0]!.requestKey).toBe('platform-message-1');
+    });
+
+    it('appends only bounded web source metadata to channel replies', async () => {
+      const { manager, mock } = makeManager();
+      const { factory, instances } = makeMockPluginFactory();
+      manager.registerType('mock', factory);
+
+      const webEvidence: WebEvidenceProjection = {
+        version: 1,
+        providerId: 'tavily',
+        generatedAt: '2026-08-30T00:00:00.000Z',
+        completeness: 'partial',
+        citationIds: ['web-channel-source'],
+        citations: [{
+          id: 'web-channel-source',
+          origin: 'https://example.com',
+          url: 'https://example.com/article',
+          urlHash: 'a'.repeat(64),
+          title: 'Bounded channel source',
+          fetchedAt: '2026-08-30T00:00:00.000Z',
+          status: 'partial',
+          truncated: true,
+        }],
+        citationCount: 1,
+        documentCount: 1,
+        cached: false,
+        partial: true,
+        truncated: true,
+        blocked: true,
+        stale: false,
+        errorKinds: ['web_provider_rate_limited'],
+      };
+      mock.runner.run = async (input: RunInput): Promise<RunnerResult> => ({
+        runId: 'run-channel-web',
+        sessionId: (input.sessionId ?? asSessionId('default')) as SessionId,
+        status: 'ok',
+        reply: 'Answer generated from bounded evidence.',
+        messages: [],
+        trace: [],
+        durationMs: 0,
+        webEvidence,
+      });
+
+      await manager.start(makeRuntimeConfig());
+      const reply = await instances[0]!.simulateInbound({
+        text: 'raw-query-marker',
+        externalConversationId: 'chat-1',
+        externalUserId: 'user-1',
+        isGroup: false,
+      });
+
+      expect(reply).toContain('Sources (partial, truncated, blocked):');
+      expect(reply).toContain('Bounded channel source');
+      expect(reply).toContain('https://example.com/article');
+      expect(reply).toContain('fetchedAt: 2026-08-30T00:00:00.000Z');
+      expect(reply).toContain('[citation:web-channel-source]');
+      expect(reply).not.toContain('PRIVATE_PAGE_BODY');
+      expect(reply).not.toContain('raw-query-marker');
+      expect(reply).not.toContain('web_provider_rate_limited');
     });
 
     it('returns ok=false and error when runner.run throws', async () => {

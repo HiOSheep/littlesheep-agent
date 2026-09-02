@@ -7,6 +7,14 @@ import type {
 } from '@littlesheep/branding'
 import type { AgentProfileId } from '@littlesheep/prompt'
 import type { DesktopClosePolicy } from '@littlesheep/config'
+import type {
+  BrowserFallbackMode,
+  NetworkDnsResolver,
+  NetworkReadMode,
+  SensitiveQueryPolicy,
+  WebErrorKind,
+  WebProviderRuntimeStatus,
+} from '@littlesheep/types'
 import type { RuntimeReasoning } from './model-capabilities'
 
 export interface ProviderInfo {
@@ -37,12 +45,58 @@ export interface RuntimeState {
   workspace: string
   workplace: string
   providers: RuntimeProvider[]
+  web: RuntimeWebState
+}
+
+export interface RuntimeWebState {
+  enabled: boolean
+  status: WebProviderRuntimeStatus
+  providerId?: string
+  providerConfigured: boolean
+  readMode: NetworkReadMode
+  dnsResolver: NetworkDnsResolver
+  strictReadApproval: boolean
+  allowDomains: string[]
+  blockDomains: string[]
+  cacheEnabled: boolean
+  cacheTtlSeconds: number
+  cacheMaxBytes: number
+  browserFallback: BrowserFallbackMode
+  sensitiveQueryPolicy: SensitiveQueryPolicy
+  providerCheck?: RuntimeWebProviderCheck
+  egress: readonly [
+    'query_to_search_provider',
+    'url_to_target_site',
+    'evidence_to_current_llm_provider',
+  ]
+}
+
+export interface RuntimeWebProviderCheck {
+  providerId: string
+  status: 'healthy' | 'degraded' | 'unavailable'
+  checkedAt: string
+  resultCount?: number
+  errorKind?: WebErrorKind
+}
+
+export interface RuntimeWebPatch {
+  enabled?: boolean
+  readMode?: NetworkReadMode
+  dnsResolver?: NetworkDnsResolver
+  strictReadApproval?: boolean
+  allowDomains?: string[]
+  blockDomains?: string[]
+  cacheEnabled?: boolean
+  cacheTtlSeconds?: number
+  cacheMaxBytes?: number
+  browserFallback?: BrowserFallbackMode
+  sensitiveQueryPolicy?: SensitiveQueryPolicy
 }
 
 export type RuntimePatch = Partial<Pick<
   RuntimeState,
   'model' | 'reasoning' | 'profile' | 'contextCompressionThresholdRatio' | 'closePolicy' | 'workspace'
->>
+>> & { web?: RuntimeWebPatch }
 
 export interface DataRootStatus {
   managed: boolean

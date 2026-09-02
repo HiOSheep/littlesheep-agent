@@ -1,6 +1,8 @@
 // Shared renderer API transport helpers. Domain clients only depend on these
 // helpers and the canonical route/contract modules.
 
+import type { WindowDragPoint } from '../../shared/window-drag-contracts'
+
 declare global {
   interface Window {
     littlesheep: {
@@ -8,6 +10,9 @@ declare global {
       getPathForFile?: (file: unknown) => string
       onBrowserOpenNewTab?: (listener: (event: { url: string; disposition?: string }) => void) => () => void
       onApplicationStateFlush?: (listener: () => void) => () => void
+      startWindowDrag?: (point: WindowDragPoint) => void
+      moveWindowDrag?: (point: WindowDragPoint) => void
+      endWindowDrag?: () => void
     }
   }
 }

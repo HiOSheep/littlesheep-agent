@@ -78,6 +78,7 @@ let currentConfig: Config | null = null
 let currentBranding: BrandingConfig | null = null
 let currentModel: string = ''
 let currentDataDir: string = ''
+let runtimeConfigUpdateQueue: Promise<void> = Promise.resolve()
 let currentBootstrapDir: string = ''
 let currentWorkplaceDir: string = ''
 let providerCalibrationToken = ''
@@ -220,21 +221,25 @@ async function ensureUserDataLayout(dirs: ReturnType<typeof dataSubdirs>): Promi
 }
 
 async function persistRuntimeConfig(config: Config): Promise<void> {
-  currentConfig = config
-  if (server) server.setConfig(config)
-  pluginHost?.setConfig(config)
   if (currentDataDir) {
     await saveConfig(config, join(currentDataDir, 'config.json'))
   }
+  currentConfig = config
+  if (server) server.setConfig(config)
+  pluginHost?.setConfig(config)
 }
 
-async function updateRuntimeConfig(config: Config): Promise<void> {
-  const normalized = prepareRuntimeConfig(config, currentWorkplaceDir).config
-  const modelChanged = normalized.agents.defaults.model !== currentConfig?.agents.defaults.model
-  await persistRuntimeConfig(normalized)
-  if (modelChanged) {
-    await rebuildRunner()
-  }
+async function updateRuntimeConfig(config: Config): Promise<Config> {
+  const operation = runtimeConfigUpdateQueue.then(async () => {
+    const normalized = prepareRuntimeConfig(config, currentWorkplaceDir).config
+    const modelChanged = normalized.agents.defaults.model !== currentConfig?.agents.defaults.model
+    const webChanged = JSON.stringify(normalized.web) !== JSON.stringify(currentConfig?.web)
+    await persistRuntimeConfig(normalized)
+    if (modelChanged || webChanged) await rebuildRunner()
+    return normalized
+  })
+  runtimeConfigUpdateQueue = operation.then(() => undefined, () => undefined)
+  return operation
 }
 
 async function bootstrap(): Promise<void> {
@@ -253,6 +258,10 @@ async function bootstrap(): Promise<void> {
     console.error(`[data-root] rollback pending: ${dataRootPreparation.status.pendingRollback.error}`)
   }
   const dataDir = dataSubdirs(branding)
+  currentDataDir = dataDir.root
+  currentBootstrapDir = dataDir.root
+  currentWorkplaceDir = dataDir.workplace
+  desktopShell.restoreWindowState()
   await ensureUserDataLayout(dataDir)
   stageStartedAt = recordBootstrapTiming('user-data-layout-ready', stageStartedAt)
 
@@ -321,9 +330,6 @@ async function bootstrap(): Promise<void> {
   currentConfig = config
   currentBranding = branding
   currentModel = model
-  currentDataDir = dataDir.root
-  currentBootstrapDir = dataDir.root
-  currentWorkplaceDir = dataDir.workplace
 
   // 7. Start local app API server on loopback (random free port).
   providerCalibrationToken = randomBytes(32).toString('base64url')
@@ -562,7 +568,12 @@ async function shutdownRetiredRunners(): Promise<void> {
 if (gotLock) {
   app.whenReady().then(() => {
     recordBootstrapTiming('electron-app-ready')
-    void bootstrap()
+    desktopShell.showStartup()
+    recordBootstrapTiming('desktop-startup-visible')
+    void bootstrap().catch((error: unknown) => {
+      console.error('[bootstrap] failed:', error)
+      desktopShell.showStartupError(error)
+    })
   })
 
   app.on('activate', () => {

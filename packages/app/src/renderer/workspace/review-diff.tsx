@@ -1,5 +1,5 @@
 // Presents layered staged, unstaged, and untracked diffs in the shared Monaco surface.
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
 import type * as Monaco from 'monaco-editor'
 import { workspaceLanguageForPath } from '../../shared/workspace-languages'
 import type {
@@ -28,6 +28,7 @@ import {
 import { ReviewLineCounts } from './review-line-counts'
 
 const EMPTY_LINE_COMMENTS: WorkspaceLineComment[] = []
+const EMPTY_LAYER_KINDS: WorkspaceReviewDiffLayer['kind'][] = []
 
 export function WorkspaceReviewDiff({
   file,
@@ -39,9 +40,12 @@ export function WorkspaceReviewDiff({
   lineCommentsByScope,
   onSideBySideChange,
   onLineCommentsChange,
+  onLineCommentUpdate,
+  onLineCommentDelete,
   onAddAttachment,
   onOpenFile,
   onTipChange,
+  scrollRef,
 }: {
   file: WorkspaceReviewFile | null
   diff: WorkspaceReviewFileDiff | null
@@ -52,20 +56,29 @@ export function WorkspaceReviewDiff({
   lineCommentsByScope: Record<string, WorkspaceLineComment[]>
   onSideBySideChange: (sideBySide: boolean) => void
   onLineCommentsChange: (scope: string, comments: WorkspaceLineComment[]) => void
+  onLineCommentUpdate: (
+    scope: string,
+    previous: WorkspaceLineComment,
+    next: WorkspaceLineComment,
+    attachment: AttachmentRef,
+  ) => void
+  onLineCommentDelete: (scope: string, comment: WorkspaceLineComment) => void
   onAddAttachment: (attachment: AttachmentRef) => void
   onOpenFile: () => void
   onTipChange: (tip: FloatingHelpTip | null) => void
+  scrollRef: RefObject<HTMLDivElement>
 }) {
   return (
     <section className="workspace-review-diff" aria-label="文件差异">
       <WorkspaceReviewDiffHeader
         file={file}
+        layerKinds={diff?.layers.map((layer) => layer.kind) ?? EMPTY_LAYER_KINDS}
         sideBySide={sideBySide}
         onSideBySideChange={onSideBySideChange}
         onOpenFile={onOpenFile}
         onTipChange={onTipChange}
       />
-      <div className="workspace-review-diff-scroll">
+      <div ref={scrollRef} className="workspace-review-diff-scroll">
         {emptyState}
         {!emptyState && loading && <WorkspacePlaceholder title="读取差异" text="正在生成文件 diff。" />}
         {!emptyState && !loading && error && <WorkspacePlaceholder title="差异读取失败" text={error} />}
@@ -77,7 +90,10 @@ export function WorkspaceReviewDiff({
             sideBySide={sideBySide}
             lineCommentsByScope={lineCommentsByScope}
             onLineCommentsChange={onLineCommentsChange}
+            onLineCommentUpdate={onLineCommentUpdate}
+            onLineCommentDelete={onLineCommentDelete}
             onAddAttachment={onAddAttachment}
+            onTipChange={onTipChange}
             key={layer.kind}
           />
         ))}
@@ -99,7 +115,10 @@ function WorkspaceReviewDiffLayerView({
   sideBySide,
   lineCommentsByScope,
   onLineCommentsChange,
+  onLineCommentUpdate,
+  onLineCommentDelete,
   onAddAttachment,
+  onTipChange,
 }: {
   workspacePath: string
   file: WorkspaceReviewFile
@@ -107,7 +126,15 @@ function WorkspaceReviewDiffLayerView({
   sideBySide: boolean
   lineCommentsByScope: Record<string, WorkspaceLineComment[]>
   onLineCommentsChange: (scope: string, comments: WorkspaceLineComment[]) => void
+  onLineCommentUpdate: (
+    scope: string,
+    previous: WorkspaceLineComment,
+    next: WorkspaceLineComment,
+    attachment: AttachmentRef,
+  ) => void
+  onLineCommentDelete: (scope: string, comment: WorkspaceLineComment) => void
   onAddAttachment: (attachment: AttachmentRef) => void
+  onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const model = useMemo(() => buildWorkspaceReviewEditorModel(layer), [layer])
   const originalLanguage = workspaceLanguageForPath(file.oldPath ?? file.path)
@@ -196,7 +223,6 @@ function WorkspaceReviewDiffLayerView({
 
   return (
     <section className="workspace-review-diff-layer" aria-label={LAYER_LABELS[layer.kind]}>
-      <div className="workspace-review-layer-header">{LAYER_LABELS[layer.kind]}</div>
       {layer.binary && <WorkspacePlaceholder title="二进制文件" text="该层不提供逐行差异。" />}
       {layer.notice && <div className="workspace-review-notice">{layer.notice}</div>}
       {!layer.binary && layer.hunks.length === 0 && (
@@ -236,7 +262,10 @@ function WorkspaceReviewDiffLayerView({
               fileName={file.oldPath?.split('/').at(-1) ?? file.path.split('/').at(-1) ?? file.path}
               comments={originalComments}
               onCommentsChange={(comments) => onLineCommentsChange(originalScope, comments)}
+              onCommentUpdate={(previous, next, attachment) => onLineCommentUpdate(originalScope, previous, next, attachment)}
+              onCommentDelete={(comment) => onLineCommentDelete(originalScope, comment)}
               onAddAttachment={onAddAttachment}
+              onTipChange={onTipChange}
               lineNumbers={originalLineNumbers}
               alignToEditor
               buildAttachment={(comment) => buildWorkspaceReviewCommentAttachment({
@@ -257,7 +286,10 @@ function WorkspaceReviewDiffLayerView({
               fileName={file.path.split('/').at(-1) ?? file.path}
               comments={modifiedComments}
               onCommentsChange={(comments) => onLineCommentsChange(modifiedScope, comments)}
+              onCommentUpdate={(previous, next, attachment) => onLineCommentUpdate(modifiedScope, previous, next, attachment)}
+              onCommentDelete={(comment) => onLineCommentDelete(modifiedScope, comment)}
               onAddAttachment={onAddAttachment}
+              onTipChange={onTipChange}
               lineNumbers={modifiedLineNumbers}
               alignToEditor
               buildAttachment={(comment) => buildWorkspaceReviewCommentAttachment({
@@ -275,7 +307,10 @@ function WorkspaceReviewDiffLayerView({
               targets={inlineDeletedTargets}
               comments={originalComments}
               onCommentsChange={(comments) => onLineCommentsChange(originalScope, comments)}
+              onCommentUpdate={(previous, next, attachment) => onLineCommentUpdate(originalScope, previous, next, attachment)}
+              onCommentDelete={(comment) => onLineCommentDelete(originalScope, comment)}
               onAddAttachment={onAddAttachment}
+              onTipChange={onTipChange}
               buildAttachment={(comment) => buildWorkspaceReviewCommentAttachment({
                 file,
                 layer: layer.kind,
@@ -306,12 +341,14 @@ function updateReviewLineNumbers(
 
 function WorkspaceReviewDiffHeader({
   file,
+  layerKinds,
   sideBySide,
   onSideBySideChange,
   onOpenFile,
   onTipChange,
 }: {
   file: WorkspaceReviewFile | null
+  layerKinds: WorkspaceReviewDiffLayer['kind'][]
   sideBySide: boolean
   onSideBySideChange: (sideBySide: boolean) => void
   onOpenFile: () => void
@@ -321,7 +358,14 @@ function WorkspaceReviewDiffHeader({
   return (
     <div className="workspace-review-diff-header workspace-page-leading-row">
       <div className="workspace-review-diff-title">
-        <strong>{file.path.split('/').at(-1) ?? file.path}</strong>
+        <div className="workspace-review-diff-title-main">
+          <strong>{file.path.split('/').at(-1) ?? file.path}</strong>
+          {layerKinds.length > 0 && (
+            <span className="workspace-review-diff-layer-status">
+              {layerKinds.map((kind) => LAYER_LABELS[kind]).join(' / ')}
+            </span>
+          )}
+        </div>
         <small>{file.oldPath ? `${file.oldPath} -> ${file.path}` : file.path}</small>
       </div>
       <div className="workspace-review-diff-actions">
@@ -358,7 +402,7 @@ function WorkspaceReviewDiffHeader({
           onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement('在文件工作台中打开', event.currentTarget))}
           onBlur={() => onTipChange(null)}
         >
-          <FileGlyphIcon />
+          <FileGlyphIcon name={file?.path} />
         </button>
       </div>
     </div>

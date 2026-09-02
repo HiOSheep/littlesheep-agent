@@ -399,9 +399,10 @@ function parseLineComments(value: unknown): AttachmentLineComment[] | undefined 
       const raw = item as Record<string, unknown>
       const startLine = toPositiveInteger(raw.startLine)
       const endLine = raw.endLine === undefined ? undefined : toPositiveInteger(raw.endLine)
+      const id = typeof raw.id === 'string' ? raw.id.trim().slice(0, 160) || undefined : undefined
       const text = typeof raw.text === 'string' ? raw.text.trim().slice(0, MAX_LINE_COMMENT_CHARS) : ''
       if (!startLine || !text || (endLine !== undefined && (!endLine || endLine < startLine))) return null
-      return { startLine, ...(endLine === undefined ? {} : { endLine }), text }
+      return { ...(id ? { id } : {}), startLine, ...(endLine === undefined ? {} : { endLine }), text }
     })
     .filter((item): item is AttachmentLineComment => item !== null)
   return comments.length > 0 ? comments : undefined

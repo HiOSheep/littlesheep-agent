@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
+  type WheelEvent as ReactWheelEvent,
 } from 'react'
 import { useListReorderAnimation } from '../app-shell/list-motion'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
@@ -129,6 +130,27 @@ export function WorkspaceTabStrip({
   )
 
   useEffect(() => () => dragCleanupRef.current?.(), [])
+
+  function handleTabStripWheel(event: ReactWheelEvent<HTMLDivElement>) {
+    const strip = event.currentTarget
+    if (strip.scrollWidth <= strip.clientWidth) return
+
+    const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY)
+      ? event.deltaX
+      : event.deltaY
+    if (delta === 0) return
+
+    const previousScrollLeft = strip.scrollLeft
+    const maxScrollLeft = strip.scrollWidth - strip.clientWidth
+    const nextScrollLeft = Math.max(
+      0,
+      Math.min(maxScrollLeft, previousScrollLeft + delta),
+    )
+    if (nextScrollLeft === previousScrollLeft) return
+
+    event.preventDefault()
+    strip.scrollLeft = nextScrollLeft
+  }
 
   function resolveDropIndexFromRects(
     order: WorkspacePanelTabId[],
@@ -323,7 +345,13 @@ export function WorkspaceTabStrip({
   }
 
   return (
-    <div ref={stripRef} className="workspace-tab-strip" role="tablist" aria-label="拓展功能区">
+    <div
+      ref={stripRef}
+      className="workspace-tab-strip"
+      role="tablist"
+      aria-label="拓展功能区"
+      onWheel={handleTabStripWheel}
+    >
       {displayedTabs.map((entry) => {
         const active = entry.id === activeTab
         const dragging = entry.id === draggingTabId
@@ -368,7 +396,7 @@ export function WorkspaceTabStrip({
             onBlur={() => onTipChange(null)}
           >
             {entry.kind === 'file'
-              ? <FileGlyphIcon />
+              ? <FileGlyphIcon name={entry.label} />
               : <WorkspaceFeatureIcon id={entry.kind === 'browser' ? 'browser' : entry.id} />}
             <OverflowingLabel
               label={entry.label}

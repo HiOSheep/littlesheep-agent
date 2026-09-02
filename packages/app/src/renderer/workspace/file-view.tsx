@@ -12,6 +12,7 @@ import { workspaceFilePreviewCache } from './file-preview-cache'
 import type { WorkspaceLineComment } from './line-comments'
 import { workspaceBreadcrumbs } from './path-utils'
 import { WorkspacePreviewPane } from './preview-pane'
+import { missingWorkspaceFileMessage, workspaceErrorMessage } from './workspace-errors'
 
 export function WorkspaceFileView({
   tabId,
@@ -25,6 +26,8 @@ export function WorkspaceFileView({
   onWorkspaceFileSaved,
   comments,
   onCommentsChange,
+  onCommentUpdate,
+  onCommentDelete,
   onAddAttachment,
   onTipChange,
 }: {
@@ -39,6 +42,8 @@ export function WorkspaceFileView({
   onWorkspaceFileSaved: (root: string, path: string, preview: WorkspacePreview) => void
   comments: WorkspaceLineComment[]
   onCommentsChange: (comments: WorkspaceLineComment[]) => void
+  onCommentUpdate: (previous: WorkspaceLineComment, next: WorkspaceLineComment, attachment: AttachmentRef) => void
+  onCommentDelete: (comment: WorkspaceLineComment) => void
   onAddAttachment: (attachment: AttachmentRef) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
@@ -56,14 +61,25 @@ export function WorkspaceFileView({
     setPreview(cached)
     setError('')
     setLoading(!cached)
-    workspaceFilePreviewCache.load(root, path)
+    // A selected file must be checked against the filesystem even when its
+    // cached preview is still fresh; the file may have been deleted or moved
+    // after the navigator populated the cache.
+    workspaceFilePreviewCache.load(root, path, { force: true })
       .then((result) => {
         if (!alive || requestId !== requestRef.current) return
         setPreview(result)
       })
       .catch((err) => {
         if (!alive || requestId !== requestRef.current) return
-        setError((err as Error).message)
+        console.debug('[workspace-file-view] file preview request failed', err)
+        const missingMessage = missingWorkspaceFileMessage(err)
+        if (missingMessage) {
+          workspaceFilePreviewCache.invalidate(root, path)
+          setPreview(null)
+          setError(missingMessage)
+          return
+        }
+        setError(workspaceErrorMessage(err, '文件预览暂时无法读取，请稍后重试。'))
       })
       .finally(() => {
         if (!alive || requestId !== requestRef.current) return
@@ -78,7 +94,15 @@ export function WorkspaceFileView({
     try {
       await openWorkspacePathInVSCode(root, path)
     } catch (err) {
-      setError((err as Error).message)
+      console.debug('[workspace-file-view] opening workspace path failed', err)
+      const missingMessage = missingWorkspaceFileMessage(err)
+      if (missingMessage) {
+        workspaceFilePreviewCache.invalidate(root, path)
+        setPreview(null)
+        setError(missingMessage)
+        return
+      }
+      setError(workspaceErrorMessage(err, '无法打开当前工作区，请稍后重试。'))
     }
   }
 
@@ -112,6 +136,8 @@ export function WorkspaceFileView({
       onDraftChange={onDraftChange}
       comments={comments}
       onCommentsChange={onCommentsChange}
+      onCommentUpdate={onCommentUpdate}
+      onCommentDelete={onCommentDelete}
       onAddAttachment={onAddAttachment}
       onTipChange={onTipChange}
     />

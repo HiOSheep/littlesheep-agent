@@ -15,6 +15,11 @@ import { prepareModelRequest, recordProviderUsage } from '../../model-observabil
 import { clearReplyState } from '../../reply-state.js';
 import { recordFailure } from '../../failure-state.js';
 import { replaceToolResults } from '../../execution-evidence-state.js';
+import {
+  validateWebCitations,
+  webCitationRepairContract,
+  MAX_WEB_CITATION_REPAIRS,
+} from '../../web-citation-validation.js';
 export { executeTaskBook } from './task-book-runner.js';
 
 export async function executeLegacyLoop(
@@ -94,8 +99,37 @@ async function rewriteLegacyExecutionReply(
       insertedBeforePrimary: attachments.map((item) => item.context),
     }),
   );
-  const response = await deps.llm.chat(request);
-  recordProviderUsage(ctx, request, response.usage);
+  let currentRequest = request;
+  for (let attempt = 0; attempt <= MAX_WEB_CITATION_REPAIRS; attempt += 1) {
+    const response = await deps.llm.chat(currentRequest);
+    recordProviderUsage(ctx, currentRequest, response.usage);
     applyUsage(ctx, response.usage, 'execute');
-  return response.content;
+    const validation = validateWebCitations(response.content, ctx.webEvidence);
+    if (validation.ok || !ctx.webEvidence) return response.content;
+    if (attempt >= MAX_WEB_CITATION_REPAIRS) {
+      throw new Error(`rewritten reply failed Web citation validation: ${validation.reason}`);
+    }
+    const repairRequest = {
+      ...rawRequest,
+      messages: [
+        ...rawRequest.messages,
+        { role: 'assistant' as const, content: response.content },
+        {
+          role: 'user' as const,
+          content: `${webCitationRepairContract(ctx.webEvidence)}\n\nValidation failure: ${validation.reason}`,
+        },
+      ],
+    } satisfies import('@littlesheep/llm').ChatRequest;
+    currentRequest = prepareModelRequest(
+      ctx,
+      'execute_tool_loop',
+      repairRequest,
+      buildRunRequestCandidates(ctx, 'execute', repairRequest.messages, {
+        history: recentHistoryForModel(ctx.history, 8),
+        systemSegments: rewrittenSystem.segments,
+        insertedBeforePrimary: attachments.map((item) => item.context),
+      }),
+    );
+  }
+  throw new Error('rewritten reply citation validation exhausted');
 }

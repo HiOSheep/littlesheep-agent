@@ -1,6 +1,7 @@
 // Settings navigation and page composition.
 import { SETTINGS_NAV_GROUPS } from './navigation'
 import { SettingsPage } from './types'
+import { SettingsNavArrowIcon } from '../ui/icons'
 
 
 export function SettingsHome({ onOpenPage }: { onOpenPage: (page: SettingsPage) => void }) {
@@ -27,7 +28,7 @@ export function SettingsHome({ onOpenPage }: { onOpenPage: (page: SettingsPage) 
                   >
                     <strong>{item.title}</strong>
                     <span>{item.desc}</span>
-                    <span className="settings-nav-arrow" aria-hidden="true" />
+                    <SettingsNavArrowIcon />
                   </button>
                 ))}
               </div>

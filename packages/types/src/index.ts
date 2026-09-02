@@ -9,6 +9,7 @@ export * from './activation-projection.js';
 export * from './versioning.js';
 export * from './session.js';
 export * from './tool.js';
+export * from './web-retrieval.js';
 export * from './memory.js';
 export * from './memory-evidence.js';
 export * from './memory-continuity.js';

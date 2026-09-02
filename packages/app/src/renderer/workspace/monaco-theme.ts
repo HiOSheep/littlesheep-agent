@@ -1,4 +1,9 @@
 import type * as Monaco from 'monaco-editor'
+import {
+  LITTLE_SHEEP_SELECTION_BACKGROUND,
+  LITTLE_SHEEP_SELECTION_BACKGROUND_INACTIVE,
+  LITTLE_SHEEP_SELECTION_FOREGROUND,
+} from '../selection-style'
 
 export const LITTLE_SHEEP_MONACO_THEME = 'littlesheep-midnight'
 
@@ -48,8 +53,9 @@ export const LITTLE_SHEEP_MONACO_THEME_DATA = {
     'editorLineNumber.foreground': '#858585',
     'editorLineNumber.activeForeground': '#E6E6E6',
     'editorCursor.foreground': '#FFFFFF',
-    'editor.selectionBackground': '#4A4A4AAA',
-    'editor.inactiveSelectionBackground': '#3A3A3A88',
+    'editor.selectionBackground': LITTLE_SHEEP_SELECTION_BACKGROUND,
+    'editor.inactiveSelectionBackground': LITTLE_SHEEP_SELECTION_BACKGROUND_INACTIVE,
+    'editor.selectionForeground': LITTLE_SHEEP_SELECTION_FOREGROUND,
     'editor.selectionHighlightBackground': '#45454566',
     'editor.wordHighlightBackground': '#55555555',
     'editor.wordHighlightStrongBackground': '#66666666',

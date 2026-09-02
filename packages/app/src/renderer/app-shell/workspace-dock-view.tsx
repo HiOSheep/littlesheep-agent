@@ -1,5 +1,6 @@
 // Pure renderer composition view. Runtime authority and side effects stay in the controller.
 import '@xterm/xterm/css/xterm.css'
+import { useLayoutEffect } from 'react'
 import {
   MAX_NAVIGATION_EXPANDED_PATHS,
   boundStringList
@@ -46,7 +47,10 @@ export function WorkspaceDockView({ controller }: { controller: WorkspaceDockVie
     setWorkspaceExpandedPaths,
     workspaceArtifactVersion,
     setWorkspaceArtifactVersion,
+    attachmentRemoval,
     setAttachments,
+    removeLineCommentAttachment,
+    updatePublishedLineCommentAttachment,
     setControlTip,
     setWorkspacePanelWidth,
     workspacePanelLayout,
@@ -65,6 +69,42 @@ export function WorkspaceDockView({ controller }: { controller: WorkspaceDockVie
     workspacePanelUsingTemporaryRoot,
   } = controller
   const workspacePanelToggleTip = workspacePanelCollapsed ? '打开拓展工作区' : '收起拓展工作区'
+
+  useLayoutEffect(() => {
+    const shell = document.querySelector('.window-shell')
+    const coreWorkspace = shell?.querySelector('.core-workspace')
+    const tabRow = shell?.querySelector('.workspace-panel-header')
+    const toggle = shell?.querySelector('.workspace-panel-corner-toggle')
+    if (!(shell instanceof HTMLElement)
+      || !(coreWorkspace instanceof HTMLElement)
+      || !(tabRow instanceof HTMLElement)
+      || !(toggle instanceof HTMLElement)) {
+      return
+    }
+
+    const syncToggleCenterline = () => {
+      const coreRect = coreWorkspace.getBoundingClientRect()
+      const tabRowRect = tabRow.getBoundingClientRect()
+      const toggleRect = toggle.getBoundingClientRect()
+      if (!tabRowRect.height || !toggleRect.height) return
+      const top = tabRowRect.top + tabRowRect.height / 2 - toggleRect.height / 2 - coreRect.top
+      shell.style.setProperty('--workspace-panel-toggle-top', `${top}px`)
+    }
+
+    syncToggleCenterline()
+    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(syncToggleCenterline)
+    resizeObserver?.observe(coreWorkspace)
+    resizeObserver?.observe(tabRow)
+    resizeObserver?.observe(toggle)
+    window.addEventListener('resize', syncToggleCenterline)
+
+    return () => {
+      resizeObserver?.disconnect()
+      window.removeEventListener('resize', syncToggleCenterline)
+      shell.style.removeProperty('--workspace-panel-toggle-top')
+    }
+  }, [currentSession, workspacePanelCollapsed, workspacePanelFullscreen, workspacePanelTab, workspacePanelOpenTabs])
+
   return (
 <>
       <div
@@ -124,6 +164,9 @@ export function WorkspaceDockView({ controller }: { controller: WorkspaceDockVie
         onRequestFileSaveApproval={requestWorkspaceSaveApproval}
          onWorkspaceArtifactsChanged={() => setWorkspaceArtifactVersion((value) => value + 1)}
          onWorkspaceFileSaved={notifyRuntimeWorkspaceFileSaved}
+         attachmentRemoval={attachmentRemoval}
+         onLineCommentDelete={removeLineCommentAttachment}
+         onLineCommentUpdate={updatePublishedLineCommentAttachment}
          onAddAttachment={(attachment) => setAttachments((current) => (
            mergeLineCommentAttachment(current, attachment)
          ))}

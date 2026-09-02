@@ -1,6 +1,6 @@
 # LittleSheep 模块拆分地图
 
-最后更新：2026-08-24 12:00:00
+最后更新：2026-08-29 19:27:00
 
 本文件记录大型生产文件的当前所有权、目标边界和拆分顺序。它是仓库基元化任务书的阶段产物，不替代项目状态，也不把行数当成唯一质量指标。
 
@@ -14,11 +14,12 @@
 
 ## 强制拆分队列
 
-下表行数是 2026-08-16 当前工作树的物理行数，不是历史完成值。生产 `.ts/.tsx` 文件超过 600 行必须进入本表；已登记不等于要求立即做无收益拆分。当前仓库卫生扫描共有 100 个生产文件超过 300 行，其中 12 个超过 600 行并进入受控清单。
+下表行数是 2026-09-02 冻结前工作树的物理行数，不是历史完成值。生产 `.ts/.tsx` 文件超过 600 行必须进入本表；已登记不等于要求立即做无收益拆分。当前仓库卫生扫描共有 111 个生产文件超过 300 行，其中 15 个超过 600 行并进入受控清单。
 
 | 当前文件 | 当前行数 | 当前责任 | 目标边界 | 所有权 |
 | --- | ---: | --- | --- | --- |
 | `packages/runner/src/runner.ts` | 2055 | run 生命周期、输入装配、Memory 反馈、日志、检查点持久化/续跑、活动任务注册、后台维护准入透传和资源收尾 | 保持应用服务 facade；活动快照与中断/超时所有权已下沉，继续下沉日志、检查点和收尾协调；checkpoint 预算重concile 保持在 `run-checkpoint.ts` 边界 | E |
+| `packages/app/src/renderer/app-shell/use-app-controller.ts` | 656 | Renderer 跨领域兼容协调、启动恢复、Runtime 设置和视图快照 | 保持装配 facade；启动恢复、持久化和领域投影继续下沉，冻结期间不得继续吸收新职责 | B |
 | `packages/channels/qqbot/src/plugin.ts` | 803 | QQ 协议、连接、消息、发送和生命周期 | transport、protocol、message-mapper、sender、lifecycle | C |
 | `packages/memory-tree/src/project-memory-projection.ts` | 780 | 投影生成、同步、冲突、恢复和删除 | projection facade + render、sync、conflict、lifecycle | D |
 | `packages/types/src/runtime-contracts.ts` | 859 | Context、事件、检查点、活动任务控制、执行证据和版本化运行时契约 | Token 账本已迁入 `token-ledger.ts`；继续按 context、event、checkpoint、active-run、execution 分组并保持 barrel | E |
@@ -41,12 +42,12 @@
 | `packages/types/src/run-context-contract.ts` | 428 | 八组高频 RunContext 字段的 owner、读写阶段、生命周期和写入查询 | 保持 machine-readable manifest；继续由 `replan-state.ts`、`reply-state.ts`、`runtime-state.ts`、`memory-state.ts`、`usage-state.ts`、`decision-state.ts`、`failure-state.ts`、`execution-evidence-state.ts`、`model-observability-state.ts` 等领域边界消费，不把具体状态写入逻辑吸回 types | E |
 | `packages/tools/src/tool-execution-service.ts` | 583 | 工具查找、校验、审批、执行生命周期、事件与结构化记录 facade | 调度、中断、记录摘要和结果处理已拆分；facade 不吸收 Harness 编排或副作用状态所有权 | E |
 | `packages/memory-tree/src/memory-repository/v3-node-store.ts` | 581 | v3 节点查询、写入编排、层级和实体关联 | 事件与生命周期规则已拆出；后续分离 query projection 与 write coordinator | D |
-| `packages/app/src/renderer/app-shell/use-app-controller.ts` | 575 | Renderer 跨领域兼容协调、启动恢复和视图快照 | 应用持久化副作用已下沉到 `use-app-persistence.ts`；保持装配职责 | B |
+| `packages/web/src/fetch/dns-resolver.ts` | 395 | 系统/固定 Cloudflare DoH 解析、DNS wire 校验、TTL 缓存和取消边界 | 保持 DNS resolver 单一职责；若继续增长，拆分 wire codec、transport 与 cache，同时保持 URL policy 只接收已验证地址 | C |
 | `packages/app/src/renderer/sidebar/session-actions.ts` | 315 | 对话切换、历史分页、归档/删除及会话视图令牌失效 | 保持会话生命周期 facade；历史加载和视图令牌继续共享同一会话代次边界 | B |
 | `packages/app/src/main/local-app-api/run-checkpoint-routes.ts` | 304 | checkpoint 发现、详情、补充信息、续跑、停止和放弃路由 | 保持路由 facade；将恢复准入和响应投影继续下沉到独立 adapter | C |
 | `packages/memory-tree/src/memory-repository/v3-resource-store.ts` | 575 | v3 资源元数据、生命周期事务、实体投影和恢复 | 分离 resource registry、transaction recovery 与 graph projection | D |
 | `packages/app/src/main/index.ts` | 600 | Electron 启动和组合；窗口、托盘、关闭策略、活动任务聚合、Memory v3、桌面验收采样与内置浏览器宿主已下沉；后台维护准入由 `background-maintenance-policy.ts` 提供 | 继续抽取 bootstrap 服务，入口只保留装配顺序 | C |
-| `packages/app/src/renderer/workspace/terminal.tsx` | 557 | 用户交互 PTY 生命周期、SSE、尺寸、命令历史和输入队列 | 保持终端事务边界，禁止吸收工作区导航或 Agent 审批职责；来源与 Agent 权限语义由 Main 明确拥有 | B |
+| `packages/app/src/renderer/workspace/terminal.tsx` | 564 | 用户交互 PTY 生命周期、SSE、尺寸、命令历史和输入队列 | 保持终端事务边界，禁止吸收工作区导航或 Agent 审批职责；来源与 Agent 权限语义由 Main 明确拥有 | B |
 | `packages/memory-tree/src/v3/contracts.ts` | 547 | Memory v3 atom、认识状态、事件、实体、证据与 Embedding 契约 | 按 atom、event、graph、evidence 分组并保持 barrel | D |
 | `packages/snapshot/src/git-checkpoint.ts` | 546 | 数据与工作区两阶段 checkpoint、同步回退和退出冻结协调 | 保持事务 facade；文件筛选、manifest codec 与 Git plumbing 已独立 | E |
 | `packages/memory-tree/src/memory-repository/v3-migration.ts` | 538 | v2->v3 请求登记、启动执行、恢复、受约束回滚和 locator 状态机 | 保持事务 facade；若继续增长，分离 request/recovery 与 rollback coordinator | D |
@@ -62,6 +63,7 @@
 | `packages/app/src/main/provider-calibration.ts` | 318 | 运行中 Provider 的 chat、continuity、tool、abort 有界校准 | 保持纯校准编排与脱敏结果；Provider 客户端和凭证仍由 Runner/Main 负责，不继续吸收通用运行逻辑 | C |
 | `packages/app/src/renderer/workspace/preview-pane.tsx` | 378 | 编辑草稿、Monaco/Markdown/媒体预览和预览状态栏 | 文件加载与保存事务已下沉到 `file-view.tsx`；继续保持编辑与展示边界 | B |
 | `packages/app/src/main/local-app-api/workspace-git-review-cache.ts` | 272 | Main Git 审阅快照缓存、revision、并发、取消、TTL 和容量预算 | 保持缓存策略与 Git 解析、路由分离 | C |
+| `packages/app/src/renderer/Markdown.tsx` | 305 | 聊天与预览中的 Markdown、流式分段、安全链接、代码块和 Mermaid 图表渲染 | 保持纯展示与链接导航边界；若继续增长，拆出 Mermaid/代码块渲染 adapter | B |
 | `packages/memory-tree/src/v3/storage-coordinator.ts` | 308 | v3 raw/event/operation/atom/catalog 事务协调与恢复 | 保持事务边界；后续拆 recovery replay 与 commit projection | D |
 | `packages/app/src/renderer/api/workspace-files.ts` | 337 | Renderer 工作区文件 API、目录有界缓存与失效 | 若继续增长，拆分缓存与请求 helper | B |
 | `packages/app/src/renderer/workspace/review.tsx` | 316 | 审阅可见生命周期、single-flight 刷新、共享导航装配和树/差异选择 | 保持 policy、model 与 view helper 分离；单双列偏好留在 Renderer UI 层 | B |
@@ -79,15 +81,16 @@
 | `packages/memory-tree/src/v3/atom-store.ts` | 437 | atom 原子读写、轻量索引、扫描、层级和隔离 | 保持 store facade；规模验收稳定后分离 scanner/quarantine | D |
 | `packages/runner/src/infra.ts` | 450 | 默认基础设施创建与 Memory v3 后台维护准入回调注入 | 按 memory、tools、session、skills adapter 分组 | E |
 | `packages/app/src/renderer/workspace/tab-strip.tsx` | 410 | 工作区标签渲染、关闭、重排、拖拽和溢出标签 | 将拖拽 controller 与标签视图继续保持独立，禁止吸收面板状态 | B |
-| `packages/app/src/renderer/workspace/panel.tsx` | 396 | 拓展工作区页面、评论状态和工作面装配 | 保持纯组合；标签条、浏览器和文件预览事务已分别下沉 | B |
+| `packages/app/src/renderer/workspace/panel.tsx` | 399 | 拓展工作区页面、评论状态和工作面装配 | 保持纯组合；标签条、浏览器和文件预览事务已分别下沉 | B |
 | `packages/app/src/main/development-environments.ts` | 421 | LS 工具链管理 facade、版本偏好、导入/移除事务和终端环境派生 | 保持 facade；下载器不得回填此文件 | C |
 | `packages/app/src/renderer/workspace/browser.tsx` | 411 | 内置浏览器标签、导航、加载状态和网页内跳转 | 保持视图组合；历史算法和导航资格留在独立模块 | B |
+| `packages/app/src/renderer/workspace/code-editor.tsx` | 355 | Monaco 编辑器唯一懒加载、模型/视图生命周期和代码查看/编辑适配 | 保持编辑器运行时单一所有者；继续将语言支持与视图状态留在独立边界，不在普通文件/审阅组件重复初始化 | B |
 | `packages/app/src/renderer/workspace-persistence.ts` | 565 | 会话工作区布局 schema、draft 迁移、路径重绑定、快照恢复与规范化 | 保持纯数据转换边界；继续增长时分离 schema/codec 与路径转换 | B |
 | `packages/app/src/renderer/workspace/use-workspace-session-layouts.ts` | 413 | 会话工作区桶、draft 接管、本地持久化、Main 镜像恢复与关闭事务所有权 | 保持会话状态 Hook；文件保存行为继续留在布局 controller/file-close 边界 | B |
 | `packages/app/src/renderer/app-shell/preferences.ts` | 331 | Renderer 本地偏好键、基础 codec、旧工作区布局迁移与镜像应用判定 | 保持兼容偏好入口；后续将旧布局迁移下沉到 workspace persistence adapter | B |
 | `packages/prompt/src/builder.ts` | 401 | Prompt 分段、完整执行与紧凑 respond 装配 | 保留 builder facade，复杂 section 移入 `sections` | E |
 | `packages/app/src/renderer/settings/plugins.tsx` | 394 | 插件发现、筛选、启停、来源确认和代码授权 | 新能力进入插件宿主或独立设置组件 | B |
-| `packages/app/src/renderer/workspace/use-workspace-layout-controller.ts` | 451 | 布局尺寸交互、标签命令、草稿编辑与关闭前保存编排 | 会话布局持久化已下沉到 `use-workspace-session-layouts.ts`；保持交互 controller | B |
+| `packages/app/src/renderer/workspace/use-workspace-layout-controller.ts` | 600 | 布局尺寸交互、标签命令、草稿编辑与关闭前保存编排 | 会话布局持久化已下沉到 `use-workspace-session-layouts.ts`；保持交互 controller，冻结期间不得继续吸收新职责 | B |
 | `packages/types/src/activation.ts` | 390 | 持久 Atom 与语义缓存共用的连续 activation 契约和纯计算 | 按 evidence、scoring、projection 分组并保持 barrel | E |
 | `packages/app/src/renderer/chat/assistant-turn.tsx` | 381 | 思考摘要、执行过程、验证与最终产物的渐进式披露 | 持续拆出纯展示段；禁止吸收状态决策 | B |
 | `packages/app/src/renderer/ArchiveManager.tsx` | 369 | 归档加载、树和操作 | controller + project/session 视图 | B |
@@ -107,7 +110,7 @@
 | `packages/app/src/main/workspace-layout-index.ts` | 375 | Main 多会话工作区镜像、旧单快照兼容、边界规范化与项目路径重绑定 | 保持持久化索引边界；继续增长时分离 store codec 与路径重绑定 | C |
 | `packages/app/src/renderer/runtime-recovery/use-checkpoint-recovery.ts` | 302 | Checkpoint 恢复面板、续跑请求和资源/权限状态展示 | 保持恢复控制器；将状态选择与展示 helper 分离 | B |
 | `packages/runner/src/run-checkpoint-controller.ts` | 306 | Checkpoint inspect、唯一 head、claim 和 durable resume identity 查询 | 保持控制面 facade；后续分离 query/claim policy | E |
-| `packages/app/src/renderer/ui/icons.tsx` | 351 | 无状态声明式图标集合 | 浏览器图标家族已拆出；其余继续按家族拆分 | B |
+| `packages/app/src/renderer/ui/icons.tsx` | 359 | 无状态声明式图标集合 | 浏览器图标家族已拆出；其余继续按家族拆分，冻结期间不得继续增长 | B |
 | `packages/memory-tree/src/memory-service.ts` | 342 | Memory Service facade 与运行协调器组合 | 保持 facade；新增能力进入领域协调器 | D |
 | `packages/app/src/main/workspace-office-preview.ts` | 339 | 有界 Office/OpenDocument 只读文本预览 | 分离格式解析器与统一预览预算 | C |
 | `packages/channels/telegram/src/plugin.ts` | 339 | Telegram 协议和生命周期 | 分离 transport、mapper、sender | C |
@@ -127,13 +130,21 @@
 
 | `packages/harness/src/stages/decide/normalization.ts` | 303 | DECIDE 解码结果的澄清、计划、评估与 TaskBook 规范化 | 保持纯规范化边界；继续增长时按 clarification、plan 与 assessment builder 拆分 | E |
 | `packages/harness/src/stages/execute/task-book-runner.ts` | 325 | TaskBook 依赖波次、步骤结果归并、安全暂停边界与最终回复装配 | 保持 TaskBook 编排入口；继续增长时下沉运行时控制收尾和完成回复装配 | E |
+| `packages/app/src/main/local-app-api/runtime-routes.ts` | 367 | Runtime 配置、Web policy projection、provider 状态和 Web cache 路由 | 保持 Main 路由 facade；继续将 Web policy projection 与 cache control 下沉到独立 adapter | C |
+| `packages/app/src/main/local-app-api/session-routes.ts` | 313 | 会话查询、权限模式更新和历史 projection 路由 | 保持 session API facade；继续将 session mutation 与 response projection 分离 | C |
+| `packages/app/src/renderer/workspace/line-comment-surface.tsx` | 319 | Monaco 行评论交互、附件和 Web/文件来源关联的共享 surface | 保持交互 adapter；继续将 attachment lifecycle 与 view-zone rendering 下沉 | B |
+| `packages/config/src/schema.ts` | 366 | 全局配置 schema、Web policy 和 provider 配置校验 | 保持版本化 schema facade；继续将 Web policy schema 与迁移解析分组 | E |
+| `packages/harness/src/context.ts` | 306 | RunContext 构造、Web evidence sink 和工具上下文装配 | 保持 Context 入口；继续将 Web evidence 与基础 Context builder 分离 | E |
+| `packages/harness/src/stages/memory-intent-gate.ts` | 307 | Memory write intent 准入、Web evidence 写入边界和 evidence refs | 保持 Memory write gate；继续将 Web-specific admission 规则下沉到独立 policy | E |
+| `packages/types/src/web-retrieval.ts` | 398 | Web policy、provider、fetch、citation 和 evidence projection 公共契约 | 保持公共 barrel；按 policy/provider/evidence 分组并维持向后兼容 | E |
+| `packages/web/src/runtime.ts` | 570 | 每轮 Web retrieval quota、取消、citation、cache 和 evidence projection | 保持 per-run runtime facade；继续将 quota/citation/evidence adapter 分离 | E |
 
 ## 已完成拆分
 
 | 原始文件 | 原基线 | 当前入口 | 已形成边界 | 完成日期 |
 | --- | ---: | --- | --- | --- |
 | `packages/app/src/renderer/api.ts` | 1088 | 22 行兼容 barrel | `run`、`sessions`、`runtime`、`attachments`、`workspace-files`、`terminal`、`extensions`、`browser`、`development-environments`、`memory` 与 `common` | 2026-07-14 |
-| `packages/app/src/main/local-app-api-server.ts` | 2819 | 257 行 server 组合入口 | HTTP 基元、run、projects、sessions/archive、runtime、memory、workspace、browser、development-environments、terminal、extensions、公共 contracts；实例级资源清理由 `local-app-api-server-shutdown.ts` 承担 | 2026-08-05 |
+| `packages/app/src/main/local-app-api-server.ts` | 288 | 288 行 server 组合入口 | HTTP 基元、run、projects、sessions/archive、runtime、memory、workspace、browser、development-environments、terminal、extensions、公共 contracts；实例级资源清理由 `local-app-api-server-shutdown.ts` 承担 | 2026-08-05 |
 | `packages/app/src/renderer/App.tsx` | 9935 | 7 行兼容入口 | `app-shell`、`approval`、`chat`、`composer`、`runtime`、`settings`、`sidebar`、`ui` 与 `workspace` 领域视图和 controller | 2026-07-14 |
 | `packages/memory-tree/src/memory-repository.ts` | 1279 | 172 行 repository facade | 版本化后端选择、证据定位、稳定 Repository 公共契约和后台维护/关闭兼容入口；management 使用独立 facade，v2/v3 实现均已下沉 | 2026-08-05 |
 | `packages/memory-tree/src/memory-service.ts` | 1120 | 342 行 service facade | run、摘要、daily consolidation、附件、事件、Bootstrap、Skills、工作区资源、项目投影和资源管理协调器；Atom reconciliation 保持为 Runner 独立组合端口 | 2026-07-15 |
@@ -189,14 +200,18 @@
 
 | 文件 | 所有者 | 暂缓原因 | 行数上限 | 复查日期 |
 | --- | --- | --- | ---: | --- |
+| `packages/app/src/renderer/app-shell/use-app-controller.ts` | B / Renderer | 启动恢复、Runtime 设置与会话投影仍共享跨领域不变量；先冻结兼容 facade 和状态快照特征测试，再下沉持久化与恢复编排 | 700 | 2026-09-24 |
 | `packages/channels/qqbot/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与协议适配端口稳定后拆分；本轮只补充连续性 request identity 透传 | 820 | 2026-09-24 |
-| `packages/memory-tree/src/project-memory-projection.ts` | D / Memory | 投影事务、冲突与恢复必须在特征测试覆盖后迁移 | 780 | 2026-08-30 |
+| `packages/memory-tree/src/project-memory-projection.ts` | D / Memory | 投影事务、冲突与恢复必须在特征测试覆盖后迁移 | 780 | 2026-09-24 |
 | `packages/runner/src/runner.ts` | E / Runtime | run 生命周期、输入装配、检查点续跑、后台维护准入透传和资源收尾仍共享跨阶段不变量；先冻结恢复与幂等特征测试，连续性恢复入口完成后再拆分 | 2120 | 2026-09-24 |
 | `packages/types/src/runtime-contracts.ts` | E / Runtime | Context、事件、检查点和执行证据仍共享版本边界；拆分时必须保持现有 barrel 与持久化兼容 | 900 | 2026-09-24 |
-| `packages/runner/src/runtime-event-queue.ts` | E / Runtime | 安全边界接入已经完成；租约、结算、快照恢复与 ActiveRunRegistry 契约刚稳定，补齐拆分特征测试后再下沉 codec/registry | 760 | 2026-08-30 |
-| `packages/runner/src/run-checkpoint-store.ts` | E / Runtime | 检查点 codec、原子存储、查询、容量、保留期和稳定 conversation-turn identity 共享恢复不变量；完成查询拆分前保持 facade 稳定 | 900 | 2026-08-30 |
-| `packages/memory-tree/src/memory-tree.ts` | D / Memory | 根索引、导航和预算状态共享不变量，先冻结 facade | 660 | 2026-08-30 |
+| `packages/runner/src/runtime-event-queue.ts` | E / Runtime | 安全边界接入已经完成；租约、结算、快照恢复与 ActiveRunRegistry 契约刚稳定，补齐拆分特征测试后再下沉 codec/registry | 760 | 2026-09-24 |
+| `packages/runner/src/run-checkpoint-store.ts` | E / Runtime | 检查点 codec、原子存储、查询、容量、保留期和稳定 conversation-turn identity 共享恢复不变量；完成查询拆分前保持 facade 稳定 | 900 | 2026-09-24 |
+| `packages/memory-tree/src/memory-tree.ts` | D / Memory | 根索引、导航和预算状态共享不变量，先冻结 facade | 660 | 2026-09-24 |
 | `packages/channels/feishu/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与事件验签端口稳定后拆分；本轮只补充连续性 request identity 透传 | 640 | 2026-09-24 |
 | `packages/runner/src/run-checkpoint-disposition-store.ts` | E / Runtime | disposition claim、跨进程锁、有界历史和续跑 identity 查询共享原子写入不变量；先冻结 P0 连续性矩阵再拆 codec/query/retention | 740 | 2026-09-24 |
-| `packages/app/src/main/data-root-migration.ts` | C / App Main | 数据迁移事务需保持恢复与回滚原子性，先补齐阶段检查点 | 637 | 2026-08-30 |
-| `packages/memory-tree/src/v3/catalog.ts` | D / Memory | activation schema 与检索投影刚稳定，先保持 Catalog facade 和恢复契约；本轮新增激活与关系投影后复查 | 640 | 2026-08-30 |
+| `packages/app/src/main/data-root-migration.ts` | C / App Main | 数据迁移事务需保持恢复与回滚原子性，先补齐阶段检查点 | 637 | 2026-09-24 |
+| `packages/memory-tree/src/v3/catalog.ts` | D / Memory | activation schema 与检索投影刚稳定，先保持 Catalog facade 和恢复契约；本轮新增激活与关系投影后复查 | 640 | 2026-09-24 |
+| `packages/safety/src/permission-boundary.ts` | C / Safety | 网络 safe-read descriptor、路径边界、SSRF 前置语法和 hard-deny 统一判定刚接入；先冻结三档权限矩阵和网络 contract，再拆 network descriptor adapter | 660 | 2026-09-24 |
+| `packages/tools/src/tool-execution-service.ts` | E / Tools | Web 工具接线需要保持统一校验、审批、事件、取消和持久化投影不变量；先完成 WB-09 发布矩阵，再拆 invocation lifecycle 与 Web result projection | 660 | 2026-09-24 |
+| `packages/app/src/main/index.ts` | C / App Main | Electron 启动装配仍需以严格顺序协调数据根、窗口状态恢复、Local App API、Runner 和插件宿主；新增启动可见性与窗口状态调用使入口越过原 600 行软上限，后续将 bootstrap orchestration 下沉到独立服务 | 620 | 2026-09-24 |

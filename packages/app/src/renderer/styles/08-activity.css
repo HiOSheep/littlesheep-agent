@@ -73,7 +73,6 @@
 }
 
 button.agent-flow-row {
-  cursor: pointer;
   transition:
     color var(--motion-fast) var(--motion-ease),
     background-color var(--motion-fast) var(--motion-ease);
@@ -422,7 +421,6 @@ button.agent-flow-row.no-details:focus-visible,
   color: #b8d8ff;
   background: transparent;
   border: 0;
-  cursor: pointer;
   font-family: var(--font);
   font-size: 12px;
   text-align: left;

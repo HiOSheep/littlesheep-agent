@@ -25,6 +25,47 @@ const EMBEDDED_BROWSER_ALLOWED_PERMISSIONS = new Set([
   'top-level-storage-access',
 ])
 
+const EMBEDDED_BROWSER_TEXT_DOCUMENT_CSS = `
+  html, body, pre {
+    color: #202020 !important;
+    background: #ffffff !important;
+  }
+
+  ::selection {
+    color: #ffffff !important;
+    background: #4f6fdc !important;
+  }
+`
+
+function isRawTextDocumentUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    return /^(?:raw|gist)\.githubusercontent\.com$/iu.test(parsed.hostname)
+  } catch {
+    return false
+  }
+}
+
+async function applyTextDocumentContrast(guestContents: Electron.WebContents): Promise<void> {
+  try {
+    const pageUrl = guestContents.getURL()
+    let isPlainText = isRawTextDocumentUrl(pageUrl)
+    if (!isPlainText) {
+      try {
+        const contentType = await guestContents.executeJavaScript('document.contentType', true) as string | undefined
+        isPlainText = contentType === 'text/plain'
+      } catch {
+        // Some sandboxed guests reject executeJavaScript. Keep the explicit
+        // raw-text URL path independent from this optional detection.
+      }
+    }
+    if (!isPlainText) return
+    await guestContents.insertCSS(EMBEDDED_BROWSER_TEXT_DOCUMENT_CSS)
+  } catch {
+    // A guest can be destroyed between navigation and did-finish-load.
+  }
+}
+
 function buildEmbeddedBrowserUserAgent(): string {
   const chrome = process.versions.chrome || '136.0.0.0'
   return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chrome} Safari/537.36`
@@ -62,6 +103,9 @@ export function configureEmbeddedBrowserWindow(win: Electron.BrowserWindow): voi
         void shell.openExternal(url)
       }
       return { action: 'deny' }
+    })
+    guestContents.on('did-finish-load', () => {
+      void applyTextDocumentContrast(guestContents)
     })
     guestContents.on('will-navigate', (event, url) => {
       if (!/^https?:\/\//iu.test(url)) event.preventDefault()

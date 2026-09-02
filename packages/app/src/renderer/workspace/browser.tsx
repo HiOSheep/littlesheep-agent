@@ -2,7 +2,7 @@
 import { createElement, useEffect, useRef, useState } from 'react'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { RefreshIcon } from '../ui/icons'
-import { BrowserBackIcon, BrowserForwardIcon, BrowserNewTabIcon } from '../ui/browser-icons'
+import { HistoryBackIcon, HistoryForwardIcon, BrowserNewTabIcon } from '../ui/browser-icons'
 import { transientTriggerProps } from '../ui/transient'
 import { EMBEDDED_BROWSER_PARTITION } from '../../shared/browser-control-contracts'
 import { normalizeBrowserEventUrl, normalizeBrowserUrl, type WorkspaceBrowserHistory } from './browser-history'
@@ -30,6 +30,7 @@ export function WorkspaceBrowser({
   tabId,
   url,
   history,
+  active = true,
   onNavigate,
   onHistoryMove,
   onOpenNewTab,
@@ -39,6 +40,7 @@ export function WorkspaceBrowser({
   tabId: WorkspaceBrowserTabId
   url: string
   history: WorkspaceBrowserHistory
+  active?: boolean
   onNavigate: (url: string, mode?: BrowserNavigationMode) => void
   onHistoryMove: (delta: number) => void
   onOpenNewTab: (url: string) => void
@@ -92,6 +94,7 @@ export function WorkspaceBrowser({
       return typeof nextUrl === 'string' ? normalizeBrowserEventUrl(nextUrl) : ''
     }
     const observeNavigation = (event: Event) => {
+      if (!active) return
       const nextUrl = readEventUrl(event)
       if (!nextUrl) return
       setDraft(nextUrl)
@@ -120,12 +123,14 @@ export function WorkspaceBrowser({
       onNavigateRef.current(nextUrl, 'push')
     }
     const routePopupInside = (event: Event) => {
+      if (!active) return
       event.preventDefault()
       const nextUrl = readEventUrl(event)
       if (!nextUrl) return
       routeNewTab(nextUrl)
     }
     const observeTitle = (event: Event) => {
+      if (!active) return
       const title = (event as Event & { title?: string }).title
       if (typeof title === 'string' && title.trim()) onTitleChangeRef.current(title)
     }
@@ -162,7 +167,9 @@ export function WorkspaceBrowser({
     browser.addEventListener('did-start-loading', startLoading)
     browser.addEventListener('did-stop-loading', stopLoading)
     browser.addEventListener('did-fail-load', failLoading)
-    const unsubscribe = window.littlesheep?.onBrowserOpenNewTab?.(({ url: nextUrl }) => routeNewTab(nextUrl))
+    const unsubscribe = active
+      ? window.littlesheep?.onBrowserOpenNewTab?.(({ url: nextUrl }) => routeNewTab(nextUrl))
+      : undefined
     return () => {
       browser.removeEventListener('dom-ready', markBrowserReady)
       browser.removeEventListener('did-navigate', observeNavigation)
@@ -178,7 +185,7 @@ export function WorkspaceBrowser({
   // Rebind when the active URL changes because the popup handler closes over
   // the current reload target. Keeping only the truthiness dependency would
   // leave it pointing at the first page after in-browser navigation.
-  }, [url])
+  }, [active, url])
 
   useEffect(() => {
     const previousUrl = currentUrlRef.current
@@ -302,6 +309,7 @@ export function WorkspaceBrowser({
         <div className="workspace-browser-nav" aria-label="网页导航">
           <button
             {...transientTriggerProps()}
+            className="history-nav-btn"
             type="button"
             aria-label="返回上一个网页"
             disabled={history.index <= 0}
@@ -312,10 +320,11 @@ export function WorkspaceBrowser({
             onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement('返回上一个网页', event.currentTarget))}
             onBlur={() => onTipChange(null)}
           >
-            <BrowserBackIcon />
+            <HistoryBackIcon />
           </button>
           <button
             {...transientTriggerProps()}
+            className="history-nav-btn"
             type="button"
             aria-label="前往下一个网页"
             disabled={history.index < 0 || history.index >= history.entries.length - 1}
@@ -326,7 +335,7 @@ export function WorkspaceBrowser({
             onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement('前往下一个网页', event.currentTarget))}
             onBlur={() => onTipChange(null)}
           >
-            <BrowserForwardIcon />
+            <HistoryForwardIcon />
           </button>
           <button
             {...transientTriggerProps()}

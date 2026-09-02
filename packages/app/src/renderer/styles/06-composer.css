@@ -1,7 +1,7 @@
 
 .composer-shell {
   position: absolute;
-  right: 0;
+  right: var(--chat-workspace-scrollbar-overlap);
   bottom: 0;
   left: 0;
   z-index: 40;
@@ -31,7 +31,7 @@
   left: 0;
   z-index: 44;
   display: flex;
-  width: min(var(--chat-content-max-width), 100%);
+  width: min(var(--composer-max-width), 100%);
   height: 24px;
   max-height: 24px;
   margin: 0 auto 4px;
@@ -242,7 +242,6 @@
   background: var(--surface);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-ui);
-  cursor: pointer;
   font-size: 12px;
   outline: none;
   transition:
@@ -278,7 +277,6 @@
   text-align: left;
   background: transparent;
   border: 0;
-  cursor: pointer;
   outline: none;
 }
 
@@ -356,7 +354,6 @@
   background: rgba(24, 24, 24, 0.82);
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: var(--radius-circle);
-  cursor: pointer;
   line-height: 0;
   outline: none;
   transition:
@@ -439,7 +436,6 @@
   background: rgba(30, 30, 30, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: var(--radius-circle);
-  cursor: pointer;
   opacity: 0;
   transform: scale(0.94);
   transition:
@@ -474,8 +470,14 @@
   --composer-control-padding-inline: 10px;
   --composer-control-row-height: 34px;
   --composer-control-row-half-height: 17px;
+  --composer-control-gap: 3px;
+  --composer-control-font-size: 12px;
   --composer-leading-control-half-size: 17px;
-  --composer-trailing-control-half-size: 12px;
+  --composer-trailing-control-half-size: 17px;
+  --composer-send-size: 30px;
+  --mode-picker-compact-width: calc(
+    16px + 7px + (2 * var(--composer-control-padding-inline))
+  );
   --composer-control-center-inset: calc(
     var(--composer-padding-block) + var(--composer-control-row-half-height)
   );
@@ -484,12 +486,12 @@
   flex-direction: column;
   min-height: 96px;
   max-height: min(44vh, 384px);
-  width: min(var(--chat-content-max-width), 100%);
+  width: min(var(--composer-max-width), 100%);
   margin: 0 auto;
   padding: var(--composer-padding-block) var(--composer-padding-inline);
-  background: rgba(32, 32, 32, 0.75);
+  background: var(--composer-surface);
   border: 0;
-  border-radius: var(--radius-composer);
+  border-radius: var(--radius-composer-input);
   box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
   -webkit-backdrop-filter: blur(18px) saturate(135%);
   backdrop-filter: blur(18px) saturate(135%);
@@ -534,16 +536,16 @@
   min-width: 0;
   min-height: var(--composer-control-row-height);
   width: 100%;
-  gap: 12px;
+  gap: var(--composer-control-gap);
   flex-wrap: nowrap;
-  transform: translateY(4px);
+  transform: translateY(2px);
 }
 
 .composer-left,
 .composer-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--composer-control-gap);
   min-width: 0;
 }
 
@@ -560,10 +562,16 @@
   justify-content: flex-end;
 }
 
+.composer-right:has(.runtime-picker.open),
+.composer-right:has(.runtime-picker-trigger:hover),
+.composer-right:has(.runtime-picker-trigger:focus-visible) {
+  flex: 0 0 auto;
+}
+
 .composer-run-actions {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--composer-control-gap);
   flex: 0 0 auto;
   margin-right: calc(
     var(--composer-control-center-inset)
@@ -624,7 +632,7 @@
   left: 50%;
   top: 50%;
   width: 16px;
-  height: 1.8px;
+  height: 1px;
   background: currentColor;
   border-radius: var(--radius-pill);
   transform: translate(-50%, -50%);
@@ -637,7 +645,7 @@
 .add-menu.open .add-menu-trigger,
 .add-menu-trigger:hover:not(:disabled) {
   color: var(--text-strong);
-  background: var(--control-hover);
+  background: var(--control-active);
 }
 
 .add-menu-panel {
@@ -687,7 +695,6 @@
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-ui);
-  cursor: pointer;
   text-align: left;
   transition:
     background-color var(--motion-fast) var(--motion-ease),
@@ -751,7 +758,7 @@
   max-width: 240px;
   padding: 0 var(--composer-control-padding-inline);
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--composer-control-font-size);
   font-weight: 700;
   line-height: 1;
 }
@@ -770,9 +777,10 @@
 .mode-picker {
   --mode-risk: var(--muted);
   --mode-risk-soft: rgba(160, 160, 160, 0.1);
-  min-width: 0;
-  width: fit-content;
-  flex: 0 1 auto;
+  min-width: var(--mode-picker-compact-width);
+  width: max-content;
+  /* The workspace consumes available width before permission text does. */
+  flex: 0 1 max-content;
 }
 
 .mode-picker.risk-critical,
@@ -807,19 +815,24 @@
 .model-picker-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  --picker-arrow-gap: 8px;
+  gap: var(--picker-arrow-gap);
   width: 100%;
   max-width: none;
   text-align: left;
+  font-size: var(--composer-control-font-size);
 }
 
 .mode-picker-trigger {
-  width: fit-content;
+  --picker-arrow-gap: 7px;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
-  gap: 7px;
+  justify-content: flex-start;
+  gap: var(--picker-arrow-gap);
   overflow: hidden;
   color: var(--mode-risk);
+  font-size: var(--composer-control-font-size);
 }
 
 .mode-picker-mark {
@@ -829,6 +842,18 @@
   flex: 0 0 auto;
   color: var(--mode-risk);
   overflow: visible;
+}
+
+.mode-picker-content {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 auto;
+  overflow: hidden;
+  gap: var(--picker-arrow-gap);
+  transform: none;
+  transition: none;
 }
 
 .mode-risk-ring {
@@ -842,21 +867,50 @@
   fill: currentColor;
 }
 
-.model-picker-trigger::after {
+.model-picker-trigger::after,
+.runtime-picker-trigger::after {
   content: "";
+  width: 0;
+  height: 0;
+  flex: 0 0 0;
+  margin-left: calc(var(--picker-arrow-gap) * -1);
+  border-right: 0 solid currentColor;
+  border-bottom: 0 solid currentColor;
+  opacity: 0;
+  transform: translateY(-1px) rotate(45deg) scale(0.65);
+  transition:
+    width var(--motion-slow) var(--motion-ease),
+    height var(--motion-slow) var(--motion-ease),
+    flex-basis var(--motion-slow) var(--motion-ease),
+    margin-left var(--motion-slow) var(--motion-ease),
+    opacity var(--motion-slow) var(--motion-ease),
+    transform var(--motion-slow) var(--motion-ease);
+}
+
+.model-picker-trigger:hover:not(:disabled)::after,
+.model-picker-trigger:focus-visible::after,
+.runtime-picker-trigger:hover:not(:disabled)::after,
+.runtime-picker-trigger:focus-visible::after {
   width: 7px;
   height: 7px;
-  flex: 0 0 auto;
+  flex-basis: 7px;
   margin-left: 2px;
   border-right: 1.5px solid currentColor;
   border-bottom: 1.5px solid currentColor;
   opacity: 0.76;
-  transform: translateY(-1px) rotate(45deg);
-  transition: transform 160ms ease;
+  transform: translateY(-1px) rotate(45deg) scale(1);
 }
 
-.model-picker.open .model-picker-trigger::after {
-  transform: translateY(1px) rotate(225deg);
+.model-picker.open .model-picker-trigger::after,
+.runtime-picker.open .runtime-picker-trigger::after {
+  width: 7px;
+  height: 7px;
+  flex-basis: 7px;
+  margin-left: 2px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  opacity: 0.76;
+  transform: translateY(1px) rotate(225deg) scale(1);
 }
 
 .model-picker-trigger:disabled {
@@ -869,7 +923,7 @@
   flex: 0 1 auto;
   min-width: 0;
   color: var(--text-strong);
-  font-size: 12px;
+  font-size: var(--composer-control-font-size);
   line-height: 14px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -882,7 +936,7 @@
   flex: 1;
   color: var(--muted);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--composer-control-font-size);
   line-height: 16px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -890,9 +944,9 @@
 }
 
 .option-picker .model-picker-current {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   font-family: var(--font);
-  font-size: 12px;
+  font-size: var(--composer-control-font-size);
   font-weight: 700;
 }
 
@@ -900,10 +954,30 @@
   position: relative;
   z-index: 42;
   min-width: 0;
-  width: fit-content;
+  width: var(--runtime-picker-closed-width, max-content);
   max-width: 100%;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   margin-left: auto;
+  transition: width var(--runtime-picker-transition) var(--motion-ease);
+}
+
+.runtime-picker.open {
+  width: var(--runtime-picker-open-width, 208px);
+}
+
+.runtime-picker.open .runtime-picker-trigger {
+  width: 100%;
+  justify-content: center;
+}
+
+.runtime-picker:not(.open):has(.runtime-picker-trigger:hover),
+.runtime-picker:not(.open):has(.runtime-picker-trigger:focus-visible) {
+  width: calc(var(--runtime-picker-closed-width) + var(--runtime-picker-hover-extra-width));
+}
+
+.runtime-picker:not(.open):has(.runtime-picker-trigger:hover) .runtime-picker-trigger,
+.runtime-picker:not(.open):has(.runtime-picker-trigger:focus-visible) .runtime-picker-trigger {
+  width: 100%;
 }
 
 .context-usage {
@@ -912,10 +986,22 @@
   z-index: 43;
   display: grid;
   place-items: center;
-  width: var(--composer-control-surface-size);
-  flex: 0 0 var(--composer-control-surface-size);
+  width: 28px;
+  flex: 0 0 28px;
   color: var(--text);
   cursor: default;
+}
+
+/* Align the static ring-to-model visual gap with the send button's outer
+   inset. The 9px base accounts for the context box, control gap, and the
+   centered 16px ring; the model control then gets the same 10px visual gap
+   that the send button keeps from the composer edge. */
+.context-usage + .runtime-picker {
+  margin-left: calc(
+    var(--composer-control-center-inset)
+    - var(--composer-trailing-control-half-size)
+    - 9px
+  );
 }
 
 .context-usage.tone-warning {
@@ -927,25 +1013,25 @@
 }
 
 .context-usage-ring {
-  position: relative;
   display: block;
   width: 16px;
   height: 16px;
-  border-radius: var(--radius-circle);
-  background:
-    conic-gradient(
-      var(--context-usage-color) var(--context-usage-angle),
-      rgba(190, 190, 190, 0.3) 0
-    );
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  overflow: visible;
 }
 
-.context-usage-ring::after {
-  content: "";
-  position: absolute;
-  inset: 4px;
-  background: var(--surface);
-  border-radius: var(--radius-circle);
+.context-usage-ring-track,
+.context-usage-ring-progress {
+  fill: none;
+  stroke-width: 3;
+}
+
+.context-usage-ring-track {
+  stroke: rgba(190, 190, 190, 0.3);
+}
+
+.context-usage-ring-progress {
+  stroke: var(--context-usage-color);
+  stroke-linecap: round;
 }
 
 .context-usage-popover-shell {
@@ -988,7 +1074,7 @@
   padding: 8px 12px;
   color: var(--text);
   background: rgba(37, 37, 37, 0.98);
-  border: 1px solid var(--border-strong);
+  border: 0;
   border-radius: var(--radius-ui);
   box-shadow: var(--shadow);
   font-size: 13px;
@@ -1006,12 +1092,6 @@
   font-weight: 700;
 }
 
-.context-usage-source {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 500;
-}
-
 .context-usage-popover strong {
   color: var(--text-strong);
   font-weight: 800;
@@ -1022,18 +1102,19 @@
 }
 
 .runtime-picker-trigger {
+  --picker-arrow-gap: 9px;
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: fit-content;
   min-width: 0;
   max-width: 100%;
-  gap: 9px;
+  gap: var(--picker-arrow-gap);
   padding: 0 var(--composer-control-padding-inline);
   overflow: hidden;
   color: var(--text);
-  cursor: pointer;
-  font-size: 12px;
+  font-size: var(--composer-control-font-size);
   font-weight: 800;
 }
 
@@ -1042,26 +1123,19 @@
   cursor: default;
 }
 
-.runtime-picker-trigger::after {
-  content: "";
-  width: 7px;
-  height: 7px;
+.runtime-picker-label-group {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: none;
   flex: 0 0 auto;
-  margin-left: 1px;
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  opacity: 0.72;
-  transform: translateY(-1px) rotate(45deg);
-  transition: transform 160ms ease;
-}
-
-.runtime-picker.open .runtime-picker-trigger::after {
-  transform: translateY(1px) rotate(225deg);
+  gap: var(--picker-arrow-gap);
 }
 
 .runtime-picker-model,
 .runtime-picker-reasoning {
   min-width: 0;
+  font-size: var(--composer-control-font-size);
   line-height: 16px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1069,9 +1143,11 @@
 }
 
 .runtime-picker-model {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   font-family: var(--mono);
-  text-align: center;
+  text-align: left;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .runtime-picker-reasoning {
@@ -1092,7 +1168,7 @@
   overflow: hidden;
   color: var(--text);
   background: rgba(37, 37, 37, 0.98);
-  border: 1px solid var(--border-strong);
+  border: 0;
   border-radius: var(--radius-ui);
   box-shadow: 0 22px 54px rgba(0, 0, 0, 0.44);
   opacity: 0;
@@ -1147,7 +1223,6 @@
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-ui);
-  cursor: pointer;
   text-align: left;
   transition:
     background-color var(--motion-fast) var(--motion-ease),
@@ -1186,19 +1261,23 @@
 }
 
 .runtime-provider-option:hover,
-.runtime-provider-option.active,
-.runtime-model-option:hover,
-.runtime-model-option.active {
+.runtime-model-option:hover {
   color: var(--text-strong);
-  background: var(--control-hover);
+  background: var(--composer-picker-option-hover);
   border-color: var(--border-strong);
 }
 
 .runtime-model-option.active,
 .runtime-reasoning-option.active {
-  color: var(--bg);
-  background: var(--accent);
-  border-color: var(--accent);
+  color: var(--text-strong);
+  background: var(--composer-picker-option-active);
+  border-color: var(--border-strong);
+}
+
+.runtime-provider-option.active {
+  color: var(--text-strong);
+  background: var(--composer-picker-option-active);
+  border-color: var(--border-strong);
 }
 
 .runtime-reasoning-list {
@@ -1215,7 +1294,7 @@
 }
 
 .runtime-reasoning-option:hover {
-  background: var(--control-hover);
+  background: var(--composer-picker-option-hover);
   border-color: var(--border-strong);
 }
 
@@ -1248,22 +1327,21 @@
 
 .runtime-menu-list {
   display: grid;
-  gap: 2px;
+  gap: 1px;
   min-width: 0;
 }
 
 .runtime-menu-item {
   display: flex;
   align-items: center;
-  min-height: 34px;
+  min-height: 32px;
   width: 100%;
-  gap: 8px;
-  padding: 0 9px;
+  gap: 6px;
+  padding: 0 7px;
   color: var(--text);
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-ui);
-  cursor: pointer;
   font-size: 12px;
   font-weight: 800;
   text-align: left;
@@ -1316,7 +1394,7 @@
 
 .runtime-menu-check,
 .runtime-submenu-arrow {
-  flex: 0 0 16px;
+  flex: 0 0 14px;
   color: var(--muted);
   text-align: center;
 }
@@ -1327,27 +1405,27 @@
 
 .runtime-menu-divider {
   height: 1px;
-  margin: 7px 2px;
+  margin: 2px 1px;
   background: var(--border);
 }
 
 .runtime-menu-item:hover:not(:disabled),
-.runtime-menu-item:focus-visible,
-.runtime-menu-item.active {
+.runtime-menu-item:focus-visible {
   color: var(--text-strong);
-  background: var(--control-hover);
-  border-color: var(--border-strong);
+  background: var(--composer-picker-option-hover);
+  border-color: transparent;
 }
 
+.runtime-menu-item.active,
 .runtime-model-option.active,
 .runtime-reasoning-option.active {
   color: var(--text-strong);
-  background: var(--control-active);
-  border-color: var(--border-strong);
+  background: var(--composer-picker-option-active);
+  border-color: transparent;
 }
 
 .runtime-menu-shell .runtime-empty {
-  padding: 8px 10px;
+  padding: 6px 8px;
   color: var(--muted);
   background: transparent;
   border: 0;
@@ -1361,7 +1439,7 @@
   right: auto;
   bottom: auto;
   display: block;
-  width: 260px;
+  width: 208px;
   max-width: calc(100vw - 24px);
   min-width: 0;
   height: auto;
@@ -1375,8 +1453,8 @@
   pointer-events: none;
   visibility: hidden;
   transition:
-    opacity var(--transient-motion) var(--motion-ease),
-    visibility 0s linear var(--transient-motion);
+    opacity var(--runtime-picker-transition) var(--motion-ease),
+    visibility 0s linear var(--runtime-picker-transition);
 }
 
 .runtime-menu-shell.open {
@@ -1384,7 +1462,7 @@
   pointer-events: auto;
   visibility: visible;
   transition:
-    opacity var(--transient-motion) var(--motion-ease),
+    opacity var(--runtime-picker-transition) var(--motion-ease),
     visibility 0s;
 }
 
@@ -1392,7 +1470,6 @@
 .runtime-menu-shell:not(.open) .runtime-picker-panel,
 .runtime-menu-shell:not(.open) .runtime-submenu {
   pointer-events: none;
-  visibility: hidden;
 }
 
 .runtime-menu-shell::before {
@@ -1413,13 +1490,13 @@
   width: 100%;
   min-width: 0;
   max-height: min(390px, 58vh);
-  gap: 3px;
-  padding: 8px;
+  gap: 2px;
+  padding: 5px;
   overflow-x: hidden;
   overflow-y: auto;
   color: var(--text);
-  background: rgba(37, 37, 37, 0.98);
-  border: 1px solid var(--border-strong);
+  background: var(--control-hover);
+  border: 0;
   border-radius: var(--radius-ui);
   box-shadow: 0 22px 54px rgba(0, 0, 0, 0.44);
   opacity: 1;
@@ -1427,6 +1504,10 @@
   transform: none;
   visibility: visible;
   transition: none;
+}
+
+.runtime-menu-shell .runtime-section-title {
+  padding: 3px 7px 5px;
 }
 
 .runtime-menu-shell .runtime-submenu {
@@ -1439,20 +1520,20 @@
   width: var(--runtime-submenu-width, 220px);
   max-width: calc(100vw - 24px);
   max-height: min(360px, 56vh);
-  padding: 8px;
+  padding: 5px;
   overflow-x: hidden;
   overflow-y: auto;
   color: var(--text);
-  background: rgba(37, 37, 37, 0.98);
-  border: 1px solid var(--border-strong);
+  background: var(--control-hover);
+  border: 0;
   border-radius: var(--radius-ui);
   box-shadow: 0 22px 54px rgba(0, 0, 0, 0.44);
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
   transition:
-    opacity var(--transient-motion) var(--motion-ease),
-    visibility 0s linear var(--transient-motion);
+    opacity var(--runtime-picker-transition) var(--motion-ease),
+    visibility 0s linear var(--runtime-picker-transition);
 }
 
 .runtime-submenu-back {
@@ -1464,8 +1545,18 @@
   pointer-events: auto;
   visibility: visible;
   transition:
-    opacity var(--transient-motion) var(--motion-ease),
+    opacity var(--runtime-picker-transition) var(--motion-ease),
     visibility 0s;
+}
+
+.runtime-menu-shell .runtime-menu-item:hover:not(:disabled),
+.runtime-menu-shell .runtime-menu-item:focus-visible,
+.runtime-menu-shell .runtime-menu-item.active {
+  background: var(--composer-picker-option-hover);
+}
+
+.runtime-menu-shell .runtime-menu-item.active {
+  background: var(--composer-picker-option-active);
 }
 
 .runtime-menu-shell .runtime-model-menu {
@@ -1505,7 +1596,7 @@
   overflow: hidden;
   color: var(--text);
   background: var(--bg-elevated);
-  border: 1px solid var(--border-strong);
+  border: 0;
   border-radius: var(--radius-ui);
   box-shadow: 0 20px 54px rgba(0, 0, 0, 0.46);
   opacity: 0;
@@ -1533,12 +1624,16 @@
 }
 
 .option-picker-panel.mode-picker-panel {
-  width: min(160px, calc(100vw - 24px));
+  width: min(280px, calc(100vw - 24px));
+  padding: 5px;
+  background: var(--control-hover);
+  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.44);
 }
 
 .mode-picker-panel .option-picker-list {
   display: grid;
-  gap: 4px;
+  gap: 1px;
+  padding: 0;
 }
 
 .reasoning-picker-panel {
@@ -1595,9 +1690,15 @@
 }
 
 .model-provider-option:hover,
+.model-option:hover {
+  color: var(--text-strong);
+  background: var(--composer-picker-option-hover);
+  border-color: var(--border-strong);
+}
+
 .model-provider-option.active {
   color: var(--text-strong);
-  background: var(--control-hover);
+  background: var(--composer-picker-option-active);
   border-color: var(--border-strong);
 }
 
@@ -1680,7 +1781,7 @@
 
 .model-option.mode-option.active {
   color: var(--text-strong);
-  background: var(--control-active);
+  background: var(--composer-picker-option-active);
   border-color: var(--border-strong);
 }
 
@@ -1692,34 +1793,85 @@
 }
 
 .model-option:hover {
-  background: var(--control-hover);
+  background: var(--composer-picker-option-hover);
   border-color: var(--border-strong);
 }
 
 .model-option.active {
-  color: var(--bg);
-  background: var(--accent);
+  color: var(--text-strong);
+  background: var(--composer-picker-option-active);
   border-color: var(--accent);
   font-weight: 850;
+}
+
+/* Keep permission choices on the same interaction surface as model choices. */
+.mode-picker-panel .model-option {
+  min-height: 54px;
+  gap: 6px;
+  padding: 7px;
+  border-color: transparent;
+  align-items: start;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+}
+
+.mode-picker-panel .model-option:hover {
+  color: var(--text-strong);
+  background: var(--composer-picker-option-hover);
+  border-color: transparent;
+}
+
+.mode-picker-panel .model-option.active {
+  color: var(--text-strong);
+  background: var(--composer-picker-option-active);
+  border-color: transparent;
+}
+
+.mode-picker-panel .mode-option-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  align-content: start;
+  text-align: left;
+}
+
+.mode-picker-panel .mode-option-copy > span {
+  min-width: 0;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+  line-height: 18px;
+}
+
+.mode-picker-panel .mode-option-copy small {
+  min-width: 0;
+  color: var(--muted-2);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 15px;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .floating-help-tip {
   position: fixed;
   z-index: 2147483000;
-  width: max-content;
+  box-sizing: border-box;
+  width: var(--composer-hover-tip-width);
+  min-height: var(--composer-hover-tip-min-height);
   max-width: min(560px, calc(100vw - 24px));
   max-height: min(160px, calc(100vh - 24px));
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 8px 10px;
-  color: var(--muted);
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
+  padding: var(--composer-hover-tip-padding-block) var(--composer-hover-tip-padding-inline);
+  color: var(--text);
+  background: var(--composer-hover-tip-background);
+  border: 0;
   border-radius: var(--radius-ui);
   box-shadow: 0 14px 36px rgba(0, 0, 0, 0.44);
-  font-size: 11px;
+  font-size: var(--composer-hover-tip-font-size);
   font-weight: 600;
-  line-height: 1.45;
+  line-height: 1.35;
   pointer-events: none;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1761,21 +1913,24 @@
   position: relative;
   display: inline-flex;
   align-items: center;
-  width: fit-content;
-  min-width: 0;
+  width: max-content;
+  min-width: calc(3em + 7px + var(--composer-control-padding-inline) + 28px);
   max-width: min(280px, 34vw);
-  flex: 0 1 auto;
+  /* Consume negative space first; the 3em label remains the hard floor. */
+  flex: 0 1000 max-content;
   gap: 7px;
   padding: 0 28px 0 var(--composer-control-padding-inline);
   overflow: hidden;
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--composer-control-font-size);
   font-weight: 800;
   line-height: 1;
 }
 
 .workspace-context-label {
+  min-width: 3em;
   flex: 0 0 auto;
+  white-space: nowrap;
   color: var(--muted);
 }
 
@@ -1799,7 +1954,6 @@
   background: var(--accent);
   border: 0;
   border-radius: var(--radius-circle);
-  cursor: pointer;
   font-size: 0;
   line-height: 0;
   opacity: 0;
@@ -1839,33 +1993,62 @@
     color var(--motion-fast) var(--motion-ease);
 }
 
-.composer-tab-control:hover:not(:disabled),
+.add-menu-trigger.composer-tab-control {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border: 0;
+  border-radius: var(--radius-circle);
+}
+
+.add-menu-trigger.composer-tab-control:hover:not(:disabled),
+.add-menu-trigger.composer-tab-control:focus-visible,
+.add-menu.open .add-menu-trigger.composer-tab-control {
+  background: var(--control-active);
+  border: 0;
+  outline: 0;
+}
+
+.composer-tab-control:hover:not(:disabled):not(.context-usage),
 .composer-tab-control:focus-visible,
 .workspace-context-chip.composer-tab-control:focus-within,
 .composer-tab-control[aria-expanded="true"] {
   background: var(--control-hover);
 }
 
+.runtime-picker-trigger.composer-tab-control:hover:not(:disabled),
+.runtime-picker-trigger.composer-tab-control:focus-visible,
+.runtime-picker.open .runtime-picker-trigger.composer-tab-control {
+  background: var(--control-active);
+}
+
+.mode-picker-trigger.composer-tab-control:hover:not(:disabled),
+.mode-picker-trigger.composer-tab-control:focus-visible,
+.mode-picker.open .mode-picker-trigger.composer-tab-control {
+  background: var(--control-active);
+}
+
+.runtime-picker-trigger.composer-tab-control,
+.mode-picker-trigger.composer-tab-control,
+.workspace-context-chip.composer-tab-control {
+  height: 28px;
+}
+
 .send-round {
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
-  flex: 0 0 24px;
+  width: var(--composer-send-size);
+  height: var(--composer-send-size);
+  flex: 0 0 var(--composer-send-size);
+  padding: 0;
   color: var(--bg);
   background: var(--accent);
   border: 1px solid var(--accent);
-  border-radius: var(--radius-composer);
+  border-radius: var(--radius-circle);
   font-size: 15px;
   font-weight: 900;
-}
-
-.send-round:hover:not(:disabled) {
-  background: var(--accent-hover);
-}
-
-.composer-run-actions > .send-round:last-child:hover:not(:disabled) {
-  transform: translate(-1px, -1px);
+  user-select: none;
+  transition: none;
 }
 
 .send-round:disabled {
@@ -1881,8 +2064,8 @@
 
 .send-round-icon {
   display: block;
-  width: 13px;
-  height: 13px;
+  width: 14px;
+  height: 14px;
   overflow: visible;
   fill: none;
   stroke: currentColor;
@@ -1892,7 +2075,7 @@
 }
 
 .send-round-icon.send {
-  transform: translateX(0.5px);
+  transform: none;
 }
 
 .send-round-icon.stop rect {
@@ -1907,7 +2090,7 @@
   left: var(--chat-content-gutter);
   z-index: 45;
   box-sizing: border-box;
-  width: min(var(--chat-content-max-width), 100%);
+  width: min(var(--composer-max-width), 100%);
   height: 24px;
   margin: 0 auto;
   padding: 3px 8px 3px 34px;
@@ -1940,7 +2123,7 @@
 
 .composer-error {
   flex: 0 0 auto;
-  width: min(var(--chat-content-max-width), 100%);
+  width: min(var(--composer-max-width), 100%);
   margin: 8px auto 0;
   color: #ffd2d2;
   font-size: 12px;

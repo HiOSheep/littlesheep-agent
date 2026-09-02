@@ -27,7 +27,11 @@ export {
   type ConversationTurnFingerprintInput,
 } from './conversation-turn.js';
 
-export { resolveRunConfig, type ResolveRunConfigOptions } from './run-config.js';
+export {
+  resolveNetworkReadPolicy,
+  resolveRunConfig,
+  type ResolveRunConfigOptions,
+} from './run-config.js';
 export { resolveSemanticResumeStage } from './continuation-stage.js';
 export {
   resolveContinuationDisposition,

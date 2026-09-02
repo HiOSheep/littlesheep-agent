@@ -19,6 +19,7 @@ describe('Electron main-process runtime dependencies', () => {
     expect(configSource).toContain("'@huggingface/transformers'")
     expect(configSource).toContain("'onnxruntime-node'")
     expect(packageJson.dependencies?.['@huggingface/transformers']).toBe('4.2.0')
+    expect(packageJson.dependencies?.dompurify).toBe('3.4.13')
     expect(rootPackageJson.engines?.node).toBe('>=20.9.0')
     expect(workspaceSource).toMatch(/^\s+adm-zip: 0\.6\.0$/mu)
     expect(workspaceSource).toMatch(/^\s+sharp: 0\.35\.0$/mu)

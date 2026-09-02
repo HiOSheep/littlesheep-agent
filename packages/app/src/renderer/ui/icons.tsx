@@ -1,8 +1,7 @@
 // Reusable renderer interaction primitives and icons.
 import { ModeRisk } from '../runtime/options'
-import {
-  type WorkspacePanelTab
-} from '../workspace-persistence'
+import { type WorkspacePanelTab } from '../workspace-persistence'
+export { FileGlyphIcon, fileGlyphKind, type FileGlyphKind } from './file-glyph-icons'
 
 export function SidebarToggleIcon({ className = '' }: { className?: string }) {
   return (
@@ -73,7 +72,7 @@ export function PluginIcon() {
 export function ProjectIcon() {
   return (
     <svg className="sidebar-svg-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path d="M3 4.45h3.2l1.05 1.25H13v5.85H3z" />
+      <path d="M3.2 3.95h2.9c.4 0 .72.19.96.51l.75 1H12.8c.55 0 1 .45 1 1v4.85c0 .55-.45 1-1 1H3.2c-.55 0-1-.45-1-1V4.95c0-.55.45-1 1-1z" />
     </svg>
   )
 }
@@ -83,6 +82,14 @@ export function CloseIcon() {
   return (
     <svg className="sidebar-svg-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
       <path d="M4.4 4.4l7.2 7.2M11.6 4.4l-7.2 7.2" />
+    </svg>
+  )
+}
+
+export function SettingsNavArrowIcon() {
+  return (
+    <svg className="settings-nav-arrow" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+      <path d="M3.2 2.2 8.8 6 3.2 9.8" />
     </svg>
   )
 }
@@ -140,6 +147,16 @@ export function CheckIcon() {
 }
 
 
+export function CopyIcon() {
+  return (
+    <svg className="sidebar-svg-icon copy-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false" shapeRendering="geometricPrecision">
+      <rect x="3.25" y="5.25" width="7.5" height="7.5" rx="1.35" />
+      <rect x="5.25" y="2.75" width="7.5" height="8.5" rx="1.35" />
+    </svg>
+  )
+}
+
+
 export function SortIcon() {
   return (
     <svg className="sidebar-svg-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -188,9 +205,9 @@ export function WorkspaceFeatureIcon({ id }: { id: WorkspacePanelTab }) {
   if (id === 'artifacts') {
     return (
       <svg className="workspace-panel-svg-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-        <path d="M4.05 3.15h5.25l2.65 2.65v6.95h-7.9z" />
+        <path d="M4.25 2.75h5.05l2.45 2.45v6.05c0 .55-.45 1-1 1h-6.5c-.55 0-1-.45-1-1V3.75c0-.55.45-1 1-1z" />
         <path d="M9.15 3.35v2.65h2.65M6 8.1h4M6 10.05h3" />
-        <path d="M2.85 4.95v8.1h7.1" />
+        <path d="M3.1 5.15v7.05c0 .55.45 1 1 1h5.85" />
       </svg>
     )
   }
@@ -212,7 +229,7 @@ export function WorkspaceFeatureIcon({ id }: { id: WorkspacePanelTab }) {
   }
   return (
     <svg className="workspace-panel-svg-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path d="M3 4.25h3.2l1.05 1.25H13v6.25H3z" />
+      <path d="M3 3.65h3.05c.42 0 .76.2 1 .52l.74.95H13c.55 0 1 .45 1 1v4.95c0 .55-.45 1-1 1H3c-.55 0-1-.45-1-1V4.65c0-.55.45-1 1-1z" />
     </svg>
   )
 }
@@ -240,8 +257,8 @@ export function WorkspacePanelIcon({ collapsed }: { collapsed: boolean }) {
 
 export function SendRunIcon() {
   return (
-    <svg className="send-round-icon send" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path d="M8 13V3M4.5 6.5 8 3l3.5 3.5" />
+    <svg className="send-round-icon send" viewBox="0 0 16 16" aria-hidden="true" focusable="false" shapeRendering="geometricPrecision">
+      <path d="M8.5 13V3M5 6.5 8.5 3 12 6.5" />
     </svg>
   )
 }
@@ -318,16 +335,7 @@ export function TreeChevronIcon() {
 export function FolderGlyphIcon() {
   return (
     <svg className="workspace-tree-glyph-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path d="M2.4 4.25h4l1.05 1.3h6.15v6.2H2.4z" />
-    </svg>
-  )
-}
-
-
-export function FileGlyphIcon() {
-  return (
-    <svg className="workspace-tree-glyph-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path d="M4.15 2.65h5.4l2.3 2.3v8.4h-7.7zM9.4 2.9v2.25h2.2" />
+      <path d="M3 3.65h3.05c.42 0 .76.2 1 .52l.74.95H13c.55 0 1 .45 1 1v4.95c0 .55-.45 1-1 1H3c-.55 0-1-.45-1-1V4.65c0-.55.45-1 1-1z" />
     </svg>
   )
 }

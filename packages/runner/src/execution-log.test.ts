@@ -458,6 +458,98 @@ describe('ExecutionLogStore', () => {
     expect(log?.resolvedRunConfig).toBeUndefined();
     expect(log?.modelRequests).toBeUndefined();
     expect(log?.toolInvocations).toBeUndefined();
+    expect(log?.webEvidence).toBeUndefined();
+  });
+
+  it('persists only the bounded web evidence projection', async () => {
+    await store.write({
+      runId: 'run-web-evidence', sessionId: 's', startedAt: '', endedAt: '', status: 'ok',
+      model: 'test', inboundText: 'search for a current source', reply: 'done', trace: [], messages: [], durationMs: 0,
+      webEvidence: {
+        version: 1,
+        providerId: 'fake',
+        generatedAt: '2026-08-29T00:00:00.000Z',
+        completeness: 'complete',
+        citationIds: ['web-1'],
+        citationCount: 1,
+        documentCount: 1,
+        cached: false,
+        partial: false,
+        truncated: false,
+        blocked: false,
+        stale: false,
+      },
+    });
+
+    const log = await store.read('run-web-evidence');
+    expect(log?.webEvidence).toMatchObject({ providerId: 'fake', citationIds: ['web-1'] });
+    expect(JSON.stringify(log?.webEvidence)).not.toContain('page body');
+    expect('documents' in (log?.webEvidence ?? {})).toBe(false);
+    expect('query' in (log?.webEvidence ?? {})).toBe(false);
+  });
+
+  it('defensively removes run-local web bodies and unapproved projection fields before writing JSON', async () => {
+    const body = 'RUN_LOCAL_WEB_BODY_SENTINEL';
+    const secret = 'fixture-url-secret';
+    const callId = 'web-call';
+    const messages: Message[] = [{
+      id: 'assistant-web-call', role: 'assistant', timestamp: '2026-08-29T00:00:00.000Z',
+      content: [{
+        type: 'tool_calls',
+        calls: [{ id: callId, name: 'web_fetch', input: { urlHash: 'a'.repeat(64), url: 'https://example.com/' } }],
+      }],
+    }, {
+      id: 'tool-web-result', role: 'tool', timestamp: '2026-08-29T00:00:00.000Z',
+      content: [{
+        type: 'tool_result',
+        result: {
+          callId, ok: true, output: JSON.stringify({ citationIds: ['web-run-1-source'] }),
+          modelOutput: { content: body, externalUntrusted: true },
+        },
+      }],
+    }];
+    await store.write({
+      runId: 'run-web-defence', sessionId: 's', startedAt: '', endedAt: '', status: 'ok',
+      model: 'test', inboundText: 'fetch current source', reply: 'done', trace: [], messages, durationMs: 0,
+      webEvidence: {
+        version: 1,
+        providerId: 'fake',
+        generatedAt: '2026-08-29T00:00:00.000Z',
+        completeness: 'complete',
+        citationIds: ['web-run-1-source'],
+        citations: [{
+          id: 'web-run-1-source',
+          url: `https://example.com/private?token=${secret}`,
+          origin: 'https://example.com',
+          urlHash: 'b'.repeat(64),
+          fetchedAt: '2026-08-29T00:00:00.000Z',
+          status: 'fetched',
+          truncated: false,
+          snippet: body,
+        }],
+        citationCount: 1,
+        documentCount: 1,
+        cached: false,
+        partial: false,
+        truncated: false,
+        blocked: false,
+        stale: false,
+        query: `private ${secret}`,
+        documents: [{ content: body }],
+      } as never,
+    });
+
+    const log = await store.read('run-web-defence');
+    const durable = JSON.stringify(log);
+    expect(durable).not.toContain(body);
+    expect(durable).not.toContain(secret);
+    expect(durable).not.toContain('documents');
+    expect(durable).not.toContain('snippet');
+    expect(log?.toolCalls[0]?.result).not.toHaveProperty('modelOutput');
+    expect(log?.webEvidence?.citations?.[0]).toMatchObject({
+      id: 'web-run-1-source', origin: 'https://example.com', urlHash: 'b'.repeat(64),
+    });
+    expect(log?.webEvidence?.citations?.[0]?.url).toBeUndefined();
   });
 
   it('links bounded memory and attachment resource ids without persisting their bodies', async () => {

@@ -29,3 +29,12 @@ export function resolveAppIconPath(options: AppIconPathOptions): string | undefi
   const exists = options.exists ?? existsSync
   return appIconCandidates(options).find((path) => exists(path))
 }
+
+/**
+ * Resolve the PNG specifically for renderer surfaces such as the startup page.
+ * The native window continues to prefer the ICO through resolveAppIconPath.
+ */
+export function resolveAppPngIconPath(options: AppIconPathOptions): string | undefined {
+  const exists = options.exists ?? existsSync
+  return appIconCandidates(options).find((path) => path.endsWith('.png') && exists(path))
+}

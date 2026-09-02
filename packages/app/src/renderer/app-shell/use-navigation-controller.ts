@@ -74,6 +74,7 @@ export function useNavigationController({
   const appHistoryRef = useRef(appHistory)
   const settingsReturnRouteRef = useRef<AppRoute>({ section: 'chat' })
   const [settingsEntryRippling, setSettingsEntryRippling] = useState(false)
+  const [settingsReturning, setSettingsReturning] = useState(false)
 
   const settingsOpen = activeRoute.section === 'settings'
   const directModulePage = activeRoute.section === 'module' ? activeRoute.page : null
@@ -161,7 +162,9 @@ export function useNavigationController({
 
   function pushRoute(route: AppRoute) {
     setControlTip(null)
-    setActiveRoute((current) => routesEqual(current, route) ? current : route)
+    if (routesEqual(activeRoute, route)) return
+    setSettingsReturning(settingsOpen && route.section !== 'settings')
+    setActiveRoute(route)
   }
 
   function openSettingsRoot() {
@@ -208,6 +211,7 @@ export function useNavigationController({
   }
 
   function restoreNavigationSnapshot(snapshot: AppNavigationSnapshot) {
+    setSettingsReturning(activeRoute.section === 'settings' && snapshot.route.section !== 'settings')
     setActiveRoute(snapshot.route)
     setSidebarCollapsed(snapshot.sidebarCollapsed)
     setSidebarWidth(snapshot.sidebarWidth)
@@ -236,6 +240,10 @@ export function useNavigationController({
     closeSettingsWorkspace()
   }
 
+  function finishSettingsReturn() {
+    setSettingsReturning(false)
+  }
+
   function triggerSettingsEntryRipple() {
     window.clearTimeout(settingsEntryRippleTimerRef.current)
     window.cancelAnimationFrame(settingsEntryRippleFrameRef.current ?? 0)
@@ -254,7 +262,7 @@ export function useNavigationController({
     window.cancelAnimationFrame(settingsEntryRippleFrameRef.current ?? 0)
   }, [])
 
-  return { activeRoute, appHistoryRef, navigationRestoreTargetRef, setAppHistory, settingsEntryRippling, settingsOpen, directModulePage, settingsPage, canNavigateBack, canNavigateForward, pushRoute, openSettingsFromEntry, openSettingsPage, openDirectModulePage, navigateBack, navigateForward, closeSettingsFromEntry }
+  return { activeRoute, appHistoryRef, navigationRestoreTargetRef, setAppHistory, settingsEntryRippling, settingsOpen, settingsReturning, directModulePage, settingsPage, canNavigateBack, canNavigateForward, pushRoute, openSettingsFromEntry, openSettingsPage, openDirectModulePage, navigateBack, navigateForward, closeSettingsFromEntry, finishSettingsReturn }
 }
 
 export type NavigationController = ReturnType<typeof useNavigationController>

@@ -53,6 +53,15 @@ export type WorkspacePreview =
     content: string
   }
   | {
+    kind: 'html'
+    path: string
+    name: string
+    relativePath: string
+    size: number
+    modifiedAt?: number
+    content: string
+  }
+  | {
     kind: 'image' | 'pdf' | 'unsupported'
     path: string
     name: string

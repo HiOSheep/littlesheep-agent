@@ -23,6 +23,17 @@ export function beginWorkspaceNavigatorResizeInteraction(
   if (context.collapsed || event.button !== 0) return
   if (!context.navigatorRef.current) return
   const navigator = context.navigatorRef.current!
+  const sharedTrack = navigator.parentElement?.classList.contains('workspace-shared-file-navigator')
+    ? navigator.parentElement
+    : null
+
+  // The navigator is absolutely positioned inside this track. Keep both
+  // geometry owners on the same compositor frame while the pointer moves.
+  const setVisualWidth = (width: number) => {
+    const value = `${width}px`
+    navigator.style.setProperty('--workspace-files-navigator-width', value)
+    sharedTrack?.style.setProperty('--workspace-files-navigator-width', value)
+  }
 
   event.preventDefault()
   context.activeDragCleanupRef.current?.()
@@ -49,7 +60,7 @@ export function beginWorkspaceNavigatorResizeInteraction(
   const applyDragFrame = () => {
     frameHandle = undefined
     if (pendingVisualWidth === appliedVisualWidth) return
-    navigator.style.setProperty('--workspace-files-navigator-width', `${pendingVisualWidth}px`)
+    setVisualWidth(pendingVisualWidth)
     appliedVisualWidth = pendingVisualWidth
   }
 
@@ -98,10 +109,10 @@ export function beginWorkspaceNavigatorResizeInteraction(
 
     if (draftCollapsed) {
       // Match the sidebar contract: collapsing never overwrites the last open width.
-      navigator.style.setProperty('--workspace-files-navigator-width', `${startWidth}px`)
+      setVisualWidth(startWidth)
       context.onCollapse()
     } else {
-      navigator.style.setProperty('--workspace-files-navigator-width', `${draftWidth}px`)
+      setVisualWidth(draftWidth)
       context.onWidthChange(draftWidth)
     }
 
@@ -112,7 +123,7 @@ export function beginWorkspaceNavigatorResizeInteraction(
   context.activeDragCleanupRef.current = () => {
     removeListeners()
     if (frameHandle !== undefined) window.cancelAnimationFrame(frameHandle)
-    navigator.style.setProperty('--workspace-files-navigator-width', `${startWidth}px`)
+    setVisualWidth(startWidth)
     navigator.classList.remove('navigator-drag-live')
     releasePointer()
     endResize('column')

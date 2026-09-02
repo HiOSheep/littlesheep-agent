@@ -1,5 +1,5 @@
 import type { ExecutionLog, ToolCallRecord } from '@littlesheep/runner'
-import type { Message, TaskBook, VerificationRecord } from '@littlesheep/types'
+import type { Message, TaskBook, VerificationRecord, WebEvidenceProjection } from '@littlesheep/types'
 
 export type HistoryActivityStatus = 'running' | 'done' | 'failed' | 'aborted' | 'paused'
 export type HistoryStepStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped'
@@ -49,6 +49,7 @@ export interface HistoryMessageRecord {
   durationMs?: number
   activityCollapsed?: boolean
   activity?: HistoryActivity
+  webEvidence?: WebEvidenceProjection
 }
 
 function finiteTimestamp(value: string | undefined): number | undefined {
@@ -201,6 +202,7 @@ export function buildHistoryMessages(
         timestamp: message.timestamp,
         durationMs: activity ? log?.durationMs : undefined,
         activity,
+        ...(ownsRun && log?.webEvidence ? { webEvidence: log.webEvidence } : {}),
         activityCollapsed: activity ? true : undefined,
       }
     })

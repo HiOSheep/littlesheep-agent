@@ -147,7 +147,7 @@ export function MemoryTreeView() {
                 aria-current={selectedName === file.name ? 'page' : undefined}
                 onClick={() => setSelectedName(file.name)}
               >
-                <FileGlyphIcon />
+                <FileGlyphIcon name={file.name} />
                 <span>
                   <strong>{file.name}</strong>
                   <small>{file.description}</small>

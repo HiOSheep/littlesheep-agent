@@ -77,7 +77,7 @@ function MessageFileLink({
       onDoubleClick={handleDoubleClick}
     >
       <span className="message-file-icon" aria-hidden="true">
-        <FileGlyphIcon />
+        <FileGlyphIcon name={file.name} />
       </span>
       <span className="message-file-main">
         <strong>{file.name}</strong>

@@ -5,7 +5,6 @@ import {
 } from '../api'
 import { ApprovalPrompt } from '../approval/prompt'
 import { SettingsWorkspace } from '../settings/workspace'
-import { SettingsEntryBridge } from '../sidebar/global-titlebar'
 import { ProjectCreatorDialog } from '../sidebar/project-creator'
 import { CheckpointRecovery } from '../runtime-recovery/checkpoint-recovery'
 import { FloatingHelpTooltip } from '../ui/floating-help'
@@ -23,18 +22,12 @@ export function OverlaysView({ controller }: { controller: OverlaysViewControlle
     projectCreatorOpen,
     setProjectCreatorOpen,
     controlTip,
-    settingsEntryRippling,
     sidebarWidth,
     settingsOpen,
-    settingsPage,
-    canNavigateBack,
-    canNavigateForward,
-    openSettingsFromEntry,
-    openSettingsPage,
-    navigateBack,
-    navigateForward,
+    finishSettingsReturn,
     closeSettingsFromEntry,
-    sidebarToggleTip,
+    settingsPage,
+    openSettingsPage,
     settleApprovalPrompt,
     refreshSessions,
     refreshProjects,
@@ -43,30 +36,29 @@ export function OverlaysView({ controller }: { controller: OverlaysViewControlle
     createProjectInFolder,
     beginSidebarResize,
     nudgeSidebar,
-    toggleSidebar,
     setSidebarWidth,
-    setControlTip,
   } = controller
   return (
 <>
-      <FadePresence show={settingsOpen} exitMs={790} interactiveDuringExit>
+      <FadePresence
+        show={settingsOpen}
+        exitMs={560}
+        enterFrames={1}
+        interactiveDuringExit
+        keepMounted
+        onExited={finishSettingsReturn}
+        className="settings-presence"
+      >
         <SettingsWorkspace
           page={settingsPage}
           runtime={runtime}
           sidebarCollapsed={sidebarCollapsed}
           sidebarWidth={sidebarWidth}
-          sidebarToggleTip={sidebarToggleTip}
-          canBack={canNavigateBack}
-          canForward={canNavigateForward}
           onBeginSidebarResize={beginSidebarResize}
           onNudgeSidebar={nudgeSidebar}
           onSetSidebarWidth={setSidebarWidth}
-          onToggleSidebar={toggleSidebar}
-          onBack={navigateBack}
-          onForward={navigateForward}
-          onClose={closeSettingsFromEntry}
-          settingsEntryRippling={settingsEntryRippling}
           onOpenPage={openSettingsPage}
+          onCloseSettings={closeSettingsFromEntry}
           onProfileChange={(profile) => void applyRuntimePatch({ profile })}
           onContextCompressionThresholdChange={async (ratio) => {
             await applyRuntimePatch({ contextCompressionThresholdRatio: ratio })
@@ -76,13 +68,6 @@ export function OverlaysView({ controller }: { controller: OverlaysViewControlle
             void refreshProjects()
             void refreshSessions()
           }}
-          onTipChange={setControlTip}
-        />
-        <SettingsEntryBridge
-          settingsOpen={settingsOpen}
-          onOpen={openSettingsFromEntry}
-          onClose={closeSettingsFromEntry}
-          rippling={settingsEntryRippling}
         />
       </FadePresence>
       <ProjectCreatorDialog

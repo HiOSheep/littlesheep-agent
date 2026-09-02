@@ -23,6 +23,7 @@ import type {
   RuntimeEventQueueLike,
   SessionRunSummary,
 } from '@littlesheep/types';
+import { sanitizeWebEvidenceProjection } from '@littlesheep/types';
 import type { SessionManager } from '@littlesheep/session';
 import type { MemoryBootstrapServiceLike } from '@littlesheep/memory-tree';
 import type { Config } from '@littlesheep/config';
@@ -112,6 +113,10 @@ export interface BuildRunContextOptions {
   attachments?: import('@littlesheep/types').RunAttachment[];
   /** Immutable configuration resolved by Runner before the harness starts. */
   resolvedRunConfig?: ResolvedRunConfig;
+  /** Host-owned per-run public web retrieval port. */
+  webRetrieval?: ToolContext['webRetrieval'];
+  /** Host-owned bounded web evidence sink. */
+  webEvidenceSink?: ToolContext['webEvidenceSink'];
   /** Run-owned bounded event queue consumed only at Harness safe boundaries. */
   runtimeEventQueue?: RuntimeEventQueueLike;
   /** Directory containing bootstrap .md files (defaults to cwd). */
@@ -207,6 +212,9 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     permissionMode: opts.permissionMode,
     approve: opts.approve,
     signal: opts.signal,
+    networkPolicy: opts.resolvedRunConfig?.networkPolicy,
+    webRetrieval: opts.webRetrieval,
+    webEvidenceSink: opts.webEvidenceSink,
     log: opts.log,
     versioning: opts.versioning,
   };
@@ -250,6 +258,21 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     contextCompressionThresholdRatio: opts.config.agents.defaults.contextCompressionThresholdRatio,
     signal: opts.signal,
   };
+
+  // Web tools receive a narrow runtime port, but the RunContext remains the
+  // sole durable owner of the bounded evidence projection. A caller may add
+  // an observer, never replace this ownership boundary.
+  if (opts.webRetrieval || opts.webEvidenceSink) {
+    const observer = opts.webEvidenceSink;
+    toolContext.webEvidenceSink = {
+      async record(projection) {
+        const durable = sanitizeWebEvidenceProjection(projection);
+        if (!durable) return;
+        ctx.webEvidence = durable;
+        await observer?.record(structuredClone(durable));
+      },
+    };
+  }
 
   writeDecisionState(ctx, 'runner-init', { clarificationResponse });
   writeFailureState(ctx, 'runner-init', { recoveryAttempts: 0 });

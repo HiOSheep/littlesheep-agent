@@ -11,6 +11,7 @@ import { transientTriggerProps } from '../ui/transient'
 import { compactPath, formatDateTime } from './path-utils'
 import { WorkspacePlaceholder } from './placeholder'
 import { WorkspaceArtifactActionFilter, WorkspaceArtifactScopeFilter, WorkspaceArtifactSourceFilter } from './types'
+import { workspaceErrorMessage } from './workspace-errors'
 
 
 export function WorkspaceArtifacts({
@@ -45,7 +46,8 @@ export function WorkspaceArtifacts({
       .catch((err) => {
         if (!disposed) {
           setRecords([])
-          setError((err as Error).message)
+          console.debug('[workspace-artifacts] artifact index request failed', err)
+          setError(workspaceErrorMessage(err, '项目产物暂时无法读取，请稍后重试。'))
         }
       })
       .finally(() => {
@@ -91,7 +93,8 @@ export function WorkspaceArtifacts({
       .then(setRecords)
       .catch((err) => {
         setRecords([])
-        setError((err as Error).message)
+        console.debug('[workspace-artifacts] artifact index refresh failed', err)
+        setError(workspaceErrorMessage(err, '项目产物暂时无法读取，请稍后重试。'))
       })
       .finally(() => setLoading(false))
   }
@@ -162,7 +165,7 @@ export function WorkspaceArtifacts({
             onClick={() => onOpenFile(record.path)}
           >
             <span className="workspace-artifact-row-icon" aria-hidden="true">
-              <FileGlyphIcon />
+              <FileGlyphIcon name={record.name} />
             </span>
             <span className="workspace-artifact-row-main">
               <strong>{record.name}</strong>

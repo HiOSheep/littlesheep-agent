@@ -9,6 +9,7 @@ import type {
   RuntimeEventQueueSnapshot,
   StageResult,
 } from '@littlesheep/types';
+import { sanitizeWebEvidenceProjection } from '@littlesheep/types';
 
 // Keep checkpoint references aligned with the bounded Context/model snapshots.
 const MAX_CHECKPOINT_IDS = MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN;
@@ -86,6 +87,7 @@ export function buildRunCheckpoint(options: BuildRunCheckpointOptions): RunCheck
   const toolRecipes = ctx.toolSources?.inspect_attachment === 'run-scoped'
     ? [{ version: 1 as const, factory: 'inspect_attachment' as const }]
     : [];
+  const webEvidence = sanitizeWebEvidenceProjection(ctx.webEvidence);
 
   return {
     version: 1,
@@ -104,6 +106,7 @@ export function buildRunCheckpoint(options: BuildRunCheckpointOptions): RunCheck
     ...(queue ? { runtimeEventQueue: queue } : {}),
     ...(ctx.runtimeControl ? { runtimeControl: clone(ctx.runtimeControl) } : {}),
     contextSnapshotIds: (ctx.contextSnapshots ?? []).map((snapshot) => snapshot.id).slice(-MAX_CHECKPOINT_IDS),
+    ...(webEvidence ? { webEvidence } : {}),
     sideEffects: clone((ctx.sideEffects ?? []).slice(-MAX_SIDE_EFFECTS)),
     loopBudget: clone({
       ...loopBudget,

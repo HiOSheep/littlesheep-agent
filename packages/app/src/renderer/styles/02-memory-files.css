@@ -34,7 +34,6 @@
   display: inline-grid;
   place-items: center;
   color: var(--muted);
-  cursor: pointer;
   transition: background var(--motion-base) var(--motion-ease), color var(--motion-base) var(--motion-ease), opacity var(--motion-base) var(--motion-ease);
 }
 
@@ -181,7 +180,6 @@
   align-items: center;
   gap: 8px;
   text-align: left;
-  cursor: pointer;
   transition: background var(--motion-base) var(--motion-ease), color var(--motion-base) var(--motion-ease);
 }
 
@@ -276,7 +274,6 @@
   align-items: center;
   gap: 6px;
   color: var(--muted);
-  cursor: pointer;
   transition: background var(--motion-base) var(--motion-ease), color var(--motion-base) var(--motion-ease), opacity var(--motion-base) var(--motion-ease);
 }
 

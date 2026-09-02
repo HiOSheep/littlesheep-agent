@@ -44,7 +44,7 @@ export function AgentToolRow({
         }}
       >
         <span className="agent-tool-glyph" aria-hidden="true">
-          {targetPath ? <FileGlyphIcon /> : <span className="agent-tool-generic-glyph" />}
+          {targetPath ? <FileGlyphIcon name={targetPath} /> : <span className="agent-tool-generic-glyph" />}
         </span>
         <span className={`agent-flow-title ${running ? 'is-running' : ''}`}>{title}</span>
         <span className="agent-flow-separator" aria-hidden="true" />
@@ -73,7 +73,7 @@ export function AgentToolRow({
                   className="agent-tool-file-action"
                   onClick={() => onOpenFile(targetPath)}
                 >
-                  <FileGlyphIcon />
+                  <FileGlyphIcon name={targetPath} />
                   <span>{targetPath}</span>
                 </button>
               )}

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CONFIG } from '@littlesheep/config'
+import type { NetworkReadPolicy } from '@littlesheep/types'
 import { createPermissionApprover, resolveRunPolicy } from './run-policy.js'
 
 describe('local app run policy', () => {
@@ -61,4 +62,65 @@ describe('local app run policy', () => {
     await expect(createPermissionApprover('research')('write')).resolves.toBe(false)
     expect(resolveRunPolicy({ permissionMode: 'restricted' }, DEFAULT_CONFIG, broker).requireApprovalForAllTools).toBe(true)
   })
+
+  it('passes the resolved strict-read policy into the Main approval recheck', async () => {
+    const broker = vi.fn(async () => true)
+    const policy = resolveRunPolicy(
+      { permissionMode: 'research' },
+      DEFAULT_CONFIG,
+      broker,
+      { networkPolicy: webPolicy({ strictReadApproval: true }) },
+    )
+
+    await expect(policy.approve('web_search', { query: 'fresh public data' })).resolves.toBe(true)
+    expect(broker).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'web_search',
+      permissionMode: 'research',
+      boundary: 'outside',
+    }))
+  })
+
+  it('hard-denies disabled and private web reads in Main without consulting the broker', async () => {
+    const broker = vi.fn(async () => true)
+    const disabled = resolveRunPolicy({ permissionMode: 'research' }, DEFAULT_CONFIG, broker)
+    await expect(disabled.approve('web_search', { query: 'must not leave host' })).resolves.toBe(false)
+
+    const enabled = resolveRunPolicy(
+      { permissionMode: 'full' },
+      DEFAULT_CONFIG,
+      broker,
+      { networkPolicy: webPolicy() },
+    )
+    await expect(enabled.approve('web_fetch', { url: 'http://127.0.0.1:9/admin' })).resolves.toBe(false)
+    expect(broker).not.toHaveBeenCalled()
+  })
 })
+
+function webPolicy(overrides: Partial<NetworkReadPolicy> = {}): NetworkReadPolicy {
+  return {
+    version: 1,
+    enabled: true,
+    providerId: 'tavily',
+    mode: 'public_anonymous',
+    allowDomains: [],
+    blockDomains: [],
+    strictReadApproval: false,
+    maxResults: 10,
+    maxQueryChars: 2_000,
+    maxQueriesPerRun: 4,
+    maxFetchesPerRun: 4,
+    maxConcurrentRequests: 4,
+    searchTimeoutMs: 15_000,
+    fetchTimeoutMs: 20_000,
+    totalTimeoutMs: 90_000,
+    maxResponseBytes: 2 * 1024 * 1024,
+    maxExtractedChars: 40_000,
+    maxRedirects: 5,
+    cacheEnabled: true,
+    cacheTtlSeconds: 300,
+    cacheMaxBytes: 64 * 1024 * 1024,
+    browserFallback: 'approval_required',
+    sensitiveQueryPolicy: 'approve',
+    ...overrides,
+  }
+}

@@ -40,6 +40,37 @@ describe('compact autonomous read task', () => {
     ]);
   });
 
+  it('offers only bounded Web tools for a compact freshness request', () => {
+    const ctx = context('查一下今天的公开新闻并给出来源');
+    expect(resolveCompactAutonomousReadDecisionTools(ctx)?.map((tool) => tool.name)).toEqual([
+      'web_search', 'web_fetch',
+    ]);
+    const contract = renderCompactAutonomousReadDecisionContract(
+      resolveCompactAutonomousReadDecisionTools(ctx)!,
+    );
+    expect(contract).toContain('Public Web egress is allowed only through the listed bounded tools');
+    expect(contract).toContain('external untrusted data');
+  });
+
+  it('offers only web_fetch for one explicit public URL summary', () => {
+    const ctx = context('打开 https://example.com/docs 并总结');
+    expect(resolveCompactAutonomousReadDecisionTools(ctx)?.map((tool) => tool.name)).toEqual(['web_fetch']);
+  });
+
+  it.each([
+    'LS 支持网络搜索吗？',
+    '你还记得我上次的决定吗？',
+    '比较三个官方来源的最新政策',
+  ])('does not expose compact Web tools for a non-compact retrieval route: %s', (request) => {
+    expect(resolveCompactAutonomousReadDecisionTools(context(request))).toBeUndefined();
+  });
+
+  it('keeps a project search local even when the searched token says web_search', () => {
+    expect(resolveCompactAutonomousReadDecisionTools(
+      context('搜索我的项目文件里有哪些 web_search 调用'),
+    )?.map((tool) => tool.name)).toEqual(['glob', 'grep', 'read']);
+  });
+
   it.each(['adopted', 'conflicted'] as const)(
     'rejects a task with %s memory evidence',
     (decision) => {
@@ -89,6 +120,15 @@ describe('compact autonomous read task', () => {
     expect(resolveCompactAutonomousReadExecutionTools(direct)?.map((tool) => tool.name)).toEqual(['glob']);
     expect(resolveCompactAutonomousReadExecutionTools(write)).toBeUndefined();
   });
+
+  it('revalidates a compact Web search/fetch tool loop without a direct proposal', () => {
+    const ctx = context('查一下今天的公开新闻并给出来源', taskBook({
+      tools: ['web_search', 'web_fetch'],
+    }));
+    expect(resolveCompactAutonomousReadExecutionTools(ctx)?.map((tool) => tool.name)).toEqual([
+      'web_search', 'web_fetch',
+    ]);
+  });
 });
 
 function context(request: string, book?: TaskBook) {
@@ -97,6 +137,8 @@ function context(request: string, book?: TaskBook) {
     makeTool('grep', { ok: true, output: [] }),
     makeTool('read', { ok: true, output: '' }),
     makeTool('write', { ok: true, output: undefined }),
+    makeTool('web_search', { ok: true, output: '' }),
+    makeTool('web_fetch', { ok: true, output: '' }),
   ];
   return makeCtx({
     inbound: textMessage('user', request),

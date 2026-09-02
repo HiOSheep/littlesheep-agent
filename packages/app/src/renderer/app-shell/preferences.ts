@@ -54,6 +54,10 @@ export const PROJECT_SECTION_COLLAPSED_KEY = 'littlesheep.ui.projectSectionColla
 
 export const EXPANDED_PROJECT_IDS_KEY = 'littlesheep.ui.expandedProjectIds'
 
+export const SIDEBAR_SESSION_ORDER_KEY = 'littlesheep.ui.sidebarSessionOrder'
+
+export const SIDEBAR_PROJECT_ORDER_KEY = 'littlesheep.ui.sidebarProjectOrder'
+
 export const ACTIVE_SESSION_KEY = 'littlesheep.ui.activeSession'
 
 export const SIDEBAR_WIDTH_DEFAULT = 276
@@ -128,6 +132,45 @@ export function readStringSetPreference(key: string): Set<string> {
 export function writeStringSetPreference(key: string, values: Set<string>): void {
   try {
     window.localStorage.setItem(key, JSON.stringify(Array.from(values)))
+  } catch {
+    // Local UI preferences are best-effort only.
+  }
+}
+
+
+export function readStringListPreference(key: string): string[] {
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return []
+    const values = JSON.parse(raw)
+    if (!Array.isArray(values)) return []
+    const seen = new Set<string>()
+    const result: string[] = []
+    for (const value of values) {
+      if (typeof value !== 'string' || value.length === 0 || seen.has(value)) continue
+      seen.add(value)
+      result.push(value)
+    }
+    return result
+  } catch {
+    return []
+  }
+}
+
+
+export function writeStringListPreference(key: string, values: readonly string[]): void {
+  try {
+    const seen = new Set<string>()
+    const normalized = values.filter((value) => {
+      if (!value || seen.has(value)) return false
+      seen.add(value)
+      return true
+    })
+    if (normalized.length === 0) {
+      window.localStorage.removeItem(key)
+      return
+    }
+    window.localStorage.setItem(key, JSON.stringify(normalized))
   } catch {
     // Local UI preferences are best-effort only.
   }

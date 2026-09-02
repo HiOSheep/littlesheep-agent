@@ -1,3 +1,4 @@
+// Shared Monaco line-comment interaction surface and attachment boundary.
 import {
   useCallback,
   useEffect,
@@ -7,11 +8,16 @@ import {
   useState,
   type CSSProperties,
   type Dispatch,
+  type FocusEvent,
   type MutableRefObject,
+  type MouseEvent,
   type RefObject,
   type SetStateAction,
 } from 'react'
 import type * as Monaco from 'monaco-editor'
+import type { FloatingHelpTip } from '../ui/floating-help'
+import { buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
+import { RenameIcon, TrashIcon } from '../ui/icons'
 import {
   EMPTY_LINE_COMMENT_DRAFT,
   formatLineRange,
@@ -35,6 +41,11 @@ export { useLineCommentViewZones, type LineCommentViewZoneSpec } from './line-co
 export function useLineCommentDraft() {
   const [state, dispatch] = useReducer(reduceLineCommentDraft, EMPTY_LINE_COMMENT_DRAFT)
   const begin = useCallback((range: LineCommentRange) => dispatch({ type: 'begin', range }), [])
+  const beginEdit = useCallback((comment: WorkspaceLineComment, range?: LineCommentRange) => dispatch({
+    type: 'begin',
+    range: range ?? { startLine: comment.startLine, endLine: comment.endLine ?? comment.startLine },
+    comment: { id: comment.id, createdAt: comment.createdAt, text: comment.text },
+  }), [])
   const change = useCallback((text: string) => dispatch({ type: 'change', text }), [])
   const cancel = useCallback(() => dispatch({ type: 'cancel' }), [])
   return {
@@ -42,6 +53,7 @@ export function useLineCommentDraft() {
     draftText: state.draftText,
     state,
     begin,
+    beginEdit,
     change,
     cancel,
   }
@@ -83,6 +95,7 @@ export function LineCommentEditor({
   onDraftChange,
   onCancel,
   onPublish,
+  editing = false,
 }: {
   textareaRef: RefObject<HTMLTextAreaElement>
   draftText: string
@@ -90,6 +103,7 @@ export function LineCommentEditor({
   onDraftChange: (text: string) => void
   onCancel: () => void
   onPublish: () => void
+  editing?: boolean
 }) {
   return (
     <form
@@ -98,9 +112,15 @@ export function LineCommentEditor({
         event.preventDefault()
         onPublish()
       }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return
+        event.preventDefault()
+        event.stopPropagation()
+        onCancel()
+      }}
     >
       <div className="workspace-line-comment-editor-heading">
-        <strong>发布评论</strong>
+        <strong>{editing ? '编辑评论' : '发布评论'}</strong>
       </div>
       <textarea
         ref={textareaRef}
@@ -113,19 +133,68 @@ export function LineCommentEditor({
       <div className="workspace-line-comment-editor-actions">
         <span>{formatLineRange(range.startLine, range.endLine)}</span>
         <button type="button" onClick={onCancel}>取消</button>
-        <button type="submit" disabled={!draftText.trim()}>发布评论</button>
+        <button type="submit" disabled={!draftText.trim()}>{editing ? '更新评论' : '发布评论'}</button>
       </div>
     </form>
   )
 }
 
-export function LineCommentCard({ comment }: { comment: WorkspaceLineComment }) {
+export function LineCommentCard({ comment, onEdit, onDelete, onTipChange }: {
+  comment: WorkspaceLineComment
+  onEdit: () => void
+  onDelete: () => void
+  onTipChange?: (tip: FloatingHelpTip | null) => void
+}) {
+  const showTip = (label: string, event: MouseEvent<HTMLButtonElement>) => {
+    onTipChange?.(buildFloatingHelpTip(label, event.clientX, event.clientY))
+  }
+  const showFocusTip = (label: string, event: FocusEvent<HTMLButtonElement>) => {
+    onTipChange?.(buildFloatingHelpTipFromElement(label, event.currentTarget))
+  }
   return (
     <article className="workspace-line-comment-card" data-comment-line={comment.startLine}>
       <p>{comment.text}</p>
       <div className="workspace-line-comment-card-meta">
         <span>{formatLineRange(comment.startLine, comment.endLine ?? comment.startLine)}</span>
-        <span>已发布</span>
+        <span className="workspace-line-comment-card-status">已发布</span>
+        <div className="workspace-line-comment-card-actions">
+          <button
+            className="workspace-line-comment-action"
+            type="button"
+            aria-label="编辑评论"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation()
+              onTipChange?.(null)
+              onEdit()
+            }}
+            onMouseEnter={(event) => showTip('编辑评论', event)}
+            onMouseMove={(event) => showTip('编辑评论', event)}
+            onMouseLeave={() => onTipChange?.(null)}
+            onFocus={(event) => showFocusTip('编辑评论', event)}
+            onBlur={() => onTipChange?.(null)}
+          >
+            <RenameIcon />
+          </button>
+          <button
+            className="workspace-line-comment-action delete"
+            type="button"
+            aria-label="删除评论"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation()
+              onTipChange?.(null)
+              onDelete()
+            }}
+            onMouseEnter={(event) => showTip('删除评论', event)}
+            onMouseMove={(event) => showTip('删除评论', event)}
+            onMouseLeave={() => onTipChange?.(null)}
+            onFocus={(event) => showFocusTip('删除评论', event)}
+            onBlur={() => onTipChange?.(null)}
+          >
+            <TrashIcon />
+          </button>
+        </div>
       </div>
     </article>
   )
@@ -163,10 +232,9 @@ export function useLineCommentEditorAutoSize<TZone extends { key: string; height
     input.setZoneHosts((current) => updateZoneHeight(current, record.zone.key, nextZoneHeight))
   }, [input.editor, input.editorZoneRecordRef, input.setZoneHosts, input.textareaRef])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!input.editorZoneHost) return
-    const frame = window.requestAnimationFrame(() => input.textareaRef.current?.focus())
-    return () => window.cancelAnimationFrame(frame)
+    input.textareaRef.current?.focus()
   }, [input.editorZoneHost, input.textareaRef])
 
   useLayoutEffect(() => {

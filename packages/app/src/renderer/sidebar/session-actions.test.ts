@@ -42,6 +42,8 @@ function createSwitchContext(overrides: Partial<SessionActionContext> = {}): Ses
     setSessionOwnership: vi.fn(),
     setSessions: vi.fn(),
     setSidebarPanel: vi.fn(),
+    resetDraftPermissionMode: vi.fn(),
+    forgetSessionPermissionMode: vi.fn(),
     settleApprovalPrompt: vi.fn(),
     visibleSessions: [],
     ...overrides,
@@ -72,6 +74,20 @@ describe('session switching', () => {
     expect(context.setRuntimeError).not.toHaveBeenCalledWith('正在加载历史消息...')
     expect(context.setRuntimeError).toHaveBeenCalledWith(null)
     expect(context.setContextUsageSnapshot).toHaveBeenCalledWith(null)
+  })
+
+  it('starts a new conversation scoped to the selected project', () => {
+    const context = createSwitchContext({ currentSession: 'session-1' })
+    const { createProjectConversationFromSidebar } = createSessionActions(context)
+
+    createProjectConversationFromSidebar('project-1')
+
+    expect(context.setSidebarPanel).toHaveBeenCalledWith(null)
+    expect(context.setConversationCollapsed).toHaveBeenCalledWith(false)
+    expect(context.pushRoute).toHaveBeenCalledWith({ section: 'chat' })
+    expect(context.setCurrentSession).toHaveBeenCalledWith(undefined)
+    expect(context.setSessionOwnership).toHaveBeenCalledWith({ scope: 'project', projectId: 'project-1' })
+    expect(context.setMessages).toHaveBeenCalledWith([])
   })
 
   it('force reloads the active session after checkpoint recovery without aborting the completed stream', async () => {
@@ -141,6 +157,37 @@ describe('session switching', () => {
       limit: 120,
       beforeId: 'cursor-1',
     })
+  })
+
+  it('restores the active session context count from its durable history payload', async () => {
+    const context = createSwitchContext()
+    mockedGetSessionMessagePage.mockResolvedValue({
+      messages: [],
+      hasMore: false,
+      contextUsage: {
+        modelRef: 'openai/gpt-5.5',
+        usage: {
+          promptTokens: 12_345,
+          completionTokens: 80,
+          source: 'provider',
+        },
+      },
+    })
+    const { switchSession } = createSessionActions(context)
+
+    await switchSession({
+      id: 'session-2',
+      title: '有历史计数的会话',
+      createdAt: 1,
+      lastMessageAt: 2,
+      mode: 'general',
+      scope: 'standalone',
+    })
+
+    expect(context.setContextUsageSnapshot).toHaveBeenLastCalledWith(expect.objectContaining({
+      modelRef: 'openai/gpt-5.5',
+      provider: expect.objectContaining({ usedTokens: 12_345 }),
+    }))
   })
 
   it('invalidates late history and stream results when archiving the active session', async () => {

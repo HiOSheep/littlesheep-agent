@@ -99,5 +99,21 @@ function runtimeState(): RuntimeState {
     workspace: 'D:/workspace',
     workplace: 'D:/data/workplace',
     providers: [],
+    web: {
+      enabled: false,
+      status: 'disabled',
+      providerConfigured: false,
+      readMode: 'public_anonymous',
+      dnsResolver: 'system',
+      strictReadApproval: false,
+      allowDomains: [],
+      blockDomains: [],
+      cacheEnabled: true,
+      cacheTtlSeconds: 300,
+      cacheMaxBytes: 64 * 1024 * 1024,
+      browserFallback: 'approval_required',
+      sensitiveQueryPolicy: 'approve',
+      egress: ['query_to_search_provider', 'url_to_target_site', 'evidence_to_current_llm_provider'],
+    },
   }
 }

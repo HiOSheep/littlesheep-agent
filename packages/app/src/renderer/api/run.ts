@@ -18,6 +18,7 @@ import type {
   TaskBook,
   ToolStreamEvent,
   VerificationRecord,
+  WebEvidenceProjection,
 } from '@littlesheep/types'
 import type { AgentProfileId } from '@littlesheep/prompt'
 import type { PermissionModeId } from '../../shared/permission-modes'
@@ -52,6 +53,7 @@ export interface RunResult {
   runtimeControl?: RuntimeControlSnapshot
   conversationContinuation?: ConversationContinuationEvidence
   runCheckpointId?: string
+  webEvidence?: WebEvidenceProjection
   taskExecution?: {
     goal: string
     complexity: string

@@ -3,26 +3,20 @@ import '@xterm/xterm/css/xterm.css'
 import type { Dispatch, SetStateAction } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  getPathForFile,
-  getRuntime,
-  importAttachment,
   listProjects,
   listSessions,
-  selectAttachments,
   selectWorkspace,
-  updateRuntime,
   type AttachmentRef,
   type PermissionModeId,
   type ProjectMeta,
-  type RuntimePatch,
   type RuntimeState,
   type SessionMeta,
   type WorkspacePreview
 } from '../api'
+import { updateSessionPermissionMode } from '../api/sessions'
 import { useApprovalController } from '../approval/use-approval-controller'
 import { createRunActions, type RunActionContext } from '../chat/run-actions'
 import { ChatMessage } from '../chat/types'
-import { splitModelRef } from '../composer/runtime-picker'
 import { buildContextUsage, type ContextUsageSnapshot } from '../context-usage'
 import { createProjectActions } from '../sidebar/project-actions'
 import { createSessionActions, type SessionHistoryWindow } from '../sidebar/session-actions'
@@ -31,18 +25,45 @@ import { useCheckpointRecovery } from '../runtime-recovery/use-checkpoint-recove
 import { FloatingHelpTip } from '../ui/floating-help'
 import { useFrameCoalescedState } from '../ui/use-frame-coalesced-state'
 import { WORKSPACE_PANEL_OPEN_TABS_MAX, workspaceFileTabId, workspaceSessionKey } from '../workspace-persistence'
-import { dataTransferHasFiles, inferAttachmentKind, isSamePath, lastPathSegment, resolveWorkspacePreviewRoot, workspaceTitle } from '../workspace/path-utils'
+import { isSamePath, resolveWorkspacePreviewRoot, workspaceTitle } from '../workspace/path-utils'
+import type { LineCommentAttachmentRemoval } from '../workspace/line-comment-attachments'
 import { useWorkspaceLayoutController } from '../workspace/use-workspace-layout-controller'
 import { createLinkNavigationActions } from './link-navigation-actions'
-import { sortSessionsForSidebar, standaloneSessionsForSidebar, useListReorderAnimation } from './list-motion'
-import { ACTIVE_SESSION_KEY, PINNED_SESSIONS_KEY, readStringPreference, readStringSetPreference, removePreference } from './preferences'
+import {
+  mergeOrderedList,
+  sortSessionsForSidebar,
+  standaloneSessionsForSidebar,
+} from './list-motion'
+import {
+  ACTIVE_SESSION_KEY,
+  PINNED_SESSIONS_KEY,
+  SIDEBAR_SESSION_ORDER_KEY,
+  readStringListPreference,
+  readStringPreference,
+  readStringSetPreference,
+  removePreference,
+  writeStringListPreference,
+} from './preferences'
 import {
   readPersistedAppShellState,
   restoreComposerDraft,
 } from './persistent-state'
 import { SidebarPanel } from './types'
+import { resolveSessionPermissionMode } from './session-permission-mode'
 import { useAppPersistence } from './use-app-persistence'
 import { useNavigationController } from './use-navigation-controller'
+import { isMissingWorkspacePathError } from '../workspace/workspace-errors'
+import { createAttachmentActions } from './attachment-actions'
+import { createRuntimeActions, type PendingModelPatch } from './runtime-actions'
+import { APPLICATION_PERSISTENCE_FLUSH_EVENT } from '../../shared/application-state-contracts'
+import { normalizePermissionModeId } from '../../shared/permission-modes'
+
+type PendingSessionPermissionMode = {
+  sequence: number
+  mode: PermissionModeId
+  baseline: PermissionModeId
+}
+
 export function useAppController() {
   const initialPersistentState = useMemo(readPersistedAppShellState, [])
   const initialActiveSessionId = useMemo(() => readStringPreference(ACTIVE_SESSION_KEY) || null, [])
@@ -56,14 +77,26 @@ export function useAppController() {
   const [historyWindow, setHistoryWindow] = useState<SessionHistoryWindow>({ hasMore: false, loading: false })
   const [input, setInputState] = useState(initialComposerDraft)
   const [loading, setLoading] = useState(false)
-  const [permissionMode, setPermissionMode] = useState<PermissionModeId>('research')
+  const [draftPermissionMode, setDraftPermissionMode] = useState<PermissionModeId>('research')
+  const [sessionPermissionModeOverrides, setSessionPermissionModeOverrides] = useState<Record<string, PermissionModeId>>({})
   const [runtime, setRuntime] = useState<RuntimeState | null>(null)
   const [attachments, setAttachments] = useState<AttachmentRef[]>([])
+  const [attachmentRemoval, setAttachmentRemoval] = useState<LineCommentAttachmentRemoval | null>(null)
+  const attachmentRemovalIdRef = useRef(0)
   const [dragActive, setDragActive] = useState(false)
-  const [runtimeError, setRuntimeError] = useState<string | null>(null)
+  const [runtimeError, setRuntimeErrorState] = useState<string | null>(null)
+  const setRuntimeError = useCallback<Dispatch<SetStateAction<string | null>>>((update) => {
+    setRuntimeErrorState((current) => {
+      const next = typeof update === 'function' ? update(current) : update
+      return isMissingWorkspacePathError(next) ? null : next
+    })
+  }, [])
   const [conversationCollapsed, setConversationCollapsed] = useState(initialPersistentState.conversationCollapsed)
   const [now, setNow] = useState(() => Date.now())
   const [pinnedSessionIds, setPinnedSessionIds] = useState(() => readStringSetPreference(PINNED_SESSIONS_KEY))
+  const [sidebarSessionOrder, setSidebarSessionOrder] = useState(() => (
+    readStringListPreference(SIDEBAR_SESSION_ORDER_KEY)
+  ))
   const [sidebarPanel, setSidebarPanel] = useState<SidebarPanel>(initialPersistentState.sidebarPanel)
   const [sidebarSearch, setSidebarSearch] = useState(initialPersistentState.sidebarSearch)
   const [projectCreatorOpen, setProjectCreatorOpen] = useState(false)
@@ -77,6 +110,7 @@ export function useAppController() {
   const sessionLoadRequestRef = useRef(0)
   const historyLoadRequestRef = useRef(0)
   const currentSessionRef = useRef(currentSession)
+  const sessionsRef = useRef<SessionMeta[]>(sessions)
   const restoredLastSessionRef = useRef(false)
   const inputValueRef = useRef(initialComposerDraft)
   const [activityNow, setActivityNow] = useState(() => Date.now())
@@ -84,6 +118,118 @@ export function useAppController() {
   const [contextUsageSnapshot, setContextUsageSnapshot] = useState<ContextUsageSnapshot | null>(null)
   const [workspaceArtifactVersion, setWorkspaceArtifactVersion] = useState(0)
   const [controlTip, setControlTip] = useFrameCoalescedState<FloatingHelpTip | null>(null)
+  const modelPatchSequenceRef = useRef(0)
+  const pendingModelPatchRef = useRef<PendingModelPatch | null>(null)
+  const permissionModeWriteSequenceRef = useRef(0)
+  const pendingPermissionModeRef = useRef(new Map<string, PendingSessionPermissionMode>())
+  const permissionModeWriteQueueRef = useRef(new Map<string, Promise<void>>())
+  const knownSessionPermissionModesRef = useRef(new Map<string, PermissionModeId>())
+  currentSessionRef.current = currentSession
+  sessionsRef.current = sessions
+  const attachmentActions = createAttachmentActions({
+    appMountedRef, attachments, setAttachments, setRuntimeError, setDragActive,
+    attachmentRemovalIdRef, setAttachmentRemoval,
+  })
+  const {
+    addAttachments, removeAttachment, removeLineCommentAttachment,
+    updatePublishedLineCommentAttachment, handleComposerDragEnter, handleComposerDragOver,
+    handleComposerDragLeave, handleComposerDrop, handleComposerPaste,
+  } = attachmentActions
+  const permissionMode = useMemo(
+    () => resolveSessionPermissionMode(currentSession, sessions, sessionPermissionModeOverrides, draftPermissionMode),
+    [currentSession, draftPermissionMode, sessionPermissionModeOverrides, sessions],
+  )
+  const setPermissionMode = useCallback((next: PermissionModeId) => {
+    const sessionId = currentSession
+    if (!sessionId) {
+      setDraftPermissionMode(next)
+      return
+    }
+
+    const pending = pendingPermissionModeRef.current.get(sessionId)
+    const baseline = pending?.baseline ?? normalizePermissionModeId(
+      sessionsRef.current.find((session) => session.id === sessionId)?.mode,
+    )
+    const sequence = ++permissionModeWriteSequenceRef.current
+    pendingPermissionModeRef.current.set(sessionId, { sequence, mode: next, baseline })
+    knownSessionPermissionModesRef.current.set(sessionId, next)
+    setSessionPermissionModeOverrides((current) => ({ ...current, [sessionId]: next }))
+    setSessions((current) => current.map((session) => (
+      session.id === sessionId ? { ...session, mode: next } : session
+    )))
+    const previousWrite = permissionModeWriteQueueRef.current.get(sessionId) ?? Promise.resolve()
+    let write: Promise<void>
+    write = previousWrite.catch(() => undefined).then(async () => {
+      try {
+        const { session } = await updateSessionPermissionMode(sessionId, next)
+        if (!appMountedRef.current) return
+        const latest = pendingPermissionModeRef.current.get(sessionId)
+        knownSessionPermissionModesRef.current.set(sessionId, normalizePermissionModeId(session.mode))
+        if (!latest || latest.sequence !== sequence) return
+        pendingPermissionModeRef.current.delete(sessionId)
+        setSessionPermissionModeOverrides((current) => {
+          if (!(sessionId in current)) return current
+          const nextOverrides = { ...current }
+          delete nextOverrides[sessionId]
+          return nextOverrides
+        })
+        setSessions((current) => current.map((item) => item.id === sessionId ? session : item))
+        if (currentSessionRef.current === sessionId) setRuntimeError(null)
+      } catch (error) {
+        if (!appMountedRef.current) return
+        const latest = pendingPermissionModeRef.current.get(sessionId)
+        if (!latest || latest.sequence !== sequence) return
+        let refreshed: SessionMeta[] | undefined
+        try {
+          refreshed = (await listSessions()).sessions
+        } catch {
+          refreshed = undefined
+        }
+        if (!appMountedRef.current) return
+        const currentLatest = pendingPermissionModeRef.current.get(sessionId)
+        if (!currentLatest || currentLatest.sequence !== sequence) return
+        pendingPermissionModeRef.current.delete(sessionId)
+        setSessionPermissionModeOverrides((current) => {
+          if (!(sessionId in current)) return current
+          const nextOverrides = { ...current }
+          delete nextOverrides[sessionId]
+          return nextOverrides
+        })
+        if (refreshed) {
+          const persisted = refreshed.find((item) => item.id === sessionId)
+          if (persisted) knownSessionPermissionModesRef.current.set(sessionId, normalizePermissionModeId(persisted.mode))
+          setSessions(refreshed)
+        } else {
+          // The known map contains the optimistic value while this write is pending;
+          // after a failed persistence and failed refresh, only the write baseline is confirmed.
+          const fallback = currentLatest.baseline
+          knownSessionPermissionModesRef.current.set(sessionId, fallback)
+          setSessions((current) => current.map((item) => item.id === sessionId
+            ? { ...item, mode: fallback }
+            : item))
+        }
+        if (currentSessionRef.current === sessionId) {
+          setRuntimeError(`保存权限模式失败：${(error as Error).message}`)
+        }
+      } finally {
+        if (permissionModeWriteQueueRef.current.get(sessionId) === write) {
+          permissionModeWriteQueueRef.current.delete(sessionId)
+        }
+      }
+    })
+    permissionModeWriteQueueRef.current.set(sessionId, write)
+  }, [currentSession])
+  const resetDraftPermissionMode = useCallback(() => setDraftPermissionMode('research'), [])
+  const forgetSessionPermissionMode = useCallback((sessionId: string) => {
+    pendingPermissionModeRef.current.delete(sessionId)
+    knownSessionPermissionModesRef.current.delete(sessionId)
+    setSessionPermissionModeOverrides((current) => {
+      if (!(sessionId in current)) return current
+      const next = { ...current }
+      delete next[sessionId]
+      return next
+    })
+  }, [])
   const setInput = useCallback<Dispatch<SetStateAction<string>>>((update) => {
     const current = inputValueRef.current
     const next = typeof update === 'function' ? update(current) : update
@@ -110,6 +256,10 @@ export function useAppController() {
     requestWorkspaceSaveApproval,
     settleApprovalPrompt,
   } = useApprovalController({ currentSession, permissionMode })
+  const getSessionPermissionMode = useCallback((sessionId: string): PermissionModeId => (
+    knownSessionPermissionModesRef.current.get(sessionId)
+      ?? resolveSessionPermissionMode(sessionId, sessions, sessionPermissionModeOverrides, permissionMode)
+  ), [permissionMode, sessionPermissionModeOverrides, sessions])
   const {
     sidebarCollapsed,
     setSidebarCollapsed,
@@ -177,6 +327,7 @@ export function useAppController() {
     setAppHistory,
     settingsEntryRippling,
     settingsOpen,
+    settingsReturning,
     directModulePage,
     settingsPage,
     canNavigateBack,
@@ -188,6 +339,7 @@ export function useAppController() {
     navigateBack,
     navigateForward,
     closeSettingsFromEntry,
+    finishSettingsReturn,
   } = useNavigationController({
     initialRoute: initialPersistentState.route,
     setControlTip, workspaceScopeKey: workspaceSessionKey(currentSession),
@@ -261,23 +413,43 @@ export function useAppController() {
     return () => window.clearInterval(timer)
   }, [loading])
 
-  const selectableProviders = useMemo(() => {
-    if (!runtime) return []
-    return runtime.providers.filter((provider) =>
-      provider.models.length > 0 && (!provider.requiresKey || provider.hasKey),
-    )
-  }, [runtime])
+  const runtimeActions = createRuntimeActions({
+    appMountedRef, runtime, setRuntime, setRuntimeError, alignWorkspacePanelToWorkspaceRoot,
+    notifyRuntimeSettingChanges, refreshProjects, modelPatchSequenceRef, pendingModelPatchRef,
+  })
+  const { refreshRuntime, applyRuntimePatch, applyModelPatch } = runtimeActions
+  const selectableProviders = useMemo(() => runtimeActions.selectableProviders(), [runtime])
 
   const selectedModel = useMemo(() => {
-    if (!runtime) return null
-    const { providerId, model } = splitModelRef(runtime.model)
-    const provider = selectableProviders.find((item) => item.id === providerId)
-    if (!provider || !provider.models.includes(model)) return null
-    return { provider, model, ref: runtime.model }
+    return runtimeActions.selectedModel(selectableProviders)
   }, [runtime, selectableProviders])
-  const displayedSessions = useMemo(() => sortSessionsForSidebar(sessions, pinnedSessionIds), [pinnedSessionIds, sessions])
+  const displayedSessions = useMemo(
+    () => sortSessionsForSidebar(sessions, pinnedSessionIds, sidebarSessionOrder),
+    [pinnedSessionIds, sessions, sidebarSessionOrder],
+  )
   const visibleSessions = useMemo(() => standaloneSessionsForSidebar(displayedSessions), [displayedSessions])
-  const visibleSessionMotionRef = useListReorderAnimation<HTMLDivElement>(visibleSessions.map((session) => session.id))
+
+  function reorderSidebarSessions(reorderedSessionIds: string[]) {
+    const knownIds = new Set(sessions.map((session) => session.id))
+    const reordered = reorderedSessionIds.filter((id) => knownIds.has(id))
+    if (reordered.length === 0) return
+    setSidebarSessionOrder((current) => mergeOrderedList(
+      reordered,
+      current.filter((id) => knownIds.has(id)),
+    ))
+  }
+
+  useEffect(() => {
+    writeStringListPreference(SIDEBAR_SESSION_ORDER_KEY, sidebarSessionOrder)
+  }, [sidebarSessionOrder])
+
+  useEffect(() => {
+    const flushSidebarSessionOrder = () => {
+      writeStringListPreference(SIDEBAR_SESSION_ORDER_KEY, sidebarSessionOrder)
+    }
+    window.addEventListener(APPLICATION_PERSISTENCE_FLUSH_EVENT, flushSidebarSessionOrder)
+    return () => window.removeEventListener(APPLICATION_PERSISTENCE_FLUSH_EVENT, flushSidebarSessionOrder)
+  }, [sidebarSessionOrder])
   const workspaceIsWorkplace = runtime ? isSamePath(runtime.workspace, runtime.workplace) : false
   const workspaceTip = runtime ? workspaceTitle(runtime.workspace, runtime.workplace) : ''
   const projectPath = runtime?.workplace ?? runtime?.workspace ?? ''
@@ -302,8 +474,14 @@ export function useAppController() {
     try {
       const { sessions } = await listSessions()
       if (!appMountedRef.current) return []
-      setSessions(sessions)
-      return sessions
+      const merged = sessions.map((session) => {
+        const pending = pendingPermissionModeRef.current.get(session.id)
+        const known = knownSessionPermissionModesRef.current.get(session.id)
+        const mode = pending?.mode ?? known
+        return mode ? { ...session, mode } : session
+      })
+      setSessions(merged)
+      return merged
     } catch (e) {
       console.error('Failed to list sessions:', e)
       return []
@@ -319,80 +497,6 @@ export function useAppController() {
     } catch (e) {
       console.error('Failed to list projects:', e)
     }
-  }
-
-  async function refreshRuntime() {
-    try {
-      const next = await getRuntime()
-      if (!appMountedRef.current) return
-      setRuntime(next)
-      setRuntimeError(null)
-      alignWorkspacePanelToWorkspaceRoot(next.workspace)
-    } catch (e) {
-      if (appMountedRef.current) setRuntimeError((e as Error).message)
-    }
-  }
-  async function applyRuntimePatch(patch: RuntimePatch): Promise<boolean> {
-    try {
-      const next = await updateRuntime(patch)
-      if (!appMountedRef.current) return false
-      setRuntime(next)
-      setRuntimeError(null)
-      if (Object.prototype.hasOwnProperty.call(patch, 'workspace')) {
-        alignWorkspacePanelToWorkspaceRoot(next.workspace)
-      }
-      void refreshProjects()
-      await notifyRuntimeSettingChanges(patch, next)
-      return true
-    } catch (e) {
-      if (!appMountedRef.current) return false
-      setRuntimeError((e as Error).message)
-      await refreshRuntime()
-      return false
-    }
-  }
-  async function addAttachments() {
-    try {
-      const files = await selectAttachments()
-      if (!appMountedRef.current) return
-      if (files.length === 0) return
-      mergeAttachments(files)
-    } catch (e) {
-      if (appMountedRef.current) setRuntimeError((e as Error).message)
-    }
-  }
-
-  async function addAttachmentFiles(files: File[]) {
-    if (files.length === 0) return
-    try {
-      const refs: AttachmentRef[] = []
-      for (const file of files) {
-        const path = getPathForFile(file) || (file as File & { path?: string }).path || ''
-        if (path) {
-          refs.push({
-            path,
-            name: file.name || lastPathSegment(path),
-            kind: inferAttachmentKind(file.name || path, file.type),
-            size: file.size,
-          })
-        } else {
-          refs.push(await importAttachment(file))
-        }
-      }
-      mergeAttachments(refs)
-      if (!appMountedRef.current) return
-      setRuntimeError(null)
-    } catch (e) {
-      if (appMountedRef.current) setRuntimeError((e as Error).message)
-    }
-  }
-
-  function mergeAttachments(files: AttachmentRef[]) {
-    setAttachments((prev) => {
-      const byPath = new Map(prev.map((file) => [file.path, file]))
-      for (const file of files) byPath.set(file.path, file)
-      return Array.from(byPath.values())
-    })
   }
 
   async function chooseWorkspace() {
@@ -433,37 +537,6 @@ export function useAppController() {
     })
   }
 
-  function handleComposerDragEnter(e: React.DragEvent<HTMLDivElement>) {
-    if (!dataTransferHasFiles(e.dataTransfer)) return
-    e.preventDefault()
-    setDragActive(true)
-  }
-
-  function handleComposerDragOver(e: React.DragEvent<HTMLDivElement>) {
-    if (!dataTransferHasFiles(e.dataTransfer)) return
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'copy'
-    setDragActive(true)
-  }
-
-  function handleComposerDragLeave(e: React.DragEvent<HTMLDivElement>) {
-    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
-    setDragActive(false)
-  }
-
-  function handleComposerDrop(e: React.DragEvent<HTMLDivElement>) {
-    if (!dataTransferHasFiles(e.dataTransfer)) return
-    e.preventDefault()
-    setDragActive(false)
-    void addAttachmentFiles(Array.from(e.dataTransfer.files))
-  }
-
-  function handleComposerPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
-    const files = Array.from(e.clipboardData.files)
-    if (files.length === 0) return
-    e.preventDefault()
-    void addAttachmentFiles(files)
-  }
   const { send, stop } = createRunActions({
     abortRef, activeRunIdRef, activeApprovalScopeKey, appMountedRef, approvalGrantsRef, attachments, conversationViewRequestRef: sessionLoadRequestRef, currentSession, input, liveToolStepRef, loading, permissionMode,
     pendingConversationTurnRef, pendingRuntimeMessageRef, publishRuntimeEventNotice, refreshProjects, refreshSessions, requestApprovalForScope, runtime, sessionOwnership, setActivityNow, setAttachments,
@@ -471,6 +544,7 @@ export function useAppController() {
   })
   const {
     createConversationFromSidebar,
+    createProjectConversationFromSidebar,
     openSidebarPanel,
     closeSidebarPanel,
     switchSession,
@@ -511,10 +585,12 @@ export function useAppController() {
     setSessionOwnership,
     setSessions,
     setSidebarPanel,
+    resetDraftPermissionMode,
+    forgetSessionPermissionMode,
     settleApprovalPrompt,
     visibleSessions,
   })
-  const checkpointRecovery = useCheckpointRecovery({ abortRef, activeRunIdRef, appMountedRef, loading, permissionMode, runtime, stopRequestedRunIdRef, refreshProjects, refreshSessions, requestApprovalForScope, settleApprovalPrompt, switchSession, setActivityNow, setContextUsageSnapshot, setLoading, setWorkspaceArtifactVersion })
+  const checkpointRecovery = useCheckpointRecovery({ abortRef, activeRunIdRef, appMountedRef, getSessionPermissionMode, loading, runtime, stopRequestedRunIdRef, refreshProjects, refreshSessions, requestApprovalForScope, settleApprovalPrompt, switchSession, setActivityNow, setContextUsageSnapshot, setLoading, setWorkspaceArtifactVersion })
   const {
     openProjectCreator,
     activateProjectWorkspace,
@@ -557,6 +633,7 @@ export function useAppController() {
     setSessionOwnership,
     setSessions,
     setSidebarPanel,
+    resetDraftPermissionMode,
     setWorkspaceOpenRequest,
   })
   function alignWorkspacePanelToWorkspaceRoot(
@@ -566,12 +643,12 @@ export function useAppController() {
     alignWorkspaceSessionToRoot(root, sessionId)
   }
   return {
-    projects, currentSession, sessionOwnership, messages, historyWindow, loadOlderMessages, input, setInput, loading, permissionMode, setPermissionMode, runtime, attachments, setAttachments, dragActive, runtimeError, runtimeEventNotice, checkpointRecovery, sidebarCollapsed, workspacePanelCollapsed, workspacePanelReopenActive, setWorkspacePanelReopenActive, workspacePanelFullscreen,
+    projects, currentSession, sessionOwnership, messages, historyWindow, loadOlderMessages, input, setInput, loading, permissionMode, setPermissionMode, runtime, attachments, setAttachments, removeAttachment, removeLineCommentAttachment, updatePublishedLineCommentAttachment, attachmentRemoval, dragActive, runtimeError, runtimeEventNotice, checkpointRecovery, sidebarCollapsed, workspacePanelCollapsed, workspacePanelReopenActive, setWorkspacePanelReopenActive, workspacePanelFullscreen,
     workspacePanelTab, workspacePanelOpenTabs, setWorkspacePanelOpenTabs, workspaceBrowserTabs, workspaceBrowserUrl, workspaceBrowserHistory, navigateWorkspaceBrowser, openWorkspaceBrowserTab, updateWorkspaceBrowserTitle, moveWorkspaceBrowser, workspaceOpenRequest, setWorkspaceOpenRequest, workspaceFileDrafts, workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed,
     workspaceFileNavigatorWidth, setWorkspaceFileNavigatorWidth, workspaceExpandedPaths, setWorkspaceExpandedPaths, conversationCollapsed, setConversationCollapsed, now, pinnedSessionIds, sidebarPanel, sidebarSearch, setSidebarSearch, projectCreatorOpen, setProjectCreatorOpen, scrollRef, inputRef, shellRef, activityNow, workspaceArtifactVersion, setWorkspaceArtifactVersion,
-    controlTip, setControlTip, pendingApproval, settingsEntryRippling, sidebarWidth, setSidebarWidth, setWorkspacePanelWidth, workspacePanelLayout, layoutStyle, settingsOpen, directModulePage, settingsPage, canNavigateBack, canNavigateForward, openSettingsFromEntry, openSettingsPage, openDirectModulePage, navigateBack, navigateForward, closeSettingsFromEntry, selectableProviders,
-    selectedModel, displayedSessions, visibleSessions, visibleSessionMotionRef, workspaceIsWorkplace, workspaceTip, projectPath, contextUsage, latestTaskActivity, sidebarToggleTip, moreConversationTip, newConversationTip, uploadTip, sendTip, stopTip, requestWorkspaceSaveApproval, settleApprovalPrompt, refreshSessions, refreshProjects, applyRuntimePatch, addAttachments, chooseWorkspace,
-    openProjectCreator, activateProjectWorkspace, chooseProjectFolder, createProjectInFolder, relocateProject, resetWorkspace, openFileInWorkspace, openHyperlinkInside, openHyperlinkWithSystem, handleComposerDragEnter, handleComposerDragOver, handleComposerDragLeave, handleComposerDrop, handleComposerPaste, send, stop, notifyRuntimeWorkspaceFileSaved, createConversationFromSidebar,
+    controlTip, setControlTip, pendingApproval, settingsEntryRippling, sidebarWidth, setSidebarWidth, setWorkspacePanelWidth, workspacePanelLayout, layoutStyle, settingsOpen, settingsReturning, directModulePage, settingsPage, canNavigateBack, canNavigateForward, openSettingsFromEntry, openSettingsPage, openDirectModulePage, navigateBack, navigateForward, closeSettingsFromEntry, finishSettingsReturn, selectableProviders,
+    selectedModel, displayedSessions, visibleSessions, reorderSidebarSessions, workspaceIsWorkplace, workspaceTip, projectPath, contextUsage, latestTaskActivity, sidebarToggleTip, moreConversationTip, newConversationTip, uploadTip, sendTip, stopTip, requestWorkspaceSaveApproval, settleApprovalPrompt, refreshSessions, refreshProjects, applyRuntimePatch, applyModelPatch, addAttachments, chooseWorkspace,
+    openProjectCreator, activateProjectWorkspace, chooseProjectFolder, createProjectInFolder, relocateProject, resetWorkspace, openFileInWorkspace, openHyperlinkInside, openHyperlinkWithSystem, handleComposerDragEnter, handleComposerDragOver, handleComposerDragLeave, handleComposerDrop, handleComposerPaste, send, stop, notifyRuntimeWorkspaceFileSaved, createConversationFromSidebar, createProjectConversationFromSidebar,
     openSidebarPanel, closeSidebarPanel, switchSession, renameSession, archiveSession, deleteSessionPermanently, archiveProject, deleteProjectPermanently, archiveAllSessions, togglePinnedSession, beginSidebarResize, nudgeSidebar, toggleSidebar, beginWorkspacePanelResize, toggleWorkspacePanel, updateWorkspacePanelReopenPresence, toggleWorkspacePanelFullscreen, nudgeWorkspacePanel,
     openWorkspacePanelTab, updateWorkspaceFileDraft, closeWorkspacePanelTab, defaultWorkspacePath, workspacePanelRoot, workspacePanelUsingTemporaryRoot,
   }

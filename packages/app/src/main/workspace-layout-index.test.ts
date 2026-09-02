@@ -53,6 +53,28 @@ describe('WorkspaceLayoutIndex', () => {
     }
   })
 
+  it('keeps a wide responsive workspace width in the recovery mirror', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ls-layout-wide-'))
+    try {
+      const index = new WorkspaceLayoutIndex({ dataDir: dir })
+      const snapshot = await index.save({
+        workspacePath: 'D:\\work',
+        width: 2048,
+        collapsed: false,
+        fullscreen: false,
+        activeTab: 'review',
+        openTabs: ['review'],
+        openRequest: null,
+        fileNavigatorCollapsed: false,
+        drafts: {},
+      })
+
+      expect(snapshot.width).toBe(2048)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('persists and rebinds independent layout snapshots for concurrent conversations', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'ls-layout-sessions-'))
     try {

@@ -188,7 +188,9 @@ function normalizeWorkspaceLayoutSnapshot(input: unknown): WorkspaceLayoutSnapsh
     updatedAt: new Date().toISOString(),
     workspacePath,
     sessionId: normalizeOptionalString(item.sessionId),
-    width: clampNumber(item.width, 280, 1200, 360),
+    // Renderer widths scale with the window and can exceed the legacy 1200px
+    // mirror bound on wide displays.
+    width: clampNumber(item.width, 280, 4096, 360),
     collapsed: item.collapsed === true,
     fullscreen: item.fullscreen === true,
     activeTab,

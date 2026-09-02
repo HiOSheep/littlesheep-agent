@@ -14,6 +14,11 @@ import { flushSync } from 'react-dom'
 import { WORKSPACE_PANEL_MOTION_MS } from '../app-shell/preferences'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { FolderGlyphIcon } from '../ui/icons'
+import {
+  COLUMN_RESIZE_END_EVENT,
+  WORKSPACE_NAVIGATOR_MOTION_END_EVENT,
+  WORKSPACE_NAVIGATOR_MOTION_START_EVENT,
+} from '../ui/resize'
 import { transientTriggerProps } from '../ui/transient'
 import { resolveWorkspaceFileNavigatorLayout } from '../workspace-layout'
 import { beginWorkspaceNavigatorResizeInteraction } from './navigator-resize-interaction'
@@ -39,6 +44,8 @@ export function WorkspaceNavigatorFrame({
   const navigatorRef = useRef<HTMLElement | null>(null)
   const animationRef = useRef<Animation | null>(null)
   const activeDragCleanupRef = useRef<(() => void) | null>(null)
+  const navigatorMotionRef = useRef(false)
+  const finalMeasureRef = useRef<(() => void) | null>(null)
   const [availableWidth, setAvailableWidth] = useState(0)
   const layout = useMemo(
     () => resolveWorkspaceFileNavigatorLayout(availableWidth, width),
@@ -68,46 +75,91 @@ export function WorkspaceNavigatorFrame({
 
   useLayoutEffect(() => {
     const parent = navigatorRef.current?.parentElement
-    if (!parent) return
+    // The ordinary folder navigator is mounted in a narrow shared wrapper
+    // while collapsed so its reopen rail can remain visible. Measuring that
+    // wrapper would reduce the available width to the rail itself and lock
+    // the navigator at zero width when reopening.
+    const layoutContainer = parent?.classList.contains('workspace-shared-file-navigator')
+      ? parent.parentElement
+      : parent
+    if (!layoutContainer) return
     const measure = () => {
-      const nextWidth = Math.round(parent.getBoundingClientRect().width)
+      // Resizing the outer workspace changes this container every display
+      // frame. Deferring the React state update until the pointer is released
+      // prevents a complete tree render from competing with the drag.
+      // The collapse animation changes several flex dimensions at once. Keep
+      // its layout state stable until the compositor animation has completed;
+      // otherwise ResizeObserver can schedule React renders mid-transition.
+      if (
+        document.body.classList.contains('is-resizing-column')
+        || navigatorMotionRef.current
+      ) return
+      const nextWidth = Math.round(layoutContainer.getBoundingClientRect().width)
       if (nextWidth <= 0) return
       setAvailableWidth((current) => current === nextWidth ? current : nextWidth)
     }
+    finalMeasureRef.current = measure
     measure()
-    if (typeof ResizeObserver === 'undefined') return
+    const handleColumnResizeEnd = () => {
+      window.requestAnimationFrame(measure)
+    }
+    window.addEventListener(COLUMN_RESIZE_END_EVENT, handleColumnResizeEnd)
+    if (typeof ResizeObserver === 'undefined') {
+      return () => window.removeEventListener(COLUMN_RESIZE_END_EVENT, handleColumnResizeEnd)
+    }
     const observer = new ResizeObserver(measure)
-    observer.observe(parent)
-    return () => observer.disconnect()
+    observer.observe(layoutContainer)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener(COLUMN_RESIZE_END_EVENT, handleColumnResizeEnd)
+      if (finalMeasureRef.current === measure) finalMeasureRef.current = null
+    }
   }, [])
 
   useEffect(() => () => {
     animationRef.current?.cancel()
     activeDragCleanupRef.current?.()
+    document.body.classList.remove('is-workspace-navigator-motion')
   }, [])
+
+  const finishNavigatorMotion = (navigator: HTMLElement) => {
+    navigatorMotionRef.current = false
+    navigator.classList.remove('navigator-motion')
+    document.body.classList.remove('is-workspace-navigator-motion')
+    window.dispatchEvent(new Event(WORKSPACE_NAVIGATOR_MOTION_END_EVENT))
+    window.requestAnimationFrame(() => finalMeasureRef.current?.())
+  }
 
   const changeCollapsed = (nextCollapsed: boolean) => {
     if (nextCollapsed === collapsed) return
-    const inner = navigatorRef.current?.querySelector<HTMLElement>('.workspace-files-navigator-inner')
-    if (!inner) {
+    const navigator = navigatorRef.current
+    const inner = navigator?.querySelector<HTMLElement>('.workspace-files-navigator-inner')
+    if (!navigator || !inner) {
       onCollapsedChange(nextCollapsed)
       return
     }
 
+    navigatorMotionRef.current = true
+    navigator.classList.add('navigator-motion')
+    document.body.classList.add('is-workspace-navigator-motion')
+    window.dispatchEvent(new Event(WORKSPACE_NAVIGATOR_MOTION_START_EVENT))
     const runningAnimation = animationRef.current
     const visualStyle = getComputedStyle(inner)
     const visualOpacity = Number.parseFloat(visualStyle.opacity)
     const visualTransform = runningAnimation && visualStyle.transform !== 'none'
       ? visualStyle.transform
       : undefined
+    const visualWidth = inner.getBoundingClientRect().width
     runningAnimation?.cancel()
     animationRef.current = null
     if (!collapsed) rememberExpandedWidth()
 
     flushSync(() => onCollapsedChange(nextCollapsed))
 
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches || typeof inner.animate !== 'function') return
-    const visualWidth = inner.getBoundingClientRect().width
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches || typeof inner.animate !== 'function') {
+      finishNavigatorMotion(navigator)
+      return
+    }
     const startOpacity = Number.isFinite(visualOpacity) ? visualOpacity : collapsed ? 0 : 1
     const startTransform = visualTransform
       ?? (collapsed ? `translate3d(${visualWidth}px, 0, 0)` : 'translate3d(0, 0, 0)')
@@ -116,7 +168,10 @@ export function WorkspaceNavigatorFrame({
       ? `translate3d(${visualWidth}px, 0, 0)`
       : 'translate3d(0, 0, 0)'
     const remainingDistance = Math.abs(endOpacity - startOpacity)
-    if (remainingDistance <= 0.001) return
+    if (remainingDistance <= 0.001) {
+      finishNavigatorMotion(navigator)
+      return
+    }
 
     const animation = inner.animate(
       [
@@ -133,6 +188,7 @@ export function WorkspaceNavigatorFrame({
       if (animationRef.current !== animation) return
       animationRef.current = null
       animation.cancel()
+      finishNavigatorMotion(navigator)
     }).catch(() => {
       // Fast reverse clicks intentionally cancel the in-flight animation.
     })
@@ -143,6 +199,8 @@ export function WorkspaceNavigatorFrame({
   const beginResize = (event: React.PointerEvent<HTMLDivElement>) => {
     animationRef.current?.cancel()
     animationRef.current = null
+    const navigator = navigatorRef.current
+    if (navigatorMotionRef.current && navigator) finishNavigatorMotion(navigator)
     beginWorkspaceNavigatorResizeInteraction(event, {
       collapsed,
       layout,

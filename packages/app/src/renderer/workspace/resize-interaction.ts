@@ -17,6 +17,7 @@ export interface WorkspaceResizeContext {
   workspacePanelCollapsed: boolean
   workspacePanelFullscreen: boolean
   activeDragCleanupRef: MutableRefObject<(() => void) | null>
+  workspacePanelSettleTimerRef: MutableRefObject<number | undefined>
   setControlTip: Dispatch<SetStateAction<FloatingHelpTip | null>>
   workspacePanelLayout: ReturnType<typeof resolveWorkspacePanelLayout>
   shellRef: RefObject<HTMLDivElement>
@@ -30,7 +31,7 @@ export function beginWorkspacePanelResizeInteraction(
   event: React.PointerEvent<HTMLDivElement>,
   context: WorkspaceResizeContext,
 ) {
-  const { workspacePanelCollapsed, workspacePanelFullscreen, activeDragCleanupRef, setControlTip, workspacePanelLayout, shellRef, setWorkspacePanelCollapsed, setWorkspacePanelFullscreen, setWorkspacePanelWidth, scheduleComposerHeightSync } = context
+  const { workspacePanelCollapsed, workspacePanelFullscreen, activeDragCleanupRef, workspacePanelSettleTimerRef, setControlTip, workspacePanelLayout, shellRef, setWorkspacePanelCollapsed, setWorkspacePanelFullscreen, setWorkspacePanelWidth, scheduleComposerHeightSync } = context
 
     if (workspacePanelCollapsed || workspacePanelFullscreen) return
     if (event.button !== 0) return
@@ -44,10 +45,15 @@ export function beginWorkspacePanelResizeInteraction(
     let draftWidth = startWidth
     let draftMode: WorkspacePanelDragMode = 'split'
     let frameHandle: number | undefined
+    let collapseSettleTimer: number | undefined
     let thresholdAnimationTimer: number | undefined
     let pendingVisualWidth = startWidth
     let appliedVisualWidth = startWidth
     beginResize('column')
+    window.clearTimeout(workspacePanelSettleTimerRef.current)
+    workspacePanelSettleTimerRef.current = undefined
+    shellRef.current?.classList.remove('workspace-panel-collapse-settling', 'workspace-panel-collapse-handoff')
+    shellRef.current?.style.removeProperty('--workspace-panel-surface-width')
     shellRef.current?.classList.add('workspace-panel-drag-live')
     try {
       resizer.setPointerCapture(pointerId)
@@ -108,7 +114,7 @@ export function beginWorkspacePanelResizeInteraction(
       }
     }
 
-    const handlePointerUp = () => {
+    const handlePointerUp = (upEvent: Event) => {
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
       window.removeEventListener('pointercancel', handlePointerUp)
@@ -121,32 +127,88 @@ export function beginWorkspacePanelResizeInteraction(
       }
       if (resizer.hasPointerCapture(pointerId)) resizer.releasePointerCapture(pointerId)
 
-      const shell = shellRef.current
-      flushSync(() => {
+      const releaseClientX = 'clientX' in upEvent ? Number((upEvent as PointerEvent).clientX) : Number.NaN
+      if (Number.isFinite(releaseClientX)) {
+        const releaseResult = resolveWorkspacePanelDrag(
+          startWidth - (releaseClientX - startX),
+          workspacePanelLayout,
+        )
+        draftMode = releaseResult.mode
+        draftWidth = releaseResult.width
+        pendingVisualWidth = draftWidth
         if (draftMode === 'collapsed') {
-          setWorkspacePanelCollapsed(true)
-          setWorkspacePanelFullscreen(false)
-          return
+          shellRef.current?.classList.add('workspace-panel-drag-collapsed')
+          shellRef.current?.classList.remove('workspace-panel-drag-fullscreen')
+        } else if (draftMode === 'fullscreen') {
+          shellRef.current?.classList.add('workspace-panel-drag-fullscreen')
+          shellRef.current?.classList.remove('workspace-panel-drag-collapsed')
+        } else {
+          shellRef.current?.classList.remove('workspace-panel-drag-collapsed', 'workspace-panel-drag-fullscreen')
         }
-        if (draftMode === 'fullscreen') {
+        applyDragFrame()
+      }
+
+      const shell = shellRef.current
+      if (draftMode === 'collapsed') {
+        if (!shell) {
+          flushSync(() => {
+            setWorkspacePanelCollapsed(true)
+            setWorkspacePanelFullscreen(false)
+          })
+        } else {
+          /* Keep the minimum drag width as an explicit visual width while the
+             transform finishes. Restore the saved width after the card is out
+             of the viewport, avoiding a release-time flash into the chat. */
+          shell.style.setProperty('--workspace-panel-surface-width', `${WORKSPACE_PANEL_WIDTH_MIN}px`)
+          shell.classList.add('workspace-panel-collapse-settling')
+          flushSync(() => {
+            setWorkspacePanelCollapsed(true)
+            setWorkspacePanelFullscreen(false)
+          })
+          shell.classList.remove(
+            'workspace-panel-drag-live',
+            'workspace-panel-drag-collapsed',
+            'workspace-panel-drag-fullscreen',
+            'workspace-panel-threshold-animating',
+          )
+          collapseSettleTimer = window.setTimeout(() => {
+            const timer = collapseSettleTimer
+            collapseSettleTimer = undefined
+            if (workspacePanelSettleTimerRef.current === timer) workspacePanelSettleTimerRef.current = undefined
+            const currentShell = shellRef.current
+            if (!currentShell) return
+            currentShell.classList.add('workspace-panel-collapse-handoff')
+            currentShell.style.setProperty('--workspace-panel-width', `${workspacePanelLayout.width}px`)
+            currentShell.style.removeProperty('--workspace-panel-surface-width')
+            currentShell.classList.remove('workspace-panel-collapse-settling')
+            void currentShell.offsetWidth
+            currentShell.classList.remove('workspace-panel-collapse-handoff')
+          }, WORKSPACE_PANEL_MOTION_MS)
+          workspacePanelSettleTimerRef.current = collapseSettleTimer
+        }
+      } else {
+        flushSync(() => {
+          if (draftMode === 'fullscreen') {
+            setWorkspacePanelCollapsed(false)
+            setWorkspacePanelFullscreen(true)
+            return
+          }
+          const finalWidth = clampNumber(draftWidth, WORKSPACE_PANEL_WIDTH_MIN, workspacePanelLayout.maxSplitWidth)
+          setWorkspacePanelWidth(finalWidth)
           setWorkspacePanelCollapsed(false)
-          setWorkspacePanelFullscreen(true)
-          return
-        }
-        const finalWidth = clampNumber(draftWidth, WORKSPACE_PANEL_WIDTH_MIN, workspacePanelLayout.maxSplitWidth)
-        setWorkspacePanelWidth(finalWidth)
-        setWorkspacePanelCollapsed(false)
-        setWorkspacePanelFullscreen(false)
-      })
-      shell?.style.setProperty(
-        '--workspace-panel-width',
-        `${draftMode === 'split' ? draftWidth : workspacePanelLayout.width}px`,
-      )
-      shell?.classList.remove(
-        'workspace-panel-drag-live',
-        'workspace-panel-drag-collapsed',
-        'workspace-panel-drag-fullscreen',
-      )
+          setWorkspacePanelFullscreen(false)
+        })
+        shell?.style.setProperty(
+          '--workspace-panel-width',
+          `${draftMode === 'split' ? draftWidth : workspacePanelLayout.width}px`,
+        )
+        shell?.classList.remove(
+          'workspace-panel-drag-live',
+          'workspace-panel-drag-collapsed',
+          'workspace-panel-drag-fullscreen',
+          'workspace-panel-threshold-animating',
+        )
+      }
       endResize('column')
       scheduleComposerHeightSync()
     }
@@ -158,13 +220,20 @@ export function beginWorkspacePanelResizeInteraction(
       window.removeEventListener('blur', handlePointerUp)
       if (frameHandle !== undefined) window.cancelAnimationFrame(frameHandle)
       window.clearTimeout(thresholdAnimationTimer)
+      if (collapseSettleTimer !== undefined) {
+        window.clearTimeout(collapseSettleTimer)
+        if (workspacePanelSettleTimerRef.current === collapseSettleTimer) workspacePanelSettleTimerRef.current = undefined
+      }
       if (resizer.hasPointerCapture(pointerId)) resizer.releasePointerCapture(pointerId)
       shellRef.current?.classList.remove(
         'workspace-panel-drag-live',
         'workspace-panel-drag-collapsed',
         'workspace-panel-drag-fullscreen',
         'workspace-panel-threshold-animating',
+        'workspace-panel-collapse-settling',
+        'workspace-panel-collapse-handoff',
       )
+      shellRef.current?.style.removeProperty('--workspace-panel-surface-width')
       endResize('column')
       activeDragCleanupRef.current = null
     }

@@ -1,7 +1,7 @@
 // Owns renderer layout state, two-threshold resize interactions, workspace tabs, drafts, and recovery mirrors.
 import '@xterm/xterm/css/xterm.css'
 import type { Dispatch, SetStateAction } from 'react'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { APPLICATION_PERSISTENCE_FLUSH_EVENT } from '../../shared/application-state-contracts'
 import {
   saveWorkspaceFile,
@@ -29,9 +29,18 @@ import {
   WORKSPACE_PANEL_WIDTH_DEFAULT,
   WORKSPACE_PANEL_WIDTH_MAX,
   WORKSPACE_PANEL_WIDTH_MIN,
+  RESPONSIVE_LAYOUT_PREFERENCE_MAX,
+  RESPONSIVE_LAYOUT_PREFERENCE_MIN,
   isWorkspacePanelReopenHotzone,
-  resolveWorkspacePanelLayout
+  resolveResponsiveWidth,
+  resolveWorkspacePanelLayout,
+  toResponsiveWidthPreference,
 } from '../workspace-layout'
+import {
+  WINDOW_RESIZE_END_EVENT,
+  WINDOW_RESIZE_SETTLE_DELAY_MS,
+  WINDOW_RESIZE_START_EVENT,
+} from '../ui/resize'
 import {
   DEFAULT_WORKSPACE_PANEL_TABS,
   WORKSPACE_PANEL_OPEN_TABS_MAX,
@@ -75,23 +84,66 @@ export function useWorkspaceLayoutController({
   const shellRef = useRef<HTMLDivElement>(null)
   const composerSyncFrameRef = useRef<number>()
   const viewportResizeFrameRef = useRef<number>()
+  const viewportResizeEndTimerRef = useRef<number>()
   const activeDragCleanupRef = useRef<(() => void) | null>(null)
   const sidebarSettleFrameRef = useRef<number>()
   const sidebarSettleTimerRef = useRef<number>()
+  const workspacePanelSettleTimerRef = useRef<number>()
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
-  const [sidebarWidth, setSidebarWidth] = useState(() =>
-    readNumberPreference(SIDEBAR_WIDTH_KEY, SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX),
+  const [sidebarWidthPreference, setSidebarWidthPreference] = useState(() =>
+    readNumberPreference(
+      SIDEBAR_WIDTH_KEY,
+      SIDEBAR_WIDTH_DEFAULT,
+      RESPONSIVE_LAYOUT_PREFERENCE_MIN,
+      RESPONSIVE_LAYOUT_PREFERENCE_MAX,
+    ),
   )
-  const [workspacePanelWidth, setWorkspacePanelWidth] = useState(() =>
+  const [workspacePanelWidthPreference, setWorkspacePanelWidthPreference] = useState(() =>
     readNumberPreference(
       WORKSPACE_PANEL_WIDTH_KEY,
       WORKSPACE_PANEL_WIDTH_DEFAULT,
-      WORKSPACE_PANEL_WIDTH_MIN,
-      WORKSPACE_PANEL_WIDTH_MAX,
+      RESPONSIVE_LAYOUT_PREFERENCE_MIN,
+      RESPONSIVE_LAYOUT_PREFERENCE_MAX,
     ),
   )
-  const durableLayoutRef = useRef({ sidebarCollapsed, sidebarWidth, workspacePanelWidth })
-  durableLayoutRef.current = { sidebarCollapsed, sidebarWidth, workspacePanelWidth }
+  const sidebarWidth = useMemo(() => resolveResponsiveWidth(
+    sidebarWidthPreference,
+    viewportWidth,
+    SIDEBAR_WIDTH_MIN,
+    SIDEBAR_WIDTH_MAX,
+  ), [sidebarWidthPreference, viewportWidth])
+  const workspacePanelWidth = useMemo(() => resolveResponsiveWidth(
+    workspacePanelWidthPreference,
+    viewportWidth,
+    WORKSPACE_PANEL_WIDTH_MIN,
+    WORKSPACE_PANEL_WIDTH_MAX,
+  ), [viewportWidth, workspacePanelWidthPreference])
+  const setSidebarWidth = useCallback<Dispatch<SetStateAction<number>>>((update) => {
+    setSidebarWidthPreference((preference) => {
+      const currentWidth = resolveResponsiveWidth(
+        preference,
+        viewportWidth,
+        SIDEBAR_WIDTH_MIN,
+        SIDEBAR_WIDTH_MAX,
+      )
+      const nextWidth = resolveStateAction(update, currentWidth)
+      return toResponsiveWidthPreference(nextWidth, viewportWidth, SIDEBAR_WIDTH_MAX)
+    })
+  }, [viewportWidth])
+  const setWorkspacePanelWidth = useCallback<Dispatch<SetStateAction<number>>>((update) => {
+    setWorkspacePanelWidthPreference((preference) => {
+      const currentWidth = resolveResponsiveWidth(
+        preference,
+        viewportWidth,
+        WORKSPACE_PANEL_WIDTH_MIN,
+        WORKSPACE_PANEL_WIDTH_MAX,
+      )
+      const nextWidth = resolveStateAction(update, currentWidth)
+      return toResponsiveWidthPreference(nextWidth, viewportWidth, WORKSPACE_PANEL_WIDTH_MAX)
+    })
+  }, [viewportWidth])
+  const durableLayoutRef = useRef({ sidebarCollapsed, sidebarWidthPreference, workspacePanelWidthPreference })
+  durableLayoutRef.current = { sidebarCollapsed, sidebarWidthPreference, workspacePanelWidthPreference }
   const {
     activeWorkspaceSessionKey,
     activeWorkspaceSessionKeyRef,
@@ -128,11 +180,10 @@ export function useWorkspaceLayoutController({
     runtime,
     currentSession,
     defaultWorkspacePath,
-    workspacePanelWidth,
-    setWorkspacePanelWidth,
+    workspacePanelWidthPreference,
+    setWorkspacePanelWidthPreference,
     setWorkspacePanelReopenActive,
   })
-
   const browserController = useWorkspaceBrowserController({
     workspaceBrowserTabs,
     setWorkspaceBrowserTabs,
@@ -154,14 +205,12 @@ export function useWorkspaceLayoutController({
     '--workspace-panel-width': `${workspacePanelLayout.width}px`,
     '--two-stage-resize-motion': `${TWO_STAGE_RESIZE_MOTION_MS}ms`,
   }) as CSSProperties, [sidebarWidth, workspacePanelLayout.width])
-
   useEffect(() => {
-    writeNumberPreference(SIDEBAR_WIDTH_KEY, sidebarWidth)
-  }, [sidebarWidth])
-
+    writeNumberPreference(SIDEBAR_WIDTH_KEY, sidebarWidthPreference)
+  }, [sidebarWidthPreference])
   useEffect(() => {
-    writeNumberPreference(WORKSPACE_PANEL_WIDTH_KEY, workspacePanelWidth)
-  }, [workspacePanelWidth])
+    writeNumberPreference(WORKSPACE_PANEL_WIDTH_KEY, workspacePanelWidthPreference)
+  }, [workspacePanelWidthPreference])
 
   useEffect(() => {
     writeBooleanPreference(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed)
@@ -171,8 +220,8 @@ export function useWorkspaceLayoutController({
     const flushLayoutPreferences = () => {
       const state = durableLayoutRef.current
       writeBooleanPreference(SIDEBAR_COLLAPSED_KEY, state.sidebarCollapsed)
-      writeNumberPreference(SIDEBAR_WIDTH_KEY, state.sidebarWidth)
-      writeNumberPreference(WORKSPACE_PANEL_WIDTH_KEY, state.workspacePanelWidth)
+      writeNumberPreference(SIDEBAR_WIDTH_KEY, state.sidebarWidthPreference)
+      writeNumberPreference(WORKSPACE_PANEL_WIDTH_KEY, state.workspacePanelWidthPreference)
     }
     window.addEventListener(APPLICATION_PERSISTENCE_FLUSH_EVENT, flushLayoutPreferences)
     return () => window.removeEventListener(APPLICATION_PERSISTENCE_FLUSH_EVENT, flushLayoutPreferences)
@@ -203,17 +252,62 @@ export function useWorkspaceLayoutController({
   }, [])
 
   useEffect(() => {
+    const beginWindowResize = () => {
+      if (document.body.classList.contains('is-window-resizing')) return
+      document.body.classList.add('is-window-resizing')
+      window.dispatchEvent(new Event(WINDOW_RESIZE_START_EVENT))
+    }
+    const scheduleWindowResizeEnd = () => {
+      window.clearTimeout(viewportResizeEndTimerRef.current)
+      viewportResizeEndTimerRef.current = window.setTimeout(() => {
+        viewportResizeEndTimerRef.current = undefined
+        const settledViewportWidth = window.innerWidth
+        applyViewportLayoutVariables(settledViewportWidth)
+        setViewportWidth((current) => current === settledViewportWidth ? current : settledViewportWidth)
+        document.body.classList.remove('is-window-resizing')
+        window.dispatchEvent(new Event(WINDOW_RESIZE_END_EVENT))
+        scheduleComposerHeightSync()
+      }, WINDOW_RESIZE_SETTLE_DELAY_MS)
+    }
+    const applyViewportLayoutVariables = (nextViewportWidth: number) => {
+      const shell = shellRef.current
+      if (!shell || !Number.isFinite(nextViewportWidth) || nextViewportWidth <= 0) return
+
+      const state = durableLayoutRef.current
+      const nextSidebarWidth = resolveResponsiveWidth(
+        state.sidebarWidthPreference,
+        nextViewportWidth,
+        SIDEBAR_WIDTH_MIN,
+        SIDEBAR_WIDTH_MAX,
+      )
+      const nextWorkspacePreferenceWidth = resolveResponsiveWidth(
+        state.workspacePanelWidthPreference,
+        nextViewportWidth,
+        WORKSPACE_PANEL_WIDTH_MIN,
+        WORKSPACE_PANEL_WIDTH_MAX,
+      )
+      const nextWorkspaceLayout = resolveWorkspacePanelLayout({
+        viewportWidth: nextViewportWidth,
+        sidebarWidth: nextSidebarWidth,
+        sidebarCollapsed: state.sidebarCollapsed,
+        preferredWidth: nextWorkspacePreferenceWidth,
+      })
+
+      // Native window resizing can emit one event per display frame. Updating
+      // the shell variables directly keeps the layout continuous without
+      // re-rendering the whole application on every frame. React commits the
+      // same values once the resize burst settles.
+      shell.style.setProperty('--sidebar-width', `${nextSidebarWidth}px`)
+      shell.style.setProperty('--workspace-panel-width', `${nextWorkspaceLayout.width}px`)
+    }
     const commitResize = () => {
       viewportResizeFrameRef.current = undefined
       const nextViewportWidth = window.innerWidth
-      setViewportWidth((current) => current === nextViewportWidth ? current : nextViewportWidth)
-      setSidebarWidth((value) => {
-        const next = clampNumber(value, SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX)
-        return next === value ? value : next
-      })
-      scheduleComposerHeightSync()
+      applyViewportLayoutVariables(nextViewportWidth)
     }
     const handleResize = () => {
+      beginWindowResize()
+      scheduleWindowResizeEnd()
       if (viewportResizeFrameRef.current !== undefined) return
       viewportResizeFrameRef.current = window.requestAnimationFrame(commitResize)
     }
@@ -222,11 +316,18 @@ export function useWorkspaceLayoutController({
       window.removeEventListener('resize', handleResize)
       window.cancelAnimationFrame(viewportResizeFrameRef.current ?? 0)
       viewportResizeFrameRef.current = undefined
+      window.clearTimeout(viewportResizeEndTimerRef.current)
+      viewportResizeEndTimerRef.current = undefined
+      document.body.classList.remove('is-window-resizing')
       window.cancelAnimationFrame(composerSyncFrameRef.current ?? 0)
     }
   }, [])
 
   function scheduleComposerHeightSync() {
+    if (
+      document.body.classList.contains('is-resizing-column')
+      || document.body.classList.contains('is-window-resizing')
+    ) return
     window.cancelAnimationFrame(composerSyncFrameRef.current ?? 0)
     composerSyncFrameRef.current = window.requestAnimationFrame(() => {
       composerSyncFrameRef.current = undefined
@@ -247,7 +348,7 @@ export function useWorkspaceLayoutController({
     setSidebarCollapsed((value) => !value)
   }
   function beginWorkspacePanelResize(event: React.PointerEvent<HTMLDivElement>) {
-    beginWorkspacePanelResizeInteraction(event, { workspacePanelCollapsed, workspacePanelFullscreen, activeDragCleanupRef, setControlTip, workspacePanelLayout, shellRef, setWorkspacePanelCollapsed, setWorkspacePanelFullscreen, setWorkspacePanelWidth, scheduleComposerHeightSync })
+    beginWorkspacePanelResizeInteraction(event, { workspacePanelCollapsed, workspacePanelFullscreen, activeDragCleanupRef, workspacePanelSettleTimerRef, setControlTip, workspacePanelLayout, shellRef, setWorkspacePanelCollapsed, setWorkspacePanelFullscreen, setWorkspacePanelWidth, scheduleComposerHeightSync })
   }
 
   function toggleWorkspacePanel() {
@@ -458,6 +559,8 @@ export function useWorkspaceLayoutController({
     window.cancelAnimationFrame(composerSyncFrameRef.current ?? 0)
     window.cancelAnimationFrame(sidebarSettleFrameRef.current ?? 0)
     window.clearTimeout(sidebarSettleTimerRef.current)
+    window.clearTimeout(workspacePanelSettleTimerRef.current)
+    workspacePanelSettleTimerRef.current = undefined
     activeDragCleanupRef.current?.()
   }, [])
 
@@ -486,6 +589,12 @@ export function useWorkspaceLayoutController({
     alignWorkspaceSessionToRoot, rebindWorkspaceSessionLayouts,
     defaultWorkspacePath, workspacePanelRoot, workspacePanelUsingTemporaryRoot,
   }
+}
+
+function resolveStateAction<T>(update: SetStateAction<T>, current: T): T {
+  return typeof update === 'function'
+    ? (update as (value: T) => T)(current)
+    : update
 }
 
 export type WorkspaceLayoutController = ReturnType<typeof useWorkspaceLayoutController>

@@ -21,6 +21,7 @@ import type {
   RuntimeActiveRunActionOutcome,
   RuntimeActiveRunSnapshot,
 } from '@littlesheep/types'
+import type { RuntimeWebProviderCheck } from '../../shared/runtime-api-contracts.js'
 
 export interface LocalAppApiServerOptions {
   /** Port to listen on. 0 selects a random free loopback port. */
@@ -35,7 +36,7 @@ export interface LocalAppApiServerOptions {
   dataDir: string
   workplaceDir: string
   rebuildRunner: () => Promise<void>
-  updateRuntimeConfig: (config: Config) => Promise<void>
+  updateRuntimeConfig: (config: Config) => Promise<Config | void>
   selectWorkspace?: () => Promise<string | null>
   selectAttachments?: () => Promise<AttachmentRef[]>
   selectProjectMemoryExport?: (projectName: string, projectPath: string) => Promise<string | null>
@@ -65,6 +66,8 @@ export interface LocalAppApiServerOptions {
   ) => Promise<string | null>
   /** Startup-scoped secret for the loopback-only Provider calibration route. */
   providerCalibrationToken?: string
+  getWebProviderCheck?: () => RuntimeWebProviderCheck | undefined
+  checkWebProvider?: () => Promise<RuntimeWebProviderCheck>
   /** Hidden, authenticated desktop lifecycle surface for isolated Electron acceptance only. */
   desktopAcceptance?: {
     token: string

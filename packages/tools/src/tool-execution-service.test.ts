@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type {
   AgentTool,
+  NetworkReadPolicy,
   ToolContext,
   ToolRegistration,
   ToolResult,
@@ -55,6 +56,79 @@ describe('ToolExecutionService', () => {
     expect(approve).not.toHaveBeenCalled();
     expect(execute).not.toHaveBeenCalled();
     expect(service.snapshot().records[0]?.status).toBe('validation_failed');
+  });
+
+  it('rejects unknown web fields before approval and execution', async () => {
+    const approve = vi.fn(async () => true);
+    const execute = vi.fn(async () => ({ callId: '', ok: true } satisfies ToolResult));
+    const strictWebTool: AgentTool = {
+      name: 'web_search',
+      description: 'strict web fixture',
+      inputSchema: z.object({ query: z.string() }).strict(),
+      execute,
+    };
+    const service = createService([registration(strictWebTool, 'builtin')], {
+      toolContext: { permissionMode: 'restricted', networkPolicy: webPolicy(), approve },
+    });
+
+    const results = await service.executeBatch([{
+      callId: 'invalid-web',
+      name: 'web_search',
+      input: { query: 'public docs', headers: { Authorization: 'Bearer fixture-secret' } },
+    }]);
+
+    expect(results.get(0)).toMatchObject({ ok: false });
+    expect(service.snapshot().records[0]).toMatchObject({ status: 'validation_failed', errorKind: 'input_validation' });
+    expect(approve).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('uses projected web input for approval, events and records without persisting model-only evidence', async () => {
+    const secret = 'fixture-secret-value';
+    const pageBody = 'CURRENT_WEB_BODY_SENTINEL';
+    const approve = vi.fn(async () => true);
+    const events: ToolStreamEvent[] = [];
+    const web: AgentTool = {
+      name: 'web_search',
+      description: 'projected web fixture',
+      inputSchema: z.object({ query: z.string() }).strict(),
+      persistence: {
+        projectInput(input) {
+          const query = String((input as { query?: unknown }).query ?? '');
+          return { queryHash: `hash:${query.length}`, sensitiveQuery: true, sensitiveCategories: ['credential'] };
+        },
+      },
+      async execute() {
+        return {
+          callId: '', ok: true,
+          output: JSON.stringify({ citationIds: ['web-citation-1'] }),
+          modelOutput: { externalUntrusted: true, content: pageBody },
+        };
+      },
+    };
+    const service = createService([registration(web, 'builtin')], {
+      onToolEvent: (event) => events.push(event),
+      toolContext: {
+        permissionMode: 'restricted',
+        networkPolicy: webPolicy({ sensitiveQueryPolicy: 'approve' }),
+        approve,
+      },
+    });
+
+    const results = await service.executeBatch([{
+      callId: 'sensitive-web', name: 'web_search', input: { query: `find api_key=${secret} docs` },
+    }]);
+
+    expect(String(results.get(0)?.modelOutput)).toContain(pageBody);
+    expect(String(results.get(0)?.modelOutput)).toContain('externalUntrusted');
+    expect(approve).toHaveBeenCalledWith('web_search', expect.objectContaining({
+      queryHash: expect.any(String), sensitiveQuery: true, sensitiveCategories: ['credential'],
+    }));
+    const durableAudit = JSON.stringify({ events, snapshot: service.snapshot() });
+    expect(durableAudit).not.toContain(secret);
+    expect(durableAudit).not.toContain(pageBody);
+    expect(durableAudit).toContain('queryHash');
+    expect(durableAudit).toContain('web-citation-1');
   });
 
   it('records approval denial without invoking the tool', async () => {
@@ -324,6 +398,178 @@ describe('ToolExecutionService', () => {
     expect(maxActive).toBe(1);
     expect(execute).toHaveBeenCalledTimes(2);
   });
+
+  it.each(['full', 'research', 'restricted'] as const)(
+    'hard-denies disabled web_search before approval, repeat accounting, and execution in %s mode',
+    async (permissionMode) => {
+      const approve = vi.fn(async () => true);
+      const execute = vi.fn(async () => ({ callId: '', ok: true } satisfies ToolResult));
+      const service = createService([
+        registration(webTool('web_search', execute), 'builtin'),
+      ], {
+        maxRepeat: 1,
+        toolContext: {
+          permissionMode,
+          networkPolicy: webPolicy({ enabled: false, mode: 'disabled' }),
+          approve,
+        },
+      });
+
+      const results = await service.executeBatch([
+        { callId: `${permissionMode}-disabled-1`, name: 'web_search', input: { query: 'same query' } },
+        { callId: `${permissionMode}-disabled-2`, name: 'web_search', input: { query: 'same query' } },
+      ]);
+
+      expect([...results.values()].every((result) => result.ok === false)).toBe(true);
+      expect(execute).not.toHaveBeenCalled();
+      expect(approve).not.toHaveBeenCalled();
+      expect(service.snapshot().records.map((record) => record.status)).toEqual(['hard_denied', 'hard_denied']);
+      expect(service.snapshot().records.every((record) => (
+        record.approval.required === false
+        && record.approval.decision === 'blocked'
+        && record.errorKind === 'hard_deny'
+      ))).toBe(true);
+    },
+  );
+
+  it.each(['full', 'research', 'restricted'] as const)(
+    'hard-denies private web_fetch targets even in %s mode',
+    async (permissionMode) => {
+      const approve = vi.fn(async () => true);
+      const execute = vi.fn(async () => ({ callId: '', ok: true } satisfies ToolResult));
+      const service = createService([
+        registration(webTool('web_fetch', execute), 'builtin'),
+      ], {
+        toolContext: {
+          permissionMode,
+          networkPolicy: webPolicy(),
+          approve,
+        },
+      });
+
+      const result = await service.executeBatch([{
+        callId: `${permissionMode}-private-fetch`,
+        name: 'web_fetch',
+        input: { url: 'http://127.0.0.1:8080/admin' },
+      }]);
+
+      expect(result.get(0)?.ok).toBe(false);
+      expect(execute).not.toHaveBeenCalled();
+      expect(approve).not.toHaveBeenCalled();
+      expect(service.snapshot().records[0]).toMatchObject({
+        status: 'hard_denied',
+        approval: { required: false, decision: 'blocked' },
+        errorKind: 'hard_deny',
+      });
+    },
+  );
+
+  it('does not ask for approval for local memory, local session, or enabled public web safe reads in restricted mode', async () => {
+    const approve = vi.fn(async () => true);
+    const executions = new Map<string, ReturnType<typeof vi.fn>>();
+    const registrations = ['memory_search', 'session_status', 'web_search'].map((name) => {
+      const execute = vi.fn(async () => ({ callId: '', ok: true } satisfies ToolResult));
+      executions.set(name, execute);
+      return registration(webLikeTool(name, execute), 'builtin');
+    });
+    const service = createService(registrations, {
+      toolContext: {
+        permissionMode: 'restricted',
+        networkPolicy: webPolicy(),
+        approve,
+      },
+    });
+
+    const results = await service.executeBatch([
+      { callId: 'local-memory', name: 'memory_search', input: { value: 'memory' } },
+      { callId: 'local-session', name: 'session_status', input: { value: 'session' } },
+      { callId: 'public-search', name: 'web_search', input: { query: 'latest public docs' } },
+    ]);
+
+    expect([...results.values()].every((result) => result.ok)).toBe(true);
+    expect(approve).not.toHaveBeenCalled();
+    for (const execute of executions.values()) expect(execute).toHaveBeenCalledTimes(1);
+    expect(service.snapshot().records.map((record) => record.approval)).toEqual([
+      expect.objectContaining({ required: false, decision: 'not_required' }),
+      expect.objectContaining({ required: false, decision: 'not_required' }),
+      expect.objectContaining({ required: false, decision: 'not_required' }),
+    ]);
+  });
+
+  it('restores approval for safe web reads under strictReadApproval, while full mode still bypasses ordinary approval', async () => {
+    for (const permissionMode of ['research', 'restricted'] as const) {
+      const approve = vi.fn(async () => true);
+      const execute = vi.fn(async () => ({ callId: '', ok: true } satisfies ToolResult));
+      const service = createService([
+        registration(webTool('web_search', execute), 'builtin'),
+      ], {
+        toolContext: {
+          permissionMode,
+          networkPolicy: webPolicy({ strictReadApproval: true }),
+          approve,
+        },
+      });
+
+      await service.executeBatch([{ callId: `${permissionMode}-strict`, name: 'web_search', input: { query: 'strict' } }]);
+      expect(approve).toHaveBeenCalledTimes(1);
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(service.snapshot().records[0]).toMatchObject({
+        status: 'succeeded',
+        approval: { required: true, decision: 'approved' },
+      });
+    }
+
+    const approve = vi.fn(async () => true);
+    const execute = vi.fn(async () => ({ callId: '', ok: true } satisfies ToolResult));
+    const service = createService([
+      registration(webTool('web_search', execute), 'builtin'),
+    ], {
+      toolContext: {
+        permissionMode: 'full',
+        networkPolicy: webPolicy({ strictReadApproval: true }),
+        approve,
+      },
+    });
+    await service.executeBatch([{ callId: 'full-strict', name: 'web_search', input: { query: 'strict' } }]);
+    expect(approve).not.toHaveBeenCalled();
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(service.snapshot().records[0]).toMatchObject({
+      status: 'succeeded',
+      approval: { required: false, decision: 'not_required' },
+    });
+  });
+
+  it('does not let the safe-read exception authorize ordinary file reads, writes, or exec', async () => {
+    const approve = vi.fn(async () => false);
+    const executions = new Map<string, ReturnType<typeof vi.fn>>();
+    const registrations = ['read', 'write', 'exec'].map((name) => {
+      const execute = vi.fn(async () => ({ callId: '', ok: true } satisfies ToolResult));
+      executions.set(name, execute);
+      return registration(webLikeTool(name, execute), 'builtin');
+    });
+    const service = createService(registrations, {
+      toolContext: {
+        permissionMode: 'restricted',
+        networkPolicy: webPolicy(),
+        approve,
+      },
+    });
+
+    const results = await service.executeBatch([
+      { callId: 'ordinary-read', name: 'read', input: { value: 'read' } },
+      { callId: 'ordinary-write', name: 'write', input: { value: 'write' } },
+      { callId: 'ordinary-exec', name: 'exec', input: { value: 'exec' } },
+    ]);
+
+    expect([...results.values()].every((result) => result.ok === false)).toBe(true);
+    expect(approve).toHaveBeenCalledTimes(3);
+    for (const execute of executions.values()) expect(execute).not.toHaveBeenCalled();
+    expect(service.snapshot().records.map((record) => record.status)).toEqual([
+      'approval_denied',
+      'approval_denied',
+      'approval_denied',
+    ]);
+  });
 });
 
 function createService(
@@ -355,6 +601,64 @@ function createService(
 
 function registration(value: AgentTool, source: string): ToolRegistration {
   return { tool: value, source };
+}
+
+function webPolicy(overrides: Partial<NetworkReadPolicy> = {}): NetworkReadPolicy {
+  return {
+    version: 1,
+    enabled: true,
+    providerId: 'tavily',
+    mode: 'public_anonymous',
+    allowDomains: [],
+    blockDomains: [],
+    strictReadApproval: false,
+    maxResults: 10,
+    maxQueryChars: 2_000,
+    maxQueriesPerRun: 4,
+    maxFetchesPerRun: 4,
+    maxConcurrentRequests: 4,
+    searchTimeoutMs: 15_000,
+    fetchTimeoutMs: 20_000,
+    totalTimeoutMs: 90_000,
+    maxResponseBytes: 2 * 1024 * 1024,
+    maxExtractedChars: 40_000,
+    maxRedirects: 5,
+    cacheEnabled: true,
+    cacheTtlSeconds: 300,
+    cacheMaxBytes: 64 * 1024 * 1024,
+    browserFallback: 'approval_required',
+    sensitiveQueryPolicy: 'approve',
+    ...overrides,
+  };
+}
+
+function webTool(
+  name: 'web_search' | 'web_fetch',
+  execute: AgentTool['execute'],
+): AgentTool {
+  return {
+    name,
+    description: `${name} test tool`,
+    inputSchema: name === 'web_search'
+      ? z.object({ query: z.string() })
+      : z.object({ url: z.string() }),
+    requiresApproval: true,
+    execute,
+  };
+}
+
+function webLikeTool(
+  name: string,
+  execute: AgentTool['execute'],
+): AgentTool {
+  return {
+    name,
+    description: `${name} test tool`,
+    inputSchema: name === 'web_search'
+      ? z.object({ query: z.string() })
+      : z.object({ value: z.string() }),
+    execute,
+  };
 }
 
 function tool(

@@ -2,6 +2,7 @@
 :root {
   color-scheme: dark;
   --bg: #141414;
+  --workspace-code-surface: #101010;
   --bg-elevated: #1c1c1c;
   --surface: #202020;
   --surface-2: #252525;
@@ -9,12 +10,29 @@
   --control: #2a2a2a;
   --control-hover: #333333;
   --control-active: #383838;
+  /* Sidebar rows sit above a dynamic glass surface. Keep their interaction
+     treatment translucent so the mapped background remains visible. */
+  --sidebar-interaction-hover: color-mix(in srgb, var(--text) 6%, transparent);
+  --sidebar-interaction-active: color-mix(in srgb, var(--text) 10%, transparent);
+  --sidebar-menu-surface: rgba(8, 8, 8, 0.78);
+  --workspace-tree-interaction-hover: color-mix(in srgb, var(--control-hover) 66%, transparent);
+  --workspace-tree-interaction-active: color-mix(in srgb, var(--control-active) 68%, transparent);
+  --composer-picker-option-hover: color-mix(in srgb, var(--text) 12%, var(--control-hover));
+  --composer-picker-option-active: color-mix(in srgb, var(--text) 18%, var(--control-hover));
+  --composer-surface: rgba(32, 32, 32, 0.75);
+  --selection-background: #333333;
+  --selection-background-inactive: #2e2e2e;
+  --code-selection-background: #454545;
+  --code-selection-background-inactive: #3a3a3a;
+  --selection-foreground: #f2f2f2;
+  --selection-radius: 3px;
   --border: #343434;
   --border-strong: #474747;
   --text: #e8e8e8;
   --text-strong: #ffffff;
   --muted: #a0a0a0;
   --muted-2: #858585;
+  --chat-message-font-size: 14px;
   --accent: #e2e2e2;
   --accent-hover: #f4f4f4;
   --accent-soft: rgba(226, 226, 226, 0.1);
@@ -26,39 +44,74 @@
   --warning-soft: rgba(216, 180, 92, 0.12);
   --shadow: 0 18px 46px rgba(0, 0, 0, 0.38);
   --radius-ui: 10px;
+  --radius-floating-panel: 14px;
   --radius-composer: 12px;
+  --radius-composer-input: 14px;
   --radius-icon: 3px;
   --radius-pill: 999px;
   --radius-circle: 50%;
   --motion-fast: 140ms;
   --motion-base: 180ms;
   --motion-slow: 220ms;
+  /* Must match WINDOW_TITLEBAR_HEIGHT in the Electron shell. */
+  --window-titlebar-height: 32px;
+  --sidebar-section-motion: 280ms;
+  --sidebar-section-ease: cubic-bezier(0.65, 0, 0.35, 1);
+  --sidebar-section-header-height: 30px;
+  --sidebar-section-collapsed-height: 38px;
   --transient-motion: 220ms;
+  --runtime-picker-transition: 300ms;
+  --runtime-picker-hover-extra-width: 18px;
   --dialog-motion: 360ms;
   --motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --composer-hover-tip-width: 80px;
+  --composer-hover-tip-min-height: 27px;
+  --composer-hover-tip-padding-block: 4px;
+  --composer-hover-tip-padding-inline: 8px;
+  --composer-hover-tip-font-size: 12px;
+  --composer-hover-tip-background: var(--control-hover);
   --font: "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", "Microsoft YaHei", "Noto Sans SC", sans-serif;
   --font-preview: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
   --mono: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
   --sidebar-content-block-inset: 18px;
   --sidebar-content-inline-inset: 14px;
-  --settings-entry-left: var(--sidebar-content-block-inset);
-  --settings-entry-bottom: var(--sidebar-content-block-inset);
+  --sidebar-scrollbar-edge-gap: 2px;
+  /* The button lives inside a floating sidebar surface. Include that outer
+     inset so its fixed transition bridge shares the same global anchor. */
+  --settings-entry-edge-inset: 3px;
+  --settings-entry-left: calc(var(--floating-panel-inset) + var(--settings-entry-edge-inset));
+  --settings-entry-bottom: calc(var(--floating-panel-inset) + var(--settings-entry-edge-inset));
   --settings-entry-collapsed-width: 37px;
   --settings-origin-x: calc(var(--settings-entry-left) + (var(--settings-entry-collapsed-width) / 2));
-  --settings-origin-y: calc(100% - var(--settings-entry-bottom) - (var(--settings-entry-height) / 2));
-  --settings-reveal-motion: 750ms;
+  --settings-origin-y: calc(100vh - var(--settings-entry-bottom) - (var(--settings-entry-height) / 2));
+  /* The settings surface starts below the stationary 32px titlebar, so its
+     local reveal origin must remove that offset from the global button anchor. */
+  --settings-content-origin-y: calc(var(--settings-origin-y) - 32px);
+  --settings-reveal-motion: 560ms;
   --settings-sidebar-exit-content-motion: var(--motion-fast);
-  --settings-sidebar-exit-reveal-delay: var(--motion-base);
-  --sidebar-glass-texture: url("./assets/sidebar-wash-dithered.png");
-  --sidebar-glass-texture-width: 512px;
-  --sidebar-glass-texture-height: 1536px;
-  --sidebar-glass-opacity: 0.5;
-  --sidebar-resizer-active-color: rgba(255, 255, 255, 0.72);
+  --settings-sidebar-exit-reveal-delay: 80ms;
+  /* Keep the material translucent and neutral. The previous bitmap wash was
+     opaque RGB data, so layering it over the panel made the surface look like
+     a blue-to-brown solid fill instead of frosted glass. */
+  --sidebar-glass-fill: color-mix(in srgb, var(--surface) 36%, transparent);
+  --floating-panel-inset: 8px;
+  --floating-panel-inline-gutter: 16px;
+  /* Use one thin, low-contrast frame for every floating surface so straight
+     edges and rounded corners share the same antialiased treatment. */
+  --floating-panel-border-width: 1px;
+  --floating-panel-inner-radius: calc(
+    var(--radius-floating-panel) - var(--floating-panel-border-width)
+  );
+  --floating-panel-border: color-mix(in srgb, var(--text) 8%, transparent);
+  --floating-panel-resize-border: color-mix(in srgb, var(--text) 18%, transparent);
+  --floating-panel-frame-color: var(--floating-panel-border);
+  --sidebar-resizer-active-color: #a0a0a0;
+  --floating-panel-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
   --settings-entry-height: 34px;
-  --sidebar-width: 276px;
+  --sidebar-width: clamp(220px, 21.5625vw, 460px);
   --sidebar-min-readable-width: 220px;
   --sidebar-resizer-width: 0px;
-  --workspace-panel-width: 360px;
+  --workspace-panel-width: clamp(280px, 28.125vw, 4096px);
   --two-stage-resize-motion: 320ms;
 }
 
@@ -67,6 +120,32 @@ body,
 #root {
   height: 100%;
   background: transparent;
+}
+
+/* Keep ordinary conversation and workspace text selections subdued. */
+::selection {
+  color: var(--selection-foreground);
+  background-color: var(--selection-background);
+  text-shadow: none;
+}
+
+/* Copyable code keeps the brighter selection treatment from the reference. */
+.code-block-source::selection,
+.code-block-source *::selection {
+  background-color: var(--code-selection-background);
+}
+
+.code-block-source::-moz-selection,
+.code-block-source *::-moz-selection {
+  background-color: var(--code-selection-background);
+}
+
+/* Keep the Firefox fallback separate so an unknown vendor pseudo-element
+   cannot invalidate the Chromium rule above. */
+::-moz-selection {
+  color: var(--selection-foreground);
+  background-color: var(--selection-background);
+  text-shadow: none;
 }
 
 body {
@@ -173,88 +252,59 @@ input:focus-visible {
   }
 }
 
-/* Settings reveal uses native clip-path and transform transitions so the mask
-   and its edge can stay compositor-friendly in both directions. */
+/* The sidebar and workspace are separate floating surfaces. Keeping each
+   rounded rectangle self-contained avoids the seam-prone cutout geometry that
+   previously tried to draw their corners from the window shell. */
 
 .window-shell {
-  --sidebar-active-width: var(--sidebar-width);
+  --sidebar-active-width: calc(var(--sidebar-width) + var(--floating-panel-inline-gutter));
   --sidebar-active-resizer-width: var(--sidebar-resizer-width);
   --workspace-panel-active-width: var(--workspace-panel-width);
   --sidebar-collapse-motion: var(--two-stage-resize-motion);
   --workspace-panel-motion: var(--two-stage-resize-motion);
+  --sidebar-surface-translate-x: 0px;
+  --workspace-panel-surface-translate-x: 0px;
   --sidebar-content-opacity: 1;
   --sidebar-content-shift: 0px;
   --sidebar-resizer-opacity: 1;
   position: relative;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
   height: 100vh;
   min-width: 0;
+  /* Keep the native acrylic backdrop available underneath the floating cards.
+     The titlebar, chat, and exposed sidebar gutter paint the code surface;
+     the sidebar track cuts out the rounded card center below. */
+  background: transparent;
   overflow: hidden;
-  background: transparent;
   isolation: isolate;
-}
-
-/* One fixed material layer is shared by the normal and settings sidebars. */
-.window-shell::before {
-  content: "";
-  position: absolute;
-  inset: 32px auto 0 0;
-  z-index: 1;
-  width: var(--sidebar-active-width);
-  background-color: var(--bg);
-  background-image: var(--sidebar-glass-texture);
-  background-repeat: no-repeat;
-  background-position: 0 0;
-  background-size: var(--sidebar-glass-texture-width) var(--sidebar-glass-texture-height);
-  border-top-right-radius: var(--radius-ui);
-  opacity: var(--sidebar-glass-opacity);
-  pointer-events: none;
-  transition: width var(--sidebar-collapse-motion) var(--motion-ease);
-}
-
-/* Paint only outside the native glass radius. Keep the circle transparent so
-   this backing layer cannot darken the glass inside the rounded sidebar. The
-   clip edge ends at the panel boundary; keeping the shadow itself at exactly
-   one radius prevents that edge from becoming a
-   visible grey compositor line at fractional Windows DPI scales. */
-.window-shell::after {
-  content: "";
-  position: absolute;
-  inset: 32px auto auto calc(
-    var(--sidebar-active-width) - var(--radius-ui) - var(--radius-ui)
-  );
-  z-index: 0;
-  width: calc(var(--radius-ui) + var(--radius-ui));
-  height: calc(var(--radius-ui) + var(--radius-ui));
-  background: transparent;
-  border-radius: var(--radius-circle);
-  box-shadow: 0 0 0 var(--radius-ui) var(--bg);
-  clip-path: inset(
-    0 calc(0px - var(--sidebar-resizer-width))
-    calc(var(--radius-ui) - 0.5px) var(--radius-ui)
-  );
-  opacity: 1;
-  pointer-events: none;
-  transition:
-    left var(--sidebar-collapse-motion) var(--motion-ease),
-    opacity var(--motion-fast) var(--motion-ease);
 }
 
 .window-shell.sidebar-collapsed,
 .window-shell.sidebar-drag-collapsed {
   --sidebar-active-width: 0px;
   --sidebar-active-resizer-width: 0px;
+  /* Keep the card at its saved width and move the complete surface left.
+     The grid still releases chat space, but text and icons never get clipped
+     by a shrinking sidebar track. */
+  --sidebar-surface-translate-x: calc(
+    -1 * (var(--sidebar-surface-width, var(--sidebar-width)) + var(--floating-panel-inset))
+  );
 }
 
 .window-shell.workspace-panel-collapsed,
 .window-shell.workspace-panel-drag-collapsed {
   --workspace-panel-active-width: 0px;
+  /* The extension panel is the matching right-hand floating card. */
+  --workspace-panel-surface-translate-x: calc(
+    var(--workspace-panel-surface-width, var(--workspace-panel-width)) + var(--floating-panel-inset)
+  );
 }
 
 .primary-workspace {
   position: relative;
-  z-index: 2;
+  z-index: 1;
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
@@ -264,68 +314,35 @@ input:focus-visible {
   background: transparent;
 }
 
-.sidebar::after,
-.settings-sidebar::after {
-  content: "";
-  position: absolute;
-  z-index: 2;
-  width: 2px;
-  background: var(--sidebar-resizer-active-color);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--motion-fast) var(--motion-ease);
+.primary-workspace:has(.sidebar-resizer:hover) .sidebar-surface,
+.primary-workspace:has(.sidebar-resizer:focus-visible) .sidebar-surface,
+.settings-layout:has(.settings-sidebar-resizer:hover) .settings-sidebar,
+.settings-layout:has(.settings-sidebar-resizer:focus-visible) .settings-sidebar,
+body.is-resizing-column .window-shell.sidebar-drag-live .sidebar-surface,
+body.is-resizing-column .window-shell.sidebar-drag-live .settings-sidebar {
+  --floating-panel-frame-color: var(--floating-panel-resize-border);
 }
 
-.sidebar::after,
-.settings-sidebar::after {
-  inset: 0 0 0 auto;
-}
-
-.workspace-panel::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  z-index: 25;
-  width: 1px;
-  background: var(--border);
-  opacity: 1;
-  pointer-events: none;
-  transition:
-    background-color var(--motion-fast) var(--motion-ease),
-    opacity var(--motion-fast) var(--motion-ease);
-}
-
-.primary-workspace:has(.sidebar-resizer:hover) .sidebar::after,
-.primary-workspace:has(.sidebar-resizer:focus-visible) .sidebar::after,
-.settings-layout:has(.settings-sidebar-resizer:hover) .settings-sidebar::after,
-.settings-layout:has(.settings-sidebar-resizer:focus-visible) .settings-sidebar::after,
-body.is-resizing-column .window-shell.sidebar-drag-live .sidebar::after,
-body.is-resizing-column .window-shell.sidebar-drag-live .settings-sidebar::after {
-  opacity: 1;
-}
-
-.workspace-panel-resizer:hover + .workspace-panel::before,
-.workspace-panel-resizer:focus-visible + .workspace-panel::before,
-body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-panel-drag-collapsed):not(.workspace-panel-drag-fullscreen) .workspace-panel::before {
-  width: 2px;
-  background: var(--sidebar-resizer-active-color);
-}
-
-.window-shell.sidebar-collapsed::after,
-.window-shell.sidebar-drag-collapsed::after {
-  opacity: 0;
+.workspace-panel-resizer:hover + .workspace-panel .workspace-panel-surface,
+.workspace-panel-resizer:focus-visible + .workspace-panel .workspace-panel-surface,
+body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-panel-drag-collapsed):not(.workspace-panel-drag-fullscreen) .workspace-panel .workspace-panel-surface {
+  --floating-panel-frame-color: var(--floating-panel-resize-border);
 }
 
 .window-titlebar {
   position: relative;
   display: flex;
   align-items: center;
-  flex: 0 0 32px;
-  min-height: 32px;
+  flex: 0 0 var(--window-titlebar-height);
+  width: 100%;
+  height: var(--window-titlebar-height);
+  min-height: var(--window-titlebar-height);
+  max-height: var(--window-titlebar-height);
   gap: 8px;
   padding: 0 150px 0 8px;
   color: var(--text);
-  background: var(--bg);
+  background: var(--workspace-code-surface);
+  border-bottom: 0;
   -webkit-app-region: drag;
   user-select: none;
 }
@@ -340,6 +357,15 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   -webkit-app-region: no-drag;
 }
 
+.app-nav-controls > .sidebar-toggle-btn,
+.app-nav-controls > .app-nav-btn {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--radius-ui);
+  outline: 0;
+}
+
 .sidebar-toggle-btn {
   display: grid;
   place-items: center;
@@ -350,7 +376,6 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   border: 1px solid transparent;
   /* Small controls stay crisp at their fixed 26x24px size. */
   border-radius: var(--radius-icon);
-  cursor: pointer;
   transition:
     background-color var(--motion-fast) var(--motion-ease),
     border-color var(--motion-fast) var(--motion-ease),
@@ -362,6 +387,11 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   color: var(--text-strong);
   background: var(--control-hover);
   border-color: var(--border-strong);
+}
+
+.app-nav-controls > .sidebar-toggle-btn:hover,
+.app-nav-controls > .sidebar-toggle-btn:focus-visible {
+  border: 0;
 }
 
 .sidebar-toggle-icon {
@@ -382,7 +412,7 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 }
 
 .sidebar-toggle-divider {
-  stroke-linecap: butt;
+  stroke-linecap: round;
   transform: translateX(0);
   transition: transform var(--sidebar-collapse-motion) var(--motion-ease);
 }
@@ -392,74 +422,29 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 }
 
 .app-nav-btn {
-  position: relative;
   display: grid;
   place-items: center;
-  width: 26px;
+  width: 24px;
   height: 24px;
-  color: var(--muted);
+  padding: 0;
+  color: var(--muted-2);
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-ui);
-  cursor: pointer;
+  border: 0;
+  border-radius: var(--radius-icon);
   font-size: 0;
   line-height: 1;
   transition:
     background-color var(--motion-fast) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease),
     color var(--motion-fast) var(--motion-ease),
     opacity var(--motion-fast) var(--motion-ease);
-}
-
-.app-nav-btn::before,
-.app-nav-btn::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  color: currentColor;
-  pointer-events: none;
-}
-
-.app-nav-btn::before {
-  width: 17px;
-  height: 1.5px;
-  background: currentColor;
-  border-radius: var(--radius-pill);
-}
-
-.app-nav-btn.nav-back::before {
-  left: 50%;
-  transform: translate(-42%, -50%);
-}
-
-.app-nav-btn.nav-forward::before {
-  right: 50%;
-  transform: translate(42%, -50%);
-}
-
-.app-nav-btn.nav-back::after {
-  left: 7px;
-  width: 9px;
-  height: 9px;
-  border-left: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  transform: translateY(-50%) rotate(45deg);
-}
-
-.app-nav-btn.nav-forward::after {
-  right: 7px;
-  width: 9px;
-  height: 9px;
-  border-right: 1.5px solid currentColor;
-  border-top: 1.5px solid currentColor;
-  transform: translateY(-50%) rotate(45deg);
 }
 
 .app-nav-btn:hover:not(:disabled),
 .app-nav-btn:focus-visible {
   color: var(--text-strong);
   background: var(--control-hover);
-  border-color: var(--border-strong);
+  border: 0;
+  outline: 0;
 }
 
 .app-nav-btn:disabled {
@@ -505,34 +490,144 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 .core-workspace {
   --workspace-tab-row-inset: 4px;
   --workspace-tab-row-height: 30px;
+  --workspace-tab-row-gap: 4px;
+  --chat-workspace-scrollbar-gap: 2px;
+  --chat-workspace-scrollbar-overlap: 0px;
   position: relative;
   display: flex;
   height: 100%;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--workspace-code-surface);
+}
+
+/* The chat scroller should end just before the visible floating workspace
+   frame. The flex seam is one pixel wide and the frame is inset by eight;
+   reclaim the difference so the native scrollbar keeps a precise 2px gap. */
+.core-workspace:has(> .workspace-panel:not(.collapsed):not(.fullscreen)) {
+  --chat-workspace-scrollbar-overlap: max(
+    0px,
+    calc(
+      1px + var(--floating-panel-inset) - var(--chat-workspace-scrollbar-gap)
+    )
+  );
 }
 
 .sidebar {
   position: relative;
-  display: flex;
-  flex-direction: column;
+  z-index: 3;
+  display: block;
   --sidebar-action-size: 26px;
   --sidebar-action-gap: 3px;
   --sidebar-action-column: calc((var(--sidebar-action-size) * 2) + var(--sidebar-action-gap));
+  box-sizing: border-box;
   min-height: 0;
   min-width: 0;
+  background: transparent;
+  /* The fixed-width surface needs to remain visible while its layout track
+     contracts, so the card can translate as one object rather than be cut. */
+  overflow: visible;
+}
+
+/* Paint only the exposed rail around the floating card. The center stays
+   transparent so the card's backdrop filter can sample the chat surface. Do
+   not round this rail itself: its background must blend into the window
+   surface instead of creating a second outer silhouette. */
+.sidebar::before,
+.settings-sidebar-track::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--workspace-code-surface), var(--workspace-code-surface))
+      0 0 / 100% var(--floating-panel-inset) no-repeat,
+    linear-gradient(var(--workspace-code-surface), var(--workspace-code-surface))
+      0 100% / 100% var(--floating-panel-inset) no-repeat,
+    linear-gradient(var(--workspace-code-surface), var(--workspace-code-surface))
+      0 0 / var(--floating-panel-inset) 100% no-repeat,
+    linear-gradient(var(--workspace-code-surface), var(--workspace-code-surface))
+      100% 0 / var(--floating-panel-inset) 100% no-repeat,
+    radial-gradient(
+        circle at 100% 100%,
+        transparent 0 calc(var(--radius-floating-panel) - 0.5px),
+        var(--workspace-code-surface) var(--radius-floating-panel)
+      )
+      0 0 / calc(var(--floating-panel-inset) + var(--radius-floating-panel))
+      calc(var(--floating-panel-inset) + var(--radius-floating-panel)) no-repeat,
+    radial-gradient(
+        circle at 0 100%,
+        transparent 0 calc(var(--radius-floating-panel) - 0.5px),
+        var(--workspace-code-surface) var(--radius-floating-panel)
+      )
+      100% 0 / calc(var(--floating-panel-inset) + var(--radius-floating-panel))
+      calc(var(--floating-panel-inset) + var(--radius-floating-panel)) no-repeat,
+    radial-gradient(
+        circle at 100% 0,
+        transparent 0 calc(var(--radius-floating-panel) - 0.5px),
+        var(--workspace-code-surface) var(--radius-floating-panel)
+      )
+      0 100% / calc(var(--floating-panel-inset) + var(--radius-floating-panel))
+      calc(var(--floating-panel-inset) + var(--radius-floating-panel)) no-repeat,
+    radial-gradient(
+        circle at 0 0,
+        transparent 0 calc(var(--radius-floating-panel) - 0.5px),
+        var(--workspace-code-surface) var(--radius-floating-panel)
+      )
+      100% 100% / calc(var(--floating-panel-inset) + var(--radius-floating-panel))
+      calc(var(--floating-panel-inset) + var(--radius-floating-panel)) no-repeat;
+}
+
+.sidebar-surface {
+  position: absolute;
+  top: var(--floating-panel-inset);
+  bottom: var(--floating-panel-inset);
+  left: var(--floating-panel-inset);
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: var(--sidebar-surface-width, var(--sidebar-width));
+  min-width: var(--sidebar-surface-width, var(--sidebar-width));
+  min-height: 0;
   padding: 0;
   overflow: hidden;
+  isolation: isolate;
+  /* The frame is intentionally transparent. Material is painted by the
+     inset pseudo-elements below, so it cannot occupy the border or leak past
+     the rounded outer edge. */
   background: transparent;
-  border-right: 0;
-  border-top-right-radius: var(--radius-ui);
-  opacity: 1;
+  background-clip: border-box;
+  border: var(--floating-panel-border-width) solid var(--floating-panel-frame-color);
+  border-radius: var(--radius-floating-panel);
+  box-shadow: var(--floating-panel-shadow);
+  transform: translateX(var(--sidebar-surface-translate-x));
   transition:
+    transform var(--sidebar-collapse-motion) var(--motion-ease),
     border-color var(--motion-fast) var(--motion-ease),
-    border-right-width var(--motion-fast) var(--motion-ease),
-    opacity 260ms var(--motion-ease);
+    box-shadow var(--motion-fast) var(--motion-ease);
+}
+
+/* The absolute containing block starts at the surface's padding edge, which
+   is the inside edge of its border. The material layer therefore fills the
+   interior exactly; the reduced radius keeps its antialiasing aligned with
+   the inner edge instead of drawing over the frame. */
+.sidebar-surface::before,
+.workspace-panel-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: var(--floating-panel-inner-radius);
+  clip-path: inset(0 round var(--floating-panel-inner-radius));
+  background: var(--sidebar-glass-fill);
+  background-clip: padding-box;
+  -webkit-backdrop-filter: blur(20px) saturate(145%);
+  backdrop-filter: blur(20px) saturate(145%);
+  pointer-events: none;
 }
 
 .sidebar-contents {
@@ -540,43 +635,108 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   z-index: 1;
   display: flex;
   flex-direction: column;
-  width: max(var(--sidebar-width), var(--sidebar-min-readable-width));
-  min-width: var(--sidebar-min-readable-width);
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
   height: 100%;
   min-height: 0;
   padding: var(--sidebar-content-block-inset) var(--sidebar-content-inline-inset);
   opacity: var(--sidebar-content-opacity);
-  transition:
-    opacity var(--sidebar-collapse-motion) var(--motion-ease);
+  visibility: visible;
 }
 
-/* Keep the ordinary sidebar hidden while settings enters or remains open. */
-.window-shell.settings-open .primary-workspace .sidebar-contents,
-.window-shell:has(> .presence-layer:not(.presence-exiting) .settings-workspace) .primary-workspace .sidebar-contents {
-  opacity: 0;
+/* Hand the sidebar to the persistent settings surface as one discrete layer.
+   Two independent text rails cannot be cross-faded without visibly stacking. */
+/* The ordinary rail and the settings rail occupy the same floating-card
+   bounds. Hand over the complete card in one style update so their acrylic
+   surface, frame, and contents can never be painted together. */
+.window-shell.settings-open .primary-workspace .sidebar {
+  pointer-events: none;
+  transition: none;
+}
+
+.window-shell.settings-open .primary-workspace .sidebar-resizer {
   visibility: hidden;
   pointer-events: none;
   transition: none;
 }
 
-/* During exit, clear the settings labels first and reveal the ordinary labels
-   only after that short fade has completed. The settings surface itself keeps
-   shrinking for the longer circular transition, but its text cannot overlap
-   the sidebar underneath. */
-.window-shell:has(> .presence-layer.presence-exiting .settings-workspace) .primary-workspace .sidebar-contents {
-  opacity: var(--sidebar-content-opacity);
-  visibility: visible;
+/* Explicitly remove the old filtered layer while settings owns the same
+   coordinates. Keeping only the grid track prevents a layout shift, while
+   removing the compositor surface prevents its cached texture from bleeding
+   through the settings rail. */
+.window-shell.settings-open .primary-workspace .sidebar-surface {
+  display: none;
+}
+
+/* A settings return uses the same 560ms clock as the overlay. The ordinary
+   rail is already at its final geometry, so only its material fades in; this
+   keeps the card and every label free from mid-transition translation. */
+.window-shell.settings-returning .primary-workspace .sidebar {
   pointer-events: none;
-  transition:
-    opacity var(--sidebar-collapse-motion) var(--motion-ease) var(--settings-sidebar-exit-reveal-delay),
-    visibility 0s linear var(--settings-sidebar-exit-reveal-delay);
+  transition: none;
+}
+
+.window-shell.settings-returning .primary-workspace .sidebar-resizer {
+  visibility: hidden;
+  pointer-events: none;
+  transition: none;
+}
+
+.window-shell.settings-returning .primary-workspace .sidebar-surface {
+  display: flex;
+  pointer-events: none;
+  animation: settings-sidebar-return var(--settings-reveal-motion) var(--motion-ease) both;
+}
+
+.window-shell.settings-returning .primary-workspace .sidebar-contents {
+  animation: settings-sidebar-contents-return var(--settings-reveal-motion) var(--motion-ease) both;
+}
+
+@keyframes settings-sidebar-return {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes settings-sidebar-contents-return {
+  0%, 42% { opacity: 0; }
+  100% { opacity: var(--sidebar-content-opacity); }
 }
 
 .window-shell.sidebar-collapsed .sidebar,
 .window-shell.sidebar-drag-collapsed .sidebar {
-  border-right-width: 0;
+  pointer-events: none;
+}
+
+.window-shell.sidebar-collapsed .sidebar-surface,
+.window-shell.sidebar-drag-collapsed .sidebar-surface {
+  pointer-events: none;
   border-color: transparent;
-  opacity: 0;
+  box-shadow: none;
+}
+
+/* Keep the drag frame as the animation origin while React commits the durable
+   collapsed state. The saved width is restored only after the card is clear
+   of the chat viewport. */
+.window-shell.sidebar-collapse-settling .sidebar-surface {
+  transition:
+    transform var(--sidebar-collapse-motion) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease);
+}
+
+/* Commit a drag collapse with the saved width while the surface is already
+   outside the chat bounds. This keeps width and translation from animating
+   through an intermediate, partially visible frame. */
+.window-shell.sidebar-collapse-handoff .sidebar-surface,
+.window-shell.workspace-panel-collapse-handoff .workspace-panel-surface {
+  transition: none;
+}
+
+/* The complete sidebar content travels inside its floating surface. Do not
+   fade or hide it before the surface has left the viewport. */
+.window-shell.sidebar-collapsed .sidebar-contents,
+.window-shell.sidebar-drag-collapsed .sidebar-contents {
   pointer-events: none;
 }
 
@@ -585,8 +745,8 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   z-index: 20;
   width: 8px;
   min-width: 0;
-  margin-left: -4px;
-  margin-right: -4px;
+  margin-left: calc(-4px - var(--floating-panel-inset));
+  margin-right: calc(var(--floating-panel-inset) - 4px);
   background: transparent;
   border-right: 0;
   cursor: col-resize;
@@ -632,13 +792,33 @@ body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-a
 body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating) .settings-sidebar-contents,
 body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating) .sidebar-resizer,
 body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating) .settings-sidebar-resizer,
-body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating)::before,
-body.is-resizing-column .window-shell.sidebar-drag-live:not(.sidebar-threshold-animating)::after,
 body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-panel-threshold-animating) .workspace-panel,
 body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-panel-threshold-animating) .workspace-panel-contents,
 body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-panel-threshold-animating) .workspace-panel-header,
 body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-panel-threshold-animating) .workspace-panel-resizer {
   transition-duration: 0ms !important;
+}
+
+/* A full-height backdrop blur has to resample the scene behind it whenever
+   the right panel width changes. Keep the static translucent fill while the
+   pointer is down, then restore acrylic as soon as the resize settles. */
+body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel-surface::before,
+body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-active-item {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Native window resizing changes the available layout on every display frame.
+   Keep those geometry updates immediate so panel transitions do not trail the
+   pointer and make the chat appear to shake. A single settled frame restores
+   the normal transitions after the resize burst ends. */
+body.is-window-resizing .window-shell,
+body.is-window-resizing .window-shell *,
+body.is-window-resizing .window-shell *::before,
+body.is-window-resizing .window-shell *::after {
+  transition-duration: 0ms !important;
+  animation-play-state: paused !important;
+  scroll-behavior: auto !important;
 }
 
 .brand-block {
@@ -683,10 +863,15 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 }
 
 .sidebar-nav-button:hover,
-.sidebar-nav-button:focus-visible,
+.sidebar-nav-button:focus-visible {
+  color: var(--text);
+  background-color: var(--sidebar-interaction-hover);
+  border-color: var(--border-strong);
+}
+
 .sidebar-nav-button.active {
   color: var(--text);
-  background: var(--control-hover);
+  background-color: var(--sidebar-interaction-active);
   border-color: var(--border-strong);
 }
 
@@ -730,10 +915,8 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 .model-option,
 .workspace-pill,
 .workspace-reset,
-.send-round,
 .code-toolbar button {
   border: 0;
-  cursor: pointer;
   user-select: none;
   transition:
     background-color 140ms ease,
@@ -745,7 +928,6 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 
 .settings-overview-row,
 .settings-filter-pill {
-  cursor: pointer;
   user-select: none;
   transition:
     background-color 140ms ease,
@@ -772,7 +954,7 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 }
 
 .settings-btn:hover {
-  background: var(--control-hover);
+  background-color: var(--sidebar-interaction-hover);
   border-color: var(--border-strong);
 }
 
@@ -781,11 +963,13 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
-  transition: flex-basis var(--motion-base) var(--motion-ease);
+  max-height: 100%;
+  overflow: hidden;
+  transition: max-height var(--sidebar-section-motion) var(--sidebar-section-ease);
 }
 
 .sidebar-section.collapsed {
-  flex: 0 0 auto;
+  max-height: var(--sidebar-section-collapsed-height);
 }
 
 .project-section {
@@ -796,17 +980,19 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 
 .sidebar-section-header {
   display: flex;
+  flex: 0 0 var(--sidebar-section-header-height);
   align-items: center;
   margin: 0 0 8px;
-  min-height: 30px;
+  min-height: var(--sidebar-section-header-height);
   gap: 0;
   padding-right: 2px;
 }
 
 .sidebar-section-toggle {
-  display: inline-flex;
+  display: flex;
+  flex: 1 1 auto;
   align-items: center;
-  width: fit-content;
+  width: auto;
   min-width: 0;
   gap: 7px;
   padding: 0 6px;
@@ -814,7 +1000,6 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-ui);
-  cursor: pointer;
   font-size: 13px;
   font-weight: 400;
   line-height: 26px;
@@ -826,16 +1011,15 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 
 .conversation-section .sidebar-section-toggle,
 .project-section .sidebar-section-toggle {
-  position: relative;
-  gap: 0;
-  padding-right: 20px;
+  gap: 7px;
+  padding-right: 6px;
 }
 
 .sidebar-section-toggle:hover,
 .sidebar-section-toggle:focus-visible {
   color: var(--text);
-  background: var(--control-hover);
-  border-color: var(--border-strong);
+  background: transparent;
+  border-color: transparent;
 }
 
 .sidebar-section-actions {
@@ -843,6 +1027,7 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   align-items: center;
   justify-content: flex-end;
   width: var(--sidebar-action-column);
+  flex: 0 0 var(--sidebar-action-column);
   gap: var(--sidebar-action-gap);
   margin-left: auto;
   opacity: 0;
@@ -854,7 +1039,7 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 }
 
 .sidebar-section-header:hover .sidebar-section-actions,
-.sidebar-section-header:focus-within .sidebar-section-actions {
+.sidebar-section-header:has(:focus-visible) .sidebar-section-actions {
   opacity: 1;
   pointer-events: auto;
   transform: translateX(0);
@@ -882,7 +1067,7 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 .sidebar-section-action:hover:not(:disabled):not([aria-disabled="true"]),
 .sidebar-section-action:focus-visible:not(:disabled):not([aria-disabled="true"]) {
   color: var(--text-strong);
-  background: var(--control-hover);
+  background-color: var(--sidebar-interaction-hover);
   border-color: var(--border-strong);
 }
 
@@ -915,6 +1100,7 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   stroke-width: 1.55;
   stroke-linecap: round;
   stroke-linejoin: round;
+  shape-rendering: geometricPrecision;
   overflow: visible;
 }
 
@@ -933,10 +1119,12 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   max-width: 220px;
   padding: 5px;
   color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
+  background: var(--sidebar-menu-surface);
+  border: 0;
   border-radius: var(--radius-ui);
   box-shadow: var(--shadow);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+  backdrop-filter: blur(18px) saturate(135%);
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--transient-motion) var(--motion-ease);
@@ -959,31 +1147,27 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   padding: 0 8px;
   color: var(--text);
   background: transparent;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: var(--radius-ui);
-  cursor: pointer;
   font-size: 13px;
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
   transition:
     background-color var(--motion-fast) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease),
     color var(--motion-fast) var(--motion-ease);
 }
 
 .sidebar-menu-item:hover,
 .sidebar-menu-item:focus-visible {
   color: var(--text-strong);
-  background: var(--control-hover);
-  border-color: var(--border-strong);
+  background-color: var(--sidebar-interaction-hover);
 }
 
 .sidebar-menu-item.danger:hover,
 .sidebar-menu-item.danger:focus-visible {
   color: var(--danger);
   background: var(--danger-soft);
-  border-color: rgba(239, 104, 104, 0.22);
 }
 
 .sidebar-menu-item-icon {
@@ -999,7 +1183,6 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 
 .sidebar-new-action {
   position: relative;
-  cursor: pointer;
 }
 
 .sidebar-section-arrow,
@@ -1020,10 +1203,8 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 
 .conversation-section .sidebar-section-arrow,
 .project-section .sidebar-section-arrow {
-  position: absolute;
-  right: 6px;
-  top: 50%;
-  margin-top: -3px;
+  flex: 0 0 7px;
+  margin-top: -1px;
   opacity: 0;
   border-color: transparent;
   transform: translateY(-1px) rotate(45deg);
@@ -1031,22 +1212,15 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 
 .conversation-section.collapsed .sidebar-section-arrow,
 .project-section.collapsed .sidebar-section-arrow {
+  opacity: 1;
+  border-color: currentColor;
   transform: translateY(0) rotate(-45deg);
 }
 
-.conversation-section:not(.collapsed) .sidebar-section-arrow,
-.project-section:not(.collapsed) .sidebar-section-arrow {
-  opacity: 0;
-  border-color: transparent;
-  transform: translateY(-1px) rotate(45deg);
-}
-
-.conversation-section.collapsed .sidebar-section-arrow,
 .conversation-section .sidebar-section-header:hover .sidebar-section-arrow,
-.conversation-section .sidebar-section-header:focus-within .sidebar-section-arrow,
-.project-section.collapsed .sidebar-section-arrow,
+.conversation-section .sidebar-section-header:has(:focus-visible) .sidebar-section-arrow,
 .project-section .sidebar-section-header:hover .sidebar-section-arrow,
-.project-section .sidebar-section-header:focus-within .sidebar-section-arrow {
+.project-section .sidebar-section-header:has(:focus-visible) .sidebar-section-arrow {
   opacity: 1;
   border-color: currentColor;
 }
@@ -1055,44 +1229,30 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   transform: translateY(0) rotate(-45deg);
 }
 
-.sidebar-footer {
-  display: flex;
-  align-items: flex-start;
-  flex: 0 0 auto;
-  margin-top: auto;
-  /* Keep the button's left and bottom edges on the same inset grid. */
-  min-height: calc(var(--settings-entry-height) + var(--sidebar-content-inline-inset));
-  padding-top: var(--sidebar-content-inline-inset);
-  padding-left: calc(var(--sidebar-content-block-inset) - var(--sidebar-content-inline-inset));
-}
-
 .settings-entry-btn {
   position: relative;
-  display: inline-flex;
+  display: grid;
+  place-items: center;
   align-items: center;
-  width: fit-content;
+  width: var(--settings-entry-collapsed-width);
   min-width: var(--settings-entry-collapsed-width);
-  max-width: 100%;
+  max-width: var(--settings-entry-collapsed-width);
   height: var(--settings-entry-height);
-  padding: 0 8px;
+  padding: 0;
   color: var(--text);
   background: transparent;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: var(--radius-pill);
-  font-size: 13px;
-  font-weight: 800;
-  text-align: left;
   overflow: hidden;
   isolation: isolate;
   transition:
     background-color var(--motion-fast) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease),
     color var(--motion-fast) var(--motion-ease),
-    max-width var(--motion-base) var(--motion-ease);
+    opacity var(--sidebar-collapse-motion) var(--motion-ease),
+    transform var(--sidebar-collapse-motion) var(--motion-ease);
 }
 
-.settings-entry-btn::after,
-.settings-entry-bridge::after {
+.settings-entry-btn::after {
   content: "";
   position: absolute;
   left: calc(var(--settings-entry-collapsed-width) / 2);
@@ -1108,13 +1268,11 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   transform: translate(-50%, -50%) scale(0.45);
 }
 
-.settings-entry-btn.rippling::after,
-.settings-entry-bridge.rippling::after {
+.settings-entry-btn.rippling::after {
   animation: settings-entry-ripple 520ms var(--motion-ease) both;
 }
 
-.settings-entry-btn > *,
-.settings-entry-bridge > * {
+.settings-entry-btn > * {
   position: relative;
   z-index: 1;
 }
@@ -1135,11 +1293,31 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 }
 
 .settings-entry-btn:hover,
-.settings-entry-btn:focus-visible,
+.settings-entry-btn:focus-visible {
+  color: var(--text-strong);
+  background-color: var(--sidebar-interaction-hover);
+}
+
 .settings-entry-btn.active {
   color: var(--text-strong);
-  background: var(--control-hover);
-  border-color: var(--border-strong);
+  background-color: var(--sidebar-interaction-active);
+}
+
+/* One persistent control owns settings entry and exit. It uses the sidebar's
+   global inset coordinates, so the same DOM node remains stationary while the
+   settings content replaces the ordinary sidebar content. */
+.settings-entry-global {
+  position: fixed;
+  left: var(--settings-entry-left);
+  bottom: var(--settings-entry-bottom);
+  z-index: 1003;
+}
+
+.window-shell.sidebar-collapsed .settings-entry-global,
+.window-shell.sidebar-drag-collapsed .settings-entry-global {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(calc(-1 * (var(--settings-entry-collapsed-width) + var(--floating-panel-inset))));
 }
 
 .settings-gear-icon {
@@ -1154,26 +1332,6 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   stroke-linejoin: round;
 }
 
-.settings-entry-label {
-  display: inline-block;
-  margin-left: 0;
-  max-width: 0;
-  opacity: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  transition:
-    max-width var(--motion-base) var(--motion-ease),
-    margin-left var(--motion-base) var(--motion-ease),
-    opacity var(--motion-fast) var(--motion-ease);
-}
-
-.settings-entry-btn:hover .settings-entry-label,
-.settings-entry-btn:focus-visible .settings-entry-label {
-  margin-left: 7px;
-  max-width: 64px;
-  opacity: 1;
-}
-
 .session-item {
   position: relative;
   display: grid;
@@ -1185,7 +1343,6 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   border: 1px solid transparent;
   border-radius: var(--radius-ui);
   color: var(--text);
-  cursor: pointer;
   font-size: 13px;
   line-height: 1;
   transition:
@@ -1196,32 +1353,84 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 
 .session-item:hover,
 .session-item:focus-visible,
-.session-item:focus-within {
+.session-item:has(:focus-visible) {
   color: var(--text);
-  background: var(--control-hover);
+  background-color: var(--sidebar-interaction-hover);
 }
 
 .session-item.active {
   color: var(--text);
-  background: var(--control);
+  background-color: var(--sidebar-interaction-active);
   border-color: transparent;
+}
+
+.session-item.is-dragging,
+.project-group.is-dragging {
+  opacity: 0;
+}
+
+.sidebar-drag-ghost {
+  position: fixed;
+  inset: 0 auto auto 0;
+  z-index: 320;
+  margin: 0;
+  color: var(--text);
+  background-color: var(--sidebar-interaction-active);
+  border-color: transparent;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+  transform: translate3d(0, 0, 0);
+  transition: none;
+}
+
+body.sidebar-list-dragging,
+body.sidebar-list-dragging * {
+  user-select: none !important;
+}
+
+body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):hover,
+body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-visible {
+  color: var(--text);
+  background-color: transparent;
+}
+
+body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):hover .session-tail {
+  opacity: 1;
+  transform: none;
+}
+
+body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):hover .session-row-actions,
+body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):has(:focus-visible) .session-row-actions {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(4px);
+}
+
+body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):hover .sidebar-overflowing-label.is-overflowing :is(.overflowing-label-text),
+body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-visible .sidebar-overflowing-label.is-overflowing :is(.overflowing-label-text) {
+  transform: none;
+  transition: none;
 }
 
 .project-tree {
   display: grid;
   gap: 2px;
+  min-height: 0;
   max-height: min(360px, 38vh);
+  /* The contents rail has a 14px inset. Extend the scroll viewport back
+     toward the card edge while replacing that inset as inner padding, so the
+     rows keep their width and the scrollbar stays 2px from the frame. */
+  width: calc(100% + var(--sidebar-content-inline-inset) - var(--sidebar-scrollbar-edge-gap));
   overflow-x: hidden;
   overflow-y: auto;
-  padding-right: 2px;
+  overflow-anchor: none;
+  scrollbar-gutter: stable both-edges;
+  padding-right: var(--sidebar-content-inline-inset);
   opacity: 1;
-  transition:
-    opacity var(--motion-base) var(--motion-ease),
-    max-height var(--motion-slow) var(--motion-ease);
+  transition: opacity var(--sidebar-section-motion) var(--sidebar-section-ease);
 }
 
 .project-section.collapsed .project-tree {
-  max-height: 0;
   opacity: 0;
   pointer-events: none;
 }
@@ -1290,9 +1499,12 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   max-height: 480px;
   overflow: hidden;
   opacity: 1;
+  /* The outer project tree owns the scrollbar gutter. Do not reserve a
+     second gutter here, or nested conversation rows become narrower. */
+  scrollbar-gutter: auto;
   transition:
-    opacity var(--motion-base) var(--motion-ease),
-    max-height var(--motion-slow) var(--motion-ease);
+    opacity var(--sidebar-section-motion) var(--sidebar-section-ease),
+    max-height var(--sidebar-section-motion) var(--sidebar-section-ease);
 }
 
 .project-group.collapsed .project-session-list {
@@ -1362,7 +1574,7 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 
 .session-item:hover .sidebar-overflowing-label.is-overflowing,
 .session-item:focus-visible .sidebar-overflowing-label.is-overflowing,
-.session-item:focus-within .sidebar-overflowing-label.is-overflowing {
+.session-item:has(:focus-visible) .sidebar-overflowing-label.is-overflowing {
   -webkit-mask-position: 0 0;
   mask-position: 0 0;
   transition-duration: var(--overflowing-label-scroll-duration);
@@ -1372,7 +1584,7 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 
 .session-item:hover .sidebar-overflowing-label.is-overflowing .overflowing-label-text,
 .session-item:focus-visible .sidebar-overflowing-label.is-overflowing .overflowing-label-text,
-.session-item:focus-within .sidebar-overflowing-label.is-overflowing .overflowing-label-text {
+.session-item:has(:focus-visible) .sidebar-overflowing-label.is-overflowing .overflowing-label-text {
   transform: translateX(var(--overflowing-label-offset));
   transition-duration: var(--overflowing-label-scroll-duration);
   transition-timing-function: linear;
@@ -1381,7 +1593,7 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 
 .session-item.renaming {
   color: var(--text-strong);
-  background: var(--control-hover);
+  background-color: var(--sidebar-interaction-active);
   border-color: var(--border-strong);
   cursor: text;
 }
@@ -1452,13 +1664,13 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 }
 
 .session-item:hover .session-tail,
-.session-item:focus-within .session-tail {
+.session-item:has(:focus-visible) .session-tail {
   opacity: 0;
   transform: translateX(-3px);
 }
 
 .session-item:hover .session-row-actions,
-.session-item:focus-within .session-row-actions {
+.session-item:has(:focus-visible) .session-row-actions {
   opacity: 1;
   pointer-events: auto;
   transform: translateX(0);
@@ -1498,35 +1710,37 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   flex: 1 1 auto;
   min-height: 0;
   max-height: 100%;
+  width: calc(100% + var(--sidebar-content-inline-inset) - var(--sidebar-scrollbar-edge-gap));
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable both-edges;
+  overflow-anchor: none;
   opacity: 1;
-  padding-right: 2px;
-  transition:
-    opacity var(--motion-base) var(--motion-ease),
-    max-height var(--motion-slow) var(--motion-ease);
+  padding-right: var(--sidebar-content-inline-inset);
+  transition: opacity var(--sidebar-section-motion) var(--sidebar-section-ease);
 }
 
 .conversation-section.collapsed .session-list {
-  max-height: 0;
   opacity: 0;
   pointer-events: none;
 }
 
 .sidebar-feature-panel {
   position: absolute;
-  left: clamp(12px, 2vw, 22px);
+  left: 2px;
   top: 14px;
   z-index: 75;
   display: flex;
   flex-direction: column;
-  width: min(460px, calc(100% - 28px));
+  width: min(460px, calc(100% - 4px));
   max-height: calc(100% - 126px);
   min-height: 240px;
   padding: 10px;
   color: var(--text);
-  background: rgba(32, 32, 32, 0.97);
-  border: 1px solid var(--border-strong);
+  /* Keep the search surface readable over the live sidebar without losing
+     the subtle translucent overlay treatment. */
+  background: rgba(22, 22, 22, 0.99);
+  border: 0;
   border-radius: var(--radius-ui);
   box-shadow: var(--shadow);
   opacity: 0;
@@ -1558,7 +1772,7 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   gap: 12px;
   min-height: 40px;
   padding: 0 2px 8px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 0;
 }
 
 .sidebar-feature-header span {
@@ -1592,7 +1806,7 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   flex: 0 0 28px;
   color: var(--muted);
   background: transparent;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: var(--radius-ui);
   font-size: 18px;
   line-height: 1;
@@ -1601,8 +1815,8 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 .sidebar-feature-close:hover,
 .sidebar-feature-close:focus-visible {
   color: var(--text-strong);
-  background: var(--control-hover);
-  border-color: var(--border-strong);
+  background-color: var(--sidebar-interaction-hover);
+  border: 0;
 }
 
 .sidebar-search-panel {
@@ -1622,13 +1836,13 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   padding: 0 10px;
   color: var(--muted);
   background: var(--control);
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: var(--radius-ui);
 }
 
 .sidebar-search-box:focus-within {
-  border-color: var(--border-strong);
-  background: var(--control-hover);
+  border: 0;
+  background-color: var(--sidebar-interaction-hover);
 }
 
 .sidebar-search-box input {
@@ -1658,7 +1872,7 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   padding: 0 8px;
   color: var(--muted);
   background: transparent;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: var(--radius-ui);
   font-size: 13px;
   text-align: left;
@@ -1666,10 +1880,16 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 
 .sidebar-search-result:hover,
 .sidebar-search-result:focus-visible,
+.sidebar-search-result:focus-within {
+  color: var(--text-strong);
+  background-color: var(--sidebar-interaction-hover);
+  border: 0;
+}
+
 .sidebar-search-result.active {
   color: var(--text-strong);
-  background: var(--control-hover);
-  border-color: var(--border-strong);
+  background-color: var(--sidebar-interaction-active);
+  border: 0;
 }
 
 .sidebar-search-result span {
@@ -1743,13 +1963,14 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 .sidebar-feature-actions button:hover,
 .sidebar-feature-actions button:focus-visible {
   color: var(--text-strong);
-  background: var(--control-hover);
+  background-color: var(--sidebar-interaction-hover);
   border-color: var(--border-strong);
 }
 
 .chat {
   position: relative;
-  --chat-content-max-width: 980px;
+  --composer-max-width: 740px;
+  --chat-content-max-width: var(--composer-max-width);
   --chat-content-gutter: clamp(18px, 2.6vw, 40px);
   --composer-overlay-height: 116px;
   --composer-message-gap: 32px;
@@ -1760,10 +1981,11 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   min-width: 0;
   min-height: 0;
   height: 100%;
+  margin-right: calc(0px - var(--chat-workspace-scrollbar-overlap));
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--workspace-code-surface);
   opacity: 1;
   transition: opacity var(--workspace-panel-motion) var(--motion-ease);
 }

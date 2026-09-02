@@ -1,6 +1,7 @@
 // Conversation rendering and execution-progress presentation.
 import { memo } from 'react'
 import type { TaskComplexity } from '@littlesheep/types'
+import type { WebEvidenceProjection } from '@littlesheep/types'
 import type { HistoryMessage } from '../api'
 import { MessageFileStrip } from '../composer/message-files'
 import { InlineMarkdown, Markdown } from '../Markdown'
@@ -14,6 +15,7 @@ import {
 } from './activity-model'
 import { visibleActivitySteps } from './activity-visibility'
 import { AgentToolRow } from './agent-tool-row'
+import { MessageMeta } from './message-meta'
 import type {
   AssistantTurnActivity,
   ChatMessage,
@@ -40,14 +42,18 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
   const activity = message.activity
   if (!activity) {
     return (
-      <div className="message assistant" data-message-key={messageKey}>
-        {message.text ? <Markdown text={message.text} /> : <span className="loading">思考中...</span>}
-        {(message.trace || message.toolCalls) && (
-          <TraceCard trace={message.trace} toolCalls={message.toolCalls} durationMs={message.durationMs} onOpenFile={onOpenFile} />
-        )}
-        {message.artifacts && message.artifacts.length > 0 && (
-          <MessageFileStrip files={message.artifacts} label="产出成果" onOpenFile={onOpenFile} />
-        )}
+      <div className="message-with-meta assistant" data-message-key={messageKey}>
+        <div className="message assistant">
+          {message.text ? <Markdown text={message.text} /> : <span className="loading">思考中...</span>}
+          {(message.trace || message.toolCalls) && (
+            <TraceCard trace={message.trace} toolCalls={message.toolCalls} durationMs={message.durationMs} onOpenFile={onOpenFile} />
+          )}
+          {message.artifacts && message.artifacts.length > 0 && (
+            <MessageFileStrip files={message.artifacts} label="产出成果" onOpenFile={onOpenFile} />
+          )}
+          {message.webEvidence && <WebSources evidence={message.webEvidence} />}
+        </div>
+        <MessageMeta role="assistant" text={message.text} timestamp={message.timestamp} />
       </div>
     )
   }
@@ -59,18 +65,22 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
     <section className={`assistant-turn ${activity.status}`} data-message-key={messageKey}>
       <AssistantActivityFlow activity={activity} now={now} onOpenFile={onOpenFile} />
       {responseVisible && (
-        <div
-          className="message assistant assistant-final assistant-response-stream"
-          data-stream-state={activity.status === 'running' ? 'streaming' : 'settled'}
-          aria-live={activity.status === 'running' ? 'polite' : undefined}
-        >
-          <Markdown text={message.text} streaming={activity.status === 'running'} />
-          {!message.text && activity.error && (
-            <span className="run-status-error">{activity.error}</span>
-          )}
-          {message.artifacts && message.artifacts.length > 0 && (
-            <MessageFileStrip files={message.artifacts} label="产出成果" onOpenFile={onOpenFile} />
-          )}
+        <div className="message-with-meta assistant">
+          <div
+            className="message assistant assistant-final assistant-response-stream"
+            data-stream-state={activity.status === 'running' ? 'streaming' : 'settled'}
+            aria-live={activity.status === 'running' ? 'polite' : undefined}
+          >
+            <Markdown text={message.text} streaming={activity.status === 'running'} />
+            {!message.text && activity.error && (
+              <span className="run-status-error">{activity.error}</span>
+            )}
+            {message.artifacts && message.artifacts.length > 0 && (
+              <MessageFileStrip files={message.artifacts} label="产出成果" onOpenFile={onOpenFile} />
+            )}
+            {message.webEvidence && <WebSources evidence={message.webEvidence} />}
+          </div>
+          <MessageMeta role="assistant" text={message.text} timestamp={message.timestamp} />
         </div>
       )}
     </section>
@@ -355,5 +365,77 @@ export function historyMessageToChatMessage(message: HistoryMessage): ChatMessag
     activity: message.activity,
     activityCollapsed: message.activityCollapsed,
     artifacts,
+    webEvidence: message.webEvidence,
   }
+}
+
+export function WebSources({ evidence }: { evidence: WebEvidenceProjection }) {
+  const state = webEvidenceStateLabel(evidence)
+  return (
+    <section className="web-sources" aria-label="网络资料来源">
+      <div className="web-sources-heading">
+        <strong>来源</strong>
+        <span>{state} · {evidence.citationCount} 项</span>
+      </div>
+      {(evidence.citations ?? []).map((citation) => (
+        <a
+          key={citation.id}
+          className="web-source-row"
+          href={citation.url}
+          {...(!citation.url ? { 'aria-disabled': true, onClick: (event) => event.preventDefault() } : {})}
+          title={citation.url ? `打开 ${citation.origin}` : '安全投影未保留完整链接'}
+        >
+          <span className="web-source-copy">
+            <strong>{citation.title || citation.origin}</strong>
+            <small>{sourceDomain(citation.origin)} · {sourceTime(citation.publishedAt ?? citation.fetchedAt)}</small>
+          </span>
+          <span className="web-source-state">
+            {citation.status === 'cached' ? '缓存' : citation.status === 'blocked' ? '阻止' : citation.truncated ? '截断' : '已读取'}
+          </span>
+        </a>
+      ))}
+      {evidence.errorKinds && evidence.errorKinds.length > 0 && (
+        <div className="web-source-errors" role="status">{evidence.errorKinds.map(webErrorLabel).join(' · ')}</div>
+      )}
+    </section>
+  )
+}
+
+function sourceDomain(origin: string): string {
+  try { return new URL(origin).hostname } catch { return origin }
+}
+
+function sourceTime(value: string): string {
+  const timestamp = Date.parse(value)
+  return Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString() : value
+}
+
+export function webEvidenceStateLabel(evidence: WebEvidenceProjection): string {
+  if (evidence.blocked) return '已阻止'
+  if (evidence.completeness === 'none') return '无可用资料'
+  if (evidence.partial || evidence.truncated) return '部分资料'
+  if (evidence.cached) return '缓存资料'
+  return '实时资料'
+}
+
+export function webErrorLabel(value: string): string {
+  if (value === 'web_disabled') return '网络检索已关闭'
+  if (value === 'web_provider_unconfigured') return '搜索服务未配置'
+  if (value === 'web_provider_auth_failed') return '搜索服务认证失败'
+  if (value === 'web_provider_rate_limited') return '搜索服务限流'
+  if (value === 'web_provider_unavailable') return '搜索服务暂不可用'
+  if (value === 'web_provider_invalid_response') return '搜索服务返回异常结果'
+  if (value === 'web_invalid_query') return '检索条件无效'
+  if (value === 'web_sensitive_query_blocked') return '检索内容被隐私策略阻止'
+  if (value === 'web_fetch_timeout') return '页面读取超时'
+  if (value === 'web_fetch_cancelled') return '页面读取已取消'
+  if (value === 'web_response_too_large') return '页面内容超过读取上限'
+  if (value === 'web_content_unsupported') return '页面内容格式不受支持'
+  if (value === 'web_extraction_failed') return '页面正文提取失败'
+  if (value === 'web_cache_unavailable') return '本地网页缓存暂不可用'
+  if (value === 'web_citation_invalid') return '来源引用无法验证'
+  if (value === 'web_ssrf_blocked' || value === 'web_url_invalid' || value === 'web_scheme_blocked'
+    || value === 'web_dns_check_failed' || value === 'web_redirect_blocked') return '地址被安全策略阻止'
+  if (value === 'web_partial') return '资料不完整'
+  return '网络资料读取失败'
 }

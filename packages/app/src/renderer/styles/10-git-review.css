@@ -4,16 +4,68 @@
   container-type: inline-size;
   height: 100%;
   color: var(--text);
-  background: var(--bg);
+  background: var(--workspace-code-surface);
 }
 
 .workspace-review-content {
+  position: relative;
   width: 0;
   height: 100%;
   flex: 1 1 0;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+/* Side-by-side review uses one independent vertical scrollbar between the
+ * diff surface and the file navigator. The content scroller remains the
+ * source of truth and is kept scrollable for wheel/touch input. */
+.workspace-review.is-side-by-side .workspace-review-diff-scroll {
+  scrollbar-width: none;
+}
+
+.workspace-review.is-side-by-side .workspace-review-diff-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.workspace-review-scroll-rail {
+  position: absolute;
+  z-index: 3;
+  top: var(--workspace-page-leading-row-height);
+  right: 0;
+  bottom: 0;
+  width: 11px;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: transparent;
+  scrollbar-color: rgba(160, 160, 160, 0.48) transparent;
+  scrollbar-width: thin;
+}
+
+.workspace-review-scroll-rail::-webkit-scrollbar {
+  width: 8px;
+}
+
+.workspace-review-scroll-rail::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.workspace-review-scroll-rail::-webkit-scrollbar-thumb {
+  min-height: 24px;
+  background: rgba(160, 160, 160, 0.42);
+  border-radius: var(--radius-pill);
+}
+
+.workspace-review-scroll-rail:hover::-webkit-scrollbar-thumb {
+  background: rgba(190, 190, 190, 0.56);
+}
+
+.workspace-review-scroll-rail > div {
+  width: 1px;
+  min-height: 100%;
 }
 
 .workspace-files-icon-btn.refreshing svg {
@@ -57,6 +109,7 @@
 }
 
 .workspace-review-tree-branch {
+  position: relative;
   min-width: 0;
 }
 
@@ -127,7 +180,7 @@
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--workspace-code-surface);
 }
 
 .workspace-review-diff-header {
@@ -148,6 +201,13 @@
   padding-left: 2px;
 }
 
+.workspace-review-diff-title-main {
+  display: inline-flex;
+  align-items: baseline;
+  min-width: 0;
+  gap: 6px;
+}
+
 .workspace-review-diff-title strong,
 .workspace-review-diff-title small {
   min-width: 0;
@@ -157,8 +217,12 @@
 }
 
 .workspace-review-diff-title strong {
+  min-width: 0;
+  overflow: hidden;
   color: var(--text-strong);
   font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .workspace-review-diff-title small {
@@ -166,11 +230,22 @@
   font-size: 10px;
 }
 
+.workspace-review-diff-layer-status {
+  flex: 0 0 auto;
+  max-width: min(220px, 42%);
+  overflow: hidden;
+  color: var(--muted-2);
+  font-size: 10px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .workspace-review-diff-actions {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 7px;
+  gap: var(--workspace-files-control-gap, 4px);
 }
 
 .workspace-review-icon-button {
@@ -184,7 +259,6 @@
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-ui);
-  cursor: pointer;
 }
 
 .workspace-review-icon-button:hover,
@@ -228,7 +302,7 @@
   flex-direction: column;
   min-height: 320px;
   overflow: hidden;
-  background: #101010;
+  background: var(--workspace-code-surface);
 }
 
 .workspace-review-monaco-diff {
@@ -239,12 +313,12 @@
   min-width: 0;
   min-height: 280px;
   overflow: hidden;
-  background: #101010;
+  background: var(--workspace-code-surface);
 }
 
 .workspace-review-monaco-diff > .workspace-placeholder {
   height: 100%;
-  background: #101010;
+  background: var(--workspace-code-surface);
 }
 
 .workspace-review-monaco-diff .monaco-editor .line-insert,
@@ -308,19 +382,6 @@
   vertical-align: middle;
 }
 
-.workspace-review-layer-header {
-  flex: 0 0 auto;
-  padding: 5px 12px;
-  color: #a3a3a3;
-  background: #171717;
-  border-top: 1px solid rgba(255, 255, 255, 0.045);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.2;
-  white-space: pre;
-}
-
 .workspace-review-notice {
   margin: 8px;
   padding: 7px 9px;
@@ -338,11 +399,5 @@
 
   .workspace-review-diff-title small {
     display: none;
-  }
-}
-
-@container (max-width: 410px) {
-  .workspace-review-diff-actions {
-    gap: 2px;
   }
 }

@@ -44,13 +44,13 @@ describe('main attachment helpers', () => {
         contextPath: file,
         name: 'source.ts',
         lineComments: [
-          { startLine: 1, text: '  Explain why this value is fixed.  ' },
+          { id: 'comment-1', startLine: 1, text: '  Explain why this value is fixed.  ' },
           { startLine: 2, endLine: 1, text: 'invalid range' },
           { startLine: 0, text: 'invalid line' },
         ],
       }])
       expect(refs[0]?.lineComments).toEqual([
-        { startLine: 1, text: 'Explain why this value is fixed.' },
+        { id: 'comment-1', startLine: 1, text: 'Explain why this value is fixed.' },
       ])
 
       const prepared = await prepareRunAttachments(refs, { workspaceDir: dir })

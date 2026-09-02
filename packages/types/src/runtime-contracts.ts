@@ -4,6 +4,7 @@ import type { StageName } from './agent.js';
 import type { PlanStep, TaskBook, TaskExecutionResult } from './task.js';
 import type { SessionId } from './session.js';
 import type { ContextSafetyEstimate, LocalTokenLedger, ProviderTokenLedger } from './token-ledger.js';
+import type { NetworkReadPolicy, WebEvidenceProjection, WebProviderRuntimeSnapshot } from './web-retrieval.js';
 export * from './token-ledger.js';
 
 export const CONTEXT_SNAPSHOT_VERSION = 1 as const;
@@ -115,6 +116,10 @@ export interface ResolvedRunConfig {
   readonly parameters: Readonly<Record<string, string | number | boolean | null>>;
   readonly availableToolNames: readonly string[];
   readonly approvalRequiredToolNames: readonly string[];
+  /** Optional for legacy v1 records; all newly resolved runs populate this immutable policy. */
+  readonly networkPolicy?: NetworkReadPolicy;
+  /** Redacted provider state at run start. Credentials and endpoints are never retained here. */
+  readonly webProvider?: WebProviderRuntimeSnapshot;
   readonly userOverrides: Readonly<Record<string, unknown>>;
   readonly projectOverrides: Readonly<Record<string, unknown>>;
   readonly sourceConfigRevision?: string;
@@ -266,6 +271,8 @@ export type ToolInvocationStatus =
   | 'proposed'
   | 'unknown_tool'
   | 'validation_failed'
+  /** Runtime hard safety policy rejected the invocation; approval cannot override it. */
+  | 'hard_denied'
   | 'approval_denied'
   | 'approval_unavailable'
   | 'running'
@@ -277,7 +284,7 @@ export type ToolInvocationStatus =
 
 export interface ToolApprovalRecord {
   required: boolean | 'unknown';
-  decision: 'not_required' | 'approved' | 'denied' | 'unavailable' | 'error' | 'unknown';
+  decision: 'not_required' | 'approved' | 'denied' | 'blocked' | 'unavailable' | 'error' | 'unknown';
   decidedAt?: string;
   reason?: string;
 }
@@ -738,6 +745,7 @@ export interface RunCheckpointAttachmentReference {
   /** Display-only source path for line-comment context; never used to restore content. */
   contextPath?: string;
   lineComments?: Array<{
+    id?: string;
     startLine: number;
     endLine?: number;
     text: string;
@@ -824,6 +832,8 @@ export interface RunCheckpoint {
   contextSnapshotIds: string[];
   sideEffects: SideEffectCheckpoint[];
   loopBudget: LoopBudgetSnapshot;
+  /** Optional bounded retrieval state. Old v1 checkpoints omit it and remain readable. */
+  webEvidence?: WebEvidenceProjection;
   /** Optional in v1 for backward compatibility; old checkpoints are inspect-only. */
   resumeState?: RunCheckpointResumeState;
   createdAt: string;

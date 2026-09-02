@@ -6,27 +6,27 @@ import { transientTriggerProps } from '../ui/transient'
 export function WorkspacePreviewActions({
   editable,
   isMarkdown,
+  isHtml,
   editing,
   showMarkdownSource,
-  dirty,
-  saving,
+  showHtmlSource,
   canOpenExternalVSCode,
   onToggleMarkdownSource,
+  onToggleHtmlSource,
   onToggleEditing,
-  onSave,
   onOpenInVSCode,
   onTipChange,
 }: {
   editable: boolean
   isMarkdown: boolean
+  isHtml: boolean
   editing: boolean
   showMarkdownSource: boolean
-  dirty: boolean
-  saving: boolean
+  showHtmlSource: boolean
   canOpenExternalVSCode: boolean
   onToggleMarkdownSource: () => void
+  onToggleHtmlSource: () => void
   onToggleEditing: () => void
-  onSave: () => void
   onOpenInVSCode: () => void | Promise<void>
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
@@ -53,6 +53,22 @@ export function WorkspacePreviewActions({
               {showMarkdownSource ? '查看预览' : '查看源代码'}
             </button>
           )}
+          {isHtml && (
+            <button
+              {...transientTriggerProps()}
+              className={`workspace-files-text-btn ${showHtmlSource ? 'active' : ''}`}
+              type="button"
+              aria-pressed={showHtmlSource}
+              onClick={onToggleHtmlSource}
+              onMouseEnter={(event) => onTipChange(buildFloatingHelpTip(showHtmlSource ? '返回 HTML 渲染预览' : '查看 HTML 源代码', event.clientX, event.clientY))}
+              onMouseMove={(event) => onTipChange(buildFloatingHelpTip(showHtmlSource ? '返回 HTML 渲染预览' : '查看 HTML 源代码', event.clientX, event.clientY))}
+              onMouseLeave={() => onTipChange(null)}
+              onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement(showHtmlSource ? '返回 HTML 渲染预览' : '查看 HTML 源代码', event.currentTarget))}
+              onBlur={() => onTipChange(null)}
+            >
+              {showHtmlSource ? '查看预览' : '查看源代码'}
+            </button>
+          )}
           <button
             {...transientTriggerProps()}
             className={`workspace-files-text-btn ${editing ? 'active' : ''}`}
@@ -66,20 +82,6 @@ export function WorkspacePreviewActions({
             onBlur={() => onTipChange(null)}
           >
             {editing ? '只读' : '编辑'}
-          </button>
-          <button
-            {...transientTriggerProps()}
-            className="workspace-files-text-btn"
-            type="button"
-            disabled={!dirty || saving}
-            onClick={onSave}
-            onMouseEnter={(event) => onTipChange(buildFloatingHelpTip('保存当前文件', event.clientX, event.clientY))}
-            onMouseMove={(event) => onTipChange(buildFloatingHelpTip('保存当前文件', event.clientX, event.clientY))}
-            onMouseLeave={() => onTipChange(null)}
-            onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement('保存当前文件', event.currentTarget))}
-            onBlur={() => onTipChange(null)}
-          >
-            {saving ? '保存中' : dirty ? '保存*' : '保存'}
           </button>
         </>
       )}

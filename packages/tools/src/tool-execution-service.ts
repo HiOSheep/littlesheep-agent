@@ -29,6 +29,7 @@ import {
   summarizeToolInput,
 } from './tool-execution-records.js';
 import {
+  projectToolInput,
   resolveToolExecutionPolicy,
   sanitizeToolResult,
   stampToolStep,
@@ -153,9 +154,12 @@ export class ToolExecutionService {
     const prepared: PreparedInvocation[] = [];
 
     for (const [index, request] of requests.entries()) {
-      const record = this.createRecord(request);
-      const retained = this.retainRecord(record);
       const registration = this.registrations.get(request.name);
+      const auditInput = registration
+        ? projectToolInput(registration.tool, request.input)
+        : { projection: 'unavailable' };
+      const record = this.createRecord(request, auditInput);
+      const retained = this.retainRecord(record);
       if (!registration) {
         record.resolvedAt = this.timestamp();
         this.publishRecord(record, retained);
@@ -215,7 +219,8 @@ export class ToolExecutionService {
         continue;
       }
 
-      const approval = await this.approve(registration.tool, input, record, retained, request.signal);
+      const descriptor = describeToolAccess(registration.tool.name, input, this.options.toolContext);
+      const approval = await this.approve(registration.tool, input, descriptor, record, retained, request.signal);
       if (!approval.ok) {
         immediate.set(index, this.finishWithoutExecution(
           record,
@@ -274,7 +279,7 @@ export class ToolExecutionService {
     };
   }
 
-  private createRecord(request: ToolInvocationRequest): ToolInvocationRecord {
+  private createRecord(request: ToolInvocationRequest, auditInput: unknown): ToolInvocationRecord {
     const id = this.options.idFactory?.() ?? randomUUID();
     return {
       version: 1,
@@ -287,8 +292,8 @@ export class ToolExecutionService {
       toolSource: 'unknown',
       status: 'proposed',
       proposedAt: this.timestamp(),
-      inputHash: hashToolInput(request.input),
-      inputSummary: summarizeToolInput(request.input),
+      inputHash: hashToolInput(auditInput),
+      inputSummary: summarizeToolInput(auditInput),
       approval: { required: 'unknown', decision: 'unknown' },
       evidenceIds: [`${this.options.toolContext.runId}:evidence:tool:${id}`],
     };
@@ -319,18 +324,33 @@ export class ToolExecutionService {
   private async approve(
     tool: AgentTool,
     input: unknown,
+    descriptor: ReturnType<typeof describeToolAccess>,
     record: ToolInvocationRecord,
     retained: boolean,
     signal?: AbortSignal,
   ): Promise<
     | { ok: true; granted: boolean }
-    | { ok: false; status: 'approval_denied' | 'approval_unavailable' | 'aborted'; error: string; errorKind: string }
+    | { ok: false; status: 'hard_denied' | 'approval_denied' | 'approval_unavailable' | 'aborted'; error: string; errorKind: string }
   > {
+    if (descriptor.hardDecision === 'deny') {
+      record.approval.required = false;
+      record.approval.decision = 'blocked';
+      record.approval.decidedAt = this.timestamp();
+      record.approval.reason = descriptor.reason;
+      this.publishRecord(record, retained);
+      return {
+        ok: false,
+        status: 'hard_denied',
+        error: `tool execution blocked by runtime safety policy: ${descriptor.reason}`,
+        errorKind: 'hard_deny',
+      };
+    }
     const mode = this.options.toolContext.permissionMode;
     const required = mode
       ? shouldRequestPermissionApproval(
           mode,
-          describeToolAccess(tool.name, input, this.options.toolContext),
+          descriptor,
+          { strictReadApproval: this.options.toolContext.networkPolicy?.strictReadApproval === true },
         )
       : tool.requiresApproval === true;
     record.approval.required = required;
@@ -357,7 +377,7 @@ export class ToolExecutionService {
     try {
       const approvalSignal = signal ?? this.options.toolContext.signal;
       const approved = await this.withApprovalLock(approvalSignal, () => waitForAbort(
-        Promise.resolve().then(() => approve(tool.name, input)),
+        Promise.resolve().then(() => approve(tool.name, projectToolInput(tool, input))),
         approvalSignal,
         'approval aborted',
       ));
@@ -409,7 +429,7 @@ export class ToolExecutionService {
       callId: request.callId,
       name: request.name,
       stepId: request.stepId,
-      input,
+      input: projectToolInput(registration.tool, input),
     });
     const lifecycleContext: ToolExecutionLifecycleContext = {
       request,

@@ -15,7 +15,7 @@ import type {
   SessionId,
   StageName,
 } from '@littlesheep/types';
-import { RUN_CHECKPOINT_VERSION } from '@littlesheep/types';
+import { RUN_CHECKPOINT_VERSION, sanitizeWebEvidenceProjection } from '@littlesheep/types';
 
 export const DEFAULT_RUN_CHECKPOINT_MAX_HISTORY = 128 as const;
 export const MAX_RUN_CHECKPOINT_MAX_HISTORY = 512 as const;
@@ -492,6 +492,7 @@ function validateCheckpoint(value: unknown, maxFileBytes: number, maxContextSnap
   const resumeState = value.resumeState === undefined
     ? undefined
     : validateResumeState(value.resumeState);
+  const webEvidence = sanitizeWebEvidenceProjection(value.webEvidence);
   const checkpoint: RunCheckpoint = {
     version: RUN_CHECKPOINT_VERSION,
     id,
@@ -511,6 +512,7 @@ function validateCheckpoint(value: unknown, maxFileBytes: number, maxContextSnap
     contextSnapshotIds,
     sideEffects: normalizedSideEffects,
     loopBudget,
+    ...(webEvidence ? { webEvidence } : {}),
     ...(resumeState ? { resumeState } : {}),
     createdAt,
     reason,

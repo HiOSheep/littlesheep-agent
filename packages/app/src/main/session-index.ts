@@ -8,6 +8,7 @@ import { readFile, mkdir } from 'node:fs/promises'
 import { atomicWrite } from '@littlesheep/memory-core'
 import { isSessionScope, type SessionScope } from '../shared/session-scope.js'
 import type { SessionMeta } from '../shared/session-project-contracts.js'
+import { normalizePermissionModeId } from '../shared/permission-modes.js'
 import { isRetiredApplicationWorkspace } from './runtime-config.js'
 import { normalizeBoundPath } from './path-rebinding.js'
 
@@ -16,6 +17,7 @@ export type { SessionMeta } from '../shared/session-project-contracts.js'
 export class SessionIndex {
   private readonly filePath: string
   private readonly workplaceDir: string
+  private mutationQueue: Promise<void> = Promise.resolve()
 
   constructor(opts: { dataDir: string; workplaceDir?: string }) {
     this.filePath = join(opts.dataDir, 'sessions.json')
@@ -23,6 +25,10 @@ export class SessionIndex {
   }
 
   async list(): Promise<SessionMeta[]> {
+    return this.enqueueMutation(() => this.read())
+  }
+
+  private async read(): Promise<SessionMeta[]> {
     try {
       const raw = await readFile(this.filePath, 'utf-8')
       const data = JSON.parse(raw) as { sessions?: unknown[] }
@@ -46,49 +52,61 @@ export class SessionIndex {
 
   /** Upsert by id. For new sessions, missing fields get defaults. */
   async upsert(id: string, updates: Partial<Omit<SessionMeta, 'id'>>): Promise<void> {
-    const sessions = await this.list()
-    const idx = sessions.findIndex((s) => s.id === id)
-    if (idx >= 0) {
-      sessions[idx] = { ...sessions[idx]!, ...updates }
-    } else {
-      sessions.push({
-        id,
-        title: updates.title ?? 'New session',
-        createdAt: updates.createdAt ?? Date.now(),
-        lastMessageAt: updates.lastMessageAt ?? Date.now(),
-        mode: updates.mode ?? 'research',
-        scope: updates.scope ?? 'standalone',
-        projectId: updates.scope === 'project' ? updates.projectId : undefined,
-        workspacePath: updates.workspacePath,
-      })
-    }
-    const normalized = sessions
-      .map((session) => normalizeSessionMeta(session, this.workplaceDir))
-      .filter((session): session is SessionMeta => !!session)
-    await this.persist(normalized)
+    await this.enqueueMutation(async () => {
+      const sessions = await this.read()
+      const idx = sessions.findIndex((s) => s.id === id)
+      if (idx >= 0) {
+        sessions[idx] = { ...sessions[idx]!, ...updates }
+      } else {
+        sessions.push({
+          id,
+          title: updates.title ?? 'New session',
+          createdAt: updates.createdAt ?? Date.now(),
+          lastMessageAt: updates.lastMessageAt ?? Date.now(),
+          mode: updates.mode ?? 'research',
+          scope: updates.scope ?? 'standalone',
+          projectId: updates.scope === 'project' ? updates.projectId : undefined,
+          workspacePath: updates.workspacePath,
+        })
+      }
+      const normalized = sessions
+        .map((session) => normalizeSessionMeta(session, this.workplaceDir))
+        .filter((session): session is SessionMeta => !!session)
+      await this.persist(normalized)
+    })
   }
 
   async remove(id: string): Promise<SessionMeta | undefined> {
-    const sessions = await this.list()
-    const existing = sessions.find((s) => s.id === id)
-    await this.persist(sessions.filter((s) => s.id !== id))
-    return existing
+    return this.enqueueMutation(async () => {
+      const sessions = await this.read()
+      const existing = sessions.find((s) => s.id === id)
+      await this.persist(sessions.filter((s) => s.id !== id))
+      return existing
+    })
   }
 
   async rebindProject(projectId: string, workspacePath: string): Promise<SessionMeta[]> {
-    const normalizedPath = normalizeBoundPath(workspacePath)
-    const sessions = await this.list()
-    const affected: SessionMeta[] = []
-    let changed = false
-    const next = sessions.map((session) => {
-      if (session.scope !== 'project' || session.projectId !== projectId) return session
-      const updated = { ...session, workspacePath: normalizedPath }
-      affected.push(updated)
-      if (session.workspacePath !== normalizedPath) changed = true
-      return updated
+    return this.enqueueMutation(async () => {
+      const normalizedPath = normalizeBoundPath(workspacePath)
+      const sessions = await this.read()
+      const affected: SessionMeta[] = []
+      let changed = false
+      const next = sessions.map((session) => {
+        if (session.scope !== 'project' || session.projectId !== projectId) return session
+        const updated = { ...session, workspacePath: normalizedPath }
+        affected.push(updated)
+        if (session.workspacePath !== normalizedPath) changed = true
+        return updated
+      })
+      if (changed) await this.persist(next)
+      return affected
     })
-    if (changed) await this.persist(next)
-    return affected
+  }
+
+  private enqueueMutation<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.mutationQueue.then(operation)
+    this.mutationQueue = result.then(() => undefined, () => undefined)
+    return result
   }
 
   private async persist(sessions: SessionMeta[]): Promise<void> {
@@ -132,7 +150,7 @@ export function normalizeSessionMeta(value: unknown, workplaceDir: string): Sess
     title: item.title,
     createdAt: item.createdAt,
     lastMessageAt: item.lastMessageAt,
-    mode: item.mode,
+    mode: normalizePermissionModeId(item.mode),
     scope,
     projectId: scope === 'project' ? projectId : undefined,
     workspacePath,
@@ -147,7 +165,8 @@ function sessionsNeedMigration(raw: unknown[], normalized: SessionMeta[]): boole
     const stored = item as Record<string, unknown>
     return stored.scope !== session.scope ||
       stored.projectId !== session.projectId ||
-      stored.workspacePath !== session.workspacePath
+      stored.workspacePath !== session.workspacePath ||
+      stored.mode !== session.mode
   })
 }
 

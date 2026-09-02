@@ -8,6 +8,12 @@ import {
   APPLICATION_STATE_FLUSH_CHANNEL,
 } from '../shared/application-state-contracts'
 import { BROWSER_OPEN_NEW_TAB_CHANNEL, type BrowserOpenNewTabEvent } from '../shared/browser-control-contracts'
+import {
+  WINDOW_DRAG_END_CHANNEL,
+  WINDOW_DRAG_MOVE_CHANNEL,
+  WINDOW_DRAG_START_CHANNEL,
+  type WindowDragPoint,
+} from '../shared/window-drag-contracts'
 
 const apiPort = process.env['LITTLESHEEP_API_PORT'] ?? '0'
 const apiBase = `http://127.0.0.1:${apiPort}`
@@ -43,4 +49,7 @@ contextBridge.exposeInMainWorld('littlesheep', {
     ipcRenderer.on(APPLICATION_STATE_FLUSH_CHANNEL, handler)
     return () => ipcRenderer.removeListener(APPLICATION_STATE_FLUSH_CHANNEL, handler)
   },
+  startWindowDrag: (point: WindowDragPoint) => ipcRenderer.send(WINDOW_DRAG_START_CHANNEL, point),
+  moveWindowDrag: (point: WindowDragPoint) => ipcRenderer.send(WINDOW_DRAG_MOVE_CHANNEL, point),
+  endWindowDrag: () => ipcRenderer.send(WINDOW_DRAG_END_CHANNEL),
 })

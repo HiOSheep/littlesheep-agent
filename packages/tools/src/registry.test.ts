@@ -79,6 +79,6 @@ describe('ToolRegistry', () => {
 
   it('registers structured document readers and creators as core builtins', () => {
     registerBuiltinTools(registry);
-    expect(registry.names()).toEqual(expect.arrayContaining(['document_read', 'document_create']));
+    expect(registry.names()).toEqual(expect.arrayContaining(['document_read', 'document_create', 'web_search', 'web_fetch']));
   });
 });

@@ -49,7 +49,7 @@ describe('workspace review line comments', () => {
       name: 'old-app.ts',
       kind: 'file',
     })
-    expect(attachment.lineComments?.[0]).toMatchObject({ startLine: 20 })
+    expect(attachment.lineComments?.[0]).toMatchObject({ id: 'comment-1', startLine: 20 })
     expect(attachment.lineComments?.[0]?.text).toContain('保留旧分支的兼容行为。')
     expect(attachment.lineComments?.[0]?.text).toContain('未暂存 / 修改前 / src/old-app.ts')
     expect(attachment.lineComments?.[0]?.text).toContain('20 | return oldValue')

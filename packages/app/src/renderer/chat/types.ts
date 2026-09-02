@@ -1,6 +1,6 @@
 // Conversation rendering and execution-progress presentation.
 import type { HistoryActivity } from '../../shared/history-activity'
-import type { StageName } from '@littlesheep/types'
+import type { StageName, WebEvidenceProjection } from '@littlesheep/types'
 import {
   type AttachmentRef
 } from '../api'
@@ -20,6 +20,7 @@ export interface ChatMessage {
   durationMs?: number
   activity?: AssistantTurnActivity
   activityCollapsed?: boolean
+  webEvidence?: WebEvidenceProjection
 }
 
 

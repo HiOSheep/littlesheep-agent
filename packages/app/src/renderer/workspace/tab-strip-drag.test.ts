@@ -21,6 +21,21 @@ describe('workspace tab pointer reordering', () => {
     expect(tabStrip).toContain('getBoundingClientRect().width')
     expect(styles).toMatch(/\.workspace-active-item\.is-dragging\s*\{[^}]*opacity:\s*0;/u)
     expect(styles).toMatch(/\.workspace-active-drag-ghost\s*\{[^}]*position:\s*fixed;[^}]*z-index:\s*320;[^}]*pointer-events:\s*none;[^}]*transition:\s*none;/u)
+    expect(styles).toMatch(/body\.workspace-tab-dragging \.workspace-active-item:not\(\.is-dragging\):not\(\.active\):hover,[\s\S]*?background:\s*transparent;/u)
+    expect(styles).toMatch(/body\.workspace-tab-dragging \.workspace-active-item:not\(\.is-dragging\):hover \.workspace-active-label\.is-overflowing \.workspace-active-label-text,[\s\S]*?transform:\s*none;[\s\S]*?transition:\s*none;/u)
+    expect(styles).toMatch(/body\.workspace-tab-dragging \.workspace-active-item:not\(\.is-dragging\) \.workspace-active-close:hover,[\s\S]*?background:\s*transparent;/u)
+  })
+
+  it('maps vertical wheel input to horizontal tab-strip scrolling without intercepting non-overflowing or boundary input', async () => {
+    const tabStrip = await readFile(new URL('./tab-strip.tsx', import.meta.url), 'utf8')
+
+    expect(tabStrip).toContain('function handleTabStripWheel(event: ReactWheelEvent<HTMLDivElement>)')
+    expect(tabStrip).toContain('onWheel={handleTabStripWheel}')
+    expect(tabStrip).toContain('strip.scrollWidth <= strip.clientWidth')
+    expect(tabStrip).toContain('Math.abs(event.deltaX) > Math.abs(event.deltaY)')
+    expect(tabStrip).toContain('previousScrollLeft + delta')
+    expect(tabStrip).toContain('event.preventDefault()')
+    expect(tabStrip).toContain('strip.scrollLeft = nextScrollLeft')
   })
 
   it('commits the reordered session tabs without turning close clicks into drags', async () => {

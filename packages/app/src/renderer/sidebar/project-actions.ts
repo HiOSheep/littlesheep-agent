@@ -64,6 +64,7 @@ export interface ProjectActionContext {
   setSessionOwnership: Dispatch<SetStateAction<Pick<SessionMeta, 'scope' | 'projectId'>>>
   setSessions: Dispatch<SetStateAction<SessionMeta[]>>
   setSidebarPanel: Dispatch<SetStateAction<SidebarPanel>>
+  resetDraftPermissionMode: () => void
   setWorkspaceOpenRequest: Dispatch<SetStateAction<WorkspaceOpenRequest | null>>
 }
 
@@ -78,6 +79,7 @@ export function createProjectActions(context: ProjectActionContext) {
     setAppHistory, setContextUsageSnapshot, setControlTip, setConversationCollapsed,
     setCurrentSession, setMessages, setPinnedSessionIds, setProjectCreatorOpen, setProjects,
     setRuntime, setRuntimeError, setSessionOwnership, setSessions, setSidebarPanel,
+    resetDraftPermissionMode,
     setWorkspaceOpenRequest,
   } = context
 
@@ -106,6 +108,7 @@ export function createProjectActions(context: ProjectActionContext) {
     setProjectCreatorOpen(false)
     setConversationCollapsed(false)
     beginDraftApprovalScope()
+    resetDraftPermissionMode()
     setCurrentSession(undefined)
     setSessionOwnership({ scope: 'project', projectId: project.id })
     setMessages([])
@@ -188,6 +191,7 @@ export function createProjectActions(context: ProjectActionContext) {
     resetWorkspaceSessionLayout()
     alignWorkspacePanelToWorkspaceRoot(next.workspace, null)
     beginDraftApprovalScope()
+    resetDraftPermissionMode()
     setCurrentSession(undefined)
     setSessionOwnership({ scope: 'standalone' })
     setMessages([])
@@ -206,6 +210,7 @@ export function createProjectActions(context: ProjectActionContext) {
     setSessions((items) => items.filter((item) => !removedSessionIds.has(item.id)))
     if (currentSession && removedSessionIds.has(currentSession)) {
       beginDraftApprovalScope()
+      resetDraftPermissionMode()
       setCurrentSession(undefined)
       setSessionOwnership({ scope: 'standalone' })
       setMessages([])
@@ -232,6 +237,7 @@ export function createProjectActions(context: ProjectActionContext) {
     })
     if (currentSession && removedSessionIds.has(currentSession)) {
       beginDraftApprovalScope()
+      resetDraftPermissionMode()
       setCurrentSession(undefined)
       setSessionOwnership({ scope: 'standalone' })
       setMessages([])

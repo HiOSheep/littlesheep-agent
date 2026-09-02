@@ -106,7 +106,7 @@ export function estimateWorkspacePreviewBytes(preview: WorkspacePreview): number
     + stringBytes(preview.name)
     + stringBytes(preview.relativePath)
 
-  if (preview.kind === 'text' || preview.kind === 'markdown') {
+  if (preview.kind === 'text' || preview.kind === 'markdown' || preview.kind === 'html') {
     bytes += stringBytes(preview.content)
     if (preview.kind === 'text') bytes += stringBytes(preview.language)
     return bytes

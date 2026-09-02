@@ -67,8 +67,12 @@ describe('interaction surface visibility', () => {
   it('disables generic exiting overlays while keeping the reversible settings transition explicit', async () => {
     const presence = await readRendererFile('./ui/presence.tsx')
     const overlays = await readRendererFile('./app-shell/overlays-view.tsx')
+    const styles = await readRendererStyleSource()
     expect(presence).toContain('interactiveDuringExit = false')
     expect(presence).toContain("interactionHidden ? { inert: '' } : {}")
     expect(overlays).toContain('interactiveDuringExit')
+    expect(overlays).toContain('className="settings-presence"')
+    expect(styles).toMatch(/\.presence-layer\.settings-presence\s*\{[^}]*pointer-events:\s*none;/u)
+    expect(styles).toMatch(/\.settings-presence \.settings-workspace\s*\{[^}]*pointer-events:\s*auto;/u)
   })
 })

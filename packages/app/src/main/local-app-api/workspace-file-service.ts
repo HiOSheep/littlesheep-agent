@@ -4,6 +4,7 @@ import { lstat, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { basename, extname, relative, resolve } from 'node:path'
 import {
   WORKSPACE_MARKDOWN_EXTS,
+  WORKSPACE_HTML_EXTS,
   classifyWorkspaceFileSurface,
   previewLanguageForWorkspaceFile,
 } from '../workspace-file-routing.js'
@@ -106,6 +107,9 @@ export async function previewWorkspaceFile(root: string, target: string) {
   if (surface === 'builtinEditor' && WORKSPACE_MARKDOWN_EXTS.has(ext)) {
     return { ...base, kind: 'markdown' as const, content: await readUtf8Preview(target) }
   }
+  if (surface === 'htmlPreview' && WORKSPACE_HTML_EXTS.has(ext)) {
+    return { ...base, kind: 'html' as const, content: await readUtf8Preview(target) }
+  }
   if (surface === 'builtinEditor') {
     return {
       ...base,
@@ -144,6 +148,7 @@ export async function saveWorkspaceTextFile(root: string, target: string, body: 
   const surface = classifyWorkspaceFileSurface(lowerName, ext)
   if (
     surface !== 'builtinEditor'
+    && surface !== 'htmlPreview'
     && (surface !== 'sniffText' || info.size > MAX_TEXT_PREVIEW_BYTES || await readUtf8PreviewIfLikely(target) === null)
   ) {
     throw new HttpError(415, '当前阶段只支持保存文本或 Markdown 文件。')

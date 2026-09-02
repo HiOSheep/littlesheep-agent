@@ -2,13 +2,13 @@
 
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
-import { app, BrowserWindow, ipcMain, screen } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeImage, screen } from 'electron'
 import type { DesktopClosePolicy } from '@littlesheep/config'
 import {
   APPLICATION_STATE_FLUSH_ACK_CHANNEL,
   APPLICATION_STATE_FLUSH_CHANNEL,
 } from '../shared/application-state-contracts.js'
-import { resolveAppIconPath } from './app-icon.js'
+import { resolveAppIconPath, resolveAppPngIconPath } from './app-icon.js'
 import { APPLICATION_ZOOM_FACTOR, isApplicationZoomShortcut } from './application-zoom.js'
 import { decideLastWindowClose } from './close-policy.js'
 import {
@@ -17,9 +17,24 @@ import {
   saveDesktopWindowState,
   type DesktopWindowState,
 } from './desktop-window-state.js'
+import {
+  createDesktopStartupPageUrl,
+} from './desktop-startup-page.js'
 import { configureEmbeddedBrowserWindow } from './embedded-browser.js'
 import type { RunActivityMonitor } from './run-activity-monitor.js'
 import { LittleSheepTrayController } from './tray-controller.js'
+import {
+  isWindowDragPoint,
+  WINDOW_DRAG_END_CHANNEL,
+  WINDOW_DRAG_MOVE_CHANNEL,
+  WINDOW_DRAG_START_CHANNEL,
+  type WindowDragPoint,
+} from '../shared/window-drag-contracts.js'
+
+// Keep the renderer titlebar row and Electron's native caption buttons on the
+// same CSS-pixel height. The native overlay is outside the DOM, so this
+// explicit contract prevents the two rows from drifting independently.
+export const WINDOW_TITLEBAR_HEIGHT = 32
 
 export interface LittleSheepDesktopShellOptions {
   activity: RunActivityMonitor
@@ -79,6 +94,11 @@ export class LittleSheepDesktopShell {
   private pendingWindowState: DesktopWindowState | null = null
   private windowStateSaveTimer: ReturnType<typeof setTimeout> | undefined
   private windowStateWriteTail: Promise<void> = Promise.resolve()
+  private rendererAvailable = false
+  private readonly rendererLoadedWindows = new Set<BrowserWindow>()
+  private readonly restoredWindowStateWindows = new Set<BrowserWindow>()
+  private windowDragSession: { senderId: number; startPoint: WindowDragPoint; startBounds: Electron.Rectangle } | null = null
+  private windowDragHandlersInstalled = false
 
   constructor(options: LittleSheepDesktopShellOptions) {
     this.options = options
@@ -86,6 +106,21 @@ export class LittleSheepDesktopShell {
 
   initialize(): void {
     this.initializeTray()
+    this.rendererAvailable = true
+    const window = this.resolveWindow() ?? this.createWindow()
+    this.mainWindow = window
+    this.restoreWindowState()
+    this.loadRenderer(window)
+  }
+
+  /** Show a lightweight branding surface while the Runtime is still starting. */
+  showStartup(): void {
+    const window = this.resolveWindow()
+    if (window) {
+      this.mainWindow = window
+      showWindow(window)
+      return
+    }
     this.mainWindow = this.createWindow()
   }
 
@@ -96,7 +131,17 @@ export class LittleSheepDesktopShell {
       showWindow(window)
       return
     }
-    if (this.options.canCreateWindow()) this.mainWindow = this.createWindow()
+    if (!this.options.canCreateWindow()) return
+    const created = this.createWindow()
+    this.mainWindow = created
+    if (this.rendererAvailable) this.loadRenderer(created)
+  }
+
+  /** Apply the durable geometry once the data-root location is known. */
+  restoreWindowState(): void {
+    const window = this.resolveWindow()
+    const restoredState = window ? this.restoreWindowStateFor(window) : undefined
+    if (restoredState?.maximized === true) window?.maximize()
   }
 
   close(): boolean {
@@ -119,6 +164,7 @@ export class LittleSheepDesktopShell {
     try {
       await this.prepareToQuit()
     } finally {
+      this.removeWindowDragHandlers()
       this.dispose()
     }
   }
@@ -151,28 +197,32 @@ export class LittleSheepDesktopShell {
   }
 
   private createWindow(): BrowserWindow {
-    const restoredState = loadDesktopWindowState(
-      this.options.getWindowStateFilePath(),
-      screen.getAllDisplays().map((display) => display.workArea),
-    )
+    this.installWindowDragHandlers()
     const win = new BrowserWindow({
-      ...(restoredState?.bounds ?? { width: 1280, height: 820 }),
+      width: 1280,
+      height: 820,
       minWidth: 800,
       minHeight: 600,
       title: 'LittleSheep',
       icon: resolveDesktopIcon(),
       titleBarStyle: 'hidden',
+      // Keep the primary Electron surface opaque. On this Windows/Electron
+      // combination transparent top-level windows can lose their WebContents
+      // paint layer entirely; acrylic still supplies the system material.
       transparent: false,
       backgroundMaterial: 'acrylic',
       roundedCorners: true,
+      // Keep the native thick frame so Windows resizing, shadow, and window
+      // animations remain available. The active frame highlight is disabled
+      // immediately below; it is the bright outer ring seen in the UI.
       thickFrame: true,
       hasShadow: true,
       titleBarOverlay: {
-        color: '#141414',
+        color: '#101010',
         symbolColor: '#e8e8e8',
-        height: 32,
+        height: WINDOW_TITLEBAR_HEIGHT,
       },
-      backgroundColor: process.platform === 'win32' ? '#00000000' : '#141414',
+      backgroundColor: startupWindowBackgroundColor(),
       autoHideMenuBar: true,
       show: false,
       webPreferences: {
@@ -186,17 +236,35 @@ export class LittleSheepDesktopShell {
       },
     })
 
+    if (process.platform === 'win32') {
+      // Preserve the native frame behavior without painting the system accent
+      // outline around the entire hidden-titlebar window.
+      win.setAccentColor(false)
+    }
+
+    // BrowserWindow.webContents is already destroyed by the `closed` event.
+    const windowWebContentsId = win.webContents.id
     configureEmbeddedBrowserWindow(win)
     this.mainWindow = win
-    let allowInitialShow = true
-    let showFallbackTimer: ReturnType<typeof setTimeout> | undefined
-    const showInitialWindow = () => {
-      if (allowInitialShow && !win.isDestroyed() && !win.isVisible()) showWindow(win)
+    const restoredState = this.restoreWindowStateFor(win)
+    const shouldRestoreMaximized = restoredState?.maximized === true
+    let rendererReadyForInitialShow = false
+    let restoredWindowStateReady = !shouldRestoreMaximized
+    const showWhenInitialStateIsReady = () => {
+      if (rendererReadyForInitialShow && restoredWindowStateReady) showWindow(win)
     }
-    const cancelInitialShow = () => {
-      allowInitialShow = false
-      if (showFallbackTimer) clearTimeout(showFallbackTimer)
-      showFallbackTimer = undefined
+    const markRendererReadyForInitialShow = () => {
+      rendererReadyForInitialShow = true
+      showWhenInitialStateIsReady()
+    }
+    const finishMaximizeRestore = () => {
+      restoredWindowStateReady = true
+      showWhenInitialStateIsReady()
+    }
+
+    if (shouldRestoreMaximized) {
+      win.once('maximize', finishMaximizeRestore)
+      win.maximize()
     }
 
     win.on('close', (event) => {
@@ -209,7 +277,6 @@ export class LittleSheepDesktopShell {
       })
       if (closeAction === 'hide') {
         event.preventDefault()
-        cancelInitialShow()
         win.hide()
       }
     })
@@ -234,23 +301,138 @@ export class LittleSheepDesktopShell {
       event.preventDefault()
       win.webContents.setZoomFactor(APPLICATION_ZOOM_FACTOR)
     })
-    win.once('ready-to-show', showInitialWindow)
+    win.once('ready-to-show', markRendererReadyForInitialShow)
     win.webContents.once('did-finish-load', () => {
+      if (win.isDestroyed()) return
+      markRendererReadyForInitialShow()
       win.webContents.setZoomFactor(APPLICATION_ZOOM_FACTOR)
-      showInitialWindow()
+      win.setBackgroundColor(applicationWindowBackgroundColor())
     })
-    showFallbackTimer = setTimeout(showInitialWindow, 4000)
     win.once('closed', () => {
-      cancelInitialShow()
+      if (this.windowDragSession?.senderId === windowWebContentsId) this.windowDragSession = null
+      this.rendererLoadedWindows.delete(win)
+      this.restoredWindowStateWindows.delete(win)
       if (this.mainWindow === win) this.mainWindow = null
     })
-
-    if (restoredState?.maximized) win.maximize()
-
-    const devUrl = process.env['ELECTRON_RENDERER_URL']
-    if (devUrl) void win.loadURL(devUrl)
-    else void win.loadFile(join(__dirname, '../renderer/index.html'))
+    void this.loadStartupPage(win)
     return win
+  }
+
+  /** Leave an actionable diagnostic instead of keeping a failed bootstrap hidden. */
+  showStartupError(error: unknown): void {
+    const win = this.resolveWindow()
+    if (!win || win.isDestroyed()) return
+    this.rendererLoadedWindows.delete(win)
+    win.setBackgroundColor(startupWindowBackgroundColor())
+    const message = error instanceof Error ? error.message : String(error)
+    const loading = win.loadURL(createDesktopStartupPageUrl(
+      resolveDesktopStartupIconDataUrl(),
+      { errorMessage: message },
+    ))
+    void loading
+      .catch((loadError) => {
+        if (!isNavigationAbortedError(loadError)) {
+          this.options.onWarning?.(`startup error page failed to load: ${(loadError as Error).message}`)
+        }
+      })
+      .finally(() => showWindow(win))
+  }
+
+  private restoreWindowStateFor(win: BrowserWindow): DesktopWindowState | undefined {
+    if (win.isDestroyed() || this.restoredWindowStateWindows.has(win)) return
+    const restoredState = loadDesktopWindowState(
+      this.options.getWindowStateFilePath(),
+      screen.getAllDisplays().map((display) => display.workArea),
+    )
+    if (!restoredState) return
+    this.restoredWindowStateWindows.add(win)
+    win.setBounds(restoredState.bounds)
+    return restoredState
+  }
+
+  private installWindowDragHandlers(): void {
+    if (this.windowDragHandlersInstalled) return
+    this.windowDragHandlersInstalled = true
+    ipcMain.on(WINDOW_DRAG_START_CHANNEL, this.handleWindowDragStart)
+    ipcMain.on(WINDOW_DRAG_MOVE_CHANNEL, this.handleWindowDragMove)
+    ipcMain.on(WINDOW_DRAG_END_CHANNEL, this.handleWindowDragEnd)
+  }
+
+  private removeWindowDragHandlers(): void {
+    if (!this.windowDragHandlersInstalled) return
+    this.windowDragHandlersInstalled = false
+    this.windowDragSession = null
+    ipcMain.removeListener(WINDOW_DRAG_START_CHANNEL, this.handleWindowDragStart)
+    ipcMain.removeListener(WINDOW_DRAG_MOVE_CHANNEL, this.handleWindowDragMove)
+    ipcMain.removeListener(WINDOW_DRAG_END_CHANNEL, this.handleWindowDragEnd)
+  }
+
+  private readonly handleWindowDragStart = (event: Electron.IpcMainEvent, point: unknown): void => {
+    const win = this.windowForDragSender(event.sender)
+    if (!win || !isWindowDragPoint(point)) return
+    this.windowDragSession = {
+      senderId: event.sender.id,
+      startPoint: point,
+      startBounds: win.getBounds(),
+    }
+  }
+
+  private readonly handleWindowDragMove = (event: Electron.IpcMainEvent, point: unknown): void => {
+    const session = this.windowDragSession
+    const win = this.windowForDragSender(event.sender)
+    if (!session || !win || session.senderId !== event.sender.id || !isWindowDragPoint(point)) return
+    const deltaX = Math.round(point.screenX - session.startPoint.screenX)
+    const deltaY = Math.round(point.screenY - session.startPoint.screenY)
+    if (Math.abs(deltaX) > 20_000 || Math.abs(deltaY) > 20_000) return
+    win.setPosition(session.startBounds.x + deltaX, session.startBounds.y + deltaY)
+  }
+
+  private readonly handleWindowDragEnd = (event: Electron.IpcMainEvent): void => {
+    if (this.windowDragSession?.senderId === event.sender.id) this.windowDragSession = null
+  }
+
+  private windowForDragSender(sender: Electron.WebContents): BrowserWindow | undefined {
+    const win = this.resolveWindow()
+    return win && !win.isDestroyed() && win.webContents === sender ? win : undefined
+  }
+
+  private loadStartupPage(win: BrowserWindow): Promise<void> {
+    if (win.isDestroyed()) return Promise.resolve()
+    win.setBackgroundColor(startupWindowBackgroundColor())
+    const loading = win.loadURL(createDesktopStartupPageUrl(resolveDesktopStartupIconDataUrl())).catch((error) => {
+      if (!isNavigationAbortedError(error) && !this.rendererLoadedWindows.has(win)) {
+        this.options.onWarning?.(`startup page failed to load: ${(error as Error).message}`)
+      }
+    })
+    return loading
+  }
+
+  private loadRenderer(win: BrowserWindow): void {
+    if (win.isDestroyed() || this.rendererLoadedWindows.has(win)) return
+    this.rendererLoadedWindows.add(win)
+    // The standalone startup page can remain loading on some Electron/Windows
+    // combinations. End that navigation before handing the same WebContents
+    // to the application renderer, otherwise loadFile can be reported as an
+    // aborted navigation without ever producing a second load event.
+    if (win.webContents.isLoading()) win.webContents.stop()
+    const devUrl = process.env['ELECTRON_RENDERER_URL']
+    const loading = devUrl
+      ? win.loadURL(devUrl)
+      : win.loadFile(join(__dirname, '../renderer/index.html'))
+    void loading.catch((error) => {
+      if (win.isDestroyed()) return
+      this.rendererLoadedWindows.delete(win)
+      if (!isNavigationAbortedError(error)) {
+        this.options.onWarning?.(`renderer failed to load: ${(error as Error).message}`)
+      }
+      if (isNavigationAbortedError(error)) {
+        // A stop/load race can still reject the first attempt. Retry on the
+        // next turn after Chromium has finished dispatching that cancellation.
+        setTimeout(() => this.loadRenderer(win), 0)
+      } else {
+        void this.loadStartupPage(win)
+      }
+    })
   }
 
   private captureWindowState(win: BrowserWindow): void {
@@ -342,4 +524,28 @@ function resolveDesktopIcon(): string | undefined {
     moduleDir: __dirname,
     resourcesPath: process.resourcesPath,
   })
+}
+
+function resolveDesktopStartupIconDataUrl(): string | undefined {
+  const iconPath = resolveAppPngIconPath({
+    appPath: app.getAppPath(),
+    moduleDir: __dirname,
+    resourcesPath: process.resourcesPath,
+  })
+  if (!iconPath) return undefined
+  const icon = nativeImage.createFromPath(iconPath)
+  if (icon.isEmpty()) return undefined
+  return icon.resize({ width: 112, height: 112, quality: 'best' }).toDataURL()
+}
+
+function applicationWindowBackgroundColor(): string {
+  return process.platform === 'win32' ? '#00000000' : '#101010'
+}
+
+function startupWindowBackgroundColor(): string {
+  return process.platform === 'win32' ? '#00000000' : '#101010'
+}
+
+function isNavigationAbortedError(error: unknown): boolean {
+  return /ERR_ABORTED|\(-3\)/u.test(error instanceof Error ? error.message : String(error))
 }

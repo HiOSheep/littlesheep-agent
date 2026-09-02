@@ -88,18 +88,29 @@ export function formatRelativeSessionTime(timestamp: number, now: number): strin
 }
 
 
-export function sortSessionsForSidebar(sessions: SessionMeta[], pinnedIds: Set<string>): SessionMeta[] {
+export function sortSessionsForSidebar(
+  sessions: SessionMeta[],
+  pinnedIds: Set<string>,
+  manualOrder: readonly string[] = [],
+): SessionMeta[] {
+  const rank = createOrderRank(manualOrder)
   return [...sessions].sort((left, right) => {
     const leftPinned = pinnedIds.has(left.id)
     const rightPinned = pinnedIds.has(right.id)
     if (leftPinned !== rightPinned) return leftPinned ? -1 : 1
+    const manualComparison = compareManualOrder(left.id, right.id, rank)
+    if (manualComparison !== null) return manualComparison
     return right.lastMessageAt - left.lastMessageAt
   })
 }
 
 
-export function sortProjectsForSidebar(projects: ProjectMeta[], mode: ProjectSortMode): ProjectMeta[] {
-  if (mode === 'fixed') return projects
+export function sortProjectsForSidebar(
+  projects: ProjectMeta[],
+  mode: ProjectSortMode,
+  manualOrder: readonly string[] = [],
+): ProjectMeta[] {
+  if (mode === 'fixed') return sortByManualOrder(projects, manualOrder)
   return [...projects].sort((left, right) => {
     if (mode === 'recent') {
       return Date.parse(right.lastActiveAt) - Date.parse(left.lastActiveAt)
@@ -115,4 +126,42 @@ export function sortProjectsForSidebar(projects: ProjectMeta[], mode: ProjectSor
 
 export function standaloneSessionsForSidebar(sessions: SessionMeta[]): SessionMeta[] {
   return standaloneSessions(sessions)
+}
+
+
+export function mergeOrderedList<T>(preferred: readonly T[], fallback: readonly T[]): T[] {
+  const seen = new Set<T>()
+  const result: T[] = []
+  for (const value of [...preferred, ...fallback]) {
+    if (seen.has(value)) continue
+    seen.add(value)
+    result.push(value)
+  }
+  return result
+}
+
+
+function sortByManualOrder<T extends { id: string }>(items: readonly T[], manualOrder: readonly string[]): T[] {
+  if (manualOrder.length === 0) return [...items]
+  const rank = createOrderRank(manualOrder)
+  return [...items].sort((left, right) => compareManualOrder(left.id, right.id, rank) ?? 0)
+}
+
+
+function createOrderRank(order: readonly string[]): Map<string, number> {
+  return new Map(order.map((id, index) => [id, index]))
+}
+
+
+function compareManualOrder(
+  leftId: string,
+  rightId: string,
+  rank: Map<string, number>,
+): number | null {
+  const leftRank = rank.get(leftId)
+  const rightRank = rank.get(rightId)
+  if (leftRank === undefined && rightRank === undefined) return null
+  if (leftRank === undefined) return 1
+  if (rightRank === undefined) return -1
+  return leftRank - rightRank
 }

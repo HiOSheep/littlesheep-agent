@@ -15,7 +15,7 @@ describe('workspace session view isolation', () => {
 
     expect(fileView).toContain('sessionId={sessionId}')
     expect(previewPane).toMatch(
-      /\}, \[sessionId, preview\?\.path, preview\?\.modifiedAt, editable, isMarkdown\]\)/u,
+      /\}, \[sessionId, preview\?\.path, preview\?\.modifiedAt, editable, isMarkdown, isHtml\]\)/u,
     )
   })
 })

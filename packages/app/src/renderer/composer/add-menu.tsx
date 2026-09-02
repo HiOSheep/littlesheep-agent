@@ -1,6 +1,6 @@
 // Task composer controls, attachments, runtime selection, and sizing.
 import { useEffect, useRef, useState } from 'react'
-import { buildFloatingHelpTip, buildFloatingHelpTipFromElement, FloatingHelpTip } from '../ui/floating-help'
+import { FloatingHelpTip } from '../ui/floating-help'
 import { useDismissOnOutside } from '../ui/presence'
 import { COMPOSER_MENU_EVENT, transientTriggerProps } from '../ui/transient'
 
@@ -52,17 +52,6 @@ export function AddMenu({
             return next
           })
         }}
-        onMouseEnter={(event) => {
-          if (!open) onTipChange(buildFloatingHelpTip(label, event.clientX, event.clientY))
-        }}
-        onMouseMove={(event) => {
-          if (!open) onTipChange(buildFloatingHelpTip(label, event.clientX, event.clientY))
-        }}
-        onMouseLeave={() => onTipChange(null)}
-        onFocus={(event) => {
-          if (!open) onTipChange(buildFloatingHelpTipFromElement(label, event.currentTarget))
-        }}
-        onBlur={() => onTipChange(null)}
       >
         +
       </button>

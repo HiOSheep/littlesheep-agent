@@ -4,6 +4,7 @@
 import type { ToolResult } from './message.js';
 import type { SessionId } from './session.js';
 import type { PermissionPolicyId } from './runtime-contracts.js';
+import type { NetworkReadPolicy, WebEvidenceSink, WebRetrievalRuntimePort } from './web-retrieval.js';
 
 /**
  * A schema validator. Zod schemas satisfy this structurally; we keep types
@@ -36,6 +37,12 @@ export interface ToolContext {
   approvalGranted?: boolean;
   /** Abort signal for the owning run. */
   signal?: AbortSignal;
+  /** Immutable network-read policy resolved before the run starts. */
+  networkPolicy?: Readonly<NetworkReadPolicy>;
+  /** Host-owned bounded evidence sink; tools cannot replace the sink or persist page bodies through it. */
+  webEvidenceSink?: WebEvidenceSink;
+  /** Host-owned per-run public web retrieval port. */
+  webRetrieval?: WebRetrievalRuntimePort;
   /** Logger sink. */
   log?: (level: 'info' | 'warn' | 'error', msg: string, data?: unknown) => void;
   /** Host-owned durable preimage checkpoint hook for mutating file tools. */
@@ -80,6 +87,10 @@ export interface AgentTool {
   requiresApproval?: boolean;
   /** Explicit runtime concurrency contract; omitted means exclusive. */
   execution?: ToolExecutionPolicy;
+  /** Redact/hash input before approval UI, runtime events or persistence. */
+  persistence?: {
+    projectInput(input: unknown): unknown;
+  };
   /** Execute the tool. Must not throw — return ok:false on error. */
   execute(input: unknown, ctx: ToolContext): Promise<ToolResult>;
 }

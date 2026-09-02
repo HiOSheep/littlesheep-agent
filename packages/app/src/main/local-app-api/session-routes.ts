@@ -12,6 +12,10 @@ import {
   normalizeSessionTitle,
   SESSION_TITLE_MAX_LENGTH,
 } from '../../shared/session-project-contracts.js'
+import {
+  getPermissionMode,
+  normalizePermissionModeId,
+} from '../../shared/permission-modes.js'
 import type {
   ArchiveIndex,
   ArchivedProjectMeta,
@@ -19,6 +23,7 @@ import type {
 } from '../archive-index.js'
 import type { ProjectIndex, ProjectMeta } from '../project-index.js'
 import type { SessionIndex, SessionMeta } from '../session-index.js'
+import type { SessionContextUsageRecord } from '../../shared/context-usage-contracts.js'
 import { json, readJson, type LocalAppApiRequest } from './http.js'
 
 export interface SessionRouteContext {
@@ -26,6 +31,7 @@ export interface SessionRouteContext {
   sessionIndex: SessionIndex
   projectIndex: ProjectIndex
   archiveIndex: ArchiveIndex
+  mutateSession?: <T>(operation: () => Promise<T>) => Promise<T>
 }
 
 export async function routeSessions(
@@ -52,6 +58,7 @@ export async function routeSessions(
       messages: buildHistoryMessages(messages, logsByRunId),
       hasMore: window.hasMore,
       beforeId: window.beforeId,
+      contextUsage: buildSessionContextUsageRecord(logsByRunId.values(), sessionMessagesId),
     })
     return true
   }
@@ -69,35 +76,68 @@ export async function routeSessions(
 
   const sessionUpdateId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.sessions)
   if (method === 'PATCH' && sessionUpdateId !== null) {
-    const existing = (await sessionIndex.list()).find((session) => session.id === sessionUpdateId)
-    if (!existing) {
-      json(res, 404, { error: `session not found: ${sessionUpdateId}` })
-      return true
-    }
     const body = await readJson(request.req)
-    const title = typeof body.title === 'string' ? normalizeSessionTitle(body.title) : ''
-    if (!title) {
-      json(res, 400, { error: 'session title is required' })
-      return true
-    }
-    if (title.length > SESSION_TITLE_MAX_LENGTH) {
-      json(res, 400, { error: `session title must not exceed ${SESSION_TITLE_MAX_LENGTH} characters` })
-      return true
-    }
-    if (title === existing.title) {
-      json(res, 200, { session: existing })
-      return true
-    }
+    const mutateSession = context.mutateSession ?? (<T>(operation: () => Promise<T>) => operation())
+    return mutateSession(async () => {
+      const existing = (await sessionIndex.list()).find((session) => session.id === sessionUpdateId)
+      if (!existing) {
+        json(res, 404, { error: `session not found: ${sessionUpdateId}` })
+        return true
+      }
+      const hasTitle = Object.prototype.hasOwnProperty.call(body, 'title')
+      const hasMode = Object.prototype.hasOwnProperty.call(body, 'mode')
+      if (!hasTitle && !hasMode) {
+        json(res, 400, { error: 'session title or permission mode is required' })
+        return true
+      }
+      const title = hasTitle
+        ? typeof body.title === 'string' ? normalizeSessionTitle(body.title) : ''
+        : existing.title
+      if (hasTitle) {
+        if (!title) {
+          json(res, 400, { error: 'session title is required' })
+          return true
+        }
+        if (title.length > SESSION_TITLE_MAX_LENGTH) {
+          json(res, 400, { error: `session title must not exceed ${SESSION_TITLE_MAX_LENGTH} characters` })
+          return true
+        }
+      }
+      let mode = existing.mode
+      if (hasMode) {
+        const requestedMode = typeof body.mode === 'string' ? body.mode.trim() : ''
+        const isLegacyMode = requestedMode === 'full-access'
+          || requestedMode === 'info'
+          || requestedMode === 'physical'
+          || requestedMode === 'coding'
+        if (!getPermissionMode(requestedMode) && !isLegacyMode) {
+          json(res, 400, { error: 'session permission mode is invalid' })
+          return true
+        }
+        mode = normalizePermissionModeId(requestedMode)
+      }
+      if (title === existing.title && mode === existing.mode) {
+        json(res, 200, { session: existing })
+        return true
+      }
 
-    await runner.sessionManager.updateMetadata(asSessionId(sessionUpdateId), { title })
-    try {
-      await sessionIndex.upsert(sessionUpdateId, { title })
-    } catch (error) {
-      await runner.sessionManager.updateMetadata(asSessionId(sessionUpdateId), { title: existing.title }).catch(() => undefined)
-      throw error
-    }
-    json(res, 200, { session: { ...existing, title } })
-    return true
+      const titleChanged = title !== existing.title
+      if (titleChanged) await runner.sessionManager.updateMetadata(asSessionId(sessionUpdateId), { title })
+      try {
+        await sessionIndex.upsert(sessionUpdateId, {
+          ...(titleChanged ? { title } : {}),
+          ...(mode !== existing.mode ? { mode } : {}),
+        })
+      } catch (error) {
+        if (titleChanged) {
+          await runner.sessionManager.updateMetadata(asSessionId(sessionUpdateId), { title: existing.title }).catch(() => undefined)
+        }
+        throw error
+      }
+      const persisted = (await sessionIndex.list()).find((session) => session.id === sessionUpdateId)
+      json(res, 200, { session: persisted ?? { ...existing, title, mode } })
+      return true
+    })
   }
 
   const sessionDeleteId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.sessions)
@@ -211,6 +251,53 @@ async function loadExecutionLogsByRunId(
     logs.set(log.runId, log)
   }
   return logs
+}
+
+/**
+ * Select the newest displayable counter for one session and strip the
+ * context items before sending it to the renderer. The full context snapshot
+ * remains in the durable execution log for diagnostics, but the history API
+ * only needs token ledgers and request-to-snapshot associations.
+ */
+export function buildSessionContextUsageRecord(
+  logs: Iterable<ExecutionLog>,
+  sessionId: string,
+): SessionContextUsageRecord | undefined {
+  const candidate = [...logs]
+    .filter((log) => log.sessionId === sessionId && hasDisplayableContextUsage(log))
+    .sort((left, right) => executionLogTimestamp(left) - executionLogTimestamp(right))
+    .at(-1)
+  if (!candidate) return undefined
+
+  return {
+    modelRef: candidate.model,
+    usage: candidate.usage,
+    contextSnapshots: candidate.contextSnapshots?.map((snapshot) => ({
+      id: snapshot.id,
+      provider: snapshot.provider,
+      model: snapshot.model,
+      providerUsage: snapshot.providerUsage,
+      localTokenLedger: snapshot.localTokenLedger,
+    })),
+    modelRequests: candidate.modelRequests?.map((request) => ({
+      provider: request.provider,
+      model: request.model,
+      stage: request.stage,
+      contextSnapshotId: request.contextSnapshotId,
+    })),
+  }
+}
+
+function hasDisplayableContextUsage(log: ExecutionLog): boolean {
+  return log.usage?.source === 'provider'
+    || (log.contextSnapshots ?? []).some((snapshot) => Boolean(snapshot.providerUsage || snapshot.localTokenLedger))
+}
+
+function executionLogTimestamp(log: ExecutionLog): number {
+  const endedAt = Date.parse(log.endedAt)
+  if (Number.isFinite(endedAt)) return endedAt
+  const startedAt = Date.parse(log.startedAt)
+  return Number.isFinite(startedAt) ? startedAt : 0
 }
 
 function toActiveProject(project: ArchivedProjectMeta): ProjectMeta {

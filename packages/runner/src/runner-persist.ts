@@ -60,6 +60,7 @@ export async function persistRunnerPhase<TResult extends PersistableRunnerResult
       runtimeEventQueue: result.runtimeEventQueue as never,
       runCheckpointId: options.runCheckpointId,
       runtimeResources: options.runtimeResourceObservation as never,
+      webEvidence: result.webEvidence as never,
       toolInvocations: result.toolInvocations as never,
       toolInvocationsTruncated: result.toolInvocationsTruncated,
       messages: result.messages as never,

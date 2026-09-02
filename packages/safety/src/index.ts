@@ -27,11 +27,21 @@ export {
 } from './safe-memory-store.js';
 export {
   authorizeToolAccess,
+  classifySensitiveWebQuery,
   describeToolAccess,
+  redactSensitiveWebQuery,
+  resolvePermissionDecision,
   shouldRequestPermissionApproval,
   type ContainerBoundary,
   type PermissionAction,
+  type PermissionDecision,
+  type PermissionEffect,
+  type PermissionEgress,
   type PermissionBoundaryContext,
+  type PermissionTrust,
+  type SafeReadClass,
+  type SensitiveWebQueryClassification,
+  type HardDecision,
   type ToolAccessDescriptor,
   type ToolAuthorization,
 } from './permission-boundary.js';

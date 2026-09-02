@@ -1,9 +1,9 @@
 // Extension workspace panels, files, terminal, artifacts, and view helpers.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { AttachmentRef } from '../api'
 import { StringListUpdater } from '../app-shell/types'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { PanelFullscreenIcon, WorkspaceFeatureIcon } from '../ui/icons'
+import { PanelFullscreenIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
 import {
   parseWorkspaceFileTabId,
@@ -21,13 +21,17 @@ import { WorkspaceFileNavigator } from './file-navigator'
 import { isSamePath } from './path-utils'
 import { WorkspacePlaceholder } from './placeholder'
 import type { WorkspaceLineComment } from './line-comments'
+import {
+  lineCommentScopeMatchesAttachment,
+  type LineCommentAttachmentRemoval,
+} from './line-comment-attachments'
 import { WorkspaceReview } from './review'
 import { workspaceFileLineCommentScope } from './review-line-comments'
 import { WorkspaceTerminal } from './terminal'
 import type { WorkspaceBrowserHistory } from './browser-history'
 import { isWorkspaceBrowserTabId, type WorkspaceBrowserTab, type WorkspaceBrowserTabId } from './browser-tabs'
-import { resolveWorkspaceEntrySelection } from './entry-selection'
 import { WorkspaceTabStrip } from './tab-strip'
+import { WorkspaceEmptyLauncher } from './empty-launcher'
 
 const EMPTY_LINE_COMMENTS: WorkspaceLineComment[] = []
 export function WorkspacePanel({
@@ -55,6 +59,9 @@ export function WorkspacePanel({
   onWorkspaceArtifactsChanged,
   onWorkspaceFileSaved,
   onAddAttachment,
+  onLineCommentUpdate,
+  onLineCommentDelete,
+  attachmentRemoval,
   onFileNavigatorCollapsedChange,
   onFileNavigatorWidthChange,
   onExpandedPathsChange,
@@ -89,6 +96,14 @@ export function WorkspacePanel({
   onWorkspaceArtifactsChanged: () => void
   onWorkspaceFileSaved: (root: string, path: string, preview: import('../api').WorkspacePreview) => void
   onAddAttachment: (attachment: AttachmentRef) => void
+  onLineCommentUpdate: (
+    scope: string,
+    previous: WorkspaceLineComment,
+    next: WorkspaceLineComment,
+    attachment: AttachmentRef,
+  ) => void
+  onLineCommentDelete: (scope: string, comment: WorkspaceLineComment) => void
+  attachmentRemoval: LineCommentAttachmentRemoval | null
   onFileNavigatorCollapsedChange: (collapsed: boolean) => void
   onFileNavigatorWidthChange: (width: number) => void
   onExpandedPathsChange: (update: StringListUpdater) => void
@@ -112,49 +127,190 @@ export function WorkspacePanel({
   ]
   const activeFileTab = parseWorkspaceFileTabId(activeTab)
   const fullscreenTip = fullscreen ? '退出全屏工作区' : '全屏展开工作区'
-  const [warmTab, setWarmTab] = useState<WorkspacePanelTabId | null>(null)
-  const previousTabRef = useRef<WorkspacePanelTabId>(activeTab)
+  const hasOpenTabs = openTabs.length > 0
+  const [mountedTabs, setMountedTabs] = useState<WorkspacePanelTabId[]>(() => (
+    hasOpenTabs && openTabs.includes(activeTab) ? [activeTab] : []
+  ))
   const [lineCommentsByScope, setLineCommentsByScope] = useState<Record<string, WorkspaceLineComment[]>>({})
+  const handledAttachmentRemovalRef = useRef<number | null>(null)
+  const initialNavigatorRoot = activeFileTab?.root ?? workspacePath
+  const navigatorRootRef = useRef(initialNavigatorRoot)
+  const [rememberedNavigatorRoot, setRememberedNavigatorRoot] = useState(initialNavigatorRoot)
 
   function updateLineComments(scope: string, comments: WorkspaceLineComment[]) {
     setLineCommentsByScope((current) => ({ ...current, [scope]: comments }))
   }
 
   useEffect(() => {
-    const previousTab = previousTabRef.current
-    previousTabRef.current = activeTab
-    if (previousTab === activeTab) return
-    setWarmTab(previousTab)
-    const timer = window.setTimeout(() => setWarmTab((current) => current === previousTab ? null : current), 20_000)
-    return () => window.clearTimeout(timer)
-  }, [activeTab])
+    if (!attachmentRemoval || handledAttachmentRemovalRef.current === attachmentRemoval.id) return
+    handledAttachmentRemovalRef.current = attachmentRemoval.id
+    setLineCommentsByScope((current) => {
+      let changed = false
+      const next = Object.fromEntries(Object.entries(current).filter(([scope]) => {
+        const matches = lineCommentScopeMatchesAttachment(scope, attachmentRemoval.attachment)
+        if (matches) changed = true
+        return !matches
+      }))
+      return changed ? next : current
+    })
+  }, [attachmentRemoval])
 
-  // Minimize/restore changes document.visibilityState, but must not unmount a
-  // webview: doing so destroys the guest page and makes restore navigate from
-  // about:blank again. Electron's backgroundThrottling keeps hidden pages
-  // quiet; only an intentional workspace collapse suspends the panel.
-  const panelSuspended = collapsed
-  const hasOpenTabs = openTabs.length > 0
-  // Derive the previous tab during the transition render as well. This keeps
-  // the old heavy view mounted while React commits the new active tab instead
-  // of unmounting it and recreating it one effect later.
-  const transitionWarmTab = previousTabRef.current !== activeTab
-    ? previousTabRef.current
-    : warmTab
-  const warmFileTab = transitionWarmTab ? parseWorkspaceFileTabId(transitionWarmTab) : null
-  const showSharedFileNavigator = !activeFileTab && activeTab !== 'review'
+  useEffect(() => {
+    setMountedTabs((current) => {
+      const openTabSet = new Set(openTabs)
+      const next = current.filter((tab) => openTabSet.has(tab))
+      if (openTabSet.has(activeTab) && !next.includes(activeTab)) next.push(activeTab)
+      if (next.length === current.length && next.every((tab, index) => tab === current[index])) return current
+      return next
+    })
+  }, [activeTab, openTabs])
+
+  // Keep every visited open tab mounted. Switching tabs only changes which
+  // surface is visible, so terminal sessions, editor models, browser guests,
+  // and each view's scroll/selection state remain alive until that tab closes.
+  const mountedWorkspaceTabs = mountedTabs.filter((tab) => openTabs.includes(tab))
+  const workspaceViewTabs = hasOpenTabs && openTabs.includes(activeTab) && !mountedWorkspaceTabs.includes(activeTab)
+    ? [...mountedWorkspaceTabs, activeTab]
+    : mountedWorkspaceTabs
   const usesEdgeToEdgeFileSurface = Boolean(activeFileTab) || activeTab === 'review'
+  const hasOpenFileTab = openTabs.some((tab) => Boolean(parseWorkspaceFileTabId(tab)))
+  const navigatorRoot = activeFileTab?.root
+    ?? (hasOpenFileTab ? rememberedNavigatorRoot : workspacePath)
+  const navigatorSelectedPath = activeFileTab?.path
+    ?? (openRequest?.root === navigatorRoot ? openRequest.path : '')
+  const navigatorUsesTemporaryRoot = activeFileTab
+    ? !isSamePath(activeFileTab.root, defaultWorkspacePath)
+    : hasOpenFileTab
+      ? !isSamePath(navigatorRoot, defaultWorkspacePath)
+      : usingTemporaryRoot
+  const sharedFileNavigatorStyle = {
+    '--workspace-files-navigator-width': `${fileNavigatorWidth}px`,
+  } as CSSProperties
+
+  useEffect(() => {
+    const nextRoot = activeFileTab?.root
+      ?? (hasOpenFileTab ? navigatorRootRef.current : workspacePath)
+    if (!nextRoot || isSamePath(navigatorRootRef.current, nextRoot)) return
+    navigatorRootRef.current = nextRoot
+    setRememberedNavigatorRoot(nextRoot)
+  }, [activeFileTab?.root, hasOpenFileTab, workspacePath])
+
+  function renderWorkspaceTab(tab: WorkspacePanelTabId, isActive: boolean) {
+    if (tab === 'review') {
+      return (
+        <WorkspaceReview
+          workspacePath={workspacePath}
+          artifactVersion={artifactVersion}
+          fileNavigatorCollapsed={fileNavigatorCollapsed}
+          fileNavigatorWidth={fileNavigatorWidth}
+          lineCommentsByScope={lineCommentsByScope}
+          onFileNavigatorCollapsedChange={onFileNavigatorCollapsedChange}
+          onFileNavigatorWidthChange={onFileNavigatorWidthChange}
+          onLineCommentsChange={updateLineComments}
+          onLineCommentUpdate={onLineCommentUpdate}
+          onLineCommentDelete={onLineCommentDelete}
+          onAddAttachment={onAddAttachment}
+          onOpenFile={onOpenFile}
+          onTipChange={onTipChange}
+        />
+      )
+    }
+
+    if (tab === 'artifacts') {
+      return (
+        <WorkspaceArtifacts
+          workspacePath={workspacePath}
+          sessionId={sessionId}
+          artifactVersion={artifactVersion}
+          onOpenFile={onOpenFile}
+          onTipChange={onTipChange}
+        />
+      )
+    }
+
+    const fileTab = parseWorkspaceFileTabId(tab)
+    if (fileTab) {
+      const fileTabId = tab as WorkspaceFileTabId
+      const commentScope = workspaceFileLineCommentScope(fileTab.root, fileTab.path)
+      return (
+        <div className="workspace-files">
+          <WorkspaceFileView
+            tabId={fileTabId}
+            root={fileTab.root}
+            path={fileTab.path}
+            sessionId={sessionId}
+            draft={fileDrafts[tab]}
+            onDraftChange={onFileDraftChange}
+            onRequestFileSaveApproval={onRequestFileSaveApproval}
+            onWorkspaceArtifactsChanged={onWorkspaceArtifactsChanged}
+            onWorkspaceFileSaved={onWorkspaceFileSaved}
+            comments={lineCommentsByScope[commentScope] ?? EMPTY_LINE_COMMENTS}
+            onCommentsChange={(comments) => updateLineComments(commentScope, comments)}
+            onCommentUpdate={(previous, next, attachment) => onLineCommentUpdate(
+              commentScope,
+              previous,
+              next,
+              attachment,
+            )}
+            onCommentDelete={(comment) => onLineCommentDelete(commentScope, comment)}
+            onAddAttachment={onAddAttachment}
+            onTipChange={onTipChange}
+          />
+        </div>
+      )
+    }
+
+    if (tab === 'terminal') {
+      return (
+        <WorkspaceTerminal
+          workspacePath={workspacePath}
+          sessionId={sessionId}
+          active={isActive}
+          onTipChange={onTipChange}
+        />
+      )
+    }
+
+    if (isWorkspaceBrowserTabId(tab)) {
+      const tabState = browserTabs.find((item) => item.id === tab)
+      return (
+        <WorkspaceBrowser
+          tabId={tab}
+          url={tabState?.url ?? (isActive ? browserUrl : '')}
+          history={tabState?.history ?? (isActive ? browserHistory : { entries: [], index: -1 })}
+          active={isActive}
+          onNavigate={onBrowserNavigate}
+          onHistoryMove={onBrowserHistoryMove}
+          onOpenNewTab={onBrowserOpenNewTab}
+          onTitleChange={(title) => onBrowserTitleChange(tab, title)}
+          onTipChange={onTipChange}
+        />
+      )
+    }
+
+    if (tab === 'sideChat') {
+      return (
+        <WorkspacePlaceholder
+          title="侧边聊天"
+          text="后续会承载与当前文件、命令或产物绑定的局部对话，不挤占主对话区。"
+        />
+      )
+    }
+
+    return null
+  }
 
   return (
     <aside
       className={`workspace-panel ${collapsed ? 'collapsed' : ''} ${fullscreen ? 'fullscreen' : ''}`}
       aria-label="拓展工作区"
     >
-      <div
-        className="workspace-panel-contents"
-        aria-hidden={collapsed}
-        {...(collapsed ? { inert: '' } : {})}
-      >
+      <div className="workspace-panel-surface">
+        <div
+          className="workspace-panel-contents"
+          aria-hidden={collapsed}
+          {...(collapsed ? { inert: '' } : {})}
+        >
         <header className="workspace-panel-header">
           <div className="workspace-panel-topbar">
             <WorkspaceTabStrip
@@ -189,7 +345,7 @@ export function WorkspacePanel({
           </div>
         </header>
         <div className={`workspace-panel-body ${usesEdgeToEdgeFileSurface ? 'file-surface-active' : ''}`}>
-          {!panelSuspended && !hasOpenTabs && (
+          {!hasOpenTabs && (
             <WorkspaceEmptyLauncher
               entries={workspaceEntries}
               onSelect={onTabChange}
@@ -197,199 +353,47 @@ export function WorkspacePanel({
               onTipChange={onTipChange}
             />
           )}
-          {!panelSuspended && hasOpenTabs && (
-            <div className="workspace-panel-view content-fade">
-            {activeTab === 'review' && (
-              <WorkspaceReview
-                workspacePath={workspacePath}
-                artifactVersion={artifactVersion}
-                fileNavigatorCollapsed={fileNavigatorCollapsed}
-                fileNavigatorWidth={fileNavigatorWidth}
-                lineCommentsByScope={lineCommentsByScope}
-                onFileNavigatorCollapsedChange={onFileNavigatorCollapsedChange}
-                onFileNavigatorWidthChange={onFileNavigatorWidthChange}
-                onLineCommentsChange={updateLineComments}
-                onAddAttachment={onAddAttachment}
-                onOpenFile={onOpenFile}
-                onTipChange={onTipChange}
-              />
-            )}
-            {activeTab === 'artifacts' && (
-              <WorkspaceArtifacts
-                workspacePath={workspacePath}
-                sessionId={sessionId}
-                artifactVersion={artifactVersion}
-                onOpenFile={onOpenFile}
-                onTipChange={onTipChange}
-              />
-            )}
-            {activeFileTab && (
-              <div className="workspace-files">
-                <WorkspaceFileView
-                  tabId={activeTab as WorkspaceFileTabId}
-                  root={activeFileTab.root}
-                  path={activeFileTab.path}
-                  sessionId={sessionId}
-                  draft={fileDrafts[activeTab]}
-                  onDraftChange={onFileDraftChange}
-                  onRequestFileSaveApproval={onRequestFileSaveApproval}
-                   onWorkspaceArtifactsChanged={onWorkspaceArtifactsChanged}
-                   onWorkspaceFileSaved={onWorkspaceFileSaved}
-                   comments={lineCommentsByScope[workspaceFileLineCommentScope(activeFileTab.root, activeFileTab.path)] ?? EMPTY_LINE_COMMENTS}
-                   onCommentsChange={(comments) => updateLineComments(
-                     workspaceFileLineCommentScope(activeFileTab.root, activeFileTab.path),
-                     comments,
-                   )}
-                   onAddAttachment={onAddAttachment}
-                   onTipChange={onTipChange}
-                />
-                <WorkspaceFileNavigator
-                  workspacePath={activeFileTab.root}
-                  defaultWorkspacePath={defaultWorkspacePath}
-                  usingTemporaryRoot={!isSamePath(activeFileTab.root, defaultWorkspacePath)}
-                  navigatorCollapsed={fileNavigatorCollapsed}
-                  navigatorWidth={fileNavigatorWidth}
-                  expandedPaths={expandedPaths}
-                  selectedPath={activeFileTab.path}
-                  onOpenFileTab={(root, path) => {
-                    onRememberOpenPath(root, path)
-                    onTabChange(workspaceFileTabId(root, path))
-                  }}
-                  onReturnToDefaultWorkspace={() => {
-                    onReturnToDefaultWorkspace()
-                    onTabChange('review')
-                  }}
-                  onNavigatorCollapsedChange={onFileNavigatorCollapsedChange}
-                  onNavigatorWidthChange={onFileNavigatorWidthChange}
-                  onExpandedPathsChange={onExpandedPathsChange}
-                  onTipChange={onTipChange}
-                />
+          {hasOpenTabs && workspaceViewTabs.map((tab) => {
+            const isActive = tab === activeTab
+            return (
+              <div
+                key={tab}
+                className={`workspace-panel-view workspace-tab-view ${isActive ? 'active content-fade' : 'cached'}`}
+                aria-hidden={!isActive}
+                {...(!isActive ? { inert: '' } : {})}
+              >
+                {renderWorkspaceTab(tab, isActive)}
               </div>
-            )}
-            {activeTab === 'terminal' && (
-              <WorkspaceTerminal
-                workspacePath={workspacePath}
-                sessionId={sessionId}
+            )
+          })}
+          {hasOpenTabs && (
+            <div
+              className={`workspace-shared-file-navigator ${activeTab === 'review' ? 'inactive' : ''}`}
+              style={sharedFileNavigatorStyle}
+            >
+              <WorkspaceFileNavigator
+                workspacePath={navigatorRoot}
+                defaultWorkspacePath={defaultWorkspacePath}
+                usingTemporaryRoot={navigatorUsesTemporaryRoot}
+                navigatorCollapsed={fileNavigatorCollapsed}
+                navigatorWidth={fileNavigatorWidth}
+                expandedPaths={expandedPaths}
+                selectedPath={navigatorSelectedPath}
+                onOpenFileTab={(root, path) => {
+                  onRememberOpenPath(root, path)
+                  onTabChange(workspaceFileTabId(root, path))
+                }}
+                onReturnToDefaultWorkspace={onReturnToDefaultWorkspace}
+                onNavigatorCollapsedChange={onFileNavigatorCollapsedChange}
+                onNavigatorWidthChange={onFileNavigatorWidthChange}
+                onExpandedPathsChange={onExpandedPathsChange}
                 onTipChange={onTipChange}
               />
-            )}
-            {isWorkspaceBrowserTabId(activeTab) && (
-              <WorkspaceBrowser
-                tabId={activeTab}
-                url={browserUrl}
-                history={browserHistory}
-                onNavigate={onBrowserNavigate}
-                onHistoryMove={onBrowserHistoryMove}
-                onOpenNewTab={onBrowserOpenNewTab}
-                onTitleChange={(title) => onBrowserTitleChange(activeTab, title)}
-                onTipChange={onTipChange}
-              />
-            )}
-            {activeTab === 'sideChat' && (
-              <WorkspacePlaceholder
-                title="侧边聊天"
-                text="后续会承载与当前文件、命令或产物绑定的局部对话，不挤占主对话区。"
-              />
-            )}
-            </div>
-          )}
-          {!panelSuspended && hasOpenTabs && showSharedFileNavigator && (
-            <WorkspaceFileNavigator
-              workspacePath={workspacePath}
-              defaultWorkspacePath={defaultWorkspacePath}
-              usingTemporaryRoot={usingTemporaryRoot}
-              navigatorCollapsed={fileNavigatorCollapsed}
-              navigatorWidth={fileNavigatorWidth}
-              expandedPaths={expandedPaths}
-              selectedPath={openRequest?.root === workspacePath ? openRequest.path : ''}
-              onOpenFileTab={(root, path) => {
-                onRememberOpenPath(root, path)
-                onTabChange(workspaceFileTabId(root, path))
-              }}
-              onReturnToDefaultWorkspace={onReturnToDefaultWorkspace}
-              onNavigatorCollapsedChange={onFileNavigatorCollapsedChange}
-              onNavigatorWidthChange={onFileNavigatorWidthChange}
-              onExpandedPathsChange={onExpandedPathsChange}
-              onTipChange={onTipChange}
-            />
-          )}
-          {!panelSuspended && hasOpenTabs && transitionWarmTab && transitionWarmTab !== activeTab && (warmFileTab || transitionWarmTab === 'terminal') && (
-            <div className="workspace-panel-view warm-cache" aria-hidden="true" {...{ inert: '' }}>
-              {warmFileTab && (
-                <div className="workspace-files">
-                  <WorkspaceFileView
-                    tabId={transitionWarmTab as WorkspaceFileTabId}
-                    root={warmFileTab.root}
-                    path={warmFileTab.path}
-                    sessionId={sessionId}
-                    draft={fileDrafts[transitionWarmTab]}
-                    onDraftChange={onFileDraftChange}
-                    onRequestFileSaveApproval={onRequestFileSaveApproval}
-                     onWorkspaceArtifactsChanged={onWorkspaceArtifactsChanged}
-                     onWorkspaceFileSaved={onWorkspaceFileSaved}
-                     comments={lineCommentsByScope[workspaceFileLineCommentScope(warmFileTab.root, warmFileTab.path)] ?? EMPTY_LINE_COMMENTS}
-                     onCommentsChange={(comments) => updateLineComments(
-                       workspaceFileLineCommentScope(warmFileTab.root, warmFileTab.path),
-                       comments,
-                     )}
-                     onAddAttachment={onAddAttachment}
-                     onTipChange={onTipChange}
-                  />
-                </div>
-              )}
-              {transitionWarmTab === 'terminal' && (
-                <WorkspaceTerminal
-                  workspacePath={workspacePath}
-                  sessionId={sessionId}
-                  onTipChange={onTipChange}
-                />
-              )}
             </div>
           )}
         </div>
+        </div>
       </div>
     </aside>
-  )
-}
-
-
-function WorkspaceEmptyLauncher({
-  entries,
-  onSelect,
-  onOpenBrowserTab,
-  onTipChange,
-}: {
-  entries: Array<{ id: WorkspacePanelTab; label: string; desc: string }>
-  onSelect: (tab: WorkspacePanelTab) => void
-  onOpenBrowserTab: (url: string) => void
-  onTipChange: (tip: FloatingHelpTip | null) => void
-}) {
-  return (
-    <nav className="workspace-empty-launcher content-fade" aria-label="拓展功能入口">
-      {entries.map((entry) => (
-        <button
-          {...transientTriggerProps()}
-          key={entry.id}
-          className="workspace-empty-launcher-item"
-          type="button"
-          onClick={() => {
-            onTipChange(null)
-            const selection = resolveWorkspaceEntrySelection(entry.id)
-            if (selection.kind === 'new-browser-tab') onOpenBrowserTab(selection.url)
-            else onSelect(selection.tab)
-          }}
-          onMouseEnter={(event) => onTipChange(buildFloatingHelpTip(entry.desc, event.clientX, event.clientY))}
-          onMouseMove={(event) => onTipChange(buildFloatingHelpTip(entry.desc, event.clientX, event.clientY))}
-          onMouseLeave={() => onTipChange(null)}
-          onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement(entry.desc, event.currentTarget))}
-          onBlur={() => onTipChange(null)}
-        >
-          <span className="workspace-empty-launcher-icon" aria-hidden="true">
-            <WorkspaceFeatureIcon id={entry.id} />
-          </span>
-          <span className="workspace-empty-launcher-label">{entry.label}</span>
-        </button>
-      ))}
-    </nav>
   )
 }

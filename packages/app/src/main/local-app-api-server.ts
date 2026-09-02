@@ -23,6 +23,7 @@ import { routeRunLifecycle } from './local-app-api/run-lifecycle-routes.js'
 import { TerminalRouter } from './local-app-api/terminal-routes.js'
 import { RunRouter } from './local-app-api/run-routes.js'
 import type { LocalAppApiServer, LocalAppApiServerOptions } from './local-app-api/contracts.js'
+import { WebProviderCheckCoordinator } from './local-app-api/web-provider-check.js'
 import { MemoryEmbeddingModelManager, type MemoryEmbeddingModelController } from './memory-embedding-model-control.js'
 import { DevelopmentEnvironmentManager } from './development-environments.js'
 
@@ -37,6 +38,19 @@ export async function startLocalAppApiServer(
   // The core API remains usable while the optional plugin host is absent or loading.
   let currentPluginHost: PluginHost | null = null
   let currentConfig: Config = opts.config
+  let sessionMutationQueue: Promise<void> = Promise.resolve()
+  let runtimeConfigMutationQueue: Promise<void> = Promise.resolve()
+  const mutateSession = <T>(operation: () => Promise<T>): Promise<T> => {
+    const result = sessionMutationQueue.then(operation)
+    sessionMutationQueue = result.then(() => undefined, () => undefined)
+    return result
+  }
+  const mutateRuntimeConfig = <T>(operation: () => Promise<T>): Promise<T> => {
+    const result = runtimeConfigMutationQueue.then(operation)
+    runtimeConfigMutationQueue = result.then(() => undefined, () => undefined)
+    return result
+  }
+  const webProviderCheck = new WebProviderCheckCoordinator(() => currentRunner, () => currentConfig)
   const projectRebinding = new ProjectRebindingService({
     dataDir: opts.dataDir,
     projectIndex: opts.projectIndex,
@@ -46,7 +60,7 @@ export async function startLocalAppApiServer(
     terminalActivityIndex: opts.terminalActivityIndex,
     workspaceLayoutIndex: opts.workspaceLayoutIndex,
     rebindMemory: (previous, project) => currentRunner.infra.memoryService.rebindProjectPath(previous, project),
-    rebindRuntimeWorkspace: async (fromPath, toPath) => {
+    rebindRuntimeWorkspace: (fromPath, toPath) => mutateRuntimeConfig(async () => {
       const currentWorkspace = currentConfig.agents.defaults.workspace || opts.workplaceDir
       if (!sameBoundPath(currentWorkspace, fromPath)) return
       const next: Config = {
@@ -56,9 +70,9 @@ export async function startLocalAppApiServer(
           defaults: { ...currentConfig.agents.defaults, workspace: toPath },
         },
       }
-      currentConfig = next
-      await opts.updateRuntimeConfig(next)
-    },
+      const applied = await opts.updateRuntimeConfig(next)
+      currentConfig = applied ?? next
+    }),
   })
   try {
     await projectRebinding.recoverPending()
@@ -73,7 +87,11 @@ export async function startLocalAppApiServer(
     dataDir: opts.dataDir,
     electronExecutable: process.execPath,
   })
-  const routeOptions = { ...opts, memoryEmbeddingModelManager: embeddingModelManager }
+  const routeOptions = {
+    ...opts,
+    memoryEmbeddingModelManager: embeddingModelManager,
+    ...webProviderCheck.routeBindings(),
+  }
   const runRouter = await RunRouter.create(initialRunner)
   const terminalRouter = new TerminalRouter()
   try {
@@ -108,8 +126,13 @@ export async function startLocalAppApiServer(
       () => currentRunner,
       () => currentPluginHost,
       () => currentConfig,
-      (c: Config) => { currentConfig = c },
+      (c: Config) => {
+        webProviderCheck.invalidateIfWebChanged(c)
+        currentConfig = c
+      },
       routeOptions,
+      mutateSession,
+      mutateRuntimeConfig,
       projectRebinding,
       attachmentCache,
       runRouter,
@@ -131,11 +154,13 @@ export async function startLocalAppApiServer(
     port,
     setRunner: (r: AgentRunner) => {
       currentRunner = r
+      webProviderCheck.invalidate()
     },
     setPluginHost: (host: PluginHost) => {
       currentPluginHost = host
     },
     setConfig: (c: Config) => {
+      webProviderCheck.invalidateIfWebChanged(c)
       currentConfig = c
     },
     stop: async () => {
@@ -158,6 +183,8 @@ async function route(
   getConfig: () => Config,
   setConfig: (c: Config) => void,
   opts: LocalAppApiServerOptions & { memoryEmbeddingModelManager: MemoryEmbeddingModelController },
+  mutateSession: <T>(operation: () => Promise<T>) => Promise<T>,
+  mutateRuntimeConfig: <T>(operation: () => Promise<T>) => Promise<T>,
   projectRebinding: ProjectRebindingService,
   attachmentCache: ManagedAttachmentCache,
   runRouter: RunRouter,
@@ -198,20 +225,15 @@ async function route(
     sessionIndex,
     projectIndex,
     archiveIndex,
+    mutateSession,
   })) return
 
   if (await routeRuntime(routeRequest, {
+    ...opts,
     getRunner,
     getConfig,
     setConfig,
-    workplaceDir: opts.workplaceDir,
-    dataDir: opts.dataDir,
-    providerCalibrationToken: opts.providerCalibrationToken,
-    rebuildRunner: opts.rebuildRunner,
-    updateRuntimeConfig: opts.updateRuntimeConfig,
-    dataRootManager: opts.dataRootManager,
-    selectDataRootTarget: opts.selectDataRootTarget,
-    restartApplication: opts.restartApplication,
+    mutateRuntimeConfig,
   })) return
 
   if (await routeDevelopmentEnvironments(routeRequest, {
@@ -247,6 +269,7 @@ async function route(
     setConfig,
     dataDir: opts.dataDir,
     updateRuntimeConfig: opts.updateRuntimeConfig,
+    mutateRuntimeConfig,
   })) return
 
   if (await routeMemory(routeRequest, {
@@ -256,6 +279,7 @@ async function route(
     memoryV3MigrationManager: opts.memoryV3MigrationManager,
     memoryEmbeddingModelManager: opts.memoryEmbeddingModelManager,
     updateRuntimeConfig: opts.updateRuntimeConfig,
+    mutateRuntimeConfig,
     selectProjectMemoryExport: opts.selectProjectMemoryExport,
     selectMemoryResourceSource: opts.selectMemoryResourceSource,
     selectMemoryAtomExport: opts.selectMemoryAtomExport,

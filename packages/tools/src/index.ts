@@ -23,7 +23,11 @@ export {
   toolResourcesConflict,
   type ScheduledToolExecution,
 } from './tool-execution-scheduler.js';
-export { resolveToolExecutionPolicy } from './tool-execution-result.js';
+export {
+  durableToolResult,
+  projectToolInput,
+  resolveToolExecutionPolicy,
+} from './tool-execution-result.js';
 
 export { readTool } from './builtin/read.js';
 export { writeTool } from './builtin/write.js';
@@ -38,6 +42,8 @@ export { createMemorySearchTool } from './builtin/memory_search.js';
 /** @deprecated Legacy library adapter. The LS runtime does not register this agent tool. */
 export { createMemoryDeepSearchTool } from './builtin/memory_deep_search.js';
 export { createSessionStatusTool } from './builtin/session_status.js';
+export { webSearchTool } from './builtin/web_search.js';
+export { webFetchTool } from './builtin/web_fetch.js';
 
 import type { AgentTool } from '@littlesheep/types';
 import { ToolRegistry } from './registry.js';
@@ -49,6 +55,8 @@ import { grepTool } from './builtin/grep.js';
 import { globTool } from './builtin/glob.js';
 import { documentReadTool } from './builtin/document-read.js';
 import { documentCreateTool } from './builtin/document-create.js';
+import { webSearchTool } from './builtin/web_search.js';
+import { webFetchTool } from './builtin/web_fetch.js';
 
 /** Register core built-ins only. Memory tools are supplied by the index-first runtime. */
 export function registerBuiltinTools(registry: ToolRegistry, extra: AgentTool[] = []): void {
@@ -60,6 +68,8 @@ export function registerBuiltinTools(registry: ToolRegistry, extra: AgentTool[] 
   registry.register(globTool);
   registry.register(documentReadTool);
   registry.register(documentCreateTool);
+  registry.register(webSearchTool);
+  registry.register(webFetchTool);
   for (const tool of extra) {
     registry.register(tool);
   }

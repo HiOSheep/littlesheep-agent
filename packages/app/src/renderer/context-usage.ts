@@ -1,8 +1,18 @@
-import type { ContextSnapshot, ModelRequestSnapshot } from '@littlesheep/types'
 import {
   getContextWindowForModelRef,
   resolveModelTokenizerCapabilityForModelRef,
 } from '../shared/model-capabilities'
+import type {
+  PersistedContextUsageModelRequest,
+  PersistedContextUsageSnapshot,
+  SessionContextUsageRecord,
+} from '../shared/context-usage-contracts'
+
+export type {
+  PersistedContextUsageModelRequest,
+  PersistedContextUsageSnapshot,
+  SessionContextUsageRecord,
+} from '../shared/context-usage-contracts'
 
 export type LocalTokenizerState = 'exact' | 'not_counted' | 'unavailable' | 'unknown'
 
@@ -44,6 +54,18 @@ export interface ProviderRunUsage {
   completionTokens: number
   totalTokens?: number
   source?: 'provider'
+}
+
+export function buildContextUsageSnapshotFromSession(
+  record: SessionContextUsageRecord | undefined,
+): ContextUsageSnapshot | null {
+  if (!record) return null
+  return buildContextUsageSnapshot(
+    record.modelRef,
+    record.usage,
+    record.contextSnapshots,
+    record.modelRequests,
+  )
 }
 
 export function buildContextUsage(
@@ -92,8 +114,8 @@ export function buildContextUsage(
 export function buildContextUsageSnapshot(
   modelRef: string | undefined,
   usage: ProviderRunUsage | undefined,
-  contextSnapshots: ContextSnapshot[] | undefined,
-  modelRequests: ModelRequestSnapshot[] | undefined = undefined,
+  contextSnapshots: ReadonlyArray<PersistedContextUsageSnapshot> | undefined,
+  modelRequests: ReadonlyArray<PersistedContextUsageModelRequest> | undefined = undefined,
   now: () => string = () => new Date().toISOString(),
 ): ContextUsageSnapshot | null {
   const modelKey = modelRef ?? ''

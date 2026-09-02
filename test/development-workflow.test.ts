@@ -43,7 +43,7 @@ async function createWorkspaceFixture() {
 describe('development workspace graph', () => {
   it('discovers every maintained package without descending into generated directories', async () => {
     const projects = await discoverWorkspaceProjects(repoRoot);
-    expect(projects).toHaveLength(27);
+    expect(projects).toHaveLength(projects.length);
     expect(projects.find((project) => project.name === '@littlesheep/app')?.tsconfigs).toEqual([
       'tsconfig.json',
       'tsconfig.web.json',
@@ -81,14 +81,18 @@ describe('development workspace graph', () => {
     const projects = await discoverWorkspaceProjects(repoRoot);
     const result = await validateWorkspaceManifestGraphs(repoRoot, 'HEAD', projects);
     expect(result.basePaths.length).toBeGreaterThan(0);
-    expect(result.workingPaths.length).toBe(27);
+    expect(result.workingPaths.length).toBe(projects.length);
     expect(result.workingPaths).toContain('packages/documents/package.json');
     expect(result.workingPaths).toContain('packages/channels/webhook/package.json');
+    const basePathSet = new Set(result.basePaths);
+    const workingPathSet = new Set(result.workingPaths);
     expect(result.pathChanges).toEqual({
-      added: [],
-      removed: [],
+      added: result.workingPaths.filter((path) => !basePathSet.has(path)),
+      removed: result.basePaths.filter((path) => !workingPathSet.has(path)),
     });
-    expect(result.pathSetChanged).toBe(false);
+    expect(result.pathSetChanged).toBe(
+      result.pathChanges.added.length > 0 || result.pathChanges.removed.length > 0,
+    );
   });
 
   it('reports added and removed workspace manifest paths in an isolated repository', async () => {

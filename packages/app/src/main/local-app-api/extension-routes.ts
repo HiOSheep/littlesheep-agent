@@ -17,7 +17,8 @@ export interface ExtensionRouteContext {
   getConfig: () => Config
   setConfig: (config: Config) => void
   dataDir: string
-  updateRuntimeConfig: (config: Config) => Promise<void>
+  updateRuntimeConfig: (config: Config) => Promise<Config | void>
+  mutateRuntimeConfig?: <T>(operation: () => Promise<T>) => Promise<T>
 }
 
 // The desktop process owns one PluginHost. This flag only adds diagnostics for
@@ -30,6 +31,7 @@ export async function routeExtensions(
 ): Promise<boolean> {
   const { req, res, path, method } = request
   const { getPluginHost, getConfig, setConfig } = context
+  const mutateRuntimeConfig = context.mutateRuntimeConfig ?? (<T>(operation: () => Promise<T>) => operation())
 
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.plugins) {
     const host = getPluginHost()
@@ -64,19 +66,21 @@ export async function routeExtensions(
       json(res, 200, { ok: true })
       return true
     }
-    const current = getConfig()
-    const disabled = new Set(current.plugins.disabled)
-    if (body.enabled) disabled.delete(pluginEnabledId)
-    else disabled.add(pluginEnabledId)
-    const next: Config = {
-      ...current,
-      plugins: { ...current.plugins, disabled: Array.from(disabled).sort() },
-    }
-    setConfig(next)
-    await context.updateRuntimeConfig(next)
-    await host.reload()
-    json(res, 200, { ok: true })
-    return true
+    return mutateRuntimeConfig(async () => {
+      const current = getConfig()
+      const disabled = new Set(current.plugins.disabled)
+      if (body.enabled) disabled.delete(pluginEnabledId)
+      else disabled.add(pluginEnabledId)
+      const next: Config = {
+        ...current,
+        plugins: { ...current.plugins, disabled: Array.from(disabled).sort() },
+      }
+      const applied = await context.updateRuntimeConfig(next) ?? next
+      setConfig(applied)
+      await host.reload()
+      json(res, 200, { ok: true })
+      return true
+    })
   }
 
   if (method === 'POST' && path === LOCAL_APP_API_ROUTES.pluginsLocalCode) {
@@ -90,20 +94,23 @@ export async function routeExtensions(
       json(res, 400, { error: 'allowed must be a boolean' })
       return true
     }
-    const current = getConfig()
-    if (current.plugins.allowLocalCode === body.allowed) {
+    const allowed = body.allowed
+    return mutateRuntimeConfig(async () => {
+      const current = getConfig()
+      if (current.plugins.allowLocalCode === allowed) {
+        json(res, 200, { ok: true })
+        return true
+      }
+      const next: Config = {
+        ...current,
+        plugins: { ...current.plugins, allowLocalCode: allowed },
+      }
+      const applied = await context.updateRuntimeConfig(next) ?? next
+      setConfig(applied)
+      await host.reload()
       json(res, 200, { ok: true })
       return true
-    }
-    const next: Config = {
-      ...current,
-      plugins: { ...current.plugins, allowLocalCode: body.allowed },
-    }
-    setConfig(next)
-    await context.updateRuntimeConfig(next)
-    await host.reload()
-    json(res, 200, { ok: true })
-    return true
+    })
   }
 
   if (method === 'POST' && path === LOCAL_APP_API_ROUTES.pluginsReload) {
@@ -112,12 +119,14 @@ export async function routeExtensions(
       json(res, 503, { error: 'plugin host is not available' })
       return true
     }
-    const newConfig = withProviderPresets(await loadConfig({ dataDir: context.dataDir }))
-    setConfig(newConfig)
-    await context.updateRuntimeConfig(newConfig)
-    await host.reload()
-    json(res, 200, { ok: true })
-    return true
+    return mutateRuntimeConfig(async () => {
+      const newConfig = withProviderPresets(await loadConfig({ dataDir: context.dataDir }))
+      const applied = await context.updateRuntimeConfig(newConfig) ?? newConfig
+      setConfig(applied)
+      await host.reload()
+      json(res, 200, { ok: true })
+      return true
+    })
   }
 
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.channelsStatus) {
@@ -158,23 +167,25 @@ export async function routeExtensions(
     }
     reloadInProgress = true
     try {
-      const configStartedAt = performance.now()
-      const newConfig = withProviderPresets(await loadConfig({ dataDir: context.dataDir }))
-      console.log(
-        `[local-app-api] [channels:reload:${requestId}] config loaded from disk (${(performance.now() - configStartedAt).toFixed(1)}ms)`,
-      )
-      setConfig(newConfig)
-      await context.updateRuntimeConfig(newConfig)
-      const reloadStartedAt = performance.now()
-      await host.reload()
-      console.log(
-        `[local-app-api] [channels:reload:${requestId}] service reload complete (${(performance.now() - reloadStartedAt).toFixed(1)}ms)`,
-      )
-      json(res, 200, { ok: true })
-      console.log(
-        `[local-app-api] [channels:reload:${requestId}] total (${(performance.now() - startedAt).toFixed(1)}ms)`,
-      )
-      return true
+      return await mutateRuntimeConfig(async () => {
+        const configStartedAt = performance.now()
+        const newConfig = withProviderPresets(await loadConfig({ dataDir: context.dataDir }))
+        console.log(
+          `[local-app-api] [channels:reload:${requestId}] config loaded from disk (${(performance.now() - configStartedAt).toFixed(1)}ms)`,
+        )
+        const applied = await context.updateRuntimeConfig(newConfig) ?? newConfig
+        setConfig(applied)
+        const reloadStartedAt = performance.now()
+        await host.reload()
+        console.log(
+          `[local-app-api] [channels:reload:${requestId}] service reload complete (${(performance.now() - reloadStartedAt).toFixed(1)}ms)`,
+        )
+        json(res, 200, { ok: true })
+        console.log(
+          `[local-app-api] [channels:reload:${requestId}] total (${(performance.now() - startedAt).toFixed(1)}ms)`,
+        )
+        return true
+      })
     } catch (error) {
       console.error(
         `[local-app-api] [channels:reload:${requestId}] failed (${(performance.now() - startedAt).toFixed(1)}ms): ${(error as Error).message}`,

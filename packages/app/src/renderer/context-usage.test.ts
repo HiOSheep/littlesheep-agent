@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import { readRendererStyleSource } from './style-source-test-utils'
 import { describe, expect, it } from 'vitest'
 import type { ContextSnapshot } from '@littlesheep/types'
@@ -29,6 +30,40 @@ function contextSnapshot(overrides: Partial<ContextSnapshot> = {}): ContextSnaps
 }
 
 describe('context usage presentation model', () => {
+  it('keeps the hover surface frameless and centers the thinner ring', async () => {
+    const [styles, indicator] = await Promise.all([
+      readRendererStyleSource(),
+      readFile(new URL('./composer/context-usage-indicator.tsx', import.meta.url), 'utf8'),
+    ])
+    const contextUsageRule = styles.match(/\.context-usage\s*\{([^}]*)\}/u)?.[1] ?? ''
+    const ringRule = styles.match(/\.context-usage-ring\s*\{([^}]*)\}/u)?.[1] ?? ''
+    const ringGeometry = styles.match(/\.context-usage-ring-track,\s*\.context-usage-ring-progress\s*\{([^}]*)\}/u)?.[1] ?? ''
+    const popoverRule = styles.match(/\.context-usage-popover\s*\{([^}]*)\}/u)?.[1] ?? ''
+
+    expect(styles).toContain('.composer-tab-control:hover:not(:disabled):not(.context-usage)')
+    expect(contextUsageRule).toContain('width: 28px;')
+    expect(contextUsageRule).toContain('flex: 0 0 28px;')
+    expect(styles).toMatch(
+      /\.context-usage \+ \.runtime-picker\s*\{[^}]*margin-left:\s*calc\([\s\S]*?var\(--composer-control-center-inset\)[\s\S]*?var\(--composer-trailing-control-half-size\)[\s\S]*?- 9px\s*\);/u,
+    )
+    expect(ringRule).toContain('width: 16px;')
+    expect(ringRule).toContain('height: 16px;')
+    expect(ringGeometry).toContain('fill: none;')
+    expect(ringGeometry).toContain('stroke-width: 3;')
+    expect(popoverRule).toContain('border: 0;')
+    expect(styles).not.toContain('.context-usage-ring::after')
+    expect(indicator).toContain('viewBox="0 0 16 16"')
+    expect(indicator).toMatch(/className="context-usage-ring-track"\s+cx="8"\s+cy="8"\s+r="6\.5"/u)
+    expect(indicator).toMatch(/className="context-usage-ring-progress"[\s\S]*?cx="8"[\s\S]*?cy="8"[\s\S]*?r="6\.5"/u)
+    expect(indicator).toContain('pathLength="100"')
+    expect(indicator).toContain('transform="rotate(-90 8 8)"')
+    expect(indicator).toContain('已用 {formatTokenCount(usage.usedTokens)} / {formatTokenCount(usage.maxTokens)}')
+    expect(indicator).not.toContain('formatUsageTime')
+    expect(indicator).not.toContain('formatCalibrationDifference')
+    expect(indicator).not.toContain('本地精确装配')
+    expect(indicator).not.toContain('供应商实测')
+  })
+
   it('keeps the usage popover content-sized and wraps it at the viewport boundary', async () => {
     const styles = await readRendererStyleSource()
     const popoverRule = styles.match(/\.context-usage-popover\s*\{([\s\S]*?)\n\}/u)?.[1] ?? ''

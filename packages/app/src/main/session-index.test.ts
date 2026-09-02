@@ -107,4 +107,53 @@ describe('SessionIndex ownership', () => {
       rmSync(dir, { recursive: true, force: true })
     }
   })
+
+  it('normalizes legacy full-access session modes and writes the canonical id back', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ls-session-index-'))
+    try {
+      writeFileSync(join(dir, 'sessions.json'), JSON.stringify({
+        sessions: [{
+          id: 'legacy-full',
+          title: 'Legacy full access',
+          createdAt: 1,
+          lastMessageAt: 2,
+          mode: 'full-access',
+        }],
+      }))
+
+      const index = new SessionIndex({ dataDir: dir })
+      await expect(index.list()).resolves.toMatchObject([{ id: 'legacy-full', mode: 'full' }])
+      const stored = JSON.parse(readFileSync(join(dir, 'sessions.json'), 'utf8')) as { sessions: Array<{ mode: string }> }
+      expect(stored.sessions[0]?.mode).toBe('full')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('serializes concurrent partial updates without dropping fields', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ls-session-index-concurrent-'))
+    try {
+      const index = new SessionIndex({ dataDir: dir })
+      await index.upsert('session-1', {
+        title: 'Original',
+        createdAt: 1,
+        lastMessageAt: 1,
+        mode: 'research',
+        scope: 'standalone',
+      })
+
+      await Promise.all([
+        index.upsert('session-1', { title: 'Renamed' }),
+        index.upsert('session-1', { mode: 'full' }),
+      ])
+
+      await expect(index.list()).resolves.toMatchObject([{
+        id: 'session-1',
+        title: 'Renamed',
+        mode: 'full',
+      }])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })

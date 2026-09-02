@@ -1,6 +1,7 @@
 // Pointer-driven two-threshold sidebar resize interaction.
 import '@xterm/xterm/css/xterm.css'
 import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from 'react'
+import { flushSync } from 'react-dom'
 import { clampNumber } from '../app-shell/navigation'
 import { SIDEBAR_COLLAPSE_THRESHOLD, SIDEBAR_SETTLE_ANIMATION_MS, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN } from '../app-shell/preferences'
 import { FloatingHelpTip } from '../ui/floating-help'
@@ -36,10 +37,17 @@ export function beginSidebarResizeInteraction(
     let draftCollapsed = false
     let frameHandle: number | undefined
     let settleTimer: number | undefined
+    let collapseSettleTimer: number | undefined
     let thresholdAnimationTimer: number | undefined
     let pendingVisualWidth = startWidth
     let appliedVisualWidth = startWidth
     beginResize('column')
+    window.cancelAnimationFrame(sidebarSettleFrameRef.current ?? 0)
+    sidebarSettleFrameRef.current = undefined
+    window.clearTimeout(sidebarSettleTimerRef.current)
+    sidebarSettleTimerRef.current = undefined
+    shellRef.current?.classList.remove('sidebar-collapse-settling', 'sidebar-collapse-handoff')
+    shellRef.current?.style.removeProperty('--sidebar-surface-width')
     shellRef.current?.classList.add('sidebar-drag-live')
 
     const applyDragFrame = () => {
@@ -76,7 +84,6 @@ export function beginSidebarResizeInteraction(
     const resetSidebarPreviewVars = () => {
       shellRef.current?.style.setProperty('--sidebar-content-opacity', '1')
       shellRef.current?.style.setProperty('--sidebar-content-shift', '0px')
-      shellRef.current?.style.setProperty('--sidebar-cover-opacity', '0')
       shellRef.current?.style.setProperty('--sidebar-resizer-opacity', '1')
     }
 
@@ -121,7 +128,7 @@ export function beginSidebarResizeInteraction(
       })
     }
 
-    const handlePointerUp = () => {
+    const handlePointerUp = (upEvent: Event) => {
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
       window.removeEventListener('pointercancel', handlePointerUp)
@@ -134,17 +141,58 @@ export function beginSidebarResizeInteraction(
         applyDragFrame()
       }
 
+      const releaseClientX = 'clientX' in upEvent ? Number((upEvent as PointerEvent).clientX) : Number.NaN
+      if (Number.isFinite(releaseClientX)) {
+        const rawWidth = startWidth + releaseClientX - startX
+        const nextCollapsed = rawWidth <= SIDEBAR_COLLAPSE_THRESHOLD
+        draftCollapsed = nextCollapsed
+        draftWidth = nextCollapsed
+          ? SIDEBAR_WIDTH_MIN
+          : rawWidth < SIDEBAR_WIDTH_MIN
+            ? SIDEBAR_WIDTH_MIN
+            : clampNumber(rawWidth, SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX)
+        pendingVisualWidth = draftWidth
+        if (nextCollapsed) {
+          shellRef.current?.classList.add('sidebar-drag-collapsed')
+        } else {
+          shellRef.current?.classList.remove('sidebar-drag-collapsed')
+        }
+        applyDragFrame()
+      }
+
       if (draftCollapsed) {
-        shellRef.current?.classList.add('sidebar-collapsed')
-        shellRef.current?.classList.remove(
-          'sidebar-drag-live',
-          'sidebar-drag-collapsed',
-          'sidebar-settling',
-          'sidebar-threshold-animating',
-        )
-        shellRef.current?.style.setProperty('--sidebar-width', `${sidebarWidth}px`)
-        resetSidebarPreviewVars()
-        setSidebarCollapsed(true)
+        const shell = shellRef.current
+        if (!shell) {
+          flushSync(() => setSidebarCollapsed(true))
+        } else {
+          /* Keep the minimum drag width as an explicit visual width while the
+             transform finishes. The durable saved width is restored only once
+             the surface is already outside the viewport. */
+          shell.style.setProperty('--sidebar-surface-width', `${SIDEBAR_WIDTH_MIN}px`)
+          shell.classList.add('sidebar-collapse-settling')
+          flushSync(() => setSidebarCollapsed(true))
+          shell.classList.remove(
+            'sidebar-drag-live',
+            'sidebar-drag-collapsed',
+            'sidebar-settling',
+            'sidebar-threshold-animating',
+          )
+          resetSidebarPreviewVars()
+          collapseSettleTimer = window.setTimeout(() => {
+            const timer = collapseSettleTimer
+            collapseSettleTimer = undefined
+            if (sidebarSettleTimerRef.current === timer) sidebarSettleTimerRef.current = undefined
+            const currentShell = shellRef.current
+            if (!currentShell) return
+            currentShell.classList.add('sidebar-collapse-handoff')
+            currentShell.style.setProperty('--sidebar-width', `${sidebarWidth}px`)
+            currentShell.style.removeProperty('--sidebar-surface-width')
+            currentShell.classList.remove('sidebar-collapse-settling')
+            void currentShell.offsetWidth
+            currentShell.classList.remove('sidebar-collapse-handoff')
+          }, SIDEBAR_SETTLE_ANIMATION_MS)
+          sidebarSettleTimerRef.current = collapseSettleTimer
+        }
       } else {
         const finalWidth = clampNumber(draftWidth, SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX)
         settleSidebarOpen(finalWidth)
@@ -161,12 +209,19 @@ export function beginSidebarResizeInteraction(
       if (frameHandle !== undefined) window.cancelAnimationFrame(frameHandle)
       window.clearTimeout(settleTimer)
       window.clearTimeout(thresholdAnimationTimer)
+      if (collapseSettleTimer !== undefined) {
+        window.clearTimeout(collapseSettleTimer)
+        if (sidebarSettleTimerRef.current === collapseSettleTimer) sidebarSettleTimerRef.current = undefined
+      }
       shellRef.current?.classList.remove(
         'sidebar-drag-live',
         'sidebar-drag-collapsed',
         'sidebar-settling',
         'sidebar-threshold-animating',
+        'sidebar-collapse-settling',
+        'sidebar-collapse-handoff',
       )
+      shellRef.current?.style.removeProperty('--sidebar-surface-width')
       resetSidebarPreviewVars()
       endResize('column')
       activeDragCleanupRef.current = null

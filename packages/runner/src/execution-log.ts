@@ -42,7 +42,9 @@ import type {
   ConversationContinuationEvidence,
   RunUsage,
   SideEffectCheckpoint,
+  WebEvidenceProjection,
 } from '@littlesheep/types';
+import { sanitizeWebEvidenceProjection } from '@littlesheep/types';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
 import { acquireLock } from '@littlesheep/session';
 import type { RuntimeResourceObservation } from './runtime-resource-observation.js';
@@ -102,6 +104,8 @@ export interface ExecutionLog {
   toolCalls: ToolCallRecord[];
   toolInvocations?: ToolInvocationRecord[];
   toolInvocationsTruncated?: boolean;
+  /** Optional in legacy logs; contains no raw query or fetched body. */
+  webEvidence?: WebEvidenceProjection;
   evidence?: ExecutionEvidence[];
   durationMs: number;
 }
@@ -142,6 +146,7 @@ export interface ExecutionLogInput {
   /** Authoritative records emitted by ToolExecutionService. */
   toolInvocations?: ToolInvocationRecord[];
   toolInvocationsTruncated?: boolean;
+  webEvidence?: WebEvidenceProjection;
   messages: Message[];
   durationMs: number;
 }
@@ -176,7 +181,8 @@ export class ExecutionLogStore {
         if (c.type === 'tool_calls') {
           for (const call of c.calls) calls.set(call.id, call);
         } else if (c.type === 'tool_result') {
-          results.set(c.result.callId, c.result);
+          const { modelOutput: _modelOutput, ...durable } = c.result;
+          results.set(c.result.callId, durable);
         }
       }
     }
@@ -232,6 +238,7 @@ export class ExecutionLogStore {
       toolCalls,
       toolInvocations,
       toolInvocationsTruncated: truncated || undefined,
+      webEvidence: sanitizeWebEvidenceProjection(input.webEvidence),
       evidence,
       durationMs: input.durationMs,
     };
@@ -516,6 +523,7 @@ function buildInvocationEvidence(
 function toolStatus(result: ToolResult): ToolInvocationRecord['status'] {
   if (result.ok) return 'succeeded';
   const error = result.error?.toLowerCase() ?? '';
+  if (error.includes('hard safety policy') || error.includes('hard_deny')) return 'hard_denied';
   if (error.includes('unknown tool')) return 'unknown_tool';
   if (error.includes('approval unavailable')) return 'approval_unavailable';
   if (error.includes('denied') || error.includes('approval')) return 'approval_denied';
@@ -526,6 +534,7 @@ function toolStatus(result: ToolResult): ToolInvocationRecord['status'] {
 }
 
 function approvalRecord(status: ToolInvocationRecord['status']): ToolInvocationRecord['approval'] {
+  if (status === 'hard_denied') return { required: false, decision: 'blocked' };
   if (status === 'approval_denied') return { required: true, decision: 'denied' };
   if (status === 'approval_unavailable') return { required: true, decision: 'unavailable' };
   return { required: 'unknown', decision: 'unknown' };

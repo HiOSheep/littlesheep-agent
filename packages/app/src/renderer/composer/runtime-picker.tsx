@@ -53,6 +53,7 @@ export function RuntimePicker({
   const submenuCloseTimerRef = useRef<number>()
   const menuPositionFrameRef = useRef<number>()
   const [menuPosition, setMenuPosition] = useState<RuntimeMenuPosition | null>(null)
+  const [closedWidth, setClosedWidth] = useState<number | null>(null)
   const disabled = !runtime
   const activeProvider = providers.find((provider) => provider.id === activeProviderId) ?? providers[0]
   const activeModels = activeProvider?.models ?? []
@@ -97,19 +98,22 @@ export function RuntimePicker({
   }, [effectiveReasoning, reasoning, runtime?.model])
 
   useLayoutEffect(() => {
-    if (!open) return
-
     const updateMenuPosition = () => {
-      const trigger = triggerRef.current
-      if (!trigger) return
+      const anchor = rootRef.current
+      if (!anchor) return
 
-      const rect = trigger.getBoundingClientRect()
+      const rect = anchor.getBoundingClientRect()
       const margin = 12
       const gap = 8
+      const minimumMenuWidth = 176
+      const maximumMenuWidth = 208
       const minimumSubmenuWidth = 143
       const maximumSubmenuWidth = 220
       const availableWidth = Math.max(320, window.innerWidth - margin * 2)
-      const width = Math.min(260, Math.max(220, availableWidth - gap - minimumSubmenuWidth))
+      const width = Math.min(maximumMenuWidth, Math.max(
+        minimumMenuWidth,
+        availableWidth - gap - minimumSubmenuWidth,
+      ))
       const submenuWidth = Math.min(maximumSubmenuWidth, Math.max(
         minimumSubmenuWidth,
         availableWidth - width - gap,
@@ -122,6 +126,18 @@ export function RuntimePicker({
         width,
         submenuWidth,
       })
+    }
+
+    if (!open) {
+      const trigger = triggerRef.current
+      if (trigger && !trigger.matches(':hover') && !trigger.matches(':focus-visible')) {
+        const width = trigger.getBoundingClientRect().width
+        if (width > 0) {
+          setClosedWidth((current) => current === width ? current : width)
+        }
+      }
+      updateMenuPosition()
+      return
     }
 
     const scheduleUpdate = () => {
@@ -143,7 +159,7 @@ export function RuntimePicker({
         menuPositionFrameRef.current = undefined
       }
     }
-  }, [open])
+  }, [modelLabel, open, reasoningOption?.id])
 
   useEffect(() => {
     const handleComposerMenuOpen = (event: Event) => {
@@ -180,15 +196,22 @@ export function RuntimePicker({
 
   useDismissOnOutside(open, [rootRef, menuShellRef], closePicker)
 
-  const menuShell = menuPosition ? (
+  const renderedMenuPosition = menuPosition ?? {
+    left: 0,
+    bottom: 0,
+    width: 208,
+    submenuWidth: 220,
+  }
+
+  const menuShell = (
     <div
       ref={menuShellRef}
       className={`runtime-menu-shell ${open ? 'open' : ''}`}
       style={{
-        left: `${menuPosition.left}px`,
-        bottom: `${menuPosition.bottom}px`,
-        width: `${menuPosition.width}px`,
-        '--runtime-submenu-width': `${menuPosition.submenuWidth}px`,
+        left: `${renderedMenuPosition.left}px`,
+        bottom: `${renderedMenuPosition.bottom}px`,
+        width: `${renderedMenuPosition.width}px`,
+        '--runtime-submenu-width': `${renderedMenuPosition.submenuWidth}px`,
       } as CSSProperties}
       aria-hidden={!open}
       {...(!open ? { inert: '' } : {})}
@@ -310,7 +333,7 @@ export function RuntimePicker({
                     closePicker()
                   }}
                 >
-                  <span title={model}>{displayModel}</span>
+                  <span>{displayModel}</span>
                   <span className="runtime-menu-check" aria-hidden="true">{isActive ? '✓' : ''}</span>
                 </button>
               )
@@ -318,11 +341,18 @@ export function RuntimePicker({
         </div>
       </div>
     </div>
-  ) : null
+  )
 
   return (
     <>
-      <div ref={rootRef} className={`runtime-picker ${open ? 'open' : ''}`}>
+      <div
+        ref={rootRef}
+        className={`runtime-picker ${open ? 'open' : ''}`}
+        style={{
+          '--runtime-picker-open-width': `${menuPosition?.width ?? 208}px`,
+          '--runtime-picker-closed-width': closedWidth ? `${closedWidth}px` : undefined,
+        } as CSSProperties}
+      >
         <button
           {...transientTriggerProps()}
           type="button"
@@ -333,15 +363,19 @@ export function RuntimePicker({
           aria-expanded={open}
           aria-label={`模型 ${modelLabel}, 推理 ${reasoningOption?.label ?? effectiveReasoning}`}
           onClick={() => {
-            setOpen((value) => {
-              const next = !value
-              if (next) window.dispatchEvent(new CustomEvent(COMPOSER_MENU_EVENT, { detail: 'runtime' }))
-              return next
-            })
+            if (open) {
+              closePicker()
+              return
+            }
+
+            window.dispatchEvent(new CustomEvent(COMPOSER_MENU_EVENT, { detail: 'runtime' }))
+            setOpen(true)
           }}
         >
-          <span className="runtime-picker-model" title={selected?.model}>{modelLabel}</span>
-          <span className="runtime-picker-reasoning">{reasoningOption?.label ?? effectiveReasoning}</span>
+          <span className="runtime-picker-label-group">
+            <span className="runtime-picker-model">{modelLabel}</span>
+            <span className="runtime-picker-reasoning">{reasoningOption?.label ?? effectiveReasoning}</span>
+          </span>
         </button>
       </div>
       {menuShell && (typeof document === 'undefined' ? menuShell : createPortal(menuShell, document.body))}

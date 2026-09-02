@@ -4,17 +4,39 @@ import {
   WORKSPACE_FILE_NAVIGATOR_MAX_RATIO,
   WORKSPACE_FILE_NAVIGATOR_WIDTH_MAX,
   WORKSPACE_FILE_NAVIGATOR_WIDTH_MIN,
+  FLOATING_PANEL_INLINE_GUTTER,
   WORKSPACE_PANEL_REOPEN_HOTZONE_WIDTH,
   WORKSPACE_PANEL_WIDTH_MAX,
   WORKSPACE_PANEL_WIDTH_MIN,
+  RESPONSIVE_LAYOUT_REFERENCE_WIDTH,
   isWorkspacePanelReopenHotzone,
+  resolveResponsiveWidth,
   resolveWorkspaceFileNavigatorDrag,
   resolveWorkspaceFileNavigatorLayout,
   resolveWorkspacePanelDrag,
   resolveWorkspacePanelLayout,
+  toResponsiveWidthPreference,
 } from './workspace-layout'
 
+describe('shared responsive width scaling', () => {
+  it('scales a reference width with the viewport while retaining readability bounds', () => {
+    expect(resolveResponsiveWidth(360, RESPONSIVE_LAYOUT_REFERENCE_WIDTH, 280, WORKSPACE_PANEL_WIDTH_MAX)).toBe(360)
+    expect(resolveResponsiveWidth(360, 1920, 280, WORKSPACE_PANEL_WIDTH_MAX)).toBe(540)
+    expect(resolveResponsiveWidth(360, 800, 280, WORKSPACE_PANEL_WIDTH_MAX)).toBe(280)
+  })
+
+  it('round-trips a resized width back to the reference preference', () => {
+    expect(toResponsiveWidthPreference(540, 1920, WORKSPACE_PANEL_WIDTH_MAX)).toBe(360)
+    expect(toResponsiveWidthPreference(220, 2048, 460)).toBe(138)
+    expect(resolveResponsiveWidth(138, 2048, 220, 460)).toBe(221)
+  })
+})
+
 describe('workspace panel responsive layout', () => {
+  it('reserves the floating-panel gutter without changing saved visible widths', () => {
+    expect(FLOATING_PANEL_INLINE_GUTTER).toBe(16)
+  })
+
   it('clamps a large preferred width to preserve a usable chat area', () => {
     expect(resolveWorkspacePanelLayout({
       viewportWidth: 1280,
@@ -22,8 +44,8 @@ describe('workspace panel responsive layout', () => {
       sidebarCollapsed: false,
       preferredWidth: 760,
     })).toMatchObject({
-      width: 550,
-      maxSplitWidth: 550,
+      width: 518,
+      maxSplitWidth: 518,
       minChatWidth: 420,
       chatCollapseThreshold: 210,
     })
@@ -37,7 +59,7 @@ describe('workspace panel responsive layout', () => {
       preferredWidth: 760,
     })).toMatchObject({
       width: 760,
-      maxSplitWidth: 858,
+      maxSplitWidth: 842,
     })
   })
 
@@ -50,8 +72,8 @@ describe('workspace panel responsive layout', () => {
     })).toMatchObject({
       width: WORKSPACE_PANEL_WIDTH_MIN,
       maxSplitWidth: WORKSPACE_PANEL_WIDTH_MIN,
-      minChatWidth: 286,
-      chatCollapseThreshold: 143,
+      minChatWidth: 254,
+      chatCollapseThreshold: 127,
     })
   })
 
@@ -74,8 +96,8 @@ describe('workspace panel responsive layout', () => {
       sidebarCollapsed: false,
       preferredWidth: WORKSPACE_PANEL_WIDTH_MAX,
     })).toMatchObject({
-      width: 1378,
-      maxSplitWidth: 1378,
+      width: 1346,
+      maxSplitWidth: 1346,
       minChatWidth: 420,
       chatCollapseThreshold: 210,
     })
@@ -102,10 +124,9 @@ describe('workspace panel responsive layout', () => {
       preferredWidth: 360,
     })
 
-    expect(layout.maxSplitWidth).toBe(550)
-    expect(resolveWorkspacePanelDrag(759, layout)).toEqual({ mode: 'split', width: 550 })
-    expect(resolveWorkspacePanelDrag(760, layout)).toEqual({ mode: 'split', width: 550 })
-    expect(resolveWorkspacePanelDrag(761, layout)).toEqual({ mode: 'fullscreen', width: 550 })
+    expect(layout.maxSplitWidth).toBe(518)
+    expect(resolveWorkspacePanelDrag(728, layout)).toEqual({ mode: 'split', width: 518 })
+    expect(resolveWorkspacePanelDrag(729, layout)).toEqual({ mode: 'fullscreen', width: 518 })
   })
 
   it('uses exactly half of each readable first threshold for the second threshold', () => {

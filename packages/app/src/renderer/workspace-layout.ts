@@ -14,6 +14,12 @@ export const WORKSPACE_PANEL_WIDTH_DEFAULT = 360
 export const WORKSPACE_PANEL_WIDTH_MIN = 280
 export const WORKSPACE_PANEL_WIDTH_MAX = 4096
 export const WORKSPACE_CHAT_MIN_WIDTH = 420
+// Must stay in sync with --floating-panel-inline-gutter in 03-shell-sidebar.css.
+// Width preferences describe the visible panel, not its surrounding float gap.
+export const FLOATING_PANEL_INLINE_GUTTER = 16
+export const RESPONSIVE_LAYOUT_REFERENCE_WIDTH = 1280
+export const RESPONSIVE_LAYOUT_PREFERENCE_MIN = 1
+export const RESPONSIVE_LAYOUT_PREFERENCE_MAX = WORKSPACE_PANEL_WIDTH_MAX
 export const WORKSPACE_PANEL_REOPEN_HOTZONE_WIDTH = 96
 export const WORKSPACE_FILE_CONTENT_MIN_WIDTH = 96
 export const WORKSPACE_FILE_NAVIGATOR_MAX_RATIO = 0.68
@@ -56,20 +62,63 @@ export interface WorkspaceFileNavigatorDragResult {
   width: number
 }
 
+/**
+ * Converts a reference-width preference into the current viewport width while
+ * keeping the readable minimum and a stable maximum bound intact.
+ */
+export function resolveResponsiveWidth(
+  preferredReferenceWidth: number,
+  viewportWidth: number,
+  minWidth: number,
+  maxWidth: number,
+): number {
+  const scale = responsiveViewportScale(viewportWidth)
+  const preferredWidth = finitePositive(preferredReferenceWidth) * scale
+  return Math.round(clamp(preferredWidth, minWidth, maxWidth))
+}
+
+/** Converts a current viewport width back into the persisted reference-width preference. */
+export function toResponsiveWidthPreference(
+  width: number,
+  viewportWidth: number,
+  maxWidth: number,
+): number {
+  const scale = responsiveViewportScale(viewportWidth)
+  const referenceWidth = finitePositive(width) / scale
+  return Math.round(clamp(
+    referenceWidth,
+    RESPONSIVE_LAYOUT_PREFERENCE_MIN,
+    Math.max(RESPONSIVE_LAYOUT_PREFERENCE_MAX, maxWidth),
+  ))
+}
+
 /** Resolves the readable split and both second-stage collapse thresholds. */
 export function resolveWorkspacePanelLayout(input: WorkspacePanelLayoutInput): WorkspacePanelLayout {
   const viewportWidth = finitePositive(input.viewportWidth)
   const activeSidebarWidth = input.sidebarCollapsed
     ? 0
     : clamp(finitePositive(input.sidebarWidth), 0, viewportWidth)
-  const availableCoreWidth = Math.max(0, viewportWidth - activeSidebarWidth - SIDEBAR_RESIZER_WIDTH)
+  const activeSidebarFootprint = activeSidebarWidth > 0
+    ? activeSidebarWidth + FLOATING_PANEL_INLINE_GUTTER
+    : 0
+  const availableCoreWidth = Math.max(0, viewportWidth - activeSidebarFootprint - SIDEBAR_RESIZER_WIDTH)
   const availableChatWidth = Math.max(
     0,
-    Math.floor(availableCoreWidth - WORKSPACE_PANEL_WIDTH_MIN - WORKSPACE_PANEL_RESIZER_WIDTH),
+    Math.floor(
+      availableCoreWidth
+      - WORKSPACE_PANEL_WIDTH_MIN
+      - FLOATING_PANEL_INLINE_GUTTER
+      - WORKSPACE_PANEL_RESIZER_WIDTH,
+    ),
   )
   const minChatWidth = Math.min(WORKSPACE_CHAT_MIN_WIDTH, availableChatWidth)
   const maxSplitWidth = clamp(
-    Math.floor(availableCoreWidth - minChatWidth - WORKSPACE_PANEL_RESIZER_WIDTH),
+    Math.floor(
+      availableCoreWidth
+      - minChatWidth
+      - FLOATING_PANEL_INLINE_GUTTER
+      - WORKSPACE_PANEL_RESIZER_WIDTH,
+    ),
     WORKSPACE_PANEL_WIDTH_MIN,
     WORKSPACE_PANEL_WIDTH_MAX,
   )
@@ -167,6 +216,11 @@ export function isWorkspacePanelReopenHotzone(
 
 function finitePositive(value: number): number {
   return Number.isFinite(value) ? Math.max(0, value) : 0
+}
+
+function responsiveViewportScale(viewportWidth: number): number {
+  const finiteViewportWidth = finitePositive(viewportWidth)
+  return finiteViewportWidth > 0 ? finiteViewportWidth / RESPONSIVE_LAYOUT_REFERENCE_WIDTH : 1
 }
 
 function clamp(value: number, min: number, max: number): number {

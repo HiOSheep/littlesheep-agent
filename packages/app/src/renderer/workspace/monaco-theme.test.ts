@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { LITTLE_SHEEP_MONACO_THEME_DATA } from './monaco-theme'
+import {
+  LITTLE_SHEEP_SELECTION_BACKGROUND,
+  LITTLE_SHEEP_SELECTION_BACKGROUND_INACTIVE,
+  LITTLE_SHEEP_CODE_SELECTION_BACKGROUND,
+  LITTLE_SHEEP_CODE_SELECTION_BACKGROUND_INACTIVE,
+  LITTLE_SHEEP_SELECTION_FOREGROUND,
+} from '../selection-style'
 
 describe('LittleSheep Monaco theme', () => {
   it('keeps the editor darker than the workspace surface and code text readable', () => {
@@ -33,6 +40,17 @@ describe('LittleSheep Monaco theme', () => {
 
     const vividForegrounds = tokens('keyword.control', 'number', 'string', 'type', 'tag', 'invalid')
     for (const foreground of vividForegrounds) expect(colourSaturation(foreground)).toBeGreaterThanOrEqual(0.7)
+  })
+
+  it('uses the muted non-code selection palette', () => {
+    expect(LITTLE_SHEEP_MONACO_THEME_DATA.colors['editor.selectionBackground'])
+      .toBe(LITTLE_SHEEP_SELECTION_BACKGROUND)
+    expect(LITTLE_SHEEP_MONACO_THEME_DATA.colors['editor.inactiveSelectionBackground'])
+      .toBe(LITTLE_SHEEP_SELECTION_BACKGROUND_INACTIVE)
+    expect(LITTLE_SHEEP_MONACO_THEME_DATA.colors['editor.selectionForeground'])
+      .toBe(LITTLE_SHEEP_SELECTION_FOREGROUND)
+    expect(LITTLE_SHEEP_CODE_SELECTION_BACKGROUND).toBe('#454545')
+    expect(LITTLE_SHEEP_CODE_SELECTION_BACKGROUND_INACTIVE).toBe('#3A3A3A')
   })
 
   it('composites one 50%-opaque review surface to the reference row tints', () => {

@@ -26,10 +26,12 @@ export function reduceCompletedRunMessages(
   const next = [...messages]
   next[next.length - 1] = {
     ...last,
+    timestamp: new Date(endedAt).toISOString(),
     text: last.text || (result.status === 'ok' ? result.reply : ''),
     ...traceData,
     artifacts,
     activityCollapsed: true,
+    webEvidence: result.webEvidence,
     activity: currentActivity
       ? {
         ...currentActivity,
