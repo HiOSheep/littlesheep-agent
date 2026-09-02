@@ -231,5 +231,7 @@ function replyStageForPurpose(
       return 'ask_user';
     case 'reply':
       return 'reply';
+    case 'capability_reply':
+      return 'reply';
   }
 }

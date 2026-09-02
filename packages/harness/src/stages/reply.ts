@@ -1,7 +1,7 @@
 // @littlesheep/harness — stages/reply.ts
 // REPLY: chat-classified messages get a simple LLM reply (no tools).
 
-import type { RunContext, StageResult } from '@littlesheep/types';
+import type { RunContext, StageResult, UserFacingReplyPurpose } from '@littlesheep/types';
 import type { LlmClient, ChatMessage, ChatRequest } from '@littlesheep/llm';
 import type { Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
@@ -38,6 +38,16 @@ export interface ReplyStageDeps {
   branding: BrandingConfig;
 }
 
+const CAPABILITY_REPLY_CONTRACT = [
+  'Capability answer contract:',
+  '- Answer only from the Runtime Capability Snapshot and Capability Probe facts supplied below.',
+  '- Distinguish a registered or permitted capability from an action actually performed.',
+  '- Say that a capability probe was observed only when the Runtime facts explicitly say so.',
+  '- Do not claim that a Web query occurred unless a corresponding Web tool event is present; a capability probe is not a Web query.',
+  '- Do not invent a specific Runtime error, permission change, network state or completion result.',
+  '- Return one concise user-facing answer in the user\'s language. Do not expose internal stages or private reasoning.',
+].join('\n');
+
 /** Factory: creates a reply stage. */
 export function createReplyStage(deps: ReplyStageDeps) {
   return async function replyStage(ctx: RunContext): Promise<StageResult> {
@@ -64,22 +74,26 @@ export function createReplyStage(deps: ReplyStageDeps) {
       }
     }
     const resolved = resolvePromptConfig(deps.config, deps.branding);
+    const isCapabilityReply = ctx.classification?.retrievalIntent === 'capability_question'
+      || ctx.classification?.retrievalIntent === 'capability_probe';
+    const replyPurpose: UserFacingReplyPurpose = isCapabilityReply ? 'capability_reply' : 'reply';
     // RESPOND keeps continuity, selected memory, voice and runtime capabilities,
     // but omits execution-only workflow, memory-navigation and tool discipline.
     const baseSystemPrompt = await assembleSystemPromptBundle(resolved, {
       tools: ctx.tools,
       bootstrap: respondBootstrap(ctx.bootstrap),
-      sessionSummary: ctx.sessionSummary,
-      memoryRootIndex: ctx.memoryRootIndex,
-      initialMemoryContext: ctx.initialMemoryContext,
+      sessionSummary: isCapabilityReply ? undefined : ctx.sessionSummary,
+      memoryRootIndex: isCapabilityReply ? undefined : ctx.memoryRootIndex,
+      initialMemoryContext: isCapabilityReply ? undefined : ctx.initialMemoryContext,
     }, 'respond');
     const systemPrompt = appendSystemPromptBundleAddons(baseSystemPrompt, [
       { id: 'profile', text: ctx.profilePromptAddon, placement: 'stable' },
-      { id: 'user-facing-voice', text: buildUserFacingVoiceAddon(ctx) },
+      { id: 'capability-reply-contract', text: isCapabilityReply ? CAPABILITY_REPLY_CONTRACT : undefined, placement: 'stable' },
+      { id: 'user-facing-voice', text: buildUserFacingVoiceAddon(ctx), placement: isCapabilityReply ? 'stable' : undefined },
     ]);
 
-    const attachmentMessages = attachmentContextMessages(ctx.runId, ctx.attachments);
-    const history = recentHistoryForModel(ctx.history, 8, 6_000);
+    const attachmentMessages = isCapabilityReply ? [] : attachmentContextMessages(ctx.runId, ctx.attachments);
+    const history = isCapabilityReply ? [] : recentHistoryForModel(ctx.history, 8, 6_000);
     const messages: ChatMessage[] = [
       {
         role: 'system',
@@ -97,14 +111,14 @@ export function createReplyStage(deps: ReplyStageDeps) {
       const rawRequest = {
         model: deps.model,
         messages,
-        temperature: 0.7,
-        max_tokens: 1_200,
+        temperature: isCapabilityReply ? 0.3 : 0.7,
+        max_tokens: isCapabilityReply ? 500 : 1_200,
         signal: ctx.signal,
         stream,
       } satisfies ChatRequest;
       const req = prepareModelRequest(
         ctx,
-        'reply',
+        replyPurpose,
         preferDirectModelOutput(ctx, rawRequest, { force: true }),
         buildRunRequestCandidates(ctx, 'reply', rawRequest.messages, {
           history,
@@ -126,19 +140,21 @@ export function createReplyStage(deps: ReplyStageDeps) {
           })
         : await callModelChat(ctx, deps.llm, req);
       writeProviderUsageState(ctx, 'reply', res.usage);
-      const apiGeneratedReply = await repairDiscontinuousReply(
-        deps,
-        ctx,
-        systemPrompt.text,
-        messages,
-        history,
-        res.content || streamed,
-      );
+      const apiGeneratedReply = isCapabilityReply
+        ? res.content || streamed
+        : await repairDiscontinuousReply(
+            deps,
+            ctx,
+            systemPrompt.text,
+            messages,
+            history,
+            res.content || streamed,
+          );
       reply = await acceptUniqueUserFacingReply(
         ctx,
-        'reply',
+        replyPurpose,
         apiGeneratedReply,
-        (input) => rewriteReply(deps, ctx, systemPrompt.text, messages, input),
+        (input) => rewriteReply(deps, ctx, systemPrompt.text, messages, input, replyPurpose),
       );
       // Streamed text is provisional. Replace it only after the complete
       // model reply passes the durable duplicate gate.
@@ -169,7 +185,9 @@ async function rewriteReply(
   systemPrompt: string,
   originalMessages: ChatMessage[],
   input: ReplyRewriteInput,
+  purpose: Extract<UserFacingReplyPurpose, 'reply' | 'capability_reply'> = 'reply',
 ): Promise<string> {
+  const isCapabilityReply = purpose === 'capability_reply';
   const rawRequest = {
     model: deps.model,
     messages: [
@@ -186,17 +204,17 @@ async function rewriteReply(
         ].join('\n\n'),
       },
     ],
-    temperature: 0.75,
-    max_tokens: 1_200,
+    temperature: isCapabilityReply ? 0.45 : 0.75,
+    max_tokens: isCapabilityReply ? 500 : 1_200,
     signal: ctx.signal,
     stream: false,
   } satisfies ChatRequest;
   const request = prepareModelRequest(
     ctx,
-    'reply',
+    purpose,
     preferDirectModelOutput(ctx, rawRequest, { force: true }),
     buildRunRequestCandidates(ctx, 'reply', rawRequest.messages, {
-      history: recentHistoryForModel(ctx.history, 8, 6_000),
+      history: isCapabilityReply ? [] : recentHistoryForModel(ctx.history, 8, 6_000),
       primaryUserKind: 'user_input',
     }),
   );

@@ -12,6 +12,7 @@ import {
 
 const CONTENT_PURPOSES = new Set<UserFacingReplyPurpose>([
   'reply',
+  'capability_reply',
   'ask_user',
   'decide',
   'decide_explicit_tool',

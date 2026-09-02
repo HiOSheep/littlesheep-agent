@@ -184,7 +184,7 @@ function replyPurposeStage(purpose: NonNullable<RunContext['replyProvenance']>['
   if (purpose === 'ask_user') return purpose;
   if (purpose === 'decide' || purpose === 'decide_explicit_tool') return 'decide' as const;
   if (purpose === 'recover') return 'recover' as const;
-  if (purpose === 'reply') return 'reply' as const;
+  if (purpose === 'reply' || purpose === 'capability_reply') return 'reply' as const;
   return 'execute' as const;
 }
 

@@ -105,7 +105,7 @@ describe('runtime awareness', () => {
     expect(ctx.contextSnapshots?.[0]?.items).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 'runtime-awareness:1',
-        kind: 'system_prompt',
+        kind: 'runtime_event',
         required: true,
         source: expect.objectContaining({ kind: 'runtime_event' }),
       }),
@@ -129,6 +129,43 @@ describe('runtime awareness', () => {
     expect(String(second.messages[0]?.content)).toContain('2026-07-15 11:04:06');
     expect(String(second.messages[0]?.content)).toContain('previous_run: id=previous-run');
     expect(String(second.messages[0]?.content)).toContain('read:succeeded:700 ms');
+  });
+
+  it('includes observed capability-probe evidence separately from the capability snapshot', () => {
+    const ctx = makeCtx({ inbound: textMessage('user', '你查询过了吗？') });
+    ctx.capabilitySnapshot = {
+      version: 1,
+      epoch: 'epoch-probe',
+      generatedAt: '2026-07-15T03:04:05.000Z',
+      permissionPolicyId: 'research',
+      workspace: 'available',
+      tools: [],
+      network: { enabled: true, status: 'ready', providerId: 'tavily' },
+    };
+    ctx.capabilityProbe = {
+      version: 1,
+      probeId: 'probe-1',
+      kind: 'capability_snapshot',
+      status: 'observed',
+      capabilityEpoch: 'epoch-probe',
+      evidence: 'runtime_snapshot',
+    };
+    ctx.capabilityPermissionEvent = {
+      version: 1,
+      eventId: 'permission-1',
+      action: 'capability_probe',
+      decision: 'allow',
+      permissionPolicyId: 'research',
+      capabilityEpoch: 'epoch-probe',
+      source: 'runtime',
+    };
+
+    const capabilityRequest = { ...request(), max_tokens: 500 };
+    const prepared = prepareModelRequest(ctx, 'capability_reply', capabilityRequest, buildRunRequestCandidates(ctx, 'reply', capabilityRequest.messages, { history: [] }));
+    const system = String(prepared.messages[0]?.content);
+
+    expect(system).toContain('capability_probe=observed');
+    expect(system).toContain('capability_permission_decision: allow');
   });
 
   it('keeps previous-run execution details out of an ordinary direct reply', () => {

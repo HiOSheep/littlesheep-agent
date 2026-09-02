@@ -7,6 +7,7 @@ import type { WebEvidenceProjection } from './web-retrieval.js';
 /** LLM call categories that may author natural language shown as an LS reply. */
 export type UserFacingReplyPurpose =
   | 'reply'
+  | 'capability_reply'
   | 'ask_user'
   | 'decide'
   | 'decide_explicit_tool'

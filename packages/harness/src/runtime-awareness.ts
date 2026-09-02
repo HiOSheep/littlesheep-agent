@@ -1,3 +1,5 @@
+// Runtime-aware prompt injection: keep exact clock, capability facts and
+// bounded execution status below the cache boundary for every model request.
 import type { ContextMessageCandidate, ContextMessageSegment } from '@littlesheep/context';
 import type { ChatMessage, ChatRequest } from '@littlesheep/llm';
 import {
@@ -56,7 +58,7 @@ export function injectRuntimeAwareness(
     id: `runtime-awareness:${requestIndex}`,
     order: Number.MAX_SAFE_INTEGER,
     text: segmentText,
-    kind: 'system_prompt',
+    kind: 'runtime_event',
     source: {
       kind: 'runtime_event',
       id: `runtime-awareness:${ctx.runId}:${requestIndex}`,
@@ -191,13 +193,23 @@ function renderRuntimeAwareness(
 
 function renderCapabilityLines(ctx: RunContext, compact: boolean): string[] {
   const snapshot = ctx.capabilitySnapshot;
-  if (!snapshot) return compact ? [] : ['', '- capability_snapshot: unavailable (no Runtime snapshot was supplied)'];
+  if (!snapshot) {
+    const unavailable = compact ? 'capability_snapshot=unavailable' : '- capability_snapshot: unavailable (no Runtime snapshot was supplied)';
+    return ctx.capabilityProbe
+      ? [unavailable, `- capability_probe: ${ctx.capabilityProbe.status}; evidence=${ctx.capabilityProbe.evidence}; epoch=${ctx.capabilityProbe.capabilityEpoch}`]
+      : (compact ? [unavailable] : ['', unavailable]);
+  }
   const toolSummary = snapshot.tools
     .map((tool) => `${cleanInline(tool.name)}=${tool.status}`)
     .join(', ');
+  const probe = ctx.capabilityProbe;
+  const probeLine = probe
+    ? `capability_probe=${probe.status}; evidence=${probe.evidence}; epoch=${probe.capabilityEpoch}; permission=${ctx.capabilityPermissionEvent?.decision ?? 'unavailable'}`
+    : undefined;
   if (compact) {
     return [
       `capability_epoch=${snapshot.epoch}; permission=${snapshot.permissionPolicyId}; workspace=${snapshot.workspace}; network=${snapshot.network.enabled ? 'enabled' : 'disabled'}/${snapshot.network.status}; tools=${toolSummary || 'none'}`,
+      ...(probeLine ? [probeLine] : []),
     ];
   }
   return [
@@ -209,6 +221,8 @@ function renderCapabilityLines(ctx: RunContext, compact: boolean): string[] {
     `- workspace_access: ${snapshot.workspace}`,
     `- network: ${snapshot.network.enabled ? 'enabled' : 'disabled'} (${snapshot.network.status})${snapshot.network.providerId ? ` provider=${cleanInline(snapshot.network.providerId)}` : ''}`,
     `- registered_tools: ${toolSummary || 'none'}`,
+    ...(probeLine ? [`- ${probeLine}`] : []),
+    ...(ctx.capabilityPermissionEvent ? [`- capability_permission_decision: ${ctx.capabilityPermissionEvent.decision}`] : []),
     '- Capability facts above are Runtime-owned. A capability probe or Web query may only be claimed when its corresponding Runtime event exists.',
   ];
 }

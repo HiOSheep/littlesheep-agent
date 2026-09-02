@@ -67,10 +67,12 @@ describe('e2e agent loop', () => {
 
     const result = await h.run(ctx);
 
-    expect(result.ok).toBe(true);
+    expect(result.ok, result.error).toBe(true);
     expect(result.next).toBe('exit');
     expect(ctx.produced).toHaveLength(1);
     expect(ctx.produced[0]?.content).toEqual([{ type: 'text', text: '当前只根据 Runtime 能力快照回答，尚未执行网络查询。' }]);
+    expect(ctx.replyProvenance?.purpose).toBe('capability_reply');
+    expect(ctx.modelRequests?.[0]?.callContract?.purpose).toBe('capability_reply');
     expect(events.filter((event) => event.visibility === 'progress')).toHaveLength(0);
     expect(events.filter((event) => event.type === 'capability_snapshot' || event.type === 'capability_probe')).toHaveLength(0);
     expect(events.filter((event) => event.type === 'reasoning').every((event) => event.visibility === 'silent')).toBe(true);

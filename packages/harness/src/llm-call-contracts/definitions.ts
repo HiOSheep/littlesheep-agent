@@ -44,7 +44,7 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
   classify: template({
     purpose: 'classify', stage: 'classify', modelCall: 'optional',
     goal: (ctx) => `Choose one bounded semantic activity for the inbound request: ${inbound(ctx)}`,
-    allowedContextKinds: ['system_prompt', 'recent_message', 'user_input', 'attachment_manifest', 'output_constraint'],
+    allowedContextKinds: ['system_prompt', 'recent_message', 'user_input', 'attachment_manifest', 'output_constraint', 'runtime_event'],
     requiredContextKinds: ['system_prompt', 'user_input'], history: 'recent', attachments: 'manifest',
     allowedDecisions: ['respond', 'execute', 'clarify'], outputSchema: json('activity-router.v1', 'Semantic activity, confidence and short reason.'),
     memoryIntents: NO_MEMORY, requiresMemoryEvidence: true, toolMode: 'none', runtimeApprovalRequired: false,
@@ -97,7 +97,7 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
   recover: template({
     purpose: 'recover', stage: 'recover', modelCall: 'optional',
     goal: (ctx) => `Choose a bounded recovery action for: ${ctx.lastError?.message ?? 'unknown failure'}`,
-    allowedContextKinds: ['system_prompt', 'recent_message', 'workflow_state', 'output_constraint'],
+    allowedContextKinds: ['system_prompt', 'recent_message', 'workflow_state', 'output_constraint', 'runtime_event'],
     requiredContextKinds: ['system_prompt', 'workflow_state'], history: 'recent', attachments: 'none',
     allowedDecisions: ['retry', 'escalate', 'abort'], outputSchema: json('recovery-decision.v1', 'Bounded recovery action and optional revised legacy plan.'),
     memoryIntents: ['read', 'conflict', 'none'], requiresMemoryEvidence: true, toolMode: 'none', runtimeApprovalRequired: false,
@@ -140,6 +140,15 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     memoryIntents: ['read', 'none'], requiresMemoryEvidence: true, toolMode: 'none', runtimeApprovalRequired: false,
     maxIterations: 0, maxAttempts: 3, maxOutputTokens: 1_200, maxPromptTokens: 8_000, temperature: 0.7,
   }),
+  capability_reply: template({
+    purpose: 'capability_reply', stage: 'reply', modelCall: 'required',
+    goal: (ctx) => `Answer the capability/status question from Runtime facts only: ${inbound(ctx)}`,
+    allowedContextKinds: ['system_prompt', 'user_input', 'runtime_event', 'output_constraint'],
+    requiredContextKinds: ['system_prompt', 'user_input', 'runtime_event'], history: 'none', attachments: 'none',
+    allowedDecisions: ['respond'], outputSchema: text('capability-reply.v1', 'Concise capability/status answer grounded in Runtime facts.'),
+    memoryIntents: NO_MEMORY, requiresMemoryEvidence: false, toolMode: 'none', runtimeApprovalRequired: false,
+    maxIterations: 0, maxAttempts: 2, maxOutputTokens: 500, maxPromptTokens: 4_096, temperature: 0.3,
+  }),
   ask_user: template({
     purpose: 'ask_user', stage: 'ask_user', modelCall: 'optional',
     goal: (ctx) => `Compose one actionable clarification without changing runtime facts for: ${inbound(ctx)}`,
@@ -160,7 +169,7 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
   session_compaction: template({
     purpose: 'session_compaction', stage: 'capture', modelCall: 'optional',
     goal: () => 'Merge older transcript evidence into a versioned, non-destructive session summary.',
-    allowedContextKinds: ['system_prompt', 'summary_memory', 'workflow_state', 'output_constraint'],
+    allowedContextKinds: ['system_prompt', 'summary_memory', 'workflow_state', 'output_constraint', 'runtime_event'],
     requiredContextKinds: ['system_prompt', 'workflow_state'], history: 'none', attachments: 'none',
     allowedDecisions: ['produce_summary'], outputSchema: text('session-summary.v1', 'Traceable summary preserving goals, constraints, decisions and unfinished work.'),
     memoryIntents: NO_MEMORY, requiresMemoryEvidence: true, toolMode: 'none', runtimeApprovalRequired: false,

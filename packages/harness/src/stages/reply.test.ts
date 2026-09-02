@@ -7,6 +7,129 @@ import { createMockLlm, makeCtx, textResponse } from '../tests/helpers.js';
 import { createReplyStage } from './reply.js';
 
 describe('replyStage', () => {
+  it('uses a minimal capability-reply contract and excludes memory/history from the request', async () => {
+    const requests: import('@littlesheep/llm').ChatRequest[] = [];
+    const llm = createMockLlm((request) => {
+      requests.push(request);
+      return textResponse('当前网络能力以 Runtime 快照为准，尚未执行网络查询。');
+    });
+    const stage = createReplyStage({
+      llm,
+      model: 'test',
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+    });
+    const ctx = makeCtx({
+      inbound: textMessage('user', '你能调用网络了吗？'),
+      history: [
+        textMessage('user', 'PRIVATE_HISTORY_SENTINEL'),
+        textMessage('assistant', 'PRIVATE_ASSISTANT_SENTINEL'),
+      ],
+      bootstrap: {
+        'SOUL.md': 'Use a concise voice.',
+        'USER.md': 'PRIVATE_USER_PROFILE_SENTINEL',
+      },
+      initialMemoryContext: 'PRIVATE_MEMORY_SENTINEL',
+      classification: {
+        activity: 'respond',
+        type: 'chat',
+        confidence: 1,
+        source: 'rules',
+        reason: 'capability or status question',
+        retrievalIntent: 'capability_question',
+      },
+    });
+    ctx.capabilitySnapshot = {
+      version: 1,
+      epoch: 'capability-epoch-test',
+      generatedAt: '2026-09-02T00:00:00.000Z',
+      permissionPolicyId: 'research',
+      workspace: 'available',
+      tools: [],
+      network: { enabled: false, status: 'disabled' },
+    };
+
+    const result = await stage(ctx);
+
+    expect(result.ok, result.error).toBe(true);
+    expect(ctx.replyProvenance).toMatchObject({ source: 'llm', purpose: 'capability_reply', rewriteCount: 0 });
+    expect(ctx.modelRequests?.[0]?.callContract?.purpose).toBe('capability_reply');
+    expect(requests[0]?.messages).toHaveLength(2);
+    const sent = JSON.stringify(requests[0]?.messages);
+    expect(sent).toContain('capability-epoch-test');
+    expect(sent).toContain('Capability answer contract');
+    expect(sent).not.toContain('PRIVATE_HISTORY_SENTINEL');
+    expect(sent).not.toContain('PRIVATE_ASSISTANT_SENTINEL');
+    expect(sent).not.toContain('PRIVATE_MEMORY_SENTINEL');
+    expect(sent).not.toContain('PRIVATE_USER_PROFILE_SENTINEL');
+    expect(ctx.contextSnapshots?.[0]?.items.some((item) => (
+      item.kind === 'recent_message'
+      || item.kind === 'memory_fragment'
+      || item.kind === 'summary_memory'
+      || item.kind === 'attachment_manifest'
+    ))).toBe(false);
+  });
+
+  it('exposes an observed capability probe as Runtime evidence without turning it into a Web query', async () => {
+    const requests: import('@littlesheep/llm').ChatRequest[] = [];
+    const llm = createMockLlm((request) => {
+      requests.push(request);
+      return textResponse('我已完成能力探针；这不等同于执行了网络查询。');
+    });
+    const stage = createReplyStage({
+      llm,
+      model: 'test',
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+    });
+    const ctx = makeCtx({
+      inbound: textMessage('user', '你查询过了吗？'),
+      classification: {
+        activity: 'respond',
+        type: 'chat',
+        confidence: 1,
+        source: 'rules',
+        reason: 'capability probe requested',
+        retrievalIntent: 'capability_probe',
+      },
+    });
+    ctx.capabilitySnapshot = {
+      version: 1,
+      epoch: 'capability-epoch-probe',
+      generatedAt: '2026-09-02T00:00:00.000Z',
+      permissionPolicyId: 'research',
+      workspace: 'available',
+      tools: [],
+      network: { enabled: true, status: 'ready', providerId: 'tavily' },
+    };
+    ctx.capabilityProbe = {
+      version: 1,
+      probeId: 'probe-test',
+      kind: 'capability_snapshot',
+      status: 'observed',
+      capabilityEpoch: 'capability-epoch-probe',
+      evidence: 'runtime_snapshot',
+    };
+    ctx.capabilityPermissionEvent = {
+      version: 1,
+      eventId: 'probe-test:permission',
+      action: 'capability_probe',
+      decision: 'allow',
+      permissionPolicyId: 'research',
+      capabilityEpoch: 'capability-epoch-probe',
+      source: 'runtime',
+    };
+
+    const result = await stage(ctx);
+
+    expect(result.ok, result.error).toBe(true);
+    const system = String(requests[0]?.messages[0]?.content);
+    expect(system).toContain('capability_probe=observed');
+    expect(system).toContain('capability_permission_decision: allow');
+    expect(system).toContain('a capability probe is not a Web query');
+    expect(ctx.replyProvenance?.purpose).toBe('capability_reply');
+  });
+
   it('includes the active Soul when composing the user-visible reply', async () => {
     const systemPrompts: string[] = [];
     const llm = createMockLlm((request) => {

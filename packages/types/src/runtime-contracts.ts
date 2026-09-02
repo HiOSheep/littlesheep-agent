@@ -150,6 +150,7 @@ export type LlmCallPurpose =
   | 'evolve'
   | 'capture'
   | 'reply'
+  | 'capability_reply'
   | 'ask_user'
   | 'finalize'
   | 'session_compaction';
