@@ -1,12 +1,14 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-08-30 16:36:07
+最后更新：2026-09-02 18:42:00
 
 本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
 
 ## 现在先做什么
 
 **当前 P0 阻断项（2026-08-13）**：已确认普通聊天回答没有自动绑定同会话的 `waiting_user` Checkpoint。故障不是历史文本缺失，而是任务、执行现场、附件、临时工具和恢复阶段没有随回答一起续接；因此用户补充权限和工具后仍可能被当成独立新请求重新澄清。专项修复尚未开始，实施与验收以 [对话任务连续性 P0 专项任务书](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md) 为准；在文本、任务、执行现场、资源和最终回答五层全部通过前，不得宣称连续性问题已解决。
+
+**新 Harness 重建已建立冻结基线（2026-09-02）**：当前完整工作树已提交为 `a925a508c009505c474faecd5419f9256bc89f5f`，并推送 `freeze-2026-09-02` tag。新 Harness 不直接覆盖旧路径；先按[新 Harness 重建与 Prompt Cache 收敛任务书](taskbooks/harness-rebuild-and-cache-taskbook-2026-09-02.md)完成开源底座许可证/供应链评估、旧 Harness 的脱敏缓存观测和双路径回滚设计。缓存根因未确认前，不先改 Context 或减少请求。
 
 **阶段 5M 状态覆盖（2026-08-10）**：阶段 5M 已完成并已独立提交、推送。审计确认 checkpoint 的 `contextSnapshotIds`、`RunContext` 的 `contextSnapshots` 与 execution log 的模型观测此前没有共享同一截断边界；现统一使用 `MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN = 64`，checkpoint 和 execution log 均只保留最近 64 条，request 的 `contextSnapshotId` 仍与持久化 snapshot 保持关联，checkpoint schema 与 ownership group 不变。
 
@@ -64,6 +66,7 @@
 
 - [OpenCode VS Code 对标记录 2026-08-13](reference/opencode-vscode-comparison-2026-08-13.md)：记录官方源码、许可证、LS 差异、已直接吸收的缓存/模型/审阅交互，以及待产品选择的虚拟化、评论和真正 VS Code 扩展路线。
 - [对话任务连续性 P0 专项任务书 2026-08-13](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md)：修复普通聊天未绑定 waiting-user Checkpoint、执行现场与附件/临时工具无法自然恢复、权限未按当前状态重验及最终回答断档；当前为最高优先级阻断项。
+- [新 Harness 重建与 Prompt Cache 收敛任务书 2026-09-02](taskbooks/harness-rebuild-and-cache-taskbook-2026-09-02.md)：以冻结提交/tag 为回滚锚点，评估开源 Agent runtime，重建 durable event/inbox/replay、effect intent/settlement 和 authoritative final settlement，并以 `CACHE-01` 至 `CACHE-10` 观测和修复上下文注入造成的 Provider prompt-cache 低命中率。
 - [实时网络检索与安全读取任务书 2026-08-28](taskbooks/web-search-and-safe-retrieval-taskbook-2026-08-28.md)：实施 `web_search`、`web_fetch`、Provider、受控本地抓取、safe read、证据引用、记忆协同、UI 与发布验收；WB-01 至 WB-08 已完成，WB-09 发布门实施中。真实匿名 `web_fetch` smoke、当前 release 候选扫描和离线渠道门已通过；真实 Tavily search/citation、正式渠道、签名最终包和干净 Windows 环境仍待验收。
 - [网络检索冻结契约与威胁模型](reference/web-retrieval-security-contract.md)：固定 safe read、网络配置、Tavily 首个 Provider、SSRF/DNS/注入/外发威胁、引用和日志语义。
 - [网络检索安全合并验收 2026-08-29](reference/web-retrieval-security-acceptance-2026-08-29.md)：记录离线安全矩阵、迁移/回退、构建产物扫描和仍阻断 ready 的真实 Provider/正式渠道门。
