@@ -49,6 +49,7 @@ export {
 const defaultContextEngine = new ContextEngine();
 const contextEngines = new WeakMap<RunContext, ContextEngine>();
 const requestContextSnapshotIds = new WeakMap<ChatRequest, string>();
+const requestModelIds = new WeakMap<ChatRequest, string>();
 interface ModelRequestLifecycle {
   readonly snapshot: ModelRequestSnapshot;
   readonly started: Promise<void>;
@@ -111,6 +112,7 @@ export async function settleModelRequest(
     return;
   }
   lifecycle.settled = lifecycle.started.then(async () => {
+    const retryOf = details.retryOf ?? lifecycle.snapshot.retryOf;
     await ctx.appendDurableEvent?.({
       type: 'model_request_settled',
       source: 'runtime',
@@ -122,7 +124,7 @@ export async function settleModelRequest(
         status,
         ...(details.providerReached === undefined ? {} : { providerReached: details.providerReached }),
         ...(details.providerReachStatus ? { providerReachStatus: details.providerReachStatus } : {}),
-        ...(details.retryOf ? { retryOf: details.retryOf } : {}),
+        ...(retryOf ? { retryOf } : {}),
         ...(details.errorKind ? { errorKind: details.errorKind.slice(0, 128) } : {}),
         ...(details.usageStatus ? { usageStatus: details.usageStatus } : {}),
         ...(details.transportStatus ? { transportStatus: details.transportStatus } : {}),
@@ -237,8 +239,9 @@ export function prepareModelRequest(
   purposeOrStage: LlmCallPurpose | StageName,
   request: ChatRequest,
   candidates?: ContextMessageCandidate[],
+  options: { retryOf?: string } = {},
 ): ChatRequest {
-  return recordPreparedRequest(ctx, purposeOrStage, request, candidates).request;
+  return recordPreparedRequest(ctx, purposeOrStage, request, candidates, options).request;
 }
 
 /** Compatibility helper for observers that do not yet consume the prepared request. */
@@ -247,8 +250,14 @@ export function recordModelRequest(
   purposeOrStage: LlmCallPurpose | StageName,
   request: ChatRequest,
   candidates?: ContextMessageCandidate[],
+  options: { retryOf?: string } = {},
 ): ModelRequestSnapshot {
-  return recordPreparedRequest(ctx, purposeOrStage, request, candidates).snapshot;
+  return recordPreparedRequest(ctx, purposeOrStage, request, candidates, options).snapshot;
+}
+
+/** Return the Runtime identity attached to a prepared request, if any. */
+export function modelRequestIdFor(request: ChatRequest): string | undefined {
+  return requestModelIds.get(request);
 }
 
 /** Attach provider-reported usage to the exact Context snapshot for a prepared request. */
@@ -390,6 +399,7 @@ function recordPreparedRequest(
   purposeOrStage: LlmCallPurpose | StageName,
   request: ChatRequest,
   candidates?: ContextMessageCandidate[],
+  options: { retryOf?: string } = {},
 ): { request: ChatRequest; snapshot: ModelRequestSnapshot } {
   const modelCallBudgetEnabled = ctx.maxModelCalls !== undefined;
   if (ctx.maxModelCalls !== undefined) {
@@ -433,6 +443,10 @@ function recordPreparedRequest(
     callContract,
     compressionThresholdRatio: callContract.budget.contextCompressionThresholdRatio,
   });
+  const retryOf = options.retryOf
+    && ctx.modelRequests?.some((candidate) => candidate.id === options.retryOf && candidate.runId === ctx.runId)
+    ? options.retryOf
+    : undefined;
   const cacheObservation = buildCacheObservation({
     request: prepared.request,
     provider: prepared.modelRequestSnapshot.provider,
@@ -450,6 +464,7 @@ function recordPreparedRequest(
   const observedSnapshot = Object.freeze({
     ...prepared.modelRequestSnapshot,
     cacheObservation,
+    ...(retryOf ? { retryOf } : {}),
   });
   appendModelObservations(
     ctx,
@@ -459,6 +474,7 @@ function recordPreparedRequest(
     MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN,
   );
   requestContextSnapshotIds.set(prepared.request, prepared.contextSnapshot.id);
+  requestModelIds.set(prepared.request, observedSnapshot.id);
   const started = Promise.resolve().then(async () => {
     await ctx.appendDurableEvent?.({
       type: 'model_request_started',
@@ -476,6 +492,7 @@ function recordPreparedRequest(
         transportStatus: prepared.modelRequestSnapshot.stream ? 'streaming' : 'not_started',
         payloadHash: prepared.modelRequestSnapshot.payloadHash,
         cacheObservation: observedSnapshot.cacheObservation,
+        ...(observedSnapshot.retryOf ? { retryOf: observedSnapshot.retryOf } : {}),
       },
     });
   });

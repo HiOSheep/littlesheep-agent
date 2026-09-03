@@ -11,7 +11,7 @@ import { buildBaseMessages } from './guidance.js';
 import { applyUsage, runToolLoop } from './tool-loop.js';
 import { acceptUniqueUserFacingReply, type ReplyRewriteInput } from '../../user-facing-reply.js';
 import { buildRunRequestCandidates } from '../../context-candidates.js';
-import { prepareModelRequest, callModelChat } from '../../model-observability.js';
+import { prepareModelRequest, callModelChat, modelRequestIdFor } from '../../model-observability.js';
 import { clearReplyState } from '../../reply-state.js';
 import { recordFailure } from '../../failure-state.js';
 import { replaceToolResults } from '../../execution-evidence-state.js';
@@ -98,8 +98,10 @@ async function rewriteLegacyExecutionReply(
       systemSegments: rewrittenSystem.segments,
       insertedBeforePrimary: attachments.map((item) => item.context),
     }),
+    { retryOf: ctx.modelRequests?.at(-1)?.id },
   );
   let currentRequest = request;
+  let previousRequestId = modelRequestIdFor(request);
   for (let attempt = 0; attempt <= MAX_WEB_CITATION_REPAIRS; attempt += 1) {
     const response = await callModelChat(ctx, deps.llm, currentRequest);
     applyUsage(ctx, response.usage, 'execute');
@@ -128,7 +130,9 @@ async function rewriteLegacyExecutionReply(
         systemSegments: rewrittenSystem.segments,
         insertedBeforePrimary: attachments.map((item) => item.context),
       }),
+      { retryOf: previousRequestId },
     );
+    previousRequestId = modelRequestIdFor(currentRequest);
   }
   throw new Error('rewritten reply citation validation exhausted');
 }

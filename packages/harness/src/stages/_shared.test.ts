@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { textMessage, type RunAttachment } from '@littlesheep/types'
-import { createMockLlm, textResponse } from '../tests/helpers.js'
+import { createMockLlm, makeCtx, textResponse } from '../tests/helpers.js'
 import {
   attachmentContextMessages,
   attachmentManifestText,
@@ -9,6 +9,7 @@ import {
   recentHistoryForModel,
   textOf,
 } from './_shared.js'
+import { modelRequestIdFor, prepareModelRequest } from '../model-observability.js'
 
 describe('attachment context helpers', () => {
   const attachment: RunAttachment = {
@@ -74,6 +75,7 @@ describe('callLlmForJson retry budgets', () => {
     ])
 
     const result = await callLlmForJson<{ ok: boolean }>(llm, 'test', [
+      { role: 'system', content: 'Reply with a JSON object.' },
       { role: 'user', content: 'return json' },
     ], {
       maxAttempts: 3,
@@ -114,6 +116,32 @@ describe('callLlmForJson retry budgets', () => {
 
     expect(result.parsed).toBeNull()
     expect(maxTokens).toEqual([100, 150])
+  })
+
+  it('passes the prepared parent request identity to a parse retry', async () => {
+    const requests: Array<{ id?: string; previousRequestId?: string }> = []
+    const ctx = makeCtx()
+    const llm = createMockLlm([
+      textResponse('not json'),
+      textResponse('{"ok":true}'),
+    ])
+
+    const result = await callLlmForJson<{ ok: boolean }>(llm, 'test', [
+      { role: 'system', content: 'Reply with a JSON object.' },
+      { role: 'user', content: 'return json' },
+    ], {
+      maxAttempts: 2,
+      onRequest: (request, retry) => {
+        const prepared = prepareModelRequest(ctx, 'reply', request, undefined, { retryOf: retry.previousRequestId })
+        requests.push({ id: modelRequestIdFor(prepared), previousRequestId: retry.previousRequestId })
+        return prepared
+      },
+    })
+
+    expect(result.parsed).toEqual({ ok: true })
+    expect(requests[0]?.previousRequestId).toBeUndefined()
+    expect(requests[1]?.previousRequestId).toBe(requests[0]?.id)
+    expect(ctx.modelRequests?.map((request) => request.retryOf)).toEqual([undefined, requests[0]?.id])
   })
 })
 

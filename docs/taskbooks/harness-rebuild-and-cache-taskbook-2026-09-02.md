@@ -2,7 +2,7 @@
 
 状态：规划已定稿，阶段 0 冻结已完成，阶段 1 开源底座评估已完成；阶段 2 观测与后续重构仍在进行
 
-最后更新：2026-09-03 11:48:20
+最后更新：2026-09-03 12:53:15
 
 本文是新 Harness 重建和上下文缓存专项的唯一执行入口。它记录目标架构、开源底座评估、迁移顺序、回滚边界、缓存观测与验收；当前事实和最新质量门仍以[项目状态](../decision/project-status.md)为准。
 
@@ -316,7 +316,7 @@ Ingress
 
 工作项：实现 request snapshot 关联、三套 cache ledger、脱敏 HMAC 指纹、stable/dynamic boundary、Provider usage reconciliation 和失效原因枚举。先接入旧 Harness 的只读观测适配，不改变旧请求语义。
 
-当前增量：已接入 request-bound HMAC 观测、prompt source 失效原因、稳定/动态 addon 分层和 Provider usage 对账；本轮又把 Runtime capability snapshot/probe 接入版本化 durable event 链，并用真实对话回归夹具验证 capability question、capability probe 与 Web query 的分层。新增 CACHE-03/04/05 确定性矩阵夹具：100 次字节级重复、并发顺序反转、同 key 重启、Windows 路径大小写、动态字段隔离、静态字段/工具 schema 失效原因均已通过；完整 CACHE-06/07/08 矩阵、真实 Provider usage 和跨重启/并发故障证据仍待完成，不能据此宣称缓存问题已解决。
+当前增量：已接入 request-bound HMAC 观测、prompt source 失效原因、稳定/动态 addon 分层和 Provider usage 对账；本轮又把 Runtime capability snapshot/probe 接入版本化 durable event 链，并用真实对话回归夹具验证 capability question、capability probe 与 Web query 的分层。新增 CACHE-03/04/05 确定性矩阵夹具：100 次字节级重复、并发顺序反转、同 key 重启、Windows 路径大小写、动态字段隔离、静态字段/工具 schema 失效原因均已通过；本轮修正了 LS Context ledger 的语义，Context 组装在没有真实 cache observation event 时只发布 `unavailable/context_cache_event_not_observed`，不再把组装误报为 `miss`；模型解析重试、重复文案重写、连续性/引用修复和执行回复修复均记录显式 `retryOf`，durable projection 会拒绝自指或未知 parent。完整 CACHE-06/07/08 矩阵、真实 Provider usage 和跨重启/并发故障证据仍待完成，不能据此宣称缓存问题已解决。
 
 完成门：同一请求可在不暴露 prompt 的前提下解释 prefix/suffix、Provider usage、local ledger、scope 和 invalidation reason；缺指标时安全降级；没有因观测而增加第二份用户文案或 Provider 请求。
 

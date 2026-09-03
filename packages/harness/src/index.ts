@@ -40,6 +40,7 @@ export {
   flushModelRequestLifecycles,
   callModelChat,
   callModelChatStream,
+  modelRequestIdFor,
   MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN,
   MAX_SNAPSHOT_MESSAGES,
   MAX_SNAPSHOT_ITEMS,

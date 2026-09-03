@@ -6,6 +6,7 @@ import type { Message, RunAttachment } from '@littlesheep/types';
 import type { ChatContentPart, ChatMessage, ChatResponse, LlmClient } from '@littlesheep/llm';
 import { attachmentManifestResourceId } from '@littlesheep/memory-tree';
 import type { InsertedContextMessage } from '../context-candidates.js';
+import { modelRequestIdFor } from '../model-observability.js';
 
 /** Extract text content from a Message (concatenates text blocks). */
 export function textOf(m: Message): string {
@@ -223,7 +224,7 @@ export async function callLlmForJson<T>(
     signal?: AbortSignal;
     onRequest?: (
       request: import('@littlesheep/llm').ChatRequest,
-      retry: { attempt: number; previousResponseWasEmpty: boolean },
+      retry: { attempt: number; previousResponseWasEmpty: boolean; previousRequestId?: string },
     ) => import('@littlesheep/llm').ChatRequest | void;
     /** Durable request-start gate, awaited immediately before Provider I/O. */
     beforeRequest?: (request: import('@littlesheep/llm').ChatRequest, attempt: number) => Promise<void>;
@@ -242,6 +243,7 @@ export async function callLlmForJson<T>(
   const maxTokensCeiling = Math.max(initialMaxTokens, opts.maxTokensCeiling ?? initialMaxTokens);
   let currentMaxTokens = initialMaxTokens;
   let lastResponse: ChatResponse | undefined;
+  let previousRequestId: string | undefined;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const previousResponseWasEmpty = Boolean(lastResponse && !lastResponse.content.trim());
     // On retry, append corrective feedback — naive identical-message retries
@@ -261,7 +263,12 @@ export async function callLlmForJson<T>(
       max_tokens: currentMaxTokens,
       signal: opts.signal,
     };
-    const preparedRequest = opts.onRequest?.(request, { attempt, previousResponseWasEmpty }) ?? request;
+    const preparedRequest = opts.onRequest?.(request, {
+      attempt,
+      previousResponseWasEmpty,
+      ...(previousRequestId ? { previousRequestId } : {}),
+    }) ?? request;
+    previousRequestId = modelRequestIdFor(preparedRequest);
     await opts.beforeRequest?.(preparedRequest, attempt);
     let res: ChatResponse;
     try {

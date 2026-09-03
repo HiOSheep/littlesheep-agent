@@ -256,6 +256,8 @@ export interface ModelRequestSnapshot {
   payloadHash?: string;
   /** Redacted, request-bound evidence for the three independent cache ledgers. */
   cacheObservation?: CacheObservation;
+  /** Explicit parent request when this snapshot is a bounded model retry. */
+  retryOf?: string;
 }
 
 export type MemoryIntentRuntimeDecision = 'committed' | 'deferred' | 'rejected' | 'ignored';

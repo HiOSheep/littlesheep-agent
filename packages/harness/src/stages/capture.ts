@@ -201,7 +201,7 @@ export function createCaptureStage(deps: CaptureStageDeps) {
         maxAttempts: 2,
         maxTokens: 900,
         signal: ctx.signal,
-        onRequest: (request) => prepareModelRequest(
+        onRequest: (request, retry) => prepareModelRequest(
           ctx,
           'capture',
           request,
@@ -209,6 +209,7 @@ export function createCaptureStage(deps: CaptureStageDeps) {
             history: [],
             primaryUserKind: 'workflow_state',
           }),
+          { retryOf: retry.previousRequestId },
         ),
         onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
         beforeRequest: (request) => ensureModelRequestStarted(ctx, request),

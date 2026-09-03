@@ -389,6 +389,32 @@ describe('DurableHarnessKernel', () => {
     }, 'runtime', 'route'))).rejects.toMatchObject({ kind: 'transition' });
   });
 
+  it('persists explicit model retry lineage and rejects unknown parents', async () => {
+    const store = new MemoryEventStore();
+    const kernel = new DurableHarnessKernel({ eventStore: store });
+    await kernel.append(event('run_accepted', {}, 'runtime', 'accept'));
+    await kernel.append(event('model_request_started', {
+      requestId: 'model-parent', provider: 'test', model: 'test/model',
+    }, 'runtime', 'model-parent-start'));
+    await kernel.append(event('model_response_received', {
+      requestId: 'model-parent', usageStatus: 'unknown',
+    }, 'runtime', 'model-parent-response'));
+    await kernel.append(event('model_request_settled', {
+      requestId: 'model-parent', status: 'received', usageStatus: 'unknown',
+    }, 'runtime', 'model-parent-settled'));
+    await kernel.append(event('model_request_started', {
+      requestId: 'model-retry', provider: 'test', model: 'test/model', retryOf: 'model-parent',
+    }, 'runtime', 'model-retry-start'));
+
+    const projection = reduceDurableRunProjection(store.events);
+    expect(projection.modelRequests).toEqual(expect.arrayContaining([
+      expect.objectContaining({ requestId: 'model-retry', retryOf: 'model-parent', status: 'started' }),
+    ]));
+    await expect(kernel.append(event('model_request_started', {
+      requestId: 'model-unknown-retry', retryOf: 'missing-parent',
+    }, 'runtime', 'model-unknown-retry-start'))).rejects.toMatchObject({ kind: 'transition' });
+  });
+
   it('rejects cache observations that contain raw prompt fields', async () => {
     const store = new MemoryEventStore();
     const kernel = new DurableHarnessKernel({ eventStore: store });

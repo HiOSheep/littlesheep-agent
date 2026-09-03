@@ -54,6 +54,7 @@ export async function repairDiscontinuousReply(
       history: visibleHistory,
       primaryUserKind: 'user_input',
     }),
+    { retryOf: ctx.modelRequests?.at(-1)?.id },
   );
   const response = await callModelChat(ctx, deps.llm, request);
   writeProviderUsageState(ctx, 'reply', response.usage);

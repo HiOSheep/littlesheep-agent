@@ -544,6 +544,7 @@ function applyDurableHarnessEvent(
           ...(event.payload.cacheObservation !== undefined
             ? { cacheObservation: readCacheObservation(event.payload.cacheObservation, requestId) }
             : {}),
+          ...(typeof event.payload.retryOf === 'string' ? { retryOf: event.payload.retryOf } : {}),
           status: 'started',
           startedEventId: event.eventId,
         });
@@ -736,6 +737,15 @@ function validateTransition(projection: DurableRunProjection, event: DurableHarn
     }
     if (event.payload.cacheObservation !== undefined) {
       readCacheObservation(event.payload.cacheObservation, requestId);
+    }
+    if (event.payload.retryOf !== undefined) {
+      const retryOf = requiredString(event.payload.retryOf, 'model_request_started.retryOf');
+      if (retryOf === requestId) {
+        throw new DurableKernelError(`model retry cannot point to itself: ${requestId}`, 'transition');
+      }
+      if (!projection.modelRequests.some((request) => request.requestId === retryOf)) {
+        throw new DurableKernelError(`model retry parent is unknown: ${retryOf}`, 'transition');
+      }
     }
   }
   if (event.type === 'model_response_received') {

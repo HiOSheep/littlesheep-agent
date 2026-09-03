@@ -159,6 +159,8 @@ describe('cache observability', () => {
     expect(ctx.modelRequests?.[0]?.cacheObservation).toMatchObject({
       stablePrefixVersion: 'StablePrefixV1',
       providerPrompt: { status: 'unavailable', reason: 'provider_usage_pending' },
+      lsContext: { status: 'unavailable', reason: 'context_cache_event_not_observed' },
+      memoryEmbedding: { status: 'unavailable', reason: 'memory_cache_event_not_observed' },
     });
 
     recordProviderUsage(ctx, prepared, {

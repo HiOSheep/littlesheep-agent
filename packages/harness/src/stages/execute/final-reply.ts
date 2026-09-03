@@ -98,6 +98,7 @@ Follow progressive disclosure: lead with the outcome and completion status, then
       max_tokens: compact ? 300 : 900,
       signal: ctx.signal,
     } satisfies import('@littlesheep/llm').ChatRequest;
+    const retryOf = rewrite || citationRepair ? ctx.modelRequests?.at(-1)?.id : undefined;
     const request = prepareModelRequest(
       ctx,
       'execute_final_reply',
@@ -106,6 +107,7 @@ Follow progressive disclosure: lead with the outcome and completion status, then
         history: [],
         primaryUserKind: 'workflow_state',
       }),
+      { retryOf },
     );
     const response = await callModelChat(ctx, deps.llm, request);
     applyUsage(ctx, response.usage, 'execute');

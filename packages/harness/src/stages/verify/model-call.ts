@@ -39,7 +39,7 @@ export async function requestVerificationVerdict(
     maxTokens: 500,
     maxTokensCeiling: 900,
     signal: ctx.signal,
-    onRequest: (request) => prepareModelRequest(
+    onRequest: (request, retry) => prepareModelRequest(
       ctx,
       'verify',
       preferDirectModelOutput(ctx, request, { force: true }),
@@ -47,6 +47,7 @@ export async function requestVerificationVerdict(
         history: [],
         primaryUserKind: 'workflow_state',
       }),
+      { retryOf: retry.previousRequestId },
     ),
     onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
     beforeRequest: (request) => ensureModelRequestStarted(ctx, request),

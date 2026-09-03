@@ -215,7 +215,7 @@ export function createEvolveStage(deps: EvolveStageDeps) {
         maxAttempts: 2,
         maxTokens: deps.createSkill ? 2_400 : 1_200,
         signal: ctx.signal,
-        onRequest: (request) => prepareModelRequest(
+        onRequest: (request, retry) => prepareModelRequest(
           ctx,
           'evolve',
           request,
@@ -223,6 +223,7 @@ export function createEvolveStage(deps: EvolveStageDeps) {
             history: [],
             primaryUserKind: 'workflow_state',
           }),
+          { retryOf: retry.previousRequestId },
         ),
         onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
         beforeRequest: (request) => ensureModelRequestStarted(ctx, request),

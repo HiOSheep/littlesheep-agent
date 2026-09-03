@@ -209,8 +209,10 @@ export function buildCacheObservation(input: CacheObservationInput): CacheObserv
     providerPrompt: pendingProviderCache(),
     lsContext: {
       kind: 'ls_context' as const,
-      status: 'miss' as const,
-      reason: 'context_request_assembled',
+      // Context assembly is not a cache lookup. Keep the local ledger
+      // unavailable until Context Engine reports a real reuse event.
+      status: 'unavailable' as const,
+      reason: 'context_cache_event_not_observed',
       requestCount: 1 as const,
     },
     memoryEmbedding: {
