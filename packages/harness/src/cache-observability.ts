@@ -80,7 +80,7 @@ export type CacheScopeAccessDecision =
     }
   | {
       readonly allowed: false;
-      readonly reason: 'key_unavailable' | 'scope_mismatch' | 'key_source_mismatch';
+      readonly reason: 'key_unavailable' | 'scope_unavailable' | 'scope_mismatch' | 'key_source_mismatch';
     };
 
 export type CachePromptComponentInput = Partial<Record<keyof CachePromptComponentFingerprints, string | number | null>>;
@@ -104,9 +104,15 @@ export function authorizeCacheObservationScope(
   observation: CacheObservation,
   input: CacheScopeInput,
 ): CacheScopeAccessDecision {
+  if (!input.sessionId.trim() || !input.workspaceScope.trim() || !input.permissionPolicyId) {
+    return { allowed: false, reason: 'scope_unavailable' };
+  }
   const expected = buildCacheScopePartition(input);
   if (!observation.scope.partitionDigest || !expected.partitionDigest) {
     return { allowed: false, reason: 'key_unavailable' };
+  }
+  if (observation.scope.permissionPolicyId === 'unknown' || expected.permissionPolicyId === 'unknown') {
+    return { allowed: false, reason: 'scope_unavailable' };
   }
   if (observation.scope.keySource !== expected.keySource) {
     return { allowed: false, reason: 'key_source_mismatch' };

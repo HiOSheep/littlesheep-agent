@@ -2,7 +2,7 @@
 
 状态：规划已定稿，阶段 0 冻结已完成，阶段 1 开源底座评估已完成；阶段 2 观测与后续重构仍在进行
 
-最后更新：2026-09-03 12:53:15
+最后更新：2026-09-03 17:42:56
 
 本文是新 Harness 重建和上下文缓存专项的唯一执行入口。它记录目标架构、开源底座评估、迁移顺序、回滚边界、缓存观测与验收；当前事实和最新质量门仍以[项目状态](../decision/project-status.md)为准。
 
@@ -316,7 +316,7 @@ Ingress
 
 工作项：实现 request snapshot 关联、三套 cache ledger、脱敏 HMAC 指纹、stable/dynamic boundary、Provider usage reconciliation 和失效原因枚举。先接入旧 Harness 的只读观测适配，不改变旧请求语义。
 
-当前增量：已接入 request-bound HMAC 观测、prompt source 失效原因、稳定/动态 addon 分层和 Provider usage 对账；本轮又把 Runtime capability snapshot/probe 接入版本化 durable event 链，并用真实对话回归夹具验证 capability question、capability probe 与 Web query 的分层。新增 CACHE-03/04/05 确定性矩阵夹具：100 次字节级重复、并发顺序反转、同 key 重启、Windows 路径大小写、动态字段隔离、静态字段/工具 schema 失效原因均已通过；本轮修正了 LS Context ledger 的语义，Context 组装在没有真实 cache observation event 时只发布 `unavailable/context_cache_event_not_observed`，不再把组装误报为 `miss`；模型解析重试、重复文案重写、连续性/引用修复和执行回复修复均记录显式 `retryOf`，durable projection 会拒绝自指或未知 parent。完整 CACHE-06/07/08 矩阵、真实 Provider usage 和跨重启/并发故障证据仍待完成，不能据此宣称缓存问题已解决。
+当前增量：已接入 request-bound HMAC 观测、prompt source 失效原因、稳定/动态 addon 分层和 Provider usage 对账；本轮又把 Runtime capability snapshot/probe 接入版本化 durable event 链，并用真实对话回归夹具验证 capability question、capability probe 与 Web query 的分层。新增 CACHE-03/04/05 确定性矩阵夹具：100 次字节级重复、并发顺序反转、同 key 重启、Windows 路径大小写、动态字段隔离、静态字段/工具 schema 失效原因均已通过；本轮修正了 LS Context ledger 的语义，Context 组装在没有真实 cache observation event 时只发布 `unavailable/context_cache_event_not_observed`，不再把组装误报为 `miss`；模型解析重试、重复文案重写、连续性/引用修复和执行回复修复均记录显式 `retryOf`，durable projection 会拒绝自指或未知 parent。新增 `CacheObservationStore` 只持久化经过校验的脱敏观测，按 session/workspace/permission/HMAC scope 隔离并支持重启、TTL、并发和跨 scope 回归；它尚未接入真实 Runner/Context cache reuse，也不能把 observation hit 当作 Context 或 Provider 命中。effect intent/settlement 的耐久性语义已修正并有 42 项执行回归。完整 CACHE-06/07/08 矩阵、真实 Provider usage 和跨重启/并发故障证据仍待完成，不能据此宣称缓存问题已解决。
 
 完成门：同一请求可在不暴露 prompt 的前提下解释 prefix/suffix、Provider usage、local ledger、scope 和 invalidation reason；缺指标时安全降级；没有因观测而增加第二份用户文案或 Provider 请求。
 
@@ -334,7 +334,7 @@ Ingress
 
 状态：进行中，优先级 P0。
 
-工作项：实现 append-only event store、持久 inbox、cursor replay、幂等 projection、事件版本和 crash recovery；为旧 `RunContext` 建立只读 projection，不让新 kernel 直接改旧数据结构。当前已新增独立 `createNextHarness` 阶段驱动、`stage_transition_recorded` 审计事件和 Runner `durableHarnessMode: 'next'` 真实选择路径；Runner 已增加统一 authoritative publication boundary，Local App 普通 POST/SSE、checkpoint resume SSE、CLI、ChannelManager 和通用 `/runs/:id` replay 均只发布 durable settled reply 或 Runtime status，未结算 proposal 不再从结果、历史或 execution-log replay 泄露。effect crash/replay、真实 Webhook 重连、旧/新完整双路径门仍未完成。
+工作项：实现 append-only event store、持久 inbox、cursor replay、幂等 projection、事件版本和 crash recovery；为旧 `RunContext` 建立只读 projection，不让新 kernel 直接改旧数据结构。当前已新增独立 `createNextHarness` 阶段驱动、`stage_transition_recorded` 审计事件和 Runner `durableHarnessMode: 'next'` 真实选择路径；Runner 已增加统一 authoritative publication boundary，Local App 普通 POST/SSE、checkpoint resume SSE、CLI、ChannelManager 和通用 `/runs/:id` replay 均只发布 durable settled reply 或 Runtime status，未结算 proposal 不再从结果、历史或 execution-log replay 泄露。effect intent/settlement 已补齐“intent 未耐久则零调用、settlement 已耐久但 checkpoint 失败不降级 effect、settlement 耐久性不确定不补写冲突 settlement”的基础语义和定向回归；生产级 effect crash/replay、真实 Webhook 重连、旧/新完整双路径门仍未完成。
 
 完成门：随机断电/进程杀死/连接断开/重复投递后，run、session、checkpoint、execution log 和最终状态可重建；已完成工具和 settlement 不重复执行；未知事件不被静默丢弃。
 
@@ -342,7 +342,7 @@ Ingress
 
 状态：进行中，优先级 P0。
 
-工作项：把工具/副作用接入 intent/settlement；实现 single final reply settlement、stream 临时投影、唯一性注册、continuity/citation/VERIFY 闸门和渠道投影；补齐 FINALIZE 持久化失败语义。基础 final-reply settlement、恢复时的 Runtime status、统一渠道/CLI/App/replay publication boundary 和 proposal 历史过滤已接入并有定向回归；effect intent/settlement 与真实 Tool Execution Service、持久化失败全链路和真实渠道重连仍待完成。
+工作项：把工具/副作用接入 intent/settlement；实现 single final reply settlement、stream 临时投影、唯一性注册、continuity/citation/VERIFY 闸门和渠道投影；补齐 FINALIZE 持久化失败语义。基础 final-reply settlement、恢复时的 Runtime status、统一渠道/CLI/App/replay publication boundary 和 proposal 历史过滤已接入并有定向回归；本轮修正 effect settlement 与 post-effect checkpoint 的先后和失败语义，但与真实 Tool Execution Service 的生产级对账、FINALIZE 持久化失败全链路和真实渠道重连仍待完成。
 
 完成门：每个用户可见回合只有一个 authoritative final settlement；Renderer/CLI/Webhook 重连只 replay 同一结果；effect 未知时停下请求决定，不能伪造成功或自动重做。
 

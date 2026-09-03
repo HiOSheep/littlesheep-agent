@@ -102,20 +102,28 @@ export async function beginSideEffect(ctx: RunContext, descriptor: SideEffectDes
   }
   effects.push(entry)
   replaceSideEffectEvidence(ctx, 'execute', effects)
-  await ctx.appendDurableEvent?.({
-    type: 'effect_intent_created',
-    source: 'runtime',
-    eventId: `${ctx.runId}:effect:${descriptor.idempotencyKey}:intent`,
-    idempotencyKey: `${ctx.runId}:effect:${descriptor.idempotencyKey}:intent`,
-    payload: {
-      effectId: descriptor.idempotencyKey,
-      idempotencyKey: descriptor.idempotencyKey,
-      toolName: descriptor.toolName,
-      inputHash: descriptor.inputHash,
-      effectKind: descriptor.effectKind,
-      ...(descriptor.stepId ? { stepId: descriptor.stepId } : {}),
-    },
-  });
+  try {
+    await ctx.appendDurableEvent?.({
+      type: 'effect_intent_created',
+      source: 'runtime',
+      eventId: `${ctx.runId}:effect:${descriptor.idempotencyKey}:intent`,
+      idempotencyKey: `${ctx.runId}:effect:${descriptor.idempotencyKey}:intent`,
+      payload: {
+        effectId: descriptor.idempotencyKey,
+        idempotencyKey: descriptor.idempotencyKey,
+        toolName: descriptor.toolName,
+        inputHash: descriptor.inputHash,
+        effectKind: descriptor.effectKind,
+        ...(descriptor.stepId ? { stepId: descriptor.stepId } : {}),
+      },
+    });
+  } catch (error) {
+    // The append may have committed before reporting an error. Keep the
+    // in-memory projection conservative and let recovery reconcile the event
+    // stream instead of attempting a second, potentially conflicting event.
+    replaceSideEffectStatus(ctx, descriptor, 'unknown', `effect intent durability failed: ${errorMessage(error)}`);
+    throw error;
+  }
   return { kind: 'started', descriptor }
 }
 
@@ -140,27 +148,30 @@ export async function finishSideEffect(
   updated[index] = entry
   replaceSideEffectEvidence(ctx, 'execute', updated)
   if (!durable) return
-  await ctx.appendDurableEvent?.({
-    type: 'effect_settled',
-    source: 'tool',
-    eventId: `${ctx.runId}:effect:${descriptor.idempotencyKey}:settled`,
-    idempotencyKey: `${ctx.runId}:effect:${descriptor.idempotencyKey}:settled`,
-    payload: {
-      effectId: descriptor.idempotencyKey,
-      status: result.ok ? 'succeeded' : 'unknown',
-      evidenceRef: entry.evidenceRef,
-      ...(entry.error ? { errorHash: hashText(entry.error), errorLength: entry.error.length } : {}),
-    },
-  });
+  try {
+    await ctx.appendDurableEvent?.({
+      type: 'effect_settled',
+      source: 'tool',
+      eventId: `${ctx.runId}:effect:${descriptor.idempotencyKey}:settled`,
+      idempotencyKey: `${ctx.runId}:effect:${descriptor.idempotencyKey}:settled`,
+      payload: {
+        effectId: descriptor.idempotencyKey,
+        status: result.ok ? 'succeeded' : 'unknown',
+        evidenceRef: entry.evidenceRef,
+        ...(entry.error ? { errorHash: hashText(entry.error), errorLength: entry.error.length } : {}),
+      },
+    });
+  } catch (error) {
+    // A thrown append is ambiguous: the event may already be on disk. Do not
+    // append a compensating `unknown` settlement; recovery must inspect the
+    // authoritative event stream and settle only an actually pending intent.
+    replaceSideEffectStatus(ctx, descriptor, 'unknown', `effect settlement durability failed: ${errorMessage(error)}`);
+    throw error;
+  }
 }
 
 export async function markSideEffectUnknown(ctx: RunContext, descriptor: SideEffectDescriptor, error: string): Promise<void> {
-  const effects = ctx.sideEffects ?? []
-  const index = effects.findIndex((item) => item.idempotencyKey === descriptor.idempotencyKey)
-  if (index < 0) return
-  const updated = [...effects]
-  updated[index] = { ...effects[index]!, status: 'unknown', error: error.slice(0, 2_048) }
-  replaceSideEffectEvidence(ctx, 'execute', updated)
+  replaceSideEffectStatus(ctx, descriptor, 'unknown', error)
   await ctx.appendDurableEvent?.({
     type: 'effect_settled',
     source: 'runtime',
@@ -173,6 +184,28 @@ export async function markSideEffectUnknown(ctx: RunContext, descriptor: SideEff
       errorLength: error.length,
     },
   });
+}
+
+function replaceSideEffectStatus(
+  ctx: RunContext,
+  descriptor: SideEffectDescriptor,
+  status: SideEffectCheckpoint['status'],
+  error?: string,
+): void {
+  const effects = ctx.sideEffects ?? [];
+  const index = effects.findIndex((item) => item.idempotencyKey === descriptor.idempotencyKey);
+  if (index < 0) return;
+  const updated = [...effects];
+  updated[index] = {
+    ...effects[index]!,
+    status,
+    ...(error ? { error: error.slice(0, 2_048) } : {}),
+  };
+  replaceSideEffectEvidence(ctx, 'execute', updated);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function sideEffectCheckpointReason(descriptor: SideEffectDescriptor, phase: 'started' | 'finished'): string {

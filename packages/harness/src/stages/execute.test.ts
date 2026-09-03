@@ -1488,4 +1488,93 @@ describe('executeStage', () => {
       errorKind: 'checkpoint_before_effect',
     });
   });
+
+  it('does not invoke an effectful tool when intent durability is ambiguous', async () => {
+    const tool = makeTool('mutate', { ok: true, output: 'must not run' });
+    const llm = createMockLlm([
+      toolCallResponse([{ id: 'intent-failure-call', name: 'mutate', args: { value: 'x' } }]),
+      textResponse('intent durability failed'),
+    ]);
+    const stage = createExecuteStage({ ...deps, llm });
+    const durableEvents: string[] = [];
+    const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', 'mutate safely') });
+    ctx.toolSources = { mutate: 'plugin:test-mutation' };
+    ctx.appendDurableEvent = vi.fn(async (event) => {
+      durableEvents.push(event.type);
+      if (event.type === 'effect_intent_created') throw new Error('event store unavailable');
+    });
+
+    await stage(ctx);
+
+    expect(tool.calls).toHaveLength(0);
+    expect(ctx.sideEffects?.[0]).toMatchObject({ status: 'unknown', toolName: 'mutate' });
+    expect(durableEvents).toContain('effect_intent_created');
+    expect(durableEvents).not.toContain('effect_settled');
+    expect(ctx.toolInvocations?.[0]).toMatchObject({
+      status: 'failed',
+      errorKind: 'effect_intent_persistence',
+    });
+  });
+
+  it('keeps an effect unknown when settlement durability is ambiguous and never appends a compensating settlement', async () => {
+    const tool = makeTool('mutate', { ok: true, output: 'mutation completed' });
+    const llm = createMockLlm([
+      toolCallResponse([{ id: 'settlement-failure-call', name: 'mutate', args: { value: 'x' } }]),
+      textResponse('settlement durability failed'),
+    ]);
+    const stage = createExecuteStage({ ...deps, llm });
+    const durableEvents: string[] = [];
+    const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', 'mutate safely') });
+    ctx.toolSources = { mutate: 'plugin:test-mutation' };
+    ctx.appendDurableEvent = vi.fn(async (event) => {
+      durableEvents.push(event.type);
+      if (event.type === 'effect_settled') throw new Error('settlement store unavailable');
+    });
+
+    await stage(ctx);
+
+    expect(tool.calls).toHaveLength(1);
+    expect(ctx.sideEffects?.[0]).toMatchObject({ status: 'unknown', toolName: 'mutate' });
+    expect(durableEvents.filter((type) => type === 'effect_settled')).toHaveLength(1);
+    expect(ctx.toolResults?.[0]?.error).toContain('not durably settled');
+    expect(ctx.toolInvocations?.[0]).toMatchObject({
+      status: 'failed',
+      errorKind: 'effect_settlement_persistence',
+    });
+  });
+
+  it('preserves a durable effect settlement when the post-effect checkpoint fails', async () => {
+    const tool = makeTool('mutate', { ok: true, output: 'mutation completed' });
+    const llm = createMockLlm([
+      toolCallResponse([{ id: 'checkpoint-after-call', name: 'mutate', args: { value: 'x' } }]),
+      textResponse('checkpoint failed after the mutation'),
+    ]);
+    const stage = createExecuteStage({ ...deps, llm });
+    const durableEvents: string[] = [];
+    const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', 'mutate safely') });
+    ctx.toolSources = { mutate: 'plugin:test-mutation' };
+    ctx.appendDurableEvent = vi.fn(async (event) => { durableEvents.push(event.type); });
+    let checkpointCalls = 0;
+    ctx.persistRuntimeCheckpoint = vi.fn(async () => {
+      checkpointCalls += 1;
+      if (checkpointCalls === 2) throw new Error('checkpoint store unavailable');
+      return `checkpoint-${checkpointCalls}`;
+    });
+
+    await stage(ctx);
+
+    expect(tool.calls).toHaveLength(1);
+    expect(checkpointCalls).toBe(2);
+    expect(durableEvents.filter((type) => type === 'effect_settled')).toHaveLength(1);
+    expect(ctx.sideEffects?.[0]).toMatchObject({ status: 'succeeded', toolName: 'mutate' });
+    expect(ctx.toolResults?.[0]).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('checkpoint persistence failed'),
+      meta: { effectSettlement: 'durable', checkpointPersistence: 'failed' },
+    });
+    expect(ctx.toolInvocations?.[0]).toMatchObject({
+      status: 'failed',
+      errorKind: 'checkpoint_after_effect',
+    });
+  });
 });

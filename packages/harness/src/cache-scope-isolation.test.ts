@@ -81,6 +81,17 @@ describe('CACHE-06 cache scope authorization', () => {
       permissionPolicyId: 'research',
       key: 'scope-fixture-key',
     })).toThrow('cache scope authorization denied: scope_mismatch');
+    expect(authorizeCacheObservationScope(current, {
+      sessionId: 'session-a',
+      workspaceScope: 'C:\\Work\\LittleSheep',
+      key: 'scope-fixture-key',
+    })).toEqual({ allowed: false, reason: 'scope_unavailable' });
+    expect(authorizeCacheObservationScope(current, {
+      sessionId: '',
+      workspaceScope: 'C:\\Work\\LittleSheep',
+      permissionPolicyId: 'research',
+      key: 'scope-fixture-key',
+    })).toEqual({ allowed: false, reason: 'scope_unavailable' });
   });
 
   it('keeps partition identity redacted and deterministic across restart-style reconstruction', () => {

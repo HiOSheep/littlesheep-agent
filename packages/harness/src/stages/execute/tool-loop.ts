@@ -40,7 +40,6 @@ import {
   beginSideEffect,
   describeSideEffect,
   finishSideEffect,
-  markSideEffectUnknown,
   sideEffectCheckpointReason,
 } from './side-effect-ledger.js';
 
@@ -504,22 +503,39 @@ function sideEffectLifecycle(ctx: RunContext): ToolExecutionLifecycle {
     async afterInvoke(invocation, result) {
       const sideEffect = effects.get(invocation.request.callId);
       if (!sideEffect) return result;
-      await finishSideEffect(ctx, sideEffect, result, false);
       try {
-        await ctx.persistRuntimeCheckpoint?.(sideEffectCheckpointReason(sideEffect, 'finished'));
+        // The Tool Execution Service has returned an authoritative outcome.
+        // Settle that outcome before writing the resumability projection so a
+        // checkpoint failure cannot make a completed effect replayable.
         await finishSideEffect(ctx, sideEffect, result);
-        return result;
       } catch (error) {
-        await markSideEffectUnknown(
-          ctx,
-          sideEffect,
-          `checkpoint after side effect failed: ${(error as Error).message}`,
-        );
         return {
           result: {
             ...result,
             ok: false,
-            error: `side effect result is not durably checkpointed: ${(error as Error).message}`,
+            error: `side effect result is not durably settled: ${(error as Error).message}`,
+          },
+          status: 'failed',
+          errorKind: 'effect_settlement_persistence',
+        };
+      }
+      try {
+        await ctx.persistRuntimeCheckpoint?.(sideEffectCheckpointReason(sideEffect, 'finished'));
+        return result;
+      } catch (error) {
+        // The effect settlement is already durable. Surface the checkpoint
+        // failure to the current step without downgrading the effect to
+        // unknown or attempting a compensating settlement.
+        return {
+          result: {
+            ...result,
+            ok: false,
+            error: `effect completed but checkpoint persistence failed: ${(error as Error).message}`,
+            meta: {
+              ...(result.meta ?? {}),
+              effectSettlement: 'durable',
+              checkpointPersistence: 'failed',
+            },
           },
           status: 'failed',
           errorKind: 'checkpoint_after_effect',

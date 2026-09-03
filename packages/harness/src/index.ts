@@ -59,6 +59,13 @@ export {
   type CacheScopeAccessDecision,
   type ValidProviderUsage,
 } from './cache-observability.js';
+export {
+  CacheObservationStore,
+  type CacheObservationLookupInput,
+  type CacheObservationLookupResult,
+  type CacheObservationStoreOptions,
+  type CacheObservationStoreResult,
+} from './cache-observation-store.js';
 export { buildRunRequestCandidates, type BuildRunRequestCandidatesOptions } from './context-candidates.js';
 export { capabilityProbeEvent } from './capability-events.js';
 export {
