@@ -158,4 +158,28 @@ describe('model request lifecycle accounting', () => {
       reason: 'provider_usage_missing',
     });
   });
+
+  it('does not reject a request when cache persistence and its warning logger both fail', async () => {
+    const ctx = makeCtx({ toolContext: { log: () => { throw new Error('logger unavailable'); } } });
+    ctx.cacheObservationKey = 'model-lifecycle-logger-failure-key';
+    ctx.persistCacheObservation = async () => { throw new Error('cache store unavailable'); };
+    const events = durableRecorder(ctx);
+    await ctx.appendDurableEvent?.({
+      type: 'run_accepted',
+      source: 'runtime',
+      eventId: `${ctx.runId}:accepted`,
+      idempotencyKey: `${ctx.runId}:accepted`,
+      payload: {},
+    });
+
+    const prepared = prepareModelRequest(ctx, 'reply', request(false));
+    recordProviderUsage(ctx, prepared, {
+      promptTokens: 20,
+      completionTokens: 2,
+      totalTokens: 22,
+      cachedPromptTokens: 10,
+    });
+    await expect(flushModelRequestLifecycles(ctx)).resolves.toBeUndefined();
+    expect(events.some((event) => event.type === 'model_request_settled')).toBe(true);
+  });
 });

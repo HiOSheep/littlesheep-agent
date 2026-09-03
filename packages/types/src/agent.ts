@@ -241,6 +241,10 @@ export interface RunContext {
   contextSnapshots?: import('./runtime-contracts.js').ContextSnapshot[];
   /** Runtime-only HMAC key for cache observations; never persisted in checkpoints or logs. */
   cacheObservationKey?: string | null;
+  /** Non-blocking persistence hook for redacted cache observations. */
+  persistCacheObservation?: (
+    observation: import('./cache-observability.js').CacheObservation,
+  ) => Promise<void>;
   /** Versioned Runtime capability facts used for truthful capability answers. */
   capabilitySnapshot?: import('./capability.js').RuntimeCapabilitySnapshot;
   /** Durable probe evidence, present only after a real capability probe. */

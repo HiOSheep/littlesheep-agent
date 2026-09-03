@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-03 17:37:00
+最后更新：2026-09-03 19:14:26
+
+**Harness/cache production observation path（2026-09-03 19:14:26，进行中）**：`CacheObservationStore` 已由 Runner infrastructure 创建并接入真实模型请求生命周期。prepared、Provider usage、Provider failure 和 terminal settlement 共享同一 request-bound、HMAC 脱敏 observation；settlement 等待 observation persistence，但持久化故障只记录 cache-quality warning，不改变 Provider 请求、工具执行或用户回复语义。真实 Runner 回归已验证 data-root 重启后查询、session/workspace/permission 隔离、Provider usage 缺失保持 `unavailable`、失败写入不阻断成功回复，以及磁盘内容不含 prompt、用户正文、工具参数或 Provider 原始 JSON。该 store 仍是观测存储，不是 Context cache reuse，也没有把 observation hit 伪装成 Context/Provider 命中；当前工作树完整门为 405 个测试文件、2,808 项通过、1 项 skipped，workspace typecheck、repo hygiene 33/33、Electron production build 和 `git diff --check` 均通过。CACHE-06 完整隔离、CACHE-07/08/09/10、真实 Provider usage 对账、effect crash/replay 和新 Harness 发布门仍未完成。
 
 **Harness/cache 本轮耐久性与观测适配器增量（2026-09-03 17:37:00，进行中）**：effect intent/settlement 语义已收紧：intent 追加无法确认时工具零调用；工具返回后的 settlement 先于 post-effect checkpoint 持久化，checkpoint 失败不会把已确认副作用降级为 `unknown`；settlement 追加结果无法确认时不再补写可能冲突的第二个 settlement。新增 `CacheObservationStore`，只保存经过 codec 校验的脱敏 cache observation，按 session/workspace/permission/HMAC scope 隔离，支持重启、TTL、并发写入和跨 scope 回归；它仍是观测存储，不是 Context prompt payload 复用器，尚未接入真实 Runner/Context cache reuse。定向回归为 execute 42/42、cache observation/scope 17/17，Harness typecheck/build 通过。CACHE-06 完整安全夹具、CACHE-07/08/09/10、真实 Provider usage 对账、生产级 effect crash/replay 和新 Harness 发布切换门仍未完成，不能据此宣称 Harness/cache 重构完成。
 

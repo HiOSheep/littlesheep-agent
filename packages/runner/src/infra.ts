@@ -35,7 +35,7 @@ import {
   type SkillLoader,
   type SkillSourceDefinition,
 } from '@littlesheep/skills';
-import { createDefaultHarness, createNextHarness } from '@littlesheep/harness';
+import { CacheObservationStore, createDefaultHarness, createNextHarness } from '@littlesheep/harness';
 import {
   createLazyLocalExactContextTokenCounter,
   type ExactContextTokenCounter,
@@ -128,6 +128,8 @@ export interface Infrastructure {
   disposeTokenCounter: () => void;
   /** Process-held reference to the data-root-local cache HMAC key. */
   cacheObservationKey: string | null;
+  /** Durable, redacted cache observation store; unavailable is non-blocking. */
+  cacheObservationStore?: CacheObservationStore;
   state: RunnerState;
 }
 
@@ -177,6 +179,14 @@ export async function buildInfrastructure(
 ): Promise<Infrastructure> {
   const dirs = dataSubdirs(opts.branding);
   const cacheObservationKey = await loadCacheObservationKey(dirs.root);
+  const cacheObservationStore = new CacheObservationStore({
+    rootDir: join(dirs.root, 'cache-observations'),
+  });
+  try {
+    await cacheObservationStore.initialize();
+  } catch (error) {
+    opts.log?.('warn', `runner: cache observation store initialization degraded: ${(error as Error).message}`);
+  }
   const lazyTokenCounter: LazyExactContextTokenCounter | undefined = createLazyLocalExactContextTokenCounter({
     modelRef: opts.model,
     modelRootDir: join(opts.bootstrapDir ?? dirs.root, 'models', 'tokenizer'),
@@ -563,6 +573,7 @@ export async function buildInfrastructure(
       : undefined,
     disposeTokenCounter: () => lazyTokenCounter?.dispose(),
     cacheObservationKey,
+    cacheObservationStore,
     state: opts.state,
   };
 }

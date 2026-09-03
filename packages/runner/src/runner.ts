@@ -66,6 +66,7 @@ import { finalizeRunnerPhase } from './runner-finalize.js';
 import { persistRunnerPhase } from './runner-persist.js';
 import { resolveSemanticResumeStage } from './continuation-stage.js';
 import { WebRetrievalRuntime } from '@littlesheep/web';
+import { createCacheObservationPersistence } from './cache-observation-runtime.js';
 import {
   resolveContinuationDisposition,
   type ContinuationDirective,
@@ -556,6 +557,12 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           ? (event) => durableRecorder!.appendObserved(event)
           : undefined,
         cacheObservationKey: infra.cacheObservationKey,
+        persistCacheObservation: createCacheObservationPersistence(infra.cacheObservationStore, {
+          sessionId: String(sessionId),
+          workspaceScope: cwd,
+          permissionPolicyId: resolvedRunConfig.permissionPolicyId,
+          key: infra.cacheObservationKey,
+        }, opts.log),
         capabilitySnapshot,
         capabilityPermissionEvent,
         runtimeEventQueue,

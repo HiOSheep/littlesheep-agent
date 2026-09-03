@@ -3,7 +3,7 @@
 // Validates createRunner run wiring + inbound persistence order.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRunner } from './runner.js';
@@ -278,6 +278,150 @@ describe('createRunner run', () => {
       promptTokens: 240,
       completionTokens: 12,
       totalTokens: 252,
+    });
+  });
+
+  it('persists production cache observations across restart without crossing scope boundaries', async () => {
+    const workspace = join(dataDir, 'cache-workspace');
+    mkdirSync(workspace, { recursive: true });
+    const secret = 'runner-cache-user-secret';
+    const llm = makeMockLlm({
+      ...textResponse('redacted cache reply'),
+      usage: {
+        promptTokens: 240,
+        completionTokens: 12,
+        totalTokens: 252,
+        cachedPromptTokens: 120,
+      },
+    });
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+    });
+    createdRunners.push(runner);
+
+    const result = await runner.run({ text: secret, cwd: workspace });
+    expect(result.status).toBe('ok');
+    const request = result.modelRequests?.find((candidate) => candidate.cacheObservation);
+    const observation = request?.cacheObservation;
+    expect(observation).toBeDefined();
+    expect(observation?.providerPrompt).toMatchObject({
+      status: 'partial',
+      tokenCount: 240,
+      cachedTokenCount: 120,
+    });
+    expect(typeof runner.infra.cacheObservationKey).toBe('string');
+    const entryFingerprint = observation?.normalizedRequest.fingerprint;
+    expect(entryFingerprint).toMatch(/^[a-f0-9]{64}$/u);
+
+    const observationRoot = join(dataDir, 'cache-observations');
+    const persistedFiles = readdirSync(observationRoot).filter((file) => file.endsWith('.json'));
+    expect(persistedFiles.length).toBeGreaterThan(0);
+    const persisted = persistedFiles.map((file) => readFileSync(join(observationRoot, file), 'utf8')).join('\n');
+    expect(persisted).not.toContain(secret);
+    expect(persisted).not.toContain('Stable policy');
+    expect(persisted).not.toContain('provider-raw-payload');
+    expect(persisted).not.toContain('tool-argument-secret');
+
+    const lookupInput = {
+      sessionId: String(result.sessionId),
+      workspaceScope: workspace,
+      permissionPolicyId: result.resolvedRunConfig?.permissionPolicyId,
+      key: runner.infra.cacheObservationKey,
+      entryFingerprint: entryFingerprint!,
+    };
+    await expect(runner.infra.cacheObservationStore?.lookup(lookupInput)).resolves.toMatchObject({
+      status: 'hit',
+      observation: {
+        modelRequestId: observation?.modelRequestId,
+        providerPrompt: { status: 'partial', cachedTokenCount: 120 },
+      },
+    });
+
+    await runner.shutdown();
+    createdRunners.pop();
+    const restarted = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('unused after restart')),
+    });
+    createdRunners.push(restarted);
+
+    await expect(restarted.infra.cacheObservationStore?.lookup({
+      ...lookupInput,
+      key: restarted.infra.cacheObservationKey,
+    })).resolves.toMatchObject({ status: 'hit' });
+    await expect(restarted.infra.cacheObservationStore?.lookup({
+      ...lookupInput,
+      sessionId: 'different-session',
+      key: restarted.infra.cacheObservationKey,
+    })).resolves.toMatchObject({ status: 'miss', reason: 'not_found' });
+    await expect(restarted.infra.cacheObservationStore?.lookup({
+      ...lookupInput,
+      workspaceScope: join(dataDir, 'different-workspace'),
+      key: restarted.infra.cacheObservationKey,
+    })).resolves.toMatchObject({ status: 'miss', reason: 'not_found' });
+    await expect(restarted.infra.cacheObservationStore?.lookup({
+      ...lookupInput,
+      permissionPolicyId: 'restricted',
+      key: restarted.infra.cacheObservationKey,
+    })).resolves.toMatchObject({ status: 'miss', reason: 'not_found' });
+  });
+
+  it('keeps a normal Runner reply successful when cache observation persistence fails', async () => {
+    const logs: string[] = [];
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm({
+        ...textResponse('reply despite cache store failure'),
+        usage: { promptTokens: 80, completionTokens: 8, cachedPromptTokens: 40 },
+      }),
+      log: (_level, message) => { logs.push(message); },
+    });
+    createdRunners.push(runner);
+    expect(runner.infra.cacheObservationStore).toBeDefined();
+    vi.spyOn(runner.infra.cacheObservationStore!, 'put').mockRejectedValue(new Error('simulated cache store outage'));
+
+    const result = await runner.run({ text: 'cache persistence must not block this reply' });
+    expect(result.status).toBe('ok');
+    expect(result.reply).toBe('reply despite cache store failure');
+    expect(logs.some((message) => message.includes('cache observation persistence failed'))).toBe(true);
+  });
+
+  it('persists unavailable Provider usage rather than inventing a cache hit', async () => {
+    const workspace = join(dataDir, 'missing-usage-workspace');
+    mkdirSync(workspace, { recursive: true });
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('reply without usage')),
+    });
+    createdRunners.push(runner);
+
+    const result = await runner.run({ text: 'provider omitted usage', cwd: workspace });
+    expect(result.status).toBe('ok');
+    const request = result.modelRequests?.find((candidate) => candidate.cacheObservation);
+    expect(request?.cacheObservation?.providerPrompt).toMatchObject({
+      status: 'unavailable',
+      reason: 'provider_usage_missing',
+    });
+    const observation = request?.cacheObservation;
+    expect(observation?.normalizedRequest.fingerprint).toBeTruthy();
+    await expect(runner.infra.cacheObservationStore?.lookup({
+      sessionId: String(result.sessionId),
+      workspaceScope: workspace,
+      permissionPolicyId: result.resolvedRunConfig?.permissionPolicyId,
+      key: runner.infra.cacheObservationKey,
+      entryFingerprint: observation!.normalizedRequest.fingerprint!,
+    })).resolves.toMatchObject({
+      status: 'hit',
+      observation: { providerPrompt: { status: 'unavailable', reason: 'provider_usage_missing' } },
     });
   });
 

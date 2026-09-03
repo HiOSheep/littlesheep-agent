@@ -25,6 +25,7 @@ import type {
   RuntimePermissionEvent,
   RuntimeEventQueueLike,
   SessionRunSummary,
+  CacheObservation,
 } from '@littlesheep/types';
 import { sanitizeWebEvidenceProjection } from '@littlesheep/types';
 import type { SessionManager } from '@littlesheep/session';
@@ -118,6 +119,8 @@ export interface BuildRunContextOptions {
   resolvedRunConfig?: ResolvedRunConfig;
   /** Process-held data-root-local HMAC key; never copied into checkpoints. */
   cacheObservationKey?: string | null;
+  /** Non-blocking persistence hook for redacted cache observations. */
+  persistCacheObservation?: (observation: CacheObservation) => Promise<void>;
   /** Runtime-owned path-free capability facts resolved before the run starts. */
   capabilitySnapshot?: RuntimeCapabilitySnapshot;
   capabilityProbe?: RuntimeCapabilityProbe;
@@ -264,6 +267,7 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     resolvedRunConfig: opts.resolvedRunConfig,
     appendDurableEvent: opts.appendDurableEvent,
     ...(opts.cacheObservationKey !== undefined ? { cacheObservationKey: opts.cacheObservationKey } : {}),
+    ...(opts.persistCacheObservation ? { persistCacheObservation: opts.persistCacheObservation } : {}),
     ...(opts.capabilitySnapshot ? { capabilitySnapshot: opts.capabilitySnapshot } : {}),
     ...(opts.capabilityProbe ? { capabilityProbe: opts.capabilityProbe } : {}),
     ...(opts.capabilityPermissionEvent ? { capabilityPermissionEvent: opts.capabilityPermissionEvent } : {}),

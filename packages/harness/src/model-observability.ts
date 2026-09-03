@@ -38,6 +38,11 @@ import {
   orderToolSpecs,
   type CachePromptComponentInput,
 } from './cache-observability.js';
+import {
+  awaitCacheObservationPersistence,
+  scheduleCacheObservationPersistence,
+  type CacheObservationPersistenceState,
+} from './cache-observation-persistence.js';
 
 export {
   MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN,
@@ -50,7 +55,7 @@ const defaultContextEngine = new ContextEngine();
 const contextEngines = new WeakMap<RunContext, ContextEngine>();
 const requestContextSnapshotIds = new WeakMap<ChatRequest, string>();
 const requestModelIds = new WeakMap<ChatRequest, string>();
-interface ModelRequestLifecycle {
+interface ModelRequestLifecycle extends CacheObservationPersistenceState {
   readonly snapshot: ModelRequestSnapshot;
   readonly started: Promise<void>;
   response?: Promise<void>;
@@ -112,6 +117,7 @@ export async function settleModelRequest(
     return;
   }
   lifecycle.settled = lifecycle.started.then(async () => {
+    await awaitCacheObservationPersistence(lifecycle);
     const retryOf = details.retryOf ?? lifecycle.snapshot.retryOf;
     await ctx.appendDurableEvent?.({
       type: 'model_request_settled',
@@ -199,6 +205,7 @@ export async function recordModelRequestFailure(
         requestCount: 1,
       },
     }));
+    scheduleCacheObservationPersistence(ctx, lifecycle, currentCacheObservation(ctx, lifecycle.snapshot.id));
   }
   await settleModelRequest(ctx, request, status, {
     ...(status === 'rate_limit' ? { providerReached: true } : status === 'aborted' ? { providerReached: false } : {}),
@@ -278,6 +285,10 @@ export function recordProviderUsage(
     ...current,
     providerPrompt: cacheUsage.ledger,
   }));
+  const lifecycle = requestLifecycles.get(request);
+  if (lifecycle) {
+    scheduleCacheObservationPersistence(ctx, lifecycle, currentCacheObservation(ctx, requestSnapshot.id));
+  }
   if (!cacheUsage.validUsage) {
     queueModelResponseReceived(ctx, request, requestSnapshot, {
       usageStatus: 'unavailable',
@@ -328,6 +339,7 @@ function queueModelResponseReceived(
   const lifecycle = requestLifecycles.get(request);
   if (!lifecycle || lifecycle.response || lifecycle.settled) return;
   lifecycle.response = lifecycle.started.then(async () => {
+    await awaitCacheObservationPersistence(lifecycle);
     await ctx.appendDurableEvent?.({
       type: 'model_response_received',
       source: 'runtime',
@@ -496,7 +508,9 @@ function recordPreparedRequest(
       },
     });
   });
-  requestLifecycles.set(prepared.request, { snapshot: observedSnapshot, started });
+  const lifecycle: ModelRequestLifecycle = { snapshot: observedSnapshot, started };
+  requestLifecycles.set(prepared.request, lifecycle);
+  scheduleCacheObservationPersistence(ctx, lifecycle, observedSnapshot.cacheObservation);
   const runRequests = contextRequestLifecycles.get(ctx) ?? new Set<ChatRequest>();
   runRequests.add(prepared.request);
   contextRequestLifecycles.set(ctx, runRequests);
