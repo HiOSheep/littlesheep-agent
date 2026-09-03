@@ -2,6 +2,8 @@
 
 最后更新：2026-09-02 18:42:00
 
+**新 Harness 统一发布边界复验（2026-09-03 11:48:20，进行中）**：`durableHarnessMode=next` 已在 Runner 暴露统一的 authoritative publication adapter；Local App 普通 POST/SSE、checkpoint resume SSE、CLI、ChannelManager 以及通用 `/runs/:id` replay 都只使用 durable final-reply settlement，未结算 proposal 或 execution-log 临时文本会降级为 Runtime status。历史重建要求 transcript settlement 与 execution-log settlement identity 一致后才恢复文本，legacy/shadow 路径保持兼容。新增 API、历史和 Runner 回归后，当前工作树 `pnpm.cmd typecheck`、`pnpm.cmd run check:repo`（33/33、28 个 project references）和 `pnpm.cmd test`（404 个文件、2,795 passed、1 skipped）均通过。该增量仍不等于 Harness 重构完成；effect intent/settlement、真实渠道重连、CACHE-06 至 CACHE-10、真实 Provider usage 与发布切换门继续保持进行中。
+
 **旧 Harness 用户证据夹具（2026-09-02 18:42:00）**：用户提供的真实对话记录显示，连续询问“你能调用网络了吗/现在呢/你查询过了/基于事实因此你需要查询”时，旧 Harness 将内部“思考”、`轻量任务 · 1 步`、目标、验收标准、完成和“验证通过”直接投影到对话区；同一能力清单跨时间重复注入；用户要求实际查询后没有可回查的权威工具事件，却出现了仿佛真实 Runtime 错误的自然语言；用户表示已给权限，也没有形成可验证的权限状态变更。该证据不证明当时网络实际可用或不可用，但证明输出分层、事实来源、权限状态、重复去重和能力缓存失效存在 Harness 级缺口。固定复现与修复门见[新 Harness 重建与 Prompt Cache 收敛任务书](../taskbooks/harness-rebuild-and-cache-taskbook-2026-09-02.md)。
 
 **旧 Harness 冻结与新 Harness 缓存专项（2026-09-02，冻结准备）**：本工作树包含上一阶段的 UI、网络检索、Memory v3、权限、Runtime 连续性和 Harness 变更；本次冻结只保存已经实现的源码、测试与正式文档，发布暂存目录、构建输出和一次性调试脚本不进入版本基线。旧 Harness 当前仍是围绕可变 `RunContext` 的多阶段循环，普通 checkpoint 主要在 `harness.run()` 返回后统一生成；流式 delta、执行最终回复、VERIFY `final_delta` 和 Renderer 归并仍存在多条用户可见输出路径，历史工具时间有近似计算，FINALIZE 会话持久化失败也未必阻止运行被报告成功。这些问题在冻结时作为已知缺陷保留，旧实现只作为可回滚路径，不宣称已经修复。

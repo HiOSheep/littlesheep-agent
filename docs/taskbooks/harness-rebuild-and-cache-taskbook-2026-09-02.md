@@ -2,7 +2,7 @@
 
 状态：规划已定稿，阶段 0 冻结已完成，阶段 1 开源底座评估已完成；阶段 2 观测与后续重构仍在进行
 
-最后更新：2026-09-03 04:45:00
+最后更新：2026-09-03 11:48:20
 
 本文是新 Harness 重建和上下文缓存专项的唯一执行入口。它记录目标架构、开源底座评估、迁移顺序、回滚边界、缓存观测与验收；当前事实和最新质量门仍以[项目状态](../decision/project-status.md)为准。
 
@@ -334,15 +334,15 @@ Ingress
 
 状态：进行中，优先级 P0。
 
-工作项：实现 append-only event store、持久 inbox、cursor replay、幂等 projection、事件版本和 crash recovery；为旧 `RunContext` 建立只读 projection，不让新 kernel 直接改旧数据结构。当前已新增独立 `createNextHarness` 阶段驱动、`stage_transition_recorded` 审计事件和 Runner `durableHarnessMode: 'next'` 真实选择路径；effect crash/replay、Renderer/CLI/Webhook settlement replay 和旧/新完整双路径门仍未完成。
+工作项：实现 append-only event store、持久 inbox、cursor replay、幂等 projection、事件版本和 crash recovery；为旧 `RunContext` 建立只读 projection，不让新 kernel 直接改旧数据结构。当前已新增独立 `createNextHarness` 阶段驱动、`stage_transition_recorded` 审计事件和 Runner `durableHarnessMode: 'next'` 真实选择路径；Runner 已增加统一 authoritative publication boundary，Local App 普通 POST/SSE、checkpoint resume SSE、CLI、ChannelManager 和通用 `/runs/:id` replay 均只发布 durable settled reply 或 Runtime status，未结算 proposal 不再从结果、历史或 execution-log replay 泄露。effect crash/replay、真实 Webhook 重连、旧/新完整双路径门仍未完成。
 
 完成门：随机断电/进程杀死/连接断开/重复投递后，run、session、checkpoint、execution log 和最终状态可重建；已完成工具和 settlement 不重复执行；未知事件不被静默丢弃。
 
 ### 阶段 5：Effect lifecycle 与 authoritative settlement
 
-状态：未开始。
+状态：进行中，优先级 P0。
 
-工作项：把工具/副作用接入 intent/settlement；实现 single final reply settlement、stream 临时投影、唯一性注册、continuity/citation/VERIFY 闸门和渠道投影；补齐 FINALIZE 持久化失败语义。
+工作项：把工具/副作用接入 intent/settlement；实现 single final reply settlement、stream 临时投影、唯一性注册、continuity/citation/VERIFY 闸门和渠道投影；补齐 FINALIZE 持久化失败语义。基础 final-reply settlement、恢复时的 Runtime status、统一渠道/CLI/App/replay publication boundary 和 proposal 历史过滤已接入并有定向回归；effect intent/settlement 与真实 Tool Execution Service、持久化失败全链路和真实渠道重连仍待完成。
 
 完成门：每个用户可见回合只有一个 authoritative final settlement；Renderer/CLI/Webhook 重连只 replay 同一结果；effect 未知时停下请求决定，不能伪造成功或自动重做。
 

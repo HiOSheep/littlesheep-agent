@@ -1,6 +1,6 @@
 // Session, archive and execution-log replay routes.
 
-import type { AgentRunner, ExecutionLog } from '@littlesheep/runner'
+import { prepareAuthoritativeExecutionLog, type AgentRunner, type ExecutionLog } from '@littlesheep/runner'
 import { asSessionId, type Message } from '@littlesheep/types'
 import { buildHistoryMessages } from '../../shared/history-activity.js'
 import {
@@ -91,7 +91,9 @@ export async function routeSessions(
       json(res, 404, { error: `run not found: ${replayRunId}` })
       return true
     }
-    json(res, 200, log)
+    json(res, 200, runner.durableHarnessMode === 'next'
+      ? await prepareAuthoritativeExecutionLog(runner, log)
+      : log)
     return true
   }
 

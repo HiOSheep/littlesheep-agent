@@ -21,6 +21,12 @@ export {
 } from './runner.js';
 
 export {
+  prepareAuthoritativeExecutionLog,
+  prepareAuthoritativeRunnerResult,
+  type AuthoritativeExecutionLog,
+} from './authoritative-reply.js';
+
+export {
   conversationTurnInputDigest,
   conversationTurnMessageId,
   conversationTurnRunId,

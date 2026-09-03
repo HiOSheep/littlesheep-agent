@@ -13,7 +13,7 @@
 //   plugin.stop() → sessionStore.findByChannel() → sessionManager.delete(each) → sessionStore.unbindChannel()
 
 import { formatWebEvidenceSources, type SessionId } from '@littlesheep/types';
-import type { AgentRunner, LogFn } from '@littlesheep/runner';
+import { prepareAuthoritativeRunnerResult, type AgentRunner, type LogFn } from '@littlesheep/runner';
 import type { ChannelConfig } from '@littlesheep/config';
 import { ChannelSessionStore } from './session-binding.js';
 import type {
@@ -334,18 +334,21 @@ export class DefaultChannelManager {
         externalConversationId: message.externalConversationId,
         requestKey: message.requestKey,
       });
+      const publishedResult = this.runner.durableHarnessMode === 'next'
+        ? await prepareAuthoritativeRunnerResult(this.runner, result)
+        : result;
       return {
         reply: appendWebSources(
-          result.finalReplySettlement?.status === 'settled'
-            ? result.finalReplySettlement.reply
-            : result.finalReplySettlement
+          publishedResult.finalReplySettlement?.status === 'settled'
+            ? publishedResult.finalReplySettlement.reply
+            : publishedResult.finalReplySettlement
               ? ''
-              : result.reply ?? '',
-          formatWebEvidenceSources(result.webEvidence),
+              : publishedResult.reply ?? '',
+          formatWebEvidenceSources(publishedResult.webEvidence),
         ),
-        ok: result.status === 'ok',
-        error: result.error,
-        finalReplySettlement: result.finalReplySettlement,
+        ok: publishedResult.status === 'ok',
+        error: publishedResult.error,
+        finalReplySettlement: publishedResult.finalReplySettlement,
       };
     } catch (err) {
       return {

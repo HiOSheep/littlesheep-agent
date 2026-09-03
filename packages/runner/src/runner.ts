@@ -289,6 +289,8 @@ export interface AgentRunner {
   readonly infra: import('./infra.js').Infrastructure;
   /** Current model ref. */
   readonly model: string;
+  /** Harness rollout mode used by the runner; legacy callers omit this field. */
+  readonly durableHarnessMode?: 'shadow' | 'next';
 }
 
 /** Build a runner. Async because the skill loader reads directories. */
@@ -1863,6 +1865,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     sessionManager: infra.sessionManager,
     infra,
     model,
+    durableHarnessMode: opts.durableHarnessMode ?? 'shadow',
   };
 }
 

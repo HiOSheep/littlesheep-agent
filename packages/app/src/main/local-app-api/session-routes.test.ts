@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest'
-import type { ExecutionLog } from '@littlesheep/runner'
-import { buildSessionContextUsageRecord } from './session-routes.js'
+import { createServer, type Server } from 'node:http'
+import { once } from 'node:events'
+import { describe, expect, it, vi } from 'vitest'
+import type { AgentRunner, ExecutionLog } from '@littlesheep/runner'
+import { buildSessionContextUsageRecord, routeSessions, type SessionRouteContext } from './session-routes.js'
+import { localAppApiItemPath, LOCAL_APP_API_PREFIXES } from '../../shared/local-app-api-routes.js'
 
 function usageLog(input: {
   sessionId: string
@@ -61,3 +64,120 @@ describe('session context usage history projection', () => {
     ], 'session-empty')).toBeUndefined()
   })
 })
+
+describe('next-mode execution-log replay boundary', () => {
+  it('returns only the durable settled reply from the generic run replay route', async () => {
+    const replayDurableFinalReply = vi.fn().mockResolvedValue({
+      kind: 'settled',
+      sessionId: 'session-1',
+      runId: 'run-1',
+      cursor: 8,
+      settlementId: 'settlement-1',
+      reply: 'durable settled reply',
+      replyFingerprint: 'fingerprint-1',
+      modelRequestId: 'request-1',
+    })
+    const runner = mockReplayRunner(replayDurableFinalReply)
+
+    const response = await invokeReplay(runner, 'run-1')
+
+    expect(response.status).toBe(200)
+    expect(response.body).toMatchObject({
+      reply: 'durable settled reply',
+      finalReplySettlement: { status: 'settled', settlementId: 'settlement-1' },
+    })
+    expect(response.body.reply).not.toBe('temporary execution-log reply')
+    expect(replayDurableFinalReply).toHaveBeenCalledWith('session-1', 'run-1')
+  })
+
+  it('returns Runtime status and no model text when the durable reply is unsettled', async () => {
+    const replayDurableFinalReply = vi.fn().mockResolvedValue({
+      kind: 'unavailable',
+      sessionId: 'session-1',
+      runId: 'run-1',
+      cursor: 8,
+      status: 'completed',
+      reason: 'not_settled',
+    })
+    const runner = mockReplayRunner(replayDurableFinalReply)
+
+    const response = await invokeReplay(runner, 'run-1')
+
+    expect(response.status).toBe(200)
+    expect(response.body).toMatchObject({
+      reply: '',
+      runtimeStatus: { status: 'failed', reason: 'durable_final_reply_not_settled' },
+    })
+    expect(response.body.finalReplySettlement).toBeUndefined()
+    expect(response.body.webEvidence).toBeUndefined()
+    expect(JSON.stringify(response.body)).not.toContain('temporary execution-log reply')
+  })
+})
+
+function mockReplayRunner(
+  replayDurableFinalReply: AgentRunner['replayDurableFinalReply'],
+): AgentRunner {
+  return {
+    durableHarnessMode: 'next',
+    replay: vi.fn().mockResolvedValue({
+      runId: 'run-1',
+      sessionId: 'session-1',
+      startedAt: '2026-08-25T09:00:00.000Z',
+      endedAt: '2026-08-25T09:00:01.000Z',
+      status: 'ok',
+      model: 'test/model',
+      inboundText: 'input',
+      reply: 'temporary execution-log reply',
+      trace: [],
+      toolCalls: [],
+      durationMs: 1,
+      webEvidence: { secret: 'must be hidden' } as never,
+    } satisfies ExecutionLog),
+    replayDurableFinalReply,
+  } as unknown as AgentRunner
+}
+
+async function invokeReplay(
+  runner: AgentRunner,
+  runId: string,
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const server = createServer((req, res) => {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1')
+    void routeSessions({
+      req,
+      res,
+      url,
+      path: url.pathname,
+      method: req.method ?? 'GET',
+    }, {
+      getRunner: () => runner,
+      sessionIndex: {} as SessionRouteContext['sessionIndex'],
+      projectIndex: {} as SessionRouteContext['projectIndex'],
+      archiveIndex: {} as SessionRouteContext['archiveIndex'],
+    }).catch((error: unknown) => {
+      if (res.writableEnded) return
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }))
+    })
+  })
+  await listen(server)
+  try {
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('test server did not expose a TCP address')
+    const response = await fetch(`http://127.0.0.1:${address.port}${localAppApiItemPath(LOCAL_APP_API_PREFIXES.runs, runId)}`)
+    return { status: response.status, body: await response.json() as Record<string, unknown> }
+  } finally {
+    await close(server)
+  }
+}
+
+async function listen(server: Server): Promise<void> {
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+}
+
+async function close(server: Server): Promise<void> {
+  if (!server.listening) return
+  server.close()
+  await once(server, 'close')
+}

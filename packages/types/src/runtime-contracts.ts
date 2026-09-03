@@ -29,6 +29,13 @@ export type PermissionPolicyId = 'full' | 'research' | 'restricted';
 export type ReasoningLevel = 'auto' | 'low' | 'medium' | 'high' | 'ultra';
 export type RunConfigOrigin = 'app' | 'channel' | 'cli' | 'test';
 
+/** Runtime-owned publication state when a durable final reply is unavailable. */
+export interface RuntimeFinalStatus {
+  readonly version: 1;
+  readonly status: 'waiting_user' | 'failed' | 'interrupted';
+  readonly reason?: string;
+}
+
 /** Redacted audit evidence for one authoritative conversation-turn decision. */
 export interface ConversationContinuationEvidence {
   version: typeof CONVERSATION_CONTINUATION_EVIDENCE_VERSION;

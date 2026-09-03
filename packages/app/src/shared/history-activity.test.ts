@@ -173,6 +173,89 @@ describe('durable history activity reconstruction', () => {
     })
   })
 
+  it('does not expose a durable final-reply proposal as historical assistant text', () => {
+    const messages: Message[] = [{
+      id: 'assistant-proposal', role: 'assistant', runId: 'run-1', stage: 'finalize',
+      timestamp: '2026-07-11T01:00:04.000Z',
+      content: [{ type: 'text', text: 'unconfirmed model proposal' }],
+      finalReplySettlement: {
+        version: 1,
+        settlementId: 'settlement-1',
+        reply: 'unconfirmed model proposal',
+        replyFingerprint: 'fingerprint-1',
+        modelRequestId: 'request-1',
+        status: 'proposed',
+      },
+    }]
+    const history = buildHistoryMessages(messages, new Map([[
+      'run-1', executionLog({ status: 'error', reply: 'unconfirmed model proposal' }),
+    ]]))
+
+    expect(history).toHaveLength(1)
+    expect(history[0]?.text).toBe('')
+    expect(JSON.stringify(history)).not.toContain('unconfirmed model proposal')
+  })
+
+  it('restores a proposed transcript message only when its execution log is settled', () => {
+    const settlement = {
+      version: 1 as const,
+      settlementId: 'settlement-1',
+      reply: 'durable settled reply',
+      replyFingerprint: 'fingerprint-1',
+      modelRequestId: 'request-1',
+      status: 'settled' as const,
+    }
+    const messages: Message[] = [{
+      id: 'assistant-proposal', role: 'assistant', runId: 'run-1', stage: 'finalize',
+      timestamp: '2026-07-11T01:00:04.000Z',
+      content: [{ type: 'text', text: 'transcript proposal' }],
+      finalReplySettlement: { ...settlement, status: 'proposed' },
+    }]
+    const history = buildHistoryMessages(messages, new Map([[
+      'run-1', executionLog({
+        reply: 'stale execution-log reply',
+        finalReplySettlement: settlement,
+      }),
+    ]]))
+
+    expect(history).toHaveLength(1)
+    expect(history[0]?.text).toBe('durable settled reply')
+    expect(JSON.stringify(history)).not.toContain('transcript proposal')
+    expect(JSON.stringify(history)).not.toContain('stale execution-log reply')
+  })
+
+  it('hides a transcript settlement that does not match the execution log', () => {
+    const messages: Message[] = [{
+      id: 'assistant-mismatched', role: 'assistant', runId: 'run-1', stage: 'finalize',
+      timestamp: '2026-07-11T01:00:04.000Z',
+      content: [{ type: 'text', text: 'mismatched settled text' }],
+      finalReplySettlement: {
+        version: 1,
+        settlementId: 'settlement-other',
+        reply: 'mismatched settled text',
+        replyFingerprint: 'fingerprint-other',
+        modelRequestId: 'request-other',
+        status: 'settled',
+      },
+    }]
+    const history = buildHistoryMessages(messages, new Map([[
+      'run-1', executionLog({
+        finalReplySettlement: {
+          version: 1,
+          settlementId: 'settlement-1',
+          reply: 'durable settled text',
+          replyFingerprint: 'fingerprint-1',
+          modelRequestId: 'request-1',
+          status: 'settled',
+        },
+      }),
+    ]]))
+
+    expect(history).toHaveLength(1)
+    expect(history[0]?.text).toBe('')
+    expect(JSON.stringify(history)).not.toContain('mismatched settled text')
+  })
+
   it('survives the execution-log JSON round trip used after an app restart', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ls-history-activity-'))
     tempDirs.push(dir)

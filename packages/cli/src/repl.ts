@@ -4,7 +4,7 @@
 // Approvals are routed through rl.question on the same interface.
 
 import { createInterface } from 'node:readline';
-import type { AgentRunner, RunnerResult } from '@littlesheep/runner';
+import { prepareAuthoritativeRunnerResult, type AgentRunner, type RunnerResult } from '@littlesheep/runner';
 import type { BrandingConfig } from '@littlesheep/branding';
 import { formatWebEvidenceSources, type SessionId } from '@littlesheep/types';
 
@@ -72,17 +72,21 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         approve,
         origin: 'cli',
       });
-      sessionId = result.sessionId;
-      const reply = result.finalReplySettlement?.status === 'settled'
-        ? result.finalReplySettlement.reply
-        : result.finalReplySettlement
+      const publishedResult = opts.runner.durableHarnessMode === 'next'
+        ? await prepareAuthoritativeRunnerResult(opts.runner, result)
+        : result;
+      if (!publishedResult) throw new Error('runner returned no result')
+      sessionId = publishedResult.sessionId;
+      const reply = publishedResult.finalReplySettlement?.status === 'settled'
+        ? publishedResult.finalReplySettlement.reply
+        : publishedResult.finalReplySettlement
           ? ''
-          : result.reply;
+          : publishedResult.reply;
       out.write(`${reply || '(no reply)'}\n`);
-      const sources = formatWebEvidenceSources(result.webEvidence);
+      const sources = formatWebEvidenceSources(publishedResult.webEvidence);
       if (sources) out.write(`${sources}\n`);
-      if (result.status === 'error') {
-        out.write(`[error] ${result.error ?? 'unknown'}\n`);
+      if (publishedResult.status === 'error') {
+        out.write(`[error] ${publishedResult.error ?? 'unknown'}\n`);
       }
     } catch (err) {
       out.write(`[error] ${(err as Error).message}\n`);

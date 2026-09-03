@@ -1,7 +1,7 @@
 // Startup checkpoint discovery, inspection, abandonment and streamed continuation.
 
 import { randomUUID } from 'node:crypto'
-import { conversationTurnRunId, type AgentRunner } from '@littlesheep/runner'
+import { conversationTurnRunId, prepareAuthoritativeRunnerResult, type AgentRunner } from '@littlesheep/runner'
 import {
   LOCAL_APP_API_PREFIXES,
   LOCAL_APP_API_ROUTES,
@@ -265,13 +265,19 @@ async function streamCheckpointResume(
       onToolEvent: (event) => writeSse(res, event.type, event),
     })
     if (result.runId !== runId) throw new Error('runner returned an unexpected resumed run id')
+    const publishedResult = runner.durableHarnessMode === 'next'
+      ? await prepareAuthoritativeRunnerResult(runner, result)
+      : result
+    if (publishedResult.runtimeStatus && result.reply) {
+      writeSse(res, 'replace', { text: '' })
+    }
     if (ownsActiveRun) {
-      await finishRunResources(context, runner, result, {
+      await finishRunResources(context, runner, publishedResult, {
         sessionId: String(inspection.checkpoint.sessionId),
         permissionMode: runPolicy.permissionPolicyId,
       }, ownership, state.cwd, workspaceContext)
     }
-    writeSse(res, 'result', result)
+    writeSse(res, 'result', publishedResult)
   } catch (error) {
     writeSse(res, 'error', { error: error instanceof Error ? error.message : String(error) })
   } finally {

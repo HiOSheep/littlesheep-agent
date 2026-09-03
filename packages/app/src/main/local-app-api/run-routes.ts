@@ -2,7 +2,7 @@
 
 import { randomUUID } from 'node:crypto'
 import type { Config } from '@littlesheep/config'
-import { conversationTurnRunId, type AgentRunner } from '@littlesheep/runner'
+import { conversationTurnRunId, prepareAuthoritativeRunnerResult, type AgentRunner } from '@littlesheep/runner'
 import { asSessionId, type RuntimeEventIngressOutcome } from '@littlesheep/types'
 import {
   LOCAL_APP_API_PREFIXES,
@@ -279,10 +279,18 @@ export class RunRouter {
         )
         const result = await runPromise
         if (result.runId !== runId) throw new Error(`runner returned an unexpected run id: ${result.runId}`)
-        if (ownsActiveRun) {
-          await finishRunResources(context, runner, result, effectiveBody, ownership, cwd, workspaceContext)
+        const publishedResult = runner.durableHarnessMode === 'next'
+          ? await prepareAuthoritativeRunnerResult(runner, result)
+          : result
+        if (publishedResult.runtimeStatus && result.reply) {
+          // Remove a provisional stream when the durable publication gate
+          // cannot prove a settled final reply.
+          writeSse(res, 'replace', { text: '' })
         }
-        writeSse(res, 'result', result)
+        if (ownsActiveRun) {
+          await finishRunResources(context, runner, publishedResult, effectiveBody, ownership, cwd, workspaceContext)
+        }
+        writeSse(res, 'result', publishedResult)
       } catch (error) {
         writeSse(res, 'error', { error: (error as Error).message })
       } finally {
@@ -328,8 +336,11 @@ export class RunRouter {
           cwd,
         }),
       })
-      await finishRunResources(context, runner, result, effectiveBody, ownership, cwd, workspaceContext)
-      json(res, 200, result)
+      const publishedResult = runner.durableHarnessMode === 'next'
+        ? await prepareAuthoritativeRunnerResult(runner, result)
+        : result
+      await finishRunResources(context, runner, publishedResult, effectiveBody, ownership, cwd, workspaceContext)
+      json(res, 200, publishedResult)
       return true
     }
 

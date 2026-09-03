@@ -422,6 +422,8 @@ export interface AgentResult {
   replyProvenance?: ReplyProvenance;
   /** Authoritative final reply settlement; streams are only provisional views. */
   finalReplySettlement?: FinalReplySettlement;
+  /** Runtime-owned status used when the next Harness cannot publish a reply. */
+  runtimeStatus?: import('./runtime-contracts.js').RuntimeFinalStatus;
   error?: string;
   /** Messages to persist. */
   messages: Message[];

@@ -9,7 +9,7 @@ import {
   resolveApiKey,
 } from '@littlesheep/config';
 import { loadBranding, dataSubdirs } from '@littlesheep/branding';
-import { createRunner, resolveLlm } from '@littlesheep/runner';
+import { createRunner, prepareAuthoritativeRunnerResult, resolveLlm } from '@littlesheep/runner';
 import { asSessionId, formatWebEvidenceSources } from '@littlesheep/types';
 import { parseArgs, USAGE, VERSION } from './args.js';
 import { startRepl } from './repl.js';
@@ -131,15 +131,19 @@ export async function runCli(argv: string[]): Promise<void> {
       text: args.text,
       origin: 'cli',
     });
-    const reply = result.finalReplySettlement?.status === 'settled'
-      ? result.finalReplySettlement.reply
-      : result.finalReplySettlement
+    const publishedResult = runner.durableHarnessMode === 'next'
+      ? await prepareAuthoritativeRunnerResult(runner, result)
+      : result;
+    if (!publishedResult) throw new Error('runner returned no result')
+    const reply = publishedResult.finalReplySettlement?.status === 'settled'
+      ? publishedResult.finalReplySettlement.reply
+      : publishedResult.finalReplySettlement
         ? ''
-        : result.reply;
+        : publishedResult.reply;
     process.stdout.write(`${reply || '(no reply)'}\n`);
-    const sources = formatWebEvidenceSources(result.webEvidence);
+    const sources = formatWebEvidenceSources(publishedResult.webEvidence);
     if (sources) process.stdout.write(`${sources}\n`);
-    if (result.status === 'error') {
+    if (publishedResult.status === 'error') {
       process.exitCode = 1;
     }
     await runner.shutdown();

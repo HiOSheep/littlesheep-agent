@@ -194,7 +194,20 @@ export function buildHistoryMessages(
       const ownsRun = message.role === 'assistant' && owners.get(runId) === index
       const ownsActivity = ownsRun && !!log && hasExecutionActivity(log)
       const textFromMessage = messageText(message)
-      const text = message.role === 'assistant' && ownsRun && !textFromMessage.trim() && log
+      const durableSettlement = log?.finalReplySettlement?.status === 'settled'
+        && (!message.finalReplySettlement
+          || message.finalReplySettlement.settlementId === log.finalReplySettlement.settlementId)
+        ? log.finalReplySettlement
+        : undefined
+      const unconfirmedFinalProposal = message.role === 'assistant'
+        && message.stage === 'finalize'
+        && message.finalReplySettlement !== undefined
+        && durableSettlement === undefined
+      const text = unconfirmedFinalProposal
+        ? ''
+        : durableSettlement
+          ? durableSettlement.reply
+        : message.role === 'assistant' && ownsRun && !textFromMessage.trim() && log
         ? log.reply
         : textFromMessage
       const activity = ownsActivity && log ? executionLogToHistoryActivity(log) : undefined

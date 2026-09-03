@@ -26,6 +26,7 @@ export function reduceCompletedRunMessages(
       ))),
   )
   const paused = result.runtimeControl?.state === 'paused'
+    || result.runtimeStatus?.status === 'waiting_user'
   const activityStatus = paused
     ? 'paused'
     : result.status === 'ok'

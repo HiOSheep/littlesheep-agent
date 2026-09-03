@@ -138,6 +138,7 @@ describe('run stream Local App API', () => {
   async function createFixture(
     runStream: AgentRunner['runStream'],
     runtimeEvents: ReturnType<typeof makeRuntimeEvents>,
+    runnerOverrides: Partial<AgentRunner> = {},
   ) {
     const dataDir = mkdtempSync(join(tmpdir(), 'ls-run-stream-api-'))
     const workplaceDir = join(dataDir, 'workplace')
@@ -148,6 +149,7 @@ describe('run stream Local App API', () => {
       state: { model: config.agents.defaults.model },
       runStream,
       runtimeEvents,
+      ...runnerOverrides,
     } as unknown as AgentRunner
     const server = await startLocalAppApiServer(runner, {
       port: 0,
@@ -308,6 +310,111 @@ describe('run stream Local App API', () => {
       expect(await new SessionIndex({ dataDir, workplaceDir }).list()).toEqual([
         expect.objectContaining({ id: sessionId, scope: 'standalone', workspacePath: workplaceDir }),
       ])
+    } finally {
+      await server.stop()
+      rmSync(dataDir, { recursive: true, force: true })
+    }
+  })
+
+  it('publishes the durable settled reply instead of the provisional stream result in next mode', async () => {
+    const sessionId = asSessionId('next-settled-session')
+    const runStream = vi.fn(async (
+      input: Parameters<AgentRunner['runStream']>[0],
+      onDelta: (delta: string) => void,
+    ) => {
+      onDelta('provisional model text')
+      return {
+        runId: input.runId!,
+        sessionId,
+        status: 'ok' as const,
+        reply: 'temporary result text',
+        messages: [],
+        trace: [],
+        durationMs: 1,
+      }
+    })
+    const replayDurableFinalReply = vi.fn(async (_session: ReturnType<typeof asSessionId>, runId: string) => ({
+      kind: 'settled' as const,
+      sessionId: String(sessionId),
+      runId,
+      cursor: 8,
+      settlementId: 'durable-settlement-1',
+      reply: 'durable settled text',
+      replyFingerprint: 'durable-fingerprint-1',
+      modelRequestId: 'durable-model-request-1',
+    }))
+    const runtimeEvents = makeRuntimeEvents(sessionId)
+    const { dataDir, server } = await createFixture(runStream, runtimeEvents, {
+      durableHarnessMode: 'next',
+      replayDurableFinalReply,
+    })
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.port}${LOCAL_APP_API_ROUTES.runStream}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'next settled', sessionId, requestKey: 'next-settled-turn' }),
+      })
+      const body = await response.text()
+      const resultFrame = body.split('event: result\n')[1] ?? ''
+
+      expect(response.status).toBe(200)
+      expect(replayDurableFinalReply).toHaveBeenCalledWith(sessionId, expect.any(String))
+      expect(resultFrame).toContain('"reply":"durable settled text"')
+      expect(resultFrame).toContain('"status":"ok"')
+      expect(resultFrame).not.toContain('"reply":"temporary result text"')
+    } finally {
+      await server.stop()
+      rmSync(dataDir, { recursive: true, force: true })
+    }
+  })
+
+  it('clears provisional stream text and returns Runtime status when next replay is not settled', async () => {
+    const sessionId = asSessionId('next-unavailable-session')
+    const runStream = vi.fn(async (
+      input: Parameters<AgentRunner['runStream']>[0],
+      onDelta: (delta: string) => void,
+    ) => {
+      onDelta('unconfirmed stream text')
+      return {
+        runId: input.runId!,
+        sessionId,
+        status: 'ok' as const,
+        reply: 'unconfirmed result text',
+        messages: [],
+        trace: [],
+        durationMs: 1,
+      }
+    })
+    const runtimeEvents = makeRuntimeEvents(sessionId)
+    const { dataDir, server } = await createFixture(runStream, runtimeEvents, {
+      durableHarnessMode: 'next',
+      replayDurableFinalReply: vi.fn(async (_session, runId) => ({
+        kind: 'unavailable' as const,
+        sessionId: String(sessionId),
+        runId,
+        cursor: 3,
+        status: 'completed' as const,
+        reason: 'not_settled' as const,
+      })),
+    })
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.port}${LOCAL_APP_API_ROUTES.runStream}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'next unavailable', sessionId, requestKey: 'next-unavailable-turn' }),
+      })
+      const body = await response.text()
+      const resultFrame = body.split('event: result\n')[1] ?? ''
+
+      expect(response.status).toBe(200)
+      expect(body).toContain('event: replace')
+      expect(body).toContain('event: replace\ndata: {"text":""}')
+      expect(resultFrame).toContain('"status":"error"')
+      expect(resultFrame).toContain('"reply":""')
+      expect(resultFrame).toContain('"runtimeStatus"')
+      expect(resultFrame).not.toContain('"reply":"unconfirmed result text"')
     } finally {
       await server.stop()
       rmSync(dataDir, { recursive: true, force: true })

@@ -21,6 +21,7 @@ import type {
   VerificationRecord,
   WebEvidenceProjection,
   RuntimeCapabilitySnapshot,
+  RuntimeFinalStatus,
 } from '@littlesheep/types'
 import type { AgentProfileId } from '@littlesheep/prompt'
 import type { PermissionModeId } from '../../shared/permission-modes'
@@ -40,6 +41,7 @@ export interface RunResult {
   replyProvenance?: ReplyProvenance
   /** Only a settled value is authoritative; streamed deltas are previews. */
   finalReplySettlement?: FinalReplySettlement
+  runtimeStatus?: RuntimeFinalStatus
   error?: string
   durationMs: number
   usage?: {
