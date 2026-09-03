@@ -64,6 +64,27 @@ export async function routeSessions(
   }
 
   const replayRunId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.runs)
+  const replayFinalReplyRunId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.runs, '/final-reply')
+  if (method === 'GET' && replayFinalReplyRunId !== null) {
+    const sessionId = url.searchParams.get('sessionId')?.trim()
+    if (!sessionId) {
+      json(res, 400, { error: 'sessionId is required for durable final-reply replay' })
+      return true
+    }
+    if (!runner.replayDurableFinalReply) {
+      json(res, 503, { error: 'durable final-reply replay is unavailable' })
+      return true
+    }
+    try {
+      // This endpoint deliberately returns the Harness settlement projection,
+      // never an execution-log or stream reconstruction.
+      const replay = await runner.replayDurableFinalReply(asSessionId(sessionId), replayFinalReplyRunId)
+      json(res, 200, replay)
+    } catch (error) {
+      json(res, 503, { error: `durable final-reply replay failed: ${(error as Error).message}` })
+    }
+    return true
+  }
   if (method === 'GET' && replayRunId !== null) {
     const log = await runner.replay(replayRunId)
     if (!log) {

@@ -10,7 +10,12 @@ import type {
   DurableInboxEnqueueOutcome,
   DurableInboxStoreLike,
 } from '@littlesheep/types';
-import { DurableHarnessKernel, DurableKernelError, reduceDurableRunProjection } from './durable-kernel.js';
+import {
+  DurableHarnessKernel,
+  DurableKernelError,
+  reduceDurableRunProjection,
+  replayDurableFinalReply,
+} from './durable-kernel.js';
 import { buildCacheObservation } from './cache-observability.js';
 
 class MemoryEventStore implements DurableHarnessEventStoreLike {
@@ -127,6 +132,109 @@ function event<T extends DurableHarnessEvent['type']>(type: T, payload: Record<s
 }
 
 describe('DurableHarnessKernel', () => {
+  it('recovers a lost model response without retrying the Provider', async () => {
+    const store = new MemoryEventStore();
+    const kernel = new DurableHarnessKernel({ eventStore: store });
+    await kernel.append(event('run_accepted', {}, 'runtime', 'accept'));
+    await kernel.append(event('model_request_started', {
+      requestId: 'model-lost',
+      provider: 'test',
+      model: 'test/model',
+      providerReachStatus: 'reached',
+      transportStatus: 'streaming',
+    }, 'runtime', 'model-start'));
+
+    const recovered = await kernel.recoverRun(sessionId, runId);
+    expect(recovered.actions).toEqual([
+      expect.objectContaining({
+        kind: 'model_marked_missing',
+        requestId: 'model-lost',
+        reason: 'model_response_missing',
+      }),
+      expect.objectContaining({ kind: 'runtime_status_settled', reason: 'model_response_missing' }),
+    ]);
+    expect(recovered.projection.pendingModelRequestIds).toEqual([]);
+    expect(recovered.projection.status).toBe('waiting_user');
+    expect(recovered.projection.finalReply.state).toBe('runtime_status');
+    expect((await kernel.recoverRun(sessionId, runId)).actions).toEqual([]);
+    expect(store.events.filter((item) => item.type === 'model_request_started')).toHaveLength(1);
+  });
+
+  it('marks an in-flight effect unknown and never replays a successful effect', async () => {
+    const store = new MemoryEventStore();
+    const kernel = new DurableHarnessKernel({ eventStore: store });
+    await kernel.append(event('run_accepted', {}, 'runtime', 'accept'));
+    await kernel.append(event('effect_intent_created', {
+      effectId: 'effect-unknown', idempotencyKey: 'effect-key-unknown', toolName: 'write', effectKind: 'external',
+    }, 'runtime', 'intent-unknown'));
+    await kernel.append(event('effect_intent_created', {
+      effectId: 'effect-done', idempotencyKey: 'effect-key-done', toolName: 'write', effectKind: 'local_mutation',
+    }, 'runtime', 'intent-done'));
+    await kernel.append(event('effect_settled', {
+      effectId: 'effect-done', status: 'succeeded', evidenceRef: 'tool:done',
+    }, 'tool', 'settle-done'));
+
+    const recovered = await kernel.recoverRun(sessionId, runId);
+    expect(recovered.actions).toEqual([
+      expect.objectContaining({ kind: 'effect_marked_unknown', effectId: 'effect-unknown' }),
+      expect.objectContaining({ kind: 'runtime_status_settled', reason: 'effect_settlement_unknown' }),
+    ]);
+    expect(recovered.projection.unknownEffectIds).toEqual(['effect-unknown']);
+    expect(recovered.projection.effects.find((effect) => effect.effectId === 'effect-done')).toMatchObject({
+      status: 'succeeded', settlementEventId: 'settle-done',
+    });
+    expect(store.events.filter((item) => item.type === 'effect_settled')).toHaveLength(2);
+  });
+
+  it('repairs a committed final reply proposal and completes the run after restart', async () => {
+    const store = new MemoryEventStore();
+    const kernel = new DurableHarnessKernel({ eventStore: store });
+    await kernel.append(event('run_accepted', {}, 'runtime', 'accept'));
+    await kernel.append(event('model_request_started', { requestId: 'model-1' }, 'runtime', 'model-start'));
+    await kernel.append(event('model_response_received', {
+      requestId: 'model-1', usageStatus: 'unknown',
+    }, 'runtime', 'model-response'));
+    await kernel.append(event('model_request_settled', {
+      requestId: 'model-1', status: 'received', usageStatus: 'unknown',
+    }, 'runtime', 'model-settled'));
+    await kernel.append(event('final_reply_proposed', {
+      settlementId: 'settlement-1', reply: 'durable answer', replyFingerprint: 'fp-1', modelRequestId: 'model-1',
+    }, 'model', 'proposal'));
+
+    const persistedReservations: string[] = [];
+    const recovered = await kernel.recoverRun(sessionId, runId, {
+      finalReplyPersisted: async (reservation) => {
+        persistedReservations.push(reservation.settlementId);
+        return true;
+      },
+    });
+    expect(persistedReservations).toEqual(['settlement-1']);
+    expect(recovered.actions.map((action) => action.kind)).toEqual(['final_reply_settled', 'run_completed']);
+    expect(recovered.projection.status).toBe('completed');
+    expect(recovered.projection.finalReply.state).toBe('settled');
+    expect(replayDurableFinalReply(recovered.projection)).toMatchObject({
+      kind: 'settled', settlementId: 'settlement-1', reply: 'durable answer',
+    });
+  });
+
+  it('does not expose a proposed reply to a reconnecting channel', () => {
+    const projection = reduceDurableRunProjection([{
+      version: 1,
+      eventId: 'accept',
+      idempotencyKey: 'accept',
+      sessionId,
+      runId,
+      cursor: 1,
+      type: 'run_accepted',
+      source: 'runtime',
+      occurredAt: '2026-09-02T00:00:00.000Z',
+      payload: {},
+    }]);
+    expect(replayDurableFinalReply(projection)).toMatchObject({
+      kind: 'unavailable', reason: 'not_settled', status: 'accepted',
+    });
+  });
+
   it('requires run acceptance, intent before settlement, proposal before final settlement, and one completion', async () => {
     const store = new MemoryEventStore();
     const kernel = new DurableHarnessKernel({ eventStore: store });

@@ -55,6 +55,8 @@ export interface DurableHarnessEventAppendInput<TPayload extends Record<string, 
   readonly type: DurableHarnessEventType;
   readonly source: DurableHarnessEventSource;
   readonly occurredAt?: string;
+  /** Optional optimistic-concurrency guard evaluated while the store is locked. */
+  readonly expectedCursor?: number;
   readonly payload: TPayload;
 }
 
@@ -194,6 +196,64 @@ export interface DurableFinalReplyProjection {
   readonly state: DurableFinalReplyState;
 }
 
+/**
+ * The only payload a channel, Renderer or CLI may use after a reconnect.
+ * A proposed reply is intentionally not replayable; callers must wait for a
+ * settled reply or render the Runtime status instead.
+ */
+export type DurableFinalReplyReplay =
+  | {
+      readonly kind: 'settled';
+      readonly sessionId: string;
+      readonly runId: string;
+      readonly cursor: number;
+      readonly settlementId: string;
+      readonly reply: string;
+      readonly replyFingerprint: string;
+      readonly modelRequestId: string;
+    }
+  | {
+      readonly kind: 'runtime_status';
+      readonly sessionId: string;
+      readonly runId: string;
+      readonly cursor: number;
+      readonly settlementId: string;
+      readonly status: Extract<DurableRunStatus, 'waiting_user' | 'failed' | 'interrupted'>;
+      readonly reason?: string;
+    }
+  | {
+      readonly kind: 'unavailable';
+      readonly sessionId: string;
+      readonly runId: string;
+      readonly cursor: number;
+      readonly status: DurableRunStatus;
+      readonly reason: 'not_settled' | 'empty_run' | 'terminal_without_settlement';
+    };
+
+export type DurableRecoveryReason =
+  | 'model_response_missing'
+  | 'model_response_not_settled'
+  | 'effect_settlement_unknown'
+  | 'final_reply_persistence_unconfirmed'
+  | 'run_incomplete_after_restart';
+
+export interface DurableRecoveryAction {
+  readonly kind: 'model_marked_missing' | 'model_marked_received' | 'effect_marked_unknown'
+    | 'final_reply_settled' | 'runtime_status_settled' | 'run_completed';
+  readonly eventId: string;
+  readonly requestId?: string;
+  readonly effectId?: string;
+  readonly reason?: DurableRecoveryReason;
+}
+
+/** Result of one idempotent, conservative post-crash recovery pass. */
+export interface DurableRunRecoveryResult {
+  readonly sessionId: string;
+  readonly runId: string;
+  readonly actions: readonly DurableRecoveryAction[];
+  readonly projection: DurableRunProjection;
+}
+
 /** Redacted Runtime capability evidence retained by the durable projection. */
 export interface DurableCapabilitySnapshotProjection {
   readonly capabilityEpoch: string;
@@ -237,6 +297,8 @@ export interface DurableRunProjection {
   readonly route?: 'respond' | 'execute' | 'clarify';
   readonly eventCount: number;
   readonly finalReply: DurableFinalReplyProjection;
+  /** Bounded Runtime-owned reason for a runtime_status_settled event. */
+  readonly runtimeStatusReason?: string;
   readonly capabilitySnapshot?: DurableCapabilitySnapshotProjection;
   readonly capabilityProbe?: DurableCapabilityProbeProjection;
   readonly stageTransitions: readonly DurableStageTransitionProjection[];

@@ -21,6 +21,8 @@ import type {
   RunAttachment,
   RunCheckpointContinuationDisposition,
   ConversationContinuationEvidence,
+  DurableFinalReplyReplay,
+  DurableRunRecoveryResult,
 } from '@littlesheep/types';
 import { asSessionId, sanitizeWebEvidenceProjection, textMessage } from '@littlesheep/types';
 import { randomUUID } from 'node:crypto';
@@ -40,6 +42,7 @@ import {
   writeModelObservabilityState,
   flushModelRequestLifecycles,
   reduceDurableRunProjection,
+  DurableHarnessKernel,
 } from '@littlesheep/harness';
 import { buildInfrastructure, type RunnerState, type LogFn } from './infra.js';
 import type { ExecutionLog } from './execution-log.js';
@@ -270,6 +273,10 @@ export interface AgentRunner {
   readonly runCheckpoints?: RunCheckpointControl;
   /** Replay a past run by id (reads execution log). Returns null if not found. */
   replay(runId: string): Promise<ExecutionLog | null>;
+  /** Replay only a durable final settlement; proposals are never exposed. */
+  replayDurableFinalReply?(sessionId: SessionId, runId: string): Promise<DurableFinalReplyReplay>;
+  /** Perform one conservative post-crash recovery pass without model/tool I/O. */
+  recoverDurableRun?(sessionId: SessionId, runId: string): Promise<DurableRunRecoveryResult>;
   /** Ingress for events targeting an active run; independent from session input. */
   readonly runtimeEvents: RuntimeEventIngress;
   /** Bounded runtime-owned query and control surface for active runs. */
@@ -305,6 +312,17 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     tokenizerFetch: opts.tokenizerFetch,
     state,
     log: opts.log,
+  });
+  // One Runner-owned kernel is shared by replay/recovery callers. Active runs
+  // still serialize their own recorder appends; the durable event store is the
+  // cross-process ordering boundary and recovery remains fail-closed on races.
+  const durableKernel = new DurableHarnessKernel({
+    eventStore: infra.durableEventStore,
+    inboxStore: infra.durableInboxStore,
+    reserveFinalReply: (sessionId, reservation) => infra.sessionManager.reserveAssistantReplySettlement(
+      asSessionId(sessionId),
+      reservation,
+    ),
   });
   const activeRuns = new ActiveRunRegistry({ maxActiveRuns: opts.maxActiveRuns });
   const conversationTurns = new Map<string, CoordinatedConversationTurn>();
@@ -1818,6 +1836,14 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     resumeCheckpoint,
     runCheckpoints,
     replay: (runId: string) => infra.executionLogStore.read(runId),
+    replayDurableFinalReply: (sessionId: SessionId, runId: string) =>
+      durableKernel.replayFinalReply(String(sessionId), runId),
+    recoverDurableRun: (sessionId: SessionId, runId: string) =>
+      durableKernel.recoverRun(String(sessionId), runId, {
+        finalReplyPersisted: async (reservation) => (
+          await infra.sessionManager.assistantReplySettlementStatus?.(sessionId, reservation.settlementId)
+        ) === 'settled',
+      }),
     runtimeEvents: activeRuns,
     activeRuns,
     shutdown: async () => {

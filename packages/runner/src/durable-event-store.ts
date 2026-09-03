@@ -130,6 +130,12 @@ export class DurableEventStore implements DurableHarnessEventStoreLike {
             ? { kind: 'duplicate' as const, event: cloneEvent(byIdempotency) as DurableHarnessEvent<TPayload> }
             : { kind: 'conflict' as const, key: 'idempotencyKey' as const, existing: cloneEvent(byIdempotency) };
         }
+        if (normalized.expectedCursor !== undefined && existing.length !== normalized.expectedCursor) {
+          throw new DurableEventStoreError(
+            `event cursor changed during append: expected ${normalized.expectedCursor}, found ${existing.length}`,
+            'conflict',
+          );
+        }
         if (existing.length >= this.maxEventsPerRun) {
           throw new DurableEventStoreError(`event stream exceeds ${this.maxEventsPerRun} events`, 'limit');
         }
@@ -166,6 +172,26 @@ export class DurableEventStore implements DurableHarnessEventStoreLike {
   async readAfter(sessionId: string, runId: string, cursor: number): Promise<DurableHarnessEvent[]> {
     if (!Number.isSafeInteger(cursor) || cursor < 0) throw new Error('cursor must be a non-negative integer');
     return (await this.read(sessionId, runId)).filter((event) => event.cursor > cursor);
+  }
+
+  /**
+   * Enumerate durable run identities for startup recovery. This returns only
+   * identifiers; callers must replay each partition before taking action.
+   * Corrupt partitions fail closed instead of being silently skipped.
+   */
+  async listRuns(): Promise<Array<{ sessionId: string; runId: string }>> {
+    await this.initialize();
+    const entries = await readdir(this.rootDir, { withFileTypes: true });
+    const runs: Array<{ sessionId: string; runId: string }> = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const events = await this.readPartition(join(this.rootDir, entry.name));
+      const first = events[0];
+      if (first) runs.push({ sessionId: first.sessionId, runId: first.runId });
+    }
+    return runs.sort((left, right) => (
+      left.sessionId.localeCompare(right.sessionId) || left.runId.localeCompare(right.runId)
+    ));
   }
 
   private partitionPath(sessionId: string, runId: string): string {
@@ -226,7 +252,7 @@ export class DurableEventStore implements DurableHarnessEventStoreLike {
 }
 
 export class DurableEventStoreError extends Error {
-  constructor(message: string, readonly kind: 'corrupt' | 'limit' | 'invalid') {
+  constructor(message: string, readonly kind: 'corrupt' | 'limit' | 'invalid' | 'conflict') {
     super(message);
     this.name = 'DurableEventStoreError';
   }
@@ -247,6 +273,10 @@ function validateAppendInput<TPayload extends Record<string, unknown>>(
   const sessionId = normalizeIdentifier(input.sessionId, 'sessionId');
   const runId = normalizeIdentifier(input.runId, 'runId');
   const occurredAt = normalizeTime(input.occurredAt ?? new Date().toISOString(), 'occurredAt');
+  if (input.expectedCursor !== undefined
+    && (!Number.isSafeInteger(input.expectedCursor) || input.expectedCursor < 0)) {
+    throw new Error('expectedCursor must be a non-negative integer');
+  }
   const payload = normalizeJsonValue(input.payload, 'payload');
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('payload must be an object');
   const serialized = canonicalSerialize(payload);

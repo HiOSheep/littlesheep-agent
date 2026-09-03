@@ -9,6 +9,10 @@ import type {
   DurableInboxEnqueueInput,
   DurableInboxEnqueueOutcome,
   DurableInboxStoreLike,
+  DurableFinalReplyReplay,
+  DurableRecoveryAction,
+  DurableRecoveryReason,
+  DurableRunRecoveryResult,
   DurableRunProjection,
   FinalReplyReservation,
 } from '@littlesheep/types';
@@ -51,6 +55,11 @@ export interface DurableInboxProcessResult {
   readonly reason?: string;
 }
 
+export interface DurableRecoveryOptions {
+  /** Proves that the session transcript and settlement registry were committed. */
+  finalReplyPersisted?: (reservation: FinalReplyReservation) => Promise<boolean>;
+}
+
 /**
  * Runtime-owned reducer and command boundary for the durable Harness path.
  * It intentionally knows nothing about filesystem paths, tools or providers.
@@ -81,35 +90,52 @@ export class DurableHarnessKernel {
     const key = `${input.sessionId}\u0000${input.runId}`;
     const previous = this.runTails.get(key) ?? Promise.resolve();
     const operation = previous.catch(() => undefined).then(async () => {
-      const existing = await this.eventStore.read(input.sessionId, input.runId);
-      const projection = reduceDurableRunProjection(existing);
-      const knownDuplicate = existing.find((event) =>
-        (input.eventId !== undefined && event.eventId === input.eventId)
-        || event.idempotencyKey === input.idempotencyKey,
-      );
-      if (!knownDuplicate) {
-        validateTransition(projection, input);
-        if (input.type === 'final_reply_settled' && this.reserveFinalReply) {
-          const reply = requiredString(input.payload.reply, 'final_reply_settled.reply');
-          const fingerprint = requiredString(input.payload.replyFingerprint, 'final_reply_settled.replyFingerprint');
-          const modelRequestId = requiredString(input.payload.modelRequestId, 'final_reply_settled.modelRequestId');
-          const settlementId = typeof input.payload.settlementId === 'string' && input.payload.settlementId.trim()
-            ? input.payload.settlementId.trim()
-            : input.eventId ?? `${input.runId}:final-reply-settled`;
-          if (!await this.reserveFinalReply(input.sessionId, {
-            version: 1,
-            settlementId,
-            reply,
-            replyFingerprint: fingerprint,
-            modelRequestId,
-          })) {
-            throw new DurableKernelError('final reply fingerprint is already reserved', 'duplicate_final_reply');
+      let lastCursorConflict: unknown;
+      let finalReplyReservation: FinalReplyReservation | undefined;
+      let finalReplyReservationReserved = false;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const existing = await this.eventStore.read(input.sessionId, input.runId);
+        const projection = reduceDurableRunProjection(existing);
+        const knownDuplicate = existing.find((event) =>
+          (input.eventId !== undefined && event.eventId === input.eventId)
+          || event.idempotencyKey === input.idempotencyKey,
+        );
+        if (!knownDuplicate) {
+          validateTransition(projection, input);
+          if (input.type === 'final_reply_settled' && this.reserveFinalReply && !finalReplyReservationReserved) {
+            const reply = requiredString(input.payload.reply, 'final_reply_settled.reply');
+            const fingerprint = requiredString(input.payload.replyFingerprint, 'final_reply_settled.replyFingerprint');
+            const modelRequestId = requiredString(input.payload.modelRequestId, 'final_reply_settled.modelRequestId');
+            const settlementId = typeof input.payload.settlementId === 'string' && input.payload.settlementId.trim()
+              ? input.payload.settlementId.trim()
+              : input.eventId ?? `${input.runId}:final-reply-settled`;
+            finalReplyReservation = {
+              version: 1,
+              settlementId,
+              reply,
+              replyFingerprint: fingerprint,
+              modelRequestId,
+            };
+            if (!await this.reserveFinalReply(input.sessionId, finalReplyReservation)) {
+              throw new DurableKernelError('final reply fingerprint is already reserved', 'duplicate_final_reply');
+            }
+            finalReplyReservationReserved = true;
           }
         }
+        try {
+          const outcome = await this.eventStore.append(knownDuplicate
+            ? input
+            : { ...input, expectedCursor: projection.cursor });
+          if (outcome.kind === 'conflict') throw new DurableKernelError('event append conflict', 'conflict');
+          return outcome;
+        } catch (error) {
+          if (!isCursorConflict(error) || attempt === 2) throw error;
+          lastCursorConflict = error;
+        }
       }
-      const outcome = await this.eventStore.append(input);
-      if (outcome.kind === 'conflict') throw new DurableKernelError('event append conflict', 'conflict');
-      return outcome;
+      throw lastCursorConflict instanceof Error
+        ? lastCursorConflict
+        : new DurableKernelError('event cursor changed during append', 'conflict');
     });
     this.runTails.set(key, operation.then(() => undefined, () => undefined));
     return operation;
@@ -164,6 +190,227 @@ export class DurableHarnessKernel {
   async rebuildProjection(sessionId: string, runId: string): Promise<DurableRunProjection> {
     return this.replay(sessionId, runId);
   }
+
+  /**
+   * Run one idempotent post-crash recovery pass. Recovery only appends facts;
+   * it never invokes a model or tool. An effect whose outcome cannot be
+   * proven is settled as `unknown` and the run is left waiting for a user
+   * decision. A settled effect or reply is only replayed through projection.
+   */
+  async recoverRun(
+    sessionId: string,
+    runId: string,
+    options: DurableRecoveryOptions = {},
+  ): Promise<DurableRunRecoveryResult> {
+    let projection = await this.replay(sessionId, runId);
+    const actions: DurableRecoveryAction[] = [];
+    if (projection.eventCount === 0 || isDurableRunTerminal(projection)) {
+      return { sessionId, runId, actions, projection };
+    }
+
+    // First close model requests. A response that reached the durable log can
+    // be marked received; an absent response is explicitly marked missing.
+    for (const requestId of projection.pendingModelRequestIds) {
+      const request = projection.modelRequests.find((candidate) => candidate.requestId === requestId);
+      if (!request) continue;
+      const status = request.status === 'received' ? 'received' : 'missing';
+      const reason: DurableRecoveryReason = status === 'received'
+        ? 'model_response_not_settled'
+        : 'model_response_missing';
+      const eventId = `${runId}:recovery:model:${requestId}`;
+      await this.append({
+        eventId,
+        idempotencyKey: eventId,
+        sessionId,
+        runId,
+        type: 'model_request_settled',
+        source: 'runtime',
+        payload: {
+          requestId,
+          status,
+          providerReached: request.providerReached ?? request.providerReachStatus === 'reached',
+          providerReachStatus: request.providerReachStatus ?? 'unknown',
+          transportStatus: status === 'received' ? 'completed' : 'unknown',
+          usageStatus: request.usageStatus ?? 'unknown',
+          errorKind: reason,
+        },
+      });
+      actions.push({
+        kind: status === 'received' ? 'model_marked_received' : 'model_marked_missing',
+        eventId,
+        requestId,
+        reason,
+      });
+      projection = await this.replay(sessionId, runId);
+    }
+
+    // Never retry an effect after a crash without an authoritative outcome.
+    // This includes intents that were still only `planned`: the process may
+    // have crossed the Tool Execution Service boundary before it died.
+    for (const effectId of projection.pendingEffectIds) {
+      const effect = projection.effects.find((candidate) => candidate.effectId === effectId);
+      if (!effect) continue;
+      const eventId = `${runId}:recovery:effect:${effectId}`;
+      await this.append({
+        eventId,
+        idempotencyKey: eventId,
+        sessionId,
+        runId,
+        type: 'effect_settled',
+        source: 'runtime',
+        payload: {
+          effectId,
+          status: 'unknown',
+          evidenceRef: `recovery:${effect.intentEventId}`,
+          error: 'effect outcome was not durably observed before process exit',
+        },
+      });
+      actions.push({
+        kind: 'effect_marked_unknown',
+        eventId,
+        effectId,
+        reason: 'effect_settlement_unknown',
+      });
+      projection = await this.replay(sessionId, runId);
+    }
+
+    // A process can die after the transcript/registry commit but before the
+    // final-reply event. Promote only when the host proves that commit.
+    if (projection.finalReply.state === 'proposed') {
+      const finalReply = projection.finalReply;
+      const reservation = finalReply.settlementId && finalReply.reply
+        && finalReply.replyFingerprint && finalReply.modelRequestId
+        ? {
+            version: 1 as const,
+            settlementId: finalReply.settlementId,
+            reply: finalReply.reply,
+            replyFingerprint: finalReply.replyFingerprint,
+            modelRequestId: finalReply.modelRequestId,
+          }
+        : undefined;
+      const persisted = reservation && options.finalReplyPersisted
+        ? await options.finalReplyPersisted(reservation).catch(() => false)
+        : false;
+      if (persisted && reservation) {
+        const eventId = `${runId}:recovery:final-reply-settled`;
+        await this.append({
+          eventId,
+          idempotencyKey: eventId,
+          sessionId,
+          runId,
+          type: 'final_reply_settled',
+          source: 'runtime',
+          payload: reservation,
+        });
+        actions.push({ kind: 'final_reply_settled', eventId });
+        projection = await this.replay(sessionId, runId);
+      }
+    }
+
+    if (projection.finalReply.state === 'settled'
+      && projection.pendingModelRequestIds.length === 0
+      && projection.pendingEffectIds.length === 0
+      && projection.unknownEffectIds.length === 0
+      && !isDurableRunTerminal(projection)) {
+      const eventId = `${runId}:recovery:run-completed`;
+      await this.append({
+        eventId,
+        idempotencyKey: eventId,
+        sessionId,
+        runId,
+        type: 'run_completed',
+        source: 'runtime',
+        payload: { recovery: true },
+      });
+      actions.push({ kind: 'run_completed', eventId });
+      projection = await this.replay(sessionId, runId);
+    } else if (projection.finalReply.state !== 'settled'
+      && projection.finalReply.state !== 'runtime_status'
+      && !isDurableRunTerminal(projection)) {
+      const reason: DurableRecoveryReason = projection.unknownEffectIds.length > 0
+        ? 'effect_settlement_unknown'
+        : projection.finalReply.state === 'proposed'
+          ? 'final_reply_persistence_unconfirmed'
+          : actions.some((action) => action.reason === 'model_response_missing')
+            ? 'model_response_missing'
+            : actions.some((action) => action.reason === 'model_response_not_settled')
+              ? 'model_response_not_settled'
+              : projection.pendingModelRequestIds.length > 0
+                ? 'model_response_missing'
+            : 'run_incomplete_after_restart';
+      const eventId = `${runId}:recovery:runtime-status`;
+      await this.append({
+        eventId,
+        idempotencyKey: eventId,
+        sessionId,
+        runId,
+        type: 'runtime_status_settled',
+        source: 'runtime',
+        payload: { status: 'waiting_user', reason },
+      });
+      actions.push({ kind: 'runtime_status_settled', eventId, reason });
+      projection = await this.replay(sessionId, runId);
+    }
+
+    return { sessionId, runId, actions, projection };
+  }
+
+  /** Replay only the authoritative final settlement; proposals are hidden. */
+  async replayFinalReply(sessionId: string, runId: string): Promise<DurableFinalReplyReplay> {
+    return replayDurableFinalReply(await this.replay(sessionId, runId));
+  }
+}
+
+function isDurableRunTerminal(projection: DurableRunProjection): boolean {
+  return projection.status === 'completed'
+    || projection.status === 'failed'
+    || projection.status === 'interrupted'
+    || projection.finalReply.state === 'runtime_status';
+}
+
+export function replayDurableFinalReply(projection: DurableRunProjection): DurableFinalReplyReplay {
+  const finalReply = projection.finalReply;
+  if (finalReply.state === 'settled'
+    && finalReply.settlementId
+    && finalReply.reply
+    && finalReply.replyFingerprint
+    && finalReply.modelRequestId) {
+    return {
+      kind: 'settled',
+      sessionId: projection.sessionId,
+      runId: projection.runId,
+      cursor: projection.cursor,
+      settlementId: finalReply.settlementId,
+      reply: finalReply.reply,
+      replyFingerprint: finalReply.replyFingerprint,
+      modelRequestId: finalReply.modelRequestId,
+    };
+  }
+  if (finalReply.state === 'runtime_status' && finalReply.settlementId) {
+    return {
+      kind: 'runtime_status',
+      sessionId: projection.sessionId,
+      runId: projection.runId,
+      cursor: projection.cursor,
+      settlementId: finalReply.settlementId,
+      status: projection.status === 'failed' || projection.status === 'interrupted'
+        ? projection.status
+        : 'waiting_user',
+      ...(projection.runtimeStatusReason ? { reason: projection.runtimeStatusReason } : {}),
+    };
+  }
+  return {
+    kind: 'unavailable',
+    sessionId: projection.sessionId,
+    runId: projection.runId,
+    cursor: projection.cursor,
+    status: projection.status,
+    reason: projection.eventCount === 0
+      ? 'empty_run'
+      : projection.status === 'failed' || projection.status === 'interrupted'
+        ? 'terminal_without_settlement'
+        : 'not_settled',
+  };
 }
 
 
@@ -411,6 +658,9 @@ function applyDurableHarnessEvent(
       const status = requiredRuntimeStatus(event.payload.status);
       next.finalReply = { state: 'runtime_status', settlementId: event.eventId };
       next.status = status;
+      if (typeof event.payload.reason === 'string' && event.payload.reason.trim()) {
+        next.runtimeStatusReason = event.payload.reason.trim().slice(0, 128);
+      }
       break;
     }
     case 'run_failed':
@@ -564,4 +814,13 @@ function validateTransition(projection: DurableRunProjection, event: DurableHarn
 
 function assertNeverEvent(event: never): never {
   throw new DurableKernelError(`unknown durable event type: ${String((event as { type?: unknown }).type)}`, 'invalid');
+}
+
+/** Only stale optimistic cursors are retryable; event/idempotency conflicts are not. */
+function isCursorConflict(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { kind?: unknown; message?: unknown };
+  return candidate.kind === 'conflict'
+    && typeof candidate.message === 'string'
+    && candidate.message.startsWith('event cursor changed during append:');
 }

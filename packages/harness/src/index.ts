@@ -155,6 +155,8 @@ export {
   DurableHarnessKernel,
   DurableKernelError,
   reduceDurableRunProjection,
+  replayDurableFinalReply,
   type DurableHarnessKernelOptions,
   type DurableInboxProcessResult,
+  type DurableRecoveryOptions,
 } from './durable-kernel.js';

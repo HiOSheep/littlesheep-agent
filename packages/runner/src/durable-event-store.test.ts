@@ -2,6 +2,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { DurableHarnessKernel } from '@littlesheep/harness';
 import { DurableEventStore, DurableEventStoreError } from './durable-event-store.js';
 import { hashParts } from './durable-store-utils.js';
 
@@ -79,6 +80,61 @@ describe('DurableEventStore', () => {
     );
   });
 
+  it('retries stale cursors across independent kernels without losing events', async () => {
+    const root = await newRoot();
+    const storeA = new DurableEventStore({ rootDir: root });
+    const storeB = new DurableEventStore({ rootDir: root });
+    await Promise.all([storeA.initialize(), storeB.initialize()]);
+    const kernelA = new DurableHarnessKernel({ eventStore: storeA });
+    const kernelB = new DurableHarnessKernel({ eventStore: storeB });
+
+    await kernelA.append({
+      sessionId: 'session-a',
+      runId: 'run-a',
+      eventId: 'accept',
+      idempotencyKey: 'accept',
+      type: 'run_accepted',
+      source: 'runtime',
+      payload: {},
+    });
+
+    const outcomes = await Promise.all([
+      kernelA.append({
+        sessionId: 'session-a',
+        runId: 'run-a',
+        eventId: 'input-a',
+        idempotencyKey: 'input-a',
+        type: 'user_input_appended',
+        source: 'app',
+        payload: { text: 'from-a' },
+      }),
+      kernelB.append({
+        sessionId: 'session-a',
+        runId: 'run-a',
+        eventId: 'input-b',
+        idempotencyKey: 'input-b',
+        type: 'user_input_appended',
+        source: 'app',
+        payload: { text: 'from-b' },
+      }),
+    ]);
+
+    expect(outcomes.map((outcome) => outcome.kind)).toEqual(['appended', 'appended']);
+    const reloaded = new DurableEventStore({ rootDir: root });
+    const events = await reloaded.read('session-a', 'run-a');
+    expect(events.map((event) => event.cursor)).toEqual([1, 2, 3]);
+    expect(new Set(events.map((event) => event.eventId))).toEqual(new Set(['accept', 'input-a', 'input-b']));
+    expect((await kernelB.append({
+      sessionId: 'session-a',
+      runId: 'run-a',
+      eventId: 'input-b',
+      idempotencyKey: 'input-b',
+      type: 'user_input_appended',
+      source: 'app',
+      payload: { text: 'from-b' },
+    })).kind).toBe('duplicate');
+  });
+
   it('reloads from disk and does not expose raw session or payload in filenames', async () => {
     const root = await newRoot();
     const store = new DurableEventStore({ rootDir: root });
@@ -89,6 +145,18 @@ describe('DurableEventStore', () => {
     const partition = join(root, hashParts('session-a', 'run-a'));
     const names = await readdir(partition);
     expect(names.some((name) => name.includes('session-a') || name.includes('do-not-name'))).toBe(false);
+  });
+
+  it('enumerates durable runs for startup recovery without exposing payloads', async () => {
+    const root = await newRoot();
+    const store = new DurableEventStore({ rootDir: root });
+    await store.append({ ...base, eventId: 'event-b', idempotencyKey: 'input-b', sessionId: 'session-b', runId: 'run-b' });
+    await store.append({ ...base, eventId: 'event-a', idempotencyKey: 'input-a', sessionId: 'session-a', runId: 'run-a' });
+    const reloaded = new DurableEventStore({ rootDir: root });
+    await expect(reloaded.listRuns()).resolves.toEqual([
+      { sessionId: 'session-a', runId: 'run-a' },
+      { sessionId: 'session-b', runId: 'run-b' },
+    ]);
   });
 
   it('fails closed on unknown versions, invalid files, and gaps', async () => {

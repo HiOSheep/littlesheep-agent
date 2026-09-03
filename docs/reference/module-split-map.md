@@ -14,7 +14,7 @@
 
 ## 强制拆分队列
 
-下表行数是当前工作树的物理行数，不是历史完成值。生产 `.ts/.tsx` 文件超过 600 行必须进入本表；已登记不等于要求立即做无收益拆分。当前仓库卫生扫描共有 119 个生产文件超过 300 行，其中 18 个超过 600 行并进入受控清单。
+下表行数是当前工作树的物理行数，不是历史完成值。生产 `.ts/.tsx` 文件超过 600 行必须进入本表；已登记不等于要求立即做无收益拆分。当前仓库卫生扫描共有 121 个生产文件超过 300 行，其中 19 个超过 600 行并进入受控清单。
 
 | 当前文件 | 当前行数 | 当前责任 | 目标边界 | 所有权 |
 | --- | ---: | --- | --- | --- |
@@ -74,8 +74,9 @@
 | `packages/app/src/main/memory-tree-control.ts` | 474 | 记忆控制面查询、v3 D0-D3 详情适配和既有管理命令 | 分离 query/detail、resource、projection command | C |
 | `packages/llm/src/client.ts` | 463 | 请求、流式、reasoning、重试适配 | 分离 request builder、stream parser、response mapper | E |
 | `packages/harness/src/stages/execute/tool-loop.ts` | 604 | 单步模型工具循环、审批、失败记录、时间感知、消息续接和紧凑后续请求 | 受控超限复查：2026-09-03；分离 loop policy、invocation adapter 与 transcript；不得继续吸收检查点恢复或回答连续性判定 | E |
-| `packages/harness/src/durable-kernel.ts` | 567 | durable event command validation、capability evidence、stage transition audit、effect lifecycle、projection rebuild 和 final settlement reducer | 保持纯协议/kernel 边界；先冻结协议与 reducer 特征测试，后续再拆 event reducer 与 settlement policy | E |
+| `packages/harness/src/durable-kernel.ts` | 826 | durable event command validation、capability evidence、stage transition audit、effect lifecycle、crash recovery、projection rebuild 和 final settlement reducer | 保持纯协议/kernel 边界；先冻结恢复、并发和 reducer 特征测试，后续再拆 event reducer、recovery policy 与 settlement policy | E |
 | `packages/harness/src/durable-projection-codec.ts` | 509 | durable payload 解析、脱敏校验和 cache projection allowlist | 保持不受信 payload codec 边界；后续按 event、cache 和 capability codec 拆分 | E |
+| `packages/types/src/durable-harness.ts` | 311 | durable Harness event、projection、recovery、final settlement 和 capability protocol 公共契约 | 保持版本化公共 barrel；按 event、projection、recovery 分组时维持序列化兼容 | E |
 | `packages/harness/src/runtime-awareness.ts` | 311 | Runtime 时钟、能力快照/探针和有界当前/上一轮执行状态注入 | 保持 Runtime awareness facade；后续将 capability projection 与 timing formatter 分离，新增事实继续位于 cache boundary 后 | E |
 | `packages/memory-tree/src/memory-repository/resource-store.ts` | 454 | 资源注册、生命周期、重绑定和审计 | 分离 registry、lifecycle、rebind、audit | D |
 | `packages/memory-tree/src/v3/event-journal.ts` | 451 | Memory v3 event 与 operation journal 的同构恢复语义 | 契约稳定后拆为两个 store，共享 bounded journal codec | D |
@@ -224,5 +225,6 @@
 | `packages/tools/src/tool-execution-service.ts` | E / Tools | Web 工具接线需要保持统一校验、审批、事件、取消和持久化投影不变量；先完成 WB-09 发布矩阵，再拆 invocation lifecycle 与 Web result projection | 660 | 2026-09-24 |
 | `packages/app/src/main/index.ts` | C / App Main | Electron 启动装配仍需以严格顺序协调数据根、窗口状态恢复、Local App API、Runner 和插件宿主；新增启动可见性与窗口状态调用使入口越过原 600 行软上限，后续将 bootstrap orchestration 下沉到独立服务 | 620 | 2026-09-24 |
 | `packages/harness/src/stages/execute/tool-loop.ts` | E / Harness | 工具循环的审批、调用、失败与消息续接不变量刚完成 durable 观测接入；先冻结特征测试与 effect 生命周期，再拆 loop policy、invocation adapter 和 transcript | 620 | 2026-09-24 |
+| `packages/harness/src/durable-kernel.ts` | E / Harness | 恢复、并发 cursor、effect lifecycle 和 authoritative settlement 刚接入；先冻结跨实例并发与重启恢复特征测试，再拆 event reducer、recovery policy 和 settlement policy | 900 | 2026-09-24 |
 | `packages/harness/src/cache-observability.ts` | E / Harness | Provider、Context、Memory/Embedding 三套账本刚接入 request-bound 脱敏观测；先冻结 CACHE-03/04/05 确定性矩阵，再按 ledger、fingerprint、report 拆分 | 680 | 2026-09-24 |
 | `packages/harness/src/model-observability.ts` | E / Harness | 模型请求、Context、Provider usage 与缓存证据刚形成统一关联；先完成真实 usage 和 durable replay 证据，再拆 provider reconciliation 与 request snapshot projection | 680 | 2026-09-24 |

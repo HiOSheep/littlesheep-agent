@@ -80,6 +80,29 @@ export class RunRouter {
 
   static async create(initialRunner: AgentRunner): Promise<RunRouter> {
     const router = new RunRouter()
+    const durableEventStore = initialRunner.infra?.durableEventStore
+    if (durableEventStore?.listRuns && initialRunner.recoverDurableRun) {
+      try {
+        const durableRuns = await durableEventStore.listRuns()
+        for (const durableRun of durableRuns) {
+          try {
+            const recovery = await initialRunner.recoverDurableRun(
+              asSessionId(durableRun.sessionId),
+              durableRun.runId,
+            )
+            if (recovery.actions.length > 0) {
+              console.info(`[durable-harness] recovered ${durableRun.runId}: ${recovery.actions.map((action) => action.kind).join(', ')}`)
+            }
+          } catch (error) {
+            // A corrupt or concurrently-owned run must remain visible for a
+            // later operator decision; startup of the Local API still proceeds.
+            console.error(`[durable-harness] recovery failed for ${durableRun.runId}: ${(error as Error).message}`)
+          }
+        }
+      } catch (error) {
+        console.error(`[durable-harness] startup run discovery failed: ${(error as Error).message}`)
+      }
+    }
     try {
       const recovered = await initialRunner.runCheckpoints?.recoverInterruptedResumes(
         'application restarted before checkpoint continuation completed',
