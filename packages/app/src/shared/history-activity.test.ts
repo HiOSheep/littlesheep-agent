@@ -196,6 +196,24 @@ describe('durable history activity reconstruction', () => {
     expect(JSON.stringify(history)).not.toContain('unconfirmed model proposal')
   })
 
+  it('hides an unsettled proposal even when no execution log exists', () => {
+    const messages: Message[] = [{
+      id: 'assistant-proposal-no-log', role: 'assistant', runId: 'run-no-log', stage: 'finalize',
+      timestamp: '2026-07-11T01:00:04.000Z',
+      content: [{ type: 'text', text: 'proposal without a log' }],
+      finalReplySettlement: {
+        version: 1,
+        settlementId: 'settlement-no-log',
+        reply: 'proposal without a log',
+        replyFingerprint: 'fingerprint-no-log',
+        modelRequestId: 'request-no-log',
+        status: 'proposed',
+      },
+    }]
+
+    expect(buildHistoryMessages(messages, new Map())).toEqual([])
+  })
+
   it('restores a proposed transcript message only when its execution log is settled', () => {
     const settlement = {
       version: 1 as const,

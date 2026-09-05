@@ -7,6 +7,7 @@ import type {
   RunContext,
   StageName,
 } from '@littlesheep/types';
+import { filterAuthoritativeUserFacingMessages } from '@littlesheep/types';
 import type { ChatMessage } from '@littlesheep/llm';
 
 export interface BuildRunRequestCandidatesOptions {
@@ -33,7 +34,11 @@ export function buildRunRequestCandidates(
   messages: ChatMessage[],
   options: BuildRunRequestCandidatesOptions = {},
 ): ContextMessageCandidate[] {
-  const history = options.history ?? ctx.history;
+  // Callers may provide a history slice assembled outside buildRunContext
+  // (for example during recovery or a direct stage test). Enforce the same
+  // publication boundary here so an unconfirmed FINALIZE proposal can never
+  // become a model candidate merely by bypassing the normal context builder.
+  const history = filterAuthoritativeUserFacingMessages(options.history ?? ctx.history);
   const historyPriorities = conversationContinuityPriorities(history, ctx.inbound);
   const historyEvictionGroups = conversationTurnEvictionGroups(history, stage);
   const inserted = options.insertedBeforePrimary ?? [];

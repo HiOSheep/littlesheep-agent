@@ -27,7 +27,7 @@ import type {
   SessionRunSummary,
   CacheObservation,
 } from '@littlesheep/types';
-import { sanitizeWebEvidenceProjection } from '@littlesheep/types';
+import { filterAuthoritativeUserFacingMessages, sanitizeWebEvidenceProjection } from '@littlesheep/types';
 import type { SessionManager } from '@littlesheep/session';
 import type { MemoryBootstrapServiceLike } from '@littlesheep/memory-tree';
 import type { Config } from '@littlesheep/config';
@@ -133,6 +133,8 @@ export interface BuildRunContextOptions {
   runtimeEventQueue?: RuntimeEventQueueLike;
   /** Ordered durable event sink owned by the Runner/runtime adapter. */
   appendDurableEvent?: RunContext['appendDurableEvent'];
+  /** Defer final-reply settlement until Runner-owned audit persistence completes. */
+  deferFinalReplySettlement?: boolean;
   /** Directory containing bootstrap .md files (defaults to cwd). */
   bootstrapDir?: string;
   /** Unified memory/resource service used to register and load bootstrap authorities. */
@@ -184,7 +186,8 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     opts.sessionManager.readRecent(opts.sessionId, keepRecent),
     opts.sessionManager.loadMetadata(opts.sessionId),
   ]);
-  const pendingClarification = latestPendingClarification(rawHistory);
+  const authoritativeHistory = filterAuthoritativeUserFacingMessages(rawHistory);
+  const pendingClarification = latestPendingClarification(authoritativeHistory);
   const clarificationResponse: ClarificationResponse | undefined = pendingClarification
     ? {
         requestId: pendingClarification.id,
@@ -200,7 +203,7 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
   // 'user' and extracts empty text from tool_calls/tool_result blocks, which
   // would pollute the conversation. EXECUTE rebuilds tool messages each run.
   const excludedMessageIds = new Set(opts.historyExcludeMessageIds ?? []);
-  const history = rawHistory.filter((m) => {
+  const history = authoritativeHistory.filter((m) => {
     if (excludedMessageIds.has(m.id)) return false;
     if (m.role === 'tool') return false;
     return m.content.some((c) => c.type === 'text');
@@ -266,6 +269,7 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     attachments: opts.attachments,
     resolvedRunConfig: opts.resolvedRunConfig,
     appendDurableEvent: opts.appendDurableEvent,
+    ...(opts.deferFinalReplySettlement ? { deferFinalReplySettlement: true } : {}),
     ...(opts.cacheObservationKey !== undefined ? { cacheObservationKey: opts.cacheObservationKey } : {}),
     ...(opts.persistCacheObservation ? { persistCacheObservation: opts.persistCacheObservation } : {}),
     ...(opts.capabilitySnapshot ? { capabilitySnapshot: opts.capabilitySnapshot } : {}),

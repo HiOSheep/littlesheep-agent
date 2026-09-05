@@ -1,6 +1,6 @@
 # LittleSheep 模块拆分地图
 
-最后更新：2026-09-03 10:18:00
+最后更新：2026-09-05 12:21:57
 
 本文件记录大型生产文件的当前所有权、目标边界和拆分顺序。它是仓库基元化任务书的阶段产物，不替代项目状态，也不把行数当成唯一质量指标。
 
@@ -14,11 +14,11 @@
 
 ## 强制拆分队列
 
-下表行数是当前工作树的物理行数，不是历史完成值。生产 `.ts/.tsx` 文件超过 600 行必须进入本表；已登记不等于要求立即做无收益拆分。当前仓库卫生扫描共有 120 个生产文件超过 300 行，其中 19 个超过 600 行并进入受控清单。
+下表行数是当前工作树的物理行数，不是历史完成值。生产 `.ts/.tsx` 文件超过 600 行必须进入本表；已登记不等于要求立即做无收益拆分。当前仓库卫生扫描共有 120 个生产文件超过 300 行，其中 20 个超过 600 行并进入受控清单。
 
 | 当前文件 | 当前行数 | 当前责任 | 目标边界 | 所有权 |
 | --- | ---: | --- | --- | --- |
-| `packages/runner/src/runner.ts` | 2144 | run 生命周期、输入装配、Memory 反馈、日志、检查点持久化/续跑、活动任务注册、后台维护准入透传和资源收尾 | 保持应用服务 facade；活动快照与中断/超时所有权已下沉，继续下沉日志、检查点和收尾协调；checkpoint 预算重concile 保持在 `run-checkpoint.ts` 边界 | E |
+| `packages/runner/src/runner.ts` | 2534 | run 生命周期、输入装配、Memory 反馈、日志、检查点持久化/续跑、活动任务注册、后台维护准入透传、durable final-reply publication 和资源收尾 | 保持应用服务 facade；活动快照与中断/超时所有权已下沉，继续下沉日志、检查点、finalize publication 和收尾协调；checkpoint 预算 reconcile 保持在 `run-checkpoint.ts` 边界 | E |
 | `packages/runner/src/durable-event-store.ts` | 289 | 哈希分区、append-only event 文件、cursor/idempotency 校验和 fail-closed replay | 保持文件 store facade；后续按 codec、partition IO、replay query 拆分 | E |
 | `packages/runner/src/durable-inbox-store.ts` | 338 | 持久 command inbox、claim lease、重启 requeue、complete/fail 和幂等校验 | 保持 inbox facade；后续按 codec、lease policy、query 拆分 | E |
 | `packages/harness/src/cache-observability.ts` | 642 | Provider、Context、Memory/Embedding 三套缓存账本、脱敏指纹和失效原因 | 保持观测适配器边界；真实 Provider 对账与 durable event log 接入后按 ledger、fingerprint、report 拆分 | E |
@@ -84,7 +84,7 @@
 | `packages/app/src/renderer/workspace/file-navigator.tsx` | 436 | 目录缓存、筛选、展开路径、文件树和可见性取消 | 与 `navigator-frame.tsx` 共享壳；建立树状态特征测试后再拆 controller/view；目录请求取消与缓存恢复保持在独立 loader 边界 | B |
 | `packages/harness/src/taskbook-patch.ts` | 525 | TaskBook 局部修订契约、校验和合并 | 保持纯任务书补丁边界；若继续增长，分离 schema、merge 和 validation | E |
 | `packages/memory-tree/src/memory-repository/v3-atom-management.ts` | 443 | Atom move/merge/revise/invalidate/reactivate 原子 mutation 与审计 | 保持持久化 mutation 边界；语义准入留在独立 service | D |
-| `packages/runner/src/execution-log.ts` | 469 | 执行日志 schema、写入、查询与按会话原子摘要 sidecar | 分离 codec、store、query 与 latest-summary store | E |
+| `packages/runner/src/execution-log.ts` | 625 | 执行日志 schema、写入、查询、final-reply settlement promotion 与按会话原子摘要 sidecar | 分离 codec、store、query、settlement promotion 与 latest-summary store；先冻结 settlement/replay 特征测试 | E |
 | `packages/session/src/manager.ts` | 438 | 会话 JSONL、metadata、回复指纹、压缩投影与摘要 activation facade | 保持 facade；继续增长时拆 compaction/activation adapter | E |
 | `packages/session/src/reply-fingerprint-store.ts` | 307 | 旧文本回复去重、final settlement reservation/settle sidecar、会话重启恢复与原子锁 | 保持会话级幂等存储边界；继续增长时分离 legacy fingerprint 与 settlement registry codec | E |
 | `packages/memory-tree/src/v3/atom-store.ts` | 437 | atom 原子读写、轻量索引、扫描、层级和隔离 | 保持 store facade；规模验收稳定后分离 scanner/quarantine | D |
@@ -212,7 +212,8 @@
 | `packages/app/src/renderer/app-shell/use-app-controller.ts` | B / Renderer | 启动恢复、Runtime 设置与会话投影仍共享跨领域不变量；先冻结兼容 facade 和状态快照特征测试，再下沉持久化与恢复编排 | 700 | 2026-09-24 |
 | `packages/channels/qqbot/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与协议适配端口稳定后拆分；本轮只补充连续性 request identity 透传 | 820 | 2026-09-24 |
 | `packages/memory-tree/src/project-memory-projection.ts` | D / Memory | 投影事务、冲突与恢复必须在特征测试覆盖后迁移 | 780 | 2026-09-24 |
-| `packages/runner/src/runner.ts` | E / Runtime | run 生命周期、输入装配、检查点续跑、后台维护准入透传和资源收尾仍共享跨阶段不变量；本轮 durable settlement/replay 接入后上限调整，先冻结恢复与幂等特征测试，连续性恢复入口完成后再拆分 | 2180 | 2026-09-24 |
+| `packages/runner/src/runner.ts` | E / Runtime | run 生命周期、输入装配、检查点续跑、后台维护准入透传、durable final-reply publication 和资源收尾仍共享跨阶段不变量；本轮 settlement/replay 接入后上限调整，先冻结恢复、幂等和单一发布特征测试，再拆分协调职责 | 2600 | 2026-09-24 |
+| `packages/runner/src/execution-log.ts` | E / Runtime | execution log 现在还负责 final-reply settlement promotion；必须先保持审计、transcript 和 settlement identity 一致，再拆分 codec/store/query | 680 | 2026-09-24 |
 | `packages/types/src/runtime-contracts.ts` | E / Runtime | Context、事件、检查点和执行证据仍共享版本边界；拆分时必须保持现有 barrel 与持久化兼容 | 900 | 2026-09-24 |
 | `packages/runner/src/runtime-event-queue.ts` | E / Runtime | 安全边界接入已经完成；租约、结算、快照恢复与 ActiveRunRegistry 契约刚稳定，补齐拆分特征测试后再下沉 codec/registry | 760 | 2026-09-24 |
 | `packages/runner/src/run-checkpoint-store.ts` | E / Runtime | 检查点 codec、原子存储、查询、容量、保留期和稳定 conversation-turn identity 共享恢复不变量；完成查询拆分前保持 facade 稳定 | 900 | 2026-09-24 |

@@ -147,6 +147,25 @@ export function normalizeUserFacingReply(value: string): string {
     .toLowerCase();
 }
 
+/**
+ * Whether a persisted message is safe to use as conversational context or to
+ * expose through a user-facing history projection. FINALIZE proposals are
+ * audit facts until the durable settlement registry and event projection both
+ * confirm them; feeding them back to the model would let an unconfirmed reply
+ * become apparent conversation history after a restart.
+ */
+export function isAuthoritativeUserFacingMessage(message: Message): boolean {
+  return !(message.role === 'assistant'
+    && message.stage === 'finalize'
+    && message.finalReplySettlement !== undefined
+    && message.finalReplySettlement.status !== 'settled');
+}
+
+/** Filter a transcript for model/UI projections without altering raw audit data. */
+export function filterAuthoritativeUserFacingMessages(messages: readonly Message[]): Message[] {
+  return messages.filter(isAuthoritativeUserFacingMessage);
+}
+
 /** Stage names that may tag a message (imported lazily to avoid cycle). */
 type StageName =
   | 'enter'

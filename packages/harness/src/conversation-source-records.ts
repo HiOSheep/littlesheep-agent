@@ -20,7 +20,15 @@ export function collectConversationSourceRecords(ctx: RunContext): MemoryConvers
     }
   }
 
-  if (ctx.reply?.trim()) {
+  const finalizeProposal = [...ctx.produced].reverse().find((message) => (
+    message.role === 'assistant'
+    && message.stage === 'finalize'
+    && message.finalReplySettlement !== undefined
+  ));
+  const hasUnsettledFinalizeProposal = Boolean(finalizeProposal
+    && finalizeProposal.finalReplySettlement?.status !== 'settled'
+    && ctx.finalReplySettlement?.status !== 'settled');
+  if (ctx.reply?.trim() && !hasUnsettledFinalizeProposal) {
     records.push({
       id: sourceId(ctx.runId, 'assistant-reply'),
       kind: 'assistant-reply',

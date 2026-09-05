@@ -136,6 +136,10 @@ export {
 } from './run-checkpoint-control.js';
 
 export {
+  RunnerPersistenceError,
+} from './runner-persist.js';
+
+export {
   RunCheckpointDispositionStore,
   DEFAULT_RUN_CHECKPOINT_DISPOSITION_MAX_RECORDS,
   MAX_RUN_CHECKPOINT_DISPOSITION_MAX_RECORDS,

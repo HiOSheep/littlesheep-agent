@@ -16,6 +16,57 @@ export interface FinalizeStageDeps {
   sessionManager: SessionManager;
 }
 
+/**
+ * Complete a Runner-owned deferred final-reply publication. The transcript
+ * and proposal must already be durable; this function only commits the
+ * registry/event settlement and updates the in-memory projection.
+ */
+export async function settleDeferredFinalReply(ctx: RunContext): Promise<void> {
+  const reservation = ctx.pendingFinalReplySettlement;
+  if (!reservation) return;
+  let eventSettled = false;
+  try {
+    await ctx.appendDurableEvent?.({
+      type: 'final_reply_settled',
+      source: 'runtime',
+      eventId: `${ctx.runId}:final-reply-settled`,
+      idempotencyKey: `${ctx.runId}:final-reply-settled`,
+      payload: {
+        reply: reservation.reply,
+        replyFingerprint: reservation.replyFingerprint,
+        modelRequestId: reservation.modelRequestId,
+        ...(ctx.modelRequests?.find((request) => request.id === reservation.modelRequestId)?.requestIndex !== undefined
+          ? { modelRequestIndex: ctx.modelRequests.find((request) => request.id === reservation.modelRequestId)!.requestIndex }
+          : {}),
+        settlementId: reservation.settlementId,
+      },
+    });
+    eventSettled = true;
+    ctx.finalReplyEventSettled = true;
+    if (ctx.settleUserFacingReplySettlement) {
+      await ctx.settleUserFacingReplySettlement(reservation);
+      ctx.finalReplyRegistrySettled = true;
+    }
+    const settled: FinalReplySettlement = { ...reservation, status: 'settled' };
+    writeReplyState(ctx, 'finalize', { finalReplySettlement: settled });
+    for (const message of ctx.produced) {
+      if (message.role === 'assistant' && message.stage === 'finalize'
+        && message.finalReplySettlement?.settlementId === reservation.settlementId) {
+        message.finalReplySettlement = settled;
+      }
+    }
+    ctx.pendingFinalReplySettlement = undefined;
+  } catch (error) {
+    ctx.toolContext.log?.('error', `finalize: deferred reply settlement failed: ${(error as Error).message}`);
+    // Leave both the proposal and a possibly-written final event recoverable.
+    // Runtime status cannot safely follow an uncertain final-event append, and
+    // it also cannot follow a confirmed final event while registry repair is
+    // pending. Durable recovery retries the missing cross-store step.
+    if (!eventSettled) ctx.finalReplySettlementUncertain = true;
+    throw error;
+  }
+}
+
 /** Factory: creates a finalize stage. */
 export function createFinalizeStage(deps: FinalizeStageDeps) {
   return async function finalizeStage(ctx: RunContext): Promise<StageResult> {
@@ -132,6 +183,23 @@ export function createFinalizeStage(deps: FinalizeStageDeps) {
       ctx.toolContext.log?.('error', `finalize: persist failed: ${(err as Error).message}`);
       await settleRuntimeFailure(ctx, 'session_persist_failed');
       return runtimeFailure(ctx, `finalize could not persist the assistant reply: ${(err as Error).message}`);
+    }
+    if (ctx.deferFinalReplySettlement) {
+      // The next Runner path owns the complete publication gate. Keep the
+      // transcript and proposal durable, then let it persist audit facts and
+      // settle the registry/event atomically from the caller's perspective.
+      ctx.pendingFinalReplySettlement = reservation;
+      writeReplyState(ctx, 'finalize', { finalReplySettlement: proposedSettlement });
+      return {
+        stage: 'finalize',
+        next: 'exit',
+        ok: true,
+        meta: {
+          produced: ctx.produced.length,
+          memoryContinuityAssessment: ctx.memoryContinuityAssessment,
+          finalReplySettlementDeferred: true,
+        },
+      };
     }
     try {
       if (ctx.settleUserFacingReplySettlement) {

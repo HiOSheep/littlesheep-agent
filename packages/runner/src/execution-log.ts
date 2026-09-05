@@ -276,6 +276,52 @@ export class ExecutionLogStore {
     }
   }
 
+  /**
+   * Promote a durable FINALIZE proposal after the session registry and event
+   * projection have both settled. The operation is idempotent so startup
+   * recovery can repair a log that was left at `proposed` after a crash.
+   */
+  async settleFinalReply(runId: string, settlement: FinalReplySettlement): Promise<ExecutionLog> {
+    if (settlement.status !== 'settled') {
+      throw new Error(`execution log final reply must be settled: ${runId}`);
+    }
+    const file = this.filePath(runId);
+    const lock = await acquireLock(file, 60_000);
+    try {
+      const existing = await this.read(runId);
+      if (!existing) throw new Error(`execution log not found: ${runId}`);
+
+      const current = existing.finalReplySettlement;
+      if (current && !sameFinalReplyIdentity(current, settlement)) {
+        throw new Error(`execution log final reply conflicts: ${runId}`);
+      }
+      if (current?.status === 'settled') return existing;
+      if (current && current.status !== 'proposed') {
+        throw new Error(`execution log final reply has invalid status: ${runId}`);
+      }
+      if (existing.reply && existing.reply !== settlement.reply) {
+        throw new Error(`execution log reply conflicts: ${runId}`);
+      }
+
+      const promoted: ExecutionLog = {
+        ...existing,
+        reply: settlement.reply,
+        finalReplySettlement: structuredClone(settlement),
+      };
+      const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
+      try {
+        await writeFile(temporary, JSON.stringify(promoted, null, 2), { encoding: 'utf8', flag: 'wx' });
+        await rename(temporary, file);
+      } catch (error) {
+        await rm(temporary, { force: true }).catch(() => undefined);
+        throw error;
+      }
+      return promoted;
+    } finally {
+      await lock.release();
+    }
+  }
+
   /** Attach the post-run checkpoint after the audit record itself has been written. */
   async attachVersionCheckpoint(
     runId: string,
@@ -372,6 +418,14 @@ function shouldRetainExecutionLog(existing: ExecutionLog, incoming: ExecutionLog
   const incomingControlFailure = Boolean(incoming.conversationContinuation?.failure);
   if (existingControlFailure && !incomingControlFailure) return false;
   return !existingControlFailure || incomingControlFailure;
+}
+
+function sameFinalReplyIdentity(left: FinalReplySettlement, right: FinalReplySettlement): boolean {
+  return left.version === right.version
+    && left.settlementId === right.settlementId
+    && left.reply === right.reply
+    && left.replyFingerprint === right.replyFingerprint
+    && left.modelRequestId === right.modelRequestId;
 }
 
 const MAX_TOOL_INVOCATIONS_PER_LOG = 256;

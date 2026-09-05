@@ -1,6 +1,6 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-09-02 18:42:00
+最后更新：2026-09-05 12:21:57
 
 本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
 
@@ -8,7 +8,7 @@
 
 **当前 P0 阻断项（2026-08-13）**：已确认普通聊天回答没有自动绑定同会话的 `waiting_user` Checkpoint。故障不是历史文本缺失，而是任务、执行现场、附件、临时工具和恢复阶段没有随回答一起续接；因此用户补充权限和工具后仍可能被当成独立新请求重新澄清。专项修复尚未开始，实施与验收以 [对话任务连续性 P0 专项任务书](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md) 为准；在文本、任务、执行现场、资源和最终回答五层全部通过前，不得宣称连续性问题已解决。
 
-**新 Harness 重建已建立冻结基线（2026-09-02）**：当前完整工作树已提交为 `a925a508c009505c474faecd5419f9256bc89f5f`，并推送 `freeze-2026-09-02` tag。新 Harness 不直接覆盖旧路径；先按[新 Harness 重建与 Prompt Cache 收敛任务书](taskbooks/harness-rebuild-and-cache-taskbook-2026-09-02.md)完成开源底座许可证/供应链评估、旧 Harness 的脱敏缓存观测和双路径回滚设计。缓存根因未确认前，不先改 Context 或减少请求。
+**冻结锚点仍保持有效（2026-09-05）**：`freeze-2026-09-02` 仍指向原冻结提交 `a925a508c009505c474faecd5419f9256bc89f5f`；其后的 Harness/cache 增量继续在 `main` 上开发，不能把当前工作树误称为已重新冻结。最近一轮已补齐 next Harness 的 durable final-reply settlement/replay 边界、transcript/source 修复和 SSE 临时文本清理，待质量门通过后作为新的独立提交推送。新 Harness 不直接覆盖旧路径；仍按[新 Harness 重建与 Prompt Cache 收敛任务书](taskbooks/harness-rebuild-and-cache-taskbook-2026-09-02.md)推进开源底座评估、旧 Harness 脱敏缓存观测和双路径回滚设计。缓存根因未确认前，不先改 Context 或减少请求。
 
 **阶段 5M 状态覆盖（2026-08-10）**：阶段 5M 已完成并已独立提交、推送。审计确认 checkpoint 的 `contextSnapshotIds`、`RunContext` 的 `contextSnapshots` 与 execution log 的模型观测此前没有共享同一截断边界；现统一使用 `MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN = 64`，checkpoint 和 execution log 均只保留最近 64 条，request 的 `contextSnapshotId` 仍与持久化 snapshot 保持关联，checkpoint schema 与 ownership group 不变。
 

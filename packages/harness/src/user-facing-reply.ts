@@ -7,7 +7,7 @@ import type {
   RunContextContractStage,
   UserFacingReplyPurpose,
 } from '@littlesheep/types';
-import { normalizeUserFacingReply } from '@littlesheep/types';
+import { filterAuthoritativeUserFacingMessages, normalizeUserFacingReply } from '@littlesheep/types';
 import { textOf } from './stages/_shared.js';
 import { writeReplyState } from './reply-state.js';
 import { finalReplyFingerprint, finalReplySettlementId } from './final-reply-identity.js';
@@ -171,7 +171,7 @@ export async function acceptUniqueUserFacingReply(
 
 export function collectRecentAssistantReplies(ctx: Pick<RunContext, 'history' | 'produced'>): string[] {
   const replies: string[] = [];
-  for (const message of [...ctx.history, ...ctx.produced]) {
+  for (const message of filterAuthoritativeUserFacingMessages([...ctx.history, ...ctx.produced])) {
     if (message.role !== 'assistant') continue;
     const text = messageText(message).trim();
     if (!text) continue;

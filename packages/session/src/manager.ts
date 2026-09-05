@@ -331,7 +331,7 @@ export class SessionManager implements SessionManagerLike {
     sessionId: SessionId,
     reservation: FinalReplyReservation,
   ): Promise<void> {
-    return this.replyFingerprints.settleSettlement(sessionId, reservation);
+    return this.settleAssistantReplySettlementAndTranscript(sessionId, reservation);
   }
 
   assistantReplySettlementStatus(
@@ -339,6 +339,75 @@ export class SessionManager implements SessionManagerLike {
     settlementId: string,
   ): Promise<'reserved' | 'settled' | undefined> {
     return this.replyFingerprints.settlementStatus(sessionId, settlementId);
+  }
+
+  /**
+   * Settle the registry and promote the matching transcript proposal. The two
+   * stores remain independently recoverable: if the transcript rewrite fails
+   * after the sidecar commit, the next recovery pass retries this idempotently.
+   */
+  private async settleAssistantReplySettlementAndTranscript(
+    sessionId: SessionId,
+    reservation: FinalReplyReservation,
+  ): Promise<void> {
+    await this.replyFingerprints.settleSettlement(sessionId, reservation);
+    await this.promoteSettledReplyInTranscript(sessionId, reservation);
+  }
+
+  private async promoteSettledReplyInTranscript(
+    sessionId: SessionId,
+    reservation: FinalReplyReservation,
+  ): Promise<void> {
+    const file = this.sessionFile(sessionId);
+    if (!existsSync(file)) return;
+    const handle = await acquireLock(file, this.opts.lockTimeoutMs ?? 60000);
+    try {
+      const raw = await readFile(file, 'utf8');
+      const lines = raw.split('\n');
+      let changed = false;
+      const next = lines.map((line) => {
+        if (!line.trim()) return line;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(line);
+        } catch {
+          // Preserve corrupt/unknown lines exactly as the normal session
+          // reader does; a settlement repair must not discard user data.
+          return line;
+        }
+        if (!parsed || typeof parsed !== 'object') return line;
+        const candidate = parsed as Partial<Message> & { type?: string };
+        if (candidate.type === 'metadata'
+          || candidate.role !== 'assistant'
+          || candidate.stage !== 'finalize'
+          || !candidate.finalReplySettlement
+          || candidate.finalReplySettlement.settlementId !== reservation.settlementId) {
+          return line;
+        }
+        const current = candidate.finalReplySettlement;
+        if (current.reply !== reservation.reply
+          || current.replyFingerprint !== reservation.replyFingerprint
+          || current.modelRequestId !== reservation.modelRequestId) {
+          throw new Error(`session: final reply transcript conflicts: ${reservation.settlementId}`);
+        }
+        if (current.status === 'settled') return line;
+        if (current.status !== 'proposed') {
+          throw new Error(`session: final reply transcript has invalid status: ${reservation.settlementId}`);
+        }
+        changed = true;
+        return JSON.stringify({
+          ...candidate,
+          finalReplySettlement: {
+            ...reservation,
+            status: 'settled',
+          },
+        });
+      });
+      if (!changed) return;
+      await atomicWriteText(file, next.join('\n'));
+    } finally {
+      await handle.release();
+    }
   }
 
   async commitCompaction(sessionId: SessionId, summary: CompactionSummaryV2): Promise<void> {

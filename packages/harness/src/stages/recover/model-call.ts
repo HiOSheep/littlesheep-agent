@@ -1,5 +1,5 @@
 import type { ChatMessage } from '@littlesheep/llm';
-import type { RunContext } from '@littlesheep/types';
+import { filterAuthoritativeUserFacingMessages, type RunContext } from '@littlesheep/types';
 import { buildRunRequestCandidates } from '../../context-candidates.js';
 import {
   preferDirectModelOutput,
@@ -10,7 +10,7 @@ import {
 } from '../../model-observability.js';
 import { appendSystemPromptAddons, buildUserFacingVoiceAddon } from '../../profile-prompt.js';
 import type { ReplyRewriteInput } from '../../user-facing-reply.js';
-import { callLlmForJson, textOf, toChatMessage } from '../_shared.js';
+import { callLlmForJson, recentHistoryForModel, textOf, toChatMessage } from '../_shared.js';
 import {
   type DecodedRecovery,
   type RecoverStageDeps,
@@ -25,7 +25,11 @@ export async function requestRecoveryDecision(
     ok: result.ok,
     error: result.error,
   }));
-  const recoveryHistory = ctx.history.slice(-3);
+  const recoveryHistory = recentHistoryForModel(
+    filterAuthoritativeUserFacingMessages(ctx.history),
+    3,
+    2_000,
+  );
   const messages: ChatMessage[] = [
     {
       role: 'system',

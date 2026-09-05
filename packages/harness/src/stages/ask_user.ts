@@ -10,6 +10,7 @@ import type {
   StageResult,
   StageName,
 } from '@littlesheep/types';
+import { filterAuthoritativeUserFacingMessages } from '@littlesheep/types';
 import type { ChatRequest, LlmClient } from '@littlesheep/llm';
 import { buildRunRequestCandidates } from '../context-candidates.js';
 import {
@@ -156,7 +157,7 @@ function attachClarificationChain(
 ): ClarificationRequest {
   const response = ctx.clarificationResponse;
   if (!response) return request;
-  const prior = [...ctx.history]
+  const prior = [...filterAuthoritativeUserFacingMessages(ctx.history)]
     .reverse()
     .find((message) => (
       message.role === 'assistant'

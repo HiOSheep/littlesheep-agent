@@ -16,6 +16,7 @@ import type {
   ModelRequestSnapshot,
   SessionRunSummary,
   ToolInvocationRecord,
+  FinalReplySettlement,
 } from '@littlesheep/types';
 import { MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN } from '@littlesheep/context';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
@@ -230,6 +231,44 @@ describe('ExecutionLogStore', () => {
     expect(log!.durationMs).toBe(5000);
     expect(log!.runtimeResources).toEqual(input.runtimeResources);
     expect(log!.toolCalls).toEqual([]);
+  });
+
+  it('promotes a proposed final-reply settlement idempotently', async () => {
+    const settlement: FinalReplySettlement = {
+      version: 1,
+      settlementId: 'run-settlement-promotion:final-reply',
+      reply: 'settled reply',
+      replyFingerprint: 'a'.repeat(64),
+      modelRequestId: 'request-settlement-promotion',
+      status: 'settled',
+    };
+    await store.write({
+      runId: 'run-settlement-promotion',
+      sessionId: 'session-settlement-promotion',
+      startedAt: '2026-09-05T00:00:00.000Z',
+      endedAt: '2026-09-05T00:00:01.000Z',
+      status: 'ok',
+      model: 'test/model',
+      inboundText: 'settle this',
+      reply: settlement.reply,
+      finalReplySettlement: { ...settlement, status: 'proposed' },
+      trace: [],
+      messages: [],
+      durationMs: 1_000,
+    });
+
+    await expect(store.settleFinalReply('missing-settlement-run', settlement)).rejects.toThrow(/not found/);
+    await expect(store.settleFinalReply('run-settlement-promotion', settlement)).resolves.toMatchObject({
+      finalReplySettlement: settlement,
+      reply: settlement.reply,
+    });
+    await expect(store.settleFinalReply('run-settlement-promotion', settlement)).resolves.toMatchObject({
+      finalReplySettlement: settlement,
+    });
+    await expect(store.read('run-settlement-promotion')).resolves.toMatchObject({
+      finalReplySettlement: settlement,
+      reply: settlement.reply,
+    });
   });
 
   it('read 不存在的 runId → null', async () => {

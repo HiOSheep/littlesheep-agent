@@ -110,6 +110,7 @@ export {
 export { writeReplanState, type ReplanStateUpdate } from './replan-state.js';
 export { clearReplyState, writeReplyState, type ReplyStateUpdate } from './reply-state.js';
 export { finalReplyFingerprint, finalReplySettlementId } from './final-reply-identity.js';
+export { settleDeferredFinalReply } from './stages/finalize.js';
 export { writeRuntimeState, type RuntimeStateUpdate } from './runtime-state.js';
 export { writeCapabilityState, type CapabilityStateUpdate } from './capability-state.js';
 export { writeMemoryState, type MemoryStateUpdate } from './memory-state.js';

@@ -356,6 +356,43 @@ describe('buildRunContext', () => {
     expect(ctx.history.every((m) => m.role !== 'tool')).toBe(true);
   });
 
+  it('does not feed an unsettled FINALIZE proposal back into model history', async () => {
+    const proposal = textMessage('assistant', 'proposal must stay audit-only', {
+      stage: 'finalize',
+      finalReplySettlement: {
+        version: 1,
+        settlementId: 'settlement-proposal',
+        reply: 'proposal must stay audit-only',
+        replyFingerprint: 'fingerprint-proposal',
+        modelRequestId: 'request-proposal',
+        status: 'proposed',
+      },
+    });
+    const settled = textMessage('assistant', 'settled history is allowed', {
+      stage: 'finalize',
+      finalReplySettlement: {
+        version: 1,
+        settlementId: 'settlement-settled',
+        reply: 'settled history is allowed',
+        replyFingerprint: 'fingerprint-settled',
+        modelRequestId: 'request-settled',
+        status: 'settled',
+      },
+    });
+    const ctx = await buildRunContext({
+      sessionId: 's1',
+      inbound: textMessage('user', 'continue'),
+      sessionManager: createMockSessionManager({ history: [proposal, settled] }),
+      memoryStore: createMockMemoryStore(),
+      tools: [],
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'm',
+    });
+
+    expect(ctx.history).toEqual([settled]);
+  });
+
   it('links the next inbound message to the latest clarification request', async () => {
     const request = {
       id: 'run-1:clarification',

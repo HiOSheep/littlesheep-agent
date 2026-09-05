@@ -19,8 +19,20 @@ export interface PersistRunnerPhaseOptions<TResult extends PersistableRunnerResu
   runtimeResourceObservation: unknown;
   executionLogStore: ExecutionLogStore;
   activeCheckpoint?: RunGitCheckpoint;
+  /** Next-Harness runs make audit persistence a publication prerequisite. */
+  strict?: boolean;
   onCheckpointCompleted: (completed: boolean) => void;
   log?: (level: 'info' | 'warn' | 'error', msg: string, data?: unknown) => void;
+}
+
+export class RunnerPersistenceError extends Error {
+  readonly failures: readonly string[];
+
+  constructor(failures: readonly string[]) {
+    super(`required runner persistence failed: ${failures.join(', ')}`);
+    this.name = 'RunnerPersistenceError';
+    this.failures = [...failures];
+  }
 }
 
 /** Persist the audit log, latest session summary, and version checkpoint. */
@@ -28,6 +40,7 @@ export async function persistRunnerPhase<TResult extends PersistableRunnerResult
   options: PersistRunnerPhaseOptions<TResult>,
 ): Promise<void> {
   const { result } = options;
+  const failures: string[] = [];
   try {
     await options.executionLogStore.write({
       runId: result.runId,
@@ -72,6 +85,7 @@ export async function persistRunnerPhase<TResult extends PersistableRunnerResult
     });
   } catch (err) {
     options.log?.('error', `runner: failed to write execution log: ${(err as Error).message}`);
+    if (options.strict) failures.push('execution_log');
   }
 
   try {
@@ -86,6 +100,7 @@ export async function persistRunnerPhase<TResult extends PersistableRunnerResult
     }));
   } catch (err) {
     options.log?.('warn', `runner: failed to persist last-run timing summary: ${(err as Error).message}`);
+    if (options.strict) failures.push('session_summary');
   }
 
   if (options.activeCheckpoint) {
@@ -95,8 +110,11 @@ export async function persistRunnerPhase<TResult extends PersistableRunnerResult
       sessionId: options.sessionId,
       startedAtMs: options.startedAt,
       executionLogStore: options.executionLogStore,
+      strict: options.strict,
       log: options.log,
     });
     options.onCheckpointCompleted(completed);
+    if (!completed && options.strict) failures.push('version_checkpoint');
   }
+  if (options.strict && failures.length > 0) throw new RunnerPersistenceError(failures);
 }

@@ -202,6 +202,203 @@ describe('createRunner run', () => {
     );
   });
 
+  it('next path fails closed when execution-log persistence fails before settlement', async () => {
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('must not publish')),
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(runner);
+    vi.spyOn(runner.infra.executionLogStore, 'write').mockRejectedValue(new Error('audit disk full'));
+
+    const result = await runner.run({ text: 'execution log outage' });
+
+    expect(result.status).toBe('error');
+    expect(result.reply).toBe('');
+    expect(result.finalReplySettlement).toBeUndefined();
+    expect(result.runtimeStatus).toMatchObject({ status: 'failed', reason: 'finalize_persistence_failed' });
+    expect(result.messages.some((message) => message.role === 'assistant' && message.stage === 'finalize')).toBe(false);
+
+    const events = await runner.infra.durableEventStore.read(String(result.sessionId), result.runId);
+    expect(events.filter((event) => event.type === 'final_reply_settled')).toHaveLength(0);
+    expect(events.filter((event) => event.type === 'run_completed')).toHaveLength(0);
+    expect(events.at(-1)?.type).toBe('runtime_status_settled');
+    const projection = reduceDurableRunProjection(events);
+    expect(projection.finalReply.state).toBe('runtime_status');
+    await expect(runner.replayDurableFinalReply!(result.sessionId, result.runId)).resolves.toMatchObject({
+      kind: 'runtime_status',
+      status: 'failed',
+      reason: 'finalize_persistence_failed',
+    });
+  });
+
+  it('next path fails closed when the session summary cannot be persisted', async () => {
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('must not publish summary outage')),
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(runner);
+    vi.spyOn(runner.infra.executionLogStore, 'writeLatestForSession')
+      .mockRejectedValue(new Error('summary disk full'));
+
+    const result = await runner.run({ text: 'summary persistence outage' });
+
+    expect(result.status).toBe('error');
+    expect(result.reply).toBe('');
+    expect(result.runtimeStatus).toMatchObject({ status: 'failed', reason: 'finalize_persistence_failed' });
+    const events = await runner.infra.durableEventStore.read(String(result.sessionId), result.runId);
+    expect(events.filter((event) => event.type === 'final_reply_settled')).toHaveLength(0);
+    expect(events.filter((event) => event.type === 'run_completed')).toHaveLength(0);
+    expect(reduceDurableRunProjection(events).finalReply.state).toBe('runtime_status');
+  });
+
+  it('next path fails closed when the final-reply registry settlement fails', async () => {
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('must not publish registry outage')),
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(runner);
+    vi.spyOn(runner.infra.sessionManager, 'settleAssistantReplySettlement')
+      .mockRejectedValue(new Error('reply registry unavailable'));
+
+    const result = await runner.run({ text: 'reply registry outage' });
+
+    expect(result.status).toBe('error');
+    expect(result.reply).toBe('');
+    expect(result.runtimeStatus).toMatchObject({ status: 'failed', reason: 'final_reply_settlement_failed' });
+    const events = await runner.infra.durableEventStore.read(String(result.sessionId), result.runId);
+    expect(events.filter((event) => event.type === 'final_reply_settled')).toHaveLength(1);
+    expect(events.filter((event) => event.type === 'run_completed')).toHaveLength(0);
+    expect(reduceDurableRunProjection(events).finalReply.state).toBe('settled');
+  });
+
+  it('next path fails closed when the final-reply durable event cannot be appended', async () => {
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('must not publish event outage')),
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(runner);
+    const append = runner.infra.durableEventStore.append.bind(runner.infra.durableEventStore);
+    vi.spyOn(runner.infra.durableEventStore, 'append').mockImplementation(async (input) => {
+      if (input.type === 'final_reply_settled') throw new Error('durable event disk full');
+      return append(input);
+    });
+
+    const result = await runner.run({ text: 'durable event outage' });
+
+    expect(result.status).toBe('error');
+    expect(result.reply).toBe('');
+    expect(result.runtimeStatus).toMatchObject({ status: 'failed', reason: 'final_reply_settlement_failed' });
+    const events = await runner.infra.durableEventStore.read(String(result.sessionId), result.runId);
+    expect(events.filter((event) => event.type === 'final_reply_settled')).toHaveLength(0);
+    expect(events.filter((event) => event.type === 'run_completed')).toHaveLength(0);
+    expect(reduceDurableRunProjection(events).finalReply.state).toBe('proposed');
+  });
+
+  it('retries a failed next run by returning bounded Runtime status across runner restart', async () => {
+    const firstRunner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('must remain a proposal')),
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(firstRunner);
+    const session = await firstRunner.sessionManager.create('test/model');
+    vi.spyOn(firstRunner.infra.executionLogStore, 'write')
+      .mockRejectedValue(new Error('audit disk full'));
+
+    const first = await firstRunner.run({
+      sessionId: session.id,
+      requestKey: 'retry-after-persistence-failure',
+      text: 'same durable turn',
+    });
+    expect(first.status).toBe('error');
+    expect(first.reply).toBe('');
+    expect(first.runtimeStatus).toMatchObject({ status: 'failed' });
+    expect((await firstRunner.sessionManager.read(session.id)).filter((message) => message.role === 'assistant'))
+      .toHaveLength(1);
+    await firstRunner.shutdown();
+    createdRunners.pop();
+
+    const llm = makeMockLlm(textResponse('must not be called on retry'));
+    const restarted = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(restarted);
+
+    const second = await restarted.run({
+      sessionId: session.id,
+      requestKey: 'retry-after-persistence-failure',
+      text: 'same durable turn',
+    });
+    expect(second.status).toBe('error');
+    expect(second.reply).toBe('');
+    expect(second.runtimeStatus).toMatchObject({ status: 'failed', reason: 'finalize_persistence_failed' });
+    expect(llm.chat).not.toHaveBeenCalled();
+    expect((await restarted.sessionManager.read(session.id)).filter((message) => message.role === 'assistant'))
+      .toHaveLength(1);
+    expect(second.messages.some((message) => message.role === 'assistant' && message.stage === 'finalize'))
+      .toBe(false);
+  });
+
+  it('keeps a settled success when run_completed append fails and repairs it without replaying effects', async () => {
+    const llm = makeMockLlm(textResponse('settled before completion receipt'));
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(runner);
+    const append = runner.infra.durableEventStore.append.bind(runner.infra.durableEventStore);
+    let completionAttempts = 0;
+    vi.spyOn(runner.infra.durableEventStore, 'append').mockImplementation(async (input) => {
+      if (input.type === 'run_completed' && completionAttempts++ === 0) {
+        throw new Error('completion receipt disk full');
+      }
+      return append(input);
+    });
+
+    const result = await runner.run({ text: 'completion receipt outage' });
+    expect(result.status).toBe('ok');
+    expect(result.reply).toBe('settled before completion receipt');
+    expect(result.finalReplySettlement?.status).toBe('settled');
+    const modelCallsBeforeRecovery = (llm.chat as ReturnType<typeof vi.fn>).mock.calls.length;
+    expect(modelCallsBeforeRecovery).toBeGreaterThan(0);
+    expect(llm.chat).toHaveBeenCalledTimes(modelCallsBeforeRecovery);
+    expect((await runner.sessionManager.read(result.sessionId)).filter((message) => message.role === 'assistant'))
+      .toHaveLength(1);
+
+    const beforeRecovery = await runner.infra.durableEventStore.read(String(result.sessionId), result.runId);
+    expect(beforeRecovery.filter((event) => event.type === 'final_reply_settled')).toHaveLength(1);
+    expect(beforeRecovery.filter((event) => event.type === 'run_completed')).toHaveLength(0);
+
+    const recovery = await runner.recoverDurableRun!(result.sessionId, result.runId);
+    expect(recovery.actions.map((action) => action.kind)).toContain('run_completed');
+    expect(recovery.projection.status).toBe('completed');
+    expect(recovery.projection.finalReply.state).toBe('settled');
+    expect(llm.chat).toHaveBeenCalledTimes(modelCallsBeforeRecovery);
+    expect((await runner.sessionManager.read(result.sessionId)).filter((message) => message.role === 'assistant'))
+      .toHaveLength(1);
+  });
+
   it('rewrites an exact reply from older session history after runner restart', async () => {
     const firstRunner = await createRunner({
       config: DEFAULT_CONFIG,

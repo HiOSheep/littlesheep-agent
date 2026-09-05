@@ -2,7 +2,7 @@
 // Helpers shared across LLM-backed stages: message conversion, JSON
 // extraction, and retry-on-parse-failure LLM calls.
 
-import type { Message, RunAttachment } from '@littlesheep/types';
+import { filterAuthoritativeUserFacingMessages, type Message, type RunAttachment } from '@littlesheep/types';
 import type { ChatContentPart, ChatMessage, ChatResponse, LlmClient } from '@littlesheep/llm';
 import { attachmentManifestResourceId } from '@littlesheep/memory-tree';
 import type { InsertedContextMessage } from '../context-candidates.js';
@@ -36,7 +36,7 @@ export function recentHistoryForModel(
   maxMessages = 8,
   maxChars = 6_000,
 ): Message[] {
-  const candidates = history.slice(-Math.max(0, maxMessages));
+  const candidates = filterAuthoritativeUserFacingMessages(history).slice(-Math.max(0, maxMessages));
   const selected: Message[] = [];
   let remaining = Math.max(0, maxChars);
 

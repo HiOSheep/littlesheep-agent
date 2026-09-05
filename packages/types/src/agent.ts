@@ -225,6 +225,19 @@ export interface RunContext {
   reserveUserFacingReplySettlement?: (reservation: FinalReplyReservation) => Promise<boolean>;
   /** Commits the registry reservation after the session message is durable. */
   settleUserFacingReplySettlement?: (reservation: FinalReplyReservation) => Promise<void>;
+  /**
+   * Next-Harness publication gate: FINALIZE may leave the reservation in the
+   * proposed state until Runner-owned audit persistence has completed.
+   */
+  deferFinalReplySettlement?: boolean;
+  /** Reservation held by FINALIZE while the Runner completes the publication gate. */
+  pendingFinalReplySettlement?: FinalReplyReservation;
+  /** Registry commit completed before a durable-event append failed. */
+  finalReplyRegistrySettled?: boolean;
+  /** Durable final-reply event was appended before a registry commit failed. */
+  finalReplyEventSettled?: boolean;
+  /** The durable event append outcome is uncertain and needs recovery. */
+  finalReplySettlementUncertain?: boolean;
   /** Authoritative final-reply identity carried through FINALIZE and replay. */
   finalReplySettlement?: FinalReplySettlement;
   /** Token usage reported by the model provider for the reply-bearing call. */

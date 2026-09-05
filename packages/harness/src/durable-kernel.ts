@@ -58,6 +58,8 @@ export interface DurableInboxProcessResult {
 export interface DurableRecoveryOptions {
   /** Proves that the session transcript and settlement registry were committed. */
   finalReplyPersisted?: (reservation: FinalReplyReservation) => Promise<boolean>;
+  /** Repairs a durable final event whose session registry commit was interrupted. */
+  finalReplyRegistrySettled?: (reservation: FinalReplyReservation) => Promise<boolean>;
 }
 
 /**
@@ -307,7 +309,25 @@ export class DurableHarnessKernel {
       }
     }
 
+    let finalReplyRegistryReady = true;
+    if (projection.finalReply.state === 'settled' && options.finalReplyRegistrySettled) {
+      const finalReply = projection.finalReply;
+      const reservation = finalReply.settlementId && finalReply.reply
+        && finalReply.replyFingerprint && finalReply.modelRequestId
+        ? {
+            version: 1 as const,
+            settlementId: finalReply.settlementId,
+            reply: finalReply.reply,
+            replyFingerprint: finalReply.replyFingerprint,
+            modelRequestId: finalReply.modelRequestId,
+          }
+        : undefined;
+      finalReplyRegistryReady = Boolean(reservation)
+        && await options.finalReplyRegistrySettled!(reservation!).catch(() => false);
+    }
+
     if (projection.finalReply.state === 'settled'
+      && finalReplyRegistryReady
       && projection.pendingModelRequestIds.length === 0
       && projection.pendingEffectIds.length === 0
       && projection.unknownEffectIds.length === 0

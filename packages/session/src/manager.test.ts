@@ -152,6 +152,32 @@ describe('SessionManager', () => {
     })).resolves.toBe(true);
   });
 
+  it('promotes a persisted final-reply proposal in the transcript when settled', async () => {
+    const sm = new SessionManager({ sessionsDir: tmpDir });
+    const session = await sm.create();
+    const reservation: FinalReplyReservation = {
+      version: 1,
+      settlementId: 'run-transcript-promotion:final-reply',
+      reply: 'A durable answer',
+      replyFingerprint: 'a'.repeat(64),
+      modelRequestId: 'request-transcript-promotion',
+    };
+    await sm.reserveAssistantReplySettlement(session.id, reservation);
+    await sm.append(session.id, [{
+      ...textMessage('assistant', reservation.reply),
+      runId: 'run-transcript-promotion',
+      stage: 'finalize',
+      finalReplySettlement: { ...reservation, status: 'proposed' },
+    }]);
+
+    await sm.settleAssistantReplySettlement(session.id, reservation);
+
+    const persisted = (await sm.read(session.id))[0];
+    expect(persisted?.finalReplySettlement).toEqual({ ...reservation, status: 'settled' });
+    const restarted = new SessionManager({ sessionsDir: tmpDir });
+    expect((await restarted.read(session.id))[0]?.finalReplySettlement?.status).toBe('settled');
+  });
+
 
   it('replaces an interrupted registry initialization temporary file', async () => {
     const sm = new SessionManager({ sessionsDir: tmpDir });

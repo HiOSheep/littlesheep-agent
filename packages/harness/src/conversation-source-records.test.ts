@@ -41,4 +41,37 @@ describe('conversation source records', () => {
     expect(conversationSourceRefs(ctx)).toEqual(records.map((record) => record.id));
     expect(records[0]?.payload).toMatchObject({ role: 'user' });
   });
+
+  it('keeps a pre-FINALIZE reply for memory capture but hides an unsettled FINALIZE proposal', () => {
+    const ctx = {
+      runId: 'run-proposal',
+      sessionId: asSessionId('session-proposal'),
+      startedAt: '2026-07-16T06:00:00.000Z',
+      inbound: textMessage('user', 'inspect', { id: 'message-proposal' }),
+      produced: [],
+      reply: 'candidate reply',
+    } as unknown as RunContext;
+
+    expect(collectConversationSourceRecords(ctx).map((record) => record.kind))
+      .toContain('assistant-reply');
+
+    ctx.produced.push({
+      id: 'finalize-proposal',
+      role: 'assistant',
+      stage: 'finalize',
+      timestamp: '2026-07-16T06:00:01.000Z',
+      content: [{ type: 'text', text: 'candidate reply' }],
+      finalReplySettlement: {
+        version: 1,
+        settlementId: 'settlement-proposal',
+        reply: 'candidate reply',
+        replyFingerprint: 'fingerprint-proposal',
+        modelRequestId: 'request-proposal',
+        status: 'proposed',
+      },
+    } as never);
+
+    expect(collectConversationSourceRecords(ctx).map((record) => record.kind))
+      .not.toContain('assistant-reply');
+  });
 });

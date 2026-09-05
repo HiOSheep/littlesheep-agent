@@ -78,6 +78,10 @@ export class DurableRunRecorder {
     return this.options.runId;
   }
 
+  get sessionId(): string {
+    return this.options.sessionId;
+  }
+
   append(event: DurableRunEventInput): Promise<void> {
     const operation = this.tail.catch(() => undefined).then(async () => {
       if (this.mode === 'next') await this.initialization;
@@ -189,6 +193,17 @@ export async function recordDurableRunOutcome(
   result: { status: import('@littlesheep/types').RunStatus; error?: string },
 ): Promise<void> {
   if (!recorder) return;
+  // runtime_status_settled is already a terminal durable outcome. Appending
+  // run_failed/run_interrupted afterwards would violate the kernel transition
+  // contract and obscure the Runtime-owned failure reason.
+  try {
+    const projection = await recorder.kernel.replay(recorder.sessionId, recorder.runId);
+    if (projection.finalReply.state === 'runtime_status'
+      || (projection.finalReply.state === 'settled' && result.status !== 'ok')) return;
+  } catch {
+    // Preserve the existing append path when the projection cannot be read;
+    // the append itself remains the durable source of truth.
+  }
   const type = result.status === 'ok'
     ? 'run_completed'
     : result.status === 'aborted' || result.status === 'timeout'

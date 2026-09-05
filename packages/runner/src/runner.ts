@@ -2,6 +2,9 @@
 // Shared agent runner: assemble infra from config, expose run().
 // Used by the Electron app (local conversations, origin='app') and optional
 // channel plugins (channel-routed conversations, origin='channel').
+import {
+  filterAuthoritativeUserFacingMessages,
+} from '@littlesheep/types';
 import type {
   AgentResult,
   Message,
@@ -23,6 +26,8 @@ import type {
   ConversationContinuationEvidence,
   DurableFinalReplyReplay,
   DurableRunRecoveryResult,
+  FinalReplyReservation,
+  FinalReplySettlement,
 } from '@littlesheep/types';
 import { asSessionId, sanitizeWebEvidenceProjection, textMessage } from '@littlesheep/types';
 import { randomUUID } from 'node:crypto';
@@ -43,8 +48,10 @@ import {
   flushModelRequestLifecycles,
   reduceDurableRunProjection,
   DurableHarnessKernel,
+  collectConversationSourceRecords,
+  settleDeferredFinalReply,
 } from '@littlesheep/harness';
-import { buildInfrastructure, type RunnerState, type LogFn } from './infra.js';
+import { buildInfrastructure, type Infrastructure, type RunnerState, type LogFn } from './infra.js';
 import type { ExecutionLog } from './execution-log.js';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
 import { getAgentProfile, normalizeAgentProfileId, type AgentProfileId } from '@littlesheep/prompt';
@@ -63,7 +70,8 @@ import { buildRunnerCapabilityState } from './capability-snapshot.js';
 import { runRunnerCoordinator } from './runner-coordinator.js';
 import { executeRunnerPhase } from './runner-execute.js';
 import { finalizeRunnerPhase } from './runner-finalize.js';
-import { persistRunnerPhase } from './runner-persist.js';
+import { persistRunnerPhase, RunnerPersistenceError } from './runner-persist.js';
+import { prepareAuthoritativeRunnerResult } from './authoritative-reply.js';
 import { resolveSemanticResumeStage } from './continuation-stage.js';
 import { WebRetrievalRuntime } from '@littlesheep/web';
 import { createCacheObservationPersistence } from './cache-observation-runtime.js';
@@ -556,6 +564,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         appendDurableEvent: durableRecorder
           ? (event) => durableRecorder!.appendObserved(event)
           : undefined,
+        deferFinalReplySettlement: opts.durableHarnessMode === 'next',
         cacheObservationKey: infra.cacheObservationKey,
         persistCacheObservation: createCacheObservationPersistence(infra.cacheObservationStore, {
           sessionId: String(sessionId),
@@ -643,7 +652,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           runId: ctx.runId,
           sessionId,
           query: input.text,
-          recentHistory: ctx.history.map((message) => ({
+          recentHistory: filterAuthoritativeUserFacingMessages(ctx.history).map((message) => ({
             role: message.role,
             content: message.content
               .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
@@ -702,62 +711,122 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
 
       // 5. Execute the state machine and checkpoint recovery state.
       const prepared = { ctx, sessionId, inboundText: input.text, usedContinuitySummaryId };
-      const result = await runRunnerCoordinator<RunContext, RunnerResult, MemoryAccessLedger | undefined>({
-        prepare: async () => prepared,
-        execute: async (preparedRun) => {
-          const executedRun = await executeRunnerPhase({
-            ctx: preparedRun.ctx,
-            harness: opts.durableHarnessMode === 'next' ? infra.nextHarness : infra.harness,
-            signal,
-            runCheckpointStore: infra.runCheckpointStore,
-            log: opts.log,
-            checkpointReason,
-            onCheckpointId: (id) => { runCheckpointId = id; },
-          });
-          return { prepared: preparedRun, ...executedRun, runCheckpointId };
-        },
-        finalize: async (executedRun) => {
-          const finalizedRun = await finalizeRunnerPhase({
-            ctx: executedRun.prepared.ctx,
-            stageResult: executedRun.stageResult,
-            runStopped: executedRun.runStopped,
-            sessionId,
-            runId: ctx.runId,
-            cwd,
-            usedContinuitySummaryId,
-            signal,
-            runCheckpointId,
-            startedAt,
-            model,
-            compact: opts.config.sessions.compaction,
-            infra,
-            assembleResult,
-            log: opts.log,
-          });
-          return { ...executedRun, result: finalizedRun.result, memoryAccess: finalizedRun.memoryAccess };
-        },
-        persist: async (finalizedRun) => {
-          await persistRunnerPhase({
-            result: finalizedRun.result,
-            sessionId,
-            startedAt,
-            inputText: input.text,
-            model,
-            runCheckpointId,
-            runtimeResourceObservation: completeRuntimeResourceObservation(runtimeResourceStart),
-            executionLogStore: infra.executionLogStore,
-            activeCheckpoint,
-            onCheckpointCompleted: (completed) => { checkpointCompleted = completed; },
-            log: opts.log,
-          });
-        },
-      });
+      let result: RunnerResult;
+      try {
+        result = await runRunnerCoordinator<RunContext, RunnerResult, MemoryAccessLedger | undefined>({
+          prepare: async () => prepared,
+          execute: async (preparedRun) => {
+            const executedRun = await executeRunnerPhase({
+              ctx: preparedRun.ctx,
+              harness: opts.durableHarnessMode === 'next' ? infra.nextHarness : infra.harness,
+              signal,
+              runCheckpointStore: infra.runCheckpointStore,
+              log: opts.log,
+              checkpointReason,
+              onCheckpointId: (id) => { runCheckpointId = id; },
+            });
+            return { prepared: preparedRun, ...executedRun, runCheckpointId };
+          },
+          finalize: async (executedRun) => {
+            const finalizedRun = await finalizeRunnerPhase({
+              ctx: executedRun.prepared.ctx,
+              stageResult: executedRun.stageResult,
+              runStopped: executedRun.runStopped,
+              sessionId,
+              runId: ctx.runId,
+              cwd,
+              usedContinuitySummaryId,
+              signal,
+              runCheckpointId,
+              startedAt,
+              model,
+              compact: opts.config.sessions.compaction,
+              infra,
+              assembleResult,
+              log: opts.log,
+            });
+            return { ...executedRun, result: finalizedRun.result, memoryAccess: finalizedRun.memoryAccess };
+          },
+          persist: async (finalizedRun) => {
+            if (opts.durableHarnessMode === 'next') {
+              // FINALIZE/compaction may prepare one last model request. Close
+              // that lifecycle before the audit receipt and final settlement.
+              await flushModelRequestLifecycles(ctx);
+            }
+            await persistRunnerPhase({
+              result: finalizedRun.result,
+              sessionId,
+              startedAt,
+              inputText: input.text,
+              model,
+              runCheckpointId,
+              runtimeResourceObservation: completeRuntimeResourceObservation(runtimeResourceStart),
+              executionLogStore: infra.executionLogStore,
+              activeCheckpoint,
+              strict: opts.durableHarnessMode === 'next',
+              onCheckpointCompleted: (completed) => { checkpointCompleted = completed; },
+              log: opts.log,
+            });
+          },
+        });
+      } catch (error) {
+        if (opts.durableHarnessMode !== 'next') throw error;
+        const reason = error instanceof RunnerPersistenceError
+          ? 'finalize_persistence_failed'
+          : 'finalize_publication_failed';
+        await settleRuntimeFailureEvent(ctx, reason, opts.log);
+        const failure = assembleResult({
+          stage: 'finalize',
+          next: 'exit',
+          ok: false,
+          error: reason,
+        }, ctx, sessionId, startedAt, false, undefined);
+        result = runtimeFailureResult(failure, reason);
+      }
+
       // Post-finalize work (notably session compaction) can prepare additional
       // model requests. Close every lifecycle before the terminal run event so
-      // replay never observes a completed run with a pending request.
-      await flushModelRequestLifecycles(ctx);
-      await recordDurableRunOutcome(durableRecorder, result);
-      durableOutcomeRecorded = true;
+      // replay never observes a completed run with a pending request. In the
+      // next path this is also part of the pre-settlement publication gate.
+      try {
+        await flushModelRequestLifecycles(ctx);
+      } catch (error) {
+        if (opts.durableHarnessMode !== 'next') throw error;
+        const reason = 'finalize_model_lifecycle_failed';
+        await settleRuntimeFailureEvent(ctx, reason, opts.log);
+        result = runtimeFailureResult(result, reason);
+      }
+
+      if (opts.durableHarnessMode === 'next' && result.status === 'ok') {
+        try {
+          await settleDeferredFinalReply(ctx);
+          result = settledReplyResult(result, ctx);
+          await settleFinalReplyArtifacts(ctx, infra, opts.log);
+        } catch {
+          // Do not append a competing Runtime terminal event after either an
+          // uncertain or confirmed final-reply event. Recovery will retry the
+          // missing cross-store step and then append run_completed.
+          if (!ctx.finalReplySettlementUncertain && !ctx.finalReplyEventSettled) {
+            await settleRuntimeFailureEvent(ctx, 'final_reply_settlement_failed', opts.log);
+          }
+          result = runtimeFailureResult(result, 'final_reply_settlement_failed');
+          if (ctx.finalReplySettlementUncertain || ctx.finalReplyEventSettled) {
+            durableOutcomeRecorded = true;
+          }
+        }
+      }
+      if (!durableOutcomeRecorded) {
+        try {
+          await recordDurableRunOutcome(durableRecorder, result);
+        } catch (error) {
+          if (opts.durableHarnessMode !== 'next') throw error;
+          // The final settlement is already durable. A missing terminal
+          // run_completed receipt is repaired by recoverDurableRun; do not
+          // downgrade it to a conflicting Runtime failure event.
+          opts.log?.('error', `runner: failed to append durable run completion: ${(error as Error).message}`);
+        }
+        durableOutcomeRecorded = true;
+      }
       if (result.status === 'ok' && runCheckpointId && checkpointController) {
         try {
           const outcome = await checkpointController.completeSourceRun(
@@ -1472,7 +1541,13 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     }
     entry.promise = (async () => {
       const persisted = await infra.executionLogStore.read(stableRunId)
-      if (persisted) return replayConversationTurn(persisted, input.sessionId, input.text, inputDigest)
+      if (persisted) {
+        const replayed = await prepareInternalAuthoritativeResult(
+          replayConversationTurn(persisted, input.sessionId, input.text, inputDigest),
+        );
+        await promoteExecutionLogSettlement(infra.executionLogStore, replayed, opts.log);
+        return replayed;
+      }
       const recovered = await recoverCompletedConversationTurn(
         coordinated,
         stableRunId,
@@ -1517,6 +1592,53 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         }),
       )
     }
+
+    // A durable Runtime terminal status is authoritative even when the
+    // execution-log write failed. A retried request must not fall through to
+    // appendIfAbsent (which would report an internal "already accepted"
+    // error) or re-enter the model/tool loop. Return a bounded Runtime result
+    // reconstructed from the durable projection instead.
+    let durableProjection: import('@littlesheep/types').DurableRunProjection | undefined
+    try {
+      durableProjection = reduceDurableRunProjection(await infra.durableEventStore.read(
+        String(input.sessionId),
+        stableRunId,
+      ))
+    } catch {
+      durableProjection = undefined
+    }
+    if (durableProjection && durableProjection.eventCount > 0) {
+      // If the process died after writing a proposal, make one conservative
+      // recovery pass before deciding what a retry may observe. Recovery only
+      // appends bounded facts; it never invokes a model or tool.
+      if (!isDurableProjectionTerminalForRetry(durableProjection)) {
+        await recoverDurableProjectionForRetry(input.sessionId, stableRunId)
+          .catch(() => undefined)
+        try {
+          durableProjection = reduceDurableRunProjection(await infra.durableEventStore.read(
+            String(input.sessionId),
+            stableRunId,
+          ))
+        } catch {
+          durableProjection = undefined
+        }
+      }
+      if (durableProjection && (
+        durableProjection.finalReply.state === 'runtime_status'
+        || (isDurableProjectionTerminalForRetry(durableProjection)
+          && durableProjection.finalReply.state !== 'settled')
+      )) {
+        return prepareInternalAuthoritativeResult({
+          runId: stableRunId,
+          sessionId: input.sessionId,
+          status: 'error',
+          reply: '',
+          messages: [],
+          trace: [],
+          durationMs: 0,
+        })
+      }
+    }
     const runMessages = messages.filter((message) => message.runId === stableRunId)
     const finalReply = [...runMessages].reverse().find((message) => (
       message.role === 'assistant'
@@ -1524,6 +1646,27 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       && Boolean(messageText(message).trim())
     ))
     if (!finalReply) return null
+
+    let authoritativeSettlement: FinalReplySettlement | undefined;
+    let authoritativeReply = messageText(finalReply).trim();
+    const durableFinalReply = durableProjection?.finalReply;
+    if (durableFinalReply?.state === 'settled') {
+      if (!durableFinalReply.settlementId
+        || !durableFinalReply.reply
+        || !durableFinalReply.replyFingerprint
+        || !durableFinalReply.modelRequestId) {
+        return null;
+      }
+      authoritativeSettlement = {
+        version: 1,
+        settlementId: durableFinalReply.settlementId,
+        reply: durableFinalReply.reply,
+        replyFingerprint: durableFinalReply.replyFingerprint,
+        modelRequestId: durableFinalReply.modelRequestId,
+        status: 'settled',
+      };
+      authoritativeReply = durableFinalReply.reply;
+    }
 
     // A new-path transcript message is only a proposal until both the session
     // settlement registry and durable event projection confirm the same
@@ -1547,6 +1690,36 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       }
       if (projection.finalReply.state !== 'settled'
         || projection.finalReply.settlementId !== settlement.settlementId) return null;
+      if (!authoritativeSettlement
+        && projection.finalReply.reply
+        && projection.finalReply.replyFingerprint
+        && projection.finalReply.modelRequestId) {
+        authoritativeSettlement = {
+          version: 1,
+          settlementId: settlement.settlementId,
+          reply: projection.finalReply.reply,
+          replyFingerprint: projection.finalReply.replyFingerprint,
+          modelRequestId: projection.finalReply.modelRequestId,
+          status: 'settled',
+        };
+        authoritativeReply = projection.finalReply.reply;
+      }
+    }
+
+    if (authoritativeSettlement) {
+      const reservation: FinalReplyReservation = {
+        version: authoritativeSettlement.version,
+        settlementId: authoritativeSettlement.settlementId,
+        reply: authoritativeSettlement.reply,
+        replyFingerprint: authoritativeSettlement.replyFingerprint,
+        modelRequestId: authoritativeSettlement.modelRequestId,
+      };
+      await infra.sessionManager.settleAssistantReplySettlement(input.sessionId, reservation)
+        .catch((error) => {
+          // The durable event and registry remain authoritative; a transcript
+          // rewrite can be retried without re-running the conversation turn.
+          opts.log?.('error', 'runner: failed to repair settled transcript proposal: ' + (error as Error).message);
+        });
     }
 
     let sourceInspection = explicitCheckpointId
@@ -1580,7 +1753,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       ? await infra.runCheckpointStore.read(disposition.nextCheckpointId)
       : null
     const recoveredState = nextCheckpoint ?? sourceCheckpoint
-    const reply = messageText(finalReply).trim()
+    const reply = authoritativeReply
     const startedAt = stableInbound?.timestamp ?? runMessages[0]?.timestamp ?? finalReply.timestamp
     const durationMs = Math.max(0, Date.parse(finalReply.timestamp) - Date.parse(startedAt))
     let resumeStage: StageName | undefined
@@ -1642,8 +1815,14 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       status: 'ok',
       reply,
       replyProvenance: finalReply.replyProvenance,
-      finalReplySettlement: finalReply.finalReplySettlement,
-      messages: runMessages,
+      finalReplySettlement: authoritativeSettlement ?? finalReply.finalReplySettlement,
+      messages: authoritativeSettlement
+        ? runMessages.map((message) => (
+            message.role === 'assistant' && message.stage === 'finalize'
+              ? { ...message, finalReplySettlement: authoritativeSettlement }
+              : message
+          ))
+        : runMessages,
       trace: [],
       durationMs,
       conversationContinuation: continuation,
@@ -1665,7 +1844,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       inboundText: input.text,
       reply,
       replyProvenance: finalReply.replyProvenance,
-      finalReplySettlement: finalReply.finalReplySettlement,
+      finalReplySettlement: authoritativeSettlement ?? finalReply.finalReplySettlement,
       trace: [],
       taskExecution: recoveredState?.taskExecution,
       taskBook: recoveredState?.taskBook,
@@ -1695,6 +1874,31 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       })
     }
     return result
+  }
+
+  async function recoverDurableProjectionForRetry(
+    sessionId: SessionId,
+    runId: string,
+  ): Promise<void> {
+    await durableKernel.recoverRun(String(sessionId), runId, {
+      finalReplyPersisted: async (reservation) => (
+        await infra.sessionManager.assistantReplySettlementStatus?.(
+          sessionId,
+          reservation.settlementId,
+        )
+      ) === 'settled',
+      finalReplyRegistrySettled: async (reservation) => {
+        try {
+          await infra.sessionManager.settleAssistantReplySettlement?.(sessionId, reservation)
+          return (await infra.sessionManager.assistantReplySettlementStatus?.(
+            sessionId,
+            reservation.settlementId,
+          )) === 'settled'
+        } catch {
+          return false
+        }
+      },
+    })
   }
 
   async function executeWithContinuationAudit(
@@ -1755,7 +1959,11 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     while (Date.now() < deadline) {
       if (signal?.aborted) throw signal.reason ?? new Error('conversation turn observation aborted')
       const log = await infra.executionLogStore.read(runId)
-      if (log) return replayConversationTurn(log, sessionId, text)
+      if (log) {
+        const replayed = await prepareInternalAuthoritativeResult(replayConversationTurn(log, sessionId, text));
+        await promoteExecutionLogSettlement(infra.executionLogStore, replayed, opts.log);
+        return replayed;
+      }
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
     throw new Error(`conversation turn is still running: ${runId}`)
@@ -1838,6 +2046,35 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       && disposition.answerMessageId === conversationTurnMessageId(input.sessionId, input.requestKey)
   }
 
+  async function replayAuthoritativeDurableFinalReply(
+    sessionId: SessionId,
+    runId: string,
+  ): Promise<DurableFinalReplyReplay> {
+    const durable = await durableKernel.replayFinalReply(String(sessionId), runId);
+    if (durable.kind !== 'settled') return durable;
+    const registryStatus = await infra.sessionManager.assistantReplySettlementStatus?.(
+      sessionId,
+      durable.settlementId,
+    );
+    if (registryStatus === 'settled') return durable;
+    return {
+      kind: 'unavailable',
+      sessionId: String(sessionId),
+      runId,
+      cursor: durable.cursor,
+      status: 'running',
+      reason: 'not_settled',
+    };
+  }
+
+  async function prepareInternalAuthoritativeResult(result: RunnerResult): Promise<RunnerResult> {
+    if (opts.durableHarnessMode !== 'next') return result;
+    return prepareAuthoritativeRunnerResult({
+      durableHarnessMode: 'next',
+      replayDurableFinalReply: replayAuthoritativeDurableFinalReply,
+    } as AgentRunner, result);
+  }
+
   return {
     run,
     runStream: (input: RunInput, onDelta: (delta: string) => void) =>
@@ -1846,12 +2083,23 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     runCheckpoints,
     replay: (runId: string) => infra.executionLogStore.read(runId),
     replayDurableFinalReply: (sessionId: SessionId, runId: string) =>
-      durableKernel.replayFinalReply(String(sessionId), runId),
+      replayAuthoritativeDurableFinalReply(sessionId, runId),
     recoverDurableRun: (sessionId: SessionId, runId: string) =>
       durableKernel.recoverRun(String(sessionId), runId, {
         finalReplyPersisted: async (reservation) => (
           await infra.sessionManager.assistantReplySettlementStatus?.(sessionId, reservation.settlementId)
         ) === 'settled',
+        finalReplyRegistrySettled: async (reservation) => {
+          try {
+            await infra.sessionManager.settleAssistantReplySettlement?.(sessionId, reservation);
+            return (await infra.sessionManager.assistantReplySettlementStatus?.(
+              sessionId,
+              reservation.settlementId,
+            )) === 'settled';
+          } catch {
+            return false;
+          }
+        },
       }),
     runtimeEvents: activeRuns,
     activeRuns,
@@ -1874,9 +2122,115 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     model,
     durableHarnessMode: opts.durableHarnessMode ?? 'shadow',
   };
+  }
+
+async function settleRuntimeFailureEvent(
+  ctx: RunContext,
+  reason: string,
+  log?: LogFn,
+): Promise<void> {
+    try {
+      await ctx.appendDurableEvent?.({
+        type: 'runtime_status_settled',
+        source: 'runtime',
+        eventId: `${ctx.runId}:runtime-failure:${reason}`,
+        idempotencyKey: `${ctx.runId}:runtime-failure:${reason}`,
+        payload: { status: 'failed', reason },
+      });
+    } catch (error) {
+      log?.('error', `runner: failed to persist Runtime failure status: ${(error as Error).message}`);
+    }
 }
 
-async function observeConversationTurn(
+function runtimeFailureResult(result: RunnerResult, reason: string): RunnerResult {
+    const runtimeStatus = {
+      version: 1 as const,
+      status: 'failed' as const,
+      reason,
+    };
+    return {
+      ...result,
+      status: 'error',
+      reply: '',
+      replyProvenance: undefined,
+      finalReplySettlement: undefined,
+      runtimeStatus,
+      error: `Runtime failed before publishing a final reply. Reason: ${reason}`,
+      messages: result.messages.filter((message) => !(message.role === 'assistant' && message.stage === 'finalize')),
+      webEvidence: undefined,
+    };
+}
+
+function settledReplyResult(result: RunnerResult, ctx: RunContext): RunnerResult {
+    const settlement = ctx.finalReplySettlement;
+    if (!settlement || settlement.status !== 'settled') {
+      throw new Error('next Harness settled without a final reply projection');
+    }
+    return {
+      ...result,
+      status: 'ok',
+      reply: settlement.reply,
+      finalReplySettlement: settlement,
+      runtimeStatus: undefined,
+      error: undefined,
+      messages: result.messages.map((message) => (
+        message.role === 'assistant' && message.stage === 'finalize'
+          ? { ...message, finalReplySettlement: settlement }
+          : message
+      )),
+    };
+}
+
+/**
+ * Repair the secondary projections after the authoritative final-reply
+ * settlement. Neither repair is allowed to downgrade an already settled
+ * user-visible reply; startup recovery can retry either projection later.
+ */
+async function settleFinalReplyArtifacts(
+  ctx: RunContext,
+  infra: Infrastructure,
+  log?: LogFn,
+): Promise<void> {
+  const settlement = ctx.finalReplySettlement;
+  if (!settlement || settlement.status !== 'settled') return;
+
+  try {
+    await promoteExecutionLogSettlement(infra.executionLogStore, { runId: ctx.runId, finalReplySettlement: settlement }, log);
+  } catch (error) {
+    log?.('error', 'runner: settled execution-log repair guard failed: ' + (error as Error).message);
+  }
+
+  try {
+    await infra.memoryService.captureConversationSources(collectConversationSourceRecords(ctx));
+  } catch (error) {
+    log?.('warn', 'runner: settled assistant conversation source capture degraded: ' + (error as Error).message);
+  }
+}
+
+async function promoteExecutionLogSettlement(
+  executionLogStore: Infrastructure['executionLogStore'],
+  result: Pick<RunnerResult, 'runId' | 'finalReplySettlement'>,
+  log?: LogFn,
+): Promise<void> {
+  const settlement = result.finalReplySettlement;
+  if (!settlement || settlement.status !== 'settled') return;
+  try {
+    await executionLogStore.settleFinalReply(result.runId, settlement);
+  } catch (error) {
+    log?.('error', 'runner: failed to promote settled final reply in execution log: ' + (error as Error).message);
+  }
+}
+
+function isDurableProjectionTerminalForRetry(
+  projection: import('@littlesheep/types').DurableRunProjection,
+): boolean {
+  return projection.status === 'completed'
+    || projection.status === 'failed'
+    || projection.status === 'interrupted'
+    || projection.finalReply.state === 'runtime_status'
+}
+
+  async function observeConversationTurn(
   entry: CoordinatedConversationTurn,
   callbacks: ConversationTurnCallbacks,
 ): Promise<RunnerResult> {

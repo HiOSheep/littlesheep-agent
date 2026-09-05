@@ -268,7 +268,7 @@ async function streamCheckpointResume(
     const publishedResult = runner.durableHarnessMode === 'next'
       ? await prepareAuthoritativeRunnerResult(runner, result)
       : result
-    if (publishedResult.runtimeStatus && result.reply) {
+    if (publishedResult.runtimeStatus) {
       writeSse(res, 'replace', { text: '' })
     }
     if (ownsActiveRun) {

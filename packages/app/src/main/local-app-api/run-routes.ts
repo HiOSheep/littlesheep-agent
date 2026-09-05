@@ -282,7 +282,7 @@ export class RunRouter {
         const publishedResult = runner.durableHarnessMode === 'next'
           ? await prepareAuthoritativeRunnerResult(runner, result)
           : result
-        if (publishedResult.runtimeStatus && result.reply) {
+        if (publishedResult.runtimeStatus) {
           // Remove a provisional stream when the durable publication gate
           // cannot prove a settled final reply.
           writeSse(res, 'replace', { text: '' })

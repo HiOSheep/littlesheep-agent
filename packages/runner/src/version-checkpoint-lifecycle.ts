@@ -18,6 +18,8 @@ export async function completeRunVersionCheckpoint(options: {
   sessionId: SessionId;
   startedAtMs: number;
   executionLogStore: ExecutionLogStore;
+  /** Next-Harness publication gates must fail closed if completion fails. */
+  strict?: boolean;
   log?: (level: 'info' | 'warn' | 'error', message: string, data?: unknown) => void;
 }): Promise<boolean> {
   const { checkpoint, result } = options;
@@ -38,7 +40,7 @@ export async function completeRunVersionCheckpoint(options: {
     options.log?.('error', `runner: failed to complete version checkpoint: ${(error as Error).message}`);
     try {
       result.versionCheckpoint = await checkpoint.abort('checkpoint-complete-failed');
-      return true;
+      return options.strict ? false : true;
     } catch (abortError) {
       options.log?.('error', `runner: failed to preserve partial version checkpoint: ${(abortError as Error).message}`);
       return false;
