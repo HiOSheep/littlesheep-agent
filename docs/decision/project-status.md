@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 01:22:22
+最后更新：2026-09-09 01:27:09
+
+**Harness adapter_changed 失效原因（2026-09-09 01:27:09，进行中）**：`buildCacheObservation` 接受 Runtime 提供的 `adapter` 标识（默认 `llm-chat`），适配器变化现在产生 `adapter_changed`，并新增最小复现夹具；此前该枚举值不可达。harness 61 个文件 546 项通过，typecheck 通过。
 
 **Harness CACHE-09 时间窗报告（2026-09-09 01:22:22，进行中）**：`CacheObservationStore.report()` 新增 `since`/`until` 时间窗过滤，只返回窗口内条目；Local App API `GET /runtime/cache-quality` 接受 ISO 时间或 epoch 毫秒，非法窗口返回 400。harness 61 个文件 545 项、app main 71 个文件 271 项通过，harness/app typecheck 通过。
 

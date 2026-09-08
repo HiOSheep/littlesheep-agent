@@ -131,6 +131,19 @@ describe('CACHE-08 request shape and lifecycle matrix', () => {
     expect(observe({ replayed: true }).invalidationReasons).toEqual(['replayed']);
   });
 
+  it('records an adapter change as an explicit invalidation reason', () => {
+    const first = observe();
+    const changed = observe({
+      adapter: 'custom-adapter',
+      previous: first,
+      requestIndex: 2,
+      modelRequestId: 'request-2',
+    });
+
+    expect(changed.adapter).toBe('custom-adapter');
+    expect(changed.invalidationReasons).toContain('adapter_changed');
+  });
+
   it('keeps tool results and tool-loop continuations inside the dynamic suffix', () => {
     const base = observe();
     const boundary = 'Stable policy v1\n<!-- LITTLESHEEP_CACHE_BOUNDARY -->\nrun=one';

@@ -49,6 +49,8 @@ const INVALIDATION_ORDER: readonly CacheInvalidationReason[] = [
 
 export interface CacheObservationInput {
   readonly request: ChatRequest;
+  /** Provider adapter identity; defaults to the built-in llm-chat adapter. */
+  readonly adapter?: string;
   readonly provider: string;
   readonly model: string;
   readonly requestKind: string;
@@ -150,6 +152,7 @@ export function orderToolSpecs(tools: readonly ToolSpec[] | undefined): ToolSpec
 /** Build redacted stable-prefix, dynamic-suffix and complete-request evidence. */
 export function buildCacheObservation(input: CacheObservationInput): CacheObservation {
   const key = resolveKey(input.key);
+  const adapter = input.adapter ?? 'llm-chat';
   const scope = buildScopePartition(input, key);
   const scopeToken = scope.partitionDigest ?? 'unavailable';
   const normalized = normalizeRequest(input.request);
@@ -198,7 +201,7 @@ export function buildCacheObservation(input: CacheObservationInput): CacheObserv
   return Object.freeze({
     version: CACHE_OBSERVATION_VERSION,
     usageSchemaVersion: CACHE_USAGE_SCHEMA_VERSION,
-    adapter: 'llm-chat',
+    adapter,
     provider: input.provider,
     model: input.model,
     requestKind: input.requestKind,
@@ -370,7 +373,7 @@ function resolveInvalidationReasons(
   if (!previous) return finalize();
   const sameScope = previous.scope.partitionDigest !== undefined
     && previous.scope.partitionDigest === scope.partitionDigest;
-  if (previous.adapter !== 'llm-chat') reasons.add('adapter_changed');
+  if (previous.adapter !== (input.adapter ?? 'llm-chat')) reasons.add('adapter_changed');
   if (previous.provider !== input.provider) reasons.add('provider_changed');
   if (previous.model !== input.model) reasons.add('model_changed');
   if (previous.requestKind !== input.requestKind) reasons.add('request_kind_changed');
