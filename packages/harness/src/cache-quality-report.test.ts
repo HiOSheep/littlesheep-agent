@@ -145,6 +145,17 @@ describe('CACHE-09/10 cache quality report', () => {
     });
   });
 
+  it('degrades the gate when store entries are unreadable', () => {
+    const report = buildCacheQualityReport({
+      observations: [observation()],
+      latency: latency({ requestCount: 1, completedCount: 1, receivedCount: 1 }),
+      unreadableEntryCount: 2,
+    });
+
+    expect(report.unreadableEntryCount).toBe(2);
+    expect(report.releaseGate.reasons).toContain('cache_entries_unreadable');
+  });
+
   it('does not retain request identities or scope digests in the report', () => {
     const report = buildCacheQualityReport({
       observations: [observation({

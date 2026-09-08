@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 00:59:28
+最后更新：2026-09-09 01:01:00
+
+**Harness CACHE-09/10 报告接入观测存储（2026-09-09 01:01:00，进行中）**：`CacheObservationStore.report()` 在 session/workspace/permission/HMAC scope 授权后扫描观测，跨 scope 条目不会返回；损坏或嵌入 scope 不匹配的条目只把 gate 降级为 `cache_entries_unreadable`，不会当作命中。新增 3 项夹具覆盖双 scope 隔离、未授权 scope 失败关闭和损坏条目降级。harness 61 个文件 543 项通过，typecheck 通过。
 
 **Harness CACHE-09/10 质量报告基础（2026-09-09 00:59:28，进行中）**：新增 `buildCacheQualityReport`，分别汇总 Provider/Context/Memory 三套 ledger 的 status、token、hitRatio 和 reason，加上 invalidation reason 分布与 durable 延迟摘要；Provider hit ratio 只在完整 usage 下计算，release gate 只返回 `blocked`/`unavailable`，真实 Provider 对账未验证时永不 `ready`。harness 61 个文件 539 项通过，typecheck 通过。
 

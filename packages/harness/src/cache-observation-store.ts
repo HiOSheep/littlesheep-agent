@@ -11,6 +11,8 @@ import {
   buildCacheScopePartition,
   type CacheScopeInput,
 } from './cache-observability.js';
+import { buildCacheQualityReport, type CacheQualityReport } from './cache-quality-report.js';
+import type { ModelRequestLatencySummary } from './model-latency-report.js';
 import { readCacheObservation } from './durable-projection-codec.js';
 
 const ENTRY_VERSION = 1 as const;
@@ -37,6 +39,10 @@ export type CacheObservationLookupResult =
 export type CacheObservationStoreResult =
   | { readonly stored: true }
   | { readonly stored: false; readonly reason: string };
+
+export type CacheObservationReportResult =
+  | { readonly status: 'available'; readonly report: CacheQualityReport }
+  | { readonly status: 'unavailable'; readonly reason: string };
 
 interface PersistedCacheObservation {
   version: typeof ENTRY_VERSION;
@@ -139,6 +145,57 @@ export class CacheObservationStore {
         .filter((file) => file.endsWith('.json'))
         .map((file) => unlink(join(this.rootDir, file)).catch(() => undefined)));
     });
+  }
+
+  /**
+   * Build a scope-authorized CACHE-09/10 report over stored observations.
+   * Cross-scope entries are never returned; corrupt or tampered entries only
+   * degrade the report gate and are never treated as cache hits.
+   */
+  async report(
+    input: CacheScopeInput & { readonly latency?: ModelRequestLatencySummary },
+  ): Promise<CacheObservationReportResult> {
+    const scope = authorizeLookupScope(input);
+    if (!scope.allowed) return { status: 'unavailable', reason: `scope_${scope.reason}` };
+
+    const files = await readdir(this.rootDir).catch(() => [] as string[]);
+    const observations: CacheObservation[] = [];
+    let unreadableEntryCount = 0;
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      const path = join(this.rootDir, file);
+      let entry: PersistedCacheObservation;
+      try {
+        entry = parseEntry(await readFile(path, 'utf8'));
+      } catch {
+        unreadableEntryCount += 1;
+        continue;
+      }
+      if (entry.scopeDigest !== scope.partitionDigest) continue;
+      if (this.now() - entry.storedAt > this.maxAgeMs) {
+        await unlink(path).catch(() => undefined);
+        continue;
+      }
+      const authorized = authorizeCacheObservationScope(entry.observation, input);
+      if (!authorized.allowed) {
+        unreadableEntryCount += 1;
+        continue;
+      }
+      observations.push(entry.observation);
+    }
+
+    observations.sort((left, right) => (
+      left.requestIndex - right.requestIndex
+      || left.modelRequestId.localeCompare(right.modelRequestId)
+    ));
+    return {
+      status: 'available',
+      report: buildCacheQualityReport({
+        observations,
+        ...(input.latency ? { latency: input.latency } : {}),
+        unreadableEntryCount,
+      }),
+    };
   }
 
   private async prune(): Promise<void> {

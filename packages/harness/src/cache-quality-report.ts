@@ -22,6 +22,8 @@ export interface CacheLedgerSummary {
 export interface CacheQualityReport {
   readonly version: 1;
   readonly requestCount: number;
+  /** Store-level entries excluded because they could not be read or authorized. */
+  readonly unreadableEntryCount: number;
   readonly partitions: ReadonlyArray<{ provider: string; model: string; requestCount: number }>;
   readonly providerPrompt: CacheLedgerSummary;
   readonly lsContext: CacheLedgerSummary;
@@ -38,7 +40,9 @@ export interface CacheQualityReport {
 export function buildCacheQualityReport(input: {
   readonly observations: readonly CacheObservation[];
   readonly latency?: ModelRequestLatencySummary;
+  readonly unreadableEntryCount?: number;
 }): CacheQualityReport {
+  const unreadableEntryCount = normalizeCount(input.unreadableEntryCount);
   const providerPrompt = summarizeLedger(input.observations.map((observation) => observation.providerPrompt));
   const lsContext = summarizeLedger(input.observations.map((observation) => observation.lsContext));
   const memoryEmbedding = summarizeLedger(input.observations.map((observation) => observation.memoryEmbedding));
@@ -47,6 +51,7 @@ export function buildCacheQualityReport(input: {
   return Object.freeze({
     version: 1 as const,
     requestCount: input.observations.length,
+    unreadableEntryCount,
     partitions: summarizePartitions(input.observations),
     providerPrompt,
     lsContext,
@@ -59,6 +64,7 @@ export function buildCacheQualityReport(input: {
       lsContext,
       memoryEmbedding,
       latency: input.latency,
+      unreadableEntryCount,
     }),
   });
 }
@@ -136,6 +142,7 @@ function buildReleaseGate(input: {
   lsContext: CacheLedgerSummary;
   memoryEmbedding: CacheLedgerSummary;
   latency?: ModelRequestLatencySummary;
+  unreadableEntryCount: number;
 }): CacheQualityReport['releaseGate'] {
   if (input.observations.length === 0) {
     return Object.freeze({ status: 'unavailable' as const, reasons: Object.freeze(['no_observations']) });
@@ -166,6 +173,9 @@ function buildReleaseGate(input: {
   if (!input.latency || input.latency.completedCount === 0) {
     reasons.add('latency_unavailable');
   }
+  if (input.unreadableEntryCount > 0) {
+    reasons.add('cache_entries_unreadable');
+  }
   reasons.add('real_provider_reconciliation_not_verified');
 
   return Object.freeze({
@@ -176,4 +186,8 @@ function buildReleaseGate(input: {
 
 function isNonNegativeInteger(value: number | undefined): value is number {
   return Number.isSafeInteger(value) && value! >= 0;
+}
+
+function normalizeCount(value: number | undefined): number {
+  return Number.isSafeInteger(value) && value! > 0 ? value! : 0;
 }

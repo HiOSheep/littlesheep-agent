@@ -1,5 +1,5 @@
 import { describe, expect, it, afterEach } from 'vitest';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ChatRequest } from '@littlesheep/llm';
 import { buildCacheObservation } from './cache-observability.js';
@@ -124,5 +124,65 @@ describe('CacheObservationStore', () => {
     for (const file of (await readdir(root)).filter((entry) => entry.endsWith('.json'))) {
       await expect(readFile(join(root, file), 'utf8')).resolves.toMatch(/^\{/u);
     }
+  });
+
+  it('reports only the authorized scope and never mixes another scope', async () => {
+    const root = await mkdtemp(join(process.cwd(), 'cache-observation-store-'));
+    roots.push(root);
+    const store = new CacheObservationStore({ rootDir: root });
+    await store.initialize();
+    const scopeA = scope({ sessionId: 'session-a' });
+    const scopeB = scope({ sessionId: 'session-b' });
+    await store.put(observation({ sessionId: 'session-a', modelRequestId: 'request-a' }), scopeA);
+    await store.put(observation({ sessionId: 'session-b', modelRequestId: 'request-b' }), scopeB);
+
+    const reportA = await store.report(scopeA);
+    expect(reportA).toMatchObject({
+      status: 'available',
+      report: {
+        requestCount: 1,
+        providerPrompt: { statusCounts: { unavailable: 1 } },
+      },
+    });
+    expect(JSON.stringify(reportA)).not.toContain('request-b');
+
+    const reportB = await store.report(scopeB);
+    expect(reportB).toMatchObject({
+      status: 'available',
+      report: {
+        requestCount: 1,
+        providerPrompt: { statusCounts: { unavailable: 1 } },
+      },
+    });
+    expect(JSON.stringify(reportB)).not.toContain('request-a');
+  });
+
+  it('fails closed when the report scope cannot be authorized', async () => {
+    const root = await mkdtemp(join(process.cwd(), 'cache-observation-store-'));
+    roots.push(root);
+    const store = new CacheObservationStore({ rootDir: root });
+    await store.initialize();
+
+    await expect(store.report(scope({ key: null }))).resolves.toEqual({
+      status: 'unavailable',
+      reason: 'scope_key_unavailable',
+    });
+  });
+
+  it('degrades the report gate when an entry cannot be parsed', async () => {
+    const root = await mkdtemp(join(process.cwd(), 'cache-observation-store-'));
+    roots.push(root);
+    const store = new CacheObservationStore({ rootDir: root });
+    await store.initialize();
+    await store.put(observation(), scope());
+    await writeFile(join(root, 'corrupt.json'), '{', 'utf8');
+
+    const result = await store.report(scope());
+    expect(result).toMatchObject({
+      status: 'available',
+      report: { requestCount: 1, unreadableEntryCount: 1 },
+    });
+    if (result.status !== 'available') throw new Error('report unexpectedly unavailable');
+    expect(result.report.releaseGate.reasons).toContain('cache_entries_unreadable');
   });
 });
