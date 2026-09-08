@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 01:53:26
+最后更新：2026-09-09 01:54:36
+
+**Harness CACHE-08 5xx 生命周期（2026-09-09 01:54:36，进行中）**：在 model lifecycle 矩阵中加入 Provider 5xx 场景，验证其记录为 `status=failed`、`providerReachStatus=unknown`、`transportStatus=failed`、`usageStatus=unavailable`，且不生成伪造 provider usage。harness 61 个文件 548 项通过，typecheck 通过。
 
 **Harness origin 级灰度（2026-09-09 01:53:26，进行中）**：新增 `agents.defaults.durableHarnessOriginOverrides`，Runner 解析有效模式时优先级为 session override > origin override > 全局；app/CLI 创建 Runner 时传入。新增 runner 夹具验证 `app → next`、`cli → shadow` 以及 session override 优先于 origin。runner/config/cli 35 个文件 321 项通过、1 项 skipped，typecheck 通过。
 

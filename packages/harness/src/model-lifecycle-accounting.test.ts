@@ -109,6 +109,7 @@ describe('model request lifecycle accounting', () => {
     ['timeout', new Error('provider timeout'), 'timeout', 'unknown', 'timeout'],
     ['rate limit', new Error('HTTP 429 rate limit'), 'rate_limit', 'reached', 'rate_limit'],
     ['connection reset', new Error('connection reset by peer'), 'connection_reset', 'unknown', 'connection_reset'],
+    ['server error', new Error('HTTP 503 service unavailable'), 'failed', 'unknown', 'failed'],
   ] as const)('records %s without fabricating Provider usage', async (_label, failure, status, reach, transport) => {
     const ctx = makeCtx();
     ctx.cacheObservationKey = 'model-lifecycle-failure-key';
