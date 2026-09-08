@@ -567,6 +567,7 @@ function applyDurableHarnessEvent(
           ...(typeof event.payload.retryOf === 'string' ? { retryOf: event.payload.retryOf } : {}),
           status: 'started',
           startedEventId: event.eventId,
+          startedAt: event.occurredAt,
         });
         next.pendingModelRequestIds.push(requestId);
       } else if (event.type === 'model_response_received') {
@@ -579,6 +580,7 @@ function applyDurableHarnessEvent(
         next.modelRequests[index] = {
           ...current,
           status: 'received',
+          respondedAt: event.occurredAt,
           ...(typeof event.payload.stream === 'boolean' ? { stream: event.payload.stream } : {}),
           ...(isModelTransportStatus(event.payload.transportStatus)
             ? { transportStatus: event.payload.transportStatus }
@@ -604,6 +606,7 @@ function applyDurableHarnessEvent(
           ...current,
           status,
           settlementEventId: event.eventId,
+          settledAt: event.occurredAt,
           ...(typeof event.payload.providerReached === 'boolean' ? { providerReached: event.payload.providerReached } : {}),
           ...(isModelTransportStatus(event.payload.transportStatus)
             ? { transportStatus: event.payload.transportStatus }

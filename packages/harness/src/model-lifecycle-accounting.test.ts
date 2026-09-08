@@ -38,7 +38,8 @@ function durableRecorder(ctx: RunContext): DurableHarnessEvent[] {
       cursor: events.length + 1,
       type: input.type,
       source: input.source,
-      occurredAt: input.occurredAt ?? '2026-09-03T00:00:00.000Z',
+      occurredAt: input.occurredAt
+        ?? new Date(Date.parse('2026-09-03T00:00:00.000Z') + events.length * 1_000).toISOString(),
       payload: input.payload,
     });
   };
@@ -73,6 +74,9 @@ describe('model request lifecycle accounting', () => {
     expect(projection.modelRequests[0]).toMatchObject({
       requestId: ctx.modelRequests?.[0]?.id,
       stream: true,
+      startedAt: '2026-09-03T00:00:01.000Z',
+      respondedAt: '2026-09-03T00:00:02.000Z',
+      settledAt: '2026-09-03T00:00:03.000Z',
       providerReachStatus: 'reached',
       transportStatus: 'completed',
       usageStatus: 'available',

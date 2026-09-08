@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 00:53:52
+最后更新：2026-09-09 00:58:06
+
+**Harness 请求时间线与延迟摘要（2026-09-09 00:58:06，进行中）**：durable `model request` projection 新增 `startedAt`/`respondedAt`/`settledAt`（来自事件 envelope），并新增 `summarizeModelRequestLatency`：nearest-rank P50/P95/max 与 received/pending/aborted/failure 计数；缺失、非法或负时长计为 `unavailable`，不伪造延迟。harness 60 个文件 534 项、runner 30 个文件 240 项通过，types/harness/runner typecheck 通过。
 
 **Harness CACHE-08 working-set 释放缓存边界（2026-09-09 00:53:52，进行中）**：新增端到端夹具验证释放 Atom 后系统消息移除该 Atom 正文，stable-prefix fingerprint 不变，dynamic suffix 变化，失效原因明确为 `memory_revision_changed`，序列化观测不含 Atom 正文。harness 59 个文件 529 项通过，typecheck 通过。
 

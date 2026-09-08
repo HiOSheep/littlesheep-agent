@@ -171,6 +171,12 @@ export interface DurableModelRequestProjection {
   readonly providerUsage?: DurableProviderUsageProjection;
   readonly status: DurableModelRequestStatus;
   readonly startedEventId: string;
+  /** Event-envelope time when the request became durable before the Provider call. */
+  readonly startedAt?: string;
+  /** Event-envelope time when the Provider response was recorded. */
+  readonly respondedAt?: string;
+  /** Event-envelope time when the request reached a terminal settlement. */
+  readonly settledAt?: string;
   readonly settlementEventId?: string;
   readonly providerReached?: boolean;
   readonly retryOf?: string;
