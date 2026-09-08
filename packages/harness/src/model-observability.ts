@@ -470,7 +470,7 @@ function recordPreparedRequest(
     sessionId: ctx.sessionId,
     workspaceScope: ctx.cwd,
     permissionPolicyId: ctx.resolvedRunConfig?.permissionPolicyId,
-    previous: ctx.modelRequests?.at(-1)?.cacheObservation,
+    previous: ctx.modelRequests?.at(-1)?.cacheObservation ?? ctx.previousCacheObservation,
     promptComponents: buildPromptComponentInput(ctx),
     key: ctx.cacheObservationKey,
   });

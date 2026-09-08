@@ -545,6 +545,14 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         networkEnabled: resolvedRunConfig.networkPolicy?.enabled === true, webProvider: resolvedRunConfig.webProvider,
         now: new Date(startedAt), permissionEventId: `${runId}:workspace-scan-permission`,
       });
+      const previousCacheObservation = infra.cacheObservationStore && infra.cacheObservationKey
+        ? await infra.cacheObservationStore.latest({
+            sessionId: String(sessionId),
+            workspaceScope: cwd,
+            permissionPolicyId: resolvedRunConfig.permissionPolicyId,
+            key: infra.cacheObservationKey,
+          }).catch(() => undefined)
+        : undefined;
       const ctx: RunContext = await buildRunContext({
         sessionId,
         inbound,
@@ -578,6 +586,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           : undefined,
         deferFinalReplySettlement: durableHarnessMode === 'next',
         cacheObservationKey: infra.cacheObservationKey,
+        previousCacheObservation,
         persistCacheObservation: createCacheObservationPersistence(infra.cacheObservationStore, {
           sessionId: String(sessionId),
           workspaceScope: cwd,

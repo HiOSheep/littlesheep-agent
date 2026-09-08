@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 01:33:49
+最后更新：2026-09-09 01:40:21
+
+**Harness 跨 run 缓存失效解释（2026-09-09 01:40:21，进行中）**：`CacheObservationStore.latest()` 返回 scope 内最近一条授权观测；Runner 在构建 RunContext 时读取并作为 `previousCacheObservation`，首次模型请求会与上一条跨 run 观测比较。新增 runner 夹具验证同一 session 从 model-a 切到 model-b 时首次请求产生 `model_changed`。harness 61 个文件 547 项、runner 30 个文件 243 项、app main 71 个文件 271 项通过，types/harness/runner typecheck 通过。
 
 **Harness 累积回归复验（2026-09-09 01:33:49）**：对 `893e1b6`（含 CACHE-05/06/07/08/09 增量、effect 结算、per-session rollout、cache quality API/time window）运行全仓 `pnpm.cmd typecheck` 和 `pnpm.cmd test`；411 个测试文件、2,866 项通过、1 项 skipped，`check:repo` 33/33。该结果证明累积改动没有集成回归，但不改变各 CACHE/阶段完成门状态。
 

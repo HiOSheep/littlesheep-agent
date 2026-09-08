@@ -254,6 +254,8 @@ export interface RunContext {
   contextSnapshots?: import('./runtime-contracts.js').ContextSnapshot[];
   /** Runtime-only HMAC key for cache observations; never persisted in checkpoints or logs. */
   cacheObservationKey?: string | null;
+  /** Last authorized observation for this scope; used only to explain cross-run cache changes. */
+  previousCacheObservation?: import('./cache-observability.js').CacheObservation;
   /** Non-blocking persistence hook for redacted cache observations. */
   persistCacheObservation?: (
     observation: import('./cache-observability.js').CacheObservation,

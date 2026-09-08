@@ -147,6 +147,33 @@ export class CacheObservationStore {
     });
   }
 
+  /** Return the most recent authorized observation for a scope, if any. */
+  async latest(input: CacheScopeInput): Promise<CacheObservation | undefined> {
+    const scope = authorizeLookupScope(input);
+    if (!scope.allowed) return undefined;
+
+    const files = await readdir(this.rootDir).catch(() => [] as string[]);
+    let best: PersistedCacheObservation | undefined;
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      const path = join(this.rootDir, file);
+      let entry: PersistedCacheObservation;
+      try {
+        entry = parseEntry(await readFile(path, 'utf8'));
+      } catch {
+        continue;
+      }
+      if (entry.scopeDigest !== scope.partitionDigest) continue;
+      if (this.now() - entry.storedAt > this.maxAgeMs) {
+        await unlink(path).catch(() => undefined);
+        continue;
+      }
+      if (!authorizeCacheObservationScope(entry.observation, input).allowed) continue;
+      if (!best || entry.storedAt > best.storedAt) best = entry;
+    }
+    return best ? structuredClone(best.observation) : undefined;
+  }
+
   /**
    * Build a scope-authorized CACHE-09/10 report over stored observations.
    * Cross-scope entries are never returned; corrupt or tampered entries only

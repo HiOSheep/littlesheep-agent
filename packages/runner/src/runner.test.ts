@@ -445,6 +445,33 @@ describe('createRunner run', () => {
       .toEqual(['next reply one', 'shadow reply two', 'next reply three']);
   });
 
+  it('explains a cross-run model change from the persisted cache observation', async () => {
+    const firstRunner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'openai/model-a',
+      llm: makeMockLlm(textResponse('first model reply')),
+    });
+    createdRunners.push(firstRunner);
+    const first = await firstRunner.run({ text: 'first model turn' });
+    expect(first).toMatchObject({ status: 'ok', reply: 'first model reply' });
+    await firstRunner.shutdown();
+    createdRunners.pop();
+
+    const secondRunner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'openai/model-b',
+      llm: makeMockLlm(textResponse('second model reply')),
+    });
+    createdRunners.push(secondRunner);
+    const second = await secondRunner.run({ sessionId: first.sessionId, text: 'second model turn' });
+    expect(second).toMatchObject({ status: 'ok', reply: 'second model reply' });
+
+    const observation = second.modelRequests?.[0]?.cacheObservation;
+    expect(observation?.invalidationReasons).toContain('model_changed');
+  });
+
   it('keeps a settled success when run_completed append fails and repairs it without replaying effects', async () => {
     const llm = makeMockLlm(textResponse('settled before completion receipt'));
     const runner = await createRunner({

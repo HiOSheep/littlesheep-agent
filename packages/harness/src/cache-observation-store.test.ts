@@ -230,4 +230,40 @@ describe('CacheObservationStore', () => {
       reason: 'report_window_invalid',
     });
   });
+
+  it('returns only the latest authorized observation for a scope', async () => {
+    let now = 1_000;
+    const root = await mkdtemp(join(process.cwd(), 'cache-observation-store-'));
+    roots.push(root);
+    const store = new CacheObservationStore({ rootDir: root, maxAgeMs: 60_000, now: () => now });
+    await store.initialize();
+    await store.put(observation({
+      request: {
+        ...request,
+        messages: [
+          { role: 'system', content: 'Stable policy\n<!-- LITTLESHEEP_CACHE_BOUNDARY -->\nrun=old' },
+          { role: 'user', content: 'old user content' },
+        ],
+      },
+      modelRequestId: 'request-old',
+    }), scope());
+    now = 2_000;
+    await store.put(observation({
+      request: {
+        ...request,
+        messages: [
+          { role: 'system', content: 'Stable policy\n<!-- LITTLESHEEP_CACHE_BOUNDARY -->\nrun=new' },
+          { role: 'user', content: 'new user content' },
+        ],
+      },
+      requestIndex: 2,
+      modelRequestId: 'request-new',
+    }), scope());
+
+    await expect(store.latest(scope())).resolves.toMatchObject({ modelRequestId: 'request-new' });
+    await expect(store.latest(scope({ sessionId: 'session-b' }))).resolves.toBeUndefined();
+    await expect(store.latest(scope({ key: null }))).resolves.toBeUndefined();
+    now = 70_000;
+    await expect(store.latest(scope())).resolves.toBeUndefined();
+  });
 });
