@@ -265,7 +265,7 @@ async function streamCheckpointResume(
       onToolEvent: (event) => writeSse(res, event.type, event),
     })
     if (result.runId !== runId) throw new Error('runner returned an unexpected resumed run id')
-    const publishedResult = runner.durableHarnessMode === 'next'
+    const publishedResult = (result.durableHarnessMode ?? runner.durableHarnessMode) === 'next'
       ? await prepareAuthoritativeRunnerResult(runner, result)
       : result
     if (publishedResult.runtimeStatus) {

@@ -91,7 +91,8 @@ export async function routeSessions(
       json(res, 404, { error: `run not found: ${replayRunId}` })
       return true
     }
-    json(res, 200, runner.durableHarnessMode === 'next'
+    const durableHarnessMode = runner.durableHarnessModeForSession?.(log.sessionId) ?? runner.durableHarnessMode
+    json(res, 200, durableHarnessMode === 'next'
       ? await prepareAuthoritativeExecutionLog(runner, log)
       : log)
     return true

@@ -52,6 +52,8 @@ export const AgentDefaultsSchema = z.object({
   harness: z.string().default('core-flow'),
   /** Durable Harness rollout mode: shadow audits only; next is authoritative. */
   durableHarnessMode: z.enum(['shadow', 'next']).default('shadow'),
+  /** Per-session durable Harness overrides; unlisted sessions use durableHarnessMode. */
+  durableHarnessSessionOverrides: z.record(z.enum(['shadow', 'next'])).default({}),
 }).default({});
 
 /** Electron desktop lifecycle preferences. */

@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 01:07:29
+最后更新：2026-09-09 01:13:24
+
+**Harness per-session durable rollout（2026-09-09 01:13:24，进行中）**：新增 `agents.defaults.durableHarnessSessionOverrides`，Runner 按 session 解析有效 `shadow`/`next` 并写入 `RunnerResult.durableHarnessMode`；App/CLI 的 publication、session replay 和 execution-log replay 使用有效模式，未列出的 session 继续使用全局模式。runner 30 个文件 241 项、app main 71 个文件 271 项通过，config/runner/app/cli typecheck 通过。
 
 **Harness durableHarnessMode kill switch（2026-09-09 01:07:29，进行中）**：`agents.defaults.durableHarnessMode` 新增 `shadow`/`next`，默认 `shadow`；Local App API `GET/POST /runtime` 可读取和校验切换，app 与 CLI 创建 Runner 时使用该配置，非法值返回 400。config 18 项、app main 71 个文件 271 项、CLI 相关测试通过，config/app/cli typecheck 通过。
 

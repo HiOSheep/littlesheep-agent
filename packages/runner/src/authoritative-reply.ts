@@ -21,7 +21,7 @@ export async function prepareAuthoritativeRunnerResult(
   runner: AgentRunner,
   result: RunnerResult,
 ): Promise<RunnerResult> {
-  if (runner.durableHarnessMode !== 'next') return result
+  if ((result.durableHarnessMode ?? runner.durableHarnessMode) !== 'next') return result
 
   const replay = runner.replayDurableFinalReply
   if (!replay) {
@@ -75,10 +75,11 @@ export async function prepareAuthoritativeRunnerResult(
  * never allowed to outrank the durable final-reply projection in next mode.
  */
 export async function prepareAuthoritativeExecutionLog(
-  runner: Pick<AgentRunner, 'durableHarnessMode' | 'replayDurableFinalReply'>,
+  runner: Pick<AgentRunner, 'durableHarnessMode' | 'durableHarnessModeForSession' | 'replayDurableFinalReply'>,
   log: ExecutionLog,
 ): Promise<AuthoritativeExecutionLog> {
-  if (runner.durableHarnessMode !== 'next') return log
+  const mode = runner.durableHarnessModeForSession?.(log.sessionId) ?? runner.durableHarnessMode
+  if (mode !== 'next') return log
 
   const replay = runner.replayDurableFinalReply
   if (!replay) {

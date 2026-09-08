@@ -123,6 +123,7 @@ export async function runCli(argv: string[]): Promise<void> {
     bootstrapDir: dataDir.root,
     containerRoot: dataDir.root,
     durableHarnessMode: config.agents.defaults.durableHarnessMode,
+    durableHarnessSessionOverrides: config.agents.defaults.durableHarnessSessionOverrides,
   });
 
   // 6. Dispatch: single-shot or REPL.
@@ -132,7 +133,7 @@ export async function runCli(argv: string[]): Promise<void> {
       text: args.text,
       origin: 'cli',
     });
-    const publishedResult = runner.durableHarnessMode === 'next'
+    const publishedResult = (result.durableHarnessMode ?? runner.durableHarnessMode) === 'next'
       ? await prepareAuthoritativeRunnerResult(runner, result)
       : result;
     if (!publishedResult) throw new Error('runner returned no result')

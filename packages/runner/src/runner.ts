@@ -103,6 +103,8 @@ export type RunnerResult = AgentResult & {
   sessionId: SessionId;
   memoryAccess?: MemoryAccessLedger;
   runCheckpointId?: string;
+  /** Effective durable Harness mode for this run (global or session override). */
+  durableHarnessMode?: 'shadow' | 'next';
 };
 interface ContinuationInput {
   checkpoint: RunCheckpoint;
@@ -175,6 +177,8 @@ export interface CreateRunnerOptions {
   conversationContinuationMode?: 'off' | 'shadow' | 'full';
   /** Durable Harness rollout mode. Defaults to observational `shadow`. */
   durableHarnessMode?: 'shadow' | 'next';
+  /** Per-session durable Harness overrides; unlisted sessions use durableHarnessMode. */
+  durableHarnessSessionOverrides?: Readonly<Record<string, 'shadow' | 'next'>>;
   log?: LogFn;
 }
 
@@ -300,6 +304,8 @@ export interface AgentRunner {
   readonly model: string;
   /** Harness rollout mode used by the runner; legacy callers omit this field. */
   readonly durableHarnessMode?: 'shadow' | 'next';
+  /** Resolve the effective mode for one session, including overrides. */
+  durableHarnessModeForSession?(sessionId: string): 'shadow' | 'next';
 }
 
 /** Build a runner. Async because the skill loader reads directories. */
@@ -308,6 +314,11 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
   const providerModel = parseModelRef(model).model;
   const conversationContinuationMode = resolveConversationContinuationMode(
     opts.conversationContinuationMode ?? process.env.LITTLESHEEP_CONVERSATION_CONTINUATION_MODE,
+  );
+  const resolveDurableHarnessMode = (sessionId?: string): 'shadow' | 'next' => (
+    (sessionId ? opts.durableHarnessSessionOverrides?.[sessionId] : undefined)
+    ?? opts.durableHarnessMode
+    ?? 'shadow'
   );
   const state: RunnerState = { sessionId: undefined, model };
   const protectedWriteRoots = opts.protectedWriteRoots
@@ -407,11 +418,12 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         sessionId = session.id;
       }
       state.sessionId = sessionId;
+      const durableHarnessMode = resolveDurableHarnessMode(String(sessionId));
       durableRecorder = createDurableRunRecorder({
         eventStore: infra.durableEventStore,
         inboxStore: infra.durableInboxStore,
         sessionId: String(sessionId), runId, origin, model,
-        mode: opts.durableHarnessMode ?? 'shadow',
+        mode: durableHarnessMode,
         initializationError: infra.durableHarnessInitializationError,
         reserveFinalReply: (replySessionId, reservation) => infra.sessionManager.reserveAssistantReplySettlement(
           asSessionId(replySessionId), reservation,
@@ -564,7 +576,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         appendDurableEvent: durableRecorder
           ? (event) => durableRecorder!.appendObserved(event)
           : undefined,
-        deferFinalReplySettlement: opts.durableHarnessMode === 'next',
+        deferFinalReplySettlement: durableHarnessMode === 'next',
         cacheObservationKey: infra.cacheObservationKey,
         persistCacheObservation: createCacheObservationPersistence(infra.cacheObservationStore, {
           sessionId: String(sessionId),
@@ -718,7 +730,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           execute: async (preparedRun) => {
             const executedRun = await executeRunnerPhase({
               ctx: preparedRun.ctx,
-              harness: opts.durableHarnessMode === 'next' ? infra.nextHarness : infra.harness,
+              harness: durableHarnessMode === 'next' ? infra.nextHarness : infra.harness,
               signal,
               runCheckpointStore: infra.runCheckpointStore,
               log: opts.log,
@@ -748,7 +760,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
             return { ...executedRun, result: finalizedRun.result, memoryAccess: finalizedRun.memoryAccess };
           },
           persist: async (finalizedRun) => {
-            if (opts.durableHarnessMode === 'next') {
+            if (durableHarnessMode === 'next') {
               // FINALIZE/compaction may prepare one last model request. Close
               // that lifecycle before the audit receipt and final settlement.
               await flushModelRequestLifecycles(ctx);
@@ -763,14 +775,14 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
               runtimeResourceObservation: completeRuntimeResourceObservation(runtimeResourceStart),
               executionLogStore: infra.executionLogStore,
               activeCheckpoint,
-              strict: opts.durableHarnessMode === 'next',
+              strict: durableHarnessMode === 'next',
               onCheckpointCompleted: (completed) => { checkpointCompleted = completed; },
               log: opts.log,
             });
           },
         });
       } catch (error) {
-        if (opts.durableHarnessMode !== 'next') throw error;
+        if (durableHarnessMode !== 'next') throw error;
         const reason = error instanceof RunnerPersistenceError
           ? 'finalize_persistence_failed'
           : 'finalize_publication_failed';
@@ -791,13 +803,13 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       try {
         await flushModelRequestLifecycles(ctx);
       } catch (error) {
-        if (opts.durableHarnessMode !== 'next') throw error;
+        if (durableHarnessMode !== 'next') throw error;
         const reason = 'finalize_model_lifecycle_failed';
         await settleRuntimeFailureEvent(ctx, reason, opts.log);
         result = runtimeFailureResult(result, reason);
       }
 
-      if (opts.durableHarnessMode === 'next' && result.status === 'ok') {
+      if (durableHarnessMode === 'next' && result.status === 'ok') {
         try {
           await settleDeferredFinalReply(ctx);
           result = settledReplyResult(result, ctx);
@@ -819,7 +831,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         try {
           await recordDurableRunOutcome(durableRecorder, result);
         } catch (error) {
-          if (opts.durableHarnessMode !== 'next') throw error;
+          if (durableHarnessMode !== 'next') throw error;
           // The final settlement is already durable. A missing terminal
           // run_completed receipt is repaired by recoverDurableRun; do not
           // downgrade it to a conflicting Runtime failure event.
@@ -843,7 +855,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           opts.log?.('error', `runner: failed to seal completed run checkpoint: ${(error as Error).message}`);
         }
       }
-      return result;
+      return { ...result, durableHarnessMode };
     } finally {
       if (durableRecorder && !durableOutcomeRecorded) {
         if (runContext) {
@@ -2121,6 +2133,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     infra,
     model,
     durableHarnessMode: opts.durableHarnessMode ?? 'shadow',
+    durableHarnessModeForSession: (sessionId: string) => resolveDurableHarnessMode(sessionId),
   };
   }
 

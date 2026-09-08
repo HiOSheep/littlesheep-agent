@@ -102,6 +102,24 @@ describe('createRunner run', () => {
     ]));
   });
 
+  it('resolves durable Harness mode per session without changing the global default', async () => {
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('unused')),
+      bootstrapDir: dataDir,
+      skillsDirs: [],
+      durableHarnessMode: 'shadow',
+      durableHarnessSessionOverrides: { 'session-next': 'next' },
+    });
+    createdRunners.push(runner);
+
+    expect(runner.durableHarnessMode).toBe('shadow');
+    expect(runner.durableHarnessModeForSession?.('session-next')).toBe('next');
+    expect(runner.durableHarnessModeForSession?.('session-other')).toBe('shadow');
+  });
+
   it('defers external workspace indexing in research and indexes immediately in full access', async () => {
     const containerRoot = join(dataDir, 'container');
     const externalWorkspace = join(dataDir, 'external-workspace');

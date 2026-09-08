@@ -46,6 +46,7 @@ export const DEFAULT_CONFIG: Config = {
       maxModelCallsPerRun: 32,
       harness: 'core-flow',
       durableHarnessMode: 'shadow',
+      durableHarnessSessionOverrides: {},
     },
   },
   desktop: {

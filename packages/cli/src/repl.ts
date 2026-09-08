@@ -72,7 +72,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         approve,
         origin: 'cli',
       });
-      const publishedResult = opts.runner.durableHarnessMode === 'next'
+      const publishedResult = (result.durableHarnessMode ?? opts.runner.durableHarnessMode) === 'next'
         ? await prepareAuthoritativeRunnerResult(opts.runner, result)
         : result;
       if (!publishedResult) throw new Error('runner returned no result')

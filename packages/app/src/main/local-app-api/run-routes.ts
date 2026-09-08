@@ -279,7 +279,7 @@ export class RunRouter {
         )
         const result = await runPromise
         if (result.runId !== runId) throw new Error(`runner returned an unexpected run id: ${result.runId}`)
-        const publishedResult = runner.durableHarnessMode === 'next'
+        const publishedResult = (result.durableHarnessMode ?? runner.durableHarnessMode) === 'next'
           ? await prepareAuthoritativeRunnerResult(runner, result)
           : result
         if (publishedResult.runtimeStatus) {
@@ -336,7 +336,7 @@ export class RunRouter {
           cwd,
         }),
       })
-      const publishedResult = runner.durableHarnessMode === 'next'
+      const publishedResult = (result.durableHarnessMode ?? runner.durableHarnessMode) === 'next'
         ? await prepareAuthoritativeRunnerResult(runner, result)
         : result
       await finishRunResources(context, runner, publishedResult, effectiveBody, ownership, cwd, workspaceContext)
