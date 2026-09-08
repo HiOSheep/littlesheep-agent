@@ -123,6 +123,15 @@ export async function routeRuntime(
         nextDefaults.contextCompressionThresholdRatio = ratio
       }
 
+      if (Object.prototype.hasOwnProperty.call(body, 'durableHarnessMode')) {
+        const mode = body.durableHarnessMode
+        if (mode !== 'shadow' && mode !== 'next') {
+          json(res, 400, { error: 'durableHarnessMode must be "shadow" or "next"' })
+          return true
+        }
+        nextDefaults.durableHarnessMode = mode
+      }
+
       if (Object.prototype.hasOwnProperty.call(body, 'closePolicy')) {
         const closePolicy = body.closePolicy
         if (
@@ -322,6 +331,7 @@ export function buildRuntimePayload(config: Config, workplaceDir: string, webPro
     reasoning: coerceReasoningForModelRef(config.agents.defaults.reasoning, config.agents.defaults.model),
     profile: normalizeAgentProfileId(config.agents.defaults.profile),
     contextCompressionThresholdRatio: config.agents.defaults.contextCompressionThresholdRatio,
+    durableHarnessMode: config.agents.defaults.durableHarnessMode,
     closePolicy: config.desktop.closePolicy,
     workspace: config.agents.defaults.workspace || workplaceDir,
     workplace: workplaceDir,

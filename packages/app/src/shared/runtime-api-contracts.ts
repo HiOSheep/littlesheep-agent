@@ -41,6 +41,7 @@ export interface RuntimeState {
   reasoning: RuntimeReasoning
   profile: AgentProfileId
   contextCompressionThresholdRatio: number
+  durableHarnessMode: 'shadow' | 'next'
   closePolicy: DesktopClosePolicy
   workspace: string
   workplace: string
@@ -95,7 +96,13 @@ export interface RuntimeWebPatch {
 
 export type RuntimePatch = Partial<Pick<
   RuntimeState,
-  'model' | 'reasoning' | 'profile' | 'contextCompressionThresholdRatio' | 'closePolicy' | 'workspace'
+  | 'model'
+  | 'reasoning'
+  | 'profile'
+  | 'contextCompressionThresholdRatio'
+  | 'durableHarnessMode'
+  | 'closePolicy'
+  | 'workspace'
 >> & { web?: RuntimeWebPatch }
 
 export interface DataRootStatus {

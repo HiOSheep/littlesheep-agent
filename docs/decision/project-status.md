@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 01:03:55
+最后更新：2026-09-09 01:07:29
+
+**Harness durableHarnessMode kill switch（2026-09-09 01:07:29，进行中）**：`agents.defaults.durableHarnessMode` 新增 `shadow`/`next`，默认 `shadow`；Local App API `GET/POST /runtime` 可读取和校验切换，app 与 CLI 创建 Runner 时使用该配置，非法值返回 400。config 18 项、app main 71 个文件 271 项、CLI 相关测试通过，config/app/cli typecheck 通过。
 
 **Harness CACHE-09/10 Local App API（2026-09-09 01:03:55，进行中）**：新增只读 `GET /runtime/cache-quality`，要求显式 `sessionId`、`workspace`、`permission`，使用 Runner 持有的 cache observation key 调用 scope-authorized `report()`；缺少 scope/key 时返回 `unavailable`，不泄露跨 scope 内容。新增 API 夹具验证 scope 透传和失败关闭。app main 71 个文件 271 项通过，app typecheck 通过。
 

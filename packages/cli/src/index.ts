@@ -122,6 +122,7 @@ export async function runCli(argv: string[]): Promise<void> {
     model,
     bootstrapDir: dataDir.root,
     containerRoot: dataDir.root,
+    durableHarnessMode: config.agents.defaults.durableHarnessMode,
   });
 
   // 6. Dispatch: single-shot or REPL.

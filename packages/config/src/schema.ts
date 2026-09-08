@@ -50,6 +50,8 @@ export const AgentDefaultsSchema = z.object({
   maxModelCallsPerRun: z.number().int().min(1).max(128).default(32),
   /** Which harness to use (default: "core-flow"). */
   harness: z.string().default('core-flow'),
+  /** Durable Harness rollout mode: shadow audits only; next is authoritative. */
+  durableHarnessMode: z.enum(['shadow', 'next']).default('shadow'),
 }).default({});
 
 /** Electron desktop lifecycle preferences. */

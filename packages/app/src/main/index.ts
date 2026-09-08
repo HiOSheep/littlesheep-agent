@@ -305,6 +305,7 @@ async function bootstrap(): Promise<void> {
     model,
     bootstrapDir: dataDir.root,
     containerRoot: dataDir.root,
+    durableHarnessMode: config.agents.defaults.durableHarnessMode,
     tokenizerFetch: (input, init) => net.fetch(input instanceof URL ? input.href : input, init),
   })
   stageStartedAt = recordBootstrapTiming('runner-ready', stageStartedAt)
@@ -500,6 +501,7 @@ async function doRebuildRunner(): Promise<void> {
     model: currentModel,
     bootstrapDir: currentBootstrapDir || currentDataDir,
     containerRoot: currentDataDir || currentBootstrapDir,
+    durableHarnessMode: currentConfig.agents.defaults.durableHarnessMode,
     tokenizerFetch: (input, init) => net.fetch(input instanceof URL ? input.href : input, init),
   })
 

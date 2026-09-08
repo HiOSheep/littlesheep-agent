@@ -62,6 +62,15 @@ describe('runtime config Local App API', () => {
       await expect(closePolicy.json()).resolves.toMatchObject({ closePolicy: 'always-background' })
       expect(updates.at(-1)?.desktop.closePolicy).toBe('always-background')
 
+      const durableHarnessMode = await fetch(`http://127.0.0.1:${server.port}/runtime`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ durableHarnessMode: 'next' }),
+      })
+      expect(durableHarnessMode.status).toBe(200)
+      await expect(durableHarnessMode.json()).resolves.toMatchObject({ durableHarnessMode: 'next' })
+      expect(updates.at(-1)?.agents.defaults.durableHarnessMode).toBe('next')
+
       const after = await fetch(`http://127.0.0.1:${server.port}/runtime`)
       await expect(after.json()).resolves.toMatchObject({ contextCompressionThresholdRatio: 0.9 })
 
@@ -79,7 +88,13 @@ describe('runtime config Local App API', () => {
         body: JSON.stringify({ closePolicy: 'coding' }),
       })
       expect(invalidClosePolicy.status).toBe(400)
-      expect(updates).toHaveLength(2)
+      const invalidDurableHarnessMode = await fetch(`http://127.0.0.1:${server.port}/runtime`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ durableHarnessMode: 'authoritative' }),
+      })
+      expect(invalidDurableHarnessMode.status).toBe(400)
+      expect(updates).toHaveLength(3)
     } finally {
       await server.stop()
       rmSync(dataDir, { recursive: true, force: true })

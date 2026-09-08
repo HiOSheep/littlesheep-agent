@@ -2,7 +2,7 @@
 
 状态：规划已定稿，阶段 0 冻结已完成，阶段 1 开源底座评估已完成；阶段 2 观测与后续重构仍在进行
 
-最后更新：2026-09-09 01:03:55
+最后更新：2026-09-09 01:07:29
 
 本文是新 Harness 重建和上下文缓存专项的唯一执行入口。它记录目标架构、开源底座评估、迁移顺序、回滚边界、缓存观测与验收；当前事实和最新质量门仍以[项目状态](../decision/project-status.md)为准。
 
@@ -356,9 +356,9 @@ Ingress
 
 ### 阶段 7：迁移、回滚与逐步切换
 
-状态：未开始。
+状态：进行中，优先级 P0。
 
-工作项：实现旧 checkpoint/session 到新 event/projection 的只读兼容读取；按 session 或 request kind 小范围启用；保留旧路径 kill switch、数据备份、回滚演练和运行中租约处理。
+工作项：实现旧 checkpoint/session 到新 event/projection 的只读兼容读取；按 session 或 request kind 小范围启用；保留旧路径 kill switch、数据备份、回滚演练和运行中租约处理。本轮把 `durableHarnessMode` 从内部 `createRunner` 选项提升为 `agents.defaults.durableHarnessMode` 配置（默认 `shadow`），并在 Local App API `/runtime` 暴露可校验的 `shadow`/`next` 切换；app 与 CLI 创建 Runner 时使用该配置，非法值返回 400。按 session/request kind 的细粒度切换、回滚演练和运行中租约处理仍未完成。
 
 完成门：新路径失败可在不丢输入、工具证据、权限结果或用户数据的情况下切回旧路径；切换/回退不会重复 effect、重复 Agent 文案或污染 cache ledger；跨重启和中断恢复仍可回查。
 
