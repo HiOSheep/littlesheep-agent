@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 00:52:43
+最后更新：2026-09-09 00:53:52
+
+**Harness CACHE-08 working-set 释放缓存边界（2026-09-09 00:53:52，进行中）**：新增端到端夹具验证释放 Atom 后系统消息移除该 Atom 正文，stable-prefix fingerprint 不变，dynamic suffix 变化，失效原因明确为 `memory_revision_changed`，序列化观测不含 Atom 正文。harness 59 个文件 529 项通过，typecheck 通过。
 
 **Harness CACHE-08 记忆注入缓存边界（2026-09-09 00:52:43，进行中）**：新增端到端夹具验证 `injectMemoryKnownState` 注入的 KnownState 只改变 dynamic suffix，不改变 stable-prefix fingerprint；序列化观测不含 atom id 或 KnownState 正文。harness 59 个文件 528 项通过，typecheck 通过。
 
