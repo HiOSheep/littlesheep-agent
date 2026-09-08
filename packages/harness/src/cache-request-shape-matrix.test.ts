@@ -5,6 +5,10 @@ import {
   canonicalSerialize,
   classifyProviderCacheUsage,
 } from './cache-observability.js';
+import { attachmentContextMessages } from './stages/_shared.js';
+import { buildRunRequestCandidates } from './context-candidates.js';
+import { prepareModelRequest } from './model-observability.js';
+import { makeCtx } from './tests/helpers.js';
 
 const tools: ToolSpec[] = [
   { type: 'function', function: { name: 'read', description: 'Read', parameters: { type: 'object' } } },
@@ -214,6 +218,64 @@ describe('CACHE-08 request shape and lifecycle matrix', () => {
     expect(changedMemory.invalidationReasons).toEqual(['memory_revision_changed']);
     expect(changedSummary.stablePrefix.fingerprint).toBe(first.stablePrefix.fingerprint);
     expect(changedSummary.invalidationReasons).toEqual(['summary_compacted']);
+  });
+
+  it('keeps attachment manifests in the dynamic suffix without invalidating the stable prefix', () => {
+    const boundary = 'Stable policy v1\n<!-- LITTLESHEEP_CACHE_BOUNDARY -->\nrun=one';
+    const baselineCtx = makeCtx();
+    const baselineRaw: ChatRequest = {
+      model: 'test/model',
+      messages: [
+        { role: 'system', content: boundary },
+        { role: 'user', content: 'summarize the attachment' },
+      ],
+      max_tokens: 100,
+    };
+    prepareModelRequest(
+      baselineCtx,
+      'reply',
+      baselineRaw,
+      buildRunRequestCandidates(baselineCtx, 'reply', baselineRaw.messages, { history: [] }),
+    );
+    const baseline = baselineCtx.modelRequests?.[0]?.cacheObservation;
+
+    const ctx = makeCtx();
+    const attachments = [{
+      id: 'att-1',
+      path: 'D:/secret/attachment-path.pdf',
+      name: 'secret-attachment.pdf',
+      kind: 'document' as const,
+      size: 1_024,
+      contentState: 'uninspected' as const,
+    }];
+    const manifest = attachmentContextMessages(ctx.runId, attachments);
+    const raw: ChatRequest = {
+      model: 'test/model',
+      messages: [
+        { role: 'system', content: boundary },
+        ...manifest.map((item) => item.message),
+        { role: 'user', content: 'summarize the attachment' },
+      ],
+      max_tokens: 100,
+    };
+    const prepared = prepareModelRequest(
+      ctx,
+      'reply',
+      raw,
+      buildRunRequestCandidates(ctx, 'reply', raw.messages, {
+        history: [],
+        insertedBeforePrimary: manifest.map((item) => item.context),
+      }),
+    );
+    const observation = ctx.modelRequests?.[0]?.cacheObservation;
+
+    expect(String(prepared.messages[1]?.content)).toContain('Attached files manifest');
+    expect(observation?.stablePrefix.fingerprint).toBe(baseline?.stablePrefix.fingerprint);
+    expect(observation?.dynamicSuffix.fingerprint).not.toBe(baseline?.dynamicSuffix.fingerprint);
+    expect(observation?.invalidationReasons).toEqual([]);
+    const serialized = canonicalSerialize(observation);
+    expect(serialized).not.toContain('secret-attachment.pdf');
+    expect(serialized).not.toContain('secret/attachment-path.pdf');
   });
 
   it('canonicalizes tool order but invalidates additions and schema edits', () => {

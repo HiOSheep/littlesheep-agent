@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 01:13:24
+最后更新：2026-09-09 01:14:46
+
+**Harness CACHE-08 附件 manifest 缓存边界（2026-09-09 01:14:46，进行中）**：新增端到端夹具验证附件 manifest 只进入 dynamic suffix，不改变 stable-prefix fingerprint，也不产生 invalidation reason；序列化观测不含附件名或路径。harness 61 个文件 544 项通过，typecheck 通过。
 
 **Harness per-session durable rollout（2026-09-09 01:13:24，进行中）**：新增 `agents.defaults.durableHarnessSessionOverrides`，Runner 按 session 解析有效 `shadow`/`next` 并写入 `RunnerResult.durableHarnessMode`；App/CLI 的 publication、session replay 和 execution-log replay 使用有效模式，未列出的 session 继续使用全局模式。runner 30 个文件 241 项、app main 71 个文件 271 项通过，config/runner/app/cli typecheck 通过。
 
