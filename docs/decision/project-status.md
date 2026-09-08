@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 01:27:09
+最后更新：2026-09-09 01:33:49
+
+**Harness 累积回归复验（2026-09-09 01:33:49）**：对 `893e1b6`（含 CACHE-05/06/07/08/09 增量、effect 结算、per-session rollout、cache quality API/time window）运行全仓 `pnpm.cmd typecheck` 和 `pnpm.cmd test`；411 个测试文件、2,866 项通过、1 项 skipped，`check:repo` 33/33。该结果证明累积改动没有集成回归，但不改变各 CACHE/阶段完成门状态。
 
 **Harness adapter_changed 失效原因（2026-09-09 01:27:09，进行中）**：`buildCacheObservation` 接受 Runtime 提供的 `adapter` 标识（默认 `llm-chat`），适配器变化现在产生 `adapter_changed`，并新增最小复现夹具；此前该枚举值不可达。harness 61 个文件 546 项通过，typecheck 通过。
 
