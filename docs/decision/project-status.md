@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 00:30:52
+最后更新：2026-09-09 00:32:48
+
+**Harness CACHE-06 observation-store 隔离矩阵（2026-09-09 00:32:48，进行中）**：新增 2 session × 2 workspace × 3 权限共 12 个 scope 的完整隔离矩阵夹具，验证 partition digest 与 stable-prefix fingerprint 两两不同、并发写入和交叉读取不会返回其他 scope 的 observation、store 重启后隔离保持、嵌入 scope 被篡改的条目在命中前以 `scope_scope_mismatch` 拒绝，以及所有落盘文件不含 session、workspace 或用户正文。harness 59 个文件 520 项通过，typecheck 通过；CACHE-06 跨 Context/Atom/tool-result 的完整隔离仍需在 CACHE-08 请求形态矩阵中验证。
 
 **Harness CACHE-07 本地/Provider 对账 durable 对齐（2026-09-09，进行中）**：durable `provider usage` projection 现在携带同一请求的本地精确 tokenizer 校准（`tokenizerId`、`localPromptTokens`、`differenceTokens`、`relativeDifference`、`status`），codec 会校验差值、相对差和 `status`/`reconciliation` 映射，拒绝缺少证据或自相矛盾的 payload。新增 8 项夹具覆盖 `exact_match`、`within_tolerance`、`mismatch` 和篡改拒绝，并验证 durable projection 与 Context snapshot 的 `localCalibration` 逐字段一致、事件流不含 prompt/正文。harness 58 个文件 515 项、runner+types 37 个文件 266 项、app main 70 个文件 270 项均通过；全量回归 407 个文件、2,832 项通过、1 项 skipped，`pnpm.cmd typecheck`、`pnpm.cmd run check:repo`（33/33）通过。该增量只完成离线本地/Provider 账本对齐，真实 Provider usage 对账、CACHE-08 至 CACHE-10、生产级 effect crash/replay、真实渠道重连和新 Harness 默认切换仍未完成。
 
