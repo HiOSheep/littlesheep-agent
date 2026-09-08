@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 00:43:19
+最后更新：2026-09-09 00:44:59
+
+**Harness CACHE-08 工具结果/工具循环矩阵（2026-09-09 00:44:59，进行中）**：新增夹具验证工具调用与工具结果始终进入 dynamic suffix，两轮工具循环后 stable-prefix fingerprint 保持不变且无 invalidation reason，序列化不含工具参数或结果正文；工具 schema 增删仍按 `tool_schema_changed` 失效。harness 59 个文件 525 项通过，typecheck 通过。
 
 **Harness effect 结算语义修正（2026-09-09 00:43:19，进行中）**：区分执行前拒绝与执行后结果不明。effect intent 已耐久、但 pre-effect checkpoint 失败时工具零调用，durable `effect_settled` 现在写入 `failed`（而不是 `unknown`），projection 不再进入 `unknownEffectIds`/`waiting_user`，run 可正常收尾；工具实际执行后返回非成功结果仍保持 `unknown`。execute 43 项、durable-kernel 17 项、runner 30 个文件 240 项通过，harness typecheck 通过。
 

@@ -127,6 +127,75 @@ describe('CACHE-08 request shape and lifecycle matrix', () => {
     expect(observe({ replayed: true }).invalidationReasons).toEqual(['replayed']);
   });
 
+  it('keeps tool results and tool-loop continuations inside the dynamic suffix', () => {
+    const base = observe();
+    const boundary = 'Stable policy v1\n<!-- LITTLESHEEP_CACHE_BOUNDARY -->\nrun=one';
+    const firstLoop = observe({
+      request: request({
+        messages: [
+          { role: 'system', content: boundary },
+          {
+            role: 'assistant',
+            content: '',
+            tool_calls: [{
+              id: 'call-1',
+              type: 'function',
+              function: { name: 'read', arguments: '{"path":"secret-path"}' },
+            }],
+          },
+          { role: 'tool', content: 'TOOL_RESULT_SECRET', tool_call_id: 'call-1', name: 'read' },
+          { role: 'user', content: 'continue after tool' },
+        ],
+      }),
+      previous: base,
+      requestIndex: 2,
+      modelRequestId: 'request-2',
+    });
+    expect(firstLoop.stablePrefix.fingerprint).toBe(base.stablePrefix.fingerprint);
+    expect(firstLoop.dynamicSuffix.fingerprint).not.toBe(base.dynamicSuffix.fingerprint);
+    expect(firstLoop.invalidationReasons).toEqual([]);
+
+    const secondLoop = observe({
+      request: request({
+        messages: [
+          { role: 'system', content: boundary },
+          {
+            role: 'assistant',
+            content: '',
+            tool_calls: [{
+              id: 'call-1',
+              type: 'function',
+              function: { name: 'read', arguments: '{"path":"secret-path"}' },
+            }],
+          },
+          { role: 'tool', content: 'TOOL_RESULT_SECRET', tool_call_id: 'call-1', name: 'read' },
+          {
+            role: 'assistant',
+            content: '',
+            tool_calls: [{
+              id: 'call-2',
+              type: 'function',
+              function: { name: 'write', arguments: '{"path":"secret-output"}' },
+            }],
+          },
+          { role: 'tool', content: 'SECOND_TOOL_RESULT_SECRET', tool_call_id: 'call-2', name: 'write' },
+          { role: 'user', content: 'finish after second tool' },
+        ],
+      }),
+      previous: firstLoop,
+      requestIndex: 3,
+      modelRequestId: 'request-3',
+    });
+    expect(secondLoop.stablePrefix.fingerprint).toBe(base.stablePrefix.fingerprint);
+    expect(secondLoop.invalidationReasons).toEqual([]);
+
+    const serialized = canonicalSerialize(secondLoop);
+    expect(serialized).not.toContain('TOOL_RESULT_SECRET');
+    expect(serialized).not.toContain('SECOND_TOOL_RESULT_SECRET');
+    expect(serialized).not.toContain('secret-path');
+    expect(serialized).not.toContain('secret-output');
+  });
+
   it('separates memory, summary and attachment revisions from stable policy bytes', () => {
     const first = observe();
     const changedMemory = observe({
