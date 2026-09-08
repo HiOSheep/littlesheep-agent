@@ -10,7 +10,7 @@ import { createRunner } from './runner.js';
 import type { LlmClient, ChatRequest, ChatResponse, StreamChunk } from '@littlesheep/llm';
 import { DEFAULT_CONFIG } from '@littlesheep/config';
 import { DEFAULT_BRANDING, dataSubdirs } from '@littlesheep/branding';
-import { textMessage, type AgentTool } from '@littlesheep/types';
+import { textMessage, type AgentTool, type Message } from '@littlesheep/types';
 import { attachmentManifestResourceId, attachmentResourceId } from '@littlesheep/memory-tree';
 import { reduceDurableRunProjection } from '@littlesheep/harness';
 
@@ -54,6 +54,16 @@ function textResponse(
   finishReason: ChatResponse['finishReason'] = 'stop',
 ): ChatResponse {
   return { content, toolCalls: [], finishReason };
+}
+
+function assistantTexts(messages: Message[]): string[] {
+  return messages
+    .filter((message) => message.role === 'assistant')
+    .map((message) => message.content
+      .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
+      .map((block) => block.text)
+      .join('\n'))
+    .filter(Boolean);
 }
 
 // ─── Setup ─────────────────────────────────────────────────────────────
@@ -373,6 +383,66 @@ describe('createRunner run', () => {
       .toHaveLength(1);
     expect(second.messages.some((message) => message.role === 'assistant' && message.stage === 'finalize'))
       .toBe(false);
+  });
+
+  it('switches next to shadow and back without duplicating replies or settlements', async () => {
+    const firstRunner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('next reply one')),
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(firstRunner);
+    const first = await firstRunner.run({ text: 'first turn' });
+    expect(first).toMatchObject({
+      status: 'ok',
+      reply: 'next reply one',
+      durableHarnessMode: 'next',
+    });
+    const sessionId = first.sessionId;
+    await firstRunner.shutdown();
+    createdRunners.pop();
+
+    const shadowRunner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('shadow reply two')),
+      durableHarnessMode: 'shadow',
+    });
+    createdRunners.push(shadowRunner);
+    const second = await shadowRunner.run({ sessionId, text: 'second turn' });
+    expect(second).toMatchObject({
+      status: 'ok',
+      reply: 'shadow reply two',
+      durableHarnessMode: 'shadow',
+    });
+    expect(assistantTexts(await shadowRunner.sessionManager.read(sessionId)))
+      .toEqual(['next reply one', 'shadow reply two']);
+    const firstRunEvents = await shadowRunner.infra.durableEventStore.read(String(sessionId), first.runId);
+    expect(firstRunEvents.filter((event) => event.type === 'final_reply_settled')).toHaveLength(1);
+    expect(firstRunEvents.filter((event) => event.type === 'run_completed')).toHaveLength(1);
+    await shadowRunner.shutdown();
+    createdRunners.pop();
+
+    const nextAgainRunner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('next reply three')),
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(nextAgainRunner);
+    const third = await nextAgainRunner.run({ sessionId, text: 'third turn' });
+    expect(third).toMatchObject({
+      status: 'ok',
+      reply: 'next reply three',
+      durableHarnessMode: 'next',
+    });
+    expect(third.finalReplySettlement?.status).toBe('settled');
+    expect(assistantTexts(await nextAgainRunner.sessionManager.read(sessionId)))
+      .toEqual(['next reply one', 'shadow reply two', 'next reply three']);
   });
 
   it('keeps a settled success when run_completed append fails and repairs it without replaying effects', async () => {

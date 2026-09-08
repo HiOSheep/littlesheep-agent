@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 01:16:42
+最后更新：2026-09-09 01:20:14
+
+**Harness next↔shadow 回滚演练（2026-09-09 01:20:14，进行中）**：新增同一 session 的 next → shadow → next 三回合夹具，验证回复顺序无重复、第一回合 durable settlement 与 run_completed 保持完整、第三回合重新走 authoritative settlement。runner 30 个文件 242 项通过，typecheck 通过。
 
 **Harness per-session rollout API（2026-09-09 01:16:42，进行中）**：Local App API `GET/POST /runtime` 新增 `durableHarnessSessionOverrides`，可读取和更新 session 级 shadow/next 覆盖；校验非空 session id、shadow/next 值和 256 条上限，非法值返回 400。app main 71 个文件 271 项通过，app typecheck 通过。
 
