@@ -14,7 +14,7 @@
 
 ## 强制拆分队列
 
-下表行数是当前工作树的物理行数，不是历史完成值。生产 `.ts/.tsx` 文件超过 600 行必须进入本表；已登记不等于要求立即做无收益拆分。当前仓库卫生扫描共有 120 个生产文件超过 300 行，其中 21 个超过 600 行并进入受控清单。
+下表行数是当前工作树的物理行数，不是历史完成值。生产 `.ts/.tsx` 文件超过 600 行必须进入本表；已登记不等于要求立即做无收益拆分。当前仓库卫生扫描共有 121 个生产文件超过 300 行，其中 21 个超过 600 行并进入受控清单。
 
 | 当前文件 | 当前行数 | 当前责任 | 目标边界 | 所有权 |
 | --- | ---: | --- | --- | --- |
@@ -23,6 +23,7 @@
 | `packages/runner/src/durable-inbox-store.ts` | 338 | 持久 command inbox、claim lease、重启 requeue、complete/fail 和幂等校验 | 保持 inbox facade；后续按 codec、lease policy、query 拆分 | E |
 | `packages/harness/src/cache-observability.ts` | 642 | Provider、Context、Memory/Embedding 三套缓存账本、脱敏指纹和失效原因 | 保持观测适配器边界；真实 Provider 对账与 durable event log 接入后按 ledger、fingerprint、report 拆分 | E |
 | `packages/harness/src/model-observability.ts` | 635 | 模型请求快照、Context 关联、Provider usage 与缓存观测绑定 | 保持请求观测 facade；后续将 provider reconciliation 与 request snapshot projection 下沉 | E |
+| `packages/harness/src/cache-observation-store.ts` | 312 | scope-authorized cache observation 存储、查询与时间窗质量报告 | 保持脱敏存储与 scope 边界；后续按 codec、查询和报告拆分 | E |
 | `packages/app/src/renderer/app-shell/use-app-controller.ts` | 656 | Renderer 跨领域兼容协调、启动恢复、Runtime 设置和视图快照 | 保持装配 facade；启动恢复、持久化和领域投影继续下沉，冻结期间不得继续吸收新职责 | B |
 | `packages/channels/qqbot/src/plugin.ts` | 803 | QQ 协议、连接、消息、发送和生命周期 | transport、protocol、message-mapper、sender、lifecycle | C |
 | `packages/memory-tree/src/project-memory-projection.ts` | 780 | 投影生成、同步、冲突、恢复和删除 | projection facade + render、sync、conflict、lifecycle | D |

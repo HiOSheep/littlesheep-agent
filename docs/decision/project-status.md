@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 01:20:14
+最后更新：2026-09-09 01:22:22
+
+**Harness CACHE-09 时间窗报告（2026-09-09 01:22:22，进行中）**：`CacheObservationStore.report()` 新增 `since`/`until` 时间窗过滤，只返回窗口内条目；Local App API `GET /runtime/cache-quality` 接受 ISO 时间或 epoch 毫秒，非法窗口返回 400。harness 61 个文件 545 项、app main 71 个文件 271 项通过，harness/app typecheck 通过。
 
 **Harness next↔shadow 回滚演练（2026-09-09 01:20:14，进行中）**：新增同一 session 的 next → shadow → next 三回合夹具，验证回复顺序无重复、第一回合 durable settlement 与 run_completed 保持完整、第三回合重新走 authoritative settlement。runner 30 个文件 242 项通过，typecheck 通过。
 

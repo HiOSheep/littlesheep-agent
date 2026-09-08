@@ -153,10 +153,17 @@ export class CacheObservationStore {
    * degrade the report gate and are never treated as cache hits.
    */
   async report(
-    input: CacheScopeInput & { readonly latency?: ModelRequestLatencySummary },
+    input: CacheScopeInput & {
+      readonly latency?: ModelRequestLatencySummary;
+      readonly since?: number;
+      readonly until?: number;
+    },
   ): Promise<CacheObservationReportResult> {
     const scope = authorizeLookupScope(input);
     if (!scope.allowed) return { status: 'unavailable', reason: `scope_${scope.reason}` };
+    if (!validWindow(input.since, input.until)) {
+      return { status: 'unavailable', reason: 'report_window_invalid' };
+    }
 
     const files = await readdir(this.rootDir).catch(() => [] as string[]);
     const observations: CacheObservation[] = [];
@@ -176,6 +183,8 @@ export class CacheObservationStore {
         await unlink(path).catch(() => undefined);
         continue;
       }
+      if (input.since !== undefined && entry.storedAt < input.since) continue;
+      if (input.until !== undefined && entry.storedAt > input.until) continue;
       const authorized = authorizeCacheObservationScope(entry.observation, input);
       if (!authorized.allowed) {
         unreadableEntryCount += 1;
@@ -292,4 +301,12 @@ function normalizeMaxAge(value: number | undefined): number {
 
 function isNodeError(error: unknown, code: string): boolean {
   return Boolean(error && typeof error === 'object' && (error as { code?: string }).code === code);
+}
+
+function validWindow(since: number | undefined, until: number | undefined): boolean {
+  for (const value of [since, until]) {
+    if (value === undefined) continue;
+    if (!Number.isSafeInteger(value) || value < 0) return false;
+  }
+  return since === undefined || until === undefined || since <= until;
 }

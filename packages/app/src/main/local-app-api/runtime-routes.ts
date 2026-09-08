@@ -199,12 +199,26 @@ export async function routeRuntime(
     const sessionId = request.url.searchParams.get('sessionId')?.trim()
     const workspaceScope = request.url.searchParams.get('workspace')?.trim() || context.workplaceDir
     const permissionPolicyId = request.url.searchParams.get('permission')?.trim()
+    const since = parseEpochMs(request.url.searchParams.get('since'))
+    const until = parseEpochMs(request.url.searchParams.get('until'))
     if (!store || !key || !sessionId || !isPermissionPolicyId(permissionPolicyId)) {
       json(res, 200, { status: 'unavailable', reason: 'cache_quality_scope_unavailable' })
       return true
     }
+    if ((request.url.searchParams.has('since') && since === undefined)
+      || (request.url.searchParams.has('until') && until === undefined)) {
+      json(res, 400, { error: 'since/until must be ISO timestamps or epoch milliseconds' })
+      return true
+    }
     try {
-      json(res, 200, await store.report({ sessionId, workspaceScope, permissionPolicyId, key }))
+      json(res, 200, await store.report({
+        sessionId,
+        workspaceScope,
+        permissionPolicyId,
+        key,
+        ...(since === undefined ? {} : { since }),
+        ...(until === undefined ? {} : { until }),
+      }))
     } catch {
       json(res, 200, { status: 'unavailable', reason: 'cache_quality_report_failed' })
     }
@@ -486,4 +500,15 @@ function parseDurableHarnessSessionOverrides(value: unknown): Record<string, 'sh
     result[sessionId] = mode
   }
   return result
+}
+
+function parseEpochMs(value: string | null): number | undefined {
+  if (!value) return undefined
+  const trimmed = value.trim()
+  if (/^\d+$/u.test(trimmed)) {
+    const parsed = Number(trimmed)
+    return Number.isSafeInteger(parsed) ? parsed : undefined
+  }
+  const parsed = Date.parse(trimmed)
+  return Number.isFinite(parsed) ? parsed : undefined
 }

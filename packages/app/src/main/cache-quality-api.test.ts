@@ -72,6 +72,8 @@ describe('cache quality Local App API', () => {
         sessionId: 'session-a',
         workspace: workplaceDir,
         permission: 'research',
+        since: '2026-09-09T00:00:00.000Z',
+        until: '2026-09-09T01:00:00.000Z',
       })
       const response = await fetch(`http://127.0.0.1:${server.port}/runtime/cache-quality?${query}`)
       expect(response.status).toBe(200)
@@ -84,6 +86,8 @@ describe('cache quality Local App API', () => {
         workspaceScope: workplaceDir,
         permissionPolicyId: 'research',
         key: 'cache-quality-api-key',
+        since: Date.parse('2026-09-09T00:00:00.000Z'),
+        until: Date.parse('2026-09-09T01:00:00.000Z'),
       })
 
       const missingScope = await fetch(`http://127.0.0.1:${server.port}/runtime/cache-quality?sessionId=session-a`)
@@ -92,6 +96,12 @@ describe('cache quality Local App API', () => {
         status: 'unavailable',
         reason: 'cache_quality_scope_unavailable',
       })
+      expect(report).toHaveBeenCalledTimes(1)
+
+      const invalidWindow = await fetch(
+        `http://127.0.0.1:${server.port}/runtime/cache-quality?sessionId=session-a&workspace=${encodeURIComponent(workplaceDir)}&permission=research&since=not-a-time`,
+      )
+      expect(invalidWindow.status).toBe(400)
       expect(report).toHaveBeenCalledTimes(1)
     } finally {
       await server.stop()

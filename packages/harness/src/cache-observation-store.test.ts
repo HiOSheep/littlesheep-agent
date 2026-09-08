@@ -185,4 +185,49 @@ describe('CacheObservationStore', () => {
     if (result.status !== 'available') throw new Error('report unexpectedly unavailable');
     expect(result.report.releaseGate.reasons).toContain('cache_entries_unreadable');
   });
+
+  it('reports only observations inside the requested time window', async () => {
+    let now = 1_000;
+    const root = await mkdtemp(join(process.cwd(), 'cache-observation-store-'));
+    roots.push(root);
+    const store = new CacheObservationStore({ rootDir: root, maxAgeMs: 60_000, now: () => now });
+    await store.initialize();
+    await store.put(observation({
+      request: {
+        ...request,
+        messages: [
+          { role: 'system', content: 'Stable policy\n<!-- LITTLESHEEP_CACHE_BOUNDARY -->\nrun=old' },
+          { role: 'user', content: 'old user content' },
+        ],
+      },
+      modelRequestId: 'request-old',
+    }), scope());
+    now = 2_000;
+    await store.put(observation({
+      request: {
+        ...request,
+        messages: [
+          { role: 'system', content: 'Stable policy\n<!-- LITTLESHEEP_CACHE_BOUNDARY -->\nrun=new' },
+          { role: 'user', content: 'new user content' },
+        ],
+      },
+      requestIndex: 2,
+      modelRequestId: 'request-new',
+    }), scope());
+
+    const window = await store.report({ ...scope(), since: 1_500, until: 2_500 });
+    expect(window).toMatchObject({
+      status: 'available',
+      report: { requestCount: 1, partitions: [{ requestCount: 1 }] },
+    });
+    expect(JSON.stringify(window)).not.toContain('request-old');
+
+    const empty = await store.report({ ...scope(), since: 0, until: 500 });
+    expect(empty).toMatchObject({ status: 'available', report: { requestCount: 0 } });
+
+    await expect(store.report({ ...scope(), since: 500, until: 100 })).resolves.toEqual({
+      status: 'unavailable',
+      reason: 'report_window_invalid',
+    });
+  });
 });
