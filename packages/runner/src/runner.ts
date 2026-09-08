@@ -2089,9 +2089,11 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
   }
 
   async function prepareInternalAuthoritativeResult(result: RunnerResult): Promise<RunnerResult> {
-    if (opts.durableHarnessMode !== 'next') return result;
+    const mode = result.durableHarnessMode ?? resolveDurableHarnessMode(String(result.sessionId));
+    if (mode !== 'next') return result;
     return prepareAuthoritativeRunnerResult({
       durableHarnessMode: 'next',
+      durableHarnessModeForSession: (sessionId) => resolveDurableHarnessMode(sessionId),
       replayDurableFinalReply: replayAuthoritativeDurableFinalReply,
     } as AgentRunner, result);
   }

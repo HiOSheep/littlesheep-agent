@@ -472,6 +472,39 @@ describe('createRunner run', () => {
     expect(observation?.invalidationReasons).toContain('model_changed');
   });
 
+  it('replays a completed request through the per-session durable mode', async () => {
+    const firstRunner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('settled replay reply')),
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(firstRunner);
+    const session = await firstRunner.sessionManager.create('test/model');
+    const requestKey = 'per-session-replay-key';
+    const first = await firstRunner.run({ sessionId: session.id, text: 'replay me', requestKey });
+    expect(first.status).toBe('ok');
+    await firstRunner.shutdown();
+    createdRunners.pop();
+
+    const replayLlm = makeMockLlm(textResponse('must not execute'));
+    const secondRunner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: replayLlm,
+      durableHarnessMode: 'shadow',
+      durableHarnessSessionOverrides: { [String(session.id)]: 'next' },
+    });
+    createdRunners.push(secondRunner);
+    const replayed = await secondRunner.run({ sessionId: session.id, text: 'replay me', requestKey });
+
+    expect(replayed).toMatchObject({ status: 'ok', reply: 'settled replay reply' });
+    expect(replayed.finalReplySettlement?.status).toBe('settled');
+    expect(replayLlm.chat).not.toHaveBeenCalled();
+  });
+
   it('keeps a settled success when run_completed append fails and repairs it without replaying effects', async () => {
     const llm = makeMockLlm(textResponse('settled before completion receipt'));
     const runner = await createRunner({

@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 01:45:51
+最后更新：2026-09-09 01:49:32
+
+**Harness replay 使用 per-session 模式（2026-09-09 01:49:32，进行中）**：修正 Runner 内部 `prepareInternalAuthoritativeResult` 仍只看全局 `durableHarnessMode` 的遗漏；完成请求重放现在按 `result.durableHarnessMode` 或 session override 解析有效模式，per-session next 的重放会走 authoritative settlement。新增 runner 夹具验证全局 shadow + session override next 时重放返回 settled reply 且不调用模型。runner 30 个文件 245 项通过，typecheck 通过。
 
 **Harness 渠道发布使用 per-run 模式（2026-09-09 01:45:51，进行中）**：修正 `DefaultChannelManager` 仍只看全局 `durableHarnessMode` 的遗漏；渠道发布现在使用 `result.durableHarnessMode ?? runner.durableHarnessMode`，per-session 灰度到 next 时会走 authoritative settlement。新增夹具验证全局 shadow + 单次 run next 时渠道只发布 settled reply。plugins 7 个文件 79 项通过，typecheck 通过。
 
