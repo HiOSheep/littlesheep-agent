@@ -43,6 +43,7 @@ export interface RuntimeState {
   contextCompressionThresholdRatio: number
   durableHarnessMode: 'shadow' | 'next'
   durableHarnessSessionOverrides: Record<string, 'shadow' | 'next'>
+  durableHarnessOriginOverrides: Record<string, 'shadow' | 'next'>
   closePolicy: DesktopClosePolicy
   workspace: string
   workplace: string
@@ -103,6 +104,7 @@ export type RuntimePatch = Partial<Pick<
   | 'contextCompressionThresholdRatio'
   | 'durableHarnessMode'
   | 'durableHarnessSessionOverrides'
+  | 'durableHarnessOriginOverrides'
   | 'closePolicy'
   | 'workspace'
 >> & { web?: RuntimeWebPatch }

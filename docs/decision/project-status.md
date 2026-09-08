@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 01:54:36
+最后更新：2026-09-09 01:56:25
+
+**Harness origin 覆盖 API（2026-09-09 01:56:25，进行中）**：Local App API `GET/POST /runtime` 新增 `durableHarnessOriginOverrides`，可读取和更新按请求来源的 shadow/next 覆盖；校验非空 origin、shadow/next 值和 256 条上限。app main 71 个文件 271 项通过，app typecheck 通过。
 
 **Harness CACHE-08 5xx 生命周期（2026-09-09 01:54:36，进行中）**：在 model lifecycle 矩阵中加入 Provider 5xx 场景，验证其记录为 `status=failed`、`providerReachStatus=unknown`、`transportStatus=failed`、`usageStatus=unavailable`，且不生成伪造 provider usage。harness 61 个文件 548 项通过，typecheck 通过。
 

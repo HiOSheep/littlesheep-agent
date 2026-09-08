@@ -143,6 +143,17 @@ export async function routeRuntime(
         nextDefaults.durableHarnessSessionOverrides = overrides
       }
 
+      if (Object.prototype.hasOwnProperty.call(body, 'durableHarnessOriginOverrides')) {
+        const overrides = parseDurableHarnessSessionOverrides(body.durableHarnessOriginOverrides)
+        if (!overrides) {
+          json(res, 400, {
+            error: 'durableHarnessOriginOverrides must map non-empty origins to "shadow" or "next"',
+          })
+          return true
+        }
+        nextDefaults.durableHarnessOriginOverrides = overrides
+      }
+
       if (Object.prototype.hasOwnProperty.call(body, 'closePolicy')) {
         const closePolicy = body.closePolicy
         if (
@@ -358,6 +369,7 @@ export function buildRuntimePayload(config: Config, workplaceDir: string, webPro
     contextCompressionThresholdRatio: config.agents.defaults.contextCompressionThresholdRatio,
     durableHarnessMode: config.agents.defaults.durableHarnessMode,
     durableHarnessSessionOverrides: { ...config.agents.defaults.durableHarnessSessionOverrides },
+    durableHarnessOriginOverrides: { ...config.agents.defaults.durableHarnessOriginOverrides },
     closePolicy: config.desktop.closePolicy,
     workspace: config.agents.defaults.workspace || workplaceDir,
     workplace: workplaceDir,
