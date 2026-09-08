@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-05 12:21:57
+最后更新：2026-09-09 00:30:52
+
+**Harness CACHE-07 本地/Provider 对账 durable 对齐（2026-09-09，进行中）**：durable `provider usage` projection 现在携带同一请求的本地精确 tokenizer 校准（`tokenizerId`、`localPromptTokens`、`differenceTokens`、`relativeDifference`、`status`），codec 会校验差值、相对差和 `status`/`reconciliation` 映射，拒绝缺少证据或自相矛盾的 payload。新增 8 项夹具覆盖 `exact_match`、`within_tolerance`、`mismatch` 和篡改拒绝，并验证 durable projection 与 Context snapshot 的 `localCalibration` 逐字段一致、事件流不含 prompt/正文。harness 58 个文件 515 项、runner+types 37 个文件 266 项、app main 70 个文件 270 项均通过；全量回归 407 个文件、2,832 项通过、1 项 skipped，`pnpm.cmd typecheck`、`pnpm.cmd run check:repo`（33/33）通过。该增量只完成离线本地/Provider 账本对齐，真实 Provider usage 对账、CACHE-08 至 CACHE-10、生产级 effect crash/replay、真实渠道重连和新 Harness 默认切换仍未完成。
 
 **Harness durable settlement/replay 收尾增量（2026-09-05 12:21:57，冻结候选）**：next Harness 的 FINALIZE 现在先持久化审计事实，再由 Runner 统一完成 final-reply settlement；execution log、session transcript 和 conversation source 使用同一 settlement identity，启动恢复可修复“事件已落盘但注册表未结算”的中间态，无法证明结算时只保留 Runtime status。Local App 普通 POST/SSE 与 checkpoint resume SSE 在 Runtime status 路径会清掉临时流文本，历史/Context 投影过滤未结算 proposal；本轮定向回归 3 个相关文件、85 项通过，既有 API 流回归 4 个文件、94 项通过；全量回归 406 个测试文件、2,824 项通过、1 项 skipped，`pnpm.cmd typecheck`、`pnpm.cmd run check:repo` 和 Electron production build 均通过。缓存观测仍只是脱敏 observation store，不是 Context/Provider cache reuse；CACHE-06 至 CACHE-10、真实 Provider usage 对账、生产级 effect crash/replay、真实渠道重连和新 Harness 默认切换仍未完成，不能据此宣称缓存问题或 Harness 重构已解决。
 

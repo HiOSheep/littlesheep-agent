@@ -193,6 +193,11 @@ export function readProviderUsage(payload: Record<string, unknown>): DurableProv
   if (totalTokens !== undefined && totalTokens < promptTokenCount + completionTokenCount) {
     throw new DurableKernelError('total tokens cannot be below prompt plus completion tokens', 'invalid');
   }
+  const localCalibration = readLocalTokenCalibration(
+    payload.localCalibration,
+    promptTokenCount,
+    reconciliation,
+  );
   return {
     promptTokens: promptTokenCount,
     completionTokens: completionTokenCount,
@@ -201,7 +206,101 @@ export function readProviderUsage(payload: Record<string, unknown>): DurableProv
     ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
     cacheStatus,
     reconciliation,
+    ...(localCalibration ? { localCalibration } : {}),
   };
+}
+
+function readLocalTokenCalibration(
+  value: unknown,
+  providerPromptTokens: number,
+  reconciliation: DurableProviderUsageProjection['reconciliation'],
+): NonNullable<DurableProviderUsageProjection['localCalibration']> | undefined {
+  if (value === undefined) {
+    if (reconciliation !== 'unavailable') {
+      throw new DurableKernelError('provider usage reconciliation requires local calibration evidence', 'invalid');
+    }
+    return undefined;
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new DurableKernelError('provider usage local calibration must be an object', 'invalid');
+  }
+  const record = value as Record<string, unknown>;
+  assertAllowedKeys(record, [
+    'version',
+    'tokenizerId',
+    'localPromptTokens',
+    'differenceTokens',
+    'relativeDifference',
+    'status',
+  ], 'providerUsage.localCalibration');
+  if (record.version !== 1) {
+    throw new DurableKernelError('provider usage local calibration version is unsupported', 'invalid');
+  }
+  const tokenizerId = boundedProjectionString(
+    record.tokenizerId,
+    'providerUsage.localCalibration.tokenizerId',
+    128,
+  );
+  const localPromptTokens = requiredNonNegativeInteger(
+    record.localPromptTokens,
+    'providerUsage.localCalibration.localPromptTokens',
+  );
+  const differenceTokens = requiredSafeInteger(
+    record.differenceTokens,
+    'providerUsage.localCalibration.differenceTokens',
+  );
+  const relativeDifference = requiredFiniteNonNegativeNumber(
+    record.relativeDifference,
+    'providerUsage.localCalibration.relativeDifference',
+  );
+  const status = record.status;
+  if (status !== 'exact_match' && status !== 'within_tolerance' && status !== 'drift') {
+    throw new DurableKernelError('provider usage local calibration status is invalid', 'invalid');
+  }
+  if (differenceTokens !== providerPromptTokens - localPromptTokens) {
+    throw new DurableKernelError(
+      'provider usage local calibration difference does not match prompt tokens',
+      'invalid',
+    );
+  }
+  const expectedRelativeDifference = providerPromptTokens === 0
+    ? (differenceTokens === 0 ? 0 : 1)
+    : Math.abs(differenceTokens) / providerPromptTokens;
+  if (Math.abs(relativeDifference - expectedRelativeDifference) > 1e-9) {
+    throw new DurableKernelError(
+      'provider usage local calibration relative difference is inconsistent',
+      'invalid',
+    );
+  }
+  const expectedReconciliation = status === 'drift' ? 'mismatch' : status;
+  if (reconciliation !== expectedReconciliation) {
+    throw new DurableKernelError(
+      'provider usage reconciliation does not match local calibration',
+      'invalid',
+    );
+  }
+  return {
+    version: 1,
+    tokenizerId,
+    localPromptTokens,
+    differenceTokens,
+    relativeDifference,
+    status,
+  };
+}
+
+function requiredSafeInteger(value: unknown, label: string): number {
+  if (!Number.isSafeInteger(value)) {
+    throw new DurableKernelError(`${label} must be a safe integer`, 'invalid');
+  }
+  return value as number;
+}
+
+function requiredFiniteNonNegativeNumber(value: unknown, label: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new DurableKernelError(`${label} must be a finite non-negative number`, 'invalid');
+  }
+  return value;
 }
 
 /** Validate redacted cache evidence before it enters a durable projection. */

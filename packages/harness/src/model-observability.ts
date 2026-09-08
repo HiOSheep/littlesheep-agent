@@ -326,6 +326,7 @@ export function recordProviderUsage(
     reconciliation: localCalibration?.status === 'drift'
       ? 'mismatch'
       : localCalibration?.status ?? 'unavailable',
+    ...(localCalibration ? { localCalibration } : {}),
     cacheObservation: currentCacheObservation(ctx, requestSnapshot.id),
   });
 }

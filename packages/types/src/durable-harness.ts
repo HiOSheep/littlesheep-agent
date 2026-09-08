@@ -3,6 +3,7 @@
 // higher-level packages so the event contract cannot depend on infrastructure.
 
 import type { CacheObservation } from './cache-observability.js';
+import type { ProviderLocalTokenCalibration } from './token-ledger.js';
 
 export const DURABLE_HARNESS_EVENT_VERSION = 1 as const;
 export const DURABLE_HARNESS_EVENT_MAX_PAYLOAD_BYTES = 64 * 1024;
@@ -150,6 +151,8 @@ export interface DurableProviderUsageProjection {
   readonly reasoningTokens?: number;
   readonly cacheStatus: 'hit' | 'miss' | 'partial' | 'unavailable' | 'unknown';
   readonly reconciliation: 'exact_match' | 'within_tolerance' | 'mismatch' | 'unavailable';
+  /** Local exact-counter evidence for the same request; absent when no exact counter was bound. */
+  readonly localCalibration?: ProviderLocalTokenCalibration;
 }
 
 export interface DurableModelRequestProjection {
