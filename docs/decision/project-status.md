@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 00:58:06
+最后更新：2026-09-09 00:59:28
+
+**Harness CACHE-09/10 质量报告基础（2026-09-09 00:59:28，进行中）**：新增 `buildCacheQualityReport`，分别汇总 Provider/Context/Memory 三套 ledger 的 status、token、hitRatio 和 reason，加上 invalidation reason 分布与 durable 延迟摘要；Provider hit ratio 只在完整 usage 下计算，release gate 只返回 `blocked`/`unavailable`，真实 Provider 对账未验证时永不 `ready`。harness 61 个文件 539 项通过，typecheck 通过。
 
 **Harness 请求时间线与延迟摘要（2026-09-09 00:58:06，进行中）**：durable `model request` projection 新增 `startedAt`/`respondedAt`/`settledAt`（来自事件 envelope），并新增 `summarizeModelRequestLatency`：nearest-rank P50/P95/max 与 received/pending/aborted/failure 计数；缺失、非法或负时长计为 `unavailable`，不伪造延迟。harness 60 个文件 534 项、runner 30 个文件 240 项通过，types/harness/runner typecheck 通过。
 
