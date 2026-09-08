@@ -60,6 +60,10 @@ export interface CacheObservationInput {
   readonly previous?: CacheObservation;
   /** Raw component values are accepted only in memory and emitted as HMACs. */
   readonly promptComponents?: CachePromptComponentInput;
+  /** Runtime fact: the local context cache was explicitly cleared before this request. */
+  readonly manualClear?: boolean;
+  /** Runtime fact: this request rebuilt a previously replayed or reconstructed prompt. */
+  readonly replayed?: boolean;
   /** null explicitly disables hashing; undefined uses the process key. */
   readonly key?: string | null;
 }
@@ -356,9 +360,14 @@ function resolveInvalidationReasons(
   promptComponents: CachePromptComponentFingerprints | undefined,
   currentStablePrefix: CacheFingerprint,
 ): readonly CacheInvalidationReason[] {
-  const previous = input.previous;
-  if (!previous) return Object.freeze([]);
   const reasons = new Set<CacheInvalidationReason>();
+  if (input.manualClear) reasons.add('manual_clear');
+  if (input.replayed) reasons.add('replayed');
+  const finalize = () => Object.freeze(
+    [...reasons].sort((left, right) => INVALIDATION_ORDER.indexOf(left) - INVALIDATION_ORDER.indexOf(right)),
+  );
+  const previous = input.previous;
+  if (!previous) return finalize();
   const sameScope = previous.scope.partitionDigest !== undefined
     && previous.scope.partitionDigest === scope.partitionDigest;
   if (previous.adapter !== 'llm-chat') reasons.add('adapter_changed');
@@ -396,7 +405,7 @@ function resolveInvalidationReasons(
     // reason explicit instead of attributing the miss to Context or Provider.
     if (reasons.size === 0) reasons.add('unknown');
   }
-  return Object.freeze([...reasons].sort((left, right) => INVALIDATION_ORDER.indexOf(left) - INVALIDATION_ORDER.indexOf(right)));
+  return finalize();
 }
 
 function comparePromptComponent(

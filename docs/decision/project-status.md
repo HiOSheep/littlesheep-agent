@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 00:32:48
+最后更新：2026-09-09 00:34:29
+
+**Harness CACHE-05 失效原因补全（2026-09-09 00:34:29，进行中）**：`manual_clear` 与 `replayed` 不再只是枚举值：`buildCacheObservation` 接受 Runtime 提供的 `manualClear`/`replayed` 标记，即使没有 previous observation 也会记录对应原因，并按稳定顺序生成 primary reason；新增最小复现夹具验证两个原因不改变 stable prefix 字节、可单独或同时出现。harness 59 个文件 522 项通过，typecheck 通过；生产端手动清理/重建调用方仍需接线。
 
 **Harness CACHE-06 observation-store 隔离矩阵（2026-09-09 00:32:48，进行中）**：新增 2 session × 2 workspace × 3 权限共 12 个 scope 的完整隔离矩阵夹具，验证 partition digest 与 stable-prefix fingerprint 两两不同、并发写入和交叉读取不会返回其他 scope 的 observation、store 重启后隔离保持、嵌入 scope 被篡改的条目在命中前以 `scope_scope_mismatch` 拒绝，以及所有落盘文件不含 session、workspace 或用户正文。harness 59 个文件 520 项通过，typecheck 通过；CACHE-06 跨 Context/Atom/tool-result 的完整隔离仍需在 CACHE-08 请求形态矩阵中验证。
 

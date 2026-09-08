@@ -89,6 +89,44 @@ describe('CACHE-08 request shape and lifecycle matrix', () => {
     expect(otherStage.invalidationReasons).toContain('request_kind_changed');
   });
 
+  it('records manual clear and replay without changing stable prefix bytes', () => {
+    const first = observe();
+    const cleared = observe({
+      previous: first,
+      manualClear: true,
+      requestIndex: 2,
+      modelRequestId: 'request-2',
+    });
+    expect(cleared.invalidationReasons).toContain('manual_clear');
+    expect(cleared.primaryInvalidationReason).toBe('manual_clear');
+    expect(cleared.stablePrefix.fingerprint).toBe(first.stablePrefix.fingerprint);
+
+    const replayed = observe({
+      previous: cleared,
+      replayed: true,
+      requestIndex: 3,
+      modelRequestId: 'request-3',
+    });
+    expect(replayed.invalidationReasons).toContain('replayed');
+    expect(replayed.primaryInvalidationReason).toBe('replayed');
+    expect(replayed.stablePrefix.fingerprint).toBe(first.stablePrefix.fingerprint);
+
+    const both = observe({
+      previous: replayed,
+      manualClear: true,
+      replayed: true,
+      requestIndex: 4,
+      modelRequestId: 'request-4',
+    });
+    expect(both.invalidationReasons).toEqual(['manual_clear', 'replayed']);
+    expect(both.primaryInvalidationReason).toBe('manual_clear');
+  });
+
+  it('records runtime clear and replay reasons even without a previous observation', () => {
+    expect(observe({ manualClear: true }).invalidationReasons).toEqual(['manual_clear']);
+    expect(observe({ replayed: true }).invalidationReasons).toEqual(['replayed']);
+  });
+
   it('separates memory, summary and attachment revisions from stable policy bytes', () => {
     const first = observe();
     const changedMemory = observe({
