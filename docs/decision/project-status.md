@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 01:01:00
+最后更新：2026-09-09 01:03:55
+
+**Harness CACHE-09/10 Local App API（2026-09-09 01:03:55，进行中）**：新增只读 `GET /runtime/cache-quality`，要求显式 `sessionId`、`workspace`、`permission`，使用 Runner 持有的 cache observation key 调用 scope-authorized `report()`；缺少 scope/key 时返回 `unavailable`，不泄露跨 scope 内容。新增 API 夹具验证 scope 透传和失败关闭。app main 71 个文件 271 项通过，app typecheck 通过。
 
 **Harness CACHE-09/10 报告接入观测存储（2026-09-09 01:01:00，进行中）**：`CacheObservationStore.report()` 在 session/workspace/permission/HMAC scope 授权后扫描观测，跨 scope 条目不会返回；损坏或嵌入 scope 不匹配的条目只把 gate 降级为 `cache_entries_unreadable`，不会当作命中。新增 3 项夹具覆盖双 scope 隔离、未授权 scope 失败关闭和损坏条目降级。harness 61 个文件 543 项通过，typecheck 通过。
 

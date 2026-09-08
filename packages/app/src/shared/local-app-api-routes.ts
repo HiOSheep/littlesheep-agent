@@ -12,6 +12,7 @@ export const LOCAL_APP_API_ROUTES = {
   state: '/state',
   runtime: '/runtime',
   webCache: '/runtime/web/cache',
+  cacheQuality: '/runtime/cache-quality',
   webProviderCheck: '/runtime/web/provider-check',
   providerCalibration: '/runtime/provider-calibration',
   developmentEnvironments: '/development-environments',

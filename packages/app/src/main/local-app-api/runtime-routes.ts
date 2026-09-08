@@ -172,6 +172,25 @@ export async function routeRuntime(
     return true
   }
 
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.cacheQuality) {
+    const runner = context.getRunner()
+    const store = runner.infra.cacheObservationStore
+    const key = runner.infra.cacheObservationKey
+    const sessionId = request.url.searchParams.get('sessionId')?.trim()
+    const workspaceScope = request.url.searchParams.get('workspace')?.trim() || context.workplaceDir
+    const permissionPolicyId = request.url.searchParams.get('permission')?.trim()
+    if (!store || !key || !sessionId || !isPermissionPolicyId(permissionPolicyId)) {
+      json(res, 200, { status: 'unavailable', reason: 'cache_quality_scope_unavailable' })
+      return true
+    }
+    try {
+      json(res, 200, await store.report({ sessionId, workspaceScope, permissionPolicyId, key }))
+    } catch {
+      json(res, 200, { status: 'unavailable', reason: 'cache_quality_report_failed' })
+    }
+    return true
+  }
+
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.dataRoot) {
     if (!context.dataRootManager) {
       json(res, 501, { error: 'data-root management is not available' })
@@ -427,4 +446,8 @@ function validateModelRef(config: Config, modelRef: string): string | null {
 
 function isReasoning(value: string): value is RuntimeReasoning {
   return isRuntimeReasoning(value)
+}
+
+function isPermissionPolicyId(value: string | undefined): value is 'full' | 'research' | 'restricted' {
+  return value === 'full' || value === 'research' || value === 'restricted'
 }
