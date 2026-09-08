@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 01:40:21
+最后更新：2026-09-09 01:43:50
+
+**Harness CACHE-08 abort 生命周期（2026-09-09 01:43:50，进行中）**：新增 runner 夹具在 Provider 请求进行中中止，验证 durable model request 记录 `status=aborted`、`providerReachStatus=not_reached`、`usageStatus=unavailable`、`transportStatus=aborted`，cache observation 记录 `provider_request_aborted`，且不生成伪造 provider usage。runner 30 个文件 244 项通过，typecheck 通过。
 
 **Harness 跨 run 缓存失效解释（2026-09-09 01:40:21，进行中）**：`CacheObservationStore.latest()` 返回 scope 内最近一条授权观测；Runner 在构建 RunContext 时读取并作为 `previousCacheObservation`，首次模型请求会与上一条跨 run 观测比较。新增 runner 夹具验证同一 session 从 model-a 切到 model-b 时首次请求产生 `model_changed`。harness 61 个文件 547 项、runner 30 个文件 243 项、app main 71 个文件 271 项通过，types/harness/runner typecheck 通过。
 

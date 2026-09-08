@@ -1145,6 +1145,48 @@ describe('createRunner run', () => {
     expect(result.status).toBe('aborted');
   });
 
+  it('records an aborted provider call without fabricating cache usage', async () => {
+    const ac = new AbortController();
+    let markCallStarted!: () => void;
+    const callStarted = new Promise<void>((resolve) => { markCallStarted = resolve; });
+    const llm = makeMockLlm(textResponse('unused'));
+    (llm.chat as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      markCallStarted();
+      await new Promise<never>((_resolve, reject) => {
+        ac.signal.addEventListener('abort', () => reject(new Error('request aborted')), { once: true });
+      });
+      return textResponse('unused');
+    });
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(runner);
+    const runId = 'run-aborted-provider';
+    const running = runner.run({ runId, text: 'hello', signal: ac.signal });
+    await callStarted;
+    ac.abort();
+    const result = await running;
+    expect(result.status).toBe('aborted');
+
+    const events = await runner.infra.durableEventStore.read(String(result.sessionId), runId);
+    const request = reduceDurableRunProjection(events).modelRequests[0];
+    expect(request).toMatchObject({
+      status: 'aborted',
+      providerReachStatus: 'not_reached',
+      usageStatus: 'unavailable',
+      transportStatus: 'aborted',
+    });
+    expect(request?.cacheObservation?.providerPrompt).toMatchObject({
+      status: 'unavailable',
+      reason: 'provider_request_aborted',
+    });
+    expect(request?.providerUsage).toBeUndefined();
+  });
+
   it('routes an active-run interrupt through the bounded queue and stops at the next safe boundary', async () => {
     const llm = makeMockLlm(textResponse('reply before boundary'));
     let releaseResponse!: () => void;

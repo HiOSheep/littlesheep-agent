@@ -2,7 +2,7 @@
 
 状态：规划已定稿，阶段 0 冻结已完成，阶段 1 开源底座评估已完成；阶段 2 观测与后续重构仍在进行
 
-最后更新：2026-09-09 01:40:21
+最后更新：2026-09-09 01:43:50
 
 本文是新 Harness 重建和上下文缓存专项的唯一执行入口。它记录目标架构、开源底座评估、迁移顺序、回滚边界、缓存观测与验收；当前事实和最新质量门仍以[项目状态](../decision/project-status.md)为准。
 
@@ -326,7 +326,7 @@ Ingress
 
 状态：进行中，优先级 P0。
 
-工作项：完成 CACHE-03、CACHE-04、CACHE-08 的确定性序列化、候选裁剪和 stage/request kind 规划；用 fake provider 覆盖 memory、summary、tools、retry、streaming、restart、concurrency；再在凭证/网络可用时运行真实 Provider usage 对账。当前已完成第一批 CACHE-03/04/05 夹具和字段级差异断言，本轮补齐工具结果与两轮工具循环夹具：工具调用和工具结果始终进入 dynamic suffix，stable-prefix fingerprint 不变且无 invalidation reason，序列化不含工具参数和结果正文；工具 schema 增删仍按 `tool_schema_changed` 失效。本轮补充 KnownState 注入端到端夹具：注入内容只改变 dynamic suffix，不改变 stable-prefix fingerprint，序列化观测不含 atom id 或 KnownState 正文。本轮补充 working-set 释放端到端夹具：释放 Atom 后系统消息移除该 Atom 正文，stable-prefix fingerprint 不变，dynamic suffix 变化，失效原因明确为 `memory_revision_changed`，序列化观测不含 Atom 正文。本轮补充附件 manifest 端到端夹具：附件只进入 dynamic suffix，stable-prefix fingerprint 不变且无 invalidation reason，序列化观测不含附件名或路径。尚未覆盖完整 CACHE-08 请求形态矩阵。
+工作项：完成 CACHE-03、CACHE-04、CACHE-08 的确定性序列化、候选裁剪和 stage/request kind 规划；用 fake provider 覆盖 memory、summary、tools、retry、streaming、restart、concurrency；再在凭证/网络可用时运行真实 Provider usage 对账。当前已完成第一批 CACHE-03/04/05 夹具和字段级差异断言，本轮补齐工具结果与两轮工具循环夹具：工具调用和工具结果始终进入 dynamic suffix，stable-prefix fingerprint 不变且无 invalidation reason，序列化不含工具参数和结果正文；工具 schema 增删仍按 `tool_schema_changed` 失效。本轮补充 KnownState 注入端到端夹具：注入内容只改变 dynamic suffix，不改变 stable-prefix fingerprint，序列化观测不含 atom id 或 KnownState 正文。本轮补充 working-set 释放端到端夹具：释放 Atom 后系统消息移除该 Atom 正文，stable-prefix fingerprint 不变，dynamic suffix 变化，失效原因明确为 `memory_revision_changed`，序列化观测不含 Atom 正文。本轮补充附件 manifest 端到端夹具：附件只进入 dynamic suffix，stable-prefix fingerprint 不变且无 invalidation reason，序列化观测不含附件名或路径。本轮补充 Provider 请求进行中中止的 runner 夹具：durable model request 记录 aborted/not_reached/unavailable/aborted，cache observation 记录 `provider_request_aborted`，不生成伪造 provider usage。尚未覆盖完整 CACHE-08 请求形态矩阵。
 
 完成门：所有前缀变化可由字节差异和失效原因解释；未发现原因的 miss 明确标 `unknown`；只有在数据支持时才决定修改 Context Engine、Prompt assembler、Provider adapter 或请求数量。
 
