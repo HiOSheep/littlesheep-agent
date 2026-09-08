@@ -676,6 +676,43 @@ describe('DefaultChannelManager', () => {
       expect(reply).not.toContain('web_provider_rate_limited');
     });
 
+    it('publishes the per-run durable settlement when the global mode is shadow', async () => {
+      const { manager, mock } = makeManager();
+      const { factory, instances } = makeMockPluginFactory();
+      manager.registerType('mock', factory);
+      (mock.runner as { durableHarnessMode?: 'shadow' | 'next' }).durableHarnessMode = 'shadow';
+      mock.runner.replayDurableFinalReply = async (sessionId, runId) => ({
+        kind: 'settled',
+        sessionId: String(sessionId),
+        runId,
+        cursor: 1,
+        settlementId: 'settlement-1',
+        reply: 'authoritative channel reply',
+        replyFingerprint: 'fp-1',
+        modelRequestId: 'model-1',
+      });
+      mock.runner.run = async (input: RunInput): Promise<RunnerResult> => ({
+        runId: 'run-channel-next',
+        sessionId: (input.sessionId ?? asSessionId('default')) as SessionId,
+        status: 'ok',
+        reply: 'provisional channel reply',
+        messages: [],
+        trace: [],
+        durationMs: 0,
+        durableHarnessMode: 'next',
+      });
+
+      await manager.start(makeRuntimeConfig());
+      const reply = await instances[0]!.simulateInbound({
+        text: 'hello',
+        externalConversationId: 'chat-1',
+        externalUserId: 'user-1',
+        isGroup: false,
+      });
+
+      expect(reply).toBe('authoritative channel reply');
+    });
+
     it('returns ok=false and error when runner.run throws', async () => {
       const { manager, mock } = makeManager();
       const { factory, instances } = makeMockPluginFactory();

@@ -334,7 +334,7 @@ export class DefaultChannelManager {
         externalConversationId: message.externalConversationId,
         requestKey: message.requestKey,
       });
-      const publishedResult = this.runner.durableHarnessMode === 'next'
+      const publishedResult = (result.durableHarnessMode ?? this.runner.durableHarnessMode) === 'next'
         ? await prepareAuthoritativeRunnerResult(this.runner, result)
         : result;
       return {

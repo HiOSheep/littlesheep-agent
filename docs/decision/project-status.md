@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 01:43:50
+最后更新：2026-09-09 01:45:51
+
+**Harness 渠道发布使用 per-run 模式（2026-09-09 01:45:51，进行中）**：修正 `DefaultChannelManager` 仍只看全局 `durableHarnessMode` 的遗漏；渠道发布现在使用 `result.durableHarnessMode ?? runner.durableHarnessMode`，per-session 灰度到 next 时会走 authoritative settlement。新增夹具验证全局 shadow + 单次 run next 时渠道只发布 settled reply。plugins 7 个文件 79 项通过，typecheck 通过。
 
 **Harness CACHE-08 abort 生命周期（2026-09-09 01:43:50，进行中）**：新增 runner 夹具在 Provider 请求进行中中止，验证 durable model request 记录 `status=aborted`、`providerReachStatus=not_reached`、`usageStatus=unavailable`、`transportStatus=aborted`，cache observation 记录 `provider_request_aborted`，且不生成伪造 provider usage。runner 30 个文件 244 项通过，typecheck 通过。
 
