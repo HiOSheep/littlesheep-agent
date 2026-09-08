@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 01:49:32
+最后更新：2026-09-09 01:53:26
+
+**Harness origin 级灰度（2026-09-09 01:53:26，进行中）**：新增 `agents.defaults.durableHarnessOriginOverrides`，Runner 解析有效模式时优先级为 session override > origin override > 全局；app/CLI 创建 Runner 时传入。新增 runner 夹具验证 `app → next`、`cli → shadow` 以及 session override 优先于 origin。runner/config/cli 35 个文件 321 项通过、1 项 skipped，typecheck 通过。
 
 **Harness replay 使用 per-session 模式（2026-09-09 01:49:32，进行中）**：修正 Runner 内部 `prepareInternalAuthoritativeResult` 仍只看全局 `durableHarnessMode` 的遗漏；完成请求重放现在按 `result.durableHarnessMode` 或 session override 解析有效模式，per-session next 的重放会走 authoritative settlement。新增 runner 夹具验证全局 shadow + session override next 时重放返回 settled reply 且不调用模型。runner 30 个文件 245 项通过，typecheck 通过。
 

@@ -54,6 +54,8 @@ export const AgentDefaultsSchema = z.object({
   durableHarnessMode: z.enum(['shadow', 'next']).default('shadow'),
   /** Per-session durable Harness overrides; unlisted sessions use durableHarnessMode. */
   durableHarnessSessionOverrides: z.record(z.enum(['shadow', 'next'])).default({}),
+  /** Per-request-origin durable Harness overrides; session overrides take precedence. */
+  durableHarnessOriginOverrides: z.record(z.enum(['shadow', 'next'])).default({}),
 }).default({});
 
 /** Electron desktop lifecycle preferences. */

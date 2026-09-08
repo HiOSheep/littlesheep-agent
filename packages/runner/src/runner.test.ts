@@ -130,6 +130,26 @@ describe('createRunner run', () => {
     expect(runner.durableHarnessModeForSession?.('session-other')).toBe('shadow');
   });
 
+  it('resolves durable Harness mode per origin with session precedence', async () => {
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('unused')),
+      bootstrapDir: dataDir,
+      skillsDirs: [],
+      durableHarnessMode: 'shadow',
+      durableHarnessSessionOverrides: { 'session-forced-shadow': 'shadow' },
+      durableHarnessOriginOverrides: { app: 'next' },
+    });
+    createdRunners.push(runner);
+
+    expect(runner.durableHarnessModeForSession?.('session-other', 'app')).toBe('next');
+    expect(runner.durableHarnessModeForSession?.('session-other', 'cli')).toBe('shadow');
+    expect(runner.durableHarnessModeForSession?.('session-other')).toBe('shadow');
+    expect(runner.durableHarnessModeForSession?.('session-forced-shadow', 'app')).toBe('shadow');
+  });
+
   it('defers external workspace indexing in research and indexes immediately in full access', async () => {
     const containerRoot = join(dataDir, 'container');
     const externalWorkspace = join(dataDir, 'external-workspace');

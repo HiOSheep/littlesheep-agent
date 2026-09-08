@@ -179,6 +179,8 @@ export interface CreateRunnerOptions {
   durableHarnessMode?: 'shadow' | 'next';
   /** Per-session durable Harness overrides; unlisted sessions use durableHarnessMode. */
   durableHarnessSessionOverrides?: Readonly<Record<string, 'shadow' | 'next'>>;
+  /** Per-request-origin durable Harness overrides; session overrides take precedence. */
+  durableHarnessOriginOverrides?: Readonly<Record<string, 'shadow' | 'next'>>;
   log?: LogFn;
 }
 
@@ -305,7 +307,7 @@ export interface AgentRunner {
   /** Harness rollout mode used by the runner; legacy callers omit this field. */
   readonly durableHarnessMode?: 'shadow' | 'next';
   /** Resolve the effective mode for one session, including overrides. */
-  durableHarnessModeForSession?(sessionId: string): 'shadow' | 'next';
+  durableHarnessModeForSession?(sessionId: string, origin?: string): 'shadow' | 'next';
 }
 
 /** Build a runner. Async because the skill loader reads directories. */
@@ -315,8 +317,9 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
   const conversationContinuationMode = resolveConversationContinuationMode(
     opts.conversationContinuationMode ?? process.env.LITTLESHEEP_CONVERSATION_CONTINUATION_MODE,
   );
-  const resolveDurableHarnessMode = (sessionId?: string): 'shadow' | 'next' => (
+  const resolveDurableHarnessMode = (sessionId?: string, origin?: string): 'shadow' | 'next' => (
     (sessionId ? opts.durableHarnessSessionOverrides?.[sessionId] : undefined)
+    ?? (origin ? opts.durableHarnessOriginOverrides?.[origin] : undefined)
     ?? opts.durableHarnessMode
     ?? 'shadow'
   );
@@ -418,7 +421,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         sessionId = session.id;
       }
       state.sessionId = sessionId;
-      const durableHarnessMode = resolveDurableHarnessMode(String(sessionId));
+      const durableHarnessMode = resolveDurableHarnessMode(String(sessionId), origin);
       durableRecorder = createDurableRunRecorder({
         eventStore: infra.durableEventStore,
         inboxStore: infra.durableInboxStore,
@@ -2144,7 +2147,9 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     infra,
     model,
     durableHarnessMode: opts.durableHarnessMode ?? 'shadow',
-    durableHarnessModeForSession: (sessionId: string) => resolveDurableHarnessMode(sessionId),
+    durableHarnessModeForSession: (sessionId: string, origin?: string) => (
+      resolveDurableHarnessMode(sessionId, origin)
+    ),
   };
   }
 

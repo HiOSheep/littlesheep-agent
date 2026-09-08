@@ -47,6 +47,7 @@ export const DEFAULT_CONFIG: Config = {
       harness: 'core-flow',
       durableHarnessMode: 'shadow',
       durableHarnessSessionOverrides: {},
+      durableHarnessOriginOverrides: {},
     },
   },
   desktop: {

@@ -124,6 +124,7 @@ export async function runCli(argv: string[]): Promise<void> {
     containerRoot: dataDir.root,
     durableHarnessMode: config.agents.defaults.durableHarnessMode,
     durableHarnessSessionOverrides: config.agents.defaults.durableHarnessSessionOverrides,
+    durableHarnessOriginOverrides: config.agents.defaults.durableHarnessOriginOverrides,
   });
 
   // 6. Dispatch: single-shot or REPL.
