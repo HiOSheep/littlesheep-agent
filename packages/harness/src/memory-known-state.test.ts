@@ -4,6 +4,7 @@ import type { RuntimeMemoryKnownState } from '@littlesheep/types';
 import { buildRunRequestCandidates } from './context-candidates.js';
 import { ingestMemoryKnownState } from './memory-known-state.js';
 import { prepareModelRequest } from './model-observability.js';
+import { canonicalSerialize } from './cache-observability.js';
 import { makeCtx } from './tests/helpers.js';
 
 describe('run Memory KnownState', () => {
@@ -54,6 +55,51 @@ describe('run Memory KnownState', () => {
       buildRunRequestCandidates(ctx, 'classify', raw.messages, { history: [] }),
     );
     expect(String(prepared.messages[0]?.content)).not.toContain('# Run Memory KnownState');
+  });
+
+  it('keeps injected memory evidence out of the stable cache prefix and serialized observation', () => {
+    const raw: ChatRequest = {
+      model: 'test',
+      messages: [
+        {
+          role: 'system',
+          content: 'Stable policy\n<!-- LITTLESHEEP_CACHE_BOUNDARY -->\nrun=one',
+        },
+        { role: 'user', content: 'verify evidence' },
+      ],
+      max_tokens: 100,
+    };
+
+    const baselineCtx = makeCtx();
+    prepareModelRequest(
+      baselineCtx,
+      'verify',
+      raw,
+      buildRunRequestCandidates(baselineCtx, 'verify', raw.messages, {
+        history: [],
+        primaryUserKind: 'workflow_state',
+      }),
+    );
+    const baseline = baselineCtx.modelRequests?.[0]?.cacheObservation;
+
+    const ctx = makeCtx();
+    ingestMemoryKnownState(ctx, knownState(ctx.runId), 'execute');
+    const prepared = prepareModelRequest(
+      ctx,
+      'verify',
+      raw,
+      buildRunRequestCandidates(ctx, 'verify', raw.messages, {
+        history: [],
+        primaryUserKind: 'workflow_state',
+      }),
+    );
+    const observation = ctx.modelRequests?.[0]?.cacheObservation;
+
+    expect(String(prepared.messages[0]?.content)).toContain('# Run Memory KnownState');
+    expect(observation?.stablePrefix.fingerprint).toBe(baseline?.stablePrefix.fingerprint);
+    expect(observation?.dynamicSuffix.fingerprint).not.toBe(baseline?.dynamicSuffix.fingerprint);
+    expect(canonicalSerialize(observation)).not.toContain('atom-advice');
+    expect(canonicalSerialize(observation)).not.toContain('# Run Memory KnownState');
   });
 });
 
