@@ -529,7 +529,8 @@ function validateSideEffect(value: unknown, index: number): RunCheckpoint['sideE
   const idempotencyKey = boundedText(value.idempotencyKey, 512, `checkpoint.sideEffects[${index}].idempotencyKey`);
   const toolName = boundedText(value.toolName, MAX_ID_LENGTH, `checkpoint.sideEffects[${index}].toolName`);
   const status = value.status;
-  if (status !== 'planned' && status !== 'in_progress' && status !== 'succeeded' && status !== 'failed' && status !== 'unknown') {
+  if (status !== 'planned' && status !== 'in_progress' && status !== 'succeeded'
+    && status !== 'failed' && status !== 'cancelled' && status !== 'unknown') {
     throw new RunCheckpointValidationError(`checkpoint.sideEffects[${index}].status is invalid.`);
   }
   const output: RunCheckpoint['sideEffects'][number] = { idempotencyKey, toolName, status };

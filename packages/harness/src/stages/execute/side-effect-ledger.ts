@@ -132,7 +132,7 @@ export async function finishSideEffect(
   descriptor: SideEffectDescriptor,
   result: ToolResult,
   durable = true,
-  settlement: 'succeeded' | 'failed' | 'unknown' = result.ok ? 'succeeded' : 'unknown',
+  settlement: 'succeeded' | 'failed' | 'cancelled' | 'unknown' = result.ok ? 'succeeded' : 'unknown',
 ): Promise<void> {
   const effects = ctx.sideEffects ?? []
   const index = effects.findIndex((item) => item.idempotencyKey === descriptor.idempotencyKey)

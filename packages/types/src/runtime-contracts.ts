@@ -713,7 +713,7 @@ export interface TaskBookPatch {
   createdAt: string;
 }
 
-export type SideEffectStatus = 'planned' | 'in_progress' | 'succeeded' | 'failed' | 'unknown';
+export type SideEffectStatus = 'planned' | 'in_progress' | 'succeeded' | 'failed' | 'cancelled' | 'unknown';
 
 export interface SideEffectCheckpoint {
   idempotencyKey: string;

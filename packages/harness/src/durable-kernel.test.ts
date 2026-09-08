@@ -273,39 +273,42 @@ describe('DurableHarnessKernel', () => {
     await expect(kernel.append(event('run_completed', {}, 'runtime', 'complete'))).rejects.toMatchObject({ kind: 'transition' });
   });
 
-  it('treats a failed effect as terminal without waiting for user', async () => {
-    const store = new MemoryEventStore();
-    const kernel = new DurableHarnessKernel({ eventStore: store });
-    await kernel.append(event('run_accepted', {}, 'runtime', 'accept'));
-    await kernel.append(event('effect_intent_created', {
-      effectId: 'effect-failed',
-      idempotencyKey: 'effect-key-failed',
-      toolName: 'write',
-      effectKind: 'local_mutation',
-    }, 'runtime', 'intent-failed'));
-    await kernel.append(event('effect_settled', {
-      effectId: 'effect-failed',
-      status: 'failed',
-    }, 'tool', 'settle-failed'));
+  it.each(['failed', 'cancelled'] as const)(
+    'treats a %s effect as terminal without waiting for user',
+    async (settledStatus) => {
+      const store = new MemoryEventStore();
+      const kernel = new DurableHarnessKernel({ eventStore: store });
+      await kernel.append(event('run_accepted', {}, 'runtime', 'accept'));
+      await kernel.append(event('effect_intent_created', {
+        effectId: 'effect-failed',
+        idempotencyKey: 'effect-key-failed',
+        toolName: 'write',
+        effectKind: 'local_mutation',
+      }, 'runtime', 'intent-failed'));
+      await kernel.append(event('effect_settled', {
+        effectId: 'effect-failed',
+        status: settledStatus,
+      }, 'tool', 'settle-failed'));
 
-    const projection = await kernel.replay(sessionId, runId);
-    expect(projection.effects[0]).toMatchObject({ status: 'failed' });
-    expect(projection.pendingEffectIds).toEqual([]);
-    expect(projection.unknownEffectIds).toEqual([]);
+      const projection = await kernel.replay(sessionId, runId);
+      expect(projection.effects[0]).toMatchObject({ status: settledStatus });
+      expect(projection.pendingEffectIds).toEqual([]);
+      expect(projection.unknownEffectIds).toEqual([]);
 
-    await kernel.append(event('final_reply_proposed', {
-      reply: 'effect failed before execution',
-      replyFingerprint: 'fp-failed',
-      modelRequestId: 'model-failed',
-    }, 'model', 'proposal-failed'));
-    await kernel.append(event('final_reply_settled', {
-      reply: 'effect failed before execution',
-      replyFingerprint: 'fp-failed',
-      modelRequestId: 'model-failed',
-    }, 'runtime', 'settled-failed'));
-    await kernel.append(event('run_completed', {}, 'runtime', 'complete-failed'));
-    expect((await kernel.replay(sessionId, runId)).status).toBe('completed');
-  });
+      await kernel.append(event('final_reply_proposed', {
+        reply: 'effect failed before execution',
+        replyFingerprint: 'fp-failed',
+        modelRequestId: 'model-failed',
+      }, 'model', 'proposal-failed'));
+      await kernel.append(event('final_reply_settled', {
+        reply: 'effect failed before execution',
+        replyFingerprint: 'fp-failed',
+        modelRequestId: 'model-failed',
+      }, 'runtime', 'settled-failed'));
+      await kernel.append(event('run_completed', {}, 'runtime', 'complete-failed'));
+      expect((await kernel.replay(sessionId, runId)).status).toBe('completed');
+    },
+  );
 
   it('uses one final settlement reservation and inbox processing is idempotent', async () => {
     const eventStore = new MemoryEventStore();

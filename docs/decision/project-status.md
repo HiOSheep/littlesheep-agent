@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 00:44:59
+最后更新：2026-09-09 00:50:02
+
+**Harness cancelled effect 结算（2026-09-09 00:50:02，进行中）**：补齐 `cancelled` 终态。effect intent 已耐久、但 Run 在工具调用前已中止时，工具零调用，effect 结算为 `cancelled`，checkpoint store 接受该状态，projection 只把 `in_progress`/`unknown` 视为 uncertain。execute 44 项、durable-kernel 18 项、runner 30 个文件 240 项通过，types/harness/runner typecheck 通过。
 
 **Harness CACHE-08 工具结果/工具循环矩阵（2026-09-09 00:44:59，进行中）**：新增夹具验证工具调用与工具结果始终进入 dynamic suffix，两轮工具循环后 stable-prefix fingerprint 保持不变且无 invalidation reason，序列化不含工具参数或结果正文；工具 schema 增删仍按 `tool_schema_changed` 失效。harness 59 个文件 525 项通过，typecheck 通过。
 

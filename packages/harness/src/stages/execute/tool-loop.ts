@@ -481,6 +481,22 @@ function sideEffectLifecycle(ctx: RunContext): ToolExecutionLifecycle {
           errorKind: begin.kind === 'duplicate' ? 'side_effect_replay' : 'side_effect_blocked',
         };
       }
+      if (ctx.signal?.aborted) {
+        await finishSideEffect(ctx, sideEffect, {
+          callId: invocation.request.callId,
+          ok: false,
+          error: 'run aborted before effect invocation',
+        }, true, 'cancelled');
+        return {
+          result: {
+            callId: invocation.request.callId,
+            ok: false,
+            error: 'run aborted before effect invocation',
+          },
+          status: 'aborted',
+          errorKind: 'run_aborted_before_effect',
+        };
+      }
       try {
         await ctx.persistRuntimeCheckpoint?.(sideEffectCheckpointReason(sideEffect, 'started'));
       } catch (error) {

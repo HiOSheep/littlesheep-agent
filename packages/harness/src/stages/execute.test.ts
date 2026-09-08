@@ -1515,6 +1515,34 @@ describe('executeStage', () => {
     expect(settlements).toEqual([expect.objectContaining({ status: 'unknown' })]);
   });
 
+  it('settles a pre-invocation abort as cancelled without invoking the effectful tool', async () => {
+    const tool = makeTool('mutate', { ok: true, output: 'must not run' });
+    const llm = createMockLlm([
+      toolCallResponse([{ id: 'aborted-effect-call', name: 'mutate', args: { value: 'x' } }]),
+      textResponse('aborted before mutation'),
+    ]);
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', 'mutate safely') });
+    ctx.toolSources = { mutate: 'plugin:test-mutation' };
+    const controller = new AbortController();
+    ctx.signal = controller.signal;
+    controller.abort();
+    const settlements: Array<{ status?: string }> = [];
+    ctx.appendDurableEvent = vi.fn(async (event) => {
+      if (event.type === 'effect_settled') settlements.push(event.payload as { status?: string });
+    });
+
+    await stage(ctx);
+
+    expect(tool.calls).toHaveLength(0);
+    expect(ctx.sideEffects?.[0]).toMatchObject({ status: 'cancelled', toolName: 'mutate' });
+    expect(settlements).toEqual([expect.objectContaining({ status: 'cancelled' })]);
+    expect(ctx.toolInvocations?.[0]).toMatchObject({
+      status: 'aborted',
+      errorKind: 'run_aborted_before_effect',
+    });
+  });
+
   it('does not invoke an effectful tool when intent durability is ambiguous', async () => {
     const tool = makeTool('mutate', { ok: true, output: 'must not run' });
     const llm = createMockLlm([
