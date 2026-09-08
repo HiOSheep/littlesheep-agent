@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 00:34:29
+最后更新：2026-09-09 00:43:19
+
+**Harness effect 结算语义修正（2026-09-09 00:43:19，进行中）**：区分执行前拒绝与执行后结果不明。effect intent 已耐久、但 pre-effect checkpoint 失败时工具零调用，durable `effect_settled` 现在写入 `failed`（而不是 `unknown`），projection 不再进入 `unknownEffectIds`/`waiting_user`，run 可正常收尾；工具实际执行后返回非成功结果仍保持 `unknown`。execute 43 项、durable-kernel 17 项、runner 30 个文件 240 项通过，harness typecheck 通过。
 
 **Harness CACHE-05 失效原因补全（2026-09-09 00:34:29，进行中）**：`manual_clear` 与 `replayed` 不再只是枚举值：`buildCacheObservation` 接受 Runtime 提供的 `manualClear`/`replayed` 标记，即使没有 previous observation 也会记录对应原因，并按稳定顺序生成 primary reason；新增最小复现夹具验证两个原因不改变 stable prefix 字节、可单独或同时出现。harness 59 个文件 522 项通过，typecheck 通过；生产端手动清理/重建调用方仍需接线。
 

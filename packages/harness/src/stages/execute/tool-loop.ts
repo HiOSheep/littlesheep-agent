@@ -488,7 +488,7 @@ function sideEffectLifecycle(ctx: RunContext): ToolExecutionLifecycle {
           callId: invocation.request.callId,
           ok: false,
           error: `checkpoint before side effect failed: ${(error as Error).message}`,
-        });
+        }, true, 'failed');
         return {
           result: {
             callId: invocation.request.callId,

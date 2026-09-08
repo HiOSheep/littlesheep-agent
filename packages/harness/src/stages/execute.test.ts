@@ -1474,19 +1474,45 @@ describe('executeStage', () => {
     const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', 'mutate safely') });
     ctx.toolSources = { mutate: 'plugin:test-mutation' };
     ctx.persistRuntimeCheckpoint = vi.fn(async () => { throw new Error('durable store unavailable'); });
+    const settlements: Array<{ status?: string }> = [];
+    ctx.appendDurableEvent = vi.fn(async (event) => {
+      if (event.type === 'effect_settled') settlements.push(event.payload as { status?: string });
+    });
 
     const result = await stage(ctx);
 
     expect(result.ok).toBe(true);
     expect(tool.calls).toHaveLength(0);
     expect(ctx.toolResults?.[0]?.error).toContain('until its checkpoint is durable');
-    expect(ctx.sideEffects?.[0]?.status).toBe('unknown');
+    expect(ctx.sideEffects?.[0]?.status).toBe('failed');
+    expect(settlements).toEqual([expect.objectContaining({ status: 'failed' })]);
     expect(ctx.toolInvocations?.[0]).toMatchObject({
       toolName: 'mutate',
       toolSource: 'plugin:test-mutation',
       status: 'failed',
       errorKind: 'checkpoint_before_effect',
     });
+  });
+
+  it('keeps an invoked effect unknown when the tool returns a non-success result', async () => {
+    const tool = makeTool('mutate', { ok: false, error: 'partial mutation failure' });
+    const llm = createMockLlm([
+      toolCallResponse([{ id: 'failed-effect-call', name: 'mutate', args: { value: 'x' } }]),
+      textResponse('effect result unknown'),
+    ]);
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', 'mutate') });
+    ctx.toolSources = { mutate: 'plugin:test-mutation' };
+    const settlements: Array<{ status?: string }> = [];
+    ctx.appendDurableEvent = vi.fn(async (event) => {
+      if (event.type === 'effect_settled') settlements.push(event.payload as { status?: string });
+    });
+
+    await stage(ctx);
+
+    expect(tool.calls).toHaveLength(1);
+    expect(ctx.sideEffects?.[0]).toMatchObject({ status: 'unknown', toolName: 'mutate' });
+    expect(settlements).toEqual([expect.objectContaining({ status: 'unknown' })]);
   });
 
   it('does not invoke an effectful tool when intent durability is ambiguous', async () => {

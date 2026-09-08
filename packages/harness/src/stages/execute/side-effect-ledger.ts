@@ -132,6 +132,7 @@ export async function finishSideEffect(
   descriptor: SideEffectDescriptor,
   result: ToolResult,
   durable = true,
+  settlement: 'succeeded' | 'failed' | 'unknown' = result.ok ? 'succeeded' : 'unknown',
 ): Promise<void> {
   const effects = ctx.sideEffects ?? []
   const index = effects.findIndex((item) => item.idempotencyKey === descriptor.idempotencyKey)
@@ -139,7 +140,7 @@ export async function finishSideEffect(
   const current = effects[index]!
   const entry: SideEffectCheckpoint = {
     ...current,
-    status: result.ok ? 'succeeded' : 'unknown',
+    status: settlement,
     endedAt: new Date().toISOString(),
     evidenceRef: `tool:${descriptor.callId}`,
     ...(!result.ok && result.error ? { error: result.error.slice(0, 2_048) } : {}),
@@ -156,7 +157,7 @@ export async function finishSideEffect(
       idempotencyKey: `${ctx.runId}:effect:${descriptor.idempotencyKey}:settled`,
       payload: {
         effectId: descriptor.idempotencyKey,
-        status: result.ok ? 'succeeded' : 'unknown',
+        status: settlement,
         evidenceRef: entry.evidenceRef,
         ...(entry.error ? { errorHash: hashText(entry.error), errorLength: entry.error.length } : {}),
       },
