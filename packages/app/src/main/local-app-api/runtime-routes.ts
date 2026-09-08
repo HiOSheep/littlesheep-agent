@@ -132,6 +132,17 @@ export async function routeRuntime(
         nextDefaults.durableHarnessMode = mode
       }
 
+      if (Object.prototype.hasOwnProperty.call(body, 'durableHarnessSessionOverrides')) {
+        const overrides = parseDurableHarnessSessionOverrides(body.durableHarnessSessionOverrides)
+        if (!overrides) {
+          json(res, 400, {
+            error: 'durableHarnessSessionOverrides must map non-empty session ids to "shadow" or "next"',
+          })
+          return true
+        }
+        nextDefaults.durableHarnessSessionOverrides = overrides
+      }
+
       if (Object.prototype.hasOwnProperty.call(body, 'closePolicy')) {
         const closePolicy = body.closePolicy
         if (
@@ -332,6 +343,7 @@ export function buildRuntimePayload(config: Config, workplaceDir: string, webPro
     profile: normalizeAgentProfileId(config.agents.defaults.profile),
     contextCompressionThresholdRatio: config.agents.defaults.contextCompressionThresholdRatio,
     durableHarnessMode: config.agents.defaults.durableHarnessMode,
+    durableHarnessSessionOverrides: { ...config.agents.defaults.durableHarnessSessionOverrides },
     closePolicy: config.desktop.closePolicy,
     workspace: config.agents.defaults.workspace || workplaceDir,
     workplace: workplaceDir,
@@ -460,4 +472,18 @@ function isReasoning(value: string): value is RuntimeReasoning {
 
 function isPermissionPolicyId(value: string | undefined): value is 'full' | 'research' | 'restricted' {
   return value === 'full' || value === 'research' || value === 'restricted'
+}
+
+function parseDurableHarnessSessionOverrides(value: unknown): Record<string, 'shadow' | 'next'> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const entries = Object.entries(value as Record<string, unknown>)
+  if (entries.length > 256) return null
+  const result: Record<string, 'shadow' | 'next'> = {}
+  for (const [key, mode] of entries) {
+    const sessionId = key.trim()
+    if (!sessionId || sessionId.length > 256) return null
+    if (mode !== 'shadow' && mode !== 'next') return null
+    result[sessionId] = mode
+  }
+  return result
 }

@@ -71,6 +71,17 @@ describe('runtime config Local App API', () => {
       await expect(durableHarnessMode.json()).resolves.toMatchObject({ durableHarnessMode: 'next' })
       expect(updates.at(-1)?.agents.defaults.durableHarnessMode).toBe('next')
 
+      const sessionOverrides = await fetch(`http://127.0.0.1:${server.port}/runtime`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ durableHarnessSessionOverrides: { 'session-next': 'next' } }),
+      })
+      expect(sessionOverrides.status).toBe(200)
+      await expect(sessionOverrides.json()).resolves.toMatchObject({
+        durableHarnessSessionOverrides: { 'session-next': 'next' },
+      })
+      expect(updates.at(-1)?.agents.defaults.durableHarnessSessionOverrides).toEqual({ 'session-next': 'next' })
+
       const after = await fetch(`http://127.0.0.1:${server.port}/runtime`)
       await expect(after.json()).resolves.toMatchObject({ contextCompressionThresholdRatio: 0.9 })
 
@@ -94,7 +105,13 @@ describe('runtime config Local App API', () => {
         body: JSON.stringify({ durableHarnessMode: 'authoritative' }),
       })
       expect(invalidDurableHarnessMode.status).toBe(400)
-      expect(updates).toHaveLength(3)
+      const invalidSessionOverrides = await fetch(`http://127.0.0.1:${server.port}/runtime`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ durableHarnessSessionOverrides: { 'session-x': 'authoritative' } }),
+      })
+      expect(invalidSessionOverrides.status).toBe(400)
+      expect(updates).toHaveLength(4)
     } finally {
       await server.stop()
       rmSync(dataDir, { recursive: true, force: true })

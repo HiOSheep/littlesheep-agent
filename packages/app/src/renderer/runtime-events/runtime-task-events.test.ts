@@ -96,6 +96,7 @@ function runtimeState(): RuntimeState {
     profile: 'general',
     contextCompressionThresholdRatio: 0.8,
     durableHarnessMode: 'shadow',
+    durableHarnessSessionOverrides: {},
     closePolicy: 'background-while-active',
     workspace: 'D:/workspace',
     workplace: 'D:/data/workplace',

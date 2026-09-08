@@ -42,6 +42,7 @@ export interface RuntimeState {
   profile: AgentProfileId
   contextCompressionThresholdRatio: number
   durableHarnessMode: 'shadow' | 'next'
+  durableHarnessSessionOverrides: Record<string, 'shadow' | 'next'>
   closePolicy: DesktopClosePolicy
   workspace: string
   workplace: string
@@ -101,6 +102,7 @@ export type RuntimePatch = Partial<Pick<
   | 'profile'
   | 'contextCompressionThresholdRatio'
   | 'durableHarnessMode'
+  | 'durableHarnessSessionOverrides'
   | 'closePolicy'
   | 'workspace'
 >> & { web?: RuntimeWebPatch }

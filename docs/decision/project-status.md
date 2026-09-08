@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 01:14:46
+最后更新：2026-09-09 01:16:42
+
+**Harness per-session rollout API（2026-09-09 01:16:42，进行中）**：Local App API `GET/POST /runtime` 新增 `durableHarnessSessionOverrides`，可读取和更新 session 级 shadow/next 覆盖；校验非空 session id、shadow/next 值和 256 条上限，非法值返回 400。app main 71 个文件 271 项通过，app typecheck 通过。
 
 **Harness CACHE-08 附件 manifest 缓存边界（2026-09-09 01:14:46，进行中）**：新增端到端夹具验证附件 manifest 只进入 dynamic suffix，不改变 stable-prefix fingerprint，也不产生 invalidation reason；序列化观测不含附件名或路径。harness 61 个文件 544 项通过，typecheck 通过。
 
