@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 14:33:30
+最后更新：2026-09-09 14:35:30
+
+**Harness next provider timeout（2026-09-09 14:35:30，进行中）**：新增 next 模式 Provider timeout 端到端回归，确认 model request 以 `timeout` 结算、durable projection 无 pending model request、run 记录 `run_failed` 且不误报完成。定向测试通过；runner 上一完整回归为 30 个文件 256/256。
 
 **Harness next streaming usage（2026-09-09 14:33:30，进行中）**：新增 next + streaming + partial provider usage 端到端回归，确认 model response、model settlement、final reply settlement 和 run_completed 均正常，不因可选 usage 字段缺失失败。定向测试通过；runner 上一完整回归为 30 个文件 256/256。
 

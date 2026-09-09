@@ -1695,6 +1695,27 @@ describe('createRunner run', () => {
     expect(request?.providerUsage).toBeUndefined();
   });
 
+  it('settles next-harness provider timeouts without leaving pending model requests', async () => {
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(() => { throw new Error('provider timeout'); }),
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(runner);
+
+    const result = await runner.run({ text: 'next provider timeout' });
+    expect(result.status).toBe('error');
+    const events = await runner.infra.durableEventStore.read(String(result.sessionId), result.runId);
+    const settlements = events.filter((event) => event.type === 'model_request_settled');
+    expect(settlements.length).toBeGreaterThan(0);
+    expect(settlements.every((event) => event.payload.status === 'timeout')).toBe(true);
+    expect(events.some((event) => event.type === 'run_failed')).toBe(true);
+    expect(events.some((event) => event.type === 'run_completed')).toBe(false);
+    expect(reduceDurableRunProjection(events).pendingModelRequestIds).toEqual([]);
+  });
+
   it('routes an active-run interrupt through the bounded queue and stops at the next safe boundary', async () => {
     const llm = makeMockLlm(textResponse('reply before boundary'));
     let releaseResponse!: () => void;
