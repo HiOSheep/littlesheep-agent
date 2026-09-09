@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 14:25:30
+最后更新：2026-09-09 14:32:25
+
+**Harness cumulative full-suite gate（2026-09-09 14:32:25，进行中）**：最新全仓 `pnpm.cmd test` 通过 411 个文件、2,892 项、1 项 skipped；`pnpm.cmd typecheck` 和 `pnpm.cmd run check:repo` 33/33 通过。该基线包含 next 路径 provider usage 可选字段修复、Provider usage 完全缺失回归、端到端 cache-quality 报告、shadow/next 双路径对比和验证质量投影。真实 Provider 对账仍因 DeepSeek 401 凭证 blocked。
 
 **Harness next missing usage regression（2026-09-09 14:25:30，进行中）**：补充 next 模式 Provider usage 完全缺失的回归夹具，确认所有模型请求仍以 `received/unavailable` 结算且 run 正常完成，不会因可选 usage 字段缺失触发 lifecycle 失败。定向测试通过；runner 上一完整回归为 30 个文件 256/256。
 
