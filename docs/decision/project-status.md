@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 14:23:30
+最后更新：2026-09-09 14:25:30
+
+**Harness next missing usage regression（2026-09-09 14:25:30，进行中）**：补充 next 模式 Provider usage 完全缺失的回归夹具，确认所有模型请求仍以 `received/unavailable` 结算且 run 正常完成，不会因可选 usage 字段缺失触发 lifecycle 失败。定向测试通过；runner 上一完整回归为 30 个文件 256/256。
 
 **Harness end-to-end cache quality report（2026-09-09 14:23:30，进行中）**：新增真实 Runner 两轮请求到 cache-quality 报告的端到端夹具，覆盖 Provider hit ratio、prompt/completion/cached token 总量和 received/failure outcome rate。该夹具发现并修复 Provider usage 缺 `cachedPromptTokens`/`reasoningTokens` 时 next 路径把 `undefined` 写入 durable event、导致 `finalize_model_lifecycle_failed` 的真实缺陷。runner 30 个文件 256/256、harness 61 个文件 553/553 通过。真实 Provider 对账仍因 DeepSeek 401 凭证 blocked。
 

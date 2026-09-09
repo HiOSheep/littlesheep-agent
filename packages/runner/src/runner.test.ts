@@ -1113,6 +1113,34 @@ describe('createRunner run', () => {
     });
   });
 
+  it('settles next-harness requests when Provider usage is completely absent', async () => {
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('next reply without usage')),
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(runner);
+
+    const result = await runner.run({ text: 'provider omitted usage in next mode' });
+    expect(result.status).toBe('ok');
+    const projection = reduceDurableRunProjection(
+      await runner.infra.durableEventStore.read(String(result.sessionId), result.runId),
+    );
+    expect(projection.modelRequests.length).toBeGreaterThan(0);
+    expect(projection.modelRequests.every((request) => request.status === 'received')).toBe(true);
+    expect(projection.modelRequests.every((request) => request.usageStatus === 'unavailable')).toBe(true);
+    expect(projection.modelRequests[0]).toMatchObject({
+      status: 'received',
+      usageStatus: 'unavailable',
+      providerReachStatus: 'reached',
+      transportStatus: 'completed',
+    });
+    expect(projection.modelRequests.every((request) => request.providerUsage === undefined)).toBe(true);
+    expect(projection.status).toBe('completed');
+  });
+
   it('scopes additional tools to one run without mutating the shared registry', async () => {
     const llm = makeMockLlm(textResponse('Attachment acknowledged.'));
     const runner = await createRunner({
