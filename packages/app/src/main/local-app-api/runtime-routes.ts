@@ -3,7 +3,6 @@
 import type { Config } from '@littlesheep/config'
 import { ConfigSchema, parseModelRef, resolveApiKey } from '@littlesheep/config'
 import type { AgentRunner } from '@littlesheep/runner'
-import type { DurableModelRequestProjection } from '@littlesheep/types'
 import type { ProviderInfo, RuntimeState, RuntimeWebProviderCheck } from '../../shared/runtime-api-contracts.js'
 import { LOCAL_APP_API_ROUTES } from '../../shared/local-app-api-routes.js'
 import {
@@ -222,12 +221,13 @@ export async function routeRuntime(
       json(res, 400, { error: 'since/until must be ISO timestamps or epoch milliseconds' })
       return true
     }
-    let modelRequests: readonly DurableModelRequestProjection[] | undefined
-    if (runner.infra.loadSessionModelRequests) {
+    const loadSessionProjection = runner.infra.loadSessionDurableProjection
+    let sessionProjection: Awaited<ReturnType<NonNullable<typeof loadSessionProjection>>> | undefined
+    if (loadSessionProjection) {
       try {
-        modelRequests = await runner.infra.loadSessionModelRequests(sessionId)
+        sessionProjection = await loadSessionProjection(sessionId)
       } catch {
-        modelRequests = undefined
+        sessionProjection = undefined
       }
     }
     try {
@@ -236,7 +236,8 @@ export async function routeRuntime(
         workspaceScope,
         permissionPolicyId,
         key,
-        ...(modelRequests ? { modelRequests } : {}),
+        ...(sessionProjection ? { modelRequests: sessionProjection.modelRequests } : {}),
+        ...(sessionProjection ? { verifications: sessionProjection.verifications } : {}),
         ...(since === undefined ? {} : { since }),
         ...(until === undefined ? {} : { until }),
       }))

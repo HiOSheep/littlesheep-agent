@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 13:38:11
+最后更新：2026-09-09 13:49:30
+
+**Harness verification quality projection（2026-09-09 13:49:30，进行中）**：durable `verification_recorded` 现在进入 `DurableRunProjection`，仅保留 attempt、verdict、source、reason hash/length 和 failed step ids；cache-quality 报告新增 pass/needs_replan/fail 计数与 passRate，缺失时标 `quality_continuity_not_observed`，存在 fail 时标 `verification_failures_present`。session durable projection 读取已拆到 `session-durable-projection.ts`，API 一次读取 model requests 和 verifications，避免重复扫描。最新全仓 `pnpm.cmd test` 411 个文件、2,888 项通过、1 项 skipped；`pnpm.cmd typecheck`、`pnpm.cmd run check:repo` 33/33 通过。真实 Provider 对账仍因 DeepSeek 401 凭证 blocked。
 
 **Harness cumulative full-suite gate（2026-09-09 13:38:11，进行中）**：最新全仓 `pnpm.cmd test` 通过 411 个文件、2,886 项、1 项 skipped；`pnpm.cmd typecheck` 和 `pnpm.cmd run check:repo` 33/33 通过。该基线包含 webhook 重复投递、origin override、next 并发租约/重启重放、effect unknown 端到端和 CACHE-09 durable 报告增量。真实 Provider usage 对账仍因当前 DeepSeek 401 凭证保持 blocked。
 

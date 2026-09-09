@@ -844,7 +844,8 @@ describe('createRunner run', () => {
 
     const result = await runner.run({ text: 'cache quality request' });
     expect(result.status).toBe('ok');
-    const requests = await runner.infra.loadSessionModelRequests?.(String(result.sessionId));
+    const sessionProjection = await runner.infra.loadSessionDurableProjection?.(String(result.sessionId));
+    const requests = sessionProjection?.modelRequests;
     expect(requests?.length).toBeGreaterThan(0);
     const durable = reduceDurableRunProjection(
       await runner.infra.durableEventStore.read(String(result.sessionId), result.runId),

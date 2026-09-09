@@ -595,6 +595,10 @@ export function freezeDurableRunProjection(projection: MutableDurableRunProjecti
     })),
     pendingModelRequestIds: [...projection.pendingModelRequestIds],
     stageTransitions: projection.stageTransitions.map((transition) => Object.freeze({ ...transition })),
+    verifications: projection.verifications.map((verification) => Object.freeze({
+      ...verification,
+      failedStepIds: [...verification.failedStepIds],
+    })),
   };
 }
 

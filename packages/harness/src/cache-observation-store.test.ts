@@ -2,7 +2,7 @@ import { describe, expect, it, afterEach } from 'vitest';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ChatRequest } from '@littlesheep/llm';
-import type { DurableModelRequestProjection } from '@littlesheep/types';
+import type { DurableModelRequestProjection, DurableVerificationProjection } from '@littlesheep/types';
 import { buildCacheObservation } from './cache-observability.js';
 import { CacheObservationStore } from './cache-observation-store.js';
 
@@ -53,6 +53,20 @@ function modelRequest(
     startedAt: '2026-09-09T00:00:00.000Z',
     respondedAt: '2026-09-09T00:00:00.100Z',
     settledAt: '2026-09-09T00:00:00.100Z',
+    ...overrides,
+  };
+}
+
+function verification(
+  overrides: Partial<DurableVerificationProjection> = {},
+): DurableVerificationProjection {
+  return {
+    attempt: 1,
+    verdict: 'pass',
+    source: 'structural',
+    reasonHash: 'a'.repeat(64),
+    reasonLength: 10,
+    failedStepIds: [],
     ...overrides,
   };
 }
@@ -283,6 +297,7 @@ describe('CacheObservationStore', () => {
           settledAt: '2026-09-09T00:00:00.900Z',
         }),
       ],
+      verifications: [verification()],
     });
 
     expect(result).toMatchObject({
@@ -296,6 +311,13 @@ describe('CacheObservationStore', () => {
           p50Ms: 100,
           p95Ms: 300,
           maxMs: 300,
+        },
+        verification: {
+          verificationCount: 1,
+          passCount: 1,
+          needsReplanCount: 0,
+          failCount: 0,
+          passRate: 1,
         },
       },
     });

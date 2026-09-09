@@ -132,6 +132,47 @@ function event<T extends DurableHarnessEvent['type']>(type: T, payload: Record<s
 }
 
 describe('DurableHarnessKernel', () => {
+  it('projects redacted verification outcomes', async () => {
+    const store = new MemoryEventStore();
+    const kernel = new DurableHarnessKernel({ eventStore: store });
+    await kernel.append(event('run_accepted', {}, 'runtime', 'accept'));
+    await kernel.append(event('verification_recorded', {
+      attempt: 1,
+      verdict: 'pass',
+      source: 'structural',
+      reasonHash: 'a'.repeat(64),
+      reasonLength: 42,
+      failedStepIds: [],
+    }, 'runtime', 'verify-1'));
+    await kernel.append(event('verification_recorded', {
+      attempt: 2,
+      verdict: 'fail',
+      source: 'model',
+      reasonHash: 'b'.repeat(64),
+      reasonLength: 84,
+      failedStepIds: ['step-1'],
+    }, 'runtime', 'verify-2'));
+
+    expect(reduceDurableRunProjection(store.events).verifications).toEqual([
+      {
+        attempt: 1,
+        verdict: 'pass',
+        source: 'structural',
+        reasonHash: 'a'.repeat(64),
+        reasonLength: 42,
+        failedStepIds: [],
+      },
+      {
+        attempt: 2,
+        verdict: 'fail',
+        source: 'model',
+        reasonHash: 'b'.repeat(64),
+        reasonLength: 84,
+        failedStepIds: ['step-1'],
+      },
+    ]);
+  });
+
   it('recovers a lost model response without retrying the Provider', async () => {
     const store = new MemoryEventStore();
     const kernel = new DurableHarnessKernel({ eventStore: store });

@@ -297,6 +297,16 @@ export interface DurableStageTransitionProjection {
   readonly transitionEventId: string;
 }
 
+/** Redacted durable VERIFY outcome. Reason text is represented only by digest and length. */
+export interface DurableVerificationProjection {
+  readonly attempt: number;
+  readonly verdict: 'pass' | 'needs_replan' | 'fail';
+  readonly source: 'model' | 'structural' | 'degraded';
+  readonly reasonHash: string;
+  readonly reasonLength: number;
+  readonly failedStepIds: readonly string[];
+}
+
 export interface DurableRunProjection {
   readonly version: 1;
   readonly sessionId: string;
@@ -311,6 +321,7 @@ export interface DurableRunProjection {
   readonly capabilitySnapshot?: DurableCapabilitySnapshotProjection;
   readonly capabilityProbe?: DurableCapabilityProbeProjection;
   readonly stageTransitions: readonly DurableStageTransitionProjection[];
+  readonly verifications: readonly DurableVerificationProjection[];
   readonly modelRequests: readonly DurableModelRequestProjection[];
   readonly pendingModelRequestIds: readonly string[];
   readonly effects: readonly DurableEffectProjection[];

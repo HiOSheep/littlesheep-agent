@@ -4,6 +4,7 @@ import type {
   CacheObservation,
   CacheObservationStatus,
   DurableModelRequestProjection,
+  DurableVerificationProjection,
 } from '@littlesheep/types';
 import { buildCacheQualityReport } from './cache-quality-report.js';
 import type { ModelRequestLatencySummary } from './model-latency-report.js';
@@ -69,6 +70,20 @@ function modelRequest(
     startedEventId: 'event-started-1',
     startedAt: '2026-09-09T00:00:00.000Z',
     settledAt: '2026-09-09T00:00:00.100Z',
+    ...overrides,
+  };
+}
+
+function verification(
+  overrides: Partial<DurableVerificationProjection> = {},
+): DurableVerificationProjection {
+  return {
+    attempt: 1,
+    verdict: 'pass',
+    source: 'structural',
+    reasonHash: 'a'.repeat(64),
+    reasonLength: 10,
+    failedStepIds: [],
     ...overrides,
   };
 }
@@ -179,6 +194,37 @@ describe('CACHE-09/10 cache quality report', () => {
       failureRate: 0,
     });
     expect(report.releaseGate.reasons).toContain('provider_token_totals_incomplete');
+  });
+
+  it('summarizes verification quality and blocks when it is not observed', () => {
+    const report = buildCacheQualityReport({
+      observations: [observation()],
+      verifications: [
+        verification(),
+        verification({
+          attempt: 2,
+          verdict: 'fail',
+          source: 'model',
+          reasonHash: 'b'.repeat(64),
+          reasonLength: 20,
+          failedStepIds: ['step-1'],
+        }),
+      ],
+      latency: latency({ requestCount: 1, completedCount: 1, receivedCount: 1 }),
+    });
+
+    expect(report.verification).toEqual({
+      verificationCount: 2,
+      passCount: 1,
+      needsReplanCount: 0,
+      failCount: 1,
+      passRate: 0.5,
+    });
+    expect(report.releaseGate.reasons).toContain('verification_failures_present');
+    expect(report.releaseGate.reasons).not.toContain('quality_continuity_not_observed');
+
+    const missing = buildCacheQualityReport({ observations: [observation()] });
+    expect(missing.releaseGate.reasons).toContain('quality_continuity_not_observed');
   });
 
   it('surfaces unexplained misses and never marks the release gate ready', () => {

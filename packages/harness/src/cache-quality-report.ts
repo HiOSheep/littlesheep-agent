@@ -9,6 +9,7 @@ import type {
   CacheObservation,
   CacheObservationStatus,
   DurableModelRequestProjection,
+  DurableVerificationProjection,
 } from '@littlesheep/types';
 import {
   summarizeModelRequestLatency,
@@ -46,6 +47,14 @@ export interface CacheRequestOutcomeSummary {
   readonly failureRate?: number;
 }
 
+export interface CacheVerificationSummary {
+  readonly verificationCount: number;
+  readonly passCount: number;
+  readonly needsReplanCount: number;
+  readonly failCount: number;
+  readonly passRate?: number;
+}
+
 export interface CacheQualityReport {
   readonly version: 1;
   readonly requestCount: number;
@@ -57,6 +66,7 @@ export interface CacheQualityReport {
   readonly memoryEmbedding: CacheLedgerSummary;
   readonly providerTokens: CacheTokenUsageSummary;
   readonly outcomes: CacheRequestOutcomeSummary;
+  readonly verification: CacheVerificationSummary;
   readonly invalidationReasons: ReadonlyArray<{ reason: CacheInvalidationReason; count: number }>;
   readonly latency?: ModelRequestLatencySummary;
   /** Never `ready`: CACHE-10 requires verified real-Provider evidence. */
@@ -69,6 +79,7 @@ export interface CacheQualityReport {
 export function buildCacheQualityReport(input: {
   readonly observations: readonly CacheObservation[];
   readonly modelRequests?: readonly DurableModelRequestProjection[];
+  readonly verifications?: readonly DurableVerificationProjection[];
   readonly latency?: ModelRequestLatencySummary;
   readonly unreadableEntryCount?: number;
 }): CacheQualityReport {
@@ -81,6 +92,7 @@ export function buildCacheQualityReport(input: {
   const memoryEmbedding = summarizeLedger(input.observations.map((observation) => observation.memoryEmbedding));
   const providerTokens = summarizeProviderTokens(input.modelRequests);
   const outcomes = summarizeOutcomes(latency);
+  const verification = summarizeVerifications(input.verifications);
   const invalidationReasons = summarizeReasons(input.observations);
 
   return Object.freeze({
@@ -93,6 +105,7 @@ export function buildCacheQualityReport(input: {
     memoryEmbedding,
     providerTokens,
     outcomes,
+    verification,
     invalidationReasons,
     ...(latency ? { latency } : {}),
     releaseGate: buildReleaseGate({
@@ -101,6 +114,7 @@ export function buildCacheQualityReport(input: {
       lsContext,
       memoryEmbedding,
       providerTokens,
+      verification,
       latency,
       unreadableEntryCount,
     }),
@@ -255,12 +269,41 @@ function summarizeOutcomes(latency: ModelRequestLatencySummary | undefined): Cac
   });
 }
 
+function summarizeVerifications(
+  verifications: readonly DurableVerificationProjection[] | undefined,
+): CacheVerificationSummary {
+  if (!verifications || verifications.length === 0) {
+    return Object.freeze({
+      verificationCount: 0,
+      passCount: 0,
+      needsReplanCount: 0,
+      failCount: 0,
+    });
+  }
+  let passCount = 0;
+  let needsReplanCount = 0;
+  let failCount = 0;
+  for (const verification of verifications) {
+    if (verification.verdict === 'pass') passCount += 1;
+    else if (verification.verdict === 'needs_replan') needsReplanCount += 1;
+    else failCount += 1;
+  }
+  return Object.freeze({
+    verificationCount: verifications.length,
+    passCount,
+    needsReplanCount,
+    failCount,
+    passRate: passCount / verifications.length,
+  });
+}
+
 function buildReleaseGate(input: {
   observations: readonly CacheObservation[];
   providerPrompt: CacheLedgerSummary;
   lsContext: CacheLedgerSummary;
   memoryEmbedding: CacheLedgerSummary;
   providerTokens: CacheTokenUsageSummary;
+  verification: CacheVerificationSummary;
   latency?: ModelRequestLatencySummary;
   unreadableEntryCount: number;
 }): CacheQualityReport['releaseGate'] {
@@ -300,6 +343,12 @@ function buildReleaseGate(input: {
     || input.providerTokens.promptTokens === undefined
     || input.providerTokens.completionTokens === undefined) {
     reasons.add('provider_token_totals_incomplete');
+  }
+  if (input.verification.verificationCount === 0) {
+    reasons.add('quality_continuity_not_observed');
+  }
+  if (input.verification.failCount > 0) {
+    reasons.add('verification_failures_present');
   }
   reasons.add('real_provider_reconciliation_not_verified');
 

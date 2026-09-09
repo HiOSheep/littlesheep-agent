@@ -5,7 +5,11 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, readdir, unlink } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { atomicWrite } from '@littlesheep/memory-core';
-import type { CacheObservation, DurableModelRequestProjection } from '@littlesheep/types';
+import type {
+  CacheObservation,
+  DurableModelRequestProjection,
+  DurableVerificationProjection,
+} from '@littlesheep/types';
 import {
   authorizeCacheObservationScope,
   buildCacheScopePartition,
@@ -184,6 +188,8 @@ export class CacheObservationStore {
       readonly latency?: ModelRequestLatencySummary;
       /** Durable model requests used to summarize only authorized observations. */
       readonly modelRequests?: readonly DurableModelRequestProjection[];
+      /** Session-scoped redacted VERIFY outcomes; contains no prompt or reply text. */
+      readonly verifications?: readonly DurableVerificationProjection[];
       readonly since?: number;
       readonly until?: number;
     },
@@ -235,6 +241,7 @@ export class CacheObservationStore {
       report: buildCacheQualityReport({
         observations,
         ...(matchedRequests ? { modelRequests: matchedRequests } : {}),
+        ...(input.verifications ? { verifications: input.verifications } : {}),
         ...(!matchedRequests && input.latency ? { latency: input.latency } : {}),
         unreadableEntryCount,
       }),

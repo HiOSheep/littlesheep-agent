@@ -18,6 +18,7 @@ import type {
 } from '@littlesheep/types';
 import { DURABLE_HARNESS_EVENT_VERSION } from '@littlesheep/types';
 import { DurableKernelError } from './durable-kernel-error.js';
+import { readVerificationRecordedPayload } from './durable-verification-codec.js';
 import {
   freezeDurableRunProjection,
   isModelTransportStatus,
@@ -459,6 +460,7 @@ function emptyProjection(sessionId: string, runId: string): DurableRunProjection
     eventCount: 0,
     finalReply: { state: 'none' },
     stageTransitions: [],
+    verifications: [],
     modelRequests: [],
     pendingModelRequestIds: [],
     effects: [],
@@ -484,6 +486,10 @@ function applyDurableHarnessEvent(
     ...(projection.capabilitySnapshot ? { capabilitySnapshot: { ...projection.capabilitySnapshot } } : {}),
     ...(projection.capabilityProbe ? { capabilityProbe: { ...projection.capabilityProbe } } : {}),
     stageTransitions: projection.stageTransitions.map((transition) => ({ ...transition })),
+    verifications: projection.verifications.map((verification) => ({
+      ...verification,
+      failedStepIds: [...verification.failedStepIds],
+    })),
     modelRequests: projection.modelRequests.map((request) => ({ ...request })),
     pendingModelRequestIds: [...projection.pendingModelRequestIds],
   };
@@ -542,6 +548,15 @@ function applyDurableHarnessEvent(
         const route = requiredRoute(event.payload.route);
         next.route = route;
         next.status = route === 'clarify' ? 'waiting_user' : 'running';
+      } else if (event.type === 'verification_recorded') {
+        const verification = readVerificationRecordedPayload(event.payload);
+        if (next.verifications.some((item) => item.attempt === verification.attempt)) {
+          throw new DurableKernelError(
+            `verification attempt already recorded: ${verification.attempt}`,
+            'transition',
+          );
+        }
+        next.verifications.push(verification);
       } else if (next.status === 'accepted') {
         next.status = 'running';
       }
