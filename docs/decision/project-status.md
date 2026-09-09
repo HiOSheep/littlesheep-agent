@@ -1,8 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 11:55:00
+最后更新：2026-09-09 11:59:00
 
-**Harness CACHE-09 durable latency report（2026-09-09 11:55:00，进行中）**：Runner `Infrastructure.loadSessionModelRequests` 按 session 读取最近 64 个 run 的 durable model request projection；`CacheObservationStore.report()` 现在只用授权 observation 的 requestId 计算延迟、取消和失败摘要，Local App API `GET /runtime/cache-quality` 显式透传。新增 harness store 夹具验证跨 scope 请求不会进入 latency，新增 runner 夹具验证 session 级投影与 durable projection 一致。harness 61 个文件 550/550、runner 30 个文件 249/249、app cache-quality API 夹具和 app typecheck 通过。真实 Provider 对账、成本/回答质量对比和最终发布决定仍未完成。
+**Harness CACHE-09 durable latency report（2026-09-09 11:59:00，进行中）**：Runner `Infrastructure.loadSessionModelRequests` 按 session 读取最近 64 个 run 的 durable model request projection；`CacheObservationStore.report()` 现在只用授权 observation 的 requestId 计算延迟、取消和失败摘要，Local App API `GET /runtime/cache-quality` 显式透传。报告新增 Provider prompt/completion/reasoning/total/cached token 总量和 received/pending/aborted/failure 计数与比率；任一请求缺 usage 时只标 `provider_token_totals_incomplete`，不补零。新增 harness store/report 夹具验证跨 scope 请求不会进入 latency，新增 runner 夹具验证 session 级投影与 durable projection 一致。harness 61 个文件 551/551、runner 30 个文件 249/249、app cache-quality API 夹具和 app typecheck 通过。真实 Provider 对账、成本/回答质量对比和最终发布决定仍未完成。
 
 **Harness CACHE-08 lifecycle wiring（2026-09-09 11:45:00，进行中）**：checkpoint resume 的首个模型请求现在在生产路径标记 `replayed`；runner continuation 夹具断言该原因出现。新增 runner 配置热重载夹具，验证同 session 换 profile 后首个观测记录 `system_policy_changed`。新增 harness 多工具乱序结果夹具，验证只改变 dynamic suffix、stable prefix 不变、无 invalidation reason 且序列化不含工具参数/结果；continuity repair 的修复请求由 `retryOf` 显式关联到首个 reply 请求。离线/fake provider 的 CACHE-08 请求形态矩阵已覆盖上述组合；harness 61 个文件 549/549、runner 30 个文件 248/248 通过。真实 Provider usage 对账和成本/质量对比仍受凭证与网络条件限制。
 

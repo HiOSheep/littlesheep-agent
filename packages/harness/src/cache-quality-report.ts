@@ -8,8 +8,12 @@ import type {
   CacheLedgerObservation,
   CacheObservation,
   CacheObservationStatus,
+  DurableModelRequestProjection,
 } from '@littlesheep/types';
-import type { ModelRequestLatencySummary } from './model-latency-report.js';
+import {
+  summarizeModelRequestLatency,
+  type ModelRequestLatencySummary,
+} from './model-latency-report.js';
 
 export interface CacheLedgerSummary {
   readonly statusCounts: Readonly<Record<CacheObservationStatus, number>>;
@@ -17,6 +21,29 @@ export interface CacheLedgerSummary {
   readonly cachedTokenCount?: number;
   readonly hitRatio?: number;
   readonly reasonCounts: ReadonlyArray<{ reason: string; count: number }>;
+}
+
+export interface CacheTokenUsageSummary {
+  readonly requestCount: number;
+  readonly completeRequestCount: number;
+  readonly unavailableRequestCount: number;
+  readonly promptTokens?: number;
+  readonly completionTokens?: number;
+  readonly reasoningTokens?: number;
+  readonly totalTokens?: number;
+  readonly cachedPromptTokens?: number;
+}
+
+export interface CacheRequestOutcomeSummary {
+  readonly requestCount: number;
+  readonly receivedCount: number;
+  readonly pendingCount: number;
+  readonly abortedCount: number;
+  readonly failureCount: number;
+  readonly receivedRate?: number;
+  readonly pendingRate?: number;
+  readonly abortedRate?: number;
+  readonly failureRate?: number;
 }
 
 export interface CacheQualityReport {
@@ -28,6 +55,8 @@ export interface CacheQualityReport {
   readonly providerPrompt: CacheLedgerSummary;
   readonly lsContext: CacheLedgerSummary;
   readonly memoryEmbedding: CacheLedgerSummary;
+  readonly providerTokens: CacheTokenUsageSummary;
+  readonly outcomes: CacheRequestOutcomeSummary;
   readonly invalidationReasons: ReadonlyArray<{ reason: CacheInvalidationReason; count: number }>;
   readonly latency?: ModelRequestLatencySummary;
   /** Never `ready`: CACHE-10 requires verified real-Provider evidence. */
@@ -39,13 +68,19 @@ export interface CacheQualityReport {
 
 export function buildCacheQualityReport(input: {
   readonly observations: readonly CacheObservation[];
+  readonly modelRequests?: readonly DurableModelRequestProjection[];
   readonly latency?: ModelRequestLatencySummary;
   readonly unreadableEntryCount?: number;
 }): CacheQualityReport {
   const unreadableEntryCount = normalizeCount(input.unreadableEntryCount);
+  const latency = input.modelRequests
+    ? summarizeModelRequestLatency(input.modelRequests)
+    : input.latency;
   const providerPrompt = summarizeLedger(input.observations.map((observation) => observation.providerPrompt));
   const lsContext = summarizeLedger(input.observations.map((observation) => observation.lsContext));
   const memoryEmbedding = summarizeLedger(input.observations.map((observation) => observation.memoryEmbedding));
+  const providerTokens = summarizeProviderTokens(input.modelRequests);
+  const outcomes = summarizeOutcomes(latency);
   const invalidationReasons = summarizeReasons(input.observations);
 
   return Object.freeze({
@@ -56,14 +91,17 @@ export function buildCacheQualityReport(input: {
     providerPrompt,
     lsContext,
     memoryEmbedding,
+    providerTokens,
+    outcomes,
     invalidationReasons,
-    ...(input.latency ? { latency: input.latency } : {}),
+    ...(latency ? { latency } : {}),
     releaseGate: buildReleaseGate({
       observations: input.observations,
       providerPrompt,
       lsContext,
       memoryEmbedding,
-      latency: input.latency,
+      providerTokens,
+      latency,
       unreadableEntryCount,
     }),
   });
@@ -136,11 +174,93 @@ function summarizePartitions(
   )));
 }
 
+function summarizeProviderTokens(
+  requests: readonly DurableModelRequestProjection[] | undefined,
+): CacheTokenUsageSummary {
+  if (!requests || requests.length === 0) {
+    return Object.freeze({
+      requestCount: 0,
+      completeRequestCount: 0,
+      unavailableRequestCount: 0,
+    });
+  }
+  let promptTokens = 0;
+  let completionTokens = 0;
+  let reasoningTokens = 0;
+  let totalTokens = 0;
+  let cachedPromptTokens = 0;
+  let completeRequestCount = 0;
+  let unavailableRequestCount = 0;
+  let promptComplete = true;
+  let completionComplete = true;
+  let reasoningComplete = true;
+  let totalComplete = true;
+  let cachedComplete = true;
+  for (const request of requests) {
+    const usage = request.providerUsage;
+    if (!usage) {
+      unavailableRequestCount += 1;
+      promptComplete = false;
+      completionComplete = false;
+      reasoningComplete = false;
+      totalComplete = false;
+      cachedComplete = false;
+      continue;
+    }
+    completeRequestCount += 1;
+    if (isNonNegativeInteger(usage.promptTokens)) promptTokens += usage.promptTokens;
+    else promptComplete = false;
+    if (isNonNegativeInteger(usage.completionTokens)) completionTokens += usage.completionTokens;
+    else completionComplete = false;
+    if (isNonNegativeInteger(usage.reasoningTokens)) reasoningTokens += usage.reasoningTokens;
+    else reasoningComplete = false;
+    if (isNonNegativeInteger(usage.totalTokens)) totalTokens += usage.totalTokens;
+    else totalComplete = false;
+    if (isNonNegativeInteger(usage.cachedPromptTokens)) cachedPromptTokens += usage.cachedPromptTokens;
+    else cachedComplete = false;
+  }
+  return Object.freeze({
+    requestCount: requests.length,
+    completeRequestCount,
+    unavailableRequestCount,
+    ...(promptComplete ? { promptTokens } : {}),
+    ...(completionComplete ? { completionTokens } : {}),
+    ...(reasoningComplete ? { reasoningTokens } : {}),
+    ...(totalComplete ? { totalTokens } : {}),
+    ...(cachedComplete ? { cachedPromptTokens } : {}),
+  });
+}
+
+function summarizeOutcomes(latency: ModelRequestLatencySummary | undefined): CacheRequestOutcomeSummary {
+  if (!latency || latency.requestCount === 0) {
+    return Object.freeze({
+      requestCount: 0,
+      receivedCount: 0,
+      pendingCount: 0,
+      abortedCount: 0,
+      failureCount: 0,
+    });
+  }
+  const total = latency.requestCount;
+  return Object.freeze({
+    requestCount: total,
+    receivedCount: latency.receivedCount,
+    pendingCount: latency.pendingCount,
+    abortedCount: latency.abortedCount,
+    failureCount: latency.failureCount,
+    receivedRate: latency.receivedCount / total,
+    pendingRate: latency.pendingCount / total,
+    abortedRate: latency.abortedCount / total,
+    failureRate: latency.failureCount / total,
+  });
+}
+
 function buildReleaseGate(input: {
   observations: readonly CacheObservation[];
   providerPrompt: CacheLedgerSummary;
   lsContext: CacheLedgerSummary;
   memoryEmbedding: CacheLedgerSummary;
+  providerTokens: CacheTokenUsageSummary;
   latency?: ModelRequestLatencySummary;
   unreadableEntryCount: number;
 }): CacheQualityReport['releaseGate'] {
@@ -175,6 +295,11 @@ function buildReleaseGate(input: {
   }
   if (input.unreadableEntryCount > 0) {
     reasons.add('cache_entries_unreadable');
+  }
+  if (input.providerTokens.unavailableRequestCount > 0
+    || input.providerTokens.promptTokens === undefined
+    || input.providerTokens.completionTokens === undefined) {
+    reasons.add('provider_token_totals_incomplete');
   }
   reasons.add('real_provider_reconciliation_not_verified');
 

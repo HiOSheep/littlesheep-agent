@@ -3,6 +3,7 @@ import type {
   CacheLedgerObservation,
   CacheObservation,
   CacheObservationStatus,
+  DurableModelRequestProjection,
 } from '@littlesheep/types';
 import { buildCacheQualityReport } from './cache-quality-report.js';
 import type { ModelRequestLatencySummary } from './model-latency-report.js';
@@ -55,6 +56,19 @@ function latency(overrides: Partial<ModelRequestLatencySummary> = {}): ModelRequ
     p50Ms: 10,
     p95Ms: 20,
     maxMs: 20,
+    ...overrides,
+  };
+}
+
+function modelRequest(
+  overrides: Partial<DurableModelRequestProjection> = {},
+): DurableModelRequestProjection {
+  return {
+    requestId: 'request-1',
+    status: 'received',
+    startedEventId: 'event-started-1',
+    startedAt: '2026-09-09T00:00:00.000Z',
+    settledAt: '2026-09-09T00:00:00.100Z',
     ...overrides,
   };
 }
@@ -121,6 +135,50 @@ describe('CACHE-09/10 cache quality report', () => {
     expect(report.providerPrompt.hitRatio).toBeUndefined();
     expect(report.releaseGate.reasons).toContain('provider_usage_incomplete');
     expect(report.releaseGate.reasons).toContain('latency_unavailable');
+  });
+
+  it('summarizes provider tokens and request outcome rates from durable requests', () => {
+    const report = buildCacheQualityReport({
+      observations: [
+        observation({ modelRequestId: 'request-1' }),
+        observation({ modelRequestId: 'request-2' }),
+      ],
+      modelRequests: [
+        modelRequest({
+          requestId: 'request-1',
+          providerUsage: {
+            promptTokens: 100,
+            completionTokens: 10,
+            reasoningTokens: 3,
+            totalTokens: 113,
+            cachedPromptTokens: 40,
+            cacheStatus: 'partial',
+            reconciliation: 'unavailable',
+          },
+          settledAt: '2026-09-09T00:00:00.100Z',
+        }),
+        modelRequest({
+          requestId: 'request-2',
+          status: 'aborted',
+          settledAt: '2026-09-09T00:00:00.300Z',
+        }),
+      ],
+    });
+
+    expect(report.providerTokens).toEqual({
+      requestCount: 2,
+      completeRequestCount: 1,
+      unavailableRequestCount: 1,
+    });
+    expect(report.outcomes).toMatchObject({
+      requestCount: 2,
+      receivedCount: 1,
+      abortedCount: 1,
+      receivedRate: 0.5,
+      abortedRate: 0.5,
+      failureRate: 0,
+    });
+    expect(report.releaseGate.reasons).toContain('provider_token_totals_incomplete');
   });
 
   it('surfaces unexplained misses and never marks the release gate ready', () => {

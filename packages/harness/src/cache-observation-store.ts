@@ -12,10 +12,7 @@ import {
   type CacheScopeInput,
 } from './cache-observability.js';
 import { buildCacheQualityReport, type CacheQualityReport } from './cache-quality-report.js';
-import {
-  summarizeModelRequestLatency,
-  type ModelRequestLatencySummary,
-} from './model-latency-report.js';
+import type { ModelRequestLatencySummary } from './model-latency-report.js';
 import { readCacheObservation } from './durable-projection-codec.js';
 
 const ENTRY_VERSION = 1 as const;
@@ -233,14 +230,12 @@ export class CacheObservationStore {
     const matchedRequests = input.modelRequests
       ? input.modelRequests.filter((request) => modelRequestIds.has(request.requestId))
       : undefined;
-    const latency = matchedRequests
-      ? summarizeModelRequestLatency(matchedRequests)
-      : input.latency;
     return {
       status: 'available',
       report: buildCacheQualityReport({
         observations,
-        ...(latency ? { latency } : {}),
+        ...(matchedRequests ? { modelRequests: matchedRequests } : {}),
+        ...(!matchedRequests && input.latency ? { latency: input.latency } : {}),
         unreadableEntryCount,
       }),
     };
