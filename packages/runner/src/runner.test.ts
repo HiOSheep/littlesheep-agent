@@ -278,6 +278,61 @@ describe('createRunner run', () => {
     );
   });
 
+  it('compares shadow and next deterministically without duplicate replies or cache prefix drift', async () => {
+    const shadowRunner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('comparison reply')),
+      durableHarnessMode: 'shadow',
+    });
+    const nextRunner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('comparison reply')),
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(shadowRunner, nextRunner);
+
+    const shadow = await shadowRunner.run({ text: 'same comparison turn' });
+    const next = await nextRunner.run({ text: 'same comparison turn' });
+    const shadowEvents = await shadowRunner.infra.durableEventStore.read(
+      String(shadow.sessionId),
+      shadow.runId,
+    );
+    const nextEvents = await nextRunner.infra.durableEventStore.read(
+      String(next.sessionId),
+      next.runId,
+    );
+    expect(shadow).toMatchObject({ status: 'ok', reply: 'comparison reply', durableHarnessMode: 'shadow' });
+    expect(next).toMatchObject({ status: 'ok', reply: 'comparison reply', durableHarnessMode: 'next' });
+    expect(assistantTexts(await shadowRunner.sessionManager.read(shadow.sessionId))).toEqual(['comparison reply']);
+    expect(assistantTexts(await nextRunner.sessionManager.read(next.sessionId))).toEqual(['comparison reply']);
+    expect(shadowEvents.filter((event) => event.type === 'final_reply_settled')).toHaveLength(1);
+    expect(nextEvents.filter((event) => event.type === 'final_reply_settled')).toHaveLength(1);
+    expect(shadowEvents.filter((event) => event.type === 'run_completed')).toHaveLength(1);
+    expect(nextEvents.filter((event) => event.type === 'run_completed')).toHaveLength(1);
+    expect(shadowEvents.filter((event) => event.type === 'stage_transition_recorded')).toHaveLength(0);
+    expect(nextEvents.filter((event) => event.type === 'stage_transition_recorded').length).toBeGreaterThan(0);
+    expect(reduceDurableRunProjection(shadowEvents)).toMatchObject({
+      status: 'completed',
+      finalReply: { state: 'settled' },
+    });
+    expect(reduceDurableRunProjection(nextEvents)).toMatchObject({
+      status: 'completed',
+      finalReply: { state: 'settled' },
+    });
+    const shadowRequestKinds = shadow.modelRequests?.map((request) => request.cacheObservation?.requestKind);
+    const nextRequestKinds = next.modelRequests?.map((request) => request.cacheObservation?.requestKind);
+    expect(shadowRequestKinds).toEqual(nextRequestKinds);
+    expect(shadow.modelRequests?.length).toBe(next.modelRequests?.length);
+    // The two harness paths intentionally assemble different stable prompts, so
+    // Provider cache cannot be shared across a cutover and must be measured per path.
+    expect(shadow.modelRequests?.map((request) => request.cacheObservation?.stablePrefix.fingerprint))
+      .not.toEqual(next.modelRequests?.map((request) => request.cacheObservation?.stablePrefix.fingerprint));
+  });
+
   it('next path fails closed when execution-log persistence fails before settlement', async () => {
     const runner = await createRunner({
       config: DEFAULT_CONFIG,
