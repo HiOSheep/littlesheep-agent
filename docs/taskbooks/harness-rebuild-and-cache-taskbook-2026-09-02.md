@@ -2,7 +2,7 @@
 
 状态：规划已定稿，阶段 0 冻结已完成，阶段 1 开源底座评估已完成；阶段 2 观测与后续重构仍在进行
 
-最后更新：2026-09-09 11:59:00
+最后更新：2026-09-09 12:08:30
 
 本文是新 Harness 重建和上下文缓存专项的唯一执行入口。它记录目标架构、开源底座评估、迁移顺序、回滚边界、缓存观测与验收；当前事实和最新质量门仍以[项目状态](../decision/project-status.md)为准。
 
@@ -337,7 +337,7 @@ Ingress
 
 状态：进行中，优先级 P0。
 
-工作项：实现 append-only event store、持久 inbox、cursor replay、幂等 projection、事件版本和 crash recovery；为旧 `RunContext` 建立只读 projection，不让新 kernel 直接改旧数据结构。当前已新增独立 `createNextHarness` 阶段驱动、`stage_transition_recorded` 审计事件和 Runner `durableHarnessMode: 'next'` 真实选择路径；Runner 已增加统一 authoritative publication boundary，Local App 普通 POST/SSE、checkpoint resume SSE、CLI、ChannelManager 和通用 `/runs/:id` replay 均只发布 durable settled reply 或 Runtime status，未结算 proposal 不再从结果、历史或 execution-log replay 泄露。effect intent/settlement 已补齐“intent 未耐久则零调用、settlement 已耐久但 checkpoint 失败不降级 effect、settlement 耐久性不确定不补写冲突 settlement”的基础语义和定向回归；生产级 effect crash/replay、真实 Webhook 重连、旧/新完整双路径门仍未完成。
+工作项：实现 append-only event store、持久 inbox、cursor replay、幂等 projection、事件版本和 crash recovery；为旧 `RunContext` 建立只读 projection，不让新 kernel 直接改旧数据结构。当前已新增独立 `createNextHarness` 阶段驱动、`stage_transition_recorded` 审计事件和 Runner `durableHarnessMode: 'next'` 真实选择路径；Runner 已增加统一 authoritative publication boundary，Local App 普通 POST/SSE、checkpoint resume SSE、CLI、ChannelManager 和通用 `/runs/:id` replay 均只发布 durable settled reply 或 Runtime status，未结算 proposal 不再从结果、历史或 execution-log replay 泄露。effect intent/settlement 已补齐“intent 未耐久则零调用、settlement 已耐久但 checkpoint 失败不降级 effect、settlement 耐久性不确定不补写冲突 settlement”的基础语义和定向回归；本轮新增真实 Tool Execution Service 端到端未知副作用夹具：自定义写工具实际写入后抛错，工具只执行一次，side effect 结算为 `unknown`，durable projection 产生 `unknownEffectIds`，next 路径返回需要用户决定的 Runtime 错误而不发布成功文案。生产级 effect crash/replay、真实 Webhook 重连、旧/新完整双路径门仍未完成。
 
 完成门：随机断电/进程杀死/连接断开/重复投递后，run、session、checkpoint、execution log 和最终状态可重建；已完成工具和 settlement 不重复执行；未知事件不被静默丢弃。
 

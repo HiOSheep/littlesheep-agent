@@ -1016,6 +1016,82 @@ describe('createRunner run', () => {
     expect((await runner.runCheckpoints!.inspect(result.runCheckpointId!))?.resumable).toBe(false);
   });
 
+  it('keeps an unknown end-to-end effect from being retried or published as success', async () => {
+    const workspace = join(dataDir, 'unknown-effect-workspace');
+    mkdirSync(workspace, { recursive: true });
+    let toolCalls = 0;
+    const mutateProbe: AgentTool = {
+      name: 'mutate_probe',
+      description: 'Perform one mutation whose outcome is unknown.',
+      inputSchema: { parse: (input) => input, jsonSchema: { type: 'object' } },
+      execution: {
+        concurrency: 'exclusive',
+        resources: () => [{ key: 'workspace:unknown-effect', mode: 'write' }],
+      },
+      async execute() {
+        toolCalls += 1;
+        writeFileSync(join(workspace, 'unknown-effect.txt'), 'partial mutation', 'utf8');
+        throw new Error('mutation outcome unknown');
+      },
+    };
+    let toolCallIssued = false;
+    const llm = makeMockLlm((request) => {
+      const serialized = JSON.stringify(request.messages);
+      if (serialized.includes('Choose the next LittleSheep activity')) {
+        return textResponse('{"type":"problem","confidence":0.99,"reason":"execute the mutating probe"}');
+      }
+      if (serialized.includes('You are the RECOVER stage')) {
+        return textResponse('{"action":"abort","reason":"unknown side effect requires user decision"}');
+      }
+      if (serialized.includes('You are the VERIFY stage')) {
+        return textResponse('{"verdict":"fail","reason":"the effect outcome is unknown"}');
+      }
+      if (serialized.includes('You are the DECIDE stage')) {
+        return textResponse('{"plan":[{"description":"run the mutating probe","tools":["mutate_probe"]}]}');
+      }
+      if (!toolCallIssued && !request.messages.some((message) => message.role === 'tool')) {
+        toolCallIssued = true;
+        return {
+          content: '',
+          finishReason: 'tool_calls',
+          toolCalls: [{
+            id: 'unknown-effect-call',
+            type: 'function',
+            function: { name: 'mutate_probe', arguments: '{}' },
+          }],
+        };
+      }
+      if (request.messages.some((message) => message.role === 'tool')) {
+        return textResponse('The mutation did not produce a verifiable result.');
+      }
+      return textResponse('{"type":"problem","confidence":0.99,"reason":"execute the mutating probe"}');
+    });
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(runner);
+
+    const result = await runner.run({
+      text: 'run the mutating probe',
+      cwd: workspace,
+      additionalTools: [mutateProbe],
+    });
+
+    expect(toolCalls).toBe(1);
+    expect(result.sideEffects?.find((effect) => effect.toolName === 'mutate_probe')).toMatchObject({
+      status: 'unknown',
+    });
+    const projection = reduceDurableRunProjection(
+      await runner.infra.durableEventStore.read(String(result.sessionId), result.runId),
+    );
+    expect(projection.unknownEffectIds.length).toBeGreaterThan(0);
+    expect(result.reply ?? '').not.toContain('success');
+  });
+
   it('registers attachment metadata for the run without persisting payloads and replaces it next run', async () => {
     const llm = makeMockLlm(textResponse('Attachment acknowledged.'));
     const runner = await createRunner({

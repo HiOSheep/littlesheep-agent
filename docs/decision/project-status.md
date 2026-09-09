@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 11:59:00
+最后更新：2026-09-09 12:08:30
+
+**Harness effect unknown end-to-end（2026-09-09 12:08:30，进行中）**：新增真实 Tool Execution Service 端到端夹具：自定义写工具实际写入后抛错，验证工具只执行一次、side effect 结算为 `unknown`、durable projection 产生 `unknownEffectIds`，next 路径返回需要用户决定的 Runtime 错误而不是成功文案。runner 30 个文件 250/250 通过；此前 CACHE-09 增量 harness 61 个文件 551/551 仍通过。生产级 effect crash/replay 的其他进程崩溃/重连场景、真实 Provider 对账和新 Harness 默认切换仍未完成。
 
 **Harness CACHE-09 durable latency report（2026-09-09 11:59:00，进行中）**：Runner `Infrastructure.loadSessionModelRequests` 按 session 读取最近 64 个 run 的 durable model request projection；`CacheObservationStore.report()` 现在只用授权 observation 的 requestId 计算延迟、取消和失败摘要，Local App API `GET /runtime/cache-quality` 显式透传。报告新增 Provider prompt/completion/reasoning/total/cached token 总量和 received/pending/aborted/failure 计数与比率；任一请求缺 usage 时只标 `provider_token_totals_incomplete`，不补零。新增 harness store/report 夹具验证跨 scope 请求不会进入 latency，新增 runner 夹具验证 session 级投影与 durable projection 一致。harness 61 个文件 551/551、runner 30 个文件 249/249、app cache-quality API 夹具和 app typecheck 通过。真实 Provider 对账、成本/回答质量对比和最终发布决定仍未完成。
 
