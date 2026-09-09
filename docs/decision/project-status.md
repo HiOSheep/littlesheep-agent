@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 09:49:50
+最后更新：2026-09-09 09:51:31
+
+**Harness CACHE-08 并发 session 隔离（2026-09-09 09:51:31，进行中）**：新增 runner 夹具并发运行两个 session，验证各自 cache observation 的 scope partition 不同且互不包含对方 session id；夹具关闭 versioning 以隔离缓存行为。该测试同时发现并发 run 在同一 data root 同时执行 versioning Git checkpoint 会争抢 `index.lock`，已登记 H-OLD-08，尚未修复。runner 30 个文件 247 项通过，typecheck 通过。
 
 **Harness CACHE-08 duplicate rewrite lineage（2026-09-09 09:49:50，进行中）**：扩展 runner 的 exact-reply rewrite 夹具，验证 durable model request 记录 `retryOf` 指向同一 run 的前一条请求，重写来源可审计。runner 30 个文件 246 项通过，typecheck 通过。
 

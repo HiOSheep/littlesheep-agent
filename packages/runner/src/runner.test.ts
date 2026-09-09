@@ -10,7 +10,7 @@ import { createRunner } from './runner.js';
 import type { LlmClient, ChatRequest, ChatResponse, StreamChunk } from '@littlesheep/llm';
 import { DEFAULT_CONFIG } from '@littlesheep/config';
 import { DEFAULT_BRANDING, dataSubdirs } from '@littlesheep/branding';
-import { textMessage, type AgentTool, type Message } from '@littlesheep/types';
+import { textMessage, type AgentTool, type Message, type SessionId } from '@littlesheep/types';
 import { attachmentManifestResourceId, attachmentResourceId } from '@littlesheep/memory-tree';
 import { reduceDurableRunProjection } from '@littlesheep/harness';
 
@@ -523,6 +523,41 @@ describe('createRunner run', () => {
     expect(replayed).toMatchObject({ status: 'ok', reply: 'settled replay reply' });
     expect(replayed.finalReplySettlement?.status).toBe('settled');
     expect(replayLlm.chat).not.toHaveBeenCalled();
+  });
+
+  it('keeps concurrent session cache observations isolated', async () => {
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.versioning.enabled = false;
+    const runner = await createRunner({
+      config,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('concurrent reply')),
+    });
+    createdRunners.push(runner);
+    const sessionA = await runner.sessionManager.create('test/model');
+    const sessionB = await runner.sessionManager.create('test/model');
+    const [first, second] = await Promise.all([
+      runner.run({ sessionId: sessionA.id, text: 'session a turn' }),
+      runner.run({ sessionId: sessionB.id, text: 'session b turn' }),
+    ]);
+    expect(first.status).toBe('ok');
+    expect(second.status).toBe('ok');
+
+    const scope = (sessionId: SessionId) => ({
+      sessionId: String(sessionId),
+      workspaceScope: process.cwd(),
+      permissionPolicyId: 'research' as const,
+      key: runner.infra.cacheObservationKey ?? '',
+    });
+    const observationA = await runner.infra.cacheObservationStore?.latest(scope(sessionA.id));
+    const observationB = await runner.infra.cacheObservationStore?.latest(scope(sessionB.id));
+
+    expect(observationA?.scope.partitionDigest).toEqual(expect.any(String));
+    expect(observationB?.scope.partitionDigest).toEqual(expect.any(String));
+    expect(observationA?.scope.partitionDigest).not.toBe(observationB?.scope.partitionDigest);
+    expect(JSON.stringify(observationA)).not.toContain(String(sessionB.id));
+    expect(JSON.stringify(observationB)).not.toContain(String(sessionA.id));
   });
 
   it('keeps a settled success when run_completed append fails and repairs it without replaying effects', async () => {
