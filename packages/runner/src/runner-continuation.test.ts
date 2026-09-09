@@ -698,6 +698,38 @@ describe('runner checkpoint continuation', () => {
     }
   })
 
+  it('joins concurrent next-harness retries of the same turn and returns one run result', async () => {
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: mockLlm(textResponse('One accepted next reply.')),
+      skillsDirs: [],
+      durableHarnessMode: 'next',
+    })
+    try {
+      const session = await runner.sessionManager.create('test/model')
+      const attempts = await Promise.allSettled([
+        runner.run({ sessionId: session.id, text: 'Hello next.', requestKey: 'same-next-turn' }),
+        runner.run({ sessionId: session.id, text: 'Hello next.', requestKey: 'same-next-turn' }),
+      ])
+
+      expect(attempts.filter((item) => item.status === 'fulfilled')).toHaveLength(2)
+      expect(attempts.filter((item) => item.status === 'rejected')).toHaveLength(0)
+      const results = attempts
+        .filter((item): item is PromiseFulfilledResult<Awaited<ReturnType<typeof runner.run>>> => item.status === 'fulfilled')
+        .map((item) => item.value)
+      expect(new Set(results.map((result) => result.runId)).size).toBe(1)
+      expect(new Set(results.map((result) => result.reply))).toEqual(new Set(['One accepted next reply.']))
+      const messages = await runner.sessionManager.read(session.id)
+      expect(messages.filter((message) => message.id === turnMessageId(session.id, 'same-next-turn')))
+        .toHaveLength(1)
+      expect(messages.filter((message) => message.role === 'assistant')).toHaveLength(1)
+    } finally {
+      await runner.shutdown()
+    }
+  })
+
   it('restores attachment references and trusted tools once for concurrent ordinary retries', async () => {
     const workspace = join(dataDir, 'workspace')
     await mkdir(workspace, { recursive: true })

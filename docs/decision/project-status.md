@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 12:29:30
+最后更新：2026-09-09 12:38:00
+
+**Harness next concurrent lease（2026-09-09 12:38:00，进行中）**：新增 `durableHarnessMode: 'next'` 并发同 turn 重试夹具，两个并发请求只形成一个 run、一次用户输入和一条回复。runner 30 个文件 252/252 通过；此前全仓干净门为 411 个文件、2,882 项通过、1 项 skipped。更细的 request kind 切换和真实 Provider 对账仍未完成。
 
 **Harness next restart replay（2026-09-09 12:29:30，进行中）**：新增 `durableHarnessMode: 'next'` 的完成请求重启重放夹具：同 requestKey 重启后返回同一 run/reply，模型零调用，`finalReplySettlement` 保持 settled，用户输入只持久化一次。runner 30 个文件 251/251 通过；此前全仓干净门为 411 个文件、2,882 项通过、1 项 skipped。更细的 request kind 切换和真实 Provider 对账仍未完成。
 
