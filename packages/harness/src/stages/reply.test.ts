@@ -245,6 +245,10 @@ describe('replyStage', () => {
       purpose: 'reply',
       modelRequestIndex: 2,
     });
+    expect(ctx.modelRequests?.map((request) => request.retryOf)).toEqual([
+      undefined,
+      ctx.modelRequests?.[0]?.id,
+    ]);
   });
 
   it('fails closed when one continuity correction still contradicts visible history', async () => {
