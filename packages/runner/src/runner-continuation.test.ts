@@ -251,6 +251,8 @@ describe('runner checkpoint continuation', () => {
       expect(result.status).toBe('ok')
       expect(result.reply).toBe('continued reply')
       expect(result.sideEffects).toEqual(checkpoint.sideEffects)
+      expect(result.modelRequests?.find((request) => request.cacheObservation)?.cacheObservation?.invalidationReasons)
+        .toContain('replayed')
       const messages = await runner.sessionManager.read(session.id)
       expect(messages.filter((message) => message.id === inbound.id)).toHaveLength(1)
       expect(messages.filter((message) => message.role === 'assistant')).toHaveLength(1)

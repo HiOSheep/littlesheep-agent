@@ -213,6 +213,59 @@ describe('CACHE-08 request shape and lifecycle matrix', () => {
     expect(serialized).not.toContain('secret-output');
   });
 
+  it('keeps multi-tool out-of-order results inside the dynamic suffix', () => {
+    const base = observe();
+    const boundary = 'Stable policy v1\n<!-- LITTLESHEEP_CACHE_BOUNDARY -->\nrun=one';
+    const outOfOrder = observe({
+      request: request({
+        messages: [
+          { role: 'system', content: boundary },
+          {
+            role: 'assistant',
+            content: '',
+            tool_calls: [
+              {
+                id: 'call-read',
+                type: 'function',
+                function: { name: 'read', arguments: '{"path":"out-of-order-secret"}' },
+              },
+              {
+                id: 'call-write',
+                type: 'function',
+                function: { name: 'write', arguments: '{"path":"out-of-order-output"}' },
+              },
+            ],
+          },
+          {
+            role: 'tool',
+            content: 'WRITE_RESULT_SECRET',
+            tool_call_id: 'call-write',
+            name: 'write',
+          },
+          {
+            role: 'tool',
+            content: 'READ_RESULT_SECRET',
+            tool_call_id: 'call-read',
+            name: 'read',
+          },
+          { role: 'user', content: 'continue after out-of-order tools' },
+        ],
+      }),
+      previous: base,
+      requestIndex: 2,
+      modelRequestId: 'request-2',
+    });
+
+    expect(outOfOrder.stablePrefix.fingerprint).toBe(base.stablePrefix.fingerprint);
+    expect(outOfOrder.dynamicSuffix.fingerprint).not.toBe(base.dynamicSuffix.fingerprint);
+    expect(outOfOrder.invalidationReasons).toEqual([]);
+    const serialized = canonicalSerialize(outOfOrder);
+    expect(serialized).not.toContain('WRITE_RESULT_SECRET');
+    expect(serialized).not.toContain('READ_RESULT_SECRET');
+    expect(serialized).not.toContain('out-of-order-secret');
+    expect(serialized).not.toContain('out-of-order-output');
+  });
+
   it('separates memory, summary and attachment revisions from stable policy bytes', () => {
     const first = observe();
     const changedMemory = observe({

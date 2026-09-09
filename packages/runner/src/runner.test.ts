@@ -492,6 +492,35 @@ describe('createRunner run', () => {
     expect(observation?.invalidationReasons).toContain('model_changed');
   });
 
+  it('explains a configuration hot reload from the persisted cache observation', async () => {
+    const firstRunner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('first config reply')),
+    });
+    createdRunners.push(firstRunner);
+    const first = await firstRunner.run({ text: 'first config turn' });
+    expect(first).toMatchObject({ status: 'ok', reply: 'first config reply' });
+    await firstRunner.shutdown();
+    createdRunners.pop();
+
+    const changedConfig = structuredClone(DEFAULT_CONFIG);
+    changedConfig.agents.defaults.profile = 'coding';
+    const secondRunner = await createRunner({
+      config: changedConfig,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('second config reply')),
+    });
+    createdRunners.push(secondRunner);
+    const second = await secondRunner.run({ sessionId: first.sessionId, text: 'second config turn' });
+    expect(second).toMatchObject({ status: 'ok', reply: 'second config reply' });
+
+    const observation = second.modelRequests?.find((request) => request.cacheObservation)?.cacheObservation;
+    expect(observation?.invalidationReasons).toContain('system_policy_changed');
+  });
+
   it('replays a completed request through the per-session durable mode', async () => {
     const firstRunner = await createRunner({
       config: DEFAULT_CONFIG,

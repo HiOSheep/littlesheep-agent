@@ -473,6 +473,7 @@ function recordPreparedRequest(
     previous: ctx.modelRequests?.at(-1)?.cacheObservation ?? ctx.previousCacheObservation,
     promptComponents: buildPromptComponentInput(ctx),
     key: ctx.cacheObservationKey,
+    replayed: Boolean(ctx.resumedFromCheckpointId && requestIndex === 1),
   });
   const observedSnapshot = Object.freeze({
     ...prepared.modelRequestSnapshot,

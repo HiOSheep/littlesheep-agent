@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 11:34:00
+最后更新：2026-09-09 11:43:00
+
+**Harness CACHE-08 lifecycle wiring（2026-09-09 11:43:00，进行中）**：checkpoint resume 的首个模型请求现在在生产路径标记 `replayed`；runner continuation 夹具断言该原因出现。新增 runner 配置热重载夹具，验证同 session 换 profile 后首个观测记录 `system_policy_changed`。新增 harness 多工具乱序结果夹具，验证只改变 dynamic suffix、stable prefix 不变、无 invalidation reason 且序列化不含工具参数/结果。harness 61 个文件 549/549、runner 30 个文件 248/248 通过。CACHE-08 完整矩阵仍有 streaming/retry/continuity repair 等剩余组合。
 
 **Harness H-OLD-08 并发 Git checkpoint 串行化（2026-09-09 11:34:00，进行中）**：`ShadowGitRepository` 现在按解析后的 `gitDir` 在进程内共享 mutation 队列，并用 `@littlesheep/session` 的跨进程文件锁串行化同一仓库的初始化、add/commit/restore；同一 data root 下多个 coordinator/repository 实例不会再争抢 `index.lock`。runner 并发不同 session 夹具已恢复 versioning 并通过；snapshot 新增两个 coordinator 共享 data root 的并发 checkpoint 夹具和 mutation-lock 等待夹具。snapshot 24/24、runner 30 个文件 247/247、typecheck、`check:repo` 33/33 通过。全仓 410/411 文件通过；`memory-v3-bootstrap` 在 3-worker 负载下超时并触发 SQLite 临时目录 EBUSY，单独重跑 3/3 通过，未发现与本次 snapshot 改动相关的回归。H-OLD-08 已关闭，但 CACHE-08 至 CACHE-10、真实 Provider 对账、生产级 effect crash/replay 和新 Harness 默认切换仍未完成。
 
