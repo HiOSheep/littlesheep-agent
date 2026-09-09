@@ -9,6 +9,9 @@
   "extends": "../../tsconfig.base.json",
   "references": [
     {
+      "path": "../session"
+    },
+    {
       "path": "../types"
     }
   ]

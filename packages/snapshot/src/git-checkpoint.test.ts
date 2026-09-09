@@ -63,4 +63,43 @@ describe('GitCheckpointCoordinator', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it('serializes concurrent run checkpoints that share one data repository', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ls-checkpoint-concurrent-'));
+    try {
+      const dataRoot = join(root, 'data');
+      const workspaceA = join(root, 'workspace-a');
+      const workspaceB = join(root, 'workspace-b');
+      await mkdir(dataRoot, { recursive: true });
+      await mkdir(workspaceA, { recursive: true });
+      await mkdir(workspaceB, { recursive: true });
+
+      const firstCoordinator = new GitCheckpointCoordinator({ dataRoot });
+      const secondCoordinator = new GitCheckpointCoordinator({ dataRoot });
+      await firstCoordinator.initialize();
+      await secondCoordinator.initialize();
+
+      const [firstRun, secondRun] = await Promise.all([
+        firstCoordinator.beginRun({ runId: 'run-concurrent-a', workspaceRoot: workspaceA }),
+        secondCoordinator.beginRun({ runId: 'run-concurrent-b', workspaceRoot: workspaceB }),
+      ]);
+      await Promise.all([
+        firstRun.beforeFileMutation(join(workspaceA, 'a.txt')),
+        secondRun.beforeFileMutation(join(workspaceB, 'b.txt')),
+      ]);
+      await Promise.all([
+        writeFile(join(workspaceA, 'a.txt'), 'a', 'utf8'),
+        writeFile(join(workspaceB, 'b.txt'), 'b', 'utf8'),
+      ]);
+      const [firstSummary, secondSummary] = await Promise.all([
+        firstRun.complete({ sessionId: 'session-concurrent-a' }),
+        secondRun.complete({ sessionId: 'session-concurrent-b' }),
+      ]);
+
+      expect(firstSummary.status).toBe('complete');
+      expect(secondSummary.status).toBe('complete');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 60_000);
 });

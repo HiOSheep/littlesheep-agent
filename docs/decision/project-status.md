@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 09:51:31
+最后更新：2026-09-09 11:34:00
+
+**Harness H-OLD-08 并发 Git checkpoint 串行化（2026-09-09 11:34:00，进行中）**：`ShadowGitRepository` 现在按解析后的 `gitDir` 在进程内共享 mutation 队列，并用 `@littlesheep/session` 的跨进程文件锁串行化同一仓库的初始化、add/commit/restore；同一 data root 下多个 coordinator/repository 实例不会再争抢 `index.lock`。runner 并发不同 session 夹具已恢复 versioning 并通过；snapshot 新增两个 coordinator 共享 data root 的并发 checkpoint 夹具和 mutation-lock 等待夹具。snapshot 24/24、runner 30 个文件 247/247、typecheck、`check:repo` 33/33 通过。全仓 410/411 文件通过；`memory-v3-bootstrap` 在 3-worker 负载下超时并触发 SQLite 临时目录 EBUSY，单独重跑 3/3 通过，未发现与本次 snapshot 改动相关的回归。H-OLD-08 已关闭，但 CACHE-08 至 CACHE-10、真实 Provider 对账、生产级 effect crash/replay 和新 Harness 默认切换仍未完成。
 
 **Harness CACHE-08 并发 session 隔离（2026-09-09 09:51:31，进行中）**：新增 runner 夹具并发运行两个 session，验证各自 cache observation 的 scope partition 不同且互不包含对方 session id；夹具关闭 versioning 以隔离缓存行为。该测试同时发现并发 run 在同一 data root 同时执行 versioning Git checkpoint 会争抢 `index.lock`，已登记 H-OLD-08，尚未修复。runner 30 个文件 247 项通过，typecheck 通过。
 

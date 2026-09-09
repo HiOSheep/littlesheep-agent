@@ -525,16 +525,15 @@ describe('createRunner run', () => {
     expect(replayLlm.chat).not.toHaveBeenCalled();
   });
 
-  it('keeps concurrent session cache observations isolated', async () => {
-    const config = structuredClone(DEFAULT_CONFIG);
-    config.versioning.enabled = false;
+  it('keeps concurrent session cache observations isolated with versioning enabled', async () => {
     const runner = await createRunner({
-      config,
+      config: DEFAULT_CONFIG,
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm: makeMockLlm(textResponse('concurrent reply')),
     });
     createdRunners.push(runner);
+    expect(runner.infra.versioning).toBeDefined();
     const sessionA = await runner.sessionManager.create('test/model');
     const sessionB = await runner.sessionManager.create('test/model');
     const [first, second] = await Promise.all([

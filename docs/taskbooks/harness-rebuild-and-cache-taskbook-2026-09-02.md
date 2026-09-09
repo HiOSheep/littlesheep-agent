@@ -2,7 +2,7 @@
 
 状态：规划已定稿，阶段 0 冻结已完成，阶段 1 开源底座评估已完成；阶段 2 观测与后续重构仍在进行
 
-最后更新：2026-09-09 09:51:31
+最后更新：2026-09-09 11:34:00
 
 本文是新 Harness 重建和上下文缓存专项的唯一执行入口。它记录目标架构、开源底座评估、迁移顺序、回滚边界、缓存观测与验收；当前事实和最新质量门仍以[项目状态](../decision/project-status.md)为准。
 
@@ -74,7 +74,7 @@
 | H-OLD-05 | 历史工具时间存在近似值 | 只使用 Runtime 发出的开始/结束事实 | activity/history 与 execution log 时间一致或明确缺失 |
 | H-OLD-06 | FINALIZE 持久化失败可能仍报告成功 | final settlement、会话写入和发布状态形成原子成功门 | 持久化失败只显示 Runtime failure，不发布成功文案 |
 | H-OLD-07 | prompt-cache 低命中率没有原因链 | 先完成 CACHE-01 至 CACHE-10，再决定修改点 | 每次 miss 都能给出可脱敏的 invalidation reason 或 `unknown` |
-| H-OLD-08 | 同一 data root 的并发 run 同时执行 versioning Git checkpoint 会争抢 `index.lock` | 快照层必须串行化同一仓库的 Git mutation，或让并发 run 显式排队 | 并发不同 session 的 runner 夹具在 versioning 开启时通过 |
+| H-OLD-08 | 同一 data root 的并发 run 同时执行 versioning Git checkpoint 会争抢 `index.lock` | 快照层必须串行化同一仓库的 Git mutation，或让并发 run 显式排队 | 并发不同 session 的 runner 夹具在 versioning 开启时通过；同一 `gitDir` 的进程内队列与跨进程文件锁已覆盖（2026-09-09 修复） |
 
 ### 4.3 用户提供的真实对话夹具：能力询问与“必须查询”
 
@@ -329,7 +329,7 @@ Ingress
 
 工作项：完成 CACHE-03、CACHE-04、CACHE-08 的确定性序列化、候选裁剪和 stage/request kind 规划；用 fake provider 覆盖 memory、summary、tools、retry、streaming、restart、concurrency；再在凭证/网络可用时运行真实 Provider usage 对账。当前已完成第一批 CACHE-03/04/05 夹具和字段级差异断言，本轮补齐工具结果与两轮工具循环夹具：工具调用和工具结果始终进入 dynamic suffix，stable-prefix fingerprint 不变且无 invalidation reason，序列化不含工具参数和结果正文；工具 schema 增删仍按 `tool_schema_changed` 失效。本轮补充 KnownState 注入端到端夹具：注入内容只改变 dynamic suffix，不改变 stable-prefix fingerprint，序列化观测不含 atom id 或 KnownState 正文。本轮补充 working-set 释放端到端夹具：释放 Atom 后系统消息移除该 Atom 正文，stable-prefix fingerprint 不变，dynamic suffix 变化，失效原因明确为 `memory_revision_changed`，序列化观测不含 Atom 正文。本轮补充附件 manifest 端到端夹具：附件只进入 dynamic suffix，stable-prefix fingerprint 不变且无 invalidation reason，序列化观测不含附件名或路径。本轮补充 Provider 请求进行中中止的 runner 夹具：durable model request 记录 aborted/not_reached/unavailable/aborted，cache observation 记录 `provider_request_aborted`，不生成伪造 provider usage。本轮补充 Provider 5xx 场景：记录为 failed/unknown/failed/unavailable，不生成伪造 provider usage。本轮补充 duplicate rewrite 的 durable lineage：exact-reply 重写请求记录 `retryOf` 指向同一 run 的前一条请求。尚未覆盖完整 CACHE-08 请求形态矩阵。
 
-本轮新增并发 session 缓存隔离夹具（关闭 versioning 以隔离缓存行为），并登记 H-OLD-08：并发 run 的 versioning Git checkpoint 缺少跨 run 串行化。
+本轮新增并发 session 缓存隔离夹具；该夹具在 versioning 开启时复现了 H-OLD-08 的 `index.lock` 争抢，现已修复：`ShadowGitRepository` 按解析后的 `gitDir` 在进程内共享 mutation 队列，并用 `@littlesheep/session` 的跨进程文件锁串行化同一仓库的初始化、add/commit/restore；并发不同 session 的 runner 夹具已恢复 versioning 并通过，snapshot 层新增两个 coordinator 共享 data root 的并发 checkpoint 夹具和 mutation-lock 等待夹具。
 
 完成门：所有前缀变化可由字节差异和失效原因解释；未发现原因的 miss 明确标 `unknown`；只有在数据支持时才决定修改 Context Engine、Prompt assembler、Provider adapter 或请求数量。
 

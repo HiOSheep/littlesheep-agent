@@ -521,6 +521,9 @@ importers:
 
   packages/snapshot:
     dependencies:
+      '@littlesheep/session':
+        specifier: workspace:*
+        version: link:../session
       '@littlesheep/types':
         specifier: workspace:*
         version: link:../types
