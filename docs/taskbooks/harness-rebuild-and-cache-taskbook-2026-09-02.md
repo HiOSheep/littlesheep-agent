@@ -2,7 +2,7 @@
 
 状态：规划已定稿，阶段 0 冻结已完成，阶段 1 开源底座评估已完成；阶段 2 观测与后续重构仍在进行
 
-最后更新：2026-09-09 11:45:00
+最后更新：2026-09-09 11:55:00
 
 本文是新 Harness 重建和上下文缓存专项的唯一执行入口。它记录目标架构、开源底座评估、迁移顺序、回滚边界、缓存观测与验收；当前事实和最新质量门仍以[项目状态](../decision/project-status.md)为准。
 
@@ -369,7 +369,7 @@ Ingress
 
 状态：进行中，优先级 P0。
 
-工作项：完成 CACHE-09、CACHE-10；运行 `check:repo`、受影响包测试、`verify:core`、`verify:full`、crash/replay、Electron/渠道和依赖/产物扫描；形成旧/新成本、延迟、请求数、回答质量、连续性、资源和回滚报告。当前已完成 `buildCacheQualityReport` 基础：三套 ledger 分栏、Provider hit ratio 只在完整 usage 下计算、invalidation reason 分布、延迟摘要和保守 release gate，并已通过 `CacheObservationStore.report()` 接入 scope-authorized 存储查询、`since`/`until` 时间窗和 Local App API `GET /runtime/cache-quality`；本轮对累积提交运行一次全仓回归与 typecheck，详细数字见项目状态。真实 Provider 对账、成本/质量对比和最终发布决定仍未完成。
+工作项：完成 CACHE-09、CACHE-10；运行 `check:repo`、受影响包测试、`verify:core`、`verify:full`、crash/replay、Electron/渠道和依赖/产物扫描；形成旧/新成本、延迟、请求数、回答质量、连续性、资源和回滚报告。当前已完成 `buildCacheQualityReport` 基础：三套 ledger 分栏、Provider hit ratio 只在完整 usage 下计算、invalidation reason 分布、延迟摘要和保守 release gate，并已通过 `CacheObservationStore.report()` 接入 scope-authorized 存储查询、`since`/`until` 时间窗和 Local App API `GET /runtime/cache-quality`；本轮把 CACHE-09 的 latency/outcome 从可选字段接到真实 session durable model request 投影：Runner `Infrastructure.loadSessionModelRequests` 按 session 读取最近 64 个 run 的 durable projection，`CacheObservationStore.report()` 只对授权 observation 的 requestId 求延迟、取消和失败摘要，Local App API 显式透传。本轮对累积提交运行一次全仓回归与 typecheck，详细数字见项目状态。真实 Provider 对账、成本/质量对比和最终发布决定仍未完成。
 
 完成门：没有 P0 安全、数据丢失、重复副作用、重复最终回复、缓存跨域泄露或未解释的 Provider usage 差异；只有达到发布门才把新 Harness 设为默认，否则继续双路径或回退。
 

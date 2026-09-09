@@ -804,6 +804,27 @@ describe('createRunner run', () => {
     })).resolves.toMatchObject({ status: 'miss', reason: 'not_found' });
   });
 
+  it('loads bounded session model requests for cache quality reports', async () => {
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('cache quality request reply')),
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(runner);
+
+    const result = await runner.run({ text: 'cache quality request' });
+    expect(result.status).toBe('ok');
+    const requests = await runner.infra.loadSessionModelRequests?.(String(result.sessionId));
+    expect(requests?.length).toBeGreaterThan(0);
+    const durable = reduceDurableRunProjection(
+      await runner.infra.durableEventStore.read(String(result.sessionId), result.runId),
+    );
+    expect(requests?.map((request) => request.requestId))
+      .toEqual(durable.modelRequests.map((request) => request.requestId));
+  });
+
   it('keeps a normal Runner reply successful when cache observation persistence fails', async () => {
     const logs: string[] = [];
     const runner = await createRunner({

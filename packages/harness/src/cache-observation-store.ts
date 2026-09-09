@@ -5,14 +5,17 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, readdir, unlink } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { atomicWrite } from '@littlesheep/memory-core';
-import type { CacheObservation } from '@littlesheep/types';
+import type { CacheObservation, DurableModelRequestProjection } from '@littlesheep/types';
 import {
   authorizeCacheObservationScope,
   buildCacheScopePartition,
   type CacheScopeInput,
 } from './cache-observability.js';
 import { buildCacheQualityReport, type CacheQualityReport } from './cache-quality-report.js';
-import type { ModelRequestLatencySummary } from './model-latency-report.js';
+import {
+  summarizeModelRequestLatency,
+  type ModelRequestLatencySummary,
+} from './model-latency-report.js';
 import { readCacheObservation } from './durable-projection-codec.js';
 
 const ENTRY_VERSION = 1 as const;
@@ -182,6 +185,8 @@ export class CacheObservationStore {
   async report(
     input: CacheScopeInput & {
       readonly latency?: ModelRequestLatencySummary;
+      /** Durable model requests used to summarize only authorized observations. */
+      readonly modelRequests?: readonly DurableModelRequestProjection[];
       readonly since?: number;
       readonly until?: number;
     },
@@ -224,11 +229,18 @@ export class CacheObservationStore {
       left.requestIndex - right.requestIndex
       || left.modelRequestId.localeCompare(right.modelRequestId)
     ));
+    const modelRequestIds = new Set(observations.map((observation) => observation.modelRequestId));
+    const matchedRequests = input.modelRequests
+      ? input.modelRequests.filter((request) => modelRequestIds.has(request.requestId))
+      : undefined;
+    const latency = matchedRequests
+      ? summarizeModelRequestLatency(matchedRequests)
+      : input.latency;
     return {
       status: 'available',
       report: buildCacheQualityReport({
         observations,
-        ...(input.latency ? { latency: input.latency } : {}),
+        ...(latency ? { latency } : {}),
         unreadableEntryCount,
       }),
     };

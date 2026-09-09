@@ -45,10 +45,18 @@ describe('cache quality Local App API', () => {
         },
       },
     }))
+    const loadSessionModelRequests = vi.fn(async () => [{
+      requestId: 'request-1',
+      status: 'received' as const,
+      startedEventId: 'event-started-1',
+      startedAt: '2026-09-09T00:00:00.000Z',
+      settledAt: '2026-09-09T00:00:00.100Z',
+    }])
     const runner = {
       state: { model: DEFAULT_CONFIG.agents.defaults.model },
       infra: {
         cacheObservationStore: { report },
+        loadSessionModelRequests,
         cacheObservationKey: 'cache-quality-api-key',
       },
     } as unknown as AgentRunner
@@ -86,9 +94,11 @@ describe('cache quality Local App API', () => {
         workspaceScope: workplaceDir,
         permissionPolicyId: 'research',
         key: 'cache-quality-api-key',
+        modelRequests: [expect.objectContaining({ requestId: 'request-1' })],
         since: Date.parse('2026-09-09T00:00:00.000Z'),
         until: Date.parse('2026-09-09T01:00:00.000Z'),
       })
+      expect(loadSessionModelRequests).toHaveBeenCalledWith('session-a')
 
       const missingScope = await fetch(`http://127.0.0.1:${server.port}/runtime/cache-quality?sessionId=session-a`)
       expect(missingScope.status).toBe(200)

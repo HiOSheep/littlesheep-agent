@@ -14,6 +14,7 @@ import { dataSubdirs } from '@littlesheep/branding';
 import type {
   AgentTool,
   AgentHarness,
+  DurableModelRequestProjection,
   SessionId,
   MemoryStoreLike,
   WebProviderRuntimeSnapshot,
@@ -35,7 +36,12 @@ import {
   type SkillLoader,
   type SkillSourceDefinition,
 } from '@littlesheep/skills';
-import { CacheObservationStore, createDefaultHarness, createNextHarness } from '@littlesheep/harness';
+import {
+  CacheObservationStore,
+  createDefaultHarness,
+  createNextHarness,
+  reduceDurableRunProjection,
+} from '@littlesheep/harness';
 import {
   createLazyLocalExactContextTokenCounter,
   type ExactContextTokenCounter,
@@ -103,6 +109,8 @@ export interface Infrastructure {
   executionLogStore: ExecutionLogStore;
   /** Next Harness event log; legacy execution log remains authoritative until cutover. */
   durableEventStore: DurableEventStore;
+  /** Bounded session-scoped durable model requests for cache-quality reports. */
+  loadSessionModelRequests?: (sessionId: string) => Promise<readonly DurableModelRequestProjection[]>;
   /** Persistent next-Harness inbox; no command is auto-executed by legacy runs. */
   durableInboxStore: DurableInboxStore;
   /** Preserved startup failure for strict next-Harness admission. */
@@ -252,6 +260,15 @@ export async function buildInfrastructure(
     durableHarnessInitializationError = error instanceof Error ? error : new Error(String(error));
     opts.log?.('warn', `runner: durable Harness stores unavailable: ${durableHarnessInitializationError.message}`);
   }
+  const loadSessionModelRequests = async (sessionId: string): Promise<readonly DurableModelRequestProjection[]> => {
+    const runs = (await durableEventStore.listRuns()).filter((run) => run.sessionId === sessionId).slice(-64);
+    const requests: DurableModelRequestProjection[] = [];
+    for (const run of runs) {
+      const events = await durableEventStore.read(run.sessionId, run.runId);
+      requests.push(...reduceDurableRunProjection(events).modelRequests);
+    }
+    return requests;
+  };
   const runCheckpointDispositionStore = new RunCheckpointDispositionStore({
     rootDir: join(dirs.root, 'run-checkpoint-dispositions'),
   });
@@ -555,6 +572,7 @@ export async function buildInfrastructure(
     skillLoader,
     executionLogStore,
     durableEventStore,
+    loadSessionModelRequests,
     durableInboxStore,
     ...(durableHarnessInitializationError ? { durableHarnessInitializationError } : {}),
     runCheckpointStore,

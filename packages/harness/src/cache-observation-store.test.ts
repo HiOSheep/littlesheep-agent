@@ -2,6 +2,7 @@ import { describe, expect, it, afterEach } from 'vitest';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ChatRequest } from '@littlesheep/llm';
+import type { DurableModelRequestProjection } from '@littlesheep/types';
 import { buildCacheObservation } from './cache-observability.js';
 import { CacheObservationStore } from './cache-observation-store.js';
 
@@ -40,6 +41,20 @@ function observation(overrides: Partial<Parameters<typeof buildCacheObservation>
     ...scope(),
     ...overrides,
   });
+}
+
+function modelRequest(
+  overrides: Partial<DurableModelRequestProjection> = {},
+): DurableModelRequestProjection {
+  return {
+    requestId: 'request-1',
+    status: 'received',
+    startedEventId: 'event-started-1',
+    startedAt: '2026-09-09T00:00:00.000Z',
+    respondedAt: '2026-09-09T00:00:00.100Z',
+    settledAt: '2026-09-09T00:00:00.100Z',
+    ...overrides,
+  };
 }
 
 afterEach(async () => {
@@ -229,6 +244,63 @@ describe('CacheObservationStore', () => {
       status: 'unavailable',
       reason: 'report_window_invalid',
     });
+  });
+
+  it('summarizes latency only from durable requests matching authorized observations', async () => {
+    const root = await mkdtemp(join(process.cwd(), 'cache-observation-store-'));
+    roots.push(root);
+    const store = new CacheObservationStore({ rootDir: root });
+    await store.initialize();
+    await store.put(observation({ modelRequestId: 'request-1' }), scope());
+    await store.put(observation({
+      request: {
+        ...request,
+        messages: [
+          { role: 'system', content: 'Stable policy\n<!-- LITTLESHEEP_CACHE_BOUNDARY -->\nrun=two' },
+          { role: 'user', content: 'second secret user content' },
+        ],
+      },
+      requestIndex: 2,
+      modelRequestId: 'request-2',
+    }), scope());
+
+    const result = await store.report({
+      ...scope(),
+      modelRequests: [
+        modelRequest({
+          requestId: 'request-1',
+          startedAt: '2026-09-09T00:00:00.000Z',
+          settledAt: '2026-09-09T00:00:00.100Z',
+        }),
+        modelRequest({
+          requestId: 'request-2',
+          startedAt: '2026-09-09T00:00:00.000Z',
+          settledAt: '2026-09-09T00:00:00.300Z',
+        }),
+        modelRequest({
+          requestId: 'request-other-scope',
+          startedAt: '2026-09-09T00:00:00.000Z',
+          settledAt: '2026-09-09T00:00:00.900Z',
+        }),
+      ],
+    });
+
+    expect(result).toMatchObject({
+      status: 'available',
+      report: {
+        requestCount: 2,
+        latency: {
+          requestCount: 2,
+          completedCount: 2,
+          receivedCount: 2,
+          p50Ms: 100,
+          p95Ms: 300,
+          maxMs: 300,
+        },
+      },
+    });
+    if (result.status !== 'available') throw new Error('report unexpectedly unavailable');
+    expect(result.report.releaseGate.reasons).not.toContain('latency_unavailable');
   });
 
   it('returns only the latest authorized observation for a scope', async () => {
