@@ -613,6 +613,11 @@ describe('createRunner run', () => {
       && request.provider === second.replyProvenance?.provider
       && request.model === second.replyProvenance?.model
     ))).toBe(true);
+    const durable = reduceDurableRunProjection(
+      await restarted.infra.durableEventStore.read(String(second.sessionId), second.runId),
+    );
+    const rewriteRequest = durable.modelRequests.find((request) => request.retryOf);
+    expect(rewriteRequest?.retryOf).toBe(durable.modelRequests[0]?.requestId);
   });
 
   it('returns reply-call token usage with an explicit provider source', async () => {

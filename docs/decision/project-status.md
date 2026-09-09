@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 01:56:25
+最后更新：2026-09-09 09:49:50
+
+**Harness CACHE-08 duplicate rewrite lineage（2026-09-09 09:49:50，进行中）**：扩展 runner 的 exact-reply rewrite 夹具，验证 durable model request 记录 `retryOf` 指向同一 run 的前一条请求，重写来源可审计。runner 30 个文件 246 项通过，typecheck 通过。
 
 **Harness origin 覆盖 API（2026-09-09 01:56:25，进行中）**：Local App API `GET/POST /runtime` 新增 `durableHarnessOriginOverrides`，可读取和更新按请求来源的 shadow/next 覆盖；校验非空 origin、shadow/next 值和 256 条上限。app main 71 个文件 271 项通过，app typecheck 通过。
 
