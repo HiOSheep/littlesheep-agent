@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 12:08:30
+最后更新：2026-09-09 12:22:04
+
+**Harness cumulative full-suite gate（2026-09-09 12:22:04，进行中）**：修复 `memory-v3-bootstrap` 在 3-worker 负载下的 flaky：迁移测试超时提高到 90s，清理对 `EBUSY/EPERM/ENOTEMPTY` 做有界重试。全仓 `pnpm.cmd test` 411 个文件、2,882 项通过、1 项 skipped；`pnpm.cmd typecheck` 和 `pnpm.cmd run check:repo` 33/33 通过。该结果覆盖最近 CACHE-08/09、H-OLD-08 和 effect unknown 端到端增量；真实 Provider 对账、成本/回答质量对比和新 Harness 默认切换仍未完成。
 
 **Harness effect unknown end-to-end（2026-09-09 12:08:30，进行中）**：新增真实 Tool Execution Service 端到端夹具：自定义写工具实际写入后抛错，验证工具只执行一次、side effect 结算为 `unknown`、durable projection 产生 `unknownEffectIds`，next 路径返回需要用户决定的 Runtime 错误而不是成功文案。runner 30 个文件 250/250 通过；此前 CACHE-09 增量 harness 61 个文件 551/551 仍通过。生产级 effect crash/replay 的其他进程崩溃/重连场景、真实 Provider 对账和新 Harness 默认切换仍未完成。
 

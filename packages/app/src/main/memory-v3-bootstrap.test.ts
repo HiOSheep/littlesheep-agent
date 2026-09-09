@@ -13,11 +13,13 @@ import {
 import { afterEach, describe, expect, it } from 'vitest'
 import { prepareMemoryV3Bootstrap } from './memory-v3-bootstrap.js'
 
+const MIGRATION_TEST_TIMEOUT_MS = 90_000
+
 describe('Memory v3 application bootstrap', () => {
   const directories: string[] = []
 
   afterEach(async () => {
-    for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true })
+    for (const directory of directories.splice(0)) await removeDirectoryWithRetry(directory)
   })
 
   it('leaves an unversioned data root and isolated experiment config untouched', async () => {
@@ -53,7 +55,7 @@ describe('Memory v3 application bootstrap', () => {
       locator: { activeBackend: 'v3' },
     })
     expect(prepared.config.memory.repositoryBackend).toBe('v3')
-  })
+  }, MIGRATION_TEST_TIMEOUT_MS)
 
   it('keeps v3 active when bootstrap catches a stale rollback preflight', async () => {
     const dataDir = await createDataDir(directories)
@@ -125,4 +127,17 @@ async function createDataDir(directories: string[]): Promise<string> {
   const dataDir = await mkdtemp(join(tmpdir(), 'ls-memory-v3-bootstrap-'))
   directories.push(dataDir)
   return dataDir
+}
+
+async function removeDirectoryWithRetry(directory: string, attempts = 12): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await rm(directory, { recursive: true, force: true })
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (!['EBUSY', 'EPERM', 'ENOTEMPTY'].includes(code ?? '') || attempt >= attempts) throw error
+      await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)))
+    }
+  }
 }
