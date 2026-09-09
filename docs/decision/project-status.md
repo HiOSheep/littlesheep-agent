@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 12:41:30
+最后更新：2026-09-09 12:51:00
+
+**Harness origin override run（2026-09-09 12:51:00，进行中）**：新增 origin override 的真实 run 夹具：`app` 来源走 next 并产生 settled final reply，`cli` 来源继续 shadow，全局默认保持不变。runner 30 个文件 253/253 通过；此前全仓干净门为 411 个文件、2,882 项通过、1 项 skipped。真实 Provider 对账仍因当前 DeepSeek 环境密钥 401 而 blocked。
 
 **Harness real provider probe（2026-09-09 12:41:30，blocked）**：使用当前默认 DeepSeek 配置执行一次极小、无工具的 Provider 探针，Provider 返回 `401 Authentication Fails`，说明当前环境中的 `DEEPSEEK_API_KEY` 无效或过期。未保存 prompt、回复正文或密钥；CACHE-07 真实 Provider usage 对账继续保持 `blocked`，需要用户更新有效凭证后重跑。离线全仓门仍为 411 个文件、2,882 项通过、1 项 skipped；runner 30 个文件 252/252 通过。
 

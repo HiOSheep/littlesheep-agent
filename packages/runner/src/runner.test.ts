@@ -150,6 +150,34 @@ describe('createRunner run', () => {
     expect(runner.durableHarnessModeForSession?.('session-forced-shadow', 'app')).toBe('shadow');
   });
 
+  it('applies origin overrides to real runs without changing the global default', async () => {
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('origin override reply')),
+      durableHarnessMode: 'shadow',
+      durableHarnessOriginOverrides: { app: 'next' },
+    });
+    createdRunners.push(runner);
+
+    const appResult = await runner.run({ text: 'app origin turn', origin: 'app' });
+    expect(appResult).toMatchObject({
+      status: 'ok',
+      reply: 'origin override reply',
+      durableHarnessMode: 'next',
+    });
+    expect(appResult.finalReplySettlement?.status).toBe('settled');
+
+    const cliResult = await runner.run({ text: 'cli origin turn', origin: 'cli' });
+    expect(cliResult).toMatchObject({
+      status: 'ok',
+      reply: 'origin override reply',
+      durableHarnessMode: 'shadow',
+    });
+    expect(runner.durableHarnessMode).toBe('shadow');
+  });
+
   it('defers external workspace indexing in research and indexes immediately in full access', async () => {
     const containerRoot = join(dataDir, 'container');
     const externalWorkspace = join(dataDir, 'external-workspace');
