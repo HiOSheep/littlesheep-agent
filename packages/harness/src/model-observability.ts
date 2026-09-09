@@ -293,7 +293,9 @@ export function recordProviderUsage(
     queueModelResponseReceived(ctx, request, requestSnapshot, {
       usageStatus: 'unavailable',
       cacheStatus: cacheUsage.ledger.status,
-      cacheObservation: currentCacheObservation(ctx, requestSnapshot.id),
+      ...(currentCacheObservation(ctx, requestSnapshot.id)
+        ? { cacheObservation: currentCacheObservation(ctx, requestSnapshot.id) }
+        : {}),
     });
     return;
   }
@@ -321,13 +323,15 @@ export function recordProviderUsage(
     promptTokens: usage.promptTokens,
     completionTokens: usage.completionTokens,
     totalTokens: usage.totalTokens ?? usage.promptTokens + usage.completionTokens,
-    cachedPromptTokens: usage.cachedPromptTokens,
-    reasoningTokens: usage.reasoningTokens,
+    ...(usage.cachedPromptTokens === undefined ? {} : { cachedPromptTokens: usage.cachedPromptTokens }),
+    ...(usage.reasoningTokens === undefined ? {} : { reasoningTokens: usage.reasoningTokens }),
     reconciliation: localCalibration?.status === 'drift'
       ? 'mismatch'
       : localCalibration?.status ?? 'unavailable',
     ...(localCalibration ? { localCalibration } : {}),
-    cacheObservation: currentCacheObservation(ctx, requestSnapshot.id),
+    ...(currentCacheObservation(ctx, requestSnapshot.id)
+      ? { cacheObservation: currentCacheObservation(ctx, requestSnapshot.id) }
+      : {}),
   });
 }
 

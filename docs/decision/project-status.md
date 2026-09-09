@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 14:12:30
+最后更新：2026-09-09 14:23:30
+
+**Harness end-to-end cache quality report（2026-09-09 14:23:30，进行中）**：新增真实 Runner 两轮请求到 cache-quality 报告的端到端夹具，覆盖 Provider hit ratio、prompt/completion/cached token 总量和 received/failure outcome rate。该夹具发现并修复 Provider usage 缺 `cachedPromptTokens`/`reasoningTokens` 时 next 路径把 `undefined` 写入 durable event、导致 `finalize_model_lifecycle_failed` 的真实缺陷。runner 30 个文件 256/256、harness 61 个文件 553/553 通过。真实 Provider 对账仍因 DeepSeek 401 凭证 blocked。
 
 **Harness shadow/next cost guard（2026-09-09 14:12:30，进行中）**：双路径对比加入 Context safety estimate 成本门：同一输入的 next prompt token 估算不得超过 shadow 的 1.5 倍，避免新 Harness 引入明显 Context 膨胀。定向夹具通过；runner 上一完整回归为 30 个文件 255/255，通过。真实 Provider 成本和完整质量对比仍未完成。
 

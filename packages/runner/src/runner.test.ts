@@ -992,6 +992,73 @@ describe('createRunner run', () => {
       .toEqual(durable.modelRequests.map((request) => request.requestId));
   });
 
+  it('builds an end-to-end cache quality report from real runner observations', async () => {
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm([
+        {
+          ...textResponse('first cache reply'),
+          usage: { promptTokens: 100, completionTokens: 10, cachedPromptTokens: 0 },
+        },
+        {
+          ...textResponse('second cache reply'),
+          usage: { promptTokens: 100, completionTokens: 10, cachedPromptTokens: 60 },
+        },
+      ]),
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(runner);
+
+    const first = await runner.run({ text: 'hello cache' });
+    const second = await runner.run({ sessionId: first.sessionId, text: 'hello cache again' });
+    expect(first.status).toBe('ok');
+    expect(second.status).toBe('ok');
+    const sessionProjection = await runner.infra.loadSessionDurableProjection?.(String(first.sessionId));
+    const key = runner.infra.cacheObservationKey;
+    expect(key).toEqual(expect.any(String));
+    const report = await runner.infra.cacheObservationStore?.report({
+      sessionId: String(first.sessionId),
+      workspaceScope: DEFAULT_CONFIG.agents.defaults.workspace,
+      permissionPolicyId: second.resolvedRunConfig?.permissionPolicyId ?? 'research',
+      key,
+      modelRequests: sessionProjection?.modelRequests,
+      verifications: sessionProjection?.verifications,
+    });
+
+    expect(report).toMatchObject({
+      status: 'available',
+      report: {
+        requestCount: 2,
+        providerTokens: {
+          requestCount: 2,
+          completeRequestCount: 2,
+          unavailableRequestCount: 0,
+          promptTokens: 200,
+          completionTokens: 20,
+          cachedPromptTokens: 60,
+        },
+        outcomes: {
+          requestCount: 2,
+          receivedCount: 2,
+          receivedRate: 1,
+          failureRate: 0,
+        },
+        verification: {
+          verificationCount: 0,
+        },
+        releaseGate: {
+          status: 'blocked',
+        },
+      },
+    });
+    if (report?.status !== 'available') throw new Error('cache quality report unexpectedly unavailable');
+    expect(report.report.providerPrompt.hitRatio).toBeCloseTo(0.3);
+    expect(report.report.releaseGate.reasons).toContain('real_provider_reconciliation_not_verified');
+    expect(report.report.releaseGate.reasons).toContain('quality_continuity_not_observed');
+  });
+
   it('keeps a normal Runner reply successful when cache observation persistence fails', async () => {
     const logs: string[] = [];
     const runner = await createRunner({
