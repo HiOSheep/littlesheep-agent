@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 12:38:00
+最后更新：2026-09-09 12:41:30
+
+**Harness real provider probe（2026-09-09 12:41:30，blocked）**：使用当前默认 DeepSeek 配置执行一次极小、无工具的 Provider 探针，Provider 返回 `401 Authentication Fails`，说明当前环境中的 `DEEPSEEK_API_KEY` 无效或过期。未保存 prompt、回复正文或密钥；CACHE-07 真实 Provider usage 对账继续保持 `blocked`，需要用户更新有效凭证后重跑。离线全仓门仍为 411 个文件、2,882 项通过、1 项 skipped；runner 30 个文件 252/252 通过。
 
 **Harness next concurrent lease（2026-09-09 12:38:00，进行中）**：新增 `durableHarnessMode: 'next'` 并发同 turn 重试夹具，两个并发请求只形成一个 run、一次用户输入和一条回复。runner 30 个文件 252/252 通过；此前全仓干净门为 411 个文件、2,882 项通过、1 项 skipped。更细的 request kind 切换和真实 Provider 对账仍未完成。
 
