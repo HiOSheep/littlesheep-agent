@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 14:35:30
+最后更新：2026-09-09 14:38:30
+
+**Harness next memory injection（2026-09-09 14:38:30，进行中）**：D1 Atom 注入夹具已切到 next 路径，验证 Initially Selected Memory Atoms、Run Memory KnownState、working set 和 memory access ledger 在 next 下同样成立。Memory v3 集成 7/7 通过；runner 上一完整回归为 30 个文件 256/256。
 
 **Harness next provider timeout（2026-09-09 14:35:30，进行中）**：新增 next 模式 Provider timeout 端到端回归，确认 model request 以 `timeout` 结算、durable projection 无 pending model request、run 记录 `run_failed` 且不误报完成。定向测试通过；runner 上一完整回归为 30 个文件 256/256。
 

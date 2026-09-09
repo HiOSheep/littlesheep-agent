@@ -174,6 +174,7 @@ describe('Runner Memory v3 integration', () => {
       model: 'test/model',
       llm: makeMockLlm(textResponse('Hello from LS.'), requests),
       skillsDirs: [],
+      durableHarnessMode: 'next',
     });
     runners.push(runner);
     const write = await runner.infra.memoryService.write({
