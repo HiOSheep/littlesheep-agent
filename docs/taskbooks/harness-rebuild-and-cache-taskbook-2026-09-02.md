@@ -2,7 +2,7 @@
 
 状态：规划已定稿，阶段 0 冻结已完成，阶段 1 开源底座评估已完成；阶段 2 观测与后续重构仍在进行
 
-最后更新：2026-09-09 13:59:30
+最后更新：2026-09-09 14:09:30
 
 本文是新 Harness 重建和上下文缓存专项的唯一执行入口。它记录目标架构、开源底座评估、迁移顺序、回滚边界、缓存观测与验收；当前事实和最新质量门仍以[项目状态](../decision/project-status.md)为准。
 
@@ -353,7 +353,7 @@ Ingress
 
 状态：进行中（阶段 1 未采用第三方 runtime，当前对比自有 legacy/shadow 与 next kernel）。
 
-工作项：在阶段 1 选定的 runtime 上实现 `Agent + AgentSession` 或等价 adapter；把 session、stream、tool loop、cancel、usage、event cursor 映射到 LS kernel；旧 Harness 与新 Harness 使用同一 Tool Execution Service、Memory facade 和权限边界。本轮新增确定性 shadow/next 对比夹具：同一输入两条路径都只产生一条回复和一次 final settlement；next 额外记录 `stage_transition_recorded`；request kind 和请求数一致；两路径 stable prefix 指纹不同，证明 cutover 不能共享 Provider 前缀缓存，成本必须按路径分别度量。代表性真实任务、工具/副作用差异和完整成本对比仍未完成。
+工作项：在阶段 1 选定的 runtime 上实现 `Agent + AgentSession` 或等价 adapter；把 session、stream、tool loop、cancel、usage、event cursor 映射到 LS kernel；旧 Harness 与新 Harness 使用同一 Tool Execution Service、Memory facade 和权限边界。本轮新增确定性 shadow/next 对比夹具：同一输入两条路径都只产生一条回复和一次 final settlement；next 额外记录 `stage_transition_recorded`；request kind 和请求数一致；两路径 stable prefix 指纹不同，证明 cutover 不能共享 Provider 前缀缓存，成本必须按路径分别度量。本轮补充 shadow/next 工具/副作用对比：同一写入任务两条路径各执行一次工具、各产生一条回复和一个 succeeded side effect；next 有 stage transitions，shadow 无。该夹具同时发现并修复 VERIFY 通过时 `failedStepIds: undefined` 被 durable event JSON 校验拒绝、导致 next run 失败的缺陷。代表性真实任务和完整成本对比仍未完成。
 
 完成门：确定性夹具和代表性真实任务在 `legacy`、`next`、`shadow` 三种模式下得到可解释的 event、tool、settlement、cache 和成本差异；shadow 不产生第二份外部副作用或用户回复。
 

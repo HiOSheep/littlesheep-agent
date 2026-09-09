@@ -50,7 +50,9 @@ export async function recordVerification(
       source: verification.source,
       reasonHash: createHash('sha256').update(verification.reason, 'utf8').digest('hex'),
       reasonLength: verification.reason.length,
-      failedStepIds: verification.failedStepIds?.slice(0, 64),
+      ...(verification.failedStepIds
+        ? { failedStepIds: verification.failedStepIds.slice(0, 64) }
+        : {}),
     },
   });
   ctx.onToolEvent?.({ type: 'verification', visibility: 'silent', verification });

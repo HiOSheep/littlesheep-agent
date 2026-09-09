@@ -333,6 +333,78 @@ describe('createRunner run', () => {
       .not.toEqual(next.modelRequests?.map((request) => request.cacheObservation?.stablePrefix.fingerprint));
   });
 
+  it('compares shadow and next tool execution without duplicate side effects', async () => {
+    const responses = () => [
+      textResponse('{"type":"problem","confidence":0.99,"reason":"execute checkpoint write"}'),
+      textResponse('{"plan":[{"description":"write checkpoint proof","tools":["checkpoint_write"]}]}'),
+      {
+        content: '',
+        finishReason: 'tool_calls' as const,
+        toolCalls: [{
+          id: 'comparison-write-call',
+          type: 'function' as const,
+          function: { name: 'checkpoint_write', arguments: '{}' },
+        }],
+      },
+      textResponse('Checkpoint write completed.'),
+      textResponse('Checkpoint proof was written successfully.'),
+      textResponse('{"verdict":"pass","reason":"checkpoint proof exists"}'),
+      textResponse('{"memories":[],"createSkill":null}'),
+      textResponse('{"observations":[]}'),
+    ];
+    const runMode = async (mode: 'shadow' | 'next') => {
+      const calls: string[] = [];
+      const tool: AgentTool = {
+        name: 'checkpoint_write',
+        description: 'Create a checkpointed comparison mutation.',
+        inputSchema: { parse: (input) => input, jsonSchema: { type: 'object' } },
+        execution: {
+          concurrency: 'exclusive',
+          resources: () => [{ key: 'workspace:comparison-proof', mode: 'write' }],
+        },
+        async execute() {
+          calls.push('checkpoint_write');
+          return { callId: '', ok: true, output: 'comparison-proof' };
+        },
+      };
+      const runner = await createRunner({
+        config: DEFAULT_CONFIG,
+        branding: DEFAULT_BRANDING,
+        model: 'test/model',
+        llm: makeMockLlm(responses()),
+        durableHarnessMode: mode,
+      });
+      createdRunners.push(runner);
+      const result = await runner.run({
+        text: 'write comparison proof',
+        additionalTools: [tool],
+      });
+      const events = await runner.infra.durableEventStore.read(String(result.sessionId), result.runId);
+      return { result, events, calls };
+    };
+
+    const shadow = await runMode('shadow');
+    const next = await runMode('next');
+
+    expect(shadow.calls).toEqual(['checkpoint_write']);
+    expect(next.calls).toEqual(['checkpoint_write']);
+    expect(shadow.result).toMatchObject({ status: 'ok', reply: next.result.reply });
+    expect(next.result).toMatchObject({ status: 'ok' });
+    expect(shadow.result.sideEffects?.filter((effect) => effect.toolName === 'checkpoint_write'))
+      .toHaveLength(1);
+    expect(next.result.sideEffects?.filter((effect) => effect.toolName === 'checkpoint_write'))
+      .toHaveLength(1);
+    expect(shadow.result.sideEffects?.[0]).toMatchObject({ status: 'succeeded' });
+    expect(next.result.sideEffects?.[0]).toMatchObject({ status: 'succeeded' });
+    expect(shadow.events.filter((event) => event.type === 'stage_transition_recorded')).toHaveLength(0);
+    expect(next.events.filter((event) => event.type === 'stage_transition_recorded').length).toBeGreaterThan(0);
+    expect(shadow.result.modelRequests?.length).toBe(next.result.modelRequests?.length);
+    expect(shadow.result.modelRequests?.map((request) => request.cacheObservation?.requestKind))
+      .toEqual(next.result.modelRequests?.map((request) => request.cacheObservation?.requestKind));
+    expect(shadow.result.modelRequests?.map((request) => request.cacheObservation?.stablePrefix.fingerprint))
+      .not.toEqual(next.result.modelRequests?.map((request) => request.cacheObservation?.stablePrefix.fingerprint));
+  });
+
   it('next path fails closed when execution-log persistence fails before settlement', async () => {
     const runner = await createRunner({
       config: DEFAULT_CONFIG,

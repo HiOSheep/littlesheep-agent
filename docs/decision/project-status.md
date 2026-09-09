@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 13:59:30
+最后更新：2026-09-09 14:09:30
+
+**Harness shadow/next tool comparison（2026-09-09 14:09:30，进行中）**：新增工具/副作用双路径夹具：同一写入任务在 shadow 与 next 下各执行一次工具、各产生一条回复和一个 succeeded side effect；next 有 stage transitions，shadow 无。该夹具发现并修复 VERIFY 通过时 `failedStepIds: undefined` 被 durable event JSON 校验拒绝、导致 next run 失败的真实缺陷。runner 30 个文件 255/255、harness 61 个文件 553/553 通过；全仓上一干净门为 411 个文件、2,888 项通过、1 项 skipped。代表性真实任务和完整成本对比仍未完成。
 
 **Harness shadow/next comparison（2026-09-09 13:59:30，进行中）**：新增确定性双路径对比夹具：同一输入在 shadow 与 next 下都只产生一条回复和一次 final settlement；next 额外记录 `stage_transition_recorded`；request kind 与请求数一致；两条路径的 stable prefix 指纹不同，说明 cutover 不能共享 Provider 前缀缓存，成本必须按路径分别度量。runner 30 个文件 254/254 通过；全仓干净门仍为 411 个文件、2,888 项通过、1 项 skipped。代表性真实任务、工具/副作用差异和完整成本对比仍未完成。
 
