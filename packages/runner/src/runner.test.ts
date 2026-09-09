@@ -1560,6 +1560,34 @@ describe('createRunner run', () => {
     expect(deltas.join('')).toBe('Hello stream!');
   });
 
+  it('streams and settles a next-harness reply with partial provider usage', async () => {
+    const llm = makeMockLlm({
+      ...textResponse('Next stream reply!'),
+      usage: { promptTokens: 80, completionTokens: 8 },
+    });
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(runner);
+    const deltas: string[] = [];
+
+    const result = await runner.runStream({ text: 'hello next stream' }, (delta) => deltas.push(delta));
+
+    expect(result.status).toBe('ok');
+    expect(result.reply).toBe('Next stream reply!');
+    expect(deltas.join('')).toBe('Next stream reply!');
+    expect(result.finalReplySettlement?.status).toBe('settled');
+    const events = await runner.infra.durableEventStore.read(String(result.sessionId), result.runId);
+    expect(events.filter((event) => event.type === 'model_response_received').length).toBeGreaterThan(0);
+    expect(events.filter((event) => event.type === 'model_request_settled').length).toBeGreaterThan(0);
+    expect(events.filter((event) => event.type === 'final_reply_settled')).toHaveLength(1);
+    expect(events.filter((event) => event.type === 'run_completed')).toHaveLength(1);
+  });
+
   it('forwards image attachments to the LLM request', async () => {
     const seen: ChatRequest[] = [];
     const llm = makeMockLlm((req) => {
