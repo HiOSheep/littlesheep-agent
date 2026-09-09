@@ -1263,6 +1263,57 @@ describe('runner checkpoint continuation', () => {
     }
   })
 
+  it('replays a completed next-harness request after restart without another model call', async () => {
+    const firstModel = mockLlm(textResponse('Durable next reply.'))
+    const first = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: firstModel,
+      skillsDirs: [],
+      durableHarnessMode: 'next',
+    })
+    let second: Awaited<ReturnType<typeof createRunner>> | undefined
+    let firstStopped = false
+    try {
+      const session = await first.sessionManager.create('test/model')
+      const input = {
+        sessionId: session.id,
+        text: 'Persist this next-harness turn.',
+        requestKey: 'next-restart-replay-turn',
+      }
+      const original = await first.run(input)
+      expect(original).toMatchObject({ status: 'ok', reply: 'Durable next reply.', durableHarnessMode: 'next' })
+      await first.shutdown()
+      firstStopped = true
+
+      const replayModel = mockLlm(textResponse('This must not be called.'))
+      second = await createRunner({
+        config: DEFAULT_CONFIG,
+        branding: DEFAULT_BRANDING,
+        model: 'test/model',
+        llm: replayModel,
+        skillsDirs: [],
+        durableHarnessMode: 'next',
+      })
+      const replayed = await second.run(input)
+
+      expect(replayed).toMatchObject({
+        runId: original.runId,
+        status: original.status,
+        reply: original.reply,
+      })
+      expect(replayed.finalReplySettlement?.status).toBe('settled')
+      expect(replayModel.chat).not.toHaveBeenCalled()
+      expect(replayModel.chatStream).not.toHaveBeenCalled()
+      expect((await second.sessionManager.read(session.id))
+        .filter((message) => message.id === turnMessageId(session.id, input.requestKey))).toHaveLength(1)
+    } finally {
+      await second?.shutdown()
+      if (!firstStopped) await first.shutdown()
+    }
+  })
+
   it('recovers a claim-only crash and persists the bound answer exactly once after restart', async () => {
     const workspace = join(dataDir, 'workspace')
     await mkdir(workspace, { recursive: true })

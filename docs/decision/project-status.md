@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 12:22:04
+最后更新：2026-09-09 12:29:30
+
+**Harness next restart replay（2026-09-09 12:29:30，进行中）**：新增 `durableHarnessMode: 'next'` 的完成请求重启重放夹具：同 requestKey 重启后返回同一 run/reply，模型零调用，`finalReplySettlement` 保持 settled，用户输入只持久化一次。runner 30 个文件 251/251 通过；此前全仓干净门为 411 个文件、2,882 项通过、1 项 skipped。更细的 request kind 切换和真实 Provider 对账仍未完成。
 
 **Harness cumulative full-suite gate（2026-09-09 12:22:04，进行中）**：修复 `memory-v3-bootstrap` 在 3-worker 负载下的 flaky：迁移测试超时提高到 90s，清理对 `EBUSY/EPERM/ENOTEMPTY` 做有界重试。全仓 `pnpm.cmd test` 411 个文件、2,882 项通过、1 项 skipped；`pnpm.cmd typecheck` 和 `pnpm.cmd run check:repo` 33/33 通过。该结果覆盖最近 CACHE-08/09、H-OLD-08 和 effect unknown 端到端增量；真实 Provider 对账、成本/回答质量对比和新 Harness 默认切换仍未完成。
 
