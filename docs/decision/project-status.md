@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 13:29:30
+最后更新：2026-09-09 13:38:11
+
+**Harness cumulative full-suite gate（2026-09-09 13:38:11，进行中）**：最新全仓 `pnpm.cmd test` 通过 411 个文件、2,886 项、1 项 skipped；`pnpm.cmd typecheck` 和 `pnpm.cmd run check:repo` 33/33 通过。该基线包含 webhook 重复投递、origin override、next 并发租约/重启重放、effect unknown 端到端和 CACHE-09 durable 报告增量。真实 Provider usage 对账仍因当前 DeepSeek 401 凭证保持 blocked。
 
 **Harness webhook duplicate delivery（2026-09-09 13:29:30，进行中）**：新增 loopback Webhook 重复投递夹具：同一 `messageId` 只执行一次，不同 `messageId` 才新增执行，验证 `channel → Runner requestKey` 透传和幂等边界。webhook 2 个文件 32/32、plugins channel manager 29/29、全仓 typecheck 通过；真实外部 Webhook 重连仍未完成。
 
