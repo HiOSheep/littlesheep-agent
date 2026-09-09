@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 14:09:30
+最后更新：2026-09-09 14:12:30
+
+**Harness shadow/next cost guard（2026-09-09 14:12:30，进行中）**：双路径对比加入 Context safety estimate 成本门：同一输入的 next prompt token 估算不得超过 shadow 的 1.5 倍，避免新 Harness 引入明显 Context 膨胀。定向夹具通过；runner 上一完整回归为 30 个文件 255/255，通过。真实 Provider 成本和完整质量对比仍未完成。
 
 **Harness shadow/next tool comparison（2026-09-09 14:09:30，进行中）**：新增工具/副作用双路径夹具：同一写入任务在 shadow 与 next 下各执行一次工具、各产生一条回复和一个 succeeded side effect；next 有 stage transitions，shadow 无。该夹具发现并修复 VERIFY 通过时 `failedStepIds: undefined` 被 durable event JSON 校验拒绝、导致 next run 失败的真实缺陷。runner 30 个文件 255/255、harness 61 个文件 553/553 通过；全仓上一干净门为 411 个文件、2,888 项通过、1 项 skipped。代表性真实任务和完整成本对比仍未完成。
 

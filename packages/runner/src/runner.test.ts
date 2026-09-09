@@ -331,6 +331,17 @@ describe('createRunner run', () => {
     // Provider cache cannot be shared across a cutover and must be measured per path.
     expect(shadow.modelRequests?.map((request) => request.cacheObservation?.stablePrefix.fingerprint))
       .not.toEqual(next.modelRequests?.map((request) => request.cacheObservation?.stablePrefix.fingerprint));
+    const promptEstimate = (result: Awaited<ReturnType<typeof shadowRunner.run>>) => (
+      result.contextSnapshots?.reduce(
+        (total, snapshot) => total + (snapshot.safetyEstimate?.estimatedPromptTokens ?? 0),
+        0,
+      ) ?? 0
+    );
+    const shadowPromptEstimate = promptEstimate(shadow);
+    const nextPromptEstimate = promptEstimate(next);
+    expect(shadowPromptEstimate).toBeGreaterThan(0);
+    expect(nextPromptEstimate).toBeGreaterThan(0);
+    expect(nextPromptEstimate).toBeLessThanOrEqual(shadowPromptEstimate * 1.5);
   });
 
   it('compares shadow and next tool execution without duplicate side effects', async () => {
