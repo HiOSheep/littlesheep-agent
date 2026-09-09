@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 12:51:00
+最后更新：2026-09-09 13:29:30
+
+**Harness webhook duplicate delivery（2026-09-09 13:29:30，进行中）**：新增 loopback Webhook 重复投递夹具：同一 `messageId` 只执行一次，不同 `messageId` 才新增执行，验证 `channel → Runner requestKey` 透传和幂等边界。webhook 2 个文件 32/32、plugins channel manager 29/29、全仓 typecheck 通过；真实外部 Webhook 重连仍未完成。
 
 **Harness origin override run（2026-09-09 12:51:00，进行中）**：新增 origin override 的真实 run 夹具：`app` 来源走 next 并产生 settled final reply，`cli` 来源继续 shadow，全局默认保持不变。runner 30 个文件 253/253 通过；此前全仓干净门为 411 个文件、2,882 项通过、1 项 skipped。真实 Provider 对账仍因当前 DeepSeek 环境密钥 401 而 blocked。
 

@@ -92,6 +92,92 @@ describe('Webhook channel through DefaultChannelManager', () => {
     expect(body.reply).not.toContain('integration-query-marker');
     expect(body.reply).not.toContain('web_provider_rate_limited');
   });
+
+  it('deduplicates repeated webhook deliveries by message id', async () => {
+    const dataRoot = await mkdtemp(join(tmpdir(), 'littlesheep-webhook-dedupe-'));
+    cleanups.push(() => rm(dataRoot, { recursive: true, force: true }));
+
+    const sessionManager = fakeSessionManager();
+    const runs: Array<{ sessionId?: SessionId; text?: string; requestKey?: string }> = [];
+    const settled = new Map<string, {
+      runId: string;
+      sessionId: SessionId;
+      status: 'ok';
+      reply: string;
+      messages: [];
+      trace: [];
+      durationMs: number;
+    }>();
+    const runner = {
+      async run(input: { sessionId?: SessionId; text?: string; requestKey?: string }) {
+        if (input.requestKey && settled.has(input.requestKey)) return settled.get(input.requestKey)!;
+        runs.push(input);
+        const result = {
+          runId: 'webhook-dedupe-run',
+          sessionId: input.sessionId ?? asSessionId('webhook-dedupe-session'),
+          status: 'ok' as const,
+          reply: 'Deduped webhook reply.',
+          messages: [] as [],
+          trace: [] as [],
+          durationMs: 0,
+        };
+        if (input.requestKey) settled.set(input.requestKey, result);
+        return result;
+      },
+      sessionManager,
+      model: 'test-model',
+      state: { sessionId: undefined, model: 'test-model' },
+    } as unknown as ChannelManagerOptions['runner'];
+    const manager = new DefaultChannelManager({
+      runner,
+      sessionStore: new ChannelSessionStore({ bindingsFile: join(dataRoot, 'bindings.json') }),
+    });
+    manager.registerType('webhook', () => new WebhookChannelPlugin());
+
+    const config: ChannelRuntimeConfig = {
+      id: 'webhook-dedupe',
+      type: 'webhook',
+      name: 'Webhook dedupe',
+      dmPolicy: { type: 'open' },
+      groupPolicy: { type: 'disabled' },
+      secrets: {},
+      options: { port: 0, path: '/dedupe' },
+    };
+    const plugin = await manager.start(config) as WebhookChannelPlugin;
+    cleanups.push(() => manager.stop(config.id));
+    const address = plugin.address;
+    if (!address) throw new Error('webhook dedupe integration did not bind a port');
+
+    const deliver = (messageId: string) => fetch(`http://127.0.0.1:${address.port}/dedupe`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        text: 'duplicate delivery',
+        messageId,
+        conversationId: 'dedupe-conversation',
+        userId: 'dedupe-user',
+      }),
+    });
+
+    const first = await deliver('duplicate-message-1');
+    const second = await deliver('duplicate-message-1');
+    const firstBody = await first.json() as { ok?: boolean; reply?: string; sessionId?: string };
+    const secondBody = await second.json() as { ok?: boolean; reply?: string; sessionId?: string };
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(firstBody).toMatchObject({ ok: true, reply: 'Deduped webhook reply.' });
+    expect(secondBody).toMatchObject({ ok: true, reply: firstBody.reply, sessionId: firstBody.sessionId });
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.requestKey).toBe('webhook:duplicate-message-1');
+
+    const third = await deliver('duplicate-message-2');
+    const thirdBody = await third.json() as { ok?: boolean; reply?: string; sessionId?: string };
+    expect(third.status).toBe(200);
+    expect(thirdBody).toMatchObject({ ok: true, reply: firstBody.reply, sessionId: firstBody.sessionId });
+    expect(runs).toHaveLength(2);
+    expect(runs[1]?.requestKey).toBe('webhook:duplicate-message-2');
+  });
 });
 
 function fakeRunner(sessionManager: ChannelManagerOptions['runner']['sessionManager'], evidence: WebEvidenceProjection): ChannelManagerOptions['runner'] {
