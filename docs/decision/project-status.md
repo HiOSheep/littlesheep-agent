@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-10 13:42:33
+最后更新：2026-09-10 13:50:18
+
+**Harness full release gate（2026-09-10 13:50:18，进行中）**：`pnpm.cmd run verify:full` 通过，包含 `check:repo` 33/33、全仓 411 个文件 2,898 项通过/1 项 skipped、workspace typecheck、Electron App build（Electron 36.9.5，output digest `07ab85548fdd69a79879c3f57e32f760dc586fb7a2a56653b6e9adc6e2ec9898`）和 recovery 源检查。gate 结果为 5 executed / 1 skipped，耗时 284,070.78 ms。recovery 仍保留历史 warning：迁移前登记的 runtime workspace 路径缺失、3 个抽样 runId 缺执行日志、layout 使用非默认 roots；未改写为无告警。真实 Provider 对账、真实渠道重连和最终发布决定仍未完成。
 
 **Harness finalize transcript fail-closed（2026-09-10 13:42:33，进行中）**：新增真实 Runner 回归，令 assistant finalize 会话正文写入失败，发现并修复失败 Run 仍把未持久化模型文案写入 `result.reply` 的发布漏洞。next 路径现在只在形成 settled final reply 后发布文案；未形成 settlement 的失败/中断结果统一清空 reply、provenance、proposal 和 finalize 消息，Runtime status 使用 durable projection 的失败原因。结合 execution log、session summary、final-reply registry、durable event 失败夹具，FINALIZE 主要持久化分支均已 fail-closed。全仓当前工作树 411 个文件、2,898 项通过、1 项 skipped；`pnpm.cmd run typecheck` 和 `check:repo` 33/33 通过。真实渠道重连、真实 Provider 对账和更细粒度灰度仍未完成。
 
