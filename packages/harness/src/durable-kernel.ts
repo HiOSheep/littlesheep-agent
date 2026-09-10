@@ -16,6 +16,7 @@ import type {
   DurableRunProjection,
   FinalReplyReservation,
 } from '@littlesheep/types';
+import { isDurableRunTerminal, isTerminalAuditClosure } from './durable-kernel-guards.js';
 import { DURABLE_HARNESS_EVENT_VERSION } from '@littlesheep/types';
 import { DurableKernelError } from './durable-kernel-error.js';
 import { readVerificationRecordedPayload } from './durable-verification-codec.js';
@@ -207,7 +208,11 @@ export class DurableHarnessKernel {
   ): Promise<DurableRunRecoveryResult> {
     let projection = await this.replay(sessionId, runId);
     const actions: DurableRecoveryAction[] = [];
-    if (projection.eventCount === 0 || isDurableRunTerminal(projection)) {
+    const terminalAtStart = isDurableRunTerminal(projection);
+    if (projection.eventCount === 0
+      || (terminalAtStart
+        && projection.pendingModelRequestIds.length === 0
+        && projection.pendingEffectIds.length === 0)) {
       return { sessionId, runId, actions, projection };
     }
 
@@ -275,6 +280,14 @@ export class DurableHarnessKernel {
         reason: 'effect_settlement_unknown',
       });
       projection = await this.replay(sessionId, runId);
+    }
+
+    // A terminal Runtime status may already have been published when a later
+    // settlement append failed. The terminal outcome is still authoritative,
+    // but every pending effect/model request must be closed as unknown so a
+    // restart cannot leave an unaccounted side effect in the projection.
+    if (terminalAtStart) {
+      return { sessionId, runId, actions, projection };
     }
 
     // A process can die after the transcript/registry commit but before the
@@ -380,13 +393,6 @@ export class DurableHarnessKernel {
   async replayFinalReply(sessionId: string, runId: string): Promise<DurableFinalReplyReplay> {
     return replayDurableFinalReply(await this.replay(sessionId, runId));
   }
-}
-
-function isDurableRunTerminal(projection: DurableRunProjection): boolean {
-  return projection.status === 'completed'
-    || projection.status === 'failed'
-    || projection.status === 'interrupted'
-    || projection.finalReply.state === 'runtime_status';
 }
 
 export function replayDurableFinalReply(projection: DurableRunProjection): DurableFinalReplyReplay {
@@ -666,7 +672,16 @@ function applyDurableHarnessEvent(
       next.pendingEffectIds = next.pendingEffectIds.filter((id) => id !== effectId);
       if (status === 'unknown') {
         next.unknownEffectIds.push(effectId);
-        next.status = 'waiting_user';
+        // An unknown effect requires a user decision only while the run is
+        // still open. A terminal failure/interruption (or an already settled
+        // Runtime status) remains authoritative; the audit closure must not
+        // reopen it as a second waiting-user outcome.
+        if (next.status !== 'completed'
+          && next.status !== 'failed'
+          && next.status !== 'interrupted'
+          && next.finalReply.state !== 'runtime_status') {
+          next.status = 'waiting_user';
+        }
       }
       break;
     }
@@ -725,7 +740,10 @@ function validateTransition(projection: DurableRunProjection, event: DurableHarn
   if (isFirst && event.type !== 'run_accepted') throw new DurableKernelError('run must begin with run_accepted', 'transition');
   if (!isFirst && event.type === 'run_accepted') throw new DurableKernelError('run_accepted may only be appended once', 'transition');
   const auditOnlyTransition = event.type === 'stage_transition_recorded';
-  if (!auditOnlyTransition && (projection.status === 'completed' || projection.status === 'failed' || projection.status === 'interrupted')) {
+  const terminalAuditClosure = isTerminalAuditClosure(projection, event);
+  if (!auditOnlyTransition
+    && !terminalAuditClosure
+    && (projection.status === 'completed' || projection.status === 'failed' || projection.status === 'interrupted')) {
     throw new DurableKernelError(`run is already terminal: ${projection.status}`, 'transition');
   }
   if (event.type === 'final_reply_settled') {

@@ -227,6 +227,70 @@ describe('DurableHarnessKernel', () => {
     expect(store.events.filter((item) => item.type === 'effect_settled')).toHaveLength(2);
   });
 
+  it('closes pending effects after a terminal status without reopening the run', async () => {
+    const store = new MemoryEventStore();
+    const kernel = new DurableHarnessKernel({ eventStore: store });
+    await kernel.append(event('run_accepted', {}, 'runtime', 'accept'));
+    await kernel.append(event('effect_intent_created', {
+      effectId: 'effect-terminal',
+      idempotencyKey: 'effect-key-terminal',
+      toolName: 'write',
+      effectKind: 'external',
+    }, 'runtime', 'intent-terminal'));
+    await kernel.append(event('runtime_status_settled', {
+      status: 'waiting_user',
+      reason: 'effect_settlement_unknown',
+    }, 'runtime', 'runtime-status-terminal'));
+
+    const recovered = await kernel.recoverRun(sessionId, runId);
+    expect(recovered.actions).toEqual([
+      expect.objectContaining({
+        kind: 'effect_marked_unknown',
+        effectId: 'effect-terminal',
+        reason: 'effect_settlement_unknown',
+      }),
+    ]);
+    expect(recovered.projection.pendingEffectIds).toEqual([]);
+    expect(recovered.projection.unknownEffectIds).toEqual(['effect-terminal']);
+    expect(recovered.projection.finalReply.state).toBe('runtime_status');
+    expect(recovered.projection.status).toBe('waiting_user');
+    expect(store.events.filter((item) => item.type === 'effect_settled')).toHaveLength(1);
+
+    expect((await kernel.recoverRun(sessionId, runId)).actions).toEqual([]);
+    expect(store.events.filter((item) => item.type === 'effect_settled')).toHaveLength(1);
+  });
+
+  it('closes pending model requests after a terminal failure', async () => {
+    const store = new MemoryEventStore();
+    const kernel = new DurableHarnessKernel({ eventStore: store });
+    await kernel.append(event('run_accepted', {}, 'runtime', 'accept'));
+    await kernel.append(event('model_request_started', {
+      requestId: 'model-terminal',
+      provider: 'test',
+      model: 'test/model',
+      providerReachStatus: 'reached',
+      transportStatus: 'streaming',
+    }, 'runtime', 'model-terminal-start'));
+    await kernel.append(event('run_failed', {
+      errorHash: 'a'.repeat(64),
+      errorLength: 12,
+    }, 'runtime', 'run-failed-terminal'));
+
+    const recovered = await kernel.recoverRun(sessionId, runId);
+    expect(recovered.actions).toEqual([
+      expect.objectContaining({
+        kind: 'model_marked_missing',
+        requestId: 'model-terminal',
+        reason: 'model_response_missing',
+      }),
+    ]);
+    expect(recovered.projection.pendingModelRequestIds).toEqual([]);
+    expect(recovered.projection.status).toBe('failed');
+    expect(store.events.filter((item) => item.type === 'model_request_settled')).toHaveLength(1);
+
+    expect((await kernel.recoverRun(sessionId, runId)).actions).toEqual([]);
+  });
+
   it('repairs a committed final reply proposal and completes the run after restart', async () => {
     const store = new MemoryEventStore();
     const kernel = new DurableHarnessKernel({ eventStore: store });

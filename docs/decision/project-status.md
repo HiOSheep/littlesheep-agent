@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-09 14:38:30
+最后更新：2026-09-10 13:25:10
+
+**Harness terminal effect recovery（2026-09-10 13:25:10，进行中）**：修复终态恢复缺口：当 effect settlement 落盘失败、Runner 已发布 `run_failed`/Runtime status 后，重启恢复仍会把 pending effect/model request 审计性结算为 `unknown`/`missing`，不再因终态提前返回；未知 effect 不会把已终态 Run 回退成第二个 `waiting_user`。新增 durable kernel 终态审计关闭夹具和真实 Runner + Tool Execution Service 的“工具已写入→settlement 落盘失败→重启恢复”端到端夹具，确认工具只执行一次、`unknownEffectIds` 保留且无成功文案。harness + runner 91 个文件、815 项通过；全仓当前工作树 411 个文件、2,897 项通过、1 项 skipped；`pnpm.cmd run typecheck` 和 `check:repo` 33/33 通过。其他进程级 effect crash/replay、真实 Webhook 重连和真实 Provider 对账仍未完成。
 
 **Harness next memory injection（2026-09-09 14:38:30，进行中）**：D1 Atom 注入夹具已切到 next 路径，验证 Initially Selected Memory Atoms、Run Memory KnownState、working set 和 memory access ledger 在 next 下同样成立。Memory v3 集成 7/7 通过；runner 上一完整回归为 30 个文件 256/256。
 

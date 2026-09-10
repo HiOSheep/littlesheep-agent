@@ -859,6 +859,7 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
+      durableHarnessMode: 'next',
     });
     createdRunners.push(runner);
 
@@ -1352,6 +1353,115 @@ describe('createRunner run', () => {
     );
     expect(projection.unknownEffectIds.length).toBeGreaterThan(0);
     expect(result.reply ?? '').not.toContain('success');
+  });
+
+  it('recovers a real effect with a failed settlement after restart without replaying it', async () => {
+    const workspace = join(dataDir, 'effect-settlement-recovery-workspace');
+    mkdirSync(workspace, { recursive: true });
+    let toolCalls = 0;
+    const mutateProbe: AgentTool = {
+      name: 'mutate_probe',
+      description: 'Perform one durable mutation whose settlement may be lost.',
+      inputSchema: { parse: (input) => input, jsonSchema: { type: 'object' } },
+      execution: {
+        concurrency: 'exclusive',
+        resources: () => [{ key: 'workspace:settlement-recovery', mode: 'write' }],
+      },
+      async execute() {
+        toolCalls += 1;
+        writeFileSync(join(workspace, 'settlement-recovery.txt'), 'mutation completed', 'utf8');
+        return { callId: '', ok: true, output: 'mutation completed' };
+      },
+    };
+    let toolCallIssued = false;
+    const llm = makeMockLlm((request) => {
+      const serialized = JSON.stringify(request.messages);
+      if (serialized.includes('Choose the next LittleSheep activity')) {
+        return textResponse('{"type":"problem","confidence":0.99,"reason":"execute the mutating probe"}');
+      }
+      if (serialized.includes('You are the RECOVER stage')) {
+        return textResponse('{"action":"abort","reason":"the effect settlement is missing"}');
+      }
+      if (serialized.includes('You are the VERIFY stage')) {
+        return textResponse('{"verdict":"fail","reason":"the effect was not durably settled"}');
+      }
+      if (serialized.includes('You are the DECIDE stage')) {
+        return textResponse('{"plan":[{"description":"run the mutating probe","tools":["mutate_probe"]}]}');
+      }
+      if (!toolCallIssued && !request.messages.some((message) => message.role === 'tool')) {
+        toolCallIssued = true;
+        return {
+          content: '',
+          finishReason: 'tool_calls',
+          toolCalls: [{
+            id: 'settlement-recovery-call',
+            type: 'function',
+            function: { name: 'mutate_probe', arguments: '{}' },
+          }],
+        };
+      }
+      if (request.messages.some((message) => message.role === 'tool')) {
+        return textResponse('The mutation was not durably settled.');
+      }
+      return textResponse('{"type":"problem","confidence":0.99,"reason":"execute the mutating probe"}');
+    });
+    const firstRunner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(firstRunner);
+    const append = firstRunner.infra.durableEventStore.append.bind(firstRunner.infra.durableEventStore);
+    let settlementFailures = 0;
+    vi.spyOn(firstRunner.infra.durableEventStore, 'append').mockImplementation(async (input) => {
+      if (input.type === 'effect_settled' && settlementFailures++ === 0) {
+        throw new Error('settlement receipt disk full');
+      }
+      return append(input);
+    });
+
+    const first = await firstRunner.run({
+      runId: 'run-effect-settlement-recovery',
+      text: 'run the mutating probe',
+      cwd: workspace,
+      additionalTools: [mutateProbe],
+    });
+    expect(toolCalls).toBe(1);
+    expect(existsSync(join(workspace, 'settlement-recovery.txt'))).toBe(true);
+    const beforeRestart = reduceDurableRunProjection(
+      await firstRunner.infra.durableEventStore.read(String(first.sessionId), first.runId),
+    );
+    expect(beforeRestart.status).toBe('failed');
+    expect(beforeRestart.pendingEffectIds.length).toBeGreaterThan(0);
+    expect(beforeRestart.unknownEffectIds).toEqual([]);
+    await firstRunner.shutdown();
+    createdRunners.pop();
+
+    const restarted = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('must not execute on recovery')),
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(restarted);
+
+    const recovery = await restarted.recoverDurableRun!(first.sessionId, first.runId);
+    expect(recovery.actions).toContainEqual(expect.objectContaining({
+      kind: 'effect_marked_unknown',
+      reason: 'effect_settlement_unknown',
+    }));
+    expect(recovery.projection.pendingEffectIds).toEqual([]);
+    expect(recovery.projection.unknownEffectIds.length).toBeGreaterThan(0);
+    expect(recovery.projection.status).toBe('failed');
+    expect(toolCalls).toBe(1);
+    expect((await restarted.replayDurableFinalReply!(first.sessionId, first.runId)).kind).not.toBe('settled');
+
+    const secondRecovery = await restarted.recoverDurableRun!(first.sessionId, first.runId);
+    expect(secondRecovery.actions).toEqual([]);
+    expect(toolCalls).toBe(1);
   });
 
   it('registers attachment metadata for the run without persisting payloads and replaces it next run', async () => {
