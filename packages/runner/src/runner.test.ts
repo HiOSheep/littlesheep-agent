@@ -471,6 +471,40 @@ describe('createRunner run', () => {
     expect(reduceDurableRunProjection(events).finalReply.state).toBe('runtime_status');
   });
 
+  it('next path fails closed when the final assistant transcript cannot be persisted', async () => {
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('must not publish transcript outage')),
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(runner);
+    const append = runner.infra.sessionManager.append.bind(runner.infra.sessionManager);
+    let blockedAttempts = 0;
+    vi.spyOn(runner.infra.sessionManager, 'append').mockImplementation(async (sessionId, messages) => {
+      if (messages.some((message) => message.role === 'assistant' && message.stage === 'finalize')) {
+        blockedAttempts += 1;
+        throw new Error('session transcript disk full');
+      }
+      return append(sessionId, messages);
+    });
+
+    const result = await runner.run({ text: 'transcript persistence outage' });
+
+    expect(blockedAttempts).toBeGreaterThan(0);
+    expect(result.status).toBe('error');
+    expect(result.reply).toBe('');
+    expect(result.runtimeStatus).toMatchObject({ status: 'failed', reason: 'session_persist_failed' });
+    const events = await runner.infra.durableEventStore.read(String(result.sessionId), result.runId);
+    expect(events.filter((event) => event.type === 'final_reply_settled')).toHaveLength(0);
+    expect(events.filter((event) => event.type === 'run_completed')).toHaveLength(0);
+    expect(reduceDurableRunProjection(events).finalReply.state).toBe('runtime_status');
+    expect((await runner.sessionManager.read(result.sessionId))
+      .some((message) => message.role === 'assistant' && message.stage === 'finalize'))
+      .toBe(false);
+  });
+
   it('next path fails closed when the final-reply registry settlement fails', async () => {
     const runner = await createRunner({
       config: DEFAULT_CONFIG,

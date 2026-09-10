@@ -2,7 +2,7 @@
 
 状态：规划已定稿，阶段 0 冻结已完成，阶段 1 开源底座评估已完成；阶段 2 观测与后续重构仍在进行
 
-最后更新：2026-09-10 13:25:10
+最后更新：2026-09-10 13:42:33
 
 本文是新 Harness 重建和上下文缓存专项的唯一执行入口。它记录目标架构、开源底座评估、迁移顺序、回滚边界、缓存观测与验收；当前事实和最新质量门仍以[项目状态](../decision/project-status.md)为准。
 
@@ -345,7 +345,7 @@ Ingress
 
 状态：进行中，优先级 P0。
 
-工作项：把工具/副作用接入 intent/settlement；实现 single final reply settlement、stream 临时投影、唯一性注册、continuity/citation/VERIFY 闸门和渠道投影；补齐 FINALIZE 持久化失败语义。基础 final-reply settlement、恢复时的 Runtime status、统一渠道/CLI/App/replay publication boundary 和 proposal 历史过滤已接入并有定向回归；本轮修正 effect settlement 与 post-effect checkpoint 的先后和失败语义，并进一步区分执行前拒绝与执行后结果不明：intent 已耐久但 pre-effect checkpoint 失败时工具零调用，effect 现在结算为 `failed` 而不是 `unknown`，不会误入 `waiting_user`；工具实际执行后返回非成功结果仍保持 `unknown`。本轮补齐 `cancelled`：Run 在 effect intent 已耐久、但工具尚未调用前已中止时，工具零调用，effect 结算为 `cancelled`；checkpoint store 接受该终态，projection 不会把它当作 uncertain。本轮进一步保证终态后的审计关闭：pending effect 只能补记为 `unknown`，不能重开 Run 或产生第二份用户决定状态；真实 Runner 重启夹具同时证明工具不重放。与真实 Tool Execution Service 的其余生产级故障对账、FINALIZE 持久化失败全链路和真实渠道重连仍待完成。
+工作项：把工具/副作用接入 intent/settlement；实现 single final reply settlement、stream 临时投影、唯一性注册、continuity/citation/VERIFY 闸门和渠道投影；补齐 FINALIZE 持久化失败语义。基础 final-reply settlement、恢复时的 Runtime status、统一渠道/CLI/App/replay publication boundary 和 proposal 历史过滤已接入并有定向回归；本轮修正 effect settlement 与 post-effect checkpoint 的先后和失败语义，并进一步区分执行前拒绝与执行后结果不明：intent 已耐久但 pre-effect checkpoint 失败时工具零调用，effect 现在结算为 `failed` 而不是 `unknown`，不会误入 `waiting_user`；工具实际执行后返回非成功结果仍保持 `unknown`。本轮补齐 `cancelled`：Run 在 effect intent 已耐久、但工具尚未调用前已中止时，工具零调用，effect 结算为 `cancelled`；checkpoint store 接受该终态，projection 不会把它当作 uncertain。本轮进一步保证终态后的审计关闭：pending effect 只能补记为 `unknown`，不能重开 Run 或产生第二份用户决定状态；真实 Runner 重启夹具同时证明工具不重放。本轮补齐 FINALIZE 会话正文持久化失败全链路：真实 Runner 夹具让 assistant finalize 写入失败，确认 Run 失败、`result.reply` 不泄露未落盘文案、durable projection 只保留 `runtime_status`；结合 execution log、session summary、final-reply registry、durable event 失败夹具，FINALIZE 主要持久化分支均已 fail-closed。全仓当前工作树 411 个文件、2,898 项通过、1 项 skipped；workspace typecheck 与 `check:repo` 33/33 通过。与真实 Tool Execution Service 的其余生产级故障对账和真实渠道重连仍待完成。
 
 完成门：每个用户可见回合只有一个 authoritative final settlement；Renderer/CLI/Webhook 重连只 replay 同一结果；effect 未知时停下请求决定，不能伪造成功或自动重做。
 

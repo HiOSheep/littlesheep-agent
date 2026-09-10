@@ -839,6 +839,19 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           }
         }
       }
+      if (durableHarnessMode === 'next'
+        && result.status !== 'ok'
+        && result.finalReplySettlement?.status !== 'settled') {
+        const projection = durableRecorder
+          ? await durableRecorder.kernel.replay(String(sessionId), runId).catch(() => undefined)
+          : undefined;
+        const reason = projection?.finalReply.state === 'runtime_status'
+          ? projection.runtimeStatusReason ?? 'runtime_status_settled'
+          : result.runtimeStatus?.reason ?? 'run_failed_before_publication';
+        result = result.status === 'error'
+          ? runtimeFailureResult(result, reason)
+          : clearUnpublishedNextResult(result);
+      }
       if (!durableOutcomeRecorded) {
         try {
           await recordDurableRunOutcome(durableRecorder, result);
@@ -2178,16 +2191,22 @@ function runtimeFailureResult(result: RunnerResult, reason: string): RunnerResul
       reason,
     };
     return {
-      ...result,
+      ...clearUnpublishedNextResult(result),
       status: 'error',
-      reply: '',
-      replyProvenance: undefined,
-      finalReplySettlement: undefined,
       runtimeStatus,
       error: `Runtime failed before publishing a final reply. Reason: ${reason}`,
-      messages: result.messages.filter((message) => !(message.role === 'assistant' && message.stage === 'finalize')),
       webEvidence: undefined,
     };
+}
+
+function clearUnpublishedNextResult(result: RunnerResult): RunnerResult {
+  return {
+    ...result,
+    reply: '',
+    replyProvenance: undefined,
+    finalReplySettlement: undefined,
+    messages: result.messages.filter((message) => !(message.role === 'assistant' && message.stage === 'finalize')),
+  };
 }
 
 function settledReplyResult(result: RunnerResult, ctx: RunContext): RunnerResult {

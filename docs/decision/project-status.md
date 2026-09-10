@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-10 13:25:10
+最后更新：2026-09-10 13:42:33
+
+**Harness finalize transcript fail-closed（2026-09-10 13:42:33，进行中）**：新增真实 Runner 回归，令 assistant finalize 会话正文写入失败，发现并修复失败 Run 仍把未持久化模型文案写入 `result.reply` 的发布漏洞。next 路径现在只在形成 settled final reply 后发布文案；未形成 settlement 的失败/中断结果统一清空 reply、provenance、proposal 和 finalize 消息，Runtime status 使用 durable projection 的失败原因。结合 execution log、session summary、final-reply registry、durable event 失败夹具，FINALIZE 主要持久化分支均已 fail-closed。全仓当前工作树 411 个文件、2,898 项通过、1 项 skipped；`pnpm.cmd run typecheck` 和 `check:repo` 33/33 通过。真实渠道重连、真实 Provider 对账和更细粒度灰度仍未完成。
 
 **Harness terminal effect recovery（2026-09-10 13:25:10，进行中）**：修复终态恢复缺口：当 effect settlement 落盘失败、Runner 已发布 `run_failed`/Runtime status 后，重启恢复仍会把 pending effect/model request 审计性结算为 `unknown`/`missing`，不再因终态提前返回；未知 effect 不会把已终态 Run 回退成第二个 `waiting_user`。新增 durable kernel 终态审计关闭夹具和真实 Runner + Tool Execution Service 的“工具已写入→settlement 落盘失败→重启恢复”端到端夹具，确认工具只执行一次、`unknownEffectIds` 保留且无成功文案。harness + runner 91 个文件、815 项通过；全仓当前工作树 411 个文件、2,897 项通过、1 项 skipped；`pnpm.cmd run typecheck` 和 `check:repo` 33/33 通过。其他进程级 effect crash/replay、真实 Webhook 重连和真实 Provider 对账仍未完成。
 
