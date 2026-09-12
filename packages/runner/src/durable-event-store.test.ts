@@ -65,6 +65,21 @@ describe('DurableEventStore', () => {
     expect((await store.read('session-a', 'run-a')).length).toBe(1);
   });
 
+  it('ignores in-flight atomic temp files but still fails closed on unknown files', async () => {
+    const root = await newRoot();
+    const store = new DurableEventStore({ rootDir: root });
+    await store.append({ ...base, eventId: 'event-1', idempotencyKey: 'input-1' });
+    const [partitionName] = await readdir(root);
+    if (!partitionName) throw new Error('missing partition');
+    const partition = join(root, partitionName);
+    const [eventFile] = await readdir(partition);
+    if (!eventFile) throw new Error('missing event file');
+    await writeFile(join(partition, `${eventFile}.${process.pid}.${'0'.repeat(8)}-abcd-4abc-8abc-${'0'.repeat(12)}.tmp`), '', 'utf8');
+    await expect(store.read('session-a', 'run-a')).resolves.toHaveLength(1);
+    await writeFile(join(partition, 'unexpected.txt'), 'stranger', 'utf8');
+    await expect(store.read('session-a', 'run-a')).rejects.toBeInstanceOf(DurableEventStoreError);
+  });
+
   it('serializes concurrent appends without duplicate cursors', async () => {
     const root = await newRoot();
     const store = new DurableEventStore({ rootDir: root });

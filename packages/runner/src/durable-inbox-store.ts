@@ -5,6 +5,7 @@ import { Buffer } from 'node:buffer';
 import { join } from 'node:path';
 import { acquireLock } from '@littlesheep/session';
 import type {
+  DurableInboxClaimFilter,
   DurableInboxCommand,
   DurableInboxEnqueueInput,
   DurableInboxEnqueueOutcome,
@@ -16,6 +17,7 @@ import {
   boundedInteger,
   canonicalSerialize,
   hashParts,
+  isAtomicWriteTempFile,
   normalizeIdentifier,
   normalizeJsonValue,
   normalizeReason,
@@ -28,11 +30,14 @@ import {
 const COMMAND_FILE_PATTERN = /^[a-f0-9]{64}\.json$/;
 const MAX_COMMAND_ID_LENGTH = 256;
 const MAX_IDEMPOTENCY_KEY_LENGTH = 512;
+const MAX_CLAIM_TOKEN_LENGTH = 256;
 const MAX_RESULT_EVENT_IDS = 128;
 const DEFAULT_LEASE_MS = 5 * 60 * 1_000;
 const MAX_LEASE_MS = 60 * 60 * 1_000;
 const DEFAULT_CLAIM_LIMIT = 16;
 const MAX_CLAIM_LIMIT = 128;
+const DEFAULT_RECOVERABLE_RUN_LIMIT = 256;
+const MAX_RECOVERABLE_RUN_LIMIT = 1_024;
 
 export interface DurableInboxStoreOptions {
   rootDir: string;
@@ -109,6 +114,8 @@ export class DurableInboxStore implements DurableInboxStoreLike {
         sessionId: normalized.sessionId,
         runId: normalized.runId,
         type: normalized.type,
+        source: normalized.source,
+        ...(normalized.occurredAt ? { occurredAt: normalized.occurredAt } : {}),
         payload: normalized.payload,
         status: 'queued',
         enqueuedAt: timestamp,
@@ -120,15 +127,16 @@ export class DurableInboxStore implements DurableInboxStoreLike {
     });
   }
 
-  async claim(limit = this.maxClaim): Promise<DurableInboxCommand[]> {
+  async claim(limit = this.maxClaim, filter?: DurableInboxClaimFilter): Promise<DurableInboxCommand[]> {
     const boundedLimit = boundedInteger(limit, this.maxClaim, 1, this.maxClaim);
+    const normalizedFilter = normalizeClaimFilter(filter);
     return this.withWriteLock(async () => {
       const commands = await this.readCommands();
       const now = this.now();
       await this.requeueExpired(commands, now);
       const refreshed = await this.readCommands();
       const queued = refreshed
-        .filter((command) => command.status === 'queued')
+        .filter((command) => command.status === 'queued' && matchesClaimFilter(command, normalizedFilter))
         .sort((left, right) => left.enqueuedAt.localeCompare(right.enqueuedAt) || left.commandId.localeCompare(right.commandId))
         .slice(0, boundedLimit);
       const claimed: DurableInboxCommand[] = [];
@@ -138,6 +146,7 @@ export class DurableInboxStore implements DurableInboxStoreLike {
           status: 'claimed',
           updatedAt: now.toISOString(),
           leaseUntil: new Date(now.getTime() + this.leaseMs).toISOString(),
+          claimToken: randomId(),
           attempts: command.attempts + 1,
           failureReason: undefined,
         };
@@ -148,7 +157,11 @@ export class DurableInboxStore implements DurableInboxStoreLike {
     });
   }
 
-  async complete(commandId: string, resultEventIds: readonly string[] = []): Promise<DurableInboxCommand> {
+  async complete(
+    commandId: string,
+    resultEventIds: readonly string[] = [],
+    claimToken?: string,
+  ): Promise<DurableInboxCommand> {
     const normalizedId = normalizeIdentifier(commandId, 'commandId');
     const ids = normalizeResultEventIds(resultEventIds);
     return this.withWriteLock(async () => {
@@ -160,11 +173,13 @@ export class DurableInboxStore implements DurableInboxStoreLike {
         return cloneCommand(command);
       }
       if (command.status !== 'claimed') throw new DurableInboxError(`command ${normalizedId} is not claimed`, 'state');
+      assertClaimOwner(command, claimToken);
       const updated: DurableInboxCommand = {
         ...command,
         status: 'completed',
         updatedAt: this.now().toISOString(),
         leaseUntil: undefined,
+        claimToken: undefined,
         resultEventIds: ids,
         failureReason: undefined,
       };
@@ -173,18 +188,26 @@ export class DurableInboxStore implements DurableInboxStoreLike {
     });
   }
 
-  async fail(commandId: string, reason: string, retryable = false): Promise<DurableInboxCommand> {
+  async fail(
+    commandId: string,
+    reason: string,
+    retryable = false,
+    claimToken?: string,
+  ): Promise<DurableInboxCommand> {
     const normalizedId = normalizeIdentifier(commandId, 'commandId');
     const normalizedReason = normalizeReason(reason);
     return this.withWriteLock(async () => {
       const command = await this.readRequired(normalizedId);
       if (command.status === 'completed') throw new DurableInboxError('completed command cannot fail', 'state');
       if (command.status === 'failed' && !retryable) return cloneCommand(command);
+      if (command.status === 'claimed') assertClaimOwner(command, claimToken);
+      else if (claimToken !== undefined) throw new DurableInboxError(`command ${normalizedId} is not claimed`, 'state');
       const updated: DurableInboxCommand = {
         ...command,
         status: retryable ? 'queued' : 'failed',
         updatedAt: this.now().toISOString(),
         leaseUntil: undefined,
+        claimToken: undefined,
         failureReason: normalizedReason,
       };
       await this.writeCommand(updated);
@@ -200,6 +223,71 @@ export class DurableInboxStore implements DurableInboxStoreLike {
       if (error instanceof DurableInboxError && error.kind === 'missing') return null;
       throw error;
     }
+  }
+
+  /** Discover runs whose commands are available for immediate recovery. */
+  async listRecoverableRuns(limit = DEFAULT_RECOVERABLE_RUN_LIMIT): Promise<Array<{ sessionId: string; runId: string }>> {
+    const boundedLimit = boundedInteger(limit, DEFAULT_RECOVERABLE_RUN_LIMIT, 1, MAX_RECOVERABLE_RUN_LIMIT);
+    return this.withWriteLock(async () => {
+      const commands = await this.readCommands();
+      await this.requeueExpired(commands, this.now());
+      const refreshed = await this.readCommands();
+      const runs = new Map<string, { sessionId: string; runId: string; enqueuedAt: string }>();
+      for (const command of refreshed) {
+        // A non-expired claim may still belong to a live process. It only
+        // contributes a future wake-up and must not trigger recovery now.
+        if (command.status !== 'queued') continue;
+        const key = `${command.sessionId}\0${command.runId}`;
+        const existing = runs.get(key);
+        if (existing && existing.enqueuedAt <= command.enqueuedAt) continue;
+        runs.set(key, {
+          sessionId: command.sessionId,
+          runId: command.runId,
+          enqueuedAt: command.enqueuedAt,
+        });
+      }
+      return [...runs.values()]
+        .sort((left, right) => left.enqueuedAt.localeCompare(right.enqueuedAt)
+          || left.sessionId.localeCompare(right.sessionId)
+          || left.runId.localeCompare(right.runId))
+        .slice(0, boundedLimit)
+        .map(({ sessionId, runId }) => ({ sessionId, runId }));
+    });
+  }
+
+  /** List runs fenced by a live claim so startup recovery can skip them. */
+  async listActiveClaimedRuns(limit = DEFAULT_RECOVERABLE_RUN_LIMIT): Promise<Array<{ sessionId: string; runId: string }>> {
+    const boundedLimit = boundedInteger(limit, DEFAULT_RECOVERABLE_RUN_LIMIT, 1, MAX_RECOVERABLE_RUN_LIMIT);
+    return this.withWriteLock(async () => {
+      const commands = await this.readCommands();
+      await this.requeueExpired(commands, this.now());
+      const refreshed = await this.readCommands();
+      const runs = new Map<string, { sessionId: string; runId: string }>();
+      for (const command of refreshed) {
+        if (command.status !== 'claimed') continue;
+        const key = `${command.sessionId}\0${command.runId}`;
+        runs.set(key, { sessionId: command.sessionId, runId: command.runId });
+      }
+      if (runs.size > boundedLimit) {
+        throw new DurableInboxError(`active claimed run count exceeds ${boundedLimit}`, 'state');
+      }
+      return [...runs.values()].sort((left, right) => (
+        left.sessionId.localeCompare(right.sessionId) || left.runId.localeCompare(right.runId)
+      ));
+    });
+  }
+
+  /** Return one bounded wake-up point instead of polling active claims. */
+  async nextClaimLeaseExpiry(): Promise<string | undefined> {
+    return this.withWriteLock(async () => {
+      const commands = await this.readCommands();
+      let earliest: string | undefined;
+      for (const command of commands) {
+        if (command.status !== 'claimed' || !command.leaseUntil) continue;
+        if (earliest === undefined || command.leaseUntil < earliest) earliest = command.leaseUntil;
+      }
+      return earliest;
+    });
   }
 
   private async readRequired(commandId: string): Promise<DurableInboxCommand> {
@@ -220,7 +308,11 @@ export class DurableInboxStore implements DurableInboxStoreLike {
       throw error;
     });
     for (const entry of entries) {
-      if (entry.isFile() && (entry.name.endsWith('.tmp') || (!entry.name.endsWith('.json') && entry.name !== '.inbox.lock'))) {
+      if (!entry.isFile()) continue;
+      // A concurrent writer may be mid-rename; its temp file is not an
+      // authoritative command. Unknown names still fail closed.
+      if (isAtomicWriteTempFile(entry.name)) continue;
+      if (!entry.name.endsWith('.json') && entry.name !== '.inbox.lock') {
         throw new DurableInboxError(`unexpected inbox file: ${entry.name}`, 'corrupt');
       }
     }
@@ -249,6 +341,7 @@ export class DurableInboxStore implements DurableInboxStoreLike {
         status: 'queued',
         updatedAt: now.toISOString(),
         leaseUntil: undefined,
+        claimToken: undefined,
       });
     }
   }
@@ -288,12 +381,22 @@ function normalizeEnqueueInput(input: DurableInboxEnqueueInput): DurableInboxEnq
   const idempotencyKey = boundedString(input.idempotencyKey, 'idempotencyKey', MAX_IDEMPOTENCY_KEY_LENGTH);
   const sessionId = normalizeIdentifier(input.sessionId, 'sessionId');
   const runId = normalizeIdentifier(input.runId, 'runId');
+  if (!isEventSource(input.source)) throw new Error('source must be a durable event source');
+  const occurredAt = input.occurredAt === undefined ? undefined : normalizeTime(input.occurredAt, 'occurredAt');
   const payload = normalizeJsonValue(input.payload, 'payload');
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('payload must be an object');
   if (Buffer.byteLength(canonicalSerialize(payload), 'utf8') > DURABLE_HARNESS_EVENT_MAX_PAYLOAD_BYTES) {
     throw new Error(`payload exceeds ${DURABLE_HARNESS_EVENT_MAX_PAYLOAD_BYTES} bytes`);
   }
-  return { ...input, commandId, idempotencyKey, sessionId, runId, payload: payload as Record<string, unknown> };
+  return {
+    ...input,
+    commandId,
+    idempotencyKey,
+    sessionId,
+    runId,
+    ...(occurredAt ? { occurredAt } : {}),
+    payload: payload as Record<string, unknown>,
+  };
 }
 
 function validateStoredCommand(value: unknown, expectedCommandId: string | undefined): DurableInboxCommand {
@@ -308,12 +411,18 @@ function validateStoredCommand(value: unknown, expectedCommandId: string | undef
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new DurableInboxError('inbox payload must be an object', 'corrupt');
   if (Buffer.byteLength(canonicalSerialize(payload), 'utf8') > DURABLE_HARNESS_EVENT_MAX_PAYLOAD_BYTES) throw new DurableInboxError('inbox payload exceeds size limit', 'corrupt');
   if (!isEventType(record.type)) throw new DurableInboxError(`unknown inbox command type: ${String(record.type)}`, 'corrupt');
+  const source = record.source === undefined ? undefined : readEventSource(record.source);
+  const occurredAt = record.occurredAt === undefined ? undefined : normalizeTime(record.occurredAt, 'occurredAt');
   if (!Number.isSafeInteger(record.attempts) || (record.attempts as number) < 0) throw new DurableInboxError('invalid inbox attempts', 'corrupt');
   if (record.status !== 'queued' && record.status !== 'claimed' && record.status !== 'completed' && record.status !== 'failed') throw new DurableInboxError('invalid inbox status', 'corrupt');
   const enqueuedAt = normalizeTime(record.enqueuedAt, 'enqueuedAt');
   const updatedAt = normalizeTime(record.updatedAt, 'updatedAt');
   const leaseUntil = record.leaseUntil === undefined ? undefined : normalizeTime(record.leaseUntil, 'leaseUntil');
   if (record.status === 'claimed' && !leaseUntil) throw new DurableInboxError('claimed inbox command requires leaseUntil', 'corrupt');
+  const claimToken = record.claimToken === undefined
+    ? undefined
+    : boundedString(record.claimToken, 'claimToken', MAX_CLAIM_TOKEN_LENGTH);
+  if (record.status !== 'claimed' && claimToken) throw new DurableInboxError('only claimed inbox commands may retain a claimToken', 'corrupt');
   const failureReason = record.failureReason === undefined ? undefined : normalizeReason(record.failureReason, 'failureReason');
   const resultEventIds = record.resultEventIds === undefined ? undefined : normalizeResultEventIds(record.resultEventIds);
   return {
@@ -323,15 +432,27 @@ function validateStoredCommand(value: unknown, expectedCommandId: string | undef
     sessionId,
     runId,
     type: record.type,
+    ...(source ? { source } : {}),
+    ...(occurredAt ? { occurredAt } : {}),
     payload: payload as Record<string, unknown>,
     status: record.status,
     enqueuedAt,
     updatedAt,
     ...(leaseUntil ? { leaseUntil } : {}),
+    ...(claimToken ? { claimToken } : {}),
     attempts: record.attempts as number,
     ...(resultEventIds ? { resultEventIds } : {}),
     ...(failureReason ? { failureReason } : {}),
   };
+}
+
+function assertClaimOwner(command: DurableInboxCommand, claimToken: string | undefined): void {
+  // Commands written before claim ownership was introduced have no token and
+  // retain their legacy settlement behavior until their lease is reclaimed.
+  if (command.claimToken === undefined) return;
+  if (!claimToken || claimToken !== command.claimToken) {
+    throw new DurableInboxError(`claim ownership changed for command ${command.commandId}`, 'state');
+  }
 }
 
 function sameCommandInput(command: DurableInboxCommand, input: DurableInboxEnqueueInput & { commandId: string; payload: Record<string, unknown> }): boolean {
@@ -340,7 +461,25 @@ function sameCommandInput(command: DurableInboxCommand, input: DurableInboxEnque
     && command.sessionId === input.sessionId
     && command.runId === input.runId
     && command.type === input.type
+    && (command.source === undefined || command.source === input.source)
+    && (command.occurredAt === undefined || command.occurredAt === input.occurredAt)
     && canonicalSerialize(command.payload) === canonicalSerialize(input.payload);
+}
+
+function normalizeClaimFilter(filter: DurableInboxClaimFilter | undefined): DurableInboxClaimFilter | undefined {
+  if (!filter) return undefined;
+  return {
+    ...(filter.commandId === undefined ? {} : { commandId: normalizeIdentifier(filter.commandId, 'filter.commandId') }),
+    ...(filter.sessionId === undefined ? {} : { sessionId: normalizeIdentifier(filter.sessionId, 'filter.sessionId') }),
+    ...(filter.runId === undefined ? {} : { runId: normalizeIdentifier(filter.runId, 'filter.runId') }),
+  };
+}
+
+function matchesClaimFilter(command: DurableInboxCommand, filter: DurableInboxClaimFilter | undefined): boolean {
+  return filter === undefined
+    || ((filter.commandId === undefined || command.commandId === filter.commandId)
+      && (filter.sessionId === undefined || command.sessionId === filter.sessionId)
+      && (filter.runId === undefined || command.runId === filter.runId));
 }
 
 function normalizeResultEventIds(value: unknown): string[] {
@@ -382,4 +521,14 @@ function isEventType(value: unknown): value is DurableInboxCommand['type'] {
     || value === 'run_failed'
     || value === 'run_interrupted'
     || value === 'run_completed';
+}
+
+function isEventSource(value: unknown): value is NonNullable<DurableInboxCommand['source']> {
+  return value === 'runtime' || value === 'model' || value === 'tool'
+    || value === 'app' || value === 'channel' || value === 'system';
+}
+
+function readEventSource(value: unknown): NonNullable<DurableInboxCommand['source']> {
+  if (!isEventSource(value)) throw new DurableInboxError(`unknown inbox command source: ${String(value)}`, 'corrupt');
+  return value;
 }

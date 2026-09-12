@@ -3,8 +3,10 @@
 import type { Config } from '@littlesheep/config'
 import { ConfigSchema, parseModelRef, resolveApiKey } from '@littlesheep/config'
 import type { AgentRunner } from '@littlesheep/runner'
-import type { ProviderInfo, RuntimeState, RuntimeWebProviderCheck } from '../../shared/runtime-api-contracts.js'
+import type { RuntimeWebProviderCheck } from '../../shared/runtime-api-contracts.js'
 import { LOCAL_APP_API_ROUTES } from '../../shared/local-app-api-routes.js'
+import { routeModelProviders } from './provider-routes.js'
+import { buildRuntimePayload } from './runtime-payload.js'
 import {
   coerceReasoningForModelRef,
   isReasoningSupportedForModelRef,
@@ -12,7 +14,7 @@ import {
   type RuntimeReasoning,
 } from '../../shared/model-capabilities.js'
 import type { DataRootMigrationManager } from '../data-root-migration.js'
-import { injectKeysIntoEnv, deriveEnvVarName, normalizeApiKey, saveApiKey } from '../keychain.js'
+import { injectKeysIntoEnv, normalizeApiKey, saveApiKey } from '../keychain.js'
 import { getAgentProfile, normalizeAgentProfileId } from '../modes.js'
 import { json, readJson, type LocalAppApiRequest } from './http.js'
 import { routeProviderCalibration } from './provider-calibration-route.js'
@@ -152,6 +154,17 @@ export async function routeRuntime(
           return true
         }
         nextDefaults.durableHarnessOriginOverrides = overrides
+      }
+
+      if (Object.prototype.hasOwnProperty.call(body, 'durableHarnessProfileOverrides')) {
+        const overrides = parseDurableHarnessSessionOverrides(body.durableHarnessProfileOverrides)
+        if (!overrides) {
+          json(res, 400, {
+            error: 'durableHarnessProfileOverrides must map non-empty profiles to "shadow" or "next"',
+          })
+          return true
+        }
+        nextDefaults.durableHarnessProfileOverrides = overrides
       }
 
       if (Object.prototype.hasOwnProperty.call(body, 'closePolicy')) {
@@ -304,27 +317,8 @@ export async function routeRuntime(
     return true
   }
 
-  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.configProviders) {
-    const providers: ProviderInfo[] = context.getConfig().providers.map((provider) => {
-      const envVar = deriveEnvVarName(provider.apiKey)
-      const source: 'env' | 'literal' | 'none' = !provider.apiKey
-        ? 'none'
-        : provider.apiKey.startsWith('$')
-          ? 'env'
-          : 'literal'
-      const hasKey = envVar ? !!resolveApiKey(provider.apiKey) : false
-      return {
-        id: provider.id,
-        name: provider.name,
-        baseURL: provider.baseURL,
-        envVar,
-        hasKey,
-        source,
-      }
-    })
-    json(res, 200, { providers })
-    return true
-  }
+
+  if (await routeModelProviders(request, context)) return true
 
   if (method === 'POST' && path === LOCAL_APP_API_ROUTES.configApiKey) {
     const body = await readJson(req)
@@ -368,74 +362,11 @@ export async function routeRuntime(
     }
     return true
   }
-
   return false
 }
 
-export function buildRuntimePayload(config: Config, workplaceDir: string, webProviderCheck?: RuntimeWebProviderCheck): RuntimeState {
-  return {
-    model: config.agents.defaults.model,
-    reasoning: coerceReasoningForModelRef(config.agents.defaults.reasoning, config.agents.defaults.model),
-    profile: normalizeAgentProfileId(config.agents.defaults.profile),
-    contextCompressionThresholdRatio: config.agents.defaults.contextCompressionThresholdRatio,
-    durableHarnessMode: config.agents.defaults.durableHarnessMode,
-    durableHarnessSessionOverrides: { ...config.agents.defaults.durableHarnessSessionOverrides },
-    durableHarnessOriginOverrides: { ...config.agents.defaults.durableHarnessOriginOverrides },
-    closePolicy: config.desktop.closePolicy,
-    workspace: config.agents.defaults.workspace || workplaceDir,
-    workplace: workplaceDir,
-    providers: config.providers.map((provider) => {
-      const envVar = deriveEnvVarName(provider.apiKey)
-      const requiresKey = !!provider.apiKey
-      const hasKey = !requiresKey || !!resolveApiKey(provider.apiKey)
-      return {
-        id: provider.id,
-        name: provider.name ?? provider.id,
-        baseURL: provider.baseURL,
-        models: provider.models ?? [],
-        envVar,
-        requiresKey,
-        hasKey,
-      }
-    }),
-    web: buildRuntimeWebPayload(config, webProviderCheck),
-  }
-}
-
-export function buildRuntimeWebPayload(config: Config, webProviderCheck?: RuntimeWebProviderCheck): RuntimeState['web'] {
-  const provider = config.web.defaultProvider
-    ? config.web.providers.find((candidate) => candidate.id === config.web.defaultProvider)
-    : undefined
-  const providerConfigured = Boolean(provider && (!provider.apiKeyRef || resolveApiKey(provider.apiKeyRef)))
-  const status = !config.web.enabled || config.web.readMode === 'disabled'
-    ? 'disabled' as const
-    : !providerConfigured
-      ? 'unconfigured' as const
-      : webProviderCheck?.providerId !== config.web.defaultProvider || !webProviderCheck
-        ? 'configured_unchecked' as const
-        : webProviderCheck.status === 'healthy'
-          ? 'ready' as const
-          : webProviderCheck.status
-  return {
-    enabled: config.web.enabled,
-    status,
-    ...(config.web.defaultProvider ? { providerId: config.web.defaultProvider } : {}),
-    providerConfigured,
-    readMode: config.web.readMode,
-    dnsResolver: config.web.dnsResolver,
-    strictReadApproval: config.web.strictReadApproval,
-    allowDomains: [...config.web.allowDomains],
-    blockDomains: [...config.web.blockDomains],
-    cacheEnabled: config.web.cache.enabled,
-    cacheTtlSeconds: config.web.cache.ttlSeconds,
-    cacheMaxBytes: config.web.cache.maxBytes,
-    browserFallback: config.web.browserFallback,
-    sensitiveQueryPolicy: config.web.sensitiveQueryPolicy,
-    ...(webProviderCheck?.providerId === config.web.defaultProvider ? { providerCheck: webProviderCheck } : {}),
-    egress: ['query_to_search_provider', 'url_to_target_site', 'evidence_to_current_llm_provider'],
-  }
-}
-
+// Re-exported for existing callers; the projection itself lives in runtime-payload.ts.
+export { buildRuntimePayload, buildRuntimeProvider, buildRuntimeWebPayload } from './runtime-payload.js'
 
 /** Add the fixed MVP adapter while keeping the credential out of Config. */
 export function configureTavilyWeb(config: Config): Config {

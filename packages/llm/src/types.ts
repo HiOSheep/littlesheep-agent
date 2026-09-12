@@ -75,6 +75,7 @@ export interface ChatResponse {
     completionTokens: number;
     totalTokens?: number;
     cachedPromptTokens?: number;
+    cacheWriteTokens?: number;
     reasoningTokens?: number;
   };
   /** Raw model id echoed back. */

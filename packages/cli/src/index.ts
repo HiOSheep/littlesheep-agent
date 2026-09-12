@@ -7,6 +7,7 @@ import {
   parseModelRef,
   getProvider,
   resolveApiKey,
+  registerConfiguredModelCapabilities,
 } from '@littlesheep/config';
 import { loadBranding, dataSubdirs } from '@littlesheep/branding';
 import { createRunner, prepareAuthoritativeRunnerResult, resolveLlm } from '@littlesheep/runner';
@@ -73,6 +74,7 @@ export async function runCli(argv: string[]): Promise<void> {
     const flags = parseImportRepoFlags(args.memoryImportRepo);
     let config = await loadConfig({ dataDir: dataDir.root });
     if (config.providers.length === 0) config = defaultConfigWithOpenAI();
+    registerConfiguredModelCapabilities(config);
     const model = flags.model ?? config.agents.defaults.model;
     try {
       const { llm } = resolveLlm(config, model);
@@ -91,6 +93,9 @@ export async function runCli(argv: string[]): Promise<void> {
   if (config.providers.length === 0) {
     config = defaultConfigWithOpenAI();
   }
+  // User-declared model metadata governs capabilities for models LS does not
+  // ship a built-in record for.
+  registerConfiguredModelCapabilities(config);
 
   // 3. Resolve model override.
   const model = args.model ?? config.agents.defaults.model;
@@ -125,6 +130,7 @@ export async function runCli(argv: string[]): Promise<void> {
     durableHarnessMode: config.agents.defaults.durableHarnessMode,
     durableHarnessSessionOverrides: config.agents.defaults.durableHarnessSessionOverrides,
     durableHarnessOriginOverrides: config.agents.defaults.durableHarnessOriginOverrides,
+    durableHarnessProfileOverrides: config.agents.defaults.durableHarnessProfileOverrides,
   });
 
   // 6. Dispatch: single-shot or REPL.

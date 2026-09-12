@@ -35,6 +35,7 @@ export function assembleResult(
     trace,
     durationMs: Date.now() - startedAtMs,
     usage: ctx.usage,
+    systemPromptProjection: ctx.systemPromptProjection,
     resolvedRunConfig: ctx.resolvedRunConfig,
     capabilitySnapshot: ctx.capabilitySnapshot,
     capabilityProbe: ctx.capabilityProbe,

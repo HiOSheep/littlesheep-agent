@@ -11,7 +11,36 @@ const DSML_TOKEN = '｜DSML｜';
 const USER_TOKEN = '<｜User｜>';
 const ASSISTANT_TOKEN = '<｜Assistant｜>';
 const LATEST_REMINDER_TOKEN = '<｜latest_reminder｜>';
-const TOOL_CALLS_BLOCK_NAME = 'tool_calls';
+const SYSTEM_TOKEN = '<｜System｜>';
+
+/**
+ * Prompt-format variants of the same model family.
+ *
+ * `v4.1` follows the official DeepSeek-V4.1 encoding rules: DSML tag names
+ * carry a leading space, the leading system message is wrapped in `<｜System｜>`,
+ * mid-conversation system messages are supported, and reasoning effort is a
+ * numeric budget. `v4` keeps the previous framing byte-for-byte.
+ */
+export type DeepSeekFraming = 'v4' | 'v4.1';
+
+export const DEEPSEEK_V41_FRAMING: DeepSeekFraming = 'v4.1';
+
+interface DsmlTags {
+  calls: string;
+  invoke: string;
+  parameter: string;
+}
+
+const DSML_TAGS: Record<DeepSeekFraming, DsmlTags> = {
+  v4: { calls: 'tool_calls', invoke: 'invoke', parameter: 'parameter' },
+  'v4.1': { calls: ' calls', invoke: ' invoke', parameter: ' parameter' },
+};
+
+const REASONING_EFFORT_BUDGETS: Record<'low' | 'high' | 'max', number> = {
+  low: 50,
+  high: 75,
+  max: 100,
+};
 
 const TASK_TOKENS = {
   action: '<｜action｜>',
@@ -64,6 +93,8 @@ export interface EncodeDeepSeekV4MessagesOptions {
   dropThinking?: boolean;
   addDefaultBosToken?: boolean;
   reasoningEffort?: 'high' | 'max';
+  /** Prompt-format variant; defaults to the V4 framing. */
+  framing?: DeepSeekFraming;
 }
 
 const REASONING_EFFORT_MAX = [
@@ -74,19 +105,20 @@ const REASONING_EFFORT_MAX = [
   '',
 ].join('\n');
 
-const TOOLS_TEMPLATE = `## Tools
+function toolsTemplate(tags: DsmlTags): string {
+  return `## Tools
 
-You have access to a set of tools to help answer the user's question. You can invoke tools by writing a "<${DSML_TOKEN}tool_calls>" block like the following:
+You have access to a set of tools to help answer the user's question. You can invoke tools by writing a "<${DSML_TOKEN}${tags.calls}>" block like the following:
 
-<${DSML_TOKEN}tool_calls>
-<${DSML_TOKEN}invoke name="$TOOL_NAME">
-<${DSML_TOKEN}parameter name="$PARAMETER_NAME" string="true|false">$PARAMETER_VALUE</${DSML_TOKEN}parameter>
+<${DSML_TOKEN}${tags.calls}>
+<${DSML_TOKEN}${tags.invoke} name="$TOOL_NAME">
+<${DSML_TOKEN}${tags.parameter} name="$PARAMETER_NAME" string="true|false">$PARAMETER_VALUE</${DSML_TOKEN}${tags.parameter}>
 ...
-</${DSML_TOKEN}invoke>
-<${DSML_TOKEN}invoke name="$TOOL_NAME2">
+</${DSML_TOKEN}${tags.invoke}>
+<${DSML_TOKEN}${tags.invoke} name="$TOOL_NAME2">
 ...
-</${DSML_TOKEN}invoke>
-</${DSML_TOKEN}tool_calls>
+</${DSML_TOKEN}${tags.invoke}>
+</${DSML_TOKEN}${tags.calls}>
 
 String parameters should be specified as is and set \`string="true"\`. For all other types (numbers, booleans, arrays, objects), pass the value in JSON format and set \`string="false"\`.
 
@@ -100,6 +132,7 @@ Otherwise, output directly after ${THINKING_END_TOKEN} with tool calls or final 
 
 You MUST strictly follow the above defined tool name and parameter schemas to invoke tool calls.
 `;
+}
 
 /** Render the actual DeepSeek V4 prompt before model tokenization. */
 export function encodeDeepSeekV4Messages(
@@ -118,6 +151,7 @@ export function encodeDeepSeekV4Messages(
   }
 
   let prompt = addDefaultBosToken ? DEEPSEEK_V4_BOS_TOKEN : '';
+  const framing = options.framing ?? 'v4';
   for (let index = 0; index < messages.length; index++) {
     prompt += renderMessage(
       index,
@@ -125,13 +159,17 @@ export function encodeDeepSeekV4Messages(
       thinkingMode,
       effectiveDropThinking,
       options.reasoningEffort,
+      framing,
     );
   }
   return prompt;
 }
 
-/** Convert LittleSheep's final OpenAI-compatible request to DeepSeek's official V4 prompt format. */
-export function encodeDeepSeekV4Request(request: ChatRequest): string {
+/** Convert LittleSheep's final OpenAI-compatible request to DeepSeek's official prompt format. */
+export function encodeDeepSeekV4Request(
+  request: ChatRequest,
+  framing: DeepSeekFraming = 'v4',
+): string {
   const messages = request.messages.map(toDeepSeekMessage);
   if (request.tools && request.tools.length > 0) {
     const systemIndex = messages.findIndex((message) => message.role === 'system');
@@ -150,11 +188,12 @@ export function encodeDeepSeekV4Request(request: ChatRequest): string {
     && request.reasoning_effort !== 'max') {
     throw new Error(`DeepSeek V4 exact counting does not cover reasoning_effort=${request.reasoning_effort}.`);
   }
-  const reasoningEffort = resolveProviderPromptReasoningEffort(request);
+  const reasoningEffort = resolveProviderPromptReasoningEffort(request, framing);
   return encodeDeepSeekV4Messages(messages, {
     thinkingMode,
     dropThinking: request.thinking?.clear_thinking !== false,
     reasoningEffort,
+    framing,
   });
 }
 
@@ -163,8 +202,16 @@ export function encodeDeepSeekV4Request(request: ChatRequest): string {
  * default/high thinking path as well. Pro follows the open-weights encoder.
  * The remaining hosted-only max control tokens are accounted by the counter.
  */
-function resolveProviderPromptReasoningEffort(request: ChatRequest): 'high' | 'max' | undefined {
+function resolveProviderPromptReasoningEffort(
+  request: ChatRequest,
+  framing: DeepSeekFraming,
+): 'high' | 'max' | undefined {
   if (request.thinking?.type !== 'enabled') return undefined;
+  // V4.1 renders the numeric budget of the requested alias, so `high` stays
+  // `high` (75). The hosted V4 Flash rule below is V4-only and retired with it.
+  if (framing === 'v4.1') {
+    return request.reasoning_effort === 'max' ? 'max' : request.reasoning_effort === 'high' ? 'high' : undefined;
+  }
   const model = request.model.trim().toLowerCase();
   if (model === 'deepseek-v4-flash') return 'max';
   return request.reasoning_effort === 'max' ? 'max' : undefined;
@@ -176,17 +223,22 @@ function renderMessage(
   thinkingMode: ThinkingMode,
   dropThinking: boolean,
   reasoningEffort: 'high' | 'max' | undefined,
+  framing: DeepSeekFraming,
 ): string {
   const message = messages[index]!;
   const lastUserIndex = findLastUserIndex(messages);
-  let prompt = index === 0 && thinkingMode === 'thinking' && reasoningEffort === 'max'
-    ? REASONING_EFFORT_MAX
-    : '';
+  const midConversationSystem = framing === 'v4.1' && message.role === 'system' && index > 0;
+  const effortPrefix = renderFramingPrefix(index, thinkingMode, reasoningEffort, framing);
+  // V4.1 renders the numeric effort budget inside a `<｜System｜>` frame, even
+  // when the conversation has no system message of its own.
+  const usesSystemFrame = framing === 'v4.1' && (message.role === 'system' || effortPrefix !== '');
+  let prompt = usesSystemFrame ? SYSTEM_TOKEN : '';
+  prompt += effortPrefix;
 
   switch (message.role) {
     case 'system':
       prompt += message.content ?? '';
-      if (message.tools?.length) prompt += `\n\n${renderTools(message.tools)}`;
+      if (message.tools?.length) prompt += `\n\n${renderTools(message.tools, framing)}`;
       if (message.response_format !== undefined) {
         prompt += `\n\n## Response Format:\n\nYou MUST strictly adhere to the following schema to reply:\n${pythonJson(message.response_format)}`;
       }
@@ -194,7 +246,7 @@ function renderMessage(
     case 'developer': {
       if (!message.content) throw new Error('DeepSeek V4 developer messages require content.');
       prompt += `${USER_TOKEN}${message.content}`;
-      if (message.tools?.length) prompt += `\n\n${renderTools(message.tools)}`;
+      if (message.tools?.length) prompt += `\n\n${renderTools(message.tools, framing)}`;
       if (message.response_format !== undefined) {
         prompt += `\n\n## Response Format:\n\nYou MUST strictly adhere to the following schema to reply:\n${pythonJson(message.response_format)}`;
       }
@@ -220,8 +272,9 @@ function renderMessage(
       if (thinkingMode === 'thinking' && !previousHasTask) {
         if (!dropThinking || index > lastUserIndex) thinkingPart = `${reasoning}${THINKING_END_TOKEN}`;
       }
+      const tags = DSML_TAGS[framing];
       const toolCalls = message.tool_calls?.length
-        ? `\n\n<${DSML_TOKEN}${TOOL_CALLS_BLOCK_NAME}>\n${message.tool_calls.map(renderToolCall).join('\n')}\n</${DSML_TOKEN}${TOOL_CALLS_BLOCK_NAME}>`
+        ? `\n\n<${DSML_TOKEN}${tags.calls}>\n${message.tool_calls.map((call) => renderToolCall(call, framing)).join('\n')}\n</${DSML_TOKEN}${tags.calls}>`
         : '';
       prompt += `${thinkingPart}${message.content ?? ''}${toolCalls}`;
       if (!message.wo_eos) prompt += DEEPSEEK_V4_EOS_TOKEN;
@@ -242,7 +295,7 @@ function renderMessage(
     } else {
       prompt += taskToken;
     }
-  } else if (message.role === 'user' || message.role === 'developer') {
+  } else if (message.role === 'user' || message.role === 'developer' || midConversationSystem) {
     prompt += ASSISTANT_TOKEN;
     prompt += thinkingMode === 'thinking' && (!dropThinking || index >= lastUserIndex)
       ? THINKING_START_TOKEN
@@ -251,16 +304,37 @@ function renderMessage(
   return prompt;
 }
 
-function renderTools(tools: readonly ToolSpec[]): string {
+/**
+ * V4.1 renders a numeric reasoning budget instead of the natural-language max
+ * description, and only when thinking is on at the beginning of the thread.
+ */
+function renderFramingPrefix(
+  index: number,
+  thinkingMode: ThinkingMode,
+  reasoningEffort: 'high' | 'max' | undefined,
+  framing: DeepSeekFraming,
+): string {
+  if (framing === 'v4') {
+    return index === 0 && thinkingMode === 'thinking' && reasoningEffort === 'max'
+      ? REASONING_EFFORT_MAX
+      : '';
+  }
+  if (index !== 0 || thinkingMode !== 'thinking') return '';
+  const budget = REASONING_EFFORT_BUDGETS[reasoningEffort ?? 'high'];
+  return `Reasoning Effort: ${budget} (range 1-100, the higher the value, the more thorough the reasoning)\n\n`;
+}
+
+function renderTools(tools: readonly ToolSpec[], framing: DeepSeekFraming): string {
   const schemas = tools.map((tool) => pythonJson(tool.function as unknown as JsonValue)).join('\n');
-  return TOOLS_TEMPLATE.replace('{tool_schemas}', schemas);
+  return toolsTemplate(DSML_TAGS[framing]).replace('{tool_schemas}', schemas);
 }
 
-function renderToolCall(toolCall: DeepSeekToolCall): string {
-  return `<${DSML_TOKEN}invoke name="${toolCall.function.name}">\n${encodeArgumentsToDsml(toolCall)}\n</${DSML_TOKEN}invoke>`;
+function renderToolCall(toolCall: DeepSeekToolCall, framing: DeepSeekFraming): string {
+  const tags = DSML_TAGS[framing];
+  return `<${DSML_TOKEN}${tags.invoke} name="${toolCall.function.name}">\n${encodeArgumentsToDsml(toolCall, framing)}\n</${DSML_TOKEN}${tags.invoke}>`;
 }
 
-function encodeArgumentsToDsml(toolCall: DeepSeekToolCall): string {
+function encodeArgumentsToDsml(toolCall: DeepSeekToolCall, framing: DeepSeekFraming): string {
   let parsed: unknown;
   try {
     parsed = JSON.parse(toolCall.function.arguments);
@@ -271,7 +345,8 @@ function encodeArgumentsToDsml(toolCall: DeepSeekToolCall): string {
   return Object.entries(argumentsObject).map(([key, value]) => {
     const isString = typeof value === 'string';
     const rendered = isString ? value : pythonJson(value as JsonValue);
-    return `<${DSML_TOKEN}parameter name="${key}" string="${isString ? 'true' : 'false'}">${rendered}</${DSML_TOKEN}parameter>`;
+    const tags = DSML_TAGS[framing];
+    return `<${DSML_TOKEN}${tags.parameter} name="${key}" string="${isString ? 'true' : 'false'}">${rendered}</${DSML_TOKEN}${tags.parameter}>`;
   }).join('\n');
 }
 

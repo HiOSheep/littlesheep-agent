@@ -12,7 +12,7 @@ import { DEFAULT_CONFIG } from '@littlesheep/config';
 import { DEFAULT_BRANDING, dataSubdirs } from '@littlesheep/branding';
 import { textMessage, type AgentTool, type Message, type SessionId } from '@littlesheep/types';
 import { attachmentManifestResourceId, attachmentResourceId } from '@littlesheep/memory-tree';
-import { reduceDurableRunProjection } from '@littlesheep/harness';
+import { compareHarnessPaths, reduceDurableRunProjection } from '@littlesheep/harness';
 
 // ─── Mock LlmClient ─────────────────────────────────────────────────────
 
@@ -168,11 +168,68 @@ describe('createRunner run', () => {
       durableHarnessMode: 'next',
     });
     expect(appResult.finalReplySettlement?.status).toBe('settled');
+    expect((await runner.replay(appResult.runId))?.durableHarnessMode).toBe('next');
+    expect(await runner.durableHarnessModeForRun?.(String(appResult.sessionId), appResult.runId)).toBe('next');
 
     const cliResult = await runner.run({ text: 'cli origin turn', origin: 'cli' });
     expect(cliResult).toMatchObject({
       status: 'ok',
       reply: 'origin override reply',
+      durableHarnessMode: 'shadow',
+    });
+    expect(runner.durableHarnessMode).toBe('shadow');
+  });
+
+  it('resolves durable Harness mode per behavior profile below origin and session', async () => {
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('unused')),
+      bootstrapDir: dataDir,
+      skillsDirs: [],
+      durableHarnessMode: 'shadow',
+      durableHarnessOriginOverrides: { cli: 'next' },
+      durableHarnessProfileOverrides: { coding: 'next', general: 'shadow' },
+    });
+    createdRunners.push(runner);
+
+    // Profile override applies when neither session nor origin pins the mode.
+    expect(runner.durableHarnessModeForSession?.('session-other', undefined, 'coding')).toBe('next');
+    expect(runner.durableHarnessModeForSession?.('session-other', undefined, 'general')).toBe('shadow');
+    // Origin override outranks the profile override.
+    expect(runner.durableHarnessModeForSession?.('session-other', 'cli', 'general')).toBe('next');
+    // Session override outranks both.
+    expect(runner.durableHarnessModeForSession?.('session-other')).toBe('shadow');
+  });
+
+  it('applies a behavior-profile override to a real run', async () => {
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('profile override reply')),
+      durableHarnessMode: 'shadow',
+      durableHarnessProfileOverrides: { coding: 'next' },
+    });
+    createdRunners.push(runner);
+
+    const coding = await runner.run({ text: 'coding profile turn', profile: 'coding' });
+    expect(coding).toMatchObject({
+      status: 'ok',
+      reply: 'profile override reply',
+      durableHarnessMode: 'next',
+    });
+    expect(coding.finalReplySettlement?.status).toBe('settled');
+    expect((await runner.replay(coding.runId))?.durableHarnessMode).toBe('next');
+    expect(await runner.durableHarnessModeForRun?.(String(coding.sessionId), coding.runId)).toBe('next');
+
+    const general = await runner.run({ text: 'general profile turn', profile: 'general' });
+    expect((await runner.replay(general.runId))?.durableHarnessMode).toBe('shadow');
+    expect(await runner.durableHarnessModeForRun?.(String(general.sessionId), general.runId)).toBe('shadow');
+    expect(general).toMatchObject({
+      status: 'ok',
+      reply: 'profile override reply',
       durableHarnessMode: 'shadow',
     });
     expect(runner.durableHarnessMode).toBe('shadow');
@@ -267,15 +324,140 @@ describe('createRunner run', () => {
     expect(result.messages.filter((message) => message.role === 'assistant')).toHaveLength(1);
 
     const events = await runner.infra.durableEventStore.read(String(result.sessionId), result.runId);
+    const ingressEvents = events.filter((event) => (
+      event.type === 'run_accepted' || event.type === 'user_input_appended'
+    ));
+    const inboxCommands = await Promise.all(ingressEvents.map((event) => runner.infra.durableInboxStore.read(event.eventId)));
+    expect(inboxCommands).toHaveLength(2);
+    expect(inboxCommands.every((command, index) => (
+      command?.status === 'completed'
+      && command.source === ingressEvents[index]?.source
+      && command.claimToken === undefined
+      && command.resultEventIds?.[0] === ingressEvents[index]?.eventId
+    ))).toBe(true);
+    expect(await runner.infra.durableInboxStore.read(
+      events.find((event) => event.type === 'route_decided')?.eventId ?? 'missing',
+    )).toBeNull();
     expect(events.filter((event) => event.type === 'stage_transition_recorded').length).toBeGreaterThan(0);
     expect(events.filter((event) => event.type === 'final_reply_settled')).toHaveLength(1);
     expect(events.at(-1)?.type).toBe('run_completed');
+    expect(await runner.infra.durableRunLeaseStore.read(String(result.sessionId), result.runId)).toMatchObject({
+      status: 'released',
+      attempts: 1,
+    });
     const projection = reduceDurableRunProjection(events);
     expect(projection.status).toBe('completed');
     expect(projection.finalReply.state).toBe('settled');
     expect(projection.stageTransitions.map((transition) => transition.stage)).toEqual(
       result.trace.map((transition) => transition.name),
     );
+  });
+
+  it('holds a renewable durable run lease until a next run settles', async () => {
+    let releaseFirstRequest!: () => void;
+    const firstRequest = new Promise<void>((resolveRequest) => { releaseFirstRequest = resolveRequest; });
+    const llm = makeMockLlm(textResponse('Lease-protected reply'));
+    (llm.chat as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
+      await firstRequest;
+      return textResponse('{"type":"simple","confidence":0.99,"reason":"reply"}');
+    });
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(runner);
+    const session = await runner.sessionManager.create('test/model');
+    const runId = 'lease-protected-run';
+
+    const running = runner.run({ sessionId: session.id, runId, text: 'hello' });
+    await expect.poll(() => (llm.chat as ReturnType<typeof vi.fn>).mock.calls.length, {
+      timeout: 10_000,
+    }).toBeGreaterThan(0);
+    await expect(runner.infra.durableRunLeaseStore.listActiveRuns()).resolves.toEqual([{
+      sessionId: String(session.id),
+      runId,
+    }]);
+    await expect(runner.recoverDurableRun?.(session.id, runId))
+      .rejects.toThrow('durable run is still owned');
+
+    releaseFirstRequest();
+    const result = await running;
+    expect(result.status).toBe('ok');
+    await expect(runner.infra.durableRunLeaseStore.read(String(session.id), runId)).resolves.toMatchObject({
+      status: 'released',
+      attempts: 1,
+    });
+  });
+
+  it('holds an effect lease across real tool execution and releases it after settlement', async () => {
+    let releaseTool!: () => void;
+    const toolGate = new Promise<void>((resolveTool) => { releaseTool = resolveTool; });
+    let toolStarted = false;
+    const tool: AgentTool = {
+      name: 'held_write',
+      description: 'Hold one mutation open for ownership inspection.',
+      inputSchema: { parse: (input) => input, jsonSchema: { type: 'object' } },
+      execution: {
+        concurrency: 'exclusive',
+        resources: () => [{ key: 'workspace:held-write', mode: 'write' }],
+      },
+      async execute() {
+        toolStarted = true;
+        await toolGate;
+        return { callId: '', ok: true, output: 'held write complete' };
+      },
+    };
+    const llm = makeMockLlm([
+      textResponse('{"type":"problem","confidence":0.99,"reason":"execute held write"}'),
+      textResponse('{"plan":[{"description":"hold write","tools":["held_write"]}]}'),
+      {
+        content: '',
+        finishReason: 'tool_calls',
+        toolCalls: [{
+          id: 'held-write-call',
+          type: 'function',
+          function: { name: 'held_write', arguments: '{"value":"secret"}' },
+        }],
+      },
+      textResponse('Held write completed.'),
+      textResponse('Held write verified.'),
+      textResponse('{"verdict":"pass","reason":"write completed"}'),
+      textResponse('{"memories":[],"createSkill":null}'),
+      textResponse('{"observations":[]}'),
+    ]);
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(runner);
+    const session = await runner.sessionManager.create('test/model');
+    const runId = 'effect-lease-protected-run';
+    const running = runner.run({ sessionId: session.id, runId, text: 'perform held write', additionalTools: [tool] });
+
+    await expect.poll(() => toolStarted, { timeout: 10_000 }).toBe(true);
+    const activeEvents = await runner.infra.durableEventStore.read(String(session.id), runId);
+    const intent = activeEvents.find((event) => event.type === 'effect_intent_created');
+    expect(intent?.payload).toMatchObject({
+      ownerId: expect.stringMatching(/^[a-f0-9]{64}$/),
+      leaseUntil: expect.any(String),
+    });
+    const effectId = String(intent?.payload.effectId);
+    await expect(runner.infra.durableEffectLeaseStore.read({
+      sessionId: String(session.id), runId, effectId,
+    })).resolves.toMatchObject({ status: 'active', ownerToken: expect.any(String) });
+
+    releaseTool();
+    const result = await running;
+    expect(result.status).toBe('ok');
+    await expect(runner.infra.durableEffectLeaseStore.read({
+      sessionId: String(session.id), runId, effectId,
+    })).resolves.toMatchObject({ status: 'released', attempts: 1 });
   });
 
   it('compares shadow and next deterministically without duplicate replies or cache prefix drift', async () => {
@@ -721,6 +903,71 @@ describe('createRunner run', () => {
     expect(observation?.invalidationReasons).toContain('system_policy_changed');
   });
 
+  it('explains a harness path switch from the persisted cache observation', async () => {
+    const shadowRunner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('shadow path reply')),
+      durableHarnessMode: 'shadow',
+    });
+    createdRunners.push(shadowRunner);
+    const first = await shadowRunner.run({ text: 'path switch turn' });
+    expect(first).toMatchObject({ status: 'ok', durableHarnessMode: 'shadow' });
+    await shadowRunner.shutdown();
+    createdRunners.pop();
+
+    const nextRunner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('next path reply')),
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(nextRunner);
+    const second = await nextRunner.run({ sessionId: first.sessionId, text: 'path switch turn two' });
+    expect(second).toMatchObject({ status: 'ok', durableHarnessMode: 'next' });
+
+    const observation = second.modelRequests?.find((request) => request.cacheObservation)?.cacheObservation;
+    // Switching the harness path changes the assembled prompt and the request
+    // sequence, so the ledger must explain the miss explicitly instead of
+    // silently reporting a hit or falling back to `unknown`.
+    expect(observation?.invalidationReasons).toContain('prompt_version_changed');
+    expect(observation?.invalidationReasons?.length ?? 0).toBeGreaterThan(0);
+    expect(observation?.invalidationReasons).not.toContain('unknown');
+    // No authoritative cache usage was produced in this fixture, so the ledger
+    // stays `unavailable` with no computed hit ratio rather than inventing one.
+    expect(observation?.providerPrompt.status).toBe('unavailable');
+    expect(observation?.providerPrompt.hitRatio).toBeUndefined();
+  });
+
+  it('tells the user why a next run failed instead of only the settlement code', async () => {
+    const llm = makeMockLlm(() => {
+      throw new Error('Authentication Fails, Your api key: ****dead is invalid');
+    });
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(runner);
+
+    const result = await runner.run({ text: '你好' });
+    expect(result.status).toBe('error')
+    expect(result.reply).toBe('')
+    expect(result.finalReplySettlement).toBeUndefined()
+    expect(result.runtimeStatus).toMatchObject({ status: 'failed' })
+    // The actionable Provider cause must survive the fail-closed boundary.
+    expect(result.error).toContain('Authentication Fails')
+    expect(result.messages.every((message) => message.role !== 'assistant' || message.stage !== 'finalize')).toBe(true)
+
+    // History reload must show the same cause, not a different code.
+    const replay = await runner.replay(result.runId)
+    expect(replay?.error).toContain('Authentication Fails')
+  })
+
   it('replays a completed request through the per-session durable mode', async () => {
     const firstRunner = await createRunner({
       config: DEFAULT_CONFIG,
@@ -1092,6 +1339,53 @@ describe('createRunner run', () => {
     expect(report.report.providerPrompt.hitRatio).toBeCloseTo(0.3);
     expect(report.report.releaseGate.reasons).toContain('real_provider_reconciliation_not_verified');
     expect(report.report.releaseGate.reasons).toContain('quality_continuity_not_observed');
+  });
+
+  it('reports a CACHE-09 path comparison from real shadow and next observations', async () => {
+    const runMode = async (mode: 'shadow' | 'next') => {
+      const runner = await createRunner({
+        config: DEFAULT_CONFIG,
+        branding: DEFAULT_BRANDING,
+        model: 'test/model',
+        llm: makeMockLlm({
+          ...textResponse('path comparison reply'),
+          usage: { promptTokens: 100, completionTokens: 10, cachedPromptTokens: 0 },
+        }),
+        durableHarnessMode: mode,
+      });
+      createdRunners.push(runner);
+      const result = await runner.run({ text: 'path comparison input' });
+      expect(result.status).toBe('ok');
+      const projection = await runner.infra.loadSessionDurableProjection?.(String(result.sessionId));
+      const key = runner.infra.cacheObservationKey;
+      const report = await runner.infra.cacheObservationStore?.report({
+        sessionId: String(result.sessionId),
+        workspaceScope: DEFAULT_CONFIG.agents.defaults.workspace,
+        permissionPolicyId: result.resolvedRunConfig?.permissionPolicyId ?? 'research',
+        key,
+        modelRequests: projection?.modelRequests,
+        verifications: projection?.verifications,
+      });
+      if (report?.status !== 'available') throw new Error(`cache quality report unavailable for ${mode}`);
+      return report.report;
+    };
+
+    const shadow = await runMode('shadow');
+    const next = await runMode('next');
+    const comparison = compareHarnessPaths([
+      { label: 'shadow', report: shadow },
+      { label: 'next', report: next },
+    ]);
+    expect(comparison.paths.map((entry) => entry.label)).toEqual(['shadow', 'next']);
+    for (const path of comparison.paths) {
+      expect(path.summary.requestCount).toBeGreaterThan(0);
+      expect(path.summary.promptTokens).toBeGreaterThan(0);
+      expect(path.summary.releaseGateStatus).toBe('blocked');
+    }
+    expect(comparison.deltas.promptTokens).toBe(0);
+    expect(comparison.deltas.requestCount).toBe(0);
+    expect(shadow.providerPrompt.hitRatio).toBe(0);
+    expect(next.providerPrompt.hitRatio).toBe(0);
   });
 
   it('keeps a normal Runner reply successful when cache observation persistence fails', async () => {
@@ -1495,6 +1789,374 @@ describe('createRunner run', () => {
 
     const secondRecovery = await restarted.recoverDurableRun!(first.sessionId, first.runId);
     expect(secondRecovery.actions).toEqual([]);
+    expect(toolCalls).toBe(1);
+  });
+
+  it('settles a pending effect from the host outcome query during restart recovery', async () => {
+    const workspace = join(dataDir, 'effect-outcome-query-workspace');
+    mkdirSync(workspace, { recursive: true });
+    let toolCalls = 0;
+    const mutateProbe: AgentTool = {
+      name: 'mutate_probe',
+      description: 'Perform one durable mutation whose settlement may be lost.',
+      inputSchema: { parse: (input) => input, jsonSchema: { type: 'object' } },
+      execution: {
+        concurrency: 'exclusive',
+        resources: () => [{ key: 'workspace:outcome-query', mode: 'write' }],
+      },
+      async execute() {
+        toolCalls += 1;
+        writeFileSync(join(workspace, 'outcome-query.txt'), 'mutation completed', 'utf8');
+        return { callId: '', ok: true, output: 'mutation completed' };
+      },
+    };
+    let toolCallIssued = false;
+    const llm = makeMockLlm((request) => {
+      const serialized = JSON.stringify(request.messages);
+      if (serialized.includes('Choose the next LittleSheep activity')) {
+        return textResponse('{"type":"problem","confidence":0.99,"reason":"execute the mutating probe"}');
+      }
+      if (serialized.includes('You are the RECOVER stage')) {
+        return textResponse('{"action":"abort","reason":"the effect settlement is missing"}');
+      }
+      if (serialized.includes('You are the VERIFY stage')) {
+        return textResponse('{"verdict":"fail","reason":"the effect was not durably settled"}');
+      }
+      if (serialized.includes('You are the DECIDE stage')) {
+        return textResponse('{"plan":[{"description":"run the mutating probe","tools":["mutate_probe"]}]}');
+      }
+      if (!toolCallIssued && !request.messages.some((message) => message.role === 'tool')) {
+        toolCallIssued = true;
+        return {
+          content: '',
+          finishReason: 'tool_calls',
+          toolCalls: [{
+            id: 'outcome-query-call',
+            type: 'function',
+            function: { name: 'mutate_probe', arguments: '{}' },
+          }],
+        };
+      }
+      if (request.messages.some((message) => message.role === 'tool')) {
+        return textResponse('The mutation was not durably settled.');
+      }
+      return textResponse('{"type":"problem","confidence":0.99,"reason":"execute the mutating probe"}');
+    });
+    const firstRunner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(firstRunner);
+    const append = firstRunner.infra.durableEventStore.append.bind(firstRunner.infra.durableEventStore);
+    let settlementFailures = 0;
+    vi.spyOn(firstRunner.infra.durableEventStore, 'append').mockImplementation(async (input) => {
+      if (input.type === 'effect_settled' && settlementFailures++ === 0) {
+        throw new Error('settlement receipt disk full');
+      }
+      return append(input);
+    });
+
+    const first = await firstRunner.run({
+      runId: 'run-effect-outcome-query',
+      text: 'run the mutating probe',
+      cwd: workspace,
+      additionalTools: [mutateProbe],
+    });
+    expect(toolCalls).toBe(1);
+    const beforeRestart = reduceDurableRunProjection(
+      await firstRunner.infra.durableEventStore.read(String(first.sessionId), first.runId),
+    );
+    expect(beforeRestart.pendingEffectIds.length).toBeGreaterThan(0);
+    await firstRunner.shutdown();
+    createdRunners.pop();
+
+    const queried: string[] = [];
+    const restarted = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('must not execute on recovery')),
+      durableHarnessMode: 'next',
+      queryDurableEffectOutcome: async (effect) => {
+        queried.push(effect.effectId);
+        return { known: true, status: 'succeeded', evidenceRef: 'external:reconciled' };
+      },
+    });
+    createdRunners.push(restarted);
+
+    const recovery = await restarted.recoverDurableRun!(first.sessionId, first.runId);
+    expect(queried.length).toBeGreaterThan(0);
+    expect(recovery.actions).toContainEqual(expect.objectContaining({
+      kind: 'effect_settled',
+      status: 'succeeded',
+    }));
+    expect(recovery.projection.pendingEffectIds).toEqual([]);
+    expect(recovery.projection.unknownEffectIds).toEqual([]);
+    expect(recovery.projection.effects.some((effect) => (
+      effect.status === 'succeeded' && effect.evidenceRef === 'external:reconciled'
+    ))).toBe(true);
+    expect(toolCalls).toBe(1);
+    expect((await restarted.replayDurableFinalReply!(first.sessionId, first.runId)).kind).not.toBe('settled');
+  });
+
+  it('keeps a pending effect unknown when the host denies reconciliation reads', async () => {
+    const workspace = join(dataDir, 'effect-reconciler-denied-workspace');
+    mkdirSync(workspace, { recursive: true });
+    let toolCalls = 0;
+    const mutateProbe: AgentTool = {
+      name: 'mutate_probe',
+      description: 'Perform one durable mutation whose settlement may be lost.',
+      inputSchema: { parse: (input) => input, jsonSchema: { type: 'object' } },
+      execution: {
+        concurrency: 'exclusive',
+        resources: () => [{ key: 'workspace:reconciler-denied', mode: 'write' }],
+      },
+      async execute() {
+        toolCalls += 1;
+        writeFileSync(join(workspace, 'denied.txt'), 'mutation completed', 'utf8');
+        return { callId: '', ok: true, output: 'mutation completed' };
+      },
+    };
+    let toolCallIssued = false;
+    const llm = makeMockLlm((request) => {
+      const serialized = JSON.stringify(request.messages);
+      if (serialized.includes('Choose the next LittleSheep activity')) {
+        return textResponse('{"type":"problem","confidence":0.99,"reason":"execute the mutating probe"}');
+      }
+      if (serialized.includes('You are the RECOVER stage')) {
+        return textResponse('{"action":"abort","reason":"the effect settlement is missing"}');
+      }
+      if (serialized.includes('You are the VERIFY stage')) {
+        return textResponse('{"verdict":"fail","reason":"the effect was not durably settled"}');
+      }
+      if (serialized.includes('You are the DECIDE stage')) {
+        return textResponse('{"plan":[{"description":"run the mutating probe","tools":["mutate_probe"]}]}');
+      }
+      if (!toolCallIssued && !request.messages.some((message) => message.role === 'tool')) {
+        toolCallIssued = true;
+        return {
+          content: '',
+          finishReason: 'tool_calls',
+          toolCalls: [{
+            id: 'reconciler-denied-call',
+            type: 'function',
+            function: { name: 'mutate_probe', arguments: '{}' },
+          }],
+        };
+      }
+      if (request.messages.some((message) => message.role === 'tool')) {
+        return textResponse('The mutation was not durably settled.');
+      }
+      return textResponse('{"type":"problem","confidence":0.99,"reason":"execute the mutating probe"}');
+    });
+    const firstRunner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(firstRunner);
+    firstRunner.infra.registry.register(mutateProbe, 'run-scoped');
+    const append = firstRunner.infra.durableEventStore.append.bind(firstRunner.infra.durableEventStore);
+    let settlementFailures = 0;
+    vi.spyOn(firstRunner.infra.durableEventStore, 'append').mockImplementation(async (input) => {
+      if (input.type === 'effect_settled' && settlementFailures++ === 0) {
+        throw new Error('settlement receipt disk full');
+      }
+      return append(input);
+    });
+
+    const first = await firstRunner.run({
+      runId: 'run-effect-reconciler-denied',
+      text: 'run the mutating probe',
+      cwd: workspace,
+    });
+    expect(toolCalls).toBe(1);
+    await firstRunner.shutdown();
+    createdRunners.pop();
+
+    let reconcileCalled = false;
+    let sawAuthorizeRead = false;
+    const restarted = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('must not execute on recovery')),
+      durableHarnessMode: 'next',
+      authorizeDurableEffectRead: async () => false,
+    });
+    createdRunners.push(restarted);
+    restarted.infra.registry.register({
+      name: 'mutate_probe',
+      description: 'probe whose reconciliation read is denied',
+      inputSchema: { parse: (input) => input, jsonSchema: { type: 'object' } },
+      async execute() {
+        throw new Error('recovery must not execute the tool');
+      },
+      async reconcileEffect(_effect, ctx) {
+        reconcileCalled = true;
+        sawAuthorizeRead = typeof ctx.authorizeRead === 'function';
+        const allowed = await ctx.authorizeRead?.(join(workspace, 'denied.txt')) ?? false;
+        return allowed
+          ? { known: true, status: 'succeeded', evidenceRef: 'tool:reconciled' }
+          : { known: false, reason: 'reconciliation read was not authorized' };
+      },
+    }, 'run-scoped');
+
+    const recovery = await restarted.recoverDurableRun!(first.sessionId, first.runId);
+    // A refused read can never settle the effect: it stays unknown so the
+    // user decides instead of the runtime guessing.
+    expect(reconcileCalled).toBe(true);
+    expect(sawAuthorizeRead).toBe(true);
+    expect(recovery.actions).toContainEqual(expect.objectContaining({
+      kind: 'effect_marked_unknown',
+      reason: 'effect_settlement_unknown',
+    }));
+    expect(recovery.projection.pendingEffectIds).toEqual([]);
+    expect(recovery.projection.unknownEffectIds.length).toBeGreaterThan(0);
+    expect(toolCalls).toBe(1);
+  });
+
+  it('reconciles a pending effect through a registered tool reconciler', async () => {
+    const workspace = join(dataDir, 'effect-tool-reconciler-workspace');
+    mkdirSync(workspace, { recursive: true });
+    let toolCalls = 0;
+    const mutateProbe: AgentTool = {
+      name: 'mutate_probe',
+      description: 'Perform one durable mutation whose settlement may be lost.',
+      inputSchema: { parse: (input) => input, jsonSchema: { type: 'object' } },
+      execution: {
+        concurrency: 'exclusive',
+        resources: () => [{ key: 'workspace:tool-reconciler', mode: 'write' }],
+      },
+      // Option A: the tool declares a bounded recovery key that must travel
+      // with the effect intent and reach the reconciler after a restart.
+      reconciliationKey() {
+        return { target: 'tool-reconciler.txt', attempt: 1 };
+      },
+      async execute() {
+        toolCalls += 1;
+        writeFileSync(join(workspace, 'tool-reconciler.txt'), 'mutation completed', 'utf8');
+        return { callId: '', ok: true, output: 'mutation completed' };
+      },
+    };
+    let toolCallIssued = false;
+    const llm = makeMockLlm((request) => {
+      const serialized = JSON.stringify(request.messages);
+      if (serialized.includes('Choose the next LittleSheep activity')) {
+        return textResponse('{"type":"problem","confidence":0.99,"reason":"execute the mutating probe"}');
+      }
+      if (serialized.includes('You are the RECOVER stage')) {
+        return textResponse('{"action":"abort","reason":"the effect settlement is missing"}');
+      }
+      if (serialized.includes('You are the VERIFY stage')) {
+        return textResponse('{"verdict":"fail","reason":"the effect was not durably settled"}');
+      }
+      if (serialized.includes('You are the DECIDE stage')) {
+        return textResponse('{"plan":[{"description":"run the mutating probe","tools":["mutate_probe"]}]}');
+      }
+      if (!toolCallIssued && !request.messages.some((message) => message.role === 'tool')) {
+        toolCallIssued = true;
+        return {
+          content: '',
+          finishReason: 'tool_calls',
+          toolCalls: [{
+            id: 'tool-reconciler-call',
+            type: 'function',
+            function: { name: 'mutate_probe', arguments: '{}' },
+          }],
+        };
+      }
+      if (request.messages.some((message) => message.role === 'tool')) {
+        return textResponse('The mutation was not durably settled.');
+      }
+      return textResponse('{"type":"problem","confidence":0.99,"reason":"execute the mutating probe"}');
+    });
+    const firstRunner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+      durableHarnessMode: 'next',
+    });
+    createdRunners.push(firstRunner);
+    firstRunner.infra.registry.register(mutateProbe, 'run-scoped');
+    const append = firstRunner.infra.durableEventStore.append.bind(firstRunner.infra.durableEventStore);
+    let settlementFailures = 0;
+    vi.spyOn(firstRunner.infra.durableEventStore, 'append').mockImplementation(async (input) => {
+      if (input.type === 'effect_settled' && settlementFailures++ === 0) {
+        throw new Error('settlement receipt disk full');
+      }
+      return append(input);
+    });
+
+    const first = await firstRunner.run({
+      runId: 'run-effect-tool-reconciler',
+      text: 'run the mutating probe',
+      cwd: workspace,
+    });
+    expect(toolCalls).toBe(1);
+    const beforeRestart = reduceDurableRunProjection(
+      await firstRunner.infra.durableEventStore.read(String(first.sessionId), first.runId),
+    );
+    expect(beforeRestart.pendingEffectIds.length).toBeGreaterThan(0);
+    await firstRunner.shutdown();
+    createdRunners.pop();
+
+    const restartLlm = makeMockLlm(textResponse('must not execute on recovery'));
+    const authorizedReads: Array<{ path: string; runId: string }> = [];
+    const restarted = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: restartLlm,
+      durableHarnessMode: 'next',
+      authorizeDurableEffectRead: async (path, identity) => {
+        authorizedReads.push({ path, runId: identity.runId });
+        return true;
+      },
+    });
+    createdRunners.push(restarted);
+    const reconciled: string[] = [];
+    const reconciledKeys: unknown[] = [];
+    let sawAuthorizeRead = false;
+    restarted.infra.registry.register({
+      name: 'mutate_probe',
+      description: 'registered reconciliation probe',
+      inputSchema: { parse: (input) => input, jsonSchema: { type: 'object' } },
+      async execute() {
+        throw new Error('recovery must not execute the tool');
+      },
+      async reconcileEffect(effect, ctx) {
+        reconciled.push(effect.effectId);
+        reconciledKeys.push(ctx.reconciliationKey);
+        // Recovery-time inspection must go through the host boundary: the
+        // tool may not read the effect target on its own authority.
+        sawAuthorizeRead = typeof ctx.authorizeRead === 'function';
+        const allowed = await ctx.authorizeRead?.('tool-reconciler.txt') ?? false;
+        return allowed
+          ? { known: true, status: 'succeeded', evidenceRef: 'tool:reconciled' }
+          : { known: false, reason: 'reconciliation read was not authorized' };
+      },
+    }, 'run-scoped');
+
+    const recovery = await restarted.recoverDurableRun!(first.sessionId, first.runId);
+    expect(reconciled.length).toBeGreaterThan(0);
+    expect(reconciledKeys[0]).toEqual({ target: 'tool-reconciler.txt', attempt: 1 });
+    expect(sawAuthorizeRead).toBe(true);
+    expect(authorizedReads).toContainEqual({ path: 'tool-reconciler.txt', runId: 'run-effect-tool-reconciler' });
+    expect(recovery.actions).toContainEqual(expect.objectContaining({
+      kind: 'effect_settled',
+      status: 'succeeded',
+    }));
+    expect(recovery.projection.unknownEffectIds).toEqual([]);
+    expect(recovery.projection.effects.some((effect) => (
+      effect.status === 'succeeded' && effect.evidenceRef === 'tool:reconciled'
+    ))).toBe(true);
     expect(toolCalls).toBe(1);
   });
 

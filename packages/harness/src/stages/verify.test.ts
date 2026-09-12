@@ -1,6 +1,6 @@
 // @littlesheep/harness — stages/verify.test.ts
 // Unit tests for the VERIFY stage: verdict routing, bounded replan,
-// optimistic degradation, and feedback propagation.
+// conservative degradation, and feedback propagation.
 
 import { describe, it, expect } from 'vitest';
 import { createVerifyStage } from './verify.js';
@@ -74,6 +74,41 @@ function installTaskExecution(
 }
 
 describe('verifyStage', () => {
+  it('HA-02-01 does not accept an unrelated read after a lean mutation as structural verification', async () => {
+    const llm = createMockLlm(textResponse('{"verdict":"fail","reason":"should not run"}'));
+    const stage = createVerifyStage({ ...deps, llm });
+    const ctx = makeVerifyCtx({ reply: '游戏文件已经创建并核验。' });
+    ctx.streamModelTranscript = true;
+    ctx.taskBook = undefined;
+    ctx.replyProvenance = {
+      version: 1, source: 'llm', purpose: 'execute_tool_loop', modelRequestId: 'request-1',
+      modelRequestIndex: 1, provider: 'deepseek', model: 'deepseek-flash',
+      generatedAt: '2026-09-12T00:00:00.000Z', rewriteCount: 0,
+    };
+    ctx.toolInvocations = ['write', 'grep'].map((toolName, index) => ({
+      version: 1 as const,
+      id: `invocation-${index}`,
+      callId: `call-${index}`,
+      runId: ctx.runId,
+      sessionId: ctx.sessionId,
+      toolName,
+      toolSource: 'builtin' as const,
+      status: 'succeeded' as const,
+      proposedAt: `2026-09-12T00:00:0${index}.000Z`,
+      endedAt: `2026-09-12T00:00:0${index + 1}.000Z`,
+      approval: { required: false, decision: 'not_required' as const },
+      evidenceIds: [],
+    }));
+    ctx.sideEffects = [{
+      idempotencyKey: 'write-effect', toolName: 'write', status: 'succeeded', callId: 'call-0',
+    }];
+
+    await expect(stage(ctx)).resolves.toMatchObject({
+      next: 'recover', ok: false, meta: { verdict: 'fail' },
+    });
+    expect(llm.chat).toHaveBeenCalledTimes(1);
+    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'fail', source: 'model' });
+  });
   it('pass → evolve', async () => {
     const llm = createMockLlm(textResponse('{"verdict":"pass","reason":"goal achieved"}'));
     const stage = createVerifyStage({ ...deps, llm });
@@ -506,7 +541,7 @@ describe('verifyStage', () => {
     expect(llm.chat).toHaveBeenCalled();
   });
 
-  it('LLM transport error → optimistic degrade to pass', async () => {
+  it('HA-02-04 treats verifier transport failure without task evidence as unverified', async () => {
     const llm = createMockLlm(textResponse(''));
     llm.chat.mockRejectedValueOnce(new Error('network down'));
     const stage = createVerifyStage({ ...deps, llm });
@@ -514,9 +549,9 @@ describe('verifyStage', () => {
 
     const res = await stage(ctx);
 
-    expect(res.next).toBe('evolve');
-    expect(res.ok).toBe(true);
-    expect(res.meta?.degradedPass).toBe(true);
+    expect(res.next).toBe('recover');
+    expect(res.ok).toBe(false);
+    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'fail', source: 'structural' });
     expect(res.meta?.transportError).toBe('network down');
   });
 
@@ -537,28 +572,28 @@ describe('verifyStage', () => {
     expect(ctx.partialReplanRequest?.targetStepIds).toEqual(['step-2', 'step-3']);
   });
 
-  it('JSON parse failure → optimistic degrade to pass', async () => {
+  it('HA-02-04 treats verifier JSON failure without task evidence as unverified', async () => {
     const llm = createMockLlm(textResponse('this is not json at all'));
     const stage = createVerifyStage({ ...deps, llm });
     const ctx = makeVerifyCtx();
 
     const res = await stage(ctx);
 
-    expect(res.next).toBe('evolve');
-    expect(res.ok).toBe(true);
-    expect(res.meta?.degradedPass).toBe(true);
+    expect(res.next).toBe('recover');
+    expect(res.ok).toBe(false);
+    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'fail', source: 'structural' });
   });
 
-  it('invalid verdict value → optimistic degrade to pass', async () => {
+  it('HA-02-04 treats an invalid verifier verdict without task evidence as unverified', async () => {
     const llm = createMockLlm(textResponse('{"verdict":"maybe","reason":"unsure"}'));
     const stage = createVerifyStage({ ...deps, llm });
     const ctx = makeVerifyCtx();
 
     const res = await stage(ctx);
 
-    expect(res.next).toBe('evolve');
-    expect(res.ok).toBe(true);
-    expect(res.meta?.degradedPass).toBe(true);
+    expect(res.next).toBe('recover');
+    expect(res.ok).toBe(false);
+    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'fail', source: 'structural' });
   });
 
   it('overrides an impossible pass when step evidence is incomplete', async () => {

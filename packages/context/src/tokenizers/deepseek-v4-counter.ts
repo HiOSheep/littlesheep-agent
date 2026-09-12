@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { Tokenizer } from '@huggingface/tokenizers';
-import { DEEPSEEK_V4_TOKEN_COUNTER_ID } from '@littlesheep/config';
+import { DEEPSEEK_V41_TOKEN_COUNTER_ID, DEEPSEEK_V4_TOKEN_COUNTER_ID } from '@littlesheep/config';
 import type { ChatRequest } from '@littlesheep/llm';
 import {
   cleanupVerifiedAssetTemporaryFiles,
@@ -12,9 +12,16 @@ import {
   inspectVerifiedAssetFile,
 } from '@littlesheep/safety/verified-asset';
 import type { ExactContextTokenCounter } from '../context-engine/contracts.js';
-import { encodeDeepSeekV4Request } from './deepseek-v4-encoding.js';
+import { encodeDeepSeekV4Request, type DeepSeekFraming } from './deepseek-v4-encoding.js';
 
-const DEEPSEEK_V4_TOKENIZER_SPEC = Object.freeze({
+interface DeepSeekTokenizerSpec {
+  readonly id: string;
+  readonly repository: string;
+  readonly revision: string;
+  readonly files: readonly { readonly path: string; readonly bytes: number; readonly sha256: string }[];
+}
+
+const DEEPSEEK_V4_TOKENIZER_SPEC: DeepSeekTokenizerSpec = Object.freeze({
   id: 'deepseek-v4',
   repository: 'deepseek-ai/DeepSeek-V4-Flash',
   revision: '60d8d70770c6776ff598c94bb586a859a38244f1',
@@ -32,10 +39,62 @@ const DEEPSEEK_V4_TOKENIZER_SPEC = Object.freeze({
   ]),
 });
 
-// The hosted Flash API adds a non-public max-effort control segment after the
-// published prompt framing. Its fixed token cost is verified by the live
-// calibration matrix; it is not representable by the open-weights encoder.
-const DEEPSEEK_V4_FLASH_MAX_CONTROL_TOKENS = 13;
+/**
+ * V4.1 ships its own tokenizer. The pinned revision below is what the live
+ * calibration matrix was measured against: five request shapes (thinking
+ * disabled, thinking high, thinking max, single tool, multi tool) reproduced
+ * Provider prompt tokens exactly, while the V4 assets off by -1/+9 and the V4
+ * tokenizer cannot even represent `<｜System｜>` as one token.
+ */
+const DEEPSEEK_V41_TOKENIZER_SPEC: DeepSeekTokenizerSpec = Object.freeze({
+  id: 'deepseek-v4.1',
+  repository: 'deepseek-ai/DeepSeek-V4.1-Flash',
+  revision: 'dba1be0a40aa45a94ad051997016db3960a90277',
+  files: Object.freeze([
+    Object.freeze({
+      path: 'tokenizer.json',
+      bytes: 6_367_257,
+      sha256: 'c90dfa01249db1be4245780a052ede752e1361c612ac6d08e2bdada7d599476b',
+    }),
+    Object.freeze({
+      path: 'tokenizer_config.json',
+      bytes: 801,
+      sha256: '6ac8c8dc065ed118161d02dd532749ae3f52c243deac27872134fae2f50d8547',
+    }),
+  ]),
+});
+
+export interface DeepSeekTokenizerFamily {
+  counterId: string;
+  framing: DeepSeekFraming;
+  /** Models whose hosted service uses this tokenizer + framing pair. */
+  models: readonly string[];
+  spec: DeepSeekTokenizerSpec;
+  /** Tool-protocol shapes verified against real Provider usage for this family. */
+  toolProtocolCalibrated: boolean;
+}
+
+const DEEPSEEK_V4_FAMILY: DeepSeekTokenizerFamily = Object.freeze({
+  counterId: DEEPSEEK_V4_TOKEN_COUNTER_ID,
+  framing: 'v4',
+  // `deepseek-v4-pro` still serves the V4 architecture until DeepSeek routes it
+  // to V4.1; see the changelog note in @littlesheep/config.
+  models: Object.freeze(['deepseek-v4-pro']),
+  spec: DEEPSEEK_V4_TOKENIZER_SPEC,
+  // V4 Pro tool protocol was never calibrated; only the retired V4 Flash was.
+  toolProtocolCalibrated: false,
+});
+
+const DEEPSEEK_V41_FAMILY: DeepSeekTokenizerFamily = Object.freeze({
+  counterId: DEEPSEEK_V41_TOKEN_COUNTER_ID,
+  framing: 'v4.1',
+  models: Object.freeze(['deepseek-flash', 'deepseek-v4-flash']),
+  spec: DEEPSEEK_V41_TOKENIZER_SPEC,
+  // Measured: single-tool 295/295 and multi-tool 349/349 against the Provider.
+  toolProtocolCalibrated: true,
+});
+
+const DEEPSEEK_TOKENIZER_FAMILIES = Object.freeze([DEEPSEEK_V4_FAMILY, DEEPSEEK_V41_FAMILY]);
 
 export interface LocalTokenizerPreparationOptions {
   modelRef: string;
@@ -82,7 +141,7 @@ export async function prepareLocalExactContextTokenCounter(
   options: LocalTokenizerPreparationOptions,
 ): Promise<ExactContextTokenCounter | undefined> {
   if (!isDeepSeekV4ModelRef(options.modelRef)) return undefined;
-  const key = resolve(options.modelRootDir);
+  const key = `${resolve(options.modelRootDir)}|${resolveDeepSeekTokenizerFamily(options.modelRef)?.counterId ?? ''}`;
   if (cachedCounter?.key === key) return cachedCounter.promise;
 
   const promise = prepareDeepSeekV4Counter(options);
@@ -174,22 +233,29 @@ export function createLazyLocalExactContextTokenCounter(
 
 export function createDeepSeekV4ExactContextTokenCounter(
   tokenizer: DeepSeekV4TokenizerLike,
+  family: DeepSeekTokenizerFamily = DEEPSEEK_V4_FAMILY,
 ): ExactContextTokenCounter {
   const recentCounts = new Map<string, number>();
   return Object.freeze({
-    id: DEEPSEEK_V4_TOKEN_COUNTER_ID,
+    id: family.counterId,
     supports(provider: string, model: string): boolean {
-      return provider.trim().toLowerCase() === 'deepseek' && isDeepSeekV4Model(model);
+      return provider.trim().toLowerCase() === 'deepseek'
+        && family.models.includes(model.trim().toLowerCase());
     },
     countRequest(request: ChatRequest): number {
+      if (!family.models.includes(request.model.trim().toLowerCase())) {
+        throw new Error(
+          `${family.counterId} does not cover ${request.model}; use the counter registered for that model.`,
+        );
+      }
       if (request.thinking?.type !== 'enabled' && request.thinking?.type !== 'disabled') {
         throw new Error(
           'DeepSeek V4 exact counting requires an explicit thinking mode because Provider defaults are not stable request framing.',
         );
       }
-      assertCalibratedRequestShape(request);
-      const prompt = encodeDeepSeekV4Request(request);
-      const controlTokens = providerControlTokenAdjustment(request);
+      assertCalibratedRequestShape(request, family);
+      const prompt = encodeDeepSeekV4Request(request, family.framing);
+      const controlTokens = providerControlTokenAdjustment(request, family);
       const cacheKey = createHash('sha256').update(`${controlTokens}\0${prompt}`).digest('hex');
       const cached = recentCounts.get(cacheKey);
       if (cached !== undefined) return cached;
@@ -202,7 +268,7 @@ export function createDeepSeekV4ExactContextTokenCounter(
   });
 }
 
-function assertCalibratedRequestShape(request: ChatRequest): void {
+function assertCalibratedRequestShape(request: ChatRequest, family: DeepSeekTokenizerFamily): void {
   const thinkingEnabled = request.thinking?.type === 'enabled';
   if (thinkingEnabled && request.reasoning_effort !== 'high' && request.reasoning_effort !== 'max') {
     throw new Error(
@@ -222,40 +288,51 @@ function assertCalibratedRequestShape(request: ChatRequest): void {
   if (!activeToolSchema && !historicalToolProtocol) return;
 
   const model = request.model.trim().toLowerCase();
-  if (model !== 'deepseek-v4-flash') {
+  if (!family.toolProtocolCalibrated) {
     throw new Error(
-      'DeepSeek V4 Pro exact counting is unavailable for tool protocol requests pending model-specific Provider calibration.',
+      `${family.counterId} does not cover tool protocol requests for ${model} pending model-specific Provider calibration.`,
+    );
+  }
+  if (!activeToolSchema && historicalToolProtocol) {
+    // Live measurement: a transcript that keeps tool history but drops the tool
+    // schema is one token off, so this shape stays explicitly uncovered instead
+    // of returning a near-but-wrong count.
+    throw new Error(
+      'Exact counting does not cover tool history without an active tool schema.',
     );
   }
   if (activeToolSchema && request.tool_choice !== 'auto') {
     throw new Error(
-      'DeepSeek V4 Flash exact counting requires tool_choice=auto when tools are present.',
+      'Exact counting requires tool_choice=auto when tools are present.',
     );
   }
   if (!activeToolSchema && request.tool_choice !== undefined) {
     throw new Error(
-      'DeepSeek V4 Flash exact counting does not cover tool_choice without an active tool schema.',
+      'Exact counting does not cover tool_choice without an active tool schema.',
     );
   }
 }
 
-function providerControlTokenAdjustment(request: ChatRequest): number {
-  return request.model.trim().toLowerCase() === 'deepseek-v4-flash'
-    && request.thinking?.type === 'enabled'
-    && request.reasoning_effort === 'max'
-    ? DEEPSEEK_V4_FLASH_MAX_CONTROL_TOKENS
-    : 0;
+/**
+ * Both live-calibrated families reproduce Provider prompt tokens with the
+ * published framing alone; the retired hosted V4 Flash max-effort control
+ * segment is no longer applied by any served model.
+ */
+function providerControlTokenAdjustment(request: ChatRequest, family: DeepSeekTokenizerFamily): number {
+  if (!family.models.includes(request.model.trim().toLowerCase())) return 0;
+  return 0;
 }
 
 export async function verifyDeepSeekV4TokenizerAssets(
   modelRootDir: string,
+  spec: DeepSeekTokenizerSpec = DEEPSEEK_V4_TOKENIZER_SPEC,
 ): Promise<LocalTokenizerVerification> {
-  const modelRoot = tokenizerRevisionRoot(modelRootDir);
-  const repositoryRoot = join(modelRoot, ...DEEPSEEK_V4_TOKENIZER_SPEC.repository.split('/'));
+  const modelRoot = tokenizerRevisionRoot(modelRootDir, spec);
+  const repositoryRoot = join(modelRoot, ...spec.repository.split('/'));
   const missing: string[] = [];
   const invalid: string[] = [];
   let totalBytes = 0;
-  for (const file of DEEPSEEK_V4_TOKENIZER_SPEC.files) {
+  for (const file of spec.files) {
     const path = join(repositoryRoot, file.path);
     const status = await inspectVerifiedAssetFile(path, file);
     if (status === 'missing') missing.push(file.path);
@@ -274,34 +351,39 @@ export async function verifyDeepSeekV4TokenizerAssets(
 async function prepareDeepSeekV4Counter(
   options: LocalTokenizerPreparationOptions,
 ): Promise<ExactContextTokenCounter> {
-  let verification = await verifyDeepSeekV4TokenizerAssets(options.modelRootDir);
+  const family = resolveDeepSeekTokenizerFamily(options.modelRef);
+  if (!family) {
+    throw new Error(`No DeepSeek tokenizer family is registered for ${options.modelRef}.`);
+  }
+  let verification = await verifyDeepSeekV4TokenizerAssets(options.modelRootDir, family.spec);
   if (!verification.available) {
-    verification = await provisionDeepSeekV4TokenizerAssets(options);
+    verification = await provisionDeepSeekV4TokenizerAssets(options, family.spec);
   }
   const repositoryRoot = join(
     verification.modelRoot,
-    ...DEEPSEEK_V4_TOKENIZER_SPEC.repository.split('/'),
+    ...family.spec.repository.split('/'),
   );
   const [tokenizerJson, tokenizerConfig] = await Promise.all([
     readJson(join(repositoryRoot, 'tokenizer.json')),
     readJson(join(repositoryRoot, 'tokenizer_config.json')),
   ]);
-  return createDeepSeekV4ExactContextTokenCounter(new Tokenizer(tokenizerJson, tokenizerConfig));
+  return createDeepSeekV4ExactContextTokenCounter(new Tokenizer(tokenizerJson, tokenizerConfig), family);
 }
 
 async function provisionDeepSeekV4TokenizerAssets(
   options: LocalTokenizerPreparationOptions,
+  spec: DeepSeekTokenizerSpec = DEEPSEEK_V4_TOKENIZER_SPEC,
 ): Promise<LocalTokenizerVerification> {
   const fetchFn = options.fetchFn ?? fetch;
   const remoteHost = ensureTrailingSlash(options.remoteHost ?? 'https://huggingface.co');
-  const modelRoot = tokenizerRevisionRoot(options.modelRootDir);
-  const repositoryRoot = join(modelRoot, ...DEEPSEEK_V4_TOKENIZER_SPEC.repository.split('/'));
+  const modelRoot = tokenizerRevisionRoot(options.modelRootDir, spec);
+  const repositoryRoot = join(modelRoot, ...spec.repository.split('/'));
   await mkdir(repositoryRoot, { recursive: true });
-  const totalBytes = DEEPSEEK_V4_TOKENIZER_SPEC.files.reduce((sum, file) => sum + file.bytes, 0);
+  const totalBytes = spec.files.reduce((sum, file) => sum + file.bytes, 0);
   let completedBytes = 0;
   const timeout = createTimeoutSignal(options.signal, options.timeoutMs ?? 30_000);
   try {
-    for (const file of DEEPSEEK_V4_TOKENIZER_SPEC.files) {
+    for (const file of spec.files) {
       const destination = join(repositoryRoot, file.path);
       if (await inspectVerifiedAssetFile(destination, file) === 'valid') {
         await cleanupVerifiedAssetTemporaryFiles(destination, timeout.signal);
@@ -310,7 +392,7 @@ async function provisionDeepSeekV4TokenizerAssets(
         continue;
       }
       const url = new URL(
-        `${DEEPSEEK_V4_TOKENIZER_SPEC.repository}/resolve/${DEEPSEEK_V4_TOKENIZER_SPEC.revision}/${file.path}`,
+        `${spec.repository}/resolve/${spec.revision}/${file.path}`,
         remoteHost,
       ).toString();
       await downloadVerifiedAsset({
@@ -331,17 +413,17 @@ async function provisionDeepSeekV4TokenizerAssets(
     timeout.dispose();
   }
 
-  const verification = await verifyDeepSeekV4TokenizerAssets(options.modelRootDir);
+  const verification = await verifyDeepSeekV4TokenizerAssets(options.modelRootDir, spec);
   if (!verification.available) {
     throw new Error(`DeepSeek V4 tokenizer verification failed: missing=${verification.missing.join(',')}; invalid=${verification.invalid.join(',')}`);
   }
   await writeFile(join(modelRoot, 'model-manifest.json'), `${JSON.stringify({
     version: 1,
-    id: DEEPSEEK_V4_TOKENIZER_SPEC.id,
-    repository: DEEPSEEK_V4_TOKENIZER_SPEC.repository,
-    revision: DEEPSEEK_V4_TOKENIZER_SPEC.revision,
-    counterId: DEEPSEEK_V4_TOKEN_COUNTER_ID,
-    files: DEEPSEEK_V4_TOKENIZER_SPEC.files,
+    id: spec.id,
+    repository: spec.repository,
+    revision: spec.revision,
+    counterId: spec.files.length > 0 ? resolveCounterIdForSpec(spec.id) : DEEPSEEK_V4_TOKEN_COUNTER_ID,
+    files: spec.files,
     verifiedAt: new Date().toISOString(),
   }, null, 2)}\n`, 'utf8');
   return verification;
@@ -355,21 +437,31 @@ async function readJson(path: string): Promise<object> {
   return parsed;
 }
 
-function tokenizerRevisionRoot(modelRootDir: string): string {
-  return join(resolve(modelRootDir), DEEPSEEK_V4_TOKENIZER_SPEC.id, DEEPSEEK_V4_TOKENIZER_SPEC.revision);
+function tokenizerRevisionRoot(modelRootDir: string, spec: DeepSeekTokenizerSpec): string {
+  return join(resolve(modelRootDir), spec.id, spec.revision);
 }
 
 function isDeepSeekV4ModelRef(modelRef: string): boolean {
-  const normalized = modelRef.trim().toLowerCase();
-  const slash = normalized.indexOf('/');
-  return slash > 0
-    && normalized.slice(0, slash) === 'deepseek'
-    && isDeepSeekV4Model(normalized.slice(slash + 1));
+  return resolveDeepSeekTokenizerFamily(modelRef) !== undefined;
 }
 
 function isDeepSeekV4Model(model: string): boolean {
   const normalized = model.trim().toLowerCase();
-  return normalized === 'deepseek-v4-flash' || normalized === 'deepseek-v4-pro';
+  return DEEPSEEK_TOKENIZER_FAMILIES.some((family) => family.models.includes(normalized));
+}
+
+/** Map a `provider/model` reference onto the tokenizer + framing pair it uses. */
+export function resolveDeepSeekTokenizerFamily(modelRef: string): DeepSeekTokenizerFamily | undefined {
+  const normalized = modelRef.trim().toLowerCase();
+  const slash = normalized.indexOf('/');
+  if (slash <= 0 || normalized.slice(0, slash) !== 'deepseek') return undefined;
+  const model = normalized.slice(slash + 1);
+  return DEEPSEEK_TOKENIZER_FAMILIES.find((family) => family.models.includes(model));
+}
+
+function resolveCounterIdForSpec(specId: string): string {
+  return DEEPSEEK_TOKENIZER_FAMILIES.find((family) => family.spec.id === specId)?.counterId
+    ?? DEEPSEEK_V4_TOKEN_COUNTER_ID;
 }
 
 function createTimeoutSignal(parent: AbortSignal | undefined, timeoutMs: number): {

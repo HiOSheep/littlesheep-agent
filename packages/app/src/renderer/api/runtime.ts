@@ -2,6 +2,7 @@
 
 import type {
   DataRootStatus,
+  ProviderDraft,
   ProviderInfo,
   RuntimePatch,
   RuntimeState,
@@ -14,6 +15,33 @@ export async function getProviders(): Promise<ProviderInfo[]> {
   if (!res.ok) throw localApiStatusError(res.status)
   const data = await res.json() as { providers: ProviderInfo[] }
   return data.providers
+}
+
+/** Create or update one provider (settings page). Returns the new runtime state. */
+export async function saveProvider(provider: ProviderDraft): Promise<RuntimeState> {
+  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.configProviders), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
+    throw new Error((data as { error: string }).error)
+  }
+  return res.json() as Promise<RuntimeState>
+}
+
+/** Remove a user-defined provider. Built-in presets are rejected by Main. */
+export async function deleteProvider(providerId: string): Promise<RuntimeState> {
+  const res = await fetch(
+    localApiUrl(`${LOCAL_APP_API_ROUTES.configProviders}/${encodeURIComponent(providerId)}`),
+    { method: 'DELETE' },
+  )
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
+    throw new Error((data as { error: string }).error)
+  }
+  return res.json() as Promise<RuntimeState>
 }
 
 export async function getRuntime(): Promise<RuntimeState> {

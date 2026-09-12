@@ -155,6 +155,8 @@ export interface RunContext {
   deferredRuntimeEvents?: import('./runtime-contracts.js').RuntimeEventEnvelope[];
   /** Bounded side-effect ledger supplied by host-owned tool execution. */
   sideEffects?: import('./runtime-contracts.js').SideEffectCheckpoint[];
+  /** Cross-process effect ownership supplied by the runtime adapter. */
+  effectLeases?: import('./effect-lease.js').EffectLeaseCoordinatorLike;
   /** Bounded loop budget snapshot used by recovery/checkpoint diagnostics. */
   loopBudget?: import('./runtime-contracts.js').LoopBudgetSnapshot;
   /** Runtime execution result for the current task book. */
@@ -230,6 +232,16 @@ export interface RunContext {
    * proposed state until Runner-owned audit persistence has completed.
    */
   deferFinalReplySettlement?: boolean;
+  /**
+   * Next-Harness transcript: stream model thinking and per-turn assistant text
+   * so the conversation renders an ordered thinking/tool/text transcript.
+   * The legacy Harness keeps its own non-transcript display contract.
+   */
+  streamModelTranscript?: boolean;
+  /** Set once the durable path has projected this run’s system prompt. */
+  systemPromptProjected?: boolean;
+  /** Full effective prompt explicitly disclosed in the conversation for this run. */
+  systemPromptProjection?: string;
   /** Reservation held by FINALIZE while the Runner completes the publication gate. */
   pendingFinalReplySettlement?: FinalReplyReservation;
   /** Registry commit completed before a durable-event append failed. */
@@ -296,6 +308,16 @@ export interface RunUsage {
   promptTokens: number;
   completionTokens: number;
   totalTokens?: number;
+  /** Provider-reported prompt tokens served from cache. */
+  cachedPromptTokens?: number;
+  /** Provider-reported prompt tokens written into cache. */
+  cacheWriteTokens?: number;
+  /** Provider-reported reasoning tokens included in completionTokens. */
+  reasoningTokens?: number;
+  /** Sum of Provider request durations used for throughput, excluding tool time. */
+  providerDurationMs?: number;
+  /** Number of Provider usage records represented by this aggregate. */
+  requestCount?: number;
   source: 'provider';
 }
 
@@ -452,6 +474,8 @@ export interface AgentResult {
   durationMs: number;
   /** Token usage for the reply-bearing model call when the provider reports it. */
   usage?: RunUsage;
+  /** Full effective prompt explicitly disclosed by the durable conversation path. */
+  systemPromptProjection?: string;
   /** Immutable configuration used for this run. */
   resolvedRunConfig?: import('./runtime-contracts.js').ResolvedRunConfig;
   /** Runtime-owned capability facts and epoch used by this run. */
@@ -505,7 +529,7 @@ export type StreamEvent =
 
 /** Lightweight run-progress event for real-time SSE streaming. */
 export interface ToolStreamEvent {
-  type: 'reasoning' | 'task_book' | 'step_start' | 'step_done' | 'step_failed' | 'step_skipped' | 'tool_start' | 'tool_end' | 'verification_start' | 'verification' | 'final_delta' | 'capability_snapshot' | 'capability_probe'
+  type: 'reasoning' | 'model_reasoning' | 'model_text' | 'system_prompt' | 'task_book' | 'step_start' | 'step_done' | 'step_failed' | 'step_skipped' | 'tool_start' | 'tool_end' | 'verification_start' | 'verification' | 'final_delta' | 'capability_snapshot' | 'capability_probe'
   /** Runtime-owned disclosure policy; this is never inferred from model text. */
   visibility?: 'silent' | 'progress'
   /** Stable identity for one public, user-visible Harness phase occurrence. */

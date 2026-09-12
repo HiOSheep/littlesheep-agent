@@ -23,7 +23,12 @@ import {
   type ToolExecutionLifecycle,
 } from '@littlesheep/tools';
 import { buildRunRequestCandidates } from '../../context-candidates.js';
-import { prepareModelRequest, callModelChat } from '../../model-observability.js';
+import { prepareModelRequest } from '../../model-observability.js';
+import {
+  closeTranscriptTurn,
+  createTranscriptTurn,
+  runTranscriptModelTurn,
+} from './model-transcript.js';
 import { writeProviderUsageState } from '../../usage-state.js';
 import { upsertToolInvocationEvidence } from '../../execution-evidence-state.js';
 import { recentHistoryForModel } from '../_shared.js';
@@ -91,6 +96,9 @@ export async function runToolLoop(
 
   for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     let response: ChatResponse;
+    // Next path only: publish thinking plus per-turn prose as an ordered
+    // transcript. The legacy path keeps its previous event sequence.
+    const transcriptTurn = createTranscriptTurn(ctx, stepId, iteration);
     try {
       const rawRequest = {
         model: deps.model,
@@ -110,7 +118,7 @@ export async function runToolLoop(
           insertedBeforePrimary,
         }),
       );
-      response = await callModelChat(ctx, deps.llm, request);
+      response = await runTranscriptModelTurn(ctx, deps.llm, request, transcriptTurn);
     } catch (error) {
       return {
         ok: false,
@@ -153,6 +161,8 @@ export async function runToolLoop(
         usage: response.usage,
       };
     }
+
+    closeTranscriptTurn(ctx, transcriptTurn, response.finishReason);
 
     if (response.finishReason === 'tool_calls' && response.toolCalls.length > 0) {
       if (forceFinalResponse) {
@@ -634,3 +644,5 @@ function toolResultForModel(result: ToolResult): string {
     sanitized: result.sanitized === true || undefined,
   });
 }
+
+

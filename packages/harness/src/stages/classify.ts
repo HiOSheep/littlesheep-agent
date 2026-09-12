@@ -32,6 +32,7 @@ import {
   capabilitySnapshotDurablePayload,
 } from '../capability-events.js';
 import { writeCapabilityState } from '../capability-state.js';
+import { canUseLeanWorkLoop } from '../lean-work-policy.js';
 
 function inboundText(ctx: RunContext): string {
   return ctx.inbound.content
@@ -176,7 +177,7 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
       const routed = { ...cls, activity, retrievalIntent: retrieval.intent };
       if (activity === 'execute') {
         writeDecisionState(ctx, 'classify', { classification: routed });
-        next = 'decide';
+        next = canUseLeanWorkLoop(ctx) ? 'execute' : 'decide';
       } else if (activity === 'clarify') {
         const originalRequest = inboundText(ctx);
         writeDecisionState(ctx, 'classify', {

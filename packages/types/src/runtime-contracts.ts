@@ -728,6 +728,10 @@ export interface SideEffectCheckpoint {
   /** Resource keys observed by the tool scheduler. */
   resourceKeys?: string[];
   effectKind?: 'local_mutation' | 'external' | 'unknown';
+  /** Redacted owner identity proving which worker admitted the effect. */
+  ownerId?: string;
+  /** Expiry of the cross-process ownership claim. */
+  leaseUntil?: string;
   startedAt?: string;
   endedAt?: string;
   evidenceRef?: string;

@@ -9,6 +9,7 @@ import type { AgentRunner, RunnerResult } from './runner.js'
 import type { ExecutionLog } from './execution-log.js'
 
 const MAX_RUNTIME_REASON_LENGTH = 160
+const MAX_FAILURE_MESSAGE_LENGTH = 512
 
 /**
  * Resolve the only result that may be published by a caller outside Runner.
@@ -66,6 +67,7 @@ export async function prepareAuthoritativeRunnerResult(
     result,
     durable.status === 'interrupted' ? 'interrupted' : 'failed',
     `durable_final_reply_${durable.reason}`,
+    runtimeFailureDetail(result),
   )
 }
 
@@ -75,11 +77,20 @@ export async function prepareAuthoritativeRunnerResult(
  * never allowed to outrank the durable final-reply projection in next mode.
  */
 export async function prepareAuthoritativeExecutionLog(
-  runner: Pick<AgentRunner, 'durableHarnessMode' | 'durableHarnessModeForSession' | 'replayDurableFinalReply'>,
+  runner: Pick<AgentRunner, 'durableHarnessModeForRun' | 'replayDurableFinalReply'>,
   log: ExecutionLog,
 ): Promise<AuthoritativeExecutionLog> {
-  const mode = runner.durableHarnessModeForSession?.(log.sessionId) ?? runner.durableHarnessMode
+  let mode = log.durableHarnessMode
+  try {
+    mode ??= await runner.durableHarnessModeForRun?.(log.sessionId, log.runId)
+  } catch {
+    return runtimeExecutionLogResult(log, 'failed', 'durable_run_mode_unavailable')
+  }
+  // Settlement metadata predates the explicit mode field. Such records must
+  // still be verified; truly legacy records keep their historical behavior.
+  mode ??= log.finalReplySettlement ? 'next' : 'shadow'
   if (mode !== 'next') return log
+  log = { ...log, durableHarnessMode: 'next' }
 
   const replay = runner.replayDurableFinalReply
   if (!replay) {
@@ -110,6 +121,7 @@ export async function prepareAuthoritativeExecutionLog(
         ? log.replyProvenance
         : undefined,
       finalReplySettlement: settlement,
+      runtimeStatus: undefined,
       error: undefined,
     }
   }
@@ -122,6 +134,7 @@ export async function prepareAuthoritativeExecutionLog(
     log,
     durable.status === 'interrupted' ? 'interrupted' : 'failed',
     `durable_final_reply_${durable.reason}`,
+    runtimeFailureDetail(log),
   )
 }
 
@@ -133,6 +146,7 @@ function runtimeStatusResult(
   result: RunnerResult,
   status: RuntimeFinalStatus['status'],
   reason?: string,
+  detail?: string,
 ): RunnerResult {
   const runtimeStatus = buildRuntimeStatus(status, reason)
   return {
@@ -142,7 +156,7 @@ function runtimeStatusResult(
     replyProvenance: undefined,
     finalReplySettlement: undefined,
     runtimeStatus,
-    error: runtimeStatusMessage(runtimeStatus),
+    error: detail ? boundedFailureMessage(detail) : runtimeStatusMessage(runtimeStatus),
     messages: hideUnsettledFinalizeMessages(result.messages),
     webEvidence: undefined,
   }
@@ -152,6 +166,7 @@ function runtimeExecutionLogResult(
   log: ExecutionLog,
   status: RuntimeFinalStatus['status'],
   reason?: string,
+  detail?: string,
 ): AuthoritativeExecutionLog {
   const runtimeStatus = buildRuntimeStatus(status, reason)
   return {
@@ -161,7 +176,7 @@ function runtimeExecutionLogResult(
     replyProvenance: undefined,
     finalReplySettlement: undefined,
     runtimeStatus,
-    error: runtimeStatusMessage(runtimeStatus),
+    error: detail ? boundedFailureMessage(detail) : runtimeStatusMessage(runtimeStatus),
     webEvidence: undefined,
   }
 }
@@ -205,4 +220,20 @@ function runtimeStatusMessage(status: RuntimeFinalStatus): string {
       ? 'Runtime interrupted before publishing a final reply.'
       : 'Runtime failed before publishing a final reply.'
   return status.reason ? `${base} Reason: ${status.reason}` : base
+}
+
+/**
+ * The durable projection can prove that nothing was settled, but it does not
+ * say why. The Runtime-owned failure text (never model prose) is the only
+ * actionable explanation the user has, so a fail-closed result keeps it
+ * instead of replacing it with an internal code.
+ */
+function runtimeFailureDetail(source: { error?: string; runtimeStatus?: RuntimeFinalStatus }): string | undefined {
+  const detail = source.error?.replace(/\s+/gu, ' ').trim()
+  if (detail) return detail
+  return source.runtimeStatus?.reason
+}
+
+function boundedFailureMessage(detail: string): string {
+  return detail.slice(0, MAX_FAILURE_MESSAGE_LENGTH)
 }

@@ -25,7 +25,8 @@ export type UserFacingReplyFailureReason =
   | 'rewrite_failed'
   | 'continuity_repair_failed'
   | 'reply_registry_failed'
-  | 'missing_model_request_provenance';
+  | 'missing_model_request_provenance'
+  | 'invalid_control_markup';
 
 export class UserFacingReplyError extends Error {
   readonly reason: UserFacingReplyFailureReason;
@@ -63,6 +64,12 @@ export async function reserveUserFacingReplyOnce(
     throw new UserFacingReplyError(
       'empty_model_reply',
       'The model returned no user-facing reply.',
+    );
+  }
+  if (containsToolControlMarkup(generatedReply)) {
+    throw new UserFacingReplyError(
+      'invalid_control_markup',
+      'The model returned tool-control markup as a user-facing reply.',
     );
   }
 
@@ -182,6 +189,10 @@ export function collectRecentAssistantReplies(ctx: Pick<RunContext, 'history' | 
 
 function cleanModelReply(value: string): string {
   return value.trim();
+}
+
+function containsToolControlMarkup(value: string): boolean {
+  return /<\s*[｜|]{1,2}\s*DSML\s*[｜|]{1,2}\s*(?:calls|tool_calls|invoke|parameter)\b/iu.test(value);
 }
 
 function messageText(message: Message): string {

@@ -101,4 +101,79 @@ describe('writeTool', () => {
   it('requires approval', () => {
     expect(writeTool.requiresApproval).toBe(true);
   });
+
+  describe('effect reconciliation', () => {
+    function effectFor(reconciliationKey: unknown) {
+      return {
+        effectId: 'effect-write',
+        idempotencyKey: 'tool:write:hash',
+        toolName: 'write',
+        effectKind: 'local_mutation',
+        status: 'planned',
+        intentEventId: 'event-intent',
+        reconciliationKey,
+      } as never;
+    }
+
+    it('declares a bounded key with the target path and content digest', () => {
+      const file = join(tmpDir, 'reconcile-key.txt');
+      const key = writeTool.reconciliationKey!({ file_path: file, content: 'reconcile me' });
+      expect(key).toMatchObject({ path: file, bytes: 12 });
+      expect((key as { sha256: string }).sha256).toMatch(/^[0-9a-f]{64}$/);
+      expect(writeTool.reconciliationKey!({ file_path: 42 })).toBeUndefined();
+    });
+
+    it('reports the effect as succeeded when the target matches the intended bytes', async () => {
+      const file = join(tmpDir, 'reconcile-ok.txt');
+      const content = 'reconciled content';
+      await writeTool.execute({ file_path: file, content }, approvedCtx);
+      const outcome = await writeTool.reconcileEffect!(
+        effectFor(writeTool.reconciliationKey!({ file_path: file, content })),
+        { sessionId: 's1', runId: 'r1', authorizeRead: async () => true },
+      );
+      expect(outcome).toMatchObject({ known: true, status: 'succeeded' });
+      expect((outcome as { evidenceRef?: string }).evidenceRef).toMatch(/^write:[0-9a-f]{12}$/);
+    });
+
+    it('keeps a missing target unknown because a completed write may have been removed', async () => {
+      const file = join(tmpDir, 'reconcile-missing.txt');
+      const outcome = await writeTool.reconcileEffect!(
+        effectFor(writeTool.reconciliationKey!({ file_path: file, content: 'never written' })),
+        { sessionId: 's1', runId: 'r1', authorizeRead: async () => true },
+      );
+      expect(outcome).toMatchObject({ known: false, reason: expect.stringContaining('missing') });
+    });
+
+    it('stays unknown when the target was changed by someone else', async () => {
+      const file = join(tmpDir, 'reconcile-drift.txt');
+      await writeTool.execute({ file_path: file, content: 'first version' }, approvedCtx);
+      await writeTool.execute({ file_path: file, content: 'second version' }, approvedCtx);
+      const outcome = await writeTool.reconcileEffect!(
+        effectFor(writeTool.reconciliationKey!({ file_path: file, content: 'first version' })),
+        { sessionId: 's1', runId: 'r1', authorizeRead: async () => true },
+      );
+      expect(outcome).toMatchObject({ known: false });
+      expect((outcome as { reason?: string }).reason).toMatch(/differs/);
+    });
+
+    it('stays unknown without a bounded key or for a relative target', async () => {
+      expect(await writeTool.reconcileEffect!(effectFor(undefined), { sessionId: 's1', runId: 'r1' }))
+        .toMatchObject({ known: false, reason: expect.stringContaining('no bounded reconciliation key') });
+      expect(await writeTool.reconcileEffect!(
+        effectFor({ path: 'relative/file.txt', sha256: 'a'.repeat(64) }),
+        { sessionId: 's1', runId: 'r1' },
+      )).toMatchObject({ known: false, reason: expect.stringContaining('absolute path') });
+    });
+
+    it('does not inspect even matching files without current host authorization', async () => {
+      const file = join(tmpDir, 'private.txt');
+      await writeTool.execute({ file_path: file, content: 'private' }, approvedCtx);
+      const effect = effectFor(writeTool.reconciliationKey!({ file_path: file, content: 'private' }));
+      for (const authorizeRead of [undefined, vi.fn(async () => false), vi.fn(async () => { throw new Error('denied'); })]) {
+        expect(await writeTool.reconcileEffect!(effect, { sessionId: 's1', runId: 'r1', authorizeRead }))
+          .toMatchObject({ known: false });
+        if (authorizeRead) expect(authorizeRead).toHaveBeenCalledWith(file);
+      }
+    });
+  });
 });

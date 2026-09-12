@@ -84,12 +84,27 @@ export class DurableRunRecorder {
 
   append(event: DurableRunEventInput): Promise<void> {
     const operation = this.tail.catch(() => undefined).then(async () => {
-      if (this.mode === 'next') await this.initialization;
-      const outcome = await this.kernel.append({
+      const input = {
         ...event,
         sessionId: this.options.sessionId,
         runId: this.options.runId,
-      });
+      };
+      if (this.mode === 'next') {
+        await this.initialization;
+        if (event.type === 'run_accepted' || event.type === 'user_input_appended') {
+          const disposition = await this.kernel.appendViaInbox(input);
+          if (disposition === 'duplicate') {
+            throw new Error(`durable ingress already belongs to another run worker: ${event.type}`);
+          }
+        } else {
+          const outcome = await this.kernel.append(input);
+          if (outcome.kind === 'conflict') {
+            throw new Error(`durable event conflict for ${event.idempotencyKey}`);
+          }
+        }
+        return;
+      }
+      const outcome = await this.kernel.append(input);
       if (outcome.kind === 'conflict') {
         throw new Error(`durable event conflict for ${event.idempotencyKey}`);
       }
@@ -160,7 +175,7 @@ export function createDurableRunRecorder(options: DurableRunAcceptedOptions): Du
     'run_accepted',
     'runtime',
     `${options.runId}:run-accepted`,
-    { origin: options.origin, model: options.model.slice(0, 256) },
+    { origin: options.origin, model: options.model.slice(0, 256), durableHarnessMode: options.mode ?? 'shadow' },
   );
   // Keep construction synchronous for the legacy Runner, but expose the
   // ingress promise so next-mode callers can await the durable acceptance

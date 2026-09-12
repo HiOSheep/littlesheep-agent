@@ -58,6 +58,7 @@ const requestModelIds = new WeakMap<ChatRequest, string>();
 interface ModelRequestLifecycle extends CacheObservationPersistenceState {
   readonly snapshot: ModelRequestSnapshot;
   readonly started: Promise<void>;
+  providerStartedAtMs?: number;
   response?: Promise<void>;
   settled?: Promise<void>;
 }
@@ -148,6 +149,8 @@ export async function callModelChat(
   request: ChatRequest,
 ): Promise<ChatResponse> {
   await ensureModelRequestStarted(ctx, request);
+  const lifecycle = requestLifecycles.get(request);
+  if (lifecycle) lifecycle.providerStartedAtMs = Date.now();
   try {
     const response = await llm.chat(request);
     recordProviderUsage(ctx, request, response.usage);
@@ -166,6 +169,8 @@ export async function callModelChatStream(
   onDelta: (chunk: StreamChunk) => void,
 ): Promise<ChatResponse> {
   await ensureModelRequestStarted(ctx, request);
+  const lifecycle = requestLifecycles.get(request);
+  if (lifecycle) lifecycle.providerStartedAtMs = Date.now();
   try {
     const response = await llm.chatStream(request, onDelta);
     recordProviderUsage(ctx, request, response.usage);
@@ -300,6 +305,9 @@ export function recordProviderUsage(
     return;
   }
   usage = cacheUsage.validUsage;
+  const providerDurationMs = lifecycle?.providerStartedAtMs === undefined
+    ? undefined
+    : Math.max(0, Date.now() - lifecycle.providerStartedAtMs);
   const localCalibration = buildLocalCalibration(snapshot.localTokenLedger, usage.promptTokens);
   updateContextSnapshot(ctx, requestSnapshot.stage, snapshotId, (current) => Object.freeze({
     ...current,
@@ -312,7 +320,9 @@ export function recordProviderUsage(
       completionTokens: usage.completionTokens,
       totalTokens: usage.totalTokens ?? usage.promptTokens + usage.completionTokens,
       cachedPromptTokens: usage.cachedPromptTokens,
+      cacheWriteTokens: usage.cacheWriteTokens,
       reasoningTokens: usage.reasoningTokens,
+      durationMs: providerDurationMs,
       localCalibration,
       reportedAt: new Date().toISOString(),
     }),
@@ -392,6 +402,8 @@ export function preferDirectModelOutput(
   options: { force?: boolean } = {},
 ): ChatRequest {
   const resolved = ctx.resolvedRunConfig;
+  // Reference-harness parity: the durable path keeps thinking enabled.
+  if (ctx.streamModelTranscript === true) return request;
   if (!resolved || (!options.force && resolved.reasoning === 'auto')) return request;
   if (resolved.provider === 'deepseek' || resolved.provider === 'glm') {
     return {
@@ -646,6 +658,11 @@ function validateModelRequest(contract: LlmCallContract, request: ChatRequest): 
 function applyResolvedReasoning(ctx: RunContext, request: ChatRequest): ChatRequest {
   const resolved = ctx.resolvedRunConfig;
   if (!resolved) return request;
+
+  // Durable path: automatic reasoning keeps the provider default.
+  if (ctx.streamModelTranscript === true && resolved.reasoning === 'auto') {
+    return request;
+  }
   // Explicit per-request controls are used only by bounded recovery paths and
   // must not be overwritten by the run-wide reasoning preference.
   if (request.reasoning_effort !== undefined || request.thinking !== undefined) return request;

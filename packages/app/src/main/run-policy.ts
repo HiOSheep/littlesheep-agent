@@ -8,6 +8,8 @@ import {
   type ContainerBoundary,
 } from '@littlesheep/safety'
 import type { PermissionModeId } from '../shared/permission-modes.js'
+import { normalizePermissionModeId } from '../shared/permission-modes.js'
+import type { SessionIndex } from './session-index.js'
 import {
   getAgentProfile,
   normalizeAgentProfileId,
@@ -89,5 +91,19 @@ export function createPermissionApprover(
     if (decision === 'allow') return true
     if (!approvalBroker) return false
     return approvalBroker({ action, detail, permissionMode, boundary: descriptor.boundary })
+  }
+}
+
+/** Startup has no interactive approval broker. Reads needing approval remain unknown. */
+export function createRecoveryReadAuthorizer(
+  getSessionIndex: () => Pick<SessionIndex, 'list'> | null,
+  containerRoot: string,
+): (path: string, identity: { sessionId: string; runId: string }) => Promise<boolean> {
+  return async (path, identity) => {
+    const session = (await getSessionIndex()?.list())?.find((item) => item.id === identity.sessionId)
+    if (!session) return false
+    return createPermissionApprover(normalizePermissionModeId(session.mode), undefined, {
+      containerRoot, cwd: containerRoot,
+    })('read', { file_path: path })
   }
 }

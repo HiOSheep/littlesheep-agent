@@ -159,6 +159,22 @@ describe('OpenAIClient.chat', () => {
     expect(res.finishReason).toBe('tool_calls');
   });
 
+  it('recovers DSML content returned instead of structured tool_calls', async () => {
+    const content = '<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name="exec">\n<｜｜DSML｜｜ parameter name="cmd" string="true">pwd &amp;&amp; ls -la</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>';
+    const fetch = mockFetch([{ json: {
+      id: 'chatcmpl-dsml', model: 'deepseek-flash',
+      choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }],
+    } }]);
+    const client = new OpenAIClient({ ...BASE_OPTS, fetch });
+    const res = await client.chat({
+      model: 'deepseek-flash',
+      messages: [{ role: 'user', content: 'inspect this folder' }],
+      tools: [{ type: 'function', function: { name: 'exec', description: 'run', parameters: { type: 'object' } } }],
+    });
+    expect(res).toMatchObject({ content: '', finishReason: 'tool_calls' });
+    expect(res.toolCalls[0]?.function).toEqual({ name: 'exec', arguments: JSON.stringify({ cmd: 'pwd && ls -la' }) });
+  });
+
   it('parses provider reasoning and detailed usage without mixing it into visible content', async () => {
     const fetch = mockFetch([{
       json: {
@@ -366,6 +382,28 @@ describe('OpenAIClient.chatStream', () => {
     expect(res.toolCalls[0]?.function.name).toBe('read');
     expect(res.toolCalls[0]?.function.arguments).toBe('{"file_path":"/x"}');
     expect(res.finishReason).toBe('tool_calls');
+  });
+
+  it('retracts streamed DSML text after recovering it as a tool call', async () => {
+    const content = '<｜｜DSML｜｜ calls><｜｜DSML｜｜ invoke name="exec"><｜｜DSML｜｜ parameter name="cmd" string="true">pwd</｜｜DSML｜｜ parameter></｜｜DSML｜｜ invoke></｜｜DSML｜｜ calls>';
+    const sse = [
+      `data: ${JSON.stringify({ model: 'deepseek-flash', choices: [{ index: 0, delta: { content } }] })}`,
+      'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+      'data: [DONE]',
+    ].join('\n\n');
+    const fetch = mockFetch([{ body: sse }]);
+    const client = new OpenAIClient({ ...BASE_OPTS, fetch });
+    const chunks: import('./types.js').StreamChunk[] = [];
+    const res = await client.chatStream({
+      model: 'deepseek-flash',
+      messages: [{ role: 'user', content: 'inspect' }],
+      tools: [{ type: 'function', function: { name: 'exec', description: 'run', parameters: { type: 'object' } } }],
+    }, (chunk) => chunks.push(chunk));
+    expect(res).toMatchObject({ content: '', finishReason: 'tool_calls' });
+    expect(res.toolCalls).toHaveLength(1);
+    expect(chunks.map((chunk) => chunk.type)).toEqual(['reset', 'tool_call_delta', 'done']);
+    expect(chunks.find((chunk) => chunk.type === 'tool_call_delta')).toMatchObject({ toolCallName: 'exec' });
+    expect(chunks.some((chunk) => chunk.type === 'delta')).toBe(false);
   });
 
   it('aggregates streamed reasoning separately from visible answer deltas', async () => {

@@ -6,20 +6,65 @@
 
 import { z } from 'zod';
 
-/** A model provider (OpenAI-compatible API). */
+/** Runtime reasoning levels a user-declared model may advertise. */
+export const MODEL_REASONING_OPTIONS = ['auto', 'low', 'medium', 'high', 'ultra'] as const;
+
+/**
+ * A user-declared model entry.
+ *
+ * LS never invents capability numbers: when a model is not in the built-in
+ * registry, only the metadata declared here is used, and anything left out
+ * stays unknown (no context window, no fabricated reasoning levels).
+ */
+export const ModelEntrySchema = z.object({
+  /** Provider-side model id sent on the wire (e.g. "deepseek-flash"). */
+  id: z.string().min(1).max(200),
+  /** Display name used by the model picker. Defaults to the id. */
+  name: z.string().min(1).max(200).optional(),
+  /** Declared context window in tokens. */
+  contextWindow: z.number().int().positive().max(100_000_000).optional(),
+  /** Declared max output tokens. */
+  maxOutputTokens: z.number().int().positive().max(10_000_000).optional(),
+  /** Runtime reasoning levels this model accepts; defaults to ["auto"]. */
+  reasoningOptions: z.array(z.enum(MODEL_REASONING_OPTIONS)).min(1).max(5).optional(),
+  /** Provider reasoning effort used when the user picks "ultra". */
+  ultraEffort: z.enum(['high', 'xhigh', 'max']).optional(),
+  /** Whether the model accepts image input. */
+  vision: z.boolean().optional(),
+  /** Optional documentation link for the declared numbers. */
+  sourceUrl: z.string().url().optional(),
+});
+
+/** A model entry as written in config: a bare id or a metadata object. */
+export const ProviderModelSchema = z.union([
+  z.string().min(1).max(200),
+  ModelEntrySchema,
+]);
+
+/**
+ * A model provider.
+ *
+ * `api` is explicitly enumerated: LS only implements OpenAI-compatible chat
+ * completions, and an unknown protocol is rejected instead of being sent as
+ * if it were compatible.
+ */
 export const ModelProviderSchema = z.object({
   /** Provider id (e.g. "openai", "openrouter", "ollama"). */
-  id: z.string(),
+  id: z.string().min(1).max(64),
   /** Display name. */
-  name: z.string().optional(),
+  name: z.string().min(1).max(120).optional(),
   /** API base URL. */
   baseURL: z.string().url(),
   /** API key (or env var name prefixed with $). */
   apiKey: z.string().optional(),
+  /** Wire protocol. Only the implemented OpenAI-compatible shape is accepted. */
+  api: z.enum(['openai-chat-completions']).optional(),
+  /** Extra request headers (e.g. gateway routing headers). */
+  headers: z.record(z.string().max(1000)).optional(),
   /** Provider-specific HTTP timeout in seconds. */
   timeoutSeconds: z.number().positive().optional(),
-  /** Models this provider exposes (for resolution). */
-  models: z.array(z.string()).optional(),
+  /** Models this provider exposes, with optional declared metadata. */
+  models: z.array(ProviderModelSchema).optional(),
 });
 
 /** Agent defaults. */
@@ -51,11 +96,13 @@ export const AgentDefaultsSchema = z.object({
   /** Which harness to use (default: "core-flow"). */
   harness: z.string().default('core-flow'),
   /** Durable Harness rollout mode: shadow audits only; next is authoritative. */
-  durableHarnessMode: z.enum(['shadow', 'next']).default('shadow'),
+  durableHarnessMode: z.enum(['shadow', 'next']).default('next'),
   /** Per-session durable Harness overrides; unlisted sessions use durableHarnessMode. */
   durableHarnessSessionOverrides: z.record(z.enum(['shadow', 'next'])).default({}),
   /** Per-request-origin durable Harness overrides; session overrides take precedence. */
   durableHarnessOriginOverrides: z.record(z.enum(['shadow', 'next'])).default({}),
+  /** Per-behavior-profile durable Harness overrides; session/origin overrides take precedence. */
+  durableHarnessProfileOverrides: z.record(z.enum(['shadow', 'next'])).default({}),
 }).default({});
 
 /** Electron desktop lifecycle preferences. */
@@ -352,6 +399,8 @@ export const ConfigSchema = z.object({
 
 export type Config = z.infer<typeof ConfigSchema>;
 export type ModelProvider = z.infer<typeof ModelProviderSchema>;
+export type ModelEntry = z.infer<typeof ModelEntrySchema>;
+export type ProviderModel = z.infer<typeof ProviderModelSchema>;
 export type AgentDefaults = z.infer<typeof AgentDefaultsSchema>;
 export type DesktopConfig = z.infer<typeof DesktopConfigSchema>;
 export type DesktopClosePolicy = DesktopConfig['closePolicy'];

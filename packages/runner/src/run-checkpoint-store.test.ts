@@ -28,6 +28,8 @@ function checkpoint(id: string, runId = 'run-1', createdAt = '2026-07-18T10:00:0
       idempotencyKey: 'write:result.txt',
       toolName: 'write',
       status: 'succeeded',
+      ownerId: 'a'.repeat(64),
+      leaseUntil: '2026-07-18T10:00:30.000Z',
       evidenceRef: 'tool-call-1',
     }],
     loopBudget: {

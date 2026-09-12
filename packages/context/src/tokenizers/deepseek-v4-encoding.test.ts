@@ -7,6 +7,90 @@ import {
   type DeepSeekV4Message,
 } from './deepseek-v4-encoding.js';
 
+describe('DeepSeek V4.1 prompt framing', () => {
+  it('wraps the system message and renders the numeric reasoning budget', () => {
+    const prompt = encodeDeepSeekV4Messages([
+      { role: 'system', content: 'You are a helpful assistant.' },
+      { role: 'user', content: 'What is 2+2?' },
+    ], { thinkingMode: 'thinking', reasoningEffort: 'high', framing: 'v4.1' });
+
+    expect(prompt).toBe(
+      '<｜begin▁of▁sentence｜><｜System｜>'
+      + 'Reasoning Effort: 75 (range 1-100, the higher the value, the more thorough the reasoning)\n\n'
+      + 'You are a helpful assistant.<｜User｜>What is 2+2?<｜Assistant｜><think>',
+    );
+  });
+
+  it('maps the published reasoning-effort aliases onto their budgets', () => {
+    const prefixFor = (effort: 'high' | 'max') => encodeDeepSeekV4Messages(
+      [{ role: 'system', content: 'sys' }, { role: 'user', content: 'hi' }],
+      { thinkingMode: 'thinking', reasoningEffort: effort, framing: 'v4.1' },
+    ).split('\n\n')[0]!;
+
+    expect(prefixFor('high')).toBe('<｜begin▁of▁sentence｜><｜System｜>Reasoning Effort: 75 (range 1-100, the higher the value, the more thorough the reasoning)');
+    expect(prefixFor('max')).toContain('Reasoning Effort: 100 (range 1-100');
+  });
+
+  it('omits the effort prefix when thinking is off and uses the space-prefixed DSML tags', () => {
+    const request: ChatRequest = {
+      model: 'deepseek-flash',
+      messages: [
+        { role: 'system', content: 'You are a helpful assistant.' },
+        { role: 'user', content: 'Call the probe.' },
+        {
+          role: 'assistant',
+          content: '',
+          reasoning_content: '',
+          tool_calls: [{
+            id: 'call-001',
+            type: 'function',
+            function: { name: 'probe', arguments: '{"value":"alpha-42"}' },
+          }],
+        },
+        { role: 'tool', tool_call_id: 'call-001', content: '{"accepted":true}' },
+      ],
+      tools: [{
+        type: 'function',
+        function: {
+          name: 'probe',
+          description: 'probe',
+          parameters: { type: 'object', properties: { value: { type: 'string' } } },
+        },
+      }],
+      tool_choice: 'auto',
+      thinking: { type: 'disabled' },
+    };
+
+    const prompt = encodeDeepSeekV4Request(request, 'v4.1');
+    expect(prompt.startsWith('<｜begin▁of▁sentence｜><｜System｜>You are a helpful assistant.')).toBe(true);
+    expect(prompt).not.toContain('Reasoning Effort:');
+    expect(prompt).toContain('<｜DSML｜ calls>');
+    expect(prompt).toContain('<｜DSML｜ invoke name="probe">');
+    expect(prompt).toContain('<｜DSML｜ parameter name="value" string="true">alpha-42</｜DSML｜ parameter>');
+    expect(prompt).toContain('writing a "<｜DSML｜ calls>" block');
+  });
+
+  it('renders a mid-conversation system message with the System token and assistant header', () => {
+    const prompt = encodeDeepSeekV4Messages([
+      { role: 'system', content: 'policy' },
+      { role: 'user', content: 'first' },
+      { role: 'assistant', content: 'ok', wo_eos: true },
+      { role: 'system', content: 'runtime note' },
+    ], { thinkingMode: 'chat', framing: 'v4.1' });
+
+    expect(prompt).toContain('<｜System｜>runtime note<｜Assistant｜></think>');
+  });
+
+  it('keeps the V4 framing as the default', () => {
+    const prompt = encodeDeepSeekV4Messages([
+      { role: 'system', content: 'You are a helpful assistant.' },
+      { role: 'user', content: 'hi' },
+    ], { thinkingMode: 'chat' });
+
+    expect(prompt).toBe('<｜begin▁of▁sentence｜>You are a helpful assistant.<｜User｜>hi<｜Assistant｜></think>');
+  });
+});
+
 describe('DeepSeek V4 official prompt encoding', () => {
   it('matches the official thinking-without-tools vector exactly', () => {
     const messages: DeepSeekV4Message[] = [

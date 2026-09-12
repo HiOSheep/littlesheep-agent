@@ -13,6 +13,7 @@ describe('config schema', () => {
     expect(cfg.agents.defaults.harness).toBe('core-flow');
     expect(cfg.agents.defaults.reasoning).toBe('auto');
     expect(cfg.agents.defaults.profile).toBe('general');
+    expect(cfg.agents.defaults.durableHarnessMode).toBe('next');
     expect(cfg.desktop.closePolicy).toBe('background-while-active');
     expect(cfg.tools.exec.approvalMode).toBe('interactive');
     expect(cfg.tools.invocationTimeoutMs).toBe(120_000);
@@ -114,6 +115,7 @@ describe('config schema', () => {
     expect(withPresets.providers[0]!.baseURL).toBe('https://custom.local/v1');
     expect(withPresets.providers[0]!.apiKey).toBe('$CUSTOM_DEEPSEEK_KEY');
     expect(withPresets.providers[0]!.models).toEqual([
+      'deepseek-flash',
       'deepseek-v4-pro',
       'deepseek-v4-flash',
       'custom-model',
@@ -128,7 +130,7 @@ describe('config schema', () => {
   it('selects the first keyed provider when the default provider has no key', () => {
     const cfg = withProviderPresets(ConfigSchema.parse({}));
     const model = selectDefaultModelForAvailableProvider(cfg, (p) => p.id === 'deepseek');
-    expect(model).toBe('deepseek/deepseek-v4-pro');
+    expect(model).toBe('deepseek/deepseek-flash');
   });
 
   it('repairs an unavailable default model for a keyed provider', () => {

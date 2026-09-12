@@ -98,6 +98,7 @@ function runtimeState(): RuntimeState {
     durableHarnessMode: 'shadow',
     durableHarnessSessionOverrides: {},
     durableHarnessOriginOverrides: {},
+    durableHarnessProfileOverrides: {},
     closePolicy: 'background-while-active',
     workspace: 'D:/workspace',
     workplace: 'D:/data/workplace',

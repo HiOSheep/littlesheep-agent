@@ -141,16 +141,6 @@ button.agent-flow-row.no-details:focus-visible,
   color: var(--muted-2);
 }
 
-.agent-reasoning-glyph {
-  overflow: hidden;
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 10px;
-  letter-spacing: 0;
-}
-
-.agent-step-glyph::before,
 .agent-verification-glyph::before {
   width: 6px;
   height: 6px;
@@ -183,6 +173,71 @@ button.agent-flow-row.no-details:focus-visible,
   color: var(--muted-2);
 }
 
+/* A settled run without a proven step/tool outcome stays muted and is never
+   dressed up as success, failure, or an in-flight pulse. */
+
+/* Next-Harness transcript rows: thinking, prose, and tools in production order. */
+.assistant-transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.agent-transcript-reasoning {
+  margin: 0;
+}
+
+.agent-transcript-reasoning > summary {
+  /* Renderer policy: interactive rows keep the default cursor. */
+  list-style: none;
+  opacity: 0.82;
+}
+
+.agent-transcript-reasoning > summary::-webkit-details-marker {
+  display: none;
+}
+
+.agent-transcript-reasoning.running > summary .agent-reasoning-glyph {
+  color: var(--warning);
+}
+
+.agent-transcript-reasoning[open] > summary .agent-flow-chevron {
+  transform: rotate(90deg);
+}
+
+.agent-transcript-reasoning .agent-transcript-details {
+  margin: 2px 0 6px 26px;
+  padding: 8px 10px;
+  border-left: 2px solid color-mix(in srgb, var(--muted-2) 40%, transparent);
+  color: var(--muted-2);
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.agent-transcript-prose {
+  margin: 4px 0 6px;
+}
+
+.agent-active-stage-row {
+  opacity: 0.86;
+}
+
+.agent-active-stage-glyph {
+  color: var(--warning);
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--warning) 45%, transparent));
+  animation: agent-active-stage-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes agent-active-stage-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+.agent-step-glyph.unknown,
+.agent-step-glyph.pending,
+.agent-tool-call.unknown .agent-tool-glyph {
+  color: var(--muted-2);
+}
+
 .agent-flow-title {
   min-width: 0;
   color: var(--text);
@@ -204,6 +259,37 @@ button.agent-flow-row.no-details:focus-visible,
   color: var(--muted);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.assistant-context-projections {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+.context-projection-row {
+  color: var(--muted-2);
+}
+
+.context-projection-glyph {
+  width: 16px;
+  height: 16px;
+  opacity: 0.72;
+}
+
+.agent-transcript-summary {
+  margin: 4px 0;
+  color: var(--muted-2);
+  font-size: 12px;
+  line-height: 22px;
+}
+
+.turn-usage-footer {
+  max-width: min(820px, 100%);
+  margin-top: 5px;
+  color: var(--muted-2);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .agent-flow-summary.is-error,
@@ -373,30 +459,26 @@ button.agent-flow-row.no-details:focus-visible,
   border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
 }
 
-.agent-tool-glyph .workspace-tree-glyph-icon {
-  width: 14px;
-  height: 14px;
-}
-
-.agent-tool-generic-glyph {
-  position: relative;
+.agent-tool-activity-icon {
   display: block;
-  width: 13px;
-  height: 10px;
-  border: 1px solid currentColor;
-  border-radius: var(--radius-icon);
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
-.agent-tool-generic-glyph::before {
-  position: absolute;
-  left: 3px;
-  top: 3px;
-  width: 3px;
-  height: 3px;
-  border-right: 1px solid currentColor;
-  border-bottom: 1px solid currentColor;
-  content: "";
-  transform: rotate(-45deg);
+.agent-activity-svg {
+  display: block;
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .agent-tool-details {

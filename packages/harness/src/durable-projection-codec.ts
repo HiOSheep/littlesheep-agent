@@ -1,5 +1,4 @@
-// Codec and bounded readers for durable event payloads.
-// This module owns the untrusted payload boundary; the kernel owns transitions.
+// Codec and bounded readers for durable event payloads; owns the untrusted boundary.
 import type {
   CacheObservation,
   DurableCapabilityProbeProjection,
@@ -19,6 +18,7 @@ import {
   NORMALIZED_REQUEST_VERSION,
   STABLE_PREFIX_VERSION,
 } from '@littlesheep/types';
+import { readEffectReconciliationKey } from './effect-reconciliation-key.js';
 import { DurableKernelError } from './durable-kernel-error.js';
 
 export function validateEventInput(input: DurableHarnessEventAppendInput): void {
@@ -59,23 +59,51 @@ export function validateSource(event: DurableHarnessEventAppendInput | DurableHa
   }
 }
 
-export function readEffectIntent(event: DurableHarnessEvent): DurableEffectProjection {
+export function readEffectIntent(event: Pick<DurableHarnessEvent, 'payload'> & { eventId?: string }): DurableEffectProjection {
   const effectId = requiredString(event.payload.effectId, 'effect_intent_created.effectId');
   const idempotencyKey = requiredString(event.payload.idempotencyKey, 'effect_intent_created.idempotencyKey');
   const toolName = requiredString(event.payload.toolName, 'effect_intent_created.toolName');
+  const effectLease = readOptionalEffectLease(event.payload);
   const effectKind = event.payload.effectKind;
   if (effectKind !== 'local_mutation' && effectKind !== 'external' && effectKind !== 'unknown') {
     throw new DurableKernelError('invalid effect kind', 'invalid');
   }
+  const reconciliationKey = readEffectReconciliationKey(event.payload);
   return {
     effectId,
     idempotencyKey,
     toolName,
     effectKind,
+    ...effectLease,
+    ...(reconciliationKey ? { reconciliationKey } : {}),
     status: 'planned',
-    intentEventId: event.eventId,
+    intentEventId: event.eventId ?? 'pending-effect-intent',
     ...(typeof event.payload.inputHash === 'string' ? { inputHash: event.payload.inputHash } : {}),
   };
+}
+
+export function validateEffectSettlementOwner(
+  effect: DurableEffectProjection,
+  event: DurableHarnessEventAppendInput | DurableHarnessEvent,
+): void {
+  if (event.source !== 'tool' || !effect.ownerId) return;
+  const ownerId = requiredString(event.payload.ownerId, 'effect_settled.ownerId');
+  if (ownerId !== effect.ownerId) throw new DurableKernelError(`effect settlement owner mismatch: ${effect.effectId}`, 'transition');
+  const leaseUntil = requiredString(event.payload.leaseUntil, 'effect_settled.leaseUntil');
+  if (Number.isNaN(Date.parse(leaseUntil))) throw new DurableKernelError('effect_settled.leaseUntil must be a timestamp', 'invalid');
+}
+
+function readOptionalEffectLease(payload: Record<string, unknown>): Pick<DurableEffectProjection, 'ownerId' | 'leaseUntil'> {
+  if (payload.ownerId === undefined && payload.leaseUntil === undefined) return {};
+  if (payload.ownerId === undefined || payload.leaseUntil === undefined) {
+    throw new DurableKernelError('effect intent ownerId and leaseUntil must be provided together', 'invalid');
+  }
+  const ownerId = requiredString(payload.ownerId, 'effect_intent_created.ownerId');
+  const leaseUntil = requiredString(payload.leaseUntil, 'effect_intent_created.leaseUntil');
+  if (Number.isNaN(Date.parse(leaseUntil))) {
+    throw new DurableKernelError('effect_intent_created.leaseUntil must be a timestamp', 'invalid');
+  }
+  return { ownerId, leaseUntil: new Date(leaseUntil).toISOString() };
 }
 
 export function readCapabilitySnapshot(
@@ -567,7 +595,7 @@ export function requiredRuntimeStatus(value: unknown): DurableRunProjection['sta
 }
 
 export function sourceForInboxCommand(command: DurableInboxCommand): DurableHarnessEvent['source'] {
-  return sourceForInboxType(command.type);
+  return command.source ?? sourceForInboxType(command.type);
 }
 
 export function sourceForInboxType(type: DurableHarnessEvent['type']): DurableHarnessEvent['source'] {

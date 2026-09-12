@@ -221,17 +221,6 @@ export async function routeKnownIncompleteExecution(
   reason: string,
   meta: Record<string, unknown>,
 ): Promise<StageResult> {
-  if (!hasIncompleteTaskExecution(ctx)) {
-    await recordVerification(ctx, { verdict: 'pass', reason, source: 'degraded' });
-    publishVerifiedReply(ctx);
-    return {
-      stage: 'verify',
-      next: 'evolve',
-      ok: true,
-      meta: { degradedPass: true, reason, ...meta },
-    };
-  }
-
   const targetStepIds = deriveReplanTargets(ctx, undefined);
   const feedback = `Recorded step evidence is incomplete: ${reason}`;
   if (!canRecoverWithPartialReplan(ctx, targetStepIds)) {

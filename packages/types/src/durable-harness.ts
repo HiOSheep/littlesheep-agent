@@ -4,6 +4,7 @@
 
 import type { CacheObservation } from './cache-observability.js';
 import type { ProviderLocalTokenCalibration } from './token-ledger.js';
+import type { ReconciliationValue } from './reconciliation-key.js';
 
 export const DURABLE_HARNESS_EVENT_VERSION = 1 as const;
 export const DURABLE_HARNESS_EVENT_MAX_PAYLOAD_BYTES = 64 * 1024;
@@ -85,11 +86,15 @@ export interface DurableInboxCommand {
   readonly sessionId: string;
   readonly runId: string;
   readonly type: DurableHarnessEventType;
+  readonly source?: DurableHarnessEventSource;
+  readonly occurredAt?: string;
   readonly payload: Record<string, unknown>;
   readonly status: 'queued' | 'claimed' | 'completed' | 'failed';
   readonly enqueuedAt: string;
   readonly updatedAt: string;
   readonly leaseUntil?: string;
+  /** Opaque owner token for the current claim attempt. Cleared on settlement/requeue. */
+  readonly claimToken?: string;
   readonly attempts: number;
   readonly resultEventIds?: string[];
   readonly failureReason?: string;
@@ -101,7 +106,15 @@ export interface DurableInboxEnqueueInput {
   readonly sessionId: string;
   readonly runId: string;
   readonly type: DurableHarnessEventType;
+  readonly source: DurableHarnessEventSource;
+  readonly occurredAt?: string;
   readonly payload: Record<string, unknown>;
+}
+
+export interface DurableInboxClaimFilter {
+  readonly commandId?: string;
+  readonly sessionId?: string;
+  readonly runId?: string;
 }
 
 export type DurableInboxEnqueueOutcome =
@@ -111,15 +124,37 @@ export type DurableInboxEnqueueOutcome =
 
 export interface DurableInboxStoreLike {
   enqueue(input: DurableInboxEnqueueInput): Promise<DurableInboxEnqueueOutcome>;
-  claim(limit?: number): Promise<DurableInboxCommand[]>;
-  complete(commandId: string, resultEventIds?: readonly string[]): Promise<DurableInboxCommand>;
-  fail(commandId: string, reason: string, retryable?: boolean): Promise<DurableInboxCommand>;
+  claim(limit?: number, filter?: DurableInboxClaimFilter): Promise<DurableInboxCommand[]>;
+  complete(commandId: string, resultEventIds?: readonly string[], claimToken?: string): Promise<DurableInboxCommand>;
+  fail(commandId: string, reason: string, retryable?: boolean, claimToken?: string): Promise<DurableInboxCommand>;
   read(commandId: string): Promise<DurableInboxCommand | null>;
+  listRecoverableRuns?(limit?: number): Promise<Array<{ sessionId: string; runId: string }>>;
+  /** Runs currently protected by a non-expired inbox claim. */
+  listActiveClaimedRuns?(limit?: number): Promise<Array<{ sessionId: string; runId: string }>>;
+  /** Earliest active claim lease that should trigger another recovery pass. */
+  nextClaimLeaseExpiry?(): Promise<string | undefined>;
 }
 
 export type DurableRunStatus = 'accepted' | 'running' | 'waiting_user' | 'completed' | 'failed' | 'interrupted';
 export type DurableFinalReplyState = 'none' | 'proposed' | 'settled' | 'runtime_status';
 export type DurableEffectStatus = 'planned' | 'in_progress' | 'succeeded' | 'failed' | 'cancelled' | 'unknown';
+export type DurableEffectOutcomeQueryResult =
+  | { readonly known: true; readonly status: Extract<DurableEffectStatus, 'succeeded' | 'failed' | 'unknown'>; readonly evidenceRef?: string }
+  | { readonly known: false; readonly reason?: string };
+
+/** Bounded host context for a tool-owned recovery-time effect reconciliation. */
+export interface EffectReconcileContext {
+  readonly sessionId: string;
+  readonly runId: string;
+  /** Host rechecks current permission and container boundary before local I/O. */
+  readonly authorizeRead?: (absolutePath: string) => Promise<boolean>;
+  /**
+   * Bounded key the tool declared before executing, when it declared one.
+   * Absent means the tool must fall back to a conservative `known: false`.
+   */
+  readonly reconciliationKey?: ReconciliationValue;
+  readonly log?: (level: 'info' | 'warn' | 'error', message: string, data?: unknown) => void;
+}
 export type DurableModelRequestStatus =
   | 'started'
   | 'received'
@@ -189,7 +224,11 @@ export interface DurableEffectProjection {
   readonly idempotencyKey: string;
   readonly toolName: string;
   readonly inputHash?: string;
+  /** Tool-declared, bounded and redacted recovery key; never the raw input. */
+  readonly reconciliationKey?: ReconciliationValue;
   readonly effectKind: 'local_mutation' | 'external' | 'unknown';
+  readonly ownerId?: string;
+  readonly leaseUntil?: string;
   readonly status: DurableEffectStatus;
   readonly intentEventId: string;
   readonly settlementEventId?: string;
@@ -247,12 +286,13 @@ export type DurableRecoveryReason =
   | 'run_incomplete_after_restart';
 
 export interface DurableRecoveryAction {
-  readonly kind: 'model_marked_missing' | 'model_marked_received' | 'effect_marked_unknown'
+  readonly kind: 'model_marked_missing' | 'model_marked_received' | 'effect_marked_unknown' | 'effect_settled'
     | 'final_reply_settled' | 'runtime_status_settled' | 'run_completed';
   readonly eventId: string;
   readonly requestId?: string;
   readonly effectId?: string;
   readonly reason?: DurableRecoveryReason;
+  readonly status?: DurableEffectStatus;
 }
 
 /** Result of one idempotent, conservative post-crash recovery pass. */

@@ -81,6 +81,7 @@ export const LOCAL_APP_API_PREFIXES = {
   memoryResources: '/memory/tree/resources/',
   memoryProjects: '/memory/projects/',
   memoryFiles: '/memory/files/',
+  configProviders: '/config/providers/',
 } as const
 
 export function localAppApiItemPath(prefix: string, id: string, suffix = ''): string {

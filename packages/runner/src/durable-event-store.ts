@@ -19,6 +19,7 @@ import {
   boundedInteger,
   canonicalSerialize,
   hashParts,
+  isAtomicWriteTempFile,
   normalizeIdentifier,
   normalizeJsonValue,
   normalizeTime,
@@ -204,7 +205,13 @@ export class DurableEventStore implements DurableHarnessEventStoreLike {
       throw error;
     });
     for (const entry of entries) {
-      if (entry.isFile() && (entry.name.endsWith('.tmp') || (!entry.name.endsWith('.json') && entry.name !== '.events.lock'))) {
+      if (!entry.isFile()) continue;
+      // A concurrent process may be mid-rename for a committed event. Its
+      // temp file is not part of the append-only log, so ignore it instead of
+      // failing closed on a live write. A crash-orphaned temp is likewise
+      // non-authoritative; the final JSON file is the only readable record.
+      if (isAtomicWriteTempFile(entry.name)) continue;
+      if (!entry.name.endsWith('.json') && entry.name !== '.events.lock') {
         throw new DurableEventStoreError(`unexpected event store file: ${entry.name}`, 'corrupt');
       }
     }
@@ -249,6 +256,7 @@ export class DurableEventStore implements DurableHarnessEventStoreLike {
     if (events.length > this.maxEventsPerRun) throw new DurableEventStoreError('event stream exceeds configured limit', 'limit');
     return events;
   }
+
 }
 
 export class DurableEventStoreError extends Error {

@@ -57,16 +57,22 @@ export function RuntimePicker({
   const disabled = !runtime
   const activeProvider = providers.find((provider) => provider.id === activeProviderId) ?? providers[0]
   const activeModels = activeProvider?.models ?? []
+  const selectedEntry = selected?.provider.models.find((model) => model.id === selected.model)
   const reasoning = runtime?.reasoning ?? 'auto'
   const supportedReasoningIds = useMemo(
-    () => getSupportedReasoningOptions(selected?.provider.id ?? '', selected?.model ?? ''),
-    [selected?.model, selected?.provider.id],
+    // The runtime payload already carries declared options for user-declared
+    // models; the built-in registry only fills in the presets.
+    () => selectedEntry?.reasoningOptions
+      ?? getSupportedReasoningOptions(selected?.provider.id ?? '', selected?.model ?? ''),
+    [selectedEntry, selected?.model, selected?.provider.id],
   )
   const effectiveReasoning = supportedReasoningIds.includes(reasoning) ? reasoning : 'auto'
   const visibleReasoningOptions = REASONING_OPTIONS.filter((item) => supportedReasoningIds.includes(item.id))
   const reasoningOption = REASONING_OPTIONS.find((item) => item.id === effectiveReasoning) ?? REASONING_OPTIONS[0]
   const modelLabel = selected
-    ? formatRuntimeModelLabel(selected.model, selected.provider.id, selected.provider.name)
+    ? selectedEntry?.declared && selectedEntry.name !== selectedEntry.id
+      ? selectedEntry.name
+      : formatRuntimeModelLabel(selected.model, selected.provider.id, selected.provider.name)
     : providers.length === 0 ? '无可用模型' : '选择模型'
 
   useEffect(() => {
@@ -318,9 +324,11 @@ export function RuntimePicker({
               </button>
             ))
             : activeModels.map((model) => {
-              const ref = `${activeProvider?.id}/${model}`
+              const ref = `${activeProvider?.id}/${model.id}`
               const isActive = ref === runtime?.model
-              const displayModel = formatRuntimeModelLabel(model, activeProvider?.id, activeProvider?.name)
+              const displayModel = model.declared && model.name !== model.id
+                ? model.name
+                : formatRuntimeModelLabel(model.id, activeProvider?.id, activeProvider?.name)
               return (
                 <button
                   key={ref}
@@ -362,6 +370,7 @@ export function RuntimePicker({
           aria-haspopup="menu"
           aria-expanded={open}
           aria-label={`模型 ${modelLabel}, 推理 ${reasoningOption?.label ?? effectiveReasoning}`}
+          title={providers.length === 0 ? '在 设置 → 模型供应商 里添加供应商和模型' : undefined}
           onClick={() => {
             if (open) {
               closePicker()

@@ -30,6 +30,7 @@ import { clearReplyState } from '../reply-state.js';
 import { recordFailure } from '../failure-state.js';
 import { synthesizeFinalReply } from './execute/final-reply.js';
 import { repairDiscontinuousReply } from './reply/continuity-repair.js';
+import { emitSystemPromptTranscript } from '../system-prompt-transcript.js';
 
 export interface ReplyStageDeps {
   llm: LlmClient;
@@ -92,6 +93,10 @@ export function createReplyStage(deps: ReplyStageDeps) {
       { id: 'user-facing-voice', text: buildUserFacingVoiceAddon(ctx), placement: isCapabilityReply ? 'stable' : undefined },
     ]);
 
+    // The durable path shows the user the exact prompt the run is using
+    // (identity, SOUL/USER, memory index, contracts). The legacy path keeps
+    // its previous hidden-prompt behaviour.
+    emitSystemPromptTranscript(ctx, systemPrompt.text);
     const attachmentMessages = isCapabilityReply ? [] : attachmentContextMessages(ctx.runId, ctx.attachments);
     const history = isCapabilityReply ? [] : recentHistoryForModel(ctx.history, 8, 6_000);
     const messages: ChatMessage[] = [
@@ -106,6 +111,11 @@ export function createReplyStage(deps: ReplyStageDeps) {
 
     let reply: string;
     let streamed = '';
+    // Next path only: a direct answer is still a turn the user watches, so
+    // its thinking is published as one 思考 row before the answer text.
+    const transcriptEnabled = ctx.streamModelTranscript === true && typeof ctx.onToolEvent === 'function';
+    const replyPhaseId = `reply:${ctx.runId ?? 'run'}`;
+    let replyReasoning = '';
     try {
       const stream = ctx.onAssistantDelta !== undefined;
       const rawRequest = {
@@ -133,6 +143,13 @@ export function createReplyStage(deps: ReplyStageDeps) {
               ctx.onAssistantReplace?.('');
               return;
             }
+            if (chunk.type === 'reasoning_delta' && chunk.delta) {
+              if (transcriptEnabled) {
+                replyReasoning = boundedReasoningText(replyReasoning + chunk.delta);
+                emitReplyThinking(ctx, replyPhaseId, replyReasoning, true);
+              }
+              return;
+            }
             if (chunk.type === 'delta' && chunk.delta) {
               streamed += chunk.delta;
               ctx.onAssistantDelta?.(chunk.delta);
@@ -140,6 +157,25 @@ export function createReplyStage(deps: ReplyStageDeps) {
           })
         : await callModelChat(ctx, deps.llm, req);
       writeProviderUsageState(ctx, 'reply', res.usage);
+      const rawReply = res.content || streamed;
+      // A respond request deliberately has no tool authority. Provider-emitted
+      // control syntax is a protocol failure, not permission to upgrade this
+      // run into an executing route.
+      if (containsDsmlControlMarkup(rawReply)) {
+        ctx.onAssistantReplace?.('');
+        const message = 'respond provider returned tool control markup without tool authority';
+        recordFailure(ctx, 'reply', 'reply', message);
+        return {
+          stage: 'reply',
+          next: 'exit',
+          ok: false,
+          error: message,
+          meta: { protocolError: 'tool_control_markup_without_authority' },
+        };
+      }
+      if (transcriptEnabled && replyReasoning.trim()) {
+        emitReplyThinking(ctx, replyPhaseId, replyReasoning, false);
+      }
       const apiGeneratedReply = isCapabilityReply
         ? res.content || streamed
         : await repairDiscontinuousReply(
@@ -148,7 +184,7 @@ export function createReplyStage(deps: ReplyStageDeps) {
             systemPrompt.text,
             messages,
             history,
-            res.content || streamed,
+            rawReply,
           );
       reply = await acceptUniqueUserFacingReply(
         ctx,
@@ -177,6 +213,10 @@ export function createReplyStage(deps: ReplyStageDeps) {
       ok: true,
     };
   };
+}
+
+function containsDsmlControlMarkup(value: string): boolean {
+  return /<\s*[｜|]{1,2}\s*DSML\s*[｜|]{1,2}\s*(?:calls|tool_calls|invoke|parameter)\b/iu.test(value);
 }
 
 async function rewriteReply(
@@ -227,4 +267,31 @@ async function rewriteReply(
 function respondBootstrap(bootstrap: RunContext['bootstrap']): Record<string, string> {
   const user = bootstrap?.['USER.md']?.trim();
   return user ? { 'USER.md': user } : {};
+}
+
+/** Bounded thinking text for one reply-stage row. */
+const MAX_REPLY_REASONING_TEXT = 4_000;
+
+function boundedReasoningText(value: string): string {
+  return value.length > MAX_REPLY_REASONING_TEXT ? value.slice(-MAX_REPLY_REASONING_TEXT) : value;
+}
+
+function emitReplyThinking(
+  ctx: RunContext,
+  phaseId: string,
+  text: string,
+  streaming: boolean,
+): void {
+  try {
+    ctx.onToolEvent?.({
+      type: 'model_reasoning',
+      visibility: 'progress',
+      stage: 'reply',
+      phaseId,
+      reasoningStatus: streaming ? 'running' : 'done',
+      summary: streaming ? text.slice(-240) : text,
+    });
+  } catch {
+    // Thinking delivery is cosmetic; never fail the answer because of it.
+  }
 }

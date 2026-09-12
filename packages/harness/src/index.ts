@@ -67,6 +67,20 @@ export {
   type CacheObservationStoreResult,
 } from './cache-observation-store.js';
 export { buildRunRequestCandidates, type BuildRunRequestCandidatesOptions } from './context-candidates.js';
+export {
+  buildCacheQualityReport,
+  type CacheQualityReport,
+  type CacheTokenUsageSummary,
+  type CacheVerificationSummary,
+  type CacheRequestOutcomeSummary,
+  type CacheLedgerSummary,
+} from './cache-quality-report.js';
+export {
+  compareHarnessPaths,
+  type HarnessPathComparison,
+  type HarnessPathLabel,
+  type HarnessPathSummary,
+} from './harness-path-comparison.js';
 export { capabilityProbeEvent } from './capability-events.js';
 export {
   assessResponseMemoryContinuity,
@@ -166,6 +180,6 @@ export {
   reduceDurableRunProjection,
   replayDurableFinalReply,
   type DurableHarnessKernelOptions,
-  type DurableInboxProcessResult,
   type DurableRecoveryOptions,
 } from './durable-kernel.js';
+export type { DurableInboxProcessResult } from './durable-inbox-processor.js';

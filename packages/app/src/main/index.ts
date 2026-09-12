@@ -20,6 +20,7 @@ import { randomBytes } from 'node:crypto'
 import { join } from 'node:path'
 import {
   loadConfig,
+  registerConfiguredModelCapabilities,
   saveConfig,
   selectDefaultModelForAvailableProvider,
   withProviderPresets,
@@ -33,8 +34,10 @@ import { createRunner, type AgentRunner, type LogFn } from '@littlesheep/runner'
 import { createPluginHost, type PluginHost } from '@littlesheep/plugins'
 import { startLocalAppApiServer, type LocalAppApiServer } from './local-app-api-server.js'
 import { BUILTIN_PLUGIN_SOURCES } from './builtin-plugins.js'
+import { BOOTSTRAP_TEMPLATES } from './bootstrap-templates.js'
 import { classifyAttachment } from './attachments.js'
 import { SessionIndex } from './session-index.js'
+import { createRecoveryReadAuthorizer } from './run-policy.js'
 import { ProjectIndex } from './project-index.js'
 import { ArchiveIndex } from './archive-index.js'
 import { TerminalActivityIndex } from './terminal-activity-index.js'
@@ -102,51 +105,6 @@ const desktopAcceptanceSnapshot = createDesktopAcceptanceSnapshotProvider({
   getRetiredRunnerCount: () => retiredRunners.size,
 })
 
-const BOOTSTRAP_TEMPLATES: Record<string, string> = {
-  'AGENTS.md': [
-    '# AGENTS.md',
-    '',
-    'Project-level operating instructions for LittleSheep.',
-    'Add durable rules here when you want every run to follow them.',
-    '',
-  ].join('\n'),
-  'USER.md': [
-    '# USER.md',
-    '',
-    'Durable user preferences and profile notes live here.',
-    'Keep this concise and update it when preferences change.',
-    '',
-  ].join('\n'),
-  'PHILOSOPHY.md': [
-    '# PHILOSOPHY.md',
-    '',
-    '这里保存经用户确认的长期价值判断、设计取舍和共同工作理念。',
-    'LS 只在任务相关时沿资源索引按需读取，不会把全文常驻到每轮上下文。',
-    '',
-  ].join('\n'),
-  'TOOLS.md': [
-    '# TOOLS.md',
-    '',
-    'Tool usage conventions and local command policies live here.',
-    'Record lessons that prevent repeated tool mistakes.',
-    '',
-  ].join('\n'),
-  'MEMORY.md': [
-    '# MEMORY.md',
-    '',
-    'Curated long-term memory for LittleSheep.',
-    'Daily detailed memory lives in the memory/ directory.',
-    '',
-  ].join('\n'),
-  'SOUL.md': [
-    '# SOUL.md',
-    '',
-    'Voice, temperament, and identity notes for LittleSheep.',
-    'Keep the stable personality here; keep task rules in AGENTS.md.',
-    '',
-  ].join('\n'),
-}
-
 function providerHasKey(provider: ModelProvider): boolean {
   return !provider.apiKey || !!resolveApiKey(provider.apiKey)
 }
@@ -167,6 +125,10 @@ function prepareRuntimeConfig(config: Config, workplaceDir?: string): { config: 
     },
   }
   const model = selectDefaultModelForAvailableProvider(normalized, providerHasKey)
+  // User-declared model metadata is the only authority LS has for models the
+  // built-in registry does not know; register it before the first run so that
+  // context window, reasoning options and tokenizer honesty follow the config.
+  registerConfiguredModelCapabilities(normalized)
   return { config: normalized, model, migratedDefaultWorkspace: workspaceResolution.migrated }
 }
 
@@ -305,9 +267,11 @@ async function bootstrap(): Promise<void> {
     model,
     bootstrapDir: dataDir.root,
     containerRoot: dataDir.root,
+    authorizeDurableEffectRead: createRecoveryReadAuthorizer(() => sessionIndex, dataDir.root),
     durableHarnessMode: config.agents.defaults.durableHarnessMode,
     durableHarnessSessionOverrides: config.agents.defaults.durableHarnessSessionOverrides,
     durableHarnessOriginOverrides: config.agents.defaults.durableHarnessOriginOverrides,
+    durableHarnessProfileOverrides: config.agents.defaults.durableHarnessProfileOverrides,
     tokenizerFetch: (input, init) => net.fetch(input instanceof URL ? input.href : input, init),
   })
   stageStartedAt = recordBootstrapTiming('runner-ready', stageStartedAt)
@@ -503,9 +467,11 @@ async function doRebuildRunner(): Promise<void> {
     model: currentModel,
     bootstrapDir: currentBootstrapDir || currentDataDir,
     containerRoot: currentDataDir || currentBootstrapDir,
+    authorizeDurableEffectRead: createRecoveryReadAuthorizer(() => sessionIndex, currentDataDir || currentBootstrapDir),
     durableHarnessMode: currentConfig.agents.defaults.durableHarnessMode,
     durableHarnessSessionOverrides: currentConfig.agents.defaults.durableHarnessSessionOverrides,
     durableHarnessOriginOverrides: currentConfig.agents.defaults.durableHarnessOriginOverrides,
+    durableHarnessProfileOverrides: currentConfig.agents.defaults.durableHarnessProfileOverrides,
     tokenizerFetch: (input, init) => net.fetch(input instanceof URL ? input.href : input, init),
   })
 

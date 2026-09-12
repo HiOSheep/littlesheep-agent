@@ -1,7 +1,7 @@
 import React, { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { AssistantActivityFlow, AssistantTurnMessage } from './assistant-turn'
+import { AssistantActivityFlow, AssistantTranscript, AssistantTurnMessage } from './assistant-turn'
 import { WebSources, webErrorLabel, webEvidenceStateLabel } from './assistant-turn'
 import type { AssistantTurnActivity, ChatMessage } from './types'
 import type { WebEvidenceProjection } from '@littlesheep/types'
@@ -234,5 +234,79 @@ describe('assistant activity flow', () => {
 
     expect(html.match(/唯一结果/gu)).toHaveLength(1)
     expect(html).toContain('<strong>唯一结果</strong>')
+  })
+})
+
+describe('next-Harness transcript rendering', () => {
+  it('summarises a finished turn as 已思考 · N 次工具调用 · N 条消息', () => {
+    const html = renderToStaticMarkup(createElement(AssistantTranscript, {
+      transcript: [
+        { kind: 'reasoning', id: 'turn-1:reasoning', text: '想过了。', status: 'done' },
+        { kind: 'text', id: 'turn-1:text', text: '先看目录。' },
+        { kind: 'tool', id: 'tool:call-1', callId: 'call-1' },
+      ],
+      activity: activity({
+        status: 'done',
+        visibility: 'progress',
+        durationMs: 2_400,
+        tools: [{ callId: 'call-1', name: 'glob', startedAt: 1_000, endedAt: 1_200, ok: true, input: {}, output: 'a' }],
+      }),
+      now: 4_000,
+      onOpenFile: () => undefined,
+    }))
+    expect(html).toContain('agent-transcript-summary')
+    expect(html).toContain('已思考')
+    expect(html).toContain('1 次工具调用')
+    expect(html).toContain('1 条消息')
+  })
+
+  it('renders the system prompt row first and expandable', () => {
+    const html = renderToStaticMarkup(createElement(AssistantTranscript, {
+      transcript: [
+        { kind: 'system', id: 'system-prompt', text: 'SOUL-AND-USER-PROMPT' },
+        { kind: 'reasoning', id: 'reply:run:reasoning', text: '想好了。', status: 'done' },
+      ],
+      activity: activity({ visibility: 'progress' }),
+      now: 1_500,
+      onOpenFile: () => undefined,
+    }))
+    expect(html).toContain('系统提示词')
+    expect(html).toContain('SOUL-AND-USER-PROMPT')
+    expect(html.indexOf('系统提示词')).toBeLessThan(html.indexOf('想好了'))
+    expect(html).toContain('<details')
+  })
+
+  it('renders thinking, prose, and tools in the order they were produced', () => {
+    const html = renderToStaticMarkup(createElement(AssistantTranscript, {
+      transcript: [
+        { kind: 'reasoning', id: 'turn-1:reasoning', text: '先确认目录内容。', status: 'done' },
+        { kind: 'text', id: 'turn-1:text', text: '我先列出目录。' },
+        { kind: 'tool', id: 'tool:call-1', callId: 'call-1' },
+        { kind: 'reasoning', id: 'turn-2:reasoning', text: '看到目录了，继续。', status: 'done' },
+      ],
+      activity: activity({
+        visibility: 'progress',
+        tools: [{
+          callId: 'call-1',
+          name: 'glob',
+          startedAt: 1_000,
+          endedAt: 1_200,
+          ok: true,
+          input: { pattern: '*' },
+          output: 'attachments/',
+        }],
+      }),
+      now: 1_500,
+      onOpenFile: () => undefined,
+    }))
+
+    const thinking = html.indexOf('思考')
+    const prose = html.indexOf('我先列出目录')
+    const tool = html.indexOf('搜索')
+    const later = html.indexOf('看到目录了')
+    expect(thinking).toBeGreaterThanOrEqual(0)
+    expect(prose).toBeGreaterThan(thinking)
+    expect(tool).toBeGreaterThan(prose)
+    expect(later).toBeGreaterThan(tool)
   })
 })

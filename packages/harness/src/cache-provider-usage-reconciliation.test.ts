@@ -15,7 +15,9 @@ const TOKENIZER_ID = 'deepseek-v4-provider-calibrated-tokenizer-v2';
 
 function request(): ChatRequest {
   return {
-    model: 'deepseek-v4-flash',
+    // deepseek-v4-pro is the only DeepSeek name that still owns the calibrated
+    // V4 exact counter; V4.1-served names report an unavailable tokenizer.
+    model: 'deepseek-v4-pro',
     messages: [
       { role: 'system', content: 'stable policy text' },
       { role: 'user', content: 'bounded user input' },
@@ -40,7 +42,7 @@ function resolvedConfig(ctx: RunContext): NonNullable<RunContext['resolvedRunCon
     toolSelectionStrategyId: 'registered-tools-v1',
     outputContractId: 'user-reply-v1',
     provider: 'deepseek',
-    model: 'deepseek-v4-flash',
+    model: 'deepseek-v4-pro',
     reasoning: 'auto',
     parameters: {},
     availableToolNames: [],
@@ -75,7 +77,7 @@ async function project(localPromptTokens: number, providerPromptTokens: number) 
   ctx.resolvedRunConfig = resolvedConfig(ctx);
   bindExactContextTokenCounter(ctx, {
     id: TOKENIZER_ID,
-    supports: (provider, model) => provider === 'deepseek' && model === 'deepseek-v4-flash',
+    supports: (provider, model) => provider === 'deepseek' && model === 'deepseek-v4-pro',
     countRequest: () => localPromptTokens,
   });
   const events = durableRecorder(ctx);

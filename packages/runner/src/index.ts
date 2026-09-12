@@ -190,6 +190,40 @@ export {
 } from './durable-inbox-store.js';
 
 export {
+  DurableRunLeaseStore,
+  DurableRunLeaseError,
+  DURABLE_RUN_LEASE_VERSION,
+  DEFAULT_DURABLE_RUN_LEASE_MS,
+  MAX_DURABLE_RUN_LEASE_MS,
+  type DurableRunLease,
+  type DurableRunLeaseAcquireOutcome,
+  type DurableRunLeaseStoreOptions,
+} from './durable-run-lease-store.js';
+
+export {
+  DurableRunLeaseHeartbeat,
+  type DurableRunLeaseHeartbeatOptions,
+} from './durable-run-lease-heartbeat.js';
+
+export {
+  DurableEffectLeaseStore,
+  type DurableEffectLease,
+  type DurableEffectLeaseIdentity,
+  type DurableEffectLeaseAcquireOutcome,
+  type DurableEffectLeaseStoreOptions,
+} from './durable-effect-lease-store.js';
+
+export {
+  DurableEffectLeaseCoordinator,
+  type DurableEffectLeaseCoordinatorOptions,
+} from './durable-effect-lease-coordinator.js';
+
+export {
+  DurableRunOwnership,
+  type DurableRunOwnershipOptions,
+} from './durable-run-ownership.js';
+
+export {
   DurableRunRecorder,
   durableEvent,
   type DurableRunEventInput,

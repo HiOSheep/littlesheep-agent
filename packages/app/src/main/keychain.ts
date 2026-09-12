@@ -203,6 +203,22 @@ export function deriveEnvVarName(apiKey: string | undefined): string | null {
   return null // literal key, not an env var reference
 }
 
+/**
+ * Canonical keychain entry name for a provider id.
+ *
+ * "my-gw" → "MY_GW_API_KEY". The settings page stores plaintext keys here and
+ * keeps only the "$MY_GW_API_KEY" reference in config.json, so provider
+ * credentials never enter the config file or the renderer payload.
+ */
+export function deriveProviderKeyEnvVar(providerId: string): string {
+  const slug = providerId
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+  return `${slug || 'PROVIDER'}_API_KEY`
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
 /** Synchronous read for use in non-async contexts (loadApiKeys). */

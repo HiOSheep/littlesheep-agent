@@ -7,18 +7,22 @@ import { InlineMarkdown, Markdown } from '../Markdown'
 import { TraceCard } from '../TraceCard'
 import {
   buildArtifactsFromLiveTools,
+  formatDurationMs,
   formatMaybeDuration,
   liveStepStatusLabel,
 } from './activity-model'
 import { visibleActivitySteps } from './activity-visibility'
 import { AgentToolRow } from './agent-tool-row'
+import { shortActivityText } from './task-progress-indicator'
 import { MessageMeta } from './message-meta'
 import type {
   AssistantTurnActivity,
   ChatMessage,
   LiveStepEvent,
   LiveToolEvent,
+  TranscriptEntry,
 } from './types'
+import { useConversationDisplayMode } from './conversation-display'
 
 
 interface AssistantTurnMessageProps {
@@ -35,6 +39,7 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
   now,
   onOpenFile,
 }: AssistantTurnMessageProps) {
+  const displayMode = useConversationDisplayMode()
   const activity = message.activity
   if (!activity) {
     return (
@@ -50,16 +55,23 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
           {message.webEvidence && <WebSources evidence={message.webEvidence} />}
         </div>
         <MessageMeta role="assistant" text={message.text} timestamp={message.timestamp} />
+        <TurnUsageFooter message={message} />
       </div>
     )
   }
 
   const responseVisible = activity.status === 'running'
     || Boolean(message.text.trim() || activity.error || message.artifacts?.length)
+  const compactCompleted = displayMode === 'compact' && activity.status !== 'running'
 
   return (
     <section className={`assistant-turn ${activity.status}`} data-message-key={messageKey}>
-      <AssistantActivityFlow activity={activity} now={now} onOpenFile={onOpenFile} />
+      {!compactCompleted && <ContextProjectionRows rows={activity.contextProjections ?? []} />}
+      {(activity.transcript?.length ?? 0) > 0
+        ? <AssistantTranscript transcript={activity.transcript ?? []} activity={activity} now={now} onOpenFile={onOpenFile} compact={compactCompleted} />
+        : compactCompleted
+          ? <LegacyActivitySummary activity={activity} />
+          : <AssistantActivityFlow activity={activity} now={now} onOpenFile={onOpenFile} />}
       {responseVisible && (
         <div className="message-with-meta assistant">
           <div
@@ -77,6 +89,7 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
             {message.webEvidence && <WebSources evidence={message.webEvidence} />}
           </div>
           <MessageMeta role="assistant" text={message.text} timestamp={message.timestamp} />
+          <TurnUsageFooter message={message} />
         </div>
       )}
     </section>
@@ -154,7 +167,7 @@ function AgentStepGroup({
   return (
     <section className={`agent-step-group ${step.status}`} data-step-id={step.stepId}>
       <div className={`agent-flow-row agent-step-row ${running ? 'is-active' : ''}`}>
-        <span className={`agent-flow-glyph agent-step-glyph ${step.status}`} aria-hidden="true" />
+        <span className={`agent-flow-glyph agent-step-glyph ${step.status}`} aria-hidden="true"><ActivityGlyph kind="step" /></span>
         <span className={`agent-flow-title ${running ? 'is-running' : ''}`}>
           {running ? '执行' : liveStepStatusLabel(step.status)}
         </span>
@@ -225,6 +238,8 @@ export function historyMessageToChatMessage(message: HistoryMessage): ChatMessag
     text: message.text,
     timestamp: message.timestamp,
     durationMs: message.durationMs,
+    usage: message.usage,
+    modelRef: message.modelRef,
     activity: message.activity,
     activityCollapsed: message.activityCollapsed,
     artifacts,
@@ -301,4 +316,155 @@ export function webErrorLabel(value: string): string {
     || value === 'web_dns_check_failed' || value === 'web_redirect_blocked') return '地址被安全策略阻止'
   if (value === 'web_partial') return '资料不完整'
   return '网络资料读取失败'
+}
+
+/**
+ * Next-Harness transcript: thinking, tool rows, and per-turn prose in the
+ * exact order the model produced them. Only the durable path emits the
+ * transcript entries, so the legacy Harness keeps its previous layout.
+ */
+export function AssistantTranscript({
+  transcript,
+  activity,
+  now,
+  onOpenFile,
+  compact = false,
+}: {
+  transcript: TranscriptEntry[]
+  activity: AssistantTurnActivity
+  now: number
+  onOpenFile: (path: string) => void
+  compact?: boolean
+}) {
+  const tools = new Map(activity.tools.map((tool) => [tool.callId, tool]))
+  return (
+    <div className="assistant-activity-flow assistant-transcript" role="group" aria-label="Agent 工作过程">
+      {!compact && transcript.map((entry) => {
+        if (entry.kind === 'system') {
+          return (
+            <details key={entry.id} className="agent-transcript-reasoning system" data-transcript-entry={entry.id}>
+              <summary className="agent-flow-row">
+                <span className="agent-flow-glyph agent-reasoning-glyph" aria-hidden="true"><ActivityGlyph kind="system" /></span>
+                <span className="agent-flow-title">系统提示词</span>
+                <span className="agent-flow-separator" aria-hidden="true" />
+                <span className="agent-flow-summary">{shortActivityText(entry.text, 200)}</span>
+                <span className="agent-flow-chevron" aria-hidden="true" />
+              </summary>
+              <div className="agent-transcript-details">
+                <Markdown text={entry.text} />
+              </div>
+            </details>
+          )
+        }
+        if (entry.kind === 'reasoning') {
+          return (
+            <details key={entry.id} className={`agent-transcript-reasoning ${entry.status}`} data-transcript-entry={entry.id}>
+              <summary className="agent-flow-row">
+                <span className="agent-flow-glyph agent-reasoning-glyph" aria-hidden="true"><ActivityGlyph kind="reasoning" /></span>
+                <span className="agent-flow-title">思考</span>
+                <span className="agent-flow-separator" aria-hidden="true" />
+                <span className="agent-flow-summary">{shortActivityText(entry.text, 200)}</span>
+                <span className="agent-flow-chevron" aria-hidden="true" />
+              </summary>
+              <div className="agent-transcript-details">
+                <Markdown text={entry.text} />
+              </div>
+            </details>
+          )
+        }
+        if (entry.kind === 'text') {
+          return (
+            <div key={entry.id} className="agent-transcript-prose" data-transcript-entry={entry.id}>
+              <Markdown text={entry.text} />
+            </div>
+          )
+        }
+        const tool = tools.get(entry.callId)
+        return tool
+          ? <AgentToolRow key={entry.id} tool={tool} now={now} onOpenFile={onOpenFile} />
+          : null
+      })}
+      {!compact && <ActiveStageStatus activity={activity} />}
+      {transcriptSummary(activity, transcript) ? (
+        <div className="agent-transcript-summary" data-transcript-summary="true">
+          {transcriptSummary(activity, transcript)}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function ActiveStageStatus({ activity }: { activity: AssistantTurnActivity }) {
+  if (activity.status !== 'running') return null
+  const current = [...(activity.reasoning ?? [])].reverse().find((item) => item.status === 'running')
+  if (!current) return null
+  return (
+    <div className="agent-flow-row agent-active-stage-row" role="status" aria-live="polite">
+      <span className="agent-flow-glyph agent-active-stage-glyph" aria-hidden="true"><ActivityGlyph kind="reasoning" /></span>
+      <span className="agent-flow-title">执行中</span>
+      <span className="agent-flow-separator" aria-hidden="true" />
+      <span className="agent-flow-summary">{current.summary}</span>
+    </div>
+  )
+}
+
+function ContextProjectionRows({ rows }: { rows: NonNullable<AssistantTurnActivity['contextProjections']> }) {
+  if (!rows.length) return null
+  return <div className="assistant-context-projections">{rows.map((row) => (
+    <div key={row.kind} className={`agent-flow-row context-projection-row ${row.kind}`}>
+      <span className="agent-flow-glyph context-projection-glyph" aria-hidden="true"><ActivityGlyph kind={row.kind} /></span>
+      <span className="agent-flow-title">{row.label}</span>
+      <span className="agent-flow-separator" aria-hidden="true" />
+      <span className="agent-flow-summary">{row.detail}</span>
+    </div>
+  ))}</div>
+}
+
+function ActivityGlyph({ kind }: { kind: 'system' | 'reasoning' | 'step' | 'context_injection' | 'cross_session_recall' | 'context_compaction' }) {
+  const common = { className: 'agent-activity-svg', viewBox: '0 0 16 16' }
+  if (kind === 'system') return <svg {...common}><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 6h6M5 9h4M5 12h2"/></svg>
+  if (kind === 'reasoning') return <svg {...common}><path d="M5.2 11.5h5.6M6 13.5h4M4.6 9.5C3.5 8.6 3 7.4 3 6.2a5 5 0 0 1 10 0c0 1.3-.5 2.4-1.6 3.3-.6.5-.7 1-.7 2H5.3c0-1-.1-1.5-.7-2Z"/></svg>
+  if (kind === 'cross_session_recall') return <svg {...common}><path d="M3 5.5A5.5 5.5 0 1 1 2.8 10"/><path d="M3 2.5v3H6M8 5v3l2 1.2"/></svg>
+  if (kind === 'context_compaction') return <svg {...common}><path d="M2.5 5h4V1M13.5 5h-4V1M2.5 11h4v4M13.5 11h-4v4"/><path d="m6.5 5-4-4M9.5 5l4-4M6.5 11l-4 4M9.5 11l4 4"/></svg>
+  if (kind === 'context_injection') return <svg {...common}><path d="M8 2v9M4.5 7.5 8 11l3.5-3.5M3 14h10"/></svg>
+  return <svg {...common}><circle cx="8" cy="8" r="5.5"/><path d="m5.5 8 1.7 1.7 3.5-3.7"/></svg>
+}
+
+function LegacyActivitySummary({ activity }: { activity: AssistantTurnActivity }) {
+  const parts = ['已思考', `${activity.tools.length} 次工具调用`, '0 条消息']
+  return <div className="agent-transcript-summary" data-transcript-summary="true">{parts.join(' · ')}</div>
+}
+
+function TurnUsageFooter({ message }: { message: ChatMessage }) {
+  const usage = message.usage
+  if (!usage) return null
+  const providerSeconds = Math.max(0, (usage.providerDurationMs ?? 0) / 1000)
+  const speed = providerSeconds > 0 ? usage.completionTokens / providerSeconds : undefined
+  const cached = usage.cachedPromptTokens ?? 0
+  const uncached = Math.max(0, usage.promptTokens - cached)
+  const cacheHit = usage.promptTokens > 0 ? Math.round((cached / usage.promptTokens) * 100) : 0
+  const parts = [
+    message.durationMs ? `用时 ${formatDurationMs(message.durationMs)}` : '',
+    speed !== undefined ? `${speed.toFixed(1)} tok/s` : '',
+    '本轮用量',
+    message.modelRef ?? '提供方/模型未知',
+    `缓存命中 ${cacheHit}%`,
+    `未缓存输入 ${uncached}`,
+    `缓存读取 ${cached}`,
+    `缓存写入 ${usage.cacheWriteTokens ?? '未提供'}`,
+    `输出 ${usage.completionTokens}`,
+    usage.reasoningTokens !== undefined ? `其中推理 ${usage.reasoningTokens}` : '',
+  ].filter(Boolean)
+  return <footer className="turn-usage-footer" aria-label="本轮用量">{parts.join(' · ')}</footer>
+}
+
+/**
+ * Reference-harness turn footer: once the turn is no longer running the
+ * process content is summarised as 已思考 · N 次工具调用 · N 条消息.
+ */
+function transcriptSummary(activity: AssistantTurnActivity, transcript: TranscriptEntry[]): string | undefined {
+  if (activity.status === 'running') return undefined
+  const toolCalls = transcript.filter((entry) => entry.kind === 'tool').length
+  const messages = transcript.filter((entry) => entry.kind === 'text').length
+  return `已思考 · ${toolCalls} 次工具调用 · ${messages} 条消息`
 }

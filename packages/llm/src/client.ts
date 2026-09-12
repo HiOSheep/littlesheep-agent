@@ -12,6 +12,7 @@ import type {
 } from './types.js';
 import { LlmError } from './types.js';
 import { retryWithBackoff, DEFAULT_RETRY, type RetryOptions } from './retry.js';
+import { parseDsmlToolCalls } from './dsml-tool-calls.js';
 
 export interface OpenAIClientOptions {
   baseURL: string;
@@ -53,6 +54,7 @@ interface OpenAIUsage {
   completion_tokens?: number;
   total_tokens?: number;
   prompt_cache_hit_tokens?: number;
+  cache_creation_input_tokens?: number;
   prompt_tokens_details?: { cached_tokens?: number };
   completion_tokens_details?: { reasoning_tokens?: number };
 }
@@ -162,7 +164,7 @@ export class OpenAIClient implements LlmClient {
           // Transient provider hiccup (empty choices) → retryable so retryWithBackoff
           // gets a chance instead of killing the call immediately.
           if (!choice) throw new LlmError(500, 'No choices in response', true);
-          return this.parseChoice(choice, json);
+          return this.parseChoice(choice, json, req);
         } finally {
           managed.cleanup();
         }
@@ -181,7 +183,7 @@ export class OpenAIClient implements LlmClient {
         attempt += 1;
         const managed = await this.callStreamApiWithUsageFallback({ ...req, stream: true });
         try {
-          const { content, toolCalls, finishReason, model, usage, reasoningContent } = await this.parseStream(managed.response, onDelta);
+          const { content, toolCalls, finishReason, model, usage, reasoningContent } = await this.parseStream(managed.response, onDelta, req);
           return { content, toolCalls, finishReason, model, usage, reasoningContent };
         } finally {
           managed.cleanup();
@@ -309,16 +311,24 @@ export class OpenAIClient implements LlmClient {
   }
 
   /** Parse a non-streaming choice into ChatResponse. */
-  private parseChoice(choice: OpenAIChoice, raw: OpenAIResponse): ChatResponse {
-    const toolCalls: ToolCall[] = (choice.message.tool_calls ?? []).map((tc) => ({
+  private parseChoice(choice: OpenAIChoice, raw: OpenAIResponse, request: ChatRequest): ChatResponse {
+    let toolCalls: ToolCall[] = (choice.message.tool_calls ?? []).map((tc) => ({
       id: tc.id,
       type: 'function' as const,
       function: { name: tc.function.name, arguments: tc.function.arguments },
     }));
+    let content = choice.message.content ?? '';
+    if (toolCalls.length === 0) {
+      const recovered = parseDsmlToolCalls(content, requestToolNames(request));
+      if (recovered) {
+        toolCalls = recovered.toolCalls;
+        content = recovered.content;
+      }
+    }
     return {
-      content: choice.message.content ?? '',
+      content,
       toolCalls,
-      finishReason: this.mapFinishReason(choice.finish_reason),
+      finishReason: toolCalls.length > 0 ? 'tool_calls' : this.mapFinishReason(choice.finish_reason),
       reasoningContent: choice.message.reasoning_content ?? undefined,
       usage: parseUsage(raw.usage),
       model: raw.model,
@@ -329,6 +339,7 @@ export class OpenAIClient implements LlmClient {
   private async parseStream(
     res: Response,
     onDelta: (chunk: StreamChunk) => void,
+    request: ChatRequest,
   ): Promise<{
     content: string;
     toolCalls: ToolCall[];
@@ -347,6 +358,8 @@ export class OpenAIClient implements LlmClient {
     let finishReason: ChatResponse['finishReason'] = 'stop';
     let model: string | undefined;
     let usage: ChatResponse['usage'];
+    let dsmlContentMode = false;
+    let dsmlToolNamePublished = false;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -374,7 +387,25 @@ export class OpenAIClient implements LlmClient {
         const fr = chunk.choices[0]?.finish_reason;
         if (delta?.content) {
           content += delta.content;
-          onDelta({ type: 'delta', delta: delta.content });
+          const dsmlStart = dsmlControlStart(content);
+          if (!dsmlContentMode && dsmlStart >= 0) {
+            dsmlContentMode = true;
+            onDelta({ type: 'reset' });
+            const visiblePrefix = content.slice(0, dsmlStart).trim();
+            if (visiblePrefix) onDelta({ type: 'delta', delta: visiblePrefix });
+          }
+          if (dsmlContentMode) {
+            const name = dsmlInvokeName(content);
+            onDelta({
+              type: 'tool_call_delta',
+              toolCallIndex: 0,
+              ...(!dsmlToolNamePublished && name ? { toolCallName: name } : {}),
+              toolCallArgsDelta: delta.content,
+            });
+            if (name) dsmlToolNamePublished = true;
+          } else {
+            onDelta({ type: 'delta', delta: delta.content });
+          }
         }
         if (delta?.reasoning_content) {
           reasoningContent += delta.reasoning_content;
@@ -399,12 +430,25 @@ export class OpenAIClient implements LlmClient {
         if (fr) finishReason = this.mapFinishReason(fr);
       }
     }
-    onDelta({ type: 'done', finishReason });
-    const toolCalls = Array.from(toolCallMap.values()).map((tc) => ({
+    let toolCalls = Array.from(toolCallMap.values()).map((tc) => ({
       id: tc.id,
       type: 'function' as const,
       function: { name: tc.name, arguments: tc.args },
     }));
+    if (toolCalls.length === 0) {
+      const recovered = parseDsmlToolCalls(content, requestToolNames(request));
+      if (recovered) {
+        toolCalls = recovered.toolCalls;
+        content = recovered.content;
+        finishReason = 'tool_calls';
+        // Retract DSML content already accumulated by transcript consumers.
+        if (!dsmlContentMode) {
+          onDelta({ type: 'reset' });
+          if (content) onDelta({ type: 'delta', delta: content });
+        }
+      }
+    }
+    onDelta({ type: 'done', finishReason });
     return {
       content,
       toolCalls,
@@ -438,13 +482,27 @@ function parseUsage(usage: OpenAIUsage | null | undefined): ChatResponse['usage'
   const cachedPromptTokens = usage.prompt_tokens_details?.cached_tokens
     ?? usage.prompt_cache_hit_tokens;
   const reasoningTokens = usage.completion_tokens_details?.reasoning_tokens;
+  const cacheWriteTokens = usage.cache_creation_input_tokens;
   return {
     promptTokens,
     completionTokens,
     totalTokens,
     ...(cachedPromptTokens === undefined ? {} : { cachedPromptTokens }),
+    ...(cacheWriteTokens === undefined ? {} : { cacheWriteTokens }),
     ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
   };
+}
+
+function requestToolNames(request: ChatRequest): Set<string> {
+  return new Set((request.tools ?? []).map((tool) => tool.function.name));
+}
+
+function dsmlControlStart(value: string): number {
+  return value.search(/<\s*[｜|]{1,2}\s*DSML\s*[｜|]{1,2}\s*(?:calls|tool_calls)\b/iu);
+}
+
+function dsmlInvokeName(value: string): string | undefined {
+  return /<\s*[｜|]{1,2}\s*DSML\s*[｜|]{1,2}\s*invoke\s+name="([^"]+)"/iu.exec(value)?.[1];
 }
 
 /** Build an LlmClient from a ModelProvider config. */

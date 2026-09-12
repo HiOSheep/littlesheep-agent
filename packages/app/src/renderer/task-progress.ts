@@ -5,7 +5,7 @@ export interface TaskProgressSnapshot {
   completedSteps: number
   totalSteps: number
   activeStep?: string
-  phase: 'planning' | 'executing' | 'verifying' | 'done' | 'failed' | 'aborted' | 'paused'
+  phase: 'planning' | 'executing' | 'verifying' | 'done' | 'failed' | 'aborted' | 'paused' | 'waiting_user'
   label: string
 }
 
@@ -15,7 +15,8 @@ export function buildTaskProgress(activity: HistoryActivity): TaskProgressSnapsh
   const running = activity.steps.find((step) => step.status === 'running')
   const failed = activity.steps.find((step) => step.status === 'failed')
   let phase: TaskProgressSnapshot['phase']
-  if (activity.status === 'paused') phase = 'paused'
+  if (activity.status === 'waiting_user') phase = 'waiting_user'
+  else if (activity.status === 'paused') phase = 'paused'
   else if (activity.status === 'aborted') phase = 'aborted'
   else if (activity.status === 'failed') phase = 'failed'
   else if (activity.status === 'done') phase = 'done'
@@ -32,7 +33,7 @@ export function buildTaskProgress(activity: HistoryActivity): TaskProgressSnapsh
   }
 
   const activeStep = running?.title ?? failed?.title
-  const label = phase === 'planning'
+  const label = phase === 'waiting_user' ? '等待用户决定' : phase === 'planning'
     ? '正在规划'
     : phase === 'verifying'
       ? '正在验证'

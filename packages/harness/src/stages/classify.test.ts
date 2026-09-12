@@ -4,6 +4,41 @@ import { createClassifyStage } from './classify.js';
 import { createMockLlm, makeCtx, textResponse } from '../tests/helpers.js';
 
 describe('classifyStage', () => {
+  it('sends a self-contained single-goal action directly to the lean work loop', async () => {
+    const llm = createMockLlm(textResponse('should not be called'));
+    const ctx = makeCtx({ inbound: textMessage('user', '再做一个小游戏吧') });
+    ctx.streamModelTranscript = true;
+
+    await expect(createClassifyStage({ llm, model: 'test/model' })(ctx))
+      .resolves.toMatchObject({ next: 'execute', ok: true });
+    expect(ctx.classification).toMatchObject({ activity: 'execute', source: 'rules', reason: 'action verb' });
+    expect(llm.chat).not.toHaveBeenCalled();
+  });
+
+  it('keeps history and injected memory while bypassing a redundant decision call', async () => {
+    const llm = createMockLlm(textResponse('should not be called'));
+    const ctx = makeCtx({
+      inbound: textMessage('user', '再做一个小游戏吧'),
+      history: [textMessage('assistant', '上一个游戏已经完成。')],
+      initialMemoryContext: '用户希望小游戏使用单文件 HTML。',
+    });
+    ctx.streamModelTranscript = true;
+
+    await expect(createClassifyStage({ llm, model: 'test/model' })(ctx))
+      .resolves.toMatchObject({ next: 'execute', ok: true });
+    expect(llm.chat).not.toHaveBeenCalled();
+    expect(ctx.initialMemoryContext).toContain('单文件 HTML');
+  });
+
+  it('keeps complex action requests on the full planning path', async () => {
+    const llm = createMockLlm(textResponse('should not be called'));
+    const ctx = makeCtx({ inbound: textMessage('user', '重构整个项目架构并迁移所有文件') });
+    ctx.streamModelTranscript = true;
+
+    await expect(createClassifyStage({ llm, model: 'test/model' })(ctx))
+      .resolves.toMatchObject({ next: 'decide', ok: true });
+    expect(llm.chat).not.toHaveBeenCalled();
+  });
   it('bypasses the generic classifier for a structurally bound checkpoint answer', async () => {
     const llm = createMockLlm(textResponse('{"activity":"clarify"}'));
     const stage = createClassifyStage({ llm, model: 'test/model' });

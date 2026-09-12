@@ -1,0 +1,180 @@
+// Provider editor dialog: id, name, endpoint, API key and the model list.
+// Pure validation lives in model-provider-draft.ts; this file only renders it.
+
+import {
+  REASONING_LABELS,
+  createEmptyModelRow,
+  toggleReasoningOption,
+  validateProviderDraft,
+  type ModelDraftRow,
+  type ProviderEditorDraft,
+} from './model-provider-draft'
+import { RUNTIME_REASONINGS } from '../../shared/model-capabilities'
+
+interface ModelProviderEditorProps {
+  draft: ProviderEditorDraft
+  existingIds: string[]
+  saving: boolean
+  onChange: (draft: ProviderEditorDraft) => void
+  onCancel: () => void
+  onSave: () => void
+}
+
+export function ModelProviderEditor({
+  draft,
+  existingIds,
+  saving,
+  onChange,
+  onCancel,
+  onSave,
+}: ModelProviderEditorProps) {
+  const validation = validateProviderDraft(draft, existingIds)
+  const isNew = draft.originalId === null
+
+  function patch(next: Partial<ProviderEditorDraft>) {
+    onChange({ ...draft, ...next })
+  }
+
+  function patchModel(index: number, next: Partial<ModelDraftRow>) {
+    patch({
+      models: draft.models.map((row, position) => (position === index ? { ...row, ...next } : row)),
+    })
+  }
+
+  return (
+    <div className="dialog provider-editor" role="dialog" aria-label={isNew ? '添加自定义提供方' : `编辑 ${draft.originalId}`}>
+      <div className="dialog-header">
+        <h2>{isNew ? '添加自定义提供方' : `编辑提供方 · ${draft.originalId}`}</h2>
+        <button className="dialog-close" onClick={onCancel} aria-label="关闭">×</button>
+      </div>
+
+      <div className="provider-editor-body">
+        <label className="settings-inline-field">
+          <span>供应商 ID</span>
+          <input
+            value={draft.id}
+            disabled={!isNew}
+            placeholder="例如 openrouter、my-gw"
+            onChange={(event) => patch({ id: event.target.value })}
+          />
+        </label>
+
+        <label className="settings-inline-field">
+          <span>显示名称</span>
+          <input
+            value={draft.name}
+            placeholder="留空则使用供应商 ID"
+            onChange={(event) => patch({ name: event.target.value })}
+          />
+        </label>
+
+        <label className="settings-inline-field">
+          <span>API 地址</span>
+          <input
+            value={draft.baseURL}
+            placeholder="https://example.com/v1"
+            onChange={(event) => patch({ baseURL: event.target.value })}
+          />
+        </label>
+
+        <label className="settings-inline-field">
+          <span>API 密钥</span>
+          <input
+            type="password"
+            value={draft.apiKey}
+            placeholder={isNew ? '粘贴密钥，或留空稍后填写' : '留空表示保持已保存的密钥'}
+            onChange={(event) => patch({ apiKey: event.target.value })}
+          />
+          <small>密钥保存到系统密钥库，配置文件只保留引用；留空不会清除已有密钥。</small>
+        </label>
+
+        <div className="provider-model-list">
+          <div className="provider-model-header">
+            <strong>模型</strong>
+            <button type="button" className="provider-chip" onClick={() => patch({ models: [...draft.models, createEmptyModelRow()] })}>
+              ＋ 添加模型
+            </button>
+          </div>
+          <div className="provider-model-columns" aria-hidden="true">
+            <span>模型 ID</span>
+            <span>显示名称</span>
+            <span>上下文窗口</span>
+            <span>最大输出</span>
+            <span />
+          </div>
+          {draft.models.length === 0 && (
+            <div className="dialog-hint">还没有模型。没有模型的供应商不会出现在模型选择器里。</div>
+          )}
+          {draft.models.map((row, index) => (
+            <div key={index} className="provider-model-row">
+              <input
+                className="provider-model-id"
+                value={row.id}
+                placeholder="模型 ID（发送给该接口的名字）"
+                onChange={(event) => patchModel(index, { id: event.target.value })}
+              />
+              <input
+                value={row.name}
+                placeholder="显示名称"
+                onChange={(event) => patchModel(index, { name: event.target.value })}
+              />
+              <input
+                value={row.contextWindow}
+                inputMode="numeric"
+                placeholder="上下文窗口"
+                onChange={(event) => patchModel(index, { contextWindow: event.target.value })}
+              />
+              <input
+                value={row.maxOutputTokens}
+                inputMode="numeric"
+                placeholder="最大输出"
+                onChange={(event) => patchModel(index, { maxOutputTokens: event.target.value })}
+              />
+              <button
+                type="button"
+                className="provider-model-remove"
+                aria-label="删除模型"
+                onClick={() => patch({ models: draft.models.filter((_, position) => position !== index) })}
+              >
+                ×
+              </button>
+              <div className="provider-model-reasoning">
+                <span>推理档位</span>
+                {RUNTIME_REASONINGS.map((reasoning) => (
+                  <button
+                    key={reasoning}
+                    type="button"
+                    className={`provider-chip ${row.reasoningOptions.includes(reasoning) ? 'active' : ''}`}
+                    aria-pressed={row.reasoningOptions.includes(reasoning)}
+                    onClick={() => patchModel(index, {
+                      reasoningOptions: toggleReasoningOption(row.reasoningOptions, reasoning),
+                    })}
+                  >
+                    {REASONING_LABELS[reasoning]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          <small>
+            上下文窗口、最大输出和推理档位是可选声明。留空的项保持未知，LS 不会替模型猜数值，
+            也不会显示本地精确 token 计数。
+          </small>
+        </div>
+
+        {validation.error && <div className="dialog-error">{validation.error}</div>}
+      </div>
+
+      <div className="dialog-footer">
+        <button className="close-btn" onClick={onCancel} disabled={saving}>取消</button>
+        <button
+          className="save-btn"
+          onClick={onSave}
+          disabled={saving || validation.error !== null}
+        >
+          {saving ? '保存中…' : '保存'}
+        </button>
+      </div>
+    </div>
+  )
+}

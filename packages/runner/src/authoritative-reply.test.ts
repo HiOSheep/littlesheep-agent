@@ -33,6 +33,7 @@ function nextRunner(replay: AgentRunner['replayDurableFinalReply']): AgentRunner
 function executionLog(overrides: Partial<ExecutionLog> = {}): ExecutionLog {
   return {
     runId: 'run-1',
+    durableHarnessMode: 'next',
     sessionId: 'session-1',
     startedAt: new Date(0).toISOString(),
     endedAt: new Date(1).toISOString(),
@@ -48,6 +49,32 @@ function executionLog(overrides: Partial<ExecutionLog> = {}): ExecutionLog {
 }
 
 describe('prepareAuthoritativeRunnerResult', () => {
+  it('uses the recorded mode after rollback and never applies current next mode to old shadow logs', async () => {
+    const replay = vi.fn(async (): Promise<DurableFinalReplyReplay> => ({
+      kind: 'runtime_status', sessionId: 'session-1', runId: 'run-1', cursor: 8,
+      settlementId: 'status-1', status: 'waiting_user', reason: 'effect_settlement_unknown',
+    }))
+    const runner = { durableHarnessMode: 'shadow', replayDurableFinalReply: replay } as unknown as AgentRunner
+    expect(await prepareAuthoritativeExecutionLog(runner, executionLog())).toMatchObject({
+      reply: '', runtimeStatus: { status: 'waiting_user' },
+    })
+    const shadowLog = executionLog({ durableHarnessMode: 'shadow' })
+    expect(await prepareAuthoritativeExecutionLog(nextRunner(replay), shadowLog)).toBe(shadowLog)
+    expect(replay).toHaveBeenCalledTimes(1)
+  })
+
+  it('recovers missing mode from run evidence and fails closed if that evidence cannot be read', async () => {
+    const replay = vi.fn(async () => { throw new Error('unavailable') })
+    const runner = {
+      durableHarnessModeForRun: vi.fn(async () => 'next' as const),
+      replayDurableFinalReply: replay,
+    }
+    expect(await prepareAuthoritativeExecutionLog(runner, executionLog({ durableHarnessMode: undefined })))
+      .toMatchObject({ reply: '', runtimeStatus: { status: 'failed' } })
+    runner.durableHarnessModeForRun.mockRejectedValueOnce(new Error('broken mode record'))
+    expect(await prepareAuthoritativeExecutionLog(runner, executionLog({ durableHarnessMode: undefined })))
+      .toMatchObject({ reply: '', runtimeStatus: { reason: 'durable_run_mode_unavailable' } })
+  })
   it('uses the settled durable reply instead of a temporary result reply', async () => {
     const prepared = await prepareAuthoritativeRunnerResult(nextRunner(vi.fn(async (): Promise<DurableFinalReplyReplay> => ({
       kind: 'settled',
@@ -73,6 +100,50 @@ describe('prepareAuthoritativeRunnerResult', () => {
     })
   })
 
+  it('keeps the Runtime failure detail when the durable terminal state proves no settlement', async () => {
+    const failure = result({
+      status: 'error',
+      reply: '',
+      error: 'user-facing reply generation failed: Authentication Fails, Your api key: ****f138 is invalid',
+    })
+    const prepared = await prepareAuthoritativeRunnerResult(nextRunner(vi.fn(async (): Promise<DurableFinalReplyReplay> => ({
+      kind: 'unavailable',
+      sessionId: 'session-1',
+      runId: 'run-1',
+      cursor: 7,
+      status: 'failed',
+      reason: 'terminal_without_settlement',
+    }))), failure)
+
+    // The user must see the actionable cause, not the internal settlement code.
+    expect(prepared.status).toBe('error')
+    expect(prepared.error).toContain('Authentication Fails')
+    expect(prepared.error).not.toContain('temporary model reply')
+    expect(prepared.runtimeStatus).toMatchObject({
+      status: 'failed',
+      reason: 'durable_final_reply_terminal_without_settlement',
+    })
+  })
+
+  it('keeps the same failure detail when history replays the execution log', async () => {
+    const replay = vi.fn(async (): Promise<DurableFinalReplyReplay> => ({
+      kind: 'unavailable',
+      sessionId: 'session-1',
+      runId: 'run-1',
+      cursor: 7,
+      status: 'failed',
+      reason: 'terminal_without_settlement',
+    }))
+    const log = executionLog({
+      status: 'error',
+      reply: '',
+      error: 'user-facing reply generation failed: Authentication Fails, Your api key: ****f138 is invalid',
+    })
+    const prepared = await prepareAuthoritativeExecutionLog(nextRunner(replay), log)
+    expect(prepared.reply).toBe('')
+    expect(prepared.error).toContain('Authentication Fails')
+    expect(prepared.runtimeStatus).toMatchObject({ status: 'failed' })
+  })
   it('does not publish a proposal or its model text when replay is unavailable', async () => {
     const prepared = await prepareAuthoritativeRunnerResult(nextRunner(vi.fn(async (): Promise<DurableFinalReplyReplay> => ({
       kind: 'unavailable',

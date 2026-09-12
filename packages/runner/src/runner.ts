@@ -25,6 +25,8 @@ import type {
   RunCheckpointContinuationDisposition,
   ConversationContinuationEvidence,
   DurableFinalReplyReplay,
+  DurableEffectOutcomeQueryResult,
+  DurableEffectProjection,
   DurableRunRecoveryResult,
   FinalReplyReservation,
   FinalReplySettlement,
@@ -72,6 +74,7 @@ import { executeRunnerPhase } from './runner-execute.js';
 import { finalizeRunnerPhase } from './runner-finalize.js';
 import { persistRunnerPhase, RunnerPersistenceError } from './runner-persist.js';
 import { prepareAuthoritativeRunnerResult } from './authoritative-reply.js';
+import { clearUnpublishedNextResult, runtimeFailureResult, settleRuntimeFailureEvent } from './run-failure-result.js';
 import { resolveSemanticResumeStage } from './continuation-stage.js';
 import { WebRetrievalRuntime } from '@littlesheep/web';
 import { createCacheObservationPersistence } from './cache-observation-runtime.js';
@@ -92,6 +95,10 @@ import {
   recordDurableUserInput,
   durableTextDigest,
 } from './durable-run-recorder.js';
+import { DurableRunOwnership } from './durable-run-ownership.js';
+import { createDurableRunRecovery } from './durable-run-recovery.js';
+import { createDurableEffectOutcomeQuery } from './durable-effect-query.js';
+import { readDurableHarnessMode } from './durable-run-mode.js';
 import {
   assembleResult,
   checkpointReason,
@@ -181,6 +188,14 @@ export interface CreateRunnerOptions {
   durableHarnessSessionOverrides?: Readonly<Record<string, 'shadow' | 'next'>>;
   /** Per-request-origin durable Harness overrides; session overrides take precedence. */
   durableHarnessOriginOverrides?: Readonly<Record<string, 'shadow' | 'next'>>;
+  /** Per-behavior-profile durable Harness overrides; session/origin overrides take precedence. */
+  durableHarnessProfileOverrides?: Readonly<Record<string, 'shadow' | 'next'>>;
+  /** Host-owned external effect reconciliation used by durable recovery. */
+  queryDurableEffectOutcome?: (
+    effect: DurableEffectProjection,
+    identity: { sessionId: string; runId: string },
+  ) => Promise<DurableEffectOutcomeQueryResult>;
+  authorizeDurableEffectRead?: (absolutePath: string, identity: { sessionId: string; runId: string }) => Promise<boolean>;
   log?: LogFn;
 }
 
@@ -307,7 +322,8 @@ export interface AgentRunner {
   /** Harness rollout mode used by the runner; legacy callers omit this field. */
   readonly durableHarnessMode?: 'shadow' | 'next';
   /** Resolve the effective mode for one session, including overrides. */
-  durableHarnessModeForSession?(sessionId: string, origin?: string): 'shadow' | 'next';
+  durableHarnessModeForSession?(sessionId: string, origin?: string, profile?: string): 'shadow' | 'next';
+  durableHarnessModeForRun?(sessionId: string, runId: string): Promise<'shadow' | 'next' | undefined>;
 }
 
 /** Build a runner. Async because the skill loader reads directories. */
@@ -317,9 +333,10 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
   const conversationContinuationMode = resolveConversationContinuationMode(
     opts.conversationContinuationMode ?? process.env.LITTLESHEEP_CONVERSATION_CONTINUATION_MODE,
   );
-  const resolveDurableHarnessMode = (sessionId?: string, origin?: string): 'shadow' | 'next' => (
+  const resolveDurableHarnessMode = (sessionId?: string, origin?: string, profile?: string): 'shadow' | 'next' => (
     (sessionId ? opts.durableHarnessSessionOverrides?.[sessionId] : undefined)
     ?? (origin ? opts.durableHarnessOriginOverrides?.[origin] : undefined)
+    ?? (profile ? opts.durableHarnessProfileOverrides?.[profile] : undefined)
     ?? opts.durableHarnessMode
     ?? 'shadow'
   );
@@ -350,6 +367,21 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     ),
   });
   const activeRuns = new ActiveRunRegistry({ maxActiveRuns: opts.maxActiveRuns });
+  // Recovery-time effect reconciliation is delegated so this facade keeps its
+  // size budget; the host still owns approval and the tool owns the query.
+  const durableEffectOutcomeQuery = createDurableEffectOutcomeQuery({
+    registry: infra.registry,
+    query: opts.queryDurableEffectOutcome,
+    authorizeRead: opts.authorizeDurableEffectRead,
+    log: opts.log,
+  });
+  const recoverDurableRun = createDurableRunRecovery({
+    kernel: durableKernel,
+    leaseStore: infra.durableRunLeaseStore,
+    effectLeaseStore: infra.durableEffectLeaseStore,
+    sessionManager: infra.sessionManager,
+    queryEffectOutcome: durableEffectOutcomeQuery,
+  });
   const conversationTurns = new Map<string, CoordinatedConversationTurn>();
   const checkpointController = infra.runCheckpointStore
     ? new RunCheckpointController({
@@ -386,6 +418,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     let runCheckpointId: string | undefined;
     let webRetrievalRuntime: WebRetrievalRuntime | undefined;
     let durableRecorder: DurableRunRecorder | undefined;
+    let durableRunOwnership: DurableRunOwnership | undefined;
     let durableOutcomeRecorded = false;
     let runContext: RunContext | undefined;
 
@@ -421,7 +454,8 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         sessionId = session.id;
       }
       state.sessionId = sessionId;
-      const durableHarnessMode = resolveDurableHarnessMode(String(sessionId), origin);
+      const runProfile = getAgentProfile(input.profile ?? opts.config.agents.defaults.profile)?.id;
+      const durableHarnessMode = resolveDurableHarnessMode(String(sessionId), origin, runProfile);
       durableRecorder = createDurableRunRecorder({
         eventStore: infra.durableEventStore,
         inboxStore: infra.durableInboxStore,
@@ -434,6 +468,18 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         log: opts.log,
       });
       await durableRecorder.ready;
+      if (durableHarnessMode === 'next') {
+        durableRunOwnership = await DurableRunOwnership.acquire({
+          runStore: infra.durableRunLeaseStore,
+          effectStore: infra.durableEffectLeaseStore,
+          sessionId: String(sessionId),
+          runId,
+          onOwnershipLost: (kind, error) => {
+            opts.log?.('error', `runner: durable ${kind} lease lost: ${error.message}`);
+            abortControl.registration.interrupt?.(`durable ${kind} lease ownership lost`);
+          },
+        });
+      }
       const runtimeEventQueue = activeRuns.registerRun(runId, sessionId, continuation?.checkpoint.runtimeEventQueue, abortControl.registration);
       runtimeQueueRegistered = true;
       const onToolEvent = (event: ToolStreamEvent): void => {
@@ -587,7 +633,9 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         appendDurableEvent: durableRecorder
           ? (event) => durableRecorder!.appendObserved(event)
           : undefined,
+        effectLeases: durableRunOwnership?.effectLeases,
         deferFinalReplySettlement: durableHarnessMode === 'next',
+        streamModelTranscript: durableHarnessMode === 'next',
         cacheObservationKey: infra.cacheObservationKey,
         previousCacheObservation,
         persistCacheObservation: createCacheObservationPersistence(infra.cacheObservationStore, {
@@ -788,6 +836,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
               executionLogStore: infra.executionLogStore,
               activeCheckpoint,
               strict: durableHarnessMode === 'next',
+              durableHarnessMode,
               onCheckpointCompleted: (completed) => { checkpointCompleted = completed; },
               log: opts.log,
             });
@@ -898,6 +947,9 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         });
       }
       await durableRecorder?.flushBestEffort();
+      await durableRunOwnership?.release().catch((error) => {
+        opts.log?.('error', `runner: durable ownership release failed: ${(error as Error).message}`);
+      });
       webRetrievalRuntime?.dispose();
       if (runtimeQueueRegistered) activeRuns.unregister(runId);
       if (activeCheckpoint && !checkpointCompleted) {
@@ -1917,25 +1969,10 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     sessionId: SessionId,
     runId: string,
   ): Promise<void> {
-    await durableKernel.recoverRun(String(sessionId), runId, {
-      finalReplyPersisted: async (reservation) => (
-        await infra.sessionManager.assistantReplySettlementStatus?.(
-          sessionId,
-          reservation.settlementId,
-        )
-      ) === 'settled',
-      finalReplyRegistrySettled: async (reservation) => {
-        try {
-          await infra.sessionManager.settleAssistantReplySettlement?.(sessionId, reservation)
-          return (await infra.sessionManager.assistantReplySettlementStatus?.(
-            sessionId,
-            reservation.settlementId,
-          )) === 'settled'
-        } catch {
-          return false
-        }
-      },
-    })
+    // Retry recovery shares the lease-aware adapter with the public recovery
+    // surface, so an active owner is never overtaken and both run and effect
+    // ownership are taken before the kernel may append recovery facts.
+    await recoverDurableRun(sessionId, runId)
   }
 
   async function executeWithContinuationAudit(
@@ -2042,11 +2079,14 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       reply: log.reply,
       replyProvenance: log.replyProvenance,
       finalReplySettlement: log.finalReplySettlement,
+      durableHarnessMode: log.durableHarnessMode,
+      runtimeStatus: log.runtimeStatus,
       error: log.error,
       messages: [],
       trace: log.trace,
       durationMs: log.durationMs,
       usage: log.usage,
+      systemPromptProjection: log.systemPromptProjection,
       resolvedRunConfig: log.resolvedRunConfig,
       capabilitySnapshot: log.capabilitySnapshot, capabilityProbe: log.capabilityProbe, capabilityPermissionEvent: log.capabilityPermissionEvent,
       modelRequests: log.modelRequests,
@@ -2104,12 +2144,16 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     };
   }
 
+  const durableHarnessModeForRun = (sessionId: string, runId: string) =>
+    readDurableHarnessMode(infra.durableEventStore, sessionId, runId);
+
   async function prepareInternalAuthoritativeResult(result: RunnerResult): Promise<RunnerResult> {
-    const mode = result.durableHarnessMode ?? resolveDurableHarnessMode(String(result.sessionId));
+    const mode = result.durableHarnessMode ?? await durableHarnessModeForRun(String(result.sessionId), result.runId);
     if (mode !== 'next') return result;
+    // The mode is already resolved above; this adapter only supplies the
+    // durable replay the publication boundary needs.
     return prepareAuthoritativeRunnerResult({
       durableHarnessMode: 'next',
-      durableHarnessModeForSession: (sessionId) => resolveDurableHarnessMode(sessionId),
       replayDurableFinalReply: replayAuthoritativeDurableFinalReply,
     } as AgentRunner, result);
   }
@@ -2121,25 +2165,10 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     resumeCheckpoint,
     runCheckpoints,
     replay: (runId: string) => infra.executionLogStore.read(runId),
+    durableHarnessModeForRun,
     replayDurableFinalReply: (sessionId: SessionId, runId: string) =>
       replayAuthoritativeDurableFinalReply(sessionId, runId),
-    recoverDurableRun: (sessionId: SessionId, runId: string) =>
-      durableKernel.recoverRun(String(sessionId), runId, {
-        finalReplyPersisted: async (reservation) => (
-          await infra.sessionManager.assistantReplySettlementStatus?.(sessionId, reservation.settlementId)
-        ) === 'settled',
-        finalReplyRegistrySettled: async (reservation) => {
-          try {
-            await infra.sessionManager.settleAssistantReplySettlement?.(sessionId, reservation);
-            return (await infra.sessionManager.assistantReplySettlementStatus?.(
-              sessionId,
-              reservation.settlementId,
-            )) === 'settled';
-          } catch {
-            return false;
-          }
-        },
-      }),
+    recoverDurableRun,
     runtimeEvents: activeRuns,
     activeRuns,
     shutdown: async () => {
@@ -2160,54 +2189,15 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     infra,
     model,
     durableHarnessMode: opts.durableHarnessMode ?? 'shadow',
-    durableHarnessModeForSession: (sessionId: string, origin?: string) => (
-      resolveDurableHarnessMode(sessionId, origin)
+    durableHarnessModeForSession: (sessionId: string, origin?: string, profile?: string) => (
+      resolveDurableHarnessMode(sessionId, origin, profile)
     ),
   };
   }
 
-async function settleRuntimeFailureEvent(
-  ctx: RunContext,
-  reason: string,
-  log?: LogFn,
-): Promise<void> {
-    try {
-      await ctx.appendDurableEvent?.({
-        type: 'runtime_status_settled',
-        source: 'runtime',
-        eventId: `${ctx.runId}:runtime-failure:${reason}`,
-        idempotencyKey: `${ctx.runId}:runtime-failure:${reason}`,
-        payload: { status: 'failed', reason },
-      });
-    } catch (error) {
-      log?.('error', `runner: failed to persist Runtime failure status: ${(error as Error).message}`);
-    }
-}
 
-function runtimeFailureResult(result: RunnerResult, reason: string): RunnerResult {
-    const runtimeStatus = {
-      version: 1 as const,
-      status: 'failed' as const,
-      reason,
-    };
-    return {
-      ...clearUnpublishedNextResult(result),
-      status: 'error',
-      runtimeStatus,
-      error: `Runtime failed before publishing a final reply. Reason: ${reason}`,
-      webEvidence: undefined,
-    };
-}
 
-function clearUnpublishedNextResult(result: RunnerResult): RunnerResult {
-  return {
-    ...result,
-    reply: '',
-    replyProvenance: undefined,
-    finalReplySettlement: undefined,
-    messages: result.messages.filter((message) => !(message.role === 'assistant' && message.stage === 'finalize')),
-  };
-}
+
 
 function settledReplyResult(result: RunnerResult, ctx: RunContext): RunnerResult {
     const settlement = ctx.finalReplySettlement;

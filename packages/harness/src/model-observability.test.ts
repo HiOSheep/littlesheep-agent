@@ -222,7 +222,8 @@ describe('recordModelRequest', () => {
       toolSelectionStrategyId: 'registered-tools-v1',
       outputContractId: 'user-reply-v1',
       provider: 'deepseek',
-      model: 'deepseek-v4-flash',
+      // V4.1-served names no longer claim the calibrated V4 counter.
+      model: 'deepseek-v4-pro',
       reasoning: 'auto',
       parameters: {},
       availableToolNames: [],
@@ -232,7 +233,7 @@ describe('recordModelRequest', () => {
     };
     bindExactContextTokenCounter(ctx, {
       id: 'deepseek-v4-provider-calibrated-tokenizer-v2',
-      supports: (provider, model) => provider === 'deepseek' && model === 'deepseek-v4-flash',
+      supports: (provider, model) => provider === 'deepseek' && model === 'deepseek-v4-pro',
       countRequest: (prepared) => {
         expect(prepared.thinking).toEqual({ type: 'disabled' });
         return 88;
@@ -241,7 +242,7 @@ describe('recordModelRequest', () => {
 
     const prepared = prepareModelRequest(ctx, 'reply', {
       ...request(2, 0),
-      model: 'deepseek-v4-flash',
+      model: 'deepseek-v4-pro',
     });
 
     expect(prepared.thinking).toEqual({ type: 'disabled' });

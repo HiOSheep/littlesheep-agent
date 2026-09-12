@@ -117,7 +117,7 @@ export function createRuntimeActions(options: RuntimeActionOptions) {
     if (!options.runtime) return null
     const { providerId, model } = splitModelRef(options.runtime.model)
     const provider = providers.find((item) => item.id === providerId)
-    if (!provider || !provider.models.includes(model)) return null
+    if (!provider || !provider.models.some((candidate) => candidate.id === model)) return null
     return { provider, model, ref: options.runtime.model }
   }
 

@@ -56,7 +56,10 @@ export interface ProviderTokenLedger {
   completionTokens: number;
   totalTokens?: number;
   cachedPromptTokens?: number;
+  cacheWriteTokens?: number;
   reasoningTokens?: number;
+  /** Wall-clock time spent awaiting this Provider request. */
+  durationMs?: number;
   requestId?: string;
   /** Detects tokenizer drift without replacing the current local assembly value. */
   localCalibration?: ProviderLocalTokenCalibration;

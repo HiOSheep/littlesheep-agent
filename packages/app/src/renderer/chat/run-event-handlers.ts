@@ -10,7 +10,7 @@ import {
   upsertLiveStep,
   upsertLiveTool,
 } from './activity-model'
-import type { ChatMessage, LiveStepStatus } from './types'
+import type { ChatMessage, LiveStepStatus, TranscriptEntry } from './types'
 
 export interface RunEventHandlerContext {
   appMountedRef: MutableRefObject<boolean>
@@ -26,6 +26,44 @@ export function handleRunToolEvent(
 
   // Capability facts/probes are Runtime projections, never conversation text.
   if (evt.type === 'capability_snapshot' || evt.type === 'capability_probe') return
+
+  if (evt.type === 'system_prompt' && evt.summary) {
+    const entry: TranscriptEntry = {
+      kind: 'system',
+      id: 'system-prompt',
+      text: evt.summary,
+    }
+    updateLastAssistantActivity(context.setMessages, (activity) => ({
+      ...activity,
+      ...mergeVisibility(activity.visibility, 'progress'),
+      transcript: upsertTranscriptEntry(activity.transcript ?? [], entry),
+    }))
+    return
+  }
+
+  if (evt.type === 'model_reasoning' && evt.phaseId) {
+    const phaseId = evt.phaseId
+    const delta = evt.summary ?? ''
+    updateLastAssistantActivity(context.setMessages, (activity) => ({
+      ...activity,
+      ...mergeVisibility(activity.visibility, 'progress'),
+      transcript: upsertTranscriptReasoning(activity.transcript ?? [], phaseId, delta, evt.reasoningStatus, evt.reasoningStatus === 'done' ? evt.summary : undefined),
+    }))
+    return
+  }
+  if (evt.type === 'model_text' && evt.phaseId && evt.summary) {
+    const entry: TranscriptEntry = {
+      kind: 'text',
+      id: `${evt.phaseId}:text`,
+      text: evt.summary,
+    }
+    updateLastAssistantActivity(context.setMessages, (activity) => ({
+      ...activity,
+      ...mergeVisibility(activity.visibility, 'progress'),
+      transcript: upsertTranscriptEntry(activity.transcript ?? [], entry),
+    }))
+    return
+  }
 
   if (
     evt.type === 'reasoning'
@@ -118,6 +156,7 @@ export function handleRunToolEvent(
     updateLastAssistantActivity(context.setMessages, (activity) => ({
       ...activity,
       ...mergeVisibility(activity.visibility, evt.visibility),
+      transcript: appendTranscriptTool(activity.transcript ?? [], evt.callId!),
       tools: upsertLiveTool(activity.tools, {
         callId: evt.callId ?? '',
         name: evt.name ?? '',
@@ -158,4 +197,42 @@ function mergeVisibility(
   if (current === 'progress' || next === 'progress') return { visibility: 'progress' }
   if (next) return { visibility: next }
   return {}
+}
+
+/** Cap the transcript so a long run cannot grow renderer state without bound. */
+const MAX_TRANSCRIPT_ENTRIES = 400
+const MAX_TRANSCRIPT_TEXT = 8_000
+
+function upsertTranscriptEntry(entries: TranscriptEntry[], entry: TranscriptEntry): TranscriptEntry[] {
+  const index = entries.findIndex((candidate) => candidate.id === entry.id)
+  const next = index >= 0
+    ? entries.map((candidate, position) => (position === index ? entry : candidate))
+    : [...entries, entry]
+  return next.length > MAX_TRANSCRIPT_ENTRIES ? next.slice(-MAX_TRANSCRIPT_ENTRIES) : next
+}
+
+/** Thinking arrives as deltas; each phase owns exactly one accumulating row. */
+function upsertTranscriptReasoning(
+  entries: TranscriptEntry[],
+  phaseId: string,
+  delta: string,
+  status: 'running' | 'done' | 'failed' | undefined,
+  finalText?: string,
+): TranscriptEntry[] {
+  const id = `${phaseId}:reasoning`
+  const existing = entries.find((entry) => entry.id === id)
+  const previous = existing?.kind === 'reasoning' ? existing.text : ''
+  const text = (finalText ?? previous + delta).slice(0, MAX_TRANSCRIPT_TEXT)
+  return upsertTranscriptEntry(entries, {
+    kind: 'reasoning',
+    id,
+    text,
+    status: status === 'running' ? 'running' : 'done',
+  })
+}
+
+function appendTranscriptTool(entries: TranscriptEntry[], callId: string): TranscriptEntry[] {
+  const id = `tool:${callId}`
+  if (entries.some((entry) => entry.id === id)) return entries
+  return upsertTranscriptEntry(entries, { kind: 'tool', id, callId })
 }

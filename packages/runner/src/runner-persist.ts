@@ -21,6 +21,7 @@ export interface PersistRunnerPhaseOptions<TResult extends PersistableRunnerResu
   activeCheckpoint?: RunGitCheckpoint;
   /** Next-Harness runs make audit persistence a publication prerequisite. */
   strict?: boolean;
+  durableHarnessMode?: 'shadow' | 'next';
   onCheckpointCompleted: (completed: boolean) => void;
   log?: (level: 'info' | 'warn' | 'error', msg: string, data?: unknown) => void;
 }
@@ -53,6 +54,8 @@ export async function persistRunnerPhase<TResult extends PersistableRunnerResult
       reply: result.reply ?? '',
       replyProvenance: result.replyProvenance as never,
       finalReplySettlement: result.finalReplySettlement as never,
+      durableHarnessMode: options.durableHarnessMode,
+      runtimeStatus: result.runtimeStatus,
       error: result.error,
       trace: result.trace as never,
       taskExecution: result.taskExecution as never,
@@ -65,6 +68,7 @@ export async function persistRunnerPhase<TResult extends PersistableRunnerResult
       clarificationResponse: result.clarificationResponse as never,
       conversationContinuation: result.conversationContinuation as never,
       usage: result.usage as never,
+      systemPromptProjection: result.systemPromptProjection,
       sideEffects: result.sideEffects as never,
       memoryAccess: result.memoryAccess as never,
       resolvedRunConfig: result.resolvedRunConfig as never,

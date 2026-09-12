@@ -62,6 +62,22 @@ interface ApprovalRequestPayload extends RunApprovalRequest {
   source: 'agent'
 }
 
+interface DurableInboxRecoveryStore {
+  listRecoverableRuns?: () => Promise<Array<{ sessionId: string; runId: string }>>
+  listActiveClaimedRuns?: () => Promise<Array<{ sessionId: string; runId: string }>>
+  nextClaimLeaseExpiry?: () => Promise<string | undefined>
+}
+
+interface DurableRunLeaseRecoveryStore {
+  listActiveRuns?: () => Promise<Array<{ sessionId: string; runId: string }>>
+  listRecoverableRuns?: () => Promise<Array<{ sessionId: string; runId: string }>>
+  nextLeaseExpiry?: () => Promise<string | undefined>
+}
+
+interface DurableRecoveryInfrastructure {
+  durableRunLeaseStore?: DurableRunLeaseRecoveryStore
+}
+
 export interface RunRouteContext {
   getRunner: () => AgentRunner
   getConfig: () => Config
@@ -77,32 +93,12 @@ export interface RunRouteContext {
 export class RunRouter {
   private readonly activeStreams = new Map<string, ActiveStreamRun>()
   private readonly pendingApprovals = new Map<string, PendingApproval>()
+  private durableRecoveryTimer: NodeJS.Timeout | undefined
+  private stopped = false
 
   static async create(initialRunner: AgentRunner): Promise<RunRouter> {
     const router = new RunRouter()
-    const durableEventStore = initialRunner.infra?.durableEventStore
-    if (durableEventStore?.listRuns && initialRunner.recoverDurableRun) {
-      try {
-        const durableRuns = await durableEventStore.listRuns()
-        for (const durableRun of durableRuns) {
-          try {
-            const recovery = await initialRunner.recoverDurableRun(
-              asSessionId(durableRun.sessionId),
-              durableRun.runId,
-            )
-            if (recovery.actions.length > 0) {
-              console.info(`[durable-harness] recovered ${durableRun.runId}: ${recovery.actions.map((action) => action.kind).join(', ')}`)
-            }
-          } catch (error) {
-            // A corrupt or concurrently-owned run must remain visible for a
-            // later operator decision; startup of the Local API still proceeds.
-            console.error(`[durable-harness] recovery failed for ${durableRun.runId}: ${(error as Error).message}`)
-          }
-        }
-      } catch (error) {
-        console.error(`[durable-harness] startup run discovery failed: ${(error as Error).message}`)
-      }
-    }
+    await router.recoverDurableRuns(initialRunner)
     try {
       const recovered = await initialRunner.runCheckpoints?.recoverInterruptedResumes(
         'application restarted before checkpoint continuation completed',
@@ -120,6 +116,81 @@ export class RunRouter {
       console.error(`[run-checkpoints] startup completion reconciliation failed: ${(error as Error).message}`)
     }
     return router
+  }
+
+  private async recoverDurableRuns(initialRunner: AgentRunner, includeEventRuns = true): Promise<void> {
+    const durableEventStore = initialRunner.infra?.durableEventStore
+    const durableInboxStore = initialRunner.infra?.durableInboxStore as unknown as DurableInboxRecoveryStore | undefined
+    const durableRunLeaseStore = (initialRunner.infra as unknown as DurableRecoveryInfrastructure | undefined)
+      ?.durableRunLeaseStore
+    if (((includeEventRuns && durableEventStore?.listRuns)
+      || durableInboxStore?.listRecoverableRuns
+      || durableRunLeaseStore?.listRecoverableRuns) && initialRunner.recoverDurableRun) {
+      try {
+        const activeClaimedRuns = new Set([
+          ...(await durableInboxStore?.listActiveClaimedRuns?.() ?? []),
+          ...(await durableRunLeaseStore?.listActiveRuns?.() ?? []),
+        ].map((run) => `${run.sessionId}\0${run.runId}`))
+        const discoveredRuns = [
+          ...(includeEventRuns
+            ? (await durableEventStore?.listRuns?.() ?? []).filter(
+                (run) => !activeClaimedRuns.has(`${run.sessionId}\0${run.runId}`),
+              )
+            : []),
+          ...(await durableInboxStore?.listRecoverableRuns?.() ?? []),
+          ...(await durableRunLeaseStore?.listRecoverableRuns?.() ?? []),
+        ]
+        const durableRuns = [...new Map(discoveredRuns.map((run) => (
+          [`${run.sessionId}\0${run.runId}`, run] as const
+        ))).values()].sort((left, right) => (
+          left.sessionId.localeCompare(right.sessionId) || left.runId.localeCompare(right.runId)
+        ))
+        for (const durableRun of durableRuns) {
+          try {
+            const recovery = await initialRunner.recoverDurableRun(
+              asSessionId(durableRun.sessionId),
+              durableRun.runId,
+            )
+            if (recovery.actions.length > 0) {
+              console.info(`[durable-harness] recovered ${durableRun.runId}: ${recovery.actions.map((action) => action.kind).join(', ')}`)
+            }
+          } catch (error) {
+            // A corrupt or concurrently-owned run must remain visible for a
+            // later operator decision; startup of the Local API still proceeds.
+            console.error(`[durable-harness] recovery failed for ${durableRun.runId}: ${(error as Error).message}`)
+          }
+        }
+      } catch (error) {
+        console.error(`[durable-harness] run recovery discovery failed: ${(error as Error).message}`)
+      }
+    }
+    try {
+      await this.scheduleDurableRecovery(initialRunner)
+    } catch (error) {
+      console.error(`[durable-harness] recovery wake-up scheduling failed: ${(error as Error).message}`)
+    }
+  }
+
+  private async scheduleDurableRecovery(initialRunner: AgentRunner): Promise<void> {
+    if (this.stopped) return
+    if (this.durableRecoveryTimer) clearTimeout(this.durableRecoveryTimer)
+    this.durableRecoveryTimer = undefined
+    // Optional while an older Runner declaration is being rebuilt.
+    const durableInboxStore = initialRunner.infra?.durableInboxStore as unknown as DurableInboxRecoveryStore | undefined
+    const durableRunLeaseStore = (initialRunner.infra as unknown as DurableRecoveryInfrastructure | undefined)
+      ?.durableRunLeaseStore
+    const expiries = [
+      await durableInboxStore?.nextClaimLeaseExpiry?.(),
+      await durableRunLeaseStore?.nextLeaseExpiry?.(),
+    ].filter((value): value is string => Boolean(value)).sort()
+    const expiresAt = expiries[0]
+    if (!expiresAt || this.stopped) return
+    const delayMs = Math.max(0, Date.parse(expiresAt) - Date.now())
+    this.durableRecoveryTimer = setTimeout(() => {
+      this.durableRecoveryTimer = undefined
+      void this.recoverDurableRuns(initialRunner, false)
+    }, delayMs)
+    this.durableRecoveryTimer.unref?.()
   }
 
   async route(request: LocalAppApiRequest, context: RunRouteContext): Promise<boolean> {
@@ -348,6 +419,9 @@ export class RunRouter {
   }
 
   stop(): void {
+    this.stopped = true
+    if (this.durableRecoveryTimer) clearTimeout(this.durableRecoveryTimer)
+    this.durableRecoveryTimer = undefined
     for (const active of this.activeStreams.values()) active.controller.abort()
     this.activeStreams.clear()
     for (const pending of this.pendingApprovals.values()) {

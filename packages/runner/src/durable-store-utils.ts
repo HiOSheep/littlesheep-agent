@@ -126,10 +126,22 @@ export async function writeJsonAtomically(file: string, value: unknown): Promise
   try {
     await writeFile(temporary, canonicalSerialize(value), { encoding: 'utf8', flag: 'wx' });
     await rename(temporary, file);
-  } catch (error) {
+  } finally {
+    // On POSIX rename removes the source name; on Windows it does not, so the
+    // writer cleans up its own temp file. Readers then never have to guess
+    // which leftover *.tmp files are safe to ignore.
     await rm(temporary, { force: true }).catch(() => undefined);
-    throw error;
   }
+}
+
+/**
+ * Exact temp-file shape produced by `writeJsonAtomically`. Readers use it to
+ * ignore an in-flight or crash-orphaned write without accepting arbitrary
+ * `*.tmp` files as benign.
+ */
+export function isAtomicWriteTempFile(name: string): boolean {
+  const match = /^(.*)\.(\d+)\.([0-9a-fA-F-]{36})\.tmp$/.exec(name);
+  return Boolean(match?.[3] && match[1]?.endsWith('.json'));
 }
 
 export function parseJson(raw: string, file: string): unknown {

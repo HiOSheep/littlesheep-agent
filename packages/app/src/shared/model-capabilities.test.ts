@@ -96,12 +96,22 @@ describe('model reasoning capabilities', () => {
       source: 'builtin-model-registry',
       verifiedAt: '2026-07-13',
     })
+    // 2026-09-11: V4.1 has its own pinned tokenizer and framing, calibrated
+    // against real Provider usage (five request shapes, zero delta).
     expect(resolveModelTokenizerCapabilityForModelRef('deepseek/deepseek-v4-flash')).toMatchObject({
       status: 'exact',
-      counterId: 'deepseek-v4-provider-calibrated-tokenizer-v2',
-      source: 'official-provider-doc',
-      verifiedAt: '2026-07-31',
+      counterId: 'deepseek-v41-provider-calibrated-tokenizer-v1',
     })
+    expect(resolveModelTokenizerCapabilityForModelRef('deepseek/deepseek-flash')).toMatchObject({
+      status: 'exact',
+      counterId: 'deepseek-v41-provider-calibrated-tokenizer-v1',
+    })
+    expect(resolveModelContextWindowForModelRef('deepseek/deepseek-flash')).toMatchObject({
+      maxContextTokens: 1_000_000,
+      maxOutputTokens: 384_000,
+      source: 'official-provider-doc',
+    })
+    expect(getSupportedReasoningOptions('deepseek', 'deepseek-flash')).toEqual(['auto', 'high', 'ultra'])
     expect(resolveModelTokenizerCapabilityForModelRef('glm/glm-5.1')).toMatchObject({
       status: 'unavailable',
       reasonCode: 'no-verified-final-request-counter',

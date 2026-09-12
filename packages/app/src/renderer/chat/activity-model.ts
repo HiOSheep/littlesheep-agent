@@ -226,6 +226,7 @@ export function coerceLiveStepStatus(status: string): LiveStepStatus {
 
 
 export function liveStepStatusLabel(status: LiveStepStatus): string {
+  if (status === 'unknown') return '结果未知'
   if (status === 'pending') return '待执行'
   if (status === 'done') return '完成'
   if (status === 'failed') return '失败'

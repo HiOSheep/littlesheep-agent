@@ -201,8 +201,8 @@ export function TaskProgressIndicator({
 }
 
 
-export function liveToolStatusClass(tool: LiveToolEvent): 'pending' | 'pass' | 'fail' {
-  if (tool.ok === undefined) return 'pending'
+export function liveToolStatusClass(tool: LiveToolEvent): 'pending' | 'pass' | 'fail' | 'unknown' {
+  if (tool.ok === undefined) return tool.endedAt === undefined ? 'pending' : 'unknown'
   return tool.ok ? 'pass' : 'fail'
 }
 

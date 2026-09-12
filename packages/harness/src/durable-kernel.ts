@@ -2,12 +2,14 @@
 // projection rebuild and one authoritative final-reply settlement.
 import type {
   DurableEffectProjection,
+  DurableEffectOutcomeQueryResult,
   DurableHarnessEvent,
   DurableHarnessEventAppendInput,
   DurableHarnessEventAppendOutcome,
   DurableHarnessEventStoreLike,
   DurableInboxEnqueueInput,
   DurableInboxEnqueueOutcome,
+  DurableInboxClaimFilter,
   DurableInboxStoreLike,
   DurableFinalReplyReplay,
   DurableRecoveryAction,
@@ -35,11 +37,17 @@ import {
   requiredRoute,
   requiredRuntimeStatus,
   requiredString,
-  sourceForInboxCommand,
-  sourceForInboxType,
   validateEventInput,
+  validateEffectSettlementOwner,
   validateSource,
 } from './durable-projection-codec.js';
+import {
+  appendEventViaInbox,
+  enqueueDurableCommand,
+  processDurableInbox,
+  type DurableInboxAppendDisposition,
+  type DurableInboxProcessResult,
+} from './durable-inbox-processor.js';
 
 export { DurableKernelError } from './durable-kernel-error.js';
 
@@ -50,18 +58,13 @@ export interface DurableHarnessKernelOptions {
   reserveFinalReply?: (sessionId: string, reservation: FinalReplyReservation) => Promise<boolean>;
 }
 
-export interface DurableInboxProcessResult {
-  readonly commandId: string;
-  readonly status: 'completed' | 'failed';
-  readonly eventId?: string;
-  readonly reason?: string;
-}
-
 export interface DurableRecoveryOptions {
   /** Proves that the session transcript and settlement registry were committed. */
   finalReplyPersisted?: (reservation: FinalReplyReservation) => Promise<boolean>;
   /** Repairs a durable final event whose session registry commit was interrupted. */
   finalReplyRegistrySettled?: (reservation: FinalReplyReservation) => Promise<boolean>;
+  /** Resolves a pending effect through an external system query instead of marking it unknown. */
+  queryEffectOutcome?: (effect: DurableEffectProjection) => Promise<DurableEffectOutcomeQueryResult>;
 }
 
 /**
@@ -146,9 +149,14 @@ export class DurableHarnessKernel {
   }
 
   async enqueue(input: DurableInboxEnqueueInput): Promise<DurableInboxEnqueueOutcome> {
-    if (!this.inboxStore) throw new DurableKernelError('durable inbox is not configured', 'inbox_unavailable');
-    validateEventInput({ ...input, eventId: input.commandId, source: sourceForInboxType(input.type) });
-    return this.inboxStore.enqueue(input);
+    return enqueueDurableCommand(this.inboxStore, input);
+  }
+
+  /** Persist a command before materializing its event on the strict path. */
+  async appendViaInbox<TPayload extends Record<string, unknown>>(
+    input: DurableHarnessEventAppendInput<TPayload>,
+  ): Promise<DurableInboxAppendDisposition> {
+    return appendEventViaInbox(this.inboxStore, input, (event) => this.append(event));
   }
 
   /**
@@ -156,31 +164,11 @@ export class DurableHarnessKernel {
    * inbox command is completed, so a crash between the two operations is safe:
    * the next drain sees an idempotent duplicate and only completes the command.
    */
-  async processInbox(limit?: number): Promise<DurableInboxProcessResult[]> {
-    if (!this.inboxStore) throw new DurableKernelError('durable inbox is not configured', 'inbox_unavailable');
-    const commands = await this.inboxStore.claim(limit);
-    const results: DurableInboxProcessResult[] = [];
-    for (const command of commands) {
-      try {
-        const outcome = await this.append({
-          eventId: command.commandId,
-          idempotencyKey: command.idempotencyKey,
-          sessionId: command.sessionId,
-          runId: command.runId,
-          type: command.type,
-          source: sourceForInboxCommand(command),
-          payload: command.payload,
-        });
-        const eventId = outcome.kind === 'appended' || outcome.kind === 'duplicate' ? outcome.event.eventId : undefined;
-        await this.inboxStore.complete(command.commandId, eventId ? [eventId] : []);
-        results.push({ commandId: command.commandId, status: 'completed', ...(eventId ? { eventId } : {}) });
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        await this.inboxStore.fail(command.commandId, reason, false);
-        results.push({ commandId: command.commandId, status: 'failed', reason });
-      }
-    }
-    return results;
+  async processInbox(
+    limit?: number,
+    filter?: DurableInboxClaimFilter,
+  ): Promise<DurableInboxProcessResult[]> {
+    return processDurableInbox(this.inboxStore, (event) => this.append(event), limit, filter);
   }
 
   async replay(sessionId: string, runId: string): Promise<DurableRunProjection> {
@@ -196,6 +184,22 @@ export class DurableHarnessKernel {
   }
 
   /**
+   * Append one recovery fact and report whether it was newly recorded. A
+   * concurrent or repeated pass that loses the race observes the same
+   * idempotent event as a duplicate; recovery must not report that as a new
+   * action.
+   */
+  private async appendRecoveryEvent(
+    input: DurableHarnessEventAppendInput,
+  ): Promise<boolean> {
+    const outcome = await this.append(input);
+    if (outcome.kind === 'conflict') {
+      throw new DurableKernelError('recovery event append conflict', 'conflict');
+    }
+    return outcome.kind === 'appended';
+  }
+
+  /**
    * Run one idempotent post-crash recovery pass. Recovery only appends facts;
    * it never invokes a model or tool. An effect whose outcome cannot be
    * proven is settled as `unknown` and the run is left waiting for a user
@@ -206,6 +210,13 @@ export class DurableHarnessKernel {
     runId: string,
     options: DurableRecoveryOptions = {},
   ): Promise<DurableRunRecoveryResult> {
+    if (this.inboxStore) {
+      const inboxResults = await this.processInbox(undefined, { sessionId, runId });
+      const failed = inboxResults.find((result) => result.status === 'failed');
+      if (failed) {
+        throw new DurableKernelError(failed.reason ?? 'durable inbox recovery failed', 'conflict');
+      }
+    }
     let projection = await this.replay(sessionId, runId);
     const actions: DurableRecoveryAction[] = [];
     const terminalAtStart = isDurableRunTerminal(projection);
@@ -226,7 +237,7 @@ export class DurableHarnessKernel {
         ? 'model_response_not_settled'
         : 'model_response_missing';
       const eventId = `${runId}:recovery:model:${requestId}`;
-      await this.append({
+      const recorded = await this.appendRecoveryEvent({
         eventId,
         idempotencyKey: eventId,
         sessionId,
@@ -243,12 +254,14 @@ export class DurableHarnessKernel {
           errorKind: reason,
         },
       });
-      actions.push({
-        kind: status === 'received' ? 'model_marked_received' : 'model_marked_missing',
-        eventId,
-        requestId,
-        reason,
-      });
+      if (recorded) {
+        actions.push({
+          kind: status === 'received' ? 'model_marked_received' : 'model_marked_missing',
+          eventId,
+          requestId,
+          reason,
+        });
+      }
       projection = await this.replay(sessionId, runId);
     }
 
@@ -258,8 +271,12 @@ export class DurableHarnessKernel {
     for (const effectId of projection.pendingEffectIds) {
       const effect = projection.effects.find((candidate) => candidate.effectId === effectId);
       if (!effect) continue;
+      const queried = options.queryEffectOutcome
+        ? await options.queryEffectOutcome(effect).catch(() => ({ known: false as const }))
+        : { known: false as const };
+      const status = queried.known ? queried.status : 'unknown';
       const eventId = `${runId}:recovery:effect:${effectId}`;
-      await this.append({
+      const recorded = await this.appendRecoveryEvent({
         eventId,
         idempotencyKey: eventId,
         sessionId,
@@ -268,17 +285,22 @@ export class DurableHarnessKernel {
         source: 'runtime',
         payload: {
           effectId,
-          status: 'unknown',
-          evidenceRef: `recovery:${effect.intentEventId}`,
-          error: 'effect outcome was not durably observed before process exit',
+          status,
+          ...(queried.known && queried.evidenceRef ? { evidenceRef: queried.evidenceRef } : {}),
+          ...(status === 'unknown' && !(queried.known && queried.status === 'unknown')
+            ? { error: 'effect outcome was not durably observed before process exit' }
+            : {}),
         },
       });
-      actions.push({
-        kind: 'effect_marked_unknown',
-        eventId,
-        effectId,
-        reason: 'effect_settlement_unknown',
-      });
+      if (recorded) {
+        actions.push({
+          kind: status === 'unknown' ? 'effect_marked_unknown' : 'effect_settled',
+          eventId,
+          effectId,
+          status,
+          reason: status === 'unknown' ? 'effect_settlement_unknown' : undefined,
+        });
+      }
       projection = await this.replay(sessionId, runId);
     }
 
@@ -309,7 +331,7 @@ export class DurableHarnessKernel {
         : false;
       if (persisted && reservation) {
         const eventId = `${runId}:recovery:final-reply-settled`;
-        await this.append({
+        const recorded = await this.appendRecoveryEvent({
           eventId,
           idempotencyKey: eventId,
           sessionId,
@@ -318,7 +340,7 @@ export class DurableHarnessKernel {
           source: 'runtime',
           payload: reservation,
         });
-        actions.push({ kind: 'final_reply_settled', eventId });
+        if (recorded) actions.push({ kind: 'final_reply_settled', eventId });
         projection = await this.replay(sessionId, runId);
       }
     }
@@ -347,7 +369,7 @@ export class DurableHarnessKernel {
       && projection.unknownEffectIds.length === 0
       && !isDurableRunTerminal(projection)) {
       const eventId = `${runId}:recovery:run-completed`;
-      await this.append({
+      const recorded = await this.appendRecoveryEvent({
         eventId,
         idempotencyKey: eventId,
         sessionId,
@@ -356,7 +378,7 @@ export class DurableHarnessKernel {
         source: 'runtime',
         payload: { recovery: true },
       });
-      actions.push({ kind: 'run_completed', eventId });
+      if (recorded) actions.push({ kind: 'run_completed', eventId });
       projection = await this.replay(sessionId, runId);
     } else if (projection.finalReply.state !== 'settled'
       && projection.finalReply.state !== 'runtime_status'
@@ -373,7 +395,7 @@ export class DurableHarnessKernel {
                 ? 'model_response_missing'
             : 'run_incomplete_after_restart';
       const eventId = `${runId}:recovery:runtime-status`;
-      await this.append({
+      const recorded = await this.appendRecoveryEvent({
         eventId,
         idempotencyKey: eventId,
         sessionId,
@@ -382,7 +404,7 @@ export class DurableHarnessKernel {
         source: 'runtime',
         payload: { status: 'waiting_user', reason },
       });
-      actions.push({ kind: 'runtime_status_settled', eventId, reason });
+      if (recorded) actions.push({ kind: 'runtime_status_settled', eventId, reason });
       projection = await this.replay(sessionId, runId);
     }
 
@@ -660,6 +682,7 @@ function applyDurableHarnessEvent(
       if (index < 0) throw new DurableKernelError(`effect settlement has no intent: ${effectId}`, 'transition');
       const current = next.effects[index];
       if (!current || current.settlementEventId) throw new DurableKernelError(`effect already settled: ${effectId}`, 'transition');
+      validateEffectSettlementOwner(current, event);
       const status = requiredEffectStatus(event.payload.status);
       const updated: DurableEffectProjection = {
         ...current,
@@ -763,10 +786,17 @@ function validateTransition(projection: DurableRunProjection, event: DurableHarn
     if (projection.pendingEffectIds.length > 0 || projection.unknownEffectIds.length > 0) throw new DurableKernelError('run completion requires all effects settled', 'transition');
   }
   if (event.type === 'effect_intent_created') {
-    const effectId = requiredString(event.payload.effectId, 'effect_intent_created.effectId');
-    if (projection.effects.some((effect) => effect.effectId === effectId)) throw new DurableKernelError(`effect intent already exists: ${effectId}`, 'transition');
-    const idempotencyKey = requiredString(event.payload.idempotencyKey, 'effect_intent_created.idempotencyKey');
-    if (projection.effects.some((effect) => effect.idempotencyKey === idempotencyKey)) throw new DurableKernelError(`effect idempotency key already exists: ${idempotencyKey}`, 'transition');
+    const effect = readEffectIntent(event);
+    if (projection.effects.some((current) => current.effectId === effect.effectId)) throw new DurableKernelError(`effect intent already exists: ${effect.effectId}`, 'transition');
+    if (projection.effects.some((current) => current.idempotencyKey === effect.idempotencyKey)) throw new DurableKernelError(`effect idempotency key already exists: ${effect.idempotencyKey}`, 'transition');
+  }
+  if (event.type === 'effect_settled') {
+    const effectId = requiredString(event.payload.effectId, 'effect_settled.effectId');
+    const effect = projection.effects.find((current) => current.effectId === effectId);
+    if (!effect) throw new DurableKernelError(`effect settlement has no intent: ${effectId}`, 'transition');
+    if (effect.settlementEventId) throw new DurableKernelError(`effect already settled: ${effectId}`, 'transition');
+    validateEffectSettlementOwner(effect, event);
+    requiredEffectStatus(event.payload.status);
   }
   if (event.type === 'capability_snapshot_read') {
     readCapabilitySnapshot(event);

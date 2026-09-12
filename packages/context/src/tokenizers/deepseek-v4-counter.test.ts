@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createDeepSeekV4ExactContextTokenCounter,
+  resolveDeepSeekTokenizerFamily,
   createLazyLocalExactContextTokenCounter,
   prepareLocalExactContextTokenCounter,
   verifyDeepSeekV4TokenizerAssets,
@@ -44,7 +45,7 @@ describe('DeepSeek V4 tokenizer assets', () => {
       return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
     }) as typeof fetch;
     const options = {
-      modelRef: 'deepseek/deepseek-v4-flash',
+      modelRef: 'deepseek/deepseek-v4-pro',
       modelRootDir: root,
       fetchFn,
       timeoutMs: 1_000,
@@ -78,7 +79,7 @@ describe('DeepSeek V4 tokenizer assets', () => {
       releaseResponse = resolve;
     });
     const counter = createLazyLocalExactContextTokenCounter({
-      modelRef: 'deepseek/deepseek-v4-flash',
+      modelRef: 'deepseek/deepseek-v4-pro',
       modelRootDir: root,
       retryBackoffMs: 60_000,
       fetchFn: (async () => {
@@ -92,7 +93,7 @@ describe('DeepSeek V4 tokenizer assets', () => {
     expect(counter!.ready).toBe(false);
     expect(requestCount).toBe(0);
     expect(() => counter!.countRequest({
-      model: 'deepseek-v4-flash',
+      model: 'deepseek-v4-pro',
       messages: [{ role: 'user', content: 'hello' }],
       thinking: { type: 'disabled' },
     })).toThrow(/preparing/);
@@ -106,7 +107,7 @@ describe('DeepSeek V4 tokenizer assets', () => {
     await expect(second).rejects.toThrow(/size mismatch/);
 
     expect(() => counter!.countRequest({
-      model: 'deepseek-v4-flash',
+      model: 'deepseek-v4-pro',
       messages: [{ role: 'user', content: 'hello' }],
       thinking: { type: 'disabled' },
     })).toThrow(/temporarily unavailable/);
@@ -125,14 +126,14 @@ describe('DeepSeek V4 tokenizer assets', () => {
     expect(counter).toBeUndefined();
   });
 
-  it('counts calibrated Flash tool protocol requests and applies the hosted max control cost', () => {
+  it('counts calibrated V4.1 Flash tool protocol requests', () => {
     let tokenizerCalls = 0;
     const counter = createDeepSeekV4ExactContextTokenCounter({
       encode() {
         tokenizerCalls++;
         return { ids: Array.from({ length: 10 }, (_, index) => index) };
       },
-    });
+    }, resolveDeepSeekTokenizerFamily('deepseek/deepseek-v4-flash'));
 
     const tools = [{
       type: 'function' as const,
@@ -156,9 +157,11 @@ describe('DeepSeek V4 tokenizer assets', () => {
     expect(counter.countRequest({
       ...highRequest,
       reasoning_effort: 'max',
-    })).toBe(23);
+    })).toBe(10);
 
-    expect(counter.countRequest({
+    // Tool history without an active schema measured one token off, so it stays
+    // explicitly uncovered rather than returning a near-but-wrong count.
+    expect(() => counter.countRequest({
       model: 'deepseek-v4-flash',
       messages: [
         { role: 'user', content: 'Use the probe.' },
@@ -175,8 +178,8 @@ describe('DeepSeek V4 tokenizer assets', () => {
       ],
       reasoning_effort: 'high',
       thinking: { type: 'enabled' },
-    })).toBe(10);
-    expect(tokenizerCalls).toBe(3);
+    })).toThrow(/tool history without an active tool schema/);
+    expect(tokenizerCalls).toBe(2);
   });
 
   it('keeps Pro tool protocol requests failed closed pending model-specific calibration', () => {
@@ -200,7 +203,7 @@ describe('DeepSeek V4 tokenizer assets', () => {
       }],
       tool_choice: 'auto',
       thinking: { type: 'disabled' },
-    })).toThrow(/Pro exact counting is unavailable for tool protocol/);
+    })).toThrow(/does not cover tool protocol requests/);
     expect(tokenizerCalls).toBe(0);
   });
 
@@ -211,7 +214,7 @@ describe('DeepSeek V4 tokenizer assets', () => {
         tokenizerCalls++;
         return { ids: [1] };
       },
-    });
+    }, resolveDeepSeekTokenizerFamily('deepseek/deepseek-v4-flash'));
     expect(() => counter.countRequest({
       model: 'deepseek-v4-flash',
       messages: [{ role: 'user', content: 'hello' }],
@@ -246,7 +249,7 @@ describe('DeepSeek V4 tokenizer assets', () => {
         tokenizerCalls++;
         return { ids: [1] };
       },
-    });
+    }, resolveDeepSeekTokenizerFamily('deepseek/deepseek-v4-flash'));
 
     expect(() => counter.countRequest({
       model: 'deepseek-v4-flash',

@@ -2,6 +2,7 @@
 // Default config (used when no config file exists).
 
 import type { Config, ModelProvider } from './schema.js';
+import { mergeProviderModelEntries, resolveProviderModelIds } from './provider-models.js';
 
 export const PROVIDER_PRESETS: ModelProvider[] = [
   {
@@ -16,7 +17,8 @@ export const PROVIDER_PRESETS: ModelProvider[] = [
     name: 'DeepSeek',
     baseURL: 'https://api.deepseek.com',
     apiKey: '$DEEPSEEK_API_KEY',
-    models: ['deepseek-v4-pro', 'deepseek-v4-flash'],
+    // `deepseek-flash` is the canonical name for the current V4.1 Flash model.
+    models: ['deepseek-flash', 'deepseek-v4-pro', 'deepseek-v4-flash'],
   },
   {
     id: 'glm',
@@ -45,9 +47,10 @@ export const DEFAULT_CONFIG: Config = {
       contextCompressionThresholdRatio: 0.8,
       maxModelCallsPerRun: 32,
       harness: 'core-flow',
-      durableHarnessMode: 'shadow',
+      durableHarnessMode: 'next',
       durableHarnessSessionOverrides: {},
       durableHarnessOriginOverrides: {},
+      durableHarnessProfileOverrides: {},
     },
   },
   desktop: {
@@ -167,7 +170,7 @@ export function withProviderPresets(config: Config): Config {
           name: provider.name ?? preset.name,
           apiKey: provider.apiKey ?? preset.apiKey,
           timeoutSeconds: provider.timeoutSeconds ?? preset.timeoutSeconds,
-          models: mergeModels(preset.models, provider.models),
+          models: mergeProviderModelEntries(preset.models, provider.models),
         };
       }),
       ...PROVIDER_PRESETS.filter((p) => !existing.has(p.id)),
@@ -175,17 +178,8 @@ export function withProviderPresets(config: Config): Config {
   };
 }
 
-function mergeModels(primary?: string[], secondary?: string[]): string[] | undefined {
-  if (!primary && !secondary) return undefined;
-  const models: string[] = [];
-  for (const model of [...(primary ?? []), ...(secondary ?? [])]) {
-    if (!models.includes(model)) models.push(model);
-  }
-  return models;
-}
-
 export function modelRefForProvider(provider: ModelProvider): string {
-  return `${provider.id}/${provider.models?.[0] ?? 'chat'}`;
+  return `${provider.id}/${resolveProviderModelIds(provider)[0] ?? 'chat'}`;
 }
 
 export function selectDefaultModelForAvailableProvider(
@@ -195,7 +189,8 @@ export function selectDefaultModelForAvailableProvider(
   const [currentProviderId, currentModel] = config.agents.defaults.model.split('/');
   const currentProvider = config.providers.find((p) => p.id === currentProviderId);
   if (currentProvider && hasApiKey(currentProvider)) {
-    if (currentProvider.models?.length && currentModel && !currentProvider.models.includes(currentModel)) {
+    const modelIds = resolveProviderModelIds(currentProvider);
+    if (modelIds.length && currentModel && !modelIds.includes(currentModel)) {
       return modelRefForProvider(currentProvider);
     }
     return config.agents.defaults.model;

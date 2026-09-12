@@ -66,6 +66,43 @@ describe('session context usage history projection', () => {
 })
 
 describe('next-mode execution-log replay boundary', () => {
+  it('shows a recovered waiting status even when the crash left no assistant message or execution log', async () => {
+    const runner = mockReplayRunner(vi.fn().mockResolvedValue({ kind: 'runtime_status', sessionId: 'session-1', runId: 'run-1',
+      cursor: 8, settlementId: 'runtime-1', status: 'waiting_user', reason: 'effect_settlement_unknown' }))
+    Object.assign(runner, {
+      replay: vi.fn().mockResolvedValue(null), durableHarnessModeForRun: async () => 'next',
+      sessionManager: { readWindow: async () => ({ messages: [
+        { id: 'u', runId: 'run-1', role: 'user', content: [{ type: 'text', text: 'original' }], timestamp: '2026-09-11T00:00:00Z' },
+      ], hasMore: false }) },
+    })
+    const history = await invokeReplay(runner, 'run-1', '/sessions/session-1/messages')
+    expect(history.status).toBe(200)
+    expect(history.body.messages).toMatchObject([
+      { role: 'user', text: 'original' },
+      { id: 'run-1:runtime-status', role: 'assistant', text: '', activity: { status: 'waiting_user' } },
+    ])
+  })
+  it('uses the same durable projection for history and run replay after a rollout change', async () => {
+    const replay = vi.fn().mockResolvedValue({ kind: 'runtime_status', sessionId: 'session-1', runId: 'run-1',
+      cursor: 8, settlementId: 'runtime-1', status: 'waiting_user', reason: 'effect_settlement_unknown' })
+    const runner = mockReplayRunner(replay)
+    Object.assign(runner, { durableHarnessMode: 'shadow', sessionManager: { readWindow: async () => ({
+      messages: [
+        { id: 'u', runId: 'run-1', role: 'user', content: [{ type: 'text', text: 'user question' }], timestamp: '2026-09-11T00:00:00Z' },
+        { id: 'a', runId: 'run-1', role: 'assistant', stage: 'finalize', content: [{ type: 'text', text: 'unsettled preview' }], timestamp: '2026-09-11T00:00:01Z' },
+      ], hasMore: false,
+    }) } })
+    const run = await invokeReplay(runner, 'run-1')
+    const history = await invokeReplay(runner, 'run-1', '/sessions/session-1/messages')
+    expect(run.status).toBe(200)
+    expect(history.status).toBe(200)
+    expect(history.body.messages).toMatchObject([
+      { role: 'user', text: 'user question' },
+      { role: 'assistant', text: '', activity: { status: 'waiting_user', runtimeStatus: run.body.runtimeStatus } },
+    ])
+    expect(JSON.stringify(history.body)).not.toContain('unsettled preview')
+    expect(replay).toHaveBeenCalledTimes(2)
+  })
   it('returns only the durable settled reply from the generic run replay route', async () => {
     const replayDurableFinalReply = vi.fn().mockResolvedValue({
       kind: 'settled',
@@ -121,6 +158,7 @@ function mockReplayRunner(
     durableHarnessMode: 'next',
     replay: vi.fn().mockResolvedValue({
       runId: 'run-1',
+      durableHarnessMode: 'next',
       sessionId: 'session-1',
       startedAt: '2026-08-25T09:00:00.000Z',
       endedAt: '2026-08-25T09:00:01.000Z',
@@ -140,6 +178,7 @@ function mockReplayRunner(
 async function invokeReplay(
   runner: AgentRunner,
   runId: string,
+  path = localAppApiItemPath(LOCAL_APP_API_PREFIXES.runs, runId),
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1')
@@ -164,7 +203,7 @@ async function invokeReplay(
   try {
     const address = server.address()
     if (!address || typeof address === 'string') throw new Error('test server did not expose a TCP address')
-    const response = await fetch(`http://127.0.0.1:${address.port}${localAppApiItemPath(LOCAL_APP_API_PREFIXES.runs, runId)}`)
+    const response = await fetch(`http://127.0.0.1:${address.port}${path}`)
     return { status: response.status, body: await response.json() as Record<string, unknown> }
   } finally {
     await close(server)

@@ -9,11 +9,11 @@ import { SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN } from '../app-shell/preferences'
 import { ArchiveManager } from '../ArchiveManager'
 import { ChannelConnections } from '../ChannelConnections'
 import { MemorySkills } from '../MemorySkills'
-import { Settings } from '../Settings'
 import { SettingsAgentProfilePage } from './agent-profile'
 import { SettingsApplicationBackgroundPage } from './application-background'
 import { DirectModulePageContent } from './direct-module'
 import { SettingsHome } from './home'
+import { SettingsModelsPage } from './models'
 import { SETTINGS_NAV_GROUPS } from './navigation'
 import { SettingsStoragePage } from './storage'
 import { SettingsBrowserPage } from './browser'
@@ -175,7 +175,7 @@ export function SettingsWorkspace({
                 onContextCompressionThresholdChange={onContextCompressionThresholdChange}
               />
             )}
-            {page === 'api' && <Settings onClose={returnHome} embedded />}
+            {page === 'api' && <SettingsModelsPage />}
             {page === 'web' && <SettingsWebPage />}
             {page === 'storage' && <SettingsStoragePage />}
             {page === 'browser' && <SettingsBrowserPage />}

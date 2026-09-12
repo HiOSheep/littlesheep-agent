@@ -48,6 +48,12 @@ async function persist(options: Partial<Parameters<typeof persistRunnerPhase>[0]
 }
 
 describe('persistRunnerPhase', () => {
+  it('persists the actual run mode and structured runtime status', async () => {
+    const store = logStore()
+    const runtimeStatus = { version: 1 as const, status: 'waiting_user' as const, reason: 'effect_settlement_unknown' }
+    await persist({ executionLogStore: store, durableHarnessMode: 'next', result: { ...result(), runtimeStatus } })
+    expect(store.write).toHaveBeenCalledWith(expect.objectContaining({ durableHarnessMode: 'next', runtimeStatus }))
+  })
   it('fails closed when the execution log write fails in strict mode', async () => {
     const store = logStore({ write: vi.fn(async () => { throw new Error('log unavailable') }) })
     await expect(persist({ executionLogStore: store, strict: true })).rejects.toMatchObject({

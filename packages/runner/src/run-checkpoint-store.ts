@@ -534,7 +534,7 @@ function validateSideEffect(value: unknown, index: number): RunCheckpoint['sideE
     throw new RunCheckpointValidationError(`checkpoint.sideEffects[${index}].status is invalid.`);
   }
   const output: RunCheckpoint['sideEffects'][number] = { idempotencyKey, toolName, status };
-  for (const field of ['inputHash', 'stepId', 'callId', 'evidenceRef', 'error'] as const) {
+  for (const field of ['inputHash', 'stepId', 'callId', 'ownerId', 'evidenceRef', 'error'] as const) {
     if (value[field] !== undefined) output[field] = boundedText(value[field], field === 'error' ? 2_048 : 512, `checkpoint.sideEffects[${index}].${field}`);
   }
   if (value.effectKind !== undefined) {
@@ -548,6 +548,9 @@ function validateSideEffect(value: unknown, index: number): RunCheckpoint['sideE
   }
   for (const field of ['startedAt', 'endedAt'] as const) {
     if (value[field] !== undefined) output[field] = normalizeTimestamp(value[field], `checkpoint.sideEffects[${index}].${field}`);
+  }
+  if (value.leaseUntil !== undefined) {
+    output.leaseUntil = normalizeTimestamp(value.leaseUntil, `checkpoint.sideEffects[${index}].leaseUntil`);
   }
   return output;
 }

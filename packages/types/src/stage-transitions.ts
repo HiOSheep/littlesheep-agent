@@ -15,13 +15,13 @@ const targets = (...values: StageTransitionTarget[]): readonly StageTransitionTa
  */
 export const allowedTransitions: StageTransitionManifest = Object.freeze({
   enter: targets('classify', 'exit'),
-  classify: targets('decide', 'reply', 'ask_user', 'exit'),
+  classify: targets('decide', 'execute', 'reply', 'ask_user', 'exit'),
   decide: targets('execute', 'ask_user', 'finalize', 'recover', 'exit'),
   // Custom lightweight EXECUTE stages may already own a verified reply and
   // therefore use the compatibility shortcut directly to FINALIZE.
   execute: targets('verify', 'recover', 'finalize', 'exit'),
   recover: targets('classify', 'decide', 'execute', 'verify', 'reply', 'ask_user', 'finalize', 'exit'),
-  verify: targets('evolve', 'recover', 'decide', 'ask_user', 'exit'),
+  verify: targets('evolve', 'capture', 'recover', 'decide', 'ask_user', 'finalize', 'exit'),
   evolve: targets('capture', 'exit'),
   capture: targets('finalize', 'exit'),
   reply: targets('verify', 'finalize', 'exit'),

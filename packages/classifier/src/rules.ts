@@ -99,7 +99,7 @@ const RULES: Rule[] = [
   },
   // Action verbs (Chinese + English) → problem
   {
-    pattern: /(帮我|帮我写|写一个|写个|修复|实现|重构|调试|debug|测试|运行|部署|安装|删除|创建|修改|更新|配置|排查|诊断)/i,
+    pattern: /(帮我|帮我写|写一个|写个|做一个|做个|再做|制作|开发|搭建|生成|修复|实现|重构|调试|debug|测试|运行|部署|安装|删除|创建|修改|更新|配置|排查|诊断)/i,
     activity: 'execute',
     confidence: 0.8,
     reason: 'action verb',

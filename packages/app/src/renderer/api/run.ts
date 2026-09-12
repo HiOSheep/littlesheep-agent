@@ -18,6 +18,7 @@ import type {
   RuntimeEventIngressOutcome,
   TaskBook,
   ToolStreamEvent,
+  ToolInvocationRecord,
   VerificationRecord,
   WebEvidenceProjection,
   RuntimeCapabilitySnapshot,
@@ -48,22 +49,17 @@ export interface RunResult {
     promptTokens: number
     completionTokens: number
     totalTokens?: number
+    cachedPromptTokens?: number
+    cacheWriteTokens?: number
+    reasoningTokens?: number
     source: 'provider'
   }
+  systemPromptProjection?: string
   contextSnapshots?: ContextSnapshot[]
   modelRequests?: ModelRequestSnapshot[]
   trace?: { name: string; ok: boolean }[]
   messages?: { role: string; content: unknown[] }[]
-  toolInvocations?: Array<{
-    callId: string
-    name: string
-    input?: unknown
-    output?: string
-    error?: string
-    ok?: boolean
-    startedAt?: string
-    endedAt?: string
-  }>
+  toolInvocations?: ToolInvocationRecord[]
   taskBook?: TaskBook
   verificationHistory?: VerificationRecord[]
   runtimeControl?: RuntimeControlSnapshot
@@ -268,6 +264,9 @@ export async function consumeRunStream(
         || event.name === 'verification_start'
         || event.name === 'verification'
         || event.name === 'final_delta'
+        || event.name === 'model_reasoning'
+        || event.name === 'model_text'
+        || event.name === 'system_prompt'
         || event.name === 'capability_snapshot'
         || event.name === 'capability_probe'
       ) {

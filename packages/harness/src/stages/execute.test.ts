@@ -653,6 +653,74 @@ describe('executeStage', () => {
     expect(systemPrompts[0]).toContain('It may be shown to the user directly');
   });
 
+  it('streams thinking and per-turn prose into the ordered next-Harness transcript', async () => {
+    const tool = makeTool('glob', { ok: true, output: 'attachments/' });
+    const llm = createMockLlm([
+      toolCallResponse([{ id: 'glob-1', name: 'glob', args: { pattern: '*' } }]),
+      textResponse('共 1 个条目。'),
+    ]);
+    llm.chatStream.mockImplementation(async (request, onDelta) => {
+      onDelta({ type: 'reasoning_delta', delta: '先确认目录里有什么。' });
+      const response = await llm.chat(request);
+      if (typeof response.content === 'string' && response.content.length > 0) {
+        onDelta({ type: 'delta', delta: response.content });
+      }
+      return response;
+    });
+    const stage = createExecuteStage({ ...deps, llm });
+    const events: ToolStreamEvent[] = [];
+    const ctx = makeCtx({
+      tools: [tool],
+      inbound: textMessage('user', '用 glob 列出顶层条目'),
+      taskBook: {
+        assessment: {
+          userNeed: '列出顶层条目',
+          complexity: 'trivial',
+          goal: '列出顶层条目',
+          successCriteria: ['返回数量和名称'],
+          requiresTaskBook: false,
+          maxExtraScopeRatio: 1,
+        },
+        goal: '列出顶层条目',
+        complexity: 'trivial',
+        successCriteria: ['返回数量和名称'],
+        steps: [{ id: 'step-1', description: '读取顶层条目', tools: ['glob'] }],
+        overdeliveryPolicy: { maxExtraScopeRatio: 1, guidance: '只返回结果' },
+      },
+    });
+    ctx.streamModelTranscript = true;
+    ctx.onToolEvent = (event) => { events.push(event); };
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ ok: true, next: 'verify' });
+    const transcript = events.filter((event) => event.type === 'model_reasoning' || event.type === 'model_text');
+    expect(transcript[0]).toMatchObject({ type: 'model_reasoning', stage: 'execute', reasoningStatus: 'running' });
+    expect(transcript.some((event) => event.type === 'model_reasoning' && event.reasoningStatus === 'done')).toBe(true);
+    expect(transcript.some((event) => event.type === 'model_text' && (event.summary ?? '').includes('glob'))).toBe(false);
+    const ordered = events.filter((event) => event.type === 'model_reasoning' || event.type === 'model_text' || event.type === 'tool_start').map((event) => event.type);
+    expect(ordered[0]).toBe('model_reasoning');
+    expect(ordered).toContain('tool_start');
+    expect(ordered.indexOf('tool_start')).toBeGreaterThan(ordered.indexOf('model_reasoning'));
+  });
+
+  it('keeps the transcript out of the legacy path unless it is explicitly enabled', async () => {
+    const tool = makeTool('glob', { ok: true, output: 'attachments/' });
+    const llm = createMockLlm([
+      toolCallResponse([{ id: 'glob-1', name: 'glob', args: { pattern: '*' } }]),
+      textResponse('共 1 个条目。'),
+    ]);
+    const stage = createExecuteStage({ ...deps, llm });
+    const events: ToolStreamEvent[] = [];
+    const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', '用 glob 列出顶层条目') });
+    ctx.onToolEvent = (event) => { events.push(event); };
+
+    await stage(ctx);
+
+    expect(events.some((event) => event.type === 'model_reasoning' || event.type === 'model_text')).toBe(false);
+    expect(llm.chatStream).not.toHaveBeenCalled();
+  });
+
   it('reuses the model-authored final step output for a trivial one-step task', async () => {
     const tool = makeTool('glob', { ok: true, output: 'attachments/' });
     const llm = createMockLlm([
@@ -1513,6 +1581,106 @@ describe('executeStage', () => {
     expect(tool.calls).toHaveLength(1);
     expect(ctx.sideEffects?.[0]).toMatchObject({ status: 'unknown', toolName: 'mutate' });
     expect(settlements).toEqual([expect.objectContaining({ status: 'unknown' })]);
+  });
+
+  it('records effect ownership in the intent and releases it only after durable settlement', async () => {
+    const tool = makeTool('mutate', { ok: true, output: 'mutation completed' });
+    const llm = createMockLlm([
+      toolCallResponse([{ id: 'owned-effect-call', name: 'mutate', args: { value: 'x' } }]),
+      textResponse('effect completed'),
+    ]);
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', 'mutate') });
+    ctx.toolSources = { mutate: 'plugin:test-mutation' };
+    const lifecycle: string[] = [];
+    const durablePayloads: Array<Record<string, unknown>> = [];
+    ctx.effectLeases = {
+      acquire: vi.fn(async () => ({
+        kind: 'acquired' as const,
+        ownerId: 'a'.repeat(64),
+        leaseUntil: '2026-09-10T01:00:00.000Z',
+      })),
+      confirm: vi.fn(async () => ({ ownerId: 'a'.repeat(64), leaseUntil: '2026-09-10T01:00:01.000Z' })),
+      release: vi.fn(async () => { lifecycle.push('release'); }),
+    };
+    ctx.appendDurableEvent = vi.fn(async (event) => {
+      lifecycle.push(event.type);
+      durablePayloads.push(event.payload);
+    });
+
+    await stage(ctx);
+
+    expect(tool.calls).toHaveLength(1);
+    expect(ctx.sideEffects?.[0]).toMatchObject({
+      status: 'succeeded',
+      ownerId: 'a'.repeat(64),
+      leaseUntil: '2026-09-10T01:00:01.000Z',
+    });
+    expect(durablePayloads.find((payload) => payload.effectId)).toMatchObject({
+      ownerId: 'a'.repeat(64),
+      leaseUntil: '2026-09-10T01:00:00.000Z',
+    });
+    expect(durablePayloads.find((payload) => payload.status === 'succeeded')).toMatchObject({
+      ownerId: 'a'.repeat(64),
+      leaseUntil: '2026-09-10T01:00:01.000Z',
+    });
+    expect(lifecycle.indexOf('release')).toBeGreaterThan(lifecycle.indexOf('effect_settled'));
+    expect(ctx.effectLeases.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not invoke an effect when another worker owns its lease', async () => {
+    const tool = makeTool('mutate', { ok: true, output: 'must not run' });
+    const llm = createMockLlm([
+      toolCallResponse([{ id: 'conflicted-effect-call', name: 'mutate', args: { value: 'x' } }]),
+      textResponse('effect lease conflict'),
+    ]);
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', 'mutate') });
+    ctx.toolSources = { mutate: 'plugin:test-mutation' };
+    ctx.effectLeases = {
+      acquire: vi.fn(async () => ({ kind: 'conflict' as const, leaseUntil: '2026-09-10T01:00:00.000Z' })),
+      confirm: vi.fn(),
+      release: vi.fn(),
+    };
+    ctx.appendDurableEvent = vi.fn();
+
+    await stage(ctx);
+
+    expect(tool.calls).toHaveLength(0);
+    expect(ctx.appendDurableEvent).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'effect_intent_created' }));
+    expect(ctx.toolInvocations?.[0]).toMatchObject({ status: 'failed', errorKind: 'side_effect_blocked' });
+    expect(ctx.toolResults?.[0]?.error).toContain('owned by another worker');
+  });
+
+  it('refuses to settle a completed effect after its ownership fence is lost', async () => {
+    const tool = makeTool('mutate', { ok: true, output: 'mutation completed' });
+    const llm = createMockLlm([
+      toolCallResponse([{ id: 'lost-effect-call', name: 'mutate', args: { value: 'x' } }]),
+      textResponse('effect owner lost'),
+    ]);
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', 'mutate') });
+    ctx.toolSources = { mutate: 'plugin:test-mutation' };
+    ctx.effectLeases = {
+      acquire: vi.fn(async () => ({
+        kind: 'acquired' as const,
+        ownerId: 'a'.repeat(64),
+        leaseUntil: '2026-09-10T01:00:00.000Z',
+      })),
+      confirm: vi.fn(async () => { throw new Error('ownership changed'); }),
+      release: vi.fn(),
+    };
+    const durableEvents: string[] = [];
+    ctx.appendDurableEvent = vi.fn(async (event) => { durableEvents.push(event.type); });
+
+    await stage(ctx);
+
+    expect(tool.calls).toHaveLength(1);
+    expect(ctx.sideEffects?.[0]).toMatchObject({ status: 'unknown', error: expect.stringContaining('ownership changed') });
+    expect(durableEvents).toContain('effect_intent_created');
+    expect(durableEvents).not.toContain('effect_settled');
+    expect(ctx.toolInvocations?.[0]).toMatchObject({ status: 'failed', errorKind: 'effect_settlement_persistence' });
+    expect(ctx.effectLeases.release).not.toHaveBeenCalled();
   });
 
   it('settles a pre-invocation abort as cancelled without invoking the effectful tool', async () => {

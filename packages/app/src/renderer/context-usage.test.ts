@@ -147,7 +147,7 @@ describe('context usage presentation model', () => {
   })
 
   it('does not call a verified tokenizer unavailable just because this session has no new count yet', () => {
-    const usage = buildContextUsage('deepseek/deepseek-v4-flash', null)
+    const usage = buildContextUsage('deepseek/deepseek-v4-pro', null)
 
     expect(usage).toMatchObject({
       source: 'none',
@@ -158,22 +158,34 @@ describe('context usage presentation model', () => {
     expect(usage.localUnavailableReason).toBeUndefined()
   })
 
+  it('reports the V4.1-served Flash names as having a verified local tokenizer', () => {
+    // 2026-09-11: V4.1 pins its own tokenizer + framing, calibrated against
+    // real Provider usage, so the Flash names count locally and only wait for
+    // an actual count in this session.
+    for (const modelRef of ['deepseek/deepseek-flash', 'deepseek/deepseek-v4-flash']) {
+      const usage = buildContextUsage(modelRef, null)
+      expect(usage.localTokenizerState).toBe('not_counted')
+      expect(usage.localUnavailableReason).toBeUndefined()
+      expect(usage.maxTokens).toBe(1_000_000)
+    }
+  })
+
   it('keeps the same not-counted wording when an old session only has provider usage', () => {
-    const snapshot = buildContextUsageSnapshot('deepseek/deepseek-v4-flash', undefined, [contextSnapshot({
+    const snapshot = buildContextUsageSnapshot('deepseek/deepseek-v4-pro', undefined, [contextSnapshot({
       provider: 'deepseek',
-      model: 'deepseek-v4-flash',
+      model: 'deepseek-v4-pro',
       providerUsage: {
         version: 1,
         source: 'provider',
         provider: 'deepseek',
-        model: 'deepseek-v4-flash',
+        model: 'deepseek-v4-pro',
         promptTokens: 968,
         completionTokens: 20,
         totalTokens: 988,
         reportedAt: '2026-08-01T01:00:02.000Z',
       },
     })])
-    const usage = buildContextUsage('deepseek/deepseek-v4-flash', snapshot)
+    const usage = buildContextUsage('deepseek/deepseek-v4-pro', snapshot)
 
     expect(usage.localTokenizerState).toBe('not_counted')
     expect(formatLocalTokenizerState(usage)).toBe('本会话尚无本地计数')

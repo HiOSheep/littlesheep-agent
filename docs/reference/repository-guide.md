@@ -167,7 +167,7 @@ MCP 客户端当前尚未实现，也不保留空 workspace 包；未来实现�
 | `packages/app/src/renderer/settings/development-environments.tsx` | 设置中的开发环境管理页：状态、目标版本、系列版本选择、导入、移除和错误/忙碌反馈。 |
 | `packages/app/src/renderer/settings/application-background.tsx`、`active-run-row.tsx` | 设置中的关闭策略和活动任务管理页：通过 SSE 接收有界 Runtime 快照，提供暂停、继续、中断和渐进式运行详情；卸载时必须释放流、请求和重连计时器。 |
 | `packages/app/src/renderer/TraceCard.tsx` | Agent 执行过程、TaskBook、工具调用和验证时间线。 |
-| `packages/app/src/renderer/MemoryTreeView.tsx`、`ArchiveManager.tsx`、`Settings.tsx` | 六份记忆文件的简洁视图、归档和设置界面；记忆页仅 `SOUL.md` 可编辑，不展示 Atom 内部结构。 |
+| `packages/app/src/renderer/MemoryTreeView.tsx`、`ArchiveManager.tsx`、`settings/models.tsx` | 六份记忆文件的简洁视图、归档和模型供应商管理页；记忆页仅 `SOUL.md` 可编辑，不展示 Atom 内部结构；供应商页只经 Local App API 读写 Main 的配置与密钥库。 |
 | `packages/app/src/renderer/chat/assistant-turn.tsx`、`Markdown.tsx`、`workspace/browser.tsx` | 思考摘要/执行过程/最终结果的渐进披露，以及链接单击内置预览、双击系统打开的全局交互。 |
 | `packages/app/src/renderer/api.ts` | renderer 对 Local App API 的兼容导出入口；领域客户端位于 `packages/app/src/renderer/api/`。活动任务快照、SSE 订阅与控制客户端位于 `api/application-lifecycle.ts`，由设置页领域组件直接使用，不要求进入旧兼容 barrel。 |
 | `packages/app/src/renderer/styles.css` | 当前深灰视觉系统、共享浮层/转场 token、折叠和工作区布局样式；后续按 feature 拆分时必须保留共享原语契约。 |

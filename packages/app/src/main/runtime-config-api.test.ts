@@ -93,6 +93,17 @@ describe('runtime config Local App API', () => {
       })
       expect(updates.at(-1)?.agents.defaults.durableHarnessOriginOverrides).toEqual({ app: 'next' })
 
+      const profileOverrides = await fetch(`http://127.0.0.1:${server.port}/runtime`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ durableHarnessProfileOverrides: { coding: 'next' } }),
+      })
+      expect(profileOverrides.status).toBe(200)
+      await expect(profileOverrides.json()).resolves.toMatchObject({
+        durableHarnessProfileOverrides: { coding: 'next' },
+      })
+      expect(updates.at(-1)?.agents.defaults.durableHarnessProfileOverrides).toEqual({ coding: 'next' })
+
       const after = await fetch(`http://127.0.0.1:${server.port}/runtime`)
       await expect(after.json()).resolves.toMatchObject({ contextCompressionThresholdRatio: 0.9 })
 
@@ -128,7 +139,13 @@ describe('runtime config Local App API', () => {
         body: JSON.stringify({ durableHarnessOriginOverrides: { app: 'authoritative' } }),
       })
       expect(invalidOriginOverrides.status).toBe(400)
-      expect(updates).toHaveLength(5)
+      const invalidProfileOverrides = await fetch(`http://127.0.0.1:${server.port}/runtime`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ durableHarnessProfileOverrides: { coding: 'authoritative' } }),
+      })
+      expect(invalidProfileOverrides.status).toBe(400)
+      expect(updates).toHaveLength(6)
     } finally {
       await server.stop()
       rmSync(dataDir, { recursive: true, force: true })

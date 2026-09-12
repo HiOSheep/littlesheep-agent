@@ -4,6 +4,11 @@ import {
   type AgentProfileId
 } from '../api'
 import { PROFILE_OPTIONS } from '../runtime/options'
+import {
+  readConversationDisplayMode,
+  writeConversationDisplayMode,
+  type ConversationDisplayMode,
+} from '../chat/conversation-display'
 
 
 export function SettingsAgentProfilePage({
@@ -19,6 +24,7 @@ export function SettingsAgentProfilePage({
 }) {
   const [compressionThreshold, setCompressionThreshold] = useState(contextCompressionThresholdRatio)
   const [savingCompressionThreshold, setSavingCompressionThreshold] = useState(false)
+  const [conversationDisplay, setConversationDisplay] = useState<ConversationDisplayMode>(readConversationDisplayMode)
 
   useEffect(() => {
     setCompressionThreshold(contextCompressionThresholdRatio)
@@ -91,6 +97,33 @@ export function SettingsAgentProfilePage({
           >
             {savingCompressionThreshold ? '保存中' : '保存'}
           </button>
+        </div>
+      </section>
+      <section className="settings-policy-section" aria-label="对话显示">
+        <div className="settings-policy-heading">
+          <strong>对话显示</strong>
+          <span>已完成轮次的过程内容</span>
+        </div>
+        <div className="profile-choice-list compact-choice-list" role="radiogroup" aria-label="对话显示模式">
+          {(['normal', 'compact'] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              className={`profile-choice ${conversationDisplay === mode ? 'active' : ''}`}
+              role="radio"
+              aria-checked={conversationDisplay === mode}
+              onClick={() => {
+                setConversationDisplay(mode)
+                writeConversationDisplayMode(mode)
+              }}
+            >
+              <span>
+                <strong>{mode === 'normal' ? 'Normal' : 'Compact'}</strong>
+                <small>{mode === 'normal' ? '显示已完成轮次的过程行与摘要' : '只显示折叠摘要与最终回复'}</small>
+              </span>
+              <span className="profile-choice-check" aria-hidden="true">{conversationDisplay === mode ? '✓' : ''}</span>
+            </button>
+          ))}
         </div>
       </section>
     </div>

@@ -7,11 +7,13 @@
 import { createHash } from 'node:crypto'
 import type {
   AgentTool,
+  ReconciliationValue,
   RunContext,
   SideEffectCheckpoint,
   ToolResourceAccess,
   ToolResult,
 } from '@littlesheep/types'
+import { boundReconciliationKey } from '@littlesheep/types'
 import { replaceSideEffectEvidence } from '../../execution-evidence-state.js'
 
 const MAX_SIDE_EFFECTS = 256
@@ -36,6 +38,8 @@ export interface SideEffectDescriptor {
   callId: string
   resourceKeys: string[]
   effectKind: SideEffectCheckpoint['effectKind']
+  /** Tool-declared bounded recovery key; absent when the tool declares none. */
+  reconciliationKey?: ReconciliationValue
 }
 
 export type BeginSideEffectResult =
@@ -61,6 +65,7 @@ export function describeSideEffect(
   if (resourceKeys.length === 0 && READ_ONLY_TOOLS.has(tool.name)) return undefined
 
   const inputHash = hashInput(input)
+  const reconciliationKey = toolReconciliationKey(tool, input)
   const effectKind: SideEffectCheckpoint['effectKind'] = resourceKeys.length > 0
     ? 'local_mutation'
     : tool.name === 'exec'
@@ -74,6 +79,22 @@ export function describeSideEffect(
     callId,
     resourceKeys,
     effectKind,
+    ...(reconciliationKey ? { reconciliationKey } : {}),
+  }
+}
+
+/**
+ * Ask the tool for its reconciliation key and keep only a bounded value. A
+ * throwing or oversized projector counts as "no key", so recovery falls back
+ * to the conservative unknown outcome instead of persisting anything the tool
+ * did not intend to persist.
+ */
+function toolReconciliationKey(tool: AgentTool, input: unknown): ReconciliationValue | undefined {
+  if (!tool.reconciliationKey) return undefined
+  try {
+    return boundReconciliationKey(tool.reconciliationKey(input))
+  } catch {
+    return undefined
   }
 }
 
@@ -94,13 +115,44 @@ export async function beginSideEffect(ctx: RunContext, descriptor: SideEffectDes
     status: 'in_progress',
     startedAt: new Date().toISOString(),
   }
+  const lease = ctx.effectLeases
+    ? await ctx.effectLeases.acquire(descriptor.idempotencyKey)
+    : undefined
+  if (lease?.kind === 'conflict') {
+    return {
+      kind: 'blocked',
+      descriptor,
+      reason: `side effect is owned by another worker${lease.leaseUntil ? ` until ${lease.leaseUntil}` : ''}`,
+    }
+  }
+  // Lease acquisition is asynchronous and parallel tool branches may have
+  // updated the ledger while this branch waited. Always merge into the latest
+  // projection and re-check replay/capacity constraints after ownership.
   const effects = [...(ctx.sideEffects ?? [])]
+  const concurrentlyStarted = effects.find((item) => item.idempotencyKey === descriptor.idempotencyKey)
+  if (concurrentlyStarted) {
+    await releaseEffectLease(ctx, descriptor)
+    return concurrentlyStarted.status === 'succeeded'
+      ? { kind: 'duplicate', descriptor, status: concurrentlyStarted.status }
+      : {
+          kind: 'blocked',
+          descriptor,
+          reason: `side effect ${descriptor.idempotencyKey} already has status ${concurrentlyStarted.status}`,
+        }
+  }
   if (effects.length >= MAX_SIDE_EFFECTS) {
     const terminal = effects.findIndex((item) => item.status === 'succeeded' || item.status === 'failed')
-    if (terminal < 0) return { kind: 'blocked', descriptor, reason: 'side-effect ledger capacity is exhausted' }
+    if (terminal < 0) {
+      await releaseEffectLease(ctx, descriptor)
+      return { kind: 'blocked', descriptor, reason: 'side-effect ledger capacity is exhausted' }
+    }
     effects.splice(terminal, 1)
   }
-  effects.push(entry)
+  const ownedEntry: SideEffectCheckpoint = {
+    ...entry,
+    ...(lease?.kind === 'acquired' ? { ownerId: lease.ownerId, leaseUntil: lease.leaseUntil } : {}),
+  }
+  effects.push(ownedEntry)
   replaceSideEffectEvidence(ctx, 'execute', effects)
   try {
     await ctx.appendDurableEvent?.({
@@ -114,6 +166,8 @@ export async function beginSideEffect(ctx: RunContext, descriptor: SideEffectDes
         toolName: descriptor.toolName,
         inputHash: descriptor.inputHash,
         effectKind: descriptor.effectKind,
+        ...(descriptor.reconciliationKey ? { reconciliationKey: descriptor.reconciliationKey } : {}),
+        ...(lease?.kind === 'acquired' ? { ownerId: lease.ownerId, leaseUntil: lease.leaseUntil } : {}),
         ...(descriptor.stepId ? { stepId: descriptor.stepId } : {}),
       },
     });
@@ -122,6 +176,7 @@ export async function beginSideEffect(ctx: RunContext, descriptor: SideEffectDes
     // in-memory projection conservative and let recovery reconcile the event
     // stream instead of attempting a second, potentially conflicting event.
     replaceSideEffectStatus(ctx, descriptor, 'unknown', `effect intent durability failed: ${errorMessage(error)}`);
+    await releaseEffectLease(ctx, descriptor);
     throw error;
   }
   return { kind: 'started', descriptor }
@@ -138,8 +193,18 @@ export async function finishSideEffect(
   const index = effects.findIndex((item) => item.idempotencyKey === descriptor.idempotencyKey)
   if (index < 0) return
   const current = effects[index]!
+  let settlementLease: { ownerId: string; leaseUntil: string } | undefined
+  if (ctx.effectLeases) {
+    try {
+      settlementLease = await ctx.effectLeases.confirm(descriptor.idempotencyKey)
+    } catch (error) {
+      replaceSideEffectStatus(ctx, descriptor, 'unknown', `effect ownership confirmation failed: ${errorMessage(error)}`)
+      throw error
+    }
+  }
   const entry: SideEffectCheckpoint = {
     ...current,
+    ...settlementLease,
     status: settlement,
     endedAt: new Date().toISOString(),
     evidenceRef: `tool:${descriptor.callId}`,
@@ -159,9 +224,11 @@ export async function finishSideEffect(
         effectId: descriptor.idempotencyKey,
         status: settlement,
         evidenceRef: entry.evidenceRef,
+        ...settlementLease,
         ...(entry.error ? { errorHash: hashText(entry.error), errorLength: entry.error.length } : {}),
       },
     });
+    await releaseEffectLease(ctx, descriptor);
   } catch (error) {
     // A thrown append is ambiguous: the event may already be on disk. Do not
     // append a compensating `unknown` settlement; recovery must inspect the
@@ -185,6 +252,18 @@ export async function markSideEffectUnknown(ctx: RunContext, descriptor: SideEff
       errorLength: error.length,
     },
   });
+  await releaseEffectLease(ctx, descriptor);
+}
+
+async function releaseEffectLease(ctx: RunContext, descriptor: SideEffectDescriptor): Promise<void> {
+  try {
+    await ctx.effectLeases?.release(descriptor.idempotencyKey);
+  } catch (error) {
+    ctx.toolContext.log?.('error', 'effect lease release failed after durable lifecycle boundary', {
+      effectId: descriptor.idempotencyKey,
+      error: errorMessage(error),
+    });
+  }
 }
 
 function replaceSideEffectStatus(

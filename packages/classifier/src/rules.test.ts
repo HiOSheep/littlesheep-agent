@@ -146,6 +146,13 @@ describe('classifyByRules', () => {
     expect(classifyByRules('C:\\Users\\test\\file.txt')?.type).toBe('problem');
   });
 
+  it.each(['再做一个小游戏吧', '做个 2048', '制作一个单文件页面', '开发这个功能'])(
+    'classifies concrete creation request %s as executable',
+    (text) => {
+      expect(classifyByRules(text)).toMatchObject({ activity: 'execute', type: 'problem' });
+    },
+  );
+
   it('classifies a capability-status question as chat even when it contains an action word', () => {
     const result = classifyByRules('但是现在好像还没给你配置网络查询功能吧');
     expect(result).toMatchObject({

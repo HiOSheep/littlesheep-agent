@@ -43,6 +43,9 @@ export function writeProviderUsageState(
       promptTokens: usage.promptTokens,
       completionTokens: usage.completionTokens,
       totalTokens: usage.totalTokens ?? usage.promptTokens + usage.completionTokens,
+      cachedPromptTokens: usage.cachedPromptTokens,
+      cacheWriteTokens: usage.cacheWriteTokens,
+      reasoningTokens: usage.reasoningTokens,
       source: 'provider',
     },
   });

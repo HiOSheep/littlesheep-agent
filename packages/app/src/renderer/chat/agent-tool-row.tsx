@@ -23,14 +23,14 @@ export function AgentToolRow({
   const statusClass = liveToolStatusClass(tool)
   const action = toolActionLabel(tool.name)
   const displayAction = action === '调用' ? tool.name : action
-  const title = tool.ok === false ? `${displayAction}失败` : displayAction
+  const running = tool.ok === undefined && tool.endedAt === undefined
+  const title = running ? `${displayAction} · 执行中` : tool.ok === false ? `${displayAction}失败` : displayAction
   const targetPath = toolFilePath(tool.input)
   const inputText = formatToolInput(tool)
   const outputText = tool.error ? '' : formatToolResult(tool)
   const errorText = tool.error ? firstLine(tool.error) : ''
   const hasDetails = Boolean(targetPath || inputText || outputText || errorText)
-  const summary = errorText || toolSummaryText(tool)
-  const running = tool.ok === undefined
+  const summary = errorText || toolSummaryText(tool) || (running ? 'Running…' : '')
 
   return (
     <section className={`agent-tool-call ${statusClass} ${open ? 'open' : ''}`} data-call-id={tool.callId}>
@@ -44,7 +44,7 @@ export function AgentToolRow({
         }}
       >
         <span className="agent-tool-glyph" aria-hidden="true">
-          {targetPath ? <FileGlyphIcon name={targetPath} /> : <span className="agent-tool-generic-glyph" />}
+          <ToolActivityIcon name={tool.name} />
         </span>
         <span className={`agent-flow-title ${running ? 'is-running' : ''}`}>{title}</span>
         <span className="agent-flow-separator" aria-hidden="true" />
@@ -78,17 +78,17 @@ export function AgentToolRow({
                 </button>
               )}
               {inputText && (
-                <ToolDetailSection label="IN">
+                <ToolDetailSection label="Input">
                   <pre>{inputText}</pre>
                 </ToolDetailSection>
               )}
               {outputText && (
-                <ToolDetailSection label="OUT">
+                <ToolDetailSection label="Output">
                   <pre>{outputText}</pre>
                 </ToolDetailSection>
               )}
               {errorText && (
-                <ToolDetailSection label="ERROR" error>
+                <ToolDetailSection label="Output" error>
                   <pre>{tool.error}</pre>
                 </ToolDetailSection>
               )}
@@ -101,6 +101,17 @@ export function AgentToolRow({
       )}
     </section>
   )
+}
+
+function ToolActivityIcon({ name }: { name: string }) {
+  const action = toolActionLabel(name)
+  const common = { className: 'agent-tool-activity-icon', viewBox: '0 0 16 16' }
+  if (action === '修改') return <svg {...common}><path d="M3 11.8 2.5 14l2.2-.5L13 5.2a1.55 1.55 0 0 0-2.2-2.2Z"/><path d="m9.8 4 2.2 2.2"/></svg>
+  if (action === '搜索') return <svg {...common}><circle cx="6.8" cy="6.8" r="4.3"/><path d="m10 10 3.5 3.5"/></svg>
+  if (action === '读取') return <svg {...common}><path d="M3 1.8h6.2L13 5.6v8.6H3Z"/><path d="M9 1.8v4h4M5.3 8.5h5.3M5.3 11h4"/></svg>
+  if (action === '浏览') return <svg {...common}><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2 2 2 10 0 12M8 2C6 4 6 12 8 14"/></svg>
+  if (action === '删除') return <svg {...common}><path d="M2.8 4.5h10.4M6 2.5h4M4.3 4.5l.6 9h6.2l.6-9M6.5 7v4M9.5 7v4"/></svg>
+  return <svg {...common}><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="m4.5 6 2 2-2 2M8.5 10h3"/></svg>
 }
 
 

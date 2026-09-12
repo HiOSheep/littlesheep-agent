@@ -2,6 +2,9 @@
 import type { RunResult } from '../api'
 import { buildArtifactsFromToolCalls, buildTraceData, settleLiveReasoning, taskStepToLiveStep } from './activity-model'
 import type { ChatMessage } from './types'
+import { projectConversationContext } from './context-projections'
+import { applyInvocationStatus, runActivityOutcome } from '../../shared/history-activity'
+import { aggregateRunUsage } from '../../shared/run-usage'
 
 export function reduceCompletedRunMessages(
   messages: ChatMessage[],
@@ -25,15 +28,21 @@ export function reduceCompletedRunMessages(
         && ((block as { type?: unknown }).type === 'tool_calls' || (block as { type?: unknown }).type === 'tool_result')
       ))),
   )
-  const paused = result.runtimeControl?.state === 'paused'
-    || result.runtimeStatus?.status === 'waiting_user'
-  const activityStatus = paused
-    ? 'paused'
-    : result.status === 'ok'
-      ? 'done'
-      : result.status === 'aborted'
-        ? 'aborted'
-        : 'failed'
+  const outcome = runActivityOutcome(result)
+  const activityStatus = outcome.status
+  const waiting = activityStatus === 'waiting_user' || activityStatus === 'paused'
+  const priorSteps = new Map(currentActivity?.steps.map((step) => [step.stepId, step]))
+  const steps = (result.taskExecution?.steps !== undefined ? taskSteps : currentActivity?.steps ?? []).map((step) => ({
+    ...step,
+    startedAt: step.startedAt ?? priorSteps.get(step.stepId)?.startedAt,
+    endedAt: step.endedAt ?? endedAt,
+    activeTools: 0,
+    status: step.status === 'running' ? waiting ? 'pending' as const : 'unknown' as const : step.status,
+  }))
+  const tools = new Map(currentActivity?.tools.map((tool) => [tool.callId, tool]))
+  for (const record of result.toolInvocations ?? []) {
+    tools.set(record.callId, applyInvocationStatus(tools.get(record.callId), record, endedAt))
+  }
   const settledReply = result.finalReplySettlement?.status === 'settled'
     ? result.finalReplySettlement.reply
     : result.finalReplySettlement === undefined
@@ -45,12 +54,12 @@ export function reduceCompletedRunMessages(
     timestamp: new Date(endedAt).toISOString(),
     // A streamed delta/replace is a preview. Once the run settles, the
     // authoritative settlement must replace that preview even when it differs.
-    text: result.status === 'ok'
-      ? result.finalReplySettlement
-        ? settledReply
-        : last.text || settledReply
-      : '',
+    text: result.status === 'ok' ? settledReply : '',
     ...traceData,
+    usage: aggregateRunUsage(result.contextSnapshots, result.usage),
+    modelRef: result.contextSnapshots?.at(-1)
+      ? `${result.contextSnapshots.at(-1)!.provider}/${result.contextSnapshots.at(-1)!.model}`
+      : last.modelRef,
     artifacts,
     activityCollapsed: true,
     webEvidence: result.webEvidence,
@@ -58,25 +67,29 @@ export function reduceCompletedRunMessages(
       ? {
         ...currentActivity,
         visibility: hasExecutionProgress ? 'progress' : currentActivity.visibility,
-        status: activityStatus,
+        ...outcome,
         endedAt,
         durationMs: result.durationMs || endedAt - currentActivity.startedAt,
         reasoning: settleLiveReasoning(
           currentActivity.reasoning,
-          activityStatus === 'done' || activityStatus === 'paused' ? 'done' : 'failed',
+          activityStatus === 'done' || waiting ? 'done' : 'failed',
           endedAt,
         ),
         taskBook: result.taskBook ?? currentActivity.taskBook,
         verificationHistory: result.verificationHistory ?? currentActivity.verificationHistory,
         verificationRunning: false,
-        error: paused
-          ? '任务已暂停，现场已保存。'
-          : result.status === 'ok'
+        error: outcome.error ?? (result.status === 'ok'
             ? undefined
             : result.status === 'aborted'
               ? result.error || '本次运行已停止。'
-              : result.error || '本次运行未生成可展示的回复。',
-        steps: currentActivity.steps.length > 0 ? currentActivity.steps : taskSteps,
+              : result.error || '本次运行未生成可展示的回复。'),
+        steps,
+        tools: [...tools.values()].map((tool) => ({
+          ...tool,
+          endedAt: tool.endedAt ?? endedAt,
+          error: tool.error ?? (tool.ok === undefined ? '未收到工具最终结果。' : undefined),
+        })),
+        contextProjections: projectConversationContext(result.contextSnapshots),
       }
       : undefined,
   }

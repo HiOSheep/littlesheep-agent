@@ -61,6 +61,8 @@ class MemoryInboxStore implements DurableInboxStoreLike {
       sessionId: input.sessionId,
       runId: input.runId,
       type: input.type,
+      source: input.source,
+      ...(input.occurredAt ? { occurredAt: input.occurredAt } : {}),
       payload: input.payload,
       status: 'queued',
       enqueuedAt: '2026-09-02T00:00:00.000Z',
@@ -74,22 +76,30 @@ class MemoryInboxStore implements DurableInboxStoreLike {
     const result: DurableInboxCommand[] = [];
     for (const command of this.commands.values()) {
       if (command.status !== 'queued') continue;
-      const claimed = { ...command, status: 'claimed' as const, attempts: command.attempts + 1, leaseUntil: '2099-01-01T00:00:00.000Z' };
+      const claimed = {
+        ...command,
+        status: 'claimed' as const,
+        attempts: command.attempts + 1,
+        leaseUntil: '2099-01-01T00:00:00.000Z',
+        claimToken: `claim-${command.attempts + 1}`,
+      };
       this.commands.set(command.commandId, claimed);
       result.push(claimed);
     }
     return result;
   }
-  async complete(commandId: string, resultEventIds: readonly string[] = []): Promise<DurableInboxCommand> {
+  async complete(commandId: string, resultEventIds: readonly string[] = [], claimToken?: string): Promise<DurableInboxCommand> {
     const command = this.commands.get(commandId);
     if (!command) throw new Error('missing');
+    if (command.claimToken !== claimToken) throw new Error('stale claim');
     const completed = { ...command, status: 'completed' as const, resultEventIds: [...resultEventIds] };
     this.commands.set(commandId, completed);
     return completed;
   }
-  async fail(commandId: string, reason: string): Promise<DurableInboxCommand> {
+  async fail(commandId: string, reason: string, _retryable?: boolean, claimToken?: string): Promise<DurableInboxCommand> {
     const command = this.commands.get(commandId);
     if (!command) throw new Error('missing');
+    if (command.claimToken !== claimToken) throw new Error('stale claim');
     const failed = { ...command, status: 'failed' as const, failureReason: reason };
     this.commands.set(commandId, failed);
     return failed;
@@ -227,6 +237,155 @@ describe('DurableHarnessKernel', () => {
     expect(store.events.filter((item) => item.type === 'effect_settled')).toHaveLength(2);
   });
 
+  it('carries a bounded reconciliation key and refuses a malformed one', async () => {
+    const keyedStore = new MemoryEventStore();
+    const keyedKernel = new DurableHarnessKernel({ eventStore: keyedStore });
+    await keyedKernel.append(event('run_accepted', {}, 'runtime', 'accept'));
+    await keyedKernel.append(event('effect_intent_created', {
+      effectId: 'effect-keyed', idempotencyKey: 'effect-key-keyed', toolName: 'write', effectKind: 'local_mutation',
+      reconciliationKey: { path: '/tmp/report.txt', attempt: 1 },
+    }, 'runtime', 'intent-keyed'));
+
+    const projection = reduceDurableRunProjection(keyedStore.events);
+    expect(projection.effects.find((effect) => effect.effectId === 'effect-keyed')).toMatchObject({
+      reconciliationKey: { path: '/tmp/report.txt', attempt: 1 },
+    });
+
+    const malformedStore = new MemoryEventStore();
+    const malformedKernel = new DurableHarnessKernel({ eventStore: malformedStore });
+    await malformedKernel.append(event('run_accepted', {}, 'runtime', 'accept-malformed'));
+    const malformedTemplate = malformedStore.events[0]!;
+    malformedStore.events.push({
+      ...malformedTemplate,
+      eventId: 'event-malformed-key',
+      idempotencyKey: 'intent-malformed',
+      cursor: 2,
+      type: 'effect_intent_created',
+      payload: {
+        effectId: 'effect-malformed', idempotencyKey: 'effect-key-malformed', toolName: 'write',
+        effectKind: 'local_mutation', reconciliationKey: { nested: { deep: 1 } },
+      },
+    } as DurableHarnessEvent);
+    expect(() => reduceDurableRunProjection(malformedStore.events)).toThrow(/reconciliationKey/);
+  });
+
+  it('settles a pending effect from an authoritative external outcome query', async () => {
+    const store = new MemoryEventStore();
+    const kernel = new DurableHarnessKernel({ eventStore: store });
+    await kernel.append(event('run_accepted', {}, 'runtime', 'accept'));
+    await kernel.append(event('effect_intent_created', {
+      effectId: 'effect-query', idempotencyKey: 'effect-key-query', toolName: 'write', effectKind: 'external',
+    }, 'runtime', 'intent-query'));
+
+    const recovered = await kernel.recoverRun(sessionId, runId, {
+      queryEffectOutcome: async (effect) => {
+        expect(effect.effectId).toBe('effect-query');
+        return { known: true, status: 'succeeded', evidenceRef: 'external:ledger-1' };
+      },
+    });
+    expect(recovered.actions).toEqual([
+      expect.objectContaining({
+        kind: 'effect_settled',
+        effectId: 'effect-query',
+        status: 'succeeded',
+      }),
+      expect.objectContaining({ kind: 'runtime_status_settled', reason: 'run_incomplete_after_restart' }),
+    ]);
+    expect(recovered.projection.effects.find((effect) => effect.effectId === 'effect-query')).toMatchObject({
+      status: 'succeeded',
+      evidenceRef: 'external:ledger-1',
+    });
+    expect(recovered.projection.pendingEffectIds).toEqual([]);
+    expect(recovered.projection.unknownEffectIds).toEqual([]);
+  });
+
+  it('keeps unknown settlement when the external outcome query cannot resolve', async () => {
+    const store = new MemoryEventStore();
+    const kernel = new DurableHarnessKernel({ eventStore: store });
+    await kernel.append(event('run_accepted', {}, 'runtime', 'accept'));
+    await kernel.append(event('effect_intent_created', {
+      effectId: 'effect-unresolved', idempotencyKey: 'effect-key-unresolved', toolName: 'write', effectKind: 'external',
+    }, 'runtime', 'intent-unresolved'));
+
+    const recovered = await kernel.recoverRun(sessionId, runId, {
+      queryEffectOutcome: async () => ({ known: false, reason: 'ledger unavailable' }),
+    });
+    expect(recovered.actions).toEqual([
+      expect.objectContaining({
+        kind: 'effect_marked_unknown',
+        effectId: 'effect-unresolved',
+        status: 'unknown',
+      }),
+      expect.objectContaining({ kind: 'runtime_status_settled', reason: 'effect_settlement_unknown' }),
+    ]);
+    expect(recovered.projection.unknownEffectIds).toEqual(['effect-unresolved']);
+  });
+
+  it('falls back to unknown when the external outcome query throws', async () => {
+    const store = new MemoryEventStore();
+    const kernel = new DurableHarnessKernel({ eventStore: store });
+    await kernel.append(event('run_accepted', {}, 'runtime', 'accept'));
+    await kernel.append(event('effect_intent_created', {
+      effectId: 'effect-query-error', idempotencyKey: 'effect-key-query-error', toolName: 'write', effectKind: 'external',
+    }, 'runtime', 'intent-query-error'));
+
+    const recovered = await kernel.recoverRun(sessionId, runId, {
+      queryEffectOutcome: async () => { throw new Error('external ledger down'); },
+    });
+    expect(recovered.actions).toEqual([
+      expect.objectContaining({ kind: 'effect_marked_unknown', effectId: 'effect-query-error', status: 'unknown' }),
+      expect.objectContaining({ kind: 'runtime_status_settled', reason: 'effect_settlement_unknown' }),
+    ]);
+    expect(recovered.projection.unknownEffectIds).toEqual(['effect-query-error']);
+  });
+
+  it('projects a validated effect owner lease and rejects partial ownership evidence', async () => {
+    const store = new MemoryEventStore();
+    const kernel = new DurableHarnessKernel({ eventStore: store });
+    await kernel.append(event('run_accepted', {}, 'runtime', 'accept'));
+    await kernel.append(event('effect_intent_created', {
+      effectId: 'effect-owned',
+      idempotencyKey: 'effect-key-owned',
+      toolName: 'write',
+      effectKind: 'local_mutation',
+      ownerId: 'a'.repeat(64),
+      leaseUntil: '2026-09-10T01:00:00Z',
+    }, 'runtime', 'intent-owned'));
+
+    expect((await kernel.replay(sessionId, runId)).effects[0]).toMatchObject({
+      ownerId: 'a'.repeat(64),
+      leaseUntil: '2026-09-10T01:00:00.000Z',
+    });
+    await expect(kernel.append(event('effect_settled', {
+      effectId: 'effect-owned',
+      status: 'succeeded',
+      ownerId: 'b'.repeat(64),
+      leaseUntil: '2026-09-10T01:00:01.000Z',
+    }, 'tool', 'settle-wrong-owner'))).rejects.toMatchObject({ kind: 'transition' });
+    expect(store.events.some((item) => item.eventId === 'settle-wrong-owner')).toBe(false);
+    await kernel.append(event('effect_settled', {
+      effectId: 'effect-owned',
+      status: 'succeeded',
+      ownerId: 'a'.repeat(64),
+      leaseUntil: '2026-09-10T01:00:01.000Z',
+    }, 'tool', 'settle-owned'));
+    expect((await kernel.replay(sessionId, runId)).effects[0]).toMatchObject({
+      status: 'succeeded',
+      settlementEventId: 'settle-owned',
+    });
+
+    const invalidStore = new MemoryEventStore();
+    const invalidKernel = new DurableHarnessKernel({ eventStore: invalidStore });
+    await invalidKernel.append(event('run_accepted', {}, 'runtime', 'accept-invalid'));
+    await expect(invalidKernel.append(event('effect_intent_created', {
+      effectId: 'effect-invalid',
+      idempotencyKey: 'effect-key-invalid',
+      toolName: 'write',
+      effectKind: 'external',
+      ownerId: 'b'.repeat(64),
+    }, 'runtime', 'intent-invalid'))).rejects.toMatchObject({ kind: 'invalid' });
+  });
+
   it('closes pending effects after a terminal status without reopening the run', async () => {
     const store = new MemoryEventStore();
     const kernel = new DurableHarnessKernel({ eventStore: store });
@@ -258,6 +417,36 @@ describe('DurableHarnessKernel', () => {
 
     expect((await kernel.recoverRun(sessionId, runId)).actions).toEqual([]);
     expect(store.events.filter((item) => item.type === 'effect_settled')).toHaveLength(1);
+  });
+
+  it('reports only newly recorded actions when two recovery passes race', async () => {
+    const store = new MemoryEventStore();
+    const kernel = new DurableHarnessKernel({ eventStore: store });
+    await kernel.append(event('run_accepted', {}, 'runtime', 'accept'));
+    await kernel.append(event('model_request_started', {
+      requestId: 'model-race',
+      provider: 'test',
+      model: 'test/model',
+      providerReachStatus: 'reached',
+      transportStatus: 'streaming',
+    }, 'runtime', 'model-race-start'));
+    await kernel.append(event('effect_intent_created', {
+      effectId: 'effect-race',
+      idempotencyKey: 'effect-key-race',
+      toolName: 'write',
+      effectKind: 'external',
+    }, 'runtime', 'intent-race'));
+
+    const [first, second] = await Promise.all([
+      kernel.recoverRun(sessionId, runId),
+      kernel.recoverRun(sessionId, runId),
+    ]);
+    const reportedKinds = [...first.actions, ...second.actions].map((action) => action.kind).sort();
+    expect(reportedKinds).toEqual(['effect_marked_unknown', 'model_marked_missing', 'runtime_status_settled'].sort());
+    expect(store.events.filter((item) => item.type === 'effect_settled')).toHaveLength(1);
+    expect(store.events.filter((item) => item.type === 'model_request_settled')).toHaveLength(1);
+    expect(store.events.filter((item) => item.type === 'runtime_status_settled')).toHaveLength(1);
+    expect((await kernel.recoverRun(sessionId, runId)).actions).toEqual([]);
   });
 
   it('closes pending model requests after a terminal failure', async () => {
@@ -376,6 +565,46 @@ describe('DurableHarnessKernel', () => {
     const projection = await kernel.replay(sessionId, runId);
     expect(projection.unknownEffectIds).toEqual(['effect-1']);
     await expect(kernel.append(event('run_completed', {}, 'runtime', 'complete'))).rejects.toMatchObject({ kind: 'transition' });
+  });
+
+  it('rebuilds the projection deterministically and replays only the cursor tail', async () => {
+    const store = new MemoryEventStore();
+    const kernel = new DurableHarnessKernel({ eventStore: store });
+    await kernel.append(event('run_accepted', {}, 'runtime', 'rebuild-accept'));
+    await kernel.append(event('route_decided', { route: 'execute' }, 'runtime', 'rebuild-route'));
+    await kernel.append(event('stage_transition_recorded', {
+      stage: 'decide', next: 'execute', ok: true, attempt: 1, transitionEventId: 'rebuild-stage',
+    }, 'runtime', 'rebuild-stage'));
+    await kernel.append(event('model_request_started', { requestId: 'rebuild-model' }, 'runtime', 'rebuild-model-start'));
+    await kernel.append(event('model_response_received', { requestId: 'rebuild-model', usageStatus: 'unknown' }, 'runtime', 'rebuild-model-response'));
+    await kernel.append(event('model_request_settled', { requestId: 'rebuild-model', status: 'received', usageStatus: 'unknown' }, 'runtime', 'rebuild-model-settled'));
+    await kernel.append(event('effect_intent_created', {
+      effectId: 'rebuild-effect', idempotencyKey: 'rebuild-effect-key', toolName: 'write', effectKind: 'local_mutation',
+    }, 'runtime', 'rebuild-intent'));
+    await kernel.append(event('effect_settled', {
+      effectId: 'rebuild-effect', status: 'succeeded', evidenceRef: 'tool:rebuild',
+    }, 'tool', 'rebuild-settle'));
+    await kernel.append(event('verification_recorded', {
+      attempt: 1, verdict: 'pass', source: 'structural', reasonHash: 'b'.repeat(64), reasonLength: 7,
+    }, 'runtime', 'rebuild-verify'));
+    await kernel.append(event('final_reply_proposed', {
+      settlementId: 'rebuild-settlement', reply: 'rebuild answer', replyFingerprint: 'rebuild-fp', modelRequestId: 'rebuild-model',
+    }, 'model', 'rebuild-reply'));
+    await kernel.append(event('final_reply_settled', {
+      settlementId: 'rebuild-settlement', reply: 'rebuild answer', replyFingerprint: 'rebuild-fp', modelRequestId: 'rebuild-model',
+    }, 'runtime', 'rebuild-reply-settled'));
+    await kernel.append(event('run_completed', {}, 'runtime', 'rebuild-complete'));
+
+    const events = await kernel.replayAfter(sessionId, runId, 0);
+    const live = await kernel.replay(sessionId, runId);
+    const rebuilt = await kernel.rebuildProjection(sessionId, runId);
+    const rebuiltAgain = await kernel.rebuildProjection(sessionId, runId);
+    expect(rebuilt).toEqual(live);
+    expect(rebuiltAgain).toEqual(rebuilt);
+    expect(rebuilt).toMatchObject({ status: 'completed', pendingEffectIds: [], pendingModelRequestIds: [] });
+    const midpoint = events[Math.floor(events.length / 2)]!.cursor;
+    expect((await kernel.replayAfter(sessionId, runId, midpoint)).map((entry) => entry.cursor))
+      .toEqual(events.map((entry) => entry.cursor).filter((cursor) => cursor > midpoint));
   });
 
   it.each(['failed', 'cancelled'] as const)(

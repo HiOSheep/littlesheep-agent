@@ -5,6 +5,7 @@ import type { ToolResult } from './message.js';
 import type { SessionId } from './session.js';
 import type { PermissionPolicyId } from './runtime-contracts.js';
 import type { NetworkReadPolicy, WebEvidenceSink, WebRetrievalRuntimePort } from './web-retrieval.js';
+import type { DurableEffectOutcomeQueryResult, DurableEffectProjection, EffectReconcileContext } from './durable-harness.js';
 
 /**
  * A schema validator. Zod schemas satisfy this structurally; we keep types
@@ -93,6 +94,22 @@ export interface AgentTool {
   };
   /** Execute the tool. Must not throw — return ok:false on error. */
   execute(input: unknown, ctx: ToolContext): Promise<ToolResult>;
+  /**
+   * Optional recovery-time reconciliation. A tool that can authoritatively
+   * query the state its own effect produced implements this so crash recovery
+   * settles the effect as succeeded/failed instead of conservatively unknown.
+   * It must observe only; it must never repeat the effect.
+   */
+  reconcileEffect?(effect: DurableEffectProjection, ctx: EffectReconcileContext): Promise<DurableEffectOutcomeQueryResult>;
+  /**
+   * Optional bounded, redacted recovery key for `reconcileEffect`.
+   *
+   * LS persists only the returned value inside the effect intent, so it must
+   * identify the effect target (path, external id, idempotency token) and must
+   * never carry payload text or secrets. Anything outside the bounded shape is
+   * dropped and the effect stays conservatively `unknown`.
+   */
+  reconciliationKey?(input: unknown): unknown;
 }
 
 /** Registry lookup result. */

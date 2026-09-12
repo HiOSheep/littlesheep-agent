@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ExecutionLogStore, type ExecutionLog } from '@littlesheep/runner'
 import type { Message } from '@littlesheep/types'
-import { buildHistoryMessages } from './history-activity.js'
+import { asSessionId } from '@littlesheep/types'
+import { buildHistoryMessages, executionLogToHistoryActivity } from './history-activity.js'
 
 const tempDirs: string[] = []
 
@@ -58,6 +59,48 @@ function executionLog(overrides: Partial<ExecutionLog> = {}): ExecutionLog {
 }
 
 describe('durable history activity reconstruction', () => {
+
+  it('closes unresolved tool calls without replacing the real output with a summary', () => {
+    const log = executionLog({
+      toolCalls: [{
+        call: { id: 'call-1', name: 'read', input: { file_path: 'README.md' } },
+        result: { callId: 'call-1', ok: true, output: 'real tool output', durationMs: 5 },
+      }, {
+        call: { id: 'call-2', name: 'exec', input: { command: 'pnpm test' } },
+        result: { callId: 'call-2' } as never,
+      }],
+      toolInvocations: [{
+        version: 1 as const, id: 'inv-2', callId: 'call-2', runId: 'run-1', sessionId: asSessionId('session-1'),
+        toolName: 'exec', toolSource: 'builtin', status: 'running' as const,
+        proposedAt: '2026-08-29T00:00:02.000Z', approval: { required: false, decision: 'not_required' as const },
+        evidenceIds: [], outputSummary: 'output present (12 characters)',
+      }],
+    })
+    const activity = executionLogToHistoryActivity(log)
+    expect(activity.tools[0]).toMatchObject({ callId: 'call-1', ok: true, output: 'real tool output' })
+    expect(activity.tools[1]).toMatchObject({ callId: 'call-2', ok: undefined })
+    expect(activity.tools[1]?.endedAt).toBeTypeOf('number')
+    expect(activity.tools[1]?.error).toBeTruthy()
+    expect(JSON.stringify(activity.tools)).not.toContain('output present')
+  })
+
+  it('preserves user input and does not copy a settlement onto intermediate tool messages', () => {
+    const settlement = { version: 1 as const, status: 'settled' as const, settlementId: 'set-1',
+      reply: 'authoritative answer', replyFingerprint: 'fp', modelRequestId: 'request-1' }
+    const messages: Message[] = [
+      { id: 'user', role: 'user', runId: 'run-1', content: [{ type: 'text', text: 'original question' }], timestamp: '2026-09-11T00:00:00Z' },
+      { id: 'tool', role: 'assistant', runId: 'run-1', stage: 'execute', content: [], timestamp: '2026-09-11T00:00:01Z' },
+      { id: 'final', role: 'assistant', runId: 'run-1', stage: 'finalize', content: [{ type: 'text', text: 'preview' }],
+        finalReplySettlement: settlement, timestamp: '2026-09-11T00:00:02Z' },
+    ]
+    const original = structuredClone(messages)
+    const logs = new Map([['run-1', executionLog({ finalReplySettlement: settlement })]])
+    expect(buildHistoryMessages(messages, logs).map(({ role, text }) => ({ role, text }))).toEqual([
+      { role: 'user', text: 'original question' }, { role: 'assistant', text: 'authoritative answer' },
+    ])
+    expect(buildHistoryMessages(messages.slice(0, 2), logs).some((message) => message.text === settlement.reply)).toBe(false)
+    expect(messages).toEqual(original)
+  })
   it('restores bounded Web source metadata without any live retrieval', () => {
     const log = executionLog({
       webEvidence: {

@@ -1,9 +1,28 @@
 import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CONFIG } from '@littlesheep/config'
 import type { NetworkReadPolicy } from '@littlesheep/types'
-import { createPermissionApprover, resolveRunPolicy } from './run-policy.js'
+import { createPermissionApprover, createRecoveryReadAuthorizer, resolveRunPolicy } from './run-policy.js'
+import { join } from 'node:path'
 
 describe('local app run policy', () => {
+  it('rechecks recovery reads against the current session mode and container root', async () => {
+    let mode = 'research'
+    const containerRoot = process.cwd()
+    const identity = { sessionId: 's', runId: 'r' }
+    const authorize = createRecoveryReadAuthorizer(() => ({ list: async () => [{
+      id: 's', title: 'session', mode, createdAt: 0, lastMessageAt: 0, scope: 'standalone' as const,
+    }] }), containerRoot)
+    const inside = join(containerRoot, 'package.json')
+    const outside = join(containerRoot, '..', 'outside.txt')
+    expect(await authorize(inside, identity)).toBe(true)
+    expect(await authorize(outside, identity)).toBe(false)
+    mode = 'restricted'
+    expect(await authorize(inside, identity)).toBe(false)
+    mode = 'full'
+    expect(await authorize(outside, identity)).toBe(true)
+    expect(await authorize(inside, { ...identity, sessionId: 'missing' })).toBe(false)
+    expect(await createRecoveryReadAuthorizer(() => null, containerRoot)(inside, identity)).toBe(false)
+  })
   it('keeps behavior profile and permission policy independent', async () => {
     const broker = vi.fn(async () => true)
     const policy = resolveRunPolicy({ profile: 'coding', permissionMode: 'research' }, DEFAULT_CONFIG, broker)

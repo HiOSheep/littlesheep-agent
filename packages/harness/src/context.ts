@@ -135,8 +135,12 @@ export interface BuildRunContextOptions {
   runtimeEventQueue?: RuntimeEventQueueLike;
   /** Ordered durable event sink owned by the Runner/runtime adapter. */
   appendDurableEvent?: RunContext['appendDurableEvent'];
+  /** Cross-process effect ownership owned by the Runner/runtime adapter. */
+  effectLeases?: RunContext['effectLeases'];
   /** Defer final-reply settlement until Runner-owned audit persistence completes. */
   deferFinalReplySettlement?: boolean;
+  /** Next-Harness transcript opt-in; see RunContext.streamModelTranscript. */
+  streamModelTranscript?: boolean;
   /** Directory containing bootstrap .md files (defaults to cwd). */
   bootstrapDir?: string;
   /** Unified memory/resource service used to register and load bootstrap authorities. */
@@ -271,7 +275,9 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     attachments: opts.attachments,
     resolvedRunConfig: opts.resolvedRunConfig,
     appendDurableEvent: opts.appendDurableEvent,
+    effectLeases: opts.effectLeases,
     ...(opts.deferFinalReplySettlement ? { deferFinalReplySettlement: true } : {}),
+    ...(opts.streamModelTranscript ? { streamModelTranscript: true } : {}),
     ...(opts.cacheObservationKey !== undefined ? { cacheObservationKey: opts.cacheObservationKey } : {}),
     ...(opts.previousCacheObservation ? { previousCacheObservation: opts.previousCacheObservation } : {}),
     ...(opts.persistCacheObservation ? { persistCacheObservation: opts.persistCacheObservation } : {}),

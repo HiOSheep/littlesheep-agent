@@ -77,6 +77,9 @@ export interface ExecutionLog {
   reply: string;
   replyProvenance?: ReplyProvenance;
   finalReplySettlement?: FinalReplySettlement;
+  /** Mode selected for this run, independent of later runtime configuration. */
+  durableHarnessMode?: 'shadow' | 'next';
+  runtimeStatus?: import('@littlesheep/types').RuntimeFinalStatus;
   error?: string;
   trace: StageTraceEntry[];
   taskExecution?: TaskExecutionResult;
@@ -89,6 +92,7 @@ export interface ExecutionLog {
   clarificationResponse?: ClarificationResponse;
   conversationContinuation?: ConversationContinuationEvidence;
   usage?: RunUsage;
+  systemPromptProjection?: string;
   sideEffects?: SideEffectCheckpoint[];
   memoryAccess?: MemoryAccessLedger;
   resolvedRunConfig?: ResolvedRunConfig;
@@ -128,6 +132,8 @@ export interface ExecutionLogInput {
   reply: string;
   replyProvenance?: ReplyProvenance;
   finalReplySettlement?: FinalReplySettlement;
+  durableHarnessMode?: 'shadow' | 'next';
+  runtimeStatus?: import('@littlesheep/types').RuntimeFinalStatus;
   error?: string;
   trace: StageTraceEntry[];
   taskExecution?: TaskExecutionResult;
@@ -140,6 +146,7 @@ export interface ExecutionLogInput {
   clarificationResponse?: ClarificationResponse;
   conversationContinuation?: ConversationContinuationEvidence;
   usage?: RunUsage;
+  systemPromptProjection?: string;
   sideEffects?: SideEffectCheckpoint[];
   memoryAccess?: MemoryAccessLedger;
   resolvedRunConfig?: ResolvedRunConfig;
@@ -222,6 +229,8 @@ export class ExecutionLogStore {
       reply: input.reply,
       replyProvenance: input.replyProvenance,
       finalReplySettlement: input.finalReplySettlement,
+      durableHarnessMode: input.durableHarnessMode,
+      runtimeStatus: input.runtimeStatus,
       error: input.error,
       trace: input.trace,
       taskExecution: input.taskExecution,
@@ -234,6 +243,7 @@ export class ExecutionLogStore {
       clarificationResponse: input.clarificationResponse,
       conversationContinuation: input.conversationContinuation,
       usage: input.usage,
+      systemPromptProjection: input.systemPromptProjection,
       sideEffects: input.sideEffects,
       memoryAccess: input.memoryAccess,
       resolvedRunConfig: input.resolvedRunConfig,

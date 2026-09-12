@@ -91,10 +91,7 @@ export async function routeSessions(
       json(res, 404, { error: `run not found: ${replayRunId}` })
       return true
     }
-    const durableHarnessMode = runner.durableHarnessModeForSession?.(log.sessionId) ?? runner.durableHarnessMode
-    json(res, 200, durableHarnessMode === 'next'
-      ? await prepareAuthoritativeExecutionLog(runner, log)
-      : log)
+    json(res, 200, await prepareAuthoritativeExecutionLog(runner, log))
     return true
   }
 
@@ -270,9 +267,23 @@ async function loadExecutionLogsByRunId(
   const logs = new Map<string, ExecutionLog>()
   const runIds = [...new Set(messages.map((message) => message.runId).filter((runId): runId is string => !!runId))]
   for (const runId of runIds) {
-    const log = await runner.replay(runId)
-    if (!log || log.sessionId !== sessionId) continue
-    logs.set(log.runId, log)
+    let log = await runner.replay(runId)
+    if (log && log.sessionId !== sessionId) continue
+    if (!log) {
+      // A crash may leave durable run facts and user input without an audit
+      // log. Still consult the settlement; never hide recovery behind a 404.
+      const related = messages.filter((message) => message.runId === runId)
+      const timestamp = related.at(-1)!.timestamp
+      log = {
+        runId, sessionId, status: 'error', model: '', inboundText: '', reply: '',
+        startedAt: timestamp, endedAt: timestamp, durationMs: 0, trace: [], toolCalls: [],
+      }
+      const projected = await prepareAuthoritativeExecutionLog(runner, log)
+      if (!projected.runtimeStatus && projected.durableHarnessMode !== 'next') continue
+      logs.set(runId, projected)
+    } else {
+      logs.set(log.runId, await prepareAuthoritativeExecutionLog(runner, log))
+    }
   }
   return logs
 }

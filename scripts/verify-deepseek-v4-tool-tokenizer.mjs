@@ -82,14 +82,18 @@ async function main() {
   if (!provider) throw new Error(`Provider ${providerId} is not configured.`)
   const model = args.model ?? configuredModel(config.agents.defaults.model, provider.id) ?? provider.models?.[0]
   if (!model) throw new Error(`Provider ${provider.id} has no configured model.`)
-  if (!['deepseek-v4-flash', 'deepseek-v4-pro'].includes(model.toLowerCase())) {
-    throw new Error(`Model ${model} is not covered by the DeepSeek V4 tokenizer.`)
+  if (!['deepseek-flash', 'deepseek-v4-flash', 'deepseek-v4-pro'].includes(model.toLowerCase())) {
+    throw new Error(`Model ${model} is not covered by a calibrated DeepSeek tokenizer family.`)
   }
   const apiKey = resolveApiKey(provider.apiKey)
   if (!apiKey) throw new Error(`Provider ${provider.id} has no usable API key.`)
 
-  if (model.toLowerCase() !== 'deepseek-v4-flash') {
-    throw new Error('Tool protocol exact counting is currently calibrated only for deepseek-v4-flash.')
+  // The tool-protocol matrix is calibrated for the V4.1 family; the V4 Pro
+  // family only owns plain/thinking shapes.
+  if (!['deepseek-flash', 'deepseek-v4-flash'].includes(model.toLowerCase())) {
+    throw new Error(
+      `Tool protocol exact counting is calibrated for the V4.1 family (deepseek-flash, deepseek-v4-flash); ${model} is not covered.`,
+    )
   }
   const counter = await prepareLocalExactContextTokenCounter({
     modelRef: `${provider.id}/${model}`,
@@ -144,6 +148,7 @@ async function main() {
     })
     results.push(initial.result)
 
+    if (initial.result.status !== 'covered') continue
     const calls = initial.response.toolCalls.filter((call) => call.function.name === 'calibration_probe')
     if (calls.length !== 1) {
       throw new Error(`schema-only-${mode.id} expected one calibration_probe call, received ${calls.length}.`)
@@ -202,14 +207,16 @@ async function main() {
     results.push(multi.result)
   }
 
-  const exact = results.every((result) => result.delta === 0)
+  const covered = results.filter((result) => result.status === 'covered')
+  const exact = covered.every((result) => result.delta === 0)
   const output = {
     check: 'deepseek-v4-tool-tokenizer',
     ok: exact,
     provider: provider.id,
     model,
-    requestCount: results.length,
-    exactCount: results.filter((result) => result.delta === 0).length,
+    requestCount: covered.length,
+    exactCount: covered.filter((result) => result.delta === 0).length,
+    notCoveredCount: results.length - covered.length,
     results,
   }
   console.log(JSON.stringify(output, null, 2))
@@ -217,7 +224,20 @@ async function main() {
 }
 
 async function calibrate({ name, request, client, counter }) {
-  const localTokens = counter.countRequest(request)
+  let localTokens
+  try {
+    localTokens = counter.countRequest(request)
+  } catch (error) {
+    // The counter refuses shapes it has not verified; report them instead of
+    // spending a Provider request on a count LS will not claim.
+    return {
+      result: {
+        name,
+        status: 'not_covered',
+        reason: error instanceof Error ? error.message : String(error),
+      },
+    }
+  }
   const startedAt = Date.now()
   const response = await client.chat(request)
   const providerPromptTokens = response.usage?.promptTokens
@@ -228,6 +248,7 @@ async function calibrate({ name, request, client, counter }) {
     response,
     result: {
       name,
+      status: 'covered',
       localTokens,
       providerPromptTokens,
       delta: providerPromptTokens - localTokens,
