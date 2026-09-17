@@ -2,7 +2,7 @@
 // Helpers shared across LLM-backed stages: message conversion, JSON
 // extraction, and retry-on-parse-failure LLM calls.
 
-import { filterAuthoritativeUserFacingMessages, type Message, type RunAttachment } from '@littlesheep/types';
+import { filterAuthoritativeUserFacingMessages, type Message, type RunAttachment, type RunContext } from '@littlesheep/types';
 import type { ChatContentPart, ChatMessage, ChatResponse, LlmClient } from '@littlesheep/llm';
 import { attachmentManifestResourceId } from '@littlesheep/memory-tree';
 import type { InsertedContextMessage } from '../context-candidates.js';
@@ -31,6 +31,21 @@ export function toChatMessage(m: Message): ChatMessage {
  * Older turns are represented by the session summary or memory indexes; they
  * should not be re-sent verbatim on every planning call.
  */
+/**
+ * The single conversation-history window every stage must use.
+ *
+ * Cross-stage cache reuse needs the history projection to be byte-identical for
+ * every stage, otherwise the Provider's prefix diverges at the first message
+ * that one stage includes and another omits. Stage-specific windows (classify 4,
+ * verify none, reply 8/6k) are therefore replaced by this shared projection.
+ */
+export const SHARED_HISTORY_MAX_MESSAGES = 8;
+export const SHARED_HISTORY_MAX_CHARS = 6_000;
+
+export function conversationHistoryForModel(ctx: Pick<RunContext, 'history'>): Message[] {
+  return recentHistoryForModel(ctx.history, SHARED_HISTORY_MAX_MESSAGES, SHARED_HISTORY_MAX_CHARS);
+}
+
 export function recentHistoryForModel(
   history: Message[],
   maxMessages = 8,

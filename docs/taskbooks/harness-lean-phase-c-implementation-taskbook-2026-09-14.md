@@ -1941,6 +1941,11 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 
 **注意（round 16 的教训）：** 启用共享头前必须先解决 `verify:electron-continuity` 的 `cross-restart reply is not memory-continuous`（当时共享头把 reply 提示词改大后触发）——建议在历史窗口归一之后再单独处理，逐项验证。
 
+**进度（2026-09-17，用户追加 ¥20 预算并批准继续）：** 已落地第 1 步的**公共件**——`stages/_shared.ts` 新增：
+- `SHARED_HISTORY_MAX_MESSAGES = 8`、`SHARED_HISTORY_MAX_CHARS = 6_000`；
+- `conversationHistoryForModel(ctx)`：所有阶段应改用的**唯一**历史窗口选择器（当前尚未切换调用点，故行为零变化）。
+`typecheck` 0、`_shared` 测试 11/11 通过。下一步即把 10.99 表里的 7 个调用点切到它，并同步 `definitions.ts` 的 `history` 声明与相关断言。
+
 **round 24 计划（改打高频断点）：** 转向**每个 run/每轮都会发生**的 system 提示词抖动：
 1. `memory-taskbook-refinement.ts:137` 在 **DECIDE 中途重写 `initialMemoryContext`**（同轮内 system 即变化）；
 2. `memoryRootIndex` / `initialMemoryContext` / `bootstrap` 每请求按 ctx 重建（记忆一更新即变化）。
