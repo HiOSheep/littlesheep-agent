@@ -1515,6 +1515,21 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 
 **round 10 计划：** ① 设计并实现"**统一稳定头**"：让所有阶段先发射同一批字节一致的分段（至少 `identity` + 安全/工作区等与阶段无关者按同一顺序），阶段专属指令一律放到**后面**（必要时进入易变尾部）；② 用离线对比（两两阶段 system prompt 的最长公共前缀长度）验证统一头覆盖率从"仅 identity"提升到"大比例"；③ 真实 Provider 复测 **miss/调用** 与主对话命中率。
 
+### 10.79 第三十六轮（goal round 10：跨阶段公共前缀 = 293 字节，机会量化）执行记录（2026-09-17）
+
+**离线度量（零成本，永久守卫）：** 在 `packages/prompt/src/builder.test.ts` 新增"跨阶段共享头"度量：
+同一套输入下 `mode:'full'` 与 `mode:'respond'` 的 system prompt 文本**最长公共前缀 = 293 字节**；`respond` 全长 **1,411** 字节、`full` 全长 **7,061** 字节。
+→ **共享头只占 respond 提示词的 21%、full 的 4%**，而且实际内容就是**第 1 段 `identity`**（第 2 段起 `capabilities` vs `core-flow` 就分叉）。
+守卫已保留（`lcp >= 293` 且 `full.length > 5000`），防止后续改坏。
+
+**含义（与 round 8/9 的量化闭环）：** 跨阶段缓存复用目前只有约 **73 token**，可忽略；因此"边际 miss/调用 ≈ 1,000 且不随会话改善"的根因就是**每个阶段都在重建自己那套 system prompt**。要把它降下来，只能**让各阶段共享同一段可缓存前缀**，也就是目标里的"跨阶段共享可缓存前缀"。
+
+**两条可选路线（需用户裁定，因为会改变模型可见指令）：**
+- **A（保守）**：只统一**早期分段**——把与阶段无关的分段（identity/core-flow/safety/workspace/date-time 等）按**同一顺序**在所有模式里前置，阶段专属内容后移。可离线用 LCP 精确度量收益，行为风险中等。
+- **B（激进，DSH 形状）**：所有阶段共用**同一份 system prompt 头**，各阶段契约指令**全部移到尾部**。跨阶段复用可覆盖"共享头 + 历史"（即大头），收益最大；但等于改变每个阶段的指令位置，行为风险最高，需要完整回归 + 真实 Provider 复测。
+
+**round 11 计划：** 按用户选择实现 A 或 B 的第一步；无论哪条，先用离线 LCP 给出"统一头能覆盖多少字节/token"的上界，再动 builder；随后真实 Provider 复测 **miss/调用**（当前 ~1,000）与主对话命中率。
+
 ### 10.14 第七轮（HC-12 撤销屏障）新增证据（2026-09-16）
 
 **问题（先写失败用例）：** v3 写入路径的等值/相似候选只按 branch/scope/`status='active'` 选取；被纠正（`epistemicStatus`/`resolutionStatus = superseded`）或删除（`status = tombstone`）的 atom 仍可能是 active 记录。后续 maintenance（压缩候选）证据即使引用同一 `conversation-source:`，也会创建新 atom 或强化旧 atom，从而复活已被用户忘记/纠正的事实。`memory-service-v3.test.ts` 的新用例在修复前返回 `created`。
