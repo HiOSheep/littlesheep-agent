@@ -1,12 +1,12 @@
 # Web Retrieval Security Acceptance 2026-08-29
 
-状态：WB-09 的离线安全、迁移/回退、供应链、构建产物、性能、用户可见投影、稳定工作树全量回归、Electron 状态连续性、真实 DeepSeek V4 Flash 最终回复合成 evidence 门和 Webhook loopback 组合链路已通过；测试 key 下的真实 Tavily search 已通过，但当前环境的搜索结果 public-fetch 因 DNS 解析到保留地址被正确阻断，真实 Tavily + 网页 evidence 联调与第三方正式渠道运行时仍未验收，专项保持“实施中”。
+状态：WB-09 的离线安全、迁移/回退、供应链、构建产物、性能、用户可见投影、稳定工作树全量回归、Electron 状态连续性、DeepSeek API 实测 V4 Flash 最终回复合成 evidence 门和 Webhook loopback 组合链路已通过；测试 key 下的真实 Tavily search 已通过，但当前环境的搜索结果 public-fetch 因 DNS 解析到保留地址被正确阻断，真实 Tavily + 网页 evidence 联调与第三方正式渠道运行时仍未验收，专项保持“实施中”。
 本轮状态更正：显式 Cloudflare DoH 下的独立真实匿名 `web_fetch` 已通过；当前 `verify:full` 仍有 1 个与 Web 无关的并行 Renderer 样式测试失败，因此不能把本轮全量回归称为全绿。真实 Tavily 搜索结果关联 fetch/citation、真实网页 evidence 驱动 LLM、正式渠道和正式发布条件仍未验收。
 最后更新：2026-09-01 22:46:00
 
 ## 审查范围
 
-本报告覆盖 LittleSheep 的 `web_search`、`web_fetch`、Web evidence projection、checkpoint/log 持久化、发布产物和关闭网络后的回退路径。测试使用 fake provider、受控 HTTP client、临时目录和已有构建产物；它们不发送真实 Provider 请求，也不会读写活动应用数据根。
+本报告覆盖 LittleSheep 的 `web_search`、`web_fetch`、Web evidence projection、checkpoint/log 持久化、发布产物和关闭网络后的回退路径。测试使用 fake provider、受控 HTTP client、临时目录和已有构建产物；它们不发送实际 Provider 请求，也不会读写活动应用数据根。
 
 ## 安全矩阵
 
@@ -18,7 +18,7 @@
 | 压缩炸弹、异常编码和响应大小 | wire/decompress 双限制、正文上限；未知 `Content-Encoding` 经统一错误边界关闭响应 | `http-client.test.ts` identity/gzip 限制与未知编码回归 | 超限或不支持编码均返回稳定错误，不继续抽取 |
 | prompt injection、伪造工具结果 | 外部资料标记 `external_untrusted`；工具与状态机由 Runtime 所有 | Harness/Runner Web integration、tool result durable projection 测试 | 外部文本不能修改权限、工具或 Memory 写入策略 |
 | citation forgery | run-scoped citation registry 和 final validation | runtime provider identity/citation 测试、Harness final citation 验证 | 只有本轮 Runtime 发出的 citation 可用于已核验表述 |
-| final reply diagnostic leakage | 模型专用 Web projection 移除 `errorKinds`；Runtime/UI 保留诊断映射 | `final-reply.test.ts` 与真实 DeepSeek V4 Flash `verify:web-llm-evidence` | 最终回复不能看到或复述 `web_disabled`、`web_fetch_timeout` 等内部 id；不影响 Runtime 审计或 UI 标签 |
+| final reply diagnostic leakage | 模型专用 Web projection 移除 `errorKinds`；Runtime/UI 保留诊断映射 | `final-reply.test.ts` 与DeepSeek API 实测 V4 Flash `verify:web-llm-evidence` | 最终回复不能看到或复述 `web_disabled`、`web_fetch_timeout` 等内部 id；不影响 Runtime 审计或 UI 标签 |
 | durable data leakage | `sanitizeWebEvidenceProjection` 白名单；模型正文仅 run-local | Runner/Web tests；checkpoint reload 回归；artifact scan | durable 边界不保存 query、网页正文、raw provider JSON 或 credential-like URL 参数 |
 | timeout、cancel、restart | per-request/total deadline、abort propagation、dispose | runtime/service cancellation tests；migration verifier | 取消后拒绝后续请求；历史读取不会触发 replay search/fetch |
 | quota/concurrency/cache | per-run counter、request slot、hash-only cache key、TTL/corruption isolation | runtime/service/cache tests | 缓存可共享，但 quota/citation/abort 不跨 run 共享 |
@@ -55,7 +55,7 @@ pnpm.cmd --filter @littlesheep/web outdated --format json
 - Webhook 现有一条更强的本机组合验收：真实 `DefaultChannelManager` 创建 session/binding 并调用真实 loopback `WebhookChannelPlugin`，HTTP POST 返回 Runner 的 bounded source projection。回归断言来源标题、citation、抓取时间、partial/truncated/blocked 可见，网页正文、原始 query 和内部 `web_provider_rate_limited` 不可见；此外 shared formatter 对零 citation 的 disabled、unconfigured、rate-limit evidence 输出无来源和脱敏状态，而非空字符串。`verify:web-channel-boundary` 为 3 个文件、31 项通过，补充 plugin 定向集合为 4 文件、61 项通过。它不连接外部平台，也不替代 QQ、飞书、Telegram 或外部反向代理场景。
 - `verify:web-performance` 使用 48 次 fake-provider/fake-HTTP 隔离 run 通过 Runtime search/fetch、citation、正文抽取和共享缓存路径：外网请求为 0，P95 0.31ms，heap delta 1,095,592 bytes，HTTP 读取 1 次、缓存命中 47 次、缓存 18,895 bytes。它是本地控制流和资源封套基线，不代表互联网或 Provider 延迟。
 - Renderer 来源卡覆盖 partial/truncated、稳定错误映射和不暴露 Runtime error id 的离线测试；CLI/channel formatter 继续使用 content-free `WebEvidenceProjection`。这不替代真实 LLM 对部分完成文案的最终表达验收。
-- `verify:web-llm-evidence` 以真实 DeepSeek V4 Flash 调用生产 `synthesizeFinalReply()`；四个无网页请求的隔离场景分别提供 partial/truncated、rate-limit、fetch-timeout、disabled evidence。四项均保留不确定性；有来源时只接受 Runtime-issued citation，无来源时不伪造 citation，且最终回复不含内部 error id。验收中发现 durable projection 的 `errorKinds` 曾被直接传给模型，现已仅向模型传递可见 evidence 字段并完成真实复验。verifier 自身的失败路径也已收紧为仅输出稳定 error kind，不再输出截断后的原始错误消息。
+- `verify:web-llm-evidence` 以DeepSeek API 实测 V4 Flash 调用生产 `synthesizeFinalReply()`；四个无网页请求的隔离场景分别提供 partial/truncated、rate-limit、fetch-timeout、disabled evidence。四项均保留不确定性；有来源时只接受 Runtime-issued citation，无来源时不伪造 citation，且最终回复不含内部 error id。验收中发现 durable projection 的 `errorKinds` 曾被直接传给模型，现已仅向模型传递可见 evidence 字段并完成真实复验。verifier 自身的失败路径也已收紧为仅输出稳定 error kind，不再输出截断后的原始错误消息。
 - 当前稳定工作树最终 `pnpm.cmd run verify:full` 已通过：387 个测试文件、2642 项通过、1 项 skipped，并完成 typecheck、App build 和 recovery；运行前后 5 个 UI 文件指纹未变化，未重现并行改写竞态。Electron 状态连续性门随后通过，覆盖草稿、折叠状态、侧栏/文件导航宽度、设置页、原生窗口和 137px 聊天底部阅读间距恢复。最新 `verify:web-release` 复扫重建后的 238 个 build 文本文件，四类敏感命中仍均为 0；当前 release 候选目录历史扫描为 659 个文件、14363 个归档条目，四类敏感命中均为 0。
 - `pnpm audit --prod --json` 在本时间点报告 0 个 info/low/moderate/high/critical 漏洞；`@littlesheep/web` 的 `outdated --format json` 返回空对象。详细依赖、许可证和时效限制见供应链审查。
 
@@ -70,7 +70,7 @@ pnpm.cmd --filter @littlesheep/web outdated --format json
 1. 测试 key 已证明当前用户终端中的 Tavily search 可用；默认系统 DNS 下公共 fetch 目标仍被重写到保留地址，但显式 DoH 下独立 public-fetch 已通过。必须在拥有测试 key 的隔离环境执行 `pnpm.cmd run verify:web-provider -- --dns-resolver=cloudflare_doh --require-live`，实际证明搜索结果关联的匿名公开 fetch、citation、认证/限流/超时可见行为和部署地可用性。
 2. QQ、飞书、Telegram、Webhook 仍需用正式渠道配置或等价真实运行环境，证明统一 Runner 接收 Web evidence 后能正确输出来源、时间、partial/truncated/error 状态。
 3. 当前未签名 Windows release 候选已以 `--root=release` 扫描通过；签名后的最终平台 release 包生成后，仍必须以 `--root=<release-directory>` 重新运行发布扫描。
-4. 真实 Provider 条款、价格、速率、数据保留与地区可用性均会变化，live smoke 当日必须重新复核。
+4. 实际 Provider 条款、价格、速率、数据保留与地区可用性均会变化，live smoke 当日必须重新复核。
 5. 真实 LLM 的合成 Runtime evidence 门已通过；真实 LLM 与真实 Tavily/公开网页 evidence 同时可用时，仍必须在隔离数据根验证 partial/timeout/rate-limit/disabled 的最终回复不会把部分资料表述为完整验证，并保留 Runtime source projection。
 
-本报告不能用于宣称 LittleSheep 已稳定实时联网。当前可准确表述为：受控网络检索的离线实现、安全边界、持久化隔离和可关闭回退、真实 Tavily Provider search、显式 Cloudflare DoH 下独立真实 public-fetch、Electron 状态连续性以及真实 DeepSeek V4 Flash 对合成 evidence 的最终回复治理已经验证；本轮 `verify:full` 仍有 1 个无关 Renderer 样式测试失败，搜索结果关联 fetch/citation、真实网页 evidence 驱动的端到端 LLM 联调、正式渠道上线、签名包和干净 Windows 验收尚未完成。
+本报告不能用于宣称 LittleSheep 已稳定实时联网。当前可准确表述为：受控网络检索的离线实现、安全边界、持久化隔离和可关闭回退、真实 Tavily Provider search、显式 Cloudflare DoH 下独立真实 public-fetch、Electron 状态连续性以及DeepSeek API 实测 V4 Flash 对合成 evidence 的最终回复治理已经验证；本轮 `verify:full` 仍有 1 个无关 Renderer 样式测试失败，搜索结果关联 fetch/citation、真实网页 evidence 驱动的端到端 LLM 联调、正式渠道上线、签名包和干净 Windows 验收尚未完成。

@@ -27,7 +27,7 @@
 | `safeReadClass` | `local_memory / local_session / public_web_search / public_web_fetch / authenticated_read / arbitrary_read / none` | 只能由内置分类器给出，模型和插件声明不构成授权 |
 | `hardDecision` | `allow / approval / deny` | SSRF、危险 scheme、凭证 URL 等硬规则优先 |
 
-判定顺序固定为：输入校验和硬拒绝 → descriptor → full 模式普通放行 → safe read 策略 → 审批 → 无审批回调时失败关闭。任何调用入口都必须复用同一判定，不能在 Harness、Tool Execution Service、内置工具和插件桥接层各自维护不同规则。
+判定顺序固定为：输入校验和硬拒绝 → descriptor → full 模式普通放行 → safe read 策略 → 审批 → 无审批回调时默认拒绝。任何调用入口都必须复用同一判定，不能在 Harness、Tool Execution Service、内置工具和插件桥接层各自维护不同规则。
 
 ## 3. 配置与迁移冻结
 
@@ -100,7 +100,7 @@ MVP 首个 SearchProvider 冻结为：
 Citation 规则：
 
 1. citation id 由 Runtime 生成；
-2. id 必须绑定真实 Provider/Fetch 记录和规范化 URL；
+2. id 必须绑定实际 Provider/Fetch 记录和规范化 URL；
 3. 模型只能引用本轮提供的 id；
 4. `blocked/partial/truncated/stale` 必须随来源投影；
 5. citation 缺失或错绑时，不得宣称“已查证”。
@@ -111,4 +111,4 @@ Citation 规则：
 
 ## 7. 发布状态
 
-网络专项使用以下对外状态：`disabled / unconfigured / configured_unchecked / ready / degraded / unavailable`。只有真实 Provider smoke test、安全矩阵、取消与全量回归通过后，Provider 才能显示为 `ready`；mock、schema、工具注册或流畅的 LLM 回答都不能提升发布状态。
+网络专项使用以下对外状态：`disabled / unconfigured / configured_unchecked / ready / degraded / unavailable`。只有实际 Provider smoke test、安全矩阵、取消与全量回归通过后，Provider 才能显示为 `ready`；mock、schema、工具注册或流畅的 LLM 回答都不能提升发布状态。

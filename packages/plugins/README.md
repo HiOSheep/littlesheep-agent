@@ -1,6 +1,6 @@
 # @littlesheep/plugins
 
-实现插件 manifest、发现、信任闸门、生命周期宿主和受控贡献接口。
+实现插件 manifest、发现、信任校验、生命周期宿主和受控贡献接口。
 
 ## 职责与边界
 

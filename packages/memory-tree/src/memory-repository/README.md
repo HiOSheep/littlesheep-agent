@@ -2,15 +2,15 @@
 
 最后更新：2026-08-02 12:37:00
 
-本目录实现 `MemoryRepository` 稳定 facade 背后的版本后端与持久化基元，不是新的平行公开 API。
+本目录实现 `MemoryRepository` 稳定公共接口背后的版本后端与持久化基元，不是新的平行公开 API。
 
 ## 日常运行路径
 
-- `factory.ts`、`v2-backend.ts`、`v3-backend.ts`：后端选择、失败关闭闸门和稳定接口适配。
+- `factory.ts`、`v2-backend.ts`、`v3-backend.ts`：后端选择、安全校验和稳定接口适配。
 - `document-store.ts`、`node-store.ts`、`resource-store.ts`：Memory v2 文档、节点、资源、审计和串行持久化。
 - `v3-node-store.ts`、`v3-resource-store.ts`、`v3-ledger.ts`：Memory v3 节点/资源投影、分片兼容账本、scope alias 和事务恢复。
 - `v3-statement.ts`、`v3-node-mapping.ts`、`v3-node-transitions.ts`：认识状态分类、稳定实体映射和生命周期转换。
-- `write-policy.ts`、`intent-writer.ts`、`write-service.ts`：写入规范化、安全闸门、去重/合并和缓存失效。
+- `write-policy.ts`、`intent-writer.ts`、`write-service.ts`：写入规范化、安全策略校验、去重/合并和缓存失效。
 
 ## 安全迁移路径
 

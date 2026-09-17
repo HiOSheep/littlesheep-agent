@@ -28,4 +28,4 @@
 ## 验证
 
 - 修改客户端后至少运行 `pnpm.cmd --filter @littlesheep/app run typecheck`。
-- 修改路由或 SSE 契约时同时运行对应 Local App API 特征测试和全量质量门。
+- 修改路由或 SSE 契约时同时运行对应 Local App API 特征测试和全量质量检查。

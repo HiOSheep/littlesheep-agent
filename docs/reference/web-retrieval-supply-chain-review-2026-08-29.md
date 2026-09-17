@@ -1,6 +1,6 @@
 # Web Retrieval Supply-Chain Review 2026-08-29
 
-状态：已完成本时间点的离线依赖审查；真实 Provider 条款、费用和部署地可用性仍需在 live smoke 时复核。
+状态：已完成本时间点的离线依赖审查；实际 Provider 条款、费用和部署地可用性仍需在 live smoke 时复核。
 最后更新：2026-09-02 00:40:28
 
 ## 范围与方法

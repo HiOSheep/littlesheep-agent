@@ -180,7 +180,7 @@ PluginHost 只把 `active` 插件的 Skill 放入可调用索引；`disabled`、
 
 本地插件在 Electron 主进程中执行，当前没有进程级或 VM 级代码沙箱。manifest 中的权限声明用于审查、管理界面展示和注册接口校验，不能阻止插件代码直接调用 Node.js API。
 
-因此有以下硬约束：
+因此有以下核心安全约束：
 
 1. `plugins.allowLocalCode` 默认是 `false`。
 2. 用户必须在“设置 -> 插件”中经过高风险二次确认，才会执行本地插件代码。
@@ -207,7 +207,7 @@ Local App API 提供：
 - `GET /plugins`：清单、来源、状态、贡献、权限和发现诊断。
 - `POST /plugins/reload`：重新读取配置、发现并加载插件。
 - `POST /plugins/:id/enabled`：启用或停用一个已发现插件。
-- `POST /plugins/local-code`：更新本地代码信任闸门。
+- `POST /plugins/local-code`：更新本地代码信任设置。
 - `GET /channels/status`、`POST /channels/reload`：管理由插件贡献的外部渠道。
 
 renderer 只通过这些接口管理插件，不直接 import 或执行第三方模块。
@@ -222,7 +222,7 @@ pnpm.cmd --filter @littlesheep/plugins typecheck
 pnpm.cmd --filter @littlesheep/app typecheck
 ```
 
-合入前仍需执行全仓质量门：
+合入前仍需执行全仓质量检查：
 
 ```powershell
 pnpm.cmd run check:repo
