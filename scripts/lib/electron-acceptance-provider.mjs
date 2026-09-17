@@ -7,7 +7,10 @@ export async function startElectronAcceptanceProvider(options = {}) {
   const requests = []
   const state = {
     requestDelayMs: Math.max(0, Number(options.requestDelayMs ?? 0)),
+    streamChunkDelayMs: boundedDelay(options.streamChunkDelayMs ?? 0),
+    streamChunkCharacters: Math.max(0, Math.min(10_000, Math.round(Number(options.streamChunkCharacters) || 0))),
     modelDelayMs: new Map(),
+    promptDelay: null,
   }
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1')
@@ -23,10 +26,22 @@ export async function startElectronAcceptanceProvider(options = {}) {
       if (typeof body.model === 'string' && typeof body.delayMs === 'number') {
         state.modelDelayMs.set(body.model, boundedDelay(body.delayMs))
       }
+      if (typeof body.promptContains === 'string' && body.promptContains.trim() && typeof body.delayMs === 'number') {
+        state.promptDelay = boundedDelay(body.delayMs) > 0
+          ? { contains: body.promptContains.trim(), delayMs: boundedDelay(body.delayMs) }
+          : null
+      }
+      if (typeof body.streamChunkDelayMs === 'number') state.streamChunkDelayMs = boundedDelay(body.streamChunkDelayMs)
+      if (typeof body.streamChunkCharacters === 'number') {
+        state.streamChunkCharacters = Math.max(0, Math.min(10_000, Math.round(body.streamChunkCharacters)))
+      }
       writeJson(res, 200, {
         ok: true,
         requestDelayMs: state.requestDelayMs,
         modelDelays: Object.fromEntries(state.modelDelayMs),
+        promptDelay: state.promptDelay,
+        streamChunkDelayMs: state.streamChunkDelayMs,
+        streamChunkCharacters: state.streamChunkCharacters,
       })
       return
     }
@@ -42,7 +57,11 @@ export async function startElectronAcceptanceProvider(options = {}) {
     const body = await readJson(req)
     const requestIndex = requests.length + 1
     const model = typeof body.model === 'string' ? body.model : 'acceptance/slow-a'
-    const delayMs = state.modelDelayMs.get(model) ?? state.requestDelayMs
+    const promptText = Array.isArray(body.messages) ? body.messages.map(messageText).join('\n') : ''
+    const promptDelayMs = state.promptDelay && promptText.includes(state.promptDelay.contains)
+      ? state.promptDelay.delayMs
+      : undefined
+    const delayMs = state.modelDelayMs.get(model) ?? promptDelayMs ?? state.requestDelayMs
     requests.push({
       requestIndex,
       receivedAt: new Date().toISOString(),
@@ -54,7 +73,7 @@ export async function startElectronAcceptanceProvider(options = {}) {
     if (requests.length > MAX_LOGGED_REQUESTS) requests.splice(0, requests.length - MAX_LOGGED_REQUESTS)
     await delay(delayMs)
     const response = buildResponse(body, requestIndex, model)
-    if (body.stream === true) writeStream(res, response)
+    if (body.stream === true) await writeStream(res, response, state)
     else writeJson(res, 200, response)
   })
 
@@ -69,11 +88,12 @@ export async function startElectronAcceptanceProvider(options = {}) {
     controlURL: `http://127.0.0.1:${address.port}/control`,
     requestsURL: `http://127.0.0.1:${address.port}/requests`,
     requests,
-    setDelay: async ({ model, delayMs, requestDelayMs }) => {
+    setDelay: async ({ model, delayMs, requestDelayMs, promptContains }) => {
       const payload = {}
       if (model !== undefined) payload.model = model
       if (delayMs !== undefined) payload.delayMs = delayMs
       if (requestDelayMs !== undefined) payload.requestDelayMs = requestDelayMs
+      if (promptContains !== undefined) payload.promptContains = promptContains
       const response = await fetch(`http://127.0.0.1:${address.port}/control`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -200,7 +220,7 @@ function toolChoice(id, name, input) {
   }
 }
 
-function writeStream(res, response) {
+async function writeStream(res, response, state) {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
     'Cache-Control': 'no-cache',
@@ -209,19 +229,32 @@ function writeStream(res, response) {
   const choice = response.choices[0]
   const message = choice.message
   if (message.tool_calls?.length) {
-    message.tool_calls.forEach((call, index) => {
+    for (const [index, call] of message.tool_calls.entries()) {
+      const nameChunks = splitStreamText(call.function.name, state.streamChunkCharacters)
+      const argumentChunks = splitStreamText(call.function.arguments, state.streamChunkCharacters)
+      const count = Math.max(nameChunks.length, argumentChunks.length)
+      for (let part = 0; part < count; part += 1) {
+        res.write(`data: ${JSON.stringify({
+          id: response.id,
+          model: response.model,
+          choices: [{ index: 0, delta: { tool_calls: [{
+            index,
+            ...(part === 0 ? { id: call.id, type: call.type } : {}),
+            function: { name: nameChunks[part] ?? '', arguments: argumentChunks[part] ?? '' },
+          }] }, finish_reason: null }],
+        })}\n\n`)
+        await delay(state.streamChunkDelayMs)
+      }
+    }
+  } else if (message.content) {
+    for (const content of splitStreamText(message.content, state.streamChunkCharacters)) {
       res.write(`data: ${JSON.stringify({
         id: response.id,
         model: response.model,
-        choices: [{ index: 0, delta: { tool_calls: [{ index, ...call }] }, finish_reason: null }],
+        choices: [{ index: 0, delta: { content }, finish_reason: null }],
       })}\n\n`)
-    })
-  } else if (message.content) {
-    res.write(`data: ${JSON.stringify({
-      id: response.id,
-      model: response.model,
-      choices: [{ index: 0, delta: { content: message.content }, finish_reason: null }],
-    })}\n\n`)
+      await delay(state.streamChunkDelayMs)
+    }
   }
   res.write(`data: ${JSON.stringify({
     id: response.id,
@@ -231,6 +264,13 @@ function writeStream(res, response) {
   })}\n\n`)
   res.write('data: [DONE]\n\n')
   res.end()
+}
+
+function splitStreamText(value, characters) {
+  if (!characters || value.length <= characters) return [value]
+  const chunks = []
+  for (let index = 0; index < value.length; index += characters) chunks.push(value.slice(index, index + characters))
+  return chunks
 }
 
 async function readJson(req) {

@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assertAppBuildFresh } from './lib/app-build-fingerprint.mjs'
 import { resolveVerifiedElectronExecutable } from './lib/electron-runtime.mjs'
+import { startElectronAcceptanceProvider } from './lib/electron-acceptance-provider.mjs'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const appRoot = join(repoRoot, 'packages', 'app')
@@ -21,9 +22,15 @@ async function main() {
   const workplaceDir = join(dataDir, 'workplace')
   const windowStatePath = join(dataDir, 'ui', 'desktop-window.json')
   const logPath = join(root, 'electron.log')
+  const provider = await startElectronAcceptanceProvider({
+    requestDelayMs: 600,
+    streamChunkDelayMs: 120,
+    streamChunkCharacters: 6,
+  })
   let electron
   let client
   let preserve = false
+  let activityEvidence
 
   try {
     await Promise.all([
@@ -31,7 +38,7 @@ async function main() {
       mkdir(chromiumDir, { recursive: true }),
       mkdir(dirname(windowStatePath), { recursive: true }),
     ])
-    await writeFile(join(dataDir, 'config.json'), `${JSON.stringify(buildConfig(workplaceDir), null, 2)}\n`, 'utf8')
+    await writeFile(join(dataDir, 'config.json'), `${JSON.stringify(buildConfig(workplaceDir, provider.baseURL), null, 2)}\n`, 'utf8')
     await writeFile(windowStatePath, JSON.stringify({
       version: 1,
       bounds: { x: 120, y: 80, width: 1100, height: 700 },
@@ -43,6 +50,12 @@ async function main() {
     let locator = await waitForLocator(dataDir, electron.pid)
     client = await connectRenderer(debuggingPort)
     await waitForRendererReady(client)
+    activityEvidence = await verifyObservableActivityStream(client)
+    const leanHarnessEvidence = await verifyLeanBoundedExecution(client, provider)
+    const activeSessionId = await client.evaluate(`localStorage.getItem('littlesheep.ui.activeSession')`)
+    const workspaceLayoutKey = typeof activeSessionId === 'string' && activeSessionId.trim()
+      ? `session:${encodeURIComponent(activeSessionId.trim())}`
+      : '__draft__'
     const firstWindow = await readWindowGeometry(client)
     const chatBottomGap = await verifyChatBottomAnchor(client)
     const fileNavigatorWidth = await verifyFileNavigatorResize(client)
@@ -129,7 +142,7 @@ async function main() {
     if (restored.persisted?.composerDraft !== COMPOSER_DRAFT || restored.persisted?.route?.page !== 'browser') {
       throw new Error(`persisted application shell snapshot is incomplete: ${JSON.stringify(restored.persisted)}`)
     }
-    if (restored.workspaceLayouts?.__draft__?.fileNavigatorWidth !== fileNavigatorWidth) {
+    if (restored.workspaceLayouts?.[workspaceLayoutKey]?.fileNavigatorWidth !== fileNavigatorWidth) {
       throw new Error(`file navigator width snapshot was not restored: ${JSON.stringify(restored.workspaceLayouts)}`)
     }
     assertGeometryNear(secondWindow, firstWindow, 'restored native window')
@@ -156,6 +169,8 @@ async function main() {
         fileNavigatorWidth,
         settingsPage: 'browser',
         nativeWindow: true,
+        observableActivity: activityEvidence,
+        leanHarness: leanHarnessEvidence,
       },
     }))
   } catch (error) {
@@ -171,18 +186,67 @@ async function main() {
   } finally {
     client?.close()
     if (electron?.exitCode === null) electron.kill()
+    await provider.close().catch(() => undefined)
     if (!preserve) await rm(root, { recursive: true, force: true })
   }
 }
 
-function buildConfig(workspaceDir) {
+async function verifyLeanBoundedExecution(client, provider) {
+  const before = provider.requests.length
+  const submitted = await client.evaluate(`(() => {
+    const textarea = document.querySelector('.composer textarea')
+    if (!(textarea instanceof HTMLTextAreaElement)) return false
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
+    setter?.call(textarea, '请使用 glob 工具列出当前工作区顶层条目')
+    textarea.dispatchEvent(new Event('input', { bubbles: true }))
+    textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    return true
+  })()`)
+  if (!submitted) throw new Error('lean Harness fixture could not submit the composer')
+  const rendered = await waitFor(() => client.evaluate(`(() => {
+    const turn = [...document.querySelectorAll('.assistant-turn')].at(-1)
+    const response = turn?.querySelector('.assistant-response-stream[data-stream-state="settled"]')
+    if (!response?.textContent?.trim()) return null
+    const rows = [...turn.querySelectorAll('.agent-flow-row')]
+    return {
+      text: response.textContent.trim(),
+      toolRows: rows.filter((row) => row.textContent?.includes('glob')).length,
+    }
+  })()`), START_TIMEOUT_MS, 'lean bounded execution')
+  const requests = provider.requests.slice(before)
+  const decideRequests = requests.filter((request) => request.messages.some((message) => (
+    String(message.content).includes('You are the DECIDE stage')
+  )))
+  const toolRequests = requests.filter((request) => request.tools.includes('glob'))
+  if (decideRequests.length !== 0) {
+    throw new Error(`ordinary bounded execution made ${decideRequests.length} DECIDE request(s)`)
+  }
+  if (toolRequests.length < 1 || rendered.toolRows < 1) {
+    throw new Error(`bounded tool activity was not observable: ${JSON.stringify({ requests, rendered })}`)
+  }
+  if (toolRequests.some((request) => request.stream !== true)) {
+    throw new Error('next Harness tool-loop requests were not streamed')
+  }
+  return {
+    providerRequests: requests.length,
+    decideRequests: decideRequests.length,
+    streamedRequests: requests.filter((request) => request.stream).length,
+    toolRequests: toolRequests.length,
+    renderedToolRows: rendered.toolRows,
+  }
+}
+
+function buildConfig(workspaceDir, providerBaseURL) {
   return {
     version: 1,
-    providers: [],
+    providers: [{
+      id: 'acceptance', name: 'Electron Acceptance', baseURL: providerBaseURL,
+      apiKey: 'acceptance-key', timeoutSeconds: 30, models: ['slow-a'],
+    }],
     agents: {
       defaults: {
         workspace: workspaceDir,
-        model: '',
+        model: 'acceptance/slow-a',
         reasoning: 'auto',
         profile: 'general',
         timeoutSeconds: 120,
@@ -202,6 +266,70 @@ function buildConfig(workspaceDir) {
     mcp: { servers: [] },
     channels: { channels: [] },
     versioning: { enabled: false },
+  }
+}
+
+async function verifyObservableActivityStream(client) {
+  const submitted = await client.evaluate(`(() => {
+    const textarea = document.querySelector('.composer textarea')
+    if (!(textarea instanceof HTMLTextAreaElement)) return false
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
+    setter?.call(textarea, '请简短确认已收到这条流式验收消息。')
+    textarea.dispatchEvent(new Event('input', { bubbles: true }))
+    const startedAt = performance.now()
+    window.__lsActivityProbeStartedAt = startedAt
+    window.__lsActivityProbe = { localRequestMs: null }
+    window.__lsActivityObserver?.disconnect()
+    window.__lsActivityObserver = new MutationObserver(() => {
+      const turn = document.querySelector('.assistant-turn.running')
+      if (turn?.textContent?.includes('请求已发出') && window.__lsActivityProbe.localRequestMs === null) {
+        window.__lsActivityProbe.localRequestMs = performance.now() - startedAt
+      }
+    })
+    window.__lsActivityObserver.observe(document.body, { childList: true, subtree: true, characterData: true })
+    textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    return true
+  })()`)
+  if (!submitted) throw new Error('observable activity fixture could not submit the composer')
+
+  const localFeedback = await waitFor(() => client.evaluate(`(() => {
+    const elapsedMs = window.__lsActivityProbe?.localRequestMs
+    return typeof elapsedMs === 'number' ? { elapsedMs } : null
+  })()`), START_TIMEOUT_MS, 'local request activity')
+  const modelFeedback = await waitFor(() => client.evaluate(`(() => {
+    const turn = document.querySelector('.assistant-turn.running')
+    if (!turn?.textContent?.includes('模型正在')) return null
+    return { elapsedMs: performance.now() - window.__lsActivityProbeStartedAt, text: turn.textContent }
+  })()`), START_TIMEOUT_MS, 'real model activity')
+  const partial = await waitFor(() => client.evaluate(`(() => {
+    const response = document.querySelector('.assistant-response-stream[data-stream-state="streaming"]')
+    const text = response?.textContent?.trim() ?? ''
+    return text.length >= 6 && text.length < 30 ? { text, elapsedMs: performance.now() - window.__lsActivityProbeStartedAt } : null
+  })()`), START_TIMEOUT_MS, 'partial streamed reply')
+  const settled = await waitFor(() => client.evaluate(`(() => {
+    const turn = [...document.querySelectorAll('.assistant-turn')].at(-1)
+    const response = turn?.querySelector('.assistant-response-stream[data-stream-state="settled"]')
+    const system = turn?.querySelector('.agent-transcript-reasoning.system')
+    if (!response?.textContent?.trim() || !(system instanceof HTMLElement)) return null
+    const targetRows = [...turn.querySelectorAll('.agent-flow-row')]
+    return {
+      text: response.textContent.trim(),
+      systemPromptCharacters: system.querySelector('.agent-transcript-details')?.textContent?.length ?? 0,
+      targetRows: targetRows.length,
+      svgRows: targetRows.filter((row) => row.querySelector('svg')).length,
+    }
+  })()`), START_TIMEOUT_MS, 'settled streamed reply')
+  if (settled.targetRows > 0 && settled.svgRows !== settled.targetRows) {
+    throw new Error(`observable activity rows are not all SVG-backed: ${JSON.stringify(settled)}`)
+  }
+  await client.evaluate(`window.__lsActivityObserver?.disconnect()`)
+  return {
+    localFeedbackMs: Math.round(localFeedback.elapsedMs),
+    modelFeedbackMs: Math.round(modelFeedback.elapsedMs),
+    partialReplyCharacters: partial.text.length,
+    partialBeforeSettlement: partial.text !== settled.text,
+    systemPromptCharacters: settled.systemPromptCharacters,
+    svgRows: settled.svgRows,
   }
 }
 

@@ -298,6 +298,10 @@ async function auditRunCheckpointCompletion(dataDir, executionDir) {
   for (const { checkpoint } of heads.values()) {
     const disposition = dispositionByCheckpointId.get(checkpoint.id)
     if (disposition && ['resumed', 'completed', 'abandoned'].includes(disposition.status)) continue
+    // A source request may finish normally by durably entering an intentional
+    // user-controlled wait. Those heads must remain resumable; sealing them
+    // would discard the pending answer/pause boundary.
+    if (checkpoint.status === 'waiting_user' || checkpoint.status === 'paused') continue
     const executionLog = await readJsonQuiet(join(executionDir, `${checkpoint.runId}.json`))
     if (executionLog?.status === 'ok' && executionLog.runCheckpointId === checkpoint.id) {
       unsealedSuccessfulHeads.push(`${checkpoint.runId}:${checkpoint.id}`)

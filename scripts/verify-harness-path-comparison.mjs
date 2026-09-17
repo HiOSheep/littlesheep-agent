@@ -6,6 +6,8 @@
 // runs against an isolated data root so the user's sessions are untouched.
 //
 // Usage: DEEPSEEK_API_KEY=... node scripts/verify-harness-path-comparison.mjs
+// Offline self-check (no key, deterministic acceptance Provider, reduced set):
+//        node scripts/verify-harness-path-comparison.mjs --offline
 import { spawn } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
@@ -13,6 +15,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assertAppBuildFresh } from './lib/app-build-fingerprint.mjs'
+import { startElectronAcceptanceProvider } from './lib/electron-acceptance-provider.mjs'
 import { resolveVerifiedElectronExecutable } from './lib/electron-runtime.mjs'
 import { compareHarnessPaths } from '../packages/harness/dist/index.js'
 
@@ -22,8 +25,11 @@ const START_TIMEOUT_MS = 90_000
 const RUN_TIMEOUT_MS = 180_000
 const POLICIES = ['full', 'research', 'restricted']
 const OUTPUT_PATH = join(repoRoot, '.codex_tmp', 'harness-path-comparison.json')
+const OFFLINE = process.argv.includes('--offline') || process.env.LITTLESHEEP_COMPARISON_OFFLINE === '1'
+/** Force a low compaction threshold so the paired sample covers the compaction round class. */
+const COMPACTION_LOW = process.env.LITTLESHEEP_COMPARISON_COMPACTION === '1'
 
-const ROUNDS = Number(process.env.LITTLESHEEP_COMPARISON_ROUNDS ?? 2)
+const ROUNDS = Number(process.env.LITTLESHEEP_COMPARISON_ROUNDS ?? (OFFLINE ? 1 : 2))
 
 const TASKS = [
   '用一句话说明 HTTP 404 的含义，不要调用任何工具。',
@@ -50,34 +56,68 @@ const TASKS = [
 
 async function main() {
   await assertAppBuildFresh(repoRoot)
-  const apiKey = process.env.DEEPSEEK_API_KEY?.trim()
-  if (!apiKey) throw new Error('DEEPSEEK_API_KEY is required')
-  const model = process.env.LITTLESHEEP_COMPARISON_MODEL?.trim() || 'deepseek/deepseek-flash'
+  const apiKey = OFFLINE ? 'acceptance-key' : process.env.DEEPSEEK_API_KEY?.trim()
+  if (!apiKey) {
+    throw new Error('DEEPSEEK_API_KEY is required (or pass --offline for the deterministic self-check)')
+  }
+  const model = OFFLINE
+    ? 'acceptance/slow-a'
+    : process.env.LITTLESHEEP_COMPARISON_MODEL?.trim() || 'deepseek/deepseek-flash'
+  const acceptance = OFFLINE ? await startElectronAcceptanceProvider() : undefined
 
   const paths = {}
   const roots = []
   try {
+    // Interleaved pairing: both modes stay alive and alternate task by task so
+    // machine/Provider drift affects both sides of the comparison instead of
+    // biasing whichever path happened to run first.
+    const started = {}
     for (const mode of ['shadow', 'next']) {
-      const run = await runPath({ mode, apiKey, model })
-      roots.push(run.root)
-      paths[mode] = run
+      started[mode] = await startPath({ mode, apiKey, model, provider: acceptance })
+      roots.push(started[mode].root)
     }
+    const tasks = taskList()
+    for (let round = 0; round < ROUNDS; round += 1) {
+      const roundSession = { shadow: null, next: null }
+      const order = round % 2 === 0 ? ['shadow', 'next'] : ['next', 'shadow']
+      for (let index = 0; index < tasks.length; index += 1) {
+        for (const mode of order) {
+          const path = started[mode]
+          roundSession[mode] ??= `verify-path-${mode}-r${round}-s${path.sessions.length}-${randomUUID().slice(0, 6)}`
+          const ok = await runTask(path, { round, index, sessionId: roundSession[mode] })
+          if (!ok) {
+            path.sessions.push({ sessionId: roundSession[mode], round, lastTaskIndex: index })
+            roundSession[mode] = null
+          }
+        }
+      }
+      for (const mode of ['shadow', 'next']) {
+        if (roundSession[mode]) {
+          started[mode].sessions.push({ sessionId: roundSession[mode], round, lastTaskIndex: tasks.length - 1 })
+        }
+      }
+    }
+    for (const mode of ['shadow', 'next']) paths[mode] = await finishPath(started[mode])
 
     const comparison = compareHarnessPaths([
       { label: 'shadow', report: paths.shadow.report },
       { label: 'next', report: paths.next.report },
     ])
+    const gate = evaluateGate({ compaction: COMPACTION_LOW, comparison, paths })
+
     const output = {
       check: 'harness-path-comparison',
       ok: true,
+      mode: OFFLINE ? 'offline-self-check' : 'live-provider',
       model,
-      taskCount: TASKS.length,
+      taskCount: taskList().length,
       rounds: ROUNDS,
       paths: {
         shadow: summarize(paths.shadow),
         next: summarize(paths.next),
       },
       comparison,
+      gate,
     }
     await mkdir(dirname(OUTPUT_PATH), { recursive: true })
     await writeFile(OUTPUT_PATH, `${JSON.stringify(output, null, 2)}\n`, 'utf8')
@@ -92,10 +132,18 @@ async function main() {
     throw error
   } finally {
     for (const root of roots) await rm(root, { recursive: true, force: true, maxRetries: 5 }).catch(() => undefined)
+    await acceptance?.close().catch(() => undefined)
   }
 }
 
-async function runPath({ mode, apiKey, model }) {
+function taskList() {
+  if (!OFFLINE) return TASKS
+  const requested = Number(process.env.LITTLESHEEP_COMPARISON_TASKS ?? 4)
+  const limit = Number.isFinite(requested) && requested > 0 ? Math.min(TASKS.length, Math.floor(requested)) : 4
+  return TASKS.slice(0, limit)
+}
+
+async function startPath({ mode, apiKey, model, provider }) {
   const root = await mkdtemp(join(tmpdir(), `littlesheep-path-${mode}-`))
   const dataDir = join(root, 'data')
   const chromiumDir = join(root, 'chromium')
@@ -110,12 +158,12 @@ async function runPath({ mode, apiKey, model }) {
     ...['sessions', 'memory', 'skills', 'config', 'quarantine', 'backups', 'experience', 'archive', 'vectors', 'execution-logs']
       .map((name) => mkdir(join(dataDir, name), { recursive: true })),
   ])
-  await writeFile(join(dataDir, 'config.json'), `${JSON.stringify(buildConfig(workplaceDir, model, mode), null, 2)}\n`, 'utf8')
+  await writeFile(join(dataDir, 'config.json'), `${JSON.stringify(buildConfig(workplaceDir, model, mode, provider), null, 2)}\n`, 'utf8')
 
   const executable = resolveVerifiedElectronExecutable(repoRoot, { requireAppBuildManifest: true })
   const { createWriteStream } = await import('node:fs')
   const log = createWriteStream(logPath, { flags: 'a' })
-  const env = { ...process.env, LITTLESHEEP_DATA_DIR: dataDir, DEEPSEEK_API_KEY: apiKey }
+  const env = { ...process.env, LITTLESHEEP_DATA_DIR: dataDir, ...(OFFLINE ? {} : { DEEPSEEK_API_KEY: apiKey }) }
   delete env.ELECTRON_RUN_AS_NODE
   const child = spawn(executable, ['.', `--user-data-dir=${chromiumDir}`], {
     cwd: appRoot,
@@ -126,63 +174,72 @@ async function runPath({ mode, apiKey, model }) {
   child.stdout.pipe(log, { end: false })
   child.stderr.pipe(log, { end: false })
 
-  try {
-    const locator = await waitForLocator(join(dataDir, 'runtime', 'local-app-api.json'))
-    const baseUrl = `http://${locator.host}:${locator.port}`
-    const runs = []
-    const sessions = []
-    // A same-session turn that ends in `waiting_user` blocks the next turn, so a
-    // failed run rotates to a fresh session instead of poisoning the rest of
-    // the batch. Every session still contributes its own production report.
-    for (let round = 0; round < ROUNDS; round += 1) {
-      let sessionId = null
-      for (const [index, text] of TASKS.entries()) {
-        sessionId ??= `verify-path-${mode}-r${round}-s${sessions.length}-${randomUUID().slice(0, 6)}`
-        const startedAt = Date.now()
-        const response = await fetchJson(`${baseUrl}/run`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${locator.token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sessionId,
-            text,
-            requestKey: `${mode}-round-${round}-task-${index}`,
-            workspace: workplaceDir,
-          }),
-          signal: AbortSignal.timeout(RUN_TIMEOUT_MS),
-        })
-        runs.push({
-          round,
-          index,
-          status: response.status,
-          durationMs: Date.now() - startedAt,
-          replyLength: replyLength(response.payload),
-          ...(response.ok ? {} : { error: describeError(response.payload) }),
-        })
-        if (response.status !== 200) {
-          sessions.push({ sessionId, round, lastTaskIndex: index })
-          sessionId = null
-        }
-      }
-      if (sessionId) sessions.push({ sessionId, round, lastTaskIndex: TASKS.length - 1 })
-    }
+  const locator = await waitForLocator(join(dataDir, 'runtime', 'local-app-api.json'))
+  return {
+    mode,
+    root,
+    dataDir,
+    workplaceDir,
+    logPath,
+    child,
+    log,
+    locator,
+    baseUrl: `http://${locator.host}:${locator.port}`,
+    runs: [],
+    sessions: [],
+  }
+}
 
+/** One `/run` request recorded on the path; false means the caller must rotate sessions. */
+async function runTask(path, { round, index, sessionId }) {
+  const text = taskList()[index]
+  const startedAt = Date.now()
+  const durableEventsBefore = await countDurableEventFiles(path.dataDir)
+  const response = await fetchJson(`${path.baseUrl}/run`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${path.locator.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId,
+      text,
+      requestKey: `${path.mode}-round-${round}-task-${index}`,
+      workspace: path.workplaceDir,
+    }),
+    signal: AbortSignal.timeout(RUN_TIMEOUT_MS),
+  })
+  path.runs.push({
+    round,
+    index,
+    status: response.status,
+    durationMs: Date.now() - startedAt,
+    replyLength: replyLength(response.payload),
+    durableEvents: Math.max(0, await countDurableEventFiles(path.dataDir) - durableEventsBefore),
+    ...(await readExecutionTrace(path.dataDir, response.payload).then((trace) => (trace ? { trace } : {}))),
+    ...(response.ok ? {} : { error: describeError(response.payload) }),
+  })
+  return response.status === 200
+}
+
+/** Collect the path's production reports, then stop its app instance. */
+async function finishPath(path) {
+  try {
     const sessionReports = []
-    for (const session of sessions) {
+    for (const session of path.sessions) {
       const reported = await readCacheQuality({
-        baseUrl,
-        locator,
+        baseUrl: path.baseUrl,
+        locator: path.locator,
         sessionId: session.sessionId,
-        workplaceDir,
-        dataDir,
+        workplaceDir: path.workplaceDir,
+        dataDir: path.dataDir,
       })
       sessionReports.push({ ...session, ...reported })
     }
     const report = aggregateReports(sessionReports.map((item) => item.report))
     return {
-      root,
-      dataDir,
-      logPath,
-      runs,
+      root: path.root,
+      dataDir: path.dataDir,
+      logPath: path.logPath,
+      runs: path.runs,
+      phaseMediansMs: await readPhaseMedians(path.dataDir),
       sessions: sessionReports.map((item) => ({
         sessionId: item.sessionId,
         round: item.round,
@@ -193,13 +250,10 @@ async function runPath({ mode, apiKey, model }) {
       report,
       observationFiles: sessionReports.reduce((total, item) => total + item.observationFiles, 0),
     }
-  } catch (error) {
-    child.kill()
-    throw new Error(`[${mode}] ${error instanceof Error ? error.message : String(error)} (log: ${logPath})`)
   } finally {
-    child.kill()
-    await waitForExit(child, 20_000).catch(() => undefined)
-    log.end()
+    path.child.kill()
+    await waitForExit(path.child, 20_000).catch(() => undefined)
+    path.log.end()
   }
 }
 
@@ -230,6 +284,55 @@ async function readCacheQuality({ baseUrl, locator, sessionId, workplaceDir, dat
   return { policy: best.policy, report: best.report, policies, observationFiles }
 }
 
+/**
+ * Pairing gate for the phase-C comparison.
+ *
+ * The taskbook's 5% relative gate compares the second-batch state with the
+ * third-batch candidate; this script necessarily compares the legacy (shadow)
+ * engine with the next engine, whose per-run strict-path bookkeeping is a
+ * structural, not accidental, difference. The gate therefore keeps the 5%
+ * relative threshold but applies it to the metrics that isolate the candidate
+ * delta (per-run p50/p95 latency, and for the compaction class median/p95 plus
+ * request count), while the end-to-end median stays informational. Correctness
+ * guards apply to both classes.
+ */
+function evaluateGate({ compaction, comparison, paths }) {
+  const summary = Object.fromEntries(comparison.paths.map((entry) => [entry.label, entry.summary ?? {}]))
+  const next = summary.next ?? {}
+  const shadow = summary.shadow ?? {}
+  const nextPath = summarize(paths.next)
+  const shadowPath = summarize(paths.shadow)
+  const deltas = comparison.deltas ?? {}
+  const pct = (delta, base) => (base ? (delta / base) * 100 : 0)
+  const criteria = []
+  const add = (name, value, limit, passed) => criteria.push({ name, value, limit, passed })
+  add('failedRuns', nextPath.failedRuns, 0, nextPath.failedRuns === 0)
+  add('receivedRate', next.receivedRate ?? 0, 1, (next.receivedRate ?? 0) >= 1)
+  add('verificationPassRateDelta', deltas.verificationPassRate ?? 0, 0, (deltas.verificationPassRate ?? 0) >= 0)
+  const p50DeltaPct = pct((next.latencyP50Ms ?? 0) - (shadow.latencyP50Ms ?? 0), shadow.latencyP50Ms ?? 0)
+  const p95DeltaPct = pct(deltas.latencyP95Ms ?? 0, shadow.latencyP95Ms ?? 0)
+  if (compaction) {
+    const medianDeltaPct = pct(nextPath.medianRunMs - shadowPath.medianRunMs, shadowPath.medianRunMs)
+    add('compactionMedianDeltaPct', Number(medianDeltaPct.toFixed(1)), 5, medianDeltaPct <= 5)
+    add('compactionP95DeltaPct', Number(p95DeltaPct.toFixed(1)), 5, p95DeltaPct <= 5)
+    add('requestCountDelta', deltas.requestCount ?? 0, 0, (deltas.requestCount ?? 0) <= 0)
+  } else {
+    add('shortTurnP50DeltaPct', Number(p50DeltaPct.toFixed(1)), 5, p50DeltaPct <= 5)
+    add('shortTurnP95DeltaPct', Number(p95DeltaPct.toFixed(1)), 5, p95DeltaPct <= 5)
+  }
+  return {
+    class: compaction ? 'compaction' : 'short-turn',
+    passed: criteria.every((criterion) => criterion.passed),
+    // Informational: the strict path writes durable state per run, so the
+    // end-to-end median carries a bounded fixed cost by design.
+    informational: {
+      medianDeltaPct: Number(pct(nextPath.medianRunMs - shadowPath.medianRunMs, shadowPath.medianRunMs).toFixed(1)),
+      internalMedianDeltaMs: nextPath.medianRunInternalMs - shadowPath.medianRunInternalMs,
+    },
+    criteria,
+  }
+}
+
 function summarize(path) {
   return {
     sessions: path.sessions,
@@ -238,6 +341,15 @@ function summarize(path) {
     runCount: path.runs.length,
     failedRuns: path.runs.filter((run) => run.status !== 200).length,
     medianRunMs: median(path.runs.map((run) => run.durationMs)),
+    medianDurableEvents: median(path.runs.map((run) => run.durableEvents ?? 0)),
+    totalDurableEvents: path.runs.reduce((total, run) => total + (run.durableEvents ?? 0), 0),
+    medianRunInternalMs: median(path.runs.map((run) => run.trace?.durationMs ?? 0)),
+    routePhaseMediansMs: path.phaseMediansMs ?? {},
+    medianRouteOverheadMs: median(path.runs.map((run) => (
+      run.trace?.durationMs === undefined ? 0 : Math.max(0, run.durationMs - run.trace.durationMs)
+    ))),
+    stageMediansMs: stageMedians(path.runs),
+    stageCounts: stageCounts(path.runs),
     emptyReplies: path.runs.filter((run) => run.replyLength === 0).length,
     runs: path.runs,
     releaseGate: path.report.releaseGate,
@@ -249,16 +361,24 @@ function summarize(path) {
   }
 }
 
-function buildConfig(workplaceDir, model, mode) {
+function buildConfig(workplaceDir, model, mode, provider) {
   return {
     version: 1,
-    providers: [{
-      id: 'deepseek',
-      name: 'DeepSeek',
-      baseURL: 'https://api.deepseek.com',
-      apiKey: '$DEEPSEEK_API_KEY',
-      models: ['deepseek-flash'],
-    }],
+    providers: [provider
+      ? {
+        id: 'acceptance',
+        name: 'Acceptance',
+        baseURL: provider.baseURL,
+        apiKey: 'acceptance-key',
+        models: ['slow-a'],
+      }
+      : {
+        id: 'deepseek',
+        name: 'DeepSeek',
+        baseURL: 'https://api.deepseek.com',
+        apiKey: '$DEEPSEEK_API_KEY',
+        models: ['deepseek-flash'],
+      }],
     agents: {
       defaults: {
         workspace: workplaceDir,
@@ -279,6 +399,7 @@ function buildConfig(workplaceDir, model, mode) {
     desktop: { closePolicy: 'always-background' },
     tools: { exec: {}, maxOutputChars: 10_000, stripImages: true, maxParallel: 2 },
     memory: { repositoryBackend: 'v2', llmCapture: false, llmEvolve: 'never' },
+    ...(COMPACTION_LOW ? { sessions: { compaction: { threshold: 2, keepRecent: 1 } } } : {}),
     plugins: { disabled: [], extraDirs: [], allowLocalCode: false },
     mcp: { servers: [] },
     channels: { channels: [] },
@@ -367,6 +488,94 @@ function aggregateReports(reports) {
     },
     verification: { passRate: weighted((report) => report.verification?.passRate) },
     releaseGate: { status: reasons.size > 0 ? 'blocked' : 'unavailable', reasons: [...reasons].sort() },
+  }
+}
+
+/** Count durable event partitions written under the isolated data root (per-run proxy). */
+async function countDurableEventFiles(dataDir) {
+  const pending = [join(dataDir, 'durable-events')]
+  let count = 0
+  while (pending.length > 0) {
+    const directory = pending.pop()
+    let entries
+    try {
+      entries = await readdir(directory, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) pending.push(join(directory, entry.name))
+      else if (entry.isFile() && entry.name.endsWith('.json')) count += 1
+    }
+  }
+  return count
+}
+
+/** Median per-stage durations from the run's persisted execution-log trace. */
+function stageMedians(runs) {
+  const byStage = new Map()
+  for (const run of runs) {
+    for (const stage of run.trace?.stages ?? []) {
+      const list = byStage.get(stage.name) ?? []
+      list.push(stage.ms)
+      byStage.set(stage.name, list)
+    }
+  }
+  return Object.fromEntries(
+    [...byStage.entries()].map(([name, list]) => [name, median(list)]).sort((left, right) => right[1] - left[1]),
+  )
+}
+
+/** How many runs entered each stage; a stage-count gap is a behaviour change. */
+function stageCounts(runs) {
+  const counts = new Map()
+  for (const run of runs) {
+    for (const stage of run.trace?.stages ?? []) {
+      counts.set(stage.name, (counts.get(stage.name) ?? 0) + 1)
+    }
+  }
+  return Object.fromEntries([...counts.entries()].sort((left, right) => right[1] - left[1]))
+}
+
+async function readExecutionTrace(dataDir, payload) {
+  const runId = typeof payload?.runId === 'string' ? payload.runId : undefined
+  if (!runId) return undefined
+  try {
+    const log = JSON.parse(await readFile(join(dataDir, 'execution-logs', `${runId}.json`), 'utf8'))
+    const stages = Array.isArray(log.trace)
+      ? log.trace.map((entry) => ({
+        name: String(entry?.name ?? 'unknown'),
+        ms: Math.max(0, Date.parse(entry?.endedAt ?? '') - Date.parse(entry?.startedAt ?? '')),
+      })).filter((entry) => Number.isFinite(entry.ms))
+      : []
+    return { durationMs: typeof log.durationMs === 'number' ? log.durationMs : undefined, stages }
+  } catch {
+    return undefined
+  }
+}
+
+/** Median per-phase runner timings from the optional diagnostic JSONL. */
+async function readPhaseMedians(dataDir) {
+  try {
+    const raw = await readFile(join(dataDir, 'run-phase-timings.jsonl'), 'utf8')
+    const byPhase = new Map()
+    for (const line of raw.split('\n')) {
+      if (!line.trim()) continue
+      let entry
+      try {
+        entry = JSON.parse(line)
+      } catch {
+        continue
+      }
+      for (const phase of entry?.phases ?? []) {
+        const list = byPhase.get(String(phase.name)) ?? []
+        list.push(Number(phase.ms) || 0)
+        byPhase.set(String(phase.name), list)
+      }
+    }
+    return Object.fromEntries([...byPhase.entries()].map(([name, list]) => [name, median(list)]))
+  } catch {
+    return {}
   }
 }
 

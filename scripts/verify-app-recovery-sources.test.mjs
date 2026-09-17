@@ -57,4 +57,57 @@ describe('app recovery source verification', () => {
       await rm(dataDir, { recursive: true, force: true })
     }
   })
+
+  it('keeps intentional waiting checkpoints open while still rejecting an unsealed running head', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'ls-recovery-checkpoint-'))
+    const runId = 'source-waiting-run'
+    const checkpointId = 'checkpoint-waiting-head'
+    const checkpointPath = join(dataDir, 'run-checkpoints', 'waiting.json')
+    try {
+      await mkdir(join(dataDir, 'run-checkpoints'), { recursive: true })
+      await mkdir(join(dataDir, 'execution-logs'), { recursive: true })
+      await writeFile(join(dataDir, 'config.json'), JSON.stringify({
+        agents: { defaults: { workspace: repoRoot } },
+      }))
+      await writeFile(checkpointPath, JSON.stringify({
+        id: checkpointId,
+        runId,
+        status: 'waiting_user',
+        createdAt: '2026-09-13T00:00:00.000Z',
+      }))
+      await writeFile(join(dataDir, 'execution-logs', `${runId}.json`), JSON.stringify({
+        runId,
+        status: 'ok',
+        runCheckpointId: checkpointId,
+      }))
+
+      const waiting = runRecoveryAudit(dataDir)
+      expect(waiting.status, waiting.stderr).toBe(0)
+      expect(waiting.stdout).toContain('[pass] successful run checkpoints are sealed')
+
+      await writeFile(checkpointPath, JSON.stringify({
+        id: checkpointId,
+        runId,
+        status: 'running',
+        createdAt: '2026-09-13T00:00:00.000Z',
+      }))
+      const running = runRecoveryAudit(dataDir)
+      expect(running.status).toBe(1)
+      expect(running.stdout).toContain(`[fail] successful run checkpoints are sealed — ${runId}:${checkpointId}`)
+    } finally {
+      await rm(dataDir, { recursive: true, force: true })
+    }
+  })
 })
+
+function runRecoveryAudit(dataDir) {
+  return spawnSync(process.execPath, [scriptPath], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      LITTLESHEEP_DATA_DIR: dataDir,
+      LITTLESHEEP_DATA_LOCATOR: join(dataDir, 'missing-locator.json'),
+    },
+  })
+}

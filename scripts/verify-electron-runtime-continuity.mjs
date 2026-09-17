@@ -164,6 +164,7 @@ async function main() {
     await desktopAction(locator, 'quit')
     await waitForExit(electron.child, EXIT_TIMEOUT_MS)
     electron = undefined
+    const compactionCancel = await runCompactionCancelScenario(provider)
     const providerRequests = provider.requests
     console.log(JSON.stringify({
       check: 'electron-runtime-continuity',
@@ -177,9 +178,11 @@ async function main() {
         'paused_checkpoint_forced_restart_resume',
         'runtime_model_hot_reload',
         'interrupt_checkpoint',
+        'compaction_cancel',
       ],
       providerRequests: providerRequests.length,
       finalContinuity: resumed.result.memoryContinuityAssessment,
+      compactionCancel,
     }))
   } catch (error) {
     preserve = true
@@ -198,7 +201,83 @@ async function main() {
   }
 }
 
-function buildConfig(baseURL, workplaceDir) {
+/**
+ * HC-19 bounded scenario: interrupt a run while its finalize compaction call is
+ * in flight, and require a settled terminal operation plus an intact transcript.
+ */
+async function runCompactionCancelScenario(provider) {
+  const root = await mkdtemp(join(tmpdir(), 'littlesheep-electron-compaction-'))
+  const dataDir = join(root, 'data')
+  const chromiumDir = join(root, 'chromium')
+  const workplaceDir = join(dataDir, 'workplace')
+  const logPath = join(root, 'electron.log')
+  let electron
+  try {
+    await mkdir(workplaceDir, { recursive: true })
+    await writeFile(join(dataDir, 'config.json'), JSON.stringify(
+      buildConfig(provider.baseURL, workplaceDir, { compaction: { threshold: 2, keepRecent: 1 } }),
+      null,
+      2,
+    ), 'utf8')
+    electron = await startElectron({ dataDir, chromiumDir, logPath })
+    const locator = await waitForLocator(dataDir, electron.child.pid)
+    await waitForDesktop(locator, (snapshot) => snapshot.windowExists && snapshot.windowVisible)
+
+    // Only the compaction prompt is slow, so the interrupt lands inside finalize.
+    await provider.setDelay({ promptContains: 'You maintain a versioned session summary', delayMs: 8_000 })
+    const requestBaseline = provider.requests.length
+    const running = runStream(locator, {
+      text: '请只回复 compaction-cancel-anchor，不要调用工具。',
+      permissionMode: 'full',
+      workspace: workplaceDir,
+    })
+    const activeRun = await waitForActiveRun(locator)
+    await waitFor(
+      () => provider.requests.slice(requestBaseline).some((request) => request.messages.some((message) => (
+        String(message.content).includes('You maintain a versioned session summary')
+      ))),
+      RUN_TIMEOUT_MS,
+      'compaction provider request',
+    )
+    await controlRun(locator, activeRun.runId, 'interrupt')
+    const settled = await running
+    if (settled.result?.status === 'error') {
+      throw new Error(`compaction cancel left the run in error: ${settled.result.error}`)
+    }
+    const sessionId = settled.result?.sessionId
+    if (!sessionId) throw new Error('compaction cancel scenario returned no session id')
+
+    const operations = await waitFor(async () => {
+      const payload = await getJson(
+        locator,
+        `/sessions/${encodeURIComponent(sessionId)}/compaction-operations`,
+      ).catch(() => undefined)
+      return payload?.operations?.some((operation) => operation.status === 'cancelled') ? payload : undefined
+    }, RUN_TIMEOUT_MS, 'cancelled compaction operation')
+    await provider.setDelay({ promptContains: 'You maintain a versioned session summary', delayMs: 0 })
+
+    const cancelled = operations.operations.find((operation) => operation.status === 'cancelled')
+    if (!cancelled?.settledAt) throw new Error('cancelled compaction operation has no terminal timestamp')
+    const page = await getJson(locator, `/sessions/${encodeURIComponent(sessionId)}/messages?limit=50`)
+    if (!Array.isArray(page?.messages) || page.messages.length === 0) {
+      throw new Error('compaction cancel scenario lost the session transcript')
+    }
+    await desktopAction(locator, 'quit')
+    await waitForExit(electron.child, EXIT_TIMEOUT_MS)
+    electron = undefined
+    return {
+      sessionId,
+      runStatus: settled.result?.status,
+      cancelledOperationId: cancelled.id,
+      transcriptMessages: page.messages.length,
+    }
+  } finally {
+    if (electron?.child && electron.child.exitCode === null) await forceTerminate(electron.child).catch(() => undefined)
+    await rm(root, { recursive: true, force: true })
+  }
+}
+
+function buildConfig(baseURL, workplaceDir, overrides = {}) {
   return {
     version: 1,
     providers: [{
@@ -254,7 +333,10 @@ function buildConfig(baseURL, workplaceDir) {
       blockInjectionPatterns: true,
       sanitizePrelude: true,
     },
-    sessions: { writeLock: { acquireTimeoutMs: 60_000 }, compaction: { threshold: 100, keepRecent: 20 } },
+    sessions: {
+      writeLock: { acquireTimeoutMs: 60_000 },
+      compaction: overrides.compaction ?? { threshold: 100, keepRecent: 20 },
+    },
     skills: { extraDirs: [], disabled: [] },
     plugins: { disabled: [], extraDirs: [], allowLocalCode: false },
     mcp: { servers: [] },

@@ -66,6 +66,7 @@
     "verify:deepseek-v4-tool-tokenizer": "pnpm run ensure:workspace-build -- --package=@littlesheep/context --package=@littlesheep/branding && pnpm run ensure:app-build && node scripts/run-verified-electron.mjs scripts/verify-deepseek-v4-tool-tokenizer.mjs",
     "verify:model-provider-ui": "pnpm run ensure:app-build && node scripts/verify-model-provider-ui.mjs",
     "verify:harness-paths": "pnpm run ensure:app-build && node scripts/verify-harness-path-comparison.mjs",
+    "verify:harness-paths:offline": "pnpm run ensure:app-build && node scripts/verify-harness-path-comparison.mjs --offline",
     "verify:memory-v3-provider": "pnpm run ensure:workspace-build -- --package=@littlesheep/runner --package=@littlesheep/embedding --package=@littlesheep/branding && pnpm run ensure:app-build && node scripts/run-verified-electron.mjs scripts/verify-memory-v3-provider.mjs",
     "verify:memory-v3-soak": "pnpm run ensure:workspace-build -- --package=@littlesheep/memory-tree && node scripts/verify-memory-v3-soak.mjs",
     "verify:memory-v3-bge-soak": "pnpm run ensure:workspace-build -- --package=@littlesheep/embedding --package=@littlesheep/branding && node scripts/verify-memory-v3-soak.mjs --embedding=local --embedding-model=bge-small-zh-v1.5 --atoms=256 --runs=128 --feedback-events=128 --max-rss-mib=512",
