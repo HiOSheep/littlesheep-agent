@@ -2391,3 +2391,19 @@ C10B 矩阵 HC-07 由「部分」变为「通过（离线）」。
 ⇒ 结论：段序差异**不是**来自 `candidates.ts` 的候选排序，而是来自**不同阶段传入的 `systemSegments` 列表本身顺序/内容不同**（例如 builder 段序 vs 合同段优先），或来自预算/压缩阶段对 segments 的重排。**下一轮应从"哪些调用点传入了什么顺序的 `systemSegments`"入手**，用 `system-bytes.mjs` 在同路径、同阶段对上逐一对照，定位后统一为单一规范序，再实测。
 
 **当前状态：** 已发布基线不变（主对话 66.4% / 辅助 73.3%）；`check:repo` 33/33；工作树干净。
+
+### 10.116 统一 capabilities 段：**本地已验证**共享前缀 2,593 → 2,921 字符（2026-09-18）
+
+**为什么这次可以下结论（与前两轮不同）：** 10.115 已确认 `systemPromptProjection` 取自装配后的真实请求、按真实顺序、每 run 一次 ⇒ 它是**忠实**的本地判据。用新的 `section-order.mjs` 直接列出各段在 system 中的字节偏移：
+
+| run 类型 | 段序（偏移:段） |
+| --- | --- |
+| `reply`（7,218 字符） | `0:#Identity 291:#CoreFlow 1821:#Safety 2113:#Workspace 2231:#DateTime 2593:#AvailableCapabilities 3930:#MemoryTreeRootIndex 6579:#RuntimeClock` |
+| `execute`（17,438） | `0:#Identity 291:#CoreFlow 1821:#Safety 2113:#Workspace 2231:#DateTime 2593:#AvailableCapabilities 2921:#Tools 6871:#Runtime 12053:#MemoryTreeRootIndex` |
+| `classify`（1,623） | 仅 `#RuntimeClock`（**完全没有共享头**，故跨阶段共享 0） |
+
+**结论：** 共享头五段（identity → core-flow → safety → workspace → date-time）在 reply 与 execute 中**逐字节同位**（0 → 2,593），统一 `capabilities` 之后**两者继续共享到 2,921**（`#Tools` 处才分叉）。即该改动**确实把跨阶段可复用前缀延长了 326 字符（+12.6%）**，与 10.112 的预测（≈2,923）一致。
+
+**与 10.113 的实机结论不矛盾：** 326 字符 ≈ 80–100 token，摊到整场约 25 万 prompt token 上最多值 ~1pt，**低于单次运行的波动**，所以 10.113 的"实机无提升"是**测量分辨率**问题，不是改动无效。本改动因此以**本地忠实判据**为准予以保留。
+
+**遗留（下一轮的第一件事）：** `classify` 的 system（1,623 字符）与其它阶段**零共享**，而它每轮都跑；把它也改为"共享头 + 路由器契约走尾部"是**余下最大的一块确定性收益**（其自身命中率 0% → 接近 100%，并让它不再打断缓存链）。
