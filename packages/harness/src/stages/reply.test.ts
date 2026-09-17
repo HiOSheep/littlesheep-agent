@@ -233,9 +233,7 @@ describe('replyStage', () => {
       '单发是800啊',
       '假如你拥有了152，会怎么做呢？',
     ]));
-    // The shared canonical head makes the reply prompt larger by design; the
-    // bound still guards against unbounded growth.
-    expect(ctx.contextSnapshots?.[0]?.safetyEstimate?.estimatedPromptTokens).toBeLessThan(12_000);
+    expect(ctx.contextSnapshots?.[0]?.safetyEstimate?.estimatedPromptTokens).toBeLessThan(8_000);
     const systemPrompt = allText(requests[0]);
     expect(systemPrompt).toContain('# Memory Tree Root Index');
     expect(systemPrompt).toContain('root index truncated');

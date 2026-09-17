@@ -93,9 +93,7 @@ function expectRecordedSnapshot(
     'output_constraint',
   ]));
   if (stage === 'reply') {
-    // REPLY shares the canonical head with the other stages, so it now carries
-    // project knowledge (workspace) instead of dropping it.
-    expect(kinds).toContain('project_knowledge');
+    expect(kinds).not.toContain('project_knowledge');
   } else {
     expect(kinds).toContain('project_knowledge');
   }
@@ -165,9 +163,8 @@ describe('LLM request characterization', () => {
     expectCommonPayloadShape(requests[0]!, { includesBootstrap: false });
     expect(String(requests[0]!.messages[0]?.content)).not.toContain('BOOTSTRAP_SENTINEL');
     expect(String(requests[0]!.messages[0]?.content)).not.toContain('REASONING_SENTINEL');
-    // The canonical shared head is emitted for every stage, REPLY included.
-    expect(String(requests[0]!.messages[0]?.content)).toContain('# Core Flow');
-    expect(String(requests[0]!.messages[0]?.content)).toContain('# Workspace');
+    expect(String(requests[0]!.messages[0]?.content)).not.toContain('# Core Flow');
+    expect(String(requests[0]!.messages[0]?.content)).not.toContain('# Workspace');
     expect(requests[0]!.temperature).toBe(0.7);
     expect(requests[0]!.max_tokens).toBe(1_200);
     expect(requests[0]!.tools).toBeUndefined();
