@@ -13,7 +13,7 @@ import type { BrandingConfig } from '@littlesheep/branding';
 import { assembleSystemPromptBundle, resolvePromptConfig } from '@littlesheep/prompt';
 import {
   attachmentContextMessages,
-  recentHistoryForModel,
+  conversationHistoryForModel,
   toChatMessage,
   textOf,
   userChatMessage,
@@ -98,7 +98,7 @@ export function createReplyStage(deps: ReplyStageDeps) {
     ]);
 
     const attachmentMessages = isCapabilityReply ? [] : attachmentContextMessages(ctx.runId, ctx.attachments);
-    const history = isCapabilityReply ? [] : recentHistoryForModel(ctx.history, 8, 6_000);
+    const history = isCapabilityReply ? [] : conversationHistoryForModel(ctx);
     const messages: ChatMessage[] = [
       {
         role: 'system',
@@ -278,7 +278,7 @@ async function rewriteReply(
     purpose,
     preferDirectModelOutput(ctx, rawRequest, { force: true }),
     buildRunRequestCandidates(ctx, 'reply', rawRequest.messages, {
-      history: isCapabilityReply ? [] : recentHistoryForModel(ctx.history, 8, 6_000),
+      history: isCapabilityReply ? [] : conversationHistoryForModel(ctx),
       primaryUserKind: 'user_input',
     }),
     { retryOf: ctx.modelRequests?.at(-1)?.id, retryReason: 'duplicate' },

@@ -1986,3 +1986,23 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 C10B 矩阵 HC-07 由「部分」变为「通过（离线）」。
 
 **剩余：** 压缩调用的显式 Provider 超时注入；operation `failed` 的 UI/历史投影（C12/C10B）。
+
+### 10.100 架构改造第 1 步完成（历史窗口归一：唯一选择器 + 工具循环纯追加）执行记录（2026-09-17）
+
+**结论：第 1 步的结构性前提已做实——"所有阶段渲染同一份历史字节"现在是受契约与单一选择器约束的**不变量**，不再是巧合。**
+
+**改动 A（零行为变化，消除未来漂移）：** 把所有 `recentHistoryForModel(ctx.history, 8)` / `(…, 8, 6_000)` 调用点改为唯一选择器 `conversationHistoryForModel(ctx)`：`stages/decide/request.ts`、`stages/reply.ts`（主回复与"重复回复重写"两处）、`stages/execute/guidance.ts`、`stages/execute/runners.ts`（两处）、`stages/execute/tool-loop.ts`。默认参数本就是 8 条 / 6,000 字符，故**字节不变**；改后 `recentHistoryForModel` 在生产代码中**只被共享选择器调用**（仅剩单测直接调用），任何阶段再想自带窗口都必须显式绕开这一层。
+
+**改动 B（真实行为变化；主对话口径）：** `stages/recover/model-call.ts` 由 `recentHistoryForModel(…, 3, 2_000)` 改为 `conversationHistoryForModel(ctx)`。recover 属于**主对话口径**（前端 `MAIN_CONVERSATION_STAGES = {reply, execute, finalize, recover}`），原先自带 3 条 / 2,000 的窄窗口，会使失败路径上的恢复请求在 system 之后的**第一条历史**处即分叉，白白丢掉整段缓存前缀。
+
+**改动 C（真实行为变化；主对话口径 + 最大 prompt 量）：** `stages/execute/tool-loop.ts` 删除"续轮丢弃旧历史"机制（`MAX_CONTINUATION_HISTORY_MESSAGES = 2`、`compactToolLoopContinuation()`、`requestHistory` 收缩）。理由：前缀缓存**从 token 0 匹配**，同一 step 的第 2 轮一旦丢掉前几条历史，请求会在**第 2 条消息**处与第 1 轮分叉，此后整个 step 的每一轮都只能命中 system 段；改为**纯追加**后第 2 轮可命中第 1 轮的**整段前缀**（system + 历史 + 当前请求），第 3 轮起依此类推。代价：每轮多带 ≤8 条历史（已由共享窗口上限约束），在缓存命中价位下主要增加的是**廉价命中 token**。
+
+**新增免费、确定性回归测试（并做了变异验证）：** `packages/harness/src/stages/execute.test.ts` 新增 "keeps every tool-loop round a strict extension of the previous request"：在带 4 条历史的 ctx 上跑两轮工具循环，断言第 2 轮请求的**稳定头部**（system + 历史 + 当前请求）与第 1 轮**逐字节一致**，只允许**重新注入的尾部运行态 system 段**不同（该段位于末尾，符合"易变内容入尾部"的既定手法）。**变异验证**：临时 `git stash` 回退 `tool-loop.ts` 后该测试**失败**（且失败点正是"第 2 轮并不比第 1 轮长"），恢复后通过——证明测试确实锁住了被修复的行为。
+
+**有意不改（含查证结论）：** 契约声明 `history: 'none'` 的 purpose——`verify`、`decide_explicit_tool`（compact 决策）、`capability_reply`、`ask_user`、`evolve`、`capture`、`session_compaction`、`execute_final_reply`——**保持极简契约不变**。查证 `packages/context/src/context-engine/contract-policy.ts` 后确认：这些 purpose 的 `allowedContextKinds` 本就不含 `recent_message`，请求里的历史会被契约过滤掉，**声明与实际一致**；且极简是**刻意的产品语义**（capability 回复只允许依据 `runtime_fact` 作答、verify 只依据 workflow 证据）。把它们塞进历史会改变语义并带来安全/质量风险，对主对话口径**无收益**。因此 10.99 表里"同步 `definitions.ts` 的 `history` 声明"一项**经查证无需改动**：声明为 `recent` 的 purpose（classify / decide / execute_tool_loop / recover / reply）现已全部走同一选择器，声明为 `none` 的全部名副其实。`recover/rewriteAbortReason` 亦保持不发送历史（其候选声明 `history: []` 与实际一致）。
+
+**验证（全绿）：** `typecheck` 0；全量 `vitest` **460 文件 / 3,279 通过 / 1 跳过**（较上轮 +1，即新增测试）；`check:repo` **33/33**；`verify:electron-continuity` **ok:true**（8 场景，`finalContinuity.status = supported`，`recentHistoryMessages = 6`）；`verify:electron-ui-state-continuity` **ok:true**。
+
+**如实说明（期望值管理）：** 本步单独复测的期望提升**有限**——改动 A 是零行为变化，改动 B 只在失败路径生效，改动 C 只影响同一 step 内的后续轮次；**跨阶段共享**仍取决于第 2 步（system 消息字节一致）。本步的价值是**把第 2 步的前提做实**，因此命中率必须与第 2 步合并评估，不应把本步单独算作命中率收益。
+
+**下一步（第 2 步：全阶段共用共享头）：** 用 `buildSharedPromptHead` 替换 system 消息，阶段专属段与 addon 全部走尾部候选。**必须先离线复现并修好 round 16 的 `cross-restart reply is not memory-continuous`**（当时失败点：共享头把 reply 提示词改大后触发；需对比有/无共享头时 `assessResponseMemoryContinuity` 的输入、产出回复与词法锚点）。

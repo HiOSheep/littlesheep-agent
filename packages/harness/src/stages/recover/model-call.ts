@@ -1,5 +1,5 @@
 import type { ChatMessage } from '@littlesheep/llm';
-import { filterAuthoritativeUserFacingMessages, type RunContext } from '@littlesheep/types';
+import type { RunContext } from '@littlesheep/types';
 import { buildRunRequestCandidates } from '../../context-candidates.js';
 import {
   preferDirectModelOutput,
@@ -10,7 +10,7 @@ import {
 } from '../../model-observability.js';
 import { appendSystemPromptAddons, buildUserFacingVoiceAddon } from '../../profile-prompt.js';
 import type { ReplyRewriteInput } from '../../user-facing-reply.js';
-import { callLlmForJson, recentHistoryForModel, textOf, toChatMessage } from '../_shared.js';
+import { callLlmForJson, conversationHistoryForModel, textOf, toChatMessage } from '../_shared.js';
 import {
   type DecodedRecovery,
   type RecoverStageDeps,
@@ -25,11 +25,10 @@ export async function requestRecoveryDecision(
     ok: result.ok,
     error: result.error,
   }));
-  const recoveryHistory = recentHistoryForModel(
-    filterAuthoritativeUserFacingMessages(ctx.history),
-    3,
-    2_000,
-  );
+  // Recovery is a main-conversation call: it must project the same history
+  // bytes as reply/execute, otherwise the Provider prefix diverges at the
+  // second message and the run's cached prefix is forfeited on failure paths.
+  const recoveryHistory = conversationHistoryForModel(ctx);
   const messages: ChatMessage[] = [
     {
       role: 'system',

@@ -7,7 +7,7 @@ import type {
 } from '@littlesheep/types';
 import {
   attachmentContextMessages,
-  recentHistoryForModel,
+  conversationHistoryForModel,
   textOf,
   toChatMessage,
   userChatMessage,
@@ -118,7 +118,7 @@ export function buildBaseMessages(
   ctx: RunContext,
   systemMessage: string,
   attachments: ReturnType<typeof attachmentContextMessages>,
-  history: RunContext['history'] = recentHistoryForModel(ctx.history, 8),
+  history: RunContext['history'] = conversationHistoryForModel(ctx),
 ): ChatMessage[] {
   return [
     { role: 'system', content: systemMessage },

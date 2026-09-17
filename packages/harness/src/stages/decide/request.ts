@@ -10,10 +10,10 @@ import {
 } from '../../profile-prompt.js';
 import {
   attachmentContextMessages,
+  conversationHistoryForModel,
   textOf,
   toChatMessage,
   userChatMessage,
-  recentHistoryForModel,
   type AttachmentContextMessage,
 } from '../_shared.js';
 import {
@@ -175,7 +175,7 @@ export async function buildDecideRequest(
           source: { kind: 'workflow' as const, id: 'explicit-tool-proposal-contract', runId: ctx.runId },
         }] : []),
       ]);
-  const history = compactDecision ? [] : recentHistoryForModel(ctx.history, 8);
+  const history = compactDecision ? [] : conversationHistoryForModel(ctx);
   const attachmentMessages = compactDecision
     ? []
     : attachmentContextMessages(ctx.runId, ctx.attachments);

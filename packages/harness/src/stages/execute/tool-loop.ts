@@ -31,7 +31,7 @@ import {
 } from './model-transcript.js';
 import { upsertToolInvocationEvidence } from '../../execution-evidence-state.js';
 import { writeRuntimeState } from '../../runtime-state.js';
-import { recentHistoryForModel } from '../_shared.js';
+import { conversationHistoryForModel } from '../_shared.js';
 import { ingestMemoryKnownState } from '../../memory-known-state.js';
 import { ingestMemoryContextToolResult } from '../../memory-context-working-set.js';
 import { validateWebCitations, webCitationRepairContract } from '../../web-citation-validation.js';
@@ -51,7 +51,6 @@ import {
 const MAX_ITERATIONS = 20;
 const MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS = 2;
 const MAX_EVIDENCE_FINGERPRINTS = 128;
-const MAX_CONTINUATION_HISTORY_MESSAGES = 2;
 const MAX_WEB_CITATION_REPAIRS = 2;
 const executionServices = new WeakMap<RunContext, ToolExecutionService>();
 
@@ -96,9 +95,7 @@ export async function runToolLoop(
   const fingerprintState = {
     saturated: ctx.loopBudget?.evidenceFingerprintSaturated === true,
   };
-  const initialHistory = history ?? recentHistoryForModel(ctx.history, 8);
-  let requestHistory = initialHistory;
-  let continuationCompacted = false;
+  const initialHistory = history ?? conversationHistoryForModel(ctx);
   let noProgressRounds = ctx.loopBudget?.noProgressRounds ?? 0;
   let forceFinalResponse = noProgressRounds >= MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS;
   let citationRepairAttempts = 0;
@@ -132,7 +129,7 @@ export async function runToolLoop(
         'execute_tool_loop',
         rawRequest,
         buildRunRequestCandidates(ctx, 'execute', rawRequest.messages, {
-          history: requestHistory,
+          history: initialHistory,
           systemSegments,
           insertedBeforePrimary,
         }),
@@ -281,24 +278,12 @@ export async function runToolLoop(
         });
       }
 
-      // Tool results are now authoritative for the active step. Keep the
-      // current user message, system contract, latest turn, and the required
-      // attachment manifest, but drop older history from later rounds. This
-      // reduces repeated prompt cost without hiding the evidence or attachment
-      // lookup entry points the model needs to decide whether another tool is
-      // necessary.
-      if (!continuationCompacted) {
-        const keptHistoryCount = Math.min(MAX_CONTINUATION_HISTORY_MESSAGES, initialHistory.length);
-        if (compactToolLoopContinuation(
-          messages,
-          initialHistory.length,
-          insertedBeforePrimary?.length ?? 0,
-          keptHistoryCount,
-        )) {
-          requestHistory = initialHistory.slice(-keptHistoryCount);
-          continuationCompacted = true;
-        }
-      }
+      // Tool results are now authoritative for the active step. Every later
+      // round of this step keeps the exact messages already sent and appends to
+      // them: a Provider prefix cache only matches from token 0, so dropping
+      // older history here diverges the request at its second message and
+      // forfeits the whole cached prefix for the rest of the step. History is
+      // already bounded by the shared window, so append-only adds little.
       noProgressRounds = addedEvidence ? 0 : noProgressRounds + 1;
       persistToolLoopProgress(ctx, evidenceFingerprints, fingerprintState.saturated, noProgressRounds);
       if (noProgressRounds >= MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS) {
@@ -380,21 +365,6 @@ export async function runDirectToolProposal(
     toolResults,
     iterations: 0,
   };
-}
-
-/** Keep the current request and tool evidence while dropping older pre-user history. */
-function compactToolLoopContinuation(
-  messages: import('@littlesheep/llm').ChatMessage[],
-  historyCount: number,
-  insertedCount: number,
-  keptHistoryCount: number,
-): boolean {
-  const primaryUserIndex = 1 + historyCount + insertedCount;
-  if (messages[0]?.role !== 'system' || messages[primaryUserIndex]?.role !== 'user') return false;
-  const removeCount = historyCount - keptHistoryCount;
-  if (removeCount <= 0) return false;
-  messages.splice(1, removeCount);
-  return true;
 }
 
 function registerEvidenceFingerprint(

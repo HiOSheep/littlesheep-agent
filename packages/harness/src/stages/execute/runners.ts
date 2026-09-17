@@ -5,7 +5,7 @@ import type {
   RunContext,
   StageResult,
 } from '@littlesheep/types';
-import { attachmentContextMessages, recentHistoryForModel } from '../_shared.js';
+import { attachmentContextMessages, conversationHistoryForModel } from '../_shared.js';
 import type { ExecuteSanitizeOptions, ExecuteStageDeps } from './contracts.js';
 import { buildBaseMessages } from './guidance.js';
 import { runToolLoop } from './tool-loop.js';
@@ -122,7 +122,7 @@ async function rewriteLegacyExecutionReply(
     'execute_tool_loop',
     rawRequest,
     buildRunRequestCandidates(ctx, 'execute', rawRequest.messages, {
-      history: recentHistoryForModel(ctx.history, 8),
+      history: conversationHistoryForModel(ctx),
       systemSegments: rewrittenSystem.segments,
       insertedBeforePrimary: attachments.map((item) => item.context),
     }),
@@ -153,7 +153,7 @@ async function rewriteLegacyExecutionReply(
       'execute_tool_loop',
       repairRequest,
       buildRunRequestCandidates(ctx, 'execute', repairRequest.messages, {
-        history: recentHistoryForModel(ctx.history, 8),
+        history: conversationHistoryForModel(ctx),
         systemSegments: rewrittenSystem.segments,
         insertedBeforePrimary: attachments.map((item) => item.context),
       }),

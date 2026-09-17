@@ -1466,6 +1466,52 @@ describe('executeStage', () => {
     ]));
   });
 
+  it('keeps every tool-loop round a strict extension of the previous request', async () => {
+    const tool = makeTool('lookup', { ok: true, output: 'found-it' });
+    const requests: import('@littlesheep/llm').ChatRequest[] = [];
+    const llm = createMockLlm((request) => {
+      requests.push(request);
+      return requests.length === 1
+        ? toolCallResponse([{ id: 'c1', name: 'lookup', args: { q: 'x' } }])
+        : textResponse('final answer');
+    });
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [tool],
+      inbound: textMessage('user', 'lookup x'),
+      history: [
+        textMessage('user', '第一个历史问题'),
+        textMessage('assistant', '第一个历史回答'),
+        textMessage('user', '第二个历史问题'),
+        textMessage('assistant', '第二个历史回答'),
+      ],
+    });
+
+    const res = await stage(ctx);
+
+    expect(res.next).toBe('verify');
+    expect(requests).toHaveLength(2);
+    const first = requests[0]!;
+    const second = requests[1]!;
+    // A Provider prefix cache only matches from token 0, so every later round of
+    // the same step must repeat the stable head of the earlier request unchanged
+    // (system + history + current request) and only append after it. Dropping
+    // older history here would diverge the second message and forfeit the whole
+    // cached prefix; only the re-injected volatile runtime tail may differ.
+    let volatileTail = 0;
+    while (
+      volatileTail < first.messages.length - 1
+      && first.messages[first.messages.length - 1 - volatileTail]!.role === 'system'
+    ) {
+      volatileTail += 1;
+    }
+    const stableHead = first.messages.slice(0, first.messages.length - volatileTail);
+    expect(stableHead.length).toBeGreaterThan(1);
+    expect(second.messages.length).toBeGreaterThan(first.messages.length);
+    expect(second.messages.slice(0, stableHead.length)).toEqual(stableHead);
+    expect(second.messages.some((message) => String(message.content).includes('第一个历史问题'))).toBe(true);
+  });
+
   it('unknown tool name → tool_result error, continues', async () => {
     const llm = createMockLlm([
       toolCallResponse([{ id: 'c1', name: 'nope', args: {} }]),
