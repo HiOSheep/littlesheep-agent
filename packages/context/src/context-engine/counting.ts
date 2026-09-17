@@ -8,6 +8,7 @@ import type {
   ContextSafetyEstimator,
   ExactContextTokenCounter,
 } from './contracts.js';
+import type { ContextSafetyEstimate } from '@littlesheep/types';
 import {
   DEFAULT_CONTEXT_SAFETY_ESTIMATOR_ID,
   DEFAULT_IMAGE_PROMPT_TOKEN_SAFETY_RESERVE,
@@ -17,6 +18,28 @@ import {
 export interface ExactCounterResolution {
   counter?: ExactContextTokenCounter;
   reason: string;
+}
+
+/** Conservative-estimate evidence recorded when only the safety estimator ran. */
+export function buildSafetyEstimate(input: {
+  provider: string;
+  model: string;
+  estimatorId: string;
+  estimatedPromptTokens: number;
+  calculatedAt: string;
+}): ContextSafetyEstimate {
+  return {
+    version: 1,
+    source: 'local',
+    accuracy: 'conservative',
+    purpose: 'overflow_protection',
+    provider: input.provider,
+    model: input.model,
+    estimatorId: input.estimatorId,
+    estimatedPromptTokens: input.estimatedPromptTokens,
+    calculatedAt: input.calculatedAt,
+    displayable: false,
+  };
 }
 
 export const defaultContextSafetyEstimator: ContextSafetyEstimator = Object.freeze({

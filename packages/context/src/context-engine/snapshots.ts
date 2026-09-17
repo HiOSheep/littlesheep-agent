@@ -22,6 +22,7 @@ import {
   MAX_SNAPSHOT_MESSAGES,
   MAX_SNAPSHOT_TOOLS,
 } from './contracts.js';
+import type { ContextReuseEvent } from './reuse-cache.js';
 
 export interface BuildContextSnapshotInput {
   runId: string;
@@ -38,6 +39,8 @@ export interface BuildContextSnapshotInput {
   compressionRecommended: boolean;
   safetyEstimate?: ContextSafetyEstimate;
   promptTokens?: number;
+  /** Real local context-reuse event for this assembly (hit or miss). */
+  contextReuse?: ContextReuseEvent;
   exactCounterId?: string;
   unavailableCounterReason: string;
 }
@@ -53,6 +56,34 @@ export interface BuildModelRequestSnapshotInput {
   request: ChatRequest;
   contextSnapshotId: string;
   callContract?: LlmCallContract;
+}
+
+/** Both snapshots produced by one `ContextEngine.prepare()` call. */
+export interface BuildPreparedSnapshotsInput extends BuildContextSnapshotInput {
+  stage: StageName;
+  requestIndex: number;
+  request: ChatRequest;
+  callContract?: LlmCallContract;
+}
+
+export function buildPreparedSnapshots(input: BuildPreparedSnapshotsInput): {
+  contextSnapshot: ContextSnapshot;
+  modelRequestSnapshot: ModelRequestSnapshot;
+} {
+  const contextSnapshot = buildContextSnapshot(input);
+  const modelRequestSnapshot = buildModelRequestSnapshot({
+    runId: input.runId,
+    sessionId: input.sessionId,
+    stage: input.stage,
+    requestIndex: input.requestIndex,
+    provider: input.provider,
+    model: input.model,
+    createdAt: input.createdAt,
+    request: input.request,
+    contextSnapshotId: contextSnapshot.id,
+    callContract: input.callContract,
+  });
+  return { contextSnapshot, modelRequestSnapshot };
 }
 
 export function buildContextSnapshot(input: BuildContextSnapshotInput): ContextSnapshot {
@@ -87,6 +118,7 @@ export function buildContextSnapshot(input: BuildContextSnapshotInput): ContextS
     itemsTruncated: allItems.length > items.length,
     compressionRecommended: input.compressionRecommended,
     safetyEstimate: input.safetyEstimate,
+    ...(input.contextReuse === undefined ? {} : { contextReuse: input.contextReuse }),
     localTokenLedger: input.promptTokens === undefined
       ? {
           version: 1,

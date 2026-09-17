@@ -1,5 +1,15 @@
 export * from './engine.js';
 export {
+  diffContextSnapshots,
+  diffModelRequestSnapshots,
+  type ContextSnapshotDiff,
+  type ModelMessageDiff,
+  type ModelRequestDiff,
+  type RequestDiffReason,
+  type RequestSegmentChange,
+  type RequestSegmentDiff,
+} from './request-prefix-diff.js';
+export {
   createDeepSeekV4ExactContextTokenCounter,
   createLazyLocalExactContextTokenCounter,
   prepareLocalExactContextTokenCounter,

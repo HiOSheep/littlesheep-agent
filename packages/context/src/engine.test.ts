@@ -129,6 +129,43 @@ describe('ContextEngine', () => {
     });
   });
 
+  it('reuses an identical assembly and skips the exact counter on a hit', () => {
+    let counts = 0
+    const countingCounter: ExactContextTokenCounter = {
+      id: lengthCounter.id,
+      supports: () => true,
+      countRequest: (request) => {
+        counts += 1
+        return lengthCounter.countRequest(request)
+      },
+    }
+    const engine = new ContextEngine({
+      tokenCounter: countingCounter,
+      resolveContextWindow: () => ({ maxContextTokens: 1_000, source: 'builtin-model-registry' }),
+      resolveTokenizerCapability: exactLengthCapability,
+    })
+    const input = {
+      runId: 'run-1',
+      sessionId: asSessionId('session-1'),
+      stage: 'reply' as const,
+      requestIndex: 1,
+      provider: 'openai',
+      request: baseRequest(),
+      candidates: [candidate('current', 20, 'current', { required: true, priority: 90 })],
+    }
+
+    const first = engine.prepare(input)
+    const second = engine.prepare({ ...input, requestIndex: 2 })
+
+    expect(first.contextSnapshot.contextReuse).toMatchObject({ status: 'miss', rebuiltItems: 1, reusedItems: 0 })
+    expect(second.contextSnapshot.contextReuse).toMatchObject({ status: 'hit', rebuiltItems: 0, reusedItems: 1 })
+    // The identical assembly never re-runs the tokenizer.
+    expect(counts).toBe(1)
+    expect(second.request.messages).toEqual(first.request.messages)
+    expect(second.contextSnapshot.localTokenLedger).toMatchObject({ accuracy: 'exact' })
+    expect(second.contextSnapshot.contextReuse?.reuseKey).toBe(first.contextSnapshot.contextReuse?.reuseKey)
+  })
+
   it('uses exact counting to omit the lowest-priority optional context before sending', () => {
     const engine = new ContextEngine({
       tokenCounter: lengthCounter,
