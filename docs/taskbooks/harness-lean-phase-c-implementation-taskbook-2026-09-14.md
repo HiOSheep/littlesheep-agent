@@ -1321,6 +1321,23 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 
 **预算：** 本轮新增预算 ¥10；本轮消耗 ≈ ¥1（重建+1 次长会话；上一次长会话 ≈ ¥1）。
 
+### 10.70 第三十六轮（goal round 1：system 消息稳定化的基础件）执行记录（2026-09-17）
+
+**目标：** 让 system 消息只保留会话稳定内容，把 bundle 边界之下的易变段移出前缀。
+
+**先核实的两条契约约束（决定实现方式）：**
+1. **没有任何契约 require `memory_index`**（required 只有 `system_prompt` / `user_input` / `workflow_state` / `runtime_event`）。
+2. 但 **reply 类契约的 allowedContextKinds 不含 `workflow_state`**（`definitions.ts:47`）——因此**不能**靠"尾部消息按角色推断 kind"（会被推断成 workflow_state 并被契约丢弃/拒绝）。必须**保留每个易变段的原始 Context kind**。
+
+**本轮落地（自洽基础件，尚未接调用点）：**
+- 新增 `packages/harness/src/system-prompt-cache-split.ts`：`splitSystemPromptForCache(bundle)` → `{ systemText, trailingSegments }`。`systemText` 只含边界之上的段（字节稳定），`trailingSegments` 按原顺序保留每段的 `kind/source/priority/required/sensitive/scope`。
+- `buildRunRequestCandidates` 新增 `trailingSegments` 选项：把它们作为**尾部候选**追加（order 接在消息之后），从而在"保持 kind（契约语义不变）"的前提下把易变段放到对话之后。
+- 新增测试 `system-prompt-cache-split.test.ts`：证明 `systemText` 不含边界标记与 `VOLATILE_MEMORY_INDEX`；易变段的 kind 仍为 `memory_index`；带 `trailingSegments` 时候选按序落到最后且 order 最大。
+
+**验证：** harness + context 套件 **77 文件 / 716 测试**通过；`typecheck` 0；`check:repo` 33/33。
+
+**下一步（round 2）：** 把 `reply.ts` / `stages/execute/prompt.ts` / `stages/decide/request.ts` 三处 `assembleSystemPromptBundle` 调用接到 `splitSystemPromptForCache`（system 消息用 `systemText`，`trailingSegments` 传入 `buildRunRequestCandidates`），更新相应断言，然后用"不含 ask_user 的安全任务集 + 共享会话"复测命中率。
+
 ### 10.14 第七轮（HC-12 撤销屏障）新增证据（2026-09-16）
 
 **问题（先写失败用例）：** v3 写入路径的等值/相似候选只按 branch/scope/`status='active'` 选取；被纠正（`epistemicStatus`/`resolutionStatus = superseded`）或删除（`status = tombstone`）的 atom 仍可能是 active 记录。后续 maintenance（压缩候选）证据即使引用同一 `conversation-source:`，也会创建新 atom 或强化旧 atom，从而复活已被用户忘记/纠正的事实。`memory-service-v3.test.ts` 的新用例在修复前返回 `created`。

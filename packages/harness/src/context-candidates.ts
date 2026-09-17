@@ -15,6 +15,11 @@ export interface BuildRunRequestCandidatesOptions {
   primaryUserKind?: ContextItemKind;
   systemSegments?: ContextMessageSegment[];
   insertedBeforePrimary?: InsertedContextMessage[];
+  /**
+   * Volatile Context sections appended after the conversation so they cannot
+   * break the Provider's cacheable prefix. Their Context kind is preserved.
+   */
+  trailingSegments?: ContextMessageSegment[];
 }
 
 export interface InsertedContextMessage {
@@ -46,7 +51,7 @@ export function buildRunRequestCandidates(
   const primaryUserIndex = insertedStartIndex + inserted.length;
   const primaryUserKind = options.primaryUserKind ?? 'user_input';
 
-  return messages.map((message, index) => {
+  const mapped = messages.map((message, index) => {
     if (index === 0 && message.role === 'system') {
       return candidate({
         id: `${stage}:system`,
@@ -162,6 +167,18 @@ export function buildRunRequestCandidates(
       required: true,
     });
   });
+  const trailing = (options.trailingSegments ?? []).map((segment, index) => candidate({
+    id: segment.id,
+    order: messages.length + index,
+    message: { role: 'system', content: segment.text },
+    kind: segment.kind,
+    source: segment.source,
+    priority: segment.priority,
+    required: segment.required,
+    sensitive: segment.sensitive ?? true,
+    scope: segment.scope,
+  }));
+  return trailing.length === 0 ? mapped : [...mapped, ...trailing];
 }
 
 function candidate(
