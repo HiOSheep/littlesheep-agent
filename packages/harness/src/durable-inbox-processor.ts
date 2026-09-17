@@ -41,36 +41,43 @@ export async function appendEventViaInbox(
   append: AppendEvent,
 ): Promise<DurableInboxAppendDisposition> {
   if (!input.eventId) throw new DurableKernelError('inbox-backed events require an eventId', 'invalid');
-  const enqueued = await enqueueDurableCommand(inboxStore, {
-    commandId: input.eventId,
-    idempotencyKey: input.idempotencyKey,
-    sessionId: input.sessionId,
-    runId: input.runId,
-    type: input.type,
-    source: input.source,
-    ...(input.occurredAt ? { occurredAt: input.occurredAt } : {}),
-    payload: input.payload,
-  });
-  if (enqueued.kind === 'conflict') throw new DurableKernelError('durable inbox command conflict', 'conflict');
-  if (enqueued.command.status === 'failed') {
-    throw new DurableKernelError('durable inbox command is permanently failed', 'conflict');
-  }
-  if (enqueued.command.status === 'completed') {
-    const duplicate = await append(input);
-    if (duplicate.kind === 'conflict') throw new DurableKernelError('completed inbox command conflicts with its event', 'conflict');
-    return 'duplicate';
-  }
-  if (enqueued.command.status === 'claimed') {
-    throw new DurableKernelError('durable inbox command is owned by another worker', 'conflict');
-  }
-  if (!inboxStore) throw new DurableKernelError('durable inbox is not configured', 'inbox_unavailable');
-  const [claimed] = await inboxStore.claim(1, { commandId: enqueued.command.commandId });
-  if (!claimed) throw new DurableKernelError('durable inbox command could not be claimed', 'conflict');
-  const result = await materializeDurableCommand(inboxStore, claimed, append);
-  if (result.status === 'failed') {
-    throw new DurableKernelError(result.reason ?? 'durable inbox command failed', 'conflict');
-  }
-  return 'materialized';
+  const materialize = async (): Promise<DurableInboxAppendDisposition> => {
+    const enqueued = await enqueueDurableCommand(inboxStore, {
+      commandId: input.eventId as string,
+      idempotencyKey: input.idempotencyKey,
+      sessionId: input.sessionId,
+      runId: input.runId,
+      type: input.type,
+      source: input.source,
+      ...(input.occurredAt ? { occurredAt: input.occurredAt } : {}),
+      payload: input.payload,
+    });
+    if (enqueued.kind === 'conflict') throw new DurableKernelError('durable inbox command conflict', 'conflict');
+    if (enqueued.command.status === 'failed') {
+      throw new DurableKernelError('durable inbox command is permanently failed', 'conflict');
+    }
+    if (enqueued.command.status === 'completed') {
+      const duplicate = await append(input);
+      if (duplicate.kind === 'conflict') throw new DurableKernelError('completed inbox command conflicts with its event', 'conflict');
+      return 'duplicate';
+    }
+    if (enqueued.command.status === 'claimed') {
+      throw new DurableKernelError('durable inbox command is owned by another worker', 'conflict');
+    }
+    if (!inboxStore) throw new DurableKernelError('durable inbox is not configured', 'inbox_unavailable');
+    const [claimed] = await inboxStore.claim(1, { commandId: enqueued.command.commandId });
+    if (!claimed) throw new DurableKernelError('durable inbox command could not be claimed', 'conflict');
+    const result = await materializeDurableCommand(inboxStore, claimed, append);
+    if (result.status === 'failed') {
+      throw new DurableKernelError(result.reason ?? 'durable inbox command failed', 'conflict');
+    }
+    return 'materialized';
+  };
+  // Collapse the enqueue/claim/complete lock cycles when the store supports it.
+  const batchable = inboxStore as (DurableInboxStoreLike & {
+    withBatch?: <T>(operation: () => Promise<T>) => Promise<T>;
+  }) | undefined;
+  return batchable?.withBatch ? batchable.withBatch(materialize) : materialize();
 }
 
 export async function processDurableInbox(

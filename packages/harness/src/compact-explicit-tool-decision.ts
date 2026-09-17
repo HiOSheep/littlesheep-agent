@@ -158,6 +158,10 @@ export function expandCompactExplicitToolDecision(
       taskBook: { goal, complexity: 'simple', successCriteria: criterion ? [criterion] : [], steps: [] },
     };
   }
+  // Validate while still inside the bounded structured-output retry. The
+  // ToolExecutionService repeats this check at dispatch because this proposal
+  // is never execution authority.
+  const validatedInput = instruction.tool.inputSchema.parse(input);
   const title = cleanText(decision.title) ?? summary;
   const description = cleanText(decision.description) ?? summary;
   return {
@@ -180,7 +184,7 @@ export function expandCompactExplicitToolDecision(
         title,
         description,
         tools: [instruction.tool.name],
-        toolProposal: { name: instruction.tool.name, input },
+        toolProposal: { name: instruction.tool.name, input: validatedInput },
         acceptanceCriteria: criterion ? [criterion] : undefined,
         expectedOutput: cleanText(decision.expectedOutput) ?? criterion,
       }],

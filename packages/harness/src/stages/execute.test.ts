@@ -1,6 +1,7 @@
 // @littlesheep/harness — stages/execute.test.ts
 import { describe, it, expect, vi } from 'vitest';
 import { createExecuteStage, convertToolCall } from './execute.js';
+import { createDecideStage } from './decide.js';
 import {
   createMockLlm, textResponse, toolCallResponse, makeCtx, makeTool,
 } from '../tests/helpers.js';
@@ -107,6 +108,163 @@ describe('convertToolCall', () => {
 });
 
 describe('executeStage', () => {
+  it('promotes a bounded loop through a standalone Runtime control proposal', async () => {
+    const llm = createMockLlm(toolCallResponse([{
+      id: 'upgrade-1',
+      name: 'request_task_book',
+      args: {
+        reasonCode: 'dependency_discovered',
+        reason: 'The requested fix spans dependent modules.',
+        remainingGoal: 'Update the dependent module and run verification.',
+      },
+    }]));
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({ inbound: textMessage('user', '帮我修复这个文件') });
+    ctx.classification = {
+      activity: 'execute',
+      type: 'problem',
+      confidence: 0.8,
+      source: 'rules',
+      reasonCode: 'action_request',
+      workPolicy: {
+        version: 1,
+        route: 'execute',
+        sourceMessageId: String(ctx.inbound.id),
+        executionMode: 'bounded_loop',
+        reasonCode: 'bounded_single_goal',
+      },
+    };
+    ctx.persistRuntimeCheckpoint = vi.fn(async () => 'checkpoint-upgrade');
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({
+      next: 'decide',
+      ok: true,
+      meta: { workPolicyUpgradeRequestId: `${ctx.runId}:work-policy-upgrade:1` },
+    });
+    expect(ctx.workPolicyUpgradeRequest).toMatchObject({
+      reasonCode: 'dependency_discovered',
+      reason: 'The requested fix spans dependent modules.',
+      remainingGoal: 'Update the dependent module and run verification.',
+      modelAttemptsUsed: 1,
+    });
+    expect(ctx.toolInvocations).toBeUndefined();
+    expect(ctx.produced).toEqual([]);
+    expect(ctx.persistRuntimeCheckpoint).toHaveBeenCalledTimes(1);
+    const sent = llm.chat.mock.calls[0]?.[0] as import('@littlesheep/llm').ChatRequest;
+    expect(sent.tools?.map((tool) => tool.function.name)).toContain('request_task_book');
+  });
+
+  it('promotes after completed work, plans only the remainder, and preserves the shared budget', async () => {
+    const inspectA = makeTool('inspect_a', { ok: true, output: 'A complete' });
+    const inspectB = makeTool('inspect_b', { ok: true, output: 'B complete' });
+    const llm = createMockLlm([
+      toolCallResponse([{ id: 'call-a', name: 'inspect_a', args: { target: 'A' } }]),
+      toolCallResponse([{
+        id: 'upgrade-1',
+        name: 'request_task_book',
+        args: {
+          reasonCode: 'dependency_discovered',
+          reason: 'A exposed a dependent B check.',
+          remainingGoal: 'Inspect and report B without repeating A.',
+        },
+      }]),
+      textResponse(JSON.stringify({
+        assessment: {
+          userNeed: 'Inspect the remaining dependency B.',
+          complexity: 'simple',
+          goal: 'Inspect and report B without repeating A.',
+          successCriteria: ['B is inspected and reported'],
+          needsClarification: false,
+        },
+        taskBook: {
+          steps: [{
+            id: 'inspect-b',
+            description: 'Inspect dependency B.',
+            tools: ['inspect_b'],
+            acceptanceCriteria: ['B inspection result is available'],
+          }],
+        },
+      })),
+      toolCallResponse([{ id: 'call-b', name: 'inspect_b', args: { target: 'B' } }]),
+      textResponse('A remains complete; B is now inspected and complete.'),
+    ]);
+    const ctx = makeCtx({
+      inbound: textMessage('user', 'Inspect A and finish the directly dependent work.'),
+      tools: [inspectA, inspectB],
+    });
+    ctx.classification = {
+      activity: 'execute',
+      type: 'problem',
+      confidence: 0.96,
+      source: 'rules',
+      reasonCode: 'action_request',
+      workPolicy: {
+        version: 1,
+        route: 'execute',
+        sourceMessageId: String(ctx.inbound.id),
+        executionMode: 'bounded_loop',
+        reasonCode: 'bounded_single_goal',
+      },
+    };
+    ctx.persistRuntimeCheckpoint = vi.fn(async () => 'checkpoint-upgrade');
+
+    const firstExecution = await createExecuteStage({ ...deps, llm })(ctx);
+
+    expect(firstExecution).toMatchObject({ next: 'decide', ok: true });
+    expect(ctx.workPolicyUpgradeRequest).toMatchObject({
+      remainingGoal: 'Inspect and report B without repeating A.',
+      completedToolCallIds: ['call-a'],
+      budget: { toolLoopIterationsUsed: 2, maxToolLoopIterations: 20 },
+    });
+    expect(inspectA.calls).toHaveLength(1);
+    expect(inspectB.calls).toHaveLength(0);
+
+    const decision = await createDecideStage({ ...deps, llm })(ctx);
+
+    expect(decision).toMatchObject({ next: 'execute', ok: true });
+    expect(ctx.taskBook?.steps).toHaveLength(1);
+    expect(ctx.taskBook?.steps[0]?.tools).toEqual(['inspect_b']);
+    const decideRequest = llm.chat.mock.calls[2]?.[0] as import('@littlesheep/llm').ChatRequest;
+    expect(decideRequest.messages.at(-1)?.content).toContain('Already completed tool call ids: call-a');
+    expect(decideRequest.messages.at(-1)?.content).toContain('Budget already used: 2');
+
+    const secondExecution = await createExecuteStage({ ...deps, llm })(ctx);
+
+    expect(secondExecution).toMatchObject({ next: 'verify', ok: true });
+    expect(inspectA.calls).toHaveLength(1);
+    expect(inspectB.calls).toHaveLength(1);
+    expect(ctx.toolResults?.map((result) => result.callId)).toEqual(['call-a', 'call-b']);
+    expect(ctx.loopBudget).toMatchObject({ toolLoopIterationsUsed: 4, maxToolLoopIterations: 20 });
+    expect(ctx.reply).toBe('A remains complete; B is now inspected and complete.');
+    expect(llm.chat).toHaveBeenCalledTimes(5);
+  });
+
+  it('rejects a promotion control mixed with user tool calls before executing either', async () => {
+    const write = makeTool('write', { ok: true, output: 'unexpected' });
+    const llm = createMockLlm(toolCallResponse([{
+      id: 'upgrade-1', name: 'request_task_book',
+      args: { reasonCode: 'scope_expanded', reason: 'more work', remainingGoal: 'finish the remaining work' },
+    }, {
+      id: 'write-1', name: 'write', args: { file_path: 'x', content: 'x' },
+    }]));
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({ inbound: textMessage('user', '帮我修复这个文件'), tools: [write] });
+    ctx.classification = {
+      activity: 'execute', type: 'problem', confidence: 0.8, source: 'rules', reasonCode: 'action_request',
+      workPolicy: {
+        version: 1, route: 'execute', sourceMessageId: String(ctx.inbound.id),
+        executionMode: 'bounded_loop', reasonCode: 'bounded_single_goal',
+      },
+    };
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'recover', ok: false });
+    expect(result.error).toMatch(/standalone Runtime control/);
+    expect(write.calls).toHaveLength(0);
+  });
   it('stop → sets ctx.reply, transitions to verify', async () => {
     const llm = createMockLlm(textResponse('all done'));
     const stage = createExecuteStage({ ...deps, llm });
@@ -217,7 +375,7 @@ describe('executeStage', () => {
       approval: { required: false, decision: 'not_required' },
     });
     expect(ctx.produced.map((message) => message.role)).toEqual(['assistant', 'tool']);
-    expect(events.map((event) => event.type)).toEqual([
+    expect(events.filter((event) => event.type !== 'model_activity').map((event) => event.type)).toEqual([
       'step_start', 'tool_start', 'tool_end', 'step_done',
     ]);
   });
@@ -615,6 +773,37 @@ describe('executeStage', () => {
     expect(glob.calls).toHaveLength(1);
   });
 
+  it('narrows a bounded explicit continuation loop to the named tool while retaining history', async () => {
+    const glob = makeTool('glob', { ok: true, output: 'alpha.txt' }, {
+      inputSchema: z.object({ pattern: z.string(), path: z.string().optional() }),
+    });
+    glob.execution = parallelFilePolicy('path', 'read', true);
+    const read = makeTool('read', { ok: true, output: 'unused' });
+    const llm = createMockLlm([
+      toolCallResponse([{ id: 'glob-bounded-history', name: 'glob', args: { pattern: '*', path: '.' } }]),
+      textResponse('已读取条目，并继续承接 continuity-history-anchor。'),
+    ]);
+    const stage = createExecuteStage({ ...deps, llm });
+    const prior = textMessage('assistant', '上一轮目标是 continuity-history-anchor。');
+    const ctx = makeCtx({
+      tools: [glob, read],
+      history: [prior],
+      inbound: textMessage('user', '继续上一轮，请使用 glob 工具读取当前工作区顶层条目'),
+      classification: explicitGlobClassification(),
+    });
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'verify', ok: true });
+    expect(llm.chat).toHaveBeenCalledTimes(2);
+    for (const [request] of llm.chat.mock.calls) {
+      expect(request.tools?.map((tool) => tool.function.name)).toEqual(['glob']);
+      expect(request.messages.some((message) => String(message.content).includes('continuity-history-anchor'))).toBe(true);
+    }
+    expect(glob.calls).toHaveLength(1);
+    expect(read.calls).toHaveLength(0);
+  });
+
   it('includes taskBook goal, success criteria, and overdelivery limit in the execution prompt', async () => {
     const systemPrompts: string[] = [];
     const llm = createMockLlm((req) => {
@@ -757,7 +946,7 @@ describe('executeStage', () => {
     expect(llm.chat).toHaveBeenCalledTimes(2);
   });
 
-  it('keeps rich web evidence in the current model turn while persisting only durable projections', async () => {
+  it('HA-04-04 retracts an invalid citation preview before retrying while keeping only durable Web projections', async () => {
     const pageBody = 'CURRENT_PUBLIC_PAGE_BODY_SENTINEL';
     const rawQuery = 'latest private-looking project query';
     const citationId = 'web-test-run-citation-1';
@@ -865,12 +1054,16 @@ describe('executeStage', () => {
       },
     });
     ctx.onToolEvent = (event) => events.push(event);
+    const onAssistantReplace = vi.fn();
+    ctx.onAssistantReplace = onAssistantReplace;
 
     const result = await stage(ctx);
 
     expect(result).toMatchObject({ ok: true, next: 'verify' });
     expect(ctx.reply).toBe(`citation-backed result [citation:${citationId}]`);
     expect(llm.chat).toHaveBeenCalledTimes(3);
+    expect(onAssistantReplace).toHaveBeenCalledTimes(1);
+    expect(onAssistantReplace).toHaveBeenCalledWith('');
     expect(ctx.webEvidence).toEqual(projection);
     expect(ctx.toolResults?.[0]).not.toHaveProperty('modelOutput');
     const durableState = JSON.stringify({
@@ -935,7 +1128,7 @@ describe('executeStage', () => {
     expect(finalRequest.messages[0]?.content).toContain('Never hide failed or partial steps');
     expect(finalRequest.messages[0]?.content).toContain('Do not dump raw command output or private chain-of-thought');
     expect(finalRequest.messages[0]?.content).toContain('SOUL_SENTINEL_USER_FACING_VOICE');
-    expect(events.map((evt) => evt.type)).toEqual([
+    expect(events.filter((event) => event.type !== 'model_activity').map((evt) => evt.type)).toEqual([
       'step_start',
       'tool_start',
       'tool_end',
@@ -1189,7 +1382,7 @@ describe('executeStage', () => {
     expect(ctx.taskExecution?.steps[1]?.attempt).toBe(2);
     expect(ctx.taskExecution?.steps[2]?.attempt).toBe(1);
     expect(ctx.replanHistory?.[0]?.resumedAt).toBeTruthy();
-    expect(events.map((event) => event.type)).toEqual([
+    expect(events.filter((event) => event.type !== 'model_activity').map((event) => event.type)).toEqual([
       'step_skipped',
       'step_start', 'step_done',
       'step_start', 'step_done',
@@ -1363,6 +1556,89 @@ describe('executeStage', () => {
         content: expect.stringContaining('no new evidence'),
       }),
     ]));
+  });
+
+  it('restores the no-progress latch and disables tools on the first resumed turn', async () => {
+    const llm = createMockLlm((request) => request.tools
+      ? toolCallResponse([{ id: 'unexpected', name: 'lookup', args: {} }])
+      : textResponse('resumed bounded final answer'));
+    const tool = makeTool('lookup', { ok: true, output: 'x' });
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', 'loop') });
+    ctx.loopBudget = {
+      attemptsUsed: 3,
+      maxAttempts: 64,
+      elapsedMs: 1_000,
+      maxElapsedMs: 0,
+      noProgressRounds: 2,
+      maxNoProgressRounds: 2,
+      toolLoopIterationsUsed: 3,
+      maxToolLoopIterations: 20,
+      evidenceFingerprints: ['a'.repeat(64)],
+      evidenceFingerprintSaturated: true,
+    };
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'verify', ok: true });
+    expect(tool.calls).toHaveLength(0);
+    expect(llm.chat).toHaveBeenCalledTimes(1);
+    expect((llm.chat.mock.calls[0]?.[0] as import('@littlesheep/llm').ChatRequest).tools).toBeUndefined();
+    expect(ctx.loopBudget.toolLoopIterationsUsed).toBe(4);
+  });
+
+  it('does not reset the persisted twenty-turn budget after recovery', async () => {
+    const llm = createMockLlm(textResponse('must not run'));
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({ inbound: textMessage('user', 'loop') });
+    ctx.loopBudget = {
+      attemptsUsed: 20,
+      maxAttempts: 64,
+      elapsedMs: 1_000,
+      maxElapsedMs: 0,
+      noProgressRounds: 0,
+      maxNoProgressRounds: 2,
+      toolLoopIterationsUsed: 20,
+      maxToolLoopIterations: 20,
+    };
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'recover', ok: false });
+    expect(result.error).toContain('persisted 20-iteration run budget');
+    expect(llm.chat).not.toHaveBeenCalled();
+  });
+
+  it('treats identical content from different Runtime resources as distinct evidence', async () => {
+    let turn = 0;
+    const llm = createMockLlm((request) => {
+      turn += 1;
+      if (turn <= 2) {
+        return toolCallResponse([{
+          id: `read-${turn}`,
+          name: 'read_resource',
+          args: { path: turn === 1 ? 'a.txt' : 'b.txt' },
+        }]);
+      }
+      return textResponse('both resources checked');
+    });
+    const tool = makeTool('read_resource', { ok: true, output: 'same contents' });
+    tool.execution = {
+      concurrency: 'parallel',
+      resources: (input) => [{
+        key: `workspace:${String((input as { path?: unknown }).path)}`,
+        mode: 'read',
+      }],
+    };
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', '读取 a.txt 和 b.txt') });
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'verify', ok: true });
+    expect(tool.calls).toHaveLength(2);
+    expect((llm.chat.mock.calls[2]?.[0] as import('@littlesheep/llm').ChatRequest).tools).toBeDefined();
+    expect(ctx.loopBudget?.noProgressRounds).toBe(0);
   });
 
   it('treats distinct successful side effects as progress even when outputs match', async () => {

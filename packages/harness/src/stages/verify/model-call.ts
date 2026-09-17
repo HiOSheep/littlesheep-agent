@@ -47,7 +47,7 @@ export async function requestVerificationVerdict(
         history: [],
         primaryUserKind: 'workflow_state',
       }),
-      { retryOf: retry.previousRequestId },
+      { retryOf: retry.previousRequestId, retryReason: retry.previousFailureReason },
     ),
     onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
     beforeRequest: (request) => ensureModelRequestStarted(ctx, request),

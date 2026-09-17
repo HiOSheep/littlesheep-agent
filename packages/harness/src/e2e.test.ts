@@ -73,7 +73,8 @@ describe('e2e agent loop', () => {
     expect(ctx.produced[0]?.content).toEqual([{ type: 'text', text: '当前只根据 Runtime 能力快照回答，尚未执行网络查询。' }]);
     expect(ctx.replyProvenance?.purpose).toBe('capability_reply');
     expect(ctx.modelRequests?.[0]?.callContract?.purpose).toBe('capability_reply');
-    expect(events.filter((event) => event.visibility === 'progress')).toHaveLength(0);
+    expect(events.filter((event) => event.type === 'model_activity').map((event) => event.activityStatus))
+      .toEqual(['running', 'done']);
     expect(events.filter((event) => event.type === 'capability_snapshot' || event.type === 'capability_probe')).toHaveLength(0);
     expect(events.filter((event) => event.type === 'reasoning').every((event) => event.visibility === 'silent')).toBe(true);
     expect(durableTypes.slice(0, 2)).toEqual(['capability_snapshot_read', 'route_decided']);
@@ -111,7 +112,7 @@ describe('e2e agent loop', () => {
     expect(trace.map((t) => t.name)).toEqual([
       'enter', 'classify', 'decide', 'execute', 'verify', 'evolve', 'capture', 'finalize',
     ]);
-    const businessEvents = events.filter((event) => event.type !== 'reasoning');
+    const businessEvents = events.filter((event) => event.type !== 'reasoning' && event.type !== 'model_activity');
     expect(businessEvents.map((event) => event.type)).toEqual([
       'task_book',
       'step_start',
@@ -119,13 +120,10 @@ describe('e2e agent loop', () => {
       'verification_start',
       'verification',
     ]);
-    const reasoningEvents = events.filter((event) => event.type === 'reasoning');
-    expect(reasoningEvents.filter((event) => event.reasoningStatus === 'running').map((event) => event.stage)).toEqual(
-      ['enter', 'classify', 'decide', 'execute', 'verify', 'evolve', 'capture', 'finalize'],
-    );
-    expect(reasoningEvents.filter((event) => event.reasoningStatus === 'done').map((event) => event.stage)).toEqual(
-      ['enter', 'classify', 'decide', 'execute', 'verify', 'evolve', 'capture', 'finalize'],
-    );
+    expect(events.filter((event) => event.type === 'reasoning')).toEqual([]);
+    expect(events.filter((event) => event.type === 'model_activity').map((event) => event.activityStatus))
+      .toEqual(ctx.modelRequests!.flatMap(() => ['running', 'done']));
+    expect(events.filter((event) => event.type === 'model_activity').every((event) => event.stage === undefined)).toBe(true);
     expect(deltas).toEqual([]);
     expect(replacements).toEqual([]);
     expect(ctx.finalReplySettlement?.status).toBe('settled');
@@ -136,7 +134,6 @@ describe('e2e agent loop', () => {
       'execute_tool_loop',
       'execute_final_reply',
       'verify',
-      'evolve',
     ]);
     for (const request of ctx.modelRequests ?? []) {
       const contract = request.callContract;
@@ -195,10 +192,10 @@ describe('e2e agent loop', () => {
     expect(res.ok).toBe(true);
     expect(ctx.reply).toBe('verified final answer');
     expect(deltas).toEqual([]);
-    expect(replacements).toEqual([]);
+    expect(replacements).toEqual(['']);
     expect(ctx.finalReplySettlement?.status).toBe('settled');
     expect(events.filter((event) => event.type === 'final_delta')).toHaveLength(0);
-    expect(events.filter((event) => event.type !== 'reasoning').map((event) => event.type)).toEqual([
+    expect(events.filter((event) => event.type !== 'reasoning' && event.type !== 'model_activity').map((event) => event.type)).toEqual([
       'task_book', 'step_start', 'step_done', 'verification_start', 'verification',
       'task_book', 'step_start', 'step_done', 'verification_start', 'verification',
     ]);

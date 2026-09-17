@@ -222,9 +222,16 @@ export async function callLlmForJson<T>(
     /** Upper bound used only after an empty response exhausts the initial budget. */
     maxTokensCeiling?: number;
     signal?: AbortSignal;
+    /** Optional schema/contract expansion. Throwing performs one bounded schema retry. */
+    validateParsed?: (value: unknown) => T;
     onRequest?: (
       request: import('@littlesheep/llm').ChatRequest,
-      retry: { attempt: number; previousResponseWasEmpty: boolean; previousRequestId?: string },
+      retry: {
+        attempt: number;
+        previousResponseWasEmpty: boolean;
+        previousRequestId?: string;
+        previousFailureReason?: 'empty_output' | 'length' | 'decode' | 'schema';
+      },
     ) => import('@littlesheep/llm').ChatRequest | void;
     /** Durable request-start gate, awaited immediately before Provider I/O. */
     beforeRequest?: (request: import('@littlesheep/llm').ChatRequest, attempt: number) => Promise<void>;
@@ -237,13 +244,19 @@ export async function callLlmForJson<T>(
       error: unknown,
     ) => void | Promise<void>;
   } = {},
-): Promise<{ parsed: T | null; attempts: number; lastResponse?: ChatResponse }> {
+): Promise<{
+  parsed: T | null;
+  attempts: number;
+  lastResponse?: ChatResponse;
+  lastFailureReason?: 'empty_output' | 'length' | 'decode' | 'schema';
+}> {
   const maxAttempts = opts.maxAttempts ?? 3;
   const initialMaxTokens = opts.maxTokens ?? 1000;
   const maxTokensCeiling = Math.max(initialMaxTokens, opts.maxTokensCeiling ?? initialMaxTokens);
   let currentMaxTokens = initialMaxTokens;
   let lastResponse: ChatResponse | undefined;
   let previousRequestId: string | undefined;
+  let previousFailureReason: 'empty_output' | 'length' | 'decode' | 'schema' | undefined;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const previousResponseWasEmpty = Boolean(lastResponse && !lastResponse.content.trim());
     // On retry, append corrective feedback — naive identical-message retries
@@ -251,9 +264,7 @@ export async function callLlmForJson<T>(
     const msgs: ChatMessage[] = attempt > 1
       ? [...messages, {
           role: 'user',
-          content: previousResponseWasEmpty
-            ? 'Your previous response produced no final JSON text. Return the required raw JSON object now. Keep private reasoning bounded and leave enough output budget for the complete JSON.'
-            : 'Your previous response was not valid JSON. Return ONLY a raw JSON object — no markdown fences, no surrounding prose.',
+          content: retryInstruction(previousFailureReason),
         }]
       : messages;
     const request = {
@@ -267,6 +278,7 @@ export async function callLlmForJson<T>(
       attempt,
       previousResponseWasEmpty,
       ...(previousRequestId ? { previousRequestId } : {}),
+      ...(previousFailureReason ? { previousFailureReason } : {}),
     }) ?? request;
     previousRequestId = modelRequestIdFor(preparedRequest);
     await opts.beforeRequest?.(preparedRequest, attempt);
@@ -279,17 +291,48 @@ export async function callLlmForJson<T>(
     }
     await opts.onResponse?.(preparedRequest, res);
     lastResponse = res;
-    const parsed = extractJson(res.content) as T | null;
-    if (parsed !== null) return { parsed, attempts: attempt, lastResponse: res };
+    const decoded = extractJson(res.content);
+    if (decoded !== null) {
+      try {
+        const parsed = opts.validateParsed ? opts.validateParsed(decoded) : decoded as T;
+        return { parsed, attempts: attempt, lastResponse: res };
+      } catch {
+        previousFailureReason = 'schema';
+      }
+    } else {
+      previousFailureReason = res.finishReason === 'length'
+        ? 'length'
+        : previousResponseWasEmpty || !res.content.trim()
+          ? 'empty_output'
+          : 'decode';
+    }
     if (currentMaxTokens < maxTokensCeiling) {
-      const growth = !res.content.trim() ? 2 : 1.5;
+      const growth = previousFailureReason === 'empty_output' || previousFailureReason === 'length' ? 2 : 1.5;
       currentMaxTokens = Math.min(
         maxTokensCeiling,
         Math.max(currentMaxTokens + 1, Math.ceil(currentMaxTokens * growth)),
       );
     }
   }
-  return { parsed: null, attempts: maxAttempts, lastResponse };
+  return {
+    parsed: null,
+    attempts: maxAttempts,
+    lastResponse,
+    ...(previousFailureReason ? { lastFailureReason: previousFailureReason } : {}),
+  };
+}
+
+function retryInstruction(reason: 'empty_output' | 'length' | 'decode' | 'schema' | undefined): string {
+  if (reason === 'empty_output') {
+    return 'Your previous response produced no final JSON text. Return the required raw JSON object now. Keep private reasoning bounded and leave enough output budget for the complete JSON.';
+  }
+  if (reason === 'length') {
+    return 'Your previous JSON was cut off by the output limit. Return one shorter complete raw JSON object now. Preserve every required goal, dependency and acceptance criterion; remove only optional prose.';
+  }
+  if (reason === 'schema') {
+    return 'Your previous JSON did not satisfy the required contract. Return ONLY a corrected raw JSON object with every required field and valid enum/tool value.';
+  }
+  return 'Your previous response was not valid JSON. Return ONLY a raw JSON object — no markdown fences, no surrounding prose.';
 }
 
 /** Best-effort non-null assertion helper for arrays from JSON (which are `unknown`). */

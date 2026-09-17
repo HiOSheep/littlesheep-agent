@@ -5,6 +5,7 @@ import type {
   TaskBook,
   TaskExecutionResult,
   TaskReplanRecord,
+  WorkPolicyUpgradeRequest,
 } from '@littlesheep/types';
 import { assertRunContextFieldWriteAllowed, type RunContextContractStage } from '@littlesheep/types';
 
@@ -18,6 +19,7 @@ export interface ReplanStateUpdate {
   replanAttempts?: number;
   verifyFeedback?: string;
   partialReplanRequest?: PartialReplanRequest;
+  workPolicyUpgradeRequest?: WorkPolicyUpgradeRequest;
   replanHistory?: TaskReplanRecord[];
 }
 
@@ -30,6 +32,7 @@ const REPLAN_FIELDS = [
   'replanAttempts',
   'verifyFeedback',
   'partialReplanRequest',
+  'workPolicyUpgradeRequest',
   'replanHistory',
 ] as const satisfies readonly (keyof ReplanStateUpdate)[];
 

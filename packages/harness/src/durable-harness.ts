@@ -13,6 +13,7 @@ import type {
   StageResult,
 } from '@littlesheep/types';
 import { inspectStageTransition, stageNames } from '@littlesheep/types';
+import { workPolicyTransitionViolation } from './work-policy-upgrade.js';
 import { HookRunner } from './hooks/runner.js';
 import {
   createHarnessStages,
@@ -22,7 +23,6 @@ import { consumeRuntimeControlEvents, consumeRuntimeTaskEvents } from './runtime
 import { bindExactContextTokenCounter } from './model-observability.js';
 import { resolveCheckpointResumeStage } from './checkpoint-resume.js';
 import { recordFailure } from './failure-state.js';
-import { emitPublicReasoningProgress } from './public-reasoning-progress.js';
 
 /**
  * Build the independent durable transition driver. The durable event sink is
@@ -122,9 +122,6 @@ export function createNextHarness(opts: DefaultHarnessOptions): AgentHarness {
           continue;
         }
 
-        const phaseId = `${stageName}:${attempt}`;
-        emitPublicReasoningProgress(ctx, stageName, phaseId, 'running');
-
         const before = await hooks.runBefore(ctx, stageName);
         let result: StageResult;
         if (before.claimed) {
@@ -145,33 +142,29 @@ export function createNextHarness(opts: DefaultHarnessOptions): AgentHarness {
         result = await hooks.runAfter(ctx, stageName, result);
         result = { ...result, stage: stageName };
         const transition = inspectStageTransition(stageName, result.next);
-        if (!transition.ok) {
-          const attempted = String(transition.violation.attempted);
-          const allowed = transition.violation.allowed.join(', ');
+        const guardedViolation = transition.ok ? workPolicyTransitionViolation(ctx, stageName, result) : undefined;
+        if (!transition.ok || guardedViolation) {
+          const attempted = transition.ok ? String(result.next) : String(transition.violation.attempted);
+          const allowed = transition.ok ? [] : transition.violation.allowed;
           result = {
             stage: stageName,
             next: 'exit',
             ok: false,
-            error: `invalid stage transition '${stageName}' -> '${attempted}'; allowed targets: ${allowed}`,
+            error: guardedViolation
+              ? `invalid guarded stage transition '${stageName}' -> '${attempted}': ${guardedViolation}`
+              : `invalid stage transition '${stageName}' -> '${attempted}'; allowed targets: ${allowed.join(', ')}`,
             meta: {
               ...(result.meta ?? {}),
               transitionViolation: {
                 from: stageName,
-                attempted: transition.violation.attempted,
-                allowed: transition.violation.allowed,
+                attempted: transition.ok ? result.next : transition.violation.attempted,
+                allowed,
               },
             },
           };
         }
 
         const endedAt = new Date().toISOString();
-        emitPublicReasoningProgress(
-          ctx,
-          stageName,
-          phaseId,
-          result.ok ? 'done' : 'failed',
-          Math.max(0, Date.parse(endedAt) - Date.parse(startedAt)),
-        );
         trace.push({ name: stageName, startedAt, endedAt, ok: result.ok });
         if (!result.ok && result.error && (!ctx.lastError || ctx.lastError.stage !== stageName)) {
           recordFailure(ctx, stageName, stageName, result.error);

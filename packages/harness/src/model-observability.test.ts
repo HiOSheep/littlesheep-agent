@@ -52,6 +52,27 @@ function registeredTools(count: number) {
 }
 
 describe('recordModelRequest', () => {
+  it('HA-04-06 projects the first fully prepared request prompt, not an earlier base prompt', () => {
+    const events: import('@littlesheep/types').ToolStreamEvent[] = [];
+    const ctx = makeCtx();
+    ctx.streamModelTranscript = true;
+    ctx.onToolEvent = (event) => events.push(event);
+    const prepared = prepareModelRequest(ctx, 'reply', request(2, 0));
+    const effectivePrompt = prepared.messages
+      .filter((message) => message.role === 'system')
+      .map((message) => typeof message.content === 'string' ? message.content : '')
+      .join('\n\n');
+
+    expect(ctx.systemPromptProjection).toBe(effectivePrompt);
+    expect(events.filter((event) => event.type === 'system_prompt')).toEqual([
+      expect.objectContaining({
+        phaseId: `system-prompt:${ctx.modelRequests?.[0]?.id}`,
+        description: 'reply',
+        summary: effectivePrompt,
+      }),
+    ]);
+  });
+
   it('records a frozen request/context shape without prompt text or image bytes', () => {
     const ctx = makeCtx({ tools: registeredTools(1) });
     const snapshot = recordModelRequest(ctx, 'execute_tool_loop', request());
@@ -143,6 +164,39 @@ describe('recordModelRequest', () => {
 
     recordProviderUsage(ctx, second, undefined);
     expect(ctx.contextSnapshots?.[1]?.providerUsage).toBeUndefined();
+  });
+
+  it('HA-03-05 accepts one usage callback per request and marks conflicts incomplete', () => {
+    const ctx = makeCtx();
+    const prepared = prepareModelRequest(ctx, 'reply', request(2, 0));
+    const usage = {
+      promptTokens: 100,
+      completionTokens: 20,
+      totalTokens: 120,
+      cachedPromptTokens: 50,
+      durationMs: 1_000,
+      transportAttempt: 1,
+      observedAttemptCount: 1,
+    };
+
+    recordProviderUsage(ctx, prepared, usage);
+    recordProviderUsage(ctx, prepared, usage);
+    expect(ctx.usage).toMatchObject({
+      promptTokens: 100,
+      completionTokens: 20,
+      requestCount: 1,
+      usageReportedRequestCount: 1,
+      usageCompleteness: 'complete',
+    });
+
+    recordProviderUsage(ctx, prepared, { ...usage, completionTokens: 21, totalTokens: 121 });
+    expect(ctx.usage).toMatchObject({
+      promptTokens: 100,
+      completionTokens: 20,
+      requestCount: 1,
+      usageReportedRequestCount: 1,
+      usageCompleteness: 'partial',
+    });
   });
 
   it('applies model-specific reasoning controls before Context snapshotting', () => {
@@ -253,7 +307,7 @@ describe('recordModelRequest', () => {
     });
   });
 
-  it('preserves a bounded direct-output override for a retry', () => {
+  it('does not let a direct-output compatibility call override the run reasoning policy', () => {
     const ctx = makeCtx();
     ctx.resolvedRunConfig = {
       version: 1,
@@ -284,9 +338,9 @@ describe('recordModelRequest', () => {
 
     const prepared = prepareModelRequest(ctx, 'decide', direct);
 
-    expect(prepared.reasoning_effort).toBeUndefined();
-    expect(prepared.thinking).toEqual({ type: 'disabled' });
-    expect(ctx.modelRequests?.[0]).toMatchObject({ thinkingMode: 'disabled' });
+    expect(prepared.reasoning_effort).toBe('max');
+    expect(prepared.thinking).toEqual({ type: 'enabled', clear_thinking: undefined });
+    expect(ctx.modelRequests?.[0]).toMatchObject({ reasoningEffort: 'max', thinkingMode: 'enabled' });
   });
 
   it('fails closed for forbidden tools, forbidden calls, and oversized outputs', () => {

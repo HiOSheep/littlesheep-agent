@@ -27,6 +27,7 @@ import {
   renderCompactAutonomousReadStepGuidance,
   resolveCompactAutonomousReadExecutionTools,
 } from '../../compact-autonomous-read-task.js';
+import { createTaskStepReplyCandidate } from './reply-candidate.js';
 
 export interface TaskStepRunOutcome {
   scheduled: ScheduledTaskStep;
@@ -175,6 +176,14 @@ export async function executeScheduledTaskStep(options: TaskStepRunOptions): Pro
 
     step.status = 'done';
     stepResult.status = 'done';
+    if (!directProposal) {
+      stepResult.replyCandidate = createTaskStepReplyCandidate(
+        ctx,
+        taskBook,
+        stepResult,
+        loopResult.modelRequestId,
+      );
+    }
     syncExecutionSteps();
     ctx.onToolEvent?.({
       type: 'step_done',

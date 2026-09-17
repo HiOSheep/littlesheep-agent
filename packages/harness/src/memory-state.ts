@@ -3,6 +3,7 @@ import type {
   MemoryContinuityAssessment,
   MemoryPrelude,
   MemoryIntentDecisionRecord,
+  MemoryReuseCounts,
   RunContext,
   RuntimeMemoryContextWorkingSet,
   RuntimeMemoryKnownState,
@@ -57,4 +58,18 @@ export function writeMemoryState(
     assertRunContextFieldWriteAllowed(field, stage);
   }
   Object.assign(ctx, update);
+}
+
+/** Run-cumulative local embedding reuse recorded by the memory stages. */
+export function sumMemoryReuse(ctx: RunContext): MemoryReuseCounts | undefined {
+  let reused = 0;
+  let queued = 0;
+  let disabled = 0;
+  for (const record of ctx.memoryIntentDecisions ?? []) {
+    if (!record.embeddingReuse) continue;
+    reused += record.embeddingReuse.reused;
+    queued += record.embeddingReuse.queued;
+    disabled += record.embeddingReuse.disabled;
+  }
+  return reused + queued === 0 ? undefined : { reused, queued, disabled };
 }

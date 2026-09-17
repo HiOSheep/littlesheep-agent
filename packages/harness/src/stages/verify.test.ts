@@ -109,6 +109,45 @@ describe('verifyStage', () => {
     expect(llm.chat).toHaveBeenCalledTimes(1);
     expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'fail', source: 'model' });
   });
+
+  it('HA-02-05 lets unresolved Runtime effects override a model pass and retracts the draft', async () => {
+    const llm = createMockLlm(textResponse('{"verdict":"pass","reason":"looks complete"}'));
+    const stage = createVerifyStage({ ...deps, llm });
+    const replacements: string[] = [];
+    const ctx = makeVerifyCtx({ reply: 'The file was created successfully.' });
+    ctx.onAssistantReplace = (value) => replacements.push(value);
+    ctx.toolInvocations = [{
+      version: 1,
+      id: 'write-invocation',
+      callId: 'write-call',
+      runId: ctx.runId,
+      sessionId: ctx.sessionId,
+      toolName: 'write',
+      toolSource: 'builtin',
+      status: 'succeeded',
+      proposedAt: '2026-09-12T00:00:00.000Z',
+      endedAt: '2026-09-12T00:00:01.000Z',
+      approval: { required: false, decision: 'not_required' },
+      evidenceIds: [],
+    }];
+    ctx.toolResults = [{ callId: 'write-call', ok: true, output: 'written' }];
+    ctx.sideEffects = [{
+      idempotencyKey: 'write-effect',
+      toolName: 'write',
+      status: 'unknown',
+      callId: 'write-call',
+    }];
+
+    await expect(stage(ctx)).resolves.toMatchObject({
+      next: 'recover',
+      ok: false,
+      meta: { structuralOverride: true },
+    });
+    expect(ctx.reply).toBeUndefined();
+    expect(ctx.replyProvenance).toBeUndefined();
+    expect(replacements.at(-1)).toBe('');
+    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'fail', source: 'structural' });
+  });
   it('pass → evolve', async () => {
     const llm = createMockLlm(textResponse('{"verdict":"pass","reason":"goal achieved"}'));
     const stage = createVerifyStage({ ...deps, llm });

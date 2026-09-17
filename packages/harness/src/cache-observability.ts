@@ -14,6 +14,8 @@ import type {
   CachePromptComponentFingerprints,
   CacheObservationStatus,
   CacheScopePartition,
+  ContextReuseEvent,
+  MemoryReuseCounts,
   PermissionPolicyId,
 } from '@littlesheep/types';
 import {
@@ -24,6 +26,7 @@ import {
   STABLE_PREFIX_VERSION,
 } from '@littlesheep/types';
 import { CACHE_BOUNDARY_MARKER } from '@littlesheep/prompt';
+import { contextReuseLedger, memoryReuseLedger } from './cache-local-ledgers.js';
 
 const EPHEMERAL_KEY = randomBytes(32);
 const INVALIDATION_ORDER: readonly CacheInvalidationReason[] = [
@@ -66,6 +69,10 @@ export interface CacheObservationInput {
   readonly manualClear?: boolean;
   /** Runtime fact: this request rebuilt a previously replayed or reconstructed prompt. */
   readonly replayed?: boolean;
+  /** Runtime fact: the Context Engine reused a previous identical assembly. */
+  readonly contextReuse?: ContextReuseEvent;
+  /** Runtime fact: local embedding reuse/queue counts since the run started. */
+  readonly memoryReuse?: MemoryReuseCounts;
   /** null explicitly disables hashing; undefined uses the process key. */
   readonly key?: string | null;
 }
@@ -220,20 +227,8 @@ export function buildCacheObservation(input: CacheObservationInput): CacheObserv
     invalidationReasons,
     ...(invalidationReasons[0] ? { primaryInvalidationReason: invalidationReasons[0] } : {}),
     providerPrompt: pendingProviderCache(),
-    lsContext: {
-      kind: 'ls_context' as const,
-      // Context assembly is not a cache lookup. Keep the local ledger
-      // unavailable until Context Engine reports a real reuse event.
-      status: 'unavailable' as const,
-      reason: 'context_cache_event_not_observed',
-      requestCount: 1 as const,
-    },
-    memoryEmbedding: {
-      kind: 'memory_embedding' as const,
-      status: 'unavailable' as const,
-      reason: 'memory_cache_event_not_observed',
-      requestCount: 1 as const,
-    },
+    lsContext: contextReuseLedger(input.contextReuse),
+    memoryEmbedding: memoryReuseLedger(input.memoryReuse),
   });
 }
 
@@ -256,7 +251,7 @@ export function classifyProviderCacheUsage(
       reason: invalid,
     };
   }
-  const { promptTokens, completionTokens, totalTokens, cachedPromptTokens, reasoningTokens } = usage;
+  const { promptTokens, completionTokens, totalTokens, cachedPromptTokens, uncachedPromptTokens, reasoningTokens } = usage;
   if (cachedPromptTokens === undefined) {
     return {
       ledger: {
@@ -266,7 +261,7 @@ export function classifyProviderCacheUsage(
         requestCount: 1,
         tokenCount: promptTokens,
       },
-      validUsage: { promptTokens, completionTokens, totalTokens, cachedPromptTokens, reasoningTokens },
+      validUsage: { promptTokens, completionTokens, totalTokens, cachedPromptTokens, uncachedPromptTokens, reasoningTokens },
     };
   }
   if (promptTokens === 0) {
@@ -278,8 +273,9 @@ export function classifyProviderCacheUsage(
         requestCount: 1,
         tokenCount: promptTokens,
         cachedTokenCount: cachedPromptTokens,
+        ...(uncachedPromptTokens === undefined ? {} : { uncachedTokenCount: uncachedPromptTokens }),
       },
-      validUsage: { promptTokens, completionTokens, totalTokens, cachedPromptTokens, reasoningTokens },
+      validUsage: { promptTokens, completionTokens, totalTokens, cachedPromptTokens, uncachedPromptTokens, reasoningTokens },
     };
   }
   const status: CacheObservationStatus = cachedPromptTokens === 0
@@ -294,9 +290,10 @@ export function classifyProviderCacheUsage(
       requestCount: 1,
       tokenCount: promptTokens,
       cachedTokenCount: cachedPromptTokens,
+      ...(uncachedPromptTokens === undefined ? {} : { uncachedTokenCount: uncachedPromptTokens }),
       hitRatio: cachedPromptTokens / promptTokens,
     },
-    validUsage: { promptTokens, completionTokens, totalTokens, cachedPromptTokens, reasoningTokens },
+    validUsage: { promptTokens, completionTokens, totalTokens, cachedPromptTokens, uncachedPromptTokens, reasoningTokens },
   };
 }
 
@@ -305,6 +302,7 @@ export interface ValidProviderUsage {
   readonly completionTokens: number;
   readonly totalTokens?: number;
   readonly cachedPromptTokens?: number;
+  readonly uncachedPromptTokens?: number;
   readonly reasoningTokens?: number;
 }
 
@@ -640,6 +638,13 @@ function validateProviderUsage(usage: NonNullable<ChatResponse['usage']>): strin
   }
   if (usage.cachedPromptTokens !== undefined && !isCounter(usage.cachedPromptTokens)) return 'cached_prompt_tokens_invalid';
   if (usage.cachedPromptTokens !== undefined && usage.cachedPromptTokens > usage.promptTokens) return 'cached_prompt_tokens_exceed_prompt';
+  // The split must stay disjoint: uncached + cached may not exceed the prompt.
+  if (usage.uncachedPromptTokens !== undefined && !isCounter(usage.uncachedPromptTokens)) return 'uncached_prompt_tokens_invalid';
+  if (usage.uncachedPromptTokens !== undefined
+    && usage.cachedPromptTokens !== undefined
+    && usage.cachedPromptTokens + usage.uncachedPromptTokens > usage.promptTokens) {
+    return 'cache_split_exceeds_prompt';
+  }
   if (usage.reasoningTokens !== undefined && !isCounter(usage.reasoningTokens)) return 'reasoning_tokens_invalid';
   return undefined;
 }

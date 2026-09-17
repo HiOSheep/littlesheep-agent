@@ -339,7 +339,12 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
       maxNoProgressRounds: 2,
     },
   });
-  writeMemoryState(ctx, 'runner-init', { sessionSummary: sessionMetadata?.compaction });
+  // A summary produced before the latest correction/forget must not be injected
+  // as current memory; the user's explicit revocation wins over cached prose.
+  const summary = sessionMetadata?.compaction;
+  const revokedAt = sessionMetadata?.memoryRevokedAt;
+  const summaryIsRevoked = Boolean(summary && revokedAt && summary.compactedAt < revokedAt);
+  writeMemoryState(ctx, 'runner-init', { sessionSummary: summaryIsRevoked ? undefined : summary });
 
   return ctx;
 }

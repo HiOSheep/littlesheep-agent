@@ -66,6 +66,14 @@ describe('model request lifecycle accounting', () => {
       totalTokens: 110,
       cachedPromptTokens: 40,
       reasoningTokens: 3,
+      durationMs: 500,
+      requestElapsedMs: 650,
+      transportAttempt: 2,
+      observedAttemptCount: 2,
+      ttftMs: 100,
+      contentTtftMs: 140,
+      reasoningTtftMs: 100,
+      toolArgumentsTtftMs: 180,
     });
     await flushModelRequestLifecycles(ctx);
 
@@ -86,7 +94,13 @@ describe('model request lifecycle accounting', () => {
         cachedPromptTokens: 40,
         cacheStatus: 'partial',
         reconciliation: 'unavailable',
+        contentTtftMs: 140,
+        reasoningTtftMs: 100,
+        toolArgumentsTtftMs: 180,
       },
+      transportAttempt: 2,
+      observedAttemptCount: 2,
+      contentTtftMs: 140,
     });
     expect(projection.modelRequests[0]?.cacheObservation?.stablePrefix.fingerprint)
       .toBe(ctx.modelRequests?.[0]?.cacheObservation?.stablePrefix.fingerprint);
@@ -148,7 +162,13 @@ describe('model request lifecycle accounting', () => {
       payload: {},
     });
     const prepared = prepareModelRequest(ctx, 'reply', request(true));
-    recordProviderUsage(ctx, prepared, undefined);
+    recordProviderUsage(ctx, prepared, undefined, {
+      durationMs: 420,
+      requestElapsedMs: 500,
+      transportAttempt: 1,
+      observedAttemptCount: 1,
+      contentTtftMs: 120,
+    });
     await flushModelRequestLifecycles(ctx);
 
     const projection = reduceDurableRunProjection(events);
@@ -156,6 +176,8 @@ describe('model request lifecycle accounting', () => {
       usageStatus: 'unavailable',
       providerReachStatus: 'reached',
       transportStatus: 'completed',
+      durationMs: 420,
+      contentTtftMs: 120,
     });
     expect(projection.modelRequests[0]?.providerUsage).toBeUndefined();
     expect(projection.modelRequests[0]?.cacheObservation?.providerPrompt).toMatchObject({

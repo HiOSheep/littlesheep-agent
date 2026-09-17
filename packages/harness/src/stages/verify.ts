@@ -7,6 +7,7 @@ import {
 import { requestVerificationVerdict } from './verify/model-call.js';
 import {
   escalateExhaustedReplan,
+  invalidateUnverifiedReply,
   publishVerifiedReply,
   recordVerification,
   routeKnownIncompleteExecution,
@@ -16,8 +17,8 @@ import {
 import {
   canRecoverWithPartialReplan,
   deriveReplanTargets,
-  hasIncompleteTaskExecution,
   installPartialReplan,
+  runtimeExecutionEvidenceGap,
 } from './verify/task-state.js';
 import { acceptedUsedMemoryAtomIds } from './verify/memory-evidence.js';
 import { writeReplanState } from '../replan-state.js';
@@ -48,12 +49,13 @@ export function createVerifyStage(deps: VerifyStageDeps) {
       return routeKnownIncompleteExecution(ctx, replanAttempts, maxReplan, 'verdict decode failed', { decodeFailure: true });
     }
     if (parsed.verdict === 'pass') {
-      if (hasIncompleteTaskExecution(ctx)) {
+      const executionGap = runtimeExecutionEvidenceGap(ctx);
+      if (executionGap) {
         return routeKnownIncompleteExecution(
           ctx,
           replanAttempts,
           maxReplan,
-          'verifier returned pass despite failed or missing step evidence',
+          `verifier returned pass despite ${executionGap}`,
           { structuralOverride: true },
         );
       }
@@ -76,6 +78,7 @@ export function createVerifyStage(deps: VerifyStageDeps) {
     const shouldPartialReplan = parsed.verdict === 'needs_replan'
       || (parsed.verdict === 'fail' && canRecoverWithPartialReplan(ctx, targetStepIds));
     if (parsed.verdict === 'fail' && !shouldPartialReplan) {
+      invalidateUnverifiedReply(ctx);
       const message = `verify failed: ${parsed.reason ?? 'tool error detected'}`;
       recordFailure(ctx, 'verify', 'verify', message);
       await recordVerification(ctx, {
@@ -97,6 +100,7 @@ export function createVerifyStage(deps: VerifyStageDeps) {
     const feedback = parsed.feedback ?? reason;
     if (replanAttempts >= maxReplan) return escalateExhaustedReplan(ctx, reason, feedback);
 
+    invalidateUnverifiedReply(ctx);
     const nextReplanAttempts = replanAttempts + 1;
     writeReplanState(ctx, 'verify', {
       replanAttempts: nextReplanAttempts,

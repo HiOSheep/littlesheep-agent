@@ -132,8 +132,10 @@ function summarizeLedger(ledgers: readonly CacheLedgerObservation[]): CacheLedge
   const reasonCounts = new Map<string, number>();
   let tokenCount = 0;
   let cachedTokenCount = 0;
+  let uncachedTokenCount = 0;
   let tokensComplete = ledgers.length > 0;
   let cachedTokensComplete = ledgers.length > 0;
+  let uncachedTokensComplete = ledgers.length > 0;
 
   for (const ledger of ledgers) {
     statusCounts[ledger.status] += 1;
@@ -142,6 +144,8 @@ function summarizeLedger(ledgers: readonly CacheLedgerObservation[]): CacheLedge
     else tokensComplete = false;
     if (isNonNegativeInteger(ledger.cachedTokenCount)) cachedTokenCount += ledger.cachedTokenCount;
     else cachedTokensComplete = false;
+    if (isNonNegativeInteger(ledger.uncachedTokenCount)) uncachedTokenCount += ledger.uncachedTokenCount;
+    else uncachedTokensComplete = false;
   }
 
   const hitRatio = tokensComplete && cachedTokensComplete && tokenCount > 0
@@ -151,6 +155,7 @@ function summarizeLedger(ledgers: readonly CacheLedgerObservation[]): CacheLedge
     statusCounts: Object.freeze(statusCounts),
     ...(tokensComplete ? { tokenCount } : {}),
     ...(cachedTokensComplete ? { cachedTokenCount } : {}),
+    ...(uncachedTokensComplete ? { uncachedTokenCount } : {}),
     ...(hitRatio === undefined ? {} : { hitRatio }),
     reasonCounts: Object.freeze([...reasonCounts.entries()]
       .map(([reason, count]) => ({ reason, count }))

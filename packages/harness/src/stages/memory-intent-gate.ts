@@ -302,6 +302,7 @@ function decisionRecord(
     evidenceRefs: Object.freeze([...proposal.evidenceRefs]),
     writeIntentId: proposal.writeIntent?.id,
     repositoryDecision: writeResult?.decision,
+    ...(writeResult?.embeddingReuse === undefined ? {} : { embeddingReuse: writeResult.embeddingReuse }),
     createdAt,
   });
 }

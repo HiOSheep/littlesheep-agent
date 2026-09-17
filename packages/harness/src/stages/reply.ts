@@ -2,7 +2,12 @@
 // REPLY: chat-classified messages get a simple LLM reply (no tools).
 
 import type { RunContext, StageResult, UserFacingReplyPurpose } from '@littlesheep/types';
-import type { LlmClient, ChatMessage, ChatRequest } from '@littlesheep/llm';
+import {
+  containsUnquotedDsmlControlMarkup,
+  type LlmClient,
+  type ChatMessage,
+  type ChatRequest,
+} from '@littlesheep/llm';
 import type { Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
 import { assembleSystemPromptBundle, resolvePromptConfig } from '@littlesheep/prompt';
@@ -19,8 +24,8 @@ import {
   prepareModelRequest,
   callModelChat,
   callModelChatStream,
+  modelRequestIdFor,
 } from '../model-observability.js';
-import { writeProviderUsageState } from '../usage-state.js';
 import { buildRunRequestCandidates } from '../context-candidates.js';
 import {
   acceptUniqueUserFacingReply,
@@ -30,7 +35,6 @@ import { clearReplyState } from '../reply-state.js';
 import { recordFailure } from '../failure-state.js';
 import { synthesizeFinalReply } from './execute/final-reply.js';
 import { repairDiscontinuousReply } from './reply/continuity-repair.js';
-import { emitSystemPromptTranscript } from '../system-prompt-transcript.js';
 
 export interface ReplyStageDeps {
   llm: LlmClient;
@@ -93,10 +97,6 @@ export function createReplyStage(deps: ReplyStageDeps) {
       { id: 'user-facing-voice', text: buildUserFacingVoiceAddon(ctx), placement: isCapabilityReply ? 'stable' : undefined },
     ]);
 
-    // The durable path shows the user the exact prompt the run is using
-    // (identity, SOUL/USER, memory index, contracts). The legacy path keeps
-    // its previous hidden-prompt behaviour.
-    emitSystemPromptTranscript(ctx, systemPrompt.text);
     const attachmentMessages = isCapabilityReply ? [] : attachmentContextMessages(ctx.runId, ctx.attachments);
     const history = isCapabilityReply ? [] : recentHistoryForModel(ctx.history, 8, 6_000);
     const messages: ChatMessage[] = [
@@ -116,6 +116,8 @@ export function createReplyStage(deps: ReplyStageDeps) {
     const transcriptEnabled = ctx.streamModelTranscript === true && typeof ctx.onToolEvent === 'function';
     const replyPhaseId = `reply:${ctx.runId ?? 'run'}`;
     let replyReasoning = '';
+    let replyAttempt = 1;
+    let replySequence = 0;
     try {
       const stream = ctx.onAssistantDelta !== undefined;
       const rawRequest = {
@@ -136,17 +138,36 @@ export function createReplyStage(deps: ReplyStageDeps) {
           insertedBeforePrimary: attachmentMessages.map((item) => item.context),
         }),
       );
+      const replyRequestId = modelRequestIdFor(req);
       const res = stream
         ? await callModelChatStream(ctx, deps.llm, req, (chunk) => {
             if (chunk.type === 'reset') {
+              replyAttempt = chunk.transportAttempt ?? replyAttempt + 1;
+              replySequence = 0;
               streamed = '';
+              replyReasoning = '';
+              if (transcriptEnabled) {
+                emitReplyThinking(ctx, replyPhaseId, '', 'reset', replyRequestId, replyAttempt, ++replySequence);
+              }
               ctx.onAssistantReplace?.('');
               return;
             }
             if (chunk.type === 'reasoning_delta' && chunk.delta) {
               if (transcriptEnabled) {
+                if (chunk.transportAttempt && chunk.transportAttempt !== replyAttempt) {
+                  replyAttempt = chunk.transportAttempt;
+                  replySequence = 0;
+                }
                 replyReasoning = boundedReasoningText(replyReasoning + chunk.delta);
-                emitReplyThinking(ctx, replyPhaseId, replyReasoning, true);
+                emitReplyThinking(
+                  ctx,
+                  replyPhaseId,
+                  chunk.delta,
+                  'append',
+                  replyRequestId,
+                  replyAttempt,
+                  ++replySequence,
+                );
               }
               return;
             }
@@ -156,12 +177,11 @@ export function createReplyStage(deps: ReplyStageDeps) {
             }
           })
         : await callModelChat(ctx, deps.llm, req);
-      writeProviderUsageState(ctx, 'reply', res.usage);
       const rawReply = res.content || streamed;
       // A respond request deliberately has no tool authority. Provider-emitted
       // control syntax is a protocol failure, not permission to upgrade this
       // run into an executing route.
-      if (containsDsmlControlMarkup(rawReply)) {
+      if (containsUnquotedDsmlControlMarkup(rawReply)) {
         ctx.onAssistantReplace?.('');
         const message = 'respond provider returned tool control markup without tool authority';
         recordFailure(ctx, 'reply', 'reply', message);
@@ -174,7 +194,15 @@ export function createReplyStage(deps: ReplyStageDeps) {
         };
       }
       if (transcriptEnabled && replyReasoning.trim()) {
-        emitReplyThinking(ctx, replyPhaseId, replyReasoning, false);
+        emitReplyThinking(
+          ctx,
+          replyPhaseId,
+          replyReasoning,
+          'replace',
+          replyRequestId,
+          replyAttempt,
+          ++replySequence,
+        );
       }
       const apiGeneratedReply = isCapabilityReply
         ? res.content || streamed
@@ -215,10 +243,6 @@ export function createReplyStage(deps: ReplyStageDeps) {
   };
 }
 
-function containsDsmlControlMarkup(value: string): boolean {
-  return /<\s*[｜|]{1,2}\s*DSML\s*[｜|]{1,2}\s*(?:calls|tool_calls|invoke|parameter)\b/iu.test(value);
-}
-
 async function rewriteReply(
   deps: ReplyStageDeps,
   ctx: RunContext,
@@ -257,10 +281,9 @@ async function rewriteReply(
       history: isCapabilityReply ? [] : recentHistoryForModel(ctx.history, 8, 6_000),
       primaryUserKind: 'user_input',
     }),
-    { retryOf: ctx.modelRequests?.at(-1)?.id },
+    { retryOf: ctx.modelRequests?.at(-1)?.id, retryReason: 'duplicate' },
   );
   const response = await callModelChat(ctx, deps.llm, request);
-  writeProviderUsageState(ctx, 'reply', response.usage);
   return response.content;
 }
 
@@ -280,7 +303,10 @@ function emitReplyThinking(
   ctx: RunContext,
   phaseId: string,
   text: string,
-  streaming: boolean,
+  operation: 'append' | 'replace' | 'reset',
+  requestId: string | undefined,
+  transportAttempt: number,
+  sequence: number,
 ): void {
   try {
     ctx.onToolEvent?.({
@@ -288,8 +314,16 @@ function emitReplyThinking(
       visibility: 'progress',
       stage: 'reply',
       phaseId,
-      reasoningStatus: streaming ? 'running' : 'done',
-      summary: streaming ? text.slice(-240) : text,
+      reasoningStatus: operation === 'replace' ? 'done' : 'running',
+      summary: text,
+      ...(requestId ? { streamRef: {
+        version: 1,
+        runId: ctx.runId,
+        requestId,
+        transportAttempt,
+        sequence,
+        operation,
+      } } : {}),
     });
   } catch {
     // Thinking delivery is cosmetic; never fail the answer because of it.

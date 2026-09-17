@@ -60,6 +60,8 @@ export interface DecodedPlanStep {
     input?: unknown;
   };
   requiresApproval?: boolean;
+  /** Lean v2 wire dependency list; Runtime expands it into serial execution policy. */
+  dependsOn?: unknown;
   execution?: {
     mode?: unknown;
     dependsOn?: unknown;
@@ -70,6 +72,20 @@ export interface DecodedPlanStep {
   expectedOutput?: string;
   status?: unknown;
 }
+
+/**
+ * Lean wire -> internal contract ownership:
+ * - assessment goal/criteria/complexity -> NeedAssessment
+ * - taskBook.steps intent/dependencies/criteria -> PlanStep[]
+ * - Runtime derives stable missing ids, initial status, scope ratio, approval,
+ *   resources, side-effect class, scheduling fallback, and TaskBook envelope.
+ */
+export const DECIDE_WIRE_FIELD_MAP = Object.freeze({
+  assessment: ['userNeed', 'complexity', 'goal', 'successCriteria', 'missingInfo', 'needsClarification', 'rationale'],
+  clarification: ['blockingReason', 'questions'],
+  step: ['id', 'title', 'description', 'tools', 'toolProposal', 'dependsOn', 'acceptanceCriteria', 'expectedOutput'],
+  runtimeDerived: ['status', 'requiresTaskBook', 'maxExtraScopeRatio', 'requiresApproval', 'resources', 'sideEffect', 'executionMode', 'overdeliveryPolicy'],
+} as const);
 
 export const DECIDE_SYSTEM_PROMPT = `You are the DECIDE stage of a hard-control-flow agent.
 First calibrate the user's actual need, then decompose it into concrete steps.
@@ -83,8 +99,6 @@ Return ONLY a JSON object, no markdown:
     "successCriteria": ["what must be true to count as done"],
     "missingInfo": [],
     "needsClarification": false,
-    "requiresTaskBook": true,
-    "maxExtraScopeRatio": 1.5,
     "rationale": "short reason"
   },
   "clarification": {
@@ -100,26 +114,13 @@ Return ONLY a JSON object, no markdown:
     ]
   },
   "taskBook": {
-    "goal": "same concrete goal",
-    "complexity": "trivial|simple|standard|complex",
-    "successCriteria": ["what must be true to count as done"],
-    "overdeliveryPolicy": {
-      "maxExtraScopeRatio": 1.5,
-      "guidance": "slightly exceed expectations only when it helps; never exceed 3x scope/cost"
-    },
     "steps": [
       {
         "id": "step-1",
         "title": "short label",
         "description": "step description",
         "tools": ["toolName1"],
-        "requiresApproval": false,
-        "execution": {
-          "mode": "serial|parallel",
-          "dependsOn": ["earlier-step-id"],
-          "resources": [{"key":"workspace:relative/path","mode":"read|write"}],
-          "sideEffect": "none|read|write|external"
-        },
+        "dependsOn": ["earlier-step-id"],
         "acceptanceCriteria": ["how this step is complete"],
         "expectedOutput": "artifact or result"
       }
@@ -139,12 +140,8 @@ Rules:
 - Each step must have a non-empty "description".
 - "tools" lists tool names this step may use (from the available tools list). Omit if none.
 - "toolProposal" is optional and is only valid when a separate Runtime block supplies one explicit tool schema. It has shape {"name":"exactToolName","input":{...}} and remains a proposal until Runtime validation.
-- "requiresApproval" is true for steps that should pause for user approval.
-- Omit "execution" unless the scheduling contract is complete. Missing or unsafe contracts run serially.
-- Use mode="parallel" only for genuinely independent work. dependsOn may reference earlier stable step ids only.
-- Parallel steps must list the complete resource envelope. Use workspace:<relative path> for files/directories and stable names for non-file resources.
-- Parallel steps may use only explicitly listed parallel-safe tools. Use tools=[] for a pure model step; do not omit tools on a parallel step.
-- sideEffect is the highest expected class. external effects and approval-requiring steps always run serially.
+- "dependsOn" may reference earlier step ids only. Runtime chooses serial/parallel scheduling from validated tool/resource facts.
+- Do not propose approval decisions, resource envelopes, side-effect classes, initial status, or scope ratios; Runtime owns them.
 - Keep plans minimal: prefer 1-3 steps unless the task is genuinely complex. Never invent tool names.
 
 Compatibility: if you cannot produce taskBook, return the old {"plan":[...]} shape.`;

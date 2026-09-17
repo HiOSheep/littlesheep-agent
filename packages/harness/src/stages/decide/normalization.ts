@@ -9,7 +9,6 @@ import type { DecodedPlan, DecodedPlanStep } from './contracts.js';
 import { normalizeToolProposal } from './tool-proposal.js';
 
 const COMPLEXITIES: readonly TaskComplexity[] = ['trivial', 'simple', 'standard', 'complex'];
-const STEP_STATUSES = new Set(['pending', 'in_progress', 'done', 'blocked', 'skipped']);
 
 export function buildClarificationRequest(
   parsed: DecodedPlan,
@@ -85,9 +84,6 @@ export function normalizePlan(
       ? rawTools.filter((tool): tool is string => typeof tool === 'string' && availableToolNames.has(tool))
       : undefined;
     const acceptanceCriteria = asStringArray(step.acceptanceCriteria).map((item) => item.trim()).filter(Boolean);
-    const status = typeof step.status === 'string' && STEP_STATUSES.has(step.status)
-      ? step.status as PlanStep['status']
-      : undefined;
     const toolProposal = normalizeToolProposal(
       step.toolProposal,
       tools,
@@ -101,10 +97,12 @@ export function normalizePlan(
       tools,
       toolProposal,
       requiresApproval: step.requiresApproval === true ? true : undefined,
-      execution: normalizeStepExecution(step.execution),
+      execution: normalizeStepExecution(step.execution, step.dependsOn),
       acceptanceCriteria: acceptanceCriteria.length > 0 ? acceptanceCriteria : undefined,
       expectedOutput: cleanString(step.expectedOutput),
-      status,
+      // A model-authored plan cannot attest that work has already completed.
+      // Resume/replan adoption merges durable step state after normalization.
+      status: 'pending',
     });
   }
   return plan;
@@ -160,15 +158,18 @@ function collectFallbackToolNames(
   return [...names];
 }
 
-function normalizeStepExecution(value: DecodedPlanStep['execution']): PlanStep['execution'] {
-  if (!value || (value.mode !== 'serial' && value.mode !== 'parallel')) return undefined;
-  const dependsOn = Array.isArray(value.dependsOn)
-    ? [...new Set(value.dependsOn
+function normalizeStepExecution(
+  value: DecodedPlanStep['execution'],
+  leanDependsOn: DecodedPlanStep['dependsOn'],
+): PlanStep['execution'] {
+  const rawDependsOn = value?.dependsOn ?? leanDependsOn;
+  const dependsOn = Array.isArray(rawDependsOn)
+    ? [...new Set(rawDependsOn
         .filter((item): item is string => typeof item === 'string')
         .map((item) => item.trim())
         .filter(Boolean))].slice(0, 16)
     : [];
-  const resources = Array.isArray(value.resources)
+  const resources = Array.isArray(value?.resources)
     ? value.resources.flatMap((item) => {
         if (!item || typeof item !== 'object') return [];
         const resource = item as Record<string, unknown>;
@@ -177,14 +178,17 @@ function normalizeStepExecution(value: DecodedPlanStep['execution']): PlanStep['
         return [{ key, mode: resource.mode as 'read' | 'write' }];
       }).slice(0, 32)
     : [];
-  const sideEffect = value.sideEffect === 'none'
-    || value.sideEffect === 'read'
-    || value.sideEffect === 'write'
-    || value.sideEffect === 'external'
+  const sideEffect = value?.sideEffect === 'none'
+    || value?.sideEffect === 'read'
+    || value?.sideEffect === 'write'
+    || value?.sideEffect === 'external'
       ? value.sideEffect
       : undefined;
+  if (!value && dependsOn.length === 0) return undefined;
   return {
-    mode: value.mode,
+    // Lean wire dependencies remain serial until Runtime has a complete,
+    // validated parallel resource envelope from the compatibility contract.
+    mode: value?.mode === 'parallel' || value?.mode === 'serial' ? value.mode : 'serial',
     ...(dependsOn.length > 0 ? { dependsOn } : {}),
     ...(resources.length > 0 ? { resources } : {}),
     ...(sideEffect ? { sideEffect } : {}),

@@ -9,7 +9,6 @@ import type {
   DurableInboxCommand,
   DurableModelRequestStatus,
   DurableModelTransportStatus,
-  DurableProviderUsageProjection,
   DurableRunProjection,
 } from '@littlesheep/types';
 import {
@@ -20,6 +19,7 @@ import {
 } from '@littlesheep/types';
 import { readEffectReconciliationKey } from './effect-reconciliation-key.js';
 import { DurableKernelError } from './durable-kernel-error.js';
+export { readProviderTransportTiming, readProviderUsage } from './durable-provider-usage-codec.js';
 
 export function validateEventInput(input: DurableHarnessEventAppendInput): void {
   if (typeof input.sessionId !== 'string' || typeof input.runId !== 'string' || typeof input.idempotencyKey !== 'string'
@@ -190,145 +190,16 @@ export function isProviderReachStatus(value: unknown): value is 'reached' | 'not
   return value === 'reached' || value === 'not_reached' || value === 'unknown';
 }
 
-export function readProviderUsage(payload: Record<string, unknown>): DurableProviderUsageProjection | undefined {
-  const promptTokens = payload.promptTokens;
-  const completionTokens = payload.completionTokens;
-  if (!Number.isSafeInteger(promptTokens) || (promptTokens as number) < 0
-    || !Number.isSafeInteger(completionTokens) || (completionTokens as number) < 0) {
-    if (payload.usageStatus === 'available') {
-      throw new DurableKernelError('provider usage requires non-negative integer prompt/completion tokens', 'invalid');
-    }
-    return undefined;
-  }
-  const totalTokens = optionalNonNegativeInteger(payload.totalTokens, 'totalTokens');
-  const cachedPromptTokens = optionalNonNegativeInteger(payload.cachedPromptTokens, 'cachedPromptTokens');
-  const reasoningTokens = optionalNonNegativeInteger(payload.reasoningTokens, 'reasoningTokens');
-  const cacheStatus = payload.cacheStatus;
-  if (cacheStatus !== 'hit' && cacheStatus !== 'miss' && cacheStatus !== 'partial'
-    && cacheStatus !== 'unavailable' && cacheStatus !== 'unknown') {
-    throw new DurableKernelError('provider usage requires a cache status', 'invalid');
-  }
-  const reconciliation = payload.reconciliation;
-  if (reconciliation !== 'exact_match' && reconciliation !== 'within_tolerance'
-    && reconciliation !== 'mismatch' && reconciliation !== 'unavailable') {
-    throw new DurableKernelError('provider usage requires a local reconciliation status', 'invalid');
-  }
-  const promptTokenCount = promptTokens as number;
-  const completionTokenCount = completionTokens as number;
-  if (cachedPromptTokens !== undefined && cachedPromptTokens > promptTokenCount) {
-    throw new DurableKernelError('cached prompt tokens cannot exceed prompt tokens', 'invalid');
-  }
-  if (totalTokens !== undefined && totalTokens < promptTokenCount + completionTokenCount) {
-    throw new DurableKernelError('total tokens cannot be below prompt plus completion tokens', 'invalid');
-  }
-  const localCalibration = readLocalTokenCalibration(
-    payload.localCalibration,
-    promptTokenCount,
-    reconciliation,
-  );
-  return {
-    promptTokens: promptTokenCount,
-    completionTokens: completionTokenCount,
-    ...(totalTokens === undefined ? {} : { totalTokens }),
-    ...(cachedPromptTokens === undefined ? {} : { cachedPromptTokens }),
-    ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
-    cacheStatus,
-    reconciliation,
-    ...(localCalibration ? { localCalibration } : {}),
-  };
-}
-
-function readLocalTokenCalibration(
+export function isModelRetryReason(
   value: unknown,
-  providerPromptTokens: number,
-  reconciliation: DurableProviderUsageProjection['reconciliation'],
-): NonNullable<DurableProviderUsageProjection['localCalibration']> | undefined {
-  if (value === undefined) {
-    if (reconciliation !== 'unavailable') {
-      throw new DurableKernelError('provider usage reconciliation requires local calibration evidence', 'invalid');
-    }
-    return undefined;
-  }
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new DurableKernelError('provider usage local calibration must be an object', 'invalid');
-  }
-  const record = value as Record<string, unknown>;
-  assertAllowedKeys(record, [
-    'version',
-    'tokenizerId',
-    'localPromptTokens',
-    'differenceTokens',
-    'relativeDifference',
-    'status',
-  ], 'providerUsage.localCalibration');
-  if (record.version !== 1) {
-    throw new DurableKernelError('provider usage local calibration version is unsupported', 'invalid');
-  }
-  const tokenizerId = boundedProjectionString(
-    record.tokenizerId,
-    'providerUsage.localCalibration.tokenizerId',
-    128,
-  );
-  const localPromptTokens = requiredNonNegativeInteger(
-    record.localPromptTokens,
-    'providerUsage.localCalibration.localPromptTokens',
-  );
-  const differenceTokens = requiredSafeInteger(
-    record.differenceTokens,
-    'providerUsage.localCalibration.differenceTokens',
-  );
-  const relativeDifference = requiredFiniteNonNegativeNumber(
-    record.relativeDifference,
-    'providerUsage.localCalibration.relativeDifference',
-  );
-  const status = record.status;
-  if (status !== 'exact_match' && status !== 'within_tolerance' && status !== 'drift') {
-    throw new DurableKernelError('provider usage local calibration status is invalid', 'invalid');
-  }
-  if (differenceTokens !== providerPromptTokens - localPromptTokens) {
-    throw new DurableKernelError(
-      'provider usage local calibration difference does not match prompt tokens',
-      'invalid',
-    );
-  }
-  const expectedRelativeDifference = providerPromptTokens === 0
-    ? (differenceTokens === 0 ? 0 : 1)
-    : Math.abs(differenceTokens) / providerPromptTokens;
-  if (Math.abs(relativeDifference - expectedRelativeDifference) > 1e-9) {
-    throw new DurableKernelError(
-      'provider usage local calibration relative difference is inconsistent',
-      'invalid',
-    );
-  }
-  const expectedReconciliation = status === 'drift' ? 'mismatch' : status;
-  if (reconciliation !== expectedReconciliation) {
-    throw new DurableKernelError(
-      'provider usage reconciliation does not match local calibration',
-      'invalid',
-    );
-  }
-  return {
-    version: 1,
-    tokenizerId,
-    localPromptTokens,
-    differenceTokens,
-    relativeDifference,
-    status,
-  };
-}
-
-function requiredSafeInteger(value: unknown, label: string): number {
-  if (!Number.isSafeInteger(value)) {
-    throw new DurableKernelError(`${label} must be a safe integer`, 'invalid');
-  }
-  return value as number;
-}
-
-function requiredFiniteNonNegativeNumber(value: unknown, label: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-    throw new DurableKernelError(`${label} must be a finite non-negative number`, 'invalid');
-  }
-  return value;
+): value is 'empty_output' | 'length' | 'decode' | 'schema' | 'duplicate' | 'citation' | 'continuity' {
+  return value === 'empty_output'
+    || value === 'length'
+    || value === 'decode'
+    || value === 'schema'
+    || value === 'duplicate'
+    || value === 'citation'
+    || value === 'continuity';
 }
 
 /** Validate redacted cache evidence before it enters a durable projection. */
@@ -494,7 +365,7 @@ function readCacheLedger(value: unknown, label: string): CacheObservation['provi
     throw new DurableKernelError(`${label} must be an object`, 'invalid');
   }
   const record = value as Record<string, unknown>;
-  assertAllowedKeys(record, ['kind', 'status', 'reason', 'requestCount', 'tokenCount', 'cachedTokenCount', 'hitRatio'], label);
+  assertAllowedKeys(record, ['kind', 'status', 'reason', 'requestCount', 'tokenCount', 'cachedTokenCount', 'uncachedTokenCount', 'hitRatio'], label);
   const kind = record.kind;
   if (kind !== 'provider_prompt' && kind !== 'ls_context' && kind !== 'memory_embedding') {
     throw new DurableKernelError(`${label}.kind is invalid`, 'invalid');
@@ -506,8 +377,14 @@ function readCacheLedger(value: unknown, label: string): CacheObservation['provi
   if (record.requestCount !== 1) throw new DurableKernelError(`${label}.requestCount must be 1`, 'invalid');
   const tokenCount = optionalNonNegativeInteger(record.tokenCount, `${label}.tokenCount`);
   const cachedTokenCount = optionalNonNegativeInteger(record.cachedTokenCount, `${label}.cachedTokenCount`);
+  const uncachedTokenCount = optionalNonNegativeInteger(record.uncachedTokenCount, `${label}.uncachedTokenCount`);
   if (tokenCount !== undefined && cachedTokenCount !== undefined && cachedTokenCount > tokenCount) {
     throw new DurableKernelError(`${label}.cachedTokenCount exceeds tokenCount`, 'invalid');
+  }
+  // The provider split must stay disjoint.
+  if (tokenCount !== undefined && cachedTokenCount !== undefined && uncachedTokenCount !== undefined
+    && cachedTokenCount + uncachedTokenCount > tokenCount) {
+    throw new DurableKernelError(`${label}.cachedTokenCount plus uncachedTokenCount exceeds tokenCount`, 'invalid');
   }
   const hitRatio = record.hitRatio;
   if (hitRatio !== undefined && (typeof hitRatio !== 'number' || !Number.isFinite(hitRatio) || hitRatio < 0 || hitRatio > 1)) {
@@ -520,6 +397,7 @@ function readCacheLedger(value: unknown, label: string): CacheObservation['provi
     requestCount: 1,
     ...(tokenCount === undefined ? {} : { tokenCount }),
     ...(cachedTokenCount === undefined ? {} : { cachedTokenCount }),
+    ...(uncachedTokenCount === undefined ? {} : { uncachedTokenCount }),
     ...(hitRatio === undefined ? {} : { hitRatio }),
   });
 }

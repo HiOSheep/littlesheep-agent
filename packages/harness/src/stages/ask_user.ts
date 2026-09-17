@@ -18,7 +18,6 @@ import {
   prepareModelRequest,
   callModelChat,
 } from '../model-observability.js';
-import { writeProviderUsageState } from '../usage-state.js';
 import { appendSystemPromptAddons, buildUserFacingVoiceAddon } from '../profile-prompt.js';
 import { textOf } from './_shared.js';
 import { acceptUniqueUserFacingReply, type ReplyRewriteInput } from '../user-facing-reply.js';
@@ -144,7 +143,6 @@ async function composeClarificationMessage(
       }),
     );
     const response = await callModelChat(ctx, deps.llm, prepared);
-    writeProviderUsageState(ctx, 'ask_user', response.usage);
     if (response.content.trim()) return response.content;
     maxTokens = 640;
   }

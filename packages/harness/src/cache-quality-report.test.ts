@@ -97,6 +97,7 @@ describe('CACHE-09/10 cache quality report', () => {
           providerPrompt: ledger('provider_prompt', 'hit', {
             tokenCount: 100,
             cachedTokenCount: 100,
+            uncachedTokenCount: 0,
             hitRatio: 1,
           }),
         }),
@@ -105,6 +106,7 @@ describe('CACHE-09/10 cache quality report', () => {
           providerPrompt: ledger('provider_prompt', 'partial', {
             tokenCount: 100,
             cachedTokenCount: 40,
+            uncachedTokenCount: 60,
             hitRatio: 0.4,
           }),
         }),
@@ -113,6 +115,7 @@ describe('CACHE-09/10 cache quality report', () => {
           providerPrompt: ledger('provider_prompt', 'miss', {
             tokenCount: 100,
             cachedTokenCount: 0,
+            uncachedTokenCount: 100,
             hitRatio: 0,
           }),
         }),
@@ -125,6 +128,7 @@ describe('CACHE-09/10 cache quality report', () => {
       statusCounts: { hit: 1, miss: 1, partial: 1, unavailable: 0, unknown: 0 },
       tokenCount: 300,
       cachedTokenCount: 140,
+      uncachedTokenCount: 160,
       hitRatio: 140 / 300,
     });
     expect(report.lsContext.statusCounts).toEqual({ hit: 0, miss: 0, partial: 0, unavailable: 3, unknown: 0 });
@@ -138,6 +142,55 @@ describe('CACHE-09/10 cache quality report', () => {
     expect(report.releaseGate.reasons).toContain('real_provider_reconciliation_not_verified');
   });
 
+  it('stops blocking on the context ledger once the Context Engine reports reuse', () => {
+    const report = buildCacheQualityReport({
+      observations: [
+        observation({
+          modelRequestId: 'r1',
+          providerPrompt: ledger('provider_prompt', 'partial', { tokenCount: 100, cachedTokenCount: 40, uncachedTokenCount: 60, hitRatio: 0.4 }),
+          lsContext: ledger('ls_context', 'hit', { reason: 'context_assembly_reused' }),
+        }),
+        observation({
+          modelRequestId: 'r2',
+          providerPrompt: ledger('provider_prompt', 'partial', { tokenCount: 100, cachedTokenCount: 40, uncachedTokenCount: 60, hitRatio: 0.4 }),
+          lsContext: ledger('ls_context', 'miss', { reason: 'context_assembly_rebuilt' }),
+        }),
+      ],
+      latency: latency(),
+    })
+
+    expect(report.lsContext.statusCounts).toEqual({ hit: 1, miss: 1, partial: 0, unavailable: 0, unknown: 0 })
+    expect(report.releaseGate.reasons).not.toContain('context_cache_not_observed')
+    // The embedding ledger still has no event source, so it stays blocked.
+    expect(report.releaseGate.reasons).toContain('memory_cache_not_observed')
+  })
+
+  it('stops blocking on the embedding ledger once the memory store reports reuse', () => {
+    const report = buildCacheQualityReport({
+      observations: [
+        observation({
+          modelRequestId: 'r1',
+          providerPrompt: ledger('provider_prompt', 'partial', { tokenCount: 100, cachedTokenCount: 40, uncachedTokenCount: 60, hitRatio: 0.4 }),
+          lsContext: ledger('ls_context', 'hit', { reason: 'context_assembly_reused' }),
+          memoryEmbedding: ledger('memory_embedding', 'hit', { reason: 'embedding_reused', tokenCount: 10, cachedTokenCount: 10, uncachedTokenCount: 0, hitRatio: 1 }),
+        }),
+        observation({
+          modelRequestId: 'r2',
+          providerPrompt: ledger('provider_prompt', 'partial', { tokenCount: 100, cachedTokenCount: 40, uncachedTokenCount: 60, hitRatio: 0.4 }),
+          lsContext: ledger('ls_context', 'miss', { reason: 'context_assembly_rebuilt' }),
+          memoryEmbedding: ledger('memory_embedding', 'partial', { reason: 'embedding_partially_reused', tokenCount: 4, cachedTokenCount: 3, uncachedTokenCount: 1, hitRatio: 0.75 }),
+        }),
+      ],
+      latency: latency(),
+    })
+
+    expect(report.memoryEmbedding.statusCounts).toEqual({ hit: 1, miss: 0, partial: 1, unavailable: 0, unknown: 0 })
+    expect(report.memoryEmbedding.cachedTokenCount).toBe(13)
+    expect(report.memoryEmbedding.uncachedTokenCount).toBe(1)
+    expect(report.releaseGate.reasons).not.toContain('memory_cache_not_observed')
+    expect(report.releaseGate.reasons).not.toContain('context_cache_not_observed')
+  })
+
   it('keeps provider usage unavailable instead of inventing a hit ratio', () => {
     const report = buildCacheQualityReport({
       observations: [observation({
@@ -147,6 +200,7 @@ describe('CACHE-09/10 cache quality report', () => {
 
     expect(report.providerPrompt.tokenCount).toBeUndefined();
     expect(report.providerPrompt.cachedTokenCount).toBeUndefined();
+    expect(report.providerPrompt.uncachedTokenCount).toBeUndefined();
     expect(report.providerPrompt.hitRatio).toBeUndefined();
     expect(report.releaseGate.reasons).toContain('provider_usage_incomplete');
     expect(report.releaseGate.reasons).toContain('latency_unavailable');

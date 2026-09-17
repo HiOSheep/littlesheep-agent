@@ -36,7 +36,7 @@ import { processEvolveReparents } from './evolve/hierarchy.js';
 import { processEvolveSubtreeMoves } from './evolve/subtree.js';
 import { processEvolveRevisions } from './evolve/revision.js';
 import { processEvolveCorrections } from './evolve/correction.js';
-import { hasReusableEvolutionSignal } from './evolve/signal.js';
+import { hasExplicitEvolutionRequest, hasReusableEvolutionSignal } from './evolve/signal.js';
 import { parseSkillProposal } from './evolve/skill-proposal.js';
 import { writeMemoryState } from '../memory-state.js';
 
@@ -58,6 +58,7 @@ export interface EvolveStageDeps {
   memoryCorrector?: MemoryAtomCorrectionServiceLike;
   createSkill?: CreateSkillFn;
   llmPolicy?: 'adaptive' | 'always' | 'never';
+  mode?: 'legacy' | 'explicit-only';
 }
 
 interface MemoryProposal {
@@ -185,13 +186,21 @@ function memoryProposals(value: unknown, ctx: RunContext): GatedMemoryProposal[]
 export function createEvolveStage(deps: EvolveStageDeps) {
   return async function evolveStage(ctx: RunContext): Promise<StageResult> {
     const policy = deps.llmPolicy ?? 'always';
-    if (policy === 'never' || (policy === 'adaptive' && !hasReusableEvolutionSignal(ctx))) {
+    const admitted = deps.mode === 'explicit-only'
+      ? hasExplicitEvolutionRequest(ctx)
+      : policy === 'always' || (policy === 'adaptive' && hasReusableEvolutionSignal(ctx));
+    if (policy === 'never' || !admitted) {
       writeMemoryState(ctx, 'evolve', { evolutionNotes: [] });
       return {
         stage: 'evolve',
         next: 'capture',
         ok: true,
-        meta: { skippedModelCall: true, reason: policy === 'never' ? 'disabled' : 'no-reusable-signal' },
+        meta: {
+          skippedModelCall: true,
+          reason: policy === 'never'
+            ? 'disabled'
+            : deps.mode === 'explicit-only' ? 'no-explicit-memory-request' : 'no-reusable-signal',
+        },
       };
     }
     const executionSummary = ctx.taskExecution
@@ -223,7 +232,7 @@ export function createEvolveStage(deps: EvolveStageDeps) {
             history: [],
             primaryUserKind: 'workflow_state',
           }),
-          { retryOf: retry.previousRequestId },
+          { retryOf: retry.previousRequestId, retryReason: retry.previousFailureReason },
         ),
         onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
         beforeRequest: (request) => ensureModelRequestStarted(ctx, request),

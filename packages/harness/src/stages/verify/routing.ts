@@ -11,11 +11,11 @@ import type {
 import { writeReplanState } from '../../replan-state.js';
 import { writeDecisionState } from '../../decision-state.js';
 import { recordFailure } from '../../failure-state.js';
+import { clearReplyState } from '../../reply-state.js';
 import { textOf } from '../_shared.js';
 import {
   canRecoverWithPartialReplan,
   deriveReplanTargets,
-  hasIncompleteTaskExecution,
   installPartialReplan,
 } from './task-state.js';
 
@@ -23,9 +23,6 @@ const RUNTIME_VERIFIABLE_READ_ONLY_TOOLS = new Set([
   'read',
   'grep',
   'glob',
-  'memory_tree',
-  'memory_search',
-  'memory_deep_search',
   'session_status',
 ]);
 
@@ -74,17 +71,23 @@ export async function verifyTrivialReadOnlyExecution(ctx: RunContext): Promise<S
   if (execution?.status !== 'done' || execution.steps.length !== 1) return undefined;
   const step = execution.steps[0]!;
   if (step.status !== 'done' || step.error || !step.output?.trim()) return undefined;
-  if (step.toolResults.length === 0 || step.toolResults.some((result) => !result.ok)) return undefined;
+  if (step.toolResults.length === 0 || step.toolResults.some((result) => !result.ok || result.sanitized)) return undefined;
   if ((ctx.sideEffects?.length ?? 0) > 0) return undefined;
   if (!ctx.reply || ctx.replyProvenance?.source !== 'llm') return undefined;
 
   const expectedCallIds = new Set(step.toolCallIds);
-  const invocations = (ctx.toolInvocations ?? []).filter((invocation) => expectedCallIds.has(invocation.callId));
+  const invocations = ctx.toolInvocations ?? [];
   if (expectedCallIds.size === 0 || invocations.length !== expectedCallIds.size) return undefined;
   if (invocations.some((invocation) => (
     invocation.status !== 'succeeded'
+    || invocation.toolSource !== 'builtin'
+    || invocation.outputTruncated === true
+    || !expectedCallIds.has(invocation.callId)
     || !RUNTIME_VERIFIABLE_READ_ONLY_TOOLS.has(invocation.toolName)
   ))) return undefined;
+  const resultCallIds = new Set(step.toolResults.map((result) => result.callId));
+  if (resultCallIds.size !== expectedCallIds.size
+    || [...expectedCallIds].some((callId) => !resultCallIds.has(callId))) return undefined;
 
   const chinese = /[\u3400-\u9fff]/u.test(textOf(ctx.inbound));
   const reason = chinese
@@ -155,6 +158,8 @@ export async function verifyDeterministicWriteReadExecution(ctx: RunContext): Pr
       const expected = expectedCalls.get(invocation.callId);
       return !expected
         || invocation.status !== 'succeeded'
+        || invocation.toolSource !== 'builtin'
+        || invocation.outputTruncated === true
         || invocation.stepId !== expected.stepId
         || invocation.toolName !== expected.toolName;
     })) {
@@ -211,7 +216,7 @@ function normalizePath(value: string, cwd: string): string {
 function onlySuccessfulToolResult(
   results: readonly import('@littlesheep/types').ToolResult[],
 ): import('@littlesheep/types').ToolResult | undefined {
-  return results.length === 1 && results[0]?.ok ? results[0] : undefined;
+  return results.length === 1 && results[0]?.ok && !results[0].sanitized ? results[0] : undefined;
 }
 
 export async function routeKnownIncompleteExecution(
@@ -221,6 +226,7 @@ export async function routeKnownIncompleteExecution(
   reason: string,
   meta: Record<string, unknown>,
 ): Promise<StageResult> {
+  invalidateUnverifiedReply(ctx);
   const targetStepIds = deriveReplanTargets(ctx, undefined);
   const feedback = `Recorded step evidence is incomplete: ${reason}`;
   if (!canRecoverWithPartialReplan(ctx, targetStepIds)) {
@@ -269,6 +275,7 @@ export async function routeKnownIncompleteExecution(
 }
 
 export async function escalateExhaustedReplan(ctx: RunContext, reason: string, feedback: string): Promise<StageResult> {
+  invalidateUnverifiedReply(ctx);
   const originalRequest = textOf(ctx.inbound);
   const chinese = /[\u3400-\u9fff]/u.test(originalRequest);
   writeReplanState(ctx, 'verify', { partialReplanRequest: undefined });
@@ -309,4 +316,9 @@ export async function escalateExhaustedReplan(ctx: RunContext, reason: string, f
       reason,
     },
   };
+}
+
+export function invalidateUnverifiedReply(ctx: RunContext): void {
+  ctx.onAssistantReplace?.('');
+  clearReplyState(ctx, 'verify');
 }

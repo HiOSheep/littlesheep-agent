@@ -31,6 +31,7 @@ export interface CaptureStageDeps {
   model: string;
   memoryWriter?: MemoryWriteServiceLike;
   llmEnabled?: boolean;
+  automaticEnabled?: boolean;
 }
 
 interface Observation {
@@ -154,6 +155,15 @@ function proposalsFrom(
 
 export function createCaptureStage(deps: CaptureStageDeps) {
   return async function captureStage(ctx: RunContext): Promise<StageResult> {
+    if (deps.automaticEnabled === false) {
+      writeMemoryState(ctx, 'capture', { insights: [] });
+      return {
+        stage: 'capture',
+        next: 'finalize',
+        ok: true,
+        meta: { skippedModelCall: true, skippedAutomaticCapture: true, reason: 'compaction-only-memory-policy' },
+      };
+    }
     if (deps.llmEnabled === false) {
       const proposals = proposalsFrom(deterministicCapture(ctx), ctx, 'runtime');
       const { records, writeResults } = await commitMemoryIntentBatch(
@@ -209,7 +219,7 @@ export function createCaptureStage(deps: CaptureStageDeps) {
             history: [],
             primaryUserKind: 'workflow_state',
           }),
-          { retryOf: retry.previousRequestId },
+          { retryOf: retry.previousRequestId, retryReason: retry.previousFailureReason },
         ),
         onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
         beforeRequest: (request) => ensureModelRequestStarted(ctx, request),

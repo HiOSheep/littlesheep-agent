@@ -11,6 +11,7 @@ import type {
   ToolResult,
 } from '@littlesheep/types';
 import type { InsertedContextMessage } from '../../context-candidates.js';
+import type { WorkPolicyUpgradeProposal } from '../../work-policy-upgrade.js';
 
 export interface ExecuteStageDeps {
   llm: LlmClient;
@@ -30,7 +31,10 @@ export interface ToolLoopResult {
   toolResults: ToolResult[];
   iterations: number;
   usage?: ChatResponse['usage'];
+  /** Exact Provider request that authored content when finishReason=stop. */
+  modelRequestId?: string;
   error?: string;
+  workPolicyUpgradeProposal?: WorkPolicyUpgradeProposal;
 }
 
 export interface ToolLoopOptions {

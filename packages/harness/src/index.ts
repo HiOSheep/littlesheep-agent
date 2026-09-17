@@ -83,6 +83,12 @@ export {
 } from './harness-path-comparison.js';
 export { capabilityProbeEvent } from './capability-events.js';
 export {
+  canUseLeanWorkLoop,
+  isSupportedWorkPolicy,
+  resolveExecutionWorkPolicy,
+  selectWorkPolicy,
+} from './lean-work-policy.js';
+export {
   assessResponseMemoryContinuity,
   type ResponseContinuityInput,
 } from './response-continuity.js';
@@ -116,6 +122,7 @@ export {
   collectConversationSourceRecords,
   conversationSourceRefs,
 } from './conversation-source-records.js';
+export { resolveMemoryWriteEpistemic } from './stages/memory-epistemic-policy.js';
 export {
   consumeRuntimeControlEvents,
   RUNTIME_CONTROL_EVENT_TYPES,

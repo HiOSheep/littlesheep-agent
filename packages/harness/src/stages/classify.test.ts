@@ -7,11 +7,16 @@ describe('classifyStage', () => {
   it('sends a self-contained single-goal action directly to the lean work loop', async () => {
     const llm = createMockLlm(textResponse('should not be called'));
     const ctx = makeCtx({ inbound: textMessage('user', '再做一个小游戏吧') });
-    ctx.streamModelTranscript = true;
+    ctx.streamModelTranscript = false;
 
     await expect(createClassifyStage({ llm, model: 'test/model' })(ctx))
       .resolves.toMatchObject({ next: 'execute', ok: true });
-    expect(ctx.classification).toMatchObject({ activity: 'execute', source: 'rules', reason: 'action verb' });
+    expect(ctx.classification).toMatchObject({
+      activity: 'execute',
+      source: 'rules',
+      reasonCode: 'action_request',
+      workPolicy: { version: 1, executionMode: 'bounded_loop', reasonCode: 'bounded_single_goal' },
+    });
     expect(llm.chat).not.toHaveBeenCalled();
   });
 
@@ -22,7 +27,7 @@ describe('classifyStage', () => {
       history: [textMessage('assistant', '上一个游戏已经完成。')],
       initialMemoryContext: '用户希望小游戏使用单文件 HTML。',
     });
-    ctx.streamModelTranscript = true;
+    ctx.streamModelTranscript = false;
 
     await expect(createClassifyStage({ llm, model: 'test/model' })(ctx))
       .resolves.toMatchObject({ next: 'execute', ok: true });

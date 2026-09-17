@@ -20,17 +20,17 @@ import {
   durableToolResult,
   projectToolInput,
   ToolExecutionService,
-  type ToolExecutionLifecycle,
 } from '@littlesheep/tools';
 import { buildRunRequestCandidates } from '../../context-candidates.js';
-import { prepareModelRequest } from '../../model-observability.js';
+import { modelRequestIdFor, prepareModelRequest } from '../../model-observability.js';
 import {
+  abortTranscriptTurn,
   closeTranscriptTurn,
   createTranscriptTurn,
   runTranscriptModelTurn,
 } from './model-transcript.js';
-import { writeProviderUsageState } from '../../usage-state.js';
 import { upsertToolInvocationEvidence } from '../../execution-evidence-state.js';
+import { writeRuntimeState } from '../../runtime-state.js';
 import { recentHistoryForModel } from '../_shared.js';
 import { ingestMemoryKnownState } from '../../memory-known-state.js';
 import { ingestMemoryContextToolResult } from '../../memory-context-working-set.js';
@@ -41,16 +41,16 @@ import type {
   ToolLoopOptions,
   ToolLoopResult,
 } from './contracts.js';
+import { createSideEffectLifecycle } from './side-effect-lifecycle.js';
 import {
-  beginSideEffect,
-  describeSideEffect,
-  finishSideEffect,
-  sideEffectCheckpointReason,
-} from './side-effect-ledger.js';
+  parseWorkPolicyUpgradeProposal,
+  WORK_POLICY_UPGRADE_TOOL_NAME,
+  workPolicyUpgradeToolSpec,
+} from '../../work-policy-upgrade.js';
 
 const MAX_ITERATIONS = 20;
 const MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS = 2;
-const MAX_EVIDENCE_FINGERPRINTS = MAX_ITERATIONS * 8;
+const MAX_EVIDENCE_FINGERPRINTS = 128;
 const MAX_CONTINUATION_HISTORY_MESSAGES = 2;
 const MAX_WEB_CITATION_REPAIRS = 2;
 const executionServices = new WeakMap<RunContext, ToolExecutionService>();
@@ -83,19 +83,38 @@ export async function runToolLoop(
     parallelStep,
     maxParallelTools,
   } = opts;
-  const toolSpecs = tools.map(toolToSpec);
+  const allowWorkPolicyUpgrade = !stepId
+    && ctx.classification?.workPolicy?.executionMode === 'bounded_loop'
+    && !ctx.workPolicyUpgradeRequest;
+  const toolSpecs = [
+    ...tools.map(toolToSpec),
+    ...(allowWorkPolicyUpgrade ? [workPolicyUpgradeToolSpec()] : []),
+  ];
   const toolResults: ToolResult[] = [];
   const executionService = toolExecutionService(deps, ctx, sanitizeOpts);
-  const evidenceFingerprints = new Set<string>();
+  const evidenceFingerprints = new Set<string>(ctx.loopBudget?.evidenceFingerprints ?? []);
+  const fingerprintState = {
+    saturated: ctx.loopBudget?.evidenceFingerprintSaturated === true,
+  };
   const initialHistory = history ?? recentHistoryForModel(ctx.history, 8);
   let requestHistory = initialHistory;
   let continuationCompacted = false;
-  let noProgressRounds = 0;
-  let forceFinalResponse = false;
+  let noProgressRounds = ctx.loopBudget?.noProgressRounds ?? 0;
+  let forceFinalResponse = noProgressRounds >= MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS;
   let citationRepairAttempts = 0;
 
   for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
+    if (!reserveToolLoopIteration(ctx)) {
+      return {
+        ok: false,
+        content: '',
+        toolResults,
+        iterations: iteration - 1,
+        error: `tool loop exceeded the persisted ${MAX_ITERATIONS}-iteration run budget`,
+      };
+    }
     let response: ChatResponse;
+    let request: import('@littlesheep/llm').ChatRequest;
     // Next path only: publish thinking plus per-turn prose as an ordered
     // transcript. The legacy path keeps its previous event sequence.
     const transcriptTurn = createTranscriptTurn(ctx, stepId, iteration);
@@ -108,7 +127,7 @@ export async function runToolLoop(
         temperature: 0,
         signal,
       } satisfies import('@littlesheep/llm').ChatRequest;
-      const request = prepareModelRequest(
+      request = prepareModelRequest(
         ctx,
         'execute_tool_loop',
         rawRequest,
@@ -120,6 +139,7 @@ export async function runToolLoop(
       );
       response = await runTranscriptModelTurn(ctx, deps.llm, request, transcriptTurn);
     } catch (error) {
+      abortTranscriptTurn(ctx, transcriptTurn, signal?.aborted ? 'aborted' : 'failed');
       return {
         ok: false,
         content: '',
@@ -129,9 +149,12 @@ export async function runToolLoop(
       };
     }
 
+    closeTranscriptTurn(ctx, transcriptTurn, response.finishReason);
+
     if (response.finishReason === 'stop') {
       const citationValidation = validateWebCitations(response.content, ctx.webEvidence);
       if (!citationValidation.ok && ctx.webEvidence && citationRepairAttempts < MAX_WEB_CITATION_REPAIRS) {
+        ctx.onAssistantReplace?.('');
         citationRepairAttempts += 1;
         messages.push({
           role: 'assistant',
@@ -145,6 +168,7 @@ export async function runToolLoop(
         continue;
       }
       if (!citationValidation.ok && ctx.webEvidence) {
+        ctx.onAssistantReplace?.('');
         return {
           ok: false,
           content: '',
@@ -159,10 +183,9 @@ export async function runToolLoop(
         toolResults,
         iterations: iteration,
         usage: response.usage,
+        modelRequestId: modelRequestIdFor(request),
       };
     }
-
-    closeTranscriptTurn(ctx, transcriptTurn, response.finishReason);
 
     if (response.finishReason === 'tool_calls' && response.toolCalls.length > 0) {
       if (forceFinalResponse) {
@@ -172,6 +195,36 @@ export async function runToolLoop(
           toolResults,
           iterations: iteration,
           error: 'llm requested more tools after the runtime no-progress budget was exhausted',
+        };
+      }
+      const upgradeCalls = response.toolCalls.filter((call) => call.function.name === WORK_POLICY_UPGRADE_TOOL_NAME);
+      if (upgradeCalls.length > 0) {
+        if (!allowWorkPolicyUpgrade || upgradeCalls.length !== 1 || response.toolCalls.length !== 1) {
+          return {
+            ok: false,
+            content: '',
+            toolResults,
+            iterations: iteration,
+            error: 'TaskBook promotion must be one eligible standalone Runtime control proposal',
+          };
+        }
+        const proposal = parseWorkPolicyUpgradeProposal(convertToolCall(upgradeCalls[0]!).input);
+        if (!proposal) {
+          return {
+            ok: false,
+            content: '',
+            toolResults,
+            iterations: iteration,
+            error: 'TaskBook promotion proposal failed Runtime schema validation',
+          };
+        }
+        return {
+          ok: true,
+          content: '',
+          toolResults,
+          iterations: iteration,
+          usage: response.usage,
+          workPolicyUpgradeProposal: proposal,
         };
       }
       messages.push({
@@ -200,7 +253,7 @@ export async function runToolLoop(
       });
       const executedResults = await executionService.executeBatch(
         requests,
-        sideEffectLifecycle(ctx),
+        createSideEffectLifecycle(ctx),
         new Set(tools.map((tool) => tool.name)),
         maxParallelTools,
       );
@@ -209,7 +262,7 @@ export async function runToolLoop(
         const converted = convertToolCall(call);
         const result = executedResults.get(index)
           ?? failureResult(converted.id, stepId, 'tool scheduler returned no result');
-        if (registerEvidenceFingerprint(ctx, evidenceFingerprints, converted.name, result)) {
+        if (registerEvidenceFingerprint(ctx, evidenceFingerprints, fingerprintState, converted.name, result)) {
           addedEvidence = true;
         }
         finalizeToolResult(ctx, produced, messages, toolResults, converted.name, result);
@@ -247,6 +300,7 @@ export async function runToolLoop(
         }
       }
       noProgressRounds = addedEvidence ? 0 : noProgressRounds + 1;
+      persistToolLoopProgress(ctx, evidenceFingerprints, fingerprintState.saturated, noProgressRounds);
       if (noProgressRounds >= MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS) {
         forceFinalResponse = true;
         messages.push({
@@ -305,7 +359,7 @@ export async function runDirectToolProposal(
       stepId: options.stepId,
       signal: options.signal ?? options.ctx.signal,
     }],
-    sideEffectLifecycle(options.ctx),
+    createSideEffectLifecycle(options.ctx),
     new Set([options.tool.name]),
     1,
   );
@@ -346,30 +400,92 @@ function compactToolLoopContinuation(
 function registerEvidenceFingerprint(
   ctx: RunContext,
   fingerprints: Set<string>,
+  state: { saturated: boolean },
   toolName: string,
   result: ToolResult,
 ): boolean {
+  const invocation = [...(ctx.toolInvocations ?? [])]
+    .reverse()
+    .find((candidate) => candidate.callId === result.callId);
   const sideEffect = result.ok
     ? ctx.sideEffects?.find((effect) => effect.callId === result.callId && effect.status === 'succeeded')
     : undefined;
+  const normalizedOutput = normalizeEvidenceOutput(safeStringify(result.ok ? result.output : result.error));
   const fingerprint = createHash('sha256')
     .update(toolName)
     .update('\0')
+    .update(invocation?.toolSource ?? 'unknown-source')
+    .update('\0')
+    .update(invocation?.resourceKeys?.length
+      ? invocation.resourceKeys.join('\0')
+      : invocation?.inputHash ?? 'unknown-input')
+    .update('\0')
+    .update(invocation?.outputTruncated === true || result.sanitized === true ? 'partial' : 'complete')
+    .update('\0')
     .update(sideEffect ? 'side-effect' : result.ok ? 'ok' : 'error')
     .update('\0')
-    .update(sideEffect?.idempotencyKey ?? safeStringify(result.ok ? result.output : result.error))
+    .update(sideEffect?.idempotencyKey ?? normalizedOutput)
     .digest('hex');
   if (fingerprints.has(fingerprint)) return false;
-  if (fingerprints.size < MAX_EVIDENCE_FINGERPRINTS) fingerprints.add(fingerprint);
+  if (state.saturated || fingerprints.size >= MAX_EVIDENCE_FINGERPRINTS) {
+    state.saturated = true;
+    return false;
+  }
+  fingerprints.add(fingerprint);
   return true;
 }
 
-export function applyUsage(
+function reserveToolLoopIteration(ctx: RunContext): boolean {
+  const current = ctx.loopBudget?.toolLoopIterationsUsed ?? 0;
+  const maximum = ctx.loopBudget?.maxToolLoopIterations ?? MAX_ITERATIONS;
+  if (current >= maximum) return false;
+  writeRuntimeState(ctx, 'execute', {
+    loopBudget: {
+      ...(ctx.loopBudget ?? {
+        attemptsUsed: ctx.modelCallCount ?? 0,
+        maxAttempts: ctx.maxModelCalls ?? 0,
+        elapsedMs: 0,
+        maxElapsedMs: 0,
+        noProgressRounds: 0,
+        maxNoProgressRounds: MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS,
+      }),
+      toolLoopIterationsUsed: current + 1,
+      maxToolLoopIterations: maximum,
+    },
+  });
+  return true;
+}
+
+function persistToolLoopProgress(
   ctx: RunContext,
-  usage: ChatResponse['usage'] | undefined,
-  stage: 'execute',
+  fingerprints: ReadonlySet<string>,
+  saturated: boolean,
+  noProgressRounds: number,
 ): void {
-  writeProviderUsageState(ctx, stage, usage);
+  writeRuntimeState(ctx, 'execute', {
+    loopBudget: {
+      ...(ctx.loopBudget ?? {
+        attemptsUsed: ctx.modelCallCount ?? 0,
+        maxAttempts: ctx.maxModelCalls ?? 0,
+        elapsedMs: 0,
+        maxElapsedMs: 0,
+        noProgressRounds: 0,
+        maxNoProgressRounds: MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS,
+      }),
+      noProgressRounds,
+      maxNoProgressRounds: MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS,
+      evidenceFingerprints: [...fingerprints],
+      evidenceFingerprintSaturated: saturated,
+    },
+  });
+}
+
+function normalizeEvidenceOutput(value: string): string {
+  return value
+    .replace(/\b\d{4}-\d{2}-\d{2}[T ][0-9:.+-]+Z?\b/gu, '<timestamp>')
+    .replace(/\b(duration|elapsed|time)\s*[:=]\s*\d+(?:\.\d+)?\s*(?:ms|s)?\b/giu, '$1=<duration>')
+    .replace(/\s+/gu, ' ')
+    .trim();
 }
 
 function failureResult(callId: string, stepId: string | undefined, error?: string): ToolResult {
@@ -449,128 +565,6 @@ function stampStepMeta(result: ToolResult, stepId?: string): ToolResult {
   return { ...result, meta: { ...(result.meta ?? {}), stepId } };
 }
 
-function sideEffectLifecycle(ctx: RunContext): ToolExecutionLifecycle {
-  const effects = new Map<string, ReturnType<typeof describeSideEffect>>();
-  return {
-    async beforeInvoke(invocation) {
-      const sideEffect = describeSideEffect(
-        invocation.tool,
-        invocation.input,
-        invocation.resources,
-        invocation.request.stepId,
-        invocation.request.callId,
-      );
-      effects.set(invocation.request.callId, sideEffect);
-      if (!sideEffect) return;
-      let begin: Awaited<ReturnType<typeof beginSideEffect>>;
-      try {
-        // The intent must be durable before Tool Execution Service is allowed
-        // to invoke a write-capable or external tool.
-        begin = await beginSideEffect(ctx, sideEffect);
-      } catch (error) {
-        return {
-          result: {
-            callId: invocation.request.callId,
-            ok: false,
-            error: `refusing effectful tool until its intent is durable: ${(error as Error).message}`,
-          },
-          status: 'failed',
-          errorKind: 'effect_intent_persistence',
-        };
-      }
-      if (begin.kind === 'duplicate' || begin.kind === 'blocked') {
-        return {
-          result: {
-            callId: invocation.request.callId,
-            ok: false,
-            error: begin.kind === 'duplicate'
-              ? `side effect already recorded as succeeded; refusing to replay ${sideEffect.idempotencyKey}`
-              : begin.reason,
-          },
-          status: begin.kind === 'duplicate' ? 'repeated_call_blocked' : 'failed',
-          errorKind: begin.kind === 'duplicate' ? 'side_effect_replay' : 'side_effect_blocked',
-        };
-      }
-      if (ctx.signal?.aborted) {
-        await finishSideEffect(ctx, sideEffect, {
-          callId: invocation.request.callId,
-          ok: false,
-          error: 'run aborted before effect invocation',
-        }, true, 'cancelled');
-        return {
-          result: {
-            callId: invocation.request.callId,
-            ok: false,
-            error: 'run aborted before effect invocation',
-          },
-          status: 'aborted',
-          errorKind: 'run_aborted_before_effect',
-        };
-      }
-      try {
-        await ctx.persistRuntimeCheckpoint?.(sideEffectCheckpointReason(sideEffect, 'started'));
-      } catch (error) {
-        await finishSideEffect(ctx, sideEffect, {
-          callId: invocation.request.callId,
-          ok: false,
-          error: `checkpoint before side effect failed: ${(error as Error).message}`,
-        }, true, 'failed');
-        return {
-          result: {
-            callId: invocation.request.callId,
-            ok: false,
-            error: `refusing effectful tool until its checkpoint is durable: ${(error as Error).message}`,
-          },
-          status: 'failed',
-          errorKind: 'checkpoint_before_effect',
-        };
-      }
-    },
-    async afterInvoke(invocation, result) {
-      const sideEffect = effects.get(invocation.request.callId);
-      if (!sideEffect) return result;
-      try {
-        // The Tool Execution Service has returned an authoritative outcome.
-        // Settle that outcome before writing the resumability projection so a
-        // checkpoint failure cannot make a completed effect replayable.
-        await finishSideEffect(ctx, sideEffect, result);
-      } catch (error) {
-        return {
-          result: {
-            ...result,
-            ok: false,
-            error: `side effect result is not durably settled: ${(error as Error).message}`,
-          },
-          status: 'failed',
-          errorKind: 'effect_settlement_persistence',
-        };
-      }
-      try {
-        await ctx.persistRuntimeCheckpoint?.(sideEffectCheckpointReason(sideEffect, 'finished'));
-        return result;
-      } catch (error) {
-        // The effect settlement is already durable. Surface the checkpoint
-        // failure to the current step without downgrading the effect to
-        // unknown or attempting a compensating settlement.
-        return {
-          result: {
-            ...result,
-            ok: false,
-            error: `effect completed but checkpoint persistence failed: ${(error as Error).message}`,
-            meta: {
-              ...(result.meta ?? {}),
-              effectSettlement: 'durable',
-              checkpointPersistence: 'failed',
-            },
-          },
-          status: 'failed',
-          errorKind: 'checkpoint_after_effect',
-        };
-      }
-    },
-  };
-}
-
 function persistToolCalls(ctx: RunContext, produced: RunContext['produced'], calls: ToolCall[]): void {
   const durableCalls = calls.map((call) => {
     const tool = ctx.tools.find((candidate) => candidate.name === call.name);
@@ -644,5 +638,3 @@ function toolResultForModel(result: ToolResult): string {
     sanitized: result.sanitized === true || undefined,
   });
 }
-
-

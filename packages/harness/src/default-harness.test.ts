@@ -3,6 +3,7 @@
 // LLM never chooses the stage; it only decides within a stage.
 import { describe, it, expect } from 'vitest';
 import { createDefaultHarness } from './default-harness.js';
+import { createNextHarness } from './durable-harness.js';
 import {
   createMockLlm,
   textResponse,
@@ -136,32 +137,12 @@ describe('createDefaultHarness state machine', () => {
     expect(ctx.classification?.type).toBe('problem');
   });
 
-  it('completes an explicit trivial read-only tool task in two model calls', async () => {
+  it('completes an explicit trivial read-only tool task without a DECIDE request', async () => {
     const tool = makeTool('glob', { ok: true, output: 'attachments/' });
     const llm = createMockLlm([
-      textResponse(JSON.stringify({
-        assessment: {
-          userNeed: '列出当前文件夹顶层条目',
-          complexity: 'trivial',
-          goal: '返回顶层条目数量和名称',
-          successCriteria: ['返回数量', '返回名称', '不修改文件'],
-          needsClarification: false,
-          requiresTaskBook: false,
-          maxExtraScopeRatio: 1,
-        },
-        taskBook: {
-          goal: '返回顶层条目数量和名称',
-          complexity: 'trivial',
-          successCriteria: ['返回数量', '返回名称', '不修改文件'],
-          steps: [{
-            id: 'step-1',
-            description: '使用 glob 读取顶层条目',
-            tools: ['glob'],
-            toolProposal: { name: 'glob', input: { pattern: '*' } },
-          }],
-        },
-      })),
+      toolCallResponse([{ id: 'glob-trivial', name: 'glob', args: { pattern: '*' } }]),
       textResponse('共有 1 个条目：attachments/'),
+      textResponse('{"verdict":"pass","reason":"glob 结果支持回复中的数量和名称"}'),
     ]);
     const h = makeHarness(llm);
     const ctx = makeCtx({
@@ -178,13 +159,16 @@ describe('createDefaultHarness state machine', () => {
       reason: 'explicit tool instruction',
     });
     expect(ctx.reply).toBe('共有 1 个条目：attachments/');
-    expect(ctx.replyProvenance).toMatchObject({ purpose: 'execute_final_reply' });
-    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ source: 'structural', verdict: 'pass' });
-    expect(llm.chat).toHaveBeenCalledTimes(2);
+    expect(ctx.replyProvenance).toMatchObject({ purpose: 'execute_tool_loop' });
+    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ source: 'model', verdict: 'pass' });
+    expect(llm.chat).toHaveBeenCalledTimes(3);
     expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
-      'decide_explicit_tool', 'execute_final_reply',
+      'execute_tool_loop', 'execute_tool_loop', 'verify',
     ]);
-    expect(llm.chat.mock.calls.every((call) => call[0].tools === undefined)).toBe(true);
+    expect(llm.chat.mock.calls.slice(0, 2).every((call) => (
+      call[0].tools?.map((candidate) => candidate.function.name).join(',') === 'glob,request_task_book'
+    ))).toBe(true);
+    expect(llm.chat.mock.calls[2]?.[0].tools).toBeUndefined();
     expect(tool.calls).toHaveLength(1);
     expect(tool.calls[0]?.input).toEqual({ pattern: '*' });
   });
@@ -415,6 +399,55 @@ describe('createDefaultHarness state machine', () => {
       from: 'classify',
       attempted: 'finalize',
     });
+  });
+
+  it('rejects execute -> decide without the guarded promotion request', async () => {
+    const llm = createMockLlm(textResponse('unused'));
+    const h = makeHarness(llm);
+    h.registerStage('classify', async (ctx) => {
+      ctx.classification = {
+        activity: 'execute', type: 'problem', confidence: 1, source: 'rules', reasonCode: 'action_request',
+        workPolicy: {
+          version: 1, route: 'execute', sourceMessageId: String(ctx.inbound.id),
+          executionMode: 'bounded_loop', reasonCode: 'bounded_single_goal',
+        },
+      };
+      return { stage: 'classify', next: 'execute', ok: true };
+    });
+    h.registerStage('execute', async () => ({ stage: 'execute', next: 'decide', ok: true }));
+
+    const result = await h.run(makeCtx({ inbound: textMessage('user', '帮我修复这个文件') }));
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("invalid guarded stage transition 'execute' -> 'decide'");
+    expect(result.error).toContain('persisted work-policy upgrade request');
+  });
+
+  it('applies the same promotion guard in the next Harness driver', async () => {
+    const llm = createMockLlm(textResponse('unused'));
+    const h = createNextHarness({
+      ...baseDeps,
+      llm,
+      sessionManager: createMockSessionManager(),
+      memoryStore: createMockMemoryStore(),
+    });
+    h.registerStage('classify', async (ctx) => {
+      ctx.classification = {
+        activity: 'execute', type: 'problem', confidence: 1, source: 'rules', reasonCode: 'action_request',
+        workPolicy: {
+          version: 1, route: 'execute', sourceMessageId: String(ctx.inbound.id),
+          executionMode: 'bounded_loop', reasonCode: 'bounded_single_goal',
+        },
+      };
+      return { stage: 'classify', next: 'execute', ok: true };
+    });
+    h.registerStage('execute', async () => ({ stage: 'execute', next: 'decide', ok: true }));
+
+    const result = await h.run(makeCtx({ inbound: textMessage('user', '帮我修复这个文件') }));
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("invalid guarded stage transition 'execute' -> 'decide'");
+    expect(result.error).toContain('persisted work-policy upgrade request');
   });
 });
 

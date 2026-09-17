@@ -15,6 +15,7 @@ import type {
   StageResult,
 } from '@littlesheep/types';
 import { inspectStageTransition, stageNames } from '@littlesheep/types';
+import { workPolicyTransitionViolation } from './work-policy-upgrade.js';
 import type { LlmClient } from '@littlesheep/llm';
 import type { SessionManager } from '@littlesheep/session';
 import type { Config } from '@littlesheep/config';
@@ -45,7 +46,6 @@ import type { ExactContextTokenCounter } from '@littlesheep/context';
 import { bindExactContextTokenCounter } from './model-observability.js';
 import { resolveCheckpointResumeStage } from './checkpoint-resume.js';
 import { recordFailure } from './failure-state.js';
-import { emitPublicReasoningProgress } from './public-reasoning-progress.js';
 
 export interface DefaultHarnessOptions {
   llm: LlmClient;
@@ -126,12 +126,14 @@ export function createHarnessStages(opts: DefaultHarnessOptions): Map<StageName,
     memoryCorrector: opts.memoryCorrector,
     createSkill: opts.createSkill,
     llmPolicy: opts.config.memory.llmEvolve,
+    mode: opts.config.memory.autoMemoryPolicy === 'compaction' ? 'explicit-only' : 'legacy',
   }));
   stages.set('capture', createCaptureStage({
     llm: opts.llm,
     model: opts.model,
     memoryWriter: opts.memoryWriter,
     llmEnabled: opts.config.memory.llmCapture,
+    automaticEnabled: opts.config.memory.autoMemoryPolicy === 'legacy-per-run',
   }));
   stages.set('reply', createReplyStage({
     llm: opts.llm,
@@ -242,9 +244,6 @@ export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness 
           continue;
         }
 
-        const phaseId = `${stageName}:${trace.length + 1}`;
-        emitPublicReasoningProgress(ctx, stageName, phaseId, 'running');
-
         // before hooks (void → modifying → claiming)
         const before = await hooks.runBefore(ctx, stageName);
         let result: StageResult;
@@ -270,10 +269,13 @@ export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness 
         result = { ...result, stage: stageName };
 
         const transition = inspectStageTransition(stageName, result.next);
-        if (!transition.ok) {
-          const attempted = String(transition.violation.attempted);
-          const allowed = transition.violation.allowed.join(', ');
-          const error = `invalid stage transition '${stageName}' -> '${attempted}'; allowed targets: ${allowed}`;
+        const guardedViolation = transition.ok ? workPolicyTransitionViolation(ctx, stageName, result) : undefined;
+        if (!transition.ok || guardedViolation) {
+          const attempted = transition.ok ? String(result.next) : String(transition.violation.attempted);
+          const allowed = transition.ok ? [] : transition.violation.allowed;
+          const error = guardedViolation
+            ? `invalid guarded stage transition '${stageName}' -> '${attempted}': ${guardedViolation}`
+            : `invalid stage transition '${stageName}' -> '${attempted}'; allowed targets: ${allowed.join(', ')}`;
           result = {
             stage: stageName,
             next: 'exit',
@@ -283,21 +285,14 @@ export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness 
               ...(result.meta ?? {}),
               transitionViolation: {
                 from: stageName,
-                attempted: transition.violation.attempted,
-                allowed: transition.violation.allowed,
+                attempted: transition.ok ? result.next : transition.violation.attempted,
+                allowed,
               },
             },
           };
         }
 
         const endedAt = new Date().toISOString();
-        emitPublicReasoningProgress(
-          ctx,
-          stageName,
-          phaseId,
-          result.ok ? 'done' : 'failed',
-          Math.max(0, Date.parse(endedAt) - Date.parse(startedAt)),
-        );
         trace.push({ name: stageName, startedAt, endedAt, ok: result.ok });
 
         // Record lastError for RECOVER (only if the stage set one isn't already present).

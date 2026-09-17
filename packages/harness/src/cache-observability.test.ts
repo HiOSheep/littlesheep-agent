@@ -120,6 +120,69 @@ describe('cache observability', () => {
     expect(classifyProviderCacheUsage({ promptTokens: 10, completionTokens: 1, cachedPromptTokens: 11 }).ledger).toMatchObject({ status: 'unknown' });
   });
 
+  it('keeps the provider hit/miss split disjoint in the ledger', () => {
+    const split = classifyProviderCacheUsage({
+      promptTokens: 1_807,
+      completionTokens: 4,
+      cachedPromptTokens: 1_664,
+      uncachedPromptTokens: 143,
+    });
+    expect(split.ledger).toMatchObject({
+      status: 'partial',
+      tokenCount: 1_807,
+      cachedTokenCount: 1_664,
+      uncachedTokenCount: 143,
+    });
+    expect(split.validUsage.uncachedPromptTokens).toBe(143);
+    // An impossible split is rejected instead of being published as evidence.
+    expect(classifyProviderCacheUsage({
+      promptTokens: 100,
+      completionTokens: 1,
+      cachedPromptTokens: 80,
+      uncachedPromptTokens: 40,
+    }).ledger).toMatchObject({ status: 'unknown', reason: 'cache_split_exceeds_prompt' });
+  });
+
+  it('reports the local context ledger only when the Context Engine observed reuse', () => {
+    const request = cacheRequest();
+
+    expect(observation(request).lsContext).toMatchObject({
+      status: 'unavailable',
+      reason: 'context_cache_event_not_observed',
+    })
+    expect(observation(request, {
+      contextReuse: { status: 'hit', reuseKey: 'a'.repeat(64), reusedItems: 3, rebuiltItems: 0 },
+    }).lsContext).toMatchObject({ status: 'hit', reason: 'context_assembly_reused' })
+    expect(observation(request, {
+      contextReuse: { status: 'miss', reuseKey: 'a'.repeat(64), reusedItems: 0, rebuiltItems: 3 },
+    }).lsContext).toMatchObject({ status: 'miss', reason: 'context_assembly_rebuilt' })
+  });
+
+  it('reports the local embedding ledger from real memory reuse counts', () => {
+    const request = cacheRequest();
+
+    expect(observation(request).memoryEmbedding).toMatchObject({
+      status: 'unavailable',
+      reason: 'memory_cache_event_not_observed',
+    })
+    expect(observation(request, {
+      memoryReuse: { reused: 4, queued: 0, disabled: 1 },
+    }).memoryEmbedding).toMatchObject({
+      status: 'hit',
+      reason: 'embedding_reused',
+      tokenCount: 4,
+      cachedTokenCount: 4,
+      uncachedTokenCount: 0,
+      hitRatio: 1,
+    })
+    expect(observation(request, {
+      memoryReuse: { reused: 3, queued: 1, disabled: 0 },
+    }).memoryEmbedding).toMatchObject({ status: 'partial', reason: 'embedding_partially_reused', hitRatio: 0.75 })
+    expect(observation(request, {
+      memoryReuse: { reused: 0, queued: 2, disabled: 0 },
+    }).memoryEmbedding).toMatchObject({ status: 'miss', reason: 'embedding_rebuilt', hitRatio: 0 })
+  });
+
   it('attributes same-scope prompt source changes without exposing their content', () => {
     const first = observation(cacheRequest(), {
       promptComponents: {
@@ -159,9 +222,11 @@ describe('cache observability', () => {
     expect(ctx.modelRequests?.[0]?.cacheObservation).toMatchObject({
       stablePrefixVersion: 'StablePrefixV1',
       providerPrompt: { status: 'unavailable', reason: 'provider_usage_pending' },
-      lsContext: { status: 'unavailable', reason: 'context_cache_event_not_observed' },
       memoryEmbedding: { status: 'unavailable', reason: 'memory_cache_event_not_observed' },
     });
+    // The Context Engine now emits a real local reuse event, so the local
+    // ledger is observed instead of staying unavailable.
+    expect(ctx.modelRequests?.[0]?.cacheObservation?.lsContext.status).toMatch(/^(hit|miss)$/u);
 
     recordProviderUsage(ctx, prepared, {
       promptTokens: 120,

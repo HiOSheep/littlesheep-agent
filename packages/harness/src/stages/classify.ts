@@ -32,7 +32,7 @@ import {
   capabilitySnapshotDurablePayload,
 } from '../capability-events.js';
 import { writeCapabilityState } from '../capability-state.js';
-import { canUseLeanWorkLoop } from '../lean-work-policy.js';
+import { selectWorkPolicy } from '../lean-work-policy.js';
 
 function inboundText(ctx: RunContext): string {
   return ctx.inbound.content
@@ -73,16 +73,20 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
       // question does not spend another model call or alter cache shape.
       const retrieval = assessRetrievalIntent(inboundText(ctx));
       if (retrieval.intent === 'capability_question' || retrieval.intent === 'capability_probe') {
-        const routed = {
+        const routedBase = {
           activity: 'respond' as const,
           type: 'chat' as const,
           confidence: 1,
           source: 'rules' as const,
+          reasonCode: retrieval.intent === 'capability_probe'
+            ? 'capability_probe' as const
+            : 'capability_question' as const,
           reason: retrieval.intent === 'capability_probe'
             ? 'capability probe requested'
             : 'capability or status question',
           retrievalIntent: retrieval.intent,
         };
+        const routed = { ...routedBase, workPolicy: selectWorkPolicy(ctx, routedBase) };
         // Persist the exact, redacted Runtime snapshot before routing. This is
         // the authority for capability answers; it is deliberately distinct
         // from a Web tool call and contains no model/user text.
@@ -138,7 +142,13 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
           source: 'runtime',
           eventId: `${ctx.runId}:route:${routed.activity}`,
           idempotencyKey: `${ctx.runId}:route:${routed.activity}`,
-          payload: { route: routed.activity, source: routed.source, retrievalIntent: routed.retrievalIntent },
+          payload: {
+            route: routed.activity,
+            source: routed.source,
+            retrievalIntent: routed.retrievalIntent,
+            reasonCode: routed.reasonCode,
+            workPolicy: routed.workPolicy,
+          },
         });
         next = 'reply';
         return {
@@ -174,10 +184,11 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
           || retrieval.intent === 'browser_required'
           ? 'execute'
           : classifiedActivity;
-      const routed = { ...cls, activity, retrievalIntent: retrieval.intent };
+      const routedBase = { ...cls, activity, retrievalIntent: retrieval.intent };
+      const routed = { ...routedBase, workPolicy: selectWorkPolicy(ctx, routedBase) };
       if (activity === 'execute') {
         writeDecisionState(ctx, 'classify', { classification: routed });
-        next = canUseLeanWorkLoop(ctx) ? 'execute' : 'decide';
+        next = routed.workPolicy.executionMode === 'bounded_loop' ? 'execute' : 'decide';
       } else if (activity === 'clarify') {
         const originalRequest = inboundText(ctx);
         writeDecisionState(ctx, 'classify', {
@@ -212,17 +223,27 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
         source: 'runtime',
         eventId: `${ctx.runId}:route:${activity}`,
         idempotencyKey: `${ctx.runId}:route:${activity}`,
-        payload: { route: activity, source: routed.source, retrievalIntent: routed.retrievalIntent },
+        payload: {
+          route: activity,
+          source: routed.source,
+          retrievalIntent: routed.retrievalIntent,
+          reasonCode: routed.reasonCode,
+          workPolicy: routed.workPolicy,
+        },
       });
     } catch (err) {
       // Classifier never throws in practice, but defend against transport errors.
-      writeDecisionState(ctx, 'classify', { classification: {
+      const fallbackBase = {
         activity: 'respond',
         type: 'chat',
         confidence: 0.3,
         source: 'llm',
+        reasonCode: 'classifier_failed',
         reason: `classify error: ${(err as Error).message}`,
-      } });
+      } as const;
+      writeDecisionState(ctx, 'classify', {
+        classification: { ...fallbackBase, workPolicy: selectWorkPolicy(ctx, fallbackBase) },
+      });
       // A classifier transport failure is internal; do not make the user
       // clarify a message that may already be clear.
       next = 'reply';
@@ -231,7 +252,12 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
         source: 'runtime',
         eventId: `${ctx.runId}:route:respond`,
         idempotencyKey: `${ctx.runId}:route:respond`,
-        payload: { route: 'respond', source: 'runtime_fallback', error: 'classifier_failed' },
+        payload: {
+          route: 'respond',
+          source: 'runtime_fallback',
+          reasonCode: 'classifier_failed',
+          error: 'classifier_failed',
+        },
       });
     }
     return {

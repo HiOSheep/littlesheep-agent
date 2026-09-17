@@ -7,6 +7,7 @@ import type {
   RunContextContractStage,
   UserFacingReplyPurpose,
 } from '@littlesheep/types';
+import { containsUnquotedDsmlControlMarkup } from '@littlesheep/llm';
 import { filterAuthoritativeUserFacingMessages, normalizeUserFacingReply } from '@littlesheep/types';
 import { textOf } from './stages/_shared.js';
 import { writeReplyState } from './reply-state.js';
@@ -58,6 +59,7 @@ export async function reserveUserFacingReplyOnce(
   apiGeneratedReply: string,
   rewriteCount = 0,
   stage?: RunContextContractStage,
+  expectedModelRequestId?: string,
 ): Promise<string | undefined> {
   const generatedReply = cleanModelReply(apiGeneratedReply);
   if (!generatedReply) {
@@ -66,7 +68,7 @@ export async function reserveUserFacingReplyOnce(
       'The model returned no user-facing reply.',
     );
   }
-  if (containsToolControlMarkup(generatedReply)) {
+  if (containsUnquotedDsmlControlMarkup(generatedReply)) {
     throw new UserFacingReplyError(
       'invalid_control_markup',
       'The model returned tool-control markup as a user-facing reply.',
@@ -77,7 +79,7 @@ export async function reserveUserFacingReplyOnce(
   const recentNormalized = new Set(recentReplies.map(normalizeUserFacingReply));
   if (recentNormalized.has(normalizeUserFacingReply(generatedReply))) return undefined;
 
-  const provenance = createReplyProvenance(ctx, purpose, rewriteCount);
+  const provenance = createReplyProvenance(ctx, purpose, rewriteCount, expectedModelRequestId);
   const replyFingerprint = finalReplyFingerprint(generatedReply);
   const reservation: FinalReplyReservation = {
     version: 1,
@@ -191,9 +193,6 @@ function cleanModelReply(value: string): string {
   return value.trim();
 }
 
-function containsToolControlMarkup(value: string): boolean {
-  return /<\s*[｜|]{1,2}\s*DSML\s*[｜|]{1,2}\s*(?:calls|tool_calls|invoke|parameter)\b/iu.test(value);
-}
 
 function messageText(message: Message): string {
   return textOf(message);
@@ -203,10 +202,12 @@ function createReplyProvenance(
   ctx: Pick<RunContext, 'model' | 'modelRequests' | 'runtimeNow'>,
   purpose: UserFacingReplyPurpose,
   rewriteCount: number,
+  expectedModelRequestId?: string,
 ): ReplyProvenance {
   const request = [...(ctx.modelRequests ?? [])]
     .reverse()
-    .find((snapshot) => snapshot.callContract?.purpose === purpose);
+    .find((snapshot) => snapshot.callContract?.purpose === purpose
+      && (!expectedModelRequestId || snapshot.id === expectedModelRequestId));
   if (!request) {
     throw new UserFacingReplyError(
       'missing_model_request_provenance',

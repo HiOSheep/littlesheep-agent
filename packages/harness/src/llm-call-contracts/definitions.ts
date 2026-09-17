@@ -63,7 +63,9 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
   decide_explicit_tool: template({
     purpose: 'decide_explicit_tool', stage: 'decide', modelCall: 'required',
     goal: (ctx) => `Infer one explicitly requested tool call without replaying unrelated Context: ${inbound(ctx)}`,
-    allowedContextKinds: ['system_prompt', 'project_knowledge', 'workflow_state', 'user_input', 'runtime_event'],
+    allowedContextKinds: [
+      'system_prompt', 'project_knowledge', 'workflow_state', 'user_input', 'output_constraint', 'runtime_event',
+    ],
     requiredContextKinds: ['system_prompt', 'workflow_state', 'user_input'],
     history: 'none', attachments: 'none',
     allowedDecisions: ['propose_single_tool_call', 'request_clarification'],
@@ -168,12 +170,13 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
   }),
   session_compaction: template({
     purpose: 'session_compaction', stage: 'capture', modelCall: 'optional',
-    goal: () => 'Merge older transcript evidence into a versioned, non-destructive session summary.',
+    goal: () => 'Merge older transcript evidence into a versioned summary and bounded durable-memory candidates.',
     allowedContextKinds: ['system_prompt', 'summary_memory', 'workflow_state', 'output_constraint', 'runtime_event'],
     requiredContextKinds: ['system_prompt', 'workflow_state'], history: 'none', attachments: 'none',
-    allowedDecisions: ['produce_summary'], outputSchema: text('session-summary.v1', 'Traceable summary preserving goals, constraints, decisions and unfinished work.'),
-    memoryIntents: NO_MEMORY, requiresMemoryEvidence: true, toolMode: 'none', runtimeApprovalRequired: false,
-    maxIterations: 0, maxAttempts: 1, maxOutputTokens: 1_400, maxPromptTokens: 12_000, temperature: 0,
+    allowedDecisions: ['produce_summary_and_candidates'], outputSchema: json('session-compaction-proposal.v1', 'Traceable summary plus zero to eight source-bound memory candidates.'),
+    memoryIntents: ['write'], requiresMemoryEvidence: true,
+    writableBranches: ['long-term', 'project', 'experience'], toolMode: 'none', runtimeApprovalRequired: false,
+    maxIterations: 0, maxAttempts: 2, maxOutputTokens: 2_200, maxPromptTokens: 12_000, temperature: 0,
   }),
 };
 

@@ -1,6 +1,7 @@
 // @littlesheep/harness — stages/decide.test.ts
 import { describe, it, expect, vi } from 'vitest';
 import { createDecideStage } from './decide.js';
+import { DECIDE_SYSTEM_PROMPT, DECIDE_WIRE_FIELD_MAP } from './decide/contracts.js';
 import { createMockLlm, textResponse, makeCtx, makeTool } from '../tests/helpers.js';
 import { DEFAULT_CONFIG } from '@littlesheep/config';
 import { DEFAULT_BRANDING } from '@littlesheep/branding';
@@ -16,6 +17,43 @@ import { z } from 'zod';
 const deps = { model: 'test', config: DEFAULT_CONFIG, branding: DEFAULT_BRANDING };
 
 describe('decideStage', () => {
+  it('keeps the lean wire contract free of Runtime-owned fields and expands dependencies internally', async () => {
+    const llm = createMockLlm(textResponse(JSON.stringify({
+      assessment: {
+        userNeed: 'inspect A then B',
+        complexity: 'standard',
+        goal: 'inspect both dependencies',
+        successCriteria: ['both dependencies inspected'],
+      },
+      taskBook: {
+        steps: [
+          { id: 'inspect-a', description: 'inspect A', tools: ['read'] },
+          { id: 'inspect-b', description: 'inspect B', tools: ['read'], dependsOn: ['inspect-a'] },
+        ],
+      },
+    })));
+    const ctx = makeCtx({
+      tools: [makeTool('read', { ok: true, output: 'done' })],
+      inbound: textMessage('user', 'inspect A then B'),
+    });
+
+    const result = await createDecideStage({ ...deps, llm })(ctx);
+
+    expect(result).toMatchObject({ next: 'execute', ok: true });
+    expect(DECIDE_WIRE_FIELD_MAP.runtimeDerived).toEqual(expect.arrayContaining([
+      'status', 'requiresApproval', 'resources', 'sideEffect', 'overdeliveryPolicy',
+    ]));
+    const wireExample = DECIDE_SYSTEM_PROMPT.split('\nRules:')[0] ?? '';
+    expect(wireExample).not.toContain('requiresApproval');
+    expect(wireExample).not.toContain('maxExtraScopeRatio');
+    expect(wireExample).not.toContain('sideEffect');
+    expect(ctx.taskBook?.steps[0]?.status).toBe('pending');
+    expect(ctx.taskBook?.steps[1]?.execution).toEqual({
+      mode: 'serial',
+      dependsOn: ['inspect-a'],
+    });
+  });
+
   it('parses a valid plan, transitions to execute', async () => {
     const tool = makeTool('read', { ok: true, output: '' });
     const llm = createMockLlm(textResponse('{"plan":[{"description":"read file","tools":["read"]}]}'));
@@ -324,8 +362,9 @@ describe('decideStage', () => {
     expect(result.error).not.toContain('transport error:');
     expect(ctx.lastError).toEqual({
       stage: 'decide',
-      message: expect.stringContaining('omitted a valid tool, summary, or success criterion'),
+      message: expect.stringContaining('invalid decision schema after 2 attempt(s)'),
     });
+    expect(llm.chat).toHaveBeenCalledTimes(2);
   });
 
   it('uses compact explicit-tool output and expands it into the existing TaskBook contract', async () => {
@@ -358,6 +397,41 @@ describe('decideStage', () => {
         tools: ['glob'],
         toolProposal: { name: 'glob', input: { pattern: '*', path: '.' } },
       }],
+    });
+  });
+
+  it('keeps compact explicit-tool schema feedback inside its bounded retry contract', async () => {
+    const glob = makeTool('glob', { ok: true, output: '' }, {
+      inputSchema: z.object({ pattern: z.string(), path: z.string().optional() }),
+    });
+    const llm = createMockLlm([
+      textResponse(JSON.stringify({ input: {} })),
+      textResponse(JSON.stringify({ input: { pattern: '*', path: '.' } })),
+    ]);
+    const ctx = makeCtx({
+      tools: [glob],
+      inbound: textMessage('user', '请使用 glob 工具读取当前工作区顶层条目'),
+      classification: {
+        activity: 'execute', type: 'problem', confidence: 0.96,
+        source: 'rules', reasonCode: 'explicit_tool_instruction',
+      },
+    });
+
+    const result = await createDecideStage({ ...deps, llm })(ctx);
+
+    expect(result).toMatchObject({ next: 'execute', ok: true, meta: { llmAttempts: 2 } });
+    expect(llm.chat).toHaveBeenCalledTimes(2);
+    expect(ctx.modelRequests?.[1]).toMatchObject({
+      retryOf: ctx.modelRequests?.[0]?.id,
+      retryReason: 'schema',
+      callContract: {
+        purpose: 'decide_explicit_tool',
+        inputs: { allowedContextKinds: expect.arrayContaining(['output_constraint']) },
+      },
+    });
+    expect(ctx.taskBook?.steps[0]?.toolProposal).toEqual({
+      name: 'glob',
+      input: { pattern: '*', path: '.' },
     });
   });
 
@@ -699,7 +773,7 @@ describe('decideStage', () => {
     expect(llm.chat).toHaveBeenCalledTimes(2);
   });
 
-  it('disables provider thinking on the first structured DECIDE request', async () => {
+  it('preserves the resolved reasoning policy on the first structured DECIDE request', async () => {
     const requests: import('@littlesheep/llm').ChatRequest[] = [];
     const llm = createMockLlm((request) => {
       requests.push(request);
@@ -731,8 +805,8 @@ describe('decideStage', () => {
 
     await stage(ctx);
 
-    expect(requests[0]?.thinking).toEqual({ type: 'disabled' });
-    expect(requests[0]?.reasoning_effort).toBeUndefined();
+    expect(requests[0]?.thinking).toEqual({ type: 'enabled', clear_thinking: undefined });
+    expect(requests[0]?.reasoning_effort).toBe('max');
   });
 
   it('empty response → recover', async () => {

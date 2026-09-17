@@ -15,7 +15,35 @@ describe('usage state boundary', () => {
       promptTokens: 12,
       completionTokens: 5,
       totalTokens: 17,
+      timedRequestCount: 0,
+      timedCompletionTokens: 0,
+      cacheReportedRequestCount: 0,
+      usageReportedRequestCount: 1,
+      usageCompleteness: 'complete',
+      requestCount: 1,
       source: 'provider',
+    });
+  });
+
+  it('HA-03-07 counts a completed request whose Provider omitted usage without inventing tokens', () => {
+    const ctx = makeCtx();
+    writeProviderUsageState(ctx, 'reply', undefined);
+
+    expect(ctx.usage).toMatchObject({
+      promptTokens: 0,
+      completionTokens: 0,
+      requestCount: 1,
+      usageReportedRequestCount: 0,
+      usageCompleteness: 'unknown',
+    });
+
+    writeProviderUsageState(ctx, 'reply', { promptTokens: 10, completionTokens: 2 });
+    expect(ctx.usage).toMatchObject({
+      promptTokens: 10,
+      completionTokens: 2,
+      requestCount: 2,
+      usageReportedRequestCount: 1,
+      usageCompleteness: 'partial',
     });
   });
 
@@ -28,6 +56,32 @@ describe('usage state boundary', () => {
     })).toThrow(/cannot be written|not allowed/i);
 
     expect(ctx.usage?.promptTokens).toBe(1);
+  });
+
+  it('HA-03-04 keeps a complete aggregate beyond the bounded request snapshot window', () => {
+    const ctx = makeCtx();
+    for (let index = 0; index < 65; index += 1) {
+      writeProviderUsageState(ctx, 'reply', {
+        promptTokens: 10,
+        completionTokens: 2,
+        cachedPromptTokens: 5,
+        durationMs: 100,
+        observedAttemptCount: index === 0 ? 2 : 1,
+      });
+    }
+
+    expect(ctx.usage).toMatchObject({
+      promptTokens: 650,
+      completionTokens: 130,
+      cachedPromptTokens: 325,
+      providerDurationMs: 6_500,
+      timedCompletionTokens: 130,
+      timedRequestCount: 65,
+      observedAttemptCount: 66,
+      requestCount: 65,
+      usageReportedRequestCount: 65,
+      usageCompleteness: 'complete',
+    });
   });
 
   it('rejects unknown fields before mutation', () => {

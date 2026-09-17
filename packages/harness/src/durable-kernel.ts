@@ -25,6 +25,7 @@ import { readVerificationRecordedPayload } from './durable-verification-codec.js
 import {
   freezeDurableRunProjection,
   isModelTransportStatus,
+  isModelRetryReason,
   isProviderReachStatus,
   type MutableDurableRunProjection,
   readCacheObservation,
@@ -32,6 +33,7 @@ import {
   readCapabilitySnapshot,
   readEffectIntent,
   readProviderUsage,
+  readProviderTransportTiming,
   requiredEffectStatus,
   requiredModelRequestStatus,
   requiredRoute,
@@ -608,6 +610,7 @@ function applyDurableHarnessEvent(
             ? { cacheObservation: readCacheObservation(event.payload.cacheObservation, requestId) }
             : {}),
           ...(typeof event.payload.retryOf === 'string' ? { retryOf: event.payload.retryOf } : {}),
+          ...(isModelRetryReason(event.payload.retryReason) ? { retryReason: event.payload.retryReason } : {}),
           status: 'started',
           startedEventId: event.eventId,
           startedAt: event.occurredAt,
@@ -620,6 +623,7 @@ function applyDurableHarnessEvent(
         const current = next.modelRequests[index]!;
         if (current.status !== 'started') throw new DurableKernelError(`model response already settled: ${requestId}`, 'transition');
         const providerUsage = readProviderUsage(event.payload);
+        const transportTiming = readProviderTransportTiming(event.payload);
         next.modelRequests[index] = {
           ...current,
           status: 'received',
@@ -635,6 +639,7 @@ function applyDurableHarnessEvent(
             ? { cacheObservation: readCacheObservation(event.payload.cacheObservation, requestId) }
             : {}),
           ...(providerUsage ? { providerUsage } : {}),
+          ...transportTiming,
           ...(event.payload.usageStatus === 'unavailable' ? { usageStatus: 'unavailable' as const } : {}),
           ...(event.payload.usageStatus === 'unknown' ? { usageStatus: 'unknown' as const } : {}),
         };
@@ -832,6 +837,9 @@ function validateTransition(projection: DurableRunProjection, event: DurableHarn
       if (!projection.modelRequests.some((request) => request.requestId === retryOf)) {
         throw new DurableKernelError(`model retry parent is unknown: ${retryOf}`, 'transition');
       }
+    }
+    if (event.payload.retryReason !== undefined && !isModelRetryReason(event.payload.retryReason)) {
+      throw new DurableKernelError('model retry reason is invalid', 'invalid');
     }
   }
   if (event.type === 'model_response_received') {

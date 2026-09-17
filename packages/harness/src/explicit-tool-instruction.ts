@@ -25,12 +25,15 @@ export interface ExplicitToolInstructionSet {
 /** Resolve a bounded set of tools that the user explicitly instructed LS to use. */
 export function resolveExplicitToolInstructionSet(
   ctx: Pick<RunContext, 'classification' | 'inbound' | 'tools'>,
+  options: { allowContinuation?: boolean } = {},
 ): ExplicitToolInstructionSet | undefined {
   const classification = ctx.classification;
   const activity = classification?.activity ?? activityFromMessageClass(classification?.type);
+  const explicitInstruction = classification?.reasonCode === 'explicit_tool_instruction'
+    || (classification?.reasonCode === undefined && classification?.reason === 'explicit tool instruction');
   if (activity !== 'execute'
     || classification?.source !== 'rules'
-    || classification.reason !== 'explicit tool instruction') {
+    || !explicitInstruction) {
     return undefined;
   }
 
@@ -38,8 +41,7 @@ export function resolveExplicitToolInstructionSet(
     .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
     .map((block) => block.text)
     .join('\n');
-  if (isExplicitContinuationRequest(inboundText)) return undefined;
-
+  if (options.allowContinuation !== true && isExplicitContinuationRequest(inboundText)) return undefined;
   const requestedNames = extractExplicitToolInstructionNames(inboundText);
   if (requestedNames.length === 0 || requestedNames.length > MAX_EXPLICIT_TOOLS) return undefined;
 

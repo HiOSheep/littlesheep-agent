@@ -125,6 +125,43 @@ describe('buildRunContext', () => {
     expect(ctx.history).toEqual([prior]);
   });
 
+  it('does not inject a session summary that predates the latest memory revocation', async () => {
+    const compaction = {
+      version: 1 as const,
+      id: 'summary-revoked',
+      collapsedCount: 40,
+      summary: 'Earlier task constraints and decisions.',
+      compactedAt: '2026-07-13T01:00:00.000Z',
+      sourceStartMessageId: 'message-1',
+      sourceEndMessageId: 'message-40',
+      sourceStartAt: '2026-07-12T01:00:00.000Z',
+      sourceEndAt: '2026-07-13T00:00:00.000Z',
+    };
+    const sm = createMockSessionManager({
+      history: [],
+      metadata: {
+        createdAt: '2026-07-12T01:00:00.000Z',
+        updatedAt: '2026-07-14T01:00:00.000Z',
+        messageCount: 41,
+        compacted: true,
+        compaction,
+        memoryRevokedAt: '2026-07-14T00:00:00.000Z',
+      },
+    });
+    const ctx = await buildRunContext({
+      sessionId: 's1',
+      inbound: textMessage('user', 'continue'),
+      sessionManager: sm,
+      memoryStore: createMockMemoryStore(),
+      tools: [],
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'openai/gpt-5.5',
+    });
+
+    expect(ctx.sessionSummary).toBeUndefined();
+  });
+
   it('keeps recent history and compaction summaries isolated between sessions', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ls-ctx-session-isolation-'));
     try {

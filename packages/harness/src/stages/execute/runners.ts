@@ -8,13 +8,16 @@ import type {
 import { attachmentContextMessages, recentHistoryForModel } from '../_shared.js';
 import type { ExecuteSanitizeOptions, ExecuteStageDeps } from './contracts.js';
 import { buildBaseMessages } from './guidance.js';
-import { applyUsage, runToolLoop } from './tool-loop.js';
+import { runToolLoop } from './tool-loop.js';
 import { acceptUniqueUserFacingReply, type ReplyRewriteInput } from '../../user-facing-reply.js';
 import { buildRunRequestCandidates } from '../../context-candidates.js';
 import { prepareModelRequest, callModelChat, modelRequestIdFor } from '../../model-observability.js';
 import { clearReplyState } from '../../reply-state.js';
 import { recordFailure } from '../../failure-state.js';
 import { replaceToolResults } from '../../execution-evidence-state.js';
+import { writeReplanState } from '../../replan-state.js';
+import { buildWorkPolicyUpgradeRequest } from '../../work-policy-upgrade.js';
+import { resolveExplicitToolInstructionSet } from '../../explicit-tool-instruction.js';
 import {
   validateWebCitations,
   webCitationRepairContract,
@@ -29,21 +32,46 @@ export async function executeLegacyLoop(
   sanitizeOpts: ExecuteSanitizeOptions,
 ): Promise<StageResult> {
   const attachmentMessages = attachmentContextMessages(ctx.runId, ctx.attachments);
+  const explicitTools = resolveExplicitToolInstructionSet(ctx, { allowContinuation: true })
+    ?.entries.map((entry) => entry.tool);
   const result = await runToolLoop(deps, {
     ctx,
     messages: buildBaseMessages(ctx, systemPrompt.text, attachmentMessages),
-    tools: ctx.tools,
+    tools: explicitTools ?? ctx.tools,
     sanitizeOpts,
     systemSegments: systemPrompt.segments,
     insertedBeforePrimary: attachmentMessages.map((item) => item.context),
   });
   replaceToolResults(ctx, 'execute', result.toolResults);
+  if (result.workPolicyUpgradeProposal) {
+    try {
+      const upgrade = buildWorkPolicyUpgradeRequest(ctx, result.workPolicyUpgradeProposal, result.toolResults);
+      writeReplanState(ctx, 'execute', { workPolicyUpgradeRequest: upgrade });
+      await ctx.persistRuntimeCheckpoint?.(`work policy upgrade ${upgrade.id}`);
+      clearReplyState(ctx, 'execute');
+      return {
+        stage: 'execute',
+        next: 'decide',
+        ok: true,
+        meta: {
+          workPolicyUpgradeRequestId: upgrade.id,
+          workPolicyUpgradeReasonCode: upgrade.reasonCode,
+          iterations: result.iterations,
+          toolCalls: result.toolResults.length,
+        },
+      };
+    } catch (error) {
+      clearReplyState(ctx, 'execute');
+      const message = `TaskBook promotion failed: ${(error as Error).message}`;
+      recordFailure(ctx, 'execute', 'execute', message);
+      return { stage: 'execute', next: 'recover', ok: false, error: message };
+    }
+  }
   if (!result.ok) {
     const message = result.error ?? 'execute failed';
     recordFailure(ctx, 'execute', 'execute', message);
     return { stage: 'execute', next: 'recover', ok: false, error: message };
   }
-  applyUsage(ctx, result.usage, 'execute');
   try {
     await acceptUniqueUserFacingReply(
       ctx,
@@ -98,13 +126,12 @@ async function rewriteLegacyExecutionReply(
       systemSegments: rewrittenSystem.segments,
       insertedBeforePrimary: attachments.map((item) => item.context),
     }),
-    { retryOf: ctx.modelRequests?.at(-1)?.id },
+    { retryOf: ctx.modelRequests?.at(-1)?.id, retryReason: 'duplicate' },
   );
   let currentRequest = request;
   let previousRequestId = modelRequestIdFor(request);
   for (let attempt = 0; attempt <= MAX_WEB_CITATION_REPAIRS; attempt += 1) {
     const response = await callModelChat(ctx, deps.llm, currentRequest);
-    applyUsage(ctx, response.usage, 'execute');
     const validation = validateWebCitations(response.content, ctx.webEvidence);
     if (validation.ok || !ctx.webEvidence) return response.content;
     if (attempt >= MAX_WEB_CITATION_REPAIRS) {
@@ -130,7 +157,7 @@ async function rewriteLegacyExecutionReply(
         systemSegments: rewrittenSystem.segments,
         insertedBeforePrimary: attachments.map((item) => item.context),
       }),
-      { retryOf: previousRequestId },
+      { retryOf: previousRequestId, retryReason: 'citation' },
     );
     previousRequestId = modelRequestIdFor(currentRequest);
   }

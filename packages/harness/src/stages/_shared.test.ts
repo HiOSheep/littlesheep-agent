@@ -119,7 +119,7 @@ describe('callLlmForJson retry budgets', () => {
   })
 
   it('passes the prepared parent request identity to a parse retry', async () => {
-    const requests: Array<{ id?: string; previousRequestId?: string }> = []
+    const requests: Array<{ id?: string; previousRequestId?: string; reason?: string }> = []
     const ctx = makeCtx()
     const llm = createMockLlm([
       textResponse('not json'),
@@ -132,8 +132,15 @@ describe('callLlmForJson retry budgets', () => {
     ], {
       maxAttempts: 2,
       onRequest: (request, retry) => {
-        const prepared = prepareModelRequest(ctx, 'reply', request, undefined, { retryOf: retry.previousRequestId })
-        requests.push({ id: modelRequestIdFor(prepared), previousRequestId: retry.previousRequestId })
+        const prepared = prepareModelRequest(ctx, 'reply', request, undefined, {
+          retryOf: retry.previousRequestId,
+          retryReason: retry.previousFailureReason,
+        })
+        requests.push({
+          id: modelRequestIdFor(prepared),
+          previousRequestId: retry.previousRequestId,
+          reason: retry.previousFailureReason,
+        })
         return prepared
       },
     })
@@ -141,7 +148,39 @@ describe('callLlmForJson retry budgets', () => {
     expect(result.parsed).toEqual({ ok: true })
     expect(requests[0]?.previousRequestId).toBeUndefined()
     expect(requests[1]?.previousRequestId).toBe(requests[0]?.id)
+    expect(requests[1]?.reason).toBe('decode')
     expect(ctx.modelRequests?.map((request) => request.retryOf)).toEqual([undefined, requests[0]?.id])
+    expect(ctx.modelRequests?.map((request) => request.retryReason)).toEqual([undefined, 'decode'])
+  })
+
+  it('classifies length and schema retries without adding a third JSON attempt', async () => {
+    const lengthReasons: Array<string | undefined> = []
+    const lengthResult = await callLlmForJson<{ ok: boolean }>(createMockLlm([
+      textResponse('{"ok":', 'length'),
+      textResponse('{"ok":true}'),
+    ]), 'test', [{ role: 'user', content: 'return json' }], {
+      maxAttempts: 2,
+      onRequest: (_request, retry) => { lengthReasons.push(retry.previousFailureReason) },
+    })
+    expect(lengthResult).toMatchObject({ parsed: { ok: true }, attempts: 2 })
+    expect(lengthReasons).toEqual([undefined, 'length'])
+
+    const schemaReasons: Array<string | undefined> = []
+    const schemaResult = await callLlmForJson<{ ok: boolean }>(createMockLlm([
+      textResponse('{"ok":"wrong"}'),
+      textResponse('{"ok":true}'),
+    ]), 'test', [{ role: 'user', content: 'return json' }], {
+      maxAttempts: 2,
+      validateParsed: (value) => {
+        if (!value || typeof value !== 'object' || (value as { ok?: unknown }).ok !== true) {
+          throw new Error('schema')
+        }
+        return value as { ok: boolean }
+      },
+      onRequest: (_request, retry) => { schemaReasons.push(retry.previousFailureReason) },
+    })
+    expect(schemaResult).toMatchObject({ parsed: { ok: true }, attempts: 2 })
+    expect(schemaReasons).toEqual([undefined, 'schema'])
   })
 })
 

@@ -46,6 +46,7 @@ export interface DecideRequest {
   attachmentMessages: AttachmentContextMessage[];
   previousTaskBook: RunContext['taskBook'];
   partialReplan: RunContext['partialReplanRequest'];
+  workPolicyUpgradeRequest: RunContext['workPolicyUpgradeRequest'];
   deferredRuntimeEvents: NonNullable<RunContext['deferredRuntimeEvents']>;
   history: RunContext['history'];
   replanRequested: boolean;
@@ -64,6 +65,7 @@ export async function buildDecideRequest(
   const explicitToolInstructions = resolveExplicitToolInstructionSet(ctx);
   const previousTaskBook = ctx.taskBook;
   const partialReplan = ctx.partialReplanRequest;
+  const workPolicyUpgradeRequest = ctx.workPolicyUpgradeRequest;
   const deferredRuntimeEvents = ctx.deferredRuntimeEvents ?? [];
   const replanRequested = Boolean(
     previousTaskBook
@@ -74,6 +76,17 @@ export async function buildDecideRequest(
     : ctx.verifyFeedback
       ? `\n\n---\nPrevious plan did not achieve the goal. Verify feedback:\n${ctx.verifyFeedback}\nPlease produce a REVISED assessment and taskBook that addresses this feedback.`
       : '';
+  const upgradeFeedback = workPolicyUpgradeRequest
+    ? `\n\n---\nThe bounded work loop discovered that this goal needs a TaskBook.\n`
+      + `Reason code: ${workPolicyUpgradeRequest.reasonCode}\n`
+      + `Reason: ${workPolicyUpgradeRequest.reason}\n`
+      + `Remaining goal: ${workPolicyUpgradeRequest.remainingGoal}\n`
+      + `Already completed tool call ids: ${workPolicyUpgradeRequest.completedToolCallIds.join(', ') || '(none)'}\n`
+      + `Already settled effect keys: ${workPolicyUpgradeRequest.completedEffectRefs.map((effect) => effect.idempotencyKey).join(', ') || '(none)'}\n`
+      + `Budget already used: ${workPolicyUpgradeRequest.modelAttemptsUsed} model attempts; ${workPolicyUpgradeRequest.budget.toolLoopIterationsUsed}/${workPolicyUpgradeRequest.budget.maxToolLoopIterations} tool-loop turns.\n`
+      + `${renderCompletedUpgradeEvidence(ctx, workPolicyUpgradeRequest.completedToolCallIds)}\n`
+      + 'Create a TaskBook only for the remaining work. Preserve completed Runtime evidence by reference and do not repeat completed effects.'
+    : '';
   const inboundText = textOf(ctx.inbound) || '(empty message)';
   const compactExplicitTool = canUseCompactExplicitToolDecision(ctx)
     ? resolveExplicitSingleToolInstruction(ctx)
@@ -171,7 +184,7 @@ export async function buildDecideRequest(
     { role: 'system', content: systemPrompt.text },
     ...history.map(toChatMessage),
     ...attachmentMessages.map((item) => item.message),
-    userChatMessage(`${inboundText}${verifyFeedback}${runtimeEventContext}`, ctx.attachments),
+    userChatMessage(`${inboundText}${verifyFeedback}${upgradeFeedback}${runtimeEventContext}`, ctx.attachments),
   ];
 
   return {
@@ -181,6 +194,7 @@ export async function buildDecideRequest(
     attachmentMessages,
     previousTaskBook,
     partialReplan,
+    workPolicyUpgradeRequest,
     deferredRuntimeEvents,
     history,
     replanRequested,
@@ -193,6 +207,20 @@ export async function buildDecideRequest(
       ?? compactAutonomousReadTools?.map((tool) => tool.name)
       ?? retrievalTools.map((tool) => tool.name),
   };
+}
+
+function renderCompletedUpgradeEvidence(ctx: RunContext, callIds: readonly string[]): string {
+  if (callIds.length === 0) return 'Completed evidence summaries: (none)';
+  const allowed = new Set(callIds);
+  const summaries = (ctx.toolResults ?? [])
+    .filter((result) => allowed.has(result.callId))
+    .slice(-16)
+    .map((result) => {
+      const rendered = result.ok ? JSON.stringify(result.output) ?? '(no output)' : result.error ?? 'failed';
+      const bounded = rendered.length > 600 ? `${rendered.slice(0, 600)}…` : rendered;
+      return `- ${result.callId}: ${result.ok ? 'ok' : 'failed'} ${bounded}`;
+    });
+  return `Completed evidence summaries:\n${summaries.join('\n') || '(references unavailable)'}`;
 }
 
 export function buildDecideRequestCandidates(

@@ -18,7 +18,7 @@ import { replaceToolResults } from '../../execution-evidence-state.js';
 import { reserveUserFacingReplyOnce } from '../../user-facing-reply.js';
 import { orderedStepResults } from './failure-policy.js';
 import { synthesizeFinalReply } from './final-reply.js';
-import { applyUsage } from './tool-loop.js';
+import { reusableTaskStepReplyCandidate } from './reply-candidate.js';
 import {
   buildTaskStepGraph,
   DEFAULT_MAX_PARALLEL_TASK_STEPS,
@@ -59,9 +59,14 @@ export async function executeTaskBook(
   const graph = buildTaskStepGraph(taskBook, ctx.tools, ctx.toolContext);
   if (!graph.ok) return structuralFailure(ctx, taskBook, execution, graph.error);
 
-  const allToolResults: ToolResult[] = (previousExecution?.steps ?? [])
+  const promotedCallIds = new Set(ctx.workPolicyUpgradeRequest?.completedToolCallIds ?? []);
+  const promotedEvidence = (ctx.toolResults ?? []).filter((result) => promotedCallIds.has(result.callId));
+  const allToolResults: ToolResult[] = [
+    ...promotedEvidence,
+    ...(previousExecution?.steps ?? [])
     .filter((step) => step.status === 'done' && !resumeTargets.has(step.stepId))
-    .flatMap((step) => step.toolResults);
+    .flatMap((step) => step.toolResults),
+  ].filter((result, index, values) => values.findIndex((candidate) => candidate.callId === result.callId) === index);
   if (resumeRequest) {
     const record = [...(ctx.replanHistory ?? [])]
       .reverse()
@@ -219,8 +224,17 @@ async function resolveCompletedTaskReply(
   stepResults: TaskStepResult[],
 ): Promise<string> {
   const stepOutput = reusableSingleStepOutput(taskBook, stepResults);
-  if (stepOutput) {
-    const reserved = await reserveUserFacingReplyOnce(ctx, 'execute_tool_loop', stepOutput);
+  const step = stepResults[0];
+  const candidate = step ? reusableTaskStepReplyCandidate(ctx, taskBook, step) : undefined;
+  if (stepOutput && candidate) {
+    const reserved = await reserveUserFacingReplyOnce(
+      ctx,
+      'execute_tool_loop',
+      stepOutput,
+      0,
+      'execute',
+      candidate.modelRequestId,
+    );
     if (reserved) return reserved;
   }
   return synthesizeFinalReply(deps, ctx, taskBook, stepResults);
@@ -255,7 +269,6 @@ function mergeWave(ctx: RunContext, outcomes: readonly TaskStepRunOutcome[], all
   for (const outcome of [...outcomes].sort((left, right) => left.scheduled.index - right.scheduled.index)) {
     ctx.produced.push(...outcome.produced);
     allToolResults.push(...outcome.toolResults);
-    applyUsage(ctx, outcome.usage, 'execute');
   }
 }
 

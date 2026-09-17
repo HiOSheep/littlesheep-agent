@@ -4,6 +4,7 @@ import {
   preferDirectModelOutput,
   prepareModelRequest,
   callModelChat,
+  callModelChatStream,
 } from '../../model-observability.js';
 import {
   appendSystemPromptAddons,
@@ -13,7 +14,6 @@ import {
 } from '../../profile-prompt.js';
 import { textOf } from '../_shared.js';
 import type { ExecuteStageDeps } from './contracts.js';
-import { applyUsage } from './tool-loop.js';
 import { acceptUniqueUserFacingReply, type ReplyRewriteInput } from '../../user-facing-reply.js';
 import { isCompactReadOnlyResult } from '../../compact-read-only-result.js';
 import { validateWebCitations, webCitationRepairContract } from '../../web-citation-validation.js';
@@ -107,11 +107,26 @@ Follow progressive disclosure: lead with the outcome and completion status, then
         history: [],
         primaryUserKind: 'workflow_state',
       }),
-      { retryOf },
+      {
+        retryOf,
+        retryReason: citationRepair ? 'citation' : rewrite ? 'duplicate' : undefined,
+      },
     );
-    const response = await callModelChat(ctx, deps.llm, request);
-    applyUsage(ctx, response.usage, 'execute');
-    return response.content;
+    let streamed = '';
+    const stream = ctx.onAssistantDelta !== undefined;
+    if (stream && (rewrite || citationRepair)) ctx.onAssistantReplace?.('');
+    const response = stream
+      ? await callModelChatStream(ctx, deps.llm, request, (chunk) => {
+          if (chunk.type === 'reset') {
+            streamed = '';
+            ctx.onAssistantReplace?.('');
+          } else if (chunk.type === 'delta' && chunk.delta) {
+            streamed += chunk.delta;
+            ctx.onAssistantDelta?.(chunk.delta);
+          }
+        })
+      : await callModelChat(ctx, deps.llm, request);
+    return response.content || streamed;
   };
 
   const requestCitationValidReply = async (rewrite?: ReplyRewriteInput): Promise<string> => {

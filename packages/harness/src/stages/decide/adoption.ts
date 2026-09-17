@@ -43,6 +43,10 @@ export async function adoptDecodedDecision(
   const built = buildAssessmentAndTaskBook(parsed, plan, request.inboundText);
   let assessment = built.assessment;
   let taskBook = built.taskBook;
+  if (request.workPolicyUpgradeRequest) {
+    assessment = { ...assessment, requiresTaskBook: true };
+    taskBook = { ...taskBook, assessment };
+  }
   if (!request.partialReplan && !assessment.needsClarification && !assessment.requiresTaskBook) {
     plan = compactLightweightPlan(plan, assessment.goal, assessment.successCriteria);
     taskBook = { ...taskBook, steps: plan };
@@ -150,6 +154,7 @@ export async function adoptDecodedDecision(
       complexity: assessment.complexity,
       maxExtraScopeRatio: assessment.maxExtraScopeRatio,
       requiresTaskBook: assessment.requiresTaskBook,
+      workPolicyUpgradeRequestId: request.workPolicyUpgradeRequest?.id,
       taskBookRevision,
       reusedExistingTaskBook,
       partialReplan: request.partialReplan

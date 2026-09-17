@@ -31,6 +31,18 @@ describe('replyStage', () => {
     expect(events.some((event) => event.type === 'route_decided')).toBe(false);
     expect(replacements.at(-1)).toBe('');
   });
+  it('HA-01-03 keeps fenced DSML documentation as inert reply text', async () => {
+    const example = '```xml\n<｜DSML｜ calls><｜DSML｜ invoke name="exec"></｜DSML｜ invoke></｜DSML｜ calls>\n```';
+    const llm = createMockLlm(textResponse(example));
+    const ctx = makeCtx({ inbound: textMessage('user', '解释这个协议') });
+    ctx.classification = { activity: 'respond', type: 'chat', confidence: 0.9, source: 'llm', reason: 'explain' };
+    const stage = createReplyStage({ llm, model: 'test', config: DEFAULT_CONFIG, branding: DEFAULT_BRANDING });
+
+    const result = await stage(ctx);
+    expect(result, result.error).toMatchObject({ next: 'finalize', ok: true });
+    expect(ctx.reply).toBe(example);
+    expect(ctx.lastError).toBeUndefined();
+  });
   it('uses a minimal capability-reply contract and excludes memory/history from the request', async () => {
     const requests: import('@littlesheep/llm').ChatRequest[] = [];
     const llm = createMockLlm((request) => {
@@ -273,6 +285,10 @@ describe('replyStage', () => {
       undefined,
       ctx.modelRequests?.[0]?.id,
     ]);
+    expect(ctx.modelRequests?.map((request) => request.retryReason)).toEqual([
+      undefined,
+      'continuity',
+    ]);
   });
 
   it('fails closed when one continuity correction still contradicts visible history', async () => {
@@ -429,6 +445,10 @@ describe('replyStage', () => {
     expect(ctx.reply).toBe('这次换一种自然的说法。');
     expect(deltas).toEqual(['这次换一种自然的说法。']);
     expect(ctx.replyProvenance?.rewriteCount).toBe(1);
+    expect(ctx.modelRequests?.[1]).toMatchObject({
+      retryOf: ctx.modelRequests?.[0]?.id,
+      retryReason: 'duplicate',
+    });
   });
 
   it('returns a runtime error instead of publishing a repeated fallback', async () => {

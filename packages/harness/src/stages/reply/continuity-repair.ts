@@ -8,7 +8,6 @@ import {
   prepareModelRequest,
   callModelChat,
 } from '../../model-observability.js';
-import { writeProviderUsageState } from '../../usage-state.js';
 import { assessResponseMemoryContinuity } from '../../response-continuity.js';
 import { UserFacingReplyError } from '../../user-facing-reply.js';
 
@@ -54,10 +53,9 @@ export async function repairDiscontinuousReply(
       history: visibleHistory,
       primaryUserKind: 'user_input',
     }),
-    { retryOf: ctx.modelRequests?.at(-1)?.id },
+    { retryOf: ctx.modelRequests?.at(-1)?.id, retryReason: 'continuity' },
   );
   const response = await callModelChat(ctx, deps.llm, request);
-  writeProviderUsageState(ctx, 'reply', response.usage);
 
   const repaired = response.content.trim();
   if (assess(ctx, visibleHistory, repaired) === 'discontinuous') {

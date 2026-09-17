@@ -774,16 +774,21 @@ describe('DurableHarnessKernel', () => {
       requestId: 'model-parent', status: 'received', usageStatus: 'unknown',
     }, 'runtime', 'model-parent-settled'));
     await kernel.append(event('model_request_started', {
-      requestId: 'model-retry', provider: 'test', model: 'test/model', retryOf: 'model-parent',
+      requestId: 'model-retry', provider: 'test', model: 'test/model', retryOf: 'model-parent', retryReason: 'schema',
     }, 'runtime', 'model-retry-start'));
 
     const projection = reduceDurableRunProjection(store.events);
     expect(projection.modelRequests).toEqual(expect.arrayContaining([
-      expect.objectContaining({ requestId: 'model-retry', retryOf: 'model-parent', status: 'started' }),
+      expect.objectContaining({
+        requestId: 'model-retry', retryOf: 'model-parent', retryReason: 'schema', status: 'started',
+      }),
     ]));
     await expect(kernel.append(event('model_request_started', {
       requestId: 'model-unknown-retry', retryOf: 'missing-parent',
     }, 'runtime', 'model-unknown-retry-start'))).rejects.toMatchObject({ kind: 'transition' });
+    await expect(kernel.append(event('model_request_started', {
+      requestId: 'model-invalid-retry-reason', retryOf: 'model-parent', retryReason: 'try_again',
+    }, 'runtime', 'model-invalid-retry-reason-start'))).rejects.toMatchObject({ kind: 'invalid' });
   });
 
   it('rejects cache observations that contain raw prompt fields', async () => {

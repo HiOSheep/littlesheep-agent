@@ -6,6 +6,45 @@ import { createMockLlm, makeCtx, textResponse } from '../../tests/helpers.js';
 import { synthesizeFinalReply } from './final-reply.js';
 
 describe('web-aware final reply synthesis', () => {
+  it('HA-04-05 streams the final TaskBook reply before settlement without duplicating it', async () => {
+    const llm = createMockLlm(textResponse('前半后半'));
+    llm.chatStream.mockImplementationOnce(async (_request, onChunk) => {
+      onChunk({ type: 'delta', delta: '前半', transportAttempt: 1, sequence: 1, operation: 'append' });
+      onChunk({ type: 'delta', delta: '后半', transportAttempt: 1, sequence: 2, operation: 'append' });
+      onChunk({ type: 'done', finishReason: 'stop', transportAttempt: 1, sequence: 3, operation: 'replace' });
+      return textResponse('前半后半');
+    });
+    const deltas: string[] = [];
+    const replacements: string[] = [];
+    const ctx = makeCtx();
+    ctx.onAssistantDelta = (value) => deltas.push(value);
+    ctx.onAssistantReplace = (value) => replacements.push(value);
+    const taskBook: TaskBook = {
+      assessment: {
+        userNeed: '完成任务', complexity: 'standard', goal: '完成任务',
+        successCriteria: ['返回结果'], requiresTaskBook: true, maxExtraScopeRatio: 1,
+      },
+      goal: '完成任务',
+      complexity: 'standard',
+      successCriteria: ['返回结果'],
+      steps: [{ id: 'step', description: '执行' }],
+      overdeliveryPolicy: { maxExtraScopeRatio: 1, guidance: 'stay focused' },
+    };
+    const steps: TaskStepResult[] = [{
+      stepId: 'step', description: '执行', status: 'done', output: 'ok', toolCallIds: [], toolResults: [],
+    }];
+
+    await expect(synthesizeFinalReply(
+      { model: 'test', config: DEFAULT_CONFIG, branding: DEFAULT_BRANDING, llm },
+      ctx,
+      taskBook,
+      steps,
+    )).resolves.toBe('前半后半');
+    expect(deltas).toEqual(['前半', '后半']);
+    expect(replacements).toEqual([]);
+    expect(llm.chat).not.toHaveBeenCalled();
+  });
+
   it('repairs forged citation ids against the durable Runtime projection', async () => {
     const validId = 'web-runtime-1-valid';
     const llm = createMockLlm([
@@ -70,5 +109,9 @@ describe('web-aware final reply synthesis', () => {
     expect(JSON.stringify(repairRequest?.messages)).toContain('Current docs');
     expect(JSON.stringify(repairRequest?.messages)).not.toContain('page body');
     expect(JSON.stringify(repairRequest?.messages)).not.toContain('web_provider_rate_limited');
+    expect(ctx.modelRequests?.[1]).toMatchObject({
+      retryOf: ctx.modelRequests?.[0]?.id,
+      retryReason: 'citation',
+    });
   });
 });

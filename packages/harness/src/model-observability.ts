@@ -5,19 +5,22 @@ import {
   MAX_SNAPSHOT_ITEMS,
   MAX_SNAPSHOT_MESSAGES,
   MAX_SNAPSHOT_TOOLS,
+  diffContextSnapshots,
   type ContextMessageCandidate,
   type ExactContextTokenCounter,
 } from '@littlesheep/context';
 import type {
+  ContextSnapshot,
   DurableModelRequestStatus,
   LlmCallContract,
   LlmCallPurpose,
   LocalTokenLedger,
+  ModelRequestPrefixChange,
   ModelRequestSnapshot,
   RunContext,
   StageName,
 } from '@littlesheep/types';
-import type { ChatRequest, ChatResponse, LlmClient, StreamChunk } from '@littlesheep/llm';
+import type { ChatRequest, ChatResponse, ChatTransportMetrics, LlmClient, StreamChunk } from '@littlesheep/llm';
 import { resolveProviderReasoningRequest } from '@littlesheep/config';
 import {
   LlmCallContractViolationError,
@@ -25,6 +28,7 @@ import {
 } from './llm-call-contracts/registry.js';
 import { injectRuntimeAwareness } from './runtime-awareness.js';
 import { injectMemoryKnownState } from './memory-known-state.js';
+import { sumMemoryReuse } from './memory-state.js';
 import { applyMemoryContextWorkingSet } from './memory-context-working-set.js';
 import {
   appendModelObservations,
@@ -43,19 +47,21 @@ import {
   scheduleCacheObservationPersistence,
   type CacheObservationPersistenceState,
 } from './cache-observation-persistence.js';
-
+import { emitSystemPromptTranscript } from './system-prompt-transcript.js';
+import { settleModelRequestActivity, startModelRequestActivity } from './model-activity.js';
+import { acceptProviderUsageState, providerTransportProjection, type ProviderUsageAcceptanceState } from './usage-state.js';
 export {
   MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN,
   MAX_SNAPSHOT_ITEMS,
   MAX_SNAPSHOT_MESSAGES,
   MAX_SNAPSHOT_TOOLS,
 };
-
+export { preferDirectModelOutput } from './model-request-policy.js';
 const defaultContextEngine = new ContextEngine();
 const contextEngines = new WeakMap<RunContext, ContextEngine>();
 const requestContextSnapshotIds = new WeakMap<ChatRequest, string>();
 const requestModelIds = new WeakMap<ChatRequest, string>();
-interface ModelRequestLifecycle extends CacheObservationPersistenceState {
+interface ModelRequestLifecycle extends CacheObservationPersistenceState, ProviderUsageAcceptanceState {
   readonly snapshot: ModelRequestSnapshot;
   readonly started: Promise<void>;
   providerStartedAtMs?: number;
@@ -66,12 +72,12 @@ const requestLifecycles = new WeakMap<ChatRequest, ModelRequestLifecycle>();
 const contextRequestLifecycles = new WeakMap<RunContext, Set<ChatRequest>>();
 
 /** Await the durable request-start boundary before entering a Provider call. */
-export async function ensureModelRequestStarted(_ctx: RunContext, request: ChatRequest): Promise<void> {
+export async function ensureModelRequestStarted(ctx: RunContext, request: ChatRequest): Promise<void> {
   const lifecycle = requestLifecycles.get(request);
   if (!lifecycle) return;
   await lifecycle.started;
+  startModelRequestActivity(ctx, request, lifecycle.snapshot);
 }
-
 /**
  * Close every model request prepared by a run before a terminal boundary.
  *
@@ -153,14 +159,13 @@ export async function callModelChat(
   if (lifecycle) lifecycle.providerStartedAtMs = Date.now();
   try {
     const response = await llm.chat(request);
-    recordProviderUsage(ctx, request, response.usage);
+    recordProviderUsage(ctx, request, response.usage, response.transport);
     return response;
   } catch (error) {
     await recordModelRequestFailure(ctx, request, error, ctx.signal);
     throw error;
   }
 }
-
 /** Execute a prepared streaming Provider request with lifecycle evidence. */
 export async function callModelChatStream(
   ctx: RunContext,
@@ -173,7 +178,7 @@ export async function callModelChatStream(
   if (lifecycle) lifecycle.providerStartedAtMs = Date.now();
   try {
     const response = await llm.chatStream(request, onDelta);
-    recordProviderUsage(ctx, request, response.usage);
+    recordProviderUsage(ctx, request, response.usage, response.transport);
     return response;
   } catch (error) {
     await recordModelRequestFailure(ctx, request, error, ctx.signal);
@@ -201,6 +206,7 @@ export async function recordModelRequestFailure(
           : 'failed';
   const lifecycle = requestLifecycles.get(request);
   if (lifecycle) {
+    settleModelRequestActivity(ctx, request, signal?.aborted ? 'aborted' : 'failed');
     updateModelRequestCacheObservation(ctx, lifecycle.snapshot.stage, lifecycle.snapshot.id, (current) => ({
       ...current,
       providerPrompt: {
@@ -236,7 +242,6 @@ export async function recordModelRequestFailure(
   });
 }
 
-/** Bind one immutable local counter to a run without adding infrastructure to RunContext. */
 export function bindExactContextTokenCounter(
   ctx: RunContext,
   tokenCounter: ExactContextTokenCounter | undefined,
@@ -251,33 +256,36 @@ export function prepareModelRequest(
   purposeOrStage: LlmCallPurpose | StageName,
   request: ChatRequest,
   candidates?: ContextMessageCandidate[],
-  options: { retryOf?: string } = {},
+  options: { retryOf?: string; retryReason?: ModelRequestSnapshot['retryReason'] } = {},
 ): ChatRequest {
   return recordPreparedRequest(ctx, purposeOrStage, request, candidates, options).request;
 }
 
-/** Compatibility helper for observers that do not yet consume the prepared request. */
 export function recordModelRequest(
   ctx: RunContext,
   purposeOrStage: LlmCallPurpose | StageName,
   request: ChatRequest,
   candidates?: ContextMessageCandidate[],
-  options: { retryOf?: string } = {},
+  options: { retryOf?: string; retryReason?: ModelRequestSnapshot['retryReason'] } = {},
 ): ModelRequestSnapshot {
   return recordPreparedRequest(ctx, purposeOrStage, request, candidates, options).snapshot;
 }
 
-/** Return the Runtime identity attached to a prepared request, if any. */
 export function modelRequestIdFor(request: ChatRequest): string | undefined {
   return requestModelIds.get(request);
 }
 
-/** Attach provider-reported usage to the exact Context snapshot for a prepared request. */
 export function recordProviderUsage(
   ctx: RunContext,
   request: ChatRequest,
   usage: ChatResponse['usage'] | undefined,
+  transport?: ChatTransportMetrics,
 ): void {
+  const reportedUsage = usage;
+  const transportTiming = transport ?? reportedUsage;
+  const transportProjection = providerTransportProjection(transportTiming);
+  const lifecycle = requestLifecycles.get(request);
+  if (lifecycle) settleModelRequestActivity(ctx, request, 'done');
   const snapshotId = requestContextSnapshotIds.get(request);
   if (!snapshotId || !ctx.contextSnapshots) return;
   const index = ctx.contextSnapshots.findIndex((snapshot) => snapshot.id === snapshotId);
@@ -285,12 +293,13 @@ export function recordProviderUsage(
   const snapshot = ctx.contextSnapshots[index]!;
   const requestSnapshot = ctx.modelRequests?.find((request) => request.contextSnapshotId === snapshotId);
   if (!requestSnapshot) return;
+  if (lifecycle && !acceptProviderUsageState(ctx, requestSnapshot.stage, lifecycle, usage)) return;
+  if (!lifecycle) return;
   const cacheUsage = classifyProviderCacheUsage(usage);
   updateModelRequestCacheObservation(ctx, requestSnapshot.stage, requestSnapshot.id, (current) => ({
     ...current,
     providerPrompt: cacheUsage.ledger,
   }));
-  const lifecycle = requestLifecycles.get(request);
   if (lifecycle) {
     scheduleCacheObservationPersistence(ctx, lifecycle, currentCacheObservation(ctx, requestSnapshot.id));
   }
@@ -298,6 +307,7 @@ export function recordProviderUsage(
     queueModelResponseReceived(ctx, request, requestSnapshot, {
       usageStatus: 'unavailable',
       cacheStatus: cacheUsage.ledger.status,
+      ...transportProjection,
       ...(currentCacheObservation(ctx, requestSnapshot.id)
         ? { cacheObservation: currentCacheObservation(ctx, requestSnapshot.id) }
         : {}),
@@ -305,9 +315,9 @@ export function recordProviderUsage(
     return;
   }
   usage = cacheUsage.validUsage;
-  const providerDurationMs = lifecycle?.providerStartedAtMs === undefined
+  const providerDurationMs = transportTiming?.durationMs ?? (lifecycle?.providerStartedAtMs === undefined
     ? undefined
-    : Math.max(0, Date.now() - lifecycle.providerStartedAtMs);
+    : Math.max(0, Date.now() - lifecycle.providerStartedAtMs));
   const localCalibration = buildLocalCalibration(snapshot.localTokenLedger, usage.promptTokens);
   updateContextSnapshot(ctx, requestSnapshot.stage, snapshotId, (current) => Object.freeze({
     ...current,
@@ -320,9 +330,12 @@ export function recordProviderUsage(
       completionTokens: usage.completionTokens,
       totalTokens: usage.totalTokens ?? usage.promptTokens + usage.completionTokens,
       cachedPromptTokens: usage.cachedPromptTokens,
-      cacheWriteTokens: usage.cacheWriteTokens,
+      uncachedPromptTokens: usage.uncachedPromptTokens,
+      cacheWriteTokens: reportedUsage?.cacheWriteTokens,
       reasoningTokens: usage.reasoningTokens,
       durationMs: providerDurationMs,
+      ...transportProjection,
+      requestId: requestSnapshot.id,
       localCalibration,
       reportedAt: new Date().toISOString(),
     }),
@@ -334,7 +347,11 @@ export function recordProviderUsage(
     completionTokens: usage.completionTokens,
     totalTokens: usage.totalTokens ?? usage.promptTokens + usage.completionTokens,
     ...(usage.cachedPromptTokens === undefined ? {} : { cachedPromptTokens: usage.cachedPromptTokens }),
+    ...(usage.uncachedPromptTokens === undefined ? {} : { uncachedPromptTokens: usage.uncachedPromptTokens }),
+    ...(reportedUsage?.cacheWriteTokens === undefined ? {} : { cacheWriteTokens: reportedUsage.cacheWriteTokens }),
     ...(usage.reasoningTokens === undefined ? {} : { reasoningTokens: usage.reasoningTokens }),
+    ...(providerDurationMs === undefined ? {} : { durationMs: providerDurationMs }),
+    ...transportProjection,
     reconciliation: localCalibration?.status === 'drift'
       ? 'mismatch'
       : localCalibration?.status ?? 'unavailable',
@@ -395,40 +412,12 @@ function queueModelResponseReceived(
   void lifecycle.settled.catch(() => undefined);
 }
 
-/** Use provider-native direct output for bounded routing, wording, and retries. */
-export function preferDirectModelOutput(
-  ctx: RunContext,
-  request: ChatRequest,
-  options: { force?: boolean } = {},
-): ChatRequest {
-  const resolved = ctx.resolvedRunConfig;
-  // Reference-harness parity: the durable path keeps thinking enabled.
-  if (ctx.streamModelTranscript === true) return request;
-  if (!resolved || (!options.force && resolved.reasoning === 'auto')) return request;
-  if (resolved.provider === 'deepseek' || resolved.provider === 'glm') {
-    return {
-      ...request,
-      temperature: undefined,
-      reasoning_effort: undefined,
-      thinking: { type: 'disabled' },
-    };
-  }
-  if (resolved.provider === 'openai') {
-    return {
-      ...request,
-      reasoning_effort: 'none',
-      thinking: undefined,
-    };
-  }
-  return request;
-}
-
 function recordPreparedRequest(
   ctx: RunContext,
   purposeOrStage: LlmCallPurpose | StageName,
   request: ChatRequest,
   candidates?: ContextMessageCandidate[],
-  options: { retryOf?: string } = {},
+  options: { retryOf?: string; retryReason?: ModelRequestSnapshot['retryReason'] } = {},
 ): { request: ChatRequest; snapshot: ModelRequestSnapshot } {
   const modelCallBudgetEnabled = ctx.maxModelCalls !== undefined;
   if (ctx.maxModelCalls !== undefined) {
@@ -490,11 +479,22 @@ function recordPreparedRequest(
     promptComponents: buildPromptComponentInput(ctx),
     key: ctx.cacheObservationKey,
     replayed: Boolean(ctx.resumedFromCheckpointId && requestIndex === 1),
+    contextReuse: prepared.contextSnapshot.contextReuse,
+    memoryReuse: sumMemoryReuse(ctx),
   });
+  const previousSnapshot = ctx.modelRequests?.at(-1);
+  const previousContext = previousSnapshot?.contextSnapshotId
+    ? ctx.contextSnapshots?.find((snapshot) => snapshot.id === previousSnapshot.contextSnapshotId)
+    : undefined;
+  const prefixChange = previousContext
+    ? buildRequestPrefixChange(previousContext, prepared.contextSnapshot)
+    : undefined;
   const observedSnapshot = Object.freeze({
     ...prepared.modelRequestSnapshot,
     cacheObservation,
+    ...(prefixChange ? { prefixChange } : {}),
     ...(retryOf ? { retryOf } : {}),
+    ...(retryOf && options.retryReason ? { retryReason: options.retryReason } : {}),
   });
   appendModelObservations(
     ctx,
@@ -505,6 +505,7 @@ function recordPreparedRequest(
   );
   requestContextSnapshotIds.set(prepared.request, prepared.contextSnapshot.id);
   requestModelIds.set(prepared.request, observedSnapshot.id);
+  emitSystemPromptTranscript(ctx, prepared.request, observedSnapshot.id, callContract.purpose);
   const started = Promise.resolve().then(async () => {
     await ctx.appendDurableEvent?.({
       type: 'model_request_started',
@@ -523,6 +524,7 @@ function recordPreparedRequest(
         payloadHash: prepared.modelRequestSnapshot.payloadHash,
         cacheObservation: observedSnapshot.cacheObservation,
         ...(observedSnapshot.retryOf ? { retryOf: observedSnapshot.retryOf } : {}),
+        ...(observedSnapshot.retryReason ? { retryReason: observedSnapshot.retryReason } : {}),
       },
     });
   });
@@ -535,7 +537,20 @@ function recordPreparedRequest(
   return { request: prepared.request, snapshot: observedSnapshot };
 }
 
-/** Collect only prompt-source revisions; cache-observability hashes values before persistence. */
+function buildRequestPrefixChange(
+  previous: ContextSnapshot,
+  current: ContextSnapshot,
+): ModelRequestPrefixChange | undefined {
+  const diff = diffContextSnapshots(previous, current);
+  if (diff.identical) return undefined;
+  return {
+    reasons: diff.changedReasons,
+    changedSegments: diff.segments.filter((segment) => segment.change !== 'unchanged').length,
+    stablePrefixLength: diff.stablePrefixLength,
+    ...(diff.firstChangeKey ? { firstChangeKey: diff.firstChangeKey } : {}),
+  };
+}
+
 function buildPromptComponentInput(
   ctx: RunContext,
 ): CachePromptComponentInput {
@@ -659,10 +674,6 @@ function applyResolvedReasoning(ctx: RunContext, request: ChatRequest): ChatRequ
   const resolved = ctx.resolvedRunConfig;
   if (!resolved) return request;
 
-  // Durable path: automatic reasoning keeps the provider default.
-  if (ctx.streamModelTranscript === true && resolved.reasoning === 'auto') {
-    return request;
-  }
   // Explicit per-request controls are used only by bounded recovery paths and
   // must not be overwritten by the run-wide reasoning preference.
   if (request.reasoning_effort !== undefined || request.thinking !== undefined) return request;

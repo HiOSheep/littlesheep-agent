@@ -163,7 +163,7 @@ describe('askUserStage', () => {
     expect(llm.chat).toHaveBeenCalledTimes(2);
   });
 
-  it('retries an empty high-reasoning response with a larger direct-output budget', async () => {
+  it('retries an empty response with a larger output budget without overriding configured reasoning', async () => {
     const requests: Array<{ maxTokens?: number; thinking?: string; effort?: string }> = [];
     const llm = createMockLlm((request) => {
       requests.push({
@@ -191,8 +191,8 @@ describe('askUserStage', () => {
     expect(result.next).toBe('finalize');
     expect(ctx.reply).toBe('请告诉我需要修改的目标文件。');
     expect(requests).toEqual([
-      { maxTokens: 320, thinking: 'disabled', effort: undefined },
-      { maxTokens: 640, thinking: 'disabled', effort: undefined },
+      { maxTokens: 320, thinking: 'enabled', effort: 'max' },
+      { maxTokens: 640, thinking: 'enabled', effort: 'max' },
     ]);
   });
 });

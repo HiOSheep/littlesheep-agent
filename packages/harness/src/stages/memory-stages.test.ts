@@ -95,6 +95,37 @@ function attachWebEvidence(ctx: ReturnType<typeof verifiedCtx>) {
 }
 
 describe('EVOLVE structured memory intents', () => {
+  it('skips ordinary complex or effectful work under compaction-only learning', async () => {
+    const memoryWriter = writer();
+    const llm = createMockLlm(textResponse(JSON.stringify({ memories: [] })));
+    const ctx = verifiedCtx();
+    ctx.taskBook = {
+      id: 'ordinary-complex', goal: 'modify the project', complexity: 'complex',
+      createdAt: ctx.startedAt, updatedAt: ctx.startedAt, steps: [],
+    };
+
+    const result = await createEvolveStage({
+      llm, model: 'test', memoryWriter, mode: 'explicit-only', llmPolicy: 'always',
+    })(ctx);
+
+    expect(result.meta).toMatchObject({ skippedModelCall: true, reason: 'no-explicit-memory-request' });
+    expect(llm.chat).not.toHaveBeenCalled();
+    expect(memoryWriter.writeMany).not.toHaveBeenCalled();
+  });
+
+  it('keeps an explicit memory request on the guarded EVOLVE path', async () => {
+    const memoryWriter = writer();
+    const llm = createMockLlm(textResponse(JSON.stringify({ memories: [], createSkill: null })));
+    const ctx = verifiedCtx();
+    ctx.inbound = textMessage('user', 'Please remember this preference in memory.');
+
+    await createEvolveStage({
+      llm, model: 'test', memoryWriter, mode: 'explicit-only', llmPolicy: 'adaptive',
+    })(ctx);
+
+    expect(llm.chat).toHaveBeenCalledOnce();
+  });
+
   it('rejects automatic durable writes from Web-backed runs', async () => {
     const memoryWriter = writer();
     const llm = createMockLlm(textResponse(JSON.stringify({
@@ -825,6 +856,18 @@ function knownReference(atomId: string, atomRevision: number): RuntimeKnownState
 }
 
 describe('CAPTURE daily timeline intents', () => {
+  it('does not create a per-run daily atom under compaction-only learning', async () => {
+    const memoryWriter = writer();
+    const llm = createMockLlm(textResponse(JSON.stringify({ observations: [] })));
+    const result = await createCaptureStage({
+      llm, model: 'test', memoryWriter, automaticEnabled: false, llmEnabled: true,
+    })(verifiedCtx());
+
+    expect(result.meta).toMatchObject({ skippedAutomaticCapture: true, reason: 'compaction-only-memory-policy' });
+    expect(llm.chat).not.toHaveBeenCalled();
+    expect(memoryWriter.writeMany).not.toHaveBeenCalled();
+  });
+
   it('does not auto-capture a Web-backed run when the user did not request persistence', async () => {
     const memoryWriter = writer();
     const llm = createMockLlm(textResponse(JSON.stringify({ observations: [{

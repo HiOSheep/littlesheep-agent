@@ -38,6 +38,68 @@ export function hasIncompleteTaskExecution(ctx: RunContext): boolean {
   return taskStepIds(ctx).some((id) => results.get(id) !== 'done');
 }
 
+/** Runtime facts that a model verdict is not allowed to repair or hide. */
+export function runtimeExecutionEvidenceGap(ctx: RunContext): string | undefined {
+  if (ctx.taskBook && (!ctx.taskExecution || hasIncompleteTaskExecution(ctx))) {
+    return 'failed or missing task step evidence';
+  }
+  if (ctx.taskExecution && ctx.taskExecution.status !== 'done') {
+    return `task execution status is ${ctx.taskExecution.status}`;
+  }
+  if (ctx.toolInvocationsTruncated) return 'tool invocation evidence is truncated';
+
+  const invocations = ctx.toolInvocations ?? [];
+  const callIds = new Set<string>();
+  const activeInvocations = invocations.filter((invocation, index) => !(
+    invocation.status !== 'succeeded'
+    && invocation.stepId
+    && invocations.slice(index + 1).some((candidate) => (
+      candidate.stepId === invocation.stepId && candidate.status === 'succeeded'
+    ))
+  ));
+  for (const invocation of invocations) {
+    if (callIds.has(invocation.callId)) return `duplicate tool invocation ${invocation.callId}`;
+    callIds.add(invocation.callId);
+  }
+  for (const invocation of activeInvocations) {
+    if (invocation.status !== 'succeeded') {
+      return `tool invocation ${invocation.callId} is ${invocation.status}`;
+    }
+    if (invocation.outputTruncated) return `tool invocation ${invocation.callId} output is truncated`;
+  }
+
+  if (activeInvocations.length > 0) {
+    const results = new Map((ctx.toolResults ?? []).map((result) => [result.callId, result]));
+    for (const invocation of activeInvocations) {
+      const result = results.get(invocation.callId);
+      if (!result || !result.ok) return `tool result ${invocation.callId} is missing or failed`;
+    }
+  }
+
+  for (const effect of ctx.sideEffects ?? []) {
+    if (effect.status !== 'succeeded') return `side effect ${effect.idempotencyKey} is ${effect.status}`;
+    if (!effect.callId || !callIds.has(effect.callId)) {
+      if (!hasLegacyCheckpointToolResult(ctx, effect.callId)) {
+        return `side effect ${effect.idempotencyKey} has no matching tool invocation`;
+      }
+      continue;
+    }
+    const invocation = invocations.find((candidate) => candidate.callId === effect.callId);
+    if (!invocation || invocation.toolName !== effect.toolName) {
+      return `side effect ${effect.idempotencyKey} tool identity does not match its invocation`;
+    }
+  }
+  return undefined;
+}
+
+function hasLegacyCheckpointToolResult(ctx: RunContext, callId: string | undefined): boolean {
+  if (!callId || !ctx.resumedFromCheckpointId || (ctx.toolInvocations?.length ?? 0) > 0) return false;
+  return (ctx.taskExecution?.steps ?? []).some((step) => (
+    step.toolResults.some((result) => result.callId === callId && result.ok)
+    && step.toolCallIds.includes(callId)
+  ));
+}
+
 export function installPartialReplan(
   ctx: RunContext,
   targetStepIds: string[],
