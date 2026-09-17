@@ -23,7 +23,7 @@ import {
   recordModelRequestFailure,
 } from '../model-observability.js';
 import { buildRunRequestCandidates } from '../context-candidates.js';
-import { attachmentManifestText, recentHistoryForModel } from './_shared.js';
+import { attachmentManifestText, conversationHistoryForModel } from './_shared.js';
 import { writeDecisionState } from '../decision-state.js';
 import { assessRetrievalIntent } from '../retrieval-intent.js';
 import {
@@ -158,7 +158,10 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
           meta: { activity: routed.activity, classification: routed, deterministic: true },
         };
       }
-      const classifierHistory = recentHistoryForModel(ctx.history, 4, 1_800);
+      // The first call of every turn must project the same history bytes as the
+      // planning/execute/reply calls, otherwise the Provider's cached prefix
+      // diverges immediately after the shared head.
+      const classifierHistory = conversationHistoryForModel(ctx);
       const manifest = attachmentManifestText(ctx.attachments);
       const classificationInbound = manifest
         ? { ...ctx.inbound, content: [...ctx.inbound.content, { type: 'text' as const, text: manifest }] }
