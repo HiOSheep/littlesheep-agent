@@ -1269,6 +1269,32 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 
 **结论：** `releaseGate` 的两个本地 blocked 原因（`context_cache_not_observed`、`memory_cache_not_observed`）现在都能被**真实运行事件**观测并解除；embedding 未启用时仍如实记为未观测。余下与该门无关的既有项（如 `real_provider_reconciliation_not_verified`）不受影响。
 
+### 10.68 第三十六轮（"DSH 99% vs LS 50%"口径核查：长会话实测）执行记录（2026-09-17）
+
+**用户疑问：** DSH 缓存命中率可达 99%+，LS 连 50% 都不到。
+
+**核查 1（DSH 口径，外部资料）：** DSH 的 97–99% 是**单会话、长会话**数字，成立条件是"**system prompt 整个会话不变 + 历史纯追加**"（社区文章明确：该数字为 Reddit 自报、并未经审计，且模式切换/换模型/动态内容注入都会破坏它；DSH Web UI 显示的是**每会话**命中率）。参考：[How DeepSeek Harness Hits 99% Cache Hit Rates](https://dev.to/justin3go/how-deepseek-harness-hits-99-cache-hit-rates-explained-1bgf)、[DeepSeek Context Caching 文档](https://api-docs.deepseek.com/zh-cn/guides/kv_cache/)。
+
+**核查 2（我们自己的口径问题）：** 对比脚本此前**每轮新建 session**（`verify-path-{mode}-r{round}-s{n}`），40–60 次运行被切成 2–3 段**冷启动短会话**——结构上最不利于缓存，与 DSH 的长会话不可比。为此新增 `LITTLESHEEP_COMPARISON_SHARED_SESSION=1`：同一会话跑满全部轮次，并逐轮记录累计命中率（`paths[].cacheTrend`）。
+
+**核查 3（长会话实测，真实 Provider，4 轮 × 20 次/路径 = 80 次/路径）：**
+
+| 轮次 | shadow 累计命中率 | next 累计命中率 |
+| --- | --- | --- |
+| 0 | 50.2% | 46.8% |
+| 1 | 52.6% | 50.0% |
+| 2 | 45.8% | 49.2% |
+| 3 | 46.6% | 52.2% |
+
+**关键结论（重要，且与预期相反）：** 会话变长**并没有**把 LS 推到 DSH 量级——两类路径都**稳定在 ~50% 平台**，不随前缀增长而收敛到 90%+。因此：
+1. "每轮新建 session"确实是**测量偏差**（必须修，已修）；
+2. 但 LS 的低命中率**不只是测量偏差**，而是**真实的结构性前缀问题**：每次请求的提示词前缀里存在会话内会变化的内容（记忆/任务书/权限/工作区/摘要等），或不同阶段使用不同 system prompt，导致"从变化点之后（含整段历史）全部 miss"。
+3. 该实验还暴露一个工作负载副作用：同一会话重复跑同一批任务时失败率上升（shadow 17/80、next 2/80），门判定 False——这说明重复同一批任务不是自然负载，长会话结论应只看命中率趋势，不看该次门判定。
+
+**下一步（待用户定）：** 用本轮已落地的**逐调用命中率 + top 失效原因**前端/报告能力定位"变化点在提示词哪个位置"（免费方案：读本地 `cache-quality` 报告与逐调用证据；或追加少量真实预算做定向诊断），再决定是"把动态内容移到尾部"还是"阶段提示词收敛"。
+
+**预算：** 本次长会话实验按 token 估算约 ¥1；自真实配对起累计 ≈ **¥10 上限已用尽**。后续真实 Provider 复核需追加预算。
+
 ### 10.14 第七轮（HC-12 撤销屏障）新增证据（2026-09-16）
 
 **问题（先写失败用例）：** v3 写入路径的等值/相似候选只按 branch/scope/`status='active'` 选取；被纠正（`epistemicStatus`/`resolutionStatus = superseded`）或删除（`status = tombstone`）的 atom 仍可能是 active 记录。后续 maintenance（压缩候选）证据即使引用同一 `conversation-source:`，也会创建新 atom 或强化旧 atom，从而复活已被用户忘记/纠正的事实。`memory-service-v3.test.ts` 的新用例在修复前返回 `created`。

@@ -28,6 +28,8 @@ const OUTPUT_PATH = join(repoRoot, '.codex_tmp', 'harness-path-comparison.json')
 const OFFLINE = process.argv.includes('--offline') || process.env.LITTLESHEEP_COMPARISON_OFFLINE === '1'
 /** Force a low compaction threshold so the paired sample covers the compaction round class. */
 const COMPACTION_LOW = process.env.LITTLESHEEP_COMPARISON_COMPACTION === '1'
+/** Keep one conversation alive across rounds, as a long DSH-style session. */
+const SHARED_SESSION = process.env.LITTLESHEEP_COMPARISON_SHARED_SESSION === '1'
 
 const ROUNDS = Number(process.env.LITTLESHEEP_COMPARISON_ROUNDS ?? (OFFLINE ? 1 : 2))
 
@@ -77,15 +79,25 @@ async function main() {
       roots.push(started[mode].root)
     }
     const tasks = taskList()
+    // DSH measures provider prefix caching across one long append-only
+    // conversation. A fresh session per round can never show that, so the
+    // shared-session mode keeps one conversation alive and records how the
+    // cumulative hit ratio behaves as the prefix grows.
+    const sharedSessions = { shadow: null, next: null }
     for (let round = 0; round < ROUNDS; round += 1) {
       const roundSession = { shadow: null, next: null }
       const order = round % 2 === 0 ? ['shadow', 'next'] : ['next', 'shadow']
       for (let index = 0; index < tasks.length; index += 1) {
         for (const mode of order) {
           const path = started[mode]
-          roundSession[mode] ??= `verify-path-${mode}-r${round}-s${path.sessions.length}-${randomUUID().slice(0, 6)}`
+          if (SHARED_SESSION) {
+            sharedSessions[mode] ??= `verify-path-${mode}-shared-${randomUUID().slice(0, 6)}`
+            roundSession[mode] = sharedSessions[mode]
+          } else {
+            roundSession[mode] ??= `verify-path-${mode}-r${round}-s${path.sessions.length}-${randomUUID().slice(0, 6)}`
+          }
           const ok = await runTask(path, { round, index, sessionId: roundSession[mode] })
-          if (!ok) {
+          if (!ok && !SHARED_SESSION) {
             path.sessions.push({ sessionId: roundSession[mode], round, lastTaskIndex: index })
             roundSession[mode] = null
           }
@@ -94,6 +106,23 @@ async function main() {
       for (const mode of ['shadow', 'next']) {
         if (roundSession[mode]) {
           started[mode].sessions.push({ sessionId: roundSession[mode], round, lastTaskIndex: tasks.length - 1 })
+          if (SHARED_SESSION) {
+            const trend = await readCacheQuality({
+              baseUrl: started[mode].baseUrl,
+              locator: started[mode].locator,
+              sessionId: roundSession[mode],
+              workplaceDir: started[mode].workplaceDir,
+              dataDir: started[mode].dataDir,
+            })
+            started[mode].cacheTrend.push({
+              round,
+              requestCount: trend.report?.provider?.requestCount ?? trend.report?.requestCount ?? 0,
+              promptTokens: trend.report?.providerPrompt?.tokenCount,
+              cachedPromptTokens: trend.report?.providerPrompt?.cachedTokenCount,
+              cacheHitRatio: trend.report?.providerPrompt?.hitRatio,
+              report: trend.report,
+            })
+          }
         }
       }
     }
@@ -186,6 +215,7 @@ async function startPath({ mode, apiKey, model, provider }) {
     locator,
     baseUrl: `http://${locator.host}:${locator.port}`,
     runs: [],
+    cacheTrend: [],
     sessions: [],
   }
 }
@@ -249,6 +279,7 @@ async function finishPath(path) {
       })),
       report,
       observationFiles: sessionReports.reduce((total, item) => total + item.observationFiles, 0),
+      cacheTrend: path.cacheTrend.map(({ report, ...entry }) => entry),
     }
   } finally {
     path.child.kill()
@@ -356,8 +387,10 @@ function summarize(path) {
     provider: path.report.provider,
     policies: path.policies,
     observationFiles: path.observationFiles,
+    budget: path.report.budget,
     latency: path.report.latency,
     verification: path.report.verification,
+    cacheTrend: path.cacheTrend ?? [],
   }
 }
 
