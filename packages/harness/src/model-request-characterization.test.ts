@@ -36,6 +36,11 @@ function textPart(parts: ChatContentPart[]): string {
   return parts.find((part): part is Extract<ChatContentPart, { type: 'text' }> => part.type === 'text')?.text ?? '';
 }
 
+/** Everything after the system message: conversation, then trailing stage sections. */
+function trailingText(request: ChatRequest): string {
+  return request.messages.slice(1).map((message) => String(message.content)).join('\n');
+}
+
 function expectCommonPayloadShape(request: ChatRequest, options: { includesBootstrap?: boolean } = {}) {
   expect(request.model).toBe('test-model');
   const roles = request.messages.map((message) => message.role);
@@ -48,7 +53,11 @@ function expectCommonPayloadShape(request: ChatRequest, options: { includesBoots
     expect(request.messages.map((message) => String(message.content)).join('\n')).toContain('BOOTSTRAP_SENTINEL');
   }
   expect(request.messages.map((message) => String(message.content)).join('\n')).toContain('MEMORY_ROOT_SENTINEL');
-  expect(String(request.messages[0]?.content)).toContain('PROFILE_SENTINEL');
+  // The system message is the canonical shared head only; stage addons such as
+  // the behaviour profile now travel after the conversation so that every stage
+  // of the turn shares the same cached prefix.
+  expect(String(request.messages[0]?.content)).not.toContain('PROFILE_SENTINEL');
+  expect(request.messages.map((message) => String(message.content)).join('\n')).toContain('PROFILE_SENTINEL');
   expect(request.messages[1]?.content).toBe('PRIOR_USER_SENTINEL');
   expect(request.messages[2]?.content).toBe('PRIOR_ASSISTANT_SENTINEL');
   expect(String(request.messages[3]?.content)).toContain('Attached files manifest');
@@ -120,8 +129,11 @@ describe('LLM request characterization', () => {
 
     expect(requests).toHaveLength(1);
     expectCommonPayloadShape(requests[0]!);
-    expect(String(requests[0]!.messages[0]?.content)).toContain('DECIDE stage');
-    expect(String(requests[0]!.messages[0]?.content)).toContain('REASONING_SENTINEL');
+    // The stage contract and behaviour addons travel after the conversation;
+    // only the canonical shared head stays in the system message.
+    expect(String(requests[0]!.messages[0]?.content)).not.toContain('DECIDE stage');
+    expect(trailingText(requests[0]!)).toContain('DECIDE stage');
+    expect(trailingText(requests[0]!)).toContain('REASONING_SENTINEL');
     expect(requests[0]!.temperature).toBe(0);
     expect(requests[0]!.max_tokens).toBe(1_400);
     expect(requests[0]!.tools).toBeUndefined();
@@ -143,7 +155,7 @@ describe('LLM request characterization', () => {
 
     expect(requests).toHaveLength(1);
     expectCommonPayloadShape(requests[0]!);
-    expect(String(requests[0]!.messages[0]?.content)).toContain('REASONING_SENTINEL');
+    expect(trailingText(requests[0]!)).toContain('REASONING_SENTINEL');
     expect(requests[0]!.tools?.map((spec) => spec.function.name)).toEqual(['inspect']);
     expect(requests[0]!.tool_choice).toBe('auto');
     expect(requests[0]!.temperature).toBe(0);

@@ -2048,3 +2048,19 @@ C10B 矩阵 HC-07 由「部分」变为「通过（离线）」。
 **门（本轮全绿）：** `typecheck` 0；全量 `vitest` 460 文件 / 3,279 通过 / 1 跳过；`check:repo` 33/33；`verify:electron-continuity` ok:true（8 场景）；`verify:electron-ui-state-continuity` ok:true；`verify:harness-paths:offline` 通过。
 
 **下一步候选（按收益/风险排序）：** ① 把阶段专属段移到历史之后的尾部（真正的跨阶段 `system + 历史` 共享，预期最大）；② 查 `output_constraint` 为何在同阶段跨轮变化；③ 建立改动前的实机延迟基线以判定本节第 5 项；④ 若追求成本最小化，需在"命中率"与"prompt 体积"之间做显式取舍（例如把 `memory-root-index` 等运行态从 system 移出）。
+
+### 10.103 第 2 步完成：system 消息 = 全阶段逐字节相同的共享头（阶段专属段全部后置）执行记录（2026-09-17）
+
+**改动（单文件核心 + 3 处测试断言同步）：** `packages/harness/src/context-candidates.ts` 把原来的**黑名单**（`VOLATILE_GUIDANCE_SEGMENT_IDS`：只有 `execution-plan`/`retrieval-intent-contract`/`explicit-tool-proposal-contract` 后置）改为**白名单** `SHARED_HEAD_SEGMENT_IDS = {identity, core-flow, safety, workspace, date-time}`：**只有**这五个段留在 system 消息里，**其余所有段**（`capabilities`/`tooling`、`skills-index`、`runtime`、`output-directives`/`response-directives`、`memory-root-index`、`summary-memory`、`initial-memory-selection`、bootstrap 文件，以及调用方追加的 `profile`/`user-facing-voice`/阶段契约）一律作为**尾部候选**追加在会话之后。
+
+**效果（这是本轮真正想要的缓存结构）：** 对同一轮内的每个阶段，请求形状变为
+`[system: 共享头] + [历史] + [当前请求] + [尾部: 阶段契约/运行态/记忆索引]`，
+于是 `decide` / `execute`（工具循环）/ `reply` 的**前两段逐字节相同**，后一个调用可以直接命中前一个调用已预填的 `system + 历史` 前缀——这正是 round 30 结论文档里"需要架构级改动"的那一项。
+
+**验证（全绿）：** `typecheck` 0；全量 `vitest` 460 文件 / 3,280 通过 / 1 跳过；`check:repo` 33/33；**`verify:electron-continuity` ok:true**（8 场景，`recentHistoryMessages` 仍为 6，历史未被预算淘汰）；**`verify:electron-ui-state-continuity` ok:true**。
+
+**同步更新的断言（都是"语义不变、位置改变"）：** `context-candidates.test.ts` 原断言"system 候选保留全部 segments"改写为两条新不变量——① 阶段段必须作为尾部候选保留 kind/source/priority；② **不同阶段的 system 消息逐字节相同**（新增白盒用例，reply 与 execute 的 `messages[0]` 相等且只含共享头）。另外 `model-request-characterization.test.ts`、`reply.test.ts`、`runner.test.ts` 的 4 处断言从"system 消息包含 X"改为"X 仍在请求中、但不在 system 消息里"。
+
+**如实说明（未结项）：** ① **本轮尚未实机复测**，命中率收益需下一次真实 Provider 长会话验证；② 对比脚本的**短轮延迟门**在离线模式由 `P95 = −10.7%（通过）` 变为 `P95 = 12.3%（未通过，限值 5%）`——但绝对量极小（p95 57ms → 64ms、4 run 样本），且同类门在实机也早已是未通过状态，**当前不能归因**，需要专门的对照运行；③ 用户提出的"历史前缀必须纯追加"仍是**未完成的最大缺口**（见下）。
+
+**下一步（历史投影纯追加）：** 现在 `conversationHistoryForModel` 仍是"最近 8 条 / 6,000 字符"的**滑动窗口**：当历史超过 8 条时，**每一轮**投影都会从头部滑掉一条，于是跨 run 的前缀在第 2 条消息处即分叉，命中率上限被锁在 ~57%（DSH 之所以能到 97–99%，正是因为它发的是**整段只增不改的 transcript**）。可行做法：把共享窗口改成"**在硬预算内只增不滑**"（例如按 token 预算纳入尽可能多的历史，只有触发会话压缩时才发生一次前缀断裂），同时把 reply/execute 的 prompt 预算与新窗口对齐（否则会重演 10.101 的"预算淘汰历史"）。这也正是"prefix-diff 测试"应该锁住的不变量：连续两轮请求的**首个变化位置**必须落在历史窗口边界，而不是消息数组中间。

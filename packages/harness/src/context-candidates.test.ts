@@ -56,11 +56,22 @@ describe('buildRunRequestCandidates', () => {
     });
   });
 
-  it('preserves source-aware system segments for Context budgeting', () => {
+  it('keeps only the canonical head in the system message and trails stage sections', () => {
     const ctx = makeCtx();
-    const systemSegments = [{
-      id: 'memory-root-index',
+    const head = {
+      id: 'identity',
       order: 0,
+      text: 'shared head',
+      kind: 'system_prompt' as const,
+      source: { kind: 'prompt' as const, id: 'identity' },
+      priority: 100,
+      required: true,
+      sensitive: true,
+      scope: 'global' as const,
+    };
+    const stageSection = {
+      id: 'memory-root-index',
+      order: 1,
       text: 'memory index',
       kind: 'memory_index' as const,
       source: { kind: 'memory' as const, id: 'root-index' },
@@ -68,13 +79,62 @@ describe('buildRunRequestCandidates', () => {
       required: true,
       sensitive: true,
       scope: 'global' as const,
-    }];
+    };
     const candidates = buildRunRequestCandidates(ctx, 'reply', [
-      { role: 'system', content: 'memory index' },
+      { role: 'system', content: 'shared head\n\n---\n\nmemory index' },
       { role: 'user', content: 'hello' },
-    ], { history: [], systemSegments });
+    ], { history: [], systemSegments: [head, stageSection] });
 
-    expect(candidates[0]?.segments).toEqual(systemSegments);
+    expect(candidates[0]?.segments).toEqual([head]);
+    expect(String(candidates[0]?.message.content)).toBe('shared head');
+    expect(candidates.at(-1)).toMatchObject({
+      kind: 'memory_index',
+      source: { kind: 'memory', id: 'root-index' },
+      priority: 95,
+      required: true,
+      message: { role: 'system', content: 'memory index' },
+    });
+  });
+
+  it('renders identical system bytes for every stage that shares the head', () => {
+    const ctx = makeCtx();
+    const segments = (toolId: string, toolText: string) => [
+      {
+        id: 'identity',
+        order: 0,
+        text: 'shared head',
+        kind: 'system_prompt' as const,
+        source: { kind: 'prompt' as const, id: 'identity' },
+        priority: 100,
+        required: true,
+        sensitive: true,
+        scope: 'global' as const,
+      },
+      {
+        id: toolId,
+        order: 1,
+        text: toolText,
+        kind: 'system_prompt' as const,
+        source: { kind: 'prompt' as const, id: toolId },
+        priority: 98,
+        required: true,
+        sensitive: true,
+        scope: 'global' as const,
+      },
+    ];
+    const systemOf = (stage: 'reply' | 'execute', toolId: string, toolText: string) => {
+      const candidates = buildRunRequestCandidates(ctx, stage, [
+        { role: 'system', content: `shared head${toolText}` },
+        { role: 'user', content: 'hello' },
+      ], { history: [], systemSegments: segments(toolId, toolText) });
+      return String(candidates[0]?.message.content);
+    };
+
+    // Stage-specific sections differ, but the system message does not: that is
+    // what lets a later stage reuse the earlier stage's cached prefix.
+    expect(systemOf('reply', 'capabilities', 'reply capabilities'))
+      .toBe(systemOf('execute', 'tooling', 'execute tooling'));
+    expect(systemOf('reply', 'capabilities', 'reply capabilities')).toBe('shared head');
   });
 
   it('accounts for attachment manifest and loaded content before the primary user message', () => {

@@ -10,11 +10,21 @@ import type {
 import { filterAuthoritativeUserFacingMessages } from '@littlesheep/types';
 import type { ChatMessage } from '@littlesheep/llm';
 
-/** Context sections whose text changes every turn because the task book advances. */
-const VOLATILE_GUIDANCE_SEGMENT_IDS = new Set([
-  'execution-plan',
-  'retrieval-intent-contract',
-  'explicit-tool-proposal-contract',
+/**
+ * Sections every stage renders byte for byte identically.
+ *
+ * They form the system message. Every other section is stage-specific (tooling
+ * vs capabilities, skills, runtime facts, memory index, output directives) and
+ * travels *after* the conversation instead, so the Provider's cached prefix
+ * covers the same system bytes and the same history for every stage of a turn
+ * instead of being truncated at the first stage-specific section.
+ */
+const SHARED_HEAD_SEGMENT_IDS = new Set([
+  'identity',
+  'core-flow',
+  'safety',
+  'workspace',
+  'date-time',
 ]);
 
 export interface BuildRunRequestCandidatesOptions {
@@ -58,14 +68,15 @@ export function buildRunRequestCandidates(
   const primaryUserIndex = insertedStartIndex + inserted.length;
   const primaryUserKind = options.primaryUserKind ?? 'user_input';
 
-  // Task guidance changes on every turn (the task book advances), so keeping it
-  // inside the system message would truncate the Provider's cached prefix for
-  // the whole conversation. It travels as a trailing Context section instead;
-  // memory, workspace and bootstrap stay in the system message untouched.
-  const trailingAddons = (options.systemSegments ?? []).filter((segment) => VOLATILE_GUIDANCE_SEGMENT_IDS.has(segment.id));
-  const systemSegments = VOLATILE_GUIDANCE_SEGMENT_IDS.size === 0 || trailingAddons.length === 0
+  // Stage guidance and stage-specific sections change per stage and per turn
+  // (the task book advances), so keeping them inside the system message would
+  // truncate the Provider's cached prefix for the whole conversation. Only the
+  // canonical head stays in the system message; everything else travels as a
+  // trailing Context section after the conversation.
+  const trailingAddons = (options.systemSegments ?? []).filter((segment) => !SHARED_HEAD_SEGMENT_IDS.has(segment.id));
+  const systemSegments = trailingAddons.length === 0
     ? options.systemSegments
-    : (options.systemSegments ?? []).filter((segment) => !VOLATILE_GUIDANCE_SEGMENT_IDS.has(segment.id));
+    : (options.systemSegments ?? []).filter((segment) => SHARED_HEAD_SEGMENT_IDS.has(segment.id));
   const systemMessage = trailingAddons.length === 0
     ? undefined
     : { ...(messages[0] as ChatMessage), content: (systemSegments ?? []).map((segment) => segment.text).join('') };
