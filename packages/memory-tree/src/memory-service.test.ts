@@ -561,3 +561,25 @@ describe('MemoryService resource registry', () => {
     expect(await repository.getResource(resourceId)).toBeUndefined();
   });
 });
+
+describe('MemoryService conversation source catalog', () => {
+  it('rejects a catalog request without a bounded session or run scope', async () => {
+    await expect(service.catalogConversationSources({})).rejects.toThrow('requires a sessionId or runId scope');
+  });
+
+  it('reports an unsupported backend instead of an empty page that looks usable', async () => {
+    const page = await service.catalogConversationSources({ sessionId: asSessionId('session-1') });
+    expect(page).toMatchObject({ status: 'unsupported', entries: [], scanned: 0 });
+    expect(page.reason).toContain('v3');
+  });
+
+  it('reports source revocation as unsupported on a non-v3 backend', async () => {
+    await expect(service.conversationSourceRevocations(['conversation-source:run-1:user-message:m1']))
+      .resolves.toEqual({ status: 'unsupported', revoked: [] });
+  });
+
+  it('reports that a non-v3 backend cannot backfill conversation sources', async () => {
+    await expect(service.backfillConversationSources({ sessionId: asSessionId('session-1'), sources: [] }))
+      .resolves.toEqual({ captured: [], resumed: false });
+  });
+});

@@ -40,6 +40,7 @@ import {
   type MemoryConversationSourceInput,
   type MemoryConversationSourceRecord,
 } from './memory-service/source-feedback.js';
+import type { MemoryConversationSourceBackfillInput, MemoryConversationSourceBackfillResult, MemoryConversationSourceCatalogPage, MemoryConversationSourceCatalogQuery } from './conversation-source-store.js';
 import type {
   WorkspaceResourceSyncOptions,
   WorkspaceResourceSyncResult,
@@ -207,13 +208,13 @@ export class MemoryService {
   }
 
   write(intent: MemoryWriteIntent): Promise<MemoryWriteResult> { return this.writer.write(intent); }
-
   writeMany(intents: MemoryWriteIntent[]): Promise<MemoryWriteResult[]> { return this.writer.writeMany(intents); }
 
   captureConversationSources(inputs: MemoryConversationSourceInput[]): Promise<MemoryConversationSourceRecord[]> { return this.sourceFeedback.capture(inputs); }
-
   listConversationSources(sourceRefs: string[], limit = 100): Promise<MemoryConversationSourceRecord[]> { return this.sourceFeedback.list(sourceRefs, limit); }
-
+  async catalogConversationSources(query: MemoryConversationSourceCatalogQuery): Promise<MemoryConversationSourceCatalogPage> { return this.sourceFeedback.catalog(query); }
+  async backfillConversationSources(input: MemoryConversationSourceBackfillInput): Promise<MemoryConversationSourceBackfillResult> { return this.sourceFeedback.backfill(input); }
+  async conversationSourceRevocations(sourceIds: readonly string[]): Promise<{ status: 'ok' | 'unsupported'; revoked: string[] }> { return this.sourceFeedback.revocationStatus(sourceIds); }
   recordRunFeedback(input: import('./types.js').MemoryRunFeedbackInput): Promise<import('./v3/contracts.js').MemoryAtom[]> { return this.sourceFeedback.recordRunFeedback(input); }
 
   async recover(limit = 20): Promise<MemoryWriteResult[]> {

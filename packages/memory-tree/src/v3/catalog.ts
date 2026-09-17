@@ -47,6 +47,7 @@ import { listMemoryAtomHistory } from './catalog-history.js';
 import { upgradeMemoryCatalogSchema } from './catalog-migrations.js';
 import { aggregateRelationRelevance } from './catalog-relevance.js';
 import { replaceAtomDueRecords, replaceAtomGraphReferences } from './catalog-atom-projection.js';
+import { EmbeddingReuseTally, embeddingReuseOutcome, type EmbeddingReuseCounts } from './embedding-reuse-tally.js';
 import {
   listRelationRoutingCandidates,
   type MemoryRelationRoutingCandidate,
@@ -91,6 +92,7 @@ export class MemoryCatalog {
   readonly dbPath: string;
   private readonly db: DatabaseSync;
   private readonly embeddings: MemoryCatalogEmbeddingController;
+  private readonly embeddingReuse = new EmbeddingReuseTally();
   private readonly maxAccessRecords: number;
   private readonly maxFeedbackRecords: number;
   private readonly maxAuditRecords: number;
@@ -121,6 +123,11 @@ export class MemoryCatalog {
     const verified = this.verifyAtom(atom);
     this.transaction(() => this.upsertAtomInTransaction(verified, filePath));
     return this.getAtom(verified.id)!;
+  }
+
+  /** Drain the embedding reuse/queue outcomes recorded since the last drain. */
+  drainEmbeddingReuse(): EmbeddingReuseCounts {
+    return this.embeddingReuse.drain();
   }
 
   getAtom(atomId: string): MemoryCatalogEntry | undefined {
@@ -533,6 +540,11 @@ export class MemoryCatalog {
         : existing?.embedding_status === 'ready' || existing?.embedding_status === 'stale'
           ? existing.embedding_status
           : 'pending';
+    this.embeddingReuse.record(embeddingReuseOutcome({
+      eligible: embeddingEligible,
+      changed: embeddingChanged,
+      previousStatus: existing?.embedding_status,
+    }));
     if (embeddingChanged || !embeddingEligible) {
       this.db.prepare('DELETE FROM atom_vectors WHERE atom_id = ?').run(atom.id);
     }

@@ -41,6 +41,7 @@ import { normalizedFilePath, sameFilePath } from './path-utils.js';
 import type { MemoryProjectRebindResult } from './project-rebinding.js';
 import { MemoryV3RepositoryLedger, type MemoryV3RepositoryTransaction } from './v3-ledger.js';
 import { MemoryV3NodeStore } from './v3-node-store.js';
+import { embeddingReuseObserved } from '../v3/embedding-reuse-tally.js';
 import { MemoryV3ResourceStore } from './v3-resource-store.js';
 import { MemoryV3Retrieval } from './v3-retrieval.js';
 import type {
@@ -279,7 +280,13 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
   }
   children(parentNodeId: string): Promise<MemoryNode[]> { return this.nodes.children(parentNodeId); }
   write(intent: MemoryWriteIntent): Promise<MemoryWriteResult> {
-    return this.withPostWriteMaintenance(this.nodes.write(intent), (result) => Boolean(result.node));
+    // Reset earlier noise, then attribute this intent's real embedding reuse.
+    this.catalog.drainEmbeddingReuse();
+    const written = this.nodes.write(intent).then((result) => {
+      const embeddingReuse = this.catalog.drainEmbeddingReuse();
+      return embeddingReuseObserved(embeddingReuse) ? { ...result, embeddingReuse } : result;
+    });
+    return this.withPostWriteMaintenance(written, (result) => Boolean(result.node));
   }
   recordMemoryFeedback(feedbacks: MemoryUseFeedback[]): Promise<MemoryAtom[]> {
     return this.withPostWriteMaintenance(this.feedback.recordMany(feedbacks), (atoms) => atoms.length > 0);

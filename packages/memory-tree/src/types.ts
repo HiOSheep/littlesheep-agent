@@ -552,12 +552,16 @@ export interface MemoryWritePolicy {
   maxAuditRecords: number;
 }
 
+import type { EmbeddingReuseCounts } from './v3/embedding-reuse-tally.js';
+
 export interface MemoryWriteResult {
   intentId: string;
   decision: MemoryWriteAuditRecord['decision'];
   reason: string;
   node?: MemoryNode;
   queuedId?: string;
+  /** Local embedding reuse/queue outcomes recorded while applying this intent. */
+  embeddingReuse?: EmbeddingReuseCounts;
 }
 
 export type LogFn = (level: 'info' | 'warn' | 'error', msg: string, data?: unknown) => void;

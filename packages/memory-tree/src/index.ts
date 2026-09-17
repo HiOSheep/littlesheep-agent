@@ -258,6 +258,10 @@ export {
   MEMORY_CONVERSATION_SOURCE_VERSION,
 } from './conversation-source-store.js';
 export type {
+  MemoryConversationSourceCatalogEntry,
+  MemoryConversationSourceCatalogPage,
+  MemoryConversationSourceCatalogQuery,
+  MemoryConversationSourceCatalogStatus,
   MemoryConversationSourceInput,
   MemoryConversationSourceKind,
   MemoryConversationSourceManifest,

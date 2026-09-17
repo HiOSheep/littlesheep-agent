@@ -272,6 +272,13 @@ export class MemoryV3NodeStore {
 
     const classification = classifyMemoryWriteIntent(intent);
     const storageScopeKey = await this.ledger.storageScopeKey(intent.scope, intent.scopeKey);
+    if (intent.sourceStage === 'maintenance') {
+      const revocation = await this.revocationBarrier(intent, storageScopeKey);
+      if (revocation) {
+        await this.ledger.appendWriteAudit(writeAudit(intent, 'rejected', revocation));
+        return { intentId: intent.id!, decision: 'rejected', reason: revocation };
+      }
+    }
     const parent = await this.resolveParent(intent, storageScopeKey);
     if (!parent) {
       const reason = `Parent node "${intent.parentNodeId}" is unavailable in branch "${intent.branch}".`;
@@ -486,6 +493,38 @@ export class MemoryV3NodeStore {
       .filter((entry) => !isMemoryV3InternalRootId(entry.atomId));
     const atoms = await this.readAtoms(entries);
     return atoms.filter((atom) => sameStatementCategory(atom, classification));
+  }
+
+  /**
+   * A forgotten (tombstoned) or corrected (superseded) memory keeps its immutable
+   * source provenance. Later maintenance evidence that cites the same source must
+   * not recreate the revoked fact under a new atom id.
+   */
+  private async revocationBarrier(
+    intent: MemoryWriteIntent,
+    storageScopeKey: string | undefined,
+  ): Promise<string | undefined> {
+    const intentRefs = new Set(intent.sourceRefs ?? []);
+    if (intentRefs.size === 0) return undefined;
+    const entries = this.catalog.listAtoms({
+      branch: intent.branch,
+      scope: intent.scope,
+      scopeKey: storageScopeKey,
+      limit: 100_000,
+    }).filter((entry) => !isMemoryV3InternalRootId(entry.atomId));
+    const atoms = await this.readAtoms(entries);
+    for (const atom of atoms) {
+      const marker = atom.status === 'tombstone'
+        ? 'tombstoned'
+        : atom.epistemicStatus === 'superseded' || atom.resolutionStatus === 'superseded'
+          ? 'superseded'
+          : undefined;
+      if (!marker) continue;
+      if (atom.sourceRefs.some((ref) => intentRefs.has(ref))) {
+        return `Memory write rejected: its evidence overlaps ${marker} memory ${atom.id}.`;
+      }
+    }
+    return undefined;
   }
 
   private async activateGraphProjection(atom: MemoryAtom): Promise<void> {

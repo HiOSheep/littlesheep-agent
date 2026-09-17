@@ -184,6 +184,237 @@ describe('MemoryService on the Memory v3 repository backend', () => {
     expect(result.fragments[0]?.evidence?.retrievalPath).toBe('vector');
     expect(result.fragments[0]?.content).toContain('nebula');
   });
+
+  it('reports the embeddings a repeated write reused instead of re-embedding', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'ls-memory-v3-embedding-reuse-'));
+    directories.push(dataDir);
+    await createMemoryV3ExperimentMarker(dataDir);
+    const engine = semanticTestEngine();
+    const repository = new MemoryRepository({ dataDir, backend: 'v3', v3: { embeddingEngine: engine } });
+    repositories.push(repository);
+    await repository.initialize();
+
+    const payload = {
+      ...intent(),
+      id: 'service-v3-embedding-reuse',
+      summary: 'Nebula release convention',
+      content: 'The verified release convention is called nebula.',
+    };
+    const first = await repository.write(payload);
+    const second = await repository.write(payload);
+
+    // The first write needs new embedding work; the unchanged rewrite reuses it.
+    expect(first.embeddingReuse?.queued).toBeGreaterThan(0);
+    expect(second.embeddingReuse).toMatchObject({ reused: 1, queued: 0 });
+  });
+
+  // HC-12: a forgotten/corrected fact must not be revived by later maintenance evidence.
+  it('does not let a maintenance write revive a tombstoned fact from the same conversation source', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'ls-memory-service-v3-'));
+    directories.push(dataDir);
+    await createMemoryV3ExperimentMarker(dataDir);
+    const repository = new MemoryRepository({ dataDir, backend: 'v3' });
+    repositories.push(repository);
+    await repository.initialize();
+    const tree = new MemoryTree({ rootIndexMaxChars: 900, totalRunTokenBudget: 2_000, perBranchTokenBudget: 1_200 });
+    for (const spec of DEFAULT_BRANCH_SPECS) tree.register(new TreeMemoryBranch({ repository, ...spec }));
+    const writer = new MemoryWriteService({ repository, invalidate: (branch) => tree.invalidateBranch(branch) });
+    const service = new MemoryService({ tree, repository, writer, dataDir, rootIndexMaxChars: 900 });
+
+    const sourceRef = 'conversation-source:run-forget:user-message:message-1';
+    const original = await service.write({
+      ...intent(),
+      id: 'forget-original',
+      summary: 'Project codename is ORCHID',
+      content: 'The project codename is ORCHID.',
+      sourceRefs: [sourceRef],
+    });
+    expect(original.decision).toBe('created');
+
+    const deleted = await service.manageNode(original.node!.id, 'delete', 'User asked to forget this.');
+    expect(deleted).toBeTruthy();
+
+    const revived = await service.write({
+      ...intent(),
+      id: 'forget-candidate',
+      summary: 'Remembered project codename',
+      content: 'The project codename is ORCHID again.',
+      sourceRefs: [sourceRef],
+      sourceStage: 'maintenance',
+    });
+    expect(revived.decision).toBe('rejected');
+    expect(revived.reason).toMatch(/revoked|tombstone|supersed/iu);
+    const nodes = await repository.listNodes('long-term');
+    expect(nodes.some((node) => node.summary === 'Remembered project codename')).toBe(false);
+  });
+
+  // HC-12: an invalidated (superseded) fact is equally protected, not only a deleted one.
+  it('does not let a maintenance write revive an invalidated fact from the same conversation source', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'ls-memory-service-v3-'));
+    directories.push(dataDir);
+    await createMemoryV3ExperimentMarker(dataDir);
+    const repository = new MemoryRepository({ dataDir, backend: 'v3' });
+    repositories.push(repository);
+    await repository.initialize();
+    const tree = new MemoryTree({ rootIndexMaxChars: 900, totalRunTokenBudget: 2_000, perBranchTokenBudget: 1_200 });
+    for (const spec of DEFAULT_BRANCH_SPECS) tree.register(new TreeMemoryBranch({ repository, ...spec }));
+    const writer = new MemoryWriteService({ repository, invalidate: (branch) => tree.invalidateBranch(branch) });
+    const service = new MemoryService({ tree, repository, writer, dataDir, rootIndexMaxChars: 900 });
+
+    const sourceRef = 'conversation-source:run-invalidated:user-message:message-1';
+    const original = await service.write({
+      ...intent(),
+      id: 'invalidate-original',
+      summary: 'Project codename is ORCHID',
+      content: 'The project codename is ORCHID.',
+      sourceRefs: [sourceRef],
+    });
+    expect(original.decision).toBe('created');
+    const inspected = await repository.management.inspectNode(original.node!.id, 'D3');
+    await repository.management.manageAtom({
+      action: 'invalidate',
+      atomId: original.node!.id,
+      expectedRevision: inspected!.atom!.revision,
+      reason: 'User invalidated the codename.',
+    });
+
+    const revived = await service.write({
+      ...intent(),
+      id: 'invalidate-candidate',
+      summary: 'Remembered project codename',
+      content: 'The project codename is ORCHID again.',
+      sourceRefs: [sourceRef],
+      sourceStage: 'maintenance',
+    });
+    expect(revived.decision).toBe('rejected');
+    expect(revived.reason).toMatch(/revoked|tombstone|supersed/iu);
+    expect((await repository.listNodes('long-term')).some((node) => node.summary === 'Remembered project codename'))
+      .toBe(false);
+  });
+
+  // HC-04: revocation blocks automatic revival but must not block an explicit re-authorization.
+  it('allows an explicit re-authorization to create a new valid version after invalidation', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'ls-memory-service-v3-'));
+    directories.push(dataDir);
+    await createMemoryV3ExperimentMarker(dataDir);
+    const repository = new MemoryRepository({ dataDir, backend: 'v3' });
+    repositories.push(repository);
+    await repository.initialize();
+    const tree = new MemoryTree({ rootIndexMaxChars: 900, totalRunTokenBudget: 2_000, perBranchTokenBudget: 1_200 });
+    for (const spec of DEFAULT_BRANCH_SPECS) tree.register(new TreeMemoryBranch({ repository, ...spec }));
+    const writer = new MemoryWriteService({ repository, invalidate: (branch) => tree.invalidateBranch(branch) });
+    const service = new MemoryService({ tree, repository, writer, dataDir, rootIndexMaxChars: 900 });
+
+    const sourceRef = 'conversation-source:run-reauth:user-message:message-1';
+    const original = await service.write({
+      ...intent(),
+      id: 'reauth-original',
+      summary: 'Project codename is ORCHID',
+      content: 'The project codename is ORCHID.',
+      sourceRefs: [sourceRef],
+    });
+    const inspected = await repository.management.inspectNode(original.node!.id, 'D3');
+    await repository.management.manageAtom({
+      action: 'invalidate',
+      atomId: original.node!.id,
+      expectedRevision: inspected!.atom!.revision,
+      reason: 'User invalidated the old codename.',
+    });
+
+    const reauthorized = await service.write({
+      ...intent(),
+      id: 'reauth-explicit',
+      summary: 'Project codename is ORCHID (re-confirmed by the user)',
+      content: 'The user explicitly re-confirmed that the project codename is ORCHID.',
+      sourceRefs: [sourceRef],
+      sourceStage: 'evolve',
+    });
+    expect(reauthorized.decision).toBe('created');
+    expect(reauthorized.node?.id).toBeTruthy();
+    expect((await repository.listNodes('long-term')).some((node) => node.id === reauthorized.node!.id)).toBe(true);
+  });
+
+  // HC-11: an identical project fact in two workspaces must not merge or leak across scopes.
+  it('keeps a same-named project fact separate across workspace scopes', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'ls-memory-service-v3-'));
+    directories.push(dataDir);
+    await createMemoryV3ExperimentMarker(dataDir);
+    const repository = new MemoryRepository({ dataDir, backend: 'v3' });
+    repositories.push(repository);
+    await repository.initialize();
+    const tree = new MemoryTree({ rootIndexMaxChars: 900, totalRunTokenBudget: 2_000, perBranchTokenBudget: 1_200 });
+    for (const spec of DEFAULT_BRANCH_SPECS) tree.register(new TreeMemoryBranch({ repository, ...spec }));
+    const writer = new MemoryWriteService({ repository, invalidate: (branch) => tree.invalidateBranch(branch) });
+    const service = new MemoryService({ tree, repository, writer, dataDir, rootIndexMaxChars: 900 });
+
+    const projectIntent = (workspaceScope: string) => ({
+      ...intent(),
+      id: `same-name-${workspaceScope}`,
+      branch: 'project' as const,
+      parentNodeId: 'project:root',
+      scope: 'project' as const,
+      scopeKey: workspaceScope,
+      sourceRefs: [`conversation-source:run-${workspaceScope}:user-message:message-1`],
+    });
+    const first = await service.write(projectIntent('C:/workspace/a'));
+    const second = await service.write(projectIntent('C:/workspace/b'));
+
+    expect(first.decision).toBe('created');
+    expect(second.decision).toBe('created');
+    expect(first.node!.id).not.toBe(second.node!.id);
+    const nodesA = await repository.listNodes('project', 'C:/workspace/a');
+    const nodesB = await repository.listNodes('project', 'C:/workspace/b');
+    expect(nodesA.map((node) => node.id)).toContain(first.node!.id);
+    expect(nodesA.map((node) => node.id)).not.toContain(second.node!.id);
+    expect(nodesB.map((node) => node.id)).toContain(second.node!.id);
+    expect(nodesB.map((node) => node.id)).not.toContain(first.node!.id);
+  });
+
+  // HC-12: raw source recall can label sources whose atom was revoked.
+  it('labels a conversation source as revoked once its atom is invalidated', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'ls-memory-service-v3-'));
+    directories.push(dataDir);
+    await createMemoryV3ExperimentMarker(dataDir);
+    const repository = new MemoryRepository({ dataDir, backend: 'v3' });
+    repositories.push(repository);
+    await repository.initialize();
+    const tree = new MemoryTree({ rootIndexMaxChars: 900, totalRunTokenBudget: 2_000, perBranchTokenBudget: 1_200 });
+    for (const spec of DEFAULT_BRANCH_SPECS) tree.register(new TreeMemoryBranch({ repository, ...spec }));
+    const writer = new MemoryWriteService({ repository, invalidate: (branch) => tree.invalidateBranch(branch) });
+    const service = new MemoryService({ tree, repository, writer, dataDir, rootIndexMaxChars: 900 });
+
+    const revokedRef = 'conversation-source:run-revoked:user-message:message-1';
+    const activeRef = 'conversation-source:run-active:user-message:message-2';
+    const written = await service.write({
+      ...intent(),
+      id: 'revocation-source',
+      summary: 'Fact that will be revoked',
+      content: 'This fact will be revoked by the user.',
+      sourceRefs: [revokedRef],
+    });
+    const active = await service.write({
+      ...intent(),
+      id: 'revocation-active',
+      summary: 'Fact that stays active',
+      content: 'This fact stays active.',
+      sourceRefs: [activeRef],
+    });
+
+    await expect(service.conversationSourceRevocations([revokedRef, activeRef]))
+      .resolves.toEqual({ status: 'ok', revoked: [] });
+
+    const inspected = await repository.management.inspectNode(written.node!.id, 'D3');
+    await repository.management.manageAtom({
+      action: 'invalidate',
+      atomId: written.node!.id,
+      expectedRevision: inspected!.atom!.revision,
+      reason: 'User forgot this fact.',
+    });
+
+    await expect(service.conversationSourceRevocations([revokedRef, activeRef]))
+      .resolves.toEqual({ status: 'ok', revoked: [revokedRef] });
+    expect(active.node).toBeTruthy();
+  });
 });
 
 function intent(): MemoryWriteIntent {
