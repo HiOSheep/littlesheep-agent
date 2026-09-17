@@ -12,6 +12,21 @@ const MAX_RUNTIME_REASON_LENGTH = 160
 const MAX_FAILURE_MESSAGE_LENGTH = 512
 
 /**
+ * Results that already passed the next-mode publication boundary. The Local App
+ * API must not repeat that durable replay when Runner already prepared them.
+ */
+const preparedAuthoritativeResults = new WeakSet<object>()
+
+export function markAuthoritativePrepared<T extends object>(result: T): T {
+  preparedAuthoritativeResults.add(result)
+  return result
+}
+
+export function isAuthoritativePrepared(result: unknown): boolean {
+  return typeof result === 'object' && result !== null && preparedAuthoritativeResults.has(result)
+}
+
+/**
  * Resolve the only result that may be published by a caller outside Runner.
  * Legacy and shadow runners retain their existing result contract. The next
  * Harness instead makes the durable final-reply projection authoritative:

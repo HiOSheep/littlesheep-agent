@@ -12,6 +12,20 @@ function llm(content: string): LlmClient {
   }
 }
 
+/** Replays one canned reply per model call so retries are observable. */
+function sequencedLlm(contents: string[]): LlmClient {
+  let index = 0
+  return {
+    chat: vi.fn(async (_request: ChatRequest) => {
+      const content = contents[Math.min(index, contents.length - 1)] ?? ''
+      index += 1
+      return { content, toolCalls: [], finishReason: 'stop' } satisfies ChatResponse
+    }),
+    chatStream: vi.fn(),
+    embed: vi.fn(async () => ({ embeddings: [], model: 'test', usage: { promptTokens: 0 } })),
+  }
+}
+
 const request: ClarificationRequest = {
   id: 'request-1',
   kind: 'recovery_decision',
@@ -75,5 +89,45 @@ describe('continuation disposition', () => {
       directive: 'cancel',
     })).resolves.toEqual({ kind: 'cancel', source: 'directive' })
     expect(model.chat).not.toHaveBeenCalled()
+  })
+
+  // The observed live failure: a parseable reply whose kind is outside the enum.
+  it('re-asks once when the model replies with an out-of-enum kind', async () => {
+    const model = sequencedLlm(['{"kind":"maybe"}', '{"kind":"answer","reason":"facts supplied"}'])
+
+    await expect(resolveContinuationDisposition({
+      llm: model,
+      model: 'test/model',
+      checkpoint,
+      request,
+      answer: 'Permission is enabled; continue.',
+    })).resolves.toMatchObject({ kind: 'answer', source: 'model' })
+    expect(model.chat).toHaveBeenCalledTimes(2)
+  })
+
+  it('respects an explicit ambiguous reply instead of re-asking', async () => {
+    const model = sequencedLlm(['{"kind":"ambiguous","reason":"unclear"}'])
+
+    await expect(resolveContinuationDisposition({
+      llm: model,
+      model: 'test/model',
+      checkpoint,
+      request,
+      answer: 'unclear',
+    })).resolves.toMatchObject({ kind: 'ambiguous', source: 'model' })
+    expect(model.chat).toHaveBeenCalledTimes(1)
+  })
+
+  it('still fails closed when the corrective re-ask is invalid too', async () => {
+    const model = sequencedLlm(['{"kind":"maybe"}', '{"kind":"still-not-allowed"}'])
+
+    await expect(resolveContinuationDisposition({
+      llm: model,
+      model: 'test/model',
+      checkpoint,
+      request,
+      answer: 'something else',
+    })).resolves.toMatchObject({ kind: 'ambiguous', source: 'runtime_fallback' })
+    expect(model.chat).toHaveBeenCalledTimes(2)
   })
 })

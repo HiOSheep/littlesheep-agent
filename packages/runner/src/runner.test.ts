@@ -11,8 +11,13 @@ import type { LlmClient, ChatRequest, ChatResponse, StreamChunk } from '@littles
 import { DEFAULT_CONFIG } from '@littlesheep/config';
 import { DEFAULT_BRANDING, dataSubdirs } from '@littlesheep/branding';
 import { textMessage, type AgentTool, type Message, type SessionId } from '@littlesheep/types';
-import { attachmentManifestResourceId, attachmentResourceId } from '@littlesheep/memory-tree';
+import {
+  attachmentManifestResourceId,
+  attachmentResourceId,
+  createMemoryV3ExperimentMarker,
+} from '@littlesheep/memory-tree';
 import { compareHarnessPaths, reduceDurableRunProjection } from '@littlesheep/harness';
+import { SessionManager, maybeCompact } from '@littlesheep/session';
 
 // ─── Mock LlmClient ─────────────────────────────────────────────────────
 
@@ -411,8 +416,6 @@ describe('createRunner run', () => {
       },
     };
     const llm = makeMockLlm([
-      textResponse('{"type":"problem","confidence":0.99,"reason":"execute held write"}'),
-      textResponse('{"plan":[{"description":"hold write","tools":["held_write"]}]}'),
       {
         content: '',
         finishReason: 'tool_calls',
@@ -423,7 +426,6 @@ describe('createRunner run', () => {
         }],
       },
       textResponse('Held write completed.'),
-      textResponse('Held write verified.'),
       textResponse('{"verdict":"pass","reason":"write completed"}'),
       textResponse('{"memories":[],"createSkill":null}'),
       textResponse('{"observations":[]}'),
@@ -528,8 +530,6 @@ describe('createRunner run', () => {
 
   it('compares shadow and next tool execution without duplicate side effects', async () => {
     const responses = () => [
-      textResponse('{"type":"problem","confidence":0.99,"reason":"execute checkpoint write"}'),
-      textResponse('{"plan":[{"description":"write checkpoint proof","tools":["checkpoint_write"]}]}'),
       {
         content: '',
         finishReason: 'tool_calls' as const,
@@ -540,7 +540,6 @@ describe('createRunner run', () => {
         }],
       },
       textResponse('Checkpoint write completed.'),
-      textResponse('Checkpoint proof was written successfully.'),
       textResponse('{"verdict":"pass","reason":"checkpoint proof exists"}'),
       textResponse('{"memories":[],"createSkill":null}'),
       textResponse('{"observations":[]}'),
@@ -1150,6 +1149,12 @@ describe('createRunner run', () => {
       promptTokens: 240,
       completionTokens: 12,
       totalTokens: 252,
+      requestCount: 1,
+      usageReportedRequestCount: 1,
+      timedRequestCount: 0,
+      timedCompletionTokens: 0,
+      cacheReportedRequestCount: 0,
+      usageCompleteness: 'complete',
       source: 'provider',
     });
     expect(result.contextSnapshots?.find((snapshot) => snapshot.providerUsage)?.providerUsage).toMatchObject({
@@ -1510,11 +1515,8 @@ describe('createRunner run', () => {
       ],
     };
     const llm = makeMockLlm([
-      textResponse('{"type":"problem","confidence":0.99,"reason":"execute probes"}'),
-      textResponse('{"plan":[{"description":"run both probes","tools":["plugin_probe","run_probe"]}]}'),
       toolResponse,
       textResponse('Both probes completed.'),
-      textResponse('Probe execution completed successfully.'),
       textResponse('{"verdict":"pass","reason":"both probes completed"}'),
       textResponse('{"memories":[],"createSkill":null}'),
       textResponse('{"observations":[]}'),
@@ -1563,11 +1565,8 @@ describe('createRunner run', () => {
       ],
     };
     const llm = makeMockLlm([
-      textResponse('{"type":"problem","confidence":0.99,"reason":"execute checkpoint write"}'),
-      textResponse('{"plan":[{"description":"write checkpoint proof","tools":["checkpoint_write"]}]}'),
       toolResponse,
       textResponse('Checkpoint write completed.'),
-      textResponse('Checkpoint proof was written successfully.'),
       textResponse('{"verdict":"pass","reason":"checkpoint proof exists"}'),
       textResponse('{"memories":[],"createSkill":null}'),
       textResponse('{"observations":[]}'),
@@ -2265,6 +2264,334 @@ describe('createRunner run', () => {
     expect((await runner.replay(continuation.runId))?.resourceIds).toContain(summary.id);
   });
 
+  it('uses one compaction response for the session summary and durable memory candidates', async () => {
+    await createMemoryV3ExperimentMarker(dataDir);
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.memory.repositoryBackend = 'v3';
+    config.sessions.compaction.threshold = 2;
+    config.sessions.compaction.keepRecent = 1;
+    let compactionCalls = 0;
+    const llm = makeMockLlm((request) => {
+      const system = String(request.messages[0]?.content ?? '');
+      if (!system.includes('versioned session summary')) return textResponse('Preference recorded.');
+      compactionCalls += 1;
+      const transcript = String(request.messages[1]?.content ?? '');
+      const sourceMessageId = /\[source message ([^ |]+)/u.exec(transcript)?.[1] ?? '';
+      return textResponse(JSON.stringify({
+        summary: 'The user prefers concise replies.',
+        candidates: [{
+          branch: 'long-term',
+          scope: 'global',
+          summary: 'Concise reply preference',
+          content: 'The user prefers concise replies.',
+          retrievalKeys: ['concise', 'reply', 'preference'],
+          sourceMessageIds: [sourceMessageId],
+          importance: 0.9,
+          confidence: 0.9,
+          reason: 'The user explicitly stated a durable response preference.',
+          epistemic: { domain: 'user', statementKind: 'preference', assertedBy: { kind: 'user', id: 'user' } },
+        }],
+      }));
+    });
+    const runner = await createRunner({ config, branding: DEFAULT_BRANDING, model: 'openai/gpt-test', llm });
+    createdRunners.push(runner);
+
+    const result = await runner.run({ text: 'Please remember that I prefer concise replies.' });
+    const summary = (await runner.sessionManager.loadMetadata(result.sessionId))?.compaction;
+    expect(compactionCalls).toBe(1);
+    expect(summary?.summary).toContain('prefers concise replies');
+    expect(await runner.sessionManager.listPendingCompactions(result.sessionId)).toEqual([]);
+    const nodes = await runner.infra.memoryRepository.listNodes('long-term');
+    expect(nodes).toEqual(expect.arrayContaining([expect.objectContaining({
+      summary: 'Concise reply preference',
+      sourceRunIds: [result.runId],
+    })]));
+    // C07: the compaction is owned by one scheduler operation, not an anonymous finalize side effect.
+    expect(runner.compactionOperations?.()).toMatchObject([{
+      sessionId: String(result.sessionId),
+      status: 'completed',
+      result: 'compacted',
+      force: false,
+      usage: { requestCount: 1, usageStatus: 'unavailable' },
+    }]);
+    // Off the run's critical path: the published run evidence excludes the derived compaction request.
+    expect((result.modelRequests ?? []).some((request) => request.callContract?.purpose === 'session_compaction'))
+      .toBe(false);
+    // The operation is also durably recorded per session for history projection.
+    await expect(runner.compactionOperationHistory?.(result.sessionId)).resolves.toMatchObject([{
+      sessionId: String(result.sessionId),
+      status: 'completed',
+      result: 'compacted',
+    }]);
+  });
+
+  // C10A: a proposal committed before a crash is settled from durable state, without another model call.
+  it('resumes a committed compaction proposal without re-running the compaction model', async () => {
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.sessions.compaction.threshold = 100;
+    config.sessions.compaction.keepRecent = 20;
+    const { sessionId, summaryId } = await seedCommittedCompactionProposal(
+      dataSubdirs(DEFAULT_BRANDING).sessions,
+      'crash-resume',
+    );
+
+    let compactionCalls = 0;
+    const llm = makeMockLlm((request) => {
+      if (String(request.messages[0]?.content ?? '').includes('versioned session summary')) compactionCalls += 1;
+      return textResponse('Resumed without new learning.');
+    });
+    const runner = await createRunner({ config, branding: DEFAULT_BRANDING, model: 'openai/gpt-test', llm });
+    createdRunners.push(runner);
+
+    const result = await runner.run({ sessionId, text: 'continue after restart' });
+    expect(result.status).toBe('ok');
+    expect(compactionCalls).toBe(0);
+    expect(await runner.sessionManager.listPendingCompactions(sessionId)).toEqual([]);
+    expect((await runner.sessionManager.loadMetadata(sessionId))?.compaction?.id).toBe(summaryId);
+    const nodes = await runner.infra.memoryRepository.listNodes('long-term');
+    expect(nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ summary: 'crash-resume durable candidate' }),
+    ]));
+  });
+
+  // C10A: a failed source/summary registration keeps the proposal pending and retries on the next run.
+  it('keeps a proposal pending when summary registration fails and settles it on the next run', async () => {
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.sessions.compaction.threshold = 100;
+    config.sessions.compaction.keepRecent = 20;
+    const { sessionId, summaryId } = await seedCommittedCompactionProposal(
+      dataSubdirs(DEFAULT_BRANDING).sessions,
+      'registration-retry',
+    );
+
+    let replyIndex = 0;
+    const llm = makeMockLlm(() => textResponse(`Registration retry reply ${replyIndex += 1}.`));
+    const runner = await createRunner({ config, branding: DEFAULT_BRANDING, model: 'openai/gpt-test', llm });
+    createdRunners.push(runner);
+
+    const registration = vi.spyOn(runner.infra.memoryService, 'registerSessionSummary')
+      .mockRejectedValueOnce(new Error('summary resource registration unavailable'));
+    const first = await runner.run({ sessionId, text: 'first continuation' });
+    expect(first.status).toBe('ok');
+    expect(await runner.sessionManager.listPendingCompactions(sessionId)).toHaveLength(1);
+    expect((await runner.infra.memoryRepository.snapshot()).writeAudit).toEqual([]);
+
+    registration.mockRestore();
+    const second = await runner.run({ sessionId, text: 'second continuation' });
+    expect(second.status).toBe('ok');
+    expect(await runner.sessionManager.listPendingCompactions(sessionId)).toEqual([]);
+    expect((await runner.sessionManager.loadMetadata(sessionId))?.compaction?.id).toBe(summaryId);
+    const nodes = await runner.infra.memoryRepository.listNodes('long-term');
+    expect(nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ summary: 'registration-retry durable candidate' }),
+    ]));
+  });
+
+  // C08A/HC-13: authoritative source capture failure is surfaced in the result, not hidden behind a warn log.
+  it('surfaces conversation source capture degradation in the run result', async () => {
+    const llm = makeMockLlm([
+      textResponse('{"type":"problem","confidence":0.99,"reason":"note the launch code"}'),
+      textResponse('{"plan":[{"description":"acknowledge the launch code","tools":[]}]}'),
+      textResponse('The launch code is LS-SOURCE-CAPTURE-OK.'),
+      textResponse('Understood: the launch code is LS-SOURCE-CAPTURE-OK.'),
+      textResponse('{"verdict":"pass","reason":"the launch code was acknowledged"}'),
+    ]);
+    const runner = await createRunner({ config: DEFAULT_CONFIG, branding: DEFAULT_BRANDING, model: 'openai/gpt-test', llm });
+    createdRunners.push(runner);
+    const capture = vi.spyOn(runner.infra.memoryService, 'captureConversationSources')
+      .mockRejectedValueOnce(new Error('source store unavailable'));
+
+    const result = await runner.run({ text: 'For this chat only, the launch code is LS-SOURCE-CAPTURE-OK.' });
+    expect(result.status).toBe('ok');
+    expect(result.memorySourceCapture).toEqual({ status: 'degraded', reason: 'source store unavailable' });
+    expect(capture).toHaveBeenCalledTimes(1);
+  });
+
+  // HC-07: an invalid compaction proposal has bounded attempts, preserves the transcript, and commits no candidate.
+  it('keeps the previous transcript when a compaction proposal cites an uncovered source', async () => {
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.sessions.compaction.threshold = 2;
+    config.sessions.compaction.keepRecent = 1;
+    const sessionsDir = dataSubdirs(DEFAULT_BRANDING).sessions;
+    const seedManager = new SessionManager({ sessionsDir });
+    const session = await seedManager.create('openai/gpt-test');
+    await seedManager.append(session.id, Array.from({ length: 4 }, (_, index) => textMessage(
+      index % 2 === 0 ? 'user' : 'assistant',
+      `seed message ${index + 1}`,
+      { id: `invalid-seed-${index + 1}`, runId: `invalid-run-${Math.floor(index / 2) + 1}` },
+    )));
+    const before = await seedManager.read(session.id);
+
+    let compactionCalls = 0;
+    const llm = makeMockLlm((request) => {
+      if (String(request.messages[0]?.content ?? '').includes('versioned session summary')) {
+        compactionCalls += 1;
+        return textResponse(JSON.stringify({
+          summary: 'Invalid proposal that must not persist.',
+          candidates: [{
+            branch: 'long-term',
+            scope: 'global',
+            summary: 'Unauthorized candidate',
+            content: 'This candidate cites a source outside the covered prefix.',
+            retrievalKeys: ['unauthorized'],
+            sourceMessageIds: ['not-a-covered-message'],
+            importance: 0.8,
+            confidence: 0.9,
+            reason: 'Synthetic invalid compaction candidate.',
+          }],
+        }));
+      }
+      return textResponse('Acknowledged.');
+    });
+    const runner = await createRunner({ config, branding: DEFAULT_BRANDING, model: 'openai/gpt-test', llm });
+    createdRunners.push(runner);
+
+    const result = await runner.run({ sessionId: session.id, text: 'continue the seeded task' });
+    expect(result.status).toBe('ok');
+    // decode/schema retries stay bounded at two total attempts.
+    expect(compactionCalls).toBe(2);
+    expect((await runner.sessionManager.loadMetadata(session.id))?.compaction).toBeUndefined();
+    expect(await runner.sessionManager.listPendingCompactions(session.id)).toEqual([]);
+    const after = await runner.sessionManager.read(session.id);
+    expect(after.slice(0, before.length).map((message) => message.id)).toEqual(before.map((message) => message.id));
+    expect(runner.compactionOperations?.()).toMatchObject([{ status: 'failed' }]);
+  });
+
+  // HC-18: the legacy plain-text compaction protocol still produces a summary.
+  it('keeps plain-text compaction summaries working for legacy callers', async () => {
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.sessions.compaction.threshold = 2;
+    config.sessions.compaction.keepRecent = 1;
+    const seedManager = new SessionManager({ sessionsDir: dataSubdirs(DEFAULT_BRANDING).sessions });
+    const session = await seedManager.create('openai/gpt-test');
+    await seedManager.append(session.id, Array.from({ length: 4 }, (_, index) => textMessage(
+      index % 2 === 0 ? 'user' : 'assistant',
+      `legacy seed ${index + 1}`,
+      { id: `legacy-seed-${index + 1}`, runId: `legacy-run-${Math.floor(index / 2) + 1}` },
+    )));
+    const llm = makeMockLlm((request) => (
+      String(request.messages[0]?.content ?? '').includes('versioned session summary')
+        ? textResponse('Legacy plain-text summary without candidates.')
+        : textResponse('Acknowledged.')
+    ));
+    const runner = await createRunner({ config, branding: DEFAULT_BRANDING, model: 'openai/gpt-test', llm });
+    createdRunners.push(runner);
+
+    const result = await runner.run({ sessionId: session.id, text: 'continue the legacy task' });
+    expect(result.status).toBe('ok');
+    const summary = (await runner.sessionManager.loadMetadata(session.id))?.compaction;
+    expect(summary?.summary).toContain('Legacy plain-text summary');
+    expect(await runner.sessionManager.listPendingCompactions(session.id)).toEqual([]);
+  });
+
+  // HC-17: an independent oracle inspects the real model request after shrinkage.
+  it('keeps an exact fact reachable from the summary after history shrinkage', async () => {
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.sessions.compaction.threshold = 2;
+    config.sessions.compaction.keepRecent = 1;
+    const seedManager = new SessionManager({ sessionsDir: dataSubdirs(DEFAULT_BRANDING).sessions });
+    const session = await seedManager.create('openai/gpt-test');
+    await seedManager.append(session.id, [
+      textMessage('user', '请记住代号是 HC17-ORACLE-77。本轮只回复“记录完成”。', { id: 'oracle-1', runId: 'oracle-run-1' }),
+      textMessage('assistant', '记录完成', { id: 'oracle-2', runId: 'oracle-run-1' }),
+      textMessage('user', '继续。', { id: 'oracle-3', runId: 'oracle-run-2' }),
+    ]);
+    const requests: string[] = [];
+    let replyCount = 0;
+    const llm = makeMockLlm((request) => {
+      requests.push(JSON.stringify(request.messages));
+      const system = String(request.messages[0]?.content ?? '');
+      if (system.includes('versioned session summary')) {
+        return textResponse('HC17 摘要：用户要求记住代号 HC17-ORACLE-77。');
+      }
+      if (system.includes('You are the VERIFY stage')) {
+        return textResponse('{"verdict":"pass","reason":"the code was carried from the summary"}');
+      }
+      return textResponse(`HC17-ORACLE-77（第 ${++replyCount} 次确认）。`);
+    });
+    const runner = await createRunner({ config, branding: DEFAULT_BRANDING, model: 'openai/gpt-test', llm });
+    createdRunners.push(runner);
+
+    const first = await runner.run({ sessionId: session.id, text: '继续。' });
+    expect(first.status).toBe('ok');
+    expect((await runner.sessionManager.loadMetadata(session.id))?.compaction?.summary)
+      .toContain('HC17-ORACLE-77');
+
+    // Independent oracle: the exact fact must appear in a real request while the
+    // original wording is gone from the recent window.
+    requests.length = 0;
+    const second = await runner.run({ sessionId: session.id, text: '代号是什么？只回答代号。' });
+    expect(second.status).toBe('ok');
+    const injected = requests.join('\n');
+    expect(injected).toContain('HC17-ORACLE-77');
+    expect(injected).not.toContain('本轮只回复');
+  });
+
+  // C07: opt-in background compaction publishes the run first and owns its own usage.
+  it('publishes the run before an opt-in background compaction finishes', async () => {
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.sessions.compaction.threshold = 2;
+    config.sessions.compaction.keepRecent = 1;
+    config.sessions.compaction.background = true;
+    const seedManager = new SessionManager({ sessionsDir: dataSubdirs(DEFAULT_BRANDING).sessions });
+    const session = await seedManager.create('openai/gpt-test');
+    await seedManager.append(session.id, Array.from({ length: 3 }, (_, index) => textMessage(
+      index % 2 === 0 ? 'user' : 'assistant',
+      `background seed ${index + 1}`,
+      { id: `background-seed-${index + 1}`, runId: `background-run-${Math.floor(index / 2) + 1}` },
+    )));
+    let compactionCalls = 0;
+    const llm = makeMockLlm((request) => {
+      if (String(request.messages[0]?.content ?? '').includes('versioned session summary')) {
+        compactionCalls += 1;
+        return textResponse(JSON.stringify({ summary: 'Background summary.', candidates: [] }));
+      }
+      return textResponse('Acknowledged.');
+    });
+    const runner = await createRunner({ config, branding: DEFAULT_BRANDING, model: 'openai/gpt-test', llm });
+    createdRunners.push(runner);
+
+    const result = await runner.run({ sessionId: session.id, text: 'continue in the background' });
+    expect(result.status).toBe('ok');
+    const publishedRequests = (result.modelRequests ?? []).length;
+    const publishedUsage = JSON.stringify(result.usage ?? null);
+    expect((result.modelRequests ?? []).some((request) => request.callContract?.purpose === 'session_compaction'))
+      .toBe(false);
+
+    await runner.drainCompaction?.();
+    expect(compactionCalls).toBeGreaterThanOrEqual(1);
+    // The detached accounting context cannot rewrite the already published run.
+    expect((result.modelRequests ?? []).length).toBe(publishedRequests);
+    expect(JSON.stringify(result.usage ?? null)).toBe(publishedUsage);
+    expect((await runner.sessionManager.loadMetadata(session.id))?.compaction?.summary).toContain('Background summary');
+    expect(await runner.sessionManager.listPendingCompactions(session.id)).toEqual([]);
+    expect(runner.compactionOperations?.()).toMatchObject([expect.objectContaining({ status: 'completed', result: 'compacted' })]);
+  });
+
+  // C09: every follow-up request records why its context prefix changed, without exporting any body text.
+  it('records a redacted prefix-change reason on follow-up model requests', async () => {
+    const marker = 'LS-PREFIX-CHANGE-MARKER';
+    const llm = makeMockLlm([
+      textResponse('{"type":"problem","confidence":0.99,"reason":"note the marker"}'),
+      textResponse('{"plan":[{"description":"acknowledge the marker","tools":[]}]}'),
+      textResponse(`Noted ${marker}.`),
+      textResponse(`Understood: ${marker}.`),
+      textResponse('{"verdict":"pass","reason":"the marker was acknowledged"}'),
+    ]);
+    const runner = await createRunner({ config: DEFAULT_CONFIG, branding: DEFAULT_BRANDING, model: 'openai/gpt-test', llm });
+    createdRunners.push(runner);
+
+    const result = await runner.run({ text: `For this chat only, note ${marker}.` });
+    expect(result.status).toBe('ok');
+    const changed = (result.modelRequests ?? []).filter((request) => request.prefixChange !== undefined);
+    expect(changed.length).toBeGreaterThan(0);
+    const change = changed.at(-1)!.prefixChange!;
+    expect(change.changedSegments).toBeGreaterThan(0);
+    expect(change.reasons.length).toBeGreaterThan(0);
+    expect(change.stablePrefixLength).toBeGreaterThanOrEqual(0);
+    expect(JSON.stringify(change)).not.toContain(marker);
+  });
+
   it('uses the caller runId and persists the immutable run decision and request snapshots', async () => {
     const llm = makeMockLlm(textResponse('Observed reply'));
     const runner = await createRunner({
@@ -2583,6 +2910,36 @@ describe('createRunner run', () => {
     });
   });
 
+  // HC-15: a late runtime event must not reopen or rewrite an already settled run.
+  it('ignores a runtime event that arrives after the run already settled', async () => {
+    const llm = makeMockLlm([
+      textResponse('{"type":"problem","confidence":0.99,"reason":"note the marker"}'),
+      textResponse('{"plan":[{"description":"acknowledge the marker","tools":[]}]}'),
+      textResponse('Noted LS-LATE-EVENT.'),
+      textResponse('Understood: LS-LATE-EVENT.'),
+      textResponse('{"verdict":"pass","reason":"the marker was acknowledged"}'),
+    ]);
+    const runner = await createRunner({ config: DEFAULT_CONFIG, branding: DEFAULT_BRANDING, model: 'openai/gpt-test', llm });
+    createdRunners.push(runner);
+    const runId = 'run-late-event';
+    const result = await runner.run({ runId, text: 'For this chat only, note LS-LATE-EVENT.' });
+    expect(result.status).toBe('ok');
+    const before = await runner.replay(runId);
+
+    const outcome = runner.runtimeEvents.append(runId, {
+      type: 'interrupt_requested',
+      source: 'app',
+      payload: { reason: 'late stop' },
+      dedupKey: 'late:1',
+    });
+
+    expect(['expired', 'rejected']).toContain(outcome.kind);
+    expect(runner.runtimeEvents.summary(runId)).toBeNull();
+    const after = await runner.replay(runId);
+    expect(after?.status).toBe('ok');
+    expect(after?.runtimeControl).toEqual(before?.runtimeControl);
+  });
+
   it('freezes a paused run as a resumable paused checkpoint instead of a failure', async () => {
     const llm = makeMockLlm(textResponse('reply before pause boundary'));
     let releaseResponse!: () => void;
@@ -2755,7 +3112,10 @@ describe('createRunner run', () => {
         reason: 'Useful for reconstructing this run.',
       }] })),
     ]);
-    const runner = await createRunner({ config: DEFAULT_CONFIG, branding: DEFAULT_BRANDING, model: 'test/model', llm });
+    // HC-18: per-run EVOLVE/CAPTURE persistence is only reachable when the legacy policy is explicit.
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.memory.autoMemoryPolicy = 'legacy-per-run';
+    const runner = await createRunner({ config, branding: DEFAULT_BRANDING, model: 'test/model', llm });
     createdRunners.push(runner);
     const result = await runner.run({ text: 'read the file', cwd: 'D:/test-project' });
 
@@ -2819,3 +3179,48 @@ describe('createRunner run', () => {
     expect(meta?.channelId).toBeUndefined();
   });
 });
+
+/**
+ * C10A fixture: commit a summary plus a bounded candidate proposal and crash before settlement.
+ * The session store keeps the v2 pending transaction so a later Runner can settle it from disk.
+ */
+async function seedCommittedCompactionProposal(
+  sessionsDir: string,
+  marker: string,
+): Promise<{ sessionId: SessionId; summaryId: string }> {
+  const manager = new SessionManager({ sessionsDir });
+  const session = await manager.create('openai/gpt-test');
+  const messages = Array.from({ length: 4 }, (_, index) => textMessage(
+    index % 2 === 0 ? 'user' : 'assistant',
+    `${marker} seed ${index + 1}`,
+    {
+      id: `${marker}-seed-${index + 1}`,
+      runId: `${marker}-run-${Math.floor(index / 2) + 1}`,
+      timestamp: new Date(1_700_000_000_000 + index * 1000).toISOString(),
+    },
+  ));
+  await manager.append(session.id, messages);
+  const summary = await maybeCompact(manager, session.id, {
+    threshold: 1,
+    keepRecent: 1,
+    summarize: async () => ({
+      summary: `${marker} seeded summary awaiting candidate settlement.`,
+      memoryEvidenceComplete: true,
+      memoryCandidates: [{
+        id: `${marker}-candidate`,
+        branch: 'long-term' as const,
+        parentNodeId: 'long-term:root',
+        scope: 'global' as const,
+        summary: `${marker} durable candidate`,
+        content: `Durable candidate created by ${marker}.`,
+        retrievalKeys: [marker, 'durable'],
+        sourceMessageIds: [`${marker}-seed-1`],
+        importance: 0.8,
+        confidence: 0.9,
+        reason: 'Synthetic candidate for the crash-resume contract.',
+      }],
+    }),
+  });
+  if (!summary) throw new Error('Expected a seeded compaction summary.');
+  return { sessionId: session.id, summaryId: summary.id };
+}

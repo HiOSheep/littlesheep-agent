@@ -1,6 +1,6 @@
 // Durable append-only Harness event store: hashed partitions, atomic files,
 // cursor/idempotency validation and fail-closed replay.
-import { mkdir, readdir, readFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { acquireLock } from '@littlesheep/session';
 import type {
@@ -50,6 +50,24 @@ export class DurableEventStore implements DurableHarnessEventStoreLike {
   private readonly maxEventsPerRun: number;
   private readonly now: () => Date;
   private readonly writeTails = new Map<string, Promise<void>>();
+  /**
+   * Verified per-partition event cache. Every append is preceded by a full
+   * partition read from the Harness kernel, so re-parsing the whole log on each
+   * event made appends O(n²). The cache is only trusted after a fresh directory
+   * listing proves the cached prefix is still byte-identical by filename; any
+   * anomaly (gap, replacement, unknown file) falls back to the fail-closed full
+   * read below.
+   */
+  private readonly partitionCache = new Map<string, CachedPartition>();
+  private static readonly MAX_CACHED_PARTITIONS = 64;
+  /**
+   * Runs this process exclusively owns (next-mode `DurableRunOwnership` holds the
+   * run/effect leases). Owned runs are written by one process only, so their
+   * per-event cross-process lock is redundant; in-process ordering still comes
+   * from `writeTails`. Untrusted runs keep the lock exactly as before.
+   */
+  private readonly trustedRuns = new Map<string, string>();
+  private static readonly MAX_TRUSTED_RUNS = 256;
   private initialized = false;
   private initializationFailure: Error | undefined;
 
@@ -114,9 +132,10 @@ export class DurableEventStore implements DurableHarnessEventStoreLike {
     const previous = this.writeTails.get(partition) ?? Promise.resolve();
     const operation: Promise<DurableHarnessEventAppendOutcome<TPayload>> = previous.catch(() => undefined).then(async () => {
       await mkdir(partition, { recursive: true });
-      const lock = await acquireLock(join(partition, '.events'), 60_000);
+      const trusted = this.trustedRuns.get(normalized.runId) === partition;
+      const lock = trusted ? undefined : await acquireLock(join(partition, '.events'), 60_000);
       try {
-        const existing = await this.readPartition(partition, normalized.sessionId, normalized.runId);
+        const existing = await this.readPartitionCached(partition, normalized.sessionId, normalized.runId);
         const byEventId = normalized.eventId
           ? existing.find((event) => event.eventId === normalized.eventId)
           : undefined;
@@ -154,20 +173,46 @@ export class DurableEventStore implements DurableHarnessEventStoreLike {
           payload: normalized.payload as TPayload,
         };
         await writeEventFile(partition, event);
+        const current = this.partitionCache.get(partition);
+        const stamps = current?.stamps ?? [];
+        const written = await statEventFile(partition, eventFileName(event));
+        if (written && stamps.length === existing.length) {
+          this.rememberPartition(partition, [...existing, event], [...stamps, written]);
+        } else {
+          this.partitionCache.delete(partition);
+        }
         return { kind: 'appended' as const, event: cloneEvent(event) };
       } finally {
-        await lock.release();
+        await lock?.release();
       }
     });
     this.writeTails.set(partition, operation.then(() => undefined, () => undefined));
     return operation;
   }
 
+  /** Trust this process as the exclusive writer of a run it has leased. */
+  trustExclusiveRunOwnership(sessionId: string, runId: string): void {
+    const normalizedSession = normalizeIdentifier(sessionId, 'sessionId');
+    const normalizedRun = normalizeIdentifier(runId, 'runId');
+    if (!this.trustedRuns.has(normalizedRun) && this.trustedRuns.size >= DurableEventStore.MAX_TRUSTED_RUNS) {
+      const oldest = this.trustedRuns.keys().next().value;
+      if (oldest !== undefined) this.trustedRuns.delete(oldest);
+    }
+    this.trustedRuns.set(normalizedRun, this.partitionPath(normalizedSession, normalizedRun));
+  }
+
+  releaseExclusiveRunOwnership(runId: string): void {
+    this.trustedRuns.delete(runId);
+  }
+
   async read(sessionId: string, runId: string): Promise<DurableHarnessEvent[]> {
     const normalizedSessionId = normalizeIdentifier(sessionId, 'sessionId');
     const normalizedRunId = normalizeIdentifier(runId, 'runId');
-    return (await this.readPartition(this.partitionPath(normalizedSessionId, normalizedRunId), normalizedSessionId, normalizedRunId))
-      .map(cloneEvent);
+    return (await this.readPartitionCached(
+      this.partitionPath(normalizedSessionId, normalizedRunId),
+      normalizedSessionId,
+      normalizedRunId,
+    )).map(cloneEvent);
   }
 
   async readAfter(sessionId: string, runId: string, cursor: number): Promise<DurableHarnessEvent[]> {
@@ -199,7 +244,75 @@ export class DurableEventStore implements DurableHarnessEventStoreLike {
     return join(this.rootDir, hashParts(sessionId, runId));
   }
 
+  /**
+   * Incrementally verified partition read. A fresh directory listing must prove
+   * the cached events still occupy the same filenames; then only the new tail
+   * files are parsed. Anything else re-reads the whole partition fail-closed.
+   */
+  private async readPartitionCached(
+    partition: string,
+    expectedSessionId?: string,
+    expectedRunId?: string,
+  ): Promise<DurableHarnessEvent[]> {
+    const files = await this.listPartitionEventFiles(partition);
+    const cached = this.partitionCache.get(partition);
+    if (cached && files.length >= cached.events.length
+      && cached.events.every((event, index) => files[index] === eventFileName(event))
+      && await cachedStampsMatch(partition, files, cached.stamps)) {
+      const grown = cached.events.slice();
+      const stamps = cached.stamps.slice();
+      for (let index = cached.events.length; index < files.length; index += 1) {
+        const fileName = files[index]!;
+        grown.push(await this.readEventFile(partition, fileName, expectedSessionId, expectedRunId));
+        const stamp = await statEventFile(partition, fileName);
+        if (!stamp) break;
+        stamps.push(stamp);
+      }
+      if (grown.length === files.length && stamps.length === grown.length) {
+        assertPartitionIntegrity(grown, this.maxEventsPerRun);
+        this.rememberPartition(partition, grown, stamps);
+        return grown;
+      }
+    }
+    const events = await this.readPartitionFull(partition, files, expectedSessionId, expectedRunId);
+    const stamps: FileStamp[] = [];
+    for (const file of files) {
+      const stamp = await statEventFile(partition, file);
+      if (!stamp) {
+        this.partitionCache.delete(partition);
+        return events;
+      }
+      stamps.push(stamp);
+    }
+    this.rememberPartition(partition, events, stamps);
+    return events;
+  }
+
+  private async readPartitionFull(
+    partition: string,
+    files: string[],
+    expectedSessionId?: string,
+    expectedRunId?: string,
+  ): Promise<DurableHarnessEvent[]> {
+    const events: DurableHarnessEvent[] = [];
+    for (const file of files) {
+      events.push(await this.readEventFile(partition, file, expectedSessionId, expectedRunId));
+    }
+    assertPartitionIntegrity(events, this.maxEventsPerRun);
+    return events;
+  }
+
   private async readPartition(partition: string, expectedSessionId?: string, expectedRunId?: string): Promise<DurableHarnessEvent[]> {
+    return this.readPartitionFull(
+      partition,
+      await this.listPartitionEventFiles(partition),
+      expectedSessionId,
+      expectedRunId,
+    );
+  }
+
+  /** Directory listing with the event store's fail-closed filename rules. */
+  private async listPartitionEventFiles(partition: string): Promise<string[]> {
     const entries = await readdir(partition, { withFileTypes: true }).catch((error: unknown) => {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
       throw error;
@@ -215,46 +328,44 @@ export class DurableEventStore implements DurableHarnessEventStoreLike {
         throw new DurableEventStoreError(`unexpected event store file: ${entry.name}`, 'corrupt');
       }
     }
-    const files = entries
+    return entries
       .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
-      .sort((left, right) => left.name.localeCompare(right.name));
-    const events: DurableHarnessEvent[] = [];
-    const cursors = new Set<number>();
-    const eventIds = new Set<string>();
-    const idempotencyKeys = new Set<string>();
-    for (const entry of files) {
-      const match = EVENT_FILE_PATTERN.exec(entry.name);
-      if (!match) throw new DurableEventStoreError(`invalid event filename: ${entry.name}`, 'corrupt');
-      const cursorFromName = Number(match[1]);
-      const event = validateStoredEvent(
-        parseJson(await readFile(join(partition, entry.name), 'utf8'), join(partition, entry.name)),
-        this.maxPayloadBytes,
-      );
-      if (event.cursor !== cursorFromName) throw new DurableEventStoreError(`event cursor/file mismatch: ${entry.name}`, 'corrupt');
-      if (hashParts(event.eventId) !== match[2]) throw new DurableEventStoreError(`event id/file mismatch: ${entry.name}`, 'corrupt');
-      const partitionName = partition.split(/[\\/]/).at(-1);
-      if (partitionName && hashParts(event.sessionId, event.runId) !== partitionName) {
-        throw new DurableEventStoreError(`event partition mismatch: ${entry.name}`, 'corrupt');
-      }
-      if (expectedSessionId !== undefined && (event.sessionId !== expectedSessionId || event.runId !== expectedRunId)) {
-        throw new DurableEventStoreError(`event session/run mismatch: ${entry.name}`, 'corrupt');
-      }
-      if (cursors.has(event.cursor)) throw new DurableEventStoreError(`duplicate event cursor: ${event.cursor}`, 'corrupt');
-      if (eventIds.has(event.eventId)) throw new DurableEventStoreError(`duplicate event id: ${event.eventId}`, 'corrupt');
-      if (idempotencyKeys.has(event.idempotencyKey)) throw new DurableEventStoreError(`duplicate idempotency key: ${event.idempotencyKey}`, 'corrupt');
-      cursors.add(event.cursor);
-      eventIds.add(event.eventId);
-      idempotencyKeys.add(event.idempotencyKey);
-      events.push(event);
+      .map((entry) => entry.name)
+      .sort((left, right) => left.localeCompare(right));
+  }
+
+  private async readEventFile(
+    partition: string,
+    fileName: string,
+    expectedSessionId?: string,
+    expectedRunId?: string,
+  ): Promise<DurableHarnessEvent> {
+    const match = EVENT_FILE_PATTERN.exec(fileName);
+    if (!match) throw new DurableEventStoreError(`invalid event filename: ${fileName}`, 'corrupt');
+    const cursorFromName = Number(match[1]);
+    const event = validateStoredEvent(
+      parseJson(await readFile(join(partition, fileName), 'utf8'), join(partition, fileName)),
+      this.maxPayloadBytes,
+    );
+    if (event.cursor !== cursorFromName) throw new DurableEventStoreError(`event cursor/file mismatch: ${fileName}`, 'corrupt');
+    if (hashParts(event.eventId) !== match[2]) throw new DurableEventStoreError(`event id/file mismatch: ${fileName}`, 'corrupt');
+    const partitionName = partition.split(/[\\/]/).at(-1);
+    if (partitionName && hashParts(event.sessionId, event.runId) !== partitionName) {
+      throw new DurableEventStoreError(`event partition mismatch: ${fileName}`, 'corrupt');
     }
-    for (let index = 0; index < events.length; index += 1) {
-      const event = events[index];
-      if (!event || event.cursor !== index + 1) {
-        throw new DurableEventStoreError('event cursors must be contiguous and start at 1', 'corrupt');
-      }
+    if (expectedSessionId !== undefined && (event.sessionId !== expectedSessionId || event.runId !== expectedRunId)) {
+      throw new DurableEventStoreError(`event session/run mismatch: ${fileName}`, 'corrupt');
     }
-    if (events.length > this.maxEventsPerRun) throw new DurableEventStoreError('event stream exceeds configured limit', 'limit');
-    return events;
+    return event;
+  }
+
+  private rememberPartition(partition: string, events: DurableHarnessEvent[], stamps: FileStamp[]): void {
+    if (!this.partitionCache.has(partition)
+      && this.partitionCache.size >= DurableEventStore.MAX_CACHED_PARTITIONS) {
+      const oldest = this.partitionCache.keys().next().value;
+      if (oldest !== undefined) this.partitionCache.delete(oldest);
+    }
+    this.partitionCache.set(partition, { events, stamps });
   }
 
 }
@@ -267,9 +378,68 @@ export class DurableEventStoreError extends Error {
 }
 
 async function writeEventFile(partition: string, event: DurableHarnessEvent): Promise<void> {
-  const filename = `${String(event.cursor).padStart(12, '0')}-${hashParts(event.eventId)}.json`;
-  const file = join(partition, filename);
+  const file = join(partition, eventFileName(event));
   await writeJsonAtomically(file, event);
+}
+
+function eventFileName(event: DurableHarnessEvent): string {
+  return `${String(event.cursor).padStart(12, '0')}-${hashParts(event.eventId)}.json`;
+}
+
+interface FileStamp {
+  size: number;
+  mtimeMs: number;
+}
+
+interface CachedPartition {
+  events: DurableHarnessEvent[];
+  stamps: FileStamp[];
+}
+
+async function statEventFile(partition: string, fileName: string): Promise<FileStamp | undefined> {
+  try {
+    const details = await stat(join(partition, fileName));
+    return { size: details.size, mtimeMs: details.mtimeMs };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The cached prefix is only trusted while every file still carries the size and
+ * mtime we read. A same-name rewrite (corruption or tampering) is therefore
+ * caught and forced through the full fail-closed read.
+ */
+async function cachedStampsMatch(partition: string, files: string[], stamps: FileStamp[]): Promise<boolean> {
+  // Stats are independent; running them in parallel keeps the per-append
+  // verification cheap even when the cached prefix is long.
+  const matches = await Promise.all(stamps.map(async (cached, index) => {
+    const current = await statEventFile(partition, files[index]!);
+    return Boolean(cached && current && current.size === cached.size && current.mtimeMs === cached.mtimeMs);
+  }));
+  return matches.every(Boolean);
+}
+
+/** Shared fail-closed invariants for a fully or incrementally read partition. */
+function assertPartitionIntegrity(events: DurableHarnessEvent[], maxEventsPerRun: number): void {
+  const cursors = new Set<number>();
+  const eventIds = new Set<string>();
+  const idempotencyKeys = new Set<string>();
+  for (let index = 0; index < events.length; index += 1) {
+    const event = events[index];
+    if (!event || event.cursor !== index + 1) {
+      throw new DurableEventStoreError('event cursors must be contiguous and start at 1', 'corrupt');
+    }
+    if (cursors.has(event.cursor)) throw new DurableEventStoreError(`duplicate event cursor: ${event.cursor}`, 'corrupt');
+    if (eventIds.has(event.eventId)) throw new DurableEventStoreError(`duplicate event id: ${event.eventId}`, 'corrupt');
+    if (idempotencyKeys.has(event.idempotencyKey)) {
+      throw new DurableEventStoreError(`duplicate idempotency key: ${event.idempotencyKey}`, 'corrupt');
+    }
+    cursors.add(event.cursor);
+    eventIds.add(event.eventId);
+    idempotencyKeys.add(event.idempotencyKey);
+  }
+  if (events.length > maxEventsPerRun) throw new DurableEventStoreError('event stream exceeds configured limit', 'limit');
 }
 
 function validateAppendInput<TPayload extends Record<string, unknown>>(

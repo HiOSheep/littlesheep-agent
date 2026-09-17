@@ -166,6 +166,20 @@ describe('preserveSessionSummaryFidelity', () => {
     expect(summary).toContain('代号: stable-42');
     expect(summary).not.toContain('代号: wrong-model-value');
   });
+
+  // HC-06: long Unicode identifiers survive exact-value preservation without unbounded growth.
+  it('preserves a long Unicode identifier inside a bounded summary', () => {
+    const identifier = `部署-${'𠮷'.repeat(40)}-${'A1B2C3D4'.repeat(8)}`;
+    const body = '宽字符内容与工具输出。'.repeat(500);
+    const summary = preserveSessionSummaryFidelity({
+      llmSummary: '记录完成',
+      coveredMessages: [textMessage('user', `请记住部署标识是“${identifier}”。${body}`)],
+      messages: [],
+    });
+
+    expect(summary).toContain(`部署标识: ${identifier}`);
+    expect(summary.length).toBeLessThanOrEqual(8_000);
+  });
 });
 
 function previousSummary(summary: string): CompactionSummary {

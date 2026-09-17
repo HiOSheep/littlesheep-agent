@@ -248,7 +248,7 @@ describe('runner checkpoint continuation', () => {
       await runner.infra.runCheckpointStore!.write(checkpoint)
 
       const result = await runner.resumeCheckpoint!(checkpoint.id)
-      expect(result.status).toBe('ok')
+      expect(result.status, result.error).toBe('ok')
       expect(result.reply).toBe('continued reply')
       expect(result.sideEffects).toEqual(checkpoint.sideEffects)
       expect(result.modelRequests?.find((request) => request.cacheObservation)?.cacheObservation?.invalidationReasons)
@@ -1142,7 +1142,8 @@ describe('runner checkpoint continuation', () => {
         continuationDisposition: 'retry',
       })
       await expect(runner.runCheckpoints!.resolveWaitingUserHead(session.id)).resolves.toEqual({ kind: 'none' })
-      expect(requests).toHaveLength(5)
+      // HC-01: under the default compaction-only policy the verified retry makes no automatic EVOLVE request.
+      expect(requests).toHaveLength(4)
     } finally {
       executeDocumentCreate.mockRestore()
       await runner.shutdown()

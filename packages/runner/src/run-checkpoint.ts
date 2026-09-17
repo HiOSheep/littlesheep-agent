@@ -141,6 +141,7 @@ export function buildRunCheckpoint(options: BuildRunCheckpointOptions): RunCheck
       } : {}),
       ...(ctx.classification ? { classification: clone(ctx.classification) } : {}),
       ...(ctx.needAssessment ? { needAssessment: clone(ctx.needAssessment) } : {}),
+      ...(ctx.workPolicyUpgradeRequest ? { workPolicyUpgradeRequest: clone(ctx.workPolicyUpgradeRequest) } : {}),
       ...(ctx.plan ? { plan: clone(ctx.plan).slice(0, 64) } : {}),
       appliedTaskBookPatchIds: [...(ctx.appliedTaskBookPatchIds ?? [])].slice(-128),
       deferredRuntimeEvents: clone((ctx.deferredRuntimeEvents ?? []).slice(-MAX_RESUME_EVENTS)),

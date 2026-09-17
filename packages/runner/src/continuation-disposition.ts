@@ -1,4 +1,4 @@
-import type { LlmClient } from '@littlesheep/llm'
+import type { ChatMessage, LlmClient } from '@littlesheep/llm'
 import { callLlmForJson } from '@littlesheep/harness'
 import type { ClarificationRequest, RunCheckpoint } from '@littlesheep/types'
 
@@ -68,16 +68,40 @@ export async function resolveContinuationDisposition(
     } : undefined,
     answer: clip(options.answer, 16_384),
   }
+  const baseMessages: ChatMessage[] = [
+    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'user', content: JSON.stringify(boundedFacts) },
+  ]
+  const first = await askDisposition(options, baseMessages)
+  if (first) return first
+  // A parseable reply with an out-of-enum kind is model noise, not a user
+  // ambiguity: re-ask once with an explicit corrective turn before failing
+  // closed. A model that explicitly answers "ambiguous" is respected above.
+  const correctiveMessages: ChatMessage[] = [
+    ...baseMessages,
+    { role: 'assistant', content: '{"kind":"unknown"}' },
+    {
+      role: 'user',
+      content: 'That kind is not allowed. Reply with ONLY '
+        + '{"kind":"answer"|"retry"|"revise_goal"|"cancel"|"new_task"|"ambiguous","reason":"short explanation"}.',
+    },
+  ]
+  const corrective = await askDisposition(options, correctiveMessages)
+  if (corrective) return corrective
+  return { kind: 'ambiguous', source: 'runtime_fallback', reason: 'model returned an invalid continuation disposition' }
+}
+
+async function askDisposition(
+  options: ResolveContinuationDispositionOptions,
+  messages: ChatMessage[],
+): Promise<ContinuationDispositionDecision | undefined> {
   try {
     const { parsed } = await callLlmForJson<{ kind?: unknown; reason?: unknown }>(
       options.llm,
       options.model,
-      [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: JSON.stringify(boundedFacts) },
-      ],
+      messages,
       {
-        maxAttempts: 2,
+        maxAttempts: 1,
         maxTokens: 240,
         maxTokensCeiling: 360,
         temperature: 0,
@@ -93,13 +117,9 @@ export async function resolveContinuationDisposition(
           : {}),
       }
     }
-    return { kind: 'ambiguous', source: 'runtime_fallback', reason: 'model returned an invalid continuation disposition' }
-  } catch (error) {
-    return {
-      kind: 'ambiguous',
-      source: 'runtime_fallback',
-      reason: `continuation disposition failed: ${error instanceof Error ? error.message : String(error)}`,
-    }
+    return undefined
+  } catch {
+    return undefined
   }
 }
 

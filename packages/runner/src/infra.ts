@@ -59,6 +59,8 @@ import { ExecutionLogStore } from './execution-log.js';
 import { loadCacheObservationKey } from './cache-observation-key.js';
 import { RunCheckpointStore } from './run-checkpoint-store.js';
 import { RunCheckpointDispositionStore } from './run-checkpoint-disposition-store.js';
+import { CompactionOperationStore } from './compaction-operation-store.js';
+import { SessionCompactionScheduler } from './session-compaction-scheduler.js';
 import {
   buildDurableHarnessInfrastructure,
   type DurableHarnessInfrastructure,
@@ -117,6 +119,10 @@ export interface Infrastructure extends DurableHarnessInfrastructure {
   runCheckpointStore?: RunCheckpointStore;
   /** Mutable resume/abandon decisions kept separate from immutable checkpoints. */
   runCheckpointDispositionStore: RunCheckpointDispositionStore;
+  /** Durable session-scoped history of automatic compaction operations. */
+  compactionOperationStore: CompactionOperationStore;
+  /** One scheduler per Runner owns automatic compaction single-flight and cancellation. */
+  compactionScheduler: SessionCompactionScheduler;
   experienceStore: ExperienceStore;
   memoryTree: MemoryTree;
   memoryRepository: MemoryRepository;
@@ -542,6 +548,12 @@ export async function buildInfrastructure(
     opts.log?.('warn', `memory-v3: background maintenance stopped: ${(error as Error).message}`);
   });
 
+  const compactionOperationStore = new CompactionOperationStore(join(dirs.root, 'compaction-operations'));
+  const compactionScheduler = new SessionCompactionScheduler({
+    log: opts.log,
+    onSettled: (record) => compactionOperationStore.append(record),
+  });
+
   return {
     llm,
     sessionManager,
@@ -556,6 +568,8 @@ export async function buildInfrastructure(
     loadSessionDurableProjection: loadSessionDurableProjectionFor,
     runCheckpointStore,
     runCheckpointDispositionStore,
+    compactionOperationStore,
+    compactionScheduler,
     experienceStore,
     memoryTree,
     memoryRepository,

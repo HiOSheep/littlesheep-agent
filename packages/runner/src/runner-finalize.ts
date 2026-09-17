@@ -5,6 +5,8 @@ import { collectConversationSourceRecords } from '@littlesheep/harness';
 import { buildMemoryRunFeedbackInput, independentSuccessfulToolCallIds } from './memory-feedback-evidence.js';
 import { recordSessionSummaryActivation } from './session-summary-activation.js';
 import { compactSessionAfterRun } from './session-continuity.js';
+import { memoryRevokedDuringRun } from './session-summary-revocation.js';
+import type { SessionCompactionScheduler } from './session-compaction-scheduler.js';
 
 export interface FinalizeRunnerPhaseOptions<TResult> {
   ctx: RunContext;
@@ -18,7 +20,9 @@ export interface FinalizeRunnerPhaseOptions<TResult> {
   runCheckpointId?: string;
   startedAt: number;
   model: string;
-  compact: { threshold: number; keepRecent: number };
+  compact: { threshold: number; keepRecent: number; background?: boolean };
+  /** Single owner for automatic compaction operations; optional for legacy callers. */
+  compactionScheduler?: SessionCompactionScheduler;
   infra: {
     memoryService: MemoryService;
     sessionManager: Parameters<typeof compactSessionAfterRun>[0]['sessionManager'];
@@ -40,15 +44,27 @@ export interface FinalizeRunnerPhaseResult<TResult> {
   memoryAccess?: MemoryAccessLedger;
 }
 
+/**
+ * Authoritative conversation-source capture is not best-effort: when it fails the
+ * run still settles, but the result must say that source refs may be missing.
+ */
+export interface MemorySourceCaptureDegradation {
+  status: 'degraded';
+  reason: string;
+}
+
 /** Capture memory evidence, finish the memory run, compact, and assemble the result. */
 export async function finalizeRunnerPhase<TResult>(
   options: FinalizeRunnerPhaseOptions<TResult>,
 ): Promise<FinalizeRunnerPhaseResult<TResult>> {
   const { ctx, stageResult, runStopped } = options;
+  let memorySourceCapture: MemorySourceCaptureDegradation | undefined;
   try {
     await options.infra.memoryService.captureConversationSources(collectConversationSourceRecords(ctx));
   } catch (err) {
-    options.log?.('warn', `runner: conversation source capture degraded: ${(err as Error).message}`);
+    const reason = (err as Error).message;
+    memorySourceCapture = { status: 'degraded', reason };
+    options.log?.('warn', `runner: conversation source capture degraded: ${reason}`);
   }
 
   const latestVerification = ctx.verificationHistory?.at(-1);
@@ -88,27 +104,69 @@ export async function finalizeRunnerPhase<TResult>(
     options.log?.('warn', `runner: run resource cleanup degraded: ${(err as Error).message}`);
   }
 
+  // A committed correction/forget invalidates summaries produced before it, so
+  // the next request does not inject the revoked fact as current memory.
+  if (memoryRevokedDuringRun(ctx, stageResult)) {
+    try {
+      await options.infra.sessionManager.updateMetadata(options.sessionId, {
+        memoryRevokedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      options.log?.('warn', `runner: memory revocation marker degraded: ${(err as Error).message}`);
+    }
+  }
+
+  // Assemble the run result before derived compaction so its evidence, duration
+  // and cost stay the run's own; compaction owns the operation record instead.
+  const result = options.assembleResult(stageResult, ctx, options.sessionId, options.startedAt, runStopped, memoryAccess);
+  if (options.runCheckpointId && typeof result === 'object' && result !== null) {
+    (result as { runCheckpointId?: string }).runCheckpointId = options.runCheckpointId;
+  }
+  if (memorySourceCapture && typeof result === 'object' && result !== null) {
+    (result as { memorySourceCapture?: MemorySourceCaptureDegradation }).memorySourceCapture = memorySourceCapture;
+  }
+
   if (!runStopped) {
-    await compactSessionAfterRun({
+    const force = ctx.contextSnapshots?.some((snapshot) => snapshot.compressionRecommended) === true;
+    const compaction = {
       sessionManager: options.infra.sessionManager,
       memoryService: options.infra.memoryService,
       llm: options.infra.llm,
-      ctx,
       sessionId: options.sessionId,
       runId: options.runId,
       workspace: options.cwd,
       model: ctx.resolvedRunConfig?.model ?? options.model,
       threshold: options.compact.threshold,
       keepRecent: options.compact.keepRecent,
-      force: ctx.contextSnapshots?.some((snapshot) => snapshot.compressionRecommended) === true,
+      force,
       signal: options.signal,
+      scheduler: options.compactionScheduler,
       log: options.log,
-    });
+    };
+    if (options.compact.background === true && !force) {
+      // Soft automatic compaction may outlive the run: give it a detached
+      // accounting context so it cannot mutate the published run or its usage.
+      void compactSessionAfterRun({ ...compaction, ctx: detachedCompactionContext(ctx) })
+        .catch((error: unknown) => {
+          options.log?.('warn', `runner: background session compaction failed: ${(error as Error).message}`);
+        });
+    } else {
+      await compactSessionAfterRun({ ...compaction, ctx });
+    }
   }
 
-  const result = options.assembleResult(stageResult, ctx, options.sessionId, options.startedAt, runStopped, memoryAccess);
-  if (options.runCheckpointId && typeof result === 'object' && result !== null) {
-    (result as { runCheckpointId?: string }).runCheckpointId = options.runCheckpointId;
-  }
   return { result, memoryAccess };
+}
+
+/** Independent request/usage arrays so background work cannot rewrite the run result. */
+function detachedCompactionContext(ctx: RunContext): RunContext {
+  return {
+    ...ctx,
+    appendDurableEvent: undefined,
+    deferFinalReplySettlement: false,
+    streamModelTranscript: false,
+    modelRequests: [],
+    contextSnapshots: [],
+    usage: undefined,
+  };
 }

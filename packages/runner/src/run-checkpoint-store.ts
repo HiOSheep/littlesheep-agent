@@ -16,6 +16,9 @@ import type {
   StageName,
 } from '@littlesheep/types';
 import { RUN_CHECKPOINT_VERSION, sanitizeWebEvidenceProjection } from '@littlesheep/types';
+import { RunCheckpointStoreDisposedError, RunCheckpointValidationError } from './run-checkpoint-errors.js';
+import { validateWorkPolicyUpgradeRequest } from './run-checkpoint-work-policy-codec.js';
+export { RunCheckpointStoreDisposedError, RunCheckpointValidationError } from './run-checkpoint-errors.js';
 
 export const DEFAULT_RUN_CHECKPOINT_MAX_HISTORY = 128 as const;
 export const MAX_RUN_CHECKPOINT_MAX_HISTORY = 512 as const;
@@ -88,20 +91,6 @@ export type RunCheckpointWriteOutcome =
   | { kind: 'written'; checkpoint: RunCheckpoint }
   | { kind: 'duplicate'; checkpoint: RunCheckpoint }
   | { kind: 'conflict'; checkpointId: string; existing: RunCheckpoint };
-
-export class RunCheckpointStoreDisposedError extends Error {
-  constructor() {
-    super('Run checkpoint store has been disposed.');
-    this.name = 'RunCheckpointStoreDisposedError';
-  }
-}
-
-export class RunCheckpointValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'RunCheckpointValidationError';
-  }
-}
 
 interface StoredRecord {
   checkpoint: RunCheckpoint;
@@ -587,6 +576,9 @@ function validateResumeState(value: unknown): RunCheckpointResumeState {
   const lastError = value.lastError === undefined
     ? undefined
     : validateResumeLastError(value.lastError);
+  const workPolicyUpgradeRequest = value.workPolicyUpgradeRequest === undefined
+    ? undefined
+    : validateWorkPolicyUpgradeRequest(value.workPolicyUpgradeRequest);
   const workspaceContext = value.workspaceContext === undefined
     ? undefined
     : validateWorkspaceContext(value.workspaceContext);
@@ -619,6 +611,7 @@ function validateResumeState(value: unknown): RunCheckpointResumeState {
     ...(lastError ? { lastError } : {}),
     ...(value.classification === undefined ? {} : { classification: cloneJson(value.classification) as RunCheckpointResumeState['classification'] }),
     ...(value.needAssessment === undefined ? {} : { needAssessment: cloneJson(value.needAssessment) as RunCheckpointResumeState['needAssessment'] }),
+    ...(workPolicyUpgradeRequest ? { workPolicyUpgradeRequest } : {}),
     ...(value.plan === undefined ? {} : { plan: cloneJson(value.plan) as RunCheckpointResumeState['plan'] }),
     appliedTaskBookPatchIds,
     deferredRuntimeEvents: cloneJson(value.deferredRuntimeEvents) as RunCheckpointResumeState['deferredRuntimeEvents'],
@@ -784,6 +777,18 @@ function validateLoopBudget(value: Record<string, unknown>): RunCheckpoint['loop
     maxElapsedMs: boundedSafeInteger(value.maxElapsedMs, 'loopBudget.maxElapsedMs', 0),
     noProgressRounds: boundedSafeInteger(value.noProgressRounds, 'loopBudget.noProgressRounds', 0),
     maxNoProgressRounds: boundedSafeInteger(value.maxNoProgressRounds, 'loopBudget.maxNoProgressRounds', 0),
+    ...(value.toolLoopIterationsUsed === undefined ? {} : {
+      toolLoopIterationsUsed: boundedSafeInteger(value.toolLoopIterationsUsed, 'loopBudget.toolLoopIterationsUsed', 0),
+    }),
+    ...(value.maxToolLoopIterations === undefined ? {} : {
+      maxToolLoopIterations: boundedSafeInteger(value.maxToolLoopIterations, 'loopBudget.maxToolLoopIterations', 0),
+    }),
+    ...(value.evidenceFingerprints === undefined ? {} : {
+      evidenceFingerprints: boundedStringArray(value.evidenceFingerprints, 128, 'loopBudget.evidenceFingerprints'),
+    }),
+    ...(value.evidenceFingerprintSaturated === undefined ? {} : {
+      evidenceFingerprintSaturated: requiredBoolean(value.evidenceFingerprintSaturated, 'loopBudget.evidenceFingerprintSaturated'),
+    }),
     ...(value.costUsed === undefined ? {} : { costUsed: boundedFiniteNumber(value.costUsed, 'loopBudget.costUsed', 0) }),
     ...(value.maxCost === undefined ? {} : { maxCost: boundedFiniteNumber(value.maxCost, 'loopBudget.maxCost', 0) }),
   };
@@ -796,6 +801,11 @@ function boundedStringArray(value: unknown, maximum: number, field: string): str
   const values = value.map((item) => boundedText(item, MAX_ID_LENGTH, field));
   if (new Set(values).size !== values.length) throw new RunCheckpointValidationError(`${field} contains duplicates.`);
   return values;
+}
+
+function requiredBoolean(value: unknown, field: string): boolean {
+  if (typeof value !== 'boolean') throw new RunCheckpointValidationError(`${field} must be a boolean.`);
+  return value;
 }
 
 function boundedText(value: unknown, maximum: number, field: string): string {

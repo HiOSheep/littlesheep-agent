@@ -33,7 +33,12 @@ describe('Runner Memory v3 integration', () => {
     await mkdir(workspace, { recursive: true });
     const config = {
       ...DEFAULT_CONFIG,
-      memory: { ...DEFAULT_CONFIG.memory, repositoryBackend: 'v3' as const },
+      memory: {
+        ...DEFAULT_CONFIG.memory,
+        repositoryBackend: 'v3' as const,
+        // HC-18: keep the legacy per-run EVOLVE/CAPTURE protocol explicitly admitted for old data.
+        autoMemoryPolicy: 'legacy-per-run' as const,
+      },
     };
     const first = await createRunner({
       config,
@@ -485,7 +490,12 @@ describe('Runner Memory v3 integration', () => {
     await mkdir(workspace, { recursive: true });
     const config = {
       ...DEFAULT_CONFIG,
-      memory: { ...DEFAULT_CONFIG.memory, repositoryBackend: 'v3' as const },
+      memory: {
+        ...DEFAULT_CONFIG.memory,
+        repositoryBackend: 'v3' as const,
+        // HC-18: legacy per-run EVOLVE/CAPTURE remains readable/admitted when explicitly selected.
+        autoMemoryPolicy: 'legacy-per-run' as const,
+      },
     };
     const responses: ChatResponse[] = [];
     const requests: ChatRequest[] = [];
@@ -599,12 +609,14 @@ describe('Runner Memory v3 integration', () => {
     await restored.infra.memoryService.finishRun('memory-v3-mock-recall');
   });
 
-  it('promotes compaction-covered daily atoms before archiving their source projection', async () => {
+  it('settles compaction through one entry and leaves legacy daily atoms queryable', async () => {
     const workspace = join(dataDir, 'workspace');
     await mkdir(workspace, { recursive: true });
     const config = structuredClone(DEFAULT_CONFIG);
     config.memory.repositoryBackend = 'v3';
     config.memory.llmCapture = true;
+    // HC-18: legacy daily atoms stay writable and queryable when the old policy is explicitly selected.
+    config.memory.autoMemoryPolicy = 'legacy-per-run';
     config.sessions.compaction.threshold = 2;
     config.sessions.compaction.keepRecent = 1;
     const marker = 'LS-DAILY-CONSOLIDATION-MARKER';
@@ -633,7 +645,10 @@ describe('Runner Memory v3 integration', () => {
             assertedBy: { kind: 'user', id: 'local-user' },
           },
         }] })),
-        textResponse(`Compacted project decision: ${marker}.`),
+        textResponse(JSON.stringify({
+          summary: `Compacted project decision: ${marker}.`,
+          candidates: [],
+        })),
       ], requests),
       skillsDirs: [],
     });
@@ -657,19 +672,80 @@ describe('Runner Memory v3 integration', () => {
 
     expect(result.status).toBe('ok');
     expect(summary).toMatchObject({ version: 2, sourceRunIds: [result.runId] });
-    expect(project).toMatchObject({
-      branch: 'project',
-      tier: InjectionTier.T2_RELEVANT,
-      sourceRunIds: [result.runId],
-      sourceStages: expect.arrayContaining(['capture', 'maintenance']),
-      domain: 'project',
-      statementKind: 'decision',
-    });
-    expect(activeDaily.some((node) => node.content.includes(marker))).toBe(false);
-    expect(archivedDaily).toEqual(expect.arrayContaining([
-      expect.objectContaining({ content: expect.stringContaining(marker), status: 'archived' }),
-    ]));
+    // C08D: the retired daily-consolidation entry no longer auto-promotes; there is a single promotion path.
+    expect(project).toBeUndefined();
+    // HC-18: the legacy daily atom stays readable under its original scope instead of being archived by a second entry.
+    expect(activeDaily.some((node) => node.content.includes(marker))).toBe(true);
+    expect(archivedDaily).toEqual([]);
     expect(requests).toHaveLength(8);
+  });
+
+  // HC-02: a short session with no summary/atom must still be discoverable by bounded catalog, then expanded by ref.
+  it('recovers a short session fact through the bounded source catalog after restart', async () => {
+    const workspace = join(dataDir, 'workspace');
+    await mkdir(workspace, { recursive: true });
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.memory.repositoryBackend = 'v3';
+    config.sessions.compaction.threshold = 100;
+    config.sessions.compaction.keepRecent = 20;
+    const marker = 'LS-SHORT-SESSION-ORACLE-7F3A';
+    const first = await createRunner({
+      config,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm([
+        textResponse('{"type":"problem","confidence":0.99,"reason":"note the launch code"}'),
+        textResponse('{"plan":[{"description":"acknowledge the launch code","tools":[]}]}'),
+        textResponse(`The launch code is ${marker}.`),
+        textResponse(`Understood: the launch code is ${marker}.`),
+        textResponse('{"verdict":"pass","reason":"the launch code was acknowledged"}'),
+        textResponse('{"memories":[],"createSkill":null}'),
+        textResponse('{"observations":[]}'),
+      ]),
+      skillsDirs: [],
+    });
+    runners.push(first);
+
+    const result = await first.run({
+      text: `For this chat only, the launch code is ${marker}.`,
+      cwd: workspace,
+    });
+    expect(result.status).toBe('ok');
+    // Short session: no summary and no per-run/daily atom to fall back on.
+    expect((await first.sessionManager.loadMetadata(result.sessionId))?.compaction).toBeUndefined();
+    expect((await first.infra.memoryRepository.snapshot()).writeAudit).toEqual([]);
+
+    await first.shutdown();
+    runners.splice(runners.indexOf(first), 1);
+    const restored = await createRunner({
+      config,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('unused')),
+      skillsDirs: [],
+    });
+    runners.push(restored);
+
+    // Another session must locate a scope first; there is no unbounded global scan.
+    await expect(restored.infra.memoryService.catalogConversationSources({}))
+      .rejects.toThrow('requires a sessionId or runId scope');
+    const otherSession = await restored.infra.memoryService.catalogConversationSources({
+      sessionId: asSessionId('another-session'),
+    });
+    expect(otherSession.status).toBe('ok');
+    expect(otherSession.entries).toEqual([]);
+
+    const directory = await restored.infra.memoryService.catalogConversationSources({
+      sessionId: result.sessionId,
+    });
+    expect(directory.status).toBe('ok');
+    const userEntry = directory.entries.find((entry) => entry.kind === 'user-message');
+    expect(userEntry).toBeDefined();
+    expect(directory.entries.some((entry) => entry.kind === 'assistant-reply')).toBe(true);
+
+    const expanded = await restored.infra.memoryService.listConversationSources([userEntry!.id]);
+    expect(expanded).toHaveLength(1);
+    expect(JSON.stringify(expanded[0]?.payload)).toContain(marker);
   });
 });
 

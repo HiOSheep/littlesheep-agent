@@ -189,6 +189,32 @@ describe('DurableEventStore', () => {
     await expect(new DurableEventStore({ rootDir: root }).initialize()).rejects.toBeInstanceOf(DurableEventStoreError);
   });
 
+  // Next-mode runs hold DurableRunOwnership, so their partition needs no
+  // cross-process lock; in-process ordering must still be exact.
+  it('serializes appends for a trusted exclusively-owned run without a lock file', async () => {
+    const root = await newRoot();
+    const store = new DurableEventStore({ rootDir: root });
+    store.trustExclusiveRunOwnership('session-a', 'run-a');
+    const outcomes = await Promise.all(Array.from({ length: 8 }, (_, index) => store.append({
+      ...base,
+      eventId: `trusted-${index}`,
+      idempotencyKey: `trusted-${index}`,
+      payload: { index },
+    })));
+
+    expect(outcomes.every((outcome) => outcome.kind === 'appended')).toBe(true);
+    expect((await store.read('session-a', 'run-a')).map((event) => event.cursor))
+      .toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    const partition = join(root, hashParts('session-a', 'run-a'));
+    await expect(readdir(partition)).resolves.not.toContain('.events.lock');
+
+    store.releaseExclusiveRunOwnership('run-a');
+    await store.append({ ...base, eventId: 'after-release', idempotencyKey: 'after-release' });
+    expect((await store.read('session-a', 'run-a')).map((event) => event.cursor)).toEqual(
+      [1, 2, 3, 4, 5, 6, 7, 8, 9],
+    );
+  });
+
   it('enforces bounded payloads and event history', async () => {
     const root = await newRoot();
     const store = new DurableEventStore({ rootDir: root, maxPayloadBytes: 1_024, maxEventsPerRun: 1 });

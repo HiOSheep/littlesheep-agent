@@ -52,6 +52,7 @@ import {
   DurableHarnessKernel,
   collectConversationSourceRecords,
   settleDeferredFinalReply,
+  isSupportedWorkPolicy,
 } from '@littlesheep/harness';
 import { buildInfrastructure, type Infrastructure, type RunnerState, type LogFn } from './infra.js';
 import type { ExecutionLog } from './execution-log.js';
@@ -72,8 +73,9 @@ import { buildRunnerCapabilityState } from './capability-snapshot.js';
 import { runRunnerCoordinator } from './runner-coordinator.js';
 import { executeRunnerPhase } from './runner-execute.js';
 import { finalizeRunnerPhase } from './runner-finalize.js';
+import type { SessionCompactionOperationRecord } from './session-compaction-scheduler.js';
 import { persistRunnerPhase, RunnerPersistenceError } from './runner-persist.js';
-import { prepareAuthoritativeRunnerResult } from './authoritative-reply.js';
+import { isAuthoritativePrepared, markAuthoritativePrepared, prepareAuthoritativeRunnerResult } from './authoritative-reply.js';
 import { clearUnpublishedNextResult, runtimeFailureResult, settleRuntimeFailureEvent } from './run-failure-result.js';
 import { resolveSemanticResumeStage } from './continuation-stage.js';
 import { WebRetrievalRuntime } from '@littlesheep/web';
@@ -110,6 +112,7 @@ export type RunnerResult = AgentResult & {
   sessionId: SessionId;
   memoryAccess?: MemoryAccessLedger;
   runCheckpointId?: string;
+  memorySourceCapture?: { status: 'degraded'; reason: string };
   /** Effective durable Harness mode for this run (global or session override). */
   durableHarnessMode?: 'shadow' | 'next';
 };
@@ -305,12 +308,17 @@ export interface AgentRunner {
   replay(runId: string): Promise<ExecutionLog | null>;
   /** Replay only a durable final settlement; proposals are never exposed. */
   replayDurableFinalReply?(sessionId: SessionId, runId: string): Promise<DurableFinalReplyReplay>;
+  isResultAuthoritativePrepared?(result: RunnerResult): boolean;
   /** Perform one conservative post-crash recovery pass without model/tool I/O. */
   recoverDurableRun?(sessionId: SessionId, runId: string): Promise<DurableRunRecoveryResult>;
   /** Ingress for events targeting an active run; independent from session input. */
   readonly runtimeEvents: RuntimeEventIngress;
   /** Bounded runtime-owned query and control surface for active runs. */
   readonly activeRuns?: RuntimeActiveRunControl;
+  /** Bounded history of automatic session-compaction operations owned by this runner. */
+  compactionOperations?(): readonly SessionCompactionOperationRecord[];
+  compactionOperationHistory?(sessionId: SessionId): Promise<readonly SessionCompactionOperationRecord[]>;
+  drainCompaction?(): Promise<void>;
   shutdown(): Promise<void>;
   readonly state: RunnerState;
   /** Underlying SessionManager — exposed so the app layer can read session history. */
@@ -367,6 +375,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     ),
   });
   const activeRuns = new ActiveRunRegistry({ maxActiveRuns: opts.maxActiveRuns });
+  const compactionScheduler = infra.compactionScheduler;
   // Recovery-time effect reconciliation is delegated so this facade keeps its
   // size budget; the host still owns approval and the tool owns the query.
   const durableEffectOutcomeQuery = createDurableEffectOutcomeQuery({
@@ -479,6 +488,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
             abortControl.registration.interrupt?.(`durable ${kind} lease ownership lost`);
           },
         });
+        infra.durableEventStore.trustExclusiveRunOwnership(String(sessionId), runId);
       }
       const runtimeEventQueue = activeRuns.registerRun(runId, sessionId, continuation?.checkpoint.runtimeEventQueue, abortControl.registration);
       runtimeQueueRegistered = true;
@@ -813,6 +823,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
               startedAt,
               model,
               compact: opts.config.sessions.compaction,
+              compactionScheduler,
               infra,
               assembleResult,
               log: opts.log,
@@ -950,6 +961,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       await durableRunOwnership?.release().catch((error) => {
         opts.log?.('error', `runner: durable ownership release failed: ${(error as Error).message}`);
       });
+      infra.durableEventStore.releaseExclusiveRunOwnership(runId);
       webRetrievalRuntime?.dispose();
       if (runtimeQueueRegistered) activeRuns.unregister(runId);
       if (activeCheckpoint && !checkpointCompleted) {
@@ -2150,12 +2162,11 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
   async function prepareInternalAuthoritativeResult(result: RunnerResult): Promise<RunnerResult> {
     const mode = result.durableHarnessMode ?? await durableHarnessModeForRun(String(result.sessionId), result.runId);
     if (mode !== 'next') return result;
-    // The mode is already resolved above; this adapter only supplies the
-    // durable replay the publication boundary needs.
-    return prepareAuthoritativeRunnerResult({
+    // This adapter supplies the durable replay the publication boundary needs.
+    return markAuthoritativePrepared(await prepareAuthoritativeRunnerResult({
       durableHarnessMode: 'next',
       replayDurableFinalReply: replayAuthoritativeDurableFinalReply,
-    } as AgentRunner, result);
+    } as AgentRunner, result));
   }
 
   return {
@@ -2166,12 +2177,18 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     runCheckpoints,
     replay: (runId: string) => infra.executionLogStore.read(runId),
     durableHarnessModeForRun,
+    isResultAuthoritativePrepared: (result: RunnerResult) => isAuthoritativePrepared(result),
     replayDurableFinalReply: (sessionId: SessionId, runId: string) =>
       replayAuthoritativeDurableFinalReply(sessionId, runId),
     recoverDurableRun,
     runtimeEvents: activeRuns,
     activeRuns,
+    compactionOperations: () => compactionScheduler.operations(),
+    compactionOperationHistory: (sessionId: SessionId) => infra.compactionOperationStore.list(String(sessionId)),
+    drainCompaction: () => compactionScheduler.drain(),
     shutdown: async () => {
+      compactionScheduler.dispose('runner-shutdown');
+      await compactionScheduler.drain();
       conversationTurns.clear();
       activeRuns.dispose();
       infra.disposeTokenCounter();
@@ -2514,6 +2531,9 @@ function restoreContinuationContext(
 ): void {
   const state = checkpoint.resumeState;
   if (!state) throw new Error('checkpoint has no resumable runtime state');
+  if (state.classification?.workPolicy !== undefined && !isSupportedWorkPolicy(state.classification.workPolicy)) {
+    throw new Error('checkpoint uses an unsupported work policy version or shape');
+  }
 
   ctx.entryStage = resumeStage;
   ctx.resumedFromCheckpointId = checkpoint.id;
@@ -2528,6 +2548,9 @@ function restoreContinuationContext(
   writeDecisionState(ctx, 'runner-restore', {
     classification: state.classification ? structuredClone(state.classification) : undefined,
     needAssessment: state.needAssessment ? structuredClone(state.needAssessment) : undefined,
+  });
+  writeReplanState(ctx, 'runner-restore', {
+    workPolicyUpgradeRequest: state.workPolicyUpgradeRequest ? structuredClone(state.workPolicyUpgradeRequest) : undefined,
   });
   writeRuntimeState(ctx, 'runner-restore', {
     deferredRuntimeEventIds: [...checkpoint.pendingEventIds],

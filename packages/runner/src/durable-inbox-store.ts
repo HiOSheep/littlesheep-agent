@@ -3,7 +3,6 @@
 import { mkdir, readdir, readFile } from 'node:fs/promises';
 import { Buffer } from 'node:buffer';
 import { join } from 'node:path';
-import { acquireLock } from '@littlesheep/session';
 import type {
   DurableInboxClaimFilter,
   DurableInboxCommand,
@@ -26,6 +25,14 @@ import {
   randomId,
   writeJsonAtomically,
 } from './durable-store-utils.js';
+import {
+  mutableStampsUnchanged,
+  rememberInboxCommand,
+  statInboxFile,
+  type FileStamp,
+  type InboxCommandCache,
+} from './durable-inbox-cache.js';
+import { InboxWriteLock } from './durable-inbox-lock.js';
 
 const COMMAND_FILE_PATTERN = /^[a-f0-9]{64}\.json$/;
 const MAX_COMMAND_ID_LENGTH = 256;
@@ -52,7 +59,8 @@ export class DurableInboxStore implements DurableInboxStoreLike {
   private readonly leaseMs: number;
   private readonly maxClaim: number;
   private readonly now: () => Date;
-  private writeTail: Promise<void> = Promise.resolve();
+  private readonly writeLock: InboxWriteLock;
+  private commandCache?: InboxCommandCache;
   private initialized = false;
   private initializationFailure: Error | undefined;
 
@@ -60,6 +68,7 @@ export class DurableInboxStore implements DurableInboxStoreLike {
     const root = options.rootDir.trim();
     if (!root) throw new Error('durable inbox rootDir must be non-empty');
     this.rootDir = root;
+    this.writeLock = new InboxWriteLock(root);
     this.leaseMs = boundedInteger(options.leaseMs, DEFAULT_LEASE_MS, 1_000, MAX_LEASE_MS);
     this.maxClaim = boundedInteger(options.maxClaim, DEFAULT_CLAIM_LIMIT, 1, MAX_CLAIM_LIMIT);
     this.now = options.now ?? (() => new Date());
@@ -303,6 +312,38 @@ export class DurableInboxStore implements DurableInboxStoreLike {
   }
 
   private async readCommands(): Promise<DurableInboxCommand[]> {
+    const files = await this.listCommandFiles();
+    const cached = this.commandCache;
+    if (cached && cached.stamps.size === files.length
+      && files.every((name) => cached.stamps.has(name))
+      && await mutableStampsUnchanged(this.rootDir, cached)) {
+      return cached.commands;
+    }
+    const commands: DurableInboxCommand[] = [];
+    const stamps = new Map<string, FileStamp>();
+    const mutable = new Set<string>();
+    const commandIds = new Set<string>();
+    const idempotencyKeys = new Set<string>();
+    for (const name of files) {
+      const command = await this.readCommandFile(name);
+      if (commandIds.has(command.commandId)) throw new DurableInboxError(`duplicate command id: ${command.commandId}`, 'corrupt');
+      if (idempotencyKeys.has(command.idempotencyKey)) throw new DurableInboxError(`duplicate inbox idempotency key: ${command.idempotencyKey}`, 'corrupt');
+      commandIds.add(command.commandId);
+      idempotencyKeys.add(command.idempotencyKey);
+      commands.push(command);
+      const stamp = await statInboxFile(this.rootDir, name);
+      if (!stamp) {
+        this.commandCache = undefined;
+        return commands;
+      }
+      stamps.set(name, stamp);
+      if (command.status !== 'completed') mutable.add(name);
+    }
+    this.commandCache = { commands, stamps, mutable };
+    return commands;
+  }
+
+  private async listCommandFiles(): Promise<string[]> {
     const entries = await readdir(this.rootDir, { withFileTypes: true }).catch((error: unknown) => {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
       throw error;
@@ -316,21 +357,18 @@ export class DurableInboxStore implements DurableInboxStoreLike {
         throw new DurableInboxError(`unexpected inbox file: ${entry.name}`, 'corrupt');
       }
     }
-    const commands: DurableInboxCommand[] = [];
-    const commandIds = new Set<string>();
-    const idempotencyKeys = new Set<string>();
-    for (const entry of entries.filter((item) => item.isFile() && item.name.endsWith('.json')).sort((a, b) => a.name.localeCompare(b.name))) {
-      if (!COMMAND_FILE_PATTERN.test(entry.name)) throw new DurableInboxError(`invalid inbox filename: ${entry.name}`, 'corrupt');
-      const commandId = entry.name.slice(0, -'.json'.length);
-      const command = validateStoredCommand(parseJson(await readFile(join(this.rootDir, entry.name), 'utf8'), join(this.rootDir, entry.name)), undefined);
-      if (hashParts(command.commandId) !== commandId) throw new DurableInboxError(`command id/file mismatch: ${entry.name}`, 'corrupt');
-      if (commandIds.has(command.commandId)) throw new DurableInboxError(`duplicate command id: ${command.commandId}`, 'corrupt');
-      if (idempotencyKeys.has(command.idempotencyKey)) throw new DurableInboxError(`duplicate inbox idempotency key: ${command.idempotencyKey}`, 'corrupt');
-      commandIds.add(command.commandId);
-      idempotencyKeys.add(command.idempotencyKey);
-      commands.push(command);
-    }
-    return commands;
+    return entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+      .map((entry) => entry.name)
+      .sort((left, right) => left.localeCompare(right));
+  }
+
+  private async readCommandFile(name: string): Promise<DurableInboxCommand> {
+    if (!COMMAND_FILE_PATTERN.test(name)) throw new DurableInboxError(`invalid inbox filename: ${name}`, 'corrupt');
+    const commandId = name.slice(0, -'.json'.length);
+    const command = validateStoredCommand(parseJson(await readFile(join(this.rootDir, name), 'utf8'), join(this.rootDir, name)), undefined);
+    if (hashParts(command.commandId) !== commandId) throw new DurableInboxError(`command id/file mismatch: ${name}`, 'corrupt');
+    return command;
   }
 
   private async requeueExpired(commands: readonly DurableInboxCommand[], now: Date): Promise<void> {
@@ -347,25 +385,34 @@ export class DurableInboxStore implements DurableInboxStoreLike {
   }
 
   private async writeCommand(command: DurableInboxCommand): Promise<void> {
-    await writeJsonAtomically(this.filePath(command.commandId), command);
+    const name = `${hashParts(command.commandId)}.json`;
+    await writeJsonAtomically(join(this.rootDir, name), command);
+    const cached = this.commandCache;
+    if (!cached) return;
+    const stamp = await statInboxFile(this.rootDir, name);
+    if (!stamp) {
+      this.commandCache = undefined;
+      return;
+    }
+    this.commandCache = rememberInboxCommand(cached, name, command, stamp);
   }
 
   private filePath(commandId: string): string {
     return join(this.rootDir, `${hashParts(commandId)}.json`);
   }
 
+  /**
+   * Run several public inbox operations under one lock acquisition. Durable
+   * ingress otherwise takes the write lock four times per event (enqueue, claim,
+   * complete plus the event append); the batch keeps the exact same operation
+   * order and semantics while collapsing those lock cycles.
+   */
+  withBatch<T>(operation: () => Promise<T>): Promise<T> {
+    return this.writeLock.batch(operation);
+  }
+
   private withWriteLock<T>(operation: () => Promise<T>): Promise<T> {
-    const current = this.writeTail.catch(() => undefined).then(async () => {
-      await mkdir(this.rootDir, { recursive: true });
-      const lock = await acquireLock(join(this.rootDir, '.inbox'), 60_000);
-      try {
-        return await operation();
-      } finally {
-        await lock.release();
-      }
-    });
-    this.writeTail = current.then(() => undefined, () => undefined);
-    return current;
+    return this.writeLock.run(operation);
   }
 }
 

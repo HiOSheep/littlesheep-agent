@@ -118,6 +118,75 @@ describe('RunCheckpointStore', () => {
     }
   });
 
+  it('round-trips promotion identity and the exhausted progress budget without resetting either', async () => {
+    const { dir, store } = await tempStore();
+    try {
+      const source: RunCheckpoint = {
+        ...checkpoint('checkpoint-promotion'),
+        loopBudget: {
+          ...checkpoint('checkpoint-promotion-budget').loopBudget,
+          noProgressRounds: 2,
+          toolLoopIterationsUsed: 7,
+          maxToolLoopIterations: 20,
+          evidenceFingerprints: ['a'.repeat(64), 'b'.repeat(64)],
+          evidenceFingerprintSaturated: true,
+        },
+        resumeState: {
+          version: 1,
+          inboundMessageId: 'message-1',
+          cwd: 'D:/workspace',
+          model: 'test-model',
+          origin: 'test',
+          permissionPolicyId: 'research',
+          reasoning: 'medium',
+          behaviorModeId: 'general',
+          availableToolNames: ['read', 'write'],
+          attachmentCount: 0,
+          appliedTaskBookPatchIds: [],
+          deferredRuntimeEvents: [],
+          recoveryAttempts: 0,
+          replanAttempts: 0,
+          maxReplanAttempts: 2,
+          verificationHistory: [],
+          workPolicyUpgradeRequest: {
+            version: 1,
+            id: 'upgrade-1',
+            runId: 'run-1',
+            sourceMessageId: 'message-1',
+            goalVersion: 1,
+            requestedAt: '2026-09-13T00:00:00.000Z',
+            reasonCode: 'dependency_discovered',
+            reason: 'A dependent change remains.',
+            remainingGoal: 'Complete the dependent change.',
+            completedToolCallIds: ['call-1'],
+            pendingToolCallIds: [],
+            completedEffectRefs: [],
+            modelAttemptsUsed: 3,
+            budget: {
+              maxModelAttempts: 64,
+              toolLoopIterationsUsed: 7,
+              maxToolLoopIterations: 20,
+              noProgressRounds: 2,
+            },
+          },
+        },
+      };
+
+      await store.write(source);
+      const restored = await store.read(source.id);
+      expect(restored?.resumeState?.workPolicyUpgradeRequest).toEqual(source.resumeState?.workPolicyUpgradeRequest);
+      expect(restored?.loopBudget).toMatchObject({
+        noProgressRounds: 2,
+        toolLoopIterationsUsed: 7,
+        evidenceFingerprintSaturated: true,
+        evidenceFingerprints: ['a'.repeat(64), 'b'.repeat(64)],
+      });
+    } finally {
+      store.dispose();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('omits undefined object fields instead of persisting them as null', async () => {
     const { dir, store } = await tempStore();
     try {
