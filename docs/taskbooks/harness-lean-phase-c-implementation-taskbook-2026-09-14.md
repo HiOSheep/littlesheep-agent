@@ -1783,6 +1783,30 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 
 **round 25 计划：** 改用**逐请求前缀对比**定位断点——从隔离数据根的 execution-logs 读取每个 `modelRequest` 的 `prefixChange`（编码段名）与 `cacheObservation.invalidationReasons`，按"相邻请求"统计**首个变化组件**，从而确定是 `memoryRootIndex` / `initialMemoryContext` / 历史投影 / 阶段段 中的哪一个在每轮变化；据此再做"冻结 + 尾部追加"的针对性改造，并复测。
 
+### 10.93 第三十六轮（goal round 25：逐请求前缀对比——断点落在 system 内的 memory/workspace）执行记录（2026-09-17）
+
+**诊断实现：** 对比脚本新增 `readPrefixChangeReasons(dataDir)`——在隔离数据根被删除前扫描 execution-logs，对每个 `modelRequest.prefixChange` 递归收集**编码段名/原因**并计数（形状鲁棒，不依赖具体字段名），输出到 `paths[].prefixChangeReasons`。
+
+**实测（8 任务 × 5 轮、共享会话、唯一话轮、0 失败；每路径 ~100 次请求）：**
+
+| 变化组件 | shadow | next | 判读 |
+| --- | --- | --- | --- |
+| `runtime_fact` | **61** | **60** | 尾部块（round 1 已移尾）⇒ **不破坏前缀**，属预期高频变化 |
+| `output_constraint` | 44 | 41 | 阶段段；同阶段跨轮本应稳定，需查为何变 |
+| **`system_prompt`** | **41** | **39** | **system 内变化 ⇒ 直接断前缀** |
+| **`memory`** | **34** | **31** | 记忆索引/初始选择在 **system 内**被更新 ⇒ **断前缀** |
+| **`project_knowledge`（workspace）** | **34** | **31** | 同上，system 内的 workspace 段 |
+| `history` / `user_input` | 32 / 29 | 33 / 29 | 新话轮导致，属预期 |
+
+同时该次主对话命中率为 **46.2%（shadow）/ 44.0%（next）**（与前几轮 43.5–44.3% 同量级，波动）。
+
+**结论（本轮产出的定位）：** 高频且**发生在 system 消息内部**的变化是 `system_prompt` / `memory` / `project_knowledge`（合计覆盖约 1/3 的请求），它们会把前缀从 system 内**很靠前的位置**截断，使整段历史都无法命中——这与"每轮 miss/调用恒为 ~1,000、且不随会话改善"的长期观测一致。`runtime_fact` 虽最高频但在尾部，**不是**断点。
+
+**round 26 计划（针对性改造，沿用"冻结 + 尾部追加"）：**
+1. **冻结 system 消息**：会话/运行内首轮定稿后，`memoryRootIndex`、`initialMemoryContext`、`bootstrap`、workspace 段**不再改写**；把记忆更新（含 DECIDE 期细化）改为**尾部追加的 delta**（复用已上线的 release-note 机制与尾部候选通道）；
+2. 让 stage 段的 `output_constraint` 在同阶段跨轮保持稳定（查明为何变化，必要时同样入尾部）；
+3. 复测：预期主对话命中率应随上述断点消除而**明显上升**（因为断点从"system 内"移到"尾部"）。
+
 **round 24 计划（改打高频断点）：** 转向**每个 run/每轮都会发生**的 system 提示词抖动：
 1. `memory-taskbook-refinement.ts:137` 在 **DECIDE 中途重写 `initialMemoryContext`**（同轮内 system 即变化）；
 2. `memoryRootIndex` / `initialMemoryContext` / `bootstrap` 每请求按 ctx 重建（记忆一更新即变化）。

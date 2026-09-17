@@ -289,6 +289,7 @@ async function finishPath(path) {
       report,
       observationFiles: sessionReports.reduce((total, item) => total + item.observationFiles, 0),
       stageCacheSplit: await readStageCacheSplit(path.dataDir),
+      prefixChangeReasons: await readPrefixChangeReasons(path.dataDir),
       invalidationReasons: (() => {
         const counts = new Map()
         for (const session of sessionReports) {
@@ -343,6 +344,50 @@ async function readStageCacheSplit(dataDir) {
     ...(group.promptTokens > 0 ? { hitRatio: group.cachedPromptTokens / group.promptTokens } : {}),
   })
   return { main: withRatio(groups.main), auxiliary: withRatio(groups.auxiliary) }
+}
+
+/**
+ * Which prompt component changes between consecutive requests. The Runtime
+ * already records a coded prefix change per request, so counting those codes
+ * pinpoints the component that keeps breaking the Provider's cached prefix.
+ */
+async function readPrefixChangeReasons(dataDir) {
+  const dir = join(dataDir, 'execution-logs')
+  const names = await readdir(dir).catch(() => [])
+  const counts = new Map()
+  const collect = (value, depth = 0) => {
+    if (depth > 6 || value === null || value === undefined) return
+    if (typeof value === 'string') {
+      counts.set(value, (counts.get(value) ?? 0) + 1)
+      return
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) collect(item, depth + 1)
+      return
+    }
+    if (typeof value === 'object') {
+      for (const [key, item] of Object.entries(value)) {
+        if (typeof item !== 'boolean' && item !== null && typeof item !== 'object') continue
+        if (typeof item === 'boolean') {
+          if (item) counts.set(key, (counts.get(key) ?? 0) + 1)
+          continue
+        }
+        collect(item, depth + 1)
+      }
+    }
+  }
+  for (const name of names) {
+    if (!name.endsWith('.json')) continue
+    const raw = await readFile(join(dir, name), 'utf8').catch(() => undefined)
+    if (!raw) continue
+    let log
+    try { log = JSON.parse(raw) } catch { continue }
+    for (const request of log.modelRequests ?? []) collect(request.prefixChange)
+  }
+  return [...counts.entries()]
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((left, right) => right.count - left.count)
+    .slice(0, 10)
 }
 
 async function readCacheQuality({ baseUrl, locator, sessionId, workplaceDir, dataDir }) {
@@ -449,6 +494,7 @@ function summarize(path) {
     verification: path.report.verification,
     cacheTrend: path.cacheTrend ?? [],
     stageCacheSplit: path.stageCacheSplit,
+    prefixChangeReasons: path.prefixChangeReasons ?? [],
   }
 }
 
