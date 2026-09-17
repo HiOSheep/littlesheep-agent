@@ -288,6 +288,7 @@ async function finishPath(path) {
       })),
       report,
       observationFiles: sessionReports.reduce((total, item) => total + item.observationFiles, 0),
+      stageCacheSplit: await readStageCacheSplit(path.dataDir),
       cacheTrend: path.cacheTrend.map(({ report, ...entry }) => entry),
     }
   } finally {
@@ -295,6 +296,41 @@ async function finishPath(path) {
     await waitForExit(path.child, 20_000).catch(() => undefined)
     path.log.end()
   }
+}
+
+/**
+ * Split the run's own cache evidence by stage: the user-facing conversation
+ * (reply/execute/finalize/recover) versus the auxiliary stages, whose prompts
+ * differ per stage and therefore drag a blended ratio down.
+ */
+async function readStageCacheSplit(dataDir) {
+  const dir = join(dataDir, 'execution-logs')
+  const names = await readdir(dir).catch(() => [])
+  const groups = {
+    main: { calls: 0, promptTokens: 0, cachedPromptTokens: 0 },
+    auxiliary: { calls: 0, promptTokens: 0, cachedPromptTokens: 0 },
+  }
+  const mainStages = new Set(['reply', 'execute', 'finalize', 'recover'])
+  for (const name of names) {
+    if (!name.endsWith('.json')) continue
+    const raw = await readFile(join(dir, name), 'utf8').catch(() => undefined)
+    if (!raw) continue
+    let log
+    try { log = JSON.parse(raw) } catch { continue }
+    for (const request of log.modelRequests ?? []) {
+      const ledger = request.cacheObservation?.providerPrompt
+      if (!ledger || typeof ledger.tokenCount !== 'number') continue
+      const group = mainStages.has(String(request.stage)) ? groups.main : groups.auxiliary
+      group.calls += 1
+      group.promptTokens += ledger.tokenCount
+      group.cachedPromptTokens += typeof ledger.cachedTokenCount === 'number' ? ledger.cachedTokenCount : 0
+    }
+  }
+  const withRatio = (group) => ({
+    ...group,
+    ...(group.promptTokens > 0 ? { hitRatio: group.cachedPromptTokens / group.promptTokens } : {}),
+  })
+  return { main: withRatio(groups.main), auxiliary: withRatio(groups.auxiliary) }
 }
 
 async function readCacheQuality({ baseUrl, locator, sessionId, workplaceDir, dataDir }) {
@@ -400,6 +436,7 @@ function summarize(path) {
     latency: path.report.latency,
     verification: path.report.verification,
     cacheTrend: path.cacheTrend ?? [],
+    stageCacheSplit: path.stageCacheSplit,
   }
 }
 

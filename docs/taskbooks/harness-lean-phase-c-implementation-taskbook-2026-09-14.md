@@ -1573,6 +1573,25 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 
 **round 13 计划：** ① 先用一次长会话测量给出**主对话命中率**曲线（对照混合值），把"可对外比较的数字"钉住；② 把该分裂指标也写进对比脚本输出（目前只在 App footer 有）；③ 之后就"是否走 B-lite（需放宽 reply 契约）"向用户确认。
 
+### 10.82 第三十六轮（goal round 13：主对话 vs 辅助阶段实测——辅助反而更高）执行记录（2026-09-17）
+
+**① 交付：对比脚本现在输出阶段分裂。** 新增 `readStageCacheSplit(dataDir)`：在隔离数据根被删除前扫描 `execution-logs/*.json` 的 `modelRequests[].cacheObservation.providerPrompt`，按 `reply/execute/finalize/recover`（主对话）与其余（辅助阶段）分别汇总调用数、prompt、cached、命中率，并写入 `paths[].stageCacheSplit`（离线烟测通过）。这与 App footer 的分裂指标同口径。
+
+**② 长会话实测（8 任务 × 5 轮，共享会话 + 唯一话轮，真实 Provider，0 失败）：**
+
+| 分组 | 调用数 | prompt | cached | **命中率** |
+| --- | --- | --- | --- | --- |
+| **主对话**（reply/execute/finalize/recover） | 75 | 144,949 | 63,104 | **43.5%** |
+| **辅助阶段**（classify/decide/verify…） | 26 | 50,006 | 31,104 | **62.2%** |
+| （next 路径同形） | 75 / 26 | 144,200 / 49,871 | 63,616 / 31,104 | **44.1% / 62.4%** |
+
+**结论（与 round 9–12 的假设相反，重要）：**
+- **辅助阶段反而命中更高**（62% vs 44%）。原因是辅助阶段的 system prompt **小而稳定**（跨轮几乎不变，前缀大部分可缓存）；而主对话的 execute/reply 提示词**大且按阶段分叉**（full 7,061 字节 vs respond 1,411 字节，公共前缀仅 293 字节），每轮还要带上增长中的历史，导致每次都要重新 prefill 约 1,000 token。
+- 因此"混合值 ~49%"其实是"主对话 44% + 辅助 62%"的加权；**要提升的就是主对话这 44%**，手段仍是 round 12 的结论：**让 full/respond 两类阶段共享同一段前缀**（B-lite / 全量 B）。
+- 每轮 miss/调用仍稳定在 **~960–1,054**（round 0→4 无改善），与"主对话前缀无法跨阶段复用"一致。
+
+**round 14 计划：** ① 用**主对话命中率**作为主指标（44%），把 B-lite 的收益目标定为"让 reply 能命中 execute 已 prefill 的头部"；② 先做**最小可行版本**：只把 `identity + core-flow` 这两段（合计 ~1.8 KB）在所有模式前置（不改契约允许种类），离线看 LCP 是否从 293 提升到 ~1,800，再评估是否值得继续到 safety/workspace/tooling；③ 真实 Provider 复测主对话命中率与 miss/调用。
+
 ### 10.14 第七轮（HC-12 撤销屏障）新增证据（2026-09-16）
 
 **问题（先写失败用例）：** v3 写入路径的等值/相似候选只按 branch/scope/`status='active'` 选取；被纠正（`epistemicStatus`/`resolutionStatus = superseded`）或删除（`status = tombstone`）的 atom 仍可能是 active 记录。后续 maintenance（压缩候选）证据即使引用同一 `conversation-source:`，也会创建新 atom 或强化旧 atom，从而复活已被用户忘记/纠正的事实。`memory-service-v3.test.ts` 的新用例在修复前返回 `created`。
