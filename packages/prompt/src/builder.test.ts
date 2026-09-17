@@ -11,6 +11,27 @@ const stubTool: AgentTool = {
   execute: async () => ({ callId: '', ok: true, output: '' }),
 };
 
+describe('cross-stage shared prefix', () => {
+  it('measures the byte-identical head between stage prompt modes', () => {
+    const shared = {
+      branding: DEFAULT_BRANDING,
+      tools: [stubTool],
+      workspace: '/tmp/ws',
+      bootstrap: { 'AGENTS.md': 'test instructions' },
+      memoryRootIndex: '# Memory Tree Root Index\n- `daily`: dated details',
+    };
+    const full = buildSystemPromptBundle({ ...shared, mode: 'full' }).text;
+    const respond = buildSystemPromptBundle({ ...shared, mode: 'respond' }).text;
+    let lcp = 0;
+    while (lcp < full.length && lcp < respond.length && full[lcp] === respond[lcp]) lcp += 1;
+    // Measured 293 bytes: only the identity section is shared, so a call never
+    // reuses another stage's system prompt. Unifying the head is the structural
+    // lever for cross-stage cache reuse; guard against making it worse.
+    expect(lcp).toBeGreaterThanOrEqual(293);
+    expect(full.length).toBeGreaterThan(5_000);
+  });
+});
+
 describe('buildSystemPrompt', () => {
   it('full mode includes all sections + cache boundary', () => {
     const prompt = buildSystemPrompt({
