@@ -1916,6 +1916,31 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 
 **验证用 Provider：** 用户提供了 opencode go 的 API key 供测试；**尚缺 baseURL 与可用模型名**，拿到后可在复测中替换 DeepSeek 以节省预算（当前 DeepSeek 追加额度余额 ≈ ¥1.5）。
 
+### 10.99 opencode go 接入核实 + 架构改造第 1 步的精确落点（2026-09-17）
+
+**opencode go 接入（已查官方文档与实测）：**
+- 官方端点表：`https://opencode.ai/zen/go/v1/chat/completions` 承载 OpenAI-compatible 模型（含 `deepseek-v4-flash`/`deepseek-v4-pro`/`glm-*`/`kimi-*`/`mimo-*`/`hy*`）；`/responses` 承载 grok-4.6、gpt-5.6-luna 等；`/messages` 承载 MiniMax/Qwen/union-alpha（Anthropic 协议）。模型列表：`GET https://opencode.ai/zen/go/v1/models`。
+- **实测**：`/models` **通过鉴权**（返回 40+ 个 id，含 `deepseek-v4-flash`）；但 `POST /chat/completions`（官方文档的 body 形态）返回 **401 `{"type":"error","error":{"type":"ModelError","message":"Model  is not supported"}}`**——错误里的模型名为**空**，说明网关没有采纳 body 里的 `model`。按文档要求补上 `User-Agent` 与 `x-opencode-session` 头后结果相同。
+- 判读：该 key **很可能只有列表权限、未开通 Go 订阅的生成权限**（或它是 **Zen** key，则 baseURL 应为 `https://opencode.ai/zen/v1`）。需要用户在 OpenCode console 核对订阅，或确认 key 归属的产品面。
+- 影响：**不影响架构改造**——改造本身不需要调用 Provider；只有最终复测需要，而 DeepSeek 余额（≈¥1.5）够跑 1–2 次长会话复测。
+
+**架构改造第 1 步（历史窗口归一）的精确落点（已查全）：**
+
+| 位置 | 当前窗口 |
+| --- | --- |
+| `stages/classify.ts:161` | `recentHistoryForModel(ctx.history, 4, 1_800)` |
+| `stages/decide/request.ts:178` | `recentHistoryForModel(ctx.history, 8)`（compact 决策为空） |
+| `stages/execute/guidance.ts:121` | `recentHistoryForModel(ctx.history, 8)` |
+| `stages/execute/runners.ts:125,156` | `recentHistoryForModel(ctx.history, 8)` |
+| `stages/execute/tool-loop.ts:99` | `recentHistoryForModel(ctx.history, 8)` |
+| `stages/reply.ts:101,281` | `recentHistoryForModel(ctx.history, 8, 6_000)`（capability 回复为空） |
+| `stages/recover/model-call.ts:28` | 自带窗口 |
+| `llm-call-contracts/definitions.ts` | 多个契约声明 `history: 'none'`（execute_final_reply / verify / evolve / capture / session_compaction / ask_user / capability_reply 等） |
+
+**归一方案（下一步执行）：** 在 `stages/_shared.ts` 暴露**唯一**的窗口选择器（如 `conversationHistoryForModel(ctx, stage)`），所有阶段调用它；默认取同一窗口（`8` 条 / `6_000` token），使所有阶段的**历史投影字节一致**，从而"共享头 + 整段历史"可跨阶段命中。同步更新 `definitions.ts` 的 `history` 声明与相关断言（`decide.test.ts:279` 等），并跑全量门 + 两条 Electron 门后复测。
+
+**注意（round 16 的教训）：** 启用共享头前必须先解决 `verify:electron-continuity` 的 `cross-restart reply is not memory-continuous`（当时共享头把 reply 提示词改大后触发）——建议在历史窗口归一之后再单独处理，逐项验证。
+
 **round 24 计划（改打高频断点）：** 转向**每个 run/每轮都会发生**的 system 提示词抖动：
 1. `memory-taskbook-refinement.ts:137` 在 **DECIDE 中途重写 `initialMemoryContext`**（同轮内 system 即变化）；
 2. `memoryRootIndex` / `initialMemoryContext` / `bootstrap` 每请求按 ctx 重建（记忆一更新即变化）。
