@@ -1737,10 +1737,24 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 
 **结论：要兑现用户的 95% 目标，必须做的是"冻结 + 追加"**：会话内**冻结 system 消息**（head + index + bootstrap 首轮定稿后字节不变），把所有记忆更新/释放/任务书细化改为**尾部追加的 delta 消息**，而不是回写 system 或改写历史。
 
-**round 22 计划（按风险从低到高）：**
-1. **最小验证**：把 `memory-taskbook-refinement` 对 `initialMemoryContext` 的**中途重写**改为"尾部追加一条增量"，观察同轮内后续调用的 miss 是否下降（这处最干净、不涉及撤销安全属性）；
+**round 22 计划（按风险从低到高）：**1. **最小验证**：把 `memory-taskbook-refinement` 对 `initialMemoryContext` 的**中途重写**改为"尾部追加一条增量"，观察同轮内后续调用的 miss 是否下降（这处最干净、不涉及撤销安全属性）；
 2. 再处理 `applyMemoryContextWorkingSet` 的**释放改写**：改为"保留原文 + 尾部追加 release 说明"。此处触及 **HC-12 撤销屏障**语义，必须同时更新/保留"已释放内容不得作为活跃证据"的测试，并重跑两条 Electron 门；
 3. 每步都用长会话复测 **主对话命中率**与 **miss/调用**，目标是主对话命中率进入 80%+。
+
+### 10.91 第三十六轮（goal round 22：用户批准释放语义改为"保留原文 + 尾部追加说明"；基础件落地）执行记录（2026-09-17）
+
+**用户批准：** 采用"保留原文 + 尾部追加 release 说明"取代当前的"改写/删除"（即 `applyMemoryContextWorkingSet` 的现有语义）。
+
+**本轮落地（自洽基础件，未改调用点，树保持绿）：**
+- `memory-context-working-set.ts` 新增 `appendMemoryReleaseNotes(ctx, request, candidates)`：
+  - 计算**已释放**原子（`activeCallByAtom` 与 `callAtomIds` 归属不一致者）；
+  - **不修改任何既有消息**（前缀因此保持字节一致）；
+  - 追加一条尾部 system 消息（以 `CACHE_BOUNDARY_MARKER` 起头、order = `MAX_SAFE_INTEGER - 2`，位于 known-state 与 runtime 之前），内容含 `released_atoms: <ids>`、说明"历史仍保留原文、是 append-only"、以及**权威指令**"不得引用、不得作为活跃证据"；
+  - 同时追加对应候选（kind `memory_fragment`、required）。
+- 新增测试 `memory-release-notes.test.ts`：① 既有文本**逐字不变**且仅多一条尾部消息，说明包含 released_atoms 与"do not cite"/"append-only"，候选正确；② 无释放时**返回原对象**（零改动）。
+- `typecheck` 0；相关测试 6/6 通过；`check:repo` 33/33；提交 `67d9dde`。
+
+**round 23 计划：** ① 把 `model-observability` 里的 `applyMemoryContextWorkingSet` 调用切换为 `appendMemoryReleaseNotes`（保留旧函数待删）；② 更新依赖"已释放内容被删除"的测试（`memory-context-working-set.test.ts`、`runner/src/memory-v3.integration.test.ts` 的 "removes released atom content…"、HC-12 撤销屏障相关）为新语义——**内容保留但被标记为不得引用**；③ 跑全量门 + 两条 Electron 门（含 revocation 场景）；④ 长会话复测主对话命中率与 miss/调用，验证 append-only 是否兑现"前缀不再断裂"。
 
 ### 10.14 第七轮（HC-12 撤销屏障）新增证据（2026-09-16）
 
