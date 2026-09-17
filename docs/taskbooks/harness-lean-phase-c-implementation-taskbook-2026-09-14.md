@@ -2301,3 +2301,24 @@ C10B 矩阵 HC-07 由「部分」变为「通过（离线）」。
 **处置：** 已 `git reset --hard` 回退到当前已发布状态（`packages/` 与 HEAD 一致，`check:repo` 33/33）。10.103/10.104/10.111 共同构成"阶段段后置两次实测为负"的完整证据链。
 
 **下一步（指向明确的下一处改动）：** 把"共享头之后的第一段"在各阶段间**统一**——最小可行的验证是让 `respond`（reply/capability_reply）与 `full`（decide/execute）都先发同一段（例如 `tooling`，或一个新的统一"能力/工具"段），然后用 `system-bytes.mjs` 本地确认相邻 run 的共享前缀从 2,595 明显变长，再跑一次实机复测主/辅命中率。
+
+### 10.112 统一"共享头之后的第一段"：改动本身安全，但**本地无法证实收益**，故未发布（2026-09-18）
+
+**尝试：** 在 `packages/prompt/src/builder.ts` 里让 **所有模式**都在共享头之后先发同一个 `capabilities` 段（`# Available Capabilities`，328 字符），`tooling` 仅对非 respond 模式追加。预期：`reply ↔ execute` 的共享前缀从 2,595 延长到约 2,923 字符。
+
+**本地验证结果：改动本身是安全的**（`typecheck` 0；`packages/prompt` + `packages/harness` 共 **78 文件 / 700 测试全绿**，没有任何断言依赖"full 模式不含 `# Available Capabilities`"）。
+
+**但收益无法证实，反而出现疑点：** 用 `system-bytes.mjs` 比较离线 8×5 的 system prompt：
+- 跨阶段样本（`7218 → 16426`）的共享前缀为 **2,115**，分歧点是 `\n\n---\n\n# Available Capabilities`；
+- 而 10.111 的跨阶段样本（`7217 → 17109`）是 **2,595**，分歧点是 `# Available Capabilities` vs `# Tools`。
+
+两个样本的**长度组合不同**（17,109 vs 16,426），说明它们不是同一对阶段，**不能据此判定改动是负的，也不能判定是正的**——本地证据不足。
+
+**顺带发现的一个重要测量陷阱（写下来避免再次踩坑）：** `systemPromptProjection` 的**段顺序在不同调用路径下不一致**——有的按 **builder 段序**（identity → core-flow → safety → **workspace → date-time** → capabilities/tooling…），有的看起来按 **优先级序**（identity → core-flow → safety → **capabilities** → …，因为 capabilities 优先级 98 高于 workspace 95、date-time 60）。因此**字节级 diff 只能在同一路径/同一阶段对之间比较**，跨阶段比较会因为段序不同而在很早的位置"假装"分叉。
+
+**处置：** 由于本轮**没有预算做实机复测**、且本地证据不足，按"不发布未经实测的改动"的纪律**已回退**（`packages/` 与 HEAD 一致，`check:repo` 33/33）。改动本身很小、可随时重做。
+
+**下一轮计划（先定测量口径，再动代码）：**
+1. 先用 `system-bytes.mjs` 建立**同路径、同阶段对**的基线表（reply→reply / execute→execute / reply→execute），并确认 `systemPromptProjection` 的段序口径（找出为何有些路径按优先级序输出）；
+2. 在该口径下重做"统一 capabilities 段"的本地对照（同阶段对共享前缀是否从 2,595 → ≈2,923）；
+3. 本地确认后再跑一次实机复测主/辅命中率，以 `cachedPromptTokens` 为准决定去留。
