@@ -2223,3 +2223,29 @@ C10B 矩阵 HC-07 由「部分」变为「通过（离线）」。
 1. 距 DSH 的 97–99% 仍有明显差距；10.107 的实机对账显示剩余流失集中在**每轮第一次大调用**（当时 2,432/6,722 ≈ 36%，同轮后续迭代已达 82%）与**必然重算的尾部**（当前请求 + 尾部段 + runtime 块）；
 2. 本轮只改了两处默认值与一个投影函数，**未触及** 10.103 的"阶段段后置"（其在旧的截断条件下实测为负，如今前提已变，值得在新条件下重测——但**不能**假设它会变好，仍需实测）；
 3. 本地 `prefix-diff.mjs` 的**按下标对齐**在跨阶段比较时不可靠（execute 只发一个 `system` 条目、reply 发多段），后续若要本地判定必须改**字节前缀**口径；判断收益一律以**实机 `cachedPromptTokens`** 为准。
+
+### 10.109 修复后的逐 purpose 对账：**miss 已集中到 `execute_tool_loop`（45%）与 `execute_final_reply`**（2026-09-17）
+
+**方法（零成本）：** 对 10.108 那次实机（保留数据根）用 `provider-reconcile.mjs` 新增的 **per-purpose 聚合**（实机 `cachedPromptTokens` 汇总）。
+
+| purpose | 调用 | prompt token | cached | **命中率** | miss token |
+| --- | --- | --- | --- | --- | --- |
+| `reply` | 53 | 136,318 | 108,672 | **79.7%** | 27,646 |
+| `decide` | 12 | 57,722 | 43,904 | **76.1%** | 13,818 |
+| **`execute_tool_loop`** | 8 | 56,903 | 25,472 | **44.8%** | **31,431** ← 主对话 miss 的最大来源 |
+| **`execute_final_reply`** | 9 | 10,242 | 2,688 | **26.2%** | 7,554 |
+| `recover` | 3 | 6,064 | 2,304 | 38.0% | 3,760 |
+| `verify` | 2 | 3,083 | 1,024 | 33.2% | 2,059 |
+| `classify` | 1 | 507 | 0 | 0% | 507 |
+
+**最关键的发现（`execute_tool_loop` 为何只有 44.8%）：** 用 `prefix-detail.mjs` 对比相邻两次 `execute_tool_loop`，两者的**段集合与顺序完全不同**：
+
+- A：`identity(284) → profile(335) → memory-root-index → bootstrap:AGENTS/SOUL/USER/TOOLS → step-contract:step-1 → history…`
+- B：`identity → core-flow(1530) → safety → workspace → date-time → **tooling(3950)** → runtime → output-directives(1805) → profile → memory-root-index → bootstrap… → history…`
+
+即 B 是**完整执行**形状（含共享头与 `tooling`），A 是**精简执行**形状（没有共享头其余段，也没有 `tooling`）。两者在第 2 条就分叉，**几乎零共享**——这直接解释了该 purpose 的 44.8%（同轮后续迭代可达 83%）。
+
+**判读与下一步：**
+1. 修复了历史截断后，**同形状请求**的复用已经很好（`reply` 79.7%、`decide` 76.1%、工具循环同轮后续 83%）；
+2. 剩余损耗集中在**形状不一致**与**尾部/首调**：`execute_tool_loop`（精简 vs 完整形状）、`execute_final_reply`（26.2%，9 次调用平均 prompt 只有 1,138 token，说明它多数时候**没有可复用的同形状前驱**）；
+3. 下一步（仍应先本地取证）：确认 A 形状是否由**compact 只读执行路径**产生，并让精简路径与完整路径**发射同一段顺序**（至少共享头在前、`tooling` 位置一致），然后实机复测 `execute_tool_loop` 的命中率是否从 44.8% 抬升——这是目前**最大且最集中的一块**（31.4k miss token，占主对话 miss 的 45%）。
