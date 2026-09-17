@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { createExecuteStage, convertToolCall } from './execute.js';
 import { createDecideStage } from './decide.js';
 import {
-  createMockLlm, textResponse, toolCallResponse, makeCtx, makeTool,
+  createMockLlm, textResponse, toolCallResponse, makeCtx, makeTool, lastConversationText,
 } from '../tests/helpers.js';
 import { DEFAULT_CONFIG } from '@littlesheep/config';
 import { DEFAULT_BRANDING } from '@littlesheep/branding';
@@ -227,8 +227,8 @@ describe('executeStage', () => {
     expect(ctx.taskBook?.steps).toHaveLength(1);
     expect(ctx.taskBook?.steps[0]?.tools).toEqual(['inspect_b']);
     const decideRequest = llm.chat.mock.calls[2]?.[0] as import('@littlesheep/llm').ChatRequest;
-    expect(decideRequest.messages.at(-1)?.content).toContain('Already completed tool call ids: call-a');
-    expect(decideRequest.messages.at(-1)?.content).toContain('Budget already used: 2');
+    expect(lastConversationText(decideRequest)).toContain('Already completed tool call ids: call-a');
+    expect(lastConversationText(decideRequest)).toContain('Budget already used: 2');
 
     const secondExecution = await createExecuteStage({ ...deps, llm })(ctx);
 
@@ -354,11 +354,17 @@ describe('executeStage', () => {
     expect(finalRequest.max_tokens).toBe(300);
     const finalSystem = String(finalRequest.messages[0]?.content ?? '');
     const finalInput = String(finalRequest.messages[1]?.content ?? '');
+    // The live Runtime clock travels in the trailing message, outside the
+    // Provider's cacheable prefix.
+    expect(finalRequest.messages.map((message) => String(message.content)).join('\n')).toContain('# Runtime Clock');
     expect(finalSystem).toContain('one completed Runtime-validated read-only tool call');
     expect(finalSystem).toContain('PROFILE_SENTINEL_COMPACT_FINAL');
     expect(finalSystem).toContain('SOUL_SENTINEL_COMPACT_FINAL');
-    expect(finalSystem).toContain('# Runtime Clock');
-    expect(finalSystem).not.toContain('# Live Runtime State');
+    // The compact clock lives in the trailing message, never in the system prompt.
+    const finalRuntime = String(finalRequest.messages.at(-1)?.content ?? '');
+    expect(finalRuntime).toContain('# Runtime Clock');
+    expect(finalRuntime).not.toContain('# Live Runtime State');
+    expect(finalSystem).not.toContain('# Runtime Clock');
     expect(finalSystem).not.toContain('You are the final response assembler.');
     expect(finalInput).toContain('Verified glob result:\nalpha.txt');
     expect(finalInput).not.toContain('Task goal:');

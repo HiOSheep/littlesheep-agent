@@ -42,15 +42,13 @@ export function injectRuntimeAwareness(
   const section = shouldUseCompactRuntime(ctx, purpose)
     ? renderCompactRuntimeAwareness(ctx, now, clock)
     : renderRuntimeAwareness(ctx, now, clock);
-  const original = request.messages[systemIndex]!;
-  const originalText = typeof original.content === 'string' ? original.content : undefined;
-  const separator = originalText?.includes(CACHE_BOUNDARY_MARKER)
-    ? '\n\n---\n\n'
-    : `\n\n${CACHE_BOUNDARY_MARKER}\n\n`;
-  const segmentText = `${separator}${section}`;
-  const message = appendSystemText(original, segmentText);
-  const messages = request.messages.map((candidate, index) => index === systemIndex ? message : candidate);
-  const preparedRequest = { ...request, messages };
+  // The Provider matches its prefix cache from token zero, so a per-request
+  // change inside the system prompt caps reuse at that byte and every later
+  // token (including the whole conversation) is re-billed. Keep the volatile
+  // runtime facts in one trailing message whose position is stable for the run.
+  const segmentText = `${CACHE_BOUNDARY_MARKER}\n\n${section}`;
+  const message: ChatMessage = { role: 'system', content: segmentText };
+  const preparedRequest = { ...request, messages: [...request.messages, message] };
 
   if (!candidates) return { request: preparedRequest };
 
@@ -70,39 +68,21 @@ export function injectRuntimeAwareness(
     sensitive: true,
     scope: 'run',
   };
-  const preparedCandidates = candidates.map((candidate) => {
-    if (candidate.order !== systemIndex || candidate.message.role !== 'system') return candidate;
-    if (candidate.segments) {
-      return {
-        ...candidate,
-        message,
-        segments: [...candidate.segments, segment],
-      };
-    }
-    if (originalText !== undefined) {
-      return {
-        ...candidate,
-        message,
-        segments: [
-          {
-            id: `${candidate.id}:base`,
-            order: 0,
-            text: originalText,
-            kind: candidate.kind,
-            source: candidate.source,
-            priority: candidate.priority,
-            required: candidate.required,
-            sensitive: candidate.sensitive,
-            scope: candidate.scope,
-          },
-          segment,
-        ],
-      };
-    }
-    return { ...candidate, message };
-  });
 
-  return { request: preparedRequest, candidates: preparedCandidates };
+  return {
+    request: preparedRequest,
+    candidates: [...candidates, {
+      id: `runtime-awareness:${requestIndex}`,
+      order: Number.MAX_SAFE_INTEGER,
+      message,
+      kind: 'runtime_event',
+      source: segment.source,
+      priority: 100,
+      required: true,
+      sensitive: true,
+      scope: 'run',
+    }],
+  };
 }
 
 function shouldUseCompactRuntime(ctx: RunContext, purpose: LlmCallPurpose | undefined): boolean {
@@ -225,14 +205,6 @@ function renderCapabilityLines(ctx: RunContext, compact: boolean): string[] {
     ...(ctx.capabilityPermissionEvent ? [`- capability_permission_decision: ${ctx.capabilityPermissionEvent.decision}`] : []),
     '- Capability facts above are Runtime-owned. A capability probe or Web query may only be claimed when its corresponding Runtime event exists.',
   ];
-}
-
-function appendSystemText(message: ChatMessage, suffix: string): ChatMessage {
-  if (typeof message.content === 'string') return { ...message, content: `${message.content}${suffix}` };
-  return {
-    ...message,
-    content: [...message.content, { type: 'text', text: suffix }],
-  };
 }
 
 function resolveNow(ctx: RunContext): Date {

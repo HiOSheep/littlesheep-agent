@@ -83,7 +83,8 @@ describe('recordModelRequest', () => {
       requestIndex: 1,
       provider: 'openai',
       model: 'gpt-test',
-      totalMessageCount: 2,
+      // system + user + the trailing volatile Runtime message.
+      totalMessageCount: 3,
       totalToolCount: 1,
       stream: true,
       callContract: {
@@ -112,7 +113,8 @@ describe('recordModelRequest', () => {
     const oversized = recordModelRequest(ctx, 'execute_tool_loop', request(70, 70, false));
 
     expect(oversized.messages).toHaveLength(MAX_SNAPSHOT_MESSAGES);
-    expect(oversized.totalMessageCount).toBe(70);
+    // 70 supplied messages plus the trailing volatile Runtime message.
+    expect(oversized.totalMessageCount).toBe(71);
     expect(oversized.messagesTruncated).toBe(true);
     expect(oversized.toolNames).toHaveLength(MAX_SNAPSHOT_TOOLS);
     expect(oversized.totalToolCount).toBe(70);

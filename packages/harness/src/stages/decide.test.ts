@@ -2,7 +2,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createDecideStage } from './decide.js';
 import { DECIDE_SYSTEM_PROMPT, DECIDE_WIRE_FIELD_MAP } from './decide/contracts.js';
-import { createMockLlm, textResponse, makeCtx, makeTool } from '../tests/helpers.js';
+import { createMockLlm, textResponse, makeCtx, makeTool, lastConversationText } from '../tests/helpers.js';
+
+/** Everything the model was asked, including trailing Runtime/Provider context. */
+function allText(request: { messages?: ReadonlyArray<{ content: unknown }> } | undefined): string {
+  return (request?.messages ?? []).map((message) => String(message.content)).join('\n');
+}
 import { DEFAULT_CONFIG } from '@littlesheep/config';
 import { DEFAULT_BRANDING } from '@littlesheep/branding';
 import {
@@ -143,7 +148,7 @@ describe('decideStage', () => {
   it('includes the active behavior profile in the planning system prompt', async () => {
     const systemPrompts: string[] = [];
     const llm = createMockLlm((request) => {
-      systemPrompts.push(String(request.messages[0]?.content ?? ''));
+      systemPrompts.push(allText(request));
       return textResponse('{"plan":[{"description":"inspect the repository"}]}');
     });
     const stage = createDecideStage({ ...deps, llm });
@@ -158,7 +163,7 @@ describe('decideStage', () => {
   it('includes the active Soul for user-visible assessment and task-book copy', async () => {
     const systemPrompts: string[] = [];
     const llm = createMockLlm((request) => {
-      systemPrompts.push(String(request.messages[0]?.content ?? ''));
+      systemPrompts.push(allText(request));
       return textResponse('{"plan":[{"description":"检查仓库"}]}');
     });
     const stage = createDecideStage({ ...deps, llm });
@@ -252,7 +257,7 @@ describe('decideStage', () => {
     expect(result).toMatchObject({ next: 'execute', ok: true });
     expect(requests).toHaveLength(1);
     expect(requests[0]?.tools).toBeUndefined();
-    const system = String(requests[0]?.messages[0]?.content ?? '');
+    const system = allText(requests[0]);
     expect(system).toContain('# Explicit Tool Input');
     expect(system).toContain('Runtime revalidates the schema, workspace boundary, permission, and side effects');
     expect(system).toContain('{"input":{}}');
@@ -312,7 +317,7 @@ describe('decideStage', () => {
     expect(result).toMatchObject({ next: 'execute', ok: true });
     expect(requests).toHaveLength(1);
     expect(requests[0]?.tools).toBeUndefined();
-    const system = String(requests[0]?.messages[0]?.content ?? '');
+    const system = allText(requests[0]);
     expect(requests[0]?.max_tokens).toBe(250);
     expect(system).toContain('# Read-only tool decision');
     expect(system).toContain('glob tool (mock)');
@@ -527,7 +532,7 @@ describe('decideStage', () => {
     await stage(ctx);
 
     expect(ctx.modelRequests?.[0]?.callContract?.purpose).toBe('decide');
-    expect(String(requests[0]?.messages[0]?.content)).toContain('MEMORY_ROOT_MUST_REMAIN_AVAILABLE');
+    expect(allText(requests[0])).toContain('MEMORY_ROOT_MUST_REMAIN_AVAILABLE');
   });
 
   it('does not compact explicit write decisions', async () => {
@@ -745,7 +750,7 @@ describe('decideStage', () => {
     const result = await stage(ctx);
 
     expect(result).toMatchObject({ next: 'execute', ok: true });
-    const system = String(requests[0]?.messages[0]?.content ?? '');
+    const system = allText(requests[0]);
     expect(system).toContain('Explicit multi-tool DECIDE contract');
     expect(system).toContain('"content"');
     expect(system).toContain('"file_path"');
@@ -1021,7 +1026,7 @@ describe('decideStage', () => {
   it('revises only failed/incomplete steps and preserves completed evidence', async () => {
     const prompts: string[] = [];
     const llm = createMockLlm((request) => {
-      prompts.push(String(request.messages.at(-1)?.content ?? ''));
+      prompts.push(lastConversationText(request));
       return textResponse(JSON.stringify({
         assessment: {
           userNeed: 'expanded unrelated scope',
@@ -1125,7 +1130,7 @@ describe('decideStage', () => {
   it('injects deferred runtime events, bumps the revision, and releases payloads after adoption', async () => {
     const prompts: string[] = [];
     const llm = createMockLlm((request) => {
-      prompts.push(String(request.messages.at(-1)?.content ?? ''));
+      prompts.push(lastConversationText(request));
       return textResponse(JSON.stringify({
         assessment: {
           userNeed: 'finish the original task with the new requirement',
@@ -1166,7 +1171,7 @@ describe('decideStage', () => {
   it('renders oversized deferred runtime payloads as valid bounded JSON', async () => {
     const prompts: string[] = [];
     const llm = createMockLlm((request) => {
-      prompts.push(String(request.messages.at(-1)?.content ?? ''));
+      prompts.push(lastConversationText(request));
       return textResponse(JSON.stringify({
         assessment: {
           userNeed: 'apply the runtime update',

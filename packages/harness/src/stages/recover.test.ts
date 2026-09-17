@@ -1,7 +1,7 @@
 // @littlesheep/harness — stages/recover.test.ts
 import { describe, it, expect } from 'vitest';
 import { createRecoverStage } from './recover.js';
-import { createMockLlm, textResponse, makeCtx, makeTool } from '../tests/helpers.js';
+import { createMockLlm, textResponse, makeCtx, makeTool, lastConversationText } from '../tests/helpers.js';
 import { textMessage } from '@littlesheep/types';
 
 const deps = { model: 'test' };
@@ -93,7 +93,7 @@ describe('recoverStage', () => {
   it('tells recovery which run tools can be added to a revised TaskBook step', async () => {
     const recoveryPrompts: string[] = [];
     const llm = createMockLlm((request) => {
-      recoveryPrompts.push(String(request.messages.at(-1)?.content ?? ''));
+      recoveryPrompts.push(lastConversationText(request));
       return textResponse(JSON.stringify({
         action: 'retry',
         revisedPlan: [{ description: 'read the document', tools: ['document_read'] }],

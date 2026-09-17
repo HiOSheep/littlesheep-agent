@@ -3,8 +3,17 @@ import type { ContextItemKind } from '@littlesheep/types';
 import type { ContextMessageCandidate } from './contracts.js';
 
 export function inferCandidates(messages: ChatMessage[]): ContextMessageCandidate[] {
+  // A trailing Runtime/Provider message may follow the user turn, so identify
+  // the user input by role rather than by array position.
+  let lastUserIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === 'user') {
+      lastUserIndex = index;
+      break;
+    }
+  }
   return messages.map((message, index) => {
-    const kind = contextKind(message, index, messages.length);
+    const kind = contextKind(message, index, lastUserIndex);
     const participatesInToolSequence = message.role === 'tool' || (message.tool_calls?.length ?? 0) > 0;
     return {
       id: `message-${index}`,
@@ -53,9 +62,9 @@ export function normalizeCandidates(candidates: ContextMessageCandidate[]): Cont
   return [...candidates].sort((left, right) => left.order - right.order || left.id.localeCompare(right.id));
 }
 
-function contextKind(message: ChatMessage, index: number, total: number): ContextItemKind {
+function contextKind(message: ChatMessage, index: number, lastUserIndex: number): ContextItemKind {
   if (message.role === 'system') return 'system_prompt';
   if (message.role === 'tool') return 'tool_result';
-  if (message.role === 'user' && index === total - 1) return 'user_input';
+  if (message.role === 'user' && index === lastUserIndex) return 'user_input';
   return 'recent_message';
 }

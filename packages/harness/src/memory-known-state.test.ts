@@ -7,6 +7,11 @@ import { prepareModelRequest } from './model-observability.js';
 import { canonicalSerialize } from './cache-observability.js';
 import { makeCtx } from './tests/helpers.js';
 
+/** Injected Memory KnownState travels after the boundary, outside the system prompt. */
+function knownStateBlock(prepared: ChatRequest): string {
+  return prepared.messages.map((message) => String(message.content)).join('\n');
+}
+
 describe('run Memory KnownState', () => {
   it('injects bounded epistemic evidence into allowed stages and records it as memory Context', () => {
     const ctx = makeCtx();
@@ -26,7 +31,7 @@ describe('run Memory KnownState', () => {
       buildRunRequestCandidates(ctx, 'verify', raw.messages, { history: [], primaryUserKind: 'workflow_state' }),
     );
 
-    const system = String(prepared.messages[0]?.content);
+    const system = knownStateBlock(prepared);
     expect(system).toContain('# Run Memory KnownState');
     expect(system).toContain('statement=suggestion; epistemic=unverified');
     expect(system).toContain('usefulness=2/1');
@@ -55,6 +60,7 @@ describe('run Memory KnownState', () => {
       buildRunRequestCandidates(ctx, 'classify', raw.messages, { history: [] }),
     );
     expect(String(prepared.messages[0]?.content)).not.toContain('# Run Memory KnownState');
+    expect(prepared.messages.map((message) => String(message.content)).join('\n')).not.toContain('# Run Memory KnownState');
   });
 
   it('keeps injected memory evidence out of the stable cache prefix and serialized observation', () => {
@@ -95,7 +101,7 @@ describe('run Memory KnownState', () => {
     );
     const observation = ctx.modelRequests?.[0]?.cacheObservation;
 
-    expect(String(prepared.messages[0]?.content)).toContain('# Run Memory KnownState');
+    expect(knownStateBlock(prepared)).toContain('# Run Memory KnownState');
     expect(observation?.stablePrefix.fingerprint).toBe(baseline?.stablePrefix.fingerprint);
     expect(observation?.dynamicSuffix.fingerprint).not.toBe(baseline?.dynamicSuffix.fingerprint);
     expect(canonicalSerialize(observation)).not.toContain('atom-advice');

@@ -3060,7 +3060,7 @@ describe('createRunner run', () => {
     await runner.run({ sessionId: first.sessionId, text: 'what was the status of the previous run?' });
     const followUpRequests = requests.slice(requestCount);
     expect(followUpRequests.some((request) => (
-      String(request.messages.find((message) => message.role === 'system')?.content)
+      request.messages.map((message) => String(message.content)).join('\n')
         .includes(`previous_run: id=${first.runId}`)
     ))).toBe(true);
   });

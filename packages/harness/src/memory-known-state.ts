@@ -76,16 +76,14 @@ export function injectMemoryKnownState(
   if (!state || state.references.length === 0) return { request, candidates };
   markMemoryKnownStateStage(ctx, stage);
   const current = ctx.memoryKnownState!;
-  const systemIndex = request.messages.findIndex((message) => message.role === 'system');
-  if (systemIndex < 0) return { request, candidates };
-  const original = request.messages[systemIndex]!;
-  const originalText = typeof original.content === 'string' ? original.content : undefined;
-  const separator = originalText?.includes(CACHE_BOUNDARY_MARKER)
-    ? '\n\n---\n\n'
-    : `\n\n${CACHE_BOUNDARY_MARKER}\n\n`;
-  const segmentText = `${separator}${renderKnownState(current)}`;
-  const message = appendSystemText(original, segmentText);
-  const messages = request.messages.map((candidate, index) => index === systemIndex ? message : candidate);
+  const original = request.messages.find((message) => message.role === 'system');
+  if (!original) return { request, candidates };
+  // Keep the per-request known state out of the system prompt: a change there
+  // would cap the Provider's prefix cache at that byte and re-bill the whole
+  // conversation. It travels in its own trailing message instead.
+  const segmentText = `${CACHE_BOUNDARY_MARKER}\n\n${renderKnownState(current)}`;
+  const message: ChatMessage = { role: 'system', content: segmentText };
+  const messages = [...request.messages, message];
   if (!candidates) return { request: { ...request, messages } };
 
   const segment: ContextMessageSegment = {
@@ -104,32 +102,20 @@ export function injectMemoryKnownState(
     sensitive: true,
     scope: 'run',
   };
-  const preparedCandidates = candidates.map((candidate) => {
-    if (candidate.order !== systemIndex || candidate.message.role !== 'system') return candidate;
-    if (candidate.segments) return { ...candidate, message, segments: [...candidate.segments, segment] };
-    if (originalText !== undefined) {
-      return {
-        ...candidate,
-        message,
-        segments: [
-          {
-            id: `${candidate.id}:base`,
-            order: 0,
-            text: originalText,
-            kind: candidate.kind,
-            source: candidate.source,
-            priority: candidate.priority,
-            required: candidate.required,
-            sensitive: candidate.sensitive,
-            scope: candidate.scope,
-          },
-          segment,
-        ],
-      };
-    }
-    return { ...candidate, message };
-  });
-  return { request: { ...request, messages }, candidates: preparedCandidates };
+  return {
+    request: { ...request, messages },
+    candidates: [...candidates, {
+      id: `memory-known-state:${requestIndex}`,
+      order: Number.MAX_SAFE_INTEGER - 1,
+      message,
+      kind: 'memory_fragment',
+      source: segment.source,
+      priority: 98,
+      required: true,
+      sensitive: true,
+      scope: 'run',
+    }],
+  };
 }
 
 function renderKnownState(state: RuntimeMemoryKnownState): string {
@@ -234,11 +220,6 @@ function isRelationRoute(value: unknown): boolean {
     && typeof value.confidence === 'number'
     && typeof value.relevance === 'number'
     && typeof value.strength === 'number';
-}
-
-function appendSystemText(message: ChatMessage, suffix: string): ChatMessage {
-  if (typeof message.content === 'string') return { ...message, content: `${message.content}${suffix}` };
-  return { ...message, content: [...message.content, { type: 'text', text: suffix }] };
 }
 
 function compareReferences(left: RuntimeKnownStateMemoryReference, right: RuntimeKnownStateMemoryReference): number {

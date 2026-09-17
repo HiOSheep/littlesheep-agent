@@ -12,6 +12,7 @@ import {
   makeTool,
   createMockSessionManager,
   createMockMemoryStore,
+  lastConversationText,
 } from './tests/helpers.js';
 import { DEFAULT_CONFIG } from '@littlesheep/config';
 import { DEFAULT_BRANDING } from '@littlesheep/branding';
@@ -230,14 +231,14 @@ describe('createDefaultHarness state machine', () => {
     expect((result.meta?.trace as Array<{ name: string }>).map((item) => item.name)).toEqual([
       'reply', 'verify', 'evolve', 'capture', 'finalize',
     ]);
-    const requestText = String(llm.chat.mock.calls[0]?.[0].messages.at(-1)?.content ?? '');
+    const requestText = lastConversationText(llm.chat.mock.calls[0]?.[0]);
     expect(requestText).toContain('resume-anchor-4812');
   });
 
   it('re-enters DECIDE for a task event received after EXECUTE and adopts a new TaskBook revision', async () => {
     const planningPrompts: string[] = [];
     const llm = createMockLlm((request) => {
-      planningPrompts.push(String(request.messages.at(-1)?.content ?? ''));
+      planningPrompts.push(lastConversationText(request));
       const revised = planningPrompts.length > 1;
       return textResponse(JSON.stringify({
         assessment: {

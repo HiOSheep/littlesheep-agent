@@ -90,7 +90,8 @@ describe('replyStage', () => {
     expect(result.ok, result.error).toBe(true);
     expect(ctx.replyProvenance).toMatchObject({ source: 'llm', purpose: 'capability_reply', rewriteCount: 0 });
     expect(ctx.modelRequests?.[0]?.callContract?.purpose).toBe('capability_reply');
-    expect(requests[0]?.messages).toHaveLength(2);
+    // System prompt + inbound user input + trailing volatile Runtime block.
+    expect(requests[0]?.messages).toHaveLength(3);
     const sent = JSON.stringify(requests[0]?.messages);
     expect(sent).toContain('capability-epoch-test');
     expect(sent).toContain('Capability answer contract');
@@ -159,7 +160,7 @@ describe('replyStage', () => {
     const result = await stage(ctx);
 
     expect(result.ok, result.error).toBe(true);
-    const system = String(requests[0]?.messages[0]?.content);
+    const system = (requests[0]?.messages ?? []).map((message) => String(message.content)).join('\n');
     expect(system).toContain('capability_probe=observed');
     expect(system).toContain('capability_permission_decision: allow');
     expect(system).toContain('a capability probe is not a Web query');

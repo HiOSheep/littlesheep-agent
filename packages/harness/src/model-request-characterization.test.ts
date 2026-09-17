@@ -44,6 +44,9 @@ function expectCommonPayloadShape(request: ChatRequest, options: { includesBoots
     'assistant',
     'user',
     'user',
+    // Volatile Runtime facts travel after the conversation so a per-request
+    // clock change cannot break the Provider's prefix cache.
+    'system',
   ]);
   if (options.includesBootstrap !== false) {
     expect(String(request.messages[0]?.content)).toContain('BOOTSTRAP_SENTINEL');
@@ -72,7 +75,7 @@ function expectRecordedSnapshot(
     stage,
     requestIndex: 1,
     model: 'test-model',
-    totalMessageCount: 5,
+    totalMessageCount: 6,
     messagesTruncated: false,
     stream,
   });
@@ -96,13 +99,16 @@ function expectRecordedSnapshot(
   } else {
     expect(kinds).toContain('project_knowledge');
   }
-  expect(items.slice(-5).map((item) => item.kind)).toEqual([
-    'recent_message',
+  const tailKinds = items.slice(-6).map((item) => item.kind);
+  expect(tailKinds).toEqual(expect.arrayContaining([
     'recent_message',
     'attachment_manifest',
     'user_input',
-    'attachment_manifest',
-  ]);
+    'runtime_event',
+  ]));
+  // The volatile Runtime Context item stays last so the cacheable prefix is
+  // the system prompt plus the whole conversation.
+  expect(items.at(-1)?.kind).toBe('runtime_event');
 }
 
 describe('LLM request characterization', () => {

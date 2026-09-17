@@ -17,6 +17,11 @@ function request(content = 'what is the status?'): ChatRequest {
   };
 }
 
+/** The volatile runtime facts now travel in one trailing message. */
+function runtimeBlock(prepared: ChatRequest): string {
+  return String(prepared.messages.at(-1)?.content ?? '');
+}
+
 function previousRunSummary(): SessionRunSummary {
   return {
     version: 1,
@@ -95,9 +100,12 @@ describe('runtime awareness', () => {
       raw,
       buildRunRequestCandidates(ctx, 'reply', raw.messages, { history: [] }),
     );
-    const system = String(prepared.messages[0]?.content);
+    const system = runtimeBlock(prepared);
 
-    expect(system.indexOf(CACHE_BOUNDARY_MARKER)).toBeGreaterThan(system.indexOf('stable policy'));
+    // The volatile block must stay out of the system prompt so the Provider's
+    // prefix cache can cover the system prompt and the whole conversation.
+    expect(system.startsWith(CACHE_BOUNDARY_MARKER)).toBe(true);
+    expect(String(prepared.messages[0]?.content)).toBe('stable policy');
     expect(system).toContain('local_datetime: 2026-07-15 11:04:05 +08:00');
     expect(system).toContain('run_elapsed: 65678 ms (00:01:05.678)');
     expect(system).toContain('task_progress: 1/2 completed (50%)');
@@ -125,10 +133,10 @@ describe('runtime awareness', () => {
     now = new Date('2026-07-15T03:04:06.000Z');
     const second = prepareModelRequest(ctx, 'reply', request(inbound));
 
-    expect(String(first.messages[0]?.content)).toContain('2026-07-15 11:04:05');
-    expect(String(second.messages[0]?.content)).toContain('2026-07-15 11:04:06');
-    expect(String(second.messages[0]?.content)).toContain('previous_run: id=previous-run');
-    expect(String(second.messages[0]?.content)).toContain('read:succeeded:700 ms');
+    expect(runtimeBlock(first)).toContain('2026-07-15 11:04:05');
+    expect(runtimeBlock(second)).toContain('2026-07-15 11:04:06');
+    expect(runtimeBlock(second)).toContain('previous_run: id=previous-run');
+    expect(runtimeBlock(second)).toContain('read:succeeded:700 ms');
   });
 
   it('includes observed capability-probe evidence separately from the capability snapshot', () => {
@@ -162,7 +170,7 @@ describe('runtime awareness', () => {
 
     const capabilityRequest = { ...request(), max_tokens: 500 };
     const prepared = prepareModelRequest(ctx, 'capability_reply', capabilityRequest, buildRunRequestCandidates(ctx, 'reply', capabilityRequest.messages, { history: [] }));
-    const system = String(prepared.messages[0]?.content);
+    const system = runtimeBlock(prepared);
 
     expect(system).toContain('capability_probe=observed');
     expect(system).toContain('capability_permission_decision: allow');
@@ -174,12 +182,13 @@ describe('runtime awareness', () => {
     ctx.previousRun = previousRunSummary();
 
     const prepared = prepareModelRequest(ctx, 'reply', request(inbound));
-    const system = String(prepared.messages[0]?.content);
+    const system = runtimeBlock(prepared);
 
     expect(system).toContain('# Runtime Clock');
     expect(system).not.toContain('previous_run:');
     expect(system).not.toContain('recent_previous_tools:');
-    expect(ctx.modelRequests?.[0]?.totalMessageCount).toBe(2);
+    // system + user + the trailing volatile Runtime message.
+    expect(ctx.modelRequests?.[0]?.totalMessageCount).toBe(3);
     expect(ctx.contextSnapshots?.[0]?.safetyEstimate?.estimatedPromptTokens).toBeLessThan(1_200);
   });
 
@@ -201,7 +210,7 @@ describe('runtime awareness', () => {
     ctx.previousRun = previousRunSummary();
 
     const prepared = prepareModelRequest(ctx, 'decide', request(inbound));
-    const system = String(prepared.messages[0]?.content);
+    const system = runtimeBlock(prepared);
 
     expect(system).toContain('# Runtime Clock');
     expect(system).not.toContain('# Live Runtime State');
@@ -218,7 +227,7 @@ describe('runtime awareness', () => {
     ctx.previousRun = previousRunSummary();
 
     const prepared = prepareModelRequest(ctx, 'reply', request(inbound));
-    const system = String(prepared.messages[0]?.content);
+    const system = runtimeBlock(prepared);
 
     expect(system).toContain('# Runtime Clock');
     expect(system).not.toContain('# Live Runtime State');
@@ -231,7 +240,7 @@ describe('runtime awareness', () => {
     ctx.previousRun = previousRunSummary();
 
     const prepared = prepareModelRequest(ctx, 'reply', request(inbound));
-    const system = String(prepared.messages[0]?.content);
+    const system = runtimeBlock(prepared);
 
     expect(system).toContain('# Runtime Clock');
     expect(system).not.toContain('# Live Runtime State');
@@ -252,7 +261,7 @@ describe('runtime awareness', () => {
     ctx.previousRun = previousRunSummary();
 
     const prepared = prepareModelRequest(ctx, 'reply', request(inbound));
-    const system = String(prepared.messages[0]?.content);
+    const system = runtimeBlock(prepared);
 
     expect(system).toContain('# Live Runtime State');
     expect(system).toContain('previous_run: id=previous-run');

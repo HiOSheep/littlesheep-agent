@@ -211,7 +211,10 @@ describe('Runner Memory v3 integration', () => {
     expect(result.status).toBe('ok');
     const outbound = requests.find((request) => String(request.messages[0]?.content).includes('Initially Selected Memory Atoms'));
     expect(String(outbound?.messages[0]?.content)).toContain('prefers concise greetings');
-    expect(String(outbound?.messages[0]?.content)).toContain('Run Memory KnownState');
+    // The per-request KnownState travels after the system prompt, outside the
+    // Provider's cacheable prefix.
+    expect(outbound?.messages.map((message) => String(message.content)).join('\n'))
+      .toContain('Run Memory KnownState');
     expect(result.memoryKnownState?.references).toEqual(expect.arrayContaining([
       expect.objectContaining({ atomId: write.node!.id, decision: 'adopted' }),
     ]));

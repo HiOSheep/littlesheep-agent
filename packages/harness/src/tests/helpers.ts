@@ -14,6 +14,17 @@ import type {
 } from '@littlesheep/types';
 import { normalizeUserFacingReply, textMessage } from '@littlesheep/types';
 import type { LlmClient, ChatRequest, ChatResponse, EmbedRequest, EmbedResponse } from '@littlesheep/llm';
+import { CACHE_BOUNDARY_MARKER } from '@littlesheep/prompt';
+
+/**
+ * The last conversation message, ignoring the trailing Runtime/Provider context
+ * block that must stay out of the Provider's cacheable prefix.
+ */
+export function lastConversationText(request: ChatRequest | undefined): string {
+  const messages = (request?.messages ?? [])
+    .filter((message) => !String(message.content).startsWith(CACHE_BOUNDARY_MARKER));
+  return String(messages.at(-1)?.content ?? '');
+}
 
 // ─── Mock LlmClient ─────────────────────────────────────────────────────
 

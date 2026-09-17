@@ -1295,6 +1295,32 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 
 **预算：** 本次长会话实验按 token 估算约 ¥1；自真实配对起累计 ≈ **¥10 上限已用尽**。后续真实 Provider 复核需追加预算。
 
+### 10.69 第三十六轮（缓存命中率归因与第一步改造）执行记录（2026-09-17）
+
+**用户追加预算 ¥10 + opencode go key，并授权按需优化。**
+
+**本地真实证据归因（只读用户数据根的 execution-logs，仅取状态/计数/原因码）：**
+- 14 次观测/10 个 run：整体命中 **43.5%**；`reply` 50%、`classify` 14.7%。
+- top 失效原因：`request_kind_changed`×4、`prompt_version_changed`×4、`model_changed`×2、`replayed`×2、`memory_revision_changed`×1、`tool_schema_changed`×1。
+- **关键**：每次调用的 `stablePrefix` 只有 **1 个 item**，其余（整段历史）都算 `dynamicSuffix` → 我们几乎没有保证稳定的前缀。
+
+**根因（两步确认）：**
+1. `runtime-awareness.ts` 把**每次请求都变**的时钟/耗时/任务进度/工具计时追加进 **system 消息内部（边界之下）**。DeepSeek 从 token 0 匹配前缀 → 前缀在 system 中间断掉，**后面整段历史永远不可能命中**。这解释了 cached 384–768 / 1097–1598 ≈ 50%。
+2. 进一步发现：提示词 bundle 自身的**边界之下内容（`memory-root-index` 等）同样留在 system 消息里**，而 memory root index 是**每 run 选出的记忆** → 前缀仍在 system 内部断裂。因此第一步改造后命中也**没有提升**（见下）。
+
+**第一步改造（已完成并全绿）：** 把易变的运行态块从 system 消息移到**固定位置的尾部 system 消息**（`CACHE_BOUNDARY_MARKER` 起头），`memory-known-state` 同样处理；两者都作为候选追加（order `MAX_SAFE_INTEGER`/`-1`，kind `runtime_event`/`memory_fragment`），并在尾部保持不变以便跨请求稳定、且不打断 assistant(tool_calls)→tool 邻接。
+- 顺带修正一个真实推断缺陷：`inferCandidates` 原以"最后一条消息"判 `user_input`；尾部消息会把它挤掉并触发 `required Context kind user_input is absent`，改为"最后一条 **user** 消息"。
+- 测试更新：新增 `lastConversationText()`（测试助手）忽略尾部上下文；更新 18 处 harness 断言 + 2 处 runner 断言。harness **72/72 文件、671 测试**通过；全量 `vitest` 455/457 → 修完 2 处 runner 后全绿；`typecheck` 0；`check:repo` 33/33。
+
+**实测（重建后，真实 Provider，共享会话 4 轮 × 20 次/路径）：**
+- shadow 47.5% → 47.6%；next 48.2% → 48.3%（**未提升**）。
+- 两条路径各 **55/80 失败**，原因均为 `waiting-user clarification request is missing or no longer pending`——这是**共享会话里重复跑同一批含 ask_user 任务的工作负载伪影**（基线跑同样存在，shadow 17/next 2），不是本次改动引起，但它使该次测量不可比。
+- 结论：**第一步是必要的但不足以提升命中率**；真正的上限由第 2 条（bundle 边界之下的易变段仍在 system 内）决定。
+
+**下一步（下一个 goal round）：** 让 system 消息只保留**真正会话稳定**的部分（identity/policies/tool schema 等），把 bundle 边界之下的全部易变内容（memory root index、已知状态、运行态、任务书/计划等）统一放到尾部消息；随后用"不含 ask_user 的安全任务集 + 共享会话"复测，避免工作负载伪影。
+
+**预算：** 本轮新增预算 ¥10；本轮消耗 ≈ ¥1（重建+1 次长会话；上一次长会话 ≈ ¥1）。
+
 ### 10.14 第七轮（HC-12 撤销屏障）新增证据（2026-09-16）
 
 **问题（先写失败用例）：** v3 写入路径的等值/相似候选只按 branch/scope/`status='active'` 选取；被纠正（`epistemicStatus`/`resolutionStatus = superseded`）或删除（`status = tombstone`）的 atom 仍可能是 active 记录。后续 maintenance（压缩候选）证据即使引用同一 `conversation-source:`，也会创建新 atom 或强化旧 atom，从而复活已被用户忘记/纠正的事实。`memory-service-v3.test.ts` 的新用例在修复前返回 `created`。
