@@ -1946,6 +1946,12 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 - `conversationHistoryForModel(ctx)`：所有阶段应改用的**唯一**历史窗口选择器（当前尚未切换调用点，故行为零变化）。
 `typecheck` 0、`_shared` 测试 11/11 通过。下一步即把 10.99 表里的 7 个调用点切到它，并同步 `definitions.ts` 的 `history` 声明与相关断言。
 
+**第 1 步的执行（2026-09-17，用户批准后）：** 先做了**收益最大、改动最小**的一处——`stages/classify.ts:161` 由 `recentHistoryForModel(ctx.history, 4, 1_800)` 改为 `conversationHistoryForModel(ctx)`（8 条 / 6,000，与 decide/execute/reply **本就相同**的窗口）。
+理由：主路径的 decide/execute/reply 其实已经同窗口，真正让前缀在共享头之后**立即分叉**的是**每轮第一个调用 classify**（4 条 / 1,800）；对齐它即可让同一轮内后续调用命中"头 + 历史"。
+**验证（全绿）：** `typecheck` 0；全量 `vitest` **460 文件 / 3,278 通过 / 1 跳过**；`check:repo` 33/33；**`verify:electron-continuity` ok:true** 与 **`verify:electron-ui-state-continuity` ok:true**；harness 测试**零回归**（无需改任何断言）。提交 `feat(harness): align classify history with the shared window…`。
+
+**第 1 步剩余（下一步）：** ① 把 `verify`（无历史）、`capability_reply` / compact 决策（历史为空）也切到共享窗口，使**全部阶段**历史投影一致；② 同步 `definitions.ts` 的 `history` 声明；③ 复测主对话命中率（预期：同一轮内跨阶段命中"头+历史"，主对话显著上升）。
+
 **round 24 计划（改打高频断点）：** 转向**每个 run/每轮都会发生**的 system 提示词抖动：
 1. `memory-taskbook-refinement.ts:137` 在 **DECIDE 中途重写 `initialMemoryContext`**（同轮内 system 即变化）；
 2. `memoryRootIndex` / `initialMemoryContext` / `bootstrap` 每请求按 ctx 重建（记忆一更新即变化）。
