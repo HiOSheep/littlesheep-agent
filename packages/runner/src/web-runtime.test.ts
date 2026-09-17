@@ -49,7 +49,9 @@ function scriptedWebLlm(): LlmClient {
   let toolCallCount = 0;
   let finalReplyCount = 0;
   const chat = vi.fn(async (request: ChatRequest) => {
-    const system = String(request.messages[0]?.content ?? '');
+    // Read every message: volatile Context sections travel after the system
+    // prompt so the Provider's cacheable prefix stays stable.
+    const system = request.messages.map((message) => String(message.content)).join('\n');
     if (system.includes('Choose the next LittleSheep activity')) {
       return text('{"activity":"execute","confidence":0.99,"reason":"run the requested probe"}');
     }
@@ -116,7 +118,9 @@ function scriptedWebLlm(): LlmClient {
 function scriptedBuiltinWebLlm(observedBodies: string[]): LlmClient {
   let citationId = '';
   const chat = vi.fn(async (request: ChatRequest) => {
-    const system = String(request.messages[0]?.content ?? '');
+    // Read every message: volatile Context sections travel after the system
+    // prompt so the Provider's cacheable prefix stays stable.
+    const system = request.messages.map((message) => String(message.content)).join('\n');
     if (system.includes('Choose the next LittleSheep activity')) {
       return text('{"activity":"execute","confidence":0.99,"reason":"retrieve current public evidence"}');
     }

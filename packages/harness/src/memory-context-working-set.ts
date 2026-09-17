@@ -54,47 +54,55 @@ export function applyMemoryContextWorkingSet(
 ): { request: ChatRequest; candidates?: ContextMessageCandidate[] } {
   const state = ctx.memoryContextWorkingSet;
   if (!state || Object.keys(state.callAtomIds).length === 0) return { request, candidates };
-  const replacements = new Map<number, ChatMessage>();
-  request.messages.forEach((message, index) => {
-    if (message.role === 'system' && typeof message.content === 'string') {
-      const initialAtomIds = state.callAtomIds.initial;
-      if (!initialAtomIds?.length) return;
-      const inactive = initialAtomIds.filter((atomId) => state.activeCallByAtom[atomId] !== 'initial');
-      if (inactive.length > 0) {
-        replacements.set(index, {
-          ...message,
-          content: filterRenderedMemory(message.content, new Set(inactive)),
-        });
-      }
-      return;
+  // Filter by each message's own role/tool-call identity instead of its index in
+  // the request array: trailing Context messages live outside request.messages
+  // and must still lose released memory.
+  const initialInactive = new Set((state.callAtomIds.initial ?? [])
+    .filter((atomId) => state.activeCallByAtom[atomId] !== 'initial'));
+  const filterMessage = (message: ChatMessage): ChatMessage | undefined => {
+    if (typeof message.content !== 'string') return undefined;
+    if (message.role === 'system') {
+      if (initialInactive.size === 0) return undefined;
+      const content = filterRenderedMemory(message.content, initialInactive);
+      return content === message.content ? undefined : { ...message, content };
     }
-    if (message.role !== 'tool' || !message.tool_call_id) return;
+    if (message.role !== 'tool' || !message.tool_call_id) return undefined;
     const atomIds = state.callAtomIds[message.tool_call_id];
-    if (!atomIds?.length) return;
-    const inactive = atomIds.filter((atomId) => state.activeCallByAtom[atomId] !== message.tool_call_id);
-    if (inactive.length === 0 || typeof message.content !== 'string') return;
-    replacements.set(index, {
-      ...message,
-      content: filterToolResultContent(message.content, new Set(inactive)),
-    });
-  });
-  if (replacements.size === 0) return { request, candidates };
-  const messages = request.messages.map((message, index) => replacements.get(index) ?? message);
-  return {
-    request: { ...request, messages },
-    candidates: candidates?.map((candidate) => ({
-      ...candidate,
-      message: replacements.get(candidate.order) ?? candidate.message,
-      segments: candidate.segments?.map((segment) => {
-        if (segment.source.kind !== 'memory' || segment.source.id !== 'initial-selection') return segment;
-        const inactive = (state.callAtomIds.initial ?? [])
-          .filter((atomId) => state.activeCallByAtom[atomId] !== 'initial');
-        return inactive.length > 0
-          ? { ...segment, text: filterRenderedMemory(segment.text, new Set(inactive)) }
-          : segment;
-      }),
-    })),
+    if (!atomIds?.length) return undefined;
+    const inactive = new Set(atomIds.filter((atomId) => state.activeCallByAtom[atomId] !== message.tool_call_id));
+    if (inactive.size === 0) return undefined;
+    const content = filterToolResultContent(message.content, inactive);
+    return content === message.content ? undefined : { ...message, content };
   };
+
+  let changed = false;
+  const messages = request.messages.map((message) => {
+    const filtered = filterMessage(message);
+    if (!filtered) return message;
+    changed = true;
+    return filtered;
+  });
+  const filteredCandidates = candidates?.map((candidate) => {
+    let next = candidate;
+    const filteredMessage = filterMessage(candidate.message);
+    if (filteredMessage) {
+      changed = true;
+      next = { ...next, message: filteredMessage };
+    }
+    if (next.segments && initialInactive.size > 0) {
+      const segments = next.segments.map((segment) => {
+        if (segment.source.kind !== 'memory' || segment.source.id !== 'initial-selection') return segment;
+        const text = filterRenderedMemory(segment.text, initialInactive);
+        if (text === segment.text) return segment;
+        changed = true;
+        return { ...segment, text };
+      });
+      next = { ...next, segments };
+    }
+    return next;
+  });
+  if (!changed) return { request, candidates };
+  return { request: { ...request, messages }, candidates: filteredCandidates };
 }
 
 function filterToolResultContent(content: string, inactiveAtomIds: Set<string>): string {

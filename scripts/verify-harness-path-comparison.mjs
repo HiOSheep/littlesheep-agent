@@ -166,9 +166,12 @@ async function main() {
 }
 
 function taskList() {
-  if (!OFFLINE) return TASKS
-  const requested = Number(process.env.LITTLESHEEP_COMPARISON_TASKS ?? 4)
-  const limit = Number.isFinite(requested) && requested > 0 ? Math.min(TASKS.length, Math.floor(requested)) : 4
+  // A shorter live list keeps a shared-session run clear of clarification
+  // round-trips that would otherwise swamp the cache measurement.
+  const requested = Number(process.env.LITTLESHEEP_COMPARISON_TASKS ?? (OFFLINE ? 4 : TASKS.length))
+  const limit = Number.isFinite(requested) && requested > 0
+    ? Math.min(TASKS.length, Math.floor(requested))
+    : (OFFLINE ? 4 : TASKS.length)
   return TASKS.slice(0, limit)
 }
 
