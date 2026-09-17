@@ -1,8 +1,10 @@
 # Harness 瘦身第一批实施包：HL-00～HL-04 · 2026-09-12
 
-最后更新：2026-09-12 17:35:19
+最后更新：2026-09-13 15:11:44
 
-状态：规格已细化，代码实施待开始。日期：2026-09-12。
+状态：HL-00～HL-04 已实施并通过第一批交付门；HL-05/08/11 未提前实施，本文不构成发布批准。日期：2026-09-13。
+
+后续：[第二批实施包：HL-05/HL-06 与配套 HL-10](harness-lean-phase-b-implementation-taskbook-2026-09-13.md) 已细化，代码待实施；第一批结果和范围以本文第 9 节为准。
 
 上位任务书：[全面审计与任务书](harness-lean-audit-taskbook-2026-09-12.md)。本文不是第二份审计，而是第一批工作的执行合同：减少接手者重新探索和自行决定架构的成本。源码路径均相对仓库根；新增接口/用例均明确为待实现，不代表现有 API。
 
@@ -45,6 +47,39 @@
 - `OpenAIClient` 的网络重试和 stream-usage fallback 在一次 `chat/chatStream` 内部；`callLlmForJson` 的解码重试在外部。两者必须分开计数，不能把一个包装调用当成一次真实 HTTP 尝试。
 - `recordProviderUsage` 在快照不存在时会提前返回。只修改页脚求和或放大 64 份快照上限不能解决完整用量问题。
 - 已有 app build fingerprint 工具、正文帧缓冲、SSE start 和 SVG 组件。复用并补覆盖，不重复造基础设施。
+
+### 1.4 补充设计原则：控制状态与可观测活动解耦
+
+本节直接约束 04A/04B，不改变 00A → 04B 的顺序，不扩大当前小包，也不提前实施 HL-05/08/11。
+
+**Harness state controls execution. Runtime activity explains execution. Renderer projects activity, not state.**
+
+`ENTER / CLASSIFY / DECIDE / EXECUTE / VERIFY / RECOVER / EVOLVE / CAPTURE / REPLY / FINALIZE` 可以继续作为 Runtime 内部控制结构，负责合法迁移、安全、恢复和结算；Renderer 原则上不直接显示这些 stage 名称，也不依赖它们组织活动行。应实现：
+
+```text
+Harness state
+      │ controls
+      ▼
+actual Model / Tool / Runtime activity
+      │
+      ▼
+existing typed activity/event boundary
+      │
+      ▼
+SSE → Renderer reducer → Activity row
+```
+
+三类生产事实必须分离：
+
+- **Model activity** 只能来自真实模型工作。真实 reasoning/text/tool-argument stream 按其本来语义投影；Runtime 阶段标签、固定文案、工具参数计数不得写成 `model_reasoning`。
+- **Tool activity** 严格分为 `tool_preparing`、`tool_started`、`tool_completed`、`tool_failed`。生成参数不等于执行工具；参数完整并通过 schema、权限、approval 之前不得发送 started。started 仅由真正的工具执行边界产生，completed/failed 仅由真实结果产生。
+- **Runtime activity** 仅描述实际且可感知的 Runtime 工作，例如准备上下文、恢复、等待批准、检查结果、压缩或可靠持久化。禁止把每个 stage 机械翻译成 UI 文案；毫秒级确定性 stage 无须产生活动。
+
+实现优先复用现有 `ToolStreamEvent`、Runtime event、durable event、SSE 与 reducer，不新增第三套状态机或通用 EventBus。即使未来 cognition loop 或 stage 结构被替换，Renderer 仍应依赖稳定的 model/tool/runtime/reply/run 活动语义，而不是依赖 `DECIDE / EXECUTE / VERIFY`。
+
+04A/04B 每种信息都要沿 `Producer → Harness/Runtime event → SSE → Renderer reducer → Activity row` 做一致性检查，并补跨层断言：snapshot 不得按 delta 拼接；Runtime 状态不得标成 model reasoning；实时与历史同规则；retry/stop/error/abort 闭合旧活动；`tool_preparing` 与真正 started 分离；最终 preview 由 authoritative settlement 覆盖。
+
+新增任何 UI 运行状态的准入判断是：它是否让用户更清楚 Agent 此刻实际在做什么。仅能说明“内部进入某 stage”的状态不展示；能够说明模型正在生成工具参数、Runtime 正在等待批准、某工具正在读取文件、测试正在运行或结果正在可靠保存的活动才展示。
 
 ## 2. HL-00：基线与回归夹具
 
@@ -278,7 +313,7 @@ type TranscriptStreamRef = {
 - attempt 和 sequence 均从 1 开始。重试先闭合/重置旧 attempt，再开启新 attempt；旧事件不跨 attempt 合并。节流应在对外 sequence 编号前完成；若必须合并已编号事件，需携带覆盖范围，不能让正常合并被 reducer 误判为丢包。这里的 sequence 仅覆盖该模型 transcript 流，不与未订阅的内部 durable 事件共用编号。
 - `model_reasoning`：新运行中的 summary 是 append 真增量；完成可用 replace 全文。REPLY 不再发送累计尾段冒充 delta。Runtime 阶段名/参数计数不是 model_reasoning。
 - 新 `tool_preparing` 事件为 snapshot，带 tool index、可选完整 name/callId、累计 `receivedCharacters`、生成状态；用“字符”明确 `.length` 口径，若显示字节需独立 UTF-8 计数。累积小片段不逐条追加为新行。
-- Runtime 准备/规划/验证/结算沿既有 `reasoning` 或明确 Runtime 状态投影，属于 snapshot；发生请求前不伪造 requestId/模型 token。
+- Runtime 准备、等待、恢复、检查或结算只能以明确的 Runtime activity snapshot 投影，并由实际执行事实触发；不得沿用 `model_reasoning`，不得把 `DECIDE/EXECUTE/VERIFY/FINALIZE` 直接翻译成活动。发生模型请求前不伪造 requestId/模型 token。
 - reset 以尝试为 scope，清正文预览、对应思考/参数准备缓冲和帧队列；保留先前真正执行的工具事实。协议内容重分类不能复用“整个请求失败重试”的 reset 语义。
 - done/failed/aborted 都闭合活动行；`tool_start` 仍只由工具执行服务发送。生成完参数到审批/开始之间，不显示“正在执行”；缺真实工具事件不创建成功工具计数。
 - 新版本流不再发无 operation 的含混模型事件；旧历史只走一次兼容投影，不强行推断缺失的 delta/attempt。API 的事件白名单及 runtime parser 必须同步接入，避免后端发了但 Renderer 静默丢弃。
@@ -320,6 +355,8 @@ type TranscriptStreamRef = {
 | HA-04-07 | SSE 新事件类型、重复/晚到/跨 run 事件、result 前仍有帧队列 | 不丢新类型，不污染另一会话、不回滚终态 |
 | HA-04-08 | Normal/Compact、实时→历史、重连、失败/拒绝 | 同一事实/计数；必要异常可见；全部目标图标为 SVG |
 | HA-04-09 | 100,000 小分片/Unicode/长参数 | 文本正确或明确截断，状态有界，无超线性累计重扫 |
+| HA-04-10 | stage 迁移但无用户可感知工作；真实等待/工具/模型活动各一例 | 不渲染 stage 名；只渲染实际活动，且 model/tool/runtime 分类不串线 |
+| HA-04-11 | Producer 发 snapshot、delta、retry closure，经 SSE 到 reducer/历史 | 全链语义不变；snapshot 不追加，Runtime 不冒充 reasoning，旧 attempt 不复活 |
 
 定向门：`pnpm exec vitest run packages/harness/src/stages/execute.test.ts packages/harness/src/stages/reply.test.ts packages/harness/src/stages/execute/final-reply.test.ts packages/app/src/renderer/chat/run-event-handlers.test.ts packages/app/src/renderer/chat/run-actions.test.ts packages/app/src/renderer/chat/run-result-reducer.test.ts packages/app/src/renderer/chat/assistant-turn.test.ts packages/app/src/renderer/api/run.test.ts packages/app/src/main/local-app-api/run-routes.test.ts packages/app/src/main/run-stream-api.test.ts packages/app/src/shared/history-activity.test.ts packages/app/src/renderer/ui/icons.test.ts`。补新的 model-transcript/SVG fallback 与生产路由夹具；`pnpm run verify:core` 通过后再做真实渲染验收。
 
@@ -373,4 +410,43 @@ type TranscriptStreamRef = {
 
 升级审查条件：需要改变用户授权或最后一次成功判定、无法用现有事实恢复 effect、需要迁移旧 durable 格式而不能兼容读取、需要重复发布/修改回复注册规则、压缩/记忆范围被意外牵入、同一验收失败连续局部尝试仍无根因。暂停扩大修改并给出证据，不以增加思考轮次或继续补丁掩盖未确定的合同。
 
-本次文档交付仅完成施工规格。上述小包、接口、回归新增和性能门均待实施；后续按包更新状态与证据，不能将文档存在视作代码完成。
+## 9. 第一批实施结果与证据 · 2026-09-13
+
+### 9.1 完成范围
+
+- **HL-00**：实施前已在 `codex/harness-lean-phase-a` 建立并推送检查点 `6a4e5f9`；构建身份由标准 manifest 校验，测试源码、构建产物与实际 Electron 进程不再混称一种证据。
+- **HL-01**：respond 路径不再因 Provider 返回 DSML 而升级 execute 权限；DSML/native 冲突、非法/未知/残缺封套全部 fail closed。流式扫描改为单次增量状态机和有界未决尾部，代码块、行内代码、转义内容保持惰性，完整参数不因分片、中文、emoji 或首尾空白损坏。
+- **HL-02**：删除宽泛的乐观验证捷径；Runtime 失败、拒绝、unknown effect、截断/清洗/错路径/错内容和不完整步骤证据不能被模型 pass 覆盖。仅保留单一只读步骤和精确 builtin write→read 两条窄结构正例；失败或重规划会撤回旧候选，同时保留真实工具/effect 证据。
+- **HL-03**：Provider usage 由一次接纳、冲突检测和完整累计账本负责；64 条诊断窗口不再决定总量。缺失缓存字段保持“未提供”，真实零值保持 0；TPS 只从同 provider/model 且计时覆盖完整的集合计算。每个实际传输 attempt 记录总耗时和 content/reasoning/tool-arguments 分项 TTFT；无 Provider usage 时仍保留传输计时而不编造 token。
+- **HL-04**：删除 Harness stage→假思考生产器；Renderer 只消费真实 model/tool/runtime activity。`append / replace / reset`、request/attempt/sequence、水位缺口、retry/abort/error/stop 闭合和 `tool_preparing`/真实执行边界已接通既有事件、SSE、Reducer 与历史投影。最终 TaskBook 回复可在权威结算前流式预览，引用修复和验证失败先撤回旧候选。系统提示词按实际 prepared request 每 run 投影一次；完成摘要、Normal/Compact、用量页脚、上下文三类投影和 SVG 图标保持同一实时/历史规则。
+
+本批没有删除状态机，也没有新增第三套 EventBus；`HL-05/08/11` 仍按上位任务书顺序待后续处理。尤其普通任务结束时的 EVOLVE/LLM CAPTURE 收敛到上下文压缩属于 HL-08，本批未提前修改。
+
+### 9.2 HA 回归矩阵落点
+
+| 用例组 | 主要自动化证据 | 结果 |
+| --- | --- | --- |
+| HA-01-01～05 | `stages/reply.test.ts`、`default-harness.test.ts`、`durable-kernel-guards.test.ts`、`run-stream-api.test.ts`、`history-activity.test.ts` | respond 无工具升级；非法转移双边拒绝；失败草稿不进入权威结果/历史 |
+| HA-01-06～10 | `llm/client.test.ts`、`dsml-tool-calls.test.ts`、`dsml-stream-scanner.test.ts` | 全切分点、混合协议、惰性 Markdown、重试隔离与 100,000 字符有界增量扫描通过 |
+| HA-02-01～05 | `stages/verify.test.ts`、`stages/verify/structural-write-read.test.ts` | 无关读取、错路径/内容、插件冒充、无关 effect、覆盖不全、顺序错误、截断/清洗、verifier 故障及 Runtime override 均不误通过 |
+| HA-02-06～08 | `stages/verify.test.ts`、`runner.test.ts`、`runner-continuation.test.ts`、`history-activity.test.ts` | 窄结构正例免 verifier；语义验证仍可用；失败/重启保留证据且不恢复旧成功候选 |
+| HA-03-01～02 | `llm/client.test.ts`、`stages/_shared.test.ts` | 非流式/结构化 JSON 共用一次传输计时边界，流式分项 TTFT 有记录；503 retry 与 stream usage fallback 使用独立 attempt |
+| HA-03-03～06 | `usage-state.test.ts`、`model-observability.test.ts`、`shared/run-usage.test.ts`、`assistant-turn.test.ts` | 65+ 累计、重复/冲突 usage、部分计时 TPS 隐藏、缓存未知/真实零、多字段对账通过 |
+| HA-03-07～08 | `model-lifecycle-accounting.test.ts`、`durable-kernel.test.ts`、`runner.test.ts`、`history-activity.test.ts` | abort/缺 usage 终态不造数；旧投影兼容读取且不重复累计 |
+| HA-04-01～04 | `run-event-handlers.test.ts`、`execute/model-transcript.test.ts`、`execute.test.ts`、`run-actions.test.ts` | delta/snapshot/reset、多工具交错、审批前准备、引用重试及所有终止出口闭合 |
+| HA-04-05～08 | `execute/final-reply.test.ts`、`model-observability.test.ts`、`renderer/api/run.test.ts`、`run-stream-api.test.ts`、`assistant-turn.test.ts`、`history-activity.test.ts`、Electron UI 验收 | 正文先于结算可见；实际提示词版本、SSE 身份、Normal/Compact、历史和 SVG 投影一致 |
+| HA-04-09～11 | `execute/model-transcript.test.ts`、`dsml-stream-scanner.test.ts`、`run-event-handlers.test.ts`、跨层 Electron 验收 | 100,000 分片状态有界；无 stage 标签冒充活动；Producer→SSE→Reducer→历史语义保持一致 |
+
+### 9.3 门禁、构建与真实桌面证据
+
+- 定向门：22 个测试文件、333 个用例通过；随后新增的 HA-02-02/03 与 stream fallback 夹具再单独执行 2 个文件、39 个用例通过。
+- `pnpm run verify:core`：仓库规范、28 个 TypeScript 工程及 151 个核心测试通过。
+- `pnpm run verify:full`：448 个测试文件，3126 个通过、1 个预期跳过；标准应用构建成功。
+- 新鲜构建：Electron `36.9.5`；构建输入/输出 digest 以最终 `packages/app/out/.littlesheep-build-fingerprint.json` 与交付结果为准，本文不复制一份可能漂移的构建身份；最终 `assert:app-build` 必须为 fresh。
+- 隔离数据根、受控本地 Provider 的真实 Electron UI 验收通过：本地 Runtime 反馈约 `260 ms`，真实模型活动约 `337 ms`；正文在 6 个字符时已出现在 streaming DOM 且早于 settlement；实际系统提示词展开 `1610` 字符；3 条目标活动行均含 SVG。该结果证明功能与先后关系，不足以宣称 P95 达标。
+- Electron Runtime 连续性验收通过 7 个场景、13 次 Provider 请求：跨重启回复、活动 run SSE、关闭到托盘恢复、暂停/恢复、强制重启续跑、模型热更新及中断 checkpoint 均通过。
+
+### 9.4 尚未宣称完成
+
+- 没有真实 Provider 新旧策略配对基准、30 次以上样本或 P50/P95，因此不声称固定加速比例、200 ms P95 已达标或发布 ready。
+- HL-05/06 的重复模型工作合并、HL-08 的压缩触发记忆沉淀、HL-10 的完整恢复矩阵、HL-11 的双驱动收敛及 HL-12 的灰度/发布验证仍按总任务书推进。

@@ -1,8 +1,10 @@
 # Harness 全面瘦身审计与实施任务书 · 2026-09-12
 
-最后更新：2026-09-12 17:35:19
+最后更新：2026-09-14 10:28:47
 
-状态：审计完成，实施待开始。本文不代表以下修复已经落地，也不构成发布批准。
+状态：审计完成；第一批 HL-00～HL-04、第二批 HL-05/06 与受影响 HL-10 已达到各自代码交付门。第三批 HL-08/09 与配套 HL-07/10 已完成设计、尚未实施；真实 Provider 配对性能、HL-11 与完整发布门仍待完成，本文不构成发布批准。
+
+实施记录：[第二批实施包：HL-05/HL-06 与配套 HL-10](harness-lean-phase-b-implementation-taskbook-2026-09-13.md)第 12 节。下一批执行规格：[第三批实施包：HL-08/HL-09 与配套 HL-07/HL-10](harness-lean-phase-c-implementation-taskbook-2026-09-14.md)，承接本文 D 阶段：先保证未压缩来源回查、显式记忆指令与压缩恢复，再退出逐任务自动沉淀。仅纳入压缩相关 HL-07 关键路径子集，HL-07 其余准备优化和 HL-11 不提前扩入。
 
 ## 1. 结论与工作边界
 
@@ -10,7 +12,7 @@
 
 下一步顺序：先封住错误通过和非法迁移，再建立可信的端到端观测，随后合并重复模型工作、拆开展示与执行策略，最后将自动记忆沉淀收敛到上下文压缩并收敛双驱动。优先服务于“不失忆”和“高效执行任务”，不以代码行数、状态数量、缓存命中率或 TPS 单项作为成功标准。
 
-本次只交付审计和任务书：读取当前源码、历史执行日志，运行现有定向测试和只读逻辑探针；未修改生产逻辑，未启动真实 Provider 任务，未改用户配置、权限或记忆，未重启应用。此前本地未提交改动全部保留。
+2026-09-12 的审计阶段只交付审计和任务书：读取当时源码、历史执行日志，运行既有定向测试和只读逻辑探针；当时未修改生产逻辑、未启动真实 Provider 任务，也未改用户配置、权限或记忆。第一批后续实施结果见第 9 节；不能用实施后的证据倒写或抹去审计基线。
 
 ### 1.1 审计基线与证据等级
 
@@ -52,6 +54,38 @@
 - **避免把等待搬到下一轮。** 在软阈值触发、具备一致性和资源余量时可提前准备压缩；硬上下文上限前仍可能需要等待。压缩成本不能消失，应减少重复调用、合并待压缩区间、显示准确状态，测量触发压缩那轮的延迟而非只看普通轮次。
 
 本次补查确认：现有 [session-continuity.ts](../../packages/runner/src/session-continuity.ts) 已在 `maybeCompact` 成功后调用 `registerSessionSummary` 和 `consolidateDailyMemory`；[compaction.ts](../../packages/session/src/compaction.ts) 保留原始 JSONL，并记录覆盖范围及来源 hash。这是收敛入口，但现有压缩输出仍是摘要文本，不能据此宣称已具备统一候选提炼/写入能力。不要新建另一套逐 run 学习调度系统。
+
+### 1.4 补充设计原则：Renderer 投影可观测活动，而非 Harness 控制状态
+
+本原则直接约束 HL-04，但不改变既定实施顺序、不扩大第一批范围，也不提前实施 HL-05/08/11。
+
+**Harness state controls execution. Runtime activity explains execution. Renderer projects activity, not state.**
+
+Harness 状态机继续负责合法迁移、权限与副作用边界、取消/恢复、验证及最终结算；Renderer 不与 `DECIDE / EXECUTE / VERIFY / EVOLVE` 等内部 stage 名称形成强耦合。内部状态机未来即使重构、合并或替换，稳定的活动投影合同仍应可复用。链路应当是：
+
+```text
+Harness state ──控制──> 实际 Model / Tool / Runtime activity
+                                  │
+                                  ▼
+                            Activity events
+                                  │
+                                  ▼
+                         Renderer projection
+```
+
+禁止将链路简化成 `Harness state → Renderer label`。不是每个内部 state 都必须产生 UI event；仅执行数毫秒确定性函数、没有用户可感知等待的 stage 可以完全不展示。UI 事件应说明“实际发生了什么”，而不是“系统位于哪里”。
+
+Renderer 主要消费三类真实活动：
+
+1. **Model activity**：只在模型请求真实发生时展示，例如模型正在思考、生成正文、生成工具参数或组织最终回复。Provider 有真实 reasoning/text/tool-argument stream 时使用真实增量。Runtime 阶段说明、固定状态文案和参数计数不得伪装成 `model_reasoning`。
+2. **Tool activity**：严格区分 `tool_preparing`、`tool_started`、`tool_completed`、`tool_failed`。参数尚未完整，或尚未通过 schema、权限、approval 时，只能显示准备/等待，不能提前显示“正在执行”。只有 ToolExecutionService 真正开始后才产生 started，取得真实结果后才产生 completed/failed。
+3. **Runtime activity**：仅投影确实存在且可能阻塞用户等待的 Runtime 工作，例如准备上下文、恢复执行、等待权限、检查修改结果、压缩上下文或可靠保存结果。活动来源必须是实际执行事实，不能机械映射 `DECIDE → 正在规划`、`VERIFY → 正在验证`、`FINALIZE → 正在完成`。
+
+长期稳定语义应覆盖 model request/stream、tool lifecycle、Runtime waiting/validating/recovering/compacting/persisting、reply preview/reset/settled 以及 run failed/aborted/completed。优先扩展既有 `ToolStreamEvent`、Runtime event 和 durable event 边界；本原则不要求新建第三套状态机或通用 EventBus。
+
+HL-04 的实施与验收必须逐项核对 `Producer → Harness/Runtime event → SSE → Renderer reducer → Activity row`：同一信息在整条链路中保持同一种语义；不得把 snapshot 当 delta 拼接，不得把 Runtime 状态标记成 model reasoning。实时与历史使用同一投影规则，重试、停止、错误和取消必须闭合旧活动，最终 preview 仍由权威 settlement 覆盖。
+
+以后新增任何运行状态前先回答：“用户看到它后，是否更清楚 Agent 此刻实际在做什么？”如果理由只有“内部进入了某个 stage”，原则上不展示；如果它说明模型正在生成参数、Runtime 正在等权限、工具正在读取文件、测试正在运行或结果正在可靠落盘，才是合适的 activity。
 
 ## 2. 等待究竟发生在哪里
 
@@ -239,7 +273,7 @@ CAPTURE 默认有确定性实现，当前样本只有毫秒级，无证据支持
 
 ## 5. 实施任务清单
 
-状态统一为“待开始”。P0 优先修正确性；P1 为下一轮主线；P2 在有基线和稳定契约后进行。S/M/L 表示相对修改规模，不是工期或性能承诺。每个任务完成后更新本节状态、证据与仍有的限制，不仅填测试数量。
+审计时本表状态统一为“待开始”；截至 2026-09-14，HL-00～06 及前两批受影响的 HL-10 已达到代码交付门，详见第 9/10 节和实施包交付记录。HL-08/09、配套 HL-07/10 的第三批目前仅完成设计，其余任务及真实性能/发布门不得连带标绿。P0 优先修正确性；P1 为主线；P2 在有基线和稳定契约后进行。S/M/L 表示相对修改规模，不是工期或性能承诺。每个任务完成后更新状态、证据与限制，不仅填测试数量。
 
 HL-00～HL-04 的可交接规格见 [第一批实施包](harness-lean-phase-a-implementation-taskbook-2026-09-12.md)：固定最小修复决定、文件边界、请求/流式合同、失败用例及逐包命令。第一批不扩大轻量准入，也不实施 HL-08。总任务书保留总体方向，实施包约束第一批具体范围；需要偏离时先记录理由并复核。
 
@@ -456,7 +490,7 @@ HL-00～HL-04 的可交接规格见 [第一批实施包](harness-lean-phase-a-im
 
 任一批出现权限回归、unknown effect 被重做、验证误通过、回复重复、消息/记忆丢失，停止扩大灰度，优先修复；性能对比失去相同任务/模型/上下文条件则重建基线，不以换模型、关推理或减少任务要求替代 Harness 优化。
 
-## 8. 本次已完成的验证与尚未证明的事项
+## 8. 审计阶段已完成的验证与当时尚未证明的事项
 
 已完成：
 
@@ -466,4 +500,28 @@ HL-00～HL-04 的可交接规格见 [第一批实施包](harness-lean-phase-a-im
 
 尚未完成：真实 Electron 收发/绘制剖析、当前加载构建确认、全量质量门、所有负例的持久回归测试、新旧瘦身策略真实配对基准、后台记忆可靠性验收。不能据此给出固定加速百分比、发布就绪或“质量不降低”的结论。
 
-下一步最小可执行包：**HL-00 + HL-01 + HL-02，随后 HL-03/HL-04**。先修复契约闭合与错误成功，再用可靠数据选择后续减法。
+审计阶段确定的下一步最小可执行包是 **HL-00 + HL-01 + HL-02，随后 HL-03/HL-04**。该批现已完成，结果如下；原始审计数据仍保留为实施前证据。
+
+## 9. 第一批实施状态更新 · 2026-09-13
+
+第一批已按既定顺序完成，没有提前实施 HL-05/08/11。详细代码范围、HA-01～04 用例落点、命令与构建身份见 [第一批实施任务书第 9 节](harness-lean-phase-a-implementation-taskbook-2026-09-12.md#9-第一批实施结果与证据--2026-09-13)。
+
+已成立的结论：
+
+- respond/DSML 边界、Runtime 证据优先验证、完整用量/attempt 账本以及 activity stream 的核心错误已修复；错误草稿、非法工具控制、unknown effect 和缺失缓存字段不再伪装成成功或零值。
+- Renderer 现在投影真实 model/tool/runtime activity，不直接投影 Harness stage；`tool_preparing` 与真实开始/完成严格分离，正文 preview 仍由权威 settlement 覆盖。
+- 标准全仓门禁通过 448 个测试文件、3126 个通过、1 个预期跳过；Electron 36.9.5 新鲜构建、增强 UI 验收和 7 场景 Runtime 连续性验收通过。
+- 受控桌面单样本中，本地 Runtime 反馈约 260 ms、真实模型活动约 337 ms，6 字符正文已在最终结算前显示；这只证明流式先后和可见性，不构成 P95 或新旧性能结论。
+
+第一批交付当时仍待后续（2026-09-13；最新状态见第 10 节）：
+
+- HL-05/06 继续减少真正的串行模型工作；HL-08 将普通任务末尾的自动语义沉淀收敛到上下文压缩；HL-10/11/12 完成恢复、双驱动收敛、配对基准和灰度发布。
+- 尚未进行真实 Provider 30 次以上配对样本，因此不宣称固定加速比例、初始 200 ms P95 目标已经达成或当前可发布。
+
+## 10. 第二批交付与第三批设计交接 · 2026-09-14
+
+第二批第 12 节已记录工作策略、bounded loop、受保护的 TaskBook 升级、规划/候选/证据减法及控制恢复的代码交付结果；离线/构建及隔离桌面功能门通过。真实 Provider 配对性能和正式启用/灰度未执行。本次第三批设计只核对该交付记录与当前入口，不重新执行第二批全仓/桌面门，也不把早期 HEAD 当成包含全部工作树的完成态。
+
+[第三批实施包](harness-lean-phase-c-implementation-taskbook-2026-09-14.md)给出 C00 → C10A → C08A/B/C → C09 → C07 → C08D → C10B → C12 顺序，明确 20 组 HC 验收与停止点：先保证短会话可回查、显式记住/纠正/忘记即时生效，再实现同次摘要与候选提炼、跨存储幂等与前驱 CAS，最后退出普通任务结束时的自动 EVOLVE/LLM CAPTURE 及等价后台学习。
+
+第三批保持 activity 而非 stage 的投影原则，纳入压缩等待、取消、用量及实时/历史一致性；不删除状态机、不新建通用调度平台，不提前实施 HL-11。第三批现为设计完成，生产实现、HC 门、桌面门、配对性能与发布均未执行。

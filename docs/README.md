@@ -1,6 +1,6 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-09-05 12:21:57
+最后更新：2026-09-14 10:28:47
 
 本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
 
@@ -64,8 +64,10 @@
 
 ### 当前主线
 
-- [Harness 全面瘦身审计与实施任务书 2026-09-12](taskbooks/harness-lean-audit-taskbook-2026-09-12.md)：当前工作树的全链路审计、真实等待分解、轻量验证/状态迁移/流式契约缺口，以及分批瘦身任务和质量、连续性、延迟验收门；审计已完成，实施待开始，不替代历史发布记录或授权发布。
-- [Harness 瘦身第一批实施包：HL-00～HL-04](taskbooks/harness-lean-phase-a-implementation-taskbook-2026-09-12.md)：供逐包执行的文件范围、接口语义、失败用例、验证命令和交接模板；先封住路由/验证问题，再修计时和实时投影，规格已细化、代码待实施。
+- [Harness 全面瘦身审计与实施任务书 2026-09-12](taskbooks/harness-lean-audit-taskbook-2026-09-12.md)：全链路审计、等待分解、分批实施与质量/连续性/延迟验收门；前两批达到代码交付门，第三批已设计，不替代性能/发布验收。
+- [Harness 瘦身第一批实施包：HL-00～HL-04](taskbooks/harness-lean-phase-a-implementation-taskbook-2026-09-12.md)：路由/验证、计时/用量及真实活动投影已实施；含第一批测试、构建与桌面证据。
+- [Harness 瘦身第二批实施包：HL-05/HL-06 与配套 HL-10](taskbooks/harness-lean-phase-b-implementation-taskbook-2026-09-13.md)：工作策略解耦、有界循环、TaskBook 升级、规划/候选/工具轮次减法及恢复门；代码及隔离桌面功能交付完成，真实配对性能/发布未验收。
+- [Harness 瘦身第三批实施包：HL-08/HL-09 与配套 HL-07/HL-10](taskbooks/harness-lean-phase-c-implementation-taskbook-2026-09-14.md)：压缩时统一沉淀、短会话回查、显式记忆、幂等恢复与上下文/等待减法；设计完成，尚未实施，含 20 组验收场景。
 - [Harness 开源底座评估 2026-09-02](reference/harness-open-source-evaluation-2026-09-02.md)：固定 DeepSeek Harness、Pi 与 nanoDeepSeekHarness 版本、许可证、供应链证据和 LS adapter 边界；当前决定保留自有 kernel、只吸收 durable event/session/stream 设计。
 - [OpenCode VS Code 对标记录 2026-08-13](reference/opencode-vscode-comparison-2026-08-13.md)：记录官方源码、许可证、LS 差异、已直接吸收的缓存/模型/审阅交互，以及待产品选择的虚拟化、评论和真正 VS Code 扩展路线。
 - [对话任务连续性 P0 专项任务书 2026-08-13](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md)：修复普通聊天未绑定 waiting-user Checkpoint、执行现场与附件/临时工具无法自然恢复、权限未按当前状态重验及最终回答断档；当前为最高优先级阻断项。
