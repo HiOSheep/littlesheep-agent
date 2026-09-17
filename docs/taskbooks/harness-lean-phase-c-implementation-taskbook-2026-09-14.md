@@ -1756,6 +1756,31 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 
 **round 23 计划：** ① 把 `model-observability` 里的 `applyMemoryContextWorkingSet` 调用切换为 `appendMemoryReleaseNotes`（保留旧函数待删）；② 更新依赖"已释放内容被删除"的测试（`memory-context-working-set.test.ts`、`runner/src/memory-v3.integration.test.ts` 的 "removes released atom content…"、HC-12 撤销屏障相关）为新语义——**内容保留但被标记为不得引用**；③ 跑全量门 + 两条 Electron 门（含 revocation 场景）；④ 长会话复测主对话命中率与 miss/调用，验证 append-only 是否兑现"前缀不再断裂"。
 
+### 10.92 第三十六轮（goal round 23：append-only 释放语义上线并全门通过；但本负载无收益）执行记录（2026-09-17）
+
+**实现（已提交 `b3c51b5`）：** `model-observability` 的调用点由 `applyMemoryContextWorkingSet` 切换为 `appendMemoryReleaseNotes`（旧函数保留待删）。真实请求形态已确认符合设计：既有 system 文本与 tool 结果**逐字保留**，尾部新增一条 `# Released Memory` 说明（`released_atoms: …` + "do not cite" + "append-only"），并置于 known-state 与运行态之前。
+
+**测试更新（新语义）：**
+- `memory-context-working-set.test.ts`：原先断言"释放后 system 不再含该原子文本" → 改为断言**原文保留**且尾部出现 `# Released Memory`（同时保留 `stablePrefix` 指纹不变、`dynamicSuffix` 变化、`memory_revision_changed` 等既有断言）；
+- `runner/src/memory-v3.integration.test.ts`："removes released atom content…" → 改为**保留原文 + 出现 release 说明**；重复出现次数断言由 `toHaveLength(1)` 放宽为 `≥1`（原文保留 + 重新召回各一次）。
+
+**门结果（全部通过）：** 全量 `vitest` **460 文件 / 3,278 通过 / 1 跳过**；`typecheck` 0；`check:repo` 33/33；**`verify:electron-continuity` ok:true**（8 个场景，含 `compaction_cancel`，跨重启连续性 `status: supported`）；**`verify:electron-ui-state-continuity` ok:true**。
+
+**长会话复测（8 任务 × 5 轮、共享会话、唯一话轮、0 失败）：**
+
+| 指标 | 基线（round 16 前） | **append-only 后** |
+| --- | --- | --- |
+| 主对话命中率 | 43.5% / 44.1% | **44.1% / 44.3%（持平）** |
+| 辅助阶段 | 62.2% / 62.4% | 62.3% / 61.6% |
+| 稳态 miss/调用 | ~968 | ~983（无显著变化） |
+
+**结论（如实）：** 这处改写被移除后**本负载的命中率没有变化**——因为该负载**几乎不发生记忆释放**。它属于"必要的清障"（消除了一个会在释放时打断整段历史的隐患，且零回归：全部门通过），但**不是本负载的主要断点**。
+
+**round 24 计划（改打高频断点）：** 转向**每个 run/每轮都会发生**的 system 提示词抖动：
+1. `memory-taskbook-refinement.ts:137` 在 **DECIDE 中途重写 `initialMemoryContext`**（同轮内 system 即变化）；
+2. `memoryRootIndex` / `initialMemoryContext` / `bootstrap` 每请求按 ctx 重建（记忆一更新即变化）。
+做法：**会话内冻结 system 消息**（首轮定稿后字节不变），把这些更新改为**尾部追加的 delta**（与 release 说明同一机制）。预期这类改写每轮都触发，因此**应当**在复测中看到主对话命中率明显上升；若仍不动，则说明断点另有其处，需要按"逐字节对比相邻请求最长公共前缀"来精确定位。
+
 ### 10.14 第七轮（HC-12 撤销屏障）新增证据（2026-09-16）
 
 **问题（先写失败用例）：** v3 写入路径的等值/相似候选只按 branch/scope/`status='active'` 选取；被纠正（`epistemicStatus`/`resolutionStatus = superseded`）或删除（`status = tombstone`）的 atom 仍可能是 active 记录。后续 maintenance（压缩候选）证据即使引用同一 `conversation-source:`，也会创建新 atom 或强化旧 atom，从而复活已被用户忘记/纠正的事实。`memory-service-v3.test.ts` 的新用例在修复前返回 `created`。
