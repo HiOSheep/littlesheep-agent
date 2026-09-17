@@ -5,10 +5,12 @@ import {
   messageClassFromActivity,
   type AgentActivity,
   type Classification,
+  type ClassificationReasonCode,
   type MessageClass,
 } from '@littlesheep/types';
 
 export interface Rule {
+  reasonCode: ClassificationReasonCode;
   pattern: RegExp;
   activity: AgentActivity;
   /** Legacy inspection field; activity is authoritative. */
@@ -31,10 +33,20 @@ const MEMORY_RECALL_PATTERNS: readonly RegExp[] = [
 
 /** Ordered list of rules. First match wins. */
 const RULES: Rule[] = [
+  // A polite greeting may prefix a real request; do not let the greeting
+  // erase the executable clause that follows it.
+  {
+    reasonCode: 'action_request',
+    pattern: /^(?:你好|您好|hi|hello|嗨|hey|哈喽)[，,。.!！\s]+.*(?:(?:帮我|请你|麻烦你|替我).{0,12}(?:写|做|制作|开发|搭建|生成|修复|实现|重构|调试|测试|运行|部署|安装|删除|创建|修改|更新|配置|排查)|\b(?:write|create|fix|build|implement|update|modify|delete|run|test|debug|install|deploy|refactor|generate|make)\b)/i,
+    activity: 'execute',
+    confidence: 0.9,
+    reason: 'greeting followed by action request',
+  },
   // Greetings → chat (high confidence).
   // NOTE: no \b — it's an ASCII word boundary and misbehaves after CJK chars
   // (e.g. "你好" alone wouldn't match). The ^ anchor + alternation is enough.
   {
+    reasonCode: 'greeting',
     pattern: /^(你好|您好|hi|hello|嗨|hey|哈喽|早上好|下午好|晚上好|在吗|在不在)/i,
     activity: 'respond',
     confidence: 0.9,
@@ -43,6 +55,7 @@ const RULES: Rule[] = [
   // Confirmations / acknowledgements → chat.
   // The agent should understand these from context, not ask the user.
   {
+    reasonCode: 'confirmation',
     pattern: /^(对|是的|嗯|好|好的|OK|okay|yes|yeah|没错|对吧|明白|了解|知道|收到|懂了|嗯嗯|行|可以)$/i,
     activity: 'respond',
     confidence: 0.85,
@@ -51,6 +64,7 @@ const RULES: Rule[] = [
   // Explicit copy/output constraints are still conversation. Words such as
   // "测试" or "校准" describe the content, not a request to run tools.
   {
+    reasonCode: 'direct_response_constraint',
     pattern: /(?:请|麻烦)?(?:只|仅)(?:回复|回答|输出|返回|说)|\b(?:reply|respond|answer|output|return|say)\s+only\b/i,
     activity: 'respond',
     confidence: 0.98,
@@ -60,14 +74,32 @@ const RULES: Rule[] = [
   // It must never become a generic clarification merely because the router
   // model overlooks an available prior-turn anchor.
   {
+    reasonCode: 'memory_recall',
     pattern: memoryRecallPattern(),
     activity: 'respond',
     confidence: 0.98,
     reason: 'memory recall question',
   },
+  // Describing an operation is not authority to perform it. Keep this ahead
+  // of code/file/action signals so quoted command names cannot trigger tools.
+  {
+    reasonCode: 'explanation_request',
+    pattern: /(?:解释|说明|介绍|讲解|分析).{0,48}(?:命令|工具|代码|脚本)|\b(?:explain|describe|review|analy[sz]e)\b.{0,64}\b(?:command|tool|code|script)\b/i,
+    activity: 'respond',
+    confidence: 0.94,
+    reason: 'explanation request',
+  },
+  {
+    reasonCode: 'negated_action',
+    pattern: /^(?:(?:请)?(?:不要|别|无需|不用)|(?:please\s+)?(?:do\s+not|don't|dont|no\s+need\s+to))\s*(?:执行|运行|修改|写入|删除|创建|调用|使用|run|execute|modify|write|delete|create|call|use)/i,
+    activity: 'respond',
+    confidence: 0.95,
+    reason: 'negated action',
+  },
   // An explicit imperative to use a named tool is unambiguously executable
   // and does not need a separate classifier model call.
   {
+    reasonCode: 'explicit_tool_instruction',
     pattern: EXPLICIT_TOOL_INSTRUCTION_PATTERN,
     activity: 'execute',
     confidence: 0.96,
@@ -75,6 +107,7 @@ const RULES: Rule[] = [
   },
   // Code blocks → problem
   {
+    reasonCode: 'code_context',
     pattern: /```/,
     activity: 'execute',
     confidence: 0.75,
@@ -82,6 +115,7 @@ const RULES: Rule[] = [
   },
   // File paths (Unix /xxx or Windows X:\) → problem
   {
+    reasonCode: 'file_context',
     pattern: /(^|\s)(\/[\w.\-]+)+\/|[A-Za-z]:\\/,
     activity: 'execute',
     confidence: 0.75,
@@ -92,6 +126,7 @@ const RULES: Rule[] = [
   // conversation before the broad action-verb rule. Explicit requests still
   // fall through to the problem rule below.
   {
+    reasonCode: 'status_question',
     pattern: /^(?!.*(?:帮我|请你|麻烦你|替我|给我|帮忙))(?=.*(?:是不是|是否|有没有|有没|好像|似乎|看起来|还没|尚未|已经|配置好|实现好|完成了|启用了吗|接入了吗))(?:(?=.*(?:吗|呢|吧|[?？])$)|(?=.*(?:是不是|是否|有没有|有没|好像|似乎|还没|尚未))).+$/i,
     activity: 'respond',
     confidence: 0.9,
@@ -99,13 +134,15 @@ const RULES: Rule[] = [
   },
   // Action verbs (Chinese + English) → problem
   {
-    pattern: /(帮我|帮我写|写一个|写个|做一个|做个|再做|制作|开发|搭建|生成|修复|实现|重构|调试|debug|测试|运行|部署|安装|删除|创建|修改|更新|配置|排查|诊断)/i,
+    reasonCode: 'action_request',
+    pattern: /(帮我|帮我写|写一个|写个|做一个|做个|再做|制作|开发|搭建|生成|修复|实现|重构|调试|测试|运行|部署|安装|删除|创建|修改|更新|配置|排查|诊断)|\b(?:write|create|fix|build|implement|update|modify|delete|run|test|debug|install|deploy|refactor|generate|make)\b/i,
     activity: 'execute',
     confidence: 0.8,
     reason: 'action verb',
   },
   // Error/stacktrace keywords → problem
   {
+    reasonCode: 'error_report',
     pattern: /(error|exception|stack trace|报错|错误|失败|崩溃|panic)/i,
     activity: 'execute',
     confidence: 0.75,
@@ -115,6 +152,7 @@ const RULES: Rule[] = [
   // Questions are conversational — the agent should answer or continue the dialogue,
   // not ask the user "what do you want me to do?"
   {
+    reasonCode: 'question',
     pattern: /^[^。.!？！?]*[?？]$/,
     activity: 'respond',
     confidence: 0.7,
@@ -137,6 +175,7 @@ export function classifyByRules(text: string): Classification | null {
         type: messageClassFromActivity(rule.activity),
         confidence: rule.confidence,
         source: 'rules',
+        reasonCode: rule.reasonCode,
         reason: rule.reason,
       };
     }

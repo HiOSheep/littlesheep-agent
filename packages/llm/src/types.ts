@@ -61,6 +61,17 @@ export interface ToolCall {
   function: { name: string; arguments: string };
 }
 
+export interface ChatTransportMetrics {
+  durationMs: number;
+  requestElapsedMs: number;
+  transportAttempt: number;
+  observedAttemptCount: number;
+  ttftMs?: number;
+  contentTtftMs?: number;
+  reasoningTtftMs?: number;
+  toolArgumentsTtftMs?: number;
+}
+
 /** Non-streaming chat response. */
 export interface ChatResponse {
   /** Text content (empty when only tool_calls returned). */
@@ -75,11 +86,31 @@ export interface ChatResponse {
     completionTokens: number;
     totalTokens?: number;
     cachedPromptTokens?: number;
+    /** Input tokens that missed the provider cache; disjoint from cachedPromptTokens. */
+    uncachedPromptTokens?: number;
     cacheWriteTokens?: number;
     reasoningTokens?: number;
+    /** Successful physical HTTP attempt duration; excludes retry backoff. */
+    durationMs?: number;
+    /** Whole logical call duration, including retry and backoff. */
+    requestElapsedMs?: number;
+    /** Physical attempt that supplied this response, starting at 1. */
+    transportAttempt?: number;
+    /** Physical attempts observed for the logical call. */
+    observedAttemptCount?: number;
+    /** Dispatch-to-first streamed model signal; unavailable for non-streaming calls. */
+    ttftMs?: number;
+    /** Dispatch-to-first visible text delta. */
+    contentTtftMs?: number;
+    /** Dispatch-to-first reasoning delta. */
+    reasoningTtftMs?: number;
+    /** Dispatch-to-first tool argument/name delta. */
+    toolArgumentsTtftMs?: number;
   };
   /** Raw model id echoed back. */
   model?: string;
+  /** Transport timing remains available even when the Provider omits token usage. */
+  transport?: ChatTransportMetrics;
 }
 
 /** A single chunk in a stream. */
@@ -93,6 +124,11 @@ export interface StreamChunk {
   toolCallName?: string;
   toolCallArgsDelta?: string;
   finishReason?: ChatResponse['finishReason'];
+  /** Physical transport identity supplied by clients that own the HTTP retry loop. */
+  transportAttempt?: number;
+  /** Monotonic sequence within one physical attempt. */
+  sequence?: number;
+  operation?: 'append' | 'replace' | 'reset';
 }
 
 /** Request to the embeddings endpoint. */

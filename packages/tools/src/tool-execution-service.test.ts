@@ -172,12 +172,13 @@ describe('ToolExecutionService', () => {
 
   it('passes one invocation-scoped approval to the tool', async () => {
     const approve = vi.fn(async () => true);
+    const events: ToolStreamEvent[] = [];
     const execute = vi.fn(async (_input: unknown, context: ToolContext) => ({
       callId: '', ok: context.approvalGranted === true,
     } satisfies ToolResult));
     const service = createService([
       registration(tool('guarded', execute, { requiresApproval: true }), 'builtin'),
-    ], { toolContext: { approve } });
+    ], { toolContext: { approve }, onToolEvent: (event) => events.push(event) });
 
     const results = await service.executeBatch([
       { callId: 'approved', name: 'guarded', input: { value: 'x' } },
@@ -186,6 +187,15 @@ describe('ToolExecutionService', () => {
     expect(results.get(0)?.ok).toBe(true);
     expect(approve).toHaveBeenCalledTimes(1);
     expect(execute.mock.calls[0]?.[1]?.approvalGranted).toBe(true);
+    expect(events.map((event) => [event.type, event.activityStatus])).toEqual([
+      ['runtime_activity', 'running'],
+      ['runtime_activity', 'done'],
+      ['tool_start', undefined],
+      ['tool_end', undefined],
+    ]);
+    expect(events[0]).toMatchObject({
+      activityKind: 'runtime_waiting_approval', callId: 'approved', name: 'guarded',
+    });
   });
 
   it('interrupts approval waiting without invoking an already-aborted approver', async () => {

@@ -229,6 +229,8 @@ export const MemoryConfigSchema = z.object({
   llmCapture: z.boolean().default(false),
   /** EVOLVE calls the model only when the verified run has reusable value by default. */
   llmEvolve: z.enum(['adaptive', 'always', 'never']).default('adaptive'),
+  /** Automatic semantic memory is distilled only when context compaction actually runs. */
+  autoMemoryPolicy: z.enum(['compaction', 'legacy-per-run']).default('compaction'),
   /** Embedding stays host-local. Future remote adapters require a separate egress contract. */
   embeddingMode: z.literal('local').default('local'),
 });
@@ -262,6 +264,8 @@ export const CompactionConfigSchema = z.object({
   threshold: z.number().int().positive().default(100),
   /** Compaction: messages to keep unsummarized. */
   keepRecent: z.number().int().positive().default(20),
+  /** Run soft automatic compaction after the result is published instead of blocking the run. */
+  background: z.boolean().default(false),
 });
 
 /** Session config. */

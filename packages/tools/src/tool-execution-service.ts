@@ -206,6 +206,8 @@ export class ToolExecutionService {
       }
 
       const policy = resolveToolExecutionPolicy(registration.tool, input, this.options.toolContext);
+      record.resourceKeys = [...new Set(policy.resources.map((resource) => `${resource.mode}:${resource.key}`))].sort();
+      this.publishRecord(record, retained);
       const parallelContractError = validateParallelStepContract(request, policy);
       if (parallelContractError) {
         immediate.set(index, this.finishWithoutExecution(
@@ -376,6 +378,16 @@ export class ToolExecutionService {
     }
     try {
       const approvalSignal = signal ?? this.options.toolContext.signal;
+      this.emitToolEvent({
+        type: 'runtime_activity',
+        visibility: 'progress',
+        phaseId: `tool-approval:${record.callId}`,
+        activityKind: 'runtime_waiting_approval',
+        activityStatus: 'running',
+        callId: record.callId,
+        name: tool.name,
+        summary: `正在等待 ${tool.name} 的权限批准`,
+      });
       const approved = await this.withApprovalLock(approvalSignal, () => waitForAbort(
         Promise.resolve().then(() => approve(tool.name, projectToolInput(tool, input))),
         approvalSignal,
@@ -385,6 +397,16 @@ export class ToolExecutionService {
       record.approval.decidedAt = this.timestamp();
       record.approval.reason = approved ? undefined : 'denied by approval gate';
       this.publishRecord(record, retained);
+      this.emitToolEvent({
+        type: 'runtime_activity',
+        visibility: 'progress',
+        phaseId: `tool-approval:${record.callId}`,
+        activityKind: 'runtime_waiting_approval',
+        activityStatus: approved ? 'done' : 'failed',
+        callId: record.callId,
+        name: tool.name,
+        summary: approved ? `${tool.name} 的权限已批准` : `${tool.name} 的权限未获批准`,
+      });
       return approved
         ? { ok: true, granted: true }
         : {
@@ -398,6 +420,17 @@ export class ToolExecutionService {
       record.approval.decidedAt = this.timestamp();
       record.approval.reason = boundedError(error);
       this.publishRecord(record, retained);
+      const aborted = error instanceof ToolControlError && error.status === 'aborted';
+      this.emitToolEvent({
+        type: 'runtime_activity',
+        visibility: 'progress',
+        phaseId: `tool-approval:${record.callId}`,
+        activityKind: 'runtime_waiting_approval',
+        activityStatus: aborted ? 'aborted' : 'failed',
+        callId: record.callId,
+        name: tool.name,
+        summary: aborted ? `${tool.name} 的权限等待已取消` : `${tool.name} 的权限批准失败`,
+      });
       if (error instanceof ToolControlError && error.status === 'aborted') {
         return {
           ok: false,

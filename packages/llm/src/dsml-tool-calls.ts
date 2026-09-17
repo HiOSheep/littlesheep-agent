@@ -1,6 +1,6 @@
 import type { ToolCall } from './types.js';
 
-const DSML_MARKER = /｜{1,2}\s*DSML\s*｜{1,2}/gu;
+const DSML_MARKER = /\s*(?:[｜|]\s*){1,2}DSML\s*(?:[｜|]\s*){1,2}/giu;
 const CALLS_ENVELOPE = /^([\s\S]*?)(<｜DSML｜\s*(?:calls|tool_calls)\s*>([\s\S]*)<\/｜DSML｜\s*(?:calls|tool_calls)\s*>)\s*$/u;
 const INVOKE = /<｜DSML｜\s*invoke\s+name="([^"]+)"\s*>([\s\S]*?)<\/｜DSML｜\s*invoke\s*>/gu;
 const PARAMETER = /<｜DSML｜\s*parameter\s+name="([^"]+)"\s+string="(true|false)"\s*>([\s\S]*?)<\/｜DSML｜\s*parameter\s*>/gu;
@@ -24,8 +24,12 @@ export function parseDsmlToolCalls(
   const canonical = content.replace(DSML_MARKER, '｜DSML｜');
   const envelope = CALLS_ENVELOPE.exec(canonical);
   if (!envelope) return undefined;
+  const envelopeOffset = (envelope[1] ?? '').length;
+  if (isEscapedAt(canonical, envelopeOffset) || isInsideMarkdownCode(canonical, envelopeOffset)) {
+    return undefined;
+  }
   const visibleContent = (envelope[1] ?? '').trim();
-  if (visibleContent.includes('｜DSML｜')) return undefined;
+  if (containsUnquotedDsmlControlMarkup(visibleContent)) return undefined;
   const body = envelope[3] ?? '';
   const calls: ToolCall[] = [];
   let consumed = '';
@@ -40,7 +44,7 @@ export function parseDsmlToolCalls(
       parameterConsumed += parameter[0];
       const key = decodeXml(parameter[1] ?? '').trim();
       if (!key || Object.prototype.hasOwnProperty.call(args, key)) return undefined;
-      const raw = decodeXml(parameter[3] ?? '').trim();
+      const raw = decodeXml(parameter[3] ?? '');
       if (parameter[2] === 'true') {
         args[key] = raw;
       } else {
@@ -56,6 +60,98 @@ export function parseDsmlToolCalls(
   }
   if (calls.length === 0 || stripWhitespace(body) !== stripWhitespace(consumed)) return undefined;
   return { content: visibleContent, toolCalls: calls };
+}
+
+/** Detect provider control markup while keeping quoted examples inert. */
+export function containsUnquotedDsmlControlMarkup(value: string): boolean {
+  if (!value.includes('DSML')) return false;
+  const canonical = value.replace(DSML_MARKER, '｜DSML｜');
+  const marker = /<｜DSML｜\s*(?:calls|tool_calls|invoke|parameter)\b/giu;
+  const quotedEnvelopes = quotedDsmlEnvelopeRanges(canonical);
+  for (const match of canonical.matchAll(marker)) {
+    const offset = match.index ?? -1;
+    if (quotedEnvelopes.some((range) => offset >= range.start && offset < range.end)) continue;
+    if (offset >= 0 && !isEscapedAt(canonical, offset) && !isInsideMarkdownCode(canonical, offset)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Find a real control marker from a bounded search offset. */
+export function findUnquotedDsmlControlStart(value: string, fromIndex = 0): number {
+  if (!value.includes('DSML', Math.max(0, fromIndex - 16))) return -1;
+  const marker = /<\s*(?:[｜|]\s*){1,2}DSML\s*(?:[｜|]\s*){1,2}\s*(?:calls|tool_calls)\b/giu;
+  marker.lastIndex = Math.max(0, fromIndex);
+  for (let match = marker.exec(value); match; match = marker.exec(value)) {
+    const offset = match.index;
+    if (!isEscapedAt(value, offset) && !isInsideMarkdownCode(value, offset)) return offset;
+  }
+  return -1;
+}
+
+function quotedDsmlEnvelopeRanges(value: string): Array<{ start: number; end: number }> {
+  const ranges: Array<{ start: number; end: number }> = [];
+  const envelope = /<｜DSML｜\s*(?:calls|tool_calls)\s*>[\s\S]*?<\/｜DSML｜\s*(?:calls|tool_calls)\s*>/giu;
+  for (const match of value.matchAll(envelope)) {
+    const start = match.index ?? -1;
+    if (start >= 0 && (isEscapedAt(value, start) || isInsideMarkdownCode(value, start))) {
+      ranges.push({ start, end: start + match[0].length });
+    }
+  }
+  return ranges;
+}
+
+function isEscapedAt(value: string, offset: number): boolean {
+  let slashCount = 0;
+  for (let index = offset - 1; index >= 0 && value[index] === '\\'; index -= 1) slashCount += 1;
+  return slashCount % 2 === 1;
+}
+
+function isInsideMarkdownCode(value: string, offset: number): boolean {
+  let fence: { char: '`' | '~'; length: number } | undefined;
+  let inlineTicks = 0;
+  let lineStart = true;
+
+  for (let index = 0; index < offset;) {
+    const character = value[index];
+    if (character === '\n') {
+      lineStart = true;
+      index += 1;
+      continue;
+    }
+    if (lineStart) {
+      let markerOffset = index;
+      while (markerOffset < offset && markerOffset - index < 3 && value[markerOffset] === ' ') markerOffset += 1;
+      const markerCharacter = value[markerOffset];
+      if (markerCharacter === '`' || markerCharacter === '~') {
+        const markerLength = repeatedCharacterLength(value, markerOffset, markerCharacter);
+        if (markerLength >= 3) {
+          if (!fence) fence = { char: markerCharacter, length: markerLength };
+          else if (fence.char === markerCharacter && markerLength >= fence.length) fence = undefined;
+          index = markerOffset + markerLength;
+          lineStart = false;
+          continue;
+        }
+      }
+      lineStart = false;
+    }
+    if (!fence && character === '`') {
+      const markerLength = repeatedCharacterLength(value, index, '`');
+      if (inlineTicks === 0) inlineTicks = markerLength;
+      else if (inlineTicks === markerLength) inlineTicks = 0;
+      index += markerLength;
+      continue;
+    }
+    index += 1;
+  }
+  return fence !== undefined || inlineTicks > 0;
+}
+
+function repeatedCharacterLength(value: string, offset: number, character: string): number {
+  let length = 0;
+  while (value[offset + length] === character) length += 1;
+  return length;
 }
 
 function stripWhitespace(value: string): string {

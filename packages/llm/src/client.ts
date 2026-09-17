@@ -12,7 +12,14 @@ import type {
 } from './types.js';
 import { LlmError } from './types.js';
 import { retryWithBackoff, DEFAULT_RETRY, type RetryOptions } from './retry.js';
-import { parseDsmlToolCalls } from './dsml-tool-calls.js';
+import {
+  attachTransportUsage,
+  monotonicNow,
+  recordFirstStreamSignal,
+  type TransportTiming,
+} from './transport-timing.js';
+import { containsUnquotedDsmlControlMarkup, parseDsmlToolCalls } from './dsml-tool-calls.js';
+import { createIncrementalDsmlControlScanner } from './dsml-stream-scanner.js';
 
 export interface OpenAIClientOptions {
   baseURL: string;
@@ -54,6 +61,7 @@ interface OpenAIUsage {
   completion_tokens?: number;
   total_tokens?: number;
   prompt_cache_hit_tokens?: number;
+  prompt_cache_miss_tokens?: number;
   cache_creation_input_tokens?: number;
   prompt_tokens_details?: { cached_tokens?: number };
   completion_tokens_details?: { reasoning_tokens?: number };
@@ -92,7 +100,7 @@ interface OpenAIEmbeddingResponse {
   usage?: { prompt_tokens: number };
 }
 
-interface ManagedResponse {
+interface ManagedResponse extends TransportTiming {
   response: Response;
   cleanup: () => void;
 }
@@ -155,16 +163,19 @@ export class OpenAIClient implements LlmClient {
 
   /** Non-streaming chat. */
   async chat(req: ChatRequest): Promise<ChatResponse> {
-    return retryWithBackoff(
+    const logicalStartedAtMs = monotonicNow();
+    let transportAttempt = 0;
+    const response = await retryWithBackoff(
       async () => {
-        const managed = await this.callApi(req, false);
+        const managed = await this.callApi(req, false, { transportAttempt: ++transportAttempt });
         try {
           const json = (await managed.response.json()) as OpenAIResponse;
           const choice = json.choices[0];
           // Transient provider hiccup (empty choices) → retryable so retryWithBackoff
           // gets a chance instead of killing the call immediately.
           if (!choice) throw new LlmError(500, 'No choices in response', true);
-          return this.parseChoice(choice, json, req);
+          const parsed = this.parseChoice(choice, json, req);
+          return attachTransportUsage(parsed, managed, transportAttempt, logicalStartedAtMs);
         } finally {
           managed.cleanup();
         }
@@ -172,19 +183,36 @@ export class OpenAIClient implements LlmClient {
       this.retry,
       req.signal,
     );
+    return response;
   }
-
   /** Streaming chat. Aggregates chunks, calls onDelta for each. */
   async chatStream(req: ChatRequest, onDelta: (chunk: StreamChunk) => void): Promise<ChatResponse> {
-    let attempt = 0;
-    return retryWithBackoff(
+    const logicalStartedAtMs = monotonicNow();
+    let retryRound = 0;
+    let transportAttempt = 0;
+    const response = await retryWithBackoff(
       async () => {
-        if (attempt > 0) onDelta({ type: 'reset' });
-        attempt += 1;
-        const managed = await this.callStreamApiWithUsageFallback({ ...req, stream: true });
+        retryRound += 1;
+        const managed = await this.callStreamApiWithUsageFallback(
+          { ...req, stream: true },
+          () => ++transportAttempt,
+        );
+        let sequence = 0;
+        const emit = (chunk: StreamChunk) => onDelta({
+          ...chunk,
+          transportAttempt: managed.attempt,
+          sequence: ++sequence,
+          operation: streamChunkOperation(chunk),
+        });
+        if (retryRound > 1) emit({ type: 'reset' });
         try {
-          const { content, toolCalls, finishReason, model, usage, reasoningContent } = await this.parseStream(managed.response, onDelta, req);
-          return { content, toolCalls, finishReason, model, usage, reasoningContent };
+          const parsed = await this.parseStream(
+            managed.response,
+            emit,
+            req,
+            (kind) => recordFirstStreamSignal(managed, kind),
+          );
+          return attachTransportUsage(parsed, managed, transportAttempt, logicalStartedAtMs);
         } finally {
           managed.cleanup();
         }
@@ -192,8 +220,8 @@ export class OpenAIClient implements LlmClient {
       this.retry,
       req.signal,
     );
+    return response;
   }
-
   /** Generate text embeddings via the /embeddings endpoint. */
   async embed(req: EmbedRequest): Promise<EmbedResponse> {
     return retryWithBackoff(
@@ -249,14 +277,22 @@ export class OpenAIClient implements LlmClient {
       req.signal,
     );
   }
-
   /** Call the chat/completions endpoint. */
-  private async callStreamApiWithUsageFallback(req: ChatRequest): Promise<ManagedResponse> {
+  private async callStreamApiWithUsageFallback(
+    req: ChatRequest,
+    nextAttempt: () => number,
+  ): Promise<ManagedResponse> {
     try {
-      return await this.callApi(req, true, { includeStreamUsage: true });
+      return await this.callApi(req, true, {
+        includeStreamUsage: true,
+        transportAttempt: nextAttempt(),
+      });
     } catch (err) {
       if (err instanceof LlmError && (err.status === 400 || err.status === 422)) {
-        return this.callApi(req, true, { includeStreamUsage: false });
+        return this.callApi(req, true, {
+          includeStreamUsage: false,
+          transportAttempt: nextAttempt(),
+        });
       }
       throw err;
     }
@@ -265,7 +301,7 @@ export class OpenAIClient implements LlmClient {
   private async callApi(
     req: ChatRequest,
     stream: boolean,
-    opts: { includeStreamUsage?: boolean } = {},
+    opts: { includeStreamUsage?: boolean; transportAttempt: number },
   ): Promise<ManagedResponse> {
     const body = buildOpenAICompatibleChatCompletionsBody(req, stream, opts);
 
@@ -286,6 +322,7 @@ export class OpenAIClient implements LlmClient {
       else req.signal.addEventListener('abort', onAbort, { once: true });
     }
 
+    const startedAtMs = monotonicNow();
     try {
       const res = await this.fetchFn(`${this.baseURL}/chat/completions`, {
         method: 'POST',
@@ -303,13 +340,12 @@ export class OpenAIClient implements LlmClient {
         if (this.retry.retryableStatuses.includes(res.status)) retryable = true;
         throw new LlmError(res.status, errMsg, retryable);
       }
-      return { response: res, cleanup };
+      return { response: res, cleanup, attempt: opts.transportAttempt, startedAtMs };
     } catch (err) {
       cleanup();
       throw err;
     }
   }
-
   /** Parse a non-streaming choice into ChatResponse. */
   private parseChoice(choice: OpenAIChoice, raw: OpenAIResponse, request: ChatRequest): ChatResponse {
     let toolCalls: ToolCall[] = (choice.message.tool_calls ?? []).map((tc) => ({
@@ -318,11 +354,16 @@ export class OpenAIClient implements LlmClient {
       function: { name: tc.function.name, arguments: tc.function.arguments },
     }));
     let content = choice.message.content ?? '';
+    if (toolCalls.length > 0 && containsUnquotedDsmlControlMarkup(content)) {
+      throw new LlmError(502, 'Provider returned conflicting native and DSML tool calls', false);
+    }
     if (toolCalls.length === 0) {
       const recovered = parseDsmlToolCalls(content, requestToolNames(request));
       if (recovered) {
         toolCalls = recovered.toolCalls;
         content = recovered.content;
+      } else if (containsUnquotedDsmlControlMarkup(content)) {
+        throw new LlmError(502, 'Provider returned invalid or unauthorized DSML tool markup', false);
       }
     }
     return {
@@ -340,6 +381,7 @@ export class OpenAIClient implements LlmClient {
     res: Response,
     onDelta: (chunk: StreamChunk) => void,
     request: ChatRequest,
+    onFirstSignal: (kind: 'content' | 'reasoning' | 'tool_arguments') => void,
   ): Promise<{
     content: string;
     toolCalls: ToolCall[];
@@ -360,6 +402,7 @@ export class OpenAIClient implements LlmClient {
     let usage: ChatResponse['usage'];
     let dsmlContentMode = false;
     let dsmlToolNamePublished = false;
+    const dsmlScanner = createIncrementalDsmlControlScanner();
 
     while (true) {
       const { done, value } = await reader.read();
@@ -386,8 +429,9 @@ export class OpenAIClient implements LlmClient {
         const delta = chunk.choices[0]?.delta;
         const fr = chunk.choices[0]?.finish_reason;
         if (delta?.content) {
+          onFirstSignal('content');
           content += delta.content;
-          const dsmlStart = dsmlControlStart(content);
+          const dsmlStart = dsmlContentMode ? -1 : dsmlScanner.append(delta.content);
           if (!dsmlContentMode && dsmlStart >= 0) {
             dsmlContentMode = true;
             onDelta({ type: 'reset' });
@@ -395,7 +439,7 @@ export class OpenAIClient implements LlmClient {
             if (visiblePrefix) onDelta({ type: 'delta', delta: visiblePrefix });
           }
           if (dsmlContentMode) {
-            const name = dsmlInvokeName(content);
+            const name = dsmlToolNamePublished ? undefined : dsmlInvokeName(content);
             onDelta({
               type: 'tool_call_delta',
               toolCallIndex: 0,
@@ -408,10 +452,12 @@ export class OpenAIClient implements LlmClient {
           }
         }
         if (delta?.reasoning_content) {
+          onFirstSignal('reasoning');
           reasoningContent += delta.reasoning_content;
           onDelta({ type: 'reasoning_delta', delta: delta.reasoning_content });
         }
         if (delta?.tool_calls) {
+          onFirstSignal('tool_arguments');
           for (const tc of delta.tool_calls) {
             const existing = toolCallMap.get(tc.index) ?? { id: '', name: '', args: '' };
             if (tc.id) existing.id = tc.id;
@@ -435,6 +481,10 @@ export class OpenAIClient implements LlmClient {
       type: 'function' as const,
       function: { name: tc.name, arguments: tc.args },
     }));
+    if (toolCalls.length > 0 && containsUnquotedDsmlControlMarkup(content)) {
+      onDelta({ type: 'reset' });
+      throw new LlmError(502, 'Provider returned conflicting native and DSML tool calls', false);
+    }
     if (toolCalls.length === 0) {
       const recovered = parseDsmlToolCalls(content, requestToolNames(request));
       if (recovered) {
@@ -446,6 +496,9 @@ export class OpenAIClient implements LlmClient {
           onDelta({ type: 'reset' });
           if (content) onDelta({ type: 'delta', delta: content });
         }
+      } else if (containsUnquotedDsmlControlMarkup(content)) {
+        onDelta({ type: 'reset' });
+        throw new LlmError(502, 'Provider returned invalid or unauthorized DSML tool markup', false);
       }
     }
     onDelta({ type: 'done', finishReason });
@@ -479,8 +532,15 @@ function parseUsage(usage: OpenAIUsage | null | undefined): ChatResponse['usage'
   const promptTokens = usage.prompt_tokens ?? 0;
   const completionTokens = usage.completion_tokens ?? 0;
   const totalTokens = usage.total_tokens ?? promptTokens + completionTokens;
-  const cachedPromptTokens = usage.prompt_tokens_details?.cached_tokens
-    ?? usage.prompt_cache_hit_tokens;
+  // DeepSeek's native cache fields are authoritative; the OpenAI-compatible
+  // `prompt_tokens_details.cached_tokens` is only a fallback, because a provider
+  // that emits an explicit 0 there must not hide a real native hit.
+  const cachedPromptTokens = usage.prompt_cache_hit_tokens
+    ?? usage.prompt_tokens_details?.cached_tokens;
+  // Keep the provider's own miss count when it reports one, so the three
+  // counters stay disjoint (billed input = uncached + cached + cache write).
+  const uncachedPromptTokens = usage.prompt_cache_miss_tokens
+    ?? (cachedPromptTokens === undefined ? undefined : Math.max(0, promptTokens - cachedPromptTokens));
   const reasoningTokens = usage.completion_tokens_details?.reasoning_tokens;
   const cacheWriteTokens = usage.cache_creation_input_tokens;
   return {
@@ -488,6 +548,7 @@ function parseUsage(usage: OpenAIUsage | null | undefined): ChatResponse['usage'
     completionTokens,
     totalTokens,
     ...(cachedPromptTokens === undefined ? {} : { cachedPromptTokens }),
+    ...(uncachedPromptTokens === undefined ? {} : { uncachedPromptTokens }),
     ...(cacheWriteTokens === undefined ? {} : { cacheWriteTokens }),
     ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
   };
@@ -497,12 +558,14 @@ function requestToolNames(request: ChatRequest): Set<string> {
   return new Set((request.tools ?? []).map((tool) => tool.function.name));
 }
 
-function dsmlControlStart(value: string): number {
-  return value.search(/<\s*[｜|]{1,2}\s*DSML\s*[｜|]{1,2}\s*(?:calls|tool_calls)\b/iu);
-}
-
 function dsmlInvokeName(value: string): string | undefined {
   return /<\s*[｜|]{1,2}\s*DSML\s*[｜|]{1,2}\s*invoke\s+name="([^"]+)"/iu.exec(value)?.[1];
+}
+
+function streamChunkOperation(chunk: StreamChunk): NonNullable<StreamChunk['operation']> {
+  if (chunk.type === 'reset') return 'reset';
+  if (chunk.type === 'done') return 'replace';
+  return 'append';
 }
 
 /** Build an LlmClient from a ModelProvider config. */

@@ -22,6 +22,14 @@ describe('classifyByRules', () => {
     expect(classifyByRules('hi')?.type).toBe('chat');
   });
 
+  it.each(['你好，帮我写一个函数', 'Hello, please create a small file'])(
+    'does not let a greeting hide a following action request: %s',
+    (text) => expect(classifyByRules(text)).toMatchObject({
+      activity: 'execute',
+      reasonCode: 'action_request',
+    }),
+  );
+
   it('keeps an exact-response calibration instruction on the response path', () => {
     expect(classifyByRules('Provider校准测试 20260730-1610：请只回复 LS-PROVIDER-OK-20260730-1610')).toMatchObject({
       activity: 'respond',
@@ -88,7 +96,32 @@ describe('classifyByRules', () => {
   });
 
   it('does not mistake a requested writing style for a tool invocation', () => {
-    expect(classifyByRules('请用一句话介绍 glob 工具')).toBeNull();
+    expect(classifyByRules('请用一句话介绍 glob 工具')).toMatchObject({
+      activity: 'respond',
+      reasonCode: 'explanation_request',
+    });
+  });
+
+  it.each([
+    '解释这条 write 命令',
+    '请说明这个 exec 工具会做什么',
+    'Explain this write command',
+  ])('keeps explanatory tool/code wording on the response path: %s', (text) => {
+    expect(classifyByRules(text)).toMatchObject({
+      activity: 'respond',
+      reasonCode: 'explanation_request',
+    });
+  });
+
+  it.each([
+    '不要修改文件',
+    '别运行这个命令',
+    "don't delete the file",
+  ])('does not turn a negated operation into execution: %s', (text) => {
+    expect(classifyByRules(text)).toMatchObject({
+      activity: 'respond',
+      reasonCode: 'negated_action',
+    });
   });
 
   it('extracts all explicitly requested tool labels for strict single-tool routing', () => {
@@ -132,6 +165,11 @@ describe('classifyByRules', () => {
   it('classifies "debug" as problem', () => {
     expect(classifyByRules('debug this issue')?.type).toBe('problem');
   });
+
+  it.each(['write a small file', 'create a single-page game', 'fix this function'])(
+    'classifies English action request %s as executable',
+    (text) => expect(classifyByRules(text)).toMatchObject({ activity: 'execute', reasonCode: 'action_request' }),
+  );
 
   it('classifies code blocks as problem', () => {
     const text = 'Here is the code:\n```js\nconsole.log("x")\n```';

@@ -175,7 +175,33 @@ describe('OpenAIClient.chat', () => {
     expect(res.toolCalls[0]?.function).toEqual({ name: 'exec', arguments: JSON.stringify({ cmd: 'pwd && ls -la' }) });
   });
 
-  it('parses provider reasoning and detailed usage without mixing it into visible content', async () => {
+  it('HA-01-07 rejects conflicting native and DSML tool calls', async () => {
+    const dsml = '<｜DSML｜ calls><｜DSML｜ invoke name="exec"><｜DSML｜ parameter name="cmd" string="true">echo dsml</｜DSML｜ parameter></｜DSML｜ invoke></｜DSML｜ calls>';
+    const fetch = mockFetch([{ json: {
+      id: 'conflict', model: 'deepseek-flash',
+      choices: [{ index: 0, message: { role: 'assistant', content: dsml, tool_calls: [{ id: 'native', type: 'function', function: { name: 'exec', arguments: '{"cmd":"echo native"}' } }] }, finish_reason: 'tool_calls' }],
+    } }]);
+    const client = new OpenAIClient({ ...BASE_OPTS, fetch });
+    await expect(client.chat({
+      model: 'deepseek-flash', messages: [{ role: 'user', content: 'run' }],
+      tools: [{ type: 'function', function: { name: 'exec', description: 'run', parameters: { type: 'object' } } }],
+    })).rejects.toThrow(/conflicting native and DSML/i);
+  });
+
+  it('HA-01-08 rejects malformed or unknown DSML instead of publishing it as text', async () => {
+    const malformed = '<｜DSML｜ calls><｜DSML｜ invoke name="unknown"></｜DSML｜ invoke></｜DSML｜ calls>';
+    const fetch = mockFetch([{ json: {
+      id: 'invalid-dsml', model: 'deepseek-flash',
+      choices: [{ index: 0, message: { role: 'assistant', content: malformed }, finish_reason: 'stop' }],
+    } }]);
+    const client = new OpenAIClient({ ...BASE_OPTS, fetch });
+    await expect(client.chat({
+      model: 'deepseek-flash', messages: [{ role: 'user', content: 'run' }],
+      tools: [{ type: 'function', function: { name: 'exec', description: 'run', parameters: { type: 'object' } } }],
+    })).rejects.toThrow(/invalid or unauthorized DSML/i);
+  });
+
+  it('HA-03-01 reports transport timing and detailed usage for the shared non-streaming/JSON path', async () => {
     const fetch = mockFetch([{
       json: {
         id: 'chatcmpl-reasoning',
@@ -207,22 +233,86 @@ describe('OpenAIClient.chat', () => {
 
     expect(res.content).toBe('final');
     expect(res.reasoningContent).toBe('private provider reasoning');
-    expect(res.usage).toEqual({
+    expect(res.usage).toEqual(expect.objectContaining({
       promptTokens: 20,
       completionTokens: 12,
       totalTokens: 32,
       cachedPromptTokens: 5,
       reasoningTokens: 8,
-    });
+      transportAttempt: 1,
+      observedAttemptCount: 1,
+    }));
+    expect(res.usage?.durationMs).toBeGreaterThanOrEqual(0);
+    expect(res.usage?.requestElapsedMs).toBeGreaterThanOrEqual(res.usage?.durationMs ?? 0);
   });
 
-  it('retries on 503 then succeeds', async () => {
+  it('prefers the native cache fields and keeps the hit/miss split disjoint', async () => {
+    const fetch = mockFetch([{
+      json: {
+        id: 'chatcmpl-cache-split',
+        model: 'deepseek-flash',
+        choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+        usage: {
+          prompt_tokens: 1_807,
+          completion_tokens: 4,
+          total_tokens: 1_811,
+          prompt_cache_hit_tokens: 1_664,
+          prompt_cache_miss_tokens: 143,
+          // A compat field reporting 0 must not hide the native hit.
+          prompt_tokens_details: { cached_tokens: 0 },
+        },
+      },
+    }]);
+    const client = new OpenAIClient({ ...BASE_OPTS, fetch });
+
+    const res = await client.chat({
+      model: 'deepseek-flash',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+
+    expect(res.usage).toEqual(expect.objectContaining({
+      promptTokens: 1_807,
+      cachedPromptTokens: 1_664,
+      uncachedPromptTokens: 143,
+    }));
+    expect(res.usage!.cachedPromptTokens! + res.usage!.uncachedPromptTokens!).toBe(res.usage!.promptTokens);
+  });
+
+  it('derives the uncached count when the provider only reports cached tokens', async () => {
+    const fetch = mockFetch([{
+      json: {
+        id: 'chatcmpl-cache-derived',
+        model: 'openai/gpt-5.5',
+        choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+        usage: {
+          prompt_tokens: 100,
+          completion_tokens: 4,
+          total_tokens: 104,
+          prompt_tokens_details: { cached_tokens: 40 },
+        },
+      },
+    }]);
+    const client = new OpenAIClient({ ...BASE_OPTS, fetch });
+
+    const res = await client.chat({
+      model: 'openai/gpt-5.5',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+
+    expect(res.usage).toEqual(expect.objectContaining({
+      cachedPromptTokens: 40,
+      uncachedPromptTokens: 60,
+    }));
+  });
+
+  it('HA-03-02 counts a retryable 503 as a separate transport attempt', async () => {
     const fetch = mockFetch([
       { status: 503, json: { error: { message: 'Service Unavailable' } } },
       {
         json: {
           id: 'chatcmpl-3', model: 'gpt-4o',
           choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 4, completion_tokens: 1, total_tokens: 5 },
         },
       },
     ]);
@@ -233,6 +323,7 @@ describe('OpenAIClient.chat', () => {
     const res = await client.chat({ model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }] });
     expect(res.content).toBe('ok');
     expect(fetch).toHaveBeenCalledTimes(2);
+    expect(res.usage).toEqual(expect.objectContaining({ transportAttempt: 2, observedAttemptCount: 2 }));
   });
 
   it('throws LlmError on 400 (non-retryable)', async () => {
@@ -338,7 +429,7 @@ describe('OpenAIClient.chat', () => {
 });
 
 describe('OpenAIClient.chatStream', () => {
-  it('parses SSE text deltas', async () => {
+  it('HA-03-01 reports transport timing for the shared streaming request path', async () => {
     const sse = [
       'data: {"model":"gpt-4o","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"}}]}',
       'data: {"model":"gpt-4o","choices":[{"index":0,"delta":{"content":" world"}}]}',
@@ -358,9 +449,44 @@ describe('OpenAIClient.chatStream', () => {
     expect(deltas.join('')).toBe('Hello world');
     expect(res.content).toBe('Hello world');
     expect(res.finishReason).toBe('stop');
-    expect(res.usage).toEqual({ promptTokens: 12, completionTokens: 3, totalTokens: 15 });
+    expect(res.usage).toEqual(expect.objectContaining({
+      promptTokens: 12,
+      completionTokens: 3,
+      totalTokens: 15,
+      transportAttempt: 1,
+      observedAttemptCount: 1,
+    }));
+    expect(res.usage?.ttftMs).toBeGreaterThanOrEqual(0);
+    expect(res.usage?.contentTtftMs).toBeGreaterThanOrEqual(0);
+    expect(res.transport).toEqual(expect.objectContaining({
+      transportAttempt: 1,
+      observedAttemptCount: 1,
+      contentTtftMs: expect.any(Number),
+    }));
     const body = JSON.parse((fetch.mock.calls[0]![1] as { body: string }).body);
     expect(body.stream_options).toEqual({ include_usage: true });
+  });
+
+  it('HA-03-02 counts the stream-usage compatibility fallback as a new attempt', async () => {
+    const sse = [
+      'data: {"model":"gpt-4o","choices":[{"index":0,"delta":{"content":"ok"}}]}',
+      'data: {"model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+      'data: [DONE]',
+    ].join('\n\n');
+    const fetch = mockFetch([
+      { status: 422, json: { error: { message: 'stream_options unsupported' } } },
+      { body: sse },
+    ]);
+    const client = new OpenAIClient({ ...BASE_OPTS, fetch });
+
+    const response = await client.chatStream(
+      { model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }] },
+      () => undefined,
+    );
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(response.transport).toMatchObject({ transportAttempt: 2, observedAttemptCount: 2 });
+    expect(response.content).toBe('ok');
   });
 
   it('parses tool_call deltas across chunks', async () => {
@@ -382,6 +508,8 @@ describe('OpenAIClient.chatStream', () => {
     expect(res.toolCalls[0]?.function.name).toBe('read');
     expect(res.toolCalls[0]?.function.arguments).toBe('{"file_path":"/x"}');
     expect(res.finishReason).toBe('tool_calls');
+    expect(res.usage).toBeUndefined();
+    expect(res.transport?.toolArgumentsTtftMs).toBeGreaterThanOrEqual(0);
   });
 
   it('retracts streamed DSML text after recovering it as a tool call', async () => {
@@ -406,6 +534,30 @@ describe('OpenAIClient.chatStream', () => {
     expect(chunks.some((chunk) => chunk.type === 'delta')).toBe(false);
   });
 
+  it('HA-01-06 recovers a DSML envelope split at every character boundary', async () => {
+    const content = '< | | DSML | | calls>< | DSML | invoke name="exec">< | DSML | parameter name="cmd" string="true">  echo 你好😀\n</ | DSML | parameter></ | DSML | invoke></ | DSML | calls>';
+    const sse = [
+      ...Array.from(content).map((character) => `data: ${JSON.stringify({
+        model: 'deepseek-flash', choices: [{ index: 0, delta: { content: character } }],
+      })}`),
+      'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+      'data: [DONE]',
+    ].join('\n\n');
+    const client = new OpenAIClient({ ...BASE_OPTS, fetch: mockFetch([{ body: sse }]) });
+    const chunks: import('./types.js').StreamChunk[] = [];
+
+    const response = await client.chatStream({
+      model: 'deepseek-flash',
+      messages: [{ role: 'user', content: 'run it' }],
+      tools: [{ type: 'function', function: { name: 'exec', description: 'run', parameters: { type: 'object' } } }],
+    }, (chunk) => chunks.push(chunk));
+
+    expect(response).toMatchObject({ content: '', finishReason: 'tool_calls' });
+    expect(response.toolCalls[0]?.function.arguments).toBe(JSON.stringify({ cmd: '  echo 你好😀\n' }));
+    expect(chunks.at(-1)).toMatchObject({ type: 'done', transportAttempt: 1, operation: 'replace' });
+    expect(chunks.every((chunk, index) => chunk.sequence === index + 1)).toBe(true);
+  });
+
   it('aggregates streamed reasoning separately from visible answer deltas', async () => {
     const sse = [
       'data: {"model":"glm-5.2","choices":[{"index":0,"delta":{"reasoning_content":"plan "}}]}',
@@ -425,7 +577,11 @@ describe('OpenAIClient.chatStream', () => {
 
     expect(res.content).toBe('answer');
     expect(res.reasoningContent).toBe('plan step');
-    expect(chunks.filter((chunk) => chunk.type === 'reasoning_delta')).toEqual([
+    expect(res.transport).toEqual(expect.objectContaining({
+      reasoningTtftMs: expect.any(Number),
+      contentTtftMs: expect.any(Number),
+    }));
+    expect(chunks.filter((chunk) => chunk.type === 'reasoning_delta').map(({ type, delta }) => ({ type, delta }))).toEqual([
       { type: 'reasoning_delta', delta: 'plan ' },
       { type: 'reasoning_delta', delta: 'step' },
     ]);

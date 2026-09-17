@@ -87,6 +87,7 @@ export const DEFAULT_CONFIG: Config = {
     experienceWriteThreshold: 0.65,
     llmCapture: false,
     llmEvolve: 'adaptive',
+    autoMemoryPolicy: 'compaction' as const,
     embeddingMode: 'local',
   },
   web: {
@@ -130,6 +131,7 @@ export const DEFAULT_CONFIG: Config = {
     compaction: {
       threshold: 100,
       keepRecent: 20,
+      background: false,
     },
   },
   skills: {

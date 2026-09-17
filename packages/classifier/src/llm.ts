@@ -71,6 +71,7 @@ export async function classifyByLlm(
       type: 'chat',
       confidence: 0.3,
       source: 'llm',
+      reasonCode: 'classifier_failed',
       reason: `llm call failed: ${(err as Error).message}`,
     };
   }
@@ -94,6 +95,11 @@ export async function classifyByLlm(
             ? Math.max(0, Math.min(1, parsed.confidence))
             : 0.6,
           source: 'llm',
+          reasonCode: activity === 'respond'
+            ? 'llm_route_respond'
+            : activity === 'execute'
+              ? 'llm_route_execute'
+              : 'llm_route_clarify',
           reason: parsed.reason,
         };
       }
@@ -107,6 +113,7 @@ export async function classifyByLlm(
     type: 'chat',
     confidence: 0.4,
     source: 'llm',
+    reasonCode: 'classifier_failed',
     reason: 'failed to parse LLM response',
   };
 }
