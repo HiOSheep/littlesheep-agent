@@ -27,7 +27,7 @@
 | --- | --- | --- | --- | --- |
 | `dompurify` | `3.4.13` | npm registry；lockfile integrity `sha512-2vmYIoqjze2d+kakP8S/nS5shfsl587kzwEjcGlTdiksUVgFHnFCsLYDVj/JNqJVOQZGSYBTmuycv0PodwmnMQ==` | MPL-2.0 OR Apache-2.0 | 覆盖截至 2026-08-17 解析到的 DOMPurify XSS、配置污染、危险属性和 mutation-XSS advisory |
 
-兼容约束：Monaco 的编辑器加载、语言 worker、Markdown/HTML、链接、粘贴、评论和审阅行为必须保持；真实 Electron Renderer 专项门必须使用 Monaco 解析上下文中的 DOMPurify，而不是另装测试副本。
+兼容约束：Monaco 的编辑器加载、语言 worker、Markdown/HTML、链接、粘贴、评论和审阅行为必须保持；实际 Electron 进程 Renderer 专项门必须使用 Monaco 解析上下文中的 DOMPurify，而不是另装测试副本。
 
 移除条件：当受支持的 Monaco 版本自然解析到 `dompurify>=3.4.13`，且升级后的 Monaco/UI/性能门全部通过时删除 override。
 

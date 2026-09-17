@@ -3,7 +3,7 @@
 状态：发布前清单已建立；当前专项仍不可发布为 `ready`。
 最后更新：2026-09-02 00:43:46
 
-本清单只允许记录已经获得的证据。完成其中的离线项不等于真实 Provider、真实网页或渠道已可用。
+本清单只允许记录已经获得的证据。完成其中的离线项不等于实际 Provider、真实网页或渠道已可用。
 
 ## 已完成的离线门
 
@@ -13,23 +13,23 @@
 - [x] 未知 `Content-Encoding` 经统一错误边界处理：响应流会被关闭/清理并返回非重试 `web_content_unsupported`，不会从 HTTP 回调同步逸出或携带原始编码文本；`http-client`、`url-policy`、`service` 定向矩阵 46 项通过，且本轮未发生 Provider 或公共网页请求。
 - [x] execution log/checkpoint 只保存有界 projection，重启后读取历史 evidence 不触发新请求。
 - [x] `pnpm.cmd run verify:web-release` 通过 Provider/public-fetch smoke 报告边界 18 项、LLM evidence verifier 失败输出边界 1 项、迁移/回退与 build-directory 敏感数据扫描。Provider smoke 只能抓取 Tavily 返回的规范 URL；任何替代 `--fetch-url` 均会在网络初始化前拒绝，Runtime 也会在 HTTP 前拒绝 citation 与 URL 不匹配的组合。
-- [x] 已建立并接入 `verify:web-live-llm-evidence-boundary`：真实联调入口会将 Tavily search、Runtime safe fetch/citation 和真实 DeepSeek final reply 串联；key 只来自当前进程环境变量，输出不含 query、URL、正文、回答全文或密钥；无 key 时在 Provider 请求前安全跳过。该项只证明入口与脱敏边界，不替代真实联调。
+- [x] 已建立并接入 `verify:web-live-llm-evidence-boundary`：真实联调入口会将 Tavily search、Runtime safe fetch/citation 和DeepSeek API 实测 final reply 串联；key 只来自当前进程环境变量，输出不含 query、URL、正文、回答全文或密钥；无 key 时在 Provider 请求前安全跳过。该项只证明入口与脱敏边界，不替代真实联调。
 - [x] `pnpm.cmd run verify:web-performance` 记录隔离 fake-provider/fake-HTTP workload 的时间、堆趋势和共享缓存边界；本轮 48 次迭代为 P95 0.45ms、heap delta 1,027,064 bytes、HTTP 读取 1 次、缓存命中 47 次、缓存 18,895 bytes，外网请求为 0。
 - [x] `pnpm.cmd audit --prod --json`、许可证清单和 `@littlesheep/web` 过期检查已有本时间点记录。
 - [x] UI、CLI 与渠道 formatter 对来源、缓存、partial、truncated、blocked 和稳定错误类别有离线投影测试；`DefaultChannelManager` 另有 manager 级回归验证真实 `RunnerResult.webEvidence` 到渠道消息的安全投影，不带出正文、原始 query 或内部错误 id。
 - [x] Webhook 已增加本机真实组合链路：临时绑定存储、真实 `DefaultChannelManager`、真实 loopback HTTP POST 与 `WebhookChannelPlugin` 串联，验证 `RunnerResult.webEvidence` 的来源、抓取时间、partial/truncated/blocked 和 citation 会进入 HTTP reply，而网页正文、原始 query 和内部 `web_*` error id 不会进入。该验收不发外网、不使用第三方账号，不替代 QQ、飞书、Telegram 或外部反向代理的正式环境验收。
 - [x] 共享 CLI/文本渠道 formatter 现在为每条 citation 输出 `fetchedAt`，并在 `citationCount=0` 的 disabled、unconfigured、rate-limit 等 evidence 下输出“无已验证来源”和脱敏的人类可读状态；内部 `web_*` kind 仍不进入用户文本。`verify:web-channel-boundary` 覆盖 formatter、ChannelManager 和 loopback Webhook 组合链路，共 31 项通过，并已接入 `verify:web-release`。
-- [x] `pnpm.cmd run verify:web-llm-evidence` 以真实 DeepSeek V4 Flash 调用生产 `execute_final_reply`，在合成的 `partial/truncated`、rate-limit、fetch-timeout 和 disabled Runtime evidence 下验证不伪造 citation、不夸大完整性且不输出内部错误 id；该过程无 Tavily 或公开网页请求。其失败报告另由 1 项无 Electron/无密钥的边界测试锁定为仅输出稳定 error kind，不输出原始错误文本。
+- [x] `pnpm.cmd run verify:web-llm-evidence` 以DeepSeek API 实测 V4 Flash 调用生产 `execute_final_reply`，在合成的 `partial/truncated`、rate-limit、fetch-timeout 和 disabled Runtime evidence 下验证不伪造 citation、不夸大完整性且不输出内部错误 id；该过程无 Tavily 或公开网页请求。其失败报告另由 1 项无 Electron/无密钥的边界测试锁定为仅输出稳定 error kind，不输出原始错误文本。
 - [x] 当前稳定工作树的 `pnpm.cmd run verify:full` 通过：389 个测试文件、2649 项通过、1 项 skipped；同时通过 `check:repo` 33 项、28 个 workspace TypeScript 项目、App build 和 recovery。运行前后 5 个 UI 文件指纹未变化；recovery 仍有两个已知 warning：少量 sampled runId 缺失 execution log，以及 workspace layout 使用非默认 root；二者未使 gate 失败，需在发布前按责任边界复核。
-- [x] `pnpm.cmd run verify:electron-ui-state-continuity` 已在真实 Electron 窗口通过：composer draft、conversation/project 折叠状态、侧栏宽度 249、文件导航宽度 286、浏览器设置页、原生窗口和 137px 聊天底部阅读间距均恢复。ChatView 以 resize 前真实 bottom gap 判断 sticky 状态，用户滚动会取消旧 repair timer；验收夹具等待 120ms resize settle，并按 keep-mounted Settings presence 的 `presence-hidden` 状态确认关闭，仍要求锚点误差不超过 1px。
+- [x] `pnpm.cmd run verify:electron-ui-state-continuity` 已在实际 Electron 进程 窗口通过：composer draft、conversation/project 折叠状态、侧栏宽度 249、文件导航宽度 286、浏览器设置页、原生窗口和 137px 聊天底部阅读间距均恢复。ChatView 以 resize 前真实 bottom gap 判断 sticky 状态，用户滚动会取消旧 repair timer；验收夹具等待 120ms resize settle，并按 keep-mounted Settings presence 的 `presence-hidden` 状态确认关闭，仍要求锚点误差不超过 1px。
 - [x] 当前 Windows release 候选已重新生成并完成扫描：修复发布脚本共享 staging 竞态后，构建使用发布锁、唯一 staging、临时 builder 配置和本地 prepared Electron runtime；2026-08-30 22:05 的 `release/win-unpacked` 与整个 `release` 目录共扫描 659 个文件、14363 个归档条目，0 个读取错误，provider secret、私密 fixture、用户 Memory 和绝对用户路径均为 0。当前 NSIS 候选 `LittleSheep-0.1.0-x64-Setup.exe` 的 SHA-256 为 `EC08404472EFA9E5179C089677F423B27DDD7154793FD057B5C2425498B8F769`，签名状态为 `NotSigned`。发布脚本单测 2/2 通过，锁冲突快速路径已验证；此候选不能替代签名正式包。
 - [x] 历史 `pnpm.cmd run verify:web-fetch` 曾通过真实 `https://example.com/` 匿名公共 GET、正文抽取、`externalUntrusted` 标记、Runtime citation 和 bounded complete evidence；该门不证明 Tavily search/provider 可用。成功报告只投影 requested/final origin，绝不输出完整 requested URL，避免调用者指定 URL 含敏感参数时进入验收输出；Provider 与 public-fetch smoke 的失败输出均只允许白名单 `web_*` kind 或 `unexpected_failure`。`verify-web-provider-smoke.test.mjs` 锁定无 key 零请求跳过、初始化失败不投影伪 key/原始错误文本，以及两条 smoke 报告的字段边界。
 - [x] 当前显式 `pnpm.cmd run verify:web-fetch -- --dns-resolver=cloudflare_doh` 已在 Fake-IP 环境真实通过：HTTP 200、`readability`、`externalUntrusted=true`、未截断、Runtime citation 和 `complete` evidence。该模式固定 Cloudflare DoH endpoint/IP，继续执行 A/AAAA、SSRF、TLS SNI/Host、IP pinning 和 redirect 检查；默认 `system` DNS 仍可正确以 `web_ssrf_blocked` 阻断 Fake-IP。它不证明 Tavily 搜索结果关联 fetch/citation 已通过，也不允许任意 resolver endpoint 或静默 fallback。
 - [ ] 当前环境重新执行 `verify:web-fetch` 被 Runtime 正确阻断：系统 DNS 将 `example.com` 动态解析到保留的 `198.18.0.0/15` 基准测试网段，本轮观测为 `198.18.0.132`，此前观测为 `198.18.0.82`；输出为 `status=blocked`、`errorKind=web_ssrf_blocked`，没有发起 HTTP 请求。2026-09-01 的进一步只读诊断确认 Windows 系统代理为本机 `127.0.0.1:7897`，监听进程为 `com.vortex.helper`，活动 `Meta Tunnel` 的 DNS 为 `198.18.0.1`，`example.com`、Microsoft 与 Cloudflare 等多个公共域名均被改写到 `198.18.0.x`；这是代理 TUN/Fake-IP 路径与严格 SSRF 校验的兼容冲突，不是 Tavily key 或搜索失败。直接指定 `1.1.1.1` 或 `8.8.8.8` 的历史 A 记录查询也返回同一保留网段，说明不能仅更换普通 UDP resolver。此环境不能重新证明安全公共 fetch；不得允许保留/私网地址、加入 SSRF 例外、修改 hosts 或固定目标 IP。复验时应临时关闭该 TUN/Fake-IP DNS，或切换到会返回真实公网地址的 real-IP/redir-host 等价模式；先确认公共域名解析为全球可路由地址，再运行真实 smoke。
 - [x] 已在用户终端以测试 key 严格执行 `verify:web-provider -- --require-live`：disabled 零 Provider 请求通过；真实 Tavily search 以 1 次 Provider 请求返回 3 个归一化结果，且非缓存、非 partial。后续搜索结果关联的 public fetch 被当前 DNS/SSRF 防护以 `web_ssrf_blocked` 正确阻断，因此这只证明 Provider 认证与搜索，不证明 fetch/citation 的端到端链路。
 - [x] 严格 Provider smoke 已增加零配额公共 DNS 预检：在创建真实搜索请求前调用与生产相同的 URL/DNS/IP policy，但不发 HTTP。当前 Fake-IP 环境用无效占位 key 复验时，在 `stage=public-fetch-preflight` 返回 `blocked/web_ssrf_blocked`，`providerRequests=0`；因此后续重复诊断不会再浪费 Tavily 配额。正常 DNS 环境仍必须继续执行真实 Tavily search，并抓取其规范化首条结果验证 Runtime citation，预检不降低端到端门槛。相关 Provider/public-fetch 边界仍为 18/18 通过。
-- [x] 内置工具维护文档已登记 `web_search`/`web_fetch` 的 Runtime、匿名 GET、`external_untrusted`、投影和失败关闭边界；相关工具/执行服务/registry 定向回归 3 个文件、49 项通过。仓库卫生曾发现与 Web 无关的 `main/index.ts` 启动入口超过 600 行且无受控登记，现已在模块拆分图登记上限和复查日期后恢复 `check:repo` 33/33；该治理修复不替代真实 Provider 或发布验收。
-- [x] 已于 2026-08-30 进行一次 Tavily 公开资料复核并记录在供应链审查：Search API 为 Bearer `POST /search`，最大 20 结果；公开页显示 basic/fast/ultra-fast 为 1 credit、advanced 为 2 credits，Free 每月 1,000 credits、PAYG 每 credit USD 0.008。隐私政策明确 query data 的处理、可能的第三方索引转交及非固定保留规则；条款允许调整 rate limit、地域/环境与认证要求。此项没有使用 key 或发生 API 请求，不能替代真实 Provider/部署地/合同验收。
+- [x] 内置工具维护文档已登记 `web_search`/`web_fetch` 的 Runtime、匿名 GET、`external_untrusted`、投影和默认拒绝边界；相关工具/执行服务/registry 定向回归 3 个文件、49 项通过。仓库卫生曾发现与 Web 无关的 `main/index.ts` 启动入口超过 600 行且无受控登记，现已在模块拆分图登记上限和复查日期后恢复 `check:repo` 33/33；该治理修复不替代实际 Provider 或发布验收。
+- [x] 已于 2026-08-30 进行一次 Tavily 公开资料复核并记录在供应链审查：Search API 为 Bearer `POST /search`，最大 20 结果；公开页显示 basic/fast/ultra-fast 为 1 credit、advanced 为 2 credits，Free 每月 1,000 credits、PAYG 每 credit USD 0.008。隐私政策明确 query data 的处理、可能的第三方索引转交及非固定保留规则；条款允许调整 rate limit、地域/环境与认证要求。此项没有使用 key 或发生 API 请求，不能替代实际 Provider/部署地/合同验收。
 
 ## 当前环境复验补充（历史记录：2026-09-01 21:14:05）
 
@@ -41,7 +41,7 @@
 - [x] 当时 `system` DNS 路径曾短暂通过 `pnpm.cmd run verify:web-fetch`：`HTTP 200`、`readability`、`externalUntrusted=true`、未截断、Runtime citation 1 条且 `completeness=complete`。这是历史网络窗口，不是稳定部署前置条件，也不替代 Tavily 返回结果的关联 fetch/citation。
 - [ ] 当时显式 `cloudflare_doh` 路径在 HTTP 前返回 `status=blocked`、`errorKind=web_dns_check_failed`。这是历史网络状态，不再代表当前 DoH 可用性；不应关闭 TLS、SSRF、IP pinning 或改用任意 resolver/proxy 伪造通过。
 - [x] 当前 `pnpm.cmd run verify:web-performance` 通过：48 次隔离迭代、P95 0.35ms、heap delta 1,025,128 bytes、Provider calls 48、HTTP calls 1、cache hits 47，外部网络请求 0。
-- [x] 当前 `pnpm.cmd run verify:web-llm-evidence` 通过：真实 DeepSeek V4 Flash 在合成的 partial/truncated、rate-limit、fetch-timeout、disabled evidence 四场景均完成生产 `execute_final_reply`，citation 和 caveat 约束均成立，且不泄露内部 error id。该验证不发 Tavily 或公开网页请求。
+- [x] 当前 `pnpm.cmd run verify:web-llm-evidence` 通过：DeepSeek API 实测 V4 Flash 在合成的 partial/truncated、rate-limit、fetch-timeout、disabled evidence 四场景均完成生产 `execute_final_reply`，citation 和 caveat 约束均成立，且不泄露内部 error id。该验证不发 Tavily 或公开网页请求。
 - [x] 当前 `pnpm.cmd run verify:electron-ui-state-continuity` 串行通过：草稿、会话/项目折叠、侧栏 249、文件导航 286、浏览器设置页、原生窗口和聊天底部 137px 阅读间距均恢复。一次与 `verify:web-llm-evidence` 并行启动时因两个 app build 同时替换输出而出现的 `output-unavailable` 不代表产品失败；构建完成后串行复验通过。
 - [ ] 当前 Codex 进程仅有 DeepSeek key、没有 Tavily key。因此不能在当前进程重跑真实 Tavily search→搜索结果安全 fetch→Runtime citation→真实网页 evidence LLM；历史用户终端的 Tavily search 成功证据仍只覆盖 search。正式渠道、签名最终包和干净 Windows 安装/升级/卸载同样仍未完成。
 
@@ -49,7 +49,7 @@
 
 - [x] 重新执行 `pnpm.cmd audit --prod --json`：production `346`、optional `40`、total `386` 个依赖，info/low/moderate/high/critical 漏洞均为 `0`；`pnpm.cmd --filter @littlesheep/web outdated --format json` 返回空对象。该结果是当前 lockfile 和注册表 advisory 的快照，不替代最终发布时复跑。
 - [x] 许可证清单已重新生成。`khroma@2.1.0` 被工具标记为 `Unknown`，但已从该安装包的 `license` 文件核验为 MIT，且其引入链为 `@littlesheep/app -> mermaid@11.17.2 -> khroma@2.1.0`。这消除了工具元数据缺失造成的未知标签；最终 release 仍须由发布责任人确认 notices、选择性许可证和实际分发包内容。
-- [ ] 当前进程没有 Tavily、QQ/飞书/Telegram/Webhook 正式环境或 Windows 代码签名凭证；当前用户证书库中可用代码签名证书数量为 `0`。系统 DNS 同时将 `example.com` 解析到 `198.18.0.73`/`198.18.0.74` 保留网段，因此不得发起会消耗 Tavily 配额的 live smoke，也不得通过 hosts、固定 IP、任意 proxy/resolver 或放宽 SSRF/TLS/IP pinning 规避。真实 Provider、正式渠道、签名最终包和干净 Windows 发布门继续为 blocked。
+- [ ] 当前进程没有 Tavily、QQ/飞书/Telegram/Webhook 正式环境或 Windows 代码签名凭证；当前用户证书库中可用代码签名证书数量为 `0`。系统 DNS 同时将 `example.com` 解析到 `198.18.0.73`/`198.18.0.74` 保留网段，因此不得发起会消耗 Tavily 配额的 live smoke，也不得通过 hosts、固定 IP、任意 proxy/resolver 或放宽 SSRF/TLS/IP pinning 规避。实际 Provider、正式渠道、签名最终包和干净 Windows 发布门继续为 blocked。
 
 ## Web 传输与证据边界复核（2026-09-02 00:43:46）
 
@@ -71,7 +71,7 @@
 ## 本轮验收脚本修复（2026-09-01 22:30:00）
 
 - [x] 修复 `verify-web-live-llm-evidence.mjs` 的 pnpm 参数转发解析：package script 固定参数之后的单个 `--` 现在可正确分隔用户参数，重复/孤立分隔符仍在网络初始化前拒绝；新增回归后 `scripts/verify-web-live-llm-evidence.test.mjs` 为 3/3。
-- [x] `pnpm.cmd run verify:web-release` 重新通过：Provider/Tavily 边界 19/19、LLM boundary 1/1、live verifier boundary 3/3、迁移回退通过、当前构建产物扫描 240 文件且四类敏感命中均为 0；没有真实 Provider、网页或 LLM 请求。
+- [x] `pnpm.cmd run verify:web-release` 重新通过：Provider/Tavily 边界 19/19、LLM boundary 1/1、live verifier boundary 3/3、迁移回退通过、当前构建产物扫描 240 文件且四类敏感命中均为 0；没有实际 Provider、网页或 LLM 请求。
 - [ ] 真实联调命令参数问题已排除；当前 Codex PowerShell 没有 Tavily process key，因此不能证明搜索结果关联 fetch/citation 或真实网页 evidence LLM。`cloudflare_doh` 的独立 fetch 已于 2026-09-02 复验通过，但不能替代同一持有 Key 进程的关联 smoke。缺少 key 时 `--require-live` 返回退出码 1 是预期的安全失败，不是验收通过。
 
 ## 必须在发布当天复核
@@ -118,7 +118,7 @@
 - [x] `pnpm.cmd run verify:web-performance` 通过 `48` 次隔离 fake-provider/fake-HTTP 运行：P95 `0.29 ms`、heap delta `1,022,376 bytes`、Provider `48`、HTTP `1`、cache hits `47`、外网请求 `0`。这是本地资源封套与缓存边界，不代表互联网延迟或 Provider SLA。
 - [x] 显式 `pnpm.cmd run verify:web-fetch -- --dns-resolver=cloudflare_doh` 通过 HTTP `200`、`readability`、`externalUntrusted=true`、未截断、Runtime citation 和 `completeness=complete`。同轮默认 `pnpm.cmd run verify:web-fetch` 在 HTTP 前返回 `blocked/web_ssrf_blocked`，因为 system DNS 将公开域名指向 `198.18.0.73`；两条结果共同证明 Runtime 没有放宽保留网段 hard deny。
 - [x] `pnpm.cmd exec vitest run packages/app/src/renderer/settings/web.test.ts packages/app/src/main/local-app-api/runtime-web-policy.test.ts packages/tools/src/tool-execution-service.test.ts packages/safety/src/permission-boundary.test.ts` 通过 `4` 个文件、`49` 项：`configured_unchecked` 显示为“尚未检查”而非 ready，网络关闭/provider 未配置不会请求，严格 safe-read 审批可恢复，浏览器 fallback 与带认证信息的请求没有被 safe-read 放行。
-- [ ] 当前进程仍无 `TAVILY_API_KEY`/`LS_TAVILY_API_KEY`，也无 QQ、飞书、Telegram、外部反向代理 Webhook 或 Authenticode 签名凭证；因此本轮不能把上述本地门替代为真实 Provider 端到端、真实渠道、签名包或干净 Windows 证据。
+- [ ] 当前进程仍无 `TAVILY_API_KEY`/`LS_TAVILY_API_KEY`，也无 QQ、飞书、Telegram、外部反向代理 Webhook 或 Authenticode 签名凭证；因此本轮不能把上述本地门替代为实际 Provider 端到端、真实渠道、签名包或干净 Windows 证据。
 
 ## Recovery Warning 处置边界
 
@@ -131,7 +131,7 @@
 
 ## 发布阻断条件
 
-- 真实 Provider 的搜索结果关联 fetch/citation 未通过、被跳过或输出不完整。
+- 实际 Provider 的搜索结果关联 fetch/citation 未通过、被跳过或输出不完整。
 - 任意 secret、完整 query、网页正文、用户 Memory、execution log/checkpoint 或用户绝对路径进入最终 release 包。
 - citation 无法回溯到当前 run 的 Runtime evidence，或部分资料被表述成完整验证。
 - 网络关闭后仍产生 provider/HTTP 请求，或恢复/历史阅读自动重放检索。

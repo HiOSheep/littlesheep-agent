@@ -34,7 +34,7 @@ LS adapter 边界：只允许其作为无副作用的 session/stream 参考或�
 
 许可证与供应链：仓库声明 MIT。像 DeepSeek 一样，生产引入前需要固定 lockfile、NOTICE/transitive license、安装脚本、原生模块和网络/遥测审查；本阶段没有添加依赖。
 
-LS adapter 边界：可以借鉴 `Agent + AgentSession` 生命周期和 stream/tool adapter，但所有 tool call 必须经过 LS Runtime 的 intent/settlement 和权限闸门；Pi 的 session 文件不能成为 LS 会话或 Memory 的权威来源。
+LS adapter 边界：可以借鉴 `Agent + AgentSession` 生命周期和 stream/tool adapter，但所有 tool call 必须经过 LS Runtime 的 intent/settlement 和权限校验；Pi 的 session 文件不能成为 LS 会话或 Memory 的权威来源。
 
 ## nanoDeepSeekHarness
 
