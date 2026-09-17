@@ -2,6 +2,7 @@ import type { ChatMessage, ChatRequest } from '@littlesheep/llm';
 import type { ContextMessageCandidate } from '@littlesheep/context';
 import type { RunContext, RuntimeMemoryContextWorkingSet, ToolResult } from '@littlesheep/types';
 import { writeMemoryState } from './memory-state.js';
+import { CACHE_BOUNDARY_MARKER } from '@littlesheep/prompt';
 import type { RunContextContractStage } from '@littlesheep/types';
 
 const MAX_MEMORY_CONTEXT_ATOMS = 128;
@@ -45,6 +46,54 @@ export function ingestMemoryContextToolResult(
   state.revision += 1;
   state.updatedAt = new Date().toISOString();
   writeMemoryState(ctx, stage, { memoryContextWorkingSet: state });
+}
+
+/**
+ * Append-only release semantics.
+ *
+ * Rewriting earlier text (system prompt or tool results) invalidates the
+ * Provider's prefix cache from the rewritten byte onwards, so released memory
+ * stays in place and the runtime appends one release note instead. The note is
+ * the authoritative fact: the listed atoms must not be used as active evidence.
+ */
+export function appendMemoryReleaseNotes(
+  ctx: RunContext,
+  request: ChatRequest,
+  candidates?: ContextMessageCandidate[],
+): { request: ChatRequest; candidates?: ContextMessageCandidate[] } {
+  const state = ctx.memoryContextWorkingSet;
+  if (!state || Object.keys(state.callAtomIds).length === 0) return { request, candidates };
+  const released = new Set<string>();
+  for (const [callId, atomIds] of Object.entries(state.callAtomIds)) {
+    for (const atomId of atomIds) {
+      if (state.activeCallByAtom[atomId] !== callId) released.add(atomId);
+    }
+  }
+  if (released.size === 0) return { request, candidates };
+  const ids = [...released].sort();
+  const message: ChatMessage = {
+    role: 'system',
+    content: `${CACHE_BOUNDARY_MARKER}\n\n# Released Memory\n\n`
+      + `- released_atoms: ${ids.join(', ')}\n`
+      + '- Earlier tool results and the system prompt still contain their original text; history is append-only.\n'
+      + '- Treat every released atom as inactive evidence: do not cite it, and do not use it to justify the answer.\n',
+  };
+  const preparedRequest = { ...request, messages: [...request.messages, message] };
+  if (!candidates) return { request: preparedRequest };
+  return {
+    request: preparedRequest,
+    candidates: [...candidates, {
+      id: `memory-release-note:${ids.join(',')}`,
+      order: Number.MAX_SAFE_INTEGER - 2,
+      message,
+      kind: 'memory_fragment',
+      source: { kind: 'memory', id: `release-note:${ids.join(',')}`, runId: ctx.runId },
+      priority: 99,
+      required: true,
+      sensitive: true,
+      scope: 'run',
+    }],
+  };
 }
 
 export function applyMemoryContextWorkingSet(
