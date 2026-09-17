@@ -186,37 +186,20 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
           || retrieval.intent === 'combined_memory_web'
           || retrieval.intent === 'browser_required'
           ? 'execute'
-          : classifiedActivity;
+          // `clarify` is no longer a routable activity. A request that lacks
+          // information is answered directly and the reply asks for the missing
+          // detail; pausing the run on a clarification contract put it into the
+          // `waiting_user` continuation state machine, which rejected legitimate
+          // model answers ("invalid continuation disposition") and produced empty
+          // replies instead of asking the user.
+          : classifiedActivity === 'clarify'
+            ? 'respond'
+            : classifiedActivity;
       const routedBase = { ...cls, activity, retrievalIntent: retrieval.intent };
       const routed = { ...routedBase, workPolicy: selectWorkPolicy(ctx, routedBase) };
       if (activity === 'execute') {
         writeDecisionState(ctx, 'classify', { classification: routed });
         next = routed.workPolicy.executionMode === 'bounded_loop' ? 'execute' : 'decide';
-      } else if (activity === 'clarify') {
-        const originalRequest = inboundText(ctx);
-        writeDecisionState(ctx, 'classify', {
-          classification: routed,
-          clarificationRequest: {
-          id: `${ctx.runId}:clarification`,
-          kind: 'ambiguous_request',
-          sourceStage: 'classify',
-          createdAt: new Date().toISOString(),
-          originalRequest,
-          copySource: 'runtime_fallback',
-          blockingReason: /[\u3400-\u9fff]/u.test(originalRequest)
-            ? '当前消息不足以判断一个安全、明确的下一步。'
-            : 'The message does not contain enough meaning to identify a safe next action.',
-          questions: [{
-            id: 'question-1',
-            field: 'intent',
-            prompt: /[\u3400-\u9fff]/u.test(originalRequest)
-              ? '请补充你希望 LS 帮你完成的具体事情。'
-              : 'What would you like LS to help you accomplish?',
-            required: true,
-          }],
-          },
-        });
-        next = 'ask_user';
       } else {
         writeDecisionState(ctx, 'classify', { classification: routed });
         next = 'reply';

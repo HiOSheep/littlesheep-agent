@@ -307,9 +307,10 @@ describe('createDefaultHarness state machine', () => {
     ]);
   });
 
-  it('unclear path: enter → classify(unclear) → ask_user → finalize → exit', async () => {
+  it('unclear path: enter → classify(unclear) → reply → finalize → exit', async () => {
     // 'asdf qwer' matches no rule → LLM classify fallback returns truly unclear.
-    // ASK_USER renders a first-class clarification request.
+    // An unclear request is answered directly: the reply asks for the missing
+    // detail instead of parking the run on a clarification checkpoint.
     const llm = createMockLlm([
       textResponse('{"type":"unclear","confidence":0.5,"reason":"ambiguous"}'),
       textResponse('what do you mean?'),
@@ -321,9 +322,10 @@ describe('createDefaultHarness state machine', () => {
     expect(ctx.reply).toBe('what do you mean?');
     const trace = res.meta?.trace as Array<{ name: string }>;
     const names = trace.map((t) => t.name);
-    expect(names).toEqual(['enter', 'classify', 'ask_user', 'finalize']);
+    expect(names).toEqual(['enter', 'classify', 'reply', 'finalize']);
     expect(ctx.classification?.type).toBe('unclear');
-    expect(ctx.clarificationRequest?.kind).toBe('ambiguous_request');
+    expect(ctx.classification?.activity).toBe('respond');
+    expect(ctx.clarificationRequest).toBeUndefined();
   });
 
   it('registerStage replaces a stage (Layer 2 editability)', async () => {

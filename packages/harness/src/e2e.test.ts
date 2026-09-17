@@ -201,9 +201,9 @@ describe('e2e agent loop', () => {
     ]);
   });
 
-  it('unclear: LLM classifies as unclear → ask_user → finalize', async () => {
+  it('unclear: LLM classifies as unclear → reply → finalize', async () => {
     // 'xyzzy' matches no rule → LLM classify fallback returns unclear.
-    // Truly meaningless input becomes a persisted clarification request.
+    // The reply itself asks for the missing detail; no clarification checkpoint.
     const llm = createMockLlm([
       textResponse('{"type":"unclear","confidence":0.4,"reason":"nonsense word"}'),
       textResponse('Could you clarify what you want?'),
@@ -214,8 +214,8 @@ describe('e2e agent loop', () => {
     expect(res.ok).toBe(true);
     expect(ctx.reply).toBe('Could you clarify what you want?');
     const trace = res.meta?.trace as Array<{ name: string }>;
-    expect(trace.map((t) => t.name)).toEqual(['enter', 'classify', 'ask_user', 'finalize']);
-    expect(ctx.clarificationRequest?.kind).toBe('ambiguous_request');
+    expect(trace.map((t) => t.name)).toEqual(['enter', 'classify', 'reply', 'finalize']);
+    expect(ctx.clarificationRequest).toBeUndefined();
   });
 
   it('partially replans a failed step without rerunning completed work', async () => {
