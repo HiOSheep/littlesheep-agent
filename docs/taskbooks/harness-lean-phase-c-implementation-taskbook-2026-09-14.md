@@ -1530,6 +1530,28 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 
 **round 11 计划：** 按用户选择实现 A 或 B 的第一步；无论哪条，先用离线 LCP 给出"统一头能覆盖多少字节/token"的上界，再动 builder；随后真实 Provider 复测 **miss/调用**（当前 ~1,000）与主对话命中率。
 
+### 10.80 第三十六轮（goal round 11：方案 A 被证否；只有"内容级统一"可行 + B-lite 设计）执行记录（2026-09-17）
+
+**逐模式分段比对（离线，零成本，依据 `builder.ts` 的发射逻辑）：**
+
+| 分段 | full（decide/execute） | respond（reply） | 跨模式同 id 且文本一致 |
+| --- | --- | --- | --- |
+| `identity` | ✓ | ✓ | **是（唯一）** |
+| `core-flow` | ✓ | — | 否 |
+| `tooling` / `capabilities` | tooling | capabilities | 否（id 与内容均不同） |
+| `safety` | ✓ | — | 否 |
+| `skills-index` / `workspace` / `date-time` / `runtime` | ✓ | — | 否 |
+| `output-directives` / `response-directives` | output | response | 否 |
+
+**结论（本轮关键产出）：方案 A（只统一早期分段顺序、不改内容）的收益上界就是那 293 字节——不可行，不做。** 因为除 `identity` 外**没有任何分段在两个模式间同 id 且字节一致**，任何"重排"都无法延长公共前缀；要提升跨阶段复用**必须改变内容**（让各模式发射同一批分段），即方案 B。
+
+**B-lite 设计（比"全量 B"风险低，建议优先）：**
+- 保留各阶段的**契约语义**（各阶段仍拿到自己的专属指令），但让所有阶段**先发射同一批"模式无关"分段**（`identity` + `core-flow` + `safety` + `workspace` + `date-time` + 工具清单），**再**发射模式/阶段专属分段（`capabilities` vs `tooling` 的差异、`output-` vs `response-directives`、skills、阶段契约）。
+- 代价：`reply` 这类精简模式的 system prompt 会变长（多出 safety/workspace/date-time 等），但因为与紧随其后的 execute/decide 调用**共享头部**，同一轮内的第 2、3 次调用可命中前面已 prefill 的头部。
+- 收益上界可离线精确计算：统一头 = 上述分段在最大模式下的字节数上限（远大于当前 293 字节）；随后用真实 Provider 复测 **miss/调用**（当前 ~1,000）验证净收益是否为正（因为 reply 变大也可能抵消）。
+
+**round 12 计划：** ① 先离线算出 B-lite 的统一头字节数（及各模式因此增长多少）；② 若净收益预估为正，则实现 B-lite 并跑全量门（含 prompt 契约测试）；③ 真实 Provider 复测 miss/调用与主对话命中率，确认净收益。
+
 ### 10.14 第七轮（HC-12 撤销屏障）新增证据（2026-09-16）
 
 **问题（先写失败用例）：** v3 写入路径的等值/相似候选只按 branch/scope/`status='active'` 选取；被纠正（`epistemicStatus`/`resolutionStatus = superseded`）或删除（`status = tombstone`）的 atom 仍可能是 active 记录。后续 maintenance（压缩候选）证据即使引用同一 `conversation-source:`，也会创建新 atom 或强化旧 atom，从而复活已被用户忘记/纠正的事实。`memory-service-v3.test.ts` 的新用例在修复前返回 `created`。
