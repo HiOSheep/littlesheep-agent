@@ -90,12 +90,8 @@ describe('replyStage', () => {
     expect(result.ok, result.error).toBe(true);
     expect(ctx.replyProvenance).toMatchObject({ source: 'llm', purpose: 'capability_reply', rewriteCount: 0 });
     expect(ctx.modelRequests?.[0]?.callContract?.purpose).toBe('capability_reply');
-    // Canonical shared head + inbound user input, then the stage sections and
-    // the volatile Runtime block as trailing system messages.
-    const roles = requests[0]?.messages.map((message) => message.role) ?? [];
-    expect(roles.slice(0, 2)).toEqual(['system', 'user']);
-    expect(roles.slice(2).every((role) => role === 'system')).toBe(true);
-    expect(roles.length).toBeGreaterThanOrEqual(3);
+    // System prompt + inbound user input + trailing volatile Runtime block.
+    expect(requests[0]?.messages).toHaveLength(3);
     const sent = JSON.stringify(requests[0]?.messages);
     expect(sent).toContain('capability-epoch-test');
     expect(sent).toContain('Capability answer contract');

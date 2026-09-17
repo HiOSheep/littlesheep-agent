@@ -2658,15 +2658,9 @@ describe('createRunner run', () => {
 
     await runner.run({ text: 'hello', profile: 'coding' });
 
-    // The behaviour profile is a stage addon: it travels after the conversation
-    // so the canonical shared head stays byte-identical across stages.
     const systemPrompt = String(requests.at(-1)?.messages[0]?.content ?? '');
-    const fullRequest = (requests.at(-1)?.messages ?? [])
-      .map((message) => String(message.content))
-      .join('\n');
-    expect(systemPrompt).not.toContain('Behavior Profile: Coding');
-    expect(fullRequest).toContain('Behavior Profile: Coding');
-    expect(fullRequest).toContain('never grants tool permission');
+    expect(systemPrompt).toContain('Behavior Profile: Coding');
+    expect(systemPrompt).toContain('never grants tool permission');
   });
 
   it('creates a session when sessionId is undefined', async () => {
