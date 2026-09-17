@@ -1670,6 +1670,19 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 
 **round 17 计划（继续 B）：** ① 把**阶段契约与 addon 移到尾部**，让"共享头 + **整段历史**"都进入可缓存前缀（当前历史仍在头之后、被阶段专属段隔开）；② 对齐 `tooling`（reply 无工具 ⇒ 头在工具段分叉，若让所有阶段共享同一份工具清单段可再多共享 ~1.6 KB）；③ 复测主对话命中率目标向 70%+ 推进，并观察 miss/调用是否继续下降。
 
+### 10.87 第三十六轮（goal round 17：共享头边界就位——为"共享头+历史"进前缀铺路）执行记录（2026-09-17）
+
+**改动（`packages/prompt/src/builder.ts`）：** 在规范共享头**之后**插入独立分段 `head-boundary`（文本为 `\n\n<!-- LITTLESHEEP_CACHE_BOUNDARY -->\n\n`，`required: false`），并把 `hasVolatile` 置真，使后续 volatile 段用 `---` 分隔。效果：
+- 提示词中的**第一个边界标记**现在正好落在规范头之后 ⇒ `splitAtBoundary` / `splitSystemPromptForCache` 认定的"稳定区"= **规范共享头**，"易变区"= 阶段专属段 + addon + 记忆索引/bootstrap 等；
+- 这为下一步（把易变区搬去尾部）提供了**正确的切分点**——之前边界在 volatile 区之前、阶段专属段之后，按它切分正是 round 4 实测变差的那种切法。
+
+**断言更新（B 语义）：** prompt 2 处（minimal 模式现在含 head-boundary；边界标记归属改为 `head-boundary` 段）、profile-prompt 1 处（仅要求"规范头在边界之上、run facts 在边界之下"，addon 落在两者之间属预期）。
+**验证：** prompt + harness + context + memory-v3 集成 **82 文件 / 746 测试**全绿；`typecheck` 0；`check:repo` 33/33。
+
+**本轮状态说明：** 此改动**不改变实际发送的请求**（内容仍在 system 消息内），只改变**观测口径的稳定/易变切分**；真正的收益来自下一步——把边界之下的内容搬到尾部候选（`buildRunRequestCandidates` 的 `systemSegments` 拆分接线，round 4 的代码可直接复用，但那时切分点错误，现在切分点正确）。
+
+**round 18 计划：** ① 复用 round 4 的接线（system 候选只保留 `stableSegments`，`trailingSegments` 追加为尾部候选），此时稳定区 = 规范头、易变区 = 阶段专属段+addon+记忆索引 ⇒ 请求形状变为 **[共享头][历史][用户][阶段段+addon+运行态]**，前缀 = 共享头 + 整段历史；② 跑全量门并修正断言；③ 真实 Provider 复测主对话命中率（现 52.6%）与 miss/调用（现 ~948），目标向 70%+ 推进。
+
 ### 10.14 第七轮（HC-12 撤销屏障）新增证据（2026-09-16）
 
 **问题（先写失败用例）：** v3 写入路径的等值/相似候选只按 branch/scope/`status='active'` 选取；被纠正（`epistemicStatus`/`resolutionStatus = superseded`）或删除（`status = tombstone`）的 atom 仍可能是 active 记录。后续 maintenance（压缩候选）证据即使引用同一 `conversation-source:`，也会创建新 atom 或强化旧 atom，从而复活已被用户忘记/纠正的事实。`memory-service-v3.test.ts` 的新用例在修复前返回 `created`。
