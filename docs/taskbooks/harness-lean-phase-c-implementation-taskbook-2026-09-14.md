@@ -1776,6 +1776,13 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 
 **结论（如实）：** 这处改写被移除后**本负载的命中率没有变化**——因为该负载**几乎不发生记忆释放**。它属于"必要的清障"（消除了一个会在释放时打断整段历史的隐患，且零回归：全部门通过），但**不是本负载的主要断点**。
 
+**round 24 执行记录（补充，2026-09-17）：** 按"改打高频断点"推进时，先在对比脚本里加入**失效原因分布**输出（`invalidationReasons`）以便直接看出每轮变化的组件，并用同一长会话配置复测：
+- 主对话 **43.9% / 43.8%**（与基线持平）、辅助 **62.4% / 62.1%**；
+- 但该分布字段取到的形状与预期不符（返回空原因/0 计数），说明**会话报告的 reasons 结构与脚本假设不同**，需要修正字段映射或改为**逐请求前缀对比**（用执行日志里的 `prefixChange` 与 `cacheObservation` 编码字段）才能定位断点。
+- 结论：本轮**未定位到主断点**，命中率仍持平；脚本改动已提交（`26efb3e`），零行为影响。
+
+**round 25 计划：** 改用**逐请求前缀对比**定位断点——从隔离数据根的 execution-logs 读取每个 `modelRequest` 的 `prefixChange`（编码段名）与 `cacheObservation.invalidationReasons`，按"相邻请求"统计**首个变化组件**，从而确定是 `memoryRootIndex` / `initialMemoryContext` / 历史投影 / 阶段段 中的哪一个在每轮变化；据此再做"冻结 + 尾部追加"的针对性改造，并复测。
+
 **round 24 计划（改打高频断点）：** 转向**每个 run/每轮都会发生**的 system 提示词抖动：
 1. `memory-taskbook-refinement.ts:137` 在 **DECIDE 中途重写 `initialMemoryContext`**（同轮内 system 即变化）；
 2. `memoryRootIndex` / `initialMemoryContext` / `bootstrap` 每请求按 ctx 重建（记忆一更新即变化）。
