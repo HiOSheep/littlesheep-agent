@@ -1,10 +1,7 @@
 // @littlesheep/runner — runner.ts
-// Shared agent runner: assemble infra from config, expose run().
-// Used by the Electron app (local conversations, origin='app') and optional
-// channel plugins (channel-routed conversations, origin='channel').
-import {
-  filterAuthoritativeUserFacingMessages,
-} from '@littlesheep/types';
+// Shared agent runner: assemble infra from config; used by the Electron app
+// (local conversations, origin='app') and channel plugins.
+import { filterAuthoritativeUserFacingMessages } from '@littlesheep/types';
 import type {
   AgentResult,
   Message,
@@ -1012,6 +1009,9 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       ))
     }
     if (resolution.kind === 'none') return executeRun(input, undefined, baseEvidence)
+    // A stale waiting checkpoint must not swallow a fresh turn: run normally.
+    if (resolution.kind === 'eligible' && !(await resolveCheckpointClarification(
+      infra.sessionManager, resolution.inspection.checkpoint))) return executeRun(input, undefined, baseEvidence)
     if (resolution.kind === 'blocked') {
       if (await canJoinActiveContinuation(resolution.inspection.disposition, input)) {
         return waitForConversationTurnResult(input.runId!, input.sessionId, input.text, input.signal)
