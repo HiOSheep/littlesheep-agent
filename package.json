@@ -2,7 +2,7 @@
   "name": "littlesheep",
   "version": "0.1.0",
   "private": true,
-  "description": "LittleSheep 是一个本地部署、索引优先记忆、硬控制流驱动的桌面 Agent 工作台。",
+  "description": "LittleSheep 是一个具备持久化执行、长期记忆与本地工作区的桌面 Agent。",
   "type": "module",
   "engines": {
     "node": ">=20.9.0"
@@ -79,7 +79,7 @@
     "verify:memory-v3-workload-observability": "pnpm exec vitest run packages/runner/src/runtime-resource-observation.test.ts packages/runner/src/memory-workload-observability.test.ts packages/runner/src/execution-log.test.ts && pnpm --filter @littlesheep/runner run typecheck",
     "report:memory-v3-workload": "pnpm run ensure:workspace-build -- --package=@littlesheep/runner && node scripts/report-memory-v3-workload.mjs",
     "verify:memory-v3-readiness": "pnpm run ensure:workspace-build -- --package=@littlesheep/runner && node scripts/verify-memory-v3-migration-readiness.mjs",
-    "benchmark:embedding": "pnpm run ensure:workspace-build -- --package=@littlesheep/embedding && node scripts/benchmark-local-embedding.mjs",
+    "benchmark:embedding": "pnpm run ensure:workspace-build -- --package=@littlesheep/embedding --package=@littlesheep/branding && node scripts/benchmark-local-embedding.mjs",
     "verify:app-recovery": "node scripts/verify-app-recovery-sources.mjs",
     "verify:workspace-performance": "pnpm run assert:app-build && node scripts/verify-workspace-performance.mjs"
   },
