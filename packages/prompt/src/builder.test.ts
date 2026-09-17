@@ -30,6 +30,28 @@ describe('cross-stage shared prefix', () => {
     expect(lcp).toBeGreaterThanOrEqual(293);
     expect(full.length).toBeGreaterThan(5_000);
   });
+
+  it('measures the mode-independent section budget', () => {
+    const shared = {
+      branding: DEFAULT_BRANDING,
+      tools: [stubTool],
+      workspace: '/tmp/ws',
+      bootstrap: { 'AGENTS.md': 'test instructions' },
+      memoryRootIndex: '# Memory Tree Root Index\n- `daily`: dated details',
+    };
+    const fullBundle = buildSystemPromptBundle({ ...shared, mode: 'full' });
+    const respond = buildSystemPromptBundle({ ...shared, mode: 'respond' }).text;
+    const independent = ['identity', 'core-flow', 'safety', 'workspace', 'date-time', 'tooling']
+      .map((id) => fullBundle.segments.find((segment) => segment.id === id)?.text.length ?? 0);
+    const sum = independent.reduce((total, length) => total + length, 0);
+    // B-lite analysis: the mode-independent sections total 4,082 bytes, of which
+    // respond (reply) currently carries only `identity` (284). Unifying the head
+    // would ADD ~3.8 KB to every reply call, so it can only pay off as a cost
+    // optimization (one shared prefill per turn), never as a ratio win.
+    expect(sum).toBeGreaterThanOrEqual(4_000);
+    expect(independent[0]).toBeGreaterThanOrEqual(280);
+    expect(respond.length).toBeLessThan(2_000);
+  });
 });
 
 describe('buildSystemPrompt', () => {
