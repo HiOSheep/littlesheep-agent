@@ -1359,6 +1359,28 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 2. 修 9 处断言：把 `messages[0]` 的内容断言改为 `allText(request)`；角色数组改为"前 5 条固定 + 其余为 system"；`totalMessageCount`/item kinds 放宽或按新布局重算。
 3. 重建后用"不含 ask_user 的安全任务集 + 共享会话"复测，验证命中率是否从 ~50% 上升。
 
+### 10.72 第三十六轮（goal round 3：接线跑通，但发现安全耦合缺陷）执行记录（2026-09-17）
+
+**本轮成果：接线在功能上完全跑通。** 在 `buildRunRequestCandidates` 内部拆分后：
+- harness **73 文件 / 673 测试全绿**（断言按"对话前缀 + 尾部 system"重写：`allText(...)` 取代 `messages[0]`、角色数组改为前缀+尾部、item kinds 改为顺序性质断言）；
+- 全量 `vitest` 从 7 处失败收敛到 **1 处**，`typecheck` 0、`check:repo` 33/33。
+
+**发现一个真实的设计缺陷（本轮的关键产出，必须记录）：** 唯一剩下的失败是 memory v3 集成测试 "removes released atom content from the next request"：
+- 尾部候选用 `order = messages.length + index`，**超出了 `request.messages` 的索引范围**；
+- 而 `applyMemoryContextWorkingSet()`（HC 相关的"已释放原子内容必须从下一请求消失"安全属性）是按 **`request.messages` 的下标**计算 `replacements`，再用 `replacements.get(candidate.order)` 回填候选的；
+- 于是被移到尾部的 memory 内容（memory root index / 初始选择）**不再参与释放过滤**——`requests.find(...)` 找不到含 `release-memory` 的请求，安全属性被绕过。
+
+**这不是测试问题，是真的会让"已释放记忆仍出现在提示词里"。** 修复需要把工作集过滤从"按消息下标"改成"按候选/按来源 id"（或在拆分之前先完成过滤），属于跨模块设计改动。
+
+**本轮处置（保证仓库健康）：** 再次回退接线（`context-candidates.ts` 恢复），保留并提交**与布局无关**的测试改进 `04da7ec`：
+- 三个 harness 测试文件与 `runner.test.ts`、`memory-v3.integration.test.ts` 中"模型可见文本"统一改为跨全部消息读取（`allText` / `requestText`），mock 的行为判断也改为看全文；
+- 这些改动对新旧布局都成立，harness + memory-v3 **74 文件 / 681 测试**通过，`check:repo` 33/33，工作树干净。
+
+**round 4 计划：**
+1. 先把 `applyMemoryContextWorkingSet` 改为**按候选**（或来源 `source.id`）过滤，而不是按 `request.messages` 下标——这是让尾部方案安全的前提，并且本身更健壮。
+2. 再恢复 `buildRunRequestCandidates` 的拆分接线（改动已在任务书与提交历史中留有完整记录，可直接复用）。
+3. 重建后用"不含 ask_user 的安全任务集 + 共享会话"复测命中率，与基线（shadow 47.5–50.2%、next 46.8–48.3%）对比。
+
 ### 10.14 第七轮（HC-12 撤销屏障）新增证据（2026-09-16）
 
 **问题（先写失败用例）：** v3 写入路径的等值/相似候选只按 branch/scope/`status='active'` 选取；被纠正（`epistemicStatus`/`resolutionStatus = superseded`）或删除（`status = tombstone`）的 atom 仍可能是 active 记录。后续 maintenance（压缩候选）证据即使引用同一 `conversation-source:`，也会创建新 atom 或强化旧 atom，从而复活已被用户忘记/纠正的事实。`memory-service-v3.test.ts` 的新用例在修复前返回 `created`。
