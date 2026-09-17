@@ -1704,6 +1704,21 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 
 **round 19 计划：** ① 验证"首个调用是否 prefill 了头+历史"这一关键假设（查 classify/decide 请求是否包含历史与共享头；若不带，则跨阶段共享在设计上就无法兑现）；② 若确认首个调用不带历史，则改为**只把"每调用都变"的段搬尾部**（运行态/known-state——已在尾部），保留阶段专属段的跨轮缓存；③ 以此把主对话命中率从 52.6% 继续往上推，而不是用"整段历史共享"这条已被证否的路径。
 
+### 10.89 第三十六轮（goal round 19：跨阶段"历史共享"结构性不可行；共享头被必需门否决并回退）执行记录（2026-09-17）
+
+**① 假设验证（免费，读用户本地 execution-logs 的阶段形态）：** reply 9 次调用/平均 4.7 条消息（2–8）；classify 2 次/4.0（2–6）；execute 2 次/3.0（2–4，16 个工具）；verify 1 次/2.0（2–2）。
+**各阶段的"历史窗口"不同**（verify 完全不带历史）⇒ 前缀从 token 0 匹配，只要某阶段带的历史更少，**跨阶段"历史共享"在设计上就不可行**，能共享的只有**共享头**。这解释了 round 18 的负结果。
+
+**② 共享头被必需门否决（本轮最重要发现）：** `verify:electron-continuity` 失败：`cross-restart reply is not memory-continuous`。逐步定位：只回退 round 17 的**头边界**并重建 → **仍失败**；再回退 round 16 的**共享头** → **continuity 与 ui-state 两条门全部通过** ⇒ **根因是共享头本身**。
+已排除验收提供方的分支误判：其识别阶段的 5 个短语（'Choose the next LittleSheep activity'、'You are the DECIDE/VERIFY/RECOVER stage'、'You maintain a versioned session summary'）**都不在** `sections.ts` 任何分段文本中。
+
+**③ 处置（恢复绿、保留记录与地基）：** 撤销 round 16/17（`8314391`、`c08198f` 两个 revert）；prompt + harness **77 文件 / 695 测试**全绿、`typecheck` 0、工作树干净、**两条 Electron 门均通过**。共享头地基设施（`shared-head.ts` 与测试、`splitSystemPromptForCache`、`trailingSegments`、两处守卫）**保留**，供修复后重新启用。
+（注：回退时任务书冲突解决曾误删 10.86–10.88 记录，已从 `42e2169` 恢复，故本节编号接续。）
+
+**当前指标状态（如实）：** 共享头的 **主对话 43.5% → 52.6%** 提升**已回退**（因破坏必需门）⇒ 线上状态回到 主对话 ~43.5% / 辅助 ~62% / 稳态 miss/调用 ~968，**目标的"证明提升"尚未在可发布状态下达成**。
+
+**round 20 计划：** ① 在离线可复现的 Electron 连续性场景里诊断"共享头为何使跨重启回复不连续"（对比有/无共享头时 reply 收到的提示词与产出回复、以及连续性评估的输入），区分是**回复文本变化**还是**评估输入变化**；② 尝试更窄的统一（例如只统一 `identity + core-flow`，不引入 safety/workspace；或把新增段放到 reply 的尾部），在**不破坏门**的前提下拿回部分共享收益；③ 修复后重跑两条门 + 缓存复测，目标是**既提升命中率又保住门**。
+
 ### 10.14 第七轮（HC-12 撤销屏障）新增证据（2026-09-16）
 
 **问题（先写失败用例）：** v3 写入路径的等值/相似候选只按 branch/scope/`status='active'` 选取；被纠正（`epistemicStatus`/`resolutionStatus = superseded`）或删除（`status = tombstone`）的 atom 仍可能是 active 记录。后续 maintenance（压缩候选）证据即使引用同一 `conversation-source:`，也会创建新 atom 或强化旧 atom，从而复活已被用户忘记/纠正的事实。`memory-service-v3.test.ts` 的新用例在修复前返回 `created`。
