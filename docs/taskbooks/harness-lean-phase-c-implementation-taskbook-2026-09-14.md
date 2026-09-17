@@ -1381,6 +1381,38 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 2. 再恢复 `buildRunRequestCandidates` 的拆分接线（改动已在任务书与提交历史中留有完整记录，可直接复用）。
 3. 重建后用"不含 ask_user 的安全任务集 + 共享会话"复测命中率，与基线（shadow 47.5–50.2%、next 46.8–48.3%）对比。
 
+### 10.73 第三十六轮（goal round 4：安全修复完成 + 实测否定"全量尾置"方案）执行记录（2026-09-17）
+
+**1) 安全修复（已落地并提交 `ae574c2`）：** `applyMemoryContextWorkingSet` 不再按 `request.messages` 下标计算 `replacements`，改为**按每条消息自身的角色与 `tool_call_id`、以及每个候选**执行过滤（`filterMessage()`），因此：
+- 尾部候选（`order` 超出 `request.messages` 长度）**同样会**丢掉已释放的 memory；
+- 分段候选的 `initial-selection` 段仍按来源过滤；
+- 无变化时返回原对象（不引入无谓改写）。
+在**旧布局**下 harness + memory-v3 **74 文件 / 681 测试**全绿。
+
+**2) 接线 + 全部断言修复后的完整性：** 恢复拆分后，harness 与全量 `vitest` 一路收敛到**仅 1 处**失败（`web-runtime.test.ts` 的脚本化 LLM 同样只看 `messages[0]`）；把该脚本与其余测试统一改为"读全部消息"后，**全量 `vitest` 458 文件全部通过**（3268+ 测试）、`typecheck` 0、`check:repo` 33/33。
+
+**3) 实测（真实 Provider，共享会话，重建后）：**
+
+| 配置 | shadow 命中率（轮 0→3） | next 命中率（轮 0→3） |
+| --- | --- | --- |
+| 6 任务 × 4 轮 | 28.7% → **41.6%** | 30.7% → **44.1%** |
+| 20 任务 × 4 轮 | 29.7% → **38.1%** | 33.0% → **40.0%** |
+
+**对照基线（同一 20 任务共享会话、改动前）：shadow 47.5–50.2%、next 46.8–48.3%。**
+
+**结论（本轮最重要的产出，且与预期相反）：** 把**边界之下的全部段**尾置**降低了**命中率。原因很清楚：`bootstrap` / 记忆索引 / 能力快照等属于**会话内稳定**内容——留在 system 消息里从第 2 轮起会进入缓存前缀，移到尾部后位置每轮后移、**永远不缓存**，而它们仍计入分母，于是比值下降。
+正确的原则不是"边界之下全尾置"，而是：**只有真正每请求都变的内容才尾置**（运行态时钟/进度/工具计时、known-state revision——这正是 round 1 提交 `c936065` 所做的），会话内稳定的内容应尽量**靠前**以尽早进入缓存前缀。
+
+**4) 处置：** 回退 bundle 拆分接线，保留三项净收益：
+- `applyMemoryContextWorkingSet` 的按候选过滤（修复真实安全耦合，且更健壮）；
+- 测试统一"读全部消息"（`allText`/`requestText`；含 `web-runtime` 脚本化 LLM），对任何布局都成立；
+- 对比脚本新增实时模式任务子集开关（`LITTLESHEEP_COMPARISON_TASKS`），用于规避澄清往返污染。
+最终：harness + memory-v3 + web-runtime **75 文件 / 685 测试**通过、`check:repo` 33/33、工作树干净。
+
+**5) 新发现（下一轮主攻）：** 共享会话测量仍被 `waiting-user clarification request is missing or no longer pending` 污染（6 任务也 13/24 失败、20 任务 55/80），失败后**会话停止增长**（请求数冻结），使命中率无法体现"长会话"效应。要让测量有效并逼近 DSH 口径，必须先在重复相同用户话轮的会话里消除该澄清状态错误（它本身可能是一个真实健壮性缺陷）。
+
+**round 5 计划：** ① 定位并修掉"同一会话重复相同用户输入 → 澄清请求缺失"的失败（或证明其为测试负载问题并改造负载）；② 用连续、不重复的有效负载测"命中率随会话增长"的曲线（预期随历史占比上升）；③ 前端把「主对话命中率」与「全阶段混合命中率」分开显示。
+
 ### 10.14 第七轮（HC-12 撤销屏障）新增证据（2026-09-16）
 
 **问题（先写失败用例）：** v3 写入路径的等值/相似候选只按 branch/scope/`status='active'` 选取；被纠正（`epistemicStatus`/`resolutionStatus = superseded`）或删除（`status = tombstone`）的 atom 仍可能是 active 记录。后续 maintenance（压缩候选）证据即使引用同一 `conversation-source:`，也会创建新 atom 或强化旧 atom，从而复活已被用户忘记/纠正的事实。`memory-service-v3.test.ts` 的新用例在修复前返回 `created`。
