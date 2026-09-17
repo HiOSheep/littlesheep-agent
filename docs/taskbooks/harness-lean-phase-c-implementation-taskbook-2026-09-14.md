@@ -1719,6 +1719,29 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 
 **round 20 计划：** ① 在离线可复现的 Electron 连续性场景里诊断"共享头为何使跨重启回复不连续"（对比有/无共享头时 reply 收到的提示词与产出回复、以及连续性评估的输入），区分是**回复文本变化**还是**评估输入变化**；② 尝试更窄的统一（例如只统一 `identity + core-flow`，不引入 safety/workspace；或把新增段放到 reply 的尾部），在**不破坏门**的前提下拿回部分共享收益；③ 修复后重跑两条门 + 缓存复测，目标是**既提升命中率又保住门**。
 
+### 10.90 第三十六轮（goal round 20/21：采纳"只追加不改写"方向 + 前缀破坏点审计）执行记录（2026-09-17）
+
+**用户提出的方向（已采纳为本轮起的主线）：** "召回（记忆搜索/文件读取）的新内容直接追加在末尾，前面上下文全部保留" ⇒ 预期 95%+ 命中率。
+
+**受理时补充的三条必要条件（缺一不可）：** ① 新增内容确实追加在**末尾**；② 追加内容**下一轮仍在原位**（持久化为会话消息，或作为严格"临时尾部"且位置固定）；③ **绝不改写更早内容**——这是当前 LS 最大的违规点。仅做①而放任③，前缀照样在断点处失效（这解释了 round 17/18 把段搬尾部却无收益）。
+
+**前缀破坏点审计（读取代码，逐个定位）：**
+
+| 位置 | 何时触发 | 影响 |
+| --- | --- | --- |
+| `memory-taskbook-refinement.ts:137` `writeMemoryState(ctx,'decide',{initialMemoryContext,...})` | **DECIDE 中途重写** `initialMemoryContext` | 该变量注入在 **system 消息内** ⇒ **同一轮内 system 就变化**，此后所有调用与该轮后续轮次的前缀全部失效 |
+| `applyMemoryContextWorkingSet`（`memory-context-working-set.ts`） | 记忆原子被**释放**时 | 直接**改写 system 消息与更早的 tool 结果**（删除已释放原子文本）⇒ 从改写点起整段历史失效 |
+| `memoryRootIndex` / `initialMemoryContext` / `bootstrap`（`reply.ts:91-92`、`decide/request.ts:112-113`、`execute/prompt.ts:33-34`） | 每请求按 `ctx` 重建 | 记忆一更新，**system 变化** ⇒ 前缀从 system 内很靠前的位置断裂 |
+| 压缩（compaction） | 会话压缩时 | 用摘要替换历史，**固有断裂**（低频，接受） |
+| `known-state` / `runtime` 运行态块 | 每请求 | 已在**尾部**（round 1）✓ 符合设计 |
+
+**结论：要兑现用户的 95% 目标，必须做的是"冻结 + 追加"**：会话内**冻结 system 消息**（head + index + bootstrap 首轮定稿后字节不变），把所有记忆更新/释放/任务书细化改为**尾部追加的 delta 消息**，而不是回写 system 或改写历史。
+
+**round 22 计划（按风险从低到高）：**
+1. **最小验证**：把 `memory-taskbook-refinement` 对 `initialMemoryContext` 的**中途重写**改为"尾部追加一条增量"，观察同轮内后续调用的 miss 是否下降（这处最干净、不涉及撤销安全属性）；
+2. 再处理 `applyMemoryContextWorkingSet` 的**释放改写**：改为"保留原文 + 尾部追加 release 说明"。此处触及 **HC-12 撤销屏障**语义，必须同时更新/保留"已释放内容不得作为活跃证据"的测试，并重跑两条 Electron 门；
+3. 每步都用长会话复测 **主对话命中率**与 **miss/调用**，目标是主对话命中率进入 80%+。
+
 ### 10.14 第七轮（HC-12 撤销屏障）新增证据（2026-09-16）
 
 **问题（先写失败用例）：** v3 写入路径的等值/相似候选只按 branch/scope/`status='active'` 选取；被纠正（`epistemicStatus`/`resolutionStatus = superseded`）或删除（`status = tombstone`）的 atom 仍可能是 active 记录。后续 maintenance（压缩候选）证据即使引用同一 `conversation-source:`，也会创建新 atom 或强化旧 atom，从而复活已被用户忘记/纠正的事实。`memory-service-v3.test.ts` 的新用例在修复前返回 `created`。
