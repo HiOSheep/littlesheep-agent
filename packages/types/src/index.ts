@@ -17,6 +17,8 @@ export * from './memory.js';
 export * from './memory-evidence.js';
 export * from './memory-continuity.js';
 export * from './task.js';
+export * from './activity.js';
+export * from './work-policy.js';
 export * from './agent.js';
 export * from './runtime-contracts.js';
 export * from './durable-harness.js';

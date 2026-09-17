@@ -57,6 +57,11 @@ export interface SessionMetadata {
   compacted?: boolean;
   /** Latest non-destructive summary of older messages. Original messages remain in JSONL. */
   compaction?: CompactionSummary;
+  /**
+   * When the user last corrected/forgot a durable fact for this session. A
+   * summary produced before this instant must not be injected as current memory.
+   */
+  memoryRevokedAt?: string;
   /** Free-form tags. */
   tags?: string[];
   /** Channel id when this session is bound to a communication channel.

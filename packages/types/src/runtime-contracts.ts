@@ -4,7 +4,7 @@ import type { StageName } from './agent.js';
 import type { PlanStep, TaskBook, TaskExecutionResult } from './task.js';
 import type { SessionId } from './session.js';
 import type { ContextSafetyEstimate, LocalTokenLedger, ProviderTokenLedger } from './token-ledger.js';
-import type { CacheObservation } from './cache-observability.js';
+import type { CacheObservation, ContextReuseEvent } from './cache-observability.js';
 import type { NetworkReadPolicy, WebEvidenceProjection, WebProviderRuntimeSnapshot } from './web-retrieval.js';
 export * from './token-ledger.js';
 
@@ -146,6 +146,18 @@ export interface ModelMessageShape {
   reasoningHash?: string;
 }
 
+/**
+ * Redacted explanation of why this request's context prefix changed compared to
+ * the previous request in the same run. It carries only reasons, counts and a
+ * stable segment key — never prompt text, memory bodies or workspace paths.
+ */
+export interface ModelRequestPrefixChange {
+  readonly reasons: readonly string[];
+  readonly changedSegments: number;
+  readonly stablePrefixLength: number;
+  readonly firstChangeKey?: string;
+}
+
 export type LlmCallPurpose =
   | 'classify'
   | 'decide'
@@ -256,8 +268,11 @@ export interface ModelRequestSnapshot {
   payloadHash?: string;
   /** Redacted, request-bound evidence for the three independent cache ledgers. */
   cacheObservation?: CacheObservation;
-  /** Explicit parent request when this snapshot is a bounded model retry. */
+  /** Explicit parent and Runtime-classified reason for a bounded application-level retry. */
   retryOf?: string;
+  retryReason?: 'empty_output' | 'length' | 'decode' | 'schema' | 'duplicate' | 'citation' | 'continuity';
+  /** Present when this request's context prefix differs from the previous request in the run. */
+  prefixChange?: ModelRequestPrefixChange;
 }
 
 export type MemoryIntentRuntimeDecision = 'committed' | 'deferred' | 'rejected' | 'ignored';
@@ -276,6 +291,11 @@ export interface MemoryIntentDecisionRecord {
   readonly evidenceRefs: readonly string[];
   readonly writeIntentId?: string;
   readonly repositoryDecision?: 'created' | 'merged' | 'reinforced' | 'rejected' | 'queued';
+  /**
+   * Local embedding outcomes observed while applying this intent: reusing an
+   * unchanged atom's vector versus queuing new embedding work.
+   */
+  readonly embeddingReuse?: { readonly reused: number; readonly queued: number; readonly disabled: number };
   readonly reconciliationDecision?: 'committed' | 'partial' | 'noop' | 'rejected' | 'deferred';
   readonly createdAt: string;
 }
@@ -319,6 +339,7 @@ export interface ToolInvocationRecord {
   endedAt?: string;
   inputHash?: string;
   inputSummary?: string;
+  /** Runtime-resolved resource identity, more stable than model argument prose. */ resourceKeys?: string[];
   approval: ToolApprovalRecord;
   outputSummary?: string;
   outputSanitized?: boolean;
@@ -447,6 +468,8 @@ export interface ContextSnapshot {
   compressionRecommended: boolean;
   localTokenLedger?: LocalTokenLedger;
   safetyEstimate?: ContextSafetyEstimate;
+  /** Real local context-assembly reuse event (Runtime-owned, content-free). */
+  contextReuse?: ContextReuseEvent;
   providerUsage?: ProviderTokenLedger;
 }
 
@@ -745,6 +768,10 @@ export interface LoopBudgetSnapshot {
   maxElapsedMs: number;
   noProgressRounds: number;
   maxNoProgressRounds: number;
+  /** Monotonic tool-loop model turns across retry, promotion, and recovery. */ toolLoopIterationsUsed?: number;
+  maxToolLoopIterations?: number;
+  /** Bounded evidence identities retained so recovery cannot rediscover progress. */ evidenceFingerprints?: string[];
+  evidenceFingerprintSaturated?: boolean;
   costUsed?: number;
   maxCost?: number;
 }
@@ -818,6 +845,7 @@ export interface RunCheckpointResumeState {
   };
   classification?: import('./agent.js').Classification;
   needAssessment?: import('./task.js').NeedAssessment;
+  workPolicyUpgradeRequest?: import('./task.js').WorkPolicyUpgradeRequest;
   plan?: PlanStep[];
   appliedTaskBookPatchIds: string[];
   deferredRuntimeEvents: RuntimeEventEnvelope[];

@@ -92,6 +92,21 @@ export interface TaskStepResult {
   attempt?: number;
   toolCallIds: string[];
   toolResults: import('./message.js').ToolResult[];
+  /** Qualified preview authored by the exact model request that completed this step. */
+  replyCandidate?: TaskStepReplyCandidate;
+}
+
+export interface TaskStepReplyCandidate {
+  version: 1;
+  source: 'llm';
+  purpose: 'execute_tool_loop';
+  runId: string;
+  modelRequestId: string;
+  goalVersion: number;
+  goalFingerprint: string;
+  evidenceRevision: string;
+  coversGoal: boolean;
+  generatedAt: string;
 }
 
 /** VERIFY's bounded request to revise only failed/incomplete steps. */
@@ -101,6 +116,33 @@ export interface PartialReplanRequest {
   targetStepIds: string[];
   reason: string;
   feedback: string;
+}
+
+/** Durable request to promote one bounded execution into a TaskBook. */
+export interface WorkPolicyUpgradeRequest {
+  version: 1;
+  id: string;
+  runId: string;
+  sourceMessageId: string;
+  goalVersion: number;
+  requestedAt: string;
+  reasonCode: 'dependency_discovered' | 'scope_expanded' | 'acceptance_gap' | 'long_running' | 'budget_pressure';
+  reason: string;
+  remainingGoal: string;
+  completedToolCallIds: string[];
+  pendingToolCallIds: string[];
+  completedEffectRefs: Array<{
+    idempotencyKey: string;
+    status: 'succeeded' | 'failed' | 'cancelled';
+    callId?: string;
+  }>;
+  modelAttemptsUsed: number;
+  budget: {
+    maxModelAttempts: number;
+    toolLoopIterationsUsed: number;
+    maxToolLoopIterations: number;
+    noProgressRounds: number;
+  };
 }
 
 /** Durable audit record for one partial re-plan cycle. */

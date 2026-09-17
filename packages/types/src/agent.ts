@@ -8,8 +8,10 @@
 import type { FinalReplyReservation, FinalReplySettlement, Message, ReplyProvenance } from './message.js';
 import type { CompactionSummary, SessionId, SessionRunSummary } from './session.js';
 import type { AgentTool, ToolContext } from './tool.js';
+import type { ToolStreamEvent } from './activity.js';
 import type { MemoryPrelude } from './memory.js';
 import type { ClarificationRequest, ClarificationResponse } from './clarification.js';
+import type { ClassificationReasonCode, WorkPolicy } from './work-policy.js';
 import type {
   NeedAssessment,
   PartialReplanRequest,
@@ -17,8 +19,8 @@ import type {
   TaskBook,
   TaskExecutionResult,
   TaskReplanRecord,
-  TaskStepStatus,
   VerificationRecord,
+  WorkPolicyUpgradeRequest,
 } from './task.js';
 
 // ─── Stage names (state machine nodes) ──────────────────────────────────
@@ -77,8 +79,12 @@ export interface Classification {
   source: 'rules' | 'llm';
   /** Optional reason for debugging. */
   reason?: string;
+  /** Stable reason used by Runtime policy. Never branch on `reason`. */
+  reasonCode?: ClassificationReasonCode;
   /** Runtime-owned retrieval boundary inferred only from the inbound user message. */
   retrievalIntent?: RetrievalIntent;
+  /** Runtime-selected work policy. Missing only on legacy checkpoints/projections. */
+  workPolicy?: WorkPolicy;
 }
 
 /** A recovery decision from RECOVER. */
@@ -179,6 +185,8 @@ export interface RunContext {
   verifyFeedback?: string;
   /** Step-scoped re-plan request created by VERIFY and consumed by DECIDE/EXECUTE. */
   partialReplanRequest?: PartialReplanRequest;
+  /** Bounded-loop request to create a TaskBook for the unfinished goal. */
+  workPolicyUpgradeRequest?: WorkPolicyUpgradeRequest;
   /** Audit trail retained across repeated DECIDE/EXECUTE passes. */
   replanHistory?: TaskReplanRecord[];
   /** Every VERIFY decision made during this run. */
@@ -310,6 +318,8 @@ export interface RunUsage {
   totalTokens?: number;
   /** Provider-reported prompt tokens served from cache. */
   cachedPromptTokens?: number;
+  /** Provider-reported prompt tokens that missed the cache; disjoint from cachedPromptTokens. */
+  uncachedPromptTokens?: number;
   /** Provider-reported prompt tokens written into cache. */
   cacheWriteTokens?: number;
   /** Provider-reported reasoning tokens included in completionTokens. */
@@ -318,6 +328,17 @@ export interface RunUsage {
   providerDurationMs?: number;
   /** Number of Provider usage records represented by this aggregate. */
   requestCount?: number;
+  /** Requests for which the Provider returned a valid usage record. */
+  usageReportedRequestCount?: number;
+  /** Number of physical HTTP attempts observed across represented requests. */
+  observedAttemptCount?: number;
+  /** Requests whose successful transport duration is known. */
+  timedRequestCount?: number;
+  /** Completion tokens belonging to timed requests only. */
+  timedCompletionTokens?: number;
+  /** Cache-token coverage; absence still means unknown, not zero. */
+  cacheReportedRequestCount?: number;
+  usageCompleteness?: 'complete' | 'partial' | 'unknown';
   source: 'provider';
 }
 
@@ -518,43 +539,6 @@ export interface AgentResult {
   conversationContinuation?: import('./runtime-contracts.js').ConversationContinuationEvidence;
   /** Linked local data/workspace rollback point created for this run. */
   versionCheckpoint?: import('./versioning.js').VersionCheckpointSummary;
-}
-
-// ─── Stream events (emitted during a run) ────────────────────────────────
-
-export type StreamEvent =
-  | { stream: 'lifecycle'; phase: 'start' | 'end' | 'error'; runId: string; stage?: StageName }
-  | { stream: 'assistant'; runId: string; delta: string; stage?: StageName }
-  | { stream: 'tool'; runId: string; event: 'start' | 'update' | 'end'; callId: string; name: string; data?: unknown };
-
-/** Lightweight run-progress event for real-time SSE streaming. */
-export interface ToolStreamEvent {
-  type: 'reasoning' | 'model_reasoning' | 'model_text' | 'system_prompt' | 'task_book' | 'step_start' | 'step_done' | 'step_failed' | 'step_skipped' | 'tool_start' | 'tool_end' | 'verification_start' | 'verification' | 'final_delta' | 'capability_snapshot' | 'capability_probe'
-  /** Runtime-owned disclosure policy; this is never inferred from model text. */
-  visibility?: 'silent' | 'progress'
-  /** Stable identity for one public, user-visible Harness phase occurrence. */
-  phaseId?: string
-  /** Harness stage that owns a public reasoning/progress update. */
-  stage?: StageName
-  /** Lifecycle of a public reasoning/progress update. Raw provider reasoning is never carried here. */
-  reasoningStatus?: 'running' | 'done' | 'failed'
-  callId?: string
-  name?: string
-  stepId?: string
-  title?: string
-  description?: string
-  status?: TaskStepStatus
-  summary?: string
-  input?: unknown
-  ok?: boolean
-  output?: string
-  error?: string
-  durationMs?: number
-  taskBook?: TaskBook
-  verification?: VerificationRecord
-  capabilitySnapshot?: import('./capability.js').RuntimeCapabilitySnapshot
-  capabilityProbe?: import('./capability.js').RuntimeCapabilityProbe
-  permissionEvent?: import('./capability.js').RuntimePermissionEvent
 }
 
 // ─── Post-MVP: multi-agent extension points ──────────────────────────────

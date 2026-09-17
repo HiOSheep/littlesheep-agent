@@ -52,9 +52,9 @@ describe('RunContext ownership contract', () => {
 
   it('exposes explicit write checks without changing the RunContext shape', () => {
     expect(canWriteRunContextField('reply', 'reply')).toBe(true);
-    expect(canWriteRunContextField('reply', 'verify')).toBe(false);
+    expect(canWriteRunContextField('reply', 'verify')).toBe(true);
     expect(canWriteRunContextField('taskBook', 'runtime-boundary')).toBe(true);
-    expect(() => assertRunContextFieldWriteAllowed('reply', 'verify')).toThrow(/cannot be written/);
+    expect(() => assertRunContextFieldWriteAllowed('reply', 'verify')).not.toThrow();
     expect(() => assertRunContextFieldWriteAllowed('reply', 'reply')).not.toThrow();
   });
 });

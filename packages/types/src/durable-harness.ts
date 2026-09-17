@@ -184,6 +184,15 @@ export interface DurableProviderUsageProjection {
   readonly totalTokens?: number;
   readonly cachedPromptTokens?: number;
   readonly reasoningTokens?: number;
+  readonly cacheWriteTokens?: number;
+  readonly durationMs?: number;
+  readonly requestElapsedMs?: number;
+  readonly transportAttempt?: number;
+  readonly observedAttemptCount?: number;
+  readonly ttftMs?: number;
+  readonly contentTtftMs?: number;
+  readonly reasoningTtftMs?: number;
+  readonly toolArgumentsTtftMs?: number;
   readonly cacheStatus: 'hit' | 'miss' | 'partial' | 'unavailable' | 'unknown';
   readonly reconciliation: 'exact_match' | 'within_tolerance' | 'mismatch' | 'unavailable';
   /** Local exact-counter evidence for the same request; absent when no exact counter was bound. */
@@ -201,6 +210,14 @@ export interface DurableModelRequestProjection {
   readonly transportStatus?: DurableModelTransportStatus;
   /** Whether the request reached the Provider; unknown is intentionally explicit. */
   readonly providerReachStatus?: 'reached' | 'not_reached' | 'unknown';
+  readonly durationMs?: number;
+  readonly requestElapsedMs?: number;
+  readonly transportAttempt?: number;
+  readonly observedAttemptCount?: number;
+  readonly ttftMs?: number;
+  readonly contentTtftMs?: number;
+  readonly reasoningTtftMs?: number;
+  readonly toolArgumentsTtftMs?: number;
   /** Redacted request-bound prefix/suffix and independent cache ledgers. */
   readonly cacheObservation?: CacheObservation;
   readonly providerUsage?: DurableProviderUsageProjection;
@@ -215,6 +232,7 @@ export interface DurableModelRequestProjection {
   readonly settlementEventId?: string;
   readonly providerReached?: boolean;
   readonly retryOf?: string;
+  readonly retryReason?: 'empty_output' | 'length' | 'decode' | 'schema' | 'duplicate' | 'citation' | 'continuity';
   readonly usageStatus?: 'available' | 'unavailable' | 'unknown';
   readonly errorKind?: string;
 }

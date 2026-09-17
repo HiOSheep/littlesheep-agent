@@ -61,6 +61,8 @@ export interface CacheLedgerObservation {
   readonly requestCount: 1;
   readonly tokenCount?: number;
   readonly cachedTokenCount?: number;
+  /** Provider-reported uncached input for this request; disjoint from cachedTokenCount. */
+  readonly uncachedTokenCount?: number;
   readonly hitRatio?: number;
 }
 
@@ -112,4 +114,20 @@ export interface CacheObservation {
   readonly providerPrompt: CacheLedgerObservation;
   readonly lsContext: CacheLedgerObservation;
   readonly memoryEmbedding: CacheLedgerObservation;
+}
+
+/** Content-free evidence that one assembly reused a previous identical one. */
+export interface ContextReuseEvent {
+  status: 'hit' | 'miss';
+  /** Fingerprint of the assembly inputs; no prompt text. */
+  reuseKey: string;
+  reusedItems: number;
+  rebuiltItems: number;
+}
+
+/** Local embedding reuse/queue counts recorded by the memory store. */
+export interface MemoryReuseCounts {
+  reused: number;
+  queued: number;
+  disabled: number;
 }
