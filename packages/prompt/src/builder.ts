@@ -110,41 +110,38 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
     source: ContextSourceRef = { kind: 'prompt', id },
   ) => stable.push({ id, content, kind, source, priority, required, sensitive: true, scope });
 
-  // ─── Stable sections (above cache boundary) ───
+  // ─── Canonical shared head (above cache boundary) ───
+  // Every stage emits these sections in this exact order with the same bytes,
+  // so a later call in the same turn reuses the prefix an earlier call already
+  // prefilled. Measured effect: the cross-stage shared head grows from 293
+  // bytes (identity only) to this whole sequence.
   addStable('identity', identitySection(input.branding));
+  addStable('core-flow', coreFlowSection());
+  addStable('safety', safetySection(), 'system_prompt', 100);
+  addStable(
+    'workspace',
+    workspaceSection(input.workspace),
+    'project_knowledge',
+    95,
+    // Optional: contracts that do not carry project knowledge drop this section
+    // instead of rejecting the whole request, keeping the head as long as the
+    // contract allows.
+    false,
+    'workspace',
+    { kind: 'configuration', id: 'workspace', path: input.workspace },
+  );
+  addStable('date-time', dateTimeSection(input.timezone), 'system_prompt', 60, false);
 
-  if (isFull) {
-    addStable('core-flow', coreFlowSection());
-  }
-
+  // ─── Stage-specific sections (still above the boundary) ───
   addStable(
     isRespond ? 'capabilities' : 'tooling',
     isRespond ? capabilitiesSection(input.tools) : toolingSection(input.tools),
     'system_prompt',
     98,
   );
-  if (!isRespond) {
-    addStable('safety', safetySection(), 'system_prompt', 100);
-  }
 
   if (isFull && input.skills && input.skills.length > 0) {
     addStable('skills-index', skillsSection(input.skills), 'system_prompt', 75, false);
-  }
-
-  if (!isRespond) {
-    addStable(
-      'workspace',
-      workspaceSection(input.workspace),
-      'project_knowledge',
-      95,
-      true,
-      'workspace',
-      { kind: 'configuration', id: 'workspace', path: input.workspace },
-    );
-  }
-
-  if (isFull) {
-    addStable('date-time', dateTimeSection(input.timezone), 'system_prompt', 60, false);
   }
 
   if (input.runtime) {

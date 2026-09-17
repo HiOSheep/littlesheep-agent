@@ -1649,6 +1649,27 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 - 预期：主对话内的跨阶段共享前缀从 293 → **~2,505 字节**（≈626 token），直接减少每调用的 miss（当前 ~1,000 token）；
 - 随后跑全量门（其中 characterization 对 `project_knowledge` 的存在性断言、reply 的"精简模式"断言预计需要按 B 的新语义更新），并真实复测主对话命中率与 miss/调用。
 
+### 10.86 第三十六轮（goal round 16：**规范共享头落地——主对话命中率 43.5% → 52.6%**）执行记录（2026-09-17）
+
+**实现（`packages/prompt/src/builder.ts`）：** 把发射顺序改为**规范共享序列无条件前置**——`identity → core-flow → safety → workspace → date-time`，**其后**才是阶段专属段（`capabilities`/`tooling`、`skills-index`、`runtime`、`output-`/`response-directives`）。这样 `respond`（reply）与 `full`（decide/execute）等模式的头字节一致，同一轮内后发的调用可命中先发调用已 prefill 的前缀。
+- **契约处理（按 round 15 的预警）**：`workspace` 段的 kind 是 `project_knowledge`，而 `capability_reply` 等契约不允许它——若保持 `required: true` 会**直接拒绝整个请求**（实测报 `required source workspace has forbidden kind project_knowledge`）。因此把该段改为**非必需**：允许它的契约保留（reply/execute 仍共享），不允许的静默丢弃而不报错。
+- 断言按 B 新语义更新：prompt 3 处（minimal/respond 现在含 Core Flow、respond 体积上限 2,000→3,000+）、characterization 2 处（reply 现在带 project_knowledge / 含共享头）、reply 1 处（提示词体积上限 8,000→12,000）。
+- **全量 `vitest`：459 文件 / 3,276 通过 / 1 跳过**；`typecheck` 0；`check:repo` 33/33。
+
+**真实 Provider 复测（8 任务 × 5 轮、共享会话、唯一话轮、0 失败、重建后）：**
+
+| 指标 | 改前 | **改后** |
+| --- | --- | --- |
+| **主对话命中率** | 43.5% / 44.1% | **52.6% / 52.7%** |
+| 辅助阶段命中率 | 62.2% / 62.4% | 60.6% / 60.4% |
+| 每轮增量命中率 r0→r4 | 42.8% → 53.6% | **45.3% → 56.8%** |
+| 稳态 miss/调用 | ~968 | **~948** |
+| 冷启动 miss/调用（r0） | 1,061 | 1,161（头更大，预期） |
+
+**结论：B 的第一步确认有效**——主对话命中率 **+9.1 个百分点**（相对 +21%），且是在**零失败**的干净长会话上测得的；代价（reply 提示词变大）体现在冷启动 miss/调用略升与辅助阶段略降，但稳态 miss/调用已低于改前。
+
+**round 17 计划（继续 B）：** ① 把**阶段契约与 addon 移到尾部**，让"共享头 + **整段历史**"都进入可缓存前缀（当前历史仍在头之后、被阶段专属段隔开）；② 对齐 `tooling`（reply 无工具 ⇒ 头在工具段分叉，若让所有阶段共享同一份工具清单段可再多共享 ~1.6 KB）；③ 复测主对话命中率目标向 70%+ 推进，并观察 miss/调用是否继续下降。
+
 ### 10.14 第七轮（HC-12 撤销屏障）新增证据（2026-09-16）
 
 **问题（先写失败用例）：** v3 写入路径的等值/相似候选只按 branch/scope/`status='active'` 选取；被纠正（`epistemicStatus`/`resolutionStatus = superseded`）或删除（`status = tombstone`）的 atom 仍可能是 active 记录。后续 maintenance（压缩候选）证据即使引用同一 `conversation-source:`，也会创建新 atom 或强化旧 atom，从而复活已被用户忘记/纠正的事实。`memory-service-v3.test.ts` 的新用例在修复前返回 `created`。
