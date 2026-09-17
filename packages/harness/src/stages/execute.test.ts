@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { createExecuteStage, convertToolCall } from './execute.js';
 import { createDecideStage } from './decide.js';
 import {
-  createMockLlm, textResponse, toolCallResponse, makeCtx, makeTool, lastConversationText,
+  createMockLlm, textResponse, toolCallResponse, makeCtx, makeTool, lastConversationText, allText,
 } from '../tests/helpers.js';
 import { DEFAULT_CONFIG } from '@littlesheep/config';
 import { DEFAULT_BRANDING } from '@littlesheep/branding';
@@ -279,7 +279,7 @@ describe('executeStage', () => {
   it('includes the active behavior profile in the execution system prompt', async () => {
     const systemPrompts: string[] = [];
     const llm = createMockLlm((request) => {
-      systemPrompts.push(String(request.messages[0]?.content ?? ''));
+      systemPrompts.push(allText(request));
       return textResponse('done');
     });
     const stage = createExecuteStage({ ...deps, llm });
@@ -813,7 +813,7 @@ describe('executeStage', () => {
   it('includes taskBook goal, success criteria, and overdelivery limit in the execution prompt', async () => {
     const systemPrompts: string[] = [];
     const llm = createMockLlm((req) => {
-      systemPrompts.push(String(req.messages[0]?.content ?? ''));
+      systemPrompts.push(allText(req));
       return textResponse('done');
     });
     const stage = createExecuteStage({ ...deps, llm });
@@ -1130,10 +1130,10 @@ describe('executeStage', () => {
     expect(ctx.taskExecution?.steps[0].toolCallIds).toEqual(['c1']);
     expect(ctx.toolResults?.[0].meta?.stepId).toBe('find');
     const finalRequest = llm.chat.mock.calls.at(-1)?.[0] as import('@littlesheep/llm').ChatRequest;
-    expect(finalRequest.messages[0]?.content).toContain('Follow progressive disclosure');
-    expect(finalRequest.messages[0]?.content).toContain('Never hide failed or partial steps');
-    expect(finalRequest.messages[0]?.content).toContain('Do not dump raw command output or private chain-of-thought');
-    expect(finalRequest.messages[0]?.content).toContain('SOUL_SENTINEL_USER_FACING_VOICE');
+    expect(allText(finalRequest)).toContain('Follow progressive disclosure');
+    expect(allText(finalRequest)).toContain('Never hide failed or partial steps');
+    expect(allText(finalRequest)).toContain('Do not dump raw command output or private chain-of-thought');
+    expect(allText(finalRequest)).toContain('SOUL_SENTINEL_USER_FACING_VOICE');
     expect(events.filter((event) => event.type !== 'model_activity').map((evt) => evt.type)).toEqual([
       'step_start',
       'tool_start',
@@ -1160,7 +1160,7 @@ describe('executeStage', () => {
     };
     const llm = createMockLlm(textResponse('unused'));
     llm.chat.mockImplementation(async (request: import('@littlesheep/llm').ChatRequest) => {
-      const system = String(request.messages[0]?.content ?? '');
+      const system = allText(request);
       if (system.includes('final response assembler')) return textResponse('parallel final answer');
       const stepId = system.includes('Step id: inspect-a') ? 'inspect-a' : 'inspect-b';
       if (request.messages.some((message) => message.role === 'tool')) return textResponse(`${stepId} result`);
@@ -1226,7 +1226,7 @@ describe('executeStage', () => {
     };
     const llm = createMockLlm(textResponse('unused'));
     llm.chat.mockImplementation(async (request: import('@littlesheep/llm').ChatRequest) => {
-      const system = String(request.messages[0]?.content ?? '');
+      const system = allText(request);
       if (system.includes('final response assembler')) return textResponse('writes complete');
       const stepId = system.includes('Step id: write-a') ? 'write-a' : 'write-b';
       if (request.messages.some((message) => message.role === 'tool')) return textResponse(`${stepId} result`);
@@ -1283,7 +1283,7 @@ describe('executeStage', () => {
   it('resumes an incomplete parallel branch without rerunning its completed sibling', async () => {
     const llm = createMockLlm(textResponse('unused'));
     llm.chat.mockImplementation(async (request: import('@littlesheep/llm').ChatRequest) => {
-      const system = String(request.messages[0]?.content ?? '');
+      const system = allText(request);
       if (system.includes('final response assembler')) return textResponse('resume complete');
       if (system.includes('Step id: completed')) throw new Error('completed sibling must not rerun');
       return textResponse('remaining result');

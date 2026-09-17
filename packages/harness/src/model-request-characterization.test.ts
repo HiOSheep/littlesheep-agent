@@ -45,7 +45,7 @@ function expectCommonPayloadShape(request: ChatRequest, options: { includesBoots
   expect(roles.slice(5).every((role) => role === 'system')).toBe(true);
   expect(roles.length).toBeGreaterThanOrEqual(6);
   if (options.includesBootstrap !== false) {
-    expect(String(request.messages[0]?.content)).toContain('BOOTSTRAP_SENTINEL');
+    expect(request.messages.map((message) => String(message.content)).join('\n')).toContain('BOOTSTRAP_SENTINEL');
   }
   expect(request.messages.map((message) => String(message.content)).join('\n')).toContain('MEMORY_ROOT_SENTINEL');
   expect(String(request.messages[0]?.content)).toContain('PROFILE_SENTINEL');
@@ -97,15 +97,10 @@ function expectRecordedSnapshot(
   } else {
     expect(kinds).toContain('project_knowledge');
   }
-  const tailKinds = items.slice(-6).map((item) => item.kind);
-  expect(tailKinds).toEqual(expect.arrayContaining([
-    'recent_message',
-    'attachment_manifest',
-    'user_input',
-    'runtime_event',
-  ]));
-  // The volatile Runtime Context item stays last so the cacheable prefix is
-  // the system prompt plus the whole conversation.
+  // The volatile Context sections and the Runtime block travel after the
+  // conversation, so the cacheable prefix is the system prompt plus history.
+  const lastConversationIndex = kinds.lastIndexOf('user_input');
+  expect(kinds.indexOf('runtime_event')).toBeGreaterThan(lastConversationIndex);
   expect(items.at(-1)?.kind).toBe('runtime_event');
 }
 

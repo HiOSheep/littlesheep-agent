@@ -306,7 +306,7 @@ describe('createRunner run', () => {
       'memory_deep_search',
     ]));
     const replyRequest = (llm.chat as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as ChatRequest;
-    expect(String(replyRequest.messages[0]?.content)).toContain('Memory Tree Root Index');
+    expect(replyRequest.messages.map((message) => String(message.content)).join('\n')).toContain('Memory Tree Root Index');
     const trace = result.trace as Array<{ name: string }>;
     expect(trace.map((t) => t.name)).toEqual(['enter', 'classify', 'reply', 'finalize']);
   });

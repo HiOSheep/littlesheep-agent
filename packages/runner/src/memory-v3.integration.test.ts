@@ -12,6 +12,11 @@ import { createRunner, type AgentRunner } from './runner.js';
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
+/** All model-visible text, including the trailing Context sections. */
+function requestText(request: { messages: Array<{ content: unknown }> } | undefined): string {
+  return (request?.messages ?? []).map((message) => String(message.content)).join('\n');
+}
+
 describe('Runner Memory v3 integration', () => {
   let dataDir: string;
   const runners: AgentRunner[] = [];
@@ -209,8 +214,8 @@ describe('Runner Memory v3 integration', () => {
     expect(write).toMatchObject({ decision: 'created', node: { summary: 'User greeting preference' } });
     const result = await runner.run({ text: 'hello', cwd: workspace });
     expect(result.status).toBe('ok');
-    const outbound = requests.find((request) => String(request.messages[0]?.content).includes('Initially Selected Memory Atoms'));
-    expect(String(outbound?.messages[0]?.content)).toContain('prefers concise greetings');
+    const outbound = requests.find((request) => requestText(request).includes('Initially Selected Memory Atoms'));
+    expect(requestText(outbound)).toContain('prefers concise greetings');
     // The per-request KnownState travels after the system prompt, outside the
     // Provider's cacheable prefix.
     expect(outbound?.messages.map((message) => String(message.content)).join('\n'))
@@ -302,10 +307,10 @@ describe('Runner Memory v3 integration', () => {
     const result = await runner.run({ text: '继续处理这个', cwd: workspace });
 
     expect(result.status).toBe('ok');
-    expect(requests.slice(0, 2).every((request) => !String(request.messages[0]?.content).includes('workspace filters when validating'))).toBe(true);
-    const executeRequest = requests.find((request) => String(request.messages[0]?.content).includes('# TaskBook Refined Memory Atoms'));
+    expect(requests.slice(0, 2).every((request) => !requestText(request).includes('workspace filters when validating'))).toBe(true);
+    const executeRequest = requests.find((request) => requestText(request).includes('# TaskBook Refined Memory Atoms'));
     if (!executeRequest) throw new Error(`refinement missing: ${JSON.stringify(result.memoryAccess?.records)}`);
-    expect(String(executeRequest?.messages[0]?.content)).toContain('workspace filters when validating');
+    expect(requestText(executeRequest)).toContain('workspace filters when validating');
     expect(result.memoryKnownState?.references).toEqual(expect.arrayContaining([
       expect.objectContaining({ atomId, decision: 'adopted' }),
     ]));
@@ -383,10 +388,10 @@ describe('Runner Memory v3 integration', () => {
       text: 'Continue with that.',
       cwd: workspace,
     });
-    const outbound = requests.find((request) => String(request.messages[0]?.content).includes('Initially Selected Memory Atoms'));
+    const outbound = requests.find((request) => requestText(request).includes('Initially Selected Memory Atoms'));
 
     expect(result.status).toBe('ok');
-    expect(String(outbound?.messages[0]?.content)).toContain(marker);
+    expect(requestText(outbound)).toContain(marker);
     expect(result.memoryKnownState?.references).toEqual(expect.arrayContaining([
       expect.objectContaining({ atomId: seed.node!.id, decision: 'adopted' }),
     ]));
@@ -588,7 +593,7 @@ describe('Runner Memory v3 integration', () => {
     expect(projectNode).toBeTruthy();
     expect((await first.infra.memoryRepository.listNodes('daily', workspace))
       .some((node) => node.sourceRunIds.includes(result.runId))).toBe(true);
-    expect(requests.some((request) => String(request.messages[0]?.content).includes(marker))).toBe(true);
+    expect(requests.some((request) => requestText(request).includes(marker))).toBe(true);
 
     await first.shutdown();
     runners.splice(runners.indexOf(first), 1);

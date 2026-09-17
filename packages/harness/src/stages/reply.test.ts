@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_BRANDING } from '@littlesheep/branding';
 import { DEFAULT_CONFIG } from '@littlesheep/config';
 import { textMessage } from '@littlesheep/types';
-import { createMockLlm, makeCtx, textResponse } from '../tests/helpers.js';
+import { createMockLlm, makeCtx, textResponse, allText } from '../tests/helpers.js';
 import { createReplyStage } from './reply.js';
 
 describe('replyStage', () => {
@@ -170,7 +170,7 @@ describe('replyStage', () => {
   it('includes the active Soul when composing the user-visible reply', async () => {
     const systemPrompts: string[] = [];
     const llm = createMockLlm((request) => {
-      systemPrompts.push(String(request.messages[0]?.content ?? ''));
+      systemPrompts.push(allText(request));
       return textResponse('带有人格风格的回复');
     });
     const stage = createReplyStage({
@@ -234,7 +234,7 @@ describe('replyStage', () => {
       '假如你拥有了152，会怎么做呢？',
     ]));
     expect(ctx.contextSnapshots?.[0]?.safetyEstimate?.estimatedPromptTokens).toBeLessThan(8_000);
-    const systemPrompt = String(requests[0]?.messages[0]?.content);
+    const systemPrompt = allText(requests[0]);
     expect(systemPrompt).toContain('# Memory Tree Root Index');
     expect(systemPrompt).toContain('root index truncated');
     expect(systemPrompt).not.toContain('root index -> branch index -> node/query expansion');
