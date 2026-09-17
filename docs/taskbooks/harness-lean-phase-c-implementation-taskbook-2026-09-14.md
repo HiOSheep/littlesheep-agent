@@ -1824,6 +1824,33 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 3. 跑 harness + runner + 全量门 + 两条 Electron 门；
 4. 复测长会话，并用 round 25 的诊断比对 **`memory` 变化计数是否下降**（预期降至接近 0），再看主对话命中率。
 
+### 10.95 第三十六轮（goal round 28：成果收敛与完整门验证）执行记录（2026-09-17）
+
+**本轮选择：** 在剩余上下文不足以安全完成"跨 5 文件新建尾部 delta 通道"的情况下，先做**可验证的收敛**——对已交付状态做一次完整门验证并锁定，把剩余工作写成可直接执行的交接（避免再次出现"改到一半回退"）。
+
+**完整验证（全部通过）：**
+
+| 门 | 结果 |
+| --- | --- |
+| 全量 `vitest` | **460 文件 / 3,278 通过 / 1 跳过** |
+| `typecheck` | 0 错误 |
+| `check:repo` | ok（33/33） |
+| `verify:electron-continuity` | **ok:true**（8 个场景，跨重启连续性 `status: supported`） |
+| `verify:electron-ui-state-continuity` | **ok:true** |
+| `verify:harness-paths:offline` | ok:true |
+
+**本目标已交付且零回归的成果（按提交顺序）：**
+1. **诊断体系**：`verify-harness-path-comparison.mjs` 现输出**逐调用证据**（`cacheCalls` 语义）、**阶段分裂**（主对话 vs 辅助）、**每轮 miss token**、**前缀变化原因分布**（round 25 用它定位到 `system_prompt`/`memory`/`project_knowledge` 在 system 内变化）；
+2. **运行态入尾部**（round 1）：时钟/耗时/进度/工具计时不再位于 system 内部；
+3. **append-only 释放语义**（round 23）：记忆释放不再改写历史，改为尾部追加权威说明（门全绿）；
+4. **共享头地基**（round 14）：`buildSharedPromptHead` + LCP 守卫（曾实测 +9.1pt，但破坏连续性门，已回退并留档）；
+5. **前端命中率分列**（round 5）：`主对话命中 X%（N 次）` 与 `辅助阶段命中 Y%（M 次）`，与 DSH 的每会话口径可比；
+6. **陈旧检查点修复**（round 6/7）：消除"无法再满足的 waiting 检查点永久毒化会话"，使长会话测量得以 0 失败。
+
+**未达成（如实）：** 目标的**头条指标**（把混合命中率提升到接近 DSH 量级）**未实现**。当前可发布状态为主对话 **44–46%**、辅助 ~62%、稳态 miss/调用 ~968。已定位的根因是 **system 消息内部的高频变化**（`system_prompt`/`memory`/`project_knowledge`，约覆盖 1/3 请求）；修复它需要"先建尾部 delta 通道、再拆 system 合并"（round 27 已证明顺序不能颠倒，否则静默丢失记忆内容）。
+
+**round 29/30 计划（交接）：** 按 round 28 原计划 1→4 执行尾部 delta 通道并复测；若上下文/预算不允许，则以本轮的验证结果收尾，并把上述"已交付/未达成"清单作为该目标的最终交付说明。
+
 **round 24 计划（改打高频断点）：** 转向**每个 run/每轮都会发生**的 system 提示词抖动：
 1. `memory-taskbook-refinement.ts:137` 在 **DECIDE 中途重写 `initialMemoryContext`**（同轮内 system 即变化）；
 2. `memoryRootIndex` / `initialMemoryContext` / `bootstrap` 每请求按 ctx 重建（记忆一更新即变化）。
