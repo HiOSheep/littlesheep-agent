@@ -2158,3 +2158,37 @@ C10B 矩阵 HC-07 由「部分」变为「通过（离线）」。
 1. **先做"Provider 侧对账"而不是再改结构**：用 `--keep-data` 跑一次实机并保留日志（每请求已有 `prompt_cache_hit_tokens` / `providerPrompt.tokenCount`），在本地把**每次请求的实测命中 token** 与**本地算出的稳定前缀字符**逐对相关分析——判断差距来自"上一条不同 purpose 的调用污染/挤占"还是"缓存过期/粒度"。这一步**能把"结构改动"从猜测变成有靶心的改动**；
 2. 若确认是**同轮多 purpose 竞争**所致，则"阶段段后置（10.103）+ 只增不滑"的价值重估：那时同一轮内所有调用共享同一个 system 前缀，缓存竞争才会消失；
 3. `classify` 的 system 与共享头**完全不同**（`classify→reply` 本地稳定前缀 0%），若它每轮都先跑，会**占掉一格缓存**；把 classify 也纳入共享头（其契约段后置）可能是**低成本、高确定性**的一步。
+
+### 10.107 Provider 侧对账（**修正 10.106 的一条结论**）：system 段全部字节稳定，瓶颈是"每轮首个大调用"（2026-09-17）
+
+**新增对账能力（实机，`--keep-data` 保留日志后本地分析，零额外费用）：**
+- `provider-reconcile.mjs`：把**实测 `providerUsage.cachedPromptTokens`** 与**本地稳定前缀**（对"紧邻上一次请求"与"上一次同 purpose 请求"分别计算）逐请求并列；
+- `system-stability.mjs`：对整场会话统计**每个 context item 的 distinct hash 数**，直接看出"哪些段每轮都在变"。
+
+**实机事实（某 8×5 会话，85 个请求）：**
+
+| 类别 | 结果 |
+| --- | --- |
+| system 段（identity / core-flow / safety / workspace / date-time / profile / capabilities / response-directives / user-facing-voice / tooling / runtime / output-directives / bootstrap×4 / retrieval-intent-contract / reply:system） | **全部 100% 稳定（1 个 hash）** |
+| `memory-root-index` / `bootstrap:USER.md` | 98%（会话内仅 2 个 hash） |
+| `recent_message`（历史） | 88% 稳定（552 次出现、69 个 hash） |
+| `runtime-awareness:*`（尾部运行态） | 每请求唯一（<10%），符合"易变入尾部"的设计 |
+
+| 请求类型 | 实测命中 / prompt | 命中率 |
+| --- | --- | --- |
+| `reply`（~2,050 token） | 1,280–1,792 | 62–87% |
+| **`execute_tool_loop` 每轮第一次**（~6,700 token） | **2,432** | **36%** |
+| `execute_tool_loop` 同轮后续迭代（~6,200 token） | **5,120** | **82%** |
+| `execute_final_reply` / `recover`（~1,000–1,400 token） | 128–640 | 13–45% |
+
+**修正 10.106 的一条结论（重要）：** 10.106 用"`contextSnapshots` 条目按下标比较"得出"跨阶段共享 = 0"，那是**测量口径的假象**——`execute` 的 system 只发一个 `execute:system` 条目，而 `reply` 发多个分段条目，按下标比较必然在第 0 条就不相等；但 **Provider 比较的是字节**，实测 `reply` 类调用命中 ~1,700 token ≈ 共享头 + 稳定段的真实字节数。**结论：跨阶段共享在 head 层已经生效**，10.106 里"跨阶段 13–29%"应被本节的实测命中取代。后续本地 diff 工具必须按**字节前缀**比较（例如把 system 段先拼成字节再比），不能按条目下标。
+
+**新的、更精确的瓶颈判断：**
+1. **每轮第一次 `execute_tool_loop` 是最大流失点**（6,700 token 中只命中 2,432 ≈ 36%），而同轮后续迭代达 82% ⇒ 缺的 4,000 余 token 主要是**历史窗口 + 本轮新增内容**；
+2. 由于所有 system 段都字节稳定，**决定前缀长度的就是"历史块的第一条差异消息"**，其后（当前请求、尾部段、runtime 块）必然重算；
+3. 10.105/10.106 里"去掉 8 条上限"没效果，说明**`ctx.history` 在更上游就已经是被截断的窗口**（harness 的窗口选择器之上）——这是下一步要先定位的地方。
+
+**下一步（零成本优先）：**
+1. 找到 `ctx.history` 的**来源与截断点**（RunContext 装配处；`packages/runner`、`packages/context`、harness 的 run-context 构建），确认它给的是"整段 transcript"还是"最近 N 条"；
+2. 把 `prefix-diff` 改成**字节前缀**口径（先拼接 system 段的字节再比较），重测 `reply→reply` / `execute→execute` 的真实稳定字节；
+3. 只有在 ① 确认上游未截断、② 字节口径算出"history 起点确实在滑动"之后，才重启"只增不滑"，并用 `provider-reconcile.mjs` **验证实测命中上升**（而不是只看本地比值）。
