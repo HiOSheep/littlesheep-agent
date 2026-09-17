@@ -1895,6 +1895,27 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 
 **目标状态：** 头条指标未达成 ⇒ 目标**保持 active、不标记完成**（第 30 轮为本次 30 轮预算的最后一轮，剩余工作见上）。
 
+### 10.98 用户批准"架构级改动"后的执行设计（待执行，2026-09-17）
+
+用户明确同意进行**架构级改动**（DSH 形状），目标：把主对话命中率从 **≈49%** 推向 **80%+**。以下为基于本任务书 round 1–30 实测证据的**有序设计**（顺序不可颠倒，前两步是后两步的前提）。
+
+**现状三处结构性障碍（均已实测）：**
+1. **各阶段历史窗口不同**（round 19 本地日志：verify=2 条消息/无历史、execute 3–4、reply≤8、classify 2–6）⇒ 前缀从 token 0 匹配，**只要某阶段少带一条历史，跨阶段共享即在第 2 条消息处分叉**，共享头之外无法再共享；
+2. **阶段契约/addon 在 system 消息内**（round 25 诊断：`system_prompt` 每 100 请求变 39–41 次、`memory` 30–31 次、`project_knowledge` 31–34 次）⇒ 直接在 system 内截断前缀；
+3. **run 内记忆更新走 system**（`memory-taskbook-refinement` 把细化内容并回 `initialMemoryContext`）⇒ 同轮内 system 即变化；该内容是**运行期检索**、唯一模型通道就是 system（round 27 由集成测试证明），因此**必须先建尾部通道**再拆它。
+
+**执行顺序（每步都必须全量 vitest + typecheck + check:repo + 两条 Electron 门全绿后才提交）：**
+1. **历史窗口归一**：让所有阶段使用**同一份历史投影**（同一窗口/同一裁剪规则），例如统一为"最近 N 条 + 预算"，并确保所有阶段以**相同字节序**渲染同一条历史。这是"共享头 + 历史"成立的前提；
+2. **全阶段共用共享头**：把 system 消息改为 `buildSharedPromptHead({branding, tools, workspace, timezone})`（**已实现、当前未启用**），阶段专属段与 addon（`execution-plan`、`retrieval-intent-contract`、`capabilities/tooling` 差异、`output-`/`response-directives`、skills、记忆索引）全部走**尾部候选**（`trailingSegments` 机制与 round 29 的 `VOLATILE_GUIDANCE_SEGMENT_IDS` 已就位）；
+   - 注意 round 16 的教训：共享头**曾破坏 `verify:electron-continuity`**（`cross-restart reply is not memory-continuous`）。必须先用离线场景复现并定位（对比有/无共享头时 reply 的提示词、产出回复与 `assessResponseMemoryContinuity` 的词法比对输入），修好后再启用；
+3. **尾部 delta 通道**：新增 `RunContext` 字段（如 `pendingMemoryDeltas`）+ run-context 契约条目 + 尾部注入器；`memory-taskbook-refinement` 改为写 delta 而非并回 system；
+4. **冻结 system**：`memoryRootIndex` / `initialMemoryContext` / `bootstrap` / workspace 段在 run 内首轮定稿后**字节不变**；
+5. **复测与判据**：同一长会话配置（8 任务 × 5 轮、共享会话、唯一话术、0 失败）复测 **主对话命中率**、**每轮 miss/call**，并用 round 25 的诊断确认 `system_prompt`/`memory`/`project_knowledge` 计数下降；预期主对话进入 80%+。
+
+**主要风险（必须同时守住）：** ① 历史窗口归一会让 verify/classify 等阶段带上更多历史 ⇒ 单次 prompt 变大（成本上升，但可缓存）；② HC-12 撤销/连续性等安全属性必须保持（每条门都要跑）；③ stage 契约的允许种类需同步（共享头中的 workspace 段 kind=`project_knowledge`，目前部分契约不允许——round 16 的失败点之一，宜作为**单个 `system_prompt` 分段**发射以避免改契约）。
+
+**验证用 Provider：** 用户提供了 opencode go 的 API key 供测试；**尚缺 baseURL 与可用模型名**，拿到后可在复测中替换 DeepSeek 以节省预算（当前 DeepSeek 追加额度余额 ≈ ¥1.5）。
+
 **round 24 计划（改打高频断点）：** 转向**每个 run/每轮都会发生**的 system 提示词抖动：
 1. `memory-taskbook-refinement.ts:137` 在 **DECIDE 中途重写 `initialMemoryContext`**（同轮内 system 即变化）；
 2. `memoryRootIndex` / `initialMemoryContext` / `bootstrap` 每请求按 ctx 重建（记忆一更新即变化）。
