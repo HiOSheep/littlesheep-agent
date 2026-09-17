@@ -2,6 +2,11 @@
 
 export { CACHE_BOUNDARY_MARKER, splitAtBoundary } from './cache-boundary.js';
 export {
+  buildSharedPromptHead,
+  sharedPromptHeadPrefixLength,
+  type SharedPromptHeadInput,
+} from './shared-head.js';
+export {
   formatElapsedMilliseconds,
   formatRuntimeClock,
   resolveRuntimeTimeZone,

@@ -1592,6 +1592,23 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 
 **round 14 计划：** ① 用**主对话命中率**作为主指标（44%），把 B-lite 的收益目标定为"让 reply 能命中 execute 已 prefill 的头部"；② 先做**最小可行版本**：只把 `identity + core-flow` 这两段（合计 ~1.8 KB）在所有模式前置（不改契约允许种类），离线看 LCP 是否从 293 提升到 ~1,800，再评估是否值得继续到 safety/workspace/tooling；③ 真实 Provider 复测主对话命中率与 miss/调用。
 
+### 10.83 第三十六轮（goal round 14：**用户裁定走 B（DSH 形状）**；共享头第一步落地）执行记录（2026-09-17）
+
+**用户裁定：选 B（激进，DSH 形状）——所有阶段共用同一份 system prompt 头，各阶段契约指令全部移到尾部。** 依据是 round 11/12 的量化：除 `identity` 外无任何分段跨模式一致（公共前缀仅 293 字节），因此"只重排不改内容"的 A 不可行，只有内容级统一能提升跨阶段复用。
+
+**第一步（已落地，零行为改动）：** 新增 `packages/prompt/src/shared-head.ts`：
+- `buildSharedPromptHead({ branding, tools, workspace, timezone })`：按**固定顺序**渲染规范化共享头——`identity` → `core-flow` → `safety` → `workspace` → `date-time` → **`tooling`（放最后）**，分隔符与 builder 一致（`\n\n---\n\n`）。
+- `sharedPromptHeadPrefixLength()`：给出"工具清单之前"的共享前缀长度。
+- 经包 index 导出（`buildSharedPromptHead`/`sharedPromptHeadPrefixLength`/`SharedPromptHeadInput`）。
+
+**离线断言（`shared-head.test.ts`，2 个用例全过）：**
+1. **同工具集**：任意两个阶段的共享头**字节完全一致**（LCP = 全长）——即这些阶段可 100% 共享头；
+2. **工具集不同**：仍共享"工具清单之前"的全部内容，且该前缀 **> 1,500 字节**（对比原布局的整头 293 字节，提升 5 倍以上）。
+
+**已知技术前提（下一步必须先验证，成本极低）：** Provider 的前缀缓存**是否包含 `tools` 定义**。若包含，则"不同工具集的阶段"连共享头也无法完全复用（因为 tools 参数排在消息之前）；这需要一次 2 次调用的真实探测（同一 messages、不同 tools，看第二次是否命中）来确认。LS 自身把 tools 归入 stable prefix（`cache-observability` 的 `stablePayload.tools` 归一化），倾向于"包含"。
+
+**round 15 计划（B 的接线）**：① 先用 2 次调用探测 tools 是否进入前缀；② 按结论接线——system 消息 = `buildSharedPromptHead(...)`（阶段无关、字节一致），**各阶段契约指令与 addon 一律移到尾部**（与既有的运行态/known-state 尾部块同处），从而使"共享头 + 整段历史"成为可缓存前缀；③ 全量门 + 真实 Provider 复测**主对话命中率**（当前 43.5%）与 **miss/调用**（当前 ~1,000）。
+
 ### 10.14 第七轮（HC-12 撤销屏障）新增证据（2026-09-16）
 
 **问题（先写失败用例）：** v3 写入路径的等值/相似候选只按 branch/scope/`status='active'` 选取；被纠正（`epistemicStatus`/`resolutionStatus = superseded`）或删除（`status = tombstone`）的 atom 仍可能是 active 记录。后续 maintenance（压缩候选）证据即使引用同一 `conversation-source:`，也会创建新 atom 或强化旧 atom，从而复活已被用户忘记/纠正的事实。`memory-service-v3.test.ts` 的新用例在修复前返回 `created`。
