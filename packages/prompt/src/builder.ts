@@ -133,12 +133,16 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
   addStable('date-time', dateTimeSection(input.timezone), 'system_prompt', 60, false);
 
   // ─── Stage-specific sections (still above the boundary) ───
-  addStable(
-    isRespond ? 'capabilities' : 'tooling',
-    isRespond ? capabilitiesSection(input.tools) : toolingSection(input.tools),
-    'system_prompt',
-    98,
-  );
+  // The capability summary is emitted for every mode right after the head. It is
+  // small and byte-identical across stages, and the faithful system-prompt
+  // projection shows it extends the cross-stage shared prefix from the
+  // 2593-byte head to 2921 bytes before the mode-specific tool section splits
+  // the bytes (taskbook 10.116).
+  addStable('capabilities', capabilitiesSection(input.tools), 'system_prompt', 98);
+
+  if (!isRespond) {
+    addStable('tooling', toolingSection(input.tools), 'system_prompt', 98);
+  }
 
   if (isFull && input.skills && input.skills.length > 0) {
     addStable('skills-index', skillsSection(input.skills), 'system_prompt', 75, false);
