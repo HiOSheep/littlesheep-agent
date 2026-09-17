@@ -1629,6 +1629,26 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 2. 把**各阶段契约指令与 addon 一律移到尾部**（与既有的运行态/known-state 尾部块同处，位置在历史之后）⇒ 使"共享头 + 整段历史"成为可缓存前缀；
 3. 跑全量门（含 prompt 契约与阶段断言），再用真实 Provider 复测**主对话命中率**（当前 43.5%）与 **miss/调用**（当前 ~1,000）。
 
+### 10.85 第三十六轮（goal round 15：接线前的契约面勘查——两个新约束）执行记录（2026-09-17）
+
+**逐个 purpose 核对 `allowedContextKinds`（离线）：**
+
+| purpose | 允许种类来源 | 是否允许 `project_knowledge` |
+| --- | --- | --- |
+| decide / execute_tool_loop / reply | `FULL_INPUTS`（或其过滤） | **允许** |
+| execute_final_reply / verify / evolve / capture | `WORKFLOW_INPUTS` | 不允许 |
+| classify / decide_explicit_tool / recover / capability_reply / ask_user / session_compaction | 各自的显式列表 | 不允许 |
+
+**由此得到两个必须纳入设计的约束（本轮的关键产出）：**
+1. **不能把 workspace 段当作独立分段塞进共享头**：`workspace` 段的 kind 是 `project_knowledge`，而 WORKFLOW_INPUTS/显式列表类契约会在契约过滤阶段**丢掉它**，导致这些阶段的头字节与其他阶段不一致、共享失败。⇒ 共享头要么作为**单个 `system_prompt` 分段**发射（所有契约都允许，无需改契约），要么必须先把 `project_knowledge` 加进那些契约（更大的契约变更）。
+2. **`tooling` 段必然分叉**：`reply` 不带工具（`toolingSection([])`），而 execute/decide 带一堆工具 ⇒ 头必须在**工具清单之前**结束共享。按 `identity→core-flow→safety→workspace→date-time→tooling` 的顺序，reply 与 full 类阶段的共享前缀可到 **2,505 字节**（284+1,530+292+48+351，对比当前 293 字节，约 8.5 倍），工具清单之后各自继续。
+
+**最小正确切法（round 16 执行）：**
+- 在 `builder.ts` 里把发射顺序改为**规范共享序列在前**并对所有模式**无条件发射**（identity → core-flow → safety → workspace → date-time），共享头之后才接模式专属段（`capabilities` / `tooling` / `skills-index` / `runtime` / `output-` 或 `response-directives`）；
+- 共享部分**保持各自原有 kind 不变**（避免 snapshot/契约连锁改动），仅在必要时把整头合并为单个 `system_prompt` 分段；
+- 预期：主对话内的跨阶段共享前缀从 293 → **~2,505 字节**（≈626 token），直接减少每调用的 miss（当前 ~1,000 token）；
+- 随后跑全量门（其中 characterization 对 `project_knowledge` 的存在性断言、reply 的"精简模式"断言预计需要按 B 的新语义更新），并真实复测主对话命中率与 miss/调用。
+
 ### 10.14 第七轮（HC-12 撤销屏障）新增证据（2026-09-16）
 
 **问题（先写失败用例）：** v3 写入路径的等值/相似候选只按 branch/scope/`status='active'` 选取；被纠正（`epistemicStatus`/`resolutionStatus = superseded`）或删除（`status = tombstone`）的 atom 仍可能是 active 记录。后续 maintenance（压缩候选）证据即使引用同一 `conversation-source:`，也会创建新 atom 或强化旧 atom，从而复活已被用户忘记/纠正的事实。`memory-service-v3.test.ts` 的新用例在修复前返回 `created`。
