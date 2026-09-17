@@ -1609,6 +1609,26 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 
 **round 15 计划（B 的接线）**：① 先用 2 次调用探测 tools 是否进入前缀；② 按结论接线——system 消息 = `buildSharedPromptHead(...)`（阶段无关、字节一致），**各阶段契约指令与 addon 一律移到尾部**（与既有的运行态/known-state 尾部块同处），从而使"共享头 + 整段历史"成为可缓存前缀；③ 全量门 + 真实 Provider 复测**主对话命中率**（当前 43.5%）与 **miss/调用**（当前 ~1,000）。
 
+### 10.84 第三十六轮（goal round 14：tools 不破坏前缀缓存 → B 无阻塞）执行记录（2026-09-17）
+
+**探测（真实 Provider，4 次极小调用，约 ¥0.01）：** 同一段 ~1.4k token 的 system 文本 + 同一 user 输入，变量只有 tools：
+| 请求 | tools | prompt | 命中 |
+| --- | --- | --- | --- |
+| A 首次 | `probe_alpha` | 1,893 | 1,408 |
+| B 重复 | `probe_alpha` | 1,893 | **1,664** |
+| C 换工具 | `probe_beta` | 1,893 | **1,664** |
+| D 不带工具 | — | 1,636 | 1,408 |
+
+**结论：**
+1. **换工具定义完全没有降低命中（C = B = 1,664）** ⇒ **`tools` 不破坏前缀缓存**；因此"各阶段工具集不同"**不是** B 方案的阻塞项。这消除了 round 14 记录的最大技术不确定性。
+2. 不带工具的请求命中较低（1,408 vs 1,664，差 ~256 token ≈ 工具定义体积），说明**工具块位于消息之前**——它参与前缀长度，但只要**消息部分一致**，跨阶段仍能命中到消息前缀（这正是 B 需要的）。
+3. 附带确认：system 文本跨请求可持续命中（A 就已命中 1,408），与"稳定头可长期缓存"一致。
+
+**round 15 计划（B 的接线，仍待执行）：**
+1. 让所有阶段的 system 消息 = `buildSharedPromptHead({branding, tools, workspace, timezone})`（字节一致；`tooling` 段已在末尾，工具集差异不影响其上的共享）；
+2. 把**各阶段契约指令与 addon 一律移到尾部**（与既有的运行态/known-state 尾部块同处，位置在历史之后）⇒ 使"共享头 + 整段历史"成为可缓存前缀；
+3. 跑全量门（含 prompt 契约与阶段断言），再用真实 Provider 复测**主对话命中率**（当前 43.5%）与 **miss/调用**（当前 ~1,000）。
+
 ### 10.14 第七轮（HC-12 撤销屏障）新增证据（2026-09-16）
 
 **问题（先写失败用例）：** v3 写入路径的等值/相似候选只按 branch/scope/`status='active'` 选取；被纠正（`epistemicStatus`/`resolutionStatus = superseded`）或删除（`status = tombstone`）的 atom 仍可能是 active 记录。后续 maintenance（压缩候选）证据即使引用同一 `conversation-source:`，也会创建新 atom 或强化旧 atom，从而复活已被用户忘记/纠正的事实。`memory-service-v3.test.ts` 的新用例在修复前返回 `created`。
