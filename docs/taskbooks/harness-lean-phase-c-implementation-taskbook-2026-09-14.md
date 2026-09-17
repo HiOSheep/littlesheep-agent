@@ -2372,3 +2372,22 @@ C10B 矩阵 HC-07 由「部分」变为「通过（离线）」。
 1. 修 `systemPromptProjection` 的口径，使其始终按**请求真实消息序**输出（10.112 发现其段序在不同路径下不一致），这样"共享前缀字符数"才能作为**不依赖 Provider 波动**的本地判据；
 2. 在该判据下重做"统一紧跟共享头的那一段"（10.112 的改动本身安全、可随时重做），并且**每个改动至少两次实机样本、以 stageCounts 相近为可比前提**；
 3. 若要真正逼近 DSH 量级，需要的是**单一 system prompt + 纯追加 transcript** 的架构（所有阶段共享同一份 system、阶段契约全部走尾部），但 10.103/10.111 的两次实测说明：在**当前多阶段调用形态**下这么做会**降低**总命中量——要取得收益必须同时减少每轮的调用数与阶段差异，这超出"零成本结构改进"的范围。
+
+### 10.115 投影口径澄清：`systemPromptProjection` **是可信的**，因此"段序不同"是**真实的线上顺序差异**（2026-09-18）
+
+**读代码后的更正（重要，推翻 10.112 的"测量陷阱"说法）：** `packages/harness/src/system-prompt-transcript.ts` 的投影取自 `prepared.request.messages`（**上下文引擎装配后**的请求），只取 `role === 'system'` 的消息按真实顺序拼接，且每个 run 只记录一次（`ctx.systemPromptProjected`）。它**不是**代理指标，而是**线上真实 system 顺序**。
+
+**因此 10.112/10.111 观察到的两种段序是真实的线上差异：**
+- 一种：`identity → core-flow → safety → **workspace → date-time** → capabilities/tooling …`（**builder 段序**）；
+- 另一种：`identity → core-flow → safety → **capabilities** → …`（**优先级序**：capabilities 98 > workspace 95 > date-time 60）。
+
+**这直接解释了跨阶段共享前缀为何止步于 `safety` 之后（2,115 字符）而不是整个共享头（2,595）**：两个阶段用不同的规则排列同一批段，字节序列在第 4 段就不同。**这是一处真实且可修的缺陷**，而且修复收益明确：只要所有阶段按**同一规则**排列共享头各段，跨阶段共享前缀就会从 2,115 增到 ≥2,595（若同时统一 `capabilities` 位置可达 ≈2,923）。
+
+**已知的排序位置（供下一轮定位到确切代码）：**
+- `packages/context/src/context-engine/candidates.ts:62`：候选按 **`order`** 升序（稳定、确定性）；
+- `packages/context/src/context-engine/eviction.ts:51`：**仅用于淘汰**时按 `priority` 升序；
+- `packages/harness/src/context-candidates.ts`：system 候选的 `segments` 是按调用方给定顺序 `map(text).join('')`。
+
+⇒ 结论：段序差异**不是**来自 `candidates.ts` 的候选排序，而是来自**不同阶段传入的 `systemSegments` 列表本身顺序/内容不同**（例如 builder 段序 vs 合同段优先），或来自预算/压缩阶段对 segments 的重排。**下一轮应从"哪些调用点传入了什么顺序的 `systemSegments`"入手**，用 `system-bytes.mjs` 在同路径、同阶段对上逐一对照，定位后统一为单一规范序，再实测。
+
+**当前状态：** 已发布基线不变（主对话 66.4% / 辅助 73.3%）；`check:repo` 33/33；工作树干净。
