@@ -161,6 +161,22 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
   }));
   let nextOrder = segments.length;
   let hasVolatile = false;
+  // Everything above is the canonical shared head that every stage emits byte
+  // for byte. Everything below is stage-specific or volatile, so it travels
+  // after the conversation (see splitSystemPromptForCache) and the Provider can
+  // reuse the head plus the whole history across stages.
+  segments.push({
+    id: 'head-boundary',
+    order: nextOrder++,
+    text: `\n\n${CACHE_BOUNDARY_MARKER}\n\n`,
+    kind: 'system_prompt',
+    source: { kind: 'prompt', id: 'head-boundary' },
+    priority: 100,
+    required: false,
+    sensitive: false,
+    scope: 'global',
+  });
+  hasVolatile = true;
   const volatilePrefix = () => {
     const prefix = hasVolatile
       ? '\n\n---\n\n'

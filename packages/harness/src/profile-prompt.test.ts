@@ -27,7 +27,7 @@ describe('behavior profile prompt assembly', () => {
     )).toBe(`base\n\n---\n\nstable profile\n\n${CACHE_BOUNDARY_MARKER}\n\nvolatile voice`)
   })
 
-  it('places stable addons before the cache boundary and run facts after it', () => {
+  it('keeps the canonical head above the boundary and puts run facts below it', () => {
     const base = buildSystemPromptBundle({
       branding: DEFAULT_BRANDING,
       tools: [],
@@ -41,12 +41,13 @@ describe('behavior profile prompt assembly', () => {
       { id: 'task', text: 'run task facts' },
     ])
     const parts = splitAtBoundary(result.text)
-    expect(parts.stable).toContain('stable profile')
+    // The canonical head (identity..date-time) is emitted first and shared;
+    // addons follow it, and run facts stay below the boundary.
+    expect(parts.stable).toContain('# Core Flow')
     expect(parts.stable).not.toContain('run task facts')
     expect(parts.volatile).toContain('run task facts')
-    expect(result.segments.find((segment) => segment.id === 'profile')?.text).not.toContain(CACHE_BOUNDARY_MARKER)
     expect(result.text).toContain(CACHE_BOUNDARY_MARKER)
-    expect(result.segments.find((segment) => segment.id === 'memory-root-index')?.text).toContain(CACHE_BOUNDARY_MARKER)
+    expect(result.segments.find((segment) => segment.id === 'head-boundary')?.text).toContain(CACHE_BOUNDARY_MARKER)
   })
 
   it('keeps runtime facts authoritative while applying SOUL.md to user-facing wording', () => {
