@@ -30,6 +30,8 @@ const OFFLINE = process.argv.includes('--offline') || process.env.LITTLESHEEP_CO
 const COMPACTION_LOW = process.env.LITTLESHEEP_COMPARISON_COMPACTION === '1'
 /** Keep one conversation alive across rounds, as a long DSH-style session. */
 const SHARED_SESSION = process.env.LITTLESHEEP_COMPARISON_SHARED_SESSION === '1'
+/** Keep the isolated data roots so request-level prefix diffs stay inspectable. */
+const KEEP_DATA = process.argv.includes('--keep-data') || process.env.LITTLESHEEP_COMPARISON_KEEP_DATA === '1'
 /** Distinguish repeated rounds in one session (default on for shared sessions). */
 const UNIQUE_TURNS = process.env.LITTLESHEEP_COMPARISON_UNIQUE_TURNS === '1' || SHARED_SESSION
 
@@ -162,7 +164,13 @@ async function main() {
     }))
     throw error
   } finally {
-    for (const root of roots) await rm(root, { recursive: true, force: true, maxRetries: 5 }).catch(() => undefined)
+    if (KEEP_DATA) {
+      // Prefix-cache forensics: keep the execution logs so the next request can
+      // be diffed byte by byte against its predecessor.
+      console.log(JSON.stringify({ check: 'harness-path-comparison-kept-data', roots }))
+    } else {
+      for (const root of roots) await rm(root, { recursive: true, force: true, maxRetries: 5 }).catch(() => undefined)
+    }
     await acceptance?.close().catch(() => undefined)
   }
 }

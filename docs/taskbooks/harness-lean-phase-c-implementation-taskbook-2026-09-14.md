@@ -2114,3 +2114,30 @@ C10B 矩阵 HC-07 由「部分」变为「通过（离线）」。
 1. 给对比脚本加"**保留本次运行的 dataDir**"开关（目前跑完即 `rm`），随后对**相邻两次请求**逐段做本地 **prefix-diff**：算出**稳定前缀字节数**与**首个分歧段的 id/kind**，得到"前缀到底断在哪里"的确定答案（生产侧已有 `buildRequestPrefixChange` → `stablePrefixLength`/`firstChangeKey` 可直接复用）；
 2. 用该结论决定下一步：若断点在 head 之后的**第一条历史**上，则"只增不滑 + 阶段段后置"两者需要**一起**再测；若断点仍在 head 内部（例如 `system_prompt` 段），则先修 head 的稳定性，历史与尾部结构暂缓；
 3. 复测预算已用若干次真实会话（每次 8×5），后续只在**有明确机制假设**时再跑实机。
+
+### 10.106 字节级 prefix-diff 定位（**本轮关键成果**）：前缀究竟断在哪里（2026-09-17）
+
+**新增诊断能力（可复用）：** 给对比脚本加了 **`--keep-data` / `LITTLESHEEP_COMPARISON_KEEP_DATA=1`**（此前跑完即 `rm` 掉数据根，导致无法事后分析请求）。配合工作区脚本 `prefix-diff.mjs` / `prefix-detail.mjs`，可在**不花任何 Provider 费用**的情况下，对同一会话的**相邻两次请求**逐条比较 `contextSnapshots` 的 item（`contentHash` + `kind` + `characterCount`），算出**稳定前缀条目数/字符数**与**首个分歧条目**。
+
+**离线 8×5（真实 harness 代码 + 桩 Provider；请求字节是真的）：**
+
+| 转换 | 样本 | 稳定前缀（占上一次请求字节） | **首个分歧条目** |
+| --- | --- | --- | --- |
+| `reply → reply`（主对话主力） | n=30 | **85%**（6,540/7,640 字符，11 条） | `recent_message:reply:history:…`（**历史窗口的第一条消息**） |
+| `execute_tool_loop → execute_tool_loop` | n=8 | 79% | `recent_message:execute:history:…` |
+| `reply → decide` | n=4 | 28% | **`system_prompt:tooling`** |
+| `decide → reply` | n=4 | 13% | **`project_knowledge:workspace`** |
+| `classify → reply` | n=1 | **0%** | （classify 的 system 完全不共享共享头） |
+
+**条目级细节（`reply → reply` 相邻两轮）：** 第 0–10 条**逐字节相同**（identity 284 + core-flow 1530 + safety 292 + workspace 118 + date-time 362 + capabilities 328 + response-directives 642 + profile 335 + memory-root-index 1745 + bootstrap:USER.md 217 + user-facing-voice 687 = **6,540 字符**）；**第 11 条（历史窗口的第一条消息）就变了**（29 字符 vs 24 字符，id 不同）。
+
+**由证据得出的两个确定结论：**
+1. **同阶段跨轮**的损失点 = **历史窗口的起点在移动**（不是窗口内容被改写，而是**窗口首条消息换了**）⇒ 稳定前缀被截在 6,540 字符（85%）。这解释了实机命中率为何长期停在 ~50–57%：每次请求都有约 15% 的字节从"历史第一条"开始重算。
+2. **跨阶段**的损失点 = **阶段专属段位于 system 消息内部**（`capabilities` vs `tooling`）⇒ 跨阶段只能共享前 3 条 / 2,106 字符（13–29%）。这正是 10.103 试图解决的，但它因第 1 点的存在而净负。
+
+**本轮再次验证并否决"只增不滑"（第二轮尝试，且这次不抬高预算以排除 10.105 的混淆变量）：** 改为"预算内返回全部历史 + 边界按 8 条量化"后，离线 `reply → reply` 稳定前缀**没有变好**（中位 85% → **80%**；`firstChanged` 仍是历史窗口的第一条消息）。说明**窗口起点依旧在移动**——即"滑动"并非由 8 条上限造成（否则去掉上限应立即变成纯追加）⇒ **机制尚未查明**，按纪律**不予发布**，已逐字节回退（`packages/` 与 HEAD 一致）。
+
+**下一步（把"窗口起点为何移动"变成可判定问题）：**
+1. 用 `prefix-diff.mjs` 打印相邻两轮**窗口首条消息的 id 序列与长度**，并同时导出该会话的 `ctx.history` 长度与 `filterAuthoritativeUserFacingMessages` 的过滤结果——重点验证**假设 H1**：某条既有消息（例如 `finalReplySettlement` 从 `pending` 变 `settled` 的 assistant 消息）在**下一轮才变成"权威可见"**，从而插到窗口中间使起点后移（`isAuthoritativeUserFacingMessage` 正是按该状态过滤，见 `packages/types/src/message.ts`）。
+2. 若 H1 成立，修法是让历史投影按**消息恒等 id 的单调序列**定界（而不是按数组下标/字符预算），并把"新变权威"的消息限制为**只追加在末尾**。
+3. H1 判定后再决定是否重启"只增不滑 + 阶段段后置"的组合实验；在此之前不再跑实机。
