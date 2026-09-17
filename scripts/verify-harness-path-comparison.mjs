@@ -289,6 +289,18 @@ async function finishPath(path) {
       report,
       observationFiles: sessionReports.reduce((total, item) => total + item.observationFiles, 0),
       stageCacheSplit: await readStageCacheSplit(path.dataDir),
+      invalidationReasons: (() => {
+        const counts = new Map()
+        for (const session of sessionReports) {
+          for (const entry of session.report?.invalidationReasons ?? []) {
+            counts.set(entry.reason, (counts.get(entry.reason) ?? 0) + entry.count)
+          }
+        }
+        return [...counts.entries()]
+          .map(([reason, count]) => ({ reason, count }))
+          .sort((left, right) => right.count - left.count)
+          .slice(0, 8)
+      })(),
       cacheTrend: path.cacheTrend.map(({ report, ...entry }) => entry),
     }
   } finally {
