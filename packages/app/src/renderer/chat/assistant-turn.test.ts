@@ -377,6 +377,9 @@ describe('assistant activity flow', () => {
     expect(html).toContain('#2 execute · 部分命中 92%')
     expect(html).toContain('原因 工具定义变更')
     expect(html).toContain('主要原因：工具定义变更×1')
+    // The blended ratio mixes stages whose prompts differ; both views are shown.
+    expect(html).toContain('主对话命中 92%（1 次）')
+    expect(html).toContain('辅助阶段命中 0%（1 次）')
   })
 })
 

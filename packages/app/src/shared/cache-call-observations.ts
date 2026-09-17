@@ -31,6 +31,45 @@ const MAX_CALLS = 12
 const MAX_CALL_REASONS = 4
 const MAX_TOP_REASONS = 5
 
+/**
+ * The user-facing conversation calls. DSH-style session cache numbers count the
+ * conversation's own turns, while auxiliary stages (classify/decide/verify/...)
+ * each carry a different prompt and drag a blended ratio down.
+ */
+const MAIN_CONVERSATION_STAGES = new Set(['reply', 'execute', 'finalize', 'recover'])
+
+export interface CacheCallGroupSummary {
+  calls: number
+  promptTokens: number
+  cachedPromptTokens: number
+  /** Token-weighted hit ratio; undefined when no call reported token counts. */
+  hitRatio?: number
+}
+
+export interface CacheCallGroupSummaryPair {
+  mainConversation: CacheCallGroupSummary
+  auxiliary: CacheCallGroupSummary
+}
+
+/** Split observed calls into the main conversation and its auxiliary stages. */
+export function summarizeCacheCallGroups(
+  calls: readonly CacheCallObservation[] | undefined,
+): CacheCallGroupSummaryPair | undefined {
+  if (!calls || calls.length === 0) return undefined
+  const empty = (): CacheCallGroupSummary => ({ calls: 0, promptTokens: 0, cachedPromptTokens: 0 })
+  const groups = { mainConversation: empty(), auxiliary: empty() }
+  for (const call of calls) {
+    const group = MAIN_CONVERSATION_STAGES.has(call.stage) ? groups.mainConversation : groups.auxiliary
+    group.calls += 1
+    group.promptTokens += call.promptTokens ?? 0
+    group.cachedPromptTokens += call.cachedPromptTokens ?? 0
+  }
+  for (const group of [groups.mainConversation, groups.auxiliary]) {
+    if (group.promptTokens > 0) group.hitRatio = group.cachedPromptTokens / group.promptTokens
+  }
+  return groups
+}
+
 export function projectRunCacheObservations(
   log: ExecutionLog | undefined,
 ): RunCacheObservations | undefined {

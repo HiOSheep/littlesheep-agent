@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ExecutionLog } from '@littlesheep/runner'
-import { projectRunCacheObservations } from './cache-call-observations'
+import { projectRunCacheObservations, summarizeCacheCallGroups } from './cache-call-observations'
 
 function logWith(calls: Array<{ index: number; stage: string; cached: number; reasons: string[] }>): ExecutionLog {
   return {
@@ -22,6 +22,31 @@ function logWith(calls: Array<{ index: number; stage: string; cached: number; re
     })),
   } as unknown as ExecutionLog
 }
+
+describe('summarizeCacheCallGroups', () => {
+  it('separates the conversation from auxiliary stages and weights by tokens', () => {
+    const groups = summarizeCacheCallGroups([
+      { requestIndex: 1, stage: 'classify', status: 'miss', promptTokens: 900, cachedPromptTokens: 0, reasons: [] },
+      { requestIndex: 2, stage: 'execute', status: 'partial', promptTokens: 1_000, cachedPromptTokens: 600, reasons: [] },
+      { requestIndex: 3, stage: 'reply', status: 'partial', promptTokens: 1_000, cachedPromptTokens: 800, reasons: [] },
+      { requestIndex: 4, stage: 'verify', status: 'hit', promptTokens: 100, cachedPromptTokens: 100, reasons: [] },
+    ])
+
+    expect(groups?.mainConversation).toEqual({ calls: 2, promptTokens: 2_000, cachedPromptTokens: 1_400, hitRatio: 0.7 })
+    expect(groups?.auxiliary).toEqual({ calls: 2, promptTokens: 1_000, cachedPromptTokens: 100, hitRatio: 0.1 })
+    expect(summarizeCacheCallGroups([])).toBeUndefined()
+    expect(summarizeCacheCallGroups(undefined)).toBeUndefined()
+  })
+
+  it('omits a ratio when no call reported token counts', () => {
+    const groups = summarizeCacheCallGroups([
+      { requestIndex: 1, stage: 'reply', status: 'unavailable', reasons: [] },
+    ])
+
+    expect(groups?.mainConversation.hitRatio).toBeUndefined()
+    expect(groups?.mainConversation.calls).toBe(1)
+  })
+})
 
 describe('projectRunCacheObservations', () => {
   it('returns nothing when the run exposed no cache observations', () => {

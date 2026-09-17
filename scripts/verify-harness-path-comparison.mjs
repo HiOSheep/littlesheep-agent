@@ -30,6 +30,8 @@ const OFFLINE = process.argv.includes('--offline') || process.env.LITTLESHEEP_CO
 const COMPACTION_LOW = process.env.LITTLESHEEP_COMPARISON_COMPACTION === '1'
 /** Keep one conversation alive across rounds, as a long DSH-style session. */
 const SHARED_SESSION = process.env.LITTLESHEEP_COMPARISON_SHARED_SESSION === '1'
+/** Distinguish repeated rounds in one session (default on for shared sessions). */
+const UNIQUE_TURNS = process.env.LITTLESHEEP_COMPARISON_UNIQUE_TURNS === '1' || SHARED_SESSION
 
 const ROUNDS = Number(process.env.LITTLESHEEP_COMPARISON_ROUNDS ?? (OFFLINE ? 1 : 2))
 
@@ -225,7 +227,11 @@ async function startPath({ mode, apiKey, model, provider }) {
 
 /** One `/run` request recorded on the path; false means the caller must rotate sessions. */
 async function runTask(path, { round, index, sessionId }) {
-  const text = taskList()[index]
+  // A real conversation never repeats the same user turn verbatim; repeating it
+  // makes the Runtime type the later turn as an answer to an older pending
+  // clarification, which then fails closed and freezes the whole session.
+  const baseText = taskList()[index]
+  const text = UNIQUE_TURNS && round > 0 ? `${baseText}（第 ${round + 1} 次询问）` : baseText
   const startedAt = Date.now()
   const durableEventsBefore = await countDurableEventFiles(path.dataDir)
   const response = await fetchJson(`${path.baseUrl}/run`, {

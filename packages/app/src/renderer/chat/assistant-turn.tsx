@@ -12,6 +12,7 @@ import {
   liveStepStatusLabel,
 } from './activity-model'
 import { visibleActivitySteps } from './activity-visibility'
+import { summarizeCacheCallGroups } from '../../shared/cache-call-observations'
 import { AgentToolRow } from './agent-tool-row'
 import { shortActivityText } from './task-progress-indicator'
 import { MessageMeta } from './message-meta'
@@ -470,12 +471,24 @@ function TurnUsageFooter({ message }: { message: ChatMessage }) {
   const cacheHit = cacheComplete && usage.promptTokens > 0
     ? `${Math.round((cached! / usage.promptTokens) * 100)}%`
     : usage.cacheReportedRequestCount ? '部分提供' : '未提供'
+  // A blended ratio mixes the conversation's own turns with auxiliary stages
+  // whose prompts differ per stage; report both so the number is comparable
+  // with a session-level (DSH-style) cache rate.
+  const callGroups = summarizeCacheCallGroups(message.cacheCalls)
+  const mainHit = callGroups?.mainConversation.hitRatio === undefined
+    ? undefined
+    : `${Math.round(callGroups.mainConversation.hitRatio * 100)}%`
+  const auxiliaryHit = callGroups?.auxiliary.hitRatio === undefined
+    ? undefined
+    : `${Math.round(callGroups.auxiliary.hitRatio * 100)}%`
   const parts = [
     message.durationMs ? `用时 ${formatDurationMs(message.durationMs)}` : '',
     speed !== undefined ? `${speed.toFixed(1)} tok/s` : '',
     '本轮用量',
     message.modelRef ?? '提供方/模型未知',
     `缓存命中 ${cacheHit}`,
+    mainHit === undefined ? '' : `主对话命中 ${mainHit}（${callGroups!.mainConversation.calls} 次）`,
+    auxiliaryHit === undefined ? '' : `辅助阶段命中 ${auxiliaryHit}（${callGroups!.auxiliary.calls} 次）`,
     `未缓存输入 ${uncached ?? '未提供'}`,
     `缓存读取 ${cached ?? '未提供'}`,
     `缓存写入 ${usage.cacheWriteTokens ?? '未提供'}`,
