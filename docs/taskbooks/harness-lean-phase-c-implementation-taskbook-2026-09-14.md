@@ -1807,6 +1807,23 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 2. 让 stage 段的 `output_constraint` 在同阶段跨轮保持稳定（查明为何变化，必要时同样入尾部）；
 3. 复测：预期主对话命中率应随上述断点消除而**明显上升**（因为断点从"system 内"移到"尾部"）。
 
+### 10.94 第三十六轮（goal round 26/27：改动被测试证否——细化内容只走 system 通道）执行记录（2026-09-17）
+
+**尝试：** 删除 `memory-taskbook-refinement.ts` 中"把 TaskBook 细化结果并回 `initialMemoryContext`"的写入（只保留 `memoryContextWorkingSet`），使 system 消息在 run 内保持字节稳定。**假设**：细化出来的原子内容同时也以 memory 工具结果形式存在于会话历史中，因此 system 侧合并是重复内容。
+
+**证否（测试的价值）：** `runner/src/memory-v3.integration.test.ts > refines the working set from the normalized TaskBook before EXECUTE` 直接失败（`refinement missing`：**没有任何请求包含细化原子的内容**）。原因是 **TaskBook 细化是运行期检索**（`refineMemoryForTaskBook` 直接调用 memory service），**不是模型的工具调用**——它的内容**唯一**面向模型的通道就是那次 system 合并。删除即等于**丢失内容**（真实行为回归）。
+（同时 `memory-taskbook-refinement.test.ts:59` 的断言也确认了这一点。）
+
+**处置：** 回退该改动（三个文件 `git checkout`），恢复：`typecheck` 0、两文件 **10/10 通过**、工作树 clean。**本轮无 API 花费**，也没有留下未验证的改动。
+
+**修正后的结论（round 28 的前提）：** 要冻结 system 内的 `initialMemoryContext`，**必须先为"运行期记忆细化"新增一条尾部 delta 通道**（`ctx` 新字段 + run-context 契约条目 + 尾部注入器 + 测试），再把 system 合并删掉。顺序不能颠倒——先删通道会静默丢失记忆内容（本轮的教训）。
+
+**round 28 计划：**
+1. 新增尾部 delta 通道：`pendingMemoryDeltas`（`RunContext` 字段 + 契约条目），由 `memory-taskbook-refinement` 写入，由尾部注入器（复用 `appendMemoryReleaseNotes` 的尾部候选机制，或并列一个 `appendMemoryDeltas`）追加为**对话之后的 system 消息**；
+2. 移除 system 合并，并把上面两条断言改为"内容出现在请求的**尾部消息**中、且 system 不含它"；
+3. 跑 harness + runner + 全量门 + 两条 Electron 门；
+4. 复测长会话，并用 round 25 的诊断比对 **`memory` 变化计数是否下降**（预期降至接近 0），再看主对话命中率。
+
 **round 24 计划（改打高频断点）：** 转向**每个 run/每轮都会发生**的 system 提示词抖动：
 1. `memory-taskbook-refinement.ts:137` 在 **DECIDE 中途重写 `initialMemoryContext`**（同轮内 system 即变化）；
 2. `memoryRootIndex` / `initialMemoryContext` / `bootstrap` 每请求按 ctx 重建（记忆一更新即变化）。
