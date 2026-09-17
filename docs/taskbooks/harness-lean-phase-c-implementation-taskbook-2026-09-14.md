@@ -1413,6 +1413,24 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 
 **round 5 计划：** ① 定位并修掉"同一会话重复相同用户输入 → 澄清请求缺失"的失败（或证明其为测试负载问题并改造负载）；② 用连续、不重复的有效负载测"命中率随会话增长"的曲线（预期随历史占比上升）；③ 前端把「主对话命中率」与「全阶段混合命中率」分开显示。
 
+### 10.74 第三十六轮（goal round 5：诊断测量阻塞 + 交付前后端命中率分列）执行记录（2026-09-17）
+
+**① 测量阻塞的失败已定位到机制（但未修好）：** 逐条分析上次测量数据得到清晰模式——**round 0 的 20 个任务全部成功**，失败从 **round 1 的第 6 个任务**开始，此后每个 run 都失败（55/80）。
+根因链：某个任务在 round 0 触发了 `waiting_user`（澄清）并留下**挂起检查点**；round 1 中语义相同的话轮被续跑判定当作"对该澄清的答复"，于是进入 `resumeCheckpointAuthoritative`，而此时澄清请求已不再 pending → `runner.ts:1098` **fail closed** → 检查点永久占用该会话，后续所有回合失败。
+- 已加入 `LITTLESHEEP_COMPARISON_UNIQUE_TURNS`（共享会话默认开，给每轮话轮加"（第 N 次询问）"后缀），但**未能解除**：仍是 27/40 失败、请求数在 round 1 后冻结（27/28）。说明仅靠措辞后缀不足以改变续跑判定。
+- 这既让长会话测量失效，也指向一个**真实健壮性问题**：一个无法再被满足的 `waiting_user` 检查点会永久毒化会话（新用户话轮应当能开启新 run，而不是 fail closed）。留作独立课题。
+
+**② 长会话曲线（当前代码，8 任务 × 5 轮，受限冻结）：** shadow 43.5% → 46.2%、next 43.3% → 46.1%（round 0→1 上升，之后因冻结不再增长）。与基线 ~47.5%/48.2% 同量级，说明**当前布局下短任务负载的命中率约在 44–50%**。
+
+**③ 已交付（目标第 4 项）：前端命中率分列。**
+- `cache-call-observations.ts` 新增 `summarizeCacheCallGroups()`：按阶段把逐调用证据分成 **主对话**（`reply`/`execute`/`finalize`/`recover`）与**辅助阶段**（classify/decide/verify/evolve/capture…），按 token 加权给出各自命中率；无 token 计数的调用不产生比值。
+- 用量 footer 现在同时显示：`缓存命中 X%`（全阶段混合）、`主对话命中 Y%（N 次）`、`辅助阶段命中 Z%（M 次）`——这样 LS 的数字才能与 DSH 的**每会话**命中率直接对比（DSH 的 99% 只统计主对话的追加式前缀命中）。
+- 新增/更新测试：分组与加权、无计数时不编造比值、footer 渲染三行指标。
+
+**验证：** 全量 `vitest` **458 文件 / 3271 通过 / 1 跳过**；`typecheck` 0；`check:repo` 33/33；应用重建 + `verify:electron-ui-state-continuity` + `verify:electron-continuity` 均通过。提交 `feat(app): report main-conversation and auxiliary cache hit rates separately`。
+
+**round 6 计划：** ① 修掉"陈旧 `waiting_user` 检查点毒化会话"（新话轮应开新 run / 或按 requestKey 精确匹配答复），并让长会话测量真正跑起来；② 用主对话命中率（而非混合值）复测并给出随会话增长的曲线；③ 若曲线仍平台化，转向"降低非缓存尾部体积"（例如运行态块精简、known-state 仅在变化时携带）。
+
 ### 10.14 第七轮（HC-12 撤销屏障）新增证据（2026-09-16）
 
 **问题（先写失败用例）：** v3 写入路径的等值/相似候选只按 branch/scope/`status='active'` 选取；被纠正（`epistemicStatus`/`resolutionStatus = superseded`）或删除（`status = tombstone`）的 atom 仍可能是 active 记录。后续 maintenance（压缩候选）证据即使引用同一 `conversation-source:`，也会创建新 atom 或强化旧 atom，从而复活已被用户忘记/纠正的事实。`memory-service-v3.test.ts` 的新用例在修复前返回 `created`。
