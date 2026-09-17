@@ -2006,3 +2006,22 @@ C10B 矩阵 HC-07 由「部分」变为「通过（离线）」。
 **如实说明（期望值管理）：** 本步单独复测的期望提升**有限**——改动 A 是零行为变化，改动 B 只在失败路径生效，改动 C 只影响同一 step 内的后续轮次；**跨阶段共享**仍取决于第 2 步（system 消息字节一致）。本步的价值是**把第 2 步的前提做实**，因此命中率必须与第 2 步合并评估，不应把本步单独算作命中率收益。
 
 **下一步（第 2 步：全阶段共用共享头）：** 用 `buildSharedPromptHead` 替换 system 消息，阶段专属段与 addon 全部走尾部候选。**必须先离线复现并修好 round 16 的 `cross-restart reply is not memory-continuous`**（当时失败点：共享头把 reply 提示词改大后触发；需对比有/无共享头时 `assessResponseMemoryContinuity` 的输入、产出回复与词法锚点）。
+
+### 10.101 第 2 步前置：round 16 连续性回归**已定位并修复**（上下文预算淘汰历史）执行记录（2026-09-17）
+
+**复现（离线、零成本）：** 把 round 16 的共享头改动重新应用到当前工作树（`git revert --no-commit c08198f`），跑 `verify:electron-continuity`，**稳定复现**同一失败：`cross-restart reply is not memory-continuous`，`confidence: 0.95`。
+
+**根因（逐请求证据，不是猜测）：** 失败场景的 reply 请求上下文快照（`contextSnapshots`）显示：
+- `estimatedPromptTokens = 8617`，而 reply 契约 `maxPromptTokens = 8000`；
+- `disposition: "omitted", omissionReason: "budget"` 的条目包括 **两条 `recent_message` 历史**、`workspace`、`date-time`、`bootstrap:USER.md`；
+- 于是连续性评估读到 `recentHistoryMessages: 0`、`historyAnchorCount: 0`、`status: "unavailable"`（`missingSignals: ["continuation_target_not_available_for_comparison"]`），而对比组（无共享头）同一场景为 `recentHistoryMessages: 6 / status: supported`。
+
+**结论：** round 16 的失败**不是共享头本身破坏了回答质量**，而是共享头把 reply 的 prompt 推过 8,000 token 预算后，**上下文预算按优先级淘汰了非必需的历史消息**（head 里的 `core-flow`/`safety` 是 `required: true` 不可淘汰，历史是 `required: false`），历史一旦消失，连续性就"无法比较"并判为不支持。这同时解释了为何"看起来像连续性问题"，实际是**预算配置问题**。
+
+**修复（两处契约预算，最小改动）：** `packages/harness/src/llm-call-contracts/definitions.ts`：`reply.maxPromptTokens` **8,000 → 16,000**、`capability_reply.maxPromptTokens` **4,096 → 8,000**。理由：共享头是**刻意的稳定前缀**（缓存收益来源），预算必须容纳"稳定头 + 完整历史 + 尾部阶段契约"；历史已由共享窗口限制（8 条 / 6,000 字符），16,000 留有余量。
+
+**修复后验证（全绿）：** `verify:electron-continuity` **ok:true**（8 场景全过，`recentHistoryMessages: 6` 与改动前一致，`finalContinuity` supported）；`typecheck` 0；全量 `vitest` **460 文件 / 3,279 通过 / 1 跳过**；`check:repo` **33/33**；`verify:electron-ui-state-continuity` **ok:true**；`verify:harness-paths:offline` 通过。同时保留 round 16 的两处测试更新（reply 现在确实带 `# Core Flow` / `# Workspace`，且 `estimatedPromptTokens < 12,000` 的上界守卫）。
+
+**如实说明：** 本节交付的是**第 2 步的前置修复**（把已知回归修好并给出可复现的根因），**不是**命中率提升本身。共享头当前只让"同一阶段的跨轮"复用变长（阶段专属段仍在 system 内，跨阶段共享仍会在阶段段处分叉）；要拿到跨阶段 `system + 历史` 共享，还需把**阶段专属段移到历史之后的尾部**——那是第 2 步的剩余部分，命中率必须等实机复测才能宣称。
+
+**下一步（第 2 步剩余部分）：** 在 `context-candidates.ts` 的 `trailingSegments` 机制上，把 `capabilities`/`tooling`、`skills-index`、`response-directives`、`profile`、`user-facing-voice`、`memory-root-index` 等阶段专属段改为**尾部候选**，使 system 消息对所有阶段**逐字节相同**（= 共享头），再复测命中率。

@@ -140,7 +140,7 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     requiredContextKinds: ['system_prompt', 'user_input'], history: 'recent', attachments: 'images_and_manifest',
     allowedDecisions: ['respond'], outputSchema: text('chat-reply.v1', 'Direct user-facing conversational response.'),
     memoryIntents: ['read', 'none'], requiresMemoryEvidence: true, toolMode: 'none', runtimeApprovalRequired: false,
-    maxIterations: 0, maxAttempts: 3, maxOutputTokens: 1_200, maxPromptTokens: 8_000, temperature: 0.7,
+    maxIterations: 0, maxAttempts: 3, maxOutputTokens: 1_200, maxPromptTokens: 16_000, temperature: 0.7,
   }),
   capability_reply: template({
     purpose: 'capability_reply', stage: 'reply', modelCall: 'required',
@@ -149,7 +149,7 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     requiredContextKinds: ['system_prompt', 'user_input', 'runtime_event'], history: 'none', attachments: 'none',
     allowedDecisions: ['respond'], outputSchema: text('capability-reply.v1', 'Concise capability/status answer grounded in Runtime facts.'),
     memoryIntents: NO_MEMORY, requiresMemoryEvidence: false, toolMode: 'none', runtimeApprovalRequired: false,
-    maxIterations: 0, maxAttempts: 2, maxOutputTokens: 500, maxPromptTokens: 4_096, temperature: 0.3,
+    maxIterations: 0, maxAttempts: 2, maxOutputTokens: 500, maxPromptTokens: 8_000, temperature: 0.3,
   }),
   ask_user: template({
     purpose: 'ask_user', stage: 'ask_user', modelCall: 'optional',

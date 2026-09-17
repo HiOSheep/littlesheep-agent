@@ -27,7 +27,9 @@ describe('cross-stage shared prefix', () => {
     // Measured 293 bytes: only the identity section is shared, so a call never
     // reuses another stage's system prompt. Unifying the head is the structural
     // lever for cross-stage cache reuse; guard against making it worse.
-    expect(lcp).toBeGreaterThanOrEqual(293);
+    // Was 293 bytes (identity only) before the canonical head; now the whole
+    // identity..date-time sequence is shared across modes.
+    expect(lcp).toBeGreaterThanOrEqual(2_500);
     expect(full.length).toBeGreaterThan(5_000);
   });
 
@@ -50,7 +52,9 @@ describe('cross-stage shared prefix', () => {
     // optimization (one shared prefill per turn), never as a ratio win.
     expect(sum).toBeGreaterThanOrEqual(4_000);
     expect(independent[0]).toBeGreaterThanOrEqual(280);
-    expect(respond.length).toBeLessThan(2_000);
+    // respond now carries the whole canonical head, so it grows by ~2.2 KB;
+    // the tradeoff is accepted for cross-stage prefix reuse.
+    expect(respond.length).toBeGreaterThan(3_000);
   });
 });
 
@@ -97,14 +101,15 @@ describe('buildSystemPrompt', () => {
       mode: 'minimal',
     });
     expect(prompt).toContain('LittleSheep');
-    // The Core Flow SECTION (with its heading) is omitted in minimal mode.
-    // The identity line may mention "Core Flow" in prose, so check the heading.
-    expect(prompt).not.toContain('# Core Flow (hard control flow)');
+    // The canonical shared head is emitted for every mode now, so minimal mode
+    // also carries Core Flow; the prelude stays out and no boundary is added
+    // when there is no volatile section.
+    expect(prompt).toContain('# Core Flow (hard control flow)');
     expect(prompt).not.toContain(CACHE_BOUNDARY_MARKER);
     expect(prompt).not.toContain('Project Context');
   });
 
-  it('respond mode keeps bounded memory awareness without execution policy', () => {
+  it('respond mode keeps bounded memory awareness while sharing the canonical head', () => {
     const prompt = buildSystemPrompt({
       branding: DEFAULT_BRANDING,
       tools: [stubTool],
@@ -118,9 +123,11 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('root index truncated');
     expect(prompt).toContain('Registered in this run: read');
     expect(prompt).toContain('USER.md');
-    expect(prompt).not.toContain('# Core Flow');
-    expect(prompt).not.toContain('# Workspace');
-    expect(prompt).not.toContain('# Safety');
+    // Cross-stage cache reuse requires every stage to emit the same head, so
+    // RESPOND now shares Core Flow / Workspace / Safety with the full modes.
+    expect(prompt).toContain('# Core Flow');
+    expect(prompt).toContain('# Workspace');
+    expect(prompt).toContain('# Safety');
     expect(prompt).not.toContain('root index -> branch index -> node/query expansion');
   });
 
