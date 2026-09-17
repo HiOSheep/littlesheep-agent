@@ -38,20 +38,16 @@ function textPart(parts: ChatContentPart[]): string {
 
 function expectCommonPayloadShape(request: ChatRequest, options: { includesBootstrap?: boolean } = {}) {
   expect(request.model).toBe('test-model');
-  expect(request.messages.map((message) => message.role)).toEqual([
-    'system',
-    'user',
-    'assistant',
-    'user',
-    'user',
-    // Volatile Runtime facts travel after the conversation so a per-request
-    // clock change cannot break the Provider's prefix cache.
-    'system',
-  ]);
+  const roles = request.messages.map((message) => message.role);
+  // The conversation keeps its stable order; every volatile Context section
+  // travels afterwards as a trailing system message.
+  expect(roles.slice(0, 5)).toEqual(['system', 'user', 'assistant', 'user', 'user']);
+  expect(roles.slice(5).every((role) => role === 'system')).toBe(true);
+  expect(roles.length).toBeGreaterThanOrEqual(6);
   if (options.includesBootstrap !== false) {
     expect(String(request.messages[0]?.content)).toContain('BOOTSTRAP_SENTINEL');
   }
-  expect(String(request.messages[0]?.content)).toContain('MEMORY_ROOT_SENTINEL');
+  expect(request.messages.map((message) => String(message.content)).join('\n')).toContain('MEMORY_ROOT_SENTINEL');
   expect(String(request.messages[0]?.content)).toContain('PROFILE_SENTINEL');
   expect(request.messages[1]?.content).toBe('PRIOR_USER_SENTINEL');
   expect(request.messages[2]?.content).toBe('PRIOR_ASSISTANT_SENTINEL');
@@ -75,10 +71,12 @@ function expectRecordedSnapshot(
     stage,
     requestIndex: 1,
     model: 'test-model',
-    totalMessageCount: 6,
     messagesTruncated: false,
     stream,
   });
+  // 5 conversation messages, the trailing Runtime block and any volatile
+  // Context sections below the system-prompt cache boundary.
+  expect(ctx.modelRequests?.[0]?.totalMessageCount).toBeGreaterThanOrEqual(6);
   expect(ctx.contextSnapshots).toHaveLength(1);
   expect(ctx.contextSnapshots?.[0]).toMatchObject({
     id: ctx.modelRequests?.[0]?.contextSnapshotId,

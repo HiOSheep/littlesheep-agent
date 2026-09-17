@@ -14,16 +14,19 @@ import type {
 } from '@littlesheep/types';
 import { normalizeUserFacingReply, textMessage } from '@littlesheep/types';
 import type { LlmClient, ChatRequest, ChatResponse, EmbedRequest, EmbedResponse } from '@littlesheep/llm';
-import { CACHE_BOUNDARY_MARKER } from '@littlesheep/prompt';
 
 /**
- * The last conversation message, ignoring the trailing Runtime/Provider context
- * block that must stay out of the Provider's cacheable prefix.
+ * The last conversation message, ignoring the trailing Runtime/Provider system
+ * context that must stay out of the Provider's cacheable prefix.
  */
 export function lastConversationText(request: ChatRequest | undefined): string {
-  const messages = (request?.messages ?? [])
-    .filter((message) => !String(message.content).startsWith(CACHE_BOUNDARY_MARKER));
+  const messages = (request?.messages ?? []).filter((message) => message.role !== 'system');
   return String(messages.at(-1)?.content ?? '');
+}
+
+/** Everything the model was told, including trailing system context. */
+export function allText(request: ChatRequest | undefined): string {
+  return (request?.messages ?? []).map((message) => String(message.content)).join('\n');
 }
 
 // ─── Mock LlmClient ─────────────────────────────────────────────────────
