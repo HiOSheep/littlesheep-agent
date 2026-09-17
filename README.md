@@ -1,8 +1,8 @@
 # LittleSheep 🐑
 
-**A local-first autonomous agent desktop app that turns goals into finished work.**
+**A local-first agent desktop app that turns goals into finished work.**
 
-LittleSheep（LS）是一个本地运行的高自治 Agent 桌面应用。
+LittleSheep（LS）是一个本地运行、能够持续自主执行任务的 Agent 桌面应用。
 
 你告诉 LS 想完成什么，它负责理解目标、规划任务、调用工具、执行操作、验证结果，并在失败时尝试恢复；你仍然掌握权限授予、风险接受、目标取舍和关键决策。
 
@@ -19,10 +19,10 @@ LS 不只是一个聊天窗口。它包含持久化 Agent Runtime、长期记忆
 因此 LS 将任务执行本身作为核心能力，而不是聊天界面的附属功能。
 
 - 🧠 **Persistent Agent Runtime** — 任务由确定性的 Runtime 管理，并通过显式、可持久化的执行状态推进规划、执行、验证、恢复和收尾。模型负责智能，Runtime 负责可靠性。
-- 🔧 **Real Tool Execution** — 文件、终端、Git、检索、工作区能力和插件工具统一接入 Agent 执行流程。
+- 🔧 **Integrated Tool Execution** — 文件、终端、Git、检索、工作区能力和插件工具统一接入 Agent 执行流程。
 - 💾 **Long-term Memory** — 使用索引优先、按需展开的长期记忆体系，而不是把所有历史信息长期堆进 Context。
 - 🖥️ **Built-in Workspace** — 聊天、代码查看与编辑、文件树、Git Diff、终端、会话和任务产物集中在同一个桌面应用内。
-- 🔐 **Explicit Permission Model** — Agent 能访问什么、执行什么由用户明确控制；无法证明安全范围的操作不会默认当作安全处理。
+- 🔐 **Explicit Permission Model** — Agent 能访问什么、执行什么由用户明确控制；无法证明安全范围的操作不会被默认视为安全。
 - 🔌 **Extensible by Design** — 支持工具贡献、Skill、PluginHost，以及 Telegram、飞书、QQ Bot、Webhook 等可选渠道插件。
 
 ## 当前能力
@@ -42,7 +42,7 @@ LS 当前已经实现一套确定性的 Agent Runtime，用显式执行状态管
 - 暂停、继续和中断
 - 跨应用重启恢复
 
-每次模型调用都使用版本化契约，显式声明 Context、允许的决策、输出结构、可调用工具、记忆意图和预算。超出当前调用权限的行为会在请求发送前失败关闭。
+每次模型调用都使用版本化契约，显式声明 Context、允许的决策、输出结构、可调用工具、记忆意图和预算。超出当前调用契约的请求会在发送前被拒绝。
 
 ### 持久化执行
 
@@ -50,9 +50,9 @@ LS 当前已经实现一套确定性的 Agent Runtime，用显式执行状态管
 
 活动任务支持版本化检查点、暂停、继续、应用启动恢复和显式续跑。
 
-LS 已在隔离的真实 Electron 环境中验收活动任务 SSE、托盘后台运行、暂停 / 继续 / 中断、配置与模型热重载、强制终止后的续跑、避免重复执行已完成副作用、完整退出和回答级跨重启连续性。
+LS 已在隔离的实际 Electron 进程中验收活动任务 SSE、托盘后台运行、暂停 / 继续 / 中断、配置与模型热重载、强制终止后的续跑、避免重复执行已完成副作用、完整退出和回答级跨重启连续性。
 
-更复杂的真实外部副作用、更长期运行和更大规模真实用户负载仍在继续验证。
+对外部系统产生副作用的复杂场景、更长期运行和更大规模负载仍在继续验证。
 
 ### Memory
 
@@ -64,7 +64,7 @@ LS 使用统一 Memory Service 和索引优先的 Memory Tree，目前包括：
 - 同分支深搜
 - Context 预算
 - 来源记录
-- 写入闸门
+- 写入策略校验
 - 可回滚迁移
 
 用户长期理念可以通过 `PHILOSOPHY.md` 注册为按需资源，而不是全文常驻每轮 Prompt。模型可以提出记忆建议，真正的运行时记忆提交由系统控制。
@@ -168,7 +168,7 @@ LS 将活动应用数据根视为自己的逻辑容器，默认数据根为：
 
 用户可以在设置中整体迁移数据根。`workplace/` 只是该容器内的默认工作区，并不代表整个权限边界。
 
-当前安全边界主要由 Electron Main 中的路径解析、符号链接检查、命令静态判定、审批闸门、核心源码宿主级只读保护和危险命令黑名单实现。
+当前安全边界主要由 Electron Main 中的路径解析、符号链接检查、命令静态判定、授权检查、核心源码宿主级只读保护和危险命令黑名单实现。
 
 它**不等同于 Docker、虚拟机或 OS 级进程沙箱**。无法证明操作范围仍位于 LS 容器内时，会按照“范围未知”处理。
 
@@ -232,7 +232,7 @@ TypeScript 检查使用 Project References 和增量缓存，并刷新本地声�
 
 如果想进一步了解：
 
-- 当前真实实现状态：[Project Status](docs/decision/project-status.md)
+- 当前实现状态：[Project Status](docs/decision/project-status.md)
 - 架构决策与演进顺序：[Architecture Decision Report](docs/decision/architecture-decision-report.md)
 - 仓库结构：[Repository Guide](docs/reference/repository-guide.md)
 - 插件开发：[Plugin Development](docs/reference/plugin-development.md)
@@ -241,7 +241,7 @@ TypeScript 检查使用 Project References 和增量缓存，并刷新本地声�
 
 LittleSheep 目前是一个仍在快速演进中的个人开源项目。
 
-很多核心能力已经可以实际运行，但部分长期稳定性、跨环境兼容性、安装分发和复杂真实负载仍在持续验证。
+很多核心能力已经可以实际运行，但部分长期稳定性、跨环境兼容性、安装分发和复杂长期负载仍在持续验证。
 
 如果你对 Agent Runtime、持久化执行、长期记忆、桌面 Agent、工具系统或具身智能方向感兴趣，欢迎阅读源码、提出 Issue 或参与讨论。
 
