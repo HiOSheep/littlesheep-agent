@@ -3,6 +3,7 @@
 import type { HistoryMessageRecord } from '../../shared/history-activity'
 import type { RuntimeState } from '../../shared/runtime-api-contracts'
 import type { SessionContextUsageRecord } from '../../shared/context-usage-contracts'
+import type { CompactionOperationRecord } from '../../shared/compaction-operation-contracts'
 import {
   LOCAL_APP_API_PREFIXES,
   LOCAL_APP_API_ROUTES,
@@ -149,6 +150,8 @@ export interface SessionMessagePage {
   hasMore: boolean
   beforeId?: string
   contextUsage?: SessionContextUsageRecord
+  /** Bounded, redacted automatic compaction operations for this session. */
+  compactionOperations?: CompactionOperationRecord[]
 }
 
 export async function getSessionMessagePage(

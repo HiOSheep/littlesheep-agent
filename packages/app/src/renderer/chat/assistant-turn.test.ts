@@ -235,6 +235,149 @@ describe('assistant activity flow', () => {
     expect(html.match(/唯一结果/gu)).toHaveLength(1)
     expect(html).toContain('<strong>唯一结果</strong>')
   })
+
+  it('HA-03-03 hides misleading tok/s and unknown cache values when timing coverage is partial', () => {
+    const html = renderToStaticMarkup(createElement(AssistantTurnMessage, {
+      message: {
+        role: 'assistant',
+        text: '完成',
+        modelRef: 'deepseek/deepseek-flash',
+        usage: {
+          source: 'provider',
+          promptTokens: 300,
+          completionTokens: 1_100,
+          totalTokens: 1_400,
+          requestCount: 2,
+          usageReportedRequestCount: 2,
+          usageCompleteness: 'partial',
+          timedRequestCount: 1,
+          timedCompletionTokens: 100,
+          providerDurationMs: 1_000,
+          cacheReportedRequestCount: 0,
+        },
+        activity: activity({ status: 'done' }),
+      },
+      messageKey: 'assistant-usage-partial',
+      now: 1_500,
+      onOpenFile: () => undefined,
+    }))
+
+    expect(html).not.toContain('tok/s')
+    expect(html).toContain('缓存命中 未提供')
+    expect(html).toContain('未缓存输入 未提供')
+    expect(html).toContain('输出 1100')
+    expect(html).toContain('用量统计不完整')
+  })
+
+  it('HA-03-06 distinguishes a real zero cache hit and accounts reasoning only as an output subset', () => {
+    const html = renderToStaticMarkup(createElement(AssistantTurnMessage, {
+      message: {
+        role: 'assistant',
+        text: '完成',
+        modelRef: 'deepseek/deepseek-flash',
+        usage: {
+          source: 'provider',
+          promptTokens: 100,
+          completionTokens: 20,
+          totalTokens: 120,
+          cachedPromptTokens: 0,
+          reasoningTokens: 5,
+          requestCount: 1,
+          usageReportedRequestCount: 1,
+          usageCompleteness: 'complete',
+          timedRequestCount: 1,
+          timedCompletionTokens: 20,
+          providerDurationMs: 1_000,
+          cacheReportedRequestCount: 1,
+        },
+        activity: activity({ status: 'done' }),
+      },
+      messageKey: 'assistant-usage-zero-cache',
+      now: 1_500,
+      onOpenFile: () => undefined,
+    }))
+
+    expect(html).toContain('20.0 tok/s')
+    expect(html).toContain('缓存命中 0%')
+    expect(html).toContain('未缓存输入 100')
+    expect(html).toContain('缓存读取 0')
+    expect(html).toContain('输出 20')
+    expect(html).toContain('其中推理 5')
+  })
+
+  it('shows the provider-reported uncached input even when the hit count is partial', () => {
+    const html = renderToStaticMarkup(createElement(AssistantTurnMessage, {
+      message: {
+        role: 'assistant',
+        text: '完成',
+        modelRef: 'deepseek/deepseek-flash',
+        usage: {
+          source: 'provider',
+          promptTokens: 1_807,
+          completionTokens: 4,
+          totalTokens: 1_811,
+          uncachedPromptTokens: 143,
+          requestCount: 1,
+          usageReportedRequestCount: 1,
+          usageCompleteness: 'complete',
+          cacheReportedRequestCount: 0,
+        },
+        activity: activity({ status: 'done' }),
+      },
+      messageKey: 'assistant-usage-uncached-only',
+      now: 1_500,
+      onOpenFile: () => undefined,
+    }))
+
+    expect(html).toContain('缓存命中 未提供')
+    expect(html).toContain('未缓存输入 143')
+  })
+
+  it('expands per-call cache evidence so a blended ratio explains itself', () => {
+    const html = renderToStaticMarkup(createElement(AssistantTurnMessage, {
+      message: {
+        role: 'assistant',
+        text: '完成',
+        modelRef: 'deepseek/deepseek-flash',
+        usage: {
+          source: 'provider',
+          promptTokens: 2_707,
+          completionTokens: 8,
+          cachedPromptTokens: 1_664,
+          uncachedPromptTokens: 1_043,
+          requestCount: 2,
+          usageReportedRequestCount: 2,
+          usageCompleteness: 'complete',
+          cacheReportedRequestCount: 2,
+        },
+        cacheCalls: [
+          {
+            requestIndex: 1, stage: 'classify', status: 'miss',
+            promptTokens: 900, cachedPromptTokens: 0, uncachedPromptTokens: 900, hitRatio: 0,
+            reasons: ['tool_schema_changed'],
+          },
+          {
+            requestIndex: 2, stage: 'execute', status: 'partial',
+            promptTokens: 1_807, cachedPromptTokens: 1_664, uncachedPromptTokens: 143, hitRatio: 1_664 / 1_807,
+            reasons: [],
+          },
+        ],
+        cacheReasons: [{ reason: 'tool_schema_changed', count: 1 }],
+        activity: activity({ status: 'done' }),
+      },
+      messageKey: 'assistant-usage-per-call',
+      now: 1_500,
+      onOpenFile: () => undefined,
+    }))
+
+    expect(html).toContain('缓存命中 61%')
+    expect(html).toContain('逐调用缓存明细')
+    expect(html).toContain('#1 classify · 未命中 0%')
+    expect(html).toContain('未缓存 900')
+    expect(html).toContain('#2 execute · 部分命中 92%')
+    expect(html).toContain('原因 工具定义变更')
+    expect(html).toContain('主要原因：工具定义变更×1')
+  })
 })
 
 describe('next-Harness transcript rendering', () => {

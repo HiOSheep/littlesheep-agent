@@ -408,6 +408,7 @@ export class RunRouter {
         }),
       })
       const publishedResult = (result.durableHarnessMode ?? runner.durableHarnessMode) === 'next'
+        && !runner.isResultAuthoritativePrepared?.(result)
         ? await prepareAuthoritativeRunnerResult(runner, result)
         : result
       await finishRunResources(context, runner, publishedResult, effectiveBody, ownership, cwd, workspaceContext)

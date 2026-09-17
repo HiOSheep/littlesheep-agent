@@ -151,10 +151,65 @@ describe('next-mode execution-log replay boundary', () => {
   })
 })
 
+describe('compaction operation history projection', () => {
+  it('projects durable compaction operation history for one session', async () => {
+    const runner = mockReplayRunner(vi.fn())
+    Object.assign(runner, {
+      compactionOperationHistory: vi.fn().mockResolvedValue([{
+        id: 'operation-1',
+        sessionId: 'session-1',
+        force: false,
+        createdAt: '2026-09-16T00:00:00.000Z',
+        status: 'completed',
+        result: 'compacted',
+        coalescedRequests: 0,
+        usage: { requestCount: 1, usageStatus: 'unavailable' },
+      }]),
+    })
+
+    const response = await invokeReplay(runner, 'unused', '/sessions/session-1/compaction-operations')
+
+    expect(response.status).toBe(200)
+    expect(response.body.operations).toMatchObject([{
+      id: 'operation-1',
+      sessionId: 'session-1',
+      status: 'completed',
+      result: 'compacted',
+    }])
+  })
+
+  it('carries bounded compaction operation history in the session message page', async () => {
+    const runner = mockReplayRunner(vi.fn())
+    Object.assign(runner, {
+      sessionManager: { readWindow: async () => ({ messages: [], hasMore: false }) },
+      compactionOperationHistory: vi.fn().mockResolvedValue([{
+        id: 'operation-page',
+        sessionId: 'session-1',
+        force: false,
+        createdAt: '2026-09-16T00:00:00.000Z',
+        status: 'completed',
+        result: 'no-new-range',
+        coalescedRequests: 0,
+      }]),
+    })
+
+    const response = await invokeReplay(runner, 'unused', '/sessions/session-1/messages')
+
+    expect(response.status).toBe(200)
+    expect(response.body.compactionOperations).toMatchObject([{ id: 'operation-page', result: 'no-new-range' }])
+  })
+
+  it('reports unavailable history instead of fabricating an empty list', async () => {
+    const runner = mockReplayRunner(vi.fn())
+    const response = await invokeReplay(runner, 'unused', '/sessions/session-1/compaction-operations')
+    expect(response.status).toBe(503)
+    expect(response.body.error).toContain('unavailable')
+  })
+})
+
 function mockReplayRunner(
   replayDurableFinalReply: AgentRunner['replayDurableFinalReply'],
-): AgentRunner {
-  return {
+): AgentRunner {  return {
     durableHarnessMode: 'next',
     replay: vi.fn().mockResolvedValue({
       runId: 'run-1',

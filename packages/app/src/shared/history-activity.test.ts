@@ -124,6 +124,41 @@ describe('durable history activity reconstruction', () => {
     expect(JSON.stringify(history)).not.toContain('query')
   })
 
+  it('projects per-call cache evidence and reasons onto the owning assistant message', () => {
+    const observation = (cached: number, reasons: string[]) => ({
+      providerPrompt: {
+        kind: 'provider_prompt', status: cached === 0 ? 'miss' : 'partial', requestCount: 1,
+        tokenCount: 1_000, cachedTokenCount: cached, uncachedTokenCount: 1_000 - cached, hitRatio: cached / 1_000,
+      },
+      invalidationReasons: reasons,
+    })
+    const log = executionLog({
+      modelRequests: [
+        { requestIndex: 1, stage: 'classify', cacheObservation: observation(0, ['tool_schema_changed']) },
+        { requestIndex: 2, stage: 'execute', cacheObservation: observation(900, ['tool_schema_changed']) },
+        { requestIndex: 3, stage: 'finalize', cacheObservation: observation(800, ['memory_revision_changed']) },
+      ],
+    } as unknown as Partial<ExecutionLog>)
+
+    const history = buildHistoryMessages([
+      {
+        id: 'assistant-final', role: 'assistant', runId: 'run-1', stage: 'finalize',
+        timestamp: log.endedAt, content: [{ type: 'text', text: 'done' }],
+      },
+    ], new Map([['run-1', log]]))
+
+    expect(history[0]?.cacheCalls).toEqual([
+      expect.objectContaining({ requestIndex: 1, stage: 'classify', status: 'miss', hitRatio: 0 }),
+      expect.objectContaining({ requestIndex: 2, stage: 'execute', status: 'partial', cachedPromptTokens: 900 }),
+      expect.objectContaining({ requestIndex: 3, stage: 'finalize', status: 'partial', uncachedPromptTokens: 200 }),
+    ])
+    expect(history[0]?.cacheReasons?.[0]).toEqual({ reason: 'tool_schema_changed', count: 2 })
+    // The projection carries only counts and runtime-classified reasons.
+    expect(Object.keys(history[0]!.cacheCalls![1]!).sort()).toEqual([
+      'cachedPromptTokens', 'hitRatio', 'promptTokens', 'reasons', 'requestIndex', 'stage', 'status', 'uncachedPromptTokens',
+    ])
+  })
+
   it('attaches one recovered process to the final assistant message for a run', () => {
     const messages: Message[] = [
       {
@@ -169,6 +204,9 @@ describe('durable history activity reconstruction', () => {
       callId: 'call-1', name: 'read', stepId: 'step-1', ok: true,
       output: '{\n  "packageManager": "pnpm"\n}',
     })
+    expect(history[1]?.activity?.transcript).toEqual([
+      { kind: 'tool', id: 'tool:call-1', callId: 'call-1' },
+    ])
   })
 
   it('recovers an interrupted run even when no final text message was persisted', () => {

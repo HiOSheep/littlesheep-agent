@@ -142,15 +142,16 @@ export function createRunActions(context: RunActionContext) {
         activityCollapsed: false,
         activity: {
           status: 'running',
-          visibility: 'silent',
+          visibility: 'progress',
           instruction: displayText,
           startedAt: activityStartedAt,
           reasoning: [{
-            phaseId: 'enter:1',
-            stage: 'enter',
+            phaseId: 'request:dispatch',
+            source: 'runtime',
+            activityKind: 'request_dispatch',
             summary: /[\u3400-\u9fff]/u.test(text)
-              ? '正在准备本轮任务上下文'
-              : 'Preparing the context for this run',
+              ? '请求已发出，正在等待 Runtime 接收'
+              : 'Request sent; waiting for Runtime to accept it',
             status: 'running',
             startedAt: activityStartedAt,
           }],
@@ -246,7 +247,7 @@ export function createRunActions(context: RunActionContext) {
                   error: '本次运行已停止。',
                   endedAt,
                   durationMs: endedAt - last.activity.startedAt,
-                  reasoning: settleLiveReasoning(last.activity.reasoning, 'failed', endedAt),
+                  reasoning: settleLiveReasoning(last.activity.reasoning, 'aborted', endedAt),
                 }
                 : undefined,
             }

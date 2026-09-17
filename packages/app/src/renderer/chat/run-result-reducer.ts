@@ -72,7 +72,7 @@ export function reduceCompletedRunMessages(
         durationMs: result.durationMs || endedAt - currentActivity.startedAt,
         reasoning: settleLiveReasoning(
           currentActivity.reasoning,
-          activityStatus === 'done' || waiting ? 'done' : 'failed',
+          activityStatus === 'done' || waiting ? 'done' : activityStatus === 'aborted' ? 'aborted' : 'failed',
           endedAt,
         ),
         taskBook: result.taskBook ?? currentActivity.taskBook,

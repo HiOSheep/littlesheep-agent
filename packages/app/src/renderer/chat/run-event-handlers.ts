@@ -10,7 +10,7 @@ import {
   upsertLiveStep,
   upsertLiveTool,
 } from './activity-model'
-import type { ChatMessage, LiveStepStatus, TranscriptEntry } from './types'
+import type { AssistantTurnActivity, ChatMessage, LiveStepStatus, TranscriptEntry } from './types'
 
 export interface RunEventHandlerContext {
   appMountedRef: MutableRefObject<boolean>
@@ -41,53 +41,92 @@ export function handleRunToolEvent(
     return
   }
 
-  if (evt.type === 'model_reasoning' && evt.phaseId) {
-    const phaseId = evt.phaseId
-    const delta = evt.summary ?? ''
-    updateLastAssistantActivity(context.setMessages, (activity) => ({
-      ...activity,
-      ...mergeVisibility(activity.visibility, 'progress'),
-      transcript: upsertTranscriptReasoning(activity.transcript ?? [], phaseId, delta, evt.reasoningStatus, evt.reasoningStatus === 'done' ? evt.summary : undefined),
-    }))
-    return
-  }
-  if (evt.type === 'model_text' && evt.phaseId && evt.summary) {
-    const entry: TranscriptEntry = {
-      kind: 'text',
-      id: `${evt.phaseId}:text`,
-      text: evt.summary,
-    }
-    updateLastAssistantActivity(context.setMessages, (activity) => ({
-      ...activity,
-      ...mergeVisibility(activity.visibility, 'progress'),
-      transcript: upsertTranscriptEntry(activity.transcript ?? [], entry),
-    }))
-    return
-  }
-
   if (
-    evt.type === 'reasoning'
+    (evt.type === 'model_activity' || evt.type === 'runtime_activity')
     && evt.phaseId
-    && evt.stage
     && evt.summary
-    && evt.reasoningStatus
+    && evt.activityKind
+    && evt.activityStatus
   ) {
     const eventTime = Date.now()
     updateLastAssistantActivity(context.setMessages, (activity) => ({
       ...activity,
-      ...mergeVisibility(activity.visibility, evt.visibility),
+      ...mergeVisibility(activity.visibility, 'progress'),
       reasoning: upsertLiveReasoning(activity.reasoning ?? [], {
         phaseId: evt.phaseId!,
-        stage: evt.stage!,
+        source: evt.type === 'model_activity' ? 'model' : 'runtime',
+        activityKind: evt.activityKind!,
         summary: evt.summary!,
-        status: evt.reasoningStatus!,
-        startedAt: evt.reasoningStatus === 'running' ? eventTime : undefined,
-        endedAt: evt.reasoningStatus === 'running' ? undefined : eventTime,
+        status: evt.activityStatus!,
+        startedAt: evt.activityStatus === 'running' ? eventTime : undefined,
+        endedAt: evt.activityStatus === 'running' ? undefined : eventTime,
         durationMs: evt.durationMs,
       }),
     }))
     return
   }
+
+  if (evt.type === 'model_reasoning' && evt.phaseId) {
+    const phaseId = evt.phaseId
+    const delta = evt.summary ?? ''
+    updateLastAssistantActivity(context.setMessages, (activity) => {
+      const stream = acceptTranscriptStreamEvent(activity, evt)
+      if (!stream.accepted) return activity
+      const id = transcriptPhaseId(evt, phaseId)
+      const transcript = evt.streamRef?.operation === 'reset'
+        ? removeTranscriptEntry(stream.transcript, `${id}:reasoning`)
+        : upsertTranscriptReasoning(
+            stream.transcript,
+            id,
+            delta,
+            evt.reasoningStatus,
+            evt.streamRef
+              ? (evt.streamRef.operation === 'replace' ? evt.summary : undefined)
+              : (evt.reasoningStatus === 'done' ? evt.summary : undefined),
+          )
+      return {
+        ...activity,
+        ...stream.state,
+        ...mergeVisibility(activity.visibility, 'progress'),
+        transcript,
+      }
+    })
+    return
+  }
+  if (evt.type === 'model_text' && evt.phaseId && evt.summary) {
+    updateLastAssistantActivity(context.setMessages, (activity) => {
+      const stream = acceptTranscriptStreamEvent(activity, evt)
+      if (!stream.accepted) return activity
+      const id = `${transcriptPhaseId(evt, evt.phaseId!)}:text`
+      const transcript = evt.streamRef?.operation === 'reset'
+        ? removeTranscriptEntry(stream.transcript, id)
+        : upsertTranscriptEntry(stream.transcript, { kind: 'text', id, text: evt.summary! })
+      return { ...activity, ...stream.state, ...mergeVisibility(activity.visibility, 'progress'), transcript }
+    })
+    return
+  }
+  if (evt.type === 'tool_preparing' && evt.phaseId) {
+    updateLastAssistantActivity(context.setMessages, (activity) => {
+      const stream = acceptTranscriptStreamEvent(activity, evt)
+      if (!stream.accepted) return activity
+      const id = `${transcriptPhaseId(evt, evt.phaseId!)}:preparing`
+      const transcript = evt.streamRef?.operation === 'reset'
+        ? removeTranscriptEntry(stream.transcript, id)
+        : upsertTranscriptEntry(stream.transcript, {
+            kind: 'preparing',
+            id,
+            name: evt.name,
+            receivedCharacters: evt.receivedCharacters ?? 0,
+            status: evt.generationStatus ?? 'running',
+          })
+      return { ...activity, ...stream.state, ...mergeVisibility(activity.visibility, 'progress'), transcript }
+    })
+    return
+  }
+
+  // Legacy `reasoning` events are direct Harness-stage projections. Keep
+  // transport compatibility, but do not turn control state into visible UI.
+  if (evt.type === 'reasoning') return
 
   if (evt.type === 'task_book' && evt.taskBook) {
     const taskBook = evt.taskBook
@@ -211,12 +250,58 @@ function upsertTranscriptEntry(entries: TranscriptEntry[], entry: TranscriptEntr
   return next.length > MAX_TRANSCRIPT_ENTRIES ? next.slice(-MAX_TRANSCRIPT_ENTRIES) : next
 }
 
+function removeTranscriptEntry(entries: TranscriptEntry[], id: string): TranscriptEntry[] {
+  return entries.filter((entry) => entry.id !== id)
+}
+
+function transcriptPhaseId(evt: ToolStreamEvent, phaseId: string): string {
+  const ref = evt.streamRef
+  return ref
+    ? `${ref.runId}:${ref.requestId}:${ref.transportAttempt}:${phaseId}`
+    : phaseId
+}
+
+function acceptTranscriptStreamEvent(
+  activity: AssistantTurnActivity,
+  evt: ToolStreamEvent,
+): {
+  accepted: boolean
+  transcript: TranscriptEntry[]
+  state: Pick<AssistantTurnActivity, 'transcriptStreamWatermarks' | 'transcriptLatestAttempts' | 'transcriptIncompleteStreams'>
+} {
+  const ref = evt.streamRef
+  if (!ref) return { accepted: true, transcript: activity.transcript ?? [], state: {} }
+  const requestKey = `${ref.runId}:${ref.requestId}`
+  const latestAttempt = activity.transcriptLatestAttempts?.[requestKey] ?? 0
+  if (ref.transportAttempt < latestAttempt) return { accepted: false, transcript: activity.transcript ?? [], state: {} }
+  const streamKey = `${requestKey}:${ref.transportAttempt}`
+  const watermark = activity.transcriptStreamWatermarks?.[streamKey] ?? 0
+  if (ref.transportAttempt === latestAttempt && ref.sequence <= watermark) {
+    return { accepted: false, transcript: activity.transcript ?? [], state: {} }
+  }
+  const transcript = ref.transportAttempt > latestAttempt
+    ? (activity.transcript ?? []).filter((entry) => !entry.id.startsWith(`${requestKey}:`))
+    : activity.transcript ?? []
+  return {
+    accepted: true,
+    transcript,
+    state: {
+      transcriptLatestAttempts: { ...(activity.transcriptLatestAttempts ?? {}), [requestKey]: ref.transportAttempt },
+      transcriptStreamWatermarks: { ...(activity.transcriptStreamWatermarks ?? {}), [streamKey]: ref.sequence },
+      transcriptIncompleteStreams: {
+        ...(activity.transcriptIncompleteStreams ?? {}),
+        [streamKey]: watermark > 0 && ref.sequence > watermark + 1,
+      },
+    },
+  }
+}
+
 /** Thinking arrives as deltas; each phase owns exactly one accumulating row. */
 function upsertTranscriptReasoning(
   entries: TranscriptEntry[],
   phaseId: string,
   delta: string,
-  status: 'running' | 'done' | 'failed' | undefined,
+  status: 'running' | 'done' | 'failed' | 'aborted' | undefined,
   finalText?: string,
 ): TranscriptEntry[] {
   const id = `${phaseId}:reasoning`
@@ -227,7 +312,7 @@ function upsertTranscriptReasoning(
     kind: 'reasoning',
     id,
     text,
-    status: status === 'running' ? 'running' : 'done',
+    status: status ?? 'done',
   })
 }
 

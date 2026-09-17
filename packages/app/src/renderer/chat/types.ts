@@ -1,11 +1,12 @@
 // Conversation rendering and execution-progress presentation.
 import type { ActivityVisibility, HistoryActivity } from '../../shared/history-activity'
-import type { StageName, WebEvidenceProjection } from '@littlesheep/types'
+import type { ObservableActivityKind, StageName, WebEvidenceProjection } from '@littlesheep/types'
 import {
   type AttachmentRef
 } from '../api'
 import { WorkspaceArtifactRef } from '../workspace/types'
 import type { RunUsage } from '@littlesheep/types'
+import type { CacheCallObservation } from '../../shared/cache-call-observations'
 import type { ConversationContextProjection } from './context-projections'
 
 
@@ -21,6 +22,11 @@ export interface ChatMessage {
   toolCalls?: { name: string; input: unknown; output?: unknown; error?: string; ok: boolean }[]
   durationMs?: number
   usage?: RunUsage
+  /** Per-call cache evidence for this run, ordered as executed. */
+  cacheCalls?: CacheCallObservation[]
+  /** Run-level top prefix-invalidation reasons behind provider cache misses. */
+  cacheReasons?: Array<{ reason: string; count: number }>
+  cacheCallsTruncated?: boolean
   modelRef?: string
   activity?: AssistantTurnActivity
   activityCollapsed?: boolean
@@ -63,9 +69,12 @@ export type AssistantTurnStatus = HistoryActivity['status']
 
 export interface LiveReasoningEvent {
   phaseId: string
-  stage: StageName
+  /** Legacy stage is retained only for old in-memory shapes. */
+  stage?: StageName
+  source?: 'model' | 'runtime'
+  activityKind?: ObservableActivityKind
   summary: string
-  status: 'running' | 'done' | 'failed'
+  status: 'running' | 'done' | 'failed' | 'aborted'
   startedAt: number
   endedAt?: number
   durationMs?: number
@@ -74,9 +83,10 @@ export interface LiveReasoningEvent {
 
 /** One ordered row of the next-Harness transcript (thinking / prose / tool). */
 export type TranscriptEntry =
-  | { kind: 'reasoning'; id: string; text: string; status: 'running' | 'done' }
+  | { kind: 'reasoning'; id: string; text: string; status: 'running' | 'done' | 'failed' | 'aborted' }
   | { kind: 'text'; id: string; text: string }
   | { kind: 'system'; id: string; text: string }
+  | { kind: 'preparing'; id: string; name?: string; receivedCharacters: number; status: 'running' | 'done' | 'failed' | 'aborted' }
   | { kind: 'tool'; id: string; callId: string }
 
 export interface AssistantTurnActivity extends Omit<HistoryActivity, 'status' | 'steps' | 'tools'> {
@@ -87,5 +97,8 @@ export interface AssistantTurnActivity extends Omit<HistoryActivity, 'status' | 
   tools: LiveToolEvent[]
   /** Present only for the next Harness; render rows in this order. */
   transcript?: TranscriptEntry[]
+  transcriptStreamWatermarks?: Record<string, number>
+  transcriptLatestAttempts?: Record<string, number>
+  transcriptIncompleteStreams?: Record<string, boolean>
   contextProjections?: ConversationContextProjection[]
 }

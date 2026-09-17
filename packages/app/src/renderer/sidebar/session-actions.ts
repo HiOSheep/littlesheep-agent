@@ -18,13 +18,40 @@ import {
   type ApprovalDecision
 } from '../approval-grants'
 import { historyMessageToChatMessage } from '../chat/assistant-turn'
+import { projectCompactionOperations } from '../chat/context-projections'
 import { ChatMessage } from '../chat/types'
+import type { CompactionOperationRecord } from '../../shared/compaction-operation-contracts'
 import {
   buildContextUsageSnapshotFromSession,
   type ContextUsageSnapshot
 } from '../context-usage'
 import { FloatingHelpTip } from '../ui/floating-help'
 import { isSamePath } from '../workspace/path-utils'
+
+/**
+ * Annotate the newest assistant activity with the session's real compaction
+ * operation so the existing context-projection rows show it in history.
+ */
+export function attachCompactionNotice(
+  messages: ChatMessage[],
+  operations: readonly CompactionOperationRecord[] | undefined,
+): ChatMessage[] {
+  const rows = projectCompactionOperations(operations)
+  if (rows.length === 0) return messages
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (!message || message.role !== 'assistant' || !message.activity) continue
+    const activity = message.activity
+    return messages.map((candidate, position) => (position === index
+      ? Object.assign({}, candidate, {
+        activity: Object.assign({}, activity, {
+          contextProjections: [...(activity.contextProjections ?? []), ...rows],
+        }),
+      }) as ChatMessage
+      : candidate))
+  }
+  return messages
+}
 
 export interface SessionActionContext {
   abortRef: MutableRefObject<AbortController | null>
@@ -169,11 +196,10 @@ export function createSessionActions(context: SessionActionContext) {
       const history = await getSessionMessagePage(id, { limit: SESSION_HISTORY_PAGE_SIZE })
       if (!appMountedRef.current || requestId !== sessionLoadRequestRef.current) return
       setRuntimeError(null)
-      setMessages(
-        history.messages.length > 0
-          ? history.messages.map(historyMessageToChatMessage)
-          : [],
-      )
+      setMessages(attachCompactionNotice(
+        history.messages.map(historyMessageToChatMessage),
+        history.compactionOperations,
+      ))
       // A force reload can follow checkpoint recovery, which has already
       // installed the completed run's live snapshot. Preserve it when the
       // history payload has no newer durable counter to restore.

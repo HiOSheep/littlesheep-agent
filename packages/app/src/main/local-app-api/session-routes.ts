@@ -24,6 +24,7 @@ import type {
 import type { ProjectIndex, ProjectMeta } from '../project-index.js'
 import type { SessionIndex, SessionMeta } from '../session-index.js'
 import type { SessionContextUsageRecord } from '../../shared/context-usage-contracts.js'
+import type { CompactionOperationRecord } from '../../shared/compaction-operation-contracts.js'
 import { json, readJson, type LocalAppApiRequest } from './http.js'
 
 export interface SessionRouteContext {
@@ -54,12 +55,33 @@ export async function routeSessions(
     const window = await runner.sessionManager.readWindow(asSessionId(sessionMessagesId), limit, beforeId)
     const messages = window.messages
     const logsByRunId = await loadExecutionLogsByRunId(runner, messages, sessionMessagesId)
+    const compactionOperations: readonly CompactionOperationRecord[] | undefined = runner.compactionOperationHistory
+      ? await runner.compactionOperationHistory(asSessionId(sessionMessagesId)).catch(() => undefined)
+      : undefined
     json(res, 200, {
       messages: buildHistoryMessages(messages, logsByRunId),
       hasMore: window.hasMore,
       beforeId: window.beforeId,
       contextUsage: buildSessionContextUsageRecord(logsByRunId.values(), sessionMessagesId),
+      ...(compactionOperations ? { compactionOperations } : {}),
     })
+    return true
+  }
+
+  const sessionCompactionOpsId = matchLocalAppApiItemPath(
+    path,
+    LOCAL_APP_API_PREFIXES.sessions,
+    '/compaction-operations',
+  )
+  if (method === 'GET' && sessionCompactionOpsId !== null) {
+    if (!runner.compactionOperationHistory) {
+      json(res, 503, { error: 'compaction operation history is unavailable' })
+      return true
+    }
+    const operations: readonly CompactionOperationRecord[] = await runner.compactionOperationHistory(
+      asSessionId(sessionCompactionOpsId),
+    )
+    json(res, 200, { operations })
     return true
   }
 

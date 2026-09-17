@@ -1,4 +1,5 @@
 import type { ContextSnapshot } from '@littlesheep/types'
+import type { CompactionOperationRecord } from '../../shared/compaction-operation-contracts'
 
 export type ConversationContextProjectionKind = 'context_injection' | 'cross_session_recall' | 'context_compaction'
 
@@ -38,4 +39,37 @@ export function projectConversationContext(snapshots: ContextSnapshot[] | undefi
 
 function sumTokens(items: ContextSnapshot['items']): number {
   return items.reduce((total, item) => total + (item.promptTokens ?? 0), 0)
+}
+
+/**
+ * Project the session's newest durable compaction operation. Only real terminal
+ * facts are shown; a running or unknown operation renders nothing.
+ */
+export function projectCompactionOperations(
+  operations: readonly CompactionOperationRecord[] | undefined,
+): ConversationContextProjection[] {
+  const latest = operations?.at(-1)
+  if (!latest) return []
+  if (latest.status === 'failed') {
+    return [{
+      kind: 'context_compaction',
+      label: '上下文压缩失败',
+      detail: latest.error?.slice(0, 200) || '旧原文已保留，将在下次运行重试',
+    }]
+  }
+  if (latest.status === 'cancelled') {
+    return [{ kind: 'context_compaction', label: '上下文压缩已取消', detail: '原始消息仍完整保留' }]
+  }
+  if (latest.status !== 'completed') return []
+  if (latest.result === 'no-new-range') {
+    return [{ kind: 'context_compaction', label: '上下文无需压缩', detail: '没有新的可压缩区间' }]
+  }
+  const requests = latest.usage?.requestCount
+  return [{
+    kind: 'context_compaction',
+    label: '上下文已压缩',
+    detail: latest.usage?.totalTokens !== undefined
+      ? `本次压缩 ${requests ?? 0} 次请求 · ${latest.usage.totalTokens} tokens`
+      : `本次压缩 ${requests ?? 0} 次请求`,
+  }]
 }

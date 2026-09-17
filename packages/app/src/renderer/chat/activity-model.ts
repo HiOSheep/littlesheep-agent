@@ -40,7 +40,7 @@ export function upsertLiveReasoning(
 
 export function settleLiveReasoning(
   events: LiveReasoningEvent[] | undefined,
-  status: 'done' | 'failed',
+  status: 'done' | 'failed' | 'aborted',
   endedAt: number,
 ): LiveReasoningEvent[] | undefined {
   if (!events) return undefined

@@ -23,6 +23,7 @@ import type {
   WebEvidenceProjection,
   RuntimeCapabilitySnapshot,
   RuntimeFinalStatus,
+  RunUsage,
 } from '@littlesheep/types'
 import type { AgentProfileId } from '@littlesheep/prompt'
 import type { PermissionModeId } from '../../shared/permission-modes'
@@ -45,15 +46,7 @@ export interface RunResult {
   runtimeStatus?: RuntimeFinalStatus
   error?: string
   durationMs: number
-  usage?: {
-    promptTokens: number
-    completionTokens: number
-    totalTokens?: number
-    cachedPromptTokens?: number
-    cacheWriteTokens?: number
-    reasoningTokens?: number
-    source: 'provider'
-  }
+  usage?: RunUsage
   systemPromptProjection?: string
   contextSnapshots?: ContextSnapshot[]
   modelRequests?: ModelRequestSnapshot[]
@@ -265,7 +258,10 @@ export async function consumeRunStream(
         || event.name === 'verification'
         || event.name === 'final_delta'
         || event.name === 'model_reasoning'
+        || event.name === 'model_activity'
+        || event.name === 'runtime_activity'
         || event.name === 'model_text'
+        || event.name === 'tool_preparing'
         || event.name === 'system_prompt'
         || event.name === 'capability_snapshot'
         || event.name === 'capability_probe'

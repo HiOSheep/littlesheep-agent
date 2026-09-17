@@ -1,6 +1,8 @@
+// Shared history projection owns the stable Runtime-to-Renderer activity shape.
 import type { ExecutionLog, ToolCallRecord } from '@littlesheep/runner'
 import type { Message, RunUsage, TaskBook, ToolInvocationRecord, VerificationRecord, WebEvidenceProjection } from '@littlesheep/types'
 import { aggregateRunUsage } from './run-usage'
+import { projectRunCacheObservations, type CacheCallObservation } from './cache-call-observations'
 
 export type HistoryActivityStatus = 'running' | 'done' | 'failed' | 'aborted' | 'paused' | 'waiting_user'
 export type HistoryStepStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped' | 'unknown'
@@ -50,9 +52,10 @@ export interface HistoryActivity {
     detail: string
   }>
   transcript?: Array<
-    | { kind: 'reasoning'; id: string; text: string; status: 'running' | 'done' }
+    | { kind: 'reasoning'; id: string; text: string; status: 'running' | 'done' | 'failed' | 'aborted' }
     | { kind: 'text'; id: string; text: string }
     | { kind: 'system'; id: string; text: string }
+    | { kind: 'preparing'; id: string; name?: string; receivedCharacters: number; status: 'running' | 'done' | 'failed' | 'aborted' }
     | { kind: 'tool'; id: string; callId: string }
   >
 }
@@ -65,6 +68,10 @@ export interface HistoryMessageRecord {
   timestamp: string
   durationMs?: number
   usage?: RunUsage
+  /** Per-call cache evidence; a blended ratio alone hides cold stage calls. */
+  cacheCalls?: CacheCallObservation[]
+  cacheReasons?: Array<{ reason: string; count: number }>
+  cacheCallsTruncated?: boolean
   modelRef?: string
   activityCollapsed?: boolean
   activity?: HistoryActivity
@@ -209,6 +216,14 @@ export function runActivityOutcome(run: Pick<ExecutionLog, 'status' | 'runtimeCo
 export function executionLogToHistoryActivity(log: ExecutionLog): HistoryActivity {
   const startedAt = finiteTimestamp(log.startedAt) ?? 0
   const endedAt = finiteTimestamp(log.endedAt)
+  const tools = historyTools(log, endedAt)
+  const transcript: NonNullable<HistoryActivity['transcript']> = []
+  if (log.systemPromptProjection) {
+    transcript.push({ kind: 'system', id: 'system-prompt', text: log.systemPromptProjection })
+  }
+  for (const tool of tools) {
+    transcript.push({ kind: 'tool', id: `tool:${tool.callId}`, callId: tool.callId })
+  }
   return {
     ...runActivityOutcome(log),
     visibility: hasExecutionActivity(log) ? 'progress' : 'silent',
@@ -219,11 +234,9 @@ export function executionLogToHistoryActivity(log: ExecutionLog): HistoryActivit
     taskBook: log.taskBook,
     verificationHistory: log.verificationHistory,
     steps: historySteps(log),
-    tools: historyTools(log, endedAt),
+    tools,
     contextProjections: projectHistoryContext(log),
-    transcript: log.systemPromptProjection
-      ? [{ kind: 'system', id: 'system-prompt', text: log.systemPromptProjection }]
-      : undefined,
+    transcript: transcript.length ? transcript : undefined,
   }
 }
 
@@ -310,6 +323,7 @@ export function buildHistoryMessages(
         ? log.reply
         : textFromMessage
       const activity = ownsActivity && log ? executionLogToHistoryActivity(log) : undefined
+      const cache = ownsRun ? projectRunCacheObservations(log) : undefined
       if (!text.trim() && !activity) return null
       return {
         id: message.id,
@@ -318,6 +332,13 @@ export function buildHistoryMessages(
         timestamp: message.timestamp,
         durationMs: activity ? log?.durationMs : undefined,
         usage: ownsRun ? aggregateRunUsage(log?.contextSnapshots, log?.usage) : undefined,
+        ...(cache
+          ? {
+              cacheCalls: cache.calls,
+              cacheCallsTruncated: cache.callsTruncated,
+              ...(cache.topReasons.length > 0 ? { cacheReasons: cache.topReasons } : {}),
+            }
+          : {}),
         modelRef: ownsRun && log ? log.model : undefined,
         activity,
         ...(ownsRun && log?.webEvidence ? { webEvidence: log.webEvidence } : {}),

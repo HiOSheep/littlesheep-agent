@@ -15,12 +15,65 @@ describe('aggregateRunUsage', () => {
       reasoningTokens: 35,
       providerDurationMs: 3_000,
       requestCount: 2,
+      usageReportedRequestCount: 2,
+      usageCompleteness: 'complete',
     }))
+  })
+
+  it('marks a missing Provider usage record as partial instead of zero', () => {
+    const missing = { ...snapshot('missing', 0, 0, 0, 0, 0), providerUsage: undefined }
+    expect(aggregateRunUsage([snapshot('known', 100, 10, 20, 2, 100), missing])).toMatchObject({
+      promptTokens: 100,
+      completionTokens: 10,
+      requestCount: 2,
+      usageReportedRequestCount: 1,
+      usageCompleteness: 'partial',
+    })
   })
 
   it('does not present unsupported cache-write data as zero', () => {
     const usage = aggregateRunUsage([snapshot('one', 100, 10, 0, 0, 100)])
     expect(usage).not.toHaveProperty('cacheWriteTokens')
+  })
+
+  it('sums the provider-reported uncached input only when every call reports it', () => {
+    const withSplit = (id: string, promptTokens: number, cached: number, uncached: number) => {
+      const base = snapshot(id, promptTokens, 10, cached, 1, 100)
+      return {
+        ...base,
+        providerUsage: { ...base.providerUsage!, uncachedPromptTokens: uncached },
+      } as ContextSnapshot
+    }
+
+    expect(aggregateRunUsage([
+      withSplit('one', 1_000, 600, 400),
+      withSplit('two', 500, 400, 100),
+    ])).toMatchObject({
+      promptTokens: 1_500,
+      cachedPromptTokens: 1_000,
+      uncachedPromptTokens: 500,
+    })
+
+    // A call without the split must not present the others as zero.
+    expect(aggregateRunUsage([
+      withSplit('one', 1_000, 600, 400),
+      snapshot('two', 500, 10, 400, 1, 100),
+    ])).not.toHaveProperty('uncachedPromptTokens')
+  })
+
+  it('HA-03-04 prefers the complete run aggregate over a bounded diagnostic tail', () => {
+    const tail = [snapshot('tail', 10, 2, 5, 1, 100)]
+    const aggregate = {
+      source: 'provider' as const,
+      promptTokens: 650,
+      completionTokens: 130,
+      totalTokens: 780,
+      requestCount: 65,
+      timedRequestCount: 65,
+      timedCompletionTokens: 130,
+      providerDurationMs: 6_500,
+    }
+    expect(aggregateRunUsage(tail, aggregate)).toBe(aggregate)
   })
 })
 

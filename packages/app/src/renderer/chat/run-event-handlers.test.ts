@@ -28,6 +28,72 @@ function dispatch(context: ReturnType<typeof harness>['context'], event: Partial
 }
 
 describe('next-Harness transcript reduction', () => {
+  it('HA-04-01 applies append/replace once and ignores duplicate sequence numbers', () => {
+    const { context, activity } = harness()
+    const ref = (sequence: number, operation: 'append' | 'replace' | 'reset') => ({
+      version: 1 as const,
+      runId: 'run-1',
+      requestId: 'request-1',
+      transportAttempt: 1,
+      sequence,
+      operation,
+    })
+    dispatch(context, { type: 'model_reasoning', phaseId: 'turn', reasoningStatus: 'running', summary: '先看', streamRef: ref(1, 'append') })
+    dispatch(context, { type: 'model_reasoning', phaseId: 'turn', reasoningStatus: 'running', summary: '目录', streamRef: ref(2, 'append') })
+    dispatch(context, { type: 'model_reasoning', phaseId: 'turn', reasoningStatus: 'running', summary: '重复', streamRef: ref(2, 'append') })
+    dispatch(context, { type: 'model_reasoning', phaseId: 'turn', reasoningStatus: 'done', summary: '先看目录', streamRef: ref(3, 'replace') })
+
+    expect(activity().transcript).toEqual([expect.objectContaining({ kind: 'reasoning', text: '先看目录', status: 'done' })])
+  })
+
+  it('marks a stream incomplete when an event sequence has a gap', () => {
+    const { context, activity } = harness()
+    const streamRef = (sequence: number) => ({
+      version: 1 as const,
+      runId: 'run-gap',
+      requestId: 'request-gap',
+      transportAttempt: 1,
+      sequence,
+      operation: 'append' as const,
+    })
+    dispatch(context, { type: 'model_reasoning', phaseId: 'turn', reasoningStatus: 'running', summary: 'a', streamRef: streamRef(1) })
+    dispatch(context, { type: 'model_reasoning', phaseId: 'turn', reasoningStatus: 'running', summary: 'c', streamRef: streamRef(3) })
+
+    expect(Object.values(activity().transcriptIncompleteStreams ?? {})).toContain(true)
+  })
+
+  it('HA-04-02 replaces tool preparation snapshots and keeps them out of tool counts', () => {
+    const { context, activity } = harness()
+    for (const [sequence, receivedCharacters] of [[1, 10], [2, 20], [3, 30]] as const) {
+      dispatch(context, {
+        type: 'tool_preparing', phaseId: 'turn:tool:0', name: 'exec',
+        receivedCharacters, generationStatus: sequence === 3 ? 'done' : 'running',
+        streamRef: { version: 1, runId: 'run', requestId: 'req', transportAttempt: 1, sequence, operation: 'replace' },
+      })
+    }
+    expect(activity().transcript).toEqual([expect.objectContaining({
+      kind: 'preparing', name: 'exec', receivedCharacters: 30, status: 'done',
+    })])
+    expect(activity().tools).toHaveLength(0)
+  })
+
+  it('HA-04-04 retires an old attempt so late frames cannot revive it', () => {
+    const { context, activity } = harness()
+    dispatch(context, {
+      type: 'model_reasoning', phaseId: 'turn', reasoningStatus: 'running', summary: 'old',
+      streamRef: { version: 1, runId: 'run', requestId: 'req', transportAttempt: 1, sequence: 1, operation: 'append' },
+    })
+    dispatch(context, {
+      type: 'model_reasoning', phaseId: 'turn', reasoningStatus: 'running', summary: '',
+      streamRef: { version: 1, runId: 'run', requestId: 'req', transportAttempt: 2, sequence: 1, operation: 'reset' },
+    })
+    dispatch(context, {
+      type: 'model_reasoning', phaseId: 'turn', reasoningStatus: 'running', summary: 'late',
+      streamRef: { version: 1, runId: 'run', requestId: 'req', transportAttempt: 1, sequence: 2, operation: 'append' },
+    })
+    expect(activity().transcript ?? []).toEqual([])
+  })
+
   it('projects the durable system prompt as the first transcript row', () => {
     const { context, activity } = harness()
     dispatch(context, { type: 'system_prompt', phaseId: 'system-prompt', summary: 'SYSTEM-PROMPT-BODY', visibility: 'progress' })
@@ -60,8 +126,22 @@ describe('next-Harness transcript reduction', () => {
 
   it('leaves the transcript absent when only legacy stage events arrive', () => {
     const { context, activity } = harness()
-    dispatch(context, { type: 'reasoning', phaseId: 'execute', stage: 'execute', reasoningStatus: 'done', summary: '已完成计划内执行', visibility: 'silent' })
+    dispatch(context, { type: 'reasoning', phaseId: 'execute', stage: 'execute', reasoningStatus: 'running', summary: '正在按 stage 执行', visibility: 'progress' })
     dispatch(context, { type: 'step_start', stepId: 'step-1', title: 'One', visibility: 'progress' })
     expect(activity().transcript ?? []).toEqual([])
+    expect(activity().reasoning ?? []).toEqual([])
+  })
+
+  it('HA-04-10 projects observable model work without a Harness stage', () => {
+    const { context, activity } = harness()
+    dispatch(context, {
+      type: 'model_activity', phaseId: 'model-request:req-1', requestId: 'req-1',
+      activityKind: 'model_request', activityStatus: 'running', summary: '模型正在生成回复',
+    })
+    expect(activity().reasoning).toEqual([expect.objectContaining({
+      phaseId: 'model-request:req-1', source: 'model', activityKind: 'model_request',
+      status: 'running', summary: '模型正在生成回复',
+    })])
+    expect(activity().reasoning?.[0]?.stage).toBeUndefined()
   })
 })

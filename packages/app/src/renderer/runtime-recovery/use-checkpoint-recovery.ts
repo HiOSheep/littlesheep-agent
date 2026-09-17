@@ -82,10 +82,19 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
   const [stopRequested, setStopRequested] = useState(false)
   const inspectionRequestRef = useRef(0)
   const pendingRecoveryTurnRef = useRef<CheckpointRecoveryTurnIdentity | null>(null)
+  const startupRecoveryAttemptedRef = useRef(false)
 
   useEffect(() => {
-    void refreshCheckpoints(true)
+    void refreshCheckpoints(false)
   }, [])
+
+  useEffect(() => {
+    if (startupRecoveryAttemptedRef.current || checkpoints.length === 0 || loading) return
+    const checkpoint = checkpoints.find((item) => item.resumable && !item.waitingForInput)
+    if (!checkpoint) return
+    startupRecoveryAttemptedRef.current = true
+    void resumeSelected(checkpoint)
+  }, [checkpoints, loading])
 
   const selected = checkpoints.find((item) => item.id === selectedId) ?? checkpoints[0] ?? null
 
@@ -166,10 +175,10 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
     }
   }
 
-  async function resumeSelected() {
-    if (!selected || busy || loading || !selected.resumable) return
+  async function resumeSelected(checkpoint = selected) {
+    if (!checkpoint || busy || loading || !checkpoint.resumable) return
     const clarification = clarificationText.trim()
-    if (selected.waitingForInput && !clarification) {
+    if (checkpoint.waitingForInput && !clarification) {
       setError('这个任务正在等待补充信息，请填写后再继续。')
       return
     }
@@ -183,9 +192,9 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
     setError(null)
     setProgress(INITIAL_CHECKPOINT_RECOVERY_PROGRESS)
     setStopRequested(false)
-    const recoveryPermissionMode = getSessionPermissionMode(selected.sessionId)
+    const recoveryPermissionMode = getSessionPermissionMode(checkpoint.sessionId)
     const turnIdentity = resolveCheckpointRecoveryTurnIdentity(pendingRecoveryTurnRef.current, {
-      checkpointId: selected.id,
+      checkpointId: checkpoint.id,
       text: clarification,
       permissionMode: recoveryPermissionMode,
       reasoning: runtime?.reasoning,
@@ -193,7 +202,7 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
     })
     pendingRecoveryTurnRef.current = turnIdentity
     try {
-      const result = await resumeRunCheckpointStream(selected.id, {
+      const result = await resumeRunCheckpointStream(checkpoint.id, {
         ...(clarification ? { text: clarification } : {}),
         reason: 'user resumed checkpoint from the desktop recovery control',
         permissionMode: recoveryPermissionMode,
@@ -210,7 +219,7 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
         onReplace: () => setProgress({ phase: 'finalizing', label: '正在整理交付结果' }),
         onToolEvent: (event) => setProgress((current) => checkpointRecoveryProgressForEvent(event, current)),
         onApprovalRequest: (request) => appMountedRef.current
-          ? requestApprovalForScope(request, sessionApprovalScopeKey(selected.sessionId))
+          ? requestApprovalForScope(request, sessionApprovalScopeKey(checkpoint.sessionId))
           : Promise.resolve(false),
       })
       if (pendingRecoveryTurnRef.current?.requestKey === turnIdentity.requestKey) {
@@ -233,7 +242,7 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
         setVisible(false)
       } else {
         setError(result.error || (result.status === 'aborted' ? '恢复已停止，新的现场已保留。' : '恢复未完成，新的现场已保留。'))
-        await refreshCheckpoints(true, { preserveBusy: true, preserveError: true })
+        await refreshCheckpoints(!startupRecoveryAttemptedRef.current, { preserveBusy: true, preserveError: true })
       }
     } catch (cause) {
       if (
@@ -246,7 +255,7 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
       setError((cause as Error).name === 'AbortError'
         ? '恢复已停止，现场仍然保留。'
         : (cause as Error).message)
-      await refreshCheckpoints(true, { preserveBusy: true, preserveError: true })
+      await refreshCheckpoints(!startupRecoveryAttemptedRef.current, { preserveBusy: true, preserveError: true })
     } finally {
       settleApprovalPrompt('deny')
       abortRef.current = null

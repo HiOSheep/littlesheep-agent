@@ -165,9 +165,13 @@ describe('run actions active-run updates', () => {
     await createRunActions(fixture.context).send()
 
     const activity = fixture.messages().at(-1)?.activity
-    expect(activity).toMatchObject({ status: 'aborted', error: '本次运行已停止。' })
+    expect(activity).toMatchObject({
+      status: 'aborted',
+      visibility: 'progress',
+      error: '本次运行已停止。',
+    })
     expect(activity?.reasoning).toEqual([
-      expect.objectContaining({ phaseId: 'enter:1', status: 'failed', endedAt: expect.any(Number) }),
+      expect.objectContaining({ phaseId: 'request:dispatch', activityKind: 'request_dispatch', status: 'aborted', endedAt: expect.any(Number) }),
     ])
   })
 })

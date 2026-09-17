@@ -240,6 +240,9 @@ export function historyMessageToChatMessage(message: HistoryMessage): ChatMessag
     durationMs: message.durationMs,
     usage: message.usage,
     modelRef: message.modelRef,
+    cacheCalls: message.cacheCalls,
+    cacheReasons: message.cacheReasons,
+    cacheCallsTruncated: message.cacheCallsTruncated,
     activity: message.activity,
     activityCollapsed: message.activityCollapsed,
     artifacts,
@@ -379,12 +382,22 @@ export function AssistantTranscript({
             </div>
           )
         }
+        if (entry.kind === 'preparing') {
+          return (
+            <div key={entry.id} className={`agent-flow-row agent-tool-preparing ${entry.status}`} data-transcript-entry={entry.id}>
+              <span className="agent-flow-glyph" aria-hidden="true"><ActivityGlyph kind="step" /></span>
+              <span className="agent-flow-title">准备{entry.name ? ` ${entry.name}` : '工具'}</span>
+              <span className="agent-flow-separator" aria-hidden="true" />
+              <span className="agent-flow-summary">已生成 {entry.receivedCharacters} 个字符参数{entry.status === 'running' ? ' · Running…' : ''}</span>
+            </div>
+          )
+        }
         const tool = tools.get(entry.callId)
         return tool
           ? <AgentToolRow key={entry.id} tool={tool} now={now} onOpenFile={onOpenFile} />
           : null
       })}
-      {!compact && <ActiveStageStatus activity={activity} />}
+      {!compact && <ActiveActivityStatus activity={activity} />}
       {transcriptSummary(activity, transcript) ? (
         <div className="agent-transcript-summary" data-transcript-summary="true">
           {transcriptSummary(activity, transcript)}
@@ -394,14 +407,14 @@ export function AssistantTranscript({
   )
 }
 
-function ActiveStageStatus({ activity }: { activity: AssistantTurnActivity }) {
+function ActiveActivityStatus({ activity }: { activity: AssistantTurnActivity }) {
   if (activity.status !== 'running') return null
-  const current = [...(activity.reasoning ?? [])].reverse().find((item) => item.status === 'running')
+  const current = [...(activity.reasoning ?? [])].reverse().find((item) => item.status === 'running' && item.source)
   if (!current) return null
   return (
     <div className="agent-flow-row agent-active-stage-row" role="status" aria-live="polite">
       <span className="agent-flow-glyph agent-active-stage-glyph" aria-hidden="true"><ActivityGlyph kind="reasoning" /></span>
-      <span className="agent-flow-title">执行中</span>
+      <span className="agent-flow-title">{current.source === 'model' ? '模型' : '运行时'}</span>
       <span className="agent-flow-separator" aria-hidden="true" />
       <span className="agent-flow-summary">{current.summary}</span>
     </div>
@@ -438,24 +451,111 @@ function LegacyActivitySummary({ activity }: { activity: AssistantTurnActivity }
 function TurnUsageFooter({ message }: { message: ChatMessage }) {
   const usage = message.usage
   if (!usage) return null
+  if (usage.usageCompleteness === 'unknown') {
+    return <footer className="turn-usage-footer" aria-label="本轮用量">本轮用量 · 提供方未返回 token 统计</footer>
+  }
   const providerSeconds = Math.max(0, (usage.providerDurationMs ?? 0) / 1000)
-  const speed = providerSeconds > 0 ? usage.completionTokens / providerSeconds : undefined
-  const cached = usage.cachedPromptTokens ?? 0
-  const uncached = Math.max(0, usage.promptTokens - cached)
-  const cacheHit = usage.promptTokens > 0 ? Math.round((cached / usage.promptTokens) * 100) : 0
+  const fullyTimed = usage.requestCount !== undefined
+    && usage.timedRequestCount === usage.requestCount
+    && usage.timedCompletionTokens !== undefined
+  const speed = fullyTimed && providerSeconds > 0 ? usage.timedCompletionTokens! / providerSeconds : undefined
+  const cacheComplete = usage.requestCount !== undefined
+    && usage.cacheReportedRequestCount === usage.requestCount
+    && usage.cachedPromptTokens !== undefined
+  const cached = usage.cachedPromptTokens
+  // Prefer the provider's own disjoint miss count; only subtract when the
+  // Provider reported cached tokens without a miss count.
+  const uncached = usage.uncachedPromptTokens
+    ?? (cacheComplete ? Math.max(0, usage.promptTokens - cached!) : undefined)
+  const cacheHit = cacheComplete && usage.promptTokens > 0
+    ? `${Math.round((cached! / usage.promptTokens) * 100)}%`
+    : usage.cacheReportedRequestCount ? '部分提供' : '未提供'
   const parts = [
     message.durationMs ? `用时 ${formatDurationMs(message.durationMs)}` : '',
     speed !== undefined ? `${speed.toFixed(1)} tok/s` : '',
     '本轮用量',
     message.modelRef ?? '提供方/模型未知',
-    `缓存命中 ${cacheHit}%`,
-    `未缓存输入 ${uncached}`,
-    `缓存读取 ${cached}`,
+    `缓存命中 ${cacheHit}`,
+    `未缓存输入 ${uncached ?? '未提供'}`,
+    `缓存读取 ${cached ?? '未提供'}`,
     `缓存写入 ${usage.cacheWriteTokens ?? '未提供'}`,
     `输出 ${usage.completionTokens}`,
     usage.reasoningTokens !== undefined ? `其中推理 ${usage.reasoningTokens}` : '',
+    usage.usageCompleteness === 'partial' ? '用量统计不完整' : '',
   ].filter(Boolean)
-  return <footer className="turn-usage-footer" aria-label="本轮用量">{parts.join(' · ')}</footer>
+  const calls = message.cacheCalls ?? []
+  const reasons = message.cacheReasons ?? []
+  return (
+    <footer className="turn-usage-footer" aria-label="本轮用量">
+      <span className="turn-usage-summary">{parts.join(' · ')}</span>
+      {calls.length > 0 ? (
+        <details className="turn-usage-cache-detail">
+          <summary>
+            逐调用缓存明细（{calls.length}
+            {message.cacheCallsTruncated ? '，仅最近若干次' : ''}）
+          </summary>
+          <ul className="turn-usage-cache-calls">
+            {calls.map((call) => (
+              <li key={`${call.requestIndex}:${call.stage}`}>
+                <span className="turn-usage-cache-call-head">
+                  #{call.requestIndex} {call.stage} · {cacheCallStatusLabel(call.status)}
+                  {call.hitRatio === undefined ? '' : ` ${Math.round(call.hitRatio * 100)}%`}
+                </span>
+                <span className="turn-usage-cache-call-amount">
+                  {call.promptTokens === undefined ? '输入 未提供' : `输入 ${call.promptTokens}`}
+                  {call.cachedPromptTokens === undefined ? '' : ` · 缓存读取 ${call.cachedPromptTokens}`}
+                  {call.uncachedPromptTokens === undefined ? '' : ` · 未缓存 ${call.uncachedPromptTokens}`}
+                </span>
+                {call.reasons.length > 0 ? (
+                  <span className="turn-usage-cache-call-reasons">
+                    原因 {call.reasons.map(cacheReasonLabel).join('、')}
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          {reasons.length > 0 ? (
+            <p className="turn-usage-cache-reasons">
+              主要原因：{reasons.map((entry) => `${cacheReasonLabel(entry.reason)}×${entry.count}`).join('、')}
+            </p>
+          ) : null}
+        </details>
+      ) : null}
+    </footer>
+  )
+}
+
+function cacheCallStatusLabel(status: NonNullable<ChatMessage['cacheCalls']>[number]['status']): string {
+  if (status === 'hit') return '命中'
+  if (status === 'partial') return '部分命中'
+  if (status === 'miss') return '未命中'
+  if (status === 'unavailable') return '未观测'
+  return '未知'
+}
+
+const CACHE_REASON_LABELS: Record<string, string> = {
+  model_changed: '模型变更',
+  provider_changed: '提供方变更',
+  adapter_changed: '适配器变更',
+  prompt_version_changed: '提示词版本变更',
+  system_policy_changed: '系统策略变更',
+  soul_changed: '人格设定变更',
+  user_profile_changed: '用户画像变更',
+  tool_schema_changed: '工具定义变更',
+  memory_revision_changed: '记忆修订',
+  workspace_changed: '工作区变更',
+  permission_changed: '权限变更',
+  session_reset: '会话重置',
+  summary_compacted: '摘要压缩',
+  locale_changed: '语言/时区变更',
+  request_kind_changed: '请求类型变更',
+  manual_clear: '手动清理',
+  replayed: '重放请求',
+  unknown: '未知',
+}
+
+function cacheReasonLabel(reason: string): string {
+  return CACHE_REASON_LABELS[reason] ?? reason
 }
 
 /**

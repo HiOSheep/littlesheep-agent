@@ -159,6 +159,55 @@ describe('session switching', () => {
     })
   })
 
+  it('shows the session compaction operation on the newest assistant activity', async () => {
+    const context = createSwitchContext({ currentSession: 'session-1' })
+    mockedGetSessionMessagePage.mockResolvedValue({
+      messages: [{
+        id: 'message-1',
+        role: 'assistant',
+        text: '压缩后的回复',
+        timestamp: '2026-07-29T10:00:00.000Z',
+        activity: {
+          status: 'done',
+          instruction: '完成',
+          startedAt: 1,
+          steps: [],
+          tools: [],
+        },
+      }],
+      hasMore: false,
+      compactionOperations: [{
+        id: 'operation-1',
+        sessionId: 'session-1',
+        force: false,
+        createdAt: '2026-09-16T00:00:00.000Z',
+        status: 'completed',
+        result: 'compacted',
+        coalescedRequests: 0,
+        usage: { requestCount: 2, totalTokens: 512, usageStatus: 'reported' },
+      }],
+    })
+    const { switchSession } = createSessionActions(context)
+
+    await switchSession({
+      id: 'session-1',
+      title: '当前会话',
+      createdAt: 1,
+      lastMessageAt: 2,
+      mode: 'general',
+      scope: 'standalone',
+    }, { forceReload: true })
+
+    const messages = vi.mocked(context.setMessages).mock.calls.at(-1)?.[0] as Array<{
+      activity?: { contextProjections?: unknown[] }
+    }>
+    expect(messages[0]?.activity?.contextProjections).toContainEqual({
+      kind: 'context_compaction',
+      label: '上下文已压缩',
+      detail: '本次压缩 2 次请求 · 512 tokens',
+    })
+  })
+
   it('restores the active session context count from its durable history payload', async () => {
     const context = createSwitchContext()
     mockedGetSessionMessagePage.mockResolvedValue({

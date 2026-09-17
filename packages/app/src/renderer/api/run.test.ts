@@ -29,9 +29,9 @@ describe('renderer run API', () => {
     const api = await loadRunApi()
     fetchMock.mockResolvedValueOnce(streamResponse([
       { name: 'start', data: { ok: true, runId: 'run-1' } },
-      { name: 'reasoning', data: {
-        type: 'reasoning', phaseId: 'classify:2', stage: 'classify',
-        reasoningStatus: 'running', summary: 'Choosing the route',
+      { name: 'model_activity', data: {
+        type: 'model_activity', phaseId: 'model-request:req-1', requestId: 'req-1',
+        activityKind: 'model_request', activityStatus: 'running', summary: 'The model is analyzing the request',
       } },
       { name: 'step_start', data: { type: 'step_start', stepId: 'step-1', title: 'Read' } },
       { name: 'delta', data: { delta: 'done' } },
@@ -60,7 +60,7 @@ describe('renderer run API', () => {
     expect(deltas).toEqual(['done'])
     expect(replacements).toEqual(['done!'])
     expect(events).toEqual([
-      expect.objectContaining({ type: 'reasoning', phaseId: 'classify:2' }),
+      expect.objectContaining({ type: 'model_activity', phaseId: 'model-request:req-1' }),
       expect.objectContaining({ type: 'step_start', stepId: 'step-1' }),
     ])
     expect(result).toMatchObject({ runId: 'run-1', status: 'ok', reply: 'done' })
