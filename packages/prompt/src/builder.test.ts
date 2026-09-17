@@ -105,9 +105,7 @@ describe('buildSystemPrompt', () => {
     // also carries Core Flow; the prelude stays out and no boundary is added
     // when there is no volatile section.
     expect(prompt).toContain('# Core Flow (hard control flow)');
-    // Every mode now carries the head boundary: everything above it is the
-    // shared head, everything below travels after the conversation.
-    expect(prompt).toContain(CACHE_BOUNDARY_MARKER);
+    expect(prompt).not.toContain(CACHE_BOUNDARY_MARKER);
     expect(prompt).not.toContain('Project Context');
   });
 
@@ -168,8 +166,7 @@ describe('buildSystemPrompt', () => {
       scope: 'global',
       required: true,
     });
-    // The head boundary now owns the marker, so the memory segment follows it.
-    expect(bundle.segments.find((segment) => segment.id === 'head-boundary')?.text).toContain(CACHE_BOUNDARY_MARKER);
+    expect(bundle.segments.find((segment) => segment.id === 'memory-root-index')?.text.startsWith(`\n\n${CACHE_BOUNDARY_MARKER}`)).toBe(true);
     expect(bundle.segments.find((segment) => segment.id === 'bootstrap:AGENTS.md')).toMatchObject({
       kind: 'project_knowledge',
       scope: 'workspace',
