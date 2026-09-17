@@ -478,8 +478,13 @@ describe('Runner Memory v3 integration', () => {
     expect(result.status).toBe('ok');
     expect(afterRelease).toBeTruthy();
     expect(afterReadmission).toBeTruthy();
-    expect(JSON.stringify(afterRelease)).not.toContain(marker);
-    expect((JSON.stringify(afterReadmission).match(new RegExp(marker, 'gu')) ?? [])).toHaveLength(1);
+    // Append-only release: the original text stays (so the Provider prefix
+    // survives) and the runtime appends an authoritative release note instead.
+    expect(JSON.stringify(afterRelease)).toContain(marker);
+    expect(JSON.stringify(afterRelease)).toContain('# Released Memory');
+    // The preserved evidence keeps the marker, and the re-admitted expansion
+    // adds it again, so at least one occurrence must remain.
+    expect((JSON.stringify(afterReadmission).match(new RegExp(marker, 'gu')) ?? []).length).toBeGreaterThanOrEqual(1);
     expect(result.memoryKnownState?.references).toEqual(expect.arrayContaining([
       expect.objectContaining({ atomId: seed.node!.id, decision: 'adopted', reactivatedCount: 1 }),
     ]));

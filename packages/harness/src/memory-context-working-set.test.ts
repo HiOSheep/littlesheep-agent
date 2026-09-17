@@ -132,7 +132,11 @@ describe('run memory context working set', () => {
     );
     const secondObservation = ctx.modelRequests?.[1]?.cacheObservation;
 
-    expect(String(second.messages[0]?.content)).not.toContain('secret initial atom');
+    // Append-only release: the earlier system text is preserved byte for byte
+    // and the runtime appends an authoritative release note instead of
+    // rewriting history (which would invalidate the Provider's prefix cache).
+    expect(String(second.messages[0]?.content)).toContain('secret initial atom');
+    expect(second.messages.map((message) => String(message.content)).join('\n')).toContain('# Released Memory');
     expect(secondObservation?.stablePrefix.fingerprint).toBe(firstObservation?.stablePrefix.fingerprint);
     expect(secondObservation?.dynamicSuffix.fingerprint).not.toBe(firstObservation?.dynamicSuffix.fingerprint);
     expect(secondObservation?.invalidationReasons).toContain('memory_revision_changed');

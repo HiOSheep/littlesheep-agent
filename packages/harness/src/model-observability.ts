@@ -29,7 +29,7 @@ import {
 import { injectRuntimeAwareness } from './runtime-awareness.js';
 import { injectMemoryKnownState } from './memory-known-state.js';
 import { sumMemoryReuse } from './memory-state.js';
-import { applyMemoryContextWorkingSet } from './memory-context-working-set.js';
+import { appendMemoryReleaseNotes } from './memory-context-working-set.js';
 import {
   appendModelObservations,
   incrementModelCallCount,
@@ -430,7 +430,9 @@ function recordPreparedRequest(
   // context assembly so registry discovery/concurrency cannot change bytes.
   const canonicalRequest = { ...request, tools: orderToolSpecs(request.tools) };
   const resolvedRequest = applyResolvedReasoning(ctx, canonicalRequest);
-  const workingSetAware = applyMemoryContextWorkingSet(ctx, resolvedRequest, candidates);
+  // Append-only: released memory keeps its original text so the Provider's
+  // prefix cache survives; the runtime appends an authoritative release note.
+  const workingSetAware = appendMemoryReleaseNotes(ctx, resolvedRequest, candidates);
   const requestIndex = (ctx.modelRequests?.at(-1)?.requestIndex ?? 0) + 1;
   const requestedToolNames = workingSetAware.request.tools?.map((tool) => tool.function.name) ?? [];
   const callContract = resolveLlmCallContract(ctx, purposeOrStage, {
