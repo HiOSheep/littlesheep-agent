@@ -1431,6 +1431,27 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 
 **round 6 计划：** ① 修掉"陈旧 `waiting_user` 检查点毒化会话"（新话轮应开新 run / 或按 requestKey 精确匹配答复），并让长会话测量真正跑起来；② 用主对话命中率（而非混合值）复测并给出随会话增长的曲线；③ 若曲线仍平台化，转向"降低非缓存尾部体积"（例如运行态块精简、known-state 仅在变化时携带）。
 
+### 10.75 第三十六轮（goal round 6：修复陈旧等待检查点 + 长会话曲线首次跑通）执行记录（2026-09-17）
+
+**① 修复（已提交）：** 在 `runAuthoritative` 的路由点，当 `resolveWaitingUserHead` 返回 `eligible` 时，先用纯函数 `resolveCheckpointClarification()` 确认该检查点的澄清**仍在 pending**；若已不 pending（已答复或被后续非答复话轮取代），则**回退为普通新 run**，而不是进入 `resumeCheckpointAuthoritative` fail closed。原抛错保留作为最终不变量（无测试依赖旧行为，continuation/checkpoint 37 个测试全过）。
+- 卫生：runner.ts 触及受控上限 2595，按规约**压缩注释/导入**回到 2595（未涨上限），`check:repo` 33/33、`typecheck` 0。
+
+**② 长会话测量（重建后，8 任务 × 5 轮，唯一话轮）：**
+
+| | round 0 | 1 | 2 | 3 | 4 |
+| --- | --- | --- | --- | --- | --- |
+| shadow 请求数 | 13 | 29 | 51 | 68 | 68 |
+| shadow 命中率 | 49.2% | 49.9% | **50.1%** | **50.2%** | 50.2% |
+| next 请求数 | 14 | 34 | 49 | 49 | 49 |
+| next 命中率 | 42.7% | 45.8% | **47.1%** | 47.1% | 47.1% |
+
+- **失败数从 27/40 降到 11/40（shadow）、19/40（next）**，会话得以持续增长到 round 3（此前在 round 1 就冻结）。
+- 命中率**随会话增长而上升**（shadow +1.0pt、next +4.4pt），与"长会话更省"的预期方向一致；但仍在 ~47–50% 平台，原因是这些任务**历史很短**（每轮仅 1 问 1 答）且当前看的是**全阶段混合值**（含 classify/verify 等冷调用）。
+
+**③ 新暴露的后续问题：** 剩余失败形态已变为 `multiple waiting tasks require explicit selection`——陈旧检查点**不再被吞掉，但也没有被退役**，同一会话累积出两个等待检查点后触发冲突。正确做法是在判定"无法再被满足"时**收尾/退役该检查点**（写 disposition 或标记取消），而不是让它永久 waiting。
+
+**round 7 计划：** ① 退役不可再满足的等待检查点（消掉 multiple-waiting 冲突，让长会话测量完全跑通）；② 用**前端新交付的主对话命中率**（`reply`/`execute`/`finalize`/`recover`）复测长会话曲线，给出与 DSH 每会话口径可比的数字；③ 视曲线结果决定是否压缩非缓存尾部（运行态块、known-state）。
+
 ### 10.14 第七轮（HC-12 撤销屏障）新增证据（2026-09-16）
 
 **问题（先写失败用例）：** v3 写入路径的等值/相似候选只按 branch/scope/`status='active'` 选取；被纠正（`epistemicStatus`/`resolutionStatus = superseded`）或删除（`status = tombstone`）的 atom 仍可能是 active 记录。后续 maintenance（压缩候选）证据即使引用同一 `conversation-source:`，也会创建新 atom 或强化旧 atom，从而复活已被用户忘记/纠正的事实。`memory-service-v3.test.ts` 的新用例在修复前返回 `created`。
