@@ -1,0 +1,54 @@
+name: Terminology audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/terminology-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check active documentation terminology
+        shell: python
+        run: |
+          from pathlib import Path
+
+          root = Path('.')
+          targets = [root / 'README.md']
+          targets += list((root / 'docs').rglob('*.md'))
+          targets += list((root / 'packages').rglob('README.md'))
+          targets = [p for p in targets if 'docs/taskbooks/' not in p.as_posix()]
+
+          forbidden = [
+              '代码级状态机', '代码级 stage', '代码级 Stage',
+              '硬控制流', '安全脊柱', '固定脊柱', '工程门',
+              '失败关闭', '闸门', '稳定门面', 'Memory 门面',
+              '默认无感', '用户无感', '高自治 Agent',
+              '真实 Electron', '真实 DeepSeek', '真实 Provider', '真实负载',
+          ]
+          suspicious = [
+              '默认拒绝校验', '公共接口接口', '工程验收验收',
+              '核心安全约束约束', '校验校验',
+          ]
+
+          findings = []
+          for path in sorted(set(targets)):
+              if not path.is_file():
+                  continue
+              for lineno, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+                  hits = [term for term in forbidden + suspicious if term in line]
+                  if hits:
+                      findings.append((path.as_posix(), lineno, hits, line.strip()))
+
+          if findings:
+              for path, lineno, hits, line in findings:
+                  print(f'{path}:{lineno}: {hits}: {line}')
+              raise SystemExit(f'{len(findings)} terminology findings remain')
+
+          print('Terminology audit clean.')
