@@ -1338,6 +1338,27 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 
 **下一步（round 2）：** 把 `reply.ts` / `stages/execute/prompt.ts` / `stages/decide/request.ts` 三处 `assembleSystemPromptBundle` 调用接到 `splitSystemPromptForCache`（system 消息用 `systemText`，`trailingSegments` 传入 `buildRunRequestCandidates`），更新相应断言，然后用"不含 ask_user 的安全任务集 + 共享会话"复测命中率。
 
+### 10.71 第三十六轮（goal round 2：中央接线尝试与收尾清单）执行记录（2026-09-17）
+
+**比预期更好的接入点：** 不需要改 3 个 stage——**6 处生产调用点已经把 `systemSegments: <bundle>.segments` 传进 `buildRunRequestCandidates`**（`stages/reply.ts`、`stages/decide/request.ts`、`stages/execute/runners.ts`×3、`stages/execute/task-step-runner.ts`）。因此在 `buildRunRequestCandidates` **内部**做拆分即可覆盖全部 bundle 型 system prompt：system 候选只保留边界之上的段（`systemText` + `stableSegments`），边界之下的段按**原 kind** 变成尾部候选。
+
+**实现验证结果：** 类型与运行都跑通了——`splitSystemPromptForCache` 改为结构化段类型（同时兼容 prompt 的 `PromptContextSegment`（scope 必填）与 context 的 `ContextMessageSegment`（scope 可选）），中央拆分上线后 harness 只剩 **9 处断言失败**，全部是"内容从 system 移到了尾部"这一类：
+- `BOOTSTRAP_SENTINEL`（bootstrap 处于边界之下）、`# Memory Tree Root Index`、`Task book (from DECIDE)`、`SOUL_SENTINEL_REPLY_VOICE` 等断言仍只看 `messages[0]`；
+- `model-request-characterization` 的角色数组/`totalMessageCount`/snapshot item kinds 断言需要按"对话前缀 + 若干尾部 system 消息"重写。
+
+**本轮处置（保证仓库健康）：** 因收尾断言数量超出本轮可用上下文，**回退了中央接线**（`context-candidates.ts` 恢复原状），只保留无副作用的基础件改进并提交 `e879613`：
+- `splitSystemPromptForCache` 现同时返回 `stableSegments`（供分段候选使用）；
+- 段类型改为结构化（消除 prompt/context 两套段类型的赋值冲突）；
+- 测试助手 `lastConversationText` 改为**按角色**取最后一条非 system 消息（尾部易变块全部是 system），并新增 `allText`；
+- `model-request-characterization` 的角色/计数断言改为"前缀 + 尾部 system"形式（对两种布局都成立）。
+
+**验证：** harness + context **77 文件 / 716 测试**通过；`typecheck` 0；`check:repo` 33/33；工作树干净。
+
+**round 3 精确清单（接线 + 收尾）：**
+1. 在 `buildRunRequestCandidates` 内部恢复拆分（system 候选用 `systemText`/`stableSegments`，边界之下段按原 kind 追加为尾部候选）。
+2. 修 9 处断言：把 `messages[0]` 的内容断言改为 `allText(request)`；角色数组改为"前 5 条固定 + 其余为 system"；`totalMessageCount`/item kinds 放宽或按新布局重算。
+3. 重建后用"不含 ask_user 的安全任务集 + 共享会话"复测，验证命中率是否从 ~50% 上升。
+
 ### 10.14 第七轮（HC-12 撤销屏障）新增证据（2026-09-16）
 
 **问题（先写失败用例）：** v3 写入路径的等值/相似候选只按 branch/scope/`status='active'` 选取；被纠正（`epistemicStatus`/`resolutionStatus = superseded`）或删除（`status = tombstone`）的 atom 仍可能是 active 记录。后续 maintenance（压缩候选）证据即使引用同一 `conversation-source:`，也会创建新 atom 或强化旧 atom，从而复活已被用户忘记/纠正的事实。`memory-service-v3.test.ts` 的新用例在修复前返回 `created`。
