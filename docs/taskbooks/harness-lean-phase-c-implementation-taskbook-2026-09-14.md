@@ -2249,3 +2249,31 @@ C10B 矩阵 HC-07 由「部分」变为「通过（离线）」。
 1. 修复了历史截断后，**同形状请求**的复用已经很好（`reply` 79.7%、`decide` 76.1%、工具循环同轮后续 83%）；
 2. 剩余损耗集中在**形状不一致**与**尾部/首调**：`execute_tool_loop`（精简 vs 完整形状）、`execute_final_reply`（26.2%，9 次调用平均 prompt 只有 1,138 token，说明它多数时候**没有可复用的同形状前驱**）；
 3. 下一步（仍应先本地取证）：确认 A 形状是否由**compact 只读执行路径**产生，并让精简路径与完整路径**发射同一段顺序**（至少共享头在前、`tooling` 位置一致），然后实机复测 `execute_tool_loop` 的命中率是否从 44.8% 抬升——这是目前**最大且最集中的一块**（31.4k miss token，占主对话 miss 的 45%）。
+
+### 10.110 运行边界定位：system 消息的"**形状**"在不同调用间不一致，才是剩余主因（2026-09-17）
+
+**新增工具 `run-boundary.mjs`：** 按 `runId` 分组，取"上一轮最后一次请求 → 本轮第一次请求"，逐条比较 context 条目（`contentHash` + `kind`），直接暴露**跨 run 的前缀断点**（比按下标比较同 purpose 的历史请求更准确）。
+
+**结论一：历史确实已经纯追加（10.108 的修复生效）。** 跨 run 边界上历史条目逐条相同，首个分歧只是"上一轮的 primary-user 位置 vs 本轮把它当历史条目"——**同一段文本换了 kind**（`user_input` → `recent_message`），字节一致，不构成真正断裂。边界处 `reply` 实测命中 **1,664/2,115（79%）**、**1,920/2,342（82%）**、**2,048/2,504（82%）**，与 10.109 的 79.7% 吻合。
+
+**结论二：真正让"每轮首个大调用只命中 ~2,432 token"的，是同一个 purpose 的 system 消息"形状"不一致。** 同一次会话里 `reply` 类请求出现三种形状：
+
+| 形状 | 条目结构 | 边界 `firstDiffItem` |
+| --- | --- | --- |
+| ① 细分规范序 | `identity → core-flow → safety → workspace → date-time → capabilities → response-directives → profile → memory-root-index → bootstrap… → history…` | 可匹配到第 **17 / 36** 条 |
+| ② 单块打包 | 一个 `reply:system`（**6,908 字符**） | **0**（第一条即分叉） |
+| ③ 另一套顺序 | `identity → profile → memory-root-index → bootstrap:USER.md → user-facing-voice → history…`（无 core-flow/safety/workspace/date-time/capabilities） | **1** |
+
+形状 ②/③ 与 ① 交替出现时，前缀在**第 0/1 条**断裂，整段（含已纯追加的历史）被重新计费——这正是"首个大调用恒定命中 ~2,432 token（≈ 稳定 system 段命中、历史全 miss）"的来源。
+
+**代码层面的初步定位：** `buildRunRequestCandidates` 只有在调用方传 `systemSegments` 时才产出"细分规范序"，否则 system 候选退化为**单个 `xxx:system` 块**（形状 ②）。当前**未传 `systemSegments`** 的调用点包括：
+
+- `stages/reply.ts` 的**重复回答重写**路径（`reply.ts:280` 一带只传 `history`）；
+- `stages/reply/continuity-repair.ts` 的**连续性纠偏**路径；
+- **compact 只读执行**路径：`stages/execute/prompt.ts:35` 用 builder 模式 **`'none'`**（只发 identity），且 `stages/execute/task-step-runner.ts:136,151` 传 `history: []` ⇒ **完全不发历史**，与完整执行零共享。
+
+**下一轮动作（已具体到调用点，逐项实机验证）：**
+
+1. 上述路径统一传 `systemSegments`（细分规范序）；纠偏/重写多出的契约文本作为**追加分段**，而不是拼接进同一个 system 块；
+2. compact 只读执行改为**与完整执行共用共享头 + 共享历史窗口**（"精简"应体现为**段更少**，而不是**段序不同/无历史**）；
+3. 复测 `execute_tool_loop`（现 44.8%）与 `reply`（现 79.7%）是否同时抬升，判据仍是实机 `cachedPromptTokens`。
