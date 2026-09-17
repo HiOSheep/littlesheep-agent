@@ -2,7 +2,7 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, readdir, rm, rmdir, unlink } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, rm, rmdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   AtomicActivationLevelTracker,
@@ -19,10 +19,14 @@ import {
 import { atomicWriteText } from './atomic-file.js';
 import {
   COMPACTION_TRANSACTION_VERSION,
+  LEGACY_COMPACTION_TRANSACTION_VERSION,
   SESSION_SUMMARY_ACTIVATION_VERSION,
   isActivationRecord,
   isCompactionSummaryV2,
   parsePendingTransaction,
+  type CompactionCommitPrecondition,
+  type CompactionMemoryCandidateOutcome,
+  type CompactionMemoryProposal,
   type PendingCompactionTransaction,
   type SessionSummaryActivationRecord,
 } from './compaction-store-codec.js';
@@ -43,29 +47,56 @@ export class SessionCompactionStore {
   async commit(
     sessionId: SessionId,
     summary: CompactionSummaryV2,
-    applyMetadata: (summary: CompactionSummaryV2) => Promise<void>,
+    preconditionOrApply: CompactionCommitPrecondition | ((summary: CompactionSummaryV2) => Promise<void>),
+    applyTransaction?: (transaction: PendingCompactionTransaction) => Promise<void>,
+    memoryProposal?: CompactionMemoryProposal,
   ): Promise<void> {
+    const legacyApply = typeof preconditionOrApply === 'function' ? preconditionOrApply : undefined;
     await this.ensureLayout(sessionId);
-    const transaction: PendingCompactionTransaction = {
-      version: COMPACTION_TRANSACTION_VERSION,
-      sessionId: String(sessionId),
-      summary,
-      createdAt: new Date().toISOString(),
-    };
+    const transaction: PendingCompactionTransaction = legacyApply
+      ? {
+          // Callers that still use the pre-CAS API keep the version-1 protocol: no source-prefix precondition.
+          version: LEGACY_COMPACTION_TRANSACTION_VERSION,
+          sessionId: String(sessionId),
+          summary,
+          createdAt: new Date().toISOString(),
+        }
+      : {
+          version: COMPACTION_TRANSACTION_VERSION,
+          sessionId: String(sessionId),
+          summary,
+          precondition: preconditionOrApply as CompactionCommitPrecondition,
+          ...(memoryProposal ? { memoryProposal } : {}),
+          createdAt: new Date().toISOString(),
+        };
     const pendingPath = this.pendingPath(sessionId, summary.id);
     await atomicWriteText(pendingPath, JSON.stringify(transaction, null, 2));
-    await this.persistProjection(sessionId, summary);
-    await applyMetadata(summary);
-    await this.pruneActivationRecords(sessionId, summary.id);
-    await unlink(pendingPath).catch((error: unknown) => {
-      if (errorCode(error) !== 'ENOENT') throw error;
-    });
+    try {
+      await this.persistProjection(sessionId, summary);
+      if (legacyApply) await legacyApply(summary);
+      else await applyTransaction!(transaction);
+      await this.pruneActivationRecords(sessionId, summary.id);
+      if (transaction.version === COMPACTION_TRANSACTION_VERSION && transaction.memoryProposal) {
+        transaction.summaryCommittedAt = new Date().toISOString();
+        await atomicWriteText(pendingPath, JSON.stringify(transaction, null, 2));
+      } else {
+        await unlink(pendingPath).catch((error: unknown) => {
+          if (errorCode(error) !== 'ENOENT') throw error;
+        });
+      }
+    } catch (error) {
+      // Keep transient failures pending so recovery can retry them; only isolate terminal conflicts.
+      if (isTerminalCompactionConflict(error)) {
+        await this.quarantinePending(sessionId, pendingPath, summary.id).catch(() => undefined);
+      }
+      throw error;
+    }
     await rmdir(this.pendingDir(sessionId)).catch(() => undefined);
   }
 
   async recover(
     sessionId: SessionId,
-    applyMetadata: (summary: CompactionSummaryV2) => Promise<void>,
+    applyMetadata: (transaction: PendingCompactionTransaction) => Promise<void>,
   ): Promise<number> {
     if (!this.hasPending(sessionId)) return 0;
     const names = (await readdir(this.pendingDir(sessionId)))
@@ -76,13 +107,69 @@ export class SessionCompactionStore {
     for (const name of names) {
       const path = join(this.pendingDir(sessionId), name);
       const transaction = parsePendingTransaction(await readFile(path, 'utf8'), String(sessionId));
-      await this.persistProjection(sessionId, transaction.summary);
-      await applyMetadata(transaction.summary);
-      await unlink(path);
-      recovered += 1;
+      try {
+        await this.persistProjection(sessionId, transaction.summary);
+        await applyMetadata(transaction);
+        if (transaction.version === 2 && transaction.memoryProposal) {
+          transaction.summaryCommittedAt ??= new Date().toISOString();
+          await atomicWriteText(path, JSON.stringify(transaction, null, 2));
+        } else {
+          await unlink(path);
+        }
+        recovered += 1;
+      } catch {
+        await this.quarantinePending(sessionId, path, transaction.summary.id);
+      }
     }
     await rmdir(this.pendingDir(sessionId)).catch(() => undefined);
     return recovered;
+  }
+
+  async listPending(sessionId: SessionId): Promise<PendingCompactionTransaction[]> {
+    if (!this.hasPending(sessionId)) return [];
+    const names = (await readdir(this.pendingDir(sessionId)))
+      .filter((name) => name.endsWith('.pending.json'))
+      .sort()
+      .slice(0, MAX_PENDING_COMPACTIONS);
+    const transactions: PendingCompactionTransaction[] = [];
+    for (const name of names) {
+      transactions.push(parsePendingTransaction(
+        await readFile(join(this.pendingDir(sessionId), name), 'utf8'),
+        String(sessionId),
+      ));
+    }
+    return transactions;
+  }
+
+  async recordCandidateOutcome(
+    sessionId: SessionId,
+    summaryId: string,
+    outcome: CompactionMemoryCandidateOutcome,
+  ): Promise<void> {
+    const path = this.pendingPath(sessionId, summaryId);
+    if (!existsSync(path)) return;
+    const transaction = parsePendingTransaction(await readFile(path, 'utf8'), String(sessionId));
+    if (transaction.version !== 2 || !transaction.memoryProposal) return;
+    const candidateIds = new Set(transaction.memoryProposal.candidates.map((candidate) => candidate.id));
+    if (!candidateIds.has(outcome.candidateId)) throw new Error(`Unknown compaction candidate: ${outcome.candidateId}`);
+    const outcomes = transaction.memoryProposal.outcomes.filter((entry) => entry.candidateId !== outcome.candidateId);
+    outcomes.push(structuredClone(outcome));
+    transaction.memoryProposal.outcomes = outcomes;
+    await atomicWriteText(path, JSON.stringify(transaction, null, 2));
+  }
+
+  async completeMemoryProposal(sessionId: SessionId, summaryId: string): Promise<void> {
+    const path = this.pendingPath(sessionId, summaryId);
+    if (!existsSync(path)) return;
+    const transaction = parsePendingTransaction(await readFile(path, 'utf8'), String(sessionId));
+    if (transaction.version !== 2 || !transaction.memoryProposal) return;
+    const candidateIds = new Set(transaction.memoryProposal.candidates.map((candidate) => candidate.id));
+    const outcomeIds = new Set(transaction.memoryProposal.outcomes.map((outcome) => outcome.candidateId));
+    if ([...candidateIds].some((id) => !outcomeIds.has(id))) {
+      throw new Error(`Compaction memory proposal ${summaryId} still has pending candidates.`);
+    }
+    await unlink(path);
+    await rmdir(this.pendingDir(sessionId)).catch(() => undefined);
   }
 
   async load(sessionId: SessionId, summaryId: string): Promise<CompactionSummary | undefined> {
@@ -208,6 +295,14 @@ export class SessionCompactionStore {
     ]);
   }
 
+  private async quarantinePending(sessionId: SessionId, path: string, summaryId: string): Promise<void> {
+    if (!existsSync(path)) return;
+    const directory = this.failedDir(sessionId);
+    await mkdir(directory, { recursive: true });
+    const target = join(directory, `${digest(summaryId)}.${Date.now()}.failed.json`);
+    await rename(path, target);
+  }
+
   private projectionDir(sessionId: SessionId): string {
     return join(this.compactionDir(sessionId), 'records');
   }
@@ -218,6 +313,10 @@ export class SessionCompactionStore {
 
   private activationDir(sessionId: SessionId): string {
     return join(this.compactionDir(sessionId), 'activation');
+  }
+
+  private failedDir(sessionId: SessionId): string {
+    return join(this.compactionDir(sessionId), 'failed');
   }
 
   private compactionDir(sessionId: SessionId): string {
@@ -249,4 +348,11 @@ function errorCode(error: unknown): string | undefined {
   return typeof error === 'object' && error !== null && 'code' in error
     ? String((error as { code?: unknown }).code)
     : undefined;
+}
+
+/** A conflict with the current session state is terminal; the pending record is isolated, not retried. */
+function isTerminalCompactionConflict(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return error.name === 'StaleCompactionError'
+    || error.message.startsWith('Session compaction projection conflicts with existing record');
 }

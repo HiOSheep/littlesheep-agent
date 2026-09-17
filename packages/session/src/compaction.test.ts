@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { textMessage, type Message } from '@littlesheep/types';
-import { SessionManager } from './manager.js';
+import { SessionManager, StaleCompactionError } from './manager.js';
 import { maybeCompact } from './compaction.js';
 
 const tempDirs: string[] = [];
@@ -27,10 +27,99 @@ async function managerWithMessages(count: number) {
     },
   ));
   await manager.append(session.id, messages);
-  return { manager, sessionId: session.id, messages };
+  return { manager, sessionId: session.id, messages, dir };
 }
 
 describe('maybeCompact', () => {
+  it('does not let concurrent writers overwrite a summary prepared from the same predecessor', async () => {
+    const { manager, sessionId } = await managerWithMessages(7);
+    let entered = 0;
+    let release!: () => void;
+    const barrier = new Promise<void>((resolve) => { release = resolve; });
+    const summarize = async (label: string) => {
+      entered += 1;
+      if (entered === 2) release();
+      await barrier;
+      return { summary: label };
+    };
+
+    const settled = await Promise.allSettled([
+      maybeCompact(manager, sessionId, {
+        threshold: 1,
+        keepRecent: 2,
+        summarize: () => summarize('writer-a'),
+      }),
+      maybeCompact(manager, sessionId, {
+        threshold: 1,
+        keepRecent: 2,
+        summarize: () => summarize('writer-b'),
+      }),
+    ]);
+
+    expect(settled.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(settled.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    const active = (await manager.loadMetadata(sessionId))?.compaction;
+    expect(active?.summary === 'writer-a' || active?.summary === 'writer-b').toBe(true);
+    expect(await manager.read(sessionId)).toHaveLength(7);
+  });
+
+  it('rejects a stale writer that prepared before another manager replaced the summary', async () => {
+    const { dir, sessionId } = await managerWithMessages(7);
+    const first = new SessionManager({ sessionsDir: dir });
+    const second = new SessionManager({ sessionsDir: dir });
+    let release!: () => void;
+    const barrier = new Promise<void>((resolve) => { release = resolve; });
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const stale = maybeCompact(first, sessionId, {
+      threshold: 1,
+      keepRecent: 2,
+      summarize: async () => {
+        entered();
+        await barrier;
+        return { summary: 'stale-writer' };
+      },
+    });
+    await started;
+
+    const fresh = await maybeCompact(second, sessionId, {
+      threshold: 1,
+      keepRecent: 2,
+      summarize: async () => ({ summary: 'fresh-writer' }),
+    });
+    expect(fresh?.summary).toBe('fresh-writer');
+    release();
+
+    await expect(stale).rejects.toThrow(/projection conflict|stale/iu);
+    expect((await second.loadMetadata(sessionId))?.compaction?.summary).toBe('fresh-writer');
+    expect(await second.read(sessionId)).toHaveLength(7);
+  });
+
+  it('keeps messages appended while a snapshot is summarized outside the covered prefix', async () => {
+    const { manager, sessionId } = await managerWithMessages(7);
+    let release!: () => void;
+    const barrier = new Promise<void>((resolve) => { release = resolve; });
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const compacting = maybeCompact(manager, sessionId, {
+      threshold: 1,
+      keepRecent: 2,
+      summarize: async () => {
+        entered();
+        await barrier;
+        return { summary: 'stable prefix' };
+      },
+    });
+    await started;
+    await manager.append(sessionId, [textMessage('user', 'new suffix', { id: 'suffix-after-snapshot' })]);
+    release();
+
+    const summary = await compacting;
+    expect(summary?.sourceEndMessageId).toBe('message-5');
+    expect((await manager.read(sessionId)).at(-1)?.id).toBe('suffix-after-snapshot');
+    expect((await manager.loadMetadata(sessionId))?.compaction?.id).toBe(summary?.id);
+  });
+
   it('writes a versioned summary without deleting original messages', async () => {
     const { manager, sessionId, messages } = await managerWithMessages(7);
     const summarize = vi.fn(async ({ messages: selected }) => ({
@@ -72,6 +161,142 @@ describe('maybeCompact', () => {
       compacted: true,
       compaction: { id: result?.id, sourceEndMessageId: 'message-5' },
     });
+  });
+
+  it('persists memory candidates in the same compaction transaction before projection settlement', async () => {
+    const { manager, sessionId } = await managerWithMessages(7);
+    const result = await maybeCompact(manager, sessionId, {
+      threshold: 1,
+      keepRecent: 2,
+      summarize: async () => ({
+        summary: 'summary with candidate',
+        memoryEvidenceComplete: true,
+        memoryCandidates: [{
+          id: 'candidate-1',
+          branch: 'long-term',
+          parentNodeId: 'long-term:root',
+          scope: 'global',
+          summary: 'User preference',
+          content: 'The user prefers concise responses.',
+          retrievalKeys: ['preference', 'concise'],
+          sourceMessageIds: ['message-1'],
+          importance: 0.8,
+          confidence: 0.9,
+          reason: 'Explicit preference in the covered source.',
+        }],
+      }),
+    });
+
+    expect(await manager.listPendingCompactions(sessionId)).toMatchObject([{
+      summary: { id: result?.id },
+      memoryProposal: {
+        evidenceComplete: true,
+        candidates: [{ id: 'candidate-1', sourceMessageIds: ['message-1'] }],
+        outcomes: [],
+      },
+    }]);
+  });
+
+  // C10A: a failed model call before persistence leaves no summary and no durable proposal.
+  it('leaves no durable proposal when the model call fails before persistence', async () => {
+    const { manager, sessionId } = await managerWithMessages(7);
+    await expect(maybeCompact(manager, sessionId, {
+      threshold: 1,
+      keepRecent: 2,
+      summarize: async () => {
+        throw new Error('compaction model unavailable');
+      },
+    })).rejects.toThrow('compaction model unavailable');
+
+    expect((await manager.loadMetadata(sessionId))?.compaction).toBeUndefined();
+    expect(await manager.listPendingCompactions(sessionId)).toEqual([]);
+    expect(await manager.read(sessionId)).toHaveLength(7);
+  });
+
+  // HC-05: an empty candidate list is a legal complete proposal and needs no further model work.
+  it('accepts an empty candidate list as a complete compaction proposal', async () => {
+    const { manager, sessionId } = await managerWithMessages(7);
+    const result = await maybeCompact(manager, sessionId, {
+      threshold: 1,
+      keepRecent: 2,
+      summarize: async () => ({
+        summary: 'summary without durable candidates',
+        memoryEvidenceComplete: true,
+        memoryCandidates: [],
+      }),
+    });
+    expect(result).toBeTruthy();
+
+    expect(await manager.listPendingCompactions(sessionId)).toMatchObject([{
+      summary: { id: result?.id },
+      memoryProposal: { candidates: [], outcomes: [] },
+    }]);
+    await manager.completeCompactionMemoryProposal(sessionId, result!.id);
+    expect(await manager.listPendingCompactions(sessionId)).toEqual([]);
+    expect((await manager.loadMetadata(sessionId))?.compaction?.id).toBe(result!.id);
+  });
+
+  // C10A: the pending proposal survives a process restart and each candidate outcome stays single-write.
+  it('recovers a committed proposal after a manager restart and settles each candidate once', async () => {
+    const { manager, sessionId, dir } = await managerWithMessages(7);
+    const first = await maybeCompact(manager, sessionId, {
+      threshold: 1,
+      keepRecent: 2,
+      summarize: async () => ({
+        summary: 'summary with two candidates',
+        memoryEvidenceComplete: true,
+        memoryCandidates: [candidate('candidate-a'), candidate('candidate-b')],
+      }),
+    });
+    expect(first).toBeTruthy();
+
+    const reopened = new SessionManager({ sessionsDir: dir });
+    expect(await reopened.listPendingCompactions(sessionId)).toMatchObject([{
+      version: 2,
+      summary: { id: first!.id },
+      summaryCommittedAt: expect.any(String),
+      memoryProposal: { candidates: [{ id: 'candidate-a' }, { id: 'candidate-b' }], outcomes: [] },
+    }]);
+
+    await reopened.recordCompactionCandidateOutcome(sessionId, first!.id, candidateOutcome('candidate-a'));
+    await reopened.recordCompactionCandidateOutcome(sessionId, first!.id, candidateOutcome('candidate-a'));
+
+    // Simulate another crash between partial candidate commits.
+    const afterCrash = new SessionManager({ sessionsDir: dir });
+    const partial = (await afterCrash.listPendingCompactions(sessionId))[0];
+    expect(partial?.version).toBe(2);
+    expect(partial?.version === 2 ? partial.memoryProposal?.outcomes : []).toHaveLength(1);
+
+    await afterCrash.recordCompactionCandidateOutcome(sessionId, first!.id, candidateOutcome('candidate-b'));
+    await afterCrash.completeCompactionMemoryProposal(sessionId, first!.id);
+
+    expect(await afterCrash.listPendingCompactions(sessionId)).toEqual([]);
+    expect((await afterCrash.loadMetadata(sessionId))?.compaction?.id).toBe(first!.id);
+    await expect(afterCrash.loadCompactionProjection(sessionId, first!.id)).resolves.toBeTruthy();
+  });
+
+  // C10A: an old compactor losing the predecessor race must not replace the active summary.
+  it('rejects a stale predecessor without replacing the active summary', async () => {
+    const { manager, sessionId } = await managerWithMessages(7);
+    const first = await maybeCompact(manager, sessionId, {
+      threshold: 1,
+      keepRecent: 2,
+      summarize: async () => ({ summary: 'active summary' }),
+    });
+    expect(first).toBeTruthy();
+    if (!first || first.version !== 2) throw new Error('Expected a v2 compaction summary.');
+
+    const stale = { ...first, id: 'summary-stale-late', summary: 'stale summary from an old writer' };
+    await expect(manager.commitCompaction(sessionId, stale, {
+      expectedPreviousSummaryId: null,
+      sourceEndMessageId: first.sourceEndMessageId,
+      sourceHash: first.sourceHash,
+      policyVersion: 3,
+      transactionKey: 'stale-late-key',
+    })).rejects.toThrow(StaleCompactionError);
+
+    expect((await manager.loadMetadata(sessionId))?.compaction?.id).toBe(first.id);
+    expect(await manager.listPendingCompactions(sessionId)).toEqual([]);
   });
 
   it('extends the previous summary only after another full threshold of messages', async () => {
@@ -222,3 +447,29 @@ describe('maybeCompact', () => {
     expect(extended.sourceRunIdsTruncated).toBe(true);
   });
 });
+
+function candidate(id: string) {
+  return {
+    id,
+    branch: 'long-term' as const,
+    parentNodeId: 'long-term:root',
+    scope: 'global' as const,
+    summary: `Candidate ${id}`,
+    content: `Durable candidate ${id}.`,
+    retrievalKeys: [id, 'durable'],
+    sourceMessageIds: ['message-1'],
+    importance: 0.8,
+    confidence: 0.9,
+    reason: 'Synthetic durable candidate for the restart contract.',
+  };
+}
+
+function candidateOutcome(candidateId: string) {
+  return {
+    candidateId,
+    status: 'committed' as const,
+    nodeId: `node-${candidateId}`,
+    reason: 'created',
+    updatedAt: new Date().toISOString(),
+  };
+}

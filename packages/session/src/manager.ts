@@ -27,6 +27,13 @@ import { asSessionId } from '@littlesheep/types';
 import { acquireLock } from './lock.js';
 import { atomicWriteText } from './atomic-file.js';
 import { SessionCompactionStore } from './compaction-store.js';
+import { hashCompactionMessages } from './compaction.js';
+import type {
+  CompactionCommitPrecondition,
+  CompactionMemoryCandidateOutcome,
+  CompactionMemoryProposal,
+  PendingCompactionTransaction,
+} from './compaction-store-codec.js';
 import { ReplyFingerprintStore } from './reply-fingerprint-store.js';
 
 /** Options for SessionManager. */
@@ -410,16 +417,57 @@ export class SessionManager implements SessionManagerLike {
     }
   }
 
-  async commitCompaction(sessionId: SessionId, summary: CompactionSummaryV2): Promise<void> {
+  async commitCompaction(
+    sessionId: SessionId,
+    summary: CompactionSummaryV2,
+    precondition?: CompactionCommitPrecondition,
+    memoryProposal?: CompactionMemoryProposal,
+  ): Promise<void> {
     const file = this.sessionFile(sessionId);
     let handle: LockHandle | null = null;
     try {
       handle = await acquireLock(file, this.opts.lockTimeoutMs ?? 60000);
-      await this.compactions.commit(sessionId, summary, async (projection) => {
-        await this.writeMetadataWithoutLock(sessionId, { compacted: true, compaction: projection });
-      });
+      if (precondition) {
+        await this.compactions.commit(sessionId, summary, precondition, async (transaction) => {
+          await this.applyCompactionTransactionWithoutLock(sessionId, transaction);
+        }, memoryProposal);
+      } else {
+        // Legacy callers keep the version-1 protocol: no source-prefix CAS, recovery stays retryable.
+        await this.compactions.commit(sessionId, summary, async (committed) => {
+          await this.writeMetadataWithoutLock(sessionId, { compacted: true, compaction: committed });
+        });
+      }
     } finally {
       await handle?.release();
+    }
+  }
+
+  async listPendingCompactions(sessionId: SessionId): Promise<PendingCompactionTransaction[]> {
+    await this.recoverCompactions(sessionId);
+    return this.compactions.listPending(sessionId);
+  }
+
+  async recordCompactionCandidateOutcome(
+    sessionId: SessionId,
+    summaryId: string,
+    outcome: CompactionMemoryCandidateOutcome,
+  ): Promise<void> {
+    const file = this.sessionFile(sessionId);
+    const handle = await acquireLock(file, this.opts.lockTimeoutMs ?? 60000);
+    try {
+      await this.compactions.recordCandidateOutcome(sessionId, summaryId, outcome);
+    } finally {
+      await handle.release();
+    }
+  }
+
+  async completeCompactionMemoryProposal(sessionId: SessionId, summaryId: string): Promise<void> {
+    const file = this.sessionFile(sessionId);
+    const handle = await acquireLock(file, this.opts.lockTimeoutMs ?? 60000);
+    try {
+      await this.compactions.completeMemoryProposal(sessionId, summaryId);
+    } finally {
+      await handle.release();
     }
   }
 
@@ -542,8 +590,8 @@ export class SessionManager implements SessionManagerLike {
       let handle: LockHandle | null = null;
       try {
         handle = await acquireLock(file, this.opts.lockTimeoutMs ?? 60000);
-        await this.compactions.recover(sessionId, async (summary) => {
-          await this.writeMetadataWithoutLock(sessionId, { compacted: true, compaction: summary });
+        await this.compactions.recover(sessionId, async (transaction) => {
+          await this.applyCompactionTransactionWithoutLock(sessionId, transaction);
         });
       } finally {
         await handle?.release();
@@ -553,5 +601,40 @@ export class SessionManager implements SessionManagerLike {
     });
     this.compactionRecovery.set(sessionId, run);
     return run;
+  }
+
+  private async applyCompactionTransactionWithoutLock(
+    sessionId: SessionId,
+    transaction: PendingCompactionTransaction,
+  ): Promise<void> {
+    const current = await this.readMetadata(sessionId);
+    if (current?.compaction?.id === transaction.summary.id) return;
+    if (transaction.version === 1) {
+      if (current?.compaction && current.compaction.id !== transaction.summary.previousSummaryId) {
+        throw new StaleCompactionError('Legacy pending compaction no longer follows the active summary.');
+      }
+    } else {
+      const actualPrevious = current?.compaction?.id ?? null;
+      if (actualPrevious !== transaction.precondition.expectedPreviousSummaryId) {
+        throw new StaleCompactionError(
+          `Compaction predecessor changed from ${transaction.precondition.expectedPreviousSummaryId ?? 'root'} to ${actualPrevious ?? 'root'}.`,
+        );
+      }
+      const messages = await this.read(sessionId);
+      const sourceEndIndex = messages.findIndex((message) => message.id === transaction.precondition.sourceEndMessageId);
+      if (sourceEndIndex < 0) throw new StaleCompactionError('Compaction source end is no longer present.');
+      const actualSourceHash = hashCompactionMessages(messages.slice(0, sourceEndIndex + 1));
+      if (actualSourceHash !== transaction.precondition.sourceHash) {
+        throw new StaleCompactionError('Compaction source prefix changed after the snapshot was prepared.');
+      }
+    }
+    await this.writeMetadataWithoutLock(sessionId, { compacted: true, compaction: transaction.summary });
+  }
+}
+
+export class StaleCompactionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'StaleCompactionError';
   }
 }

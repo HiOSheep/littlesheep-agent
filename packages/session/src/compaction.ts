@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import {
   nextCacheCompressionDepth,
   type CompactionSummary,
@@ -7,8 +7,10 @@ import {
   type SessionId,
 } from '@littlesheep/types';
 import type { SessionManager } from './manager.js';
+import type { CompactionMemoryCandidate, CompactionMemoryProposal } from './compaction-store-codec.js';
 
 const MAX_COMPACTION_SOURCE_RUN_IDS = 64;
+const COMPACTION_POLICY_VERSION = 3;
 
 export interface CompactionSummaryInput {
   sessionId: SessionId;
@@ -23,6 +25,9 @@ export interface CompactionSummaryInput {
 export interface CompactionSummaryOutput {
   summary: string;
   model?: string;
+  requestId?: string;
+  memoryCandidates?: CompactionMemoryCandidate[];
+  memoryEvidenceComplete?: boolean;
 }
 
 export interface CompactionOptions {
@@ -84,7 +89,7 @@ export async function maybeCompact(
 
   const first = messages[0]!;
   const last = messages[compactThroughIndex]!;
-  const sourceHash = hashMessages(coveredMessages);
+  const sourceHash = hashCompactionMessages(coveredMessages);
   const sourceRunIds = uniqueSourceRunIds(coveredMessages);
   const sourceRunIdsTruncated = sourceRunIds.length > MAX_COMPACTION_SOURCE_RUN_IDS;
   const compactedAt = new Date().toISOString();
@@ -116,9 +121,15 @@ export async function maybeCompact(
     contentHash,
     createdAt: compactedAt,
   };
+  const transactionKey = hashText([
+    String(sessionId),
+    previous?.id ?? 'root',
+    sourceHash,
+    String(COMPACTION_POLICY_VERSION),
+  ].join('\0'));
   const record: CompactionSummaryV2 = Object.freeze({
     version: 2,
-    id: randomUUID(),
+    id: transactionKey,
     collapsedCount: compactThroughIndex + 1,
     summary,
     compactedAt,
@@ -144,7 +155,22 @@ export async function maybeCompact(
     sourceHash,
     lineageHash,
   });
-  await manager.commitCompaction(sessionId, record);
+  const memoryProposal: CompactionMemoryProposal | undefined = output.memoryCandidates
+    ? {
+        version: 1,
+        requestId: output.requestId,
+        evidenceComplete: output.memoryEvidenceComplete === true,
+        candidates: structuredClone(output.memoryCandidates.slice(0, 8)),
+        outcomes: [],
+      }
+    : undefined;
+  await manager.commitCompaction(sessionId, record, {
+    expectedPreviousSummaryId: previous?.id ?? null,
+    sourceEndMessageId: last.id,
+    sourceHash,
+    policyVersion: COMPACTION_POLICY_VERSION,
+    transactionKey,
+  }, memoryProposal);
   return record;
 }
 
@@ -158,7 +184,7 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw new Error('Session compaction aborted.');
 }
 
-function hashMessages(messages: Message[]): string {
+export function hashCompactionMessages(messages: readonly Message[]): string {
   return hashText(JSON.stringify(messages.map((message) => ({
     id: message.id,
     role: message.role,
