@@ -2025,3 +2025,26 @@ C10B 矩阵 HC-07 由「部分」变为「通过（离线）」。
 **如实说明：** 本节交付的是**第 2 步的前置修复**（把已知回归修好并给出可复现的根因），**不是**命中率提升本身。共享头当前只让"同一阶段的跨轮"复用变长（阶段专属段仍在 system 内，跨阶段共享仍会在阶段段处分叉）；要拿到跨阶段 `system + 历史` 共享，还需把**阶段专属段移到历史之后的尾部**——那是第 2 步的剩余部分，命中率必须等实机复测才能宣称。
 
 **下一步（第 2 步剩余部分）：** 在 `context-candidates.ts` 的 `trailingSegments` 机制上，把 `capabilities`/`tooling`、`skills-index`、`response-directives`、`profile`、`user-facing-voice`、`memory-root-index` 等阶段专属段改为**尾部候选**，使 system 消息对所有阶段**逐字节相同**（= 共享头），再复测命中率。
+
+### 10.102 真实 Provider 复测（第 1+2 步合并）：主对话 ≈49% → **57.4%**（2026-09-17）
+
+**配置（与 round 29/30 完全一致，便于对照）：** `verify-harness-path-comparison.mjs` 实机运行、`LITTLESHEEP_COMPARISON_SHARED_SESSION=1`、`_UNIQUE_TURNS=1`、`_TASKS=8`、`_ROUNDS=5`、真实 DeepSeek（官方 key，用户新提供）、**两条路径各 40 run / 0 失败**（shadow 86 请求、next 88 请求）。
+
+| 指标 | round 29/30（改动前，同配置） | **本轮（第 1+2 步）** |
+| --- | --- | --- |
+| **主对话命中率** | 49.6 / 49.5 / 48.1 / 48.9% | **57.4%**（shadow）/ **57.4%**（next） |
+| 辅助阶段命中率 | ~61.4–64.2% | **69.1%**（shadow）/ **69.3%**（next） |
+| 主对话 miss token / 调用 | ~841–901 | **969.5**（= (173,012−99,328)/76） |
+| 每轮前缀变化（next，共 88 请求） | `system_prompt` 38–39、`memory` 30–31 | `runtime_fact` 48、`output_constraint` 29、**`system_prompt` 27**、`workflow_state` 22、`memory` 19、`project_knowledge` 19、`history` 19 |
+
+**结论（如实，含代价）：**
+1. **目标头条指标确实改善**：主对话 **49% → 57.4%（+8.4pt）**，辅助 **~62% → ~69%**，配置相同、0 失败，两条路径一致 ⇒ 不是单路径噪声。
+2. **代价同时上升**：主对话 **miss token/调用 ~850 → ~970（+14%）**。原因是共享头与"此前被预算淘汰、现在能装下的内容"（`date-time`/`workspace`/`bootstrap`/更多历史）让**每调用 prompt 变大**（173,012/76 ≈ 2,277 token/调用），其中新增部分大多是命中，但每个 run 首次出现时仍是一次 miss。**即：比率上升部分来自分母变大**，不能只报比率。
+3. **仍未达成目标量级**：距 DSH 的 97–99% 仍远；剩余断点为 `runtime_fact`（48，尾部，符合预期可忽略）、`output_constraint` 29、`system_prompt` 27、`memory` 19 等。
+4. **本轮**没有**分离第 1 步与第 2 步各自的贡献**（按用户批准的方案只测一次，以节省预算）。step 1 单独收益与 step 2 单独收益均**未单独实测**，不得单独宣称。
+5. **对比脚本自身的延迟门未通过**：`shortTurnP50DeltaPct = 13.8`、`P95DeltaPct = 29.2`（限值 5），即 next 路径 p50/p95 = 893/1945ms、shadow = 785/1505ms。这是**两条 harness 路径之间**的比较，**尚缺改动前基线**，因此**不能归因**于本次缓存改动（同一份 Harness 代码与提示词在两条路径上都跑）；离线模式同一门为 `P95 = −10.7`（通过）。此项作为未结项记录，下一步需要一次对照运行来定位。
+6. `releaseGate` 两条路径均剩 `memory_cache_not_observed`、`real_provider_reconciliation_not_verified`（此前的 `provider_usage_incomplete` 与 `quality_continuity_not_observed` 已消失）。
+
+**门（本轮全绿）：** `typecheck` 0；全量 `vitest` 460 文件 / 3,279 通过 / 1 跳过；`check:repo` 33/33；`verify:electron-continuity` ok:true（8 场景）；`verify:electron-ui-state-continuity` ok:true；`verify:harness-paths:offline` 通过。
+
+**下一步候选（按收益/风险排序）：** ① 把阶段专属段移到历史之后的尾部（真正的跨阶段 `system + 历史` 共享，预期最大）；② 查 `output_constraint` 为何在同阶段跨轮变化；③ 建立改动前的实机延迟基线以判定本节第 5 项；④ 若追求成本最小化，需在"命中率"与"prompt 体积"之间做显式取舍（例如把 `memory-root-index` 等运行态从 system 移出）。
