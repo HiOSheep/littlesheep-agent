@@ -38,12 +38,42 @@ export function toChatMessage(m: Message): ChatMessage {
  * every stage, otherwise the Provider's prefix diverges at the first message
  * that one stage includes and another omits. Stage-specific windows (classify 4,
  * verify none, reply 8/6k) are therefore replaced by this shared projection.
+ *
+ * It also has to be *append-only*. A Provider prefix cache only matches from
+ * token zero, so a plain "last N messages" suffix slides on every turn: the
+ * window for turn N+1 no longer starts with the window for turn N, and the only
+ * reusable bytes are whatever precedes the history. Measured on a live 8x5
+ * session: the first tool-loop call of a run hit 2432 of 6722 prompt tokens
+ * while its later iterations (which extend the same array) hit 5120 of 6200.
+ *
+ * The window therefore keeps every authoritative message until the character
+ * budget is exhausted, and only then drops from the oldest side -- at a
+ * quantised boundary, so the projection changes once per quantum of messages
+ * instead of once per turn. `sessions.compaction.keepRecent` bounds how much
+ * verbatim transcript a run receives in the first place.
  */
-export const SHARED_HISTORY_MAX_MESSAGES = 8;
-export const SHARED_HISTORY_MAX_CHARS = 6_000;
+export const SHARED_HISTORY_MAX_CHARS = 12_000;
+/** Messages dropped at once when the window overflows, so the boundary is rare. */
+export const SHARED_HISTORY_BOUNDARY_QUANTUM = 8;
 
 export function conversationHistoryForModel(ctx: Pick<RunContext, 'history'>): Message[] {
-  return recentHistoryForModel(ctx.history, SHARED_HISTORY_MAX_MESSAGES, SHARED_HISTORY_MAX_CHARS);
+  const candidates = filterAuthoritativeUserFacingMessages(ctx.history);
+  const sizes = candidates.map((message) => textOf(message).length);
+  let total = sizes.reduce((sum, size) => sum + size, 0);
+  if (total <= SHARED_HISTORY_MAX_CHARS) return candidates;
+
+  let start = 0;
+  while (start < candidates.length && total > SHARED_HISTORY_MAX_CHARS) {
+    total -= sizes[start]!;
+    start += 1;
+  }
+  // Round the boundary down so it moves one quantum at a time, never per turn.
+  const boundary = Math.floor(start / SHARED_HISTORY_BOUNDARY_QUANTUM) * SHARED_HISTORY_BOUNDARY_QUANTUM;
+  if (boundary >= candidates.length) {
+    const newest = candidates.at(-1);
+    return newest ? [truncateMessageForModel(newest, SHARED_HISTORY_MAX_CHARS)] : [];
+  }
+  return candidates.slice(boundary);
 }
 
 export function recentHistoryForModel(

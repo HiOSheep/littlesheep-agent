@@ -261,9 +261,17 @@ export const SafetyConfigSchema = z.object({
 /** Compaction config. */
 export const CompactionConfigSchema = z.object({
   /** Compaction threshold (message count). */
-  threshold: z.number().int().positive().default(100),
-  /** Compaction: messages to keep unsummarized. */
-  keepRecent: z.number().int().positive().default(20),
+  threshold: z.number().int().positive().default(400),
+  /**
+   * Compaction: messages to keep unsummarized.
+   *
+   * This is also the verbatim history a run receives (HARNESS reads
+   * `readRecent(sessionId, keepRecent)`), and a Provider prefix cache only
+   * matches from token zero. A small window slides on every turn, which
+   * forfeits the whole history prefix; a wide one keeps the run's transcript
+   * append-only between compactions.
+   */
+  keepRecent: z.number().int().positive().default(200),
   /** Run soft automatic compaction after the result is published instead of blocking the run. */
   background: z.boolean().default(false),
 });

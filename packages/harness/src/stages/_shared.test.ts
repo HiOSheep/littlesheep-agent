@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { textMessage, type RunAttachment } from '@littlesheep/types'
 import { createMockLlm, makeCtx, textResponse } from '../tests/helpers.js'
 import {
+  SHARED_HISTORY_BOUNDARY_QUANTUM,
+  SHARED_HISTORY_MAX_CHARS,
   attachmentContextMessages,
   attachmentManifestText,
   callLlmForJson,
+  conversationHistoryForModel,
   extractJson,
   recentHistoryForModel,
   textOf,
@@ -226,5 +229,53 @@ describe('recentHistoryForModel', () => {
     expect(selected).toHaveLength(1)
     expect(textOf(selected[0]!)).toBe('y'.repeat(500))
     expect(textOf(old)).toHaveLength(5_000)
+  })
+})
+
+/** The prefix-diff invariant the live measurement showed we were missing. */
+describe('conversationHistoryForModel prefix diff', () => {
+  const historyOf = (count: number, size = 40) => Array.from({ length: count }, (_, index) => textMessage(
+    index % 2 === 0 ? 'user' : 'assistant',
+    `turn-${index}-${'x'.repeat(size)}`,
+  ))
+  const texts = (count: number, size = 40) => conversationHistoryForModel({ history: historyOf(count, size) })
+    .map((message) => textOf(message))
+
+  it('extends the previous request instead of rebuilding it while the budget holds', () => {
+    for (let count = 2; count <= 40; count += 1) {
+      const previous = texts(count - 1)
+      const current = texts(count)
+      expect(current.slice(0, previous.length)).toEqual(previous)
+    }
+  })
+
+  it('moves the window boundary a quantum at a time once the budget is exceeded', () => {
+    // ~1_000 characters per message: the transcript crosses the budget quickly.
+    const size = 1_000
+    const turns = 200
+    const full = historyOf(turns, size)
+    let previousStart = 0
+    let boundaryMoves = 0
+    let appendOnlyTurns = 0
+
+    for (let count = 2; count <= turns; count += 1) {
+      const history = full.slice(0, count)
+      const projected = conversationHistoryForModel({ history })
+      expect(projected.length).toBeGreaterThan(0)
+      const start = history.indexOf(projected[0]!)
+      expect(start % SHARED_HISTORY_BOUNDARY_QUANTUM).toBe(0)
+      expect(projected.length * size)
+        .toBeLessThanOrEqual(SHARED_HISTORY_MAX_CHARS + SHARED_HISTORY_BOUNDARY_QUANTUM * size)
+      if (start === previousStart) {
+        appendOnlyTurns += 1
+      } else {
+        boundaryMoves += 1
+        previousStart = start
+      }
+    }
+
+    // One boundary move per quantum at most, never one per turn.
+    expect(boundaryMoves).toBeLessThanOrEqual(Math.ceil(turns / SHARED_HISTORY_BOUNDARY_QUANTUM))
+    expect(appendOnlyTurns).toEqual(turns - 1 - boundaryMoves)
   })
 })

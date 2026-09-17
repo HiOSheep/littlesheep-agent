@@ -129,8 +129,8 @@ export const DEFAULT_CONFIG: Config = {
       acquireTimeoutMs: 60000,
     },
     compaction: {
-      threshold: 100,
-      keepRecent: 20,
+      threshold: 400,
+      keepRecent: 200,
       background: false,
     },
   },
