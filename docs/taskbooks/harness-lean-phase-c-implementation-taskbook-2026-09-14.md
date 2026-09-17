@@ -1498,6 +1498,23 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 
 **round 9 计划（按预期收益）：** ① 先量化"每调用 1,000 miss token"的构成（逐调用证据 + 运行态块实测长度），确定运行态块/known-state/阶段前缀差异各占多少；② 首选压缩**每调用都变**的部分：运行态块按用途降级为 compact（或去掉与当前问题无关的 previous-run/工具明细）、known-state 仅在变化时携带；③ 复测 **miss/调用** 是否下降（目标：显著低于 ~1,000），并确认主对话命中率不回落。
 
+### 10.78 第三十六轮（goal round 9：定位 ~1000 miss token 的真正来源=阶段前缀早期分叉）执行记录（2026-09-17）
+
+**① 运行态块实测（离线、零成本）：** 新增永久体积守卫（`runtime-awareness.test.ts`：12 个工具 + capability snapshot + previous run 的完整变体），用极小上限让失败信息报出真实长度：**496 字符 ≈ 124 token**。
+→ **运行态块不是那 ~1,000 miss token 的来源**（只占约 12%）。守卫保留（上限 800 字符），防止它日后膨胀。
+
+**② 真正原因（核对 `packages/prompt/src/builder.ts` 的分段发射顺序）：** 不同阶段的 system prompt **从第 2 段就分叉**：
+- `reply`（respond 模式）：`identity` → `capabilities` → `response-directives`（3 段）；
+- `execute`/`decide`（full 模式）：`identity` → `core-flow` → `tooling` → `safety` → `skills-index` → `workspace` → `date-time` → `runtime` → `output-directives`（9 段）。
+两者**只共享第 1 段 `identity`**，之后内容与顺序都不同。
+
+因此：**同一轮内不同阶段的调用几乎不共享前缀**，每个阶段每次都要重新 prefill 自己那套 system prompt（全价）；跨轮只有"同阶段"能命中。这与 round 8 的量化完全吻合——**边际 miss/调用 ≈ 1,000 且不随会话改善**，因为每轮的每类阶段调用都在重建自己的前缀。
+
+**③ 结论：** 目标里"**跨阶段共享可缓存前缀**"正是最大且唯一的结构性杠杆；"精简易变块"（运行态/known-state）最多只能回收 ~12%，收益有限。
+另需注意：**不能**把稳定内容搬到尾部（round 4 已实测会变差），正确做法是让**各阶段的前缀尽量一致**（把阶段差异推到尾部，而不是把稳定内容推走）。
+
+**round 10 计划：** ① 设计并实现"**统一稳定头**"：让所有阶段先发射同一批字节一致的分段（至少 `identity` + 安全/工作区等与阶段无关者按同一顺序），阶段专属指令一律放到**后面**（必要时进入易变尾部）；② 用离线对比（两两阶段 system prompt 的最长公共前缀长度）验证统一头覆盖率从"仅 identity"提升到"大比例"；③ 真实 Provider 复测 **miss/调用** 与主对话命中率。
+
 ### 10.14 第七轮（HC-12 撤销屏障）新增证据（2026-09-16）
 
 **问题（先写失败用例）：** v3 写入路径的等值/相似候选只按 branch/scope/`status='active'` 选取；被纠正（`epistemicStatus`/`resolutionStatus = superseded`）或删除（`status = tombstone`）的 atom 仍可能是 active 记录。后续 maintenance（压缩候选）证据即使引用同一 `conversation-source:`，也会创建新 atom 或强化旧 atom，从而复活已被用户忘记/纠正的事实。`memory-service-v3.test.ts` 的新用例在修复前返回 `created`。

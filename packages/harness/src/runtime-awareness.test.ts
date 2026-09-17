@@ -192,6 +192,28 @@ describe('runtime awareness', () => {
     expect(ctx.contextSnapshots?.[0]?.safetyEstimate?.estimatedPromptTokens).toBeLessThan(1_200);
   });
 
+  it('keeps the per-call volatile Runtime block small', () => {
+    const tools = Array.from({ length: 12 }, (_, index) => makeTool(`tool_${index}`, { ok: true, output: '' }));
+    const ctx = makeCtx({ inbound: textMessage('user', 'status?'), tools });
+    ctx.capabilitySnapshot = {
+      version: 1,
+      epoch: 'epoch-size',
+      generatedAt: '2026-07-15T03:04:05.000Z',
+      permissionPolicyId: 'research',
+      workspace: 'available',
+      tools: tools.map((tool) => ({ name: tool.name, status: 'available' })),
+      network: { enabled: true, status: 'ready', providerId: 'tavily' },
+    };
+    ctx.previousRun = previousRunSummary();
+
+    const block = runtimeBlock(prepareModelRequest(ctx, 'reply', request('status?')));
+
+    // Every call re-sends this block uncached. Measured at 496 characters
+    // (~124 tokens) with 12 tools plus a capability snapshot and previous run,
+    // so it is not the ~1000-token per-call miss source; keep it bounded anyway.
+    expect(block.length).toBeLessThan(800);
+  });
+
   it('uses the compact clock for a self-contained autonomous read decision', () => {
     const inbound = '请查看当前工作区顶层有哪些条目，只告诉我数量和名称，不要修改任何文件。';
     const tools = [
