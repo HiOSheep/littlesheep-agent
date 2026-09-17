@@ -10,6 +10,13 @@ import type {
 import { filterAuthoritativeUserFacingMessages } from '@littlesheep/types';
 import type { ChatMessage } from '@littlesheep/llm';
 
+/** Context sections whose text changes every turn because the task book advances. */
+const VOLATILE_GUIDANCE_SEGMENT_IDS = new Set([
+  'execution-plan',
+  'retrieval-intent-contract',
+  'explicit-tool-proposal-contract',
+]);
+
 export interface BuildRunRequestCandidatesOptions {
   history?: Message[];
   primaryUserKind?: ContextItemKind;
@@ -51,17 +58,29 @@ export function buildRunRequestCandidates(
   const primaryUserIndex = insertedStartIndex + inserted.length;
   const primaryUserKind = options.primaryUserKind ?? 'user_input';
 
+  // Task guidance changes on every turn (the task book advances), so keeping it
+  // inside the system message would truncate the Provider's cached prefix for
+  // the whole conversation. It travels as a trailing Context section instead;
+  // memory, workspace and bootstrap stay in the system message untouched.
+  const trailingAddons = (options.systemSegments ?? []).filter((segment) => VOLATILE_GUIDANCE_SEGMENT_IDS.has(segment.id));
+  const systemSegments = VOLATILE_GUIDANCE_SEGMENT_IDS.size === 0 || trailingAddons.length === 0
+    ? options.systemSegments
+    : (options.systemSegments ?? []).filter((segment) => !VOLATILE_GUIDANCE_SEGMENT_IDS.has(segment.id));
+  const systemMessage = trailingAddons.length === 0
+    ? undefined
+    : { ...(messages[0] as ChatMessage), content: (systemSegments ?? []).map((segment) => segment.text).join('') };
+
   const mapped = messages.map((message, index) => {
     if (index === 0 && message.role === 'system') {
       return candidate({
         id: `${stage}:system`,
         order: index,
-        message,
+        message: systemMessage ?? message,
         kind: 'system_prompt',
         source: { kind: 'prompt', id: `${stage}:system` },
         priority: 100,
         required: true,
-        segments: options.systemSegments,
+        segments: systemSegments,
       });
     }
 
@@ -167,7 +186,7 @@ export function buildRunRequestCandidates(
       required: true,
     });
   });
-  const trailing = (options.trailingSegments ?? []).map((segment, index) => candidate({
+  const trailing = [...trailingAddons, ...(options.trailingSegments ?? [])].map((segment, index) => candidate({
     id: segment.id,
     order: messages.length + index,
     message: { role: 'system', content: segment.text },

@@ -1851,6 +1851,27 @@ C08A 仍未覆盖：首次回填的分批水位/可续记录；`captureConversat
 
 **round 29/30 计划（交接）：** 按 round 28 原计划 1→4 执行尾部 delta 通道并复测；若上下文/预算不允许，则以本轮的验证结果收尾，并把上述"已交付/未达成"清单作为该目标的最终交付说明。
 
+### 10.96 第三十六轮（goal round 29：任务书指引入尾部——**首个全绿的可发布提升，主对话 +5.5pt**）执行记录（2026-09-17）
+
+**改动（单文件、零契约/类型改动）：** `packages/harness/src/context-candidates.ts` 引入 `VOLATILE_GUIDANCE_SEGMENT_IDS = { execution-plan, retrieval-intent-contract, explicit-tool-proposal-contract }`：这些**每轮都变**（任务书推进）的指引段不再留在 system 消息里，而是作为**尾部候选**追加；system 消息内容改为其余分段的拼接（memory / workspace / bootstrap 全部保持原位、语义不变）。这直接打在 round 25 定位到的 `system_prompt` / `workflow_state` 断点上。
+
+**验证（全部通过）：** 全量 `vitest` **460 文件 / 3,278 通过**；`typecheck` 0；`check:repo` 33/33；**`verify:electron-continuity` ok:true**（8 场景，连续性 supported）；**`verify:electron-ui-state-continuity` ok:true**。
+
+**真实 Provider 复测（8 任务 × 5 轮、共享会话、唯一话轮、0 失败）：**
+
+| 指标 | 基线（round 25–27） | **本轮（指引入尾部）** |
+| --- | --- | --- |
+| **主对话命中率** | 43.5% / 44.1% | **49.6% / 49.5%**（+5.5pt） |
+| 辅助阶段命中率 | 62.2% / 62.4% | 61.9% / 61.4%（基本持平） |
+| 稳态 miss/调用 | ~968–1,000 | **841–901** |
+| 每轮增量命中 r0→r4 | 42.8% → 53.6% | 43.2% → **57.1%** |
+| 前缀变化 `system_prompt` | 41 / 39 | 39 / 38 |
+| 前缀变化 `workflow_state` | 20 / 22（top-5 内） | **已跌出 top-5** ✓ |
+
+**结论：** 这是本目标内**第一个既提升命中率、又通过全部发布门**的改动——证明第 25 轮的诊断（断点在 system 内部）方向正确，且"把**每轮变化**的内容移到尾部、保留稳定内容"是有效手法。相比之下 round 18 的失败正因为它把**稳定**的阶段段也搬走了。
+
+**round 30 计划（收尾）：** ① 复核本轮改动是否符合 HC 相关断言（已随全量门通过）；② 给出目标的最终交付说明：已交付项、实测数字（含本轮 +5.5pt）、未达成项（距 DSH 量级仍远，根因与后续路径）；③ 视剩余预算决定是否追加一次更长的会话复测以稳定该 +5.5pt 的置信度。
+
 **round 24 计划（改打高频断点）：** 转向**每个 run/每轮都会发生**的 system 提示词抖动：
 1. `memory-taskbook-refinement.ts:137` 在 **DECIDE 中途重写 `initialMemoryContext`**（同轮内 system 即变化）；
 2. `memoryRootIndex` / `initialMemoryContext` / `bootstrap` 每请求按 ctx 重建（记忆一更新即变化）。
