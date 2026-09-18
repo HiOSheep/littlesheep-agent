@@ -4508,3 +4508,33 @@ reply -> reply          1           284        3010       3036    recent_message
 - 若波动项是**计划/步骤/工作策略文本**（很可能，因为工具循环按步注入当前步骤说明），则修法是把它**移到尾部**（易变区），使系统消息头稳定 ⇒ 预期 `execute_tool_loop` 的 miss 从 ~5,983 大幅下降（这是长会话 miss 的 26.5%、短会话 31%）。
 
 **判据进度不变**：① 短会话 ≥75%/<700：未达（67–68%/~900）；② 长会话 ≥95%：未达（68.1%）；硬约束满足。
+
+## 10.174 **波动项定位**：`step-contract`（1,211 字符）位于历史之前，逐步变化（2026-09-18）
+
+**`exec-audit.mjs` 对长会话 `execute_tool_loop` 的逐项输出（run `5e4ca1e1`，idx=3）**：
+
+```
+stablePrefix bytes=16968 items=3 | dynamicSuffix bytes=11582 items=11
+provider: total=6857 cached=2560 uncached=4297
+reasons=[prompt_version_changed, tool_schema_changed, memory_revision_changed, request_kind_changed]
+messages=13 tools=15
+
+ 0 identity 284          1 core-flow 1530       2 safety 292        3 workspace 118
+ 4 date-time 362         5 capabilities 348     6 memory-root-index 2578
+ 7 profile 335           8 tooling 4179         9 runtime 96       10 output-directives 1805
+11 bootstrap:AGENTS.md 228   12 bootstrap:SOUL.md 150
+13 bootstrap:USER.md 141     14 bootstrap:TOOLS.md 145
+15 **workflow_state  step-contract:step-1  1211**   ← 逐步变化，且位于历史**之前**
+16+ recent_message（历史，每条 20–50 字符）
+```
+
+⇒ **`step-contract:step-1`（1,211 字符，`kind: workflow_state`）** 是每次 step 变化的内容（"当前步骤契约"），被插入在**系统段之后、历史之前**。因此：
+- 它一变 ⇒ **其后的整段历史（本例 11 条、长会话中更多）全部重算**；
+- 与实测吻合：`execute_tool_loop` hit **30.4%**、miss/调用 **5,983**（占长会话 miss 26.5%、短会话 31%），且其系统消息长度在 17 次调用中有 17 种取值。
+
+**修法（缓存布局，不裁剪能力）**：把 `step-contract`（及任何**逐步变化**的 `workflow_state` 段）**移到历史之后**（尾部），使"共享头 + 稳定段 + 历史"成为可复用前缀；**该段内容一字不减**，只是位置从历史前移到历史后 ⇒ 满足"能力不收缩"。
+- **预期**：`execute_tool_loop` 的 miss 从 ~5,983 降到约 1/3（因为它只需为自己新增的内容付费）；总体 miss/调用从 **1,353 → 约 900**、hit **68% → 约 78%**（长会话）；短会话同理（miss ~920 → ~700、hit → ~75%）—— **恰好触及改写后的判据 ①**。
+
+**下一轮（先定位落点，再改）**：`grep 'step-contract'` 找到它的构造处（预期在 `stages/execute/` 的 guidance/task-step-runner 一带），确认它被加入 system 消息还是作为独立段；然后按"移到尾部"改一处 + 全门 + 两次样本。
+
+**判据进度**：① 短会话 ≥75%/<700：未达（67–68%、~900）；② 长会话 ≥95%：未达（68.1%）；硬约束满足（`failedRuns=0`、`silentRuns=0`、未裁剪能力）。
