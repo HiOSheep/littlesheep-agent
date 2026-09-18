@@ -2860,3 +2860,36 @@ if (isClarification) {
 2. 同时把"UI 状态门稳定化"登记为独立工作项（候选原因：`verifyChatBottomAnchor` 的 1s settle 太短、`file navigator resizer` 等待超时值偏紧、并发/负载敏感性）；修好后再恢复"全门"判据。
 
 > 这一轮的价值不在于改了代码，而在于**避免把一个环境噪声当成产品回归**：连续两轮因同一道门回退同一个已验证的改动，本身就是判据失灵的信号。附证据的判据修正，比继续猜测更有用。
+
+### 11.20 重复闸门修复**未生效**：真正拒绝的是 **durable registry**，不是本地检查（2026-09-18）
+
+**复测（`1510fa0` 之后，产品级预算 32，8×5 实机）：**
+
+| 指标 | 修复前（11.17） | **本轮** |
+| --- | --- | --- |
+| `failedRuns`（shadow / next） | 6 / 4 | **2 / 6** |
+| `publishedRuns` | 34 / 36 | 38 / 34 |
+| `silentRuns` | 0 / 0 | **0 / 0** ✓ |
+| 主对话命中率 | 69.3 / 68.0% | **68.4 / 67.8%** |
+| miss token / 调用 | 952.9 / 1027.8 | **994.4 / 984.4** |
+
+**归类（next 路径 6 个失败，全部同一条消息）：**
+
+```
+user-facing reply generation failed:
+  The model repeated a previously published reply after 2 rewrite attempts.
+```
+
+**⇒ 与修复前**完全是同一类**，即 `1510fa0` **没有消除这个失败类**。
+
+**原因（代码层已确认）：** 该抛错发生在
+`reserveUserFacingReplyOnce(..., allowDuplicate = true)` **仍然返回 `undefined`** 的时候。而我在 11.11/11.12 的改动**只绕过了本地检查**（`collectRecentAssistantReplies`，第 78–80 行）；**注册表是第二道独立关卡**（`ctx.reserveUserFacingReplySettlement` / `ctx.reserveUserFacingReply`，第 92–116 行），它在真实应用里被配置并且**依旧拒绝重复** ⇒ 仍然走到 `throw`。
+
+**这正是 11.12 记录过的硬约束**：`reserveUserFacingReply?: (reply: string) => Promise<boolean>` **没有"允许重复"入口**。我上一轮把"本地可放行"当成了充分条件，**判断有误**——代码本身正确且全门绿，但**对目标失败类无效**（`1510fa0` 保留：它是注册表级修复的前置，且在无注册表的调用路径上语义正确）。
+
+**下一轮的两条可选路径（按本目标原则排序）：**
+
+1. **（推荐，符合"判断交还模型"）把"允许重复"穿透到注册表**：给 `FinalReplyReservation` / `reserveUserFacingReply` 增加显式字段（如 `allowDuplicate: true`），在 runner 的注册表实现里允许"同一会话内的重复发布"，同时**照常写指纹账本并标记重复**（可观测性不变）；
+2. **（保守替代）承认"永不重复"是产品规则**，改为**上游修复**：把"已发布过的回答"作为显式上下文交给模型，让它在**改写阶段**就产出不同措辞——但那等于让运行时规则继续指导措辞，与目标原则相悖。
+
+**验收判据（不变）**：`failedRuns → 接近 0`（本轮 next=6 与 shadow=2 均为该类）、`silentRuns` 保持 0、命中率/成本不回归。
