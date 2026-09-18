@@ -3019,3 +3019,38 @@ current.records.push({ ...reservation, status: 'reserved', createdAt: now });  /
 1. **UI 状态门稳定化**（独立工作项，11.19 已记录它在干净树上以两种签名失败）；
 2. **ASK_USER → skill** 的形态收敛（四个入口的 parked 行为已实质解除：classify 入口删除、`decide/recover/verify` 经草稿兜底 + 延续歧义修复后不再判死）；
 3. 可选：把本节的判据（`failedRuns` / `publishedRuns` / `silentRuns`）纳入常规门槛。
+
+### 11.25 ASK_USER → skill 的**精确落点**与它强制的一个设计决策（2026-09-18）
+
+**"run 被停住"的机制（已定位到行）：** `packages/runner/src/run-checkpoint.ts:46–52`
+
+```ts
+const status: RunCheckpoint['status'] = ctx.runtimeControl?.state === 'paused'
+  ? 'paused'
+  : options.interrupted || ctx.runtimeControl?.state === 'interrupted'
+    ? 'recoverable'
+    : ctx.clarificationRequest
+      ? 'waiting_user'          // ← 只要"存在澄清请求"，run 就被标记为等待用户
+      : 'recoverable';
+```
+
+配合 `runner.ts:1090`：`const isClarification = checkpoint.status === 'waiting_user'` —— 下一轮消息因此进入**延续判定**（answer / retry / revise / cancel / new task）。
+
+**因此"ASK_USER 作为 skill"的实质改动只有一处语义开关**：**让"存在澄清请求"不再自动把 run 变成 `waiting_user`**。此后：
+
+- 提问仍然是**一条正常回复**（`ask_user` 本来就 `next: 'finalize'`，会发布问题 ✓）；
+- run **正常结束**；
+- 下一条消息**默认是新任务**（模型若判断它是在回答，可显式选择延续——由 `dad2939` 的安全处置覆盖两种结果）。
+
+**但它强制一个必须由人决定的设计取舍（本轮不擅自决定）：**
+
+| 选项 | 含义 | 代价 |
+| --- | --- | --- |
+| **A. 取消 `waiting_user`**（用户倾向的"skill 化"） | 提问 = 普通回复；下一轮默认新任务 | **失去"恢复被挂起的任务"语义** —— 四个入口里 `recover` 的升级场景（如"需要授权后继续"）将不再续跑，而是重新开始 |
+| **B. 保留 `waiting_user`，仅把它当作"可续跑的提示"** | 保持续跑能力 | 需要模型**主动**表达"这是延续"，即真正的 skill 化（技能调用产生等待点），改动更大（技能注册表 + 契约 + 门） |
+
+**建议（下次开工时的默认路径）**：先做 **A 的最小版本**（去掉 `clarificationRequest → waiting_user` 这一分支），用 8×5 复测确认 `failedRuns` 仍为 0、`pausedRuns` 为 0、命中率/成本不回归；**再**评估是否需要 B 的"模型主动续跑"能力 —— 因为 A 已经把"运行时不干扰模型判断"做到极致，而 B 的价值只体现在"需要授权的长任务"这一类场景。
+
+**无论如何都必须守住的**：`silentRuns === 0`（现已写入门禁 `293f46d`）、发布可追溯性、HC-12 撤销语义、记忆连续性、两条 Electron 门（UI 门现已稳定，`6fdc566`）。
+
+**当前状态可信度**：这一结论建立在"读代码定位到唯一开关 + 已有实测支持（失败 0、成功率 100%、`pausedRuns` 0）"之上；下一轮只需改 2–3 行并跑全门 + 一次 8×5 即可验证。
