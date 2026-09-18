@@ -4087,3 +4087,32 @@ function toolToSpec(tool: AgentTool): ToolSpec {
 | **D. 修改契约**（把 `tools` 从"Runtime-owned"里豁免） | 需改契约测试 + 论证 | **属设计变更**，应由你拍板 |
 
 **下一步（零成本先做）**：用 `exec-audit.mjs` 看**同一 run 内连续多次 `execute_tool_loop`** 的 `uncached` 是否递减（若递减 ⇒ 同 loop 内已复用，B 路径收益有限；若不递减 ⇒ 说明每步都重建，B 有明确收益）。
+
+## 10.158 **每 run 两次前缀断裂**：工具块出现一次又被丢掉（2026-09-18）
+
+**最新样本（`live-toolunion-1`，`8827b90` 之后）的 `tool-set-diff.mjs`，4 个 run 形态一致**：
+
+```
+idx=1 decide              tools=0   uncached≈1,100
+idx=2 decide              tools=0   uncached≈800
+idx=3 execute_tool_loop   tools=15  uncached≈4,400–5,300   ← 工具块首次（也是唯一一次）出现
+idx=4 execute_final_reply tools=0   uncached≈860–920       ← 工具块**消失** ⇒ 前缀**再次断裂**
+idx=5 execute_final_reply tools=0   uncached≈930–960
+idx=6 execute_final_reply tools=0   uncached≈680–700
+idx=7 verify              tools=0   uncached≈940–970
+```
+
+**两条结论**：
+1. **每个 run 只有一次 `execute_tool_loop`** ⇒ 10.149 的"plan 并集"必然零收益 ✓（已解释）；
+2. **每个 run 发生两次前缀断裂**：① 工具块首次出现（~4.4–5.3k 全价）；② 工具块随后**被丢掉**（`execute_final_reply` 起 `tools=0`）⇒ 其后的 final_reply/verify（3–4 次）各自重付 ~700–970。
+
+**修法（**避开被契约禁止的 decide**，因此不再需要 10.156 第 4 步/路径 D）**：
+- 让 **`execute_tool_loop` + `execute_final_reply` + `verify`** 广告**同一套**工具（`toProviderTools(ctx.tools)`）⇒ 工具块在 run 内**保持一致**，第 3 步之后的所有调用都能复用工具块 + 共享头 + 历史；
+- **`decide` 不动**（其 wire contract 明确禁止 —— 10.157 的红灯）；
+- **`reply` 不动**（纯对话路径，避免引入工具能力）。
+
+**落点（下一步要读的两处）**：
+1. `execute/final-reply.ts:44–50` 附近的模型调用（该文件已在 10.156 的清单里作为 compact addon 使用点）——在其中把 `tools: toProviderTools(ctx.tools)` 传入共享调用；
+2. `verify/model-call.ts:12` 附近的 `callLlmForJson` 调用（与 decide 同形）——同样传入。
+
+**预期**：idx≥4 的调用从 ~700–970 降到 **~200–400**（它们不再为工具块缺失付费）；`cache-verdicts.mjs` 中 `execute_final_reply`（命中 25–29%）与 `verify`（35%）应显著上升。**判据**：两次 8×5 样本 + 全门；`failedRuns=0`、`silentRuns=0`、`verificationPassRateDelta ≥ 0`。
