@@ -112,7 +112,7 @@
 
 - **硬约束（关键）**：**不能用工具输出直接当回复发布**。`finalize` 只接受**可追溯到真实 Provider 请求**的文本（`f11ce37`/`36b2f6f` 两轮实测教训），而 `request_user_input` 的输出是**工具结果**、不是模型回复 ⇒ 若直接发布必然被拒（或落到空回复）。
 - **因此步骤 3 = "识别调用 → 复用 ASK_USER 的组词路径 → 写等待检查点"**：
-  1. 在 harness 的工具调用处理处识别 `request_user_input`（用 `REQUEST_USER_INPUT_TOOL_NAME` 常量），把 `field/prompt/required/options` 写进 `ctx.clarificationRequest`（沿用既有结构，`copySource` 标为 `model`——这是**模型主动**发起的提问，与运行时兜底区分）；
+  1. 在 harness 的工具调用处理处识别 `request_user_input`（用 `REQUEST_USER_INPUT_TOOL_NAME` 常量），把 `field/prompt/required/options` 写进 `ctx.clarificationRequest`（沿用既有结构，`copySource` 标为 `model`——这是**模型主动**发起的提问，与运行时兜底区分）。**落点已侦察确定**：`packages/harness/src/stages/execute/tool-loop.ts:197` 一带 —— 那里正是**同款先例**（`response.toolCalls.filter((call) => call.function.name === WORK_POLICY_UPGRADE_TOOL_NAME)` 后做特殊处理并改变流程），照该模式加一个 `request_user_input` 分支即可；`ask_user`/`clarificationRequest` 的结构与 `updateClarificationRequest` 已在 `recover.ts` 有可直接照抄的用法；
   2. **转入既有 ASK_USER 阶段**：由它做**一次模型组词**（`ask_user.ts` 已经这样工作，并在空输出时回落到运行时草稿 `f11ce37`），随后 `finalize` 正常发布 —— 这样文本可追溯；
   3. **写唯一等待检查点**：经 `infra` 的检查点控制器写入 `waiting_user`（这是 `7744548` 之后**唯一**有意的创建点），并记 `runtime_event`（技能调用 + 问题 schema）；
   4. 上界：每会话仅一个等待头（`resolveWaitingUserHead` 的 conflict 分支已保证）；技能调用每轮上限（建议 1）。
