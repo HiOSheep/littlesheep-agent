@@ -2038,24 +2038,31 @@ describe('runner checkpoint continuation', () => {
       })
       await runner.infra.runCheckpointStore!.write(checkpoint)
 
-      await expect(runner.run({
+      const result = await runner.run({
         sessionId: session.id,
         text: 'Do something different, maybe.',
         requestKey: 'ambiguous-turn',
         restoreCheckpointResources: restoreResources,
-      })).rejects.toThrow('ambiguous and was not claimed')
+      })
 
+      // An ambiguous disposition is the model's judgement, not a protocol
+      // violation: the stale checkpoint is abandoned and the turn runs as a new
+      // task, so the user still gets an answer instead of a failed turn.
+      expect(result.status).toBe('ok')
       expect(restoreResources).not.toHaveBeenCalled()
-      expect(await runner.infra.runCheckpointDispositionStore.read(checkpoint.id)).toBeNull()
+      expect(await runner.infra.runCheckpointDispositionStore.read(checkpoint.id)).toMatchObject({
+        status: 'abandoned',
+        continuationDisposition: 'cancel',
+      })
       expect((await runner.sessionManager.read(session.id))
-        .some((message) => message.id === turnMessageId(session.id, 'ambiguous-turn'))).toBe(false)
+        .some((message) => message.id === turnMessageId(session.id, 'ambiguous-turn'))).toBe(true)
       await expect(runner.replay(conversationTurnRunId(session.id, 'ambiguous-turn')!)).resolves.toMatchObject({
         conversationContinuation: {
-          resolution: 'blocked',
+          resolution: 'abandoned',
           checkpointId: checkpoint.id,
-          failure: { code: 'ambiguous_disposition', recoverable: true },
         },
       })
+      await expect(runner.runCheckpoints!.resolveWaitingUserHead(session.id)).resolves.toEqual({ kind: 'none' })
     } finally {
       await runner.shutdown()
     }

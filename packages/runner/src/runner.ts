@@ -1189,20 +1189,16 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
             signal: options.signal,
           })
       if (dispositionDecision.kind === 'ambiguous') {
-        const detail = dispositionDecision.reason ?? 'choose answer, retry, revise goal, cancel, or new task explicitly'
-        throw new ContinuationControlError(
-          `waiting task response is ambiguous and was not claimed: ${detail}`,
-          continuationFailureEvidence({
-            input: resumeTurnInput(checkpoint, options, answerText!),
-            resolution: 'blocked',
-            checkpoint,
-            requestId: clarificationRequest!.id,
-            answerMessageId,
-            code: 'ambiguous_disposition',
-            detail,
-            recoverable: true,
-          }),
-        )
+        // The model judged that this message does not answer the pending
+        // clarification. That is a judgement, not a protocol violation: abandon
+        // the stale checkpoint and run the turn as a new task, exactly like an
+        // explicit cancellation, keeping the model's own reason for the record.
+        dispositionDecision = {
+          kind: 'cancel',
+          source: 'runtime_fallback',
+          reason: dispositionDecision.reason
+            ?? 'the reply did not address the waiting clarification',
+        }
       }
     }
 
