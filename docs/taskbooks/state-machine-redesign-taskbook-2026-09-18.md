@@ -182,7 +182,11 @@
 
 ### P6. 压缩 / 检查点续跑 / 工作策略升级 / 记忆写入（拆成四项，逐项取证）
 
-#### ⏳ P6a. 会话压缩 —— 取证完成，待在**强制压缩口径**下实测（2026-09-18）
+#### ✅ P6a. 会话压缩 —— **已在强制压缩口径下实机认证**（2026-09-18）
+- **不触发口径**（`live-p5.txt`）：40 次操作全部 `completed` / `no-new-range` / 零合并（`threshold = 400` 未达，60 KB / 40 run）⇒ 调度器每轮执行且**判定正确**。
+- **强制压缩口径**（`LITTLESHEEP_COMPARISON_COMPACTION=1`，`live-compaction.txt`，数据根 `littlesheep-path-next-Lq43VH`）：**40 次操作全部 `status = completed`、`result = compacted`**（即每轮真的压缩），且 `failedRuns` **0/0**、`semanticFailures` **0/0**、`transportFailures` **0/0**、`publishedRuns` **40/40**、`silentRuns` **0/0**、`pausedRuns` **0/0**、**gate passed**。
+- **成本签名（预期且正确）**：强制压缩下主对话命中 **55.7% / 46.9%**、miss/调用 **1071.8 / 1419.5**（对比不压缩口径 65.9/73.5%、823–904）。原因明确：**压缩按定义会改写历史区间（用摘要替换），因此必然打断 append-only 前缀** —— 这正是"有界上下文 ↔ 前缀缓存复用"的取舍，也是生产阈值取 **400**（压缩稀少）而非低阈值的原因。该口径的用途是**覆盖 compaction round class**，不是性能基线。
+- **结论**：压缩状态机**功能与失败语义均正确**（40/40 成功压缩、零失败）；**不需要改动**。若要进一步降低压缩代价，方向是"压缩时机/摘要复用"（属 P6 之外的优化），而不是修状态机。
 - **本地证据**（数据根 `littlesheep-path-next-2O4ddd`）：`compaction-operations` 记录 **40 次操作**，全部 `status = completed`、`result = no-new-range`、`coalescedRequests` 最大 **0**；会话 jsonl 仅 **60 KB / 40 run**。⇒ 调度器每轮都执行且**判定正确**（`threshold = 400` 未达 ⇒ 无可压区间），**零失败、零合并**。
 - **判读**：这是"在该负载下**正确地没有触发**"，不是"未验证"。但压缩**真正运行时**的行为（摘要生成、失败标记、与缓存/续跑的交互）需要一个会触发它的口径。
 - **既定手段（现成）**：比较脚本支持 `LITTLESHEEP_COMPARISON_COMPACTION=1`（强制低阈值，使样本覆盖 compaction round class）⇒ **下一轮用该口径跑一次 8×5 实机**，除既有五项判据外，另看 `compaction-operations` 的 `status`/`result` 分布（期望出现 `compacted` 且**无 `failed`**）。
