@@ -3782,3 +3782,31 @@ pnpm exec vitest run packages/runner/src/web-runtime.test.ts -t "when disabled" 
 3. **判据**：`exec-audit` 中 `execute_tool_loop` 的 `uncached` 从 ~3,900–5,700 降到 **<1,500**；两次 8×5 样本；`failedRuns=0`、`silentRuns=0`。
 
 **为什么优先做这条**：按 10.143 的账，execute 家族占 **43%** 的 miss；而 `reply`（占 33%）**已 79.5% 命中**、系统提示组件**几乎不翻转**（0–9%）⇒ 继续在系统提示上做文章的边际收益已很低。
+
+## 10.146 病因确认：**同一 run 内只有 `execute_tool_loop` 带工具**，工具块在缓存前缀里位于消息之前（2026-09-18）
+
+脚本：工作区 `tool-set-diff.mjs <dataDir>`（按 run 输出相邻相关调用的 `toolNames` 差异与 `uncached`）。
+
+**4 个 run 的形态完全一致**：
+
+| idx | purpose | tools | uncached |
+| --- | --- | --- | --- |
+| 1 | decide | 0 | ~1,169 |
+| 2 | decide | 0 | ~810 |
+| **3** | **execute_tool_loop** | **15** | **~5,686**（其余 run 为 4,634–4,982） |
+| 4 | execute_final_reply | 0 | ~750–877 |
+| 5 | execute_final_reply | 0 | ~826–958 |
+| 6 | execute_final_reply | 0 | ~698–702 |
+| 7 | verify | 0 | ~834–953 |
+
+`toolDiff` 显示：**idx=3 一次性 `+15 个工具`**，idx=4 又 `-15 个工具` —— 即**整个 run 里只有那一次调用带工具**。
+
+**关键机制**：Provider 的缓存前缀 = **工具块 + 消息序列**（工具块在消息**之前**）。因此"给某次调用加工具"会**使其后所有内容（含整段历史）失效**；而**其它调用不带工具**，也就永远无法复用带工具那次的前缀。⇒ `execute_tool_loop` 每次都近乎全价（~4,600–5,700 未命中），而它正是 10.143 里 34% 的 miss 来源。
+
+**下一刀（10.147，按证据、能力不裁剪）**：**让"任务类"purpose 共享同一套工具块** —— 即 `decide` / `execute_tool_loop` / `execute_final_reply` / `verify` **发送完全相同的工具集**（`reply` 保持无工具，避免把工具能力引入纯对话路径）。
+- **机制收益**：工具块在 run 内首次调用时未命中一次，其后**每个任务类调用都能复用**（含 decide 的 ~1,000 与 final_reply 的 ~800 应显著下降；工具带 15 个 schema，预计首调 ~2–4k 未命中，其后每次仅剩新增内容）；
+- **能力影响**：**只增不减** —— decide/verify/final_reply 原本拿不到工具 schema，改后拿到（对判断与收尾更有信息）；
+- **预期**：`execute_tool_loop` 的 `uncached` 从 ~4,600–5,700 降到 **<1,500**，任务类整体 miss 下降；总量 miss/调用从 ~970 向 ~700 收敛；
+- **判据**：两次 8×5 样本 + 全门；`failedRuns=0`、`silentRuns=0`；**命令**：`node tool-set-diff.mjs <data>` 看 `tools` 列是否在任务类间一致、`uncached` 是否下降。
+
+**风险与验证**：给 decide/verify 送工具 schema 可能影响其输出形状（例如 decide 误发 tool call）⇒ 必须在两次样本中确认 `publishedRuns`/`verificationPassRateDelta` 不退化，必要时回退。
