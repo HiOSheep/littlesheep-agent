@@ -3179,3 +3179,17 @@ const status: RunCheckpoint['status'] = ctx.runtimeControl?.state === 'paused'
 4. **能力不收缩的证据要求**：所有段**照发**（仅位置改变），并在两次实机样本中确认 `failedRuns=0`、`silentRuns=0`、`verificationPassRateDelta≥0` 与发布内容无退化。
 
 **预期效果**：首个 system 消息在所有 purpose 间**字节一致**（≈2,921 字节共享头）⇒ `prefix-diff.mjs` 的跨 purpose `stableChars` 从 ≤2,934 升到 **7,000+**（历史进入可复用前缀）；miss/调用目标 **<400**。
+
+## 10.115 放置改动的**测试更新清单**（10.114 实测结果，下一轮一次做完）（2026-09-18）
+
+按 10.114 改完后（`builder.ts`：新增 `addVolatile`；`tooling`/`skills-index`/`runtime`/directives 四类改为易变区，并在既有 volatile 区块之前渲染），`typecheck` **通过**，聚焦测试 **3 处失败 —— 全部是旧放置的断言**，逐条如下：
+
+| # | 测试 | 现断言 | 应改为 |
+| --- | --- | --- | --- |
+| 1 | `packages/prompt/src/builder.test.ts` › "minimal mode omits Core Flow section heading and prelude" | 构建文本**不含** `CACHE_BOUNDARY_MARKER` | minimal 模式现在也会带 `tooling`（`!isRespond` 对 minimal 同样成立），因此**会出现标记**；断言应改为"不含 Core Flow 标题与前奏"，并显式接受标记存在 |
+| 2 | `packages/prompt/src/builder.test.ts` › "exposes memory and each bootstrap file as independently accountable segments" | `memory-root-index` 段文本 `startsWith(marker)` 为真 | 改为"**首个易变段**（该模式下的 `tooling`）承载标记"，`memory-root-index` 改为 `startsWith('\n\n---\n\n')` |
+| 3 | `packages/harness/src/profile-prompt.test.ts` › "places stable addons before the cache boundary and run facts after it" | 易变 addon 段文本**包含**标记 | 标记现在归首个易变段（来自 bundle 的 `tooling`）；addon 段改为断言 `startsWith('\n\n---\n\n')`，并断言"边界之下第一段含标记" |
+
+**注意（能力口径）**：`minimal` 模式的内容**没有减少**（`tooling` 照发，只是移到边界之下）—— 这一点必须在提交信息与任务书里写明，并纳入"能力不收缩"的验证。
+
+**下一轮执行顺序**：① 重放 `builder.ts` 的 10.114 改动；② 按上表更新 3 处断言；③ `typecheck` → 聚焦 `prompt` + `profile-prompt` + `cache-split` → 全量 vitest → `check:repo`（提交前置）→ continuity + UI 门；④ 产品级 8×5 **两次样本**（`prefix-diff.mjs` 看跨 purpose `stableChars` ≥7,000、`provider-reconcile.mjs` 看 miss/调用 <400、命中是否上升；`failedRuns=0`、`silentRuns=0`）；⑤ 达标则提交 + 推送 `main` + 更新任务书。
