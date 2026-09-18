@@ -3205,3 +3205,13 @@ const status: RunCheckpoint['status'] = ctx.runtimeControl?.state === 'paused'
 **其它已知无需改动的断言**（避免误改）：`builder.test.ts:74` 的 `toContain(CACHE_BOUNDARY_MARKER)` 与 `profile-prompt.test.ts:47/48/45/46` 均与本次放置变动一致。
 
 **落地顺序仍是 10.115 的五步**；判据不变（跨 purpose `stableChars` ≥7,000、miss/调用 <400、命中 ≥95%、`failedRuns=0`、`silentRuns=0`、两次样本）。
+
+## 10.117 落地轮的两条精确结论（2026-09-18）
+
+1. `builder.ts` 的三处放置改动**可以安全重放**（本轮已完成一次，`typecheck` 通过）；但**回退后 edit 工具会要求先 `read`**（本会话已两次踩到），因此落地轮应先 `read packages/prompt/src/builder.ts` 再改。
+2. 三处断言的锚点核验结果：`builder.test.ts` 的两处锚点**逐字匹配**（各 1 次）：
+   - `expect(prompt).not.toContain(CACHE_BOUNDARY_MARKER);`
+   - ``expect(bundle.segments.find((segment) => segment.id === 'memory-root-index')?.text.startsWith(`\n\n${CACHE_BOUNDARY_MARKER}`)).toBe(true);``
+   第三处（`packages/harness/src/profile-prompt.test.ts:49`）**按 10.116 记录的文本未能逐字匹配** ⇒ 落地轮必须**先 `read` 该文件**（约 40–52 行）拿到原文，再改写为"断言存在边界之下且含标记的段 + `memory-root-index` 仍是独立段"。
+
+**结论**：落地轮的准备已完成到"只剩一次 read + 三次改写"。判据与五步顺序同 10.115。
