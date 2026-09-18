@@ -4636,3 +4636,49 @@ const stepSystemPrompt = appendSystemPromptBundleAddons(baseSystemPrompt, [{
 **下一轮要读的一处**：`attachmentContextMessages(ctx.runId, ctx.attachments)` 的返回形状（`context-candidates.ts` 或 `_shared.ts`）与其在 `buildBaseMessages(ctx, systemText, attachmentMessages, …)` 中的使用 ⇒ 据此把 `step-contract` 作为同形条目追加（内容一字不减），并移除 bundle addon。
 
 **判据进度**：① 未达（67–68%、~900）；② 未达（68.1%）；硬约束满足。
+
+## 10.179 **实现规格（可直接落地）**：把 `step-contract` 从 system 消息移到历史之后的尾部（2026-09-18）
+
+**已读清的装配顺序**（`stages/execute/guidance.ts:117–129`）：
+```ts
+export function buildBaseMessages(ctx, systemMessage, attachments, history = conversationHistoryForModel(ctx)) {
+  return [
+    { role: 'system', content: systemMessage },     // ← 整条 bundle（**含 step-contract**）
+    ...history.map(toChatMessage),
+    ...attachments.map((item) => item.message),     // ← **尾部（历史之后）** ✓
+    userChatMessage(textOf(ctx.inbound), ctx.attachments),
+  ];
+}
+```
+**尾部条目的形状**（`stages/_shared.ts:170–189`）：
+```ts
+AttachmentContextMessage = {
+  message: ChatMessage,                       // 可为 { role: 'system' | 'user', content }
+  context: { id, kind, source, priority, required, sensitive, scope },
+}
+```
+
+**改动（`stages/execute/task-step-runner.ts`，一处）**：
+1. **不再**用 `appendSystemPromptBundleAddons(baseSystemPrompt, [stepContractAddon])`；`stepSystemPrompt` 直接 = `baseSystemPrompt`（**跨步恒定**）；
+2. 构造一个**尾部条目**：
+   ```ts
+   const stepContractMessage = {
+     message: { role: 'system' as const, content: stepContractText },
+     context: {
+       id: `step-contract:${stepId}`, kind: 'workflow_state' as const,
+       source: { kind: 'workflow' as const, id: `step-contract:${stepId}`, runId: ctx.runId },
+       priority: 95, required: true, sensitive: true, scope: 'run' as const,
+     },
+   };
+   ```
+3. 把它**并入** `attachmentMessages`（`const trailingMessages = [...attachmentMessages, stepContractMessage]`），并用它同时喂给
+   `buildBaseMessages(ctx, stepSystemPrompt.text, trailingMessages, …)`、`insertedBeforePrimary: trailingMessages.map((item) => item.context)`、以及 `systemSegments`（保持 `stepSystemPrompt.segments`，因 bundle 已不含该段）。
+   ⇒ 内容**一字不减**（`stepContractText` 原样发送），位置改到**历史之后**。
+
+**验收（两次样本）**：
+- `head-lengths.mjs`：`execute_tool_loop` 的**首条 system 消息长度从 17 种变为 1 种**（≈12.6–13.9k 减去 1,211 ⇒ 恒定）；
+- `msg-order.mjs`：`step-contract` 出现在**历史之后**（尾部 system 消息），而非 system 消息内部；
+- `analyze-prompt-cache.mjs`：`execute_tool_loop` miss/调用 **5,983 → <2,000**；短会话 miss/调用 **~920 → ~700**、hit **→ ≥75%**（判据 ①）；长会话 hit **→ ~78%**；
+- `failedRuns=0`、`silentRuns=0`；全门（`typecheck`/全量 vitest/`check:repo`/continuity + UI 门）。
+
+**风险/回退**：若 `prepareModelRequest` 的候选层对尾部 system 条目有顺序或 kind 约束（`buildRunRequestCandidates` 的断言），聚焦工具循环测试会失败 ⇒ 回退并把失败原文记入本节。
