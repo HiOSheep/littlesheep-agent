@@ -4954,3 +4954,32 @@ reply -> reply DIFFERENT head length: pairs=0   ← **交替已彻底消除**
 **下一轮取证（零成本）**：对同一会话的连续请求，比较其**历史首条消息的 contentHash** 是否逐次变化（以及变化时该次调用的 `uncached` 是否显著更大）⇒ 确认或否定窗口滑动假设，再定修法（例如**按块丢弃**：窗口起点每 N 次调用才前移一次，使多数调用命中）。
 
 **判据进度**：① 达标（短会话 hit ≈75.5%、miss ≈708.6）；② 未达（长会话 74.1%），四个因子中：`reply`(55.4%) 可修、`decide`(14.3%)/`verify`(5.0%) 待查、`final_reply`(12.3%) 需 D1 授权。
+
+## 10.190 **决定性**：长会话 miss 的 54% 来自"每个 run 的首次调用"，根因是**跨 purpose 的 system 消息不同**（2026-09-18）
+
+**先否定了窗口滑动假设**（`reply-window-cost.mjs`）：按"首条历史消息 hash 是否变化"分组，`sameFirst` avgMiss **544** vs `diffFirst` **641**（差异小），且 `reply` 的历史条数为 **1,3,5,…,27 各不相同**（无固定窗口截断）⇒ **不是窗口滑动**。
+
+**决定性分组（`call-position.mjs`，按调用在 run 内的位置）**：
+
+| 位置 | 长会话（120 run） | 短会话（40 run） |
+| --- | --- | --- |
+| **pos1（run 内首次）** | **120 次、miss 1,270、prompt 4,473、hit 71.6%** | 40 次、miss 623、prompt 2,703、hit 77.0% |
+| pos2 | 60 次、miss **682**、hit **86.8%** | 18 次、miss 710、hit 78.6% |
+| pos3+ | 80 次、miss 1,133、hit 63.9% | 31 次、miss 971、hit 69.3% |
+
+⇒ **长会话 miss 的构成**：pos1 ≈ 120×1,270 = **152k（54%）**；pos3+ ≈ 80×1,133 = 91k（32%）；pos2 ≈ 60×682 = 41k（14%）。
+
+**根因（结构性）**：**system 消息整体位于历史之前**，而**各 purpose 的 system 消息在共享头（2,934 字符）之后各不相同**（`tooling` 4,179、`output-directives` 1,805、`profile` 335、`runtime` 96 等按 purpose 取舍）。⇒ **跨 purpose 转移（如上一 run 末次是 `verify`、本次是 `reply`）只能复用前 2,934 字符，其后的整段历史全部重算** ⇒ 每个 run 的首次调用付 ~1,270 token（短会话因历史短而只付 623）。pos2（同一 purpose 连续两次）则达 **86.8%** —— 正是"同 purpose 且 system 相同时历史可复用"的证据 ✓。
+
+**⇒ 修法（与本目标已奏效三次的模板完全同型，但作用面更大）**：**让所有 purpose 的 system 消息字节一致**，把 **purpose 专属段（tooling / output-directives / profile / runtime / response-directives 等）改由尾部消息承载** ⇒
+- 共享前缀从"仅 2,934 字符的头部"扩展为"**system 消息 + 整段历史**"；
+- 跨 purpose 转移（每个 run 首次调用、execute 家族切换）都能复用历史；
+- **内容一字不减**（各段原样发出，只是从 system 挪到历史之后）。
+
+**预期**：pos1 的 miss 1,270 → 约 250；长会话总体 hit **74.1% → 约 88%**；短会话 hit 略升。**这是目前唯一能不碰契约（不需 D1）而触及 90% 的路径**。
+
+**风险**：改动面覆盖**所有 purpose 的提示装配**，且多处测试断言各段位于 system 消息内（类似 10.166 遇到的布局断言）⇒ 需按"**先只改 reply+decide 两个 purpose**"做小步验证，再推广。
+
+**下一轮**：先读 `builder.ts` 的分段归属（`addStable` vs 易变区）与 `buildBaseMessages`/各 stage 的 messages 组装，确认**能否把 purpose 专属段统一后置**；然后**只改一个 purpose**做两组样本。
+
+**判据进度**：① 达标（短会话 hit ≈75.5%、miss ≈708.6）；② 未达（长会话 74.1%，但本发现指出**结构性主因（跨 purpose system 差异）**，且修法不需授权）。
