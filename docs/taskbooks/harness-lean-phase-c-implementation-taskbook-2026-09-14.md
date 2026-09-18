@@ -3634,3 +3634,22 @@ pnpm exec vitest run packages/runner/src/web-runtime.test.ts -t "when disabled" 
 - 若 `llmChat` 调用次数/顺序变化 ⇒ 需要让前缀注入**不改变消息序列**（例如仅在 classify **真的**发生时注入、或把前缀并入现有 system 消息而**不新增/减少消息**）；
 - 若 classify 返回值仍是 execute 而后续阶段改变 ⇒ 逐段追踪 decide/execute 的输入；
 - **绝不做的事**：为了让测试变绿而修改这 2 处断言 —— 它们保护的是"web 检索被禁用/未配置时不得发生检索调用"这一**真实安全语义**。
+
+## 10.139 决策：**暂缓 classify 接线**，转向真正的大头（2026-09-18）
+
+**理由（基于已量化的账）**：
+- classify 的潜在收益上限很小：`provider-reconcile` 显示 classify 每次仅 **508 token、cached 0** ⇒ 全部命中也只省下**每轮数百 token**；
+- 而 **10.127 的逐项审计**显示 `decide` 请求 ≈19k 字符中，**`tooling` 4,179 + `output-directives` 1,805 + `memory-root-index` 2,578 ≈ 8.6k 字符（≈2.1k token）**是每轮的稳定大头；
+- classify 接线已 **4 次受挫**（`TS6133` → `TS2554` → `TS2339` → 2 处 runner 断言 `seen=[]`），每次都在消耗轮次，而其收益量级远小于上面的 2.1k token。
+
+**classify 接线的现状（完整留档，日后可一次完成）**：
+1. 三处改动已写成且 **typecheck clean**、**`packages/harness` 685/685 全绿**；
+2. 唯一未解：`packages/runner/src/web-runtime.test.ts` 的 2 个用例 `seen=[]`（探针工具未执行 ⇒ 未路由到 execute），而测试替身 `scriptedWebLlm()` 用**内容匹配**（`includes('Choose the next LittleSheep activity')`，`:48–58`），该串在我改动后**仍被追加** ⇒ **机制尚未解释**；
+3. 诊断命令（下次执行）：`pnpm exec vitest run packages/runner/src/web-runtime.test.ts -t "when disabled" --reporter=verbose`，看 `result.status`/`result.error`/`llmChat.mock.calls` 的条数与每次 messages 条数。
+
+**转向的下一刀（10.140，收益最大）**：让 **`tooling` / `output-directives` / `memory-root-index`** 这三块**跨 run 复用**。
+- 它们当前是**易变段（边界之下）**，且 `decide-contract`（run 专属）在 `07c4b0b` 之后已排到易变区**最后** ✓；
+- 关键问题：这三块在连续两次 decide 之间**是否逐字节相同**（若相同，则只需保证它们**排在 run 专属内容之前**；若不同，则要找出各自的变化源并冻结到 run 级）；
+- **第一步（零成本）**：用 `prefix-detail.mjs <data> decide 2` 逐项对照**同一 run 内**与**跨 run** 两种情形，定位这三块中**首个变化的字节位置**（当前 `prefix-detail` 已显示同 run 内两侧完全一致 ⇒ 说明变化源在**跨 run**）。
+
+**判据（不变）**：命中 ≥95%、miss/调用 <400、`failedRuns=0`、`silentRuns=0`，且不得通过删除或关闭能力换取命中率。
