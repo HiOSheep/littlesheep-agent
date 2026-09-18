@@ -3975,3 +3975,30 @@ idx=7 verify              tools=0
 **预期**：工具块在 run 内**首次 decide** 即出现，其后 tool loop / final_reply / verify **复用同一前缀**；`execute_tool_loop` 的 `uncached` **~5,000 → <1,500**。
 
 **验证（两次样本 + 全门）**：`tool-set-diff.mjs` 中同 run 内 decide 与 tool loop 的 `tools` 列**一致（=15）**、`uncached` 下降、`failedRuns=0`、`silentRuns=0`、`verificationPassRateDelta ≥ 0`、`publishedRuns` 不退化。
+
+## 10.154 落点确认：共享调用助手**不带 `tools`**，工具块由工具循环自行加入（2026-09-18）
+
+**取证**：全仓库 **唯一生产 `llm.chat(` 调用点**是 `packages/harness/src/stages/_shared.ts:332`（其余为测试）。该处构造的 provider 请求：
+
+```ts
+const request = {           // _shared.ts:315–321
+  model,
+  messages: msgs,
+  temperature: opts.temperature ?? 0,
+  max_tokens: currentMaxTokens,
+  signal: opts.signal,
+};                          // ← 没有 tools 字段
+```
+
+⇒ **所有经此助手的阶段（decide / reply / verify / recover / classify）都发不出工具块**；实测中 `decide tools=0` ✓ 与此完全一致。**工具块只在工具循环自己的请求构造里加入**（`tool-loop.ts`，由 `execute/runners.ts:42` / `task-step-runner.ts:138` 传入的 `tools` 驱动）。
+
+**10.150 的实现路径（下一步，三处）**：
+1. `_shared.ts` 的调用选项（`opts`）新增可选 **`tools?: AgentTool[]`**，并在 `:315` 的 `request` 里带上（转换逻辑**复用工具循环已有的 AgentTool→provider schema 转换**，避免重复实现）；
+2. **decide 阶段**调用该助手时传 `tools: ctx.tools`（decide 是"选工具"的阶段，看到全集语义正确）；
+3. `task-step-runner.ts:138`：`pickPlanTools(ctx.plan, ctx.tools)` → **`ctx.tools`**（广告全集；执行期仍由 6 处校验按 `step.tools` 约束 —— 见 10.153 绿灯）。
+
+**预期**：工具块**在 run 内首次 decide 即出现** ⇒ 其后 tool loop / final_reply / verify 复用同一前缀；`execute_tool_loop` 的 `uncached` **~5,000 → <1,500**。
+
+**风险**：decide 见到 schema 后可能**误发 tool call**（其契约为纯决策输出）⇒ 两次样本须确认 `verificationPassRateDelta ≥ 0`、`publishedRuns` 不退化、`failedRuns=0`、`silentRuns=0`，否则回退。
+
+**注意**：`reply` 应**保持无工具**（纯对话路径），故第 1 步的 `tools` 必须**按阶段可选**传入，而非全局默认。
