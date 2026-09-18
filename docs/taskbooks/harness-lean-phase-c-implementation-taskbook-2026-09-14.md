@@ -2656,3 +2656,26 @@ if (rewriteCount >= MAX_VISIBLE_REPLY_REWRITES) {
 **同步要改的断言**：`packages/harness/src/stages/reply.test.ts:475`（现在期望 `/repeated a previously published reply/` 失败）；并新增一条"重复时仍然发布 + 记录告警"的用例。
 
 **验收（8×5 实机）**：`silentRuns` 保持 **0**；`failedRuns` 期望 **10 → ≈4**（仅剩预算耗尽那一类）；命中率 / miss 调用不回归；`check:repo`、全量 vitest、两条 Electron 门全绿。
+
+### 11.12 11.11 配方的一个硬约束（已查清）：注册表 API **没有"强制发布"入口**（2026-09-18）
+
+**查证结果：** `packages/types/src/agent.ts:233`
+
+```ts
+reserveUserFacingReply?: (reply: string) => Promise<boolean>;
+```
+
+—— 只有**单参**、返回布尔值，**没有** `allowDuplicate` / `force` 之类的入口。因此"重复闸门建议化"**不是一行改动**，需要在运行时新增一条**"发布已知重复"的路径**，并且必须同时满足三条不变量：
+
+1. **发布可追溯**：`replyProvenance` 必须仍来自真实 Provider 请求（否则 `finalize` 会拒绝发布 —— 这一点在 11.8 已有实测）；
+2. **运行时不得代笔**：`user-facing-reply.ts:134–139` 明确写着运行时"never authors replacement text"，所以**不能**用"加一个区分性开头"的办法绕过重复判定（那等于运行时改写模型输出）；
+3. **可观测**：重复发布必须留下记录（指纹账本以"重复"标记写入 + 一条 durable 告警事件），否则我们将失去"用户看到重复回复"的观测能力。
+
+**因此实现形态（下一轮照此做）：**
+- 在 `reserveUserFacingReplyOnce` 增加一个**显式选项**（如 `{ onDuplicate: 'publish-with-warning' }`），仅在 `acceptUniqueUserFacingReply` 的重写次数耗尽时传入；
+- 该分支内：**跳过注册表的拒绝**（它返回 false 时不再返回 `undefined`），照常构造 `provenance` / `finalReplySettlement` / `replyFingerprint` 并 `writeReplyState(...)`，随后追加一条 `reply_duplicate_published` durable 事件 + 把指纹以重复标记记账；
+- `reply.test.ts:475` 的断言从"失败"改为"仍发布 + 有告警"。
+
+**验收不变**：`silentRuns` 保持 0；`failedRuns` 期望 **10 → ≈4**；命中率 / miss 调用不回归；`check:repo` + 全量 vitest + 两条 Electron 门全绿。
+
+> 说明：这一条约束是"多花一轮"换来的——它把原本看起来的"改一个 `throw`"变成"新增一条带记账的发布路径"。在发布语义上，这正是必须花的成本（前两轮的教训：发布路径的每一处疏漏都会以"用户什么都看不到"的形式出现）。
