@@ -4560,3 +4560,30 @@ const stepSystemPrompt = appendSystemPromptBundleAddons(baseSystemPrompt, [{
 **下一轮（一次读取即可确定）**：读 `packages/harness/src/stages/execute/tool-loop.ts` 的消息装配段（把 `options.tools`/`messages`/history/trailing 拼成 provider 请求的位置，预期在循环开头 `messages.push(...)` 一带），确认 trailing 段的实际插入点；然后**只改这一处**（把 trailing 移到历史之后）→ 全门 + 两次样本。
 
 **预期（不变）**：`execute_tool_loop` miss 5,983 → ~1/3；短会话 miss ~920 → ~700、hit → ~75%（触及判据 ①）；长会话 miss 1,353 → ~900、hit → ~78%。**不裁剪能力**（step-contract 内容一字不减，仅位置改到历史之后）。
+
+## 10.176 **决定性核实**：`step-contract` 在**同一条 13.8k 字符的 system 消息内部**，修法由此确定（2026-09-18）
+
+脚本：工作区 `msg-order.mjs <dataDir>`（输出 **provider 实际消息顺序**，取 `modelRequests[].messages[]` 的 role + characterCount）。
+
+**`execute_tool_loop` 的真实消息顺序（run `5e4ca1e1` idx=3，13 条）**：
+```
+ 0 system   13802   ← 整条系统消息（共享头 + 稳定段 + 易变段 + **step-contract** 全在里面）
+ 1 user        29   2 assistant 37   3 user 23   … 9 user 37     ← 历史（本例 9 条）
+10 system     251
+11 system     673
+12 system    1987   ← 尾部上下文（**在历史之后** ✓）
+```
+另一 run（`41ca5120` idx=3）：`messages=61`（历史更长），`0 system 13797`，尾部仍在最后。
+
+**两条更正/结论**：
+1. **尾部上下文确实在历史之后** ✓（与 `system-prompt-cache-split.test.ts` 的用例名一致）⇒ 我上一轮基于 **`contextSnapshots` 顺序**的判断（"step-contract 在历史之前"）是**快照顺序**，**不是 provider 顺序** —— 本会话第二次因混淆"快照顺序 vs 实际顺序"得出错误推断；
+2. **真正的机制**：**系统消息是一整条 13,802 字符**，其中**包含逐步变化的 `step-contract`（1,211 字符）** ⇒ 每步变化都会**在这条消息内部**打断前缀 ⇒ **该消息剩余部分 + 其后整段历史全部重算** ✓ 与 `execute_tool_loop` 30.4% 命中、5,983 miss/次完全一致。
+
+**修法（一处，缓存布局，不裁剪能力）**：
+- 在 `task-step-runner.ts:96` **不要把 `step-contract` 追加进 system bundle**，而是把它作为**尾部上下文消息**（同 10–12 那三条的机制，位于历史之后）发出；
+- ⇒ **系统消息变为跨步字节稳定** ⇒ 前缀覆盖"系统消息 + 历史"，miss 只剩新增尾部内容；
+- **内容一字不减**（`step-contract` 照发，仅换位置）⇒ 满足"能力不收缩"；**不触碰 decide/final-reply 契约** ⇒ 无需授权。
+
+**预期**：`execute_tool_loop` miss 5,983 → ~1/3；**短会话 miss ~920 → ~700、hit → ~75%（触及判据 ①）**；长会话 hit → ~78%。
+
+**下一轮（落地）**：读 `task-step-runner.ts:88–140` 与 `tool-loop.ts` 接收 `insertedBeforePrimary`/trailing 的入口，把该段改为尾部消息；然后全门 + 两次样本。
