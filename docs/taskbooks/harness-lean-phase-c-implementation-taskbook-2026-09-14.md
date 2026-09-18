@@ -5064,3 +5064,40 @@ run pairs=119  avgFirstCallMiss=1,269  avgPrompt=4,497  hit=71.8%
 **预期**：run 间转移的 miss **1,269 → 约 400**（共享头 2,934 + 历史可复用）；长会话总体 hit **74.1% → 约 85%**；短会话同步提升。
 
 **判据进度**：① 达标（短会话 hit ≈75.5%、miss ≈708.6）；② 未达（长会话 74.1%），本轮把其**最大因子（54%）**定位到"run 边界的单条/分段结构交替"，且修法（统一 `systemSegments`）**不涉契约、无需授权**。
+
+## 10.194 机制：候选层**总是**命名 `${stage}:system`，并**已有** `VOLATILE_GUIDANCE_SEGMENT_IDS` 拆分机制（2026-09-18）
+
+**源码（`packages/harness/src/context-candidates.ts:62–83`）**：
+```ts
+// inside the system message would truncate the Provider's cached prefix for
+// ... memory, workspace and bootstrap stay in the system message untouched.
+const trailingAddons = (options.systemSegments ?? []).filter((s) => VOLATILE_GUIDANCE_SEGMENT_IDS.has(s.id));
+const systemSegments = VOLATILE_GUIDANCE_SEGMENT_IDS.size === 0 || trailingAddons.length === 0
+  ? options.systemSegments
+  : (options.systemSegments ?? []).filter((s) => !VOLATILE_GUIDANCE_SEGMENT_IDS.has(s.id));
+const systemMessage = trailingAddons.length === 0
+  ? messages[0]
+  : { ...(messages[0] as ChatMessage), content: (systemSegments ?? []).map((s) => s.text).join('') };
+…
+if (index === 0 && message.role === 'system') {
+  return { id: `${stage}:system`, message: systemMessage ?? message, kind: 'system_prompt',
+           source: { kind: 'prompt', id: `${stage}:system` }, segments: systemSegments };
+}
+```
+
+**三条结论**：
+1. **命名与"单条/分段"无关**：候选层**始终**产出 **一个** `${stage}:system` 候选，并携带 `segments`；快照里出现 `identity`/`core-flow` 等**独立条目**，说明**记录层把 `segments` 展开了** ⇒ 10.193 的 `diffAt0|reply:system -> identity` **可能是"同一字节、不同展开"**（不必然造成缓存损失）；
+2. **已存在"把易变指导段移到尾部"的机制**：`VOLATILE_GUIDANCE_SEGMENT_IDS` —— **这正是本目标三刀在手工做的事**（`step-contract`、`reply`/`final-reply` 的重写契约）⇒ 后续应**优先用它**（把段 id 加入该集合）而不是逐个改调用点；
+3. **`options.systemSegments` 缺省时不做任何拆分** ⇒ 凡**未传 `systemSegments`** 的调用点，其易变段就**留在 system 消息内** ⇒ 造成前缀断裂（与已修三处同源）。
+
+**下一轮（两条并行取证，均零成本）**：
+1. `grep -n 'VOLATILE_GUIDANCE_SEGMENT_IDS' packages/harness/src` ⇒ 看**哪些段**已在集合中（确认 `step-contract` 是否应加入、以及 `reply`/`final-reply` 的契约段是否已被覆盖）；
+2. 列出**未传 `systemSegments`** 的调用点（`grep -n 'buildRunRequestCandidates' packages/harness/src`）⇒ 这些是**剩余同源缺陷**的清单（预期含 `reply`、`verify`、`decide` 的若干分支）。
+
+**修法（下一步，二选一，均不裁剪能力）**：
+- **A**：把剩余易变段 id 加入 `VOLATILE_GUIDANCE_SEGMENT_IDS`（**一处改动、覆盖所有调用点**，前提是各调用点都传了 `systemSegments`）；
+- **B**：给未传 `systemSegments` 的调用点补传（内容不变）。
+
+**预期**：run 间转移（占长会话 miss 54%）的共享前缀从 0/284 提升到 **2,934 + 历史**；长会话 hit **74.1% → 约 85%**。
+
+**判据进度**：① 达标（短会话 hit ≈75.5%、miss ≈708.6）；② 未达（长会话 74.1%），修法已收敛到"用既有的 `systemSegments` 机制对齐各调用点"。
