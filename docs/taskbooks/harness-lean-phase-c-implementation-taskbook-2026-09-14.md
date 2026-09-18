@@ -2479,3 +2479,24 @@ C10B 矩阵 HC-07 由「部分」变为「通过（离线）」。
 **技能形态（目标）**：注册一个 `ask_user` 技能，输入为**有界问题 schema**（`field` / `prompt` / `required`），由模型在 reply/execute 中**主动调用**；调用时运行时只做两件事：① 把问题作为**正常回复**发布；② 记一个有界"等待用户"事实（供续跑识别）。**"要不要问用户"从此是模型决策，而不是路由/契约判定。**
 
 **必须保留（安全类，留在运行时）**：等待点的幂等与续跑识别、发布可追溯性、HC-12 撤销语义、记忆连续性、8 个 Electron 连续性场景。ASX_USER 的"不可达但保留"状态允许一次提交回滚，直到 11.4 全部落地并复测通过。
+
+### 11.5 复测（reply 空输出兜底 + ASK_USER 草稿兜底）：**未达标，且暴露真正主因**（2026-09-18）
+
+**本轮切片：** `f11ce37`（ASK_USER 措辞为空时发布运行时草稿）+ `74c33ec`（reply 空输出一次有界重试，仍空则响亮失败）。同配置实机 8×5、真实 DeepSeek：
+
+| 指标 | 上一版 | **本轮** | 判读 |
+| --- | --- | --- | --- |
+| `failedRuns`（shadow / next） | 0 / 0 | **0 / 5** | 出现 5 个失败 run |
+| `emptyReplies`（shadow / next） | 11 / 11 | **7 / 11** | **未归零**（shadow 7、next 11） |
+| `invalid continuation disposition` / `ambiguous and was not claimed` | 0 | **10 处** | **该失效模式回来了** |
+| 主对话命中率 | 66.4 / 65.9% | **65.9 / 68.9%** | 无回归 |
+| miss token / 调用 | 964 / 970 | **936.4 / 904.6** | 无回归 |
+
+**如实结论：本切片没有达成 `emptyReplies → 0`**，且"延续 disposition"类失败以 **10 处**重新出现 —— 说明**移除 classify 的 clarify 路由只堵住了四个入口中的一个**：`decide` 的 `needs_clarification`、`recover` 的升级、`verify` 的失败判定这三处仍会把运行送进 `ask_user` 与 `waiting_user` 机制，而那套机制正是判断合法输出为协议违规的源头。
+
+**因此主因已确定（下一轮的直接目标）：** 不是"某处没兜底"，而是 **11.4 里那张四入口网络**。兜底（`f11ce37`/`74c33ec`）只是让**症状**不再静默，**病因**仍在：判断类决策被写成" parked 阶段 + 延续协议"。
+
+**下一轮顺序（不再猜）：**
+1. 用 `empty-reply-attribution.mjs` 对**本轮数据根**（`littlesheep-path-next-n5fMoG`）做零成本归因，确认 11 个空回复里"ask_user 类"与"reply 空输出类"各是多少（验证兜底是否把 reply 那一类清零）；
+2. 按 11.4 落地 **ASK_USER → skill**（关闭 `decide/adoption.ts:115`、`recover.ts:57/87/101/163`、`verify/routing.ts:311` 三处出口，改为"带问题的正常回复 + 技能调用才产生等待点"）；
+3. 复测判据：`emptyReplies → 0`、`disposition 类报错 → 0`、`failedRuns` 不高于基线（0），且命中率/成本不回归。
