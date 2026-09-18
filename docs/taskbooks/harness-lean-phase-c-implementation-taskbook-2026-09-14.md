@@ -3859,3 +3859,35 @@ export function pickStepTools(step: PlanStep, tools: AgentTool[]): AgentTool[] {
 **验收**：`tool-set-diff.mjs` 中同一 run 的任务类调用 `tools` 列**一致**、`execute_tool_loop` 的 `uncached` 从 4,600–5,700 降到 **<1,500**；全门 + **两次** 8×5（`failedRuns=0`、`silentRuns=0`、`publishedRuns`/`verificationPassRateDelta` 不退化）。
 
 **若并集方案仍不足**：再评估"广告层与执行层分离"（向 provider 送整套、循环内仍按 `pickStepTools` 校验）—— 那需要给循环 API 增一个 `allowedToolNames` 参数，改动更大，故列为备选。
+
+## 10.149 `pickPlanTools`（plan 并集）实测：**零收益**，原因已确认（2026-09-18）
+
+**已提交**：`8827b90`（`failure-policy.ts` 新增 `pickPlanTools`；`task-step-runner.ts` 每步改用 plan 并集）。门禁全绿：`typecheck`、全量 **461 文件 / 3,287 通过 / 0 失败**、`check:repo` 33/33、continuity ok、UI ok。
+
+**一次实机样本（产品级 8×5）**：
+
+| 指标 | 改前（10.129 基线） | **改后 #1** |
+| --- | --- | --- |
+| `failedRuns` / `publishedRuns` / `silentRuns` | 0 / 40 / 0 | **0 / 40 / 0** ✓ |
+| 主对话命中 | 67.3–69.6% | **66.9% / 66.3%**（同带） |
+| miss/调用 | 839–892.5 | **898.4 / 881.5**（同带） |
+
+**逐 purpose（`cache-verdicts.mjs`，86 请求）**：`execute_tool_loop` **5 次、miss/调用 4,956**（命中 34.1%）、`decide` 1,224、`execute_final_reply` 846、`verify` 958、`reply` 498（命中 80.2%）。
+
+**`tool-set-diff.mjs` 确认原因**：同一 run 内仍是
+
+```
+idx=1 decide            tools=0   uncached=1127
+idx=2 decide            tools=0   uncached=767
+idx=3 execute_tool_loop tools=15  uncached=5281   ← 工具块首次出现在这里
+idx=4 execute_final_reply tools=0 uncached=890
+```
+
+⇒ **每个 run 的第一次"带工具"调用就是 tool loop 本身**；plan 并集只在"同一 run 内有多次 tool loop 且各自子集不同"时才有收益，而本负载每个 run 只有一次 tool loop ⇒ **本刀无可测收益**（也无可测损害；「正确性全绿」）。
+
+**下一刀（10.150 = 10.148 第 3 步，仍是同一机制）**：**让执行类 run 的 `decide` 广告同一工具集**（取自 `pickPlanTools`）。这样**工具块在 decide 首次出现**，随后的 tool loop 与 final_reply 都位于同一前缀之后 ⇒ 可复用 decide 已付过的工具块 + 共享头 + 历史；预期 `execute_tool_loop` 的 `uncached` 从 ~5,000 降到 **<1,500**（因为它不再为首个工具块付费，只需付自己的新增内容）。
+- **落点**：`decide/normalization.ts:131/213` 的 `tools:` 入参（当前 decide 自有一套来源）；
+- **口径**：工具**只增不减**（decide 原本无工具或有子集；改后为 plan 并集）、**执行期仍以 plan 声明为界**（tool loop 侧已由 `pickPlanTools` 约束）；
+- **风险**：decide 拿到工具 schema 后**可能误发 tool call** ⇒ 两次样本须确认 `verificationPassRateDelta ≥ 0`、`publishedRuns` 不退化，否则回退。
+
+**判据（不变）**：命中 ≥95%、miss/调用 <400、`failedRuns=0`、`silentRuns=0`，不裁剪能力。
