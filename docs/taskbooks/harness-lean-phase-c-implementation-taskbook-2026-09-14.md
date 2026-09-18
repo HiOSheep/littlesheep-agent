@@ -4616,3 +4616,23 @@ const stepSystemPrompt = appendSystemPromptBundleAddons(baseSystemPrompt, [{
 然后按同一模式改 `task-step-runner`/`tool-loop` 的装配，跑全门 + 两次样本。
 
 **判据进度**：① 未达（67–68%、~900）；② 未达（68.1%）；硬约束满足（`failedRuns=0`、`silentRuns=0`、未裁剪能力）。
+
+## 10.178 **更正 10.177**：`splitSystemPromptForCache` 在生产中**没有任何调用者**（2026-09-18）
+
+`grep 'splitSystemPromptForCache('` 全仓命中 **3 处**：定义（`system-prompt-cache-split.ts:37`）与其**测试**（`:22, :34`）⇒ **生产路径一律不做 cache-split**，每个 purpose 都把自己的 **整条 bundle** 作为**一条 system 消息**发出。
+
+**因此 10.177 的解释（"reply 做了 split、工具循环没做"）作废**。真实原因是**两条路径的 bundle 大小与内容不同**：
+
+| 路径 | system 消息 | 构成 |
+| --- | --- | --- |
+| `reply` | 6,616 / 6,984 | `respond` 模式：**不含** `tooling`(4,179) 与 `output-directives`(1,805)；两种变体差 368 |
+| **`execute_tool_loop`** | **12,591–13,910** | 含 `tooling` + `output-directives` + 逐步变化的 **`step-contract`(1,211)** |
+| `decide` | 15,505 | 含 `tooling` 等（恒定，命中 81%） |
+
+**机制仍然成立（10.176）**：`step-contract` 位于 **system 消息内部**（按 10.128 的合并规则在 bundle 末尾），每步一变 ⇒ 断点在**这条消息内部** ⇒ 其后（含整段历史）重算 ✓ 与 `execute_tool_loop` 30.4% 命中、5,983 miss/次吻合。
+
+**正确修法（一处，不裁剪能力、无需授权）**：**不要把 `step-contract` 追加进 system bundle**（`task-step-runner.ts:96–110`），而是把它送入**尾部上下文通道** —— 即与 `attachmentMessages` 同一通道（provider 顺序显示这类尾部 system 消息位于**历史之后**：`10 system 251 / 11 system 673 / 12 system 1987`）；system 消息随之**跨步恒定**，前缀覆盖"system + 历史"。
+
+**下一轮要读的一处**：`attachmentContextMessages(ctx.runId, ctx.attachments)` 的返回形状（`context-candidates.ts` 或 `_shared.ts`）与其在 `buildBaseMessages(ctx, systemText, attachmentMessages, …)` 中的使用 ⇒ 据此把 `step-contract` 作为同形条目追加（内容一字不减），并移除 bundle addon。
+
+**判据进度**：① 未达（67–68%、~900）；② 未达（68.1%）；硬约束满足。
