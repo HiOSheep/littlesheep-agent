@@ -5918,3 +5918,28 @@ export function toolsForRetrievalIntent(ctx) {
 - **②**（长会话 ≥95%）：未达（74.7%），结构性原因见 10.203（C1/C4 为真实新增，C3/C5/C6 属设计取舍）。
 
 **下一步**：**S2**（合并 `output-directives`(1,805) 与 `response-directives`(730) 的重叠表述，估省 500–900 字符/次，**信息不减少**）—— 先逐条列出两份文本的重叠项，再实施；预期把 hit 推过 75%（判据 ① 的 hit 达标）。
+
+## 10.220 **S2 更正**：两份指令段**互斥**（full vs respond），合并它们不减少单次 prompt（2026-09-18）
+
+**取证**：
+- `sections.ts:174–189` `outputDirectivesSection()`（1,805 字符，"# Assistant Output Directives"，14 条）
+- `sections.ts:192–200` `responseDirectivesSection()`（730 字符，"# Response Contract"，6 条）
+- `builder.ts:197` `addVolatile('output-directives', …)` / `:199` `addVolatile('response-directives', …)` ⇒ 分别位于 `isFull` 与 `isRespond` 分支 ⇒ **每个请求只发送其中一份**（互斥）。
+
+**逐条比对**：`response-directives` 的 6 条与 `output-directives` 高度重叠（语言、渐进披露、不暴露私有推理、时间精度、失败不隐藏），本质是**同一契约的压缩版**。
+
+**⇒ 结论（更正）**：
+- 二者**从不同时发送** ⇒ "合并两段以省 500–900 字符/次"**不成立**（合并只减少**源码重复**，不减少**单次 prompt**）；
+- 10.215 的 S2 收益估计**作废**。
+
+**⇒ 真正的"同一次调用内"重叠候选**（`reply` 的 system 6,616 内）：
+| 段 | 字符 | 可能重叠对象 |
+| --- | --- | --- |
+| `response-directives` 730 | 输出契约 | `profile` 335 + `user-facing-voice` 687（`profile-prompt.ts`） |
+| `profile` 335 | 行为/语气 | 同上 |
+| `user-facing-voice` 687 | 语气/格式 | 同上 |
+⇒ 三者（共 **1,752 字符**）都在**同一次 `reply` 调用**中，主题重叠（行为、语气、输出形态）⇒ **合并同义项**可省 **~300–600 字符/次**（**信息不减少**，需逐条核对后实施）。
+
+**推送状态**：本地 `fdfb0b5`（S1 代码）+ `16d91cc`（文档）**仍未推送** —— 连续三次 `git push` 均报 `TLS connect error: unexpected eof while reading`（环境网络问题）；远端仍为 `7bbba6f`，工作树干净。
+
+**下一轮**：读 `profile-prompt.ts` 的 `buildUserFacingVoiceAddon` / `ctx.profilePromptAddon` 文本，与 `responseDirectivesSection()` 逐条比对，产出**可执行的合并清单**（信息不减少）；同时继续重试推送。
