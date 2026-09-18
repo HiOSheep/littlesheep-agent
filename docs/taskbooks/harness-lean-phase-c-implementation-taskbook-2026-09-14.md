@@ -2407,3 +2407,39 @@ C10B 矩阵 HC-07 由「部分」变为「通过（离线）」。
 **与 10.113 的实机结论不矛盾：** 326 字符 ≈ 80–100 token，摊到整场约 25 万 prompt token 上最多值 ~1pt，**低于单次运行的波动**，所以 10.113 的"实机无提升"是**测量分辨率**问题，不是改动无效。本改动因此以**本地忠实判据**为准予以保留。
 
 **遗留（下一轮的第一件事）：** `classify` 的 system（1,623 字符）与其它阶段**零共享**，而它每轮都跑；把它也改为"共享头 + 路由器契约走尾部"是**余下最大的一块确定性收益**（其自身命中率 0% → 接近 100%，并让它不再打断缓存链）。
+
+## 十一、状态机重设计专项（2026-09-18 起）
+
+> 目标：把"判断类"决策交还模型（有界提示词 + 技能），只把"安全类"事实留在运行时闸门；状态机只保留"可恢复的最小事实"。
+> 纪律：每个切片都要真实 Provider 复测（`failedRuns` / `emptyReplies` / 命中率）并通过全门（typecheck、vitest、`check:repo`、Electron 连续性与 UI 状态）后才提交。
+
+### 11.1 现状清单 + 已观测失效（第一版，逐项都有实测证据）
+
+| # | 状态机 | 职责 | 已观测失效（证据） | 目标形态 |
+| --- | --- | --- | --- | --- |
+| 1 | **活动路由**（classify → respond/execute/clarify → stage） | 决定本轮走回复/执行/澄清 | `clarify` 误判把正常请求踢进澄清链；移除该路由后 **failedRuns 7→0**、`invalid continuation disposition` 归零（10.117 实测） | 只输出 `respond/execute`；歧义由回复自身处理 |
+| 2 | **澄清 / 等待用户**（`clarificationRequest` + `waiting_user` + continuation disposition） | 让运行停等用户补充 | `invalid continuation disposition`、`ambiguous and was not claimed`；**4/11 空回复来自 `decide → needs_clarification → ask_user`**（仍在） | **降级为 skill**（模型主动调用，产生"带问题的正常回复"+ 一个有界等待点） |
+| 3 | **发布 / 结算闸门**（final-reply reservation/settlement + provenance + 连续性判据） | 保证只发布可追溯的真实回答 | **7/11 空回复**：`enter>classify>reply` 但 `reply=''`、无 settlement、无 provenance、无 error（静默收尾） | 空输出必须有界补一次"回答或提问"，不得静默结束 |
+| 4 | 工具循环（迭代、无进展闩锁、证据指纹、强制收尾） | 单步内驱动工具直到收敛 | 曾以"丢弃旧历史"换成本，反噬前缀缓存（已改纯追加，10.108） | 迭代预算与证据判定保留；历史纯追加 |
+| 5 | 恢复 / 重试（recoveryAttempts、abort 重写、升级） | 失败后诊断并重试 | 恢复调用自带窄历史（已归一）；abort 理由重复触发重写 | 只保留"重试次数与失败证据" |
+| 6 | VERIFY / 重规划（pass/needs_replan/fail + 有界 replan） | 判定目标是否达成 | 与工具循环叠加时预算不可见（round 40 出现双 execute+双 recover 后转 ask_user） | 判定交模型，重规划上限由运行时记账 |
+| 7 | checkpoint / 续跑（run lease、durable inbox、stale-checkpoint 守卫） | 中断后可恢复 | 陈旧 waiting 检查点曾"毒化会话"（长会话 0 失败靠修它才实现） | 保留（安全类），但状态面收窄 |
+| 8 | 会话压缩（threshold/keepRecent/后台/operation 状态） | 控制上下文长度 | `keepRecent=20` 成为前缀缓存的隐形上限（10.108 修为 200） | 与缓存/恢复语义解耦 |
+| 9 | 工作策略升级（compact vs bounded_loop） | 决定工具循环形态 | 与路由耦合，直接决定走哪些阶段 | 作为"可用动作集合"暴露给模型 |
+| 10 | 记忆写入 / 已知状态（evolve/capture、working set release） | 长期记忆与撤销 | HC-12 撤销屏障、release note 语义（多条门覆盖） | 保留（安全类） |
+
+**共性病根（初判）：** 判断类决策被写成了"阶段 + 契约 + 等待状态"，一旦模型的自然输出与协议预期不符，运行就**既不产出也不报错**（7 个静默空回复）或**停在等待态**（4 个 ask_user 空回复）。因此重设计的核心不是"减少状态"，而是**把判断类从状态机里拿出来**。
+
+### 11.2 空回复归因（用 keep-data 数据根，零成本，工具 `empty-reply-attribution.mjs`）
+
+某次 8×5 实机（去掉 clarify 路由后）：`runs=40 emptyReplies=11`，归因如下：
+
+| 类别 | 数量 | 形态 | 判读 |
+| --- | --- | --- | --- |
+| **reply 阶段空输出、静默收尾** | **7** | `enter>classify>reply`，`reply=''`、`settle=none`、`prov=none`、无 error | 发布闸门未拒绝、模型也没内容 ⇒ 需要"空输出必须有界补一步"的兜底 |
+| **DECIDE 仍路由到 ask_user** | **4** | `enter>classify>decide>execute>recover>execute>recover>ask_user` | `clarify` 的第二入口（`decide` 的 `needs_clarification` / `adoption.ts` 的 `id:'clarify'` 步骤）；正是"ASK_USER 应作为 skill"要解决的 |
+
+**下一轮动作：**
+1. 归因第 2 类：把 `decide` 的 `needs_clarification` 出口改为**普通回复中的提问**（与 10.117 的 classify 改动一致），复测 `emptyReplies` 是否从 11 → 7；
+2. 归因第 1 类：为"reply 空输出"加**一次有界兜底**（提示模型直接回答或提出那一个必要问题），复测是否 →0；
+3. 两项都稳定后，再把 ASK_USER 真正降级为 **skill**（含 `waiting_user` 只由技能调用产生的语义收窄）。
