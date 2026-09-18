@@ -3693,3 +3693,36 @@ pnpm exec vitest run packages/runner/src/web-runtime.test.ts -t "when disabled" 
 | classifier 前缀通道（地基） | ✅ 已提交**未推送** | `b683cfd`；接线三处改动与诊断命令见 10.134–10.139 |
 | 当前指标 | 命中 **~67–72%**、miss/调用 **~840–940** | `provider-reconcile` |
 | 目标 | ≥95% / <400 | 差距主要来自**普遍存在的 284 短头**与三大稳定块的跨 run 复用 |
+
+## 10.142 **新诊断入口（零 API，直指剩余 miss）**：执行日志自带 `cacheObservation`（2026-09-18）
+
+**发现**（读 `execution-logs/<runId>.json` 时）：每个 `modelRequests[]` 条目都带完整缓存记账：
+
+```json
+"cacheObservation": {
+  "stablePrefix":   { "byteLength": 3666, "itemCount": 1 },
+  "dynamicSuffix":  { "byteLength": 10348, "itemCount": 45 },
+  "components":     { "systemPrompt": "<hash>", "toolSchema": "<hash>", ... },
+  "promptComponents": { "promptVersion": "<hash>", "systemPolicy": "<hash>", "soul": "<hash>",
+                        "userProfile": "<hash>", "memoryRevision": "<hash>", "locale": "<hash>" },
+  "invalidationReasons": ["prompt_version_changed", "memory_revision_changed", "request_kind_changed"],
+  "primaryInvalidationReason": "prompt_version_changed",
+  "providerPrompt": { "tokenCount": 2505, "cachedTokenCount": 2048, "uncachedTokenCount": 457, "hitRatio": 0.8176 },
+  "lsContext": { "status": "miss", "reason": "context_assembly_rebuilt" }
+}
+```
+
+**一个热 reply 调用的实测**：**2,505 token / 命中 2,048（81.8%）/ 未命中 457**；其 `contextSnapshots[0].items` 顺序为
+`identity(284) → core-flow(1530) → safety(292) → workspace(118) → date-time(362) → capabilities(348) → profile(335) → response-directives(730) → memory-root-index(1713) → bootstrap:USER.md(217) → user-facing-voice → 历史… → user_input → runtime-awareness(706)`。
+
+**关键含义**：
+1. `reply` 本身**已经很暖**（未命中仅 457）⇒ 汇总 miss/调用 ~900 **主要由 `decide`/`execute` 的 1,095–3,629 未命中拉高**；
+2. LS **自己**就给出了失效原因（`primaryInvalidationReason` 与六个 `promptComponents` 摘要）⇒ **无需再猜**是哪个组件在逐次变化。
+
+**下一轮唯一诊断（读日志即可，零 API）**：写一个只读脚本遍历某数据根的全部 `modelRequests`，按顺序输出：
+- 每个请求的 `purpose`、`providerPrompt.{tokenCount,cachedTokenCount,uncachedTokenCount}`；
+- **相邻请求之间**哪些 `promptComponents.*` 摘要发生翻转（`promptVersion`/`systemPolicy`/`soul`/`userProfile`/`memoryRevision`/`locale`）；
+- `primaryInvalidationReason` 的分布。
+⇒ 产出"**哪个组件每轮都变**"的排序表；它就是剩余 miss 的根因，且**修法明确**（冻结到 run 级 / 移到尾部）。
+
+**判据（不变）**：命中 ≥95%、miss/调用 <400、`failedRuns=0`、`silentRuns=0`，不裁剪能力。
