@@ -4869,3 +4869,28 @@ source: { kind: 'workflow', id: `${stage}:constraint:${index}`, runId: ctx.runId
 **预期（不变）**：长会话 `reply` miss/调用 **1,162 → 约 500**；长会话 hit **72.1% → 约 85%**；短会话略升。
 
 **判据进度**：① 达标（hit ≈75.5%、miss ≈708.6）；② 未达（72.1%），缺口已定位到重写轮的请求构造。
+
+## 10.187 **定位到根因与第二处同源缺陷**（回退待收口，2026-09-18）
+
+**根因（已读到行）**：`packages/harness/src/stages/reply.ts:316–319` 的重写轮把"Regeneration contract"（≈368 字符）**追加进 system 内容**：
+```ts
+content: `${systemPrompt}\n\nRegeneration contract:\n- The prior API-generated response exactly repeats…`,
+```
+⇒ system 与首答**差 368 字符**（正是实测的 **6,984 = 6,616 + 368**）⇒ 断点在其后 ⇒ **整段历史重算**（每次切换 ≈ +1,238 token，占长会话 `reply` 转移的 50/77）✓ 机制完全吻合。
+
+**第二处同源缺陷（新发现，尚未修）**：`packages/harness/src/stages/execute/final-reply.ts:65` 用**同一手法**把契约追加到 system：
+```ts
+? `${voiceSystemPrompt}\n\nRegeneration contract:\n- The prior API-generated response exactly repeats…`
+```
+⇒ 这**正是 `execute_final_reply` 命中率仅 26–28%** 的原因（长会话 miss/调用 848.6、占 10.5%）—— 与 `reply` 重写是**同一个 bug 的两个实例**。
+
+**本轮尝试与结果**：把 `reply.ts` 的 system 改为 `content: systemPrompt`、契约并入**尾部 user 消息** ⇒ `typecheck` clean、聚焦 **267/267 通过**；但全量套件中 `packages/runner/src/runner.test.ts:1104` 失败（它断言 `messages[0]` 含 'Regeneration contract'）。把该断言改为 `.at(-1)` 后**仍失败**（该用例对重写请求还有其它断言，尚未看到原文）⇒ **两处均已回退**，工作树干净。
+
+**下一轮（一次读完再改，两步）**：
+1. 读 `packages/runner/src/runner.test.ts:1060–1140`（用例 "rewrites an exact reply from older session history after runner restart" 的**全部断言**），并读 `execute/final-reply.ts:55–75`；
+2. 一次改**三处**：`reply.ts`（system 不变 + 契约入尾部）、`final-reply.ts`（同上）、`runner.test.ts`（断言改为检查尾部消息承载契约，**保留其原意**：重写必须是一次真实模型调用且带重写指令）；
+3. 全门 + **两次**样本（短 8×5 + 长 8×15）。
+
+**预期**：长会话 `reply` miss/调用 **1,162 → 约 500**、`execute_final_reply` **848 → 约 400** ⇒ 长会话 hit **72.1% → 约 85%**；短会话 hit 略升。**内容一字不减**（契约文本原样保留，只改承载位置）。
+
+**判据进度**：① 达标（hit ≈75.5%、miss ≈708.6）；② 未达（72.1%），但缺口已**定位到两处同源缺陷**，且修法与已奏效的 `step-contract` 完全同型。
