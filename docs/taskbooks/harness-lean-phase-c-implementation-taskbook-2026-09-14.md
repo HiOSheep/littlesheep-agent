@@ -3835,3 +3835,27 @@ pnpm exec vitest run packages/runner/src/web-runtime.test.ts -t "when disabled" 
 - 若它**同时是执行期的允许清单** ⇒ 送整集仍需保留执行期校验（否则是放宽权限，属安全变更）⇒ 实施前**必须读 `execute/failure-policy.ts:14` 的 `pickStepTools` 及其调用点**确认，并在任务书注明结论。
 
 **验收**：`node tool-set-diff.mjs <data>` 中任务类各调用的 `tools` 列**一致（=15）**、`uncached` 从 4,600–5,700 降到 **<1,500**；全门 + **两次** 8×5 样本（`failedRuns=0`、`silentRuns=0`、`publishedRuns` 与 `verificationPassRateDelta` 不退化）。
+
+## 10.148 `pickStepTools` 判定 + 更安全的等价改法（2026-09-18）
+
+**源码**（`packages/harness/src/stages/execute/failure-policy.ts:14–18`）：
+```ts
+export function pickStepTools(step: PlanStep, tools: AgentTool[]): AgentTool[] {
+  if (!step.tools) return tools;
+  const names = new Set(step.tools);
+  return tools.filter((tool) => names.has(tool.name));
+}
+```
+**判定**：它是"按**该步骤声明的工具名**过滤"的**选择**辅助；其返回值直接作为 `task-step-runner.ts:138` 循环的 `tools`，而循环据此校验/执行工具调用 ⇒ **事实上承担了"该步允许哪些工具"的约束** ⇒ **不可直接替换为 `ctx.tools`**（那会放宽执行期权限，属安全变更）。
+
+**更安全的等价改法（保持约束来自 plan，仅消除"逐步变化"）**：
+1. **新增 `pickPlanTools(plan, tools)`**：取**整个 plan 全部步骤声明的工具并集**（`union(step.tools)`），再与 `ctx.tools` 取交；
+2. `task-step-runner.ts:138`：`pickStepTools(step, ctx.tools)` → **`pickPlanTools(ctx.plan, ctx.tools)`** ⇒ **同一 run 内每一步的工具块相同**（约束仍**源自 plan**：不会出现 plan 未声明的工具），`tool_schema_changed` 消失；
+3. **同时**让 `decide`（`decide/normalization.ts`）在此 run 为"执行类"时广告**同一工具集**（同样取自 `pickPlanTools`），否则首个 tool loop 仍需为工具块付费（实测 idx=3 的 4,600–5,700 正是"前两次 decide 无工具、第三次突然带 15 个工具"造成）；
+4. `reply` **保持无工具**。
+
+**能力口径**：工具**只增不减**（并集 ⊇ 单步集合）；**权限口径**：执行期仍以 plan 声明的工具为界（**未放宽**），只是把"逐步不同"变成"run 内一致"。
+
+**验收**：`tool-set-diff.mjs` 中同一 run 的任务类调用 `tools` 列**一致**、`execute_tool_loop` 的 `uncached` 从 4,600–5,700 降到 **<1,500**；全门 + **两次** 8×5（`failedRuns=0`、`silentRuns=0`、`publishedRuns`/`verificationPassRateDelta` 不退化）。
+
+**若并集方案仍不足**：再评估"广告层与执行层分离"（向 provider 送整套、循环内仍按 `pickStepTools` 校验）—— 那需要给循环 API 增一个 `allowedToolNames` 参数，改动更大，故列为备选。
