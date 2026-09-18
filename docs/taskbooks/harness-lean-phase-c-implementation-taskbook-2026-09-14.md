@@ -3370,3 +3370,29 @@ const baseSystemPrompt = compactExplicitTool
 **教训（重要，避免重犯）**：`appendSystemPromptBundleAddons` 的 stable/volatile 归属**不是简单"上/下移动"**——把 addon 改成易变会改变**标记插入位置与段序重建**，进而影响**所有 purpose** 的头部（连 `reply→reply` 都受影响）⇒ 下次动它之前**必须先读该函数的段序重建逻辑**（`profile-prompt.ts:47–100`），并在本地用 `prefix-diff` 验证，不可凭"搬到边界之下"的直觉直接改。
 
 **下一步（回到主瓶颈）**：跨路径共享已由 `817e4ce` 稳定在 **2,934 字符**；真正的主项是 **`decide` 请求 head 之后约 16k 字符（≈4k token）每次新鲜** ⇒ 应审计其构成（bootstrap / 会话摘要 / 记忆索引 / 初始记忆上下文 / 工具 schema）并使其**跨调用可复用**，而不是继续微调 addon 归属。
+
+## 10.127 主瓶颈的**构成审计**（`decide` 请求逐项，2026-09-18）
+
+数据根 `littlesheep-path-next-n8Kvxm`；工具 `prefix-detail.mjs <data> decide 2`（对同一 run 内两次 decide 逐项对比，两边**大小完全一致**）。
+
+| # | 项 | 大小（字符） | 性质 |
+| --- | --- | --- | --- |
+| 0 | `identity` | 284 | 共享头 ✓ |
+| 1 | `core-flow` | 1530 | 共享头 ✓ |
+| 2 | `safety` | 292 | 共享头 ✓ |
+| 3 | `workspace` | 118 | 共享头 ✓ |
+| 4 | `date-time` | 362 | 共享头 ✓ |
+| 5 | `capabilities` | 348 | 共享头 ✓ |
+| **6** | **`decide-contract`（workflow_state）** | **2914** | **run 专属（每次/每 run 不同）** |
+| 7 | `profile` | 335 | 稳定 |
+| 8 | `tooling` | 4179 | 稳定（工具 schema） |
+| 9 | `runtime` | 96 | 稳定 |
+| 10 | `output-directives` | 1805 | 稳定 |
+| 11 | `memory-root-index` | 2578 | 多数稳定 |
+| 12 | `bootstrap:AGENTS.md` | 228 | 稳定 |
+
+头部合计 **2,934**（= 实测跨 purpose `stableChars` ✓）。**`decide` 请求总计约 19k 字符（≈4.7k token）**。
+
+**关键结论**：**run 专属的 `decide-contract`（#6）排在稳定项（#7–#12，合计 ≈9.2k 字符 ≈2.3k token）之前**。Provider 只复用"从 token 0 起的最长公共前缀"，因此**它一旦不同，#7 之后的全部内容（含 `tooling`/`output-directives`/`memory-root-index` 与整段历史）在跨 run 时全部作废**。这解释了 `provider-reconcile` 里 `decide after reply` 行出现的 **1095–3629 token 新鲜**。
+
+**下一刀（10.128，按证据）**：把 **run 专属项移到稳定项之后**（即 `decide-contract` 放到尾部/边界之下，让 `profile`/`tooling`/`runtime`/`output-directives`/`memory-root-index`/bootstrap 依次位于其**之前**）。**段照发**，只调顺序 ⇒ 能力不变，且预期把 ≈2.1–2.3k token 变为跨 run 可复用。**判据**：`prefix-detail` 中两份 decide 请求的公共前缀从 2,934 显著上移；`provider-reconcile` 的 `decide` 行 `uncached` 显著下降；miss/调用向 <400 收敛。
