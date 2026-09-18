@@ -2839,3 +2839,24 @@ if (isClarification) {
 2. `packages/harness/src/stages/reply.test.ts`：原"returns a runtime error instead of publishing a repeated fallback"改为"publishes a repeated reply instead of failing the turn"（`ok === true`、`ctx.reply === '固定回复'`、`deltas === []`、`llm.chat` 3 次）。
 
 **下一轮执行顺序：** 应用上述 4 处改动 → 聚焦 `harness` 测试 → 全量 vitest → `typecheck` + `check:repo` → continuity 门 → UI 门（**失败则重试一次**）→ 提交 → 产品级预算 8×5 复测（判据 `failedRuns 4 → 0`、`silentRuns 0`、命中率/成本不回归）。
+
+### 11.19 UI 状态门在**干净树上同样失败**（且换了另一种错）⇒ 它当前不能作为回归判据（2026-09-18）
+
+**三次失败、两种签名，全部在"未应用目标改动"的树上出现：**
+
+| 运行 | 树状态 | 结果 |
+| --- | --- | --- |
+| A（11.18） | **干净** | `Error: chat viewport lost its bottom anchor {beforeGap:136.67, afterGap:1997.67}` |
+| B（11.18 重试） | **干净** | ✅ `ok:true`（同签名检查通过） |
+| C（本轮） | **干净** | ❌ `exit=1`：`Error: Timed out waiting for file navigator resizer`（**另一种签名**） |
+
+**结论（对判据的影响）：**
+1. 该门在当前环境/负载下**不可靠**：同一份干净代码上出现"通过 / 底锚失败 / 触发器超时"三种结果、两种错误签名 ⇒ **任何失败都不能归因于被测改动**；
+2. 因此 11.19 之前"重复闸门改动连续两次失败 UI 门"**不足以判为真实回归** —— 更合理的解释是环境（本轮干净树同样失败，且签名不同）；
+3. **判据政策更新**：当某道门在**干净树**上都不能稳定通过时，它**不再具备判别力**。此时正确做法是：① 用**其余可靠门**（typecheck、全量 vitest、`check:repo`、Electron 连续性）验证改动；② 在提交信息里**明确披露**"UI 状态门未使用及其原因 + 干净树失败证据"；③ 把"稳定该门"作为**独立工作项**，而不是继续阻塞功能提交。
+
+**下一轮执行：**
+1. 重新应用 11.18 记录的重复闸门改动（3 处 `user-facing-reply.ts` + 1 处用例）→ 聚焦 harness 测试 → 全量 vitest → `typecheck` + `check:repo` → continuity 门 → **提交并披露 UI 门状态**；
+2. 同时把"UI 状态门稳定化"登记为独立工作项（候选原因：`verifyChatBottomAnchor` 的 1s settle 太短、`file navigator resizer` 等待超时值偏紧、并发/负载敏感性）；修好后再恢复"全门"判据。
+
+> 这一轮的价值不在于改了代码，而在于**避免把一个环境噪声当成产品回归**：连续两轮因同一道门回退同一个已验证的改动，本身就是判据失灵的信号。附证据的判据修正，比继续猜测更有用。
