@@ -96,6 +96,18 @@
 
 **完成定义**：技能注册 + 契约 + 运行时触发点 + 测试；`typecheck` / 全量 vitest / `check:repo` / 两条 Electron 门全绿；产品级 8×5 复测（`semanticFailures` 0、`silentRuns` 0、命中率与 miss/调用不回归）。
 
+**落点清单（已侦察，实施时按此机械执行）：**
+
+| # | 文件 | 改动 |
+| --- | --- | --- |
+| 1 | `packages/tools/src/builtin/request_user_input.ts`（**新增**） | 仿 `builtin/session_status.ts` 的工厂形态：`createRequestUserInputTool(...)` 返回 `AgentTool`，输入 schema 限定 `field` / `prompt` / `required` / `options?`；执行**不做 IO**，只回一个结构化"请求提问"标记 |
+| 2 | `packages/runner/src/infra.ts`（约 `:465` 组装 `createSessionStatusTool` 处） | 把新工具加入运行的工具集合（与其它内置工具同处） |
+| 3 | **触发点**（harness 侧，工具调用结果处理处） | 识别该调用 → ① 把问题作为**正常回复**发布（走既有 `finalize`）；② 经 infra 的检查点控制器写入**唯一**一个 durable `waiting_user` 检查点 + 记 `runtime_event` |
+| 4 | 提示词/契约面 | 工具规格文本自动进入工具列表；在 RESPOND/EXECUTE 指令里加一句"需要用户提供缺失信息时可调用它"，不改变既有输出契约 |
+| 5 | 测试 | runner：模型调用 → 产出回复 + 写入等待检查点（且**只**一个等待头）；harness：问题文本被正常发布（含空输出的草稿兜底） |
+
+**规模与顺序**：1、2 可先合并且低风险（只增能力、不改行为）；3 是唯一的行为改动，单独一轮 + 全门 + 实机；4、5 随 3 一起。**先做 1+2 并全门**，再做 3+4+5。
+
 ### P6. 会话压缩 / 检查点续跑 / 工作策略升级 / 记忆写入
 - **现状**：仅被"清单 + 不变量"覆盖，未逐个重设计。
 - **方法**：每个都按"本地取证 → 最小改动 → 全门 → 8×5"四步，并在本文件追加一节。
