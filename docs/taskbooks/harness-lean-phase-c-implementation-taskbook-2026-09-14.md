@@ -3276,3 +3276,19 @@ const status: RunCheckpoint['status'] = ctx.runtimeControl?.state === 'paused'
 3. 若成立 ⇒ 实施 10.119 的具体形态：**让紧凑路径也发出相同的共享头段序列**（`identity → core-flow → safety → workspace → date-time → capabilities`），把紧凑专属内容（只读工具说明、compact addon）放到**边界之下**；**段照发**，不裁剪能力。
 
 **预期**：跨 purpose `stableChars` **284 → ≈2,921**；随后两次样本看 miss/调用（目标 <400）与命中率。
+
+## 10.122 机制确认：compact 调用发的是**极小系统消息**（= 仅 `identity`）（2026-09-18）
+
+**证据**：
+1. `packages/harness/src/profile-prompt.ts:120–142`：compact 路径专用两个小 addon —— `buildCompactUserFacingVoiceAddon`（语音边界）与 `buildCompactBehaviorProfileAddon`（用 `profile.compactSystemPromptAddon` **替代完整档案**）。注释直言："Preserve profile/permission orthogonality **without replaying a full profile on compact calls**"。
+2. `packages/prompt/src/builder.ts:92–98`：`mode === 'none'` 时**只返回** `You are ${displayName}.`（= 284 字符的 `identity` 段）。
+3. 实测：跨 purpose `stableChars` **恰为 284**，且首个变化点是 `core-flow` / bootstrap 段 ⇒ **compact 调用（decide/verify/classify/ask_user 的自包含快路径）发的是 `identity` + 小 addon，主对话（reply）发的是完整共享头**，两者只共享 `identity`。
+
+**这是一处有意的设计**（快路径省 token），但它**正是缓存前缀断裂的机制**：快路径每轮全价重算 ~500 token，而完整头本可命中缓存。
+
+**下一轮（改动，唯一一处）**：
+1. 找到调用 compact 构造的位置（`buildCompactBehaviorProfileAddon` / `buildCompactUserFacingVoiceAddon` 的**生产调用者**，以及传入 `mode: 'none'` 或等价"仅 identity"的那处）；
+2. **让快路径也发相同的共享头**（`identity → core-flow → safety → workspace → date-time → capabilities`），把语音/档案/只读工具说明等**快路径专属内容放到边界之下**；
+3. **能力只增不减**：快路径原本不发 `core-flow`/`safety`/`workspace`/`capabilities`，改后**会发**（对判断更有信息，且大部分命中缓存）⇒ 满足"能力不收缩"，并直接提高命中率。
+
+**预期**：跨 purpose `stableChars` **284 → ≈2,921**；随后两次样本看 miss/调用（目标 <400）与命中率（目标 ≥95%）。**判据不变**。
