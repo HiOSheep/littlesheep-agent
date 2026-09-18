@@ -492,6 +492,16 @@ function summarize(path) {
     stageMediansMs: stageMedians(path.runs),
     stageCounts: stageCounts(path.runs),
     emptyReplies: path.runs.filter((run) => run.replyLength === 0).length,
+    // Split the conflated "empty reply" count: a run that paused to ask the user
+    // is legitimate, while a 200 response with no reply and no pause is exactly
+    // the silent ending the state-machine work has to eliminate.
+    publishedRuns: path.runs.filter((run) => run.replyLength > 0).length,
+    pausedRuns: path.runs.filter((run) => (
+      run.replyLength === 0 && run.status === 200 && (run.trace?.stages ?? []).some((s) => s.name === 'ask_user')
+    )).length,
+    silentRuns: path.runs.filter((run) => (
+      run.replyLength === 0 && run.status === 200 && !(run.trace?.stages ?? []).some((s) => s.name === 'ask_user')
+    )).length,
     runs: path.runs,
     releaseGate: path.report.releaseGate,
     provider: path.report.provider,
