@@ -267,6 +267,8 @@ export async function callLlmForJson<T>(
     /** Upper bound used only after an empty response exhausts the initial budget. */
     maxTokensCeiling?: number;
     signal?: AbortSignal;
+    /** Provider tool definitions to advertise; the provider caches them ahead of the messages. */
+    tools?: import('@littlesheep/llm').ToolSpec[];
     /** Optional schema/contract expansion. Throwing performs one bounded schema retry. */
     validateParsed?: (value: unknown) => T;
     onRequest?: (
@@ -318,6 +320,7 @@ export async function callLlmForJson<T>(
       temperature: opts.temperature ?? 0,
       max_tokens: currentMaxTokens,
       signal: opts.signal,
+      ...(opts.tools && opts.tools.length > 0 ? { tools: opts.tools } : {}),
     };
     const preparedRequest = opts.onRequest?.(request, {
       attempt,
