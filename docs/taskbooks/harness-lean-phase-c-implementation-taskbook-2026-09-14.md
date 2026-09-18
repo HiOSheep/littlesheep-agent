@@ -3603,3 +3603,34 @@ AssertionError: expected [] to deeply equal [ false ]
 3. 无论哪种，都按全流程收口：`typecheck` → 全量 → `check:repo` → continuity + UI 门 → 两次 8×5（`classify` 行 `cached` 由 0 变正）→ 提交 + 推送 `b683cfd` 与接线。
 
 **当前状态**：两处改动已回退，工作树干净；`b683cfd`（classifier 前缀通道）仍在本地未推送。
+
+## 10.138 `seen=[]` 的真实含义与**尚未解释**的机制（2026-09-18）
+
+**失败断言的真实语义**（`packages/runner/src/web-runtime.test.ts:438–462`）：
+```ts
+async execute(_input, context) { seen.push(Boolean(context.webRetrieval)); ... }   // 探针工具每次执行记录一次
+...
+expect(seen).toEqual([false]);      // 期望：探针工具恰好执行 1 次，且 webRetrieval 缺席
+```
+⇒ `seen = []` 意味着**探针工具从未执行** ⇒ 该次运行的**路由没有走 execute**。
+
+**测试替身的判别方式**（同文件 `:48–58`）：
+```ts
+const system = request.messages.map((m) => String(m.content)).join('\n');
+if (system.includes('Choose the next LittleSheep activity')) return text('{"activity":"execute",...}');
+if (system.includes('You are the DECIDE stage')) return ...;
+```
+⇒ 它**按内容**（而非次数）识别 classify 与 decide；**路由器文本在我改动后仍然被追加**（`prefix + '\n\n' + SYSTEM_PROMPT`），因此该 `includes` **理应仍然命中** —— **这就是未解释之处**。
+
+**已排除的假设**：① "thunk 抛错打断运行" —— 已加 `.catch(() => undefined)` 兜底后**仍然失败**；② "harness 侧断言" —— `packages/harness` 685/685 全绿；③ "类型/编译" —— `typecheck` clean。
+
+**下一轮的唯一诊断（一次调用即可）**：应用接线后**只跑该用例**并打印**完整失败上下文**：
+```
+pnpm exec vitest run packages/runner/src/web-runtime.test.ts -t "when disabled" --reporter=verbose
+```
+重点看：`result.status` 是否仍为 `ok`、`result.error` 是什么、`llmChat` 的**调用次数与每次的 messages 长度**（若 classify 调用的 messages 变化导致 `scriptedWebLlm` 走了 DECIDE 分支或空文本分支，即可解释 `seen=[]`）。
+
+**判定分支**：
+- 若 `llmChat` 调用次数/顺序变化 ⇒ 需要让前缀注入**不改变消息序列**（例如仅在 classify **真的**发生时注入、或把前缀并入现有 system 消息而**不新增/减少消息**）；
+- 若 classify 返回值仍是 execute 而后续阶段改变 ⇒ 逐段追踪 decide/execute 的输入；
+- **绝不做的事**：为了让测试变绿而修改这 2 处断言 —— 它们保护的是"web 检索被禁用/未配置时不得发生检索调用"这一**真实安全语义**。
