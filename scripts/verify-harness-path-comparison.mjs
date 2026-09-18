@@ -448,6 +448,11 @@ function evaluateGate({ compaction, comparison, paths }) {
   const criteria = []
   const add = (name, value, limit, passed) => criteria.push({ name, value, limit, passed })
   add('failedRuns', nextPath.failedRuns, 0, nextPath.failedRuns === 0)
+  // The gate only enforces the state-machine failures; a transport blip is
+  // reported (and visible) but must not mask a semantic regression the way a
+  // single `fetch failed` did in the no-park confirmation run.
+  add('semanticFailures', nextPath.semanticFailures ?? 0, 0, (nextPath.semanticFailures ?? 0) === 0)
+  add('transportFailures', nextPath.transportFailures ?? 0, 0, true)
   // A run that answers 200 without a reply and without pausing is the silent
   // ending the state-machine work eliminated; enforce it so a regression is
   // caught by this gate instead of by manual inspection.
@@ -506,6 +511,10 @@ function summarize(path) {
     silentRuns: path.runs.filter((run) => (
       run.replyLength === 0 && run.status === 200 && !(run.trace?.stages ?? []).some((s) => s.name === 'ask_user')
     )).length,
+    // Split failures by cause: a transport blip (network, DNS, socket) must not
+    // be read as a state-machine regression, and it must not hide one either.
+    semanticFailures: path.runs.filter((run) => run.status !== 200 && !isTransportFailure(run.error)).length,
+    transportFailures: path.runs.filter((run) => run.status !== 200 && isTransportFailure(run.error)).length,
     runs: path.runs,
     releaseGate: path.report.releaseGate,
     provider: path.report.provider,
@@ -582,6 +591,13 @@ function describeError(payload) {
   const record = payload
   const value = record.error ?? record.message ?? record.errorKind
   return typeof value === 'string' ? value.slice(0, 400) : JSON.stringify(record).slice(0, 400)
+}
+
+/** Network/DNS/socket failures are environmental, not state-machine regressions. */
+function isTransportFailure(message) {
+  if (typeof message !== 'string') return false
+  return /fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|EPIPE|socket hang up|network|aborted/i
+    .test(message)
 }
 
 function replyLength(payload) {

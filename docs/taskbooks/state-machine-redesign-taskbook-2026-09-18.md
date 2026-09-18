@@ -40,10 +40,10 @@
 
 ## 3. 待执行清单（按优先级；每项都写清"完成定义"）
 
-### P1. `failedRuns` 拆分语义/传输（先做，成本最低）
-- **现状**：一次 `fetch failed` 就让门变红，掩盖真实回归。
-- **改动**：比较脚本里把失败按 `error` 文本分为 `transportFailures` 与 `semanticFailures`；门只对 `semanticFailures === 0` 强制，`transportFailures` 记录并告警。
-- **完成定义**：新字段出现在报告里；离线门通过；提交。
+### ✅ P1. `failedRuns` 拆分语义/传输（2026-09-18 完成）
+- **改动**：比较脚本新增 `semanticFailures` / `transportFailures`（按 `error` 文本判定网络/DNS/socket 类），门新增 `semanticFailures === 0` 强制项，`transportFailures` 只报告不拦。
+- **实测**：离线 8×5 `semanticFailures=0,0`、`transportFailures=0,0`、`silentRuns=0,0`、gate passed；`node --check` 通过。
+- **意义**：此前一次 `fetch failed` 就把门判红（并在"无停放"确认轮掩盖了一次通过的验证），现在环境抖动与状态机回归不再混淆。
 
 ### P2. 恢复/重试状态机（recover）
 - **现状**：`recover.ts` 四处仍可把运行导向 `ask_user`；升级/重试次数与每轮预算是否对齐未验证。
