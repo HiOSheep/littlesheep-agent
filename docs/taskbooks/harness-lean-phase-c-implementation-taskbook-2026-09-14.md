@@ -2634,3 +2634,25 @@ trace = enter>classify>decide>execute!>recover>execute!>recover>ask_user!
 **下一轮实现顺序（先做 1，再做 2）：**
 - 步骤 1（重复闸门改建议性）：改动集中在 `user-facing-reply.ts` 的发布判定 + `reply.ts` 的失败分支；同步更新依赖"重复即失败"的断言；全门 + 8×5 复测（判据：`silentRuns` 保持 0，`failedRuns` 从 10 → 预期 ≈4，命中率不回归）；
 - 步骤 2（预算对齐）：定位 `maxModelCalls` 的默认值与记账点，与恢复链最坏路径对齐后再复测（预期 `failedRuns` → 0）。
+
+### 11.11 重复闸门"建议化"的**精确改动配方**（下一轮按此执行，2026-09-18）
+
+**改动点（唯一一处致命分支）**：`packages/harness/src/user-facing-reply.ts` 的 `acceptUniqueUserFacingReply`，第 154–159 行：
+
+```ts
+if (rewriteCount >= MAX_VISIBLE_REPLY_REWRITES) {
+  throw new UserFacingReplyError('duplicate_model_reply',
+    `The model repeated a previously published reply after ${MAX_VISIBLE_REPLY_REWRITES} rewrite attempts.`);
+}
+```
+
+**目标行为**：此处**不再抛出**，而是**照常发布最后一次候选**并留一条可观测告警。
+
+**已查清的结构（供实现）**：
+- `reserveUserFacingReplyOnce(...)` 在注册表拒绝时返回 `undefined`；成功时写 `writeReplyState(...)`（`reply` + `replyProvenance` + `finalReplySettlement{status:'proposed'}`）并返回被保留的文本（第 118–131 行）；
+- 因此"强制发布"要么走 **registry 的允许重复参数**，要么在**保留 provenance 的前提下**直接写 reply state（provenance 必须来自真实 Provider 请求，否则 `finalize` 会拒绝——这是必须守住的不变量）；
+- **待确认（下一轮第一件事）**：`ctx.reserveUserFacingReply(generatedReply)` 的签名是否支持"允许重复/强制保留"（第 104–115 行只看到单参调用）。若不支持，则实现为"绕过注册表但**照常写 reply state + settlement**，并把该回复的**指纹以重复标记**写入账本"，保证可观测性不丢。
+
+**同步要改的断言**：`packages/harness/src/stages/reply.test.ts:475`（现在期望 `/repeated a previously published reply/` 失败）；并新增一条"重复时仍然发布 + 记录告警"的用例。
+
+**验收（8×5 实机）**：`silentRuns` 保持 **0**；`failedRuns` 期望 **10 → ≈4**（仅剩预算耗尽那一类）；命中率 / miss 调用不回归；`check:repo`、全量 vitest、两条 Electron 门全绿。
