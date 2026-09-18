@@ -109,6 +109,20 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
     scope: ContextScope = 'global',
     source: ContextSourceRef = { kind: 'prompt', id },
   ) => stable.push({ id, content, kind, source, priority, required, sensitive: true, scope });
+  // Sections that differ between stages or purposes must not sit above the
+  // boundary: the Provider matches from token zero, so a difference there
+  // invalidates the transcript that follows it. They travel as trailing
+  // messages instead, and every one of them is still emitted.
+  const volatile: Array<Omit<PromptContextSegment, 'order' | 'text'> & { content: string }> = [];
+  const addVolatile = (
+    id: string,
+    content: string,
+    kind: ContextItemKind = 'system_prompt',
+    priority = 100,
+    required = true,
+    scope: ContextScope = 'global',
+    source: ContextSourceRef = { kind: 'prompt', id },
+  ) => volatile.push({ id, content, kind, source, priority, required, sensitive: true, scope });
 
   // ─── Canonical shared head (above cache boundary) ───
   // Every stage emits these sections in this exact order with the same bytes,
@@ -141,21 +155,21 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
   addStable('capabilities', capabilitiesSection(input.tools), 'system_prompt', 98);
 
   if (!isRespond) {
-    addStable('tooling', toolingSection(input.tools), 'system_prompt', 98);
+    addVolatile('tooling', toolingSection(input.tools), 'system_prompt', 98);
   }
 
   if (isFull && input.skills && input.skills.length > 0) {
-    addStable('skills-index', skillsSection(input.skills), 'system_prompt', 75, false);
+    addVolatile('skills-index', skillsSection(input.skills), 'system_prompt', 75, false);
   }
 
   if (input.runtime) {
-    addStable('runtime', runtimeSection(input.runtime), 'system_prompt', 65, false);
+    addVolatile('runtime', runtimeSection(input.runtime), 'system_prompt', 65, false);
   }
 
   if (isFull) {
-    addStable('output-directives', outputDirectivesSection(), 'output_constraint', 95, true);
+    addVolatile('output-directives', outputDirectivesSection(), 'output_constraint', 95, true);
   } else if (isRespond) {
-    addStable('response-directives', responseDirectivesSection(), 'output_constraint', 95, true);
+    addVolatile('response-directives', responseDirectivesSection(), 'output_constraint', 95, true);
   }
 
   const segments: PromptContextSegment[] = stable.map((section, index) => ({
@@ -173,6 +187,16 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
     return prefix;
   };
 
+  // ─── Purpose-specific sections (moved below the boundary) ───
+  // Emitted first among the volatile sections so their relative order is kept
+  // (tooling -> skills-index -> runtime -> directives -> memory).
+  for (const section of volatile) {
+    segments.push({
+      ...section,
+      order: nextOrder++,
+      text: `${volatilePrefix()}${section.content}`,
+    });
+  }
   // ─── Volatile sections (below cache boundary) ───
   if (mode !== 'minimal' && (isFull || isRespond) && input.memoryRootIndex) {
     segments.push({

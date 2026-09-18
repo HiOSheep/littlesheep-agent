@@ -105,7 +105,9 @@ describe('buildSystemPrompt', () => {
     // also carries Core Flow; the prelude stays out and no boundary is added
     // when there is no volatile section.
     expect(prompt).toContain('# Core Flow (hard control flow)');
-    expect(prompt).not.toContain(CACHE_BOUNDARY_MARKER);
+    // Minimal mode still emits its purpose sections, now below the boundary, so the
+    // marker is present even though the Core Flow prelude is not.
+    expect(prompt).toContain(CACHE_BOUNDARY_MARKER);
     expect(prompt).not.toContain('Project Context');
   });
 
@@ -166,7 +168,8 @@ describe('buildSystemPrompt', () => {
       scope: 'global',
       required: true,
     });
-    expect(bundle.segments.find((segment) => segment.id === 'memory-root-index')?.text.startsWith(`\n\n${CACHE_BOUNDARY_MARKER}`)).toBe(true);
+    expect(bundle.segments.some((segment) => segment.text.includes(CACHE_BOUNDARY_MARKER))).toBe(true);
+    expect(bundle.segments.find((segment) => segment.id === 'memory-root-index')).toBeDefined();
     expect(bundle.segments.find((segment) => segment.id === 'bootstrap:AGENTS.md')).toMatchObject({
       kind: 'project_knowledge',
       scope: 'workspace',

@@ -46,7 +46,10 @@ describe('behavior profile prompt assembly', () => {
     expect(parts.volatile).toContain('run task facts')
     expect(result.segments.find((segment) => segment.id === 'profile')?.text).not.toContain(CACHE_BOUNDARY_MARKER)
     expect(result.text).toContain(CACHE_BOUNDARY_MARKER)
-    expect(result.segments.find((segment) => segment.id === 'memory-root-index')?.text).toContain(CACHE_BOUNDARY_MARKER)
+    // The marker travels with the first section below the boundary, which is now a
+    // purpose section from the bundle rather than the memory index.
+    expect(result.segments.some((segment) => segment.text.includes(CACHE_BOUNDARY_MARKER))).toBe(true)
+    expect(result.segments.find((segment) => segment.id === 'memory-root-index')).toBeDefined()
   })
 
   it('keeps runtime facts authoritative while applying SOUL.md to user-facing wording', () => {
