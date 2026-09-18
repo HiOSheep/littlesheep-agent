@@ -146,7 +146,10 @@ async function composeClarificationMessage(
     if (response.content.trim()) return response.content;
     maxTokens = 640;
   }
-  return '';
+  // Never end the turn silently. If the model produced no visible text twice,
+  // publish the runtime's own deterministic wording instead of an empty reply:
+  // an empty published turn is what made those runs look like "nothing happened".
+  return fallback.trim();
 }
 
 function attachClarificationChain(
