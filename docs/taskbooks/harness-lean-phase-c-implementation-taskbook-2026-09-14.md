@@ -5797,3 +5797,36 @@ if (isFull && input.skills?.length) addVolatile('skills-index', …);
 1. `builder.ts`：`tooling` 段加可选开关（默认 `true`，保持所有既有行为）；
 2. `task-step-runner.ts`：工具循环的 bundle 传入"已带 provider 工具"的标记 ⇒ 不发送 `tooling` 文本；
 3. 全门 + **两次**样本；验收：`execute_tool_loop` prompt 长度下降 ~4,179 字符、其 miss/调用下降、`failedRuns=0`、`silentRuns=0`。
+
+## 10.216 **S1 更正**：文本 `tooling` 与原生工具**不是同一集合**，直接删除会丢信息（2026-09-18）
+
+**取证（`packages/harness/src/stages/execute/prompt.ts:21–35`）**：
+```ts
+export async function buildExecuteSystemPrompt(deps, ctx): Promise<SystemPromptBundle> {
+  const retrievalTools = toolsForRetrievalIntent(ctx);
+  const base = await assembleSystemPromptBundle(resolved, {
+    tools: compactReadTools ? [] : retrievalTools,   // ← 文本 tooling 段由此集合渲染
+    …
+  }, compactReadTools ? 'respond' : undefined);
+```
+而**原生通道**的工具来自 `task-step-runner.ts:138` 的 `tools: compactReadTools ?? pickPlanTools(ctx.plan, ctx.tools)` ⇒ **两者是不同集合**（前者是按检索意图挑选的子集，后者是计划步骤的工具并集）。
+
+⇒ **10.215 的 S1（"文本与原生重复，删除不丢信息"）前提不成立**。若直接删文本，模型将**看不到 `retrievalTools`**（例如检索相关工具）⇒ **属信息减少**，违反硬约束。
+
+**⇒ 修正后的 S1（信息不减少）**：
+1. **先对齐集合**：让文本 `tooling` 段与原生 `request.tools` 使用**同一集合**（两者都取 `pickPlanTools(ctx.plan, ctx.tools)`，或都取 `retrievalTools`）；
+2. **再决定**：对齐后两者**确实同源** ⇒ 可按 10.215 的方式只保留原生通道（省 4,179 字符/次），**信息不变**（同一 schema 仍在原生通道中）；
+3. 若对齐不可行（例如 `retrievalTools` 的挑选逻辑有独立价值），则**保留文本**，S1 放弃。
+
+**下一步（先取证再改）**：读 `retrieval-intent.ts` 的 `toolsForRetrievalIntent(ctx)`，确认它返回什么（是否为 `ctx.tools` 的子集、是否随步骤变化）；再决定"对齐到哪一侧"。
+- 若 `retrievalTools ⊆ ctx.tools` 且**不随步骤变化** ⇒ 对齐到原生集合最自然；
+- 若它是**按用户意图动态挑选**的 ⇒ 两侧各有用途，**S1 应放弃**，改做 S2（输出指令去重）与 S3（`core-flow` 精简，需你确认取舍）。
+
+**同时保留的有效简化候选**：
+| 候选 | 收益 | 风险 |
+| --- | --- | --- |
+| **S2** 合并 `output-directives`(1,805) 与 `response-directives`(730) | 省 500–900 字符/次 | 需逐条核对重叠，低 |
+| **S3** `core-flow`(1,530) 改为"当前 stage 一行 + 需要时全图" | 省 800–1,200/次 | **信息取舍，需你确认** |
+| **S4** `runtime-awareness`(706/轮) 紧缩 | 省 ~100–200/次 | **信息取舍** |
+
+**判据进度**：① hit 均值 ≈75.2%（达标）、miss ≈709（超 1.3%）；② 长会话 73.8–74.0%。
