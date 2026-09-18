@@ -3315,3 +3315,17 @@ const baseSystemPrompt = compactExplicitTool
 **预期**：跨 purpose `stableChars` **284 → ≈2,921**；`provider-reconcile` 的 `decide`/`verify` 行 `cached` 显著上升、miss/调用向 **<400** 收敛。
 
 **验证流程（照目标固定流程）**：`typecheck` → 全量 vitest → `check:repo`（提交前置）→ continuity + UI 门（按 JSON 行解析）→ **两次** 8×5 样本（`prefix-diff` 看 `stableChars`、`provider-reconcile` 看 miss/调用与命中；`failedRuns=0`、`silentRuns=0`）→ 提交 + 推送 + 更新任务书。
+
+## 10.124 落地结果：`'none'` → `'respond'` 可编译，仅 **2 处 compact 断言**需同步（2026-09-18）
+
+**已实测**：把 `packages/harness/src/stages/decide/request.ts` 中两处 `, { tools: [], bootstrap: {} }, 'none')` 改为 `'respond'` 后：
+- `typecheck` **clean** ✓；
+- `packages/harness/src/stages` 聚焦测试 **21/22 文件、257/259 用例通过**；**仅 2 例失败**，均在 `packages/harness/src/stages/decide.test.ts`：
+  - `:202` `uses compact autonomous read Context while leaving tool selection to the LLM`
+  - `:288` `injects only the explicitly named tool schema and adopts one bounded proposal`
+  （该文件其余断言见 `:160/:177/:178` 的 PROFILE/SOUL sentinel 与 `:261–263` 的显式工具输入契约，均与本次 mode 变更无关。）
+
+**处置**：本轮**已回退**该改动以保持绿树。**下一轮（落地轮）**：
+1. 重放两处 mode 改动；
+2. **读 `decide.test.ts` 的 :195–215 与 :280–300**，把这两例里"紧凑路径只发 identity"的断言改为"紧凑路径与主对话共享同一头部段序列（`identity → core-flow → safety → workspace → date-time → capabilities`）"，并保留它们原有的实质断言（工具选择交给模型、显式 schema 注入、有界提案采纳）；
+3. 按目标固定流程：`typecheck` → 全量 vitest → `check:repo`（提交前置）→ continuity + UI 门 → **两次** 8×5 样本（`prefix-diff` 的跨 purpose `stableChars` 目标 ≥2,921、`provider-reconcile` 的 miss/调用目标 <400、命中率；`failedRuns=0`、`silentRuns=0`）→ 提交 + 推送 + 更新任务书。
