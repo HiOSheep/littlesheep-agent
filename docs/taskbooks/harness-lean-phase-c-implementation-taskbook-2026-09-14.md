@@ -2516,3 +2516,41 @@ C10B 矩阵 HC-07 由「部分」变为「通过（离线）」。
 **下一轮的唯一目标（第三种来源）：** 让 **reply 阶段的任何失败（含 catch 路径）都不得以 200 + 空回复收尾** —— 要么补一次有界重试后发布，要么让该轮**明确失败**。判据：`emptyReplies → 0`（允许 `failedRuns` 上升，因为那是暴露真实失败），且命中率/miss 调用不回归。
 
 **同时确认的结论：** `ask_user` 的四个入口里，**classify 已移除、decide/recover/verify 三处经过"草稿兜底"后已不再产生空回复**（本样本只剩 1 例）。因此 **ASK_USER → skill 的迁移仍是正确方向，但它已不再是空回复的主要来源**；主线应转向"reply 失败必须可见"，之后再做 skill 化（把等待点从阶段判定收窄为技能调用）。
+
+### 11.7 复测（三处守卫全绿）+ **发现验收指标本身有缺陷**（2026-09-18）
+
+**复测（`f11236f` 之后，同配置 8×5、真实 DeepSeek）：**
+
+| 指标 | 11.5 样本 | **本轮** |
+| --- | --- | --- |
+| `failedRuns`（shadow / next） | 0 / 5 | **0 / 0** ✅ |
+| `invalid continuation disposition` / `ambiguous ...` | 10 处 | **0 处** ✅ |
+| `emptyReplies` | 7 / 11 | **11 / 11** ❌ 未变 |
+| 主对话命中率 | 65.9 / 68.9% | **67.2 / 65.7%**（无回归） |
+| miss token/调用 | 936 / 905 | **950.3 / 984.5**（无回归） |
+
+**归因（新数据根 `littlesheep-path-next-gVpQee`）：** 11 = **7 × `enter>classify>reply`** + **4 × `...>recover>ask_user`**，且 **无一个 run 失败**。
+
+**根因不在代码，在指标：** 读 `scripts/verify-harness-path-comparison.mjs` 后确认
+
+```
+emptyReplies: path.runs.filter((run) => run.replyLength === 0).length
+replyLength(response.payload)   // 只看 /run 的同步响应
+```
+
+即 **`emptyReplies` = "同步响应里没有回复文本的 run 数"**，它**把合法的暂停也算了进去**：
+- `ask_user` 类 run **本来就该在本轮不产出回复**（它在等用户），却被计为 empty；
+- 其余"无回复"的 run 是否真缺陷，取决于它们是否在等待/流式/失败 —— 旧指标**不区分**。
+
+这解释了为什么 `emptyReplies` 在**四种不同代码状态**下始终是 11（11 / 11 / 7+11 / 11）：它是**结构性计数**，对"静默 vs 响亮"不敏感 —— 而我此前把它当成了缺陷指标，这是**测量设计错误**（上一轮的"未达标"结论因此需要修正：真正的缺陷指标 failedRuns 与 disposition 报错**都已归零**）。
+
+**下一步（先修指标，再谈缺陷）：** 把 `emptyReplies` 拆成三个互斥且有意义的计数：
+
+| 新指标 | 定义 | 期望 |
+| --- | --- | --- |
+| `publishedRuns` | 有回复文本 | 越多越好 |
+| `pausedRuns` | 无回复但**处于等待用户/中断检查点**（合法暂停） | 与"真需要提问"的轮次一致 |
+| **`silentRuns`** | 无回复、**未暂停、未失败、状态 200** | **必须为 0**（这才是 11.3 要消灭的"静默收尾"） |
+| `failedRuns` | 状态非 200 | 允许暴露真实失败 |
+
+修完后重跑 8×5，判据改为 **`silentRuns === 0`**，并把 `pausedRuns` 与"ask_user 技能化"的进度对照（skill 化之后，`pausedRuns` 应只由**模型主动调用技能**产生）。
