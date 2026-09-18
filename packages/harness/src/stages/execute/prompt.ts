@@ -32,7 +32,7 @@ export async function buildExecuteSystemPrompt(
     sessionSummary: compactReadTools ? undefined : ctx.sessionSummary,
     memoryRootIndex: compactReadTools ? undefined : ctx.memoryRootIndex,
     initialMemoryContext: compactReadTools ? undefined : ctx.initialMemoryContext,
-  }, compactReadTools ? 'none' : undefined);
+  }, compactReadTools ? 'respond' : undefined);
   const guidance = compactReadTools && ctx.taskBook
     ? renderCompactAutonomousReadTaskGuidance(ctx.taskBook)
     : ctx.taskBook
