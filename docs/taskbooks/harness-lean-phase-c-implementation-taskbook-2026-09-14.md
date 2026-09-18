@@ -4116,3 +4116,34 @@ idx=7 verify              tools=0   uncached≈940–970
 2. `verify/model-call.ts:12` 附近的 `callLlmForJson` 调用（与 decide 同形）——同样传入。
 
 **预期**：idx≥4 的调用从 ~700–970 降到 **~200–400**（它们不再为工具块缺失付费）；`cache-verdicts.mjs` 中 `execute_final_reply`（命中 25–29%）与 `verify`（35%）应显著上升。**判据**：两次 8×5 样本 + 全门；`failedRuns=0`、`silentRuns=0`、`verificationPassRateDelta ≥ 0`。
+
+## 10.159 **决定性结论**：两处工具块断裂都是**被测试断言的契约**（2026-09-18）
+
+**尝试**：在 `execute/final-reply.ts:59` 的 `rawRequest` 上加 `tools: toProviderTools(ctx.tools)`。
+
+**结果**：`typecheck` clean，但 execute 测试大面积失败，失败用例名**直接点明其保护的性质**：
+
+```
+× executeStage > executes an admitted explicit read proposal **without an execute tool-loop model call**
+× executeStage > executes an admitted autonomous read proposal **without an execute tool-loop model call**
+× executeStage > executes explicit write and read proposals **with only the final reply model call**
+× executeStage > directly executes an explicit builtin exec proposal only with full permission
+× executeStage > lets Runtime derive a missing side-effect declaration for explicit builtin exec in full mode
+× executeStage > keeps explicit continuation requests on the history-aware tool loop
+```
+
+⇒ **"final reply 不带工具"被测试当作"未发生 tool loop"的证据**加以保护（同理 10.157 中 decide 的"lean wire contract"保护"规划请求不含 Runtime 字段"）。
+
+**综合 10.157 + 10.159 的结论**：
+- 每 run 的两次工具块断裂（① 工具块首次出现、② 随后被丢掉）**都不是遗漏，而是被契约与测试保护的设计**；
+- 因此"统一工具块以获得高命中率"**在不改设计契约的前提下不可行**；
+- 本负载下，**缓存命中率的结构性上限受此设计约束**——当前 ~66–72% 已接近该形态能达到的水平，要显著提高必须**修改至少两处契约**（decide 的 lean wire contract、final-reply 的 no-tools 断言），**属设计变更，需你明确批准**。
+
+**可选的设计级方案（供决策，均不裁剪能力）**：
+| 方案 | 做法 | 代价 |
+| --- | --- | --- |
+| **D1** | 让**同一 run 内所有 provider 调用**携带同一工具块（含 decide 与 final reply），并**更新那两处契约测试**的语义（从"不含 tools"改为"tools 恒定"） | 需改契约与测试；规划/收尾请求体积变大（但多数命中缓存） |
+| **D2** | 保持契约，改为**减少调用次数**（例如把 final reply 与工具循环合并、或减少每 run 的模型调用轮数） | 属流程重构，影响面更大 |
+| **D3** | 接受当前上限，转而在**其它维度**继续（例如 `reply` 已 80% 命中，可优化尾部 `runtime-awareness` 与历史窗口） | 收益有限（~1–3pt） |
+
+**下一步（等你定 D1/D2/D3）**：若选 **D1**，我按 10.156 的 5 步 + 更新两处契约测试实施；若选 **D3**，我转做尾部优化并给出两次样本的真实数字。
