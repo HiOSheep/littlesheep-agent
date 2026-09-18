@@ -4022,3 +4022,40 @@ const request = {           // _shared.ts:315–321
 - `failedRuns=0`、`silentRuns=0`、`publishedRuns` 不退化、`verificationPassRateDelta ≥ 0`。
 
 **风险再次确认**：decide 拿到 schema 后可能**误发 tool call**（其契约是纯决策 JSON）⇒ 若两次样本出现 `verificationPassRateDelta < 0` 或发布退化，则改为**只让 tool loop 与 final_reply 一致**（把工具块前移到 `execute_final_reply` 之前那一次调用）或回退。
+
+## 10.156 **最终规格（逐行确定）**：把工具块前移到 decide（2026-09-18）
+
+**转换函数原文**（`stages/execute/tool-loop.ts:531–540`）：
+```ts
+function toolToSpec(tool: AgentTool): ToolSpec {
+  const explicit = tool.inputSchema.jsonSchema;
+  const parameters = explicit
+    ? explicit as object
+    : zodToJsonSchema(tool.inputSchema as unknown as z.ZodTypeAny);
+  return {
+    type: 'function',
+    function: { name: tool.name, description: tool.description, parameters },
+  };
+}
+```
+
+**关键约束（避免循环依赖）**：`tool-loop.ts` **已 import `../_shared.js`** ⇒ `_shared.ts` **不可**反向 import `tool-loop.js`。因此必须**抽到独立模块**。
+
+**实施清单（5 处，可回滚）**：
+
+| # | 文件 | 改动 |
+| --- | --- | --- |
+| 1 | **新增** `packages/harness/src/provider-tool-spec.ts` | 迁入 `toolToSpec`（连同 `zodToJsonSchema` 依赖）并导出 `export function toolToSpec(tool: AgentTool): ToolSpec` |
+| 2 | `stages/execute/tool-loop.ts` | 删除本地 `toolToSpec`，改为 `import { toolToSpec } from '../../provider-tool-spec.js';`（**字节必须与今天一致**：靠现有 execute 测试确认） |
+| 3 | `stages/_shared.ts` | 调用 `opts` 新增 `tools?: AgentTool[]`；在 `:315` 的 `request` 加 `...(opts.tools && opts.tools.length > 0 ? { tools: opts.tools.map(toolToSpec) } : {})` |
+| 4 | **decide 阶段**（调用 `_shared` 的模型调用助手处） | 传 `tools: ctx.tools` |
+| 5 | `stages/execute/task-step-runner.ts:138` | `pickPlanTools(ctx.plan, ctx.tools)` → **`ctx.tools`**；若 `pickPlanTools` 不再被引用则一并移除（`failure-policy.ts`） |
+
+**不改**：`reply`（保持无工具）、`verify`/`recover`/`classify`（首轮先只做 decide + execute，观察效果）。
+
+**验收（两次样本 + 全门）**：
+1. `tool-set-diff.mjs`：同 run 内 **decide 与 tool loop 的 `tools` 列一致（=15）**；
+2. `cache-verdicts.mjs`：`execute_tool_loop` 的 miss/调用 **4,956 → <2,000**（目标 <1,500）；
+3. `failedRuns=0`、`silentRuns=0`、`publishedRuns` 不退化、`verificationPassRateDelta ≥ 0`。
+
+**回退条件**：若 decide 出现**误发 tool call**、或 `verificationPassRateDelta < 0`、或发布退化 ⇒ 先退到"仅 `task-step-runner` 用 `ctx.tools`"（无收益但无风险），再评估 10.148 的备选（广告层/执行层分离）。
