@@ -4002,3 +4002,23 @@ const request = {           // _shared.ts:315–321
 **风险**：decide 见到 schema 后可能**误发 tool call**（其契约为纯决策输出）⇒ 两次样本须确认 `verificationPassRateDelta ≥ 0`、`publishedRuns` 不退化、`failedRuns=0`、`silentRuns=0`，否则回退。
 
 **注意**：`reply` 应**保持无工具**（纯对话路径），故第 1 步的 `tools` 必须**按阶段可选**传入，而非全局默认。
+
+## 10.155 工具 schema 转换的位置与**抽取方案**（2026-09-18）
+
+**取证**：
+- `stages/execute/tool-loop.ts:532`：`const explicit = tool.inputSchema.jsonSchema;` ⇒ **provider 工具定义由 `AgentTool.inputSchema.jsonSchema` 生成**（工具循环内联实现）；
+- `cache-observability.ts:196`：`toolSchema: componentFingerprint(…, normalizeTools(input.request.tools, true))` ⇒ 该处已有一个**归一化/指纹**用的 `normalizeTools`，`:390` 依据它判定 `tool_schema_changed`；
+- 共享调用助手 `_shared.ts:315–321` 的请求对象**没有 `tools`**（10.154）。
+
+**实现方案（下一步，四步，全部可回滚）**：
+1. **抽取**：把工具循环内联的 AgentTool→provider 定义转换提到共享位置（新文件 `packages/harness/src/provider-tools.ts`，或复用 `normalizeTools` 所在的模块），导出 `toProviderTools(tools: AgentTool[])`；
+2. `tool-loop.ts` 改用该函数（**去重**，保持字节与今天一致 —— 必须用测试/snapshot 确认转换结果不变）；
+3. `_shared.ts` 的调用 `opts` 新增可选 **`tools?: AgentTool[]`**，在 `:315` 的 `request` 里带 `tools: opts.tools ? toProviderTools(opts.tools) : undefined`；
+4. **decide 阶段**调用时传 `tools: ctx.tools`；`task-step-runner.ts:138` 改 `ctx.tools`；**`reply` 不传**（保持无工具）。
+
+**验收（两次样本 + 全门）**：
+- `tool-set-diff.mjs`：同 run 内 decide 与 tool loop 的 `tools` 列**一致（=15）**；
+- `cache-verdicts.mjs`：`execute_tool_loop` 的 miss/调用 **~4,956 → <2,000**（目标 <1,500）；
+- `failedRuns=0`、`silentRuns=0`、`publishedRuns` 不退化、`verificationPassRateDelta ≥ 0`。
+
+**风险再次确认**：decide 拿到 schema 后可能**误发 tool call**（其契约是纯决策 JSON）⇒ 若两次样本出现 `verificationPassRateDelta < 0` 或发布退化，则改为**只让 tool loop 与 final_reply 一致**（把工具块前移到 `execute_final_reply` 之前那一次调用）或回退。
