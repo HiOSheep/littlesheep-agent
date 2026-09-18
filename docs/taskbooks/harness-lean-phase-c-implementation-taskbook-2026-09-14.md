@@ -5760,3 +5760,40 @@ if (isFull && input.skills?.length) addVolatile('skills-index', …);
 4. **转向用户同样关心的"提示词/路径简化"**（B4）：在不减少信息的前提下合并重复表述、统一各 purpose 的段结构 ⇒ 可测得**提示词总字符数下降**，且**不损害**当前命中率。这是**当前唯一"有确定收益且无风险"的方向**。
 
 **下一轮（B4 第一步，零风险）**：用 `analyze-prompt-cache.mjs` 与 `msg-order.mjs` 量出**当前提示词的实际构成**（各段字符数与占比），找出**重复/冗余**（例如 `identity`/`core-flow`/`safety` 与各 purpose 的尾部指令之间的重复表述），给出"简化清单"（**逐条列出将合并/删除的文字**，且保证信息不减少），供你确认后再实施。
+
+## 10.215 **B4 简化清单**（信息不减少），含一处**已用数据确认的真实重复**（2026-09-18）
+
+**当前提示词构成（由 `analyze-cache-shapes.mjs` / `msg-order.mjs` / `exec-audit` 的快照提取）**：
+
+| purpose | system 构成（字符） |
+| --- | --- |
+| `reply`（respond） | identity 284、core-flow 1,530、safety 292、workspace 118、date-time 362、capabilities 348、**memory-root-index 2,578**、profile 335、response-directives 730、bootstrap:USER.md ~217、user-facing-voice 687（**≈6,616**，尾部另有 runtime-awareness ~706） |
+| `decide`（full） | 上述 + **tooling 4,179** + output-directives 1,805 + bootstrap 若干（**15,505**） |
+| `execute_tool_loop` | 与 decide 近似（**12,591**，含 **tooling 4,179**）+ provider 侧另有 **15 个工具 schema** |
+
+### S1（**真实重复，已确认；信息不减少**）
+
+**工具循环同时发送两遍同一批工具 schema**：
+- **provider 原生通道**：`request.tools` = 15 个工具（`toProviderTools`）✓
+- **文本通道**：system 内的 **`tooling` 段 4,179 字符**（`addVolatile('tooling', toolingSection(input.tools), …)`，`builder.ts:171`）
+
+⇒ 对**已经广告 provider 工具的 purpose**（工具循环），文本段是**纯重复** ⇒ **删除它不减少任何信息**（模型仍从原生通道看到同样的 schema）。
+**预期**：工具循环 prompt **−4,179 字符（≈ −1,100 token）**；若该文本原先在 system 尾部未被缓存，则 miss 直接下降 ~1,100/次 ⇒ 短会话 `execute_tool_loop` miss/调用 **1,876 → ~800**、总体 **~709 → ~630**（**这将首次把判据 ① 的 miss/调用 压到 <700**）。
+**实现**：`builder.ts` 的 `if (!isRespond)` 增加条件（如 `input.includeToolingText !== false`，默认 `true` 保持兼容）；**仅**在"该请求已带 provider 工具"的调用点（工具循环）传 `false`。`decide` 保持 `true`（它的 lean 契约不带 provider 工具，文本是**唯一**通道 ⇒ 必须保留）。
+
+### S2（合并重复表述，需逐条核对）
+
+`output-directives`（1,805）与 `response-directives`（730）**主题重叠**（均规定输出形态/约束）⇒ 逐条比对后可合并同义项（估计可省 **500–900 字符/次**）。**需先逐条列出重叠项**再实施。
+
+### S3（`core-flow` 精简，需你确认）
+
+`core-flow`（1,530）是**完整状态机图**，**每次调用**都发送；但对具体某个 stage，只有**其相邻转移**是行动相关的。可改为"**当前 stage 的一行说明 + 完整图仅在需要时**"——**这会减少某些 stage 看到的信息** ⇒ 属**取舍**，需你确认；若允许，可省 **~800–1,200 字符/次**。
+
+### S4（`runtime-awareness` 紧缩，取舍项）
+
+706 字符/轮，逐轮刷新 ⇒ 恒为新增内容。紧缩属**信息取舍**（10.203 C1）。
+
+**⇒ 下一轮先做 S1**（零风险、信息不减少、预期首次把 miss/调用压到 <700）：
+1. `builder.ts`：`tooling` 段加可选开关（默认 `true`，保持所有既有行为）；
+2. `task-step-runner.ts`：工具循环的 bundle 传入"已带 provider 工具"的标记 ⇒ 不发送 `tooling` 文本；
+3. 全门 + **两次**样本；验收：`execute_tool_loop` prompt 长度下降 ~4,179 字符、其 miss/调用下降、`failedRuns=0`、`silentRuns=0`。
