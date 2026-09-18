@@ -5034,3 +5034,33 @@ reply -> reply          1           284       recent_message:reply:history:…
 **预期**：跨 purpose（run 间）转移的 miss **1,270 → 约 700**；长会话总体 hit **74.1% → 约 78%**。
 
 **判据进度**：① 达标（短会话 hit ≈75.5%、miss ≈708.6）；② 未达（长会话 74.1%）；已完成：`step-contract`（−18% miss）、`reply` 重写交替（+2.1pt）、`final_reply` 契约（中性，主因需 D1）；进行中：跨 purpose 段结构对齐。
+
+## 10.193 **决定性**：49% 的 run 间转移在**索引 0** 分歧 —— 上一个 run 的末条请求用**单条形状**（2026-09-18）
+
+**`run-pair-diff.mjs`（按会话顺序配对 `run N` 末条 → `run N+1` 首条，119 对）**：
+
+```
+run pairs=119  avgFirstCallMiss=1,269  avgPrompt=4,497  hit=71.8%
+
+首个分歧段（prev last -> next first）：
+  43  diffAt0 | reply:system  -> identity
+  15  diffAt0 | verify:system -> identity
+   3  diffAt8 | response-directives -> tooling
+   1  diffAt0 | identity       -> classify:system
+   …（其余为较深索引上的 primary-user/history 命名差）
+```
+
+⇒ **58/119（49%）的 run 间转移在索引 0 即分歧**：上一个 run 的**末条请求**使用**单条形状**（`reply:system` / `verify:system` —— 一条预渲染 system），而下一个 run 的**首条请求**使用**分段形状**（`identity`、`core-flow`…）。两者**首项即不同** ⇒ 共享前缀 = 0 ⇒ **整段历史重算**（avgFirstCallMiss **1,269**、hit 71.8%）✓
+
+**这与 10.182–10.188 的发现同源但作用面不同**：10.188 消除了**同一 run 内** `reply` 分段/单条的长度交替（`DIFFERENT head length: pairs=0` ✓）；但**run 边界处仍存在"上一条是单条、下一条是分段"的结构交替**，且出现在 `reply` 与 `verify` 两个 purpose 上。
+
+**⇒ 修法（同型，作用面为"跨 run"）**：
+1. **先定位** "单条形状"（`${stage}:system`）是**哪条代码路径**产生的 —— 候选层 `context-candidates.ts` 对"整条 system 消息"的命名应为 `${stage}:system`，而分段形状来自 `systemSegments`（`bundle.segments`）；
+2. 若"单条"来自**重写/修复轮的另一种装配**（如 `verify` 与 `reply` 的某个分支直接传 `systemPrompt.text` 而未传 `systemSegments`），则让该分支**同样传 `systemSegments`** 即可让两种形状统一（内容不变）；
+3. 若"单条"来自**另一套驱动（legacy）**，则需统一驱动（架构一致性）。
+
+**下一轮（零成本定位）**：`grep -n ':system' packages/harness/src/context-candidates.ts` 及读该文件里生成 system 候选的分支 ⇒ 确认"单条 vs 分段"由**是否传入 `systemSegments`** 决定；随后**只改一处**（让末条请求也带 `systemSegments`）→ 全门 + 两次样本。
+
+**预期**：run 间转移的 miss **1,269 → 约 400**（共享头 2,934 + 历史可复用）；长会话总体 hit **74.1% → 约 85%**；短会话同步提升。
+
+**判据进度**：① 达标（短会话 hit ≈75.5%、miss ≈708.6）；② 未达（长会话 74.1%），本轮把其**最大因子（54%）**定位到"run 边界的单条/分段结构交替"，且修法（统一 `systemSegments`）**不涉契约、无需授权**。
