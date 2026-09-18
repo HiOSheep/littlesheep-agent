@@ -5189,3 +5189,40 @@ const belowBoundary = markerIndex >= 0 ? all.slice(markerIndex) : [];
 **风险与应对**：多处测试断言"某段在 system 内"（10.166 类型）⇒ 预计需同步更新断言；若失败集中在少数用例，**按"断言改为检查尾部消息承载该段"**更新（保留原意）。若失败面过大，退化为**只对 `reply`+`verify` 生效**（用一个可选开关，默认全局）。
 
 **这是本目标的收口一刀**：预期把长会话从 74.1% 推到 **≥85%**，且不需授权；此后若要再冲 95%，需 **D1**（工具块统一）与 `runtime-awareness` 的紧缩（两者分别需授权与信息量取舍）。
+
+## 10.198 收口一刀**首次尝试**：`typecheck` clean、**1041/1043 通过**，仅 2 处布局断言需同步（2026-09-18）
+
+**已实现并验证可用**（`context-candidates.ts`，两处改动）：
+1. 新增 `import { CACHE_BOUNDARY_MARKER } from '@littlesheep/prompt';`；
+2. 用**标记判定**替换硬编码子集：
+```ts
+const allSegments = options.systemSegments ?? [];
+const boundaryIndex = allSegments.findIndex((segment) => segment.text.includes(CACHE_BOUNDARY_MARKER));
+const trailingAddons = boundaryIndex >= 0
+  ? allSegments.slice(boundaryIndex)
+  : allSegments.filter((segment) => VOLATILE_GUIDANCE_SEGMENT_IDS.has(segment.id));
+const systemSegments = trailingAddons.length === 0
+  ? options.systemSegments
+  : (boundaryIndex >= 0 ? allSegments.slice(0, boundaryIndex) : allSegments)
+    .filter((segment) => !VOLATILE_GUIDANCE_SEGMENT_IDS.has(segment.id));
+```
+
+**结果**：`typecheck` **clean**；`packages/harness/src` + `packages/runner` **1041 passed / 2 failed**。
+
+**两处失败（原文）**：
+```
+× replyStage > uses a minimal capability-reply contract and excludes memory/history from the request
+  AssertionError: expected [ { role: 'system', …(1) }, …(3) ] to have a length of 3 but got 4
+× LLM request characterization > DECIDE sends the assembled system prompt, history, and multimodal inbound in stable order
+  AssertionError: expected '# Identity\n\nYou are LittleSheep, a …' to contain 'DECIDE stage'
+```
+⇒ 两者都是**布局断言**（前者数消息条数：3 → 4，因一个段从 system 移到尾部；后者断言 purpose 段在 system 内，现改由尾部承载）⇒ **其原意（"能力回复不含记忆/历史"、"decide 发送装配好的系统提示 + 历史 + 入站"）在改动后仍成立**，只需把断言更新为**检查尾部消息承载该段**。
+
+**因本轮上下文不足以同时取得两处断言原文并更新，改动已回退**（工作树干净），失败原文已留档。
+
+**下一轮（两次小改后即可收口）**：
+1. 读 `packages/harness/src/model-request-characterization.test.ts`（DECIDE 用例）与 `packages/harness/src/stages/reply.test.ts`（capability-reply 用例）中的这两处断言；
+2. 按"**尾部消息承载该段**"更新（保留原意），并**重新应用**上述候选层改动；
+3. `typecheck` → 全量 vitest → `check:repo` → continuity + UI 门 → **两次**样本 → `run-pair-diff.mjs`（期望 `diffAt0` 58/119 → 个位数、`avgFirstCallMiss` 1,269 → ~300–500）→ 提交 + 推送 + 补任务书。
+
+**预期（不变）**：长会话 hit **74.1% → ≥85%**（自基线 68.1% 起 **+17pt**）；**不裁剪任何内容**。
