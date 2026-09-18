@@ -138,7 +138,7 @@
       usage: response.usage, userInputRequest };
   }
   ```
-  **配套四点（缺一不可）**：① `ToolLoopResult` 增加可选 `userInputRequest` 字段（`execute/contracts.ts`）；② `parseUserInputRequest` 校验器（照 `work-policy-upgrade.ts` 的 `parseWorkPolicyUpgradeProposal` 写，复用 `RequestInput` schema）；③ **调用方**（`task-step-runner.ts` / `execute`）收到该字段后：写 `ctx.clarificationRequest`（`copySource: 'model'`）并返回 `next: 'ask_user'`；④ ASK_USER 组词发布 + infra 写**唯一**等待检查点（照 `recover.ts:140–160`）。
+  **配套四点（缺一不可）**：① `ToolLoopResult` 增加可选 `userInputRequest` 字段（`execute/contracts.ts`）；② `parseUserInputRequest` 校验器（照 `work-policy-upgrade.ts` 的 `parseWorkPolicyUpgradeProposal` 写，复用 `RequestInput` schema）；③ **调用方**（`task-step-runner.ts` / `execute`）收到该字段后：写 `ctx.clarificationRequest`（`copySource: 'model'`）并返回 `next: 'ask_user'`；④ ASK_USER 组词发布（照 `recover.ts:140–160`）。**注意（2026-09-18 更正）**：**不写等待检查点** —— P6b 已定为 A 方案（提问即正常回复、run 正常结束、下一条消息按新任务），"写唯一等待检查点"属 B 方案，**已明确不做**。
   **调用方落点已确定**：`packages/harness/src/stages/execute/runners.ts:46` —— 那里正是**同款先例的消费者**（`if (result.workPolicyUpgradeProposal) { … buildWorkPolicyUpgradeRequest(…) }`）。companion 4 就在该处加一个并行分支：`if (result.userInputRequest) { 写 ctx.clarificationRequest（copySource: 'model'）→ return { stage: 'execute', next: 'ask_user', ok: true } }`。
   **已完成**：companion 1（`ToolLoopResult.userInputRequest` 字段）+ companion 3（工具循环识别分支）= `373622a`；companion 2（校验器）= `445c3b4`。**只剩 companion 4 + 两条测试 + 全门 + 8×5。**
   **✅ 已认证（2026-09-18，HEAD `b51a39b`）**：全部五道门在含 companion 1–3 的树上通过 —— `typecheck` clean、全量 vitest **460 文件 / 3,281 通过 / 1 跳过**、`check:repo` **33/33**、`verify:electron-continuity` **ok**、`verify:electron-ui-state-continuity` **ok**。因此 companion 1–3 的"纯增量"结论**已由全门背书**（此前只有 typecheck/check:repo/聚焦测试）。
@@ -191,7 +191,8 @@
 - **判读**：这是"在该负载下**正确地没有触发**"，不是"未验证"。但压缩**真正运行时**的行为（摘要生成、失败标记、与缓存/续跑的交互）需要一个会触发它的口径。
 - **既定手段（现成）**：比较脚本支持 `LITTLESHEEP_COMPARISON_COMPACTION=1`（强制低阈值，使样本覆盖 compaction round class）⇒ **下一轮用该口径跑一次 8×5 实机**，除既有五项判据外，另看 `compaction-operations` 的 `status`/`result` 分布（期望出现 `compacted` 且**无 `failed`**）。
 
-#### ⚠️ P6b. 检查点续跑 —— **发现一处需要显式决定的口径冲突**（2026-09-18）
+#### ✅ P6b. 检查点续跑 —— **已定：A 方案（续跑有意不做）**（2026-09-18）
+**决定依据**：用户已三次明确方向 ——"clarify 环节可以删掉"、"ASK_USER 应作为一个 skill，而不是一个单独的阶段"、"简单的提示词即可概括这个环节"。A 正是该方向的严格实现，且有实测背书（`failedRuns` 0、`publishedRuns` 40/40、门通过）。**因此不需要写等待检查点，也不需要恢复续跑**；"授权后继续"这类能力若日后需要，按 B 重新引入即可（下方保留两选项的对照作为决策记录）。
 - **事实**：`7744548` 删掉了"存在澄清请求 ⇒ `waiting_user`"的推导，而 **P5 落地时只写了 `clarificationRequest` + 转 `ask_user`，并没有写等待检查点**（我的 diff 只有 `writeDecisionState(..., { clarificationRequest })`）。
   ⇒ **当前语义 = A 方案**：模型提问 → 问题作为**正常回复**发布 → run **正常结束** → 下一条消息**按新任务处理**（不续跑）。
 - **冲突**：任务书 P5 步骤 ④ 当时写的是"写**唯一**等待检查点"（= B 方案，可续跑）。**该条已过期**，实际落地的是 A。二者不能同时成立。
