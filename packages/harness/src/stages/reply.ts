@@ -102,7 +102,7 @@ export function createReplyStage(deps: ReplyStageDeps) {
     const messages: ChatMessage[] = [
       {
         role: 'system',
-        content: systemPrompt.text,
+        content: systemPrompt.stableText ?? systemPrompt.text,
       },
       ...history.map(toChatMessage),
       ...attachmentMessages.map((item) => item.message),
@@ -135,6 +135,7 @@ export function createReplyStage(deps: ReplyStageDeps) {
         buildRunRequestCandidates(ctx, 'reply', rawRequest.messages, {
           history,
           systemSegments: systemPrompt.segments,
+          trailingSegments: systemPrompt.trailingSegments,
           insertedBeforePrimary: attachmentMessages.map((item) => item.context),
         }),
       );
