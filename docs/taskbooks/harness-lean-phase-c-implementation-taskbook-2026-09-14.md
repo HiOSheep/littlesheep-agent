@@ -4849,3 +4849,23 @@ source: { kind: 'workflow', id: `${stage}:constraint:${index}`, runId: ctx.runId
 **预期**：长会话 `reply` miss/调用 **1,162 → 约 500**；长会话 hit **72.1% → 约 85%**；短会话略升。**内容一字不减。**
 
 **判据进度**：① 达标（hit ≈75.5%、miss ≈708.6）；② 未达（72.1%），缺口已归因到"重写轮换构造"。
+
+## 10.186 重写请求的构造位置（定位到文件与回调契约）（2026-09-18）
+
+**回调契约**（`packages/harness/src/user-facing-reply.ts`）：
+- `:165` `rewrite: ReplyRewrite` —— 由**调用方**（reply 阶段）传入；
+- `:171` `for (let rewriteCount = 0; rewriteCount <= MAX_VISIBLE_REPLY_REWRITES; rewriteCount += 1)`；
+- `:196` `generatedReply = cleanModelReply(await rewrite({ … attempt: rewriteCount + 1 … }))` ⇒ **每次重写都是一次独立的模型调用，其请求由调用方构造**。
+
+**调用方**（`packages/harness/src/stages/reply.ts`）：
+- `:100–110` 首次答复的 messages：`[{role:'system', content: systemPrompt.text}, ...history, ...attachmentMessages, userChatMessage]`（**分段式**：`systemPrompt` 来自 `assembleSystemPromptBundle`）；
+- `:123–135` `rawRequest` + `prepareModelRequest(ctx, replyPurpose, preferDirectOutput, buildRunRequestCandidates(ctx,'reply', …))`；
+- **重写分支在 `:190–280` 一带**（紧随"空回复重试"之后，定义并传入 `rewrite` 回调）⇒ **"单条式"（`reply:system` + `reply:constraint`）就在那里构造**。
+
+**⇒ 修法目标已收敛到一个回调的构造处**：让**重写轮复用与首答相同的 `systemPrompt.text`**（字节不变），仅把**重写指令**作为**尾部消息**（历史之后）发出 —— 与 `step-contract` 完全同型；内容一字不减。
+
+**下一轮（读取 `reply.ts:186–280`）**：确认重写回调如何组装 messages（尤其是它是否**重新渲染** system 或**替换**为单条文本 + constraint）；随后按同型改一处。
+
+**预期（不变）**：长会话 `reply` miss/调用 **1,162 → 约 500**；长会话 hit **72.1% → 约 85%**；短会话略升。
+
+**判据进度**：① 达标（hit ≈75.5%、miss ≈708.6）；② 未达（72.1%），缺口已定位到重写轮的请求构造。
