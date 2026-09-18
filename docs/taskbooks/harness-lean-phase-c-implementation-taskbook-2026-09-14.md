@@ -3726,3 +3726,34 @@ pnpm exec vitest run packages/runner/src/web-runtime.test.ts -t "when disabled" 
 ⇒ 产出"**哪个组件每轮都变**"的排序表；它就是剩余 miss 的根因，且**修法明确**（冻结到 run 级 / 移到尾部）。
 
 **判据（不变）**：命中 ≥95%、miss/调用 <400、`failedRuns=0`、`silentRuns=0`，不裁剪能力。
+
+## 10.143 **逐 purpose 的缓存账**（零 API，84 请求 / 40 run，2026-09-18）
+
+脚本：工作区 `cache-verdicts.mjs <dataDir>`（遍历 `execution-logs/*.json`，聚合 `cacheObservation`）。
+
+| purpose | 调用 | miss/调用 | 命中率 | **miss 合计** | 占比 |
+| --- | --- | --- | --- | --- | --- |
+| **execute_tool_loop** | **7** | **3,939.6** | 41.4% | **27,577** | **34%** |
+| reply | 51 | 528.2 | 79.5% | 26,938 | 33% |
+| decide | 10 | 1,254.3 | 74.1% | 12,543 | 15% |
+| execute_final_reply | 9 | 815.3 | **28.6%** | 7,338 | 9% |
+| verify | 5 | 927.2 | 35.6% | 4,636 | 6% |
+| recover | 1 | 1,998.0 | 16.1% | 1,998 | 2% |
+| classify | 1 | 507.0 | 0% | 507 | 1% |
+
+**总量 ≈81.5k token 未命中 / 84 调用 ≈ 971/调用**（与 `provider-reconcile` 的 ~900 一致 ✓）。
+
+**组件摘要翻转（相邻请求、同 run）**：`promptVersion` **0%**、`systemPolicy` **0%**、`soul` **0%**、`userProfile` **0%**、`locale` **0%**、`memoryRevision` **9%** ⇒ **系统提示的六个组件几乎都不逐次变化** ⇒ 剩余 miss **不是**系统提示抖动造成的。
+
+**`stablePrefix.byteLength` 分布：最小 1,161 / 中位 3,666 / 最大 14,364** ⇒ **不同 purpose 的"稳定前缀"体量差异极大**（execute 系远大于 reply）⇒ 与 reply 之间**天然无法互相复用**，且同一 purpose 内部若稳定前缀内容随步变化，也会有大量未命中。
+
+**结论（新的最高优先级目标）**：
+1. **`execute_tool_loop` 是单位成本最高的调用**（7 次调用吃掉 34% 的 miss，未命中 3,940/次、命中仅 41%）；
+2. **execute 家族（`execute_tool_loop` + `execute_final_reply`）合计 34,915 ≈ 43% 的 miss**，且命中率只有 28–41%；
+3. 反之 `reply` 虽然总量大，但**已 79.5% 命中**（51 次调用 × 528）——**不是**继续优化的首选。
+
+**下一刀（10.144）**：审计 **`execute_tool_loop` 的请求构成**（同一日志里有其 `contextSnapshots[].items` 与 `cacheObservation.stablePrefix/dynamicSuffix`）：
+- 它的"稳定前缀"（最大 14,364 字节）里除了工具 schema 与指令还有什么**随步变化**的内容（例如当前步骤/计划/工作策略、`runtime-awareness`、workspace 快照）；
+- 目标：把**逐步变化**的部分移到尾部（动态后缀），使工具 schema + 指令成为**跨步可复用的稳定前缀**；预期把 3,940/次压到 <1,000/次。
+
+**判据不变**：命中 ≥95%、miss/调用 <400、`failedRuns=0`、`silentRuns=0`，不裁剪能力。
