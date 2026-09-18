@@ -3653,3 +3653,43 @@ pnpm exec vitest run packages/runner/src/web-runtime.test.ts -t "when disabled" 
 - **第一步（零成本）**：用 `prefix-detail.mjs <data> decide 2` 逐项对照**同一 run 内**与**跨 run** 两种情形，定位这三块中**首个变化的字节位置**（当前 `prefix-detail` 已显示同 run 内两侧完全一致 ⇒ 说明变化源在**跨 run**）。
 
 **判据（不变）**：命中 ≥95%、miss/调用 <400、`failedRuns=0`、`silentRuns=0`，且不得通过删除或关闭能力换取命中率。
+
+## 10.141 交接结论：284 塌陷是**普遍现象**，且不在已核实的五处 builder 调用点（2026-09-18）
+
+**最新样本（数据根 `LfPffB`）的 `prefix-diff` 逐行**：
+
+| 切换 | `stableChars` | 首个变化点 |
+| --- | --- | --- |
+| `reply → decide` | **284** | `recent_message:decide:history:…`（`nextChars` 仅 4,488 ⇒ 疑为紧凑变体） |
+| `decide → reply` | **284** | `system_prompt:core-flow` |
+| `reply → reply`（好） | **6,684**（85–90%） | 尾部 `user_input`/`recent_message` |
+| `reply → reply`（劣化） | **284** | `system_prompt:core-flow`（9%）／`memory_index:memory-root-index`（4%）／`system_prompt:date-time`（5%） |
+
+⇒ **284（= identity）不在少数请求里出现，而且在 `reply` 自身之间也会出现** ⇒ 与"只有 classify 是短头"的假设**不符**。
+
+**已排除（代码级）**：
+1. 五处 `assembleSystemPromptBundle` 调用点（`decide/request.ts:102,104,105`、`execute/prompt.ts:28`、`reply.ts:87`）**全部**为 `'respond'` 或默认（=`'full'`）；
+2. 包装函数 `assembleSystemPromptBundle` **正常转发** `mode`（`builder.ts:387 mode: mode ?? 'full'`）；
+3. `buildSystemPromptBundle` 的 `identity`/`core-flow`/`safety` **无条件** ⇒ 其输出**最小 2,106 字符**，**不可能 284**；
+4. 非 Bundle 版 `assembleSystemPrompt` **无生产调用者**。
+
+**⇒ 逻辑推论**：出现 284 的请求，其**首条 system 消息并非由 `buildSystemPromptBundle` 产生** —— 候选是**其它直接构造 messages 的路径**（classifier 已确认一个；但 `reply→reply` 之间也出现，说明**不止一个**）。
+
+**下一轮唯一诊断（一次调用，零 API）**：写一个只读脚本（或扩展 `prefix-detail.mjs`），对某次运行的请求**按顺序 dump**：`purpose` + **首条 system 消息的前 96 字节** + 其**长度**。凡长度为 284 的请求，其 purpose 即"短头来源"；据此定位**所有**短头构造点（预期会列出 classifier 之外的第二个来源）。
+
+**然后**按该清单逐个对齐（classifier 的三处改动与诊断命令已完整留档于 10.136–10.139）。
+
+**不变判据**：命中 ≥95%、miss/调用 <400、`failedRuns=0`、`silentRuns=0`，不裁剪能力。
+
+---
+
+## 附：本目标 42 轮的可核状态（交接用）
+
+| 项 | 状态 | 证据 |
+| --- | --- | --- |
+| 跨路径共享前缀 **284 → 2,934** | ✅ **已推送** | `817e4ce`；`prefix-diff` 双向 2,934 |
+| run 专属段让位稳定内容：**miss −5% / 命中 +2pt** | ✅ **已推送** | `07c4b0b` + 两次样本四次读数**干净分离**（miss 839/851.9/892.5/841.2 vs 基线 910.8/919.5/903/895.5） |
+| execute 快路径对齐 | ⚠️ 已上线、**无净收益** | `c692dcc`（两次样本一好一差，目的未达成，如实标记） |
+| classifier 前缀通道（地基） | ✅ 已提交**未推送** | `b683cfd`；接线三处改动与诊断命令见 10.134–10.139 |
+| 当前指标 | 命中 **~67–72%**、miss/调用 **~840–940** | `provider-reconcile` |
+| 目标 | ≥95% / <400 | 差距主要来自**普遍存在的 284 短头**与三大稳定块的跨 run 复用 |
