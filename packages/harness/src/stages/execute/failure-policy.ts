@@ -17,6 +17,20 @@ export function pickStepTools(step: PlanStep, tools: AgentTool[]): AgentTool[] {
   return tools.filter((tool) => names.has(tool.name));
 }
 
+/**
+ * Tools declared by any step of the plan. Using the union for every step keeps the
+ * provider tool block identical across the steps of a run, so a cached prefix is
+ * not invalidated by a per-step subset, while the constraint still comes from the
+ * plan rather than from the full tool set.
+ */
+export function pickPlanTools(plan: readonly PlanStep[] | undefined, tools: AgentTool[]): AgentTool[] {
+  const names = new Set<string>();
+  for (const step of plan ?? []) {
+    for (const name of step.tools ?? []) names.add(name);
+  }
+  if (names.size === 0) return tools;
+  return tools.filter((tool) => names.has(tool.name));
+}
 export function hasBlockingToolFailure(results: ToolResult[]): boolean {
   let lastFailureIndex = -1;
   for (let index = results.length - 1; index >= 0; index--) {

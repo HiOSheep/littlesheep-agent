@@ -14,7 +14,7 @@ import {
   blockingToolFailureReason,
   classifyStepFailure,
   hasBlockingToolFailure,
-  pickStepTools,
+  pickPlanTools,
 } from './failure-policy.js';
 import { buildBaseMessages, renderStepGuidance } from './guidance.js';
 import { runDirectToolProposal, runToolLoop } from './tool-loop.js';
@@ -135,7 +135,7 @@ export async function executeScheduledTaskStep(options: TaskStepRunOptions): Pro
             attachmentMessages,
             compactReadTools ? [] : undefined,
           ),
-          tools: compactReadTools ?? pickStepTools(step, ctx.tools),
+          tools: compactReadTools ?? pickPlanTools(ctx.plan, ctx.tools),
           sanitizeOpts,
           stepId,
           signal: branch.controller.signal,
