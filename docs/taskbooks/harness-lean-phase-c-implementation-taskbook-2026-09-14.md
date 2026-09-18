@@ -5101,3 +5101,26 @@ if (index === 0 && message.role === 'system') {
 **预期**：run 间转移（占长会话 miss 54%）的共享前缀从 0/284 提升到 **2,934 + 历史**；长会话 hit **74.1% → 约 85%**。
 
 **判据进度**：① 达标（短会话 hit ≈75.5%、miss ≈708.6）；② 未达（长会话 74.1%），修法已收敛到"用既有的 `systemSegments` 机制对齐各调用点"。
+
+## 10.195 最终结构性结论：跨 purpose 复用历史的**唯一前提**是各 purpose 的 system 消息字节一致（2026-09-18）
+
+**取证（本轮）**：
+- `VOLATILE_GUIDANCE_SEGMENT_IDS`（`context-candidates.ts:14`）仅在**传入 `systemSegments`** 时才生效（`:65–68`）；
+- `buildRunRequestCandidates` 的**生产调用点共 12 处**：`reply`（`:135`、`:206`、`:347`）、`reply/continuity-repair.ts:52`、`verify/model-call.ts:46`、`decide/request.ts:230`、`execute/final-reply.ts:113`、`execute/runners.ts:162/193`、`execute/tool-loop.ts:130`、`recover/model-call.ts:63/113`、`ask_user.ts:140`、`capture.ts:218`、`evolve.ts:231`、`classify.ts:177`。
+
+**推理链（把本会话所有测量串起来）**：
+1. Provider 的前缀缓存**从 token 0 起**；请求顺序是 **[system, 历史, 尾部]**；
+2. 各 purpose 的 **system 消息在共享头（2,934 字符）之后各不相同**（`tooling` 4,179、`output-directives` 1,805、`profile` 335 等按 purpose 取舍）；
+3. ⇒ **跨 purpose 转移只能复用前 2,934 字符（≈730 token），其后的整段历史全部重算** —— 这正是 10.190/10.193 测得"run 间转移 miss **1,269**、长会话 miss 的 **54%**"的根因；
+4. 同 purpose 连续调用可复用（pos2 hit **86.8%** ✓）；同一 run 内两种 reply 形状的交替已由 10.188 消除；`step-contract`（10.180）与重写契约（10.188）已从 system 内移出；
+5. ⇒ **剩下的最大结构性杠杆只有一个**：**让所有 purpose 的 system 消息字节一致**，把 purpose 专属段（`tooling`/`output-directives`/`profile`/`runtime`/`response-directives`…）**统一改由尾部消息承载**（既有机制：传入 `systemSegments` + `VOLATILE_GUIDANCE_SEGMENT_IDS`，或按 10.128 的归属规则调整）。
+
+**预期**：跨 purpose 转移的共享前缀从 **2,934 → system(2,934) + 整段历史**（长会话历史可达数万字符）⇒ run 间 miss **1,269 → 约 300**；长会话 hit **74.1% → 约 85–88%**；短会话同步提升。
+
+**改动面（诚实评估）**：涉及 `builder.ts` 的归属 + 12 个调用点中未传 `systemSegments` 的那些 + 相应测试断言（多处断言各段位于 system 内，类似 10.166 的布局断言）⇒ **这是本目标最大的单次改动**，建议：
+1. **先只做 `reply`+`verify` 两个 purpose**（它们正是 10.193 中 run 末条的单条形状来源，占 58/119）；
+2. 两次样本验证后再推广到 `execute` 家族与 `decide`。
+
+**另一项（须授权）**：`execute_final_reply`（长会话 miss 的 12%、hit ~25%）的低命中由**工具块在 tool loop 与 final reply 之间消失**造成 ⇒ **必须动契约（D1）**，与上述结构性改动**互补**：本项解决"跨 purpose"，D1 解决"同 run 内的工具块断裂"。
+
+**判据进度**：① 达标（短会话 hit ≈75.5%、miss ≈708.6）；② 未达（长会话 74.1%，基线 68.1%，+6.0pt）；**剩余两杠杆已完全定位**：跨 purpose system 一致性（不需授权，预期 → ~85–88%）与 D1（需授权，预期再 +5–8pt）。
