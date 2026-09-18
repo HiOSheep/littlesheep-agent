@@ -38,6 +38,12 @@ export type PromptMode = 'full' | 'respond' | 'minimal' | 'none';
 
 /** Inputs to the pure renderer (Layer 1). */
 export interface PromptInput {
+  /**
+   * Omit the rendered tooling section. Set only where the request advertises the
+   * tools natively and the runtime enforces the callable set, so the text would
+   * be a second copy of schemas the model already receives.
+   */
+  includeToolingText?: boolean;
   branding: BrandingConfig;
   tools: AgentTool[];
   skills?: { name: string; description: string }[];
@@ -175,7 +181,7 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
     );
   }
 
-  if (!isRespond) {
+  if (!isRespond && input.includeToolingText !== false) {
     addVolatile('tooling', toolingSection(input.tools), 'system_prompt', 98);
   }
 
@@ -358,6 +364,12 @@ export function resolvePromptConfig(config: Config, branding: BrandingConfig): R
  * prelude) and calls buildSystemPrompt with a fully-resolved PromptInput.
  */
 export interface RuntimeFacts {
+  /**
+   * Omit the rendered tooling section. Set only where the request advertises the
+   * tools natively and the runtime enforces the callable set, so the text would
+   * be a second copy of schemas the model already receives.
+   */
+  includeToolingText?: boolean;
   tools: AgentTool[];
   skills?: { name: string; description: string }[];
   bootstrap: Record<string, string>;

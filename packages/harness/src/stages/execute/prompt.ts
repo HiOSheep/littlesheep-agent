@@ -32,6 +32,9 @@ export async function buildExecuteSystemPrompt(
     sessionSummary: compactReadTools ? undefined : ctx.sessionSummary,
     memoryRootIndex: compactReadTools ? undefined : ctx.memoryRootIndex,
     initialMemoryContext: compactReadTools ? undefined : ctx.initialMemoryContext,
+    // The tool loop advertises these schemas natively and the runtime enforces the
+    // callable set, so the rendered copy is omitted to keep the prompt smaller.
+    includeToolingText: false,
   }, compactReadTools ? 'respond' : undefined);
   const guidance = compactReadTools && ctx.taskBook
     ? renderCompactAutonomousReadTaskGuidance(ctx.taskBook)
