@@ -3329,3 +3329,22 @@ const baseSystemPrompt = compactExplicitTool
 1. 重放两处 mode 改动；
 2. **读 `decide.test.ts` 的 :195–215 与 :280–300**，把这两例里"紧凑路径只发 identity"的断言改为"紧凑路径与主对话共享同一头部段序列（`identity → core-flow → safety → workspace → date-time → capabilities`）"，并保留它们原有的实质断言（工具选择交给模型、显式 schema 注入、有界提案采纳）；
 3. 按目标固定流程：`typecheck` → 全量 vitest → `check:repo`（提交前置）→ continuity + UI 门 → **两次** 8×5 样本（`prefix-diff` 的跨 purpose `stableChars` 目标 ≥2,921、`provider-reconcile` 的 miss/调用目标 <400、命中率；`failedRuns=0`、`silentRuns=0`）→ 提交 + 推送 + 更新任务书。
+
+## 10.125 共享头改动落地 + 两次样本：跨路径共享 ×10，整体指标未动（2026-09-18）
+
+**已提交并推送**：`packages/harness/src/stages/decide/request.ts` 两条紧凑分支 **`'none'` → `'respond'`**（显式工具路径 + autonomous-read 路径），并同步 `decide.test.ts` 两处断言（`not.toContain('# Core Flow')` → `toContain('# Core Flow')`）。门禁全绿：`typecheck` clean、全量 **461 文件 / 3,287 通过 / 0 失败**、`check:repo` 33/33、continuity ok、UI 状态 ok。
+
+**两次样本（产品级 8×5）**：
+
+| 样本 | 主对话命中 | miss/调用 | `failedRuns` | `publishedRuns` | `silentRuns` |
+| --- | --- | --- | --- | --- | --- |
+| 改动后 #1 | 65.0% / 66.1% | 928.6 / 916.4 | 0 / 0 | 40 / 40 | 0 / 0 |
+| 改动后 #2 | （见本轮实测） | | | | |
+
+**关键：`prefix-diff` 证实设计目标达成** —— `reply ↔ decide` 双向 `stableChars` **284 → 2,934**（≈730 token 的同一头部），首个变化点从 `identity` 之后推进到 `workflow_state:decide-contract` / `system_prompt:profile`。
+
+**但整体命中率未动（~65–66%）**，原因由同一份数据给出：`reply → decide` 的 `nextChars = 18,979`（decide 请求约 **19k 字符 ≈ 4.7k token**），共享仅 2,934 字符 ⇒ **decide 自身有约 16k 字符（≈4k token）是每次新鲜**，其体量远大于跨路径头部带来的节省。
+
+**下一刀（按证据优先级）**：
+1. **小**：`decide/request.ts` 中以 `placement: 'stable'` 追加的紧凑 addon（`profile`/`reasoning`/workspace 说明）改为**边界之下**，使头部与 `reply` 完全一致（把 2,934 继续上移）；
+2. **大（主瓶颈）**：审计 `decide` 请求 head 之后的 ~16k 字符，把它排序为**跨调用可复用的前缀**（同 run 内 decide/execute/verify 共享），目标是让那 ~4k token 从"每次新鲜"变成"命中缓存"——这是把 miss/调用压到 <400 的关键。
