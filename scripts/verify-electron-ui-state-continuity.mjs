@@ -404,30 +404,49 @@ async function verifyChatBottomAnchor(client) {
 
     requestAnimationFrame(() => requestAnimationFrame(() => {
       const expectedGap = 137
-      messages.scrollTop = messages.scrollHeight - messages.clientHeight - expectedGap
-      // Programmatic scrollTop assignment does not reliably emit a native
-      // scroll event in every Electron/Chromium build. Tell the renderer that
-      // this fixture represents an intentional reading position, not a
-      // bottom-pinned chat waiting for new content.
-      messages.dispatchEvent(new Event('scroll', { bubbles: true }))
-      requestAnimationFrame(() => {
-        const beforeGap = messages.scrollHeight - messages.scrollTop - messages.clientHeight
-        messages.style.flexBasis = '360px'
-        const startedAt = performance.now()
-        const deadline = startedAt + 1_000
-        const readSettledGap = () => {
-          const afterGap = messages.scrollHeight - messages.scrollTop - messages.clientHeight
-          if (Math.abs(beforeGap - afterGap) > 1 && performance.now() < deadline) {
-            requestAnimationFrame(readSettledGap)
-            return
+      const setReadingPosition = () => {
+        messages.scrollTop = messages.scrollHeight - messages.clientHeight - expectedGap
+        // Programmatic scrollTop assignment does not reliably emit a native
+        // scroll event in every Electron/Chromium build. Tell the renderer that
+        // this fixture represents an intentional reading position, not a
+        // bottom-pinned chat waiting for new content.
+        messages.dispatchEvent(new Event('scroll', { bubbles: true }))
+      }
+      setReadingPosition()
+      // Registering the reading position is asynchronous in the renderer, and a
+      // single event was not enough under load: the renderer then treated the
+      // resize below as "new content" and re-pinned to the bottom, which failed
+      // this check intermittently. Re-assert the position until the renderer
+      // holds it, within a bounded window, and only then measure.
+      const registerStartedAt = performance.now()
+      const registerReadingPosition = () => {
+        const gap = messages.scrollHeight - messages.scrollTop - messages.clientHeight
+        if (Math.abs(gap - expectedGap) <= 1) return measure()
+        if (performance.now() - registerStartedAt > 750) return measure()
+        setReadingPosition()
+        requestAnimationFrame(registerReadingPosition)
+      }
+      const measure = () => {
+        requestAnimationFrame(() => {
+          const beforeGap = messages.scrollHeight - messages.scrollTop - messages.clientHeight
+          messages.style.flexBasis = '360px'
+          const startedAt = performance.now()
+          const deadline = startedAt + 2_000
+          const readSettledGap = () => {
+            const afterGap = messages.scrollHeight - messages.scrollTop - messages.clientHeight
+            if (Math.abs(beforeGap - afterGap) > 1 && performance.now() < deadline) {
+              requestAnimationFrame(readSettledGap)
+              return
+            }
+            messages.style.removeProperty('flex')
+            messages.style.removeProperty('flex-basis')
+            probe.remove()
+            resolvePromise({ beforeGap, afterGap, settleMs: performance.now() - startedAt })
           }
-          messages.style.removeProperty('flex')
-          messages.style.removeProperty('flex-basis')
-          probe.remove()
-          resolvePromise({ beforeGap, afterGap, settleMs: performance.now() - startedAt })
-        }
-        requestAnimationFrame(() => requestAnimationFrame(readSettledGap))
-      })
+          requestAnimationFrame(() => requestAnimationFrame(readSettledGap))
+        })
+      }
+      requestAnimationFrame(registerReadingPosition)
     }))
   })`)
   if (!result || Math.abs(result.beforeGap - result.afterGap) > 1) {
