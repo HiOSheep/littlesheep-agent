@@ -3891,3 +3891,21 @@ idx=4 execute_final_reply tools=0 uncached=890
 - **风险**：decide 拿到工具 schema 后**可能误发 tool call** ⇒ 两次样本须确认 `verificationPassRateDelta ≥ 0`、`publishedRuns` 不退化，否则回退。
 
 **判据（不变）**：命中 ≥95%、miss/调用 <400、`failedRuns=0`、`silentRuns=0`，不裁剪能力。
+
+## 10.151 归因修正 + 10.150 的正确落点（2026-09-18）
+
+**修正**：10.148 里把 `decide/normalization.ts:131/213` 当作"provider 的 `tools` 入参"是**错的** —— 那两行是**计划步骤对象的 `tools` 字段**（计划内声明，用于 `pickPlanTools` 与步骤执行）。`decide/` 目录内 `tools` 只出现在两处：计划步骤字段、以及 `request.ts:106` 传给 bundle 的**文本输入**（`capabilities`/`tooling` 段）。
+
+**结论**：**`decide` 目前根本不向 provider 发送 `tools`**（实测 `tools=0` ✓），因此"让 decide 广告工具集"必须在**decide 阶段的 ChatRequest 构造处**新增该字段，而不是改 `normalization.ts`。
+
+**设计要点（语义与缓存兼得）**：
+- `decide` 的职责**就是"从可用工具中挑选"**（其契约允许它规划任意工具）⇒ 让它看到 **`ctx.tools` 全集**是**语义正确**的，而非"能力扩张"；
+- 且 `ctx.tools` 与 execute 侧 `pickPlanTools(ctx.plan, ctx.tools)` 的**关系是超集**（并集 ⊆ 全集）⇒ 若 decide 广告全集、execute 广告 plan 并集，二者**工具块不同** ⇒ 仍无法复用。**因此两侧必须一致**：要么都用 `ctx.tools`（并保留 execute 的**执行期**校验），要么都用 plan 并集（但 decide 在规划前拿不到 plan）。
+  ⇒ **唯一可行的一致形态**：**两者都广告 `ctx.tools`**，而**执行期约束仍由 plan 并在循环内校验**（即 10.148 末尾的"备选：广告层与执行层分离"）—— 这要求给循环 API 增加"广告集 ≠ 允许集"的能力（或保留 `pickStepTools` 作为**执行期校验**、把 `tools` 入参改为 `ctx.tools`）。
+
+**下一轮要读的三处落点**（确定实现方式后再改，先取证）：
+1. `packages/harness/src/stages/decide/request.ts`（或 `decide.ts`）中 **ChatRequest 的最终构造**——`tools` 字段该加在哪里；
+2. `packages/harness/src/stages/execute/task-step-runner.ts:138` 的 **`runToolLoop` 入参**与循环内部的**工具校验点**（确认"广告全集 + 校验子集"是否可行，或需要新参数）；
+3. `packages/harness/src/stages/execute/contracts.ts:49`（`ToolLoopOptions.tools`）——若需要，新增 `allowedToolNames?: string[]`。
+
+**判据（不变）**：`tool-set-diff.mjs` 中同一 run 内 decide 与 tool loop 的 `tools` 列**一致**、`execute_tool_loop` 的 `uncached` ~5,000 → **<1,500**；两次 8×5 样本；`failedRuns=0`、`silentRuns=0`、`verificationPassRateDelta ≥ 0`。
