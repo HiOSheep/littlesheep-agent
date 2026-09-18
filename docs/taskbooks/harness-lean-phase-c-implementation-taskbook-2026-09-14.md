@@ -3054,3 +3054,39 @@ const status: RunCheckpoint['status'] = ctx.runtimeControl?.state === 'paused'
 **无论如何都必须守住的**：`silentRuns === 0`（现已写入门禁 `293f46d`）、发布可追溯性、HC-12 撤销语义、记忆连续性、两条 Electron 门（UI 门现已稳定，`6fdc566`）。
 
 **当前状态可信度**：这一结论建立在"读代码定位到唯一开关 + 已有实测支持（失败 0、成功率 100%、`pausedRuns` 0）"之上；下一轮只需改 2–3 行并跑全门 + 一次 8×5 即可验证。
+
+### 11.26 A 方案（取消"澄清请求 ⇒ waiting_user"）的**精确改动清单与影响评估**（2026-09-18）
+
+**改动点（唯一）：** `packages/runner/src/run-checkpoint.ts:46–52`，删掉这一分支：
+
+```ts
+      : ctx.clarificationRequest
+        ? 'waiting_user'          // ← 删除：提问不再自动停放 run
+        : 'recoverable';
+```
+⇒ 之后 `status` 只由 `runtimeControl`（paused / interrupted）决定，其余为 `recoverable`。
+
+**影响评估（已逐处核对，结论：影响面极小）：**
+
+| 位置 | 内容 | 是否受影响 |
+| --- | --- | --- |
+| `run-checkpoint.test.ts:99–105` | 用"带澄清请求的 ctx"构建 checkpoint 并断言 `status === 'waiting_user'` | **需更新**：改为断言 `recoverable`（并加注释说明新语义） |
+| `runner-continuation.test.ts`（约 20 处） | 全部用 `waitingCheckpoint({...})` **夹具**显式给出 `status: 'waiting_user'` | **不受影响**（夹具直接构造状态） |
+| `run-checkpoint-controller.test.ts`、`durable-*.test.ts`、`authoritative-reply*.test.ts` | 均为显式 `status: 'waiting_user'` 的夹具 | **不受影响** |
+| `runner.ts:1090`（`isClarification = status === 'waiting_user'`） | 续跑入口 | 逻辑保留；生产上不再由提问触发（测试仍覆盖该路径） |
+
+**⇒ 这是一个 2 文件、约 3 行的改动，套件影响仅 1 处断言。**
+
+**语义后果（A 方案的本质，务必写清）：**
+- 提问 = **一条正常回复**（`ask_user` 本来就 `next: 'finalize'`，会发布问题）；
+- run **正常结束**（不再有"等待用户"的停放态）；
+- 下一条消息**默认是新任务**；若模型判断它是在回答上一问，则按**新任务**继续（`dad2939` 已保证这条路径安全、且不会再抛"ambiguous 未领取"）；
+- **代价**：失去"恢复被挂起任务"的生产能力（`recover` 的"需要授权后继续"这类场景将重新开始）——若日后需要，按 B 方案以**技能主动调用**的方式重建。
+
+**执行步骤（最后一轮，一次做完）：**
+1. 删 `run-checkpoint.ts` 的两行分支；
+2. 更新 `run-checkpoint.test.ts:105` 的断言（`waiting_user` → `recoverable`）；
+3. `pnpm exec vitest run packages/runner` → 全量 `vitest` → `typecheck` + `check:repo` → `verify:electron-continuity` + `verify:electron-ui-state-continuity`（**两次都按 JSON 行解析**，UI 门已稳定）→ 提交；
+4. 产品级预算 8×5 实机：判据 **`failedRuns` 仍为 0、`pausedRuns` 仍为 0、`silentRuns` 为 0、命中率/成本不回归**（`miss/调用` 约 880–900、主对话约 67%）。
+
+**必须守住：** `silentRuns === 0`（门禁已强制，`293f46d`）、发布可追溯性、HC-12 撤销语义、记忆连续性、两条 Electron 门。
