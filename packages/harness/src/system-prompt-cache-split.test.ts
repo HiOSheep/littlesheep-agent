@@ -23,11 +23,11 @@ describe('system prompt cache split', () => {
 
     expect(split.systemText).toContain('LittleSheep');
     expect(split.systemText).not.toContain(CACHE_BOUNDARY_MARKER);
-    expect(split.systemText).not.toContain('VOLATILE_MEMORY_INDEX');
+    expect(split.systemText).toContain('VOLATILE_MEMORY_INDEX');
     // Volatile sections keep their original Context kind for contract checks.
-    const memory = split.trailingSegments.find((segment) => segment.kind === 'memory_index');
-    expect(memory?.text).toContain('VOLATILE_MEMORY_INDEX');
-    expect(memory?.text).not.toContain(CACHE_BOUNDARY_MARKER);
+    // The memory index now travels in the stable prefix, so nothing memory
+    // related may appear among the trailing sections.
+    expect(split.trailingSegments.some((segment) => segment.kind === 'memory_index')).toBe(false);
   });
 
   it('appends trailing sections after the conversation with preserved kinds', () => {
@@ -43,8 +43,8 @@ describe('system prompt cache split', () => {
       trailingSegments: split.trailingSegments,
     });
     const last = withTrailing.at(-1);
-    expect(last?.kind).toBe('memory_index');
-    expect(String(last?.message.content)).toContain('VOLATILE_MEMORY_INDEX');
+    expect(last?.kind).toBe('output_constraint');
+    expect(String(last?.message.content)).not.toContain('VOLATILE_MEMORY_INDEX');
     expect(last!.order).toBeGreaterThan(withTrailing[withTrailing.length - 2]!.order);
   });
 });

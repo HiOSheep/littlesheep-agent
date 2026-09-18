@@ -153,6 +153,19 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
   // 2593-byte head to 2921 bytes before the mode-specific tool section splits
   // the bytes (taskbook 10.116).
   addStable('capabilities', capabilitiesSection(input.tools), 'system_prompt', 98);
+  // The memory index changes in only a small share of calls, so keeping it above
+  // the boundary lets every call reuse its bytes instead of resending them.
+  if (mode !== 'minimal' && (isFull || isRespond) && input.memoryRootIndex) {
+    addStable(
+      'memory-root-index',
+      isRespond ? memoryAwarenessSection(input.memoryRootIndex) : memoryTreeSection(input.memoryRootIndex),
+      'memory_index',
+      95,
+      true,
+      'global',
+      { kind: 'memory', id: 'root-index' },
+    );
+  }
 
   if (!isRespond) {
     addVolatile('tooling', toolingSection(input.tools), 'system_prompt', 98);
@@ -198,19 +211,6 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
     });
   }
   // ─── Volatile sections (below cache boundary) ───
-  if (mode !== 'minimal' && (isFull || isRespond) && input.memoryRootIndex) {
-    segments.push({
-      id: 'memory-root-index',
-      order: nextOrder++,
-      text: `${volatilePrefix()}${isRespond ? memoryAwarenessSection(input.memoryRootIndex) : memoryTreeSection(input.memoryRootIndex)}`,
-      kind: 'memory_index',
-      source: { kind: 'memory', id: 'root-index' },
-      priority: 95,
-      required: true,
-      sensitive: true,
-      scope: 'global',
-    });
-  }
 
   if (mode !== 'minimal' && input.sessionSummary) {
     segments.push({

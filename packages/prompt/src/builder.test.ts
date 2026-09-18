@@ -88,8 +88,8 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('answer with hour and minute only');
     expect(prompt).toContain('Do not volunteer low-value timing or percentage details');
     const parts = splitAtBoundary(prompt);
-    expect(parts.stable).not.toContain('Memory Tree Root Index');
-    expect(parts.volatile).toContain('Memory Tree Root Index');
+    expect(parts.stable).toContain('Memory Tree Root Index');
+    expect(parts.volatile).not.toContain('Memory Tree Root Index');
   });
 
   it('minimal mode omits Core Flow section heading and prelude', () => {
