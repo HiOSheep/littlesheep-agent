@@ -4587,3 +4587,32 @@ const stepSystemPrompt = appendSystemPromptBundleAddons(baseSystemPrompt, [{
 **预期**：`execute_tool_loop` miss 5,983 → ~1/3；**短会话 miss ~920 → ~700、hit → ~75%（触及判据 ①）**；长会话 hit → ~78%。
 
 **下一轮（落地）**：读 `task-step-runner.ts:88–140` 与 `tool-loop.ts` 接收 `insertedBeforePrimary`/trailing 的入口，把该段改为尾部消息；然后全门 + 两次样本。
+
+## 10.177 **修法落点确定**：工具循环**未做 cache-split**，而其它路径做了（2026-09-18）
+
+**关键对比（provider 实际 system 消息长度）**：
+
+| 路径 | system 消息字符数 | 是否已做 cache-split |
+| --- | --- | --- |
+| `reply` | **6,616 / 6,984**（两种变体） | ✅ 是（稳定段单独成 system；易变段走尾部消息） |
+| `decide` | 15,505 | ✅ 是（恒定，命中 81%） |
+| `verify` | 3,264 | ✅ 是（恒定） |
+| **`execute_tool_loop`** | **12,591–13,910（17 次 17 种）** | ❌ **否**：整条 bundle 文本（含逐步变化的 `step-contract`）作为**一条 system 消息**发出 ⇒ 每步都在消息内部打断前缀 |
+
+**代码落点**：
+- `task-step-runner.ts:130–152` 调 `runToolLoop` 时传 `messages: buildBaseMessages(ctx, stepSystemPrompt.text, …)` 与 `systemSegments: stepSystemPrompt.segments`；
+- `tool-loop.ts:76–77, 132–133` 接收并在 `prepareModelRequest(...)` 一带使用；
+- 对比：**reply 路径**使用 `splitSystemPromptForCache`（`system-prompt-cache-split.ts`）把"边界之上"作为 system、"边界之下"作为**尾部消息** ⇒ 这就是 reply/decide/verify 的 system 消息较短且恒定的原因。
+
+**⇒ 修法（一处，复用既有机制，不裁剪能力、无需授权）**：让 **`execute_tool_loop` 与其它路径一样，用 `splitSystemPromptForCache` 处理系统提示** ——
+- `system` 只放**边界之上**的稳定段（跨步字节稳定 ⇒ 前缀覆盖 system + 历史）；
+- `step-contract` 与其它边界之下段**照发**为尾部消息（历史之后），内容**一字不减**。
+
+**预期**：`execute_tool_loop` 的 system 消息由 12.6–13.9k（17 种）变为**恒定**；miss 5,983 → ~1/3；**短会话 miss ~920 → ~700、hit → ~75%（触及判据 ①）**；长会话 hit → ~78%。
+
+**下一轮（先读两处再改）**：
+1. `tool-loop.ts:60–140`（看它如何用 `systemSegments`/`insertedBeforePrimary` 组装 messages 与 candidates）；
+2. reply 路径中 `splitSystemPromptForCache` 的调用点（`reply.ts` 一带）作为**参照实现**；
+然后按同一模式改 `task-step-runner`/`tool-loop` 的装配，跑全门 + 两次样本。
+
+**判据进度**：① 未达（67–68%、~900）；② 未达（68.1%）；硬约束满足（`failedRuns=0`、`silentRuns=0`、未裁剪能力）。
