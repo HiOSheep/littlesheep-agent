@@ -5474,3 +5474,28 @@ tail[11] system 251 · tail[12] system 662 · tail[13] system 1,986   ← 尾部
 5. 全门 + **两次**样本，验收 `execute_final_reply` miss/调用 **846 → <400**、hit **25% → >60%**。
 
 **风险（重估）**：D1 的改动面为 **3 处生产调用点 + 3 类测试替身 + 若干断言 + 3 类下游（计数/可观测/UI）**；**建议先只做 `verify` 一处**，用两次样本判断"给一个本不带工具的 purpose 加工具块"是否**真的提升命中**（若提升不足 2pt，则 D1 的收益不足以支撑其风险，应及时停手并回报）。
+
+## 10.206 **D1 设计更正（重要）**：只有 run 内**首个带工具的调用**决定工具块能否被缓存（2026-09-18）
+
+**推理**（基于本会话已证的机制）：
+- Provider 前缀缓存**从 token 0 起**，且请求体顺序是 **[工具块, 消息]**（10.146 已证）；
+- execute 形态 run 的调用序为 **`decide`(×1–2) → `execute_tool_loop` → `execute_final_reply` → `verify`**（`run-shapes.mjs`）；
+- ⇒ **`execute_tool_loop` 是 run 内首个带工具的调用**：它必须为工具块**付全价**（~4.4–5.3k 字符）；
+- ⇒ **给 `verify` / `execute_final_reply`（都在 tool loop 之后）加工具块，无法让 tool loop 的那次冷启动变成命中** —— 它们只能复用**已经**被 tool loop 写进缓存的那份工具块；而它们本来**不发送**工具块，其 miss（846 / 925）来自"system + 历史 + 尾部"，与工具块无关；
+- ⇒ **10.203/10.204 的 D1 方案（改 verify + final_reply）基本无效**，且会**增加**两者的 prompt 体积（各 +4.5k 字符）。
+
+**真正的 D1（正确形态）**：让**更早的调用携带同一工具块**，使 `execute_tool_loop` 的工具块**命中**而非冷启动：
+- **首选 `decide`**：它是 execute 形态 run 的**第一个**调用（`decide → tool loop → …`），且其"lean wire contract"（禁止携带 `tools`）**正是用户本次授权可改的两处契约之一** ✓；
+- 预期收益：tool loop 的 miss 从 **4,956–5,983 → 约 3,700–4,700**（省下工具块 ~1,200 token/次）；短会话 miss/调用 **~709 → ~680**、hit **~75.2% → ~77%**；长会话同理；
+- **风险**：`decide` 拿到工具 schema 后可能**误发 tool call**（其契约为纯决策 JSON）⇒ 两次样本必须确认 `failedRuns=0`、`verificationPassRateDelta ≥ 0`、阶段序不退化；一旦误发，改为**只广告"工具名单"而非完整 schema**（保持契约意图、仍使工具块前缀一致？—— 不行，字节必须一致才能命中；若误发，则退回"不改 decide"，接受现状）。
+
+**因此修正后的 D1 执行顺序**：
+1. 改 `decide/model-call.ts`：加 `tools: toProviderTools(ctx.tools)`；
+2. 同步其"lean wire contract"断言（把"不含 tools"改为"含且仅含当前 run 的工具集"）；
+3. 更新按 tools 判定工具循环的替身（`execute.test.ts` / `runner/web-runtime.test.ts` / `tests/helpers.ts`）⇒ 改为**按 purpose 判定**；
+4. 全门 + **两次**样本，**先看 `execute_tool_loop` 的 miss/调用是否下降 ~1,200**（这是唯一判据；若未下降则回退）；
+5. 只有第 4 步成功，才评估是否给 `verify`/`final_reply` 也加（仅为"形状一致"，收益中性）。
+
+**当前基线（未改动，`main`）**：短会话 hit **74.5–76.7%**、miss/调用 **682–716**；`execute_tool_loop` miss/调用 **1,640–2,447**（长/短混合样本）；长会话 hit **73.7–74.0%**。
+
+**教训**：本更正避免了"为中性收益承担 27 处测试与 3 类下游改动"的错误投入 —— 与 10.163（`memoryRevision` 混淆）、10.171（上限模型）、10.200（跨 purpose 方向）同类：**先验证收益机制，再付实施代价**。
