@@ -71,7 +71,11 @@
   | 证据指纹 | `MAX_EVIDENCE_FINGERPRINTS = 128`，按 `toolSource + 资源键/输入哈希` 判定 | 观测/去重 | 保留（已有测试覆盖"同内容不同来源算不同证据"、"不同成功副作用算进展"） |
   | 纯追加历史 | `_shared.ts` 只增不滑 + 12,000 字符预算 | 缓存前缀稳定 | 已于 10.108 落地并实测 |
 - **为什么无需改**：三者都是**上界**且后果是"要求模型基于已有证据收尾"，而不是替模型编造结论或把判断判成违规；与"判断交还模型、安全留运行时"一致。
-- **可选细化（记为 P4a，不阻塞）**：触发无进展闩锁时，当前提示是"停止调用工具并作答"；更贴合原则的写法是**陈述观察并交回选择**（"最近两轮按指纹判定没有新证据；你可以基于现有证据作答，或说明还缺什么"），同时**保留**强制收尾这个上界本身。属措辞级改动，收益低于单次测量分辨率，待其它项完成后再评估。
+- **✅ P4a 已实施（2026-09-18，`4902c5a`）**：无进展闩锁的提示由"**停止调用工具并从已有证据作答**"改为**陈述观察 + 交回选择 + 披露边界** ——
+
+> `Runtime control: the last rounds added no new evidence (same tool sources and targets). You can answer from the evidence already present, or say plainly what is still missing; tools are no longer available in this run.`
+
+**上界未变**（`forceFinalResponse` 照旧），改的只是**立场**：从"替模型决定如何收尾"变成"告知事实、由它选择"。**验证（本轮补全）**：`typecheck` clean、全量 vitest **461 文件 / 3,287 通过 / 1 跳过 / 0 失败**、`check:repo` **33/33**、`verify:electron-continuity` **ok**、`verify:electron-ui-state-continuity` **ok**。实机未再跑：该字符串只在无进展分支发出，8×5 聊天负载不会走到，最近两次实机样本已覆盖运行时行为。
 - **实测佐证**：最近样本 `semanticFailures = 0`、`silentRuns = 0`、`pausedRuns = 0`；无工具循环类失败。
 - **完成定义达成**：审计报告 ✅ / 必要改动：无（0 行）+ 记录 P4a ✅ / 既有全门未受影响 ✅ / 实机佐证 ✅。
 
