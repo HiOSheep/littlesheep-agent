@@ -3952,3 +3952,26 @@ idx=7 verify              tools=0
 1. classify 接线（三处改动已写成、harness 685/685 绿；唯一障碍是 `runner/web-runtime.test.ts` 两例 `seen=[]`，诊断命令已留档）；
 2. `execute_final_reply`（命中 25–29%，9–13 次调用）单独审计；
 3. 若工具块统一后仍不足 95%，再谈"把工具块移到消息之后"（Provider 侧不可行）或"减少每轮 run 数/合并调用"等结构性手段。
+
+## 10.153 **安全绿灯**：计划工具限制由**独立的执行期校验**强制（2026-09-18）
+
+`grep 'step\.tools'` 在 `packages/` 命中 **28 处**，其中**执行期强制**至少 6 处：
+
+| 位置 | 作用 |
+| --- | --- |
+| `compact-read-only-result.ts:32–33` | 校验提案工具必须等于该步唯一工具 |
+| `compact-autonomous-read-task.ts:64–72, 92` | 校验请求工具集合与 `step.tools` 一致；并渲染 `Allowed tools: …` |
+| `stages/execute/direct-tool-proposal.ts:48–49` | 该步唯一工具须等于提案工具 |
+| `stages/execute/task-step-scheduler.ts:112–113, 175` | 并行步要求显式工具表；按名查表 |
+| `stages/recover/policy.ts:12–13` | 按 `step.tools` 过滤 |
+
+⇒ **"该步允许哪些工具"由这些校验独立强制**，与"向 Provider 广告哪些工具"**互不依赖**。因此 **10.150 的改法是安全的**（不放宽权限）：把循环的 `tools` 入参改为 `ctx.tools`（广告全集），执行期仍由上述校验按 `step.tools` 约束 ✓。
+
+**10.150 的最终改法（三处，待实施）**：
+1. `execute/task-step-runner.ts:138`：`pickPlanTools(ctx.plan, ctx.tools)` → **`ctx.tools`**（广告全集；执行期约束不受影响）；
+2. **decide 的 ChatRequest 构造处**：新增 `tools: ctx.tools`（decide 是"选工具"的阶段，看到全集**语义正确**）；
+3. **回滚 8827b90 的 `pickPlanTools` 用法？** 不必删除该函数（它仍可用于**文案**"Allowed tools"之外的场景），但 `task-step-runner` 不再使用它；因 8827b90 实测零收益，若其引入的并集在**文案**层无用途，可在同一提交里移除以免留死代码。
+
+**预期**：工具块在 run 内**首次 decide** 即出现，其后 tool loop / final_reply / verify **复用同一前缀**；`execute_tool_loop` 的 `uncached` **~5,000 → <1,500**。
+
+**验证（两次样本 + 全门）**：`tool-set-diff.mjs` 中同 run 内 decide 与 tool loop 的 `tools` 列**一致（=15）**、`uncached` 下降、`failedRuns=0`、`silentRuns=0`、`verificationPassRateDelta ≥ 0`、`publishedRuns` 不退化。
