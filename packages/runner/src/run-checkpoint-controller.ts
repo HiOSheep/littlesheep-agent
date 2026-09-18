@@ -100,7 +100,16 @@ export class RunCheckpointController {
     return { kind: 'found', disposition: matches[0]! }
   }
 
-  /** Resolve the only auto-bindable waiting-user head without guessing by age. */
+  /**
+   * Resolve the only auto-bindable waiting-user head without guessing by age.
+   *
+   * Compatibility path: since the clarification activity and the derived
+   * `waiting_user` status were removed, a new run never parks itself on a
+   * question it asked (the question is published as a normal reply and the next
+   * message starts a new task). Waiting checkpoints still exist on disk from
+   * earlier versions, and the continuation tests and Electron continuity
+   * scenarios exercise this resolution, so it stays rather than being deleted.
+   */
   async resolveWaitingUserHead(
     sessionId: SessionId,
     expectedModel?: string,
