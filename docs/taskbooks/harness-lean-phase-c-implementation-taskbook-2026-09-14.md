@@ -3396,3 +3396,23 @@ const baseSystemPrompt = compactExplicitTool
 **关键结论**：**run 专属的 `decide-contract`（#6）排在稳定项（#7–#12，合计 ≈9.2k 字符 ≈2.3k token）之前**。Provider 只复用"从 token 0 起的最长公共前缀"，因此**它一旦不同，#7 之后的全部内容（含 `tooling`/`output-directives`/`memory-root-index` 与整段历史）在跨 run 时全部作废**。这解释了 `provider-reconcile` 里 `decide after reply` 行出现的 **1095–3629 token 新鲜**。
 
 **下一刀（10.128，按证据）**：把 **run 专属项移到稳定项之后**（即 `decide-contract` 放到尾部/边界之下，让 `profile`/`tooling`/`runtime`/`output-directives`/`memory-root-index`/bootstrap 依次位于其**之前**）。**段照发**，只调顺序 ⇒ 能力不变，且预期把 ≈2.1–2.3k token 变为跨 run 可复用。**判据**：`prefix-detail` 中两份 decide 请求的公共前缀从 2,934 显著上移；`provider-reconcile` 的 `decide` 行 `uncached` 显著下降；miss/调用向 <400 收敛。
+
+## 10.128 合并规则已读清（10.126 教训要求的步骤）+ 下一刀的精确定义（2026-09-18）
+
+**`appendSystemPromptBundleAddons` 的真实规则**（`packages/harness/src/profile-prompt.ts:47–100`）：
+
+```ts
+const segments = [...stable, ...stableAddons, ...volatile, ...volatileAddons]
+  .map((segment, index) => ({ ...segment, order: index }));
+return rebuildBundle(segments, stable.length + stableAddons.length);
+// rebuildBundle: 第 stableCount 个及之后视为易变，标记插在 stableCount 之前
+```
+
+三条要点：
+1. **最终顺序 = `[bundle 稳定段] → [稳定 addon] → [bundle 易变段] → [易变 addon]`**；`order` 被**按下标重算**，所以**数组位置就是一切**；
+2. **标记位置 = `stable.length + stableAddons.length`**（即第一个易变项之前）；若 bundle 本身没有标记，则 `stable = 全部 bundle 段`、`volatile = []`，标记退化为"稳定 addon 之后"；
+3. 因此"把某个 addon 变易变"会**同时改变标记位置**——这正是 10.126 那次把共享前缀从 2,934 打到 284 的机制所在（**但确切原因仍需一次受控实验确认**，不可再凭直觉）。
+
+**下一刀（10.129，受控、最小）**：**只把 run 专属的 `decide-contract` 一个 addon 改为易变**（不动 `profile`/`reasoning`），使它落到 `volatileAddons` 尾部 —— 预期顺序变为 `[头部 2,934] → [profile 等稳定 addon] → [tooling/output-directives/memory-root-index 等] → [decide-contract]`，从而让 **≈9.2k 字符（≈2.3k token）的稳定内容位于 run 专属内容之前**、可跨 run 复用。
+
+**验证**：先本地 `typecheck` + `decide` 测试；再**一次**实机样本 + `prefix-detail.mjs <data> decide 2` 看两份 decide 请求的公共前缀是否从 **2,934 上移**（目标 ≥8,000）；若上移则跑第二次样本并推送，若再次塌陷则回退并把实际机制补记在此节（**不再猜测**）。
