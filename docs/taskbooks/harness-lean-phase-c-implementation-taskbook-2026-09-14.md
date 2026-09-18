@@ -3416,3 +3416,22 @@ return rebuildBundle(segments, stable.length + stableAddons.length);
 **下一刀（10.129，受控、最小）**：**只把 run 专属的 `decide-contract` 一个 addon 改为易变**（不动 `profile`/`reasoning`），使它落到 `volatileAddons` 尾部 —— 预期顺序变为 `[头部 2,934] → [profile 等稳定 addon] → [tooling/output-directives/memory-root-index 等] → [decide-contract]`，从而让 **≈9.2k 字符（≈2.3k token）的稳定内容位于 run 专属内容之前**、可跨 run 复用。
 
 **验证**：先本地 `typecheck` + `decide` 测试；再**一次**实机样本 + `prefix-detail.mjs <data> decide 2` 看两份 decide 请求的公共前缀是否从 **2,934 上移**（目标 ≥8,000）；若上移则跑第二次样本并推送，若再次塌陷则回退并把实际机制补记在此节（**不再猜测**）。
+
+## 10.129 把 run 专属的 `decide-contract` 移到稳定项之后：**两次样本一致改善**（2026-09-18）
+
+**改动**（`packages/harness/src/stages/decide/request.ts:156–162`）：去掉 `decide-contract` addon 的 `placement: 'stable'`（**单 addon 受控实验**，不动 `profile`/`reasoning`）⇒ 它由"稳定 addon"变为"易变 addon"，落到稳定内容之后；**段全部照发**（能力不裁剪）。
+
+**两次样本（产品级 8×5，真实 DeepSeek）**：
+
+| 读数 | 主对话命中 | miss/调用 | `failedRuns` | `publishedRuns` | `silentRuns` |
+| --- | --- | --- | --- | --- | --- |
+| 改动前 #1 | 66.0% / 66.0% | 910.8 / 919.5 | 0/0 | 40/40 | 0/0 |
+| 改动前 #2 | 66.3% / 66.4% | 903.0 / 895.5 | 0/0 | 40/40 | 0/0 |
+| **改动后 #1** | **67.3% / 69.6%** | **839.0 / 851.9** | 0/0 | 40/40 | 0/0 |
+| **改动后 #2** | **68.4% / 67.4%** | **892.5 / 841.2** | 0/0 | 40/40 | 0/0 |
+
+**判定**：**改动后四次读数（miss 839 / 851.9 / 892.5 / 841.2）全部低于改动前四次（910.8 / 919.5 / 903 / 895.5）**，即最差的后值仍优于最好的前值 ⇒ **分离干净、改善成立**（命中约 +2 个百分点、miss/调用约 −5%）。两条 Electron 门、`typecheck`、全量 3,287 测试、`check:repo` 33/33 均绿。
+
+**同轮观察到的副作用（需后续处理，已记录）**：`prefix-detail` 显示两份 `decide` 请求的**段序在标记前移后不再一致**（第 1 项即分歧：一侧 `bootstrap:USER.md`、另一侧 `core-flow`）——这与 10.126 同源（**标记位置 = `stable.length + stableAddons.length`**，把 addon 移出稳定区会**前移标记**）。本刀虽净收益为正，但**序一致性仍需一项独立修复**（例如让标记位置与 run 专属内容解耦，而不是靠 addon 归属隐式决定）。
+
+**下一步（10.130）**：在保持本刀净收益的前提下**恢复序一致性** —— 候选方案：把 run 专属内容（`decide-contract`、`retrieval-intent-contract`）改为**独立尾部消息**（而非同一 system 消息内的位置），使"头部+稳定 addon+bundle 易变段"的序列与标记位置**不受 run 专属内容影响**。
