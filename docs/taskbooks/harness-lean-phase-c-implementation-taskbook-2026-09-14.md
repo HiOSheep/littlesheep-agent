@@ -3093,7 +3093,7 @@ const status: RunCheckpoint['status'] = ctx.runtimeControl?.state === 'paused'
 
 ## 10.111 缓存续作诊断（2026-09-18）：`classify` 零复用 + `decide` 切换失配
 
-**数据根**：`littlesheep-path-next-S2J47O`（产品级预算 8×5、真实 DeepSeek）。工具：`provider-reconcile.mjs` / `divergence-locate.mjs` / `system-stability.mjs`（工作区 `D:\tools\littlesheep`）。
+**数据根**：`littlesheep-path-next-S2J47O`（产品级预算 8×5、真实 DeepSeek）。工具：`provider-reconcile.mjs` / `divergence-locate.mjs` / `system-stability.mjs`（工作区分析脚本，位于仓库之外）。
 
 **证据：**
 
