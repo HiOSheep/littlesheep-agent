@@ -81,7 +81,8 @@
 
 **验证（全绿）**：`typecheck` clean；全量 vitest **3,287 通过 / 1 跳过 / 0 失败**；`check:repo` **33/33**；`verify:electron-continuity` **ok**；`verify:electron-ui-state-continuity` **ok**；产品级 8×5 实机（`live-p5fix.txt`）：`failedRuns` **0/0**、`semanticFailures` **0/0**、`transportFailures` **0/0**、`publishedRuns` **40/40**、`silentRuns` **0/0**、`pausedRuns` **0/0**、主对话命中 **66%/66%**、miss 每调用 **910.8/919.5**。
 
-**⚠️ 已知判据（待第二次样本）**：该轮 gate 唯一红项为 **`shortTurnP50DeltaPct = 6.5`（上限 5）** —— 属**性能维度**（next 路径中位延迟比 shadow 高 6.5%），8 条判据其余 7 条全绿。按"单次运行不判定 <1–2pt 差异"的纪律，**需第二次样本**再判是抖动还是稳定代价（可能成因：next 路径每轮写 durable 状态）。**判定前不得声称"全门绿"，也不得当作回归。**
+**✅ 已知判据已判定（2026-09-18，第二次样本）**：该轮 gate 唯一红项 **`shortTurnP50DeltaPct = 6.5`（上限 5）** 属**抖动**，不是稳定代价 —— 第二次产品级 8×5（`live-p50-second.txt`）给出 **`p50delta = -1`**（next 路径反而快 1%），**gate 全绿**，且两次样本的正确性判据完全一致（`failedRuns` 0/0、`semanticFailures` 0/0、`publishedRuns` 40/40、`silentRuns`/`pausedRuns` 0/0、命中 66.3%/66.4%、miss 903/895.5）。
+**方法论结论**：中位延迟对比与 UI 状态门同属**噪声型判据**（两次样本 +6.5% / −1%）⇒ 后续对这类判据应**默认按两次样本判定**，或降级为告警；**单次红不能作为回归结论**。
 
 **教训（已写入方法）**：**"功能认证"≠"新路径被触发"** —— P5 的实机认证之所以干净，是因为负载里模型从未调用该工具；**真正的缺陷是补测试时才暴露的**。
 
