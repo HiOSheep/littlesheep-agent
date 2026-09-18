@@ -102,7 +102,9 @@ describe('buildRunCheckpoint', () => {
       reason: 'waiting for a bound answer',
       now: new Date('2026-07-29T10:00:01.000Z'),
     });
-    expect(ordinary.status).toBe('waiting_user');
+    // A clarification is answered by a normal reply now, so it no longer parks
+    // the run: only an explicit pause or an interruption does.
+    expect(ordinary.status).toBe('recoverable');
 
     waiting.runtimeControl = {
       version: 1,

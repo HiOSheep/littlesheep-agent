@@ -43,13 +43,16 @@ export function buildRunCheckpoint(options: BuildRunCheckpointOptions): RunCheck
   const { ctx, stageResult } = options;
   const now = options.now ?? (ctx.runtimeNow?.() ?? new Date());
   const queue = snapshotQueue(ctx);
+  // A clarification no longer parks a run. Asking the user is a normal published
+  // reply (ASK_USER ends with FINALIZE), and whether the next message continues
+  // that thread is the model's judgement at that time, handled safely by the
+  // continuation path. Only an explicit runtime pause or an interruption
+  // suspends a run now.
   const status: RunCheckpoint['status'] = ctx.runtimeControl?.state === 'paused'
     ? 'paused'
     : options.interrupted || ctx.runtimeControl?.state === 'interrupted'
       ? 'recoverable'
-      : ctx.clarificationRequest
-        ? 'waiting_user'
-        : 'recoverable';
+      : 'recoverable';
   const activeStepIds = (ctx.taskExecution?.steps ?? [])
     .filter((step) => step.status === 'in_progress')
     .map((step) => step.stepId)
