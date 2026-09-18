@@ -3090,3 +3090,25 @@ const status: RunCheckpoint['status'] = ctx.runtimeControl?.state === 'paused'
 4. 产品级预算 8×5 实机：判据 **`failedRuns` 仍为 0、`pausedRuns` 仍为 0、`silentRuns` 为 0、命中率/成本不回归**（`miss/调用` 约 880–900、主对话约 67%）。
 
 **必须守住：** `silentRuns === 0`（门禁已强制，`293f46d`）、发布可追溯性、HC-12 撤销语义、记忆连续性、两条 Electron 门。
+
+## 10.111 缓存续作诊断（2026-09-18）：`classify` 零复用 + `decide` 切换失配
+
+**数据根**：`littlesheep-path-next-S2J47O`（产品级预算 8×5、真实 DeepSeek）。工具：`provider-reconcile.mjs` / `divergence-locate.mjs` / `system-stability.mjs`（工作区 `D:\tools\littlesheep`）。
+
+**证据：**
+
+| 观察 | 数值 |
+| --- | --- |
+| `classify` 与前一次请求的公共前缀 | **~0 字符 / 1802（0%）** ⇒ `cached=0`、`uncached=508` |
+| `decide` 紧随 `reply` | 最差一行 `prompt=4141 cached=512 uncached=**3629**`；另一例 `5447/4352`（80% 字符命中） |
+| `reply` 紧随 `reply` | 复用良好（例：`2549 prompt / 2048 cached`，`sameStableTok≈2148`） |
+| 系统段稳定性 | 除 `runtime-awareness:*`（3–8%）外**全部 100%**；后者是**设计上放尾部**的易变段（`runtime-awareness.ts:45–51` 有明确注释） |
+
+**根因假设：**
+1. **`classify` 用的是自己的系统提示头**（与 `reply/decide` 不共享字节），因此不仅自身 0 复用，也让它后面的调用失去已建立的公共前缀；
+2. **`decide` 在历史之前插入了 purpose 专属消息**（或历史渲染与 `reply` 不同），于是 `reply↔decide` 交替时，公共前缀在 ~512 token 处终止，其余（最多 3629 token）全部重算。
+
+**下一步切片（按性价比）：**
+- **10.110（先做）**：把 `classify` 的系统提示**对齐到共享稳定头** —— 共享头字节完全一致，purpose 专属内容一律放到 `CACHE_BOUNDARY_MARKER` **之后**（尾部易变区）或最后一条消息；
+- **随后**：对齐 `decide` 的消息序（历史之前不插入 purpose 专属消息）；
+- **判据**：`provider-reconcile.mjs` 的 `classify` 行 `cached>0`、`reply↔decide` 行的 `uncached` 显著下降；整体 miss/调用 从 ~900 降到 **< 400**；且 `failedRuns=0`、`silentRuns=0` 不变；**两次样本**方可判定（延迟/命中类判据已按 11.x 的经验改为两次样本）。
