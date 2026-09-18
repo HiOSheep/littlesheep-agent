@@ -3157,3 +3157,25 @@ const status: RunCheckpoint['status'] = ctx.runtimeControl?.state === 'paused'
 | **(b) 让字节相等** | 所有模式都发出同一批段（purpose 差异用空段或统一文本），扩展共享头 | 无需改变消息顺序 | `reply` 的提示词变大；易引入行为漂移；"能力不收缩"更难证明 |
 
 **判据（不变）**：`prefix-diff.mjs` 的跨 purpose `stableChars` **≥7,000**；miss/调用 **<400**；主对话命中 **≥95%**；`failedRuns=0`、`silentRuns=0`；**两次样本**。
+
+## 10.114 路线 (a) 的可执行改法（机制已存在，属**归位改动**）（2026-09-18）
+
+**取证**（`packages/harness/src/system-prompt-cache-split.ts:1–65`）：该文件已实现"标记之前 → `systemText`（字节稳定的 system 消息）；标记之后 → `trailingSegments`，**每段作为独立尾部 Context 消息发送**"。文件头注释明确写着"system prompt 内任何逐请求变化都会把整段对话重算，因此边界之下的每段都改走尾部消息"。
+
+⇒ **路线 (a) 不需要新机制**，只需在 `packages/prompt/src/builder.ts` 里**改变段的归属**：
+
+| 段 | 现状 | 改为 |
+| --- | --- | --- |
+| `identity` / `core-flow` / `safety` / `workspace` / `date-time` / `capabilities` | 标记之前（所有模式） | **保持不变**（这就是新的共享头） |
+| `tooling`（:143–145） | 标记之前 | **标记之后**（尾部通道） |
+| `skills-index`（:147–149） | 标记之前 | **标记之后** |
+| `runtime`（:151–153） | 标记之前 | **标记之后** |
+| `output-directives` / `response-directives`（:155–159） | 标记之前 | **标记之后** |
+
+**实现要点**：
+1. 在 `builder.ts` 增加与 `addStable` 对称的 `addVolatile(...)`，把上述四类段推入易变列表；
+2. 在稳定段渲染之后、既有"Volatile sections"区块**之前**渲染它们（保持原有相对顺序：`tooling → skills-index → runtime → directives → memory-root-index…`），首段用既有的 `volatilePrefix()` 承载 `CACHE_BOUNDARY_MARKER`；
+3. **必须同步更新的测试**：`packages/prompt/src/builder.test.ts:169` 断言 `memory-root-index` 的文本以标记开头 —— 改为断言"**首个易变段**承载标记"（`tooling` 或该模式下的首个 purpose 段）；
+4. **能力不收缩的证据要求**：所有段**照发**（仅位置改变），并在两次实机样本中确认 `failedRuns=0`、`silentRuns=0`、`verificationPassRateDelta≥0` 与发布内容无退化。
+
+**预期效果**：首个 system 消息在所有 purpose 间**字节一致**（≈2,921 字节共享头）⇒ `prefix-diff.mjs` 的跨 purpose `stableChars` 从 ≤2,934 升到 **7,000+**（历史进入可复用前缀）；miss/调用目标 **<400**。
