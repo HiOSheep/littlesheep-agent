@@ -412,7 +412,12 @@ export class RunRouter {
         ? await prepareAuthoritativeRunnerResult(runner, result)
         : result
       await finishRunResources(context, runner, publishedResult, effectiveBody, ownership, cwd, workspaceContext)
-      json(res, 200, publishedResult)
+      // A run the runtime recorded as failed must not answer 200: callers (the
+      // UI, automation, the harness-path comparison) otherwise see a successful
+      // response with no reply and cannot tell a failure from an empty turn.
+      // Measured: eleven runs recorded as status=error in the durable log were
+      // all reported as HTTP 200 without any reply field.
+      json(res, publishedResult.status === 'error' ? 500 : 200, publishedResult)
       return true
     }
 
