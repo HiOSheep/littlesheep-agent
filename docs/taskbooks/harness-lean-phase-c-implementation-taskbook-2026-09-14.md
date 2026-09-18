@@ -4452,3 +4452,29 @@ if (mode !== 'minimal' && (isFull || isRespond) && input.memoryRootIndex) {
 - 若在 `date-time`/`capabilities`/`memory-root-index` 等头部段，则瓶颈是那些段的逐次变化。
 
 **判据进度**：① 短会话 **≥75% / <700**：未达标（67–68% / ~900）；② 长会话 **≥95%**：未达标（68.1%）。**硬约束仍满足**：`failedRuns=0`、`silentRuns=0`、未裁剪任何能力。
+
+## 10.172 长会话瓶颈**定位**：不是压缩，而是"仅 identity"的短头请求主导（2026-09-18）
+
+**`prefix-diff` 对长会话数据根（`NJZvII`）的输出（摘录）**：
+
+```
+prev -> next        stableItems  stableChars  prevChars  nextChars  firstChanged
+reply -> reply          1           284        7978       2991    recent_message:reply:history:…
+reply -> decide         1           284        2991      17949    system_prompt:core-flow
+decide -> decide        1           284       17949       7596    project_knowledge:bootstrap:SOUL.md
+decide -> reply         1           284        7596       3010    recent_message:reply:history:…
+reply -> reply          1           284        3010       3036    recent_message:reply:history:…
+…（后续 8 条 `reply -> reply` 全部为 `stableItems=1 / stableChars=284`，首个变化项均为 `recent_message:reply:history:<id>`）…
+```
+
+**对比**：短会话（8×5）的 `reply -> reply` 为 `stableItems=13–47 / stableChars=6,684–7,552`（≈85–90%）✓。
+
+**⇒ 长会话中"每次调用的公共前缀只有 `identity`（284 字符）"** ⇒ ~32% 的上下文被反复重算。
+
+**已排除的假设（本轮验证）**：**压缩**。长会话数据根的 `compaction-operations` 为 **50 次，全部 `completed` / `result=no-new-range`** ⇒ **压缩从未触发** ⇒ 不是压缩重写转录造成的（也说明 `threshold=400` 在该负载下未达）。会话文件 182,667 字节 / 120 run。
+
+**因此重新回到**："**两侧中有一侧的 system 消息只有 `identity`**"这一现象（本会话第 9–36 轮曾多次追查、并按 10.132 归因到 classifier，但显然**不止一处**）。在长会话里它**占据了主导地位**（几乎所有转移都塌到 284）。
+
+**下一轮（零成本，一次调用即可）**：对长会话数据根逐请求 dump **`purpose` + 首条 system 消息长度 + 其前 64 字节**（脚本形态同 `exec-audit.mjs`）。凡长度为 **284** 的请求，其 `purpose` 即短头来源；据此**一次列出全部**短头构造点（预期会发现 classifier 之外的新来源，且能解释长会话为何几乎全部塌陷）。
+
+**判据进度不变**：① 短会话 ≥75%/<700：未达（67–68%/~900）；② 长会话 ≥95%：未达（68.1%）；硬约束满足（`failedRuns=0`、`silentRuns=0`、未裁剪能力）。
