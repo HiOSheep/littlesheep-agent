@@ -3245,3 +3245,17 @@ const status: RunCheckpoint['status'] = ctx.runtimeControl?.state === 'paused'
 **目标**：让 **Context 引擎的 system 候选**与 **prompt bundle** 以**相同的段序列开头**（`identity → core-flow → safety → workspace → date-time → capabilities`）。
 
 **预期**：跨 purpose `stableChars` **284 → ≈2,921**；随后再次用两次样本看 miss/调用与命中率变化。**判据不变**（命中 ≥95%、miss/调用 <400、`failedRuns=0`、`silentRuns=0`），且**不得通过删除或关闭能力**换取命中率（段照发，只对齐顺序与字节）。
+
+## 10.120 10.119 的侦察（2026-09-18）：bootstrap 段**出自同一个 builder**，差异在排序/合并
+
+**已确认：**
+- `bootstrap:AGENTS.md` 这类 id **由 `packages/prompt/src/builder.ts:258` 生成**（``id: `bootstrap:${name}` ``），即**与共享头同一个 builder**，不是另一套文本来源 ⇒ 跨路径差异来自**段的排序/合并**，而非"两个不同的提示词文件"。
+- 在 `packages/harness/src` 内检索"按 order 排序候选"的合并点**未命中**（唯一命中是 `response-continuity-text.ts:329` 的 priority 排序，与 system 消息组装无关）⇒ **合并点在别处**（候选的 `order` 由一个更高的组装层给出，可能在 `packages/context` 或 app 侧）。
+
+**下一轮（10.119 续）取证顺序：**
+1. 读 `packages/prompt/src/builder.ts:240–300`：确认 bootstrap/项目知识段是**稳定段**还是**易变段**，以及它们的 `order`；
+2. 找到 system 消息的**最终组装层**：从 `builder.ts` 的 `segments` 出发，追到把 `segments` 与 `ContextMessageCandidate[]` 合并成"第一个 system 消息 + 尾部消息"的位置（候选在 `prefix-diff` 里以 `project_knowledge:bootstrap:AGENTS.md`、`memory_index:memory-root-index` 等 id 出现，说明它们带 `kind`/`order`）；
+3. 目标：让 `decide`/`verify` 的 system 消息**也以 `identity → core-flow → safety → workspace → date-time → capabilities` 开头**（段照发，只对齐顺序与字节），预期跨 purpose `stableChars` **284 → ≈2,921**；
+4. 之后按既定流程：门 → 两次样本 → 提交推送。
+
+**判据不变**（命中 ≥95%、miss/调用 <400、`failedRuns=0`、`silentRuns=0`，不裁剪能力）。
