@@ -4682,3 +4682,36 @@ AttachmentContextMessage = {
 - `failedRuns=0`、`silentRuns=0`；全门（`typecheck`/全量 vitest/`check:repo`/continuity + UI 门）。
 
 **风险/回退**：若 `prepareModelRequest` 的候选层对尾部 system 条目有顺序或 kind 约束（`buildRunRequestCandidates` 的断言），聚焦工具循环测试会失败 ⇒ 回退并把失败原文记入本节。
+
+## 10.180 **首刀见效**：`step-contract` 移到历史之后 ⇒ hit 67% → 73.5%、miss/调用 920 → 750（2026-09-18）
+
+**已提交（本地）**：`b9cc929`（`task-step-runner.ts`：`step-contract` 由 system bundle addon 改为**尾部通道**条目；顺带移除该文件已无用的 import）。门禁全绿：`typecheck`、**85/85 execute 测试**、全量 **461 文件 / 3,287 通过 / 0 失败**、`check:repo` 33/33、continuity + UI 门 ok。
+
+**一次短会话样本（产品级 8×5）**：
+
+| 指标 | 改前（10.169 基线） | **改后 #1** |
+| --- | --- | --- |
+| `failedRuns` / `publishedRuns` / `silentRuns` | 0 / 40 / 0 | **0 / 40 / 0** ✓ |
+| **主对话 hit（harness 口径）** | 66.8–68.4% | **75.3% / 74.1%** |
+| **miss/调用（harness 口径）** | 879–929 | **752.2 / 682.4** |
+| 总体 hit（分析器） | 67.2% | **73.5%** |
+| 总体 miss/调用（分析器） | 919.9 | **750.1**（**−18%**） |
+
+**逐 purpose（关键证据）**：
+
+| purpose | 改前 miss/调用 | **改后** |
+| --- | --- | --- |
+| **`execute_tool_loop`** | **4,956–5,983（hit 30–34%）** | **2,223（hit 70.4%）** ✓✓ |
+| `reply` | 498 | 506（不变） |
+| `decide` | 1,224 | 1,131 |
+| `execute_final_reply` | 846 | 822 |
+| `verify` | 937 | 860 |
+
+⇒ **机制得到确认**：system 消息内的逐步变化一旦消除，`execute_tool_loop` 的 miss 立即降到约 1/3（预测值），**总体 miss/调用下降 18%**。这是本目标自 10.129（`decide-contract` 让位，−5%）以来**第二处、也是最大的一处实测收益**。
+
+**判据 ① 进度（hit ≥75%、miss/调用 <700）**：
+- harness 口径：**75.3% / 74.1%**（path1 已达标；path2 差 0.9pt）；
+- miss/调用：**682.4**（path2 已达标；path1 为 752.2，超出 52）；
+- ⇒ **已到临界**，第二次样本将判定是否稳定达标。
+
+**下一步**：第二次短会话样本（并跑长会话 8×15 观察 `execute_tool_loop` 是否同样受益）→ 达标则推送 `b9cc929` 并把本节数字补全；若仍在阈值附近，再考虑剩余两项（`execute_final_reply` hit 仅 27.7%、`decide` 76.1%）的同类处理。
