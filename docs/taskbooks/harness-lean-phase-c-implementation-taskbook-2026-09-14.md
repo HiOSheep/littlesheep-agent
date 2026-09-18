@@ -5671,3 +5671,39 @@ if (isFull && input.skills?.length) addVolatile('skills-index', …);
 **下一轮（B1 落地）**：读 `builder.ts:95–148`（`addStable`/`addVolatile` 的定义与 `segments` 组装）与其返回类型，然后：
 1. 新增 `stableSegments`/`trailingSegments` 到返回结构、`text` 只由稳定段拼接；
 2. 改调用点（先只改 `reply` + `decide` 两处，两次样本验证后再推广）。
+
+## 10.212 **B1 最终配方**（向后兼容、零行为变化直到调用点采用）（2026-09-18）
+
+**取证**：
+- `builder.ts:102–125`：`stable` 与 `volatile` **已是两个数组**；注释明确"易变段必须作为**尾部消息**发出，且每段仍会被发出"；
+- `builder.ts:190–199`：易变段在**边界处**被 push 进 `segments`（`text: `${volatilePrefix()}${section.content}``）；
+- **`builder.ts:288`**：`return { text: segments.map((segment) => segment.text).join(''), segments };` ⇒ **`text` 含全部段** ⇒ 调用点把 `bundle.text` 当 system ⇒ 易变段留在 system 内 ⇒ 跨 purpose 分歧 ✓（这正是 B1 要修的一行）。
+
+**B1 最小实现（3 步，向后兼容）**：
+1. **在易变段 push 之前记录边界**（`builder.ts` 的 `for (const section of volatile)` 之前）：
+   ```ts
+   const boundaryIndex = segments.length;
+   ```
+2. **返回结构新增两个字段**（不改变 `text`/`segments` 的现有语义 ⇒ **零行为变化**）：
+   ```ts
+   return {
+     text: segments.map((segment) => segment.text).join(''),
+     segments,
+     stableText: segments.slice(0, boundaryIndex).map((segment) => segment.text).join(''),
+     trailingSegments: segments.slice(boundaryIndex),
+   };
+   ```
+   并在 `SystemPromptBundle`（`:75`）加 `stableText?: string; trailingSegments?: PromptContextSegment[];`。
+3. **调用点采用（先只两处）**：`reply.ts:131–139`、`decide/request.ts`（其 `buildRunRequestCandidates` 选项）
+   - `messages[0].content` 用 **`bundle.stableText`**（= 共享头，对所有 purpose 字节一致）；
+   - 候选选项加 **`trailingSegments: bundle.trailingSegments`**（`context-candidates.ts:29` 已支持 ✓，会作为**历史之后**的消息发出，kind/source 保留）；
+   - **内容一字不减** ✓。
+
+**验收**：
+- `analyze-cache-shapes.mjs` 的逐 purpose **system 长度**：`reply`/`decide` 都变成**同一个共享头值**（≈2,934 + 分隔符）；
+- `run-pair-diff`/`analyze-cache-shapes` 的 `first` 位置 miss/调用：**1,270 → ~300–500**；`diffAt0` 从 **58/119 → 个位数**；
+- 长会话 hit **74.0% → ≥85%**；短会话 hit **→ ≥80%**；`failedRuns=0`、`silentRuns=0`。
+
+**风险**：`builder` 测试多为 `segments`/`text` 的既有断言 ⇒ 因新增字段**不改旧语义**，预计**失败很少**；`reply`/`decide` 的布局断言（"purpose 段在 system 内"）需按新语义更新为"由尾部消息承载"（与 10.198 同类的两处更新）。
+
+**下一步（B1 落地）**：读 `builder.ts:180–200`（易变段 push 的确切位置以插入 `boundaryIndex`）与 `builder.ts:70–98`（返回接口），然后一次改 3 处 + 两处调用点 → 全门 + 两次样本。
