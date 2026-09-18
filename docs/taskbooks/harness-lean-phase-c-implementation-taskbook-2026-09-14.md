@@ -2961,3 +2961,28 @@ current.records.push({ ...reservation, status: 'reserved', createdAt: now });  /
 **验证顺序**：聚焦 `session` + `harness` → 全量 vitest → `typecheck` + `check:repo` → continuity 门 →（UI 门按 11.19 政策）→ 提交 → 产品级预算 8×5（`failedRuns → 接近 0`）。
 
 > 本轮没有写产品代码：读注册表时发现的"持久化 + 相等性"陷阱会**直接决定**这条路线是否有效——11.20 已经证明"少读一道门就白改一轮"。现在实现路线已无未知项，下一轮按上表机械落地。
+
+### 11.23 注册表级修复**生效**：失败 6→2（next）、成功率 ~95%、成本最好（2026-09-18）
+
+**产品级预算 32、8×5 实机：**
+
+| 指标 | 11.20（本地放行，无效） | **本轮（注册表放行）** |
+| --- | --- | --- |
+| `failedRuns`（shadow / next） | 2 / **6** | **3 / 2** |
+| `publishedRuns` | 38 / 34 | **37 / 38**（成功率 ~93–95%） |
+| `silentRuns` | 0 / 0 | **0 / 0** ✓ |
+| 主对话命中率 | 68.4 / 67.8% | **66.3 / 66.6%** |
+| miss token / 调用 | 994.4 / 984.4 | **924.1 / 898.7**（历史最好，基线 958） |
+
+**结论：**
+1. **注册表确实是关键那道门**：把"允许重复"穿透到 `replyFingerprints.reserveSettlement` 后，next 路径的重复类失败 **6 → 2**、成功率从 ~85% 升到 ~95%、`miss/调用` 降到 899–924（此前 958–1196）；
+2. **类别未完全清零（残余 2 个）**：`failure-fields.mjs` 显示残余失败**仍是同一条消息**
+   `user-facing reply generation failed: The model repeated a previously published reply…`
+   ⇒ 说明还有**第二处**在同一类判定上拒绝的路径。**首要嫌疑（下一轮零成本核实）**：
+   - **legacy 文本注册表路径** `ctx.reserveUserFacingReply(reply)`（单参、**没有** options，11.21 表格里我特意未改它）；
+   - 或某个调用点仍以 `allowDuplicate = false` 进入 `acceptUniqueUserFacingReply`（例如 `finalize` 侧的再次尝试）。
+
+**下一轮（零成本先行）：**
+1. 对 `littlesheep-path-next-ZA4EWw` 用 `silent-run-trace.mjs` + `failure-fields.mjs` 看**失败发生在哪个阶段**（trace 的 `ok:false` 标记 + `ctx.replyProvenance` 是否存在），据此判断是 reply 阶段还是 finalize 阶段；
+2. 若确认是 legacy 路径 ⇒ 给 `reserveUserFacingReply(reply, options?)` 也加同款可选参数（同样**不持久化**），或在 `context.ts:290` 那条 lambda 上统一透传；
+3. 复测目标：`failedRuns` → **0**，`silentRuns` 保持 0，命中率/成本维持当前水平。
