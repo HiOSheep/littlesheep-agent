@@ -5707,3 +5707,33 @@ if (isFull && input.skills?.length) addVolatile('skills-index', …);
 **风险**：`builder` 测试多为 `segments`/`text` 的既有断言 ⇒ 因新增字段**不改旧语义**，预计**失败很少**；`reply`/`decide` 的布局断言（"purpose 段在 system 内"）需按新语义更新为"由尾部消息承载"（与 10.198 同类的两处更新）。
 
 **下一步（B1 落地）**：读 `builder.ts:180–200`（易变段 push 的确切位置以插入 `boundaryIndex`）与 `builder.ts:70–98`（返回接口），然后一次改 3 处 + 两处调用点 → 全门 + 两次样本。
+
+## 10.213 B1 单侧采用实测：**中性**，且证明了"必须全部 purpose 同时采用"（2026-09-18）
+
+**已提交并推送**：`26af3dd`（`reply.ts`：system 用 `stableText`、候选传 `trailingSegments`）。门禁全绿（`typecheck`、harness+runner **1043/1043**、全量 **3,287**、`check:repo` 33/33、continuity + UI 门 ok）。
+
+**一次长会话样本（8×15，120 run）**：
+
+| 指标 | 改前基线（`live-frfix-long`） | **本刀后** |
+| --- | --- | --- |
+| `failedRuns` / `publishedRuns` / `silentRuns` | 0/120/0 | **0/120/0** ✓ |
+| 主对话 hit | 73.7 / 73.9% | **73.9 / 73.8%** |
+| 总体 miss/调用 | 1,092 | **1,107 / 1,090** |
+| `first` 位置 miss/调用 | 1,270 | **1,306** |
+| `third+` 位置 miss/调用 | 1,133 | **1,111** |
+| `diffAt0`（run 间首段分歧） | 58/119 | **54/119** |
+
+⇒ **中性（无收益）**。
+
+**原因（本轮最重要的结论）**：
+- 只采用**一个 purpose** 时：该 purpose 的专属段从"system 内"移到"历史之后" ⇒ **同 purpose 连续调用**不再复用这些段（它们现在每轮都算新增）⇒ **损失 ~2–3k 字符/次**；
+- 而**跨 purpose 复用**要兑现，必须**所有 purpose 的 system 都变成同一短头**（否则前缀在别人的 system 处分歧，仍走不到历史）⇒ **收益为 0**；
+- ⇒ **净效应 ≈ 0** ✓ 与实测吻合（miss 1,092 → 1,107/1,090；`diffAt0` 仅从 58 → 54）。
+
+**⇒ B1 必须"一次性全量采用"**：把**所有**调用点的 system 换成 `stableText`、并传 `trailingSegments`：
+`reply.ts`（3 处：首答/重试/重写）、`decide/request.ts`、`execute/tool-loop.ts:130`、`execute/final-reply.ts:113`、`execute/runners.ts:162/193`、`verify/model-call.ts:46`、`recover/model-call.ts:63/113`、`classify.ts:177`、`ask_user.ts:140`、`capture.ts:218`、`evolve.ts:231`；并为**未传 `systemSegments`** 的调用点补传（10.196 已列）。
+
+**预期（全量采用后）**：跨 purpose 的共享前缀 = **共享头 + 整段历史** ⇒ `first` 位置 miss/调用 **1,270 → ~300–500**、`diffAt0` → **个位数**、长会话 hit **74% → ≥85%**。
+**风险**：一次改动面较大（13 个调用点 + 若干布局断言）⇒ 分两批（先 `harness/src/stages`，再其余），每批跑全量套件 + 一次样本。
+
+**判据进度**：① hit 均值 ≈75.2%（达标）、miss/调用 ≈709（超 1.3%）；② 未达（长会话 73.8–74.0%）。
