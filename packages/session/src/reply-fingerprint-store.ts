@@ -83,9 +83,10 @@ export class ReplyFingerprintStore {
         if (!legacyReserved) await appendFile(registry, `${reservation.replyFingerprint}\n`, 'utf8');
         return true;
       }
-      if (legacyReserved) return false;
+      if (legacyReserved && reservation.allowDuplicate !== true) return false;
       const now = new Date().toISOString();
-      current.records.push({ ...reservation, status: 'reserved', createdAt: now });
+      const { allowDuplicate: _allowDuplicate, ...reservationRecord } = reservation;
+      current.records.push({ ...reservationRecord, status: 'reserved', createdAt: now });
       await writeSettlementRegistry(sidecar, current);
       try {
         await appendFile(registry, `${reservation.replyFingerprint}\n`, 'utf8');

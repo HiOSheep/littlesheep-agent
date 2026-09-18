@@ -102,6 +102,9 @@ export async function reserveUserFacingReplyOnce(
     reply: generatedReply,
     replyFingerprint,
     modelRequestId: provenance.modelRequestId,
+    // Thread the intent into the durable registry, which is the gate that
+    // actually refuses a repeat; the local check alone is not sufficient.
+    ...(repeatsPublishedReply && allowDuplicate ? { allowDuplicate: true } : {}),
   };
 
   if (ctx.reserveUserFacingReplySettlement) {
