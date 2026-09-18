@@ -3488,3 +3488,26 @@ return rebuildBundle(segments, stable.length + stableAddons.length);
 **下一刀（10.133，本目标最后一项短头来源）**：让 **classifier 的系统提示也以共享头开头**（`identity → core-flow → safety → workspace → date-time → capabilities`），把**路由器专属指令放到边界之后**；**段全部照发**（classifier 的判定所需信息一字不减）。
 - **预期**：`provider-reconcile` 的 `classify` 行 `cached` 由 **0 变正**（其 508 token 中约 284 起可命中）、miss/调用向 <400 收敛；
 - **验收**：两次样本（命中 ≥67.3%、miss ≤892.6 不退化）+ 五道门；classifier 的行为不变（其指令全在，只换位置）。
+
+## 10.133 `execute` 快路径对齐（`c692dcc`）两次样本：**信号矛盾、目的未达成**（2026-09-18）
+
+**已合并入 `main`**（该提交随后续文档提交一并推送，故已在主线；未做 revert —— 见下判定）。
+
+| 读数 | 主对话命中 | miss/调用 |
+| --- | --- | --- |
+| 10.129 基线 #1（已推送） | 67.3% / 69.6% | 839.0 / 851.9 |
+| 10.129 基线 #2（已推送） | 68.4% / 67.4% | 892.5 / 841.2 |
+| **`c692dcc` #1** | **68.4% / 71.9%** | 892.6 / 864.1 |
+| **`c692dcc` #2** | 67.9% / 66.6% | 886.9 / **939.0** |
+
+**判定（诚实）**：
+1. **指标信号矛盾**：#1 的 path2 命中 **71.9%（迄今最高）**、miss 864.1；但 #2 的 path2 miss **939.0**（高于 10.129 的最差值 892.5）⇒ **不能认定改善**，也不能认定为回退（四次读数总体与基线同带）；
+2. **其既定目的未达成**：`prefix-detail` 中 `decide` 两侧的序不一致**依然存在**（且换成了另一个变体）⇒ 该改动**没有修好**它声称要修的问题；
+3. **处置**：**不 revert**（正确性两次全绿、能力未裁剪、指标仍在同一带内；且该提交已在 `main` 上，撤下需新的 revert 提交，收益不明）。**但记为"无净收益的改动"**，后续若因它引入复杂度可在清理时撤下。
+
+**关于序不一致的真正来源（10.132/10.133 交叉结论）**：五处 `assembleSystemPromptBundle` 调用点已全部对齐、包装函数正常转发 mode、且 builder 的最小输出为 **2,106 字符**（identity+core-flow+safety 无条件）⇒ **那个 284 字符的 identity-only 请求不是 builder 产物**，而是 **classifier 自带的 `SYSTEM_PROMPT`**（`packages/classifier/src/llm.ts:14`，经 `:49` 作为首条 system 消息注入，且**无注入入口**）。
+
+**下一刀（10.134，最后一项短头来源）**：
+1. `read packages/classifier/src/llm.ts:37–48`（签名区）→ 新增**可选** `systemPrompt?: string`，`content: systemPrompt ?? SYSTEM_PROMPT`（**纯增量，默认行为不变**）；
+2. harness 调用方用 `assembleSystemPromptBundle(resolved, {...}, 'respond')` 生成共享头，并在**边界之后**附路由器指令（`head + CACHE_BOUNDARY_MARKER + routerText`）传入；
+3. 门 + 两次样本，判据：`provider-reconcile` 的 `classify` 行 `cached` 由 0 变正；命中/miss 不退化（命中 ≥67.3%、miss ≤939.0，并以 10.129 的 839–892.5 为改善目标）。
