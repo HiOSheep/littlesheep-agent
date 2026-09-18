@@ -5152,3 +5152,40 @@ if (index === 0 && message.role === 'system') {
 **风险**：把边界之下**全部**段移到尾部会改变各 purpose 的**消息顺序**（内容不减），而多处测试断言稳定段/易变段的归属（10.166 类型的布局断言）⇒ 预计需同步更新若干断言；必要时**先只改 `reply`+`verify`**（即"边界之下"仅对这两个 purpose 生效）。
 
 **判据进度**：① 达标（短会话 hit ≈75.5%、miss ≈708.6）；② 未达（长会话 74.1%）；**本项为唯一不需授权的结构性杠杆，预期 → ≥85%**；D1（需授权）可再补 `execute_final_reply` 的 ~12%。
+
+## 10.197 **最终实现配方**：候选层按 `CACHE_BOUNDARY_MARKER` 一次判定全部"边界之下"段（2026-09-18）
+
+**取证（`builder.ts:193–201`）**：
+```ts
+let hasVolatile = false;
+const volatilePrefix = () => {
+  const prefix = hasVolatile ? '\n\n---\n\n' : `\n\n${CACHE_BOUNDARY_MARKER}\n\n`;
+  hasVolatile = true;
+  return prefix;
+};
+```
+⇒ **首个"边界之下"段的文本含 `CACHE_BOUNDARY_MARKER`**，其后各段用 `---` 分隔。段序即边界序 ⇒ **一旦遇到含标记的段，该段及其后所有段都在边界之下** ✓
+
+**配方（改 `context-candidates.ts` 一处，替代硬编码子集）**：
+```ts
+import { CACHE_BOUNDARY_MARKER } from '@littlesheep/prompt';
+
+const all = options.systemSegments ?? [];
+const markerIndex = all.findIndex((segment) => segment.text.includes(CACHE_BOUNDARY_MARKER));
+const aboveBoundary = markerIndex >= 0 ? all.slice(0, markerIndex) : all;
+const belowBoundary = markerIndex >= 0 ? all.slice(markerIndex) : [];
+// system 消息只用 aboveBoundary 拼接；belowBoundary 与原有 3 个 id 的集合合并后作为尾部段
+```
+⇒ **每个 purpose 的 system 消息都退化为"边界之上"的共享头（≈2,934 字符）** ⇒ **跨 purpose 字节一致** ⇒ Provider 前缀 = **system + 整段历史** ✓✓
+（`verify` 另需补传 `systemSegments`，因其当前未传。）
+
+**内容口径**：所有段**照发**（`belowBoundary` 作为尾部消息，`kind`/`source` 保留）⇒ **不裁剪能力**。
+
+**验收（两次样本）**：
+- `run-pair-diff.mjs`：`diffAt0` 从 **58/119 → 个位数**；`avgFirstCallMiss` **1,269 → ~300–500**；
+- 长会话 hit **74.1% → ≥85%**；短会话 hit 上升；
+- `failedRuns=0`、`silentRuns=0`、全门绿。
+
+**风险与应对**：多处测试断言"某段在 system 内"（10.166 类型）⇒ 预计需同步更新断言；若失败集中在少数用例，**按"断言改为检查尾部消息承载该段"**更新（保留原意）。若失败面过大，退化为**只对 `reply`+`verify` 生效**（用一个可选开关，默认全局）。
+
+**这是本目标的收口一刀**：预期把长会话从 74.1% 推到 **≥85%**，且不需授权；此后若要再冲 95%，需 **D1**（工具块统一）与 `runtime-awareness` 的紧缩（两者分别需授权与信息量取舍）。
