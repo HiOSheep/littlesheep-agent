@@ -4289,3 +4289,31 @@ if (request.tools?.some((tool) => tool.function.name === 'web_runtime_probe')) {
 7. 达标 ⇒ 推送 + 任务书补 10.166；**若跨 purpose 共享前缀再度塌陷（10.126 陷阱）⇒ 立即回退**并把结论收敛为"需要 D1 授权"。
 
 **判据（不变）**：不裁剪能力（该段内容**一字不减**，只是位置从易变区移到稳定区）。
+
+## 10.166 「稳定段上移」实测：**编码在测试里的设计**，同样需要授权（2026-09-18）
+
+**尝试**（10.165 的落地）：把 `memory-root-index` 从易变区移到头部（`addStable`，条件与内容不变）。
+
+**结果**：`typecheck` clean，但 **3 处测试失败**（改动**已回退**，树干净）：
+
+```
+× buildSystemPrompt > full mode includes all sections + cache boundary
+× system prompt cache split > keeps the system message byte-stable and moves volatile sections out
+× system prompt cache split > appends trailing sections after the conversation with preserved kinds
+```
+
+**性质判定**：这三处**不是**"位置无关的存在性断言"，而是**编码了"`memory-root-index` 属于易变区"这一设计**（cache-split 的两例直接以"易变段移出系统消息"为语义）。
+
+⇒ 与 **D1** 同类：**要获得该收益，必须改变一项已有设计**（把一个段的 stable/volatile 分类翻转，并同步三处断言/设计说明）⇒ **需要你的授权**。
+
+**附注（重要）**：10.164 里我用 `arrayContaining` / `toMatchObject` / `toBeDefined` 判断"无需改测试"是**不充分的** —— 漏看了 `system-prompt-cache-split.test.ts` 与 `builder.test.ts` 中**按语义断言布局**的用例。教训：判断"是否需要改测试"必须覆盖**所有**相关测试文件，而不能只看被改动符号的直接引用。
+
+**因此 10.161 的结论进一步收紧**：在本负载下，**每一条可观的收益路径都需要一项设计决策**：
+| 路径 | 需要改变的设计 | 预期 |
+| --- | --- | --- |
+| **D1** 同 run 统一工具块 | decide 的 lean wire contract + execute 的 no-tools 断言 + runner 测试替身判定 | miss/调用 ~940 → ~700 |
+| **S** `memory-root-index` 归入稳定区 | 该段的 volatile 分类 + 3 处布局断言 | miss/调用 ~940 → ~700（期望值） |
+| **R** 冻结/压缩 `runtime-awareness` | 运行事实的新鲜度或提示信息量 | 100–200 token/轮 |
+| **C** classify 对齐 | 无（但根因未明、收益 ≤508/轮、占 miss 0.5%） | 最小 |
+
+**我的建议**：**S 与 D1 二选一或都做**（两者量级相同、互不冲突）；若你只想做**一个**，我推荐 **S**（只翻转一个段、改动面最小：1 处代码 + 3 处断言；而 D1 需改契约语义 + 测试替身）。
