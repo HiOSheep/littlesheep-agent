@@ -3112,3 +3112,24 @@ const status: RunCheckpoint['status'] = ctx.runtimeControl?.state === 'paused'
 - **10.110（先做）**：把 `classify` 的系统提示**对齐到共享稳定头** —— 共享头字节完全一致，purpose 专属内容一律放到 `CACHE_BOUNDARY_MARKER` **之后**（尾部易变区）或最后一条消息；
 - **随后**：对齐 `decide` 的消息序（历史之前不插入 purpose 专属消息）；
 - **判据**：`provider-reconcile.mjs` 的 `classify` 行 `cached>0`、`reply↔decide` 行的 `uncached` 显著下降；整体 miss/调用 从 ~900 降到 **< 400**；且 `failedRuns=0`、`silentRuns=0` 不变；**两次样本**方可判定（延迟/命中类判据已按 11.x 的经验改为两次样本）。
+
+## 10.112 量化：purpose 切换丢掉整段前缀（2026-09-18）
+
+数据根 `littlesheep-path-next-S2J47O`；工具 `prefix-diff.mjs`（工作区分析脚本，位于仓库之外）。
+
+| 切换 | 稳定项数 | **稳定字符** | 前一请求字符 | 本次字符 | 首个变化位置 |
+| --- | --- | --- | --- | --- | --- |
+| `reply → reply` | 37–41 | **7357–7512（≈90%）** | 8.1–8.7k | 7.8–8.7k | 尾部历史 `recent_message` |
+| **`reply → decide`** | 1–6 | **284–2934** | 8.8k | **17.9k–18.9k** | `system_prompt:tooling`（33–38% 处） |
+| **`decide → reply`** | 1–6 | **284–2934** | 18.9k | 8.2k | `output_constraint:response-directives` / `core-flow` |
+| `reply → reply`（劣化样本） | 1 | **284** | — | — | `system_prompt:core-flow` 或 `memory_index:memory-root-index` |
+
+**结论：**
+1. **同一 purpose 内复用良好**（≈90% 字符稳定），**跨 purpose 切换几乎全丢**（稳定前缀塌到 284–2934 字符）；
+2. 首个变化点集中在 **`system_prompt:tooling`**（decide 专属）、**`output_constraint:response-directives`**（reply 专属）、以及偶发的 **`core-flow` / `memory-root-index`**（内容逐次变化）；
+3. `decide` 的请求体量约为 `reply` 的 **2 倍**（17.9–18.9k vs 8.3k 字符），却只共享 284–2934 字符 ⇒ 每次 `reply↔decide` 往返都要重算约 **1.5–2k token**。
+
+**下一刀（10.113，按证据优先级）**：让 `CACHE_BOUNDARY_MARKER` **之前**的稳定头在**所有 purpose 间字节一致** ——
+- 把 purpose 专属段（`tooling`、`response-directives`、verify 专属段）**移到标记之后**（尾部易变区）；
+- 把 `core-flow` / `memory-root-index` 里**逐次变化**的内容冻结到 run 级或移到尾部；
+- **判据**：`prefix-diff.mjs` 中 `reply↔decide` 的 `stableChars` 从 ≤2934 升到 **≥7000**；整体 miss/调用 从 ~900 降到 **<400**；`failedRuns=0`、`silentRuns=0` 不变；**两次样本**判定。
