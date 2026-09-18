@@ -314,13 +314,22 @@ async function rewriteReply(
     model: deps.model,
     messages: [
       {
+        // Byte identical to the first answer: the provider caches the system
+        // message ahead of the history, so appending the contract here would
+        // rebill the whole transcript on every rewrite.
         role: 'system' as const,
-        content: `${systemPrompt}\n\nRegeneration contract:\n- The prior API-generated response exactly repeats a previously published LS reply.\n- Generate the answer again with a genuinely different opening and sentence structure.\n- Preserve the original answer, scope, uncertainty and user language.\n- Do not mention this regeneration request or the comparison.\n- Return only the new user-facing reply.`,
+        content: systemPrompt,
       },
       ...originalMessages.slice(1),
       {
         role: 'user' as const,
         content: [
+          'Regeneration contract:',
+          '- The prior API-generated response exactly repeats a previously published LS reply.',
+          '- Generate the answer again with a genuinely different opening and sentence structure.',
+          '- Preserve the original answer, scope, uncertainty and user language.',
+          '- Do not mention this regeneration request or the comparison.',
+          '- Return only the new user-facing reply.',
           `Prior API-generated response:\n${input.generatedReply}`,
           `Recent replies to avoid repeating exactly:\n${input.avoidReplies.map((reply, index) => `${index + 1}. ${reply}`).join('\n')}`,
         ].join('\n\n'),

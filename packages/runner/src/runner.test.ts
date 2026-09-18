@@ -1101,7 +1101,7 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm: makeMockLlm((request) => textResponse(
-        String(request.messages[0]?.content).includes('Regeneration contract')
+        request.messages.some((message) => String(message.content).includes('Regeneration contract'))
           ? 'Fresh wording after restart'
           : 'Stable exact reply',
       )),
