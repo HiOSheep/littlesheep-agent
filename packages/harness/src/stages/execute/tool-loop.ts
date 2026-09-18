@@ -327,7 +327,10 @@ export async function runToolLoop(
         forceFinalResponse = true;
         messages.push({
           role: 'system',
-          content: 'Runtime control: recent tool calls produced no new evidence. Stop calling tools and answer from the evidence already present. State any remaining uncertainty instead of probing again.',
+          // P4a: state the observation and hand the choice back instead of
+          // issuing an order. The bound itself is unchanged — tools stop being
+          // available in this run, and saying so keeps the instruction honest.
+          content: 'Runtime control: the last rounds added no new evidence (same tool sources and targets). You can answer from the evidence already present, or say plainly what is still missing; tools are no longer available in this run.',
         });
       }
       continue;
