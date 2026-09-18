@@ -3259,3 +3259,20 @@ const status: RunCheckpoint['status'] = ctx.runtimeControl?.state === 'paused'
 4. 之后按既定流程：门 → 两次样本 → 提交推送。
 
 **判据不变**（命中 ≥95%、miss/调用 <400、`failedRuns=0`、`silentRuns=0`，不裁剪能力）。
+
+## 10.121 假设（高置信、待证实）：跨路径 284 字符源于 **compact 系统提示**
+
+**证据链**：
+1. `prefix-diff` 显示跨 purpose 的 `stableChars` 恰为 **284**，而 284 = **`identity` 段长度**；两处首个变化点分别是 `system_prompt:core-flow`（一侧有、另一侧没有）与 `project_knowledge:bootstrap:AGENTS.md`。
+2. `packages/prompt/src/profiles.ts:8,20,41` 定义了 **`compactSystemPromptAddon`**（"# Behavior Profile: General/Coding"，含"never grants tool permission"等）——即存在一条**紧凑系统提示**路径，其内容 = `identity` + 该 addon。
+3. `packages/harness/src/runtime-awareness.ts:88–99` 按 purpose 决定是否使用 **compact** 运行时（`decide` / `execute_tool_loop` / `classify` / `ask_user` 等），说明 `decide`/`verify` 在 autonomous-read 场景走**紧凑分支**。
+4. 生产侧 `buildSystemPromptBundle(` 在 `packages/harness/src` 内**无调用点**（只有测试调用），唯一生产入口是 `packages/prompt/src/builder.ts:370` 的包装函数 ⇒ **mode / 紧凑与否由更高层（runner/harness 阶段装配）决定**。
+
+⇒ **假设**：`decide`/`verify` 的 system 消息走紧凑构造（`identity` + compact addon + 只读工具说明），而 `reply` 走完整 bundle（`identity → core-flow → … → capabilities`），二者**只共享 `identity`**，因此跨 purpose 前缀只有 284 字符。
+
+**下一轮验证（三步，成本很低）**：
+1. 在 harness 找紧凑构造点：检索 `compactSystemPromptAddon` 的**生产调用点**（grep 全 packages，排除测试），并读该处如何拼 system 消息；
+2. 用 `prefix-diff.mjs <dataDir>` 对照 `decide` 与 `reply` 的**前 3 个 item**，确认 `decide` 侧确实**没有 `core-flow`**（若如此，假设成立）；
+3. 若成立 ⇒ 实施 10.119 的具体形态：**让紧凑路径也发出相同的共享头段序列**（`identity → core-flow → safety → workspace → date-time → capabilities`），把紧凑专属内容（只读工具说明、compact addon）放到**边界之下**；**段照发**，不裁剪能力。
+
+**预期**：跨 purpose `stableChars` **284 → ≈2,921**；随后两次样本看 miss/调用（目标 <400）与命中率。
