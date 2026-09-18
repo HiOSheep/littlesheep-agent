@@ -3757,3 +3757,28 @@ pnpm exec vitest run packages/runner/src/web-runtime.test.ts -t "when disabled" 
 - 目标：把**逐步变化**的部分移到尾部（动态后缀），使工具 schema + 指令成为**跨步可复用的稳定前缀**；预期把 3,940/次压到 <1,000/次。
 
 **判据不变**：命中 ≥95%、miss/调用 <400、`failedRuns=0`、`silentRuns=0`，不裁剪能力。
+
+## 10.144 `execute_tool_loop` 病因定位：**工具集逐步变化**，断点之后整段历史重算（2026-09-18）
+
+审计脚本：工作区 `exec-audit.mjs <dataDir> execute_tool_loop`（输出请求的 `stablePrefix`/`dynamicSuffix`/`providerPrompt`/`invalidationReasons` 与 `contextSnapshots[].items`）。
+
+**一次真实调用（run `1a707ff1`，`execute_tool_loop`，idx=3）**：
+
+| 项 | 值 |
+| --- | --- |
+| `stablePrefix` | **14,364 字节 / 3 项**（标记之上） |
+| `dynamicSuffix` | **23,582 字节 / 75 项**（标记之下，含历史） |
+| `messages` / `tools` | **64 条 / 15 个工具** |
+| provider 用量 | total **8,246** / cached **2,560** / **uncached 5,686** |
+| `invalidationReasons` | **`prompt_version_changed`, `tool_schema_changed`, `memory_revision_changed`, `request_kind_changed`** |
+
+**病因**：失效原因**明确包含 `tool_schema_changed`**（LS 自己的判决），而该请求带着 **15 个工具 schema**（稳定前缀的大头）与 **64 条历史**。Provider 只复用"从 token 0 起的最长公共前缀"⇒ **工具 schema 一旦变化，其后的全部内容（含整段 64 条历史）都被重算** ⇒ 单次 5,686 未命中，正是 10.143 里 `execute_tool_loop` = 3,940/次（7 次占 34% miss）的主因。
+
+**下一刀（10.145，按证据，能力不裁剪）**：
+1. **先取证**：用 `exec-audit.mjs` 对比**同一 run 内相邻两次 `execute_tool_loop`** 的 `tools=15` 列表与 `tool_schema_changed` 是否每次都出现 ⇒ 确认工具集**逐步变化的具体差异**（例如每步只带该步工具）；
+2. **候选修法**（择一，受控验证）：
+   - **A. 工具集统一**：所有 execute 步都发送**同一套**工具 schema（超集，能力只增），使 `tool_schema_changed` 消失 ⇒ 断点之后（历史）可复用；
+   - **B. 工具 schema 后移**：把工具 schema 从**稳定前缀**移到**动态后缀**（与历史同级或更后），使 identity→core-flow→safety→workspace→date-time→capabilities 的共享头成为跨步稳定前缀（预计可复用数 k token）；
+3. **判据**：`exec-audit` 中 `execute_tool_loop` 的 `uncached` 从 ~3,900–5,700 降到 **<1,500**；两次 8×5 样本；`failedRuns=0`、`silentRuns=0`。
+
+**为什么优先做这条**：按 10.143 的账，execute 家族占 **43%** 的 miss；而 `reply`（占 33%）**已 79.5% 命中**、系统提示组件**几乎不翻转**（0–9%）⇒ 继续在系统提示上做文章的边际收益已很低。
