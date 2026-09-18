@@ -2,10 +2,11 @@
 import type { SystemPromptBundle } from '@littlesheep/prompt';
 import { appendSystemPromptBundleAddons, buildUserFacingVoiceAddon } from '../../profile-prompt.js';
 import type {
+  ClarificationRequest,
   RunContext,
   StageResult,
 } from '@littlesheep/types';
-import { attachmentContextMessages, conversationHistoryForModel } from '../_shared.js';
+import { attachmentContextMessages, conversationHistoryForModel, textOf } from '../_shared.js';
 import type { ExecuteSanitizeOptions, ExecuteStageDeps } from './contracts.js';
 import { buildBaseMessages } from './guidance.js';
 import { runToolLoop } from './tool-loop.js';
@@ -13,6 +14,7 @@ import { acceptUniqueUserFacingReply, type ReplyRewriteInput } from '../../user-
 import { buildRunRequestCandidates } from '../../context-candidates.js';
 import { prepareModelRequest, callModelChat, modelRequestIdFor } from '../../model-observability.js';
 import { clearReplyState } from '../../reply-state.js';
+import { writeDecisionState } from '../../decision-state.js';
 import { recordFailure } from '../../failure-state.js';
 import { replaceToolResults } from '../../execution-evidence-state.js';
 import { writeReplanState } from '../../replan-state.js';
@@ -43,6 +45,42 @@ export async function executeLegacyLoop(
     insertedBeforePrimary: attachmentMessages.map((item) => item.context),
   });
   replaceToolResults(ctx, 'execute', result.toolResults);
+  // Asking the user is the model's own decision: the question it raised becomes
+  // the turn's clarification, ASK_USER composes provider-traceable wording for
+  // it, and the runtime records the single waiting fact. The runtime never
+  // authors the answer and never decides on its own to wait.
+  if (result.userInputRequest) {
+    const userInputRequest = result.userInputRequest;
+    const clarificationRequest: ClarificationRequest = {
+      id: `${ctx.runId}:user-input`,
+      kind: 'ambiguous_request',
+      sourceStage: 'execute',
+      createdAt: new Date().toISOString(),
+      originalRequest: textOf(ctx.inbound),
+      copySource: 'model',
+      blockingReason: userInputRequest.prompt,
+      questions: [{
+        id: 'question-1',
+        field: userInputRequest.field,
+        prompt: userInputRequest.prompt,
+        required: userInputRequest.required,
+        ...(userInputRequest.options ? { options: userInputRequest.options } : {}),
+      }],
+    };
+    writeDecisionState(ctx, 'execute', { clarificationRequest });
+    clearReplyState(ctx, 'execute');
+    return {
+      stage: 'execute',
+      next: 'ask_user',
+      ok: true,
+      meta: {
+        userInputRequested: true,
+        userInputField: userInputRequest.field,
+        iterations: result.iterations,
+        toolCalls: result.toolResults.length,
+      },
+    };
+  }
   if (result.workPolicyUpgradeProposal) {
     try {
       const upgrade = buildWorkPolicyUpgradeRequest(ctx, result.workPolicyUpgradeProposal, result.toolResults);
