@@ -448,6 +448,10 @@ function evaluateGate({ compaction, comparison, paths }) {
   const criteria = []
   const add = (name, value, limit, passed) => criteria.push({ name, value, limit, passed })
   add('failedRuns', nextPath.failedRuns, 0, nextPath.failedRuns === 0)
+  // A run that answers 200 without a reply and without pausing is the silent
+  // ending the state-machine work eliminated; enforce it so a regression is
+  // caught by this gate instead of by manual inspection.
+  add('silentRuns', nextPath.silentRuns ?? 0, 0, (nextPath.silentRuns ?? 0) === 0)
   add('receivedRate', next.receivedRate ?? 0, 1, (next.receivedRate ?? 0) >= 1)
   add('verificationPassRateDelta', deltas.verificationPassRate ?? 0, 0, (deltas.verificationPassRate ?? 0) >= 0)
   const p50DeltaPct = pct((next.latencyP50Ms ?? 0) - (shadow.latencyP50Ms ?? 0), shadow.latencyP50Ms ?? 0)
