@@ -5446,3 +5446,31 @@ tail[11] system 251 · tail[12] system 662 · tail[13] system 1,986   ← 尾部
 **风险重估（诚实）**：D1 不再是"三处契约改动"，而是 **"生产判据（若有）+ 全部替身判定 + 若干阶段序列断言"** 的组合改动，失败面 **≥27 例**；**建议按上面的 1→4 分轮实施**，每轮保持树绿。
 
 **当前基线（未改动，`main`）**：短会话 hit **74.5–76.7%**、miss/调用 **682–716**；长会话 hit **73.7–74.0%**、miss/调用 **1,048–1,092**。
+
+## 10.205 D1 第 1 步取证：**生产代码确实按"是否带 `tools`"分支**（6 处，逐项定性）（2026-09-18）
+
+`grep 'request\.tools|rawRequest\.tools|\.tools \?\?|tools\?\.length|tools && '`（全 `packages/*/src`，含测试）命中 41 处；**排除测试后**，与"请求是否带工具"有关的生产分支如下：
+
+| # | 位置 | 代码 | 定性 |
+| --- | --- | --- | --- |
+| 1 | `packages/llm/src/client.ts:124` | `if (req.tools && req.tools.length > 0) body.tools = req.tools;` | ✅ **正是 D1 的目的**（把工具广告给 Provider） |
+| 2 | `packages/context/src/tokenizers/deepseek-v4-counter.ts:284` | `const activeToolSchema = (request.tools?.length ?? 0) > 0;` | ⚠️ **计数**：带工具时按另一套计费口径 ⇒ 影响 token 预算与压缩阈值 |
+| 3 | `packages/context/src/tokenizers/deepseek-v4-encoding.ts:146,174–179` | `effectiveDropThinking = messages.some((m) => (m.tools?.length ?? 0) > 0)`；`if (request.tools…)` 时把 tools **搬进 system 消息**并 `unshift` 一条 system | ⚠️ **计数/编码**：同上（这是 token 记账路径，非实际请求体） |
+| 4 | `packages/harness/src/model-observability.ts:431,437,652` | `canonicalRequest = { ...request, tools: orderToolSpecs(request.tools) }`；`requestedToolNames` | ⚠️ **可观测性 + 工作集**：`requestedToolNames` 可能进入"已请求工具"状态（影响后续上下文） |
+| 5 | `packages/harness/src/cache-observability.ts:177,196,224,503` | `normalizeTools(input.request.tools, true)`、`toolSchema` 指纹 | ✅ **诊断用**（正是本目标依赖的缓存判决） |
+| 6 | `packages/context/src/context-engine/snapshots.ts:148` | `allToolNames = input.request.tools?.map(...)` | ✅ **快照记录**（本会话脚本读取的就是它） |
+| 7 | `packages/app/src/renderer/chat/activity-model.ts:301` | `if (!tools?.length) return undefined` | ⚠️ **UI 活动模型**：带工具时可能渲染不同活动（需确认传的是不是 `request.tools`） |
+
+**⇒ D1 的性质修正**：
+- **不是纯测试适配**：除"给 Provider 广告工具"（第 1 项，目的）外，还牵动 **token 计数口径（第 2/3 项）**、**可观测性/工作集（第 4 项）**、**UI 活动模型（第 7 项）**；
+- **27 处测试失败**中，**至少三类**替身按 tools 判定工具循环（`execute.test.ts:1623/1654/1739`、`runner/web-runtime.test.ts:98/170/467`、`harness/src/tests/helpers.ts:137`），这些属**机械适配**；
+- 行为性失败（`expected 'error' to be 'ok'`）**可能**来自上述生产分支（如第 2 项计数变化导致预算/压缩路径不同，或第 4 项工作集变化）。
+
+**⇒ 修正后的 D1 分轮实施顺序**：
+1. **本轮完成**：取证（本节）；
+2. **下一轮**：只改**一处** purpose（建议先 `verify`，它最简单）→ 定位"生产分支"里哪些确实产生行为差异；
+3. **再下一轮**：按包分批把替身判定从"按 tools"改为"**按 purpose/阶段**"（`harness/src` 先、`runner` 后），每批保持树绿；
+4. **最后**：`execute/final-reply` 同样处理 + 阶段序列断言更新；
+5. 全门 + **两次**样本，验收 `execute_final_reply` miss/调用 **846 → <400**、hit **25% → >60%**。
+
+**风险（重估）**：D1 的改动面为 **3 处生产调用点 + 3 类测试替身 + 若干断言 + 3 类下游（计数/可观测/UI）**；**建议先只做 `verify` 一处**，用两次样本判断"给一个本不带工具的 purpose 加工具块"是否**真的提升命中**（若提升不足 2pt，则 D1 的收益不足以支撑其风险，应及时停手并回报）。
