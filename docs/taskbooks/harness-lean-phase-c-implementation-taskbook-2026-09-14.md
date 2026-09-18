@@ -3909,3 +3909,46 @@ idx=4 execute_final_reply tools=0 uncached=890
 3. `packages/harness/src/stages/execute/contracts.ts:49`（`ToolLoopOptions.tools`）——若需要，新增 `allowedToolNames?: string[]`。
 
 **判据（不变）**：`tool-set-diff.mjs` 中同一 run 内 decide 与 tool loop 的 `tools` 列**一致**、`execute_tool_loop` 的 `uncached` ~5,000 → **<1,500**；两次 8×5 样本；`failedRuns=0`、`silentRuns=0`、`verificationPassRateDelta ≥ 0`。
+
+## 10.152 **交接档**：缓存命中率目标的现状、决定性证据与下一步（2026-09-18）
+
+### 一、目标与判据
+判据：**主对话命中 ≥95%、miss token/调用 <400、`failedRuns=0`、`silentRuns=0`**，且**不得通过删除/关闭能力**换取命中率。当前：**命中 ~66–72%、miss/调用 ~840–940**。
+
+### 二、已推送且有实测的改进
+| 改动 | 提交 | 实测 |
+| --- | --- | --- |
+| 紧凌 decide 路径改用 `'respond'`（与主对话共享头部） | `817e4ce` | 跨 purpose `stableChars` **284 → 2,934**（`prefix-diff` 双向） |
+| run 专属 `decide-contract` 移到稳定内容之后 | `07c4b0b` | **miss −5% / 命中 +2pt**；四次读数与基线**干净分离**（post 839/851.9/892.5/841.2 vs pre 910.8/919.5/903/895.5） |
+| `execute` compact-read 对齐 `'respond'` | `c692dcc` | **无净收益**（两次样本一好一差），但已如实标记 |
+| `pickPlanTools`（每步用 plan 工具并集） | `8827b90` | **无净收益**（同带）；原因：每 run 首次带工具的调用就是 tool loop 本身 |
+| classifier 前缀通道（地基，未接线） | `b683cfd` | 未推送；接线方案与三次试错见 10.134–10.139 |
+
+### 三、**决定性归因**（用 LS 自带缓存判决，零 API）
+工具链（工作区）：`cache-verdicts.mjs`（逐 purpose 账）、`exec-audit.mjs`（请求构成）、`tool-set-diff.mjs`（工具集差异）、`prefix-diff.mjs` / `prefix-detail.mjs`。
+
+**逐 purpose 账（84–86 请求 / 40 run）**：`execute_tool_loop` **7 次调用占 34% 的 miss（4,956/次、命中 34%）**；`execute_final_reply` 命中 **25–29%**；execute 家族合计 **≈43%**；而 **`reply` 已 79.5–80.2% 命中**（498–528/次）⇒ **reply 不是瓶颈**。
+
+**机制**（`tool-set-diff.mjs`，4 run 形态一致）：
+```
+idx=1 decide              tools=0
+idx=2 decide              tools=0
+idx=3 execute_tool_loop   tools=15  ← 工具块首次出现，其后全部内容重算（~5,000 未命中）
+idx=4..6 execute_final_reply tools=0
+idx=7 verify              tools=0
+```
+⇒ **Provider 的缓存前缀 = 工具块 + 消息** ⇒ **工具块一变，其后的整段历史作废**；而每 run **只有 tool loop 带工具**（且各步子集不同）⇒ 那个调用近乎全价。
+
+**已排除**：系统提示组件几乎不翻转（`promptVersion/systemPolicy/soul/userProfile/locale` **0%**、`memoryRevision` 9%）；五处 `assembleSystemPromptBundle` 全为 `'respond'`/默认；builder 最小输出 2,106 字符（`identity+core-flow+safety` 无条件）。
+
+### 四、下一步（**唯一自洽形态**，含落点与风险）
+**让"任务类"共用同一工具块**：`decide` 与 tool loop **都广告 `ctx.tools`（全集）**，**执行期约束仍来自 plan**（或保留 `pickStepTools` 作为执行期校验）。
+- **落点**：① decide 阶段 **ChatRequest 最终构造处**（新增 `tools`；注意 `normalization.ts:131/213` 是**计划步骤字段**，非 provider 参数 —— 10.151 已更正）；② `execute/task-step-runner.ts:138` 的 `runToolLoop` 入参改 `ctx.tools`；③ `execute/contracts.ts:49` 的 `ToolLoopOptions.tools`（若需分离"广告集/允许集"，新增 `allowedToolNames`）。
+- **已核实**：`tool-loop.ts` **不按 `options.tools` 校验工具名**（唯一相关命中是注释），校验在 ToolExecutionService/注册表与审批层 ⇒ **"广告全集"是否放宽 plan 约束取决于该层**，实施前需确认（若放宽，属安全变更，需保留执行期校验）。
+- **预期**：工具块在 decide 首次出现 ⇒ tool loop / final_reply 复用其前缀；`execute_tool_loop` 的 `uncached` **~5,000 → <1,500**。
+- **风险**：decide 见到 schema 后可能**误发 tool call**；tool loop 可能调用 plan 未声明的工具 ⇒ **两次样本**须确认 `verificationPassRateDelta ≥ 0`、`publishedRuns` 不退化，否则回退。
+
+### 五、其余待办（低优先）
+1. classify 接线（三处改动已写成、harness 685/685 绿；唯一障碍是 `runner/web-runtime.test.ts` 两例 `seen=[]`，诊断命令已留档）；
+2. `execute_final_reply`（命中 25–29%，9–13 次调用）单独审计；
+3. 若工具块统一后仍不足 95%，再谈"把工具块移到消息之后"（Provider 侧不可行）或"减少每轮 run 数/合并调用"等结构性手段。
