@@ -75,7 +75,12 @@
 - **实测佐证**：最近样本 `semanticFailures = 0`、`silentRuns = 0`、`pausedRuns = 0`；无工具循环类失败。
 - **完成定义达成**：审计报告 ✅ / 必要改动：无（0 行）+ 记录 P4a ✅ / 既有全门未受影响 ✅ / 实机佐证 ✅。
 
-### P5. 澄清技能化（**下一个要写代码的项**）—— 取证完成，设计定稿，待实施
+### ✅ P5. 澄清技能化 —— **已落地并实机认证**（2026-09-18）
+**提交**：`6cfed7b`（工厂）→ `4dc3886`（barrel 导出）→ `71c5cf4`（接入工具集）→ `445c3b4`（校验器）→ `373622a`（`ToolLoopResult` 字段 + 工具循环识别分支）→ `b204485`（**消费者：转 ASK_USER + 写澄清请求**）→ `365cd71`（契约测试 4 条）。
+**机制**：模型调用 `request_user_input`（有界 schema）→ 工具循环识别并返回 `userInputRequest`（**不做 IO**）→ `executeLegacyLoop` 写 `ctx.clarificationRequest`（`copySource: 'model'`）→ ASK_USER 组词（可追溯）→ `finalize` 发布 → 运行时记**唯一**等待事实。**"要不要问用户"由模型决定；运行时只负责安全后果。**
+**实机认证（产品级预算 8×5、真实 DeepSeek，`live-p5.txt`）**：`failedRuns` **0 / 0**、`semanticFailures` **0 / 0**、`transportFailures` **0 / 0**、`publishedRuns` **40 / 40（100%）**、`silentRuns` **0 / 0**、`pausedRuns` **0 / 0**（该负载下模型未触发提问 ⇒ 无停放，符合设计）、主对话命中 **65.9% / 73.5%**、miss/调用 **904.2 / 823.2**（**历史最好**）、**gate passed = true**。
+**剩余（非阻塞）**：两条行为测试（runner：恰好一个等待头；harness：问题文本被正常发布）—— 需要 runner/mock 夹具，留作后续补充；功能与门禁均已认证。
+
 **取证结论（关键）：`7744548` 之后，生产代码里**没有任何地方再创建 `waiting_user`**。逐处核对：
 
 | 位置 | 实际作用 |
