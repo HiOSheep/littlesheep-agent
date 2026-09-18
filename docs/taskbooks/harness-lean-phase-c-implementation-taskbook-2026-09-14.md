@@ -3452,3 +3452,24 @@ return rebuildBundle(segments, stable.length + stableAddons.length);
 2. 或给该变体补一个**稳定的占位段**（例如把 `capabilities`/`workspace` 明确置于稳定区），使标记不落在 `identity` 之后。
 
 **验收**：`prefix-detail` 中两侧第 1 项重新一致，且**不能丢** 10.129 已确认的改善（两次样本 miss/调用 ≤ 892.5、命中 ≥67.3%）。
+
+## 10.131 五个组装点已全部对齐，但仍有 identity-only 请求 ⇒ 嫌疑转向包装函数（2026-09-18）
+
+**全部 `assembleSystemPromptBundle(` 调用点（`packages/harness/src`，共 5 处）**：
+
+| 位置 | 模式 | 状态 |
+| --- | --- | --- |
+| `stages/decide/request.ts:102`（compactExplicitTool） | `'respond'` | ✅ 已对齐（10.123） |
+| `stages/decide/request.ts:104`（compactAutonomousRead） | `'respond'` | ✅ 已对齐（10.123） |
+| `stages/decide/request.ts:105`（完整路径） | 默认（full） | ✅ 头部 2,934 |
+| `stages/execute/prompt.ts:28`（compactReadTools 分支） | `'respond' : undefined` | ✅ 本轮对齐（10.130） |
+| `stages/reply.ts:87` | 默认（full） | ✅ 头部 2,934 |
+
+**矛盾**：即便 5 处都已对齐，`prefix-detail decide pair#1`（本轮样本，req 1→1）仍显示一侧系统消息**只有 `identity`（284）**、其后直接是历史消息。⇒ **该 identity-only 请求并非由这 5 处直接产生**，嫌疑转向：
+
+1. **包装函数 `assembleSystemPromptBundle` 自身**（模式参数可能被条件忽略，或在 `bootstrap: {}`/`tools: []` 时走了 identity-only 分支）；
+2. 或该请求来自**另一个 builder**（如 classifier 的独立系统提示）而 `prefix-detail` 的 purpose 标签把它归入 `decide`。
+
+**下一轮第一步（零成本）**：读 `assembleSystemPromptBundle` 的定义（`grep -n "function assembleSystemPromptBundle" packages/harness/src`）——确认第三个参数如何映射到 `buildSystemPromptBundle` 的 `mode`，以及是否存在"输入为空 ⇒ 仅 identity"的行为。
+
+**验收（不变）**：`prefix-detail` 两侧第 1 项一致、该变体头部回到 **2,934**；miss/调用 ≤892.6、命中 ≥67.3%；`failedRuns=0`、`silentRuns=0`。当前 `c692dcc`（本轮修复）**未推送**，待第二次样本判定。
