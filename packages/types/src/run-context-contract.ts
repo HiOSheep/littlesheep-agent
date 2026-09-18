@@ -183,7 +183,10 @@ export const runContextFieldOwnership: readonly RunContextFieldContract[] = Obje
     group: 'decision',
     owner: 'clarification-boundary',
     readStages: ['classify', 'decide', 'execute', 'recover', 'verify', 'ask_user', 'finalize', 'runner-restore', 'post-run'],
-    writeStages: ['classify', 'decide', 'recover', 'verify', 'ask_user', 'runner-restore'],
+    // EXECUTE may raise the question too: the model can call request_user_input
+    // from inside a tool loop, which is the same kind of event as the other
+    // writers creating one from a structured inability to continue.
+    writeStages: ['classify', 'decide', 'execute', 'recover', 'verify', 'ask_user', 'runner-restore'],
     lifecycle: 'checkpoint-carried',
     purpose: 'Structured request that blocks unsafe continuation and carries the user-facing question.',
   }),

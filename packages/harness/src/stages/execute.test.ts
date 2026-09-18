@@ -1466,6 +1466,30 @@ describe('executeStage', () => {
     ]));
   });
 
+  it('routes a model user-input request to ask_user instead of executing a tool', async () => {
+    const llm = createMockLlm(toolCallResponse([{
+      id: 'q1',
+      name: 'request_user_input',
+      args: { field: 'targetFile', prompt: '要改哪个文件？', required: true },
+    }]));
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({ inbound: textMessage('user', '帮我改一下那个文件') });
+
+    const res = await stage(ctx);
+
+    // The model's own question becomes the turn's clarification; nothing is
+    // executed and no tool result is fabricated for it.
+    expect(res.next).toBe('ask_user');
+    expect(res.ok).toBe(true);
+    expect(ctx.clarificationRequest?.copySource).toBe('model');
+    expect(ctx.clarificationRequest?.questions[0]).toMatchObject({
+      field: 'targetFile',
+      prompt: '要改哪个文件？',
+      required: true,
+    });
+    expect(ctx.toolResults ?? []).toHaveLength(0);
+  });
+
   it('rejects a user input request mixed with other tool calls', async () => {
     const tool = makeTool('lookup', { ok: true, output: 'unused' });
     const llm = createMockLlm(toolCallResponse([
