@@ -3564,3 +3564,20 @@ return rebuildBundle(segments, stable.length + stableAddons.length);
 **好处**：classifier 侧已就绪（`b683cfd`）、stage 侧零依赖新增、计算只发生一次（非每轮）。
 
 **验证（不变）**：门 + **两次** 8×5；**核心判据** `provider-reconcile.mjs` 的 `classify` 行 `cached` 由 0 变正；命中 ≥67.3%、miss ≤939.0。
+
+## 10.136 classify 接线**已全部编写完成**，但全量套件出现 **2 处失败**（已回退，2026-09-18）
+
+**已完成并可编译的改动（本轮实测）**：
+1. `classify.ts`：`ClassifyStageDeps` 增 **惰性** `systemPromptPrefix?: () => Promise<string | undefined>`；stage 内 `systemPromptPrefix: await deps.systemPromptPrefix?.(),` 透传给 classifier；
+2. `default-harness.ts:91`：`createClassifyStage({ … })` 内提供该 thunk（动态 `import('@littlesheep/prompt')` + `./system-prompt-cache-split.js`，避免改动 import 块），用 `'respond'` 模式构建共享头并以 `head + CACHE_BOUNDARY_MARKER + routerText` 形式传入。
+- 两处 `typecheck` **clean**、聚焦 `classify` + `default-harness` **24/24 通过**。
+
+**但全量套件**：`Test Files 1 failed | 460 passed`、`Tests 2 failed | 3285 passed` ⇒ **有 2 个用例断言了 classify 请求的原形状**（系统提示变化后不再成立）。
+
+**处置**：本轮**两处均已回退**（工作树干净、恢复已知良好状态），未提交。
+
+**下一轮（收口，两步）**：
+1. 先跑 `pnpm exec vitest run packages/harness` 并**打印失败用例名与断言原文**（很可能在 `default-harness.test.ts`、`model-observability`、`_shared`/`system-prompt-cache-split` 之中，断言"classify 的首条 system 消息等于路由器文本"之类）；
+2. 按失败信息更新那 2 处断言（**保留其实质意图**：路由器指令必须在系统消息中且不被裁剪），再走全流程：`typecheck` → 聚焦 → 全量 → `check:repo` → continuity + UI 门 → **两次** 8×5（**核心判据** `provider-reconcile.mjs` 的 `classify` 行 `cached` 由 0 变正；命中 ≥67.3%、miss ≤939.0）→ 提交 + 推送。
+
+**注**：`b683cfd`（classifier 前缀通道）仍在本地未推送，待接线完成后一并推送。
