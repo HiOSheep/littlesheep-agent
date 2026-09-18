@@ -4822,3 +4822,30 @@ AttachmentContextMessage = {
 **下一轮（先定位生产点，零成本）**：`grep 'reply:constraint\\|reply:system'` 找出这两个段 id 的构造处（预期在 `stages/reply.ts` 的重写/修复分支，或 `authoritative-reply`/`reply-rewrite` 一带），确认它如何组装 system 消息；随后按同型改一处（约束改走尾部通道）→ 全门 + 两次样本。
 
 **判据进度**：① 达标（hit ≈75.5%、miss ≈708.6）；② 未达（72.1%），但本发现把剩余缺口**归因到一处可修的构造交替**，而非不可达上限。
+
+## 10.185 落点：`${stage}:constraint` 由候选层生成，"单条变体"= **重写/修复轮**（2026-09-18）
+
+**`grep constraint` 关键命中**：`packages/harness/src/context-candidates.ts:169–173`
+```ts
+id: `${stage}:constraint:${index}`,
+kind: 'output_constraint',
+source: { kind: 'workflow', id: `${stage}:constraint:${index}`, runId: ctx.runId },
+```
+⇒ 快照中的 `reply:constraint` 即此项；`reply:system` 则是同一候选层对"单条 system 消息"的命名（`${stage}:system`）。
+
+**因此"两种变体"不是两个 builder**，而是**同一 reply 路径下的两种请求形态**：
+- **分段式**：system = 多个 `system_prompt` 段（bundle 的 identity/core-flow/…）；
+- **单条式**：system = **一条**预渲染文本 + 一条 **`output_constraint`（重写/修复指令）**。
+
+⇒ **单条变体 = 重写/修复轮**（当首答需要重写或引用修复时，该轮的 system 被换成单条，并附带 constraint 消息）⇒ 同一 run 内首答（分段）与重写（单条）交替 ⇒ 前缀从 0 重算 ✓ 与 10.183/10.184 的测量完全吻合。
+
+**修法（同型，不裁剪能力、无需授权）**：在**重写/修复轮**保持**同一分段式 system 消息**（字节不变），把**重写指令**作为**尾部 `output_constraint` 消息**发送（其已有形态就是这条 constraint ✓，只需不更换 system）⇒ 前缀覆盖 system + 历史，只有约束消息本身新增。
+
+**下一轮（读取点）**：
+1. `stages/reply.ts` 的重写分支（`:117` 一带的 `replyPhaseId` 与其请求组装）——确认重写轮如何构造 system；
+2. 若重写轮由 `authoritative-reply.ts` 或 `reply-support` 组装，同样读取；
+然后按同型改一处（重写轮不改 system，仅加尾部 constraint）→ 全门 + 两次样本。
+
+**预期**：长会话 `reply` miss/调用 **1,162 → 约 500**；长会话 hit **72.1% → 约 85%**；短会话略升。**内容一字不减。**
+
+**判据进度**：① 达标（hit ≈75.5%、miss ≈708.6）；② 未达（72.1%），缺口已归因到"重写轮换构造"。
