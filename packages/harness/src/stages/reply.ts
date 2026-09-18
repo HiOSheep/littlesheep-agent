@@ -178,10 +178,54 @@ export function createReplyStage(deps: ReplyStageDeps) {
           })
         : await callModelChat(ctx, deps.llm, req);
       const rawReply = res.content || streamed;
+      // No composing stage may end a turn with empty text. FINALIZE only
+      // publishes Provider-traceable text, so a canned string cannot stand in:
+      // allow exactly one bounded retry, then fail loudly. Measured before this
+      // guard: seven turns in one 8x5 sample ended as HTTP 200 with no reply,
+      // which hid the failure instead of surfacing it.
+      let visibleReply = rawReply;
+      if (!visibleReply.trim()) {
+        const retryMessages: ChatMessage[] = [
+          ...messages,
+          {
+            role: 'user',
+            content: 'Your previous response contained no visible text. Answer the latest request now in one short message, or ask exactly one question if a missing detail blocks you. Return only the message text.',
+          },
+        ];
+        const retryRequest = prepareModelRequest(
+          ctx,
+          replyPurpose,
+          preferDirectModelOutput(ctx, {
+            model: deps.model,
+            messages: retryMessages,
+            temperature: isCapabilityReply ? 0.3 : 0.7,
+            max_tokens: isCapabilityReply ? 500 : 1_200,
+            signal: ctx.signal,
+            stream: false,
+          } satisfies ChatRequest, { force: true }),
+          buildRunRequestCandidates(ctx, 'reply', retryMessages, {
+            history,
+            systemSegments: systemPrompt.segments,
+            insertedBeforePrimary: attachmentMessages.map((item) => item.context),
+          }),
+          { retryOf: replyRequestId, retryReason: 'empty_output' },
+        );
+        visibleReply = (await callModelChat(ctx, deps.llm, retryRequest)).content;
+        if (!visibleReply.trim()) {
+          const message = 'reply stage produced no visible text after one bounded retry';
+          recordFailure(ctx, 'reply', 'reply', message);
+          return {
+            stage: 'reply',
+            next: 'exit',
+            ok: false,
+            error: message,
+          };
+        }
+      }
       // A respond request deliberately has no tool authority. Provider-emitted
       // control syntax is a protocol failure, not permission to upgrade this
       // run into an executing route.
-      if (containsUnquotedDsmlControlMarkup(rawReply)) {
+      if (containsUnquotedDsmlControlMarkup(visibleReply)) {
         ctx.onAssistantReplace?.('');
         const message = 'respond provider returned tool control markup without tool authority';
         recordFailure(ctx, 'reply', 'reply', message);
@@ -205,14 +249,14 @@ export function createReplyStage(deps: ReplyStageDeps) {
         );
       }
       const apiGeneratedReply = isCapabilityReply
-        ? res.content || streamed
+        ? visibleReply
         : await repairDiscontinuousReply(
             deps,
             ctx,
             systemPrompt.text,
             messages,
             history,
-            rawReply,
+            visibleReply,
           );
       reply = await acceptUniqueUserFacingReply(
         ctx,
