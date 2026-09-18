@@ -5943,3 +5943,51 @@ export function toolsForRetrievalIntent(ctx) {
 **推送状态**：本地 `fdfb0b5`（S1 代码）+ `16d91cc`（文档）**仍未推送** —— 连续三次 `git push` 均报 `TLS connect error: unexpected eof while reading`（环境网络问题）；远端仍为 `7bbba6f`，工作树干净。
 
 **下一轮**：读 `profile-prompt.ts` 的 `buildUserFacingVoiceAddon` / `ctx.profilePromptAddon` 文本，与 `responseDirectivesSection()` 逐条比对，产出**可执行的合并清单**（信息不减少）；同时继续重试推送。
+
+## 10.221 **S2 撤回（更正版也不可行）**：三段中两段是"用户自己的内容"（2026-09-18）
+
+**取证（`profile-prompt.ts:107–118`）**：
+```ts
+export function buildUserFacingVoiceAddon(ctx) {
+  const soul = ctx.bootstrap?.['SOUL.md']?.trim();
+  const policy = ['User-facing expression boundary:', …3 条…].join('\n');
+  return soul ? `${policy}\n\nActive runtime SOUL.md (follow its identity, tone and preferences; …):\n${soul}` : policy;
+}
+```
+⇒ `user-facing-voice`(687) = **固定的 3 条策略 + 用户工作区的 `SOUL.md` 内容**（动态、属于用户）。
+`profile`(335) 同类（来自 `ctx.profilePromptAddon`，即用户/工作区配置）。
+
+**⇒ 三者不可合并**：
+| 段 | 性质 | 可否合并 |
+| --- | --- | --- |
+| `response-directives` 730 | 固定输出契约（respond 模式） | — |
+| `user-facing-voice` 687 | 固定策略 + **用户 SOUL.md** | ❌ 合并将删除用户内容 |
+| `profile` 335 | **用户/工作区配置** | ❌ 同上 |
+
+**⇒ "信息不减少"的简化已全部穷尽**：
+- **S1** ✓ **已落地并有实测**（工具文本不再与原生通道重复；短会话 miss/调用 **685–697 <700**、长会话工具循环 miss **−14%**）；
+- **S2** ❌ 撤回（模式互斥；更正版涉及用户内容）；
+- **S3**（`core-flow` 1,530 → 当前 stage 一行）与 **S4**（`runtime-awareness` 706/轮 紧缩）**均属信息取舍 ⇒ 需你明确授权后才能做**。
+
+### ⚠️ 交付状态（重要）
+
+**本地已提交但未推送**（连续 5 次 `git push` 均报 `TLS connect error: unexpected eof while reading`，属**环境网络问题**）：
+- `fdfb0b5`（S1 代码，含两次样本的实测收益）
+- `16d91cc`、`f0bb512`、`f0bb512`…（本轮的全部文档）
+- 远端仍为 **`7bbba6f`**；工作树干净、`check:repo` 33/33。
+
+⇒ **网络恢复后需要执行一次 `git push origin main`** 才能把 S1 与文档交付到远端（若你希望我用其他方式推送，请告知）。
+
+### 汇总（本会话交付）
+
+| 项 | 状态 |
+| --- | --- |
+| 跨路径共享头 **284 → 2,934** | ✅ 已推送 |
+| run 专属段让位稳定内容（miss −5%） | ✅ 已推送 |
+| `step-contract` 移出 system（工具循环 miss **−60%**、总体 **−18%**） | ✅ 已推送 |
+| `reply` 重写契约移出 system（形状交替消除、长会话 **+2.1pt**） | ✅ 已推送 |
+| **S1 工具文本去重**（短会话 miss **685–697 <700**、工具循环 **−14%**） | ⏳ **本地待推送** |
+| 5 处中性/零收益改动（含 S、`final_reply` 契约、`c692dcc`、`8827b90`、B1 单侧） | ✅ 如实入档 |
+| 4 次实测否证（D1×2、B1 全局、跨 purpose） | ✅ 如实入档 |
+| **判据** | ① hit **74.0–74.7%**（差 0.3–1.0pt）、**miss/调用短会话 685–697 ✓ 达标**；② 长会话 **74.7%**（结构性不可达，见 10.203） |
+| 硬约束 | `failedRuns=0`、`silentRuns=0`、**未裁剪能力** ✓ |
