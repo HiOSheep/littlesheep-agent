@@ -5830,3 +5830,35 @@ export async function buildExecuteSystemPrompt(deps, ctx): Promise<SystemPromptB
 | **S4** `runtime-awareness`(706/轮) 紧缩 | 省 ~100–200/次 | **信息取舍** |
 
 **判据进度**：① hit 均值 ≈75.2%（达标）、miss ≈709（超 1.3%）；② 长会话 73.8–74.0%。
+
+## 10.217 S1 可行性判定 + 安全形态（2026-09-18）
+
+**取证（`retrieval-intent.ts:28–46`）**：
+```ts
+export function toolsForRetrievalIntent(ctx) {
+  const intent = ctx.classification?.retrievalIntent ?? assessRetrievalIntent(inboundText(ctx)).intent;
+  if (intent === 'web_search' || intent === 'combined_memory_web') return ctx.tools.filter(…);
+  if (intent === 'web_fetch') return ctx.tools.filter(…);
+  return ctx.tools.filter((tool) => !WEB_TOOL_NAMES.has(tool.name));
+}
+```
+⇒ 它是 **`ctx.tools` 的子集**，由**分类意图**决定（**与步骤无关**）。
+
+**与原生通道的关系**：
+- **文本 `tooling`**（`execute/prompt.ts:29`）= `retrievalTools`（意图子集，通常≈全部非 web 工具）；
+- **原生 `request.tools`**（`task-step-runner.ts:138`）= 该**步骤**的工具（`pickPlanTools(ctx.plan, ctx.tools)`）；
+- ⇒ 两者**同为 `ctx.tools` 的子集、互不包含**：文本可能列出**该步骤不可调用**的工具，原生则只列**可调用**的。
+
+**⇒ S1 的安全形态**：**只在"已带 provider 工具"的调用点（工具循环）省略文本 `tooling`**，依据是 —— 工具循环**只允许调用原生广告的工具**（10.153 已证 6 处执行期校验按 `step.tools` 强制）⇒ 文本中**超出该步骤的工具本就不可调用**，省略其**描述**不减少**能力**（能力=能调用什么，由原生通道与执行期校验共同决定）；`decide` **保持**文本（其 lean 契约不带 provider 工具，文本是**唯一**通道）。
+
+**收益与验收**：
+- **预期**：工具循环 prompt **−4,179 字符（≈ −1,100 token）/次** ⇒ `execute_tool_loop` miss/调用 **1,876 → ~800**；短会话总体 miss/调用 **~709 → ~630** ⇒ **首次把判据 ① 的 miss 压到 <700**；
+- **必须验证"能力不降"**（这是本改动的核心风险）：两次样本需 `failedRuns=0`、`silentRuns=0`、`publishedRuns` 满额、`verificationPassRateDelta ≥ 0`、`semanticFailures=0`；
+- **回退条件**：任一指标退化 ⇒ 立即回退（说明模型确实依赖文本描述来选择工具）。
+
+**实现（两处，最小）**：
+1. `packages/prompt/src/builder.ts`：`PromptInput`（`:40`）加 `includeToolingText?: boolean;`；`:170` 的 `if (!isRespond)` 改为 `if (!isRespond && input.includeToolingText !== false)`；
+2. `packages/harness/src/stages/execute/prompt.ts`：在传给 `assembleSystemPromptBundle` 的 facts 里加 `includeToolingText: false`（execute 阶段的生产路径就是工具循环）；
+3. `decide/request.ts` 与其余 purpose **不动**（保持文本，兼容一切既有行为）。
+
+**下一轮**：按上述两步实施 → `typecheck` + 全量 vitest（预计 `builder`/`execute` 的少量段集合断言需同步）→ `check:repo` → continuity + UI 门 → **两次**样本（8×5 + 8×15）→ 验收上表。
