@@ -60,6 +60,14 @@ export async function reserveUserFacingReplyOnce(
   rewriteCount = 0,
   stage?: RunContextContractStage,
   expectedModelRequestId?: string,
+  /**
+   * Publish a reply that repeats an already published one instead of refusing
+   * it. A verbatim repeat is a UX preference, not a safety property: when the
+   * user repeats a question, the same answer is the correct answer. Provenance,
+   * settlement and the fingerprint ledger are still written and the repeat is
+   * logged, so the pattern stays observable.
+   */
+  allowDuplicate = false,
 ): Promise<string | undefined> {
   const generatedReply = cleanModelReply(apiGeneratedReply);
   if (!generatedReply) {
@@ -77,10 +85,17 @@ export async function reserveUserFacingReplyOnce(
 
   const recentReplies = collectRecentAssistantReplies(ctx);
   const recentNormalized = new Set(recentReplies.map(normalizeUserFacingReply));
-  if (recentNormalized.has(normalizeUserFacingReply(generatedReply))) return undefined;
+  const repeatsPublishedReply = recentNormalized.has(normalizeUserFacingReply(generatedReply));
+  if (repeatsPublishedReply && !allowDuplicate) return undefined;
 
   const provenance = createReplyProvenance(ctx, purpose, rewriteCount, expectedModelRequestId);
   const replyFingerprint = finalReplyFingerprint(generatedReply);
+  if (repeatsPublishedReply) {
+    ctx.toolContext.log?.(
+      'warn',
+      `publishing a reply that repeats a published one (purpose=${purpose}, fingerprint=${replyFingerprint.slice(0, 12)})`,
+    );
+  }
   const reservation: FinalReplyReservation = {
     version: 1,
     settlementId: finalReplySettlementId(ctx.runId, replyFingerprint),
@@ -152,6 +167,19 @@ export async function acceptUniqueUserFacingReply(
     if (reserved) return reserved;
 
     if (rewriteCount >= MAX_VISIBLE_REPLY_REWRITES) {
+      // The model could not word this differently. Publishing the repeat is
+      // better than failing a correct answer, so try once more with duplicates
+      // allowed; if the durable registry still refuses, keep the hard failure.
+      const published = await reserveUserFacingReplyOnce(
+        ctx,
+        purpose,
+        generatedReply,
+        rewriteCount,
+        stage,
+        undefined,
+        true,
+      );
+      if (published) return published;
       throw new UserFacingReplyError(
         'duplicate_model_reply',
         `The model repeated a previously published reply after ${MAX_VISIBLE_REPLY_REWRITES} rewrite attempts.`,

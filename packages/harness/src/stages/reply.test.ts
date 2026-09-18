@@ -454,7 +454,7 @@ describe('replyStage', () => {
     });
   });
 
-  it('returns a runtime error instead of publishing a repeated fallback', async () => {
+  it('publishes a repeated reply instead of failing the turn', async () => {
     const llm = createMockLlm(textResponse('固定回复'));
     const stage = createReplyStage({
       llm,
@@ -471,9 +471,11 @@ describe('replyStage', () => {
 
     const result = await stage(ctx);
 
-    expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/repeated a previously published reply/);
-    expect(ctx.reply).toBeUndefined();
+    // A verbatim repeat is a UX preference, not a safety property: when the user
+    // repeats a question the same answer is correct, so the reply is published
+    // (after the bounded rewrites) instead of failing the turn.
+    expect(result.ok).toBe(true);
+    expect(ctx.reply).toBe('固定回复');
     expect(deltas).toEqual([]);
     expect(llm.chat).toHaveBeenCalledTimes(3);
   });
