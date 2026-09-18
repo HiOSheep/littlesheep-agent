@@ -4538,3 +4538,25 @@ messages=13 tools=15
 **下一轮（先定位落点，再改）**：`grep 'step-contract'` 找到它的构造处（预期在 `stages/execute/` 的 guidance/task-step-runner 一带），确认它被加入 system 消息还是作为独立段；然后按"移到尾部"改一处 + 全门 + 两次样本。
 
 **判据进度**：① 短会话 ≥75%/<700：未达（67–68%、~900）；② 长会话 ≥95%：未达（68.1%）；硬约束满足（`failedRuns=0`、`silentRuns=0`、未裁剪能力）。
+
+## 10.175 `step-contract` 的构造处与"为何在历史之前"（2026-09-18）
+
+**构造处（已定位）**：`packages/harness/src/stages/execute/task-step-runner.ts:96–110`
+```ts
+const stepSystemPrompt = appendSystemPromptBundleAddons(baseSystemPrompt, [{
+  id: `step-contract:${stepId}`,
+  text: compactReadTools ? renderCompactAutonomousReadStepGuidance(taskBook)
+                         : renderStepGuidance(taskBook, step, stepId, index, taskBook.steps.length, visiblePriorResults),
+  kind: 'workflow_state',
+  source: { kind: 'workflow', id: `step-contract:${stepId}`, runId: ctx.runId },
+}]);
+```
+该 addon **没有 `placement: 'stable'`** ⇒ 按 10.128 的合并规则落入 **`volatileAddons`**（排在 `[...bundle stable, ...stableAddons, ...bundle volatile, ...volatileAddons]` 的**最后**）⇒ 因此它在**段序上是尾部**，但**在最终请求的消息顺序里仍位于历史之前**（快照：11–14 bootstrap、**15 step-contract**、16+ 历史）。
+
+**⇒ 需要的改动不是在 `builder.ts` 或这里改归属，而是在"最终请求装配"处：让尾部区（trailing）排在历史之**后**。**
+
+**矛盾点（下一步要核实的）**：`system-prompt-cache-split.test.ts` 的用例名是 "**appends trailing sections after the conversation**"，其断言（`:45–48`）也要求 trailing 段 order 最大 ⇒ **候选层（`buildRunRequestCandidates`）确实把 trailing 放在对话之后**；而**工具循环**的请求装配可能**不走该候选层**（或走了不同的顺序）⇒ 工具的 `[system, trailing…, history]` 与候选层的 `[…, history, trailing]` **不一致**。
+
+**下一轮（一次读取即可确定）**：读 `packages/harness/src/stages/execute/tool-loop.ts` 的消息装配段（把 `options.tools`/`messages`/history/trailing 拼成 provider 请求的位置，预期在循环开头 `messages.push(...)` 一带），确认 trailing 段的实际插入点；然后**只改这一处**（把 trailing 移到历史之后）→ 全门 + 两次样本。
+
+**预期（不变）**：`execute_tool_loop` miss 5,983 → ~1/3；短会话 miss ~920 → ~700、hit → ~75%（触及判据 ①）；长会话 miss 1,353 → ~900、hit → ~78%。**不裁剪能力**（step-contract 内容一字不减，仅位置改到历史之后）。
