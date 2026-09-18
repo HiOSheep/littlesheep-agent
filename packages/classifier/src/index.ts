@@ -23,8 +23,11 @@ export interface ClassifierOptions {
   beforeRequest?: (request: ChatRequest) => void | Promise<void>;
   /** Record transport/cancellation failures for the exact prepared request. */
   onError?: (request: ChatRequest, error: unknown) => void | Promise<void>;
-  /** Full system prompt for the LLM fallback; the caller prepends the shared head. */
-  systemPrompt?: string;
+  /**
+   * Text prepended to the router prompt, including the cache boundary marker the
+   * caller supplies; the router instructions are always appended after it.
+   */
+  systemPromptPrefix?: string;
 }
 
 /** Extract text from a Message. */
@@ -60,7 +63,7 @@ export async function classify(
     opts.onResponse,
     opts.beforeRequest,
     opts.onError,
-    opts.systemPrompt,
+    opts.systemPromptPrefix,
   );
 }
 
