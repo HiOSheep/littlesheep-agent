@@ -265,7 +265,7 @@ describe('decideStage', () => {
     expect(system).not.toContain('"userNeed"');
     expect(system).not.toContain('"toolProposal"');
     expect(system).not.toContain('You are the DECIDE stage of a hard-control-flow agent.');
-    expect(system).not.toContain('# Core Flow');
+    expect(system).toContain('# Core Flow');
     expect(system).not.toContain('# Tools');
     expect(system).not.toContain('# Memory Tree');
     expect(system).not.toContain('# Assistant Output Directives');
@@ -326,7 +326,7 @@ describe('decideStage', () => {
     expect(system).toContain('{"tool":"toolName","input":{}');
     expect(system).toContain('Names: glob, grep.');
     expect(system).not.toContain('write tool (mock)');
-    expect(system).not.toContain('# Core Flow');
+    expect(system).toContain('# Core Flow');
     expect(system).not.toContain('# Memory Tree');
     expect(system).not.toContain('# Assistant Output Directives');
     expect(system).not.toContain('BOOTSTRAP_SENTINEL');

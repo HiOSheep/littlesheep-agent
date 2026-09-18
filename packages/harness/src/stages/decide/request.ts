@@ -99,9 +99,9 @@ export async function buildDecideRequest(
   const retrievalTools = toolsForRetrievalIntent(ctx);
   const callPurpose = compactExplicitTool ? 'decide_explicit_tool' : 'decide';
   const baseSystemPrompt = compactExplicitTool
-    ? await assembleSystemPromptBundle(resolved, { tools: [], bootstrap: {} }, 'none')
+    ? await assembleSystemPromptBundle(resolved, { tools: [], bootstrap: {} }, 'respond')
     : compactAutonomousReadTools
-      ? await assembleSystemPromptBundle(resolved, { tools: [], bootstrap: {} }, 'none')
+      ? await assembleSystemPromptBundle(resolved, { tools: [], bootstrap: {} }, 'respond')
     : await assembleSystemPromptBundle(resolved, {
         tools: explicitToolInstructions
           ? explicitToolInstructions.entries.map((entry) => entry.tool)
