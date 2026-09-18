@@ -2579,3 +2579,38 @@ silent runs (no reply text): 11
 2. **修 API 映射**：durable 记录为 `error` 的 run **不得**返回 HTTP 200 且空回复 —— 必须把失败暴露到响应（错误码 + 原因），否则前端/用户与自动化都看不见（这正是用户最初说的"严重影响判断"的另一种表现）。
 
 **顺带记录（下一轮一并查）：** 这一样本里 `ask_user!` 也失败、且 `execute!` 连续两次失败，但 `lastError` 为 `none` ⇒ **失败原因没有落到 `lastError`**，需要把阶段失败的原因也写进可归因字段（否则只能靠 trace 的 ok 标志间接判断）。
+
+### 11.9 失败率归因（**每个失败 run 都带着原因**）：两处"状态机参数"压过了模型判断（2026-09-18）
+
+用 `failure-fields.mjs` 打印失败 run 的字段（数据根 `littlesheep-path-next-uI8Qoo`）：失败 run 的**顶层 `error` 字段有明确原因**（而 `lastError` 为空，所以此前只能靠 trace 的 `ok` 标志猜）。
+
+**原因一（约占一半以上）：重复回复闸门把"正确答案"判成失败**
+
+```
+error = "user-facing reply generation failed:
+         The model repeated a previously published reply after 2 rewrite attempts."
+trace = enter>classify>reply!        （reply 阶段 ok=false）
+```
+
+**判读**：该闸门要求"新回复不得与已发布回复重复"，最多重写 **2** 次，然后**整轮失败**。而测量负载是**短且高度相似**的问题（同一问题在不同轮次被问、仅加"第 N 次询问"后缀），正确答案**本就应当相同**（如"4 组，每组 3 人"）。⇒ **闸门与"被反复问同一件事"的正常场景冲突**，把正确回答变成失败。
+
+**原因二：每轮模型调用预算（8 次）被 recover 链耗尽**
+
+```
+error = "user-facing clarification generation failed:
+         model call budget exhausted (8 calls per run)"
+trace = enter>classify>decide>execute!>recover>execute!>recover>ask_user!
+```
+
+**判读**：`decide → execute → recover → execute → recover` 这条**恢复链**把 8 次/轮的调用预算吃光，随后连澄清组词都发不出请求 ⇒ 整轮失败。即：**恢复状态机的重试次数与每轮预算没有对齐**，失败被推到最外层。
+
+**共性（与用户判断一致）**：两处都不是"模型不会做"，而是**状态机/策略参数**（闸门重写上限、每轮调用预算）**压过了模型的自然判断**，并且失败信息此前还被 HTTP 200 掩盖（已在 11.8/`36b2f6f` 修复）。
+
+**修复候选（下一轮按此顺序，先本地取证再实测）：**
+
+| 目标 | 方案 | 需守住的语义 |
+| --- | --- | --- |
+| 重复闸门 | 重写上限 2 → 更大；或**在 N 次后允许"内容相同但带区分性开头"的正常发布**；或对"用户重复问同一问题"这一情形**豁免**（答案相同是正确行为） | 保留"不让用户看到逐字重复的回复"这一产品规则；HC 相关断言不得回退 |
+| 每轮预算 | 让 `maxModelCalls` 与**恢复链的最坏路径**对齐（或对恢复/澄清调用单独记账，不与主链共享 8 次） | 保留"每轮调用有界"（防失控成本）这一安全属性，且必须继续可观测（durable event 记数） |
+
+**下一轮第一步**：先只改**可观测性与预算对齐**里风险最小的一项 —— 给 `recordFailure` 补写 `lastError`（这样失败原因进入 durable 归因字段，不再只存在于顶层 `error` 字符串），并统计两个原因各占多少（用 `failure-fields.mjs` 对 10 个失败 run 全量归类）；然后再按占比决定先改闸门还是先改预算。
