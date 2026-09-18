@@ -2704,3 +2704,33 @@ reserveUserFacingReply?: (reply: string) => Promise<boolean>;
 
 **下一轮的目标（唯一）：** 按 11.4 落地 **ASK_USER → skill**，并**关闭把运行送进 `waiting_user` 的四个判断入口**（classify 已关；剩 `decide/adoption.ts:115`、`recover.ts:57/87/101/163`、`verify/routing.ts:311`）——改为"产出带问题的正常回复"，让"要不要等用户"由**模型主动调用技能**决定。
 **验收判据（产品级预算 32）：** `failedRuns` 从 **22 → 接近 0**、`silentRuns` 保持 0、`pausedRuns` 只在"确实需要提问"时非零、命中率/miss 调用回到或优于 66%/958。
+
+### 11.14 55% 失败率的**唯一代码落点**：`runner.ts` 把"模型说模糊"变成**硬失败**（2026-09-18）
+
+**落点（已定位到行）：** `packages/runner/src/runner.ts:1174–1199`
+
+```ts
+if (isClarification) {
+  dispositionDecision = ... await resolveContinuationDisposition({ llm, model, checkpoint, request, answer, ... })
+  if (dispositionDecision.kind === 'ambiguous') {
+    const detail = dispositionDecision.reason ?? 'choose answer, retry, revise goal, cancel, or new task explicitly'
+    throw new ContinuationControlError(
+      `waiting task response is ambiguous and was not claimed: ${detail}`, ...)
+  }
+}
+```
+
+**语义**：当上一轮留下了"等待用户答复"的检查点，用户的下一条消息要由**模型**判定属于哪一类延续（回答 / 重试 / 改目标 / 取消 / 新任务）。**一旦模型答"ambiguous"，运行时就把整轮判为失败并抛错。**
+
+**这就是 11.13 里 22/22 失败的来源**，也正是用户说的"**严重影响 LLM 自身判断**"：模型已经给出了判断（"这条消息不像是在回答那个待决问题"），运行时却**把判断结果当成协议违规**，既不回答用户、也不放行新任务。
+
+**修复形态（沿用本仓库已有的先例，改动小且语义清晰）：** 同一个文件里已有"陈旧检查点"的处理范式——判定检查点无法再满足时，**移除该检查点并按新任务继续**（`resolveCheckpointClarification(...)` → `infra.runCheckpointStore?.remove(resolution.checkpointId)` → 正常执行）。
+
+因此 `kind === 'ambiguous'` 分支应改为：**放弃待决检查点、把它当作新的一轮正常处理**，并留下可观测记录（例如 `checkpoint_abandoned_ambiguous` durable 事件 + 原因），而**不再抛错**。
+
+**必须守住的不变量：**
+- **不得静默丢弃用户"确实回答了"的澄清**：只有在模型判定"这条消息不指向该澄清"时才走放弃路径；判定为 `answer/retry/revise/cancel` 时行为**完全不变**；
+- 放弃动作必须**durable**（移除检查点 + 事件记账），否则会留下悬挂的等待态（这正是历史上"陈旧检查点毒化会话"的成因，已有对应修复可参照）；
+- `silentRuns` 必须保持 0；`pausedRuns` 只在"确实需要提问"时非零。
+
+**验收（产品级预算 32）：** `failedRuns` **22 → 接近 0**；`silentRuns` = 0；命中率 / miss 调用回到或优于 **66% / 958**（失败轮次的反复重试是目前成本抬升的原因）；全门（typecheck、vitest、`check:repo`、两条 Electron 门）全绿。
