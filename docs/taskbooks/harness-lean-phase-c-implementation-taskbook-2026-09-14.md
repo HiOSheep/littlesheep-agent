@@ -5417,3 +5417,32 @@ tail[11] system 251 · tail[12] system 662 · tail[13] system 1,986   ← 尾部
 ---
 
 **下一步（下一轮开始实施）**：按第二节的 1–4 步实施 **D1**（工具块统一），跑全门 + 两次样本；随后按方案 A 统一历史窗口并复测。**两项均由用户授权** ✓
+
+## 10.204 D1 **首轮实测：代价远高于估计（27 失败，含行为性失败）**，需按序收口（2026-09-18）
+
+**已应用的改动（两处，`typecheck` clean）**：
+- `stages/execute/final-reply.ts`：`rawRequest` 加 `tools: toProviderTools(ctx.tools)`；
+- `stages/verify/model-call.ts`：`callLlmForJson` 选项加 `tools: toProviderTools(ctx.tools)`；
+- 两文件各加 `import { toProviderTools } from '../../provider-tool-spec.js';`。
+
+**结果**：`packages/harness/src` + `packages/runner` = **1016 通过 / 27 失败**（已回退，树干净）。
+
+**失败清单（按类型）**：
+
+| 类型 | 例 | 含义 |
+| --- | --- | --- |
+| **阶段序列变化** | `executeStage > executes taskBook steps in order…`：`expected ['enter','classify','decide',…(4)] to deeply equal […(5)]` | 替身因"带 tools"返回了 **tool call** 而非纯文本 ⇒ 路由/阶段数改变 |
+| **行为性失败** | `expected 'error' to be 'ok'`、`expected [] to have a length of 1 but got +0`、`expected undefined to match object {…}` | **不是断言细节，而是行为变了** ⇒ 若生产代码也有同类分支，D1 会引入真实回归 |
+| **runner 记忆集成** | 5 例（`Runner Memory v3 integration …`） | 同上，链路更长 |
+
+**根因（10.162 的推广）**：**大量测试替身以"请求是否带 `tools`"判定"这是工具循环"** —— 至少 `runner/web-runtime.test.ts:98` 与 `execute.test.ts` 的多处 mock。把 `tools` 加到原本"不带工具"的 purpose 上，会让这些替身**返回 tool call** ⇒ 阶段序列与行为随之改变。
+
+**⇒ D1 的正确收口顺序（修正后的实施计划）**：
+1. **先查生产代码是否也以"是否带 tools"分支**（`grep -rn 'request\\.tools\\|\\.tools ?\\|tools?.length' packages/*/src --include=*.ts`，排除测试）⇒ 若有，D1 就是**行为变更**，必须先定"按 purpose 判定"的替代判据；
+2. **再统一更新替身判定**：把所有"按 tools 判定工具循环"的 mock 改为**按 purpose/阶段**判定（这是机械但量大的改动，需按包分批）；
+3. **最后更新断言**：阶段序列期望值（`…(4)` → `…(5)` 等）按新行为同步；
+4. 全门 + **两次**样本，验收：`execute_final_reply` miss/调用 **846 → <400**、hit **25% → >60%**。
+
+**风险重估（诚实）**：D1 不再是"三处契约改动"，而是 **"生产判据（若有）+ 全部替身判定 + 若干阶段序列断言"** 的组合改动，失败面 **≥27 例**；**建议按上面的 1→4 分轮实施**，每轮保持树绿。
+
+**当前基线（未改动，`main`）**：短会话 hit **74.5–76.7%**、miss/调用 **682–716**；长会话 hit **73.7–74.0%**、miss/调用 **1,048–1,092**。
