@@ -2554,3 +2554,28 @@ replyLength(response.payload)   // 只看 /run 的同步响应
 | `failedRuns` | 状态非 200 | 允许暴露真实失败 |
 
 修完后重跑 8×5，判据改为 **`silentRuns === 0`**，并把 `pausedRuns` 与"ask_user 技能化"的进度对照（skill 化之后，`pausedRuns` 应只由**模型主动调用技能**产生）。
+
+### 11.8 决定性证据：11 个"空回复"**全部是失败 run**，被 API 报成 HTTP 200（2026-09-18）
+
+用新工具 `silent-run-trace.mjs` 逐 run 打印 stage trace 的 `ok` 标志（数据根 `littlesheep-path-next-gVpQee`）：
+
+```
+run=285d4d70 status=error trace=enter>classify>reply!            requests=3
+run=41c59738 status=error trace=enter>classify>decide>execute!>recover>execute!>recover>ask_user!
+...
+silent runs (no reply text): 11
+```
+
+**结论一（守卫确实生效）：** 11 个 run 在 durable 内核里**全部记录为 `status=error`**，失败阶段被正确标记（`reply!`、`execute!`、`ask_user!`）。也就是说：**不再有"静默收尾"** —— 第 49/52 轮的两处守卫与本轮证据一致：reply 阶段空输出会**响亮失败**。
+
+**结论二（真正剩下的缺陷在 API 映射）：** 对比脚本按 **HTTP 状态**统计 `failedRuns`，得到 **0**；而 durable 状态是 **error**。即：
+- **`failedRuns` 低估**（信了 HTTP 200）；
+- `emptyReplies=11` 恰好等于这 11 个失败 run（不再包含"合法暂停"的干扰项，因为这一样本里根本没有成功暂停的 run）。
+
+⇒ **本轮定位到的是"失败被 HTTP 200 掩盖"**，不是"阶段空输出"。这也解释了为什么"三处守卫 + 11.5/11.7 两次复测"读出来的数字始终别扭：**我们一直在用 HTTP 层的计数去观测内核层的状态**。
+
+**下一轮的两个动作（都有明确证据支撑）：**
+1. **修指标口径**：`failedRuns` 改为按 **durable run 状态**（`status==='error'`）统计，并按 11.7 的拆分输出 `publishedRuns` / `pausedRuns` / `silentRuns`（后者定义为"无回复且 durable 状态非 error 且非暂停"）；
+2. **修 API 映射**：durable 记录为 `error` 的 run **不得**返回 HTTP 200 且空回复 —— 必须把失败暴露到响应（错误码 + 原因），否则前端/用户与自动化都看不见（这正是用户最初说的"严重影响判断"的另一种表现）。
+
+**顺带记录（下一轮一并查）：** 这一样本里 `ask_user!` 也失败、且 `execute!` 连续两次失败，但 `lastError` 为 `none` ⇒ **失败原因没有落到 `lastError`**，需要把阶段失败的原因也写进可归因字段（否则只能靠 trace 的 ok 标志间接判断）。
