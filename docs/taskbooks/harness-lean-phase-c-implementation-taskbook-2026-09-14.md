@@ -4059,3 +4059,31 @@ function toolToSpec(tool: AgentTool): ToolSpec {
 3. `failedRuns=0`、`silentRuns=0`、`publishedRuns` 不退化、`verificationPassRateDelta ≥ 0`。
 
 **回退条件**：若 decide 出现**误发 tool call**、或 `verificationPassRateDelta < 0`、或发布退化 ⇒ 先退到"仅 `task-step-runner` 用 `ctx.tools`"（无收益但无风险），再评估 10.148 的备选（广告层/执行层分离）。
+
+## 10.157 **红灯发现**：decide 的 wire contract **禁止**发送 `tools`（2026-09-18）
+
+**尝试**：在 `decide/model-call.ts` 的 `callLlmForJson` 选项里传 `tools: toProviderTools(ctx.tools)`（10.156 第 4 步）。
+
+**结果**：`typecheck` clean，但 **decide 测试大面积失败**，其首个失败用例名即说明原因：
+
+```
+× decideStage > keeps the lean wire contract free of Runtime-owned fields and expands dependencies internally
+× decideStage > parses a valid plan, transitions to execute
+× decideStage > preserves explicit multi-step acceptance structure for a simple task
+× … （共 6+ 例）
+```
+
+⇒ **`decide` 的契约明确要求"lean wire contract，不含 Runtime 拥有的字段"** —— 即**向 decide 的 provider 请求添加 `tools` 是被设计禁止的**（那条测试正是保护这一约束）。
+
+**处置**：改动**已回退**（工作树干净）。这也解释了为何 `decide` 全仓库都不带工具：**不是遗漏，而是契约**。
+
+**这对 10.150 的影响**：把工具块前移到 `decide` **不可行**（除非修改该契约，那属于设计变更，需你确认）。因此可选的路径收敛为：
+
+| 路径 | 说明 | 风险/预期 |
+| --- | --- | --- |
+| **A. 接受现状** | 工具块首次出现在 tool loop；其余调用无工具 ⇒ 那一次近乎全价 | 无改动；`execute_tool_loop` 保持 ~5,000 未命中 |
+| **B. 让 tool loop 的**后续**调用复用** | 工具块在 tool loop 内**已经是**后续请求的前缀（同一次 loop 的多次迭代共享 `tools`）⇒ 真正浪费的是"**每次 run 第一次** tool loop 的冷启动" | 需确认同 loop 内迭代是否已复用（用 `exec-audit.mjs` 看同 run 内 **同一批** `execute_tool_loop` 连续调用的 `uncached` 是否递减） |
+| **C. 缩小工具块** | 15 个 schema 约 4–5k 字符；对**不需要工具**的 purpose 无影响，但 tool loop 的大头就是它 | 属"能力不裁剪"的边界（不能移除 schema），但可**压缩描述文本**或**减少同时暴露的工具数**（与权限无关，影响规划质量） |
+| **D. 修改契约**（把 `tools` 从"Runtime-owned"里豁免） | 需改契约测试 + 论证 | **属设计变更**，应由你拍板 |
+
+**下一步（零成本先做）**：用 `exec-audit.mjs` 看**同一 run 内连续多次 `execute_tool_loop`** 的 `uncached` 是否递减（若递减 ⇒ 同 loop 内已复用，B 路径收益有限；若不递减 ⇒ 说明每步都重建，B 有明确收益）。
