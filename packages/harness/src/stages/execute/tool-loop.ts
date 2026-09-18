@@ -1,12 +1,9 @@
 // Owns the bounded model loop and persisted messages; ToolExecutionService
 // owns invocation validation, approval, execution, events, and evidence.
 import { createHash, randomUUID } from 'node:crypto';
-import type { z } from 'zod';
 import {
-  zodToJsonSchema,
   type ChatResponse,
   type ToolCall as LlmToolCall,
-  type ToolSpec,
 } from '@littlesheep/llm';
 import type {
   AgentTool,
@@ -32,6 +29,7 @@ import {
 import { upsertToolInvocationEvidence } from '../../execution-evidence-state.js';
 import { writeRuntimeState } from '../../runtime-state.js';
 import { conversationHistoryForModel } from '../_shared.js';
+import { toolToSpec } from '../../provider-tool-spec.js';
 import { parseUserInputRequest, USER_INPUT_REQUEST_TOOL_NAME } from '../../user-input-request.js';
 import { ingestMemoryKnownState } from '../../memory-known-state.js';
 import { ingestMemoryContextToolResult } from '../../memory-context-working-set.js';
@@ -528,16 +526,6 @@ function finalizeToolResult(
     });
 }
 
-function toolToSpec(tool: AgentTool): ToolSpec {
-  const explicit = tool.inputSchema.jsonSchema;
-  const parameters = explicit
-    ? explicit as object
-    : zodToJsonSchema(tool.inputSchema as unknown as z.ZodTypeAny);
-  return {
-    type: 'function',
-    function: { name: tool.name, description: tool.description, parameters },
-  };
-}
 
 function toolExecutionService(
   deps: ExecuteStageDeps,
