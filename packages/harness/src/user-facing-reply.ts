@@ -103,8 +103,11 @@ export async function reserveUserFacingReplyOnce(
     replyFingerprint,
     modelRequestId: provenance.modelRequestId,
     // Thread the intent into the durable registry, which is the gate that
-    // actually refuses a repeat; the local check alone is not sufficient.
-    ...(repeatsPublishedReply && allowDuplicate ? { allowDuplicate: true } : {}),
+    // actually refuses a repeat; the local check alone is not sufficient. The
+    // flag must not depend on the local detection: the local list is scoped to
+    // this run's history, while the registry holds the whole session, so a reply
+    // published by an earlier run is invisible here and still refused there.
+    ...(allowDuplicate ? { allowDuplicate: true } : {}),
   };
 
   if (ctx.reserveUserFacingReplySettlement) {
