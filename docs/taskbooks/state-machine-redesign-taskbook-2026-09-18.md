@@ -164,6 +164,11 @@
   }
   ```
   **实现时需核对的 3 点（照抄前先确认，避免又一个整轮浪费）**：① `runners.ts` 是否已 import `writeDecisionState` / `clearReplyState` / `textOf`（后两者在前 30 行已见使用，`writeDecisionState` 需确认）；② `ClarificationRequest` 的 `kind` 合法枚举（`classify.ts` 用 `ambiguous_request`，以它为准）；③ `ask_user` 阶段是否接受该结构（`recover.ts:140–160` 的用法为准）。**这三处都是"读一眼即可确认"的，不是设计问题。**
+  **✅ 已确认（2026-09-18）**：`runners.ts` **已 import** `clearReplyState`（`:15`），但**没有** `writeDecisionState`、`ClarificationRequest`，也没有单行 `textOf` import。⇒ companion 4 除分支外还需**补 3 个 import**：
+  - `writeDecisionState`（模块路径照 `classify.ts` 的用法，同为 `../../decision-state.js`）；
+  - `type ClarificationRequest`（来自 `@littlesheep/types`）；
+  - `textOf`（来自 `../_shared.js`，与 `conversationHistoryForModel` 同处）。
+  补完 import 后，第 45/46 行之间插入上一段的分支即可 —— 无其它未知项。
   2. **转入既有 ASK_USER 阶段**：由它做**一次模型组词**（`ask_user.ts` 已经这样工作，并在空输出时回落到运行时草稿 `f11ce37`），随后 `finalize` 正常发布 —— 这样文本可追溯；
   3. **写唯一等待检查点**：经 `infra` 的检查点控制器写入 `waiting_user`（这是 `7744548` 之后**唯一**有意的创建点），并记 `runtime_event`（技能调用 + 问题 schema）；
   4. 上界：每会话仅一个等待头（`resolveWaitingUserHead` 的 conflict 分支已保证）；技能调用每轮上限（建议 1）。
