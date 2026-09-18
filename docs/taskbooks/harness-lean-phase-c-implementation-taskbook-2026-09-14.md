@@ -3215,3 +3215,33 @@ const status: RunCheckpoint['status'] = ctx.runtimeControl?.state === 'paused'
    第三处（`packages/harness/src/profile-prompt.test.ts:49`）**按 10.116 记录的文本未能逐字匹配** ⇒ 落地轮必须**先 `read` 该文件**（约 40–52 行）拿到原文，再改写为"断言存在边界之下且含标记的段 + `memory-root-index` 仍是独立段"。
 
 **结论**：落地轮的准备已完成到"只剩一次 read + 三次改写"。判据与五步顺序同 10.115。
+
+## 10.118 放置改动落地 + **两次样本：零回归、零改善**（2026-09-18）
+
+**已提交**（本轮推送）：`packages/prompt/src/builder.ts` 新增 `addVolatile`，`tooling`/`skills-index`/`runtime`/`output-directives`/`response-directives` 移到边界之下；同步改写三处断言（`builder.test.ts` 两处、`profile-prompt.test.ts` 一处）。门禁：`typecheck` clean、全量 vitest **461 文件 / 3,287 通过 / 0 失败**、`check:repo` **33/33**、continuity **ok**、UI 状态 **ok**。
+
+**实机两次样本（产品级 8×5）**：
+
+| 样本 | 主对话命中 | miss/调用 | `failedRuns` | `publishedRuns` | `silentRuns` |
+| --- | --- | --- | --- | --- | --- |
+| 改动后 #1 | 64.9% / 65.9% | 935.8 / 920.7 | 0 / 0 | 40 / 40 | 0 / 0 |
+| 改动后 #2 | 65.9% / 66.0% | 932.8 / 909.7 | 0 / 0 | 40 / 40 | 0 / 0 |
+| 改动前 #1 | 66.0% / 66.0% | 910.8 / 919.5 | 0 / 0 | 40 / 40 | 0 / 0 |
+| 改动前 #2 | 66.3% / 66.4% | 903.0 / 895.5 | 0 / 0 | 40 / 40 | 0 / 0 |
+
+⇒ **结论：零回归，但（在噪声内）零改善**。本刀的直接收益是"`reply` 内部复用从 7.3k 升到 **7.5–7.7k 字符**"，整体指标未动。
+
+**为什么没改善（本轮定位到更上游的原因）**：`prefix-diff.mjs` 显示跨 purpose 的 `stableChars` 仍为 **284**，但**首个变化位置已经改变**：
+
+| 切换 | 改动前首个变化 | **改动后首个变化** |
+| --- | --- | --- |
+| `reply → decide` | `system_prompt:tooling` | **`project_knowledge:bootstrap:AGENTS.md`** |
+| `decide → reply` | `output_constraint:response-directives` | **`system_prompt:core-flow`** |
+
+284 字符 = `identity` 段本身 ⇒ **`decide`/`verify` 与 `reply` 走的是两套不同的组装路径**：前者由 **Context 引擎候选段**（bootstrap/项目知识等）构成 system 消息，后者由 **prompt bundle 的有序段**构成；两者**只有 `identity` 一段共享**（与 `builder.ts:113–117` 的注释"共享头从 293 字节起"一致）。
+
+## 10.119 下一刀（真正的目标）：对齐两条组装路径的开头段序列
+
+**目标**：让 **Context 引擎的 system 候选**与 **prompt bundle** 以**相同的段序列开头**（`identity → core-flow → safety → workspace → date-time → capabilities`）。
+
+**预期**：跨 purpose `stableChars` **284 → ≈2,921**；随后再次用两次样本看 miss/调用与命中率变化。**判据不变**（命中 ≥95%、miss/调用 <400、`failedRuns=0`、`silentRuns=0`），且**不得通过删除或关闭能力**换取命中率（段照发，只对齐顺序与字节）。
