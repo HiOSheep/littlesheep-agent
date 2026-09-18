@@ -2815,3 +2815,27 @@ if (isClarification) {
 **这同时验证了本目标的核心命题**：把"这条消息是否在回答待决问题"这一**判断**交还模型（保留其结果，只安全处置后果），而不是把它当协议违规抛错 —— **失败率从 55% 降到 ~10%**，且没有牺牲任何安全属性（`silentRuns` 0、两条 Electron 门全绿、发布可追溯未变）。
 
 **剩余失败（next 4 个，~10%）：** 按 11.9/11.10 的归类，应为**重复回复闸门**那一类（测量负载反复问同一问题，正确答案本就相同）。**下一轮：** 用 `failure-fields.mjs` 对 `littlesheep-path-next-Y8R5KY` 零成本归类确认，然后按 11.11/11.12 落地"重复闸门建议化"（新增带记账的"发布已知重复"路径 + 断言更新），目标 `failedRuns → 0`。
+
+### 11.18 UI 状态门是**抖动门**（同一干净树：先失败、重试即过）+ 重复闸门修复已解封（2026-09-18）
+
+**证据（同一份代码、同一个干净工作树，连续两次运行）：**
+
+| 运行 | 结果 |
+| --- | --- |
+| 第 1 次 | `exit=1`：`Error: chat viewport lost its bottom anchor: {"beforeGap":136.67,"afterGap":1997.67,"settleMs":1006.6}` |
+| 第 2 次（立即重试） | `exit=0`：`{"check":"electron-ui-state-continuity","ok":true,…,"chatBottomGap":136.666748046875,…}` |
+
+**结论：**
+1. `verify:electron-ui-state-continuity` 的 **`verifyChatBottomAnchor` 判定对时序敏感**（等待约 1s 让布局稳定；偶发时视口未滚到底 ⇒ `afterGap` 从 136 跳到 1997）。**这是抖动，不是回归**；
+2. 因此 11.17 那一轮末尾的 `ui ok=False` **与本轮改动无关**（当时我按"全门绿"纪律回退了改动，回退是保守正确的，但原因被误判为可疑回归）；
+3. **提交策略调整（写进纪律）**：UI 状态门若失败，**先在同一干净树上重试一次**；重试通过即可提交，并在提交信息里注明"首次失败、重试通过（已知抖动，附证据）"。若连续两次都在**同一项**检查上失败，再按真实回归处理。
+
+**已解封：** 11.11/11.12 的"重复闸门建议化"可以重新落地并提交。改动集合（本轮已实现并通过 typecheck + 460 文件全量 vitest + `check:repo` + continuity 门，仅因抖动门而回退）：
+
+1. `packages/harness/src/user-facing-reply.ts`：
+   - `reserveUserFacingReplyOnce(..., allowDuplicate = false)` 新增末位参数；
+   - 重复判定改为 `if (repeatsPublishedReply && !allowDuplicate) return undefined;`，并在放行时 `ctx.toolContext.log?.('warn', 'publishing a reply that repeats a published one …')`（provenance / settlement / fingerprint 照常写入）；
+   - `acceptUniqueUserFacingReply` 的重写耗尽分支：先 `allowDuplicate = true` 尝试发布，**注册表仍拒绝才保留原硬失败**；
+2. `packages/harness/src/stages/reply.test.ts`：原"returns a runtime error instead of publishing a repeated fallback"改为"publishes a repeated reply instead of failing the turn"（`ok === true`、`ctx.reply === '固定回复'`、`deltas === []`、`llm.chat` 3 次）。
+
+**下一轮执行顺序：** 应用上述 4 处改动 → 聚焦 `harness` 测试 → 全量 vitest → `typecheck` + `check:repo` → continuity 门 → UI 门（**失败则重试一次**）→ 提交 → 产品级预算 8×5 复测（判据 `failedRuns 4 → 0`、`silentRuns 0`、命中率/成本不回归）。
