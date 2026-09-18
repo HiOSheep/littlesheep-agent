@@ -4197,3 +4197,24 @@ idx=7 verify              tools=0   uncached≈940–970
 3. 因此**建议**：把目标改写为**可达且可核**的两条 ——「**hit ≥75% 且 miss/调用 <700**」（需 D1 授权）或「**在长会话负载下 hit ≥95%**」（需口径变更），并在任务书注明 95% 原判据的**不适用性**及结构性原因。
 
 **在获得授权前，我不再改动产品语义**（既不改契约，也不削减提示内容/新鲜度）—— 这符合"能力几乎不收缩"的约束。
+
+## 10.162 测试替身的**关键规则**：按"是否带 `tools`"判定工具循环（2026-09-18）
+
+**源码**（`packages/runner/src/web-runtime.test.ts:98–103`）：
+```ts
+if (request.tools?.some((tool) => tool.function.name === 'web_runtime_probe')) {
+  if (request.messages.some((message) => message.role === 'tool')) {
+    return text('Web runtime probe step completed.');
+  }
+  toolCallCount += 1;
+  return toolCall(`web-call-${toolCallCount}`);      // ← 只有"带 tools"的请求才会得到 toolCall
+}
+```
+其判定顺序（`:55 → :58 → :85 → :89 → :92 → :95 → :98`）：
+`classify`（含 `Choose the next LittleSheep activity`）→ `decide`（含 `You are the DECIDE stage`）→ final reply / verify / evolve / capture → **然后**"带 tools ⇒ 工具循环"。
+
+**这条规则解释了两件事**：
+1. **给 decide 加 `tools` 会让 decide 相关的测试失败**（10.157 的"lean wire contract"用例）：一旦 decide 请求带上 `tools`，替身**不再走 decide 分支**（其判定在 :98 之前，但**顺序保证**只对"先匹配者生效"；更关键的是**任何断言"decide 请求不含 tools"的用例**都会失败）—— 与实测失败形态一致 ✓；
+2. 该规则**不能**解释 classify 对齐时的 `seen=[]`（classify 只加了 system 前缀，未加 `tools`）⇒ **classify 之谜仍未解**，且其收益最小（≤508 token/轮），维持"暂缓"。
+
+**对 D1 的额外含义**：若采纳 D1（同一 run 内统一工具块），**必须同时更新该替身的判定规则**（改为按 purpose 判定，而非按"是否带 tools"），否则 runner 侧会有成片测试以"错误的理由"失败 —— 这是 D1 的**隐藏成本**，应计入授权决策。
