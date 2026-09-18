@@ -2734,3 +2734,42 @@ if (isClarification) {
 - `silentRuns` 必须保持 0；`pausedRuns` 只在"确实需要提问"时非零。
 
 **验收（产品级预算 32）：** `failedRuns` **22 → 接近 0**；`silentRuns` = 0；命中率 / miss 调用回到或优于 **66% / 958**（失败轮次的反复重试是目前成本抬升的原因）；全门（typecheck、vitest、`check:repo`、两条 Electron 门）全绿。
+
+### 11.15 可直接落地的补丁（**行数中性/减少**，下一轮两条命令即可执行完）（2026-09-18）
+
+**关键发现：同文件里 `cancel` 分支已经把正确行为写好了。** `runner.ts:1230–1275` 在 `dispositionDecision.kind === 'cancel'` 时执行：
+`checkpointController.abandon(...)` → 以用户消息 `executeRun({...}, { inbound: continuationInbound, resumeStage: 'reply', restoreState: false }, evidence{ resolution: 'abandoned' })`
+—— 即：**废弃陈旧检查点、把这一轮当作新任务跑**。这正是 11.14 需要的语义。
+
+**因此最小改动 = 把 `ambiguous` 归一为 `cancel` 路径**（复用已测试的 abandon 流程），而不是新写一条分支：
+
+```ts
+// 替换 runner.ts:1191–1206（原 16 行 throw 块）为：
+      if (dispositionDecision.kind === 'ambiguous') {
+        // The model judged that this message does not answer the pending
+        // clarification. That is a judgement, not a protocol violation: abandon
+        // the stale checkpoint and run the turn as a new task, exactly like an
+        // explicit cancellation. The reason keeps the model's own explanation.
+        dispositionDecision = {
+          kind: 'cancel',
+          source: 'runtime_fallback',
+          reason: dispositionDecision.reason
+            ?? 'the reply did not address the waiting clarification',
+        }
+      }
+```
+
+**为什么这样安全、且满足文件长度约束：**
+- **行数净减 11 行**（16 → 5）⇒ 不触碰 `docs/reference/module-split-map.md` 里 `runner.ts` 的 2595 行上限；
+- 复用**已被测试与 Electron 门覆盖**的 abandon + `executeRun` 路径，不新增状态；
+- `claimIdentity.continuationDisposition` 会记为 `cancel`，但 **`reason` 保留模型给出的原因**（"这条消息没有指向待决澄清"），因此 durable 记录仍然诚实可归因。
+
+**必须同步更新的断言（唯一已知）**：`packages/runner/src/runner-continuation.test.ts:2046`
+```ts
+})).rejects.toThrow('ambiguous and was not claimed')
+```
+→ 改为断言**不再抛错**，而是：废弃检查点 + **正常完成这一轮**（并在 continuation evidence 里看到 `resolution: 'abandoned'` 与保留的 `reason`）。若该用例原本同时断言了错误码/证据，需要按新语义重写而不是删除。
+
+**验收（产品级预算 32，8×5 实机）**：`failedRuns` **22 → 接近 0**；`silentRuns` 保持 **0**；命中率 / miss 调用回到或优于 **66% / 958**；全门：`typecheck` 0、全量 vitest（460 文件）、`check:repo` 33/33、`verify:electron-continuity` + `verify:electron-ui-state-continuity` 双绿。
+
+**风险与回滚**：改动只影响"模型判定延续为 ambiguous"这一条路径（此前 100% 失败），因此回滚成本极低（一次 `git revert`）；若实机出现 `failedRuns` 未降或连续性门失败，立即回滚并改走"新写一条 `new_task` 分支"的更保守方案。
