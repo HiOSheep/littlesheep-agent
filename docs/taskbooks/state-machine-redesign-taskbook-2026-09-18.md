@@ -270,7 +270,7 @@ Allowed writers: classify, decide, recover, verify, ask_user, runner-restore.
 | 项 | 评估 | 处理 |
 | --- | --- | --- |
 | **runner 级端到端测试**（模型调用 → 问题作为回复发布） | **不是真缺口**：契约缺陷所在的那一层（execute 阶段）**已被单元测试覆盖**，而"澄清 → 发布问题"由 `ask_user` 自身测试覆盖；再加一层 runner E2E 只增加重复覆盖 | **降级为可选**；若日后要做，现成模式在 `packages/runner/src/runner.test.ts:1511–1560`（mock LLM 返回 `finishReason: 'tool_calls'` + `toolCalls: [...]`，再驱动一次 run） |
-| **P6c 范围估计交模型**（替代 `COMPLEX_SCOPE` 关键词启发式） | 真实但**低收益**：启发式的后果只是"偏向更完整的路径"（task_book），不影响能否作答或安全边界；收益需两次样本才能判定 | **候选收尾项**，实施前先做零成本取证（该正则命中率与 task_book 选择分布） |
+| **P6c 范围估计交模型**（替代 `COMPLEX_SCOPE` 关键词启发式） | **已取证结项（轮 126，无需改动）**：最新样本（`littlesheep-path-next-S2J47O`）里被选中的 `reasonCode` 是 **`retrieval_required`**（由 `assessRetrievalIntent` 依据**模型/分类**意图得出），**`complex_scope` 一次也没触发**；且启发式即使触发，后果只是**偏向更完整的路径**（task_book），不影响能否作答或安全边界。改为"模型范围估计"要**每轮 execute 多一次判断**（可测量成本），却无已证明收益（无该类失败、无成本回归归因于它）⇒ **保留启发式作为安全网偏置，并如此记录**。 | ✅ 结项 |
 | 全量门禁 + 实机 | 已完成：`267b3c3` 之后的 HEAD 五门全绿；最近两次实机样本（`live-p5fix`、`live-p50-second`）覆盖运行时行为 | ✅ |
 
 **结论**：清单 13 项 + 3 项尾巴**已全部处理**（两项完成、一项经评估降级为可选）。**本任务书进入维护态**：后续若无新证据，不应为"看起来还有活"而改动产品代码 —— 这条也是本专项反复验证过的纪律（P2/P3/P4/P6/P7 都是"取证后确认无需改动"）。
