@@ -4264,3 +4264,28 @@ if (request.tools?.some((tool) => tool.function.name === 'web_runtime_probe')) {
 | **归类** 冻结 `memory-root-index` 到 run 级 | 无需（目标原文授权） | **≈0**（10.163 已证混淆） | 低但无收益 |
 
 **结论**：若你希望**在不改契约的前提下继续**，下一刀应做**本候选**（先移 `memory-root-index`，严格按上面的三步验证）；若你愿意授权契约变更，则 **D1** 更直接、风险更可控。
+
+## 10.165 「稳定段上移」候选的**落地范围已收敛**（2026-09-18）
+
+`grep 'memory-root-index'` 全仓结果 ⇒ 需改动的地方**只有 4 处**：
+
+| 位置 | 现状 | 改动 |
+| --- | --- | --- |
+| `packages/prompt/src/builder.ts:203` | 在**易变区** push `memory-root-index`（`text: ${volatilePrefix()}…`） | **删除该 push**；改为在头部区（`addStable('capabilities', …)` 之后）调用 `addStable('memory-root-index', isRespond ? memoryAwarenessSection(input.memoryRootIndex) : memoryTreeSection(input.memoryRootIndex), 'memory_index', 95, true, 'global', { kind: 'memory', id: 'root-index' })`，条件不变（`mode !== 'minimal' && (isFull \|\| isRespond) && input.memoryRootIndex`） |
+| `packages/prompt/src/builder.test.ts:162` | 段 id 列表断言 | 位置变化后可能需要调整顺序期望 |
+| `packages/prompt/src/builder.test.ts:166` | `toMatchObject({…})` | 同上（若断言 `kind`/顺序） |
+| `packages/prompt/src/builder.test.ts:172` | `toBeDefined()` | **不受影响**（仅存在性） |
+| `packages/harness/src/profile-prompt.test.ts:52` | `toBeDefined()` | **不受影响** |
+
+⇒ **只需 1 处代码 + 2 处断言**（若 162/166 的确断言了位置/顺序）；`profile-prompt` 与 `context-candidates` 的不受影响（仅存在性/夹具）。
+
+**落地顺序（下一轮，一次完成）**：
+1. 读 `builder.ts:160–210` 确认头部区插入点与易变区的确切文本；
+2. 读 `builder.test.ts:155–175` 拿到两处断言的原文；
+3. 应用 1 处代码 + 2 处断言改动；
+4. `typecheck` → 聚焦 `prompt` + `profile-prompt` + `cache-split` → 全量 vitest → `check:repo`；
+5. continuity + UI 门 → **两次** 8×5；
+6. 用 `scripts/analyze-prompt-cache.mjs` 判定：**`reply` 的 miss/调用是否下降**（期望 498 → ~300，因 500 token 的段进入缓存前缀）、总体 miss/调用 920 → ~695、hit → ~74.7%；
+7. 达标 ⇒ 推送 + 任务书补 10.166；**若跨 purpose 共享前缀再度塌陷（10.126 陷阱）⇒ 立即回退**并把结论收敛为"需要 D1 授权"。
+
+**判据（不变）**：不裁剪能力（该段内容**一字不减**，只是位置从易变区移到稳定区）。
