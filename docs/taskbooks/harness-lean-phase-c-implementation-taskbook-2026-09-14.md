@@ -3511,3 +3511,31 @@ return rebuildBundle(segments, stable.length + stableAddons.length);
 1. `read packages/classifier/src/llm.ts:37–48`（签名区）→ 新增**可选** `systemPrompt?: string`，`content: systemPrompt ?? SYSTEM_PROMPT`（**纯增量，默认行为不变**）；
 2. harness 调用方用 `assembleSystemPromptBundle(resolved, {...}, 'respond')` 生成共享头，并在**边界之后**附路由器指令（`head + CACHE_BOUNDARY_MARKER + routerText`）传入；
 3. 门 + 两次样本，判据：`provider-reconcile` 的 `classify` 行 `cached` 由 0 变正；命中/miss 不退化（命中 ≥67.3%、miss ≤939.0，并以 10.129 的 839–892.5 为改善目标）。
+
+## 10.134 classify 接线的**精确改法**（两次试错后的定稿，2026-09-18）
+
+**试错记录（各浪费一次 typecheck，均已自动回退、树始终干净）**：
+1. 用 **PowerShell 双引号字符串**构造含 TS 模板字符串（`` `${...}` ``）的替换文本 ⇒ PowerShell 抢先插值**吞掉了关键行**，报 `TS6133` 三个"声明未使用"；
+2. 改用 `edit` 工具后首轮报 `TS2554: Expected 2 arguments, but got 1` ⇒ **`resolvePromptConfig` 是两参函数**：`resolvePromptConfig(config: Config, branding: BrandingConfig)`（`packages/prompt/src/builder.ts:328`；三个生产调用点均为 `resolvePromptConfig(deps.config, deps.branding)`）。
+
+**定稿改法（`packages/harness/src/stages/classify.ts`，三处）**：
+
+1. **导入**（锚点 `import { classify } from '@littlesheep/classifier';` 之后）：
+   ```ts
+   import { CACHE_BOUNDARY_MARKER, assembleSystemPromptBundle, resolvePromptConfig } from '@littlesheep/prompt';
+   import { splitSystemPromptForCache } from '../system-prompt-cache-split.js';
+   ```
+2. **共享头**（插在 `const classifierHistory = conversationHistoryForModel(ctx);` 之前）——**注意用 `deps.config, deps.branding`**：
+   ```ts
+   const classificationBundle = await assembleSystemPromptBundle(
+     resolvePromptConfig(deps.config, deps.branding),
+     { tools: ctx.tools, bootstrap: {} },
+     'respond',
+   );
+   const systemPromptPrefix = `${splitSystemPromptForCache(classificationBundle).systemText}\n\n${CACHE_BOUNDARY_MARKER}\n\n`;
+   ```
+3. **传入选项**（`rulesConfidenceThreshold: deps.rulesConfidenceThreshold ?? 0.7,` 之后加一行 `systemPromptPrefix,`）。
+
+**工具纪律（本轮教训）**：含 TS 模板字符串的改动**必须用 `edit` 工具或 PowerShell 单引号 here-string**；`edit` 前若该文件被 **PowerShell 写过或 `git checkout` 过**，**必须先 `read` 一次**（读取状态按文件失效）。
+
+**验证**：`typecheck` → 聚焦 `classify`/`default-harness` → 全量 vitest → `check:repo`（提交前置）→ continuity + UI 门 → **两次** 8×5（**核心判据**：`provider-reconcile.mjs` 的 `classify` 行 `cached` 由 0 变正；命中 ≥67.3%、miss ≤939.0）→ 提交 + 推送。
