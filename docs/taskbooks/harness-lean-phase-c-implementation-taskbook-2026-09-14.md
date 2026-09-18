@@ -3435,3 +3435,20 @@ return rebuildBundle(segments, stable.length + stableAddons.length);
 **同轮观察到的副作用（需后续处理，已记录）**：`prefix-detail` 显示两份 `decide` 请求的**段序在标记前移后不再一致**（第 1 项即分歧：一侧 `bootstrap:USER.md`、另一侧 `core-flow`）——这与 10.126 同源（**标记位置 = `stable.length + stableAddons.length`**，把 addon 移出稳定区会**前移标记**）。本刀虽净收益为正，但**序一致性仍需一项独立修复**（例如让标记位置与 run 专属内容解耦，而不是靠 addon 归属隐式决定）。
 
 **下一步（10.130）**：在保持本刀净收益的前提下**恢复序一致性** —— 候选方案：把 run 专属内容（`decide-contract`、`retrieval-intent-contract`）改为**独立尾部消息**（而非同一 system 消息内的位置），使"头部+稳定 addon+bundle 易变段"的序列与标记位置**不受 run 专属内容影响**。
+
+## 10.130 受控对照**证实**：序不一致由 10.129 引入（同一 pair，前后对照）（2026-09-18）
+
+**同一 `decide → decide`（req 2 → 2）pair，两个代码状态的逐项对照：**
+
+| 状态 | 项 1（两侧是否一致） | 观察 |
+| --- | --- | --- |
+| **改动前**（数据根 `littlesheep-path-next-n8Kvxm`） | 一致：两侧均 `core-flow` 1530 | 序稳定：`identity → core-flow → safety → workspace → …` |
+| **改动后**（`littlesheep-path-next-8lC8XE`） | **不一致**：A 为 `bootstrap:USER.md` 141，B 为 `core-flow` 1530 | A 的"稳定区"**塌成仅 `identity`（284）**：`identity → bootstrap:USER.md → bootstrap:TOOLS.md → decide-contract → …` |
+
+⇒ **10.129 的副作用判断成立**：去掉 `decide-contract` 的 stable 归属会**前移标记**，使**其中一个 decide 变体**的稳定区缩到仅 `identity`。该变体本可拥有 2,934 字符头部 + 稳定内容，如今只剩 284 ⇒ **修好它应带来额外收益**（与 10.129 已确认的 −5% miss 叠加）。
+
+**下一轮（10.130 实施）的诊断先做**：在数据根里确认"塌陷的那一侧是哪个变体"（`decide_explicit_tool` / `decide` / compact autonomous-read）—— 依据是 `provider-reconcile.mjs` 的 `callPurpose` 字段与 `prefix-detail` 的请求序号对应；**修法候选**（择一，受控验证）：
+1. 让**标记位置显式由 bundle 决定**（不再由 `stableAddons` 数量隐式决定）—— 使 run 专属 addon 的归属**不影响**稳定区；
+2. 或给该变体补一个**稳定的占位段**（例如把 `capabilities`/`workspace` 明确置于稳定区），使标记不落在 `identity` 之后。
+
+**验收**：`prefix-detail` 中两侧第 1 项重新一致，且**不能丢** 10.129 已确认的改善（两次样本 miss/调用 ≤ 892.5、命中 ≥67.3%）。
