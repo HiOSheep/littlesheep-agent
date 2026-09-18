@@ -5339,3 +5339,26 @@ tool_loop idx=2 system=5847 … tail[57..60] bootstrap(228/150/141/145) tail[61]
 - 仓库内：`scripts/analyze-prompt-cache.mjs <dataDir>`（逐 purpose 账 / run 形态 / 失效原因 / 组件翻转率）；
 - 工作区脚本（10 个）：`cache-verdicts`、`exec-audit`、`tool-set-diff`、`run-shapes`、`mem-flip-cost`、`prefix-diff`、`prefix-detail`、`head-lengths`、`msg-order`、`msg-tail`、`run-pair-diff`、`reply-variant-cost`、`reply-window-cost`、`call-position`、`reply-shape-perrun`、`reply-variant-diff`、`seq-diff`；
 - 实机日志：`live-steptail-1/2`、`live-rewritetail-long`、`live-frfix-long/short`、`live-boundary-long` 等。
+
+## 10.202 更正与新增证据：脚本④节正常，且**短会话中 50 次 `reply` 的 system 长度已全部统一为 6,616**（2026-09-18）
+
+**更正**：10.201/第 110 轮中记录的"`analyze-cache-shapes.mjs` ④ 节有 bug、未输出"**是我自己的误判** —— 当时用 `Select-Object -First 26` 截断了输出，④ 节在更后面。本轮完整运行显示：
+
+```
+=== reply purposes by first system message length ===
+    50 calls with first system message of 6616 characters
+```
+
+⇒ **短会话中 50 次 `reply` 调用的首条 system 消息长度全部为 6,616（单一值）** ✓ 这正是 10.188（重写契约移出 system）在**短会话**上的独立确认：两种形状的交替已消除（此前为 6,616/6,984 两种）。
+
+**同时确认（同一脚本 ③ 节，当前 `main`）**：工具循环请求的 provider 顺序为
+```
+head[0] system 12,591  ← 整条 bundle（含 tooling/output-directives 等 purpose 段）
+head[1..3] 历史
+tail[11] system 251 · tail[12] system 662 · tail[13] system 1,986   ← 尾部段在历史之后 ✓
+```
+⇒ 与 10.176/10.200 一致（**尾部段确实位于历史之后**；system 仍为整条 bundle，因为"边界统一"的尝试已回退）。
+
+**方法教训（本会话第三次）**：我在本轮与第 110 轮两次因"**输出被管道截断**"误判脚本行为（前两次类似错误分别为 `Select-Object -First 22` 掐断 node 管道、以及把快照顺序当作 provider 顺序）。⇒ 今后读取脚本输出时，**不用 `-First/-Last` 截断后再下结论**，改为写入文件后完整读取。
+
+**判据进度**：① hit 六次均值 **≈75.2%**（达标）、miss/调用 **≈708.7**（超 1.3%）；② 未达（长会话 74.1%），缺口已实测证明在现有约束内不可继续压缩。
