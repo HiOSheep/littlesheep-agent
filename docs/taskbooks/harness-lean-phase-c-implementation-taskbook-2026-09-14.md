@@ -3348,3 +3348,25 @@ const baseSystemPrompt = compactExplicitTool
 **下一刀（按证据优先级）**：
 1. **小**：`decide/request.ts` 中以 `placement: 'stable'` 追加的紧凑 addon（`profile`/`reasoning`/workspace 说明）改为**边界之下**，使头部与 `reply` 完全一致（把 2,934 继续上移）；
 2. **大（主瓶颈）**：审计 `decide` 请求 head 之后的 ~16k 字符，把它排序为**跨调用可复用的前缀**（同 run 内 decide/execute/verify 共享），目标是让那 ~4k token 从"每次新鲜"变成"命中缓存"——这是把 miss/调用压到 <400 的关键。
+
+## 10.126 反面结果：把紧凑 addon 改为「易变」**弄坏了共享前缀**（已回退）（2026-09-18）
+
+**改动**：`decide/request.ts` 中紧凑分支的 `profile` / `reasoning` addon 由 `placement: 'stable'` 改为默认（易变），意图让头部越过它们继续延伸。
+
+**实测（产品级 8×5，`live-addon-1.txt`）**：
+
+| 指标 | 改动前（`817e4ce`） | **改动后** |
+| --- | --- | --- |
+| `failedRuns` / `semanticFailures` | 0 / 0 | 0 / 0（**无回归**） |
+| 主对话命中 | 65.0–68.4% | 65.0–65.7%（未改善） |
+| miss/调用 | 881.9–928.6 | 908.5–943.9（未改善） |
+| **`reply ↔ decide` `stableChars`** | **2,934** | **284**（**退步 10 倍**） |
+| `reply → reply` `stableChars` | 6,780–7,036 | **284**（也塌了） |
+
+⇒ **该改动是退步**：跨 purpose 与同 purpose 的共享前缀**同时塌到 284**（= `identity`），首个变化点变成 `recent_message:reply:history:...` / `system_prompt:core-flow`。
+
+**处置**：`ce90a5d` **未被推送**，已用 `git reset --hard f6d90c9` 丢弃；远端与本地 `main` 均停在 **`f6d90c9`**（含已验证的 `817e4ce`）。
+
+**教训（重要，避免重犯）**：`appendSystemPromptBundleAddons` 的 stable/volatile 归属**不是简单"上/下移动"**——把 addon 改成易变会改变**标记插入位置与段序重建**，进而影响**所有 purpose** 的头部（连 `reply→reply` 都受影响）⇒ 下次动它之前**必须先读该函数的段序重建逻辑**（`profile-prompt.ts:47–100`），并在本地用 `prefix-diff` 验证，不可凭"搬到边界之下"的直觉直接改。
+
+**下一步（回到主瓶颈）**：跨路径共享已由 `817e4ce` 稳定在 **2,934 字符**；真正的主项是 **`decide` 请求 head 之后约 16k 字符（≈4k token）每次新鲜** ⇒ 应审计其构成（bootstrap / 会话摘要 / 记忆索引 / 初始记忆上下文 / 工具 schema）并使其**跨调用可复用**，而不是继续微调 addon 归属。
