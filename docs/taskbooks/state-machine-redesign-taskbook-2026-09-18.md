@@ -137,6 +137,33 @@
   **调用方落点已确定**：`packages/harness/src/stages/execute/runners.ts:46` —— 那里正是**同款先例的消费者**（`if (result.workPolicyUpgradeProposal) { … buildWorkPolicyUpgradeRequest(…) }`）。companion 4 就在该处加一个并行分支：`if (result.userInputRequest) { 写 ctx.clarificationRequest（copySource: 'model'）→ return { stage: 'execute', next: 'ask_user', ok: true } }`。
   **已完成**：companion 1（`ToolLoopResult.userInputRequest` 字段）+ companion 3（工具循环识别分支）= `373622a`；companion 2（校验器）= `445c3b4`。**只剩 companion 4 + 两条测试 + 全门 + 8×5。**
   **✅ 已认证（2026-09-18，HEAD `b51a39b`）**：全部五道门在含 companion 1–3 的树上通过 —— `typecheck` clean、全量 vitest **460 文件 / 3,281 通过 / 1 跳过**、`check:repo` **33/33**、`verify:electron-continuity` **ok**、`verify:electron-ui-state-continuity` **ok**。因此 companion 1–3 的"纯增量"结论**已由全门背书**（此前只有 typecheck/check:repo/聚焦测试）。
+  **companion 4 的可粘贴插入（位置：`runners.ts` 第 45 行 `replaceToolResults(...)` 之后、`:46` 的 `workPolicyUpgradeProposal` 分支之前）**：
+  ```ts
+  if (result.userInputRequest) {
+    writeDecisionState(ctx, 'execute', {
+      clarificationRequest: {
+        id: `${ctx.runId}:user-input`,
+        kind: 'ambiguous_request',
+        sourceStage: 'execute',
+        createdAt: new Date().toISOString(),
+        originalRequest: textOf(ctx.inbound),
+        copySource: 'model',            // 模型主动发起的提问，区别于运行时兜底
+        blockingReason: result.userInputRequest.prompt,
+        questions: [{
+          id: 'question-1',
+          field: result.userInputRequest.field,
+          prompt: result.userInputRequest.prompt,
+          required: result.userInputRequest.required,
+          ...(result.userInputRequest.options ? { options: result.userInputRequest.options } : {}),
+        }],
+      },
+    });
+    clearReplyState(ctx, 'execute');
+    return { stage: 'execute', next: 'ask_user', ok: true,
+      meta: { userInputRequested: true, userInputField: result.userInputRequest.field } };
+  }
+  ```
+  **实现时需核对的 3 点（照抄前先确认，避免又一个整轮浪费）**：① `runners.ts` 是否已 import `writeDecisionState` / `clearReplyState` / `textOf`（后两者在前 30 行已见使用，`writeDecisionState` 需确认）；② `ClarificationRequest` 的 `kind` 合法枚举（`classify.ts` 用 `ambiguous_request`，以它为准）；③ `ask_user` 阶段是否接受该结构（`recover.ts:140–160` 的用法为准）。**这三处都是"读一眼即可确认"的，不是设计问题。**
   2. **转入既有 ASK_USER 阶段**：由它做**一次模型组词**（`ask_user.ts` 已经这样工作，并在空输出时回落到运行时草稿 `f11ce37`），随后 `finalize` 正常发布 —— 这样文本可追溯；
   3. **写唯一等待检查点**：经 `infra` 的检查点控制器写入 `waiting_user`（这是 `7744548` 之后**唯一**有意的创建点），并记 `runtime_event`（技能调用 + 问题 schema）；
   4. 上界：每会话仅一个等待头（`resolveWaitingUserHead` 的 conflict 分支已保证）；技能调用每轮上限（建议 1）。
