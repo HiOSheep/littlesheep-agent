@@ -136,6 +136,7 @@
   **配套四点（缺一不可）**：① `ToolLoopResult` 增加可选 `userInputRequest` 字段（`execute/contracts.ts`）；② `parseUserInputRequest` 校验器（照 `work-policy-upgrade.ts` 的 `parseWorkPolicyUpgradeProposal` 写，复用 `RequestInput` schema）；③ **调用方**（`task-step-runner.ts` / `execute`）收到该字段后：写 `ctx.clarificationRequest`（`copySource: 'model'`）并返回 `next: 'ask_user'`；④ ASK_USER 组词发布 + infra 写**唯一**等待检查点（照 `recover.ts:140–160`）。
   **调用方落点已确定**：`packages/harness/src/stages/execute/runners.ts:46` —— 那里正是**同款先例的消费者**（`if (result.workPolicyUpgradeProposal) { … buildWorkPolicyUpgradeRequest(…) }`）。companion 4 就在该处加一个并行分支：`if (result.userInputRequest) { 写 ctx.clarificationRequest（copySource: 'model'）→ return { stage: 'execute', next: 'ask_user', ok: true } }`。
   **已完成**：companion 1（`ToolLoopResult.userInputRequest` 字段）+ companion 3（工具循环识别分支）= `373622a`；companion 2（校验器）= `445c3b4`。**只剩 companion 4 + 两条测试 + 全门 + 8×5。**
+  **✅ 已认证（2026-09-18，HEAD `b51a39b`）**：全部五道门在含 companion 1–3 的树上通过 —— `typecheck` clean、全量 vitest **460 文件 / 3,281 通过 / 1 跳过**、`check:repo` **33/33**、`verify:electron-continuity` **ok**、`verify:electron-ui-state-continuity` **ok**。因此 companion 1–3 的"纯增量"结论**已由全门背书**（此前只有 typecheck/check:repo/聚焦测试）。
   2. **转入既有 ASK_USER 阶段**：由它做**一次模型组词**（`ask_user.ts` 已经这样工作，并在空输出时回落到运行时草稿 `f11ce37`），随后 `finalize` 正常发布 —— 这样文本可追溯；
   3. **写唯一等待检查点**：经 `infra` 的检查点控制器写入 `waiting_user`（这是 `7744548` 之后**唯一**有意的创建点），并记 `runtime_event`（技能调用 + 问题 schema）；
   4. 上界：每会话仅一个等待头（`resolveWaitingUserHead` 的 conflict 分支已保证）；技能调用每轮上限（建议 1）。
