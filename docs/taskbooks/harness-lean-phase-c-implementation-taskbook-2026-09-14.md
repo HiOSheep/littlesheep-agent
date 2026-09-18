@@ -5011,3 +5011,26 @@ reply -> reply          1           284       recent_message:reply:history:…
 **预期**：`reply -> decide` 等跨 purpose 转移的 miss 从 ~1,270 降到 ~700（先期），长会话总体 hit **74.1% → 约 78%**；若继续把后续段也对齐，可进一步逼近 10.190 的 ~88% 估计。
 
 **判据进度**：① 达标（短会话 hit ≈75.5%、miss ≈708.6）；② 未达（长会话 74.1%），修法目标已从"全部 purpose 段"收窄到"`core-flow` 一处"。
+
+## 10.192 `coreFlowSection()` **恒定**；跨 purpose 分歧是**段结构差异**（2026-09-18）
+
+**取证**：
+- `packages/prompt/src/sections.ts:13` `export function coreFlowSection(): string` —— **无参数**；
+- `packages/prompt/src/builder.ts:133` `addStable('core-flow', coreFlowSection());` —— **恒定内容**；
+- `grep 'coreFlow|core-flow'` 全 `packages/prompt/src` 仅 7 处，**无任何 purpose/模式分支**。
+
+⇒ `prefix-diff` 报的 `firstChanged=system_prompt:core-flow` **不是内容变化**，而是**段列表结构差异**：两侧在索引 1 处的 item **不同**（一侧是 `core-flow`，另一侧是别的段）⇒ 该工具把它记为"首个变化项"。可能来源：**紧凑（compact）模式**少发若干段，或不同 purpose 的段集合不同。
+
+**另一发现**：新写的工作区脚本 `seq-diff.mjs`（对照同一 run 内两个 purpose 的**段序列**）在当前长会话样本上**无输出** ⇒ **该样本中 `reply` 与 `decide` 不在同一 run** ⇒ 跨 purpose 转移发生在 **run 之间**（与 10.190 的 pos1 发现一致：每个 run 的首次调用承接**上一个 run 末尾的另一种 purpose**）。
+
+**⇒ 下一步取证（精确到两点）**：
+1. 用 `seq-diff.mjs`（已就绪，改指向**同一 run 内实际共存的两个 purpose**，如 `execute_tool_loop` 与 `execute_final_reply`，或从 `live-longsession-1` 那份样本取 `reply`+`decide` 共存的 run）对照**段序列**，确认分歧是"**缺段**"还是"**同 id 不同内容**"；
+2. 对上一条，按**会话顺序**配对 `run N` 的**最后一条**请求与 `run N+1` 的**第一条**请求（跨日志文件），比较其 system 段序列 ⇒ 直接量出"run 间转移"损失的**确切段**。
+
+**修法（视结果而定，均不裁剪能力）**：
+- 若为"**缺段**"（紧凑模式少发段）：让紧凑路径**也发同样的段**（内容不变，只是补齐）⇒ 跨 purpose 前缀即可对齐；
+- 若为"**同 id 不同内容**"：把该段中随模式变化的部分**后置到尾部**（同 `step-contract` 模板）。
+
+**预期**：跨 purpose（run 间）转移的 miss **1,270 → 约 700**；长会话总体 hit **74.1% → 约 78%**。
+
+**判据进度**：① 达标（短会话 hit ≈75.5%、miss ≈708.6）；② 未达（长会话 74.1%）；已完成：`step-contract`（−18% miss）、`reply` 重写交替（+2.1pt）、`final_reply` 契约（中性，主因需 D1）；进行中：跨 purpose 段结构对齐。
