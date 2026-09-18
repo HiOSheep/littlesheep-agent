@@ -3539,3 +3539,28 @@ return rebuildBundle(segments, stable.length + stableAddons.length);
 **工具纪律（本轮教训）**：含 TS 模板字符串的改动**必须用 `edit` 工具或 PowerShell 单引号 here-string**；`edit` 前若该文件被 **PowerShell 写过或 `git checkout` 过**，**必须先 `read` 一次**（读取状态按文件失效）。
 
 **验证**：`typecheck` → 聚焦 `classify`/`default-harness` → 全量 vitest → `check:repo`（提交前置）→ continuity + UI 门 → **两次** 8×5（**核心判据**：`provider-reconcile.mjs` 的 `classify` 行 `cached` 由 0 变正；命中 ≥67.3%、miss ≤939.0）→ 提交 + 推送。
+
+## 10.135 classify 接线的**更简洁定稿**（构造期注入，避免向 stage 内塞 config）（2026-09-18）
+
+**第三次试错**：在 stage 内调用 `resolvePromptConfig(deps.config, deps.branding)` 报
+`TS2339: Property 'config'/'branding' does not exist on type 'ClassifyStageDeps'` —— 因为
+`ClassifyStageDeps` 只有 `{ llm, model, rulesConfidenceThreshold? }`（`classify.ts:44–49`）。
+
+**定稿方案（更解耦，且共享头与 run 无关，可只算一次）**：
+1. `ClassifyStageDeps` 增加 **可选** `systemPromptPrefix?: string;`；
+2. stage 内**不再构建 bundle**，只把它透传给 classifier：选项里写 `systemPromptPrefix: deps.systemPromptPrefix,`；
+3. **唯一计算点**：`packages/harness/src/default-harness.ts:91` 的 `createClassifyStage({ … })` —— 该处位于 harness 构造期，具备 config/branding：
+   ```ts
+   const classificationHead = await assembleSystemPromptBundle(
+     resolvePromptConfig(config, branding),
+     { tools, bootstrap: {} },
+     'respond',
+   );
+   const systemPromptPrefix = `${splitSystemPromptForCache(classificationHead).systemText}\n\n${CACHE_BOUNDARY_MARKER}\n\n`;
+   ```
+   （`tools` 取该 harness 实际工具集，使 `capabilities` 与其它 purpose 字节一致；若构造期拿不到工具集，则退化为 `[]`，此时共享到 `date-time` 为止 ≈2,586 字符，仍远优于 284。）
+4. **测试不受影响**：该参数可选，`classify.test.ts` 的构造不传 ⇒ 行为与今天一致。
+
+**好处**：classifier 侧已就绪（`b683cfd`）、stage 侧零依赖新增、计算只发生一次（非每轮）。
+
+**验证（不变）**：门 + **两次** 8×5；**核心判据** `provider-reconcile.mjs` 的 `classify` 行 `cached` 由 0 变正；命中 ≥67.3%、miss ≤939.0。
