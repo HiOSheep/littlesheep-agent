@@ -68,6 +68,7 @@
 - [Harness 瘦身第一批实施包：HL-00～HL-04](taskbooks/harness-lean-phase-a-implementation-taskbook-2026-09-12.md)：路由/验证、计时/用量及真实活动投影已实施；含第一批测试、构建与桌面证据。
 - [Harness 瘦身第二批实施包：HL-05/HL-06 与配套 HL-10](taskbooks/harness-lean-phase-b-implementation-taskbook-2026-09-13.md)：工作策略解耦、有界循环、TaskBook 升级、规划/候选/工具轮次减法及恢复门；代码及隔离桌面功能交付完成，真实配对性能/发布未验收。
 - [Harness 瘦身第三批实施包：HL-08/HL-09 与配套 HL-07/HL-10](taskbooks/harness-lean-phase-c-implementation-taskbook-2026-09-14.md)：压缩时统一沉淀、短会话回查、显式记忆、幂等恢复与上下文/等待减法；设计完成，尚未实施，含 20 组验收场景。
+- [LS 状态机重设计任务书 2026-09-18](taskbooks/state-machine-redesign-taskbook-2026-09-18.md)：把"判断类决策交还模型、安全类留运行时"落成逐项清单；延续歧义、重复发布、澄清停放三个切片已落地并实测（run 失败 22→0、发布成功率 45%→100%、miss/调用 1196→约 900），其余状态机（恢复、VERIFY、工具循环、压缩、检查点、策略、记忆）待逐项执行。
 - [Harness 开源底座评估 2026-09-02](reference/harness-open-source-evaluation-2026-09-02.md)：固定 DeepSeek Harness、Pi 与 nanoDeepSeekHarness 版本、许可证、供应链证据和 LS adapter 边界；当前决定保留自有 kernel、只吸收 durable event/session/stream 设计。
 - [OpenCode VS Code 对标记录 2026-08-13](reference/opencode-vscode-comparison-2026-08-13.md)：记录官方源码、许可证、LS 差异、已直接吸收的缓存/模型/审阅交互，以及待产品选择的虚拟化、评论和真正 VS Code 扩展路线。
 - [对话任务连续性 P0 专项任务书 2026-08-13](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md)：修复普通聊天未绑定 waiting-user Checkpoint、执行现场与附件/临时工具无法自然恢复、权限未按当前状态重验及最终回答断档；当前为最高优先级阻断项。
