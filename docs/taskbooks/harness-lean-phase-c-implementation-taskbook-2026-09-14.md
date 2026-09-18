@@ -2923,3 +2923,41 @@ harness user-facing-reply.ts:107  ctx.reserveUserFacingReplySettlement(reservati
 **验证顺序：** 聚焦 `session` + `harness` 测试 → 全量 vitest → `typecheck` + `check:repo` → `verify:electron-continuity` →（UI 状态门按 11.19 政策：干净树不稳定则披露并排除）→ 提交 → **产品级预算 8×5 实机**（判据 `failedRuns → 接近 0`、`silentRuns` 保持 0、命中率/成本不回归）。
 
 > 本轮把链路读到了最末端（`replyFingerprints.reserveSettlement`），因此下一轮是**已知体量的机械改动**，不再有探索性工作。上一轮的教训已写入：改判据前先确认"真正拒绝的是哪一道关卡"，并且**所有**会再次调用该入口的阶段都要一并考虑（这里是 `finalize`）。
+
+### 11.22 穿透注册表的**实现路线定稿**：用"额外参数"而不是"放在 reservation 上"（2026-09-18）
+
+**读 `reply-fingerprint-store.ts:68–95` 后发现一个会踩坑的细节：**
+
+```ts
+const existing = current.records.find((record) => record.settlementId === reservation.settlementId);
+if (existing) {
+  if (!sameReservation(existing, reservation)) return false;   // ← 相等性判定
+  ...
+}
+if (legacyReserved) return false;                              // ← 重复拒绝点
+current.records.push({ ...reservation, status: 'reserved', createdAt: now });  // ← reservation 会被**持久化**
+```
+
+**风险（新发现）**：如果把 `allowDuplicate` 加在 `FinalReplyReservation` 上，它会**被写进 sidecar 记录**；而 `finalize` 在发布前会用**自己构造的** reservation（不含该字段）再次调用同一入口 ⇒ `sameReservation(existing, reservation)` **可能判定不相等** ⇒ `return false` ⇒ **失败从 reply 阶段搬到 finalize**，正是 11.20 的教训重演。
+
+**因此定稿为实现路线：把"允许重复"作为**额外参数**传递，不进入被持久化的 reservation。**
+
+| # | 文件 | 改动 |
+| --- | --- | --- |
+| 1 | `packages/types/src/agent.ts`（`RunContext` 的两个回调类型） | `reserveUserFacingReply?(reply: string, options?: { allowDuplicate?: boolean })`、`reserveUserFacingReplySettlement?(reservation, options?: { allowDuplicate?: boolean })`——**可选参数，向后兼容** |
+| 2 | `packages/types/src/session.ts:168` | `reserveAssistantReplySettlement?(sessionId, reservation, options?)` |
+| 3 | `packages/session/src/manager.ts:329–334` | 透传 `options` |
+| 4 | `packages/session/src/reply-fingerprint-store.ts` | `reserveSettlement(sessionId, reservation, options?)`；**唯一行为改动**：`if (legacyReserved && options?.allowDuplicate !== true) return false;`（其余保持不变：`existing` 分支、指纹追加、sidecar 写入都不动，**不持久化该标记**） |
+| 5 | `packages/harness/src/context.ts:290` | 透传 `options` |
+| 6 | `packages/harness/src/user-facing-reply.ts` | 本地放行（`1510fa0` 已做）时，把 `{ allowDuplicate: true }` 传给 `ctx.reserveUserFacingReplySettlement` |
+| 7 | 测试 | `session/src/manager.test.ts:137–148`（重复保留语义）、`harness/src/user-facing-reply.test.ts`、`harness/src/stages/reply.test.ts` |
+
+**必须守住的不变量（复核清单）**：
+- `finalize` 的**再次调用**必须成功（证明：sidecar 记录未被污染 + 相等性判定不受影响）；
+- 指纹账本**继续记录**重复（可观测性不丢）；
+- `options` 缺省时行为与今天**逐字节一致**（可回滚）；
+- 失败只应发生在"**确实**无法发布"的情形（例如持久化写失败），不再因为"文本重复"。
+
+**验证顺序**：聚焦 `session` + `harness` → 全量 vitest → `typecheck` + `check:repo` → continuity 门 →（UI 门按 11.19 政策）→ 提交 → 产品级预算 8×5（`failedRuns → 接近 0`）。
+
+> 本轮没有写产品代码：读注册表时发现的"持久化 + 相等性"陷阱会**直接决定**这条路线是否有效——11.20 已经证明"少读一道门就白改一轮"。现在实现路线已无未知项，下一轮按上表机械落地。
