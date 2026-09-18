@@ -23,6 +23,8 @@ export interface ClassifierOptions {
   beforeRequest?: (request: ChatRequest) => void | Promise<void>;
   /** Record transport/cancellation failures for the exact prepared request. */
   onError?: (request: ChatRequest, error: unknown) => void | Promise<void>;
+  /** Full system prompt for the LLM fallback; the caller prepends the shared head. */
+  systemPrompt?: string;
 }
 
 /** Extract text from a Message. */
@@ -49,7 +51,17 @@ export async function classify(
   if (ruleResult && ruleResult.confidence >= threshold) {
     return ruleResult;
   }
-  return classifyByLlm(message, history, opts.llm, opts.model, opts.onRequest, opts.onResponse, opts.beforeRequest, opts.onError);
+  return classifyByLlm(
+    message,
+    history,
+    opts.llm,
+    opts.model,
+    opts.onRequest,
+    opts.onResponse,
+    opts.beforeRequest,
+    opts.onError,
+    opts.systemPrompt,
+  );
 }
 
 export {
