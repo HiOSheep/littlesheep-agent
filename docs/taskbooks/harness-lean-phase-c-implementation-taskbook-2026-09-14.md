@@ -3581,3 +3581,25 @@ return rebuildBundle(segments, stable.length + stableAddons.length);
 2. 按失败信息更新那 2 处断言（**保留其实质意图**：路由器指令必须在系统消息中且不被裁剪），再走全流程：`typecheck` → 聚焦 → 全量 → `check:repo` → continuity + UI 门 → **两次** 8×5（**核心判据** `provider-reconcile.mjs` 的 `classify` 行 `cached` 由 0 变正；命中 ≥67.3%、miss ≤939.0）→ 提交 + 推送。
 
 **注**：`b683cfd`（classifier 前缀通道）仍在本地未推送，待接线完成后一并推送。
+
+## 10.137 classify 接线的 2 处失败**精确定位**（2026-09-18）
+
+**已确认**：两处改动（`classify.ts` 惰性前缀字段 + 透传；`default-harness.ts` 构造期 thunk）**typecheck clean**，且 **`packages/harness` 全包 685/685 全绿** ⇒ 失败**不在 harness**。
+
+**全量套件的失败点（原文）**：
+
+```
+❯ packages/runner/src/web-runtime.test.ts (4 tests | 2 failed)
+FAIL > Runner per-run web retrieval assembly > keeps the runtime absent and performs zero provider calls when disabled
+FAIL > Runner per-run web retrieval assembly > keeps the runtime absent and performs zero provider calls when unconfigured
+AssertionError: expected [] to deeply equal [ false ]
+```
+
+⇒ 两个用例属于 **"web 检索被禁用/未配置时零 provider 调用"** 的断言；我的改动让该路径下的**调用记录形状变化**（`[]` 而非 `[false]`）——**很可能是 mock LLM 的调用记账**：注入系统前缀后，该路径下 classify 的请求走了不同分支（或未发出/以不同形状记账）。
+
+**下一轮（小步，两步）**：
+1. `read packages/runner/src/web-runtime.test.ts` 中这两个用例（搜 `zero provider calls`）：看清 `[false]` 与 `[]` 各自的含义（很可能是一个 `providerCalls` 数组，元素为该次调用是否命中 web runtime 的布尔）；
+2. 判断是"断言需按新记账形状更新"（若行为等价、只是记录形状变化）还是"**我的改动真的改变了调用次数**"（若后者 ⇒ 需要让 classify 的前缀注入**不影响该路径**，例如仅在存在工具集/正常运行时注入）；
+3. 无论哪种，都按全流程收口：`typecheck` → 全量 → `check:repo` → continuity + UI 门 → 两次 8×5（`classify` 行 `cached` 由 0 变正）→ 提交 + 推送 `b683cfd` 与接线。
+
+**当前状态**：两处改动已回退，工作树干净；`b683cfd`（classifier 前缀通道）仍在本地未推送。
