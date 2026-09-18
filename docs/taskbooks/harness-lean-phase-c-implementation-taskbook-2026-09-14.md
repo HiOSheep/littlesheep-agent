@@ -3810,3 +3810,28 @@ pnpm exec vitest run packages/runner/src/web-runtime.test.ts -t "when disabled" 
 - **判据**：两次 8×5 样本 + 全门；`failedRuns=0`、`silentRuns=0`；**命令**：`node tool-set-diff.mjs <data>` 看 `tools` 列是否在任务类间一致、`uncached` 是否下降。
 
 **风险与验证**：给 decide/verify 送工具 schema 可能影响其输出形状（例如 decide 误发 tool call）⇒ 必须在两次样本中确认 `publishedRuns`/`verificationPassRateDelta` 不退化，必要时回退。
+
+## 10.147 工具集的三处附加入口与逐次变化的源头（2026-09-18）
+
+**全仓库把工具集附到 provider 请求的位置**（`grep 'tools: [a-zA-Z]'`）：
+
+| 位置 | 表达式 | 含义 |
+| --- | --- | --- |
+| **`execute/task-step-runner.ts:138`** | **`tools: compactReadTools ?? pickStepTools(step, ctx.tools)`** | **逐步子集** ⇒ 正是 `tool_schema_changed` 的来源 |
+| `execute/runners.ts:42` | `tools: explicitTools ?? ctx.tools` | 旧循环：整套（15 个） |
+| `decide/normalization.ts:131, 213` | `tools: tools.length > 0 ? tools : undefined` | decide 自己的一套 |
+| `recover/policy.ts:19` | `tools: tools && tools.length > 0 ? tools : undefined` | recover 自己的一套 |
+| `reply.ts:88` / `execute/prompt.ts:29` | `ctx.tools` / `compactReadTools ? [] : retrievalTools` | 仅用于**文本段**（`capabilities`/`tooling`），非 provider `tools` 字段 |
+
+**机制串联**：`pickStepTools` 让每步只带该步工具 ⇒ 相邻步的 provider `tools` 不同 ⇒ 工具块在缓存前缀之前 ⇒ **其后的历史全部失效**（实测 4,600–5,700 未命中）✓ 与 `tool_schema_changed` 判决一致。
+
+**下一刀（10.148）的精确改法**：
+1. `execute/task-step-runner.ts:138`：`pickStepTools(step, ctx.tools)` → **`ctx.tools`**（整套）；
+2. `decide/normalization.ts` 与 `recover/policy.ts`：同样改为**同一套**（`ctx.tools`），使 decide / execute_tool_loop / execute_final_reply / verify / recover **工具块完全一致**；
+3. `reply` **保持无工具**（纯对话路径不引入工具能力）。
+
+**⚠️ 安全注意（必须验证）**：`pickStepTools` 是否同时承担**权限约束**（"该步只允许这些工具"）？
+- 若**仅影响向模型展示的 schema**，而运行时的审批/计划校验**另行执行** ⇒ 改法是**纯广告层**变更，能力只增 ✓；
+- 若它**同时是执行期的允许清单** ⇒ 送整集仍需保留执行期校验（否则是放宽权限，属安全变更）⇒ 实施前**必须读 `execute/failure-policy.ts:14` 的 `pickStepTools` 及其调用点**确认，并在任务书注明结论。
+
+**验收**：`node tool-set-diff.mjs <data>` 中任务类各调用的 `tools` 列**一致（=15）**、`uncached` 从 4,600–5,700 降到 **<1,500**；全门 + **两次** 8×5 样本（`failedRuns=0`、`silentRuns=0`、`publishedRuns` 与 `verificationPassRateDelta` 不退化）。
