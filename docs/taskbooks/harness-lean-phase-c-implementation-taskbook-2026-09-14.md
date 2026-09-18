@@ -4983,3 +4983,31 @@ reply -> reply DIFFERENT head length: pairs=0   ← **交替已彻底消除**
 **下一轮**：先读 `builder.ts` 的分段归属（`addStable` vs 易变区）与 `buildBaseMessages`/各 stage 的 messages 组装，确认**能否把 purpose 专属段统一后置**；然后**只改一个 purpose**做两组样本。
 
 **判据进度**：① 达标（短会话 hit ≈75.5%、miss ≈708.6）；② 未达（长会话 74.1%，但本发现指出**结构性主因（跨 purpose system 差异）**，且修法不需授权）。
+
+## 10.191 收窄：跨 purpose 的**首个分歧点是 `core-flow`**（共享前缀仅 284）（2026-09-18）
+
+**复核 10.190 的前提**（`prefix-diff` 在长会话数据根上的输出，10.172 已记录）：
+
+```
+prev -> next        stableItems  stableChars  firstChanged
+reply -> decide         1           284       system_prompt:core-flow
+decide -> decide        1           284       project_knowledge:bootstrap:SOUL.md
+reply -> reply          1           284       recent_message:reply:history:…
+```
+
+⇒ **跨 purpose（`reply -> decide`）的首个差异项就是 `core-flow`（第 2 段）** ⇒ 共享前缀 = **284 字符（仅 `identity`）**，**并非** 2,934。10.129 测得的"跨路径共享 2,934"只适用于**同类模式**的路径（如 `reply` 与 `execute` 都用 `'respond'` 渲染 core-flow 时）；一旦两侧的 **core-flow 渲染不同**，共享前缀立刻退回到 284。
+
+**⇒ 修法目标由此大幅收窄**（比"把所有 purpose 专属段后置"更小、更精准）：
+- **不再是**"把 tooling/output-directives 等大段后置"；
+- **而是**"**让 `core-flow` 在所有 purpose 下字节一致**"—— 它只有 1,530 字符，且若其中的 purpose 专属差异被**移到尾部**（或按 purpose 在尾部渲染），跨 purpose 转移即可复用 **identity + core-flow + safety + workspace + date-time + capabilities = 2,934**，进而（若后续段也一致）复用整段历史。
+
+**根因（下一步取证）**：`core-flow` 由 `builder.ts` 渲染，其中可能含**依赖 purpose/模式**的分支（例如 `isRespond` / `isFull` / 是否带工具）⇒ 需定位该分支并把 purpose 相关内容后置，使 `core-flow` 主体恒定。
+
+**下一轮（零成本定位）**：
+1. 读 `packages/prompt/src/builder.ts` 中 `coreFlowSection(...)` 的渲染与其 purpose 依赖（`grep -n 'coreFlow\\|core-flow' packages/prompt/src`）；
+2. 读 `system-prompt-cache-split.test.ts`/`builder.test.ts` 中与 core-flow 相关的断言，评估改动面；
+3. 若差异仅在少量行（例如一句 purpose 提示），**只改这一处**：把该句移入尾部段 ⇒ 内容一字不减、跨 purpose 前缀从 284 → 2,934。
+
+**预期**：`reply -> decide` 等跨 purpose 转移的 miss 从 ~1,270 降到 ~700（先期），长会话总体 hit **74.1% → 约 78%**；若继续把后续段也对齐，可进一步逼近 10.190 的 ~88% 估计。
+
+**判据进度**：① 达标（短会话 hit ≈75.5%、miss ≈708.6）；② 未达（长会话 74.1%），修法目标已从"全部 purpose 段"收窄到"`core-flow` 一处"。
