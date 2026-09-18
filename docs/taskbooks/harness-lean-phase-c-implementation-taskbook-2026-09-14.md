@@ -5124,3 +5124,31 @@ if (index === 0 && message.role === 'system') {
 **另一项（须授权）**：`execute_final_reply`（长会话 miss 的 12%、hit ~25%）的低命中由**工具块在 tool loop 与 final reply 之间消失**造成 ⇒ **必须动契约（D1）**，与上述结构性改动**互补**：本项解决"跨 purpose"，D1 解决"同 run 内的工具块断裂"。
 
 **判据进度**：① 达标（短会话 hit ≈75.5%、miss ≈708.6）；② 未达（长会话 74.1%，基线 68.1%，+6.0pt）；**剩余两杠杆已完全定位**：跨 purpose system 一致性（不需授权，预期 → ~85–88%）与 D1（需授权，预期再 +5–8pt）。
+
+## 10.196 **最小改动的确切落点**：让"边界之下"的段一律走尾部（而非硬编码子集）（2026-09-18）
+
+**本轮取证（两处调用点对比）**：
+
+| 调用点 | 是否传 `systemSegments` | 现状 |
+| --- | --- | --- |
+| `stages/reply.ts:135–139` | **是** ✓ `systemSegments: systemPrompt.segments` | 其易变段**能**被 `VOLATILE_GUIDANCE_SEGMENT_IDS` 拆到尾部 |
+| `stages/verify/model-call.ts:46–49` | **否**（只有 `history: []`、`primaryUserKind: 'workflow_state'`） | 整条 bundle（含易变段）留在 system ⇒ 无法拆分；且 `history: []` ⇒ 无历史可复用 |
+
+⇒ **`verify` 正是 10.193 中 15/119"单条形状"的来源** ✓（`reply` 的 43/119 则来自**重写轮修复前**的旧样本，现已由 10.188 消除）。
+
+**最小改动（两处，均不裁剪能力、无需授权）**：
+
+1. **把"硬编码子集"换成"按边界判定"**（`context-candidates.ts:14, 65–68`）：不再只看 `VOLATILE_GUIDANCE_SEGMENT_IDS`，而是**凡在 `CACHE_BOUNDARY_MARKER` 之下**的段（bundle 已按 10.128 的规则排好：`stable + stableAddons | volatile + volatileAddons`）**一律送入尾部** ⇒ 所有 purpose 的 system 消息都退化为**共享头（2,934）**；
+   - 结果：**跨 purpose 的 system 消息字节一致** ⇒ 前缀 = **system + 整段历史**（历史在 system 之后，且各 purpose 的历史序列相同）✓✓
+   - 这与 10.195 的"唯一结构性杠杆"是同一次改动，只是**实现方式从'改 12 个调用点'变为'改候选层的 1 处判定'**（因为 bundle 的 `segments` 已带顺序与边界信息）。
+2. **`verify` 补传 `systemSegments`**（`verify/model-call.ts:46` 加 `systemSegments: <bundle>.segments`）⇒ 与其它 purpose 一致。
+
+**验收（两次样本）**：
+- `run-pair-diff.mjs`：`diffAt0` 的配对数从 **58/119 → 个位数**；
+- `run-pair-diff.mjs` 的 `avgFirstCallMiss` **1,269 → ~300–500**；长会话 hit **74.1% → ≥85%**；
+- `analyze-prompt-cache.mjs`：`reply`/`verify`/`decide` 的 hit 均上升；
+- 硬约束：`failedRuns=0`、`silentRuns=0`、全门绿。
+
+**风险**：把边界之下**全部**段移到尾部会改变各 purpose 的**消息顺序**（内容不减），而多处测试断言稳定段/易变段的归属（10.166 类型的布局断言）⇒ 预计需同步更新若干断言；必要时**先只改 `reply`+`verify`**（即"边界之下"仅对这两个 purpose 生效）。
+
+**判据进度**：① 达标（短会话 hit ≈75.5%、miss ≈708.6）；② 未达（长会话 74.1%）；**本项为唯一不需授权的结构性杠杆，预期 → ≥85%**；D1（需授权）可再补 `execute_final_reply` 的 ~12%。
