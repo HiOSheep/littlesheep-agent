@@ -5991,3 +5991,26 @@ export function buildUserFacingVoiceAddon(ctx) {
 | 4 次实测否证（D1×2、B1 全局、跨 purpose） | ✅ 如实入档 |
 | **判据** | ① hit **74.0–74.7%**（差 0.3–1.0pt）、**miss/调用短会话 685–697 ✓ 达标**；② 长会话 **74.7%**（结构性不可达，见 10.203） |
 | 硬约束 | `failedRuns=0`、`silentRuns=0`、**未裁剪能力** ✓ |
+
+## 10.222 交付受阻（环境网络）+ 剩余项需授权（2026-09-18）
+
+**推送失败（第 6–8 次尝试）**：连续四轮（127–130）共 8 次 `git push`，均为
+`fatal: unable to access 'https://github.com/HiOSheep/littlesheep-agent.git/': TLS connect error: error:0A000126:SSL routines::unexpected eof while reading`
+；已尝试 `http.version=HTTP/1.1` 与 `http.postBuffer=524288000` 两种常见规避，**同样失败** ⇒ **环境到 GitHub 的网络链路中断**，非仓库问题。
+
+**本地待交付（3 个提交，工作树干净、`check:repo` 33/33）**：
+| 提交 | 内容 |
+| --- | --- |
+| `fdfb0b5` | **S1 代码**（工具循环不再重复发送原生已覆盖的工具文本）+ 门禁全绿 |
+| `16d91cc` | S1 的短样本与长样本实测记录 |
+| `f0bb512`、`5670772` | S2 两次更正与撤回 |
+
+**远端 `main` 仍为 `7bbba6f`**（S1 之前的文档）。⇒ **网络恢复后执行一次 `git push origin main` 即可完成交付**。
+
+**剩余可做项（均需你授权，属信息取舍）**：
+| 项 | 内容 | 估计收益 |
+| --- | --- | --- |
+| **S3** | `core-flow`(1,530/次) 由"完整状态机图"改为"当前 stage 一行 + 需要时全图" | 长会话 **+2–5pt** |
+| **S4** | `runtime-awareness`(706/轮) 紧缩 | **+1–2pt** |
+
+**当前水平**：判据 ① hit **74.0–74.7%**（差 0.3–1.0pt）、**miss/调用短会话 685–697 ✓ 达标**；判据 ② 长会话 **74.7%**（结构性不可达，10.203）；硬约束全绿。
