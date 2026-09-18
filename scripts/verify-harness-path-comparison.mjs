@@ -546,7 +546,12 @@ function buildConfig(workplaceDir, model, mode, provider) {
         bootstrapMaxChars: 20_000,
         bootstrapTotalMaxChars: 60_000,
         contextCompressionThresholdRatio: 0.8,
-        maxModelCallsPerRun: 8,
+        // Keep the measured budget equal to the product default
+        // (config.agents.defaults.maxModelCallsPerRun = 32). A lower bound made
+        // recovery-heavy turns fail inside the measurement only: the observed
+        // "model call budget exhausted (8 calls per run)" class covered 40% of
+        // run failures, which the product default accommodates.
+        maxModelCallsPerRun: 32,
         harness: 'core-flow',
         durableHarnessMode: mode,
       },
