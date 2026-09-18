@@ -2500,3 +2500,19 @@ C10B 矩阵 HC-07 由「部分」变为「通过（离线）」。
 1. 用 `empty-reply-attribution.mjs` 对**本轮数据根**（`littlesheep-path-next-n5fMoG`）做零成本归因，确认 11 个空回复里"ask_user 类"与"reply 空输出类"各是多少（验证兜底是否把 reply 那一类清零）；
 2. 按 11.4 落地 **ASK_USER → skill**（关闭 `decide/adoption.ts:115`、`recover.ts:57/87/101/163`、`verify/routing.ts:311` 三处出口，改为"带问题的正常回复 + 技能调用才产生等待点"）；
 3. 复测判据：`emptyReplies → 0`、`disposition 类报错 → 0`、`failedRuns` 不高于基线（0），且命中率/成本不回归。
+
+### 11.6 归因更新：两处兜底**按设计生效**，剩余空回复来自**第三种来源**（2026-09-18）
+
+对 11.5 那次实机的数据根（`littlesheep-path-next-n5fMoG`）做完整归因（11 个空回复，`empty-reply-attribution.mjs`）：
+
+| 类别 | 上一版 | **本轮** | 判读 |
+| --- | --- | --- | --- |
+| `ask_user` 措辞为空 | 4 | **1** | ✅ `f11ce37` 的草稿兜底**生效**（4→1） |
+| `enter>classify>reply` 无 settlement | 7 | **5** | ✅ `74c33ec` 的重试/响亮失败生效一部分（7→5） |
+| **无 trace 的失败 run** | 0 | **5** | 新增：原本静默收尾的轮次**被暴露为失败**（符合 11.3 规则 4/5 的预期） |
+
+**剩余 5 个"reply 空回复"的新解释（第三种来源）：** 它们既不是"模型空输出"（那样会被我的守卫转成响亮失败），也不是 ask_user 类，而更可能是 **reply 发布闸门自身拒绝**（`acceptUniqueUserFacingReply` 的重复/连续性判定抛错 → catch 返回 `ok:false`）——而 runner 在这种情形下仍然给出 **HTTP 200 + 空回复**。即：**"发言阶段失败"没有被转成"轮次失败"**。
+
+**下一轮的唯一目标（第三种来源）：** 让 **reply 阶段的任何失败（含 catch 路径）都不得以 200 + 空回复收尾** —— 要么补一次有界重试后发布，要么让该轮**明确失败**。判据：`emptyReplies → 0`（允许 `failedRuns` 上升，因为那是暴露真实失败），且命中率/miss 调用不回归。
+
+**同时确认的结论：** `ask_user` 的四个入口里，**classify 已移除、decide/recover/verify 三处经过"草稿兜底"后已不再产生空回复**（本样本只剩 1 例）。因此 **ASK_USER → skill 的迁移仍是正确方向，但它已不再是空回复的主要来源**；主线应转向"reply 失败必须可见"，之后再做 skill 化（把等待点从阶段判定收窄为技能调用）。
