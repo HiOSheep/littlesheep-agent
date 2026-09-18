@@ -5520,3 +5520,31 @@ tail[11] system 251 · tail[12] system 662 · tail[13] system 1,986   ← 尾部
 - **验收**：两次样本 + `analyze-cache-shapes.mjs`（`first` 位置 miss/call 从 **623 → <450**）+ `failedRuns=0`、`silentRuns=0`。
 
 **当前基线（未改动，`main`）**：短会话 hit **74.5–76.7%**、miss/调用 **682–716**；长会话 hit **73.7–74.0%**、miss **1,048–1,092**；`execute_tool_loop` miss/调用 **1,640–2,447**、hit 71.6–74.0%。
+
+## 10.208 **方案 A 已是现状（no-op）**：所有"发历史"的 purpose 早已共用同一函数与预算（2026-09-18）
+
+**取证**：`grep conversationHistoryForModel` 全 `packages/harness/src` 共 **21 处命中**，生产调用点如下：
+
+| 位置 | 表达式 |
+| --- | --- |
+| `classify.ts:164` | `conversationHistoryForModel(ctx)` |
+| `decide/request.ts:177` | `compactDecision ? [] : conversationHistoryForModel(ctx)` |
+| `execute/guidance.ts:121` | 默认参数 `history = conversationHistoryForModel(ctx)` |
+| `reply.ts:101`、`reply.ts:348` | `isCapabilityReply ? [] : conversationHistoryForModel(ctx)` |
+| `recover/model-call.ts:31` | `conversationHistoryForModel(ctx)` |
+| `execute/runners.ts:163`、`:194` | `conversationHistoryForModel(ctx)` |
+| `execute/tool-loop.ts:97` | `history ?? conversationHistoryForModel(ctx)` |
+
+⇒ **所有"发历史"的 purpose 已经使用同一函数、同一预算（`SHARED_HISTORY_MAX_CHARS`）、同一裁剪点** ✓
+⇒ 唯一不发历史的三处都是**有意的设计选择**：
+- `verify`：`history: []`（只判证据）；
+- 能力回复（`isCapabilityReply`）：`[]`（自包含答案）；
+- 紧凑路径（`compactDecision` / `compactReadTools`）：`[]`（本就短）。
+
+**结论**：**方案 A（只统一"发历史"的 purpose）无剩余工作，属 no-op**。要进一步提升跨 purpose 复用，只能做**方案 B**：让 `verify`/能力回复/紧凑路径**也携带完整历史** —— 但那是**语义变更**（能力回复会看到它被设计为不该看的历史；`verify` 会看到整段转录；紧凑路径会变成非紧凑），直接触及"**能力几乎不收缩**"与既有设计意图 ⇒ **需要你明确取舍**，我不擅自实施。
+
+**附带发现**：`stages/_shared.test.ts:236` 存在用例 **`conversationHistoryForModel prefix diff`**（`:241`、`:263`）⇒ 说明该函数**已被设计为关注前缀稳定性**（本目标此前测得的"同形状连续调用 hit 80%"与此一致 ✓）。若需要进一步挖掘，下一步可读该用例，确认窗口的裁剪策略是否已按"前缀稳定"实现（若尚未，则**在不改变窗口大小的前提下调整裁剪点**仍是零语义变更的改进空间 —— 这是方案 A 之外唯一可能无争议的项）。
+
+**当前基线（未改动，`main`）**：短会话 hit **74.5–76.7%**、miss/调用 **682–716**；长会话 hit **73.7–74.0%**、miss **1,048–1,092**；`execute_tool_loop` miss/调用 **1,640–2,447**。
+
+**下一步（零语义变更的唯一候选）**：读 `_shared.ts:59–120`（`conversationHistoryForModel` 的裁剪实现）与 `_shared.test.ts:236–270`（其 prefix-diff 期望），判断窗口裁剪是否已"前缀稳定"；若否，**只调整裁剪点**（不改预算、不改内容）并两次样本验证。
