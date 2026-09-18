@@ -23,6 +23,7 @@ import {
   ToolRegistry,
   registerBuiltinTools,
   createExecTool,
+  createRequestUserInputTool,
   createSessionStatusTool,
   type ApprovalConfig,
 } from '@littlesheep/tools';
@@ -467,6 +468,8 @@ export async function buildInfrastructure(
       sessionManager,
       model: () => opts.state.model,
     }),
+    // Asking the user is a capability the model invokes, not a routing outcome.
+    createRequestUserInputTool(),
   ];
   registerBuiltinTools(registry, extras);
 
