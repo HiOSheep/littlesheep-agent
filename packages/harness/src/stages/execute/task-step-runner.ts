@@ -1,7 +1,6 @@
 // Executes one already-scheduled TaskBook branch with an isolated message sink.
 
 import type { SystemPromptBundle } from '@littlesheep/prompt';
-import { appendSystemPromptBundleAddons } from '../../profile-prompt.js';
 import type {
   RunContext,
   TaskBook,
@@ -93,22 +92,35 @@ export async function executeScheduledTaskStep(options: TaskStepRunOptions): Pro
   });
 
   const compactReadTools = resolveCompactAutonomousReadExecutionTools(ctx);
-  const stepSystemPrompt = appendSystemPromptBundleAddons(baseSystemPrompt, [{
-    id: `step-contract:${stepId}`,
-    text: compactReadTools
-      ? renderCompactAutonomousReadStepGuidance(taskBook)
-      : renderStepGuidance(
-          taskBook,
-          step,
-          stepId,
-          index,
-          taskBook.steps.length,
-          visiblePriorResults,
-        ),
-    kind: 'workflow_state',
-    source: { kind: 'workflow', id: `step-contract:${stepId}`, runId: ctx.runId },
-  }]);
-  const attachmentMessages = attachmentContextMessages(ctx.runId, ctx.attachments);
+  // The per-step contract travels after the history instead of inside the system
+  // message: the provider caches the system message ahead of everything else, so
+  // a per-step change there would rebill the whole transcript on every step.
+  const stepContractMessage: ReturnType<typeof attachmentContextMessages>[number] = {
+    message: {
+      role: 'system',
+      content: compactReadTools
+        ? renderCompactAutonomousReadStepGuidance(taskBook)
+        : renderStepGuidance(
+            taskBook,
+            step,
+            stepId,
+            index,
+            taskBook.steps.length,
+            visiblePriorResults,
+          ),
+    },
+    context: {
+      id: `step-contract:${stepId}`,
+      kind: 'workflow_state',
+      source: { kind: 'workflow', id: `step-contract:${stepId}`, runId: ctx.runId },
+      priority: 95,
+      required: true,
+      sensitive: true,
+      scope: 'run',
+    },
+  };
+  const stepSystemPrompt = baseSystemPrompt;
+  const attachmentMessages = [...attachmentContextMessages(ctx.runId, ctx.attachments), stepContractMessage];
   const branch = branchAbortController(ctx.signal);
   const produced: RunContext['produced'] = [];
   try {
