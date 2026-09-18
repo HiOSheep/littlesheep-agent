@@ -4317,3 +4317,34 @@ if (request.tools?.some((tool) => tool.function.name === 'web_runtime_probe')) {
 | **C** classify 对齐 | 无（但根因未明、收益 ≤508/轮、占 miss 0.5%） | 最小 |
 
 **我的建议**：**S 与 D1 二选一或都做**（两者量级相同、互不冲突）；若你只想做**一个**，我推荐 **S**（只翻转一个段、改动面最小：1 处代码 + 3 处断言；而 D1 需改契约语义 + 测试替身）。
+
+## 10.167 **S 已获授权**：`memory-root-index` 归入稳定区 —— 三处断言的原文与改法（2026-09-18）
+
+**用户决定：S**（授权翻转该段的 volatile 分类并更新布局断言）。目标已重新武装。
+
+**代码改动（1 处，已实测可编译）**：`packages/prompt/src/builder.ts` —— 在 `addStable('capabilities', …)` 之后插入
+```ts
+if (mode !== 'minimal' && (isFull || isRespond) && input.memoryRootIndex) {
+  addStable('memory-root-index',
+    isRespond ? memoryAwarenessSection(input.memoryRootIndex) : memoryTreeSection(input.memoryRootIndex),
+    'memory_index', 95, true, 'global', { kind: 'memory', id: 'root-index' });
+}
+```
+并**删除**易变区中对应的 `segments.push({ id: 'memory-root-index', … })` 整块（含 `volatilePrefix()` 调用）。
+
+**三处失败断言（本轮采集到的原文）**：
+
+| # | 文件:行 | 现状 | 改为 |
+| --- | --- | --- | --- |
+| 1 | `packages/harness/src/system-prompt-cache-split.test.ts:26` | `expect(split.systemText).not.toContain('VOLATILE_MEMORY_INDEX');` | **`toContain`**（该段现属稳定前缀） |
+| 2 | 同文件（"appends trailing sections after the conversation with preserved kinds"） | 期望 trailing 首项 `kind === 'memory_index'`（实际 `'output_constraint'`）；`…:47` 期望末条消息含 `VOLATILE_MEMORY_INDEX` | trailing 列表**不再包含** memory 段 ⇒ 首项 kind 改为 `'output_constraint'`，并删除/改写"末条含 VOLATILE_MEMORY_INDEX"的断言（可改为断言该段**不在** trailing 中） |
+| 3 | `packages/prompt/src/builder.test.ts`（"full mode includes all sections + cache boundary"） | `expect(…).not.toContain('Memory Tree Root Index');`（系统文本不含该标题） | **`toContain`**（现在包含，因为它在边界之上） |
+
+**落地顺序（下一轮，一次完成）**：读 `system-prompt-cache-split.test.ts:20–50` 与 `builder.test.ts`（"full mode" 用例）取得两处断言原文 → 应用 1 处代码 + 3 处断言 → `typecheck` → 聚焦 `prompt` + `cache-split` + `profile-prompt` → 全量 vitest → `check:repo` → continuity + UI 门 → **两次** 8×5。
+
+**判定（用 `scripts/analyze-prompt-cache.mjs`）**：
+- `reply` 的 miss/调用 **498 → ~300**（1,713 字符 ≈ 500 token 进入缓存前缀）；
+- 总体 miss/调用 **920 → ~695**、hit **66.9% → ~74.7%**；
+- 若**跨 purpose 共享前缀塌陷**（10.126 陷阱）⇒ 立即回退并汇报。
+
+**能力口径**：该段内容**一字不减**，仅位置从易变区移到稳定区 ✓ 符合"能力不收缩"。
