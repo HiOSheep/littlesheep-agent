@@ -32,6 +32,7 @@ import {
 import { upsertToolInvocationEvidence } from '../../execution-evidence-state.js';
 import { writeRuntimeState } from '../../runtime-state.js';
 import { conversationHistoryForModel } from '../_shared.js';
+import { parseUserInputRequest, USER_INPUT_REQUEST_TOOL_NAME } from '../../user-input-request.js';
 import { ingestMemoryKnownState } from '../../memory-known-state.js';
 import { ingestMemoryContextToolResult } from '../../memory-context-working-set.js';
 import { validateWebCitations, webCitationRepairContract } from '../../web-citation-validation.js';
@@ -192,6 +193,42 @@ export async function runToolLoop(
           toolResults,
           iterations: iteration,
           error: 'llm requested more tools after the runtime no-progress budget was exhausted',
+        };
+      }
+      // Asking the user is the model's own decision: carry the bounded question
+      // out of the loop, and let the caller publish it and record the single
+      // waiting fact. Nothing is executed here, so a malformed request is a
+      // protocol error rather than a tool failure.
+      const inputRequests = response.toolCalls.filter(
+        (call) => call.function.name === USER_INPUT_REQUEST_TOOL_NAME,
+      );
+      if (inputRequests.length > 0) {
+        if (inputRequests.length !== 1 || response.toolCalls.length !== 1) {
+          return {
+            ok: false,
+            content: '',
+            toolResults,
+            iterations: iteration,
+            error: 'a user input request must be one standalone tool call',
+          };
+        }
+        const userInputRequest = parseUserInputRequest(convertToolCall(inputRequests[0]!).input);
+        if (!userInputRequest) {
+          return {
+            ok: false,
+            content: '',
+            toolResults,
+            iterations: iteration,
+            error: 'user input request failed Runtime schema validation',
+          };
+        }
+        return {
+          ok: true,
+          content: '',
+          toolResults,
+          iterations: iteration,
+          usage: response.usage,
+          userInputRequest,
         };
       }
       const upgradeCalls = response.toolCalls.filter((call) => call.function.name === WORK_POLICY_UPGRADE_TOOL_NAME);

@@ -35,6 +35,12 @@ export interface ToolLoopResult {
   modelRequestId?: string;
   error?: string;
   workPolicyUpgradeProposal?: WorkPolicyUpgradeProposal;
+  /**
+   * The model asked the user for a missing fact. The caller turns this into a
+   * clarification request and routes to ASK_USER, which publishes the question
+   * as a normal, provider-traceable reply.
+   */
+  userInputRequest?: import('../../user-input-request.js').UserInputRequest;
 }
 
 export interface ToolLoopOptions {
