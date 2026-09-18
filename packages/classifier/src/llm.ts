@@ -43,10 +43,12 @@ export async function classifyByLlm(
   onResponse?: (request: ChatRequest, response: ChatResponse) => void | Promise<void>,
   beforeRequest?: (request: ChatRequest) => void | Promise<void>,
   onError?: (request: ChatRequest, error: unknown) => void | Promise<void>,
+  /** Full system prompt to use instead of the router default; the caller prepends the shared head. */
+  systemPrompt?: string,
 ): Promise<Classification> {
   const recentHistory = history.slice(-5);
   const messages: ChatMessage[] = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: systemPrompt ?? SYSTEM_PROMPT },
     ...recentHistory.map((m) => ({
       role: (m.role === 'assistant' ? 'assistant' : 'user') as 'assistant' | 'user',
       content: textOf(m),
