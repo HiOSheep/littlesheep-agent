@@ -3473,3 +3473,18 @@ return rebuildBundle(segments, stable.length + stableAddons.length);
 **下一轮第一步（零成本）**：读 `assembleSystemPromptBundle` 的定义（`grep -n "function assembleSystemPromptBundle" packages/harness/src`）——确认第三个参数如何映射到 `buildSystemPromptBundle` 的 `mode`，以及是否存在"输入为空 ⇒ 仅 identity"的行为。
 
 **验收（不变）**：`prefix-detail` 两侧第 1 项一致、该变体头部回到 **2,934**；miss/调用 ≤892.6、命中 ≥67.3%；`failedRuns=0`、`silentRuns=0`。当前 `c692dcc`（本轮修复）**未推送**，待第二次样本判定。
+
+## 10.132 **短头来源定位完成**：不是 builder，而是 **classifier 自己的系统提示**（2026-09-18）
+
+**三步排除（全部有代码证据）：**
+1. 包装函数 `assembleSystemPromptBundle`（`packages/prompt/src/builder.ts:365–389`）**正常转发模式**：`:387 mode: mode ?? 'full'` ⇒ 五个调用点的 `'respond'`/默认都会得到完整头部；
+2. 非 Bundle 版 `assembleSystemPrompt`（`builder.ts:357`）**在全仓库无生产调用者**（只有定义与导出）；
+3. `buildSystemPromptBundle` 的 **`identity`/`core-flow`/`safety` 是无条件段**（`builder.ts:118–120`）⇒ 其输出**最小也有 284+1530+292 = 2,106 字符**，**不可能只有 284**。
+
+⇒ **那个 identity-only（284）请求不可能来自 prompt builder**。结合早期实测 **`classify → reply: prompt 508, cached 0`**（classify 完全不吃缓存、其 system 部分约 284 字符），结论：**短头来源是 classifier 的自带系统提示** —— `packages/classifier/src/llm.ts:14` 的 `SYSTEM_PROMPT`（路由器专用，与共享头无关）。
+
+**这正对应目标原文最后一项**："再对齐 classify 的独立提示词"（= 任务书 **10.110**）。
+
+**下一刀（10.133，本目标最后一项短头来源）**：让 **classifier 的系统提示也以共享头开头**（`identity → core-flow → safety → workspace → date-time → capabilities`），把**路由器专属指令放到边界之后**；**段全部照发**（classifier 的判定所需信息一字不减）。
+- **预期**：`provider-reconcile` 的 `classify` 行 `cached` 由 **0 变正**（其 508 token 中约 284 起可命中）、miss/调用向 <400 收敛；
+- **验收**：两次样本（命中 ≥67.3%、miss ≤892.6 不退化）+ 五道门；classifier 的行为不变（其指令全在，只换位置）。
