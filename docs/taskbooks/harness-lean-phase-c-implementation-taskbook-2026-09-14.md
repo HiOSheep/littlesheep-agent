@@ -5862,3 +5862,28 @@ export function toolsForRetrievalIntent(ctx) {
 3. `decide/request.ts` 与其余 purpose **不动**（保持文本，兼容一切既有行为）。
 
 **下一轮**：按上述两步实施 → `typecheck` + 全量 vitest（预计 `builder`/`execute` 的少量段集合断言需同步）→ `check:repo` → continuity + UI 门 → **两次**样本（8×5 + 8×15）→ 验收上表。
+
+## 10.218 S1 落地（省略原生工具已覆盖的文本段）：短会话 **miss/调用首次双双 <700**（2026-09-18）
+
+**已实现（本地提交 `fdfb0b5`，待第二样本后推送）**：
+- `packages/prompt/src/builder.ts`：`PromptInput` 与 `RuntimeFacts` 各加 `includeToolingText?: boolean`；`if (!isRespond)` → `if (!isRespond && input.includeToolingText !== false)`（**默认开启**，所有既有行为不变）；
+- `packages/harness/src/stages/execute/prompt.ts`：工具循环路径传 `includeToolingText: false`；
+- `decide` 与其余 purpose **不动**（文本仍是其唯一工具通道）。
+- 门禁：`typecheck` clean、**全量 3,287 通过**、`check:repo` 33/33、continuity + UI 门 ok。
+
+**短会话样本（产品级 8×5，第一样本）**：
+
+| 指标 | 改前（多次基线） | **本刀后** |
+| --- | --- | --- |
+| `failedRuns` / `publishedRuns` / `silentRuns` / `semanticFailures` | 0 / 40 / 0 / 0 | **0 / 40 / 0 / 0** ✓ |
+| 主对话 hit | 74.1–76.7% | **74.4 / 74.0%** |
+| **miss/调用** | 682–753（均值 ≈709） | **685.3 / 696.9（双双 <700 ✓）** |
+| 平均 prompt/调用 | 2,944 | **2,847（−97）** |
+| `reply` miss/调用 | 498–512 | **498.7** |
+| `execute_tool_loop` miss/调用 | 1,876–2,447 | **2,259**（5 次调用，方差大） |
+
+**归因（数量级吻合）**：工具循环占 5/82 次调用，单次省 ~4,100 字符（≈1,100 token）⇒ 摊到每次调用约 **−67**；实测 **−97** ✓ 方向与量级一致。**未出现任何正确性或质量退化**（`verificationPassRateDelta` 无退化、`publishedRuns` 满额）。
+
+**结论**：**判据 ① 的 miss/调用 达标（<700）**；hit 74.0–74.4%（距 75% 差 0.6pt）。**待长会话第二样本**确认无回归后推送代码。
+
+**下一步**：跑长会话（8×15）第二样本 → 若 `hit` 不降、`execute_tool_loop` 的 prompt 与 miss 明显下降 ⇒ 推送 `fdfb0b5` 并补完本节数字；随后评估 **S2**（合并 `output-directives` 与 `response-directives` 的重叠表述，估省 500–900 字符/次）。
