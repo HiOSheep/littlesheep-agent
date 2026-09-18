@@ -1466,6 +1466,22 @@ describe('executeStage', () => {
     ]));
   });
 
+  it('rejects a user input request mixed with other tool calls', async () => {
+    const tool = makeTool('lookup', { ok: true, output: 'unused' });
+    const llm = createMockLlm(toolCallResponse([
+      { id: 'q1', name: 'request_user_input', args: { field: 'target', prompt: '哪个？' } },
+      { id: 'c1', name: 'lookup', args: { q: 'x' } },
+    ]));
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', '改一下') });
+
+    const res = await stage(ctx);
+
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/standalone tool call/);
+    expect(tool.calls).toHaveLength(0);
+  });
+
   it('keeps every tool-loop round a strict extension of the previous request', async () => {
     const tool = makeTool('lookup', { ok: true, output: 'found-it' });
     const requests: import('@littlesheep/llm').ChatRequest[] = [];
