@@ -75,7 +75,19 @@
 - **实测佐证**：最近样本 `semanticFailures = 0`、`silentRuns = 0`、`pausedRuns = 0`；无工具循环类失败。
 - **完成定义达成**：审计报告 ✅ / 必要改动：无（0 行）+ 记录 P4a ✅ / 既有全门未受影响 ✅ / 实机佐证 ✅。
 
-### ⚠️ P5 缺陷（2026-09-18 由新增测试发现，**待修**）：`execute` **无权写 `clarificationRequest`**
+### ✅ P5 缺陷已修复（2026-09-18，`ab1af89`）：`execute` 现在可以提出澄清
+
+**修复**：`packages/types/src/run-context-contract.ts` 的 `clarificationRequest.writeStages` 加入 `execute` —— 理由：**从工具循环内部提出问题，与其他写入者"因结构化无法继续而提问"是同类事件**。暴露缺陷的那条行为测试**已恢复并通过**（断言 `next === 'ask_user'`、`res.ok`、`copySource === 'model'`、问题字段正确、且**未执行任何工具**）。
+
+**验证（全绿）**：`typecheck` clean；全量 vitest **3,287 通过 / 1 跳过 / 0 失败**；`check:repo` **33/33**；`verify:electron-continuity` **ok**；`verify:electron-ui-state-continuity` **ok**；产品级 8×5 实机（`live-p5fix.txt`）：`failedRuns` **0/0**、`semanticFailures` **0/0**、`transportFailures` **0/0**、`publishedRuns` **40/40**、`silentRuns` **0/0**、`pausedRuns` **0/0**、主对话命中 **66%/66%**、miss 每调用 **910.8/919.5**。
+
+**⚠️ 已知判据（待第二次样本）**：该轮 gate 唯一红项为 **`shortTurnP50DeltaPct = 6.5`（上限 5）** —— 属**性能维度**（next 路径中位延迟比 shadow 高 6.5%），8 条判据其余 7 条全绿。按"单次运行不判定 <1–2pt 差异"的纪律，**需第二次样本**再判是抖动还是稳定代价（可能成因：next 路径每轮写 durable 状态）。**判定前不得声称"全门绿"，也不得当作回归。**
+
+**教训（已写入方法）**：**"功能认证"≠"新路径被触发"** —— P5 的实机认证之所以干净，是因为负载里模型从未调用该工具；**真正的缺陷是补测试时才暴露的**。
+
+---
+以下为发现当时的原始记录（保留作证据）：
+
 
 **发现方式**：为 P5 补行为测试时，断言"模型调用 → 该轮转为澄清"的用例**失败**，运行时报：
 
@@ -97,7 +109,7 @@ Allowed writers: classify, decide, recover, verify, ask_user, runner-restore.
 
 **修复后必须补回**的测试（本轮因暴露缺陷而暂缓加入，仅保留通过的"混合调用即协议错误"用例）：断言"模型调用 `request_user_input` → `res.ok`、`next === 'ask_user'`、`ctx.clarificationRequest.copySource === 'model'`、且**没有**执行任何工具"。
 
-**在修复前，P5 的状态应记为："功能与门禁通过、**但存在一条未经实机触发的失败路径**"** —— 不再声称其完全闭环。
+**（已被上方修复取代）修复前的状态记为**：P5"功能与门禁通过、但存在一条**未经实机触发**的失败路径"。
 **提交**：`6cfed7b`（工厂）→ `4dc3886`（barrel 导出）→ `71c5cf4`（接入工具集）→ `445c3b4`（校验器）→ `373622a`（`ToolLoopResult` 字段 + 工具循环识别分支）→ `b204485`（**消费者：转 ASK_USER + 写澄清请求**）→ `365cd71`（契约测试 4 条）。
 **机制**：模型调用 `request_user_input`（有界 schema）→ 工具循环识别并返回 `userInputRequest`（**不做 IO**）→ `executeLegacyLoop` 写 `ctx.clarificationRequest`（`copySource: 'model'`）→ ASK_USER 组词（可追溯）→ `finalize` 发布 → 运行时记**唯一**等待事实。**"要不要问用户"由模型决定；运行时只负责安全后果。**
 **实机认证（产品级预算 8×5、真实 DeepSeek，`live-p5.txt`）**：`failedRuns` **0 / 0**、`semanticFailures` **0 / 0**、`transportFailures` **0 / 0**、`publishedRuns` **40 / 40（100%）**、`silentRuns` **0 / 0**、`pausedRuns` **0 / 0**（该负载下模型未触发提问 ⇒ 无停放，符合设计）、主对话命中 **65.9% / 73.5%**、miss/调用 **904.2 / 823.2**（**历史最好**）、**gate passed = true**。
