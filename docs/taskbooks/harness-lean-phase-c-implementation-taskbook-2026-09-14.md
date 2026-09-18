@@ -3193,3 +3193,15 @@ const status: RunCheckpoint['status'] = ctx.runtimeControl?.state === 'paused'
 **注意（能力口径）**：`minimal` 模式的内容**没有减少**（`tooling` 照发，只是移到边界之下）—— 这一点必须在提交信息与任务书里写明，并纳入"能力不收缩"的验证。
 
 **下一轮执行顺序**：① 重放 `builder.ts` 的 10.114 改动；② 按上表更新 3 处断言；③ `typecheck` → 聚焦 `prompt` + `profile-prompt` + `cache-split` → 全量 vitest → `check:repo`（提交前置）→ continuity + UI 门；④ 产品级 8×5 **两次样本**（`prefix-diff.mjs` 看跨 purpose `stableChars` ≥7,000、`provider-reconcile.mjs` 看 miss/调用 <400、命中是否上升；`failedRuns=0`、`silentRuns=0`）；⑤ 达标则提交 + 推送 `main` + 更新任务书。
+
+## 10.116 三处断言的**精确源文本**（落地轮可直接改写，无需再读文件）（2026-09-18）
+
+| # | 文件:行 | 现有源文本 | 改为 |
+| --- | --- | --- | --- |
+| 1 | `packages/prompt/src/builder.test.ts:108` | `expect(prompt).not.toContain(CACHE_BOUNDARY_MARKER);` | `expect(prompt).toContain(CACHE_BOUNDARY_MARKER);`（minimal 也发 purpose 段，只是移到边界之下 ⇒ 标记必然出现；该用例的"不含 Core Flow 标题与前奏"断言保持不变） |
+| 2 | `packages/prompt/src/builder.test.ts:169` | ``expect(bundle.segments.find((segment) => segment.id === 'memory-root-index')?.text.startsWith(`\n\n${CACHE_BOUNDARY_MARKER}`)).toBe(true);`` | 改为断言**首个边界之下段**承载标记，且 `memory-root-index` 以 `\n\n---\n\n` 开头：<br>``const firstBelow = bundle.segments.find((s) => s.text.startsWith(`\n\n${CACHE_BOUNDARY_MARKER}`));``<br>`expect(firstBelow?.id).toBe('tooling');`<br>``expect(bundle.segments.find((s) => s.id === 'memory-root-index')?.text.startsWith('\n\n---\n\n')).toBe(true);`` |
+| 3 | `packages/harness/src/profile-prompt.test.ts:49` | `expect(result.segments.find((segment) => segment.id === 'memory-root-index')?.text).toContain(CACHE_BOUNDARY_MARKER);` | 同 #2 的形态：断言首个边界之下段（`s.text.startsWith('\n\n' + MARKER)`）承载标记，`memory-root-index` 改以 `\n\n---\n\n` 开头。**注意**：该用例的输入若为 respond 模式（不含 `tooling`），首个易变段会是它所提供的 `memory-root-index` —— 落地时应以**实测失败信息**为准调整期望值，不要预设 id |
+
+**其它已知无需改动的断言**（避免误改）：`builder.test.ts:74` 的 `toContain(CACHE_BOUNDARY_MARKER)` 与 `profile-prompt.test.ts:47/48/45/46` 均与本次放置变动一致。
+
+**落地顺序仍是 10.115 的五步**；判据不变（跨 purpose `stableChars` ≥7,000、miss/调用 <400、命中 ≥95%、`failedRuns=0`、`silentRuns=0`、两次样本）。
