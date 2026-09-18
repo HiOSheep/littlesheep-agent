@@ -158,7 +158,6 @@ export async function buildDecideRequest(
           text: DECIDE_SYSTEM_PROMPT,
           kind: 'workflow_state' as const,
           source: { kind: 'workflow' as const, id: 'decide-contract', runId: ctx.runId },
-          placement: 'stable' as const,
         }] : []),
         ...(!explicitToolInstructions ? [{
           id: 'retrieval-intent-contract',
