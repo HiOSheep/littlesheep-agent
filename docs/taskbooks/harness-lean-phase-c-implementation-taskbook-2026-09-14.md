@@ -2893,3 +2893,33 @@ user-facing reply generation failed:
 2. **（保守替代）承认"永不重复"是产品规则**，改为**上游修复**：把"已发布过的回答"作为显式上下文交给模型，让它在**改写阶段**就产出不同措辞——但那等于让运行时规则继续指导措辞，与目标原则相悖。
 
 **验收判据（不变）**：`failedRuns → 接近 0`（本轮 next=6 与 shadow=2 均为该类）、`silentRuns` 保持 0、命中率/成本不回归。
+
+### 11.21 "允许重复"穿透注册表的**精确改动集**（已把调用链读到最末端）（2026-09-18）
+
+**调用链（已核实）：**
+
+```
+harness user-facing-reply.ts:107  ctx.reserveUserFacingReplySettlement(reservation)
+  → harness context.ts:290        sessionManager.reserveAssistantReplySettlement(sessionId, reservation)
+  → session manager.ts:329–334    this.replyFingerprints.reserveSettlement(sessionId, reservation)   ← 真正的拒绝点
+```
+
+（`runner.ts:367,469` 也走同一入口，供 finalize/重放使用。）
+
+**因此"允许发布已知重复"需要改 3 处生产代码 + 测试：**
+
+| # | 文件 | 改动 |
+| --- | --- | --- |
+| 1 | `packages/types`（`FinalReplyReservation` 定义处；由 `agent.ts` 引用） | 新增可选字段 `allowDuplicate?: boolean`（保留向后兼容：缺省即旧语义） |
+| 2 | `packages/harness/src/user-facing-reply.ts` | 在构造 `reservation`（约第 84–90 行）时，若本轮是"已知重复且 `allowDuplicate` 为真"，则 `allowDuplicate: true`；本地检查的放行（`1510fa0` 已做）保持不变 |
+| 3 | `packages/session/src/*reply-fingerprint*`（`replyFingerprints.reserveSettlement` 的实现） | 读到 `allowDuplicate === true` 时**跳过重复拒绝**，但**照常记录指纹并标注重复**（可观测性不丢；`settlementStatus` 语义不变） |
+| 4 | 测试 | `packages/session/src/manager.test.ts:137–148`（现有重复保留语义）、`packages/harness/src/user-facing-reply.test.ts`、`packages/harness/src/stages/reply.test.ts` |
+
+**必须守住的不变量：**
+- `finalize` 会在发布前**再次**调用同一入口（`finalize.ts:140`）⇒ 若只在前端放行、注册表仍拒绝，失败只是**从 reply 阶段搬到 finalize**（这正是 11.20 的教训：不要只改一道门）；
+- 指纹账本必须继续记录（含重复标记），发布可追溯性不变；
+- 缺省 `allowDuplicate` 缺失时，行为与今天**完全一致**（可回滚）。
+
+**验证顺序：** 聚焦 `session` + `harness` 测试 → 全量 vitest → `typecheck` + `check:repo` → `verify:electron-continuity` →（UI 状态门按 11.19 政策：干净树不稳定则披露并排除）→ 提交 → **产品级预算 8×5 实机**（判据 `failedRuns → 接近 0`、`silentRuns` 保持 0、命中率/成本不回归）。
+
+> 本轮把链路读到了最末端（`replyFingerprints.reserveSettlement`），因此下一轮是**已知体量的机械改动**，不再有探索性工作。上一轮的教训已写入：改判据前先确认"真正拒绝的是哪一道关卡"，并且**所有**会再次调用该入口的阶段都要一并考虑（这里是 `finalize`）。
