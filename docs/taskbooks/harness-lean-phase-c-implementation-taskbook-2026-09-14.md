@@ -2773,3 +2773,25 @@ if (isClarification) {
 **验收（产品级预算 32，8×5 实机）**：`failedRuns` **22 → 接近 0**；`silentRuns` 保持 **0**；命中率 / miss 调用回到或优于 **66% / 958**；全门：`typecheck` 0、全量 vitest（460 文件）、`check:repo` 33/33、`verify:electron-continuity` + `verify:electron-ui-state-continuity` 双绿。
 
 **风险与回滚**：改动只影响"模型判定延续为 ambiguous"这一条路径（此前 100% 失败），因此回滚成本极低（一次 `git revert`）；若实机出现 `failedRuns` 未降或连续性门失败，立即回滚并改走"新写一条 `new_task` 分支"的更保守方案。
+
+### 11.16 11.15 补丁的**测试改写清单**（下一轮一次做完，含精确行号）（2026-09-18）
+
+补丁本身已定稿（见 11.15，`runner.ts:1191–1206` → 5 行归一为 `cancel` 路径，净减 11 行）。本轮把**需要同步改写的唯一用例**读全：`packages/runner/src/runner-continuation.test.ts` 的 `ambiguous` 用例（**第 2024–2062 行**）。按新语义（**废弃检查点 + 当作新任务跑**），四处断言需要翻转：
+
+| 行 | 现在 | 改为 |
+| --- | --- | --- |
+| 2041–2046 | `await expect(runner.run({...})).rejects.toThrow('ambiguous and was not claimed')` | **`resolves`**：该轮**正常完成**（不建议只写 `resolves.toBeDefined()`，应断言拿到了回复/`status: 'ok'`） |
+| 2049 | `…DispositionStore.read(checkpoint.id)` **为 null** | **不再为 null**：abandon 会写入一条"已废弃"的 disposition（**形状请从同文件里 `cancel` 路径的既有断言照抄**，避免猜结构） |
+| 2050–2051 | 会话里**不存在**该轮消息 | **存在**：新路径 `persistInbound: !existingAnswer` ⇒ 会持久化用户消息 |
+| 2052–2058 | `replay(...)` 的 `conversationContinuation.resolution === 'blocked'` + `failure.code === 'ambiguous_disposition'` | 改为 **`resolution: 'abandoned'`**，且不再有 `failure`（保留 `checkpointId`） |
+| 2048 | `restoreResources` **未被调用** | **保持不变**（新路径 `restoreState: false`，确实不恢复资源） |
+
+**执行顺序（下一轮）：**
+1. 应用 11.15 的补丁（编辑 `runner.ts`）；
+2. 按上表改写该用例；**先查同文件 `cancel` 用例的断言**以照抄 disposition 形状；
+3. `pnpm exec vitest run packages/runner/src/runner-continuation.test.ts` → 绿；
+4. 全量 `vitest`（460 文件）→ 绿；
+5. `typecheck` + `check:repo` + `verify:electron-continuity` + `verify:electron-ui-state-continuity` → 全绿后提交；
+6. 8×5 实机（产品级预算 32）复测：判据 `failedRuns 22 → 接近 0`、`silentRuns = 0`、命中率/miss 调用回到或优于 66% / 958。
+
+> 本轮**已应用补丁并随后回退**（未提交）：因为该用例的改写需要照抄既有 abandon 断言的形状，而本轮上下文不足以一次做完并跑完全门。**工作树保持干净、全门全绿**是硬纪律，因此宁可回退也不留下红色用例。
