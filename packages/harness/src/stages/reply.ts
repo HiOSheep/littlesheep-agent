@@ -264,6 +264,20 @@ export function createReplyStage(deps: ReplyStageDeps) {
         apiGeneratedReply,
         (input) => rewriteReply(deps, ctx, systemPrompt.text, messages, input, replyPurpose),
       );
+      // Rule 11.3: the stage must never finish with an accepted-but-empty reply.
+      // Without this guard a turn could end `ok: true` while publishing nothing,
+      // which is exactly the silent HTTP 200 with an empty reply that the sample
+      // showed. Fail loudly instead.
+      if (!reply.trim()) {
+        const message = 'reply stage accepted no visible text';
+        recordFailure(ctx, 'reply', 'reply', message);
+        return {
+          stage: 'reply',
+          next: 'exit',
+          ok: false,
+          error: message,
+        };
+      }
       // Streamed text is provisional. Replace it only after the complete
       // model reply passes the durable duplicate gate.
       if (reply !== streamed.trim()) ctx.onAssistantReplace?.(reply);
