@@ -75,6 +75,14 @@ export interface PromptContextSegment {
 export interface SystemPromptBundle {
   text: string;
   segments: PromptContextSegment[];
+  /**
+   * The same text without anything at or below the cache boundary. Every stage
+   * and purpose emits these exact bytes, so a later call reuses the transcript
+   * that follows them instead of paying for it again.
+   */
+  stableText?: string;
+  /** Sections at or below the boundary, to be sent after the history. */
+  trailingSegments?: PromptContextSegment[];
 }
 
 /**
@@ -190,6 +198,7 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
     order: index,
     text: `${index > 0 ? '\n\n---\n\n' : ''}${section.content}`,
   }));
+  const boundaryIndex = segments.length;
   let nextOrder = segments.length;
   let hasVolatile = false;
   const volatilePrefix = () => {
@@ -285,7 +294,12 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
     }
   }
 
-  return { text: segments.map((segment) => segment.text).join(''), segments };
+  return {
+    text: segments.map((segment) => segment.text).join(''),
+    segments,
+    stableText: segments.slice(0, boundaryIndex).map((segment) => segment.text).join(''),
+    trailingSegments: segments.slice(boundaryIndex),
+  };
 }
 
 function promptSegment(
