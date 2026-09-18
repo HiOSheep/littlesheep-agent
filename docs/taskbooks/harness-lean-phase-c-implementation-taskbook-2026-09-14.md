@@ -5637,3 +5637,37 @@ return candidates.slice(boundary);
 **预期（B1–B3 完成后）**：跨 purpose 的共享前缀从 **2,934 → 共享头 + 整段历史**（长会话可达数万字符）⇒ `first`（run 间转移）miss/调用 **1,270 → ~300**；长会话 hit **74% → ≥85%**；短会话 hit **→ ≥80%**。
 
 **下一轮**：读 `builder.ts:100–200`（`addStable`/标记插入/`hasVolatile`）与 `bundle` 的返回结构，**让 bundle 直接暴露 `boundaryIndex` 或 `stableSegments`/`trailingSegments`**，然后按 B1 实施（一处改动 + 断言同步）。
+
+## 10.211 **B1 的精确实施方案**：让 builder 把易变段**移出 `bundle.text`**，改由 `bundle.trailingSegments` 暴露（2026-09-18）
+
+**本轮取证（`packages/prompt/src/builder.ts:148–177`）**：
+```ts
+addStable('capabilities', capabilitiesSection(input.tools), 'system_prompt', 98);
+// memory-root-index（10.167 移到稳定区）
+if (!isRespond) {
+  addVolatile('tooling', toolingSection(input.tools), 'system_prompt', 98);   // ← 仅非 respond 模式
+}
+if (isFull && input.skills?.length) addVolatile('skills-index', …);
+…
+```
+且代码注释（`:150–154`）**自身写明**："…extends the cross-stage shared prefix from the **2593-byte** head to **2921 bytes** **before the mode-specific tool section splits the bytes**（taskbook 10.116）" ⇒ **设计上已知晓此断点**：`reply`（respond 模式）**没有** `tooling`，而 `decide`/`execute`（full）**有** ⇒ 跨 purpose 前缀在 `capabilities`/`memory-root-index` 之后立即分歧。
+
+**⇒ B1 的最小实现（一处设计改动，正是 Plan B 的核心）**：
+1. **`builder.ts`**：把 `addVolatile(...)` 的段**不再并入 `segments`/`bundle.text`**，而是收进新的 **`bundle.trailingSegments`**（`cache-observability` 的 `stablePrefix`/`dynamicSuffix` 语义不变，仍是"边界之上/之下"）；
+2. **`bundle.text` = 仅稳定头**（对所有模式**字节一致**，≈2,934；`memory-root-index` 也在其内）；
+3. **各调用点**（`reply.ts:137`、`decide/request.ts`、`tool-loop.ts:132`、`final-reply.ts:113`、`verify`、`recover`、`classify`）把 `systemSegments: bundle.segments` 改为
+   `systemSegments: bundle.stableSegments` + **`trailingSegments: bundle.trailingSegments`** ⇒ 候选层（`context-candidates.ts:29` 已支持 `trailingSegments` ✓）会把这些段作为**历史之后**的消息发出；
+4. **内容一字不减**：`trailingSegments` 原样发出（kind/source 保留）✓。
+
+**这与 10.198/10.199 那次失败的关键区别**：上次是在**候选层按文本找标记**（不可靠，system 只降到 5,847），且**各调用点仍把整条 `bundle.text` 当作 system 传入** ⇒ 分裂不完整；**B1 在 builder 层就把文本切开** ⇒ system 必然等于共享头 ✓，且调用点显式传两个数组 ⇒ 无歧义。
+
+**验收（两次样本 + 两个脚本）**：
+- `analyze-cache-shapes.mjs` 的**逐 purpose system 长度**：全部收敛到**同一值**（≈2,934）；
+- `run-pair-diff`/`analyze-cache-shapes` 的 `first` 位置 miss/调用：**1,270 → ~300–500**；`diffAt0` 从 **58/119 → 个位数**；
+- 长会话 hit **74.0% → ≥85%**；短会话 hit **→ ≥80%**；`failedRuns=0`、`silentRuns=0`。
+
+**风险**：`builder` 的 `segments` 语义被多个测试断言（`builder.test.ts`、`system-prompt-cache-split.test.ts`、`cache-request-shape-matrix.test.ts`、`model-request-characterization.test.ts`）⇒ 预计需同步更新若干断言（**按"稳定头在 system、易变段在尾部"的新语义**），但**不改任何内容**。
+
+**下一轮（B1 落地）**：读 `builder.ts:95–148`（`addStable`/`addVolatile` 的定义与 `segments` 组装）与其返回类型，然后：
+1. 新增 `stableSegments`/`trailingSegments` 到返回结构、`text` 只由稳定段拼接；
+2. 改调用点（先只改 `reply` + `decide` 两处，两次样本验证后再推广）。
