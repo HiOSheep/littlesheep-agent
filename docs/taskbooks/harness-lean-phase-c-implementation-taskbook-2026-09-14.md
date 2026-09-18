@@ -5548,3 +5548,55 @@ tail[11] system 251 · tail[12] system 662 · tail[13] system 1,986   ← 尾部
 **当前基线（未改动，`main`）**：短会话 hit **74.5–76.7%**、miss/调用 **682–716**；长会话 hit **73.7–74.0%**、miss **1,048–1,092**；`execute_tool_loop` miss/调用 **1,640–2,447**。
 
 **下一步（零语义变更的唯一候选）**：读 `_shared.ts:59–120`（`conversationHistoryForModel` 的裁剪实现）与 `_shared.test.ts:236–270`（其 prefix-diff 期望），判断窗口裁剪是否已"前缀稳定"；若否，**只调整裁剪点**（不改预算、不改内容）并两次样本验证。
+
+## 10.209 **最终结论**：现有约束内的全部杠杆已用尽（含"前缀稳定"也已实现）（2026-09-18）
+
+**本轮取证**（`stages/_shared.ts:56–77`）：
+```ts
+/** Messages dropped at once when the window overflows, so the boundary is rare. */
+export const SHARED_HISTORY_BOUNDARY_QUANTUM = 8;
+…
+// Round the boundary down so it moves one quantum at a time, never per turn.
+const boundary = Math.floor(start / SHARED_HISTORY_BOUNDARY_QUANTUM) * SHARED_HISTORY_BOUNDARY_QUANTUM;
+return candidates.slice(boundary);
+```
+⇒ **历史窗口的"前缀稳定"优化早已实现**：溢出时**按 8 条为一量子整块丢弃**，使窗口起点**在多达 8 轮内不变**（并有专门用例 `conversationHistoryForModel prefix diff` 覆盖 ✓）。
+
+⇒ **上一轮设想的"零语义变更的最后一个候选"也已不存在**。
+
+---
+
+### 本目标在"**不裁剪能力 + 不改语义 + 不改契约**"约束内的完整清单
+
+| 杠杆 | 状态 |
+| --- | --- |
+| 跨路径共享头 **284 → 2,934** | ✅ 已落地（`817e4ce`） |
+| run 专属段让位稳定内容 | ✅ 已落地（`07c4b0b`，miss −5%） |
+| **`step-contract` 移到历史之后** | ✅ 已落地（`b9cc929`，工具循环 miss **−60%**、总体 **−18%**） |
+| **`reply` 重写契约移出 system** | ✅ 已落地（`9e4d89a`，消除形状交替、长会话 **+2.1pt**） |
+| `final_reply` 重写契约移出 system | ✅ 已落地，**中性**（`9502d3b`） |
+| S：`memory-root-index` 归稳定区 | ✅ 已落地，**中性**（`f9231e6`） |
+| 历史窗口统一（方案 A） | ✅ **已是现状（no-op）**（10.208） |
+| 窗口"前缀稳定" | ✅ **早已实现**（`SHARED_HISTORY_BOUNDARY_QUANTUM = 8`，10.209） |
+| D1（同 run 统一工具块） | ❌ **前提被数据否证，放弃**（10.207） |
+| 跨 purpose system 统一 | ❌ **实测回归 −14pt，已回退**（10.199/10.200） |
+| `c692dcc`、`8827b90` | 已落地，零净收益 |
+| `runtime-awareness` 紧缩 | 需**信息量取舍**（未做） |
+| 方案 B（让 `verify`/能力回复/紧凑路径带完整历史） | 需**语义取舍**（未做） |
+
+### 最终读数（`main`，未改动）
+
+| 负载 | hit | miss/调用 |
+| --- | --- | --- |
+| 短会话（8×5）六次 | **74.1–76.7%（均值 ≈75.2%）** | **682–753（均值 ≈709）** |
+| 长会话（8×15） | **73.7–74.0%（总体 74.1%）**，基线 68.1% ⇒ **+6pt** | **1,048–1,092**（基线 1,353） |
+
+### 剩余缺口只能由**取舍**消除（均需你决定）
+
+| 选项 | 取舍 |
+| --- | --- |
+| **方案 B**：`verify`/能力回复/紧凑路径携带完整历史 | 改变这些阶段**看到的信息**（能力语义）⇒ 估计 **+3–6pt** |
+| **`runtime-awareness` 紧缩**（706 字符/轮） | 减少逐轮运行事实 ⇒ 估计 **+1–2pt** |
+| **收束判据 ②** | 承认长会话 ~74% 是现有约束下的上限 |
+
+**⇒ 本目标在现约束内的工程工作已全部完成**：能落地的都落地并两次样本验证，不能落地的都以实测数据否证并入档（含 4 次自我更正）。**继续提升必须在"能力语义"上做取舍**，这需要你的明确决定。
