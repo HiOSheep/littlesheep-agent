@@ -3292,3 +3292,26 @@ const status: RunCheckpoint['status'] = ctx.runtimeControl?.state === 'paused'
 3. **能力只增不减**：快路径原本不发 `core-flow`/`safety`/`workspace`/`capabilities`，改后**会发**（对判断更有信息，且大部分命中缓存）⇒ 满足"能力不收缩"，并直接提高命中率。
 
 **预期**：跨 purpose `stableChars` **284 → ≈2,921**；随后两次样本看 miss/调用（目标 <400）与命中率（目标 ≥95%）。**判据不变**。
+
+## 10.123 **假设证实（行级）**：`decide` 紧凑路径传 `'none'` ⇒ 基础提示仅 identity（2026-09-18）
+
+**源码证据**（`packages/harness/src/stages/decide/request.ts:101–104`）：
+
+```ts
+const baseSystemPrompt = compactExplicitTool
+  ? await assembleSystemPromptBundle(resolved, { tools: [], bootstrap: {} }, 'none')
+  : compactAutonomousReadTools
+    ? await assembleSystemPromptBundle(resolved, { tools: [], bootstrap: {} }, 'none')
+    : await assembleSystemPromptBundle(resolved, { …完整输入… }, <其它 mode>);
+```
+
+两条紧凑分支都传 **`'none'`** ⇒ 基础 = `identity`（284 字符）⇒ **与实测的 284 完全吻合**，10.121/10.122 的假设**在行级证实**。随后 `appendSystemPromptBundleAddons(...)` 把 `profile`/`reasoning`/`workspace`/`voice`/契约等以 `placement: 'stable'` 或默认（易变）追加。
+
+**落地改法（下一轮，最小一处）**：
+1. 把 `decide/request.ts:102` 与 `:104` 的 **`'none'` 改为 `'respond'`**（`'respond'` 的头部段 = `identity → core-flow → safety → workspace → date-time → capabilities`，与 `reply` 一致；其 `response-directives` 已在 `7f3e26a` 之后属**易变段**，不影响头部）；
+2. 同样检查并处理 `packages/harness/src/stages/execute/prompt.ts:67–73` 与 `final-reply.ts:44–50` 的紧凑分支（若它们也传 `'none'`）；
+3. **能力只增不减**：紧凑调用原本**不发** `core-flow`/`safety`/`workspace`/`capabilities`，改后**会发**（判断信息更全 + 大部分命中缓存）⇒ 直接满足"能力不收缩"。
+
+**预期**：跨 purpose `stableChars` **284 → ≈2,921**；`provider-reconcile` 的 `decide`/`verify` 行 `cached` 显著上升、miss/调用向 **<400** 收敛。
+
+**验证流程（照目标固定流程）**：`typecheck` → 全量 vitest → `check:repo`（提交前置）→ continuity + UI 门（按 JSON 行解析）→ **两次** 8×5 样本（`prefix-diff` 看 `stableChars`、`provider-reconcile` 看 miss/调用与命中；`failedRuns=0`、`silentRuns=0`）→ 提交 + 推送 + 更新任务书。
