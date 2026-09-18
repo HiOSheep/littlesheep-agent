@@ -60,16 +60,17 @@ Follow progressive disclosure: lead with the outcome and completion status, then
       model: deps.model,
       messages: [
         {
+          // Byte identical for the first answer and for its rewrite: the provider
+          // caches the system message ahead of the history, so appending the
+          // regeneration contract here would rebill the whole transcript.
           role: 'system',
-          content: rewrite
-            ? `${voiceSystemPrompt}\n\nRegeneration contract:\n- The prior API-generated response exactly repeats a previously published LS reply.\n- Generate the final answer again with a genuinely different opening and sentence structure.\n- Preserve every runtime fact, result, failure, permission decision and uncertainty.\n- Do not mention the regeneration or comparison.\n- Return only the final user-facing answer.`
-            : [
-              voiceSystemPrompt,
-              webContract,
-              citationRepair
-                ? `The previous draft failed Runtime citation validation: ${citationRepair.reason}`
-                : undefined,
-            ].filter(Boolean).join('\n\n'),
+          content: [
+            voiceSystemPrompt,
+            webContract,
+            citationRepair
+              ? `The previous draft failed Runtime citation validation: ${citationRepair.reason}`
+              : undefined,
+          ].filter(Boolean).join('\n\n'),
         },
         {
           role: 'user',
@@ -84,6 +85,12 @@ Follow progressive disclosure: lead with the outcome and completion status, then
                 + `Step results:\n${stepSummary}\n\n`
                 + `Write the final reply in the user's language.`,
             ...(rewrite ? [
+              'Regeneration contract:',
+              '- The prior API-generated response exactly repeats a previously published LS reply.',
+              '- Generate the final answer again with a genuinely different opening and sentence structure.',
+              '- Preserve every runtime fact, result, failure, permission decision and uncertainty.',
+              '- Do not mention the regeneration or comparison.',
+              '- Return only the final user-facing answer.',
               `Prior API-generated response:\n${rewrite.generatedReply}`,
               `Recent replies to avoid repeating exactly:\n${rewrite.avoidReplies.map((reply, index) => `${index + 1}. ${reply}`).join('\n')}`,
             ] : []),
