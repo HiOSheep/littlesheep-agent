@@ -3133,3 +3133,27 @@ const status: RunCheckpoint['status'] = ctx.runtimeControl?.state === 'paused'
 - 把 purpose 专属段（`tooling`、`response-directives`、verify 专属段）**移到标记之后**（尾部易变区）；
 - 把 `core-flow` / `memory-root-index` 里**逐次变化**的内容冻结到 run 级或移到尾部；
 - **判据**：`prefix-diff.mjs` 中 `reply↔decide` 的 `stableChars` 从 ≤2934 升到 **≥7000**；整体 miss/调用 从 ~900 降到 **<400**；`failedRuns=0`、`silentRuns=0` 不变；**两次样本**判定。
+
+## 10.113 取证：共享头止于 `capabilities`，purpose 专属段位于**历史之前**（2026-09-18）
+
+**代码事实**（`packages/prompt/src/builder.ts:113–159`）：
+
+| 位置 | 段 | 出现条件 |
+| --- | --- | --- |
+| 共享头（标记之前，**所有模式**） | `identity` → `core-flow` → `safety` → `workspace` → `date-time` → `capabilities` | 全部模式 |
+| **purpose 专属（仍在标记之前）** | `tooling` | 非 respond 模式 |
+| 同上 | `skills-index` | full 且带 skills |
+| 同上 | `runtime` | 传入 runtime 时 |
+| 同上 | `output-directives`（full）/ `response-directives`（respond） | 二者**字节不同** |
+
+- 代码注释自述共享头由 293 字节扩到 **2,921 字节**（`capabilities` 之后被"模式专属工具段"切断）；本轮 `prefix-diff.mjs` 独立测得跨 purpose 稳定字符平台 **284–2,934** ⇒ **2,934 ≈ 2,921，两处互相印证**。
+- **症结**：上述 purpose 专属段位于**同一个 system 消息内、历史之前**。它们一旦不同，**其后的整段历史（8k–19k 字符）全部作废**（Provider 从 token 0 匹配前缀）。
+
+**两条可选路线：**
+
+| 路线 | 做法 | 收益 | 代价/风险 |
+| --- | --- | --- | --- |
+| **(a) 把 purpose 专属段移到历史之后**（推荐先试） | 首个 system 消息=**所有 purpose 字节一致**的共享头；`tooling`/`skills-index`/`runtime`/directives 改由**尾部追加消息**承载（机制已存在：`runtime-awareness.ts` 与 `appendSystemPromptAddons` 的 volatile 放置） | 首个 system 消息在所有 purpose 间一致 ⇒ **整段历史可复用**（预计 stableChars 从 ≤2,934 升到 7,000+） | 指令出现在转录**之后**，可能影响模型注意力/行为 ⇒ 必须全门 + **两次样本**验证能力不收缩 |
+| **(b) 让字节相等** | 所有模式都发出同一批段（purpose 差异用空段或统一文本），扩展共享头 | 无需改变消息顺序 | `reply` 的提示词变大；易引入行为漂移；"能力不收缩"更难证明 |
+
+**判据（不变）**：`prefix-diff.mjs` 的跨 purpose `stableChars` **≥7,000**；miss/调用 **<400**；主对话命中 **≥95%**；`failedRuns=0`、`silentRuns=0`；**两次样本**。
