@@ -7267,3 +7267,34 @@ return buildRunRequestCandidates(ctx, 'decide', messages, {
 3. 逐处替换直至 `verify` 携带历史时套件全绿 ⇒ 再让 `verify` 用**有界历史**并跑两次样本。
 
 **注**：这是**唯一能让长会话 ratio 再上一个台阶**的结构性项（它解锁 `verify` 与主路径共享前缀），但**属协议级改造**，需你确认是否值得投入（对比：**#3 已收束**、判据①已达标、判据②结构性受限）。
+
+## 10.266 D1 梳理（1/5）：`response-continuity-exposure` 已是身份匹配，冗余条件才是形状依赖（2026-09-18）
+
+**取证**（`packages/harness/src/response-continuity-exposure.ts:62–71`）：
+```ts
+const provenance = input.replyProvenance;
+if (!provenance) return unavailableExposure();
+const provenanceRequest = (input.modelRequests ?? []).find((request) => (
+  request.id === provenance.modelRequestId            // ← 稳定身份 ✓（已有）
+  && request.requestIndex === provenance.modelRequestIndex   // ← 形状/顺序依赖 ✗
+  && request.provider === provenance.provider
+  && request.model === provenance.model
+  && request.callContract?.purpose === provenance.purpose
+));
+if (!provenanceRequest) return unavailableExposure();
+```
+**⇒ 判定**：本处**已经以 `request.id`（稳定身份）为首要匹配**；后续四个条件是**冗余佐证**，其中 **`requestIndex` 是形状/顺序依赖**：`verify` 一旦改变请求形状，索引可能位移 ⇒ 该 `find` 失败 ⇒ 返回 `unavailableExposure()` ⇒ 依赖它的续跑/暴露判定随之失配 ✓（与 10.265 的定性一致）。
+
+**⇒ 本处的替换方案（最小、语义等价）**：**只保留 `request.id === provenance.modelRequestId`**（必要时保留 `purpose` 作为一致性校验），**去掉 `requestIndex`**（以及可选的 `provider`/`model`，它们不承载身份）。
+- **风险**：极低（`id` 唯一标识请求 ✓；`provenance` 由同一处生成 ⇒ 身份不会歧义）；
+- **验证**：`packages/harness/src/response-continuity*.test.ts` + `packages/runner` 全套件。
+
+**⇒ 后续 4 处（同一梳理的下一步）**：
+| # | 位置 | 待确认的身份依赖 |
+| --- | --- | --- |
+| 2 | `harness/src/user-facing-reply.ts:256` | `modelRequestIndex: request.requestIndex`（provenance 记录索引）—— 是否需要保留、还是可由 `request.id` 取代 |
+| 3 | `runner/src/runner.ts:890–901 / 1775 / 1918–1951 / 2219–2269` | settlement 判定/提升/恢复是否按索引匹配 |
+| 4 | `runner/src/authoritative-reply.ts:70/106/138/172` | 权威答复绑定与 `mode` 判定 |
+| 5 | `runner/src/run-checkpoint.ts:154`、`run-checkpoint-store.ts:593–621` | 检查点携带 `verificationHistory` 的克隆与上限 |
+
+**下一轮**：实施本处（#1）的替换 ⇒ 跑 `runner` + 全量套件 ⇒ 若失败数下降则继续 #2–#5；若**完全不变** ⇒ 说明 9 例失败另有主因（需在 `runner` 里定位**真正**按形状匹配的那一处）。
