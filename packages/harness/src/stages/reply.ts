@@ -19,7 +19,6 @@ import {
   userChatMessage,
   recentHistoryForModel,
 } from './_shared.js';
-import { collectRecentAssistantReplies, MAX_AVOID_REPLY_CHARS, MAX_AVOID_REPLY_COUNT } from '../user-facing-reply.js';
 import { appendSystemPromptBundleAddons, buildUserFacingVoiceAddon } from '../profile-prompt.js';
 import {
   preferDirectModelOutput,
@@ -102,17 +101,6 @@ export function createReplyStage(deps: ReplyStageDeps) {
 
     const attachmentMessages = isCapabilityReply ? [] : attachmentContextMessages(ctx.runId, ctx.attachments);
     const history = isCapabilityReply ? recentHistoryForModel(ctx.history) : conversationHistoryForModel(ctx);
-    const avoidReplies = collectRecentAssistantReplies(ctx)
-      .slice(-MAX_AVOID_REPLY_COUNT)
-      .map((reply) => reply.slice(0, MAX_AVOID_REPLY_CHARS));
-    // Telling the first answer which replies it must not repeat keeps the
-    // duplicate rewrite off the path instead of paying for it afterwards. The
-    // list rides its own trailing message, so the cached prefix is untouched;
-    // capability replies stay self-contained and skip it.
-    const avoidGuidance = avoidReplies.length === 0 || isCapabilityReply
-      ? undefined
-      : 'Recently published replies - do not repeat any of them word for word; if your answer would be identical, rephrase it while preserving every fact:\n'
-        + avoidReplies.map((reply, index) => `${index + 1}. ${reply}`).join('\n');
     const messages: ChatMessage[] = [
       {
         role: 'system',
@@ -121,7 +109,6 @@ export function createReplyStage(deps: ReplyStageDeps) {
       ...history.map(toChatMessage),
       ...attachmentMessages.map((item) => item.message),
       userChatMessage(textOf(ctx.inbound), ctx.attachments),
-      ...(avoidGuidance === undefined ? [] : [{ role: 'system' as const, content: avoidGuidance }]),
     ];
 
     let reply: string;
