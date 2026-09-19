@@ -61,11 +61,11 @@ export function resolveResponseContinuityExposure(input: {
 
   const provenance = input.replyProvenance;
   if (!provenance) return unavailableExposure();
+  // Identity, not shape: the request id is stable, while its index and the
+  // messages it carries are not (a stage may start sending conversation
+  // history), and a shape mismatch here silently drops the exposure report.
   const provenanceRequest = (input.modelRequests ?? []).find((request) => (
     request.id === provenance.modelRequestId
-    && request.requestIndex === provenance.modelRequestIndex
-    && request.provider === provenance.provider
-    && request.model === provenance.model
     && request.callContract?.purpose === provenance.purpose
   ));
   if (!provenanceRequest) return unavailableExposure();
