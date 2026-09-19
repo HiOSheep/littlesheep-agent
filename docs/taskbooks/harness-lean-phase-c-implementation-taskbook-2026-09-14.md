@@ -7089,3 +7089,31 @@ const messages: ChatMessage[] = [
 **判据（不变）**：`rewriteCount=0` 占比↑、**`avgCalls/run`（现 2.14）与 p95（现 7）↓**、`failedRuns=0`、`silentRuns=0`、`publishedRuns` 满额、`verificationPassRateDelta ≥ 0`。
 
 **实施要点**：`textOf(inbound.content)` 的取法需按 `ChatMessage.content` 的类型（可能是 string 或分段数组）调整——**先 `read` `userChatMessage` 的实现**再用 `edit` 写；若 `content` 是数组，用 `[...]` 拼接而非字符串模板。
+
+## 10.259 R1 收尾：**已缩到"1 处断言"或"零改动"两条路**（原文均已取得）（2026-09-18）
+
+**本轮实测（变体 B：把清单并入入站 user 消息，保留图片分段、消息条数不变）**：
+- `typecheck` clean ✓；
+- 首次：**2 失败** ⇒ 收窄为"**能力回复不做重复回避**"（`isCapabilityReply ? undefined`，符合其自包含语义）后 ⇒ **仅剩 1 失败**；
+- 剩余失败的原文（`reply.test.ts:229–233`）：
+  ```ts
+  const sentText = …messages.flatMap((message) => typeof message.content === 'string' ? message.content : message.content.filter((p) => p.type === 'text').map(…)…);
+  expect(sentText).toEqual(expect.arrayContaining([
+    '介绍一下DBV-152这辆车吧',
+    '单发是800啊',
+    …（精确字符串，我追加的文本使其不再精确相等）
+  ]));
+  ```
+- **改动已回退**（`modified=0`，树干净）。
+
+**⇒ 两条收尾路线（都只差一步，均可一次完成）**：
+
+| 路线 | 剩余工作 | 测试改动 |
+| --- | --- | --- |
+| **B（并入入站消息）** | 重新应用本轮已验证的两处 `edit`（含 `isCapabilityReply` 收窄） | **1 处**：把 `reply.test.ts:231–233` 的元素改为 `expect.stringContaining('…')`（或用 `sentText.join('\n')` + `toContain`） |
+| **A（新增尾部消息 + 跳过能力回复）** | 同上但清单为**独立尾部 user 消息** | 预期 **0 处**（能力回复被跳过 ⇒ `toHaveLength(3)` 不变；主题锚点用例的 `arrayContaining` 对**多余元素宽容** ⇒ 亦不变）；**唯一风险**是 `model-request-characterization.test.ts:174` 的 `expectRecordedSnapshot(ctx, 'reply')`（形状/快照校验，需确认其对多余尾部消息的态度） |
+
+**⇒ 建议下一轮**：先做**路线 A**（预期零测试改动）并跑套件；若只剩 `expectRecordedSnapshot` 相关失败，再退到路线 B（1 处断言改为 `stringContaining`）。
+
+**两路线的共同性质（不变）**：只增信息（不裁剪能力）；清单位于**尾部**（不触碰被缓存前缀）；清单对**能力回复跳过**（其语义自包含）。
+**判据（不变）**：`rewriteCount=0` 占比↑、**`avgCalls/run`（现 2.14）与 p95（现 7）↓**、`failedRuns=0`、`silentRuns=0`、`publishedRuns` 满额、`verificationPassRateDelta ≥ 0`。
