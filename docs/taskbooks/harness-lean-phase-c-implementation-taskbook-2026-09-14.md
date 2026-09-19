@@ -6134,3 +6134,30 @@ export function buildUserFacingVoiceAddon(ctx) {
 **⇒ 优先级：S4a（去重）> S4b–S4e（措辞）**；若 S4a 成立，仅它会带来可观的尾部缩短（尾部是**纯新增内容** ⇒ 每减 1 字符即 ratio 直接受益）。
 
 **下一轮**：读 `renderCapabilityLines`（`runtime-awareness.ts` 内）与 `capabilitiesSection`（`sections.ts`），**逐条对照**：凡尾部与头部表达同一事实的行，**尾部删除**（事实仍在头部且已缓存）；随后实施 S4b–S4e 的措辞压缩。验收：`runtime-awareness` 字符数下降、**hit → ≥75%**、两次样本 `failedRuns=0`/`silentRuns=0`/`verificationPassRateDelta ≥ 0`。
+
+## 10.228 S4a 去重**不成立**；S4b–S4e 的确切改写（下一轮机械实施）（2026-09-18）
+
+**逐条对照（本轮取证）**：
+
+| 位置 | 内容 | 是否重复 |
+| --- | --- | --- |
+| 头部 `capabilitiesSection`（`sections.ts:99–105`，348 字符） | `# Available Capabilities` + `Registered in this run: <工具名单>.` + "能力证据，非调用许可" | — |
+| 尾部 `renderCapabilityLines`（`runtime-awareness.ts:174–199`） | `# Runtime Capability Snapshot` + `- capability_epoch: …` + `permission/workspace/network` + `tools=<名>=<状态>, …`（compact 形式一行；full 形式多行） | **仅"工具名"重叠**；**状态/epoch/许可/网络/工作区是独有事实** |
+
+⇒ **S4a（把尾部 capability lines 与头部去重后删除）不成立** —— 删除会**丢掉状态类事实**（违反"信息不减少"）。
+
+**⇒ 剩余只能做措辞压缩（S4b–S4e），合计约 140 字符/次（≈35 token）⇒ 估计 ratio +0.5–1pt**：
+
+| # | 现状 | 改为 | 省 |
+| --- | --- | --- | --- |
+| S4b | `- local_datetime: X` / `- time_zone: Y` / `- utc_instant: Z` / `- run_started_at: W` | `local=X` / `tz=Y` / `utc=Z` / `started=W`（统一为 compact 风格的 `key=value`，与既有 compact 渲染一致） | ~60 |
+| S4c | `- user_time_format: ${format} (default answer precision: hour and minute)` | `- user_time_format: ${format}`（该括号与 `output-directives` 的既有规定重复） | ~45 |
+| S4d | `- run_elapsed: ${ms} ms (${human})` | `- run_elapsed: ${human}`（毫秒数值仍可由 human 形式表达；如需精确值可在 `runtime_event` 源中保留） | ~8 |
+| S4e | `# Live Runtime State` 前后的空行 | 保留（可读性，不压） | 0 |
+
+**⇒ 结论（诚实）**：**S4 的可见收益仅约 +0.5–1pt**，不足以单独把 hit 从 74.4% 稳定推过 75%；**本负载 + 现有约束下的 ratio 上限 ≈74–75%。**
+
+**下一轮（按授权实施 S4b/S4c/S4d）**：
+1. 改 `runtime-awareness.ts:126–136` 的字段标签与 `user_time_format`/`run_elapsed` 两行；
+2. 同步 `runtime-awareness.test.ts` 中断言这些标签的用例（预计少量）；
+3. 全门 + **两次**样本 ⇒ 验收：`runtime-awareness` 字符数下降、hit 变化、`failedRuns=0`、`silentRuns=0`。
