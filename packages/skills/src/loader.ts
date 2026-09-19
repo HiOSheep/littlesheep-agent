@@ -75,6 +75,8 @@ export interface SkillLoader {
    * Used for per-run content such as the task book, which no skill file holds.
    */
   registerDynamic?(entry: SkillIndexEntry, body: () => string | undefined): void;
+  /** Drop a dynamic entry again, e.g. when the run that owned it ends. */
+  unregisterDynamic?(name: string): void;
   /** Re-scan skill directories and rebuild the index. New skills become visible immediately. */
   reload(): Promise<SkillIndex>;
   /** Atomically replace all dynamic sources owned by one source kind. */
@@ -267,6 +269,10 @@ export async function createSkillLoader(opts: LoadSkillIndexOptions): Promise<Sk
     registerDynamic: (entry, body) => {
       dynamicEntries.set(entry.name, entry);
       dynamicBodies.set(entry.name, body);
+    },
+    unregisterDynamic: (name) => {
+      dynamicEntries.delete(name);
+      dynamicBodies.delete(name);
     },
     reload,
     replaceOwnedSources: async (kind, sources) => {
