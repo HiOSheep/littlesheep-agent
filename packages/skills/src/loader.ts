@@ -74,7 +74,8 @@ export interface SkillLoader {
    * Register a body that is produced at call time instead of read from disk.
    * Used for per-run content such as the task book, which no skill file holds.
    */
-  registerDynamic?(entry: SkillIndexEntry, body: () => string | undefined): void;
+  /** Minimal descriptor: the loader fills in the discovery-only fields. */
+  registerDynamic?(entry: { name: string; description: string; whenToUse?: string }, body: () => string | undefined): void;
   /** Drop a dynamic entry again, e.g. when the run that owned it ends. */
   unregisterDynamic?(name: string): void;
   /** Re-scan skill directories and rebuild the index. New skills become visible immediately. */
@@ -267,7 +268,12 @@ export async function createSkillLoader(opts: LoadSkillIndexOptions): Promise<Sk
     },
     loadBody: async (name) => dynamicBodies.get(name)?.() ?? loadSkillBody(name, index),
     registerDynamic: (entry, body) => {
-      dynamicEntries.set(entry.name, entry);
+      dynamicEntries.set(entry.name, {
+        ...entry,
+        dir: '',
+        source: { id: `dynamic:${entry.name}`, kind: 'builtin', dir: '' },
+        availability: 'active',
+      });
       dynamicBodies.set(entry.name, body);
     },
     unregisterDynamic: (name) => {

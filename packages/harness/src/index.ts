@@ -190,3 +190,5 @@ export {
   type DurableRecoveryOptions,
 } from './durable-kernel.js';
 export type { DurableInboxProcessResult } from './durable-inbox-processor.js';
+
+export * from './taskbook-skill.js';

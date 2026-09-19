@@ -1,5 +1,6 @@
 // @littlesheep/runner — runner.ts: shared agent runner used by the app and channels.
 import { filterAuthoritativeUserFacingMessages } from '@littlesheep/types';
+import { TASKBOOK_SKILL_DESCRIPTION, TASKBOOK_SKILL_NAME, renderTaskbookSkillBody } from '@littlesheep/harness';
 import type {
   AgentResult,
   Message,
@@ -659,6 +660,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           webRetrieval: webRetrievalRuntime,
         });
       runContext = ctx;
+      infra.skillLoader?.registerDynamic?.({ name: TASKBOOK_SKILL_NAME, description: TASKBOOK_SKILL_DESCRIPTION }, () => renderTaskbookSkillBody(ctx));
       onToolEvent({
         type: 'capability_snapshot',
         visibility: 'silent',
@@ -937,6 +939,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       }
       return { ...result, durableHarnessMode };
     } finally {
+      infra.skillLoader?.unregisterDynamic?.(TASKBOOK_SKILL_NAME);
       if (durableRecorder && !durableOutcomeRecorded) {
         if (runContext) {
           await flushModelRequestLifecycles(runContext).catch((error) => {
