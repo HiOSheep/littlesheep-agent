@@ -7298,3 +7298,23 @@ if (!provenanceRequest) return unavailableExposure();
 | 5 | `runner/src/run-checkpoint.ts:154`、`run-checkpoint-store.ts:593–621` | 检查点携带 `verificationHistory` 的克隆与上限 |
 
 **下一轮**：实施本处（#1）的替换 ⇒ 跑 `runner` + 全量套件 ⇒ 若失败数下降则继续 #2–#5；若**完全不变** ⇒ 说明 9 例失败另有主因（需在 `runner` 里定位**真正**按形状匹配的那一处）。
+
+## 10.267 D1 实验（#1 + `verify` 有界历史）：**仍是 9 处失败 ⇒ #1 不是原因**（2026-09-18）
+
+**实验**：先落地梳理 #1（`response-continuity-exposure.ts` 改纯身份匹配：`request.id` + `purpose`），再叠加「`verify` 携带 `recentHistoryForModel(ctx.history)`」⇒ 跑全量套件。
+
+**结果**：
+- **#1 单独**：`typecheck` clean、**全量 3,287 通过（0 失败）** ✓ ⇒ **无回归**，已提交（`refactor(harness): match the provenance request by identity instead of shape`）；
+- **#1 + verify 历史**：**仍然 9 failed / 3278 passed**，且是**同一批**用例（`Runner Memory v3 integration` 1 例 + `runner checkpoint continuation` 8 例）⇒ **#1 与该断裂无关**；
+- **处置**：`verify` 改动已回退（保留 #1），树干净。
+
+**⇒ 收窄结论**：断裂点在 **runner 的 settlement / continuation 路径**，不在 harness 暴露模块：
+| # | 位置 | 状态 |
+| --- | --- | --- |
+| 1 | `response-continuity-exposure.ts` | ✅ **已改为身份匹配**（架构债本体收益） |
+| 2 | `user-facing-reply.ts:256`（记 `modelRequestIndex`） | 待查 |
+| 3 | **`runner.ts:890–901 / 1775 / 1918–1951 / 2219–2269`** | **最可能断裂点**（settlement 判定/提升/恢复） |
+| 4 | `authoritative-reply.ts:70/106/138/172` | 次可能（权威答复绑定与 `mode`） |
+| 5 | `run-checkpoint*.ts`（`verificationHistory`） | 待查 |
+
+**下一轮（二分定位）**：读 `runner.ts:880–905` 与 `authoritative-reply.ts:60–145`，找**按索引/形状**匹配"上一轮答复"的那一处 ⇒ 最小替换为 `settlementId`/`fingerprint` ⇒ 再叠加 `verify` 历史、看失败数是否下降；若全部替换后仍 9 例 ⇒ 改从失败用例的 **`result.error` 文本**入手定位。
