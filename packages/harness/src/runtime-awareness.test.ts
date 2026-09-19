@@ -106,8 +106,8 @@ describe('runtime awareness', () => {
     // prefix cache can cover the system prompt and the whole conversation.
     expect(system.startsWith(CACHE_BOUNDARY_MARKER)).toBe(true);
     expect(String(prepared.messages[0]?.content)).toBe('stable policy');
-    expect(system).toContain('local_datetime: 2026-07-15 11:04:05 +08:00');
-    expect(system).toContain('run_elapsed: 65678 ms (00:01:05.678)');
+    expect(system).toContain('local=2026-07-15 11:04:05 +08:00');
+    expect(system).toContain('elapsed=00:01:05.678');
     expect(system).toContain('task_progress: 1/2 completed (50%)');
     expect(system).toContain('read:succeeded:1250 ms, step=step-1');
     expect(ctx.contextSnapshots?.[0]?.items).toEqual(expect.arrayContaining([

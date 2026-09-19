@@ -126,13 +126,13 @@ function renderRuntimeAwareness(
   const lines = [
     '# Live Runtime State',
     '',
-    `- local_datetime: ${clock.localDateTime} ${clock.utcOffset}`,
-    `- time_zone: ${clock.timeZone}`,
-    `- user_time_format: ${ctx.timeFormat ?? 'auto'} (default answer precision: hour and minute)`,
-    `- utc_instant: ${clock.instant}`,
-    `- run_started_at: ${ctx.startedAt}`,
-    `- run_elapsed: ${runElapsedMs} ms (${formatElapsedMilliseconds(runElapsedMs)})`,
-    `- task_state: ${progress.state}`,
+    `local=${clock.localDateTime} ${clock.utcOffset}`,
+    `tz=${clock.timeZone}`,
+    `time_format=${ctx.timeFormat ?? 'auto'}`,
+    `utc=${clock.instant}`,
+    `started=${ctx.startedAt}`,
+    `elapsed=${formatElapsedMilliseconds(runElapsedMs)}`,
+    `task=${progress.state}`,
   ];
   lines.push(...renderCapabilityLines(ctx, false));
 
