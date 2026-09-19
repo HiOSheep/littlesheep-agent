@@ -6331,3 +6331,35 @@ runtime-awareness.test.ts:111  expect(system).toContain('task_progress: 1/2 comp
 **验收（两次样本）**：`execute` 调用卸载 **≈1,630 字符（≈420 token）/次** ⇒ 预期 ratio **+1–2pt**；**回退条件**：`verificationPassRateDelta < 0`、`publishedRuns` 下降、或 `failedRuns > 0`（说明模型确实依赖常驻 taskbook）。
 
 **本轮实际完成**：**推送成功**（`3409f19..a0aaef2`，`ahead=0`）—— 此前积压的 S4 代码与 3 个文档提交**已全部交付到远端 `main`** ✓
+
+## 10.235 taskbook-as-skill 第 3–4 步的**精确接线**（2026-09-18）
+
+**已落地（本会话）**：`485d58c` = loader 的**动态正文能力**（`dynamicEntries`/`dynamicBodies` + `registerDynamic`，与 index 并存以免 `reload()` 丢弃；**尚无调用者**，行为不变）。门禁：`typecheck`、全量 3,287、`check:repo` 33/33（该文件越 300 行已登记进 `docs/reference/module-split-map.md`）。
+
+**接线位置（本轮取证）**：
+| 位置 | 作用 |
+| --- | --- |
+| `packages/runner/src/infra.ts:446` | `const skillLoader = await createSkillLoader({ … })` |
+| `packages/runner/src/infra.ts:461` | `createUseSkillTool(skillLoader)` —— `use_skill` 工具（其 description 会列出 `loader.index.skills` 的名字 ✓ 动态条目会自动出现在"Available:"里） |
+| `packages/runner/src/infra.ts:568` | `skillLoader` 挂到 `runner.infra` |
+| `packages/runner/src/infra.ts:450/509` | `memoryService.syncSkillResources(skillLoader.index.discovered, …)` —— 注意：**只用 `discovered`**（磁盘发现的），动态条目不进那里 ✓ 不影响记忆侧 |
+| `packages/prompt/src/builder.ts:403` | `skills: facts.skills` ⇒ skill **索引**（名字+描述）进提示 |
+
+**第 3 步（harness / run 初始化）**：在 **run 开始处**（`ctx` 已构建、早于任何 stage）调用：
+```ts
+runner.infra.skillLoader.registerDynamic?.(
+  { name: 'taskbook', description: 'This run''s task book, plan and step contract; load before acting on steps.' },
+  () => renderTaskbookSkillBody(ctx),   // 复用 renderTaskBookGuidance(ctx.taskBook) / renderPlanGuidance(ctx.plan) / renderStepGuidance(…)
+);
+```
+并确认 **`facts.skills` 的来源**包含 `skillLoader.index.skills`（若 harness 在某处把 `loader.index.skills` 传给提示装配，则动态条目会在**注册之后**的请求中出现 ✓）。
+
+**第 4 步（停止注入）**：`packages/harness/src/stages/execute/prompt.ts` 移除
+- `renderTaskBookGuidance(ctx.taskBook)`（`:38–39` 一带）与 `renderPlanGuidance(ctx.plan)`（`:41` 一带）；
+- **保留 `step-contract`**（`task-step-runner.ts:96` 一带，含"本步允许的工具/验收标准"，属**执行安全**）；
+- **运行时 `ctx.taskBook` 与 10.153 的 6 处执行期校验一律不动**。
+
+**验收（两次样本）**：`use_skill('taskbook')` 在请求中可见（`analyze-cache-shapes.mjs` 的逐 purpose system/尾部字符数下降 ≈1,630/次）；**ratio 预期 +1–2pt**；`failedRuns=0`、`silentRuns=0`、`publishedRuns` 满额、`verificationPassRateDelta ≥ 0`。
+**回退条件**：若出现质量退化（`verificationPassRateDelta < 0`、发布数下降、`failedRuns > 0`）⇒ 撤掉第 4 步（恢复注入），或改成"仅 `execution-plan` 走 skill、`step-contract` 常驻"。
+
+**下一轮**：先读 `packages/runner/src/infra.ts:440–470` 与 run 入口（`ctx` 构建处），落地第 3 步；再改第 4 步；然后全门 + 两次样本。
