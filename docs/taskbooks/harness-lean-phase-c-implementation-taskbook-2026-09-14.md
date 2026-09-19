@@ -7318,3 +7318,31 @@ if (!provenanceRequest) return unavailableExposure();
 | 5 | `run-checkpoint*.ts`（`verificationHistory`） | 待查 |
 
 **下一轮（二分定位）**：读 `runner.ts:880–905` 与 `authoritative-reply.ts:60–145`，找**按索引/形状**匹配"上一轮答复"的那一处 ⇒ 最小替换为 `settlementId`/`fingerprint` ⇒ 再叠加 `verify` 历史、看失败数是否下降；若全部替换后仍 9 例 ⇒ 改从失败用例的 **`result.error` 文本**入手定位。
+
+## 10.268 D1 二分定位（第 2 站）：`runner.ts:881–907` 是**延迟结算**路径（2026-09-18）
+
+**取证**（`packages/runner/src/runner.ts:881–907`）：
+```ts
+if (durableHarnessMode === 'next' && result.status === 'ok') {
+  try {
+    await settleDeferredFinalReply(ctx);
+    result = settledReplyResult(result, ctx);
+    await settleFinalReplyArtifacts(ctx, infra, opts.log);
+  } catch {
+    // 不在不确定/已确认的 final-reply 事件之后再追加竞争的 Runtime 终止事件
+    if (!ctx.finalReplySettlementUncertain && !ctx.finalReplyEventSettled) {
+      await settleRuntimeFailureEvent(ctx, 'final_reply_settlement_failed', opts.log);
+    }
+    result = runtimeFailureResult(result, 'final_reply_settlement_failed');   // ← 会把 result 变成 error
+    …
+  }
+}
+if (durableHarnessMode === 'next' && result.status !== 'ok' && result.finalReplySettlement?.status !== 'settled') { … replay … }
+```
+
+**⇒ 线索**：这 9 例失败的表征是 `expected 'error' to be 'ok'` ⇒ 即 **`result.status === 'error'`**，而本块正是**唯一**把"运行成功"改判为**失败**的路径（`runtimeFailureResult(…, 'final_reply_settlement_failed')`）⇒ **断裂极可能在 `settleDeferredFinalReply` 或 `settleFinalReplyArtifacts` 内部抛错**（`catch` 吞掉原因 ⇒ 用例只看到 `error`）✓
+
+**⇒ 下一步（下一轮，一次到位）**：读 **`settleDeferredFinalReply`** 与 **`settleFinalReplyArtifacts`** 的实现（`runner.ts` 内，`grep 'function settleDeferredFinalReply|function settleFinalReplyArtifacts'` 定位），检查其中是否有**按 `requestIndex`/请求形状**或**按 `modelRequests` 顺序**的匹配；若命中 ⇒ 做**最小替换**为 `settlementId`/`fingerprint`，再叠加 `verify` 历史看失败数是否下降。
+**备选手段（若仍定位不到）**：给失败用例**临时打印 `result.error`**（仅本地、不入提交），直接读抛出原因 —— 这比继续盲读更快。
+
+**D1 现状小结（交接）**：5 处嫌疑中 **#1 已改善并提交**（身份匹配）；**#3 收窄到延迟结算路径**（本轮）；#2/#4/#5 待查。**属协议级改造、需多轮**；对命中率的直接收益是间接的（解锁 `verify` 与主路径共享前缀）。
