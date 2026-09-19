@@ -17,6 +17,7 @@ import {
   toChatMessage,
   textOf,
   userChatMessage,
+  recentHistoryForModel,
 } from './_shared.js';
 import { appendSystemPromptBundleAddons, buildUserFacingVoiceAddon } from '../profile-prompt.js';
 import {
@@ -99,7 +100,7 @@ export function createReplyStage(deps: ReplyStageDeps) {
     ]);
 
     const attachmentMessages = isCapabilityReply ? [] : attachmentContextMessages(ctx.runId, ctx.attachments);
-    const history = isCapabilityReply ? [] : conversationHistoryForModel(ctx);
+    const history = isCapabilityReply ? recentHistoryForModel(ctx.history) : conversationHistoryForModel(ctx);
     const messages: ChatMessage[] = [
       {
         role: 'system',
@@ -347,7 +348,7 @@ async function rewriteReply(
     purpose,
     preferDirectModelOutput(ctx, rawRequest, { force: true }),
     buildRunRequestCandidates(ctx, 'reply', rawRequest.messages, {
-      history: isCapabilityReply ? [] : conversationHistoryForModel(ctx),
+      history: isCapabilityReply ? recentHistoryForModel(ctx.history) : conversationHistoryForModel(ctx),
       primaryUserKind: 'user_input',
     }),
     { retryOf: ctx.modelRequests?.at(-1)?.id, retryReason: 'duplicate' },
