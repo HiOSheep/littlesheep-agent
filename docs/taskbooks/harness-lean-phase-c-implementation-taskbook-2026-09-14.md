@@ -6037,3 +6037,30 @@ export function buildUserFacingVoiceAddon(ctx) {
 **S4（并授权）**：`runtime-awareness`(706/轮) 紧缩 —— 紧随 S3 之后单独做，两次样本独立验收。
 
 **下一轮**：实施 S3（`sections.ts` 按 stage 渲染 + `builder.ts` 传递 + 调用点传 stage），先只改 **router(classify)** 与 **reply** 两处验证效果，再推广。
+
+## 10.224 **设计方向（用户提出，2026-09-18）**：taskbook 应作为**系统性 skill**，而非直接注入 runtime 提示
+
+**用户要求**："taskbook 也应作为系统性的 skill，而不是直接的 runtime"。
+
+**现状（本会话已取证）**：taskbook / plan / step 的指导文本**每次调用都被注入**：
+- `renderTaskBookGuidance(ctx.taskBook)`（`execute/prompt.ts:38–39`）→ 进入 execute 的 system/尾部；
+- `renderPlanGuidance(ctx.plan)`（`:41`）；
+- `renderStepGuidance(...)`（`task-step-runner.ts:100`）→ 我已在 10.180 把它从 system 移到**历史之后**（`step-contract`，1,211 字符）；
+- 另有 `workflow_state`/`output_constraint` 等 kind 承载这些文本。
+
+**方向（与"把判断类决策交回模型、运行时只守安全类事实"一致）**：
+1. **运行时仍持有 taskbook 对象**（步骤调度、每步工具校验、证据记录都依赖它 —— 见 10.153 的 6 处执行期校验），**不改**；
+2. **但把"指导文本"改为 skill**：注册一个 `taskbook` skill（沿用既有 `skills-index` / `create_skill` 机制），其内容 = 当前 `renderTaskBookGuidance` / `renderPlanGuidance` / `renderStepGuidance` 的文本；
+3. **模型按需加载**：需要时调用该 skill（工具调用），**不再每次注入**；
+4. 模型仍可从 skill 结果中获得**与今天完全相同的信息** ⇒ **不减少能力**（从"总是推送"变为"按需拉取"）。
+
+**预期效果（叠加在 S1/S3 之上）**：
+- execute 家族每次调用 **−~1,200 字符**（step-contract 已后置，但 taskbook/plan 指导仍在提示中）；
+- **提示词结构进一步统一**：system = 共享头；判断类内容通过 skill/尾部按需提供 ⇒ 符合用户"简化提示词与路径/状态机"的总目标；
+- 对**命中率**的影响：把固定文本从提示移到"按需的 tool 结果"，可减少**每轮的新增 token**（C1 类成本）—— 需实测。
+
+**风险/验收**：
+- 模型**可能不主动加载** taskbook ⇒ 任务质量下降 ⇒ 两次样本必须 `verificationPassRateDelta ≥ 0`、`publishedRuns` 满额、`failedRuns=0`；若退化，则保留"关键步骤契约始终注入、详细 taskbook 走 skill"的折中；
+- 该改动**属能力语义变更**（推送 → 拉取）⇒ 已由用户本次明确提出，视为授权；实施前我会给出**逐项影响清单**（哪些文本移出、skill 的名称与触发方式、运行时保留哪些契约）。
+
+**附：本轮环境异常**：S3 修正后的短会话样本**被环境杀死**（`subprocess failed before reporting an outcome: Windows Job runner exited with exit code 1073807364`）⇒ **S3 的实测仍未取得**，下一轮重跑；**S3 修正版（`09f41ee`）已在本地提交**（typecheck/全量 3,287/`check:repo` 33/33 均绿），未推送。
