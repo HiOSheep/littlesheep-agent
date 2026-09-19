@@ -38,6 +38,8 @@ export type PromptMode = 'full' | 'respond' | 'minimal' | 'none';
 
 /** Inputs to the pure renderer (Layer 1). */
 export interface PromptInput {
+  /** Stage name so the flow section can render only this stage's constraint. */
+  coreFlowStage?: string;
   /**
    * Omit the rendered tooling section. Set only where the request advertises the
    * tools natively and the runtime enforces the callable set, so the text would
@@ -144,7 +146,7 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
   // prefilled. Measured effect: the cross-stage shared head grows from 293
   // bytes (identity only) to this whole sequence.
   addStable('identity', identitySection(input.branding));
-  addStable('core-flow', coreFlowSection());
+  addStable('core-flow', coreFlowSection(input.coreFlowStage));
   addStable('safety', safetySection(), 'system_prompt', 100);
   addStable(
     'workspace',
@@ -364,6 +366,8 @@ export function resolvePromptConfig(config: Config, branding: BrandingConfig): R
  * prelude) and calls buildSystemPrompt with a fully-resolved PromptInput.
  */
 export interface RuntimeFacts {
+  /** Stage name so the flow section can render only this stage's constraint. */
+  coreFlowStage?: string;
   /**
    * Omit the rendered tooling section. Set only where the request advertises the
    * tools natively and the runtime enforces the callable set, so the text would

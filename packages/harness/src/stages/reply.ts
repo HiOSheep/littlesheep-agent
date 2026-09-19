@@ -89,6 +89,7 @@ export function createReplyStage(deps: ReplyStageDeps) {
       bootstrap: respondBootstrap(ctx.bootstrap),
       sessionSummary: isCapabilityReply ? undefined : ctx.sessionSummary,
       memoryRootIndex: isCapabilityReply ? undefined : ctx.memoryRootIndex,
+      coreFlowStage: 'reply',
       initialMemoryContext: isCapabilityReply ? undefined : ctx.initialMemoryContext,
     }, 'respond');
     const systemPrompt = appendSystemPromptBundleAddons(baseSystemPrompt, [
