@@ -6524,3 +6524,46 @@ packages/harness/src/stages/execute.test.ts:845  expect(systemPrompts[0]).toCont
 | 让 `verify`/能力回复/紧凑路径**携带完整历史**（方案 B 语义版） | 长会话 **+3–6pt** | 改变这些阶段看到的信息 |
 | `core-flow` 进一步精简（当前已按 stage 渲染） | +1–2pt | 减少流程信息 |
 | 收束判据 ② | — | 承认上限 ~74.7% |
+
+## 10.241 **逐项影响清单**（用户授权语义取舍后，实施前）（2026-09-18）
+
+**用户授权**：① 让 `verify`/能力回复/紧凑路径**携带完整历史**；② 进一步精简 `core-flow`。本清单先把①的"**哪些阶段会看到哪些新信息**"列清，再实施。
+
+### 一、当前"不发历史"的位置（`grep conversationHistoryForModel` 与历史参数）
+
+| # | 位置 | 当前 | 改为 | **该阶段将新看到** |
+| --- | --- | --- | --- | --- |
+| 1 | `stages/verify/model-call.ts:47` | `history: []` | `conversationHistoryForModel(ctx)` | **此前所有对话轮次**（用户/助手消息，含上一次 run 的全部往返） ⇒ VERIFY 判定"是否达成目标"时可参考**原始诉求与既有答复**，而不再只看本轮证据 |
+| 2 | `stages/reply.ts:101`（能力回复路径） | `isCapabilityReply ? [] : …` | 恒为 `conversationHistoryForModel(ctx)` | 能力/状态类问题的答复**会看到对话历史**（也含用户此前说过的偏好/约束） |
+| 3 | `stages/reply.ts:348`（重写轮的能力回复分支） | 同上 | 同上 | 同上（重写时同样携带） |
+| 4 | `stages/decide/request.ts:177` | `compactDecision ? [] : …` | 恒为 `conversationHistoryForModel(ctx)` | 紧凑决策**会看到历史** ⇒ 计划可参考上下文（此前只看 inbound） |
+| 5 | `stages/execute/task-step-runner.ts:151` | `compactReadTools ? [] : undefined` | 去掉该覆盖（走默认 = `conversationHistoryForModel`） | 紧凑只读执行**会看到历史**（此前 `history: []`） |
+
+**已携带历史、无需改动**：`classify.ts:164`、`recover/model-call.ts:31`、`execute/runners.ts:163/194`、`guidance.ts:121`（默认参数）、`tool-loop.ts:97`。
+**不改动**：`execute_final_reply`（其裁剪由 D1 议题覆盖，本次不动）；`step-contract`（仍在尾部、仍常驻）。
+
+### 二、被"排除历史/记忆"语义**编码**的测试（实施时必须同步）
+
+| 位置 | 现状断言 | 处理 |
+| --- | --- | --- |
+| `stages/reply.test.ts:46` 用例名 **"uses a minimal capability-reply contract and excludes memory/history from the request"** | 断言请求**不含**历史/记忆哨兵（`PRIVATE_HISTORY_SENTINEL`、`PRIVATE_MEMORY_SENTINEL` 等） | **改为**"能力回复**只排除记忆**（`memoryRootIndex`/`initialMemoryContext` 仍为 `undefined`），**但携带历史**" |
+| 其余可能的同类断言（`context.test.ts`、`model-request-characterization.test.ts`） | 待 `typecheck`+全量套件暴露 | 按"历史已携带、记忆仍排除"的新语义更新 |
+
+**记忆侧明确不动**：`memoryRootIndex`、`initialMemoryContext`、`bootstrap` 的取舍**保持不变**（本项只放开**对话历史**，与"记忆可见性"无关 ⇒ 不触碰记忆能力）。
+
+### 三、预期效果与风险
+
+| 项 | 估计 |
+| --- | --- |
+| **命中率** | `verify`/能力回复/紧凑路径的请求前缀将与其**前一个 purpose**（`reply`/`execute`）**一致**（同一 system 头 + 同一历史）⇒ 跨 purpose 复用面扩大 ⇒ 长会话 **+3–6pt**（与用户估计一致） |
+| **成本** | 这些阶段的 prompt 变长（历史窗口 ≤ 12k 字符）；因历史**多已被缓存**，净成本应远小于其字节数 |
+| **风险** | ① `verify` 可能被历史中的旧结论影响判定；② 能力回复可能"顺着上下文"作答而非只讲快照；③ 紧凑路径变长可能影响其"轻量"定位 ⇒ **回退条件**：`verificationPassRateDelta < 0`、`publishedRuns` 下降、`semanticFailures > 0`、或 `failedRuns > 0`；任一出现 ⇒ 逐项回退（5 处可独立回退） |
+
+### 四、core-flow 进一步精简（授权②）
+
+现状：已按 stage 渲染（`CORE_FLOW_DIAGRAM` + 该 stage 的单条约束，≈660 字符）。可进一步：
+- **只保留与当前 stage 相邻的转移**（把 5 行 ASCII 图压成 1–2 行"当前位置 + 下一步"）⇒ 再省 ≈250–350 字符/次；
+- **保留**全部 stage 名称与相邻关系（信息不丢失，仅压缩表达）。
+⇒ 与①分开实施（各自两次样本），以便归因。
+
+**下一轮**：实施①的 5 处改动 + 同步断言 ⇒ 全门 + **两次**样本 ⇒ 按第四节回退条件判定；达标后再做②。
