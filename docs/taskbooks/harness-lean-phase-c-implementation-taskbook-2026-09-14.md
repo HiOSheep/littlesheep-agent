@@ -6241,3 +6241,26 @@ runtime-awareness.test.ts:111  expect(system).toContain('task_progress: 1/2 comp
 **预期**：execute 调用卸下 **≈1,630 字符（≈420 token）/次**（其中 `execution-plan` 417、`step-contract` 1,213）⇒ 摊到全部调用 **≈ −210 字符/次** ⇒ **ratio +1–2pt**；若模型频繁拉取，收益趋近 0（tool 结果同样是新增内容）—— **这是本项主要不确定性**。仍**不裁剪能力**（信息由 skill 按需提供）。
 
 **成本评估（诚实）**：需改 3 处 + 若干测试，**约 3–6 个轮次**（含两次样本）；本会话上下文已耗尽，**未实施** ⇒ 留给后续会话按上述草图执行（文件与行号均已给出）。
+
+## 10.232 **S4 落地**（用户授权）：尾部标签压缩 —— 短会话 miss/调用 **674.9 / 711.3**（2026-09-18）
+
+**改动（`runtime-awareness.ts`，7 处标签 + 2 行措辞；`runtime-awareness.test.ts:109–110` 同步）**：
+`- local_datetime: …` → `local=…`；`- time_zone:` → `tz=`；`- user_time_format: … (default answer precision: hour and minute)` → `time_format=…`；`- utc_instant:` → `utc=`；`- run_started_at:` → `started=`；`- run_elapsed: N ms (H)` → `elapsed=H`；`- task_state:` → `task=`。
+**事实全部保留**（只压缩标签与重复括号）⇒ **不裁剪能力**。
+
+**门禁**：`typecheck` clean、**全量 3,287 通过**、`check:repo` 33/33、continuity + UI 门 ok。
+
+**短会话样本（8×5，第一样本）**：
+
+| 指标 | S1 后 | S3 后 | **S4 后** |
+| --- | --- | --- | --- |
+| `failedRuns`/`publishedRuns`/`silentRuns`/`semanticFailures` | 0/40/0/0 | 0/40/0/0 | **0/40/0/0** ✓ |
+| 主对话 hit | 74.4 / 74.0% | 72.5 / 73.5% | **73.4 / 73.1%** |
+| **miss/调用** | 685.3 / 696.9 | 730.1 / 710.6 | **674.9 / 711.3**（path1 为迄今最低） |
+| `reply` miss/调用 | 498.7 | 507.7 | **494.8** |
+
+⇒ **小幅正向/噪声量级**（与预测的 +0.5–1pt 一致）；**尾部是纯新增内容**，压缩它正是 10.226 指出的方向。
+
+**待办**：长会话第二样本（下一轮）⇒ 若 hit 不降即确认；随后推送（本轮已提交为 `d15627e`）。
+
+**下一会话**：按 §10.231 实施 **taskbook-as-skill**（用户指定），机制与文件名/行号均已就位。
