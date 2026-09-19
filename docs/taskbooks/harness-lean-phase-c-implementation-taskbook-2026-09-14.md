@@ -6567,3 +6567,36 @@ packages/harness/src/stages/execute.test.ts:845  expect(systemPrompts[0]).toCont
 ⇒ 与①分开实施（各自两次样本），以便归因。
 
 **下一轮**：实施①的 5 处改动 + 同步断言 ⇒ 全门 + **两次**样本 ⇒ 按第四节回退条件判定；达标后再做②。
+
+## 10.242 授权①首轮实测：**5 处改动 typecheck 通过，但 9 处 runner 测试失败（多为行为性）**（2026-09-18）
+
+**已实现**（随后按纪律回退以保绿树）：`verify/model-call.ts`（`history: []` → 完整历史 + 补 import）、`reply.ts:101/348`（去掉 `isCapabilityReply ? [] :`）、`decide/request.ts:177`（去掉 `compactDecision ? [] :`）、`task-step-runner.ts:151`（删除 `history: compactReadTools ? [] : undefined` 覆盖）。**`typecheck` clean**。
+
+**结果：9 failed / 3278 passed**，全部集中在 `packages/runner`：
+
+```
+× Runner Memory v3 integration > uses the versioned session summary as a bounded recall fallback after compaction
+× runner checkpoint continuation > binds an ordinary same-session answer before generic classification …
+× runner checkpoint continuation > reconstructs an auto-bound completion when its execution log is missing after restart
+× runner checkpoint continuation > retries trusted resource restoration safely after process loss …
+× runner checkpoint continuation > retries only the blocked document step after an exhausted recover checkpoint …
+× runner checkpoint continuation > recovers a claim-only crash and persists the bound answer exactly once after restart
+× runner checkpoint continuation > reclaims an interrupted answer after the answer was persisted without appending it twice
+× runner checkpoint continuation > resumes from a linked successful-effect checkpoint without replaying its completed tool step
+× runner checkpoint continuation > routes a same-task goal revision through DECIDE with explicit replan feedback
+
+AssertionError: expected 'error' to be 'ok'   （×5）
+AssertionError: expected undefined to match object { useful: 1, verifiedUseful: +0, … }
+AssertionError: expected { …(7) } to match object { …(4) }
+```
+
+**两种可能（据现有信息不能区分，需下一轮取证）**：
+1. **替身敏感**（与 D1 同类）：runner 的 mock 依据请求形状分支，历史出现后分支不同 ⇒ 行为错乱；
+2. **真实风险**：`verify`/紧凑路径在**长会话**中携带完整历史（≤12k 字符）后**请求过大** ⇒ 运行以 error 结束 ⇒ 这在生产同样会发生 ⇒ **该改动可能真的有害**。
+
+**⇒ 更稳妥的有界变体（建议优先）**：`_shared.ts:79` **已存在** `recentHistoryForModel(history, maxMessages=8, maxChars=6_000)` ⇒ 用它替代"完整历史"：
+- `verify` / 能力回复 / 紧凑路径改为**最近 8 条、≤6,000 字符**的**同一有界窗口**（各 purpose 一致 ⇒ 仍能共享前缀）；
+- 相比完整窗口：**增长可控**（≤6k 而非 ≤12k），大幅降低可能②的风险，同时保留"前缀一致"带来的复用收益；
+- 仍需处理 runner 替身（若原因为①）。
+
+**下一轮**：先用一次取证区分①②（`grep` 失败测试的 mock 分支是否按 `messages.length`/历史内容判定；或对失败用例单独跑并打印其 error 文本），再决定走**有界变体**还是**完整历史 + 替身适配**。
