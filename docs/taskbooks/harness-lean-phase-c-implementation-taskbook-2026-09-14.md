@@ -7242,3 +7242,28 @@ return buildRunRequestCandidates(ctx, 'decide', messages, {
 
 **下一轮转 #5（清理隐式 Context 依赖 / D1 架构债）**：重做 **runner 的 continuation/checkpoint 验证路径**，使 `verify` 能携带历史（消除"某 stage 必须看不到某些信息"这一架构债，符合用户原则 7 的理想状态：*Context 变化影响模型判断，但不破坏 Runtime 正确性*）。
 **该工作的最小起点**：先读失败用例（`runner checkpoint continuation` 8 例 + `Runner Memory v3 integration` 1 例）中**与 verify 请求形状相关**的断言/替身分支，评估"是替身敏感（可改）还是 Runtime 语义依赖（需改协议）"。
+
+## 10.265 D1 架构债**定性完成**：continuation 以"请求形状/索引"为身份（2026-09-18）
+
+**取证**（`grep 'verificationHistory|finalReplySettlement|modelRequestIndex'`，227 处命中；关键耦合点）：
+| 位置 | 代码 | 含义 |
+| --- | --- | --- |
+| **`harness/src/response-continuity-exposure.ts:66`** | `&& request.requestIndex === provenance.modelRequestIndex` | **continuation 暴露判定按 `requestIndex` 匹配** |
+| `harness/src/user-facing-reply.ts:256` | `modelRequestIndex: request.requestIndex` | provenance 记录"答复来自第几个请求" |
+| `runner/src/runner.ts:890–901, 1775–1776, 1918–1951, 2219–2269` | settlement 的判定/提升/恢复 | 续跑把"上一轮的答复"与请求绑定 |
+| `runner/src/authoritative-reply.ts:70/106/138/172` | `finalReplySettlement` 与 `mode ??= log.finalReplySettlement ? 'next' : 'shadow'` | 权威答复的绑定与重放 |
+| `runner/src/run-checkpoint.ts:154`、`run-checkpoint-store.ts:593–621` | `verificationHistory` 的克隆/上限校验 | 检查点携带 verify 记录 |
+
+**⇒ 定性：Runtime 语义依赖（非单纯替身敏感）**。continuation/权威答复的绑定**以"请求索引 + 请求形状"作为身份**；`verify` 一旦携带历史，其在 `modelRequests` 中的**形状**改变 ⇒ 基于 `requestIndex`/形状的匹配失配 ⇒ 8 例 `runner checkpoint continuation` + 1 例记忆集成以 `status='error'` 结束 ✓（也与"任何窗口大小都一样失败"一致 —— 只要**形状变了**就断）。
+
+**⇒ 修法方向（与你原则 7 的理想状态一致）**：把 continuation 的绑定从"**形状/索引**"改为"**稳定身份**"——仓库里**已有**该身份原语：`finalReplySettlementId(runId, replyFingerprint)`（`harness/src/final-reply-identity.ts:14`）与 `finalReplyFingerprint` ✓。
+- **目标态**：Runtime 只认 `settlementId`/`fingerprint`/`effectId`/`checkpointId`，**不再依赖"第几个请求/请求里有哪些消息"**；
+- **收益**：`verify`（及其它 stage）可自由改变上下文而不破坏续跑 ⇒ 消除本债（也直接支撑"模型负责智能、Runtime 负责不可犯错的事"）；
+- **成本（诚实）**：涉及 `response-continuity-exposure.ts`、`runner.ts`（settlement 判定/提升/恢复）、`authoritative-reply.ts`、`run-checkpoint*.ts` 与相应测试 ⇒ **跨文件改造**，需分多轮；**收益对命中率是间接的**（`verify` 占长会话调用约 6%，带上历史后其请求前缀可与主路径共享）。
+
+**⇒ 建议的推进方式（分阶段、每阶段可回滚）**：
+1. **先做"只读梳理"**：把上述 5 处的**身份依赖**逐条列出（哪些必须用索引、哪些可换成 `settlementId`/`fingerprint`）；
+2. **再做最小替换**：先改 `response-continuity-exposure.ts:66` 一处为身份匹配，跑 `runner` 全套件；
+3. 逐处替换直至 `verify` 携带历史时套件全绿 ⇒ 再让 `verify` 用**有界历史**并跑两次样本。
+
+**注**：这是**唯一能让长会话 ratio 再上一个台阶**的结构性项（它解锁 `verify` 与主路径共享前缀），但**属协议级改造**，需你确认是否值得投入（对比：**#3 已收束**、判据①已达标、判据②结构性受限）。
