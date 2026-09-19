@@ -6213,3 +6213,31 @@ runtime-awareness.test.ts:111  expect(system).toContain('task_progress: 1/2 comp
 - 若退化 ⇒ 折中方案：**`step-contract` 仍常驻（它含"本步允许的工具/验收标准"，是执行安全相关）**，仅把**较长的 `execution-plan` 与 taskbook 详情**改为 skill。
 
 **下一轮**：读 `skillsSection` / `skills-index` 的机制（`sections.ts` 与 harness 中 skill 的注册/发现路径）、以及 `renderTaskBookGuidance`/`renderPlanGuidance` 的调用点，据此**先只把 `execution-plan`（417 字符）改为 skill**（最小改动、可回退），跑两次样本后再决定是否把 `step-contract` 也移出。
+
+## 10.231 taskbook-as-skill：机制已定位 + 可直接执行的实施草图（2026-09-18）
+
+**已定位的既有机制（`grep skillsSection|use_skill|skill-resources`）**：
+
+| 组件 | 位置 | 作用 |
+| --- | --- | --- |
+| **`use_skill` 工具** | `packages/skills/src/use_skill.ts:27` | "Load a skill body by name. Available skills: …" ⇒ **模型按需拉取 skill 正文的通道** ✓ |
+| **skill 装载/索引** | `packages/skills/src/loader.ts:50,150`（`SkillIndex`） | 发现与索引 skill |
+| **skill 资源协调** | `packages/memory-tree/src/memory-service/skill-resources.ts:24`、`resource-identifiers.ts:57–58` | 把 skill 挂到 owner（含 `skills:plugin:<owner>` 分组） |
+| **prompt 中的索引段** | `packages/prompt/src/sections.ts:127` `skillsSection(skills)`；`builder.ts:191` `addVolatile('skills-index', …)` | 把 skill **名单+描述**（而非正文）放进提示 ✓ |
+
+⇒ **"按需拉取"的机制已经完整存在**：提示里只放索引，正文由 `use_skill` 取回。
+
+**关键设计点（必须解决）**：**taskbook 内容是逐 run 动态的**，静态 skill 文件装不下 ⇒ 需要**动态 skill**：
+- 注册一个内置 skill（如 `taskbook`），其**正文由当前 run 上下文生成**（`renderTaskBookGuidance(ctx.taskBook)` / `renderPlanGuidance(ctx.plan)` / `renderStepGuidance(...)`）；
+- 实现方式：在 harness 组装 skill 索引时**注入一个 per-run 的动态条目**（正文来自 `ctx.taskBook`），并让 `use_skill('taskbook')` 返回该正文；
+- **运行时对象 `ctx.taskBook` 完全不动**（调度、6 处工具校验、证据记录均不变，见 10.153）。
+
+**实施草图（3 处改动 + 测试）**：
+1. **harness**：在 run 初始化时把动态 skill 条目（`{ name: 'taskbook', description: '…', body: () => render…(ctx) }`）加入 skill 索引；
+2. **`use_skill`**：允许"动态正文"（当前只从磁盘读正文 ⇒ 需支持由 ctx 生成的 body）；
+3. **`execute/prompt.ts`**：**移除** `renderTaskBookGuidance` / `renderPlanGuidance` 的注入（保留（可选）`step-contract` 常驻，因为它是执行安全相关）；
+4. 全门 + **两次**样本；**回退条件**：`verificationPassRateDelta < 0`、`publishedRuns` 下降、`failedRuns > 0`。
+
+**预期**：execute 调用卸下 **≈1,630 字符（≈420 token）/次**（其中 `execution-plan` 417、`step-contract` 1,213）⇒ 摊到全部调用 **≈ −210 字符/次** ⇒ **ratio +1–2pt**；若模型频繁拉取，收益趋近 0（tool 结果同样是新增内容）—— **这是本项主要不确定性**。仍**不裁剪能力**（信息由 skill 按需提供）。
+
+**成本评估（诚实）**：需改 3 处 + 若干测试，**约 3–6 个轮次**（含两次样本）；本会话上下文已耗尽，**未实施** ⇒ 留给后续会话按上述草图执行（文件与行号均已给出）。
