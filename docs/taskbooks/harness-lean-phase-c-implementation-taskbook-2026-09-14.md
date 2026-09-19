@@ -6753,3 +6753,27 @@ decide/request.ts:18  } from '../_shared.js';
 3. 同步 `builder.test.ts` / `system-prompt-cache-split.test.ts` 中可能存在的流程段断言（由 `typecheck`+套件暴露）。
 
 **预期**：staged 形式由「标题 + 5 行图 + bullet（≈660 字符）」降为「标题 + 1 行路线 + bullet（≈380–420 字符）」⇒ **每条请求再省 ≈240–280 字符**；**信息不丢失**（全部 stage 名与相邻关系仍在）。
+
+## 10.249 授权②：围栏替换**已成功**，但连带两处未齐（配方再简化）（2026-09-18）
+
+**本轮实测**：
+- 用转义模式 `(?s)\\\x60\\\x60\\\x60\r?\n\$\{CORE_FLOW_DIAGRAM\}\r?\n\\\x60\\\x60\\\x60\r?\n`（`\\` 匹配文件中的反斜杠）**成功匹配并替换**了 staged 形式的代码围栏 ⇒ 路线行生效 ✓；
+- 但随后 `typecheck` 报两处：
+  1. `TS6133: 'CORE_FLOW_DIAGRAM' is declared but its value is never read`（图常量变为未使用）；
+  2. `TS2552: Cannot find name 'CORE_FLOW_STAGE_ROUTES'`（我插入的路线表**未落位**）。
+- ⇒ **改动已回退**（`modified=0`，未写入任何内容留下的红树）。
+
+**⇒ 配方再简化（免去新常量，改动面最小）**：**把路线直接追加进每个 `CORE_FLOW_STAGE_BULLETS` 条目**（该对象锚点为 ASCII、缩进稳定），例如：
+```
+reply: '- **REPLY** (respond -> REPLY, terminal): answer the user directly. …',
+verify: '- **VERIFY** (EXECUTE -> VERIFY -> { EVOLVE | DECIDE | RECOVER }): judge …',
+```
+⇒ staged 形式只需 `${bullet}`（**围栏已被移除**）⇒ 不再需要 `CORE_FLOW_STAGE_ROUTES`，也不会产生"新常量未落位"的问题。
+
+**剩余一步**：**删除已无用的 `CORE_FLOW_DIAGRAM` 常量**（`:12–16`，含盒线字形）—— **用正则删除**（不触碰字形）：
+```powershell
+$pattern = '(?s)const CORE_FLOW_DIAGRAM = \x60.*?\x60;\r?\n\r?\n'
+```
+（非贪婪到第一个 `` `; `` ✓；删除后 `renderStagedCoreFlow` 不再引用它 ⇒ 无 TS6133。）
+
+**预期**：staged 形式 ≈660 → **≈380–420 字符**（每请求省 **≈240–280**），**信息不丢失**（9 个 stage 名与相邻关系都在 bullet 里）。
