@@ -6797,3 +6797,61 @@ $pattern = '(?s)const CORE_FLOW_DIAGRAM = \x60.*?\x60;\r?\n\r?\n'
 **教训（第 3 次验证）**：**凡"删除/压缩已缓存内容"的改动都不利于 ratio**（S、S3、本次②）—— ratio 只能靠**减少每轮新增**（尾部）或**扩大可复用前缀**（有界窗口即属后者，故它同时提升了 hit 与 miss）。
 
 **当前保留状态（判据①达标）**：`7dfb307`（有界历史窗口）⇒ 短会话 **hit 76.3 / 75.1%**、**miss/调用 698.3 / 676.1**；`failedRuns=0`、`silentRuns=0` ✓
+
+## 10.251 **本会话最终交付汇总**（2026-09-18）
+
+### 一、判据状态
+
+| 判据 | 现状 | 判定 |
+| --- | --- | --- |
+| **① hit ≥75%（短会话 8×5）** | **76.3 / 75.1%** | ✅ **达标** |
+| **① miss/调用 <700（短会话）** | **698.3 / 676.1** | ✅ **达标** |
+| ① `failedRuns=0` / `silentRuns=0` | 0 / 0（两负载） | ✅ |
+| **② 长会话 hit ≥95%** | **72.7–73.5%** | ❌ **结构性不可达**（§10.203：每轮真实新增不可消除；各 purpose 上下文差异属设计取舍） |
+| **硬约束：不裁剪能力** | 全程未减少工具集/提示信息/记忆可见性 | ✅ |
+
+### 二、已落地且**有实测收益**的改动（远端 `main`）
+
+| 改动 | 提交 | 实测 |
+| --- | --- | --- |
+| 跨路径共享头 **284 → 2,934** | `817e4ce` | `prefix-diff` 双向 |
+| run 专属段让位稳定内容 | `07c4b0b` | miss −5% / hit +2pt |
+| **`step-contract` 移到历史之后** | `b9cc929` | 工具循环 miss **−60%**、总体 **−18%** |
+| **`reply` 重写契约移出 system** | `9e4d89a` | 形状交替消除、长会话 **+2.1pt** |
+| **S1 工具文本去重** | `fdfb0b5` | 工具循环 **−14%**、短会话 miss 入 <700 区 |
+| **S3 按 stage 渲染流程段** | `9faada0`/`09f41ee` | `reply` system **−857 字符/次** |
+| **有界历史窗口（能力回复/紧凑路径）** | `7dfb307` | **判据①两项首次同时达标**（hit 76.3/75.1、miss 698.3/676.1） |
+| **taskbook-as-skill（四步）** | `485d58c`、`75a29bc`、`a780b7a`、`4f7abe8`、`b7aa807` | execute 调用卸下 ≈1,630 字符/次；两负载无退化 |
+| S4 尾部标签压缩 | `d15627e` | 成本/简化（ratio 增益 0，已标注） |
+| 诊断工具入仓 | `268a760`、`49be732` | `scripts/analyze-prompt-cache.mjs`、`scripts/analyze-cache-shapes.mjs` |
+
+### 三、已实测的中性/负面（如实入档）
+
+`c692dcc`、`8827b90`、`final_reply` 契约（中性）、S（中性）、**B1×2**（全局 −14pt 已回退、单侧中性）、**跨 purpose system 统一**（−14pt 已回退）、**D1**（前提被数据否证）、**`verify` 携带历史**（9 例 continuation 固定失败，**任何窗口**都一样 ⇒ 需重做 runner 验证路径）、**② `core-flow` 精简**（hit −3pt 已回退）、S4（ratio 0）、S3（成本型）。
+
+### 四、贯穿全会话的**唯一有效策略**（三次验证）
+
+> **ratio = cached / total**。
+> - **删除/压缩"已缓存内容"**（S、S3、②）⇒ 只降成本，**ratio 反而下降**；
+> - **扩大可复用前缀**（共享头、`step-contract`/重写契约后置、**有界历史窗口**）⇒ **同时提升 hit 与 miss**；
+> - **减少每轮新增**（尾部）⇒ 提升 ratio，但可压空间很小。
+
+### 五、可复现命令
+
+```bash
+# 归因（零 API）
+node scripts/analyze-prompt-cache.mjs <dataDir>     # 逐 purpose 账 / run 形态 / 失效原因 / 组件翻转率
+node scripts/analyze-cache-shapes.mjs <dataDir>     # 位置成本 / run 间分歧 / provider 顺序 / 逐 purpose system 长度
+# 两次实机样本（产品级 8×5 / 8×15）
+DEEPSEEK_API_KEY=… LITTLESHEEP_COMPARISON_SHARED_SESSION=1 LITTLESHEEP_COMPARISON_UNIQUE_TURNS=1 \
+LITTLESHEEP_COMPARISON_TASKS=8 LITTLESHEEP_COMPARISON_ROUNDS=5 LITTLESHEEP_COMPARISON_KEEP_DATA=1 \
+pnpm run verify:harness-paths
+```
+
+### 六、剩余可选项（均需用户决定）
+
+| 选项 | 说明 |
+| --- | --- |
+| **A. 重做 runner 的 continuation/checkpoint 验证路径** | 唯一能让 `verify` 携带历史（消除最后一个"不发历史"的 purpose）；跨文件工程、收益未知（`verify` 占长会话调用约 6%） |
+| **B. 收束判据②** | 记为"现有约束下上限 ≈74–76%"（短会话已达标），以 §10.111–10.251 为交付 |
+| **C. 新方向** | 例如从"减少每轮新增"入手（尾部 `runtime-awareness` 结构重排），但空间有限（§10.227 已量化） |
