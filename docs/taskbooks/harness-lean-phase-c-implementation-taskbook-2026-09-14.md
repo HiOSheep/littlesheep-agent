@@ -7030,3 +7030,30 @@ import { collectRecentAssistantReplies, MAX_AVOID_REPLY_CHARS, MAX_AVOID_REPLY_C
 ```
 
 **判据（不变）**：`rewriteCount=0` 占比↑、`avgCalls/run`（现 2.14）与 p95（现 7）↓、`failedRuns=0`、`silentRuns=0`、`publishedRuns` 满额、`verificationPassRateDelta ≥ 0`；**回退**：移除该清单。
+
+## 10.257 R1 **实现已完成、只差两处测试断言**（本轮回退，行级清单已写）（2026-09-18）
+
+**已实现并验证 `typecheck` clean**（随后回退以免留红树）：`reply.ts` 首答路径新增
+```ts
+const avoidReplies = collectRecentAssistantReceives(ctx)   // 实际为 collectRecentAssistantReplies
+  .slice(-MAX_AVOID_REPLY_COUNT)
+  .map((reply) => reply.slice(0, MAX_AVOID_REPLY_CHARS));
+…
+...(avoidReplies.length > 0 ? [{
+  role: 'user' as const,
+  content: 'Recently published replies - do not repeat any of them word for word; if your answer would be identical, rephrase it while preserving every fact:\n'
+    + avoidReplies.map((reply, index) => `${index + 1}. ${reply}`).join('\n'),
+}] : []),
+```
++ import `{ collectRecentAssistantReplies, MAX_AVOID_REPLY_CHARS, MAX_AVOID_REPLY_COUNT } from '../user-facing-reply.js'`（插在 `} from './_shared.js';` 之后）。
+**效果**：尾部新增一条 user 消息 ⇒ **不触碰被缓存前缀** ✓；`use_skill` 式信息只增不减 ✓。
+
+**剩余（2 处测试断言，均为我这次改动的预期后果）**：
+| # | 文件:行 | 现状 | 改为 |
+| --- | --- | --- | --- |
+| 1 | `packages/harness/src/stages/reply.test.ts:94` | `expect(requests[0]?.messages).toHaveLength(3);`（现为 **4**） | 语义断言：`expect(requests[0]!.messages.length).toBeGreaterThanOrEqual(3);` + 首条 role 为 system + 存在 user 消息 |
+| 2 | `packages/harness/src/model-request-characterization.test.ts`（REPLY 用例） | `expected false to be true`（帧未取到，需复跑打印） | 按"reply 请求新增一条尾部回避清单消息"更新其顺序/形状断言 |
+
+**⇒ 实施要点（本轮教训）**：这两处必须用 **`read` 工具读取该测试文件后再用 `edit`**（`edit` 拒绝未读文件）；不要再用 PowerShell 字符串拼接（本轮已两次因转义/换行失败）。
+
+**判据（不变）**：`rewriteCount=0` 占比↑、**`avgCalls/run`（现 2.14）与 p95（现 7）↓**、`failedRuns=0`、`silentRuns=0`、`publishedRuns` 满额、`verificationPassRateDelta ≥ 0`；**回退**：移除该清单。
