@@ -410,6 +410,7 @@ export async function assembleSystemPromptBundle(
       nodeVersion: typeof process !== 'undefined' ? process.version : undefined,
     }),
     bootstrap: facts.bootstrap,
+    coreFlowStage: facts.coreFlowStage,
     prelude: facts.prelude,
     sessionSummary: facts.sessionSummary,
     memoryRootIndex: facts.memoryRootIndex,
