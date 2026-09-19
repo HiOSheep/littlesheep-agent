@@ -6161,3 +6161,29 @@ export function buildUserFacingVoiceAddon(ctx) {
 1. 改 `runtime-awareness.ts:126–136` 的字段标签与 `user_time_format`/`run_elapsed` 两行；
 2. 同步 `runtime-awareness.test.ts` 中断言这些标签的用例（预计少量）；
 3. 全门 + **两次**样本 ⇒ 验收：`runtime-awareness` 字符数下降、hit 变化、`failedRuns=0`、`silentRuns=0`。
+
+## 10.229 S4 措辞压缩：**暂缓（收益不抵测试改动）**，断言原文已留档待一次完成（2026-09-18）
+
+**已实现并验证**（随后回退以保持绿树）：把 `renderRuntimeAwareness` 的 7 个字段标签改为 compact 风格（`local=`、`tz=`、`time_format=`、`utc=`、`started=`、`elapsed=`、`task=`）—— `typecheck` clean，**harness+runner 1042/1043 通过**，唯一失败为标签断言：
+
+```
+runtime-awareness.test.ts:109  expect(system).toContain('local_datetime: 2026-07-15 11:04:05 +08:…');
+runtime-awareness.test.ts:110  expect(system).toContain('run_elapsed: 65678 ms (00:01:05.678)');
+runtime-awareness.test.ts:111  expect(system).toContain('task_progress: 1/2 completed (50%)');   ← 此行未改动，仍通过
+```
+（第 109 行的期望串在输出中被截断，需读原文后一次改齐。）
+
+**为何暂缓**：S4b–S4e 合计约 **140 字符/次（≈35 token）⇒ ratio 约 +0.5–1pt** —— **不足以**单独把 hit 稳定推过 75%，而它需要改动 `runtime-awareness.test.ts` 的标签断言；按"收益不抵风险/成本"的既定纪律，**暂缓**，并把断言原文留档，随时可一次完成。
+
+**⇒ 本负载 + 现有约束下的结论（据全部实测）**：
+- **判据 ①**：**miss/调用 短会话 685–697（<700 ✓ 达标）**；hit **72.5–74.6%**（差 0.4–2.5pt，且多次取样在 **74.0–74.7%** 区间）；
+- **判据 ②**（长会话 ≥95%）：**不可达**（当前 74.2–74.7%），原因已逐项量化（10.203：C1/C4 为**真实新增**、不可消除；C3/C5/C6 属**设计取舍**）；
+- **已落地的实测收益**：`step-contract` 后置（工具循环 miss **−60%**、总体 **−18%**）、`reply` 重写契约后置（形状交替消除、长会话 **+2.1pt**）、**S1 工具文本去重**（短会话 miss **<700**、工具循环 **−14%**）、**S3 按 stage 渲染流程段**（`reply` system **−857 字符/次**）；
+- **已实测的中性/负面**（如实入档）：S、`final_reply` 契约、`c692dcc`、`8827b90`、B1×2、跨 purpose、D1（前提否证）；
+- **硬约束**：`failedRuns=0`、`silentRuns=0`、**未裁剪能力**（工具集/提示信息/记忆可见性）✓
+
+**下一轮（你指定的方向，剩余空间最大）**：实施 **taskbook-as-skill**（10.224）：
+1. 列出当前被注入的 taskbook/plan/step 指导文本与字符数（**逐项影响清单**）；
+2. 注册 `taskbook` skill（沿用 `skills-index` / `create_skill` 机制），**运行时保留 taskbook 对象**（调度/校验/证据不变）；
+3. 停止把该指导文本注入提示，改由模型按需拉取 ⇒ **信息相同、提示更短**（与 S1/S3 同类的成本收益），并可能减少"每轮新增"；
+4. 全门 + **两次**样本；**回退条件**：`verificationPassRateDelta < 0` 或 `publishedRuns` 下降（说明模型确实依赖常驻指导）。
