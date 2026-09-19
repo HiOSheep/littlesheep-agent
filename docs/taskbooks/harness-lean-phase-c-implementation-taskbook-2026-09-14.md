@@ -6285,3 +6285,49 @@ runtime-awareness.test.ts:111  expect(system).toContain('task_progress: 1/2 comp
 - **硬约束**：全程 `failedRuns=0`、`silentRuns=0`、**未裁剪能力** ✓。
 
 **推送状态**：`d15627e`（S4 代码）+ `fedcb90`（文档）+ 本轮文档 ⇒ **共 3 个提交待推送**（VPN 链路本轮再失败 2 次：`TLS connect error` / `errno 10004`）；远端仍为 `3409f19`。
+
+## 10.234 taskbook-as-skill：**实现配方（精确到锚点）**（2026-09-18）
+
+**已读到的代码（`packages/skills/src/loader.ts`）**：
+- `:69–73` 接口：`{ index: SkillIndex; loadBody(name): Promise<string|undefined>; reload(): Promise<SkillIndex>; replaceOwnedSources(...) }`
+- `:205` `export async function loadSkillBody(name: string, index: SkillIndex)` —— 从索引解析正文（磁盘来源）
+- `:243–257` `createSkillLoader(opts)`：
+  ```ts
+  let index = await loadSkillIndex({ sources: baseSources, disabled });
+  const reload = async (): Promise<SkillIndex> => { index = await loadSkillIndex({...}); return index; };
+  return {
+    get index() { return index; },
+    loadBody: (name) => loadSkillBody(name, index),
+    reload,
+    replaceOwnedSources: …
+  };
+  ```
+
+**配方（4 处改动）**：
+1. **`loader.ts`（新增动态正文能力，向后兼容）**：在 `createSkillLoader` 内加两个 Map：
+   ```ts
+   const dynamicEntries = new Map<string, SkillIndexEntry>();
+   const dynamicBodies = new Map<string, () => string | undefined>();
+   ```
+   并把返回对象改为：
+   ```ts
+   get index() {
+     return { ...index, skills: [...index.skills, ...dynamicEntries.values()] };
+   },
+   loadBody: async (name) => dynamicBodies.get(name)?.() ?? loadSkillBody(name, index),
+   registerDynamic: (entry, body) => { dynamicEntries.set(entry.name, entry); dynamicBodies.set(entry.name, body); },
+   ```
+   ⚠️ **注意**：`get index()` 改为**每次合并**（因为 `reload()` 会整体替换 `index`，直接 push 会被 reload 丢掉）；合并会产生新对象——若某处依赖 `loader.index` 的对象同一性，需改为**在 reload 后重新追加**的写法。
+2. **`SkillLoader` 接口**（`loader.ts:69–73`）加 `registerDynamic(entry: SkillIndexEntry, body: () => string | undefined): void;`。
+3. **harness（run 初始化处）**：注册
+   ```ts
+   loader.registerDynamic(
+     { name: 'taskbook', description: 'This run''s task book, plan and step contract.' },
+     () => renderTaskBookGuidanceForSkill(ctx),   // 复用既有 renderTaskBookGuidance/renderPlanGuidance/renderStepGuidance 的文本
+   );
+   ```
+4. **`execute/prompt.ts`**：**移除** `renderTaskBookGuidance(ctx.taskBook)` 与 `renderPlanGuidance(ctx.plan)` 的注入（建议**保留** `step-contract`，因其含"本步允许的工具/验收标准"，属执行安全）；**运行时 `ctx.taskBook` 对象与 6 处执行期校验（10.153）不动**。
+
+**验收（两次样本）**：`execute` 调用卸载 **≈1,630 字符（≈420 token）/次** ⇒ 预期 ratio **+1–2pt**；**回退条件**：`verificationPassRateDelta < 0`、`publishedRuns` 下降、或 `failedRuns > 0`（说明模型确实依赖常驻 taskbook）。
+
+**本轮实际完成**：**推送成功**（`3409f19..a0aaef2`，`ahead=0`）—— 此前积压的 S4 代码与 3 个文档提交**已全部交付到远端 `main`** ✓
