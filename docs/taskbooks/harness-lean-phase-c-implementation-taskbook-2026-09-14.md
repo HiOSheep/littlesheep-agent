@@ -6894,3 +6894,22 @@ pnpm run verify:harness-paths
 | **D1** | **`verify` 必须看不到对话历史**，否则破坏 runner 的 continuation/checkpoint（9 例固定失败，**与窗口大小无关**） | 本会话 §10.244 | Context 变化只影响模型判断，不破坏 Runtime ⇒ 需重做那条验证路径 |
 | D2 | `TaskBook` 概念仍渗入 Runtime（调度/校验/证据） | §10.203 / 10.231 | Runtime 只认 action/effect/result/checkpoint |
 | D3 | 部分 Runtime 可推出的状态仍在 prompt 中（`capabilities` 段 vs `use_skill` 描述等重复面） | §10.227 | 能按需/能推导的不常驻 |
+
+## 10.253 指标基线（含"普通路径是否已足够短"的结论）（2026-09-18）
+
+**脚本**：工作区 `ux-metrics.mjs <dataDir>`（从执行日志提取调用数/时延）。**样本**：`live-bounded-long`（8×15，120 run）。
+
+| 指标 | 基线值 |
+| --- | --- |
+| **模型调用 / run** | 均值 **2**、**p50 = 1**、p95 = 7 |
+| **Task completion latency** | 均值 **1,862 ms**、**p50 1,284 ms**、p95 **5,655 ms** |
+| Time to first useful action | **待测**（日志字段为 `toolCalls` / `toolInvocations`，其时间字段名待确认） |
+| 命中率（短/长） | 76.3/75.1% / 72.7–73.5% |
+| uncached tokens / 调用（短） | 698.3 / 676.1 |
+
+**⇒ 关于优先级 #2（缩短普通任务执行路径）的实测结论**：
+- **中位数 run 只调用 1 次模型**（p50=1）、**p50 时延 1.28 秒** ⇒ 在本负载中，**普通任务走的就是最短路径**（`reply` 单次调用，无规划/执行/验证/恢复流水线）；
+- 重机制**只出现在 execute 形态的 run**（p95 = 7 次调用、p95 时延 5.7 秒），即**少数复杂任务** —— 与用户目标"**80% 普通任务最短路径、20% 复杂任务才启用重机制**"**已经一致** ✓；
+- ⇒ 优先级 #2 的**剩余空间不在"缩短普通路径"，而在"减少复杂路径的调用次数"**（p95=7：`decide`×1–2 + 工具循环 + `final_reply`×1–3 + `verify`），这与优先级 #4（降低模型调用数）是同一件事。
+
+**⇒ 下一步（优先级 #4，可量化的候选）**：统计 execute 形态 run 的**调用构成**（`decide`/工具循环/`final_reply`/`verify` 各几次）并从日志找出**可合并的相邻调用**（例如 `final_reply` 在无重写时是否真的需要多次；`verify` 与 `final_reply` 能否共享一次调用），给出"每 run 调用数 −1"的具体落点 —— **判据**：`avgCalls/run` 与 p95 同时下降，且 `verificationPassRateDelta ≥ 0`。
