@@ -6394,3 +6394,31 @@ runner.infra.skillLoader.registerDynamic?.(
 - **(B)** `execute/prompt.ts` 移除 `renderTaskBookGuidance` / `renderPlanGuidance` 注入（保留 `step-contract`）。
 
 **下一轮**：`grep 'async run(' packages/runner/src/runner.ts` 定位 run 入口（`ctx` 构建处）⇒ 落地 (A)；随后 (B)；全门 + 两次样本 ⇒ 验收 ratio **+1–2pt**，回退条件不变。
+
+## 10.237 taskbook-as-skill (A)：**插桩位置确定**（`runner.ts:405 executeRun`）（2026-09-18）
+
+**取证**：
+- `packages/runner/src/runner.ts:405` `async function executeRun(input, continuation?, continuationEvidence?)` —— run 的**唯一入口**（由 `:999/1003/1009` 调用），**闭包内可直接访问 `infra`** ✓；
+- `:427` `let runContext: RunContext | undefined;` ⇒ **在 `runContext` 被赋值之后、任何 stage 运行之前**插入注册即可；
+- `use_skill` 的描述每次调用时从 `loader.index.skills` 生成 ⇒ 注册后**立即**对模型可见（10.236）✓。
+
+**插桩（下一轮，精确做法）**：
+1. `grep 'runContext =' packages/runner/src/runner.ts` 找到赋值点；
+2. 在其**之后**插入：
+   ```ts
+   if (runContext && infra.skillLoader?.registerDynamic) {
+     const registeredRunId = runContext.runId;
+     infra.skillLoader.registerDynamic(
+       { name: 'taskbook', description: "This run's task book, plan and step contract; load before acting on steps." },
+       () => (runContext?.runId === registeredRunId ? renderTaskbookSkillBody(runContext) : undefined),
+     );
+   }
+   ```
+   - **并发隔离**：body 闭包校验 `runId` ⇒ 其它 run 覆盖后本 run 读到 `undefined`（`use_skill` 会返回"not found"，模型可重试或继续）——**注意**：这仍是一个**全局单条目**，若真实存在并发 run，建议下一版改为按 run 键的映射；
+   - `renderTaskbookSkillBody(ctx)`：**新增小函数**，拼接既有 `renderTaskBookGuidance(ctx.taskBook)`、`renderPlanGuidance(ctx.plan)`、`renderStepGuidance(...)`（内容与当前注入**完全一致** ⇒ 信息不减少）。
+3. **run 结束**（`finally` 或结果返回前）**注销**（需要一个 `unregisterDynamic(name)`；若暂不加，则依赖 runId 校验兜底）。
+
+**随后 (B)**：`execute/prompt.ts` 移除 `renderTaskBookGuidance` / `renderPlanGuidance` 注入，**保留 `step-contract`**。
+
+**验收**：`use_skill('taskbook')` 可取回同等文本；execute 调用 prompt 降低 ≈1,630 字符/次；两次样本 ratio **+1–2pt**；`failedRuns=0`、`silentRuns=0`、`publishedRuns` 满额、`verificationPassRateDelta ≥ 0`。
+**回退条件**：质量退化 ⇒ 恢复注入（(B) 回退即可，(A) 无副作用）。
