@@ -6014,3 +6014,26 @@ export function buildUserFacingVoiceAddon(ctx) {
 | **S4** | `runtime-awareness`(706/轮) 紧缩 | **+1–2pt** |
 
 **当前水平**：判据 ① hit **74.0–74.7%**（差 0.3–1.0pt）、**miss/调用短会话 685–697 ✓ 达标**；判据 ② 长会话 **74.7%**（结构性不可达，10.203）；硬约束全绿。
+
+## 10.223 **交付成功** + S3 设计（授权到手）（2026-09-18）
+
+**交付**：VPN 开启后 `git push` 立即成功（`7bbba6f..22bf878`，`ahead=0`）⇒ **S1 代码 `fdfb0b5` 与全部文档已在远端 `main`** ✓（此前 8 次失败均为环境网络中断）
+
+**S3 取证（`sections.ts:13–35`）**：`coreFlowSection()` = **完整状态机图**（8 行 ASCII）+ **8 条阶段说明**（router/DECIDE/EXECUTE/VERIFY/RECOVER/EVOLVE/CAPTURE/FINALIZE），共 **1,530 字符**，且被**每一次模型调用**发送。
+
+**S3 设计（信息相关化，而非删除）**：
+- 每个请求**只与其所在 stage 的行动相关** ⇒ 将 `coreFlowSection()` 改为**按 stage 渲染**：
+  - `full`（默认，保持既有行为）= 现状全文；
+  - `stage: '<name>'` = **一行流程指针**（`ENTER → … → FINALIZE`）+ **该 stage 的说明与其转移**（例如 `VERIFY` 只给 `:30` 那一条）；
+- **实现**：`PromptInput`/`RuntimeFacts` 加可选 `coreFlowStage?: StageName`；`sections.ts` 的 `coreFlowSection(stage?)` 按此渲染；**各调用点传自己的 stage**（router/decide/execute/verify/recover/evolve/capture/finalize/reply），未传者保持 `full` ⇒ **默认行为不变**。
+
+**预期收益**：每调用 **−~1,050 字符（≈ −270 token）**，作用于**每一次调用**（S1 只作用于工具循环那 1/16）⇒
+- 短会话 hit **74.0–74.7% → ~77–78%**（**越过 75% ⇒ 判据 ① 两项同时达标**）；
+- 长会话 hit **74.7% → ~78%**、miss/调用 **1,030 → ~900**；
+- **信息口径**：模型仍获得"自己所在 stage 的完整约束 + 全局流程指针"；**被去掉的是它当前不需要的其他阶段说明**（S3 已获用户授权；这也是用户"简化提示词与状态机"目标的直接落点）。
+
+**风险/验收**：两次样本须 `failedRuns=0`、`silentRuns=0`、`publishedRuns` 满额、`verificationPassRateDelta ≥ 0`；**若质量退化 ⇒ 回退并改为"只压缩重复措辞"**。
+
+**S4（并授权）**：`runtime-awareness`(706/轮) 紧缩 —— 紧随 S3 之后单独做，两次样本独立验收。
+
+**下一轮**：实施 S3（`sections.ts` 按 stage 渲染 + `builder.ts` 传递 + 调用点传 stage），先只改 **router(classify)** 与 **reply** 两处验证效果，再推广。
