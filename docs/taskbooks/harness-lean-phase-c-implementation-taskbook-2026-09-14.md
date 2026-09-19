@@ -7211,3 +7211,34 @@ only in tool_loop: execute:history:<相同 id/hash> ×12 …
 2. 若缺 ⇒ 按 `reply.ts` 的写法补上（`systemSegments: <bundle>.segments` / `trailingSegments: <bundle>.trailingSegments`，视其可用变量而定）；
 3. `typecheck` + 全量 vitest + `check:repo` → continuity/UI 门 → **两次**样本 ⇒ **判据**：`decide` 的首条 system 长度下降并与工具循环对齐、`execute_tool_loop` 的 miss/调用下降、`hit` 上升或持平、`failedRuns=0`、`silentRuns=0`；**回退**：任一退化。
 **若仍回归** ⇒ "跨 purpose 统一头"作为已否证方向关闭，转 **#5（D1 架构债）**。
+
+## 10.264 **判定：`decide` 与工具循环的头部差异来自 `tooling` 文本，且不可消除**（2026-09-18）
+
+**取证**：`decide/request.ts:231–235` **已经**传入
+```ts
+return buildRunRequestCandidates(ctx, 'decide', messages, {
+  systemSegments: request.systemPrompt.segments,
+  history: request.history,
+  insertedBeforePrimary: request.attachmentMessages.map((item) => item.context),
+});
+```
+⇒ 契约段（`retrieval-intent-contract` 等）**已被候选层按 `VOLATILE_GUIDANCE_SEGMENT_IDS` 移到尾部** ✓ ⇒ 10.263 的推测**不成立**。
+
+**⇒ 真正原因：`tooling` 文本的不对称**
+| 路径 | 工具文本 | provider 工具 |
+| --- | --- | --- |
+| `decide`（15,520） | **有**（≈4,179 字符，`retrievalTools`） | **无**（其 lean 契约不带 provider 工具） |
+| `execute_tool_loop`（12,606） | **已省略**（S1 `fdfb0b5` 的 `includeToolingText: false`） | **有**（该步骤的工具） |
+
+⇒ 差值 ≈ `tooling` 的 4,179 减去两边的其他小差异 ≈ **2,914** ✓ 与实测吻合。
+
+**⇒ 结论：该子方向**（把 decide 的头对齐到工具循环）**在设计上不可行**：
+- `decide` 的**唯一**工具通道就是这段文本（它没有 provider 工具）⇒ 去掉它 = **模型看不到工具** ⇒ **裁剪能力** ✗（硬约束禁止）；
+- 反之，把工具文本**加回**工具循环 = 撤销 S1（已验证为 −14% 工具循环 miss 的收益）✗ 且与本会话结论冲突。
+
+**⇒ 处置：关闭"decide ↔ 工具循环 头部对齐"这一子方向**，并把 **#3（统一稳定缓存前缀）** 的现状记为"**已到机制允许的边界**"：
+- **同 purpose 内**：各 purpose 的 system 头**已字节稳定**（§10.262 单一取值）✓；
+- **跨 purpose**：可复用只有公共头（≈2.9k），进一步的统一会**触碰某条路径的唯一信息通道**（`decide` 的工具文本）或**删除已缓存内容**（已被证三次为负）⇒ **本方向收束**。
+
+**下一轮转 #5（清理隐式 Context 依赖 / D1 架构债）**：重做 **runner 的 continuation/checkpoint 验证路径**，使 `verify` 能携带历史（消除"某 stage 必须看不到某些信息"这一架构债，符合用户原则 7 的理想状态：*Context 变化影响模型判断，但不破坏 Runtime 正确性*）。
+**该工作的最小起点**：先读失败用例（`runner checkpoint continuation` 8 例 + `Runner Memory v3 integration` 1 例）中**与 verify 请求形状相关**的断言/替身分支，评估"是替身敏感（可改）还是 Runtime 语义依赖（需改协议）"。
