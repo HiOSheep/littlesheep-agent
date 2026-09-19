@@ -70,6 +70,11 @@ export interface LoadSkillIndexOptions {
 export interface SkillLoader {
   index: SkillIndex;
   loadBody(name: string): Promise<string | undefined>;
+  /**
+   * Register a body that is produced at call time instead of read from disk.
+   * Used for per-run content such as the task book, which no skill file holds.
+   */
+  registerDynamic?(entry: SkillIndexEntry, body: () => string | undefined): void;
   /** Re-scan skill directories and rebuild the index. New skills become visible immediately. */
   reload(): Promise<SkillIndex>;
   /** Atomically replace all dynamic sources owned by one source kind. */
@@ -245,15 +250,24 @@ export async function createSkillLoader(opts: LoadSkillIndexOptions): Promise<Sk
   const baseSources = normalizeSkillSources(opts);
   let dynamicSources: SkillSourceDefinition[] = [];
   let index = await loadSkillIndex({ sources: baseSources, disabled });
+  // Bodies produced per run rather than read from disk. Kept beside the index
+  // because reload() replaces the index wholesale.
+  const dynamicEntries = new Map<string, SkillIndexEntry>();
+  const dynamicBodies = new Map<string, () => string | undefined>();
   const reload = async (): Promise<SkillIndex> => {
     index = await loadSkillIndex({ sources: [...baseSources, ...dynamicSources], disabled });
     return index;
   };
   return {
     get index() {
-      return index;
+      if (dynamicEntries.size === 0) return index;
+      return { ...index, skills: [...index.skills, ...dynamicEntries.values()] };
     },
-    loadBody: (name) => loadSkillBody(name, index),
+    loadBody: async (name) => dynamicBodies.get(name)?.() ?? loadSkillBody(name, index),
+    registerDynamic: (entry, body) => {
+      dynamicEntries.set(entry.name, entry);
+      dynamicBodies.set(entry.name, body);
+    },
     reload,
     replaceOwnedSources: async (kind, sources) => {
       if (sources.some((source) => source.kind !== kind)) {
