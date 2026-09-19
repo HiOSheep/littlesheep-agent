@@ -7057,3 +7057,35 @@ const avoidReplies = collectRecentAssistantReceives(ctx)   // 实际为 collectR
 **⇒ 实施要点（本轮教训）**：这两处必须用 **`read` 工具读取该测试文件后再用 `edit`**（`edit` 拒绝未读文件）；不要再用 PowerShell 字符串拼接（本轮已两次因转义/换行失败）。
 
 **判据（不变）**：`rewriteCount=0` 占比↑、**`avgCalls/run`（现 2.14）与 p95（现 7）↓**、`failedRuns=0`、`silentRuns=0`、`publishedRuns` 满额、`verificationPassRateDelta ≥ 0`；**回退**：移除该清单。
+
+## 10.258 R1 **更低风险的收尾变体**：把回避清单**并入入站 user 消息**（而非新增消息）（2026-09-18）
+
+**本轮已把两处失败定位到行**：
+
+| 失败 | 位置 | 原文 |
+| --- | --- | --- |
+| 1 | `stages/reply.test.ts:94` | `expect(requests[0]?.messages).toHaveLength(3);`（新增尾部消息后为 **4**） |
+| 2 | `model-request-characterization.test.ts:174` | `expectRecordedSnapshot(ctx, 'reply');`（该用例 `:153` 断言 `requests` 长度、`:165` `expectCommonPayloadShape(…, { includesBootstrap: false })`、`:166–170` 断言首条消息含 `# Core Flow`/`# Workspace` ⇒ **失败来自形状/快照校验**） |
+
+**⇒ 变体 B（推荐）：不新增消息，把清单并入入站 user 消息内容**
+```ts
+const avoidReplies = collectRecentAssistantReplies(ctx)
+  .slice(-MAX_AVOID_REPLY_COUNT)
+  .map((reply) => reply.slice(0, MAX_AVOID_REPLY_CHARS));
+const inbound = userChatMessage(textOf(ctx.inbound), ctx.attachments);
+const messages: ChatMessage[] = [
+  { role: 'system', content: systemPrompt.stableText ?? systemPrompt.text },
+  ...history.map(toChatMessage),
+  ...attachmentMessages.map((item) => item.message),
+  avoidReplies.length > 0
+    ? { ...inbound, content: `${textOf(inbound.content)}\n\nRecently published replies - do not repeat any of them word for word; if your answer would be identical, rephrase it while preserving every fact:\n${avoidReplies.map((r, i) => `${i + 1}. ${r}`).join('\n')}` }
+    : inbound,
+];
+```
+**优点**：**消息条数与角色序列完全不变** ⇒ `reply.test.ts:94` 的 `toHaveLength(3)` **不再失败**、`expectCommonPayloadShape`/`expectRecordedSnapshot` 的形状校验也**不再受影响** ⇒ **无需改任何测试断言** ✓
+**缺点**：入站消息内容变化 ⇒ 该消息的 hash 变化（但它在**尾部**，不影响被缓存前缀 ✓）；`userChatMessage` 的附件语义需保持（用 `{ ...inbound, content: … }` 保留其余字段 ✓）。
+**信息口径**：只增不减 ✓；**不裁剪能力** ✓。
+
+**判据（不变）**：`rewriteCount=0` 占比↑、**`avgCalls/run`（现 2.14）与 p95（现 7）↓**、`failedRuns=0`、`silentRuns=0`、`publishedRuns` 满额、`verificationPassRateDelta ≥ 0`。
+
+**实施要点**：`textOf(inbound.content)` 的取法需按 `ChatMessage.content` 的类型（可能是 string 或分段数组）调整——**先 `read` `userChatMessage` 的实现**再用 `edit` 写；若 `content` 是数组，用 `[...]` 拼接而非字符串模板。
