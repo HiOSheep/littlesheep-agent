@@ -6600,3 +6600,21 @@ AssertionError: expected { …(7) } to match object { …(4) }
 - 仍需处理 runner 替身（若原因为①）。
 
 **下一轮**：先用一次取证区分①②（`grep` 失败测试的 mock 分支是否按 `messages.length`/历史内容判定；或对失败用例单独跑并打印其 error 文本），再决定走**有界变体**还是**完整历史 + 替身适配**。
+
+## 10.243 取证：runner 替身按**首条消息内容/历史长度**分支 ⇒ 最小实验计划（2026-09-18）
+
+**本轮取证**（`grep 'messages\.length|messages\[|history'` 于 `packages/runner/src/*.test.ts`，148 处命中）：
+- 替身普遍以 **`String(request.messages[0]?.content)`** 的内容分支，例如 `runner.test.ts:2340/2427/2473/2545` 的 `includes('versioned session summary')`、`:2275/2503/2661` 取 `messages[0]`；
+- `runner-continuation.test.ts:576–636` 有 **`long-history-request` / `long-history-turn` / `long-history-newer-*`** 夹具 ⇒ 该套件**显式构造特定历史长度**并据此断言；
+- 失败集中在 **`runner checkpoint continuation`（8 例）与 `Runner Memory v3 integration`（1 例）**，即**最依赖精确请求形状**的两组。
+
+⇒ **10.242 的可能①（替身敏感）得到支持**：这 5 处历史改动会改变 `verify`/紧凑路径的消息条数与内容，从而改变这些替身的分支与其断言的期望值。
+
+**⇒ 最小实验（下一轮，先只做一处，快速判定）**：
+1. **只改 `verify/model-call.ts` 一处**（`history: []` → `recentHistoryForModel(ctx.history, 8, 6_000)`，即**有界窗口**）；
+2. 跑全量套件 ⇒ 观察失败数：
+   - **失败数显著下降（→0–2）** ⇒ 支持"替身敏感 + 完整历史过大"混合因，**有界变体可行**，再逐步推广到其余 4 处；
+   - **仍有 5+ 例行为性失败** ⇒ 主要矛盾在"`verify` 不该看到历史"这一设计语义（或替身必须整体改造）⇒ 应把该项**退回**给用户重新评估，而不是继续投入；
+3. 若实验通过 ⇒ 推进到 5 处统一有界窗口 ⇒ 全门 + **两次**样本 ⇒ 验收 hit **+3–6pt**；**回退条件**不变。
+
+**为何选有界窗口而非完整历史**：`_shared.ts:79` 的 `recentHistoryForModel(history, maxMessages=8, maxChars=6_000)` **已存在**，其上限（≤6k 字符）远低于完整窗口（≤12k），既可保持各 purpose 的**前缀一致**（收益来源），又把"请求过大"的风险压到最低。
