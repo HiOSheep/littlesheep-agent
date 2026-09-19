@@ -5,7 +5,6 @@ import {
 } from '@littlesheep/prompt';
 import type { RunContext } from '@littlesheep/types';
 import {
-  renderCompactAutonomousReadTaskGuidance,
   renderCompactAutonomousReadWorkspace,
   resolveCompactAutonomousReadExecutionTools,
 } from '../../compact-autonomous-read-task.js';
@@ -15,7 +14,6 @@ import {
   buildCompactUserFacingVoiceAddon,
 } from '../../profile-prompt.js';
 import type { ExecuteStageDeps } from './contracts.js';
-import { renderPlanGuidance, renderTaskBookGuidance } from './guidance.js';
 import { renderRetrievalIntentContract, toolsForRetrievalIntent } from '../../retrieval-intent.js';
 
 export async function buildExecuteSystemPrompt(
@@ -36,13 +34,6 @@ export async function buildExecuteSystemPrompt(
     // callable set, so the rendered copy is omitted to keep the prompt smaller.
     includeToolingText: false,
   }, compactReadTools ? 'respond' : undefined);
-  const guidance = compactReadTools && ctx.taskBook
-    ? renderCompactAutonomousReadTaskGuidance(ctx.taskBook)
-    : ctx.taskBook
-      ? renderTaskBookGuidance(ctx.taskBook)
-      : ctx.plan?.length
-        ? renderPlanGuidance(ctx.plan)
-        : '';
 
   return appendSystemPromptBundleAddons(base, [
     ...(compactReadTools ? [{
@@ -59,12 +50,6 @@ export async function buildExecuteSystemPrompt(
       kind: 'workflow_state' as const,
       source: { kind: 'workflow' as const, id: 'retrieval-intent-contract', runId: ctx.runId },
     }] : []),
-    {
-      id: 'execution-plan',
-      text: guidance,
-      kind: 'workflow_state',
-      source: { kind: 'workflow', id: 'execution-plan', runId: ctx.runId },
-    },
     {
       id: 'profile',
       text: compactReadTools ? buildCompactBehaviorProfileAddon(ctx) : ctx.profilePromptAddon,

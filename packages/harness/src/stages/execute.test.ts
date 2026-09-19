@@ -840,10 +840,12 @@ describe('executeStage', () => {
     const res = await stage(ctx);
 
     expect(res.next).toBe('verify');
-    expect(systemPrompts[0]).toContain('Task book (from DECIDE)');
-    expect(systemPrompts[0]).toContain('Goal: find core gaps');
-    expect(systemPrompts[0]).toContain('gaps are named');
-    expect(systemPrompts[0]).toContain('Overdelivery limit: 1.5x');
+    // The task book travels as the `taskbook` skill instead of being pushed
+    // into every execute request.
+    expect(systemPrompts[0]).not.toContain('Task book (from DECIDE)');
+    expect(systemPrompts[0]).not.toContain('Goal: find core gaps');
+    expect(systemPrompts[0]).not.toContain('gaps are named');
+    expect(systemPrompts[0]).not.toContain('Overdelivery limit: 1.5x');
     expect(systemPrompts[0]).toContain('SOUL_SENTINEL_SINGLE_STEP_VOICE');
     expect(systemPrompts[0]).toContain('It may be shown to the user directly');
   });
