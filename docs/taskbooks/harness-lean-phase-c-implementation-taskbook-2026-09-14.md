@@ -6714,3 +6714,42 @@ decide/request.ts:18  } from '../_shared.js';
 **⇒ 判据① 现状（短会话 8×5）**：hit **75.1–76.3% ≥ 75% ✓**；miss/调用 **676.1–698.3 < 700 ✓**；`failedRuns=0`、`silentRuns=0` ✓
 
 **下一轮**：实施**授权②**（`core-flow` 只保留与当前 stage 相邻的转移，再省 ≈250–350 字符/次）⇒ 全门 + 两次样本。
+
+## 10.248 授权②（`core-flow` 进一步精简）的**安全配方**（本轮未写入，避免字形损坏）（2026-09-18）
+
+**现状（已读到，`sections.ts:12–47`）**：
+- `CORE_FLOW_DIAGRAM`（`:12–16`，5 行、含**盒线字形** `─│├└→`）—— **仅**被 `renderStagedCoreFlow` 使用（`:43`）；
+- `CORE_FLOW_STAGE_BULLETS`（`:18–28`）；
+- `renderStagedCoreFlow`（`:35–47`）：staged 形式 = 标题 + "This run is at the X stage…the whole flow is:" + **代码围栏内嵌整张图** + 该 stage 的 bullet；
+- 全文形式（`:52+`）**不受影响**（它自带一份独立图）。
+
+**本轮两次尝试均因锚点不匹配而中止（未写入任何内容，树干净）**：围栏在 TS 模板内写作 **`` \`\`\` ``**（含反斜杠），且段落含**字形**；用 PowerShell 字面串回写有**编码损坏风险**（控制台已显示为乱码）。
+
+**⇒ 安全配方（供实施，避免字形字面量）**：
+1. **插入路线表**（锚点为**纯 ASCII**，已验证可匹配 `n1=1`）：
+   ```powershell
+   $a1=' * A request only acts on the stage it is in, so a request that names its stage'
+   $b1=$routes+$a1   # routes = const CORE_FLOW_STAGE_ROUTES: Record<string,string> = { router: '…', reply: '…', … }
+   ```
+   路线建议（**纯 ASCII 箭头 `->`**，避免字形）：
+   | stage | route |
+   | --- | --- |
+   | router | `ENTER -> ACTIVITY ROUTER -> { respond \| execute \| clarify }` |
+   | reply | `respond -> REPLY (terminal)` |
+   | decide | `execute -> DECIDE -> EXECUTE` |
+   | execute | `DECIDE -> EXECUTE -> VERIFY` |
+   | verify | `EXECUTE -> VERIFY -> { EVOLVE \| DECIDE (needs_replan, bounded) \| RECOVER }` |
+   | recover | `RECOVER -> EXECUTE (or escalate)` |
+   | evolve | `VERIFY -> EVOLVE -> CAPTURE` |
+   | capture | `EVOLVE -> CAPTURE -> FINALIZE` |
+   | finalize | `CAPTURE -> FINALIZE (terminal)` |
+2. **用正则替换整个围栏块**（避开字面反斜杠/字形；注意 .NET 替换串中 `$` 需写成 `$$`）：
+   ```powershell
+   $pattern = '(?s)\x60\x60\x60\r?\n\$\{CORE_FLOW_DIAGRAM\}\r?\n\x60\x60\x60\r?\n'
+   $replacement = '$${CORE_FLOW_STAGE_ROUTES[stage!]}' + $nl
+   $t2 = [regex]::Replace($t, $pattern, $replacement)
+   ```
+   （`\x60` = 反引号；`$$` 输出字面 `$`。）
+3. 同步 `builder.test.ts` / `system-prompt-cache-split.test.ts` 中可能存在的流程段断言（由 `typecheck`+套件暴露）。
+
+**预期**：staged 形式由「标题 + 5 行图 + bullet（≈660 字符）」降为「标题 + 1 行路线 + bullet（≈380–420 字符）」⇒ **每条请求再省 ≈240–280 字符**；**信息不丢失**（全部 stage 名与相邻关系仍在）。
