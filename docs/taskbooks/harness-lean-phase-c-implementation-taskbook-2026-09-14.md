@@ -6187,3 +6187,29 @@ runtime-awareness.test.ts:111  expect(system).toContain('task_progress: 1/2 comp
 2. 注册 `taskbook` skill（沿用 `skills-index` / `create_skill` 机制），**运行时保留 taskbook 对象**（调度/校验/证据不变）；
 3. 停止把该指导文本注入提示，改由模型按需拉取 ⇒ **信息相同、提示更短**（与 S1/S3 同类的成本收益），并可能减少"每轮新增"；
 4. 全门 + **两次**样本；**回退条件**：`verificationPassRateDelta < 0` 或 `publishedRuns` 下降（说明模型确实依赖常驻指导）。
+
+## 10.230 taskbook-as-skill **逐项影响清单**（实测字符数）（2026-09-18）
+
+**实测（`guidance-items.mjs` 对 `live-s3c-short` 的逐项快照）**：
+
+| 注入项 | 出现次数 | 平均字符 | 位置 |
+| --- | --- | --- | --- |
+| `execute:inserted:step-contract:<id>`（`workflow_state`） | 4 | **1,213** | **尾部**（10.180 已后置） |
+| `execution-plan`（`workflow_state`） | 7 | **417** | **尾部**（在 `VOLATILE_GUIDANCE_SEGMENT_IDS` 内） |
+
+⇒ 两者**都已是"新增内容"**（不在缓存前缀内）⇒ 把它们改为**按需 skill** 将**直接减少每一次 execute 调用的新增 token** —— **这正是 10.226 结论中指出的"唯一能提升 ratio 的方向"** ✓（与 S1/S3 不同：S1/S3 削减的是**已缓存**内容）
+
+**预期收益（量级）**：
+- execute 形态调用占比 ≈ 13%（长会话 263 次调用中约 34 次带这两项）⇒ 每次卸下 ≈ **1,630 字符（≈ 420 token）**；
+- 摊到全部调用 ≈ **−210 字符（≈ 55 token）/次** ⇒ **ratio +1–2pt**（若模型不频繁拉取；若频繁拉取，收益趋近 0，因为 tool 结果同样是新增内容）。
+
+**实施计划（3 步，**运行时不变**）**：
+1. **注册 `taskbook` skill**：内容 = 当前 `renderTaskBookGuidance(ctx.taskBook)` / `renderPlanGuidance(ctx.plan)` / `renderStepGuidance(...)` 的文本（沿用既有 `skills-index` 机制，模型可发现）；
+2. **停止注入**这三处文本到提示（保留 `taskbook` **对象**本身：步骤调度、每步工具校验、证据记录**一律不动** —— 见 10.153 的 6 处执行期校验）；
+3. **模型按需拉取**：需要时通过 skill 工具取回同等文本 ⇒ **信息不减少**（从"总是推送"变为"按需拉取"）。
+
+**风险 / 回退条件（诚实）**：
+- 模型**可能不主动拉取** ⇒ 任务质量下降 ⇒ **回退条件**：两次样本 `verificationPassRateDelta < 0`、`publishedRuns` 下降、或 `failedRuns > 0`；
+- 若退化 ⇒ 折中方案：**`step-contract` 仍常驻（它含"本步允许的工具/验收标准"，是执行安全相关）**，仅把**较长的 `execution-plan` 与 taskbook 详情**改为 skill。
+
+**下一轮**：读 `skillsSection` / `skills-index` 的机制（`sections.ts` 与 harness 中 skill 的注册/发现路径）、以及 `renderTaskBookGuidance`/`renderPlanGuidance` 的调用点，据此**先只把 `execution-plan`（417 字符）改为 skill**（最小改动、可回退），跑两次样本后再决定是否把 `step-contract` 也移出。
