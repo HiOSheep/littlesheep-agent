@@ -6114,3 +6114,23 @@ export function buildUserFacingVoiceAddon(ctx) {
 1. 读 `runtime-awareness.ts:30–90`（`renderRuntimeAwareness` / `renderCompactRuntimeAwareness`）；
 2. 逐条列出可压缩内容（保留全部事实字段，只压缩措辞与重复标签）；
 3. 两次样本验收：`runtime-awareness` 字符数下降、**hit → ≥75%**、`failedRuns=0`、`silentRuns=0`。
+
+## 10.227 S4 取证：`runtime-awareness` 的字段与四个压缩候选（2026-09-18）
+
+**`runtime-awareness.ts:101–144`（已读）**：
+- **compact（5 段）**：`# Runtime Clock` + `local=… ${utcOffset} (${timeZone}); elapsed_ms=…; task=…` + `renderCapabilityLines(ctx, true)` + `Use these exact facts only when relevant.`
+- **full（12+ 段）**：`# Live Runtime State` + 7 条 bullet（`local_datetime`、`time_zone`、`user_time_format … (default answer precision: hour and minute)`、`utc_instant`、`run_started_at`、`run_elapsed: … ms (…)`、`task_state`）+ `renderCapabilityLines(ctx, false)` + `task_progress`/`active_step` + `current_run_tools: …` + …
+
+**压缩候选（全部保留事实，只改措辞/去重）**：
+
+| # | 候选 | 估计节省 |
+| --- | --- | --- |
+| **S4a** | **去掉尾部 capability lines 与头部 `capabilities` 段的重复**（`builder.ts` 已有 `capabilitiesSection(input.tools)` 在稳定头内 ⇒ 若尾部 `renderCapabilityLines` 表达同一可用性事实，则**尾部删、头部留**，事实不丢且头部**已被缓存**） | **最大**（取决于 capability lines 的实际字符数） |
+| S4b | 标签改为 compact 风格（`- local_datetime: X` → `local=X`；7 条标签合计省 ~60 字符） | ~60 |
+| S4c | `user_time_format` 的括号说明（`(default answer precision: …)`）与 `output-directives` 重复 ⇒ 删括号 | ~45 |
+| S4d | 合并时间类字段：`local_datetime`/`time_zone`/`utc_instant`/`run_started_at` 4 行 → 2 行 | ~30 |
+| S4e | `run_elapsed: N ms (human)` → 只留 human 形式 | ~8 |
+
+**⇒ 优先级：S4a（去重）> S4b–S4e（措辞）**；若 S4a 成立，仅它会带来可观的尾部缩短（尾部是**纯新增内容** ⇒ 每减 1 字符即 ratio 直接受益）。
+
+**下一轮**：读 `renderCapabilityLines`（`runtime-awareness.ts` 内）与 `capabilitiesSection`（`sections.ts`），**逐条对照**：凡尾部与头部表达同一事实的行，**尾部删除**（事实仍在头部且已缓存）；随后实施 S4b–S4e 的措辞压缩。验收：`runtime-awareness` 字符数下降、**hit → ≥75%**、两次样本 `failedRuns=0`/`silentRuns=0`/`verificationPassRateDelta ≥ 0`。
