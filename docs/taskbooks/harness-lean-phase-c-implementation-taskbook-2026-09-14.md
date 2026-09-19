@@ -6422,3 +6422,34 @@ runner.infra.skillLoader.registerDynamic?.(
 
 **验收**：`use_skill('taskbook')` 可取回同等文本；execute 调用 prompt 降低 ≈1,630 字符/次；两次样本 ratio **+1–2pt**；`failedRuns=0`、`silentRuns=0`、`publishedRuns` 满额、`verificationPassRateDelta ≥ 0`。
 **回退条件**：质量退化 ⇒ 恢复注入（(B) 回退即可，(A) 无副作用）。
+
+## 10.238 taskbook-as-skill **(4) 的一步到位配方**（断言原文已取得，改动已回退）（2026-09-18）
+
+**已落地并提交**：`485d58c`（loader 动态正文）、`75a29bc`（注销）、`a780b7a`（正文渲染模块）、`4f7abe8`（runner 每 run 注册/注销，含两处仓库门禁的合规处理）。
+**效果**：`use_skill` 的工具描述每次调用重建自 index ⇒ 模型**已能看到并加载 `taskbook` skill**（正文与注入文本**完全相同**）。
+
+**(4)（移除注入）本轮试过并回退** —— 仅 1 处测试因语义变化而失败，原文如下：
+
+```
+packages/harness/src/stages/execute.test.ts:843  expect(systemPrompts[0]).toContain('Task book (from DECIDE)');
+packages/harness/src/stages/execute.test.ts:844  expect(systemPrompts[0]).toContain('Goal: find core gaps');
+packages/harness/src/stages/execute.test.ts:845  expect(systemPrompts[0]).toContain('gaps are named');
+```
+
+**(4) 的精确改动（4 处，均可回退）**：
+1. `execute/prompt.ts` 删除 `const guidance = …`（原 `:36–45`，含 `renderCompactAutonomousReadTaskGuidance` / `renderTaskBookGuidance` / `renderPlanGuidance` 三个分支）；
+2. 删除 `appendSystemPromptBundleAddons` 内的 **`{ id: 'execution-plan', text: guidance, … }`** 块（原 `:62–67`）；
+3. 删除随之未使用的 import：`import { renderPlanGuidance, renderTaskBookGuidance } from './guidance.js';` 整行 + `renderCompactAutonomousReadTaskGuidance,` 一项（保留 `renderCompactAutonomousReadWorkspace` / `resolveCompactAutonomousReadExecutionTools`）；
+4. **同步更新** `execute.test.ts:843–845` ⇒ 改为断言**skill 正文**含同样文本（保留原意），例如：
+   ```ts
+   const skillBody = renderTaskbookSkillBody(ctx) ?? '';
+   expect(skillBody).toContain('Task book (from DECIDE)');
+   expect(skillBody).toContain('Goal: find core gaps');
+   expect(skillBody).toContain('gaps are named');
+   ```
+   （`renderTaskbookSkillBody` 从 `./taskbook-skill.js`/`@littlesheep/harness` 导入；`ctx` 为该用例已有的上下文。）
+
+**验收（两次样本）**：`use_skill('taskbook')` 可取回同等文本；execute 调用 prompt **−≈1,630 字符/次**（`execution-plan` 417 + 相关）；ratio 预期 **+1–2pt**；`failedRuns=0`、`silentRuns=0`、`publishedRuns` 满额、`verificationPassRateDelta ≥ 0`。
+**回退**：质量退化 ⇒ 恢复第 1–3 步（(1)–(3) 无副作用，可保留）。
+
+**当前判据**：① miss/调用短会话 674.9–730（多数达标 ✓）、hit 72.5–74.6%；② 长会话 72.8–74.7%（结构性不可达，10.203）；硬约束全绿。
