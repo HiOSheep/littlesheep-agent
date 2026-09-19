@@ -6913,3 +6913,38 @@ pnpm run verify:harness-paths
 - ⇒ 优先级 #2 的**剩余空间不在"缩短普通路径"，而在"减少复杂路径的调用次数"**（p95=7：`decide`×1–2 + 工具循环 + `final_reply`×1–3 + `verify`），这与优先级 #4（降低模型调用数）是同一件事。
 
 **⇒ 下一步（优先级 #4，可量化的候选）**：统计 execute 形态 run 的**调用构成**（`decide`/工具循环/`final_reply`/`verify` 各几次）并从日志找出**可合并的相邻调用**（例如 `final_reply` 在无重写时是否真的需要多次；`verify` 与 `final_reply` 能否共享一次调用），给出"每 run 调用数 −1"的具体落点 —— **判据**：`avgCalls/run` 与 p95 同时下降，且 `verificationPassRateDelta ≥ 0`。
+
+## 10.254 **调用数的主因：44% 的 run 触发"重复答复重写"**（2026-09-18）
+
+**调用构成（`live-bounded-long`，120 run，`run-shapes.mjs`）**：
+```
+avgCalls/run = 2.14   hit = 73.5%
+ 65  reply                                                  ← 单次调用（54%，最短路径 ✓）
+ 29  reply x2
+ 14  decide x2 > execute_tool_loop > execute_final_reply x3 > verify   ← 重形态（7 次调用，12% 的 run）
+ 10  reply x3
+  1  decide x2 > execute_tool_loop > verify
+  1  classify > reply
+```
+
+**根因取证（`rewriteCount` 分布，同一 120 run）**：
+```
+rewriteCount = 0 → 67 run
+rewriteCount = 1 → 29 run
+rewriteCount = 2 → 24 run          （2 是上限）
+```
+⇒ **53/120（44%）的 run 至少重写一次**，**24/120（20%）打满 2 次上限**；每次重写 = **一整次模型调用** ⇒ 这解释了 `reply x2/x3` 与 `final_reply x3` ✓✓
+
+**成因**：harness 的"重复答复"门（`acceptUniqueUserFacingReply`）在新答复**与某条已发布答复逐字相同**时要求重写。本基准负载是 **8 个任务 × 15 轮**（`UNIQUE_TURNS=1` ⇒ 同一任务重复出现）⇒ 模型自然给出**相同答复** ⇒ 门反复触发。
+
+**⇒ 两条改进路线（按"用户获得什么"排序）**：
+
+| 路线 | 做法 | 预期 |
+| --- | --- | --- |
+| **R1（推荐，先做）** | **在首答请求里就给出"需避免逐字重复的近期答复"**（该清单目前**只在重写轮**里），使模型一次做对、**不必进入重写** | `rewriteCount` 分布趋近 **0**；`avgCalls/run` **2.14 → ~1.7**；p95 **7 → ~5**；代价是首答 prompt 增加约 150 字符（**且该信息模型确实需要**，符合"不该让模型猜"） |
+| R2 | 重写两次仍相同 ⇒ **提前停止**（不再要求第 2 次） | 仅省 20% run 的 1 次调用；**风险**：与既有断言/发布语义冲突（`runner.test.ts` 有 `rewriteCount=1/2` 的期望与"打满仍失败"的错误路径） |
+
+**R1 的判据**：`rewriteCount=0` 占比上升、`avgCalls/run` 与 p95 下降、`failedRuns=0`、`silentRuns=0`、`publishedRuns` 满额、`verificationPassRateDelta ≥ 0`；**回退**：任一退化即移除该清单。
+**注**：R1 是**增加一条必要信息**，不是删除；与本会话"扩大可复用前缀/减少新增"的策略不冲突（它减少的是**调用次数**这个更贵的维度 —— 用户原则 4 明确指出"99% 命中不一定优于 95%，若后者调用 3 次而非 8 次"）。
+
+**下一轮**：定位首答的请求构造处（`reply.ts` 首答路径）与其可用的"近期已发布答复"来源（重写轮用的是 `input.avoidReplies`），实施 R1 ⇒ 全门 + **两次**样本 ⇒ 按上面判据判定。
