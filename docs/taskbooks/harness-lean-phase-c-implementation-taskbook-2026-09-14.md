@@ -6982,3 +6982,51 @@ rewriteCount = 2 → 24 run          （2 是上限）
 **判据**：`rewriteCount=0` 占比上升、`avgCalls/run` 与 p95 下降、`failedRuns=0`、`silentRuns=0`、`publishedRuns` 满额、`verificationPassRateDelta ≥ 0`；**回退**：任一退化即移除该清单。
 
 **注**：本项与硬约束一致（**增加**一条必要信息，不删除任何能力），且符合用户原则 4（"99% 命中不一定优于 95%，若后者调用 3 次而非 8 次"）。
+
+## 10.256 R1 到**行级**的落点（下一轮用行号或 `(?m)^` 正则一次到位）（2026-09-18）
+
+**已确认**：`collectRecentAssistantReplies` **已导出** ✓（无需改动 `user-facing-reply.ts`）；`MAX_AVOID_REPLY_COUNT = 6`、`MAX_AVOID_REPLY_CHARS = 800` 亦已导出 ✓。
+
+**`packages/harness/src/stages/reply.ts` 的确切字节（本轮打印）**：
+```
+102:     const attachmentMessages = isCapabilityReply ? [] : attachmentContextMessages(ctx.runId, ctx.attachments);
+103:     const history = isCapabilityReply ? recentHistoryForModel(ctx.history) : conversationHistoryForModel(ctx);
+104:     const messages: ChatMessage[] = [
+105:       {
+106:         role: 'system',
+107:         content: systemPrompt.stableText ?? systemPrompt.text,
+108:       },
+109:       ...history.map(toChatMessage),
+110:       ...attachmentMessages.map((item) => item.message),
+111:       userChatMessage(textOf(ctx.inbound), ctx.attachments),
+112:     ];
+```
+
+**本轮两次锚点尝试均未匹配（未写入任何内容，树干净）** —— 原因未定（疑与 here-string/换行拼接有关）⇒ **改用最稳的两种方式之一**：
+| 方式 | 做法 |
+| --- | --- |
+| **A. 行号插入**（推荐） | 读全部行 → 在 **111 行之后**插入尾部 user 消息（行号已知，不依赖字符串匹配）→ 在 **104 行之前**插入 `avoidReplies` 计算 → 写回 |
+| **B. `(?m)^` 正则** | `[regex]::Replace($r, '(?m)^    const messages: ChatMessage\[\] = \[', $insert + '$0')` 与 `'(?m)^    \];'`（注意该模式在本文件可能多处命中，需限定行号或先统计） |
+
+**要插入的两段**（纯 ASCII，避免编码风险）：
+```ts
+    const avoidReplies = collectRecentAssistantReplies(ctx)
+      .slice(-MAX_AVOID_REPLY_COUNT)
+      .map((reply) => reply.slice(0, MAX_AVOID_REPLY_CHARS));
+```
+（插在 `:104` 之前）
+```ts
+      ...(avoidReplies.length > 0 ? [{
+        role: 'user' as const,
+        content: 'Recently published replies - do not repeat any of them word for word; if your answer would be identical, rephrase it while preserving every fact:\n'
+          + avoidReplies.map((reply, index) => `${index + 1}. ${reply}`).join('\n'),
+      }] : []),
+```
+（插在 `:111` 之后、`:112` 之前）
+
+**import**（插在 `reply.ts:21` 的 `profile-prompt` 行之后）：
+```ts
+import { collectRecentAssistantReplies, MAX_AVOID_REPLY_CHARS, MAX_AVOID_REPLY_COUNT } from '../user-facing-reply.js';
+```
+
+**判据（不变）**：`rewriteCount=0` 占比↑、`avgCalls/run`（现 2.14）与 p95（现 7）↓、`failedRuns=0`、`silentRuns=0`、`publishedRuns` 满额、`verificationPassRateDelta ≥ 0`；**回退**：移除该清单。
