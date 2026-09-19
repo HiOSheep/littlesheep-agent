@@ -6618,3 +6618,23 @@ AssertionError: expected { …(7) } to match object { …(4) }
 3. 若实验通过 ⇒ 推进到 5 处统一有界窗口 ⇒ 全门 + **两次**样本 ⇒ 验收 hit **+3–6pt**；**回退条件**不变。
 
 **为何选有界窗口而非完整历史**：`_shared.ts:79` 的 `recentHistoryForModel(history, maxMessages=8, maxChars=6_000)` **已存在**，其上限（≤6k 字符）远低于完整窗口（≤12k），既可保持各 purpose 的**前缀一致**（收益来源），又把"请求过大"的风险压到最低。
+
+## 10.244 **决定性**：`verify` 只要看到**任何**历史就破坏 runner 的 checkpoint/continuation（9 例固定失败）（2026-09-18）
+
+**最小实验**（10.243 计划）：**只改 `verify/model-call.ts`** 一处，且用**有界窗口** `recentHistoryForModel(ctx.history, 8, 6_000)`（≤6k 字符，远小于完整窗口的 ≤12k）。
+
+**结果**：`typecheck` clean，但**全量套件仍是 9 failed / 3278 passed —— 与"完整历史"版本完全相同**：
+
+```
+× Runner Memory v3 integration > uses the versioned session summary as a bounded recall fallback after compaction
+× runner checkpoint continuation >（8 例：同会话绑定、崩溃恢复、检查点续跑、重规划反馈等）
+```
+
+**⇒ 结论（排除了"请求过大"）**：
+1. **不是规模问题**：把窗口从 ≤12k 压到 ≤6k，失败数**一模一样**；
+2. ⇒ **`verify` 携带历史本身**（无论多少）就会破坏这些流程 ⇒ 属**设计级依赖**：runner 的**验证/完成绑定与 continuation 协议**以"`verify` 的请求不含对话历史"为隐含前提（其替身与断言都建立在精确的请求形状上）；
+3. ⇒ **不是能靠"调窗口大小"绕开的问题**，要落地必须**改造 runner 的 continuation/checkpoint 验证路径**（跨文件的独立工程，收益未知）。
+
+**处置（按 10.243 的预案）**：**本轮改动已回退**（树干净）。→ **该子项退回给用户**：`verify` 携带历史需要先重做 runner 的验证绑定，**不建议**在没有明确收益证据前投入。
+
+**下一步（仍在授权范围内的廉价变体）**：**跳过 `verify`**，只对其余三处（能力回复 `reply.ts:101/348`、紧凑决策 `decide/request.ts:177`、紧凑只读执行 `task-step-runner.ts:151`）实施**有界窗口**，再用失败数判定 —— 若这些路径**没有**同类依赖，则仍可获得"前缀一致"的复用收益（只是不含 `verify` 那一份）。**预期**：收益小于原估计（`verify` 占长会话调用约 6%），估计 **+1–3pt**。
