@@ -6948,3 +6948,37 @@ rewriteCount = 2 → 24 run          （2 是上限）
 **注**：R1 是**增加一条必要信息**，不是删除；与本会话"扩大可复用前缀/减少新增"的策略不冲突（它减少的是**调用次数**这个更贵的维度 —— 用户原则 4 明确指出"99% 命中不一定优于 95%，若后者调用 3 次而非 8 次"）。
 
 **下一轮**：定位首答的请求构造处（`reply.ts` 首答路径）与其可用的"近期已发布答复"来源（重写轮用的是 `input.avoidReplies`），实施 R1 ⇒ 全门 + **两次**样本 ⇒ 按上面判据判定。
+
+## 10.255 R1 落地配方（**可直接执行**）：首答即告知"需避免逐字重复的近期答复"（2026-09-18）
+
+**已定位的全部要素**：
+| 要素 | 位置 |
+| --- | --- |
+| 近期已发布答复的来源 | `collectRecentAssistantReplies(ctx)`（`user-facing-reply.ts:86`、`:168` 调用） |
+| 上限常量（**已 export**） | `MAX_AVOID_REPLY_COUNT = 6`、`MAX_AVOID_REPLY_CHARS = 800`（`user-facing-reply.ts:20–21`） |
+| 重写轮的用法（参照实现） | `user-facing-reply.ts:196–202`：`avoidReplies: recentReplies.slice(-MAX_AVOID_REPLY_COUNT).map((r) => r.slice(0, MAX_AVOID_REPLY_CHARS))` |
+| 首答消息构造处 | `reply.ts:102–110`：`[system, ...history, ...attachmentMessages, userChatMessage(...)]` |
+
+**配方（一处改动 + 一个 import 确认）**：
+1. 在 `reply.ts` 首答路径、`messages` 构造之后**追加一条尾部 user 消息**（**放在 `userChatMessage` 之后** ⇒ 属尾部，**不触碰被缓存前缀** ✓）：
+   ```ts
+   const avoidReplies = collectRecentAssistantReplies(ctx)
+     .slice(-MAX_AVOID_REPLY_COUNT)
+     .map((reply) => reply.slice(0, MAX_AVOID_REPLY_CHARS));
+   …
+   ...(avoidReplies.length > 0 ? [{
+     role: 'user' as const,
+     content: 'Recently published replies — do not repeat any of them word for word; if your answer would be identical, rephrase it while preserving every fact:\n'
+       + avoidReplies.map((reply, index) => `${index + 1}. ${reply}`).join('\n'),
+   }] : []),
+   ```
+2. **确认导出**：`collectRecentAssistantReplies` 是否从 `user-facing-reply.ts` 导出；若否，**导出它**（或把该计算提到一个共享小函数）—— **这是唯一的开放项**。
+3. 该清单**只在首答加**；重写轮已自带 ✓（不重复加，避免 prompt 膨胀）。
+
+**预期**（用户优先级 #4：**降低模型调用数**）：
+- `rewriteCount` 分布趋近 **0** ⇒ `avgCalls/run` **2.14 → ~1.7**、p95 **7 → ~5**；
+- 长会话/短会话的 **uncached tokens/调用 亦应下降**（少一整次调用 = 少一次"新增"）；
+- 代价：首答 prompt 增加 **≤约 150–500 字符**（6 条 × ≤800 字符上限，实际通常很短）——**且这是模型确实需要的信息**（否则它只能靠猜）。
+**判据**：`rewriteCount=0` 占比上升、`avgCalls/run` 与 p95 下降、`failedRuns=0`、`silentRuns=0`、`publishedRuns` 满额、`verificationPassRateDelta ≥ 0`；**回退**：任一退化即移除该清单。
+
+**注**：本项与硬约束一致（**增加**一条必要信息，不删除任何能力），且符合用户原则 4（"99% 命中不一定优于 95%，若后者调用 3 次而非 8 次"）。
