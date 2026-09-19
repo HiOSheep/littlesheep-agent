@@ -7189,3 +7189,25 @@ const messages: ChatMessage[] = [
 **⇒ 最小实验（下一轮，单点、可回退）**：**先对齐 execute 家族内的两个头**（`decide` 15,520 与 `execute_tool_loop` 12,606，差 ≈2,914）—— 把 `decide` 独有的内容（其 purpose 段，如 `retrieval-intent-contract`/计划相关）**移到 decide 的尾部**，使两者头一致 ⇒ 工具循环的首个调用可复用 decide 的前缀（每个 execute run 省一次冷启动）。
 **判据**：`execute_tool_loop` 的 miss/调用下降、`hit` 上升或持平、两负载 `failedRuns=0`/`silentRuns=0`；**回退**：任一退化。
 **注**：**若再次回归** ⇒ 说明 10.200 的诊断（历史差异）不是全部原因，**"跨 purpose 统一头"应作为已否证方向关闭**，并转 **#5（清理隐式 Context 依赖 / D1 架构债）**。
+
+## 10.263 **决定性发现**：`decide` 与工具循环的差异**全在首条 system 消息内部**（2026-09-18）
+
+**取证**（工作区 `decide-vs-loop.mjs`，同一 run `9b4435ee`）：
+```
+decide     = 64 items
+tool_loop  = 64 items
+only in decide:    decide:history:<相同 id/hash> ×12 …
+only in tool_loop: execute:history:<相同 id/hash> ×12 …
+```
+⇒ **两个请求的逐项列表完全同构**（项数相同、历史消息的 **id 与 hash 完全相同**），唯一差异是**段 id 的 stage 前缀** ⇒ **历史已一致** ✓（有界窗口生效的证据）⇒ **≈2,914 字符的差异全部落在首条 system 消息内部**。
+
+**最可能的原因**：`decide` 的两个**专属契约段**（`retrieval-intent-contract`、`explicit-tool-proposal-contract`）**仍被写进 system 文本**，而它们**恰好在 `VOLATILE_GUIDANCE_SEGMENT_IDS` 内**（10.197 已证：候选层只在**调用方传入 `systemSegments`** 时才把它们移到尾部）⇒ 推测 **`decide/request.ts` 的 `buildRunRequestCandidates` 未传 `systemSegments`**（与 `verify` 早前的情况同类）。
+
+**⇒ 修法（机制内、低风险）**：在 `decide/request.ts` 的请求构造处**补传 `systemSegments`（+ `trailingSegments`）**，使这两个契约段按既有机制**移到尾部** ⇒ `decide` 的 system 由 **15,520 → ≈12,6xx**（与 `execute_tool_loop` 对齐）⇒ **execute run 的首个调用（decide）与随后的工具循环共享同一前缀** ⇒ 每 run 省一次冷启动。
+**内容口径**：两个契约段**照发**（只是位置从 system 移到尾部）⇒ **信息不减少**、**能力不裁剪** ✓
+
+**下一轮（先读后改）**：
+1. 读 `decide/request.ts:225–240`（`buildRunRequestCandidates` 的选项对象）确认是否缺 `systemSegments`/`trailingSegments`；
+2. 若缺 ⇒ 按 `reply.ts` 的写法补上（`systemSegments: <bundle>.segments` / `trailingSegments: <bundle>.trailingSegments`，视其可用变量而定）；
+3. `typecheck` + 全量 vitest + `check:repo` → continuity/UI 门 → **两次**样本 ⇒ **判据**：`decide` 的首条 system 长度下降并与工具循环对齐、`execute_tool_loop` 的 miss/调用下降、`hit` 上升或持平、`failedRuns=0`、`silentRuns=0`；**回退**：任一退化。
+**若仍回归** ⇒ "跨 purpose 统一头"作为已否证方向关闭，转 **#5（D1 架构债）**。
