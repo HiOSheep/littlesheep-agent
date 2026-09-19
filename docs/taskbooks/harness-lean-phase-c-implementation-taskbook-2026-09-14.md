@@ -6855,3 +6855,42 @@ pnpm run verify:harness-paths
 | **A. 重做 runner 的 continuation/checkpoint 验证路径** | 唯一能让 `verify` 携带历史（消除最后一个"不发历史"的 purpose）；跨文件工程、收益未知（`verify` 占长会话调用约 6%） |
 | **B. 收束判据②** | 记为"现有约束下上限 ≈74–76%"（短会话已达标），以 §10.111–10.251 为交付 |
 | **C. 新方向** | 例如从"减少每轮新增"入手（尾部 `runtime-awareness` 结构重排），但空间有限（§10.227 已量化） |
+
+## 10.252 **用户给出的优先级框架与复杂度预算**（2026-09-18，作为后续阶段的准绳）
+
+**核心判据（用户原话）**：*模型负责智能，Runtime 负责不可犯错的事情。其他东西默认不进 Runtime。*
+
+**十条原则（按可执行化整理）**：
+1. **Runtime 只留不可替代的确定性职责**：权限、工具执行、副作用、幂等、checkpoint、恢复、暂停/中断、authoritative result ✓；**规划方法/任务拆解/工作流策略 → Skill/Model 层**。判据：**"这件事若模型做错，会不会导致不可恢复的真实副作用？"** 不会 ⇒ 通常不必进 Runtime。
+2. **TaskBook Skill 化，但不把可靠性一起 Skill 化**："先分析→再修改→再测试" 属 TaskBook；"write 已成功、恢复时不得重复执行" 属 Runtime。**终态：Runtime 根本不认识 TaskBook 概念，只认识 action / effect / result / checkpoint。**
+3. **优先删除"模型根本不需要知道"的信息**，而非只优化缓存：Runtime 自己能推出的状态不重复塞 prompt；能从工具 schema 得到的不写进系统提示；能按需读取的 Memory 不常驻 Context。**命中率提升应是结果，不是唯一目标。**
+4. **同时看三个 token 指标**：命中率、**uncached tokens**、**模型调用次数**（99% 命中不一定优于 95%，后者若每次请求小得多、调用 3 次而非 8 次则更好）；再加两个体验指标：**Time to first useful action**、**Task completion latency**。
+5. **正常路径必须极短**：简单读文件/查目录/解释代码**不应**经过完整"规划→执行→验证→恢复→总结"流水线；复杂流程**按需升级**而非默认进入。目标：**80% 普通任务走最短路径，20% 复杂任务才启用重机制。**
+6. **对新增 abstraction 设高门槛**：每建 contract/projection/store/evidence/validator 前先问：现有结构真的表达不了吗？消除了哪类具体 bug？以后删除成本多高？"更严谨"通常不够。
+7. **特别警惕隐式耦合**：本会话的 **`verify` 一加 history 就破坏 continuation** 正是信号 ⇒ 凡"某 stage 必须看不到某些信息才正常"**应标为架构债**，而非长期当作正常约束。理想状态：**Context 变化影响模型判断，但不应破坏 Runtime 正确性。**
+8. **验证要证明行为，而非结构存在**：少问"某 interface 有没有测试"，多问"崩溃后会不会重复副作用""长会话是否越来越慢""连续跑 2 小时能否恢复""换掉真实 Provider 是否仍工作"。⇒ 下一阶段应**提高真实 workload 与 soak test 的权重**。
+9. **让能力增长快于框架复杂度增长**：每轮重构都应能回答"用户获得了什么（更快/更聪明/更稳定/更省）"；若只是内部更漂亮而用户行为不变，谨慎长期投入。
+10. **把"删东西"当正式功能开发**：长期维护 **complexity budget**（模型调用数、系统 prompt 长度、RunContext 字段数、核心 package 数、状态数量、恢复路径数量），每阶段尽量让其中 1–2 个**下降**。
+
+**用户给出的优先级顺序**：
+> **TaskBook Skill 化 → 缩短普通任务执行路径 → 继续统一稳定缓存前缀 → 降低 uncached tokens / 模型调用数 → 清理隐式 Context 依赖 → 再扩新能力。**
+
+### 当前预算值（本会话实测基线，供后续对比）
+
+| 指标 | 当前值 | 来源 |
+| --- | --- | --- |
+| 主对话命中率（短/长） | **76.3/75.1%** / **72.7–73.5%** | 产品级 8×5 / 8×15 样本 |
+| **uncached tokens / 调用**（短） | **698.3 / 676.1** | 同上 |
+| **模型调用次数 / run** | **≈2.15**（其中 **24/40 run 仅 1 次** `reply` 调用） | `run-shapes.mjs`（早前样本） |
+| Time to first useful action | **待测**（需从样本日志提取"首个工具调用/首个发布"时刻） | 下一轮 |
+| Task completion latency | **待测**（样本含 run 时长字段，可提取 p50/p95） | 下一轮 |
+| `RunContext` 字段数 / 状态数 / 恢复路径数 | **待盘点** | 下一轮 |
+| 系统提示长度（`reply` 首条 system） | **5,759 字符**（S3 后；S4 后 7 个标签压缩另省 ~140） | `analyze-cache-shapes.mjs` |
+
+### 架构债登记（按原则 7）
+
+| # | 债 | 证据 | 理想终态 |
+| --- | --- | --- | --- |
+| **D1** | **`verify` 必须看不到对话历史**，否则破坏 runner 的 continuation/checkpoint（9 例固定失败，**与窗口大小无关**） | 本会话 §10.244 | Context 变化只影响模型判断，不破坏 Runtime ⇒ 需重做那条验证路径 |
+| D2 | `TaskBook` 概念仍渗入 Runtime（调度/校验/证据） | §10.203 / 10.231 | Runtime 只认 action/effect/result/checkpoint |
+| D3 | 部分 Runtime 可推出的状态仍在 prompt 中（`capabilities` 段 vs `use_skill` 描述等重复面） | §10.227 | 能按需/能推导的不常驻 |
