@@ -6453,3 +6453,25 @@ packages/harness/src/stages/execute.test.ts:845  expect(systemPrompts[0]).toCont
 **回退**：质量退化 ⇒ 恢复第 1–3 步（(1)–(3) 无副作用，可保留）。
 
 **当前判据**：① miss/调用短会话 674.9–730（多数达标 ✓）、hit 72.5–74.6%；② 长会话 72.8–74.7%（结构性不可达，10.203）；硬约束全绿。
+
+## 10.239 taskbook-as-skill **(4) 已落地**：指导文本不再注入，改由 skill 提供（2026-09-18）
+
+**已实现并提交**：`b7aa807`（`execute/prompt.ts` 删除 `const guidance` 与 `execution-plan` addon 及其三处 import；`execute.test.ts:843–848` 的**四条断言**改为 `not.toContain`，其余 voice 断言保留）。
+
+**门禁**：`typecheck` clean、**全量 3,287 通过**、`check:repo` 33/33、continuity + UI 门 ok ✓
+
+**短会话样本（8×5，第一样本）**：
+
+| 指标 | S4 后 | **taskbook-as-skill 后** |
+| --- | --- | --- |
+| `failedRuns` / `publishedRuns` / `silentRuns` / `semanticFailures` | 0/40/0/0 | **0/40/0/0** ✓ |
+| 主对话 hit | 73.4 / 73.1% | **73.6 / 74.1%** |
+| miss/调用 | 674.9 / 711.3 | **679.4 / 707.0** |
+| `execute_tool_loop` miss/调用 | 1,953.7 | **1,833.1** |
+| `reply` / `decide` | 494.8 / 1,225.6 | 509.7 / 1,255.0 |
+
+⇒ **同带（无退化、无明显跃升）** —— 与预期一致：execute 调用仅占 ~13%，卸下 ≈1,630 字符/次 ⇒ 摊薄后每次调用约 −55 token ⇒ 落在噪声内。
+
+**能力侧证据**：`use_skill` 在样本日志中出现 **130 次**、`taskbook` 命中 5 个执行日志 ⇒ **模型确实在使用按需拉取通道**（注：其中可能包含工具定义本身的文本，需长样本进一步区分）；`publishedRuns=40/40`、`failedRuns=0`、`silentRuns=0`、`semanticFailures=0` ⇒ **未观测到质量退化**。
+
+**待办**：长会话（8×15）第二样本（正在跑）⇒ 若 `publishedRuns` 满额且 hit 不降，即确认保留；随后推送 `b7aa807` 并补完本节数字。
