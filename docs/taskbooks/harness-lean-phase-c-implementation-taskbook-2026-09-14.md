@@ -6363,3 +6363,34 @@ runner.infra.skillLoader.registerDynamic?.(
 **回退条件**：若出现质量退化（`verificationPassRateDelta < 0`、发布数下降、`failedRuns > 0`）⇒ 撤掉第 4 步（恢复注入），或改成"仅 `execution-plan` 走 skill、`step-contract` 常驻"。
 
 **下一轮**：先读 `packages/runner/src/infra.ts:440–470` 与 run 入口（`ctx` 构建处），落地第 3 步；再改第 4 步；然后全门 + 两次样本。
+
+## 10.236 **去风险发现**：skill 索引并未注入提示，模型靠 `use_skill` 的工具描述发现 skill（2026-09-18）
+
+**取证**：
+- `grep 'skills:' ` 全 `packages/harness/src` **无任何** `facts.skills` 的赋值；`grep` 全 `packages/runner/src` 亦**无** `skills:` 赋值（只有 `config.skills.*` 配置项）；
+- `builder.ts:403` 的 `skills: facts.skills` ⇒ 该字段**在生产路径上恒为空/未设** ⇒ **`skills-index` 段实际不承载索引**；
+- 而 `use_skill.ts:25–27` 的 **工具描述**在**每次调用时**从 `loader.index.skills` 生成名字列表：
+  ```ts
+  get description() {
+    const names = loader.index.skills.map((s) => s.name).join(', ');
+    return `Load a skill body by name. Available skills: ${names || '(none)'}. …`;
+  }
+  ```
+
+**⇒ 对 taskbook-as-skill 的影响（好消息）**：
+1. **无需改动提示装配**即可让模型发现新 skill —— 只要 `loader.index.skills` 含 `taskbook`，`use_skill` 的描述就会列出它 ✓；
+2. 我已实现的 `get index()` **合并动态条目** ⇒ **注册后立即出现在描述里** ✓；
+3. ⇒ **第 3 步化简为"在 run 开始处注册一次"**（无需改 `facts.skills`、无需改 `builder`）。
+
+**⇒ 剩余改动收敛为两处**：
+- **(A)** 在 **run 入口**（`ctx` 已构建处）调用
+  ```ts
+  infra.skillLoader.registerDynamic?.(
+    { name: 'taskbook', description: "This run's task book, plan and step contract; load before acting on steps." },
+    () => renderTaskbookSkillBody(ctx),
+  );
+  ```
+  （`renderTaskbookSkillBody` 复用既有 `renderTaskBookGuidance` / `renderPlanGuidance` / `renderStepGuidance` 文本；**注意**：动态条目是**按名覆盖**，同一 loader 在**并发 run** 下会互相覆盖 ⇒ 若 runner 允许多 run 并存，需改为**按 run 隔离**（例如把 body 闭包绑定到该 run，并在 run 结束时注销）—— 这是本轮新识别的一个**并发注意点**。）
+- **(B)** `execute/prompt.ts` 移除 `renderTaskBookGuidance` / `renderPlanGuidance` 注入（保留 `step-contract`）。
+
+**下一轮**：`grep 'async run(' packages/runner/src/runner.ts` 定位 run 入口（`ctx` 构建处）⇒ 落地 (A)；随后 (B)；全门 + 两次样本 ⇒ 验收 ratio **+1–2pt**，回退条件不变。
