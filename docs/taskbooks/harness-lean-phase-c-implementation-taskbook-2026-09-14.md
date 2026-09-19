@@ -6638,3 +6638,28 @@ AssertionError: expected { …(7) } to match object { …(4) }
 **处置（按 10.243 的预案）**：**本轮改动已回退**（树干净）。→ **该子项退回给用户**：`verify` 携带历史需要先重做 runner 的验证绑定，**不建议**在没有明确收益证据前投入。
 
 **下一步（仍在授权范围内的廉价变体）**：**跳过 `verify`**，只对其余三处（能力回复 `reply.ts:101/348`、紧凑决策 `decide/request.ts:177`、紧凑只读执行 `task-step-runner.ts:151`）实施**有界窗口**，再用失败数判定 —— 若这些路径**没有**同类依赖，则仍可获得"前缀一致"的复用收益（只是不含 `verify` 那一份）。**预期**：收益小于原估计（`verify` 占长会话调用约 6%），估计 **+1–3pt**。
+
+## 10.245 授权①"廉价变体"的实施细节（锚点已纠正）（2026-09-18）
+
+**本轮尝试**：对 `verify` 之外的三处（能力回复 ×2、紧凑决策、紧凑只读执行）实施**有界窗口** `recentHistoryForModel(ctx.history)`（默认 8 条 / 6,000 字符）。
+
+**失败原因（已纠正）**：`reply.ts` 与 `decide/request.ts` 的 `_shared.js` 导入是**多行块**：
+```
+reply.ts:14   import {
+reply.ts:16     conversationHistoryForModel,
+reply.ts:~20  } from '../_shared.js';
+decide/request.ts:13    conversationHistoryForModel,
+decide/request.ts:18  } from '../_shared.js';
+```
+我把新名字插在 `conversationHistoryForModel,` 之后 ⇒ 实际落点**不在**该导入块内（导致 `TS2304: Cannot find name 'recentHistoryForModel'`）；`task-step-runner.ts` 则出现 `TS6133`（导入未被使用，说明值替换未生效）。**改动已全部回退**（树干净）。
+
+**⇒ 正确的锚点与做法（下一轮，逐文件、每文件后跑 `typecheck`）**：
+| 文件 | 导入锚点 | 值锚点 |
+| --- | --- | --- |
+| `reply.ts` | **`} from '../_shared.js';`**（在其**前**插入 `  recentHistoryForModel,`） | `const history = isCapabilityReply ? [] : conversationHistoryForModel(ctx);` → `… ? recentHistoryForModel(ctx.history) : …`；`:348` 同理 |
+| `decide/request.ts` | 同上（`} from '../_shared.js';` 前插入） | `const history = compactDecision ? [] : conversationHistoryForModel(ctx);` → `… ? recentHistoryForModel(ctx.history) : …` |
+| `task-step-runner.ts` | `import { attachmentContextMessages } from '../_shared.js';` → 加 `, recentHistoryForModel` | `history: compactReadTools ? [] : undefined,` → `… ? recentHistoryForModel(ctx.history) : undefined,`（**该行未替换成功，需重做**） |
+
+**判定标准（不变）**：跑全量套件 ⇒ 失败 **≥5** 即回退并回报；**≤2** 则继续（全门 + 两次样本）。**预期**：收益小于原估计（不含 `verify`，其占长会话调用约 6%），估计 **+1–3pt**。
+
+**注**：`verify` 一项（10.244）已确定**不可行**（9 例固定失败，与窗口大小无关），需重做 runner 的 continuation/checkpoint 验证路径 ⇒ 已退回用户。
