@@ -6064,3 +6064,25 @@ export function buildUserFacingVoiceAddon(ctx) {
 - 该改动**属能力语义变更**（推送 → 拉取）⇒ 已由用户本次明确提出，视为授权；实施前我会给出**逐项影响清单**（哪些文本移出、skill 的名称与触发方式、运行时保留哪些契约）。
 
 **附：本轮环境异常**：S3 修正后的短会话样本**被环境杀死**（`subprocess failed before reporting an outcome: Windows Job runner exited with exit code 1073807364`）⇒ **S3 的实测仍未取得**，下一轮重跑；**S3 修正版（`09f41ee`）已在本地提交**（typecheck/全量 3,287/`check:repo` 33/33 均绿），未推送。
+
+## 10.225 S3 第二次实测：**仍未生效**，原因定位到第二个 `coreFlowSection()` 调用点（2026-09-18）
+
+**样本（短会话 8×5，`09f41ee` 之后）**：
+
+| 指标 | S1 后 | **S3 后** |
+| --- | --- | --- |
+| `failedRuns` / `publishedRuns` / `silentRuns` / `semanticFailures` | 0/40/0/0 | 0/40/0/0 ✓ |
+| 主对话 hit | 74.4 / 74.0% | **72.5 / 73.5%** |
+| miss/调用 | 685.3 / 696.9 | **730.1 / 710.6** |
+| **平均 prompt/调用** | **2,847** | **2,842（未下降）** |
+
+⇒ **预期 −570 字符/次（reply 占 61% 调用 × −930）没有出现** ⇒ 说明 `coreFlowStage` **仍未走到实际渲染**。
+
+**原因（本轮定位）**：`coreFlowSection()` 在 `packages/prompt/src` 有**两个调用点**：
+- `builder.ts:133`（我已改：`coreFlowSection(input.coreFlowStage)`）；
+- **`shared-head.ts:37`**（**未改**，仍是 `coreFlowSection()`）。
+且 `shared-head.ts:16` 也 import 了它 ⇒ 若 `reply`（或其它 stage）的 system 头由 `shared-head` 组装，则**我的改动对那条路径无效** ✓ 与"prompt 未变"完全一致。
+
+**下一轮**：读 `shared-head.ts:1–60`，确认它是"共享头的独立渲染器"还是 `builder.ts` 的辅助；随后**把 stage 一并透传**（或让 `shared-head` 接受同一个 `coreFlowStage`），再重跑样本。
+
+**注**：样本本身可复现（两次 S3 样本 hit 72.5–74.6%、miss 710–746），但**均无 prompt 缩减** ⇒ 结论是"改动未生效"，而非"改动无效"。
