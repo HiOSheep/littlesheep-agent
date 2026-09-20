@@ -7624,3 +7624,37 @@ console.log('CALLS:', requests.map((r) => r.callContract?.purpose).join(' > '));
 **收益预期**：各 purpose 首条 system 长度下降（每 1k 常驻字符 ≈ 全 purpose 变小）⇒ **hit↑、uncached/run↓**（本会话唯一三次验证有效的方向）。
 **判据**：`syslen` 各 purpose 首条 system 长度 ↓、`pnpm run audit:cache` 的 hit ↑ 或持平、uncached/call ↓、`failedRuns=0`、`silentRuns=0`、`publishedRuns` 满额；**回退**：任一退化即恢复常驻。
 **风险**：模型可能不再"总是知道"自己的能力边界 ⇒ 需确认 `use_skill` 描述里能见其名（机制已具备），并观察 `semanticFailures`/`verificationPassRateDelta`。
+
+## 10.278 **更正 10.277**：`capabilities` 是逐 run 权威事实，必须常驻 ⇒ N3 剩余空间很小（2026-09-18）
+
+**读到实现（`packages/prompt/src/sections.ts:99–106`）**：
+```ts
+/** Small capability summary for the conversational response path. */
+export function capabilitiesSection(tools: AgentTool[]): string {
+  const names = [...new Set(tools.map((tool) => tool.name))].sort();
+  const list = names.length > 0 ? names.join(', ') : '(none)';
+  return `# Available Capabilities
+
+Registered in this run: ${list}.
+This is capability evidence, not permission to invoke tools from a direct response. Do not claim unlisted access.`;
+}
+```
+**⇒ 该段不是参考知识，而是"本次 run 注册了哪些工具"的权威事实 + 一条诚实性护栏**（"不得声称未列出的访问权"）⇒ **必须常驻**；把它移入 skill 会让模型**可能声称未列出的能力** ⇒ **违反硬约束的精神（能力不得被削弱/失真）** ✗ ⇒ **10.277 的候选选择有误，本项撤销**。
+
+### 重新分类：常驻头里还剩什么可延迟？
+
+| 常驻块 | 性质 | 可延迟？ |
+| --- | --- | --- |
+| `identity` / `safety` | 身份与**安全保证** | ✗ 必须常驻 |
+| `core-flow`（按 stage 渲染后 ≈380） | **控制流契约** | ✗ 必须常驻 |
+| `capabilities`（≈200） | **逐 run 权威事实 + 诚实护栏** | ✗ 必须常驻（本轮更正） |
+| `tooling`（4,179，仅 `decide`） | `decide` 的**唯一**工具通道 | ✗ 不可移（10.264） |
+| `output-directives`（1,805） | **每次都适用的输出政策** | ✗ 移出⇒每次都要加载 ⇒ 更差 |
+| `profile` / branding | 身份与风格 | ✗ 每次都需要 |
+| `memory-root-index` | **逐 run 的记忆树索引**（数据） | **△ 可改为按需检索**（原则 3；但须保证"按需可达"）⇒ **N4 专责** |
+| `date-time` / `runtime`（尾部） | 逐 run 事实 | 已在尾部 ✓ |
+
+**⇒ N3 结论（据实收束）**：**常驻头中"可延迟的静态知识"已基本被前几轮搬空**（`step-contract` 已后置、`execution-plan`/`taskbook` 已 Skill 化）⇒ 剩余块**几乎全是政策、安全保证与逐 run 权威事实**，延迟它们会削弱能力或引入失真 ⇒ **N3 不作为独立项实施**。
+**⇒ 建议顺延**：直接进入 **N4（`memory-root-index` 按需化）** —— 它是"逐 run 数据 + 可检索"的**唯一**合格候选；随后 **N6（soak/真实负载）**。
+
+**方法学（本会话第 5 次同类）**：**先读实现再定性** —— 若按 10.277 直接实施，会把一条**诚实性护栏**搬进 skill，属于本会话一直在避免的"以指标换能力"。
