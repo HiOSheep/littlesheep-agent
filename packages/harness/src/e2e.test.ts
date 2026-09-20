@@ -80,14 +80,21 @@ describe('e2e agent loop', () => {
       .toEqual(['running', 'done']);
     expect(events.filter((event) => event.type === 'capability_snapshot' || event.type === 'capability_probe')).toHaveLength(0);
     expect(events.filter((event) => event.type === 'reasoning').every((event) => event.visibility === 'silent')).toBe(true);
-    expect(durableTypes.slice(0, 2)).toEqual(['capability_snapshot_read', 'route_decided']);
-    expect(durableTypes.slice(-5)).toEqual([
-      'model_request_started',
-      'model_response_received',
-      'model_request_settled',
+    // One driver now: the durable stream records the executed transition, then
+    // the routing facts the stage produced, and finally the reply settlement.
+    expect(durableTypes.slice(0, 3)).toEqual([
+      'stage_transition_recorded',
+      'capability_snapshot_read',
+      'route_decided',
+    ]);
+    // The reply settlement is recorded after the model request that produced it;
+    // transition records may follow it because the driver records every hop.
+    expect(durableTypes.filter((type) => type.startsWith('final_reply'))).toEqual([
       'final_reply_proposed',
       'final_reply_settled',
     ]);
+    expect(durableTypes.indexOf('model_request_started'))
+      .toBeLessThan(durableTypes.indexOf('model_request_settled'));
   });
 
   it('problem: no rule matches → one main loop through verify/evolve/capture', async () => {

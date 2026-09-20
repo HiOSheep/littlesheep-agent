@@ -337,12 +337,12 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
   const conversationContinuationMode = resolveConversationContinuationMode(
     opts.conversationContinuationMode ?? process.env.LITTLESHEEP_CONVERSATION_CONTINUATION_MODE,
   );
-  const resolveDurableHarnessMode = (sessionId?: string, origin?: string, profile?: string): 'shadow' | 'next' => (
-    (sessionId ? opts.durableHarnessSessionOverrides?.[sessionId] : undefined)
-    ?? (origin ? opts.durableHarnessOriginOverrides?.[origin] : undefined)
-    ?? (profile ? opts.durableHarnessProfileOverrides?.[profile] : undefined)
-    ?? opts.durableHarnessMode
-    ?? 'shadow'
+  // One driver now: every run takes the durable path. The mode remains only as a
+  // legacy label for persisted events, so it defaults to 'next' and the
+  // per-session/origin/profile overrides can no longer downgrade a run to the
+  // removed shadow path.
+  const resolveDurableHarnessMode = (_sessionId?: string, _origin?: string, _profile?: string): 'shadow' | 'next' => (
+    opts.durableHarnessMode ?? 'next'
   );
   const state: RunnerState = { sessionId: undefined, model };
   const protectedWriteRoots = opts.protectedWriteRoots

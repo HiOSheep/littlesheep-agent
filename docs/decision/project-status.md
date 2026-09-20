@@ -1,6 +1,13 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-21 02:30:00
+最后更新：2026-09-21 03:15:00
+
+**极简执行与缓存 95% 方案 P3 第六刀：合并为单一持久化驱动（2026-09-21 03:15:00）**：`default-harness.ts` 里那份与 durable 驱动几乎相同的旧转移循环删除，`createDefaultHarness` 改为委托 `createNextHarness`；共享 stage 工厂按方案要求保留在 `default-harness.ts`（未删除整文件），因此 stage 注册与 Layer 2/3 可编辑性不变。
+
+- 结果：仓库只剩一个转移循环，且它是记录 `stage_transition_recorded` 的持久化驱动；旧的 "core-flow" 驱动名与影子路径不再存在。
+- 运行标签收敛：runner 的 `resolveDurableHarnessMode` 不再按 session/origin/profile 覆盖选择模式（那是方案要删除的"按来源/会话切换配置"），默认 `next`，即每个 run 都走持久化路径。之前默认 `shadow` 会让 run 跳过 durable 最终结算，那在只有一个驱动后是错误标签。
+- 测试按新契约更新：删除 2 个 shadow/next 对比用例与 5 个 per-session/origin/profile 覆盖用例（能力已删除）；`e2e` 的能力问答用例改为断言单一驱动的持久事件序列（`stage_transition_recorded` 先行、路由事实随后、`final_reply_*` 结算成对出现）；`runner` 的会话来源捕获降级用例改为断言"降级被如实上报"（durable 路径在多个边界捕获，不再固定为 1 次）。
+- 验证：`pnpm run typecheck` 通过；全仓 `pnpm exec vitest run` **445 个文件、3,089 项通过、1 项 skipped**（比上一批少 7 项，全部来自删除的双驱动用例）。
 
 **极简执行与缓存 95% 方案 P3 第五刀：删除已不可达的 DECIDE 与紧凑规划层（2026-09-21 02:30:00）**：第二执行体系删除后，规划已经没有入口，本轮把它整层移除。
 
