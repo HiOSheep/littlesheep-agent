@@ -1,6 +1,12 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-20 19:20:00
+最后更新：2026-09-20 20:05:00
+
+**极简执行与缓存 95% 方案 P3 第二刀：TaskBook 只串行执行，删除依赖波次与并行打包（2026-09-20 20:05:00，进行中）**：按方案 P3「删除 TaskBook DAG/并行波次」，`task-step-scheduler.ts` 从"图校验 + 并行波次选择 + 资源冲突打包 + 按波次降级判定"缩到 107 行的纯校验与串行选择，`task-book-runner.ts` 的 `Promise.allSettled` 波次循环改为一次一个步骤。
+
+- 具体改动：`nextTaskStepWave` → `nextTaskStep`（按计划顺序返回第一个依赖已完成的步骤）；删除 `DEFAULT_MAX_PARALLEL_TASK_STEPS`、`MAX_PARALLEL_TASK_STEPS`、`parallelDowngradeReason`、`toolResourcesConflict` 打包、`ScheduledTaskStep.mode`/`downgradeReason` 与相应的 strict-read/审批降级规则；`task-book-runner` 删除 `mergeWave`/`finishWaveFailure`，改为 `mergeOutcome`/`finishStepFailure`；`task-step-runner` 删除 `parallelStep`/`maxParallelTools` 分支与"并行分支"事件文案。保留的仍是不可协商的部分：步骤 id 唯一性、依赖必须指向更早步骤、资源封套归一化（供权限与副作用校验）、以及每步的取消边界与已结算副作用保护。
+- 代价（方案已列明）：失去自动并行计划与按波次的局部降级；多步骤任务仍按计划顺序串行执行。工具调用层面的有界并行（`tool-execution-scheduler`）不受影响，属于主循环内部能力。
+- 验证：`pnpm run typecheck` 通过；全仓 `pnpm exec vitest run` **458 个文件、3,239 项通过、1 项 skipped**（比上一批少 4 项：`task-step-scheduler.test.ts` 从 8 项并行波次用例改为 4 项校验/串行选择用例；`execute.test.ts` 的两个并发分支用例改为断言"同一时刻只有一个步骤在跑"与严格 `step_start → step_done` 顺序，其余断言保留）。没有以放宽断言代替删除：被删除的用例正是方案明确取消的并行能力。
 
 **极简执行与缓存 95% 方案 P2 收口：常规会话与工具任务共用同一主循环与同一提示形状（2026-09-20 19:20:00，进行中）**：活动路由不再把请求分成"会话 REPLY 提示"与"执行循环提示"两套形状。命中会话规则的请求与未命中规则的请求现在都进入同一个主循环：模型要么直接回答，要么请求工具，一次成功请求结束普通聊天。
 

@@ -146,7 +146,7 @@
 | `packages/harness/src/response-continuity-text.ts` | 475 | 回答连续性所需的有界文本、Atom 标记、显式标签值、Runtime 摘要保真字段和否定语义解析 | 保持纯文本解析边界；若继续增长，分离标签值解析与通用连续性术语处理 | E |
 
 | `packages/harness/src/stages/decide/normalization.ts` | 303 | DECIDE 解码结果的澄清、计划、评估与 TaskBook 规范化 | 保持纯规范化边界；继续增长时按 clarification、plan 与 assessment builder 拆分 | E |
-| `packages/harness/src/stages/execute/task-book-runner.ts` | 325 | TaskBook 依赖波次、步骤结果归并、安全暂停边界与最终回复装配 | 保持 TaskBook 编排入口；继续增长时下沉运行时控制收尾和完成回复装配 | E |
+| `packages/harness/src/stages/execute/task-book-runner.ts` | 337 | TaskBook 串行编排、步骤结果归并、安全暂停边界与最终回复装配 | 保持 TaskBook 编排入口；继续增长时下沉运行时控制收尾和完成回复装配 | E |
 | `packages/app/src/main/local-app-api/runtime-routes.ts` | 468 | Runtime 配置、Web policy projection、data-root/应用生命周期与 Web cache 路由 | Runtime payload 投影已下沉到 `runtime-payload.ts`、模型供应商路由已下沉到 `provider-routes.ts`；继续保持路由 facade，不再吸收 provider 或 payload 组装 | C |
 | `packages/app/src/main/local-app-api/session-routes.ts` | 313 | 会话查询、权限模式更新和历史 projection 路由 | 保持 session API facade；继续将 session mutation 与 response projection 分离 | C |
 | `packages/app/src/renderer/workspace/line-comment-surface.tsx` | 319 | Monaco 行评论交互、附件和 Web/文件来源关联的共享 surface | 保持交互 adapter；继续将 attachment lifecycle 与 view-zone rendering 下沉 | B |

@@ -70,7 +70,7 @@ export async function executeScheduledTaskStep(options: TaskStepRunOptions): Pro
     title: step.title,
     description: step.description,
     status: 'in_progress',
-    executionMode: scheduled.mode,
+    executionMode: 'serial',
     ...(scheduled.dependsOn.length > 0 ? { dependsOn: [...scheduled.dependsOn] } : {}),
     startedAt: new Date().toISOString(),
     acceptanceCriteria: step.acceptanceCriteria,
@@ -88,7 +88,7 @@ export async function executeScheduledTaskStep(options: TaskStepRunOptions): Pro
     title: step.title,
     description: step.description,
     status: 'in_progress',
-    summary: scheduled.mode === 'parallel' ? 'Running as a bounded parallel TaskBook branch.' : undefined,
+    summary: undefined,
   });
 
   const compactReadTools = resolveCompactAutonomousReadExecutionTools(ctx);
@@ -152,12 +152,6 @@ export async function executeScheduledTaskStep(options: TaskStepRunOptions): Pro
           stepId,
           signal: branch.controller.signal,
           produced,
-          ...(scheduled.mode === 'parallel' && scheduled.sideEffect
-            ? {
-                parallelStep: { sideEffect: scheduled.sideEffect, resources: scheduled.resources },
-                maxParallelTools: 1,
-              }
-            : {}),
           systemSegments: stepSystemPrompt.segments,
           insertedBeforePrimary: attachmentMessages.map((item) => item.context),
           // No history override: the tool loop projects the same session

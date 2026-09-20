@@ -1,4 +1,6 @@
-// TaskBook orchestration with dependency-aware, resource-safe bounded waves.
+// TaskBook orchestration. Steps run one at a time in plan order: the automatic
+// parallel waves were part of the second execution system the lean plan removes,
+// so a plan is now a serial checklist with dependency validation.
 
 import type { SystemPromptBundle } from '@littlesheep/prompt';
 import type {
@@ -21,8 +23,7 @@ import { synthesizeFinalReply } from './final-reply.js';
 import { reusableTaskStepReplyCandidate } from './reply-candidate.js';
 import {
   buildTaskStepGraph,
-  DEFAULT_MAX_PARALLEL_TASK_STEPS,
-  nextTaskStepWave,
+  nextTaskStep,
   type ScheduledTaskStep,
 } from './task-step-scheduler.js';
 import {
@@ -56,7 +57,7 @@ export async function executeTaskBook(
   writeReplanState(ctx, 'execute', { taskExecution: execution });
   taskBook.stageResults = execution.steps;
 
-  const graph = buildTaskStepGraph(taskBook, ctx.tools, ctx.toolContext);
+  const graph = buildTaskStepGraph(taskBook, ctx.toolContext);
   if (!graph.ok) return structuralFailure(ctx, taskBook, execution, graph.error);
 
   const promotedCallIds = new Set(ctx.workPolicyUpgradeRequest?.completedToolCallIds ?? []);
@@ -109,39 +110,35 @@ export async function executeTaskBook(
 
   while (pendingIds.size > 0) {
     if (ctx.signal?.aborted) return structuralFailure(ctx, taskBook, execution, 'TaskBook execution aborted.');
-    const wave = nextTaskStepWave(
-      graph.steps,
-      pendingIds,
-      completedIds,
-      Math.min(DEFAULT_MAX_PARALLEL_TASK_STEPS, deps.config.tools.maxParallel),
-    );
-    if (wave.length === 0) {
+    const scheduled = nextTaskStep(graph.steps, pendingIds, completedIds);
+    if (!scheduled) {
       return structuralFailure(ctx, taskBook, execution, 'TaskBook dependency graph made no progress.');
     }
-    const settled = await Promise.allSettled(wave.map((scheduled) => executeScheduledTaskStep({
-      deps,
-      ctx,
-      baseSystemPrompt,
-      taskBook,
-      scheduled,
-      previousResult: previousById.get(scheduled.id),
-      visiblePriorResults: visiblePriorResults(scheduled, graph.steps, resultsById),
-      sanitizeOpts,
-      registerStepResult: (result) => resultsById.set(scheduled.id, result),
-      syncExecutionSteps,
-    })));
-    const outcomes = settled.map((result, index) => result.status === 'fulfilled'
-      ? result.value
-      : rejectedStepOutcome(wave[index]!, resultsById, result.reason, ctx));
-    mergeWave(ctx, outcomes, allToolResults);
-    for (const outcome of outcomes) {
-      pendingIds.delete(outcome.scheduled.id);
-      if (outcome.result.status === 'done') completedIds.add(outcome.scheduled.id);
+    let outcome: TaskStepRunOutcome;
+    try {
+      outcome = await executeScheduledTaskStep({
+        deps,
+        ctx,
+        baseSystemPrompt,
+        taskBook,
+        scheduled,
+        previousResult: previousById.get(scheduled.id),
+        visiblePriorResults: visiblePriorResults(graph.steps, completedIds, resultsById),
+        sanitizeOpts,
+        registerStepResult: (result) => resultsById.set(scheduled.id, result),
+        syncExecutionSteps,
+      });
+    } catch (error) {
+      outcome = rejectedStepOutcome(scheduled, resultsById, error, ctx);
     }
+    mergeOutcome(ctx, outcome, allToolResults);
+    pendingIds.delete(outcome.scheduled.id);
+    if (outcome.result.status === 'done') completedIds.add(outcome.scheduled.id);
     syncExecutionSteps();
 
-    const failure = outcomes.find((outcome) => outcome.route !== 'continue');
-    if (failure) return finishWaveFailure(ctx, taskBook, execution, allToolResults, outcomes, failure);
+    if (outcome.route !== 'continue') {
+      return finishStepFailure(ctx, taskBook, execution, allToolResults, outcome);
+    }
 
     if (pendingIds.size === 0) {
       execution.status = 'done';
@@ -250,36 +247,31 @@ function reusableSingleStepOutput(taskBook: TaskBook, stepResults: TaskStepResul
   return output || undefined;
 }
 
+/** Every completed step before the current one stays visible to the model. */
 function visiblePriorResults(
-  current: ScheduledTaskStep,
   scheduled: readonly ScheduledTaskStep[],
+  completedIds: ReadonlySet<string>,
   results: ReadonlyMap<string, TaskStepResult>,
 ): TaskStepResult[] {
-  const visible = current.mode === 'parallel'
-    ? new Set(current.dependsOn)
-    : new Set(scheduled.filter((candidate) => candidate.index < current.index).map((candidate) => candidate.id));
   return scheduled
-    .filter((candidate) => visible.has(candidate.id))
+    .filter((candidate) => completedIds.has(candidate.id))
     .map((candidate) => results.get(candidate.id))
     .filter((result): result is TaskStepResult => result?.status === 'done');
 }
 
-function mergeWave(ctx: RunContext, outcomes: readonly TaskStepRunOutcome[], allToolResults: ToolResult[]): void {
-  for (const outcome of [...outcomes].sort((left, right) => left.scheduled.index - right.scheduled.index)) {
-    ctx.produced.push(...outcome.produced);
-    allToolResults.push(...outcome.toolResults);
-  }
+function mergeOutcome(ctx: RunContext, outcome: TaskStepRunOutcome, allToolResults: ToolResult[]): void {
+  ctx.produced.push(...outcome.produced);
+  allToolResults.push(...outcome.toolResults);
 }
 
-function finishWaveFailure(
+function finishStepFailure(
   ctx: RunContext,
   taskBook: TaskBook,
   execution: TaskExecutionResult,
   allToolResults: ToolResult[],
-  outcomes: readonly TaskStepRunOutcome[],
   failure: TaskStepRunOutcome,
 ): StageResult {
-  const blocked = outcomes.some((outcome) => outcome.result.status === 'blocked');
+  const blocked = failure.result.status === 'blocked';
   execution.status = blocked ? 'blocked' : 'failed';
   execution.endedAt = new Date().toISOString();
   taskBook.stageResults = execution.steps;
@@ -325,7 +317,7 @@ function rejectedStepOutcome(
     title: scheduled.step.title,
     description: scheduled.step.description,
     status: 'failed' as const,
-    executionMode: scheduled.mode,
+    executionMode: 'serial',
     startedAt: new Date().toISOString(),
     toolCallIds: [],
     toolResults: [],

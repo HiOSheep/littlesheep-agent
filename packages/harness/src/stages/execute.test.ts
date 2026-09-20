@@ -990,7 +990,7 @@ describe('executeStage', () => {
     expect(events.find((evt) => evt.type === 'tool_end')?.durationMs).toBeGreaterThanOrEqual(1);
   });
 
-  it('executes independent TaskBook branches concurrently and merges evidence in stable step order', async () => {
+  it('runs TaskBook steps one at a time in plan order and merges evidence in step order', async () => {
     let activeTools = 0;
     let maxActiveTools = 0;
     const tool = makeTool('parallel-read', { ok: true, output: 'unused' });
@@ -1044,12 +1044,22 @@ describe('executeStage', () => {
     const result = await stage(ctx);
 
     expect(result).toMatchObject({ ok: true, next: 'verify' });
-    expect(maxActiveTools).toBe(2);
+    // Serial execution: only one step is ever in flight.
+    expect(maxActiveTools).toBe(1);
     expect(ctx.taskExecution?.steps.map((step) => [step.stepId, step.executionMode, step.output])).toEqual([
-      ['inspect-a', 'parallel', 'inspect-a result'],
-      ['inspect-b', 'parallel', 'inspect-b result'],
+      ['inspect-a', 'serial', 'inspect-a result'],
+      ['inspect-b', 'serial', 'inspect-b result'],
     ]);
-    expect(events.slice(0, 2).map((event) => event.type)).toEqual(['step_start', 'step_start']);
+    // Steps never overlap: each one starts only after the previous one is done.
+    const stepEvents = events
+      .filter((event) => event.type === 'step_start' || event.type === 'step_done')
+      .map((event) => `${event.type}:${String(event.stepId)}`);
+    expect(stepEvents).toEqual([
+      'step_start:inspect-a',
+      'step_done:inspect-a',
+      'step_start:inspect-b',
+      'step_done:inspect-b',
+    ]);
     expect(ctx.toolResults?.map((item) => item.meta?.stepId)).toEqual(['inspect-a', 'inspect-b']);
     expect(ctx.produced.filter((message) => message.role === 'tool').map((message) => {
       const content = message.content[0];
@@ -1057,7 +1067,7 @@ describe('executeStage', () => {
     })).toEqual(['inspect-a', 'inspect-b']);
   });
 
-  it('checkpoints each parallel effectful branch and preserves the bounded active set', async () => {
+  it('checkpoints each effectful step and keeps at most one active step', async () => {
     let activeTools = 0;
     let maxActiveTools = 0;
     const tool = makeTool('parallel-write', { ok: true, output: 'unused' });
@@ -1116,9 +1126,10 @@ describe('executeStage', () => {
     const result = await stage(ctx);
 
     expect(result).toMatchObject({ ok: true, next: 'verify' });
-    expect(maxActiveTools).toBe(2);
+    // Serial execution: one active step, never two overlapping branches.
+    expect(maxActiveTools).toBe(1);
     expect(ctx.persistRuntimeCheckpoint).toHaveBeenCalledTimes(4);
-    expect(activeSnapshots.some((ids) => ids.length === 2)).toBe(true);
+    expect(activeSnapshots.every((ids) => ids.length <= 1)).toBe(true);
     expect(ctx.sideEffects?.map((effect) => [effect.stepId, effect.status])).toEqual([
       ['write-a', 'succeeded'],
       ['write-b', 'succeeded'],
