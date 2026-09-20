@@ -300,11 +300,11 @@ describe('createRunner run', () => {
     ))).toBe(true);
     expect(result.memoryAccess?.records.some((record) => record.action === 'expand')).toBe(false);
     expect(result.memoryAccess?.endedAt).toBeTruthy();
-    expect(runner.infra.registry.names()).toEqual(expect.arrayContaining([
-      'memory_tree',
-      'memory_search',
-      'memory_deep_search',
-    ]));
+    // One memory navigation tool: the legacy search aliases are no longer
+    // registered, so the model cannot pick a duplicate retrieval entry point.
+    expect(runner.infra.registry.names()).toContain('memory_tree');
+    expect(runner.infra.registry.names()).not.toContain('memory_search');
+    expect(runner.infra.registry.names()).not.toContain('memory_deep_search');
     const replyRequest = (llm.chat as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as ChatRequest;
     expect(replyRequest.messages.map((message) => String(message.content)).join('\n')).toContain('Memory Tree Root Index');
     const trace = result.trace as Array<{ name: string }>;

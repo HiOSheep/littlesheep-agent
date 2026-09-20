@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { SessionId, ToolContext } from '@littlesheep/types';
 import { MemoryTree } from './memory-tree.js';
-import { createMemorySearchCompatibilityTool, createMemoryTreeTool } from './memory-tool.js';
+import { createMemoryTreeTool } from './memory-tool.js';
 import { InjectionTier } from './types.js';
 import type { MemoryBranch } from './types.js';
 
@@ -61,30 +61,6 @@ describe('memory_tree agent tools', () => {
     expect(index.ok).toBe(true);
     expect(index.output).toContain('<safe>');
     expect(index.output).toContain('[node-1]');
-    expect(expansion.output).toContain('User prefers concise replies.');
-    expect(tree.getLedger('run-1')!.records.map((record) => record.action)).toEqual([
-      'root_index', 'branch_index', 'expand',
-    ]);
-  });
-
-  it('keeps legacy memory_search index-only and requires memory_tree to expand content', async () => {
-    const { tree, ctx } = setup();
-    const compatibility = createMemorySearchCompatibilityTool(tree);
-    const root = await compatibility.execute({ query: 'preference' }, ctx);
-    const index = await compatibility.execute({ query: 'preference', branch: 'long-term' }, ctx);
-
-    expect(root.output).toContain('Memory Tree Root Index');
-    expect(root.output).not.toContain('User prefers concise replies.');
-    expect(root.meta).toMatchObject({ searched: false, nextAction: 'branch_index' });
-    expect(index.output).toContain('[node-1]');
-    expect(index.output).not.toContain('User prefers concise replies.');
-    expect(index.meta).toMatchObject({ searched: false, nextAction: 'expand' });
-
-    const memoryTree = createMemoryTreeTool(tree);
-    const expansion = await memoryTree.execute(
-      { action: 'expand', branch: 'long-term', nodeId: 'node-1' },
-      ctx,
-    );
     expect(expansion.output).toContain('User prefers concise replies.');
     expect(tree.getLedger('run-1')!.records.map((record) => record.action)).toEqual([
       'root_index', 'branch_index', 'expand',

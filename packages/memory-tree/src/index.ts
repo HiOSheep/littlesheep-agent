@@ -178,8 +178,6 @@ export {
 } from './memory-service.js';
 export {
   createMemoryTreeTool,
-  createMemorySearchCompatibilityTool,
-  createMemoryDeepSearchCompatibilityTool,
   type MemoryToolOptions,
 } from './memory-tool.js';
 export { fetchGitLog, fetchLatestCommitDate, parseGitLog } from './git-log.js';

@@ -1,6 +1,13 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-20 18:30:00
+最后更新：2026-09-20 18:55:00
+
+**极简执行与缓存 95% 方案工具范围第一刀：删除记忆兼容检索工具（2026-09-20 18:55:00，进行中）**：按方案 §3「首先删除 `memory_search`、`memory_deep_search` 的兼容工具注册，相关动作收归 `memory_tree`」，删除两条兼容检索入口。
+
+- 删除内容：`packages/memory-tree/src/memory-tool.ts` 的 `createMemorySearchCompatibilityTool` / `createMemoryDeepSearchCompatibilityTool` 及其 schema、`memory-tree` 的对应导出、`packages/runner/src/infra.ts` 的两条注册，以及从未被运行时注册过的 `packages/tools/src/builtin/memory_search.ts` / `memory_deep_search.ts`（含其测试）与它们的 barrel 导出。
+- 影响：每个请求的工具 schema 少两条重复检索入口；记忆读取只剩单一 `memory_tree`（已包含 root_index、branch_index、expand、deep_search）。`memory_deep_search` 的兼容测试改为只覆盖 `memory_tree` 的 deep_search 导航约束（模型跳过 expand 时返回导航错误而不是直接检索）。
+- 保留但不再匹配：安全只读清单、side-effect ledger、tool-loop 的记忆工具鉴权、`run-config` 的自动批准豁免、`memory-feedback-evidence` 的导航工具集合与 `task-step-scheduler` 的只读判定中仍保留这两个名字（纯防御性名单，不注册任何工具）；`retrieval-intent` 按运行时工具表取名，因此自动不再暴露它们。
+- 验证：`pnpm run typecheck` 通过；全仓 `pnpm exec vitest run` **458 个文件、3,243 项通过、1 项 skipped**（比上一批少 6 项，来自删除的兼容工具与其测试；`runner.test` 改为断言注册表不再包含这两个名字）。
 
 **极简执行与缓存 95% 方案 P3 第一刀：删除主循环的 TaskBook 升级入口（2026-09-20 18:30:00，进行中）**：删除 `work-policy-upgrade.ts`、`request_task_book` 工具与 `execute → decide` 的升级守卫。主循环不再向模型暴露"中途升级为 TaskBook"的能力：它只做当前循环内的串行工作（最多 20 轮、带无进展检测），复杂/大型/续接/检索请求仍由路由在开始前决定是否进入 DECIDE。
 

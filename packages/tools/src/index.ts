@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿// @littlesheep/tools — public API
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿// @littlesheep/tools — public API
 
 export { ToolRegistry } from './registry.js';
 export { checkApproval, interactiveApprove, DEFAULT_APPROVAL, type ApprovalConfig } from './approval.js';
@@ -37,10 +37,6 @@ export { grepTool } from './builtin/grep.js';
 export { globTool } from './builtin/glob.js';
 export { documentReadTool } from './builtin/document-read.js';
 export { documentCreateTool } from './builtin/document-create.js';
-/** @deprecated Legacy library adapter. The LS runtime does not register this agent tool. */
-export { createMemorySearchTool } from './builtin/memory_search.js';
-/** @deprecated Legacy library adapter. The LS runtime does not register this agent tool. */
-export { createMemoryDeepSearchTool } from './builtin/memory_deep_search.js';
 export { createRequestUserInputTool, REQUEST_USER_INPUT_TOOL_NAME } from './builtin/request_user_input.js';
 export { createSessionStatusTool } from './builtin/session_status.js';
 export { webSearchTool } from './builtin/web_search.js';

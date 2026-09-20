@@ -31,20 +31,6 @@ const MemoryTreeInput = z.discriminatedUnion('action', [
   }),
 ]);
 
-const CompatibilitySearchInput = z.object({
-  query: z.string().min(1),
-  branch: z.string().min(1).optional(),
-  limit: z.number().int().min(1).max(30).optional(),
-});
-
-const CompatibilityDeepSearchInput = z.object({
-  query: z.string().min(1),
-  branch: z.string().min(1),
-  limit: z.number().int().min(1).max(30).optional(),
-  tokenBudget: z.number().int().min(64).max(4_000).optional(),
-  subtreeRootId: z.string().min(1).optional(),
-});
-
 export interface MemoryToolOptions {
   /** Existing read-side trust envelope, applied to the complete tool payload. */
   envelope?: (content: string) => string;
@@ -197,97 +183,6 @@ export function createMemoryTreeTool(memory: MemoryNavigationServiceLike, option
           }
         }
         return { callId: '', ok: true, output: envelope(output, options), durationMs: Date.now() - startedAt, meta };
-      } catch (error) {
-        return { callId: '', ok: false, error: (error as Error).message, durationMs: Date.now() - startedAt };
-      }
-    },
-  };
-}
-
-/** Keeps old calls safe by turning them into index navigation, never a direct content search. */
-export function createMemorySearchCompatibilityTool(
-  memory: MemoryNavigationServiceLike,
-  options: MemoryToolOptions = {},
-): AgentTool {
-  return {
-    name: 'memory_search',
-    description: 'Compatibility index navigator. Without branch it returns the root index; with branch it returns that branch index. It never searches memory content directly.',
-    inputSchema: CompatibilitySearchInput,
-    async execute(input, ctx) {
-      const startedAt = Date.now();
-      try {
-        const parsed = CompatibilitySearchInput.parse(input);
-        if (!parsed.branch) {
-          const output = [
-            await memory.rootIndex(),
-            '',
-            `No memory content was searched for "${parsed.query}". Choose one branch, then call memory_search with that branch or memory_tree branch_index.`,
-          ].join('\n');
-          return {
-            callId: '',
-            ok: true,
-            output: envelope(output, options),
-            durationMs: Date.now() - startedAt,
-            meta: { action: 'root_index', searched: false, nextAction: 'branch_index' },
-          };
-        }
-        const index = await memory.branchIndex(ctx.runId, parsed.branch);
-        const output = [
-          renderIndex(index),
-          '',
-          `No memory content was searched for "${parsed.query}". Next, call memory_tree expand on branch "${parsed.branch}" with a relevant nodeId or this query.`,
-        ].join('\n');
-        return {
-          callId: '',
-          ok: true,
-          output: envelope(output, options),
-          durationMs: Date.now() - startedAt,
-          meta: {
-            action: 'branch_index',
-            branch: parsed.branch,
-            searched: false,
-            entries: index.entries.length,
-            truncated: index.truncated,
-            nextAction: 'expand',
-            memoryKnownState: index.knownState,
-          },
-        };
-      } catch (error) {
-        return { callId: '', ok: false, error: (error as Error).message, durationMs: Date.now() - startedAt };
-      }
-    },
-  };
-}
-
-/** Dedicated compatibility name for the same branch-scoped v3 deep-search path. */
-export function createMemoryDeepSearchCompatibilityTool(
-  memory: MemoryNavigationServiceLike,
-  options: MemoryToolOptions = {},
-): AgentTool {
-  return {
-    name: 'memory_deep_search',
-    description:
-      'Search only one already indexed and expanded memory branch or subtree. ' +
-      'Uses the Memory v3 Catalog hierarchy, FTS and local vector candidates under the same budgets and access ledger.',
-    inputSchema: CompatibilityDeepSearchInput,
-    async execute(input, ctx) {
-      const startedAt = Date.now();
-      try {
-        const parsed = CompatibilityDeepSearchInput.parse(input);
-        const result = await memory.deepSearch(ctx.runId, {
-          query: parsed.query,
-          branchId: parsed.branch,
-          limit: parsed.limit,
-          tokenBudget: parsed.tokenBudget,
-          subtreeRootId: parsed.subtreeRootId,
-        });
-        return {
-          callId: '',
-          ok: true,
-          output: envelope(renderQuery(result), options),
-          durationMs: Date.now() - startedAt,
-          meta: queryMeta('deep_search', parsed.branch, result),
-        };
       } catch (error) {
         return { callId: '', ok: false, error: (error as Error).message, durationMs: Date.now() - startedAt };
       }

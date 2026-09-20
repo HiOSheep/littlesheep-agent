@@ -87,8 +87,6 @@ import {
   MemoryWriteService,
   ProjectMemoryBranch,
   TreeMemoryBranch,
-  createMemoryDeepSearchCompatibilityTool,
-  createMemorySearchCompatibilityTool,
   createMemoryTreeTool,
   migrateLegacyMemorySources,
 } from '@littlesheep/memory-tree';
@@ -460,9 +458,9 @@ export async function buildInfrastructure(
   const extras: AgentTool[] = [
     createUseSkillTool(skillLoader),
     createCreateSkillTool({ loader: skillLoader, skillsDir: dirs.skills }),
+    // One memory navigation entry point: the tree tool already covers
+    // root_index, branch_index, expand and deep_search.
     createMemoryTreeTool(memoryService, { envelope: memoryEnvelope }),
-    createMemorySearchCompatibilityTool(memoryService, { envelope: memoryEnvelope }),
-    createMemoryDeepSearchCompatibilityTool(memoryService, { envelope: memoryEnvelope }),
     createSessionStatusTool({
       sessionId: () => opts.state.sessionId ?? asSessionId(''),
       sessionManager,
