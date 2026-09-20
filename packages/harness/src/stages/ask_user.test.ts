@@ -67,7 +67,10 @@ describe('askUserStage', () => {
   it('passes a bounded clarification chain instead of dropping prior correction context', async () => {
     const payloads: string[] = [];
     const llm = createMockLlm((request) => {
-      payloads.push(String(request.messages[1]?.content ?? ''));
+      // Index 0 is the stage system prompt, index 1 the per-run Runtime facts,
+      // so the clarification payload is the first user message.
+      const user = request.messages.find((message) => message.role === 'user');
+      payloads.push(String(user?.content ?? ''));
       return textResponse('Please confirm the remaining output format.');
     });
     const stage = createAskUserStage({ llm, model: 'test' });

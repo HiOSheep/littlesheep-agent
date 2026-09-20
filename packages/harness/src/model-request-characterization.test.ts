@@ -39,20 +39,22 @@ function textPart(parts: ChatContentPart[]): string {
 function expectCommonPayloadShape(request: ChatRequest, options: { includesBootstrap?: boolean } = {}) {
   expect(request.model).toBe('test-model');
   const roles = request.messages.map((message) => message.role);
-  // The conversation keeps its stable order; every volatile Context section
-  // travels afterwards as a trailing system message.
-  expect(roles.slice(0, 5)).toEqual(['system', 'user', 'assistant', 'user', 'user']);
-  expect(roles.slice(5).every((role) => role === 'system')).toBe(true);
+  // The main system prompt, then the per-run Runtime capability facts (stable,
+  // therefore cacheable), then the conversation in its stable order; any
+  // genuinely volatile section travels afterwards as a trailing system message.
+  expect(roles.slice(0, 6)).toEqual(['system', 'system', 'user', 'assistant', 'user', 'user']);
+  expect(roles.slice(6).every((role) => role === 'system')).toBe(true);
   expect(roles.length).toBeGreaterThanOrEqual(6);
   if (options.includesBootstrap !== false) {
     expect(request.messages.map((message) => String(message.content)).join('\n')).toContain('BOOTSTRAP_SENTINEL');
   }
   expect(request.messages.map((message) => String(message.content)).join('\n')).toContain('MEMORY_ROOT_SENTINEL');
   expect(String(request.messages[0]?.content)).toContain('PROFILE_SENTINEL');
-  expect(request.messages[1]?.content).toBe('PRIOR_USER_SENTINEL');
-  expect(request.messages[2]?.content).toBe('PRIOR_ASSISTANT_SENTINEL');
-  expect(String(request.messages[3]?.content)).toContain('Attached files manifest');
-  const inbound = request.messages[4]?.content;
+  expect(String(request.messages[1]?.content)).toContain('# Runtime Facts');
+  expect(request.messages[2]?.content).toBe('PRIOR_USER_SENTINEL');
+  expect(request.messages[3]?.content).toBe('PRIOR_ASSISTANT_SENTINEL');
+  expect(String(request.messages[4]?.content)).toContain('Attached files manifest');
+  const inbound = request.messages[5]?.content;
   expect(Array.isArray(inbound)).toBe(true);
   expect(textPart(inbound as ChatContentPart[])).toContain('CURRENT_INPUT_SENTINEL');
   expect(inbound).toContainEqual({
@@ -99,11 +101,17 @@ function expectRecordedSnapshot(
   } else {
     expect(kinds).toContain('project_knowledge');
   }
-  // The volatile Context sections and the Runtime block travel after the
+  // Every volatile Context section and the Runtime block travel after the
   // conversation, so the cacheable prefix is the system prompt plus history.
-  const lastConversationIndex = kinds.lastIndexOf('user_input');
-  expect(kinds.indexOf('runtime_event')).toBeGreaterThan(lastConversationIndex);
-  expect(items.at(-1)?.kind).toBe('runtime_event');
+  const firstConversationIndex = kinds.findIndex((kind) => kind === 'user_input');
+  const runtimeIndices = kinds
+    .map((kind, index) => (kind === 'runtime_event' ? index : -1))
+    .filter((index) => index >= 0);
+  // Per-run capability facts are stable, so they live inside the cacheable
+  // prefix; this context has no task book, so nothing volatile is appended.
+  expect(runtimeIndices.length).toBeGreaterThan(0);
+  expect(runtimeIndices[0]).toBeLessThan(firstConversationIndex);
+  expect(items.at(-1)?.kind).not.toBe('runtime_event');
 }
 
 describe('LLM request characterization', () => {

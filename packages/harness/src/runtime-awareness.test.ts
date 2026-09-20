@@ -1,7 +1,7 @@
-// Locks the lean Runtime-facts contract: only Runtime-owned facts that can
-// change an answer travel with a request (capability state plus task state and
-// progress). The exact clock, elapsed time and repeated tool/run statistics are
-// deliberately absent, so the prompt tail does not change on every request.
+// Locks the Runtime-facts contract: per-run capability facts are stable, so they
+// travel inside the cacheable prefix; only facts that can change mid-run (task
+// state, probe results, permission decisions) stay below the cache boundary. The
+// exact clock, elapsed time and repeated tool/run statistics stay absent.
 import { describe, expect, it } from 'vitest';
 import type { ChatRequest } from '@littlesheep/llm';
 import { CACHE_BOUNDARY_MARKER } from '@littlesheep/prompt';
@@ -21,15 +21,21 @@ function request(content = 'what is the status?'): ChatRequest {
   };
 }
 
-/** The Runtime facts now travel in one trailing message. */
-function runtimeBlock(prepared: ChatRequest): string {
-  return String(prepared.messages.at(-1)?.content ?? '');
+/** Stable capability facts: message right after the main system prompt. */
+function stableFacts(prepared: ChatRequest): string {
+  return String(prepared.messages[1]?.content ?? '');
+}
+
+/** Volatile Runtime state: the trailing message when one exists. */
+function volatileState(prepared: ChatRequest): string {
+  const last = prepared.messages.at(-1);
+  return last?.role === 'system' ? String(last.content ?? '') : '';
 }
 
 const REPLAYED_CLOCK = '2026-07-15T03:04:05.678Z';
 
 describe('runtime facts', () => {
-  it('injects task state and capability facts below the cache boundary', () => {
+  it('keeps capability facts inside the cacheable prefix and task state below the boundary', () => {
     const ctx = makeCtx({
       inbound: textMessage('user', '继续执行'),
       taskBook: {
@@ -89,23 +95,28 @@ describe('runtime facts', () => {
       raw,
       buildRunRequestCandidates(ctx, 'reply', raw.messages, { history: [] }),
     );
-    const system = runtimeBlock(prepared);
+    const stable = stableFacts(prepared);
+    const volatile = volatileState(prepared);
 
-    // The Runtime facts must stay out of the system prompt so the Provider's
-    // prefix cache can cover the system prompt and the whole conversation.
-    expect(system.startsWith(CACHE_BOUNDARY_MARKER)).toBe(true);
+    // Stable facts sit between the system prompt and the conversation, so the
+    // Provider can reuse them from its prefix cache.
     expect(String(prepared.messages[0]?.content)).toBe('stable policy');
-    expect(system).toContain('task_state: running');
-    expect(system).toContain('task_progress: 1/2 completed (50%)');
+    expect(stable).toContain('# Runtime Facts');
+    expect(stable).toContain('capability_snapshot: unavailable');
+    expect(stable).not.toContain(CACHE_BOUNDARY_MARKER);
+    // Volatile state stays below the boundary at the tail.
+    expect(volatile.startsWith(CACHE_BOUNDARY_MARKER)).toBe(true);
+    expect(volatile).toContain('task=running');
+    expect(volatile).toContain('task_progress=1/2 (50%)');
     // Clock, elapsed time and tool statistics are not judgement inputs and are
-    // no longer re-sent on every call.
-    expect(system).not.toContain('elapsed');
-    expect(system).not.toContain('2026-07-15 11:04:05');
-    expect(system).not.toContain('read:succeeded');
-    expect(system).not.toContain('current_run_tools');
+    // no longer sent at all.
+    expect(volatile).not.toContain('elapsed');
+    expect(volatile).not.toContain('2026-07-15 11:04:05');
+    expect(volatile).not.toContain('read:succeeded');
+    expect(volatile).not.toContain('current_run_tools');
     expect(ctx.contextSnapshots?.[0]?.items).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        id: 'runtime-awareness:1',
+        id: 'runtime-awareness:1:stable',
         kind: 'runtime_event',
         required: true,
         source: expect.objectContaining({ kind: 'runtime_event' }),
@@ -113,7 +124,7 @@ describe('runtime facts', () => {
     ]));
   });
 
-  it('sends byte-identical Runtime facts for repeated requests of one run', () => {
+  it('sends byte-identical capability facts for repeated requests of one run', () => {
     const inbound = 'what is the status?';
     const ctx = makeCtx({ inbound: textMessage('user', inbound) });
     ctx.startedAt = '2026-07-15T03:00:00.000Z';
@@ -121,12 +132,21 @@ describe('runtime facts', () => {
     const first = prepareModelRequest(ctx, 'reply', request(inbound));
     const second = prepareModelRequest(ctx, 'reply', request(inbound));
 
-    // A per-request clock used to make this tail unique on every call, which is
-    // exactly the uncached content the cache work has to remove.
-    expect(runtimeBlock(first)).toBe(runtimeBlock(second));
+    // A per-request clock used to make the Runtime block unique on every call;
+    // the facts that remain are stable for the whole run.
+    expect(stableFacts(first)).toBe(stableFacts(second));
   });
 
-  it('includes observed capability-probe evidence separately from the capability snapshot', () => {
+  it('adds no trailing Runtime state when the run has no task book', () => {
+    const ctx = makeCtx({ inbound: textMessage('user', 'hello') });
+
+    const prepared = prepareModelRequest(ctx, 'reply', request('hello'));
+
+    expect(stableFacts(prepared)).toContain('# Runtime Facts');
+    expect(volatileState(prepared)).toBe('');
+  });
+
+  it('keeps observed probe evidence and permission decisions below the cache boundary', () => {
     const ctx = makeCtx({ inbound: textMessage('user', '你查询过了吗？') });
     ctx.capabilitySnapshot = {
       version: 1,
@@ -157,15 +177,16 @@ describe('runtime facts', () => {
 
     const capabilityRequest = { ...request(), max_tokens: 500 };
     const prepared = prepareModelRequest(ctx, 'capability_reply', capabilityRequest, buildRunRequestCandidates(ctx, 'reply', capabilityRequest.messages, { history: [] }));
-    const system = runtimeBlock(prepared);
 
-    expect(system).toContain('capability_epoch: epoch-probe');
-    expect(system).toContain('capability_probe=observed');
-    expect(system).toContain('capability_permission_decision: allow');
-    expect(system).not.toContain('previous_run');
+    expect(stableFacts(prepared)).toContain('capability_epoch: epoch-probe');
+    expect(stableFacts(prepared)).not.toContain('capability_probe');
+    const volatile = volatileState(prepared);
+    expect(volatile).toContain('capability_probe=observed');
+    expect(volatile).toContain('capability_permission_decision: allow');
+    expect(volatile).not.toContain('previous_run');
   });
 
-  it('keeps the per-call Runtime block small and free of execution history', () => {
+  it('keeps the per-call trailing Runtime state free of execution history', () => {
     const tools = Array.from({ length: 12 }, (_, index) => makeTool(`tool_${index}`, { ok: true, output: '' }));
     const ctx = makeCtx({ inbound: textMessage('user', 'status?'), tools });
     ctx.capabilitySnapshot = {
@@ -178,18 +199,21 @@ describe('runtime facts', () => {
       network: { enabled: true, status: 'ready', providerId: 'tavily' },
     };
 
-    const block = runtimeBlock(prepareModelRequest(ctx, 'reply', request('status?')));
+    const prepared = prepareModelRequest(ctx, 'reply', request('status?'));
+    const stable = stableFacts(prepared);
 
-    // Every call re-sends this block uncached. Measured at 439 characters
-    // (~110 tokens) with 12 tools plus a capability snapshot; the old block
-    // carried the clock, elapsed time and execution history on top of that and
-    // was measured at 705 characters for a reply. Keep it bounded.
-    expect(block.length).toBeLessThan(500);
-    expect(block).not.toContain('previous_run');
-    expect(block).not.toContain('current_run_tools');
+    // The stable block is cached after the first request of a prefix, so it can
+    // carry the tool list; execution history no longer appears at all.
+    // 384 characters (~96 tokens) with 12 tools, now inside the cacheable
+    // prefix instead of being re-sent uncached on every request.
+    expect(stable.length).toBeLessThan(450);
+    expect(stable).toContain('tools=tool_0=available');
+    expect(volatileState(prepared)).toBe('');
+    expect(stable).not.toContain('previous_run');
+    expect(stable).not.toContain('current_run_tools');
   });
 
-  it('uses the compact Runtime facts for a self-contained autonomous read decision', () => {
+  it('uses the compact facts for a self-contained autonomous read decision', () => {
     const inbound = '请查看当前工作区顶层有哪些条目，只告诉我数量和名称，不要修改任何文件。';
     const tools = [
       makeTool('glob', { ok: true, output: [] }),
@@ -201,16 +225,15 @@ describe('runtime facts', () => {
       tools,
       classification: {
         activity: 'execute', type: 'problem', confidence: 0.95,
-        source: 'llm', reason: 'workspace inspection requires evidence',
+        source: 'rules', reason: 'workspace inspection requires evidence',
       },
     });
 
     const prepared = prepareModelRequest(ctx, 'decide', request(inbound));
-    const system = runtimeBlock(prepared);
 
-    expect(system).toContain('capability_snapshot=unavailable');
-    expect(system).not.toContain('- capability_epoch:');
-    expect(system).not.toContain('task_progress:');
+    expect(stableFacts(prepared)).toContain('capability_snapshot=unavailable');
+    expect(stableFacts(prepared)).not.toContain('- capability_epoch:');
+    expect(stableFacts(prepared)).not.toContain('task_progress');
   });
 
   it.each([
@@ -220,10 +243,11 @@ describe('runtime facts', () => {
   ])('keeps the compact facts for an ordinary reply: %s', (inbound) => {
     const ctx = makeCtx({ inbound: textMessage('user', inbound) });
 
-    const system = runtimeBlock(prepareModelRequest(ctx, 'reply', request(inbound)));
+    const prepared = prepareModelRequest(ctx, 'reply', request(inbound));
+    const stable = stableFacts(prepared);
 
-    expect(system).toContain('# Runtime Facts');
-    expect(system).not.toContain('previous_run');
-    expect(system).not.toContain('recent_previous_tools');
+    expect(stable).toContain('# Runtime Facts');
+    expect(stable).not.toContain('previous_run');
+    expect(stable).not.toContain('recent_previous_tools');
   });
 });

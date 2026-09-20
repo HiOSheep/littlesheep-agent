@@ -353,15 +353,14 @@ describe('executeStage', () => {
     expect(finalRequest.temperature).toBeUndefined();
     expect(finalRequest.max_tokens).toBe(300);
     const finalSystem = String(finalRequest.messages[0]?.content ?? '');
-    const finalInput = String(finalRequest.messages[1]?.content ?? '');
-    // Runtime facts travel in the trailing message, outside the Provider's
-    // cacheable prefix; the clock and elapsed time are no longer injected.
+    // Per-run Runtime facts are stable, so they sit in the cacheable prefix right
+    // after the system prompt and before the conversation.
+    const finalRuntime = String(finalRequest.messages[1]?.content ?? '');
+    const finalInput = String(finalRequest.messages[2]?.content ?? '');
     expect(finalRequest.messages.map((message) => String(message.content)).join('\n')).toContain('# Runtime Facts');
     expect(finalSystem).toContain('one completed Runtime-validated read-only tool call');
     expect(finalSystem).toContain('PROFILE_SENTINEL_COMPACT_FINAL');
     expect(finalSystem).toContain('SOUL_SENTINEL_COMPACT_FINAL');
-    // The compact facts live in the trailing message, never in the system prompt.
-    const finalRuntime = String(finalRequest.messages.at(-1)?.content ?? '');
     expect(finalRuntime).toContain('# Runtime Facts');
     expect(finalRuntime).not.toContain('- capability_epoch:');
     expect(finalRuntime).not.toContain('elapsed');

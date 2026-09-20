@@ -335,7 +335,9 @@ describe('CACHE-08 request shape and lifecycle matrix', () => {
     );
     const observation = ctx.modelRequests?.[0]?.cacheObservation;
 
-    expect(String(prepared.messages[1]?.content)).toContain('Attached files manifest');
+    // Index 1 is the per-run Runtime capability block; the attachment manifest
+    // follows it in the conversation.
+    expect(String(prepared.messages[2]?.content)).toContain('Attached files manifest');
     expect(observation?.stablePrefix.fingerprint).toBe(baseline?.stablePrefix.fingerprint);
     expect(observation?.dynamicSuffix.fingerprint).not.toBe(baseline?.dynamicSuffix.fingerprint);
     expect(observation?.invalidationReasons).toEqual([]);

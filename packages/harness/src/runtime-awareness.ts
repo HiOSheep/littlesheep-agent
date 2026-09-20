@@ -1,14 +1,20 @@
-// Runtime facts injection: keep the Runtime-owned facts a model must not invent
-// below the cache boundary.
+// Runtime facts injection, split by how often each fact changes.
 //
-// Only facts that can change an answer belong here: capability state, the
-// current task state and its progress. The exact clock, time zone, run start,
-// elapsed time and repeated tool/run statistics are deliberately not injected.
-// They changed on every request (so every prompt tail was unique and re-billed),
-// they are not judgement inputs, and the UI reads them straight from Runtime
-// data. Facts that genuinely change arrive as runtime events, and anything else
-// a request really needs is fetched on demand.
-import type { ContextMessageCandidate, ContextMessageSegment } from '@littlesheep/context';
+// Stable capability facts (snapshot epoch, permission policy, workspace, network,
+// tool availability) are fixed for the whole run, so they belong in the
+// cacheable prefix: they are inserted as a system message immediately after the
+// main system prompt, before the conversation history. Sending them at the tail
+// instead would re-bill them on every request.
+//
+// Facts that really change while the run progresses (task state and progress,
+// capability probe results, permission decisions) stay in one trailing message
+// below the cache boundary, so a change cannot invalidate the shared prefix.
+//
+// The exact clock, time zone, run start, elapsed time and repeated tool/run
+// statistics are deliberately not injected at all: they changed on every
+// request, they are not judgement inputs, and the UI reads them from Runtime
+// data. Anything else a request genuinely needs is fetched on demand.
+import type { ContextMessageCandidate } from '@littlesheep/context';
 import type { ChatMessage, ChatRequest } from '@littlesheep/llm';
 import { CACHE_BOUNDARY_MARKER } from '@littlesheep/prompt';
 import type { LlmCallPurpose, RunContext } from '@littlesheep/types';
@@ -19,12 +25,15 @@ import {
   resolveCompactAutonomousReadExecutionTools,
 } from './compact-autonomous-read-task.js';
 
+/** Sorts immediately after the primary system prompt (order 0) and before any history. */
+const STABLE_FACTS_ORDER = 0.5;
+
 export interface RuntimeAwarenessInjection {
   request: ChatRequest;
   candidates?: ContextMessageCandidate[];
 }
 
-/** Add bounded, Runtime-owned facts immediately before an outbound model call. */
+/** Add bounded, Runtime-owned facts to an outbound request before it is sent. */
 export function injectRuntimeAwareness(
   ctx: RunContext,
   request: ChatRequest,
@@ -35,51 +44,63 @@ export function injectRuntimeAwareness(
   const systemIndex = request.messages.findIndex((message) => message.role === 'system');
   if (systemIndex < 0) return { request, candidates };
 
-  const section = shouldUseCompactRuntime(ctx, purpose)
-    ? renderCompactRuntimeFacts(ctx)
-    : renderRuntimeFacts(ctx);
-  // The Provider matches its prefix cache from token zero, so a per-request
-  // change inside the system prompt caps reuse at that byte and every later
-  // token (including the whole conversation) is re-billed. Keep these facts in
-  // one trailing message whose position is stable for the run.
-  const segmentText = `${CACHE_BOUNDARY_MARKER}\n\n${section}`;
-  const message: ChatMessage = { role: 'system', content: segmentText };
-  const preparedRequest = { ...request, messages: [...request.messages, message] };
+  const compact = shouldUseCompactRuntime(ctx, purpose);
+  const stableText = compact ? renderCompactCapabilityFacts(ctx) : renderCapabilitySnapshot(ctx);
+  const volatileText = renderVolatileRunState(ctx);
 
-  if (!candidates) return { request: preparedRequest };
+  const stableMessage: ChatMessage = { role: 'system', content: stableText };
+  const messages = [...request.messages];
+  messages.splice(systemIndex + 1, 0, stableMessage);
+  const volatileMessage: ChatMessage | undefined = volatileText
+    ? { role: 'system', content: `${CACHE_BOUNDARY_MARKER}\n\n${volatileText}` }
+    : undefined;
+  if (volatileMessage) messages.push(volatileMessage);
 
-  const segment: ContextMessageSegment = {
-    id: `runtime-awareness:${requestIndex}`,
-    order: Number.MAX_SAFE_INTEGER,
-    text: segmentText,
+  if (!candidates) return { request: { ...request, messages } };
+
+  const stableSource = {
+    kind: 'runtime_event' as const,
+    id: `runtime-awareness:${ctx.runId}:${requestIndex}:stable`,
+    runId: ctx.runId,
+    ...(ctx.startedAt ? { generatedAt: ctx.startedAt } : {}),
+  };
+  const stableCandidate: ContextMessageCandidate = {
+    id: `runtime-awareness:${requestIndex}:stable`,
+    order: STABLE_FACTS_ORDER,
+    message: stableMessage,
     kind: 'runtime_event',
-    source: {
-      kind: 'runtime_event',
-      id: `runtime-awareness:${ctx.runId}:${requestIndex}`,
-      runId: ctx.runId,
-      // The run start is the stable reference for when these facts were first
-      // observed; there is no per-request clock any more.
-      ...(ctx.startedAt ? { generatedAt: ctx.startedAt } : {}),
-    },
+    source: stableSource,
     priority: 100,
     required: true,
     sensitive: true,
     scope: 'run',
   };
+  const volatileCandidate: ContextMessageCandidate | undefined = volatileMessage
+    ? {
+        id: `runtime-awareness:${requestIndex}`,
+        order: Number.MAX_SAFE_INTEGER,
+        message: volatileMessage,
+        kind: 'runtime_event',
+        source: {
+          kind: 'runtime_event',
+          id: `runtime-awareness:${ctx.runId}:${requestIndex}`,
+          runId: ctx.runId,
+          ...(ctx.startedAt ? { generatedAt: ctx.startedAt } : {}),
+        },
+        priority: 100,
+        required: true,
+        sensitive: true,
+        scope: 'run',
+      }
+    : undefined;
 
   return {
-    request: preparedRequest,
-    candidates: [...candidates, {
-      id: `runtime-awareness:${requestIndex}`,
-      order: Number.MAX_SAFE_INTEGER,
-      message,
-      kind: 'runtime_event',
-      source: segment.source,
-      priority: 100,
-      required: true,
-      sensitive: true,
-      scope: 'run',
-    }],
+    request: { ...request, messages },
+    candidates: [
+      ...candidates,
+      stableCandidate,
+      ...(volatileCandidate ? [volatileCandidate] : []),
+    ],
   };
 }
 
@@ -96,34 +117,42 @@ function shouldUseCompactRuntime(ctx: RunContext, purpose: LlmCallPurpose | unde
   return !isExecutionContinuationRequest(request);
 }
 
-function renderCompactRuntimeFacts(ctx: RunContext): string {
-  const lines = [`task=${taskProgress(ctx).state}; ${compactCapabilityFacts(ctx)}`];
-  const probe = capabilityProbeLine(ctx);
-  if (probe) lines.push(probe);
-  lines.push('', 'Use these exact Runtime facts only when relevant.');
+function renderCompactCapabilityFacts(ctx: RunContext): string {
   return [
     '# Runtime Facts',
     '',
-    ...lines,
+    compactCapabilityFacts(ctx),
+    '',
+    'Use these exact Runtime facts only when relevant.',
   ].join('\n');
 }
 
-function renderRuntimeFacts(ctx: RunContext): string {
-  const progress = taskProgress(ctx);
-  const lines = [
+function renderCapabilitySnapshot(ctx: RunContext): string {
+  return [
     '# Runtime Facts',
     '',
-    `- task_state: ${progress.state}`,
-  ];
-  if (progress.total > 0) {
-    lines.push(`- task_progress: ${progress.completed}/${progress.total} completed (${progress.percent}%)`);
-    if (progress.active) lines.push(`- active_step: ${progress.active}`);
-  }
-  lines.push(
     ...capabilityFactLines(ctx),
     '- Runtime capability facts above are Runtime-owned. A capability probe or Web query may only be claimed when its corresponding Runtime event exists.',
-  );
-  return lines.join('\n');
+  ].join('\n');
+}
+
+/** Task progress, probe results and permission decisions: these can change mid-run. */
+function renderVolatileRunState(ctx: RunContext): string | undefined {
+  const lines: string[] = [];
+  const progress = taskProgress(ctx);
+  if (ctx.taskBook || ctx.taskExecution) {
+    lines.push(`task=${progress.state}`);
+    if (progress.total > 0) {
+      lines.push(`task_progress=${progress.completed}/${progress.total} (${progress.percent}%)`);
+    }
+    if (progress.active) lines.push(`active_step=${cleanInline(progress.active)}`);
+  }
+  const probe = capabilityProbeLine(ctx);
+  if (probe) lines.push(probe);
+  const decision = ctx.capabilityPermissionEvent?.decision;
+  if (decision) lines.push(`capability_permission_decision: ${decision}`);
+  if (lines.length === 0) return undefined;
+  return ['# Runtime State', '', ...lines].join('\n');
 }
 
 function compactCapabilityFacts(ctx: RunContext): string {
@@ -132,9 +161,8 @@ function compactCapabilityFacts(ctx: RunContext): string {
   const toolSummary = snapshot.tools
     .map((tool) => `${cleanInline(tool.name)}=${tool.status}`)
     .join(', ');
-  const decision = ctx.capabilityPermissionEvent?.decision;
-  return `capability_epoch=${snapshot.epoch}; permission=${snapshot.permissionPolicyId}`
-    + `${decision ? `/${decision}` : ''}; workspace=${snapshot.workspace}; `
+  return `capability_epoch=${snapshot.epoch}; permission=${snapshot.permissionPolicyId}; `
+    + `workspace=${snapshot.workspace}; `
     + `network=${snapshot.network.enabled ? 'enabled' : 'disabled'}/${snapshot.network.status}; `
     + `tools=${toolSummary || 'none'}`;
 }
@@ -147,12 +175,8 @@ function capabilityProbeLine(ctx: RunContext): string | undefined {
 
 function capabilityFactLines(ctx: RunContext): string[] {
   const snapshot = ctx.capabilitySnapshot;
-  const probe = capabilityProbeLine(ctx);
   if (!snapshot) {
-    return [
-      '- capability_snapshot: unavailable (no Runtime snapshot was supplied)',
-      ...(probe ? [`- ${probe}`] : []),
-    ];
+    return ['- capability_snapshot: unavailable (no Runtime snapshot was supplied)'];
   }
   const toolSummary = snapshot.tools
     .map((tool) => `${cleanInline(tool.name)}=${tool.status}`)
@@ -163,8 +187,6 @@ function capabilityFactLines(ctx: RunContext): string[] {
     `- workspace_access: ${snapshot.workspace}`,
     `- network: ${snapshot.network.enabled ? 'enabled' : 'disabled'} (${snapshot.network.status})${snapshot.network.providerId ? ` provider=${cleanInline(snapshot.network.providerId)}` : ''}`,
     `- registered_tools: ${toolSummary || 'none'}`,
-    ...(probe ? [`- ${probe}`] : []),
-    ...(ctx.capabilityPermissionEvent ? [`- capability_permission_decision: ${ctx.capabilityPermissionEvent.decision}`] : []),
   ];
 }
 

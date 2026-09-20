@@ -2276,7 +2276,9 @@ describe('createRunner run', () => {
       const system = String(request.messages[0]?.content ?? '');
       if (!system.includes('versioned session summary')) return textResponse('Preference recorded.');
       compactionCalls += 1;
-      const transcript = String(request.messages[1]?.content ?? '');
+      // The transcript is the first conversation message; index 1 is the
+      // per-run Runtime facts block, so do not assume a fixed position.
+      const transcript = String(request.messages.find((message) => message.role === 'user')?.content ?? '');
       const sourceMessageId = /\[source message ([^ |]+)/u.exec(transcript)?.[1] ?? '';
       return textResponse(JSON.stringify({
         summary: 'The user prefers concise replies.',
