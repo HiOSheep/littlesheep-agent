@@ -7478,3 +7478,38 @@ RUN ERROR: resumed task final reply generation failed: unexpected LLM request un
 4. 再跑**全量**套件 + 门 + **两次**样本 ⇒ 验收长会话 ratio（预期 `verify` 请求前缀与主路径共享 ⇒ hit↑ / uncached↓）。
 
 **方法学教训（第 4 次同类）**：**"失败数不变"与"日志缺失"都不能用来定性根因**；只有**直接读出运行时错误文本**才能终结猜测 —— 本轮若继续按"读代码推断"，会继续误判为协议级改造。
+
+## 10.273 **机制再精确**：替身是"应答队列"，故失败 = **调用次数/次序变化**（2026-09-18）
+
+**取证**（`runner-continuation.test.ts:38–55`）：
+```ts
+function queuedLlm(responses: ChatResponse[], requests: ChatRequest[]): LlmClient {
+  const next = (request: ChatRequest): ChatResponse => {
+    requests.push(request)
+    const response = responses.shift()          // ← 队列：按调用顺序取
+    if (!response) throw new Error('unexpected LLM request')   // 取空即抛
+    return response
+  }
+  …
+}
+```
+⇒ 该替身**不按请求内容匹配**，而是**按调用顺序出队** ⇒ 抛错意味着**实际模型调用次数多于脚本预设** ✓
+
+**⇒ 因此 8 例失败的真正含义（比 10.272 更精确）**：
+- **`verify` 携带历史后，continuation 流程里多出了一次（或次序不同的）模型调用** ⇒ 队列提前耗尽 ⇒ 抛错 ⇒ `result.status='error'`；
+- **这不是"替身匹配问题"，而是"行为变化"**：`verify` 看到历史 ⇒ 其判定/后续路径改变 ⇒ 触发**额外的模型调用**（例如多一次 verify、重规划或重写）；
+- ⇒ 对**用户指标 #4（模型调用数）**而言，这**恰恰是需要看清的变化**：若该额外调用是**必要的**（历史让 verify 更准 ⇒ 触发合理的 replan），则属**能力提升**；若是**冗余**，则应避免。
+
+**⇒ 下一步（一次取证即可看清）**：在同一失败用例里**临时打印调用序列**（不需改生产代码）：
+```ts
+// 临时：紧跟 requests.push 之后或断言之前
+console.log('CALLS:', requests.map((r) => r.callContract?.purpose).join(' > '));
+```
+跑该用例（**分别在** `verify` 带历史 / 不带历史两种情况下）⇒ 对比序列 ⇒ 得到**多出来的那一次调用是什么、由谁触发** ⇒ 再决定：① 修（若冗余）或 ② 接受并更新脚本队列（若合理，则测试需按新调用数补一条应答）。
+
+**D1 判定更新**：
+| 阶段 | 结论 |
+| --- | --- |
+| 10.265 | ~~Runtime 语义依赖（协议级）~~ ❌ 推翻 |
+| 10.272 | 替身敏感 ✓（但机制未明） |
+| **10.273** | **调用次数/次序变化**（队列耗尽）⇒ **行为变化，需看清是哪一次调用** |
