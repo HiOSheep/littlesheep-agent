@@ -90,11 +90,16 @@ function audit(dataDir) {
     callsPerRun.push(requests.length);
     if (typeof log.durationMs === 'number') durations.push(log.durationMs);
 
+    // "First useful action" is when the runtime first asks the model to work,
+    // or the first recorded stage step, whichever comes first: these workloads
+    // answer most turns without invoking a tool at all.
     const start = log.startedAt ? Date.parse(log.startedAt) : undefined;
-    const firstTool = (log.toolInvocations ?? [])[0] ?? (log.toolCalls ?? [])[0];
-    const firstToolAt = firstTool?.startedAt ?? firstTool?.startTime ?? firstTool?.at;
-    if (start !== undefined && typeof firstToolAt === 'string') {
-      const at = Date.parse(firstToolAt);
+    const candidates = [
+      (log.modelRequests ?? [])[0]?.createdAt,
+      (log.trace ?? [])[0]?.startedAt,
+    ].filter((value) => typeof value === 'string');
+    if (start !== undefined && candidates.length > 0) {
+      const at = Math.min(...candidates.map((value) => Date.parse(value)).filter(Number.isFinite));
       if (Number.isFinite(at) && at >= start) firstActions.push(at - start);
     }
 
