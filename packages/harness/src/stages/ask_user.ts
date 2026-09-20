@@ -20,7 +20,7 @@ import {
 } from '../model-observability.js';
 import { appendSystemPromptAddons, buildUserFacingVoiceAddon } from '../profile-prompt.js';
 import { textOf } from './_shared.js';
-import { acceptUniqueUserFacingReply, type ReplyRewriteInput } from '../user-facing-reply.js';
+import { publishUserFacingReply } from '../user-facing-reply.js';
 import { clearReplyState } from '../reply-state.js';
 import { renderClarificationMessage } from './clarification-message.js';
 import { updateClarificationRequest, writeDecisionState } from '../decision-state.js';
@@ -50,12 +50,14 @@ export function createAskUserStage(deps?: AskUserStageDeps) {
     }
 
     try {
-      const question = await acceptUniqueUserFacingReply(
+      const question = await publishUserFacingReply(
         ctx,
         'ask_user',
         await composeClarificationMessage(deps, ctx, request, fallback),
-        (input) => composeClarificationMessage(deps, ctx, request, fallback, input),
       );
+      if (!question) {
+        throw new Error('the clarification settlement already holds a different message');
+      }
       updateClarificationRequest(ctx, 'ask_user', (value) => ({
         ...value,
         prompt: question,
@@ -84,17 +86,10 @@ async function composeClarificationMessage(
   ctx: RunContext,
   request: ClarificationRequest,
   fallback: string,
-  rewrite?: ReplyRewriteInput,
 ): Promise<string> {
   const system = appendSystemPromptAddons(
     `You are the ASK_USER stage of a hard-control-flow agent. Compose one concise, actionable clarification message for the user from the supplied runtime facts. Return only the message text, with no preamble or JSON. Preserve every option and required decision; do not add facts, risks, permissions, paths or claims that are not present in the input.`,
     { id: 'user-facing-voice', text: buildUserFacingVoiceAddon(ctx) },
-    rewrite
-      ? {
-          id: 'user-facing-rewrite',
-          text: `The prior API-generated response exactly repeats a previously published LS reply. Generate the clarification again with a genuinely different opening and sentence structure while preserving every runtime fact. Do not mention the regeneration. Prior response:\n${rewrite.generatedReply}\nRecent replies to avoid repeating exactly:\n${rewrite.avoidReplies.map((reply, index) => `${index + 1}. ${reply}`).join('\n')}`,
-        }
-      : undefined,
   );
   const baseMessages: ChatRequest['messages'] = [
     {
@@ -126,7 +121,7 @@ async function composeClarificationMessage(
     const rawRequest = {
       model: deps.model,
       messages,
-      temperature: rewrite ? 0.75 : 0.65,
+      temperature: 0.65,
       max_tokens: maxTokens,
       signal: ctx.signal,
     } satisfies ChatRequest;

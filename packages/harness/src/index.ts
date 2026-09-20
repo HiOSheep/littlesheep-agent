@@ -104,12 +104,9 @@ export {
   type SessionSummaryFidelityField,
 } from './session-summary-fidelity-text.js';
 export {
-  acceptUniqueUserFacingReply,
-  collectRecentAssistantReplies,
+  publishUserFacingReply,
   normalizeUserFacingReply,
   UserFacingReplyError,
-  MAX_RECENT_VISIBLE_REPLIES,
-  MAX_VISIBLE_REPLY_REWRITES,
 } from './user-facing-reply.js';
 export {
   LlmCallContractViolationError,

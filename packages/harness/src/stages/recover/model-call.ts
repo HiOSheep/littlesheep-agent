@@ -9,7 +9,6 @@ import {
   recordModelRequestFailure,
 } from '../../model-observability.js';
 import { appendSystemPromptAddons, buildUserFacingVoiceAddon } from '../../profile-prompt.js';
-import type { ReplyRewriteInput } from '../../user-facing-reply.js';
 import { callLlmForJson, conversationHistoryForModel, textOf, toChatMessage } from '../_shared.js';
 import {
   type DecodedRecovery,
@@ -71,54 +70,4 @@ export async function requestRecoveryDecision(
     onError: (request, error) => recordModelRequestFailure(ctx, request, error, ctx.signal),
   });
   return parsed;
-}
-
-export async function rewriteAbortReason(
-  deps: RecoverStageDeps,
-  ctx: RunContext,
-  lastError: RunContext['lastError'],
-  input: ReplyRewriteInput,
-): Promise<string> {
-  const messages: ChatMessage[] = [
-    {
-      role: 'system',
-      content: appendSystemPromptAddons(
-        RECOVER_SYSTEM_PROMPT,
-        { id: 'profile', text: ctx.profilePromptAddon, placement: 'stable' },
-        { id: 'user-facing-voice', text: buildUserFacingVoiceAddon(ctx) },
-        {
-          id: 'user-facing-rewrite',
-          text: 'The previous abort reason exactly repeats a previously published LS reply. Return action "abort" again, but rewrite reason with a genuinely different opening and sentence structure. Preserve the same failure facts and do not mention the rewrite.',
-        },
-      ),
-    },
-    {
-      role: 'user',
-      content: [
-        `Last error: stage=${lastError?.stage ?? 'unknown'}, message=${lastError?.message ?? 'unknown'}`,
-        `Prior API-generated reason: ${input.generatedReply}`,
-        `Recent replies to avoid repeating exactly:\n${input.avoidReplies.map((reply, index) => `${index + 1}. ${reply}`).join('\n')}`,
-      ].join('\n\n'),
-    },
-  ];
-  const { parsed } = await callLlmForJson<DecodedRecovery>(deps.llm, deps.model, messages, {
-    maxAttempts: 2,
-    maxTokens: 600,
-    maxTokensCeiling: 900,
-    signal: ctx.signal,
-    onRequest: (request, retry) => prepareModelRequest(
-      ctx,
-      'recover',
-      preferDirectModelOutput(ctx, request, { force: true }),
-      buildRunRequestCandidates(ctx, 'recover', request.messages, {
-        history: [],
-        primaryUserKind: 'workflow_state',
-      }),
-      { retryOf: retry.previousRequestId, retryReason: retry.previousFailureReason },
-    ),
-    onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
-    beforeRequest: (request) => ensureModelRequestStarted(ctx, request),
-    onError: (request, error) => recordModelRequestFailure(ctx, request, error, ctx.signal),
-  });
-  return parsed?.action === 'abort' ? parsed.reason ?? '' : '';
 }

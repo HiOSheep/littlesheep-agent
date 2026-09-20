@@ -144,11 +144,8 @@ describe('askUserStage', () => {
     expect(payloads[0]).not.toContain('SECRET_ANSWER_PERMISSION_ENABLED');
   });
 
-  it('rewrites a model reply when it exactly repeats a recent assistant message', async () => {
-    const llm = createMockLlm([
-      textResponse('请告诉我目标文件。'),
-      textResponse('为了继续处理，请先指定要修改的文件。'),
-    ]);
+  it('publishes a clarification that repeats a recent assistant message without rewriting it', async () => {
+    const llm = createMockLlm(textResponse('请告诉我目标文件。'));
     const stage = createAskUserStage({ llm, model: 'test' });
     const ctx = makeCtx({
       inbound: textMessage('user', '修改那个文件'),
@@ -158,9 +155,9 @@ describe('askUserStage', () => {
 
     await stage(ctx);
 
-    expect(ctx.reply).toBe('为了继续处理，请先指定要修改的文件。');
-    expect(ctx.replyProvenance?.rewriteCount).toBe(1);
-    expect(llm.chat).toHaveBeenCalledTimes(2);
+    expect(ctx.reply).toBe('请告诉我目标文件。');
+    expect(ctx.replyProvenance?.rewriteCount).toBe(0);
+    expect(llm.chat).toHaveBeenCalledTimes(1);
   });
 
   it('retries an empty response with a larger output budget without overriding configured reasoning', async () => {

@@ -152,6 +152,58 @@ describe('SessionManager', () => {
     })).resolves.toBe(true);
   });
 
+  it('re-publishes the same text under a new settlement while each settlement stays idempotent', async () => {
+    const sm = new SessionManager({ sessionsDir: tmpDir });
+    const session = await sm.create();
+    const first: FinalReplyReservation = {
+      version: 1,
+      settlementId: 'run-1:final-reply:' + 'c'.repeat(64),
+      reply: 'Same words, later turn',
+      replyFingerprint: 'c'.repeat(64),
+      modelRequestId: 'request-1',
+    };
+    const repeat: FinalReplyReservation = {
+      ...first,
+      settlementId: 'run-2:final-reply:' + 'c'.repeat(64),
+      modelRequestId: 'request-2',
+    };
+
+    await expect(sm.reserveAssistantReplySettlement(session.id, first)).resolves.toBe(true);
+    // Repeating an earlier turn's wording is allowed: identity, not wording,
+    // is what the durable gate protects.
+    await expect(sm.reserveAssistantReplySettlement(session.id, repeat)).resolves.toBe(true);
+
+    const restarted = new SessionManager({ sessionsDir: tmpDir });
+    await expect(restarted.reserveAssistantReplySettlement(session.id, repeat)).resolves.toBe(true);
+    await expect(restarted.reserveAssistantReplySettlement(session.id, {
+      ...repeat,
+      reply: 'Different words for one settlement',
+    })).resolves.toBe(false);
+  });
+
+  it('keeps concurrent reservations of one settlement idempotent', async () => {
+    const sm = new SessionManager({ sessionsDir: tmpDir });
+    const session = await sm.create();
+    const reservation: FinalReplyReservation = {
+      version: 1,
+      settlementId: 'run-1:final-reply:' + 'd'.repeat(64),
+      reply: 'One concurrent answer',
+      replyFingerprint: 'd'.repeat(64),
+      modelRequestId: 'request-1',
+    };
+
+    const results = await Promise.all(Array.from(
+      { length: 6 },
+      () => sm.reserveAssistantReplySettlement(session.id, reservation),
+    ));
+
+    expect(results.every(Boolean)).toBe(true);
+    expect(await sm.reserveAssistantReplySettlement(session.id, {
+      ...reservation,
+      reply: 'A different answer for the same settlement',
+    })).toBe(false);
+  });
+
   it('promotes a persisted final-reply proposal in the transcript when settled', async () => {
     const sm = new SessionManager({ sessionsDir: tmpDir });
     const session = await sm.create();

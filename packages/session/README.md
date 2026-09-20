@@ -1,10 +1,10 @@
 # @littlesheep/session
 
-管理 JSONL 会话、文件锁、用户可见回复指纹和非破坏式长会话摘要。
+管理 JSONL 会话、文件锁、用户可见回复 settlement 身份与文本指纹账本，以及非破坏式长会话摘要。
 
 ## 职责与边界
 
-- 公开入口是 `src/index.ts`；`manager.ts` 管理会话，`lock.ts` 管理并发，`reply-fingerprint-store.ts` 负责跨重启、并发安全的回复精确去重，`compaction.ts` 生成版本化摘要，`compaction-store.ts` 原子持久化摘要与 activation，`compaction-store-codec.ts` 校验恢复事务和磁盘投影。
+- 公开入口是 `src/index.ts`；`manager.ts` 管理会话，`lock.ts` 管理并发，`reply-fingerprint-store.ts` 以 settlement 身份保证跨重启、并发安全的发布幂等并保留文本指纹账本，`compaction.ts` 生成版本化摘要，`compaction-store.ts` 原子持久化摘要与 activation，`compaction-store-codec.ts` 校验恢复事务和磁盘投影。
 - 保留原始消息，不负责 UI 排序、项目索引、Agent Workflow 或长期记忆选择。
 - 禁止用摘要覆盖原始 JSONL，禁止把附件正文写入会话元数据。
 

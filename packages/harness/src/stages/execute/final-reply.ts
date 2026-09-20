@@ -14,7 +14,7 @@ import {
 } from '../../profile-prompt.js';
 import { textOf } from '../_shared.js';
 import type { ExecuteStageDeps } from './contracts.js';
-import { acceptUniqueUserFacingReply, type ReplyRewriteInput } from '../../user-facing-reply.js';
+import { publishUserFacingReply } from '../../user-facing-reply.js';
 import { isCompactReadOnlyResult } from '../../compact-read-only-result.js';
 import { validateWebCitations, webCitationRepairContract } from '../../web-citation-validation.js';
 
@@ -52,7 +52,6 @@ Follow progressive disclosure: lead with the outcome and completion status, then
   );
 
   const requestFinalReply = async (
-    rewrite?: ReplyRewriteInput,
     citationRepair?: { generatedReply: string; reason: string },
   ): Promise<string> => {
     const webContract = ctx.webEvidence ? webCitationRepairContract(ctx.webEvidence) : undefined;
@@ -60,9 +59,9 @@ Follow progressive disclosure: lead with the outcome and completion status, then
       model: deps.model,
       messages: [
         {
-          // Byte identical for the first answer and for its rewrite: the provider
-          // caches the system message ahead of the history, so appending the
-          // regeneration contract here would rebill the whole transcript.
+          // Byte identical for the first answer and for a citation repair: the
+          // provider caches the system message ahead of the history, so
+          // appending the repair contract here would rebill the transcript.
           role: 'system',
           content: [
             voiceSystemPrompt,
@@ -84,16 +83,6 @@ Follow progressive disclosure: lead with the outcome and completion status, then
                 + `Success criteria:\n${taskBook.successCriteria.map((item) => `- ${item}`).join('\n')}\n\n`
                 + `Step results:\n${stepSummary}\n\n`
                 + `Write the final reply in the user's language.`,
-            ...(rewrite ? [
-              'Regeneration contract:',
-              '- The prior API-generated response exactly repeats a previously published LS reply.',
-              '- Generate the final answer again with a genuinely different opening and sentence structure.',
-              '- Preserve every runtime fact, result, failure, permission decision and uncertainty.',
-              '- Do not mention the regeneration or comparison.',
-              '- Return only the final user-facing answer.',
-              `Prior API-generated response:\n${rewrite.generatedReply}`,
-              `Recent replies to avoid repeating exactly:\n${rewrite.avoidReplies.map((reply, index) => `${index + 1}. ${reply}`).join('\n')}`,
-            ] : []),
             ...(citationRepair ? [`Invalid prior draft:\n${citationRepair.generatedReply}`] : []),
             ...(ctx.webEvidence ? [
               `Durable Web evidence projection:\n${JSON.stringify(modelFacingWebEvidence(ctx.webEvidence))}`,
@@ -101,11 +90,11 @@ Follow progressive disclosure: lead with the outcome and completion status, then
           ].join('\n\n'),
         },
       ],
-      temperature: rewrite ? 0.75 : 0.65,
+      temperature: 0.65,
       max_tokens: compact ? 300 : 900,
       signal: ctx.signal,
     } satisfies import('@littlesheep/llm').ChatRequest;
-    const retryOf = rewrite || citationRepair ? ctx.modelRequests?.at(-1)?.id : undefined;
+    const retryOf = citationRepair ? ctx.modelRequests?.at(-1)?.id : undefined;
     const request = prepareModelRequest(
       ctx,
       'execute_final_reply',
@@ -116,12 +105,12 @@ Follow progressive disclosure: lead with the outcome and completion status, then
       }),
       {
         retryOf,
-        retryReason: citationRepair ? 'citation' : rewrite ? 'duplicate' : undefined,
+        retryReason: citationRepair ? 'citation' : undefined,
       },
     );
     let streamed = '';
     const stream = ctx.onAssistantDelta !== undefined;
-    if (stream && (rewrite || citationRepair)) ctx.onAssistantReplace?.('');
+    if (stream && citationRepair) ctx.onAssistantReplace?.('');
     const response = stream
       ? await callModelChatStream(ctx, deps.llm, request, (chunk) => {
           if (chunk.type === 'reset') {
@@ -136,15 +125,15 @@ Follow progressive disclosure: lead with the outcome and completion status, then
     return response.content || streamed;
   };
 
-  const requestCitationValidReply = async (rewrite?: ReplyRewriteInput): Promise<string> => {
-    let generated = await requestFinalReply(rewrite);
+  const requestCitationValidReply = async (): Promise<string> => {
+    let generated = await requestFinalReply();
     for (let attempt = 0; attempt <= MAX_WEB_CITATION_REPAIRS; attempt += 1) {
       const validation = validateWebCitations(generated, ctx.webEvidence);
       if (validation.ok) return generated;
       if (!ctx.webEvidence || attempt >= MAX_WEB_CITATION_REPAIRS) {
         throw new Error(`web citation validation failed: ${validation.reason}`);
       }
-      generated = await requestFinalReply(rewrite, {
+      generated = await requestFinalReply({
         generatedReply: generated,
         reason: validation.reason ?? 'invalid citation',
       });
@@ -153,13 +142,11 @@ Follow progressive disclosure: lead with the outcome and completion status, then
   };
 
   const initial = await requestCitationValidReply();
-  return acceptUniqueUserFacingReply(
-    ctx,
-    'execute_final_reply',
-    initial,
-    requestCitationValidReply,
-    replyStage,
-  );
+  const published = await publishUserFacingReply(ctx, 'execute_final_reply', initial, replyStage);
+  if (!published) {
+    throw new Error('the final reply settlement already holds a different published answer');
+  }
+  return published;
 }
 
 /** Keep diagnostic error ids in Runtime/UI only; the model receives user-visible evidence state. */

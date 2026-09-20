@@ -28,10 +28,7 @@ import {
   modelRequestIdFor,
 } from '../model-observability.js';
 import { buildRunRequestCandidates } from '../context-candidates.js';
-import {
-  acceptUniqueUserFacingReply,
-  type ReplyRewriteInput,
-} from '../user-facing-reply.js';
+import { publishUserFacingReply } from '../user-facing-reply.js';
 import { clearReplyState } from '../reply-state.js';
 import { recordFailure } from '../failure-state.js';
 import { synthesizeFinalReply } from './execute/final-reply.js';
@@ -261,12 +258,7 @@ export function createReplyStage(deps: ReplyStageDeps) {
             history,
             visibleReply,
           );
-      reply = await acceptUniqueUserFacingReply(
-        ctx,
-        replyPurpose,
-        apiGeneratedReply,
-        (input) => rewriteReply(deps, ctx, systemPrompt.text, messages, input, replyPurpose),
-      );
+      reply = await publishUserFacingReply(ctx, replyPurpose, apiGeneratedReply) ?? '';
       // Rule 11.3: the stage must never finish with an accepted-but-empty reply.
       // Without this guard a turn could end `ok: true` while publishing nothing,
       // which is exactly the silent HTTP 200 with an empty reply that the sample
@@ -281,8 +273,8 @@ export function createReplyStage(deps: ReplyStageDeps) {
           error: message,
         };
       }
-      // Streamed text is provisional. Replace it only after the complete
-      // model reply passes the durable duplicate gate.
+      // Streamed text is provisional. Replace it with the text that was
+      // actually reserved under this run's settlement identity.
       if (reply !== streamed.trim()) ctx.onAssistantReplace?.(reply);
     } catch (err) {
       if (streamed) ctx.onAssistantReplace?.('');
@@ -302,59 +294,6 @@ export function createReplyStage(deps: ReplyStageDeps) {
       ok: true,
     };
   };
-}
-
-async function rewriteReply(
-  deps: ReplyStageDeps,
-  ctx: RunContext,
-  systemPrompt: string,
-  originalMessages: ChatMessage[],
-  input: ReplyRewriteInput,
-  purpose: Extract<UserFacingReplyPurpose, 'reply' | 'capability_reply'> = 'reply',
-): Promise<string> {
-  const isCapabilityReply = purpose === 'capability_reply';
-  const rawRequest = {
-    model: deps.model,
-    messages: [
-      {
-        // Byte identical to the first answer: the provider caches the system
-        // message ahead of the history, so appending the contract here would
-        // rebill the whole transcript on every rewrite.
-        role: 'system' as const,
-        content: systemPrompt,
-      },
-      ...originalMessages.slice(1),
-      {
-        role: 'user' as const,
-        content: [
-          'Regeneration contract:',
-          '- The prior API-generated response exactly repeats a previously published LS reply.',
-          '- Generate the answer again with a genuinely different opening and sentence structure.',
-          '- Preserve the original answer, scope, uncertainty and user language.',
-          '- Do not mention this regeneration request or the comparison.',
-          '- Return only the new user-facing reply.',
-          `Prior API-generated response:\n${input.generatedReply}`,
-          `Recent replies to avoid repeating exactly:\n${input.avoidReplies.map((reply, index) => `${index + 1}. ${reply}`).join('\n')}`,
-        ].join('\n\n'),
-      },
-    ],
-    temperature: isCapabilityReply ? 0.45 : 0.75,
-    max_tokens: isCapabilityReply ? 500 : 1_200,
-    signal: ctx.signal,
-    stream: false,
-  } satisfies ChatRequest;
-  const request = prepareModelRequest(
-    ctx,
-    purpose,
-    preferDirectModelOutput(ctx, rawRequest, { force: true }),
-    buildRunRequestCandidates(ctx, 'reply', rawRequest.messages, {
-      history: isCapabilityReply ? recentHistoryForModel(ctx.history) : conversationHistoryForModel(ctx),
-      primaryUserKind: 'user_input',
-    }),
-    { retryOf: ctx.modelRequests?.at(-1)?.id, retryReason: 'duplicate' },
-  );
-  const response = await callModelChat(ctx, deps.llm, request);
-  return response.content;
 }
 
 function respondBootstrap(bootstrap: RunContext['bootstrap']): Record<string, string> {

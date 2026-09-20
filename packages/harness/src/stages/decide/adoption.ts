@@ -11,7 +11,7 @@ import type { DecideStageDeps, DecodedPlan } from './contracts.js';
 import type { DecideRequest } from './request.js';
 import { maybeRefineMemoryForTaskBook } from '../../memory-taskbook-refinement.js';
 import { renderClarificationMessage } from '../clarification-message.js';
-import { reserveUserFacingReplyOnce } from '../../user-facing-reply.js';
+import { publishUserFacingReply } from '../../user-facing-reply.js';
 import { writeReplanState } from '../../replan-state.js';
 import { writeRuntimeState } from '../../runtime-state.js';
 import { writeDecisionState } from '../../decision-state.js';
@@ -85,7 +85,7 @@ export async function adoptDecodedDecision(
       const visible = renderClarificationMessage(clarificationRequest);
       let reserved: string | undefined;
       try {
-        reserved = await reserveUserFacingReplyOnce(ctx, request.callPurpose, visible);
+        reserved = await publishUserFacingReply(ctx, request.callPurpose, visible);
       } catch (error) {
         return failDecision(ctx, `clarification reply reservation failed: ${(error as Error).message}`);
       }

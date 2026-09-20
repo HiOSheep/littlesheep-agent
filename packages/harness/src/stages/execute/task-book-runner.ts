@@ -15,7 +15,7 @@ import { updateReplanHistory, writeReplanState } from '../../replan-state.js';
 import { clearReplyState } from '../../reply-state.js';
 import { recordFailure, clearFailure } from '../../failure-state.js';
 import { replaceToolResults } from '../../execution-evidence-state.js';
-import { reserveUserFacingReplyOnce } from '../../user-facing-reply.js';
+import { publishUserFacingReply } from '../../user-facing-reply.js';
 import { orderedStepResults } from './failure-policy.js';
 import { synthesizeFinalReply } from './final-reply.js';
 import { reusableTaskStepReplyCandidate } from './reply-candidate.js';
@@ -227,15 +227,14 @@ async function resolveCompletedTaskReply(
   const step = stepResults[0];
   const candidate = step ? reusableTaskStepReplyCandidate(ctx, taskBook, step) : undefined;
   if (stepOutput && candidate) {
-    const reserved = await reserveUserFacingReplyOnce(
+    const published = await publishUserFacingReply(
       ctx,
       'execute_tool_loop',
       stepOutput,
-      0,
       'execute',
       candidate.modelRequestId,
     );
-    if (reserved) return reserved;
+    if (published) return published;
   }
   return synthesizeFinalReply(deps, ctx, taskBook, stepResults);
 }

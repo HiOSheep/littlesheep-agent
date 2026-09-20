@@ -423,11 +423,8 @@ describe('replyStage', () => {
     expect(ctx.reply).toBe('new answer');
   });
 
-  it('buffers streaming output and publishes only the distinct rewritten reply', async () => {
-    const llm = createMockLlm([
-      textResponse('还是同一句回复。'),
-      textResponse('这次换一种自然的说法。'),
-    ]);
+  it('publishes the streamed wording as-is when it repeats a recent answer', async () => {
+    const llm = createMockLlm([textResponse('还是同一句回复。')]);
     const stage = createReplyStage({
       llm,
       model: 'test',
@@ -444,14 +441,14 @@ describe('replyStage', () => {
 
     const result = await stage(ctx);
 
+    // Identical wording across turns is published, not regenerated: the user
+    // asked the same question again and the same answer is the correct answer.
+    // The non-streamed reply still replaces the empty provisional text.
     expect(result.ok).toBe(true);
-    expect(ctx.reply).toBe('这次换一种自然的说法。');
-    expect(deltas).toEqual(['这次换一种自然的说法。']);
-    expect(ctx.replyProvenance?.rewriteCount).toBe(1);
-    expect(ctx.modelRequests?.[1]).toMatchObject({
-      retryOf: ctx.modelRequests?.[0]?.id,
-      retryReason: 'duplicate',
-    });
+    expect(ctx.reply).toBe('还是同一句回复。');
+    expect(deltas).toEqual(['还是同一句回复。']);
+    expect(ctx.replyProvenance?.rewriteCount).toBe(0);
+    expect(llm.chat).toHaveBeenCalledTimes(1);
   });
 
   it('publishes a repeated reply instead of failing the turn', async () => {
@@ -473,18 +470,16 @@ describe('replyStage', () => {
 
     // A verbatim repeat is a UX preference, not a safety property: when the user
     // repeats a question the same answer is correct, so the reply is published
-    // (after the bounded rewrites) instead of failing the turn.
+    // immediately and no regeneration call is spent on rewording it.
     expect(result.ok).toBe(true);
     expect(ctx.reply).toBe('固定回复');
     expect(deltas).toEqual([]);
-    expect(llm.chat).toHaveBeenCalledTimes(3);
+    expect(ctx.replyProvenance?.rewriteCount).toBe(0);
+    expect(llm.chat).toHaveBeenCalledTimes(1);
   });
 
-  it('rewrites a duplicate found only in the durable session registry', async () => {
-    const llm = createMockLlm([
-      textResponse('Archived exact reply'),
-      textResponse('Fresh model-authored wording'),
-    ]);
+  it('publishes text the durable session ledger already recorded', async () => {
+    const llm = createMockLlm([textResponse('Archived exact reply')]);
     const stage = createReplyStage({
       llm,
       model: 'test',
@@ -495,14 +490,17 @@ describe('replyStage', () => {
       history: [],
       inbound: textMessage('user', 'Repeat the old question'),
     });
-    ctx.reserveUserFacingReply = vi.fn(async (reply: string) => reply !== 'Archived exact reply');
+    ctx.reserveUserFacingReply = vi.fn(async () => false);
 
     const result = await stage(ctx);
 
+    // The registry answering "already recorded" is the repeat case, which is
+    // published as-is; it is not a refusal that costs a second model call.
     expect(result.ok).toBe(true);
-    expect(ctx.reply).toBe('Fresh model-authored wording');
-    expect(ctx.replyProvenance?.rewriteCount).toBe(1);
-    expect(ctx.reserveUserFacingReply).toHaveBeenCalledTimes(2);
+    expect(ctx.reply).toBe('Archived exact reply');
+    expect(ctx.replyProvenance?.rewriteCount).toBe(0);
+    expect(ctx.reserveUserFacingReply).toHaveBeenCalledTimes(1);
+    expect(llm.chat).toHaveBeenCalledTimes(1);
   });
 
   it('fails closed when the durable reply registry cannot reserve text', async () => {

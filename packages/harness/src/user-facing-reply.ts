@@ -1,29 +1,19 @@
 import type {
   FinalReplyReservation,
   FinalReplySettlement,
-  Message,
   ReplyProvenance,
   RunContext,
   RunContextContractStage,
   UserFacingReplyPurpose,
 } from '@littlesheep/types';
 import { containsUnquotedDsmlControlMarkup } from '@littlesheep/llm';
-import { filterAuthoritativeUserFacingMessages, normalizeUserFacingReply } from '@littlesheep/types';
-import { textOf } from './stages/_shared.js';
 import { writeReplyState } from './reply-state.js';
 import { finalReplyFingerprint, finalReplySettlementId } from './final-reply-identity.js';
 
 export { normalizeUserFacingReply } from '@littlesheep/types';
 
-export const MAX_RECENT_VISIBLE_REPLIES = 12;
-export const MAX_VISIBLE_REPLY_REWRITES = 2;
-export const MAX_AVOID_REPLY_COUNT = 6;
-export const MAX_AVOID_REPLY_CHARS = 800;
-
 export type UserFacingReplyFailureReason =
   | 'empty_model_reply'
-  | 'duplicate_model_reply'
-  | 'rewrite_failed'
   | 'continuity_repair_failed'
   | 'reply_registry_failed'
   | 'missing_model_request_provenance'
@@ -39,35 +29,26 @@ export class UserFacingReplyError extends Error {
   }
 }
 
-export interface ReplyRewriteInput {
-  generatedReply: string;
-  avoidReplies: string[];
-  attempt: number;
-}
-
-export type ReplyRewrite = (input: ReplyRewriteInput) => Promise<string>;
-
 /**
- * Reserve one model-authored reply without generating replacement copy.
- * Returns undefined for a duplicate so a caller that already owns a richer
- * compatibility path can hand off to it. Empty output and registry failures
- * remain explicit errors.
+ * Publish one model-authored reply after reserving its settlement identity.
+ *
+ * Repeating an earlier turn's wording is allowed: identical wording is a UX
+ * preference, not a safety property, and when the user repeats a question the
+ * same answer is the correct answer. What this boundary still enforces is
+ * identity and provenance — the text must come from a recorded Provider
+ * request, empty output and unquoted DSML control markup fail closed, a
+ * registry failure is never papered over with Runtime-authored text, and one
+ * settlement (run + text identity) can never be published twice with different
+ * content. Returns undefined only for that last conflict so the caller can
+ * fail loudly instead of publishing a second, different reply.
  */
-export async function reserveUserFacingReplyOnce(
+export async function publishUserFacingReply(
   ctx: RunContext,
   purpose: UserFacingReplyPurpose,
   apiGeneratedReply: string,
-  rewriteCount = 0,
   stage?: RunContextContractStage,
+  /** Pin the proof to one recorded request when the text was not just generated. */
   expectedModelRequestId?: string,
-  /**
-   * Publish a reply that repeats an already published one instead of refusing
-   * it. A verbatim repeat is a UX preference, not a safety property: when the
-   * user repeats a question, the same answer is the correct answer. Provenance,
-   * settlement and the fingerprint ledger are still written and the repeat is
-   * logged, so the pattern stays observable.
-   */
-  allowDuplicate = false,
 ): Promise<string | undefined> {
   const generatedReply = cleanModelReply(apiGeneratedReply);
   if (!generatedReply) {
@@ -83,31 +64,14 @@ export async function reserveUserFacingReplyOnce(
     );
   }
 
-  const recentReplies = collectRecentAssistantReplies(ctx);
-  const recentNormalized = new Set(recentReplies.map(normalizeUserFacingReply));
-  const repeatsPublishedReply = recentNormalized.has(normalizeUserFacingReply(generatedReply));
-  if (repeatsPublishedReply && !allowDuplicate) return undefined;
-
-  const provenance = createReplyProvenance(ctx, purpose, rewriteCount, expectedModelRequestId);
+  const provenance = createReplyProvenance(ctx, purpose, expectedModelRequestId);
   const replyFingerprint = finalReplyFingerprint(generatedReply);
-  if (repeatsPublishedReply) {
-    ctx.toolContext.log?.(
-      'warn',
-      `publishing a reply that repeats a published one (purpose=${purpose}, fingerprint=${replyFingerprint.slice(0, 12)})`,
-    );
-  }
   const reservation: FinalReplyReservation = {
     version: 1,
     settlementId: finalReplySettlementId(ctx.runId, replyFingerprint),
     reply: generatedReply,
     replyFingerprint,
     modelRequestId: provenance.modelRequestId,
-    // Thread the intent into the durable registry, which is the gate that
-    // actually refuses a repeat; the local check alone is not sufficient. The
-    // flag must not depend on the local detection: the local list is scoped to
-    // this run's history, while the registry holds the whole session, so a reply
-    // published by an earlier run is invisible here and still refused there.
-    ...(allowDuplicate ? { allowDuplicate: true } : {}),
   };
 
   if (ctx.reserveUserFacingReplySettlement) {
@@ -123,9 +87,9 @@ export async function reserveUserFacingReplyOnce(
     }
     if (!reserved) return undefined;
   } else if (ctx.reserveUserFacingReply) {
-    let reserved: boolean;
+    let recorded: boolean;
     try {
-      reserved = await ctx.reserveUserFacingReply(generatedReply);
+      recorded = await ctx.reserveUserFacingReply(generatedReply);
     } catch (error) {
       throw new UserFacingReplyError(
         'reply_registry_failed',
@@ -133,7 +97,16 @@ export async function reserveUserFacingReplyOnce(
         { cause: error },
       );
     }
-    if (!reserved) return undefined;
+    // The text-only ledger answers `false` when this exact wording is already
+    // recorded in the session. That is the repeat case, which is now published
+    // as-is; it stays observable instead of being refused or rewritten.
+    if (!recorded) {
+      ctx.toolContext.log?.(
+        'warn',
+        `publishing a reply that repeats text already recorded in the session ledger `
+        + `(purpose=${purpose}, fingerprint=${replyFingerprint.slice(0, 12)})`,
+      );
+    }
   }
 
   const finalReplySettlement: FinalReplySettlement = {
@@ -152,90 +125,13 @@ export async function reserveUserFacingReplyOnce(
   return generatedReply;
 }
 
-/**
- * Publish one reply returned by the current Provider API call only after
- * atomically reserving it in the durable session registry. Runtime may reject
- * the response or request another real-time API generation, but it never owns
- * a candidate-copy library and never authors replacement text.
- */
-export async function acceptUniqueUserFacingReply(
-  ctx: RunContext,
-  purpose: UserFacingReplyPurpose,
-  apiGeneratedReply: string,
-  rewrite: ReplyRewrite,
-  stage?: RunContextContractStage,
-): Promise<string> {
-  const recentReplies = collectRecentAssistantReplies(ctx);
-  let generatedReply = cleanModelReply(apiGeneratedReply);
-
-  for (let rewriteCount = 0; rewriteCount <= MAX_VISIBLE_REPLY_REWRITES; rewriteCount += 1) {
-    const reserved = await reserveUserFacingReplyOnce(ctx, purpose, generatedReply, rewriteCount, stage);
-    if (reserved) return reserved;
-
-    if (rewriteCount >= MAX_VISIBLE_REPLY_REWRITES) {
-      // The model could not word this differently. Publishing the repeat is
-      // better than failing a correct answer, so try once more with duplicates
-      // allowed; if the durable registry still refuses, keep the hard failure.
-      const published = await reserveUserFacingReplyOnce(
-        ctx,
-        purpose,
-        generatedReply,
-        rewriteCount,
-        stage,
-        undefined,
-        true,
-      );
-      if (published) return published;
-      throw new UserFacingReplyError(
-        'duplicate_model_reply',
-        `The model repeated a previously published reply after ${MAX_VISIBLE_REPLY_REWRITES} rewrite attempts.`,
-      );
-    }
-
-    try {
-      generatedReply = cleanModelReply(await rewrite({
-        generatedReply,
-        avoidReplies: recentReplies
-          .slice(-MAX_AVOID_REPLY_COUNT)
-          .map((reply) => reply.slice(0, MAX_AVOID_REPLY_CHARS)),
-        attempt: rewriteCount + 1,
-      }));
-    } catch (error) {
-      throw new UserFacingReplyError(
-        'rewrite_failed',
-        `The model could not produce a distinct user-facing reply: ${(error as Error).message}`,
-        { cause: error },
-      );
-    }
-  }
-
-  throw new UserFacingReplyError('duplicate_model_reply', 'No distinct user-facing reply was produced.');
-}
-
-export function collectRecentAssistantReplies(ctx: Pick<RunContext, 'history' | 'produced'>): string[] {
-  const replies: string[] = [];
-  for (const message of filterAuthoritativeUserFacingMessages([...ctx.history, ...ctx.produced])) {
-    if (message.role !== 'assistant') continue;
-    const text = messageText(message).trim();
-    if (!text) continue;
-    replies.push(text);
-  }
-  return replies.slice(-MAX_RECENT_VISIBLE_REPLIES);
-}
-
 function cleanModelReply(value: string): string {
   return value.trim();
-}
-
-
-function messageText(message: Message): string {
-  return textOf(message);
 }
 
 function createReplyProvenance(
   ctx: Pick<RunContext, 'model' | 'modelRequests' | 'runtimeNow'>,
   purpose: UserFacingReplyPurpose,
-  rewriteCount: number,
   expectedModelRequestId?: string,
 ): ReplyProvenance {
   const request = [...(ctx.modelRequests ?? [])]
@@ -257,7 +153,9 @@ function createReplyProvenance(
     provider: request.provider,
     model: request.model || ctx.model,
     generatedAt: (ctx.runtimeNow?.() ?? new Date()).toISOString(),
-    rewriteCount,
+    // Reply wording is published exactly as the Provider produced it. No
+    // Runtime regeneration path exists any more, so this is always zero.
+    rewriteCount: 0,
   };
 }
 

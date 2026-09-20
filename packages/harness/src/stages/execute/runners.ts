@@ -1,18 +1,15 @@
 // Owns legacy and TaskBook execution orchestration; delegates tool loops, failure policy, and final reply synthesis.
 import type { SystemPromptBundle } from '@littlesheep/prompt';
-import { appendSystemPromptBundleAddons, buildUserFacingVoiceAddon } from '../../profile-prompt.js';
 import type {
   ClarificationRequest,
   RunContext,
   StageResult,
 } from '@littlesheep/types';
-import { attachmentContextMessages, conversationHistoryForModel, textOf } from '../_shared.js';
+import { attachmentContextMessages, textOf } from '../_shared.js';
 import type { ExecuteSanitizeOptions, ExecuteStageDeps } from './contracts.js';
 import { buildBaseMessages } from './guidance.js';
 import { runToolLoop } from './tool-loop.js';
-import { acceptUniqueUserFacingReply, type ReplyRewriteInput } from '../../user-facing-reply.js';
-import { buildRunRequestCandidates } from '../../context-candidates.js';
-import { prepareModelRequest, callModelChat, modelRequestIdFor } from '../../model-observability.js';
+import { publishUserFacingReply } from '../../user-facing-reply.js';
 import { clearReplyState } from '../../reply-state.js';
 import { writeDecisionState } from '../../decision-state.js';
 import { recordFailure } from '../../failure-state.js';
@@ -20,11 +17,6 @@ import { replaceToolResults } from '../../execution-evidence-state.js';
 import { writeReplanState } from '../../replan-state.js';
 import { buildWorkPolicyUpgradeRequest } from '../../work-policy-upgrade.js';
 import { resolveExplicitToolInstructionSet } from '../../explicit-tool-instruction.js';
-import {
-  validateWebCitations,
-  webCitationRepairContract,
-  MAX_WEB_CITATION_REPAIRS,
-} from '../../web-citation-validation.js';
 export { executeTaskBook } from './task-book-runner.js';
 
 export async function executeLegacyLoop(
@@ -111,12 +103,9 @@ export async function executeLegacyLoop(
     return { stage: 'execute', next: 'recover', ok: false, error: message };
   }
   try {
-    await acceptUniqueUserFacingReply(
-      ctx,
-      'execute_tool_loop',
-      result.content,
-      (input) => rewriteLegacyExecutionReply(deps, ctx, systemPrompt, input),
-    );
+    // The tool loop already validated any Web citation before returning this
+    // text, so the reply is published exactly as the Provider produced it.
+    await publishUserFacingReply(ctx, 'execute_tool_loop', result.content);
   } catch (error) {
     clearReplyState(ctx, 'execute');
     const message = `user-facing execution reply generation failed: ${(error as Error).message}`;
@@ -129,75 +118,4 @@ export async function executeLegacyLoop(
     ok: true,
     meta: { iterations: result.iterations, toolCalls: result.toolResults.length },
   };
-}
-
-async function rewriteLegacyExecutionReply(
-  deps: ExecuteStageDeps,
-  ctx: RunContext,
-  systemPrompt: SystemPromptBundle,
-  input: ReplyRewriteInput,
-): Promise<string> {
-  const rewrittenSystem = appendSystemPromptBundleAddons(systemPrompt, [{
-    id: 'user-facing-rewrite',
-    text: `${buildUserFacingVoiceAddon(ctx)}\n\nThe prior API-generated response exactly repeats a previously published LS reply. Generate the answer again with a genuinely different opening and sentence structure. Preserve runtime facts, execution status, evidence and uncertainty. Do not mention the regeneration. Return only the user-facing reply.`,
-  }]);
-  const attachments = attachmentContextMessages(ctx.runId, ctx.attachments);
-  const rawRequest = {
-    model: deps.model,
-    messages: [
-      ...buildBaseMessages(ctx, rewrittenSystem.text, attachments),
-      {
-        role: 'user' as const,
-        content: `Prior API-generated response:\n${input.generatedReply}\n\nRecent replies to avoid repeating exactly:\n${input.avoidReplies.map((reply, index) => `${index + 1}. ${reply}`).join('\n')}`,
-      },
-    ],
-    temperature: 0.75,
-    max_tokens: 4_096,
-    signal: ctx.signal,
-  } satisfies import('@littlesheep/llm').ChatRequest;
-  const request = prepareModelRequest(
-    ctx,
-    'execute_tool_loop',
-    rawRequest,
-    buildRunRequestCandidates(ctx, 'execute', rawRequest.messages, {
-      history: conversationHistoryForModel(ctx),
-      systemSegments: rewrittenSystem.segments,
-      insertedBeforePrimary: attachments.map((item) => item.context),
-    }),
-    { retryOf: ctx.modelRequests?.at(-1)?.id, retryReason: 'duplicate' },
-  );
-  let currentRequest = request;
-  let previousRequestId = modelRequestIdFor(request);
-  for (let attempt = 0; attempt <= MAX_WEB_CITATION_REPAIRS; attempt += 1) {
-    const response = await callModelChat(ctx, deps.llm, currentRequest);
-    const validation = validateWebCitations(response.content, ctx.webEvidence);
-    if (validation.ok || !ctx.webEvidence) return response.content;
-    if (attempt >= MAX_WEB_CITATION_REPAIRS) {
-      throw new Error(`rewritten reply failed Web citation validation: ${validation.reason}`);
-    }
-    const repairRequest = {
-      ...rawRequest,
-      messages: [
-        ...rawRequest.messages,
-        { role: 'assistant' as const, content: response.content },
-        {
-          role: 'user' as const,
-          content: `${webCitationRepairContract(ctx.webEvidence)}\n\nValidation failure: ${validation.reason}`,
-        },
-      ],
-    } satisfies import('@littlesheep/llm').ChatRequest;
-    currentRequest = prepareModelRequest(
-      ctx,
-      'execute_tool_loop',
-      repairRequest,
-      buildRunRequestCandidates(ctx, 'execute', repairRequest.messages, {
-        history: conversationHistoryForModel(ctx),
-        systemSegments: rewrittenSystem.segments,
-        insertedBeforePrimary: attachments.map((item) => item.context),
-      }),
-      { retryOf: previousRequestId, retryReason: 'citation' },
-    );
-    previousRequestId = modelRequestIdFor(currentRequest);
-  }
-  throw new Error('rewritten reply citation validation exhausted');
 }

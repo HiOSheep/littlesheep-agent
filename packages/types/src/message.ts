@@ -51,13 +51,6 @@ export interface FinalReplyReservation {
   reply: string;
   replyFingerprint: string;
   modelRequestId: string;
-  /**
-   * Publish a reply that repeats an already published one. A verbatim repeat is a
-   * UX preference, not a safety property: when the user repeats a question the
-   * same answer is correct. The flag is never persisted and never participates in
-   * reservation identity, so replay and FINALIZE comparisons are unaffected.
-   */
-  allowDuplicate?: boolean;
 }
 
 /** Who authored a message. */

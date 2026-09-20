@@ -4,12 +4,9 @@
 
 import type { RunContext, StageName, StageResult } from '@littlesheep/types';
 import { textOf } from './_shared.js';
-import {
-  acceptUniqueUserFacingReply,
-  reserveUserFacingReplyOnce,
-} from '../user-facing-reply.js';
+import { publishUserFacingReply } from '../user-facing-reply.js';
 import type { DecodedRecovery, RecoverStageDeps } from './recover/contracts.js';
-import { requestRecoveryDecision, rewriteAbortReason } from './recover/model-call.js';
+import { requestRecoveryDecision } from './recover/model-call.js';
 import {
   isStructuredDecodeFailure,
   normalizeRecoveryPlan,
@@ -138,7 +135,7 @@ export function createRecoverStage(deps: RecoverStageDeps) {
       if (visibleMessage) {
         let reserved: string | undefined;
         try {
-          reserved = await reserveUserFacingReplyOnce(ctx, 'recover', visibleMessage);
+          reserved = await publishUserFacingReply(ctx, 'recover', visibleMessage);
         } catch (error) {
           const message = `user-facing recovery reply generation failed: ${(error as Error).message}`;
           recordFailure(ctx, 'recover', 'recover', message);
@@ -163,12 +160,7 @@ export function createRecoverStage(deps: RecoverStageDeps) {
       next = 'ask_user';
     } else {
       try {
-        await acceptUniqueUserFacingReply(
-          ctx,
-          'recover',
-          parsed.reason ?? '',
-          (input) => rewriteAbortReason(deps, ctx, lastError, input),
-        );
+        await publishUserFacingReply(ctx, 'recover', parsed.reason ?? '');
       } catch (error) {
         clearReplyState(ctx, 'recover');
         const message = `user-facing recovery reply generation failed: ${(error as Error).message}`;

@@ -1076,7 +1076,7 @@ describe('createRunner run', () => {
       .toHaveLength(1);
   });
 
-  it('rewrites an exact reply from older session history after runner restart', async () => {
+  it('publishes the same wording again after runner restart instead of rewriting it', async () => {
     const firstRunner = await createRunner({
       config: DEFAULT_CONFIG,
       branding: DEFAULT_BRANDING,
@@ -1100,11 +1100,7 @@ describe('createRunner run', () => {
       config: DEFAULT_CONFIG,
       branding: DEFAULT_BRANDING,
       model: 'test/model',
-      llm: makeMockLlm((request) => textResponse(
-        request.messages.some((message) => String(message.content).includes('Regeneration contract'))
-          ? 'Fresh wording after restart'
-          : 'Stable exact reply',
-      )),
+      llm: makeMockLlm(textResponse('Stable exact reply')),
     });
     createdRunners.push(restarted);
 
@@ -1113,9 +1109,13 @@ describe('createRunner run', () => {
       sessionId: first.sessionId,
     });
 
+    // The durable session already contains this exact wording. That is a UX
+    // preference, not a safety property, so the answer is published as the
+    // Provider produced it and no extra regeneration call is made.
     expect(second.status).toBe('ok');
-    expect(second.reply).toBe('Fresh wording after restart');
-    expect(second.replyProvenance?.rewriteCount).toBe(1);
+    expect(second.reply).toBe('Stable exact reply');
+    expect(second.replyProvenance?.rewriteCount).toBe(0);
+    expect(second.modelRequests).toHaveLength(1);
     expect(second.modelRequests?.some((request) => (
       request.id === second.replyProvenance?.modelRequestId
       && request.requestIndex === second.replyProvenance?.modelRequestIndex
@@ -1125,8 +1125,7 @@ describe('createRunner run', () => {
     const durable = reduceDurableRunProjection(
       await restarted.infra.durableEventStore.read(String(second.sessionId), second.runId),
     );
-    const rewriteRequest = durable.modelRequests.find((request) => request.retryOf);
-    expect(rewriteRequest?.retryOf).toBe(durable.modelRequests[0]?.requestId);
+    expect(durable.modelRequests.find((request) => request.retryOf)).toBeUndefined();
   });
 
   it('returns reply-call token usage with an explicit provider source', async () => {

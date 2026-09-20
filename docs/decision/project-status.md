@@ -1,6 +1,15 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-11 18:45:00
+最后更新：2026-09-20 14:35:00
+
+**极简执行与缓存 95% 方案 P0+P1 落地（2026-09-20 14:35:00，进行中）**：按 `docs/taskbooks/lean-v2-cache-95-plan-2026-09-20.md` 的首个实施批次执行，代码基于 `ff59df5`。
+
+- P0 测量修正：`scripts/audit-cache-usage.mjs` 现在显式报告 usage 缺失（未上报 input/cached 的请求数、未上报 uncached 的请求数、usage 不完整的 run 数、无请求的 run 数、无输出 usage 的 run 数、无法解析的日志文件数）、每任务未缓存量（均值与 p50/p95）、总输入/输出 token、失败 run 与失败 trace 步骤、重试请求（按 `retryReason` 分组）与 Provider 尝试次数、`usage.promptTokens` 与请求侧缓存字段的对账差值；首个模型请求改名为 `time to first model request`，真实首个工具动作单独用 `toolInvocations[].proposedAt` 计量，没有工具调用时标 `unavailable`。测量口径固定为 `hit = sum(cached_input)/sum(input)`；任一请求或 run 的 usage 不完整时不给出 95% 结论，而是输出 `unavailable (incomplete usage)`，未知值绝不按 0 补齐。新增 `--json` 输出脱敏汇总。
+- P0 历史样本复核（仅诊断，非当前提交基线）：`docs/taskbooks/lean-v2-cache-95-audit-baseline-2026-09-20.json`，40 run / 79 请求、input 226,680、cached 165,248、uncached 61,432、output 1,611、命中 72.899%、未缓存 1,535.8/run 与 777.6/请求；usage 完整，`usage.promptTokens` 与请求侧字段差值 0；新暴露的事实是 24 个请求带 `retryOf`（`duplicate` 19、`decode` 5）、2 个 trace 步骤 `ok:false`，而 run 状态全为 `ok`。
+- P1 去重改写删除：`acceptUniqueUserFacingReply` 及其有界重写轮、`reply.ts` 的 `rewriteReply`、`ask_user.ts` / `execute/final-reply.ts` / `execute/runners.ts` 的改写分支、`recover/model-call.ts` 的 `rewriteAbortReason` 全部删除，统一为单一发布入口 `publishUserFacingReply`。跨回合重复措辞按原样发布；保留 Provider 来源校验（可用 `expectedModelRequestId` 固定证明）、空文案与未转义控制标记的 fail-closed、注册表异常不伪造文案。`FinalReplyReservation.allowDuplicate` 与 `user-facing-reply.ts` 的本地跨回合扫描一并删除。
+- P1 结算闸门收敛：`ReplyFingerprintStore.reserveSettlement` 只以 settlement 身份为准——同一身份幂等（重启后可重放）、同一身份不同文案拒绝、不同身份同一文案允许；文本指纹索引改为只在缺失时追加，仍作为审计账本保留，`reserveAssistantReply` 旧语义不变。会话契约文档 `AGENTS.md` 与 `docs/principles/architecture-principles.md` 已同步为「同一 settlement 只能发布一次、不同回合允许相同措辞、不为此改写」。
+- 验证：`pnpm run typecheck` 通过；`packages/harness` + `packages/session` 全量 736 项通过；`packages/runner` 全量 358 项通过。新增/改写测试覆盖重复问答按原样发布、空回复、注册表不可用、同一 settlement 不同文案拒绝、跨重启幂等、并发发布（同一 settlement 6 次并发全部为真且随后改文案被拒）。
+- 已知未完成：`runtime-awareness.ts` 的每请求时钟/耗时/历史工具统计注入尚未删除（P1 剩余项）；`check:repo` 仍有 3 项失败，全部来自未跟踪的方案文件 `docs/taskbooks/lean-v2-cache-95-plan-2026-09-20.md`（未被 `docs/README.md` 收录、含本机路径与账号、缺少秒级更新时间且文件名不符合 `docs/taskbooks` 的任务书命名规则），需要在方案文档定稿时处理，与本轮代码改动无关。
 
 **dsh transcript 对齐决定与实施清单（2026-09-11 18:45:00，进行中）**：用户确认以官方 DeepSeek Harness（`D:\Deepseek Harness\node_modules\@deepseek-ai\dsh-*`，上游 github.com/deepseek-ai/deepseek-harness）为唯一对齐目标，next 路径逐项照做，shadow 不变。已授权：系统提示词（含 SOUL/USER/记忆片段）可**完整展示**给用户；thinking 在 next 路径默认开启（成本/延迟由用户接受）。
 

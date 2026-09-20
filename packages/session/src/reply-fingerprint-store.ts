@@ -1,4 +1,6 @@
-// Session-scoped duplicate-reply and final-settlement registry with restart-safe atomic persistence.
+// Session-scoped published-reply text index and final-settlement registry with
+// restart-safe atomic persistence. Settlement identity is the gate; the text
+// index records what was published and still backs the legacy text-only callers.
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync } from 'node:fs';
 import { appendFile, mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
@@ -37,8 +39,9 @@ export class ReplyFingerprintStore {
   ) {}
 
   /**
-   * Atomically reserve a normalized reply fingerprint for one session.
-   * Returns false when the same visible text has already been reserved.
+   * Atomically record a normalized reply fingerprint for one session.
+   * Returns false when the same visible text is already recorded; callers that
+   * allow a repeat treat that as "already published", not as a failure.
    */
   async reserve(sessionId: SessionId, reply: string): Promise<boolean> {
     const normalized = normalizeUserFacingReply(reply);
@@ -62,8 +65,11 @@ export class ReplyFingerprintStore {
 
   /**
    * Reserve a reply under the identity shared by FINALIZE and durable replay.
-   * The legacy text registry and the settlement sidecar deliberately use the
-   * same lock so old and new callers cannot publish the same text concurrently.
+   * Identity, not wording, is what is enforced: the same settlement is
+   * idempotent across restarts and replay, while a different settlement may
+   * publish the same visible text (repeating an earlier turn's wording is
+   * allowed). The text index keeps one hashed line per published reply for
+   * audit and for the legacy text-only reserve() callers.
    */
   async reserveSettlement(sessionId: SessionId, reservation: FinalReplyReservation): Promise<boolean> {
     validateReservation(reservation);
@@ -83,16 +89,11 @@ export class ReplyFingerprintStore {
         if (!legacyReserved) await appendFile(registry, `${reservation.replyFingerprint}\n`, 'utf8');
         return true;
       }
-      if (legacyReserved && reservation.allowDuplicate !== true) return false;
       const now = new Date().toISOString();
-      const { allowDuplicate: _allowDuplicate, ...reservationRecord } = reservation;
-      current.records.push({ ...reservationRecord, status: 'reserved', createdAt: now });
+      current.records.push({ ...reservation, status: 'reserved', createdAt: now });
       await writeSettlementRegistry(sidecar, current);
-      try {
+      if (!legacyReserved) {
         await appendFile(registry, `${reservation.replyFingerprint}\n`, 'utf8');
-      } catch (error) {
-        // Keep the reservation durable so a retry can repair the legacy index.
-        throw error;
       }
       return true;
     } finally {
