@@ -47,8 +47,6 @@ const LEGACY_STAGE_PURPOSE: Readonly<Record<StageName, LlmCallPurpose>> = {
   finalize: 'finalize',
 };
 
-const RUNTIME_CONTROL_TOOL_NAMES = new Set(['request_task_book']);
-
 export function normalizeLlmCallPurpose(value: LlmCallPurpose | StageName): LlmCallPurpose {
   if (Object.prototype.hasOwnProperty.call(LLM_CALL_CONTRACT_TEMPLATES, value)) {
     return value as LlmCallPurpose;
@@ -67,10 +65,7 @@ export function resolveLlmCallContract(
   const template = LLM_CALL_CONTRACT_TEMPLATES[purpose];
   const registeredToolNames = new Set(ctx.tools.map((tool) => tool.name));
   const requestedToolNames = [...new Set(options.allowedToolNames ?? registeredToolNames)].sort();
-  const unregisteredToolNames = requestedToolNames.filter((name) => (
-    !registeredToolNames.has(name)
-    && !(purpose === 'execute_tool_loop' && RUNTIME_CONTROL_TOOL_NAMES.has(name))
-  ));
+  const unregisteredToolNames = requestedToolNames.filter((name) => !registeredToolNames.has(name));
   if (unregisteredToolNames.length > 0) {
     throw new LlmCallContractViolationError(
       'unregistered_tool',

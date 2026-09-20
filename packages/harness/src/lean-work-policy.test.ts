@@ -80,53 +80,6 @@ describe('work policy', () => {
     expect(() => canUseLeanWorkLoop(invalid)).toThrow(/unsupported work policy/);
   });
 
-  it('does not re-enter the bounded loop after a promotion is adopted', () => {
-    const ctx = makeCtx({ inbound: textMessage('user', '修改两个相互依赖的文件'), classification: action() });
-    ctx.classification!.workPolicy = selectWorkPolicy(ctx, ctx.classification!);
-    ctx.workPolicyUpgradeRequest = {
-      version: 1,
-      id: 'upgrade-1',
-      runId: ctx.runId,
-      sourceMessageId: String(ctx.inbound.id),
-      goalVersion: 1,
-      requestedAt: new Date().toISOString(),
-      reasonCode: 'dependency_discovered',
-      reason: 'A dependent change was discovered.',
-      remainingGoal: '完成剩余的依赖修改',
-      completedToolCallIds: [],
-      pendingToolCallIds: [],
-      completedEffectRefs: [],
-      modelAttemptsUsed: 1,
-      budget: {
-        maxModelAttempts: 64,
-        toolLoopIterationsUsed: 1,
-        maxToolLoopIterations: 20,
-        noProgressRounds: 0,
-      },
-    };
-    ctx.taskBook = {
-      assessment: {
-        userNeed: '修改两个相互依赖的文件',
-        complexity: 'standard',
-        goal: '完成两个依赖修改',
-        successCriteria: ['两个修改均已验证'],
-        requiresTaskBook: true,
-        maxExtraScopeRatio: 1,
-      },
-      goal: '完成两个依赖修改',
-      complexity: 'standard',
-      successCriteria: ['两个修改均已验证'],
-      steps: [{ description: '完成剩余修改' }],
-      overdeliveryPolicy: { maxExtraScopeRatio: 1, guidance: 'Stay in scope.' },
-    };
-
-    expect(resolveExecutionWorkPolicy(ctx)).toMatchObject({
-      executionMode: 'task_book',
-      reasonCode: 'bounded_loop_promoted',
-    });
-    expect(canUseLeanWorkLoop(ctx)).toBe(false);
-  });
-
   it('rejects malformed policy shapes at the persisted boundary', () => {
     expect(isSupportedWorkPolicy({
       version: 1,

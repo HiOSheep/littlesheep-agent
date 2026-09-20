@@ -54,12 +54,8 @@ export function resolveExecutionWorkPolicy(ctx: RunContext): WorkPolicy {
     if (existing.route !== 'execute' || !existing.executionMode) {
       throw new Error('execution requires an execute work policy');
     }
-    // Promotion is a durable, one-way transition. The original classification
-    // stays unchanged for audit, while an adopted TaskBook becomes the
-    // effective execution policy after resume or re-entry.
-    if (existing.executionMode === 'bounded_loop' && ctx.workPolicyUpgradeRequest && ctx.taskBook) {
-      return policy(existing.sourceMessageId, 'task_book', 'bounded_loop_promoted');
-    }
+    // Promotion is gone with the TaskBook upgrade path: a bounded loop always
+    // runs in the single main loop.
     return existing;
   }
   if (ctx.resumedFromCheckpointId) {

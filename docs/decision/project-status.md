@@ -1,6 +1,12 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-20 18:05:00
+最后更新：2026-09-20 18:30:00
+
+**极简执行与缓存 95% 方案 P3 第一刀：删除主循环的 TaskBook 升级入口（2026-09-20 18:30:00，进行中）**：删除 `work-policy-upgrade.ts`、`request_task_book` 工具与 `execute → decide` 的升级守卫。主循环不再向模型暴露"中途升级为 TaskBook"的能力：它只做当前循环内的串行工作（最多 20 轮、带无进展检测），复杂/大型/续接/检索请求仍由路由在开始前决定是否进入 DECIDE。
+
+- 删除内容：`work-policy-upgrade.ts` 及其测试（134+101 行）、工具循环里的升级工具与提案分支、`executeLegacyLoop` 的升级交接分支、`ToolLoopResult.workPolicyUpgradeProposal`、两处 harness 驱动里的 `execute → decide` 守卫、`selectWorkPolicy` 的 `bounded_loop_promoted` 分支、以及 call-contract registry 中 `request_task_book` 的运行时控制工具白名单。每个主循环请求因此少一个工具 schema；模型也不再有第二条执行体系入口（方案 P3 要求）。
+- 兼容性：`execute → decide` 边仍由 `allowedTransitions` 保留（运行时事件的 `shouldReplan` 重定向使用它），`ctx.workPolicyUpgradeRequest` 字段与 DECIDE 的读取路径保留，因此旧 checkpoint/持久记录仍可解析，不会被误执行。
+- 验证：`pnpm run typecheck` 通过；全仓 `pnpm exec vitest run` **459 个文件、3,249 项通过、1 项 skipped**（比上一批少 10 项，来自删除的升级模块与其 7 个用例，另两处断言改为不再包含升级工具）。删除的用例是被方案明确取消的能力的证据，没有以放宽断言代替。
 
 **极简执行与缓存 95% 方案 P2 第六刀：单一 session transcript（2026-09-20 18:05:00，进行中）**：删除 `_shared.ts` 的 per-purpose 历史窗口 `recentHistoryForModel` 及其三个调用点，所有用途共用同一条有界 session transcript（追加式、按量化下界裁剪、上限 12k 字符）。
 

@@ -15,7 +15,6 @@ import type {
   StageResult,
 } from '@littlesheep/types';
 import { inspectStageTransition, stageNames } from '@littlesheep/types';
-import { workPolicyTransitionViolation } from './work-policy-upgrade.js';
 import type { LlmClient } from '@littlesheep/llm';
 import type { SessionManager } from '@littlesheep/session';
 import type { Config } from '@littlesheep/config';
@@ -261,13 +260,10 @@ export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness 
         result = { ...result, stage: stageName };
 
         const transition = inspectStageTransition(stageName, result.next);
-        const guardedViolation = transition.ok ? workPolicyTransitionViolation(ctx, stageName, result) : undefined;
-        if (!transition.ok || guardedViolation) {
-          const attempted = transition.ok ? String(result.next) : String(transition.violation.attempted);
-          const allowed = transition.ok ? [] : transition.violation.allowed;
-          const error = guardedViolation
-            ? `invalid guarded stage transition '${stageName}' -> '${attempted}': ${guardedViolation}`
-            : `invalid stage transition '${stageName}' -> '${attempted}'; allowed targets: ${allowed.join(', ')}`;
+        if (!transition.ok) {
+          const attempted = String(transition.violation.attempted);
+          const allowed = transition.violation.allowed;
+          const error = `invalid stage transition '${stageName}' -> '${attempted}'; allowed targets: ${allowed.join(', ')}`;
           result = {
             stage: stageName,
             next: 'exit',

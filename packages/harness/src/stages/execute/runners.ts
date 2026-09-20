@@ -14,8 +14,6 @@ import { clearReplyState } from '../../reply-state.js';
 import { writeDecisionState } from '../../decision-state.js';
 import { recordFailure } from '../../failure-state.js';
 import { replaceToolResults } from '../../execution-evidence-state.js';
-import { writeReplanState } from '../../replan-state.js';
-import { buildWorkPolicyUpgradeRequest } from '../../work-policy-upgrade.js';
 import { resolveExplicitToolInstructionSet } from '../../explicit-tool-instruction.js';
 export { executeTaskBook } from './task-book-runner.js';
 
@@ -72,30 +70,6 @@ export async function executeLegacyLoop(
         toolCalls: result.toolResults.length,
       },
     };
-  }
-  if (result.workPolicyUpgradeProposal) {
-    try {
-      const upgrade = buildWorkPolicyUpgradeRequest(ctx, result.workPolicyUpgradeProposal, result.toolResults);
-      writeReplanState(ctx, 'execute', { workPolicyUpgradeRequest: upgrade });
-      await ctx.persistRuntimeCheckpoint?.(`work policy upgrade ${upgrade.id}`);
-      clearReplyState(ctx, 'execute');
-      return {
-        stage: 'execute',
-        next: 'decide',
-        ok: true,
-        meta: {
-          workPolicyUpgradeRequestId: upgrade.id,
-          workPolicyUpgradeReasonCode: upgrade.reasonCode,
-          iterations: result.iterations,
-          toolCalls: result.toolResults.length,
-        },
-      };
-    } catch (error) {
-      clearReplyState(ctx, 'execute');
-      const message = `TaskBook promotion failed: ${(error as Error).message}`;
-      recordFailure(ctx, 'execute', 'execute', message);
-      return { stage: 'execute', next: 'recover', ok: false, error: message };
-    }
   }
   if (!result.ok) {
     const message = result.error ?? 'execute failed';

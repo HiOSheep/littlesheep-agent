@@ -35,7 +35,6 @@ export type WorkPolicyReasonCode =
   | 'complex_scope'
   | 'large_request'
   | 'uncertain_execution_scope'
-  | 'bounded_loop_promoted'
   | 'legacy_checkpoint';
 
 /** Versioned execution policy selected once at the activity-routing boundary. */

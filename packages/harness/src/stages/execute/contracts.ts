@@ -11,7 +11,6 @@ import type {
   ToolResult,
 } from '@littlesheep/types';
 import type { InsertedContextMessage } from '../../context-candidates.js';
-import type { WorkPolicyUpgradeProposal } from '../../work-policy-upgrade.js';
 
 export interface ExecuteStageDeps {
   llm: LlmClient;
@@ -34,7 +33,6 @@ export interface ToolLoopResult {
   /** Exact Provider request that authored content when finishReason=stop. */
   modelRequestId?: string;
   error?: string;
-  workPolicyUpgradeProposal?: WorkPolicyUpgradeProposal;
   /**
    * The model asked the user for a missing fact. The caller turns this into a
    * clarification request and routes to ASK_USER, which publishes the question

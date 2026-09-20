@@ -41,11 +41,6 @@ import type {
   ToolLoopResult,
 } from './contracts.js';
 import { createSideEffectLifecycle } from './side-effect-lifecycle.js';
-import {
-  parseWorkPolicyUpgradeProposal,
-  WORK_POLICY_UPGRADE_TOOL_NAME,
-  workPolicyUpgradeToolSpec,
-} from '../../work-policy-upgrade.js';
 
 const MAX_ITERATIONS = 20;
 const MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS = 2;
@@ -81,13 +76,7 @@ export async function runToolLoop(
     parallelStep,
     maxParallelTools,
   } = opts;
-  const allowWorkPolicyUpgrade = !stepId
-    && ctx.classification?.workPolicy?.executionMode === 'bounded_loop'
-    && !ctx.workPolicyUpgradeRequest;
-  const toolSpecs = [
-    ...tools.map(toolToSpec),
-    ...(allowWorkPolicyUpgrade ? [workPolicyUpgradeToolSpec()] : []),
-  ];
+  const toolSpecs = tools.map(toolToSpec);
   const toolResults: ToolResult[] = [];
   const executionService = toolExecutionService(deps, ctx, sanitizeOpts);
   const evidenceFingerprints = new Set<string>(ctx.loopBudget?.evidenceFingerprints ?? []);
@@ -227,36 +216,6 @@ export async function runToolLoop(
           iterations: iteration,
           usage: response.usage,
           userInputRequest,
-        };
-      }
-      const upgradeCalls = response.toolCalls.filter((call) => call.function.name === WORK_POLICY_UPGRADE_TOOL_NAME);
-      if (upgradeCalls.length > 0) {
-        if (!allowWorkPolicyUpgrade || upgradeCalls.length !== 1 || response.toolCalls.length !== 1) {
-          return {
-            ok: false,
-            content: '',
-            toolResults,
-            iterations: iteration,
-            error: 'TaskBook promotion must be one eligible standalone Runtime control proposal',
-          };
-        }
-        const proposal = parseWorkPolicyUpgradeProposal(convertToolCall(upgradeCalls[0]!).input);
-        if (!proposal) {
-          return {
-            ok: false,
-            content: '',
-            toolResults,
-            iterations: iteration,
-            error: 'TaskBook promotion proposal failed Runtime schema validation',
-          };
-        }
-        return {
-          ok: true,
-          content: '',
-          toolResults,
-          iterations: iteration,
-          usage: response.usage,
-          workPolicyUpgradeProposal: proposal,
         };
       }
       messages.push({

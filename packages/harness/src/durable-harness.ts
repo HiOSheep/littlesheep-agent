@@ -13,7 +13,6 @@ import type {
   StageResult,
 } from '@littlesheep/types';
 import { inspectStageTransition, stageNames } from '@littlesheep/types';
-import { workPolicyTransitionViolation } from './work-policy-upgrade.js';
 import { HookRunner } from './hooks/runner.js';
 import {
   createHarnessStages,
@@ -142,17 +141,14 @@ export function createNextHarness(opts: DefaultHarnessOptions): AgentHarness {
         result = await hooks.runAfter(ctx, stageName, result);
         result = { ...result, stage: stageName };
         const transition = inspectStageTransition(stageName, result.next);
-        const guardedViolation = transition.ok ? workPolicyTransitionViolation(ctx, stageName, result) : undefined;
-        if (!transition.ok || guardedViolation) {
-          const attempted = transition.ok ? String(result.next) : String(transition.violation.attempted);
-          const allowed = transition.ok ? [] : transition.violation.allowed;
+        if (!transition.ok) {
+          const attempted = String(transition.violation.attempted);
+          const allowed = transition.violation.allowed;
           result = {
             stage: stageName,
             next: 'exit',
             ok: false,
-            error: guardedViolation
-              ? `invalid guarded stage transition '${stageName}' -> '${attempted}': ${guardedViolation}`
-              : `invalid stage transition '${stageName}' -> '${attempted}'; allowed targets: ${allowed.join(', ')}`,
+            error: `invalid stage transition '${stageName}' -> '${attempted}'; allowed targets: ${allowed.join(', ')}`,
             meta: {
               ...(result.meta ?? {}),
               transitionViolation: {

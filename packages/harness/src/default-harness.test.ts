@@ -175,7 +175,7 @@ describe('createDefaultHarness state machine', () => {
       'execute_tool_loop', 'execute_tool_loop',
     ]);
     expect(llm.chat.mock.calls.every((call) => (
-      call[0].tools?.map((candidate) => candidate.function.name).join(',') === 'glob,request_task_book'
+      call[0].tools?.map((candidate) => candidate.function.name).join(',') === 'glob'
     ))).toBe(true);
     expect(tool.calls).toHaveLength(1);
     expect(tool.calls[0]?.input).toEqual({ pattern: '*' });
@@ -410,55 +410,6 @@ describe('createDefaultHarness state machine', () => {
       from: 'classify',
       attempted: 'finalize',
     });
-  });
-
-  it('rejects execute -> decide without the guarded promotion request', async () => {
-    const llm = createMockLlm(textResponse('unused'));
-    const h = makeHarness(llm);
-    h.registerStage('classify', async (ctx) => {
-      ctx.classification = {
-        activity: 'execute', type: 'problem', confidence: 1, source: 'rules', reasonCode: 'action_request',
-        workPolicy: {
-          version: 1, route: 'execute', sourceMessageId: String(ctx.inbound.id),
-          executionMode: 'bounded_loop', reasonCode: 'bounded_single_goal',
-        },
-      };
-      return { stage: 'classify', next: 'execute', ok: true };
-    });
-    h.registerStage('execute', async () => ({ stage: 'execute', next: 'decide', ok: true }));
-
-    const result = await h.run(makeCtx({ inbound: textMessage('user', '帮我修复这个文件') }));
-
-    expect(result.ok).toBe(false);
-    expect(result.error).toContain("invalid guarded stage transition 'execute' -> 'decide'");
-    expect(result.error).toContain('persisted work-policy upgrade request');
-  });
-
-  it('applies the same promotion guard in the next Harness driver', async () => {
-    const llm = createMockLlm(textResponse('unused'));
-    const h = createNextHarness({
-      ...baseDeps,
-      llm,
-      sessionManager: createMockSessionManager(),
-      memoryStore: createMockMemoryStore(),
-    });
-    h.registerStage('classify', async (ctx) => {
-      ctx.classification = {
-        activity: 'execute', type: 'problem', confidence: 1, source: 'rules', reasonCode: 'action_request',
-        workPolicy: {
-          version: 1, route: 'execute', sourceMessageId: String(ctx.inbound.id),
-          executionMode: 'bounded_loop', reasonCode: 'bounded_single_goal',
-        },
-      };
-      return { stage: 'classify', next: 'execute', ok: true };
-    });
-    h.registerStage('execute', async () => ({ stage: 'execute', next: 'decide', ok: true }));
-
-    const result = await h.run(makeCtx({ inbound: textMessage('user', '帮我修复这个文件') }));
-
-    expect(result.ok).toBe(false);
-    expect(result.error).toContain("invalid guarded stage transition 'execute' -> 'decide'");
-    expect(result.error).toContain('persisted work-policy upgrade request');
   });
 });
 

@@ -79,7 +79,7 @@
 | `packages/app/src/renderer/workspace/review.tsx` | 316 | 审阅可见生命周期、single-flight 刷新、共享导航装配和树/差异选择 | 保持 policy、model 与 view helper 分离；单双列偏好留在 Renderer UI 层 | B |
 | `packages/app/src/main/memory-tree-control.ts` | 474 | 记忆控制面查询、v3 D0-D3 详情适配和既有管理命令 | 分离 query/detail、resource、projection command | C |
 | `packages/llm/src/client.ts` | 575 | 请求、流式、reasoning、重试及 DSML/native 工具冲突适配 | 分离 request builder、stream parser、response mapper；协议解码不向 Harness/Renderer 扩散 | E |
-| `packages/harness/src/stages/execute/tool-loop.ts` | 640 | 单步模型工具循环、审批、失败记录、时间感知、消息续接和紧凑后续请求 | durable side-effect 生命周期已下沉到 `side-effect-lifecycle.ts`；继续分离 loop policy、invocation adapter 与 transcript，不得吸收检查点恢复或回答连续性判定 | E |
+| `packages/harness/src/stages/execute/tool-loop.ts` | 597 | 单步模型工具循环、审批、失败记录、消息续接和紧凑后续请求（TaskBook 升级入口已删除） | durable side-effect 生命周期已下沉到 `side-effect-lifecycle.ts`；继续分离 loop policy、invocation adapter 与 transcript，不得吸收检查点恢复或回答连续性判定 | E |
 | `packages/harness/src/durable-kernel.ts` | 925 | durable event command validation、capability evidence、stage transition audit、effect owner/settlement lifecycle、crash recovery、projection rebuild 和 final settlement reducer | inbox claim/materialize 已拆到独立 processor；先冻结恢复、并发和 reducer 特征测试，后续再拆 event reducer、recovery policy 与 settlement policy | E |
 | `packages/harness/src/durable-projection-codec.ts` | 499 | durable payload 解析、effect owner/lease 成对校验和 cache projection allowlist | Provider usage 与本地 token calibration 已下沉 `durable-provider-usage-codec.ts`；继续保持不受信 payload codec 边界 | E |
 | `packages/app/src/renderer/chat/run-event-handlers.ts` | 323 | SSE 活动事件到单个对话轮次的实时归并 | 保持 reducer 适配层；若继续增长，按 transcript 与 tool/task activity 拆分 | B |
@@ -236,7 +236,6 @@
 | `packages/memory-tree/src/v3/catalog.ts` | D / Memory | activation schema 与检索投影刚稳定，先保持 Catalog facade 和恢复契约；本轮新增激活与关系投影后复查 | 640 | 2026-09-24 |
 | `packages/safety/src/permission-boundary.ts` | C / Safety | 网络 safe-read descriptor、路径边界、SSRF 前置语法和 hard-deny 统一判定刚接入；先冻结三档权限矩阵和网络 contract，再拆 network descriptor adapter | 660 | 2026-09-24 |
 | `packages/tools/src/tool-execution-service.ts` | E / Tools | Web 工具接线需要保持统一校验、审批、事件、取消和持久化投影不变量；先完成 WB-09 发布矩阵，再拆 invocation lifecycle 与 Web result projection | 660 | 2026-09-24 |
-| `packages/harness/src/stages/execute/tool-loop.ts` | E / Harness | 工具循环的审批、调用、失败与消息续接不变量刚完成 durable 观测接入；先冻结特征测试与 effect 生命周期，再拆 loop policy、invocation adapter 和 transcript | 650 | 2026-09-24 |
 | `packages/harness/src/durable-kernel.ts` | E / Harness | 恢复、并发 cursor、effect lifecycle 和 authoritative settlement 刚接入；并发恢复 action 去重后上限调整，先冻结跨实例并发与重启恢复特征测试，再拆 event reducer、recovery policy 和 settlement policy | 940 | 2026-09-24 |
 | `packages/harness/src/cache-observability.ts` | E / Harness | Provider、Context、Memory/Embedding 三套账本刚接入 request-bound 脱敏观测；先冻结 CACHE-03/04/05 确定性矩阵，再按 ledger、fingerprint、report 拆分 | 680 | 2026-09-24 |
 | `packages/harness/src/model-observability.ts` | E / Harness | 模型请求、Context、Provider usage、缓存证据与 C09 前缀变化原因（`prefixChange`）统一关联；先完成真实 usage 和 durable replay 证据，再拆 provider reconciliation 与 request snapshot projection | 705 | 2026-09-24 |
