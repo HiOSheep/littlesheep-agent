@@ -7687,3 +7687,23 @@ export function memoryAwarenessSection(rootIndex: string): string {
 **风险**：模型可能不再主动检索记忆 ⇒ 需观察 `semanticFailures` 与记忆相关套件；若证据不足 ⇒ **如实记为不可行**并转 N6。
 
 **下一轮（先读后用 `edit`）**：读**记忆工具**（`memory_tree` 的实现/描述）确认"按需导航"覆盖度 ⇒ 再改 `memoryAwarenessSection` ⇒ 全门 + **两次**样本 ⇒ 用 `pnpm run audit:cache` 并排记录改动前后五项指标。
+
+## 10.280 N4 前提核查：常驻根索引是**协议入口**，故只能**缩小上限**而非删除（2026-09-18）
+
+**取证（`grep memory_tree`，22 处命中中的关键项）**：
+| 位置 | 内容 | 含义 |
+| --- | --- | --- |
+| **`packages/prompt/src/sections.ts:88`** | "Memory recall **must follow the preloaded root index** -> `memory_tree branch_index` -> `memory_tree expand` path." | **常驻根索引是协议规定的第一步** ⇒ 删除它会改变**已文档化的召回协议** ✗ |
+| `packages/memory-tree/src/memory-tree.ts:140` | `'\n- ... additional branch details are available through `memory_tree`.'` | 根索引**本就有"更多细节经工具获取"的截断标记** ✓ |
+| `packages/memory-tree/src/memory-tool.ts:122` | `name: 'memory_tree'`（动作为 `branch_index` / `expand` / `release`） | **按需导航能力齐备** ✓ |
+
+**⇒ 判定**：10.279 中"改为短入口、不常驻索引正文"的方案**会破坏协议入口**（且 `sections.ts:88` 的规则本身要求先有根索引）⇒ **不可照原方案实施** ✗。
+**⇒ 但存在一个**既保留入口、又减少常驻字节**的合法版本**：**缩小根索引上限**（现 `2_400` / 截断到 `2_320` → 例如 `800` / `720`）——
+- **协议不变** ✓（根索引仍在、仍是第一步；截断提示本就指向 `memory_tree` ✓）；
+- **信息可达** ✓（其余顶层分支经 `branch_index`/`expand` 获取）；
+- **收益**：`reply` 等 purpose 每次请求的常驻头减少最多约 **1,600 字符** ⇒ 符合原则 3 的"少常驻"且**不裁剪能力** ✓
+
+**判据**：`syslen` 的 `reply` 首条 system 长度 ↓（约 −1.6k 上限）、**`hit`↑ 或持平、`uncached/run`↓**、`failedRuns=0`、`silentRuns=0`、`publishedRuns` 满额、`semanticFailures=0`；记忆相关套件（`packages/prompt`、`packages/memory-tree`）全绿；**回退**：任一退化即恢复原上限。
+**风险**：索引更短 ⇒ 模型对深层分支的**可发现性**略降，但协议要求的"先看根索引、再用 `branch_index`"路径**未变**；若样本显示召回质量下降（`semanticFailures` 或记忆套件）⇒ 回退。
+
+**下一轮**：`read` 该函数所在区域 + 相关测试断言 ⇒ `edit` 缩小上限（含截断提示措辞）⇒ 全门 + **两次**样本 ⇒ 用 `pnpm run audit:cache` 并排记录五项指标。
