@@ -533,12 +533,6 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       const toolSources = runTools.sources;
 
       const behaviorProfile = getAgentProfile(input.profile ?? opts.config.agents.defaults.profile);
-      let previousRun: import('@littlesheep/types').SessionRunSummary | undefined;
-      try {
-        previousRun = await infra.executionLogStore.readLatestForSession(sessionId) ?? undefined;
-      } catch (err) {
-        opts.log?.('warn', `runner: failed to read last-run timing summary: ${(err as Error).message}`);
-      }
       const resolvedRunConfig = resolveRunConfig({
         runId,
         config: opts.config,
@@ -620,7 +614,6 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         model,
         runId,
         startedAt: new Date(startedAt).toISOString(),
-        previousRun,
         cwd,
         protectedWriteRoots,
         containerRoot,

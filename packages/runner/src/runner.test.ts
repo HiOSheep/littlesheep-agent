@@ -3058,10 +3058,13 @@ describe('createRunner run', () => {
     const requestCount = requests.length;
     await runner.run({ sessionId: first.sessionId, text: 'what was the status of the previous run?' });
     const followUpRequests = requests.slice(requestCount);
+    // The bounded last-run summary stays durable, but the Runtime no longer
+    // re-injects it into every request: continuity comes from the persisted
+    // session transcript, and the summary is read on demand by the UI/replay.
     expect(followUpRequests.some((request) => (
       request.messages.map((message) => String(message.content)).join('\n')
-        .includes(`previous_run: id=${first.runId}`)
-    ))).toBe(true);
+        .includes('previous_run')
+    ))).toBe(false);
   });
 
   it('replay 不存在的 runId → null', async () => {

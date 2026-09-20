@@ -83,9 +83,9 @@
 | `packages/harness/src/durable-kernel.ts` | 925 | durable event command validation、capability evidence、stage transition audit、effect owner/settlement lifecycle、crash recovery、projection rebuild 和 final settlement reducer | inbox claim/materialize 已拆到独立 processor；先冻结恢复、并发和 reducer 特征测试，后续再拆 event reducer、recovery policy 与 settlement policy | E |
 | `packages/harness/src/durable-projection-codec.ts` | 499 | durable payload 解析、effect owner/lease 成对校验和 cache projection allowlist | Provider usage 与本地 token calibration 已下沉 `durable-provider-usage-codec.ts`；继续保持不受信 payload codec 边界 | E |
 | `packages/app/src/renderer/chat/run-event-handlers.ts` | 323 | SSE 活动事件到单个对话轮次的实时归并 | 保持 reducer 适配层；若继续增长，按 transcript 与 tool/task activity 拆分 | B |
-| `packages/harness/src/stages/reply.ts` | 331 | 直接回复流、DSML 协议拒绝、回复 provenance 与预览闭合 | 保持 REPLY facade；协议判定留在 LLM adapter，后续可下沉 transcript emitter | E |
+| `packages/harness/src/stages/reply.ts` | 340 | 直接回复流、DSML 协议拒绝、回复 provenance 与预览闭合（跨回合文案改写已删除） | 保持 REPLY facade；协议判定留在 LLM adapter，后续可下沉 transcript emitter | E |
 | `packages/types/src/durable-harness.ts` | 388 | durable Harness event、projection、recovery、final settlement 和 capability protocol 公共契约 | 保持版本化公共 barrel；按 event、projection、recovery 分组时维持序列化兼容 | E |
-| `packages/harness/src/runtime-awareness.ts` | 311 | Runtime 时钟、能力快照/探针和有界当前/上一轮执行状态注入 | 保持 Runtime awareness facade；后续将 capability projection 与 timing formatter 分离，新增事实继续位于 cache boundary 后 | E |
+| `packages/harness/src/runtime-awareness.ts` | 196 | Runtime 能力快照/探针与任务状态的尾部注入（时钟、耗时、历史工具统计已删除） | 保持 Runtime facts facade；只放会改变答案的 Runtime 事实，其余走事件或按需查询 | E |
 | `packages/memory-tree/src/memory-repository/resource-store.ts` | 454 | 资源注册、生命周期、重绑定和审计 | 分离 registry、lifecycle、rebind、audit | D |
 | `packages/memory-tree/src/v3/event-journal.ts` | 451 | Memory v3 event 与 operation journal 的同构恢复语义 | 契约稳定后拆为两个 store，共享 bounded journal codec | D |
 | `packages/memory-tree/src/workspace-resource-index.ts` | 448 | 工作区资源索引、游标和更新 | 分离 store、scanner state、change-set | D |

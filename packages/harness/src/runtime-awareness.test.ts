@@ -1,7 +1,11 @@
+// Locks the lean Runtime-facts contract: only Runtime-owned facts that can
+// change an answer travel with a request (capability state plus task state and
+// progress). The exact clock, elapsed time and repeated tool/run statistics are
+// deliberately absent, so the prompt tail does not change on every request.
 import { describe, expect, it } from 'vitest';
 import type { ChatRequest } from '@littlesheep/llm';
 import { CACHE_BOUNDARY_MARKER } from '@littlesheep/prompt';
-import { textMessage, type SessionRunSummary } from '@littlesheep/types';
+import { textMessage } from '@littlesheep/types';
 import { buildRunRequestCandidates } from './context-candidates.js';
 import { prepareModelRequest } from './model-observability.js';
 import { makeCtx, makeTool } from './tests/helpers.js';
@@ -17,32 +21,17 @@ function request(content = 'what is the status?'): ChatRequest {
   };
 }
 
-/** The volatile runtime facts now travel in one trailing message. */
+/** The Runtime facts now travel in one trailing message. */
 function runtimeBlock(prepared: ChatRequest): string {
   return String(prepared.messages.at(-1)?.content ?? '');
 }
 
-function previousRunSummary(): SessionRunSummary {
-  return {
-    version: 1,
-    runId: 'previous-run',
-    status: 'ok',
-    startedAt: '2026-07-15T02:00:00.000Z',
-    endedAt: '2026-07-15T02:00:02.500Z',
-    durationMs: 2500,
-    task: { status: 'done', completedSteps: 2, totalSteps: 2 },
-    tools: {
-      total: 1, succeeded: 1, failed: 0, totalDurationMs: 700,
-      recent: [{ name: 'read', status: 'succeeded', durationMs: 700 }],
-      truncated: false,
-    },
-  };
-}
+const REPLAYED_CLOCK = '2026-07-15T03:04:05.678Z';
 
-describe('runtime awareness', () => {
-  it('injects exact time, progress, and tool timing below the cache boundary', () => {
+describe('runtime facts', () => {
+  it('injects task state and capability facts below the cache boundary', () => {
     const ctx = makeCtx({
-      inbound: textMessage('user', 'what is the status of the current task?'),
+      inbound: textMessage('user', '继续执行'),
       taskBook: {
         assessment: {
           userNeed: 'finish two steps',
@@ -64,7 +53,7 @@ describe('runtime awareness', () => {
     });
     ctx.startedAt = '2026-07-15T03:03:00.000Z';
     ctx.timeZone = 'Asia/Hong_Kong';
-    ctx.runtimeNow = () => new Date('2026-07-15T03:04:05.678Z');
+    ctx.runtimeNow = () => new Date(REPLAYED_CLOCK);
     ctx.taskExecution = {
       goal: 'finish two steps',
       complexity: 'standard',
@@ -102,14 +91,18 @@ describe('runtime awareness', () => {
     );
     const system = runtimeBlock(prepared);
 
-    // The volatile block must stay out of the system prompt so the Provider's
+    // The Runtime facts must stay out of the system prompt so the Provider's
     // prefix cache can cover the system prompt and the whole conversation.
     expect(system.startsWith(CACHE_BOUNDARY_MARKER)).toBe(true);
     expect(String(prepared.messages[0]?.content)).toBe('stable policy');
-    expect(system).toContain('local=2026-07-15 11:04:05 +08:00');
-    expect(system).toContain('elapsed=00:01:05.678');
+    expect(system).toContain('task_state: running');
     expect(system).toContain('task_progress: 1/2 completed (50%)');
-    expect(system).toContain('read:succeeded:1250 ms, step=step-1');
+    // Clock, elapsed time and tool statistics are not judgement inputs and are
+    // no longer re-sent on every call.
+    expect(system).not.toContain('elapsed');
+    expect(system).not.toContain('2026-07-15 11:04:05');
+    expect(system).not.toContain('read:succeeded');
+    expect(system).not.toContain('current_run_tools');
     expect(ctx.contextSnapshots?.[0]?.items).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 'runtime-awareness:1',
@@ -120,23 +113,17 @@ describe('runtime awareness', () => {
     ]));
   });
 
-  it('refreshes the live second for every outbound request and includes the previous run', () => {
-    const inbound = 'what is the status of the previous run?';
+  it('sends byte-identical Runtime facts for repeated requests of one run', () => {
+    const inbound = 'what is the status?';
     const ctx = makeCtx({ inbound: textMessage('user', inbound) });
     ctx.startedAt = '2026-07-15T03:00:00.000Z';
     ctx.timeZone = 'Asia/Hong_Kong';
-    let now = new Date('2026-07-15T03:04:05.000Z');
-    ctx.runtimeNow = () => now;
-    ctx.previousRun = previousRunSummary();
-
     const first = prepareModelRequest(ctx, 'reply', request(inbound));
-    now = new Date('2026-07-15T03:04:06.000Z');
     const second = prepareModelRequest(ctx, 'reply', request(inbound));
 
-    expect(runtimeBlock(first)).toContain('2026-07-15 11:04:05');
-    expect(runtimeBlock(second)).toContain('2026-07-15 11:04:06');
-    expect(runtimeBlock(second)).toContain('previous_run: id=previous-run');
-    expect(runtimeBlock(second)).toContain('read:succeeded:700 ms');
+    // A per-request clock used to make this tail unique on every call, which is
+    // exactly the uncached content the cache work has to remove.
+    expect(runtimeBlock(first)).toBe(runtimeBlock(second));
   });
 
   it('includes observed capability-probe evidence separately from the capability snapshot', () => {
@@ -172,27 +159,13 @@ describe('runtime awareness', () => {
     const prepared = prepareModelRequest(ctx, 'capability_reply', capabilityRequest, buildRunRequestCandidates(ctx, 'reply', capabilityRequest.messages, { history: [] }));
     const system = runtimeBlock(prepared);
 
+    expect(system).toContain('capability_epoch: epoch-probe');
     expect(system).toContain('capability_probe=observed');
     expect(system).toContain('capability_permission_decision: allow');
+    expect(system).not.toContain('previous_run');
   });
 
-  it('keeps previous-run execution details out of an ordinary direct reply', () => {
-    const inbound = 'hello again';
-    const ctx = makeCtx({ inbound: textMessage('user', inbound) });
-    ctx.previousRun = previousRunSummary();
-
-    const prepared = prepareModelRequest(ctx, 'reply', request(inbound));
-    const system = runtimeBlock(prepared);
-
-    expect(system).toContain('# Runtime Clock');
-    expect(system).not.toContain('previous_run:');
-    expect(system).not.toContain('recent_previous_tools:');
-    // system + user + the trailing volatile Runtime message.
-    expect(ctx.modelRequests?.[0]?.totalMessageCount).toBe(3);
-    expect(ctx.contextSnapshots?.[0]?.safetyEstimate?.estimatedPromptTokens).toBeLessThan(1_200);
-  });
-
-  it('keeps the per-call volatile Runtime block small', () => {
+  it('keeps the per-call Runtime block small and free of execution history', () => {
     const tools = Array.from({ length: 12 }, (_, index) => makeTool(`tool_${index}`, { ok: true, output: '' }));
     const ctx = makeCtx({ inbound: textMessage('user', 'status?'), tools });
     ctx.capabilitySnapshot = {
@@ -204,17 +177,19 @@ describe('runtime awareness', () => {
       tools: tools.map((tool) => ({ name: tool.name, status: 'available' })),
       network: { enabled: true, status: 'ready', providerId: 'tavily' },
     };
-    ctx.previousRun = previousRunSummary();
 
     const block = runtimeBlock(prepareModelRequest(ctx, 'reply', request('status?')));
 
-    // Every call re-sends this block uncached. Measured at 496 characters
-    // (~124 tokens) with 12 tools plus a capability snapshot and previous run,
-    // so it is not the ~1000-token per-call miss source; keep it bounded anyway.
-    expect(block.length).toBeLessThan(800);
+    // Every call re-sends this block uncached. Measured at 439 characters
+    // (~110 tokens) with 12 tools plus a capability snapshot; the old block
+    // carried the clock, elapsed time and execution history on top of that and
+    // was measured at 705 characters for a reply. Keep it bounded.
+    expect(block.length).toBeLessThan(500);
+    expect(block).not.toContain('previous_run');
+    expect(block).not.toContain('current_run_tools');
   });
 
-  it('uses the compact clock for a self-contained autonomous read decision', () => {
+  it('uses the compact Runtime facts for a self-contained autonomous read decision', () => {
     const inbound = '请查看当前工作区顶层有哪些条目，只告诉我数量和名称，不要修改任何文件。';
     const tools = [
       makeTool('glob', { ok: true, output: [] }),
@@ -229,64 +204,26 @@ describe('runtime awareness', () => {
         source: 'llm', reason: 'workspace inspection requires evidence',
       },
     });
-    ctx.previousRun = previousRunSummary();
 
     const prepared = prepareModelRequest(ctx, 'decide', request(inbound));
     const system = runtimeBlock(prepared);
 
-    expect(system).toContain('# Runtime Clock');
-    expect(system).not.toContain('# Live Runtime State');
-    expect(system).not.toContain('previous_run:');
+    expect(system).toContain('capability_snapshot=unavailable');
+    expect(system).not.toContain('- capability_epoch:');
+    expect(system).not.toContain('task_progress:');
   });
 
   it.each([
     '请只回复 LS-PROVIDER-OK',
     '解释一下 HTTP status code 和 result type 的区别',
-    'How should a Result type represent an error status?',
-    '给我介绍一个新的排序算法',
-  ])('does not expose previous-run details for an independent reply: %s', (inbound) => {
-    const ctx = makeCtx({ inbound: textMessage('user', inbound) });
-    ctx.previousRun = previousRunSummary();
-
-    const prepared = prepareModelRequest(ctx, 'reply', request(inbound));
-    const system = runtimeBlock(prepared);
-
-    expect(system).toContain('# Runtime Clock');
-    expect(system).not.toContain('# Live Runtime State');
-    expect(system).not.toContain('previous_run:');
-  });
-
-  it('keeps execution timing compact for a pure memory recall question', () => {
-    const inbound = '你还记得我上次说的代号和颜色吗？';
-    const ctx = makeCtx({ inbound: textMessage('user', inbound) });
-    ctx.previousRun = previousRunSummary();
-
-    const prepared = prepareModelRequest(ctx, 'reply', request(inbound));
-    const system = runtimeBlock(prepared);
-
-    expect(system).toContain('# Runtime Clock');
-    expect(system).not.toContain('# Live Runtime State');
-    expect(system).not.toContain('previous_run:');
-  });
-
-  it.each([
-    '继续执行',
-    '上一轮执行到哪了？',
-    '当前任务进度怎么样？',
-    '刚才的结果是什么？',
-    '恢复之前未完成的任务',
-    'Did that operation succeed?',
-    'What is the status of the previous run?',
     'Continue the unfinished task.',
-  ])('exposes bounded previous-run details for an explicit continuation: %s', (inbound) => {
+  ])('keeps the compact facts for an ordinary reply: %s', (inbound) => {
     const ctx = makeCtx({ inbound: textMessage('user', inbound) });
-    ctx.previousRun = previousRunSummary();
 
-    const prepared = prepareModelRequest(ctx, 'reply', request(inbound));
-    const system = runtimeBlock(prepared);
+    const system = runtimeBlock(prepareModelRequest(ctx, 'reply', request(inbound)));
 
-    expect(system).toContain('# Live Runtime State');
-    expect(system).toContain('previous_run: id=previous-run');
-    expect(system).toContain('recent_previous_tools: read:succeeded:700 ms');
+    expect(system).toContain('# Runtime Facts');
+    expect(system).not.toContain('previous_run');
+    expect(system).not.toContain('recent_previous_tools');
   });
 });

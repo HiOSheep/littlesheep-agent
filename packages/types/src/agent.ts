@@ -6,7 +6,7 @@
 // permissions, or transitions outside the runtime contract.
 
 import type { FinalReplyReservation, FinalReplySettlement, Message, ReplyProvenance } from './message.js';
-import type { CompactionSummary, SessionId, SessionRunSummary } from './session.js';
+import type { CompactionSummary, SessionId } from './session.js';
 import type { AgentTool, ToolContext } from './tool.js';
 import type { ToolStreamEvent } from './activity.js';
 import type { MemoryPrelude } from './memory.js';
@@ -133,8 +133,6 @@ export interface RunContext {
   prelude?: MemoryPrelude;
   /** Versioned non-destructive summary of older messages in this session. */
   sessionSummary?: CompactionSummary;
-  /** Bounded execution facts from the preceding run for immediate follow-up questions. */
-  previousRun?: SessionRunSummary;
   /** Stable root index for the on-demand runtime memory tree. */
   memoryRootIndex?: string;
   /** Small D2 atom set selected through D1 indexes before the first model decision. */

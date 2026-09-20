@@ -354,17 +354,18 @@ describe('executeStage', () => {
     expect(finalRequest.max_tokens).toBe(300);
     const finalSystem = String(finalRequest.messages[0]?.content ?? '');
     const finalInput = String(finalRequest.messages[1]?.content ?? '');
-    // The live Runtime clock travels in the trailing message, outside the
-    // Provider's cacheable prefix.
-    expect(finalRequest.messages.map((message) => String(message.content)).join('\n')).toContain('# Runtime Clock');
+    // Runtime facts travel in the trailing message, outside the Provider's
+    // cacheable prefix; the clock and elapsed time are no longer injected.
+    expect(finalRequest.messages.map((message) => String(message.content)).join('\n')).toContain('# Runtime Facts');
     expect(finalSystem).toContain('one completed Runtime-validated read-only tool call');
     expect(finalSystem).toContain('PROFILE_SENTINEL_COMPACT_FINAL');
     expect(finalSystem).toContain('SOUL_SENTINEL_COMPACT_FINAL');
-    // The compact clock lives in the trailing message, never in the system prompt.
+    // The compact facts live in the trailing message, never in the system prompt.
     const finalRuntime = String(finalRequest.messages.at(-1)?.content ?? '');
-    expect(finalRuntime).toContain('# Runtime Clock');
-    expect(finalRuntime).not.toContain('# Live Runtime State');
-    expect(finalSystem).not.toContain('# Runtime Clock');
+    expect(finalRuntime).toContain('# Runtime Facts');
+    expect(finalRuntime).not.toContain('- capability_epoch:');
+    expect(finalRuntime).not.toContain('elapsed');
+    expect(finalSystem).not.toContain('# Runtime Facts');
     expect(finalSystem).not.toContain('You are the final response assembler.');
     expect(finalInput).toContain('Verified glob result:\nalpha.txt');
     expect(finalInput).not.toContain('Task goal:');

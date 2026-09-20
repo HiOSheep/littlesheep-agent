@@ -24,7 +24,6 @@ import type {
   RuntimeCapabilityProbe,
   RuntimePermissionEvent,
   RuntimeEventQueueLike,
-  SessionRunSummary,
   CacheObservation,
 } from '@littlesheep/types';
 import { filterAuthoritativeUserFacingMessages, sanitizeWebEvidenceProjection } from '@littlesheep/types';
@@ -85,8 +84,6 @@ export interface BuildRunContextOptions {
   runId?: string;
   /** Exact owning-run start time, when already known by the caller. */
   startedAt?: string;
-  /** Bounded execution facts from the preceding run. */
-  previousRun?: SessionRunSummary;
   /** Working directory for file/exec tools (defaults to process.cwd()). */
   cwd?: string;
   /** Host-owned roots that built-in mutation tools must keep read-only. */
@@ -255,7 +252,6 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     toolContext,
     bootstrap,
     history,
-    previousRun: opts.previousRun,
     produced: [],
     taskBookRevision: 0,
     appliedTaskBookPatchIds: [],
