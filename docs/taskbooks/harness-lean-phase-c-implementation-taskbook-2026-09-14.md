@@ -7782,3 +7782,27 @@ export function memoryAwarenessSection(rootIndex: string): string {
 
 **⇒ 需用户确认**：该改动**改变 verify 的判定输入**（属"语义取舍"，与先前授权的"携带历史"是**不同**的做法）⇒ 实施前请确认；确认后按流程落地（改一处 ⇒ 全门 ⇒ **两次**样本 ⇒ `audit:cache` 并排记录）。
 **备选**：若用户更希望先动 **N5（D2 债：Runtime 去 TaskBook 化）**，则本条保持为已侦察待办（落点已固定在 `verify/evidence.ts:3`）。
+
+## 10.284 **N7 收束：verify 的判定提示本就自包含** —— 同时**彻底闭合 D1**（2026-09-18）
+
+**读到实现（`packages/harness/src/stages/verify/evidence.ts:3–12`）**：
+```ts
+export function buildVerifyUserMessage(ctx, replanAttempts, maxReplan): string {
+  return `Original goal (inbound):\n${truncate(inboundText(ctx), 800)}\n\n`
+    + `Execution contract:\n${describeTaskContract(ctx)}\n\n`
+    + `Step execution results:\n${describeTaskExecution(ctx)}\n\n`
+    + `Tool results (${(ctx.toolResults ?? []).length} call(s)):\n${summarizeToolResults(ctx.toolResults ?? [])}\n\n`
+    + `Memory KnownState:\n${summarizeKnownState(ctx)}\n\n`
+    + `Drafted reply:\n${truncate(ctx.reply ?? '(no reply)', 800)}\n\n`
+    + `Replan attempts: ${replanAttempts}/${maxReplan}\n\n`
+    + 'Return your verdict.';
+}
+```
+**⇒ 该提示已经逐个携带**：**目标**（`Original goal (inbound)`，≤800）、**执行契约**、**逐步执行结果**、**工具结果**、**记忆证据**、**当前草拟答复**（`Drafted reply`，≤800）、**重规划次数** ✓✓
+
+**⇒ 结论（两项同时收束）**：
+1. **N7 收束为"已由设计满足"** —— 10.283 假设的"verify 看不到目标/答复"**不成立**；无需新增摘要（避免了我原本准备加的一段冗余文本，也避免了与 `Drafted reply` 重复）；
+2. **D1 彻底闭合** —— verify 的提示**本就自包含**（目标 + 答复 + 契约 + 证据），**完整历史提供不了它缺少的东西**；而 10.275 实测"带历史 ⇒ 续跑调用 5→9 且失败"⇒ **`history: []` 是正确设计**，不是待偿债务、也不是可换取的缓存收益 ✓✓
+3. ⇒ **`verify` 的 `history: []` 维持现状（最终结论）**；长会话上限维持 **74–76%**。
+
+**#6 最终状态**：**N1 ✅（`pnpm run audit:cache`）｜N2 ✅（补齐首个有用动作指标）｜N3 收束（无可延迟静态知识）｜N4 实测为负已回退｜N6 ✅（60 秒真实负载 soak 通过，14 场景全绿）｜N7 收束（已由设计满足）**；仅 **N5（D2 债：Runtime 去 TaskBook 化）** 为高成本待排期项。
