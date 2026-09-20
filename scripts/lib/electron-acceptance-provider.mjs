@@ -168,20 +168,8 @@ function classifyResponse({ body, system, user, messages, model, requestIndex })
       },
     }))
   }
-  if (system.includes('You are the VERIFY stage')) {
-    return textChoice(JSON.stringify({
-      verdict: 'pass',
-      reason: 'glob 结果已返回，恢复目标 runtime-continuity-anchor-4827 已保留。',
-      failedStepIds: [],
-      usedMemoryAtomIds: [],
-    }))
-  }
-  if (system.includes('You are the RECOVER stage')) {
-    return textChoice(JSON.stringify({
-      action: 'abort',
-      reason: '验收 Provider 收到不可恢复路径。',
-    }))
-  }
+  // No VERIFY or RECOVER branch: the kernel no longer issues those model calls
+  // (VERIFY is Runtime-provable evidence, RECOVER is a Runtime-owned route).
   if (system.includes('You maintain a versioned session summary')) {
     return textChoice('当前目标是恢复并继续 runtime-continuity-anchor-4827；已完成步骤和权限结果必须保留。')
   }

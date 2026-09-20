@@ -175,7 +175,7 @@
 | `packages/harness/src/stages/execute/runners.ts` | 330 | 97 行 legacy facade 与 TaskBook re-export | TaskBook 编排、步骤调度和分支执行已下沉到 `task-book-runner.ts`、`task-step-runner.ts` 与 `task-step-scheduler.ts` | 2026-07-29 |
 | `packages/harness/src/stages/verify.ts` | 90 | 只做 Runtime 可证事实的 VERIFY facade：结构通道 `pass`、其余记 `unverified`、失败走有界恢复 | 已删除验证模型调用；模型裁决、证据装配和裁决契约随请求一起移除，不得重新引入第二套判定入口 | 2026-09-20 |
 | `packages/harness/src/stages/verify/routing.ts` | 322 | VERIFY 结构证据记录、已验证回复发布和恢复/重规划路由 | 保持纯路由与证据边界；失败状态通过 `failure-state.ts` 写入，步骤状态继续由 `task-state.ts` 拥有；不再装配模型请求 | 2026-09-20 |
-| `packages/harness/src/stages/recover.ts` | >300 | 168 行 stage facade | 恢复契约、模型请求和确定性策略已下沉到 `stages/recover/`，入口只保留状态编排 | 2026-07-31 |
+| `packages/harness/src/stages/recover.ts` | 150 | Runtime 自有恢复路由：有界重试、显式停止、升级到 ASK_USER（不再请求恢复模型） | 恢复策略留在 `stages/recover/policy.ts`，入口只做状态编排；不得重新引入模型裁决或第二套恢复入口 | 2026-09-20 |
 | `packages/harness/src/stages/evolve.ts` | 555 | 357 行 stage facade | 记忆/Skill 提案、写入认识解析和模型调用留在入口；Atom reconciliation、leaf reparent、same-claim revision 与 evidence-backed correction 的解析、KnownState 准入、提交和审计分别下沉到 `stages/evolve/reconciliation.ts`、`stages/evolve/hierarchy.ts`、`stages/evolve/revision.ts`、`stages/evolve/correction*.ts` | 2026-07-17 |
 | `packages/app/src/renderer/MemoryTreeView.tsx` | 1007 | 205 行用户记忆文件视图 | GUI 只展示六份记忆文件并仅允许编辑 `SOUL.md`；Atom、关系、向量、迁移和审计退回 Runtime 与内部治理 API | 2026-07-16 |
 

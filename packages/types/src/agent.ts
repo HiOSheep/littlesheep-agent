@@ -87,12 +87,6 @@ export interface Classification {
   workPolicy?: WorkPolicy;
 }
 
-/** A recovery decision from RECOVER. */
-export type RecoveryDecision =
-  | { action: 'retry'; revisedPlan?: PlanStep[]; note?: string }
-  | { action: 'escalate'; reason: string }
-  | { action: 'abort'; reason: string };
-
 export interface RuntimeMemoryContextWorkingSet {
   revision: number;
   activeAtomIds: string[];

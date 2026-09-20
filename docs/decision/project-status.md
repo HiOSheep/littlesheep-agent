@@ -1,6 +1,12 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-20 15:35:00
+最后更新：2026-09-20 15:55:00
+
+**极简执行与缓存 95% 方案 P2 第二刀：RECOVER 改为 Runtime 自有路由（2026-09-20 15:55:00，进行中）**：删除 `recover/model-call.ts` 与 `recover/contracts.ts`，恢复路径不再消耗模型请求。
+
+- 决策只由记录到的事实推导（`stages/recover/policy.ts`）：结构化输出解码失败在第一次恢复时重试产生失败的阶段；存在 `planned`/`in_progress`/`unknown` 副作用时显式停止（`next: exit`、`ok: false`、Runtime 状态文案，绝不自动重放）；记录到 `aborted` 时显式停止；记录到 `permission_denied` 时升级到 `ASK_USER`；其余情况在 `maxRecoveryAttempts` 上限内重试失败阶段；上限耗尽仍按既有规则升级到 `ASK_USER`。
+- 删除的能力：模型裁决（retry/escalate/abort）、`revisedPlan` 安装与过期任务书清理、以及模型撰写的升级问句与中止文案。升级路径现在统一生成 Runtime 澄清事实（`copySource: runtime_fallback`、含三个选项），用户可见文字仍只来自 `ASK_USER` 的真实模型调用或 Runtime 状态；`types` 中已无引用的 `RecoveryDecision` 一并删除。`recover` 调用契约保留声明以便历史日志与回放解析。
+- 验证：`pnpm run typecheck` 通过；全仓 `pnpm exec vitest run` **461 个文件、3,271 项通过、1 项 skipped**。`recover.test.ts` 重写为 13 项锁定新契约（每种失败的重试目标、解码失败重试、权限升级、副作用未结算显式停止且不发布文案、预算耗尽升级、绑定用户重试只消费一次、以及"任何恢复路径都不发出模型请求"）。`scripts/lib/electron-acceptance-provider.mjs` 中已死的 VERIFY/RECOVER 夹具分支删除。
 
 **极简执行与缓存 95% 方案 P2 第一刀：删除强制验证模型调用（2026-09-20 15:35:00，进行中）**：按方案 P2 的第一项独立切片，删除 `verify/model-call.ts`（连同 `verify/contracts.ts`、`verify/evidence.ts`、`verify/memory-evidence.ts`）。VERIFY 现在只断言 Runtime 证据能证明的事实，每个 run 少一次模型请求。
 

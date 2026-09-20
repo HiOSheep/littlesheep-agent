@@ -1,266 +1,231 @@
 // @littlesheep/harness — stages/recover.test.ts
+// RECOVER is Runtime-owned: no model request is spent, retries are bounded, hard
+// stops are explicit, and anything undecidable is handed to ASK_USER.
 import { describe, it, expect } from 'vitest';
 import { createRecoverStage } from './recover.js';
-import { createMockLlm, textResponse, makeCtx, makeTool, lastConversationText } from '../tests/helpers.js';
-import { textMessage } from '@littlesheep/types';
+import { makeCtx } from '../tests/helpers.js';
+import { textMessage, type RunContext, type TaskStepFailureKind } from '@littlesheep/types';
 
-const deps = { model: 'test' };
+const stage = createRecoverStage();
+
+function withFailedStep(ctx: RunContext, failureKind: TaskStepFailureKind): RunContext {
+  ctx.taskBook = {
+    assessment: {
+      userNeed: 'do the work',
+      complexity: 'standard',
+      goal: 'do the work',
+      successCriteria: ['work is done'],
+      requiresTaskBook: true,
+      maxExtraScopeRatio: 1.5,
+    },
+    goal: 'do the work',
+    complexity: 'standard',
+    successCriteria: ['work is done'],
+    steps: [{ id: 'step-1', description: 'do the work' }],
+    overdeliveryPolicy: { maxExtraScopeRatio: 1.5, guidance: 'stay focused' },
+  };
+  ctx.taskExecution = {
+    goal: 'do the work',
+    complexity: 'standard',
+    status: 'failed',
+    startedAt: '2026-09-20T00:00:00.000Z',
+    steps: [{
+      stepId: 'step-1',
+      description: 'do the work',
+      status: 'failed',
+      failureKind,
+      attempt: 1,
+      toolCallIds: [],
+      toolResults: [],
+    }],
+  };
+  return ctx;
+}
 
 describe('recoverStage', () => {
-  it('retry action → execute, with revisedPlan', async () => {
-    const llm = createMockLlm(textResponse(
-      '{"action":"retry","revisedPlan":[{"description":"new step"}],"reason":"try again"}',
-    ));
-    const stage = createRecoverStage({ ...deps, llm });
+  it('retries the failed stage without a model request', async () => {
     const ctx = makeCtx({
       recoveryAttempts: 0,
       maxRecoveryAttempts: 3,
-      lastError: { stage: 'execute', message: 'fail' },
+      lastError: { stage: 'execute', message: 'tool failed' },
       inbound: textMessage('user', 'go'),
     });
+    withFailedStep(ctx, 'tool_error');
+
     const res = await stage(ctx);
-    expect(res.next).toBe('execute');
-    expect(res.ok).toBe(true);
+
+    expect(res).toMatchObject({
+      next: 'execute',
+      ok: true,
+      meta: { deterministicRetry: true, reasonCode: 'retryable_tool_error' },
+    });
     expect(ctx.recoveryAttempts).toBe(1);
-    expect(ctx.plan).toEqual([{ description: 'new step' }]);
-    expect(ctx.modelRequests?.map((request) => request.stage)).toEqual(['recover']);
+    expect(ctx.modelRequests ?? []).toHaveLength(0);
+    expect(ctx.clarificationRequest).toBeUndefined();
   });
 
-  it('retry without revisedPlan keeps existing plan', async () => {
-    const llm = createMockLlm(textResponse('{"action":"retry"}'));
-    const stage = createRecoverStage({ ...deps, llm });
+  it.each([
+    ['decide', 'decide'],
+    ['execute', 'execute'],
+    ['verify', 'verify'],
+    ['reply', 'reply'],
+    ['plan', 'execute'],
+  ] as const)('retries the stage that failed (%s → %s)', async (failedStage, expected) => {
     const ctx = makeCtx({
       recoveryAttempts: 0,
-      plan: [{ description: 'old plan' }],
-      lastError: { stage: 'execute', message: 'fail' },
+      maxRecoveryAttempts: 3,
+      lastError: { stage: failedStage, message: 'failed' },
       inbound: textMessage('user', 'go'),
     });
+
     const res = await stage(ctx);
-    expect(res.next).toBe('execute');
-    expect(ctx.plan).toEqual([{ description: 'old plan' }]);
+
+    expect(res.next).toBe(expected);
+    expect(ctx.modelRequests ?? []).toHaveLength(0);
   });
 
-  it('retries DECIDE locally after the first structured decode failure', async () => {
-    const llm = createMockLlm(textResponse('{"action":"abort","reason":"core capability damaged"}'));
-    const stage = createRecoverStage({ ...deps, llm });
+  it('retries the failing stage once after a structured decode failure', async () => {
     const ctx = makeCtx({
       recoveryAttempts: 0,
+      maxRecoveryAttempts: 3,
       lastError: { stage: 'decide', message: 'failed to decode decision after 2 attempt(s)' },
       inbound: textMessage('user', '请只回复 OK'),
     });
 
     const result = await stage(ctx);
 
-    expect(result).toMatchObject({ next: 'decide', ok: true, meta: { deterministicRetry: true } });
+    expect(result).toMatchObject({
+      next: 'decide',
+      ok: true,
+      meta: { deterministicRetry: true, reasonCode: 'structured_decode_retry' },
+    });
     expect(ctx.reply).toBeUndefined();
-    expect(llm.chat).not.toHaveBeenCalled();
+    expect(ctx.modelRequests ?? []).toHaveLength(0);
   });
 
-  it('does not publish a broad abort claim for a repeated structured decode failure', async () => {
-    const llm = createMockLlm(textResponse('{"action":"abort","reason":"core capability damaged"}'));
-    const stage = createRecoverStage({ ...deps, llm });
-    const ctx = makeCtx({
-      recoveryAttempts: 1,
-      lastError: { stage: 'decide', message: 'failed to decode decision after 2 attempt(s)' },
-      inbound: textMessage('user', '执行任务'),
-    });
-
-    const result = await stage(ctx);
-
-    expect(result).toMatchObject({ next: 'decide', ok: true, meta: { action: 'retry', coercedAbort: true } });
-    expect(ctx.reply).toBeUndefined();
-  });
-
-  it('includes the active Soul when recovery wording may reach the user', async () => {
-    const systemPrompts: string[] = [];
-    const llm = createMockLlm((request) => {
-      systemPrompts.push(String(request.messages[0]?.content ?? ''));
-      return textResponse('{"action":"retry","reason":"try again"}');
-    });
-    const stage = createRecoverStage({ ...deps, llm });
+  it('escalates a recorded permission denial to ASK_USER with runtime facts', async () => {
     const ctx = makeCtx({
       recoveryAttempts: 0,
-      lastError: { stage: 'execute', message: 'fail' },
-      inbound: textMessage('user', '继续'),
-      bootstrap: { 'SOUL.md': 'SOUL_SENTINEL_RECOVER_VOICE' },
-    });
-
-    await stage(ctx);
-
-    expect(systemPrompts[0]).toContain('SOUL_SENTINEL_RECOVER_VOICE');
-  });
-
-  it('tells recovery which run tools can be added to a revised TaskBook step', async () => {
-    const recoveryPrompts: string[] = [];
-    const llm = createMockLlm((request) => {
-      recoveryPrompts.push(lastConversationText(request));
-      return textResponse(JSON.stringify({
-        action: 'retry',
-        revisedPlan: [{ description: 'read the document', tools: ['document_read'] }],
-      }));
-    });
-    const stage = createRecoverStage({ ...deps, llm });
-    const ctx = makeCtx({
-      tools: [makeTool('document_read', { ok: true, output: 'document body' })],
-      recoveryAttempts: 0,
-      lastError: {
-        stage: 'execute',
-        message: 'tool is registered for this run but not available in the current TaskBook step: document_read',
-      },
-      plan: [{ description: 'create the document', tools: ['document_create'] }],
-      inbound: textMessage('user', '读取并生成文档'),
-    });
-
-    const result = await stage(ctx);
-
-    expect(result.next).toBe('execute');
-    expect(ctx.plan).toEqual([{ description: 'read the document', tools: ['document_read'] }]);
-    expect(recoveryPrompts[0]).toContain('Available run tools: document_read');
-    expect(recoveryPrompts[0]).toContain('"tools":["document_create"]');
-  });
-
-  it('escalate action → ask_user', async () => {
-    const llm = createMockLlm(textResponse('{"action":"escalate","reason":"stuck"}'));
-    const stage = createRecoverStage({ ...deps, llm });
-    const ctx = makeCtx({
-      recoveryAttempts: 0,
-      lastError: { stage: 'execute', message: 'fail' },
-      inbound: textMessage('user', 'go'),
-    });
-    const res = await stage(ctx);
-    expect(res.next).toBe('ask_user');
-  });
-
-  it('publishes an escalation question from the same recovery model call', async () => {
-    const llm = createMockLlm(textResponse(JSON.stringify({
-      action: 'escalate',
-      reason: 'A target is required before retrying.',
-      userMessage: 'Which target should I use for the retry?',
-    })));
-    const stage = createRecoverStage({ ...deps, llm });
-    const ctx = makeCtx({
-      recoveryAttempts: 0,
-      lastError: { stage: 'execute', message: 'missing target' },
-      inbound: textMessage('user', 'continue'),
-    });
-
-    const res = await stage(ctx);
-
-    expect(res.next).toBe('finalize');
-    expect(ctx.reply).toBe('Which target should I use for the retry?');
-    expect(ctx.replyProvenance).toMatchObject({ purpose: 'recover', source: 'llm' });
-    expect(ctx.clarificationRequest).toMatchObject({
-      sourceStage: 'recover',
-      copySource: 'model',
-      prompt: 'Which target should I use for the retry?',
-    });
-  });
-
-  it('abort action → finalize', async () => {
-    const llm = createMockLlm(textResponse('{"action":"abort","reason":"I cannot continue safely."}'));
-    const stage = createRecoverStage({ ...deps, llm });
-    const ctx = makeCtx({
-      recoveryAttempts: 0,
-      lastError: { stage: 'execute', message: 'fail' },
-      inbound: textMessage('user', 'go'),
-    });
-    const res = await stage(ctx);
-    expect(res.next).toBe('finalize');
-    expect(ctx.reply).toBe('I cannot continue safely.');
-  });
-
-  it('forced escalate when recoveryAttempts exceeds max', async () => {
-    const llm = createMockLlm(textResponse('{"action":"retry"}'));
-    const stage = createRecoverStage({ ...deps, llm });
-    const ctx = makeCtx({
-      recoveryAttempts: 3, // already at max (max=3)
       maxRecoveryAttempts: 3,
-      lastError: { stage: 'execute', message: 'fail' },
+      lastError: { stage: 'execute', message: 'permission denied for write' },
+      inbound: textMessage('user', '写入文件'),
+    });
+    withFailedStep(ctx, 'permission_denied');
+
+    const res = await stage(ctx);
+
+    expect(res).toMatchObject({ next: 'ask_user', ok: true, meta: { action: 'escalate', reasonCode: 'permission_denied' } });
+    expect(ctx.clarificationRequest).toMatchObject({
+      kind: 'recovery_decision',
+      sourceStage: 'recover',
+      copySource: 'runtime_fallback',
+    });
+    expect(ctx.clarificationRequest?.questions[0]?.options).toHaveLength(3);
+    expect(ctx.reply).toBeUndefined();
+    expect(ctx.modelRequests ?? []).toHaveLength(0);
+  });
+
+  it('stops the run with an explicit Runtime status when a side effect is unsettled', async () => {
+    const ctx = makeCtx({
+      recoveryAttempts: 0,
+      maxRecoveryAttempts: 3,
+      lastError: { stage: 'verify', message: 'the effect outcome is unknown' },
+      inbound: textMessage('user', 'run the mutating probe'),
+    });
+    ctx.sideEffects = [{
+      idempotencyKey: 'unknown-effect',
+      toolName: 'mutate_probe',
+      status: 'unknown',
+      callId: 'call-1',
+    }];
+
+    const res = await stage(ctx);
+
+    expect(res).toMatchObject({
+      next: 'exit',
+      ok: false,
+      meta: { action: 'abort', reasonCode: 'unsettled_side_effect' },
+    });
+    expect(res.error).toContain('side effect was not settled');
+    expect(ctx.lastError).toMatchObject({ stage: 'recover' });
+    // Nothing user-visible is fabricated and no model request is spent.
+    expect(ctx.reply).toBeUndefined();
+    expect(ctx.replyProvenance).toBeUndefined();
+    expect(ctx.finalReplySettlement).toBeUndefined();
+    expect(ctx.modelRequests ?? []).toHaveLength(0);
+  });
+
+  it('stops the run when the recorded failure is an abort', async () => {
+    const ctx = makeCtx({
+      recoveryAttempts: 0,
+      maxRecoveryAttempts: 3,
+      lastError: { stage: 'execute', message: 'run aborted by the user' },
       inbound: textMessage('user', 'go'),
     });
+    withFailedStep(ctx, 'aborted');
+
     const res = await stage(ctx);
-    expect(res.next).toBe('ask_user');
-    expect(res.meta).toMatchObject({ forcedEscalate: true });
-    expect(ctx.recoveryAttempts).toBe(4);
-    expect(llm.chat).not.toHaveBeenCalled(); // short-circuits before LLM
+
+    expect(res).toMatchObject({ next: 'exit', ok: false, meta: { action: 'abort', reasonCode: 'run_aborted' } });
+    expect(ctx.modelRequests ?? []).toHaveLength(0);
+  });
+
+  it('escalates when the recovery budget is exhausted', async () => {
+    const ctx = makeCtx({
+      recoveryAttempts: 2,
+      maxRecoveryAttempts: 2,
+      lastError: { stage: 'execute', message: 'still failing' },
+      inbound: textMessage('user', 'go'),
+    });
+
+    const res = await stage(ctx);
+
+    expect(res).toMatchObject({
+      next: 'ask_user',
+      ok: true,
+      meta: { forcedEscalate: true, reasonCode: 'recovery_budget_exhausted' },
+    });
+    expect(ctx.clarificationRequest?.copySource).toBe('runtime_fallback');
+    expect(ctx.modelRequests ?? []).toHaveLength(0);
   });
 
   it('honors one bound user retry after the checkpoint exhausted autonomous recovery', async () => {
-    const llm = createMockLlm(textResponse('{"action":"escalate","reason":"do not call"}'));
-    const stage = createRecoverStage({ ...deps, llm });
     const ctx = makeCtx({
-      recoveryAttempts: 3,
-      maxRecoveryAttempts: 3,
-      lastError: { stage: 'execute', message: 'document_create was denied' },
-      inbound: textMessage('user', '权限已经打开了，再试一次'),
+      recoveryAttempts: 5,
+      maxRecoveryAttempts: 2,
+      lastError: { stage: 'execute', message: 'blocked document step' },
+      inbound: textMessage('user', 'retry'),
     });
-    ctx.entryStage = 'recover';
-    ctx.resumedFromCheckpointId = 'waiting-document-checkpoint';
+    ctx.resumedFromCheckpointId = 'checkpoint-1';
     ctx.conversationContinuation = {
       version: 1,
       resolution: 'bound',
-      checkpointId: 'waiting-document-checkpoint',
-      sourceRunId: 'source-run',
       disposition: 'retry',
-      dispositionSource: 'model',
       resumeStage: 'recover',
-      resumeRule: 'recover->recover',
-    };
+    } as RunContext['conversationContinuation'];
 
     const first = await stage(ctx);
-
-    expect(first).toMatchObject({
-      next: 'execute',
-      ok: true,
-      meta: {
-        deterministicContinuationRetry: true,
-        attempts: 4,
-        failedStage: 'execute',
-        resumedFromCheckpointId: 'waiting-document-checkpoint',
-      },
-    });
-    expect(ctx.lastError).toEqual({ stage: 'execute', message: 'document_create was denied' });
-    expect(ctx.recoveryAttempts).toBe(4);
-    expect(llm.chat).not.toHaveBeenCalled();
-
     const second = await stage(ctx);
 
-    expect(second).toMatchObject({
-      next: 'ask_user',
-      ok: true,
-      meta: { forcedEscalate: true, attempts: 5 },
-    });
-    expect(llm.chat).not.toHaveBeenCalled();
+    expect(first).toMatchObject({ next: 'execute', ok: true, meta: { deterministicContinuationRetry: true } });
+    // The bound retry is consumed exactly once; the next call falls back to the
+    // exhausted budget path.
+    expect(second).toMatchObject({ next: 'ask_user', ok: true, meta: { forcedEscalate: true } });
+    expect(ctx.modelRequests ?? []).toHaveLength(0);
   });
 
-  it('LLM returns non-JSON → fallback escalate', async () => {
-    const llm = createMockLlm([
-      textResponse('not json'),
-      textResponse('still not'),
-      textResponse('nope'),
-    ]);
-    const stage = createRecoverStage({ ...deps, llm });
+  it('increments recoveryAttempts on every call', async () => {
     const ctx = makeCtx({
       recoveryAttempts: 0,
+      maxRecoveryAttempts: 5,
       lastError: { stage: 'execute', message: 'fail' },
       inbound: textMessage('user', 'go'),
     });
-    const res = await stage(ctx);
-    expect(res.next).toBe('ask_user');
-    expect(res.meta).toMatchObject({ fallbackEscalate: true });
-  });
 
-  it('increments recoveryAttempts on each call', async () => {
-    const llm = createMockLlm(textResponse('{"action":"retry"}'));
-    const stage = createRecoverStage({ ...deps, llm });
-    const ctx = makeCtx({
-      recoveryAttempts: 0,
-      lastError: { stage: 'execute', message: 'fail' },
-      inbound: textMessage('user', 'go'),
-    });
     await stage(ctx);
-    expect(ctx.recoveryAttempts).toBe(1);
     await stage(ctx);
+
     expect(ctx.recoveryAttempts).toBe(2);
+    expect(ctx.modelRequests ?? []).toHaveLength(0);
   });
 });

@@ -107,10 +107,7 @@ export function createHarnessStages(opts: DefaultHarnessOptions): Map<StageName,
     config: opts.config,
     branding: opts.branding,
   }));
-  stages.set('recover', createRecoverStage({
-    llm: opts.llm,
-    model: opts.model,
-  }));
+  stages.set('recover', createRecoverStage());
   stages.set('verify', createVerifyStage());
   stages.set('evolve', createEvolveStage({
     llm: opts.llm,

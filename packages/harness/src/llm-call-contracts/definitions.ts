@@ -96,6 +96,9 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     memoryIntents: NO_MEMORY, requiresMemoryEvidence: true, toolMode: 'none', runtimeApprovalRequired: false,
     maxIterations: 0, maxAttempts: 3, maxOutputTokens: 900, maxPromptTokens: 8_000, temperature: 0.65,
   }),
+  // RECOVER is a Runtime-owned route now, so no recovery model call is issued.
+  // The contract stays declared so historical logs and replayed projections of
+  // older runs still resolve their purpose.
   recover: template({
     purpose: 'recover', stage: 'recover', modelCall: 'optional',
     goal: (ctx) => `Choose a bounded recovery action for: ${ctx.lastError?.message ?? 'unknown failure'}`,
