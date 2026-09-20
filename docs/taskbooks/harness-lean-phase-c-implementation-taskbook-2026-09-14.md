@@ -7707,3 +7707,29 @@ export function memoryAwarenessSection(rootIndex: string): string {
 **风险**：索引更短 ⇒ 模型对深层分支的**可发现性**略降，但协议要求的"先看根索引、再用 `branch_index`"路径**未变**；若样本显示召回质量下降（`semanticFailures` 或记忆套件）⇒ 回退。
 
 **下一轮**：`read` 该函数所在区域 + 相关测试断言 ⇒ `edit` 缩小上限（含截断提示措辞）⇒ 全门 + **两次**样本 ⇒ 用 `pnpm run audit:cache` 并排记录五项指标。
+
+## 10.281 **N4 实测为负 ⇒ 回退**（第 4 次验证"删除已缓存内容会降低 ratio"）（2026-09-18）
+
+**改动**（`0a3db0f`，随后 `git revert`）：`memoryAwarenessSection` 的常驻根索引上限 **2,400 → 800**（截断提示改指向 `memory_tree branch_index` → `expand`，协议入口保留）。
+**门禁**：`typecheck` clean ✓；相关套件（`packages/prompt` + `packages/memory-tree`）**375 passed** ✓；`check:repo` 33/33 ✓；全量套件 **2 failed / 3,285 passed** —— 两处经**单独复跑均通过**（`run-checkpoint-api.test.ts` 5/5；`aborted signal` 通过）⇒ **环境性抖动** ✓；两条 Electron 门：continuity ✓、UI 门**首跑抖动、复跑 `"ok":true`** ✓。
+
+**短会话样本（8×5）—— 判据①**：
+
+| 指标 | 改动前（达标） | **N4 之后** |
+| --- | --- | --- |
+| 正确性（`failedRuns`/`publishedRuns`/`silentRuns`/`semanticFailures`） | 0/40/0/0 | **0/40/0/0** ✓ |
+| **hit** | **76.3 / 75.1%** | **71.7 / 73.6%（−4.6 / −1.5pt，双双 <75%）** ✗ |
+| miss/调用 | 698.3 / 676.1 | 669.9 / **706.6** |
+| `audit:cache` | — | hit 72.5%、uncached/call 777.6、calls/run avg 2.10（p50 1 / p95 7） |
+| 时延 | — | completion p50 1,105 ms / p95 4,476 ms；first-action p50 96 ms / p95 138 ms |
+
+**⇒ 判定：回退**。原因与本会话已三次验证的定律一致（**10.226**）：根索引位于**已被缓存的常驻前缀内** ⇒ 缩小它只降低分子（cached），而分母里其余内容不变 ⇒ **ratio 下降** ✗
+**⇒ N4 结论：常驻内容"贵不贵"要看口径** —— 对**总 prompt 成本**它确实贵（少 1.6k 字符），但对**命中率**它几乎免费（因为它总被复用）⇒ **在 hit 为头部判据时，不应为了 hit 去删常驻内容**。
+**⇒ 处置**：`git revert 0a3db0f`（保留历史）；#6 的后续只剩 **N6（soak/真实负载，纯度量、无 ratio 风险）**。
+
+**本会话定律汇总（4 次验证）**：
+| 手段 | 对 hit | 对 uncached | 对调用数 |
+| --- | --- | --- | --- |
+| 扩大可复用前缀（共享头、契约后置、**有界历史窗口**） | **↑** | **↓** | — |
+| 删除已缓存内容（S、S3、core-flow 精简、**N4 根索引**） | **↓** | ↓（成本） | — |
+| 删除高命中的调用（R1） | **↓** | **↑** | ↓ |
