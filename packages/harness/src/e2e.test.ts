@@ -28,9 +28,9 @@ function makeHarness(llm: ReturnType<typeof createMockLlm>) {
 }
 
 describe('e2e agent loop', () => {
-  it('chat: "hello" → rules-classify(chat) → reply → finalize', async () => {
-    // 'hello' hits the greeting rule (confidence 0.9) → classify skips LLM.
-    // Only reply stage consumes one LLM call.
+  it('chat: "hello" → rules-classify(chat) → the main loop answers → finalize', async () => {
+    // 'hello' hits the greeting rule (confidence 0.9) → classify skips LLM, and
+    // the turn then runs in the main loop: one model call, one prompt shape.
     const llm = createMockLlm(textResponse('Hello! How can I help?'));
     const h = makeHarness(llm);
     const ctx = makeCtx({ inbound: textMessage('user', 'hello') });
@@ -41,7 +41,10 @@ describe('e2e agent loop', () => {
     expect(ctx.produced.length).toBeGreaterThanOrEqual(1);
     expect(ctx.produced[ctx.produced.length - 1].role).toBe('assistant');
     const trace = res.meta?.trace as Array<{ name: string }>;
-    expect(trace.map((t) => t.name)).toEqual(['enter', 'classify', 'reply', 'finalize']);
+    expect(trace.map((t) => t.name)).toEqual([
+      'enter', 'classify', 'execute', 'verify', 'evolve', 'capture', 'finalize',
+    ]);
+    expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual(['execute_tool_loop']);
   });
 
   it('capability-question regression keeps Runtime progress out of the chat reply', async () => {

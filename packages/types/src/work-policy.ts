@@ -28,6 +28,7 @@ export type ExecutionWorkMode = 'bounded_loop' | 'task_book';
 export type WorkPolicyReasonCode =
   | 'bounded_single_goal'
   | 'bounded_default'
+  | 'conversational_default'
   | 'existing_task_book'
   | 'continuation'
   | 'deferred_runtime_event'

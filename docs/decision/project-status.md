@@ -1,6 +1,13 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-20 18:55:00
+最后更新：2026-09-20 19:20:00
+
+**极简执行与缓存 95% 方案 P2 收口：常规会话与工具任务共用同一主循环与同一提示形状（2026-09-20 19:20:00，进行中）**：活动路由不再把请求分成"会话 REPLY 提示"与"执行循环提示"两套形状。命中会话规则的请求与未命中规则的请求现在都进入同一个主循环：模型要么直接回答，要么请求工具，一次成功请求结束普通聊天。
+
+- 具体改动：`classify` 把规则识别出的会话活动（`greeting`、`direct_response_constraint` 等，`type: 'chat'`）也路由到 `execute`，仍保留 `type` 与 `reasonCode` 供审计；`selectWorkPolicy` 为这类请求新增 `conversational_default` → `bounded_loop`，且优先于残留 TaskBook、续接标记与运行时事件，因此问候不会被旧计划重新拉进规划；确实需要检索的请求保持原有规划路径。`reply` stage 只剩能力/状态问答（`capability_reply` 最小契约）这一条路由。
+- 保留的能力：原本只在 REPLY 路径上的有界连续性纠偏移入主循环的发布路径（`_shared.ts` 同一 transcript + `repairDiscontinuousReply`，只有本地评估判定 `discontinuous` 时才追加一次调用）；流式增量也补回主循环——`runTranscriptModelTurn` 在关闭 transcript 时直接把文本增量转发到 `onAssistantDelta`，在有 transcript 时仍由收集器转发，不会重复。
+- 顺带修复两个被这次路由暴露的真实缺陷：RECOVER 现在在信号已取消时直接停止（此前会重试一次已取消的调用并挂死），以及 `cache-quality-report` 不再把 `unverified` 判决计入 `failCount`（新增 `unverifiedCount`），避免把"结构性通过但不可证"报告成失败。
+- 验证：`pnpm run typecheck` 通过；全仓 `pnpm exec vitest run` **458 个文件、3,243 项通过、1 项 skipped**。受影响的断言按新契约更新：harness/e2e/default-harness/runner/core-agent-contracts 的会话路径断言改为 `enter → classify → execute → verify → evolve → capture → finalize` 且 purpose 为 `execute_tool_loop`；续接"新任务"用例改为断言"进入主循环但不进入 DECIDE、不继承旧 TaskBook"；缓存质量报告用例改为断言存在 `unverified` 判定且质量连续性原因不再出现。
 
 **极简执行与缓存 95% 方案工具范围第一刀：删除记忆兼容检索工具（2026-09-20 18:55:00，进行中）**：按方案 §3「首先删除 `memory_search`、`memory_deep_search` 的兼容工具注册，相关动作收归 `memory_tree`」，删除两条兼容检索入口。
 

@@ -22,6 +22,11 @@ export interface RecoveryPlan {
 
 export function decideRecovery(ctx: RunContext, recoveryAttempts: number): RecoveryPlan {
   const lastError = ctx.lastError;
+  // A cancelled run is never retried: the caller asked to stop, and re-issuing
+  // the request would both ignore that and hang on an already-aborted signal.
+  if (ctx.signal?.aborted) {
+    return { action: 'abort', next: 'exit', reasonCode: 'run_aborted' };
+  }
   if (isStructuredDecodeFailure(lastError) && recoveryAttempts === 1) {
     return {
       action: 'retry',

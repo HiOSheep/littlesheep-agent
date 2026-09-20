@@ -50,6 +50,8 @@ export interface CacheRequestOutcomeSummary {
 export interface CacheVerificationSummary {
   readonly verificationCount: number;
   readonly passCount: number;
+  /** Structurally clean but not Runtime-provable: not a failure, not a pass. */
+  readonly unverifiedCount: number;
   readonly needsReplanCount: number;
   readonly failCount: number;
   readonly passRate?: number;
@@ -281,21 +283,25 @@ function summarizeVerifications(
     return Object.freeze({
       verificationCount: 0,
       passCount: 0,
+      unverifiedCount: 0,
       needsReplanCount: 0,
       failCount: 0,
     });
   }
   let passCount = 0;
+  let unverifiedCount = 0;
   let needsReplanCount = 0;
   let failCount = 0;
   for (const verification of verifications) {
     if (verification.verdict === 'pass') passCount += 1;
+    else if (verification.verdict === 'unverified') unverifiedCount += 1;
     else if (verification.verdict === 'needs_replan') needsReplanCount += 1;
     else failCount += 1;
   }
   return Object.freeze({
     verificationCount: verifications.length,
     passCount,
+    unverifiedCount,
     needsReplanCount,
     failCount,
     passRate: passCount / verifications.length,

@@ -17,6 +17,15 @@ export function selectWorkPolicy(ctx: RunContext, classification: Classification
       reasonCode: classification.reasonCode ?? (route === 'clarify' ? 'llm_route_clarify' : 'llm_route_respond'),
     });
   }
+  // A rule-matched conversational turn is answered in one loop request: a
+  // leftover plan, a resume marker or a queued runtime event must not turn a
+  // greeting into a planning request. Requests that genuinely need retrieval
+  // keep their existing planned route.
+  if (classification.source === 'rules'
+    && classification.type === 'chat'
+    && assessRetrievalIntent(inboundText(ctx)).intent === 'none') {
+    return policy(sourceMessageId, 'bounded_loop', 'conversational_default');
+  }
   if (ctx.taskBook) return policy(sourceMessageId, 'task_book', 'existing_task_book');
   if (ctx.resumedFromCheckpointId || ctx.clarificationResponse || ctx.partialReplanRequest || ctx.verifyFeedback) {
     return policy(sourceMessageId, 'task_book', 'continuation');

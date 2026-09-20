@@ -270,6 +270,7 @@ describe('CACHE-09/10 cache quality report', () => {
     expect(report.verification).toEqual({
       verificationCount: 2,
       passCount: 1,
+      unverifiedCount: 0,
       needsReplanCount: 0,
       failCount: 1,
       passRate: 0.5,

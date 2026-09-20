@@ -51,17 +51,26 @@ export function createTranscriptTurn(
   };
 }
 
-/** Run one tool-loop turn, streaming thinking deltas when the transcript is on. */
+/** Run one tool-loop turn, streaming when the transcript or the live answer needs it. */
 export async function runTranscriptModelTurn(
   ctx: RunContext,
   llm: LlmClient,
   request: ChatRequest,
   turn: TranscriptTurn,
 ): Promise<ChatResponse> {
-  if (!turn.enabled) return callModelChat(ctx, llm, request);
+  const streamAssistantAnswer = typeof ctx.onAssistantDelta === 'function';
+  if (!turn.enabled && !streamAssistantAnswer) return callModelChat(ctx, llm, request);
   turn.requestId = modelRequestIdFor(request);
   return callModelChatStream(ctx, llm, request, (chunk) => {
-    collectTranscriptChunk(ctx, turn, chunk);
+    // The transcript collector already forwards prose deltas to the assistant
+    // preview channel; without a transcript the loop must forward them itself so
+    // a conversational turn still streams like the dedicated reply path did.
+    if (turn.enabled) {
+      collectTranscriptChunk(ctx, turn, chunk);
+      return;
+    }
+    if (chunk.type === 'reset') ctx.onAssistantReplace?.('');
+    else if (chunk.type === 'delta' && chunk.delta) ctx.onAssistantDelta?.(chunk.delta);
   });
 }
 

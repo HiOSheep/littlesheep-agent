@@ -1994,8 +1994,13 @@ describe('runner checkpoint continuation', () => {
       })
 
       expect(result.status).toBe('ok')
-      expect(result.trace.map((entry) => entry.name)).not.toContain('recover')
-      expect(result.trace.map((entry) => entry.name)).not.toContain('execute')
+      const names = result.trace.map((entry) => entry.name)
+      // The new task is conversational, so it runs in the single main loop and
+      // must still inherit neither the deferred head's plan nor its state: no
+      // planning request, no recovery, no TaskBook.
+      expect(names).toContain('execute')
+      expect(names).not.toContain('decide')
+      expect(names).not.toContain('recover')
       expect(result.taskBook).toBeUndefined()
       expect(await runner.infra.runCheckpointDispositionStore.read(checkpoint.id)).toMatchObject({
         status: 'deferred',

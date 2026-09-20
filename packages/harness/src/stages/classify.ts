@@ -172,20 +172,13 @@ export function createClassifyStage(deps: ClassifyStageDeps = {}) {
         ? ruleResult
         : defaultExecuteClassification();
       const classifiedActivity = cls.activity ?? activityFromMessageClass(cls.type);
-      const activity = retrieval.intent === 'web_search'
-          || retrieval.intent === 'web_fetch'
-          || retrieval.intent === 'combined_memory_web'
-          || retrieval.intent === 'browser_required'
-          ? 'execute'
-          // `clarify` is no longer a routable activity. A request that lacks
-          // information is answered directly and the reply asks for the missing
-          // detail; pausing the run on a clarification contract put it into the
-          // `waiting_user` continuation state machine, which rejected legitimate
-          // model answers ("invalid continuation disposition") and produced empty
-          // replies instead of asking the user.
-          : classifiedActivity === 'clarify'
-            ? 'respond'
-            : classifiedActivity;
+      // One main loop owns every non-capability request. Rules still decide the
+      // *reading* of the turn (greeting, direct-response constraint, action
+      // request, …) and keep it in `type`/`reasonCode`, but the runtime no longer
+      // splits "conversation" and "work" into two prompt shapes: chat and tool
+      // turns therefore share one system prompt and one tool set, which is what
+      // makes a session's prefix reusable across turns.
+      const activity = classifiedActivity === 'respond' ? 'execute' : classifiedActivity;
       const routedBase = { ...cls, activity, retrievalIntent: retrieval.intent };
       const routed = { ...routedBase, workPolicy: selectWorkPolicy(ctx, routedBase) };
       if (activity === 'execute') {

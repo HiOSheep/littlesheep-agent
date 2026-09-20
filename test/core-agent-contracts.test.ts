@@ -53,9 +53,12 @@ describe('core agent behavior contracts', () => {
     const result = await makeHarness(llm).run(ctx)
 
     expect(result.ok).toBe(true)
+    // Casual chat still costs exactly one model request; it now runs in the same
+    // main loop as tool work, so no planning request and no TaskBook appear.
     expect((result.meta?.trace as Array<{ name: string }>).map((item) => item.name)).toEqual([
-      'enter', 'classify', 'reply', 'finalize',
+      'enter', 'classify', 'execute', 'verify', 'evolve', 'capture', 'finalize',
     ])
+    expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual(['execute_tool_loop'])
     expect(ctx.taskBook).toBeUndefined()
     expect(ctx.plan).toBeUndefined()
     expect(ctx.taskExecution).toBeUndefined()

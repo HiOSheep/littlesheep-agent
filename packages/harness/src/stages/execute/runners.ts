@@ -5,10 +5,11 @@ import type {
   RunContext,
   StageResult,
 } from '@littlesheep/types';
-import { attachmentContextMessages, textOf } from '../_shared.js';
+import { attachmentContextMessages, conversationHistoryForModel, textOf } from '../_shared.js';
 import type { ExecuteSanitizeOptions, ExecuteStageDeps } from './contracts.js';
 import { buildBaseMessages } from './guidance.js';
 import { runToolLoop } from './tool-loop.js';
+import { repairDiscontinuousReply } from '../reply/continuity-repair.js';
 import { publishUserFacingReply } from '../../user-facing-reply.js';
 import { clearReplyState } from '../../reply-state.js';
 import { writeDecisionState } from '../../decision-state.js';
@@ -26,9 +27,10 @@ export async function executeLegacyLoop(
   const attachmentMessages = attachmentContextMessages(ctx.runId, ctx.attachments);
   const explicitTools = resolveExplicitToolInstructionSet(ctx, { allowContinuation: true })
     ?.entries.map((entry) => entry.tool);
+  const baseMessages = buildBaseMessages(ctx, systemPrompt.text, attachmentMessages);
   const result = await runToolLoop(deps, {
     ctx,
-    messages: buildBaseMessages(ctx, systemPrompt.text, attachmentMessages),
+    messages: baseMessages,
     tools: explicitTools ?? ctx.tools,
     sanitizeOpts,
     systemSegments: systemPrompt.segments,
@@ -78,8 +80,19 @@ export async function executeLegacyLoop(
   }
   try {
     // The tool loop already validated any Web citation before returning this
-    // text, so the reply is published exactly as the Provider produced it.
-    await publishUserFacingReply(ctx, 'execute_tool_loop', result.content);
+    // text. A conversational turn answered here gets the same bounded,
+    // purely-local continuity check the dedicated reply path used to run: the
+    // assessment is free unless it is genuinely discontinuous, in which case one
+    // live correction call is spent rather than publishing a contradiction.
+    const candidate = await repairDiscontinuousReply(
+      deps,
+      ctx,
+      systemPrompt.text,
+      baseMessages,
+      conversationHistoryForModel(ctx),
+      result.content,
+    );
+    await publishUserFacingReply(ctx, 'execute_tool_loop', candidate);
   } catch (error) {
     clearReplyState(ctx, 'execute');
     const message = `user-facing execution reply generation failed: ${(error as Error).message}`;

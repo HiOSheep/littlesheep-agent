@@ -40,9 +40,9 @@ function makeHarness(llm: ReturnType<typeof createMockLlm>) {
 }
 
 describe('createDefaultHarness state machine', () => {
-  it('chat path: enter → classify(chat via rules) → reply → finalize → exit', async () => {
+  it('chat path: enter → classify(chat via rules) → the main loop answers → finalize → exit', async () => {
     // 'hello' matches the greeting rule (confidence 0.9 ≥ 0.7) → no LLM for classify.
-    // Only reply consumes one LLM call.
+    // The main loop answers it in one call, so chat and tool turns share one prompt.
     const llm = createMockLlm(textResponse('hi there'));
     const h = makeHarness(llm);
     const ctx = makeCtx({ inbound: textMessage('user', 'hello') });
@@ -53,11 +53,12 @@ describe('createDefaultHarness state machine', () => {
     const names = trace.map((t) => t.name);
     expect(names[0]).toBe('enter');
     expect(names).toContain('classify');
-    expect(names).toContain('reply');
+    expect(names).toContain('execute');
+    expect(names).not.toContain('reply');
     expect(names[names.length - 1]).toBe('finalize');
     expect(ctx.reply).toBe('hi there');
-    expect(ctx.classification?.type).toBe('chat');
-    expect(ctx.classification?.source).toBe('rules');
+    expect(ctx.classification).toMatchObject({ activity: 'execute', type: 'chat', source: 'rules' });
+    expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual(['execute_tool_loop']);
   });
 
   it('answers a capability-status question without entering planning or recovery', async () => {
@@ -96,17 +97,22 @@ describe('createDefaultHarness state machine', () => {
     const result = await h.run(ctx);
 
     expect(result.ok).toBe(true);
+    // Rule-matched conversation no longer gets a second prompt shape: the turn
+    // runs in the main loop and still costs exactly one model request.
     expect(ctx.classification).toMatchObject({
-      activity: 'respond',
+      activity: 'execute',
+      type: 'chat',
       source: 'rules',
       reason: 'direct response constraint',
+      workPolicy: { executionMode: 'bounded_loop', reasonCode: 'conversational_default' },
     });
     expect(ctx.reply).toBe('LS-PROVIDER-OK-20260730-1610');
     expect((result.meta?.trace as Array<{ name: string }>).map((item) => item.name)).toEqual([
-      'enter', 'classify', 'reply', 'finalize',
+      'enter', 'classify', 'execute', 'verify', 'evolve', 'capture', 'finalize',
     ]);
     expect(llm.chat).toHaveBeenCalledTimes(1);
     expect(ctx.modelRequests).toHaveLength(1);
+    expect(ctx.modelRequests?.[0]?.callContract?.purpose).toBe('execute_tool_loop');
   });
 
   it('problem path: enter → classify → execute(tool) → verify → evolve → capture → finalize → exit', async () => {

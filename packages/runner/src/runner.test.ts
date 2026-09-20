@@ -308,7 +308,9 @@ describe('createRunner run', () => {
     const replyRequest = (llm.chat as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as ChatRequest;
     expect(replyRequest.messages.map((message) => String(message.content)).join('\n')).toContain('Memory Tree Root Index');
     const trace = result.trace as Array<{ name: string }>;
-    expect(trace.map((t) => t.name)).toEqual(['enter', 'classify', 'reply', 'finalize']);
+    expect(trace.map((t) => t.name)).toEqual([
+      'enter', 'classify', 'execute', 'verify', 'evolve', 'capture', 'finalize',
+    ]);
   });
 
   it('next durable Harness drives an independent transition path and replays one settlement', async () => {
@@ -924,10 +926,11 @@ describe('createRunner run', () => {
       durableHarnessMode: 'next',
     });
     createdRunners.push(nextRunner);
-    // The follow-up turn takes a different route (a rule-matched conversational
-    // reply after an unmatched turn that ran in the main loop), so its first
-    // request assembles a different prompt than the persisted observation.
-    const second = await nextRunner.run({ sessionId: first.sessionId, text: 'hello' });
+    // The follow-up turn takes a different route: a capability question keeps the
+    // dedicated minimal Runtime-facts reply contract, while the first turn ran in
+    // the main loop, so its first request assembles a different prompt than the
+    // persisted observation.
+    const second = await nextRunner.run({ sessionId: first.sessionId, text: '你能调用网络了吗？' });
     expect(second).toMatchObject({ status: 'ok', durableHarnessMode: 'next' });
 
     const observation = second.modelRequests?.find((request) => request.cacheObservation)?.cacheObservation;
@@ -1334,7 +1337,9 @@ describe('createRunner run', () => {
           failureRate: 0,
         },
         verification: {
-          verificationCount: 0,
+          // Conversational turns run in the main loop now, so every completed
+          // run passes VERIFY and records an `unverified` verdict.
+          verificationCount: 2,
         },
         releaseGate: {
           status: 'blocked',
@@ -1344,7 +1349,11 @@ describe('createRunner run', () => {
     if (report?.status !== 'available') throw new Error('cache quality report unexpectedly unavailable');
     expect(report.report.providerPrompt.hitRatio).toBeCloseTo(0.3);
     expect(report.report.releaseGate.reasons).toContain('real_provider_reconciliation_not_verified');
-    expect(report.report.releaseGate.reasons).toContain('quality_continuity_not_observed');
+    // Verifications are observed now that every completed run passes VERIFY, so
+    // the continuity reason must not appear; the gate stays blocked for the real
+    // provider reconciliation that this fixture cannot produce.
+    expect(report.report.releaseGate.reasons).not.toContain('quality_continuity_not_observed');
+    expect(report.report.releaseGate.reasons).not.toContain('verification_failures_present');
   });
 
   it('reports a CACHE-09 path comparison from real shadow and next observations', async () => {
@@ -2644,7 +2653,7 @@ describe('createRunner run', () => {
       reasoning: 'high',
     });
     expect(Object.isFrozen(result.resolvedRunConfig)).toBe(true);
-    expect(result.modelRequests?.map((request) => request.stage)).toEqual(['reply']);
+    expect(result.modelRequests?.map((request) => request.stage)).toEqual(['execute']);
     expect(result.modelRequests?.[0]?.contextSnapshotId).toBe(result.contextSnapshots?.[0]?.id);
     expect(result.contextSnapshots?.[0]?.budget.status).toBe('unknown');
     expect(result.capabilitySnapshot?.epoch).toMatch(/^[a-f0-9]{64}$/u);
