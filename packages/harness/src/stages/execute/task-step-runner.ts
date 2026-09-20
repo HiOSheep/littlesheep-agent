@@ -7,7 +7,7 @@ import type {
   TaskStepResult,
   ToolResult,
 } from '@littlesheep/types';
-import { attachmentContextMessages, recentHistoryForModel } from '../_shared.js';
+import { attachmentContextMessages } from '../_shared.js';
 import type { ExecuteSanitizeOptions, ExecuteStageDeps } from './contracts.js';
 import {
   blockingToolFailureReason,
@@ -160,7 +160,8 @@ export async function executeScheduledTaskStep(options: TaskStepRunOptions): Pro
             : {}),
           systemSegments: stepSystemPrompt.segments,
           insertedBeforePrimary: attachmentMessages.map((item) => item.context),
-          history: compactReadTools ? recentHistoryForModel(ctx.history) : undefined,
+          // No history override: the tool loop projects the same session
+          // transcript as every other purpose.
         });
     stepResult.toolResults = loopResult.toolResults;
     stepResult.toolCallIds = loopResult.toolResults.map((result) => result.callId);

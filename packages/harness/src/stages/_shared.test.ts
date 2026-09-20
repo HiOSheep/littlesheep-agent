@@ -9,7 +9,6 @@ import {
   callLlmForJson,
   conversationHistoryForModel,
   extractJson,
-  recentHistoryForModel,
   textOf,
 } from './_shared.js'
 import { modelRequestIdFor, prepareModelRequest } from '../model-observability.js'
@@ -203,32 +202,6 @@ describe('extractJson', () => {
       '{"tool":"glob","input":{"pattern":"*"}}',
       '```',
     ].join('\n'))).toEqual({ tool: 'glob', input: { pattern: '*' } })
-  })
-})
-
-describe('recentHistoryForModel', () => {
-  it('keeps only the bounded recent window without changing durable history', () => {
-    const history = Array.from({ length: 20 }, (_, index) => textMessage(
-      index % 2 === 0 ? 'user' : 'assistant',
-      `message-${index}`,
-    ))
-
-    const selected = recentHistoryForModel(history, 8)
-
-    expect(selected).toHaveLength(8)
-    expect(selected[0]?.content[0]).toMatchObject({ type: 'text', text: 'message-12' })
-    expect(history).toHaveLength(20)
-  })
-
-  it('also bounds recent history by characters without changing durable history', () => {
-    const old = textMessage('user', 'x'.repeat(5_000))
-    const recent = textMessage('assistant', 'y'.repeat(500))
-
-    const selected = recentHistoryForModel([old, recent], 8, 1_000)
-
-    expect(selected).toHaveLength(1)
-    expect(textOf(selected[0]!)).toBe('y'.repeat(500))
-    expect(textOf(old)).toHaveLength(5_000)
   })
 })
 

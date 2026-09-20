@@ -15,7 +15,6 @@ import {
   toChatMessage,
   userChatMessage,
   type AttachmentContextMessage,
-  recentHistoryForModel,
 } from '../_shared.js';
 import {
   DECIDE_SYSTEM_PROMPT,
@@ -175,7 +174,9 @@ export async function buildDecideRequest(
           source: { kind: 'workflow' as const, id: 'explicit-tool-proposal-contract', runId: ctx.runId },
         }] : []),
       ]);
-  const history = compactDecision ? recentHistoryForModel(ctx.history) : conversationHistoryForModel(ctx);
+  // One session transcript for every purpose: the planning call and the main
+  // loop must project identical history bytes.
+  const history = conversationHistoryForModel(ctx);
   const attachmentMessages = compactDecision
     ? []
     : attachmentContextMessages(ctx.runId, ctx.attachments);

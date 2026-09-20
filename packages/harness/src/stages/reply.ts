@@ -17,7 +17,6 @@ import {
   toChatMessage,
   textOf,
   userChatMessage,
-  recentHistoryForModel,
 } from './_shared.js';
 import { appendSystemPromptBundleAddons, buildUserFacingVoiceAddon } from '../profile-prompt.js';
 import {
@@ -97,7 +96,8 @@ export function createReplyStage(deps: ReplyStageDeps) {
     ]);
 
     const attachmentMessages = isCapabilityReply ? [] : attachmentContextMessages(ctx.runId, ctx.attachments);
-    const history = isCapabilityReply ? recentHistoryForModel(ctx.history) : conversationHistoryForModel(ctx);
+    // One session transcript for every purpose, including capability replies.
+    const history = conversationHistoryForModel(ctx);
     const messages: ChatMessage[] = [
       {
         role: 'system',

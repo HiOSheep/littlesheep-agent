@@ -1,6 +1,12 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-20 17:45:00
+最后更新：2026-09-20 18:05:00
+
+**极简执行与缓存 95% 方案 P2 第六刀：单一 session transcript（2026-09-20 18:05:00，进行中）**：删除 `_shared.ts` 的 per-purpose 历史窗口 `recentHistoryForModel` 及其三个调用点，所有用途共用同一条有界 session transcript（追加式、按量化下界裁剪、上限 12k 字符）。
+
+- 具体改动：紧凑 DECIDE（`decide/request.ts`）、能力回答（`reply.ts`）与紧凑只读步骤（`execute/task-step-runner.ts`）不再各自重组最近历史；`recentHistoryForModel` 及其单元测试删除。主循环、规划、回答、压缩与演化因此投影逐字节相同的对话记录，跨路径的历史前缀不再因用途而异。
+- 代价：紧凑路径此前只有 ≤8 条/6k 字符窗口，现在与其它用途一样是有界 12k 记录；首次投影略大，但同一用途的后续请求复用同一前缀。方案 §3 要求取消这类小型特例路径，这里按方案执行。
+- 验证：`pnpm run typecheck` 通过；全仓 `pnpm exec vitest run` **460 个文件、3,259 项通过、1 项 skipped**（比上一批少 2 项，来自删除的 per-purpose 窗口测试）。`_shared.test.ts` 保留并继续锁定 transcript 的追加式与量化边界不变量。
 
 **极简执行与缓存 95% 方案 P2 第五刀：per-run 稳定 Runtime 事实进入可缓存前缀（2026-09-20 17:45:00，进行中）**：`runtime-awareness` 从"每请求一个尾部块"改为按变化频率分层。
 

@@ -76,29 +76,6 @@ export function conversationHistoryForModel(ctx: Pick<RunContext, 'history'>): M
   return candidates.slice(boundary);
 }
 
-export function recentHistoryForModel(
-  history: Message[],
-  maxMessages = 8,
-  maxChars = 6_000,
-): Message[] {
-  const candidates = filterAuthoritativeUserFacingMessages(history).slice(-Math.max(0, maxMessages));
-  const selected: Message[] = [];
-  let remaining = Math.max(0, maxChars);
-
-  for (let index = candidates.length - 1; index >= 0 && remaining > 0; index -= 1) {
-    const message = candidates[index]!;
-    const length = textOf(message).length;
-    if (length <= remaining) {
-      selected.push(message);
-      remaining -= length;
-      continue;
-    }
-    if (selected.length === 0) selected.push(truncateMessageForModel(message, remaining));
-    break;
-  }
-  return selected.reverse();
-}
-
 function truncateMessageForModel(message: Message, maxChars: number): Message {
   const budget = Math.max(0, maxChars);
   if (budget === 0) return { ...message, content: [] };
