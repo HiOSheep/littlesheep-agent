@@ -47,10 +47,6 @@ export const DEFAULT_CONFIG: Config = {
       contextCompressionThresholdRatio: 0.8,
       maxModelCallsPerRun: 32,
       harness: 'core-flow',
-      durableHarnessMode: 'next',
-      durableHarnessSessionOverrides: {},
-      durableHarnessOriginOverrides: {},
-      durableHarnessProfileOverrides: {},
     },
   },
   desktop: {

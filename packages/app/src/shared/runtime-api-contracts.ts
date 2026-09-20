@@ -83,10 +83,6 @@ export interface RuntimeState {
   reasoning: RuntimeReasoning
   profile: AgentProfileId
   contextCompressionThresholdRatio: number
-  durableHarnessMode: 'shadow' | 'next'
-  durableHarnessSessionOverrides: Record<string, 'shadow' | 'next'>
-  durableHarnessOriginOverrides: Record<string, 'shadow' | 'next'>
-  durableHarnessProfileOverrides: Record<string, 'shadow' | 'next'>
   closePolicy: DesktopClosePolicy
   workspace: string
   workplace: string
@@ -145,10 +141,6 @@ export type RuntimePatch = Partial<Pick<
   | 'reasoning'
   | 'profile'
   | 'contextCompressionThresholdRatio'
-  | 'durableHarnessMode'
-  | 'durableHarnessSessionOverrides'
-  | 'durableHarnessOriginOverrides'
-  | 'durableHarnessProfileOverrides'
   | 'closePolicy'
   | 'workspace'
 >> & { web?: RuntimeWebPatch }

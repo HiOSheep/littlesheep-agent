@@ -1,6 +1,14 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-21 03:15:00
+最后更新：2026-09-21 04:00:00
+
+**极简执行与缓存 95% 方案 P3 第七刀：清除双驱动留下的模式管道（2026-09-21 04:00:00）**：上一轮合并为单一驱动后，`shadow`/`next` 模式及其按来源/会话切换的配置全部成为死代码，本轮清除。
+
+- 删除配置面：`agents.defaults.durableHarnessMode` 与 `durableHarnessSessionOverrides`/`durableHarnessOriginOverrides`/`durableHarnessProfileOverrides`（schema 与 defaults）、App 的 `RuntimeState`/`RuntimePatch` 字段与 `/runtime` POST 校验分支及 `parseDurableHarnessSessionOverrides` helper、CLI 接线、测试夹具。
+- 语义收敛：`prepareAuthoritativeRunnerResult` 不再按模式提前返回（单一驱动下持久化投影始终权威）；`prepareAuthoritativeExecutionLog` 不再按 run 解析模式，记录统一按持久化结算校验（没有结算的记录由 replay 自行报告，而不是被假定可发布）；runner 中 `durableHarnessMode === 'next'` 的常量分支折叠为其生效路径。
+- **一处必须保留的分支（本轮自查发现）**：`recordDurableRunOutcome` 的失败处理不能折叠。该路径的语义是"最终结算已持久化，缺失的 `run_completed` 回执由恢复流程补齐，不得降级成冲突的 Runtime 失败事件"；折叠后注入的 `run_completed` 追加失败会直接抛出，`keeps a settled success when run_completed append fails` 用例立刻失败。已恢复原分支并保留该用例。这也说明"模式常量"不能一律按死代码处理。
+- 保留：`execution-log`/`runner-persist`/`authoritative-reply` 中作为**持久化数据字段**的 `durableHarnessMode`（旧记录仍需读取与判定），只删除它的选择与切换语义。
+- 验证：`pnpm run typecheck` 通过；全仓 `pnpm exec vitest run` **445 个文件、3,086 项通过、1 项 skipped**（比上一批少 3 项，来自删除的模式切换与 API 校验用例）。
 
 **极简执行与缓存 95% 方案 P3 第六刀：合并为单一持久化驱动（2026-09-21 03:15:00）**：`default-harness.ts` 里那份与 durable 驱动几乎相同的旧转移循环删除，`createDefaultHarness` 改为委托 `createNextHarness`；共享 stage 工厂按方案要求保留在 `default-harness.ts`（未删除整文件），因此 stage 注册与 Layer 2/3 可编辑性不变。
 

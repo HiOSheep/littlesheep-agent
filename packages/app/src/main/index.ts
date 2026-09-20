@@ -268,10 +268,6 @@ async function bootstrap(): Promise<void> {
     bootstrapDir: dataDir.root,
     containerRoot: dataDir.root,
     authorizeDurableEffectRead: createRecoveryReadAuthorizer(() => sessionIndex, dataDir.root),
-    durableHarnessMode: config.agents.defaults.durableHarnessMode,
-    durableHarnessSessionOverrides: config.agents.defaults.durableHarnessSessionOverrides,
-    durableHarnessOriginOverrides: config.agents.defaults.durableHarnessOriginOverrides,
-    durableHarnessProfileOverrides: config.agents.defaults.durableHarnessProfileOverrides,
     tokenizerFetch: (input, init) => net.fetch(input instanceof URL ? input.href : input, init),
   })
   stageStartedAt = recordBootstrapTiming('runner-ready', stageStartedAt)
@@ -468,10 +464,6 @@ async function doRebuildRunner(): Promise<void> {
     bootstrapDir: currentBootstrapDir || currentDataDir,
     containerRoot: currentDataDir || currentBootstrapDir,
     authorizeDurableEffectRead: createRecoveryReadAuthorizer(() => sessionIndex, currentDataDir || currentBootstrapDir),
-    durableHarnessMode: currentConfig.agents.defaults.durableHarnessMode,
-    durableHarnessSessionOverrides: currentConfig.agents.defaults.durableHarnessSessionOverrides,
-    durableHarnessOriginOverrides: currentConfig.agents.defaults.durableHarnessOriginOverrides,
-    durableHarnessProfileOverrides: currentConfig.agents.defaults.durableHarnessProfileOverrides,
     tokenizerFetch: (input, init) => net.fetch(input instanceof URL ? input.href : input, init),
   })
 

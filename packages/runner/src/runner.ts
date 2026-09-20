@@ -473,7 +473,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         log: opts.log,
       });
       await durableRecorder.ready;
-      if (durableHarnessMode === 'next') {
+      if (true) {
         durableRunOwnership = await DurableRunOwnership.acquire({
           runStore: infra.durableRunLeaseStore,
           effectStore: infra.durableEffectLeaseStore,
@@ -633,8 +633,8 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           ? (event) => durableRecorder!.appendObserved(event)
           : undefined,
         effectLeases: durableRunOwnership?.effectLeases,
-        deferFinalReplySettlement: durableHarnessMode === 'next',
-        streamModelTranscript: durableHarnessMode === 'next',
+        deferFinalReplySettlement: true,
+        streamModelTranscript: true,
         cacheObservationKey: infra.cacheObservationKey,
         previousCacheObservation,
         persistCacheObservation: createCacheObservationPersistence(infra.cacheObservationStore, {
@@ -790,7 +790,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           execute: async (preparedRun) => {
             const executedRun = await executeRunnerPhase({
               ctx: preparedRun.ctx,
-              harness: durableHarnessMode === 'next' ? infra.nextHarness : infra.harness,
+              harness: infra.nextHarness,
               signal,
               runCheckpointStore: infra.runCheckpointStore,
               log: opts.log,
@@ -821,7 +821,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
             return { ...executedRun, result: finalizedRun.result, memoryAccess: finalizedRun.memoryAccess };
           },
           persist: async (finalizedRun) => {
-            if (durableHarnessMode === 'next') {
+            if (true) {
               // FINALIZE/compaction may prepare one last model request. Close
               // that lifecycle before the audit receipt and final settlement.
               await flushModelRequestLifecycles(ctx);
@@ -836,7 +836,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
               runtimeResourceObservation: completeRuntimeResourceObservation(runtimeResourceStart),
               executionLogStore: infra.executionLogStore,
               activeCheckpoint,
-              strict: durableHarnessMode === 'next',
+              strict: true,
               durableHarnessMode,
               onCheckpointCompleted: (completed) => { checkpointCompleted = completed; },
               log: opts.log,
@@ -844,7 +844,6 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           },
         });
       } catch (error) {
-        if (durableHarnessMode !== 'next') throw error;
         const reason = error instanceof RunnerPersistenceError
           ? 'finalize_persistence_failed'
           : 'finalize_publication_failed';
@@ -864,14 +863,13 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       // next path this is also part of the pre-settlement publication gate.
       try {
         await flushModelRequestLifecycles(ctx);
-      } catch (error) {
-        if (durableHarnessMode !== 'next') throw error;
+      } catch {
         const reason = 'finalize_model_lifecycle_failed';
         await settleRuntimeFailureEvent(ctx, reason, opts.log);
         result = runtimeFailureResult(result, reason);
       }
 
-      if (durableHarnessMode === 'next' && result.status === 'ok') {
+      if (result.status === 'ok') {
         try {
           await settleDeferredFinalReply(ctx);
           result = settledReplyResult(result, ctx);
@@ -889,7 +887,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           }
         }
       }
-      if (durableHarnessMode === 'next'
+      if (true
         && result.status !== 'ok'
         && result.finalReplySettlement?.status !== 'settled') {
         const projection = durableRecorder
@@ -906,7 +904,6 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         try {
           await recordDurableRunOutcome(durableRecorder, result);
         } catch (error) {
-          if (durableHarnessMode !== 'next') throw error;
           // The final settlement is already durable. A missing terminal
           // run_completed receipt is repaired by recoverDurableRun; do not
           // downgrade it to a conflicting Runtime failure event.

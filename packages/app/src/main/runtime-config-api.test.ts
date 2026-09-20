@@ -62,48 +62,6 @@ describe('runtime config Local App API', () => {
       await expect(closePolicy.json()).resolves.toMatchObject({ closePolicy: 'always-background' })
       expect(updates.at(-1)?.desktop.closePolicy).toBe('always-background')
 
-      const durableHarnessMode = await fetch(`http://127.0.0.1:${server.port}/runtime`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ durableHarnessMode: 'next' }),
-      })
-      expect(durableHarnessMode.status).toBe(200)
-      await expect(durableHarnessMode.json()).resolves.toMatchObject({ durableHarnessMode: 'next' })
-      expect(updates.at(-1)?.agents.defaults.durableHarnessMode).toBe('next')
-
-      const sessionOverrides = await fetch(`http://127.0.0.1:${server.port}/runtime`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ durableHarnessSessionOverrides: { 'session-next': 'next' } }),
-      })
-      expect(sessionOverrides.status).toBe(200)
-      await expect(sessionOverrides.json()).resolves.toMatchObject({
-        durableHarnessSessionOverrides: { 'session-next': 'next' },
-      })
-      expect(updates.at(-1)?.agents.defaults.durableHarnessSessionOverrides).toEqual({ 'session-next': 'next' })
-
-      const originOverrides = await fetch(`http://127.0.0.1:${server.port}/runtime`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ durableHarnessOriginOverrides: { app: 'next' } }),
-      })
-      expect(originOverrides.status).toBe(200)
-      await expect(originOverrides.json()).resolves.toMatchObject({
-        durableHarnessOriginOverrides: { app: 'next' },
-      })
-      expect(updates.at(-1)?.agents.defaults.durableHarnessOriginOverrides).toEqual({ app: 'next' })
-
-      const profileOverrides = await fetch(`http://127.0.0.1:${server.port}/runtime`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ durableHarnessProfileOverrides: { coding: 'next' } }),
-      })
-      expect(profileOverrides.status).toBe(200)
-      await expect(profileOverrides.json()).resolves.toMatchObject({
-        durableHarnessProfileOverrides: { coding: 'next' },
-      })
-      expect(updates.at(-1)?.agents.defaults.durableHarnessProfileOverrides).toEqual({ coding: 'next' })
-
       const after = await fetch(`http://127.0.0.1:${server.port}/runtime`)
       await expect(after.json()).resolves.toMatchObject({ contextCompressionThresholdRatio: 0.9 })
 
@@ -121,31 +79,9 @@ describe('runtime config Local App API', () => {
         body: JSON.stringify({ closePolicy: 'coding' }),
       })
       expect(invalidClosePolicy.status).toBe(400)
-      const invalidDurableHarnessMode = await fetch(`http://127.0.0.1:${server.port}/runtime`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ durableHarnessMode: 'authoritative' }),
-      })
-      expect(invalidDurableHarnessMode.status).toBe(400)
-      const invalidSessionOverrides = await fetch(`http://127.0.0.1:${server.port}/runtime`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ durableHarnessSessionOverrides: { 'session-x': 'authoritative' } }),
-      })
-      expect(invalidSessionOverrides.status).toBe(400)
-      const invalidOriginOverrides = await fetch(`http://127.0.0.1:${server.port}/runtime`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ durableHarnessOriginOverrides: { app: 'authoritative' } }),
-      })
-      expect(invalidOriginOverrides.status).toBe(400)
-      const invalidProfileOverrides = await fetch(`http://127.0.0.1:${server.port}/runtime`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ durableHarnessProfileOverrides: { coding: 'authoritative' } }),
-      })
-      expect(invalidProfileOverrides.status).toBe(400)
-      expect(updates).toHaveLength(6)
+      // Two accepted patches: the compression ratio and the close policy. The
+      // durable-harness mode patches are gone with the single-driver collapse.
+      expect(updates).toHaveLength(2)
     } finally {
       await server.stop()
       rmSync(dataDir, { recursive: true, force: true })

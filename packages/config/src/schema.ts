@@ -95,14 +95,6 @@ export const AgentDefaultsSchema = z.object({
   maxModelCallsPerRun: z.number().int().min(1).max(128).default(32),
   /** Which harness to use (default: "core-flow"). */
   harness: z.string().default('core-flow'),
-  /** Durable Harness rollout mode: shadow audits only; next is authoritative. */
-  durableHarnessMode: z.enum(['shadow', 'next']).default('next'),
-  /** Per-session durable Harness overrides; unlisted sessions use durableHarnessMode. */
-  durableHarnessSessionOverrides: z.record(z.enum(['shadow', 'next'])).default({}),
-  /** Per-request-origin durable Harness overrides; session overrides take precedence. */
-  durableHarnessOriginOverrides: z.record(z.enum(['shadow', 'next'])).default({}),
-  /** Per-behavior-profile durable Harness overrides; session/origin overrides take precedence. */
-  durableHarnessProfileOverrides: z.record(z.enum(['shadow', 'next'])).default({}),
 }).default({});
 
 /** Electron desktop lifecycle preferences. */

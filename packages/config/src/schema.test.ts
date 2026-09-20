@@ -13,7 +13,6 @@ describe('config schema', () => {
     expect(cfg.agents.defaults.harness).toBe('core-flow');
     expect(cfg.agents.defaults.reasoning).toBe('auto');
     expect(cfg.agents.defaults.profile).toBe('general');
-    expect(cfg.agents.defaults.durableHarnessMode).toBe('next');
     expect(cfg.desktop.closePolicy).toBe('background-while-active');
     expect(cfg.tools.exec.approvalMode).toBe('interactive');
     expect(cfg.tools.invocationTimeoutMs).toBe(120_000);

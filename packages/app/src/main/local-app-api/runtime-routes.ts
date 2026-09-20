@@ -125,48 +125,6 @@ export async function routeRuntime(
         nextDefaults.contextCompressionThresholdRatio = ratio
       }
 
-      if (Object.prototype.hasOwnProperty.call(body, 'durableHarnessMode')) {
-        const mode = body.durableHarnessMode
-        if (mode !== 'shadow' && mode !== 'next') {
-          json(res, 400, { error: 'durableHarnessMode must be "shadow" or "next"' })
-          return true
-        }
-        nextDefaults.durableHarnessMode = mode
-      }
-
-      if (Object.prototype.hasOwnProperty.call(body, 'durableHarnessSessionOverrides')) {
-        const overrides = parseDurableHarnessSessionOverrides(body.durableHarnessSessionOverrides)
-        if (!overrides) {
-          json(res, 400, {
-            error: 'durableHarnessSessionOverrides must map non-empty session ids to "shadow" or "next"',
-          })
-          return true
-        }
-        nextDefaults.durableHarnessSessionOverrides = overrides
-      }
-
-      if (Object.prototype.hasOwnProperty.call(body, 'durableHarnessOriginOverrides')) {
-        const overrides = parseDurableHarnessSessionOverrides(body.durableHarnessOriginOverrides)
-        if (!overrides) {
-          json(res, 400, {
-            error: 'durableHarnessOriginOverrides must map non-empty origins to "shadow" or "next"',
-          })
-          return true
-        }
-        nextDefaults.durableHarnessOriginOverrides = overrides
-      }
-
-      if (Object.prototype.hasOwnProperty.call(body, 'durableHarnessProfileOverrides')) {
-        const overrides = parseDurableHarnessSessionOverrides(body.durableHarnessProfileOverrides)
-        if (!overrides) {
-          json(res, 400, {
-            error: 'durableHarnessProfileOverrides must map non-empty profiles to "shadow" or "next"',
-          })
-          return true
-        }
-        nextDefaults.durableHarnessProfileOverrides = overrides
-      }
-
       if (Object.prototype.hasOwnProperty.call(body, 'closePolicy')) {
         const closePolicy = body.closePolicy
         if (
@@ -440,20 +398,6 @@ function isReasoning(value: string): value is RuntimeReasoning {
 
 function isPermissionPolicyId(value: string | undefined): value is 'full' | 'research' | 'restricted' {
   return value === 'full' || value === 'research' || value === 'restricted'
-}
-
-function parseDurableHarnessSessionOverrides(value: unknown): Record<string, 'shadow' | 'next'> | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
-  const entries = Object.entries(value as Record<string, unknown>)
-  if (entries.length > 256) return null
-  const result: Record<string, 'shadow' | 'next'> = {}
-  for (const [key, mode] of entries) {
-    const sessionId = key.trim()
-    if (!sessionId || sessionId.length > 256) return null
-    if (mode !== 'shadow' && mode !== 'next') return null
-    result[sessionId] = mode
-  }
-  return result
 }
 
 function parseEpochMs(value: string | null): number | undefined {

@@ -28,17 +28,14 @@ export function isAuthoritativePrepared(result: unknown): boolean {
 
 /**
  * Resolve the only result that may be published by a caller outside Runner.
- * Legacy and shadow runners retain their existing result contract. The next
- * Harness instead makes the durable final-reply projection authoritative:
- * proposals, execution-log replies and stream reconstruction are never
- * published when replay cannot prove a settled reply.
+ * There is one driver, and it makes the durable final-reply projection
+ * authoritative: proposals, execution-log replies and stream reconstruction are
+ * never published when replay cannot prove a settled reply.
  */
 export async function prepareAuthoritativeRunnerResult(
   runner: AgentRunner,
   result: RunnerResult,
 ): Promise<RunnerResult> {
-  if ((result.durableHarnessMode ?? runner.durableHarnessMode) !== 'next') return result
-
   const replay = runner.replayDurableFinalReply
   if (!replay) {
     return runtimeStatusResult(result, 'failed', 'durable_final_reply_replay_unavailable')
@@ -89,22 +86,14 @@ export async function prepareAuthoritativeRunnerResult(
 /**
  * Apply the same publication boundary to a diagnostic execution-log replay.
  * The log remains useful for bounded audit fields, but its reply/messages are
- * never allowed to outrank the durable final-reply projection in next mode.
+ * never allowed to outrank the durable final-reply projection. There is one
+ * driver, so every record is verified; a record with no durable settlement is
+ * reported by the replay itself rather than assumed publishable.
  */
 export async function prepareAuthoritativeExecutionLog(
-  runner: Pick<AgentRunner, 'durableHarnessModeForRun' | 'replayDurableFinalReply'>,
+  runner: Pick<AgentRunner, 'replayDurableFinalReply'>,
   log: ExecutionLog,
 ): Promise<AuthoritativeExecutionLog> {
-  let mode = log.durableHarnessMode
-  try {
-    mode ??= await runner.durableHarnessModeForRun?.(log.sessionId, log.runId)
-  } catch {
-    return runtimeExecutionLogResult(log, 'failed', 'durable_run_mode_unavailable')
-  }
-  // Settlement metadata predates the explicit mode field. Such records must
-  // still be verified; truly legacy records keep their historical behavior.
-  mode ??= log.finalReplySettlement ? 'next' : 'shadow'
-  if (mode !== 'next') return log
   log = { ...log, durableHarnessMode: 'next' }
 
   const replay = runner.replayDurableFinalReply
