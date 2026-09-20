@@ -1,6 +1,16 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-20 23:05:00
+最后更新：2026-09-20 23:45:00
+
+**P3「删除第二执行体系」的依赖测绘（2026-09-20 23:45:00，未提交改动，本轮已回滚）**：本轮尝试直接删除 TaskBook 步骤执行器（`task-book-runner.ts`、`task-step-runner.ts`、`task-step-scheduler.ts`、`reply-candidate.ts` 及其测试，并让 `execute` 永远走主循环），在删改过程中测绘出该路径的真实耦合面，随后**回滚**，避免在覆盖不足的状态下落地。
+
+- 已确认可达性：`selectWorkPolicy` 已不再为新请求返回 `task_book`（2026-09-20 23:05 条目），所以对新输入而言第二执行体系已经不可达；删除它只影响"已持久化 TaskBook / 旧 checkpoint"的续跑。
+- 删除必须同时处理的三处耦合（本轮实测）：
+  1. **恢复入口**：旧 checkpoint 持久化了 `entryStage: 'decide'`，resume 直接进入 DECIDE，不经过 classify 重算策略；因此需要把恢复入口映射到 `execute`，否则删除 DECIDE 后旧 checkpoint 无法续跑。
+  2. **续接守卫**：`classify` 对 `resumedFromCheckpointId && clarificationResponse` 有硬编码 `next: 'decide'`（等待用户回答后回到规划）；删除规划前必须改为交给主循环，并保持 binding 审计字段。
+  3. **旧策略降级**：`resolveExecutionWorkPolicy` 会原样返回持久化的 `task_book` 策略；删除执行器后需要把它降级为 `bounded_loop` 并保留原 reason code。
+- 测试面（本轮实测失败集合）：`execute.test.ts` 16 项（TaskBook 步骤执行、显式/自主工具提议直执行、波次暂停、步骤级重规划等，能力随执行器一并删除）、`runner-continuation.test.ts` 7 项（检查点声明/恢复/幂等与"同会话回答绑定"等**通用续接安全语义**，必须逐项改写为循环流程而不是删除）、`test/core-agent-contracts.test.ts` 1 项（预置 TaskBook 的局部重规划）。因此该删除应作为一个独立批次：先做上面三处耦合改造，再逐项改写续接用例，最后删除文件。
+- 回滚后状态：`pnpm run typecheck` 通过，`packages/harness`、`packages/runner` 与 `test/core-agent-contracts.test.ts` 123 个文件 / 980 项全部通过，工作树回到 2026-09-20 23:05 的提交状态（本轮无提交）。
 
 **极简执行与缓存 95% 方案 P3 第三刀：新请求一律进入单一主循环，规划不再被创建（2026-09-20 23:05:00，进行中）**：按方案「删除第二执行体系」，`selectWorkPolicy` 不再为任何**新**请求返回 `task_book`：复杂范围、超长请求、检索意图、续接、延迟运行时事件和默认兜底全部落到 `bounded_loop`，只保留原有 reason code 作为"为什么这轮更重"的审计说明。规划请求因此只可能由**已持久化的 TaskBook**（旧 checkpoint / 旧计划续跑）触发，而不再由新输入触发。
 
