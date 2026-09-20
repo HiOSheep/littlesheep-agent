@@ -7806,3 +7806,43 @@ export function buildVerifyUserMessage(ctx, replanAttempts, maxReplan): string {
 3. ⇒ **`verify` 的 `history: []` 维持现状（最终结论）**；长会话上限维持 **74–76%**。
 
 **#6 最终状态**：**N1 ✅（`pnpm run audit:cache`）｜N2 ✅（补齐首个有用动作指标）｜N3 收束（无可延迟静态知识）｜N4 实测为负已回退｜N6 ✅（60 秒真实负载 soak 通过，14 场景全绿）｜N7 收束（已由设计满足）**；仅 **N5（D2 债：Runtime 去 TaskBook 化）** 为高成本待排期项。
+
+## 10.285 **本阶段最终索引与交接**（2026-09-18）
+
+**判据状态**
+| 判据 | 现状 | 判定 |
+| --- | --- | --- |
+| ① 短会话 hit ≥75% | **76.3 / 75.1%** | ✅ 达标 |
+| ① 短会话 miss/调用 <700 | **698.3 / 676.1** | ✅ 达标 |
+| ① `failedRuns=0` / `silentRuns=0` | 0 / 0（两负载） | ✅ |
+| ② 长会话 hit ≥95% | **72.7–73.5%** | ❌ 结构性不可达（§10.203 逐项量化）⇒ **现有约束下上限 ≈74–76%** |
+| 硬约束：不裁剪能力 | 全程未减少工具集/提示信息/记忆可见性 | ✅ |
+
+**落到 `main` 的改动（有实测收益）**
+| 改动 | 证据 |
+| --- | --- |
+| 跨路径共享头 284 → 2,934；run 专属段让位 | miss −5% / hit +2pt |
+| `step-contract` 后置 | 工具循环 miss **−60%**、总体 **−18%** |
+| `reply` 重写契约后置 | 形状交替消除、长会话 **+2.1pt** |
+| S1 工具文本去重 | 工具循环 **−14%** |
+| S3 按 stage 渲染流程段 | `reply` system **−857 字符/次** |
+| **有界历史窗口**（能力回复/紧凑路径） | **判据①两项同时达标** |
+| **taskbook-as-skill（四步）** | execute 调用卸下 ≈1,630 字符/次，两负载无退化 |
+| **N1 度量入口 `pnpm run audit:cache`** | 三 token 指标 + 两体验指标一次给全 |
+| **N2 `Time to first useful action`** | **p50 96–104 ms** / p95 138 ms |
+| **N6 真实负载 soak** | 60 s、14 场景全绿、`violations=[]`、heap/句柄无泄漏趋势 |
+| `response-continuity-exposure` 身份匹配（架构债 #1） | 零回归 |
+
+**如实入档的负面/中性（8 项）**：`c692dcc`、`8827b90`、`final_reply` 契约、S、B1×2、跨 purpose 统一（−14pt 已回退）、**`core-flow` 精简（hit −3pt 已回退）**、**R1（hit −3.7pt 已 revert）**、**N4 记忆索引按需化（hit −1.5～−4.6pt 已 revert）**、**N3/N7 收束（无合格候选 / 已由设计满足）**、**D1（`verify` 带历史 ⇒ 调用 5→9，`history: []` 为正确设计）**。
+
+**贯穿阶段的核心定律（4 次验证）**
+| 手段 | hit | uncached | 调用数 |
+| --- | --- | --- | --- |
+| **扩大可复用前缀**（共享头、契约后置、有界历史窗口） | **↑** | **↓** | — |
+| 删除已缓存内容（S、S3、core-flow 精简、N4 根索引） | **↓** | ↓（成本） | — |
+| 删除高命中的调用（R1） | **↓** | **↑** | ↓ |
+
+**下一会话可直接起手的待办**
+1. **N5（唯一剩余）**：Runtime 去 TaskBook 化（D2 债）⇒ 先做**只读影响清单**（`runner` 调度 / 6 处执行期工具校验 / 证据记录），再分阶段替换；目标态：Runtime 只认 action/effect/result/checkpoint；
+2. **判据② 收束**（若用户认可）：记为"现有约束下上限 ≈74–76%"，以本任务书 §10.111–10.285 为交付；
+3. **可复现命令**：`pnpm run audit:cache -- --latest`、`node scripts/analyze-prompt-cache.mjs <dataDir>`、`node scripts/analyze-cache-shapes.mjs <dataDir>`、`pnpm run verify:harness-paths`、`pnpm run verify:electron-deepseek-sustained-load -- --duration-seconds=60`。
