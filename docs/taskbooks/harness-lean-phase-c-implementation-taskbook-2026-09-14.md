@@ -7733,3 +7733,26 @@ export function memoryAwarenessSection(rootIndex: string): string {
 | 扩大可复用前缀（共享头、契约后置、**有界历史窗口**） | **↑** | **↓** | — |
 | 删除已缓存内容（S、S3、core-flow 精简、**N4 根索引**） | **↓** | ↓（成本） | — |
 | 删除高命中的调用（R1） | **↓** | **↑** | ↓ |
+
+## 10.282 **N6 通过**：60 秒真实持续负载 soak（`minutes-scale`，14 项场景全绿）（2026-09-18）
+
+**命令**：`pnpm run verify:electron-deepseek-sustained-load -- --duration-seconds=60`（脚本以 `--duration-seconds` / `--progress-interval-ms` / `--mode` 分档：`<60s` ⇒ `diagnostic-short-run`；**`≥60s` ⇒ `minutes-scale`**；`formal` ⇒ `hours-scale`）。
+**结果**：`{"check":"electron-deepseek-sustained-load","ok":true,"verificationMode":"diagnostic","evidenceClass":"minutes-scale"}` ✓（exit=0）
+
+**覆盖的 14 项场景**（`scenarios` 字段）：
+`single_real_exec_sustained_work`、`bounded_resource_sampling`、`active_run_sse_continuous_observation`、`close_to_tray_while_running`、`model_and_profile_hot_reload_with_retired_runner`、**`in_process_pause_resume_without_stopping_tool`**、**`pause_requested_during_tool_and_applied_at_safe_boundary`**、`checkpoint_model_restored_before_restart`、**`forced_termination_restart`**、**`checkpoint_resume_without_repeating_side_effect`**、**`cross_model_answer_level_memory_recall`**、`answer_level_memory_continuity`、`listener_runner_handle_and_memory_release`、`explicit_quit`
+
+**关键证据**：
+| 项 | 值 |
+| --- | --- |
+| 真实 `exec` 工具 | **succeeded**，`durationMs=61180` ✓ |
+| 产物进度 | **tick 60 / totalTicks 60，completed=true** ✓（`executionCount=1`，4 个产物带 sha256 ✓） |
+| 资源采样 | `sampleCount=61`；`violations=[]`、`missingProgressSamples=0` ✓ |
+| 内存/句柄曲线 | RSS 276→295 MB、heap 82→75 MB、句柄 13→4；**后半程斜率/小时：heap −9.4 MB/h、句柄 −46/h** ⇒ **无泄漏趋势** ✓ |
+| 崩溃恢复 | 强制终止后 **checkpoint 续跑成功**（`runId=8a8f23c5…` `status=ok`）、**未重复副作用** ✓ |
+| 记忆连续性 | `status=supported`、confidence 0.77、`matchedSignals=[reply_continues_recent_conversation, reply_matches_current_task]` ✓ |
+| Provider 记账 | 5 次请求、prompt 10,032 / completion 972 tokens ✓ |
+
+**⇒ N6 判定：通过**（这正是用户原则 8 所指的"**证明行为**而非结构"：暂停/恢复、崩溃重启、幂等、跨模型召回、资源边界都在**真实 Electron + 真实 Provider** 下被演练 ✓）。
+
+**#6 收尾状态**：**N1 ✅（度量入口）、N2 ✅（补齐首个有用动作指标）、N3 收束（无可延迟静态知识）、N4 实测为负已回退、N6 ✅（真实负载 soak 通过）**；仅剩 **N5（Runtime 去 TaskBook 化，D2 债，高成本）**与 **N7（`verify` 判定语义，需行为验证）** 待单独排期。
