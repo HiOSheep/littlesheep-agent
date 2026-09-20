@@ -7513,3 +7513,28 @@ console.log('CALLS:', requests.map((r) => r.callContract?.purpose).join(' > '));
 | 10.265 | ~~Runtime 语义依赖（协议级）~~ ❌ 推翻 |
 | 10.272 | 替身敏感 ✓（但机制未明） |
 | **10.273** | **调用次数/次序变化**（队列耗尽）⇒ **行为变化，需看清是哪一次调用** |
+
+## 10.274 **下一会话 D1 收尾：起手清单（零歧义）**（2026-09-18）
+
+**目标**：看清"`verify` 带历史后多出的那一次模型调用"，据此**修（若冗余）**或**适配测试（若合理）**，最终让 `verify` 携带有界历史并验收长会话 ratio。
+
+**起手 5 步（每步都已验证可行）**：
+
+1. **复现**（一处编辑）：`packages/harness/src/stages/verify/model-call.ts` 的 `history: []` → `history: ctx.history.slice(-8)`（**无需改 import**）⇒ 跑
+   `pnpm exec vitest run packages/runner/src/runner-continuation.test.ts` ⇒ 预期 **8 failed / 18 passed**。
+2. **插桩**（临时、不入提交）：在该测试失败断言前插入
+   `console.log('CALLS:', requests.map((r) => r.callContract?.purpose).join(' > '));`
+   （第一个失败断言在 `:434`；该文件里 `expect(result.status).toBe('ok')` 出现 10 次 ⇒ 锚点需带上前面 4 行 `const [result, joined] = await Promise.all([...])` 才能唯一定位。）
+3. **对比**：分别在**有** `verify` 历史（第 1 步已改）与**无**（`git checkout --` 该文件后）两种情况下跑同一条命令 ⇒ 对比 `CALLS:` 序列 ⇒ **多出/移位的那一次调用是什么**（`classify`/`decide`/`execute_tool_loop`/`execute_final_reply`/`verify`/`reply`）。
+4. **判定与处置**：
+   - 若多出的调用是**冗余**（例如重复 verify、可避免的 replan）⇒ 在生产侧修掉它（另开一轮，按"改一处 + 全门"推进）；
+   - 若**合理**（历史让 verify 更准 ⇒ 触发正当的 replan/rewrite）⇒ **补齐该用例的脚本应答队列**（`queuedLlm([...])` 加一条对应应答），属**测试适配** ✓
+5. **回退与验收**：`git checkout --` 测试文件（去掉插桩）；保留 `verify` 的有界历史 ⇒ `typecheck` + **全量** vitest + `check:repo` → continuity/UI 门 → **两次**样本（8×5 + 8×15）⇒ 验收 **hit↑ 或持平、uncached/run↓、`failedRuns=0`、`silentRuns=0`**；否则回退 `verify` 的历史。
+
+**已在库的结论（不必重查）**：
+- 替身是**按调用顺序出队**的队列（`runner-continuation.test.ts:38–55`），取空即抛 `unexpected LLM request`，经 `reply.ts:72` 包装成 `result.error` ✓
+- **Runtime 不按形状绑定**（10.265 的"协议级改造"判定已被推翻）✓
+- **#1 已改善并提交**（`7bc05b5`：暴露模块改纯身份匹配）✓
+- `finally`（`runner.ts:941–957`）**不改 `result.status`**；日志缺失**不是**否定证据 ✓
+
+**判据①（短会话）当前已达标**：hit **76.3 / 75.1%**、miss/调用 **698.3 / 676.1**、`failedRuns=0`、`silentRuns=0`（来自 `7dfb307` 有界历史窗口）。**本项（D1）的价值**：解锁 `verify` 与主路径共享前缀 ⇒ 长会话 ratio 再上一台阶，并消除"某 stage 必须看不到某些信息"的隐式耦合。
