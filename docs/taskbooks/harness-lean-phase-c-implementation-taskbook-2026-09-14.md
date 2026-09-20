@@ -7846,3 +7846,42 @@ export function buildVerifyUserMessage(ctx, replanAttempts, maxReplan): string {
 1. **N5（唯一剩余）**：Runtime 去 TaskBook 化（D2 债）⇒ 先做**只读影响清单**（`runner` 调度 / 6 处执行期工具校验 / 证据记录），再分阶段替换；目标态：Runtime 只认 action/effect/result/checkpoint；
 2. **判据② 收束**（若用户认可）：记为"现有约束下上限 ≈74–76%"，以本任务书 §10.111–10.285 为交付；
 3. **可复现命令**：`pnpm run audit:cache -- --latest`、`node scripts/analyze-prompt-cache.mjs <dataDir>`、`node scripts/analyze-cache-shapes.mjs <dataDir>`、`pnpm run verify:harness-paths`、`pnpm run verify:electron-deepseek-sustained-load -- --duration-seconds=60`。
+
+## 10.286 **N5 影响清单（只读，第一版）**：Runtime 侧仅 34 处 / 12 文件（2026-09-18）
+
+**用户已授权 N5**（Runtime 去 TaskBook 化；目标态：Runtime 只认 action/effect/result/checkpoint）。
+
+**耦合面实测**（`Select-String 'taskBook|TaskBook'`，仅生产文件）：
+```
+=== packages/runner/src （Runtime）=== 合计 34 处 / 12 文件
+   9  runner.ts
+   5  run-checkpoint-store.ts
+   4  execution-log.ts
+   4  run-checkpoint.ts
+   3  active-run-activity.ts
+   2  runner-persist.ts
+   2  session-run-summary.ts
+   1  runtime-event-queue.ts
+   1  run-checkpoint-work-policy-codec.ts
+   1  continuation-disposition.ts
+   1  continuation-stage.ts
+   1  runner-support.ts
+=== packages/harness/src （生产）=== 430 处   ← TaskBook 的**正当归属**（skill/阶段层），**不在 N5 范围**
+```
+**⇒ 结论：可落地且有界** —— 要动的只有 **34 处**，而非全仓；Harness 的 430 处**保持不动**（那里正是 TaskBook 该在的地方）。
+
+**按性质分类（据文件名与已知证据）**：
+| 类别 | 文件 | N5 处置 |
+| --- | --- | --- |
+| **持久化/序列化** | `run-checkpoint-store.ts`(5)、`execution-log.ts`(4)、`run-checkpoint.ts`(4)、`runner-persist.ts`(2)、`session-run-summary.ts`(2)、`run-checkpoint-work-policy-codec.ts`(1) | 改为存取**不透明的"工作计划"载荷**（Runtime 不解释其语义）⇒ 需**兼容既有检查点/日志格式**（否则破坏续跑） |
+| **调度与执行期校验** | `runner.ts`(9，含 6 处执行期工具校验) | 改为消费**通用步骤契约**（action/effect/result），而非 TaskBook 结构 |
+| **活动/事件投影** | `active-run-activity.ts`(3)、`runtime-event-queue.ts`(1)、`continuation-disposition.ts`(1)、`continuation-stage.ts`(1)、`runner-support.ts`(1) | 同上，投影字段改名为通用语义 |
+
+**分阶段计划（每阶段可独立回滚 + 全门 + 全套件）**
+1. **阶段 1（只读细化）**：读 `runner.ts` 的 9 处，逐处标注"**必须 Semantics** vs **可泛化**"⇒ 产出可执行的替换清单（本轮已完成数量级，下一步到行）；
+2. **阶段 2（投影层先行）**：只改**活动/事件投影**（5 处、5 文件）⇒ 风险最低（不碰持久化）⇒ 验证：全量套件 + 两条 Electron 门；
+3. **阶段 3（调度与校验）**：`runner.ts` 的 9 处 ⇒ 引入通用步骤契约；
+4. **阶段 4（持久化，最险）**：6 文件的检查点/日志载荷 ⇒ **必须保持向后兼容**（既有检查点仍可续跑）⇒ 验证含 `runner checkpoints` 相关套件 + **N6 soak（含强制终止后续跑）** ✓；
+5. **终态**：`packages/runner/src` 中 `taskBook` 出现次数 → **0**（可量化验收 ✓），且 `RunContext` 字段数下降。
+
+**验收口径（可量化）**：`grep taskBook packages/runner/src` **归零**；`check:repo` 33/33；全量套件绿；两条 Electron 门 ok；**N6 soak 通过**（证明续跑/幂等未被破坏）；`pnpm run audit:cache` 五项指标不劣化。
