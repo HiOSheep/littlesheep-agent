@@ -187,7 +187,7 @@ describe('createDefaultHarness state machine', () => {
     expect(tool.calls[0]?.input).toEqual({ pattern: '*' });
   });
 
-  it('regenerates and verifies a traceable task reply when an interrupted checkpoint points at ask_user', async () => {
+  it('regenerates a traceable reply when an interrupted checkpoint points at ask_user', async () => {
     const llm = createMockLlm(textResponse('文件 resume-proof.txt 已核对，内容为 resume-anchor-4812。'));
     const h = makeHarness(llm);
     h.registerStage('verify', async () => ({ stage: 'verify', next: 'finalize', ok: true }));
@@ -234,48 +234,27 @@ describe('createDefaultHarness state machine', () => {
 
     expect(result.ok).toBe(true);
     expect(ctx.reply).toContain('resume-anchor-4812');
-    expect(ctx.taskExecution.status).toBe('done');
-    expect(ctx.replyProvenance).toMatchObject({ purpose: 'execute_final_reply' });
-    expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
-      'execute_final_reply',
-    ]);
+    // The resumed plan is read-only history, so the reply comes from an ordinary
+    // reply-contract model call that sees the recorded value.
+    expect(ctx.replyProvenance).toMatchObject({ source: 'llm' });
+    expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual(['reply']);
     expect((result.meta?.trace as Array<{ name: string }>).map((item) => item.name)).toEqual([
-      'reply', 'verify', 'finalize',
+      'reply', 'finalize',
     ]);
-    const requestText = lastConversationText(llm.chat.mock.calls[0]?.[0]);
-    expect(requestText).toContain('resume-anchor-4812');
   });
 
-  it('re-enters DECIDE for a task event received after EXECUTE and adopts a new TaskBook revision', async () => {
-    const planningPrompts: string[] = [];
+  it('re-enters the main loop for a task event received after EXECUTE', async () => {
+    const prompts: string[] = [];
     const llm = createMockLlm((request) => {
-      planningPrompts.push(lastConversationText(request));
-      const revised = planningPrompts.length > 1;
-      return textResponse(JSON.stringify({
-        assessment: {
-          userNeed: revised ? 'include the runtime verification update' : 'complete the original task',
-          complexity: 'standard',
-          goal: 'complete the task',
-          successCriteria: [revised ? 'runtime verification is included' : 'the original task is complete'],
-          requiresTaskBook: true,
-        },
-        taskBook: {
-          goal: 'complete the task',
-          complexity: 'standard',
-          successCriteria: [revised ? 'runtime verification is included' : 'the original task is complete'],
-          steps: [{
-            id: 'step-1',
-            description: revised ? 'complete the task and verify the runtime update' : 'complete the task',
-          }],
-        },
-      }));
+      prompts.push(lastConversationText(request));
+      return textResponse(`round ${prompts.length} handled`);
     });
     const h = makeHarness(llm);
     const runtimeQueue = createMutableRuntimeTaskQueue();
     let executeCalls = 0;
     h.registerStage('classify', async (ctx) => {
       ctx.classification = { type: 'problem', confidence: 1, source: 'rules', reason: 'integration test' };
-      return { stage: 'classify', next: 'decide', ok: true };
+      return { stage: 'classify', next: 'execute', ok: true };
     });
     h.registerStage('execute', async (ctx) => {
       executeCalls += 1;
@@ -305,16 +284,13 @@ describe('createDefaultHarness state machine', () => {
     const result = await h.run(ctx);
 
     expect(result.ok).toBe(true);
+    // The queued event caused a second execution round; there is no planner hop,
+    // and the event stays carried in Context for the loop to read.
     expect(executeCalls).toBe(2);
-    expect(planningPrompts).toHaveLength(2);
-    expect(planningPrompts[1]).toContain('Add a verification step before delivery.');
-    expect(ctx.taskBookRevision).toBe(2);
-    expect(ctx.taskBook?.steps[0]?.description).toBe('complete the task and verify the runtime update');
-    expect(ctx.deferredRuntimeEvents).toEqual([]);
     expect(ctx.deferredRuntimeEventIds).toEqual(['runtime-update-1']);
     const trace = result.meta?.trace as Array<{ name: string }>;
     expect(trace.map((item) => item.name)).toEqual([
-      'enter', 'classify', 'decide', 'execute', 'decide', 'execute', 'finalize',
+      'enter', 'classify', 'execute', 'execute', 'finalize',
     ]);
   });
 

@@ -1,6 +1,14 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-21 01:20:00
+最后更新：2026-09-21 02:30:00
+
+**极简执行与缓存 95% 方案 P3 第五刀：删除已不可达的 DECIDE 与紧凑规划层（2026-09-21 02:30:00）**：第二执行体系删除后，规划已经没有入口，本轮把它整层移除。
+
+- 删除内容：`stages/decide.ts`、`stages/decide/`（8 个模块）与 `decide.test.ts`（1,358 行）；harness 的 DECIDE 注册与 `memoryRefiner`/`MemoryRunRefinementServiceLike` 依赖；`memory-taskbook-refinement.ts`（只服务规划后的记忆精炼）与其测试；紧凑规划层 `compact-autonomous-read-task.ts`、`compact-explicit-tool-decision.ts`、`compact-read-only-result.ts` 及测试；只服务已删执行器的 `execute/direct-tool-proposal.ts`、`execute/final-reply.ts` 及测试。
+- **顺带消除第二套 EXECUTE 提示形状**：`execute/prompt.ts` 原先在"紧凑自主只读"分支切到 `respond` 模式的小提示（空工具表、无 bootstrap/记忆/摘要）。该分支只在单步骤 TaskBook 下成立，而计划已不再产生，因此删除后主循环只有一个提示形状——这正是缓存目标需要的。
+- 运行时语义调整：`runtime-awareness` 的紧凑投影只剩 `capability_reply` 一类目的；两个驱动（default/durable）的运行时任务事件重定向从"回 DECIDE"改为"回主循环"（需要时先重新 CS 分类），并保留 `deferredRuntimeEventIds` 供循环读取；`reply.ts` 删除"已恢复 TaskBook 的最终回复"分支，恢复的旧计划按只读历史处理。
+- 兼容性：`decide`/`capture` 仍留在 `StageName`、`allowedTransitions` 与 `stageNames` 中以便读取旧检查点，但已无注册实现；`resolveCheckpointResumeStage` 把恢复入口的 `decide` 映射到 `execute`，因此旧检查点仍能续跑。
+- 验证：`pnpm run typecheck` 通过；全仓 `pnpm exec vitest run` **445 个文件、3,096 项通过、1 项 skipped**（比上一批少 5 个文件 / 78 项，全部来自删除的规划与紧凑层用例）。受影响的断言按新契约更新：`model-request-characterization` 去掉 DECIDE 请求形状用例；`core-agent-contracts` 删除 4 个 DECIDE 规划用例；`default-harness` 的运行时事件用例改写为"事件触发第二轮主循环执行且事件保持携带"，恢复续答用例改为普通 reply 契约；`runtime-awareness` 的紧凑事实用例改用仍存在的 reply 目的。没有以放宽断言保留已删除能力。
 
 **极简执行与缓存 95% 方案 P3 第四刀：删除 TaskBook 步骤执行器（2026-09-21 01:20:00）**：第二执行体系落地删除。`execute` 永远运行单一主循环，`task-book-runner.ts`、`task-step-runner.ts`、`task-step-scheduler.ts`、`reply-candidate.ts` 及其测试删除；已持久化的 TaskBook 变成只读历史，多步骤工作在同一个循环内串行完成。
 

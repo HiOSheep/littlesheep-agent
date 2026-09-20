@@ -20,13 +20,11 @@ import type { SessionManager } from '@littlesheep/session';
 import type { Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
 import type {
-  MemoryRunRefinementServiceLike,
   MemoryWriteServiceLike,
 } from '@littlesheep/memory-tree';
 import { HookRunner } from './hooks/runner.js';
 import { enterStage } from './stages/enter.js';
 import { createClassifyStage } from './stages/classify.js';
-import { createDecideStage } from './stages/decide.js';
 import { createExecuteStage } from './stages/execute.js';
 import { createRecoverStage } from './stages/recover.js';
 import { createVerifyStage } from './stages/verify.js';
@@ -46,10 +44,8 @@ export interface DefaultHarnessOptions {
   memoryStore: MemoryStoreLike;
   config: Config;
   branding: BrandingConfig;
-  /** Indexed, guarded autonomous memory writer used by CAPTURE. */
+  /** Indexed, guarded autonomous memory writer for explicit writes. */
   memoryWriter?: MemoryWriteServiceLike;
-  /** Bounded post-DECIDE memory refinement using the normalized TaskBook. */
-  memoryRefiner?: MemoryRunRefinementServiceLike;
   /** Rules confidence threshold for CLASSIFY fast path. Default 0.7. */
   classifierThreshold?: number;
   /** Prepared at Runner startup; unavailable models continue with the non-displayable safety estimator. */
@@ -67,14 +63,9 @@ export function createHarnessStages(opts: DefaultHarnessOptions): Map<StageName,
   stages.set('classify', createClassifyStage({
     rulesConfidenceThreshold: opts.classifierThreshold,
   }));
-  stages.set('decide', createDecideStage({
-    llm: opts.llm,
-    model: opts.model,
-    config: opts.config,
-    branding: opts.branding,
-    memoryRefiner: opts.memoryRefiner,
-    log: opts.log,
-  }));
+  // DECIDE is gone: the stage, its planning modules and its request contract were
+  // deleted with the second execution system. `decide` survives only as a legacy
+  // stage name in checkpoints; the driver maps it to the main loop.
   stages.set('execute', createExecuteStage({
     llm: opts.llm,
     model: opts.model,
@@ -187,12 +178,15 @@ export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness 
           current = 'exit';
           continue;
         }
-        if (runtimeTasks.shouldReplan && stageName !== 'decide') {
-          current = ctx.classification ? 'decide' : 'classify';
+        // A queued runtime task event means the run must act on new information.
+        // It re-enters the single main loop rather than the deleted planner, and
+        // re-classifies first when there is no route decision yet.
+        if (runtimeTasks.shouldReplan && stageName !== 'execute') {
+          current = ctx.classification ? 'execute' : 'classify';
           continue;
         }
         if (runtimeTasks.taskBookChanged && stageName !== 'execute' && !runtimeTasks.shouldReplan) {
-          current = ctx.taskBook ? 'execute' : 'decide';
+          current = ctx.classification ? 'execute' : 'classify';
           continue;
         }
 

@@ -1,6 +1,6 @@
 # Core Flow 状态契约
 
-最后更新：2026-08-10 15:57:32
+最后更新：2026-09-21 02:05:00
 
 本页是 Harness 状态边和高频 `RunContext` 字段责任的导航入口。可执行契约位于 `packages/types/src/stage-transitions.ts` 与 `packages/types/src/run-context-contract.ts`；本页只解释如何阅读和扩展它们，不复制运行时实现。
 
@@ -8,35 +8,29 @@
 
 `allowedTransitions` 是 Core Flow 唯一允许的 Stage 边表。每次 stage 或 hook 返回 `StageResult` 后，Harness 在进入下一轮前调用 `inspectStageTransition`。边不在 manifest 中时，Runtime 会把结果收敛为 `ok: false`、`next: 'exit'`，并在 `meta.transitionViolation` 中保留来源、目标和允许目标；不会让自定义 stage 或 hook 静默跳过安全流程。
 
-```mermaid
-stateDiagram-v2
-  enter --> classify
-  classify --> decide
-  classify --> reply
-  classify --> ask_user
-  decide --> execute
-  decide --> ask_user
-  decide --> finalize
-  decide --> recover
-  execute --> verify
-  execute --> recover
-  execute --> finalize
-  recover --> classify
-  recover --> decide
-  recover --> execute
-  recover --> verify
-  recover --> reply
-  recover --> ask_user
-  recover --> finalize
-  verify --> finalize
-  verify --> recover
-  verify --> decide
-  verify --> ask_user
-  reply --> verify
-  reply --> finalize
-  ask_user --> finalize
-  [*] --> exit
+```text
+enter -> classify
+classify -> execute          (每个请求，含常规会话/工具工作/续接)
+classify -> reply            (能力/状态询问)
+classify -> ask_user
+execute -> verify
+execute -> recover
+recover -> classify
+recover -> execute
+recover -> verify
+recover -> reply
+recover -> ask_user
+recover -> finalize
+verify -> finalize
+verify -> recover
+verify -> ask_user
+reply -> verify
+reply -> finalize
+ask_user -> finalize
+[*] -> exit
 ```
+
+`decide` 与 `capture` 仍出现在 `allowedTransitions` 与 `stageNames` 中，但已没有注册实现：驱动把恢复入口的 `decide` 映射到 `execute`，规划与运行结束时的自动沉淀已随极简方案删除。`execute -> finalize` 是自定义轻量执行 stage 的兼容边。
 
 每个 stage 都保留 `exit` 终止边，因为运行时暂停、中断、异常和 Provider 失败必须有明确的终态出口。`execute -> finalize` 是自定义轻量执行 stage 的兼容边：默认 TaskBook/工具循环仍然经过 `verify`。
 

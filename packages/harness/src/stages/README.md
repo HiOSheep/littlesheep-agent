@@ -4,9 +4,9 @@
 
 ## 所有权
 
-- `classify.ts`、`decide.ts`：需求判断和 TaskBook；DECIDE 内部校准与重规划位于 `decide/`。
-- `execute.ts`、`verify.ts`、`recover.ts`：步骤执行、验收和局部恢复；工具循环/步骤调度位于 `execute/`，结构验收/恢复路由位于 `verify/`。
-- `capture.ts`：运行流水意图；`memory-intent-gate.ts` 用真实步骤、工具和 VERIFY 证据决定是否提交。自动演化编排（reconciliation / reparent / subtree move / revision / correction）已删除，模型没有存储修改权。
+- `classify.ts`：确定性活动路由，不发出模型请求。DECIDE、它的规划模块和 TaskBook 步骤执行器已随第二执行体系删除；`decide` 只作为旧检查点的兼容 stage 名保留，驱动会把恢复入口映射到主循环。
+- `execute.ts`、`verify.ts`、`recover.ts`：单一主循环、验收和 Runtime 恢复；工具循环位于 `execute/`，结构验收/恢复路由位于 `verify/`。
+- 运行结束时的自动沉淀（CAPTURE）与自动演化（EVOLVE 编排、自动 Skill 创建）均已删除：持久记忆只由明确写入与压缩路径产生。
 - `reply.ts`、`ask_user.ts`、`finalize.ts`：聊天、澄清和最终装配。
 - `_shared.ts`：只放多个 stage 真正共享的纯 helper。
 

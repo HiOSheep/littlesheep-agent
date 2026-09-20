@@ -5,60 +5,44 @@ import {
 } from '@littlesheep/prompt';
 import type { RunContext } from '@littlesheep/types';
 import {
-  renderCompactAutonomousReadWorkspace,
-  resolveCompactAutonomousReadExecutionTools,
-} from '../../compact-autonomous-read-task.js';
-import {
   appendSystemPromptBundleAddons,
-  buildCompactBehaviorProfileAddon,
-  buildCompactUserFacingVoiceAddon,
 } from '../../profile-prompt.js';
 import type { ExecuteStageDeps } from './contracts.js';
 import { renderRetrievalIntentContract, toolsForRetrievalIntent } from '../../retrieval-intent.js';
 
+/**
+ * One prompt shape for the single main loop.
+ *
+ * The old compact read-only projection (a second, smaller 'respond'-mode prompt
+ * for a single-step TaskBook) is gone with the TaskBook step executor: it could
+ * only trigger for a one-step plan, and plans are no longer created. Keeping one
+ * shape is also what lets a session reuse its cached prefix across turns.
+ */
 export async function buildExecuteSystemPrompt(
   deps: ExecuteStageDeps,
   ctx: RunContext,
 ): Promise<SystemPromptBundle> {
   const resolved = resolvePromptConfig(deps.config, deps.branding);
-  const compactReadTools = resolveCompactAutonomousReadExecutionTools(ctx);
-  const retrievalTools = toolsForRetrievalIntent(ctx);
   const base = await assembleSystemPromptBundle(resolved, {
-    tools: compactReadTools ? [] : retrievalTools,
-    bootstrap: compactReadTools ? {} : ctx.bootstrap ?? {},
-    prelude: compactReadTools ? undefined : ctx.prelude,
-    sessionSummary: compactReadTools ? undefined : ctx.sessionSummary,
-    memoryRootIndex: compactReadTools ? undefined : ctx.memoryRootIndex,
-    initialMemoryContext: compactReadTools ? undefined : ctx.initialMemoryContext,
+    tools: toolsForRetrievalIntent(ctx),
+    bootstrap: ctx.bootstrap ?? {},
+    prelude: ctx.prelude,
+    sessionSummary: ctx.sessionSummary,
+    memoryRootIndex: ctx.memoryRootIndex,
+    initialMemoryContext: ctx.initialMemoryContext,
     // The tool loop advertises these schemas natively and the runtime enforces the
     // callable set, so the rendered copy is omitted to keep the prompt smaller.
     includeToolingText: false,
-  }, compactReadTools ? 'respond' : undefined);
+  });
 
   return appendSystemPromptBundleAddons(base, [
-    ...(compactReadTools ? [{
-      id: 'compact-read-workspace',
-      text: renderCompactAutonomousReadWorkspace(resolved.workspace, compactReadTools),
-      kind: 'project_knowledge' as const,
-      source: { kind: 'configuration' as const, id: 'workspace', path: resolved.workspace },
-      scope: 'workspace' as const,
-      placement: 'stable' as const,
-    }] : []),
-    ...(!compactReadTools ? [{
+    {
       id: 'retrieval-intent-contract',
       text: renderRetrievalIntentContract(ctx),
       kind: 'workflow_state' as const,
       source: { kind: 'workflow' as const, id: 'retrieval-intent-contract', runId: ctx.runId },
-    }] : []),
-    {
-      id: 'profile',
-      text: compactReadTools ? buildCompactBehaviorProfileAddon(ctx) : ctx.profilePromptAddon,
-      placement: 'stable',
     },
+    { id: 'profile', text: ctx.profilePromptAddon, placement: 'stable' },
     { id: 'reasoning', text: ctx.reasoningPromptAddon, placement: 'stable' },
-    ...(compactReadTools ? [{
-      id: 'compact-user-facing-voice',
-      text: buildCompactUserFacingVoiceAddon(ctx),
-    }] : []),
   ]);
 }

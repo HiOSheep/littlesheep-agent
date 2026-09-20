@@ -207,7 +207,7 @@ LS 要获得实时资料能力，不应在本机维护一份完整互联网索�
 
 - 权限读取集合和三档权限判定在 [permission-boundary.ts](../../packages/safety/src/permission-boundary.ts)；中央 safe-read descriptor、hard deny 的入口消费和 strict-read 回查已由 WB-01 收口；DNS/redirect 执行前复核仍属于 WB-03 网络领域层。
 - 统一调用生命周期在 [tool-execution-service.ts](../../packages/tools/src/tool-execution-service.ts)；这里应继续作为最终审批、超时、取消、清洗和证据入口。
-- 简单自主读取目前只允许 glob、grep、read，在 [compact-autonomous-read-task.ts](../../packages/harness/src/compact-autonomous-read-task.ts) 中仍明确排除 network 和 memory。
+- 简单自主读取目前只允许 glob、grep、read，在 `compact-autonomous-read-task.ts`（已随极简方案删除，见 `docs/decision/project-status.md` 2026-09-21 条目） 中仍明确排除 network 和 memory。
 - REPLY 当前是无工具的直接回答路径，在 [reply.ts](../../packages/harness/src/stages/reply.ts) 中没有把工具调用纳入普通回应。
 - LLM 工具协议当前在 [types.ts](../../packages/llm/src/types.ts) 中仅定义 function tool；不能假定切换模型后自动获得厂商原生联网协议。
 - Runner 当前在 [infra.ts](../../packages/runner/src/infra.ts) 装配 web provider registry、provider snapshot 和共享 cache，并由 [runner.ts](../../packages/runner/src/runner.ts) 按本轮 quota/timeout 创建独立 `WebRetrievalRuntime` 注入 `RunContext`；本轮 runtime 的 evidence、abort、citation 和 deadline 不跨 run 共享。
@@ -1280,7 +1280,7 @@ web_search/web_fetch 继续使用现有 ToolInvocationRecord，并在 meta/evide
 1. 在 [permission-boundary.ts](../../packages/safety/src/permission-boundary.ts) 保持单一 descriptor 计算入口；对 `web_search`、`web_fetch` 的安全类别必须只由解析后 input 与不可变 `networkPolicy` 决定，不能相信工具名称、模型声明或插件元数据。
 2. 在 [tool-execution-service.ts](../../packages/tools/src/tool-execution-service.ts) 中，schema 校验成功后只计算一次 descriptor；若 `hardDecision === 'deny'`，在审批、重复调用计数和工具执行之前结束调用，写入稳定错误 kind 与可审计的 blocked/validation 记录，绝不调用 `tool.execute()`。若现有 invocation status/approval decision 枚举不足，应先扩展契约和旧记录兼容解析，不得把硬拒绝伪装成 `not_required`。
 3. `ToolExecutionService.approve()` 调用 `shouldRequestPermissionApproval()` 时必须传入 `strictReadApproval: toolContext.networkPolicy?.strictReadApproval === true`；同一调用不得重新计算与记录阶段不同的 descriptor。
-4. 在 [direct-tool-proposal.ts](../../packages/harness/src/stages/execute/direct-tool-proposal.ts) 中，先拒绝 hard deny；传入同样的 strict-read 选项。自动直连 proposal 只有在 descriptor、TaskBook resource envelope、side-effect 和审批结论全部一致时才可产生。
+4. 在 `direct-tool-proposal.ts`（已随极简方案删除，见 `docs/decision/project-status.md` 2026-09-21 条目）中，先拒绝 hard deny；传入同样的 strict-read 选项。自动直连 proposal 只有在 descriptor、TaskBook resource envelope、side-effect 和审批结论全部一致时才可产生。
 5. 追踪 `task-step-scheduler.ts`（已随第二执行体系删除，见 `docs/decision/project-status.md` 2026-09-21 条目）、[runner.ts](../../packages/runner/src/runner.ts)、以及 App 的 run-policy/terminal permission 调用点：要么都通过 `ToolExecutionService`，要么复用 `authorizeToolAccess()` 的 hard-deny 分支。禁止出现第二套“没要求审批就执行”的逻辑。
 6. 保持以下强制区别：local memory safe read、匿名 public web safe read、容器内普通读、容器外读、认证浏览器、任何写入、exec 和未知目标。只豁免被 Runtime 明确归类的前两类，不扩大文件读取或浏览器权限。
 7. 对 `strictReadApproval=true` 固定行为：research/restricted 中 safe read 恢复审批；full 仍仅绕过普通审批，不能越过 hard deny。
@@ -1450,7 +1450,7 @@ web_search/web_fetch 继续使用现有 ToolInvocationRecord，并在 meta/evide
 必须改动：
 
 1. 扩展 [classify.ts](../../packages/harness/src/stages/classify.ts) / NeedAssessment 和相关 prompt contract，显式区分 `capability_question`、`local_workspace`、`local_memory`、`web_search`、`web_fetch`、`combined_memory_web`、`browser_required`。相同词出现在网页正文中绝不能构成用户意图。
-2. 新建或扩展 compact retrieval 组件（建议 `retrieval-intent.ts`、`compact-retrieval-task.ts`；与 [compact-autonomous-read-task.ts](../../packages/harness/src/compact-autonomous-read-task.ts) 的旧“no network/memory”约束一起修改）。对于“查今天/最新/找来源/打开公开 URL”只暴露一个最小工具集和一次最终 synthesis，不默认启动重型 TaskBook。
+2. 新建或扩展 compact retrieval 组件（建议 `retrieval-intent.ts`、`compact-retrieval-task.ts`；与 `compact-autonomous-read-task.ts`（已随极简方案删除，见 `docs/decision/project-status.md` 2026-09-21 条目） 的旧“no network/memory”约束一起修改）。对于“查今天/最新/找来源/打开公开 URL”只暴露一个最小工具集和一次最终 synthesis，不默认启动重型 TaskBook。
 3. 对多来源比较、冲突核验、多个官方页面和需要记忆结合的任务，生成正常 TaskBook：搜索、选择 2–4 个来源、受控 fetch、evidence merge、citation-aware synthesis、VERIFY。每个 read step 仍声明 resource、side effect 和 acceptance criteria。
 4. 更新 [llm-call-contracts](../../packages/harness/src/llm-call-contracts/) 和 [stages/execute](../../packages/harness/src/stages/execute/) prompt：LLM 可以选择受限工具/摘要证据，但不能变更 provider、permission、TaskBook 状态、Memory 写入或 citation binding。
 5. 在 final reply / VERIFY / RECOVER 中将 citation completeness、official-domain/recency 需求、partial/truncated/conflict、provider failure 纳入事实：citation 验证失败最多有限重写；不允许回退到未标记的训练知识假装“已查证”。

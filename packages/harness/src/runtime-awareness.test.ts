@@ -213,7 +213,7 @@ describe('runtime facts', () => {
     expect(stable).not.toContain('current_run_tools');
   });
 
-  it('uses the compact facts for a self-contained autonomous read decision', () => {
+  it('uses the compact facts for a plain conversational reply', () => {
     const inbound = '请查看当前工作区顶层有哪些条目，只告诉我数量和名称，不要修改任何文件。';
     const tools = [
       makeTool('glob', { ok: true, output: [] }),
@@ -229,8 +229,11 @@ describe('runtime facts', () => {
       },
     });
 
-    const prepared = prepareModelRequest(ctx, 'decide', request(inbound));
+    const prepared = prepareModelRequest(ctx, 'reply', request(inbound));
 
+    // The compact projection carries the Runtime facts without the verbose
+    // per-fact listing; the `decide` purpose that used to be tested here is gone
+    // with the planner.
     expect(stableFacts(prepared)).toContain('capability_snapshot=unavailable');
     expect(stableFacts(prepared)).not.toContain('- capability_epoch:');
     expect(stableFacts(prepared)).not.toContain('task_progress');

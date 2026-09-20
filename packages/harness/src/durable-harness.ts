@@ -112,12 +112,14 @@ export function createNextHarness(opts: DefaultHarnessOptions): AgentHarness {
           current = 'exit';
           continue;
         }
-        if (runtimeTasks.shouldReplan && stageName !== 'decide') {
-          current = ctx.classification ? 'decide' : 'classify';
+        // Same boundary as the default driver: a queued runtime task event
+        // re-enters the single main loop, not the deleted planner.
+        if (runtimeTasks.shouldReplan && stageName !== 'execute') {
+          current = ctx.classification ? 'execute' : 'classify';
           continue;
         }
         if (runtimeTasks.taskBookChanged && stageName !== 'execute' && !runtimeTasks.shouldReplan) {
-          current = ctx.taskBook ? 'execute' : 'decide';
+          current = ctx.classification ? 'execute' : 'classify';
           continue;
         }
 

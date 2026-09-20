@@ -3,7 +3,6 @@ import type { ChatContentPart, ChatRequest } from '@littlesheep/llm';
 import { DEFAULT_CONFIG } from '@littlesheep/config';
 import { DEFAULT_BRANDING } from '@littlesheep/branding';
 import { textMessage } from '@littlesheep/types';
-import { createDecideStage } from './stages/decide.js';
 import { createExecuteStage } from './stages/execute.js';
 import { createReplyStage } from './stages/reply.js';
 import { createMockLlm, makeCtx, makeTool, textResponse } from './tests/helpers.js';
@@ -115,27 +114,6 @@ function expectRecordedSnapshot(
 }
 
 describe('LLM request characterization', () => {
-  it('DECIDE sends the assembled system prompt, history, and multimodal inbound in stable order', async () => {
-    const requests: ChatRequest[] = [];
-    const llm = createMockLlm((request) => {
-      requests.push(request);
-      return textResponse('{"plan":[{"description":"inspect the request"}]}');
-    });
-    const stage = createDecideStage({ ...deps, llm });
-
-    const ctx = makeObservableContext();
-    await stage(ctx);
-
-    expect(requests).toHaveLength(1);
-    expectCommonPayloadShape(requests[0]!);
-    expect(String(requests[0]!.messages[0]?.content)).toContain('DECIDE stage');
-    expect(String(requests[0]!.messages[0]?.content)).toContain('REASONING_SENTINEL');
-    expect(requests[0]!.temperature).toBe(0);
-    expect(requests[0]!.max_tokens).toBe(1_400);
-    expect(requests[0]!.tools).toBeUndefined();
-    expectRecordedSnapshot(ctx, 'decide');
-  });
-
   it('EXECUTE sends the same base ordering plus registered tool specs', async () => {
     const requests: ChatRequest[] = [];
     const llm = createMockLlm((request) => {

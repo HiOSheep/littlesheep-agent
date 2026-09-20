@@ -30,7 +30,6 @@ import { buildRunRequestCandidates } from '../context-candidates.js';
 import { publishUserFacingReply } from '../user-facing-reply.js';
 import { clearReplyState } from '../reply-state.js';
 import { recordFailure } from '../failure-state.js';
-import { synthesizeFinalReply } from './execute/final-reply.js';
 import { repairDiscontinuousReply } from './reply/continuity-repair.js';
 
 export interface ReplyStageDeps {
@@ -54,27 +53,9 @@ const CAPABILITY_REPLY_CONTRACT = [
 export function createReplyStage(deps: ReplyStageDeps) {
   return async function replyStage(ctx: RunContext): Promise<StageResult> {
     clearReplyState(ctx, 'reply');
-    if (ctx.resumedFromCheckpointId && ctx.taskBook && (ctx.taskExecution?.steps.length ?? 0) > 0) {
-      try {
-        await synthesizeFinalReply(deps, ctx, ctx.taskBook, ctx.taskExecution!.steps, 'reply');
-        return {
-          stage: 'reply',
-          next: 'verify',
-          ok: true,
-          meta: { resumedTaskFinalReply: true },
-        };
-      } catch (err) {
-        clearReplyState(ctx, 'reply');
-        const message = `resumed task final reply generation failed: ${(err as Error).message}`;
-        recordFailure(ctx, 'reply', 'reply', message);
-        return {
-          stage: 'reply',
-          next: 'exit',
-          ok: false,
-          error: message,
-        };
-      }
-    }
+    // The resumed-TaskBook branch is gone with the step executor: a plan restored
+    // from a checkpoint is read-only history, so this stage answers the current
+    // request (or the capability question) like any other turn.
     const resolved = resolvePromptConfig(deps.config, deps.branding);
     const isCapabilityReply = ctx.classification?.retrievalIntent === 'capability_question'
       || ctx.classification?.retrievalIntent === 'capability_probe';

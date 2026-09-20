@@ -19,11 +19,6 @@ import type { ChatMessage, ChatRequest } from '@littlesheep/llm';
 import { CACHE_BOUNDARY_MARKER } from '@littlesheep/prompt';
 import type { LlmCallPurpose, RunContext } from '@littlesheep/types';
 import { isExecutionContinuationRequest } from './continuation-intent.js';
-import { isCompactReadOnlyResult } from './compact-read-only-result.js';
-import {
-  resolveCompactAutonomousReadDecisionTools,
-  resolveCompactAutonomousReadExecutionTools,
-} from './compact-autonomous-read-task.js';
 
 /** Sorts immediately after the primary system prompt (order 0) and before any history. */
 const STABLE_FACTS_ORDER = 0.5;
@@ -105,10 +100,10 @@ export function injectRuntimeAwareness(
 }
 
 function shouldUseCompactRuntime(ctx: RunContext, purpose: LlmCallPurpose | undefined): boolean {
+  // The compact projection is now only about the capability/status answer, which
+  // needs nothing but the Runtime facts. Planning and the TaskBook step executor
+  // are gone, so their once-compact purposes no longer exist.
   if (purpose === 'decide_explicit_tool') return true;
-  if (purpose === 'decide') return Boolean(resolveCompactAutonomousReadDecisionTools(ctx));
-  if (purpose === 'execute_tool_loop') return Boolean(resolveCompactAutonomousReadExecutionTools(ctx));
-  if (purpose === 'execute_final_reply') return isCompactReadOnlyResult(ctx);
   if (purpose !== 'reply') return purpose === 'classify' || purpose === 'ask_user';
   const request = ctx.inbound.content
     .filter((part): part is { type: 'text'; text: string } => part.type === 'text')

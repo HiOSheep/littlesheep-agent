@@ -143,7 +143,6 @@
 | `packages/memory-tree/src/memory-repository/v3-retrieval.ts` | 307 | 分支/作用域约束检索与精确治理读取路由 | 保持检索编排 | D |
 | `packages/harness/src/response-continuity-text.ts` | 475 | 回答连续性所需的有界文本、Atom 标记、显式标签值、Runtime 摘要保真字段和否定语义解析 | 保持纯文本解析边界；若继续增长，分离标签值解析与通用连续性术语处理 | E |
 
-| `packages/harness/src/stages/decide/normalization.ts` | 303 | DECIDE 解码结果的澄清、计划、评估与 TaskBook 规范化 | 保持纯规范化边界；继续增长时按 clarification、plan 与 assessment builder 拆分 | E |
 | `packages/app/src/main/local-app-api/runtime-routes.ts` | 468 | Runtime 配置、Web policy projection、data-root/应用生命周期与 Web cache 路由 | Runtime payload 投影已下沉到 `runtime-payload.ts`、模型供应商路由已下沉到 `provider-routes.ts`；继续保持路由 facade，不再吸收 provider 或 payload 组装 | C |
 | `packages/app/src/main/local-app-api/session-routes.ts` | 313 | 会话查询、权限模式更新和历史 projection 路由 | 保持 session API facade；继续将 session mutation 与 response projection 分离 | C |
 | `packages/app/src/renderer/workspace/line-comment-surface.tsx` | 319 | Monaco 行评论交互、附件和 Web/文件来源关联的共享 surface | 保持交互 adapter；继续将 attachment lifecycle 与 view-zone rendering 下沉 | B |
@@ -168,7 +167,6 @@
 | `packages/memory-tree/src/memory-repository.ts` | 1279 | 172 行 repository facade | 版本化后端选择、证据定位、稳定 Repository 公共契约和后台维护/关闭兼容入口；management 使用独立 facade，v2/v3 实现均已下沉 | 2026-08-05 |
 | `packages/memory-tree/src/memory-service.ts` | 1120 | 342 行 service facade | run、摘要、daily consolidation、附件、事件、Bootstrap、Skills、工作区资源、项目投影和资源管理协调器；Atom reconciliation 保持为 Runner 独立组合端口 | 2026-07-15 |
 | `packages/context/src/engine.ts` | 690 | 180 行 engine facade | candidates、budget、eviction、assembly、counting 与 snapshots | 2026-07-15 |
-| `packages/harness/src/stages/decide.ts` | 620 | 16 行 stage facade | 请求组装、模型调用和结果采用已分别下沉到 `decide/request.ts`、`decide/model-call.ts`、`decide/adoption.ts`；契约、规范化、运行时事件和局部重规划保持独立模块 | 2026-07-18 |
 | `packages/harness/src/stages/execute.ts` | 867 | 24 行 stage facade | guidance、prompt 与单一主循环入口；TaskBook 步骤执行器已随第二执行体系删除 | 2026-09-21 |
 | `packages/harness/src/stages/execute/runners.ts` | 330 | 108 行主循环执行入口 | TaskBook 编排、步骤调度与分支执行已随第二执行体系删除；只保留循环、发布与失败记录 | 2026-09-21 |
 | `packages/harness/src/stages/verify.ts` | 90 | 只做 Runtime 可证事实的 VERIFY facade：结构通道 `pass`、其余记 `unverified`、失败走有界恢复 | 已删除验证模型调用；模型裁决、证据装配和裁决契约随请求一起移除，不得重新引入第二套判定入口 | 2026-09-20 |

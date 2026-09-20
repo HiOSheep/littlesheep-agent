@@ -179,7 +179,7 @@ HL-04 的实施与验收必须逐项核对 `Producer → Harness/Runtime event �
 
 Renderer 发送时已建立 assistant 占位，API 已提前发送 `start`；它们只解决“已收到”，不覆盖附件准备、扫描、规划重试、长工具参数生成、验证和最终持久化。API 在 `finishRunResources` 完成后才发送 result。大段工具参数必须完整校验后才允许执行，不能为了早出现“运行中”而提前执行半份命令。
 
-来源：[execute/final-reply.ts](../../packages/harness/src/stages/execute/final-reply.ts)、[run-actions.ts](../../packages/app/src/renderer/chat/run-actions.ts)、[assistant-delta-buffer.ts](../../packages/app/src/renderer/chat/assistant-delta-buffer.ts)、[run-routes.ts](../../packages/app/src/main/local-app-api/run-routes.ts)。任务：HL-04、HL-06、HL-07。
+来源：`final-reply.ts`（已随极简方案删除，见 `docs/decision/project-status.md` 2026-09-21 条目）、[run-actions.ts](../../packages/app/src/renderer/chat/run-actions.ts)、[assistant-delta-buffer.ts](../../packages/app/src/renderer/chat/assistant-delta-buffer.ts)、[run-routes.ts](../../packages/app/src/main/local-app-api/run-routes.ts)。任务：HL-04、HL-06、HL-07。
 
 ### F07 · P1：TPS、缓存及请求快照不足以支持性能结论
 
@@ -192,7 +192,7 @@ Renderer 发送时已建立 assistant 占位，API 已提前发送 `start`；它
 - EXECUTE 请求准备时没设置 stream，但调用包装层最终使用 chatStream，记录中的 stream/payload 与实际传输选项可能不一致。A/B 所有快照显示 stream=false，不能据此认定真实网络不流式。
 - 缺 Provider 首 token、首正文、首工具参数、API 发出、Renderer 接收与绘制的关联时间点；当前 TPS 也不能代表首 token 延迟。
 
-来源：[model-observability.ts](../../packages/harness/src/model-observability.ts)、[decide/model-call.ts](../../packages/harness/src/stages/decide/model-call.ts)、[context-engine/contracts.ts](../../packages/context/src/context-engine/contracts.ts)、[run-usage.ts](../../packages/app/src/shared/run-usage.ts)、[assistant-turn.tsx](../../packages/app/src/renderer/chat/assistant-turn.tsx) `TurnUsageFooter`。任务：HL-03。
+来源：[model-observability.ts](../../packages/harness/src/model-observability.ts)、`model-call.ts`（已随极简方案删除，见 `docs/decision/project-status.md` 2026-09-21 条目）、[context-engine/contracts.ts](../../packages/context/src/context-engine/contracts.ts)、[run-usage.ts](../../packages/app/src/shared/run-usage.ts)、[assistant-turn.tsx](../../packages/app/src/renderer/chat/assistant-turn.tsx) `TurnUsageFooter`。任务：HL-03。
 
 ### F08 · P1：系统提示词展示不是最终发给模型的精确投影
 
@@ -208,7 +208,7 @@ Renderer 发送时已建立 assistant 占位，API 已提前发送 `start`；它
 
 工具循环已存在 20 轮上限和连续两次无新证据收口，并非完全失控。但“不同 grep/读取片段”不一定等于新验收证据；输出截断也可能诱发反复检查。长产物生成不能靠统一削减输出上限解决，否则会产生不完整文件。应把验收条件关联到证据，按缺口读取/运行验证，满足后复用同一份真实 LLM 文案完成结算，而不是再无条件生成一次总结。
 
-来源：[decide/model-call.ts](../../packages/harness/src/stages/decide/model-call.ts)、[stages/_shared.ts](../../packages/harness/src/stages/_shared.ts)、[execute/runners.ts](../../packages/harness/src/stages/execute/runners.ts)、`execute/task-book-runner.ts`（已随第二执行体系删除，见 `docs/decision/project-status.md` 2026-09-21 条目）、[execute/final-reply.ts](../../packages/harness/src/stages/execute/final-reply.ts)、[execute/tool-loop.ts](../../packages/harness/src/stages/execute/tool-loop.ts)。任务：HL-05、HL-06。
+来源：`model-call.ts`（已随极简方案删除，见 `docs/decision/project-status.md` 2026-09-21 条目）、[stages/_shared.ts](../../packages/harness/src/stages/_shared.ts)、[execute/runners.ts](../../packages/harness/src/stages/execute/runners.ts)、`execute/task-book-runner.ts`（已随第二执行体系删除，见 `docs/decision/project-status.md` 2026-09-21 条目）、`final-reply.ts`（已随极简方案删除，见 `docs/decision/project-status.md` 2026-09-21 条目）、[execute/tool-loop.ts](../../packages/harness/src/stages/execute/tool-loop.ts)。任务：HL-05、HL-06。
 
 ### F10 · P1：记忆维护尚未真正离开交付关键路径
 
