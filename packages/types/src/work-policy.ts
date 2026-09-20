@@ -20,6 +20,7 @@ export type ClassificationReasonCode =
   | 'llm_route_respond'
   | 'llm_route_execute'
   | 'llm_route_clarify'
+  | 'deterministic_default_execute'
   | 'classifier_failed';
 
 export type ExecutionWorkMode = 'bounded_loop' | 'task_book';

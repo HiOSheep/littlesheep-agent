@@ -89,8 +89,6 @@ export function createHarnessStages(opts: DefaultHarnessOptions): Map<StageName,
   // enter is a plain function (no deps); the rest are factory-built closures.
   stages.set('enter', enterStage);
   stages.set('classify', createClassifyStage({
-    llm: opts.llm,
-    model: opts.model,
     rulesConfidenceThreshold: opts.classifierThreshold,
   }));
   stages.set('decide', createDecideStage({

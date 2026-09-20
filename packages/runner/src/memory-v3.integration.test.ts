@@ -50,7 +50,6 @@ describe('Runner Memory v3 integration', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm: makeMockLlm([
-        textResponse('{"type":"problem","confidence":0.9,"reason":"task"}'),
         textResponse('{"plan":[{"description":"inspect it","tools":[]}]}'),
         textResponse('Inspection complete.'),
         textResponse('Inspection completed successfully.'),
@@ -271,7 +270,6 @@ describe('Runner Memory v3 integration', () => {
     if (!write.node) throw new Error(`seed write failed: ${write.decision}: ${write.reason}`);
     const atomId = write.node.id;
     responses.push(
-      textResponse('{"type":"problem","confidence":0.9,"reason":"continue the task"}'),
       textResponse(JSON.stringify({
         assessment: {
           userNeed: 'Validate the repository with its pnpm workspace convention.',
@@ -306,9 +304,13 @@ describe('Runner Memory v3 integration', () => {
     const result = await runner.run({ text: '继续处理这个多步骤任务', cwd: workspace });
 
     expect(result.status).toBe('ok');
-    expect(requests.slice(0, 2).every((request) => !requestText(request).includes('workspace filters when validating'))).toBe(true);
     const executeRequest = requests.find((request) => requestText(request).includes('# TaskBook Refined Memory Atoms'));
     if (!executeRequest) throw new Error(`refinement missing: ${JSON.stringify(result.memoryAccess?.records)}`);
+    // Refinement happens after planning, so no request before it may already
+    // carry the refined atom text.
+    const executeIndex = requests.indexOf(executeRequest);
+    expect(executeIndex).toBeGreaterThan(0);
+    expect(requests.slice(0, executeIndex).every((request) => !requestText(request).includes('workspace filters when validating'))).toBe(true);
     expect(requestText(executeRequest)).toContain('workspace filters when validating');
     expect(result.memoryKnownState?.references).toEqual(expect.arrayContaining([
       expect.objectContaining({ atomId, decision: 'adopted' }),
@@ -447,7 +449,6 @@ describe('Runner Memory v3 integration', () => {
     const seedBefore = await runner.infra.memoryRepository.management.inspectNode(seed.node!.id, 'D3');
 
     responses.push(
-      textResponse('{"type":"problem","confidence":0.99,"reason":"dynamic memory task"}'),
       textResponse('{"plan":[{"description":"refresh active memory context","tools":["memory_tree"]}]}'),
       toolCallResponse('release-memory', 'memory_tree', {
         action: 'release', atomIds: [seed.node!.id],
@@ -545,7 +546,6 @@ describe('Runner Memory v3 integration', () => {
     expect(seedBefore?.atom).toBeTruthy();
 
     responses.push(
-      textResponse('{"type":"problem","confidence":0.99,"reason":"memory continuity task"}'),
       textResponse('{"plan":[{"description":"use the injected continuity marker","tools":[]}]}'),
       textResponse(`The persisted project decision uses ${marker}.`),
       textResponse(`The project decision was persisted and uses ${marker}.`),
@@ -634,7 +634,6 @@ describe('Runner Memory v3 integration', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm: makeMockLlm([
-        textResponse('{"type":"problem","confidence":0.99,"reason":"persist a project decision"}'),
         textResponse('{"plan":[{"description":"record the project decision","tools":[]}]}'),
         textResponse(`Recorded ${marker}.`),
         textResponse(`The project decision was recorded successfully: ${marker}.`),
@@ -684,7 +683,7 @@ describe('Runner Memory v3 integration', () => {
     // HC-18: the legacy daily atom stays readable under its original scope instead of being archived by a second entry.
     expect(activeDaily.some((node) => node.content.includes(marker))).toBe(true);
     expect(archivedDaily).toEqual([]);
-    expect(requests).toHaveLength(7);
+    expect(requests).toHaveLength(6);
   });
 
   // HC-02: a short session with no summary/atom must still be discoverable by bounded catalog, then expanded by ref.

@@ -1,29 +1,22 @@
 // @littlesheep/harness — stages/classify.ts
 // CLASSIFY is retained as a compatibility boundary, but semantically it is a
-// compact activity router: respond / execute / clarify.
+// deterministic activity router: respond / execute.
 //
-// Design principle: "understanding is the agent's job, not the user's."
-// Casual ambiguity should be classified as chat and handled naturally. The
-// classifier reserves unclear for input with no actionable meaning, which is a
-// first-class clarification request rather than an execution error.
+// It spends no model request. Rules decide the conversational routes; retrieval
+// intent decides the ones that need sources; anything else goes to the single
+// main loop, which itself chooses between answering and calling a tool. Routing
+// therefore no longer needs to be right about "chat vs task" before the model
+// has seen the request.
 
 import {
   activityFromMessageClass,
+  type Classification,
   type RunContext,
   type StageResult,
   type StageName,
 } from '@littlesheep/types';
-import type { LlmClient } from '@littlesheep/llm';
-import { classify } from '@littlesheep/classifier';
-import {
-  preferDirectModelOutput,
-  prepareModelRequest,
-  recordProviderUsage,
-  ensureModelRequestStarted,
-  recordModelRequestFailure,
-} from '../model-observability.js';
-import { buildRunRequestCandidates } from '../context-candidates.js';
-import { attachmentManifestText, conversationHistoryForModel } from './_shared.js';
+import { classifyByRules } from '@littlesheep/classifier';
+import { attachmentManifestText } from './_shared.js';
 import { writeDecisionState } from '../decision-state.js';
 import { assessRetrievalIntent } from '../retrieval-intent.js';
 import {
@@ -42,14 +35,24 @@ function inboundText(ctx: RunContext): string {
 }
 
 export interface ClassifyStageDeps {
-  llm: LlmClient;
-  model: string;
-  /** Rules confidence threshold to bypass LLM. Default 0.7. */
+  /** Rules confidence threshold to accept a rule result. Default 0.7. */
   rulesConfidenceThreshold?: number;
 }
 
-/** Factory: creates a classify stage that closes over the LLM deps. */
-export function createClassifyStage(deps: ClassifyStageDeps) {
+/** No rule matched: hand the request to the main loop, which answers or acts. */
+function defaultExecuteClassification(): Classification {
+  return {
+    activity: 'execute',
+    type: 'problem',
+    confidence: 0.5,
+    source: 'rules',
+    reasonCode: 'deterministic_default_execute',
+    reason: 'no routing rule matched; the main loop decides whether to answer or act',
+  };
+}
+
+/** Factory: creates the deterministic classify stage. */
+export function createClassifyStage(deps: ClassifyStageDeps = {}) {
   return async function classifyStage(ctx: RunContext): Promise<StageResult> {
     // Structural continuation binding is Runtime authority. If a future
     // coordinator accidentally sends a bound answer through this compatibility
@@ -158,28 +161,16 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
           meta: { activity: routed.activity, classification: routed, deterministic: true },
         };
       }
-      // The first call of every turn must project the same history bytes as the
-      // planning/execute/reply calls, otherwise the Provider's cached prefix
-      // diverges immediately after the shared head.
-      const classifierHistory = conversationHistoryForModel(ctx);
+      // Deterministic routing: rules first, otherwise the main loop. No model
+      // request is spent here, so the routing decision cannot alter the prompt
+      // shape of the requests that follow.
       const manifest = attachmentManifestText(ctx.attachments);
-      const classificationInbound = manifest
-        ? { ...ctx.inbound, content: [...ctx.inbound.content, { type: 'text' as const, text: manifest }] }
-        : ctx.inbound;
-      const cls = await classify(classificationInbound, classifierHistory, {
-        llm: deps.llm,
-        model: deps.model,
-        rulesConfidenceThreshold: deps.rulesConfidenceThreshold ?? 0.7,
-        onRequest: (request) => prepareModelRequest(
-          ctx,
-          'classify',
-          preferDirectModelOutput(ctx, request, { force: true }),
-          buildRunRequestCandidates(ctx, 'classify', request.messages, { history: classifierHistory }),
-        ),
-        onResponse: (request, response) => recordProviderUsage(ctx, request, response.usage),
-        beforeRequest: (request) => ensureModelRequestStarted(ctx, request),
-        onError: (request, error) => recordModelRequestFailure(ctx, request, error, ctx.signal),
-      });
+      const routingText = manifest ? `${inboundText(ctx)}\n${manifest}` : inboundText(ctx);
+      const ruleResult = classifyByRules(routingText);
+      const threshold = deps.rulesConfidenceThreshold ?? 0.7;
+      const cls: Classification = ruleResult && ruleResult.confidence >= threshold
+        ? ruleResult
+        : defaultExecuteClassification();
       const classifiedActivity = cls.activity ?? activityFromMessageClass(cls.type);
       const activity = retrieval.intent === 'web_search'
           || retrieval.intent === 'web_fetch'
@@ -218,28 +209,28 @@ export function createClassifyStage(deps: ClassifyStageDeps) {
         },
       });
     } catch (err) {
-      // Classifier never throws in practice, but defend against transport errors.
+      // Routing is deterministic, so a failure here is an internal error rather
+      // than a transport failure. Continue in the main loop instead of claiming
+      // the message was understood as conversation.
       const fallbackBase = {
-        activity: 'respond',
-        type: 'chat',
+        activity: 'execute',
+        type: 'problem',
         confidence: 0.3,
-        source: 'llm',
+        source: 'rules',
         reasonCode: 'classifier_failed',
         reason: `classify error: ${(err as Error).message}`,
       } as const;
       writeDecisionState(ctx, 'classify', {
         classification: { ...fallbackBase, workPolicy: selectWorkPolicy(ctx, fallbackBase) },
       });
-      // A classifier transport failure is internal; do not make the user
-      // clarify a message that may already be clear.
-      next = 'reply';
+      next = 'execute';
       await ctx.appendDurableEvent?.({
         type: 'route_decided',
         source: 'runtime',
-        eventId: `${ctx.runId}:route:respond`,
-        idempotencyKey: `${ctx.runId}:route:respond`,
+        eventId: `${ctx.runId}:route:execute`,
+        idempotencyKey: `${ctx.runId}:route:execute`,
         payload: {
-          route: 'respond',
+          route: 'execute',
           source: 'runtime_fallback',
           reasonCode: 'classifier_failed',
           error: 'classifier_failed',

@@ -20,8 +20,8 @@ it('holds a real effect open until its parent kills the Runner process', async (
   const workspace = join(crashRoot, 'effect-workspace');
   await mkdir(workspace, { recursive: true });
   const responses: ChatResponse[] = [
-    textResponse('{"type":"problem","confidence":0.99,"reason":"execute crash probe"}'),
-    // The main loop proposes the effect directly; no planning request is spent.
+    // Routing is deterministic and spends no model request, so the main loop's
+    // first call proposes the effect directly.
     {
       content: '',
       finishReason: 'tool_calls',

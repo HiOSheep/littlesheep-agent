@@ -87,12 +87,11 @@ describe('e2e agent loop', () => {
     ]);
   });
 
-  it('problem: LLM classifies as problem → one main loop through verify/evolve/capture', async () => {
-    // 'solve P vs NP' matches no rule → LLM classify fallback. The request is not
-    // provably complex, so it runs in the single main loop: the model answers
-    // directly and no planning request is spent.
+  it('problem: no rule matches → one main loop through verify/evolve/capture', async () => {
+    // 'solve P vs NP' matches no rule and is not provably complex, so it runs in
+    // the single main loop: the model answers directly and no routing, planning
+    // or final-reply request is spent.
     const llm = createMockLlm([
-      textResponse('{"type":"problem","confidence":0.9,"reason":"math task"}'),
       textResponse('final assembled answer'),
       textResponse('{"notes":[]}'),
     ]);
@@ -126,7 +125,6 @@ describe('e2e agent loop', () => {
     expect(ctx.finalReplySettlement?.status).toBe('settled');
     expect(ctx.produced.at(-1)?.finalReplySettlement?.settlementId).toBe(ctx.finalReplySettlement?.settlementId);
     expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
-      'classify',
       'execute_tool_loop',
     ]);
     for (const request of ctx.modelRequests ?? []) {
@@ -222,11 +220,10 @@ describe('e2e agent loop', () => {
     ]);
   });
 
-  it('unclear: LLM classifies as unclear → reply → finalize', async () => {
-    // 'xyzzy' matches no rule → LLM classify fallback returns unclear.
-    // The reply itself asks for the missing detail; no clarification checkpoint.
+  it('unmatched: no rule matches → the main loop answers → verify → finalize', async () => {
+    // 'xyzzy' matches no rule, so the main loop handles it: the model's own text
+    // is published and no clarification checkpoint is created.
     const llm = createMockLlm([
-      textResponse('{"type":"unclear","confidence":0.4,"reason":"nonsense word"}'),
       textResponse('Could you clarify what you want?'),
     ]);
     const h = makeHarness(llm);
@@ -235,8 +232,13 @@ describe('e2e agent loop', () => {
     expect(res.ok).toBe(true);
     expect(ctx.reply).toBe('Could you clarify what you want?');
     const trace = res.meta?.trace as Array<{ name: string }>;
-    expect(trace.map((t) => t.name)).toEqual(['enter', 'classify', 'reply', 'finalize']);
+    expect(trace.map((t) => t.name)).toEqual([
+      'enter', 'classify', 'execute', 'verify', 'evolve', 'capture', 'finalize',
+    ]);
     expect(ctx.clarificationRequest).toBeUndefined();
+    expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
+      'execute_tool_loop',
+    ]);
   });
 
   it('partially replans a failed step without rerunning completed work', async () => {

@@ -215,7 +215,6 @@ describe('core agent behavior contracts', () => {
       },
     }
     const llm = createMockLlm([
-      textResponse('{"type":"problem","confidence":0.9,"reason":"task"}'),
       textResponse(JSON.stringify(initial)),
       textResponse('outline ready'),
       toolCallResponse([{ id: 'read-1', name: 'read', args: { path: 'missing.md' } }]),

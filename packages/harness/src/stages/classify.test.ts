@@ -1,3 +1,7 @@
+// @littlesheep/harness — stages/classify.test.ts
+// Activity routing is deterministic: rules decide the conversational routes,
+// retrieval intent decides the ones that need sources, and everything else goes
+// to the single main loop. No path may spend a model request.
 import { describe, expect, it } from 'vitest';
 import { textMessage } from '@littlesheep/types';
 import { createClassifyStage } from './classify.js';
@@ -9,7 +13,7 @@ describe('classifyStage', () => {
     const ctx = makeCtx({ inbound: textMessage('user', '再做一个小游戏吧') });
     ctx.streamModelTranscript = false;
 
-    await expect(createClassifyStage({ llm, model: 'test/model' })(ctx))
+    await expect(createClassifyStage()(ctx))
       .resolves.toMatchObject({ next: 'execute', ok: true });
     expect(ctx.classification).toMatchObject({
       activity: 'execute',
@@ -20,7 +24,21 @@ describe('classifyStage', () => {
     expect(llm.chat).not.toHaveBeenCalled();
   });
 
-  it('keeps history and injected memory while bypassing a redundant decision call', async () => {
+  it('sends an unmatched request to the main loop without a routing model call', async () => {
+    const llm = createMockLlm(textResponse('should not be called'));
+    const ctx = makeCtx({ inbound: textMessage('user', 'xyzzy') });
+
+    await expect(createClassifyStage()(ctx)).resolves.toMatchObject({ next: 'execute', ok: true });
+    expect(ctx.classification).toMatchObject({
+      activity: 'execute',
+      source: 'rules',
+      reasonCode: 'deterministic_default_execute',
+      workPolicy: { version: 1, executionMode: 'bounded_loop', reasonCode: 'bounded_default' },
+    });
+    expect(llm.chat).not.toHaveBeenCalled();
+  });
+
+  it('keeps history and injected memory while routing without a model call', async () => {
     const llm = createMockLlm(textResponse('should not be called'));
     const ctx = makeCtx({
       inbound: textMessage('user', '再做一个小游戏吧'),
@@ -29,8 +47,7 @@ describe('classifyStage', () => {
     });
     ctx.streamModelTranscript = false;
 
-    await expect(createClassifyStage({ llm, model: 'test/model' })(ctx))
-      .resolves.toMatchObject({ next: 'execute', ok: true });
+    await expect(createClassifyStage()(ctx)).resolves.toMatchObject({ next: 'execute', ok: true });
     expect(llm.chat).not.toHaveBeenCalled();
     expect(ctx.initialMemoryContext).toContain('单文件 HTML');
   });
@@ -40,13 +57,13 @@ describe('classifyStage', () => {
     const ctx = makeCtx({ inbound: textMessage('user', '重构整个项目架构并迁移所有文件') });
     ctx.streamModelTranscript = true;
 
-    await expect(createClassifyStage({ llm, model: 'test/model' })(ctx))
-      .resolves.toMatchObject({ next: 'decide', ok: true });
+    await expect(createClassifyStage()(ctx)).resolves.toMatchObject({ next: 'decide', ok: true });
     expect(llm.chat).not.toHaveBeenCalled();
   });
-  it('bypasses the generic classifier for a structurally bound checkpoint answer', async () => {
-    const llm = createMockLlm(textResponse('{"activity":"clarify"}'));
-    const stage = createClassifyStage({ llm, model: 'test/model' });
+
+  it('bypasses the generic rules for a structurally bound checkpoint answer', async () => {
+    const llm = createMockLlm(textResponse('should not be called'));
+    const stage = createClassifyStage();
     const ctx = makeCtx({
       inbound: textMessage('user', 'Permission is available; retry.', {
         clarificationResponse: {
@@ -71,29 +88,31 @@ describe('classifyStage', () => {
     expect(llm.chat).not.toHaveBeenCalled();
   });
 
-  it('corrects a classifier respond result to execute for a fresh Web request', async () => {
-    const llm = createMockLlm(textResponse('{"activity":"respond","confidence":0.9,"reason":"chat"}'));
-    const stage = createClassifyStage({ llm, model: 'test/model', rulesConfidenceThreshold: 2 });
+  it('keeps a fresh Web request on the planning path through retrieval intent', async () => {
+    const llm = createMockLlm(textResponse('should not be called'));
+    const stage = createClassifyStage({ rulesConfidenceThreshold: 2 });
     const ctx = makeCtx({ inbound: textMessage('user', '查一下今天的公开新闻') });
 
     await expect(stage(ctx)).resolves.toMatchObject({ next: 'decide', ok: true });
     expect(ctx.classification).toMatchObject({ activity: 'execute', retrievalIntent: 'web_search' });
+    expect(llm.chat).not.toHaveBeenCalled();
   });
 
-  it('corrects a classifier execute result to respond for a capability question', async () => {
-    const llm = createMockLlm(textResponse('{"activity":"execute","confidence":0.9,"reason":"search"}'));
-    const stage = createClassifyStage({ llm, model: 'test/model', rulesConfidenceThreshold: 2 });
+  it('keeps a capability question on the Runtime-fact reply route', async () => {
+    const llm = createMockLlm(textResponse('should not be called'));
+    const stage = createClassifyStage({ rulesConfidenceThreshold: 2 });
     const ctx = makeCtx({ inbound: textMessage('user', 'LS 支持网络搜索吗？') });
 
     await expect(stage(ctx)).resolves.toMatchObject({ next: 'reply', ok: true });
     expect(ctx.classification).toMatchObject({ activity: 'respond', retrievalIntent: 'capability_question' });
+    expect(llm.chat).not.toHaveBeenCalled();
   });
 
   it('routes a requested capability probe deterministically and emits probe evidence', async () => {
     const llm = createMockLlm(textResponse('should not be called'));
     const events: import('@littlesheep/types').ToolStreamEvent[] = [];
     const durableEvents: Array<{ type: string; payload: Record<string, unknown> }> = [];
-    const stage = createClassifyStage({ llm, model: 'test/model' });
+    const stage = createClassifyStage();
     const ctx = makeCtx({
       inbound: textMessage('user', '你查询过了吗？'),
       appendDurableEvent: async (event) => {
@@ -159,7 +178,7 @@ describe('classifyStage', () => {
         appendDurableEvent: async (event) => { durableTypes.push(event.type); },
       });
       ctx.capabilitySnapshot = snapshot;
-      await expect(createClassifyStage({ llm, model: 'test/model' })(ctx)).resolves.toMatchObject({
+      await expect(createClassifyStage()(ctx)).resolves.toMatchObject({
         next: 'reply', ok: true,
       });
       expect(ctx.classification).toMatchObject({ activity: 'respond', retrievalIntent });
@@ -179,11 +198,12 @@ describe('classifyStage', () => {
     ['搜索我的项目文件里有哪些 web_search 调用', 'local_workspace'],
     ['你还记得我上次的决定吗？', 'local_memory'],
   ])('keeps %s on a local retrieval route', async (message, retrievalIntent) => {
-    const llm = createMockLlm(textResponse('{"activity":"execute","confidence":0.9,"reason":"local"}'));
-    const stage = createClassifyStage({ llm, model: 'test/model', rulesConfidenceThreshold: 2 });
+    const llm = createMockLlm(textResponse('should not be called'));
+    const stage = createClassifyStage({ rulesConfidenceThreshold: 2 });
     const ctx = makeCtx({ inbound: textMessage('user', message) });
 
     await expect(stage(ctx)).resolves.toMatchObject({ next: 'decide', ok: true });
     expect(ctx.classification).toMatchObject({ activity: 'execute', retrievalIntent });
+    expect(llm.chat).not.toHaveBeenCalled();
   });
 });

@@ -111,12 +111,11 @@ describe('createDefaultHarness state machine', () => {
 
   it('problem path: enter → classify → execute(tool) → verify → evolve → capture → finalize → exit', async () => {
     const tool = makeTool('read', { ok: true, output: 'data' });
-    // 'read the file' doesn't match any rule → LLM classify fallback. It is not
-    // provably complex, so the main loop plans and acts itself: no DECIDE and no
-    // separate final-reply request are spent.
-    // LLM queue: classify → execute(tool call) → execute(stop) → evolve → capture
+    // 'read the file' matches no routing rule, so it goes to the main loop: the
+    // model proposes the tool, then answers. No routing, planning or
+    // final-reply request is spent.
+    // LLM queue: execute(tool call) → execute(stop) → evolve → capture
     const llm = createMockLlm([
-      textResponse('{"type":"problem","confidence":0.9,"reason":"task"}'),
       toolCallResponse([{ id: 'read-1', name: 'read', args: { path: 'file.txt' } }]),
       textResponse('The file was read successfully.'),
       textResponse('{"notes":["learned"]}'),
@@ -136,10 +135,11 @@ describe('createDefaultHarness state machine', () => {
       'enter', 'classify', 'execute', 'verify', 'evolve', 'capture', 'finalize',
     ]);
     expect(ctx.classification?.type).toBe('problem');
+    expect(ctx.classification?.reasonCode).toBe('deterministic_default_execute');
     expect(ctx.reply).toBe('The file was read successfully.');
     expect(ctx.replyProvenance).toMatchObject({ purpose: 'execute_tool_loop' });
     expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
-      'classify', 'execute_tool_loop', 'execute_tool_loop',
+      'execute_tool_loop', 'execute_tool_loop',
     ]);
     expect(tool.calls).toHaveLength(1);
   });
@@ -314,12 +314,10 @@ describe('createDefaultHarness state machine', () => {
     ]);
   });
 
-  it('unclear path: enter → classify(unclear) → reply → finalize → exit', async () => {
-    // 'asdf qwer' matches no rule → LLM classify fallback returns truly unclear.
-    // An unclear request is answered directly: the reply asks for the missing
-    // detail instead of parking the run on a clarification checkpoint.
+  it('unmatched path: enter → classify(loop) → execute → verify → finalize → exit', async () => {
+    // 'asdf qwer' matches no rule, so it goes to the main loop: the model's own
+    // text is the answer and no clarification checkpoint is created.
     const llm = createMockLlm([
-      textResponse('{"type":"unclear","confidence":0.5,"reason":"ambiguous"}'),
       textResponse('what do you mean?'),
     ]);
     const h = makeHarness(llm);
@@ -329,10 +327,13 @@ describe('createDefaultHarness state machine', () => {
     expect(ctx.reply).toBe('what do you mean?');
     const trace = res.meta?.trace as Array<{ name: string }>;
     const names = trace.map((t) => t.name);
-    expect(names).toEqual(['enter', 'classify', 'reply', 'finalize']);
-    expect(ctx.classification?.type).toBe('unclear');
-    expect(ctx.classification?.activity).toBe('respond');
+    expect(names).toEqual(['enter', 'classify', 'execute', 'verify', 'evolve', 'capture', 'finalize']);
+    expect(ctx.classification?.activity).toBe('execute');
+    expect(ctx.classification?.reasonCode).toBe('deterministic_default_execute');
     expect(ctx.clarificationRequest).toBeUndefined();
+    expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
+      'execute_tool_loop',
+    ]);
   });
 
   it('registerStage replaces a stage (Layer 2 editability)', async () => {

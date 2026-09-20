@@ -924,13 +924,15 @@ describe('createRunner run', () => {
       durableHarnessMode: 'next',
     });
     createdRunners.push(nextRunner);
-    const second = await nextRunner.run({ sessionId: first.sessionId, text: 'path switch turn two' });
+    // The follow-up turn takes a different route (a rule-matched conversational
+    // reply after an unmatched turn that ran in the main loop), so its first
+    // request assembles a different prompt than the persisted observation.
+    const second = await nextRunner.run({ sessionId: first.sessionId, text: 'hello' });
     expect(second).toMatchObject({ status: 'ok', durableHarnessMode: 'next' });
 
     const observation = second.modelRequests?.find((request) => request.cacheObservation)?.cacheObservation;
-    // Switching the harness path changes the assembled prompt and the request
-    // sequence, so the ledger must explain the miss explicitly instead of
-    // silently reporting a hit or falling back to `unknown`.
+    // The route change alters the assembled prompt, so the ledger must explain
+    // the miss explicitly instead of silently reporting a hit or `unknown`.
     expect(observation?.invalidationReasons).toContain('prompt_version_changed');
     expect(observation?.invalidationReasons?.length ?? 0).toBeGreaterThan(0);
     expect(observation?.invalidationReasons).not.toContain('unknown');
@@ -2570,17 +2572,36 @@ describe('createRunner run', () => {
   // C09: every follow-up request records why its context prefix changed, without exporting any body text.
   it('records a redacted prefix-change reason on follow-up model requests', async () => {
     const marker = 'LS-PREFIX-CHANGE-MARKER';
+    const readFileTool: AgentTool = {
+      name: 'read_prefix_fixture',
+      description: 'Read one file.',
+      inputSchema: { parse: (input) => input, jsonSchema: { type: 'object' } },
+      async execute() {
+        return { callId: 'read-1', ok: true, output: 'file contents' };
+      },
+    };
+    // Deterministic routing spends no request, so the main loop's first call
+    // proposes the tool and the second one answers: the follow-up request is the
+    // one whose prefix changed.
     const llm = makeMockLlm([
-      textResponse('{"type":"problem","confidence":0.99,"reason":"note the marker"}'),
-      textResponse('{"plan":[{"description":"acknowledge the marker","tools":[]}]}'),
+      {
+        content: '',
+        finishReason: 'tool_calls',
+        toolCalls: [{
+          id: 'read-1',
+          type: 'function',
+          function: { name: 'read_prefix_fixture', arguments: '{"path":"file.txt"}' },
+        }],
+      } as ChatResponse,
       textResponse(`Noted ${marker}.`),
-      textResponse(`Understood: ${marker}.`),
-      textResponse('{"verdict":"pass","reason":"the marker was acknowledged"}'),
     ]);
     const runner = await createRunner({ config: DEFAULT_CONFIG, branding: DEFAULT_BRANDING, model: 'openai/gpt-test', llm });
     createdRunners.push(runner);
 
-    const result = await runner.run({ text: `For this chat only, note ${marker}.` });
+    const result = await runner.run({
+      text: `For this chat only, note ${marker}.`,
+      additionalTools: [readFileTool],
+    });
     expect(result.status).toBe('ok');
     const changed = (result.modelRequests ?? []).filter((request) => request.prefixChange !== undefined);
     expect(changed.length).toBeGreaterThan(0);
@@ -3097,7 +3118,6 @@ describe('createRunner run', () => {
 
   it('persists EVOLVE and CAPTURE output through the same indexed memory runtime', async () => {
     const llm = makeMockLlm([
-      textResponse('{"type":"problem","confidence":0.9,"reason":"task"}'),
       textResponse('{"plan":[{"description":"inspect it","tools":[]}]}'),
       textResponse('Inspection complete.'),
       textResponse('Inspection completed successfully.'),
@@ -3129,7 +3149,6 @@ describe('createRunner run', () => {
     expect(dailyNodes[0]).toMatchObject({ summary: 'Run done: read the file as a multi-step job', sourceRunIds: [result.runId] });
     expect((await runner.infra.memoryRepository.snapshot()).writeAudit.map((record) => record.decision)).toEqual(['created', 'created']);
     expect(result.modelRequests?.map((request) => request.stage)).toEqual([
-      'classify',
       'decide',
       'execute',
       'execute',
