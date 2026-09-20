@@ -30,7 +30,6 @@ import { createDecideStage } from './stages/decide.js';
 import { createExecuteStage } from './stages/execute.js';
 import { createRecoverStage } from './stages/recover.js';
 import { createVerifyStage } from './stages/verify.js';
-import { createCaptureStage } from './stages/capture.js';
 import { createReplyStage } from './stages/reply.js';
 import { createAskUserStage } from './stages/ask_user.js';
 import { createFinalizeStage } from './stages/finalize.js';
@@ -84,16 +83,10 @@ export function createHarnessStages(opts: DefaultHarnessOptions): Map<StageName,
   }));
   stages.set('recover', createRecoverStage());
   stages.set('verify', createVerifyStage());
-  // EVOLVE is gone: automatic memory evolution (merge / move / revise /
-  // correction orchestration) and automatic skill creation were removed with the
-  // lean plan. Explicit memory writes and the deterministic CAPTURE record stay.
-  stages.set('capture', createCaptureStage({
-    llm: opts.llm,
-    model: opts.model,
-    memoryWriter: opts.memoryWriter,
-    llmEnabled: opts.config.memory.llmCapture,
-    automaticEnabled: opts.config.memory.autoMemoryPolicy === 'legacy-per-run',
-  }));
+  // EVOLVE and CAPTURE are gone: automatic memory evolution, automatic skill
+  // creation, and the legacy per-run memory summary were all removed with the
+  // lean plan. Durable memory now comes from explicit writes and from the
+  // compaction path, not from a stage that runs after every task.
   stages.set('reply', createReplyStage({
     llm: opts.llm,
     model: opts.model,

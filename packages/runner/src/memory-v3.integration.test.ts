@@ -61,28 +61,46 @@ describe('Runner Memory v3 integration', () => {
 
     const result = await first.run({ text: 'read the file as a multi-step job', cwd: workspace });
     expect(result.status).toBe('ok');
-    const projectNodes = await first.infra.memoryRepository.listNodes('project', workspace);
-    const dailyNodes = await first.infra.memoryRepository.listNodes('daily', workspace);
-    // Nothing writes a project atom on its own any more.
-    expect(projectNodes).toHaveLength(0);
-    expect(dailyNodes).toHaveLength(1);
-    expect(dailyNodes[0]).toMatchObject({
-      summary: 'Run done: read the file as a multi-step job',
-      sourceRunIds: [result.runId],
-    });
-    expect(await countFiles(join(dataDir, 'memory-tree', 'v3', 'atoms'), '.memory.json')).toBeGreaterThanOrEqual(1);
+    // A completed run records conversation and execution facts, and writes no
+    // durable memory on its own any more.
+    expect(await first.infra.memoryRepository.listNodes('project', workspace)).toHaveLength(0);
+    expect(await first.infra.memoryRepository.listNodes('daily', workspace)).toHaveLength(0);
     expect(await countFiles(join(dataDir, 'memory-tree', 'v3', 'conversation-sources'), '.conversation-source.json'))
       .toBeGreaterThanOrEqual(1);
-    const dailyInspection = await first.infra.memoryRepository.management.inspectNode(dailyNodes[0]!.id, 'D3');
+
+    // An explicit write still lands, stays navigable, and survives a restart.
+    const written = await first.infra.memoryService.write({
+      id: 'explicit-daily-record',
+      branch: 'daily',
+      parentNodeId: 'daily:root',
+      scope: 'workspace',
+      scopeKey: workspace,
+      tier: InjectionTier.T3_DETAIL,
+      summary: 'Explicit daily record',
+      content: 'The user asked for a repository inspection and it completed.',
+      retrievalKeys: ['inspection', 'completed'],
+      sourceRefs: ['conversation-source:explicit-run:user-message:explicit-message'],
+      sourceRunId: 'explicit-run',
+      sourceStage: 'tool',
+      importance: 0.5,
+      confidence: 1,
+      reason: 'Explicit write performed through the memory tool.',
+      epistemic: {
+        domain: 'task',
+        statementKind: 'reported-observation',
+        epistemicStatus: 'reported',
+        authorityScope: { kind: 'none', scope: 'workspace', topics: [] },
+        assertedBy: { kind: 'agent', id: 'littlesheep' },
+      },
+    });
+    expect(written.node).toBeTruthy();
+    const dailyInspection = await first.infra.memoryRepository.management.inspectNode(written.node!.id, 'D3');
     expect(dailyInspection?.atom).toMatchObject({
       domain: 'task',
       statementKind: 'reported-observation',
-      epistemicStatus: 'reported',
       assertedBy: { kind: 'agent', id: 'littlesheep' },
     });
     expect(dailyInspection?.projectionRecords?.length).toBeGreaterThan(0);
-    await expect(first.infra.memoryService.listConversationSources(dailyInspection?.atom?.sourceRefs ?? []))
-      .resolves.toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'user-message' })]));
 
     await first.shutdown();
     runners.splice(runners.indexOf(first), 1);
@@ -95,8 +113,8 @@ describe('Runner Memory v3 integration', () => {
     });
     runners.push(restored);
 
-    expect(await restored.infra.memoryRepository.getNode(dailyNodes[0]!.id)).toMatchObject({
-      summary: 'Run done: read the file as a multi-step job',
+    expect(await restored.infra.memoryRepository.getNode(written.node!.id)).toMatchObject({
+      summary: 'Explicit daily record',
     });
 
     const navigationRunId = 'memory-v3-navigation';
@@ -109,16 +127,16 @@ describe('Runner Memory v3 integration', () => {
       autoPrime: false,
     });
     const index = await restored.infra.memoryService.branchIndex(navigationRunId, 'daily');
-    expect(index.entries.map((entry) => entry.id)).toContain(dailyNodes[0]!.id);
+    expect(index.entries.map((entry) => entry.id)).toContain(written.node!.id);
     const expansion = await restored.infra.memoryService.expand(navigationRunId, {
       branchId: 'daily',
-      nodeId: dailyNodes[0]!.id,
+      nodeId: written.node!.id,
       limit: 5,
       tokenBudget: 800,
     });
     expect(expansion.fragments[0]).toMatchObject({
-      id: dailyNodes[0]!.id,
-      metadata: { source: `memory-v3:atom:${dailyNodes[0]!.id}` },
+      id: written.node!.id,
+      metadata: { source: `memory-v3:atom:${written.node!.id}` },
     });
     await restored.infra.memoryService.finishRun(navigationRunId);
   });
@@ -532,12 +550,10 @@ describe('Runner Memory v3 integration', () => {
     expect(seedAfter!.atom!.routingFeedback).toMatchObject({ useful: 0, notUseful: 0 });
     expect(seedAfter!.atom!.feedbackRevision).toBe(seedBefore!.atom!.feedbackRevision);
     expect(seedAfter!.atom!.verifiedUsefulness.useful).toBe(seedBefore!.atom!.verifiedUsefulness.useful);
-    // Automatic EVOLVE persistence is gone, so no project atom claims the marker
-    // on the run's behalf; the deterministic daily CAPTURE record still proves
-    // the run happened and stays queryable after restart.
+    // Nothing claims the marker on the run's behalf any more: a completed run
+    // writes no durable memory, so the seeded atom is the only continuity anchor.
     expect(await first.infra.memoryRepository.listNodes('project', workspace)).toHaveLength(0);
-    expect((await first.infra.memoryRepository.listNodes('daily', workspace))
-      .some((node) => node.sourceRunIds.includes(result.runId))).toBe(true);
+    expect(await first.infra.memoryRepository.listNodes('daily', workspace)).toHaveLength(0);
     expect(requests.some((request) => requestText(request).includes(marker))).toBe(true);
 
     await first.shutdown();
@@ -627,10 +643,11 @@ describe('Runner Memory v3 integration', () => {
     expect(summary).toMatchObject({ version: 2, sourceRunIds: [result.runId] });
     // C08D: the retired daily-consolidation entry no longer auto-promotes; there is a single promotion path.
     expect(project).toBeUndefined();
-    // HC-18: the legacy daily atom stays readable under its original scope instead of being archived by a second entry.
-    expect(activeDaily.some((node) => node.content.includes(marker))).toBe(true);
+    // Per-run memory summarisation is gone, so the run writes no daily atom and
+    // archives nothing; compaction still settles through its single entry.
+    expect(activeDaily).toEqual([]);
     expect(archivedDaily).toEqual([]);
-    // decide + two loop turns + capture + compaction: no EVOLVE request remains.
+    // Plan + loop turns + compaction settle; no EVOLVE or CAPTURE request remains.
     expect(requests).toHaveLength(5);
   });
 

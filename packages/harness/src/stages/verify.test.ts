@@ -117,7 +117,7 @@ describe('verifyStage', () => {
 
     // The code can prove the calls succeeded; it cannot prove that an unrelated
     // read satisfies the user's acceptance, so the run is not called verified.
-    expect(res).toMatchObject({ next: 'capture', ok: true, meta: { verdict: 'unverified' } });
+    expect(res).toMatchObject({ next: 'finalize', ok: true, meta: { verdict: 'unverified' } });
     expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'unverified', source: 'structural' });
     expect(ctx.verificationHistory?.at(-1)?.reason).toContain('not verified');
     expect(ctx.modelRequests ?? []).toHaveLength(0);
@@ -165,7 +165,7 @@ describe('verifyStage', () => {
 
     const res = await stage(ctx);
 
-    expect(res.next).toBe('capture');
+    expect(res.next).toBe('finalize');
     expect(res.ok).toBe(true);
     expect(res.meta?.verdict).toBe('unverified');
     expect(res.meta?.runtimeEvidenceComplete).toBe(true);
@@ -236,7 +236,7 @@ describe('verifyStage', () => {
 
     const result = await stage(ctx);
 
-    expect(result).toMatchObject({ next: 'capture', ok: true, meta: { runtimeFastPath: true } });
+    expect(result).toMatchObject({ next: 'finalize', ok: true, meta: { runtimeFastPath: true } });
     expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'pass', source: 'structural' });
     expect(ctx.modelRequests ?? []).toHaveLength(0);
   });
@@ -349,7 +349,7 @@ describe('verifyStage', () => {
     const result = await stage(ctx);
 
     expect(result).toMatchObject({
-      next: 'capture',
+      next: 'finalize',
       ok: true,
       meta: { runtimeFastPath: true, writeReadFastPath: true },
     });
@@ -396,7 +396,7 @@ describe('verifyStage', () => {
 
     const res = await stage(ctx);
 
-    expect(res.next).toBe('capture');
+    expect(res.next).toBe('finalize');
     expect(res.meta?.verdict).toBe('unverified');
     expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'unverified', source: 'structural' });
     expect(ctx.verificationHistory?.at(-1)?.usedMemoryAtomIds).toBeUndefined();

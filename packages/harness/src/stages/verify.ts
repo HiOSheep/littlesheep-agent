@@ -60,7 +60,7 @@ export function createVerifyStage() {
     publishVerifiedReply(ctx);
     return {
       stage: 'verify',
-      next: 'capture',
+      next: 'finalize',
       ok: true,
       meta: { verdict: 'unverified', runtimeEvidenceComplete: true, reason },
     };

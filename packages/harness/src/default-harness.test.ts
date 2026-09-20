@@ -108,7 +108,7 @@ describe('createDefaultHarness state machine', () => {
     });
     expect(ctx.reply).toBe('LS-PROVIDER-OK-20260730-1610');
     expect((result.meta?.trace as Array<{ name: string }>).map((item) => item.name)).toEqual([
-      'enter', 'classify', 'execute', 'verify', 'capture', 'finalize',
+      'enter', 'classify', 'execute', 'verify', 'finalize',
     ]);
     expect(llm.chat).toHaveBeenCalledTimes(1);
     expect(ctx.modelRequests).toHaveLength(1);
@@ -138,7 +138,7 @@ describe('createDefaultHarness state machine', () => {
     const trace = res.meta?.trace as Array<{ name: string }>;
     const names = trace.map((t) => t.name);
     expect(names).toEqual([
-      'enter', 'classify', 'execute', 'verify', 'capture', 'finalize',
+      'enter', 'classify', 'execute', 'verify', 'finalize',
     ]);
     expect(ctx.classification?.type).toBe('problem');
     expect(ctx.classification?.reasonCode).toBe('deterministic_default_execute');
@@ -190,8 +190,7 @@ describe('createDefaultHarness state machine', () => {
   it('regenerates and verifies a traceable task reply when an interrupted checkpoint points at ask_user', async () => {
     const llm = createMockLlm(textResponse('文件 resume-proof.txt 已核对，内容为 resume-anchor-4812。'));
     const h = makeHarness(llm);
-    h.registerStage('verify', async () => ({ stage: 'verify', next: 'capture', ok: true }));
-    h.registerStage('capture', async () => ({ stage: 'capture', next: 'finalize', ok: true }));
+    h.registerStage('verify', async () => ({ stage: 'verify', next: 'finalize', ok: true }));
     const ctx = makeCtx({
       inbound: textMessage('user', '创建并核对 resume-proof.txt。'),
     });
@@ -241,7 +240,7 @@ describe('createDefaultHarness state machine', () => {
       'execute_final_reply',
     ]);
     expect((result.meta?.trace as Array<{ name: string }>).map((item) => item.name)).toEqual([
-      'reply', 'verify', 'capture', 'finalize',
+      'reply', 'verify', 'finalize',
     ]);
     const requestText = lastConversationText(llm.chat.mock.calls[0]?.[0]);
     expect(requestText).toContain('resume-anchor-4812');
@@ -332,7 +331,7 @@ describe('createDefaultHarness state machine', () => {
     expect(ctx.reply).toBe('what do you mean?');
     const trace = res.meta?.trace as Array<{ name: string }>;
     const names = trace.map((t) => t.name);
-    expect(names).toEqual(['enter', 'classify', 'execute', 'verify', 'capture', 'finalize']);
+    expect(names).toEqual(['enter', 'classify', 'execute', 'verify', 'finalize']);
     expect(ctx.classification?.activity).toBe('execute');
     expect(ctx.classification?.reasonCode).toBe('deterministic_default_execute');
     expect(ctx.clarificationRequest).toBeUndefined();

@@ -1,6 +1,13 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-20 21:10:00
+最后更新：2026-09-20 21:55:00
+
+**极简执行与缓存 95% 方案 P4 第三刀：删除 legacy-per-run 记忆总结（CAPTURE）（2026-09-20 21:55:00，进行中）**：按方案「保留明确写入与压缩需要的最小服务」，CAPTURE stage 及其模型总结路径、确定性 daily 写入、写入闸门与提示词一并删除。流程变为 `VERIFY → FINALIZE`：一次 run 只记录对话与执行事实，不再为自己写任何持久记忆。
+
+- 删除内容：`stages/capture.ts`、`stages/memory-intent-gate.ts`、`stages/memory-stage-prompts.ts` 与其测试、CAPTURE 的 stage 注册与 harness `memoryWriter` 依赖、`insights` 状态写入路径。保留 `stages/memory-epistemic-policy.ts`：它仍被 runner 的 `session-continuity.ts` 在压缩路径中使用，属于"压缩需要的最小服务"。
+- 记忆写入来源收敛为两处：明确写入（`memory_tree` 等工具经统一校验与写入闸门）与压缩路径（会话摘要/候选）。`capture` 作为历史 `StageName` 与合法旧迁移目标保留，只为读取与展示旧记录。
+- 代价（方案已列明）：失去每轮自动 daily 流水与"运行即沉淀"；本样本没有 capture 请求，因此不减少本样本调用数。
+- 验证：`pnpm run typecheck` 通过；全仓 `pnpm exec vitest run` **453 个文件、3,202 项通过、1 项 skipped**（比上一批少 1 个文件/4 项：删除的 CAPTURE 阶段与其测试）。测试按新契约更新：trace 去掉 `capture`；`memory-stages.test.ts` 整体删除（其剩余用例只覆盖被删除的 CAPTURE）；`memory-v3` 改为"运行不写任何持久记忆 + 明确写入仍可导航、可重启读取"与"压缩仍经单一入口结算、不再自动提升"；runner 的 CAPTURE 持久化用例改为断言"完成一次 run 不产生任何记忆写入"。
 
 **极简执行与缓存 95% 方案 P4 第二刀：删除自动记忆演化编排（2026-09-20 21:10:00，进行中）**：按方案「删除……自动 merge/move/revise 演化编排；保留明确写入与压缩需要的最小服务」，EVOLVE stage 及其全部编排模块删除，流程变为 `VERIFY → CAPTURE → FINALIZE`。
 

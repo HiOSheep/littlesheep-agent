@@ -309,7 +309,7 @@ describe('createRunner run', () => {
     expect(replyRequest.messages.map((message) => String(message.content)).join('\n')).toContain('Memory Tree Root Index');
     const trace = result.trace as Array<{ name: string }>;
     expect(trace.map((t) => t.name)).toEqual([
-      'enter', 'classify', 'execute', 'verify', 'capture', 'finalize',
+      'enter', 'classify', 'execute', 'verify', 'finalize',
     ]);
   });
 
@@ -3127,27 +3127,22 @@ describe('createRunner run', () => {
     expect(existsSync(file)).toBe(true);
   });
 
-  it('persists CAPTURE output through the same indexed memory runtime', async () => {
+  it('writes no durable memory on its own for a completed run', async () => {
     const llm = makeMockLlm([
       textResponse('{"plan":[{"description":"inspect it","tools":[]}]}'),
       textResponse('Inspection complete.'),
       textResponse('Inspection completed successfully.'),
     ]);
-    // The deterministic per-run CAPTURE record is still reachable under the
-    // explicit legacy policy; automatic EVOLVE persistence is gone.
-    const config = structuredClone(DEFAULT_CONFIG);
-    config.memory.autoMemoryPolicy = 'legacy-per-run';
-    const runner = await createRunner({ config, branding: DEFAULT_BRANDING, model: 'test/model', llm });
+    // Per-run memory summarisation is gone: a run records its conversation and
+    // execution facts, and durable memory only appears through an explicit write.
+    const runner = await createRunner({ config: DEFAULT_CONFIG, branding: DEFAULT_BRANDING, model: 'test/model', llm });
     createdRunners.push(runner);
     const result = await runner.run({ text: 'read the file as a multi-step job', cwd: 'D:/test-project' });
 
     expect(result.status).toBe('ok');
-    const projectNodes = await runner.infra.memoryRepository.listNodes('project', 'D:/test-project');
-    const dailyNodes = await runner.infra.memoryRepository.listNodes('daily', 'D:/test-project');
-    expect(projectNodes).toHaveLength(0);
-    expect(dailyNodes).toHaveLength(1);
-    expect(dailyNodes[0]).toMatchObject({ summary: 'Run done: read the file as a multi-step job', sourceRunIds: [result.runId] });
-    expect((await runner.infra.memoryRepository.snapshot()).writeAudit.map((record) => record.decision)).toEqual(['created']);
+    expect(await runner.infra.memoryRepository.listNodes('project', 'D:/test-project')).toHaveLength(0);
+    expect(await runner.infra.memoryRepository.listNodes('daily', 'D:/test-project')).toHaveLength(0);
+    expect((await runner.infra.memoryRepository.snapshot()).writeAudit).toEqual([]);
     expect(result.modelRequests?.map((request) => request.stage)).toEqual([
       'decide',
       'execute',

@@ -393,7 +393,7 @@ Memory Repository 统一管理对话原始来源、投影变更记录、atom pro
 
 记忆更新采用事件驱动而不是定期重写整棵树。用户新增或纠正信息、任务/工具/VERIFY 产生证据、项目和受管资源变化、能力与配置变化、冲突解决、权限决定，以及到期、衰减或重新验证时间到达，都生成版本化 `MemoryUpdateEvent`。事件必须带 idempotency key、subject/domain、scope、来源、发生时间、观察时间、目标 atom/parent、证据和期望版本。
 
-为保证不失忆，V3 backend 激活后，Runner 必须在每轮结束时补齐该轮全部对话原始来源；EVOLVE/CAPTURE 若要据此写 Atom，必须先确认所引用来源已成功持久化，来源捕获失败时延期投影写入。正式 V2 路径在迁移前继续以会话 JSONL 保存可见对话，不提前创建 V3 来源文件。随后，每次 Atom 变化先形成带哈希的投影变更记录，再登记到有界 recovery journal，由幂等流程完成去重、Atom 更新、catalog 投影和审计。mutation 到达提交边界后另写 append-only commit receipt；若进程恰好在投影变更记录落盘后、journal 登记前中断，启动时必须从该记录自动补建恢复事件。含糊或冲突状态必须默认拒绝，不能猜测覆盖。journal 可以按容量裁剪已提交记录，但投影变更记录与 commit receipts 不随之删除；catalog 删除重建时，历史记录依据 receipt 恢复审计投影，不能倒放旧 mutation 覆盖更高 revision 的当前 atom。应用运行时在安全边界近实时消费事件；应用关闭期间到期的时间事件和已登记资源变化，在下次启动时按 due index 与资源指纹补偿对账，不进行无授权的全系统监控。
+为保证不失忆，V3 backend 激活后，Runner 必须在每轮结束时补齐该轮全部对话原始来源；任何写入若要据此写 Atom，必须先确认所引用来源已成功持久化，来源捕获失败时延期投影写入。正式 V2 路径在迁移前继续以会话 JSONL 保存可见对话，不提前创建 V3 来源文件。随后，每次 Atom 变化先形成带哈希的投影变更记录，再登记到有界 recovery journal，由幂等流程完成去重、Atom 更新、catalog 投影和审计。mutation 到达提交边界后另写 append-only commit receipt；若进程恰好在投影变更记录落盘后、journal 登记前中断，启动时必须从该记录自动补建恢复事件。含糊或冲突状态必须默认拒绝，不能猜测覆盖。journal 可以按容量裁剪已提交记录，但投影变更记录与 commit receipts 不随之删除；catalog 删除重建时，历史记录依据 receipt 恢复审计投影，不能倒放旧 mutation 覆盖更高 revision 的当前 atom。应用运行时在安全边界近实时消费事件；应用关闭期间到期的时间事件和已登记资源变化，在下次启动时按 due index 与资源指纹补偿对账，不进行无授权的全系统监控。
 
 “不失忆”在工程上表示：已确认需要保留的信息具有持久权威副本、稳定索引、版本来源、恢复路径和可验证备份，并能在相关时重新取回；不表示全部记忆永久注入每次请求。用户明确删除、依法清理或按已确认策略到期的信息仍可移除，但必须经过权限、引用检查、tombstone/审计和可恢复保留期。
 
@@ -423,7 +423,7 @@ Atom 的动态字段必须分工明确：`confidence` 表示陈述可靠性，�
 
 记忆写入必须沿层级和索引确定 domain、parent、scope、tier、statement kind、epistemic status、authority scope、对话来源、外部证据、置信度、重要性、时间语义和理由，并经过安全、去重、合并、预算和审计校验。`sourceRefs` 只引用对话原始来源；工具、VERIFY、外部文档和其他佐证进入 `evidenceRefs`，两者不得混用。建议只能以 proposal/hypothesis 状态保存；事实主张必须保留验证状态；用户目标、偏好和决定按其权威范围保存，不能与客观技术事实混写。模型可以提出结构化记忆写入意图，也可以在当前 run 内请求加入或释放 atom；但它不能直接改写对话原始来源、提交持久 mutation、覆盖认识状态或解决冲突。运行时依据真实来源、`MemoryUpdateEvent`、工具证据和 VERIFY 结果决定是否更新 Atom 投影。默认 UI 不打扰用户；GUI 只开放记忆文件视图和 `SOUL.md` 编辑。完整 Atom 变更记录仍必须在内部可审计、可导出并能按治理规则失效、恢复或重建，后续若新增高级治理入口，也必须操作 Runtime 的同一份数据而不是展示副本。
 
-EVOLVE/CAPTURE 中的模型只能描述 domain、statement kind、asserted source 和 topics，不能声明 verified、authority 或 resolution。Runtime 必须把 asserted source 与实际对话来源、成功工具结果或外部资源证据对账；对账失败时降级为 LS 自身的未验证陈述，并移除不可信主体标识。旧式 daily 原文追加到 `MEMORY.md` 的蒸馏路径不得存在；任何压缩、蒸馏或提升都只能产生结构化 Atom 提案，再经过同一套来源、认识状态、去重、审计与恢复校验。
+明确写入和压缩路径中的模型只能描述 domain、statement kind、asserted source 和 topics，不能声明 verified、authority 或 resolution。Runtime 必须把 asserted source 与实际对话来源、成功工具结果或外部资源证据对账；对账失败时降级为 LS 自身的未验证陈述，并移除不可信主体标识。旧式 daily 原文追加到 `MEMORY.md` 的蒸馏路径不得存在；任何压缩、蒸馏或提升都只能产生结构化 Atom 提案，再经过同一套来源、认识状态、去重、审计与恢复校验。
 
 ## 8. Tool Execution Service
 
