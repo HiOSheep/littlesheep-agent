@@ -7447,3 +7447,34 @@ console.log('RUN ERROR:', result.error, result.runtimeStatus);
 **步骤（下一轮，3–4 次调用）**：① `read` 该测试文件 425–440；② `edit` 插入 `console.log`；③ 跑**单文件**并 grep `RUN ERROR:`；④ **回退测试文件**（`git checkout --`）⇒ 得到真因后做**最小修复**。
 
 **D1 进度（更新）**：#1 ✅ 已改善并提交；**复现 ✅ 已最小化（一处编辑）**；**抛出点 ✅ 仍收窄到 `finalize.ts:29/47`（`appendDurableEvent` / `settleUserFacingReplySettlement`）**；`finally` 已**排除**；#2/#4/#5 待查。
+
+## 10.272 **决定性定位（路线 A 生效）：8 例失败是"替身敏感"，不是 Runtime 语义依赖** —— 推翻 10.265（2026-09-18）
+
+**路线 A 的执行**（临时插桩 + 单文件 + 回退，树始终干净）：
+```ts
+// runner-continuation.test.ts（临时，已回退）
+console.log('RUN ERROR:', result.error, JSON.stringify(result.runtimeStatus));
+```
+**输出（第一次运行即命中）**：
+```
+RUN ERROR: resumed task final reply generation failed: unexpected LLM request undefined
+```
+
+**该文本的两个来源**（`grep 'unexpected LLM request|resumed task final reply generation failed'`）：
+| 位置 | 代码 | 角色 |
+| --- | --- | --- |
+| **`runner/src/runner-continuation.test.ts:42`** | `if (!response) throw new Error('unexpected LLM request')` | **测试替身**：其"脚本化应答"按**请求形状/内容**查找，`verify` 多带历史后查不到 ⇒ **替身抛错** |
+| `harness/src/stages/reply.ts:72` | `` `resumed task final reply generation failed: ${(err as Error).message}` `` | 把替身的错误**包装**成 `result.error` |
+
+**⇒ 结论（重大更正）**：
+1. **Runtime 并未按形状绑定** —— 真正"按形状匹配"的是**测试替身的脚本应答表**；
+2. ⇒ **10.265 的定性（"Runtime 语义依赖、协议级改造"）不成立** ✗；**10.269/10.271 关于 `finalize`/`finally` 的排查也都不必要**（错误根本没走到那些路径）；
+3. ⇒ **D1 的真实成本从"协议级改造（4–5 文件、多轮）"降为"更新测试替身（一处）+ 让 verify 携带有界历史"** ✓✓ 这与本会话早前 D1/工具块那次"27 例替身失败"的形态**完全相同**。
+
+**⇒ 下一步（一次到位）**：
+1. 读 `runner-continuation.test.ts:20–60`（替身的应答查找表）；
+2. 让查找**容忍**新增的尾随历史消息（例如按"最后一条 user/system 内容"或按 purpose 匹配，而非按消息数组形状）；
+3. 叠加 `verify` 的有界历史 ⇒ 跑 `runner` 全套件 ⇒ 预期 **8 例失败清零**；
+4. 再跑**全量**套件 + 门 + **两次**样本 ⇒ 验收长会话 ratio（预期 `verify` 请求前缀与主路径共享 ⇒ hit↑ / uncached↓）。
+
+**方法学教训（第 4 次同类）**：**"失败数不变"与"日志缺失"都不能用来定性根因**；只有**直接读出运行时错误文本**才能终结猜测 —— 本轮若继续按"读代码推断"，会继续误判为协议级改造。
