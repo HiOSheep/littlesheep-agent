@@ -56,11 +56,12 @@ export function createClassifyStage(deps: ClassifyStageDeps = {}) {
   return async function classifyStage(ctx: RunContext): Promise<StageResult> {
     // Structural continuation binding is Runtime authority. If a future
     // coordinator accidentally sends a bound answer through this compatibility
-    // stage, bypass the probabilistic activity router and re-enter planning.
+    // stage, keep the binding and hand the turn to the one main loop, which
+    // carries the restored conversation and evidence.
     if (ctx.resumedFromCheckpointId && ctx.clarificationResponse) {
       return {
         stage: 'classify',
-        next: 'decide',
+        next: 'execute',
         ok: true,
         meta: {
           continuationGuard: true,

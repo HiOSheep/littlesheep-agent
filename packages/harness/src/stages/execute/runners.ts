@@ -1,4 +1,4 @@
-// Owns legacy and TaskBook execution orchestration; delegates tool loops, failure policy, and final reply synthesis.
+// Owns the single main-loop execution path; delegates tool loops, failure policy, and reply publication.
 import type { SystemPromptBundle } from '@littlesheep/prompt';
 import type {
   ClarificationRequest,
@@ -16,7 +16,6 @@ import { writeDecisionState } from '../../decision-state.js';
 import { recordFailure } from '../../failure-state.js';
 import { replaceToolResults } from '../../execution-evidence-state.js';
 import { resolveExplicitToolInstructionSet } from '../../explicit-tool-instruction.js';
-export { executeTaskBook } from './task-book-runner.js';
 
 export async function executeLegacyLoop(
   deps: ExecuteStageDeps,
@@ -80,18 +79,20 @@ export async function executeLegacyLoop(
   }
   try {
     // The tool loop already validated any Web citation before returning this
-    // text. A conversational turn answered here gets the same bounded,
-    // purely-local continuity check the dedicated reply path used to run: the
-    // assessment is free unless it is genuinely discontinuous, in which case one
-    // live correction call is spent rather than publishing a contradiction.
-    const candidate = await repairDiscontinuousReply(
-      deps,
-      ctx,
-      systemPrompt.text,
-      baseMessages,
-      conversationHistoryForModel(ctx),
-      result.content,
-    );
+    // text. The bounded continuity correction belongs to purely conversational
+    // answers: when the loop produced tool evidence, the answer is grounded in
+    // that evidence and is published as the Provider wrote it, exactly like the
+    // execution paths always did.
+    const candidate = result.toolResults.length > 0
+      ? result.content
+      : await repairDiscontinuousReply(
+          deps,
+          ctx,
+          systemPrompt.text,
+          baseMessages,
+          conversationHistoryForModel(ctx),
+          result.content,
+        );
     await publishUserFacingReply(ctx, 'execute_tool_loop', candidate);
   } catch (error) {
     clearReplyState(ctx, 'execute');

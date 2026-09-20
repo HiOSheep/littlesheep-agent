@@ -11,6 +11,11 @@ export function resolveCheckpointResumeStage(
 ): StageName | 'exit' {
   if (!ctx.resumedFromCheckpointId || current === 'exit') return current;
 
+  // A checkpoint written before the second executor was deleted may name DECIDE
+  // as its entry stage. Its TaskBook is read-only history now, so the resume
+  // continues in the one main loop instead of re-planning.
+  if (current === 'decide') return 'execute';
+
   if (hasCompletedCheckpointTask(ctx)) {
     if (ctx.taskExecution && ctx.taskExecution.status !== 'done') {
       ctx.taskExecution.status = 'done';

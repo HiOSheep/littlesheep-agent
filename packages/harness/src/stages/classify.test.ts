@@ -85,7 +85,7 @@ describe('classifyStage', () => {
     ctx.resumedFromCheckpointId = 'checkpoint-1';
 
     await expect(stage(ctx)).resolves.toMatchObject({
-      next: 'decide',
+      next: 'execute',
       ok: true,
       meta: { continuationGuard: true, checkpointId: 'checkpoint-1', requestId: 'request-1' },
     });

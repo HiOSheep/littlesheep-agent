@@ -897,12 +897,19 @@ describe('runner checkpoint continuation', () => {
         branding: DEFAULT_BRANDING,
         model: 'test/model',
         llm: queuedLlm([
-          textResponse('{"plan":[{"description":"continue the PDF task","tools":[]}]}'),
-          textResponse('PDF work continued with the restored source.'),
-          textResponse('The original PDF task is complete.'),
-          textResponse('{"verdict":"pass","reason":"the original goal completed"}'),
-          textResponse('{"memories":[],"createSkill":null}'),
-          textResponse('{"observations":[]}'),
+          // The resumed turn runs in the single main loop: the model inspects the
+          // restored attachment itself and names it in the answer, which is what
+          // the continuity check looks for.
+          {
+            content: '',
+            finishReason: 'tool_calls',
+            toolCalls: [{
+              id: 'inspect-restored',
+              type: 'function' as const,
+              function: { name: 'inspect_attachment', arguments: JSON.stringify({ path: 'source.pdf' }) },
+            }],
+          },
+          textResponse('The restored source.pdf was inspected (verified PDF) and the translation of the source PDF is complete.'),
         ], []),
         skillsDirs: [],
       })
@@ -1101,20 +1108,9 @@ describe('runner checkpoint continuation', () => {
       expect(restoredInspect).not.toHaveBeenCalled()
       expect(executeDocumentCreate).toHaveBeenCalledTimes(1)
       expect(observedPermissionModes).toEqual(['full'])
-      expect(result.taskExecution?.steps).toEqual([
-        expect.objectContaining({
-          stepId: 'inspect-source',
-          status: 'done',
-          output: 'Preserved source text.',
-          toolCallIds: ['original-inspect-call'],
-        }),
-        expect.objectContaining({
-          stepId: 'create-translation',
-          status: 'done',
-          attempt: 2,
-          toolCallIds: ['create-translated-pdf'],
-        }),
-      ])
+      // The resumed turn runs in the single main loop, so it no longer rewrites
+      // plan-step bookkeeping; the recorded side effect below proves the blocked
+      // step's work happened exactly once under the current permissions.
       expect(result.conversationContinuation).toMatchObject({
         resolution: 'bound',
         checkpointId: checkpoint.id,
@@ -1130,8 +1126,10 @@ describe('runner checkpoint continuation', () => {
         permissions: { checkpoint: 'research', current: 'full' },
         replayPrevention: { completedStepCountPreserved: 1 },
       })
+      // One settled side effect for the retried work. The loop owns the call, so
+      // the effect is no longer attributed to a plan step.
       expect(result.sideEffects).toEqual([
-        expect.objectContaining({ toolName: 'document_create', status: 'succeeded', stepId: 'create-translation' }),
+        expect.objectContaining({ toolName: 'document_create', status: 'succeeded' }),
       ])
       expect((await runner.sessionManager.read(session.id)).filter((message) => (
         message.id === turnMessageId(session.id, requestKey)
@@ -2074,7 +2072,7 @@ describe('runner checkpoint continuation', () => {
     }
   })
 
-  it('routes a same-task goal revision through DECIDE with explicit replan feedback', async () => {
+  it('resumes a same-task goal revision in the single main loop', async () => {
     const workspace = join(dataDir, 'workspace')
     await mkdir(workspace, { recursive: true })
     const requests: ChatRequest[] = []
@@ -2083,33 +2081,8 @@ describe('runner checkpoint continuation', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm: queuedLlm([
-        textResponse(JSON.stringify({
-          assessment: {
-            userNeed: 'Complete the revised PDF task as a bilingual PDF.',
-            complexity: 'standard',
-            goal: 'Deliver a bilingual PDF instead of a translated-only PDF.',
-            successCriteria: ['The PDF contains both source and translated text.'],
-            needsClarification: false,
-            requiresTaskBook: true,
-            maxExtraScopeRatio: 1.2,
-          },
-          taskBook: {
-            goal: 'Deliver a bilingual PDF instead of a translated-only PDF.',
-            complexity: 'standard',
-            successCriteria: ['The PDF contains both source and translated text.'],
-            overdeliveryPolicy: { maxExtraScopeRatio: 1.2, guidance: 'Apply only the requested revision.' },
-            steps: [{
-              id: 'revised-step',
-              description: 'Produce the revised bilingual PDF.',
-              tools: [],
-              acceptanceCriteria: ['Both languages are present.'],
-            }],
-          },
-        })),
-        textResponse('The revised bilingual PDF work is complete.'),
         textResponse('The original task was revised and the bilingual PDF work is complete.'),
-        textResponse('{"memories":[],"createSkill":null}'),
-        textResponse('{"observations":[]}'),
+        textResponse('The same task was revised: the bilingual PDF work is complete.'),
       ], requests),
       skillsDirs: [],
     })
@@ -2142,11 +2115,16 @@ describe('runner checkpoint continuation', () => {
       })
 
       expect(result.status).toBe('ok')
-      expect(result.trace[0]?.name).toBe('decide')
+      // The revised goal resumes straight into the one main loop: no planning
+      // request, no re-classification and no recovery.
+      expect(result.trace[0]?.name).toBe('execute')
       expect(result.trace.map((entry) => entry.name)).not.toContain('classify')
+      expect(result.trace.map((entry) => entry.name)).not.toContain('decide')
       expect(result.trace.map((entry) => entry.name)).not.toContain('recover')
-      expect(result.taskBook?.goal).toBe('Deliver a bilingual PDF instead of a translated-only PDF.')
-      expect(JSON.stringify(requests[0]?.messages)).toContain('The user revised the same task goal')
+      // The revised goal reaches the model as the current user turn, and the
+      // persisted plan stays readable as history.
+      expect(JSON.stringify(requests[0]?.messages)).toContain('make the output bilingual')
+      expect(result.taskBook?.goal).toBe('Complete the original PDF task.')
       expect(await runner.infra.runCheckpointDispositionStore.read(checkpoint.id)).toMatchObject({
         status: 'resumed',
         continuationDisposition: 'revise_goal',

@@ -1281,7 +1281,7 @@ web_search/web_fetch 继续使用现有 ToolInvocationRecord，并在 meta/evide
 2. 在 [tool-execution-service.ts](../../packages/tools/src/tool-execution-service.ts) 中，schema 校验成功后只计算一次 descriptor；若 `hardDecision === 'deny'`，在审批、重复调用计数和工具执行之前结束调用，写入稳定错误 kind 与可审计的 blocked/validation 记录，绝不调用 `tool.execute()`。若现有 invocation status/approval decision 枚举不足，应先扩展契约和旧记录兼容解析，不得把硬拒绝伪装成 `not_required`。
 3. `ToolExecutionService.approve()` 调用 `shouldRequestPermissionApproval()` 时必须传入 `strictReadApproval: toolContext.networkPolicy?.strictReadApproval === true`；同一调用不得重新计算与记录阶段不同的 descriptor。
 4. 在 [direct-tool-proposal.ts](../../packages/harness/src/stages/execute/direct-tool-proposal.ts) 中，先拒绝 hard deny；传入同样的 strict-read 选项。自动直连 proposal 只有在 descriptor、TaskBook resource envelope、side-effect 和审批结论全部一致时才可产生。
-5. 追踪 [task-step-scheduler.ts](../../packages/harness/src/stages/execute/task-step-scheduler.ts)、[runner.ts](../../packages/runner/src/runner.ts)、以及 App 的 run-policy/terminal permission 调用点：要么都通过 `ToolExecutionService`，要么复用 `authorizeToolAccess()` 的 hard-deny 分支。禁止出现第二套“没要求审批就执行”的逻辑。
+5. 追踪 `task-step-scheduler.ts`（已随第二执行体系删除，见 `docs/decision/project-status.md` 2026-09-21 条目）、[runner.ts](../../packages/runner/src/runner.ts)、以及 App 的 run-policy/terminal permission 调用点：要么都通过 `ToolExecutionService`，要么复用 `authorizeToolAccess()` 的 hard-deny 分支。禁止出现第二套“没要求审批就执行”的逻辑。
 6. 保持以下强制区别：local memory safe read、匿名 public web safe read、容器内普通读、容器外读、认证浏览器、任何写入、exec 和未知目标。只豁免被 Runtime 明确归类的前两类，不扩大文件读取或浏览器权限。
 7. 对 `strictReadApproval=true` 固定行为：research/restricted 中 safe read 恢复审批；full 仍仅绕过普通审批，不能越过 hard deny。
 

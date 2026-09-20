@@ -9,19 +9,27 @@ import { writeReplanState } from '../../replan-state.js';
  * Step-scoped replan targets derived only from recorded Runtime state: the steps
  * that actually failed or were blocked. Steps that never ran stay with the
  * normal plan instead of being rewritten, and completed steps are never rerun.
+ *
+ * Only steps this run recorded can be replanned. A plan restored from a
+ * checkpoint that this run never executed is read-only history: with the second
+ * executor deleted there is nothing to replan there, and treating it as an
+ * incomplete plan would send the run back into the loop until recovery gave up.
  */
 export function deriveReplanTargets(ctx: RunContext): string[] {
-  const knownIds = taskStepIds(ctx);
-  const results = new Map((ctx.taskExecution?.steps ?? []).map((step) => [step.stepId, step]));
-  const failed = knownIds.filter((id) => {
+  const recorded = ctx.taskExecution?.steps ?? [];
+  if (recorded.length === 0) return [];
+  const knownIds = new Set(taskStepIds(ctx));
+  const results = new Map(recorded.map((step) => [step.stepId, step]));
+  const ordered = recorded.map((step) => step.stepId).filter((id) => knownIds.has(id));
+  const failed = ordered.filter((id) => {
     const status = results.get(id)?.status;
     return status === 'failed' || status === 'blocked';
   });
   if (failed.length > 0) return failed;
 
-  const incomplete = knownIds.filter((id) => results.get(id)?.status !== 'done');
+  const incomplete = ordered.filter((id) => results.get(id)?.status !== 'done');
   if (incomplete.length > 0) return incomplete;
-  return knownIds.length > 0 ? [knownIds[knownIds.length - 1]!] : [];
+  return ordered.length > 0 ? [ordered[ordered.length - 1]!] : [];
 }
 
 export function canRecoverWithPartialReplan(ctx: RunContext, targetIds: string[]): boolean {
@@ -45,7 +53,10 @@ export function hasIncompleteTaskExecution(ctx: RunContext): boolean {
 
 /** Runtime facts that a model verdict is not allowed to repair or hide. */
 export function runtimeExecutionEvidenceGap(ctx: RunContext): string | undefined {
-  if (ctx.taskBook && (!ctx.taskExecution || hasIncompleteTaskExecution(ctx))) {
+  // Step evidence is only owed for a plan this run actually executed. A plan
+  // restored from a checkpoint is read-only history, so its untouched steps are
+  // not an execution gap.
+  if (ctx.taskBook && ctx.taskExecution && hasIncompleteTaskExecution(ctx)) {
     return 'failed or missing task step evidence';
   }
   if (ctx.taskExecution && ctx.taskExecution.status !== 'done') {

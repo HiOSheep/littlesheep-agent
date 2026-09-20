@@ -12,12 +12,11 @@
 
 ## 目标流程
 
-每次 run 先选择一个有界语义活动：新请求一律进入单一主循环，"复杂/大型/续接/检索"只作为解释性 reason code，不再换取第二次规划请求；只有已持久化的 TaskBook（旧 checkpoint / 旧计划续跑）才走兼容的规划与步骤执行路径：
+每次 run 先选择一个有界语义活动：每个请求都进入单一主循环，"复杂/大型/续接/检索"只作为解释性 reason code，不再换取第二次规划请求或第二个执行器；已持久化的 TaskBook（旧 checkpoint）是只读历史，其步骤执行器已删除：
 
 ```text
-ENTER -> 活动路由 -> execute（新请求，含复杂/大型/续接/检索） -> EXECUTE（单一主循环） -> VERIFY -> FINALIZE
+ENTER -> 活动路由 -> execute（每个请求，含常规会话/工具工作/续接） -> EXECUTE（单一主循环） -> VERIFY -> FINALIZE
                  -> 能力/状态询问 -> REPLY（最小 Runtime 事实契约） -> FINALIZE
-                 -> 已持久化 TaskBook -> DECIDE -> EXECUTE（步骤执行，兼容路径） -> VERIFY -> FINALIZE
                  -> clarify -----------------------------> ASK_USER -> FINALIZE
 
 EXECUTE 主循环内部：
@@ -26,17 +25,9 @@ EXECUTE 主循环内部：
   -> 执行并记录证据，把结果追加回同一循环
   -> 需要更多步骤时在同一循环内继续
 
-DECIDE（仅已持久化 TaskBook，待删除的兼容路径）内部：
-  校准需求并识别缺失信息
-  -> 获取可靠来源并按需装配 Context
-  -> 归一化或修订既有 TaskBook
-  -> 按 TaskBook 调度串行步骤（并行波次已删除）
-  -> 在安全决策边界消费用户追加消息或 LS 事件
-  -> 局部修订未完成步骤
-  -> 按目标和验收标准验证
-     -> 通过：FINALIZE
-     -> 可恢复失败：RECOVER 后继续
-     -> 缺少关键决策：ASK_USER
+残留的 DECIDE 兼容面（无执行器，只为读取旧检查点）：
+  归一化既有 TaskBook 供读取与展示
+  -> 不调度、不执行步骤；无法安全映射的旧活动任务进入明确的待恢复状态
 ```
 
 `respond` 用于直接回答、继续对话和能力/状态说明；`execute` 用于确实需要检查、修改、创建、运行或调用工具完成的任务；`clarify` 只用于缺少一个关键事实而无法安全、可靠继续的情况。这是一条可重复进入的受控循环，不要求每个请求都完整走一遍。内部 `classify` stage id 与旧 `chat / problem / unclear` 字段暂时只承担会话、检查点和插件兼容，不再定义产品语义。

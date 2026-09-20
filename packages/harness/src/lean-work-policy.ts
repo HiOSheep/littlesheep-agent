@@ -25,13 +25,11 @@ export function selectWorkPolicy(ctx: RunContext, classification: Classification
     && assessRetrievalIntent(inboundText(ctx)).intent === 'none') {
     return policy(sourceMessageId, 'bounded_loop', 'conversational_default');
   }
-  // One execution system. Every new request runs in the main loop, whatever its
-  // size, scope, retrieval need or continuation state: the loop executes
-  // multi-step work serially and the model decides when to answer. The reason
-  // codes below are kept so a heavy request can still be explained in the audit
-  // trail, but none of them buys a second executor any more. An already
-  // persisted TaskBook still needs its own executor until that path is deleted.
-  if (ctx.taskBook) return policy(sourceMessageId, 'task_book', 'existing_task_book');
+  // One execution system. Every request — new or resumed — runs in the main
+  // loop: it executes multi-step work serially and the model decides when to
+  // answer. The reason codes below are kept so a heavy request can still be
+  // explained in the audit trail, but none of them buys a second executor any
+  // more, and an already persisted TaskBook is read-only history.
   if (ctx.resumedFromCheckpointId || ctx.clarificationResponse || ctx.partialReplanRequest || ctx.verifyFeedback) {
     return policy(sourceMessageId, 'bounded_loop', 'continuation');
   }
@@ -58,7 +56,7 @@ export function selectWorkPolicy(ctx: RunContext, classification: Classification
   return policy(sourceMessageId, 'bounded_loop', 'bounded_default');
 }
 
-/** Resolve a policy at EXECUTE, including one explicit legacy checkpoint path. */
+/** Resolve a policy at EXECUTE, downgrading persisted plans to the one loop. */
 export function resolveExecutionWorkPolicy(ctx: RunContext): WorkPolicy {
   const existing = ctx.classification?.workPolicy as unknown;
   if (existing !== undefined) {
@@ -66,12 +64,17 @@ export function resolveExecutionWorkPolicy(ctx: RunContext): WorkPolicy {
     if (existing.route !== 'execute' || !existing.executionMode) {
       throw new Error('execution requires an execute work policy');
     }
-    // Promotion is gone with the TaskBook upgrade path: a bounded loop always
-    // runs in the single main loop.
+    // A persisted `task_book` policy belongs to a run that planned before the
+    // second executor was deleted. Its TaskBook is read-only history now, so the
+    // policy downgrades to the same loop every other run uses; the original
+    // reason code stays in the audit trail.
+    if (existing.executionMode === 'task_book') {
+      return policy(existing.sourceMessageId, 'bounded_loop', existing.reasonCode);
+    }
     return existing;
   }
   if (ctx.resumedFromCheckpointId) {
-    return policy(String(ctx.inbound.id), ctx.taskBook ? 'task_book' : 'bounded_loop', 'legacy_checkpoint');
+    return policy(String(ctx.inbound.id), 'bounded_loop', 'legacy_checkpoint');
   }
   if (!ctx.classification) throw new Error('execution requires a classification');
   return selectWorkPolicy(ctx, ctx.classification);

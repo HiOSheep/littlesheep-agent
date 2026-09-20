@@ -1,6 +1,15 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-21 00:15:00
+最后更新：2026-09-21 01:20:00
+
+**极简执行与缓存 95% 方案 P3 第四刀：删除 TaskBook 步骤执行器（2026-09-21 01:20:00）**：第二执行体系落地删除。`execute` 永远运行单一主循环，`task-book-runner.ts`、`task-step-runner.ts`、`task-step-scheduler.ts`、`reply-candidate.ts` 及其测试删除；已持久化的 TaskBook 变成只读历史，多步骤工作在同一个循环内串行完成。
+
+- 三处耦合改造（先做，再删文件）：恢复入口把 checkpoint 里的 `decide` 映射为 `execute`；续接守卫把绑定回答交给主循环；持久化的 `task_book` 策略降级为 `bounded_loop` 并保留原 reason code。
+- 两处真实缺陷在删除过程中暴露并修复：
+  1. **续接纠偏与工具证据冲突**：主循环里的有界连续性纠偏把 `role: 'tool'` 消息带进了 REPLY 契约（该契约禁止 `tool_result`）。现在纠偏请求只携带对话文本，且**只有纯对话回答才运行纠偏**——循环已经产出工具证据时，回答按 Provider 原文发布，与执行路径一贯行为一致。
+  2. **旧计划被当成未完成计划**：`deriveReplanTargets` 从 TaskBook 步骤清单推导目标，于是恢复出来的只读计划被当作"待补步骤"，VERIFY 反复把 run 送回 EXECUTE 直到耗尽恢复预算并升级为 ASK_USER。现在只有**本次 run 实际记录过步骤结果**时才可能产生重规划目标，`runtimeExecutionEvidenceGap` 同样只对本次 run 执行过的计划要求步骤证据。
+- 测试按新契约更新：`execute.test.ts` 删除 16 项随执行器消失的用例（步骤执行、显式/自主工具提议直执行、波次暂停、步骤级重规划）、`core-agent-contracts` 删除 1 项预置 TaskBook 的局部重规划用例；`runner-continuation` 的两项改写为循环流程（恢复边界重试现在由模型自己 `inspect_attachment`；目标改版直接进入循环，断言不再要求 DECIDE 规划文本）；"只重试被阻塞步骤"用例保留全部续接安全断言（副作用只发生一次、权限按当前策略重验、绑定与 disposition 不变、turn 只写一次），只去掉由已删除执行器产生的步骤簿记断言。
+- 验证：`pnpm run typecheck` 通过；全仓 `pnpm exec vitest run` **450 个文件、3,174 项通过、1 项 skipped**（比上一批少 18 项，全部来自随执行器删除的用例；没有以放宽断言保留已删除能力）。
 
 **缓存 95% 冻结负载验收规程落盘（2026-09-21 00:15:00）**：新增 `docs/reference/cache-95-acceptance.md` 并从 `docs/README.md` 链接，把方案第 6 节的实测步骤写成可重复规程：冻结任务集/模型/轮数/会话组织/压缩阈值/数据根，旧实现（`ff59df5`）与新实现各跑一次同一负载，用 `scripts/audit-cache-usage.mjs` 出脱敏汇总；测量规则固定为 `hit = sum(cached_input_tokens) / sum(input_tokens)`，全部用途与重试进入总账，未知 usage 明确计数并使达标结论变为不可用；同时写明禁止做法（填充上下文、预热、排除失败调用、延长会话、只报热缓存子集）与完成条件。真实对比唯一缺口仍是 `DEEPSEEK_API_KEY`（密钥不入仓库）。
 

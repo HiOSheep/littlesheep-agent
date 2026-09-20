@@ -26,6 +26,13 @@ export async function repairDiscontinuousReply(
 ): Promise<string> {
   if (assess(ctx, visibleHistory, candidate) !== 'discontinuous') return candidate;
 
+  // Tool traffic is not a continuity input: the assessment reads the run's tool
+  // results directly, and the REPLY contract forbids `tool_result` context, so a
+  // correction raised from inside the main loop must not carry it.
+  const continuityMessages = originalMessages
+    .slice(1)
+    .filter((message) => message.role !== 'tool' && (message.tool_calls?.length ?? 0) === 0);
+
   const rawRequest = {
     model: deps.model,
     messages: [
@@ -33,7 +40,7 @@ export async function repairDiscontinuousReply(
         role: 'system' as const,
         content: `${systemPrompt}\n\nContinuity correction contract:\n- The previous API-generated draft omitted or contradicted values the user explicitly requested from the visible conversation history.\n- Answer the current request again from that history and preserve requested labels and exact recorded values.\n- Do not invent unavailable facts, mention this correction, or expose private reasoning.\n- Return only the corrected user-facing reply.`,
       },
-      ...originalMessages.slice(1),
+      ...continuityMessages,
       { role: 'assistant' as const, content: candidate },
       {
         role: 'user' as const,

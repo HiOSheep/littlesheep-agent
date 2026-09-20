@@ -208,7 +208,7 @@ Renderer 发送时已建立 assistant 占位，API 已提前发送 `start`；它
 
 工具循环已存在 20 轮上限和连续两次无新证据收口，并非完全失控。但“不同 grep/读取片段”不一定等于新验收证据；输出截断也可能诱发反复检查。长产物生成不能靠统一削减输出上限解决，否则会产生不完整文件。应把验收条件关联到证据，按缺口读取/运行验证，满足后复用同一份真实 LLM 文案完成结算，而不是再无条件生成一次总结。
 
-来源：[decide/model-call.ts](../../packages/harness/src/stages/decide/model-call.ts)、[stages/_shared.ts](../../packages/harness/src/stages/_shared.ts)、[execute/runners.ts](../../packages/harness/src/stages/execute/runners.ts)、[execute/task-book-runner.ts](../../packages/harness/src/stages/execute/task-book-runner.ts)、[execute/final-reply.ts](../../packages/harness/src/stages/execute/final-reply.ts)、[execute/tool-loop.ts](../../packages/harness/src/stages/execute/tool-loop.ts)。任务：HL-05、HL-06。
+来源：[decide/model-call.ts](../../packages/harness/src/stages/decide/model-call.ts)、[stages/_shared.ts](../../packages/harness/src/stages/_shared.ts)、[execute/runners.ts](../../packages/harness/src/stages/execute/runners.ts)、`execute/task-book-runner.ts`（已随第二执行体系删除，见 `docs/decision/project-status.md` 2026-09-21 条目）、[execute/final-reply.ts](../../packages/harness/src/stages/execute/final-reply.ts)、[execute/tool-loop.ts](../../packages/harness/src/stages/execute/tool-loop.ts)。任务：HL-05、HL-06。
 
 ### F10 · P1：记忆维护尚未真正离开交付关键路径
 
