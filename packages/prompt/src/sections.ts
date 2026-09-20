@@ -107,13 +107,9 @@ This is capability evidence, not permission to invoke tools from a direct respon
 
 /** Compact root awareness for RESPOND. Navigation instructions belong to EXECUTE. */
 export function memoryAwarenessSection(rootIndex: string): string {
-  // The recall protocol starts from this index and continues through the
-  // memory tool, so the resident copy only has to name the top level: a smaller
-  // cap keeps every branch reachable while spending far fewer characters on
-  // every request.
-  const bounded = rootIndex.length <= 800
+  const bounded = rootIndex.length <= 2_400
     ? rootIndex
-    : `${rootIndex.slice(0, 720)}\n... [root index truncated; use memory_tree branch_index for the rest, then expand]`;
+    : `${rootIndex.slice(0, 2_320)}\n... [root index truncated; use indexed navigation in an execution activity]`;
   return `${bounded}\n\nUse only supplied memory evidence. The index describes available branches; it is not the branch content.`;
 }
 
