@@ -7885,3 +7885,31 @@ export function buildVerifyUserMessage(ctx, replanAttempts, maxReplan): string {
 5. **终态**：`packages/runner/src` 中 `taskBook` 出现次数 → **0**（可量化验收 ✓），且 `RunContext` 字段数下降。
 
 **验收口径（可量化）**：`grep taskBook packages/runner/src` **归零**；`check:repo` 33/33；全量套件绿；两条 Electron 门 ok；**N6 soak 通过**（证明续跑/幂等未被破坏）；`pnpm run audit:cache` 五项指标不劣化。
+
+## 10.287 **N5 阶段 1 结果：Runtime 对 TaskBook 是"不透明承载"，语义耦合只剩 skill 注册**（2026-09-18）
+
+**逐行取证（`packages/runner/src/runner.ts`，9 处）**：
+| 行 | 内容 | 性质 |
+| --- | --- | --- |
+| 3 | `import { TASKBOOK_SKILL_DESCRIPTION, TASKBOOK_SKILL_NAME, renderTaskbookSkillBody } from '@littlesheep/harness'` | **taskbook-as-skill** 注册（用户要求的功能） |
+| 663 | `infra.skillLoader?.registerDynamic?.({ name: TASKBOOK_SKILL_NAME, … }, () => renderTaskbookSkillBody(ctx))` | 同上 |
+| 942 | `infra.skillLoader?.unregisterDynamic?.(TASKBOOK_SKILL_NAME)` | 同上 |
+| 1929 / 1950 | `taskBook: recoveredState?.taskBook` | **纯透传** |
+| 2109 | `taskBook: log.taskBook` | **纯透传** |
+| 2540 | `taskBook: checkpoint.taskBook ? structuredClone(checkpoint.taskBook) : undefined` | **不透明克隆** |
+| 2541 | `taskBookRevision: checkpoint.taskBookRevision` | **纯透传** |
+| 2544 | `appliedTaskBookPatchIds: [...state.appliedTaskBookPatchIds]` | **纯透传** |
+
+**⇒ 结论（改变了对 N5 的判断）**：
+1. **Runtime 从不解释 TaskBook 语义** —— 9 处里 **6 处是不透明承载/透传**，**3 处是 skill 注册**（且那是**期望行为**：TaskBook 以 skill 形式提供，Runtime 只负责按 index 暴露/注销）✓；
+2. ⇒ **不存在"Runtime 依赖 TaskBook 结构"的架构债**（此前把 D2 记作架构债是**基于名称出现次数的推断**，逐行核对后**不成立**）✗；
+3. ⇒ **"去 TaskBook 化"的真实内容 = 命名层面的解耦**，而非行为/协议改造；而**全量改名**会波及 Harness 430 处 + 检查点格式 + 大量测试，**行为收益为零** ⇒ **性价比极低**。
+
+**⇒ N5 的处置建议（据实收束，附可选的小步）**：
+| 选项 | 内容 | 评价 |
+| --- | --- | --- |
+| **N5-a（推荐）** | **不再改名**；在任务书把 D2 从"架构债"**降级为"命名债（已核对：无行为耦合）"** ⇒ 关闭该债 | 零风险、零成本 ✓ |
+| N5-b（可选，极低风险） | 在 Runtime 边界加**通用别名**（如 `type WorkPlan = TaskBook`）并让**新增**代码只用 `workPlan` ⇒ 阻止未来语义耦合，**不动既有 34 处** | 小步、可回滚 ✓ |
+| N5-c（**不建议**） | 全量改名（34 处 Runtime + 430 处 Harness + 检查点字段 + 测试） | 波及面大、序列化风险、**无行为收益** ✗ |
+
+**⇒ 本会话对 D2/N5 的最终结论**：**Runtime 与 TaskBook 之间没有语义耦合**（逐行核对 9 处：6 透传 + 3 skill 注册）；此前任务书中"Runtime 仍认识 TaskBook 概念"的表述**不准确**，本处更正 ✓
