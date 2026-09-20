@@ -74,6 +74,7 @@
 - [对话任务连续性 P0 专项任务书 2026-08-13](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md)：修复普通聊天未绑定 waiting-user Checkpoint、执行现场与附件/临时工具无法自然恢复、权限未按当前状态重验及最终回答断档；当前为最高优先级阻断项。
 - [新 Harness 重建与 Prompt Cache 收敛任务书 2026-09-02](taskbooks/harness-rebuild-and-cache-taskbook-2026-09-02.md)：以冻结提交/tag 为回滚锚点，评估开源 Agent runtime，重建 durable event/inbox/replay、effect intent/settlement 和 authoritative final settlement，并以 `CACHE-01` 至 `CACHE-10` 观测和修复上下文注入造成的 Provider prompt-cache 低命中率。
 - [Harness 发布就绪与双路径对比记录 2026-09-11](reference/harness-rollout-readiness-2026-09-11.md)：汇总当前质量门、双路径成本/延迟/质量对比能力、发布门 reason 集合、灰度/回滚契约，以及仍阻断发布决定的真实 Provider、外部服务对账和真实渠道条目。
+- [缓存 95% 冻结负载验收规程](reference/cache-95-acceptance.md)：把极简执行与缓存 95% 方案的实测步骤写成可重复规程——冻结任务集/模型/配置/轮数与会话组织、旧新两组对比流程、`hit = sum(cached)/sum(input)` 测量规则、未知 usage 处理、禁止做法与完成条件；真实对比当前唯一缺口是 `DEEPSEEK_API_KEY`。
 - [实时网络检索与安全读取任务书 2026-08-28](taskbooks/web-search-and-safe-retrieval-taskbook-2026-08-28.md)：实施 `web_search`、`web_fetch`、Provider、受控本地抓取、safe read、证据引用、记忆协同、UI 与发布验收；WB-01 至 WB-08 已完成，WB-09 发布门实施中。真实匿名 `web_fetch` smoke、当前 release 候选扫描和离线渠道门已通过；真实 Tavily search/citation、正式渠道、签名最终包和干净 Windows 环境仍待验收。
 - [网络检索冻结契约与威胁模型](reference/web-retrieval-security-contract.md)：固定 safe read、网络配置、Tavily 首个 Provider、SSRF/DNS/注入/外发威胁、引用和日志语义。
 - [网络检索安全合并验收 2026-08-29](reference/web-retrieval-security-acceptance-2026-08-29.md)：记录离线安全矩阵、迁移/回退、构建产物扫描和仍阻断 ready 的实际 Provider/正式渠道门。

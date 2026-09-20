@@ -1,6 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-20 23:45:00
+最后更新：2026-09-21 00:15:00
+
+**缓存 95% 冻结负载验收规程落盘（2026-09-21 00:15:00）**：新增 `docs/reference/cache-95-acceptance.md` 并从 `docs/README.md` 链接，把方案第 6 节的实测步骤写成可重复规程：冻结任务集/模型/轮数/会话组织/压缩阈值/数据根，旧实现（`ff59df5`）与新实现各跑一次同一负载，用 `scripts/audit-cache-usage.mjs` 出脱敏汇总；测量规则固定为 `hit = sum(cached_input_tokens) / sum(input_tokens)`，全部用途与重试进入总账，未知 usage 明确计数并使达标结论变为不可用；同时写明禁止做法（填充上下文、预热、排除失败调用、延长会话、只报热缓存子集）与完成条件。真实对比唯一缺口仍是 `DEEPSEEK_API_KEY`（密钥不入仓库）。
 
 **P3「删除第二执行体系」的依赖测绘（2026-09-20 23:45:00，未提交改动，本轮已回滚）**：本轮尝试直接删除 TaskBook 步骤执行器（`task-book-runner.ts`、`task-step-runner.ts`、`task-step-scheduler.ts`、`reply-candidate.ts` 及其测试，并让 `execute` 永远走主循环），在删改过程中测绘出该路径的真实耦合面，随后**回滚**，避免在覆盖不足的状态下落地。
 
@@ -11,6 +13,7 @@
   3. **旧策略降级**：`resolveExecutionWorkPolicy` 会原样返回持久化的 `task_book` 策略；删除执行器后需要把它降级为 `bounded_loop` 并保留原 reason code。
 - 测试面（本轮实测失败集合）：`execute.test.ts` 16 项（TaskBook 步骤执行、显式/自主工具提议直执行、波次暂停、步骤级重规划等，能力随执行器一并删除）、`runner-continuation.test.ts` 7 项（检查点声明/恢复/幂等与"同会话回答绑定"等**通用续接安全语义**，必须逐项改写为循环流程而不是删除）、`test/core-agent-contracts.test.ts` 1 项（预置 TaskBook 的局部重规划）。因此该删除应作为一个独立批次：先做上面三处耦合改造，再逐项改写续接用例，最后删除文件。
 - 回滚后状态：`pnpm run typecheck` 通过，`packages/harness`、`packages/runner` 与 `test/core-agent-contracts.test.ts` 123 个文件 / 980 项全部通过，工作树回到 2026-09-20 23:05 的提交状态（本轮无提交）。
+- 第二次尝试（2026-09-21 00:00，同样回滚）把三处耦合改造先做出来（恢复入口 `decide → execute`、续接守卫交主循环、持久化 `task_book` 策略降级），失败面从 24 项降到 3 项：`classify.test.ts` 1 项（守卫断言，可直接更新）与 `runner-continuation.test.ts` 2 项。后者暴露更深的问题：这些续接用例的场景（恢复边界进程丢失后重试、同一任务目标改版）在旧流程里靠"DECIDE 规划 + 步骤执行"满足验证证据，改成循环后需要模型自己先 `inspect_attachment` 再作答，且首次 `execute` 在 4 次重试中稳定失败（推测与首次尝试已结算的回复身份或资源恢复后的验证证据缺口有关）。因此删除批次应先把这两个续接场景按循环流程重写并确认 `execute` 失败原因，再删除文件；不要用 skip 或放宽断言绕过。
 
 **极简执行与缓存 95% 方案 P3 第三刀：新请求一律进入单一主循环，规划不再被创建（2026-09-20 23:05:00，进行中）**：按方案「删除第二执行体系」，`selectWorkPolicy` 不再为任何**新**请求返回 `task_book`：复杂范围、超长请求、检索意图、续接、延迟运行时事件和默认兜底全部落到 `bounded_loop`，只保留原有 reason code 作为"为什么这轮更重"的审计说明。规划请求因此只可能由**已持久化的 TaskBook**（旧 checkpoint / 旧计划续跑）触发，而不再由新输入触发。
 
