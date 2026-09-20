@@ -20,11 +20,6 @@ import type { SessionManager } from '@littlesheep/session';
 import type { Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
 import type {
-  MemoryAtomCorrectionServiceLike,
-  MemoryAtomHierarchyServiceLike,
-  MemoryAtomReconciliationServiceLike,
-  MemoryAtomRevisionServiceLike,
-  MemoryAtomSubtreeServiceLike,
   MemoryRunRefinementServiceLike,
   MemoryWriteServiceLike,
 } from '@littlesheep/memory-tree';
@@ -35,7 +30,6 @@ import { createDecideStage } from './stages/decide.js';
 import { createExecuteStage } from './stages/execute.js';
 import { createRecoverStage } from './stages/recover.js';
 import { createVerifyStage } from './stages/verify.js';
-import { createEvolveStage, type CreateSkillFn } from './stages/evolve.js';
 import { createCaptureStage } from './stages/capture.js';
 import { createReplyStage } from './stages/reply.js';
 import { createAskUserStage } from './stages/ask_user.js';
@@ -53,26 +47,10 @@ export interface DefaultHarnessOptions {
   memoryStore: MemoryStoreLike;
   config: Config;
   branding: BrandingConfig;
-  /** Indexed, guarded autonomous memory writer used by EVOLVE/CAPTURE. */
+  /** Indexed, guarded autonomous memory writer used by CAPTURE. */
   memoryWriter?: MemoryWriteServiceLike;
   /** Bounded post-DECIDE memory refinement using the normalized TaskBook. */
   memoryRefiner?: MemoryRunRefinementServiceLike;
-  /** Runtime-owned boundary for model-proposed multi-Atom reconciliation. */
-  memoryReconciler?: MemoryAtomReconciliationServiceLike;
-  /** Runtime-owned boundary for model-proposed semantic parent corrections. */
-  memoryHierarchy?: MemoryAtomHierarchyServiceLike;
-  /** Runtime-owned boundary for bounded non-leaf Atom subtree movement. */
-  memorySubtree?: MemoryAtomSubtreeServiceLike;
-  /** Runtime-owned boundary for evidence-preserving Atom projection refinement. */
-  memoryReviser?: MemoryAtomRevisionServiceLike;
-  /** Runtime-owned boundary for evidence-backed fact correction and replacement. */
-  memoryCorrector?: MemoryAtomCorrectionServiceLike;
-  /**
-   * Optional: if provided, EVOLVE may autonomously create skills when it
-   * identifies a reusable pattern. This is the agent's self-evolution
-   * mechanism — skills are created without user direction.
-   */
-  createSkill?: CreateSkillFn;
   /** Rules confidence threshold for CLASSIFY fast path. Default 0.7. */
   classifierThreshold?: number;
   /** Prepared at Runner startup; unavailable models continue with the non-displayable safety estimator. */
@@ -106,19 +84,9 @@ export function createHarnessStages(opts: DefaultHarnessOptions): Map<StageName,
   }));
   stages.set('recover', createRecoverStage());
   stages.set('verify', createVerifyStage());
-  stages.set('evolve', createEvolveStage({
-    llm: opts.llm,
-    model: opts.model,
-    memoryWriter: opts.memoryWriter,
-    memoryReconciler: opts.memoryReconciler,
-    memoryHierarchy: opts.memoryHierarchy,
-    memorySubtree: opts.memorySubtree,
-    memoryReviser: opts.memoryReviser,
-    memoryCorrector: opts.memoryCorrector,
-    createSkill: opts.createSkill,
-    llmPolicy: opts.config.memory.llmEvolve,
-    mode: opts.config.memory.autoMemoryPolicy === 'compaction' ? 'explicit-only' : 'legacy',
-  }));
+  // EVOLVE is gone: automatic memory evolution (merge / move / revise /
+  // correction orchestration) and automatic skill creation were removed with the
+  // lean plan. Explicit memory writes and the deterministic CAPTURE record stay.
   stages.set('capture', createCaptureStage({
     llm: opts.llm,
     model: opts.model,

@@ -6,7 +6,7 @@
 
 - `classify.ts`、`decide.ts`：需求判断和 TaskBook；DECIDE 内部校准与重规划位于 `decide/`。
 - `execute.ts`、`verify.ts`、`recover.ts`：步骤执行、验收和局部恢复；工具循环/步骤调度位于 `execute/`，结构验收/恢复路由位于 `verify/`。
-- `evolve.ts`、`capture.ts`：结构化能力与运行流水意图；`memory-intent-gate.ts` 用真实步骤、工具和 VERIFY 证据决定是否提交；`evolve/reconciliation.ts` 处理重复 Atom 提案，`evolve/hierarchy.ts` 处理显式关系驱动的叶子 reparent，`evolve/subtree.ts` 与 `evolve/subtree-validation.ts` 处理有界非叶子子树移动，`evolve/revision.ts` 处理同陈述内容修订，`evolve/correction.ts` 与 `evolve/correction-validation.ts` 处理事实纠正/冲突替代；这些都是独立 Runtime 端口，模型没有存储修改权。
+- `capture.ts`：运行流水意图；`memory-intent-gate.ts` 用真实步骤、工具和 VERIFY 证据决定是否提交。自动演化编排（reconciliation / reparent / subtree move / revision / correction）已删除，模型没有存储修改权。
 - `reply.ts`、`ask_user.ts`、`finalize.ts`：聊天、澄清和最终装配。
 - `_shared.ts`：只放多个 stage 真正共享的纯 helper。
 
@@ -14,7 +14,7 @@
 
 - Stage 通过 `HarnessContext` 和端口协作，不直接访问 App、渠道或用户数据文件。
 - 禁止通过模型输出跳过权限、验证或收尾状态。
-- 模型提出的 `invalidate/conflict` 只记录为待协调事项，不能在 EVOLVE/CAPTURE 直接破坏记忆。
+- 模型提出的 `invalidate/conflict` 只记录为待协调事项，不能在 CAPTURE 直接破坏记忆。
 - 普通 `merge` intent 同样不能旁路为写入；只有独立 `reconciliations` 协议可以进入 Atom 调和端口，模型始终没有存储修改权。
 - 普通 `move` intent 同样不能旁路为写入；只有独立 `reparents` 协议可以进入层级端口，且单轮超额提案必须留下拒绝审计。
 - 普通 `conflict`/`invalidate` intent 同样不能旁路为写入；只有独立 `corrections` 协议可以进入纠正端口，且旧 Atom 必须保留并以 superseded 投影表达替代关系。

@@ -15,7 +15,6 @@ import {
 import { asSessionId, textMessage } from '@littlesheep/types'
 import { createDefaultHarness } from '../packages/harness/src/default-harness.js'
 import { createDecideStage } from '../packages/harness/src/stages/decide.js'
-import { createEvolveStage } from '../packages/harness/src/stages/evolve.js'
 import {
   createMockLlm,
   createMockMemoryStore,
@@ -56,7 +55,7 @@ describe('core agent behavior contracts', () => {
     // Casual chat still costs exactly one model request; it now runs in the same
     // main loop as tool work, so no planning request and no TaskBook appear.
     expect((result.meta?.trace as Array<{ name: string }>).map((item) => item.name)).toEqual([
-      'enter', 'classify', 'execute', 'verify', 'evolve', 'capture', 'finalize',
+      'enter', 'classify', 'execute', 'verify', 'capture', 'finalize',
     ])
     expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual(['execute_tool_loop'])
     expect(ctx.taskBook).toBeUndefined()
@@ -251,83 +250,4 @@ describe('core agent behavior contracts', () => {
     })
   })
 
-  it('rejects low-value long-term learning but keeps indexed project memory retrievable on demand', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'ls-core-eval-memory-'))
-    tempDirs.push(dir)
-    const repository = new MemoryRepository({ dataDir: dir })
-    await repository.initialize()
-    const tree = new MemoryTree({ totalRunTokenBudget: 1_200, perBranchTokenBudget: 500 })
-    for (const spec of DEFAULT_BRANCH_SPECS) {
-      tree.register(new TreeMemoryBranch({ repository, ...spec }))
-    }
-    const writer = new MemoryWriteService({ repository, invalidate: (branch) => tree.invalidate(branch) })
-    const llm = createMockLlm(textResponse(JSON.stringify({
-      memories: [
-        {
-          intent: 'write',
-          branch: 'long-term', parentNodeId: 'long-term:root', scope: 'global',
-          summary: 'Temporary thought', content: 'This is only this run temporary run state.',
-          retrievalKeys: ['temporary'], importance: 0.2, confidence: 0.3,
-          reason: 'The model proposed it even though it is not durable.',
-        },
-        {
-          intent: 'write',
-          branch: 'project', parentNodeId: 'project:root', scope: 'workspace',
-          summary: 'Workspace package manager', content: 'Use pnpm in this repository.',
-          retrievalKeys: ['pnpm', 'package manager'], importance: 0.8, confidence: 0.95,
-          reason: 'Verified from the repository packageManager field.',
-        },
-      ],
-      createSkill: null,
-    })))
-    const ctx = makeCtx({
-      inbound: textMessage('user', 'Inspect the project package manager.'),
-      reply: 'This project uses pnpm.',
-      toolContext: { cwd: 'D:/project' },
-    })
-    ctx.cwd = 'D:/project'
-    ctx.taskExecution = {
-      goal: 'Inspect the project package manager.', complexity: 'simple', status: 'done',
-      startedAt: '2026-07-15T00:00:00.000Z', endedAt: '2026-07-15T00:00:01.000Z',
-      steps: [{
-        stepId: 'step-1', description: 'Inspect packageManager', status: 'done',
-        startedAt: '2026-07-15T00:00:00.000Z', endedAt: '2026-07-15T00:00:01.000Z',
-        toolCallIds: [], toolResults: [],
-      }],
-    }
-    ctx.verificationHistory = [{
-      attempt: 1, verdict: 'pass', reason: 'packageManager was inspected.',
-      verifiedAt: '2026-07-15T00:00:02.000Z', source: 'model',
-    }]
-
-    await createEvolveStage({ llm, model: 'test/model', memoryWriter: writer })(ctx)
-
-    expect(await repository.listNodes('long-term')).toHaveLength(0)
-    expect(await repository.listNodes('project', 'D:/project')).toHaveLength(1)
-    expect((await repository.snapshot()).writeAudit.map((record) => record.decision)).toEqual(['created'])
-    expect(ctx.memoryIntentDecisions?.map((record) => record.decision)).toEqual(['rejected', 'committed'])
-
-    tree.beginRun({
-      runId: 'recall-run', sessionId: asSessionId('session-1'), query: 'Which package manager?',
-      recentHistory: [], workspace: 'D:/project',
-    })
-    const root = tree.rootIndex()
-    const tokensBeforeRejectedExpansion = tree.getLedger('recall-run')!.tokensUsed
-    await expect(tree.expand('recall-run', { branchId: 'project', query: 'pnpm', limit: 3 }))
-      .rejects.toThrow('branch_index')
-    expect(tree.getLedger('recall-run')!.tokensUsed).toBe(tokensBeforeRejectedExpansion)
-    expect(tree.getLedger('recall-run')!.records.at(-1)).toMatchObject({
-      action: 'expand', status: 'error', sourceCount: 0, tokensUsed: 0,
-    })
-    const projectIndex = await tree.branchIndex('recall-run', 'project')
-    const recalled = await tree.expand('recall-run', { branchId: 'project', query: 'pnpm', limit: 3 })
-
-    expect(root).toContain('Only this lightweight root index is preloaded')
-    expect(root).not.toContain('Use pnpm in this repository.')
-    expect(projectIndex.entries[0]?.title).toBe('Workspace package manager')
-    expect(recalled.fragments[0]?.content).toContain('Use pnpm in this repository.')
-    expect(tree.finishRun('recall-run')?.records.map((record) => record.action)).toEqual([
-      'root_index', 'expand', 'branch_index', 'expand',
-    ])
-  })
 })

@@ -15,9 +15,9 @@
 每次 run 先选择一个有界语义活动：常规请求直接进入单一主循环，只有可证明复杂、大型、续接或需要检索的请求才先做完整规划：
 
 ```text
-ENTER -> 活动路由 -> execute（常规会话与常规任务） -> EXECUTE（单一主循环） -> VERIFY -> EVOLVE -> CAPTURE -> FINALIZE
+ENTER -> 活动路由 -> execute（常规会话与常规任务） -> EXECUTE（单一主循环） -> VERIFY -> CAPTURE -> FINALIZE
                  -> 能力/状态询问 -> REPLY（最小 Runtime 事实契约） -> FINALIZE
-                 -> execute（复杂） -> DECIDE -> EXECUTE -> VERIFY -> EVOLVE -> CAPTURE -> FINALIZE
+                 -> execute（复杂） -> DECIDE -> EXECUTE -> VERIFY -> CAPTURE -> FINALIZE
                  -> clarify -----------------------------> ASK_USER -> FINALIZE
 
 EXECUTE 主循环内部：
@@ -34,7 +34,7 @@ DECIDE（仅复杂/大型/续接/检索）内部：
   -> 在安全决策边界消费用户追加消息或 LS 事件
   -> 局部修订未完成步骤
   -> 按目标和验收标准验证
-     -> 通过：EVOLVE / CAPTURE / FINALIZE
+     -> 通过：CAPTURE / FINALIZE
      -> 可恢复失败：RECOVER 后继续
      -> 缺少关键决策：ASK_USER
 ```
@@ -130,7 +130,7 @@ DECIDE（仅复杂/大型/续接/检索）内部：
 - 窄结构形态（单只读步骤、写后读回等）由结构性通道判定为 `pass`；通道条件覆盖复杂度、步骤数、工具身份、截断状态、副作用匹配与路径/内容一致性。
 - 其余已完成的 run 记为 `unverified`：记录到的工具证据完整、全部调用成功，且存在可回查到真实 Provider 请求的模型回复，但需要人工判断的验收标准未经验证。
 - 记录到的失败、缺失步骤、截断证据、未结算副作用或缺少模型回复一律不能变成 `pass`，走既有的有界恢复、局部重规划和达到上限后的用户决策路由。
-- `unverified` 可以继续 EVOLVE/CAPTURE 与路由级反馈（运行事实完整且未失败），但不得提高 atom 的 verified usefulness、不得被 UI 表达成“验证通过”，也不得把 reported/unverified claim 写成 verified fact。
+- `unverified` 可以继续 CAPTURE 与路由级反馈（运行事实完整且未失败），但不得提高 atom 的 verified usefulness、不得被 UI 表达成“验证通过”，也不得把 reported/unverified claim 写成 verified fact。
 - 完整对照仍列出原始请求、校准目标、成功标准、步骤验收、工具结果、`KnownState` 版本与被采用建议的验证状态，用于人工复核和审计记录。
 
 没有错误不等于任务完成：只有 `pass` 才代表 Runtime 证明了记录的验收；`unverified` 必须如实呈现为未验证，不得改写成通过。
@@ -172,7 +172,7 @@ DECIDE（仅复杂/大型/续接/检索）内部：
 - 时间变化通过 `effectiveAt`、`expiresAt`、`revalidateAt`、`lastUsefulAt` 和 due index 处理。运行中在安全边界近实时消费，到应用关闭期间跨过的时间点在下次启动补偿；不允许为“实时”无界轮询全部记忆或监控未授权文件。
 - 不失忆依赖持久权威副本、稳定索引、事件 journal、版本和恢复验证，不依赖全量 Prompt。当前请求不相关的记忆可以不注入，但必须仍可沿索引重新发现；用户批准的删除和到期清理仍按 tombstone、引用检查与审计执行。
 - 超出预算的结果返回摘要或可继续展开的索引，不直接塞入一段被截断的原始正文。
-- `EVOLVE` 提出长期、项目或经验记忆的写入意图；`CAPTURE` 记录详细 daily 流水。模型只描述 domain、statement kind、asserted source 与 topics；Runtime 根据对话来源、成功工具结果、外部证据和 VERIFY 决定认识状态与权威。两个阶段都不能直接写入旧式扁平文件。
+- `CAPTURE` 记录详细 daily 流水。自动 merge/move/revise 的 EVOLVE 编排与自动 Skill 创建已随极简方案删除；长期/项目记忆只由明确写入产生。模型只描述 domain、statement kind、asserted source 与 topics；Runtime 根据对话来源、成功工具结果、外部证据和 VERIFY 决定认识状态与权威。两个阶段都不能直接写入旧式扁平文件。
 - 所有写入都包含 parent、scope、tier、检索键、来源 run、`sourceRefs`、`evidenceRefs`、置信度、重要性和理由。缺少父节点时进入恢复队列；重复或相似内容只能在 statement、epistemic、authority 和作用域兼容时强化或合并。合并保留来源、证据、来源 Atom tombstone 与历史；重复出现本身不能覆盖正文或提高 confidence。合法父级变化保持稳定 Atom id，并执行 revision、同作用域和循环校验。
 - 用户侧记忆页只读取应用数据根中的记忆文件目录，当前仅允许修改 `SOUL.md`；不得在普通 GUI 中暴露 Atom、关系、向量和压缩投影。Runtime 内部治理、检索和审计继续使用同一套 Memory Repository，不能因前端简化而建立展示副本。
 - LLM 每轮只预载记忆树简介与受限根索引，具体 Atom 按索引渐进介入；“树可完整访问”不等于“树内容完整注入”。
@@ -204,7 +204,7 @@ DECIDE（仅复杂/大型/续接/检索）内部：
 - `DECIDE` 只能修改目标步骤；已完成步骤、证据、任务目标、成功标准和范围限制由代码保护。
 - `EXECUTE` 从失败或未完成步骤继续执行，并保留已完成结果。
 - 自动重规划耗尽后升级到 `ASK_USER`，不会用“强制通过”掩盖未完成任务。
-- Runner 只持有一个索引优先记忆运行时实例，供提示词装配、单一 `memory_tree` 导航入口、EVOLVE/CAPTURE 写入、缓存失效、执行日志和设置概览共同使用。
+- Runner 只持有一个索引优先记忆运行时实例，供提示词装配、单一 `memory_tree` 导航入口、CAPTURE 写入、缓存失效、执行日志和设置概览共同使用。
 - 固定 daily prelude 和 `MEMORY.md` 启动注入已关闭；旧扁平文件、项目/Git 状态、经验数据和向量仍作为按需兼容来源保留。
 - 运行时强制 `root index -> branch index -> expansion -> branch-scoped deep search`；D1 只在已限定 branch/scope 内使用层级与 FTS 索引，不调用 Embedding。task relevance 由独立评分器计算，不混入 confidence、importance 或历史 usefulness；prime 检查每分支最多 80 个 D1 条目后执行 `> 0.25` admission 和最强相关簇截断。高相关种子可经同 branch/scope/subtree 的有界一跳关系发现必要候选，强关系候选只有独立通过任务门后才能进入首次 working set；路径与 route 证据进入 KnownState。版本化会话摘要已接入同一任务语义，仅在真实指代且近期锚点不足时回退。前置条件失败时记录为零注入 token，普通展开不能调用向量来源。同一次分支内深搜的查询向量必须跨已授权 scope 复用，不能因 scope 数量重复计算。
 - 结构化记忆写入具备阈值、写侧安全检查、父级索引原子更新、审计记录、恢复排队、去重和合并。
@@ -212,9 +212,9 @@ DECIDE（仅复杂/大型/续接/检索）内部：
 - `@littlesheep/context` 已接管显式候选、稳定排序、窗口预算、可选项淘汰、压缩建议和脱敏 `ContextSnapshot`。`execute` 路径继续把基础策略、记忆根索引、bootstrap、行为 profile、reasoning、Workflow/TaskBook 和输出约束拆成可追溯 segment；`respond` 路径只投影身份、能力名、`USER.md`、受限记忆索引、相关摘要/Atom 和紧凑输出约束，不重复注入执行专用信息。所有用途共用同一条有界 session transcript（追加式、按量化窗口下界裁剪），不再有 per-purpose 历史窗口或调用侧重组。
 - 工具循环首轮工具结果进入后，后续请求只裁剪较旧历史并保留最近 2 条历史、必需附件 manifest、当前用户消息、系统/步骤契约和已产生的工具证据；这只减少重复 Context，不减少实时 LLM 回复、工具 schema、权限判断或验证证据。实际 Provider usage/耗时收益必须另行验收，不能由字符数或保守估算冒充精确 token 节省。
 - 每次模型请求都解析独立、版本化的 `LlmCallContract`，明确 purpose、stage、Context 来源、允许决策、输出结构、工具、记忆意图和预算；缺少必需 Context、stage 不匹配、工具越权或预算无效时在发送前默认拒绝，`FINALIZE` 禁止额外模型调用。
-- `CAPTURE` 默认从已经持久化的用户可见运行事实确定性生成 daily 记录；`EVOLVE` 按复杂度和记忆信号自适应调用。用户可见的聊天回复、澄清问题、任务/步骤说明、验证说明、执行结论和交付表达必须在当次 run 中实时调用当前 Provider API，由 LLM 结合 `SOUL.md`/profile 现场生成；这不是候选文案选择流程，不能从模板库、预备文案池或历史回答选取新消息。`ReplyProvenance` 绑定真实模型请求，`FINALIZE` 必须回查请求后才可发布。已经生成的回复只能在同一 UI 回合的更新、日志和持久化中复用，不能再次作为新消息发送。API 返回在发布前通过持久化会话级注册表原子占用规范化指纹；完全重复时最多重新实时调用两次当前 Provider API，仍重复、为空、注册表不可用或模型不可用时只显示 Runtime 错误/状态，不使用确定性 Agent 降级文案。UI 控件、状态、路径、权限和进度数字仍由 Runtime 稳定提供。
+- `CAPTURE` 默认从已经持久化的用户可见运行事实确定性生成 daily 记录；自动演化调用已删除。用户可见的聊天回复、澄清问题、任务/步骤说明、验证说明、执行结论和交付表达必须在当次 run 中实时调用当前 Provider API，由 LLM 结合 `SOUL.md`/profile 现场生成；这不是候选文案选择流程，不能从模板库、预备文案池或历史回答选取新消息。`ReplyProvenance` 绑定真实模型请求，`FINALIZE` 必须回查请求后才可发布。已经生成的回复只能在同一 UI 回合的更新、日志和持久化中复用，不能再次作为新消息发送。API 返回在发布前通过持久化会话级注册表原子占用规范化指纹；完全重复时最多重新实时调用两次当前 Provider API，仍重复、为空、注册表不可用或模型不可用时只显示 Runtime 错误/状态，不使用确定性 Agent 降级文案。UI 控件、状态、路径、权限和进度数字仍由 Runtime 稳定提供。
 - FINALIZE 已接入本地、回答级记忆连续性评估，不再只判断“本轮是否加载过记忆”。评估从 `ReplyProvenance` 回查产生最终回答的真实请求及其之前的 ContextSnapshot，只比较实际进入该因果调用链的 active/adopted Atom、版本化会话摘要、近期跨轮消息和已进入后续模型请求的记忆工具结果。任务续接和直接记忆追问都进入显式门；若问题点名代号、颜色、名称、版本、路径、预算、`executionCount`、`ticks`、`completed` 等多个历史字段，回答必须按标签逐项命中。Markdown 粗体、反引号、表格、短数字和布尔值只改变展示或值形态，不放宽标签和值的精确对应；无关位置出现同一个数字不能补足错误字段。只命中附带限制、只回答部分字段、答错、否定旧值或明确否认记得均为 `discontinuous`。仅复述当前请求、Context 已裁剪来源、缺少快照的来源，以及 released/excluded/conflicted Atom 均不得证明连续。弱锚点、Context 截断或无目标时保持 `uncertain / unavailable`。普通 run 的成功状态与记忆连续性彼此独立：回答可以被正常展示和审计，但只有回答级状态 `supported` 才能称为连续。评估结果写入 `AgentResult` 和执行日志，并只形成有界 routing/activation 反馈，不增加 Provider 调用、不提高事实 confidence，也不替代 VERIFY。
-- EVOLVE/CAPTURE 只接收模型的结构化记忆建议；模型不得自报 verified 或 authority。运行时会验证 asserted source，证据不足时降级为 LS 自身的未验证陈述并丢弃不可信主体 id/label；`invalidate` 与 `conflict` 只延期审计而不直接修改记忆。`PHILOSOPHY.md` 已作为显式理念资源注册，只沿索引按任务相关性和预算展开，不进入常驻 Prompt bootstrap。
+- CAPTURE 只接收模型的结构化记忆建议；模型不得自报 verified 或 authority。运行时会验证 asserted source，证据不足时降级为 LS 自身的未验证陈述并丢弃不可信主体 id/label；`invalidate` 与 `conflict` 只延期审计而不直接修改记忆。`PHILOSOPHY.md` 已作为显式理念资源注册，只沿索引按任务相关性和预算展开，不进入常驻 Prompt bootstrap。
 - 本地精确 ledger、Provider usage 与不可展示的安全估算使用不同结构保存，Provider usage 绑定到产生它的准确 Context 快照。DeepSeek V4 使用固定 revision tokenizer、Provider 校准后的最终 framing 与计数器 id；Flash 的普通请求、工具 schema、`tool_calls -> tool` 续轮、只保留历史工具消息和多工具乱序结果已在 disabled/high/max 三档完成 `15/15` 次零差值校准，本地计数优先驱动圆环，Provider usage 作同请求校准。Pro 普通请求保持 exact，但 Pro 工具协议在独立校准完成前必须默认拒绝；OpenAI/GLM 未经同等验证时保持 unavailable，不会用字符换算冒充真实 token。
 - 会话压缩已实现为非破坏式、版本化 Summary Memory：原始 JSONL 消息保留，旧消息摘要在下一轮作为独立 `summary_memory` 来源介入，并可按消息阈值或精确 Context 占用阈值触发。Runner 会移除模型伪造或残缺的精确字段封套，再从 Runtime 可验证的旧字段和新用户赋值重建最多 24 项保真区；摘要模型仍负责目标、约束、进度和证据的语义压缩。
 - 活动路由（内部兼容 stage id 为 `classify`，纯确定性、不发出模型请求）、DECIDE 和 REPLY 只接收附件清单；非图片正文通过当前 run 专属的 `inspect_attachment` 只读工具按需解析，未调用时不会读取文件正文，工具结果再进入 Context。图片仍按受限大小读取为多模态输入。

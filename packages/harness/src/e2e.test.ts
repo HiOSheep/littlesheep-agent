@@ -42,7 +42,7 @@ describe('e2e agent loop', () => {
     expect(ctx.produced[ctx.produced.length - 1].role).toBe('assistant');
     const trace = res.meta?.trace as Array<{ name: string }>;
     expect(trace.map((t) => t.name)).toEqual([
-      'enter', 'classify', 'execute', 'verify', 'evolve', 'capture', 'finalize',
+      'enter', 'classify', 'execute', 'verify', 'capture', 'finalize',
     ]);
     expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual(['execute_tool_loop']);
   });
@@ -111,7 +111,7 @@ describe('e2e agent loop', () => {
     expect(res.next).toBe('exit');
     const trace = res.meta?.trace as Array<{ name: string }>;
     expect(trace.map((t) => t.name)).toEqual([
-      'enter', 'classify', 'execute', 'verify', 'evolve', 'capture', 'finalize',
+      'enter', 'classify', 'execute', 'verify', 'capture', 'finalize',
     ]);
     const businessEvents = events.filter((event) => event.type !== 'reasoning' && event.type !== 'model_activity');
     // No TaskBook: the work never left the main loop.
@@ -236,7 +236,7 @@ describe('e2e agent loop', () => {
     expect(ctx.reply).toBe('Could you clarify what you want?');
     const trace = res.meta?.trace as Array<{ name: string }>;
     expect(trace.map((t) => t.name)).toEqual([
-      'enter', 'classify', 'execute', 'verify', 'evolve', 'capture', 'finalize',
+      'enter', 'classify', 'execute', 'verify', 'capture', 'finalize',
     ]);
     expect(ctx.clarificationRequest).toBeUndefined();
     expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
@@ -317,7 +317,7 @@ describe('e2e agent loop', () => {
     const trace = res.meta?.trace as Array<{ name: string }>;
     expect(trace.map((item) => item.name)).toEqual([
       'enter', 'classify', 'decide', 'execute', 'verify',
-      'decide', 'execute', 'verify', 'evolve', 'capture', 'finalize',
+      'decide', 'execute', 'verify', 'capture', 'finalize',
     ]);
   });
 });

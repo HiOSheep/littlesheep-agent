@@ -4,7 +4,7 @@ import { HookRunner } from './runner.js';
 import { makeCtx } from '../tests/helpers.js';
 import type { StageResult, AnyHook } from '@littlesheep/types';
 
-const ok: StageResult = { stage: 'execute', next: 'evolve', ok: true };
+const ok: StageResult = { stage: 'execute', next: 'capture', ok: true };
 
 describe('HookRunner', () => {
   it('runs void before/after hooks', async () => {

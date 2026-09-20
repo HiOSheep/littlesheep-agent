@@ -97,7 +97,7 @@ export async function verifyTrivialReadOnlyExecution(ctx: RunContext): Promise<S
   publishVerifiedReply(ctx);
   return {
     stage: 'verify',
-    next: 'evolve',
+    next: 'capture',
     ok: true,
     meta: { verdict: 'pass', runtimeFastPath: true, reason },
   };
@@ -192,7 +192,7 @@ export async function verifyDeterministicWriteReadExecution(ctx: RunContext): Pr
   publishVerifiedReply(ctx);
   return {
     stage: 'verify',
-    next: 'evolve',
+    next: 'capture',
     ok: true,
     meta: { verdict: 'pass', runtimeFastPath: true, writeReadFastPath: true, reason },
   };

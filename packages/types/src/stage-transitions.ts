@@ -21,7 +21,9 @@ export const allowedTransitions: StageTransitionManifest = Object.freeze({
   // therefore use the compatibility shortcut directly to FINALIZE.
   execute: targets('verify', 'recover', 'decide', 'finalize', 'exit'),
   recover: targets('classify', 'decide', 'execute', 'verify', 'reply', 'ask_user', 'finalize', 'exit'),
-  verify: targets('evolve', 'capture', 'recover', 'decide', 'ask_user', 'finalize', 'exit'),
+  verify: targets('capture', 'recover', 'decide', 'ask_user', 'finalize', 'exit'),
+  // `evolve` is retained only so persisted records from older runs can still be
+  // read and replayed; the stage is no longer registered or reachable.
   evolve: targets('capture', 'exit'),
   capture: targets('finalize', 'exit'),
   reply: targets('verify', 'finalize', 'exit'),

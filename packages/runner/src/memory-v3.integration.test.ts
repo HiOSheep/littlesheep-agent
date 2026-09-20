@@ -33,7 +33,7 @@ describe('Runner Memory v3 integration', () => {
     await rm(dataDir, { recursive: true, force: true });
   });
 
-  it('persists EVOLVE and CAPTURE atoms, navigates them, and restores them after restart', async () => {
+  it('persists the deterministic CAPTURE atom, navigates it, and restores it after restart', async () => {
     const workspace = join(dataDir, 'workspace');
     await mkdir(workspace, { recursive: true });
     const config = {
@@ -41,7 +41,8 @@ describe('Runner Memory v3 integration', () => {
       memory: {
         ...DEFAULT_CONFIG.memory,
         repositoryBackend: 'v3' as const,
-        // HC-18: keep the legacy per-run EVOLVE/CAPTURE protocol explicitly admitted for old data.
+        // The per-run CAPTURE record stays reachable under the explicit legacy
+        // policy; automatic EVOLVE persistence was removed.
         autoMemoryPolicy: 'legacy-per-run' as const,
       },
     };
@@ -53,36 +54,6 @@ describe('Runner Memory v3 integration', () => {
         textResponse('{"plan":[{"description":"inspect it","tools":[]}]}'),
         textResponse('Inspection complete.'),
         textResponse('Inspection completed successfully.'),
-        textResponse(JSON.stringify({ memories: [{
-          branch: 'project',
-          parentNodeId: 'project:root',
-          scope: 'workspace',
-          summary: 'Repository uses pnpm',
-          content: 'Use pnpm commands in this workspace.',
-          retrievalKeys: ['pnpm', 'workspace'],
-          importance: 0.8,
-          confidence: 0.95,
-          reason: 'Verified from the repository configuration.',
-          epistemic: {
-            domain: 'project',
-            statementKind: 'factual-claim',
-            assertedBy: { kind: 'agent', id: 'littlesheep' },
-            topics: ['pnpm', 'workspace'],
-          },
-        }], createSkill: null })),
-        textResponse(JSON.stringify({ observations: [{
-          summary: 'Inspection completed',
-          content: 'The requested repository inspection completed successfully.',
-          retrievalKeys: ['inspection', 'completed'],
-          importance: 0.4,
-          confidence: 0.9,
-          reason: 'Useful for reconstructing this run.',
-          epistemic: {
-            domain: 'task',
-            statementKind: 'reported-observation',
-            assertedBy: { kind: 'agent', id: 'littlesheep' },
-          },
-        }] })),
       ]),
       skillsDirs: [],
     });
@@ -92,28 +63,16 @@ describe('Runner Memory v3 integration', () => {
     expect(result.status).toBe('ok');
     const projectNodes = await first.infra.memoryRepository.listNodes('project', workspace);
     const dailyNodes = await first.infra.memoryRepository.listNodes('daily', workspace);
-    expect(projectNodes).toHaveLength(1);
+    // Nothing writes a project atom on its own any more.
+    expect(projectNodes).toHaveLength(0);
     expect(dailyNodes).toHaveLength(1);
-    expect(projectNodes[0]).toMatchObject({ summary: 'Repository uses pnpm', sourceRunIds: [result.runId] });
-    expect(dailyNodes[0]).toMatchObject({ summary: 'Run done: read the file as a multi-step job', sourceRunIds: [result.runId] });
-    expect(await countFiles(join(dataDir, 'memory-tree', 'v3', 'atoms'), '.memory.json')).toBeGreaterThanOrEqual(2);
-    expect(await countFiles(join(dataDir, 'memory-tree', 'v3', 'conversation-sources'), '.conversation-source.json'))
-      .toBeGreaterThanOrEqual(2);
-    const inspection = await first.infra.memoryRepository.management.inspectNode(projectNodes[0]!.id, 'D3');
-    expect(inspection?.atom?.sourceRefs).toEqual(expect.arrayContaining([
-      expect.stringContaining(`conversation-source:${result.runId}:user-message:`),
-      expect.stringContaining(`conversation-source:${result.runId}:assistant-reply`),
-    ]));
-    expect(inspection?.atom?.evidenceRefs).toEqual(expect.arrayContaining([
-      expect.stringContaining(`run:${result.runId}:verification:1:unverified`),
-    ]));
-    expect(inspection?.atom).toMatchObject({
-      domain: 'project',
-      statementKind: 'factual-claim',
-      epistemicStatus: 'unverified',
-      authorityScope: { kind: 'none', scope: 'workspace' },
-      assertedBy: { kind: 'agent', id: 'littlesheep' },
+    expect(dailyNodes[0]).toMatchObject({
+      summary: 'Run done: read the file as a multi-step job',
+      sourceRunIds: [result.runId],
     });
+    expect(await countFiles(join(dataDir, 'memory-tree', 'v3', 'atoms'), '.memory.json')).toBeGreaterThanOrEqual(1);
+    expect(await countFiles(join(dataDir, 'memory-tree', 'v3', 'conversation-sources'), '.conversation-source.json'))
+      .toBeGreaterThanOrEqual(1);
     const dailyInspection = await first.infra.memoryRepository.management.inspectNode(dailyNodes[0]!.id, 'D3');
     expect(dailyInspection?.atom).toMatchObject({
       domain: 'task',
@@ -121,8 +80,8 @@ describe('Runner Memory v3 integration', () => {
       epistemicStatus: 'reported',
       assertedBy: { kind: 'agent', id: 'littlesheep' },
     });
-    expect(inspection?.projectionRecords?.length).toBeGreaterThan(0);
-    await expect(first.infra.memoryService.listConversationSources(inspection?.atom?.sourceRefs ?? []))
+    expect(dailyInspection?.projectionRecords?.length).toBeGreaterThan(0);
+    await expect(first.infra.memoryService.listConversationSources(dailyInspection?.atom?.sourceRefs ?? []))
       .resolves.toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'user-message' })]));
 
     await first.shutdown();
@@ -136,38 +95,34 @@ describe('Runner Memory v3 integration', () => {
     });
     runners.push(restored);
 
-    expect(await restored.infra.memoryRepository.getNode(projectNodes[0]!.id)).toMatchObject({
-      summary: 'Repository uses pnpm',
-    });
     expect(await restored.infra.memoryRepository.getNode(dailyNodes[0]!.id)).toMatchObject({
       summary: 'Run done: read the file as a multi-step job',
     });
-    expect((await restored.infra.memoryRepository.management.inspectNode(projectNodes[0]!.id, 'D3'))?.atom)
-      .toMatchObject({ statementKind: 'factual-claim', epistemicStatus: 'unverified' });
 
     const navigationRunId = 'memory-v3-navigation';
     await restored.infra.memoryService.beginRun({
       runId: navigationRunId,
       sessionId: asSessionId('memory-v3-session'),
-      query: 'pnpm workspace',
+      query: 'inspection completed',
       recentHistory: [],
       workspace,
       autoPrime: false,
     });
-    const index = await restored.infra.memoryService.branchIndex(navigationRunId, 'project');
-    expect(index.entries.map((entry) => entry.id)).toContain(projectNodes[0]!.id);
+    const index = await restored.infra.memoryService.branchIndex(navigationRunId, 'daily');
+    expect(index.entries.map((entry) => entry.id)).toContain(dailyNodes[0]!.id);
     const expansion = await restored.infra.memoryService.expand(navigationRunId, {
-      branchId: 'project',
-      nodeId: projectNodes[0]!.id,
+      branchId: 'daily',
+      nodeId: dailyNodes[0]!.id,
       limit: 5,
       tokenBudget: 800,
     });
     expect(expansion.fragments[0]).toMatchObject({
-      id: projectNodes[0]!.id,
-      metadata: { source: `memory-v3:atom:${projectNodes[0]!.id}` },
+      id: dailyNodes[0]!.id,
+      metadata: { source: `memory-v3:atom:${dailyNodes[0]!.id}` },
     });
     await restored.infra.memoryService.finishRun(navigationRunId);
   });
+
 
   it('injects a D1-selected atom into the first business model request', async () => {
     const workspace = join(dataDir, 'workspace');
@@ -549,17 +504,6 @@ describe('Runner Memory v3 integration', () => {
       textResponse('{"plan":[{"description":"use the injected continuity marker","tools":[]}]}'),
       textResponse(`The persisted project decision uses ${marker}.`),
       textResponse(`The project decision was persisted and uses ${marker}.`),
-      textResponse(JSON.stringify({ memories: [{
-        branch: 'project',
-        parentNodeId: 'project:root',
-        scope: 'workspace',
-        summary: 'Memory v3 continuity project decision',
-        content: `The project continuity marker is ${marker}.`,
-        retrievalKeys: ['memory v3', 'continuity', marker],
-        importance: 0.9,
-        confidence: 0.98,
-        reason: 'The run explicitly used the injected verified marker.',
-      }], createSkill: null })),
       textResponse(JSON.stringify({ observations: [{
         summary: 'Memory v3 continuity run completed',
         content: `The isolated run used ${marker} and persisted project memory.`,
@@ -588,9 +532,10 @@ describe('Runner Memory v3 integration', () => {
     expect(seedAfter!.atom!.routingFeedback).toMatchObject({ useful: 0, notUseful: 0 });
     expect(seedAfter!.atom!.feedbackRevision).toBe(seedBefore!.atom!.feedbackRevision);
     expect(seedAfter!.atom!.verifiedUsefulness.useful).toBe(seedBefore!.atom!.verifiedUsefulness.useful);
-    const projectNode = (await first.infra.memoryRepository.listNodes('project', workspace))
-      .find((node) => `${node.summary}\n${node.content}`.includes(marker));
-    expect(projectNode).toBeTruthy();
+    // Automatic EVOLVE persistence is gone, so no project atom claims the marker
+    // on the run's behalf; the deterministic daily CAPTURE record still proves
+    // the run happened and stays queryable after restart.
+    expect(await first.infra.memoryRepository.listNodes('project', workspace)).toHaveLength(0);
     expect((await first.infra.memoryRepository.listNodes('daily', workspace))
       .some((node) => node.sourceRunIds.includes(result.runId))).toBe(true);
     expect(requests.some((request) => requestText(request).includes(marker))).toBe(true);
@@ -605,15 +550,18 @@ describe('Runner Memory v3 integration', () => {
       skillsDirs: [],
     });
     runners.push(restored);
-    const recall = await restored.infra.memoryService.beginRun({
+    await restored.infra.memoryService.beginRun({
       runId: 'memory-v3-mock-recall',
       sessionId: asSessionId('memory-v3-mock-recall-session'),
       query: `What project decision contains ${marker}?`,
       recentHistory: [],
       workspace,
     });
-    expect(recall.initialContext?.atomIds).toContain(projectNode!.id);
-    expect(recall.initialContext?.content).toContain(marker);
+    // The seeded long-term atom survives the restart and stays readable; the run
+    // itself no longer writes a project atom on its own.
+    expect(await restored.infra.memoryRepository.getNode(seed.node!.id)).toMatchObject({
+      summary: 'Memory v3 mock continuity marker',
+    });
     await restored.infra.memoryService.finishRun('memory-v3-mock-recall');
   });
 
@@ -637,7 +585,6 @@ describe('Runner Memory v3 integration', () => {
         textResponse('{"plan":[{"description":"record the project decision","tools":[]}]}'),
         textResponse(`Recorded ${marker}.`),
         textResponse(`The project decision was recorded successfully: ${marker}.`),
-        textResponse('{"memories":[],"createSkill":null}'),
         textResponse(JSON.stringify({ observations: [{
           summary: 'Project consolidation decision',
           content: `The project decision is ${marker}.`,
@@ -683,7 +630,8 @@ describe('Runner Memory v3 integration', () => {
     // HC-18: the legacy daily atom stays readable under its original scope instead of being archived by a second entry.
     expect(activeDaily.some((node) => node.content.includes(marker))).toBe(true);
     expect(archivedDaily).toEqual([]);
-    expect(requests).toHaveLength(6);
+    // decide + two loop turns + capture + compaction: no EVOLVE request remains.
+    expect(requests).toHaveLength(5);
   });
 
   // HC-02: a short session with no summary/atom must still be discoverable by bounded catalog, then expanded by ref.

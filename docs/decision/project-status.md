@@ -1,6 +1,13 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-20 20:35:00
+最后更新：2026-09-20 21:10:00
+
+**极简执行与缓存 95% 方案 P4 第二刀：删除自动记忆演化编排（2026-09-20 21:10:00，进行中）**：按方案「删除……自动 merge/move/revise 演化编排；保留明确写入与压缩需要的最小服务」，EVOLVE stage 及其全部编排模块删除，流程变为 `VERIFY → CAPTURE → FINALIZE`。
+
+- 删除内容：`stages/evolve.ts`、`stages/evolve/`（reconciliation、hierarchy、subtree、revision、correction、atom-proposal-*、signal、skill-proposal 及各自测试）、`EVOLVE_MEMORY_PROMPT`、harness 的 evolve stage 注册与仅供它使用的 reconciliation/hierarchy/subtree/revision/correction 服务依赖、runner infra 中对应的 service 构造与 `createSkillFn` 自动技能回调，以及 `memory.llmEvolve` 配置项；`verify` 的成功出口改为 `capture`。
+- 保留：明确记忆写入（`memory_tree`/`write_memory`/`record_experience` 与写入闸门）、CAPTURE 的确定性 daily 运行记录、以及压缩与会话摘要所需的最小服务。`evolve` 仍在 `StageName`/`allowedTransitions`/model-activity 标签中保留，只为读取与展示旧 run 记录；它不再被注册或可达。
+- 代价（方案已列明）：失去自动 Atom 合并/移动/修订/纠正编排，长期与项目分支只由明确写入产生。
+- 验证：`pnpm run typecheck` 通过；全仓 `pnpm exec vitest run` **454 个文件、3,206 项通过、1 项 skipped**（比上一批少 3 个文件/32 项：删除的 EVOLVE 编排与其测试，以及改为 CAPTURE 契约的用例）。测试按新契约更新：trace/purpose 断言去掉 `evolve`；`memory-stages.test.ts` 只保留 CAPTURE 用例（删除 761 行 EVOLVE 用例）；`memory-v3` 的两个用例改写为"确定性 CAPTURE 原子可导航、可重启读取"和"运行不再自行写 project 原子"；runner 的 EVOLVE/CAPTURE 持久化用例改为 CAPTURE-only；`core-agent-contracts` 删除已被方案取消的 EVOLVE 准入契约用例。没有以放宽断言保留被删除的能力。
 
 **极简执行与缓存 95% 方案 P4 第一刀：删除自动技能创建（2026-09-20 20:35:00，进行中）**：按方案「删除自动 skill 创建」，`create_skill` 工具从运行时注册表、`@littlesheep/skills` 公共 API、权限写工具清单、EVOLVE 的持久工具信号集和桌面审批文案中移除，实现与其测试一并删除。
 

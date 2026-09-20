@@ -30,7 +30,6 @@ import {
 import {
   createSkillLoader,
   createUseSkillTool,
-  writeSkillFile,
   findBuiltinSkillsDir,
   type SkillLoader,
   type SkillSourceDefinition,
@@ -76,11 +75,6 @@ import {
   LegacyExperienceBranch,
   LegacyLongTermBranch,
   MemoryRepository,
-  MemoryAtomCorrectionService,
-  MemoryAtomHierarchyService,
-  MemoryAtomReconciliationService,
-  MemoryAtomRevisionService,
-  MemoryAtomSubtreeService,
   MemoryService,
   MemoryTree,
   MemoryWriteService,
@@ -399,26 +393,6 @@ export async function buildInfrastructure(
     },
     log: opts.log,
   });
-  const memoryReconciliationService = new MemoryAtomReconciliationService({
-    management: memoryRepository.management,
-    invalidate: (branch) => memoryTree.invalidateBranch(branch),
-  });
-  const memoryHierarchyService = new MemoryAtomHierarchyService({
-    management: memoryRepository.management,
-    invalidate: (branch) => memoryTree.invalidateBranch(branch),
-  });
-  const memorySubtreeService = new MemoryAtomSubtreeService({
-    management: memoryRepository.management,
-    invalidate: (branch) => memoryTree.invalidateBranch(branch),
-  });
-  const memoryRevisionService = new MemoryAtomRevisionService({
-    management: memoryRepository.management,
-    invalidate: (branch) => memoryTree.invalidateBranch(branch),
-  });
-  const memoryCorrectionService = new MemoryAtomCorrectionService({
-    management: memoryRepository.management,
-    invalidate: (branch) => memoryTree.invalidateBranch(branch),
-  });
   if (opts.bootstrapDir) {
     await memoryService.loadBootstrapFiles(opts.bootstrapDir);
   }
@@ -478,33 +452,6 @@ export async function buildInfrastructure(
   };
   registry.register(createExecTool({ interactive: false, approvalConfig }), 'builtin');
 
-  // Self-evolution: EVOLVE stage can autonomously create skills when it
-  // identifies a reusable pattern. The callback writes a SKILL.md to the
-  // user skills dir and hot-reloads the shared skillLoader, so the new
-  // skill is immediately available to use_skill on the next run.
-  const createSkillFn = async (skillOpts: {
-    name: string;
-    description: string;
-    whenToUse?: string;
-    body: string;
-  }): Promise<string> => {
-    // Skip if a skill with this name already exists (don't overwrite).
-    const exists = skillLoader.index.discovered.some((s) => s.name === skillOpts.name);
-    if (exists) {
-      throw new Error(`Skill "${skillOpts.name}" already exists`);
-    }
-    const path = await writeSkillFile({
-      skillsDir: dirs.skills,
-      name: skillOpts.name,
-      description: skillOpts.description,
-      whenToUse: skillOpts.whenToUse,
-      body: skillOpts.body,
-    });
-    await skillLoader.reload();
-    await memoryService.syncSkillResources(skillLoader.index.discovered, skillLoader.index.sources);
-    return path;
-  };
-
   const harness = createDefaultHarness({
     llm,
     model: modelName,
@@ -512,15 +459,9 @@ export async function buildInfrastructure(
     memoryStore,
     memoryWriter: memoryService,
     memoryRefiner: memoryService,
-    memoryReconciler: memoryReconciliationService,
-    memoryHierarchy: memoryHierarchyService,
-    memorySubtree: memorySubtreeService,
-    memoryReviser: memoryRevisionService,
-    memoryCorrector: memoryCorrectionService,
     config: opts.config,
     branding: opts.branding,
     log: opts.log,
-    createSkill: createSkillFn,
     tokenCounter,
   });
   const nextHarness = createNextHarness({
@@ -530,15 +471,9 @@ export async function buildInfrastructure(
     memoryStore,
     memoryWriter: memoryService,
     memoryRefiner: memoryService,
-    memoryReconciler: memoryReconciliationService,
-    memoryHierarchy: memoryHierarchyService,
-    memorySubtree: memorySubtreeService,
-    memoryReviser: memoryRevisionService,
-    memoryCorrector: memoryCorrectionService,
     config: opts.config,
     branding: opts.branding,
     log: opts.log,
-    createSkill: createSkillFn,
     tokenCounter,
   });
 

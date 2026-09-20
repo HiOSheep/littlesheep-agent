@@ -10,7 +10,7 @@ describe('deterministic write-read verification', () => {
   it('keeps the exact builtin write-read proof as the narrow structural positive path', async () => {
     const result = await verifyDeterministicWriteReadExecution(writeReadContext());
     expect(result).toMatchObject({
-      next: 'evolve',
+      next: 'capture',
       ok: true,
       meta: { runtimeFastPath: true, writeReadFastPath: true },
     });

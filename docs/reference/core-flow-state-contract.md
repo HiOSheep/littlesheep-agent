@@ -28,11 +28,10 @@ stateDiagram-v2
   recover --> reply
   recover --> ask_user
   recover --> finalize
-  verify --> evolve
+  verify --> capture
   verify --> recover
   verify --> decide
   verify --> ask_user
-  evolve --> capture
   capture --> finalize
   reply --> verify
   reply --> finalize

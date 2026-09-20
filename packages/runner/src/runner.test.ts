@@ -309,7 +309,7 @@ describe('createRunner run', () => {
     expect(replyRequest.messages.map((message) => String(message.content)).join('\n')).toContain('Memory Tree Root Index');
     const trace = result.trace as Array<{ name: string }>;
     expect(trace.map((t) => t.name)).toEqual([
-      'enter', 'classify', 'execute', 'verify', 'evolve', 'capture', 'finalize',
+      'enter', 'classify', 'execute', 'verify', 'capture', 'finalize',
     ]);
   });
 
@@ -3127,24 +3127,14 @@ describe('createRunner run', () => {
     expect(existsSync(file)).toBe(true);
   });
 
-  it('persists EVOLVE and CAPTURE output through the same indexed memory runtime', async () => {
+  it('persists CAPTURE output through the same indexed memory runtime', async () => {
     const llm = makeMockLlm([
       textResponse('{"plan":[{"description":"inspect it","tools":[]}]}'),
       textResponse('Inspection complete.'),
       textResponse('Inspection completed successfully.'),
-      textResponse(JSON.stringify({ memories: [{
-        branch: 'project', parentNodeId: 'project:root', scope: 'workspace',
-        summary: 'Repository uses pnpm', content: 'Use pnpm commands in this workspace.',
-        retrievalKeys: ['pnpm', 'workspace'], importance: 0.8, confidence: 0.95,
-        reason: 'Verified from the repository configuration.',
-      }], createSkill: null })),
-      textResponse(JSON.stringify({ observations: [{
-        summary: 'Inspection completed', content: 'The requested repository inspection completed successfully.',
-        retrievalKeys: ['inspection', 'completed'], importance: 0.4, confidence: 0.9,
-        reason: 'Useful for reconstructing this run.',
-      }] })),
     ]);
-    // HC-18: per-run EVOLVE/CAPTURE persistence is only reachable when the legacy policy is explicit.
+    // The deterministic per-run CAPTURE record is still reachable under the
+    // explicit legacy policy; automatic EVOLVE persistence is gone.
     const config = structuredClone(DEFAULT_CONFIG);
     config.memory.autoMemoryPolicy = 'legacy-per-run';
     const runner = await createRunner({ config, branding: DEFAULT_BRANDING, model: 'test/model', llm });
@@ -3154,16 +3144,14 @@ describe('createRunner run', () => {
     expect(result.status).toBe('ok');
     const projectNodes = await runner.infra.memoryRepository.listNodes('project', 'D:/test-project');
     const dailyNodes = await runner.infra.memoryRepository.listNodes('daily', 'D:/test-project');
-    expect(projectNodes).toHaveLength(1);
-    expect(projectNodes[0]).toMatchObject({ summary: 'Repository uses pnpm', sourceRunIds: [result.runId] });
+    expect(projectNodes).toHaveLength(0);
     expect(dailyNodes).toHaveLength(1);
     expect(dailyNodes[0]).toMatchObject({ summary: 'Run done: read the file as a multi-step job', sourceRunIds: [result.runId] });
-    expect((await runner.infra.memoryRepository.snapshot()).writeAudit.map((record) => record.decision)).toEqual(['created', 'created']);
+    expect((await runner.infra.memoryRepository.snapshot()).writeAudit.map((record) => record.decision)).toEqual(['created']);
     expect(result.modelRequests?.map((request) => request.stage)).toEqual([
       'decide',
       'execute',
       'execute',
-      'evolve',
     ]);
   });
 

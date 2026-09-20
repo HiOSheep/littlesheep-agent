@@ -216,7 +216,7 @@ Renderer 发送时已建立 assistant 占位，API 已提前发送 `start`；它
 
 CAPTURE 默认有确定性实现，当前样本只有毫秒级，无证据支持为提速删除它。其 LLM 可选分支的“non-blocking”注释只代表异常不阻断，调用仍被 await。Harness 之后 Runner 还依次做 source capture、反馈、summary activation、finishRun、条件压缩等。必须测量并划分必要持久化与可延后派生工作，而不是把它们一起 fire-and-forget。
 
-来源：[evolve.ts](../../packages/harness/src/stages/evolve.ts)、[evolve/signal.ts](../../packages/harness/src/stages/evolve/signal.ts)、[capture.ts](../../packages/harness/src/stages/capture.ts)、[runner-finalize.ts](../../packages/runner/src/runner-finalize.ts)、[runner-persist.ts](../../packages/runner/src/runner-persist.ts)。任务：HL-08。
+来源：`evolve.ts`、`evolve/signal.ts`（两者已随极简方案删除，见 `docs/decision/project-status.md` 2026-09-20 条目）、[capture.ts](../../packages/harness/src/stages/capture.ts)、[runner-finalize.ts](../../packages/runner/src/runner-finalize.ts)、[runner-persist.ts](../../packages/runner/src/runner-persist.ts)。任务：HL-08。
 
 方向更新：上述为当前实现的审计事实；处置按第 1.3 节执行，将自动沉淀并入已有压缩入口，**不要求为每个 run 创建 EVOLVE 待办**。可靠恢复记录以压缩覆盖区间/版本为单位，必要时仅补齐尚未提交的摘要或记忆候选。
 
