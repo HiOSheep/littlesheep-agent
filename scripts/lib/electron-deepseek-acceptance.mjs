@@ -117,8 +117,6 @@ function buildAcceptanceConfig(options) {
     },
     memory: {
       repositoryBackend: 'v2',
-      llmCapture: false,
-      llmEvolve: 'never',
     },
     plugins: { disabled: [], extraDirs: [], allowLocalCode: false },
     mcp: { servers: [] },

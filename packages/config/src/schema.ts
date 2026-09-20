@@ -205,18 +205,6 @@ export const WebConfigSchema = z.object({
 export const MemoryConfigSchema = z.object({
   /** Experimental repository backend. v3 also requires an isolated-data marker in the selected data root. */
   repositoryBackend: z.enum(['v2', 'v3']).default('v2'),
-  /** Legacy migration setting; daily memory is no longer injected every turn. */
-  preludeDays: z.number().int().positive().default(3),
-  /** Max chars per daily file in prelude. */
-  preludeMaxCharsPerDay: z.number().int().positive().default(2000),
-  /** Total max chars for prelude block. */
-  preludeTotalMaxChars: z.number().int().positive().default(8000),
-  /** Whether to auto-distill old daily files to MEMORY.md. */
-  autoDistill: z.boolean().default(true),
-  /** Days after which a daily file is eligible for distillation. */
-  distillAfterDays: z.number().int().positive().default(7),
-  /** Search tool max results. */
-  searchMaxResults: z.number().int().positive().default(20),
   /** Total token budget for all memory-tree interventions in one run. */
   treeRunTokenBudget: z.number().int().min(512).max(32000).default(3200),
   /** Token budget for one branch in one run. */
@@ -225,14 +213,6 @@ export const MemoryConfigSchema = z.object({
   treeRootIndexMaxChars: z.number().int().min(600).max(4000).default(1600),
   /** Balanced default threshold for autonomous experience learning. */
   experienceWriteThreshold: z.number().min(0).max(1).default(0.65),
-  /** CAPTURE uses deterministic source records by default instead of another model call. */
-  llmCapture: z.boolean().default(false),
-  /** EVOLVE calls the model only when the verified run has reusable value by default. */
-  llmEvolve: z.enum(['adaptive', 'always', 'never']).default('adaptive'),
-  /** Automatic semantic memory is distilled only when context compaction actually runs. */
-  autoMemoryPolicy: z.enum(['compaction', 'legacy-per-run']).default('compaction'),
-  /** Embedding stays host-local. Future remote adapters require a separate egress contract. */
-  embeddingMode: z.literal('local').default('local'),
 });
 
 /** Local shadow-Git checkpoint policy. */

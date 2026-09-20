@@ -17,13 +17,11 @@ describe('config schema', () => {
     expect(cfg.desktop.closePolicy).toBe('background-while-active');
     expect(cfg.tools.exec.approvalMode).toBe('interactive');
     expect(cfg.tools.invocationTimeoutMs).toBe(120_000);
-    expect(cfg.memory.preludeDays).toBe(3);
     expect(cfg.memory.repositoryBackend).toBe('v2');
     expect(cfg.memory.treeRunTokenBudget).toBe(3200);
     expect(cfg.memory.treeBranchTokenBudget).toBe(1200);
     expect(cfg.memory.treeRootIndexMaxChars).toBe(1600);
     expect(cfg.memory.experienceWriteThreshold).toBe(0.65);
-    expect(cfg.memory.embeddingMode).toBe('local');
     expect(cfg.web).toEqual({
       enabled: false,
       readMode: 'public_anonymous',
@@ -66,11 +64,6 @@ describe('config schema', () => {
       agents: { defaults: { profile: 'coding' } },
     });
     expect(cfg.agents.defaults.profile).toBe('coding');
-  });
-
-  it('keeps memory embedding local until a separate remote egress contract exists', () => {
-    expect(ConfigSchema.parse({ memory: { embeddingMode: 'local' } }).memory.embeddingMode).toBe('local');
-    expect(() => ConfigSchema.parse({ memory: { embeddingMode: 'remote' } })).toThrow();
   });
 
   it('keeps desktop close policy separate from behavior and permission settings', () => {

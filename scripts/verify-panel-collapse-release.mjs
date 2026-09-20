@@ -232,7 +232,7 @@ function buildConfig(workspaceDir) {
     agents: { defaults: { workspace: workspaceDir, model: '', reasoning: 'auto', profile: 'general', timeoutSeconds: 120, maxRecoveryAttempts: 1, timeFormat: 'auto', bootstrapMaxChars: 20_000, bootstrapTotalMaxChars: 60_000, contextCompressionThresholdRatio: 0.8, maxModelCallsPerRun: 8, harness: 'core-flow' } },
     desktop: { closePolicy: 'always-background' },
     tools: { exec: {}, maxOutputChars: 10_000, stripImages: true, maxParallel: 2 },
-    memory: { repositoryBackend: 'v2', llmCapture: false, llmEvolve: 'never' },
+    memory: { repositoryBackend: 'v2' },
     plugins: { disabled: [], extraDirs: [], allowLocalCode: false },
     mcp: { servers: [] },
     channels: { channels: [] },

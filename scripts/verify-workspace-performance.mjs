@@ -343,7 +343,7 @@ function buildConfig(workspaceDir) {
     },
     desktop: { closePolicy: 'always-background' },
     tools: { exec: {}, maxOutputChars: 10_000, stripImages: true, maxParallel: 2 },
-    memory: { repositoryBackend: 'v2', llmCapture: false, llmEvolve: 'never' },
+    memory: { repositoryBackend: 'v2' },
     plugins: { disabled: [], extraDirs: [], allowLocalCode: false },
     mcp: { servers: [] },
     channels: { channels: [] },

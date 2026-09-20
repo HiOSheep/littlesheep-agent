@@ -577,7 +577,7 @@ function buildConfig(workplaceDir, model, mode, provider) {
     },
     desktop: { closePolicy: 'always-background' },
     tools: { exec: {}, maxOutputChars: 10_000, stripImages: true, maxParallel: 2 },
-    memory: { repositoryBackend: 'v2', llmCapture: false, llmEvolve: 'never' },
+    memory: { repositoryBackend: 'v2' },
     ...(COMPACTION_LOW ? { sessions: { compaction: { threshold: 2, keepRecent: 1 } } } : {}),
     plugins: { disabled: [], extraDirs: [], allowLocalCode: false },
     mcp: { servers: [] },

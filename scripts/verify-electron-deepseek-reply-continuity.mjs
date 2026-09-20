@@ -154,8 +154,6 @@ async function prepareIsolatedDataRoot(options) {
     desktop: { closePolicy: 'always-background' },
     memory: {
       repositoryBackend: 'v2',
-      llmCapture: false,
-      llmEvolve: 'never',
     },
     plugins: { disabled: [], extraDirs: [], allowLocalCode: false },
     mcp: { servers: [] },

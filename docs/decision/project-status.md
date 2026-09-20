@@ -1,6 +1,14 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-20 21:55:00
+最后更新：2026-09-20 22:30:00
+
+**极简执行与缓存 95% 方案 P4 第四刀：删除已无引用的记忆配置（2026-09-20 22:30:00，进行中）**：按方案「删除……无引用配置与专用 UI 开关」，删除两组已无生产引用的记忆配置。
+
+- 自动化开关：`memory.llmCapture`、`memory.llmEvolve`、`memory.autoMemoryPolicy`（schema 与默认值），以及 8 个验证脚本中为它们设置兼容值的行。生产代码此前已不再读取它们（EVOLVE 与 CAPTURE 均已删除），因此不改变任何运行时行为。
+- 死配置键：`memory.preludeDays`、`preludeMaxCharsPerDay`、`preludeTotalMaxChars`（固定 daily prelude 注入早已关闭）、`autoDistill`、`distillAfterDays`（自动蒸馏随自动演化一并取消）、`searchMaxResults`（唯一消费者 `memory_search` 已删除）、`embeddingMode`（占位声明，无任何读取方；远程 embedding 仍由"不存在远程适配器"这一结构事实保证）。审计方式：解析 `MemoryConfigSchema`/`SessionsConfigSchema`/`ContextConfigSchema` 的全部键，统计 `packages/**` 中除 config 包之外的 `.key` 访问；上列键计数为 0，且 `git grep` 复核只剩 config 自身、一个脚本字面量与一处配置单测。
+- 测试清理：`memory-v3.integration.test.ts` 中三处 `autoMemoryPolicy: 'legacy-per-run'` / `llmCapture = true` pin（原本用于显式选择已删除的旧策略）、`config/src/schema.test.ts` 中对应的默认值与 embedding 占位断言。历史任务书中的相关记录保留：那是当时决策的事实记录，不是当前配置说明。
+- 验证：`pnpm run typecheck` 通过；`packages/config`、`packages/app/src/main`、`packages/runner/src/memory-v3.integration.test.ts` 全部通过（342 项）；全仓 `pnpm exec vitest run` **453 个文件、3,201 项通过、1 项 skipped**（比上一批少 1 项：删除的 embedding 占位断言）。
+
 
 **极简执行与缓存 95% 方案 P4 第三刀：删除 legacy-per-run 记忆总结（CAPTURE）（2026-09-20 21:55:00，进行中）**：按方案「保留明确写入与压缩需要的最小服务」，CAPTURE stage 及其模型总结路径、确定性 daily 写入、写入闸门与提示词一并删除。流程变为 `VERIFY → FINALIZE`：一次 run 只记录对话与执行事实，不再为自己写任何持久记忆。
 

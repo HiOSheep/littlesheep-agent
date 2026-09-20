@@ -313,18 +313,10 @@ function buildConfig(baseURL, workplaceDir, overrides = {}) {
     },
     memory: {
       repositoryBackend: 'v2',
-      preludeDays: 3,
-      preludeMaxCharsPerDay: 2_000,
-      preludeTotalMaxChars: 8_000,
-      autoDistill: true,
-      distillAfterDays: 7,
-      searchMaxResults: 20,
       treeRunTokenBudget: 3_200,
       treeBranchTokenBudget: 1_200,
       treeRootIndexMaxChars: 1_600,
       experienceWriteThreshold: 0.65,
-      llmCapture: false,
-      llmEvolve: 'never',
     },
     safety: {
       enabled: true,

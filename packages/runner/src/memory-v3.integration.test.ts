@@ -41,9 +41,6 @@ describe('Runner Memory v3 integration', () => {
       memory: {
         ...DEFAULT_CONFIG.memory,
         repositoryBackend: 'v3' as const,
-        // The per-run CAPTURE record stays reachable under the explicit legacy
-        // policy; automatic EVOLVE persistence was removed.
-        autoMemoryPolicy: 'legacy-per-run' as const,
       },
     };
     const first = await createRunner({
@@ -475,8 +472,6 @@ describe('Runner Memory v3 integration', () => {
       memory: {
         ...DEFAULT_CONFIG.memory,
         repositoryBackend: 'v3' as const,
-        // HC-18: legacy per-run EVOLVE/CAPTURE remains readable/admitted when explicitly selected.
-        autoMemoryPolicy: 'legacy-per-run' as const,
       },
     };
     const responses: ChatResponse[] = [];
@@ -586,9 +581,6 @@ describe('Runner Memory v3 integration', () => {
     await mkdir(workspace, { recursive: true });
     const config = structuredClone(DEFAULT_CONFIG);
     config.memory.repositoryBackend = 'v3';
-    config.memory.llmCapture = true;
-    // HC-18: legacy daily atoms stay writable and queryable when the old policy is explicitly selected.
-    config.memory.autoMemoryPolicy = 'legacy-per-run';
     config.sessions.compaction.threshold = 2;
     config.sessions.compaction.keepRecent = 1;
     const marker = 'LS-DAILY-CONSOLIDATION-MARKER';
