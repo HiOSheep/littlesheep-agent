@@ -7756,3 +7756,29 @@ export function memoryAwarenessSection(rootIndex: string): string {
 **⇒ N6 判定：通过**（这正是用户原则 8 所指的"**证明行为**而非结构"：暂停/恢复、崩溃重启、幂等、跨模型召回、资源边界都在**真实 Electron + 真实 Provider** 下被演练 ✓）。
 
 **#6 收尾状态**：**N1 ✅（度量入口）、N2 ✅（补齐首个有用动作指标）、N3 收束（无可延迟静态知识）、N4 实测为负已回退、N6 ✅（真实负载 soak 通过）**；仅剩 **N5（Runtime 去 TaskBook 化，D2 债，高成本）**与 **N7（`verify` 判定语义，需行为验证）** 待单独排期。
+
+## 10.283 N7 侦察：`verify` 判定证据的插入点已定位（2026-09-18）
+
+**取证**（`grep` `packages/harness/src/stages/verify`）：
+| 位置 | 作用 |
+| --- | --- |
+| **`verify/evidence.ts:3` `buildVerifyUserMessage(ctx, replanAttempts, maxReplan)`** | **构造 verify 判定所依据的用户消息**（N7 的插入点 ✓） |
+| `verify/model-call.ts:20` `requestVerificationVerdict(...)` / `:46` `buildRunRequestCandidates(ctx,'verify', …, { history: [], primaryUserKind: 'workflow_state' })` | 请求装配；**`history: []` 维持现状**（10.275：带历史 ⇒ 续跑调用 5→9 ✗） |
+| `verify/task-state.ts:8/22/35/42/103` | 重规划目标、部分重规划、未完成任务判定、执行证据缺口 |
+| `verify/routing.ts:29/63/67/107/222/277/321` | 判定记录、发布、跳过/确定性写读、已知未完成路由、重规划耗尽升级、未验证答复作废 |
+
+**⇒ N7 方案（局部、可回退、不改 `history: []`）**：在 **`buildVerifyUserMessage`** 中补入**两段紧凑上下文**：
+1. **目标**（来自 `ctx.taskBook`/`ctx.plan` 或入站诉求的既有摘要——**运行时已有该数据**，属"Runtime 可推出的状态"⇒ 不新增抽象 ✓）；
+2. **当前答复**（`ctx.reply`/最终答复文本的**截断摘要**，例如 ≤600 字符）；
+**不再引入完整历史**（与 10.275 的实测反例对照）⇒ 目标是让 verify **有据可判**（减少因"看不到目标/答复"而产生的 `needs_replan` 抖动），**同时不增加调用数**。
+
+**验收基线（已有实测可对照）**：
+| 指标 | D1（完整历史） | **N7 目标** |
+| --- | --- | --- |
+| 续跑 8 例（`runner-continuation.test.ts`） | 9 调用 / 失败 | **≤ 基线 5 调用量级、全绿** |
+| `audit:cache` calls/run | — | 不高于当前（avg ≈1.95–2.14） |
+| `audit:cache` hit / uncached | — | **hit↑ 或持平、uncached/run↓** |
+| 正确性 | — | `failedRuns=0`、`silentRuns=0`、`publishedRuns` 满额、`semanticFailures=0` |
+
+**⇒ 需用户确认**：该改动**改变 verify 的判定输入**（属"语义取舍"，与先前授权的"携带历史"是**不同**的做法）⇒ 实施前请确认；确认后按流程落地（改一处 ⇒ 全门 ⇒ **两次**样本 ⇒ `audit:cache` 并排记录）。
+**备选**：若用户更希望先动 **N5（D2 债：Runtime 去 TaskBook 化）**，则本条保持为已侦察待办（落点已固定在 `verify/evidence.ts:3`）。
