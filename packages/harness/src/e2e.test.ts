@@ -87,12 +87,12 @@ describe('e2e agent loop', () => {
     ]);
   });
 
-  it('problem: LLM classifies as problem → full loop through verify/evolve/capture', async () => {
-    // 'solve P vs NP' matches no rule → LLM classify fallback.
+  it('problem: LLM classifies as problem → one main loop through verify/evolve/capture', async () => {
+    // 'solve P vs NP' matches no rule → LLM classify fallback. The request is not
+    // provably complex, so it runs in the single main loop: the model answers
+    // directly and no planning request is spent.
     const llm = createMockLlm([
       textResponse('{"type":"problem","confidence":0.9,"reason":"math task"}'),
-      textResponse('{"plan":[{"description":"think hard","tools":[]}]}'),
-      textResponse('all done', 'stop'),
       textResponse('final assembled answer'),
       textResponse('{"notes":[]}'),
     ]);
@@ -109,13 +109,11 @@ describe('e2e agent loop', () => {
     expect(res.next).toBe('exit');
     const trace = res.meta?.trace as Array<{ name: string }>;
     expect(trace.map((t) => t.name)).toEqual([
-      'enter', 'classify', 'decide', 'execute', 'verify', 'evolve', 'capture', 'finalize',
+      'enter', 'classify', 'execute', 'verify', 'evolve', 'capture', 'finalize',
     ]);
     const businessEvents = events.filter((event) => event.type !== 'reasoning' && event.type !== 'model_activity');
+    // No TaskBook: the work never left the main loop.
     expect(businessEvents.map((event) => event.type)).toEqual([
-      'task_book',
-      'step_start',
-      'step_done',
       'verification_start',
       'verification',
     ]);
@@ -129,9 +127,7 @@ describe('e2e agent loop', () => {
     expect(ctx.produced.at(-1)?.finalReplySettlement?.settlementId).toBe(ctx.finalReplySettlement?.settlementId);
     expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
       'classify',
-      'decide',
       'execute_tool_loop',
-      'execute_final_reply',
     ]);
     for (const request of ctx.modelRequests ?? []) {
       const contract = request.callContract;
@@ -140,8 +136,9 @@ describe('e2e agent loop', () => {
       expect(context).toBeDefined();
       expect(context?.items.every((item) => contract!.inputs.allowedContextKinds.includes(item.kind))).toBe(true);
     }
-    // VERIFY spends no model request at all any more.
+    // Neither VERIFY nor DECIDE spends a model request any more.
     expect(ctx.modelRequests?.some((request) => request.callContract?.purpose === 'verify')).toBe(false);
+    expect(ctx.modelRequests?.some((request) => request.callContract?.purpose === 'decide')).toBe(false);
     expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'unverified', source: 'structural' });
     expect(new Set(ctx.modelRequests?.map((request) => request.callContract)).size).toBe(ctx.modelRequests?.length);
   });
@@ -193,7 +190,9 @@ describe('e2e agent loop', () => {
     ]);
     const h = makeHarness(llm);
     const ctx = makeCtx({
-      inbound: textMessage('user', 'prepare a verified summary'),
+      // A provably multi-step request keeps this on the TaskBook path, which is
+      // where step-scoped partial replanning still lives.
+      inbound: textMessage('user', 'prepare a verified summary as a multi-step job'),
       tools: [read],
     });
     const events: ToolStreamEvent[] = [];
@@ -292,7 +291,8 @@ describe('e2e agent loop', () => {
     ]);
     const h = makeHarness(llm);
     const ctx = makeCtx({
-      inbound: textMessage('user', 'prepare a summary from the file'),
+      // Multi-step scope keeps the TaskBook path, where step-scoped replan lives.
+      inbound: textMessage('user', 'prepare a summary from the file as a multi-step job'),
       tools: [read],
     });
 

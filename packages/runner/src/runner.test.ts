@@ -3118,7 +3118,7 @@ describe('createRunner run', () => {
     config.memory.autoMemoryPolicy = 'legacy-per-run';
     const runner = await createRunner({ config, branding: DEFAULT_BRANDING, model: 'test/model', llm });
     createdRunners.push(runner);
-    const result = await runner.run({ text: 'read the file', cwd: 'D:/test-project' });
+    const result = await runner.run({ text: 'read the file as a multi-step job', cwd: 'D:/test-project' });
 
     expect(result.status).toBe('ok');
     const projectNodes = await runner.infra.memoryRepository.listNodes('project', 'D:/test-project');
@@ -3126,7 +3126,7 @@ describe('createRunner run', () => {
     expect(projectNodes).toHaveLength(1);
     expect(projectNodes[0]).toMatchObject({ summary: 'Repository uses pnpm', sourceRunIds: [result.runId] });
     expect(dailyNodes).toHaveLength(1);
-    expect(dailyNodes[0]).toMatchObject({ summary: 'Run done: read the file', sourceRunIds: [result.runId] });
+    expect(dailyNodes[0]).toMatchObject({ summary: 'Run done: read the file as a multi-step job', sourceRunIds: [result.runId] });
     expect((await runner.infra.memoryRepository.snapshot()).writeAudit.map((record) => record.decision)).toEqual(['created', 'created']);
     expect(result.modelRequests?.map((request) => request.stage)).toEqual([
       'classify',

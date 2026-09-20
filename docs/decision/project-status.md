@@ -1,6 +1,13 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-20 15:55:00
+最后更新：2026-09-20 16:20:00
+
+**极简执行与缓存 95% 方案 P2 第三刀：常规 execute 直接进入单一主循环（2026-09-20 16:20:00，进行中）**：`selectWorkPolicy` 的兜底从 `task_book`/`uncertain_execution_scope` 改为 `bounded_loop`/`bounded_default`。常规 execute 请求不再强制先花一次 DECIDE 规划请求，也就不用再走独立最终回复：模型在同一主循环里选择“直接回答”或“请求工具”，Runtime 负责权限、校验、执行与结果追加。
+
+- 保留的规划入口：可证明复杂（`COMPLEX_SCOPE`）、超长请求、既有 TaskBook、续接（checkpoint / 澄清回答 / 局部重规划 / 验证反馈）、延迟运行时事件与需要检索的请求仍然先走 DECIDE；主循环自己也可以通过既有的受限升级入口请求 TaskBook（`bounded_loop` 上暴露的升级工具，Runtime 校验后才进入 DECIDE）。因此“少花一次规划请求”没有取消范围控制，只是把默认路径从“先规划”改成“先执行、需要时再规划”。
+- 影响：常规工具任务的模型调用从 `classify → decide → execute(+工具) → execute_final_reply` 降为 `classify → execute(+工具) → execute`（最终回答直接来自主循环），因此每个常规执行 run 少一次规划请求和一次最终回复请求；同时这些 run 的提示词形状统一为主循环，跨请求前缀更一致。VERIFY/RECOVER 已在上一批变为零模型请求。
+- 验证：`pnpm run typecheck` 通过；全仓 `pnpm exec vitest run` **461 个文件、3,271 项通过、1 项 skipped**。受影响的断言按新契约更新：`e2e.test.ts` 的 problem 路径与 `default-harness.test.ts` 的 problem 路径改为断言“无 DECIDE 请求、无 TaskBook 事件、无 verify 请求”，需要继续覆盖 TaskBook 局部重规划的用例改用可证明多步骤的请求（`as a multi-step job`）以留在规划路径；`memory-v3` 与 `runner` 中依赖 TaskBook 记忆精化/EVOLVE 的用例同样改用语料，等价的 daily 摘要断言同步更新；崩溃夹具的响应队列去掉已不再发生的规划响应。
+- 尚未完成：CLASSIFY 仍会在规则未命中时发一次路由模型请求（下一切片把它变成纯确定性路由），`execute_final_reply` 在 TaskBook 路径上仍会发出（复杂任务专用），以及 `_shared.ts` 的用途特定历史窗口尚未统一为单一 session transcript。
 
 **极简执行与缓存 95% 方案 P2 第二刀：RECOVER 改为 Runtime 自有路由（2026-09-20 15:55:00，进行中）**：删除 `recover/model-call.ts` 与 `recover/contracts.ts`，恢复路径不再消耗模型请求。
 

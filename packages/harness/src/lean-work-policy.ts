@@ -40,7 +40,10 @@ export function selectWorkPolicy(ctx: RunContext, classification: Classification
     && classification.reasonCode === 'action_request') {
     return policy(sourceMessageId, 'bounded_loop', 'bounded_single_goal');
   }
-  return policy(sourceMessageId, 'task_book', 'uncertain_execution_scope');
+  // Default to the single main loop. The model either answers or calls a tool,
+  // and a genuinely multi-step task can promote itself to a TaskBook through the
+  // bounded-loop upgrade path; planning is no longer a mandatory extra request.
+  return policy(sourceMessageId, 'bounded_loop', 'bounded_default');
 }
 
 /** Resolve a policy at EXECUTE, including one explicit legacy checkpoint path. */

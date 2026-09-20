@@ -12,14 +12,21 @@
 
 ## 目标流程
 
-每次 run 先选择一个有界语义活动，复杂任务再进入完整执行循环：
+每次 run 先选择一个有界语义活动：常规请求直接进入单一主循环，只有可证明复杂、大型、续接或需要检索的请求才先做完整规划：
 
 ```text
 ENTER -> 活动路由 -> respond ------------------------------> REPLY -> FINALIZE
-                 -> execute -> DECIDE -> EXECUTE -> VERIFY -> EVOLVE -> CAPTURE -> FINALIZE
+                 -> execute（常规） -> EXECUTE（单一主循环） -> VERIFY -> EVOLVE -> CAPTURE -> FINALIZE
+                 -> execute（复杂） -> DECIDE -> EXECUTE -> VERIFY -> EVOLVE -> CAPTURE -> FINALIZE
                  -> clarify -----------------------------> ASK_USER -> FINALIZE
 
-execute 内部：
+EXECUTE 主循环内部：
+  模型直接回答，或请求一个受控工具
+  -> Runtime 重新判定权限、范围、资源与副作用
+  -> 执行并记录证据，把结果追加回同一循环
+  -> 需要更多步骤时继续循环；确实需要 TaskBook 时通过受限升级入口请求规划
+
+DECIDE（仅复杂/大型/续接/检索）内部：
   校准需求并识别缺失信息
   -> 获取可靠来源并按需装配 Context
   -> 创建或修订 TaskBook
@@ -49,7 +56,7 @@ execute 内部：
 
 ## 需求校准
 
-在规划工具工作之前，`DECIDE` 必须校准用户的真实需求：
+`DECIDE` 只处理可证明复杂、大型、续接或需要检索的请求（以及主循环主动请求 TaskBook 的情况）；其职责是校准用户的真实需求：
 
 - 识别用户真正想解决的问题，而不只照搬字面措辞。
 - 将任务复杂度分为 `trivial`、`simple`、`standard`、`complex`。

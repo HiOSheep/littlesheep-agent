@@ -234,7 +234,7 @@ describe('core agent behavior contracts', () => {
     ])
     const ctx = makeCtx({
       tools: [read],
-      inbound: textMessage('user', 'Prepare a verified summary from the file.'),
+      inbound: textMessage('user', 'prepare a verified summary from the file as a multi-step job.'),
     })
 
     const result = await makeHarness(llm).run(ctx)

@@ -109,16 +109,16 @@ describe('createDefaultHarness state machine', () => {
     expect(ctx.modelRequests).toHaveLength(1);
   });
 
-  it('problem path: enter → classify → decide → execute(stop) → verify(pass) → evolve → capture → finalize → exit', async () => {
+  it('problem path: enter → classify → execute(tool) → verify → evolve → capture → finalize → exit', async () => {
     const tool = makeTool('read', { ok: true, output: 'data' });
-    // 'read the file' doesn't match any rule → LLM classify fallback.
-    // LLM queue: classify → decide → execute(stop) → final reply → verify(pass) → evolve → capture
+    // 'read the file' doesn't match any rule → LLM classify fallback. It is not
+    // provably complex, so the main loop plans and acts itself: no DECIDE and no
+    // separate final-reply request are spent.
+    // LLM queue: classify → execute(tool call) → execute(stop) → evolve → capture
     const llm = createMockLlm([
       textResponse('{"type":"problem","confidence":0.9,"reason":"task"}'),
-      textResponse('{"plan":[{"description":"read it","tools":["read"]}]}'),
-      textResponse('done', 'stop'),
+      toolCallResponse([{ id: 'read-1', name: 'read', args: { path: 'file.txt' } }]),
       textResponse('The file was read successfully.'),
-      textResponse('{"verdict":"pass","reason":"goal achieved"}'),
       textResponse('{"notes":["learned"]}'),
       textResponse('{"insights":["captured"]}'),
     ]);
@@ -133,9 +133,15 @@ describe('createDefaultHarness state machine', () => {
     const trace = res.meta?.trace as Array<{ name: string }>;
     const names = trace.map((t) => t.name);
     expect(names).toEqual([
-      'enter', 'classify', 'decide', 'execute', 'verify', 'evolve', 'capture', 'finalize',
+      'enter', 'classify', 'execute', 'verify', 'evolve', 'capture', 'finalize',
     ]);
     expect(ctx.classification?.type).toBe('problem');
+    expect(ctx.reply).toBe('The file was read successfully.');
+    expect(ctx.replyProvenance).toMatchObject({ purpose: 'execute_tool_loop' });
+    expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
+      'classify', 'execute_tool_loop', 'execute_tool_loop',
+    ]);
+    expect(tool.calls).toHaveLength(1);
   });
 
   it('completes an explicit trivial read-only tool task without a DECIDE or VERIFY request', async () => {

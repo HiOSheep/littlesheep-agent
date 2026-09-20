@@ -21,7 +21,7 @@ it('holds a real effect open until its parent kills the Runner process', async (
   await mkdir(workspace, { recursive: true });
   const responses: ChatResponse[] = [
     textResponse('{"type":"problem","confidence":0.99,"reason":"execute crash probe"}'),
-    textResponse('{"plan":[{"description":"execute crash probe","tools":["crash_effect"]}]}'),
+    // The main loop proposes the effect directly; no planning request is spent.
     {
       content: '',
       finishReason: 'tool_calls',

@@ -89,14 +89,14 @@ describe('Runner Memory v3 integration', () => {
     });
     runners.push(first);
 
-    const result = await first.run({ text: 'read the file', cwd: workspace });
+    const result = await first.run({ text: 'read the file as a multi-step job', cwd: workspace });
     expect(result.status).toBe('ok');
     const projectNodes = await first.infra.memoryRepository.listNodes('project', workspace);
     const dailyNodes = await first.infra.memoryRepository.listNodes('daily', workspace);
     expect(projectNodes).toHaveLength(1);
     expect(dailyNodes).toHaveLength(1);
     expect(projectNodes[0]).toMatchObject({ summary: 'Repository uses pnpm', sourceRunIds: [result.runId] });
-    expect(dailyNodes[0]).toMatchObject({ summary: 'Run done: read the file', sourceRunIds: [result.runId] });
+    expect(dailyNodes[0]).toMatchObject({ summary: 'Run done: read the file as a multi-step job', sourceRunIds: [result.runId] });
     expect(await countFiles(join(dataDir, 'memory-tree', 'v3', 'atoms'), '.memory.json')).toBeGreaterThanOrEqual(2);
     expect(await countFiles(join(dataDir, 'memory-tree', 'v3', 'conversation-sources'), '.conversation-source.json'))
       .toBeGreaterThanOrEqual(2);
@@ -141,7 +141,7 @@ describe('Runner Memory v3 integration', () => {
       summary: 'Repository uses pnpm',
     });
     expect(await restored.infra.memoryRepository.getNode(dailyNodes[0]!.id)).toMatchObject({
-      summary: 'Run done: read the file',
+      summary: 'Run done: read the file as a multi-step job',
     });
     expect((await restored.infra.memoryRepository.management.inspectNode(projectNodes[0]!.id, 'D3'))?.atom)
       .toMatchObject({ statementKind: 'factual-claim', epistemicStatus: 'unverified' });
@@ -303,7 +303,7 @@ describe('Runner Memory v3 integration', () => {
       textResponse('{"observations":[]}'),
     );
 
-    const result = await runner.run({ text: '继续处理这个', cwd: workspace });
+    const result = await runner.run({ text: '继续处理这个多步骤任务', cwd: workspace });
 
     expect(result.status).toBe('ok');
     expect(requests.slice(0, 2).every((request) => !requestText(request).includes('workspace filters when validating'))).toBe(true);
@@ -462,7 +462,7 @@ describe('Runner Memory v3 integration', () => {
     );
 
     const result = await runner.run({
-      text: 'Refresh the dynamic working set rule, then use the relevant atom again.',
+      text: 'Refresh the dynamic working set rule as a multi-step job, then use the relevant atom again.',
       cwd: workspace,
     });
     const afterRelease = requests.find((request) => JSON.stringify(request.messages).includes('release-memory'));
@@ -662,7 +662,7 @@ describe('Runner Memory v3 integration', () => {
     runners.push(runner);
 
     const result = await runner.run({
-      text: `Use ${marker} as the project decision.`,
+      text: `Use ${marker} as the project decision in this multi-step consolidation job.`,
       cwd: workspace,
     });
 
