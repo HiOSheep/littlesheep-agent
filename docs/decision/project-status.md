@@ -1,6 +1,12 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-20 20:05:00
+最后更新：2026-09-20 20:35:00
+
+**极简执行与缓存 95% 方案 P4 第一刀：删除自动技能创建（2026-09-20 20:35:00，进行中）**：按方案「删除自动 skill 创建」，`create_skill` 工具从运行时注册表、`@littlesheep/skills` 公共 API、权限写工具清单、EVOLVE 的持久工具信号集和桌面审批文案中移除，实现与其测试一并删除。
+
+- 影响：每个请求的工具 schema 少一条自我演化入口；技能只能由用户或技能来源提供，运行时只保留 `use_skill` 的按需加载。`dirs.skills` 与技能热加载仍由 loader 使用，加载路径不变。
+- 保留的写能力不受影响：`write`/`edit`/`exec`、`write_memory`、`record_experience`、`document_create` 仍在权限与审批名单内，明确记忆写入仍可用。
+- 验证：`pnpm run typecheck` 通过；全仓 `pnpm exec vitest run` **457 个文件、3,238 项通过、1 项 skipped**（比上一批少 1 个文件/1 项，来自删除的 `create-skill.test.ts`）。被删除的用例是被方案取消的自动创建能力；安全/权限清单中的名字移除后没有以放宽断言代替。
 
 **极简执行与缓存 95% 方案 P3 第二刀：TaskBook 只串行执行，删除依赖波次与并行打包（2026-09-20 20:05:00，进行中）**：按方案 P3「删除 TaskBook DAG/并行波次」，`task-step-scheduler.ts` 从"图校验 + 并行波次选择 + 资源冲突打包 + 按波次降级判定"缩到 107 行的纯校验与串行选择，`task-book-runner.ts` 的 `Promise.allSettled` 波次循环改为一次一个步骤。
 

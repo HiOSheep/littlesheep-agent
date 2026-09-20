@@ -30,7 +30,6 @@ import {
 import {
   createSkillLoader,
   createUseSkillTool,
-  createCreateSkillTool,
   writeSkillFile,
   findBuiltinSkillsDir,
   type SkillLoader,
@@ -448,16 +447,14 @@ export async function buildInfrastructure(
   await memoryService.syncSkillResources(skillLoader.index.discovered, skillLoader.index.sources);
 
   // Tool registry: builtins + skills + memory + session_status.
-  // create_skill enables self-evolution: the agent writes new SKILL.md files
-  // to dirs.skills, then the shared skillLoader hot-reloads so use_skill
-  // can load the new skill immediately — no runner restart needed.
+  // Only use_skill is registered: skills are loaded on demand, and the agent no
+  // longer writes new SKILL.md files as an automatic side effect of a run.
   const registry = new ToolRegistry();
   const memoryEnvelope = safetyCF.enabled && safetyCF.sanitizePrelude
     ? sanitizePreludeForInjection
     : undefined;
   const extras: AgentTool[] = [
     createUseSkillTool(skillLoader),
-    createCreateSkillTool({ loader: skillLoader, skillsDir: dirs.skills }),
     // One memory navigation entry point: the tree tool already covers
     // root_index, branch_index, expand and deep_search.
     createMemoryTreeTool(memoryService, { envelope: memoryEnvelope }),

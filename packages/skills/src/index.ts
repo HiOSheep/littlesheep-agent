@@ -1,8 +1,8 @@
 // @littlesheep/skills — public API
-// Skill loader + use_skill/create_skill tools. The gateway builds a
-// SkillLoader once at startup and binds it to both tools registered in the
-// ToolRegistry. create_skill enables self-evolution: the agent can write
-// new skills and they become available immediately via hot-reload.
+// Skill loader + use_skill. The gateway builds a SkillLoader once at startup
+// and binds it to the loader tool registered in the ToolRegistry. Automatic
+// skill creation was removed with the lean plan: skills are authored by the
+// user (or a skill source), never by a run.
 
 export {
   loadSkillIndex,
@@ -22,4 +22,3 @@ export {
 } from './loader.js';
 
 export { createUseSkillTool } from './use_skill.js';
-export { createCreateSkillTool, type CreateSkillToolDeps } from './create-skill.js';

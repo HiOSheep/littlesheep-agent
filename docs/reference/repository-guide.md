@@ -90,7 +90,7 @@
 | --- | --- |
 | `packages/tools/` | 内置工具、注册表和统一 Tool Execution Service；统一拥有工具来源、输入 schema、权限与单次批准、超时/中断、调用级资源调度、结果清洗、流式事件和有界调用记录。超时或中断后只等待 1.5 秒有界清理；内置 `exec` 对 stdout/stderr 分别保留最多 64 KiB 首尾内容，记录原始/保留长度、截断和进程关闭证据，并在 Windows 关闭进程树。容器边界与核心源码只读仍由宿主权限判定和工具动作前二次复核共同保护；Harness 只保留 TaskBook 编排及副作用检查点生命周期。 |
 | `packages/plugins/` | 插件 API v1、插件发现、信任校验、生命周期宿主，以及渠道、工具和 owner-scoped Skill 贡献。它是扩展运行时，不是 Agent 任务核心。 |
-| `packages/skills/` | 技能加载、使用和自主创建；语义去重、合并、收益评估、归档/删除与回滚治理尚待后续控制面实现。 |
+| `packages/skills/` | 技能索引加载与 `use_skill` 使用；自动创建技能已随极简方案删除，技能只由用户或技能来源提供。 |
 | `packages/cli/` | 命令行入口、参数解析、REPL 和管理命令。 |
 
 MCP 客户端当前尚未实现，也不保留空 workspace 包；未来实现必须从稳定 adapter 开始，并复用 `packages/tools/` 的统一执行服务。

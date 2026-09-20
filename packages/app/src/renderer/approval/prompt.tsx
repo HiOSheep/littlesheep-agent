@@ -82,7 +82,6 @@ export function approvalActionTitle(action: string): string {
   if (action === 'write') return '允许写入文件？'
   if (action === 'edit') return '允许修改文件？'
   if (action === 'write_memory') return '允许写入长期记忆？'
-  if (action === 'create_skill') return '允许创建技能？'
   if (action === 'record_experience') return '允许记录经验？'
   if (action === 'save_file') return '允许保存工作区文件？'
   return `允许执行 ${action}？`

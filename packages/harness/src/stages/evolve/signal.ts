@@ -10,7 +10,7 @@ export function hasReusableEvolutionSignal(ctx: RunContext): boolean {
   }
   if (ctx.taskBook?.complexity === 'complex' || ctx.taskBook?.complexity === 'standard') return true;
   if ((ctx.recoveryAttempts ?? 0) > 0 || (ctx.replanAttempts ?? 0) > 0) return true;
-  const durableTools = new Set(['write', 'edit', 'exec', 'create_skill']);
+  const durableTools = new Set(['write', 'edit', 'exec']);
   return ctx.produced.some((message) => message.content.some((block) => (
     block.type === 'tool_calls' && block.calls.some((call) => durableTools.has(call.name))
   )));

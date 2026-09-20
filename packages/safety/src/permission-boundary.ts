@@ -69,7 +69,7 @@ const LOCAL_SESSION_TOOLS = new Set([
 ])
 const WRITE_TOOLS = new Set([
   'write', 'edit', 'write_file', 'edit_file', 'save_file',
-  'write_memory', 'record_experience', 'create_skill', 'document_create',
+  'write_memory', 'record_experience', 'document_create',
 ])
 
 /**
