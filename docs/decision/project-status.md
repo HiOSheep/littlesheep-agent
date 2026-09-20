@@ -6,7 +6,7 @@
 
 - 删除内容：`packages/classifier/src/llm.ts` 与 `llm.test.ts`、`classify()` 混合入口、`ClassifierOptions`（含 `systemPromptPrefix`、观察回调）、`@littlesheep/llm` 依赖，以及 `ClassifyStageDeps` 的 `llm`/`model`。新增 `ClassificationReasonCode` 值 `deterministic_default_execute`；未命中规则时的分类为 `activity: 'execute'`、`source: 'rules'`、`confidence: 0.5`，因此工作策略落到 `bounded_default` → 主循环。
 - 语义变化：`clarify` 早已不可路由，现在连“unclear”也不再存在——无法命中的输入由主循环的模型回答（可以追问细节）。内部 stage id `classify` 与旧 `chat / problem / unclear` 字段继续作为历史兼容；分类失败（内部错误）改为保守进入主循环而不是伪装成会话回复。
-- 验证：`pnpm run typecheck` 通过；全仓测试通过（见下方"验证"行）。受影响的测试按新契约重写：`classify.test.ts` 改为断言"不发出任何模型请求 + 未命中即主循环"，新增未命中默认路由用例；`e2e.test.ts` / `default-harness.test.ts` 的 problem 与 unclear 用例改为"无路由请求、主循环作答、无澄清检查点"；`runner.test.ts` 的前缀变化用例改为由真实工具调用产生后续请求，路径切换用例改为用真实路由差异产生提示词变化；`memory-v3` 与 `core-agent-contracts` 的脚本队列去掉已不存在的分类响应，并按真实请求序列修正断言。
+- 验证：`pnpm run typecheck` 通过；全仓 `pnpm exec vitest run` **460 个文件、3,260 项通过、1 项 skipped**（比上一批少 11 项，来自删除的分类器模型测试）。受影响的测试按新契约重写：`classify.test.ts` 改为断言"不发出任何模型请求 + 未命中即主循环"，新增未命中默认路由用例；`e2e.test.ts` / `default-harness.test.ts` 的 problem 与 unclear 用例改为"无路由请求、主循环作答、无澄清检查点"；`runner.test.ts` 的前缀变化用例改为由真实工具调用产生后续请求，路径切换用例改为用真实路由差异产生提示词变化；`memory-v3` 与 `core-agent-contracts` 的脚本队列去掉已不存在的分类响应，并按真实请求序列修正断言。
 
 **极简执行与缓存 95% 方案 P2 第三刀：常规 execute 直接进入单一主循环（2026-09-20 16:20:00，进行中）**：`selectWorkPolicy` 的兜底从 `task_book`/`uncertain_execution_scope` 改为 `bounded_loop`/`bounded_default`。常规 execute 请求不再强制先花一次 DECIDE 规划请求，也就不用再走独立最终回复：模型在同一主循环里选择“直接回答”或“请求工具”，Runtime 负责权限、校验、执行与结果追加。
 
