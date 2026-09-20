@@ -7982,3 +7982,38 @@ export function buildVerifyUserMessage(ctx, replanAttempts, maxReplan): string {
 | E5 改负载/改口径"美化" | —— | **你已明令禁止**，仅列示为不可用 |
 
 **⇒ 我的建议排序**：**E2 先做只读验证**（`tools` 参数对缓存的影响，零改动、可能拿到最大收益）→ 若不可行则 **E1/E3 二选一实测** → 否则 **E4 结项**。
+
+## 10.290 **系统提示词能否精简、是否需要配合 harness**（附 `reply` 头部逐段实测）（2026-09-18）
+
+**实测（`reply` 请求，当前代码样本）**：
+| 段 | 字符 | 提供者 | 谁能改 |
+| --- | --- | --- | --- |
+| identity | 284 | `packages/prompt`（常量） | 提示词包 ✓ |
+| core-flow | 673 | `packages/prompt`（按 stage 渲染） | 提示词包 ✓ |
+| safety | 292 | `packages/prompt` | 提示词包 ✓ |
+| workspace | 118 | **harness 事实** | **需 harness** |
+| date-time | 362 | **harness 事实** | **需 harness** |
+| capabilities | 348 | **harness 事实**（本次 run 的工具名） | **需 harness** |
+| **memory-root-index** | **1,713** | **harness 事实** | **需 harness** |
+| profile | 335 | harness/branding 事实 | 需 harness |
+| response-directives | 730 | `packages/prompt` | 提示词包 ✓ |
+| bootstrap:USER.md | 217 | harness（bootstrap） | 需 harness |
+| runtime-awareness | 705 | **harness 生成** | **需 harness** |
+
+### 结论（两句话）
+1. **若目的是"降成本"（总 prompt 变小）** ⇒ **只改 `packages/prompt` 就能压措辞**（`core-flow` 673 / `response-directives` 730 / `safety` 292 / `identity` 284 等），**不必动 harness** —— 但**实测会降低命中率**（这些段都在**已缓存的稳定头**内：`core-flow` 精简实测 **hit −3pt**，N4 **−1.5～−4.6pt**）⇒ **只降成本、伤 ratio**；
+2. **若目的是"提命中率"** ⇒ **必须动尾部**（尾部新增才是 ratio 的敌人）⇒ 尾部里最大的是 **`runtime-awareness` 705**（每轮必变，由 harness 生成）与 **`step-contract` ≈1,213**（已后置）⇒ **必须配合 harness 修改**，提示词包单独改不了 ✗。
+
+**⇒ 明确的判断规则**：
+| 想动的东西 | 是否需改 harness | 对 hit |
+| --- | --- | --- |
+| 头部**措辞压缩**（prompt 常量段） | **否**（只改 `packages/prompt`） | **↓**（只降成本） |
+| 头部**事实类**内容（workspace/date-time/capabilities/memory-index/profile/bootstrap） | **是**（harness 少提供或改按需） | ↓ 或持平（N4 已证缩小 memory-index 为负） |
+| 把某段**移出 system**（改为 trailing/按需 skill） | **是**（`systemSegments`/`trailingSegments`/skill 注册） | 取决于它是否仍在稳定前缀内 |
+| **尾部精简**（`runtime-awareness`/`step-contract`/附件注入） | **是**（harness 生成尾部） | **↑（唯一能提 hit 的方向）** |
+
+### 下一步（若你要提 hit）
+1. 用 `analyze-cache-shapes.mjs` 的 tail 段读数 + `head-sections.mjs`（工作区脚本）列出**尾部逐项构成与大小**；
+2. 挑**每轮必变的尾部块**（首选 `runtime-awareness` 705）做**结构化精简**（保留全部事实、压缩表达）⇒ 改 `packages/harness/src/runtime-awareness.ts`（**需 harness 配合**）；
+3. 全门 + **两次**样本 ⇒ 用 `pnpm run audit:cache` 并排记录五项指标。
+**注意（血的教训）**：尾部精简**必须保留全部事实**（否则属"裁剪能力"）；且必须实测——本会话已 4 次证明"凭直觉的删减"会反噬。
