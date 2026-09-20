@@ -8017,3 +8017,34 @@ export function buildVerifyUserMessage(ctx, replanAttempts, maxReplan): string {
 2. 挑**每轮必变的尾部块**（首选 `runtime-awareness` 705）做**结构化精简**（保留全部事实、压缩表达）⇒ 改 `packages/harness/src/runtime-awareness.ts`（**需 harness 配合**）；
 3. 全门 + **两次**样本 ⇒ 用 `pnpm run audit:cache` 并排记录五项指标。
 **注意（血的教训）**：尾部精简**必须保留全部事实**（否则属"裁剪能力"）；且必须实测——本会话已 4 次证明"凭直觉的删减"会反噬。
+
+## 10.291 **"移入 skill"何时真能提 hit、何时只降成本**（用户提出：把不该在 harness 的东西做成 skill）（2026-09-18）
+
+### 关键数学（一句话）
+`hit = cached / total`。设某块 X 位于**已缓存的稳定头**内，把它删/移走：`hit' = (C−X)/(T−X)`，而 `(C−X)/(T−X) < C/T` ⟺ `T > C` **恒成立** ⇒ **移除"已缓存"内容必然降低 ratio**（本会话已 4 次实测：S3、core-flow 精简、N4、R1）✓
+反之，若 X 位于**尾部易变内容**（每次调用都算"新增/uncached"），移走或压缩它 ⇒ **分子不变、分母变小 ⇒ ratio 上升** ✓✓
+
+**⇒ 判据（决定该不该 Skill 化）**：看该块**在请求中的位置**，而非看它"是否属于 harness"：
+| 位置 | 移入 skill / 压缩后 | 结论 |
+| --- | --- | --- |
+| **稳定头（已缓存）** | hit **↓**、成本 **↓** | 属**成本优化**，不是命中率优化 |
+| **尾部（每轮新增）** | hit **↑**、成本 **↓** | **双赢** ✓ |
+
+### 逐块判定（据 10.290 实测构成）
+| 块 | 字符 | 位置 | Skill 化后 hit | 能力风险 | 判定 |
+| --- | --- | --- | --- | --- | --- |
+| **`runtime-awareness`** | **705** | **尾部（每轮必变）** | **↑** | 删则失去实时事实 ⇒ **只能压缩表达** | **✅ 优先压缩（保留全部事实）** |
+| **`step-contract`** | **≈1,213** | **尾部** | **↑** | 每步都需要 ⇒ 移出=每步多一次加载 | **✅ 压缩措辞（保留全部规则）** |
+| `memory-root-index` | 1,713 | 头部（缓存） | **↓** | 是召回协议第一步（§10.280） | △ 成本优化可取；hit 会略降 |
+| `output-directives` | 730 | 头部 | ↓ | 每次适用的输出政策 | △ 不建议 |
+| `core-flow` | 673 | 头部 | ↓ | 控制流契约 | ✗ 已实测 −3pt |
+| `capabilities`/`workspace`/`date-time` | 348/118/362 | 头部 | ↓ | 逐 run 权威事实 + 诚实护栏 | ✗ 不可移 |
+| `profile`/`bootstrap:USER.md` | 335/217 | 头部 | ↓ | 身份/偏好 | ✗ 不建议 |
+| `safety`/`identity`/`response-directives` | 292/284/730 | 头部 | ↓ | **安全与身份** | ✗ 不可移 |
+
+### 结论
+1. **能同时"精简 prompt + 提命中率"的只有尾部**：`runtime-awareness`（705）与 `step-contract`（≈1,213）⇒ 合计 ≈**1.9k 字符/次**且**每轮都算新增** ⇒ **压缩表达（保留全部事实/规则）是唯一双赢手段** ✓
+2. **头部 Skill 化是成本优化**（`memory-root-index` 1,713 ≈ 头部 30%）⇒ 请求更小但 hit 略降（N4 实测 −1.5～−4.6pt）⇒ 取决于你更看重 ratio 还是成本；
+3. **不可移**：`safety`、`identity`、`capabilities`、`workspace`、`date-time`、`memory-root-index`（协议第一步）、`output-directives`。
+
+**⇒ 下一步建议**：先做**尾部双赢项** —— 压缩 `runtime-awareness`(705) 与 `step-contract`(≈1,213) 的**表达**（不改事实/规则）⇒ 改 `packages/harness/src/runtime-awareness.ts`（+ 相关构造处）⇒ 全门 + **两次**样本 ⇒ `audit:cache` 并排。
