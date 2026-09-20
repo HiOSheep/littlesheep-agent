@@ -7658,3 +7658,32 @@ This is capability evidence, not permission to invoke tools from a direct respon
 **⇒ 建议顺延**：直接进入 **N4（`memory-root-index` 按需化）** —— 它是"逐 run 数据 + 可检索"的**唯一**合格候选；随后 **N6（soak/真实负载）**。
 
 **方法学（本会话第 5 次同类）**：**先读实现再定性** —— 若按 10.277 直接实施，会把一条**诚实性护栏**搬进 skill，属于本会话一直在避免的"以指标换能力"。
+
+## 10.279 N4 分析：`memory-root-index` **可改为按需**（与用户原则 3 完全对应）（2026-09-18）
+
+**读到实现（`packages/prompt/src/sections.ts:108–114`）**：
+```ts
+/** Compact root awareness for RESPOND. Navigation instructions belong to EXECUTE. */
+export function memoryAwarenessSection(rootIndex: string): string {
+  const bounded = rootIndex.length <= 2_400
+    ? rootIndex
+    : `${rootIndex.slice(0, 2_320)}\n... [root index truncated; use indexed navigation in an execution activity]`;
+  return `${bounded}\n\nUse only supplied memory evidence. The index describes available branches; it is not the branch content.`;
+}
+```
+**关键点**：
+1. 该段是**导航索引**（分支标题/结构），**不是分支内容**（原文自述）⇒ **属"可检索/可推导"的信息** ✓；
+2. 已**有上限**（≤2,400 字符）且有**现成的截断路径**：超出时仅给前 2,320 字符并提示"**use indexed navigation in an execution activity**" ✓ ⇒ **"按需导航"的基础设施已存在** ✓；
+3. 仅用于 **RESPOND** 路径（注释明示）✓。
+
+**⇒ 与用户原则 3 对应**："**能按需读取的 Memory，不要常驻 Context**" ⇒ 把 2,400 字符的索引换成**一句入口提示**（"记忆分支存在，用记忆工具导航"），信息仍**可达**（经记忆工具，且 >2,400 时本就走该路径）⇒ **不削弱记忆可见性** ✓
+
+**⇒ 实施方案（一处改动、可回退）**：
+- `memoryAwarenessSection` 改为**短入口**：保留"记忆存在 + 必须只用检索到的证据 + 用记忆工具导航"三句，**不再常驻索引正文**（或仅保留极短摘要，如分支计数/顶层名称）；
+- **前置验证**：确认记忆工具（`memory_tree` 等）能提供**同等导航**（否则等于削弱可见性 ✗）——**实施前必须先读该工具的描述/能力**；
+- 同步 `sections.test.ts` 等断言（由 `typecheck` + 套件暴露）。
+
+**判据（N1 工具可直接读数）**：`syslen` 中 `reply` 首条 system 长度 ↓（≈2,400 → 数百）、**`hit`↑ 或持平、`uncached/run`↓**、`failedRuns=0`、`silentRuns=0`、`publishedRuns` 满额、`semanticFailures=0`；**回退**：任一退化即恢复常驻索引。
+**风险**：模型可能不再主动检索记忆 ⇒ 需观察 `semanticFailures` 与记忆相关套件；若证据不足 ⇒ **如实记为不可行**并转 N6。
+
+**下一轮（先读后用 `edit`）**：读**记忆工具**（`memory_tree` 的实现/描述）确认"按需导航"覆盖度 ⇒ 再改 `memoryAwarenessSection` ⇒ 全门 + **两次**样本 ⇒ 用 `pnpm run audit:cache` 并排记录改动前后五项指标。
