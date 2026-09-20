@@ -1,6 +1,6 @@
 # 缓存 95% 冻结负载验收规程
 
-最后更新：2026-09-21 00:10:00
+最后更新：2026-09-21 04:40:00
 
 本文件把 `docs/taskbooks/lean-v2-cache-95-plan-2026-09-20.md` 第 6 节的实测步骤写成可重复执行的规程，供最终验收直接照做。它是验收方法，不是达成声明：在两组冻结负载都跑出完整 usage 之前，95% 一律标记为未验证。
 
@@ -42,6 +42,15 @@
 - `node scripts/verify-harness-path-comparison.mjs --offline` 使用确定性验收 Provider，可验证消息前缀稳定、工具配对、缺失 usage 处理、审批拒绝、同一发布防重、取消与副作用恢复；它**不能**证明供应商真实命中率。
 - 真实对比的唯一缺口是凭据：需要 `DEEPSEEK_API_KEY` 环境变量。密钥不得写入仓库、日志或本文档。
 - 脱敏历史样本与基线位于 `docs/taskbooks/lean-v2-cache-95-audit-baseline-2026-09-20.json`，只作诊断参照，不替代冻结负载重跑。
+
+### 5.1 离线彩排记录（2026-09-21）
+
+已按本规程跑通一次 `--offline` 彩排，用于确认流程本身可用，并固定"无法测得命中率时必须如实标注"的行为：
+
+- 前置：`pnpm run build:app` 重建打包产物（脚本会拒绝在 App 产物过期时开跑）；旧实现工作树（`git worktree add <path> ff59df5`，detached HEAD）已创建，正式对比时直接复用。
+- 结果：脚本退出码 0，两侧各 4 个 run 全部 `status: 200`；`comparison.deltas` 中 `requestCount`/`promptTokens`/`completionTokens` 均为 0，`latencyP95Ms` 为 -4ms，`verificationPassRate` 为 0。
+- **关键行为**：确定性 Provider 不报告 `cachedPromptTokens`，因此报告的 `incomplete` 明确列出 `reasoningTokens`、`cachedPromptTokens`、`cacheHitRatio`，两侧 `stageCacheSplit.main.hitRatio` 显示 0 且 `releaseGate.status` 为 `blocked`。这正是测量规则要求的"未知 usage 明确计数并使完整达标结论不可用"，**不得**把这个 0 当作真实命中率，也不得据此宣称或否定 95%。
+- 结论不变：真实 95% 结论仍待 `DEEPSEEK_API_KEY` 下的两组冻结负载对比；上述彩排只证明流程可跑与缺失 usage 的处理正确。
 
 ## 6. 完成条件
 

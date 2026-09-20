@@ -1,6 +1,13 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-21 04:00:00
+最后更新：2026-09-21 04:45:00
+
+**冻结负载验收：离线彩排已跑通，真实 95% 仍待凭据（2026-09-21 04:45:00）**：本轮把验收规程从"文档"推进到"可执行前置条件已就绪"，并如实记录了一个我此前的错误结论。
+
+- **更正**：我在前几轮把 `docs/reference/core-flow-state-contract.md` 报为"mojibake 编码损坏"。本轮逐行检测（`\uFFFD` 与典型 GBK 误读特征）确认该文件 **0 处损坏**，内容是干净 UTF-8；当时看到的乱码是 PowerShell 控制台代码页对**输出**的转码，不是文件本身。已按实际内容校对（边表与新增说明正确），未做任何"修复"以免破坏完好的中文。
+- **已完成的可执行前置**：`pnpm run build:app` 重建打包产物（比较脚本会拒绝在 App 产物过期时开跑）；`git worktree add <path> ff59df5` 建立旧实现工作树；`node scripts/verify-harness-path-comparison.mjs --offline` 彩排退出码 0，两侧各 4 个 run 全部 `status: 200`。
+- **彩排暴露的关键行为（符合方案要求）**：确定性 Provider 不报告 `cachedPromptTokens`，因此报告把 `reasoningTokens`、`cachedPromptTokens`、`cacheHitRatio` 列入 `incomplete`，`releaseGate.status` 为 `blocked`。**这个 0 不是命中率**：不得据此宣称或否定 95%，也不得按零补齐。
+- 结论未变：`hit = sum(cached_input_tokens) / sum(input_tokens)` 的两组冻结负载对比仍必须在 `DEEPSEEK_API_KEY` 下完成，当前环境该变量不存在；此为本轮唯一未完成的验收项，非能力裁剪项（P3/P4 已全部完成）。
 
 **极简执行与缓存 95% 方案 P3 第七刀：清除双驱动留下的模式管道（2026-09-21 04:00:00）**：上一轮合并为单一驱动后，`shadow`/`next` 模式及其按来源/会话切换的配置全部成为死代码，本轮清除。
 
