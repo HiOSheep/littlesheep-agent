@@ -1,0 +1,175 @@
+{
+  "sample": "data",
+  "runs": 40,
+  "requests": 79,
+  "logFiles": 40,
+  "unparsedLogs": [],
+  "callsPerRun": {
+    "average": 1.975,
+    "p50": 1,
+    "p95": 7
+  },
+  "tokens": {
+    "input": 226680,
+    "cachedInput": 165248,
+    "uncachedInput": 61432,
+    "output": 1611,
+    "outputRunsReported": 40
+  },
+  "hitPercent": 72.89924122110463,
+  "uncachedPerRun": {
+    "average": 1535.8,
+    "p50": 480,
+    "p95": 7664,
+    "measuredRuns": 40
+  },
+  "uncachedPerCall": 777.620253164557,
+  "usageCoverage": {
+    "complete": true,
+    "requestsWithoutInputOrCachedUsage": 0,
+    "requestsWithoutReportedUncached": 0,
+    "runsWithIncompleteUsage": 0,
+    "runsWithoutRequests": 0,
+    "runsWithoutOutputUsage": 0,
+    "inputReportedRequests": 79,
+    "cachedReportedRequests": 79,
+    "uncachedReportedRequests": 79
+  },
+  "ledgerCrossCheck": {
+    "runUsagePromptTokens": 226680,
+    "runsReportingPromptTokens": 40,
+    "requestPromptTokens": 226680,
+    "delta": 0
+  },
+  "target": {
+    "percent": 95,
+    "withinTarget": false,
+    "conclusion": "not met"
+  },
+  "runsByStatus": {
+    "ok": 40
+  },
+  "failures": [],
+  "failedTraceSteps": 2,
+  "retries": {
+    "requests": 24,
+    "byReason": {
+      "decode": 5,
+      "duplicate": 19
+    },
+    "providerAttempts": 79,
+    "providerAttemptsPerCall": 1
+  },
+  "latency": {
+    "taskDurationMs": {
+      "average": 1495.275,
+      "p50": 1007,
+      "p95": 4947
+    },
+    "timeToFirstModelRequestMs": {
+      "measured": 40,
+      "average": 91.075,
+      "p50": 87,
+      "p95": 107
+    },
+    "timeToFirstToolActionMs": "unavailable (no tool invocation recorded)"
+  },
+  "replyProvenanceRewriteCount": {
+    "0": 28,
+    "1": 5,
+    "2": 7
+  },
+  "purposes": [
+    {
+      "purpose": "reply",
+      "calls": 46,
+      "retries": 11,
+      "input": 106546,
+      "cached": 83712,
+      "uncached": 22834,
+      "uncachedPerCall": 496.39130434782606,
+      "hitPercent": 78.56888104668406,
+      "requestsWithoutInputUsage": 0,
+      "requestsWithoutReportedUncached": 0,
+      "systemLengths": "5759x46"
+    },
+    {
+      "purpose": "decide",
+      "calls": 10,
+      "retries": 5,
+      "input": 48146,
+      "cached": 35712,
+      "uncached": 12434,
+      "uncachedPerCall": 1243.4,
+      "hitPercent": 74.17438624184771,
+      "requestsWithoutInputUsage": 0,
+      "requestsWithoutReportedUncached": 0,
+      "systemLengths": "15520x10"
+    },
+    {
+      "purpose": "execute_tool_loop",
+      "calls": 9,
+      "retries": 4,
+      "input": 53973,
+      "cached": 40320,
+      "uncached": 13653,
+      "uncachedPerCall": 1517,
+      "hitPercent": 74.70401867600467,
+      "requestsWithoutInputUsage": 0,
+      "requestsWithoutReportedUncached": 0,
+      "systemLengths": "12606x5 13597x4"
+    },
+    {
+      "purpose": "execute_final_reply",
+      "calls": 6,
+      "retries": 4,
+      "input": 6586,
+      "cached": 1792,
+      "uncached": 4794,
+      "uncachedPerCall": 799,
+      "hitPercent": 27.209231703613728,
+      "requestsWithoutInputUsage": 0,
+      "requestsWithoutReportedUncached": 0,
+      "systemLengths": "1646x6"
+    },
+    {
+      "purpose": "verify",
+      "calls": 5,
+      "retries": 0,
+      "input": 6923,
+      "cached": 2560,
+      "uncached": 4363,
+      "uncachedPerCall": 872.6,
+      "hitPercent": 36.97818864654052,
+      "requestsWithoutInputUsage": 0,
+      "requestsWithoutReportedUncached": 0,
+      "systemLengths": "3264x5"
+    },
+    {
+      "purpose": "recover",
+      "calls": 2,
+      "retries": 0,
+      "input": 3990,
+      "cached": 1152,
+      "uncached": 2838,
+      "uncachedPerCall": 1419,
+      "hitPercent": 28.87218045112782,
+      "requestsWithoutInputUsage": 0,
+      "requestsWithoutReportedUncached": 0,
+      "systemLengths": "2423x2"
+    },
+    {
+      "purpose": "classify",
+      "calls": 1,
+      "retries": 0,
+      "input": 516,
+      "cached": 0,
+      "uncached": 516,
+      "uncachedPerCall": 516,
+      "hitPercent": 0,
+      "requestsWithoutInputUsage": 0,
+      "requestsWithoutReportedUncached": 0,
+      "systemLengths": "942x1"
+    }
+  ]
+}
