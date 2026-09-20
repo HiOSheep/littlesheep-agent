@@ -7346,3 +7346,39 @@ if (durableHarnessMode === 'next' && result.status !== 'ok' && result.finalReply
 **备选手段（若仍定位不到）**：给失败用例**临时打印 `result.error`**（仅本地、不入提交），直接读抛出原因 —— 这比继续盲读更快。
 
 **D1 现状小结（交接）**：5 处嫌疑中 **#1 已改善并提交**（身份匹配）；**#3 收窄到延迟结算路径**（本轮）；#2/#4/#5 待查。**属协议级改造、需多轮**；对命中率的直接收益是间接的（解锁 `verify` 与主路径共享前缀）。
+
+## 10.269 **D1 定位突破**：抛出点已收窄，且原因文本可直接 grep（2026-09-18）
+
+**本轮取证链**：
+1. `runner.ts:886` 的 catch 会把成功运行改判为 `error`（`runtimeFailureResult(…, 'final_reply_settlement_failed')`）；
+2. 该 catch 的两个调用中，**`settleFinalReplyArtifacts` 内部两处 try/catch 全吞错**（`runner.ts:2251–2261`）⇒ **不可能触发外层 catch**；
+3. ⇒ 抛出者只能是 **`settleDeferredFinalReply`**（`harness/src/stages/finalize.ts:24`）；
+4. 而它**会重抛**：`finalize.ts:59–67`
+   ```ts
+   } catch (error) {
+     ctx.toolContext.log?.('error', `finalize: deferred reply settlement failed: ${(error as Error).message}`);
+     if (!eventSettled) ctx.finalReplySettlementUncertain = true;
+     throw error;                                   // ← 重抛 ✓
+   }
+   ```
+   ⇒ **runner 的外层 catch 确实由它触发** ✓
+
+**⇒ 抛出点只可能是这两步之一**（`finalize.ts:29` / `:47`）：
+| 步 | 调用 | 可能原因 |
+| --- | --- | --- |
+| A | `ctx.appendDurableEvent?.({ type: 'final_reply_settled', … })` | durable 事件追加的校验/幂等键冲突 |
+| B | `ctx.settleUserFacingReplySettlement(reservation)` | 注册表结算被拒（保留项未知/重复等） |
+
+**注意**：`finalize.ts:38–40` 取 `modelRequestIndex` 时**已按 `request.id` 查找**（身份匹配 ✓，非形状依赖）⇒ 该处**不是**形状敏感点。
+
+**⇒ 关键便利**：失败原因被**打了个日志**——`finalize: deferred reply settlement failed: <真实原因>` ⇒ **可直接从失败用例输出中 grep 出来**，不必继续盲读。
+
+**下一轮（一次到位，命令序列已定）**：
+1. 重新应用 `verify` 的有界历史（`read` + `edit`，两处：import 与 `history: recentHistoryForModel(ctx.history)`）；
+2. 只跑一个失败用例并把输出落盘，例如：
+   `pnpm exec vitest run packages/runner/src/runner-continuation.test.ts -t "binds an ordinary same-session answer" > out.txt 2>&1`
+3. **grep `out.txt` 中的 `deferred reply settlement failed:`** ⇒ 得到真实原因；
+4. 按原因做**最小修复**（若属"保留项/事件ID 与形状绑定"⇒ 换成 `settlementId`/`fingerprint` 身份）；
+5. 复跑套件看失败数是否下降；**verify 改动仍按纪律回退**（只在验证时临时应用）。
+
+**D1 进度小结**：#1 ✅ 已改善并提交；**抛出点 ✅ 已收窄到 `finalize.ts:29/47` 两步**；#2/#4/#5 待查。
