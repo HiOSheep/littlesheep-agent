@@ -7382,3 +7382,37 @@ if (durableHarnessMode === 'next' && result.status !== 'ok' && result.finalReply
 5. 复跑套件看失败数是否下降；**verify 改动仍按纪律回退**（只在验证时临时应用）。
 
 **D1 进度小结**：#1 ✅ 已改善并提交；**抛出点 ✅ 已收窄到 `finalize.ts:29/47` 两步**；#2/#4/#5 待查。
+
+## 10.270 D1 复现**已最小化**，并锁定"status='error' 的可能来源"（2026-09-18）
+
+**最小复现（一次编辑 + 一条命令）**：
+```ts
+// packages/harness/src/stages/verify/model-call.ts
+history: ctx.history.slice(-8),      // 原为 history: []
+```
+```bash
+pnpm exec vitest run packages/runner/src/runner-continuation.test.ts
+```
+⇒ **8 failed / 18 passed**（失败用例与全量套件中的那 8 例一致）✓
+**注意**：用 `ctx.history.slice(-8)` 而非 `recentHistoryForModel` 可**避免改 import** ⇒ 复现只需**一处编辑**（更快、更少扰动）；实验后已回退（树干净）。
+
+**失败断言位置（全部为 `expected 'error' to be 'ok'`）**：
+`runner-continuation.test.ts:434 / 536 / 917 / 1096 / 1423 / 1522 / 1872 / 2139`
+**关键观察**：输出中**没有** `finalize: deferred reply settlement failed:` 这行日志 ⇒ **10.269 的假设（抛出点在 `settleDeferredFinalReply`）很可能不成立**；`result.status` 变成 `'error'` 但**没有异常文本** ⇒ 说明它是**被"记录为失败结果"**而非抛出。
+
+**⇒ 更精确的假设（与此前读到的代码吻合）**：来源可能是 `runner.ts` 的 **`finally` 收尾记录**：
+```
+946:        await recordDurableRunOutcome(durableRecorder, {
+947:          status: signal.aborted ? 'aborted' : 'error',
+948:          error: 'run ended before the coordinator produced a settled result',
+949:        });
+```
+⇒ 即"运行在协调器产出 settled 结果之前就结束了" ⇒ **状态被记为 error、无抛错文本** ✓ 与观测**完全一致**。
+
+**⇒ 下一轮（取真因的两条路，任选其一即可）**：
+| 路线 | 做法 | 成本 |
+| --- | --- | --- |
+| **A（推荐，最直接）** | **临时**给**一个**失败用例加一行 `console.log(result.error)`（`read` + `edit` ⇒ 跑该用例 ⇒ 读原因 ⇒ **回退测试**） | 3–4 次调用 |
+| **B** | 读 `runner.ts:930–965`（`finally` 收尾）与其**前置条件**（什么情况下会走到"未 settled"分支），推断 verify 改形状后为何走不到 settled | 1–2 次调用 |
+
+**D1 进度**：#1 ✅ 已改善并提交；**复现 ✅ 已最小化**；**抛出/记录点 ✅ 收窄到 `runner.ts:939–949` 或 `finalize.ts:29/47`**（前者更符合"无异常文本"的观测）。
