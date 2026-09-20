@@ -237,6 +237,16 @@ describe('core agent behavior contracts', () => {
       tools: [read],
       inbound: textMessage('user', 'prepare a verified summary from the file as a multi-step job.'),
     })
+    // New requests no longer plan, so an already persisted plan is what keeps
+    // this on the step executor: the replan invariant below is still the subject.
+    ctx.taskBook = {
+      assessment,
+      goal: assessment.goal,
+      complexity: assessment.complexity,
+      successCriteria: [...assessment.successCriteria],
+      steps: initial.taskBook.steps.map((step) => ({ ...step, status: 'pending' as const })),
+      overdeliveryPolicy: { maxExtraScopeRatio: 1.5, guidance: 'stay focused' },
+    }
 
     const result = await makeHarness(llm).run(ctx)
 

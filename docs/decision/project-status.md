@@ -1,6 +1,12 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-20 22:30:00
+最后更新：2026-09-20 23:05:00
+
+**极简执行与缓存 95% 方案 P3 第三刀：新请求一律进入单一主循环，规划不再被创建（2026-09-20 23:05:00，进行中）**：按方案「删除第二执行体系」，`selectWorkPolicy` 不再为任何**新**请求返回 `task_book`：复杂范围、超长请求、检索意图、续接、延迟运行时事件和默认兜底全部落到 `bounded_loop`，只保留原有 reason code 作为"为什么这轮更重"的审计说明。规划请求因此只可能由**已持久化的 TaskBook**（旧 checkpoint / 旧计划续跑）触发，而不再由新输入触发。
+
+- 语义：多步骤工作现在完全在主循环内串行完成（工具调用 → 结果 → 继续或作答），与前面几轮删除的并行波次、升级入口和自动记忆沉淀一致；`task_book` 成为只服务旧数据的兼容路径（下一步连同 `task-book-runner.ts`/DECIDE 一起删除）。`ctx.taskBook` 存在的历史分支保留，`isSupportedWorkPolicy` 与 `allowedTransitions` 不变，旧记录继续可读。
+- 测试按新契约更新：`classify.test.ts` 的复杂/检索用例改为断言进入主循环并带解释性 reason code；`lean-work-policy.test.ts` 的重型请求用例改为断言 `bounded_loop` + reason code；`e2e.test.ts` 两个依赖"新请求会自动生成 TaskBook"的局部重规划用例替换为一条"多步骤工作在主循环内执行、不产生规划请求"的用例（重规划机制本身仍有 `verify.test.ts` 与 `execute.test.ts` 的阶段级覆盖）；`core-agent-contracts` 的"只重规划失败步骤、不重跑已完成工作"用例改为预置 TaskBook 后驱动，保留该安全不变量；`memory-v3` 删除只覆盖"规划后工作集精炼"的用例，另两个用例去掉队列里的规划响应（release/readmit 本来就由 `memory_tree` 工具驱动，现在直接在循环里生效）；runner 的"运行不写记忆"用例改为断言单次循环请求。
+- 验证：`pnpm run typecheck` 通过；全仓 `pnpm exec vitest run` **453 个文件、3,199 项通过、1 项 skipped**（比上一批少 2 项：两个 e2e 局部重规划用例替换为一条主循环多步骤用例，`memory-v3` 删除一条只覆盖"规划后工作集精炼"的用例）。
 
 **极简执行与缓存 95% 方案 P4 第四刀：删除已无引用的记忆配置（2026-09-20 22:30:00，进行中）**：按方案「删除……无引用配置与专用 UI 开关」，删除两组已无生产引用的记忆配置。
 

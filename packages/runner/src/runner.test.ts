@@ -3129,9 +3129,7 @@ describe('createRunner run', () => {
 
   it('writes no durable memory on its own for a completed run', async () => {
     const llm = makeMockLlm([
-      textResponse('{"plan":[{"description":"inspect it","tools":[]}]}'),
       textResponse('Inspection complete.'),
-      textResponse('Inspection completed successfully.'),
     ]);
     // Per-run memory summarisation is gone: a run records its conversation and
     // execution facts, and durable memory only appears through an explicit write.
@@ -3143,11 +3141,8 @@ describe('createRunner run', () => {
     expect(await runner.infra.memoryRepository.listNodes('project', 'D:/test-project')).toHaveLength(0);
     expect(await runner.infra.memoryRepository.listNodes('daily', 'D:/test-project')).toHaveLength(0);
     expect((await runner.infra.memoryRepository.snapshot()).writeAudit).toEqual([]);
-    expect(result.modelRequests?.map((request) => request.stage)).toEqual([
-      'decide',
-      'execute',
-      'execute',
-    ]);
+    // One loop request answers the turn: no planning request, no memory stage.
+    expect(result.modelRequests?.map((request) => request.stage)).toEqual(['execute']);
   });
 
   // ─── Phase 3: channel meta binding ───────────────────────────────────

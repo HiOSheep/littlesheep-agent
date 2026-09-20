@@ -144,84 +144,38 @@ describe('e2e agent loop', () => {
     expect(new Set(ctx.modelRequests?.map((request) => request.callContract)).size).toBe(ctx.modelRequests?.length);
   });
 
-  it('retracts a draft built on incomplete step evidence before the replan answer is published', async () => {
-    const read = makeTool('read', { ok: true, output: 'unused' });
-    let toolExecutions = 0;
-    read.execute = async () => {
-      toolExecutions += 1;
-      return toolExecutions === 1
-        ? { callId: '', ok: false, error: 'ENOENT: file not found' }
-        : { callId: '', ok: true, output: 'correct file contents' };
-    };
-    const initialTaskBook = {
-      assessment: {
-        userNeed: 'prepare a verified summary', complexity: 'standard', goal: 'prepare a verified summary',
-        successCriteria: ['summary is verified'], requiresTaskBook: true, maxExtraScopeRatio: 1.5,
-      },
-      taskBook: {
-        goal: 'prepare a verified summary', complexity: 'standard', successCriteria: ['summary is verified'],
-        steps: [
-          { id: 'outline', description: 'prepare the outline' },
-          { id: 'summary', description: 'read the file and prepare the summary', tools: ['read'] },
-        ],
-      },
-    };
-    const revisedTaskBook = {
-      ...initialTaskBook,
-      taskBook: {
-        ...initialTaskBook.taskBook,
-        steps: [
-          { id: 'outline', description: 'keep the completed outline' },
-          { id: 'summary', description: 'read the corrected path and prepare the summary', tools: ['read'] },
-        ],
-      },
-    };
+  it('multi-step work runs in the single main loop without a planning request', async () => {
+    const read = makeTool('read', { ok: true, output: 'correct file contents' });
     const llm = createMockLlm([
-      textResponse('{"type":"problem","confidence":0.9,"reason":"task"}'),
-      textResponse(JSON.stringify(initialTaskBook)),
-      textResponse('outline evidence'),
-      toolCallResponse([{ id: 'read-1', name: 'read', args: { path: 'missing.txt' } }]),
-      textResponse('unverified draft from the failed read'),
-      textResponse(JSON.stringify(revisedTaskBook)),
-      toolCallResponse([{ id: 'read-2', name: 'read', args: { path: 'correct.txt' } }]),
+      toolCallResponse([{ id: 'read-1', name: 'read', args: { path: 'correct.txt' } }]),
       textResponse('summary from the correct file'),
-      textResponse('verified final answer'),
-      textResponse('{"notes":[]}'),
-      textResponse('{"insights":[]}'),
     ]);
     const h = makeHarness(llm);
     const ctx = makeCtx({
-      // A provably multi-step request keeps this on the TaskBook path, which is
-      // where step-scoped partial replanning still lives.
-      inbound: textMessage('user', 'prepare a verified summary as a multi-step job'),
+      inbound: textMessage('user', 'read the file and write the summary as a multi-step job'),
       tools: [read],
     });
-    const events: ToolStreamEvent[] = [];
-    const deltas: string[] = [];
-    const replacements: string[] = [];
-    ctx.onToolEvent = (event) => events.push(event);
-    ctx.onAssistantDelta = (delta) => deltas.push(delta);
-    ctx.onAssistantReplace = (text) => replacements.push(text);
 
     const res = await h.run(ctx);
 
     expect(res.ok).toBe(true);
-    expect(toolExecutions).toBe(2);
-    // The draft produced while the recorded step evidence was incomplete is
-    // retracted: only the post-replan answer is settled and persisted.
-    expect(ctx.reply).toBe('verified final answer');
-    expect(replacements).toContain('');
-    expect(ctx.finalReplySettlement?.status).toBe('settled');
-    expect(ctx.produced.some((message) => JSON.stringify(message.content).includes('unverified draft'))).toBe(false);
-    expect(events.filter((event) => event.type === 'final_delta')).toHaveLength(0);
-    expect(events.filter((event) => event.type !== 'reasoning' && event.type !== 'model_activity').map((event) => event.type)).toEqual([
-      'task_book', 'step_start', 'step_done',
-      'step_start', 'tool_start', 'tool_end', 'step_failed',
-      'verification_start', 'verification',
-      'task_book', 'step_skipped', 'step_start', 'tool_start', 'tool_end', 'step_done',
-      'verification_start', 'verification',
+    expect(ctx.reply).toBe('summary from the correct file');
+    // Provably multi-step scope still runs here; it just no longer buys a second
+    // executor or a planning request.
+    expect(ctx.classification?.workPolicy).toMatchObject({
+      executionMode: 'bounded_loop',
+      reasonCode: 'complex_scope',
+    });
+    expect(ctx.taskBook).toBeUndefined();
+    expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
+      'execute_tool_loop', 'execute_tool_loop',
+    ]);
+    const trace = res.meta?.trace as Array<{ name: string }>;
+    expect(trace.map((item) => item.name)).toEqual([
+      'enter', 'classify', 'execute', 'verify', 'finalize',
     ]);
   });
+
 
   it('unmatched: no rule matches → the main loop answers → verify → finalize', async () => {
     // 'xyzzy' matches no rule, so the main loop handles it: the model's own text
@@ -244,80 +198,4 @@ describe('e2e agent loop', () => {
     ]);
   });
 
-  it('partially replans a failed step without rerunning completed work', async () => {
-    const read = makeTool('read', { ok: true, output: 'unused' });
-    let toolExecutions = 0;
-    read.execute = async () => {
-      toolExecutions += 1;
-      return toolExecutions === 1
-        ? { callId: '', ok: false, error: 'ENOENT: file not found' }
-        : { callId: '', ok: true, output: 'correct file contents' };
-    };
-    const initialTaskBook = {
-      assessment: {
-        userNeed: 'prepare a summary', complexity: 'standard', goal: 'prepare the summary',
-        successCriteria: ['summary is complete'], requiresTaskBook: true, maxExtraScopeRatio: 1.5,
-      },
-      taskBook: {
-        goal: 'prepare the summary', complexity: 'standard', successCriteria: ['summary is complete'],
-        steps: [
-          { id: 'step-1', description: 'prepare the outline' },
-          { id: 'step-2', description: 'read the file and write the summary', tools: ['read'] },
-        ],
-      },
-    };
-    const revisedTaskBook = {
-      ...initialTaskBook,
-      taskBook: {
-        ...initialTaskBook.taskBook,
-        steps: [
-          { id: 'step-1', description: 'do not replace completed outline' },
-          { id: 'step-2', description: 'locate the corrected path, read it, and write the summary', tools: ['read'] },
-        ],
-      },
-    };
-    const llm = createMockLlm([
-      textResponse('{"type":"problem","confidence":0.9,"reason":"multi-step task"}'),
-      textResponse(JSON.stringify(initialTaskBook)),
-      textResponse('outline evidence'),
-      toolCallResponse([{ id: 'read-1', name: 'read', args: { path: 'missing.txt' } }]),
-      textResponse('could not read the file'),
-      textResponse(JSON.stringify({
-        verdict: 'needs_replan', reason: 'path is wrong', feedback: 'use the corrected path',
-        failedStepIds: ['step-2'],
-      })),
-      textResponse(JSON.stringify(revisedTaskBook)),
-      toolCallResponse([{ id: 'read-2', name: 'read', args: { path: 'correct.txt' } }]),
-      textResponse('summary from the correct file'),
-      textResponse('final summary'),
-      textResponse('{"verdict":"pass","reason":"summary is complete"}'),
-      textResponse('{"notes":[]}'),
-      textResponse('{"insights":[]}'),
-    ]);
-    const h = makeHarness(llm);
-    const ctx = makeCtx({
-      // Multi-step scope keeps the TaskBook path, where step-scoped replan lives.
-      inbound: textMessage('user', 'prepare a summary from the file as a multi-step job'),
-      tools: [read],
-    });
-
-    const res = await h.run(ctx);
-
-    expect(res.ok).toBe(true);
-    expect(toolExecutions).toBe(2);
-    expect(ctx.taskExecution?.steps[0]).toMatchObject({
-      stepId: 'step-1', description: 'prepare the outline', output: 'outline evidence', attempt: 1,
-    });
-    expect(ctx.taskExecution?.steps[1]).toMatchObject({
-      stepId: 'step-2', status: 'done', attempt: 2,
-    });
-    expect(ctx.replanHistory?.[0]).toMatchObject({
-      targetStepIds: ['step-2'], preservedStepIds: ['step-1'], revisedStepIds: ['step-2'],
-    });
-    const trace = res.meta?.trace as Array<{ name: string }>;
-    expect(trace.map((item) => item.name)).toEqual([
-      'enter', 'classify', 'decide', 'execute', 'verify',
-      'decide', 'execute', 'verify', 'finalize',
-    ]);
-  });
 });

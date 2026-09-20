@@ -19,23 +19,28 @@ export function selectWorkPolicy(ctx: RunContext, classification: Classification
   }
   // A rule-matched conversational turn is answered in one loop request: a
   // leftover plan, a resume marker or a queued runtime event must not turn a
-  // greeting into a planning request. Requests that genuinely need retrieval
-  // keep their existing planned route.
+  // greeting into a planning request.
   if (classification.source === 'rules'
     && classification.type === 'chat'
     && assessRetrievalIntent(inboundText(ctx)).intent === 'none') {
     return policy(sourceMessageId, 'bounded_loop', 'conversational_default');
   }
+  // One execution system. Every new request runs in the main loop, whatever its
+  // size, scope, retrieval need or continuation state: the loop executes
+  // multi-step work serially and the model decides when to answer. The reason
+  // codes below are kept so a heavy request can still be explained in the audit
+  // trail, but none of them buys a second executor any more. An already
+  // persisted TaskBook still needs its own executor until that path is deleted.
   if (ctx.taskBook) return policy(sourceMessageId, 'task_book', 'existing_task_book');
   if (ctx.resumedFromCheckpointId || ctx.clarificationResponse || ctx.partialReplanRequest || ctx.verifyFeedback) {
-    return policy(sourceMessageId, 'task_book', 'continuation');
+    return policy(sourceMessageId, 'bounded_loop', 'continuation');
   }
   if ((ctx.deferredRuntimeEvents?.length ?? 0) > 0) {
-    return policy(sourceMessageId, 'task_book', 'deferred_runtime_event');
+    return policy(sourceMessageId, 'bounded_loop', 'deferred_runtime_event');
   }
   const text = inboundText(ctx);
-  if (text.length > MAX_BOUNDED_REQUEST_CHARS) return policy(sourceMessageId, 'task_book', 'large_request');
-  if (COMPLEX_SCOPE.test(text)) return policy(sourceMessageId, 'task_book', 'complex_scope');
+  if (text.length > MAX_BOUNDED_REQUEST_CHARS) return policy(sourceMessageId, 'bounded_loop', 'large_request');
+  if (COMPLEX_SCOPE.test(text)) return policy(sourceMessageId, 'bounded_loop', 'complex_scope');
   const retrievalIntent = assessRetrievalIntent(text).intent;
   if (classification.source === 'rules'
     && classification.confidence >= 0.8
@@ -43,15 +48,13 @@ export function selectWorkPolicy(ctx: RunContext, classification: Classification
     && (retrievalIntent === 'none' || retrievalIntent === 'local_workspace' || retrievalIntent === 'local_memory')) {
     return policy(sourceMessageId, 'bounded_loop', 'bounded_single_goal');
   }
-  if (retrievalIntent !== 'none') return policy(sourceMessageId, 'task_book', 'retrieval_required');
+  if (retrievalIntent !== 'none') return policy(sourceMessageId, 'bounded_loop', 'retrieval_required');
   if (classification.source === 'rules'
     && classification.confidence >= 0.8
     && classification.reasonCode === 'action_request') {
     return policy(sourceMessageId, 'bounded_loop', 'bounded_single_goal');
   }
-  // Default to the single main loop. The model either answers or calls a tool,
-  // and a genuinely multi-step task can promote itself to a TaskBook through the
-  // bounded-loop upgrade path; planning is no longer a mandatory extra request.
+  // Default to the single main loop: the model either answers or calls a tool.
   return policy(sourceMessageId, 'bounded_loop', 'bounded_default');
 }
 

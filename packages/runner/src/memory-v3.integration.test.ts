@@ -196,97 +196,6 @@ describe('Runner Memory v3 integration', () => {
     ]));
   });
 
-  it('refines the working set from the normalized TaskBook before EXECUTE', async () => {
-    const workspace = join(dataDir, 'workspace');
-    await mkdir(workspace, { recursive: true });
-    const requests: ChatRequest[] = [];
-    const responses: ChatResponse[] = [];
-    const runner = await createRunner({
-      config: {
-        ...DEFAULT_CONFIG,
-        memory: { ...DEFAULT_CONFIG.memory, repositoryBackend: 'v3' as const },
-      },
-      branding: DEFAULT_BRANDING,
-      model: 'test/model',
-      llm: makeLiveQueueMockLlm(responses, requests),
-      skillsDirs: [],
-    });
-    runners.push(runner);
-    const write = await runner.infra.memoryService.write({
-      id: 'taskbook-refinement-memory',
-      branch: 'project',
-      parentNodeId: 'project:root',
-      scope: 'workspace',
-      scopeKey: workspace,
-      tier: InjectionTier.T2_RELEVANT,
-      summary: 'pnpm workspace command policy',
-      content: 'Use pnpm workspace filters when validating this repository.',
-      retrievalKeys: ['pnpm workspace', 'workspace filters', 'repository validation'],
-      sourceRefs: ['conversation-source:seed-run:user-message:taskbook-refinement'],
-      sourceRunId: 'seed-run',
-      sourceStage: 'evolve',
-      importance: 0.8,
-      confidence: 0.9,
-      reason: 'Project convention used by the TaskBook refinement integration test.',
-      epistemic: {
-        domain: 'project',
-        statementKind: 'instruction',
-        epistemicStatus: 'reported',
-        authorityScope: { kind: 'user-self', scope: 'workspace', scopeKey: workspace, topics: ['pnpm'] },
-        assertedBy: { kind: 'user', id: 'user' },
-        evidenceRefs: ['user:project-command-policy'],
-      },
-    });
-    if (!write.node) throw new Error(`seed write failed: ${write.decision}: ${write.reason}`);
-    const atomId = write.node.id;
-    responses.push(
-      textResponse(JSON.stringify({
-        assessment: {
-          userNeed: 'Validate the repository with its pnpm workspace convention.',
-          complexity: 'standard',
-          goal: 'Validate the repository using pnpm workspace filters.',
-          successCriteria: ['Use pnpm workspace filters for repository validation.'],
-          needsClarification: false,
-          requiresTaskBook: true,
-          maxExtraScopeRatio: 1.2,
-        },
-        taskBook: {
-          goal: 'Validate the repository using pnpm workspace filters.',
-          complexity: 'standard',
-          successCriteria: ['Use pnpm workspace filters for repository validation.'],
-          overdeliveryPolicy: { maxExtraScopeRatio: 1.2, guidance: 'Stay within the validation task.' },
-          steps: [{
-            id: 'step-1',
-            title: 'Run repository validation',
-            description: 'Use pnpm workspace filters to validate the repository.',
-            tools: [],
-            acceptanceCriteria: ['The repository validation uses the project command policy.'],
-          }],
-        },
-      })),
-      textResponse('Repository validation followed the pnpm workspace policy.'),
-      textResponse('The repository validation completed successfully using the pnpm workspace policy.'),
-      textResponse(JSON.stringify({ verdict: 'pass', reason: 'The policy was followed.', usedMemoryAtomIds: [atomId] })),
-      textResponse('{"memories":[],"createSkill":null}'),
-      textResponse('{"observations":[]}'),
-    );
-
-    const result = await runner.run({ text: '继续处理这个多步骤任务', cwd: workspace });
-
-    expect(result.status).toBe('ok');
-    const executeRequest = requests.find((request) => requestText(request).includes('# TaskBook Refined Memory Atoms'));
-    if (!executeRequest) throw new Error(`refinement missing: ${JSON.stringify(result.memoryAccess?.records)}`);
-    // Refinement happens after planning, so no request before it may already
-    // carry the refined atom text.
-    const executeIndex = requests.indexOf(executeRequest);
-    expect(executeIndex).toBeGreaterThan(0);
-    expect(requests.slice(0, executeIndex).every((request) => !requestText(request).includes('workspace filters when validating'))).toBe(true);
-    expect(requestText(executeRequest)).toContain('workspace filters when validating');
-    expect(result.memoryKnownState?.references).toEqual(expect.arrayContaining([
-      expect.objectContaining({ atomId, decision: 'adopted' }),
-    ]));
-    expect(result.memoryAccess?.records.some((record) => record.reason?.includes('taskbook atom selection'))).toBe(true);
-  });
 
   it('uses the versioned session summary as a bounded recall fallback after compaction', async () => {
     const workspace = join(dataDir, 'workspace');
@@ -419,7 +328,6 @@ describe('Runner Memory v3 integration', () => {
     const seedBefore = await runner.infra.memoryRepository.management.inspectNode(seed.node!.id, 'D3');
 
     responses.push(
-      textResponse('{"plan":[{"description":"refresh active memory context","tools":["memory_tree"]}]}'),
       toolCallResponse('release-memory', 'memory_tree', {
         action: 'release', atomIds: [seed.node!.id],
       }),
@@ -514,7 +422,6 @@ describe('Runner Memory v3 integration', () => {
     expect(seedBefore?.atom).toBeTruthy();
 
     responses.push(
-      textResponse('{"plan":[{"description":"use the injected continuity marker","tools":[]}]}'),
       textResponse(`The persisted project decision uses ${marker}.`),
       textResponse(`The project decision was persisted and uses ${marker}.`),
       textResponse(JSON.stringify({ observations: [{
@@ -639,8 +546,8 @@ describe('Runner Memory v3 integration', () => {
     // archives nothing; compaction still settles through its single entry.
     expect(activeDaily).toEqual([]);
     expect(archivedDaily).toEqual([]);
-    // Plan + loop turns + compaction settle; no EVOLVE or CAPTURE request remains.
-    expect(requests).toHaveLength(5);
+    // Loop turns + compaction settle; no planning, EVOLVE or CAPTURE request remains.
+    expect(requests).toHaveLength(3);
   });
 
   // HC-02: a short session with no summary/atom must still be discoverable by bounded catalog, then expanded by ref.

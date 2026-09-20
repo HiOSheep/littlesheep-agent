@@ -12,25 +12,25 @@
 
 ## 目标流程
 
-每次 run 先选择一个有界语义活动：常规请求直接进入单一主循环，只有可证明复杂、大型、续接或需要检索的请求才先做完整规划：
+每次 run 先选择一个有界语义活动：新请求一律进入单一主循环，"复杂/大型/续接/检索"只作为解释性 reason code，不再换取第二次规划请求；只有已持久化的 TaskBook（旧 checkpoint / 旧计划续跑）才走兼容的规划与步骤执行路径：
 
 ```text
-ENTER -> 活动路由 -> execute（常规会话与常规任务） -> EXECUTE（单一主循环） -> VERIFY -> FINALIZE
+ENTER -> 活动路由 -> execute（新请求，含复杂/大型/续接/检索） -> EXECUTE（单一主循环） -> VERIFY -> FINALIZE
                  -> 能力/状态询问 -> REPLY（最小 Runtime 事实契约） -> FINALIZE
-                 -> execute（复杂） -> DECIDE -> EXECUTE -> VERIFY -> FINALIZE
+                 -> 已持久化 TaskBook -> DECIDE -> EXECUTE（步骤执行，兼容路径） -> VERIFY -> FINALIZE
                  -> clarify -----------------------------> ASK_USER -> FINALIZE
 
 EXECUTE 主循环内部：
   模型直接回答，或请求一个受控工具
   -> Runtime 重新判定权限、范围、资源与副作用
   -> 执行并记录证据，把结果追加回同一循环
-  -> 需要更多步骤时在同一循环内继续；规划只由路由在开始前决定
+  -> 需要更多步骤时在同一循环内继续
 
-DECIDE（仅复杂/大型/续接/检索）内部：
+DECIDE（仅已持久化 TaskBook，待删除的兼容路径）内部：
   校准需求并识别缺失信息
   -> 获取可靠来源并按需装配 Context
-  -> 创建或修订 TaskBook
-  -> 按 TaskBook 调度串行或可安全并行的步骤
+  -> 归一化或修订既有 TaskBook
+  -> 按 TaskBook 调度串行步骤（并行波次已删除）
   -> 在安全决策边界消费用户追加消息或 LS 事件
   -> 局部修订未完成步骤
   -> 按目标和验收标准验证

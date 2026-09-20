@@ -52,12 +52,16 @@ describe('classifyStage', () => {
     expect(ctx.initialMemoryContext).toContain('单文件 HTML');
   });
 
-  it('keeps complex action requests on the full planning path', async () => {
+  it('keeps a complex action request in the single main loop', async () => {
     const llm = createMockLlm(textResponse('should not be called'));
     const ctx = makeCtx({ inbound: textMessage('user', '重构整个项目架构并迁移所有文件') });
     ctx.streamModelTranscript = true;
 
-    await expect(createClassifyStage()(ctx)).resolves.toMatchObject({ next: 'decide', ok: true });
+    await expect(createClassifyStage()(ctx)).resolves.toMatchObject({ next: 'execute', ok: true });
+    expect(ctx.classification?.workPolicy).toMatchObject({
+      executionMode: 'bounded_loop',
+      reasonCode: 'complex_scope',
+    });
     expect(llm.chat).not.toHaveBeenCalled();
   });
 
@@ -88,13 +92,17 @@ describe('classifyStage', () => {
     expect(llm.chat).not.toHaveBeenCalled();
   });
 
-  it('keeps a fresh Web request on the planning path through retrieval intent', async () => {
+  it('keeps a fresh Web request in the single main loop with a retrieval reason code', async () => {
     const llm = createMockLlm(textResponse('should not be called'));
     const stage = createClassifyStage({ rulesConfidenceThreshold: 2 });
     const ctx = makeCtx({ inbound: textMessage('user', '查一下今天的公开新闻') });
 
-    await expect(stage(ctx)).resolves.toMatchObject({ next: 'decide', ok: true });
-    expect(ctx.classification).toMatchObject({ activity: 'execute', retrievalIntent: 'web_search' });
+    await expect(stage(ctx)).resolves.toMatchObject({ next: 'execute', ok: true });
+    expect(ctx.classification).toMatchObject({
+      activity: 'execute',
+      retrievalIntent: 'web_search',
+      workPolicy: { executionMode: 'bounded_loop', reasonCode: 'retrieval_required' },
+    });
     expect(llm.chat).not.toHaveBeenCalled();
   });
 
@@ -197,13 +205,17 @@ describe('classifyStage', () => {
   it.each([
     ['搜索我的项目文件里有哪些 web_search 调用', 'local_workspace'],
     ['你还记得我上次的决定吗？', 'local_memory'],
-  ])('keeps %s on a local retrieval route', async (message, retrievalIntent) => {
+  ])('keeps %s in the single main loop with a local retrieval route', async (message, retrievalIntent) => {
     const llm = createMockLlm(textResponse('should not be called'));
     const stage = createClassifyStage({ rulesConfidenceThreshold: 2 });
     const ctx = makeCtx({ inbound: textMessage('user', message) });
 
-    await expect(stage(ctx)).resolves.toMatchObject({ next: 'decide', ok: true });
-    expect(ctx.classification).toMatchObject({ activity: 'execute', retrievalIntent });
+    await expect(stage(ctx)).resolves.toMatchObject({ next: 'execute', ok: true });
+    expect(ctx.classification).toMatchObject({
+      activity: 'execute',
+      retrievalIntent,
+      workPolicy: { executionMode: 'bounded_loop' },
+    });
     expect(llm.chat).not.toHaveBeenCalled();
   });
 });

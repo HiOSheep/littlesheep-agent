@@ -62,9 +62,9 @@ describe('work policy', () => {
     ['重构整个项目架构并迁移所有文件', 'complex_scope'],
     [`帮我写一个函数${'x'.repeat(2_100)}`, 'large_request'],
     ['搜索今天的公开新闻', 'retrieval_required'],
-  ] as const)('keeps %s on the task-book path', (text, reasonCode) => {
+  ] as const)('keeps %s in the single main loop with an explanatory reason code', (text, reasonCode) => {
     const ctx = makeCtx({ inbound: textMessage('user', text) });
-    expect(selectWorkPolicy(ctx, action())).toMatchObject({ executionMode: 'task_book', reasonCode });
+    expect(selectWorkPolicy(ctx, action())).toMatchObject({ executionMode: 'bounded_loop', reasonCode });
   });
 
   it('requires a supported persisted policy but has an explicit legacy checkpoint interpretation', () => {
