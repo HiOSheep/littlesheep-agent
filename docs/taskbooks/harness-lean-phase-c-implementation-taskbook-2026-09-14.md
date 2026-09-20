@@ -7587,3 +7587,40 @@ console.log('CALLS:', requests.map((r) => r.callContract?.purpose).join(' > '));
 5. **N5 / N7**（高成本或需行为验证，单独排期）。
 
 **共同原则（本会话结论）**：新能力优先以 **skill / 按需检索** 形式加入 ⇒ **能力增长而常驻复杂度不增**（用户原则 9/10）；任何"删除已缓存内容"或"删掉高命中调用"的做法都应避免（本会话 3 次负结果）。
+
+## 10.277 N3 定性：常驻块规模、位置成本，与一处**测量口径问题**（2026-09-18）
+
+**读数（`analyze-cache-shapes.mjs`，当前代码样本 `live-bounded-long`）**：
+```
+=== call cost by position inside a run ===
+  first   calls=120 miss/call=1268 hit=70.2%
+  second  calls= 55 miss/call= 666 hit=86.7%
+  third+  calls= 82 miss/call=1046 hit=65.7%
+
+=== where consecutive runs first diverge ===
+  pairs=119   38 at 0: reply:system -> identity      ← 见下方口径问题
+              15 at 0: verify:system -> identity
+               3 at 8: response-directives -> tooling
+
+=== provider order of one tool loop request ===
+  head[0] system  12606      ← 该 purpose 的常驻头
+  tail[ 9] system  1265 / [11] system 251 / [12] system 1880
+```
+**各 purpose 首条 system（`syslen.mjs`，当前代码）**：`decide` 15,520 / `execute_tool_loop` 12,606 / `reply` 5,759 / `verify` 3,264 / `execute_final_reply` 1,646 / `classify` 942。
+
+**⇒ 测量口径问题（重要）**：我的 `analyze-cache-shapes.mjs` 比较的是**段 id**，而 id 含 **stage 前缀**（`reply:system` vs `verify:system`）⇒ 相邻 run/不同 purpose 之间的"**0 位分歧**"多为**命名假象**（内容很可能相同）⇒ 该节**低估**了实际前缀复用 ⇒ 后续若继续用它判断"哪里不一致"，应改为比较**内容哈希**（脚本待改进，属 N1 范畴的后续小项）。
+
+### N3 候选（按"可延迟性"排序）
+
+| 候选 | 规模 | 可延迟性 | 说明 |
+| --- | --- | --- | --- |
+| **`capabilities`（能力说明）** | 中 | **高** ✓ | 属**百科式/参考知识**（LS 能做什么）⇒ 完全可做成 skill，按需加载；符合用户原则 3（能按需的不常驻）；且 `use_skill` 描述已按 index 动态重建 ✓（taskbook-as-skill 已验证机制可行） |
+| `profile` / branding 段 | 中 | 中 | 属"身份/风格"⇒ 每次都需要，移出反而增调用 |
+| `memory-root-index` | 小-中 | 中 | 原则 3 的目标之一，但需保证"按需可达"（N4 专责） |
+| `output-directives`（1,805） | 大 | **低** ✗ | 属**每次都适用的输出政策** ⇒ 移入 skill 会导致每次都要加载 ⇒ 更差 |
+| `tooling`（4,179） | 最大 | **不可移** ✗ | `decide` 的**唯一**工具通道（§10.264 已证） |
+
+**⇒ N3 第一步选定：`capabilities` 段** —— 做成 `capabilities` skill（复用 `registerDynamic` + `use_skill` 机制，零新增抽象 ✓），使其从**每次请求的常驻头**变为**按需加载**。
+**收益预期**：各 purpose 首条 system 长度下降（每 1k 常驻字符 ≈ 全 purpose 变小）⇒ **hit↑、uncached/run↓**（本会话唯一三次验证有效的方向）。
+**判据**：`syslen` 各 purpose 首条 system 长度 ↓、`pnpm run audit:cache` 的 hit ↑ 或持平、uncached/call ↓、`failedRuns=0`、`silentRuns=0`、`publishedRuns` 满额；**回退**：任一退化即恢复常驻。
+**风险**：模型可能不再"总是知道"自己的能力边界 ⇒ 需确认 `use_skill` 描述里能见其名（机制已具备），并观察 `semanticFailures`/`verificationPassRateDelta`。
