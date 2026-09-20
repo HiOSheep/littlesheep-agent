@@ -105,6 +105,9 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     memoryIntents: ['read', 'conflict', 'none'], requiresMemoryEvidence: true, toolMode: 'none', runtimeApprovalRequired: false,
     maxIterations: 0, maxAttempts: 2, maxOutputTokens: 900, maxPromptTokens: 4_096, temperature: 0,
   }),
+  // The kernel no longer issues a verification model call: VERIFY asserts only
+  // Runtime-provable evidence. The contract stays declared so historical logs,
+  // replayed run projections and old checkpoints still resolve their purpose.
   verify: template({
     purpose: 'verify', stage: 'verify', modelCall: 'required',
     goal: (ctx) => `Judge the recorded evidence against the calibrated success criteria for: ${goal(ctx)}`,

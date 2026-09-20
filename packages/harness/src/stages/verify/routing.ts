@@ -227,7 +227,7 @@ export async function routeKnownIncompleteExecution(
   meta: Record<string, unknown>,
 ): Promise<StageResult> {
   invalidateUnverifiedReply(ctx);
-  const targetStepIds = deriveReplanTargets(ctx, undefined);
+  const targetStepIds = deriveReplanTargets(ctx);
   const feedback = `Recorded step evidence is incomplete: ${reason}`;
   if (!canRecoverWithPartialReplan(ctx, targetStepIds)) {
     await recordVerification(ctx, {
@@ -303,7 +303,7 @@ export async function escalateExhaustedReplan(ctx: RunContext, reason: string, f
     verdict: 'fail',
     reason,
     feedback,
-    failedStepIds: deriveReplanTargets(ctx, undefined),
+    failedStepIds: deriveReplanTargets(ctx),
     source: 'structural',
   });
   return {

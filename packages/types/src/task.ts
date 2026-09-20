@@ -182,7 +182,12 @@ export interface TaskBook {
 /** Durable VERIFY outcome linked to the task book and final reply. */
 export interface VerificationRecord {
   attempt: number;
-  verdict: 'pass' | 'needs_replan' | 'fail';
+  /**
+   * `pass` means Runtime evidence proved the recorded acceptance; `unverified`
+   * means every recorded fact is consistent and complete but the acceptance
+   * criteria that need human judgement were not judged by anyone.
+   */
+  verdict: 'pass' | 'unverified' | 'needs_replan' | 'fail';
   reason: string;
   feedback?: string;
   failedStepIds?: string[];

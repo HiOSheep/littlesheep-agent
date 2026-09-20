@@ -3101,7 +3101,6 @@ describe('createRunner run', () => {
       textResponse('{"plan":[{"description":"inspect it","tools":[]}]}'),
       textResponse('Inspection complete.'),
       textResponse('Inspection completed successfully.'),
-      textResponse('{"verdict":"pass","reason":"goal achieved"}'),
       textResponse(JSON.stringify({ memories: [{
         branch: 'project', parentNodeId: 'project:root', scope: 'workspace',
         summary: 'Repository uses pnpm', content: 'Use pnpm commands in this workspace.',
@@ -3134,7 +3133,6 @@ describe('createRunner run', () => {
       'decide',
       'execute',
       'execute',
-      'verify',
       'evolve',
     ]);
   });

@@ -1,18 +1,29 @@
 // @littlesheep/harness — stages/verify.test.ts
-// Unit tests for the VERIFY stage: verdict routing, bounded replan,
-// conservative degradation, and feedback propagation.
-
+// Unit tests for the VERIFY stage after the forced verification model call was
+// deleted: narrow structural passes, explicit `unverified` records for
+// completed runs, and bounded recovery from recorded failures. No path may
+// spend a model request.
 import { describe, it, expect } from 'vitest';
 import { createVerifyStage } from './verify.js';
-import {
-  createMockLlm,
-  textResponse,
-  makeCtx,
-} from '../tests/helpers.js';
+import { makeCtx } from '../tests/helpers.js';
 import { textMessage } from '@littlesheep/types';
 import type { RunContext, TaskStepFailureKind, ToolResult } from '@littlesheep/types';
 
-const deps = { model: 'test' } as const;
+const stage = createVerifyStage();
+
+function llmProvenance(ctx: RunContext, purpose: 'execute_tool_loop' | 'execute_final_reply' = 'execute_tool_loop') {
+  return {
+    version: 1 as const,
+    source: 'llm' as const,
+    purpose,
+    modelRequestId: 'model-request-1',
+    modelRequestIndex: 1,
+    provider: 'deepseek',
+    model: 'deepseek-flash',
+    generatedAt: '2026-09-12T00:00:00.000Z',
+    rewriteCount: 0,
+  };
+}
 
 function makeVerifyCtx(opts: {
   reply?: string;
@@ -22,6 +33,7 @@ function makeVerifyCtx(opts: {
 } = {}) {
   const ctx = makeCtx({ inbound: textMessage('user', 'read the file and summarize') });
   ctx.reply = opts.reply ?? 'done';
+  ctx.replyProvenance = llmProvenance(ctx);
   ctx.toolResults = opts.toolResults ?? [];
   ctx.plan = [{ description: 'read file' }];
   if (opts.replanAttempts !== undefined) ctx.replanAttempts = opts.replanAttempts;
@@ -74,17 +86,11 @@ function installTaskExecution(
 }
 
 describe('verifyStage', () => {
-  it('HA-02-01 does not accept an unrelated read after a lean mutation as structural verification', async () => {
-    const llm = createMockLlm(textResponse('{"verdict":"fail","reason":"should not run"}'));
-    const stage = createVerifyStage({ ...deps, llm });
+  it('records an unverified verdict instead of a structural pass for a mixed write and read run', async () => {
     const ctx = makeVerifyCtx({ reply: '游戏文件已经创建并核验。' });
     ctx.streamModelTranscript = true;
     ctx.taskBook = undefined;
-    ctx.replyProvenance = {
-      version: 1, source: 'llm', purpose: 'execute_tool_loop', modelRequestId: 'request-1',
-      modelRequestIndex: 1, provider: 'deepseek', model: 'deepseek-flash',
-      generatedAt: '2026-09-12T00:00:00.000Z', rewriteCount: 0,
-    };
+    ctx.replyProvenance = llmProvenance(ctx);
     ctx.toolInvocations = ['write', 'grep'].map((toolName, index) => ({
       version: 1 as const,
       id: `invocation-${index}`,
@@ -102,19 +108,24 @@ describe('verifyStage', () => {
     ctx.sideEffects = [{
       idempotencyKey: 'write-effect', toolName: 'write', status: 'succeeded', callId: 'call-0',
     }];
+    ctx.toolResults = [
+      { callId: 'call-0', ok: true, output: 'written' },
+      { callId: 'call-1', ok: true, output: 'match' },
+    ];
 
-    await expect(stage(ctx)).resolves.toMatchObject({
-      next: 'recover', ok: false, meta: { verdict: 'fail' },
-    });
-    expect(llm.chat).toHaveBeenCalledTimes(1);
-    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'fail', source: 'model' });
+    const res = await stage(ctx);
+
+    // The code can prove the calls succeeded; it cannot prove that an unrelated
+    // read satisfies the user's acceptance, so the run is not called verified.
+    expect(res).toMatchObject({ next: 'evolve', ok: true, meta: { verdict: 'unverified' } });
+    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'unverified', source: 'structural' });
+    expect(ctx.verificationHistory?.at(-1)?.reason).toContain('not verified');
+    expect(ctx.modelRequests ?? []).toHaveLength(0);
   });
 
-  it('HA-02-05 lets unresolved Runtime effects override a model pass and retracts the draft', async () => {
-    const llm = createMockLlm(textResponse('{"verdict":"pass","reason":"looks complete"}'));
-    const stage = createVerifyStage({ ...deps, llm });
-    const replacements: string[] = [];
+  it('lets unresolved Runtime effects override completion and retracts the draft', async () => {
     const ctx = makeVerifyCtx({ reply: 'The file was created successfully.' });
+    const replacements: string[] = [];
     ctx.onAssistantReplace = (value) => replacements.push(value);
     ctx.toolInvocations = [{
       version: 1,
@@ -141,29 +152,27 @@ describe('verifyStage', () => {
     await expect(stage(ctx)).resolves.toMatchObject({
       next: 'recover',
       ok: false,
-      meta: { structuralOverride: true },
+      meta: { runtimeEvidenceGap: expect.stringContaining('side effect') },
     });
     expect(ctx.reply).toBeUndefined();
     expect(ctx.replyProvenance).toBeUndefined();
     expect(replacements.at(-1)).toBe('');
     expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'fail', source: 'structural' });
   });
-  it('pass → evolve', async () => {
-    const llm = createMockLlm(textResponse('{"verdict":"pass","reason":"goal achieved"}'));
-    const stage = createVerifyStage({ ...deps, llm });
+
+  it('completes a run with complete evidence as unverified and never calls a model', async () => {
     const ctx = makeVerifyCtx();
 
     const res = await stage(ctx);
 
     expect(res.next).toBe('evolve');
     expect(res.ok).toBe(true);
-    expect(res.meta?.verdict).toBe('pass');
-    expect(ctx.modelRequests?.map((request) => request.stage)).toEqual(['verify']);
+    expect(res.meta?.verdict).toBe('unverified');
+    expect(res.meta?.runtimeEvidenceComplete).toBe(true);
+    expect(ctx.modelRequests ?? []).toHaveLength(0);
   });
 
   it('uses a structural fast path for one successful simple read-only step', async () => {
-    const llm = createMockLlm(textResponse('{"verdict":"fail","reason":"should not run"}'));
-    const stage = createVerifyStage({ ...deps, llm });
     const ctx = makeVerifyCtx({ reply: '共有 1 个条目：attachments/' });
     ctx.replyProvenance = {
       version: 1,
@@ -229,13 +238,11 @@ describe('verifyStage', () => {
 
     expect(result).toMatchObject({ next: 'evolve', ok: true, meta: { runtimeFastPath: true } });
     expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'pass', source: 'structural' });
-    expect(llm.chat).not.toHaveBeenCalled();
+    expect(ctx.modelRequests ?? []).toHaveLength(0);
   });
 
   it('uses a structural fast path for an exact write then read verification', async () => {
     const marker = 'proof-7319';
-    const llm = createMockLlm(textResponse('{"verdict":"fail","reason":"should not run"}'));
-    const stage = createVerifyStage({ ...deps, llm });
     const ctx = makeVerifyCtx({ reply: `proof.txt was verified as ${marker}.` });
     ctx.inbound = textMessage('user', `Write proof.txt with ${marker}, then read it back and report both values.`);
     ctx.replyProvenance = {
@@ -347,88 +354,10 @@ describe('verifyStage', () => {
       meta: { runtimeFastPath: true, writeReadFastPath: true },
     });
     expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'pass', source: 'structural' });
-    expect(llm.chat).not.toHaveBeenCalled();
+    expect(ctx.modelRequests ?? []).toHaveLength(0);
   });
 
-  it('accepts only active adopted atoms as explicit verification usage evidence', async () => {
-    const llm = createMockLlm(textResponse(JSON.stringify({
-      verdict: 'pass',
-      reason: 'goal achieved with memory evidence',
-      usedMemoryAtomIds: ['atom-used', 'atom-excluded', 'atom-inactive', 'atom-used'],
-    })));
-    const stage = createVerifyStage({ ...deps, llm });
-    const ctx = makeVerifyCtx();
-    const envelope = {
-      atomRevision: 1,
-      branch: 'project',
-      scope: 'project',
-      tier: 2,
-      disclosureLevel: 'D2' as const,
-      statementKind: 'factual-claim',
-      epistemicStatus: 'verified',
-      authorityScope: { kind: 'tool-evidence', scope: 'project', topics: ['test'] },
-      assertedBy: { kind: 'tool', id: 'test' },
-      sourceRefs: [],
-      evidenceRefs: ['verify:test'],
-      confidence: 1,
-      importance: 1,
-      taskRelevance: 1,
-      updatedAt: '2026-07-16T06:00:00.000Z',
-      retrievalPath: 'hierarchy' as const,
-      matchReason: 'test match',
-      conflict: false,
-      expired: false,
-      truncated: false,
-    };
-    ctx.memoryKnownState = {
-      version: 1,
-      runId: ctx.runId,
-      revision: 1,
-      updatedAt: '2026-07-16T06:00:00.000Z',
-      references: [
-        knownStateReference('atom-used', 'adopted', envelope),
-        knownStateReference('atom-excluded', 'excluded', envelope),
-        knownStateReference('atom-inactive', 'adopted', envelope),
-      ],
-    };
-    ctx.memoryContextWorkingSet = {
-      revision: 1,
-      activeAtomIds: ['atom-used', 'atom-excluded'],
-      releasedAtomIds: ['atom-inactive'],
-      activeCallByAtom: { 'atom-used': 'initial', 'atom-excluded': 'initial' },
-      callAtomIds: { initial: ['atom-used', 'atom-excluded'] },
-      updatedAt: '2026-07-16T06:00:00.000Z',
-    };
-
-    await stage(ctx);
-
-    expect(ctx.verificationHistory?.at(-1)?.usedMemoryAtomIds).toEqual(['atom-used']);
-  });
-
-  it('includes the active behavior profile in the verification system prompt', async () => {
-    const systemPrompts: string[] = [];
-    const llm = createMockLlm((request) => {
-      systemPrompts.push(String(request.messages[0]?.content ?? ''));
-      return textResponse('{"verdict":"pass","reason":"goal achieved"}');
-    });
-    const stage = createVerifyStage({ ...deps, llm });
-    const ctx = makeVerifyCtx();
-    ctx.profilePromptAddon = 'PROFILE_SENTINEL_VERIFY';
-    ctx.bootstrap = { 'SOUL.md': 'SOUL_SENTINEL_VERIFY_VOICE' };
-
-    await stage(ctx);
-
-    expect(systemPrompts[0]).toContain('PROFILE_SENTINEL_VERIFY');
-    expect(systemPrompts[0]).toContain('SOUL_SENTINEL_VERIFY_VOICE');
-  });
-
-  it('verifies against taskBook success criteria when present', async () => {
-    const userPrompts: string[] = [];
-    const llm = createMockLlm((req) => {
-      userPrompts.push(String(req.messages[1]?.content ?? ''));
-      return textResponse('{"verdict":"pass","reason":"criteria satisfied"}');
-    });
-    const stage = createVerifyStage({ ...deps, llm });
+  it('records a completed task book run as unverified without a model verdict', async () => {
     const ctx = makeVerifyCtx();
     ctx.taskBook = {
       assessment: {
@@ -468,38 +397,13 @@ describe('verifyStage', () => {
     const res = await stage(ctx);
 
     expect(res.next).toBe('evolve');
-    expect(userPrompts[0]).toContain('Task book');
-    expect(userPrompts[0]).toContain('Goal: find core gaps');
-    expect(userPrompts[0]).toContain('gaps are named');
-    expect(userPrompts[0]).toContain('state machine inspected');
-    expect(userPrompts[0]).toContain('Step execution results');
-    expect(userPrompts[0]).toContain('Status: done');
+    expect(res.meta?.verdict).toBe('unverified');
+    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'unverified', source: 'structural' });
+    expect(ctx.verificationHistory?.at(-1)?.usedMemoryAtomIds).toBeUndefined();
+    expect(ctx.modelRequests ?? []).toHaveLength(0);
   });
 
-  it('needs_replan → decide, increments replanAttempts, sets verifyFeedback', async () => {
-    const llm = createMockLlm(
-      textResponse('{"verdict":"needs_replan","reason":"incomplete","feedback":"try a different file path"}'),
-    );
-    const stage = createVerifyStage({ ...deps, llm });
-    const ctx = makeVerifyCtx({ replanAttempts: 0 });
-
-    const res = await stage(ctx);
-
-    expect(res.next).toBe('decide');
-    expect(res.ok).toBe(true);
-    expect(res.meta?.verdict).toBe('needs_replan');
-    expect(ctx.replanAttempts).toBe(1);
-    expect(ctx.verifyFeedback).toBe('try a different file path');
-  });
-
-  it('creates a step-scoped partial replan and preserves completed evidence', async () => {
-    const llm = createMockLlm(textResponse(JSON.stringify({
-      verdict: 'needs_replan',
-      reason: 'summary is incomplete',
-      feedback: 'rewrite the summary using the file evidence',
-      failedStepIds: ['step-2'],
-    })));
-    const stage = createVerifyStage({ ...deps, llm });
+  it('creates a step-scoped partial replan from recorded failed steps', async () => {
     const ctx = makeVerifyCtx({ replanAttempts: 0 });
     installTaskExecution(ctx, [
       { id: 'step-1', status: 'done' },
@@ -509,23 +413,17 @@ describe('verifyStage', () => {
     const res = await stage(ctx);
 
     expect(res.next).toBe('decide');
+    expect(res.ok).toBe(true);
     expect(ctx.partialReplanRequest).toMatchObject({
       attempt: 1,
       targetStepIds: ['step-2'],
-      reason: 'summary is incomplete',
     });
     expect(ctx.replanHistory?.[0]?.preservedStepIds).toEqual(['step-1']);
     expect(ctx.taskExecution?.replanHistory).toEqual(ctx.replanHistory);
+    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'needs_replan', source: 'degraded' });
   });
 
   it('converts a recoverable not-found failure into partial re-planning', async () => {
-    const llm = createMockLlm(textResponse(JSON.stringify({
-      verdict: 'fail',
-      reason: 'the selected path does not exist',
-      feedback: 'locate the correct path',
-      failedStepIds: ['step-2'],
-    })));
-    const stage = createVerifyStage({ ...deps, llm });
     const ctx = makeVerifyCtx();
     installTaskExecution(ctx, [
       { id: 'step-1', status: 'done' },
@@ -539,31 +437,37 @@ describe('verifyStage', () => {
     expect(ctx.partialReplanRequest?.targetStepIds).toEqual(['step-2']);
   });
 
-  it('fail → recover, sets lastError', async () => {
-    const llm = createMockLlm(
-      textResponse('{"verdict":"fail","reason":"tool returned error"}'),
-    );
-    const stage = createVerifyStage({ ...deps, llm });
+  it('routes a recorded tool failure to recover and sets lastError', async () => {
     const ctx = makeVerifyCtx({
       toolResults: [{ callId: 'c1', ok: false, error: 'file not found' }],
     });
+    ctx.toolInvocations = [{
+      version: 1,
+      id: 'invocation-c1',
+      callId: 'c1',
+      runId: ctx.runId,
+      sessionId: ctx.sessionId,
+      toolName: 'read',
+      toolSource: 'builtin',
+      status: 'failed',
+      proposedAt: '2026-09-12T00:00:00.000Z',
+      endedAt: '2026-09-12T00:00:01.000Z',
+      approval: { required: false, decision: 'not_required' },
+      evidenceIds: [],
+    }];
 
     const res = await stage(ctx);
 
     expect(res.next).toBe('recover');
     expect(res.ok).toBe(false);
-    expect(res.meta?.verdict).toBe('fail');
+    expect(res.meta?.failedStepIds).toEqual([]);
     expect(ctx.lastError?.stage).toBe('verify');
-    expect(ctx.lastError?.message).toContain('tool returned error');
+    expect(ctx.lastError?.message).toContain('c1 is failed');
+    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'fail', source: 'structural' });
+    expect(ctx.modelRequests ?? []).toHaveLength(0);
   });
 
   it('replanAttempts exhausted → asks the user instead of claiming success', async () => {
-    const llm = createMockLlm(textResponse(JSON.stringify({
-      verdict: 'needs_replan',
-      reason: 'still incomplete',
-      failedStepIds: ['step-2'],
-    })));
-    const stage = createVerifyStage({ ...deps, llm });
     const ctx = makeVerifyCtx({ replanAttempts: 2, maxReplanAttempts: 2 });
     installTaskExecution(ctx, [
       { id: 'step-1', status: 'done' },
@@ -577,110 +481,34 @@ describe('verifyStage', () => {
     expect(res.meta?.replanExhausted).toBe(true);
     expect(ctx.clarificationRequest?.sourceStage).toBe('verify');
     expect(ctx.clarificationRequest?.questions[0]?.options).toHaveLength(3);
-    expect(llm.chat).toHaveBeenCalled();
+    expect(ctx.modelRequests ?? []).toHaveLength(0);
   });
 
-  it('HA-02-04 treats verifier transport failure without task evidence as unverified', async () => {
-    const llm = createMockLlm(textResponse(''));
-    llm.chat.mockRejectedValueOnce(new Error('network down'));
-    const stage = createVerifyStage({ ...deps, llm });
+  it('rejects a missing Provider-authored reply as an incomplete execution', async () => {
     const ctx = makeVerifyCtx();
+    ctx.reply = undefined;
+    ctx.replyProvenance = undefined;
 
     const res = await stage(ctx);
 
     expect(res.next).toBe('recover');
     expect(res.ok).toBe(false);
     expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'fail', source: 'structural' });
-    expect(res.meta?.transportError).toBe('network down');
+    expect(ctx.modelRequests ?? []).toHaveLength(0);
   });
 
-  it('LLM transport error with known failed steps → partial replan, not pass', async () => {
-    const llm = createMockLlm(textResponse(''));
-    llm.chat.mockRejectedValueOnce(new Error('network down'));
-    const stage = createVerifyStage({ ...deps, llm });
-    const ctx = makeVerifyCtx();
-    installTaskExecution(ctx, [
+  it('never spends a model request on any verification path', async () => {
+    const complete = makeVerifyCtx();
+    await stage(complete);
+
+    const incomplete = makeVerifyCtx();
+    installTaskExecution(incomplete, [
       { id: 'step-1', status: 'done' },
-      { id: 'step-2', status: 'failed', failureKind: 'not_found' },
+      { id: 'step-2', status: 'failed', failureKind: 'tool_error' },
     ]);
+    await stage(incomplete);
 
-    const res = await stage(ctx);
-
-    expect(res.next).toBe('decide');
-    expect(res.meta?.degradedReplan).toBe(true);
-    expect(ctx.partialReplanRequest?.targetStepIds).toEqual(['step-2', 'step-3']);
-  });
-
-  it('HA-02-04 treats verifier JSON failure without task evidence as unverified', async () => {
-    const llm = createMockLlm(textResponse('this is not json at all'));
-    const stage = createVerifyStage({ ...deps, llm });
-    const ctx = makeVerifyCtx();
-
-    const res = await stage(ctx);
-
-    expect(res.next).toBe('recover');
-    expect(res.ok).toBe(false);
-    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'fail', source: 'structural' });
-  });
-
-  it('HA-02-04 treats an invalid verifier verdict without task evidence as unverified', async () => {
-    const llm = createMockLlm(textResponse('{"verdict":"maybe","reason":"unsure"}'));
-    const stage = createVerifyStage({ ...deps, llm });
-    const ctx = makeVerifyCtx();
-
-    const res = await stage(ctx);
-
-    expect(res.next).toBe('recover');
-    expect(res.ok).toBe(false);
-    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'fail', source: 'structural' });
-  });
-
-  it('overrides an impossible pass when step evidence is incomplete', async () => {
-    const llm = createMockLlm(textResponse('{"verdict":"pass","reason":"looks fine"}'));
-    const stage = createVerifyStage({ ...deps, llm });
-    const ctx = makeVerifyCtx();
-    installTaskExecution(ctx, [
-      { id: 'step-1', status: 'done' },
-      { id: 'step-2', status: 'failed', failureKind: 'verification_gap' },
-    ]);
-
-    const res = await stage(ctx);
-
-    expect(res.next).toBe('decide');
-    expect(res.meta?.structuralOverride).toBe(true);
-    expect(ctx.partialReplanRequest?.targetStepIds).toEqual(['step-2', 'step-3']);
-  });
-
-  it('needs_replan without feedback → falls back to reason as feedback', async () => {
-    const llm = createMockLlm(
-      textResponse('{"verdict":"needs_replan","reason":"output was empty"}'),
-    );
-    const stage = createVerifyStage({ ...deps, llm });
-    const ctx = makeVerifyCtx();
-
-    const res = await stage(ctx);
-
-    expect(res.next).toBe('decide');
-    expect(ctx.verifyFeedback).toBe('output was empty');
+    expect(complete.modelRequests ?? []).toHaveLength(0);
+    expect(incomplete.modelRequests ?? []).toHaveLength(0);
   });
 });
-
-function knownStateReference(
-  atomId: string,
-  decision: 'adopted' | 'excluded',
-  envelope: Omit<NonNullable<RunContext['memoryKnownState']>['references'][number]['envelope'], 'atomId'>,
-) {
-  return {
-    atomId,
-    atomRevision: 1,
-    sourceRefs: [],
-    evidenceRefs: ['verify:test'],
-    decision,
-    reason: 'test reference',
-    envelope: { ...envelope, atomId },
-    stages: ['expand'],
-    firstSeenAt: '2026-07-16T06:00:00.000Z',
-    updatedAt: '2026-07-16T06:00:00.000Z',
-    reactivatedCount: 0,
-  };
-}

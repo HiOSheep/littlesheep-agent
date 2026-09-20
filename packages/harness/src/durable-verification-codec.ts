@@ -38,7 +38,7 @@ function requiredNonNegativeInteger(value: unknown, label: string): number {
 }
 
 function requiredVerdict(value: unknown): DurableVerificationProjection['verdict'] {
-  if (value !== 'pass' && value !== 'needs_replan' && value !== 'fail') {
+  if (value !== 'pass' && value !== 'unverified' && value !== 'needs_replan' && value !== 'fail') {
     throw new DurableKernelError('verification verdict is invalid', 'invalid');
   }
   return value;

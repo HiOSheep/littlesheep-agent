@@ -39,6 +39,7 @@ import { processEvolveCorrections } from './evolve/correction.js';
 import { hasExplicitEvolutionRequest, hasReusableEvolutionSignal } from './evolve/signal.js';
 import { parseSkillProposal } from './evolve/skill-proposal.js';
 import { writeMemoryState } from '../memory-state.js';
+import { hasCleanVerification } from '../verification-state.js';
 
 export type CreateSkillFn = (opts: {
   name: string;
@@ -284,7 +285,7 @@ export function createEvolveStage(deps: EvolveStageDeps) {
 
     let skillCreated: string | null = null;
     const proposal = parseSkillProposal(parsed?.createSkill);
-    if (deps.createSkill && proposal && ctx.verificationHistory?.at(-1)?.verdict === 'pass') {
+    if (deps.createSkill && proposal && hasCleanVerification(ctx)) {
       try { skillCreated = await deps.createSkill(proposal); } catch { /* non-fatal */ }
     }
 

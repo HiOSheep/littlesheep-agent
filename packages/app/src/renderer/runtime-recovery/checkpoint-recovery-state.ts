@@ -51,7 +51,9 @@ export function checkpointRecoveryProgressForEvent(
   if (event.type === 'verification') {
     return {
       phase: 'verifying',
-      label: event.verification?.verdict === 'pass' ? '验证通过' : '验证结果已返回',
+      label: event.verification?.verdict === 'pass'
+        ? '验证通过'
+        : event.verification?.verdict === 'unverified' ? '未验证' : '验证结果已返回',
       detail: bounded(event.verification?.reason ?? event.summary),
     }
   }

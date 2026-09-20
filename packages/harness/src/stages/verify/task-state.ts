@@ -5,15 +5,20 @@ import type {
 } from '@littlesheep/types';
 import { writeReplanState } from '../../replan-state.js';
 
-export function deriveReplanTargets(ctx: RunContext, requested: unknown): string[] {
+/**
+ * Step-scoped replan targets derived only from recorded Runtime state: the steps
+ * that actually failed or were blocked. Steps that never ran stay with the
+ * normal plan instead of being rewritten, and completed steps are never rerun.
+ */
+export function deriveReplanTargets(ctx: RunContext): string[] {
   const knownIds = taskStepIds(ctx);
-  const known = new Set(knownIds);
-  const explicit = Array.isArray(requested)
-    ? requested.filter((id): id is string => typeof id === 'string' && known.has(id))
-    : [];
-  if (explicit.length > 0) return [...new Set(explicit)];
-
   const results = new Map((ctx.taskExecution?.steps ?? []).map((step) => [step.stepId, step]));
+  const failed = knownIds.filter((id) => {
+    const status = results.get(id)?.status;
+    return status === 'failed' || status === 'blocked';
+  });
+  if (failed.length > 0) return failed;
+
   const incomplete = knownIds.filter((id) => results.get(id)?.status !== 'done');
   if (incomplete.length > 0) return incomplete;
   return knownIds.length > 0 ? [knownIds[knownIds.length - 1]!] : [];

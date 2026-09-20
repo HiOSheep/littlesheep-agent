@@ -1142,8 +1142,9 @@ describe('runner checkpoint continuation', () => {
         continuationDisposition: 'retry',
       })
       await expect(runner.runCheckpoints!.resolveWaitingUserHead(session.id)).resolves.toEqual({ kind: 'none' })
-      // HC-01: under the default compaction-only policy the verified retry makes no automatic EVOLVE request.
-      expect(requests).toHaveLength(4)
+      // HC-01: under the default compaction-only policy the verified retry makes
+      // no automatic EVOLVE request, and VERIFY spends no model request.
+      expect(requests).toHaveLength(3)
     } finally {
       executeDocumentCreate.mockRestore()
       await runner.shutdown()
@@ -2102,7 +2103,6 @@ describe('runner checkpoint continuation', () => {
         })),
         textResponse('The revised bilingual PDF work is complete.'),
         textResponse('The original task was revised and the bilingual PDF work is complete.'),
-        textResponse('{"verdict":"pass","reason":"the revised goal was completed"}'),
         textResponse('{"memories":[],"createSkill":null}'),
         textResponse('{"observations":[]}'),
       ], requests),

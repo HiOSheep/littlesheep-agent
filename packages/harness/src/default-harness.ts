@@ -111,10 +111,7 @@ export function createHarnessStages(opts: DefaultHarnessOptions): Map<StageName,
     llm: opts.llm,
     model: opts.model,
   }));
-  stages.set('verify', createVerifyStage({
-    llm: opts.llm,
-    model: opts.model,
-  }));
+  stages.set('verify', createVerifyStage());
   stages.set('evolve', createEvolveStage({
     llm: opts.llm,
     model: opts.model,

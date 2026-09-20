@@ -23,9 +23,15 @@ export async function recordSessionSummaryActivation(
   const usedForRun = input.summary.id === input.usedSummaryId;
   const usedByAnswer = input.summary.id === input.answerUsedSummaryId;
   if (!usedForRun && !usedByAnswer) return false;
-  const passed = input.status === 'ok' && input.verification?.verdict === 'pass';
+  // `passed` records that the run completed with complete recorded evidence and
+  // no failed verification. `unverified` (acceptance not judged) still counts
+  // for the routing-level "useful" outcome; the stronger `verified` flag stays
+  // limited to a Runtime-proven pass.
+  const proven = input.status === 'ok' && input.verification?.verdict === 'pass';
+  const passed = input.status === 'ok'
+    && (proven || input.verification?.verdict === 'unverified');
   if (!passed && !(input.status === 'ok' && usedByAnswer)) return false;
-  const verified = usedForRun && passed && (
+  const verified = usedForRun && proven && (
     input.verification?.source === 'structural'
     || input.successfulToolCallIds.length > 0
   );

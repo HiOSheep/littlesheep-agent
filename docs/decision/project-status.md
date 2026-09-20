@@ -1,6 +1,14 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-20 15:05:00
+最后更新：2026-09-20 15:35:00
+
+**极简执行与缓存 95% 方案 P2 第一刀：删除强制验证模型调用（2026-09-20 15:35:00，进行中）**：按方案 P2 的第一项独立切片，删除 `verify/model-call.ts`（连同 `verify/contracts.ts`、`verify/evidence.ts`、`verify/memory-evidence.ts`）。VERIFY 现在只断言 Runtime 证据能证明的事实，每个 run 少一次模型请求。
+
+- 判定契约：窄结构形态（单只读步骤、确定性写后读回）仍为 `pass`；其余已完成的 run 记为新增 verdict **`unverified`**——记录到的工具证据完整、全部调用成功，且存在可回查到真实 Provider 请求的模型回复，但需要人工判断的验收标准未经验证。记录到的失败、缺失步骤、截断证据、未结算副作用或缺少模型回复一律不能成为 `pass`，仍走 `routeKnownIncompleteExecution` 的有界恢复、局部重规划与达到上限后的用户决策路由。
+- 连带改动：`VerificationRecord`/durable projection/codec 增加 `unverified`；UI 标签把 `unverified` 显示为“未验证”而不是“验证通过”；`verify` 调用契约保留声明（历史日志与回放仍需解析该 purpose），但内核不再发出该请求。局部重规划目标改为只由记录到的失败/阻塞步骤推导（`deriveReplanTargets` 不再接受模型提供的 `failedStepIds`），未执行的步骤留给原计划，“不重跑已完成步骤”的契约保持不变。
+- 记忆与反馈的诚实边界：新增 `verification-state.ts` 的 `hasCleanVerification`（未失败）与 `hasProvenVerification`（仅 `pass`）。EVOLVE/CAPTURE 准入门槛、演化信号与自动 Skill 创建改为“未失败”即可；routing 级反馈（atom `routingFeedback.useful`、会话摘要 activation `useful`）同样按“未失败”计；**verified usefulness / 摘要 `verifiedUseful` 仍只由 `pass` 提高**。由于不再有模型自报 `usedMemoryAtomIds`，atom 级“显式使用”证据现在只来自回答级连续性评估；无法由代码证明的使用不再写正反馈（相关测试改为断言无未经验证的反馈）。
+- 验证：`pnpm run typecheck` 通过；`packages/harness` 719 项、`packages/runner` 358 项、`packages/app` 776 项、`test/core-agent-contracts` 全部通过；`packages/session` 一并通过。e2e/default-harness/verify 测试改为断言“VERIFY 不发出任何模型请求”，并把以模型 needs_replan 驱动的用例改写为由真实失败工具触发（草稿撤回与局部重规划仍被覆盖）。
+- 本切片已知代价：简单 bounded-loop 工具任务现在记录为 `unverified`，因此不再为 atom verified usefulness、Skill 自动创建计数；这是方案允许的能力取舍，命中率与调用数收益按方案第 6 节在同一冻结负载上重测。
 
 **极简执行与缓存 95% 方案 P1 收口（2026-09-20 15:05:00，进行中）**：在 P0+P1a（见下一条）之后删除 `runtime-awareness.ts` 的逐请求易变注入，P1 批次至此完成。
 

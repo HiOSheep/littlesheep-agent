@@ -14,7 +14,8 @@ export interface MemoryRunFeedbackInput {
   answerUsedAtomIds?: string[];
   verification?: {
     attempt: number;
-    verdict: 'pass' | 'needs_replan' | 'fail';
+    /** `unverified` means Runtime evidence was complete but the acceptance criteria were not judged. */
+    verdict: 'pass' | 'unverified' | 'needs_replan' | 'fail';
     source: 'model' | 'structural' | 'degraded';
     verifiedAt: string;
   };

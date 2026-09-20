@@ -358,7 +358,7 @@ export interface DurableStageTransitionProjection {
 /** Redacted durable VERIFY outcome. Reason text is represented only by digest and length. */
 export interface DurableVerificationProjection {
   readonly attempt: number;
-  readonly verdict: 'pass' | 'needs_replan' | 'fail';
+  readonly verdict: 'pass' | 'unverified' | 'needs_replan' | 'fail';
   readonly source: 'model' | 'structural' | 'degraded';
   readonly reasonHash: string;
   readonly reasonLength: number;

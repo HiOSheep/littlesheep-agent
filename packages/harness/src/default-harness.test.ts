@@ -138,12 +138,11 @@ describe('createDefaultHarness state machine', () => {
     expect(ctx.classification?.type).toBe('problem');
   });
 
-  it('completes an explicit trivial read-only tool task without a DECIDE request', async () => {
+  it('completes an explicit trivial read-only tool task without a DECIDE or VERIFY request', async () => {
     const tool = makeTool('glob', { ok: true, output: 'attachments/' });
     const llm = createMockLlm([
       toolCallResponse([{ id: 'glob-trivial', name: 'glob', args: { pattern: '*' } }]),
       textResponse('共有 1 个条目：attachments/'),
-      textResponse('{"verdict":"pass","reason":"glob 结果支持回复中的数量和名称"}'),
     ]);
     const h = makeHarness(llm);
     const ctx = makeCtx({
@@ -161,15 +160,17 @@ describe('createDefaultHarness state machine', () => {
     });
     expect(ctx.reply).toBe('共有 1 个条目：attachments/');
     expect(ctx.replyProvenance).toMatchObject({ purpose: 'execute_tool_loop' });
-    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ source: 'model', verdict: 'pass' });
-    expect(llm.chat).toHaveBeenCalledTimes(3);
+    // VERIFY no longer spends a model request. A lean bounded-loop run has no
+    // task book whose acceptance the code could prove, so the run is recorded
+    // as unverified rather than as a verified pass.
+    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ source: 'structural', verdict: 'unverified' });
+    expect(llm.chat).toHaveBeenCalledTimes(2);
     expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
-      'execute_tool_loop', 'execute_tool_loop', 'verify',
+      'execute_tool_loop', 'execute_tool_loop',
     ]);
-    expect(llm.chat.mock.calls.slice(0, 2).every((call) => (
+    expect(llm.chat.mock.calls.every((call) => (
       call[0].tools?.map((candidate) => candidate.function.name).join(',') === 'glob,request_task_book'
     ))).toBe(true);
-    expect(llm.chat.mock.calls[2]?.[0].tools).toBeUndefined();
     expect(tool.calls).toHaveLength(1);
     expect(tool.calls[0]?.input).toEqual({ pattern: '*' });
   });

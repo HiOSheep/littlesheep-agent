@@ -1,30 +1,30 @@
-// VERIFY orchestration facade over structural evidence and bounded recovery.
+// VERIFY orchestration facade over Runtime-provable evidence and bounded recovery.
+//
+// There is no separate verification model call. Asking the same model to bless
+// its own work added one more request with its own prompt shape (and its own
+// cache prefix), and it could not prove anything the recorded evidence did not
+// already show. VERIFY now asserts only what Runtime evidence proves:
+//
+// - a narrow structural pass (`pass`) for the read-only and write-then-read
+//   shapes whose acceptance the code checks exactly;
+// - every other completed run is recorded as `unverified`: the recorded facts
+//   are complete and consistent, the Provider-authored reply exists, and the
+//   acceptance criteria that need human judgement were not judged by anyone.
+//
+// Any recorded failure routes through the existing bounded recovery path, so a
+// tool failure still cannot be turned into a claimed success.
 import type { RunContext, StageResult } from '@littlesheep/types';
 import {
-  type DecodedVerdict,
-  type VerifyStageDeps,
-} from './verify/contracts.js';
-import { requestVerificationVerdict } from './verify/model-call.js';
-import {
-  escalateExhaustedReplan,
-  invalidateUnverifiedReply,
   publishVerifiedReply,
   recordVerification,
   routeKnownIncompleteExecution,
   verifyDeterministicWriteReadExecution,
   verifyTrivialReadOnlyExecution,
 } from './verify/routing.js';
-import {
-  canRecoverWithPartialReplan,
-  deriveReplanTargets,
-  installPartialReplan,
-  runtimeExecutionEvidenceGap,
-} from './verify/task-state.js';
-import { acceptedUsedMemoryAtomIds } from './verify/memory-evidence.js';
-import { writeReplanState } from '../replan-state.js';
-import { recordFailure } from '../failure-state.js';
-export type { VerifyStageDeps } from './verify/contracts.js';
-export function createVerifyStage(deps: VerifyStageDeps) {
+import { runtimeExecutionEvidenceGap } from './verify/task-state.js';
+import { textOf } from './_shared.js';
+
+export function createVerifyStage() {
   return async function verifyStage(ctx: RunContext): Promise<StageResult> {
     const replanAttempts = ctx.replanAttempts ?? 0;
     const maxReplan = ctx.maxReplanAttempts ?? 2;
@@ -32,101 +32,44 @@ export function createVerifyStage(deps: VerifyStageDeps) {
     const runtimeVerdict = await verifyTrivialReadOnlyExecution(ctx)
       ?? await verifyDeterministicWriteReadExecution(ctx);
     if (runtimeVerdict) return runtimeVerdict;
-    let parsed: DecodedVerdict | null;
-    try {
-      parsed = await requestVerificationVerdict(deps, ctx, replanAttempts, maxReplan);
-    } catch (error) {
+
+    const evidenceGap = runtimeExecutionEvidenceGap(ctx);
+    if (evidenceGap) {
       return routeKnownIncompleteExecution(
         ctx,
         replanAttempts,
         maxReplan,
-        `verifier transport error: ${(error as Error).message}`,
-        { transportError: (error as Error).message },
+        evidenceGap,
+        { runtimeEvidenceGap: evidenceGap },
+      );
+    }
+    if (!ctx.reply?.trim() || ctx.replyProvenance?.source !== 'llm') {
+      // No Provider-authored reply means nothing user-visible can be settled;
+      // this is an execution gap, not an unverified criterion.
+      return routeKnownIncompleteExecution(
+        ctx,
+        replanAttempts,
+        maxReplan,
+        'no Provider-authored reply exists for this run',
+        { missingReply: true },
       );
     }
 
-    if (!parsed || (parsed.verdict !== 'pass' && parsed.verdict !== 'needs_replan' && parsed.verdict !== 'fail')) {
-      return routeKnownIncompleteExecution(ctx, replanAttempts, maxReplan, 'verdict decode failed', { decodeFailure: true });
-    }
-    if (parsed.verdict === 'pass') {
-      const executionGap = runtimeExecutionEvidenceGap(ctx);
-      if (executionGap) {
-        return routeKnownIncompleteExecution(
-          ctx,
-          replanAttempts,
-          maxReplan,
-          `verifier returned pass despite ${executionGap}`,
-          { structuralOverride: true },
-        );
-      }
-      await recordVerification(ctx, {
-        verdict: 'pass',
-        reason: parsed.reason ?? 'Task contract satisfied.',
-        usedMemoryAtomIds: acceptedUsedMemoryAtomIds(ctx, parsed.usedMemoryAtomIds),
-        source: 'model',
-      });
-      publishVerifiedReply(ctx);
-      return {
-        stage: 'verify',
-        next: 'evolve',
-        ok: true,
-        meta: { verdict: 'pass', reason: parsed.reason, replanAttempts },
-      };
-    }
-
-    const targetStepIds = deriveReplanTargets(ctx, parsed.failedStepIds);
-    const shouldPartialReplan = parsed.verdict === 'needs_replan'
-      || (parsed.verdict === 'fail' && canRecoverWithPartialReplan(ctx, targetStepIds));
-    if (parsed.verdict === 'fail' && !shouldPartialReplan) {
-      invalidateUnverifiedReply(ctx);
-      const message = `verify failed: ${parsed.reason ?? 'tool error detected'}`;
-      recordFailure(ctx, 'verify', 'verify', message);
-      await recordVerification(ctx, {
-        verdict: 'fail',
-        reason: parsed.reason ?? 'Tool error detected.',
-        failedStepIds: targetStepIds,
-        source: 'model',
-      });
-      return {
-        stage: 'verify',
-        next: 'recover',
-        ok: false,
-        error: message,
-        meta: { verdict: 'fail', reason: parsed.reason, failedStepIds: targetStepIds },
-      };
-    }
-
-    const reason = parsed.reason ?? 'previous plan did not achieve the goal';
-    const feedback = parsed.feedback ?? reason;
-    if (replanAttempts >= maxReplan) return escalateExhaustedReplan(ctx, reason, feedback);
-
-    invalidateUnverifiedReply(ctx);
-    const nextReplanAttempts = replanAttempts + 1;
-    writeReplanState(ctx, 'verify', {
-      replanAttempts: nextReplanAttempts,
-      verifyFeedback: feedback,
-    });
-    if (ctx.taskBook && targetStepIds.length > 0) {
-      installPartialReplan(ctx, targetStepIds, reason, feedback, nextReplanAttempts);
-    }
-    await recordVerification(ctx, {
-      verdict: 'needs_replan',
-      reason,
-      feedback,
-      failedStepIds: targetStepIds,
-      source: 'model',
-    });
+    const reason = unverifiedAcceptanceReason(ctx);
+    await recordVerification(ctx, { verdict: 'unverified', reason, source: 'structural' });
+    publishVerifiedReply(ctx);
     return {
       stage: 'verify',
-      next: 'decide',
+      next: 'evolve',
       ok: true,
-      meta: {
-        verdict: 'needs_replan',
-        reason: parsed.reason,
-        feedback: ctx.verifyFeedback,
-        failedStepIds: targetStepIds,
-        replanAttempts: ctx.replanAttempts,
-      },
+      meta: { verdict: 'unverified', runtimeEvidenceComplete: true, reason },
     };
   };
+}
+
+function unverifiedAcceptanceReason(ctx: RunContext): string {
+  const chinese = /[\u3400-\u9fff]/u.test(textOf(ctx.inbound));
+  return chinese
+    ? 'Runtime 已确认记录的工具证据完整、全部调用成功，且存在模型回复；需要人工判断的验收标准未经验证。'
+    : 'Runtime confirmed the recorded tool evidence is complete, every call succeeded and a Provider-authored reply exists; acceptance criteria that need human judgement are not verified.';
 }

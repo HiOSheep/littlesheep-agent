@@ -237,6 +237,9 @@ export function liveStepStatusLabel(status: LiveStepStatus): string {
 
 export function verificationVerdictLabel(verdict: VerificationRecord['verdict']): string {
   if (verdict === 'pass') return '验证通过'
+  // `unverified` must never read as a passed verification: Runtime confirmed the
+  // recorded evidence but did not judge the acceptance criteria.
+  if (verdict === 'unverified') return '未验证'
   if (verdict === 'needs_replan') return '需要调整'
   return '验证失败'
 }

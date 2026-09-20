@@ -54,7 +54,6 @@ describe('Runner Memory v3 integration', () => {
         textResponse('{"plan":[{"description":"inspect it","tools":[]}]}'),
         textResponse('Inspection complete.'),
         textResponse('Inspection completed successfully.'),
-        textResponse('{"verdict":"pass","reason":"goal achieved"}'),
         textResponse(JSON.stringify({ memories: [{
           branch: 'project',
           parentNodeId: 'project:root',
@@ -107,7 +106,7 @@ describe('Runner Memory v3 integration', () => {
       expect.stringContaining(`conversation-source:${result.runId}:assistant-reply`),
     ]));
     expect(inspection?.atom?.evidenceRefs).toEqual(expect.arrayContaining([
-      expect.stringContaining(`run:${result.runId}:verification:1:pass`),
+      expect.stringContaining(`run:${result.runId}:verification:1:unverified`),
     ]));
     expect(inspection?.atom).toMatchObject({
       domain: 'project',
@@ -334,7 +333,6 @@ describe('Runner Memory v3 integration', () => {
         textResponse('{"plan":[{"description":"resume checkpoint work","tools":[]}]}'),
         textResponse('Checkpoint continuity resumed.'),
         textResponse('The checkpoint continuity task resumed successfully.'),
-        textResponse('{"verdict":"pass","reason":"checkpoint task resumed"}'),
         textResponse('{"memories":[],"createSkill":null}'),
         textResponse('{"observations":[]}'),
       ], requests),
@@ -459,11 +457,6 @@ describe('Runner Memory v3 integration', () => {
       }),
       textResponse('The active memory context was refreshed.'),
       textResponse('The active memory context was refreshed successfully.'),
-      textResponse(JSON.stringify({
-        verdict: 'pass',
-        reason: 'The atom was released and then re-admitted through the indexed path.',
-        usedMemoryAtomIds: [seed.node!.id],
-      })),
       textResponse('{"memories":[],"createSkill":null}'),
       textResponse('{"observations":[]}'),
     );
@@ -493,12 +486,14 @@ describe('Runner Memory v3 integration', () => {
       expect.objectContaining({ action: 'expand', fragmentIds: [seed.node!.id] }),
     ]));
     const seedAfter = await runner.infra.memoryRepository.management.inspectNode(seed.node!.id, 'D3');
-    expect(seedAfter?.atom?.routingFeedback?.useful).toBe(1);
-    expect(seedAfter?.atom?.routingFeedback?.notUseful).toBe(0);
+    // No verification model call names used atoms any more, and this answer does
+    // not restate the atom, so the runtime records no routing feedback for it
+    // rather than accepting an unproven claim of use.
+    expect(seedAfter?.atom?.routingFeedback).toMatchObject({ useful: 0, notUseful: 0 });
     expect(seedAfter?.atom?.verifiedUsefulness).toEqual(seedBefore?.atom?.verifiedUsefulness);
   });
 
-  it('keeps explicit atom use, routing feedback, writes, and restart recall continuous', async () => {
+  it('keeps atom use unclaimed without a verifier, while writes and restart recall stay continuous', async () => {
     const workspace = join(dataDir, 'workspace');
     await mkdir(workspace, { recursive: true });
     const config = {
@@ -554,11 +549,6 @@ describe('Runner Memory v3 integration', () => {
       textResponse('{"plan":[{"description":"use the injected continuity marker","tools":[]}]}'),
       textResponse(`The persisted project decision uses ${marker}.`),
       textResponse(`The project decision was persisted and uses ${marker}.`),
-      textResponse(JSON.stringify({
-        verdict: 'pass',
-        reason: 'The injected marker was used in the result.',
-        usedMemoryAtomIds: [seed.node!.id],
-      })),
       textResponse(JSON.stringify({ memories: [{
         branch: 'project',
         parentNodeId: 'project:root',
@@ -587,11 +577,16 @@ describe('Runner Memory v3 integration', () => {
 
     expect(result.status).toBe('ok');
     expect(result.reply).toContain(marker);
-    expect(result.verificationHistory?.at(-1)?.usedMemoryAtomIds).toEqual([seed.node!.id]);
+    // No verification model call exists any more, so no model names the atoms
+    // it used. Routing feedback comes from the answer-level continuity check.
+    expect(result.verificationHistory?.at(-1)?.usedMemoryAtomIds).toBeUndefined();
     const seedAfter = await first.infra.memoryRepository.management.inspectNode(seed.node!.id, 'D3');
     expect(seedAfter?.atom).toBeTruthy();
-    expect(seedAfter!.atom!.feedbackRevision).toBeGreaterThan(seedBefore!.atom!.feedbackRevision);
-    expect(seedAfter!.atom!.routingFeedback?.useful).toBeGreaterThan(0);
+    // The runtime only records what it can prove. There is no verification
+    // model call naming this atom any more, and the answer-level continuity
+    // check does not match it here, so no unproven routing feedback is written.
+    expect(seedAfter!.atom!.routingFeedback).toMatchObject({ useful: 0, notUseful: 0 });
+    expect(seedAfter!.atom!.feedbackRevision).toBe(seedBefore!.atom!.feedbackRevision);
     expect(seedAfter!.atom!.verifiedUsefulness.useful).toBe(seedBefore!.atom!.verifiedUsefulness.useful);
     const projectNode = (await first.infra.memoryRepository.listNodes('project', workspace))
       .find((node) => `${node.summary}\n${node.content}`.includes(marker));
@@ -643,7 +638,6 @@ describe('Runner Memory v3 integration', () => {
         textResponse('{"plan":[{"description":"record the project decision","tools":[]}]}'),
         textResponse(`Recorded ${marker}.`),
         textResponse(`The project decision was recorded successfully: ${marker}.`),
-        textResponse('{"verdict":"pass","reason":"decision recorded"}'),
         textResponse('{"memories":[],"createSkill":null}'),
         textResponse(JSON.stringify({ observations: [{
           summary: 'Project consolidation decision',
@@ -690,7 +684,7 @@ describe('Runner Memory v3 integration', () => {
     // HC-18: the legacy daily atom stays readable under its original scope instead of being archived by a second entry.
     expect(activeDaily.some((node) => node.content.includes(marker))).toBe(true);
     expect(archivedDaily).toEqual([]);
-    expect(requests).toHaveLength(8);
+    expect(requests).toHaveLength(7);
   });
 
   // HC-02: a short session with no summary/atom must still be discoverable by bounded catalog, then expanded by ref.

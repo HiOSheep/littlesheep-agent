@@ -10,9 +10,15 @@ export function memoryUseFeedbackFromRun(input: MemoryRunFeedbackInput): MemoryU
   const verifyUsed = new Set(input.usedAtomIds ?? []);
   const answerUsed = new Set(input.answerUsedAtomIds ?? []);
   const verification = input.verification;
-  const passed = input.status === 'ok' && verification?.verdict === 'pass';
+  // `passed` only drives routing feedback: the run completed with complete
+  // recorded evidence and no failed verification. `unverified` means the
+  // acceptance criteria were not judged, which is runtime-neutral here — it is
+  // not evidence that the atom is false, and it is not proof that it is true.
+  const proven = input.status === 'ok' && verification?.verdict === 'pass';
+  const passed = input.status === 'ok'
+    && (proven || verification?.verdict === 'unverified');
   const answerSupported = input.status === 'ok' && !verification;
-  const verified = Boolean(passed && verification
+  const verified = Boolean(proven && verification
     && (verification.source === 'structural' || input.successfulToolCallIds.length > 0));
   const evidenceRefs = passed ? runEvidenceRefs(input) : [];
   const feedback: MemoryUseFeedback[] = [];

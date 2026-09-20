@@ -16,6 +16,7 @@ import {
   conversationSourceRefs,
 } from '../conversation-source-records.js';
 import { writeMemoryState } from '../memory-state.js';
+import { hasCleanVerification } from '../verification-state.js';
 import { textOf } from './_shared.js';
 
 const MAX_MEMORY_INTENT_DECISIONS_PER_RUN = 64;
@@ -88,8 +89,8 @@ export function evaluateMemoryIntent(input: MemoryIntentGateInput): GatedMemoryP
   if (evidence.refs.length === 0) {
     return rejected(input, [], 'No verified step, tool, or verification evidence supports this proposal.');
   }
-  if (input.stage === 'evolve' && !evidence.verified) {
-    return rejected(input, evidence.refs, 'EVOLVE may commit durable memory only after a passing verification record.');
+  if (input.stage === 'evolve' && !hasCleanVerification(input.ctx)) {
+    return rejected(input, evidence.refs, 'EVOLVE may commit durable memory only when the recorded verification did not fail.');
   }
   if (input.intent === 'merge') {
     return {

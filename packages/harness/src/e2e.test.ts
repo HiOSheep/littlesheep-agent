@@ -94,7 +94,6 @@ describe('e2e agent loop', () => {
       textResponse('{"plan":[{"description":"think hard","tools":[]}]}'),
       textResponse('all done', 'stop'),
       textResponse('final assembled answer'),
-      textResponse('{"verdict":"pass","reason":"goal achieved"}'),
       textResponse('{"notes":[]}'),
     ]);
     const h = makeHarness(llm);
@@ -133,7 +132,6 @@ describe('e2e agent loop', () => {
       'decide',
       'execute_tool_loop',
       'execute_final_reply',
-      'verify',
     ]);
     for (const request of ctx.modelRequests ?? []) {
       const contract = request.callContract;
@@ -142,12 +140,21 @@ describe('e2e agent loop', () => {
       expect(context).toBeDefined();
       expect(context?.items.every((item) => contract!.inputs.allowedContextKinds.includes(item.kind))).toBe(true);
     }
-    expect(ctx.modelRequests?.find((request) => request.callContract?.purpose === 'verify')
-      ?.callContract?.toolPolicy.allowedToolNames).toEqual([]);
+    // VERIFY spends no model request at all any more.
+    expect(ctx.modelRequests?.some((request) => request.callContract?.purpose === 'verify')).toBe(false);
+    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'unverified', source: 'structural' });
     expect(new Set(ctx.modelRequests?.map((request) => request.callContract)).size).toBe(ctx.modelRequests?.length);
   });
 
-  it('does not publish an unverified draft before a partial replan succeeds', async () => {
+  it('retracts a draft built on incomplete step evidence before the replan answer is published', async () => {
+    const read = makeTool('read', { ok: true, output: 'unused' });
+    let toolExecutions = 0;
+    read.execute = async () => {
+      toolExecutions += 1;
+      return toolExecutions === 1
+        ? { callId: '', ok: false, error: 'ENOENT: file not found' }
+        : { callId: '', ok: true, output: 'correct file contents' };
+    };
     const initialTaskBook = {
       assessment: {
         userNeed: 'prepare a verified summary', complexity: 'standard', goal: 'prepare a verified summary',
@@ -155,31 +162,40 @@ describe('e2e agent loop', () => {
       },
       taskBook: {
         goal: 'prepare a verified summary', complexity: 'standard', successCriteria: ['summary is verified'],
-        steps: [{ id: 'summary', description: 'prepare the summary' }],
+        steps: [
+          { id: 'outline', description: 'prepare the outline' },
+          { id: 'summary', description: 'read the file and prepare the summary', tools: ['read'] },
+        ],
       },
     };
     const revisedTaskBook = {
       ...initialTaskBook,
       taskBook: {
         ...initialTaskBook.taskBook,
-        steps: [{ id: 'summary', description: 'revise the summary using verification feedback' }],
+        steps: [
+          { id: 'outline', description: 'keep the completed outline' },
+          { id: 'summary', description: 'read the corrected path and prepare the summary', tools: ['read'] },
+        ],
       },
     };
     const llm = createMockLlm([
       textResponse('{"type":"problem","confidence":0.9,"reason":"task"}'),
       textResponse(JSON.stringify(initialTaskBook)),
-      textResponse('unverified draft'),
-      textResponse('unverified final draft'),
-      textResponse('{"verdict":"needs_replan","reason":"missing evidence","feedback":"revise it","failedStepIds":["summary"]}'),
+      textResponse('outline evidence'),
+      toolCallResponse([{ id: 'read-1', name: 'read', args: { path: 'missing.txt' } }]),
+      textResponse('unverified draft from the failed read'),
       textResponse(JSON.stringify(revisedTaskBook)),
-      textResponse('verified step result'),
+      toolCallResponse([{ id: 'read-2', name: 'read', args: { path: 'correct.txt' } }]),
+      textResponse('summary from the correct file'),
       textResponse('verified final answer'),
-      textResponse('{"verdict":"pass","reason":"summary is verified"}'),
       textResponse('{"notes":[]}'),
       textResponse('{"insights":[]}'),
     ]);
     const h = makeHarness(llm);
-    const ctx = makeCtx({ inbound: textMessage('user', 'prepare a verified summary') });
+    const ctx = makeCtx({
+      inbound: textMessage('user', 'prepare a verified summary'),
+      tools: [read],
+    });
     const events: ToolStreamEvent[] = [];
     const deltas: string[] = [];
     const replacements: string[] = [];
@@ -190,14 +206,20 @@ describe('e2e agent loop', () => {
     const res = await h.run(ctx);
 
     expect(res.ok).toBe(true);
+    expect(toolExecutions).toBe(2);
+    // The draft produced while the recorded step evidence was incomplete is
+    // retracted: only the post-replan answer is settled and persisted.
     expect(ctx.reply).toBe('verified final answer');
-    expect(deltas).toEqual([]);
-    expect(replacements).toEqual(['']);
+    expect(replacements).toContain('');
     expect(ctx.finalReplySettlement?.status).toBe('settled');
+    expect(ctx.produced.some((message) => JSON.stringify(message.content).includes('unverified draft'))).toBe(false);
     expect(events.filter((event) => event.type === 'final_delta')).toHaveLength(0);
     expect(events.filter((event) => event.type !== 'reasoning' && event.type !== 'model_activity').map((event) => event.type)).toEqual([
-      'task_book', 'step_start', 'step_done', 'verification_start', 'verification',
-      'task_book', 'step_start', 'step_done', 'verification_start', 'verification',
+      'task_book', 'step_start', 'step_done',
+      'step_start', 'tool_start', 'tool_end', 'step_failed',
+      'verification_start', 'verification',
+      'task_book', 'step_skipped', 'step_start', 'tool_start', 'tool_end', 'step_done',
+      'verification_start', 'verification',
     ]);
   });
 
