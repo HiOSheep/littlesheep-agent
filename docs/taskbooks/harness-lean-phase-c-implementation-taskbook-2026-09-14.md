@@ -7416,3 +7416,34 @@ pnpm exec vitest run packages/runner/src/runner-continuation.test.ts
 | **B** | 读 `runner.ts:930–965`（`finally` 收尾）与其**前置条件**（什么情况下会走到"未 settled"分支），推断 verify 改形状后为何走不到 settled | 1–2 次调用 |
 
 **D1 进度**：#1 ✅ 已改善并提交；**复现 ✅ 已最小化**；**抛出/记录点 ✅ 收窄到 `runner.ts:939–949` 或 `finalize.ts:29/47`**（前者更符合"无异常文本"的观测）。
+
+## 10.271 **更正 10.270**：`finally` 不改 `result.status`；日志缺失不是否定证据（2026-09-18）
+
+**读到 `runner.ts:941–957`（`finally`）**：
+```ts
+} finally {
+  infra.skillLoader?.unregisterDynamic?.(TASKBOOK_SKILL_NAME);        // taskbook skill 清理 ✓
+  if (durableRecorder && !durableOutcomeRecorded) {
+    if (runContext) { await flushModelRequestLifecycles(runContext).catch(…) }
+    await recordDurableRunOutcome(durableRecorder, {                  // 记录"未 settled"的 outcome
+      status: signal.aborted ? 'aborted' : 'error',
+      error: 'run ended before the coordinator produced a settled result',
+    });
+  } else if (runContext) { await flushModelRequestLifecycles(runContext).catch(…) }
+  await durableRecorder?.flushBestEffort();
+  …
+}
+```
+**两条更正**：
+1. **它不改 `result.status`** —— 成功路径在 `:940` 就已经 `return { ...result, durableHarnessMode }`，`finally` 只在**返回之后**执行 ⇒ **10.270 的假设（`finally` 是 `status='error'` 的来源）不成立** ✗；
+2. **"输出里没有 `finalize:` 日志"不构成否定证据** —— 测试**未必**把 `opts.log` 接到控制台 ⇒ **10.270 对 `settleDeferredFinalReply` 的否定同样不成立** ⇒ **`finalize.ts` 抛出假设重新有效** ✓
+
+**⇒ 结论：只有路线 A 能给出真因**（推理已到尽头，必须直接读运行时错误）：
+```ts
+// 临时（不入提交）：packages/runner/src/runner-continuation.test.ts 第一个失败断言之前
+//   （失败位置：434 / 536 / 917 / 1096 / 1423 / 1522 / 1872 / 2139，均为 expect(result.status).toBe('ok')）
+console.log('RUN ERROR:', result.error, result.runtimeStatus);
+```
+**步骤（下一轮，3–4 次调用）**：① `read` 该测试文件 425–440；② `edit` 插入 `console.log`；③ 跑**单文件**并 grep `RUN ERROR:`；④ **回退测试文件**（`git checkout --`）⇒ 得到真因后做**最小修复**。
+
+**D1 进度（更新）**：#1 ✅ 已改善并提交；**复现 ✅ 已最小化（一处编辑）**；**抛出点 ✅ 仍收窄到 `finalize.ts:29/47`（`appendDurableEvent` / `settleUserFacingReplySettlement`）**；`finally` 已**排除**；#2/#4/#5 待查。
