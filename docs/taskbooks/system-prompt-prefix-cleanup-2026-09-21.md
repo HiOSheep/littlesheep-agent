@@ -158,12 +158,20 @@
 
 ### SP-06：删除澄清的重复模型调用及修复请求变形（P1）
 
-- [ ] 主循环通过 schema 校验的模型提问直接按既有 settlement 与来源校验发布，删除 ASK_USER 二次措辞请求。
-- [ ] Runtime 恢复升级且没有模型问题文案时才生成一次用户说明；空输出或无来源时显示 Runtime 错误，删除 `ask_user.ts` 的固定文案伪装 Agent 回复兜底。
+- [x] 主循环通过 schema 校验的模型提问直接按既有 settlement 与来源校验发布，删除 ASK_USER 二次措辞请求。
+- [x] Runtime 恢复升级且没有模型问题文案时才生成一次用户说明；空输出或无来源时显示 Runtime 错误，删除 `ask_user.ts` 的固定文案伪装 Agent 回复兜底。
 - [ ] 连续性纠正不再改写首条 system、抛弃原请求形状；仍必要的纠正作为有界反馈在原循环追加，并使用原工具目录及受控 `tool_choice`。能力回复保留现有最小事实契约。
 
 入口：`execute/runners.ts`、`stages/ask_user.ts`、`reply/continuity-repair.ts`、`user-facing-reply.ts`。
 验收：一次模型提问不再产生第二次模型请求；长会话、重启和并发发布仍防止同一 settlement 重发；缺失来源/空输出不能伪装成模型回复；历史连续性验收继续有效。
+
+**2026-09-21 SP-06 执行记录（前两条完成，第三条未做）：**
+
+- **改前：** 模型经 `request_user_input` 提问后，请求被路由到 ASK_USER，ASK_USER 再发**第二次** Provider 请求把同一个问题重新措辞一遍。模型提问本身就是 user-facing 文本，且已经有 Provider 请求作为来源。
+- **改法：** `ClarificationRequest` 新增 `copyModelRequestId`，把「这句措辞是谁写的」从 execute 一路带到发布阶段；主循环的 `userInputRequest` 返回此前**丢掉了 `modelRequestId`**（所以引用无据可依），现已补上。`createReplyProvenance` 支持按请求 id 精确锁定来源（未给出 id 时才退回按 purpose 匹配），并校验该 purpose 确实有权署名 user-facing 文本。ASK_USER 现在分两条路：模型已提问 → 原样发布（Provider 调用数 0）；Runtime 升级 → 仍只发一次措辞请求。
+- **删除伪装兜底：** `composeClarificationMessage` 原本在模型两次都无可见文本时返回 Runtime 草稿，stage 再把这个草稿当模型回复发布。现在它返回空、stage 明确失败：没有模型措辞的回合显示 Runtime 错误，而不是把固定文案挂在 Agent 名下。草稿本身仍是 Runtime 事实（请求自带的 `blockingReason` 与问题文本），UI 可按状态展示。
+- **验收证据（`clarification-single-call.test.ts`，4 项）：** 模型提问路径 `llm.chat` **未被调用**且 provenance 指向 `request-that-asked`、`rewriteCount=0`；升级路径恰好 1 次调用且 `purpose='ask_user'`；两次空响应 → `ok: false`、无 `reply`、无 `replyProvenance`、`lastError.stage='ask_user'`；execute 路由写入的 `copyModelRequestId` 确实存在于 `modelRequests` 记录中。
+- **未做：** 第三条（连续性纠正不再改写首条 system、改为在原循环追加有界反馈并使用原工具目录与受控 `tool_choice`）本轮未动。
 
 ### SP-07：压缩只携带必要输入（P1）
 
