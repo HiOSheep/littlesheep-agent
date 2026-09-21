@@ -22,8 +22,8 @@
 | `packages/runner/src/durable-event-store.ts` | 289 | 哈希分区、append-only event 文件、cursor/idempotency 校验和 fail-closed replay | 保持文件 store facade；后续按 codec、partition IO、replay query 拆分 | E |
 | `packages/runner/src/durable-inbox-store.ts` | 529 | 持久 command inbox、按 run/command 领取、claim owner fencing、有界重启发现/lease wake-up、complete/fail 和幂等校验 | 保持 inbox facade；后续按 codec、lease policy、query 拆分 | E |
 | `packages/runner/src/durable-run-lease-store.ts` | 349 | next run 的跨进程 acquire/reclaim/renew/release、活动/过期枚举、最早到期点与持久格式校验 | 保持 run lease store 单一职责；heartbeat 与 recovery policy 留在独立 adapter | E |
-| `packages/harness/src/cache-observability.ts` | 642 | Provider、Context、Memory/Embedding 三套缓存账本、脱敏指纹和失效原因 | 保持观测适配器边界；实际 Provider 对账与 durable event log 接入后按 ledger、fingerprint、report 拆分 | E |
-| `packages/harness/src/model-observability.ts` | 695 | 模型请求快照、Context 关联、Provider usage、缓存观测绑定与 C09 前缀变化原因；真实模型活动投影已下沉到 `model-activity.ts` | 保持请求观测 facade；后续将 provider reconciliation 与 request snapshot projection 下沉 | E |
+| `packages/harness/src/cache-observability.ts` | 696 | Provider、Context、Memory/Embedding 三套缓存账本、脱敏指纹和失效原因 | 保持观测适配器边界；实际 Provider 对账与 durable event log 接入后按 ledger、fingerprint、report 拆分 | E |
+| `packages/harness/src/model-observability.ts` | 669 | 模型请求快照、Context 关联、Provider usage、缓存观测绑定与 C09 前缀变化原因；真实模型活动投影已下沉到 `model-activity.ts` | 保持请求观测 facade；后续将 provider reconciliation 与 request snapshot projection 下沉 | E |
 | `packages/harness/src/cache-observation-store.ts` | 312 | scope-authorized cache observation 存储、查询与时间窗质量报告 | 保持脱敏存储与 scope 边界；后续按 codec、查询和报告拆分 | E |
 | `packages/app/src/renderer/app-shell/use-app-controller.ts` | 656 | Renderer 跨领域兼容协调、启动恢复、Runtime 设置和视图快照 | 保持装配 facade；启动恢复、持久化和领域投影继续下沉，冻结期间不得继续吸收新职责 | B |
 | `packages/channels/qqbot/src/plugin.ts` | 803 | QQ 协议、连接、消息、发送和生命周期 | transport、protocol、message-mapper、sender、lifecycle | C |
@@ -59,6 +59,9 @@
 | `packages/app/src/main/index.ts` | 580 | Electron 启动和组合；窗口、托盘、关闭策略、活动任务聚合、Memory v3、桌面验收采样与内置浏览器宿主已下沉；启动文件模板下沉到 `bootstrap-templates.ts` | 继续抽取 bootstrap 服务，入口只保留装配顺序 | C |
 | `packages/app/src/renderer/workspace/terminal.tsx` | 564 | 用户交互 PTY 生命周期、SSE、尺寸、命令历史和输入队列 | 保持终端事务边界，禁止吸收工作区导航或 Agent 审批职责；来源与 Agent 权限语义由 Main 明确拥有 | B |
 | `packages/memory-tree/src/v3/contracts.ts` | 547 | Memory v3 atom、认识状态、事件、实体、证据与 Embedding 契约 | 按 atom、event、graph、evidence 分组并保持 barrel | D |
+| `packages/harness/src/context-candidates.ts` | 414 | 把一次出站 stage 请求映射为带来源、种类、优先级和淘汰分组的 Context 候选；边界以下段落作为独立消息发出 | 保持"一次装配只描述来源与可改动程度"的单一职责；若继续增长，拆出消息分类（history/inserted/primary/tool）与尾部段落装配两个模块 | E |
+| `packages/harness/src/memory-known-state.ts` | 347 | 把 Runtime 的 KeyedState 引用按允许清单投影为模型可见文本，并维护尾部稳定槽位 | 保持白名单投影边界；若继续增长，拆出规则/条目渲染与摄入校验 | E |
+| `packages/harness/src/stages/ask_user.ts` | 316 | 发布模型自撰写的提问、Runtime 恢复升级说明与澄清结算 | 提问文案只能来自模型或 Runtime 事实，该边界不得放宽；若继续增长，把澄清发布与恢复升级拆成两个模块 | E |
 | `packages/snapshot/src/git-checkpoint.ts` | 546 | 数据与工作区两阶段 checkpoint、同步回退和退出冻结协调 | 保持事务 facade；文件筛选、manifest codec 与 Git plumbing 已独立 | E |
 | `packages/memory-tree/src/memory-repository/v3-migration.ts` | 538 | v2->v3 请求登记、启动执行、恢复、受约束回滚和 locator 状态机 | 保持事务 facade；若继续增长，分离 request/recovery 与 rollback coordinator | D |
 | `packages/plugins/src/host.ts` | 538 | 插件发现、加载、启停、贡献迁移 | 分离 discovery、activation、contribution、reconcile | C |
@@ -79,7 +82,7 @@
 | `packages/app/src/renderer/workspace/review.tsx` | 316 | 审阅可见生命周期、single-flight 刷新、共享导航装配和树/差异选择 | 保持 policy、model 与 view helper 分离；单双列偏好留在 Renderer UI 层 | B |
 | `packages/app/src/main/memory-tree-control.ts` | 474 | 记忆控制面查询、v3 D0-D3 详情适配和既有管理命令 | 分离 query/detail、resource、projection command | C |
 | `packages/llm/src/client.ts` | 575 | 请求、流式、reasoning、重试及 DSML/native 工具冲突适配 | 分离 request builder、stream parser、response mapper；协议解码不向 Harness/Renderer 扩散 | E |
-| `packages/harness/src/stages/execute/tool-loop.ts` | 597 | 单步模型工具循环、审批、失败记录、消息续接和紧凑后续请求（TaskBook 升级入口已删除） | durable side-effect 生命周期已下沉到 `side-effect-lifecycle.ts`；继续分离 loop policy、invocation adapter 与 transcript，不得吸收检查点恢复或回答连续性判定 | E |
+| `packages/harness/src/stages/execute/tool-loop.ts` | 575 | 单步模型工具循环、审批、失败记录、消息续接和紧凑后续请求（TaskBook 升级入口已删除） | durable side-effect 生命周期已下沉到 `side-effect-lifecycle.ts`；继续分离 loop policy、invocation adapter 与 transcript，不得吸收检查点恢复或回答连续性判定 | E |
 | `packages/harness/src/durable-kernel.ts` | 925 | durable event command validation、capability evidence、stage transition audit、effect owner/settlement lifecycle、crash recovery、projection rebuild 和 final settlement reducer | inbox claim/materialize 已拆到独立 processor；先冻结恢复、并发和 reducer 特征测试，后续再拆 event reducer、recovery policy 与 settlement policy | E |
 | `packages/harness/src/durable-projection-codec.ts` | 499 | durable payload 解析、effect owner/lease 成对校验和 cache projection allowlist | Provider usage 与本地 token calibration 已下沉 `durable-provider-usage-codec.ts`；继续保持不受信 payload codec 边界 | E |
 | `packages/app/src/renderer/chat/run-event-handlers.ts` | 323 | SSE 活动事件到单个对话轮次的实时归并 | 保持 reducer 适配层；若继续增长，按 transcript 与 tool/task activity 拆分 | B |
@@ -166,7 +169,7 @@
 | `packages/app/src/renderer/App.tsx` | 9935 | 7 行兼容入口 | `app-shell`、`approval`、`chat`、`composer`、`runtime`、`settings`、`sidebar`、`ui` 与 `workspace` 领域视图和 controller | 2026-07-14 |
 | `packages/memory-tree/src/memory-repository.ts` | 1279 | 172 行 repository facade | 版本化后端选择、证据定位、稳定 Repository 公共契约和后台维护/关闭兼容入口；management 使用独立 facade，v2/v3 实现均已下沉 | 2026-08-05 |
 | `packages/memory-tree/src/memory-service.ts` | 1120 | 342 行 service facade | run、摘要、daily consolidation、附件、事件、Bootstrap、Skills、工作区资源、项目投影和资源管理协调器；Atom reconciliation 保持为 Runner 独立组合端口 | 2026-07-15 |
-| `packages/context/src/engine.ts` | 690 | 180 行 engine facade | candidates、budget、eviction、assembly、counting 与 snapshots | 2026-07-15 |
+| `packages/context/src/engine.ts` | 139 | 139 行 engine facade | candidates、budget、eviction、assembly、counting、snapshots，以及迁出的 append-only 记账（`context-engine/append-only.ts`）与预算适配（`context-engine/fit.ts`） | 2026-07-15 |
 | `packages/harness/src/stages/execute.ts` | 867 | 24 行 stage facade | guidance、prompt 与单一主循环入口；TaskBook 步骤执行器已随第二执行体系删除 | 2026-09-21 |
 | `packages/harness/src/stages/execute/runners.ts` | 330 | 108 行主循环执行入口 | TaskBook 编排、步骤调度与分支执行已随第二执行体系删除；只保留循环、发布与失败记录 | 2026-09-21 |
 | `packages/harness/src/stages/verify.ts` | 90 | 只做 Runtime 可证事实的 VERIFY facade：结构通道 `pass`、其余记 `unverified`、失败走有界恢复 | 已删除验证模型调用；模型裁决、证据装配和裁决契约随请求一起移除，不得重新引入第二套判定入口 | 2026-09-20 |
@@ -236,6 +239,5 @@
 | `packages/harness/src/model-observability.ts` | E / Harness | 模型请求、Context、Provider usage、缓存证据与 C09 前缀变化原因（`prefixChange`）统一关联；先完成真实 usage 和 durable replay 证据，再拆 provider reconciliation 与 request snapshot projection | 705 | 2026-09-24 |
 | `packages/session/src/manager.ts` | E / Runtime | C08C 压缩事务在前驱 CAS、候选回执与 activation 投影之间共享持久化不变量；先冻结崩溃/并发恢复特征测试，再把 compaction transaction 与 activation adapter 移出 facade | 660 | 2026-09-24 |
 | `packages/memory-tree/src/memory-repository/v3-node-store.ts` | D / Memory | HC-12 撤销屏障把 tombstone/superseded 来源复核放进索引写入路径；先冻结撤销、纠正、合并与重放特征测试，再拆 revocation query 与 write coordinator | 630 | 2026-09-24 |
-| `packages/harness/src/stages/execute/tool-loop.ts` | E / Harness | 强制收尾保留工具清单的缓存前缀修复（`tool_choice: 'none'`）使文件越过 600 行；循环预算、证据指纹、durable side-effect 生命周期与强制收尾策略共享同一有界循环不变量，先冻结缓存前缀与工具配对特征测试，再下沉 loop policy、invocation adapter 与 transcript | 620 | 2026-09-24 |
 
 - `packages/skills/src/loader.ts` —— skill 索引与正文装载；因新增`动态正文`注册（per-run 生成的正文，如 taskbook）而超过 300 行，登记待后续拆分（索引构建 / 正文装载 / 动态注册可分离）。

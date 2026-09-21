@@ -4,12 +4,15 @@
 //   npx vitest run packages/harness/src/probe/baseline.test.ts
 //
 // Writes a per-request shape report for every frozen load to
-// `docs/taskbooks/cache-baseline/`, so the same probe can be run against a
-// different checkout or commit and the two reports compared line by line.
+// `docs/reference/cache-baseline/latest.md`, so the same probe can be run against
+// a different checkout or commit and the two reports compared line by line. Copy
+// the file to a `baseline-<freeze>.md` name to freeze a comparison; the probe
+// itself only ever writes `latest.md` plus the per-load JSON beside it.
 //
-// The reports are deterministic and Provider-free. They contain request
-// character counts, shared-prefix characters and tool-catalog digests -- no
-// prompt text, no session content, no keys.
+// The reports are deterministic and Provider-free apart from the timestamp line
+// every document in `docs/` must carry. They contain request character counts,
+// shared-prefix characters and tool-catalog digests -- no prompt text, no session
+// content, no keys.
 import { describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -19,7 +22,7 @@ import { FROZEN_LOADS, type ProbeReport } from './frozen-load.js';
 
 const OUT_DIR = join(
   dirname(fileURLToPath(import.meta.url)),
-  '../../../../docs/taskbooks/cache-baseline',
+  '../../../../docs/reference/cache-baseline',
 );
 
 /** The implementation version this report describes. */
@@ -45,10 +48,18 @@ async function runAll(): Promise<ProbeReport[]> {
 }
 
 function render(reports: ProbeReport[]): string {
+  // Every document under `docs/` must carry a second-precision update line and at
+  // least one Chinese line; the numbers themselves stay deterministic.
+  const updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
   const lines: string[] = [
     '# Cache request-shape baseline',
     '',
+    `最后更新：${updatedAt}`,
+    '',
     `Freeze: ${FREEZE}`,
+    '',
+    '本文件由 `packages/harness/src/probe/baseline.test.ts` 在每次 harness 测试运行时重新生成：',
+    '只统计请求字符数、共享前缀字符数与工具目录摘要，不调用供应商，也不含提示词正文或会话内容。',
   ];
   for (const report of reports) {
     lines.push(
@@ -85,13 +96,6 @@ describe('cache baseline probe', () => {
 
     const summary = render(reports);
     writeFileSync(join(OUT_DIR, 'latest.md'), summary, 'utf8');
-    // Pin this freeze's report under its own name too, so re-running the probe
-    // never overwrites the record a comparison was made against.
-    writeFileSync(
-      join(OUT_DIR, `baseline-${FREEZE.replace(/[^A-Za-z0-9._-]+/gu, '-')}.md`),
-      summary,
-      'utf8',
-    );
     for (const report of reports) {
       writeFileSync(
         join(OUT_DIR, `${report.probe}.json`),

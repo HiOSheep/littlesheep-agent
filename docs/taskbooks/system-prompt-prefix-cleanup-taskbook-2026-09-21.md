@@ -1,4 +1,6 @@
-# 系统提示词与请求前缀精简任务清单
+# 系统提示词与请求前缀精简任务清单 · 2026-09-21
+
+最后更新：2026-09-22 02:15:00
 
 日期：2026-09-21。
 状态：SP-01～SP-07 已全部实现并有回归证据；SP-08 已建立结构基线与真实 Provider 读数。**唯一未执行项**是 SP-08 第 3 条中"修正验收文档过时汇总"这半边——`docs/reference/cache-95-acceptance.md` 在本任务期间有作者本人的在途改动，作者要求不要动该文件（见 SP-08 记录）；该条的"有界脱敏、原始内容不入库"半边已用扫描验证。**缓存 95% 目标未达成**，三组真实负载读数见 SP-08 记录。
@@ -273,7 +275,18 @@
 - **第 3 条部分完成（本轮补记）：**
   - **"原始提示、会话和密钥不进入仓库"已完成并验证：** 对跟踪文件做了四项扫描——`sk-` 形式的密钥字面量（0 命中）、非环境变量形式的 `apiKey` 字面值（0 命中）、本轮实机负载的会话 id/数据根名（0 命中）、Provider 原始载荷标记（`prompt_cache_hit_tokens`/`cached_tokens` 仅作为字段名与测试夹具出现）。本轮新增的 SP-08 记录只包含聚合计数与比率，不含提示词正文、会话内容、密钥或临时数据根名。
   - **"修正验收文档过时汇总"未做（有意留给该文档作者）：** `docs/reference/cache-95-acceptance.md` 在本任务开始时就带有未提交改动（5.50 节），用户明确要求不要动该文件。已核对到两处过时内容供作者处理：文末状态标记仍写"压缩 54.808%"，而 5.50 已实测 32.911%；第 55 行所述"历史结论、更正与最新读数并存"的状况依然存在。
-  - **本清单自身与 `docs/taskbooks/cache-baseline/README.md` 的过时汇总已在本轮修正：** 结构表按第 11 轮边界修复后的读数更正（3574/3557/3444），并说明此前 5585/3591/3446 是 system 消息吞入边界以下段落造成的虚高；README 补上真实 Provider 读数指引与"再次 pin 不是新增证据"的说明。
+  - **本清单自身与缓存基线 README 的过时汇总已在本轮修正：** 结构表按第 11 轮边界修复后的读数更正（3574/3557/3444），并说明此前 5585/3591/3446 是 system 消息吞入边界以下段落造成的虚高；README 补上真实 Provider 读数指引与"再次 pin 不是新增证据"的说明；`docs/README.md` 的缓存状态行也按上面的真实读数重写（原文仍写"压缩 54.808% 不达标""连续工具工作尚未测量"，两句都已不成立）。
+
+**2026-09-22 第 14 轮补充（仓库门禁回归修复）：**
+
+本轮发现本任务书此前几轮的改动让仓库自检 `node scripts/check-repository-hygiene.mjs` 由 33/33 变成 **8 项失败**（用户 5.50 节记录的 33/33 是改动之前的状态）。逐项修完 7 项，剩 1 项属于用户的未提交改动：
+
+- **本机路径（已修）：** 本清单正文里残留一条带用户名的一次性临时目录绝对路径，改为 `<temp>/ls-prompt-audit-*`。
+- **文档元数据（已修）：** 基线目录下所有 Markdown 补上 `最后更新：YYYY-MM-DD HH:MM:SS` 与中文说明行；探针生成的 `latest.md` 也由 `render()` 统一写入这两项，保证每次重写后仍合规。
+- **文档命名与入口（已修）：** 缓存基线报告从 `docs/taskbooks/cache-baseline/` 移到 `docs/reference/cache-baseline/`（放在 `docs/taskbooks/` 下的每个 Markdown 都必须叫 `*-taskbook-YYYY-MM-DD.md`，而它不是任务书）；本清单改名为 `system-prompt-prefix-cleanup-taskbook-2026-09-21.md` 并把基线日期写进一级标题；`docs/README.md` 补齐全部新路径的入口条目。探针不再自动写 `baseline-<freeze>.md`（那会让每次测试运行都产生一个未登记的文档），需要冻结时手工复制 `latest.md`；重复的 `baseline-git-1929e7e.md` 已删除。
+- **大型文件（已修）：** `context-candidates.ts`、`memory-known-state.ts` 补职责头注释；三个 >300 行文件登记进 `docs/reference/module-split-map.md` 软上限队列。
+- **组合热点与受控超限（已修）：** `packages/context/src/engine.ts` 从 223 行拆到 139 行——append-only 记账移到 `context-engine/append-only.ts`、预算适配移到 `context-engine/fit.ts`（热点基线 180 行重新满足）；`model-observability.ts` 745 → 669（`validateModelRequest`/`applyResolvedReasoning` 移到 `model-request-contract.ts`，受控上限 705）；`tool-loop.ts` 651 → 575（工具调用/结果持久化与投影移到 `stages/execute/tool-result-persistence.ts`，已低于 600 行，其受控超限登记按规则移除）。
+- **仍未修（1 项，属于用户的未提交改动）：** `packages/harness/src/cache-observability.ts` 当前 **696 行 > 受控上限 680**。该文件的未提交改动（`splitRequestForCache` 的"前导 system 块才算可缓存头"修复，+21 行）在 HEAD 上是 675 行、门禁是绿的；本轮**没有改动该文件**（其间一次尝试已完整回滚并逐行还原，`git diff --stat` 仍精确等于 `21 insertions(+)`，其自带测试 14 项通过）。要在作者提交该修复的同时恢复门禁，需要把该拆分或按规则下调/完成拆分；不由本轮代做，以免覆盖在途编辑。
 
 **2026-09-21 SP-08 第 4–5 条执行记录（真实 Provider，2026-09-22 完成）：**
 
@@ -322,7 +335,7 @@
 
 - 已运行现有 `execute.test.ts` 的 strict-extension 定向测试：1 项通过，39 项未运行；已确认该测试忽略尾部的覆盖缺口。
 - 已通过当前源码的离线请求复现，覆盖表中三个合成场景；没有调用真实供应商，也没有据此宣称真实缓存收益。
-- 临时复现脚本、Vitest 配置及三份脱敏合成结果位于 `C:\Users\28971\AppData\Local\Temp\ls-prompt-audit-407f44f12a904771b039ab47a6b5089a`；临时目录可被系统清理，正式落地先完成 SP-01。
+- 临时复现脚本、Vitest 配置及三份脱敏合成结果保存在该轮的一次性临时目录（`<temp>/ls-prompt-audit-*`）；临时目录可被系统清理，正式落地先完成 SP-01。
 - 本轮仅新增本清单。工作树原有的 cache-observability、session-continuity、压缩提示测试和验收文档改动均保持原样。
 
 建议首个实现批次：SP-01 + SP-02 + SP-03 + SP-04；先解决实际消息生命周期与重复注入，再进行工具目录和额外调用精简。SP-08 的基线应在实现改动前建立。

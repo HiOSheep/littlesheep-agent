@@ -1,3 +1,11 @@
+// Turn one outbound stage request into explicit, source-aware Context candidates.
+//
+// The assembler's job is to describe *where every message came from* (prompt,
+// session history, tool result, workflow state) and how firmly it may be changed:
+// the call contract validates Context by kind, budgeting evicts by priority, and
+// everything the caller already sent must keep its exact position. Sections the
+// prompt marks `placement: 'trailing'` are emitted once, beside the conversation,
+// instead of being folded back into the system message.
 import type { ContextMessageCandidate, ContextMessageSegment } from '@littlesheep/context';
 import type {
   ContextItemKind,

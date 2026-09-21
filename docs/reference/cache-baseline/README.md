@@ -1,5 +1,12 @@
 # Cache request-shape comparison: pre-fix vs post-fix
 
+最后更新：2026-09-22 02:10:00
+
+本目录记录"系统提示词与请求前缀精简"任务书的结构基线与前后对比。除本文件外，`latest.md`
+由探针在每次 harness 测试运行时重新生成（同样只含字符数、共享前缀与工具目录摘要，
+不含提示词正文、会话内容或密钥）；需要冻结某次对比时把 `latest.md` 复制成
+`baseline-<freeze>.md` 并在此登记。
+
 Produced by the same probe (`packages/harness/src/probe/baseline.test.ts`) against
 two checkouts, with the same frozen loads, model name, tool set and compaction
 configuration:
@@ -8,13 +15,11 @@ configuration:
 | --- | --- |
 | [`pre-fix-cd6cabc.md`](pre-fix-cd6cabc.md) | `cd6cabc`, the commit before this work started |
 | [`baseline-git-0af62a7.md`](baseline-git-0af62a7.md) | `0af62a7`, after SP-01/02/04/05/06/07 |
-| [`baseline-git-1929e7e.md`](baseline-git-1929e7e.md) | `1929e7e`, re-pin after the boundary fix |
 
-Every pin carries the same frozen loads and the same numbers as `baseline-git-0af62a7.md`;
-the probe runs inside the harness suite, so its tracked output (`latest.md` plus the four
-per-load JSON files) is re-labelled on every run. Only the freeze label differs between
-re-pins — measurements that change are the ones worth reading, and none have since
-`0af62a7`.
+Both records carry the same frozen loads. The probe runs inside the harness suite,
+so it only writes `latest.md` plus the per-load JSON files; each run re-labels them
+with the current commit. Only the freeze label changes between runs — measurements
+that change are the ones worth reading, and none have since `0af62a7`.
 
 ## What the probe measures
 
@@ -116,7 +121,7 @@ stable.
   `scripts/audit-cache-usage.mjs`): 78.098% / 78.182% overall on a shared
   20-task conversation session, 83.690% / 84.523% on continuous tool work, and
   62.827% / 63.228% with compaction enabled. They are recorded in
-  [`../system-prompt-prefix-cleanup-2026-09-21.md`](../system-prompt-prefix-cleanup-2026-09-21.md)
+  [`../../taskbooks/system-prompt-prefix-cleanup-taskbook-2026-09-21.md`](../../taskbooks/system-prompt-prefix-cleanup-taskbook-2026-09-21.md)
   (SP-08) and none of them reaches 95%.
 - **No usage completeness.** The probe's requests have no Provider usage, so the
   usage-completeness dimension SP-08 asks for is recorded as `unavailable` rather

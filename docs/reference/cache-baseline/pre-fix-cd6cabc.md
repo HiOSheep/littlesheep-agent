@@ -1,4 +1,8 @@
-# Cache request-shape baseline
+﻿# Cache request-shape baseline
+
+最后更新：2026-09-22 02:10:00
+
+本文件是一次冻结对比的结构基线副本：只含请求字符数、共享前缀字符数与工具目录摘要，不含提示词正文、会话内容或密钥。
 
 Freeze: pre-fix (cd6cabc)
 

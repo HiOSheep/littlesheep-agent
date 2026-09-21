@@ -1,6 +1,6 @@
 // Owns the bounded model loop and persisted messages; ToolExecutionService
 // owns invocation validation, approval, execution, events, and evidence.
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import {
   type ChatMessage,
   type ChatResponse,
@@ -10,14 +10,12 @@ import type {
   ContextItemKind,
   ContextSourceRef,
   RunContext,
-  ToolCall,
   ToolInvocationRecord,
   ToolResult,
 } from '@littlesheep/types';
 import { sanitizeWebEvidenceProjection } from '@littlesheep/types';
 import {
   durableToolResult,
-  projectToolInput,
   ToolExecutionService,
 } from '@littlesheep/tools';
 import { buildRunRequestCandidates } from '../../context-candidates.js';
@@ -36,6 +34,14 @@ import { toolToSpec } from '../../provider-tool-spec.js';
 import { parseUserInputRequest, USER_INPUT_REQUEST_TOOL_NAME } from '../../user-input-request.js';
 import { ingestMemoryKnownState } from '../../memory-known-state.js';
 import { ingestMemoryContextToolResult } from '../../memory-context-working-set.js';
+import {
+  failureResult,
+  persistToolCalls,
+  persistToolResult,
+  recordDurableToolCalls,
+  safeStringify,
+  toolResultForModel,
+} from './tool-result-persistence.js';
 import { validateWebCitations, webCitationRepairContract } from '../../web-citation-validation.js';
 import type {
   ExecuteStageDeps,
@@ -509,10 +515,6 @@ function normalizeEvidenceOutput(value: string): string {
     .trim();
 }
 
-function failureResult(callId: string, stepId: string | undefined, error?: string): ToolResult {
-  return stampStepMeta({ callId, ok: false, error }, stepId);
-}
-
 function finalizeToolResult(
   ctx: RunContext,
   produced: RunContext['produced'],
@@ -571,81 +573,3 @@ function updateInvocationRecord(
   upsertToolInvocationEvidence(ctx, 'execute', record, state);
 }
 
-function stampStepMeta(result: ToolResult, stepId?: string): ToolResult {
-  if (!stepId) return result;
-  return { ...result, meta: { ...(result.meta ?? {}), stepId } };
-}
-
-function persistToolCalls(ctx: RunContext, produced: RunContext['produced'], calls: ToolCall[]): void {
-  const durableCalls = calls.map((call) => {
-    const tool = ctx.tools.find((candidate) => candidate.name === call.name);
-    return {
-      ...call,
-      input: tool ? projectToolInput(tool, call.input) : { redacted: true, unknownTool: true },
-    };
-  });
-  produced.push({
-    id: randomUUID(),
-    role: 'assistant',
-    content: [{ type: 'tool_calls', calls: durableCalls }],
-    timestamp: new Date().toISOString(),
-    sessionId: ctx.sessionId,
-    runId: ctx.runId,
-    stage: 'execute',
-  });
-}
-
-async function recordDurableToolCalls(
-  ctx: RunContext,
-  calls: readonly ToolCall[],
-  stepId?: string,
-): Promise<void> {
-  for (const call of calls) {
-    const inputHash = createHash('sha256').update(safeStringify(call.input), 'utf8').digest('hex');
-    await ctx.appendDurableEvent?.({
-      type: 'tool_call_proposed',
-      source: 'model',
-      eventId: `${ctx.runId}:tool-call:${call.id}`,
-      idempotencyKey: `${ctx.runId}:tool-call:${call.id}`,
-      payload: {
-        callId: call.id,
-        toolName: call.name,
-        inputHash,
-        ...(stepId ? { stepId } : {}),
-      },
-    });
-  }
-}
-
-function persistToolResult(ctx: RunContext, produced: RunContext['produced'], result: ToolResult): void {
-  produced.push({
-    id: randomUUID(),
-    role: 'tool',
-    content: [{ type: 'tool_result', result }],
-    timestamp: new Date().toISOString(),
-    sessionId: ctx.sessionId,
-    runId: ctx.runId,
-    stage: 'execute',
-  });
-}
-
-function safeStringify(value: unknown): string {
-  try {
-    const serialized = JSON.stringify(value);
-    return serialized === undefined ? String(value) : serialized;
-  } catch {
-    return '[non-serializable]';
-  }
-}
-
-function toolResultForModel(result: ToolResult): string {
-  return safeStringify({
-    ok: result.ok,
-    status: result.ok ? 'succeeded' : 'failed',
-    durationMs: result.durationMs,
-    stepId: typeof result.meta?.stepId === 'string' ? result.meta.stepId : undefined,
-    output: result.ok ? (result.modelOutput ?? result.output) : undefined,
-    error: result.ok ? undefined : result.error,
-    sanitized: result.sanitized === true || undefined,
-  });
-}

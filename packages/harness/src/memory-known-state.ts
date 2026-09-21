@@ -1,3 +1,10 @@
+// Project the Runtime's KeyedState memory references into model-visible text.
+//
+// The projection is an explicit allowlist: only fields that change what the model
+// should do now (decision, disclosure, branch/scope/tier, statement, epistemic
+// status, conflict, expiry, match reason, evidence) reach the prompt. Audit and
+// ordering bookkeeping — revision, timestamps, reference counts, stages — stays in
+// the Runtime, because a change there would re-send the whole block for nothing.
 import type { ContextMessageCandidate, ContextMessageSegment } from '@littlesheep/context';
 import type { ChatMessage, ChatRequest } from '@littlesheep/llm';
 import { CACHE_BOUNDARY_MARKER } from '@littlesheep/prompt';
