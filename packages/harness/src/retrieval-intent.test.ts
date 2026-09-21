@@ -34,7 +34,11 @@ describe('Runtime retrieval tool admission', () => {
     inputSchema: { parse: (input) => input, jsonSchema: { type: 'object' } },
     execute: async () => ({ callId: '', ok: true, output: '' }),
   });
-  const tools = [tool('read'), tool('memory_search'), tool('web_search'), tool('web_fetch'), tool('document_read'), tool('document_create')];
+  const tools = [tool('read'), tool('web_search'), tool('web_fetch'), tool('document_read'), tool('document_create')];
+  // The document tools are admitted for every intent: the plan requires one
+  // stable tool definition set per compaction interval, so they are never
+  // filtered by per-turn wording.
+  const DOCS = ['document_read', 'document_create'];
 
   function context(text: string, retrievalIntent: ReturnType<typeof assessRetrievalIntent>['intent']) {
     return {
@@ -43,7 +47,6 @@ describe('Runtime retrieval tool admission', () => {
       tools,
       toolSources: {
         read: 'builtin' as const,
-        memory_search: 'builtin' as const,
         web_search: 'builtin' as const,
         web_fetch: 'builtin' as const,
         document_read: 'builtin' as const,
@@ -54,53 +57,48 @@ describe('Runtime retrieval tool admission', () => {
 
   it('removes Web tools from local workspace and local memory requests', () => {
     expect(toolsForRetrievalIntent(context('搜索当前项目', 'local_workspace')).map((item) => item.name))
-      .toEqual(['read', 'memory_search']);
+      .toEqual(['read', ...DOCS]);
     expect(toolsForRetrievalIntent(context('记得上次决定吗', 'local_memory')).map((item) => item.name))
-      .toEqual(['read', 'memory_search']);
+      .toEqual(['read', ...DOCS]);
   });
 
-  it('advertises the document tools only when the turn involves a document', () => {
-    // An ordinary request never pays for the largest built-in schema.
-    expect(toolsForRetrievalIntent(context('帮我写一个函数', 'none')).map((item) => item.name))
-      .toEqual(['read', 'memory_search']);
-    // Document wording, a file extension and an attachment each keep them.
-    expect(toolsForRetrievalIntent(context('把这份报告导出为 PDF', 'none')).map((item) => item.name))
-      .toEqual(['read', 'memory_search', 'document_read', 'document_create']);
-    expect(toolsForRetrievalIntent(context('summarize notes.csv', 'none')).map((item) => item.name))
-      .toEqual(['read', 'memory_search', 'document_read', 'document_create']);
+  it('keeps the document tools in every intent so the tool set never varies', () => {
+    // Plan: one stable tool definition set per compaction interval. The set is
+    // identical across plain, document and web turns apart from the Web tools.
+    const plain = toolsForRetrievalIntent(context('帮我写一个函数', 'none')).map((item) => item.name);
+    const docTurn = toolsForRetrievalIntent(context('把这份报告导出为 PDF', 'none')).map((item) => item.name);
+    const csvTurn = toolsForRetrievalIntent(context('summarize notes.csv', 'none')).map((item) => item.name);
+    expect(plain).toEqual(['read', ...DOCS]);
+    expect(docTurn).toEqual(plain);
+    expect(csvTurn).toEqual(plain);
     const attached = {
       ...context('总结一下这个文件', 'none'),
       attachments: [{ path: 'C:/tmp/source.pdf', name: 'source.pdf', kind: 'document' as const, mimeType: 'application/pdf' }],
     };
-    expect(toolsForRetrievalIntent(attached).map((item) => item.name))
-      .toEqual(['read', 'memory_search', 'document_read', 'document_create']);
-    // A non-builtin document tool is never admitted by wording alone.
-    expect(toolsForRetrievalIntent({
-      ...context('把这份报告导出为 PDF', 'none'),
-      toolSources: { ...context('x', 'none').toolSources, document_create: 'additional' },
-    }).map((item) => item.name)).toEqual(['read', 'memory_search', 'document_read']);
+    expect(toolsForRetrievalIntent(attached).map((item) => item.name)).toEqual(plain);
   });
 
   it('admits only built-in Web capabilities appropriate to the inbound intent', () => {
+    // Admission preserves the declared tool order.
     expect(toolsForRetrievalIntent(context('查今天新闻', 'web_search')).map((item) => item.name))
-      .toEqual(['read', 'memory_search', 'web_search', 'web_fetch']);
+      .toEqual(['read', 'web_search', 'web_fetch', ...DOCS]);
     expect(toolsForRetrievalIntent(context('打开网址', 'web_fetch')).map((item) => item.name))
-      .toEqual(['read', 'memory_search', 'web_fetch']);
+      .toEqual(['read', 'web_fetch', ...DOCS]);
     expect(toolsForRetrievalIntent({
       ...context('查今天新闻', 'web_search'),
-      toolSources: { read: 'builtin', memory_search: 'builtin', web_search: 'additional', web_fetch: 'additional' },
-    }).map((item) => item.name)).toEqual(['read', 'memory_search']);
+      toolSources: { read: 'builtin', document_read: 'builtin', document_create: 'builtin', web_search: 'additional', web_fetch: 'additional' },
+    }).map((item) => item.name)).toEqual(['read', ...DOCS]);
   });
 
   it('does not let browser-required work masquerade as anonymous fetch', () => {
     const ctx = context('登录后点击下载', 'browser_required');
-    expect(toolsForRetrievalIntent(ctx).map((item) => item.name)).toEqual(['read', 'memory_search']);
+    expect(toolsForRetrievalIntent(ctx).map((item) => item.name)).toEqual(['read', ...DOCS]);
     expect(renderRetrievalIntentContract(ctx)).toContain('Do not substitute anonymous web_fetch/web_search');
   });
 
   it('keeps capability probes on Runtime facts and does not admit Web tools', () => {
     const ctx = context('你查询过了吗？', 'capability_probe');
-    expect(toolsForRetrievalIntent(ctx).map((item) => item.name)).toEqual(['read', 'memory_search']);
+    expect(toolsForRetrievalIntent(ctx).map((item) => item.name)).toEqual(['read', ...DOCS]);
     expect(renderRetrievalIntentContract(ctx)).toContain('Do not claim a Web query');
   });
 });
