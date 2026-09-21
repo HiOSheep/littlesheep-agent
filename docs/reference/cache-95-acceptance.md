@@ -702,22 +702,28 @@
 
 **这条结论修正了 5.24 的建议**：原先"修好辅助路径即可"的判断不成立；辅助路径的修复仍然正确（消除前缀不一致），但**必须同时解决主循环自身**才可能达标。
 
-**新发现：`use_skill` 的工具描述是可变的。** 主循环 14 个请求的工具集**同为 12 个工具**，但 `toolSchema` 指纹出现**两个不同取值**（`3a8d13df` 与 `8ff283bb`）。`normalizeTools` 会**按名排序后**再哈希，因此顺序差异无法解释——差异只能来自某个工具的**描述或参数**内容。
+**一项曾被怀疑的新来源，经复核已否证。** 主循环 14 个请求的工具集**同为 12 个工具**，但 `toolSchema` 指纹出现**两个取值**（`3a8d13df` 与 `8ff283bb`）。由于 `normalizeTools` 会**按名排序后**再哈希，顺序差异无法解释，我据此推断差异来自某工具的**描述或参数内容**，并一度定位到 `packages/skills/src/use_skill.ts` 的可变描述 getter。
 
-定位到一处具体来源：`packages/skills/src/use_skill.ts` 把描述写成 **getter**，每次读取都从活的 skill 索引重算：
+**该推断不成立。** 把 14 个 12 工具请求按会话归并后，两个哈希与两个会话**严格一一对应**：
 
-```js
-get description() {
-  const names = loader.index.skills.map((s) => s.name).join(', ');
-  return `Load a skill body by name. Available skills: ${names || '(none)'}. …`;
-}
+```
+session 034e96da -> toolSchema 8ff283bb  x7
+session a4d19cd8 -> toolSchema 3a8d13df  x7
 ```
 
-skill 索引变化（或首次异步扫描前后为空/非空）都会改变描述 → **工具 schema 改变 → 可缓存前缀失效**。工具 schema 属于前缀的一部分，因此这是一个**在本实现控制之内**的前缀抖动源。
+**每个会话内只有一个哈希**，即工具 schema 在会话内**完全稳定**，没有逐请求抖动。哈希跨会话不同，是因为 `componentFingerprint` 把 **scope token 混进了摘要**：
 
-**候改方向（未实施，需授权）**：让工具描述保持**常量**（不嵌入可变状态），把可用技能列表交给本就带版本号、且已位于前缀的 system prompt 段表达（`skills-index` 段已存在）。既消除抖动，也不损失能力。
+```js
+hmac(key.bytes, `${domain}\0${scopeToken}\0${canonicalSerialize(value)}`)
+```
 
-**当前判断**：要在工具工作等场景跨过 95%，需要同时处理 **① 辅助路径前缀不一致**、**② 主循环内工具 schema 抖动**，可能还需 **③ 短会话下 prompt 偏小**（`hit ≈ 1 − 192/prompt`，工具工作场景主循环平均 prompt 仅约 4,541）。三者都不属纯测量，需授权。
+因此 **component 指纹（`systemPrompt`、`toolSchema` 等）不能跨会话比较**——内容相同也会得到不同哈希。同一原因也解释了那两个"0 工具"哈希为何不同。
+
+**结论更正**：`use_skill` 的可变描述在本场景**未造成前缀失效**，不应列为候改方向。附带确认生产代码是**正确**的——`resolveInvalidationReasons` 对 `toolSchema` 的比较带 `sameScope` 守卫，不会因跨会话哈希差异产生假阳性；出错的是我跨会话比较指纹这一做法。
+
+**教训（记录以免重犯）**：比较任何 component 指纹前必须先确认**同一 scope**，否则会把 scope 差异误读为内容抖动。
+
+**当前判断**：要在工具工作等场景跨过 95%，需要处理 **① 辅助路径前缀不一致**（5.24，已确认）；并可能需 **② 短会话下 prompt 偏小**（`hit ≈ 1 − 192/prompt`，该场景主循环平均 prompt 仅约 4,541）。两者都不属纯测量，需授权。
 
 ## 6. 完成条件
 
