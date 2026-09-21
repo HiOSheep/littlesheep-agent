@@ -142,14 +142,14 @@ export function workspaceSection(cwd: string): string {
 Working directory: \`${cwd}\``;
 }
 
-/** Cache-stable time policy. The exact clock is injected per model request. */
+/** Cache-stable time policy. No clock is injected per request; read it on demand. */
 export function dateTimeSection(timezone?: string): string {
   const tz = timezone ?? 'UTC';
-  return `# Current Date & Time
+  return `# Time
 
 Configured time zone: ${tz}.
 
-The Agent runtime injects an exact local clock, UTC offset, run elapsed time, task progress, and bounded tool timing below the prompt cache boundary immediately before every model request. Treat that live runtime block as authoritative rather than estimating time from conversation timestamps.`;
+No exact clock or elapsed time is injected into this context. When you need the current time, date or session age, read it from \`session_status\` instead of estimating from conversation timestamps.`;
 }
 
 /** Runtime section — host/OS/node/model info. */

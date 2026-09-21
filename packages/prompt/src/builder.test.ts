@@ -31,8 +31,8 @@ describe('cross-stage shared prefix', () => {
     // identity..date-time sequence is shared across modes. The floor tracks the
     // current size after the lean-plan prompt trim, and still guards against the
     // shared head shrinking back toward identity-only.
-    expect(lcp).toBeGreaterThanOrEqual(2_400);
-    expect(full.length).toBeGreaterThan(4_500);
+    expect(lcp).toBeGreaterThanOrEqual(2_300);
+    expect(full.length).toBeGreaterThan(4_300);
   });
 
   it('measures the mode-independent section budget', () => {
