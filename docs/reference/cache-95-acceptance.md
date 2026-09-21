@@ -1079,6 +1079,31 @@ next = routed.workPolicy.executionMode === 'bounded_loop' ? 'execute' : 'decide'
 
 **本轮未改动的声明**：本节为对既有代码与保留数据的核对，**未修改任何实现代码**。
 
+### 5.36 按方案第 108 行同步 AGENTS.md：修正四处与实现不符的契约描述（2026-09-21）
+
+方案第 108 行写明："旧 AGENTS.md 的实现描述需要在对应实现完成时同步，不能在实现前写成已经生效。"本轮逐条把 `AGENTS.md` 的 Core Flow 描述与实现对照，发现**四处已过期或与代码不符**，均已修正。
+
+| # | 原文 | 与实现不符之处 | 已改为 |
+| --- | --- | --- | --- |
+| 1 | 流程图有 `clarify ──→ ASK_USER` 一条支路 | 活动路由**只产出 `execute` 与能力/状态询问两条**；`classifyByRules` 的 `activity` 字面量只有 `execute`/`respond`，**从不产生 `clarify`**。同文件第 33 行自己也写着"`clarify` 不再是可路由活动"，**前后自相矛盾** | 改为 `（ESCALATE）→ ASK_USER`，并说明它由主循环的 `request_user_input` 或 `RECOVER` 升级到达 |
+| 2 | "**DECIDE**：仍保留 stage 以便读取旧检查点" | `decide` **不是注册 stage**（`default-harness.ts` 的 8 个注册项里没有它）。它只作为历史 stage 名存在，恢复时由 `checkpoint-resume.ts:17` 改派到 `execute` | 改为"已删除，不再是注册 stage"，并写明改派行为 |
+| 3 | "持久记忆**只由明确写入**……与压缩路径产生" | 模型**没有**可调用的明确写入工具：`memory_tree` 的动作只有 `root_index`/`branch_index`/`expand`/`deep_search`/`release` **五个只读动作**。写入方只有压缩路径 | 改为写明唯一写入方是压缩路径，并显式标注"明确写入"尚不可用 |
+| 4 | "CAPTURE……持久记忆只由明确写入与压缩路径产生" | 同上 | 同上，并在"核心流程"新增一条**记忆写入的当前事实** |
+
+**核对依据（可复现）**：
+
+- 注册 stage：`default-harness.ts` 只有 `enter, classify, execute, recover, verify, reply, ask_user, finalize`；`decide` 不在其中。
+- `clarify` 不可达：`packages/classifier/src/rules.ts` 的 `activity` 字面量集合为 `{execute, respond}`；`clarify` 仅出现在类型、旧检查点读取路径与 `allowedDecisions` 声明中，**没有任何代码产生它**。
+- `memory_tree` 只读：其 action 字面量集合为 `{root_index, branch_index, release, expand, deep_search}`。
+- 唯一写入路径：`session-continuity.ts:395` 的 `memoryService.write(intent)`，由 `settlePendingCompactionMemory` 调用。
+
+**重要限制（必须记录）**：`AGENTS.md` **不在 git 追踪范围内**——`.git/info/exclude:12` 明确排除 `/AGENTS.md`（`SOUL.md`/`USER.md`/`MEMORY.md`/`TOOLS.md` 同样被排除）。这与 AGENTS.md 自身的说明一致："仓库根目录若存在同名文件，只是本地开发辅助材料"。因此：
+
+- 本次修正**存在于工作树**、会作为 bootstrap 注入运行时，但**无法通过 commit 保存**，也不会随仓库分发。
+- 记录在本节，是为了让这次同步**可追溯**；若需要长期保留，应由维护者在仓库外备份或把该文件纳入版本管理（本轮不擅自改变 git 追踪策略）。
+
+**未改动实现代码**；`check:repo` 33/33、core gate 退出码 0、App 构建 `fresh`。
+
 ## 6. 完成条件
 
 冻结负载两组总体命中率均 `>=95%` 且 usage 完整；总成本与每任务未缓存量不以保留冗余为代价；保留范围的任务验收（正确读取、写后读回、拒绝时零副作用、重启不重复执行、记忆可回溯、压缩后目标连续）通过。未达到时报告实际结果与剩余损失来源，不改小目标、不隐藏冷启动；"能力裁剪完成"与"95% 达成"分别标记。
