@@ -44,7 +44,24 @@ export interface ToolLoopResult {
 export interface ToolLoopOptions {
   ctx: RunContext;
   messages: ChatMessage[];
+  /**
+   * The model-visible tool catalog.
+   *
+   * One session must show one catalog: the tool names, schemas and order are
+   * part of the request prefix, so a catalog that varies per turn invalidates
+   * the cached conversation on the turn it changes. Per-turn restriction is an
+   * execution-scope decision (`admittedTools`), not a visibility one.
+   */
   tools: AgentTool[];
+  /**
+   * Tools this request may actually invoke. Defaults to `tools`; pass a smaller
+   * set to withhold a registered capability for this turn without hiding it
+   * from the model. A call outside the set is refused by the Runtime boundary
+   * and reported to the model as a denial, never executed.
+   */
+  admittedTools?: AgentTool[];
+  /** Runtime contract text explaining why a withheld tool was refused. */
+  withheldToolContract?: string;
   sanitizeOpts: ExecuteSanitizeOptions;
   stepId?: string;
   systemSegments?: SystemPromptBundle['segments'];

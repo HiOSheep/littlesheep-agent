@@ -16,7 +16,7 @@ import { writeDecisionState } from '../../decision-state.js';
 import { recordFailure } from '../../failure-state.js';
 import { replaceToolResults } from '../../execution-evidence-state.js';
 import { resolveExplicitToolInstructionSet } from '../../explicit-tool-instruction.js';
-import { toolsForRetrievalIntent } from '../../retrieval-intent.js';
+import { toolsForRetrievalIntent, renderRetrievalIntentContract } from '../../retrieval-intent.js';
 
 export async function executeLegacyLoop(
   deps: ExecuteStageDeps,
@@ -27,12 +27,14 @@ export async function executeLegacyLoop(
   const attachmentMessages = attachmentContextMessages(ctx.runId, ctx.attachments);
   const explicitTools = resolveExplicitToolInstructionSet(ctx, { allowContinuation: true })
     ?.entries.map((entry) => entry.tool);
-  // The Runtime-owned retrieval decision filters the model catalog, and the
-  // provider must see the same admitted set the prompt describes. Passing
-  // ctx.tools unfiltered advertised tools the prompt explicitly withheld (for
-  // example the document tools on a turn with no document) and made the
-  // cacheable prefix larger than the admitted capability set.
-  const admittedTools = toolsForRetrievalIntent(ctx);
+  // The model catalog is fixed for the whole session; the Runtime-owned
+  // retrieval decision narrows what this turn may *execute*, not what the model
+  // may see. Filtering the visible catalog instead changed the tool schemas that
+  // sit inside the request prefix, so a local -> web -> local turn sequence
+  // invalidated the cached conversation each time the intent changed. The
+  // withheld capability is now refused at the execution boundary.
+  const admittedTools = explicitTools ?? toolsForRetrievalIntent(ctx);
+  const catalogTools = explicitTools ?? ctx.tools;
   // The system message is the above-boundary half of the bundle, exactly like
   // REPLY's. Sections below the boundary (runtime facts, directives, bootstrap,
   // summary, memory index at the tail) travel as their own Context messages, so
@@ -46,7 +48,11 @@ export async function executeLegacyLoop(
   const result = await runToolLoop(deps, {
     ctx,
     messages: baseMessages,
-    tools: explicitTools ?? admittedTools,
+    tools: catalogTools,
+    admittedTools,
+    ...(catalogTools.length === admittedTools.length
+      ? {}
+      : { withheldToolContract: renderRetrievalIntentContract(ctx) }),
     sanitizeOpts,
     systemSegments: systemPrompt.segments,
     insertedBeforePrimary: attachmentMessages.map((item) => item.context),

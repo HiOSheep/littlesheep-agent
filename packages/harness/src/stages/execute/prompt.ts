@@ -8,7 +8,7 @@ import {
   appendSystemPromptBundleAddons,
 } from '../../profile-prompt.js';
 import type { ExecuteStageDeps } from './contracts.js';
-import { renderRetrievalIntentContract, toolsForRetrievalIntent } from '../../retrieval-intent.js';
+import { renderRetrievalIntentContract } from '../../retrieval-intent.js';
 
 /**
  * One prompt shape for the single main loop.
@@ -24,7 +24,10 @@ export async function buildExecuteSystemPrompt(
 ): Promise<SystemPromptBundle> {
   const resolved = resolvePromptConfig(deps.config, deps.branding);
   const base = await assembleSystemPromptBundle(resolved, {
-    tools: toolsForRetrievalIntent(ctx),
+    // The capability summary names the registered catalog, which is what the
+    // model is shown; a per-turn restriction travels as the retrieval contract
+    // below the cache boundary instead of changing the fixed prompt.
+    tools: ctx.tools,
     bootstrap: ctx.bootstrap ?? {},
     prelude: ctx.prelude,
     sessionSummary: ctx.sessionSummary,

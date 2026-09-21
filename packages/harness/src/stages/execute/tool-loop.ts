@@ -7,7 +7,6 @@ import {
   type ToolCall as LlmToolCall,
 } from '@littlesheep/llm';
 import type {
-  AgentTool,
   RunContext,
   ToolCall,
   ToolInvocationRecord,
@@ -37,7 +36,6 @@ import { ingestMemoryKnownState } from '../../memory-known-state.js';
 import { ingestMemoryContextToolResult } from '../../memory-context-working-set.js';
 import { validateWebCitations, webCitationRepairContract } from '../../web-citation-validation.js';
 import type {
-  ExecuteSanitizeOptions,
   ExecuteStageDeps,
   ToolLoopOptions,
   ToolLoopResult,
@@ -68,6 +66,8 @@ export async function runToolLoop(
     ctx,
     messages,
     tools,
+    admittedTools = tools,
+    withheldToolContract,
     sanitizeOpts,
     stepId,
     systemSegments,
@@ -78,6 +78,11 @@ export async function runToolLoop(
     parallelStep,
     maxParallelTools,
   } = opts;
+  // The catalog is what the model sees; the admitted set is what this request
+  // may execute. They differ when the Runtime withholds a registered capability
+  // for this turn (a local-only retrieval intent, for example) — the model still
+  // sees one stable catalog, and the boundary refuses the call.
+  const admittedNames = new Set(admittedTools.map((tool) => tool.name));
   const toolSpecs = tools.map(toolToSpec);
   const toolResults: ToolResult[] = [];
   const executionService = toolExecutionService(deps, ctx, sanitizeOpts);
@@ -289,12 +294,36 @@ export async function runToolLoop(
           parallelStep,
         };
       });
-      const executedResults = await executionService.executeBatch(
-        requests,
+      // Only a tool the Runtime knows but withheld is refused here. A name that
+      // is not registered at all still goes to the execution boundary, which
+      // reports it as an unknown tool — the two failures are different facts and
+      // the model must not read one as the other.
+      const registeredNames = new Set(tools.map((tool) => tool.name));
+      const withheld = requests.filter((request) => (
+        registeredNames.has(request.name) && !admittedNames.has(request.name)
+      ));
+      const executable = requests.filter((request) => !withheld.includes(request));
+      const executedResults = new Map(await executionService.executeBatch(
+        executable,
         createSideEffectLifecycle(ctx),
-        new Set(tools.map((tool) => tool.name)),
+        // The boundary re-checks the admitted set, so the model cannot reach a
+        // withheld capability by naming it.
+        admittedNames,
         maxParallelTools,
-      );
+      ));
+      // A withheld call is refused before it reaches the tool: nothing runs, no
+      // side effect is attempted, and the model gets an authoritative denial it
+      // must not retry.
+      for (const request of withheld) {
+        const index = requests.indexOf(request);
+        executedResults.set(index, failureResult(
+          request.callId,
+          stepId,
+          withheldToolContract
+            ? `Runtime scope: ${withheldToolContract}`
+            : 'Runtime scope: this tool is not admitted for the current request.',
+        ));
+      }
       let addedEvidence = false;
       for (const [index, call] of response.toolCalls.entries()) {
         const converted = convertToolCall(call);
@@ -355,59 +384,6 @@ export async function runToolLoop(
     toolResults,
     iterations: MAX_ITERATIONS,
     error: `tool loop exceeded ${MAX_ITERATIONS} iterations`,
-  };
-}
-
-/** Execute one Runtime-admitted DECIDE proposal through the same hosted tool boundary. */
-export async function runDirectToolProposal(
-  deps: ExecuteStageDeps,
-  options: {
-    ctx: RunContext;
-    tool: AgentTool;
-    input: unknown;
-    sanitizeOpts: ExecuteSanitizeOptions;
-    stepId: string;
-    signal?: AbortSignal;
-    produced?: RunContext['produced'];
-  },
-): Promise<ToolLoopResult> {
-  const produced = options.produced ?? options.ctx.produced;
-  const call: ToolCall = {
-    id: randomUUID(),
-    name: options.tool.name,
-    input: options.input,
-  };
-  persistToolCalls(options.ctx, produced, [call]);
-  await recordDurableToolCalls(options.ctx, [call], options.stepId);
-  const service = toolExecutionService(deps, options.ctx, options.sanitizeOpts);
-  const completed = await service.executeBatch(
-    [{
-      callId: call.id,
-      name: call.name,
-      input: call.input,
-      stepId: options.stepId,
-      signal: options.signal ?? options.ctx.signal,
-    }],
-    createSideEffectLifecycle(options.ctx),
-    new Set([options.tool.name]),
-    1,
-  );
-  const result = completed.get(0)
-    ?? failureResult(call.id, options.stepId, 'tool scheduler returned no result');
-  const toolResults: ToolResult[] = [];
-  finalizeToolResult(
-    options.ctx,
-    produced,
-    undefined,
-    toolResults,
-    options.tool.name,
-    result,
-  );
-  return {
-    ok: true,
-    content: '',
-    toolResults,
-    iterations: 0,
   };
 }
 
