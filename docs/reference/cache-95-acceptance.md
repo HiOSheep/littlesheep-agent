@@ -1,6 +1,6 @@
 # 缓存 95% 冻结负载验收规程
 
-最后更新：2026-09-21 14:25:00
+最后更新：2026-09-21 15:20:00
 
 本文件把 `docs/taskbooks/lean-v2-cache-95-plan-2026-09-20.md` 第 6 节的实测步骤写成可重复执行的规程，供最终验收直接照做。它是验收方法，不是达成声明：在两组冻结负载都跑出完整 usage 之前，95% 一律标记为未验证。
 
@@ -165,6 +165,29 @@
 - 结论二：尾部字节数增长近 3 倍，但**token 总数只增长约 17%**，说明累积的历史本身很紧凑；U 的主因不是"历史膨胀"，而是 5.5 已确认的 **128-token 块残差**。
 - 结论三：每个 run **恰好 1 次模型请求**（实测 40 个 run 均为 1），因此本负载下不存在"同 run 内多轮请求的缓存复用"；这进一步说明 U 只能靠"前缀相对残差更大"来摊薄。
 - 据此，达标路径仍是让 C 增长或让 U 减少，而**不是**压缩历史——历史上限已被证明紧凑。
+
+### 5.9 方案第 1 节"保留底线"逐条核查（2026-09-21）
+
+对方案第 11 行列出的 9 项保留底线逐条核对生产实现与测试覆盖（按源码引用面统计）：
+
+| 保留底线 | 生产实现 | 测试文件 | 结论 |
+| --- | ---: | ---: | --- |
+| 真实模型回复 | 有 | 11 | 覆盖（`prepareAuthoritativeRunnerResult`、settlement） |
+| 原始会话与操作记录 | 有 | 9 | 覆盖（`executionLogStore`、transcript） |
+| 必要记忆读取 | 有 | 2 | 覆盖（`memory_tree` 只读动作 + 集成测试） |
+| **明确记忆写入** | 有 | 见下 | **部分——见下方说明** |
+| 宿主权限与源码保护 | 有 | 14 | 覆盖（`approvalConfig`、`protectedWriteRoots`） |
+| 工具参数和结果校验 | 有 | 1 | 覆盖（`tool-execution-service.ts` 的 `inputSchema.parse`，含校验时间戳与错误分支） |
+| 取消与预算 | 有 | 22 | 覆盖 |
+| 执行结果如实呈现 | 有 | 10 | 覆盖（`runtimeFailureResult`、`degraded`、`unverified`） |
+| 同一操作及同一消息的持久化幂等 | 有 | 34 | 覆盖（settlement id、effect lease） |
+| 减少复核不等于虚报验证 | 有 | 10 | 覆盖（`unverified`/`needs_replan` 判定） |
+
+**"明确记忆写入"的准确状态（本轮唯一发现的缺口）**：
+
+- **可达的写入路径存在且是生产代码**：`runner-finalize.ts` → `compactSessionAfterRun`（`session-continuity.ts:395`）→ `memoryService.write(intent)`，并经过 `resolveMemoryWriteEpistemic`（该函数**不是**死代码，本轮已核实）。这是**压缩路径**的写入。
+- **模型主动的明确写入路径不存在**：`memory_tree` 工具只有只读动作（`root_index`/`branch_index`/`expand`/`deep_search`/`release`），没有任何 write 动作；`default-harness.ts` 的 `memoryWriter` 选项**只在第 38 行声明、从未被消费**（全文件仅 1 处出现），而 `infra.ts` 仍在第 460/471 行传入它——**这是一个死选项**（EVOLVE/CAPTURE 删除后的遗留）。
+- 判定：方案要求"必要记忆读取与**明确记忆写入**"。当前"明确写入"仅由压缩路径兑现，**模型无法主动写记忆**；若按字面要求，该项**未完全满足**，且 `memoryWriter` 死选项应清理或接回。此处如实记录，未擅自改动语义。
 
 ## 6. 完成条件
 
