@@ -1,6 +1,15 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-22 14:55:00
+最后更新：2026-09-22 15:55:00
+
+**修复工具门控未作用于 Provider 的缺陷，并如实报告其比例代价（2026-09-22 15:55:00）**
+
+- **发现的真实缺陷**：`packages/harness/src/stages/execute/runners.ts` 把 `tools: explicitTools ?? ctx.tools` 直接交给 Provider，而 `toolsForRetrievalIntent(ctx)` 此前**只过滤提示词文本**里的工具清单。结果 Provider 收到**未过滤的 12 个工具**（含 `document_create`/`document_read`），与提示词声明的能力集**不一致**；实测 60 个 run 全部如此，而这些 run **零工具调用**。
+- **修复**：改为 `tools: explicitTools ?? admittedTools`（`admittedTools = toolsForRetrievalIntent(ctx)`），使 Provider 与提示词看到同一份被准入集合。
+- **效果**：Provider 收到的工具数 12 → **10**；负载总输入 **283,262 → 231,631（−18%，少 51,631 tokens）**；暖请求平均 prompt ~4,728 → **3,867**；总体命中率 94.578% → **93.445%**。
+- **比例代价是模型预期的，不是回归**：按 `hit ≈ 1 − 192/prompt` 且 `d/dS[(C−S)/(P−S)] = (C−P)/(P−S)² < 0`（恒有 C<P），**任何减少已缓存前缀内容的改动都会降低比例**。修复后暖请求预测 95.035%、实测 94.762%，模型仍吻合。
+- **不回滚该修复**：方案第 9 行明确要求"删除冗余后，不能仅因比例下降而恢复冗余"，且"Provider 与提示词能力集不一致"本身是正确性问题。本轮让实现**更精简**（少 51,631 tokens、少广播 2 个工具），代价是比例下降约 1.1 个百分点——这是"精简与 95% 相互拉扯"的又一实证。
+- 验证：`pnpm run typecheck` 通过；`packages/harness` 62 文件、520 项通过；仓库卫生 **33 passed / 0 failed**。
 
 **缺口归因收敛：暖请求已达标，唯一冷启动贡献 1.38 个百分点（2026-09-22 14:55:00）**
 

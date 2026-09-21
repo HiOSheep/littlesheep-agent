@@ -16,6 +16,7 @@ import { writeDecisionState } from '../../decision-state.js';
 import { recordFailure } from '../../failure-state.js';
 import { replaceToolResults } from '../../execution-evidence-state.js';
 import { resolveExplicitToolInstructionSet } from '../../explicit-tool-instruction.js';
+import { toolsForRetrievalIntent } from '../../retrieval-intent.js';
 
 export async function executeLegacyLoop(
   deps: ExecuteStageDeps,
@@ -26,11 +27,17 @@ export async function executeLegacyLoop(
   const attachmentMessages = attachmentContextMessages(ctx.runId, ctx.attachments);
   const explicitTools = resolveExplicitToolInstructionSet(ctx, { allowContinuation: true })
     ?.entries.map((entry) => entry.tool);
+  // The Runtime-owned retrieval decision filters the model catalog, and the
+  // provider must see the same admitted set the prompt describes. Passing
+  // ctx.tools unfiltered advertised tools the prompt explicitly withheld (for
+  // example the document tools on a turn with no document) and made the
+  // cacheable prefix larger than the admitted capability set.
+  const admittedTools = toolsForRetrievalIntent(ctx);
   const baseMessages = buildBaseMessages(ctx, systemPrompt.text, attachmentMessages);
   const result = await runToolLoop(deps, {
     ctx,
     messages: baseMessages,
-    tools: explicitTools ?? ctx.tools,
+    tools: explicitTools ?? admittedTools,
     sanitizeOpts,
     systemSegments: systemPrompt.segments,
     insertedBeforePrimary: attachmentMessages.map((item) => item.context),
