@@ -67,7 +67,6 @@ export function createReplyStage(deps: ReplyStageDeps) {
       bootstrap: respondBootstrap(ctx.bootstrap),
       sessionSummary: isCapabilityReply ? undefined : ctx.sessionSummary,
       memoryRootIndex: isCapabilityReply ? undefined : ctx.memoryRootIndex,
-      coreFlowStage: 'reply',
       initialMemoryContext: isCapabilityReply ? undefined : ctx.initialMemoryContext,
     }, 'respond');
     const systemPrompt = appendSystemPromptBundleAddons(baseSystemPrompt, [
@@ -82,6 +81,8 @@ export function createReplyStage(deps: ReplyStageDeps) {
     const messages: ChatMessage[] = [
       {
         role: 'system',
+        // The system message is exactly the above-boundary half of the bundle;
+        // the below-boundary sections travel as their own Context messages.
         content: systemPrompt.stableText ?? systemPrompt.text,
       },
       ...history.map(toChatMessage),

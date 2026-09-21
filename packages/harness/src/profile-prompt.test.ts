@@ -79,4 +79,52 @@ describe('behavior profile prompt assembly', () => {
       resolvedRunConfig: { behaviorModeId: 'general' } as never,
     })).toBe('CUSTOM_PROFILE_SENTINEL')
   })
+
+  it('keeps the bundle honest about its own stable half after adding sections', () => {
+    const base = buildSystemPromptBundle({
+      branding: DEFAULT_BRANDING,
+      tools: [],
+      workspace: '/tmp/ws',
+      bootstrap: {},
+      mode: 'full',
+    })
+    const withAddons = appendSystemPromptBundleAddons(base, [
+      { id: 'profile', text: 'stable profile', placement: 'stable' },
+      { id: 'voice', text: 'volatile voice' },
+    ])
+
+    // `stableText` and `trailingSegments` have to describe the same split that
+    // `text` encodes. Leaving them undefined here made REPLY send the whole
+    // prompt as the system message while EXECUTE sent only the stable half.
+    expect(withAddons.stableText).toBeDefined()
+    expect(withAddons.trailingSegments).toBeDefined()
+    expect(`${withAddons.stableText}${withAddons.trailingSegments!.map((segment) => segment.text).join('')}`)
+      .toBe(withAddons.text)
+    expect(withAddons.stableText).toContain('stable profile')
+    expect(withAddons.stableText).not.toContain('volatile voice')
+    expect(withAddons.stableText).not.toContain(CACHE_BOUNDARY_MARKER)
+    expect(withAddons.trailingSegments!.map((segment) => segment.text).join(''))
+      .toContain('volatile voice')
+  })
+
+  it('marks a caller-owned section as trailing so the tail owner can emit it once', () => {
+    const base = buildSystemPromptBundle({
+      branding: DEFAULT_BRANDING,
+      tools: [],
+      workspace: '/tmp/ws',
+      bootstrap: {},
+      mode: 'full',
+    })
+    const withAddons = appendSystemPromptBundleAddons(base, [
+      { id: 'retrieval-intent-contract', text: 'intent none', appendOnly: true },
+    ])
+
+    const segment = withAddons.segments.find((item) => item.id === 'retrieval-intent-contract')
+    expect(segment?.placement).toBe('trailing')
+    // A tail-owned section stays below the boundary; the append-only owner emits
+    // it as its own message rather than folding it into the system prompt.
+    expect(withAddons.trailingSegments?.some((item) => item.id === 'retrieval-intent-contract'))
+      .toBe(true)
+    expect(withAddons.stableText).not.toContain('intent none')
+  })
 })

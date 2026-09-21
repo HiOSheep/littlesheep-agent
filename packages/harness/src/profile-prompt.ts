@@ -103,7 +103,18 @@ function rebuildBundle(segments: PromptContextSegment[], stableCount: number): S
       : (index > 0 ? '\n\n---\n\n' : '');
     return { ...segment, text: `${prefix}${segment.text}` };
   });
-  return { text: rebuilt.map((segment) => segment.text).join(''), segments: rebuilt };
+  // `stableText` and `trailingSegments` describe the same split `text` encodes,
+  // so they have to be recomputed here too. Leaving them undefined after an
+  // addon made the bundle lie about its own layout: callers that trust
+  // `stableText` (REPLY) silently sent the whole prompt as the system message
+  // while callers that trust `segments` (EXECUTE) sent only the stable half,
+  // and the two paths could not share a prefix.
+  return {
+    text: rebuilt.map((segment) => segment.text).join(''),
+    segments: rebuilt,
+    stableText: rebuilt.slice(0, stableCount).map((segment) => segment.text).join(''),
+    trailingSegments: rebuilt.slice(stableCount),
+  };
 }
 
 /**

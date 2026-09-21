@@ -247,7 +247,16 @@ export function buildRunRequestCandidates(
       required: true,
     })];
   });
-  const trailing = [...emittedTrailing, ...(options.trailingSegments ?? []).filter(emitTrailing)].map((segment, index) => candidate({
+  // One section, one candidate. A caller may hand over its own trailing
+  // segments while also passing the full segment list; a section that is in both
+  // would otherwise become a duplicate candidate id and be rejected as a
+  // contract violation. The full list already carries that section below the
+  // boundary, so the extra copy is dropped rather than the request failing.
+  const knownSectionIds = new Set(allSegments.map((segment) => segment.id));
+  const extraTrailing = (options.trailingSegments ?? []).filter((segment) => (
+    emitTrailing(segment) && !knownSectionIds.has(segment.id)
+  ));
+  const trailing = [...emittedTrailing, ...extraTrailing].map((segment, index) => candidate({
     id: segment.id,
     order: messages.length + index,
     message: { role: 'system', content: segment.text },

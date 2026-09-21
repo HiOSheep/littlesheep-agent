@@ -117,7 +117,7 @@ describe('buildSystemPrompt', () => {
     expect(prompt).not.toContain('Project Context');
   });
 
-  it('respond mode keeps bounded memory awareness while sharing the canonical head', () => {
+  it('respond mode shares the canonical head, including the memory index', () => {
     const prompt = buildSystemPrompt({
       branding: DEFAULT_BRANDING,
       tools: [stubTool],
@@ -128,15 +128,17 @@ describe('buildSystemPrompt', () => {
     });
 
     expect(prompt).toContain('Memory Tree Root Index');
-    expect(prompt).toContain('root index truncated');
     expect(prompt).toContain('Registered in this run: read');
     expect(prompt).toContain('USER.md');
     // Cross-stage cache reuse requires every stage to emit the same head, so
-    // RESPOND now shares Core Flow / Workspace / Safety with the full modes.
+    // RESPOND shares Core Flow / Workspace / Safety AND the memory index with the
+    // full modes. The index used to carry a respond-only paragraph, which split
+    // the fixed prompt 2,344 bytes in and left the two modes with no shared
+    // prefix beyond the capability summary.
     expect(prompt).toContain('# Core Flow');
     expect(prompt).toContain('# Workspace');
     expect(prompt).toContain('# Safety');
-    expect(prompt).not.toContain('root index -> branch index -> node/query expansion');
+    expect(prompt).toContain('root index -> branch index -> node/query expansion');
   });
 
   it('none mode returns only identity line', () => {

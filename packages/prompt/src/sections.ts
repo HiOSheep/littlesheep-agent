@@ -15,47 +15,27 @@ const CORE_FLOW_DIAGRAM = `ENTER → ACTIVITY ROUTER → ┬─ execute ──�
                                                     fail ↓
                                                   RECOVER → retry the failed stage, or stop and ask`;
 
-const CORE_FLOW_STAGE_BULLETS: Record<string, string> = {
-  router: '- **Activity router**: the runtime routes, not you. Plain conversation and tool work both run in the same loop.',
-  reply: '- **REPLY**: answer the user directly. No tool loop runs here.',
-  execute: '- **EXECUTE**: answer directly or request a tool. Tool calls pass through permission, scope and side-effect checks before running; results come back into this same loop.',
-  verify: '- **VERIFY**: the runtime checks the recorded evidence. Do not claim the runtime verified something it cannot see.',
-  recover: '- **RECOVER**: on failure the runtime retries, stops, or escalates to the user. Never replay a completed side effect.',
-  finalize: '- **FINALIZE**: the runtime publishes your answer.',
-};
+/** Character cap for the stable memory root index (see memoryTreeSection). */
+const MEMORY_INDEX_MAX_CHARS = 2_400;
 
 /**
- * A request only acts on the stage it is in, so a request that names its stage
- * gets the whole flow plus its own constraint instead of every stage constraint.
- * Naming no stage keeps the previous, full text.
+ * Core Flow reminder — the hard control flow contract.
+ *
+ * This section is byte-identical for every stage and purpose on purpose. It
+ * used to render a "This run is at the X stage" variant whenever a caller named
+ * its stage, and only REPLY did: the conversational turn and the tool turn of
+ * one session then diverged 324 bytes into the system prompt, so neither could
+ * reuse the other's cached prefix even though both run the same runtime
+ * contract. Naming the stage adds nothing the runtime does not already enforce,
+ * so the shared text is the only text.
  */
-function renderStagedCoreFlow(stage?: string): string | undefined {
-  const bullet = stage ? CORE_FLOW_STAGE_BULLETS[stage] : undefined;
-  if (!bullet) return undefined;
-  return `# Core Flow (hard control flow)
-
-This run is at the ${stage!.toUpperCase()} stage. The runtime drives every other stage itself; the whole flow is:
-
-\`\`\`
-${CORE_FLOW_DIAGRAM}
-\`\`\`
-
-${bullet}`;
-}
-/** Core Flow reminder — the hard control flow contract. */
-export function coreFlowSection(stage?: string): string {
-  const staged = renderStagedCoreFlow(stage);
-  if (staged) return staged;
+export function coreFlowSection(): string {
   return `# Core Flow (hard control flow)
 
 You are one assistant in one loop. The runtime decides permissions, validation, budgets and recovery; say what you need and it decides whether that is allowed.
 
 \`\`\`
-ENTER → ACTIVITY ROUTER → ┬─ execute ───────→ EXECUTE (one loop) → VERIFY → FINALIZE
-                          ├─ respond ───────→ REPLY → FINALIZE
-                          └─ clarify ───────→ ASK_USER → FINALIZE
-                                                    fail ↓
-                                                  RECOVER → retry the failed stage, or stop and ask
+${CORE_FLOW_DIAGRAM}
 \`\`\`
 
 - **Activity router**: the runtime routes, not you. Plain conversation and tool work both run in the same loop, so just answer or call a tool.
@@ -96,12 +76,18 @@ Registered in this run: ${list}.
 This is capability evidence, not permission to invoke tools from a direct response. Do not claim unlisted access.`;
 }
 
-/** Compact root awareness for RESPOND. Navigation instructions belong to EXECUTE. */
-export function memoryAwarenessSection(rootIndex: string): string {
-  const bounded = rootIndex.length <= 2_400
+/** Stable root index only; branch contents remain outside context until a tool expands them. */
+export function memoryTreeSection(rootIndex: string): string {
+  if (!rootIndex.trim()) return '';
+  // Bounded, because the index sits in the stable head: it is a required
+  // section, so the Context engine cannot evict it, and an unbounded index
+  // would push every request in the session past the prompt budget instead of
+  // degrading one index entry. Truncation is the same for every mode — a
+  // mode-specific cap was one of the reasons the two fixed prompts diverged.
+  const bounded = rootIndex.length <= MEMORY_INDEX_MAX_CHARS
     ? rootIndex
-    : `${rootIndex.slice(0, 2_320)}\n... [root index truncated; use indexed navigation in an execution activity]`;
-  return `${bounded}\n\nUse only supplied memory evidence. The index describes available branches; it is not the branch content.`;
+    : `${rootIndex.slice(0, MEMORY_INDEX_MAX_CHARS - 80)}\n... [root index truncated]`;
+  return `${bounded}\n\nMemory recall discipline:\n- Follow this exact order: root index -> branch index -> node/query expansion.\n- Expand only one relevant branch/node/query at a time. Never search across the whole tree by default.\n- Only when the selected branch's indexed expansion is insufficient may you use deep search, and it must remain scoped to that same branch.\n- Semantic/vector recall is a last-resort candidate source inside that branch, never the default memory entry point.\n- An atom returned by expand or deep search joins this run's active Context working set. Keep atoms that still help the goal and release atoms that have become irrelevant or misleading.\n- Releasing an atom changes only the current run Context. It does not edit, invalidate or delete durable memory, and the atom may be admitted again through the indexed path if the goal changes.\n- Do not repeatedly request the same fragment; the runtime ledger deduplicates it and enforces branch and run token budgets.`;
 }
 
 /** Safety section — guardrails. */
@@ -123,12 +109,6 @@ export function skillsSection(skills: { name: string; description: string }[]): 
 When a task matches a skill, prefer using it. Skill bodies are loaded on demand via the \`use_skill\` tool — they don't occupy context until called.
 
 ${list}`;
-}
-
-/** Stable root index only; branch contents remain outside context until a tool expands them. */
-export function memoryTreeSection(rootIndex: string): string {
-  if (!rootIndex.trim()) return '';
-  return `${rootIndex}\n\nMemory recall discipline:\n- Follow this exact order: root index -> branch index -> node/query expansion.\n- Expand only one relevant branch/node/query at a time. Never search across the whole tree by default.\n- Only when the selected branch's indexed expansion is insufficient may you use deep search, and it must remain scoped to that same branch.\n- Semantic/vector recall is a last-resort candidate source inside that branch, never the default memory entry point.\n- An atom returned by expand or deep search joins this run's active Context working set. Keep atoms that still help the goal and release atoms that have become irrelevant or misleading.\n- Releasing an atom changes only the current run Context. It does not edit, invalidate or delete durable memory, and the atom may be admitted again through the indexed path if the goal changes.\n- Do not repeatedly request the same fragment; the runtime ledger deduplicates it and enforces branch and run token budgets.`;
 }
 
 /** Workspace section. */

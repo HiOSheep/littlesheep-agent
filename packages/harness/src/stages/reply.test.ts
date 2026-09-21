@@ -238,8 +238,11 @@ describe('replyStage', () => {
     expect(ctx.contextSnapshots?.[0]?.safetyEstimate?.estimatedPromptTokens).toBeLessThan(12_000);
     const systemPrompt = allText(requests[0]);
     expect(systemPrompt).toContain('# Memory Tree Root Index');
+    // The index is bounded in every mode, and the discipline text is shared with
+    // the tool path: a respond-only memory paragraph used to split the fixed
+    // prompt from EXECUTE's, which cost both paths their shared prefix.
     expect(systemPrompt).toContain('root index truncated');
-    expect(systemPrompt).not.toContain('root index -> branch index -> node/query expansion');
+    expect(systemPrompt).toContain('root index -> branch index -> node/query expansion');
     expect(ctx.contextSnapshots?.[0]?.items
       .filter((item) => item.kind === 'recent_message')
       .every((item) => item.disposition === 'included')).toBe(true);

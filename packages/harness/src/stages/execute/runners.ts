@@ -33,7 +33,16 @@ export async function executeLegacyLoop(
   // example the document tools on a turn with no document) and made the
   // cacheable prefix larger than the admitted capability set.
   const admittedTools = toolsForRetrievalIntent(ctx);
-  const baseMessages = buildBaseMessages(ctx, systemPrompt.text, attachmentMessages);
+  // The system message is the above-boundary half of the bundle, exactly like
+  // REPLY's. Sections below the boundary (runtime facts, directives, bootstrap,
+  // summary, memory index at the tail) travel as their own Context messages, so
+  // the session's two paths describe the same layout instead of one sending the
+  // whole prompt as the system message and the other only its stable half.
+  const baseMessages = buildBaseMessages(
+    ctx,
+    systemPrompt.stableText ?? systemPrompt.text,
+    attachmentMessages,
+  );
   const result = await runToolLoop(deps, {
     ctx,
     messages: baseMessages,

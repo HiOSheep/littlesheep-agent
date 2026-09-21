@@ -20,7 +20,6 @@ import {
   coreFlowSection,
   toolingSection,
   capabilitiesSection,
-  memoryAwarenessSection,
   safetySection,
   skillsSection,
   memoryTreeSection,
@@ -38,8 +37,6 @@ export type PromptMode = 'full' | 'respond' | 'minimal' | 'none';
 
 /** Inputs to the pure renderer (Layer 1). */
 export interface PromptInput {
-  /** Stage name so the flow section can render only this stage's constraint. */
-  coreFlowStage?: string;
   /**
    * Omit the rendered tooling section. Set only where the request advertises the
    * tools natively and the runtime enforces the callable set, so the text would
@@ -153,7 +150,7 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
   // prefilled. Measured effect: the cross-stage shared head grows from 293
   // bytes (identity only) to this whole sequence.
   addStable('identity', identitySection(input.branding));
-  addStable('core-flow', coreFlowSection(input.coreFlowStage));
+  addStable('core-flow', coreFlowSection());
   addStable('safety', safetySection(), 'system_prompt', 100);
   addStable(
     'workspace',
@@ -178,10 +175,16 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
   addStable('capabilities', capabilitiesSection(input.tools), 'system_prompt', 98);
   // The memory index changes in only a small share of calls, so keeping it above
   // the boundary lets every call reuse its bytes instead of resending them.
+  //
+  // One rendering for every mode: the respond mode used to carry a different
+  // discipline paragraph, which split the fixed prompt 2,344 bytes in — right
+  // here — so the conversational turn and the tool turn of one session could not
+  // share a prefix. The index and the rule for reading it are the same fact in
+  // both modes; only the tools differ, and those travel below the boundary.
   if (mode !== 'minimal' && (isFull || isRespond) && input.memoryRootIndex) {
     addStable(
       'memory-root-index',
-      isRespond ? memoryAwarenessSection(input.memoryRootIndex) : memoryTreeSection(input.memoryRootIndex),
+      memoryTreeSection(input.memoryRootIndex),
       'memory_index',
       95,
       true,
@@ -373,8 +376,6 @@ export function resolvePromptConfig(config: Config, branding: BrandingConfig): R
  * prelude) and calls buildSystemPrompt with a fully-resolved PromptInput.
  */
 export interface RuntimeFacts {
-  /** Stage name so the flow section can render only this stage's constraint. */
-  coreFlowStage?: string;
   /**
    * Omit the rendered tooling section. Set only where the request advertises the
    * tools natively and the runtime enforces the callable set, so the text would
@@ -417,7 +418,6 @@ export async function assembleSystemPromptBundle(
       nodeVersion: typeof process !== 'undefined' ? process.version : undefined,
     }),
     bootstrap: facts.bootstrap,
-    coreFlowStage: facts.coreFlowStage,
     prelude: facts.prelude,
     sessionSummary: facts.sessionSummary,
     memoryRootIndex: facts.memoryRootIndex,
