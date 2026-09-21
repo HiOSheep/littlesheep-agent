@@ -82,15 +82,25 @@
 
 ### SP-02：收敛主循环提示组装入口（P0，依赖 SP-01）
 
-- [ ] 主循环只保留一个精简的固定规则提示；清除已经无效的阶段说明、TaskBook 步骤规则与重复能力介绍，删除无调用方的 split/helper，而非继续增加另一套 builder。
-- [ ] 由一个入口负责固定规则、会话区间基线和追加事件的顺序。消除 `text/stableText/trailingSegments` 在调用方使用不一致的问题。
+- [x] 主循环只保留一个精简的固定规则提示；清除已经无效的阶段说明、TaskBook 步骤规则与重复能力介绍，删除无调用方的 split/helper，而非继续增加另一套 builder。
+- [x] 由一个入口负责固定规则、会话区间基线和追加事件的顺序。消除 `text/stableText/trailingSegments` 在调用方使用不一致的问题。
 - [ ] SOUL/USER/工作区约定按配置版本进入区间基线；摘要只在明确压缩切换时替换；初始检索事实、根索引变化和任务约束以有界事件处理，不能在普通续接时悄悄改写旧头部。
 - [ ] 配置或权限变化必须立即体现，必要时开启新区间；不能为了缓存冻结已经失效的授权或记忆事实。
 
 入口：`prompt/builder.ts`、`profile-prompt.ts`、`execute/prompt.ts`、`execute/runners.ts`、`context-candidates.ts`。
 验收：同一区间聊天与工具轮的固定提示相同；摘要不会在非压缩路径被前插或更新；旧阶段规则与无用入口有实际净删除。
 
-**2026-09-21 部分进展（未完成）：** 追加事件的顺序已收敛到 `run-tail-ledger.ts` 一个入口；`retrieval-intent-contract` 不再由两个位置分别射出。仍未处理：sessionSummary / bootstrap / initialMemoryContext 仍位于 history 之前（`prompt/builder.ts:232` 起），`splitSystemPromptForCache` 仍无生产调用方，`text/stableText/trailingSegments` 的不一致仍在，旧阶段说明与 `guidance.ts` 中的 TaskBook 渲染函数尚未删除。
+**2026-09-21 SP-02 执行记录（三条验收中两条达成，第四条仍缺）：**
+
+- **实测（改前）：** 同一份上下文下，EXECUTE 的固定提示 5,208 字节、REPLY 3,297 字节，**第 324 字节即分歧**——也就是只有 identity 一行共享。根因是两个只在单一模式生效的分支：`coreFlowSection(stage)` 会给 REPLY 渲染 "This run is at the REPLY stage" 变体，`memoryAwarenessSection` 给 REPLY 渲染另一段记忆索引说明；此外 `appendSystemPromptBundleAddons` 不重算 `stableText`/`trailingSegments`，于是 REPLY 发"整份提示"作 system、EXECUTE 发"稳定半份"，两条路径的字节布局从根上就不一致。
+- **改后：** 共享前缀 **324 → 3,369 字节**，且分歧点**恰好落在 `<!-- LITTLESHEEP_CACHE_BOUNDARY -->` 标记处**——即压缩边界，也就是两种模式"应该"分歧的唯一位置（`shared-fixed-prompt.test.ts` 断言共享段 ≥3,300 字节且必须在标记处切开，同时断言稳定半份里不再出现 `This run is at the`）。
+- **收敛为一份的段落：** `coreFlowSection()` 去掉 stage 参数与 `CORE_FLOW_STAGE_BULLETS`；`memoryAwarenessSection` 删除，两种模式统一用 `memoryTreeSection`（并在共享段内恢复 2,400 字符上限——合并后 REPLY 一度失去截断，`reply.test.ts` 的 12k 守卫抓住了这个真实回退）。
+- **净删除（实际删除，不是新增一层）：** 删除 `packages/prompt/src/shared-head.ts` 与其测试（`buildSharedPromptHead`/`sharedPromptHeadPrefixLength` 全仓库无生产调用方）；删除 `CORE_FLOW_STAGE_BULLETS`、`renderStagedCoreFlow`、`memoryAwarenessSection`；`PromptInput.coreFlowStage` / `RuntimeFacts.coreFlowStage` 从 API 与 `reply.ts` 调用处移除。
+- **`text`/`stableText`/`trailingSegments` 不一致已修：** `rebuildBundle` 现在重算这三个字段；EXECUTE 与 REPLY 都改用 `systemPrompt.stableText ?? systemPrompt.text` 作为 system 消息。连带修掉一个既有隐患：`buildRunRequestCandidates` 现在按段落 id 去重，调用方重复提供同一段落不再触发 `Duplicate context candidate id` 契约失败。
+- [x] 同一区间聊天与工具轮的固定提示相同（稳定半份逐字节相同）。
+- [ ] 摘要不会在非压缩路径被前插或更新：`sessionSummary` / `bootstrap` / `initialMemoryContext` 仍在 history 之前（`prompt/builder.ts` 的下边界段落），本轮未移动。下一次压缩边界才会替换摘要，run 内不会变，但"区间的显式边界"仍未表达。
+- [ ] 旧阶段规则与无用入口的净删除：已删除上列四项；`guidance.ts` 的 `renderStepGuidance`（TaskBook 步骤执行器已随第二执行体系删除，现仅测试引用）与 `taskbook-skill.ts` 的引用链尚未处理，留待与 SP-05 一起判定。
+- [ ] 配置或权限变化开启新区间：未处理。
 
 ### SP-03：让最终发送消息成为可续接的序列（P0，依赖 SP-02）
 
