@@ -8,6 +8,13 @@ configuration:
 | --- | --- |
 | [`pre-fix-cd6cabc.md`](pre-fix-cd6cabc.md) | `cd6cabc`, the commit before this work started |
 | [`baseline-git-0af62a7.md`](baseline-git-0af62a7.md) | `0af62a7`, after SP-01/02/04/05/06/07 |
+| [`baseline-git-1929e7e.md`](baseline-git-1929e7e.md) | `1929e7e`, re-pin after the boundary fix |
+
+Every pin carries the same frozen loads and the same numbers as `baseline-git-0af62a7.md`;
+the probe runs inside the harness suite, so its tracked output (`latest.md` plus the four
+per-load JSON files) is re-labelled on every run. Only the freeze label differs between
+re-pins — measurements that change are the ones worth reading, and none have since
+`0af62a7`.
 
 ## What the probe measures
 
@@ -104,13 +111,21 @@ stable.
 - **No hit rate.** Nothing here contacts a Provider, so no cache-hit percentage
   is claimed and the 95% acceptance target is not asserted. A Provider's cache
   depends on its own state as well as prefix stability.
+  Real Provider readings now exist separately, from two live frozen loads run
+  through the app (`scripts/verify-harness-path-comparison.mjs`, audited with
+  `scripts/audit-cache-usage.mjs`): 78.098% / 78.182% overall on a shared
+  20-task conversation session, 83.690% / 84.523% on continuous tool work, and
+  62.827% / 63.228% with compaction enabled. They are recorded in
+  [`../system-prompt-prefix-cleanup-2026-09-21.md`](../system-prompt-prefix-cleanup-2026-09-21.md)
+  (SP-08) and none of them reaches 95%.
 - **No usage completeness.** The probe's requests have no Provider usage, so the
   usage-completeness dimension SP-08 asks for is recorded as `unavailable` rather
   than reported as zero.
 - **Only two freezes.** The comparison is between one pre-fix commit and one
   post-fix commit on a synthetic frozen load. It is evidence that the structural
   defects named in the taskbook are repaired; it is not a measurement of a real
-  session.
+  session. The later re-pins are the same measurement at a newer commit, not
+  additional evidence.
 - **Cost is not net-negative.** The fixed catalog makes requests larger, and
   honouring the boundary turns below-boundary sections into their own messages
   rather than folding them into the system message. Whether that pays off depends

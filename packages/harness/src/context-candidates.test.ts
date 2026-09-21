@@ -112,6 +112,47 @@ describe('buildRunRequestCandidates', () => {
     ]);
   });
 
+  it('keeps the declared Context kind of a below-boundary section it emits', () => {
+    const ctx = makeCtx({ inbound: textMessage('user', 'hello') });
+    const trailingSegments = [
+      {
+        id: 'output-directives',
+        order: 0,
+        text: '---\n\n# Assistant Output Directives\n\n- be brief',
+        kind: 'output_constraint' as const,
+        source: { kind: 'prompt' as const, id: 'output-directives' },
+        priority: 60,
+        required: false,
+        sensitive: true,
+      },
+      {
+        id: 'retrieval-intent-contract',
+        order: 1,
+        text: 'Runtime retrieval intent: none',
+        kind: 'runtime_event' as const,
+        source: { kind: 'runtime_event' as const, id: 'retrieval-intent' },
+        priority: 100,
+        required: true,
+        sensitive: true,
+      },
+    ];
+    const candidates = buildRunRequestCandidates(ctx, 'reply', [
+      { role: 'system', content: 'stable' },
+      { role: 'user', content: 'hello' },
+    ], { history: [], trailingSegments });
+
+    // A section that travels below the boundary keeps the kind the prompt
+    // declared for it: the call contract validates Context by kind, so a
+    // bootstrap file must stay project knowledge and a directives block must stay
+    // an output constraint whether it sits inside the system message or beside it.
+    const trailing = candidates.slice(-2);
+    expect(trailing.map((item) => item.kind)).toEqual(['output_constraint', 'runtime_event']);
+    expect(trailing.map((item) => item.id)).toEqual(['output-directives', 'retrieval-intent-contract']);
+    // They travel after the conversation, in the order the caller declared.
+    expect(trailing[0]!.order).toBeGreaterThan(candidates[1]!.order);
+    expect(trailing[1]!.order).toBeGreaterThan(trailing[0]!.order);
+  });
+
   it('keeps the topic anchor and its answer ahead of unrelated recent chatter', () => {
     const history = [
       textMessage('user', '之前聊点别的'),
