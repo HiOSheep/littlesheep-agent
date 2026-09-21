@@ -173,6 +173,14 @@
 - **验收证据（`clarification-single-call.test.ts`，4 项）：** 模型提问路径 `llm.chat` **未被调用**且 provenance 指向 `request-that-asked`、`rewriteCount=0`；升级路径恰好 1 次调用且 `purpose='ask_user'`；两次空响应 → `ok: false`、无 `reply`、无 `replyProvenance`、`lastError.stage='ask_user'`；execute 路由写入的 `copyModelRequestId` 确实存在于 `modelRequests` 记录中。
 - **未做：** 第三条（连续性纠正不再改写首条 system、改为在原循环追加有界反馈并使用原工具目录与受控 `tool_choice`）本轮未动。
 
+**2026-09-21 SP-06 第三条执行记录（部分完成，剩余缺口已断言）：**
+
+- **实测（改前）：** 纠正请求（1）把 `Continuity correction contract` 追加进 **system 提示词**，所以第一条消息就不同；（2）走 `reply` 调用契约，而该契约 `toolMode: 'none'`，所以**工具目录为 0**（草稿请求有 1 个工具）；（3）重建消息数组，丢掉主循环的尾部位置。
+- **改法：** `repairDiscontinuousReply` 改为接收**请求形状**（purpose / 逐字消息 / 工具目录 / 采样参数），把纠正作为**追加的有界反馈**（草稿 + 一条契约消息）而非重写 system；工具目录保留并用 `tool_choice: 'none'` 禁止调用（与强制收尾同一手法）。工具循环现在回传它实际发出的消息与目录（`requestMessages` / `requestTools` / `requestTailMessages`），两条调用方各自传入自己的请求。`buildRunRequestCandidates` 新增 `primaryUserIndex`，让"在已装配请求后追加"的调用方把追加的那条标为本轮用户输入。`SystemPromptBundle` 新增 `stableSegments`（此前只有 `stableText` 与 `trailingSegments`）。
+- **已完成并可验证（`continuity-correction-prefix.test.ts`，6 项）：** 纠正不再改写 system 提示词；工具目录与草稿请求**逐字节相同**且 `tool_choice='none'`；所有对话消息保持原顺序；已连续的回复不发纠正请求；对话路径行为一致。
+- **剩余缺口（已用断言钉住，不会静默漂移）：** 纠正请求的**首条 system 消息仍与草稿请求不一致**——请求记录器会按提示词的分段列表重新装配 system，而不是复用被扩展的那条请求；实测草稿 4,058 字符、纠正 2,323 字符（纠正丢掉的是主循环作为尾部单独发送的边界以下段落）。因此纠正的复用上限仍被钉在该字节处。
+- **顺带修正的一处真实语义漂移：** 修 `stableSegments` 过程中发现，把**整份** `segments` 交给装配器会让它用**边界以下**的段落重建 system 消息，等于把这些段落悄悄移到边界之上。`stableSegments` 让调用方能只交出一半。本轮**未**改 execute 路径的这一处（改动会连带把 bootstrap/指令从 system 消息移到尾部，超出本项范围），已在代码注释中记录。
+
 ### SP-07：压缩只携带必要输入（P1）
 
 - [x] 保留当前摘要长度及 branch/scope 契约修复，移除压缩请求无关的能力快照、检索规则和主循环状态注入。
