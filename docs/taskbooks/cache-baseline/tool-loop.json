@@ -1,0 +1,52 @@
+{
+  "probe": "tool-loop",
+  "freeze": "git 0af62a7",
+  "model": "test",
+  "toolNames": [
+    "read",
+    "web_search",
+    "web_fetch",
+    "document_read"
+  ],
+  "requests": [
+    {
+      "index": 1,
+      "label": "loop.call1",
+      "characters": 7019,
+      "messages": 6,
+      "stableHeadCharacters": 3446,
+      "catalog": "document_read,read,web_fetch,web_search#9c23a5b0"
+    },
+    {
+      "index": 2,
+      "label": "loop.call2",
+      "characters": 7317,
+      "messages": 8,
+      "sharedPrefixCharacters": 7019,
+      "sharedPrefixRatio": 1,
+      "stableHeadCharacters": 3446,
+      "catalog": "document_read,read,web_fetch,web_search#9c23a5b0"
+    },
+    {
+      "index": 3,
+      "label": "loop.call3",
+      "characters": 7615,
+      "messages": 10,
+      "sharedPrefixCharacters": 7317,
+      "sharedPrefixRatio": 1,
+      "stableHeadCharacters": 3446,
+      "catalog": "document_read,read,web_fetch,web_search#9c23a5b0"
+    },
+    {
+      "index": 4,
+      "label": "loop.call4",
+      "characters": 7913,
+      "messages": 12,
+      "sharedPrefixCharacters": 7615,
+      "sharedPrefixRatio": 1,
+      "stableHeadCharacters": 3446,
+      "catalog": "document_read,read,web_fetch,web_search#9c23a5b0"
+    }
+  ],
+  "publishedReply": "read all three notes"
+}
