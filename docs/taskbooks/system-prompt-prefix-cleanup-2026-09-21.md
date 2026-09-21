@@ -216,18 +216,25 @@
 
 - [x] 保留当前摘要长度及 branch/scope 契约修复，移除压缩请求无关的能力快照、检索规则和主循环状态注入。
 - [x] 保留最小专用摘要契约、真实待压缩消息、必须保真的目标/决定/产物与引用。压缩仍是当前唯一持久记忆写入方，不能在此次精简中误删该能力。
-- [ ] 明确摘要安装与消息截断为一次原子区间切换；失败继续使用旧的有效摘要，所有失败与重试计入成本。不要在本任务中顺带改变冻结基准的压缩频率。
+- [x] 明确摘要安装与消息截断为一次原子区间切换；失败继续使用旧的有效摘要，所有失败与重试计入成本。不要在本任务中顺带改变冻结基准的压缩频率。
 
 入口：`runner/session-continuity.ts`、`model-observability.ts`、`runtime-awareness.ts`、压缩操作存储与恢复测试。
 验收：压缩请求无无关播报；合法记忆候选与摘要保真通过；中断/失败不丢失旧摘要和未完成目标；保留已有未提交修复及其回归测试。
 
-**2026-09-21 SP-07 执行记录（前两条完成，第三条未做）：**
+**2026-09-21 SP-07 执行记录（三条完成）：**
 
 - **实测（改前）：** 压缩请求经 `prepareModelRequest` 走通用注入，实测形状为 `ssu`：系统摘要契约 + 中间夹入的 `# Runtime Facts`（能力快照、权限、工作区、网络、注册工具）+ 用户载荷。按字节：**355 字节的 Runtime 事实块对 32 字节的待压缩内容**——无关播报是被压缩内容的 11 倍，而且两次尝试每次都重付。
 - **改法：** 压缩调用传 `skipRuntimeTail: true`，请求记录器不再注入 Runtime 尾部。记忆片段注入本就未生效（`session_compaction` 调用契约不允许 `memory_fragment` 这种 Context 种类），所以这次是关掉剩余的注入，而不是开一个新的豁免。
 - **刻意不动：** 摘要长度上限（1200 字符）与 branch/scope 配对规则（既有 `session-compaction-prompt.test.ts` 正在守）、1800/2200 token 预算、尝试次数、压缩频率。压缩仍是唯一的持久记忆写入方。
 - **验收证据（`session-compaction-input.test.ts`，3 项）：** 源码级断言压缩请求被标记为 summary-only；摘要契约与保真优先级仍在；真实 runner 运行中，摘要请求只带提示词与转录，**不含** `# Runtime Facts` / 检索契约 / `# Runtime State` / `capability_epoch` / `permission_policy`，同时该 run 仍正常发布摘要（`metadata.compaction.summary` 正确）。
-- **未做：** 第三条（摘要安装与消息截断作为一次原子区间切换的显式化；失败继续使用旧摘要并把所有失败与重试计入成本）。现有实现已有"scheduler 单飞 + 失败保留旧摘要"的行为，但区间切换的原子性未被显式断言。
+
+**2026-09-21 SP-07 第三条执行记录（完成）：**
+
+- **原子区间切换（显式断言）：** 新增 `compaction.test.ts` 用例，断言"摘要"和"它覆盖的区间"是**同一条记录的两个半边**：活动元数据、durable projection 与返回值三者的 `id`/`collapsedCount`/`sourceStartMessageId`/`sourceEndMessageId` 完全一致，`sourceHash` 等于被覆盖前缀的重算哈希，且 `compacted: true` 与摘要同批出现；原始 JSONL 消息条数与 id 顺序不变（压缩从不截断正文）。
+- **失败继续使用旧的有效摘要（显式断言）：** 先成功压缩一次，再追加消息后让摘要调用抛错：断言活动摘要的 `id`/`sourceEndMessageId`/`collapsedCount` **原样保持**、不留下 pending 事务；随后一次成功压缩的 `previousSummaryId` 指向前一份有效摘要且覆盖区间单调扩大——失败没有跳过或吞掉那段区间。
+- **所有失败与重试计入成本（实现改动）：** 压缩操作此前只统计**拿到了响应的**请求（`ctx.usage.requestCount` 由响应驱动），因此一次完全失败的操作在记录里**连 `usage` 字段都没有**。新增 `CompactionAttemptTally`：`onRequest` 记 issued/retries、`onError` 记 failures，`compactionUsage` 改为 `requestCount = max(issued, 响应数)`，并在 `SessionCompactionUsage`（及 app 侧同形投影）新增可选 `retryRequests`/`failedRequests`。token 总量仍在**没有任何 usage 上报时保持缺省**，不按 0 补齐，`usageStatus` 相应为 `unavailable`/`partial`。
+- **有牙验证：** 把 `requestCount` 改回"仅响应数"，`session-compaction-input.test.ts` 的失败用例立刻失败（记录里 `usage` 整个缺失）。
+- **刻意不动：** 压缩阈值、`keepRecent`、压缩频率、摘要长度上限、尝试次数（`maxAttempts: 2`）与 branch/scope 契约均未改变；工具循环的 `evictionScope` 也不影响压缩请求（压缩是单请求区间）。
 
 ### SP-08：按真实请求和成本验收（P0 建立基线，最后收口）
 

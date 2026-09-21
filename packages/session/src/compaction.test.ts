@@ -2,9 +2,9 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { textMessage, type Message } from '@littlesheep/types';
+import { textMessage, type CompactionSummaryV2, type Message } from '@littlesheep/types';
 import { SessionManager, StaleCompactionError } from './manager.js';
-import { maybeCompact } from './compaction.js';
+import { hashCompactionMessages, maybeCompact } from './compaction.js';
 
 const tempDirs: string[] = [];
 
@@ -161,6 +161,82 @@ describe('maybeCompact', () => {
       compacted: true,
       compaction: { id: result?.id, sourceEndMessageId: 'message-5' },
     });
+  });
+
+  // SP-07: the summary and the range it covers become visible in one switch.
+  it('switches the active summary and its covered range together', async () => {
+    const { manager, sessionId, messages } = await managerWithMessages(7);
+    const result = await maybeCompact(manager, sessionId, {
+      threshold: 6,
+      keepRecent: 2,
+      summarize: async () => ({ summary: 'atomic switch' }),
+    });
+    expect(result).toBeTruthy();
+    if (!result || result.version !== 2) throw new Error('Expected a v2 compaction summary.');
+
+    // One record carries both halves: which messages the switch covers and the
+    // summary installed by it. A reader can never observe the new summary with
+    // the old coverage (or the reverse).
+    const active = (await manager.loadMetadata(sessionId))?.compaction as CompactionSummaryV2 | undefined;
+    const projection = await manager.loadCompactionProjection(sessionId, result.id) as CompactionSummaryV2;
+    const covered = messages.slice(0, 5);
+    for (const record of [active, projection, result]) {
+      expect(record).toMatchObject({
+        id: result.id,
+        collapsedCount: 5,
+        sourceStartMessageId: 'message-1',
+        sourceEndMessageId: 'message-5',
+      });
+      expect(record?.sourceHash).toBe(hashCompactionMessages(covered));
+    }
+    expect((await manager.loadMetadata(sessionId))?.compacted).toBe(true);
+
+    // Compaction never truncates the transcript it summarized.
+    expect((await manager.read(sessionId)).map((message) => message.id))
+      .toEqual(messages.map((message) => message.id));
+  });
+
+  // SP-07: a failed switch keeps the previous valid summary and its range.
+  it('keeps the previous valid summary when a later compaction fails', async () => {
+    const { manager, sessionId, messages } = await managerWithMessages(7);
+    const first = await maybeCompact(manager, sessionId, {
+      threshold: 6,
+      keepRecent: 2,
+      summarize: async () => ({ summary: 'first valid summary' }),
+    });
+    expect(first).toBeTruthy();
+    const firstState = (await manager.loadMetadata(sessionId))?.compaction;
+
+    await manager.append(sessionId, [
+      textMessage('user', 'message-8', { id: 'message-8', runId: 'run-4' }),
+      textMessage('assistant', 'message-9', { id: 'message-9', runId: 'run-4' }),
+      textMessage('user', 'message-10', { id: 'message-10', runId: 'run-5' }),
+    ]);
+    await expect(maybeCompact(manager, sessionId, {
+      threshold: 1,
+      keepRecent: 2,
+      summarize: async () => {
+        throw new Error('summarizer unavailable');
+      },
+    })).rejects.toThrow('summarizer unavailable');
+
+    // The failed attempt leaves no partial switch behind.
+    const afterFailure = (await manager.loadMetadata(sessionId))?.compaction;
+    expect(afterFailure?.id).toBe(firstState?.id);
+    expect(afterFailure?.sourceEndMessageId).toBe('message-5');
+    expect(afterFailure?.collapsedCount).toBe(5);
+    expect(await manager.listPendingCompactions(sessionId)).toEqual([]);
+
+    // The range the failed attempt was asked to cover is still uncovered, so the
+    // next successful switch extends the same valid summary instead of skipping it.
+    const second = await maybeCompact(manager, sessionId, {
+      threshold: 1,
+      keepRecent: 2,
+      summarize: async () => ({ summary: 'second valid summary' }),
+    });
+    expect(second?.version === 2 && second.previousSummaryId).toBe(firstState?.id);
+    expect(second?.collapsedCount).toBeGreaterThan(5);
+    expect((await manager.read(sessionId))).toHaveLength(10);
   });
 
   it('persists memory candidates in the same compaction transaction before projection settlement', async () => {

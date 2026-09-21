@@ -30,6 +30,21 @@ afterAll(async () => {
 });
 
 describe('session compaction input boundary', () => {
+  /** A runner whose session crosses the compaction threshold after one run. */
+  async function createCompactionRunner(llm: unknown) {
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.sessions.compaction.threshold = 2;
+    config.sessions.compaction.keepRecent = 1;
+    const runner = await createRunner({
+      config,
+      branding: DEFAULT_BRANDING,
+      model: 'openai/gpt-test',
+      llm: llm as never,
+    });
+    created.push(runner);
+    return runner;
+  }
+
   it('marks the compaction request as summary-only', () => {
     // The request recorder must not inject the Runtime tail into it.
     expect(source).toMatch(/session_compaction[\s\S]{0,1200}skipRuntimeTail: true/u);
@@ -87,5 +102,86 @@ describe('session compaction input boundary', () => {
     // The run published the summary and the boundary did not change.
     const metadata = await runner.sessionManager.loadMetadata(result.sessionId);
     expect(metadata?.compaction?.summary).toBe('summary text');
+  });
+
+  it('counts a retried summary attempt into the operation cost', async () => {
+    const llm = {
+      chat: vi.fn(async (request: { messages: Array<{ content: unknown }> }) => {
+        const system = String(request.messages[0]?.content ?? '');
+        if (!system.includes('versioned session summary')) return textResponse('ok');
+        summaryCalls += 1;
+        // The first answer is unusable, so the operation issues a second request.
+        return summaryCalls === 1
+          ? textResponse('a summary that is not JSON')
+          : textResponse(JSON.stringify({ summary: 'second attempt summary', candidates: [] }));
+      }),
+      chatStream: vi.fn(),
+      embed: vi.fn(),
+    };
+    const runner = await createCompactionRunner(llm);
+    let summaryCalls = 0;
+
+    const result = await runner.run({ text: 'remember this request' });
+
+    expect(summaryCalls).toBe(2);
+    const operation = runner.compactionOperations?.()[0];
+    expect(operation).toMatchObject({
+      status: 'completed',
+      result: 'compacted',
+      // Both issued requests count, not only the one that produced a summary.
+      usage: { requestCount: 2, retryRequests: 1, usageStatus: 'unavailable' },
+    });
+    // No usage was reported, so no token totals are invented.
+    expect(operation?.usage?.totalTokens).toBeUndefined();
+    const metadata = await runner.sessionManager.loadMetadata(result.sessionId);
+    expect(metadata?.compaction?.summary).toBe('second attempt summary');
+  });
+
+  it('counts attempts that never reached a response into the operation cost', async () => {
+    // A transport error produces no Provider usage at all, so a cost report built
+    // only from responses would show nothing spent for a request that was issued.
+    const failing = {
+      chat: vi.fn(async (request: { messages: Array<{ content: unknown }> }) => {
+        const system = String(request.messages[0]?.content ?? '');
+        if (!system.includes('versioned session summary')) return textResponse('ok');
+        throw new Error('provider unreachable');
+      }),
+      chatStream: vi.fn(),
+      embed: vi.fn(),
+    };
+    const failingRunner = await createCompactionRunner(failing);
+    const failedRun = await failingRunner.run({ text: 'remember this request' });
+
+    const failedOperation = failingRunner.compactionOperations?.()[0];
+    expect(failedOperation).toMatchObject({
+      status: 'failed',
+      usage: { requestCount: 1, failedRequests: 1, usageStatus: 'unavailable' },
+    });
+    expect(failedOperation?.usage?.totalTokens).toBeUndefined();
+    // A failed switch leaves the session without a summary rather than with a
+    // half-installed one.
+    const metadata = await failingRunner.sessionManager.loadMetadata(failedRun.sessionId);
+    expect(metadata?.compaction).toBeUndefined();
+
+    // The mixed case: one unusable answer, then a transport failure.
+    let summaryCalls = 0;
+    const mixed = {
+      chat: vi.fn(async (request: { messages: Array<{ content: unknown }> }) => {
+        const system = String(request.messages[0]?.content ?? '');
+        if (!system.includes('versioned session summary')) return textResponse('ok');
+        summaryCalls += 1;
+        if (summaryCalls === 1) return textResponse('a summary that is not JSON');
+        throw new Error('provider unreachable');
+      }),
+      chatStream: vi.fn(),
+      embed: vi.fn(),
+    };
+    const mixedRunner = await createCompactionRunner(mixed);
+    await mixedRunner.run({ text: 'remember this request' });
+
+    expect(mixedRunner.compactionOperations?.()[0]).toMatchObject({
+      status: 'failed',
+      usage: { requestCount: 2, retryRequests: 1, failedRequests: 1, usageStatus: 'unavailable' },
+    });
   });
 });

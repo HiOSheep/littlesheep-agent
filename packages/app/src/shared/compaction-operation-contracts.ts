@@ -7,10 +7,15 @@ export type CompactionOperationStatus = 'running' | 'completed' | 'failed' | 'ca
 export type CompactionOperationUsageStatus = 'reported' | 'partial' | 'unavailable'
 
 export interface CompactionOperationUsage {
+  /** Requests this operation issued, including attempts that failed or were retried. */
   requestCount: number
   promptTokens?: number
   completionTokens?: number
   totalTokens?: number
+  /** Attempts repeated after an unusable previous response. */
+  retryRequests?: number
+  /** Attempts that ended without a response instead of with one. */
+  failedRequests?: number
   usageStatus: CompactionOperationUsageStatus
 }
 

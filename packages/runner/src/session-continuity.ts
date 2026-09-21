@@ -70,6 +70,10 @@ export async function compactSessionAfterRun(options: RunSessionCompactionOption
 
 async function runCompactionAttempt(options: RunSessionCompactionOptions): Promise<SessionCompactionRunResult> {
   const before = usageCounters(options.ctx);
+  // Every request this operation issues, not only the ones that came back with
+  // usage: a retried or failed attempt is a real request and must not vanish
+  // from the operation's cost.
+  const attempts: CompactionAttemptTally = { issued: 0, retries: 0, failures: 0 };
   try {
     await settlePendingCompactionMemory(options);
     const compacted = await maybeCompact(options.sessionManager, options.sessionId, {
@@ -124,6 +128,8 @@ async function runCompactionAttempt(options: RunSessionCompactionOptions): Promi
           signal: options.signal,
           validateParsed: (value) => decodeCompaction(value, messages.map((message) => message.id), options.workspace),
           onRequest: (request, retry) => {
+            attempts.issued += 1;
+            if (retry.attempt > 1) attempts.retries += 1;
             const prepared = prepareModelRequest(
               options.ctx,
               'session_compaction',
@@ -149,7 +155,10 @@ async function runCompactionAttempt(options: RunSessionCompactionOptions): Promi
           },
           onResponse: (request, result) => recordProviderUsage(options.ctx, request, result.usage),
           beforeRequest: (request) => ensureModelRequestStarted(options.ctx, request),
-          onError: (request, error) => recordModelRequestFailure(options.ctx, request, error, options.signal),
+          onError: (request, error) => {
+            attempts.failures += 1;
+            return recordModelRequestFailure(options.ctx, request, error, options.signal);
+          },
         });
         const decoded = response.parsed ?? legacyCompactionResponse(response.lastResponse?.content);
         if (!decoded) throw new Error('Session compaction did not return a valid summary proposal.');
@@ -167,14 +176,32 @@ async function runCompactionAttempt(options: RunSessionCompactionOptions): Promi
         };
       },
     });
-    if (!compacted) return { status: 'no-new-range', ...withUsage(compactionUsage(before, usageCounters(options.ctx))) };
+    if (!compacted) {
+      return {
+        status: 'no-new-range',
+        ...withUsage(compactionUsage(before, usageCounters(options.ctx), attempts)),
+      };
+    }
     await settlePendingCompactionMemory(options);
-    return { status: 'compacted', ...withUsage(compactionUsage(before, usageCounters(options.ctx))) };
+    return { status: 'compacted', ...withUsage(compactionUsage(before, usageCounters(options.ctx), attempts)) };
   } catch (error) {
     const message = (error as Error).message;
     options.log?.('warn', `runner: session compaction skipped: ${message}`);
-    return { status: 'failed', error: message, ...withUsage(compactionUsage(before, usageCounters(options.ctx))) };
+    // A failed operation still reports what it spent: the tally covers attempts
+    // that never produced a response, which the usage counters cannot see.
+    return {
+      status: 'failed',
+      error: message,
+      ...withUsage(compactionUsage(before, usageCounters(options.ctx), attempts)),
+    };
   }
+}
+
+/** Requests one compaction operation issued, including the ones that failed. */
+interface CompactionAttemptTally {
+  issued: number;
+  retries: number;
+  failures: number;
 }
 
 /** Snapshot the run aggregate so compaction cost can be attributed to its own operation. */
@@ -198,8 +225,11 @@ function usageCounters(ctx: RunContext): {
 function compactionUsage(
   before: ReturnType<typeof usageCounters>,
   after: ReturnType<typeof usageCounters>,
+  attempts: CompactionAttemptTally,
 ): SessionCompactionUsage | undefined {
-  const requestCount = after.requestCount - before.requestCount;
+  // Requests issued, not responses received: a retry or a failure consumed a
+  // request slot even though the Provider reported nothing for it.
+  const requestCount = Math.max(attempts.issued, after.requestCount - before.requestCount);
   if (requestCount <= 0) return undefined;
   const reportedRequestCount = after.reportedRequestCount - before.reportedRequestCount;
   return {
@@ -213,6 +243,8 @@ function compactionUsage(
       : {}),
     // Unknown usage keeps a non-zero request count and omits token totals instead of inventing zeros.
     usageStatus: reportedRequestCount >= requestCount ? 'reported' : reportedRequestCount > 0 ? 'partial' : 'unavailable',
+    ...(attempts.retries > 0 ? { retryRequests: attempts.retries } : {}),
+    ...(attempts.failures > 0 ? { failedRequests: attempts.failures } : {}),
   };
 }
 

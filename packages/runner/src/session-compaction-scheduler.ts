@@ -24,10 +24,15 @@ export interface SessionCompactionOperationRecord {
 }
 
 export interface SessionCompactionUsage {
+  /** Requests this operation issued, including attempts that failed or were retried. */
   readonly requestCount: number;
   readonly promptTokens?: number;
   readonly completionTokens?: number;
   readonly totalTokens?: number;
+  /** Attempts repeated after an unusable previous response. */
+  readonly retryRequests?: number;
+  /** Attempts that ended without a response instead of with one. */
+  readonly failedRequests?: number;
   readonly usageStatus: 'reported' | 'partial' | 'unavailable';
 }
 
