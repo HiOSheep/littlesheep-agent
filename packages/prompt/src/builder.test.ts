@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildSystemPrompt, buildSystemPromptBundle, truncateBootstrap, applyBootstrapLimits } from './builder.js';
-import { splitAtBoundary, CACHE_BOUNDARY_MARKER } from './cache-boundary.js';
+import { CACHE_BOUNDARY_MARKER } from './cache-boundary.js';
 import { DEFAULT_BRANDING } from '@littlesheep/branding';
 import type { AgentTool } from '@littlesheep/types';
 
@@ -64,7 +64,7 @@ describe('cross-stage shared prefix', () => {
 
 describe('buildSystemPrompt', () => {
   it('full mode includes all sections + cache boundary', () => {
-    const prompt = buildSystemPrompt({
+    const bundle = buildSystemPromptBundle({
       branding: DEFAULT_BRANDING,
       tools: [stubTool],
       workspace: '/tmp/ws',
@@ -72,6 +72,7 @@ describe('buildSystemPrompt', () => {
       memoryRootIndex: '# Memory Tree Root Index\n- `daily`: dated details',
       mode: 'full',
     });
+    const prompt = bundle.text;
     expect(prompt).toContain('LittleSheep');
     expect(prompt).toContain('Core Flow');
     expect(prompt).toContain('read');
@@ -93,9 +94,11 @@ describe('buildSystemPrompt', () => {
     // instead of describing precision rules for a clock the model never sees.
     expect(prompt).toContain('No clock or elapsed time is injected into your context');
     expect(prompt).toContain('session_status');
-    const parts = splitAtBoundary(prompt);
-    expect(parts.stable).toContain('Memory Tree Root Index');
-    expect(parts.volatile).not.toContain('Memory Tree Root Index');
+    // The memory index is above the boundary in the bundle's own split, so it is
+    // part of the stable half and of no trailing section.
+    expect(bundle.stableText).toContain('Memory Tree Root Index');
+    expect((bundle.trailingSegments ?? []).map((segment) => segment.text).join(''))
+      .not.toContain('Memory Tree Root Index');
   });
 
   it('minimal mode omits Core Flow section heading and prelude', () => {
@@ -209,11 +212,11 @@ describe('buildSystemPrompt', () => {
       required: true,
       source: { kind: 'memory', id: 'initial-selection' },
     });
-    const parts = splitAtBoundary(bundle.text);
-    expect(parts.stable).not.toContain('Relevant fact.');
-    expect(parts.volatile).toContain('Relevant fact.');
+    const parts = bundle;
+    expect(parts.stableText).not.toContain('Relevant fact.');
+    expect((parts.trailingSegments ?? []).map((segment) => segment.text).join(''))
+      .toContain('Relevant fact.');
   });
-
   it('registers a versioned session summary as summary memory', () => {
     const bundle = buildSystemPromptBundle({
       branding: DEFAULT_BRANDING,
@@ -240,13 +243,6 @@ describe('buildSystemPrompt', () => {
       source: { kind: 'memory', id: 'summary-1' },
     });
     expect(bundle.text).toContain('Earlier goals and decisions.');
-  });
-
-  it('splitAtBoundary correctly separates stable/volatile', () => {
-    const prompt = `stable part\n\n${CACHE_BOUNDARY_MARKER}\n\nvolatile part`;
-    const { stable, volatile } = splitAtBoundary(prompt);
-    expect(stable).toBe('stable part');
-    expect(volatile).toBe('volatile part');
   });
 });
 

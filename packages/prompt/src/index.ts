@@ -1,6 +1,6 @@
 // @littlesheep/prompt — public API
 
-export { CACHE_BOUNDARY_MARKER, splitAtBoundary } from './cache-boundary.js';
+export { CACHE_BOUNDARY_MARKER } from './cache-boundary.js';
 export {
   formatElapsedMilliseconds,
   formatRuntimeClock,

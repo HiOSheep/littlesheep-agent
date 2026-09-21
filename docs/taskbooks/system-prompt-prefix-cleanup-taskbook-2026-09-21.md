@@ -1,6 +1,6 @@
 # 系统提示词与请求前缀精简任务清单 · 2026-09-21
 
-最后更新：2026-09-22 02:15:00
+最后更新：2026-09-22 02:26:00
 
 日期：2026-09-21。
 状态：SP-01～SP-07 已全部实现并有回归证据；SP-08 已建立结构基线与真实 Provider 读数。**唯一未执行项**是 SP-08 第 3 条中"修正验收文档过时汇总"这半边——`docs/reference/cache-95-acceptance.md` 在本任务期间有作者本人的在途改动，作者要求不要动该文件（见 SP-08 记录）；该条的"有界脱敏、原始内容不入库"半边已用扫描验证。**缓存 95% 目标未达成**，三组真实负载读数见 SP-08 记录。
@@ -287,6 +287,14 @@
 - **大型文件（已修）：** `context-candidates.ts`、`memory-known-state.ts` 补职责头注释；三个 >300 行文件登记进 `docs/reference/module-split-map.md` 软上限队列。
 - **组合热点与受控超限（已修）：** `packages/context/src/engine.ts` 从 223 行拆到 139 行——append-only 记账移到 `context-engine/append-only.ts`、预算适配移到 `context-engine/fit.ts`（热点基线 180 行重新满足）；`model-observability.ts` 745 → 669（`validateModelRequest`/`applyResolvedReasoning` 移到 `model-request-contract.ts`，受控上限 705）；`tool-loop.ts` 651 → 575（工具调用/结果持久化与投影移到 `stages/execute/tool-result-persistence.ts`，已低于 600 行，其受控超限登记按规则移除）。
 - **仍未修（1 项，属于用户的未提交改动）：** `packages/harness/src/cache-observability.ts` 当前 **696 行 > 受控上限 680**。该文件的未提交改动（`splitRequestForCache` 的"前导 system 块才算可缓存头"修复，+21 行）在 HEAD 上是 675 行、门禁是绿的；本轮**没有改动该文件**（其间一次尝试已完整回滚并逐行还原，`git diff --stat` 仍精确等于 `21 insertions(+)`，其自带测试 14 项通过）。要在作者提交该修复的同时恢复门禁，需要把该拆分或按规则下调/完成拆分；不由本轮代做，以免覆盖在途编辑。
+
+**2026-09-22 第 15 轮（SP-02 第 1 条的第二处未兑现声明已补齐 + 死导出核对）：**
+
+- **再删一个无调用方的 split helper：** `splitAtBoundary`（`packages/prompt/src/cache-boundary.ts`）被从包入口导出，但**没有任何生产调用方**——边界现在由 builder 按段落索引切分并发布为 `stableText`/`stableSegments`/`trailingSegments`，字符串级切分只是旧设计的残留。三处测试断言改为直接使用 bundle 的生产字段（`bundle.stableText` 与 `trailingSegments`），helper 自身那条单元测试随之删除；`CACHE_BOUNDARY_MARKER` 仍保留并成为该模块唯一导出，模块头注释写明"边界不是字符串操作"。验证：`packages/prompt` 12+3+3 项、`profile-prompt.test.ts` 9 项通过，`tsc -p packages/prompt` 退出 0，全仓库 `git grep splitAtBoundary` 0 命中。
+- **顺带核对（只报告，未改动）：** 对本任务触碰过的 34 个生产文件做了一次导出核对（统计每个导出在其它文件中的非测试引用数）。确认两处**早就存在**、与本任务书无关的死导出，本轮不做删除以免混入范围外改动：
+  - `applyMemoryContextWorkingSet`（`packages/harness/src/memory-context-working-set.ts:107`）：无生产调用方，只有自己的测试。它是"改写/删除已释放原子"的**旧机制**，已被 `appendMemoryReleaseNotes`（保留原文 + 尾部追加）取代（`harness-lean-phase-c` 任务书 round 23 的记录确认调用点已迁移）。留着它的风险是：它与本任务书 SP-03 确立的追加式不变量相反，容易被误用。**建议删除或显式标注为已废弃。**
+  - `buildCompactUserFacingVoiceAddon`（`packages/harness/src/profile-prompt.ts:140`）与 `buildCompactBehaviorProfileAddon`（同文件 `:152`）：前者零引用，后者仅被 `profile-prompt.test.ts` 引用（3 处）。两者都属于已被 SP-02 取消的"compact 提示变体"路径。
+
 
 **2026-09-21 SP-08 第 4–5 条执行记录（真实 Provider，2026-09-22 完成）：**
 

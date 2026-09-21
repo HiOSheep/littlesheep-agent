@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { GENERAL_PROFILE, buildSystemPromptBundle, CACHE_BOUNDARY_MARKER, splitAtBoundary } from '@littlesheep/prompt'
+import { GENERAL_PROFILE, buildSystemPromptBundle, CACHE_BOUNDARY_MARKER } from '@littlesheep/prompt'
 import { DEFAULT_BRANDING } from '@littlesheep/branding'
 import {
   appendSystemPromptAddons,
@@ -40,10 +40,12 @@ describe('behavior profile prompt assembly', () => {
       { id: 'profile', text: 'stable profile', placement: 'stable' },
       { id: 'task', text: 'run task facts' },
     ])
-    const parts = splitAtBoundary(result.text)
-    expect(parts.stable).toContain('stable profile')
-    expect(parts.stable).not.toContain('run task facts')
-    expect(parts.volatile).toContain('run task facts')
+    // The split the Provider sees is the bundle's own, not a re-derivation from
+    // the rendered text: `stableText` plus the trailing sections are exactly the
+    // two halves the request is assembled from.
+    expect(result.stableText).toContain('stable profile')
+    expect(result.stableText).not.toContain('run task facts')
+    expect((result.trailingSegments ?? []).map((segment) => segment.text).join('')).toContain('run task facts')
     expect(result.segments.find((segment) => segment.id === 'profile')?.text).not.toContain(CACHE_BOUNDARY_MARKER)
     expect(result.text).toContain(CACHE_BOUNDARY_MARKER)
     // The marker travels with the first section below the boundary, which is now a

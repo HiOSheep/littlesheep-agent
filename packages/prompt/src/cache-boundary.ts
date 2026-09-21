@@ -4,15 +4,13 @@
 // Content ABOVE this marker is cache-stable (workspace, tools, persona).
 // Content BELOW changes per-turn (bootstrap files, prelude, session state).
 // Backends with prefix caches can reuse the stable prefix across turns.
+//
+// The split itself is not a string operation: the builder marks the first
+// below-boundary section with this marker and publishes the two halves as
+// `stableText`/`stableSegments` and `trailingSegments`, and the request assembler
+// emits each trailing section as its own message. A string-level splitter used to
+// live here; it had no production caller once the builder owned the boundary, so
+// it is gone rather than kept as a second definition of where the boundary is.
 
 /** HTML comment marker inserted between stable and volatile sections. */
 export const CACHE_BOUNDARY_MARKER = '<!-- LITTLESHEEP_CACHE_BOUNDARY -->';
-
-/** Split a rendered prompt at the cache boundary. */
-export function splitAtBoundary(prompt: string): { stable: string; volatile: string } {
-  const idx = prompt.indexOf(CACHE_BOUNDARY_MARKER);
-  if (idx < 0) return { stable: prompt, volatile: '' };
-  const stable = prompt.slice(0, idx).trimEnd();
-  const volatile = prompt.slice(idx + CACHE_BOUNDARY_MARKER.length).trimStart();
-  return { stable, volatile };
-}
