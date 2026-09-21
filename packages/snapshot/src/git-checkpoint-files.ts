@@ -189,7 +189,13 @@ async function walkFiles(
       continue;
     }
     if (!entry.isFile()) continue;
-    await visit(path, await lstat(path) as Stats);
+    // The file may be gone or replaced between readdir and lstat: session and
+    // registry writes are atomic-with-rename, so a temporary name can disappear
+    // mid-walk. A vanished entry is simply skipped instead of failing the whole
+    // checkpoint, which would otherwise surface as a spurious completion error.
+    const info = await safeLstat(path);
+    if (!info) continue;
+    await visit(path, info);
   }
 }
 

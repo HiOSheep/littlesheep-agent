@@ -1,6 +1,13 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-21 09:10:00
+最后更新：2026-09-21 09:55:00
+
+**修复版本检查点在并发原子写下的 ENOENT 竞态（2026-09-21 09:55:00）**：上一轮如实报告的 `publishes the run before an opt-in background compaction finishes` 间歇失败，本轮定位到根因并修复。
+
+- 复现与证据：该用例单独运行时 **3 次里失败 2 次**（此前几次通过属偶然）。失败路径为 `runner: failed to complete version checkpoint: ENOENT: lstat '<sessions>\<id>.jsonl.<hash>.tmp'`，最终以 `finalize_persistence_failed` 结束整个 run。该失败与本轮及上一轮的功能改动无关：把 prompt 改动 stash 后重建，干净基线上同样失败。
+- **根因**：`packages/snapshot/src/git-checkpoint-files.ts` 的 `walkFiles` 先 `readdir`，再对每个条目直接 `await lstat(path)`（**无保护**）。而 session/registry 的写入是"写临时名 + rename"的原子写（`packages/session/src/atomic-file.ts` 用 `<path>.<random>.tmp` 再 rename），失败时还会 unlink 临时名。因此在 readdir 与 lstat 之间临时文件可能已消失，lstat 抛 ENOENT 并让整个版本检查点中止。同文件里**已经有**为此准备的 `safeLstat`（try/catch 返回 undefined），但热路径没有用它。
+- **修复**：`walkFiles` 改用 `safeLstat`，条目在遍历途中消失就跳过，而不是让整个检查点失败。最小改动，不放宽任何校验：仍存在的文件照常访问，消失的临时文件本就不应进入快照。
+- 验证：修复前 3 次跑 2 次失败；修复后**连续 5 次全部通过**（同一用例、同一命令）。全仓 `pnpm exec vitest run` **445 个文件、3,087 项通过、0 失败、1 项 skipped** —— 近几轮首次全量零失败。`pnpm run typecheck` 通过；仓库卫生仅剩 3 项由未跟踪方案文件引起的既有失败。
 
 **修复 `includeToolingText` 未生效的重复工具清单，并更正"缩前缀即提命中率"的推断（2026-09-21 09:10:00）**
 
