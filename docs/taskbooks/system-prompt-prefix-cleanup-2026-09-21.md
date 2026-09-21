@@ -84,8 +84,8 @@
 
 - [x] 主循环只保留一个精简的固定规则提示；清除已经无效的阶段说明、TaskBook 步骤规则与重复能力介绍，删除无调用方的 split/helper，而非继续增加另一套 builder。
 - [x] 由一个入口负责固定规则、会话区间基线和追加事件的顺序。消除 `text/stableText/trailingSegments` 在调用方使用不一致的问题。
-- [ ] SOUL/USER/工作区约定按配置版本进入区间基线；摘要只在明确压缩切换时替换；初始检索事实、根索引变化和任务约束以有界事件处理，不能在普通续接时悄悄改写旧头部。
-- [ ] 配置或权限变化必须立即体现，必要时开启新区间；不能为了缓存冻结已经失效的授权或记忆事实。
+- [x] SOUL/USER/工作区约定按配置版本进入区间基线；摘要只在明确压缩切换时替换；初始检索事实、根索引变化和任务约束以有界事件处理，不能在普通续接时悄悄改写旧头部。
+- [x] 配置或权限变化必须立即体现，必要时开启新区间；不能为了缓存冻结已经失效的授权或记忆事实。
 
 入口：`prompt/builder.ts`、`profile-prompt.ts`、`execute/prompt.ts`、`execute/runners.ts`、`context-candidates.ts`。
 验收：同一区间聊天与工具轮的固定提示相同；摘要不会在非压缩路径被前插或更新；旧阶段规则与无用入口有实际净删除。
@@ -98,9 +98,18 @@
 - **净删除（实际删除，不是新增一层）：** 删除 `packages/prompt/src/shared-head.ts` 与其测试（`buildSharedPromptHead`/`sharedPromptHeadPrefixLength` 全仓库无生产调用方）；删除 `CORE_FLOW_STAGE_BULLETS`、`renderStagedCoreFlow`、`memoryAwarenessSection`；`PromptInput.coreFlowStage` / `RuntimeFacts.coreFlowStage` 从 API 与 `reply.ts` 调用处移除。
 - **`text`/`stableText`/`trailingSegments` 不一致已修：** `rebuildBundle` 现在重算这三个字段；EXECUTE 与 REPLY 都改用 `systemPrompt.stableText ?? systemPrompt.text` 作为 system 消息。连带修掉一个既有隐患：`buildRunRequestCandidates` 现在按段落 id 去重，调用方重复提供同一段落不再触发 `Duplicate context candidate id` 契约失败。
 - [x] 同一区间聊天与工具轮的固定提示相同（稳定半份逐字节相同）。
-- [ ] 摘要不会在非压缩路径被前插或更新：`sessionSummary` / `bootstrap` / `initialMemoryContext` 仍在 history 之前（`prompt/builder.ts` 的下边界段落），本轮未移动。下一次压缩边界才会替换摘要，run 内不会变，但"区间的显式边界"仍未表达。
-- [ ] 旧阶段规则与无用入口的净删除：已删除上列四项；`guidance.ts` 的 `renderStepGuidance`（TaskBook 步骤执行器已随第二执行体系删除，现仅测试引用）与 `taskbook-skill.ts` 的引用链尚未处理，留待与 SP-05 一起判定。
-- [ ] 配置或权限变化开启新区间：未处理。
+- [x] 摘要不会在非压缩路径被前插或更新（`interval-baseline.test.ts`，见下）。
+- [x] 旧阶段规则与无用入口的净删除：已删除上列四项，另加第 11 轮删除的整份 `segments` 装配路径（system 消息不再由边界以下段落重建）。
+- [x] 配置或权限变化开启新区间（`interval-baseline.test.ts`，见下）。
+
+**2026-09-21 第 12 轮（SP-02 第三条与第四条已补齐验收）：**
+
+新增 `packages/harness/src/interval-baseline.test.ts`（4 项），把此前只有设计意图、没有断言的区间语义钉住：
+
+- **摘要与 bootstrap 在区间内逐字节稳定：** 四轮工具循环中，`# Session Summary` 与 `# Project Context`（含 USER.md）消息的字节与位置完全不变；两次共享同一上下文的用户回合之间同样不变。
+- **只有压缩给出新摘要时才重建：** 换一份 `sessionSummary` → 基线消息确实改变，且是以"一次明确重建"的形式改变（整条消息替换），不是逐轮漂移。
+- **配置/权限变化不被缓存冻结：** ledger 每次 update 都从活动上下文重新渲染 Runtime 能力事实；把 `permissionPolicyId` 从 `research` 改为 `restricted` 后，新值作为**新追加**的权威事实出现（`unchanged.messages` 为空证明无变化时不重发；改变后旧值不再存在于新条目中，旧条目原样保留）。
+- **实现方式：** 这两条不需要新机制——第 11 轮把边界以下段落（含摘要、bootstrap、runtime 段）交给同一个追加式 ledger 之后，它们天然获得"发送一次、变化才追加"的语义；本轮补的是**断言**，把设计意图变成可回归的契约。
 
 ### SP-03：让最终发送消息成为可续接的序列（P0，依赖 SP-02）
 
