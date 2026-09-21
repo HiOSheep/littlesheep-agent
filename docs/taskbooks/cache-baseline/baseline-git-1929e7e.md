@@ -1,6 +1,6 @@
 # Cache request-shape baseline
 
-Freeze: git d1b74e8
+Freeze: git 1929e7e
 
 ## Load: local-web-local
 
