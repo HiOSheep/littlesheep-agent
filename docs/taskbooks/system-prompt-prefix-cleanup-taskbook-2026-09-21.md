@@ -1,6 +1,6 @@
 # 系统提示词与请求前缀精简任务清单 · 2026-09-21
 
-最后更新：2026-09-22 02:26:00
+最后更新：2026-09-22 02:32:00
 
 日期：2026-09-21。
 状态：SP-01～SP-07 已全部实现并有回归证据；SP-08 已建立结构基线与真实 Provider 读数。**唯一未执行项**是 SP-08 第 3 条中"修正验收文档过时汇总"这半边——`docs/reference/cache-95-acceptance.md` 在本任务期间有作者本人的在途改动，作者要求不要动该文件（见 SP-08 记录）；该条的"有界脱敏、原始内容不入库"半边已用扫描验证。**缓存 95% 目标未达成**，三组真实负载读数见 SP-08 记录。
@@ -185,13 +185,14 @@
 入口：`execute/runners.ts`、`stages/ask_user.ts`、`reply/continuity-repair.ts`、`user-facing-reply.ts`。
 验收：一次模型提问不再产生第二次模型请求；长会话、重启和并发发布仍防止同一 settlement 重发；缺失来源/空输出不能伪装成模型回复；历史连续性验收继续有效。
 
-**2026-09-21 SP-06 执行记录（前两条完成，第三条未做）：**
+**2026-09-21 SP-06 执行记录（前两条完成；第三条当时未做，后由第 9–11 轮补齐）：**
 
 - **改前：** 模型经 `request_user_input` 提问后，请求被路由到 ASK_USER，ASK_USER 再发**第二次** Provider 请求把同一个问题重新措辞一遍。模型提问本身就是 user-facing 文本，且已经有 Provider 请求作为来源。
 - **改法：** `ClarificationRequest` 新增 `copyModelRequestId`，把「这句措辞是谁写的」从 execute 一路带到发布阶段；主循环的 `userInputRequest` 返回此前**丢掉了 `modelRequestId`**（所以引用无据可依），现已补上。`createReplyProvenance` 支持按请求 id 精确锁定来源（未给出 id 时才退回按 purpose 匹配），并校验该 purpose 确实有权署名 user-facing 文本。ASK_USER 现在分两条路：模型已提问 → 原样发布（Provider 调用数 0）；Runtime 升级 → 仍只发一次措辞请求。
 - **删除伪装兜底：** `composeClarificationMessage` 原本在模型两次都无可见文本时返回 Runtime 草稿，stage 再把这个草稿当模型回复发布。现在它返回空、stage 明确失败：没有模型措辞的回合显示 Runtime 错误，而不是把固定文案挂在 Agent 名下。草稿本身仍是 Runtime 事实（请求自带的 `blockingReason` 与问题文本），UI 可按状态展示。
 - **验收证据（`clarification-single-call.test.ts`，4 项）：** 模型提问路径 `llm.chat` **未被调用**且 provenance 指向 `request-that-asked`、`rewriteCount=0`；升级路径恰好 1 次调用且 `purpose='ask_user'`；两次空响应 → `ok: false`、无 `reply`、无 `replyProvenance`、`lastError.stage='ask_user'`；execute 路由写入的 `copyModelRequestId` 确实存在于 `modelRequests` 记录中。
 - **未做：** 第三条（连续性纠正不再改写首条 system、改为在原循环追加有界反馈并使用原工具目录与受控 `tool_choice`）本轮未动。
+- **后续状态：** 第三条已由下方第 9–11 轮的三段记录补齐（追加式反馈、`tool_choice: 'none'` 保留原工具目录、system 消息只由 `stableSegments` 构成），因此清单中该项已勾选。
 
 **2026-09-21 SP-06 第三条执行记录（部分完成，剩余缺口已断言）：**
 
@@ -353,4 +354,5 @@
 - 本轮**只做结构修复与离线验证**：全部证据来自 Vitest 中的 mock Provider 与单元级断言，**没有调用真实供应商，也没有测量真实缓存命中率**。因此本轮**不能**声称 95% 目标已达成，SP-08 的基线仍未建立（按清单要求在实现改动前建立，现已错位，需在下一轮以 `git` 历史中的旧实现补测）。
 - 已验证的是**必要条件**：正常未压缩轮次的完整请求（含 tools 与尾部）满足"旧请求是新请求的严格前缀"。
 - **未验证**的部分：真实 Provider 的缓存单元匹配行为、压缩区间切换时的重建、取消/重启后的位置恢复、跨轮（同一会话的多个 run）的连续性。清单第 2 节离线表中的字符量结论未被本轮推翻，也未据此推算 token 节省。
+- **后续状态（2026-09-22 补记）：** 上面四项后来都有了证据——真实 Provider 缓存行为见 SP-08 第 4–5 条的三组实机负载；压缩区间切换的原子性与失败保留见 SP-07 第三条记录（`session/compaction.test.ts`）；重启后的位置恢复见 SP-03 第四条记录（`runner/session-restart-continuity.test.ts`）与进程级副作用恢复用例；同一会话跨轮连续性见 `request-prefix-append-only.test.ts`。本节保留为当时边界的原始记录。
 - 还原历史行为的方式：本轮改动集中在 `run-tail-ledger.ts`（新增）、`context-candidates.ts`、`model-observability.ts`、`tool-loop.ts`、`execute/prompt.ts`、`profile-prompt.ts`、`prompt/builder.ts`、`context-engine/contracts.ts`；`git stash` 一次即可回到旧实现的请求形状，可用于 SP-08 的对照测量。
