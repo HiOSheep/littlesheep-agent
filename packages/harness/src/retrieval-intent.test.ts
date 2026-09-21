@@ -34,14 +34,21 @@ describe('Runtime retrieval tool admission', () => {
     inputSchema: { parse: (input) => input, jsonSchema: { type: 'object' } },
     execute: async () => ({ callId: '', ok: true, output: '' }),
   });
-  const tools = [tool('read'), tool('memory_search'), tool('web_search'), tool('web_fetch')];
+  const tools = [tool('read'), tool('memory_search'), tool('web_search'), tool('web_fetch'), tool('document_read'), tool('document_create')];
 
   function context(text: string, retrievalIntent: ReturnType<typeof assessRetrievalIntent>['intent']) {
     return {
       inbound: textMessage('user', text),
       classification: { activity: 'execute' as const, confidence: 1, source: 'rules' as const, retrievalIntent },
       tools,
-      toolSources: { read: 'builtin' as const, memory_search: 'builtin' as const, web_search: 'builtin' as const, web_fetch: 'builtin' as const },
+      toolSources: {
+        read: 'builtin' as const,
+        memory_search: 'builtin' as const,
+        web_search: 'builtin' as const,
+        web_fetch: 'builtin' as const,
+        document_read: 'builtin' as const,
+        document_create: 'builtin' as const,
+      },
     };
   }
 
@@ -50,6 +57,28 @@ describe('Runtime retrieval tool admission', () => {
       .toEqual(['read', 'memory_search']);
     expect(toolsForRetrievalIntent(context('记得上次决定吗', 'local_memory')).map((item) => item.name))
       .toEqual(['read', 'memory_search']);
+  });
+
+  it('advertises the document tools only when the turn involves a document', () => {
+    // An ordinary request never pays for the largest built-in schema.
+    expect(toolsForRetrievalIntent(context('帮我写一个函数', 'none')).map((item) => item.name))
+      .toEqual(['read', 'memory_search']);
+    // Document wording, a file extension and an attachment each keep them.
+    expect(toolsForRetrievalIntent(context('把这份报告导出为 PDF', 'none')).map((item) => item.name))
+      .toEqual(['read', 'memory_search', 'document_read', 'document_create']);
+    expect(toolsForRetrievalIntent(context('summarize notes.csv', 'none')).map((item) => item.name))
+      .toEqual(['read', 'memory_search', 'document_read', 'document_create']);
+    const attached = {
+      ...context('总结一下这个文件', 'none'),
+      attachments: [{ path: 'C:/tmp/source.pdf', name: 'source.pdf', kind: 'document' as const, mimeType: 'application/pdf' }],
+    };
+    expect(toolsForRetrievalIntent(attached).map((item) => item.name))
+      .toEqual(['read', 'memory_search', 'document_read', 'document_create']);
+    // A non-builtin document tool is never admitted by wording alone.
+    expect(toolsForRetrievalIntent({
+      ...context('把这份报告导出为 PDF', 'none'),
+      toolSources: { ...context('x', 'none').toolSources, document_create: 'additional' },
+    }).map((item) => item.name)).toEqual(['read', 'memory_search', 'document_read']);
   });
 
   it('admits only built-in Web capabilities appropriate to the inbound intent', () => {

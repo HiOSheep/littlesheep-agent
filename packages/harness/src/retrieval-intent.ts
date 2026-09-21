@@ -20,29 +20,51 @@ export interface RetrievalIntentAssessment {
 }
 
 const WEB_TOOL_NAMES = new Set(['web_search', 'web_fetch']);
+const DOCUMENT_TOOL_NAMES = new Set(['document_read', 'document_create']);
+/**
+ * Document/attachment wording. `document_create` alone is the largest built-in
+ * tool schema by a wide margin, so it follows the same rule as the Web tools:
+ * it is advertised only when the turn actually involves a document.
+ */
+const DOCUMENT_PATTERN = /(?:文档|文件|附件|表格|电子表格|演示|幻灯片|报告|PDF|DOCX|XLSX?|CSV|PPTX)|\.(?:pdf|docx?|xlsx?|csv|tsv|pptx)\b|\b(?:document|spreadsheet|worksheet|workbook|slide|deck|report|attachment)\b/iu;
+
+/** Does this turn involve a document the model may need to read or create? */
+function hasDocumentEvidence(
+  ctx: Pick<RunContext, 'inbound' | 'attachments'>,
+): boolean {
+  if ((ctx.attachments?.length ?? 0) > 0) return true;
+  return DOCUMENT_PATTERN.test(inboundText(ctx));
+}
 
 /**
  * Apply the Runtime-owned inbound retrieval decision to the model catalog.
  * This must never be recomputed from fetched page content or model output.
  */
 export function toolsForRetrievalIntent(
-  ctx: Pick<RunContext, 'classification' | 'inbound' | 'tools' | 'toolSources'>,
+  ctx: Pick<RunContext, 'classification' | 'inbound' | 'tools' | 'toolSources' | 'attachments'>,
 ): AgentTool[] {
   const intent = ctx.classification?.retrievalIntent ?? assessRetrievalIntent(inboundText(ctx)).intent;
+  const keepDocuments = hasDocumentEvidence(ctx);
+  const withoutDocuments = (tool: AgentTool): boolean => (
+    !DOCUMENT_TOOL_NAMES.has(tool.name)
+    || (keepDocuments && ctx.toolSources?.[tool.name] === 'builtin')
+  );
   if (intent === 'web_search' || intent === 'combined_memory_web') {
     return ctx.tools.filter((tool) => (
-      !WEB_TOOL_NAMES.has(tool.name)
-      || ((tool.name === 'web_search' || tool.name === 'web_fetch')
-        && ctx.toolSources?.[tool.name] === 'builtin')
+      (!WEB_TOOL_NAMES.has(tool.name)
+        || ((tool.name === 'web_search' || tool.name === 'web_fetch')
+          && ctx.toolSources?.[tool.name] === 'builtin'))
+      && withoutDocuments(tool)
     ));
   }
   if (intent === 'web_fetch') {
     return ctx.tools.filter((tool) => (
-      !WEB_TOOL_NAMES.has(tool.name)
-      || (tool.name === 'web_fetch' && ctx.toolSources?.[tool.name] === 'builtin')
+      (!WEB_TOOL_NAMES.has(tool.name)
+        || (tool.name === 'web_fetch' && ctx.toolSources?.[tool.name] === 'builtin'))
+      && withoutDocuments(tool)
     ));
   }
-  return ctx.tools.filter((tool) => !WEB_TOOL_NAMES.has(tool.name));
+  return ctx.tools.filter((tool) => !WEB_TOOL_NAMES.has(tool.name) && withoutDocuments(tool));
 }
 
 export function renderRetrievalIntentContract(

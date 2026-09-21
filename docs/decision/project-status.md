@@ -1,6 +1,22 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-21 04:45:00
+最后更新：2026-09-21 06:10:00
+
+**缓存 95% 实测（真实 DeepSeek Provider）：94.09%，未达标（2026-09-21 06:10:00）**：在 `DEEPSEEK_API_KEY` 可用后，按方案第 6 节与 `docs/reference/cache-95-acceptance.md` 的规程跑通了两组冻结负载对比。
+
+- 负载：`deepseek/deepseek-flash`，2 轮 × 20 任务，两条路径各 40 个 run，全部 `status: 200`。
+- 测量规则（方案指定）：`hit = sum(cached_input_tokens) / sum(input_tokens)`，取总体而非每请求平均。
+  - 新实现：`207,360 / 220,376 = 94.094%`
+  - 旧实现：`208,000 / 220,938 = 94.144%`
+  - **均 < 95%，目标未达成**；新实现比旧实现低约 0.05 个百分点。
+- 其他实测结果：`requestCount` 两侧持平（40/40）；`promptTokens` 新实现少 562；`completionTokens` 少 52；`latencyP95Ms` 低 169ms；`verificationPassRate` 两侧均为 0（该负载为纯对话任务，VERIFY 记为 `unverified`，与已记录的 P2 能力代价一致）。
+- `incomplete` 仅剩 `reasoningTokens`（该 Provider 未报告），`cachedPromptTokens` 与 `cacheHitRatio` **本次已有真实数值**，不再是离线彩排时的不可用状态。
+- 诚实结论：能力裁剪（P0–P4）已完成且质量门通过，但 **95% 未达成**；不得把 94.09% 说成达标，也不得以"冷启动/热缓存子集"重新表述。剩余损失来源与下一步见下。
+
+**本轮同时完成：文档工具按意图门控（用户选定方案）**：`document_read`、`document_create` 原先在**每个请求**上广播，其中 `document_create` 单个 schema 达 2,115 字符（占内置工具 schema 总量 36%）。现改为与 Web 工具相同的门控规则：仅当该轮涉及文档时才广播（命中条件：存在附件，或输入中出现文档措辞/文档类扩展名）；非内置来源的文档工具在任何情况下都不因措辞被放行。
+
+- 实测收益：普通请求的内置工具 schema 从 5,843 字符降到 **2,113 字符**，即**每个普通请求少 3,730 字符（约 933 tokens）**；文档轮次仍同时提供两个文档工具（4,822 字符），能力未丢失。
+- 验证：`pnpm run typecheck` 通过；`packages/harness/src/retrieval-intent.test.ts` 新增双向用例（普通请求被门控 / 文档措辞、`.csv` 扩展名、附件三种命中 / 非内置来源不放行），20 项通过；`packages/harness` 与 `packages/runner` 共 114 文件、867 项全部通过。
 
 **冻结负载验收：离线彩排已跑通，真实 95% 仍待凭据（2026-09-21 04:45:00）**：本轮把验收规程从"文档"推进到"可执行前置条件已就绪"，并如实记录了一个我此前的错误结论。
 
