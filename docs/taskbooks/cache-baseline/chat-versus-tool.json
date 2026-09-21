@@ -1,6 +1,6 @@
 {
   "probe": "chat-versus-tool",
-  "freeze": "git d346e19",
+  "freeze": "git 104fd09",
   "model": "test",
   "toolNames": [
     "read",
