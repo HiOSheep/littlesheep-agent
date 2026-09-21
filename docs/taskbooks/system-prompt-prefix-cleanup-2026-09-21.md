@@ -181,6 +181,17 @@
 - **剩余缺口（已用断言钉住，不会静默漂移）：** 纠正请求的**首条 system 消息仍与草稿请求不一致**——请求记录器会按提示词的分段列表重新装配 system，而不是复用被扩展的那条请求；实测草稿 4,058 字符、纠正 2,323 字符（纠正丢掉的是主循环作为尾部单独发送的边界以下段落）。因此纠正的复用上限仍被钉在该字节处。
 - **顺带修正的一处真实语义漂移：** 修 `stableSegments` 过程中发现，把**整份** `segments` 交给装配器会让它用**边界以下**的段落重建 system 消息，等于把这些段落悄悄移到边界之上。`stableSegments` 让调用方能只交出一半。本轮**未**改 execute 路径的这一处（改动会连带把 bootstrap/指令从 system 消息移到尾部，超出本项范围），已在代码注释中记录。
 
+**2026-09-21 第 10 轮补充（根因定位完成，改动按纪律回退）：**
+
+- **根因已定位且可复现：** 剩余缺口的来源是**边界语义在两层之间不一致**——
+  - `SystemPromptBundle` 按边界切分：`stableText` = 2323 字符（identity/core-flow/safety/workspace/date-time/capabilities），边界以下还有 `runtime`、`output-directives`、`bootstrap:*`、`retrieval-intent-contract`；
+  - 但主循环把**整份** `segments`（9 段，4141 字符）交给 `buildRunRequestCandidates`，装配器于是把这些**边界以下**的段落重新拼进 system 消息 → 实际发出的 system 消息变成 4058 字符（边界以下的内容被**移到边界之上**）；
+  - 纠正路径复用的是**会话形状**（2323 字符的稳定半份），于是首条消息与草稿请求不同（4058 vs 2323），复用被钉在该字节处。
+  - 实测证据：`BOOTSTRAP LAYOUT {"stableInStableText":false,"stableSegments":[identity,core-flow,safety,workspace,date-time,capabilities],"trailingSegments":[runtime,output-directives,bootstrap:AGENTS.md,retrieval-intent-contract]}`。
+- **正确的修法（较大改动，未在本轮做）：** 让主循环在 system 消息里只放 `stableSegments`，并把**所有**边界以下段落作为尾部消息发出（含 bootstrap 与 output-directives）。这样 system 消息就是 `stableText`，边界名副其实，纠正请求的首条消息自然逐字节一致。
+- **为什么回退：** 该改动会让 bootstrap 与输出指令从 system 消息移到尾部，连带影响 7 个既有断言（其中 `model-request-characterization` 明确要求 bootstrap 可见）。这是一个**协调性**改动，不是本项范围内的收尾；本轮已完整实现并验证了一版（实测纠正请求前缀 3524/3524 完全一致、首条消息同为 2323），但按"不夹带、不半成品"的纪律**回退到已提交的验证状态**，把根因与修法完整记录于此，供专门一轮执行。
+- **本轮实际落地：** 重新钉住基线（探针随 harness 套件重跑，指标不变：负载 A 每轮 5,585、负载 B 复用比 1.000、负载 C 共享 3,591 / 稳定头 3,446），并删除中间重复的钉住文件。`packages/harness`+`prompt`+`context` = **637 通过**。
+
 ### SP-07：压缩只携带必要输入（P1）
 
 - [x] 保留当前摘要长度及 branch/scope 契约修复，移除压缩请求无关的能力快照、检索规则和主循环状态注入。
