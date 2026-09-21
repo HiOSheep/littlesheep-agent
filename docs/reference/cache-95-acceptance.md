@@ -596,7 +596,18 @@
 
 1. **`forceFinalResponse` 会丢掉整个工具清单**。`stages/execute/tool-loop.ts` 在强制收尾时传 `tools: undefined`；实测 18 个请求中有 **4 个 `toolNames` 为空**（2 个强制收尾 + 2 个 `ask_user`）。工具 schema 属于可缓存前缀的一部分，把它从 12 个工具改成 0 个等于**重写了该请求的前缀**，该请求无法复用主循环已缓存的内容。
 2. **`ask_user` 使用自己的小系统提示**（`stages/ask_user.ts` 内联的约 300 字符 "You are the ASK_USER stage…"），与主循环 8,674 字符的 system prompt **完全不同**，实测前缀仅 1,122 字节、命中 41.09%。它在任何情况下都无法与主循环共享前缀。
-3. **主循环自身的前缀也在分片**：14,487 与 14,488 **相差 1 字节**就把 14 个请求分成两组（12 + 2）。8 个 run 的 `systemPromptProjection` 长度**完全一致**（8,674），说明差异来自边界之上 `stableMessages` 的序列化（含 `requestKind` 等），而不是提示正文；1 字节量级的差异足以让 Provider 视为不同前缀。
+3. ~~**主循环自身的前缀也在分片**~~ —— **此项经复现后更正，与缓存无关，见下。**
+
+**第 3 项的定性更正与修复（2026-09-21，已实施）**：上表初版把 14,487 / 14,488 的 1 字节差异列为影响缓存的机制之一，这是**不准确**的。复现后确认：
+
+- `stablePrefix.fingerprint` 与 `byteLength` 是**本仓自有的诊断投影**（`buildCacheObservation` 计算），**Provider 看不到它**，Provider 只按真实请求字节计费。因此该 1 字节差异**不造成任何 Provider 缓存损失**，实测命中率与之无关。
+- 真实成因：`splitRequestForCache` 把每条 stable 消息的**绝对数组下标** `index` 一并序列化进 stable 前缀。会话变长时下标跨越位数（9→10、11→12），序列化长度随之 +1。用合成请求复现：消息数 5/7/9 → 6,641 字节，11 → 6,642，13 → 6,643，而**内容完全相同**。
+- 真实数据吻合：各分组的稳定区**逐字节相同**（`stableChars=5409`、`markerAt=5411`、`projLen=8674`），仅消息条数不同（5/7/9/11 → 14,487；13 → 14,488）。
+- **修复**：stable 条目改用**相对下标**（在 stable 集合内的位置）而非绝对下标——既保留对重复同文的区分能力，又不再随会话增长而变；`STABLE_PREFIX_VERSION` 升为 `StablePrefixV2`。修复后合成验证：消息数 5–13 的 `byteLength` 恒为 6,641、`fingerprint` 恒为 `ee51add897dd000f`。
+- **回归护栏**：`packages/harness/src/cache-observability.test.ts` 新增用例，要求 1–6 组对话轮次的 stable 前缀字节数与指纹完全一致。已用 `git stash` 在修复前代码上验证该用例**确实失败**（`expected 2 to be 1`，出现两种长度），修复后通过——确认是有效护栏而非空测。
+- 影响范围：**仅诊断保真度**（`invalidationReasons` 可能被这条无谓差异污染），**不改变运行时缓存行为**。属方案 P0 所说的"测量修正，不计缓存收益"。
+
+**因此工具工作场景不达标的真实成因只有前两条**（强制收尾丢掉工具清单、`ask_user` 使用独立小提示）。
 
 **与压缩场景的共同点**：压缩（5.22）同样是"辅助调用与主循环前缀互不通用"——`session_compaction` 与 `session_compaction`/`execute_tool_loop` 交替时 `request_kind`、`tool_schema` 都变。因此**两个不达标场景共享同一根因：非主循环路径没有复用主循环的前缀**。
 

@@ -5,7 +5,10 @@ import type { PermissionPolicyId } from './runtime-contracts.js';
 
 export const CACHE_OBSERVATION_VERSION = 1 as const;
 export const CACHE_USAGE_SCHEMA_VERSION = 'llm-chat-usage.v1' as const;
-export const STABLE_PREFIX_VERSION = 'StablePrefixV1' as const;
+// V2: the stable-prefix identity is content-based. V1 embedded each stable
+// message's absolute index in the request array, so the "stable" prefix changed
+// identity (by one byte per digit boundary) purely because the conversation grew.
+export const STABLE_PREFIX_VERSION = 'StablePrefixV2' as const;
 export const DYNAMIC_SUFFIX_VERSION = 'DynamicSuffixV1' as const;
 export const NORMALIZED_REQUEST_VERSION = 'NormalizedRequestV1' as const;
 

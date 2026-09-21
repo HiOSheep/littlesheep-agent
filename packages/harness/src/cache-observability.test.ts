@@ -46,6 +46,38 @@ function observation(request: ChatRequest, overrides: Partial<Parameters<typeof 
 }
 
 describe('cache observability', () => {
+  it('keeps the stable-prefix identity unchanged as the conversation grows', () => {
+    // Regression: stable entries used to embed their ABSOLUTE index in the
+    // request array, so the "stable" prefix changed identity (one byte per digit
+    // boundary) purely because the transcript grew, even though every byte of
+    // cacheable content was identical. Only the number of transcript messages is
+    // varied here.
+    const build = (pairs: number) => {
+      const messages: ChatRequest['messages'] = [
+        {
+          role: 'system',
+          content: 'Stable policy v1\n\n<!-- LITTLESHEEP_CACHE_BOUNDARY -->\n\nrun-id-1',
+        },
+        { role: 'system', content: 'Stable addendum' },
+      ];
+      for (let i = 0; i < pairs; i += 1) {
+        messages.push({ role: 'user', content: `turn ${i}` });
+        messages.push({ role: 'assistant', content: `answer ${i}` });
+      }
+      // The request ends with runtime system segments, which are themselves
+      // stable messages. They are what pushed the index across digit boundaries.
+      messages.push({ role: 'system', content: 'Runtime facts' });
+      messages.push({ role: 'system', content: 'Retrieval intent: none' });
+      return { ...cacheRequest(), messages } as ChatRequest;
+    };
+    const shortcuts = [1, 2, 3, 4, 5, 6].map((pairs) => {
+      const obs = observation(build(pairs));
+      return { bytes: obs.stablePrefix.byteLength, fingerprint: obs.stablePrefix.fingerprint };
+    });
+    expect(new Set(shortcuts.map((item) => item.bytes)).size).toBe(1);
+    expect(new Set(shortcuts.map((item) => item.fingerprint)).size).toBe(1);
+  });
+
   it('canonicalizes keys, Unicode/newlines, Map and Set deterministically', () => {
     const left = { z: 'e\r\n', a: 'cafe\u0301', values: new Set(['b', 'a']), map: new Map([['b', 2], ['a', 1]]) };
     const right = { map: new Map([['a', 1], ['b', 2]]), values: new Set(['a', 'b']), a: 'café', z: 'e\n' };
@@ -220,7 +252,7 @@ describe('cache observability', () => {
     ctx.cacheObservationKey = 'test-cache-observation-key';
     const prepared = prepareModelRequest(ctx, 'reply', cacheRequest());
     expect(ctx.modelRequests?.[0]?.cacheObservation).toMatchObject({
-      stablePrefixVersion: 'StablePrefixV1',
+      stablePrefixVersion: 'StablePrefixV2',
       providerPrompt: { status: 'unavailable', reason: 'provider_usage_pending' },
       memoryEmbedding: { status: 'unavailable', reason: 'memory_cache_event_not_observed' },
     });

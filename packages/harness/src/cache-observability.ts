@@ -466,23 +466,31 @@ function splitRequestForCache(request: ChatRequest): {
   const dynamicMessages: unknown[] = [];
   request.messages.forEach((message, index) => {
     const normalized = normalizeMessage(message);
+    // Stable entries carry a position relative to the stable set, not their
+    // absolute index in the request: the absolute index grows with the
+    // conversation, so embedding it made the "stable" prefix change identity
+    // whenever an index gained a digit even though every byte of the cacheable
+    // content was unchanged. The relative position still distinguishes repeated
+    // identical messages. Dynamic entries keep the absolute index because their
+    // identity is allowed to move with the transcript.
+    const stableIndex = () => stableMessages.length;
     if (message.role !== 'system') {
       dynamicMessages.push({ index, message: normalized });
       return;
     }
     if (typeof message.content !== 'string') {
-      stableMessages.push({ index, message: normalized });
+      stableMessages.push({ index: stableIndex(), message: normalized });
       return;
     }
     const content = normalizeText(message.content);
     const markerIndex = content.indexOf(CACHE_BOUNDARY_MARKER);
     if (markerIndex < 0) {
-      stableMessages.push({ index, message: normalized });
+      stableMessages.push({ index: stableIndex(), message: normalized });
       return;
     }
     const stableContent = content.slice(0, markerIndex).trimEnd();
     const dynamicContent = content.slice(markerIndex + CACHE_BOUNDARY_MARKER.length).trimStart();
-    if (stableContent) stableMessages.push({ index, role: message.role, content: stableContent });
+    if (stableContent) stableMessages.push({ index: stableIndex(), role: message.role, content: stableContent });
     if (dynamicContent) dynamicMessages.push({ index, role: message.role, content: dynamicContent });
   });
   return { stableMessages, dynamicMessages };
