@@ -1,6 +1,6 @@
 # 缓存 95% 冻结负载验收规程
 
-最后更新：2026-09-21 22:20:00
+最后更新：2026-09-21 23:05:00
 
 本文件把 `docs/taskbooks/lean-v2-cache-95-plan-taskbook-2026-09-20.md` 第 6 节的实测步骤写成可重复执行的规程，供最终验收直接照做。它是验收方法，不是达成声明：在两组冻结负载都跑出完整 usage 之前，95% 一律标记为未验证。
 
@@ -1014,6 +1014,34 @@ this purpose forbids tools but request included: grep, read.
 - **不加分的声明**：本轮**不**把单元通过当作端到端验收通过。补齐这两项需要真实运行（记忆回溯需一次真实 `memory_tree` 导航；目标连续需一次跨压缩的续跑），**两者都需要 Provider 凭据**，与缓存红线同一阻塞。
 
 **本轮未改动的声明**：本节为对既有测试与保留数据的核对，**未修改任何实现代码**，也未新增或删减验收项。
+
+### 5.34 能力裁剪的一处残留：`classify` 仍保留指向已删除 DECIDE 的死分支（2026-09-21，已修复）
+
+方案第 97 行明确要求："每批收尾必须删除已替代的代码、分支、配置和失效测试……不得再次保留两套完整执行器。"本轮核对 P0–P4 的"已完成"标记时，发现一处**未被清理的分支**。
+
+**发现**：`packages/harness/src/stages/classify.ts` 的一行路由写成
+
+```ts
+next = routed.workPolicy.executionMode === 'bounded_loop' ? 'execute' : 'decide';
+```
+
+- **`'decide'` 一侧不可达**：`selectWorkPolicy`（`lean-work-policy.ts`）的**全部 12 个 `policy()` 调用点都传 `'bounded_loop'`**，且 `task_book` 也被显式降级为 `'bounded_loop'`。因此该三元表达式**恒为 `'execute'`**。
+- **DECIDE 已不是注册 stage**：`default-harness.ts` 第 51 行明确写着"DECIDE is gone"，`stages` 映射中**没有** `decide`。而 `durable-harness.ts` 对未注册 stage 的处理（第 56–66 行，判定在第 61 行）是**返回失败**并记 `no stage registered for '<name>'`。
+- **因此这是一个潜在陷阱，不只是冗余**：当前它不触发，纯粹因为 `selectWorkPolicy` 恰好只返回一个值。一旦有人给 `WorkPolicy.executionMode` 增加一个新取值，这行就会把请求路由到一个不存在的 stage，表现为运行失败而不是执行——而且**没有任何测试会拦住它**（见下）。
+
+**修复**：改为无条件 `next = 'execute'`，并写明原因。`workPolicy` 本身仍保留在运行记录与 `route_decided` 事件中（第 207、223 行），审计能力不变。
+
+**回归护栏（已验证有效）**：新增两条**源码级**断言（`packages/harness/src/stages/classify.test.ts` 的 `single-execution-system routing invariant` 块）：
+
+1. 路由不得读取 `workPolicy.executionMode`；
+2. `classify` 里出现的每个 `next: '…'` 目标必须能在 `default-harness.ts` 中注册（`exit` 除外）。
+
+- **为什么用源码级而不是行为级**：本轮**先写了行为级护栏并发现它是空测**。原因是 `classify` 通过 `selectWorkPolicy(ctx, …)` **重建**策略，测试里预先改写 `ctx.classification.workPolicy` 会被覆盖，因此无法从任何测试上下文构造出 `'decide'` 分支——行为级断言在**修复前的代码上同样通过**（实测：旧代码 17 passed）。
+- **改用源码级后用 `git stash` 双向验证**：在**修复前**的 `classify.ts` 上该护栏**确实失败**（`1 failed | 17 passed`，失败项正是 `derives the execute route without consulting the work-policy mode`），修复后 **18 passed**。确认是有效护栏，而非空测。
+
+**这是本轮唯一的实现改动**，性质属方案第 97 行的收尾清理，**不改变任何路由结果**（因为原分支本就不可达），因此**不宣称任何缓存收益**。
+
+**上一轮已有与本轮无关的验证**：`pnpm exec vitest run packages/harness packages/classifier` → **63 个文件、576 个用例全部通过**；`check:repo` 33/33；core gate 退出码 0。
 
 ## 6. 完成条件
 

@@ -184,7 +184,12 @@ export function createClassifyStage(deps: ClassifyStageDeps = {}) {
       const routed = { ...routedBase, workPolicy: selectWorkPolicy(ctx, routedBase) };
       if (activity === 'execute') {
         writeDecisionState(ctx, 'classify', { classification: routed });
-        next = routed.workPolicy.executionMode === 'bounded_loop' ? 'execute' : 'decide';
+        // One execution system: selectWorkPolicy returns 'bounded_loop' on every
+        // path, so this used to be a ternary whose 'decide' arm could never run.
+        // DECIDE is no longer a registered stage, so keeping the arm was a latent
+        // trap: any future policy mode would have routed to a missing stage and
+        // failed with "no stage registered for 'decide'" instead of executing.
+        next = 'execute';
       } else {
         writeDecisionState(ctx, 'classify', { classification: routed });
         next = 'reply';

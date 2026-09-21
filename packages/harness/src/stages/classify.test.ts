@@ -218,4 +218,57 @@ describe('classifyStage', () => {
     });
     expect(llm.chat).not.toHaveBeenCalled();
   });
+
+  // One execution system: the second executor is deleted, so DECIDE is no longer
+  // a registered stage. Routing there would fail at dispatch with "no stage
+  // registered for 'decide'", so no classification may produce that route.
+  it.each([
+    ['user', '再做一个小游戏吧'],
+    ['user', 'xyzzy'],
+    ['user', '重构整个项目架构并迁移所有文件'],
+    ['user', '查一下今天的公开新闻'],
+    ['user', '你还记得我上次的决定吗？'],
+  ])('never routes %s to the deleted DECIDE stage', async (role, message) => {
+    const stage = createClassifyStage({ rulesConfidenceThreshold: 2 });
+    const ctx = makeCtx({ inbound: textMessage(role as 'user', message) });
+
+    const result = await stage(ctx);
+    expect(result.next).not.toBe('decide');
+    expect(['execute', 'reply', 'exit']).toContain(result.next);
+  });
+});
+
+/**
+ * The route cannot be forced from a test context: classify derives the policy by
+ * calling selectWorkPolicy, which rebuilds it from ctx, and that function returns
+ * 'bounded_loop' on every path. So the invariant is asserted at the source level
+ * instead -- a behavioural test here would pass against the old ternary too and
+ * would therefore guard nothing.
+ */
+describe('single-execution-system routing invariant', () => {
+  it('derives the execute route without consulting the work-policy mode', async () => {
+    const source = await import('node:fs/promises')
+      .then((fs) => fs.readFile(new URL('./classify.ts', import.meta.url), 'utf8'));
+    // The deleted ternary read `workPolicy.executionMode` to choose between
+    // 'execute' and the no-longer-registered 'decide'. No route may depend on it.
+    expect(source).not.toMatch(/next\s*=\s*routed\.workPolicy\.executionMode/u);
+    expect(source).not.toMatch(/next\s*=\s*[^\n]*\?\s*'execute'\s*:\s*'decide'/u);
+  });
+
+  it('names no stage that the driver does not register', async () => {
+    const fs = await import('node:fs/promises');
+    const [source, harness] = await Promise.all([
+      fs.readFile(new URL('./classify.ts', import.meta.url), 'utf8'),
+      fs.readFile(new URL('../default-harness.ts', import.meta.url), 'utf8'),
+    ]);
+    const targets = [...source.matchAll(/next\s*[:=]\s*(?:[^\n]*?\?\s*)?'([a-z_]+)'/gu)]
+      .map((m) => m[1]);
+    expect(targets.length).toBeGreaterThan(0);
+    for (const stage of new Set(targets)) {
+      if (stage === 'exit') continue;
+      // 'decide' is intentionally absent: it survives only as a legacy checkpoint
+      // name and is mapped to the main loop by resolveCheckpointResumeStage.
+      expect(harness).toContain(`stages.set('${stage}'`);
+    }
+  });
 });
