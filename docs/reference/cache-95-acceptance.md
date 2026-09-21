@@ -1,8 +1,8 @@
 # 缓存 95% 冻结负载验收规程
 
-最后更新：2026-09-21 15:20:00
+最后更新：2026-09-22 09:25:00
 
-本文件把 `docs/taskbooks/lean-v2-cache-95-plan-2026-09-20.md` 第 6 节的实测步骤写成可重复执行的规程，供最终验收直接照做。它是验收方法，不是达成声明：在两组冻结负载都跑出完整 usage 之前，95% 一律标记为未验证。
+本文件把 `docs/taskbooks/lean-v2-cache-95-plan-taskbook-2026-09-20.md` 第 6 节的实测步骤写成可重复执行的规程，供最终验收直接照做。它是验收方法，不是达成声明：在两组冻结负载都跑出完整 usage 之前，95% 一律标记为未验证。
 
 ## 1. 冻结什么
 
@@ -134,7 +134,7 @@
 
 此前几节用的是我自己的口径。本节改用**方案文档里给出的历史基线与其自身提出的达标条件**核算，结论更硬。
 
-方案基线与达标条件（取自 `docs/taskbooks/lean-v2-cache-95-plan-2026-09-20.md` 第 2 节）：
+方案基线与达标条件（取自 `docs/taskbooks/lean-v2-cache-95-plan-taskbook-2026-09-20.md` 第 2 节）：
 
 - 历史样本（`ff59df5`）：输入 226,680、缓存 165,248、**总体 72.899%**；未缓存 61,432，每请求 777.6，每任务 1,535.8。
 - 方案明确写出达标条件为 **C ≥ 19U**（即 C/(C+U) ≥ 95%），并给出"U 需从 61,432 降至约 8,697，即减少约 85.8%"的参照。
@@ -183,11 +183,11 @@
 | 同一操作及同一消息的持久化幂等 | 有 | 34 | 覆盖（settlement id、effect lease） |
 | 减少复核不等于虚报验证 | 有 | 10 | 覆盖（`unverified`/`needs_replan` 判定） |
 
-**"明确记忆写入"的准确状态（本轮唯一发现的缺口）**：
+**"明确记忆写入"的准确状态与处置决定（2026-09-21，用户裁定）**：
 
-- **可达的写入路径存在且是生产代码**：`runner-finalize.ts` → `compactSessionAfterRun`（`session-continuity.ts:395`）→ `memoryService.write(intent)`，并经过 `resolveMemoryWriteEpistemic`（该函数**不是**死代码，本轮已核实）。这是**压缩路径**的写入。
-- **模型主动的明确写入路径不存在**：`memory_tree` 工具只有只读动作（`root_index`/`branch_index`/`expand`/`deep_search`/`release`），没有任何 write 动作；`default-harness.ts` 的 `memoryWriter` 选项**只在第 38 行声明、从未被消费**（全文件仅 1 处出现），而 `infra.ts` 仍在第 460/471 行传入它——**这是一个死选项**（EVOLVE/CAPTURE 删除后的遗留）。
-- 判定：方案要求"必要记忆读取与**明确记忆写入**"。当前"明确写入"仅由压缩路径兑现，**模型无法主动写记忆**；若按字面要求，该项**未完全满足**，且 `memoryWriter` 死选项应清理或接回。此处如实记录，未擅自改动语义。
+- **可达的写入路径存在且是生产代码**：`runner-finalize.ts` → `compactSessionAfterRun`（`session-continuity.ts:395`）→ `memoryService.write(intent)`，并经过 `resolveMemoryWriteEpistemic`。这是**压缩路径**的写入。
+- **模型主动的明确写入路径不存在**：`memory_tree` 工具只有只读动作（`root_index`/`branch_index`/`expand`/`deep_search`/`release`），没有任何 write 动作。EVOLVE/CAPTURE 删除后遗留的死选项 `memoryWriter`（只声明、从未被消费）已在本轮清理删除。
+- **处置决定：维持现状，只记录缺口**（用户 2026-09-21 裁定）。即：不重新接回模型可调用的明确写入，也不以"正式放弃"改写方案条款；该项**保持"部分满足"的记录**，`memory_tree` 的只读形态与压缩路径作为唯一写入方的事实如实保留在验收记录中。若后续需要字面满足该条款，需另行决定并新增工具面与测试。
 
 ## 6. 完成条件
 
