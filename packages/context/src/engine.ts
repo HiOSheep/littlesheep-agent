@@ -12,17 +12,43 @@ import {
   type PreparedContextRequest,
 } from './context-engine/contracts.js';
 import { buildSafetyEstimate, defaultContextSafetyEstimator, resolveExactCounter, validTokenCount } from './context-engine/counting.js';
-import { evictOptionalContext, optionalOmissionUnits } from './context-engine/eviction.js';
+import { deliveredUnitIds, evictOptionalContext, optionalOmissionUnits } from './context-engine/eviction.js';
 import { ContextReuseCache, resolveContextReuse, storeContextReuse } from './context-engine/reuse-cache.js';
 import { buildPreparedSnapshots } from './context-engine/snapshots.js';
 export * from './context-engine/contracts.js';
 export { defaultContextSafetyEstimator } from './context-engine/counting.js';
+/**
+ * The candidate ids an `appended-only` request protects.
+ *
+ * Under that scope the caller is asking to extend a request it has already sent,
+ * so everything the previous request for the same run and stage delivered is
+ * protected; the caller may also name extra candidates it owns. What remains
+ * evictable is exactly what this request appended.
+ */
+function protectedCandidateIds(
+  input: PrepareContextRequestInput,
+  delivered: ReadonlySet<string> | undefined,
+): Set<string> {
+  return new Set([...(delivered ?? []), ...(input.protectedCandidateIds ?? [])]);
+}
+
+/** Bounded number of run+stage append-only ledgers one engine instance keeps. */
+const MAX_APPEND_ONLY_LEDGERS = 32;
+
 export class ContextEngine {
   private readonly tokenCounter: ContextEngineOptions['tokenCounter'];
   private readonly safetyEstimator: NonNullable<ContextEngineOptions['safetyEstimator']>;
   private readonly resolveContextWindow: NonNullable<ContextEngineOptions['resolveContextWindow']>;
   private readonly resolveTokenizerCapability: NonNullable<ContextEngineOptions['resolveTokenizerCapability']>;
   private readonly reuseCache = new ContextReuseCache();
+  /**
+   * Per run+stage record of what the last assembled request delivered.
+   *
+   * It is the only state that makes `appended-only` eviction meaningful: the
+   * engine, not the caller, knows which Context units the previous request
+   * actually contained, so protection cannot drift from the sent bytes.
+   */
+  private readonly deliveredUnits = new Map<string, Set<string>>();
   constructor(options: ContextEngineOptions = {}) {
     this.tokenCounter = options.tokenCounter;
     this.safetyEstimator = options.safetyEstimator ?? defaultContextSafetyEstimator;
@@ -33,7 +59,14 @@ export class ContextEngine {
     const createdAt = new Date().toISOString();
     const budget = resolveContextBudget(input, this.resolveContextWindow);
     const candidates = prepareContextCandidates(input);
-    const reuse = resolveContextReuse(input, candidates, budget, this.reuseCache);
+    const ledgerKey = `${input.runId}\u0000${input.stage}`;
+    // Under `appended-only`, everything the caller has already sent is
+    // protected: eviction may drop what this request appended, never an item
+    // whose removal would re-number the messages around it.
+    const protectedIds = budget.evictionScope === 'appended-only'
+      ? protectedCandidateIds(input, this.deliveredUnits.get(ledgerKey))
+      : new Set<string>();
+    const reuse = resolveContextReuse(input, candidates, budget, this.reuseCache, protectedIds);
     // An identical assembly reuses the eviction decision, token measurement and
     // estimator outcome instead of re-deriving them; that local reuse is the
     // real event the Runtime reports as its context-cache ledger.
@@ -45,7 +78,7 @@ export class ContextEngine {
       budget.model,
     );
     const omitted = new Set<string>(reused?.omitted ?? []);
-    const optional = optionalOmissionUnits(candidates);
+    const optional = optionalOmissionUnits(candidates, protectedIds);
     const state = {
       request: requestFromCandidates(input.request, candidates, omitted),
       measurement: reused?.measurement ?? 0,
@@ -141,6 +174,9 @@ export class ContextEngine {
         ...(counterFailure === undefined ? {} : { counterFailure }),
       });
     }
+    if (budget.evictionScope === 'appended-only') {
+      this.rememberDelivered(ledgerKey, deliveredUnitIds(candidates, omitted));
+    }
     const { contextSnapshot, modelRequestSnapshot } = buildPreparedSnapshots({
       runId: input.runId,
       sessionId: input.sessionId,
@@ -173,5 +209,15 @@ export class ContextEngine {
       compressionRecommended,
       omittedCandidateIds: [...omitted],
     };
+  }
+
+  private rememberDelivered(ledgerKey: string, delivered: Set<string>): void {
+    if (this.deliveredUnits.has(ledgerKey)) this.deliveredUnits.delete(ledgerKey);
+    this.deliveredUnits.set(ledgerKey, delivered);
+    while (this.deliveredUnits.size > MAX_APPEND_ONLY_LEDGERS) {
+      const oldest = this.deliveredUnits.keys().next().value;
+      if (oldest === undefined) break;
+      this.deliveredUnits.delete(oldest);
+    }
   }
 }

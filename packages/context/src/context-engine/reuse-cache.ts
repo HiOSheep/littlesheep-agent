@@ -67,8 +67,9 @@ export function resolveContextReuse(
   candidates: readonly ContextMessageCandidate[],
   budget: { provider: string; model: string; targetPromptTokens?: number; availablePromptTokens?: number },
   cache: ContextReuseCache,
+  protectedIds: ReadonlySet<string> = new Set(),
 ): ContextReuseResolution {
-  const key = contextReuseKey(input, candidates, budget);
+  const key = contextReuseKey(input, candidates, budget, protectedIds);
   const entry = cache.lookup(key);
   return {
     key,
@@ -91,15 +92,21 @@ export function storeContextReuse(
 /**
  * Fingerprint every input that can change the assembled request or the eviction
  * decision. Candidate order, required flags, segments and the base request are
- * all part of the key, so a hit can only mean an identical assembly.
+ * all part of the key, so a hit can only mean an identical assembly — including
+ * the append-only protection, which decides what eviction was allowed to drop.
  */
 export function contextReuseKey(
   input: PrepareContextRequestInput,
   candidates: readonly ContextMessageCandidate[],
   budget: { provider: string; model: string; targetPromptTokens?: number; availablePromptTokens?: number },
+  protectedIds: ReadonlySet<string> = new Set(),
 ): string {
   const hash = createHash('sha256');
   hash.update(String(input.stage));
+  hash.update('\u0000');
+  hash.update(String(input.evictionScope ?? 'unconsumed'));
+  hash.update('\u0000');
+  hash.update(JSON.stringify([...protectedIds].sort()));
   hash.update('\u0000');
   hash.update(JSON.stringify(input.callContract ?? null));
   hash.update('\u0000');

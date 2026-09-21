@@ -721,3 +721,316 @@ describe('ContextEngine', () => {
     expect(result.modelRequestSnapshot.messages[0]?.reasoningHash).toMatch(/^[a-f0-9]{64}$/);
   });
 });
+
+describe('ContextEngine append-only eviction', () => {
+  function appendOnlyEngine(maxContextTokens: number): ContextEngine {
+    return new ContextEngine({
+      tokenCounter: lengthCounter,
+      resolveContextWindow: () => ({ maxContextTokens, source: 'builtin-model-registry' }),
+      resolveTokenizerCapability: exactLengthCapability,
+    });
+  }
+
+  const sentCandidate = (id: string, order: number, content: string) => candidate(
+    id,
+    order,
+    content,
+    { priority: 10 },
+  );
+
+  it('does not drop an already sent message to fit the budget', () => {
+    const engine = appendOnlyEngine(60);
+    const first = engine.prepare({
+      runId: 'run-append',
+      sessionId: asSessionId('session-append'),
+      stage: 'execute',
+      requestIndex: 1,
+      provider: 'openai',
+      evictionScope: 'appended-only',
+      request: baseRequest(),
+      candidates: [
+        candidate('system', 0, 's'.repeat(10), { required: true, priority: 100, role: 'system' }),
+        // The first request fits, so both history messages are really sent.
+        sentCandidate('history-1', 10, 'a'.repeat(20)),
+        sentCandidate('history-2', 11, 'b'.repeat(20)),
+      ],
+    });
+    expect(first.omittedCandidateIds).toEqual([]);
+
+    // The next request appends a tool result and no longer fits. Trimming is
+    // now restricted to what this request appended: dropping `history-1` would
+    // have shifted `history-2` and the tool result up by one message and
+    // silently discarded the Provider's cached prefix.
+    const second = engine.prepare({
+      runId: 'run-append',
+      sessionId: asSessionId('session-append'),
+      stage: 'execute',
+      requestIndex: 2,
+      provider: 'openai',
+      evictionScope: 'appended-only',
+      request: baseRequest(),
+      candidates: [
+        candidate('system', 0, 's'.repeat(10), { required: true, priority: 100, role: 'system' }),
+        sentCandidate('history-1', 10, 'a'.repeat(20)),
+        sentCandidate('history-2', 11, 'b'.repeat(20)),
+        sentCandidate('tool-result', 12, 't'.repeat(20)),
+      ],
+    });
+
+    expect(second.omittedCandidateIds).toEqual(['tool-result']);
+    const sentBefore = first.request.messages;
+    expect(second.request.messages.slice(0, sentBefore.length)).toEqual(sentBefore);
+  });
+
+  it('reports the previous request as a prefix even when the append is what is trimmed', () => {
+    const engine = appendOnlyEngine(60);
+    const shared = [
+      candidate('system', 0, 's'.repeat(10), { required: true, priority: 100, role: 'system' }),
+      sentCandidate('history-1', 10, 'a'.repeat(20)),
+    ];
+    const first = engine.prepare({
+      runId: 'run-prefix',
+      sessionId: asSessionId('session-prefix'),
+      stage: 'execute',
+      requestIndex: 1,
+      provider: 'openai',
+      evictionScope: 'appended-only',
+      request: baseRequest(),
+      candidates: shared,
+    });
+    const second = engine.prepare({
+      runId: 'run-prefix',
+      sessionId: asSessionId('session-prefix'),
+      stage: 'execute',
+      requestIndex: 2,
+      provider: 'openai',
+      evictionScope: 'appended-only',
+      request: baseRequest(),
+      candidates: [
+        ...shared,
+        sentCandidate('appended', 11, 'x'.repeat(100)),
+      ],
+    });
+
+    expect(second.omittedCandidateIds).toEqual(['appended']);
+    expect(second.request.messages).toEqual(first.request.messages);
+  });
+
+  it('fails visibly instead of re-numbering when the sent prefix alone exceeds the window', () => {
+    // A shrinking window stands in for any budget change (model switch, smaller
+    // reserved output) that lands between two requests of one run.
+    let maxContextTokens = 1_000;
+    const engine = new ContextEngine({
+      tokenCounter: lengthCounter,
+      resolveContextWindow: () => ({ maxContextTokens, source: 'builtin-model-registry' }),
+      resolveTokenizerCapability: exactLengthCapability,
+    });
+    const sent = [
+      candidate('system', 0, 's'.repeat(10), { required: true, priority: 100, role: 'system' }),
+      sentCandidate('history-1', 10, 'a'.repeat(200)),
+    ];
+    const first = engine.prepare({
+      runId: 'run-fail',
+      sessionId: asSessionId('session-fail'),
+      stage: 'execute',
+      requestIndex: 1,
+      provider: 'openai',
+      evictionScope: 'appended-only',
+      request: baseRequest(),
+      candidates: sent,
+    });
+    expect(first.omittedCandidateIds).toEqual([]);
+
+    maxContextTokens = 100;
+    // 210 sent tokens against 90 available. Trimming `history-1` is the only way
+    // to fit, and that is exactly what must not happen silently.
+    expect(() => engine.prepare({
+      runId: 'run-fail',
+      sessionId: asSessionId('session-fail'),
+      stage: 'execute',
+      requestIndex: 2,
+      provider: 'openai',
+      evictionScope: 'appended-only',
+      request: baseRequest(),
+      candidates: sent,
+    })).toThrow(ContextBudgetExceededError);
+  });
+
+  it('keeps trimming everything when the caller does not opt into append-only', () => {
+    const engine = appendOnlyEngine(60);
+    const candidates = [
+      candidate('system', 0, 's'.repeat(10), { required: true, priority: 100, role: 'system' }),
+      sentCandidate('history-1', 10, 'a'.repeat(20)),
+      sentCandidate('history-2', 11, 'b'.repeat(20)),
+      sentCandidate('tool-result', 12, 't'.repeat(20)),
+    ];
+    engine.prepare({
+      runId: 'run-default',
+      sessionId: asSessionId('session-default'),
+      stage: 'execute',
+      requestIndex: 1,
+      provider: 'openai',
+      request: baseRequest(),
+      candidates: candidates.slice(0, 3),
+    });
+    const second = engine.prepare({
+      runId: 'run-default',
+      sessionId: asSessionId('session-default'),
+      stage: 'execute',
+      requestIndex: 2,
+      provider: 'openai',
+      request: baseRequest(),
+      candidates,
+    });
+
+    // Historical behaviour is unchanged: the lowest-priority optional message is
+    // dropped even though it was already sent, so the prefix is re-numbered.
+    expect(second.omittedCandidateIds).toEqual(['history-1']);
+    expect(second.request.messages.map((message) => message.content))
+      .toEqual(['s'.repeat(10), 'b'.repeat(20), 't'.repeat(20)]);
+  });
+
+  it('leaves protected units out of the eviction order entirely', () => {
+    const engine = appendOnlyEngine(60);
+    const first = engine.prepare({
+      runId: 'run-explicit',
+      sessionId: asSessionId('session-explicit'),
+      stage: 'execute',
+      requestIndex: 1,
+      provider: 'openai',
+      evictionScope: 'appended-only',
+      request: baseRequest(),
+      candidates: [
+        candidate('system', 0, 's'.repeat(10), { required: true, priority: 100, role: 'system' }),
+        sentCandidate('history-1', 10, 'a'.repeat(20)),
+      ],
+    });
+    const second = engine.prepare({
+      runId: 'run-explicit',
+      sessionId: asSessionId('session-explicit'),
+      stage: 'execute',
+      requestIndex: 2,
+      provider: 'openai',
+      evictionScope: 'appended-only',
+      // A caller may name its own units in addition to what the engine recorded.
+      protectedCandidateIds: ['appended-2'],
+      request: baseRequest(),
+      candidates: [
+        candidate('system', 0, 's'.repeat(10), { required: true, priority: 100, role: 'system' }),
+        sentCandidate('history-1', 10, 'a'.repeat(20)),
+        sentCandidate('appended-1', 11, 'x'.repeat(20)),
+        sentCandidate('appended-2', 12, 'y'.repeat(20)),
+      ],
+    });
+
+    expect(second.omittedCandidateIds).toEqual(['appended-1']);
+    expect(second.request.messages.slice(0, first.request.messages.length))
+      .toEqual(first.request.messages);
+  });
+
+  it('treats a different eviction scope as a different assembly', () => {
+    const engine = appendOnlyEngine(40);
+    const candidates = [
+      candidate('system', 0, 's'.repeat(10), { required: true, priority: 100, role: 'system' }),
+      sentCandidate('history-1', 10, 'a'.repeat(20)),
+      sentCandidate('history-2', 11, 'b'.repeat(20)),
+    ];
+    // Everything but the scope and the protection is identical, so a reuse hit
+    // would hand the second call the first call's omission decision — the
+    // protection would be silently skipped.
+    const first = engine.prepare({
+      runId: 'run-scope-key',
+      sessionId: asSessionId('session-scope-key'),
+      stage: 'execute',
+      requestIndex: 1,
+      provider: 'openai',
+      request: baseRequest(),
+      candidates,
+    });
+    expect(first.omittedCandidateIds).toEqual(['history-1']);
+
+    const second = engine.prepare({
+      runId: 'run-scope-key',
+      sessionId: asSessionId('session-scope-key'),
+      stage: 'execute',
+      requestIndex: 2,
+      provider: 'openai',
+      evictionScope: 'appended-only',
+      protectedCandidateIds: ['history-1'],
+      request: baseRequest(),
+      candidates,
+    });
+
+    expect(second.omittedCandidateIds).toEqual(['history-2']);
+    expect(second.contextSnapshot.contextReuse?.status).toBe('miss');
+  });
+
+  it('protects every segment of a message that was delivered whole', () => {
+    const engine = appendOnlyEngine(60);
+    const systemWithSegments = (): ContextMessageCandidate => ({
+      id: 'system',
+      order: 0,
+      message: { role: 'system', content: `${'s'.repeat(10)}${'b'.repeat(20)}` },
+      kind: 'system_prompt',
+      source: { kind: 'prompt', id: 'system' },
+      priority: 100,
+      required: true,
+      sensitive: true,
+      segments: [
+        {
+          id: 'system:policy',
+          order: 0,
+          text: 's'.repeat(10),
+          kind: 'system_prompt',
+          source: { kind: 'prompt', id: 'policy' },
+          priority: 100,
+          required: true,
+          sensitive: true,
+          scope: 'global',
+        },
+        {
+          id: 'system:bootstrap',
+          order: 1,
+          text: 'b'.repeat(20),
+          kind: 'project_knowledge',
+          source: { kind: 'prompt', id: 'AGENTS.md', path: 'AGENTS.md' },
+          priority: 40,
+          required: false,
+          sensitive: true,
+          scope: 'workspace',
+        },
+      ],
+    });
+    const first = engine.prepare({
+      runId: 'run-segments-append',
+      sessionId: asSessionId('session-segments-append'),
+      stage: 'execute',
+      requestIndex: 1,
+      provider: 'openai',
+      evictionScope: 'appended-only',
+      request: baseRequest(),
+      candidates: [systemWithSegments(), sentCandidate('history-1', 10, 'a'.repeat(20))],
+    });
+    expect(first.request.messages[0]?.content).toBe(`${'s'.repeat(10)}${'b'.repeat(20)}`);
+
+    // A later request would fit only by dropping the bootstrap section, which
+    // would rewrite the system message the caller already sent.
+    const second = engine.prepare({
+      runId: 'run-segments-append',
+      sessionId: asSessionId('session-segments-append'),
+      stage: 'execute',
+      requestIndex: 2,
+      provider: 'openai',
+      evictionScope: 'appended-only',
+      request: baseRequest(),
+      candidates: [
+        systemWithSegments(),
+        sentCandidate('history-1', 10, 'a'.repeat(20)),
+        sentCandidate('tool-result', 11, 't'.repeat(20)),
+      ],
+    });
+
+    expect(second.omittedCandidateIds).toEqual(['tool-result']);
+    expect(second.request.messages[0]?.content).toBe(first.request.messages[0]?.content);
+  });
+});

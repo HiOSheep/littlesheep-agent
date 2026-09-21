@@ -6,6 +6,8 @@ import {
   DEFAULT_RESERVED_OUTPUT_TOKENS,
 } from './contracts.js';
 
+export type ContextEvictionScope = 'unconsumed' | 'appended-only';
+
 export interface ResolvedContextBudget {
   provider: string;
   model: string;
@@ -14,6 +16,7 @@ export interface ResolvedContextBudget {
   availablePromptTokens?: number;
   targetPromptTokens?: number;
   compressionThresholdRatio: number;
+  evictionScope: ContextEvictionScope;
 }
 
 export function resolveContextBudget(
@@ -45,6 +48,22 @@ export function resolveContextBudget(
     compressionThresholdRatio: clampCompressionRatio(
       input.compressionThresholdRatio ?? DEFAULT_COMPRESSION_THRESHOLD_RATIO,
     ),
+    /**
+     * Which Context items may be dropped to fit the budget.
+     *
+     * `unconsumed` — the default — is the historical behaviour: any optional
+     * item is a candidate. `appended-only` keeps everything the caller has
+     * already sent and only drops what this request appended. A caller that
+     * extends a sent request needs the second: dropping an item from the middle
+     * re-numbers every message after it, so the request silently stops being an
+     * extension of the one before it and the Provider's cached prefix is lost
+     * without anything having failed.
+     *
+     * This is not a way to exceed the window. It is a way to make the two
+     * outcomes distinguishable: either something that has not been sent yet is
+     * dropped, or the budget is genuinely exceeded and the caller sees it.
+     */
+    evictionScope: input.evictionScope ?? 'unconsumed',
   };
 }
 

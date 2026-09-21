@@ -182,8 +182,12 @@ export async function runToolLoop(
           tailKinds,
         }),
         // The loop owns the append-only tail; the request recorder must not
-        // re-inject (and thereby re-position) it per iteration.
-        { skipRuntimeTail: true },
+        // re-inject (and thereby re-position) it per iteration. Context trimming
+        // is likewise restricted to `appended-only`: every message this run has
+        // already sent must survive, so an over-budget request fails visibly
+        // instead of quietly dropping one from the middle and re-numbering the
+        // rest.
+        { skipRuntimeTail: true, evictionScope: 'appended-only' },
       );
       response = await runTranscriptModelTurn(ctx, deps.llm, request, transcriptTurn);
       if (process.env.LS_TAIL_DEBUG) {

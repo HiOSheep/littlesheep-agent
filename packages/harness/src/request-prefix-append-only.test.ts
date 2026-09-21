@@ -313,6 +313,52 @@ describe('main-loop request is append-only', () => {
     }
   });
 
+  it('refuses to trim an already sent message when the request goes over the stage target', async () => {
+    // Context trimming is the one part of assembly that can re-order a request
+    // the loop has already sent: dropping a message from the middle shifts every
+    // message after it. The loop therefore declares the request append-only, and
+    // this case holds the assembly to it.
+    const requests: ChatRequest[] = [];
+    let turn = 0;
+    const llm = createMockLlm((request) => {
+      requests.push(request);
+      turn += 1;
+      return turn === 1
+        ? toolCallResponse([{ id: 'c1', name: 'lookup', args: { q: 'x' } }])
+        : textResponse('final');
+    });
+    const tool = makeTool('lookup', { ok: true, output: 'x'.repeat(20_000) });
+    const stage = createExecuteStage({ ...deps, llm });
+    // Sized so the first request fits under the contract's stage target (24,000
+    // estimated prompt tokens for `execute_tool_loop`) and the tool result pushes
+    // the second one over it. If prompt sizes drift, the over-target assertion
+    // below fails loudly instead of this case silently losing its pressure.
+    const ctx = makeCtx({
+      tools: [tool],
+      inbound: textMessage('user', 'lookup x'),
+      history: [
+        textMessage('user', 'a'.repeat(8_777)),
+        textMessage('assistant', 'b'.repeat(8_777)),
+      ],
+    });
+
+    const outcome = await stage(ctx);
+
+    expect(outcome).toMatchObject({ next: 'verify', ok: true });
+    expect(requests).toHaveLength(2);
+    expectAppendOnly(requests);
+    const stageTarget = 24_000;
+    const estimates = (ctx.contextSnapshots ?? []).map((snapshot) => (
+      snapshot.safetyEstimate?.estimatedPromptTokens ?? 0
+    ));
+    expect(estimates[1]).toBeGreaterThan(stageTarget);
+    // Nothing the first request delivered may be missing from the second, and no
+    // message may have been rewritten: the system message, the history and the
+    // appended tail facts all survive verbatim.
+    expect(requests[1]!.messages.slice(0, requests[0]!.messages.length))
+      .toEqual(requests[0]!.messages);
+  });
+
   it('keeps prior conversation history byte-identical when a run continues', async () => {
     const history: Message[] = [
       textMessage('user', 'earlier question'),

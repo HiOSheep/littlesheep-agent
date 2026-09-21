@@ -12,29 +12,49 @@ export interface ContextOmissionUnit {
   ids: string[];
   priority: number;
   order: number;
+  /**
+   * The unit may not be dropped at all: it belongs to the part of the request
+   * the caller has already sent.
+   */
+  protected?: boolean;
 }
 
-export function optionalOmissionUnits(candidates: ContextMessageCandidate[]): ContextOmissionUnit[] {
+export function optionalOmissionUnits(
+  candidates: ContextMessageCandidate[],
+  protectedIds: ReadonlySet<string> = new Set(),
+): ContextOmissionUnit[] {
   const groups = new Map<string, ContextOmissionUnit>();
-  const add = (id: string, group: string, priority: number, order: number) => {
+  const add = (
+    id: string,
+    group: string,
+    priority: number,
+    order: number,
+    candidateProtected = false,
+  ) => {
+    const isProtected = candidateProtected || protectedIds.has(id);
     const current = groups.get(group);
     if (current) {
       current.ids.push(id);
       current.priority = Math.min(current.priority, priority);
       current.order = Math.min(current.order, order);
+      current.protected = current.protected === true || isProtected;
       return;
     }
-    groups.set(group, { id, ids: [id], priority, order });
+    groups.set(group, { id, ids: [id], priority, order, ...(isProtected ? { protected: true } : {}) });
   };
 
   for (const candidate of candidates) {
     if (candidate.segments) {
+      // Protecting a message protects every section it was delivered with: a
+      // segment dropped here rewrites the message the caller already sent.
+      const candidateProtected = protectedIds.has(candidate.id);
       for (const segment of candidate.segments) {
         if (!segment.required) add(
           segment.id,
           segment.evictionGroup ?? segment.id,
           segment.priority,
           segment.order,
+          candidateProtected,
         );
       }
       continue;
@@ -48,7 +68,46 @@ export function optionalOmissionUnits(candidates: ContextMessageCandidate[]): Co
   }
 
   return [...groups.values()]
+    // A protected unit stays in the request, so dropping it is not an option to
+    // consider at all: it is left out of the candidate list rather than being
+    // skipped later, which keeps the eviction loop's accounting honest.
+    .filter((unit) => unit.protected !== true)
     .sort((left, right) => left.priority - right.priority || left.order - right.order || left.id.localeCompare(right.id));
+}
+
+/**
+ * The unit ids one assembled request actually delivered.
+ *
+ * Append-only protection is derived from this set instead of the candidate list:
+ * a unit the previous request had already trimmed is not resurrected, and a unit
+ * it delivered cannot be dropped afterwards, because dropping it would renumber
+ * every message after it and invalidate the Provider's cached prefix.
+ */
+export function deliveredUnitIds(
+  candidates: readonly ContextMessageCandidate[],
+  omitted: ReadonlySet<string>,
+): Set<string> {
+  const delivered = new Set<string>();
+  for (const candidate of candidates) {
+    if (omitted.has(candidate.id)) continue;
+    const segments = candidate.segments;
+    if (!segments) {
+      delivered.add(candidate.id);
+      continue;
+    }
+    let intact = true;
+    for (const segment of segments) {
+      if (omitted.has(segment.id)) {
+        intact = false;
+        continue;
+      }
+      delivered.add(segment.id);
+    }
+    // A message delivered whole is protected as a whole, so later unit-list
+    // changes cannot drop a section the caller already received with it.
+    if (intact) delivered.add(candidate.id);
+  }
+  return delivered;
 }
 
 export function evictOptionalContext(

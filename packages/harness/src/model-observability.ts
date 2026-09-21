@@ -261,6 +261,14 @@ export function prepareModelRequest(
     retryReason?: ModelRequestSnapshot['retryReason'];
     /** The caller owns the Runtime tail and already appended it (see recordPreparedRequest). */
     skipRuntimeTail?: boolean;
+    /**
+     * Candidate ids budget eviction must not drop, with the scope that makes the
+     * protection meaningful. A caller extending a request it has already sent
+     * protects everything it sent, so the request cannot be silently
+     * re-numbered and its cached prefix lost without a failure.
+     */
+    protectedCandidateIds?: readonly string[];
+    evictionScope?: 'unconsumed' | 'appended-only';
   } = {},
 ): ChatRequest {
   return recordPreparedRequest(ctx, purposeOrStage, request, candidates, options).request;
@@ -276,6 +284,9 @@ export function recordModelRequest(
     retryReason?: ModelRequestSnapshot['retryReason'];
     /** The caller owns the Runtime tail and already appended it (see recordPreparedRequest). */
     skipRuntimeTail?: boolean;
+    /** See prepareModelRequest. */
+    protectedCandidateIds?: readonly string[];
+    evictionScope?: 'unconsumed' | 'appended-only';
   } = {},
 ): ModelRequestSnapshot {
   return recordPreparedRequest(ctx, purposeOrStage, request, candidates, options).snapshot;
@@ -438,6 +449,11 @@ function recordPreparedRequest(
      * prefix of the next one; the main loop therefore owns it.
      */
     skipRuntimeTail?: boolean;
+    /**
+     * See prepareModelRequest.
+     */
+    protectedCandidateIds?: readonly string[];
+    evictionScope?: 'unconsumed' | 'appended-only';
   } = {},
 ): { request: ChatRequest; snapshot: ModelRequestSnapshot } {
   const modelCallBudgetEnabled = ctx.maxModelCalls !== undefined;
@@ -487,6 +503,8 @@ function recordPreparedRequest(
     candidates: runtimeAware.candidates,
     callContract,
     compressionThresholdRatio: callContract.budget.contextCompressionThresholdRatio,
+    ...(options.evictionScope ? { evictionScope: options.evictionScope } : {}),
+    ...(options.protectedCandidateIds ? { protectedCandidateIds: options.protectedCandidateIds } : {}),
   });
   const retryOf = options.retryOf
     && ctx.modelRequests?.some((candidate) => candidate.id === options.retryOf && candidate.runId === ctx.runId)

@@ -80,6 +80,17 @@ export interface PrepareContextRequestInput {
   candidates?: ContextMessageCandidate[];
   callContract?: LlmCallContract;
   compressionThresholdRatio?: number;
+  /**
+   * Which Context items budget eviction may drop.
+   *
+   * `unconsumed` (default) keeps the historical behaviour. `appended-only`
+   * protects everything the caller has already sent, so a caller extending a
+   * sent request cannot have it silently re-numbered; the budget is then either
+   * satisfied by dropping appended items or reported as exceeded.
+   */
+  evictionScope?: 'unconsumed' | 'appended-only';
+  /** Candidate ids that must not be evicted under `appended-only`. */
+  protectedCandidateIds?: readonly string[];
 }
 
 export interface PreparedContextRequest {
