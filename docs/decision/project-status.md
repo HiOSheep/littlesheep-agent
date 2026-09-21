@@ -1,8 +1,8 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-22 22:20:00
+最后更新：2026-09-21 15:23:45
 
-**红线口径裁定为选项 ③ 并落地为可复算判定（2026-09-22 22:20:00）**
+**红线口径裁定为选项 ③ 并落地为可复算判定（2026-09-21 15:23:45）**
 
 - 用户裁定：红线判定在**稳态命中率**（排除每会话首个请求，其余请求含失败/重试/取消/辅助全部计入），**冷启动单独记录**；同时报告含冷启动的总体值作为背景。依据是与同行做法一致（同类系统把首次建链成本单独处理，其 95%+ 读数多出现在长会话上），且混算会让指标随会话长度而非实现质量波动。
 - **落地为可执行判定（`scripts/audit-cache-usage.mjs`）**：`--json` 新增 `steadyState` 与 `coldStart` 两组字段；`target.conclusion` 改按稳态判定，并同时输出 `overallHitPercent`；文本摘要打印 `red line basis` 与两行分解。
@@ -20,7 +20,7 @@
 - 同步修订：`docs/reference/cache-95-acceptance.md` 新增 3.1（口径定义与"热缓存子集"的区别）、5.21（核定结论）；任务书第 6 节完成条件改为稳态口径并附修订说明。
 - 验证：`pnpm run typecheck` 通过；全仓 **444/445 文件通过、3,086 项通过**（唯一失败为 `scripts/verify-web-live-llm-evidence.test.mjs`，已在干净基线复现确认为沙箱管道 stdio 既有问题）；仓库卫生 **33 passed / 0 failed**。已推送 `5564507`。
 
-**发现意图门控与方案"稳定工具定义"要求的冲突（2026-09-22 16:50:00）**
+**发现意图门控与方案"稳定工具定义"要求的冲突（2026-09-21 14:42:00）**
 
 - **相关事实核实**：本负载 60 个 run **零工具调用**，任务文本多数明确写着"不要调用任何工具"，但每次仍广播 10 个工具 schema。
 - **发现的冲突**：方案第 66 行要求"每个会话压缩区间使用一个稳定 system 和**一套稳定工具定义**；工具名、schema、顺序固定"。而按 5.16 修复后的意图门控在**混合会话**中会改变工具集。实测序列："帮我写个函数"→6 个；"把报告导出为 PDF"→8 个（+文档工具）；"查一下今天的新闻"→8 个（文档退出、web 进入）；"再解释一下"→回到 6 个。**每次变化都会使该点之后的缓存前缀失效**，与第 66 行直接冲突。
@@ -29,7 +29,7 @@
 - 该冲突需在"按意图收窄"与"按区间固定"之间作出选择，本轮如实记录，**未擅自改动**。
 - 验证：`pnpm run typecheck` 通过；仓库卫生 **33 passed / 0 failed**；本轮无生产代码改动。
 
-**修复工具门控未作用于 Provider 的缺陷，并如实报告其比例代价（2026-09-22 15:55:00）**
+**修复工具门控未作用于 Provider 的缺陷，并如实报告其比例代价（2026-09-21 14:40:04）**
 
 - **发现的真实缺陷**：`packages/harness/src/stages/execute/runners.ts` 把 `tools: explicitTools ?? ctx.tools` 直接交给 Provider，而 `toolsForRetrievalIntent(ctx)` 此前**只过滤提示词文本**里的工具清单。结果 Provider 收到**未过滤的 12 个工具**（含 `document_create`/`document_read`），与提示词声明的能力集**不一致**；实测 60 个 run 全部如此，而这些 run **零工具调用**。
 - **修复**：改为 `tools: explicitTools ?? admittedTools`（`admittedTools = toolsForRetrievalIntent(ctx)`），使 Provider 与提示词看到同一份被准入集合。
@@ -38,7 +38,7 @@
 - **不回滚该修复**：方案第 9 行明确要求"删除冗余后，不能仅因比例下降而恢复冗余"，且"Provider 与提示词能力集不一致"本身是正确性问题。本轮让实现**更精简**（少 51,631 tokens、少广播 2 个工具），代价是比例下降约 1.1 个百分点——这是"精简与 95% 相互拉扯"的又一实证。
 - 验证：`pnpm run typecheck` 通过；`packages/harness` 62 文件、520 项通过；仓库卫生 **33 passed / 0 failed**。
 
-**缺口归因收敛：暖请求已达标，唯一冷启动贡献 1.38 个百分点（2026-09-22 14:55:00）**
+**缺口归因收敛：暖请求已达标，唯一冷启动贡献 1.38 个百分点（2026-09-21 14:33:59）**
 
 本轮检验两条此前未定量的改进路径，**两条均被否证**，缺口因此收敛到一个明确来源。
 
@@ -57,7 +57,7 @@
 - **判定**：这是方案目标与"禁止预热"约束之间的**结构性冲突**，不是继续精简代码可以弥合的缺口。已达到"能力裁剪完成"，"95% 达成"因该冲突未达成，两项分别标记。
 - 验证：`pnpm run typecheck` 通过；仓库卫生 **33 passed / 0 failed**；本轮无生产代码改动。
 
-**更正"供应商常量"表述：残差实际取决于本实现的 prompt 规模（2026-09-22 13:55:00）**
+**更正"供应商常量"表述：残差实际取决于本实现的 prompt 规模（2026-09-21 14:32:26）**
 
 - 本轮检验"`cached` 是否由**上一次**请求决定（滞后模型）"，结论**不成立**：滞后模型仅 29.8% 符合，而当次公式（`cached = floor((prompt−128)/128)×128`）符合 **94.7%**。
 - 检验中仍得到一个成立的观察：**19/19** 个连续暖请求满足 `cached[i] ≤ prompt[i−1]`。它与当次公式不矛盾——两者同时成立当且仅当相邻 prompt 增长 < 256，实测增长为 −12 至 84（均值 40.8），条件满足。
@@ -66,7 +66,7 @@
 - **但结论不变，理由更正**：压低该余数的手段仍是移动块边界（即填充），被方案第 13 行禁止。因此不是"供应商常量无法改变"，而是"**可改变它的手段恰好被方案禁止**"。
 - 验证：`pnpm run typecheck` 通过；仓库卫生 **33 passed / 0 failed**；本轮无生产代码改动。
 
-**残差精确构成、"对齐"路径被方案自身禁止，以及精简与 95% 的结构性张力（2026-09-22 12:55:00）**
+**残差精确构成、"对齐"路径被方案自身禁止，以及精简与 95% 的结构性张力（2026-09-21 14:30:37）**
 
 - **残差精确分解**（59 个暖请求中 56 个符合）：**未缓存量 = 128 + ((prompt − 128) mod 128)**。即一个固定整块 + 一个随 prompt 均匀分布的余数；实测 `(prompt−128) mod 128` 落在 [2,127]、均值 56.5，确认当前**没有任何对齐控制**。
 - **一条表面可行的路径**：若把 prompt 规模控制到 `prompt mod 128` 固定，残差可从均值 192 压到约 128，暖请求命中率由 **95.96% 升到约 97.34%**（+1.38 点），足以让总体跨过 95%。
@@ -76,7 +76,7 @@
 - **如实结论**：在"禁止填充"与当前 Provider 缓存模型下，95% 与已完成的精简之间存在**方案未预期的张力**；当前 94.578%（60 请求口径）未达标。未通过对齐填充、预热或延长会话改写该结论。
 - 验证：`pnpm run typecheck` 通过；仓库卫生 **33 passed / 0 failed**；本轮无生产代码改动。
 
-**命中率可预测公式 `hit = 1 − 192/prompt`，并发现一处未擅自实施的架构权衡（2026-09-22 11:55:00）**
+**命中率可预测公式 `hit = 1 − 192/prompt`，并发现一处未擅自实施的架构权衡（2026-09-21 14:28:32）**
 
 - 上一轮的"相位"假设经检验**不成立**（残差既非 `prompt mod 128`，也非 `floor(prompt/128)*128`）。进一步拟合得到更简单、且**经实测验证**的规则：**`cached` = 不大于 `prompt − 128` 的最大 128 倍数**。
 - 验证强度：59 个暖请求中 **56 个（94.9%）**精确符合，平均绝对误差仅 **6.5 tokens**；预测聚合 95.939% vs 实测 95.959%（差 0.02 个百分点）。
@@ -87,7 +87,7 @@
 - 本负载未暴露该风险（请求类型全为 `execute_tool_loop`，且每会话 `promptVersion` 只有 1 个取值），但**这只能说明本负载不触发**。该改动属影响模式语义的架构调整、且方案未授权，故**本轮只记录可行点与代价，未实施**。
 - 验证：`pnpm run typecheck` 通过；仓库卫生 **33 passed / 0 failed**；本轮无生产代码改动。
 
-**三轮测量与达标灵敏度模型：多发送内容会让命中率变差（2026-09-22 10:45:00）**
+**三轮测量与达标灵敏度模型：多发送内容会让命中率变差（2026-09-21 14:25:26）**
 
 - 把负载加长到 **3 轮 × 20 任务（60 个请求）**复测：新实现 **94.578%**、旧实现 94.429%（2 轮时为 93.538%，说明冷启动摊薄后读数上升）。3 个会话中**只有 1 个冷启动**（5.9%），另两个会话首个请求命中 94.3%。
 - 拆分：暖请求 59 个 **95.959%**、冷启动 1 个 5.893%、总体 94.587%。暖请求块对齐浪费合计 **7,936 tokens**（平均 ~134，多数恰好 128）。
@@ -96,7 +96,7 @@
 - **机制补充**：会话内 `cached ≈ 0.975 × prompt − 81`；prompt 每请求 +41 tokens、cached +35.6，差距仅以 **5.5 tokens/请求**扩大。说明 128 残差是**恒定量化伪影**（由尾部相对块边界的相位决定），不是持续泄漏。结构上 `splitRequestForCache` 把**所有非 system 消息归入尾部**，可缓存部分只有 system 消息——会话历史必然位于前缀之后，属 chat 缓存固有语义。
 - 验证：`pnpm run typecheck` 通过；仓库卫生 **33 passed / 0 failed**（本轮无生产代码改动，为测量与建模）。
 
-**方案"保留底线"逐条核查：8 项覆盖，1 项部分（明确记忆写入）（2026-09-21 15:25:00）**：对方案第 1 节列出的 9 项保留底线逐条核对生产实现与测试覆盖，并更正了我此前关于 `memory-epistemic-policy` 的一个错误记录。
+**方案"保留底线"逐条核查：8 项覆盖，1 项部分（明确记忆写入）（2026-09-21 13:47:25）**：对方案第 1 节列出的 9 项保留底线逐条核对生产实现与测试覆盖，并更正了我此前关于 `memory-epistemic-policy` 的一个错误记录。
 
 - **覆盖的 8 项**：真实模型回复（11 个测试文件）、原始会话与操作记录（9）、必要记忆读取（2）、宿主权限与源码保护（14）、工具参数和结果校验（1，`tool-execution-service.ts` 的 `inputSchema.parse` 含校验时间戳与错误分支）、取消与预算（22）、执行结果如实呈现（10）、同一操作及同一消息的持久化幂等（34）、减少复核不等于虚报验证（10）。
 - **部分满足的 1 项：明确记忆写入**。可达的写入路径**存在且是生产代码**：`runner-finalize.ts` → `compactSessionAfterRun` → `memoryService.write(intent)`，并经过 `resolveMemoryWriteEpistemic`。但它是**压缩路径**的写入；**模型没有主动写记忆的工具**——`memory_tree` 只有只读动作（`root_index`/`branch_index`/`expand`/`deep_search`/`release`）。若按方案字面要求"明确记忆写入"，该项**未完全满足**，如实记录、未擅自改语义。
@@ -104,7 +104,7 @@
 - **更正我此前的错误记录**：我曾把 `memory-epistemic-policy` 记为死代码（依据是 `git grep -l` 只命中其自身测试）。本轮核实**该判断错误**：它被 `session-continuity.ts:26` 以多行 `import {` 块导入，并在第 385 行实际调用——`git grep -l` 按整行匹配文件名因而漏掉。该模块是**活代码**，保留正确。
 - 验证：本轮为核查与文档，无生产代码改动；`pnpm run typecheck` 与全量测试沿用上一轮状态。
 
-**对照方案自身基线与达标条件的进度核算（2026-09-21 14:30:00）**：此前我都用自己的口径报告，本轮改用**方案文档第 2 节给出的历史基线与其自身提出的达标条件**核算，结论更硬，也更能说明已走了多远。
+**对照方案自身基线与达标条件的进度核算（2026-09-21 13:44:10）**：此前我都用自己的口径报告，本轮改用**方案文档第 2 节给出的历史基线与其自身提出的达标条件**核算，结论更硬，也更能说明已走了多远。
 
 - 方案基线（`ff59df5`）：输入 226,680、缓存 165,248、**总体 72.899%**；未缓存 U=61,432（每请求 777.6）。方案自述达标条件为 **C ≥ 19U**，并给出"U 需降至约 8,697，即减少 85.8%"的参照。
 
@@ -119,7 +119,7 @@
 - 因此达标路径确定为：**让可缓存质量（C）增长或让块残差（U）减少**，而不是继续压缩历史。
 - 验证：本轮为核算与文档，无生产代码改动；`pnpm run typecheck` 与全量测试状态沿用上一轮（444/445，唯一失败为 `scripts/verify-web-live-llm-evidence.test.mjs`，已在干净基线复现确认为既有问题）。
 
-**系统性排查提示词中的"已删除能力"描述并清理（2026-09-21 13:45:00）**：连续三轮各自命中同类缺陷后，本轮改为一次性系统排查 prompt 与 stage 源码中的过时说明，共清理三处。
+**系统性排查提示词中的"已删除能力"描述并清理（2026-09-21 13:42:27）**：连续三轮各自命中同类缺陷后，本轮改为一次性系统排查 prompt 与 stage 源码中的过时说明，共清理三处。
 
 - **`sections.ts` 的 `renderStagedCoreFlow`（真实可达）**：`packages/harness/src/stages/reply.ts` 会传 `coreFlowStage: 'reply'`，因此该分支会真的渲染。它仍写着完整旧流程（`DECIDE → EXECUTE → VERIFY → EVOLVE → CAPTURE`、`needs_replan → DECIDE`），并给出 `decide`/`evolve`/`capture` 三个已删除 stage 的说明。已改为真实的单循环图与现存的 stage 说明（删除 `decide`/`evolve`/`capture` 三个 bullet）。上一轮（第 34 轮）只改了非 staged 的 fallback，**漏掉了这个可达分支**。
 - **`explicit-tool-instruction.ts` 的三个孤儿 prompt（已删除）**：`resolveExplicitSingleToolInstruction`、`renderExplicitToolProposalContract` 与内部 `renderExplicitMultiToolProposalContract` 在生产代码中**无任何调用者**（仅有自身定义行）。它们会告诉模型"You are the **DECIDE** stage"，并要求返回 `requiresTaskBook`、`taskBook.steps`、`execution.dependsOn`、`mode: "serial"` —— 全部是 P3 已删除的结构。已删除，文件从 200 行降到 83 行；删除后无任何类型错误，反证其确无调用者。保留仍在使用的 `resolveExplicitToolInstructionSet` 与 `resolveBoundedToolJsonSchema`。
@@ -127,7 +127,7 @@
 - **保留的引用**：`tool-loop.ts` 与 `side-effect-ledger.ts` 中的 `memory_search`/`memory_deep_search` 是**防御性名称表**（用于判定工具结果分类，兼容读取旧记录），不是给模型的指令，故保留；`default-harness.ts` 中解释"DECIDE/EVOLVE/CAPTURE 已删除"的注释是有价值的删除记录，保留。
 - 验证：`pnpm run typecheck` 通过；`packages/harness` 62 文件、520 项通过；`packages/prompt` 通过。全仓 `pnpm exec vitest run` 444/445 文件通过，唯一失败为 `scripts/verify-web-live-llm-evidence.test.mjs`（`Unexpected end of JSON input`）；已用 `git stash` 在干净基线上复现同一失败，确认**与本轮改动无关**（沙箱管道 stdio 限制所致）。
 
-**前缀稳定性核查：稳定前缀确实稳定，排除该假设；清理过期时间提示（2026-09-21 12:25:00）**
+**前缀稳定性核查：稳定前缀确实稳定，排除该假设；清理过期时间提示（2026-09-21 13:32:22）**
 
 - **假设检验（否证）**：本轮按 5.5 的方向去查"高频小改动静默段是否在改写可缓存前缀"，直接比对**渲染后的 system prompt 字节**：40 个 run 只有 **2 种文本**（8,719 / 8,887 字符），差异**全部在缓存边界标记之后**的尾部段（`Runtime retrieval intent: none` vs `web_search`）；**边界之前的 8,576 字符在所有 run 中逐字节相同**。`toolSchema` 指纹在单会话 20 个请求中只有 1 个取值，`scope` 同样稳定。因此"前缀被逐请求改写"**不成立**，已从损失来源中排除。
 - 顺带解释了一个易误读的信号：`components.systemPrompt` 指纹在单会话 20 个请求中有 20 个取值，与 `toolSchema` 的稳定形成对比。原因是指纹按 `splitRequestForCache` 的 `stableMessages` 计算，而它包含**边界之上的对话消息**，条数随会话推进增长（同会话不同 run 的 `totalMessageCount` 实测为 7 / 25 / 17）。它反映消息集合增长，不是前缀字节被改写。
@@ -135,7 +135,7 @@
 - 验证：`pnpm run typecheck` 通过；`packages/prompt` + `packages/harness` 共 66 文件、541 项通过；仓库卫生仍为 3 项既有失败（未跟踪方案文件引起）。
 - 达标状态不变：**95% 未达成**（93.538%）。机制已锁定为 Provider 的 **128-token 块粒度残差**（5.5），块对齐全部回收的上限为 **96.594%**。
 
-**机制定位：Provider 按 128-token 块缓存，块残差是主要损失（2026-09-21 11:35:00）**：本轮用逐请求建模定位了未缓存量的生成机制，并**更正了上一轮（5.4）"任务边界重建"的归因**。
+**机制定位：Provider 按 128-token 块缓存，块残差是主要损失（2026-09-21 13:23:39）**：本轮用逐请求建模定位了未缓存量的生成机制，并**更正了上一轮（5.4）"任务边界重建"的归因**。
 
 - **证据**：39 个暖请求中 **32 个**的 `cachedTokenCount` 恰好等于 `floor(prompt/128)*128`；出现过的 `cached` 取值（4096/4224/4352/4480/4608/4736/4864）**全部是 128 的整数倍**。相邻暖请求之间 prompt 平均只增长约 18.5 tokens，而 `cached` 每次只前进 **0 或 128**。
 - **结论**：未缓存量 = 自上一个 128 块边界以来累积的内容（134–341，约 4 请求一个周期）。它是**块粒度造成的结构性残差**，不是重复发送，也不是任务边界重建——上一轮把它归因为"任务边界重建上下文"是错的。
@@ -143,7 +143,7 @@
 - **方向修正**：既然残差由块粒度决定，正确做法是**让可缓存部分相对残差更大**（更长的连续可缓存前缀、更少的高频小改动静默段），而不是"削减尾部"或"继续砍前缀"——后者会等比缩小可缓存部分，5.4 已定量证明其无效。
 - 验证：`pnpm run typecheck` 通过；本轮为测量与机制建模，无生产代码改动；仓库卫生仍为 3 项既有失败（未跟踪方案文件引起）。
 
-**达标缺口定量模型：杠杆在暖请求而非前缀（2026-09-21 10:45:00）**：本轮不猜方向，而是把"距 95% 还差多少"建成可计算的模型，并据此**否证**了我自己前两轮的推断。
+**达标缺口定量模型：杠杆在暖请求而非前缀（2026-09-21 13:06:56）**：本轮不猜方向，而是把"距 95% 还差多少"建成可计算的模型，并据此**否证**了我自己前两轮的推断。
 
 - 前缀裁剪后复测（2 轮 × 20 任务，`--keep-data`）：新实现 **93.538%**、旧实现 93.514%；每次未缓存 304.6 tokens。
 - 逐请求分解：暖请求 39 个 **95.579%**（单条未缓存 134–341，均值 207）；冷启动 1 个 **5.9%**（`stablePrefix` 14,532 字节全部未命中）。冷启动把总体从 95.58% 拖到 93.458%（−2.12 个百分点）。
@@ -153,14 +153,14 @@
 - 下一步（有依据的方向）：削减任务边界处重新发送的内容——检查任务切换时历史窗口与上下文装配是否把本可复用为前缀的内容放进了尾部；而不是继续压缩共享前缀。
 - 验证：`pnpm run typecheck` 通过；全仓测试与仓库卫生状态见上一轮记录（本轮无代码改动，仅测量与文档）。
 
-**修复版本检查点在并发原子写下的 ENOENT 竞态（2026-09-21 09:55:00）**：上一轮如实报告的 `publishes the run before an opt-in background compaction finishes` 间歇失败，本轮定位到根因并修复。
+**修复版本检查点在并发原子写下的 ENOENT 竞态（2026-09-21 12:37:19）**：上一轮如实报告的 `publishes the run before an opt-in background compaction finishes` 间歇失败，本轮定位到根因并修复。
 
 - 复现与证据：该用例单独运行时 **3 次里失败 2 次**（此前几次通过属偶然）。失败路径为 `runner: failed to complete version checkpoint: ENOENT: lstat '<sessions>\<id>.jsonl.<hash>.tmp'`，最终以 `finalize_persistence_failed` 结束整个 run。该失败与本轮及上一轮的功能改动无关：把 prompt 改动 stash 后重建，干净基线上同样失败。
 - **根因**：`packages/snapshot/src/git-checkpoint-files.ts` 的 `walkFiles` 先 `readdir`，再对每个条目直接 `await lstat(path)`（**无保护**）。而 session/registry 的写入是"写临时名 + rename"的原子写（`packages/session/src/atomic-file.ts` 用 `<path>.<random>.tmp` 再 rename），失败时还会 unlink 临时名。因此在 readdir 与 lstat 之间临时文件可能已消失，lstat 抛 ENOENT 并让整个版本检查点中止。同文件里**已经有**为此准备的 `safeLstat`（try/catch 返回 undefined），但热路径没有用它。
 - **修复**：`walkFiles` 改用 `safeLstat`，条目在遍历途中消失就跳过，而不是让整个检查点失败。最小改动，不放宽任何校验：仍存在的文件照常访问，消失的临时文件本就不应进入快照。
 - 验证：修复前 3 次跑 2 次失败；修复后**连续 5 次全部通过**（同一用例、同一命令）。全仓 `pnpm exec vitest run` **445 个文件、3,087 项通过、0 失败、1 项 skipped** —— 近几轮首次全量零失败。`pnpm run typecheck` 通过；仓库卫生仅剩 3 项由未跟踪方案文件引起的既有失败。
 
-**修复 `includeToolingText` 未生效的重复工具清单，并更正"缩前缀即提命中率"的推断（2026-09-21 09:10:00）**
+**修复 `includeToolingText` 未生效的重复工具清单，并更正"缩前缀即提命中率"的推断（2026-09-21 12:11:41）**
 
 - **真实缺陷**：`assembleSystemPromptBundle` 把 `facts.includeToolingText` 读进 `RuntimeFacts`，却**没有转发**给 `buildSystemPromptBundle`。结果是主循环明明按 `includeToolingText: false` 调用（因为工具 schema 已由 Provider 原生下发），渲染版工具清单仍被逐请求注入。修复后该路径的 system prompt 从 6,081 降到 4,201 字符（−1,880），实测负载总输入从 217,223 降到 188,728 tokens（**−28,495 tokens**）。
 - **同时清理过期提示**：`tooling` 段删掉 `memory_search` 的说明（该工具已在第 11 轮删除、仓库中已无注册），并把"尽量在一次 EXECUTE 轮内完成"改为当前的单循环表述。
@@ -168,7 +168,7 @@
 - **如实报告的既有失败**：`packages/runner/src/runner.test.ts > publishes the run before an opt-in background compaction finishes` 现在失败（`status: 'error'`，错误码 `finalize_persistence_failed`，trace 为空）。我已验证这**与本轮改动无关**：把本轮 `packages/prompt` 改动 stash 后重建，该用例在干净基线上同样失败（单独运行、保留基线构建产物）。该失败原因尚未定位到具体持久化步骤（`execution_log`/`session_summary`/`version_checkpoint` 之一），尚未修复，列入下一轮优先项；本轮未通过放宽或跳过该测试来掩盖它。
 - 验证：`pnpm run typecheck` 通过；`packages/prompt` 21 项通过；仓库卫生仅剩 3 项由未跟踪方案文件引起的既有失败。
 
-**前缀裁剪与复测：命中率反超旧实现，冷启动按 Provider 缓存窗口计价（2026-09-21 08:25:00）**：按上一轮归因的"缩短共享前缀"方向做了两项裁剪，并复测。
+**前缀裁剪与复测：命中率反超旧实现，冷启动按 Provider 缓存窗口计价（2026-09-21 11:49:13）**：按上一轮归因的"缩短共享前缀"方向做了两项裁剪，并复测。
 
 - **裁剪一（工具 schema 意图门控）**：`document_read`/`document_create` 改为与 Web 工具相同的门控（命中条件：存在附件，或输入含文档措辞/文档类扩展名）。冻结负载任务实际广播的工具从 10 个（5,843 字节）降到 6 个（2,113 字节）。
 - **裁剪二（system prompt 瘦身，6,197 → 5,727 字符）**：`core-flow` 段原描述的流程**已经不存在**（仍写着 DECIDE、EVOLVE、CAPTURE、`clarify` 可路由、`needs_replan → DECIDE`），改为当前真实的单循环流程（1,530 → 1,253 字符）；`output-directives` 删除两条针对"已不再注入的时钟/耗时"的精度指令，改为一句"时间需从 `session_status` 读取"（1,805 → 1,612 字符）。这既省前缀，也消除了会误导模型的过时说明。
@@ -177,7 +177,7 @@
 - 纪律：不得用"第二个会话命中 96.8%"或"暖请求 96.15%"单独宣称达标——按会话或按热子集挑样本与方案第 1 节禁止的做法同性质。
 - 验证：`pnpm run typecheck` 通过；`packages/prompt` 21 项通过；全仓 `pnpm exec vitest run` 444/445 文件通过，唯一失败为 `publishes the run before an opt-in background compaction`，单独运行该文件 69 项全通过，属全量并发下的既有偶发，与本轮改动无关（已如实记录，未改动该测试）。
 
-**缓存 95% 未达标的逐请求归因：损失由"每会话首个请求的冷启动"主导（2026-09-21 07:05:00）**：对保留数据根（`--keep-data`，20 个请求）逐条读取 `cache-observations`，把 94.09% 的缺口分解到单请求粒度，并**更正了上一版"均匀尾部"的结论**。
+**缓存 95% 未达标的逐请求归因：损失由"每会话首个请求的冷启动"主导（2026-09-21 11:33:08）**：对保留数据根（`--keep-data`，20 个请求）逐条读取 `cache-observations`，把 94.09% 的缺口分解到单请求粒度，并**更正了上一版"均匀尾部"的结论**。
 
 - **分解结果**：暖请求（19 条）`101,760 / 105,699 = 96.273%`，**已高于 95%**，单条区间 93.9%–97.6%；冷启动（1 条）`256 / 5,137 = 4.983%`，4,881 tokens 全部未命中；冷启动单独把总体从 96.27% 拉到 `102,016 / 110,836 = 92.04%`，**拉低 4.23 个百分点**。2 轮运行下冷启动固定 1 次/会话，摊到 40 个请求，故总体为 94.09%——与实测完全吻合。
 - 旧实现同样承担这次冷启动（4,879 tokens 未命中，首条命中率同为 5.0%），因此两条路径总体仅差约 0.05 个百分点。
@@ -187,7 +187,7 @@
 - 验证：`pnpm run typecheck` 通过；全仓 `pnpm exec vitest run` **445 个文件、3,087 项通过、1 项 skipped**。
 - 下一步方向（按收益排序）：① 继续压缩冷启动前缀（system prompt 的常驻段与工具描述）；② 评估把会话首个请求的成本摊薄（例如压缩区间/前缀复用策略），但在任何情况下都不改动"总体必须含冷启动"的判定口径。
 
-**缓存 95% 实测（真实 DeepSeek Provider）：94.09%，未达标（2026-09-21 06:10:00）**：在 `DEEPSEEK_API_KEY` 可用后，按方案第 6 节与 `docs/reference/cache-95-acceptance.md` 的规程跑通了两组冻结负载对比。
+**缓存 95% 实测（真实 DeepSeek Provider）：94.09%，未达标（2026-09-21 11:19:51）**：在 `DEEPSEEK_API_KEY` 可用后，按方案第 6 节与 `docs/reference/cache-95-acceptance.md` 的规程跑通了两组冻结负载对比。
 
 - 负载：`deepseek/deepseek-flash`，2 轮 × 20 任务，两条路径各 40 个 run，全部 `status: 200`。
 - 测量规则（方案指定）：`hit = sum(cached_input_tokens) / sum(input_tokens)`，取总体而非每请求平均。
@@ -203,14 +203,14 @@
 - 实测收益：普通请求的内置工具 schema 从 5,843 字符降到 **2,113 字符**，即**每个普通请求少 3,730 字符（约 933 tokens）**；文档轮次仍同时提供两个文档工具（4,822 字符），能力未丢失。
 - 验证：`pnpm run typecheck` 通过；`packages/harness/src/retrieval-intent.test.ts` 新增双向用例（普通请求被门控 / 文档措辞、`.csv` 扩展名、附件三种命中 / 非内置来源不放行），20 项通过；`packages/harness` 与 `packages/runner` 共 114 文件、867 项全部通过。
 
-**冻结负载验收：离线彩排已跑通，真实 95% 仍待凭据（2026-09-21 04:45:00）**：本轮把验收规程从"文档"推进到"可执行前置条件已就绪"，并如实记录了一个我此前的错误结论。
+**冻结负载验收：离线彩排已跑通，真实 95% 仍待凭据（2026-09-21 01:47:19）**：本轮把验收规程从"文档"推进到"可执行前置条件已就绪"，并如实记录了一个我此前的错误结论。
 
 - **更正**：我在前几轮把 `docs/reference/core-flow-state-contract.md` 报为"mojibake 编码损坏"。本轮逐行检测（`\uFFFD` 与典型 GBK 误读特征）确认该文件 **0 处损坏**，内容是干净 UTF-8；当时看到的乱码是 PowerShell 控制台代码页对**输出**的转码，不是文件本身。已按实际内容校对（边表与新增说明正确），未做任何"修复"以免破坏完好的中文。
 - **已完成的可执行前置**：`pnpm run build:app` 重建打包产物（比较脚本会拒绝在 App 产物过期时开跑）；`git worktree add <path> ff59df5` 建立旧实现工作树；`node scripts/verify-harness-path-comparison.mjs --offline` 彩排退出码 0，两侧各 4 个 run 全部 `status: 200`。
 - **彩排暴露的关键行为（符合方案要求）**：确定性 Provider 不报告 `cachedPromptTokens`，因此报告把 `reasoningTokens`、`cachedPromptTokens`、`cacheHitRatio` 列入 `incomplete`，`releaseGate.status` 为 `blocked`。**这个 0 不是命中率**：不得据此宣称或否定 95%，也不得按零补齐。
 - 结论未变：`hit = sum(cached_input_tokens) / sum(input_tokens)` 的两组冻结负载对比仍必须在 `DEEPSEEK_API_KEY` 下完成，当前环境该变量不存在；此为本轮唯一未完成的验收项，非能力裁剪项（P3/P4 已全部完成）。
 
-**极简执行与缓存 95% 方案 P3 第七刀：清除双驱动留下的模式管道（2026-09-21 04:00:00）**：上一轮合并为单一驱动后，`shadow`/`next` 模式及其按来源/会话切换的配置全部成为死代码，本轮清除。
+**极简执行与缓存 95% 方案 P3 第七刀：清除双驱动留下的模式管道（2026-09-21 01:41:14）**：上一轮合并为单一驱动后，`shadow`/`next` 模式及其按来源/会话切换的配置全部成为死代码，本轮清除。
 
 - 删除配置面：`agents.defaults.durableHarnessMode` 与 `durableHarnessSessionOverrides`/`durableHarnessOriginOverrides`/`durableHarnessProfileOverrides`（schema 与 defaults）、App 的 `RuntimeState`/`RuntimePatch` 字段与 `/runtime` POST 校验分支及 `parseDurableHarnessSessionOverrides` helper、CLI 接线、测试夹具。
 - 语义收敛：`prepareAuthoritativeRunnerResult` 不再按模式提前返回（单一驱动下持久化投影始终权威）；`prepareAuthoritativeExecutionLog` 不再按 run 解析模式，记录统一按持久化结算校验（没有结算的记录由 replay 自行报告，而不是被假定可发布）；runner 中 `durableHarnessMode === 'next'` 的常量分支折叠为其生效路径。
@@ -218,14 +218,14 @@
 - 保留：`execution-log`/`runner-persist`/`authoritative-reply` 中作为**持久化数据字段**的 `durableHarnessMode`（旧记录仍需读取与判定），只删除它的选择与切换语义。
 - 验证：`pnpm run typecheck` 通过；全仓 `pnpm exec vitest run` **445 个文件、3,086 项通过、1 项 skipped**（比上一批少 3 项，来自删除的模式切换与 API 校验用例）。
 
-**极简执行与缓存 95% 方案 P3 第六刀：合并为单一持久化驱动（2026-09-21 03:15:00）**：`default-harness.ts` 里那份与 durable 驱动几乎相同的旧转移循环删除，`createDefaultHarness` 改为委托 `createNextHarness`；共享 stage 工厂按方案要求保留在 `default-harness.ts`（未删除整文件），因此 stage 注册与 Layer 2/3 可编辑性不变。
+**极简执行与缓存 95% 方案 P3 第六刀：合并为单一持久化驱动（2026-09-21 01:12:27）**：`default-harness.ts` 里那份与 durable 驱动几乎相同的旧转移循环删除，`createDefaultHarness` 改为委托 `createNextHarness`；共享 stage 工厂按方案要求保留在 `default-harness.ts`（未删除整文件），因此 stage 注册与 Layer 2/3 可编辑性不变。
 
 - 结果：仓库只剩一个转移循环，且它是记录 `stage_transition_recorded` 的持久化驱动；旧的 "core-flow" 驱动名与影子路径不再存在。
 - 运行标签收敛：runner 的 `resolveDurableHarnessMode` 不再按 session/origin/profile 覆盖选择模式（那是方案要删除的"按来源/会话切换配置"），默认 `next`，即每个 run 都走持久化路径。之前默认 `shadow` 会让 run 跳过 durable 最终结算，那在只有一个驱动后是错误标签。
 - 测试按新契约更新：删除 2 个 shadow/next 对比用例与 5 个 per-session/origin/profile 覆盖用例（能力已删除）；`e2e` 的能力问答用例改为断言单一驱动的持久事件序列（`stage_transition_recorded` 先行、路由事实随后、`final_reply_*` 结算成对出现）；`runner` 的会话来源捕获降级用例改为断言"降级被如实上报"（durable 路径在多个边界捕获，不再固定为 1 次）。
 - 验证：`pnpm run typecheck` 通过；全仓 `pnpm exec vitest run` **445 个文件、3,089 项通过、1 项 skipped**（比上一批少 7 项，全部来自删除的双驱动用例）。
 
-**极简执行与缓存 95% 方案 P3 第五刀：删除已不可达的 DECIDE 与紧凑规划层（2026-09-21 02:30:00）**：第二执行体系删除后，规划已经没有入口，本轮把它整层移除。
+**极简执行与缓存 95% 方案 P3 第五刀：删除已不可达的 DECIDE 与紧凑规划层（2026-09-21 00:43:44）**：第二执行体系删除后，规划已经没有入口，本轮把它整层移除。
 
 - 删除内容：`stages/decide.ts`、`stages/decide/`（8 个模块）与 `decide.test.ts`（1,358 行）；harness 的 DECIDE 注册与 `memoryRefiner`/`MemoryRunRefinementServiceLike` 依赖；`memory-taskbook-refinement.ts`（只服务规划后的记忆精炼）与其测试；紧凑规划层 `compact-autonomous-read-task.ts`、`compact-explicit-tool-decision.ts`、`compact-read-only-result.ts` 及测试；只服务已删执行器的 `execute/direct-tool-proposal.ts`、`execute/final-reply.ts` 及测试。
 - **顺带消除第二套 EXECUTE 提示形状**：`execute/prompt.ts` 原先在"紧凑自主只读"分支切到 `respond` 模式的小提示（空工具表、无 bootstrap/记忆/摘要）。该分支只在单步骤 TaskBook 下成立，而计划已不再产生，因此删除后主循环只有一个提示形状——这正是缓存目标需要的。
@@ -233,7 +233,7 @@
 - 兼容性：`decide`/`capture` 仍留在 `StageName`、`allowedTransitions` 与 `stageNames` 中以便读取旧检查点，但已无注册实现；`resolveCheckpointResumeStage` 把恢复入口的 `decide` 映射到 `execute`，因此旧检查点仍能续跑。
 - 验证：`pnpm run typecheck` 通过；全仓 `pnpm exec vitest run` **445 个文件、3,096 项通过、1 项 skipped**（比上一批少 5 个文件 / 78 项，全部来自删除的规划与紧凑层用例）。受影响的断言按新契约更新：`model-request-characterization` 去掉 DECIDE 请求形状用例；`core-agent-contracts` 删除 4 个 DECIDE 规划用例；`default-harness` 的运行时事件用例改写为"事件触发第二轮主循环执行且事件保持携带"，恢复续答用例改为普通 reply 契约；`runtime-awareness` 的紧凑事实用例改用仍存在的 reply 目的。没有以放宽断言保留已删除能力。
 
-**极简执行与缓存 95% 方案 P3 第四刀：删除 TaskBook 步骤执行器（2026-09-21 01:20:00）**：第二执行体系落地删除。`execute` 永远运行单一主循环，`task-book-runner.ts`、`task-step-runner.ts`、`task-step-scheduler.ts`、`reply-candidate.ts` 及其测试删除；已持久化的 TaskBook 变成只读历史，多步骤工作在同一个循环内串行完成。
+**极简执行与缓存 95% 方案 P3 第四刀：删除 TaskBook 步骤执行器（2026-09-21 00:15:36）**：第二执行体系落地删除。`execute` 永远运行单一主循环，`task-book-runner.ts`、`task-step-runner.ts`、`task-step-scheduler.ts`、`reply-candidate.ts` 及其测试删除；已持久化的 TaskBook 变成只读历史，多步骤工作在同一个循环内串行完成。
 
 - 三处耦合改造（先做，再删文件）：恢复入口把 checkpoint 里的 `decide` 映射为 `execute`；续接守卫把绑定回答交给主循环；持久化的 `task_book` 策略降级为 `bounded_loop` 并保留原 reason code。
 - 两处真实缺陷在删除过程中暴露并修复：
@@ -369,7 +369,7 @@
 - P1 去重改写删除：`acceptUniqueUserFacingReply` 及其有界重写轮、`reply.ts` 的 `rewriteReply`、`ask_user.ts` / `execute/final-reply.ts` / `execute/runners.ts` 的改写分支、`recover/model-call.ts` 的 `rewriteAbortReason` 全部删除，统一为单一发布入口 `publishUserFacingReply`。跨回合重复措辞按原样发布；保留 Provider 来源校验（可用 `expectedModelRequestId` 固定证明）、空文案与未转义控制标记的 fail-closed、注册表异常不伪造文案。`FinalReplyReservation.allowDuplicate` 与 `user-facing-reply.ts` 的本地跨回合扫描一并删除。
 - P1 结算闸门收敛：`ReplyFingerprintStore.reserveSettlement` 只以 settlement 身份为准——同一身份幂等（重启后可重放）、同一身份不同文案拒绝、不同身份同一文案允许；文本指纹索引改为只在缺失时追加，仍作为审计账本保留，`reserveAssistantReply` 旧语义不变。会话契约文档 `AGENTS.md` 与 `docs/principles/architecture-principles.md` 已同步为「同一 settlement 只能发布一次、不同回合允许相同措辞、不为此改写」。
 - 验证：`pnpm run typecheck` 通过；`packages/harness` + `packages/session` 全量 736 项通过；`packages/runner` 全量 358 项通过。新增/改写测试覆盖重复问答按原样发布、空回复、注册表不可用、同一 settlement 不同文案拒绝、跨重启幂等、并发发布（同一 settlement 6 次并发全部为真且随后改文案被拒）。
-- 已知未完成：`check:repo` 仍有 3 项失败，全部来自当时未跟踪的方案文件 `docs/taskbooks/lean-v2-cache-95-plan-taskbook-2026-09-20.md`（未被 `docs/README.md` 收录、含本机路径与账号、缺少秒级更新时间且文件名不符合 `docs/taskbooks` 的任务书命名规则）。**该问题已于 2026-09-22 解决**：文件按任务书规则改名、补齐二级时间戳、本机路径脱敏，并收录进 `docs/README.md`，3 项卫生失败全部消除。（P1 剩余项已于 2026-09-20 15:05 完成，见上一条。）
+- 已知未完成：`check:repo` 仍有 3 项失败，全部来自当时未跟踪的方案文件 `docs/taskbooks/lean-v2-cache-95-plan-taskbook-2026-09-20.md`（未被 `docs/README.md` 收录、含本机路径与账号、缺少秒级更新时间且文件名不符合 `docs/taskbooks` 的任务书命名规则）。**该问题已于 2026-09-21 解决**：文件按任务书规则改名、补齐二级时间戳、本机路径脱敏，并收录进 `docs/README.md`，3 项卫生失败全部消除。（P1 剩余项已于 2026-09-20 15:05 完成，见上一条。）
 
 **dsh transcript 对齐决定与实施清单（2026-09-11 18:45:00，进行中）**：用户确认以官方 DeepSeek Harness（`D:\Deepseek Harness\node_modules\@deepseek-ai\dsh-*`，上游 github.com/deepseek-ai/deepseek-harness）为唯一对齐目标，next 路径逐项照做，shadow 不变。已授权：系统提示词（含 SOUL/USER/记忆片段）可**完整展示**给用户；thinking 在 next 路径默认开启（成本/延迟由用户接受）。
 
