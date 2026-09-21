@@ -13,9 +13,6 @@ import type { LlmClient } from '@littlesheep/llm';
 import type { SessionManager } from '@littlesheep/session';
 import type { Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
-import type {
-  MemoryWriteServiceLike,
-} from '@littlesheep/memory-tree';
 import { createNextHarness } from './durable-harness.js';
 import { enterStage } from './stages/enter.js';
 import { createClassifyStage } from './stages/classify.js';
@@ -34,8 +31,6 @@ export interface DefaultHarnessOptions {
   memoryStore: MemoryStoreLike;
   config: Config;
   branding: BrandingConfig;
-  /** Indexed, guarded autonomous memory writer for explicit writes. */
-  memoryWriter?: MemoryWriteServiceLike;
   /** Rules confidence threshold for CLASSIFY fast path. Default 0.7. */
   classifierThreshold?: number;
   /** Prepared at Runner startup; unavailable models continue with the non-displayable safety estimator. */
