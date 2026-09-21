@@ -145,9 +145,45 @@ function promptUsage(request) {
   return { input, cached, uncached, derived };
 }
 
+/**
+ * Read request-level cache observations. The plan requires every model use to
+ * enter the ledger, including compaction, which runs in its own detached context
+ * and is therefore NOT listed in a run's `modelRequests`. Without this the ledger
+ * silently undercounts (measured: a compaction load logged 40 requests but made
+ * 100, so 60 compaction calls were missing).
+ */
+function readObservations(dataDir) {
+  const dir = join(dataDir, 'cache-observations');
+  let names;
+  try {
+    names = readdirSync(dir).filter((name) => name.endsWith('.json'));
+  } catch {
+    return { observations: [], files: 0, present: false };
+  }
+  const observations = [];
+  for (const name of names) {
+    try {
+      const raw = JSON.parse(readFileSync(join(dir, name), 'utf8'));
+      const observation = raw.observation ?? raw;
+      const prompt = observation.providerPrompt ?? {};
+      observations.push({
+        requestKind: typeof observation.requestKind === 'string' ? observation.requestKind : 'unknown',
+        modelRequestId: typeof observation.modelRequestId === 'string' ? observation.modelRequestId : undefined,
+        input: count(prompt.tokenCount),
+        cached: count(prompt.cachedTokenCount),
+        uncached: count(prompt.uncachedTokenCount),
+      });
+    } catch {
+      // A half-written observation is itself a ledger gap; counted as unparsable.
+    }
+  }
+  return { observations, files: names.length, present: true };
+}
+
 function audit(dataDir) {
   const { logs, unparsed, files } = readLogs(dataDir);
   if (logs.length === 0 && unparsed.length === 0) return undefined;
+  const observed = readObservations(dataDir);
 
   const byPurpose = new Map();
   const byStatus = new Map();
@@ -191,6 +227,7 @@ function audit(dataDir) {
   // span many runs (one request each), so classifying per run would mark every
   // request cold. Seen sessions are tracked across the whole sample.
   const seenSessions = new Set();
+  const loggedRequestIds = new Set();
   for (const [index, log] of logs.entries()) {
     const label = `run#${index + 1}`;
     const requests = Array.isArray(log.modelRequests) ? log.modelRequests : [];
@@ -257,6 +294,7 @@ function audit(dataDir) {
     let requestCountInRun = 0;
     for (const request of requests) {
       requestCount += 1;
+      if (typeof request.id === 'string') loggedRequestIds.add(request.id);
       const purpose = request.callContract?.purpose ?? 'unknown';
       const entry = byPurpose.get(purpose) ?? emptyPurpose();
       entry.calls += 1;
@@ -327,6 +365,48 @@ function audit(dataDir) {
       byPurpose.set(purpose, entry);
     }
     if (runComplete && requests.length > 0) uncachedPerRun.push(runUncached);
+  }
+
+  // Ledger reconciliation: fold in any observed request the run logs did not list
+  // (compaction runs in a detached context). The plan requires every model use to
+  // enter the ledger, so an omitted call must be counted, not dropped.
+  const unreconciledByKind = new Map();
+  let unreconciledCalls = 0;
+  if (observed.present) {
+    for (const item of observed.observations) {
+      if (item.modelRequestId && loggedRequestIds.has(item.modelRequestId)) continue;
+      const entry = byPurpose.get(item.requestKind) ?? emptyPurpose();
+      entry.calls += 1;
+      if (typeof item.input === 'number') {
+        entry.input += item.input;
+        inputTokens += item.input;
+        inputReported += 1;
+      }
+      if (typeof item.cached === 'number') {
+        entry.cached += item.cached;
+        cachedTokens += item.cached;
+        cachedReported += 1;
+      }
+      if (typeof item.uncached === 'number') {
+        entry.uncached += item.uncached;
+        uncachedTokens += item.uncached;
+        uncachedReported += 1;
+      } else {
+        entry.unknownUncached += 1;
+      }
+      if (item.input === undefined || item.cached === undefined) {
+        entry.missingUsage += 1;
+        missingUsageRequests += 1;
+      }
+      byPurpose.set(item.requestKind, entry);
+      unreconciledByKind.set(item.requestKind, (unreconciledByKind.get(item.requestKind) ?? 0) + 1);
+      unreconciledCalls += 1;
+      // A compaction/auxiliary call operates on a session that already exists, so
+      // it is steady-state by construction, never a session's cold start.
+      steadyRequests += 1;
+      if (typeof item.input === 'number') steadyInput += item.input;
+      if (typeof item.cached === 'number') steadyCached += item.cached;
+    }
   }
 
   const runs = logs.length;
@@ -422,6 +502,16 @@ function audit(dataDir) {
       runsReportingPromptTokens: runUsagePromptRuns,
       requestPromptTokens: inputTokens,
       delta: runUsagePromptRuns === runs ? inputTokens - runUsagePromptTokens : undefined,
+    },
+    // Requests present in cache observations but absent from the run logs, such as
+    // detached compaction calls. Reported so an incomplete ledger is visible
+    // instead of silently shrinking the total.
+    observationReconciliation: {
+      observationsPresent: observed.present,
+      observationFiles: observed.files,
+      loggedRequests: requestCount - unreconciledCalls,
+      unreconciledRequests: unreconciledCalls,
+      unreconciledByKind: Object.fromEntries(unreconciledByKind.entries()),
     },
     target: {
       percent: HIT_TARGET_PERCENT,
