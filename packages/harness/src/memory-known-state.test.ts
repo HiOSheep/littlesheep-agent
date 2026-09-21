@@ -34,8 +34,16 @@ describe('run Memory KnownState', () => {
     const system = knownStateBlock(prepared);
     expect(system).toContain('# Run Memory KnownState');
     expect(system).toContain('statement=suggestion; epistemic=unverified');
-    expect(system).toContain('usefulness=2/1');
     expect(system).toContain('adoption never verifies it as fact');
+    // The reason the reference was adopted is a judgement input and stays.
+    expect(system).toContain('decision_reason=Relevant advice was disclosed as advice.');
+    // Audit and ranking bookkeeping is Runtime data, not prompt text: it used to
+    // change on rounds where nothing the model reads had changed, and a changed
+    // entry is a re-sent entry.
+    expect(system).not.toContain('usefulness=');
+    expect(system).not.toContain('activation=');
+    expect(system).not.toContain('reactivated=');
+    expect(system).not.toContain('revision:');
     expect(ctx.memoryKnownState?.references[0]?.stages).toEqual(expect.arrayContaining(['execute', 'verify']));
     expect(ctx.contextSnapshots?.[0]?.items).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: 'memory_fragment', source: expect.objectContaining({ kind: 'memory' }) }),

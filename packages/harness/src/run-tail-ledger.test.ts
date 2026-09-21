@@ -51,15 +51,19 @@ function withKnownStateRevision(ctx: RunContext, revision: number): RunContext {
 }
 
 describe('RunTailLedger', () => {
-  it('sends the runtime facts once and then adds nothing for an unchanged run', () => {
+  it('sends the stable interval slots once and then adds nothing for an unchanged run', () => {
     const ctx = makeCtx({ inbound: textMessage('user', 'hello') });
     const ledger = new RunTailLedger();
 
     const first = ledger.update(ctx);
     const second = ledger.update(ctx);
 
-    expect(first.messages).toHaveLength(1);
-    expect(String(first.messages[0]?.content)).toContain('# Runtime Facts');
+    // Runtime facts and the KnownState reading rules are interval policy: one
+    // copy each, sent once, never repeated.
+    expect(first.messages).toHaveLength(2);
+    const firstText = first.messages.map((message) => String(message.content)).join('\n');
+    expect(firstText).toContain('# Runtime Facts');
+    expect(firstText).toContain('KnownState rules:');
     expect(second.messages).toEqual([]);
   });
 
@@ -70,15 +74,15 @@ describe('RunTailLedger', () => {
     const first = ledger.update(ctx);
     withKnownStateRevision(ctx, 2);
     const second = ledger.update(ctx);
-    // Same revision, same bytes: nothing is re-sent.
     const third = ledger.update(ctx);
 
-    expect(first.messages).toHaveLength(2);
-    expect(second.messages).toHaveLength(1);
-    expect(String(second.messages[0]?.content)).toContain('revision: 2');
-    expect(third.messages).toEqual([]);
+    expect(first.messages).toHaveLength(3);
     expect(first.messages.map((message) => String(message.content)).join('\n'))
-      .toContain('revision: 1');
+      .toContain('[atom-1@1]');
+    // A revision bump alone is Runtime bookkeeping, not a change the model can
+    // read: the same references produce the same bytes, so nothing is re-sent.
+    expect(second.messages).toEqual([]);
+    expect(third.messages).toEqual([]);
   });
 
   it('records each memory transition as a new appended entry', () => {

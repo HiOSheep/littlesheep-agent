@@ -81,7 +81,11 @@ export function injectMemoryKnownState(
   // Keep the per-request known state out of the system prompt: a change there
   // would cap the Provider's prefix cache at that byte and re-bill the whole
   // conversation. It travels in its own trailing message instead.
-  const segmentText = `${CACHE_BOUNDARY_MARKER}\n\n${renderKnownState(current)}`;
+  //
+  // This single-request path carries the rules inline because it has no tail
+  // owner to emit them once; the main loop passes `includeRules: false` so its
+  // interval slot holds the only copy.
+  const segmentText = `${CACHE_BOUNDARY_MARKER}\n\n${renderKnownState(current, true)}`;
   const message: ChatMessage = { role: 'system', content: segmentText };
   const messages = [...request.messages, message];
   if (!candidates) return { request: { ...request, messages } };
@@ -125,36 +129,104 @@ export function injectMemoryKnownState(
  * tail event: the same bytes have to be produced from the same function, not
  * from a second copy of the rendering rules.
  */
-export function renderKnownStateText(state: RuntimeMemoryKnownState): string {
-  return `${CACHE_BOUNDARY_MARKER}\n\n${renderKnownState(state)}`;
+export function renderKnownStateText(
+  state: RuntimeMemoryKnownState,
+  options: { includeRules?: boolean } = {},
+): string {
+  return `${CACHE_BOUNDARY_MARKER}\n\n${renderKnownState(state, options.includeRules !== false)}`;
 }
 
-function renderKnownState(state: RuntimeMemoryKnownState): string {
+/**
+ * The reading rules for KnownState, as one stable section.
+ *
+ * They are policy, not state: identical in every entry and every run. Keeping
+ * them inside each entry repeated 659 bytes, and — because the entry is
+ * re-sent whenever a reference changes — paid that cost again on every memory
+ * tool round. The section travels once, in the interval's stable tail.
+ */
+export function knownStateRulesSection(): string {
+  return ['KnownState rules:', ...KNOWN_STATE_RULES].join('\n');
+}
+
+const KNOWN_STATE_RULES = [
+  '- Use only adopted references as active evidence. Excluded references must not influence decisions unless a later retrieval explicitly reactivates them.',
+  '- Conflicted references may explain uncertainty but cannot support a settled conclusion.',
+  '- A suggestion or hypothesis can be considered or adopted as advice, but adoption never verifies it as fact.',
+  '- Reported observations and unverified factual claims require corroboration before VERIFY or FINALIZE presents them as verified facts.',
+  '- Respect authority scope and evidence refs. Do not infer cross-project, cross-session, ownership, identity, or causal relationships from similarity alone.',
+];
+
+function renderKnownState(state: RuntimeMemoryKnownState, includeRules: boolean): string {
   const references = [...state.references].sort(compareReferences).slice(0, MAX_PROMPT_REFERENCES);
-  const lines = [
-    '# Run Memory KnownState',
-    '',
-    `- version: ${state.version}; revision: ${state.revision}; updated_at: ${state.updatedAt}`,
-    `- references: ${references.length}/${state.references.length} shown`,
-  ];
-  for (const reference of references) {
-    const envelope = reference.envelope;
+  const lines = ['# Run Memory KnownState', ''];
+  if (references.length < state.references.length) {
+    // Only worth a line when it changes what the model can see; the absolute
+    // revision counter is Runtime bookkeeping, not a judgement input, and
+    // printing it made every memory tool round rewrite this whole entry.
     lines.push(
-      `- [${reference.atomId}@${reference.atomRevision}] decision=${reference.decision}; disclosure=${envelope.disclosureLevel}; branch=${envelope.branch}; scope=${envelope.scope}${envelope.scopeKey ? `:${cleanInline(envelope.scopeKey)}` : ''}; tier=T${envelope.tier}`,
-      `  parent=${envelope.parentNodeId ?? '(branch root)'}; statement=${envelope.statementKind}; epistemic=${envelope.epistemicStatus}; authority=${envelope.authorityScope.kind}/${envelope.authorityScope.scope}; confidence=${formatScore(envelope.confidence)}; importance=${formatScore(envelope.importance)}; usefulness=${formatUsefulness(envelope.verifiedUsefulness)}; task=${formatScore(envelope.taskRelevance ?? 0)}; routing=${formatScore(envelope.routingRelevance ?? 0.5)}; relation=${formatScore(envelope.relationshipRelevance ?? 0.5)}; activation=${formatScore(envelope.activation?.score ?? 0.25)}; path=${envelope.retrievalPath}${envelope.relationRoute ? `; relation_route=${cleanInline(`${envelope.relationRoute.seedAtomId}->${envelope.relationRoute.relationId}->${envelope.atomId} (${envelope.relationRoute.relationType}/${envelope.relationRoute.direction}; strength=${formatScore(envelope.relationRoute.strength)})`)}` : ''}`,
-      `  match=${cleanInline(envelope.matchReason)}; decision_reason=${cleanInline(reference.reason)}; sources=${envelope.sourceRefs.slice(0, 3).map(cleanInline).join(', ') || '(none)'}; evidence=${envelope.evidenceRefs.slice(0, 4).map(cleanInline).join(', ') || '(none)'}; stages=${reference.stages.join(',')}; reactivated=${reference.reactivatedCount}`,
+      '',
+      `- references shown: ${references.length} of ${state.references.length} (most relevant first)`,
     );
   }
-  lines.push(
-    '',
-    'KnownState rules:',
-    '- Use only adopted references as active evidence. Excluded references must not influence decisions unless a later retrieval explicitly reactivates them.',
-    '- Conflicted references may explain uncertainty but cannot support a settled conclusion.',
-    '- A suggestion or hypothesis can be considered or adopted as advice, but adoption never verifies it as fact.',
-    '- Reported observations and unverified factual claims require corroboration before VERIFY or FINALIZE presents them as verified facts.',
-    '- Respect authority scope and evidence refs. Do not infer cross-project, cross-session, ownership, identity, or causal relationships from similarity alone.',
-  );
+  for (const reference of references) {
+    lines.push(...referenceLines(reference));
+  }
+  if (includeRules) lines.push('', knownStateRulesSection());
   return lines.join('\n');
+}
+
+/**
+ * One reference, projected to the fields a model decision can depend on.
+ *
+ * Built as an explicit allowlist: Runtime bookkeeping and derived ranking
+ * scores (revision counters, timestamps, first-seen, reactivation counts,
+ * usefulness counters, task/routing/relationship/activation scores) stay in
+ * Runtime data. They changed on rounds where nothing the model reads had
+ * changed, and a changed entry is a re-sent entry. Adding a field to the
+ * contract therefore cannot silently leak into the prompt.
+ */
+function referenceLines(reference: RuntimeKnownStateMemoryReference): string[] {
+  const envelope = reference.envelope;
+  const route = envelope.relationRoute;
+  const scope = envelope.scopeKey
+    ? `${envelope.scope}:${cleanInline(envelope.scopeKey)}`
+    : envelope.scope;
+  const fields = [
+    `decision=${reference.decision}`,
+    `disclosure=${envelope.disclosureLevel}`,
+    `branch=${cleanInline(envelope.branch)}`,
+    `scope=${cleanInline(scope)}`,
+    `tier=T${envelope.tier}`,
+  ];
+  if (envelope.parentNodeId) fields.push(`parent=${cleanInline(envelope.parentNodeId)}`);
+  fields.push(
+    `statement=${cleanInline(envelope.statementKind)}`,
+    `epistemic=${cleanInline(envelope.epistemicStatus)}`,
+    `authority=${cleanInline(envelope.authorityScope.kind)}/${cleanInline(envelope.authorityScope.scope)}`,
+    `confidence=${formatScore(envelope.confidence)}`,
+    `importance=${formatScore(envelope.importance)}`,
+    `path=${envelope.retrievalPath}`,
+  );
+  if (route) {
+    fields.push(
+      `relation_route=${cleanInline(`${route.seedAtomId}->${route.relationId}->${envelope.atomId} (${route.relationType}/${route.direction})`)}`,
+    );
+  }
+  if (envelope.conflict) fields.push('conflict=true');
+  if (envelope.expired) fields.push('expired=true');
+  if (envelope.truncated) fields.push('truncated=true');
+
+  const provenance = [`match=${cleanInline(envelope.matchReason)}`];
+  if (reference.reason) provenance.push(`decision_reason=${cleanInline(reference.reason)}`);
+  const sources = envelope.sourceRefs.slice(0, 3).map(cleanInline).join(', ');
+  if (sources) provenance.push(`sources=${sources}`);
+  const evidence = envelope.evidenceRefs.slice(0, 4).map(cleanInline).join(', ');
+  if (evidence) provenance.push(`evidence=${evidence}`);
+
+  return [
+    `- [${reference.atomId}@${reference.atomRevision}] ${fields.join('; ')}`,
+    `  ${provenance.join('; ')}`,
+  ];
 }
 
 function parseKnownState(value: unknown, runId: string): RuntimeMemoryKnownState | undefined {
@@ -246,11 +318,6 @@ function decisionRank(value: RuntimeKnownStateMemoryReference['decision']): numb
 
 function formatScore(value: number): string {
   return Number.isFinite(value) ? Math.max(0, Math.min(1, value)).toFixed(2) : '0.00';
-}
-
-function formatUsefulness(value: RuntimeMemoryKnownState['references'][number]['envelope']['verifiedUsefulness']): string {
-  if (!value) return 'unknown';
-  return `${value.useful}/${value.notUseful + value.conflicts + value.stale}`;
 }
 
 function isVerifiedUsefulness(value: unknown): boolean {

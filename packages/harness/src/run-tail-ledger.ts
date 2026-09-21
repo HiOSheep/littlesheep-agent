@@ -26,7 +26,7 @@ import {
   memoryReleaseNoteText,
   releasedAtomIdsFromWorkingSet,
 } from './memory-context-working-set.js';
-import { renderKnownStateText } from './memory-known-state.js';
+import { renderKnownStateText, knownStateRulesSection } from './memory-known-state.js';
 import { renderRuntimeFacts, renderVolatileRunState } from './runtime-awareness.js';
 
 export interface RunTailEntry {
@@ -119,12 +119,26 @@ export function renderTailEntries(
       scope: 'run',
     });
   }
+  // The KnownState reading rules are interval policy, not run state: they are
+  // byte-identical in every entry, so they travel once in this stable slot
+  // instead of being repeated inside each (frequently re-sent) memory entry.
+  // They carry no boundary marker: their position in the append-only tail is
+  // what places them below the boundary, and the marker is for a section whose
+  // *content* would otherwise be read as part of the stable prompt.
+  entries.push({
+    id: 'memory-known-state-rules',
+    order: 2.5,
+    text: knownStateRulesSection(),
+    kind: 'memory_fragment',
+    source: { kind: 'memory', id: 'known-state-rules', runId: ctx.runId },
+    scope: 'run',
+  });
   const knownState = ctx.memoryKnownState;
   if (knownState && knownState.references.length > 0) {
     entries.push({
       id: 'memory-known-state',
       order: 3,
-      text: renderKnownStateText(knownState),
+      text: renderKnownStateText(knownState, { includeRules: false }),
       kind: 'memory_fragment',
       source: {
         kind: 'memory',
