@@ -123,12 +123,21 @@
 
 ### SP-04：删除或缩小重复状态内容（P1，与 SP-03 一起落地）
 
-- [ ] 审查 KnownState 中每个字段是否影响模型当前判断。引用审计、计数、更新时间等优先留在 Runtime，不把完整内部状态变成每次请求的提示。
-- [ ] 模型确实需要的采用/排除/冲突/过期和引用事实只发送最小变化；已在工具结果中明确表达的事实不再全文复制。
-- [ ] 固定解释规则只在 SP-02 的稳定提示中出现一次；运行耗时和 UI 状态由 Runtime 展示，按需才提供给模型。
+- [x] 审查 KnownState 中每个字段是否影响模型当前判断。引用审计、计数、更新时间等优先留在 Runtime，不把完整内部状态变成每次请求的提示。
+- [x] 模型确实需要的采用/排除/冲突/过期和引用事实只发送最小变化；已在工具结果中明确表达的事实不再全文复制。
+- [x] 固定解释规则只在 SP-02 的稳定提示中出现一次；运行耗时和 UI 状态由 Runtime 展示，按需才提供给模型。
 
 入口：`memory-known-state.ts`、`runtime-awareness.ts`、`memory-context-working-set.ts`。
 验收：相同状态连续两轮不增加重复状态字符；完整审计仍可追溯；已释放、冲突或过期证据不因精简被误当成有效依据。收益同时报告输入字符/token 与实际 usage，不预填节省百分比。
+
+**2026-09-21 SP-04 执行记录（完成，收益只报字符）：**
+
+- **实测（改前）：** 每个 KnownState 条目里重复 659 字节的 `KnownState rules` 规则块；条目在引用变化时整体重发，所以每次记忆工具轮都要再付一次这块规则。另有审计与排序簿记（`revision`/`updated_at`/`references 计数`/`firstSeenAt`/`reactivatedCount`/`stages`/`usefulness`/`task`/`routing`/`relation`/`activation`）在"模型读到的内容没变"的轮次也会变，一变就整块重发。
+- **字段审查结论（按"是否影响当前判断"分类）：** 保留 decision / disclosure / branch / scope / tier / parent / statement / epistemic / authority / confidence / importance / retrievalPath / relationRoute / conflict / expired / truncated / matchReason / decisionReason / sources / evidence；其余留在 Runtime。**投影改为显式白名单构建**，因此以后给契约加字段不会静默漏进提示词。
+- **规则只出现一次：** 新增 `knownStateRulesSection()`，作为尾部自己的稳定槽位（`memory-known-state-rules`）发送一次；单请求注入路径（`injectMemoryKnownState`）没有区间槽位，仍在条目内联。
+- **实测收益（仅字符，未涉及供应商 usage，也未折算 token 或成本）：** 单条引用 **1,295 → 1,080** 字符；12 条引用 **6,634 → 5,020**，即 **503 → 368 字符/引用（-27%）**。此外"只改 revision"一类轮次现在**完全不重发**（改前必重发）。
+- **验收证据（`known-state-projection.test.ts`，4 项）：** 规则只出现一次且差价 >600 字节；revision 跳变 / 时间戳移动 / reactivated 自增 / stages 变化后字节完全相同；decision 或 evidence 变化仍会重发并带上新理由；保留字段逐一断言存在、丢弃字段逐一断言不存在；conflict/expired 为真时才显式声明（改前是恒定的 `false` 噪声）。
+- **未处理：** `runtime-awareness.ts` 的运行耗时/UI 状态本就不注入（已核对，保持原样）；"完整审计仍可追溯"由 `ctx.memoryKnownState` 与 Context 快照继续承载，未删字段。
 
 ### SP-05：固定主循环最小工具目录（P1，依赖 SP-02）
 
