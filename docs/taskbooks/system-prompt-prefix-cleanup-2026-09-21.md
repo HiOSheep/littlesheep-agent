@@ -1,0 +1,174 @@
+# 系统提示词与请求前缀精简任务清单
+
+日期：2026-09-21。
+状态：问题定位与离线复现已完成；以下实现任务均未开始。用户本轮要求查明问题并出具清单，本轮不修改运行实现。
+目标：减少长任务中不必要的模型输入和请求前缀变化，继续以真实总体缓存命中率 >=95% 为验收目标；本清单不承诺仅完成这些改动就必然达标。
+
+## 一、查明的问题
+
+当前普通聊天与工具工作已经进入同一个 execute 循环，DECIDE、VERIFY、RECOVER 的独立模型调用已移除。问题并非这些旧阶段仍全部存在，而是请求还由多处逻辑临时拼装；“单一执行循环”尚未形成完整的“同一消息序列持续追加”。
+
+### 1. 主循环的动态摘要实际仍在历史消息之前
+
+- `packages/harness/src/stages/execute/runners.ts:36` 使用完整 `systemPrompt.text`。
+- `packages/harness/src/stages/execute/guidance.ts:123` 将它放在会话历史之前。
+- `packages/prompt/src/builder.ts:232` 把 sessionSummary 标成 volatile，但它仍属于完整 system 字符串。
+- `packages/harness/src/context-candidates.ts:65` 只移出三类 guidance；不会自动移出摘要、初始记忆和 bootstrap。
+- `splitSystemPromptForCache` 当前没有生产调用方，只有定义与测试；`CACHE_BOUNDARY_MARKER` 是本地文本标记，不是发给供应商的缓存控制指令。
+
+因此摘要更新会改变历史之前的请求内容，已有历史不能继续完整匹配旧前缀。压缩边界允许有意重建上下文；需要消除的是边界不明确、重建方式不一致和非压缩场景的隐式前插。
+
+### 2. 同一工具循环的尾部被重新搬动
+
+`tool-loop.ts:108–130` 每轮从原始 messages 构建请求；`model-observability.ts:435–453` 临时追加记忆释放、KnownState 和运行状态，准备后的注入不进入原始消息序列。`context-candidates.ts:189` 还会把检索约定重放在新尾部。
+
+离线实际输出的排列为：
+
+```text
+请求 1：固定提示，运行事实，用户输入，检索约定，记忆/运行状态
+请求 2：固定提示，运行事实，用户输入，工具调用 1，结果 1，检索约定，记忆/运行状态
+请求 3：固定提示，运行事实，用户输入，工具调用 1，结果 1，工具调用 2，结果 2，检索约定，记忆/运行状态
+```
+
+每轮尾部移到新位置，旧请求不是新请求的完整前缀。分歧前内容仍然稳定；不能据此说整个缓存失效，也不能说 system 消息数量持续膨胀。
+
+| 合成夹具场景 | 每轮 system 块数 | 每轮 system 字符 | 分歧后重复的相同 system 字符 |
+| --- | ---: | ---: | ---: |
+| 仅检索约定 | 3 | 361 | 112 |
+| 检索约定 + 释放说明 + 运行状态 | 5 | 719 | 470 |
+| 检索约定 + 12 条 KnownState 引用 | 4 | 7,091 | 6,842 |
+
+这是三轮离线调用当前源代码的字符量，不是生产 token 浪费量或真实命中率。KnownState 重发包含更新时间、引用元数据与固定规则，说明其精简空间值得单独处理。
+
+### 3. 仍有额外请求形状与工具集合切换
+
+- 能力回复使用 respond 提示、澄清使用 ASK_USER 提示、压缩使用独立 JSON 摘要提示；它们和 execute 的内容及工具集合不同。不同用途并不意味着之前的缓存必然被供应商清除。
+- 主循环已生成并校验的 `request_user_input.prompt`，在 `execute/runners.ts:58–72` 又跳到 ASK_USER，随后再次请求模型措辞。
+- `retrieval-intent.ts:36–53` 按本轮检索意图筛选 Web 工具；`execute/runners.ts:28–40` 的显式工具集合还能覆盖常规集合。主循环的工具定义尚未在整个会话区间内固定。
+- 所有用途都经过 `injectRuntimeAwareness`；压缩也收到工具、网络、权限等能力播报。这些内容不是压缩摘要所必需的输入。
+- 强制收尾时保留 tools、仅设置 `tool_choice:'none'` 已经实现，不列为待修复缺陷。
+
+### 4. 测试与归因存在缺口
+
+- `execute.test.ts:545–555` 中名为“strict extension”的测试先剔除尾部 system 再比较。因此该测试当前通过，也不能证明完整请求只追加。
+- `cache-observability.ts:172` 将 requestKind 纳入本地指纹；`packages/llm/src/client.ts:118–130` 的实际请求体不含该字段。本地用途标签改变不能独立证明供应商前缀改变。
+- `docs/reference/cache-95-acceptance.md` 中存在历史结论、更正与最新读数并存的情况。当前未提交的压缩提示修复与其证据必须保留，不能把旧读数冒充本轮验证。
+
+参考：[DeepSeek 当前缓存说明](https://api-docs.deepseek.com/guides/kv_cache/) 要求匹配已持久化的前缀单元。公共前缀稳定是必要工程条件，具体命中还受供应商缓存状态影响；离线长度比较不替代真实 usage。
+
+## 二、按顺序执行的任务清单
+
+### SP-01：先补完整请求的回归检查（P0）
+
+- [x] 将本轮三种复现场景纳入正式测试，比较模型客户端真正收到的 messages 与工具定义，禁止跳过尾部 system。
+- [x] 覆盖至少三轮工具循环、无变化的运行状态、记忆展开→释放→再次展开、连续用户回合与重启续接。
+- [x] 增加压缩区间边界用例：区间内必须保持既有消息不变；区间切换允许一次明确重建，并记录原因。
+
+入口：`stages/execute.test.ts`、`context-candidates.test.ts`、`memory-context-working-set.test.ts`、Runtime 注入相关测试。
+验收：测试必须在当前问题路径上失败，在修复后通过；原有工具调用/结果配对、权限和取消测试继续有效。
+
+**2026-09-21 执行记录（SP-01 完成，并顺带落地 SP-03 的核心不变量）：**
+
+- 新增 `packages/harness/src/request-prefix-append-only.test.ts`（7 项）：比较模型客户端**真正收到**的完整 `messages` 与 `tools`，不做任何尾部剔除。首轮在真实缺陷上失败（`request 1 -> 2: message 4 (system) was rewritten`），修复后通过。
+- 新增 `packages/harness/src/run-tail-ledger.test.ts`（4 项）：直接锁定 ledger 语义——同一事实只发一次、变化追加为新条目、A→B→A 产生两条独立记录、prompt 中标记为 tail 的段落参与而稳定段落不参与。
+- **实测根因（与清单第 2 节的推断一致，并补充一个此前未记录的关键点）：** 尾部不只是"每轮重新搬动"，首轮的尾部位置本身就在**第一轮工具调用之前**。离线复现排列为 `…用户输入, 检索约定, 记忆/运行状态, 工具调用 1, 结果 1`，因此第二轮请求的第 4 条消息被工具调用占用，前缀在历史之后立即断裂。修复办法不是"把尾部挪到最后"，而是**让尾部在首轮就落在它此后不再改变的位置**（用户输入之后），后续工具轮追加在它之后。
+- 关键实现：
+  - 新增 `packages/harness/src/run-tail-ledger.ts`：尾部条目按「语义 id + 内容哈希」记账，只追加、不重写；渲染复用既有 `renderRuntimeFacts` / `renderVolatileRunState` / `renderKnownStateText` / `memoryReleaseNoteText`，未复制第二份规则。
+  - `context-candidates.ts` 新增 `trailingOwnership: 'caller'` 与 `tailMessages`：前者阻止调用方已拥有的尾部被再次射出，后者让尾部消息保留 `runtime_event` Context 种类；系统候选现在始终携带 source-aware segments，解决"调用方自带 system 文本 → 契约找不到 `system_prompt` 种类"的既有隐患。
+  - `model-observability.ts` 新增 `skipRuntimeTail`：主循环自己拥有追加式尾部时，请求记录器不再逐轮重新注入并重新定位。
+  - `prompt/builder.ts` + `profile-prompt.ts` + `execute/prompt.ts`：`retrieval-intent-contract` 标记 `placement: 'trailing'`，由尾部所有者发射一次。
+- 验收证据：`request-prefix-append-only`（7）、`run-tail-ledger`（4）、`stages/execute`（40）、`context-candidates`（5）全绿；`packages/harness` + `packages/context` + `packages/prompt` 共 606 项通过；连带 `packages/runner` 共 960 项通过。全仓库 `vitest run`：3110 通过，仅 2 项既有失败（`scripts/measure-verification-baseline.test.mjs`、`scripts/verify-web-live-llm-evidence.test.mjs`），已在干净工作树上复现确认为既有问题，与本轮改动无关。
+- 追认：`model-request-characterization.test.ts` 的基底顺序断言按新契约更新（主循环尾部在对话之后；单请求阶段如 REPLY 仍是紧随 system 的稳定事实块）。
+
+### SP-02：收敛主循环提示组装入口（P0，依赖 SP-01）
+
+- [ ] 主循环只保留一个精简的固定规则提示；清除已经无效的阶段说明、TaskBook 步骤规则与重复能力介绍，删除无调用方的 split/helper，而非继续增加另一套 builder。
+- [ ] 由一个入口负责固定规则、会话区间基线和追加事件的顺序。消除 `text/stableText/trailingSegments` 在调用方使用不一致的问题。
+- [ ] SOUL/USER/工作区约定按配置版本进入区间基线；摘要只在明确压缩切换时替换；初始检索事实、根索引变化和任务约束以有界事件处理，不能在普通续接时悄悄改写旧头部。
+- [ ] 配置或权限变化必须立即体现，必要时开启新区间；不能为了缓存冻结已经失效的授权或记忆事实。
+
+入口：`prompt/builder.ts`、`profile-prompt.ts`、`execute/prompt.ts`、`execute/runners.ts`、`context-candidates.ts`。
+验收：同一区间聊天与工具轮的固定提示相同；摘要不会在非压缩路径被前插或更新；旧阶段规则与无用入口有实际净删除。
+
+**2026-09-21 部分进展（未完成）：** 追加事件的顺序已收敛到 `run-tail-ledger.ts` 一个入口；`retrieval-intent-contract` 不再由两个位置分别射出。仍未处理：sessionSummary / bootstrap / initialMemoryContext 仍位于 history 之前（`prompt/builder.ts:232` 起），`splitSystemPromptForCache` 仍无生产调用方，`text/stableText/trailingSegments` 的不一致仍在，旧阶段说明与 `guidance.ts` 中的 TaskBook 渲染函数尚未删除。
+
+### SP-03：让最终发送消息成为可续接的序列（P0，依赖 SP-02）
+
+- [ ] 工具循环续接基于上一轮已发送的规范消息及新增模型/工具结果，避免每次从原始数组重新搬动尾部注入。
+- [ ] 检索约定只在建立任务约束或约束变化时追加；无变化的 Runtime 状态、释放说明和记忆状态不再次发送。
+- [ ] 增量事件按状态变更记录，不能用全会话文案去重：A→B→A 仍是有效变化；释放后重新展开的记忆必须恢复其正确状态。
+- [ ] 复用现有持久会话和检查点边界，保存必要的消息/事件位置；重启不能再次注入已记录内容，也不能重复执行副作用。
+- [ ] Context 裁剪不得隐式重排已发送前缀；超预算由明确压缩或可见失败处理。网页、工具和记忆正文保持原有不可信来源标记，不因移动消息而提升为指令。
+
+入口：`execute/tool-loop.ts`、`model-observability.ts`、`context-candidates.ts`、`memory-context-working-set.ts`、相关 session/continuity 存储边界。
+验收：正常未压缩轮次的完整旧 messages 是新请求的前缀；不靠排除尾部通过检查；取消、释放、再次展开和恢复语义正确。
+
+**2026-09-21 部分进展（未完成）：** 前四条已落地并由 `request-prefix-append-only.test.ts` 与 `run-tail-ledger.test.ts` 锁定：
+
+- [x] 工具循环续接基于上一轮已发送的规范消息及新增模型/工具结果，不再每轮从原始数组重新搬动尾部注入（尾部由 `RunTailLedger` 记账，`skipRuntimeTail` 关闭记录器自身的再注入）。
+- [x] 检索约定只在建立时追加一次；无变化的 Runtime 状态、释放说明与 KnownState 不再次发送（单元测试直接断言第二轮 delta 为空）。
+- [x] 增量事件按状态变更记录：A→B→A 产生两条独立条目；释放后重新展开会追加新的权威说明而不会重写旧消息。
+- [ ] 持久会话/检查点边界的位置保存与重启去重尚未处理（当前仍依赖 `ctx` 内存态与既有检查点语义）。
+- [ ] Context 裁剪重排前缀的防护尚未处理（超预算仍走既有 evict 路径）。
+
+### SP-04：删除或缩小重复状态内容（P1，与 SP-03 一起落地）
+
+- [ ] 审查 KnownState 中每个字段是否影响模型当前判断。引用审计、计数、更新时间等优先留在 Runtime，不把完整内部状态变成每次请求的提示。
+- [ ] 模型确实需要的采用/排除/冲突/过期和引用事实只发送最小变化；已在工具结果中明确表达的事实不再全文复制。
+- [ ] 固定解释规则只在 SP-02 的稳定提示中出现一次；运行耗时和 UI 状态由 Runtime 展示，按需才提供给模型。
+
+入口：`memory-known-state.ts`、`runtime-awareness.ts`、`memory-context-working-set.ts`。
+验收：相同状态连续两轮不增加重复状态字符；完整审计仍可追溯；已释放、冲突或过期证据不因精简被误当成有效依据。收益同时报告输入字符/token 与实际 usage，不预填节省百分比。
+
+### SP-05：固定主循环最小工具目录（P1，依赖 SP-02）
+
+- [ ] 删除确实不需要的工具后，在一个会话区间内固定工具名、schema 和顺序。
+- [ ] 将每轮意图和显式工具指令转为执行范围约束；若改变现有模型可见性筛选，必须同时在实际调用处保留等价限制，不能只删除筛选。
+- [ ] Web 开关、来源校验、审批、具体 URL 范围和宿主安全检查继续生效；工具注册/模型配置确实变化时记录一次新区间。
+
+入口：`retrieval-intent.ts`、`execute/runners.ts`、工具执行服务与请求契约。
+验收：本地→Web→本地的主循环 schema 稳定；关闭网络、错误来源、越权工具和超出显式范围的请求仍被拒绝。能力回复与压缩无须为形式统一附带整套工具。
+
+### SP-06：删除澄清的重复模型调用及修复请求变形（P1）
+
+- [ ] 主循环通过 schema 校验的模型提问直接按既有 settlement 与来源校验发布，删除 ASK_USER 二次措辞请求。
+- [ ] Runtime 恢复升级且没有模型问题文案时才生成一次用户说明；空输出或无来源时显示 Runtime 错误，删除 `ask_user.ts` 的固定文案伪装 Agent 回复兜底。
+- [ ] 连续性纠正不再改写首条 system、抛弃原请求形状；仍必要的纠正作为有界反馈在原循环追加，并使用原工具目录及受控 `tool_choice`。能力回复保留现有最小事实契约。
+
+入口：`execute/runners.ts`、`stages/ask_user.ts`、`reply/continuity-repair.ts`、`user-facing-reply.ts`。
+验收：一次模型提问不再产生第二次模型请求；长会话、重启和并发发布仍防止同一 settlement 重发；缺失来源/空输出不能伪装成模型回复；历史连续性验收继续有效。
+
+### SP-07：压缩只携带必要输入（P1）
+
+- [ ] 保留当前摘要长度及 branch/scope 契约修复，移除压缩请求无关的能力快照、检索规则和主循环状态注入。
+- [ ] 保留最小专用摘要契约、真实待压缩消息、必须保真的目标/决定/产物与引用。压缩仍是当前唯一持久记忆写入方，不能在此次精简中误删该能力。
+- [ ] 明确摘要安装与消息截断为一次原子区间切换；失败继续使用旧的有效摘要，所有失败与重试计入成本。不要在本任务中顺带改变冻结基准的压缩频率。
+
+入口：`runner/session-continuity.ts`、`model-observability.ts`、`runtime-awareness.ts`、压缩操作存储与恢复测试。
+验收：压缩请求无无关播报；合法记忆候选与摘要保真通过；中断/失败不丢失旧摘要和未完成目标；保留已有未提交修复及其回归测试。
+
+### SP-08：按真实请求和成本验收（P0 建立基线，最后收口）
+
+- [ ] 先在同一代码/构建与冻结负载下保存旧实现基线，再做修复后对比。基线记录版本、模型、调用用途、轮数、工具集合、压缩配置和 usage 完整性。
+- [ ] 将本地 stage/requestKind 指纹变化与实际 messages/tools 变化分开报告；缓存边界标记不能当作供应商命中证据。
+- [ ] 修正验收文档中过时汇总与未经证实的因果归因；正文保存有界脱敏汇总，原始提示、会话和密钥不进入仓库。
+- [ ] 两组冻结负载均报告总体及冷启动/连续工具/压缩/澄清等分项，包含全部辅助请求、失败和重试。公式固定为缓存输入 token 总和 ÷ 输入 token 总和，usage 缺失不得按零补齐。
+- [ ] 同时报告每任务未缓存输入、总输入/输出、请求数、任务时延、失败与正确性。禁止增加无用上下文或重试来抬高比例。
+
+验收：保留范围的任务正确性通过；两组完整总体命中率均 >=95% 才标记缓存目标达成。否则分别记录“结构修复完成”“精简收益”和实际未达差距，不改小目标或挑选热缓存子集。
+
+## 三、本轮验证与交付边界
+
+- 已运行现有 `execute.test.ts` 的 strict-extension 定向测试：1 项通过，39 项未运行；已确认该测试忽略尾部的覆盖缺口。
+- 已通过当前源码的离线请求复现，覆盖表中三个合成场景；没有调用真实供应商，也没有据此宣称真实缓存收益。
+- 临时复现脚本、Vitest 配置及三份脱敏合成结果位于 `C:\Users\28971\AppData\Local\Temp\ls-prompt-audit-407f44f12a904771b039ab47a6b5089a`；临时目录可被系统清理，正式落地先完成 SP-01。
+- 本轮仅新增本清单。工作树原有的 cache-observability、session-continuity、压缩提示测试和验收文档改动均保持原样。
+
+建议首个实现批次：SP-01 + SP-02 + SP-03 + SP-04；先解决实际消息生命周期与重复注入，再进行工具目录和额外调用精简。SP-08 的基线应在实现改动前建立。
+
+## 四、2026-09-21 SP-01 实现轮的验证边界（据实记录）
+
+- 本轮**只做结构修复与离线验证**：全部证据来自 Vitest 中的 mock Provider 与单元级断言，**没有调用真实供应商，也没有测量真实缓存命中率**。因此本轮**不能**声称 95% 目标已达成，SP-08 的基线仍未建立（按清单要求在实现改动前建立，现已错位，需在下一轮以 `git` 历史中的旧实现补测）。
+- 已验证的是**必要条件**：正常未压缩轮次的完整请求（含 tools 与尾部）满足"旧请求是新请求的严格前缀"。
+- **未验证**的部分：真实 Provider 的缓存单元匹配行为、压缩区间切换时的重建、取消/重启后的位置恢复、跨轮（同一会话的多个 run）的连续性。清单第 2 节离线表中的字符量结论未被本轮推翻，也未据此推算 token 节省。
+- 还原历史行为的方式：本轮改动集中在 `run-tail-ledger.ts`（新增）、`context-candidates.ts`、`model-observability.ts`、`tool-loop.ts`、`execute/prompt.ts`、`profile-prompt.ts`、`prompt/builder.ts`、`context-engine/contracts.ts`；`git stash` 一次即可回到旧实现的请求形状，可用于 SP-08 的对照测量。
