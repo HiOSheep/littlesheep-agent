@@ -198,7 +198,7 @@ describe('maybeCompact', () => {
 
   // SP-07: a failed switch keeps the previous valid summary and its range.
   it('keeps the previous valid summary when a later compaction fails', async () => {
-    const { manager, sessionId, messages } = await managerWithMessages(7);
+    const { manager, sessionId } = await managerWithMessages(7);
     const first = await maybeCompact(manager, sessionId, {
       threshold: 6,
       keepRecent: 2,
