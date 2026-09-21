@@ -60,6 +60,23 @@ const TASKS = [
   '用一句话总结“先冻结再重构”的理由，不要调用任何工具。',
 ]
 
+/**
+ * Tool-work scenario task set (plan §6.5 requires continuous tool work reported
+ * separately). The conversation set above contains zero tool calls by design, so
+ * it can never cover tool-loop cache behaviour, the first-tool-action time, or
+ * the read / write-then-read-back / refusal-is-side-effect-free acceptance.
+ * Kept as a separate set so the frozen conversation baseline stays comparable.
+ */
+const TOOL_TASKS = [
+  '读取当前工作区里的 seed.txt，只用一句话告诉我这个文件的内容。',
+  '在当前工作区创建 notes.md，写入一行 cache-probe-ok，然后用 read 读回并确认内容。',
+  '列出当前工作区里所有 .md 文件的文件名，只列文件名。',
+  '在当前工作区搜索包含 marker 字样的文件，告诉我命中的文件名。',
+]
+
+/** Continuous tool work instead of the conversation-only task set. */
+const TOOL_WORK = process.env.LITTLESHEEP_COMPARISON_TOOL_WORK === '1'
+
 async function main() {
   await assertAppBuildFresh(repoRoot)
   const apiKey = OFFLINE ? 'acceptance-key' : process.env.DEEPSEEK_API_KEY?.trim()
@@ -178,11 +195,12 @@ async function main() {
 function taskList() {
   // A shorter live list keeps a shared-session run clear of clarification
   // round-trips that would otherwise swamp the cache measurement.
-  const requested = Number(process.env.LITTLESHEEP_COMPARISON_TASKS ?? (OFFLINE ? 4 : TASKS.length))
+  const source = TOOL_WORK ? TOOL_TASKS : TASKS
+  const requested = Number(process.env.LITTLESHEEP_COMPARISON_TASKS ?? (OFFLINE ? 4 : source.length))
   const limit = Number.isFinite(requested) && requested > 0
-    ? Math.min(TASKS.length, Math.floor(requested))
-    : (OFFLINE ? 4 : TASKS.length)
-  return TASKS.slice(0, limit)
+    ? Math.min(source.length, Math.floor(requested))
+    : (OFFLINE ? 4 : source.length)
+  return source.slice(0, limit)
 }
 
 async function startPath({ mode, apiKey, model, provider }) {
@@ -200,7 +218,15 @@ async function startPath({ mode, apiKey, model, provider }) {
     ...['sessions', 'memory', 'skills', 'config', 'quarantine', 'backups', 'experience', 'archive', 'vectors', 'execution-logs']
       .map((name) => mkdir(join(dataDir, name), { recursive: true })),
   ])
-  await writeFile(join(dataDir, 'config.json'), `${JSON.stringify(buildConfig(workplaceDir, model, mode, provider), null, 2)}\n`, 'utf8')
+  // The tool-work scenario needs real files to read, search and list.
+  if (TOOL_WORK) {
+    await Promise.all([
+      writeFile(join(workplaceDir, 'seed.txt'), 'cache-probe-ok\n', 'utf8'),
+      writeFile(join(workplaceDir, 'alpha.md'), '# Alpha\n\nmarker-present\n', 'utf8'),
+      writeFile(join(workplaceDir, 'beta.md'), '# Beta\n\nno match here\n', 'utf8'),
+    ])
+  }
+  await writeFile(join(dataDir, 'config.json'), `${JSON.stringify(buildConfig(workplaceDir, model, provider), null, 2)}\n`, 'utf8')
 
   const executable = resolveVerifiedElectronExecutable(repoRoot, { requireAppBuildManifest: true })
   const { createWriteStream } = await import('node:fs')
@@ -535,7 +561,7 @@ function summarize(path) {
   }
 }
 
-function buildConfig(workplaceDir, model, mode, provider) {
+function buildConfig(workplaceDir, model, provider) {
   return {
     version: 1,
     providers: [provider
@@ -572,7 +598,6 @@ function buildConfig(workplaceDir, model, mode, provider) {
         // run failures, which the product default accommodates.
         maxModelCallsPerRun: 32,
         harness: 'core-flow',
-        durableHarnessMode: mode,
       },
     },
     desktop: { closePolicy: 'always-background' },
