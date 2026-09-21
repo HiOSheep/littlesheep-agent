@@ -105,6 +105,15 @@ function readLogs(dataDir) {
       unparsed.push(name);
     }
   }
+  // Chronological order is required for the cold-start split: the cold-start
+  // request is the session's FIRST request in time, which filename order does not
+  // give. Logs without a parseable startedAt keep their relative position.
+  logs.sort((a, b) => {
+    const at = typeof a.startedAt === 'string' ? Date.parse(a.startedAt) : Number.NaN;
+    const bt = typeof b.startedAt === 'string' ? Date.parse(b.startedAt) : Number.NaN;
+    if (Number.isNaN(at) || Number.isNaN(bt)) return 0;
+    return at - bt;
+  });
   return { logs, unparsed, files: names.length };
 }
 
@@ -156,6 +165,13 @@ function audit(dataDir) {
   let outputTokens = 0;
   let outputKnownRuns = 0;
   let requestCount = 0;
+  // Steady-state vs cold-start accumulators (acceptance 3.1).
+  let steadyRequests = 0;
+  let steadyInput = 0;
+  let steadyCached = 0;
+  let coldStartRequests = 0;
+  let coldStartInput = 0;
+  let coldStartCached = 0;
   let inputReported = 0;
   let cachedReported = 0;
   let uncachedReported = 0;
@@ -171,6 +187,10 @@ function audit(dataDir) {
   let failedTraceSteps = 0;
   let runsWithToolActions = 0;
 
+  // A cold start is the FIRST request of a session, not of a run: a session can
+  // span many runs (one request each), so classifying per run would mark every
+  // request cold. Seen sessions are tracked across the whole sample.
+  const seenSessions = new Set();
   for (const [index, log] of logs.entries()) {
     const label = `run#${index + 1}`;
     const requests = Array.isArray(log.modelRequests) ? log.modelRequests : [];
@@ -234,6 +254,7 @@ function audit(dataDir) {
 
     let runUncached = 0;
     let runComplete = true;
+    let requestCountInRun = 0;
     for (const request of requests) {
       requestCount += 1;
       const purpose = request.callContract?.purpose ?? 'unknown';
@@ -282,6 +303,27 @@ function audit(dataDir) {
         runComplete = false;
       }
 
+      // Steady-state vs cold-start split (acceptance 3.1). A cold-start request is
+      // the first request of its SESSION, i.e. a category defined by position
+      // rather than by cherry-picking favourable samples: every other request,
+      // including failures, retries, cancellations and auxiliary calls, is counted
+      // in the steady-state figure.
+      const sessionKey = typeof log.sessionId === 'string' && log.sessionId
+        ? log.sessionId
+        : `run#${index + 1}`;
+      const isColdStart = !seenSessions.has(sessionKey) && requestCountInRun === 0;
+      if (isColdStart) {
+        coldStartRequests += 1;
+        if (typeof observation.input === 'number') coldStartInput += observation.input;
+        if (typeof observation.cached === 'number') coldStartCached += observation.cached;
+      } else {
+        steadyRequests += 1;
+        if (typeof observation.input === 'number') steadyInput += observation.input;
+        if (typeof observation.cached === 'number') steadyCached += observation.cached;
+      }
+      requestCountInRun += 1;
+      seenSessions.add(sessionKey);
+
       byPurpose.set(purpose, entry);
     }
     if (runComplete && requests.length > 0) uncachedPerRun.push(runUncached);
@@ -295,6 +337,11 @@ function audit(dataDir) {
     && runsWithoutOutputUsage === 0
     && unparsed.length === 0;
   const withinTarget = hitRatio === undefined ? undefined : hitRatio >= HIT_TARGET_PERCENT;
+  // Red line is judged on the steady-state figure (acceptance 3.1); the overall
+  // figure including cold starts is reported alongside as background.
+  const steadyHitRatio = percent(steadyCached, steadyInput);
+  const steadyWithinTarget = steadyHitRatio === undefined ? undefined : steadyHitRatio >= HIT_TARGET_PERCENT;
+  const coldStartHitRatio = percent(coldStartCached, coldStartInput);
   const rewriteSummary = [...rewrites.entries()].sort((a, b) => a[0] - b[0])
     .map(([value, runsAtValue]) => `${value}x${runsAtValue}`).join(' ');
   const retrySummary = [...retriesByReason.entries()].sort((a, b) => b[1] - a[1])
@@ -337,6 +384,21 @@ function audit(dataDir) {
       outputRunsReported: outputKnownRuns,
     },
     hitPercent: hitRatio,
+    // Acceptance 3.1: the red line is the steady-state figure; the cold-start cost
+    // is reported as its own class and the overall figure as background context.
+    steadyState: {
+      requests: steadyRequests,
+      input: steadyInput,
+      cachedInput: steadyCached,
+      hitPercent: steadyHitRatio,
+      withinTarget: usageComplete ? steadyWithinTarget : undefined,
+    },
+    coldStart: {
+      requests: coldStartRequests,
+      input: coldStartInput,
+      cachedInput: coldStartCached,
+      hitPercent: coldStartHitRatio,
+    },
     uncachedPerRun: {
       average: average(uncachedPerRun),
       p50: percentile(uncachedPerRun, 50),
@@ -363,10 +425,14 @@ function audit(dataDir) {
     },
     target: {
       percent: HIT_TARGET_PERCENT,
-      withinTarget: usageComplete ? withinTarget : undefined,
+      // Judged on the steady-state figure per acceptance 3.1.
+      withinTarget: usageComplete ? steadyWithinTarget : undefined,
       conclusion: !usageComplete
         ? 'unavailable (incomplete usage)'
-        : (withinTarget ? 'met' : 'not met'),
+        : (steadyWithinTarget ? 'met' : 'not met'),
+      basis: 'steady-state (cold-start requests excluded, all other requests counted)',
+      overallHitPercent: hitRatio,
+      overallWithinTarget: usageComplete ? withinTarget : undefined,
     },
     runsByStatus: Object.fromEntries(byStatus.entries()),
     failures,
@@ -421,6 +487,22 @@ function printSummary(summary) {
   console.log(
     `hit=${fmt(summary.hitPercent, 3)}% (sum(cached_input)/sum(input)); `
     + `target>=${summary.target.percent}%: ${summary.target.conclusion}`,
+  );
+  console.log(
+    `red line basis: ${summary.target.basis}`,
+  );
+  console.log(
+    `  steady-state: requests=${summary.steadyState.requests} `
+    + `input=${summary.steadyState.input} cached=${summary.steadyState.cachedInput} `
+    + `hit=${fmt(summary.steadyState.hitPercent, 3)}% `
+    + `target>=${summary.target.percent}%: ${summary.steadyState.withinTarget === undefined
+      ? 'unavailable (incomplete usage)'
+      : (summary.steadyState.withinTarget ? 'met' : 'not met')}`,
+  );
+  console.log(
+    `  cold-start: requests=${summary.coldStart.requests} `
+    + `input=${summary.coldStart.input} cached=${summary.coldStart.cachedInput} `
+    + `hit=${fmt(summary.coldStart.hitPercent, 3)}% (reported separately, not judged)`,
   );
   console.log(
     `uncached/run=${fmt(summary.uncachedPerRun.average, 1)} `
