@@ -1214,6 +1214,63 @@ memory_tree, read, request_user_input, session_status, use_skill, write
 
 **本轮未改动实现代码**：机制已由实测确立，但改变"任务间前缀回退"属请求构造的架构改动，且需要先在长会话/工具工作两组负载上验证收益。本轮只报告实测与机制，不改代码。
 
+### 5.40 修复一处真实缺陷：惰性精确计数器对 V4.1 模型广播错误的 id（2026-09-21，已修复）
+
+上一节在核对本地计数器时发现，每次实测的 `localTokenLedger` 都写着：
+
+```
+"accuracy": "unavailable",
+"reason": "Exact token counter mismatch for deepseek/deepseek-flash:
+           expected deepseek-v41-provider-calibrated-tokenizer-v1,
+           received deepseek-v4-provider-calibrated-tokenizer-v2."
+```
+
+**根因（已定位到具体行）**：
+
+- `packages/config/src/model-capabilities.ts` 正确地把 `deepseek-flash` 与 `deepseek-v4-flash` 映射到 **V4.1** 计数器（`deepseek-v41-provider-calibrated-tokenizer-v1`），只有 `deepseek-v4-pro` 仍用 V4 计数器。
+- `packages/context/src/tokenizers/deepseek-v4-counter.ts` 的**惰性包装**却把 `id` **硬编码为 `DEEPSEEK_V4_TOKEN_COUNTER_ID`**（原第 208 行），与模型实际解析出的家族无关。
+- `packages/context/src/context-engine/counting.ts:105` 的 `resolveExactCounter` 会在 `counter.id !== capability.counterId` 时**拒绝该计数器**并返回 `reason`。
+- 因此对 `deepseek-flash`（V4.1，即本方案实测使用的模型）**每一次请求**都命中该不一致，精确计数器被丢弃，Context Engine 退回保守的字节估算器。
+
+**修复**：让惰性包装的 `id` **跟随模型解析出的家族**——
+
+```ts
+id: resolveDeepSeekTokenizerFamily(options.modelRef)?.counterId ?? DEEPSEEK_V4_TOKEN_COUNTER_ID,
+```
+
+- 同文件的 `createDeepSeekV4ExactContextTokenCounter` 本来就正确使用 `family.counterId`（第 240 行），只有惰性包装这一处是硬编码，属遗漏而非设计。
+- 保留了 `?? DEEPSEEK_V4_TOKEN_COUNTER_ID` 兜底，未知 modelRef 的行为不变。
+
+**回归护栏（已双向验证有效）**：在 `deepseek-v4-counter.test.ts` 新增 4 个用例——对 `deepseek-flash`、`deepseek-v4-flash`、`deepseek-v4-pro` 三个 modelRef，断言惰性包装广播的 `id` **等于该模型 capability 声明的 `counterId`**；并断言 V4-only 与 V4.1 两个模型的 id **不相等**。
+
+- **修复前**：`3 failed | 11 passed`（三个按模型分组的用例与 id 不等断言均失败）。
+- **修复后**：`14 passed`。
+- 用 `git stash` 对 `deepseek-v4-counter.ts` 双向验证，确认不是空测。
+
+**修复后的实测（同一场景、同一模型、同一任务集，2 轮 × 4 任务，18 请求）**：
+
+| 运行 | 精确计数器 | 稳态命中率 | 缓存取值 |
+| --- | --- | ---: | --- |
+| 修复前（`ZNShYL`） | `accuracy=unavailable` | 93.094% | 4224, 4352, 4480 |
+| **修复后（`rt0uFJ`）** | **`accuracy=exact`，id=`deepseek-v41-…`** | **94.208%** | 4224, 4352, 4480 |
+
+**但必须明确：不宣称该修复带来 1.114 个百分点的收益。** 逐项核对两次运行的请求构成：
+
+| 量 | 修复前 | 修复后 | 差值 |
+| --- | ---: | ---: | ---: |
+| 请求数 | 18 | 18 | 0 |
+| prompt 合计 | 81,696 | 81,376 | **−320** |
+| 消息数合计 | 168 | 166 | −2 |
+| cached 合计 | 72,320 | 72,832 | **+512** |
+| 压缩次数 | 0 | 0 | 0 |
+
+- 两次运行的**请求规模几乎相同**（prompt 仅差 320，占 0.4%），而 `cached` 差 512。
+- 计数器只影响**本地**大小度量与预算/安全估算，**不改变发给 Provider 的字节**；在请求构成未实质变化的前提下，它无法直接解释 `cached` 上升。
+- 因此 **+1.114pt 与"运行间 Provider 抖动"一致**，单对运行**不足以**区分二者。判定为**未归因**，需要多轮重复才能分离。§5.30–5.32 已记录该负载存在运行间抖动。
+- 本次修复的**确定价值**是：恢复精确计数（`accuracy: exact`），使 Context Engine 的大小度量与压缩建议不再依赖保守估算——这与方案 P0"usage 缺失显式报告、不按零补齐"的测量纪律同向，但**属测量保真度，不计入缓存收益**。
+
+**本轮唯一的实现改动**就是这一处；`packages/context` 49 个用例全部通过。
+
 ## 6. 完成条件
 
 冻结负载两组总体命中率均 `>=95%` 且 usage 完整；总成本与每任务未缓存量不以保留冗余为代价；保留范围的任务验收（正确读取、写后读回、拒绝时零副作用、重启不重复执行、记忆可回溯、压缩后目标连续）通过。未达到时报告实际结果与剩余损失来源，不改小目标、不隐藏冷启动；"能力裁剪完成"与"95% 达成"分别标记。

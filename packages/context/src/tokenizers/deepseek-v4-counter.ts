@@ -205,7 +205,12 @@ export function createLazyLocalExactContextTokenCounter(
   };
 
   return {
-    id: DEEPSEEK_V4_TOKEN_COUNTER_ID,
+    // The advertised id must match the counter the model actually resolves to.
+    // `resolveExactCounter` compares this against the model's tokenizer
+    // capability and discards the counter on any mismatch, so hardcoding the V4
+    // id here silently disabled exact counting for every V4.1 model (including
+    // `deepseek-flash`) and dropped the engine back to the byte estimator.
+    id: resolveDeepSeekTokenizerFamily(options.modelRef)?.counterId ?? DEEPSEEK_V4_TOKEN_COUNTER_ID,
     get ready(): boolean {
       return counter !== undefined;
     },

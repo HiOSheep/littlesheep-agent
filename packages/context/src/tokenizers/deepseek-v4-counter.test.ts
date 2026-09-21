@@ -17,6 +17,38 @@ afterEach(async () => {
 });
 
 describe('DeepSeek V4 tokenizer assets', () => {
+  // The lazy wrapper's advertised id is compared against the model's declared
+  // tokenizer capability by resolveExactCounter, which discards the counter on
+  // any mismatch. Advertising a fixed V4 id therefore disabled exact counting
+  // for every V4.1 model, so the id must follow the resolved family.
+  it.each([
+    ['deepseek/deepseek-flash'],
+    ['deepseek/deepseek-v4-flash'],
+    ['deepseek/deepseek-v4-pro'],
+  ])('advertises the counter id the model capability declares for %s', async (modelRef) => {
+    const root = await temporaryRoot();
+    const counter = createLazyLocalExactContextTokenCounter({ modelRef, modelRootDir: root });
+    expect(counter).toBeDefined();
+
+    const contract = await import('@littlesheep/config');
+    const [provider, model] = modelRef.split('/');
+    const capability = contract.resolveModelTokenizerCapability(provider!, model!);
+    expect(capability?.status).toBe('exact');
+    if (capability?.status !== 'exact') return;
+
+    expect(counter!.id).toBe(capability.counterId);
+    counter!.dispose();
+  });
+
+  it('keeps the V4 id for a V4-only model and the V4.1 id for a V4.1 model', async () => {
+    const root = await temporaryRoot();
+    const v4 = createLazyLocalExactContextTokenCounter({ modelRef: 'deepseek/deepseek-v4-pro', modelRootDir: root });
+    const v41 = createLazyLocalExactContextTokenCounter({ modelRef: 'deepseek/deepseek-flash', modelRootDir: root });
+    expect(v4!.id).not.toBe(v41!.id);
+    v4!.dispose();
+    v41!.dispose();
+  });
+
   it('reports missing and invalid immutable assets separately', async () => {
     const root = await temporaryRoot();
     const missing = await verifyDeepSeekV4TokenizerAssets(root);
