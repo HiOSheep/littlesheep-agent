@@ -1,6 +1,6 @@
 # 缓存 95% 冻结负载验收规程
 
-最后更新：2026-09-21 21:35:00
+最后更新：2026-09-21 22:20:00
 
 本文件把 `docs/taskbooks/lean-v2-cache-95-plan-taskbook-2026-09-20.md` 第 6 节的实测步骤写成可重复执行的规程，供最终验收直接照做。它是验收方法，不是达成声明：在两组冻结负载都跑出完整 usage 之前，95% 一律标记为未验证。
 
@@ -680,6 +680,8 @@
 
 **结论**：方案第 6 节"保留范围的任务验收"中，**正确读取**、**写后读回**、**拒绝时零副作用**（5.23）、**重启不重复执行**四项均已取得真实验证。剩余缺口集中在**缓存命中率**一项，即三个不达标场景。
 
+> **更正（2026-09-21，见 5.33）**：上句"剩余缺口集中在缓存命中率一项"**不准确**。方案列出的任务验收共 **6 项**，本节的核对只覆盖了前 4 项；**记忆可回溯**与**压缩后目标连续**两项当时**未被核对**，经 5.33 补齐后判定为**部分满足**（只有单元级证据，无端到端证据）。
+
 ### 5.27 修复方案的收益上限，与一处新发现的工具 schema 不稳定（2026-09-21）
 
 5.24 提出的两条候改（让强制收尾保留工具清单、让 `ask_user` 复用主循环前缀）此前只是机制推断，未评估**收益上限**。本轮用工具工作场景的真实数据算出上限，结论**改变了建议**。
@@ -969,6 +971,49 @@ this purpose forbids tools but request included: grep, read.
 **可用数据已穷尽**：所有具备真实 Provider 缓存计费的样本**全部早于 `129653f`**；`--offline` 自检样本（`5hk1No`）的确定性 Provider 返回固定 `prompt_tokens: 64` 且**不含任何缓存字段**，因此**在无凭据的情况下无法再取得新的判据**。本轮据此停止从既有数据继续推断，改为把口径固定下来，等待一次保留数据根的真实重跑。
 
 **本轮未改动的声明**：本节为对 5.31 的统计口径复核，**未修改任何实现代码**。
+
+### 5.33 补齐 5.26 遗漏的两项任务验收：证据级别不同，必须分别标记（2026-09-21）
+
+方案第 6 节与第 122 行列出的"保留范围的任务验收"共 **6 项**：正确读取、写后读回、拒绝时零副作用、重启不重复执行、**记忆可回溯**、**压缩后目标连续**。5.26 第 681 行只核对了**前 4 项**并结论"剩余缺口集中在缓存命中率一项"——**后 2 项从未被核对**。本节补齐，并如实区分两者的证据级别。
+
+**① 记忆可回溯 —— 仅单元覆盖，无真实运行证据 ⚠️**
+
+- **有行为级单元覆盖**：`packages/memory-tree/src/memory-tool.test.ts` 共 4 例，直接断言导航面本身：
+  - `navigates branch index then expansion and applies the read-side envelope`
+  - `returns a navigational error instead of searching when deep_search skips expand`（即强制 `root_index → branch_index → expand` 顺序，禁止跳过 expand 直接深搜）
+  - `releases selected atoms from only the current run context`
+  - `explains run-scoped admission and release to the model`
+- **但没有真实运行证据**：对全部 73 个保留数据根扫描 `toolInvocations`，**`memory_tree` 的实际调用数为 0**（`succeeded` 也是 0）。
+  - 注意：文本搜索 `memory_tree` 会命中**每一个**请求，因为它出现在工具清单里；只有 `toolInvocations` 才代表真实调用。本轮据此判定，避免把"出现在提示词中"误读为"被使用过"。
+- **因此该项的准确状态是**：**导航契约有单元级验证，但"真实任务中记忆可回溯"没有端到端证据**。这与 5.26 把它算作"已验证"的暗示不同，本节更正为**部分满足**。
+
+**② 压缩后目标连续 —— 有单元覆盖，但"目标连续"本身未被直接断言 ⚠️**
+
+- **有相邻机制覆盖**：`packages/runner/src/session-summary-fidelity.test.ts` 12 例，覆盖压缩摘要的保真通道，其中最相关的是：
+  - `carries arbitrary exact fields through incremental compaction`
+  - `preserves bounded arbitrary labels instead of relying on a fixed vocabulary`
+  - `replaces a model-authored spoofed fidelity block with the Runtime block`
+  - `does not turn an ordinary explanatory sentence into an authoritative exact field`
+- 另有 `packages/session/src/compaction.test.ts` 14 例覆盖压缩事务原子性，包括 `writes a versioned summary without deleting original messages` 与 `keeps messages appended while a snapshot is summarized outside the covered prefix`。
+- **但没有一条测试断言"未完成目标在压缩后仍然可用"**：对 `packages/` 全量测试搜索 `unfinished` / `openGoal` / `activeGoal` / `goalContinuity` 只命中与该语义无关的用例（composer 草稿、检查点临时文件、runtime-awareness 文本）。
+- **因此该项的准确状态是**：**保真通道（`label: value` 精确字段跨压缩保留）有单元级验证，但"目标连续"这一验收语义没有直接断言**。判定为**部分满足**。
+
+**证据级别汇总（本节更正 5.26 第 681 行的口径）**：
+
+| 任务验收 | 证据级别 | 状态 |
+| --- | --- | --- |
+| 正确读取 | 真实运行（5.23） | ✅ 已验证 |
+| 写后读回 | 真实运行（5.26） | ✅ 已验证 |
+| 拒绝时零副作用 | 真实运行（5.23） | ✅ 已验证 |
+| 重启不重复执行 | 真实运行（5.26） | ✅ 已验证 |
+| **记忆可回溯** | **仅单元（navigation contract）** | ⚠️ **部分满足** |
+| **压缩后目标连续** | **仅单元（fidelity 通道，非"目标"本身）** | ⚠️ **部分满足** |
+
+- 因此 5.26 的"剩余缺口集中在缓存命中率一项"**不准确**：除缓存红线外，还有**两项语义验收只有单元级证据**。
+- **已执行的可复现检查**：`pnpm exec vitest run packages/memory-tree/src/memory-tool.test.ts packages/runner/src/session-summary-fidelity.test.ts packages/session/src/compaction.test.ts packages/runner/src/session-summary-activation.test.ts` → **4 个文件、34 个用例全部通过**。即上述单元证据在当前实现上**是绿的**，缺的是端到端那一层。
+- **不加分的声明**：本轮**不**把单元通过当作端到端验收通过。补齐这两项需要真实运行（记忆回溯需一次真实 `memory_tree` 导航；目标连续需一次跨压缩的续跑），**两者都需要 Provider 凭据**，与缓存红线同一阻塞。
+
+**本轮未改动的声明**：本节为对既有测试与保留数据的核对，**未修改任何实现代码**，也未新增或删减验收项。
 
 ## 6. 完成条件
 
