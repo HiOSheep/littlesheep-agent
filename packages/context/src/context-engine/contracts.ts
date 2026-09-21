@@ -62,6 +62,12 @@ export interface ContextMessageSegment {
   scope?: ContextScope;
   /** Optional eviction group for a set of prompt segments. */
   evictionGroup?: string;
+  /**
+   * A section the caller's append-only tail owns: it is emitted once as its own
+   * message instead of being folded into a single-request system message, so a
+   * changed section can only be appended and never move an earlier one.
+   */
+  placement?: 'trailing';
 }
 
 export interface PrepareContextRequestInput {

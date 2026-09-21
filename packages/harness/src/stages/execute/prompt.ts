@@ -41,6 +41,10 @@ export async function buildExecuteSystemPrompt(
       text: renderRetrievalIntentContract(ctx),
       kind: 'workflow_state' as const,
       source: { kind: 'workflow' as const, id: 'retrieval-intent-contract', runId: ctx.runId },
+      // The main loop's append-only tail owns this section: it is emitted once,
+      // in the position it keeps for the rest of the run, instead of being
+      // folded into the system message or re-appended per request.
+      appendOnly: true,
     },
     { id: 'profile', text: ctx.profilePromptAddon, placement: 'stable' },
     { id: 'reasoning', text: ctx.reasoningPromptAddon, placement: 'stable' },

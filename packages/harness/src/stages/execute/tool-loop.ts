@@ -2,6 +2,7 @@
 // owns invocation validation, approval, execution, events, and evidence.
 import { createHash, randomUUID } from 'node:crypto';
 import {
+  type ChatMessage,
   type ChatResponse,
   type ToolCall as LlmToolCall,
 } from '@littlesheep/llm';
@@ -20,6 +21,7 @@ import {
 } from '@littlesheep/tools';
 import { buildRunRequestCandidates } from '../../context-candidates.js';
 import { modelRequestIdFor, prepareModelRequest } from '../../model-observability.js';
+import { RunTailLedger } from '../../run-tail-ledger.js';
 import {
   abortTranscriptTurn,
   closeTranscriptTurn,
@@ -84,6 +86,32 @@ export async function runToolLoop(
     saturated: ctx.loopBudget?.evidenceFingerprintSaturated === true,
   };
   const initialHistory = history ?? conversationHistoryForModel(ctx);
+  // The runtime-owned tail is the run's append-only Runtime context.
+  //
+  // The initial tail (capability facts and the per-turn retrieval contract)
+  // belongs directly after the current user turn, which is where the model
+  // reads it; every later tool round is then appended *after* it. That is what
+  // makes iteration N's exact request the prefix of iteration N+1's, the
+  // condition the Provider's prefix cache matches. Appending the initial tail
+  // at the very end instead put it after the first tool round and stopped the
+  // second request from extending the first.
+  const tailLedger = new RunTailLedger();
+  const initialTail = tailLedger.update(ctx, systemSegments);
+  const tailMessageSet = new Set<ChatMessage>();
+  const initialTailMessages = initialTail.messages;
+  for (const message of initialTailMessages) tailMessageSet.add(message);
+  let primaryUserIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === 'user') {
+      primaryUserIndex = index;
+      break;
+    }
+  }
+  messages.splice(
+    primaryUserIndex < 0 ? messages.length : primaryUserIndex + 1,
+    0,
+    ...initialTailMessages,
+  );
   let noProgressRounds = ctx.loopBudget?.noProgressRounds ?? 0;
   let forceFinalResponse = noProgressRounds >= MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS;
   let citationRepairAttempts = 0;
@@ -103,6 +131,11 @@ export async function runToolLoop(
     // Next path only: publish thinking plus per-turn prose as an ordered
     // transcript. The legacy path keeps its previous event sequence.
     const transcriptTurn = createTranscriptTurn(ctx, stepId, iteration);
+    // Append this round's tail additions before the request is assembled. An
+    // unchanged fact adds nothing here, so the messages already sent stay put.
+    const tailDelta = tailLedger.update(ctx, systemSegments);
+    for (const message of tailDelta.messages) tailMessageSet.add(message);
+    messages.push(...tailDelta.messages);
     try {
       const hasTools = toolSpecs.length > 0;
       const rawRequest = {
@@ -122,11 +155,19 @@ export async function runToolLoop(
         ctx,
         'execute_tool_loop',
         rawRequest,
-        buildRunRequestCandidates(ctx, 'execute', rawRequest.messages, {
+        buildRunRequestCandidates(ctx, 'execute', messages, {
           history: initialHistory,
           systemSegments,
           insertedBeforePrimary,
+          // The loop owns the runtime tail (the prompt sections marked
+          // `placement: 'trailing'` and the appended Runtime facts), so this
+          // assembler must not emit a second copy of them per request.
+          trailingOwnership: 'caller',
+          tailMessages: tailMessageSet,
         }),
+        // The loop owns the append-only tail; the request recorder must not
+        // re-inject (and thereby re-position) it per iteration.
+        { skipRuntimeTail: true },
       );
       response = await runTranscriptModelTurn(ctx, deps.llm, request, transcriptTurn);
     } catch (error) {

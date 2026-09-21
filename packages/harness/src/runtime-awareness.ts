@@ -122,7 +122,17 @@ function renderCompactCapabilityFacts(ctx: RunContext): string {
   ].join('\n');
 }
 
-function renderCapabilitySnapshot(ctx: RunContext): string {
+/**
+ * The capability facts exactly as the main loop sends them.
+ *
+ * They are run-stable, so the main loop appends them once as part of its
+ * append-only tail instead of re-injecting them on every iteration.
+ */
+export function renderRuntimeFacts(ctx: RunContext): string {
+  return renderCapabilitySnapshot(ctx);
+}
+
+export function renderCapabilitySnapshot(ctx: RunContext): string {
   return [
     '# Runtime Facts',
     '',
@@ -132,7 +142,7 @@ function renderCapabilitySnapshot(ctx: RunContext): string {
 }
 
 /** Task progress, probe results and permission decisions: these can change mid-run. */
-function renderVolatileRunState(ctx: RunContext): string | undefined {
+export function renderVolatileRunState(ctx: RunContext): string | undefined {
   const lines: string[] = [];
   const progress = taskProgress(ctx);
   if (ctx.taskBook || ctx.taskExecution) {

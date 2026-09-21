@@ -61,23 +61,9 @@ export function appendMemoryReleaseNotes(
   request: ChatRequest,
   candidates?: ContextMessageCandidate[],
 ): { request: ChatRequest; candidates?: ContextMessageCandidate[] } {
-  const state = ctx.memoryContextWorkingSet;
-  if (!state || Object.keys(state.callAtomIds).length === 0) return { request, candidates };
-  const released = new Set<string>();
-  for (const [callId, atomIds] of Object.entries(state.callAtomIds)) {
-    for (const atomId of atomIds) {
-      if (state.activeCallByAtom[atomId] !== callId) released.add(atomId);
-    }
-  }
-  if (released.size === 0) return { request, candidates };
-  const ids = [...released].sort();
-  const message: ChatMessage = {
-    role: 'system',
-    content: `${CACHE_BOUNDARY_MARKER}\n\n# Released Memory\n\n`
-      + `- released_atoms: ${ids.join(', ')}\n`
-      + '- Earlier tool results and the system prompt still contain their original text; history is append-only.\n'
-      + '- Treat every released atom as inactive evidence: do not cite it, and do not use it to justify the answer.\n',
-  };
+  const ids = releasedAtomIdsFromWorkingSet(ctx.memoryContextWorkingSet);
+  if (ids.length === 0) return { request, candidates };
+  const message: ChatMessage = { role: 'system', content: memoryReleaseNoteText(ids) };
   const preparedRequest = { ...request, messages: [...request.messages, message] };
   if (!candidates) return { request: preparedRequest };
   return {
@@ -94,6 +80,28 @@ export function appendMemoryReleaseNotes(
       scope: 'run',
     }],
   };
+}
+
+/** Atoms whose memory context is no longer active under the working-set rule. */
+export function releasedAtomIdsFromWorkingSet(
+  state: RunContext['memoryContextWorkingSet'],
+): string[] {
+  if (!state || Object.keys(state.callAtomIds).length === 0) return [];
+  const released = new Set<string>();
+  for (const [callId, atomIds] of Object.entries(state.callAtomIds)) {
+    for (const atomId of atomIds) {
+      if (state.activeCallByAtom[atomId] !== callId) released.add(atomId);
+    }
+  }
+  return [...released].sort();
+}
+
+/** The exact release note text, shared by every path that appends one. */
+export function memoryReleaseNoteText(ids: readonly string[]): string {
+  return `${CACHE_BOUNDARY_MARKER}\n\n# Released Memory\n\n`
+    + `- released_atoms: ${ids.join(', ')}\n`
+    + '- Earlier tool results and the system prompt still contain their original text; history is append-only.\n'
+    + '- Treat every released atom as inactive evidence: do not cite it, and do not use it to justify the answer.\n';
 }
 
 export function applyMemoryContextWorkingSet(

@@ -27,6 +27,22 @@ export interface BuildRunRequestCandidatesOptions {
    * break the Provider's cacheable prefix. Their Context kind is preserved.
    */
   trailingSegments?: ContextMessageSegment[];
+  /**
+   * Who emits the trailing sections.
+   *
+   * `context` (default) lets this assembler append them, which is what a
+   * single-request stage wants. `caller` means the caller owns an append-only
+   * tail and has already appended these sections as messages: this assembler
+   * must then not append them a second time at a new position, or the previous
+   * request would stop being a prefix of the next one.
+   */
+  trailingOwnership?: 'context' | 'caller';
+  /**
+   * Messages the caller's append-only tail owns. They are regular messages in
+   * the request — so the sequence stays append-only — but they keep their
+   * `runtime_event` Context kind instead of being counted as workflow state.
+   */
+  tailMessages?: ReadonlySet<ChatMessage>;
 }
 
 export interface InsertedContextMessage {
@@ -37,6 +53,17 @@ export interface InsertedContextMessage {
   required: boolean;
   sensitive?: boolean;
   scope?: ContextScope;
+}
+
+/**
+ * Context sections the caller's append-only tail owns.
+ *
+ * A section marked `placement: 'trailing'` by the prompt builder is emitted by
+ * the tail owner exactly once; folding it into the system message here would
+ * make it re-appear at a new position on every request.
+ */
+export function isTailOwnedSegment(segment: ContextMessageSegment): boolean {
+  return segment.placement === 'trailing';
 }
 
 /** Map an outbound stage request to explicit Context sources without retaining duplicate content. */
@@ -57,40 +84,74 @@ export function buildRunRequestCandidates(
   const insertedStartIndex = 1 + history.length;
   const primaryUserIndex = insertedStartIndex + inserted.length;
   const primaryUserKind = options.primaryUserKind ?? 'user_input';
+  const callerOwnsTail = options.trailingOwnership === 'caller';
+  const emitTrailing = (segment: ContextMessageSegment): boolean => (
+    !callerOwnsTail && !isTailOwnedSegment(segment)
+  );
 
   // Task guidance changes on every turn (the task book advances), so keeping it
   // inside the system message would truncate the Provider's cached prefix for
   // the whole conversation. It travels as a trailing Context section instead;
   // memory, workspace and bootstrap stay in the system message untouched.
-  const trailingAddons = (options.systemSegments ?? []).filter((segment) => VOLATILE_GUIDANCE_SEGMENT_IDS.has(segment.id));
-  const systemSegments = VOLATILE_GUIDANCE_SEGMENT_IDS.size === 0 || trailingAddons.length === 0
-    ? options.systemSegments
-    : (options.systemSegments ?? []).filter((segment) => !VOLATILE_GUIDANCE_SEGMENT_IDS.has(segment.id));
-  const systemMessage = trailingAddons.length === 0
+  const allSegments = options.systemSegments ?? [];
+  const trailingAddons = allSegments.filter((segment) => (
+    isTailOwnedSegment(segment) || VOLATILE_GUIDANCE_SEGMENT_IDS.has(segment.id)
+  ));
+  const remainingSegments = trailingAddons.length === 0
+    ? allSegments
+    : allSegments.filter((segment) => !trailingAddons.includes(segment));
+  // The system candidate always carries source-aware segments: the call
+  // contract validates Context by kind, and a caller that passes a prebuilt
+  // system message (a direct stage test, recovery, or a hand-assembled request)
+  // would otherwise present no `system_prompt` kind at all.
+  const systemSegments = remainingSegments.length > 0
+    ? remainingSegments
+    : [singleSystemSegment(stage, messages[0])];
+  const emittedTrailing = trailingAddons.filter(emitTrailing);
+  const systemFromSegments = systemSegments.map((segment) => segment.text).join('');
+  const firstMessage = messages[0] as ChatMessage | undefined;
+  // Rebuild the system message from its remaining segments only when a section
+  // really left it; otherwise keep the caller's bytes untouched.
+  const systemMessage = firstMessage?.role !== 'system' || systemFromSegments === firstMessage.content
     ? undefined
-    : { ...(messages[0] as ChatMessage), content: (systemSegments ?? []).map((segment) => segment.text).join('') };
+    : { ...firstMessage, content: systemFromSegments };
 
-  const mapped = messages.map((message, index) => {
+  const mapped = messages.flatMap((message, index) => {
+    const order = index;
+    // Tail messages keep their Runtime-owned Context kind; their position is
+    // already their index, so nothing about the ordering changes.
+    if (options.tailMessages?.has(message)) {
+      return [candidate({
+        id: `${stage}:tail:${index}`,
+        order,
+        message,
+        kind: 'runtime_event',
+        source: { kind: 'runtime_event', id: `${stage}:tail:${index}`, runId: ctx.runId },
+        priority: 100,
+        required: true,
+        scope: 'run',
+      })];
+    }
     if (index === 0 && message.role === 'system') {
-      return candidate({
+      return [candidate({
         id: `${stage}:system`,
-        order: index,
+        order,
         message: systemMessage ?? message,
         kind: 'system_prompt',
         source: { kind: 'prompt', id: `${stage}:system` },
         priority: 100,
         required: true,
         segments: systemSegments,
-      });
+      })];
     }
 
     const historyMessage = index > 0 && index <= history.length
       ? history[index - 1]
       : undefined;
     if (historyMessage) {
-      return candidate({
+      return [candidate({
         id: `${stage}:history:${historyMessage.id}`,
-        order: index,
+        order,
         message,
         kind: 'recent_message',
         source: {
@@ -102,16 +163,16 @@ export function buildRunRequestCandidates(
         priority: historyPriorities[index - 1] ?? 75,
         required: false,
         evictionGroup: historyEvictionGroups[index - 1],
-      });
+      })];
     }
 
     const insertedMessage = index >= insertedStartIndex && index < primaryUserIndex
       ? inserted[index - insertedStartIndex]
       : undefined;
     if (insertedMessage) {
-      return candidate({
+      return [candidate({
         id: `${stage}:inserted:${insertedMessage.id}`,
-        order: index,
+        order,
         message,
         kind: insertedMessage.kind,
         source: insertedMessage.source,
@@ -119,14 +180,14 @@ export function buildRunRequestCandidates(
         required: insertedMessage.required,
         sensitive: insertedMessage.sensitive ?? true,
         scope: insertedMessage.scope,
-      });
+      })];
     }
 
     if (index === primaryUserIndex && message.role === 'user') {
       const sourceKind = primaryUserKind === 'workflow_state' ? 'workflow' : 'message';
-      return candidate({
+      return [candidate({
         id: `${stage}:primary-user:${ctx.inbound.id}`,
-        order: index,
+        order,
         message,
         kind: primaryUserKind,
         source: {
@@ -137,56 +198,56 @@ export function buildRunRequestCandidates(
         },
         priority: primaryUserKind === 'user_input' ? 95 : 85,
         required: true,
-      });
+      })];
     }
 
     if (message.role === 'tool') {
-      return candidate({
+      return [candidate({
         id: `${stage}:tool:${message.tool_call_id ?? 'unknown'}:${index}`,
-        order: index,
+        order,
         message,
         kind: 'tool_result',
         source: { kind: 'tool', id: message.tool_call_id ?? `${stage}:tool:${index}`, runId: ctx.runId },
         priority: 90,
         required: true,
-      });
+      })];
     }
 
     if ((message.tool_calls?.length ?? 0) > 0) {
-      return candidate({
+      return [candidate({
         id: `${stage}:tool-proposal:${message.tool_calls!.map((call) => call.id).join(',')}:${index}`,
-        order: index,
+        order,
         message,
         kind: 'workflow_state',
         source: { kind: 'workflow', id: `${stage}:tool-proposal`, runId: ctx.runId },
         priority: 90,
         required: true,
-      });
+      })];
     }
 
     if (message.role === 'user') {
-      return candidate({
+      return [candidate({
         id: `${stage}:constraint:${index}`,
-        order: index,
+        order,
         message,
         kind: 'output_constraint',
         source: { kind: 'workflow', id: `${stage}:constraint:${index}`, runId: ctx.runId },
         priority: 90,
         required: true,
-      });
+      })];
     }
 
-    return candidate({
+    return [candidate({
       id: `${stage}:workflow:${index}`,
-      order: index,
+      order,
       message,
       kind: 'workflow_state',
       source: { kind: 'workflow', id: `${stage}:workflow:${index}`, runId: ctx.runId },
       priority: 80,
       required: true,
-    });
+    })];
   });
-  const trailing = [...trailingAddons, ...(options.trailingSegments ?? [])].map((segment, index) => candidate({
+  const trailing = [...emittedTrailing, ...(options.trailingSegments ?? []).filter(emitTrailing)].map((segment, index) => candidate({
     id: segment.id,
     order: messages.length + index,
     message: { role: 'system', content: segment.text },
@@ -204,6 +265,29 @@ function candidate(
   value: Omit<ContextMessageCandidate, 'sensitive'> & { sensitive?: boolean },
 ): ContextMessageCandidate {
   return { ...value, sensitive: value.sensitive ?? true };
+}
+
+/**
+ * The one segment of a system message the caller assembled itself.
+ *
+ * Its text is the whole message, so the segmented candidate still matches its
+ * own content and the call contract sees a `system_prompt` source.
+ */
+function singleSystemSegment(
+  stage: StageName,
+  message: ChatMessage | undefined,
+): ContextMessageSegment {
+  return {
+    id: `${stage}:system:text`,
+    order: 0,
+    text: typeof message?.content === 'string' ? message.content : '',
+    kind: 'system_prompt',
+    source: { kind: 'prompt', id: `${stage}:system` },
+    priority: 100,
+    required: true,
+    sensitive: true,
+    scope: 'global',
+  };
 }
 
 function conversationContinuityPriorities(history: Message[], inbound: Message): number[] {

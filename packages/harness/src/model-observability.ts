@@ -256,7 +256,12 @@ export function prepareModelRequest(
   purposeOrStage: LlmCallPurpose | StageName,
   request: ChatRequest,
   candidates?: ContextMessageCandidate[],
-  options: { retryOf?: string; retryReason?: ModelRequestSnapshot['retryReason'] } = {},
+  options: {
+    retryOf?: string;
+    retryReason?: ModelRequestSnapshot['retryReason'];
+    /** The caller owns the Runtime tail and already appended it (see recordPreparedRequest). */
+    skipRuntimeTail?: boolean;
+  } = {},
 ): ChatRequest {
   return recordPreparedRequest(ctx, purposeOrStage, request, candidates, options).request;
 }
@@ -266,7 +271,12 @@ export function recordModelRequest(
   purposeOrStage: LlmCallPurpose | StageName,
   request: ChatRequest,
   candidates?: ContextMessageCandidate[],
-  options: { retryOf?: string; retryReason?: ModelRequestSnapshot['retryReason'] } = {},
+  options: {
+    retryOf?: string;
+    retryReason?: ModelRequestSnapshot['retryReason'];
+    /** The caller owns the Runtime tail and already appended it (see recordPreparedRequest). */
+    skipRuntimeTail?: boolean;
+  } = {},
 ): ModelRequestSnapshot {
   return recordPreparedRequest(ctx, purposeOrStage, request, candidates, options).snapshot;
 }
@@ -417,7 +427,18 @@ function recordPreparedRequest(
   purposeOrStage: LlmCallPurpose | StageName,
   request: ChatRequest,
   candidates?: ContextMessageCandidate[],
-  options: { retryOf?: string; retryReason?: ModelRequestSnapshot['retryReason'] } = {},
+  options: {
+    retryOf?: string;
+    retryReason?: ModelRequestSnapshot['retryReason'];
+    /**
+     * The caller already appended the run's Runtime-owned tail (capability
+     * facts, memory release notes, KnownState) as part of its own append-only
+     * message sequence. Re-injecting the tail here would rebuild it at a new
+     * position on every iteration, so the previous request would stop being a
+     * prefix of the next one; the main loop therefore owns it.
+     */
+    skipRuntimeTail?: boolean;
+  } = {},
 ): { request: ChatRequest; snapshot: ModelRequestSnapshot } {
   const modelCallBudgetEnabled = ctx.maxModelCalls !== undefined;
   if (ctx.maxModelCalls !== undefined) {
@@ -430,9 +451,9 @@ function recordPreparedRequest(
   // context assembly so registry discovery/concurrency cannot change bytes.
   const canonicalRequest = { ...request, tools: orderToolSpecs(request.tools) };
   const resolvedRequest = applyResolvedReasoning(ctx, canonicalRequest);
-  // Append-only: released memory keeps its original text so the Provider's
-  // prefix cache survives; the runtime appends an authoritative release note.
-  const workingSetAware = appendMemoryReleaseNotes(ctx, resolvedRequest, candidates);
+  const workingSetAware = options.skipRuntimeTail
+    ? { request: resolvedRequest, candidates }
+    : appendMemoryReleaseNotes(ctx, resolvedRequest, candidates);
   const requestIndex = (ctx.modelRequests?.at(-1)?.requestIndex ?? 0) + 1;
   const requestedToolNames = workingSetAware.request.tools?.map((tool) => tool.function.name) ?? [];
   const callContract = resolveLlmCallContract(ctx, purposeOrStage, {
@@ -441,16 +462,20 @@ function recordPreparedRequest(
     temperature: resolvedRequest.temperature,
   });
   if (modelCallBudgetEnabled) incrementModelCallCount(ctx, callContract.stage);
-  const memoryAware = callContract.inputs.allowedContextKinds.includes('memory_fragment')
-    ? injectMemoryKnownState(ctx, callContract.stage, workingSetAware.request, workingSetAware.candidates, requestIndex)
-    : workingSetAware;
-  const runtimeAware = injectRuntimeAwareness(
-    ctx,
-    memoryAware.request,
-    memoryAware.candidates,
-    requestIndex,
-    callContract.purpose,
-  );
+  const memoryAware = options.skipRuntimeTail
+    ? workingSetAware
+    : (callContract.inputs.allowedContextKinds.includes('memory_fragment')
+      ? injectMemoryKnownState(ctx, callContract.stage, workingSetAware.request, workingSetAware.candidates, requestIndex)
+      : workingSetAware);
+  const runtimeAware = options.skipRuntimeTail
+    ? memoryAware
+    : injectRuntimeAwareness(
+      ctx,
+      memoryAware.request,
+      memoryAware.candidates,
+      requestIndex,
+      callContract.purpose,
+    );
   validateModelRequest(callContract, runtimeAware.request);
   const prepared = (contextEngines.get(ctx) ?? defaultContextEngine).prepare({
     runId: ctx.runId,

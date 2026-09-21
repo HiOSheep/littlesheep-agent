@@ -118,6 +118,17 @@ export function injectMemoryKnownState(
   };
 }
 
+/**
+ * The exact KnownState text a request carries.
+ *
+ * Exported because the main loop appends KnownState changes as an append-only
+ * tail event: the same bytes have to be produced from the same function, not
+ * from a second copy of the rendering rules.
+ */
+export function renderKnownStateText(state: RuntimeMemoryKnownState): string {
+  return `${CACHE_BOUNDARY_MARKER}\n\n${renderKnownState(state)}`;
+}
+
 function renderKnownState(state: RuntimeMemoryKnownState): string {
   const references = [...state.references].sort(compareReferences).slice(0, MAX_PROMPT_REFERENCES);
   const lines = [

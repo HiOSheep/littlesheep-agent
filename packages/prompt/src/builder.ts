@@ -78,6 +78,13 @@ export interface PromptContextSegment {
   required: boolean;
   sensitive: boolean;
   scope: ContextScope;
+  /**
+   * Sections that belong below the cache boundary and are appended by the
+   * caller's append-only tail instead of being folded into the system message.
+   * A caller that owns the tail emits them once; re-emitting them on every
+   * request would move them and break the Provider's cached prefix.
+   */
+  placement?: 'trailing';
 }
 
 export interface SystemPromptBundle {

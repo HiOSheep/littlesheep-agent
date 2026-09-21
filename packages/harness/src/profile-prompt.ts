@@ -21,6 +21,12 @@ export interface SystemPromptAddon {
   scope?: ContextScope;
   /** Stable configuration belongs before the cache boundary; run facts stay after it. */
   placement?: 'stable' | 'volatile';
+  /**
+   * The caller appends this section itself, as part of its append-only tail.
+   * It is kept out of the system message so the tail owner can emit it exactly
+   * once in the position it will keep for the whole cache interval.
+   */
+  appendOnly?: boolean;
 }
 
 /** Append prompt additions while keeping explicitly stable policy before the cache boundary. */
@@ -72,6 +78,7 @@ export function appendSystemPromptBundleAddons(
       required: addon.required ?? true,
       sensitive: true,
       scope: addon.scope ?? 'run',
+      ...(addon.appendOnly ? { placement: 'trailing' as const } : {}),
     };
     (addon.placement === 'stable' ? stableAddons : volatileAddons).push(segment);
   }

@@ -35,31 +35,42 @@ function textPart(parts: ChatContentPart[]): string {
   return parts.find((part): part is Extract<ChatContentPart, { type: 'text' }> => part.type === 'text')?.text ?? '';
 }
 
-function expectCommonPayloadShape(request: ChatRequest, options: { includesBootstrap?: boolean } = {}) {
+function expectCommonPayloadShape(
+  request: ChatRequest,
+  options: { includesBootstrap?: boolean; tail?: 'append-only' | 'injected' } = {},
+) {
   expect(request.model).toBe('test-model');
   const roles = request.messages.map((message) => message.role);
-  // The main system prompt, then the per-run Runtime capability facts (stable,
-  // therefore cacheable), then the conversation in its stable order; any
-  // genuinely volatile section travels afterwards as a trailing system message.
-  expect(roles.slice(0, 6)).toEqual(['system', 'system', 'user', 'assistant', 'user', 'user']);
-  expect(roles.slice(6).every((role) => role === 'system')).toBe(true);
-  expect(roles.length).toBeGreaterThanOrEqual(6);
+  // The main system prompt, then the conversation in its stable order. The
+  // Runtime facts and the retrieval contract follow, either as the main loop's
+  // append-only tail after the user turn (EXECUTE) or as the stable injected
+  // facts directly after the system prompt (single-request stages such as
+  // REPLY). Both keep the conversation itself contiguous and in order.
+  const appendOnly = options.tail !== 'injected';
+  const conversationStart = appendOnly ? 1 : 2;
+  expect(roles.slice(conversationStart, conversationStart + 4))
+    .toEqual(['user', 'assistant', 'user', 'user']);
+  expect(roles.slice(conversationStart + 4).every((role) => role === 'system')).toBe(true);
+  expect(roles.length).toBeGreaterThanOrEqual(conversationStart + 4);
   if (options.includesBootstrap !== false) {
     expect(request.messages.map((message) => String(message.content)).join('\n')).toContain('BOOTSTRAP_SENTINEL');
   }
   expect(request.messages.map((message) => String(message.content)).join('\n')).toContain('MEMORY_ROOT_SENTINEL');
   expect(String(request.messages[0]?.content)).toContain('PROFILE_SENTINEL');
-  expect(String(request.messages[1]?.content)).toContain('# Runtime Facts');
-  expect(request.messages[2]?.content).toBe('PRIOR_USER_SENTINEL');
-  expect(request.messages[3]?.content).toBe('PRIOR_ASSISTANT_SENTINEL');
-  expect(String(request.messages[4]?.content)).toContain('Attached files manifest');
-  const inbound = request.messages[5]?.content;
+  expect(request.messages[conversationStart]?.content).toBe('PRIOR_USER_SENTINEL');
+  expect(request.messages[conversationStart + 1]?.content).toBe('PRIOR_ASSISTANT_SENTINEL');
+  expect(String(request.messages[conversationStart + 2]?.content)).toContain('Attached files manifest');
+  const inbound = request.messages[conversationStart + 3]?.content;
   expect(Array.isArray(inbound)).toBe(true);
   expect(textPart(inbound as ChatContentPart[])).toContain('CURRENT_INPUT_SENTINEL');
   expect(inbound).toContainEqual({
     type: 'image_url',
     image_url: { url: 'data:image/png;base64,abc', detail: 'auto' },
   });
+  // The per-run Runtime capability facts always reach the model exactly once.
+  expect(request.messages.filter((message) => (
+    String(message.content).includes('# Runtime Facts')
+  ))).toHaveLength(1);
 }
 
 function expectRecordedSnapshot(
@@ -100,17 +111,23 @@ function expectRecordedSnapshot(
   } else {
     expect(kinds).toContain('project_knowledge');
   }
-  // Every volatile Context section and the Runtime block travel after the
-  // conversation, so the cacheable prefix is the system prompt plus history.
+  // Runtime-owned Context (capability facts, volatile run state) is emitted
+  // exactly once. The main loop (EXECUTE) appends it after the conversation, in
+  // the tail it owns, so a later round extends the request instead of rewriting
+  // it; a single-request stage (REPLY) still receives it as the stable facts
+  // block that follows the system prompt.
   const firstConversationIndex = kinds.findIndex((kind) => kind === 'user_input');
   const runtimeIndices = kinds
     .map((kind, index) => (kind === 'runtime_event' ? index : -1))
     .filter((index) => index >= 0);
-  // Per-run capability facts are stable, so they live inside the cacheable
-  // prefix; this context has no task book, so nothing volatile is appended.
   expect(runtimeIndices.length).toBeGreaterThan(0);
-  expect(runtimeIndices[0]).toBeLessThan(firstConversationIndex);
-  expect(items.at(-1)?.kind).not.toBe('runtime_event');
+  if (stage === 'execute') {
+    expect(runtimeIndices[0]).toBeGreaterThan(firstConversationIndex);
+    expect(items.at(-1)?.kind).toBe('runtime_event');
+  } else {
+    expect(runtimeIndices[0]).toBeLessThan(firstConversationIndex);
+    expect(items.at(-1)?.kind).not.toBe('runtime_event');
+  }
 }
 
 describe('LLM request characterization', () => {
@@ -148,7 +165,7 @@ describe('LLM request characterization', () => {
     await stage(ctx);
 
     expect(requests).toHaveLength(1);
-    expectCommonPayloadShape(requests[0]!, { includesBootstrap: false });
+    expectCommonPayloadShape(requests[0]!, { includesBootstrap: false, tail: 'injected' });
     expect(String(requests[0]!.messages[0]?.content)).not.toContain('BOOTSTRAP_SENTINEL');
     expect(String(requests[0]!.messages[0]?.content)).not.toContain('REASONING_SENTINEL');
     // The canonical shared head is emitted for every stage, REPLY included.
