@@ -28,9 +28,11 @@ describe('cross-stage shared prefix', () => {
     // reuses another stage's system prompt. Unifying the head is the structural
     // lever for cross-stage cache reuse; guard against making it worse.
     // Was 293 bytes (identity only) before the canonical head; now the whole
-    // identity..date-time sequence is shared across modes.
-    expect(lcp).toBeGreaterThanOrEqual(2_500);
-    expect(full.length).toBeGreaterThan(5_000);
+    // identity..date-time sequence is shared across modes. The floor tracks the
+    // current size after the lean-plan prompt trim, and still guards against the
+    // shared head shrinking back toward identity-only.
+    expect(lcp).toBeGreaterThanOrEqual(2_400);
+    expect(full.length).toBeGreaterThan(4_500);
   });
 
   it('measures the mode-independent section budget', () => {
@@ -50,7 +52,9 @@ describe('cross-stage shared prefix', () => {
     // respond (reply) currently carries only `identity` (284). Unifying the head
     // would ADD ~3.8 KB to every reply call, so it can only pay off as a cost
     // optimization (one shared prefill per turn), never as a ratio win.
-    expect(sum).toBeGreaterThanOrEqual(4_000);
+    // The mode-independent sections must stay substantial enough to justify one
+    // shared head; the floor follows the current size after the lean-plan trim.
+    expect(sum).toBeGreaterThanOrEqual(3_700);
     expect(independent[0]).toBeGreaterThanOrEqual(280);
     // respond now carries the whole canonical head, so it grows by ~2.2 KB;
     // the tradeoff is accepted for cross-stage prefix reuse.
@@ -85,8 +89,10 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('Resolve shorthand and omitted subjects from supplied recent conversation');
     expect(prompt).toContain('later explicit user corrections override earlier conflicting Assistant claims');
     expect(prompt).toContain('Never hide failure, partial completion, risk');
-    expect(prompt).toContain('answer with hour and minute only');
-    expect(prompt).toContain('Do not volunteer low-value timing or percentage details');
+    // Time facts are no longer injected, so the prompt points at session_status
+    // instead of describing precision rules for a clock the model never sees.
+    expect(prompt).toContain('No clock or elapsed time is injected into your context');
+    expect(prompt).toContain('session_status');
     const parts = splitAtBoundary(prompt);
     expect(parts.stable).toContain('Memory Tree Root Index');
     expect(parts.volatile).not.toContain('Memory Tree Root Index');
