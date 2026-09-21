@@ -1,6 +1,6 @@
 # 缓存 95% 冻结负载验收规程
 
-最后更新：2026-09-21 04:40:00
+最后更新：2026-09-21 06:30:00
 
 本文件把 `docs/taskbooks/lean-v2-cache-95-plan-2026-09-20.md` 第 6 节的实测步骤写成可重复执行的规程，供最终验收直接照做。它是验收方法，不是达成声明：在两组冻结负载都跑出完整 usage 之前，95% 一律标记为未验证。
 
@@ -50,8 +50,24 @@
 - 前置：`pnpm run build:app` 重建打包产物（脚本会拒绝在 App 产物过期时开跑）；旧实现工作树（`git worktree add <path> ff59df5`，detached HEAD）已创建，正式对比时直接复用。
 - 结果：脚本退出码 0，两侧各 4 个 run 全部 `status: 200`；`comparison.deltas` 中 `requestCount`/`promptTokens`/`completionTokens` 均为 0，`latencyP95Ms` 为 -4ms，`verificationPassRate` 为 0。
 - **关键行为**：确定性 Provider 不报告 `cachedPromptTokens`，因此报告的 `incomplete` 明确列出 `reasoningTokens`、`cachedPromptTokens`、`cacheHitRatio`，两侧 `stageCacheSplit.main.hitRatio` 显示 0 且 `releaseGate.status` 为 `blocked`。这正是测量规则要求的"未知 usage 明确计数并使完整达标结论不可用"，**不得**把这个 0 当作真实命中率，也不得据此宣称或否定 95%。
-- 结论不变：真实 95% 结论仍待 `DEEPSEEK_API_KEY` 下的两组冻结负载对比；上述彩排只证明流程可跑与缺失 usage 的处理正确。
+
+### 5.2 真实 Provider 实测结果（2026-09-21，未达标）
+
+在真实 DeepSeek Provider 下按本规程跑了两组冻结负载对比（`deepseek/deepseek-flash`，2 轮 × 20 任务，每条路径 40 个 run，全部 `status: 200`）：
+
+| 路径 | 输入 tokens | 缓存命中 tokens | 命中率 | 每次调用未缓存 |
+| --- | --- | --- | --- | --- |
+| 旧实现（`ff59df5`） | 220,938 | 208,000 | 94.144% | 323.4 |
+| 新实现 | 220,376 | 207,360 | **94.094%** | 325.4 |
+
+- **结论：两组均低于 95%，目标未达成**。新实现比旧实现低约 0.05 个百分点；`promptTokens` 少 562、`completionTokens` 少 52、`latencyP95Ms` 低 169ms。
+- 损失来源已定位：`prefixChangeReasons` 为**空**，即不存在前缀失效或抖动；残余未缓存量就是每次调用追加在缓存前缀之后的新输入与回答（约 325 tokens），属于结构尾部而非漂移。
+- 定量缺口：平均每次调用 5,509 输入 tokens、5,184 命中，要跨过 95% 需把每次未缓存量压到 ≤275 tokens，即还需再减约 50 tokens。
+- `incomplete` 只剩 `reasoningTokens`（Provider 未报告）；`cachedPromptTokens` 与 `cacheHitRatio` 本次均为真实数值，离线彩排时的"不可用"状态已解除。
+- 工具 schema 门控（见 `docs/decision/project-status.md` 2026-09-21 06:10 条目）把普通请求的内置 schema 从 5,843 字符降到 2,113 字符，**降低的是绝对成本，不是命中率**：命中的前缀变短，但比例由未缓存尾部决定。这一点必须如实区分，不得把省下的字符数当作命中率提升。
 
 ## 6. 完成条件
 
 冻结负载两组总体命中率均 `>=95%` 且 usage 完整；总成本与每任务未缓存量不以保留冗余为代价；保留范围的任务验收（正确读取、写后读回、拒绝时零副作用、重启不重复执行、记忆可回溯、压缩后目标连续）通过。未达到时报告实际结果与剩余损失来源，不改小目标、不隐藏冷启动；"能力裁剪完成"与"95% 达成"分别标记。
+
+**当前状态标记：能力裁剪已完成（P0–P4）；95% 未达成（实测 94.09%）。**
