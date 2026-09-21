@@ -116,13 +116,13 @@
 - [x] 工具循环续接基于上一轮已发送的规范消息及新增模型/工具结果，避免每次从原始数组重新搬动尾部注入。
 - [x] 检索约定只在建立任务约束或约束变化时追加；无变化的 Runtime 状态、释放说明和记忆状态不再次发送。
 - [x] 增量事件按状态变更记录，不能用全会话文案去重：A→B→A 仍是有效变化；释放后重新展开的记忆必须恢复其正确状态。
-- [ ] 复用现有持久会话和检查点边界，保存必要的消息/事件位置；重启不能再次注入已记录内容，也不能重复执行副作用。
+- [x] 复用现有持久会话和检查点边界，保存必要的消息/事件位置；重启不能再次注入已记录内容，也不能重复执行副作用。
 - [x] Context 裁剪不得隐式重排已发送前缀；超预算由明确压缩或可见失败处理。网页、工具和记忆正文保持原有不可信来源标记，不因移动消息而提升为指令。
 
 入口：`execute/tool-loop.ts`、`model-observability.ts`、`context-candidates.ts`、`memory-context-working-set.ts`、相关 session/continuity 存储边界。
 验收：正常未压缩轮次的完整旧 messages 是新请求的前缀；不靠排除尾部通过检查；取消、释放、再次展开和恢复语义正确。
 
-**2026-09-21 SP-03 执行记录（第 1–3、5 项完成；第 4 项仍未完成）：**
+**2026-09-21 SP-03 执行记录（五项完成）：**
 
 - **已完成后三条的既有证据：** 工具循环续接基于上一轮已发送的规范消息与新增结果，尾部由 `RunTailLedger` 记账、`skipRuntimeTail` 关闭记录器自身的再注入（`request-prefix-append-only.test.ts`、`run-tail-ledger.test.ts`）；检索约定只追加一次，无变化的 Runtime 状态/释放说明/KnownState 不重发（单元测试断言第二轮 delta 为空）；A→B→A 产生两条独立条目，重新展开追加新的权威说明而不重写旧消息。
 - **裁剪不再重排已发送前缀（本轮）：** 新增 `evictionScope`（`context-engine/budget.ts`、`contracts.ts`）。`appended-only` 下由 **ContextEngine 自己记账**：每次装配后记录该 run+stage 实际送达的单元 id（`deliveredUnitIds`，`eviction.ts`），下一次装配把它们全部保护起来；被保护单元**根本不进入淘汰候选**（`optionalOmissionUnits` 直接过滤），因此不会"先删了再补"。工具循环每轮都声明 `evictionScope: 'appended-only'`（`execute/tool-loop.ts` → `model-observability.ts`），并可另外用 `protectedCandidateIds` 指定自己拥有的单元。
@@ -130,7 +130,7 @@
 - **复用缓存不再跨保护级别复用：** `contextReuseKey` 现在包含 `evictionScope` 与解析后的受保护 id 集合；否则一次弱保护下的淘汰决定会被强保护请求命中，等于绕过保护。
 - **超预算的两种出口都可区分：** 先淘汰本次新增的单元；若已发送部分本身超窗口，抛 `ContextBudgetExceededError`（工具循环转成可见的 `llm call failed: Required context uses …`），即"明确压缩或可见失败"，不再静默改前缀。超出 stage 目标但仍在模型窗口内的请求按原样发送并记录估算值，不裁剪。
 - **回归证据（有牙）：** `engine.test.ts` 新增 7 项（新增项被淘汰、旧请求仍是完整前缀 / 已发送部分本身超窗口时报错而非裁剪 / 不选 `appended-only` 时保持旧的裁剪行为 / 显式 `protectedCandidateIds` 生效 / 整条消息的段落一并受保护 / 保护级别不同不复用淘汰决定）；`request-prefix-append-only.test.ts` 新增 1 项端到端用例：历史撑到接近 `execute_tool_loop` 的 24,000 token stage 目标，工具结果把第 2 轮推过目标——**把 `evictionScope` 改回 `unconsumed`，该用例立刻报 `request 1 -> 2: message 0 (system) was rewritten at 1977`**。
-- **第 4 项仍未完成（口径说明）：** 消息/事件位置**没有新增持久化字段**。现有检查点保存 `ctx.history`（已确认的用户可见消息快照）与已执行的工具调用记录，恢复时由它们决定"哪些内容已经发过、哪些副作用已经结算"，本轮因此**没有**改动 session/continuity 存储边界；"重启不再次注入已记录内容、不重复执行副作用"这一条仍依赖既有检查点语义，尚未用跨进程重启的用例验证，勾选项保持未勾。
+- **第 4 项（复用既有边界 + 重启不重放副作用与已记录内容）：** 未新增任何持久化字段，验证的是**既有边界**：新增 `session-restart-continuity.test.ts` 用一个**全新的 runner 实例**（同一数据根、不共享内存）接续既有会话，断言已记录的一轮在请求中**恰好出现一次、顺序不变**（用户问题 → 助手回复 → 新回合），会话文件在重启前后保持 `[user, assistant]` → `[user, assistant, user, assistant]`；副作用一侧由既有 `durable-runner-effect-recovery.test.ts` 覆盖——真实子进程写盘后被 `SIGKILL`，恢复只把该副作用标为 `effect_settlement_unknown`，不重新执行（文件内容仍是第一次写入的值、`llm.chat` 从未被调用、重复恢复为空操作）。**口径：** 消息一侧验证的是"新 runner 实例 + 同一数据根"，不是杀进程后重启；副作用一侧才是真实进程级重启。两者的模型引用都带已注册的精确 tokenizer，否则保守估算会先于重启行为触发预算裁剪，掩盖本项要验证的性质。
 
 
 ### SP-04：删除或缩小重复状态内容（P1，与 SP-03 一起落地）
