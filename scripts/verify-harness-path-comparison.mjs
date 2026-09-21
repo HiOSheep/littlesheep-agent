@@ -28,8 +28,20 @@ const OUTPUT_PATH = join(repoRoot, '.codex_tmp', 'harness-path-comparison.json')
 const OFFLINE = process.argv.includes('--offline') || process.env.LITTLESHEEP_COMPARISON_OFFLINE === '1'
 /** Force a low compaction threshold so the paired sample covers the compaction round class. */
 const COMPACTION_LOW = process.env.LITTLESHEEP_COMPARISON_COMPACTION === '1'
-/** Keep one conversation alive across rounds, as a long DSH-style session. */
+/**
+ * Restart scenario (plan §6.5 requires it reported separately): stop both app
+ * instances halfway through the load and continue the SAME session against the
+ * same data root. The plan's acceptance list includes "重启不重复执行" and
+ * "重启后目标连续", which a single-process run can never exercise.
+ */
+const RESTART = process.env.LITTLESHEEP_COMPARISON_RESTART === '1'
+/**
+ * Keep one conversation alive across rounds, as a long DSH-style session.
+ * A restart is only meaningful inside one continuing conversation, so RESTART
+ * implies it unless the caller explicitly disables sharing.
+ */
 const SHARED_SESSION = process.env.LITTLESHEEP_COMPARISON_SHARED_SESSION === '1'
+  || (RESTART && process.env.LITTLESHEEP_COMPARISON_SHARED_SESSION !== '0')
 /** Keep the isolated data roots so request-level prefix diffs stay inspectable. */
 const KEEP_DATA = process.argv.includes('--keep-data') || process.env.LITTLESHEEP_COMPARISON_KEEP_DATA === '1'
 /** Distinguish repeated rounds in one session (default on for shared sessions). */
@@ -90,6 +102,7 @@ async function main() {
 
   const paths = {}
   const roots = []
+  const restarts = []
   try {
     // Interleaved pairing: both modes stay alive and alternate task by task so
     // machine/Provider drift affects both sides of the comparison instead of
@@ -105,7 +118,24 @@ async function main() {
     // shared-session mode keeps one conversation alive and records how the
     // cumulative hit ratio behaves as the prefix grows.
     const sharedSessions = { shadow: null, next: null }
+    const restartAtRound = RESTART ? Math.max(1, Math.floor(ROUNDS / 2)) : -1
     for (let round = 0; round < ROUNDS; round += 1) {
+      // Restart mid-load: stop both app instances and bring them back against the
+      // same data root, then keep going in the same session. Round < restartAtRound
+      // ran on the first process; the rest run on the second.
+      if (round === restartAtRound) {
+        for (const mode of ['shadow', 'next']) {
+          await stopApp(started[mode])
+          await launchApp(started[mode], { apiKey })
+        }
+        restarts.push({
+          atRound: round,
+          sessions: Object.fromEntries(['shadow', 'next'].map((mode) => [
+            mode,
+            sharedSessions[mode] ?? started[mode].sessions.at(-1)?.sessionId ?? null,
+          ])),
+        })
+      }
       const roundSession = { shadow: null, next: null }
       const order = round % 2 === 0 ? ['shadow', 'next'] : ['next', 'shadow']
       for (let index = 0; index < tasks.length; index += 1) {
@@ -162,6 +192,15 @@ async function main() {
       model,
       taskCount: taskList().length,
       rounds: ROUNDS,
+      scenario: {
+        toolWork: TOOL_WORK,
+        sharedSession: SHARED_SESSION,
+        compaction: COMPACTION_LOW,
+        restart: RESTART,
+      },
+      // Evidence that the restart actually happened mid-load, and which session
+      // was continued across it.
+      restarts,
       paths: {
         shadow: summarize(paths.shadow),
         next: summarize(paths.next),
@@ -228,12 +267,35 @@ async function startPath({ mode, apiKey, model, provider }) {
   }
   await writeFile(join(dataDir, 'config.json'), `${JSON.stringify(buildConfig(workplaceDir, model, provider), null, 2)}\n`, 'utf8')
 
-  const executable = resolveVerifiedElectronExecutable(repoRoot, { requireAppBuildManifest: true })
+  const path = {
+    mode,
+    root,
+    dataDir,
+    workplaceDir,
+    logPath,
+    chromiumDir,
+    runs: [],
+    cacheTrend: [],
+    sessions: [],
+  }
+  await launchApp(path, { apiKey })
+  return path
+}
+
+/**
+ * Start (or restart) the app for a path. The locator file is removed first: after
+ * a restart the previous locator still exists and would be read back immediately,
+ * pointing at a port that is no longer listening.
+ */
+async function launchApp(path, { apiKey }) {
   const { createWriteStream } = await import('node:fs')
-  const log = createWriteStream(logPath, { flags: 'a' })
-  const env = { ...process.env, LITTLESHEEP_DATA_DIR: dataDir, ...(OFFLINE ? {} : { DEEPSEEK_API_KEY: apiKey }) }
+  const locatorPath = join(path.dataDir, 'runtime', 'local-app-api.json')
+  await rm(locatorPath, { force: true }).catch(() => undefined)
+  const executable = resolveVerifiedElectronExecutable(repoRoot, { requireAppBuildManifest: true })
+  const log = createWriteStream(path.logPath, { flags: 'a' })
+  const env = { ...process.env, LITTLESHEEP_DATA_DIR: path.dataDir, ...(OFFLINE ? {} : { DEEPSEEK_API_KEY: apiKey }) }
   delete env.ELECTRON_RUN_AS_NODE
-  const child = spawn(executable, ['.', `--user-data-dir=${chromiumDir}`], {
+  const child = spawn(executable, ['.', `--user-data-dir=${path.chromiumDir}`], {
     cwd: appRoot,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -242,20 +304,21 @@ async function startPath({ mode, apiKey, model, provider }) {
   child.stdout.pipe(log, { end: false })
   child.stderr.pipe(log, { end: false })
 
-  const locator = await waitForLocator(join(dataDir, 'runtime', 'local-app-api.json'))
-  return {
-    mode,
-    root,
-    dataDir,
-    workplaceDir,
-    logPath,
-    child,
-    log,
-    locator,
-    baseUrl: `http://${locator.host}:${locator.port}`,
-    runs: [],
-    cacheTrend: [],
-    sessions: [],
+  const locator = await waitForLocator(locatorPath)
+  path.child = child
+  path.log = log
+  path.locator = locator
+  path.baseUrl = `http://${locator.host}:${locator.port}`
+  return path
+}
+
+/** Stop the app for a path without collecting its reports. */
+async function stopApp(path) {
+  try {
+    path.child?.kill()
+    if (path.child) await waitForExit(path.child, 20_000).catch(() => undefined)
+  } finally {
+    path.log?.end()
   }
 }
 
