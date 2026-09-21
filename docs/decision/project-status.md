@@ -1,6 +1,14 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-21 12:25:00
+最后更新：2026-09-21 13:45:00
+
+**系统性排查提示词中的"已删除能力"描述并清理（2026-09-21 13:45:00）**：连续三轮各自命中同类缺陷后，本轮改为一次性系统排查 prompt 与 stage 源码中的过时说明，共清理三处。
+
+- **`sections.ts` 的 `renderStagedCoreFlow`（真实可达）**：`packages/harness/src/stages/reply.ts` 会传 `coreFlowStage: 'reply'`，因此该分支会真的渲染。它仍写着完整旧流程（`DECIDE → EXECUTE → VERIFY → EVOLVE → CAPTURE`、`needs_replan → DECIDE`），并给出 `decide`/`evolve`/`capture` 三个已删除 stage 的说明。已改为真实的单循环图与现存的 stage 说明（删除 `decide`/`evolve`/`capture` 三个 bullet）。上一轮（第 34 轮）只改了非 staged 的 fallback，**漏掉了这个可达分支**。
+- **`explicit-tool-instruction.ts` 的三个孤儿 prompt（已删除）**：`resolveExplicitSingleToolInstruction`、`renderExplicitToolProposalContract` 与内部 `renderExplicitMultiToolProposalContract` 在生产代码中**无任何调用者**（仅有自身定义行）。它们会告诉模型"You are the **DECIDE** stage"，并要求返回 `requiresTaskBook`、`taskBook.steps`、`execution.dependsOn`、`mode: "serial"` —— 全部是 P3 已删除的结构。已删除，文件从 200 行降到 83 行；删除后无任何类型错误，反证其确无调用者。保留仍在使用的 `resolveExplicitToolInstructionSet` 与 `resolveBoundedToolJsonSchema`。
+- **`context.ts` 的过时注释**：`replanAttempts` 处写着"VERIFY force-passes to EVOLVE to avoid infinite DECIDE↔VERIFY loops"，描述的 stage 已不存在；改为说明预算耗尽即停止、没有独立规划 stage 可回环。字段本身（`taskBookRevision`/`appliedTaskBookPatchIds`）属 checkpoint-carried，保留不动。
+- **保留的引用**：`tool-loop.ts` 与 `side-effect-ledger.ts` 中的 `memory_search`/`memory_deep_search` 是**防御性名称表**（用于判定工具结果分类，兼容读取旧记录），不是给模型的指令，故保留；`default-harness.ts` 中解释"DECIDE/EVOLVE/CAPTURE 已删除"的注释是有价值的删除记录，保留。
+- 验证：`pnpm run typecheck` 通过；`packages/harness` 62 文件、520 项通过；`packages/prompt` 通过。全仓 `pnpm exec vitest run` 444/445 文件通过，唯一失败为 `scripts/verify-web-live-llm-evidence.test.mjs`（`Unexpected end of JSON input`）；已用 `git stash` 在干净基线上复现同一失败，确认**与本轮改动无关**（沙箱管道 stdio 限制所致）。
 
 **前缀稳定性核查：稳定前缀确实稳定，排除该假设；清理过期时间提示（2026-09-21 12:25:00）**
 
