@@ -93,6 +93,16 @@ export interface SystemPromptBundle {
    * that follows them instead of paying for it again.
    */
   stableText?: string;
+  /**
+   * The sections `stableText` is made of.
+   *
+   * A caller that hands the bundle's sections to a Context assembler must hand
+   * over exactly one half of the split: the stable sections build the system
+   * message, and the trailing sections travel as their own messages. Passing
+   * the whole list made the assembler rebuild the system message out of
+   * below-boundary sections too, which silently moved them above the boundary.
+   */
+  stableSegments?: PromptContextSegment[];
   /** Sections at or below the boundary, to be sent after the history. */
   trailingSegments?: PromptContextSegment[];
 }
@@ -316,6 +326,7 @@ export function buildSystemPromptBundle(input: PromptInput): SystemPromptBundle 
     text: segments.map((segment) => segment.text).join(''),
     segments,
     stableText: segments.slice(0, boundaryIndex).map((segment) => segment.text).join(''),
+    stableSegments: segments.slice(0, boundaryIndex),
     trailingSegments: segments.slice(boundaryIndex),
   };
 }

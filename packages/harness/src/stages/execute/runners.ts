@@ -58,6 +58,16 @@ export async function executeLegacyLoop(
     insertedBeforePrimary: attachmentMessages.map((item) => item.context),
   });
   replaceToolResults(ctx, 'execute', result.toolResults);
+  if (process.env.LS_TAIL_DEBUG) {
+    console.log('RUNNER RESULT', JSON.stringify({
+      requestMessages: result.requestMessages?.length ?? null,
+      first: typeof result.requestMessages?.[0]?.content === 'string'
+        ? result.requestMessages[0]!.content.length
+        : -1,
+      tail: result.requestTailMessages?.size ?? null,
+      tools: result.requestTools?.length ?? null,
+    }));
+  }
   // Asking the user is the model's own decision: the question it raised becomes
   // the turn's clarification and is published as-is. The model already worded it
   // in the tool call it made, so asking it to word the same question again was a
@@ -110,13 +120,21 @@ export async function executeLegacyLoop(
     // answers: when the loop produced tool evidence, the answer is grounded in
     // that evidence and is published as the Provider wrote it, exactly like the
     // execution paths always did.
+    //
+    // The correction extends the request that produced the draft — same purpose,
+    // same messages, same tool catalog — so it keeps the prefix that request
+    // already prefilled instead of restating everything in a new shape.
     const candidate = result.toolResults.length > 0
       ? result.content
-      : await repairDiscontinuousReply(
-          deps,
+      : await repairDiscontinuousReply(          deps,
           ctx,
-          systemPrompt.text,
-          baseMessages,
+          {
+            purpose: 'execute_tool_loop',
+            messages: result.requestMessages ?? baseMessages,
+            tools: result.requestTools,
+            ...(result.requestTailMessages ? { tailMessages: result.requestTailMessages } : {}),
+            temperature: 0,
+          },
           conversationHistoryForModel(ctx),
           result.content,
         );

@@ -175,6 +175,14 @@ export async function runToolLoop(
         { skipRuntimeTail: true },
       );
       response = await runTranscriptModelTurn(ctx, deps.llm, request, transcriptTurn);
+      if (process.env.LS_TAIL_DEBUG) {
+        console.log('LOOP SENT', JSON.stringify({
+          first: typeof request.messages[0]?.content === 'string' ? request.messages[0]!.content.length : -1,
+          count: request.messages.length,
+          canonicalFirst: typeof messages[0]?.content === 'string' ? messages[0]!.content.length : -1,
+          canonicalCount: messages.length,
+        }));
+      }
     } catch (error) {
       abortTranscriptTurn(ctx, transcriptTurn, signal?.aborted ? 'aborted' : 'failed');
       return {
@@ -221,6 +229,10 @@ export async function runToolLoop(
         iterations: iteration,
         usage: response.usage,
         modelRequestId: modelRequestIdFor(request),
+        // The correction path builds its request on top of this exact one.
+        requestMessages: [...messages],
+        requestTools: request.tools,
+        requestTailMessages: new Set(tailMessageSet),
       };
     }
 

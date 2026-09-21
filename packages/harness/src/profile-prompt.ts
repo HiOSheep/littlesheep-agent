@@ -113,6 +113,7 @@ function rebuildBundle(segments: PromptContextSegment[], stableCount: number): S
     text: rebuilt.map((segment) => segment.text).join(''),
     segments: rebuilt,
     stableText: rebuilt.slice(0, stableCount).map((segment) => segment.text).join(''),
+    stableSegments: rebuilt.slice(0, stableCount),
     trailingSegments: rebuilt.slice(stableCount),
   };
 }

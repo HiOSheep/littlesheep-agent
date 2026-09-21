@@ -235,8 +235,16 @@ export function createReplyStage(deps: ReplyStageDeps) {
         : await repairDiscontinuousReply(
             deps,
             ctx,
-            systemPrompt.text,
-            messages,
+            {
+              // Same purpose and same messages as the reply request: the
+              // correction extends that request instead of restating it in a
+              // different shape.
+              purpose: replyPurpose,
+              messages: req.messages,
+              tools: req.tools,
+              temperature: req.temperature,
+              maxTokens: req.max_tokens,
+            },
             history,
             visibleReply,
           );

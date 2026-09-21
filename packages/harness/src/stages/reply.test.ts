@@ -276,8 +276,15 @@ describe('replyStage', () => {
     expect(result.ok).toBe(true);
     expect(ctx.reply).toBe('代号：continuity-anchor-6824；颜色：琥珀色');
     expect(llm.chat).toHaveBeenCalledTimes(2);
-    expect(String(llm.chat.mock.calls[1]?.[0].messages[0]?.content))
-      .toContain('Continuity correction contract');
+    // The correction travels as appended feedback, not as a rewritten system
+    // prompt: the request it extends stays byte-identical so its cached prefix
+    // survives.
+    const correction = llm.chat.mock.calls[1]?.[0];
+    expect(String(correction?.messages[0]?.content)).not.toContain('Continuity correction contract');
+    expect(String(correction?.messages.at(-2)?.content))
+      .toBe('我无法回忆上一轮保存的内容。');
+    expect(String(correction?.messages.at(-1)?.content))
+      .toContain('the draft above omitted or contradicted');
     expect(ctx.reserveUserFacingReply).toHaveBeenCalledTimes(1);
     expect(ctx.reserveUserFacingReply).toHaveBeenCalledWith(
       '代号：continuity-anchor-6824；颜色：琥珀色',

@@ -1,6 +1,6 @@
 import type { BrandingConfig } from '@littlesheep/branding';
 import type { Config } from '@littlesheep/config';
-import type { ChatMessage, ChatResponse, LlmClient } from '@littlesheep/llm';
+import type { ChatMessage, ChatRequest, ChatResponse, LlmClient } from '@littlesheep/llm';
 import type { SystemPromptBundle } from '@littlesheep/prompt';
 import type {
   AgentTool,
@@ -32,6 +32,15 @@ export interface ToolLoopResult {
   usage?: ChatResponse['usage'];
   /** Exact Provider request that authored content when finishReason=stop. */
   modelRequestId?: string;
+  /**
+   * The exact messages that final request carried, and the catalog it
+   * advertised. Both are needed to build a correction as an extension of that
+   * request rather than as a differently shaped one.
+   */
+  requestMessages?: ChatMessage[];
+  requestTools?: ChatRequest['tools'];
+  /** The tail messages inside `requestMessages`, for a caller extending it. */
+  requestTailMessages?: ReadonlySet<ChatMessage>;
   error?: string;
   /**
    * The model asked the user for a missing fact. The caller turns this into a

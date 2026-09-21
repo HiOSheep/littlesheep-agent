@@ -38,9 +38,19 @@ export interface BuildRunRequestCandidatesOptions {
    */
   trailingOwnership?: 'context' | 'caller';
   /**
-   * Messages the caller's append-only tail owns. They are regular messages in
-   * the request — so the sequence stays append-only — but they keep their
-   * `runtime_event` Context kind instead of being counted as workflow state.
+   * Which message is the request's own user turn.
+   *
+   * Defaults to the position this assembler computes from history plus inserted
+   * messages. A caller that appends feedback to an already-assembled request
+   * names it explicitly, so the appended turn is described as the user input
+   * rather than as a workflow or constraint message.
+   */
+  primaryUserIndex?: number;
+  /**
+   * Messages the caller's append-only tail owns. They keep their
+   * `runtime_event` Context kind here rather than being described as workflow
+   * state, and their position is their index, so nothing about the ordering
+   * changes.
    */
   tailMessages?: ReadonlySet<ChatMessage>;
 }
@@ -82,7 +92,8 @@ export function buildRunRequestCandidates(
   const historyEvictionGroups = conversationTurnEvictionGroups(history, stage);
   const inserted = options.insertedBeforePrimary ?? [];
   const insertedStartIndex = 1 + history.length;
-  const primaryUserIndex = insertedStartIndex + inserted.length;
+  const primaryUserIndex = options.primaryUserIndex
+    ?? insertedStartIndex + inserted.length;
   const primaryUserKind = options.primaryUserKind ?? 'user_input';
   const callerOwnsTail = options.trailingOwnership === 'caller';
   const emitTrailing = (segment: ContextMessageSegment): boolean => (
