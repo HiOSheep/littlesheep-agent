@@ -54,7 +54,7 @@ describe('cross-stage shared prefix', () => {
     // optimization (one shared prefill per turn), never as a ratio win.
     // The mode-independent sections must stay substantial enough to justify one
     // shared head; the floor follows the current size after the lean-plan trim.
-    expect(sum).toBeGreaterThanOrEqual(3_700);
+    expect(sum).toBeGreaterThanOrEqual(3_500);
     expect(independent[0]).toBeGreaterThanOrEqual(280);
     // respond now carries the whole canonical head, so it grows by ~2.2 KB;
     // the tradeoff is accepted for cross-stage prefix reuse.

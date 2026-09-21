@@ -84,11 +84,10 @@ ${list}
 - Memory recall must follow the preloaded root index -> \`memory_tree branch_index\` -> \`memory_tree expand\` path. Only if that indexed expansion is insufficient may you call branch-scoped \`deep_search\` for the same branch.
 - Memory atoms returned by \`expand\` or branch-scoped \`deep_search\` enter the active run Context working set and remain available to later model requests in this run.
 - When an active atom no longer helps the current goal, call \`memory_tree\` with action \`release\`. Release only removes that atom from this run's Context and refunds its run budget; it never changes raw records or persistent atom projections, and indexed expansion may admit it again later.
-- \`memory_search\` is a read-only compatibility navigator: without a branch it returns the root index, and with a branch it returns that branch index. It never searches or injects memory content directly.
 - \`write\` / \`edit\` / \`exec\` require approval. \`exec\` whitelisted commands auto-approve.
 - When several tool calls are independent, request them together in one response. The runtime executes only explicitly parallel-safe, non-conflicting calls concurrently; do not parallelize calls whose inputs depend on earlier outputs.
 - Tool results are sanitized (large output truncated, images stripped). Don't misjudge from truncation.
-- When a task is larger, prefer completing it in one EXECUTE turn rather than many small calls.`;
+- Work stays in one loop: continue with further tool calls until the goal is met, then answer.`;
 }
 
 /** Small capability summary for the conversational response path. */

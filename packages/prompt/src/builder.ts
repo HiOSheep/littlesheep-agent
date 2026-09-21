@@ -415,6 +415,9 @@ export async function assembleSystemPromptBundle(
     sessionSummary: facts.sessionSummary,
     memoryRootIndex: facts.memoryRootIndex,
     initialMemoryContext: facts.initialMemoryContext,
+    // Forwarded so a caller that advertises tool schemas natively does not also
+    // pay for the rendered tool list on every request.
+    includeToolingText: facts.includeToolingText,
     mode: mode ?? 'full',
   });
 }

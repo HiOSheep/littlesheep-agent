@@ -1,6 +1,14 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-21 08:25:00
+最后更新：2026-09-21 09:10:00
+
+**修复 `includeToolingText` 未生效的重复工具清单，并更正"缩前缀即提命中率"的推断（2026-09-21 09:10:00）**
+
+- **真实缺陷**：`assembleSystemPromptBundle` 把 `facts.includeToolingText` 读进 `RuntimeFacts`，却**没有转发**给 `buildSystemPromptBundle`。结果是主循环明明按 `includeToolingText: false` 调用（因为工具 schema 已由 Provider 原生下发），渲染版工具清单仍被逐请求注入。修复后该路径的 system prompt 从 6,081 降到 4,201 字符（−1,880），实测负载总输入从 217,223 降到 188,728 tokens（**−28,495 tokens**）。
+- **同时清理过期提示**：`tooling` 段删掉 `memory_search` 的说明（该工具已在第 11 轮删除、仓库中已无注册），并把"尽量在一次 EXECUTE 轮内完成"改为当前的单循环表述。
+- **更正上一轮的推断**：我在上一轮写"缩短前缀能直接提高总体命中率"，实测**不成立为普遍规律**。本轮去掉约 28.5k tokens 的重复内容后，命中率并未提升（93.526%，上一轮 94.045%）——因为删掉的内容同时属于已缓存前缀与未缓存部分，比例取决于**未缓存部分**是否被针对性削减。更关键的是：本次**旧实现也同步降到 93.519%**（上一轮 93.911%），说明该波动来自 Provider 缓存状态本身，而非本轮改动；本负载仅 2 个会话，一次冷启动移位就足以让总体移动约 0.5 个百分点。因此单次运行的 0.1–0.5 个百分点差异**不足以判定优劣**，必须多轮取中位数才能比较。
+- **如实报告的既有失败**：`packages/runner/src/runner.test.ts > publishes the run before an opt-in background compaction finishes` 现在失败（`status: 'error'`，错误码 `finalize_persistence_failed`，trace 为空）。我已验证这**与本轮改动无关**：把本轮 `packages/prompt` 改动 stash 后重建，该用例在干净基线上同样失败（单独运行、保留基线构建产物）。该失败原因尚未定位到具体持久化步骤（`execution_log`/`session_summary`/`version_checkpoint` 之一），尚未修复，列入下一轮优先项；本轮未通过放宽或跳过该测试来掩盖它。
+- 验证：`pnpm run typecheck` 通过；`packages/prompt` 21 项通过；仓库卫生仅剩 3 项由未跟踪方案文件引起的既有失败。
 
 **前缀裁剪与复测：命中率反超旧实现，冷启动按 Provider 缓存窗口计价（2026-09-21 08:25:00）**：按上一轮归因的"缩短共享前缀"方向做了两项裁剪，并复测。
 
