@@ -7,6 +7,8 @@ import {
   type ToolCall as LlmToolCall,
 } from '@littlesheep/llm';
 import type {
+  ContextItemKind,
+  ContextSourceRef,
   RunContext,
   ToolCall,
   ToolInvocationRecord,
@@ -71,6 +73,7 @@ export async function runToolLoop(
     sanitizeOpts,
     stepId,
     systemSegments,
+    tailSegments = [],
     insertedBeforePrimary,
     history,
     signal = ctx.signal,
@@ -101,10 +104,17 @@ export async function runToolLoop(
   // at the very end instead put it after the first tool round and stopped the
   // second request from extending the first.
   const tailLedger = new RunTailLedger();
-  const initialTail = tailLedger.update(ctx, systemSegments);
+  const initialTail = tailLedger.update(ctx, systemSegments, tailSegments);
   const tailMessageSet = new Set<ChatMessage>();
   const initialTailMessages = initialTail.messages;
   for (const message of initialTailMessages) tailMessageSet.add(message);
+  // Each tail message's declared Context kind, so a bootstrap file stays project
+  // knowledge and the memory index stays a memory index.
+  const tailKinds = new Map<ChatMessage, { kind: ContextItemKind; source: ContextSourceRef }>();
+  for (const [index, message] of initialTailMessages.entries()) {
+    const declared = initialTail.entries[index];
+    if (declared) tailKinds.set(message, { kind: declared.kind, source: declared.source });
+  }
   let primaryUserIndex = -1;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     if (messages[index]?.role === 'user') {
@@ -138,7 +148,7 @@ export async function runToolLoop(
     const transcriptTurn = createTranscriptTurn(ctx, stepId, iteration);
     // Append this round's tail additions before the request is assembled. An
     // unchanged fact adds nothing here, so the messages already sent stay put.
-    const tailDelta = tailLedger.update(ctx, systemSegments);
+    const tailDelta = tailLedger.update(ctx, systemSegments, tailSegments);
     for (const message of tailDelta.messages) tailMessageSet.add(message);
     messages.push(...tailDelta.messages);
     try {
@@ -169,6 +179,7 @@ export async function runToolLoop(
           // assembler must not emit a second copy of them per request.
           trailingOwnership: 'caller',
           tailMessages: tailMessageSet,
+          tailKinds,
         }),
         // The loop owns the append-only tail; the request recorder must not
         // re-inject (and thereby re-position) it per iteration.

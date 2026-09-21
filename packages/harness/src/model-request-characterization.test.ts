@@ -123,7 +123,11 @@ function expectRecordedSnapshot(
   expect(runtimeIndices.length).toBeGreaterThan(0);
   if (stage === 'execute') {
     expect(runtimeIndices[0]).toBeGreaterThan(firstConversationIndex);
-    expect(items.at(-1)?.kind).toBe('runtime_event');
+    // Every below-boundary prompt section now travels after the conversation in
+    // the loop's own tail, each carrying the Context kind the prompt declared:
+    // the bootstrap file is project knowledge, the run/disclosure section is a
+    // runtime event, and none of them is folded into the system message.
+    expect(kinds).toContain('project_knowledge');
   } else {
     expect(runtimeIndices[0]).toBeLessThan(firstConversationIndex);
     expect(items.at(-1)?.kind).not.toBe('runtime_event');

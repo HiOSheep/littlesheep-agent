@@ -115,7 +115,10 @@ export function createReplyStage(deps: ReplyStageDeps) {
         preferDirectModelOutput(ctx, rawRequest, { force: true }),
         buildRunRequestCandidates(ctx, 'reply', rawRequest.messages, {
           history,
-          systemSegments: systemPrompt.segments,
+          // The system message is exactly the sections above the cache boundary.
+          // The below-boundary sections travel as their own messages, so the
+          // boundary the prompt publishes is the boundary the request respects.
+          systemSegments: systemPrompt.stableSegments ?? systemPrompt.segments,
           trailingSegments: systemPrompt.trailingSegments,
           insertedBeforePrimary: attachmentMessages.map((item) => item.context),
         }),
@@ -187,7 +190,8 @@ export function createReplyStage(deps: ReplyStageDeps) {
           } satisfies ChatRequest, { force: true }),
           buildRunRequestCandidates(ctx, 'reply', retryMessages, {
             history,
-            systemSegments: systemPrompt.segments,
+            systemSegments: systemPrompt.stableSegments ?? systemPrompt.segments,
+            trailingSegments: systemPrompt.trailingSegments,
             insertedBeforePrimary: attachmentMessages.map((item) => item.context),
           }),
           { retryOf: replyRequestId, retryReason: 'empty_output' },

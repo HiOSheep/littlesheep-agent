@@ -1,5 +1,6 @@
 import type { BrandingConfig } from '@littlesheep/branding';
 import type { Config } from '@littlesheep/config';
+import type { ContextMessageSegment } from '@littlesheep/context';
 import type { ChatMessage, ChatRequest, ChatResponse, LlmClient } from '@littlesheep/llm';
 import type { SystemPromptBundle } from '@littlesheep/prompt';
 import type {
@@ -74,6 +75,12 @@ export interface ToolLoopOptions {
   sanitizeOpts: ExecuteSanitizeOptions;
   stepId?: string;
   systemSegments?: SystemPromptBundle['segments'];
+  /**
+   * The bundle's below-boundary sections. They are appended once, in the order
+   * the prompt rendered them, by the same ledger that owns the retrieval
+   * contract, so the request respects the boundary the prompt publishes.
+   */
+  tailSegments?: readonly ContextMessageSegment[];
   insertedBeforePrimary?: InsertedContextMessage[];
   /** Exact history represented in messages; compact self-contained tasks use none. */
   history?: Message[];

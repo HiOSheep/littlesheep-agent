@@ -41,6 +41,8 @@ export interface RunTailEntry {
 /** One iteration's tail additions. */
 export interface RunTailDelta {
   messages: ChatMessage[];
+  /** The entries those messages were rendered from, in the same order. */
+  entries: RunTailEntry[];
 }
 
 /**
@@ -54,16 +56,30 @@ export interface RunTailDelta {
 export class RunTailLedger {
   private readonly sent = new Set<string>();
 
-  /** Append every tail entry that has not been sent yet in this loop. */
-  update(ctx: RunContext, systemSegments: readonly ContextMessageSegment[] = []): RunTailDelta {
+  /**
+   * Append every tail entry that has not been sent yet in this loop.
+   *
+   * `systemSegments` are the sections the system message is made of, and
+   * `tailSegments` are the bundle's below-boundary sections. Both are needed:
+   * a section marked below the boundary must be emitted here, as its own
+   * message, or it would be lost — folding it into the system message is what
+   * used to move it above the boundary.
+   */
+  update(
+    ctx: RunContext,
+    systemSegments: readonly ContextMessageSegment[] = [],
+    tailSegments: readonly ContextMessageSegment[] = [],
+  ): RunTailDelta {
     const messages: ChatMessage[] = [];
-    for (const entry of renderTailEntries(ctx, systemSegments)) {
+    const entries: RunTailEntry[] = [];
+    for (const entry of renderTailEntries(ctx, systemSegments, tailSegments)) {
       const fingerprint = `${entry.id}#${hash(entry.text)}`;
       if (this.sent.has(fingerprint)) continue;
       this.sent.add(fingerprint);
       messages.push({ role: 'system', content: entry.text });
+      entries.push(entry);
     }
-    return { messages };
+    return { messages, entries };
   }
 }
 
@@ -71,6 +87,7 @@ export class RunTailLedger {
 export function renderTailEntries(
   ctx: RunContext,
   systemSegments: readonly ContextMessageSegment[] = [],
+  tailSegments: readonly ContextMessageSegment[] = [],
 ): RunTailEntry[] {
   const entries: RunTailEntry[] = [];
   entries.push({
@@ -86,11 +103,17 @@ export function renderTailEntries(
     },
     scope: 'run',
   });
-  for (const segment of systemSegments) {
-    if (!isTailOwnedSegment(segment)) continue;
+  // Sections the prompt placed below the cache boundary, in the order the prompt
+  // rendered them. The retrieval contract is one of these; so are the output
+  // directives, the workspace bootstrap files and the run/runtime disclosure.
+  const belowBoundary = [
+    ...tailSegments,
+    ...systemSegments.filter(isTailOwnedSegment),
+  ];
+  for (const [index, segment] of belowBoundary.entries()) {
     entries.push({
       id: segment.id,
-      order: 0.5,
+      order: 0.5 + index,
       text: segment.text,
       kind: segment.kind,
       source: segment.source,

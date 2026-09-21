@@ -90,8 +90,14 @@ describe('replyStage', () => {
     expect(result.ok, result.error).toBe(true);
     expect(ctx.replyProvenance).toMatchObject({ source: 'llm', purpose: 'capability_reply', rewriteCount: 0 });
     expect(ctx.modelRequests?.[0]?.callContract?.purpose).toBe('capability_reply');
-    // System prompt + inbound user input + trailing volatile Runtime block.
-    expect(requests[0]?.messages).toHaveLength(3);
+    // The fixed prompt, then the runtime facts block the recorder injects after
+    // it, then the inbound user input; the remaining below-boundary sections
+    // follow as their own messages instead of inside the system prompt.
+    expect(requests[0]?.messages[0]?.role).toBe('system');
+    expect(requests[0]?.messages[2]?.role).toBe('user');
+    expect(requests[0]?.messages.filter((message) => message.role === 'system').length)
+      .toBeGreaterThanOrEqual(2);
+    expect(requests[0]?.messages.filter((message) => message.role === 'user')).toHaveLength(1);
     const sent = JSON.stringify(requests[0]?.messages);
     expect(sent).toContain('capability-epoch-test');
     expect(sent).toContain('Capability answer contract');

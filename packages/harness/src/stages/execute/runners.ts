@@ -35,11 +35,12 @@ export async function executeLegacyLoop(
   // withheld capability is now refused at the execution boundary.
   const admittedTools = explicitTools ?? toolsForRetrievalIntent(ctx);
   const catalogTools = explicitTools ?? ctx.tools;
-  // The system message is the above-boundary half of the bundle, exactly like
-  // REPLY's. Sections below the boundary (runtime facts, directives, bootstrap,
-  // summary, memory index at the tail) travel as their own Context messages, so
-  // the session's two paths describe the same layout instead of one sending the
-  // whole prompt as the system message and the other only its stable half.
+  // The system message is exactly the sections above the cache boundary, and
+  // every section below it travels as its own message. Handing the assembler the
+  // whole section list instead made it rebuild the system message out of the
+  // below-boundary sections too — measured at 4,058 characters instead of the
+  // 2,323 the prompt's own layout declares — so the boundary the prompt
+  // publishes and the boundary the request respected were not the same one.
   const baseMessages = buildBaseMessages(
     ctx,
     systemPrompt.stableText ?? systemPrompt.text,
@@ -54,7 +55,10 @@ export async function executeLegacyLoop(
       ? {}
       : { withheldToolContract: renderRetrievalIntentContract(ctx) }),
     sanitizeOpts,
-    systemSegments: systemPrompt.segments,
+    systemSegments: systemPrompt.stableSegments ?? systemPrompt.segments,
+    // The bundle's below-boundary sections are appended once, in the order the
+    // prompt rendered them, by the same ledger that owns the retrieval contract.
+    tailSegments: systemPrompt.trailingSegments ?? [],
     insertedBeforePrimary: attachmentMessages.map((item) => item.context),
   });
   replaceToolResults(ctx, 'execute', result.toolResults);

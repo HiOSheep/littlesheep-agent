@@ -118,26 +118,36 @@ describe('the continuity correction keeps the request shape', () => {
     }
   });
 
-  // Known remaining gap, asserted so it cannot drift silently: the correction's
-  // first message is not yet byte-identical to the corrected request's, because
-  // the request recorder reassembles the system message from the prompt's
-  // segment list rather than reusing the request it is extending. Everything
-  // else about the shape (tools, conversation order, appended feedback) is
-  // preserved.
-  it('still reassembles the system message, which caps reuse at that byte', async () => {
+  // The correction's first message must be byte-identical to the corrected
+  // request's. It used to be reassembled out of the prompt's whole section list,
+  // which cut it from 4,058 to 2,323 characters and broke the prefix there. The
+  // system message is now the sections above the cache boundary — the same half
+  // in both requests — so the correction repeats the corrected request exactly
+  // and only appends its feedback.
+  it('keeps the first message byte-identical so the prefix survives', async () => {
     const { llm, requests } = draftThenCorrection();
     const stage = createExecuteStage({ ...deps, llm });
 
     await stage(executeCtx());
 
-    const originalSystem = String(requests[0]!.messages[0]?.content);
-    const correctionSystem = String(requests[1]!.messages[0]?.content);
-    expect(correctionSystem).not.toBe(originalSystem);
-    // The correction's system message is the shorter one: it drops the sections
-    // below the cache boundary that the main loop sends as tail messages.
-    expect(correctionSystem.length).toBeLessThan(originalSystem.length);
-    expect(originalSystem).toContain('LITTLESHEEP_CACHE_BOUNDARY');
+    const original = requests[0]!;
+    const correction = requests[1]!;
+    const originalSystem = String(original.messages[0]?.content);
+    const correctionSystem = String(correction.messages[0]?.content);
+    expect(originalSystem.length).toBeGreaterThan(1000);
+    expect(correctionSystem).toBe(originalSystem);
+    // No boundary marker inside the system message: the boundary is where the
+    // system message stops.
     expect(correctionSystem).not.toContain('LITTLESHEEP_CACHE_BOUNDARY');
+    // Every message of the corrected request is repeated, in order.
+    const originalBytes = original.messages.map((message) => JSON.stringify(message));
+    const correctionBytes = correction.messages.map((message) => JSON.stringify(message));
+    let position = 0;
+    for (const message of originalBytes) {
+      const found = correctionBytes.indexOf(message, position);
+      expect(found, `message repeated in order: ${message.slice(0, 50)}`).toBeGreaterThanOrEqual(position);
+      position = found + 1;
+    }
   });
 
   it('does not correct a reply that is already continuous', async () => {

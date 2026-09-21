@@ -93,24 +93,26 @@ describe('the fixed prompt is shared by every stage of one session', () => {
     expect(shared, `execute/reply shared prefix (execute ${execute.system.length}, reply ${reply.system.length})`)
       .toBeGreaterThanOrEqual(STABLE_HEAD_MIN_BYTES);
     // The divergence must be the documented boundary, not an incidental
-    // stage-specific rewrite above it.
+    // stage-specific rewrite above it. The system message now *is* the stable
+    // half, so the boundary is where the two modes legitimately differ and the
+    // shared prefix is the whole shorter message.
     expect(execute.system.slice(0, shared)).toBe(reply.system.slice(0, shared));
-    expect(execute.system.slice(shared - 64, shared + 64)).toContain(CACHE_BOUNDARY_MARKER);
+    expect(shared).toBe(Math.min(execute.system.length, reply.system.length));
   });
 
-  it('keeps the stage variant below the boundary, never in the shared head', async () => {
+  it('keeps the stage variant out of the shared head, and out of the system message', async () => {
     const execute = await observeExecute();
     const reply = await observeReply();
 
+    // The system message is exactly the sections above the cache boundary, so it
+    // carries no boundary marker and no below-boundary prose at all.
     for (const observed of [execute, reply]) {
-      const boundary = observed.system.indexOf(CACHE_BOUNDARY_MARKER);
-      expect(boundary).toBeGreaterThan(0);
-      const stableHead = observed.system.slice(0, boundary);
+      const stableHead = observed.system;
+      expect(stableHead).not.toContain(CACHE_BOUNDARY_MARKER);
       // Stage-conditional prose above the boundary is what broke prefix reuse:
       // the old variant announced "This run is at the REPLY stage" and nothing
       // else did.
       expect(stableHead).not.toContain('This run is at the');
-      expect(stableHead).not.toContain('This run is at the REPLY');
       expect(stableHead).not.toContain('respond mode');
       // Both modes carry the same facts and the same discipline text.
       expect(stableHead).toContain('# Core Flow');
@@ -123,18 +125,39 @@ describe('the fixed prompt is shared by every stage of one session', () => {
     }
   });
 
+  it('sends the below-boundary sections as their own messages', async () => {
+    const execute = await observeExecute();
+
+    const tail = execute.request.messages
+      .filter((message) => message.role === 'system')
+      .map((message) => String(message.content));
+    // The bootstrap files, the run/disclosure section and the retrieval contract
+    // are below the boundary, so they travel beside the conversation instead of
+    // inside the system message.
+    expect(tail.join('\n')).toContain('Workspace instructions.');
+    expect(tail.join('\n')).toContain('# Runtime');
+    expect(tail.join('\n')).toContain('Runtime retrieval intent');
+    expect(tail.join('\n')).toContain('# Runtime Facts');
+  });
+
   it('keeps the conversation ordered identically in both paths', async () => {
     const execute = await observeExecute();
     const reply = await observeReply();
 
-    const executeRoles = execute.request.messages.map((message) => message.role);
-    const replyRoles = reply.request.messages.map((message) => message.role);
-    expect(executeRoles[0]).toBe('system');
-    expect(replyRoles[0]).toBe('system');
-    // The first system message is the only one carrying the fixed prompt; every
-    // later system message is runtime tail or tool-loop control.
-    expect(executeRoles.filter((role) => role === 'system').length).toBeGreaterThanOrEqual(2);
-    expect(replyRoles).toEqual(['system', 'system', 'user']);
-    expect(bytes(execute.request.messages[0]!)).not.toBe('');
+    for (const observed of [execute, reply]) {
+      const roles = observed.request.messages.map((message) => message.role);
+      // The fixed prompt opens the request, the user turn appears exactly once,
+      // and every other message is a system section: the runtime facts block and
+      // the below-boundary sections are separate messages rather than being
+      // folded into the fixed prompt.
+      expect(roles[0]).toBe('system');
+      const userIndices = roles
+        .map((role, index) => (role === 'user' ? index : -1))
+        .filter((index) => index >= 0);
+      expect(userIndices).toHaveLength(1);
+      expect(userIndices[0]).toBeGreaterThan(0);
+      expect(roles.filter((role) => role === 'system').length).toBeGreaterThanOrEqual(2);
+      expect(observed.request.messages[0]!.content).toBeTruthy();
+    }
   });
 });

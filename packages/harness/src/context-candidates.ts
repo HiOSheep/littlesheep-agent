@@ -53,6 +53,17 @@ export interface BuildRunRequestCandidatesOptions {
    * changes.
    */
   tailMessages?: ReadonlySet<ChatMessage>;
+  /**
+   * The declared Context kind of a tail message, when the caller knows it. Each
+   * below-boundary prompt section already declares its own kind; without it the
+   * section would be counted as a runtime event and its accounting would be
+   * wrong even though its bytes were right.
+   */
+  tailKinds?: ReadonlyMap<ChatMessage, {
+    kind: ContextItemKind;
+    source: ContextSourceRef;
+    scope?: ContextScope;
+  }>;
 }
 
 export interface InsertedContextMessage {
@@ -102,8 +113,15 @@ export function buildRunRequestCandidates(
 
   // Task guidance changes on every turn (the task book advances), so keeping it
   // inside the system message would truncate the Provider's cached prefix for
-  // the whole conversation. It travels as a trailing Context section instead;
-  // memory, workspace and bootstrap stay in the system message untouched.
+  // the whole conversation. It travels as a trailing Context section instead.
+  //
+  // Every other section the caller marks as below the boundary travels the same
+  // way. When the caller owns the tail it has already appended them, so this
+  // assembler emits none of them; when it does not, they are emitted here in
+  // the order the caller listed them. What this assembler must never do is fold
+  // them back into the system message: that put below-boundary sections above
+  // the boundary, and any request built on the result no longer repeated the
+  // prompt's own bytes.
   const allSegments = options.systemSegments ?? [];
   const trailingAddons = allSegments.filter((segment) => (
     isTailOwnedSegment(segment) || VOLATILE_GUIDANCE_SEGMENT_IDS.has(segment.id)
@@ -129,18 +147,21 @@ export function buildRunRequestCandidates(
 
   const mapped = messages.flatMap((message, index) => {
     const order = index;
-    // Tail messages keep their Runtime-owned Context kind; their position is
-    // already their index, so nothing about the ordering changes.
+    // Tail messages keep their position and, when the caller can name it, the
+    // Context kind the prompt declared for that section: a bootstrap file is
+    // project knowledge and the memory index is a memory index whether it
+    // travels inside the system message or as its own message.
     if (options.tailMessages?.has(message)) {
+      const declared = options.tailKinds?.get(message);
       return [candidate({
         id: `${stage}:tail:${index}`,
         order,
         message,
-        kind: 'runtime_event',
-        source: { kind: 'runtime_event', id: `${stage}:tail:${index}`, runId: ctx.runId },
+        kind: declared?.kind ?? 'runtime_event',
+        source: declared?.source ?? { kind: 'runtime_event', id: `${stage}:tail:${index}`, runId: ctx.runId },
         priority: 100,
         required: true,
-        scope: 'run',
+        scope: declared?.scope ?? 'run',
       })];
     }
     if (index === 0 && message.role === 'system') {
