@@ -246,4 +246,25 @@ describe('DeepSeek V4 official prompt encoding', () => {
       tool_choice: 'required',
     })).toThrow(/tool_choice=required/);
   });
+
+  it('encodes tool_choice=none with the tool schema and tool_choice=auto identically', () => {
+    const tools: NonNullable<ChatRequest['tools']> = [{
+      type: 'function',
+      function: {
+        name: 'probe',
+        description: 'Probe once.',
+        parameters: { type: 'object', properties: {} },
+      },
+    }];
+    const base = {
+      model: 'deepseek-v4-flash',
+      messages: [{ role: 'user' as const, content: 'Use the probe.' }],
+      tools,
+    };
+
+    // A forced-final-answer turn keeps the tool list (unchanged cacheable
+    // prefix) and only flips tool_choice, which is not part of the framing.
+    expect(encodeDeepSeekV4Request({ ...base, tool_choice: 'none' }))
+      .toBe(encodeDeepSeekV4Request({ ...base, tool_choice: 'auto' }));
+  });
 });

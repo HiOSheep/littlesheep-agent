@@ -301,7 +301,11 @@ function assertCalibratedRequestShape(request: ChatRequest, family: DeepSeekToke
       'Exact counting does not cover tool history without an active tool schema.',
     );
   }
-  if (activeToolSchema && request.tool_choice !== 'auto') {
+  // `tool_choice=none` keeps the tool schema in the request (so the cacheable
+  // prefix is unchanged) while forbidding a call; the schema is still the active
+  // tool schema, so the request is counted with it. Other non-auto choices stay
+  // uncovered rather than silently miscounted.
+  if (activeToolSchema && request.tool_choice !== 'auto' && request.tool_choice !== 'none') {
     throw new Error(
       'Exact counting requires tool_choice=auto when tools are present.',
     );

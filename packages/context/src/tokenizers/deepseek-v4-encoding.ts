@@ -179,7 +179,11 @@ export function encodeDeepSeekV4Request(
       messages.unshift({ role: 'system', content: '', tools: structuredClone(request.tools) });
     }
   }
-  if (request.tool_choice !== undefined && request.tool_choice !== 'auto') {
+  // `tool_choice=none` (a forced final answer that keeps its tool list so the
+  // cacheable prefix is unchanged) encodes to the same prompt as `auto`, because
+  // tool_choice is not part of the framing. Other non-auto choices stay
+  // uncovered rather than silently miscounted.
+  if (request.tool_choice !== undefined && request.tool_choice !== 'auto' && request.tool_choice !== 'none') {
     throw new Error(`DeepSeek V4 exact counting does not cover tool_choice=${toolChoiceLabel(request.tool_choice)}.`);
   }
   const thinkingMode: ThinkingMode = request.thinking?.type === 'enabled' ? 'thinking' : 'chat';

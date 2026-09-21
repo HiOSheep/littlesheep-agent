@@ -104,11 +104,17 @@ export async function runToolLoop(
     // transcript. The legacy path keeps its previous event sequence.
     const transcriptTurn = createTranscriptTurn(ctx, stepId, iteration);
     try {
+      const hasTools = toolSpecs.length > 0;
       const rawRequest = {
         model: deps.model,
         messages,
-        tools: !forceFinalResponse && toolSpecs.length > 0 ? toolSpecs : undefined,
-        tool_choice: !forceFinalResponse && toolSpecs.length > 0 ? 'auto' : undefined,
+        // Forcing a final answer must not rewrite the tool list. The tool schema
+        // sits inside the cacheable prefix, so previously dropping it here made
+        // the forced turn's prefix differ from every other turn in the run and
+        // forfeited the cached prefix for that request. `tool_choice: 'none'`
+        // forbids the call just as effectively while keeping the prefix intact.
+        tools: hasTools ? toolSpecs : undefined,
+        tool_choice: hasTools ? (forceFinalResponse ? 'none' : 'auto') : undefined,
         temperature: 0,
         signal,
       } satisfies import('@littlesheep/llm').ChatRequest;

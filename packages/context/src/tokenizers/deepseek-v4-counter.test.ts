@@ -242,6 +242,32 @@ describe('DeepSeek V4 tokenizer assets', () => {
     expect(tokenizerCalls).toBe(0);
   });
 
+  it('counts a forced-final-answer turn that keeps its tool schema', () => {
+    const counter = createDeepSeekV4ExactContextTokenCounter({
+      encode: (prompt: string) => ({ ids: Array.from({ length: prompt.length }, () => 1) }),
+    }, resolveDeepSeekTokenizerFamily('deepseek/deepseek-v4-flash'));
+    const base = {
+      model: 'deepseek-v4-flash',
+      messages: [{ role: 'user' as const, content: 'Use the probe.' }],
+      tools: [{
+        type: 'function' as const,
+        function: {
+          name: 'probe',
+          description: 'Probe once.',
+          parameters: { type: 'object', properties: {} },
+        },
+      }],
+      thinking: { type: 'disabled' as const },
+    };
+
+    // The forced turn keeps the same tool schema as every other turn in the run
+    // (so its cacheable prefix is unchanged) and only flips tool_choice.
+    expect(counter.countRequest({ ...base, tool_choice: 'none' }))
+      .toBe(counter.countRequest({ ...base, tool_choice: 'auto' }));
+    // Other non-auto values stay uncovered rather than silently miscounted.
+    expect(() => counter.countRequest({ ...base, tool_choice: 'required' })).toThrow(/tool_choice=auto/);
+  });
+
   it('fails exact counting closed when Provider thinking defaults are implicit', () => {
     let tokenizerCalls = 0;
     const counter = createDeepSeekV4ExactContextTokenCounter({
