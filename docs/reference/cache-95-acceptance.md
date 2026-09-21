@@ -1104,6 +1104,36 @@ next = routed.workPolicy.executionMode === 'bounded_loop' ? 'execute' : 'decide'
 
 **未改动实现代码**；`check:repo` 33/33、core gate 退出码 0、App 构建 `fresh`。
 
+### 5.37 更正 5.36：修的是仓库根副本，运行时加载的是数据根副本（2026-09-21）
+
+5.36 声称那四处修正在"工作树中会作为 bootstrap 注入运行时"。**该说法错误**，本轮核对加载路径后更正。
+
+**两处 `AGENTS.md` 是不同的文件，运行时只读后者**：
+
+| 位置 | 作用 | 实测 |
+| --- | --- | --- |
+| `<repo>/AGENTS.md` | **仅本地开发辅助材料**，不被任何生产代码按路径读取 | 15,375 字节、97 行，**含**本轮修正 |
+| `<data-root>/AGENTS.md`（本机为 `~/.littlesheep`） | **运行时真正注入的副本** | **130 字节、5 行**，是模板存根，**不含**任何修正 |
+
+**加载链（逐环核实）**：
+
+1. `packages/app/src/main/index.ts:268`（及 `:464`）传入 `bootstrapDir: dataDir.root`——**数据根**，不是仓库根。
+2. `packages/runner/src/infra.ts:396-397`：`if (opts.bootstrapDir) await memoryService.loadBootstrapFiles(opts.bootstrapDir)`。
+3. `packages/memory-tree/src/memory-service.ts:325`：`loadBootstrapFiles(dir) { return this.bootstrap.load(dir); }`——按传入目录读取。
+4. `packages/app/src/main/index.ts:165-170`：数据根副本由 `BOOTSTRAP_TEMPLATES` **仅在文件不存在时**写入（`if (!existsSync(path))`），即 **write-once，永不覆盖**。
+
+**因此 5.36 的实际效果是**：
+
+- 四处契约修正**只存在于仓库根副本**，该副本**不参与运行时**；本机数据根副本仍是 5 行存根。
+- `git grep` 确认：生产代码里对 `AGENTS.md` 的引用全部指向**数据根路径**（`bootstrap-resources.ts`、`context.ts:44` 的 `BOOTSTRAP_FILES`、`memory-files.ts:20`）或**模板字面量**（`bootstrap-templates.ts`），**没有一处**把仓库根文件当作路径读取。
+- 结论：5.36 的四处修正**目前对模型行为零影响**。它们是仓库开发材料的改进，不是运行时修复。
+
+**这本身不构成新的实现缺陷**：`AGENTS.md` 的运行时副本按设计属于数据根、由用户/应用维护，仓库根副本按仓库规则本就只是辅助材料。真正需要记录的是**5.36 的表述过于乐观**，本轮予以限定。
+
+**未做的事（明确说明）**：本轮**没有**去改写本机数据根下的 `AGENTS.md`。那属于**用户数据**，不是仓库内容；按 AGENTS.md 自身规则"不把会话、记忆或用户数据复制进源码仓库"，也不应由一次缓存验收去改写用户的运行时规则文件。若要让修正进入运行时，正确做法是**由维护者决定**是否更新 `BOOTSTRAP_TEMPLATES`（影响新数据根）或提供迁移，本轮不擅自决定。
+
+**未改动实现代码**；`check:repo` 33/33、core gate 退出码 0。
+
 ## 6. 完成条件
 
 冻结负载两组总体命中率均 `>=95%` 且 usage 完整；总成本与每任务未缓存量不以保留冗余为代价；保留范围的任务验收（正确读取、写后读回、拒绝时零副作用、重启不重复执行、记忆可回溯、压缩后目标连续）通过。未达到时报告实际结果与剩余损失来源，不改小目标、不隐藏冷启动；"能力裁剪完成"与"95% 达成"分别标记。
