@@ -89,6 +89,15 @@ const TOOL_TASKS = [
 /** Continuous tool work instead of the conversation-only task set. */
 const TOOL_WORK = process.env.LITTLESHEEP_COMPARISON_TOOL_WORK === '1'
 
+/**
+ * Run the load under full access. Needed to verify the two acceptance items that
+ * require a side effect to actually happen: "写后读回" (write then read back) and
+ * "重启不重复执行" (a completed side effect is not replayed after a restart).
+ * Under the default research policy every write is `approval_denied`, so neither
+ * can be observed. Only the isolated temp data root is affected.
+ */
+const FULL_ACCESS = process.env.LITTLESHEEP_COMPARISON_FULL_ACCESS === '1'
+
 async function main() {
   await assertAppBuildFresh(repoRoot)
   const apiKey = OFFLINE ? 'acceptance-key' : process.env.DEEPSEEK_API_KEY?.trim()
@@ -197,6 +206,7 @@ async function main() {
         sharedSession: SHARED_SESSION,
         compaction: COMPACTION_LOW,
         restart: RESTART,
+        fullAccess: FULL_ACCESS,
       },
       // Evidence that the restart actually happened mid-load, and which session
       // was continued across it.
@@ -339,6 +349,7 @@ async function runTask(path, { round, index, sessionId }) {
       text,
       requestKey: `${path.mode}-round-${round}-task-${index}`,
       workspace: path.workplaceDir,
+      ...(FULL_ACCESS ? { permissionMode: 'full' } : {}),
     }),
     signal: AbortSignal.timeout(RUN_TIMEOUT_MS),
   })
