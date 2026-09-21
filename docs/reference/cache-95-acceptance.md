@@ -807,7 +807,7 @@ this purpose forbids tools but request included: grep, read.
 **当前阻塞（2026-09-21，如实记录）**：
 
 - 5.29 的待验假设需要**真实 Provider 调用**才能判定（实验设计见上），而本会话中 `DEEPSEEK_API_KEY` 环境变量**不存在**；第 59 行已写明"真实对比的唯一缺口是凭据"，密钥不得写入仓库。因此本轮**无法**执行该实验，也无法重跑任何场景。
-- 本轮已把 App 打包产物重建为最新（`node scripts/ensure-app-build.mjs --build`，`status: built`），并确认 `--assert` 为 `fresh`，因此**下一次拿到凭据时可立即开跑**，无需再处理构建陈旧问题。
+- **构建状态必须如实说明（本轮更正过一版）**：本轮曾重建 App 产物并断言 `fresh`，但随后为让 `check:repo` 通过而同步了 `packages/classifier/tsconfig.json`，而 `tsconfig` 属于 App 构建输入——**该次构建随即再次变为 `stale (input-mismatch)`**（实测 `--assert` 报 stale，`input.sourceDigest` 由 `e0bb28f7…` 变为 `208d84f8…`）。因此"下次拿到凭据可立即开跑"**不成立**：开跑前必须先执行一次 `node scripts/ensure-app-build.mjs --build`。这是本轮记录的一处自身更正，避免把过期结论留给下一轮。
 - 在凭据可用之前，5.29 的结论**停留在"归因已更正、成因未定位"**，不据此改动实现——这与方案第 9 行"删除冗余后，不能仅因比例下降而恢复冗余"及第 15 行"减少模型复核不能变成虚报验证成功"一致：宁可如实标记未达标，也不用未经验证的猜测去改代码。
 
 ## 6. 完成条件
