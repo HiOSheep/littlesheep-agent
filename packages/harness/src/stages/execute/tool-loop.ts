@@ -268,6 +268,10 @@ export async function runToolLoop(
           iterations: iteration,
           usage: response.usage,
           userInputRequest,
+          // The question the model asked is user-facing text, so it carries the
+          // request that authored it. Without this the caller would have to ask
+          // the model to word the same question again just to prove it.
+          modelRequestId: modelRequestIdFor(request),
         };
       }
       messages.push({

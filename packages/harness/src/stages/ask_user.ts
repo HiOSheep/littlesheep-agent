@@ -34,30 +34,35 @@ export interface AskUserStageDeps {
 /**
  * Factory: creates an ask_user stage.
  *
- * Structured clarification facts may originate in DECIDE or Runtime, but the
- * final text shown to the user is always composed in this stage by the model.
+ * Two origins reach this stage, and they must not be confused:
+ *
+ * - The model asked the user something through `request_user_input`. Its wording
+ *   is already published-quality and already has a Provider request behind it,
+ *   so this stage publishes it as-is. Asking the model to word the same question
+ *   again was a second Provider request for text that already existed.
+ * - The Runtime escalated (a permission denial, an exhausted recovery budget).
+ *   There is no model question, so one bounded wording call composes the user
+ *   explanation. If that call returns nothing, the turn fails loudly: Runtime
+ *   -authored text is never published as if the model had written it.
  */
 export function createAskUserStage(deps?: AskUserStageDeps) {
   return async function askUserStage(ctx: RunContext): Promise<StageResult> {
     clearReplyState(ctx, 'ask_user');
     const request = attachClarificationChain(ctx, ensureClarificationRequest(ctx));
     writeDecisionState(ctx, 'ask_user', { clarificationRequest: request });
-    const fallback = renderClarificationMessage(request);
-    if (!deps) {
+    // The wording the model already produced, with the request that proves it.
+    const modelAuthored = modelAuthoredQuestion(request);
+    const draft = renderClarificationMessage(request);
+    if (!deps && !modelAuthored) {
       const message = 'user-facing clarification generation requires an LLM.';
       recordFailure(ctx, 'ask_user', 'ask_user', message);
       return { stage: 'ask_user', next: 'exit', ok: false, error: message };
     }
 
     try {
-      const question = await publishUserFacingReply(
-        ctx,
-        'ask_user',
-        await composeClarificationMessage(deps, ctx, request, fallback),
-      );
-      if (!question) {
-        throw new Error('the clarification settlement already holds a different message');
-      }
+      const question = modelAuthored
+        ? await publishModelAuthoredQuestion(ctx, modelAuthored)
+        : await publishComposedClarification(deps!, ctx, request, draft);
       updateClarificationRequest(ctx, 'ask_user', (value) => ({
         ...value,
         prompt: question,
@@ -81,11 +86,73 @@ export function createAskUserStage(deps?: AskUserStageDeps) {
   };
 }
 
+/**
+ * The model's own question, when one exists.
+ *
+ * Both facts are required: the wording and the request that authored it. A
+ * runtime draft has no request id, which is what keeps it from being published
+ * through the model-reply boundary.
+ */
+function modelAuthoredQuestion(
+  request: ClarificationRequest,
+): { text: string; modelRequestId: string } | undefined {
+  const text = request.prompt?.trim();
+  const modelRequestId = request.copyModelRequestId;
+  if (request.copySource !== 'model' || !text || !modelRequestId) return undefined;
+  return { text, modelRequestId };
+}
+
+async function publishModelAuthoredQuestion(
+  ctx: RunContext,
+  question: { text: string; modelRequestId: string },
+): Promise<string> {
+  const published = await publishUserFacingReply(
+    ctx,
+    'execute_tool_loop',
+    question.text,
+    'ask_user',
+    question.modelRequestId,
+  );
+  if (!published) {
+    throw new Error('the clarification settlement already holds a different message');
+  }
+  return published;
+}
+
+async function publishComposedClarification(
+  deps: AskUserStageDeps,
+  ctx: RunContext,
+  request: ClarificationRequest,
+  draft: string,
+): Promise<string> {
+  const composed = await composeClarificationMessage(deps, ctx, request, draft);
+  if (!composed.trim()) {
+    // The model produced no visible text twice. There is no model-authored
+    // question to publish, and the runtime draft is not one: fail so the run
+    // reports a Runtime error instead of showing fixed wording as an Agent
+    // reply.
+    throw new Error('the clarification model produced no visible text after two attempts');
+  }
+  const published = await publishUserFacingReply(ctx, 'ask_user', composed);
+  if (!published) {
+    throw new Error('the clarification settlement already holds a different message');
+  }
+  return published;
+}
+
+/**
+ * Compose the user explanation for a Runtime escalation.
+ *
+ * Returns empty when the model produced no visible text: the caller fails the
+ * turn rather than publishing the runtime draft. The draft stays a Runtime fact
+ * (it is the request's own `blockingReason` and question text) and the UI can
+ * show it as Runtime status; it must not become the Agent's reply.
+ */
 async function composeClarificationMessage(
   deps: AskUserStageDeps,
   ctx: RunContext,
   request: ClarificationRequest,
-  fallback: string,
+  runtimeDraft: string,
 ): Promise<string> {
   const system = appendSystemPromptAddons(
     `You are the ASK_USER stage of a hard-control-flow agent. Compose one concise, actionable clarification message for the user from the supplied runtime facts. Return only the message text, with no preamble or JSON. Preserve every option and required decision; do not add facts, risks, permissions, paths or claims that are not present in the input.`,
@@ -103,7 +170,7 @@ async function composeClarificationMessage(
         blockingReason: request.blockingReason,
         questions: request.questions,
         clarificationChain: request.clarificationChain,
-        runtimeDraft: fallback,
+        runtimeDraft,
       }),
     },
   ];
@@ -141,10 +208,7 @@ async function composeClarificationMessage(
     if (response.content.trim()) return response.content;
     maxTokens = 640;
   }
-  // Never end the turn silently. If the model produced no visible text twice,
-  // publish the runtime's own deterministic wording instead of an empty reply:
-  // an empty published turn is what made those runs look like "nothing happened".
-  return fallback.trim();
+  return '';
 }
 
 function attachClarificationChain(

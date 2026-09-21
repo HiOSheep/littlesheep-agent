@@ -61,6 +61,15 @@ export interface ClarificationRequest {
   copySource?: 'model' | 'runtime_fallback';
   /** Exact text shown to the user after ASK_USER renders the request. */
   prompt?: string;
+  /**
+   * The model request that authored the wording in {@link prompt}.
+   *
+   * A question the model already asked through a tool call carries its own
+   * request id, so the stage that publishes it can cite that request instead of
+   * asking the model to word the same question again. Absent when the wording
+   * came from a runtime draft, which must not be published as model output.
+   */
+  copyModelRequestId?: string;
   /** Bounded prior-request facts used to avoid losing correction context. */
   clarificationChain?: ClarificationChain;
 }

@@ -134,11 +134,23 @@ function createReplyProvenance(
   purpose: UserFacingReplyPurpose,
   expectedModelRequestId?: string,
 ): ReplyProvenance {
-  const request = [...(ctx.modelRequests ?? [])]
-    .reverse()
-    .find((snapshot) => snapshot.callContract?.purpose === purpose
-      && (!expectedModelRequestId || snapshot.id === expectedModelRequestId));
+  // An explicit request id pins the proof: the text was authored by that exact
+  // Provider request, and the purpose is then only a fallback for callers that
+  // did not name one. This is what lets a question the model already asked
+  // through a tool call be published without asking it to word the same thing
+  // again.
+  const request = expectedModelRequestId
+    ? [...(ctx.modelRequests ?? [])].reverse().find((snapshot) => snapshot.id === expectedModelRequestId)
+    : [...(ctx.modelRequests ?? [])].reverse().find((snapshot) => snapshot.callContract?.purpose === purpose);
   if (!request) {
+    throw new UserFacingReplyError(
+      'missing_model_request_provenance',
+      expectedModelRequestId
+        ? `No recorded Provider API request ${expectedModelRequestId} can prove the ${purpose} user-facing reply.`
+        : `No recorded Provider API request can prove the ${purpose} user-facing reply.`,
+    );
+  }
+  if (!expectedModelRequestId && request.callContract?.purpose !== purpose) {
     throw new UserFacingReplyError(
       'missing_model_request_provenance',
       `No recorded Provider API request can prove the ${purpose} user-facing reply.`,
@@ -147,7 +159,7 @@ function createReplyProvenance(
   return {
     version: 1,
     source: 'llm',
-    purpose,
+    purpose: requestPurpose(request) ?? purpose,
     modelRequestId: request.id,
     modelRequestIndex: request.requestIndex,
     provider: request.provider,
@@ -157,6 +169,27 @@ function createReplyProvenance(
     // Runtime regeneration path exists any more, so this is always zero.
     rewriteCount: 0,
   };
+}
+
+const USER_FACING_REPLY_PURPOSES: readonly UserFacingReplyPurpose[] = [
+  'reply',
+  'capability_reply',
+  'ask_user',
+  'decide',
+  'decide_explicit_tool',
+  'execute_tool_loop',
+  'execute_final_reply',
+  'recover',
+];
+
+/** The recorded purpose, when it is one that may author user-facing text. */
+function requestPurpose(
+  request: NonNullable<RunContext['modelRequests']>[number],
+): UserFacingReplyPurpose | undefined {
+  const purpose = request.callContract?.purpose;
+  return USER_FACING_REPLY_PURPOSES.includes(purpose as UserFacingReplyPurpose)
+    ? purpose as UserFacingReplyPurpose
+    : undefined;
 }
 
 function replyStageForPurpose(

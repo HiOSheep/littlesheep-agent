@@ -59,9 +59,11 @@ export async function executeLegacyLoop(
   });
   replaceToolResults(ctx, 'execute', result.toolResults);
   // Asking the user is the model's own decision: the question it raised becomes
-  // the turn's clarification, ASK_USER composes provider-traceable wording for
-  // it, and the runtime records the single waiting fact. The runtime never
-  // authors the answer and never decides on its own to wait.
+  // the turn's clarification and is published as-is. The model already worded it
+  // in the tool call it made, so asking it to word the same question again was a
+  // second Provider request for text that already existed; the provenance is
+  // pinned to the request that actually produced it. The runtime never authors
+  // the answer and never decides on its own to wait.
   if (result.userInputRequest) {
     const userInputRequest = result.userInputRequest;
     const clarificationRequest: ClarificationRequest = {
@@ -71,6 +73,10 @@ export async function executeLegacyLoop(
       createdAt: new Date().toISOString(),
       originalRequest: textOf(ctx.inbound),
       copySource: 'model',
+      // The model authored this wording in the request it used to ask, so the
+      // stage that publishes it cites that request and needs no second call.
+      ...(result.modelRequestId ? { copyModelRequestId: result.modelRequestId } : {}),
+      prompt: userInputRequest.prompt,
       blockingReason: userInputRequest.prompt,
       questions: [{
         id: 'question-1',
@@ -81,7 +87,6 @@ export async function executeLegacyLoop(
       }],
     };
     writeDecisionState(ctx, 'execute', { clarificationRequest });
-    clearReplyState(ctx, 'execute');
     return {
       stage: 'execute',
       next: 'ask_user',
