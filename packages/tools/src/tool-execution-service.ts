@@ -29,6 +29,7 @@ import {
   summarizeToolInput,
 } from './tool-execution-records.js';
 import {
+  invocationOutcomeForResult,
   projectToolInput,
   resolveToolExecutionPolicy,
   sanitizeToolResult,
@@ -540,7 +541,9 @@ export class ToolExecutionService {
         this.options.timeoutMs,
         signal,
       );
-      return { result: { ...result, callId: request.callId } };
+      // A tool may declare a precise reason for a returned failure in
+      // `meta.errorKind`; the outcome carries it into the invocation record.
+      return invocationOutcomeForResult(result, request.callId);
     } catch (error) {
       if (error instanceof ToolControlError) {
         return {

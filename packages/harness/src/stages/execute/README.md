@@ -1,6 +1,6 @@
 # EXECUTE 内部边界
 
-最后更新：2026-09-23 00:42:37
+最后更新：2026-09-23 01:41:58
 
 - `contracts.ts`：依赖、工具循环和输出清洗契约，并区分模型可见的 `tools` 目录与本轮真正可调用的 `admittedTools`。
 - `guidance.ts`：基础消息装配与步骤提示片段；`renderPlanGuidance`/`renderTaskBookGuidance` 把 TaskBook 与计划渲染进主循环提示（不提及已删除的 stage），`renderStepGuidance` 是第二执行体系遗留的步骤契约渲染，当前没有运行期调用方。
@@ -10,6 +10,6 @@
 - `tool-result-persistence.ts`：单轮工具提议与结果的持久化和有界投影，输入先过工具自己的 projector；`toolResultForModel` 只给模型可据以决策的字段（`ok`/`output`/`error`/`sanitized`/`stepId`），不再发送 `status` 与 `durationMs`——实测冻结清单里 43.6k 工具结果字符中有 8.7k（20%）是这类包装文本；成功与失败都保留有界输出（命令执行器失败时只给 `exit code 1` 会让模型无法诊断）。`sentToolOutputs`/`modelContentForResult` 让重复的相同 payload（实测占 7% 字符，重复读大文件时是整份）改为引用会话里仍在的早先结果，小于 400 字符的 payload 仍按原样发送。为了让下一次 run 能按字节回放这次请求，`persistToolCalls` 在工具没有 `persistence.projectInput` 时保存 Provider 的原始参数串（`ToolCall.rawArguments`）、assistant 的文本前言与 `reasoning`，`persistToolResult` 保存模型当时看到的有界文本（`tool_result.modelContent`），`persistRuntimeTailMessages`/`persistRuntimeControlMessage` 把 Runtime 尾部与控制消息按发送位置存为 `runtimeTail` 记录；带 `webEvidence` 的结果永不保存该文本，网页正文只在本轮进入模型上下文。
 - `runners.ts`：单一主循环执行入口；把 `historyChatCount` 交给请求装配器，使"历史占用的请求消息数"与 `history` 条目数不一致时（回放的工具配对会多出消息）主用户回合仍被标在正确位置。可见目录固定为 `ctx.tools`，显式工具指令只与 Runtime 检索范围取交集后收窄 `admittedTools`，既不改变模型所见 schema，也不再放宽检索范围；收窄的成因决定拒绝文案（`renderExplicitToolScopeContract` 或 `renderRetrievalIntentContract`）。
 - `side-effect-ledger.ts`、`side-effect-lifecycle.ts`：Runtime 自有的副作用账本及其生命周期适配；只读工具不记账，写能力或未知工具先记账再执行，未结算不得重放。`settlementForResult` 只在工具**返回**失败结果时结算为 `failed`（命令跑完返回非零是已知结果）；服务自己合成的状态（工具抛错、超时/中断、生命周期钩子失败）说明工具从未报告结果、可能已部分生效，仍留在 `unknown` 并阻塞重试与完成。同一次运行内重试已结算失败会得到 `:retryN` 的独立 attempt id（durable kernel 每个 effect id 只允许一次结算），而任何一次成功之后同一操作都会被拒为重复。
-- `failure-policy.ts`：阻断失败识别、失败分类和稳定结果排序。
+- `failure-policy.ts`：阻断失败识别、失败分类和稳定结果排序。分类时**先看工具声明的 `meta.errorKind`**：写工具因观察过期/缺失或目标已存在而返回的拒绝文案里常含 "refused" 一类词，若只按文本正则会被误判成权限问题；声明了 `observation_*` / `target_exists` 的失败统一归为 `tool_error`，其余仍按原有正则分类（`permission_denied` / `not_found` / `aborted` / `model_error`）。
 
 `../execute.ts` 只负责清除回复状态、请求运行提示并把控制权交给单一主循环。TaskBook 步骤执行器（`task-book-runner.ts`、`task-step-runner.ts`、`task-step-scheduler.ts`、`reply-candidate.ts`、`final-reply.ts`、`direct-tool-proposal.ts`）与自动并行波次、资源冲突打包、按波次降级、bounded_loop 升级入口、自动记忆沉淀一起随第二执行体系删除：已持久化的 TaskBook 现在是只读历史，多步骤工作在同一个循环内串行完成。工具不能绕过权限门，失败不能被子循环重试掩盖，已完成副作用不得重放。

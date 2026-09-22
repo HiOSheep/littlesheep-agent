@@ -1,6 +1,6 @@
 # LittleSheep 模块拆分地图
 
-最后更新：2026-09-23 00:18:37
+最后更新：2026-09-23 01:45:55
 
 本文件记录大型生产文件的当前所有权、目标边界和拆分顺序。它不替代项目状态，也不把行数当成唯一质量指标。
 
@@ -14,7 +14,7 @@
 
 ## 强制拆分队列
 
-下表行数是当前工作树的物理行数（本次逐文件实测），不是历史完成值。生产 `.ts/.tsx` 文件超过 600 行必须进入本表；已登记不等于要求立即做无收益拆分。仓库卫生扫描当前报告 132 个生产文件超过 300 行，其中 20 个超过 600 行并进入受控超限清单。
+下表行数是当前工作树的物理行数（本次逐文件实测），不是历史完成值。生产 `.ts/.tsx` 文件超过 600 行必须进入本表；已登记不等于要求立即做无收益拆分。仓库卫生扫描当前报告 133 个生产文件超过 300 行，其中 20 个超过 600 行并进入受控超限清单。
 
 | 当前文件 | 当前行数 | 当前责任 | 目标边界 | 所有权 |
 | --- | ---: | --- | --- | --- |
@@ -29,7 +29,7 @@
 | `packages/harness/src/model-observability.ts` | 669 | 模型请求快照、Context 关联、Provider usage、缓存观测绑定与 C09 前缀变化原因；真实模型活动投影已下沉到 `model-activity.ts` | 保持请求观测 facade；后续将 provider reconciliation 与 request snapshot projection 下沉 | E |
 | `packages/app/src/renderer/app-shell/use-app-controller.ts` | 656 | Renderer 跨领域兼容协调、启动恢复、Runtime 设置和视图快照 | 保持装配 facade；启动恢复、持久化和领域投影继续下沉，冻结期间不得继续吸收新职责 | B |
 | `packages/memory-tree/src/memory-tree.ts` | 654 | 根索引、导航、展开和搜索；working set 预算/去重/释放已拆出 | tree facade + index、navigation、expansion、branch-search | D |
-| `packages/tools/src/tool-execution-service.ts` | 647 | 工具查找、校验、审批、执行生命周期、事件与结构化记录 facade | 调度、中断、记录摘要和结果处理已拆分；facade 不吸收 Harness 编排或副作用状态所有权 | E |
+| `packages/tools/src/tool-execution-service.ts` | 660 | 工具查找、校验、审批、执行生命周期、事件与结构化记录 facade | 调度、中断、记录摘要和结果处理已拆分；facade 不吸收 Harness 编排或副作用状态所有权。**已到受控上限 660**：结果收尾逻辑已移入 `tool-execution-result.ts`，下一次改动必须先完成 invocation lifecycle 拆分，不能再往上加行 | E |
 | `packages/session/src/manager.ts` | 640 | 会话 JSONL、metadata、回复指纹、压缩投影/事务提交与摘要 activation facade | 保持 facade；压缩事务与 activation 投影继续下沉到 `compaction-store.ts` 边界 | E |
 | `packages/memory-tree/src/v3/catalog.ts` | 637 | Memory v3 Catalog facade、Atom/FTS/账本/due/激活投影 | ledger/due 管理与 management projection 继续下沉 | D |
 | `packages/runner/src/execution-log.ts` | 635 | 执行日志 schema、写入、查询、final-reply settlement promotion 与按会话原子摘要 sidecar | 分离 codec、store、query、settlement promotion 与 latest-summary store；先冻结 settlement/replay 特征测试 | E |
@@ -45,6 +45,7 @@
 
 | 当前文件 | 当前行数 | 主要责任 | 处理方向 | 所有权 |
 | --- | ---: | --- | --- | --- |
+| `packages/tools/src/file-observation.ts` | 323 | 文件观察的宿主半边：sha256 revision、规范路径键、同路径互斥表与有界观察表，以及写工具的 `readVerifiedFile()` 校验入口 | 保持"只登记与校验、不读写用户文件、不做策略决定"的边界；若继续增长，拆出路径键/互斥表（`observation-key.ts`）与校验入口（`observation-guard.ts`） | E |
 | `packages/memory-tree/src/types.ts` | 584 | 记忆树内部和持久化类型 | 按 node、resource、audit、projection 分组 | D |
 | `packages/harness/src/tests/helpers.ts` | 324 | Harness 测试夹具与 RunContext 构造 | 按夹具领域拆分；测试 helper 不进入生产 Harness 依赖 | E |
 | `packages/harness/src/cache-quality-report.ts` | 378 | CACHE-09/10 三套 ledger、Provider token/outcome、latency 和保守 release gate 汇总 | 保持纯报告边界；若继续增长，拆分 token/outcome summarizer 与 gate policy | E |

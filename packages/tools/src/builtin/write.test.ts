@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { mkdtemp, rm, readFile, stat } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { writeTool } from './write.js';
+import { readTool } from './read.js';
 import type { ToolContext } from '@littlesheep/types';
+import { createInMemoryFileObservationPort } from '../file-observation.js';
 
 const approvedCtx: ToolContext = {
   sessionId: 's1' as never,
@@ -11,6 +13,17 @@ const approvedCtx: ToolContext = {
   cwd: process.cwd(),
   approve: async () => true,
 };
+
+/** An approved context that also carries a real observation port. */
+function observedCtx(): ToolContext {
+  return { ...approvedCtx, observation: createInMemoryFileObservationPort() };
+}
+
+/** Read a file the way the model would, so the following write is allowed. */
+async function readFirst(ctx: ToolContext, file: string): Promise<void> {
+  const result = await readTool.execute({ file_path: file }, ctx);
+  expect(result.ok).toBe(true);
+}
 
 const deniedCtx: ToolContext = {
   sessionId: 's1' as never,
@@ -41,10 +54,13 @@ describe('writeTool', () => {
     expect(content).toBe('hello content');
   });
 
-  it('overwrites existing file', async () => {
+  it('overwrites a file the session has read in full', async () => {
     const file = join(tmpDir, 'overwrite.txt');
-    await writeTool.execute({ file_path: file, content: 'v1' }, approvedCtx);
-    await writeTool.execute({ file_path: file, content: 'v2' }, approvedCtx);
+    const ctx = observedCtx();
+    await writeTool.execute({ file_path: file, content: 'v1' }, ctx);
+    await readFirst(ctx, file);
+    const result = await writeTool.execute({ file_path: file, content: 'v2' }, ctx);
+    expect(result.ok).toBe(true);
     const content = await readFile(file, 'utf8');
     expect(content).toBe('v2');
   });
@@ -102,6 +118,106 @@ describe('writeTool', () => {
     expect(writeTool.requiresApproval).toBe(true);
   });
 
+  // RS-02: overwriting an existing file requires an observation of that version.
+  describe('observed-version guard', () => {
+    it('refuses to overwrite a file the session never read', async () => {
+      const file = join(tmpDir, 'unread.txt');
+      await writeFile(file, 'original', 'utf8');
+      const ctx = observedCtx();
+
+      const result = await writeTool.execute({ file_path: file, content: 'replacement' }, ctx);
+
+      expect(result.ok).toBe(false);
+      expect(result.meta).toMatchObject({ errorKind: 'observation_missing' });
+      expect(await readFile(file, 'utf8')).toBe('original');
+    });
+
+    it('refuses when the host does not track observations at all', async () => {
+      const file = join(tmpDir, 'no-port.txt');
+      await writeFile(file, 'original', 'utf8');
+
+      const result = await writeTool.execute({ file_path: file, content: 'replacement' }, approvedCtx);
+
+      expect(result.ok).toBe(false);
+      expect(result.meta).toMatchObject({ errorKind: 'observation_unsupported' });
+      expect(await readFile(file, 'utf8')).toBe('original');
+    });
+
+    it('refuses to overwrite after an external change of the same size', async () => {
+      const file = join(tmpDir, 'same-size.txt');
+      const ctx = observedCtx();
+      await writeFile(file, 'aaaa', 'utf8');
+      await readFirst(ctx, file);
+      // Same byte count, same fast filters: only the content hash can tell.
+      await writeFile(file, 'bbbb', 'utf8');
+
+      const result = await writeTool.execute({ file_path: file, content: 'cccc' }, ctx);
+
+      expect(result.ok).toBe(false);
+      expect(result.meta).toMatchObject({ errorKind: 'observation_stale' });
+      expect(await readFile(file, 'utf8')).toBe('bbbb');
+    });
+
+    it('requires a fresh read after a successful overwrite', async () => {
+      const file = join(tmpDir, 'one-shot.txt');
+      const ctx = observedCtx();
+      await writeFile(file, 'v1', 'utf8');
+      await readFirst(ctx, file);
+      expect((await writeTool.execute({ file_path: file, content: 'v2' }, ctx)).ok).toBe(true);
+
+      const second = await writeTool.execute({ file_path: file, content: 'v3' }, ctx);
+
+      expect(second.ok).toBe(false);
+      expect(second.meta).toMatchObject({ errorKind: 'observation_missing' });
+      expect(await readFile(file, 'utf8')).toBe('v2');
+    });
+
+    it('refuses a partial observation for a whole-file overwrite', async () => {
+      const file = join(tmpDir, 'partial.txt');
+      const ctx = observedCtx();
+      await writeFile(file, 'line1\nline2\nline3\n', 'utf8');
+      await expect(readTool.execute({ file_path: file, offset: 1, limit: 1 }, ctx)).resolves.toMatchObject({ ok: true });
+
+      const result = await writeTool.execute({ file_path: file, content: 'replacement' }, ctx);
+
+      expect(result.ok).toBe(false);
+      expect(result.meta).toMatchObject({ errorKind: 'observation_missing' });
+      expect(result.error).toMatch(/part of the file/);
+      expect(await readFile(file, 'utf8')).toBe('line1\nline2\nline3\n');
+    });
+
+    it('never overwrites a file that appears between validation and the create', async () => {
+      const file = join(tmpDir, 'raced.txt');
+      const ctx: ToolContext = {
+        ...observedCtx(),
+        versioning: {
+          // Stands in for another writer winning the race: the path is created
+          // after the existence check but before the exclusive create.
+          beforeFileMutation: async (path: string) => {
+            await writeFile(path, 'other writer', 'utf8');
+          },
+          beforeWorkspaceMutation: async () => {},
+        },
+      };
+
+      const result = await writeTool.execute({ file_path: file, content: 'mine' }, ctx);
+
+      expect(result.ok).toBe(false);
+      expect(result.meta).toMatchObject({ errorKind: 'target_exists' });
+      expect(await readFile(file, 'utf8')).toBe('other writer');
+    });
+
+    it('still creates a brand-new file without any observation', async () => {
+      const file = join(tmpDir, 'brand-new.txt');
+      const ctx = observedCtx();
+
+      const result = await writeTool.execute({ file_path: file, content: 'fresh' }, ctx);
+
+      expect(result.ok).toBe(true);
+      expect(await readFile(file, 'utf8')).toBe('fresh');
+    });
+  });
+
   describe('effect reconciliation', () => {
     function effectFor(reconciliationKey: unknown) {
       return {
@@ -147,7 +263,9 @@ describe('writeTool', () => {
     it('stays unknown when the target was changed by someone else', async () => {
       const file = join(tmpDir, 'reconcile-drift.txt');
       await writeTool.execute({ file_path: file, content: 'first version' }, approvedCtx);
-      await writeTool.execute({ file_path: file, content: 'second version' }, approvedCtx);
+      // Someone outside LS rewrites the file; reconciliation must not claim the
+      // intended write is present just because the path exists.
+      await writeFile(file, 'second version', 'utf8');
       const outcome = await writeTool.reconcileEffect!(
         effectFor(writeTool.reconciliationKey!({ file_path: file, content: 'first version' })),
         { sessionId: 's1', runId: 'r1', authorizeRead: async () => true },

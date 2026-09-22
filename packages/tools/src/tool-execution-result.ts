@@ -64,3 +64,26 @@ export function projectToolInput(tool: AgentTool, input: unknown): unknown {
     return { redacted: true, projectionError: true };
   }
 }
+
+/**
+ * Finish one invocation's result.
+ *
+ * A tool may declare a precise, bounded reason for a returned failure in
+ * `meta.errorKind` (observation_stale, target_exists, ...). Carrying it into the
+ * invocation outcome keeps the audit and the failure classifier accurate instead
+ * of collapsing every refusal into `failed`. Plugins share this channel, so the
+ * shape is restricted to lower-case identifiers; anything else is ignored.
+ */
+export function invocationOutcomeForResult(
+  result: ToolResult,
+  callId: string,
+): { result: ToolResult; errorKind?: string } {
+  const declared = (result.meta as Record<string, unknown> | undefined)?.['errorKind'];
+  const bounded = typeof declared === 'string' && /^[a-z][a-z0-9_]{0,63}$/.test(declared)
+    ? declared
+    : undefined;
+  return {
+    result: { ...result, callId },
+    ...(bounded && !result.ok ? { errorKind: bounded } : {}),
+  };
+}

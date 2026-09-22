@@ -2,6 +2,7 @@
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { writeFile, mkdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { dirname, isAbsolute } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import type {
@@ -15,6 +16,7 @@ import { authorizeToolAccess } from '@littlesheep/safety';
 import { CORE_SOURCE_READ_ONLY_ERROR, findProtectedWriteRoot, resolveToolPath } from '../path-protection.js';
 import { withToolTiming } from '../wrapper.js';
 import { parallelFilePolicy } from '../execution-policy.js';
+import { observationFailure, readVerifiedFile } from '../file-observation.js';
 
 const WriteInput = z.object({
   file_path: z.string().describe('Absolute path to write.'),
@@ -53,9 +55,47 @@ export const writeTool: AgentTool = {
       defaultRequiresApproval: true,
     });
     if (!authorization.allowed) return { ok: false, error: 'Approval denied' };
+    const targetExists = existsSync(targetPath);
+    if (targetExists) {
+      // Overwriting is only allowed for a file this session actually read in
+      // full, and the check happens before the checkpoint so a stale target
+      // never produces a rollback preimage for a write that will not happen.
+      const verified = await readVerifiedFile(ctx, targetPath, 'full');
+      if (!verified.ok) {
+        ctx.observation?.invalidate(targetPath);
+        return observationFailure(verified);
+      }
+      await ctx.versioning?.beforeFileMutation(targetPath);
+      const committed = await ctx.observation!.withPathLock(targetPath, async () => {
+        // Re-verify inside the lock: another session of this host may have
+        // written the same path while this call was waiting for approval.
+        const locked = await readVerifiedFile(ctx, targetPath, 'full');
+        if (!locked.ok) return locked;
+        await writeFile(targetPath, content, 'utf8');
+        return { ok: true as const };
+      });
+      ctx.observation?.invalidate(targetPath);
+      if (!committed.ok) return observationFailure(committed);
+      ctx.log?.('info', `wrote ${targetPath} (${content.length} chars)`);
+      return { output: `Wrote ${content.length} chars to ${targetPath}` };
+    }
+    // A new file needs no observation: there is no version to overwrite. The
+    // exclusive create flag is what makes it safe, so a racing creator loses
+    // instead of being silently replaced.
     await ctx.versioning?.beforeFileMutation(targetPath);
     await mkdir(dirname(targetPath), { recursive: true });
-    await writeFile(targetPath, content, 'utf8');
+    try {
+      await writeFile(targetPath, content, { encoding: 'utf8', flag: 'wx' });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+        return observationFailure({
+          ok: false,
+          errorKind: 'target_exists',
+          error: `${targetPath} appeared while this write was being prepared; read it before overwriting it`,
+        });
+      }
+      throw error;
+    }
     ctx.log?.('info', `wrote ${targetPath} (${content.length} chars)`);
     return { output: `Wrote ${content.length} chars to ${targetPath}` };
   }),

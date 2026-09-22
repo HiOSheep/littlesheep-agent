@@ -28,7 +28,7 @@ afterAll(async () => {
   await rm(tmpRoot, { recursive: true, force: true });
 });
 
-function snapshotFor(absPath: string, coverage: 'full' | 'partial' = 'full') {
+function snapshotFor(coverage: 'full' | 'partial' = 'full') {
   return observationSnapshot({
     version: hashFileBytes('hello\n'),
     sizeBytes: 6,
@@ -74,7 +74,7 @@ describe('observation table', () => {
     const file = join(tmpRoot, 'file.txt');
 
     expect(port.lookup(file).ok).toBe(false);
-    port.recordRead({ absPath: file, snapshot: snapshotFor(file) });
+    port.recordRead({ absPath: file, snapshot: snapshotFor() });
     const found = port.lookup(file);
     expect(found.ok).toBe(true);
     if (found.ok) {
@@ -92,7 +92,7 @@ describe('observation table', () => {
   it('keeps a partial read distinguishable from a full one', () => {
     const port = createInMemoryFileObservationPort();
     const file = join(tmpRoot, 'file.txt');
-    port.recordRead({ absPath: file, snapshot: snapshotFor(file, 'partial') });
+    port.recordRead({ absPath: file, snapshot: snapshotFor('partial') });
 
     const found = port.lookup(file);
     expect(found.ok).toBe(true);
@@ -105,7 +105,7 @@ describe('observation table', () => {
   it('replaces the observation when the same path is read again', () => {
     const port = createInMemoryFileObservationPort();
     const file = join(tmpRoot, 'file.txt');
-    port.recordRead({ absPath: file, snapshot: snapshotFor(file) });
+    port.recordRead({ absPath: file, snapshot: snapshotFor() });
     port.recordRead({
       absPath: file,
       snapshot: observationSnapshot({
@@ -126,8 +126,8 @@ describe('observation table', () => {
     const bounded = createFileObservationTable({ maxEntries: 1 });
     const first = join(tmpRoot, 'file.txt');
     const second = join(tmpRoot, 'other.txt');
-    bounded.recordRead({ absPath: first, snapshot: snapshotFor(first) });
-    bounded.recordRead({ absPath: second, snapshot: snapshotFor(second) });
+    bounded.recordRead({ absPath: first, snapshot: snapshotFor() });
+    bounded.recordRead({ absPath: second, snapshot: snapshotFor() });
 
     // The table is bounded: the older observation is gone and must be re-read.
     expect(bounded.lookup(first).ok).toBe(false);
@@ -137,7 +137,7 @@ describe('observation table', () => {
   it('freezes registration and lookups while an opaque mutation is in flight', async () => {
     const port = createInMemoryFileObservationPort();
     const file = join(tmpRoot, 'file.txt');
-    port.recordRead({ absPath: file, snapshot: snapshotFor(file) });
+    port.recordRead({ absPath: file, snapshot: snapshotFor() });
 
     const release = port.suspend();
     const duringLookup = port.lookup(file);
@@ -165,7 +165,7 @@ describe('observation table', () => {
   it('drops every observation on invalidateAll', () => {
     const port = createInMemoryFileObservationPort();
     const file = join(tmpRoot, 'file.txt');
-    port.recordRead({ absPath: file, snapshot: snapshotFor(file) });
+    port.recordRead({ absPath: file, snapshot: snapshotFor() });
     port.invalidateAll();
     expect(port.lookup(file).ok).toBe(false);
   });

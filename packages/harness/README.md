@@ -1,6 +1,6 @@
 # @littlesheep/harness
 
-最后更新：2026-09-23 01:30:22
+最后更新：2026-09-23 01:45:55
 
 实现 LittleSheep 的核心 Agent Runtime：硬控制流状态机负责活动路由、单一主循环执行、验证、Runtime 恢复、澄清和收尾。
 
@@ -16,6 +16,7 @@
 - `response-continuity*.ts` 依据 LS 实际发布的最终回答判断记忆是否连续，并从 `ReplyProvenance` 回查真正进入模型请求的近期历史、版本化摘要和 active/adopted Atom。保存、检索或注入成功都不是充分条件；明确追问的历史值必须在最终回答中逐项正确出现，漏答、答错、否认记得或来源未进入请求都不能判为 `supported`。判定不连续时只允许一次有界纠正（`stages/reply/continuity-repair.ts`），纠正以追加的"前缀扩展"形式发出，不重写 system 提示或工具目录。`session-summary-fidelity-text.ts` 只解析 Runtime 拥有的摘要精确字段封套，不负责会话压缩或存储。
 - 用户显式点名工具时，`explicit-tool-instruction.ts` 解析出有界的已注册工具集（最多 4 个、schema 有大小上限）交给同一主循环，执行仍逐项经过统一 Tool Execution Service 的权限门；缺少副作用声明的工具由 Runtime 保守判定为 `external`/`unknown`。
 - `context.ts` 的 `buildRunContext` 把宿主提供的 `versioning`（run 级回滚 preimage）与 `observation`（会话级"模型读过哪个文件版本"端口）一并放进 `ToolContext`；两个端口都由 Runner 注入，模型无法通过工具参数伪造。
+- 失败分类（`stages/execute/failure-policy.ts`）先看工具声明的 `meta.errorKind`：写工具因观察过期/缺失或目标已存在而返回的拒绝文案里常含 "refused" 一类词，只按文本正则会被误判成权限问题；声明了 `observation_*` / `target_exists` 的失败统一归为 `tool_error`，其余仍按原有正则分类。
 - 对话区的回复、澄清和交付表达必须由实时 LLM 调用结合运行时 `SOUL.md` 构思并由 Harness 发布：发布前在会话级持久注册表原子占用 settlement 身份（run + 规范化文案指纹），同一 settlement 不得发布不同文案；模型已通过 `request_user_input` 写好的提问按原样发布并绑定产出它的请求 id，重复措辞同样按原样发布、不再调用模型改写，也不存在任何重新生成路径。文案为空、缺少真实 model request 证据或注册表不可用时失败可见，Runtime 不伪造人格文案。
 - 禁止依赖 Electron、CLI、具体渠道或 App 私有实现，也不直接拥有文件系统生命周期。
 

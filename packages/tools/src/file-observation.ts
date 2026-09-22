@@ -8,6 +8,7 @@
 // writes user files, and it never decides *what* a caller may do with a result.
 import { createHash } from 'node:crypto';
 import { lstatSync, realpathSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type {
   FileObservationFailureKind,
@@ -213,4 +214,110 @@ export function observationSnapshot(input: {
     observedAt: input.observedAt ?? new Date().toISOString(),
     runId: input.runId,
   };
+}
+
+export interface VerifiedFile {
+  ok: true;
+  /** The bytes that were read and matched against the observation. */
+  bytes: Buffer;
+  snapshot: FileObservationSnapshot;
+}
+
+export interface VerifiedFileFailure {
+  ok: false;
+  errorKind: FileObservationFailureKind;
+  error: string;
+}
+
+export type VerifiedFileResult = VerifiedFile | VerifiedFileFailure;
+
+/**
+ * Read a file only if this session observed exactly this version of it.
+ *
+ * The caller must invoke it twice: once before taking the rollback checkpoint
+ * (so an already-stale file never produces a snapshot) and once immediately
+ * before the mutation, inside `withPathLock`, so the comparison and the write
+ * share one critical section. Verification is by content hash, never by the
+ * model's own claim and never by size or mtime alone.
+ */
+export async function readVerifiedFile(
+  ctx: { observation?: FileObservationPort },
+  absPath: string,
+  requirement: 'full' | 'any',
+): Promise<VerifiedFileResult> {
+  const port = ctx.observation;
+  if (!port) {
+    return {
+      ok: false,
+      errorKind: 'observation_unsupported',
+      error: `${absPath}: this host does not track what was read, so overwriting an existing file is refused`,
+    };
+  }
+  const lookup = port.lookup(absPath);
+  if (!lookup.ok) return { ok: false, errorKind: lookup.errorKind, error: lookup.message };
+  if (requirement === 'full' && lookup.snapshot.coverage !== 'full') {
+    return {
+      ok: false,
+      errorKind: 'observation_missing',
+      error: `${absPath}: only part of the file was read; read the whole file before overwriting it`,
+    };
+  }
+  let bytes: Buffer;
+  try {
+    bytes = await readFile(absPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return {
+        ok: false,
+        errorKind: 'observation_stale',
+        error: `${absPath} no longer exists; the observed version cannot be confirmed`,
+      };
+    }
+    return {
+      ok: false,
+      errorKind: 'observation_unsupported',
+      error: `${absPath} could not be read to confirm the observed version: ${(error as Error).message}`,
+    };
+  }
+  if (hashFileBytes(bytes) !== lookup.snapshot.version) {
+    return {
+      ok: false,
+      errorKind: 'observation_stale',
+      error: `${absPath} changed after it was read; read it again before overwriting it`,
+    };
+  }
+  return { ok: true, bytes, snapshot: lookup.snapshot };
+}
+
+/**
+ * Whether the observed range covers the lines a single replacement touches.
+ * A whole-file observation covers everything; a windowed one covers only what
+ * the model actually saw, so an edit outside it must be refused.
+ */
+export function observedRangeCoversMatch(
+  snapshot: FileObservationSnapshot,
+  content: string,
+  matchIndex: number,
+  matchText: string,
+): boolean {
+  if (snapshot.coverage === 'full') return true;
+  const range = snapshot.visibleLineRange;
+  if (!range) return false;
+  const startLine = content.slice(0, matchIndex).split('\n').length;
+  const endLine = startLine + matchText.split('\n').length - 1;
+  return startLine >= range.start && endLine <= range.end;
+}
+
+/**
+ * A refusal a tool returns as `ok: false` (never thrown: the side-effect ledger
+ * settles a returned failure as determinate, while a throw would stay `unknown`
+ * and block recovery). The kind travels in `meta` so the invocation record keeps
+ * the precise reason instead of a generic failure status.
+ */
+export function observationFailure(failure: VerifiedFileFailure): {
+  ok: false;
+  error: string;
+  meta: { errorKind: FileObservationFailureKind };
+} {
+  return { ok: false, error: failure.error, meta: { errorKind: failure.errorKind } };
 }

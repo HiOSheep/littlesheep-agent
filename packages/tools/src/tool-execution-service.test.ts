@@ -41,6 +41,36 @@ describe('ToolExecutionService', () => {
     });
   });
 
+  it('records a declared, bounded error kind instead of a generic failure', async () => {
+    const stale = vi.fn(async () => ({
+      callId: '',
+      ok: false,
+      error: 'notes.md changed after it was read; read it again before overwriting it',
+      meta: { errorKind: 'observation_stale' },
+    } satisfies ToolResult));
+    const sloppy = vi.fn(async () => ({
+      callId: '',
+      ok: false,
+      error: 'refused',
+      meta: { errorKind: 'Not A Bounded Kind!' },
+    } satisfies ToolResult));
+    const service = createService([
+      registration(tool('guarded', stale), 'builtin'),
+      registration(tool('sloppy', sloppy), 'plugin:sloppy'),
+    ]);
+
+    await service.executeBatch([
+      { callId: 'guarded-call', name: 'guarded', input: { value: 'x' } },
+      { callId: 'sloppy-call', name: 'sloppy', input: { value: 'x' } },
+    ]);
+
+    expect(service.snapshot().records).toMatchObject([
+      { toolName: 'guarded', status: 'failed', errorKind: 'observation_stale' },
+      // A plugin cannot smuggle free-form text into the audit field.
+      { toolName: 'sloppy', status: 'failed', errorKind: 'failed' },
+    ]);
+  });
+
   it('rejects invalid input before approval or execution', async () => {
     const approve = vi.fn(async () => true);
     const execute = vi.fn(async () => ({ callId: '', ok: true } satisfies ToolResult));

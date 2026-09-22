@@ -56,12 +56,12 @@
 
 ### RS-02｜既有文件修改前校验与提交（P0，依赖 RS-01）
 
-- [ ] 执行顺序固定为授权与路径复核 → observation/revision 校验 → durable checkpoint → 紧邻提交复核 → mutate → 结果结算。缺失/过期 observation 返回结构化 missing/stale，原文件不变，模型重读后重新决策；不得静默重放原修改。
-- [ ] 校验覆盖整个被观察文件版本，而不只是 old_string；保持精确匹配与唯一性检查。checkpoint 前已知 stale 时不生成文件快照，checkpoint 失败或后二次检查失配时不写。
-- [ ] 核实同目标跨会话、跨工具宿主入口的提交互斥，复用已有路径/资源边界，必要时只补同路径临界区。记录外部并发竞态的保证边界；避免把普通 writeFile 换成 rename 就宣称无丢失更新。
-- [ ] 成功写入后旧 observation 失效；首版后续修改要求重新 read，不根据模型自述或未读回的写入结果自动续期。失败但副作用结果不明也失效，并走现有结算而非重复写入。
+- [x] 执行顺序固定为授权与路径复核 → observation/revision 校验 → durable checkpoint → 紧邻提交复核 → mutate → 结果结算。缺失/过期 observation 返回结构化 missing/stale，原文件不变，模型重读后重新决策；不得静默重放原修改。**已实现**：`write.ts` / `edit.ts` 都按此序列重写；校验与复核共用 `readVerifiedFile()`（按内容哈希判定）。失败一律 `ok: false` + `meta.errorKind`（`observation_missing` / `observation_stale` / `observation_unsupported` / `target_exists`），不抛异常——抛异常会被 `tool-execution-service` 记成 `tool_error` 并让副作用结算成 `unknown`。拒绝时文件逐字节不变，观测到的新版本不会被覆盖。
+- [x] 校验覆盖整个被观察文件版本，而不只是 old_string；保持精确匹配与唯一性检查。checkpoint 前已知 stale 时不生成文件快照，checkpoint 失败或后二次检查失配时不写。**已实现**：预检在任何快照之前（stale 直接返回、不产生 preimage）；锁定内复核后仍在**同一份字节**上做 `old_string` 精确匹配与唯一性判定，再写入；`partial` 观察只允许编辑落在 `visibleLineRange` 内的行，范围外返回 `observation_missing` 并提示重读该范围。
+- [x] 核实同目标跨会话、跨工具宿主入口的提交互斥，复用已有路径/资源边界，必要时只补同路径临界区。记录外部并发竞态的保证边界；避免把普通 writeFile 换成 rename 就宣称无丢失更新。**已实现并记录边界**：复用 RS-01 的 `withPathLock`（同一 Runner 内所有会话共享一张互斥表），"复核 + 写入"在同一临界区；同批次内的资源冲突仍由既有 scheduler 负责，未新增调度系统。边界如实记录：这是**同进程**互斥，不是文件系统 CAS——两个应用实例或外部编辑器仍可能在最后一次复核之后写入；首版不宣称任意外部进程的绝对串行化，也没有为此把 `writeFile` 换成 `rename` 冒充无丢失更新。
+- [x] 成功写入后旧 observation 失效；首版后续修改要求重新 read，不根据模型自述或未读回的写入结果自动续期。失败但副作用结果不明也失效，并走现有结算而非重复写入。**已实现**：成功、失败与结局不明都在结算前 `invalidate()`；测试断言"写入成功后第二次写必须重读"（write 与 edit 各一例）。
 
-验收：读后用户修改任意位置、审批等待期间修改、checkpoint 期间修改、两个会话基于同版本提交，均不能静默覆盖已被检测到的新版本；拒绝零写入、检查点失败零写入。
+验收：读后用户修改任意位置、审批等待期间修改、checkpoint 期间修改、两个会话基于同版本提交，均不能静默覆盖已被检测到的新版本；拒绝零写入、检查点失败零写入。**已满足**：`write.test.ts` 20 例、`edit.test.ts` 15 例覆盖"未读即写被拒""同大小改写判 stale""部分观察不得整文件覆盖""并发创建只得一个成功""checkpoint 失败零写入"；两个会话基于同版本提交由 `session-file-observations.test.ts` 的同路径互斥用例与 `withPathLock` 临界区保证；`failure-policy.test.ts` 钉住拒绝分类不会被误判成权限问题。
 
 ### RS-03｜新建与其他文件写入口收口（P0，依赖 RS-02）
 
