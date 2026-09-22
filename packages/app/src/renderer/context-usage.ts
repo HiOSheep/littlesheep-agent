@@ -6,12 +6,14 @@ import type {
   PersistedContextUsageModelRequest,
   PersistedContextUsageSnapshot,
   SessionContextUsageRecord,
+  SessionCumulativeCacheUsage,
 } from '../shared/context-usage-contracts'
 
 export type {
   PersistedContextUsageModelRequest,
   PersistedContextUsageSnapshot,
   SessionContextUsageRecord,
+  SessionCumulativeCacheUsage,
 } from '../shared/context-usage-contracts'
 
 export type LocalTokenizerState = 'exact' | 'not_counted' | 'unavailable' | 'unknown'
@@ -30,6 +32,8 @@ export interface ContextUsageSnapshot {
     tokenizerId: string
   }
   localUnavailableReason?: string
+  /** Session-cumulative cache reuse, carried through from the durable record. */
+  sessionCache?: SessionCumulativeCacheUsage
 }
 
 export interface ContextUsage {
@@ -47,6 +51,11 @@ export interface ContextUsage {
   localTokenizerId?: string
   localTokenizerState: LocalTokenizerState
   localUnavailableReason?: string
+  /**
+   * The session's cumulative cache reuse, from the same provider numbers the
+   * acceptance ledger uses. Present only when the session reported usage.
+   */
+  sessionCache?: SessionCumulativeCacheUsage
 }
 
 export interface ProviderRunUsage {
@@ -60,12 +69,16 @@ export function buildContextUsageSnapshotFromSession(
   record: SessionContextUsageRecord | undefined,
 ): ContextUsageSnapshot | null {
   if (!record) return null
-  return buildContextUsageSnapshot(
+  const snapshot = buildContextUsageSnapshot(
     record.modelRef,
     record.usage,
     record.contextSnapshots,
     record.modelRequests,
   )
+  if (!snapshot) return null
+  // The session's cumulative reuse travels with the snapshot so the indicator shows
+  // the same provider numbers the acceptance ledger judges.
+  return record.sessionCache ? { ...snapshot, sessionCache: record.sessionCache } : snapshot
 }
 
 export function buildContextUsage(
@@ -95,6 +108,7 @@ export function buildContextUsage(
     percent,
     available: hasFreshSnapshot && maxTokens > 0 && (providerUsedTokens !== undefined || localUsedTokens !== undefined),
     source: localUsedTokens !== undefined ? 'local' : providerUsedTokens !== undefined ? 'provider' : 'none',
+    sessionCache: hasFreshSnapshot ? snapshot?.sessionCache : undefined,
     providerUsedTokens,
     providerReportedAt: hasFreshSnapshot ? snapshot?.provider?.reportedAt : undefined,
     providerDifferenceTokens: hasFreshSnapshot ? snapshot?.provider?.localDifferenceTokens : undefined,

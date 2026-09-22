@@ -2,8 +2,12 @@ import { readFile } from 'node:fs/promises'
 import { readRendererStyleSource } from './style-source-test-utils'
 import { describe, expect, it } from 'vitest'
 import type { ContextSnapshot } from '@littlesheep/types'
-import { formatLocalTokenizerState } from './composer/context-usage-indicator'
-import { buildContextUsage, buildContextUsageSnapshot } from './context-usage'
+import { formatLocalTokenizerState, formatSessionCache } from './composer/context-usage-indicator'
+import {
+  buildContextUsage,
+  buildContextUsageSnapshot,
+  buildContextUsageSnapshotFromSession,
+} from './context-usage'
 
 function contextSnapshot(overrides: Partial<ContextSnapshot> = {}): ContextSnapshot {
   return {
@@ -30,6 +34,36 @@ function contextSnapshot(overrides: Partial<ContextSnapshot> = {}): ContextSnaps
 }
 
 describe('context usage presentation model', () => {
+  it('carries the session-cumulative cache reuse through to the display', () => {
+    const snapshot = buildContextUsageSnapshotFromSession({
+      modelRef: 'deepseek/deepseek-flash',
+      usage: { promptTokens: 300, completionTokens: 10, source: 'provider' },
+      contextSnapshots: [],
+      modelRequests: [],
+      sessionCache: {
+        inputTokens: 12_096_579,
+        cachedTokens: 11_991_168,
+        uncachedTokens: 105_411,
+        measuredRequests: 179,
+        requestsWithoutUsage: 0,
+        hitPercent: 99.13,
+      },
+    })
+    expect(snapshot?.sessionCache?.hitPercent).toBe(99.13)
+
+    const usage = buildContextUsage('deepseek/deepseek-flash', snapshot)
+    // The display rounds; the carried value does not, so the number the gate judges
+    // and the number the user reads cannot drift apart.
+    expect(usage.sessionCache?.hitPercent).toBe(99.13)
+    expect(formatSessionCache(usage.sessionCache)).toBe('会话累计缓存命中 99.1%')
+    // A partial reading is labelled rather than presented as complete.
+    expect(formatSessionCache({
+      inputTokens: 2_000, cachedTokens: 1_000, uncachedTokens: 1_000,
+      measuredRequests: 1, requestsWithoutUsage: 2, hitPercent: 50,
+    })).toBe('会话累计缓存命中 50.0%（2 个请求 usage 未上报）')
+    expect(formatSessionCache(undefined)).toBeUndefined()
+  })
+
   it('keeps the hover surface frameless and centers the thinner ring', async () => {
     const [styles, indicator] = await Promise.all([
       readRendererStyleSource(),

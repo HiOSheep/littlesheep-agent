@@ -320,8 +320,9 @@ export function buildSessionContextUsageRecord(
   logs: Iterable<ExecutionLog>,
   sessionId: string,
 ): SessionContextUsageRecord | undefined {
-  const candidate = [...logs]
-    .filter((log) => log.sessionId === sessionId && hasDisplayableContextUsage(log))
+  const sessionLogs = [...logs].filter((log) => log.sessionId === sessionId)
+  const candidate = sessionLogs
+    .filter((log) => hasDisplayableContextUsage(log))
     .sort((left, right) => executionLogTimestamp(left) - executionLogTimestamp(right))
     .at(-1)
   if (!candidate) return undefined
@@ -329,6 +330,9 @@ export function buildSessionContextUsageRecord(
   return {
     modelRef: candidate.model,
     usage: candidate.usage,
+    // Summed over the session's runs, from the same provider fields the ledger
+    // judges: cached tokens over prompt tokens, cold start included.
+    sessionCache: sessionCumulativeCache(sessionLogs),
     contextSnapshots: candidate.contextSnapshots?.map((snapshot) => ({
       id: snapshot.id,
       provider: snapshot.provider,
@@ -342,6 +346,44 @@ export function buildSessionContextUsageRecord(
       stage: request.stage,
       contextSnapshotId: request.contextSnapshotId,
     })),
+  }
+}
+
+/**
+ * The session's cumulative cache reuse.
+ *
+ * Only runs that reported provider usage contribute tokens; a run without usage
+ * adds to `requestsWithoutUsage` instead of being counted as a miss. Compaction and
+ * other detached calls are not part of a run's `usage`, so they stay out of this
+ * number exactly as they stay out of the session red line.
+ */
+function sessionCumulativeCache(logs: readonly ExecutionLog[]): SessionContextUsageRecord['sessionCache'] {
+  let inputTokens = 0
+  let cachedTokens = 0
+  let uncachedTokens = 0
+  let measuredRequests = 0
+  let requestsWithoutUsage = 0
+  for (const log of logs) {
+    const usage = log.usage
+    if (!usage || usage.source !== 'provider') continue
+    const requests = usage.requestCount ?? usage.usageReportedRequestCount ?? 0
+    const reported = usage.usageReportedRequestCount ?? requests
+    requestsWithoutUsage += Math.max(0, requests - reported)
+    if (usage.promptTokens <= 0 || usage.cachedPromptTokens === undefined) continue
+    inputTokens += usage.promptTokens
+    cachedTokens += usage.cachedPromptTokens
+    uncachedTokens += usage.uncachedPromptTokens
+      ?? Math.max(0, usage.promptTokens - usage.cachedPromptTokens)
+    measuredRequests += reported
+  }
+  if (measuredRequests === 0 && requestsWithoutUsage === 0) return undefined
+  return {
+    inputTokens,
+    cachedTokens,
+    uncachedTokens,
+    measuredRequests,
+    requestsWithoutUsage,
+    ...(inputTokens > 0 ? { hitPercent: (cachedTokens / inputTokens) * 100 } : {}),
   }
 }
 

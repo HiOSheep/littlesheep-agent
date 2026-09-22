@@ -1,8 +1,10 @@
 # @littlesheep/app
 
-最后更新：2026-09-22 13:19:39
+最后更新：2026-09-22 20:18:08
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
+
+- **会话累计缓存命中**：composer 的上下文指示器除窗口占用外，还显示**本会话累计**的缓存命中率与 `缓存读取 / 输入` 原值。该值由主进程 `buildSessionContextUsageRecord` 按会话汇总每次 run 的 provider 用量（`cachedPromptTokens / promptTokens`，**含冷启动**、不含压缩等分离调用），与验收账本、`check:cache-acceptance` 用的是同一组字段与同一公式；`requestsWithoutUsage > 0` 时明确标注"usage 未上报"，不把局部读数当成完整读数。展示层四舍五入，判定层一律用精确值。
 
 ## 开发
 

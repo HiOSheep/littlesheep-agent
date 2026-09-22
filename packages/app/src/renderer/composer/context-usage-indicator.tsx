@@ -14,6 +14,8 @@ export function ContextUsageIndicator({ usage }: { usage: ContextUsage }) {
   const windowKnown = usage.maxTokens > 0
   const tone = usage.available && usage.percent >= 90 ? 'danger' : usage.available && usage.percent >= 70 ? 'warning' : 'normal'
   const usagePercent = usage.available ? Math.max(0, Math.min(100, usage.percent)) : 0
+  const cache = usage.sessionCache
+  const cacheLabel = formatSessionCache(cache)
   const ariaLabel = !windowKnown
     ? '当前模型的上下文窗口尚未登记'
     : usage.available
@@ -25,7 +27,7 @@ export function ContextUsageIndicator({ usage }: { usage: ContextUsage }) {
       className={`context-usage composer-tab-control tone-${tone}`}
       role="status"
       tabIndex={0}
-      aria-label={ariaLabel}
+      aria-label={cacheLabel ? `${ariaLabel}；${cacheLabel}` : ariaLabel}
     >
       <svg className="context-usage-ring" viewBox="0 0 16 16" aria-hidden="true">
         <circle className="context-usage-ring-track" cx="8" cy="8" r="6.5" />
@@ -60,9 +62,32 @@ export function ContextUsageIndicator({ usage }: { usage: ContextUsage }) {
             </>
           )}
         </span>
+        {cacheLabel ? (
+          <span className="context-usage-popover" aria-hidden="true">
+            <span className="context-usage-title">会话累计缓存命中：</span>
+            <span>
+              缓存读取 {formatTokenCount(cache!.cachedTokens)} / 输入 {formatTokenCount(cache!.inputTokens)}
+            </span>
+            <strong>{cache!.hitPercent === undefined ? '不可用' : `${cache!.hitPercent.toFixed(1)}%`}</strong>
+          </span>
+        ) : null}
       </span>
     </div>
   )
+}
+
+
+/**
+ * The session-cumulative cache line, or undefined when the session reported no
+ * usage. The value is exact; only the display rounds.
+ */
+export function formatSessionCache(
+  cache: ContextUsage['sessionCache'],
+): string | undefined {
+  if (!cache) return undefined
+  const percent = cache.hitPercent === undefined ? '不可用' : `${cache.hitPercent.toFixed(1)}%`
+  const partial = cache.requestsWithoutUsage > 0 ? `（${cache.requestsWithoutUsage} 个请求 usage 未上报）` : ''
+  return `会话累计缓存命中 ${percent}${partial}`
 }
 
 

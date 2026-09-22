@@ -27,6 +27,68 @@ function usageLog(input: {
 }
 
 describe('session context usage history projection', () => {
+  it('sums the session cache reuse over every run, counting only reported usage', () => {
+    const log = (runId: string, endedAt: string, usage: Partial<NonNullable<ExecutionLog['usage']>> | undefined) => ({
+      sessionId: 'session-cache',
+      runId,
+      model: 'deepseek/deepseek-flash',
+      startedAt: endedAt,
+      endedAt,
+      ...(usage === undefined ? {} : { usage: { completionTokens: 1, source: 'provider' as const, ...usage } }),
+    }) as ExecutionLog
+
+    const record = buildSessionContextUsageRecord([
+      // Run 1: the cold start — 1,000 prompt tokens, only 100 cached.
+      log('run-1', '2026-09-22T01:00:00.000Z', {
+        promptTokens: 1_000, cachedPromptTokens: 100, uncachedPromptTokens: 900,
+        requestCount: 1, usageReportedRequestCount: 1,
+      }),
+      // Run 2: nearly everything cached.
+      log('run-2', '2026-09-22T01:01:00.000Z', {
+        promptTokens: 4_000, cachedPromptTokens: 3_800, uncachedPromptTokens: 200,
+        requestCount: 2, usageReportedRequestCount: 2,
+      }),
+      // A later run whose usage never arrived: counted as missing, not as a miss.
+      log('run-3', '2026-09-22T01:02:00.000Z', undefined),
+      // Another session must not leak into this one.
+      {
+        sessionId: 'session-other', runId: 'run-x', model: 'deepseek/deepseek-flash',
+        startedAt: '2026-09-22T01:03:00.000Z', endedAt: '2026-09-22T01:03:00.000Z',
+        usage: { promptTokens: 9_999, cachedPromptTokens: 9_999, completionTokens: 1, source: 'provider' },
+      } as ExecutionLog,
+    ], 'session-cache')
+
+    // 4,800 / 5,000 — the same provider fields the acceptance ledger judges.
+    expect(record?.sessionCache).toMatchObject({
+      inputTokens: 5_000,
+      cachedTokens: 3_900,
+      uncachedTokens: 1_100,
+      measuredRequests: 3,
+      requestsWithoutUsage: 0,
+    })
+    expect(record?.sessionCache?.hitPercent).toBeCloseTo(78, 6)
+    expect(JSON.stringify(record)).not.toContain('9999')
+  })
+
+  it('keeps a partial session labelled instead of presenting it as complete', () => {
+    const record = buildSessionContextUsageRecord([{
+      sessionId: 'session-partial', runId: 'run-1', model: 'deepseek/deepseek-flash',
+      startedAt: '2026-09-22T02:00:00.000Z', endedAt: '2026-09-22T02:00:00.000Z',
+      usage: {
+        promptTokens: 2_000, cachedPromptTokens: 1_000, uncachedPromptTokens: 1_000,
+        requestCount: 3, usageReportedRequestCount: 1, source: 'provider',
+      },
+    } as ExecutionLog], 'session-partial')
+
+    expect(record?.sessionCache).toMatchObject({
+      inputTokens: 2_000,
+      cachedTokens: 1_000,
+      measuredRequests: 1,
+      requestsWithoutUsage: 2,
+    })
+    expect(record?.sessionCache?.hitPercent).toBeCloseTo(50, 6)
+  });
+
   it('restores only the newest count belonging to the requested session', () => {
     const record = buildSessionContextUsageRecord([
       usageLog({
