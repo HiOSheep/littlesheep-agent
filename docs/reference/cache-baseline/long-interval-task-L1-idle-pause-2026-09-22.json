@@ -1,0 +1,718 @@
+{
+  "check": "real-long-task-baseline",
+  "recordedAt": "2026-09-22T13:28:24.655Z",
+  "manifestVersion": 1,
+  "manifestValid": true,
+  "manifestErrors": [],
+  "frozenTasks": [
+    {
+      "id": "A1",
+      "classId": "A",
+      "title": "修复购物车优惠券计税并补测试",
+      "turns": 3,
+      "nodes": [
+        {
+          "id": "diagnosis",
+          "turn": 1,
+          "label": "调查完成：说清优惠券在税前还是税后扣减，并指出失败的用例"
+        },
+        {
+          "id": "fix",
+          "turn": 2,
+          "label": "执行完成：按规则修复且原有测试全部通过"
+        },
+        {
+          "id": "boundary",
+          "turn": 3,
+          "label": "自然完成：补上满减门槛用例并复跑通过"
+        }
+      ]
+    },
+    {
+      "id": "A2",
+      "classId": "A",
+      "title": "修复库存预留与订单取消并补测试",
+      "turns": 3,
+      "nodes": [
+        {
+          "id": "diagnosis",
+          "turn": 1,
+          "label": "调查完成：说清重复取消与释放越界两处不符合规则的地方"
+        },
+        {
+          "id": "fix",
+          "turn": 2,
+          "label": "执行完成：两个模块按规则修好且测试全部通过"
+        },
+        {
+          "id": "boundary",
+          "turn": 3,
+          "label": "自然完成：补上释放边界用例并复跑通过"
+        }
+      ]
+    },
+    {
+      "id": "B1",
+      "classId": "B",
+      "title": "汇总逾期工单并交付逾期清单",
+      "turns": 3,
+      "nodes": [
+        {
+          "id": "counts",
+          "turn": 1,
+          "label": "调查完成：说出逾期条数与数据问题条数"
+        },
+        {
+          "id": "delivery",
+          "turn": 2,
+          "label": "执行完成：report/overdue.md 落盘且清单与数字齐全"
+        },
+        {
+          "id": "reconciliation",
+          "turn": 3,
+          "label": "自然完成：报告与全部来源逐条核对一致"
+        }
+      ]
+    },
+    {
+      "id": "B2",
+      "classId": "B",
+      "title": "核对供应商发票差异并交付对账报告",
+      "turns": 3,
+      "nodes": [
+        {
+          "id": "counts",
+          "turn": 1,
+          "label": "调查完成：说出差异笔数、合计金额与数据问题"
+        },
+        {
+          "id": "delivery",
+          "turn": 2,
+          "label": "执行完成：report/reconcile.md 落盘且明细、数据问题与红字通知单齐全"
+        },
+        {
+          "id": "reconciliation",
+          "turn": 3,
+          "label": "自然完成：重复发票与孤儿发票已排除在金额之外并复述一致"
+        }
+      ]
+    },
+    {
+      "id": "C1",
+      "classId": "C",
+      "title": "结合供应商材料与口头前提完成选型评审",
+      "turns": 3,
+      "nodes": [
+        {
+          "id": "screening",
+          "turn": 1,
+          "label": "调查完成：说出三家方案的淘汰原因"
+        },
+        {
+          "id": "delivery",
+          "turn": 2,
+          "label": "执行完成：可行方案与折后总价写入报告"
+        },
+        {
+          "id": "memory-anchor",
+          "turn": 3,
+          "label": "自然完成：报告写入本轮口头给出的预算与折扣并算出剩余额度"
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "classId": "C",
+      "title": "结合故障材料与口头前提完成复盘交付",
+      "turns": 3,
+      "nodes": [
+        {
+          "id": "contradictions",
+          "turn": 1,
+          "label": "调查完成：说出矛盾条数与逐条内容"
+        },
+        {
+          "id": "timeline",
+          "turn": 2,
+          "label": "执行完成：权威时间线与矛盾写入报告"
+        },
+        {
+          "id": "disclosure",
+          "turn": 3,
+          "label": "自然完成：对外口径写入本轮口头给出的变更单编号与原话"
+        }
+      ]
+    }
+  ],
+  "runs": 1,
+  "expectedRuns": 12,
+  "usageCompleteRuns": 1,
+  "metRuns": 0,
+  "belowRedLineRuns": 1,
+  "runsWithFunctionalFailure": 1,
+  "results": [
+    {
+      "taskId": "L1",
+      "attempt": 13,
+      "classId": "L",
+      "turnsOk": 20,
+      "turns": 28,
+      "acceptanceOk": 6,
+      "acceptance": 6,
+      "failedChecks": [],
+      "requests": 183,
+      "input": 11059922,
+      "cached": 10954624,
+      "hitPercent": 99.04793180277402,
+      "requestsWithoutUsage": 0,
+      "providerInconsistencies": 0,
+      "hitPercentWithoutInconsistencies": 99.04793180277402,
+      "auxiliaryRequests": 0,
+      "hAllPercent": 99.04793180277402,
+      "nodes": [
+        {
+          "id": "survey",
+          "turn": 1,
+          "hitPercent": 64.74648893120685,
+          "withinTarget": false,
+          "availability": "complete",
+          "usageMissing": 0
+        },
+        {
+          "id": "turn-2",
+          "turn": 2,
+          "hitPercent": 89.30889821152573,
+          "withinTarget": false,
+          "availability": "complete",
+          "usageMissing": 0
+        },
+        {
+          "id": "turn-3",
+          "turn": 3,
+          "hitPercent": 89.30889821152573,
+          "withinTarget": null,
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
+        },
+        {
+          "id": "turn-4",
+          "turn": 4,
+          "hitPercent": 94.06444318824194,
+          "withinTarget": false,
+          "availability": "complete",
+          "usageMissing": 0
+        },
+        {
+          "id": "turn-5",
+          "turn": 5,
+          "hitPercent": 95.849878826956,
+          "withinTarget": true,
+          "availability": "complete",
+          "usageMissing": 0
+        },
+        {
+          "id": "turn-6",
+          "turn": 6,
+          "hitPercent": 97.27061408286191,
+          "withinTarget": true,
+          "availability": "complete",
+          "usageMissing": 0
+        },
+        {
+          "id": "turn-7",
+          "turn": 7,
+          "hitPercent": 92.70854444389788,
+          "withinTarget": false,
+          "availability": "complete",
+          "usageMissing": 0
+        },
+        {
+          "id": "ledger-basics",
+          "turn": 8,
+          "hitPercent": 93.53108321635166,
+          "withinTarget": false,
+          "availability": "complete",
+          "usageMissing": 0
+        },
+        {
+          "id": "turn-9",
+          "turn": 9,
+          "hitPercent": 93.53108321635166,
+          "withinTarget": null,
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
+        },
+        {
+          "id": "turn-10",
+          "turn": 10,
+          "hitPercent": 95.20056426040475,
+          "withinTarget": true,
+          "availability": "complete",
+          "usageMissing": 0
+        },
+        {
+          "id": "turn-11",
+          "turn": 11,
+          "hitPercent": 95.20056426040475,
+          "withinTarget": null,
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
+        },
+        {
+          "id": "turn-12",
+          "turn": 12,
+          "hitPercent": 95.94662437113175,
+          "withinTarget": true,
+          "availability": "complete",
+          "usageMissing": 0
+        },
+        {
+          "id": "turn-13",
+          "turn": 13,
+          "hitPercent": 96.82013199452099,
+          "withinTarget": true,
+          "availability": "complete",
+          "usageMissing": 0
+        },
+        {
+          "id": "turn-14",
+          "turn": 14,
+          "hitPercent": 97.01784472040738,
+          "withinTarget": true,
+          "availability": "complete",
+          "usageMissing": 0
+        },
+        {
+          "id": "turn-15",
+          "turn": 15,
+          "hitPercent": 97.01784472040738,
+          "withinTarget": null,
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
+        },
+        {
+          "id": "core-and-refactor",
+          "turn": 16,
+          "hitPercent": 97.34195903146625,
+          "withinTarget": true,
+          "availability": "complete",
+          "usageMissing": 0
+        },
+        {
+          "id": "turn-17",
+          "turn": 17,
+          "hitPercent": 97.34195903146625,
+          "withinTarget": null,
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
+        },
+        {
+          "id": "turn-18",
+          "turn": 18,
+          "hitPercent": 97.5220172601337,
+          "withinTarget": true,
+          "availability": "complete",
+          "usageMissing": 0
+        },
+        {
+          "id": "turn-19",
+          "turn": 19,
+          "hitPercent": 97.5220172601337,
+          "withinTarget": null,
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
+        },
+        {
+          "id": "turn-20",
+          "turn": 20,
+          "hitPercent": 97.76726423098795,
+          "withinTarget": true,
+          "availability": "complete",
+          "usageMissing": 0
+        },
+        {
+          "id": "turn-21",
+          "turn": 21,
+          "hitPercent": 97.76726423098795,
+          "withinTarget": null,
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
+        },
+        {
+          "id": "range-and-export",
+          "turn": 22,
+          "hitPercent": 97.9077783825225,
+          "withinTarget": true,
+          "availability": "complete",
+          "usageMissing": 0
+        },
+        {
+          "id": "turn-23",
+          "turn": 23,
+          "hitPercent": 97.9077783825225,
+          "withinTarget": null,
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
+        },
+        {
+          "id": "turn-24",
+          "turn": 24,
+          "hitPercent": 98.19782555696477,
+          "withinTarget": true,
+          "availability": "complete",
+          "usageMissing": 0
+        },
+        {
+          "id": "docs-aligned",
+          "turn": 25,
+          "hitPercent": 98.43925986416725,
+          "withinTarget": true,
+          "availability": "complete",
+          "usageMissing": 0
+        },
+        {
+          "id": "turn-26",
+          "turn": 26,
+          "hitPercent": 98.61396151423705,
+          "withinTarget": true,
+          "availability": "complete",
+          "usageMissing": 0
+        },
+        {
+          "id": "turn-27",
+          "turn": 27,
+          "hitPercent": 98.67702382997113,
+          "withinTarget": true,
+          "availability": "complete",
+          "usageMissing": 0
+        },
+        {
+          "id": "final-verification",
+          "turn": 28,
+          "hitPercent": 98.79695593569268,
+          "withinTarget": true,
+          "availability": "complete",
+          "usageMissing": 0
+        }
+      ],
+      "conclusion": "not met",
+      "losses": {
+        "coldStart": 4272,
+        "rebuild": 58294,
+        "appendResidual": 42732,
+        "unknownUsage": 0,
+        "rebuildThresholdTokens": 1024,
+        "measuredRequests": 183,
+        "appendResidualPerRequest": 265.41614906832297,
+        "appendResidualMedian": 220,
+        "appendResidualMax": 908,
+        "rebuildEvents": [
+          {
+            "ordinal": 2,
+            "runId": "f58ab3a1-a15f-44aa-b113-24fde14bf447",
+            "purpose": "execute_tool_loop",
+            "input": 6057,
+            "previousInput": 4528,
+            "promptGrowth": 1529,
+            "uncached": 1449,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 40,
+            "runId": "a1cfd71e-f1e4-4e44-9dbb-ac77b4cd6673",
+            "purpose": "execute_tool_loop",
+            "input": 25363,
+            "previousInput": 24690,
+            "promptGrowth": 673,
+            "uncached": 24851,
+            "reuseWaste": 24178,
+            "changedComponents": [],
+            "invalidationReasons": [
+              "prompt_version_changed"
+            ],
+            "stablePrefixFingerprintChanged": true
+          },
+          {
+            "ordinal": 47,
+            "runId": "0c124e4e-012f-472b-92b3-094404cc222d",
+            "purpose": "execute_tool_loop",
+            "input": 30023,
+            "previousInput": 28099,
+            "promptGrowth": 1924,
+            "uncached": 1863,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 64,
+            "runId": "056db3ef-28ce-4b8e-81dc-926d5e9f7a14",
+            "purpose": "execute_tool_loop",
+            "input": 38847,
+            "previousInput": 37464,
+            "promptGrowth": 1383,
+            "uncached": 1343,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 71,
+            "runId": "056db3ef-28ce-4b8e-81dc-926d5e9f7a14",
+            "purpose": "execute_tool_loop",
+            "input": 44847,
+            "previousInput": 41180,
+            "promptGrowth": 3667,
+            "uncached": 3631,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 75,
+            "runId": "056db3ef-28ce-4b8e-81dc-926d5e9f7a14",
+            "purpose": "execute_tool_loop",
+            "input": 48403,
+            "previousInput": 46937,
+            "promptGrowth": 1466,
+            "uncached": 1427,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 79,
+            "runId": "d4d78201-ec32-415f-89d3-76389fa1023f",
+            "purpose": "execute_tool_loop",
+            "input": 51100,
+            "previousInput": 49957,
+            "promptGrowth": 1143,
+            "uncached": 1180,
+            "reuseWaste": 37,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 85,
+            "runId": "24b2eb79-181b-4b29-bf7f-e32799dca096",
+            "purpose": "execute_tool_loop",
+            "input": 55258,
+            "previousInput": 54058,
+            "promptGrowth": 1200,
+            "uncached": 1242,
+            "reuseWaste": 42,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 90,
+            "runId": "28cae254-086b-489a-a1a5-f91477a13e87",
+            "purpose": "execute_tool_loop",
+            "input": 59257,
+            "previousInput": 57646,
+            "promptGrowth": 1611,
+            "uncached": 1657,
+            "reuseWaste": 46,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 96,
+            "runId": "28cae254-086b-489a-a1a5-f91477a13e87",
+            "purpose": "execute_tool_loop",
+            "input": 63908,
+            "previousInput": 62564,
+            "promptGrowth": 1344,
+            "uncached": 1316,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 99,
+            "runId": "1d4815de-a119-473c-8399-fd03d7fcc30a",
+            "purpose": "execute_tool_loop",
+            "input": 66579,
+            "previousInput": 65202,
+            "promptGrowth": 1377,
+            "uncached": 1427,
+            "reuseWaste": 50,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 114,
+            "runId": "8fe6051c-c3cd-4e83-ad22-db0368cff6ff",
+            "purpose": "execute_tool_loop",
+            "input": 74567,
+            "previousInput": 73080,
+            "promptGrowth": 1487,
+            "uncached": 1479,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 119,
+            "runId": "a1f87079-89df-4ee8-a375-6413c8a7377a",
+            "purpose": "execute_tool_loop",
+            "input": 78399,
+            "previousInput": 77320,
+            "promptGrowth": 1079,
+            "uncached": 1087,
+            "reuseWaste": 8,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 129,
+            "runId": "a1f87079-89df-4ee8-a375-6413c8a7377a",
+            "purpose": "execute_tool_loop",
+            "input": 83853,
+            "previousInput": 82155,
+            "promptGrowth": 1698,
+            "uncached": 1677,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 135,
+            "runId": "27dba4ee-24a8-4175-a7e0-9889533bf151",
+            "purpose": "execute_tool_loop",
+            "input": 88127,
+            "previousInput": 86946,
+            "promptGrowth": 1181,
+            "uncached": 1215,
+            "reuseWaste": 34,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 144,
+            "runId": "27dba4ee-24a8-4175-a7e0-9889533bf151",
+            "purpose": "execute_tool_loop",
+            "input": 94519,
+            "previousInput": 92082,
+            "promptGrowth": 2437,
+            "uncached": 2359,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 157,
+            "runId": "b8c6f95e-1f55-4a83-b03b-63d6533fcde9",
+            "purpose": "execute_tool_loop",
+            "input": 101774,
+            "previousInput": 99747,
+            "promptGrowth": 2027,
+            "uncached": 2062,
+            "reuseWaste": 35,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 160,
+            "runId": "494da7b4-95b1-4c43-8cdc-3bbc69ac2c69",
+            "purpose": "execute_tool_loop",
+            "input": 104600,
+            "previousInput": 103277,
+            "promptGrowth": 1323,
+            "uncached": 1304,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 165,
+            "runId": "bcbec585-29a6-47cf-9be5-34153cb38af7",
+            "purpose": "execute_tool_loop",
+            "input": 109666,
+            "previousInput": 108135,
+            "promptGrowth": 1531,
+            "uncached": 1506,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 174,
+            "runId": "646b2d29-951c-4ad5-b3bb-e1024ba55674",
+            "purpose": "execute_tool_loop",
+            "input": 117150,
+            "previousInput": 115034,
+            "promptGrowth": 2116,
+            "uncached": 2078,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 179,
+            "runId": "159f0140-2cab-4acf-b7ae-90103cb4caea",
+            "purpose": "execute_tool_loop",
+            "input": 121437,
+            "previousInput": 119307,
+            "promptGrowth": 2130,
+            "uncached": 2141,
+            "reuseWaste": 11,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          }
+        ],
+        "newContent": 118283,
+        "reuseWaste": {
+          "total": 25262,
+          "fromRebuild": 24441,
+          "fromAppend": 821
+        },
+        "derivedBounds": {
+          "reuseWasteRecovered": {
+            "input": 11059922,
+            "cached": 10979886,
+            "hitPercent": 99.27634209355183
+          },
+          "coldStartAlsoCached": {
+            "input": 11059922,
+            "cached": 10984158,
+            "hitPercent": 99.31496804407843
+          },
+          "derived": true
+        }
+      },
+      "rootName": "littlesheep-real-long-task-w7gBNY",
+      "source": "real-long-task-L1-13.json"
+    }
+  ]
+}

@@ -32,6 +32,8 @@ const RUN_TIMEOUT_SECONDS = 300
 const RUN_TIMEOUT_MS = Math.max(DEFAULT_RUN_TIMEOUT_MS, RUN_TIMEOUT_SECONDS * 1_000)
 const ACCEPTANCE_TIMEOUT_MS = 120_000
 const DETAIL_LIMIT = 400
+/** The frozen compaction configuration, for naming a diagnostic override. */
+const DEFAULT_FROZEN_COMPACTION = Object.freeze({ threshold: 100, keepRecent: 20, background: false })
 const EXIT_RULE = 'acceptance 全部通过 && 每个冻结节点 availability=complete && hitPercent>=95 && 每个回合 status=ok'
 const TIMEOUT_PATTERN = /timeout|timed out|超时/i
 // A dropped connection is a transport failure, not a semantic one: a 28-turn run
@@ -550,8 +552,10 @@ function summaryLines(report, includeDataRoot) {
     `provider=${report.provider} model=${report.model} 类别=${report.classId} 耗时=${report.durationMs}ms`,
     ...(report.diagnostic
       ? [`⚠️ 诊断运行：${[
-        report.frozenPlan.config.compaction.threshold !== manifest.FROZEN_CONFIG.compaction.threshold
-          ? '压缩阈值已被命令行覆盖' : '',
+        // The frozen plan carries the configured value; a diagnostic run does not
+        // carry the frozen constant, so the override is named from what it changed.
+        report.frozenPlan.config.compaction.threshold === DEFAULT_FROZEN_COMPACTION.threshold
+          ? '' : `压缩阈值已被覆盖为 ${report.frozenPlan.config.compaction.threshold}`,
         report.restarts.length > 0 ? `在第 ${report.restarts.map((entry) => entry.turn).join('/')} 回合重启了应用进程` : '',
         report.pauses.length > 0 ? `在第 ${report.pauses.map((entry) => entry.turn).join('/')} 回合前空闲等待 ${report.pauses.map((entry) => entry.seconds).join('/')} 秒` : '',
       ].filter(Boolean).join('；')}；只用于取证，不参与红线判定。`]

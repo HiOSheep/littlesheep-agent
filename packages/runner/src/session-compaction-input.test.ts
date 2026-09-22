@@ -19,6 +19,11 @@ import { textResponse } from '../../harness/src/tests/helpers.js';
 const source = readFileSync(new URL('./session-continuity.ts', import.meta.url), 'utf8');
 const created: Array<{ shutdown: () => Promise<void> }> = [];
 
+// These tests drive real runner turns (and therefore real compaction calls), so they
+// are slow by nature: under a fully parallel suite they can exceed the default
+// timeout, which says nothing about the behaviour they assert.
+vi.setConfig({ testTimeout: 90_000 });
+
 afterAll(async () => {
   for (const runner of created) {
     try {
