@@ -6,12 +6,12 @@ import {
 } from './checkpoint-recovery-state'
 
 describe('checkpoint recovery progress', () => {
-  it('advances through planning, execution, verification and finalization events', () => {
+  it('advances through restore, execution, verification and finalization events', () => {
     const planned = checkpointRecoveryProgressForEvent({
       type: 'task_book',
       summary: '恢复任务书',
     } as ToolStreamEvent, INITIAL_CHECKPOINT_RECOVERY_PROGRESS)
-    expect(planned).toMatchObject({ phase: 'planning', label: '任务书已恢复' })
+    expect(planned).toMatchObject({ phase: 'restored', label: '任务书已恢复' })
 
     const executing = checkpointRecoveryProgressForEvent({
       type: 'step_start',

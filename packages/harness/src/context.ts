@@ -136,7 +136,7 @@ export interface BuildRunContextOptions {
   effectLeases?: RunContext['effectLeases'];
   /** Defer final-reply settlement until Runner-owned audit persistence completes. */
   deferFinalReplySettlement?: boolean;
-  /** Next-Harness transcript opt-in; see RunContext.streamModelTranscript. */
+  /** Transcript opt-in; see RunContext.streamModelTranscript. */
   streamModelTranscript?: boolean;
   /** Directory containing bootstrap .md files (defaults to cwd). */
   bootstrapDir?: string;

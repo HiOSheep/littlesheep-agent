@@ -3,7 +3,7 @@
 
 import type { ToolResourceAccess } from './tool.js';
 
-/** Coarse task-size signal produced by DECIDE. */
+/** Coarse task-size signal recorded alongside the task book. */
 export type TaskComplexity = 'trivial' | 'simple' | 'standard' | 'complex';
 
 /** Status of a planned task-book step. */
@@ -22,7 +22,7 @@ export type TaskStepFailureKind =
   | 'aborted'
   | 'unknown';
 
-/** DECIDE's demand calibration for matching workflow weight to the actual need. */
+/** Demand calibration for matching workflow weight to the actual need; preserved for restored records. */
 export interface NeedAssessment {
   userNeed: string;
   complexity: TaskComplexity;
@@ -38,7 +38,7 @@ export interface NeedAssessment {
 
 export type TaskStepSideEffect = 'none' | 'read' | 'write' | 'external';
 
-/** Runtime-verifiable scheduling contract proposed by DECIDE for one step. */
+/** Runtime-verifiable scheduling contract for one task-book step. */
 export interface TaskStepExecutionPolicy {
   /** Missing policies and explicit serial policies both execute serially. */
   mode: 'serial' | 'parallel';
@@ -50,13 +50,13 @@ export interface TaskStepExecutionPolicy {
   sideEffect?: TaskStepSideEffect;
 }
 
-/** One DECIDE-authored tool call proposal. Runtime must validate it again before execution. */
+/** One model-authored tool call proposal. Runtime must validate it again before execution. */
 export interface TaskStepToolProposal {
   name: string;
   input: unknown;
 }
 
-/** A plan step produced by DECIDE. */
+/** A plan step from a task book or from the main-loop plan guidance. */
 export interface PlanStep {
   id?: string;
   title?: string;
@@ -165,7 +165,7 @@ export interface TaskExecutionResult {
   replanHistory?: TaskReplanRecord[];
 }
 
-/** Structured task book produced by DECIDE and consumed by EXECUTE/VERIFY. */
+/** Structured task book installed at a runtime boundary and consumed by the main loop EXECUTE/VERIFY. */
 export interface TaskBook {
   assessment: NeedAssessment;
   goal: string;

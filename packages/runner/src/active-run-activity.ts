@@ -57,7 +57,7 @@ export class ActiveRunActivityStore {
       origin: options.origin ?? 'cli',
       startedAt: validTimestamp(options.startedAt) ?? now,
       updatedAt: now,
-      phase: 'planning',
+      phase: 'starting',
       controlStatus: 'running',
       totalSteps: 0,
       completedStepIds: new Set(),

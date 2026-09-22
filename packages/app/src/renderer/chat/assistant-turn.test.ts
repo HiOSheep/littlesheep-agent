@@ -383,7 +383,7 @@ describe('assistant activity flow', () => {
   })
 })
 
-describe('next-Harness transcript rendering', () => {
+describe('model transcript rendering', () => {
   it('summarises a finished turn as 已思考 · N 次工具调用 · N 条消息', () => {
     const html = renderToStaticMarkup(createElement(AssistantTranscript, {
       transcript: [

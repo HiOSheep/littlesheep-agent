@@ -1,4 +1,4 @@
-// Cross-process ownership leases for long-running next-Harness runs.
+// Cross-process ownership leases for long-running durable runs.
 // Inbox claims protect command materialization; these leases protect the
 // model/tool lifecycle that continues after ingress commands are completed.
 import { mkdir, readdir, readFile } from 'node:fs/promises';

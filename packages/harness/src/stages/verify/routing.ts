@@ -261,9 +261,14 @@ export async function routeKnownIncompleteExecution(
     failedStepIds: targetStepIds,
     source: 'degraded',
   });
+  // The partial re-plan re-enters the one main loop. DECIDE, the stage that used
+  // to consume `partialReplanRequest` and re-plan the TaskBook, was deleted with
+  // the second execution system, so naming it here would exit the run with
+  // "no stage registered for 'decide'". EXECUTE reads the recorded feedback and
+  // the step-scoped request, and a resumed run already normalizes decide→execute.
   return {
     stage: 'verify',
-    next: 'decide',
+    next: 'execute',
     ok: true,
     meta: {
       degradedReplan: true,

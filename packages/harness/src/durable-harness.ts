@@ -1,9 +1,9 @@
-// Independent next-Harness driver.
+// The one Core Flow driver.
 //
-// The stage implementations remain shared with the legacy path, but this
-// driver owns its own transition loop and records every executed transition in
-// the durable event stream. It never emits a second user-facing message or
-// invokes a second tool/model call.
+// The stage implementations come from the shared stage factory, but this driver
+// owns its own transition loop and records every executed transition in the
+// durable event stream. It never emits a second user-facing message or invokes a
+// second tool/model call.
 import type {
   AgentHarness,
   AnyHook,

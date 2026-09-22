@@ -19,7 +19,7 @@ export function renderPlanGuidance(plan: PlanStep[]): string {
     const approval = step.requiresApproval ? ' (needs approval)' : '';
     return `${index + 1}. ${step.description}${tools}${approval}`;
   });
-  return `Proposed plan (from DECIDE):\n${lines.join('\n')}`;
+  return `Proposed plan:\n${lines.join('\n')}`;
 }
 
 export function renderTaskBookGuidance(taskBook: TaskBook): string {
@@ -37,7 +37,7 @@ export function renderTaskBookGuidance(taskBook: TaskBook): string {
     const scheduling = renderScheduling(step);
     return `${index + 1}. ${label}${step.description}${tools}${approval}${scheduling}${stepCriteria}${expected}`;
   });
-  return `Task book (from DECIDE):
+  return `Task book:
 Goal: ${taskBook.goal}
 Complexity: ${taskBook.complexity}
 Overdelivery limit: ${taskBook.overdeliveryPolicy.maxExtraScopeRatio}x

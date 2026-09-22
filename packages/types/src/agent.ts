@@ -139,9 +139,9 @@ export interface RunContext {
   produced: Message[];
   /** Classification result (set by CLASSIFY). */
   classification?: Classification;
-  /** Demand calibration from DECIDE. */
+  /** Legacy demand calibration kept for restored records; the adopted contract travels in the task book. */
   needAssessment?: NeedAssessment;
-  /** Structured task book from DECIDE. */
+  /** Structured task book installed at a runtime boundary; read-only history once persisted. */
   taskBook?: TaskBook;
   /** Monotonic revision of the run-local TaskBook; starts at 1 when present. */
   taskBookRevision?: number;
@@ -149,7 +149,7 @@ export interface RunContext {
   appliedTaskBookPatchIds?: string[];
   /** Runtime events retained for a later re-plan instead of being silently lost. */
   deferredRuntimeEventIds?: string[];
-  /** Bounded event envelopes supplied to the next DECIDE pass for re-planning. */
+  /** Bounded event envelopes deferred for the next re-plan in the main loop. */
   deferredRuntimeEvents?: import('./runtime-contracts.js').RuntimeEventEnvelope[];
   /** Bounded side-effect ledger supplied by host-owned tool execution. */
   sideEffects?: import('./runtime-contracts.js').SideEffectCheckpoint[];
@@ -159,7 +159,7 @@ export interface RunContext {
   loopBudget?: import('./runtime-contracts.js').LoopBudgetSnapshot;
   /** Runtime execution result for the current task book. */
   taskExecution?: TaskExecutionResult;
-  /** Plan from DECIDE. */
+  /** TaskBook steps rendered as plan guidance in the main loop; installed with the TaskBook. */
   plan?: PlanStep[];
   /** Tool results from EXECUTE. */
   toolResults?: import('./message.js').ToolResult[];
@@ -171,15 +171,15 @@ export interface RunContext {
   maxRecoveryAttempts: number;
   /** Replan count (incremented when VERIFY returns needs_replan). */
   replanAttempts?: number;
-  /** Replan upper bound; VERIFY force-passes when exhausted. Default 2. */
+  /** Replan upper bound; VERIFY escalates to ASK_USER when exhausted. Default 2. */
   maxReplanAttempts?: number;
-  /** Feedback from VERIFY → DECIDE on a needs_replan. Cleared by DECIDE. */
+  /** VERIFY feedback for a needs_replan; read by the main loop, which also treats it as a continuation. */
   verifyFeedback?: string;
-  /** Step-scoped re-plan request created by VERIFY and consumed by DECIDE/EXECUTE. */
+  /** Step-scoped re-plan request created by VERIFY and consumed by the main loop EXECUTE. */
   partialReplanRequest?: PartialReplanRequest;
   /** Bounded-loop request to create a TaskBook for the unfinished goal. */
   workPolicyUpgradeRequest?: WorkPolicyUpgradeRequest;
-  /** Audit trail retained across repeated DECIDE/EXECUTE passes. */
+  /** Audit trail of bounded re-plans across VERIFY → EXECUTE passes. */
   replanHistory?: TaskReplanRecord[];
   /** Every VERIFY decision made during this run. */
   verificationHistory?: VerificationRecord[];
@@ -197,7 +197,7 @@ export interface RunContext {
   memoryIntentDecisions?: import('./runtime-contracts.js').MemoryIntentDecisionRecord[];
   /** Run-owned bounded event queue; payloads are only opened at safe boundaries. */
   runtimeEventQueue?: import('./runtime-contracts.js').RuntimeEventQueueLike;
-  /** Ordered, durable next-Harness event sink. Runtime owns persistence. */
+  /** Ordered, durable event sink. Runtime owns persistence. */
   appendDurableEvent?: (
     event: Omit<import('./durable-harness.js').DurableHarnessEventAppendInput, 'sessionId' | 'runId'>,
   ) => Promise<void>;
@@ -228,14 +228,13 @@ export interface RunContext {
   /** Commits the registry reservation after the session message is durable. */
   settleUserFacingReplySettlement?: (reservation: FinalReplyReservation) => Promise<void>;
   /**
-   * Next-Harness publication gate: FINALIZE may leave the reservation in the
-   * proposed state until Runner-owned audit persistence has completed.
+   * Publication gate: FINALIZE may leave the reservation in the proposed state
+   * until Runner-owned audit persistence has completed.
    */
   deferFinalReplySettlement?: boolean;
   /**
-   * Next-Harness transcript: stream model thinking and per-turn assistant text
-   * so the conversation renders an ordered thinking/tool/text transcript.
-   * The legacy Harness keeps its own non-transcript display contract.
+   * Stream model thinking and per-turn assistant text so the conversation
+   * renders an ordered thinking/tool/text transcript instead of activity steps.
    */
   streamModelTranscript?: boolean;
   /** Set once the durable path has projected this run’s system prompt. */
@@ -476,7 +475,7 @@ export interface AgentResult {
   replyProvenance?: ReplyProvenance;
   /** Authoritative final reply settlement; streams are only provisional views. */
   finalReplySettlement?: FinalReplySettlement;
-  /** Runtime-owned status used when the next Harness cannot publish a reply. */
+  /** Runtime-owned status used when the driver cannot publish a reply. */
   runtimeStatus?: import('./runtime-contracts.js').RuntimeFinalStatus;
   error?: string;
   /** Messages to persist. */
@@ -499,7 +498,7 @@ export interface AgentResult {
   modelRequests?: import('./runtime-contracts.js').ModelRequestSnapshot[];
   /** Bounded, redacted context observations. */
   contextSnapshots?: import('./runtime-contracts.js').ContextSnapshot[];
-  /** Structured task execution result when DECIDE produced a task book. */
+  /** Structured task execution result when the run carried a task book. */
   taskExecution?: TaskExecutionResult;
   /** Bounded authoritative tool lifecycle records for this run. */
   toolInvocations?: import('./runtime-contracts.js').ToolInvocationRecord[];
@@ -519,7 +518,7 @@ export interface AgentResult {
   runtimeEventQueue?: import('./runtime-contracts.js').RuntimeEventQueueSnapshot;
   /** Redacted model-proposal versus runtime-commit memory audit. */
   memoryIntentDecisions?: import('./runtime-contracts.js').MemoryIntentDecisionRecord[];
-  /** Bounded Memory v3 evidence state used across DECIDE/EXECUTE/VERIFY/FINALIZE. */
+  /** Bounded Memory v3 evidence state used across EXECUTE/VERIFY/FINALIZE. */
   memoryKnownState?: import('./memory-evidence.js').RuntimeMemoryKnownState;
   /** Local evidence assessment of continuity between memory and the final reply. */
   memoryContinuityAssessment?: import('./memory-continuity.js').MemoryContinuityAssessment;

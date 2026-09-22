@@ -412,7 +412,8 @@ describe('verifyStage', () => {
 
     const res = await stage(ctx);
 
-    expect(res.next).toBe('decide');
+    // The re-plan returns to the one main loop: DECIDE is not a registered stage.
+    expect(res.next).toBe('execute');
     expect(res.ok).toBe(true);
     expect(ctx.partialReplanRequest).toMatchObject({
       attempt: 1,
@@ -432,7 +433,7 @@ describe('verifyStage', () => {
 
     const res = await stage(ctx);
 
-    expect(res.next).toBe('decide');
+    expect(res.next).toBe('execute');
     expect(res.ok).toBe(true);
     expect(ctx.partialReplanRequest?.targetStepIds).toEqual(['step-2']);
   });

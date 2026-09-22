@@ -225,7 +225,7 @@ async function verifyLeanBoundedExecution(client, provider) {
     throw new Error(`bounded tool activity was not observable: ${JSON.stringify({ requests, rendered })}`)
   }
   if (toolRequests.some((request) => request.stream !== true)) {
-    throw new Error('next Harness tool-loop requests were not streamed')
+    throw new Error('durable harness tool-loop requests were not streamed')
   }
   return {
     providerRequests: requests.length,

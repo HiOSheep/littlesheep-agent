@@ -1,7 +1,7 @@
 # RECOVER 内部边界
 
-最后更新：2026-09-22 12:40:16
+最后更新：2026-09-22 13:10:04
 
-- `policy.ts`：Runtime 自有的恢复策略——运行被中止、结构化解码失败的首次重试、未结算副作用判断、记录到的失败种类读取和目标阶段选择（`retry` / `escalate` / `abort`）。
+- `policy.ts`：Runtime 自有的恢复策略——运行被中止、结构化解码失败的首次重试、未结算副作用判断、记录到的失败种类读取和目标阶段选择（`retry` / `escalate` / `abort`）。目标阶段只可能是仍注册的 stage：旧检查点记录到的 `decide` 等已退役 stage 名统一回到主循环 `execute`，避免以 `no stage registered` 结束运行。
 
 `../recover.ts` 不再请求恢复模型：决策只由记录到的事实推导（可重试 → 回到失败阶段，权限拒绝 → `ASK_USER`，副作用未结算或被中止 → 显式停止并只呈现 Runtime 状态），重试受 `maxRecoveryAttempts` 约束，预算耗尽强制升级到 `ASK_USER`，也没有"修订计划"或模型撰写的用户文案。绑定续接的一次确定性重试由 Runtime 消费一次，已完成步骤不重复执行；用户可见文字仍只来自 `ASK_USER` 的真实模型调用或 Runtime 状态。

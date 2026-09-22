@@ -346,7 +346,7 @@ export interface DurableCapabilityProbeProjection {
   readonly permissionDecision: 'allow' | 'approval_required' | 'deny' | 'unavailable';
 }
 
-/** Redacted audit record for one next-Harness stage transition. */
+/** Redacted audit record for one durable stage transition. */
 export interface DurableStageTransitionProjection {
   readonly stage: string;
   readonly next: string;

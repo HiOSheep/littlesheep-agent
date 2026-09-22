@@ -65,7 +65,9 @@ describe('recoverStage', () => {
   });
 
   it.each([
-    ['decide', 'decide'],
+    // A legacy checkpoint can name the retired DECIDE stage as the failure; the
+    // retry lands in the main loop instead of an unregistered stage.
+    ['decide', 'execute'],
     ['execute', 'execute'],
     ['verify', 'verify'],
     ['reply', 'reply'],
@@ -95,7 +97,7 @@ describe('recoverStage', () => {
     const result = await stage(ctx);
 
     expect(result).toMatchObject({
-      next: 'decide',
+      next: 'execute',
       ok: true,
       meta: { deterministicRetry: true, reasonCode: 'structured_decode_retry' },
     });

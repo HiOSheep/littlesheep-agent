@@ -2208,7 +2208,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
 function settledReplyResult(result: RunnerResult, ctx: RunContext): RunnerResult {
     const settlement = ctx.finalReplySettlement;
     if (!settlement || settlement.status !== 'settled') {
-      throw new Error('next Harness settled without a final reply projection');
+      throw new Error('durable harness settled without a final reply projection');
     }
     return {
       ...result,

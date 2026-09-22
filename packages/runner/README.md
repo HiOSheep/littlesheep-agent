@@ -1,6 +1,6 @@
 # @littlesheep/runner
 
-最后更新：2026-09-22 12:47:49
+最后更新：2026-09-22 13:10:04
 
 作为核心应用服务装配 Harness、Context、Memory、Tools、Session、Skills 和执行日志，并提供单次 run 接口。
 

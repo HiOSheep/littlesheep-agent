@@ -1,4 +1,4 @@
-// Request-bound prompt/cache observability for the legacy Harness adapter.
+// Request-bound prompt/cache observability for the durable driver.
 // All persisted values are hashes, counts, versions and statuses. Raw prompt,
 // user, tool-argument and credential-bearing values never leave this module.
 

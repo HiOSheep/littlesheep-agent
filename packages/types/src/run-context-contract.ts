@@ -122,7 +122,7 @@ export const runContextFieldOwnership: readonly RunContextFieldContract[] = Obje
     readStages: ['decide', 'runner-restore'],
     writeStages: ['verify', 'decide', 'runner-restore'],
     lifecycle: 'checkpoint-carried',
-    purpose: 'Structured failure feedback consumed by the next DECIDE pass.',
+    purpose: 'Structured failure feedback consumed by the main loop after a needs_replan.',
   }),
   field({
     field: 'partialReplanRequest',
@@ -176,7 +176,7 @@ export const runContextFieldOwnership: readonly RunContextFieldContract[] = Obje
     readStages: ['decide', 'execute', 'verify', 'reply', 'finalize', 'runner-restore'],
     writeStages: ['decide', 'runner-restore'],
     lifecycle: 'checkpoint-carried',
-    purpose: 'Demand calibration and acceptance contract adopted from the DECIDE proposal.',
+    purpose: 'Demand calibration preserved for restored records; the live task book carries the adopted contract.',
   }),
   field({
     field: 'clarificationRequest',

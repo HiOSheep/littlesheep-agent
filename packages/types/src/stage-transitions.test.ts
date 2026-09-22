@@ -16,6 +16,9 @@ describe('Core Flow transition manifest', () => {
   it('accepts the supported recovery and re-plan edges', () => {
     expect(inspectStageTransition('execute', 'recover')).toEqual({ ok: true, next: 'recover' });
     expect(inspectStageTransition('execute', 'finalize')).toEqual({ ok: true, next: 'finalize' });
+    // A partial re-plan re-enters the main loop: DECIDE is not registered.
+    expect(inspectStageTransition('verify', 'execute')).toEqual({ ok: true, next: 'execute' });
+    // The DECIDE edge survives only so older persisted records stay readable.
     expect(inspectStageTransition('verify', 'decide')).toEqual({ ok: true, next: 'decide' });
     expect(inspectStageTransition('recover', 'ask_user')).toEqual({ ok: true, next: 'ask_user' });
   });

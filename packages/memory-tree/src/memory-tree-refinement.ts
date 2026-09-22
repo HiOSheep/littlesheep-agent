@@ -1,4 +1,4 @@
-// Enforces bounded, deduplicated post-DECIDE memory refinement per run.
+// Enforces bounded, deduplicated in-run memory refinement after the task book exists.
 
 import type { MemoryBranchContext, MemoryPrimeOptions, MemoryPrimeResult } from './types.js';
 import type { MemoryTaskQuery } from './task-query.js';

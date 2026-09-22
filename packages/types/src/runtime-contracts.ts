@@ -655,7 +655,8 @@ export interface RuntimeEventIngress {
   summary(runId: string): RuntimeEventQueueSummary | null;
 }
 
-export type RuntimeActiveRunPhase = 'planning' | 'executing' | 'verifying' | 'finalizing';
+/** Active-run phase before any step, tool or verification evidence exists. */
+export type RuntimeActiveRunPhase = 'starting' | 'executing' | 'verifying' | 'finalizing';
 
 export type RuntimeActiveRunControlStatus = 'running' | 'pause_requested' | 'interrupt_requested';
 

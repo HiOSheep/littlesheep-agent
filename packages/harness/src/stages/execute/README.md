@@ -1,9 +1,9 @@
 # EXECUTE 内部边界
 
-最后更新：2026-09-22 12:40:16
+最后更新：2026-09-22 13:10:04
 
 - `contracts.ts`：依赖、工具循环和输出清洗契约，并区分模型可见的 `tools` 目录与本轮真正可调用的 `admittedTools`。
-- `guidance.ts`：基础消息装配与步骤提示片段。
+- `guidance.ts`：基础消息装配与步骤提示片段；`renderPlanGuidance`/`renderTaskBookGuidance` 把 TaskBook 与计划渲染进主循环提示（不提及已删除的 stage），`renderStepGuidance` 是第二执行体系遗留的步骤契约渲染，当前没有运行期调用方。
 - `prompt.ts`：装配 EXECUTE System Prompt，不拥有工具执行权。
 - `tool-loop.ts`：唯一主循环——模型工具循环，把调用交给统一 Tool Execution Service，并保留本轮请求消息与工具目录供有界纠正复用。
 - `model-transcript.ts`：有序 thinking/tool/text 转录行的发布、重置与关闭。

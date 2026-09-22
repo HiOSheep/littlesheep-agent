@@ -1,9 +1,9 @@
-// Next-Harness ordered transcript.
+// Ordered model transcript.
 //
-// The durable path publishes the model's own thinking and the per-turn
+// The durable driver publishes the model's own thinking and the per-turn
 // assistant prose so the conversation can render thinking / tool / text rows in
-// production order. The legacy Harness never enables this: it keeps its
-// previous event sequence and display contract.
+// production order. Runs that never stream a transcript keep the activity-step
+// layout instead.
 import type { ChatRequest, ChatResponse, LlmClient, StreamChunk } from '@littlesheep/llm';
 import type { RunContext, ToolStreamEvent } from '@littlesheep/types';
 import { callModelChat, callModelChatStream, modelRequestIdFor } from '../../model-observability.js';

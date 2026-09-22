@@ -1,6 +1,6 @@
 # @littlesheep/harness
 
-最后更新：2026-09-22 12:40:16
+最后更新：2026-09-22 13:10:04
 
 实现 LittleSheep 的核心 Agent Runtime：硬控制流状态机负责活动路由、单一主循环执行、验证、Runtime 恢复、澄清和收尾。
 
@@ -25,4 +25,5 @@
 ## 测试与修改定位
 
 - 总体回归在 `src/default-harness.test.ts`、`src/e2e.test.ts`；追加式前缀与固定工具目录由 `src/run-tail-ledger.test.ts`、`src/request-prefix-append-only.test.ts`、`src/tool-catalog-stability.test.ts` 覆盖；回答级连续性与摘要字段解析分别在 `src/response-continuity.test.ts`、`src/session-summary-fidelity-text.test.ts`，各阶段测试与实现同目录。
+- 路由必须指向驱动实际注册的 stage：`src/stage-routing-registry.test.ts` 扫描 `src/stages/` 的 `next` 目标并与 `default-harness.ts` 的注册表比对，退役 stage 名（`decide`/`evolve`/`capture`）既不能作为路由目标，也不能重新注册。
 - 修改状态转移先更新 stage 契约和特征测试，再调整实现。

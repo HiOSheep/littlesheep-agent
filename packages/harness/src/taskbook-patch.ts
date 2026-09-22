@@ -1,8 +1,8 @@
 // Safe, deterministic application of runtime TaskBook patches.
 //
-// A patch is a narrow host-validated mutation. It is never a replacement for
-// DECIDE: completed, in-progress, failed, blocked, and skipped steps remain
-// protected evidence, while only pending work may be edited or removed.
+// A patch is a narrow host-validated mutation, never a re-plan: completed,
+// in-progress, failed, blocked, and skipped steps remain protected evidence,
+// while only pending work may be edited or removed.
 
 import type {
   PlanStep,

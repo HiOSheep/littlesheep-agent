@@ -124,7 +124,7 @@ export function handleRunToolEvent(
     return
   }
 
-  // Legacy `reasoning` events are direct Harness-stage projections. Keep
+  // Legacy `reasoning` events are projections of stages that no longer run. Keep
   // transport compatibility, but do not turn control state into visible UI.
   if (evt.type === 'reasoning') return
 

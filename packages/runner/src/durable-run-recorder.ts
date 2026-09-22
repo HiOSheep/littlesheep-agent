@@ -1,4 +1,4 @@
-// Ordered adapter from legacy Runner boundaries to the next Harness event log.
+// Ordered adapter from Runner boundaries to the durable event log.
 // It is observational: it never invokes a tool/model and never publishes UI text.
 import { createHash } from 'node:crypto';
 import type {

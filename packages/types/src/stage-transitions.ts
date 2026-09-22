@@ -12,6 +12,13 @@ const targets = (...values: StageTransitionTarget[]): readonly StageTransitionTa
  *
  * `exit` is intentionally present for every stage: Runtime control events,
  * stage exceptions and provider failures must always have a terminal escape.
+ *
+ * Edges into `decide`, `evolve` and `capture` are historical. Those stages are
+ * no longer registered, so no live route may target them; the edges stay only so
+ * records written before the second execution system was deleted keep parsing.
+ * The driver validates every real transition with `inspectStageTransition`, and
+ * `@littlesheep/harness` guards its routing sources against naming a stage the
+ * registry does not contain.
  */
 export const allowedTransitions: StageTransitionManifest = Object.freeze({
   enter: targets('classify', 'exit'),
@@ -21,7 +28,10 @@ export const allowedTransitions: StageTransitionManifest = Object.freeze({
   // therefore use the compatibility shortcut directly to FINALIZE.
   execute: targets('verify', 'recover', 'decide', 'finalize', 'exit'),
   recover: targets('classify', 'decide', 'execute', 'verify', 'reply', 'ask_user', 'finalize', 'exit'),
-  verify: targets('capture', 'recover', 'decide', 'ask_user', 'finalize', 'exit'),
+  // `execute` carries the live partial re-plan back into the one main loop.
+  // `decide` and `capture` stay listed for older persisted records only; no
+  // registered stage routes there any more.
+  verify: targets('execute', 'capture', 'recover', 'decide', 'ask_user', 'finalize', 'exit'),
   // `evolve` is retained only so persisted records from older runs can still be
   // read and replayed; the stage is no longer registered or reachable.
   evolve: targets('capture', 'exit'),

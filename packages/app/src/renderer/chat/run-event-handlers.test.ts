@@ -27,7 +27,7 @@ function dispatch(context: ReturnType<typeof harness>['context'], event: Partial
   handleRunToolEvent(event as ToolStreamEvent, context)
 }
 
-describe('next-Harness transcript reduction', () => {
+describe('model transcript reduction', () => {
   it('HA-04-01 applies append/replace once and ignores duplicate sequence numbers', () => {
     const { context, activity } = harness()
     const ref = (sequence: number, operation: 'append' | 'replace' | 'reset') => ({

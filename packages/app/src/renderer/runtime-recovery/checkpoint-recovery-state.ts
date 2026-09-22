@@ -3,7 +3,7 @@
 import type { ToolStreamEvent } from '@littlesheep/types'
 
 export interface CheckpointRecoveryProgress {
-  phase: 'preparing' | 'planning' | 'executing' | 'verifying' | 'finalizing'
+  phase: 'preparing' | 'restored' | 'executing' | 'verifying' | 'finalizing'
   label: string
   detail?: string
 }
@@ -19,7 +19,7 @@ export function checkpointRecoveryProgressForEvent(
 ): CheckpointRecoveryProgress {
   if (event.type === 'task_book') {
     return {
-      phase: 'planning',
+      phase: 'restored',
       label: '任务书已恢复',
       detail: bounded(event.taskBook?.goal ?? event.summary),
     }
@@ -64,6 +64,9 @@ export function checkpointRecoveryProgressForEvent(
 }
 
 export function checkpointStageLabel(stage: string): string {
+  // `decide`, `evolve` and `capture` are historical stage names: checkpoints
+  // written before the second execution system was deleted can still carry them,
+  // so the reader keeps labels for them even though no stage routes there.
   const labels: Record<string, string> = {
     enter: '进入任务',
     classify: '判断需求',

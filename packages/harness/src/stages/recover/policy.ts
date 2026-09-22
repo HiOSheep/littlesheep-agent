@@ -76,11 +76,13 @@ export function isStructuredDecodeFailure(error: RunContext['lastError']): boole
 export function retryStageFor(stage: StageName | undefined): StageName {
   switch (stage) {
     case 'classify':
-    case 'decide':
     case 'execute':
     case 'verify':
     case 'reply':
       return stage;
+    // A legacy checkpoint can still name DECIDE (or any other retired stage) as
+    // the failing stage. That stage no longer exists, and dispatching to it would
+    // exit with "no stage registered"; retrying means re-entering the main loop.
     default:
       return 'execute';
   }

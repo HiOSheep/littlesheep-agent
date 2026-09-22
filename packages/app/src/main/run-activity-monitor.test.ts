@@ -11,7 +11,7 @@ import { RunActivityMonitor } from './run-activity-monitor.js'
 function run(
   runId: string,
   startedAt: string,
-  phase: RuntimeActiveRunSnapshot['phase'] = 'planning',
+  phase: RuntimeActiveRunSnapshot['phase'] = 'starting',
 ): RuntimeActiveRunSnapshot {
   return {
     runId,

@@ -323,9 +323,9 @@ export function webErrorLabel(value: string): string {
 }
 
 /**
- * Next-Harness transcript: thinking, tool rows, and per-turn prose in the
- * exact order the model produced them. Only the durable path emits the
- * transcript entries, so the legacy Harness keeps its previous layout.
+ * Model transcript: thinking, tool rows, and per-turn prose in the exact order
+ * the model produced them. The single durable driver owns these entries; a run
+ * without a transcript falls back to the activity-step layout.
  */
 export function AssistantTranscript({
   transcript,
@@ -572,8 +572,8 @@ function cacheReasonLabel(reason: string): string {
 }
 
 /**
- * Reference-harness turn footer: once the turn is no longer running the
- * process content is summarised as 已思考 · N 次工具调用 · N 条消息.
+ * Turn footer: once the turn is no longer running the process content is
+ * summarised as 已思考 · N 次工具调用 · N 条消息.
  */
 function transcriptSummary(activity: AssistantTurnActivity, transcript: TranscriptEntry[]): string | undefined {
   if (activity.status === 'running') return undefined

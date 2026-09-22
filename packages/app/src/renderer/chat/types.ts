@@ -81,7 +81,7 @@ export interface LiveReasoningEvent {
 }
 
 
-/** One ordered row of the next-Harness transcript (thinking / prose / tool). */
+/** One ordered row of the model transcript (thinking / prose / tool). */
 export type TranscriptEntry =
   | { kind: 'reasoning'; id: string; text: string; status: 'running' | 'done' | 'failed' | 'aborted' }
   | { kind: 'text'; id: string; text: string }
@@ -95,7 +95,7 @@ export interface AssistantTurnActivity extends Omit<HistoryActivity, 'status' | 
   reasoning?: LiveReasoningEvent[]
   steps: LiveStepEvent[]
   tools: LiveToolEvent[]
-  /** Present only for the next Harness; render rows in this order. */
+  /** Present for the durable transcript; render rows in this order. */
   transcript?: TranscriptEntry[]
   transcriptStreamWatermarks?: Record<string, number>
   transcriptLatestAttempts?: Record<string, number>

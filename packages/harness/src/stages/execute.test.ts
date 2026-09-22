@@ -175,7 +175,7 @@ describe('executeStage', () => {
   });
 
 
-  it('streams thinking and per-turn prose into the ordered next-Harness transcript', async () => {
+  it('streams thinking and per-turn prose into the ordered model transcript', async () => {
     const tool = makeTool('glob', { ok: true, output: 'attachments/' });
     const llm = createMockLlm([
       toolCallResponse([{ id: 'glob-1', name: 'glob', args: { pattern: '*' } }]),
