@@ -1,6 +1,6 @@
 {
   "check": "real-long-task-baseline",
-  "recordedAt": "2026-09-22T11:30:13.298Z",
+  "recordedAt": "2026-09-22T11:49:06.802Z",
   "manifestVersion": 1,
   "manifestValid": true,
   "manifestErrors": [],
@@ -144,12 +144,12 @@
       ]
     }
   ],
-  "runs": 1,
+  "runs": 2,
   "expectedRuns": 12,
-  "usageCompleteRuns": 1,
+  "usageCompleteRuns": 2,
   "metRuns": 0,
-  "belowRedLineRuns": 1,
-  "runsWithFunctionalFailure": 1,
+  "belowRedLineRuns": 2,
+  "runsWithFunctionalFailure": 2,
   "results": [
     {
       "taskId": "L1",
@@ -625,6 +625,442 @@
       },
       "rootName": "littlesheep-real-long-task-lBeNe4",
       "source": "real-long-task-L1-10.json"
+    },
+    {
+      "taskId": "L1",
+      "attempt": 11,
+      "classId": "L",
+      "turnsOk": 17,
+      "turns": 28,
+      "acceptanceOk": 6,
+      "acceptance": 6,
+      "failedChecks": [],
+      "requests": 222,
+      "input": 13902643,
+      "cached": 13792512,
+      "hitPercent": 99.20784127162008,
+      "requestsWithoutUsage": 0,
+      "providerInconsistencies": 0,
+      "hitPercentWithoutInconsistencies": 99.20784127162008,
+      "auxiliaryRequests": 0,
+      "hAllPercent": 99.20784127162008,
+      "nodes": [
+        {
+          "id": "survey",
+          "turn": 1,
+          "hitPercent": 65.05432877672625,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-2",
+          "turn": 2,
+          "hitPercent": 88.8538022839565,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-3",
+          "turn": 3,
+          "hitPercent": 88.8538022839565,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "turn-4",
+          "turn": 4,
+          "hitPercent": 93.80891617618568,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-5",
+          "turn": 5,
+          "hitPercent": 94.88129820695181,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-6",
+          "turn": 6,
+          "hitPercent": 94.88129820695181,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "turn-7",
+          "turn": 7,
+          "hitPercent": 87.70129704215219,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "ledger-basics",
+          "turn": 8,
+          "hitPercent": 90.79146189393383,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-9",
+          "turn": 9,
+          "hitPercent": 90.79146189393383,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "turn-10",
+          "turn": 10,
+          "hitPercent": 90.79146189393383,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "turn-11",
+          "turn": 11,
+          "hitPercent": 90.79146189393383,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "turn-12",
+          "turn": 12,
+          "hitPercent": 94.63109657505974,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-13",
+          "turn": 13,
+          "hitPercent": 94.63109657505974,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "turn-14",
+          "turn": 14,
+          "hitPercent": 95.66656338760632,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-15",
+          "turn": 15,
+          "hitPercent": 95.66656338760632,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "core-and-refactor",
+          "turn": 16,
+          "hitPercent": 96.66173884081175,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-17",
+          "turn": 17,
+          "hitPercent": 96.66173884081175,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "turn-18",
+          "turn": 18,
+          "hitPercent": 97.24577746051786,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-19",
+          "turn": 19,
+          "hitPercent": 97.96832883960079,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-20",
+          "turn": 20,
+          "hitPercent": 98.08131315527302,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-21",
+          "turn": 21,
+          "hitPercent": 98.08131315527302,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "range-and-export",
+          "turn": 22,
+          "hitPercent": 98.43337982175167,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-23",
+          "turn": 23,
+          "hitPercent": 98.56194658938281,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-24",
+          "turn": 24,
+          "hitPercent": 98.6580194562235,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "docs-aligned",
+          "turn": 25,
+          "hitPercent": 98.6580194562235,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "turn-26",
+          "turn": 26,
+          "hitPercent": 98.73853554954383,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-27",
+          "turn": 27,
+          "hitPercent": 98.7851582068315,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "final-verification",
+          "turn": 28,
+          "hitPercent": 98.7851582068315,
+          "withinTarget": null,
+          "availability": "incomplete"
+        }
+      ],
+      "conclusion": "not met",
+      "losses": {
+        "coldStart": 4271,
+        "rebuild": 46296,
+        "appendResidual": 59564,
+        "unknownUsage": 0,
+        "rebuildThresholdTokens": 1024,
+        "measuredRequests": 222,
+        "appendResidualPerRequest": 287.7487922705314,
+        "appendResidualMedian": 245,
+        "appendResidualMax": 998,
+        "rebuildEvents": [
+          {
+            "ordinal": 2,
+            "runId": "cdcddde3-a89d-42bc-b945-c9d734a93159",
+            "purpose": "execute_tool_loop",
+            "input": 6185,
+            "previousInput": 4527,
+            "promptGrowth": 1658,
+            "uncached": 1449,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 42,
+            "runId": "7e37d42e-4f11-4354-b8d6-21e3aa4eb17e",
+            "purpose": "execute_tool_loop",
+            "input": 26495,
+            "previousInput": 25975,
+            "promptGrowth": 520,
+            "uncached": 25983,
+            "reuseWaste": 25463,
+            "changedComponents": [],
+            "invalidationReasons": [
+              "prompt_version_changed"
+            ],
+            "stablePrefixFingerprintChanged": true
+          },
+          {
+            "ordinal": 51,
+            "runId": "2eae2929-22d2-4d1f-8338-e2dcd1a16105",
+            "purpose": "execute_tool_loop",
+            "input": 29962,
+            "previousInput": 28898,
+            "promptGrowth": 1064,
+            "uncached": 1034,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 74,
+            "runId": "483f79b4-6556-41f6-bce7-3265c9bb930f",
+            "purpose": "execute_tool_loop",
+            "input": 40899,
+            "previousInput": 38086,
+            "promptGrowth": 2813,
+            "uncached": 2755,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 82,
+            "runId": "483f79b4-6556-41f6-bce7-3265c9bb930f",
+            "purpose": "execute_tool_loop",
+            "input": 46768,
+            "previousInput": 45664,
+            "promptGrowth": 1104,
+            "uncached": 1072,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 89,
+            "runId": "72730131-ec22-4eb7-9e54-b0dba4481248",
+            "purpose": "execute_tool_loop",
+            "input": 53055,
+            "previousInput": 51853,
+            "promptGrowth": 1202,
+            "uncached": 1215,
+            "reuseWaste": 13,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 104,
+            "runId": "9c74f697-7050-4771-8e5c-5232e198f0c5",
+            "purpose": "execute_tool_loop",
+            "input": 60843,
+            "previousInput": 59248,
+            "promptGrowth": 1595,
+            "uncached": 1707,
+            "reuseWaste": 112,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 119,
+            "runId": "7e4a4bcd-d7fa-457e-86d4-d505c7bc4ac1",
+            "purpose": "execute_tool_loop",
+            "input": 70785,
+            "previousInput": 69784,
+            "promptGrowth": 1001,
+            "uncached": 1025,
+            "reuseWaste": 24,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 127,
+            "runId": "1808b510-4f37-47f0-b318-70bc4a7e70bd",
+            "purpose": "execute_tool_loop",
+            "input": 72883,
+            "previousInput": 71868,
+            "promptGrowth": 1015,
+            "uncached": 1075,
+            "reuseWaste": 60,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 152,
+            "runId": "c77e1da0-acf4-4fee-ad44-c8db8894c5d0",
+            "purpose": "execute_tool_loop",
+            "input": 83744,
+            "previousInput": 82471,
+            "promptGrowth": 1273,
+            "uncached": 1312,
+            "reuseWaste": 39,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 174,
+            "runId": "f8562174-b57c-4e2b-a512-485ff0ae5eda",
+            "purpose": "execute_tool_loop",
+            "input": 99527,
+            "previousInput": 96450,
+            "promptGrowth": 3077,
+            "uncached": 3015,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 180,
+            "runId": "e52ef9c7-b1a0-41c8-b96e-bb9f858dfd62",
+            "purpose": "execute_tool_loop",
+            "input": 104616,
+            "previousInput": 103156,
+            "promptGrowth": 1460,
+            "uncached": 1448,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 209,
+            "runId": "324d85ef-48bd-4ca7-bc8a-48db38634aaf",
+            "purpose": "execute_tool_loop",
+            "input": 116497,
+            "previousInput": 114979,
+            "promptGrowth": 1518,
+            "uncached": 1553,
+            "reuseWaste": 35,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 213,
+            "runId": "6f6fbd40-5939-479a-9915-19e97ac3eb93",
+            "purpose": "execute_tool_loop",
+            "input": 119925,
+            "previousInput": 118392,
+            "promptGrowth": 1533,
+            "uncached": 1653,
+            "reuseWaste": 120,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          }
+        ],
+        "newContent": 411075,
+        "reuseWaste": {
+          "total": 31823,
+          "fromRebuild": 25866,
+          "fromAppend": 5957
+        },
+        "derivedBounds": {
+          "reuseWasteRecovered": {
+            "input": 13902643,
+            "cached": 13824335,
+            "hitPercent": 99.4367401939329
+          },
+          "coldStartAlsoCached": {
+            "input": 13902643,
+            "cached": 13828606,
+            "hitPercent": 99.46746097127
+          },
+          "derived": true
+        }
+      },
+      "rootName": "littlesheep-real-long-task-Z9LJUf",
+      "source": "real-long-task-L1-11.json"
     }
   ]
 }

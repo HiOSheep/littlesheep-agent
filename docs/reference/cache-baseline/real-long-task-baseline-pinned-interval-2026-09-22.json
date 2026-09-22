@@ -1,0 +1,1109 @@
+{
+  "check": "real-long-task-baseline",
+  "recordedAt": "2026-09-22T11:38:27.715Z",
+  "manifestVersion": 1,
+  "manifestValid": true,
+  "manifestErrors": [],
+  "frozenTasks": [
+    {
+      "id": "A1",
+      "classId": "A",
+      "title": "修复购物车优惠券计税并补测试",
+      "turns": 3,
+      "nodes": [
+        {
+          "id": "diagnosis",
+          "turn": 1,
+          "label": "调查完成：说清优惠券在税前还是税后扣减，并指出失败的用例"
+        },
+        {
+          "id": "fix",
+          "turn": 2,
+          "label": "执行完成：按规则修复且原有测试全部通过"
+        },
+        {
+          "id": "boundary",
+          "turn": 3,
+          "label": "自然完成：补上满减门槛用例并复跑通过"
+        }
+      ]
+    },
+    {
+      "id": "A2",
+      "classId": "A",
+      "title": "修复库存预留与订单取消并补测试",
+      "turns": 3,
+      "nodes": [
+        {
+          "id": "diagnosis",
+          "turn": 1,
+          "label": "调查完成：说清重复取消与释放越界两处不符合规则的地方"
+        },
+        {
+          "id": "fix",
+          "turn": 2,
+          "label": "执行完成：两个模块按规则修好且测试全部通过"
+        },
+        {
+          "id": "boundary",
+          "turn": 3,
+          "label": "自然完成：补上释放边界用例并复跑通过"
+        }
+      ]
+    },
+    {
+      "id": "B1",
+      "classId": "B",
+      "title": "汇总逾期工单并交付逾期清单",
+      "turns": 3,
+      "nodes": [
+        {
+          "id": "counts",
+          "turn": 1,
+          "label": "调查完成：说出逾期条数与数据问题条数"
+        },
+        {
+          "id": "delivery",
+          "turn": 2,
+          "label": "执行完成：report/overdue.md 落盘且清单与数字齐全"
+        },
+        {
+          "id": "reconciliation",
+          "turn": 3,
+          "label": "自然完成：报告与全部来源逐条核对一致"
+        }
+      ]
+    },
+    {
+      "id": "B2",
+      "classId": "B",
+      "title": "核对供应商发票差异并交付对账报告",
+      "turns": 3,
+      "nodes": [
+        {
+          "id": "counts",
+          "turn": 1,
+          "label": "调查完成：说出差异笔数、合计金额与数据问题"
+        },
+        {
+          "id": "delivery",
+          "turn": 2,
+          "label": "执行完成：report/reconcile.md 落盘且明细、数据问题与红字通知单齐全"
+        },
+        {
+          "id": "reconciliation",
+          "turn": 3,
+          "label": "自然完成：重复发票与孤儿发票已排除在金额之外并复述一致"
+        }
+      ]
+    },
+    {
+      "id": "C1",
+      "classId": "C",
+      "title": "结合供应商材料与口头前提完成选型评审",
+      "turns": 3,
+      "nodes": [
+        {
+          "id": "screening",
+          "turn": 1,
+          "label": "调查完成：说出三家方案的淘汰原因"
+        },
+        {
+          "id": "delivery",
+          "turn": 2,
+          "label": "执行完成：可行方案与折后总价写入报告"
+        },
+        {
+          "id": "memory-anchor",
+          "turn": 3,
+          "label": "自然完成：报告写入本轮口头给出的预算与折扣并算出剩余额度"
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "classId": "C",
+      "title": "结合故障材料与口头前提完成复盘交付",
+      "turns": 3,
+      "nodes": [
+        {
+          "id": "contradictions",
+          "turn": 1,
+          "label": "调查完成：说出矛盾条数与逐条内容"
+        },
+        {
+          "id": "timeline",
+          "turn": 2,
+          "label": "执行完成：权威时间线与矛盾写入报告"
+        },
+        {
+          "id": "disclosure",
+          "turn": 3,
+          "label": "自然完成：对外口径写入本轮口头给出的变更单编号与原话"
+        }
+      ]
+    }
+  ],
+  "runs": 12,
+  "expectedRuns": 12,
+  "usageCompleteRuns": 12,
+  "metRuns": 0,
+  "belowRedLineRuns": 12,
+  "runsWithFunctionalFailure": 0,
+  "results": [
+    {
+      "taskId": "A1",
+      "attempt": 1,
+      "classId": "A",
+      "turnsOk": 3,
+      "turns": 3,
+      "acceptanceOk": 3,
+      "acceptance": 3,
+      "failedChecks": [],
+      "requests": 10,
+      "input": 66332,
+      "cached": 59008,
+      "hitPercent": 88.95857203159862,
+      "requestsWithoutUsage": 0,
+      "providerInconsistencies": 0,
+      "hitPercentWithoutInconsistencies": 88.95857203159862,
+      "auxiliaryRequests": 0,
+      "hAllPercent": 88.95857203159862,
+      "nodes": [
+        {
+          "id": "diagnosis",
+          "turn": 1,
+          "hitPercent": 47.62192056309703,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "fix",
+          "turn": 2,
+          "hitPercent": 82.24551910720325,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "boundary",
+          "turn": 3,
+          "hitPercent": 88.95857203159862,
+          "withinTarget": false,
+          "availability": "complete"
+        }
+      ],
+      "conclusion": "not met",
+      "losses": {
+        "coldStart": 4259,
+        "rebuild": 0,
+        "appendResidual": 3065,
+        "unknownUsage": 0,
+        "rebuildThresholdTokens": 1024,
+        "measuredRequests": 10,
+        "appendResidualPerRequest": 340.55555555555554,
+        "appendResidualMedian": 251,
+        "appendResidualMax": 950,
+        "rebuildEvents": [],
+        "newContent": 3554,
+        "reuseWaste": {
+          "total": 373,
+          "fromRebuild": 0,
+          "fromAppend": 373
+        },
+        "derivedBounds": {
+          "reuseWasteRecovered": {
+            "input": 66332,
+            "cached": 59381,
+            "hitPercent": 89.52089489235965
+          },
+          "coldStartAlsoCached": {
+            "input": 66332,
+            "cached": 63640,
+            "hitPercent": 95.94162696737622
+          },
+          "derived": true
+        }
+      },
+      "rootName": "littlesheep-real-long-task-UidM68",
+      "source": "real-long-task-A1-1.json"
+    },
+    {
+      "taskId": "A1",
+      "attempt": 2,
+      "classId": "A",
+      "turnsOk": 3,
+      "turns": 3,
+      "acceptanceOk": 3,
+      "acceptance": 3,
+      "failedChecks": [],
+      "requests": 10,
+      "input": 65676,
+      "cached": 58368,
+      "hitPercent": 88.87264754248127,
+      "requestsWithoutUsage": 0,
+      "providerInconsistencies": 0,
+      "hitPercentWithoutInconsistencies": 88.87264754248127,
+      "auxiliaryRequests": 0,
+      "hAllPercent": 88.87264754248127,
+      "nodes": [
+        {
+          "id": "diagnosis",
+          "turn": 1,
+          "hitPercent": 63.52567496029645,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "fix",
+          "turn": 2,
+          "hitPercent": 84.36940271774175,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "boundary",
+          "turn": 3,
+          "hitPercent": 88.87264754248127,
+          "withinTarget": false,
+          "availability": "complete"
+        }
+      ],
+      "conclusion": "not met",
+      "losses": {
+        "coldStart": 4254,
+        "rebuild": 0,
+        "appendResidual": 3054,
+        "unknownUsage": 0,
+        "rebuildThresholdTokens": 1024,
+        "measuredRequests": 10,
+        "appendResidualPerRequest": 339.3333333333333,
+        "appendResidualMedian": 266,
+        "appendResidualMax": 673,
+        "rebuildEvents": [],
+        "newContent": 3692,
+        "reuseWaste": {
+          "total": 397,
+          "fromRebuild": 0,
+          "fromAppend": 397
+        },
+        "derivedBounds": {
+          "reuseWasteRecovered": {
+            "input": 65676,
+            "cached": 58765,
+            "hitPercent": 89.47713015408978
+          },
+          "coldStartAlsoCached": {
+            "input": 65676,
+            "cached": 63019,
+            "hitPercent": 95.95438211827761
+          },
+          "derived": true
+        }
+      },
+      "rootName": "littlesheep-real-long-task-J8e3Dw",
+      "source": "real-long-task-A1-2.json"
+    },
+    {
+      "taskId": "A2",
+      "attempt": 1,
+      "classId": "A",
+      "turnsOk": 3,
+      "turns": 3,
+      "acceptanceOk": 4,
+      "acceptance": 4,
+      "failedChecks": [],
+      "requests": 9,
+      "input": 67944,
+      "cached": 60032,
+      "hitPercent": 88.35511597786412,
+      "requestsWithoutUsage": 0,
+      "providerInconsistencies": 0,
+      "hitPercentWithoutInconsistencies": 88.35511597786412,
+      "auxiliaryRequests": 0,
+      "hAllPercent": 88.35511597786412,
+      "nodes": [
+        {
+          "id": "diagnosis",
+          "turn": 1,
+          "hitPercent": 63.14567614625653,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "fix",
+          "turn": 2,
+          "hitPercent": 77.74732120608024,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "boundary",
+          "turn": 3,
+          "hitPercent": 88.35511597786412,
+          "withinTarget": false,
+          "availability": "complete"
+        }
+      ],
+      "conclusion": "not met",
+      "losses": {
+        "coldStart": 4248,
+        "rebuild": 1484,
+        "appendResidual": 2180,
+        "unknownUsage": 0,
+        "rebuildThresholdTokens": 1024,
+        "measuredRequests": 9,
+        "appendResidualPerRequest": 311.42857142857144,
+        "appendResidualMedian": 222,
+        "appendResidualMax": 618,
+        "rebuildEvents": [
+          {
+            "ordinal": 2,
+            "runId": "6da37215-a82f-49f8-93d1-34ee8f33ce06",
+            "purpose": "execute_tool_loop",
+            "input": 6092,
+            "previousInput": 4504,
+            "promptGrowth": 1588,
+            "uncached": 1484,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          }
+        ],
+        "newContent": 4996,
+        "reuseWaste": {
+          "total": 92,
+          "fromRebuild": 0,
+          "fromAppend": 92
+        },
+        "derivedBounds": {
+          "reuseWasteRecovered": {
+            "input": 67944,
+            "cached": 60124,
+            "hitPercent": 88.4905216060285
+          },
+          "coldStartAlsoCached": {
+            "input": 67944,
+            "cached": 64372,
+            "hitPercent": 94.74272930648769
+          },
+          "derived": true
+        }
+      },
+      "rootName": "littlesheep-real-long-task-H5BTcz",
+      "source": "real-long-task-A2-1.json"
+    },
+    {
+      "taskId": "A2",
+      "attempt": 2,
+      "classId": "A",
+      "turnsOk": 3,
+      "turns": 3,
+      "acceptanceOk": 4,
+      "acceptance": 4,
+      "failedChecks": [],
+      "requests": 9,
+      "input": 66253,
+      "cached": 58368,
+      "hitPercent": 88.09865213650703,
+      "requestsWithoutUsage": 0,
+      "providerInconsistencies": 0,
+      "hitPercentWithoutInconsistencies": 88.09865213650703,
+      "auxiliaryRequests": 0,
+      "hAllPercent": 88.09865213650703,
+      "nodes": [
+        {
+          "id": "diagnosis",
+          "turn": 1,
+          "hitPercent": 63.04661220567035,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "fix",
+          "turn": 2,
+          "hitPercent": 77.93872580438406,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "boundary",
+          "turn": 3,
+          "hitPercent": 88.09865213650703,
+          "withinTarget": false,
+          "availability": "complete"
+        }
+      ],
+      "conclusion": "not met",
+      "losses": {
+        "coldStart": 4249,
+        "rebuild": 1342,
+        "appendResidual": 2294,
+        "unknownUsage": 0,
+        "rebuildThresholdTokens": 1024,
+        "measuredRequests": 9,
+        "appendResidualPerRequest": 327.7142857142857,
+        "appendResidualMedian": 254,
+        "appendResidualMax": 561,
+        "rebuildEvents": [
+          {
+            "ordinal": 2,
+            "runId": "eb1b9c3b-fce9-4a12-8e9a-fbcdc63a0e3c",
+            "purpose": "execute_tool_loop",
+            "input": 5822,
+            "previousInput": 4505,
+            "promptGrowth": 1317,
+            "uncached": 1342,
+            "reuseWaste": 25,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          }
+        ],
+        "newContent": 4803,
+        "reuseWaste": {
+          "total": 87,
+          "fromRebuild": 25,
+          "fromAppend": 62
+        },
+        "derivedBounds": {
+          "reuseWasteRecovered": {
+            "input": 66253,
+            "cached": 58455,
+            "hitPercent": 88.22996694489305
+          },
+          "coldStartAlsoCached": {
+            "input": 66253,
+            "cached": 62704,
+            "hitPercent": 94.64326143721794
+          },
+          "derived": true
+        }
+      },
+      "rootName": "littlesheep-real-long-task-QCSzse",
+      "source": "real-long-task-A2-2.json"
+    },
+    {
+      "taskId": "B1",
+      "attempt": 1,
+      "classId": "B",
+      "turnsOk": 3,
+      "turns": 3,
+      "acceptanceOk": 6,
+      "acceptance": 6,
+      "failedChecks": [],
+      "requests": 8,
+      "input": 52244,
+      "cached": 44288,
+      "hitPercent": 84.77145700941735,
+      "requestsWithoutUsage": 0,
+      "providerInconsistencies": 0,
+      "hitPercentWithoutInconsistencies": 84.77145700941735,
+      "auxiliaryRequests": 0,
+      "hAllPercent": 84.77145700941735,
+      "nodes": [
+        {
+          "id": "counts",
+          "turn": 1,
+          "hitPercent": 49.03720133077931,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "delivery",
+          "turn": 2,
+          "hitPercent": 79.8875210040808,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "reconciliation",
+          "turn": 3,
+          "hitPercent": 84.77145700941735,
+          "withinTarget": false,
+          "availability": "complete"
+        }
+      ],
+      "conclusion": "not met",
+      "losses": {
+        "coldStart": 4278,
+        "rebuild": 1190,
+        "appendResidual": 2488,
+        "unknownUsage": 0,
+        "rebuildThresholdTokens": 1024,
+        "measuredRequests": 8,
+        "appendResidualPerRequest": 414.6666666666667,
+        "appendResidualMedian": 290.5,
+        "appendResidualMax": 777,
+        "rebuildEvents": [
+          {
+            "ordinal": 8,
+            "runId": "0fb6c2a2-ecc9-4d1f-ad68-f58291625afd",
+            "purpose": "execute_tool_loop",
+            "input": 8614,
+            "previousInput": 7606,
+            "promptGrowth": 1008,
+            "uncached": 1190,
+            "reuseWaste": 182,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          }
+        ],
+        "newContent": 4080,
+        "reuseWaste": {
+          "total": 251,
+          "fromRebuild": 182,
+          "fromAppend": 69
+        },
+        "derivedBounds": {
+          "reuseWasteRecovered": {
+            "input": 52244,
+            "cached": 44539,
+            "hitPercent": 85.25189495444452
+          },
+          "coldStartAlsoCached": {
+            "input": 52244,
+            "cached": 48817,
+            "hitPercent": 93.44039506929025
+          },
+          "derived": true
+        }
+      },
+      "rootName": "littlesheep-real-long-task-pSm7jI",
+      "source": "real-long-task-B1-1.json"
+    },
+    {
+      "taskId": "B1",
+      "attempt": 2,
+      "classId": "B",
+      "turnsOk": 3,
+      "turns": 3,
+      "acceptanceOk": 6,
+      "acceptance": 6,
+      "failedChecks": [],
+      "requests": 9,
+      "input": 61003,
+      "cached": 53632,
+      "hitPercent": 87.91698768913004,
+      "requestsWithoutUsage": 0,
+      "providerInconsistencies": 0,
+      "hitPercentWithoutInconsistencies": 87.91698768913004,
+      "auxiliaryRequests": 0,
+      "hAllPercent": 87.91698768913004,
+      "nodes": [
+        {
+          "id": "counts",
+          "turn": 1,
+          "hitPercent": 47.76601109430156,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "delivery",
+          "turn": 2,
+          "hitPercent": 80.3164643295594,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "reconciliation",
+          "turn": 3,
+          "hitPercent": 87.91698768913004,
+          "withinTarget": false,
+          "availability": "complete"
+        }
+      ],
+      "conclusion": "not met",
+      "losses": {
+        "coldStart": 4276,
+        "rebuild": 0,
+        "appendResidual": 3095,
+        "unknownUsage": 0,
+        "rebuildThresholdTokens": 1024,
+        "measuredRequests": 9,
+        "appendResidualPerRequest": 386.875,
+        "appendResidualMedian": 215.5,
+        "appendResidualMax": 903,
+        "rebuildEvents": [],
+        "newContent": 4197,
+        "reuseWaste": {
+          "total": 107,
+          "fromRebuild": 0,
+          "fromAppend": 107
+        },
+        "derivedBounds": {
+          "reuseWasteRecovered": {
+            "input": 61003,
+            "cached": 53739,
+            "hitPercent": 88.09238889890662
+          },
+          "coldStartAlsoCached": {
+            "input": 61003,
+            "cached": 58015,
+            "hitPercent": 95.10188023539826
+          },
+          "derived": true
+        }
+      },
+      "rootName": "littlesheep-real-long-task-wShMDB",
+      "source": "real-long-task-B1-2.json"
+    },
+    {
+      "taskId": "B2",
+      "attempt": 1,
+      "classId": "B",
+      "turnsOk": 3,
+      "turns": 3,
+      "acceptanceOk": 6,
+      "acceptance": 6,
+      "failedChecks": [],
+      "requests": 7,
+      "input": 44880,
+      "cached": 38016,
+      "hitPercent": 84.70588235294117,
+      "requestsWithoutUsage": 0,
+      "providerInconsistencies": 0,
+      "hitPercentWithoutInconsistencies": 84.70588235294117,
+      "auxiliaryRequests": 0,
+      "hAllPercent": 84.70588235294117,
+      "nodes": [
+        {
+          "id": "counts",
+          "turn": 1,
+          "hitPercent": 48.17749603803487,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "delivery",
+          "turn": 2,
+          "hitPercent": 79.83903420523139,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "reconciliation",
+          "turn": 3,
+          "hitPercent": 84.70588235294117,
+          "withinTarget": false,
+          "availability": "complete"
+        }
+      ],
+      "conclusion": "not met",
+      "losses": {
+        "coldStart": 4243,
+        "rebuild": 0,
+        "appendResidual": 2621,
+        "unknownUsage": 0,
+        "rebuildThresholdTokens": 1024,
+        "measuredRequests": 7,
+        "appendResidualPerRequest": 436.8333333333333,
+        "appendResidualMedian": 293.5,
+        "appendResidualMax": 989,
+        "rebuildEvents": [],
+        "newContent": 3383,
+        "reuseWaste": {
+          "total": 208,
+          "fromRebuild": 0,
+          "fromAppend": 208
+        },
+        "derivedBounds": {
+          "reuseWasteRecovered": {
+            "input": 44880,
+            "cached": 38224,
+            "hitPercent": 85.16934046345811
+          },
+          "coldStartAlsoCached": {
+            "input": 44880,
+            "cached": 42467,
+            "hitPercent": 94.62344028520499
+          },
+          "derived": true
+        }
+      },
+      "rootName": "littlesheep-real-long-task-s5NkSy",
+      "source": "real-long-task-B2-1.json"
+    },
+    {
+      "taskId": "B2",
+      "attempt": 2,
+      "classId": "B",
+      "turnsOk": 3,
+      "turns": 3,
+      "acceptanceOk": 6,
+      "acceptance": 6,
+      "failedChecks": [],
+      "requests": 7,
+      "input": 45689,
+      "cached": 38784,
+      "hitPercent": 84.88695309593119,
+      "requestsWithoutUsage": 0,
+      "providerInconsistencies": 0,
+      "hitPercentWithoutInconsistencies": 84.88695309593119,
+      "auxiliaryRequests": 0,
+      "hAllPercent": 84.88695309593119,
+      "nodes": [
+        {
+          "id": "counts",
+          "turn": 1,
+          "hitPercent": 48.172724571654946,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "delivery",
+          "turn": 2,
+          "hitPercent": 80.1324942033786,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "reconciliation",
+          "turn": 3,
+          "hitPercent": 84.88695309593119,
+          "withinTarget": false,
+          "availability": "complete"
+        }
+      ],
+      "conclusion": "not met",
+      "losses": {
+        "coldStart": 4243,
+        "rebuild": 0,
+        "appendResidual": 2662,
+        "unknownUsage": 0,
+        "rebuildThresholdTokens": 1024,
+        "measuredRequests": 7,
+        "appendResidualPerRequest": 443.6666666666667,
+        "appendResidualMedian": 287,
+        "appendResidualMax": 990,
+        "rebuildEvents": [],
+        "newContent": 3602,
+        "reuseWaste": {
+          "total": 63,
+          "fromRebuild": 0,
+          "fromAppend": 63
+        },
+        "derivedBounds": {
+          "reuseWasteRecovered": {
+            "input": 45689,
+            "cached": 38847,
+            "hitPercent": 85.02484186565694
+          },
+          "coldStartAlsoCached": {
+            "input": 45689,
+            "cached": 43090,
+            "hitPercent": 94.31154107115498
+          },
+          "derived": true
+        }
+      },
+      "rootName": "littlesheep-real-long-task-LAnZ9Y",
+      "source": "real-long-task-B2-2.json"
+    },
+    {
+      "taskId": "C1",
+      "attempt": 1,
+      "classId": "C",
+      "turnsOk": 3,
+      "turns": 3,
+      "acceptanceOk": 6,
+      "acceptance": 6,
+      "failedChecks": [],
+      "requests": 9,
+      "input": 55045,
+      "cached": 48256,
+      "hitPercent": 87.66645471886638,
+      "requestsWithoutUsage": 0,
+      "providerInconsistencies": 0,
+      "hitPercentWithoutInconsistencies": 87.66645471886638,
+      "auxiliaryRequests": 0,
+      "hAllPercent": 87.66645471886638,
+      "nodes": [
+        {
+          "id": "screening",
+          "turn": 1,
+          "hitPercent": 50.74595722483046,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "delivery",
+          "turn": 2,
+          "hitPercent": 82.0149407978268,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "memory-anchor",
+          "turn": 3,
+          "hitPercent": 87.66645471886638,
+          "withinTarget": false,
+          "availability": "complete"
+        }
+      ],
+      "conclusion": "not met",
+      "losses": {
+        "coldStart": 4260,
+        "rebuild": 0,
+        "appendResidual": 2529,
+        "unknownUsage": 0,
+        "rebuildThresholdTokens": 1024,
+        "measuredRequests": 9,
+        "appendResidualPerRequest": 316.125,
+        "appendResidualMedian": 247,
+        "appendResidualMax": 646,
+        "rebuildEvents": [],
+        "newContent": 2768,
+        "reuseWaste": {
+          "total": 210,
+          "fromRebuild": 0,
+          "fromAppend": 210
+        },
+        "derivedBounds": {
+          "reuseWasteRecovered": {
+            "input": 55045,
+            "cached": 48466,
+            "hitPercent": 88.04796075937868
+          },
+          "coldStartAlsoCached": {
+            "input": 55045,
+            "cached": 52726,
+            "hitPercent": 95.7870832954855
+          },
+          "derived": true
+        }
+      },
+      "rootName": "littlesheep-real-long-task-GUVun1",
+      "source": "real-long-task-C1-1.json"
+    },
+    {
+      "taskId": "C1",
+      "attempt": 2,
+      "classId": "C",
+      "turnsOk": 3,
+      "turns": 3,
+      "acceptanceOk": 6,
+      "acceptance": 6,
+      "failedChecks": [],
+      "requests": 9,
+      "input": 57683,
+      "cached": 50816,
+      "hitPercent": 88.09527937173864,
+      "requestsWithoutUsage": 0,
+      "providerInconsistencies": 0,
+      "hitPercentWithoutInconsistencies": 88.09527937173864,
+      "auxiliaryRequests": 0,
+      "hAllPercent": 88.09527937173864,
+      "nodes": [
+        {
+          "id": "screening",
+          "turn": 1,
+          "hitPercent": 64.44091149973504,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "delivery",
+          "turn": 2,
+          "hitPercent": 82.47562526494278,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "memory-anchor",
+          "turn": 3,
+          "hitPercent": 88.09527937173864,
+          "withinTarget": false,
+          "availability": "complete"
+        }
+      ],
+      "conclusion": "not met",
+      "losses": {
+        "coldStart": 4255,
+        "rebuild": 0,
+        "appendResidual": 2612,
+        "unknownUsage": 0,
+        "rebuildThresholdTokens": 1024,
+        "measuredRequests": 9,
+        "appendResidualPerRequest": 326.5,
+        "appendResidualMedian": 289.5,
+        "appendResidualMax": 564,
+        "rebuildEvents": [],
+        "newContent": 3149,
+        "reuseWaste": {
+          "total": 461,
+          "fromRebuild": 0,
+          "fromAppend": 461
+        },
+        "derivedBounds": {
+          "reuseWasteRecovered": {
+            "input": 57683,
+            "cached": 51277,
+            "hitPercent": 88.894474975296
+          },
+          "coldStartAlsoCached": {
+            "input": 57683,
+            "cached": 55532,
+            "hitPercent": 96.2709983877399
+          },
+          "derived": true
+        }
+      },
+      "rootName": "littlesheep-real-long-task-YN2Ywh",
+      "source": "real-long-task-C1-2.json"
+    },
+    {
+      "taskId": "C2",
+      "attempt": 1,
+      "classId": "C",
+      "turnsOk": 3,
+      "turns": 3,
+      "acceptanceOk": 6,
+      "acceptance": 6,
+      "failedChecks": [],
+      "requests": 8,
+      "input": 49278,
+      "cached": 42496,
+      "hitPercent": 86.23726612281342,
+      "requestsWithoutUsage": 0,
+      "providerInconsistencies": 0,
+      "hitPercentWithoutInconsistencies": 86.23726612281342,
+      "auxiliaryRequests": 0,
+      "hAllPercent": 86.23726612281342,
+      "nodes": [
+        {
+          "id": "contradictions",
+          "turn": 1,
+          "hitPercent": 48.49974398361495,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "timeline",
+          "turn": 2,
+          "hitPercent": 79.22877165522392,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "disclosure",
+          "turn": 3,
+          "hitPercent": 86.23726612281342,
+          "withinTarget": false,
+          "availability": "complete"
+        }
+      ],
+      "conclusion": "not met",
+      "losses": {
+        "coldStart": 4296,
+        "rebuild": 0,
+        "appendResidual": 2486,
+        "unknownUsage": 0,
+        "rebuildThresholdTokens": 1024,
+        "measuredRequests": 8,
+        "appendResidualPerRequest": 355.14285714285717,
+        "appendResidualMedian": 274,
+        "appendResidualMax": 733,
+        "rebuildEvents": [],
+        "newContent": 2824,
+        "reuseWaste": {
+          "total": 218,
+          "fromRebuild": 0,
+          "fromAppend": 218
+        },
+        "derivedBounds": {
+          "reuseWasteRecovered": {
+            "input": 49278,
+            "cached": 42714,
+            "hitPercent": 86.67965420674541
+          },
+          "coldStartAlsoCached": {
+            "input": 49278,
+            "cached": 47010,
+            "hitPercent": 95.39754048459758
+          },
+          "derived": true
+        }
+      },
+      "rootName": "littlesheep-real-long-task-MswOSu",
+      "source": "real-long-task-C2-1.json"
+    },
+    {
+      "taskId": "C2",
+      "attempt": 2,
+      "classId": "C",
+      "turnsOk": 3,
+      "turns": 3,
+      "acceptanceOk": 6,
+      "acceptance": 6,
+      "failedChecks": [],
+      "requests": 8,
+      "input": 49153,
+      "cached": 42368,
+      "hitPercent": 86.19616300124102,
+      "requestsWithoutUsage": 0,
+      "providerInconsistencies": 0,
+      "hitPercentWithoutInconsistencies": 86.19616300124102,
+      "auxiliaryRequests": 0,
+      "hAllPercent": 86.19616300124102,
+      "nodes": [
+        {
+          "id": "contradictions",
+          "turn": 1,
+          "hitPercent": 49.4509963399756,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "timeline",
+          "turn": 2,
+          "hitPercent": 73.8722932730043,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "disclosure",
+          "turn": 3,
+          "hitPercent": 86.19616300124102,
+          "withinTarget": false,
+          "availability": "complete"
+        }
+      ],
+      "conclusion": "not met",
+      "losses": {
+        "coldStart": 4298,
+        "rebuild": 0,
+        "appendResidual": 2487,
+        "unknownUsage": 0,
+        "rebuildThresholdTokens": 1024,
+        "measuredRequests": 8,
+        "appendResidualPerRequest": 355.2857142857143,
+        "appendResidualMedian": 264,
+        "appendResidualMax": 674,
+        "rebuildEvents": [],
+        "newContent": 2819,
+        "reuseWaste": {
+          "total": 327,
+          "fromRebuild": 0,
+          "fromAppend": 327
+        },
+        "derivedBounds": {
+          "reuseWasteRecovered": {
+            "input": 49153,
+            "cached": 42695,
+            "hitPercent": 86.86143266941997
+          },
+          "coldStartAlsoCached": {
+            "input": 49153,
+            "cached": 46993,
+            "hitPercent": 95.6055581551482
+          },
+          "derived": true
+        }
+      },
+      "rootName": "littlesheep-real-long-task-NrkQvV",
+      "source": "real-long-task-C2-2.json"
+    }
+  ]
+}
