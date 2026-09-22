@@ -264,6 +264,85 @@ describe('session-cumulative cache ledger', () => {
     });
   });
 
+  it('flags a provider report that is smaller than the request the Runtime recorded', () => {
+    // The second turn's request strictly extends the first (one more message), yet
+    // the provider reports a prompt ~2k tokens smaller with a cache miss. A growing
+    // transcript cannot produce a smaller prompt, so the two records disagree.
+    const root = makeDataRoot({
+      logs: [
+        runLog({
+          sessionId: 'session-a',
+          runId: 'run-1',
+          startedAt: '2026-09-22T04:00:00.000Z',
+          requests: [{
+            id: 'req-1', createdAt: '2026-09-22T04:00:01.000Z', callContract: { purpose: 'execute_tool_loop' },
+            totalMessageCount: 28,
+            cacheObservation: { providerPrompt: { status: 'partial', tokenCount: 10_150, cachedTokenCount: 9_856, uncachedTokenCount: 294 } },
+          }],
+        }),
+        runLog({
+          sessionId: 'session-a',
+          runId: 'run-2',
+          startedAt: '2026-09-22T04:01:00.000Z',
+          requests: [{
+            id: 'req-2', createdAt: '2026-09-22T04:01:01.000Z', callContract: { purpose: 'execute_tool_loop' },
+            totalMessageCount: 31,
+            cacheObservation: { providerPrompt: { status: 'partial', tokenCount: 8_429, cachedTokenCount: 1_024, uncachedTokenCount: 7_405 } },
+          }],
+        }),
+      ],
+    });
+    const session = projectSessions(readLedger(root)).sessions[0];
+
+    expect(session.inconsistencies).toMatchObject({
+      kind: 'provider_report_smaller_than_request',
+      count: 1,
+      inputDeltaTokens: 1_721,
+      uncachedTokens: 7_405,
+    });
+    expect(session.inconsistencies.samples[0]).toMatchObject({
+      requestId: 'req-2',
+      input: 8_429,
+      previousInput: 10_150,
+      requestMessages: 31,
+      previousRequestMessages: 28,
+    });
+    // The primary ratio stays the whole ledger; the sensitivity view is separate.
+    expect(session.sessionProjection.hitPercent).toBeCloseTo((9_856 + 1_024) / (10_150 + 8_429) * 100, 6);
+    expect(session.sessionProjectionWithoutInconsistencies.hitPercent).toBeCloseTo(9_856 / 10_150 * 100, 6);
+  });
+
+  it('does not flag a smaller prompt when the request itself shrank', () => {
+    const root = makeDataRoot({
+      logs: [
+        runLog({
+          sessionId: 'session-a',
+          runId: 'run-1',
+          startedAt: '2026-09-22T05:00:00.000Z',
+          requests: [{
+            id: 'req-1', createdAt: '2026-09-22T05:00:01.000Z', callContract: { purpose: 'execute_tool_loop' },
+            totalMessageCount: 60,
+            cacheObservation: { providerPrompt: { status: 'partial', tokenCount: 20_000, cachedTokenCount: 19_000, uncachedTokenCount: 1_000 } },
+          }],
+        }),
+        runLog({
+          sessionId: 'session-a',
+          runId: 'run-2',
+          startedAt: '2026-09-22T05:01:00.000Z',
+          requests: [{
+            // A real compaction folded the interval, so the request is smaller too.
+            id: 'req-2', createdAt: '2026-09-22T05:01:01.000Z', callContract: { purpose: 'execute_tool_loop' },
+            totalMessageCount: 22,
+            cacheObservation: { providerPrompt: { status: 'partial', tokenCount: 6_000, cachedTokenCount: 5_500, uncachedTokenCount: 500 } },
+          }],
+        }),
+      ],
+    });
+    const session = projectSessions(readLedger(root)).sessions[0];
+    expect(session.inconsistencies.count).toBe(0);
+    expect(session.sessionProjectionWithoutInconsistencies.hitPercent).toBeCloseTo(session.sessionProjection.hitPercent, 6);
+  });
+
   it('reports a frozen turn that never ran instead of shrinking the sum', () => {
     const projection = projectSessions(readLedger(twoTurnSample()), {
       turnsBySession: {

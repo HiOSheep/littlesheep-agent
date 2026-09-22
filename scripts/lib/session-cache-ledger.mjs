@@ -351,6 +351,10 @@ export function readLedger(dataDir) {
         purpose,
         retryOf: typeof request.retryOf === 'string' ? request.retryOf : undefined,
         projection: projectionOf(purpose),
+        // The request's own size, independent of the provider's report. Used to
+        // check whether a reported prompt that shrank actually came from a smaller
+        // request.
+        ...(typeof request.totalMessageCount === 'number' ? { requestMessages: request.totalMessageCount } : {}),
         ...(usageGapReason ? { usageGapReason } : {}),
         ...buckets,
         ...(observation ? { diagnostics: diagnosticsOf(observation) } : {}),
@@ -480,6 +484,64 @@ function cumulativeCurve(rows) {
   return curve;
 }
 
+/** A reported prompt this much smaller than the previous one is not block residual. */
+const PROVIDER_SHRINK_THRESHOLD_TOKENS = 500;
+
+/**
+ * Requests whose provider report contradicts the request the Runtime recorded.
+ *
+ * The signature: the provider reports a prompt at least 500 tokens *smaller* than
+ * the previous measured request in the session, while the request's own recorded
+ * size (`totalMessageCount`) did not shrink. A transcript that grew cannot produce
+ * a smaller prompt, so the two records disagree. Both readings are possible — the
+ * provider's cache missed the prefix, or its usage report is wrong — and this
+ * module does not decide which; it counts the event, publishes the samples and
+ * offers the sensitivity view, so a conclusion can say how much of the loss sits
+ * behind a report the Runtime cannot corroborate.
+ *
+ * Measured on the 28-turn long task (2026-09-22): seven such requests carried
+ * 66,539 of 153,022 uncached tokens (43%), and one had grown from 34 to 37
+ * messages (`messagesTruncated: false`) while the report fell from 10,150 to 8,429.
+ */
+export function detectProviderUsageInconsistencies(rows) {
+  const requestIds = new Set();
+  const samples = [];
+  let inputDelta = 0;
+  let uncached = 0;
+  let previous;
+  for (const row of rows) {
+    if (row.input === undefined || row.cached === undefined) continue;
+    if (previous
+      && row.input < previous.input - PROVIDER_SHRINK_THRESHOLD_TOKENS
+      && (row.requestMessages ?? 0) >= (previous.requestMessages ?? 0)) {
+      requestIds.add(row.requestId);
+      inputDelta += previous.input - row.input;
+      uncached += row.uncached ?? 0;
+      if (samples.length < 5) {
+        samples.push({
+          requestId: row.requestId,
+          runIndex: row.runIndex,
+          purpose: row.purpose,
+          input: row.input,
+          previousInput: previous.input,
+          cached: row.cached,
+          requestMessages: row.requestMessages,
+          previousRequestMessages: previous.requestMessages,
+        });
+      }
+    }
+    previous = row;
+  }
+  return {
+    kind: 'provider_report_smaller_than_request',
+    requestIds,
+    count: requestIds.size,
+    inputDeltaTokens: inputDelta,
+    uncachedTokens: uncached,
+    samples,
+  };
+}
+
 function groupByPurpose(rows) {
   const byPurpose = new Map();
   for (const row of rows) {
@@ -587,6 +649,7 @@ export function projectSessions(ledger, { turnsBySession } = {}) {
       const sessionProjection = totalsOf(session.turnRows);
       const auxiliary = totalsOf(session.auxiliaryRows);
       const turns = turnsBySession?.[session.sessionId];
+      const inconsistencies = detectProviderUsageInconsistencies(session.turnRows);
       return {
         sessionId: session.sessionId,
         firstRequestAt: session.turnRows[0]?.createdAt,
@@ -597,6 +660,13 @@ export function projectSessions(ledger, { turnsBySession } = {}) {
         auxiliaryByPurpose: groupByPurpose(session.auxiliaryRows),
         all: totalsOf([...session.turnRows, ...session.auxiliaryRows]),
         nodes: turns ? evaluateTurnNodes(session.turnRows, turns) : undefined,
+        inconsistencies,
+        // A sensitivity view, not a second verdict: what the ratio is when the
+        // requests whose provider report contradicts the request itself are left
+        // out. The primary ratio above always stays the whole ledger.
+        sessionProjectionWithoutInconsistencies: totalsOf(
+          session.turnRows.filter((row) => !inconsistencies.requestIds.has(row.requestId)),
+        ),
       };
     })
     .sort((left, right) => (left.firstRequestAt ?? '').localeCompare(right.firstRequestAt ?? ''));

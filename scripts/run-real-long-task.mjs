@@ -398,6 +398,21 @@ function collectLedgerEvidence(report, { plan, environment }) {
   report.session = session
     ? { sessionId: session.sessionId, hUiPercent: session.sessionProjection.hitPercent ?? null, ...totalsView(session.sessionProjection) }
     : null
+  // The provider reported a smaller prompt than the Runtime's own record of the
+  // request. The primary ratio always stays the whole ledger; these fields say how
+  // much of the loss sits behind a report the Runtime cannot corroborate.
+  report.providerInconsistencies = session
+    ? {
+      kind: session.inconsistencies.kind,
+      count: session.inconsistencies.count,
+      inputDeltaTokens: session.inconsistencies.inputDeltaTokens,
+      uncachedTokens: session.inconsistencies.uncachedTokens,
+      samples: session.inconsistencies.samples,
+      hUiPercentWithoutThem: session.sessionProjectionWithoutInconsistencies.hitPercent ?? null,
+      inputWithoutThem: session.sessionProjectionWithoutInconsistencies.input,
+      measuredWithoutThem: session.sessionProjectionWithoutInconsistencies.measuredRequests,
+    }
+    : null
   report.auxiliary = session ? totalsView(session.auxiliary) : null
   report.all = session ? totalsView(session.all) : null
   report.unattributed = totalsView(projection.unattributed)
@@ -525,6 +540,11 @@ function summaryLines(report, includeDataRoot) {
       + `；辅助调用 ${report.auxiliary?.requests ?? 0} 次（${usageCoverageText(report.auxiliary)}）；H_all：${formatPercent(report.all?.hitPercent)}`,
     ...(report.nodeJudgement?.notEvaluated?.length
       ? [`未评估节点 ${report.nodeJudgement.notEvaluated.length} 个（对应回合没有运行）`]
+      : []),
+    ...(report.providerInconsistencies?.count
+      ? [`⚠️ provider 上报的提示词小于 Runtime 记录的请求 ${report.providerInconsistencies.count} 次`
+        + `（合计少报 ${report.providerInconsistencies.inputDeltaTokens} tokens，其中未缓存 ${report.providerInconsistencies.uncachedTokens}）`
+        + `；排除这些请求后 H_ui=${formatPercent(report.providerInconsistencies.hUiPercentWithoutThem)}（仅供参考的敏感性视图，红线判定仍用全账本）`]
       : []),
     `冻结节点（会话累计 H_ui 红线 ${report.conclusion.target ?? 95}%）：`,
     ...(report.nodes.length === 0 ? ['  （冻结节点未被评估）'] : report.nodes.map((node) => (
