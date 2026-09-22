@@ -51,20 +51,21 @@ function messageText(message: Message): string {
 }
 
 /**
- * Keep the last `keepRecent` conversational messages, plus every Runtime tail
- * section that belongs to them. A tail section is part of the request, not part
- * of the conversation, so it must not consume the compaction window.
+ * Everything the last compaction did not summarize, in transcript order.
+ *
+ * The summary's `sourceEndMessageId` is the boundary it covers; the messages after
+ * it are the verbatim task interval. Without a summary the whole transcript is the
+ * interval, which is what lets a session grow append-only until real context
+ * pressure folds it once.
  */
-function trimToRecentConversation(messages: Message[], keepRecent: number): Message[] {
-  let conversational = 0;
-  let start = 0;
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    start = index;
-    if (messages[index]!.runtimeTail === true) continue;
-    conversational += 1;
-    if (conversational >= keepRecent) break;
-  }
-  return start > 0 ? messages.slice(start) : messages;
+function messagesAfterCompaction(
+  messages: readonly Message[],
+  compaction: { sourceEndMessageId?: string } | undefined,
+): Message[] {
+  const cursor = compaction?.sourceEndMessageId;
+  if (!cursor) return [...messages];
+  const index = messages.findIndex((message) => message.id === cursor);
+  return index < 0 ? [...messages] : messages.slice(index + 1);
 }
 
 /** A clarification is pending only when it is the latest conversational turn. */
@@ -200,18 +201,23 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
   const cwd = opts.cwd ?? process.cwd();
   const bootstrapDir = opts.bootstrapDir ?? cwd;
 
-  // 1. Recent session history (respect compaction keepRecent).
-  const keepRecent = opts.config.sessions.compaction.keepRecent;
-  // The window is read with headroom and then trimmed by *conversational*
-  // messages: a Runtime tail section is not conversation, and with ~10 of them per
-  // turn they crowded the turn itself out of a 20-message window, so the next
-  // run's replay started mid-turn and lost the cached prefix (measured on frozen
-  // A1: turn 3 diverged at its second message and re-billed 3,571 tokens).
-  const [rawWindow, sessionMetadata] = await Promise.all([
-    opts.sessionManager.readRecent(opts.sessionId, keepRecent * 4),
+  // 1. The task interval's transcript: everything the last compaction did not fold
+  // into the summary, plus this run's own appends.
+  //
+  // It used to be the last `compaction.keepRecent` conversational messages, which
+  // re-floored the window on every turn once a session grew past it: the replayed
+  // history then started at a different message each turn, so the request stopped
+  // extending the previous one and the Provider re-billed the whole prompt.
+  // Measured on the 28-turn long task (no compaction involved): from turn 3 on, the
+  // first divergence was at message 1 and 417k tokens were re-billed. The
+  // compaction cursor is the real floor — it is the boundary a summary already
+  // covers — and the context budget, not a message count, decides when more has to
+  // be folded in.
+  const [allMessages, sessionMetadata] = await Promise.all([
+    opts.sessionManager.read(opts.sessionId),
     opts.sessionManager.loadMetadata(opts.sessionId),
   ]);
-  const rawHistory = trimToRecentConversation(rawWindow, keepRecent);
+  const rawHistory = messagesAfterCompaction(allMessages, sessionMetadata?.compaction);
   const authoritativeHistory = filterAuthoritativeUserFacingMessages(rawHistory);
   const pendingClarification = latestPendingClarification(authoritativeHistory);
   const clarificationResponse: ClarificationResponse | undefined = pendingClarification

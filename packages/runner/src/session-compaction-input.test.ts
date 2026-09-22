@@ -30,9 +30,15 @@ afterAll(async () => {
 });
 
 describe('session compaction input boundary', () => {
-  /** A runner whose session crosses the compaction threshold after one run. */
+  /**
+   * A runner whose session compacts after one run. Compaction is triggered by real
+   * context pressure, not by a message count: a tiny compression ratio makes the
+   * occupancy check fire on the first non-empty prompt, which is what a long
+   * session would hit naturally.
+   */
   async function createCompactionRunner(llm: unknown) {
     const config = structuredClone(DEFAULT_CONFIG);
+    config.agents.defaults.contextCompressionThresholdRatio = 0.000_001;
     config.sessions.compaction.threshold = 2;
     config.sessions.compaction.keepRecent = 1;
     const runner = await createRunner({
@@ -60,6 +66,8 @@ describe('session compaction input boundary', () => {
 
   it('sends no capability snapshot, retrieval contract or run state to the summarizer', async () => {
     const config = structuredClone(DEFAULT_CONFIG);
+    // Pressure-triggered compaction, as in a real long session.
+    config.agents.defaults.contextCompressionThresholdRatio = 0.000_001;
     config.sessions.compaction.threshold = 2;
     config.sessions.compaction.keepRecent = 1;
     const llm = {

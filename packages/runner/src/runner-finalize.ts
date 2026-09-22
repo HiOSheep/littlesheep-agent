@@ -127,7 +127,17 @@ export async function finalizeRunnerPhase<TResult>(
   }
 
   if (!runStopped) {
-    const force = ctx.contextSnapshots?.some((snapshot) => snapshot.compressionRecommended) === true;
+    const snapshots = ctx.contextSnapshots ?? [];
+    const force = snapshots.some((snapshot) => snapshot.compressionRecommended);
+    // When the model's context budget is known, only real occupancy pressure may
+    // start a compaction. Compaction rewrites the transcript, so the next request
+    // re-bills the whole prefix: measured on the 28-turn long task, six
+    // message-count compactions cost 288,536 re-billed tokens against 28,857
+    // tokens of genuinely new input, on a session whose prompts never exceeded 26k
+    // of a 128k window. A model whose window is unknown keeps the message count as
+    // the only trigger available.
+    const budgetKnown = snapshots.some((snapshot) => snapshot.budget?.status === 'known');
+    const threshold = budgetKnown ? Number.MAX_SAFE_INTEGER : options.compact.threshold;
     const compaction = {
       sessionManager: options.infra.sessionManager,
       memoryService: options.infra.memoryService,
@@ -136,7 +146,7 @@ export async function finalizeRunnerPhase<TResult>(
       runId: options.runId,
       workspace: options.cwd,
       model: ctx.resolvedRunConfig?.model ?? options.model,
-      threshold: options.compact.threshold,
+      threshold,
       keepRecent: options.compact.keepRecent,
       force,
       signal: options.signal,

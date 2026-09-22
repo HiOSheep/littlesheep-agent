@@ -1,6 +1,6 @@
 # @littlesheep/runner
 
-最后更新：2026-09-22 16:46:08
+最后更新：2026-09-22 17:47:02
 
 作为核心应用服务装配 Harness、Context、Memory、Tools、Session、Skills 和执行日志，并提供单次 run 接口。
 
@@ -11,7 +11,7 @@
 - 负责依赖注入和运行生命周期，不吸收各领域内部算法或 Electron UI 逻辑。
 - 禁止让渠道、插件私有实现或 renderer 状态成为核心 run 的必要依赖。
 - Runner 只把真实状态、证据和已在持久化会话注册表中原子占用的模型文案交给上层；面向用户的回复、任务说明、验证说明和交付语气必须由真实 LLM 调用结合运行时 `SOUL.md` 构思，并携带 `ReplyProvenance`。Runner 不用固定模板替代 Agent 人格表达，模型、注册表或改写失败时只返回错误状态。
-- 会话摘要是 Context 来源，不是“已经记住”的结论。Runner 只登记版本化摘要和最终回答实际采用的摘要 id；记忆连续性的最终判定由 Harness 对 LS 用户可见回答执行，只有回答级 `supported` 才能反馈摘要被真实承接。压缩的输入与计数只针对对话消息：带 `runtimeTail` 的 Runtime 尾部记录随转录保存以便按字节回放，但既不进入摘要输入，也不计入压缩阈值与 keepRecent 窗口。
+- 会话摘要是 Context 来源，不是“已经记住”的结论。Runner 只登记版本化摘要和最终回答实际采用的摘要 id；记忆连续性的最终判定由 Harness 对 LS 用户可见回答执行，只有回答级 `supported` 才能反馈摘要被真实承接。压缩的输入与计数只针对对话消息：带 `runtimeTail` 的 Runtime 尾部记录随转录保存以便按字节回放，但既不进入摘要输入，也不计入压缩阈值与 keepRecent 窗口。**压缩由真实上下文压力触发**：预算已知时（`contextSnapshot.budget.status === 'known'`）只允许 `compressionRecommended` 启动压缩，消息条数阈值退化为"窗口不可知"时的兜底——压缩会重写转录、让下一次请求重付整段前缀（实测 28 回合长任务里 6 次按条数触发的压缩在窗口充裕时白白重付了约 288k tokens）。
 
 ## 依赖与数据
 
