@@ -21,6 +21,7 @@
     "ensure:workspace-build": "node scripts/ensure-workspace-artifacts.mjs",
     "assert:workspace-build": "node scripts/ensure-workspace-artifacts.mjs --assert",
     "check:repo": "node scripts/check-repository-hygiene.mjs && node scripts/sync-typescript-projects.mjs --check",
+    "check:cache-acceptance": "node scripts/check-cache-acceptance.mjs",
     "sync:tsconfig": "node scripts/sync-typescript-projects.mjs",
     "start": "node packages/cli/dist/bin.js",
     "test": "vitest run",
