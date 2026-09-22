@@ -1,6 +1,6 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-09-22 20:54:45
+最后更新：2026-09-22 23:49:24
 
 本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
 
@@ -8,7 +8,7 @@
 
 **当前阶段**：活动路由只产出两条路径——所有常规会话与任务回合都进入单一主循环 `execute`，只有能力/状态询问走最小 Runtime 事实契约的 `reply`；`respond` 在路由边界归一为 `execute`，`clarify` 不是可路由活动（缺少信息时由回复本身追问，或由主循环的 `request_user_input` 与恢复升级到达 `ASK_USER`）。DECIDE、VERIFY 模型调用、RECOVER 模型调用和 CAPTURE 已删除：已持久化的 TaskBook 只作为可读历史，步骤在主循环内串行推进；本回合无权使用的工具在执行时被拒绝，而广告给模型的工具目录在整个会话区间内保持固定；`memory_tree` 只读（`root_index` / `branch_index` / `expand` / `deep_search` / `release`），模型没有记忆写入工具，持久记忆的唯一写入方是会话压缩路径。
 
-**推荐下一步**：执行[真实长任务缓存红线任务书](taskbooks/real-long-task-cache-taskbook-2026-09-22.md)。上一批提示词与 run 内追加修复作为基线；本轮转向真实任务样本、跨 run 续接、新增输入、压缩和恢复成本，允许能力收缩。用户最新明确对齐 DeepSeek Harness 前端的会话累计指标：真实长任务验收节点以 95% 为红线、95%～99.5% 为目标工作范围；允许初始冷启动低值，首请求仍计入累计，完整辅助成本另列；具体口径以[现行验收条款](reference/cache-95-acceptance.md#真实长任务现行红线2026-09-22)为准。当前状态与既有实测见[项目状态](decision/project-status.md#缓存命中率现状)，新真实长任务验收尚未完成。[对话任务连续性 P0 专项](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md)另行跟踪：2026-09-22 复核确认其实机制层（唯一 head、原子 claim、disposition、资源配方、权限重验、副作用幂等）已随状态机重设计落地，但“回答连续 + 真实 PDF 交付”的五层验收、发布指标门、迁移扫描与回滚演练仍未完成，因此该 P0 保持未关闭。
+**推荐下一步**：执行[Runtime 状态一致性与必要记忆任务书](taskbooks/runtime-state-consistency-taskbook-2026-09-22.md)。Harness / Runner 冻结为 stable kernel，仅因真实 correctness bug、删除复杂度或已证明缺失的硬 invariant 做最小修改；Runtime 优先补齐 read observation → 写前 revision 校验 → checkpoint → mutate 及 exec 后失效。Memory 采用用户最新方向“明确要求或必要时写入”，与上下文压缩解耦；这仍是待实现方向，当前写入事实见上段。上一份缓存专项按用户确认已完成，后续只保留[现行缓存验收约束](reference/cache-95-acceptance.md#真实长任务现行红线2026-09-22)，不重复安排原清单。[对话连续性 P0](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md)与 UI 专项的未完成验收仍独立保留。
 
 **此刻需要你决定或知晓的事项**：
 
@@ -42,7 +42,7 @@
 ### 当前主线
 
 - [文档退役审查记录 2026-09-22](reference/document-retirement-review-2026-09-22.md)：本轮集中审查的逐条结论与执行动作（保留并重述对话连续性 P0、退役状态机重设计/开发反馈环/网络检索/原子记忆四份任务书、对标记录改判为保留、模块图 1 条真实修正、解除一份门禁固定），并记录三处原始证据的更正。
-- [持久记忆写入路径任务书 2026-09-22](taskbooks/memory-write-path-taskbook-2026-09-22.md)：把“压缩是唯一写入方、而大窗口配置下压缩不触发 ⇒ 记忆实际不被写入”这一已记录缺口升级为有归属的待决事项；第一步是用户裁定，之后才是实现与缓存红线回归。
+- [Runtime 状态一致性与必要记忆任务书 2026-09-22](taskbooks/runtime-state-consistency-taskbook-2026-09-22.md)：合并原记忆写入专项；RS-00～08 覆盖内核冻结、文件观察与写前校验、exec 失效、压缩解绑、明确要求或必要时写入，以及真实流程/缓存回归。
 - [Harness 开源底座评估 2026-09-02](reference/harness-open-source-evaluation-2026-09-02.md)：固定 DeepSeek Harness、Pi 与 nanoDeepSeekHarness 版本、许可证、供应链证据和 LS adapter 边界；当前决定保留自有 kernel、只吸收 durable event/session/stream 设计。
 - [OpenCode VS Code 对标记录 2026-08-13](reference/opencode-vscode-comparison-2026-08-13.md)：记录官方源码、许可证、LS 差异、已直接吸收的缓存/模型/审阅交互，以及待产品选择的虚拟化、评论和真正 VS Code 扩展路线。
 - [对话任务连续性 P0 专项任务书 2026-08-13](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md)：修复普通聊天未绑定 waiting-user Checkpoint、执行现场与附件/临时工具无法自然恢复、权限未按当前状态重验及最终回答断档。

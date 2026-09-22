@@ -1,8 +1,14 @@
 # LittleSheep 架构评估与开发决策报告
 
-最后更新：2026-09-22 10:56:22
+最后更新：2026-09-22 23:49:24
 评估范围：当前源码、常驻文档与已记录的验证结果
 执行状态：控制流已收敛为唯一主循环。活动路由只产出 `execute` 与能力/状态 `reply` 两条路径；DECIDE、验证模型调用、恢复模型调用与 CAPTURE 已删除，`classify`、`decide`、`evolve`、`capture` 只作为历史 stage 名保留在类型与旧检查点读取路径中；ASK_USER 只能由主循环的 `request_user_input` 或 RECOVER 升级到达；持久化 TaskBook 是只读历史，步骤串行执行。请求装配由缓存边界与 append-only 尾部账本共同决定：system 消息就是边界之上的 prompt 段，边界之下的段各自作为独立消息追加。工具目录在一个会话区间内固定，某轮不得使用的能力在执行边界被拒绝；上下文淘汰按 `appended-only` 作用域运行。会话压缩是持久记忆的唯一写入方，模型侧 `memory_tree` 只读；VERIFY 不调用模型，窄结构形态记为 `pass`、其余已完成的 run 记为 `unverified`。权限仍为三档并与行为 profile 正交，容器是 Main 的路径分类与审批闸门而不是 OS 沙箱。Memory v3 阶段 0-26、统一 Tool Execution Service、运行时事件、TaskBookPatch、检查点续跑与桌面后台控制已形成工程基线。**当前未闭环的是缓存 95% 红线（实机负载未达标）、Pro 与其他 Provider 的模型专用校准、非字段事实与外部系统副作用验收、MCP 与发布流程。**
+
+## 当前开发方向（2026-09-22，待实施）
+
+Harness / Runner 冻结为 stable kernel，后续只为真实任务 correctness bug、删除复杂度或已证明缺失的硬 invariant 最小修改。下一 Runtime 主线是文件观察版本与写入前置校验，复用工具执行、权限和检查点，不新增 stage/planner/scheduler/manager。Memory 按用户最新修正，仅在明确要求或确有必要时通过现有主循环提出受控写入；压缩保留会话连续性，移除长期候选自动提炼和提交。普通聊天不默认沉淀，不恢复 CAPTURE/auto-evolution，不靠消息条数压缩触发学习。
+
+这是新的开发顺序，覆盖下文历史阶段排序；当前源码仍是压缩唯一写入方，不提前宣称按需写入已实现。具体范围、必要性约束和验收见[Runtime 状态一致性与必要记忆任务书](../taskbooks/runtime-state-consistency-taskbook-2026-09-22.md)。缓存专项按用户确认已完成，后续按[现行验收条款](../reference/cache-95-acceptance.md#真实长任务现行红线2026-09-22)回归；不重开原清单。
 
 ## 1. 给决策者的结论
 

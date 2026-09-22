@@ -1,8 +1,10 @@
 # 文档退役审查记录 2026-09-22（已执行）
 
-最后更新：2026-09-22 23:05:46
+最后更新：2026-09-22 23:49:24
 
 本文件记录 2026-09-22 对 `docs/reference/**` 与 `docs/taskbooks/**` 的一次集中审查：先由实现者直接退役证据充分的文档，其余逐条列出、经用户批准后执行。每条给出**结论、执行动作与更正后的证据**；证据与本文件最初版本不一致的地方已明确标注更正。
+
+本轮后续方向更新：原持久记忆写入清单已合并到上述 Runtime 专项；用户已将触发语义修正为“明确要求或必要时写入”，不再等待 A/B/C 裁定。以下保留原退役审查历史。
 
 ## 〇、证据更正（重要）
 
@@ -37,7 +39,7 @@
 ### 2. LS 状态机重设计任务书 2026-09-18 — 退役
 
 - **复核结论**：P6a/P6b 已被后续决策覆盖，P6c 的审计对象（`request_task_book`、`workPolicyUpgradeProposal`、`bounded_loop_promoted`）已随第二执行体系删除，P6d 的记忆写入被压缩路径取代且派生出一个无归属缺口。
-- **执行**：退役；P1–P7 的机制事实已在项目状态与 `AGENTS.md` 中，工作策略升级通道与等待头兼容路径两条事实新增到 [`AGENTS.md`](../../AGENTS.md) 与 [Core Flow 状态契约](core-flow-state-contract.md)；派生缺口转入新建的[持久记忆写入路径任务书](../taskbooks/memory-write-path-taskbook-2026-09-22.md)。
+- **执行**：退役；P1–P7 的机制事实已在项目状态与 `AGENTS.md` 中，工作策略升级通道与等待头兼容路径两条事实新增到 [`AGENTS.md`](../../AGENTS.md) 与 [Core Flow 状态契约](core-flow-state-contract.md)；派生缺口转入新建的[记忆写入专项（现合并为 Runtime 状态一致性与必要记忆任务书）](../taskbooks/runtime-state-consistency-taskbook-2026-09-22.md)。
 
 ### 3. LS 开发反馈环提速任务书 2026-08-09 — 退役
 
@@ -62,7 +64,7 @@
 ### 7. 两份被门禁固定为常驻的任务书 — 解除一份固定
 
 - **复核结论**：`agent-runtime-continuity-taskbook-2026-07-14` 确有未完成项（外部系统副作用与真实网络故障、非字段事实连续性、Pro/其它 Provider 模型专用校准、数据根迁移真实场景、阶段 7 效率评测），保留；`memory-atom-vector-catalog-taskbook-2026-07-17` 的设计事实已全部落在架构原则、Core Flow 指南、`packages/memory-tree/README.md` 与项目状态中，仍开放的只是长期真实负载/Provider 质量门（已由项目状态与架构决策报告跟踪）。
-- **执行**：从 `scripts/check-repository-hygiene.mjs` 的 `required` 列表移除并退役该任务书。**注意**：它的“已完成首版工程闭环”措辞与当前实现不符——模型提案类合并/重组/修订/纠正与非叶子子树移动、daily 提升目前只有契约、校验与边界测试，runtime 没有调用方；该事实已在 [memory-tree README](../../packages/memory-tree/README.md) 中记录，并由新建的[持久记忆写入路径任务书](../taskbooks/memory-write-path-taskbook-2026-09-22.md)承接后续裁定。
+- **执行**：从 `scripts/check-repository-hygiene.mjs` 的 `required` 列表移除并退役该任务书。**注意**：它的“已完成首版工程闭环”措辞与当前实现不符——模型提案类合并/重组/修订/纠正与非叶子子树移动、daily 提升目前只有契约、校验与边界测试，runtime 没有调用方；该事实已在 [memory-tree README](../../packages/memory-tree/README.md) 中记录，并由新建的[记忆写入专项（现合并为 Runtime 状态一致性与必要记忆任务书）](../taskbooks/runtime-state-consistency-taskbook-2026-09-22.md)承接后续裁定。
 
 ## 三、本轮退役清单汇总
 
