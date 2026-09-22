@@ -57,6 +57,21 @@ export class RunTailLedger {
   private readonly sent = new Set<string>();
 
   /**
+   * Seed the ledger with entries an earlier run already sent in this task
+   * interval, so a new run appends only facts that are new or changed.
+   *
+   * Without the seed every run re-emitted the whole tail: measured on frozen A1,
+   * turn 2 repeated 9 of turn 1's 10 sections byte for byte (~1.2k tokens) even
+   * though they were already in the replayed prefix, and the duplicate copies were
+   * billed as new input.
+   */
+  constructor(priorEntries: readonly { id: string; text: string }[] = []) {
+    for (const entry of priorEntries) {
+      this.sent.add(`${entry.id}#${hash(entry.text)}`);
+    }
+  }
+
+  /**
    * Append every tail entry that has not been sent yet in this loop.
    *
    * `systemSegments` are the sections the system message is made of, and
@@ -171,6 +186,24 @@ export function renderTailEntries(
       },
       scope: 'run',
     });
+  }
+  return entries;
+}
+
+/**
+ * The tail entries an earlier run of this task interval already sent, read from
+ * the replayed transcript. Seeding the ledger with them keeps an unchanged fact
+ * from being appended (and billed) a second time.
+ */
+export function priorTailEntries(ctx: Pick<RunContext, 'modelHistory'>): { id: string; text: string }[] {
+  const entries: { id: string; text: string }[] = [];
+  for (const message of ctx.modelHistory ?? []) {
+    if (message.runtimeTail !== true || !message.runtimeTailId) continue;
+    const text = message.content
+      .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
+      .map((part) => part.text)
+      .join('');
+    if (text) entries.push({ id: message.runtimeTailId, text });
   }
   return entries;
 }

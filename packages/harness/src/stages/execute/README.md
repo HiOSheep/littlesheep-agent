@@ -1,11 +1,11 @@
 # EXECUTE 内部边界
 
-最后更新：2026-09-22 14:55:03
+最后更新：2026-09-22 16:13:37
 
 - `contracts.ts`：依赖、工具循环和输出清洗契约，并区分模型可见的 `tools` 目录与本轮真正可调用的 `admittedTools`。
 - `guidance.ts`：基础消息装配与步骤提示片段；`renderPlanGuidance`/`renderTaskBookGuidance` 把 TaskBook 与计划渲染进主循环提示（不提及已删除的 stage），`renderStepGuidance` 是第二执行体系遗留的步骤契约渲染，当前没有运行期调用方。
 - `prompt.ts`：装配 EXECUTE System Prompt，不拥有工具执行权。
-- `tool-loop.ts`：唯一主循环——模型工具循环，把调用交给统一 Tool Execution Service，并保留本轮请求消息与工具目录供有界纠正复用。
+- `tool-loop.ts`：唯一主循环——模型工具循环，把调用交给统一 Tool Execution Service，并保留本轮请求消息与工具目录供有界纠正复用。Runtime 控制消息（引用修复、工具边界失败、无进展上限）与 Runtime 尾部一样按位置持久化：它们属于被缓存的请求字节，不记录就会让下一轮回放停在上一条请求的最后一个消息（实测冻结 A2 diff@19/20）。
 - `model-transcript.ts`：有序 thinking/tool/text 转录行的发布、重置与关闭。
 - `tool-result-persistence.ts`：单轮工具提议与结果的持久化和有界投影，输入先过工具自己的 projector；`toolResultForModel` 对成功和失败都保留有界输出——命令执行器失败时只给 `exit code 1` 会让模型无法诊断（实测：模型因此声称"未捕获到 stdout"）。为了让下一次 run 能按字节回放这次请求，`persistToolCalls` 在工具没有 `persistence.projectInput` 时保存 Provider 的原始参数串（`ToolCall.rawArguments`）、assistant 的文本前言与 `reasoning`，`persistToolResult` 保存模型当时看到的有界文本（`tool_result.modelContent`），`persistRuntimeTailMessages` 把 Runtime 尾部按发送位置存为 `runtimeTail` 消息；带 `webEvidence` 的结果永不保存该文本，网页正文只在本轮进入模型上下文。
 - `runners.ts`：单一主循环执行入口；把 `historyChatCount` 交给请求装配器，使"历史占用的请求消息数"与 `history` 条目数不一致时（回放的工具配对会多出消息）主用户回合仍被标在正确位置。

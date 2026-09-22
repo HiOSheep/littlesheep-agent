@@ -67,6 +67,29 @@ describe('RunTailLedger', () => {
     expect(second.messages).toEqual([]);
   });
 
+  it('does not re-send a section an earlier run of the task interval already sent', () => {
+    const ctx = makeCtx({ inbound: textMessage('user', 'hello') });
+    const firstRun = new RunTailLedger();
+    const first = firstRun.update(ctx);
+    expect(first.messages.length).toBeGreaterThan(0);
+
+    // A new run seeds the ledger with what the transcript already carries, so the
+    // unchanged facts are read from the replayed prefix instead of being appended
+    // (and billed) a second time.
+    const secondRun = new RunTailLedger(first.entries.map((entry) => ({ id: entry.id, text: entry.text })));
+    expect(secondRun.update(ctx).messages).toEqual([]);
+
+    // A section whose current text differs from what the transcript carries is
+    // appended again (the fingerprint is id + content), so a changed fact is never
+    // silently treated as already sent.
+    const changed = new RunTailLedger(first.entries.map((entry) => (
+      entry.id === 'runtime-facts' ? { id: entry.id, text: `${entry.text}\nstale` } : { id: entry.id, text: entry.text }
+    )));
+    const delta = changed.update(ctx);
+    expect(delta.messages).toHaveLength(1);
+    expect(String(delta.messages[0]?.content)).toContain('# Runtime Facts');
+  });
+
   it('appends a changed KnownState instead of rewriting the earlier entry', () => {
     const ctx = withKnownStateRevision(makeCtx({ inbound: textMessage('user', 'hello') }), 1);
     const ledger = new RunTailLedger();

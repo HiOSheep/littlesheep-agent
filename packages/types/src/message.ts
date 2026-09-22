@@ -149,6 +149,11 @@ export interface Message {
    * only the task-interval model replay reads it.
    */
   runtimeTail?: boolean;
+  /**
+   * The tail ledger entry id when this record is a Runtime tail section, so the
+   * next run can recognise an unchanged section and not send it a second time.
+   */
+  runtimeTailId?: string;
 }
 
 /** Convenience: a plain text message. */

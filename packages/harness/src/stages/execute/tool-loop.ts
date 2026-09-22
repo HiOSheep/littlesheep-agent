@@ -20,7 +20,7 @@ import {
 } from '@littlesheep/tools';
 import { buildRunRequestCandidates } from '../../context-candidates.js';
 import { modelRequestIdFor, prepareModelRequest } from '../../model-observability.js';
-import { RunTailLedger } from '../../run-tail-ledger.js';
+import { RunTailLedger, priorTailEntries } from '../../run-tail-ledger.js';
 import {
   abortTranscriptTurn,
   closeTranscriptTurn,
@@ -36,10 +36,12 @@ import { ingestMemoryKnownState } from '../../memory-known-state.js';
 import { ingestMemoryContextToolResult } from '../../memory-context-working-set.js';
 import {
   failureResult,
+  persistRuntimeControlMessage,
   persistRuntimeTailMessages,
   persistToolCalls,
   persistToolResult,
   recordDurableToolCalls,
+  RUNTIME_CONTROL_MESSAGES,
   safeStringify,
   toolResultForModel,
 } from './tool-result-persistence.js';
@@ -98,6 +100,7 @@ export async function runToolLoop(
   const admittedNames = new Set(admittedTools.map((tool) => tool.name));
   const toolSpecs = tools.map(toolToSpec);
   const toolResults: ToolResult[] = [];
+  const control = RUNTIME_CONTROL_MESSAGES;
   const executionService = toolExecutionService(deps, ctx, sanitizeOpts);
   const evidenceFingerprints = new Set<string>(ctx.loopBudget?.evidenceFingerprints ?? []);
   const fingerprintState = {
@@ -119,14 +122,15 @@ export async function runToolLoop(
   // condition the Provider's prefix cache matches. Appending the initial tail
   // at the very end instead put it after the first tool round and stopped the
   // second request from extending the first.
-  const tailLedger = new RunTailLedger();
+  const tailLedger = new RunTailLedger(priorTailEntries(ctx));
   const initialTail = tailLedger.update(ctx, systemSegments, tailSegments);
   const tailMessageSet = new Set<ChatMessage>();
   const initialTailMessages = initialTail.messages;
   for (const message of initialTailMessages) tailMessageSet.add(message);
-  // The tail is part of the request the Provider caches, so it is persisted at
-  // this position: a later run replays it instead of diverging here.
-  persistRuntimeTailMessages(ctx, produced, initialTailMessages);
+  // The tail is part of the request the Provider caches, so it is persisted here:
+  // a later run replays it instead of diverging, and unchanged sections are not
+  // re-emitted because the ledger was seeded from that transcript.
+  persistRuntimeTailMessages(ctx, produced, initialTailMessages, initialTail.entries);
   // Each tail message's declared Context kind, so a bootstrap file stays project
   // knowledge and the memory index stays a memory index.
   const tailKinds = new Map<ChatMessage, { kind: ContextItemKind; source: ContextSourceRef }>();
@@ -241,10 +245,10 @@ export async function runToolLoop(
           role: 'assistant',
           content: response.content,
         });
-        messages.push({
-          role: 'system',
-          content: `${webCitationRepairContract(ctx.webEvidence)}\n\nValidation failure: ${citationValidation.reason}`,
-        });
+        const citationRepair = `${webCitationRepairContract(ctx.webEvidence)}\n\nValidation failure: ${citationValidation.reason}`;
+        // Persisted too: an unrecorded Runtime control message stopped the next
+        // run's replay at the previous request's last message (A2: diff@19 of 20).
+        persistRuntimeControlMessage(ctx, produced, messages, citationRepair);
         forceFinalResponse = true;
         continue;
       }
@@ -400,10 +404,7 @@ export async function runToolLoop(
       if (executedResults.size > 0
         && [...executedResults.values()].some((result) => !result.ok)) {
         forceFinalResponse = true;
-        messages.push({
-          role: 'system',
-          content: 'Runtime control: the latest tool boundary failed. Do not call another tool in this step. Return a concise step result that preserves the failure and uncertainty for VERIFY/RECOVER.',
-        });
+        persistRuntimeControlMessage(ctx, produced, messages, control.boundaryFailure);
       }
 
       // Tool results are now authoritative for the active step. Every later
@@ -416,13 +417,10 @@ export async function runToolLoop(
       persistToolLoopProgress(ctx, evidenceFingerprints, fingerprintState.saturated, noProgressRounds);
       if (noProgressRounds >= MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS) {
         forceFinalResponse = true;
-        messages.push({
-          role: 'system',
-          // P4a: state the observation and hand the choice back instead of
-          // issuing an order. The bound itself is unchanged — tools stop being
-          // available in this run, and saying so keeps the instruction honest.
-          content: 'Runtime control: the last rounds added no new evidence (same tool sources and targets). You can answer from the evidence already present, or say plainly what is still missing; tools are no longer available in this run.',
-        });
+        // P4a: state the observation and hand the choice back instead of issuing an
+        // order. The bound itself is unchanged — tools stop being available in this
+        // run, and saying so keeps the instruction honest.
+        persistRuntimeControlMessage(ctx, produced, messages, control.noProgressBound);
       }
       continue;
     }
@@ -562,7 +560,6 @@ function finalizeToolResult(
       content: modelContent,
     });
 }
-
 
 function toolExecutionService(
   deps: ExecuteStageDeps,

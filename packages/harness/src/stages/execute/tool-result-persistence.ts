@@ -7,6 +7,7 @@
 // never reaches the transcript, and a result is reduced to the fields the next
 // model turn actually needs.
 import { createHash, randomUUID } from 'node:crypto';
+import type { ChatMessage } from '@littlesheep/llm';
 import type { RunContext, ToolCall, ToolResult } from '@littlesheep/types';
 import { projectToolInput } from '@littlesheep/tools';
 
@@ -126,9 +127,11 @@ export function persistRuntimeTailMessages(
   ctx: RunContext,
   produced: RunContext['produced'],
   messages: readonly { role: string; content: unknown }[],
+  entries: readonly { id: string }[] = [],
 ): void {
-  for (const message of messages) {
+  for (const [index, message] of messages.entries()) {
     if (typeof message.content !== 'string') continue;
+    const entryId = entries[index]?.id;
     produced.push({
       id: randomUUID(),
       role: message.role === 'assistant' || message.role === 'system' || message.role === 'tool'
@@ -140,8 +143,31 @@ export function persistRuntimeTailMessages(
       runId: ctx.runId,
       stage: 'execute',
       runtimeTail: true,
+      ...(entryId ? { runtimeTailId: entryId } : {}),
     });
   }
+}
+
+/**
+ * Runtime control messages the loop sends inside a request. They are part of the
+ * bytes the Provider caches, so each one is persisted with the transcript; an
+ * unrecorded one made the next run's replay stop at the previous request's last
+ * message (measured: frozen A2 turn boundary diff@19 of 20).
+ */
+export const RUNTIME_CONTROL_MESSAGES = {
+  boundaryFailure: 'Runtime control: the latest tool boundary failed. Do not call another tool in this step. Return a concise step result that preserves the failure and uncertainty for VERIFY/RECOVER.',
+  noProgressBound: 'Runtime control: the last rounds added no new evidence (same tool sources and targets). You can answer from the evidence already present, or say plainly what is still missing; tools are no longer available in this run.',
+} as const;
+
+/** Append one Runtime control message to the live request and to the transcript. */
+export function persistRuntimeControlMessage(
+  ctx: RunContext,
+  produced: RunContext['produced'],
+  messages: ChatMessage[],
+  text: string,
+): void {
+  messages.push({ role: 'system', content: text });
+  persistRuntimeTailMessages(ctx, produced, [{ role: 'system', content: text }]);
 }
 
 export function persistToolResult(

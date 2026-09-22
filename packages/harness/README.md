@@ -1,6 +1,6 @@
 # @littlesheep/harness
 
-最后更新：2026-09-22 14:55:03
+最后更新：2026-09-22 16:13:37
 
 实现 LittleSheep 的核心 Agent Runtime：硬控制流状态机负责活动路由、单一主循环执行、验证、Runtime 恢复、澄清和收尾。
 
@@ -10,7 +10,7 @@
 - 活动路由只产出两条路径：所有会话与任务进入单一主循环（`stages/execute/tool-loop.ts` + `runners.ts`），能力/状态询问进入最小 Runtime 事实契约的 `reply`。DECIDE、验证模型调用、RECOVER 模型调用与 CAPTURE 已删除；`classify`、`decide`、`evolve`、`capture` 只作为历史 stage 名、LLM Call Contract 条目和检查点兼容字段存活，`checkpoint-resume.ts` 的 `resolveCheckpointResumeStage` 把入口为 `decide` 的检查点改派到 `execute`。ASK_USER 不可路由：它由主循环内模型发起的 `request_user_input`，或由 RECOVER 的权限拒绝/预算耗尽升级到达。
 - 已持久化的 TaskBook 是只读历史（降级策略为 `bounded_loop`）：没有第二个执行器、没有 TaskBook 步骤调度器、没有直接工具提议路径，也没有步骤级并行；多步骤工作在同一循环内串行完成。
 - 请求装配：system 消息恰好是缓存边界以上的 prompt sections（`stableText`/`stableSegments`）；边界以下的 bootstrap、Runtime facts、检索意图契约和压缩摘要由追加式尾部账本 `run-tail-ledger.ts` 各自成消息，因此循环第 N 次请求是第 N+1 次的字节前缀。可见工具目录在整个会话区间内固定（`catalogTools = explicitTools ?? ctx.tools`）；被收回的能力在**执行**时拒绝（`admittedTools` 是执行范围，不是可见性）。
-- 任务区间回放（`model-history.ts`，已启用）：把会话 transcript 里的 assistant 工具调用（含 Provider 原始参数串、文本前言与 reasoning）与其 tool 结果（含模型当时看到的有界文本）配对重放，Runtime 尾部（`runtimeTail` 标记）按发送位置一起回放，因此新 run 的第一个请求逐消息等于上一 run 最后一个请求的前缀。实测同一冻结任务：跨 run 重建 3,351→0 tokens，自然完成节点会话累计命中率 83.13%→88.47%。`buildRunRequestCandidates` 的 `historyChatCount` 负责"历史占用的请求消息数 ≠ history 条目数"时的主用户回合定位。Runtime 尾部不占用 `keepRecent` 会话窗口（`trimToRecentConversation`），否则每轮约 10 条尾部会把整轮挤出窗口并让回放从中间开始。
+- 任务区间回放（`model-history.ts`，已启用）：把会话 transcript 里的 assistant 工具调用（含 Provider 原始参数串、文本前言与 reasoning）与其 tool 结果（含模型当时看到的有界文本）配对重放，Runtime 尾部与控制消息（`runtimeTail` 标记，带 `runtimeTailId`）按发送位置一起回放，因此新 run 的第一个请求逐消息等于上一 run 最后一个请求的前缀。实测同一冻结清单 12 次运行：平均会话累计命中率 73.4%→84.2%，9/12 次的两个回合边界逐消息一致。`run-tail-ledger.ts` 用转录里已有的尾部条目预置账本，未变化的尾部不再重复发送（实测每回合约 1.2k tokens 的重复被消除）；`buildRunRequestCandidates` 的 `historyChatCount` 负责"历史占用的请求消息数 ≠ history 条目数"时的主用户回合定位。Runtime 尾部不占用 `keepRecent` 会话窗口（`trimToRecentConversation`），否则每轮约 10 条尾部会把整轮挤出窗口并让回放从中间开始。
 - 观测模块：`model-observability.ts`（请求记录）、`model-request-contract.ts`（契约校验与 reasoning 偏好）、`cache-observability.ts` 与 `cache-prefix-split.ts`（可缓存头部切分）、`cache-observation-store.ts`、`cache-observation-persistence.ts`、`model-activity.ts`、`model-observability-state.ts`、`system-prompt-transcript.ts`、`runtime-awareness.ts`、`memory-known-state.ts`、`memory-context-working-set.ts`、`context-candidates.ts`、`profile-prompt.ts`；工具证据与转录在 `stages/execute/tool-result-persistence.ts`、`side-effect-ledger.ts`、`model-transcript.ts`。
 - 自动记忆演化（Atom 调和 / reparent / 子树移动 / 修订 / 纠正编排）、自动 Skill 创建与 CAPTURE 总结均已删除。持久记忆只有一个写入方——压缩路径（`runner-finalize` → `compactSessionAfterRun` → `memoryService.write`，经 `resolveMemoryWriteEpistemic`）：后置压力触发、默认 400/200/background false、以原子 predecessor + sourceHash 提交、失败保留上一版摘要；模型没有可调用的记忆写入工具（`memory_tree` 只有只读动作）。
 - `response-continuity*.ts` 依据 LS 实际发布的最终回答判断记忆是否连续，并从 `ReplyProvenance` 回查真正进入模型请求的近期历史、版本化摘要和 active/adopted Atom。保存、检索或注入成功都不是充分条件；明确追问的历史值必须在最终回答中逐项正确出现，漏答、答错、否认记得或来源未进入请求都不能判为 `supported`。判定不连续时只允许一次有界纠正（`stages/reply/continuity-repair.ts`），纠正以追加的"前缀扩展"形式发出，不重写 system 提示或工具目录。`session-summary-fidelity-text.ts` 只解析 Runtime 拥有的摘要精确字段封套，不负责会话压缩或存储。

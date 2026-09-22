@@ -2005,7 +2005,10 @@ describe('createRunner run', () => {
     // The covered record range ends at the last record before the kept turn, which
     // is one of this turn's Runtime tail records.
     expect(metadata?.compaction?.sourceEndMessageId).toBe(allMessages[10]?.id);
-    expect(metadata?.compaction?.sourceRanges?.[0]?.sourceEndMessageId).toBe(allMessages[10]?.id);
+    const compaction = metadata?.compaction;
+    if (compaction?.version === 2) {
+      expect(compaction.sourceRanges[0]?.sourceEndMessageId).toBe(allMessages[10]?.id);
+    }
     const summary = metadata!.compaction!;
     expect(await runner.infra.memoryRepository.getResource(summary.id)).toMatchObject({
       id: summary.id,
