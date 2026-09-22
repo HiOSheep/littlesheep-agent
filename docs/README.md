@@ -38,19 +38,14 @@
 
 - [应用层 UI / UX 优化与统一任务书 2026-09-22](taskbooks/application-ui-ux-taskbook-2026-09-22.md)：16 项应用层待办，覆盖输入、删除、停止、恢复反馈、设置草稿、键盘、能力空态及视觉一致性；区分源码确认与待实机验证，作为独立排期清单。
 - [真实长任务缓存红线任务书 2026-09-22](taskbooks/real-long-task-cache-taskbook-2026-09-22.md)：对齐 DeepSeek Harness 会话累计值的长任务 >=95% 红线，LT-00～LT-08 的真实样本、损失归因、跨 run 续接、输入精简、压缩、能力收缩与逐任务验收。
-- [极简执行与缓存 95% 实施方案任务书 2026-09-20](taskbooks/lean-v2-cache-95-plan-taskbook-2026-09-20.md)：上一阶段能力裁剪与旧负载的执行记录；未完成的缓存目标由新的真实长任务专项接续，历史口径不作为新红线。
 
 ### 当前主线
 
-- [Harness 全面瘦身审计与实施任务书 2026-09-12](taskbooks/harness-lean-audit-taskbook-2026-09-12.md)：全链路审计、等待分解、分批实施与质量/连续性/延迟验收门。- [Harness 瘦身第一批实施包：HL-00～HL-04](taskbooks/harness-lean-phase-a-implementation-taskbook-2026-09-12.md)：路由/验证、计时/用量与真实活动投影。
-- [Harness 瘦身第二批实施包：HL-05/HL-06 与配套 HL-10](taskbooks/harness-lean-phase-b-implementation-taskbook-2026-09-13.md)：工作策略解耦、有界循环、TaskBook 升级、规划/候选/工具轮次减法及恢复门。
-- [Harness 瘦身第三批实施包：HL-08/HL-09 与配套 HL-07/HL-10](taskbooks/harness-lean-phase-c-implementation-taskbook-2026-09-14.md)：压缩时统一沉淀、短会话回查、显式记忆、幂等恢复与上下文/等待减法。
 - [LS 状态机重设计任务书 2026-09-18](taskbooks/state-machine-redesign-taskbook-2026-09-18.md)：把"判断类决策交还模型、安全类留运行时"落成逐项清单，覆盖延续歧义、重复发布、澄清停放、恢复、验证、工具循环、压缩、检查点、策略和记忆。
+- [文档退役待审清单 2026-09-22](reference/document-retirement-review-2026-09-22.md)：不能由实现者单独决定的文档处置（对话连续性 P0 是否已关闭、状态机重设计 P6、开发反馈环阶段 5、对标记录依据失效、模块图/仓库指南待更新、Web 检索发布门、两份被门禁固定的常驻任务书），逐条给出证据、建议与不做的代价。
 - [Harness 开源底座评估 2026-09-02](reference/harness-open-source-evaluation-2026-09-02.md)：固定 DeepSeek Harness、Pi 与 nanoDeepSeekHarness 版本、许可证、供应链证据和 LS adapter 边界；当前决定保留自有 kernel、只吸收 durable event/session/stream 设计。
 - [OpenCode VS Code 对标记录 2026-08-13](reference/opencode-vscode-comparison-2026-08-13.md)：记录官方源码、许可证、LS 差异、已直接吸收的缓存/模型/审阅交互，以及待产品选择的虚拟化、评论和真正 VS Code 扩展路线。
 - [对话任务连续性 P0 专项任务书 2026-08-13](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md)：修复普通聊天未绑定 waiting-user Checkpoint、执行现场与附件/临时工具无法自然恢复、权限未按当前状态重验及最终回答断档。
-- [新 Harness 重建与 Prompt Cache 收敛任务书 2026-09-02](taskbooks/harness-rebuild-and-cache-taskbook-2026-09-02.md)：以冻结提交/tag 为回滚锚点，评估开源 Agent runtime，重建 durable event/inbox/replay、effect intent/settlement 和 authoritative final settlement，并以 `CACHE-01` 至 `CACHE-10` 观测和修复上下文注入造成的 Provider prompt-cache 低命中率。
-- [Harness 发布就绪与双路径对比记录 2026-09-11](reference/harness-rollout-readiness-2026-09-11.md)：汇总当前质量门、双路径成本/延迟/质量对比能力、发布门 reason 集合、灰度/回滚契约，以及仍阻断发布决定的真实 Provider、外部服务对账和真实渠道条目。
 - [缓存 95% 冻结负载验收规程](reference/cache-95-acceptance.md)：把极简执行与缓存 95% 方案的实测步骤写成可重复规程——冻结任务集/模型/配置/轮数与会话组织、旧新两组对比流程、`hit = sum(cached)/sum(input)` 测量规则、未知 usage 处理、禁止做法与完成条件；当前实测记录见 §7。
 - [缓存请求形状基线](reference/cache-baseline/README.md)：同一探针在改前/改后两个 checkout 上跑同一冻结负载的逐请求字符数、共享前缀与工具目录摘要对比；[最新一次运行](reference/cache-baseline/latest.md)由 harness 测试自动重写，[改前冻结副本](reference/cache-baseline/pre-fix-cd6cabc.md)与[改后冻结副本](reference/cache-baseline/baseline-git-0af62a7.md)保留为对比依据（不含提示词正文、会话内容或密钥）。
 - [真实长任务缓存基线 2026-09-22](reference/cache-baseline/real-long-task-baseline-2026-09-22.md)：六个冻结真实任务各跑两次（12 次运行，真实 Provider）的会话累计 H_ui、逐节点值、未缓存三类分解与派生上界；改动前 0/12 达标、4/12 功能失败，[原始机器可读账本](reference/cache-baseline/real-long-task-baseline-2026-09-22.json)同步提交。
@@ -70,13 +65,14 @@
 - [开发反馈环提速任务书 2026-08-09](taskbooks/development-feedback-loop-taskbook-2026-08-09.md)：任务级内循环、affected 选择器、重复构建消除和后续状态契约收敛；用于决定下一阶段开发效率工作。
 - [原子记忆与内置向量目录任务书 2026-07-17](taskbooks/memory-atom-vector-catalog-taskbook-2026-07-17.md)：Memory v3 原子文件、层级、本地向量目录、三层视图边界、动态注入、压缩连续性、迁移与验收。
 - [Agent Runtime 连续性任务书 2026-07-14](taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md)：Provider 校准、Context、附件、运行中重入、检查点、后台执行和有界并行。
-- [Agent Runtime 效率与版本化连续性任务书 2026-07-17](taskbooks/agent-runtime-efficiency-versioning-taskbook-2026-07-17.md)：工具调用并行、shadow Git、检查点、退出冻结、LLM 调用预算和前台 `SOUL` 表达边界。
 
 ### 任务书生命周期
 
 任务书保存阶段设计和验收记录，不代表全局最新状态。不要通过比较任务书日期判断下一步。
 
 **任务书完成后不再留在仓库里**：先把仍然成立的事实汇总到拥有它的常驻文档（项目状态、架构决策报告、架构原则、`reference/` 对应参考），再用 `git rm` 取消追踪并删除本节条目；原文保留在 git 历史中（`git log --follow -- <path>` 可取回）。仓库自检对 `docs/taskbooks/` 下的任务书数量设有预算，超预算时先退役已完成的任务书再新增。规则细节见[仓库指南](reference/repository-guide.md)。
+
+2026-09-22 已按此规则退役第一批已完成/已失效文档（7 份任务书 + 1 份参考），其中事实已分别归入 `AGENTS.md`、项目状态与遗留参考；退役理由、逐份去向和仍待用户裁定的处置见[文档退役待审清单 2026-09-22](reference/document-retirement-review-2026-09-22.md)。因判定依据不足而**未**退役的文档一律在该清单中列出，不得由实现者直接删除。
 
 任务书中出现的 `CLASSIFY`、`chat / problem / unclear`、旧测试数量和旧 Catalog 版本属于对应阶段的历史验收语境。当前活动路由只产出 `execute` 与能力/状态 `reply` 两条路径：`respond` 在路由边界归一为 `execute`，`clarify` 不是可路由活动；`decide`、`evolve`、`capture` 只作为历史 stage 名保留在旧检查点、LLM Call Contract 和兼容字段里，不得再作为新的产品概念使用。
 

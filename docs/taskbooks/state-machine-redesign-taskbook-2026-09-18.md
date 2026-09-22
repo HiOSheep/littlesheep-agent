@@ -286,4 +286,4 @@ Allowed writers: classify, decide, recover, verify, ask_user, runner-restore.
 5. **产品级 8×5 实机**确认（判据：`failedRuns` 不升、`silentRuns` 0、命中/成本不回归）；
 6. 提交 + 在本文件勾选/补一行实测数字。
 
-> 细则与证据链见 `docs/taskbooks/harness-lean-phase-c-implementation-taskbook-2026-09-14.md` 第十一章（11.1–11.26）。
+> 细则与证据链见已退役的第三批实施包第十一章（11.1–11.26），原文可取回：`git log --follow -- docs/taskbooks/harness-lean-phase-c-implementation-taskbook-2026-09-14.md`。
