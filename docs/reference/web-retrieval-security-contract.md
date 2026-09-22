@@ -1,7 +1,7 @@
 # LittleSheep 网络检索冻结契约与威胁模型
 
 状态：阶段 0 冻结，实施中
-最后更新：2026-08-29 19:24:20
+最后更新：2026-09-22 10:56:22
 冻结日期：2026-08-29
 执行入口：[实时网络检索与安全读取任务书](../taskbooks/web-search-and-safe-retrieval-taskbook-2026-08-28.md)
 
@@ -42,6 +42,7 @@
 - 缓存默认开启、TTL 300 秒、容量上限 64 MiB，但 Provider 许可不允许存储的字段不得写入缓存；
 - 默认 `browserFallback=approval_required`；
 - 默认敏感 query 策略为 `approve`；
+- DNS 解析模式冻结为 `system` 与 `cloudflare_doh` 两个取值，默认 `system`。`cloudflare_doh` 是显式配置的固定可信替代路径（固定 endpoint `https://cloudflare-dns.com/dns-query` 与固定地址 `1.1.1.1`/`1.0.0.1`），不接受任意 resolver endpoint、不静默 fallback，并且仍对全部 A/AAAA 结果、每次 redirect 和 TLS SNI/Host 执行与 `system` 相同的 IP/SSRF/TLS 校验与锁定连接；
 - Provider 密钥只登记 `apiKeyRef`，RunConfig、ToolResult、Prompt、TaskBook、日志和 UI 不保存解析后的密钥。
 
 兼容规则：新增字段保持 Config v1 的加法兼容；旧配置由 schema 默认值迁移。`ResolvedRunConfig`、checkpoint 和 execution log 的网络字段在 v1 中是可选字段，因此旧记录继续可读；新 run 必须生成不可变 `NetworkReadPolicy`。

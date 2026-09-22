@@ -1,6 +1,6 @@
 # LittleSheep 插件开发说明
 
-最后更新：2026-08-10 15:57:32
+最后更新：2026-09-22 10:56:22
 
 本文件定义 LittleSheep 插件系统的当前事实、开发契约和安全边界。插件用于给 LS 增加可选能力，但不能改变“本地核心在没有插件时仍可完整运行”的约束。
 
@@ -19,6 +19,7 @@ Electron Main (product composition root)
 - Runner 与 `PluginHost` 由 Electron 主进程并列装配；插件工具通过受控迁移进入 Runner 的 ToolRegistry，PluginHost 不拥有 Runner，也不参与 Harness 状态转移。
 - Webhook、Telegram、飞书和 QQ Bot 都是渠道插件。未配置对应渠道时，宿主不会加载其实现。
 - 独立技能与插件不是一回事：独立 Skill 由 SkillLoader/技能配置管理；插件可以声明自己拥有的 Skill，但其启停、冲突、迁移和移除仍由 PluginHost 统一控制。
+- 插件工具通过受控迁移进入 Runner 的 ToolRegistry，并与其他工具共用同一份对外工具目录：一次会话区间内宣告的目录固定不变，本轮无权使用的能力在**执行时**被拒绝，而不是从 schema 中隐藏。插件不能自行增删目录，也不能把 manifest 声明当作调用授权。
 - 插件失败不得阻止 Runner、本地聊天、记忆树、会话和工作区启动。
 
 ## API v1 能力矩阵

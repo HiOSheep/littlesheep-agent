@@ -1,10 +1,12 @@
 # LittleSheep 🐑
 
+最后更新：2026-09-22 10:56:22
+
 **A local-first agent desktop app that turns goals into finished work.**
 
 LittleSheep（LS）是一个本地运行、能够持续自主执行任务的 Agent 桌面应用。
 
-你告诉 LS 想完成什么，它负责理解目标、规划任务、调用工具、执行操作、验证结果，并在失败时尝试恢复；你仍然掌握权限授予、风险接受、目标取舍和关键决策。
+你告诉 LS 想完成什么，它负责理解目标、调用工具、执行操作、核对执行证据，并在失败时按既定边界重试或停下来问清楚；你仍然掌握权限授予、风险接受、目标取舍和关键决策。
 
 LS 不只是一个聊天窗口。它包含持久化 Agent Runtime、长期记忆、工作区、文件与 Git 工具、内置终端、模型管理，以及可扩展的工具和渠道插件。
 
@@ -18,7 +20,7 @@ LS 不只是一个聊天窗口。它包含持久化 Agent Runtime、长期记忆
 
 因此 LS 将任务执行本身作为核心能力，而不是聊天界面的附属功能。
 
-- 🧠 **Persistent Agent Runtime** — 任务由确定性的 Runtime 管理，并通过显式、可持久化的执行状态推进规划、执行、验证、恢复和收尾。模型负责智能，Runtime 负责可靠性。
+- 🧠 **Persistent Agent Runtime** — 任务由确定性的 Runtime 管理，并通过显式、可持久化的执行状态推进执行、结构验证、有界恢复和收尾。模型负责智能，Runtime 负责可靠性。
 - 🔧 **Integrated Tool Execution** — 文件、终端、Git、检索、工作区能力和插件工具统一接入 Agent 执行流程。
 - 💾 **Long-term Memory** — 使用索引优先、按需展开的长期记忆体系，而不是把所有历史信息长期堆进 Context。
 - 🖥️ **Built-in Workspace** — 聊天、代码查看与编辑、文件树、Git Diff、终端、会话和任务产物集中在同一个桌面应用内。
@@ -31,18 +33,19 @@ LS 不只是一个聊天窗口。它包含持久化 Agent Runtime、长期记忆
 
 LS 当前已经实现一套确定性的 Agent Runtime，用显式执行状态管理任务生命周期：
 
-- `respond / execute / clarify` 活动路由
-- 需求澄清
-- TaskBook
-- 分步骤执行
+- 活动路由只产出两条路径：所有常规会话和任务回合进入单一主循环 `execute`，只有能力/状态询问走最小 Runtime 事实契约的 `reply`
+- 需求澄清（主循环内的 `request_user_input`，或恢复升级进入 `ASK_USER`）
+- 持久化 TaskBook 作为只读历史，步骤在主循环内串行推进
 - 工具调用
-- 结果验证
-- 局部失败恢复
+- 结构验证：只断言 Runtime 证据能证明的事实，窄结构形态记为 `pass`，其余已完成的 run 记为 `unverified`
+- 有界恢复：Runtime 依据已记录事实重试、显式停止或把决定交回用户
 - 任务收尾
 - 暂停、继续和中断
 - 跨应用重启恢复
 
-每次模型调用都使用版本化契约，显式声明 Context、允许的决策、输出结构、可调用工具、记忆意图和预算。超出当前调用契约的请求会在发送前被拒绝。
+DECIDE、VERIFY 模型调用、RECOVER 模型调用和 CAPTURE 已删除：不再有第二次规划请求、验证模型请求、恢复模型请求，也没有运行结束后的自动沉淀。
+
+每次模型调用都使用版本化契约，显式声明 Context 种类、输出结构、记忆意图和预算；超出当前调用契约的 Context 组合会在发送前被拒绝。会话区间内广告给模型的工具目录保持固定，本回合无权使用的能力在执行时被拒绝，而不是从工具 schema 中隐藏。
 
 ### 持久化执行
 
@@ -50,9 +53,7 @@ LS 当前已经实现一套确定性的 Agent Runtime，用显式执行状态管
 
 活动任务支持版本化检查点、暂停、继续、应用启动恢复和显式续跑。
 
-LS 已在隔离的实际 Electron 进程中验收活动任务 SSE、托盘后台运行、暂停 / 继续 / 中断、配置与模型热重载、强制终止后的续跑、避免重复执行已完成副作用、完整退出和回答级跨重启连续性。
-
-对外部系统产生副作用的复杂场景、更长期运行和更大规模负载仍在继续验证。
+隔离的实际 Electron 进程已验收活动任务 SSE、托盘后台运行、暂停 / 继续 / 中断、配置与模型热重载、强制终止后的续跑、避免重复执行已完成副作用、完整退出和回答级跨重启连续性；更复杂的外部副作用场景与更大规模负载仍在验证，证据见 [Project Status](docs/decision/project-status.md)。
 
 ### Memory
 
@@ -64,10 +65,10 @@ LS 使用统一 Memory Service 和索引优先的 Memory Tree，目前包括：
 - 同分支深搜
 - Context 预算
 - 来源记录
-- 写入策略校验
+- 压缩写入候选的认识状态校验
 - 可回滚迁移
 
-用户长期理念可以通过 `PHILOSOPHY.md` 注册为按需资源，而不是全文常驻每轮 Prompt。模型可以提出记忆建议，真正的运行时记忆提交由系统控制。
+用户长期理念可以通过 `PHILOSOPHY.md` 注册为按需资源，而不是全文常驻每轮 Prompt。模型只能通过 `memory_tree` 的 `root_index` / `branch_index` / `expand` / `deep_search` / `release` 读取和释放记忆，没有记忆写入工具；持久记忆的唯一写入方是会话压缩路径，其候选由 Runtime 提交或拒绝。
 
 ### Desktop Workspace
 
@@ -156,7 +157,7 @@ Local App API 只负责本地 Renderer 与 Electron Main 之间的通信，不�
 
 外部渠道以可选插件存在，只负责将渠道消息送入 Agent，再将 Agent 回复送回对应渠道。
 
-当前 workspace 包含 27 个 package：23 个核心包和 4 个渠道插件。更完整的仓库结构见 [Repository Guide](docs/reference/repository-guide.md)。
+当前 workspace 包含 28 个 package：`packages/*` 下 24 个（含桌面应用）和 `packages/channels/*` 下 4 个渠道插件。更完整的仓库结构见 [Repository Guide](docs/reference/repository-guide.md)。
 
 ## 权限与安全边界
 
@@ -216,7 +217,7 @@ pnpm.cmd run verify:full
 pnpm.cmd run check:repo
 pnpm.cmd test
 pnpm.cmd run typecheck
-pnpm.cmd run build
+pnpm.cmd run build:app
 pnpm.cmd run verify:app-recovery
 ```
 
@@ -237,11 +238,7 @@ TypeScript 检查使用 Project References 和增量缓存，并刷新本地声�
 - 仓库结构：[Repository Guide](docs/reference/repository-guide.md)
 - 插件开发：[Plugin Development](docs/reference/plugin-development.md)
 
-## Project Status
-
-LittleSheep 目前是一个仍在快速演进中的个人开源项目。
-
-很多核心能力已经可以实际运行，但部分长期稳定性、跨环境兼容性、安装分发和复杂长期负载仍在持续验证。
+## 参与贡献
 
 如果你对 Agent Runtime、持久化执行、长期记忆、桌面 Agent、工具系统或具身智能方向感兴趣，欢迎阅读源码、提出 Issue 或参与讨论。
 

@@ -1,10 +1,12 @@
 # Harness 发布就绪与双路径对比记录 2026-09-11
 
 记录日期：2026-09-11
-最后更新：2026-09-11 12:15:00
-结论：next Harness 的 durable 底座、恢复边界和灰度/回滚机制已具备当前证据；但发布门在结构上仍为 `blocked`，因此**保持双路径**，不把 next 设为默认。
+最后更新：2026-09-22 10:56:22
+状态：**已被单一驱动取代**（2026-09-21）。`shadow`/`next` 双路径、按 session/origin/profile 的灰度覆盖和 `durableHarnessMode` 配置都已删除：每次 run 只走 durable 路径，`durableHarnessMode` 仅作为持久化事件里的历史标签存在。本文以下内容保留为当日的历史记录，不再描述当前行为。
 
-这份记录只汇总当前工作树已经验证到的能力与仍然阻断的条目，供发布决定使用。它不把 `blocked`/`unavailable` 的条目写成完成，也不把本地夹具的命中率当成真实 Provider 证据。
+结论（当日）：next Harness 的 durable 底座、恢复边界和灰度/回滚机制已具备当前证据；但发布门在结构上仍为 `blocked`，因此**保持双路径**，不把 next 设为默认。
+
+这份记录只汇总记录当日工作树已经验证到的能力与仍然阻断的条目，供发布决定使用。它不把 `blocked`/`unavailable` 的条目写成完成，也不把本地夹具的命中率当成真实 Provider 证据。
 
 ## 1. 当前质量门证据
 
@@ -40,9 +42,9 @@
 
 也就是说，只要没有真实 Provider 对账证据，状态在代码层面就无法变成 `ready`，本地夹具无法把它"刷绿"。这与任务书 CACHE-10 一致。
 
-## 5. 灰度与回滚契约
+## 5. 灰度与回滚契约（历史记录）
 
-- 灰度优先级：`session` > `origin` > `behavior profile` > 全局默认，四种覆盖都经 Local App API `GET/POST /runtime` 校验（非法值 400）。默认仍是 `shadow`。
+- 灰度优先级：`session` > `origin` > `behavior profile` > 全局默认，四种覆盖都经 Local App API `GET/POST /runtime` 校验（非法值 400）。当日默认仍是 `shadow`；该灰度管道与默认值都已被删除。
 - 回滚演练：同一 session 的 next → shadow → next 三回合验证回复无重复、第一回合 settlement 与 `run_completed` 保持完整、第三回合重新走 authoritative settlement。
 - 运行中租约：有活动 run lease 时启动恢复不会接管该 run；单个 run 恢复失败只记录诊断，其它 run 仍按稳定顺序恢复，启动不中断。
 - durable 事实：run/effect 两级 lease 的 acquire/reclaim/renew/release、真实子进程 `SIGKILL` 接管、inbox claim 过期重领、event store 跨进程并发 cursor 连续性、projection rebuild 与 live 相等、恢复中途崩溃的幂等补齐，均有真实文件或真实子进程夹具。
@@ -54,10 +56,10 @@
 | 真实 Provider usage/成本对账 | 已完成（V4.1 精确计数已接线） | 2026-09-11：V4.1 framing、`deepseek-v4.1` tokenizer 资产（`dba1be0a…` / `c90dfa01…476b` / 6,367,257 字节）与 `deepseek-v41-provider-calibrated-tokenizer-v1` 已接入 `@littlesheep/context`；`@littlesheep/config` 把 `deepseek-flash`、`deepseek-v4-flash` 标为 `exact`。真实 Provider 工具矩阵（`pnpm run verify:deepseek-v4-tool-tokenizer -- --model=deepseek-flash`）**12/12 覆盖形状全部 0 误差**，另有 3 个 `history-only`（保留工具历史但去掉工具 schema）形状被显式判为不覆盖（实测差 1 个 token），因此不会给出接近但错误的计数。`deepseek-v4-pro` 在 2026-09-14 路由切换前仍走 V4 精确计数器 |
 | 真实外部服务对账 | 已决策 A（已实现） | 2026-09-11 决定采用方案 A：工具用 `reconciliationKey` 申报一个有界、脱敏的恢复键，随 `effect_intent_created` 持久化并传入 `reconcileEffect`；机制、投影读取校验、Runner 透传和 `write` 工具接线均已完成并有测试，未声明键的工具保持保守 `unknown`。B（执行前写 tool-call 消息）已放弃，因为它会改变模型可见历史与缓存前缀 |
 | 真实渠道重连 | 不适用（扩展范围） | 2026-09-11 决定：webhook/telegram/feishu/qqbot 属于可选拓展插件，不属于核心发布门；核心只在真实接入某个渠道时才验收该渠道 |
-| 回答质量/成本对比（真实） | 进行中 | 报告能力与真实 Provider 凭证都已具备；计划用 `deepseek-flash` 跑固定任务集的 shadow/next 双路径对比，数字待写入本文档 |
+| 回答质量/成本对比（真实） | 后继记录 | 当日计划用 `deepseek-flash` 跑固定任务集的 shadow/next 双路径对比。该对比后来在单一驱动下完成：三组冻结负载的总体缓存命中率为 78.098%/78.182%（共享会话对话）、83.690%/84.523%（连续工具工作）、62.827%/63.228%（开启压缩），95% 目标未达成；读数与逐项归因见 [缓存 95% 冻结负载验收规程](cache-95-acceptance.md) 第 7 节 |
 | 资源成本（内存/磁盘） | unavailable | 有 runtime resource observation 机制，但没有形成可写入本记录的对比数字，故不声明 |
 
-## 7. 真实双路径对比（2026-09-11）
+## 7. 真实双路径对比（2026-09-11，历史记录）
 
 ### 7.1 扩大样本后的主结果（20 任务 × 2 轮）
 
@@ -102,10 +104,10 @@
 - 两条路径的 gate 都是 `blocked`，原因是报告无条件附加 `real_provider_reconciliation_not_verified`；这与本记录的保守发布门一致，不代表本次实测发现缺陷。
 - 样本量很小（6 任务、每路径 1 个 session、1 次运行），`reasoningTokens` 因一侧缺失被记为 `incomplete` 而不是 0。要作为发布依据需要扩大任务集并重复运行。
 
-## 8. 当前发布决定
+## 8. 当日发布决定（历史记录）
 
-2026-09-11 用户决定：**暂不发布**，先把前面的工作做完。因此继续双路径，默认 `shadow`；需要试用 next 时按 session / origin / profile 显式覆盖。
+2026-09-11 用户决定：**暂不发布**，先把前面的工作做完；当日继续双路径，默认 `shadow`。该决定与其触发条件都随 2026-09-21 的单一驱动合并失效：现在没有可切换的第二条路径，也没有可撤回的灰度覆盖。
 
 触发切默认的条件（更新后）：真实 Provider usage 对账在 V4.1 上重新校准通过、真实成本/质量对比结论可复现、`verify:full` 在切换树上重新通过。真实渠道重连不再是核心阻断项（拓展插件范围）；effect 对账方向已定为 A 并已实现。
 
-回退方式：任何模式下出现 P0 安全、数据丢失、重复副作用、重复最终回复或缓存跨域泄露，立即把覆盖撤回全局 `shadow`；有 intent 无 settlement 的 run 进入 `unknown` 并请求用户决定，不用旧路径盲重做。
+回退方式（历史记录）：任何模式下出现 P0 安全、数据丢失、重复副作用、重复最终回复或缓存跨域泄露，立即把覆盖撤回全局 `shadow`；有 intent 无 settlement 的 run 进入 `unknown` 并请求用户决定，不用旧路径盲重做。当前对应做法是把 run 停在 `unknown` 并请求用户决定，不再存在旧的单一回退路径。

@@ -2,7 +2,7 @@
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
-最后更新：2026-08-04 01:01:23
+最后更新：2026-09-22 10:56:22
 
 ## 开发
 
@@ -80,7 +80,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\refresh-deskto
 
 设置中的“开发环境”页面是版本管理入口。Electron 内置 Node 会随应用提供；其他常用运行时和工具链当前由用户选择已下载并解压的目录后导入到 `<data-root>/toolchains/`。页面保存的是目标版本偏好，真实生效版本必须经过可执行文件版本校验；版本系列（如 `3.12`）会选择已导入的最高匹配补丁版本。终端使用由 Main 派生的进程环境，优先放置已验证的 LS 工具链，不修改宿主进程的 `PATH`。
 
-当前尚未实现官方运行时下载、签名/哈希清单和完整安装包分发；相关边界与后续验收见 [开发环境管理任务书](../../docs/taskbooks/development-environment-taskbook-2026-07-19.md)。
+当前尚未实现官方运行时下载、签名/哈希清单和完整安装包分发；相关边界与当前待办以 [项目状态](../../docs/decision/project-status.md) 为准。
 
 ## 验证
 

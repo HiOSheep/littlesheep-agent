@@ -1,6 +1,6 @@
 # 自定义模型供应商
 
-最后更新：2026-09-11 10:06:00
+最后更新：2026-09-22 10:56:22
 
 本文固定 LS 当前实现的“用户自定义供应商与模型”契约：配置字段、权威来源、密钥存放、未知能力的表达，以及仍然不支持的部分。设置页“通用 → 模型供应商”按本契约读写 Main 的配置与密钥库。
 
@@ -60,7 +60,7 @@ LS 允许用户自行添加供应商和模型，从而接入任意 OpenAI 兼容
 
 - 未声明 `contextWindow` 且内置注册表也不认识时，运行时投影不带 `contextWindow`，UI 显示“未声明”，不显示 0 或猜测值。
 - 未声明的模型只有 `auto` 推理档位，不会凭空出现 `high/ultra`。
-- 用户声明的模型没有经过验证的最终请求计数器，因此 tokenizer 状态是 `unavailable`（原因 `no-verified-final-request-counter`），上下文用量不会显示本地精确计数。
+- 用户声明的模型没有经过验证的最终请求计数器，因此 tokenizer 状态是 `unavailable`（原因 `no-verified-final-request-counter`），上下文用量不会显示本地精确计数。内置注册表已声明 `exact` 的模型不受此限：`deepseek/deepseek-flash` 与 `deepseek/deepseek-v4-flash` 当前由 V4.1 架构提供服务并使用 `deepseek-v41-provider-calibrated-tokenizer-v1`，`deepseek/deepseek-v4-pro` 保持 V4 精确计数器；精确性按模型与请求形态记录，不能外推到未验证形态。
 
 ## 7. 相关实现与验证
 
@@ -72,7 +72,7 @@ LS 允许用户自行添加供应商和模型，从而接入任意 OpenAI 兼容
 
 设置页遵循应用自身的“一页一面板”约定：进入“模型供应商”先看供应商卡片列表，点击“编辑/添加”后**在页面内切换**到编辑面板（使用设置壳的 `.overlay`/`.dialog` 平面面板，而不是浮层对话框），取消即返回列表。这不是纯样式选择：设置壳会把面板内的 `.dialog` 变成不透明白底浮层之外的平面容器（`width: min(1040px, 100%)`、`background: transparent`），把编辑器当浮层叠加会让透明的面板压在卡片列表上。
 
-真实渲染回归：`pnpm run verify:model-provider-ui` 启动真实 Electron 应用（隔离数据根），断言列表态没有编辑面板、卡片互不重叠、页面无横向溢出，编辑态只剩面板且宽度正常，并把两个状态的截图写到 `.codex_tmp/`。
+真实渲染回归：`pnpm run verify:model-provider-ui` 启动真实 Electron 应用（隔离数据根），断言列表态没有编辑面板、卡片互不重叠、页面无横向溢出，编辑态只剩面板且宽度正常，并保存两个状态的截图供人工复核。
 
 ### 列表只显示已配置的供应商
 

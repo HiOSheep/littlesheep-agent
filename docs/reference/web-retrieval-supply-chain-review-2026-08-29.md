@@ -1,7 +1,7 @@
 # Web Retrieval Supply-Chain Review 2026-08-29
 
 状态：已完成本时间点的离线依赖审查；实际 Provider 条款、费用和部署地可用性仍需在 live smoke 时复核。
-最后更新：2026-09-02 00:40:28
+最后更新：2026-09-22 10:56:22
 
 ## 范围与方法
 
@@ -22,7 +22,9 @@
 
 ## 漏洞审查结果
 
-2026-08-29 执行 `pnpm.cmd audit --prod --json`，结果摘要如下：
+**当前结果（2026-09-22 复核）**：`pnpm audit --prod --json` 报告生产依赖 `346`，`3` 个 moderate、`10` 个 high、`0` 个 critical。受影响的生产依赖是 `@xmldom/xmldom@0.8.13`（经 `mammoth@1.12.0` 由 `@littlesheep/documents` 引入）、`sharp@0.35.0` 与 `adm-zip@0.6.0`（两者都经 `@huggingface/transformers@4.2.0` 引入，且当前 workspace override 已低于各自修复线）。处置与复查日期见[生产依赖安全记录](production-dependency-security.md)。**本节以下 2026-08-29 与 2026-09-02 的零漏洞读数已被本次结果取代，不得再作为当前状态引用。**
+
+2026-08-29 执行 `pnpm.cmd audit --prod --json`，当时的结果摘要如下（历史快照）：
 
 | 等级 | 数量 |
 | --- | ---: |
@@ -32,15 +34,15 @@
 | high | 0 |
 | critical | 0 |
 
-本轮命令报告的生产依赖数为 346，开发依赖数为 0，可选依赖 40，总依赖数 386。该结果是当前 lockfile 和 registry advisory 数据的一次快照，不是永久无漏洞保证；发布前和定期维护时必须重新执行。
+该次命令报告的生产依赖数为 346，开发依赖数为 0，可选依赖 40，总依赖数 386。依赖数量本身仍是当前值，但漏洞计数只对该时点成立；发布前必须重新执行。
 
-`pnpm --filter @littlesheep/web outdated --format json` 在本次审查中返回空对象。它只表示该命令当时没有报告 Web 包的过期项，不替代安全公告、维护活跃度和发布变更审查。
+`pnpm --filter @littlesheep/web outdated --format json` 在当时返回空对象。它只表示该命令当时没有报告 Web 包的过期项，不替代安全公告、维护活跃度和发布变更审查。
 
-### 2026-09-02 发布日前置复核
+### 2026-09-02 发布日前置复核（历史快照）
 
-在当前 lockfile 下重新执行上述三条命令，`audit --prod` 仍报告 production `346`、optional `40`、total `386` 个依赖，info/low/moderate/high/critical 漏洞均为 `0`；`@littlesheep/web` 的 `outdated --format json` 仍返回空对象。
+当日重新执行上述三条命令时，`audit --prod` 报告 production `346`、optional `40`、total `386` 个依赖，漏洞计数为 `0`；`@littlesheep/web` 的 `outdated --format json` 返回空对象。**该零漏洞读数已于 2026-09-22 失效**（见本节开头）。
 
-本轮许可证清单工具将 `khroma@2.1.0` 标记为 `Unknown`。这是该包 manifest 缺少 `license` 字段导致的工具识别缺口，不应直接作为许可证未知发布。已从安装包内的 `node_modules/.pnpm/khroma@2.1.0/node_modules/khroma/license` 核验到 MIT 正文；`pnpm why khroma --prod` 证明它由 `@littlesheep/app -> mermaid@11.17.2` 引入。该核验只澄清当前依赖的许可证文本，最终发行包仍须包含所需 notices，并由发布/法务责任人核对实际分发内容。
+当日许可证清单工具将 `khroma@2.1.0` 标记为 `Unknown`。这是该包 manifest 缺少 `license` 字段导致的工具识别缺口，不应直接作为许可证未知发布。已从安装包内的 `node_modules/.pnpm/khroma@2.1.0/node_modules/khroma/license` 核验到 MIT 正文；`pnpm why khroma --prod` 证明它由 `@littlesheep/app -> mermaid@11.17.2` 引入。该核验只澄清当前依赖的许可证文本，最终发行包仍须包含所需 notices，并由发布/法务责任人核对实际分发内容。
 
 ## 许可证审查
 
@@ -78,10 +80,10 @@ live smoke 输出只允许保留 provider 请求计数、状态、HTTP 状态类
 
 ## 发布前复核条件
 
-- 锁文件与依赖树发生变化时重新执行 audit 和 license 清单，并审查新增直接依赖。
+- 锁文件与依赖树发生变化时重新执行 audit 和 license 清单，并审查新增直接依赖；2026-09-22 的 audit 结果已包含在生产依赖安全记录的处置清单中。
 - `packages/app/out`、`packages/web/dist`、`packages/types/dist` 以及未来 release 包必须通过 `pnpm.cmd run verify:web-artifacts`。
 - source map 和测试编译文件默认不作为发布敏感数据证明的主体；最终打包配置仍须决定是否从发布包排除它们。
 - 扫描器允许 PDF worker 内置的固定 `/home/web_user` 常量，因为它是上游浏览器 worker 的运行时字符串，不是用户路径；Windows `Users/Documents`、macOS `/Users/*` 和其他 Linux `/home/*` 仍是失败项。这个 allowlist 仅限该精确常量，升级该依赖或修改 bundle 时必须重新复核。
 - 新增网络库、HTML parser、代理、浏览器或远程 extractor 时，必须补充供应链、SSRF、响应限制、注入和许可证回归。
 - Provider key 只能通过 secret reference 注入，不能进入配置快照、日志、checkpoint、Memory 或构建产物。
-- 本轮 `node scripts/verify-web-release-artifacts.mjs --root=release` 扫描了 659 个文件和 14356 个 `app.asar` 归档条目；读取错误及 provider secret、私密 fixture、嵌入用户 Memory、绝对用户路径四类命中均为 0。该候选安装器尚未签名，签名包仍需重新扫描。
+- `node scripts/verify-web-release-artifacts.mjs --root=release` 扫描了 659 个文件和 `app.asar` 归档条目；读取错误及 provider secret、私密 fixture、嵌入用户 Memory、绝对用户路径四类命中均为 0。**待核实**：归档条目数在两份记录中不一致——本文记录 14356，Web 发布清单记录 14363；两次扫描未在本轮重新执行，发布前应以签名包的实扫结果为准。该候选安装器尚未签名，签名包仍需重新扫描。

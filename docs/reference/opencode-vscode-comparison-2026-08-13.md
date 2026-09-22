@@ -1,6 +1,6 @@
 # OpenCode VS Code 对标记录（2026-08-13）
 
-最后更新：2026-08-13 21:44:48
+最后更新：2026-09-22 10:56:22
 
 ## 结论先行
 
@@ -23,7 +23,7 @@ LS 当前的“内置 VS Code 模块”是 LS 自有 Electron 工作区中的 Mo
 | 更新机制 | 应用层通过事件/资源更新，避免无意义全量刷新 | LS 以可见性、焦点、文件变更和 30 秒兜底刷新 Git | 保留现有低后台占用策略，暂不引入复杂全局事件总线 |
 | 体积 | 扩展约 10 KB，几乎无额外运行时 | Monaco 运行时和 worker 资产是主要体积 | 不复制 OpenCode Desktop、Solid 状态层或 SDK |
 
-## 本轮已直接加入 LS
+## 本轮已直接加入 LS（当时落地，现状已复核）
 
 ### 1. 文件预览 byte-aware LRU
 
@@ -55,11 +55,11 @@ Main 进程现在全局最多保留 8 个工作区的快照，每条使用 5 秒
 
 ### 审阅侧栏尺寸、Diff 样式与展开模式
 
-OpenCode 持久化侧栏开关、宽度和展开模式，但过滤仍是临时态。LS 已把审阅导航接入普通文件导航的共享折叠状态，并在 Diff 标题行提供单列/双列显式切换；偏好以 `WORKSPACE_REVIEW_SIDE_BY_SIDE_KEY` 保存，默认双列。仍可后续补审阅侧栏独立宽度和行级评论，但不能重新引入第二套目录扫描或活动页面。
+OpenCode 持久化侧栏开关、宽度和展开模式，但过滤仍是临时态。LS 已把审阅导航接入普通文件导航的共享折叠状态，并在 Diff 标题行提供单列/双列显式切换；偏好以 `WORKSPACE_REVIEW_SIDE_BY_SIDE_KEY` 保存，默认双列。仍可后续补审阅侧栏独立宽度，但不能重新引入第二套目录扫描或活动页面。
 
 ### 行级评论
 
-OpenCode 的评论依赖会话、行范围、焦点和持久化协议。LS 当前审阅是只读 Git 工作区，没有评论存储和 Runtime 合约；直接复制 UI 会制造无后端的假交互，因此暂缓。
+OpenCode 的评论依赖会话、行范围、焦点和持久化协议。LS 已实现自己的行评论：Monaco 行/范围手势与 view zone 编辑器位于 `packages/app/src/renderer/workspace/line-comments.tsx`、`line-comment-surface.tsx`，普通文件与审阅 diff 共用同一 surface，评论以附件形式发布到输入栏（`review-line-comments.ts`、`line-comment-attachments.ts`）。LS 没有独立的评论存储或 Runtime 评论合约，评论只作为本轮附件进入对话；该边界与 OpenCode 的持久评论模型不同，不能按 UI 形态直接照搬。
 
 ### 真正的 LS VS Code 扩展
 
