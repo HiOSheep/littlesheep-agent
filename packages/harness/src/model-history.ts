@@ -19,14 +19,19 @@ import { conversationHistoryForModel, toChatMessage } from './stages/_shared.js'
 import { toolResultForModel } from './stages/execute/tool-result-persistence.js';
 
 /**
- * Fallback safety ceiling for the replayed transcript, used only when the model's
- * context budget is unknown. With a known budget the ceiling is derived from it
- * (see `replayCharBudget`) so that the ceiling cannot become the truncator: a fixed
- * 96k characters is *tighter* than a 128k-token window, so on a 28-turn task it
- * began dropping the oldest groups at turn 10 and broke the Provider prefix every
- * time it dropped one.
+ * Fallback safety ceiling for the replayed transcript, used only when no model
+ * budget has been observed yet in this run.
+ *
+ * It must be larger than any realistic context window, because a ceiling that sits
+ * below the window silently becomes the truncator and breaks the Provider prefix
+ * once per drop. Measured on the 28-turn long task: the session-cumulative hit
+ * ratio climbed to 97.13% by turn 13 and then collapsed, because the fallback was
+ * 96k characters, the transcript crossed it around turn 14, and `buildBaseMessages`
+ * runs before the first Context snapshot exists — so the known-budget path never
+ * applied at a run's first request. With the ceiling out of the way the token
+ * budget the Context engine enforces (plus compaction) is the only bound.
  */
-export const MODEL_HISTORY_MAX_CHARS = 96_000;
+export const MODEL_HISTORY_MAX_CHARS = 512_000;
 
 /**
  * Characters-per-token is deliberately not guessed. A character ceiling derived
@@ -172,9 +177,13 @@ export function modelHistoryMessages(
  * enforces and, past it, compaction. A constant character ceiling that happens to
  * sit below the window silently becomes the truncator instead — and because it
  * drops the oldest group whenever it overflows, it breaks the Provider prefix once
- * per drop. Measured on the 28-turn long task: the collapse started at turn 10,
- * exactly where the transcript crossed 96k characters, and a ceiling derived from
- * the budget at 2 chars/token still dropped 21 messages in one turn.
+ * per drop. That is exactly what the 96k fallback did: the long task's ratio had
+ * climbed to 97.13% by turn 13 and collapsed from turn 14, where the transcript
+ * crossed it.
+ *
+ * `buildBaseMessages` runs before the first Context snapshot of a run exists, so at
+ * a run's *first* request the budget is normally unknown and the (now generous)
+ * fallback applies; the token budget takes over for the rest of the run.
  */
 export function replayCharBudget(ctx: Pick<RunContext, 'contextSnapshots'>): number {
   const budgets = (ctx.contextSnapshots ?? []).filter((snapshot) => snapshot.budget?.status === 'known');

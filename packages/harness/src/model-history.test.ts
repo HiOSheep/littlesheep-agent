@@ -127,8 +127,12 @@ describe('task-interval model history', () => {
   });
 
   it('derives the replay ceiling from the model budget instead of a fixed character cap', () => {
+    // The fallback exists only to stop a pathological request, so it must be larger
+    // than any realistic window: at 96k characters it became the truncator on a
+    // 28-turn task and collapsed the cached prefix from turn 14 on.
+    expect(MODEL_HISTORY_MAX_CHARS).toBeGreaterThanOrEqual(400_000);
     const modelHistory = [
-      textMessage('user', 'x'.repeat(100_000)),
+      textMessage('user', 'x'.repeat(600_000)),
       textMessage('assistant', 'the recent turn'),
     ];
 
