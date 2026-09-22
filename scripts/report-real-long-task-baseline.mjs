@@ -69,6 +69,10 @@ function rate(run) {
     cached: run.report.session?.cached,
     hitPercent: run.report.session?.hUiPercent,
     requestsWithoutUsage: run.report.ledgerCoverage?.requestsWithoutUsage,
+    // Provider reports the Runtime cannot corroborate, and the ratio without them.
+    // The headline ratio always stays the whole ledger; this is a sensitivity view.
+    providerInconsistencies: run.report.providerInconsistencies?.count ?? 0,
+    hitPercentWithoutInconsistencies: run.report.providerInconsistencies?.hUiPercentWithoutThem ?? null,
     auxiliaryRequests: run.report.auxiliary?.requests,
     hAllPercent: run.report.all?.hitPercent ?? run.report.session?.hUiPercent,
     nodes: (run.report.nodes ?? []).map((node) => ({
@@ -133,17 +137,20 @@ function markdown(data) {
   lines.push('');
   lines.push('## 逐次运行');
   lines.push('');
-  lines.push('| 任务 | 次数 | 回合 | 产物验收 | 请求 | 输入 | 缓存 | H_ui | 节点 H_ui | 未缓存拆分（冷启动/重建/尾部） | 结论 |');
-  lines.push('| --- | ---: | --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |');
+  lines.push('| 任务 | 次数 | 回合 | 产物验收 | 请求 | 输入 | 缓存 | H_ui | 排除 provider 矛盾后 | 节点 H_ui | 未缓存拆分（冷启动/重建/尾部） | 结论 |');
+  lines.push('| --- | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |');
   for (const run of data.results) {
     const nodeText = run.nodes.map((node) => `${node.id} ${fmt(node.hitPercent, 1)}%`).join('<br>');
     const losses = run.losses;
     const lossText = losses
       ? `${losses.coldStart}/${losses.rebuild}/${losses.appendResidual}`
       : 'n/a';
+    const sensitivity = run.providerInconsistencies > 0
+      ? `${fmt(run.hitPercentWithoutInconsistencies)}%（${run.providerInconsistencies} 次）`
+      : '—';
     lines.push(`| ${run.taskId} | #${run.attempt} | ${run.turnsOk}/${run.turns} | ${run.acceptanceOk}/${run.acceptance} `
       + `| ${run.requests ?? 'n/a'} | ${run.input ?? 'n/a'} | ${run.cached ?? 'n/a'} | **${fmt(run.hitPercent)}%** `
-      + `| ${nodeText} | ${lossText} | ${run.conclusion ?? 'n/a'} |`);
+      + `| ${sensitivity} | ${nodeText} | ${lossText} | ${run.conclusion ?? 'n/a'} |`);
   }
   lines.push('');
   lines.push('## 损失归因（实测分解）');
