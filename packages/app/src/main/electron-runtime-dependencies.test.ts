@@ -21,8 +21,13 @@ describe('Electron main-process runtime dependencies', () => {
     expect(packageJson.dependencies?.['@huggingface/transformers']).toBe('4.2.0')
     expect(packageJson.dependencies?.dompurify).toBe('3.4.13')
     expect(rootPackageJson.engines?.node).toBe('>=20.9.0')
-    expect(workspaceSource).toMatch(/^\s+adm-zip: 0\.6\.0$/mu)
-    expect(workspaceSource).toMatch(/^\s+sharp: 0\.35\.0$/mu)
+    // Security floors, not preferences: adm-zip <0.6.1 and sharp <0.35.4 carry
+    // advisories, and mammoth's declared @xmldom/xmldom range kept resolving a
+    // vulnerable build from a stale lockfile. Raising any of them is a dependency
+    // round with its own native/runtime verification.
+    expect(workspaceSource).toMatch(/^\s+adm-zip: 0\.6\.1$/mu)
+    expect(workspaceSource).toMatch(/^\s+sharp: 0\.35\.4$/mu)
+    expect(workspaceSource).toMatch(/^\s+'@xmldom\/xmldom': 0\.8\.15$/mu)
   })
 
   it('pins Monaco DOMPurify to the reviewed security floor', async () => {

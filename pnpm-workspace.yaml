@@ -10,6 +10,16 @@ allowBuilds:
   protobufjs: true
   sharp: true
 overrides:
-  adm-zip: 0.6.0
+  # adm-zip <0.6.1 and sharp <0.35.4 carry high/moderate advisories; both fixed
+  # versions are patch releases of the ranges the current Transformers 4.2 graph
+  # resolves to. @huggingface/transformers 4.3.0 declares onnxruntime-node 1.30.0
+  # (adm-zip ^0.6.0) and sharp ^0.35.4, so upgrading it should let these two pins
+  # go; that upgrade needs its own ONNX/embedding runtime verification.
+  adm-zip: 0.6.1
   dompurify: 3.4.13
-  sharp: 0.35.0
+  sharp: 0.35.4
+  # mammoth 1.12.x declares `@xmldom/xmldom: ^0.8.6`, a range that already allows
+  # the fixed 0.8.15, but the committed lockfile kept resolving 0.8.13; the pin
+  # makes the fixed version explicit instead of depending on when the lockfile was
+  # last refreshed. 0.8.15 stays inside mammoth's declared range (0.9.x would not).
+  '@xmldom/xmldom': 0.8.15
