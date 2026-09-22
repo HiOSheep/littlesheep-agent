@@ -86,7 +86,20 @@ export class ContextEngine {
     const counterFailure = fitted.counterFailure;
     const safetyEstimate = fitted.safetyEstimate;
 
-    const compressionRecommended = shouldRecommendCompression(
+    // Fitting to the budget drops candidates, and every drop moves the request's
+    // history window, so the next turn no longer extends the previous request and
+    // the Provider re-bills the prefix. That is what compaction exists for, but the
+    // *fitted* prompt sits below the ratio, so comparing the fitted count alone
+    // never reports the pressure that caused the drop: the session then evicts a
+    // little on every turn instead of folding once.
+    //
+    // Only the model window counts as that pressure. A stage's own soft target may
+    // also drop optional context, and folding the session summary because a narrow
+    // stage asked for a small prompt would be wrong.
+    const overModelWindow = fitted.promptTokensBeforeFit !== undefined
+      && budget.availablePromptTokens !== undefined
+      && fitted.promptTokensBeforeFit > budget.availablePromptTokens;
+    const compressionRecommended = overModelWindow || shouldRecommendCompression(
       promptTokens ?? safetyEstimate?.estimatedPromptTokens,
       budget.availablePromptTokens,
       budget.compressionThresholdRatio,

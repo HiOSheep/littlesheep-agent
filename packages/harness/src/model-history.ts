@@ -19,12 +19,24 @@ import { conversationHistoryForModel, toChatMessage } from './stages/_shared.js'
 import { toolResultForModel } from './stages/execute/tool-result-persistence.js';
 
 /**
- * Safety ceiling for the replayed transcript. It is deliberately far above any
- * measured task interval: compaction (`sessions.compaction.threshold/keepRecent`)
- * is the bound that decides what a run receives, and this ceiling only prevents a
- * pathological session from producing an unbounded request.
+ * Fallback safety ceiling for the replayed transcript, used only when the model's
+ * context budget is unknown. With a known budget the ceiling is derived from it
+ * (see `replayCharBudget`) so that the ceiling cannot become the truncator: a fixed
+ * 96k characters is *tighter* than a 128k-token window, so on a 28-turn task it
+ * began dropping the oldest groups at turn 10 and broke the Provider prefix every
+ * time it dropped one.
  */
 export const MODEL_HISTORY_MAX_CHARS = 96_000;
+
+/**
+ * Characters-per-token is deliberately not guessed. A character ceiling derived
+ * from a token budget cannot stay above that budget for mixed text: the same 96k
+ * characters are ~96k tokens of Chinese but ~24k tokens of English, so any single
+ * factor either truncates early or fails to guard. When the budget is known the
+ * Context engine's token budget is the authority and this module does not truncate
+ * at all; without a known budget the fallback ceiling below is the only guard.
+ */
+const MODEL_HISTORY_FALLBACK_MAX_CHARS = MODEL_HISTORY_MAX_CHARS;
 
 interface PendingCall {
   id: string;
@@ -144,7 +156,31 @@ export function projectModelHistory(
  * one, otherwise the prose projection this stage used before (a context built by
  * a test or a replay path).
  */
-export function modelHistoryMessages(ctx: Pick<RunContext, 'history' | 'modelHistory'>): ChatMessage[] {
-  if (ctx.modelHistory && ctx.modelHistory.length > 0) return projectModelHistory(ctx.modelHistory);
+export function modelHistoryMessages(
+  ctx: Pick<RunContext, 'history' | 'modelHistory' | 'contextSnapshots'>,
+): ChatMessage[] {
+  if (ctx.modelHistory && ctx.modelHistory.length > 0) {
+    return projectModelHistory(ctx.modelHistory, replayCharBudget(ctx));
+  }
   return conversationHistoryForModel(ctx).map(toChatMessage);
+}
+
+/**
+ * The ceiling for the replayed transcript.
+ *
+ * What decides how much a run replays is the token budget the Context engine
+ * enforces and, past it, compaction. A constant character ceiling that happens to
+ * sit below the window silently becomes the truncator instead — and because it
+ * drops the oldest group whenever it overflows, it breaks the Provider prefix once
+ * per drop. Measured on the 28-turn long task: the collapse started at turn 10,
+ * exactly where the transcript crossed 96k characters, and a ceiling derived from
+ * the budget at 2 chars/token still dropped 21 messages in one turn.
+ */
+export function replayCharBudget(ctx: Pick<RunContext, 'contextSnapshots'>): number {
+  const budgets = (ctx.contextSnapshots ?? []).filter((snapshot) => snapshot.budget?.status === 'known');
+  const budget = budgets.at(-1)?.budget;
+  if (!budget || budget.status !== 'known') return MODEL_HISTORY_FALLBACK_MAX_CHARS;
+  // Known budget: the engine's token accounting is the bound, so the replay is not
+  // also truncated here.
+  return Number.POSITIVE_INFINITY;
 }

@@ -378,6 +378,37 @@ describe('ContextEngine', () => {
     expect(result.compressionRecommended).toBe(false);
   });
 
+  it('recommends session compaction when the model window itself forced the eviction', () => {
+    const engine = new ContextEngine({
+      tokenCounter: lengthCounter,
+      // A window smaller than the candidates: the drop is the window's doing, so the
+      // session has to fold instead of evicting a little on every turn.
+      resolveContextWindow: () => ({ maxContextTokens: 70, source: 'builtin-model-registry' }),
+      resolveTokenizerCapability: exactLengthCapability,
+    });
+    const contract = callContract(
+      ['system_prompt', 'recent_message', 'user_input'],
+      ['system_prompt', 'user_input'],
+    );
+    const result = engine.prepare({
+      runId: 'run-window-pressure',
+      sessionId: asSessionId('session-window-pressure'),
+      stage: 'reply',
+      requestIndex: 1,
+      provider: 'openai',
+      request: baseRequest(),
+      callContract: contract,
+      candidates: [
+        candidate('system', 0, 's'.repeat(30), { required: true, priority: 100, role: 'system' }),
+        candidate('history', 10, 'h'.repeat(30), { priority: 10 }),
+        candidate('current', 20, 'u'.repeat(30), { required: true, priority: 90, kind: 'user_input' }),
+      ],
+    });
+
+    expect(result.omittedCandidateIds).toEqual(['history']);
+    expect(result.compressionRecommended).toBe(true);
+  });
+
   it('does not recommend session compaction from a stage soft target when the model window has room', () => {
     const engine = new ContextEngine({
       tokenCounter: lengthCounter,

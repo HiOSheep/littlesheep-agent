@@ -36,6 +36,12 @@ export interface FitRequestInput {
 
 export interface FitRequestOutcome {
   promptTokens?: number;
+  /**
+   * What the request measured before any eviction. A caller that wants to know
+   * whether the *model window* forced the drop (as opposed to a stage's soft
+   * target) compares this against `availablePromptTokens`.
+   */
+  promptTokensBeforeFit?: number;
   counterFailure?: string;
   safetyEstimate?: ContextSafetyEstimate;
 }
@@ -58,6 +64,7 @@ export function fitRequestToBudget(input: FitRequestInput): FitRequestOutcome {
     const counter = input.counter;
     try {
       state.measurement = validTokenCount(counter.countRequest(state.request), 'exact token counter');
+      outcome.promptTokensBeforeFit = state.measurement;
       if (input.targetPromptTokens !== undefined && state.measurement > input.targetPromptTokens) {
         evict(input.targetPromptTokens, (request) => (
           validTokenCount(counter.countRequest(request), 'exact token counter')
@@ -81,6 +88,7 @@ export function fitRequestToBudget(input: FitRequestInput): FitRequestOutcome {
         estimator.estimatePromptTokens(state.request),
         'context safety estimator',
       );
+      outcome.promptTokensBeforeFit ??= state.measurement;
       if (state.measurement > safetyPromptTokens) {
         evict(safetyPromptTokens, (request) => (
           validTokenCount(estimator.estimatePromptTokens(request), 'context safety estimator')

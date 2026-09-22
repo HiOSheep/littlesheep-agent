@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { Message } from '@littlesheep/types';
+import type { Message, RunContext } from '@littlesheep/types';
 import { textMessage } from '@littlesheep/types';
 import {
   MODEL_HISTORY_MAX_CHARS,
   modelHistoryMessages,
   projectModelHistory,
+  replayCharBudget,
 } from './model-history.js';
 
 function toolCallsMessage(options: {
@@ -123,6 +124,28 @@ describe('task-interval model history', () => {
       expect(history[index + 1]).toMatchObject({ role: 'tool', tool_call_id: callId });
     }
     expect(JSON.stringify(history).length).toBeLessThanOrEqual(MODEL_HISTORY_MAX_CHARS);
+  });
+
+  it('derives the replay ceiling from the model budget instead of a fixed character cap', () => {
+    const modelHistory = [
+      textMessage('user', 'x'.repeat(100_000)),
+      textMessage('assistant', 'the recent turn'),
+    ];
+
+    // No known budget: the documented fallback ceiling applies and the oldest
+    // group falls off it.
+    expect(replayCharBudget({})).toBe(MODEL_HISTORY_MAX_CHARS);
+    expect(modelHistoryMessages({ history: [], modelHistory })).toHaveLength(1);
+
+    // A known budget makes the engine's token accounting the bound, so the replay is
+    // not truncated here at all — a ceiling derived at 2 chars/token still dropped
+    // 21 messages in one turn of the long task.
+    const contextSnapshots = [
+      { budget: { status: 'unknown', reason: 'unregistered' } },
+      { budget: { status: 'known', maxContextTokens: 128_000, reservedOutputTokens: 8_000, availablePromptTokens: 120_000, compressionThresholdRatio: 0.8 } },
+    ] as unknown as NonNullable<RunContext['contextSnapshots']>;
+    expect(replayCharBudget({ contextSnapshots })).toBe(Number.POSITIVE_INFINITY);
+    expect(modelHistoryMessages({ history: [], modelHistory, contextSnapshots })).toHaveLength(2);
   });
 
   it('replays the assistant preamble that accompanied a tool call', () => {
