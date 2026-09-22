@@ -99,6 +99,33 @@ describe('cache observability', () => {
     expect(second.normalizedRequest.fingerprint).not.toBe(first.normalizedRequest.fingerprint);
   });
 
+  it('treats a trailing per-turn system section as dynamic, not as part of the prefix', () => {
+    // Regression: the runtime appends the retrieval-intent section after the
+    // primary user turn, and that text changes with the turn's intent. It carries
+    // no boundary marker, so marker-only classification counted it as stable and
+    // the "stable" prefix changed identity whenever the intent changed (measured:
+    // 40 distinct fingerprints across 40 requests of one live session, with a
+    // 168-byte step matching the section's 83 -> 251 character variants).
+    const withTrailing = (intent: string) => {
+      const messages: ChatRequest['messages'] = [
+        { role: 'system', content: 'Stable policy v1\n\n<!-- LITTLESHEEP_CACHE_BOUNDARY -->\n\nrun-id-1' },
+        { role: 'user', content: '刚才那个问题再说一次' },
+        { role: 'system', content: intent },
+      ];
+      return { ...cacheRequest(), messages } as ChatRequest;
+    };
+    const short = observation(withTrailing('Runtime retrieval intent: none.'));
+    const long = observation(withTrailing(
+      'Runtime retrieval intent: web_search. Public Web evidence may be obtained only through the listed built-in web_search/web_fetch tools. Select 2-4 relevant sources for comparisons, fetch only what is necessary, and preserve Runtime citation ids.',
+    ));
+
+    // The cacheable head must not move when only the trailing section changes.
+    expect(long.stablePrefix.fingerprint).toBe(short.stablePrefix.fingerprint);
+    expect(long.stablePrefix.byteLength).toBe(short.stablePrefix.byteLength);
+    // ...and the changing section must be visible in the dynamic suffix instead.
+    expect(long.dynamicSuffix.fingerprint).not.toBe(short.dynamicSuffix.fingerprint);
+  });
+
   it('records only the relevant invalidation reason for a same-scope schema change', () => {
     const first = observation(cacheRequest({ tools: [{
       type: 'function',

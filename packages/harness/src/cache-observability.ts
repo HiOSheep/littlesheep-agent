@@ -3,7 +3,7 @@
 // user, tool-argument and credential-bearing values never leave this module.
 
 import { createHmac, randomBytes } from 'node:crypto';
-import type { ChatMessage, ChatRequest, ChatResponse, ToolSpec } from '@littlesheep/llm';
+import type { ChatRequest, ChatResponse, ToolSpec } from '@littlesheep/llm';
 import type {
   CacheComponentFingerprints,
   CacheFingerprint,
@@ -27,6 +27,7 @@ import {
 } from '@littlesheep/types';
 import { CACHE_BOUNDARY_MARKER } from '@littlesheep/prompt';
 import { contextReuseLedger, memoryReuseLedger } from './cache-local-ledgers.js';
+import { normalizeMessage, normalizeText, splitRequestForCache } from './cache-prefix-split.js';
 
 const EPHEMERAL_KEY = randomBytes(32);
 const INVALIDATION_ORDER: readonly CacheInvalidationReason[] = [
@@ -458,44 +459,6 @@ function buildScopePartition(
   });
 }
 
-function splitRequestForCache(request: ChatRequest): {
-  stableMessages: unknown[];
-  dynamicMessages: unknown[];
-} {
-  const stableMessages: unknown[] = [];
-  const dynamicMessages: unknown[] = [];
-  request.messages.forEach((message, index) => {
-    const normalized = normalizeMessage(message);
-    // Stable entries carry a position relative to the stable set, not their
-    // absolute index in the request: the absolute index grows with the
-    // conversation, so embedding it made the "stable" prefix change identity
-    // whenever an index gained a digit even though every byte of the cacheable
-    // content was unchanged. The relative position still distinguishes repeated
-    // identical messages. Dynamic entries keep the absolute index because their
-    // identity is allowed to move with the transcript.
-    const stableIndex = () => stableMessages.length;
-    if (message.role !== 'system') {
-      dynamicMessages.push({ index, message: normalized });
-      return;
-    }
-    if (typeof message.content !== 'string') {
-      stableMessages.push({ index: stableIndex(), message: normalized });
-      return;
-    }
-    const content = normalizeText(message.content);
-    const markerIndex = content.indexOf(CACHE_BOUNDARY_MARKER);
-    if (markerIndex < 0) {
-      stableMessages.push({ index: stableIndex(), message: normalized });
-      return;
-    }
-    const stableContent = content.slice(0, markerIndex).trimEnd();
-    const dynamicContent = content.slice(markerIndex + CACHE_BOUNDARY_MARKER.length).trimStart();
-    if (stableContent) stableMessages.push({ index: stableIndex(), role: message.role, content: stableContent });
-    if (dynamicContent) dynamicMessages.push({ index, role: message.role, content: dynamicContent });
-  });
-  return { stableMessages, dynamicMessages };
-}
-
 function normalizeRequest(request: ChatRequest): {
   full: Record<string, unknown>;
   requestParameters: Record<string, unknown>;
@@ -511,30 +474,6 @@ function normalizeRequest(request: ChatRequest): {
     tools: normalizeTools(request.tools, true),
   };
   return { full, requestParameters };
-}
-
-function normalizeMessage(message: ChatMessage): Record<string, unknown> {
-  return {
-    role: message.role,
-    content: typeof message.content === 'string'
-      ? normalizeText(message.content)
-      : message.content.map((part) => part.type === 'text'
-        ? { type: 'text', text: normalizeText(part.text) }
-        : { type: 'image_url', image_url: {
-            url: normalizeText(part.image_url.url),
-            ...(part.image_url.detail ? { detail: part.image_url.detail } : {}),
-          } }),
-    ...(message.reasoning_content ? { reasoning_content: normalizeText(message.reasoning_content) } : {}),
-    ...(message.tool_calls ? {
-      tool_calls: message.tool_calls.map((call) => ({
-        id: normalizeText(call.id),
-        type: call.type,
-        function: { name: normalizeText(call.function.name), arguments: normalizeText(call.function.arguments) },
-      })),
-    } : {}),
-    ...(message.tool_call_id ? { tool_call_id: normalizeText(message.tool_call_id) } : {}),
-    ...(message.name ? { name: normalizeText(message.name) } : {}),
-  };
 }
 
 function normalizeTools(tools: ToolSpec[] | undefined, sortByName = true): unknown[] {
@@ -664,10 +603,6 @@ function isCounter(value: number): value is number {
 function normalizeWorkspaceScope(value: string): string {
   const normalized = normalizeText(value).replaceAll('\\', '/');
   return /^[A-Za-z]:\//u.test(normalized) ? normalized.toLocaleLowerCase('en-US') : normalized;
-}
-
-function normalizeText(value: string): string {
-  return value.replaceAll('\r\n', '\n').replaceAll('\r', '\n').normalize('NFC');
 }
 
 function compareCodePoints(left: string, right: string): number {
