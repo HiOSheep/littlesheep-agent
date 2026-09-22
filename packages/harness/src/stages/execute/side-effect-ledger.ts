@@ -42,11 +42,54 @@ export interface SideEffectDescriptor {
   reconciliationKey?: ReconciliationValue
 }
 
+export type SideEffectSettlement = Extract<
+  SideEffectCheckpoint['status'],
+  'succeeded' | 'failed' | 'cancelled' | 'unknown'
+>
+
+/**
+ * Settled outcomes that may be attempted again. A determinate failure or an
+ * explicit cancellation is a known outcome: retrying is a new attempt, not a
+ * replay of an effect that may have applied. `unknown` and `in_progress` stay
+ * blocked — the runtime cannot prove what happened to them.
+ */
+const RETRYABLE_SETTLEMENTS = new Set<SideEffectCheckpoint['status']>(['failed', 'cancelled'])
+
 export type BeginSideEffectResult =
   | { kind: 'none' }
   | { kind: 'started'; descriptor: SideEffectDescriptor }
   | { kind: 'duplicate'; descriptor: SideEffectDescriptor; status: SideEffectCheckpoint['status'] }
   | { kind: 'blocked'; descriptor: SideEffectDescriptor; reason: string }
+
+/**
+ * Classify a finished invocation. A tool that **returned** a failed result is a
+ * determinate failure: the invocation ran to a known outcome (an exit code, a
+ * validation error, a missing path), and calling that `unknown` stopped the whole
+ * run, so the model could not even run a failing test once.
+ *
+ * When the service had to synthesize a status — the tool threw, the invocation
+ * timed out or was aborted, or a lifecycle hook failed — the tool never reported
+ * an outcome and may have applied a partial effect. That stays `unknown`, which
+ * blocks both retry and completion until a human decides.
+ */
+export function settlementForResult(
+  result: ToolResult,
+  outcome?: { status?: string },
+): SideEffectSettlement {
+  if (result.ok) return 'succeeded'
+  return outcome?.status === undefined ? 'failed' : 'unknown'
+}
+
+/** Attempt-scoped id for a retry of a settled failure, unique within the run. */
+function nextAttemptKey(ctx: RunContext, baseKey: string): string {
+  const prefix = `${baseKey}:retry`
+  const used = (ctx.sideEffects ?? [])
+    .map((item) => item.idempotencyKey)
+    .filter((key) => key.startsWith(prefix))
+    .map((key) => Number.parseInt(key.slice(prefix.length), 10))
+    .filter((value) => Number.isFinite(value))
+  return `${prefix}${(used.length > 0 ? Math.max(...used) : 0) + 1}`
+}
 
 export function describeSideEffect(
   tool: AgentTool,
@@ -98,16 +141,41 @@ function toolReconciliationKey(tool: AgentTool, input: unknown): ReconciliationV
   }
 }
 
+/**
+ * Every recorded attempt of one operation: the base key plus its `:retryN`
+ * successors. The ledger keeps settled failures (the durable kernel allows one
+ * settlement per effect id), so the decision must look at the whole chain.
+ */
+function effectAttempts(ctx: RunContext, baseKey: string): SideEffectCheckpoint[] {
+  const prefix = `${baseKey}:retry`
+  return (ctx.sideEffects ?? []).filter((item) => (
+    item.idempotencyKey === baseKey || item.idempotencyKey.startsWith(prefix)
+  ))
+}
+
 export async function beginSideEffect(ctx: RunContext, descriptor: SideEffectDescriptor): Promise<BeginSideEffectResult> {
-  const existing = (ctx.sideEffects ?? []).find((item) => item.idempotencyKey === descriptor.idempotencyKey)
-  if (existing) {
-    if (existing.status === 'succeeded') {
-      return { kind: 'duplicate', descriptor, status: existing.status }
+  const attempts = effectAttempts(ctx, descriptor.idempotencyKey)
+  if (attempts.length > 0) {
+    // Once any attempt of this operation succeeded, running it again would
+    // replay an applied effect: refuse, exactly as before.
+    if (attempts.some((item) => item.status === 'succeeded')) {
+      return { kind: 'duplicate', descriptor, status: 'succeeded' }
     }
-    return {
-      kind: 'blocked',
-      descriptor,
-      reason: `side effect ${descriptor.idempotencyKey} already has status ${existing.status}`,
+    const latest = attempts[attempts.length - 1]!
+    if (!RETRYABLE_SETTLEMENTS.has(latest.status)) {
+      return {
+        kind: 'blocked',
+        descriptor,
+        reason: `side effect ${descriptor.idempotencyKey} already has status ${latest.status}`,
+      }
+    }
+    // The latest attempt is settled as a determinate failure, so this is a new
+    // attempt rather than a replay. The durable kernel allows exactly one
+    // settlement per effect id, so the retry gets its own attempt-scoped id and
+    // the failed attempt stays in the record.
+    descriptor = {
+      ...descriptor,
+      idempotencyKey: nextAttemptKey(ctx, descriptor.idempotencyKey),
     }
   }
   const entry: SideEffectCheckpoint = {
@@ -132,13 +200,11 @@ export async function beginSideEffect(ctx: RunContext, descriptor: SideEffectDes
   const concurrentlyStarted = effects.find((item) => item.idempotencyKey === descriptor.idempotencyKey)
   if (concurrentlyStarted) {
     await releaseEffectLease(ctx, descriptor)
-    return concurrentlyStarted.status === 'succeeded'
-      ? { kind: 'duplicate', descriptor, status: concurrentlyStarted.status }
-      : {
-          kind: 'blocked',
-          descriptor,
-          reason: `side effect ${descriptor.idempotencyKey} already has status ${concurrentlyStarted.status}`,
-        }
+    // Another branch recorded this effect while this one waited for ownership.
+    // Re-evaluate under the same rules: a settled success refuses the replay, a
+    // settled failure retries under a fresh attempt id, anything ambiguous stays
+    // blocked. The entry now exists, so the re-entry cannot loop on the lease.
+    return beginSideEffect(ctx, descriptor)
   }
   if (effects.length >= MAX_SIDE_EFFECTS) {
     const terminal = effects.findIndex((item) => item.status === 'succeeded' || item.status === 'failed')
@@ -187,7 +253,7 @@ export async function finishSideEffect(
   descriptor: SideEffectDescriptor,
   result: ToolResult,
   durable = true,
-  settlement: 'succeeded' | 'failed' | 'cancelled' | 'unknown' = result.ok ? 'succeeded' : 'unknown',
+  settlement: SideEffectSettlement = settlementForResult(result),
 ): Promise<void> {
   const effects = ctx.sideEffects ?? []
   const index = effects.findIndex((item) => item.idempotencyKey === descriptor.idempotencyKey)

@@ -2,8 +2,28 @@ import type {
   PartialReplanRequest,
   RunContext,
   TaskStepFailureKind,
+  ToolInvocationStatus,
 } from '@littlesheep/types';
 import { writeReplanState } from '../../replan-state.js';
+
+/**
+ * Invocation statuses that make the recorded evidence unusable rather than
+ * merely negative: a refused, invalid or unresolvable call leaves the runtime
+ * unable to say what happened, so it still needs bounded recovery. A call that
+ * ran and came back `failed`, `timed_out` or `aborted` is a recorded outcome
+ * instead — see {@link recordedToolFailures}.
+ */
+const EVIDENCE_BLOCKING_INVOCATION_STATUSES = new Set<ToolInvocationStatus>([
+  'approval_denied',
+  'approval_unavailable',
+  'hard_denied',
+  'validation_failed',
+  'unknown_tool',
+  'repeated_call_blocked',
+]);
+
+/** Side-effect statuses that are still unresolved rather than settled. */
+const UNSETTLED_EFFECT_STATUSES = new Set(['planned', 'in_progress', 'unknown']);
 
 /**
  * Step-scoped replan targets derived only from recorded Runtime state: the steps
@@ -78,7 +98,7 @@ export function runtimeExecutionEvidenceGap(ctx: RunContext): string | undefined
     callIds.add(invocation.callId);
   }
   for (const invocation of activeInvocations) {
-    if (invocation.status !== 'succeeded') {
+    if (EVIDENCE_BLOCKING_INVOCATION_STATUSES.has(invocation.status)) {
       return `tool invocation ${invocation.callId} is ${invocation.status}`;
     }
     if (invocation.outputTruncated) return `tool invocation ${invocation.callId} output is truncated`;
@@ -87,13 +107,15 @@ export function runtimeExecutionEvidenceGap(ctx: RunContext): string | undefined
   if (activeInvocations.length > 0) {
     const results = new Map((ctx.toolResults ?? []).map((result) => [result.callId, result]));
     for (const invocation of activeInvocations) {
-      const result = results.get(invocation.callId);
-      if (!result || !result.ok) return `tool result ${invocation.callId} is missing or failed`;
+      // A missing result is a gap; a recorded failed result is evidence.
+      if (!results.has(invocation.callId)) return `tool result ${invocation.callId} is missing`;
     }
   }
 
   for (const effect of ctx.sideEffects ?? []) {
-    if (effect.status !== 'succeeded') return `side effect ${effect.idempotencyKey} is ${effect.status}`;
+    if (UNSETTLED_EFFECT_STATUSES.has(effect.status)) {
+      return `side effect ${effect.idempotencyKey} is ${effect.status}`;
+    }
     if (!effect.callId || !callIds.has(effect.callId)) {
       if (!hasLegacyCheckpointToolResult(ctx, effect.callId)) {
         return `side effect ${effect.idempotencyKey} has no matching tool invocation`;
@@ -106,6 +128,26 @@ export function runtimeExecutionEvidenceGap(ctx: RunContext): string | undefined
     }
   }
   return undefined;
+}
+
+/**
+ * Negative outcomes the run recorded. They are not an evidence gap: the runtime
+ * knows exactly what happened, so the model's answer can be published — but the
+ * verdict must never become `pass`, and the failure stays in the record.
+ */
+export function recordedToolFailures(ctx: RunContext, limit = 5): string[] {
+  const failures: string[] = [];
+  for (const invocation of ctx.toolInvocations ?? []) {
+    if (invocation.status === 'failed' || invocation.status === 'timed_out' || invocation.status === 'aborted') {
+      failures.push(`tool invocation ${invocation.callId} is ${invocation.status}`);
+    }
+  }
+  for (const effect of ctx.sideEffects ?? []) {
+    if (effect.status === 'failed' || effect.status === 'cancelled') {
+      failures.push(`side effect ${effect.idempotencyKey} is ${effect.status}`);
+    }
+  }
+  return failures.slice(0, limit);
 }
 
 function hasLegacyCheckpointToolResult(ctx: RunContext, callId: string | undefined): boolean {

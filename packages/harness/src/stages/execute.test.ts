@@ -941,11 +941,11 @@ describe('executeStage', () => {
     });
   });
 
-  it('keeps an invoked effect unknown when the tool returns a non-success result', async () => {
+  it('settles a determinate tool failure as failed so the run can continue', async () => {
     const tool = makeTool('mutate', { ok: false, error: 'partial mutation failure' });
     const llm = createMockLlm([
       toolCallResponse([{ id: 'failed-effect-call', name: 'mutate', args: { value: 'x' } }]),
-      textResponse('effect result unknown'),
+      textResponse('effect result failed'),
     ]);
     const stage = createExecuteStage({ ...deps, llm });
     const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', 'mutate') });
@@ -958,8 +958,10 @@ describe('executeStage', () => {
     await stage(ctx);
 
     expect(tool.calls).toHaveLength(1);
-    expect(ctx.sideEffects?.[0]).toMatchObject({ status: 'unknown', toolName: 'mutate' });
-    expect(settlements).toEqual([expect.objectContaining({ status: 'unknown' })]);
+    // A known non-zero outcome is settled, not ambiguous: reporting it as
+    // unknown stopped the whole run and prevented reaction to a failed command.
+    expect(ctx.sideEffects?.[0]).toMatchObject({ status: 'failed', toolName: 'mutate' });
+    expect(settlements).toEqual([expect.objectContaining({ status: 'failed' })]);
   });
 
   it('records effect ownership in the intent and releases it only after durable settlement', async () => {

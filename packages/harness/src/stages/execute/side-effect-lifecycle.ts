@@ -6,6 +6,7 @@ import {
   beginSideEffect,
   describeSideEffect,
   finishSideEffect,
+  settlementForResult,
   sideEffectCheckpointReason,
 } from './side-effect-ledger.js';
 
@@ -50,8 +51,13 @@ export function createSideEffectLifecycle(ctx: RunContext): ToolExecutionLifecyc
           errorKind: begin.kind === 'duplicate' ? 'side_effect_replay' : 'side_effect_blocked',
         };
       }
+      // A retry of a settled failure gets its own attempt id, so every later
+      // settlement and checkpoint has to use the descriptor that was recorded.
+      if (begin.kind === 'none') return;
+      effects.set(invocation.request.callId, begin.descriptor);
+      const effective = begin.descriptor;
       if (ctx.signal?.aborted) {
-        await finishSideEffect(ctx, sideEffect, {
+        await finishSideEffect(ctx, effective, {
           callId: invocation.request.callId,
           ok: false,
           error: 'run aborted before effect invocation',
@@ -67,9 +73,9 @@ export function createSideEffectLifecycle(ctx: RunContext): ToolExecutionLifecyc
         };
       }
       try {
-        await ctx.persistRuntimeCheckpoint?.(sideEffectCheckpointReason(sideEffect, 'started'));
+        await ctx.persistRuntimeCheckpoint?.(sideEffectCheckpointReason(effective, 'started'));
       } catch (error) {
-        await finishSideEffect(ctx, sideEffect, {
+        await finishSideEffect(ctx, effective, {
           callId: invocation.request.callId,
           ok: false,
           error: `checkpoint before side effect failed: ${(error as Error).message}`,
@@ -85,12 +91,14 @@ export function createSideEffectLifecycle(ctx: RunContext): ToolExecutionLifecyc
         };
       }
     },
-    async afterInvoke(invocation, result) {
+    async afterInvoke(invocation, result, outcome) {
       const sideEffect = effects.get(invocation.request.callId);
       if (!sideEffect) return result;
       try {
-        // Settlement precedes the resumability projection, preventing replay.
-        await finishSideEffect(ctx, sideEffect, result);
+        // Settlement precedes the resumability projection, preventing replay. A
+        // determinate failure is settled as `failed` so the model can react to a
+        // failed command; only a cut-short invocation stays `unknown`.
+        await finishSideEffect(ctx, sideEffect, result, true, settlementForResult(result, outcome));
       } catch (error) {
         return {
           result: {

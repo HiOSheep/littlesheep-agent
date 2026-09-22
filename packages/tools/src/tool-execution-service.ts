@@ -69,11 +69,18 @@ export interface ToolExecutionLifecycleResult {
   errorKind?: string;
 }
 
+/** What the service knows that a raw `ToolResult` cannot: whether a failure was determinate (`failed`) or cut short (`timed_out`, `aborted`). */
+export interface ToolInvocationOutcomeInfo {
+  status?: ToolInvocationStatus;
+  errorKind?: string;
+}
+
 export interface ToolExecutionLifecycle {
   beforeInvoke?(context: ToolExecutionLifecycleContext): Promise<ToolExecutionLifecycleResult | void>;
   afterInvoke?(
     context: ToolExecutionLifecycleContext,
     result: ToolResult,
+    outcome?: ToolInvocationOutcomeInfo,
   ): Promise<ToolExecutionLifecycleResult | ToolResult>;
 }
 
@@ -482,7 +489,10 @@ export class ToolExecutionService {
         outcome = await this.invokeTool(invocation);
         if (lifecycle?.afterInvoke) {
           outcome = normalizeLifecycleResult(
-            await lifecycle.afterInvoke(lifecycleContext, outcome.result),
+            await lifecycle.afterInvoke(lifecycleContext, outcome.result, {
+              status: outcome.status,
+              errorKind: outcome.errorKind,
+            }),
             outcome,
           );
         }

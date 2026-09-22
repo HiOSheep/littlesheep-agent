@@ -438,7 +438,7 @@ describe('verifyStage', () => {
     expect(ctx.partialReplanRequest?.targetStepIds).toEqual(['step-2']);
   });
 
-  it('routes a recorded tool failure to recover and sets lastError', async () => {
+  it('publishes the answer as unverified when the run recorded a tool failure', async () => {
     const ctx = makeVerifyCtx({
       toolResults: [{ callId: 'c1', ok: false, error: 'file not found' }],
     });
@@ -459,13 +459,43 @@ describe('verifyStage', () => {
 
     const res = await stage(ctx);
 
+    // A recorded failure is a known outcome, not missing evidence: the answer is
+    // published, but the verdict can never become `pass`.
+    expect(res.next).toBe('finalize');
+    expect(res.ok).toBe(true);
+    expect(res.meta).toMatchObject({
+      verdict: 'unverified',
+      recordedFailures: ['tool invocation c1 is failed'],
+    });
+    expect(ctx.lastError).toBeUndefined();
+    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'unverified', source: 'structural' });
+    expect(ctx.verificationHistory?.at(-1)?.reason).toContain('c1 is failed');
+    expect(ctx.modelRequests ?? []).toHaveLength(0);
+  });
+
+  it('still routes an unusable invocation to recover instead of publishing', async () => {
+    const ctx = makeVerifyCtx();
+    ctx.toolInvocations = [{
+      version: 1,
+      id: 'invocation-c2',
+      callId: 'c2',
+      runId: ctx.runId,
+      sessionId: ctx.sessionId,
+      toolName: 'write',
+      toolSource: 'builtin',
+      status: 'approval_denied',
+      proposedAt: '2026-09-12T00:00:00.000Z',
+      endedAt: '2026-09-12T00:00:01.000Z',
+      approval: { required: true, decision: 'denied' },
+      evidenceIds: [],
+    }];
+
+    const res = await stage(ctx);
+
     expect(res.next).toBe('recover');
     expect(res.ok).toBe(false);
-    expect(res.meta?.failedStepIds).toEqual([]);
-    expect(ctx.lastError?.stage).toBe('verify');
-    expect(ctx.lastError?.message).toContain('c1 is failed');
+    expect(ctx.lastError?.message).toContain('c2 is approval_denied');
     expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'fail', source: 'structural' });
-    expect(ctx.modelRequests ?? []).toHaveLength(0);
   });
 
   it('replanAttempts exhausted → asks the user instead of claiming success', async () => {

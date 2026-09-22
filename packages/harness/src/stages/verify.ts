@@ -11,8 +11,9 @@
 //   are complete and consistent, the Provider-authored reply exists, and the
 //   acceptance criteria that need human judgement were not judged by anyone.
 //
-// Any recorded failure routes through the existing bounded recovery path, so a
-// tool failure still cannot be turned into a claimed success.
+// Any recorded negative outcome keeps the verdict at `unverified`: the run's own
+// failed calls are evidence the runtime reports, never something recovery may
+// retry away or the model may claim as a pass.
 import type { RunContext, StageResult } from '@littlesheep/types';
 import {
   publishVerifiedReply,
@@ -21,7 +22,7 @@ import {
   verifyDeterministicWriteReadExecution,
   verifyTrivialReadOnlyExecution,
 } from './verify/routing.js';
-import { runtimeExecutionEvidenceGap } from './verify/task-state.js';
+import { recordedToolFailures, runtimeExecutionEvidenceGap } from './verify/task-state.js';
 import { textOf } from './_shared.js';
 
 export function createVerifyStage() {
@@ -55,6 +56,24 @@ export function createVerifyStage() {
       );
     }
 
+    // A run that recorded failed calls still publishes its answer: the failure is
+    // a known outcome, not missing evidence. It only loses the right to `pass`,
+    // and retrying it automatically re-sent the whole context for a re-plan the
+    // model had already answered (measured: two extra requests per turn, and the
+    // recovered attempt rebuilt a shorter prompt, which cost cache reuse).
+    const recordedFailures = recordedToolFailures(ctx);
+    if (recordedFailures.length > 0) {
+      const reason = recordedFailureReason(ctx, recordedFailures);
+      await recordVerification(ctx, { verdict: 'unverified', reason, source: 'structural' });
+      publishVerifiedReply(ctx);
+      return {
+        stage: 'verify',
+        next: 'finalize',
+        ok: true,
+        meta: { verdict: 'unverified', runtimeEvidenceComplete: true, recordedFailures },
+      };
+    }
+
     const reason = unverifiedAcceptanceReason(ctx);
     await recordVerification(ctx, { verdict: 'unverified', reason, source: 'structural' });
     publishVerifiedReply(ctx);
@@ -72,4 +91,13 @@ function unverifiedAcceptanceReason(ctx: RunContext): string {
   return chinese
     ? 'Runtime 已确认记录的工具证据完整、全部调用成功，且存在模型回复；需要人工判断的验收标准未经验证。'
     : 'Runtime confirmed the recorded tool evidence is complete, every call succeeded and a Provider-authored reply exists; acceptance criteria that need human judgement are not verified.';
+}
+
+function recordedFailureReason(ctx: RunContext, failures: readonly string[]): string {
+  const chinese = /[\u3400-\u9fff]/u.test(textOf(ctx.inbound));
+  const detail = failures.slice(0, 3).join('; ');
+  const more = failures.length > 3 ? ` (+${failures.length - 3})` : '';
+  return chinese
+    ? `本次运行记录了失败结果（${detail}${more}）：证据已保留、模型回复已发布，因此不能判定为 pass，需要人工判断的验收标准也未经验证。`
+    : `This run recorded failed results (${detail}${more}): the evidence and the Provider-authored reply are kept, so the run cannot be a pass and acceptance criteria that need human judgement are not verified.`;
 }

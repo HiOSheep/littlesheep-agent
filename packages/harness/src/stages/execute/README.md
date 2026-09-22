@@ -1,14 +1,14 @@
 # EXECUTE 内部边界
 
-最后更新：2026-09-22 13:10:04
+最后更新：2026-09-22 14:03:40
 
 - `contracts.ts`：依赖、工具循环和输出清洗契约，并区分模型可见的 `tools` 目录与本轮真正可调用的 `admittedTools`。
 - `guidance.ts`：基础消息装配与步骤提示片段；`renderPlanGuidance`/`renderTaskBookGuidance` 把 TaskBook 与计划渲染进主循环提示（不提及已删除的 stage），`renderStepGuidance` 是第二执行体系遗留的步骤契约渲染，当前没有运行期调用方。
 - `prompt.ts`：装配 EXECUTE System Prompt，不拥有工具执行权。
 - `tool-loop.ts`：唯一主循环——模型工具循环，把调用交给统一 Tool Execution Service，并保留本轮请求消息与工具目录供有界纠正复用。
 - `model-transcript.ts`：有序 thinking/tool/text 转录行的发布、重置与关闭。
-- `tool-result-persistence.ts`：单轮工具提议与结果的持久化和有界投影，输入先过工具自己的 projector。
-- `side-effect-ledger.ts`、`side-effect-lifecycle.ts`：Runtime 自有的副作用账本及其生命周期适配；只读工具不记账，写能力或未知工具先记账再执行，未结算不得重放。
+- `tool-result-persistence.ts`：单轮工具提议与结果的持久化和有界投影，输入先过工具自己的 projector；`toolResultForModel` 对成功和失败都保留有界输出——命令执行器失败时只给 `exit code 1` 会让模型无法诊断（实测：模型因此声称"未捕获到 stdout"）。
+- `side-effect-ledger.ts`、`side-effect-lifecycle.ts`：Runtime 自有的副作用账本及其生命周期适配；只读工具不记账，写能力或未知工具先记账再执行，未结算不得重放。`settlementForResult` 只在工具**返回**失败结果时结算为 `failed`（命令跑完返回非零是已知结果）；服务自己合成的状态（工具抛错、超时/中断、生命周期钩子失败）说明工具从未报告结果、可能已部分生效，仍留在 `unknown` 并阻塞重试与完成。同一次运行内重试已结算失败会得到 `:retryN` 的独立 attempt id（durable kernel 每个 effect id 只允许一次结算），而任何一次成功之后同一操作都会被拒为重复。
 - `failure-policy.ts`：阻断失败识别、失败分类和稳定结果排序。
 - `runners.ts`：单一主循环执行入口。
 

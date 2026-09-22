@@ -22,12 +22,17 @@ export function safeStringify(value: unknown): string {
 
 /** The bounded result shape the model sees for one tool call. */
 export function toolResultForModel(result: ToolResult): string {
+  const output = result.modelOutput ?? result.output;
   return safeStringify({
     ok: result.ok,
     status: result.ok ? 'succeeded' : 'failed',
     durationMs: result.durationMs,
     stepId: typeof result.meta?.stepId === 'string' ? result.meta.stepId : undefined,
-    output: result.ok ? (result.modelOutput ?? result.output) : undefined,
+    // A failed call keeps its output too. For a command runner the exit code alone
+    // says nothing about what failed: dropping the captured stdout/stderr left the
+    // model unable to diagnose a failing test, while the runtime still recorded the
+    // output as evidence. The result is already bounded by the tool and sanitizer.
+    output: typeof output === 'string' && output.length > 0 ? output : undefined,
     error: result.ok ? undefined : result.error,
     sanitized: result.sanitized === true || undefined,
   });

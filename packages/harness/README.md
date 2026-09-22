@@ -1,6 +1,6 @@
 # @littlesheep/harness
 
-最后更新：2026-09-22 13:10:04
+最后更新：2026-09-22 14:16:17
 
 实现 LittleSheep 的核心 Agent Runtime：硬控制流状态机负责活动路由、单一主循环执行、验证、Runtime 恢复、澄清和收尾。
 

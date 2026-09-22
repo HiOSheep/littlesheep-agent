@@ -1,8 +1,8 @@
 # 真实长任务缓存红线实施任务书 2026-09-22
 
-最后更新：2026-09-22 13:48:37
+最后更新：2026-09-22 14:10:00
 
-状态：LT-00 真实长任务基线已完成（12/12 次运行，0 次达标）；LT-01 已完成实测损失归因并定位到一个阻塞性缺陷，尚未修复；LT-02～LT-08 未实施。本轮只新增测量与驱动脚本、真实运行与文档，未修改 packages 下运行代码。
+状态：LT-00 真实长任务基线已完成（12/12 次运行，0 次达标）；LT-01 完成实测归因并修复了它暴露的三个运行期缺陷（副作用结算、验证对已记录失败的处理、失败工具输出未到达模型），修复后已用真实 Provider 复跑验证；LT-02～LT-08 未实施。冻结任务的功能失败还包含一项非运行期原因（模型在 A2 不发起文件修改并误称"本步不得调用工具"），如实记录、未换出任务。
 
 ## 1. 本轮目标与明确口径
 
@@ -66,7 +66,15 @@
 - [x] 对主会话真实输入作必要新增量预算，检验 H_ui>=95% 的缺口能否由减少新输入和重建填补。**已定量**：以 A1#1 为例，回收全部可重用浪费后为 88.25%，再把冷启动也视为可缓存也只有 94.68%——**修复跨 run 重建仍不足以让本次冻结构型的任务达标**，缺口还来自"每会话请求数太少 + 每次新增输入约 4.3k tokens"的结构比。
 - [ ] 如果初始冷输入与必要新增证据使长任务自然验收节点的累计值无法达到红线，先收缩对应输入处理/辅助能力并重测；仍不足则如实维持未达，不靠保留无用长前缀改变分母。**本轮未做**：收缩改动属 LT-02～LT-05。
 
-**本轮新发现的阻塞性缺陷（未修复，需在 LT-02 之前处理）**：`exec` 失败会把副作用记为 `unknown`，RECOVER 随即以"有工具副作用未能结算"中止整个 run，模型连"先跑一次测试看失败"都做不到。12 次运行中有 3 次因此功能失败（A2 两次、C1 第二次），产物验收也随之失败。证据：`.codex_tmp/real-long-task-A2-1.json` 的 `sideEffects` 记录 `{"toolName":"exec","effectKind":"external","status":"unknown","error":"exit code 1"}`，run 错误为 `有工具副作用未能结算（Recorded step evidence is incomplete: tool invocation call_… is failed）`。相关代码：`packages/harness/src/stages/execute/side-effect-ledger.ts` 的 `finishSideEffect` 默认把 `!result.ok` 结算为 `unknown`，`recover/policy.ts` 的 `hasUnsettledSideEffect` 据此中止。另有一处连带限制待确认：同一 run 内重跑同一命令会命中 `beginSideEffect` 的 `already has status failed` 拦截。
+**本轮新发现的阻塞性缺陷（已在 2026-09-22 第二批修复，未修复项单列）**：
+
+1. **`exec` 失败会中止整个 run（已修复）**：`exec` 失败会把副作用记为 `unknown`，RECOVER 随即以"有工具副作用未能结算"中止整个 run，模型连"先跑一次测试看失败"都做不到。12 次基线运行中有 3 次因此功能失败（A2 两次、C1 第二次）。修复：`settlementForResult` 只对工具**返回**的失败结果结算 `failed`；服务自己合成的状态（工具抛错、超时/中断、生命周期钩子失败）仍为 `unknown` 并继续阻塞重试与完成。同一 run 内重试已结算失败会得到独立的 `:retryN` attempt id（durable kernel 每个 effect id 只允许一次结算），任何一次成功之后同一操作仍被拒为重复。
+2. **已记录的失败被当成"证据缺口"（已修复）**：`runtimeExecutionEvidenceGap` 把 `failed` 调用当成缺口 → 自动重跑 EXECUTE → 恢复预算耗尽后强制 ASK_USER，**把模型已经给出的回答替换成 Runtime 追问**。这既让"先跑一次测试看失败"的调试型任务永远无法正常结束，也每次多花 2 次请求、重建出更短的提示（命中更低）。修复：缺口只保留不可用证据（调用被拒/校验失败/未知工具、结果缺失、输出截断、未结算副作用）；已记录的负结果由 `recordedToolFailures` 单独列出，该 run 停在 `unverified`（发布模型回答、失败写入验证记录，永远不能成为 `pass`）。
+3. **失败工具的输出没有到达模型（已修复）**：`toolResultForModel` 对失败结果只给 `error`（如 `exit code 1`）并丢掉 `output`，而运行时自己记录了 395 字符的测试输出。实测模型因此回答"我没能捕获到 stdout 内容"，只能做静态推断。修复：成功与失败都保留有界输出。
+
+修复后的真实 Provider 复跑（A2，同一冻结任务、同一配置，报告在 `.codex_tmp/post-fix*/`）：三个回合全部正常结束，trace 从 `execute→verify(false)→recover→verify(false)→recover→ask_user→finalize` 变为 `execute→verify(true)→finalize`，请求数 13→10→9，模型回答被正常发布（第 1 回合 1841 字诊断；第 3 回合引用了实测失败清单 `4 tests / 3 pass / 1 fail`、断言位置与 `actual: 0`）。副作用结算与安全回归（`runner.test.ts` 的"unknown 副作用不得重试或宣告成功"）保持通过。
+
+**未修复的功能性阻塞（非运行期原因）**：A2 的三次修复后运行中，模型始终**没有发起任何 `write`/`edit` 调用**，第 2 回合只读文件并跑了一次测试就给出"未修改任何代码"的结论，第 3 回合只发 1 次请求并声称"本步运行时限制为不得调用工具"（数据根全文检索确认该限制并非 Runtime 注入，系统提示与工具目录正常）。这是模型行为问题，不是缓存实现缺陷；按任务书要求不换出该任务、不延长执行，如实记录其产物验收未通过。
 
 入口：`cache-observability.ts`、`model-observability.ts`、`context-engine` 快照、LLM 实际 body 组装。
 交付/验收：可复算损失清单；结构性损失与供应商不可控因素分开，不能再用单个小探针宣称全任务达标。
