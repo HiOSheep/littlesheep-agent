@@ -42,11 +42,13 @@ const TRANSPORT_PATTERN = /fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AG
 const API_KEY_PATTERN = /sk-[A-Za-z0-9_-]{8,}/g
 const USAGE = '用法：node scripts/run-real-long-task.mjs --task <id> [--attempt <n>] [--keep-data]'
   + ' [--json <path>] [--report <path>] [--dry-run] [--compaction-threshold <n> --compaction-keep-recent <n>]\n'
+  + ' [--restart-at <turn>]\n'
   + '  --task 必填（A1/A2/B1/B2/C1/C2）；--attempt 正整数标签（默认 1）；--keep-data 始终保留隔离数据根；\n'
   + '  --json JSON 报告（默认 .codex_tmp/real-long-task-<id>-<attempt>.json）；--report 额外写 Markdown 摘要；\n'
   + '  --dry-run 只校验冻结清单并打印冻结计划，不建环境、不启 Electron、不联网；\n'
   + '  --compaction-threshold/--compaction-keep-recent 是**诊断专用**覆盖：冻结清单从未达到 100/20 阈值，\n'
-  + '    只有压低阈值才能观察到真实压缩路径；报告会标记 diagnostic=true，此类运行不参与红线判定。'
+  + '    只有压低阈值才能观察到真实压缩路径；报告会标记 diagnostic=true，此类运行不参与红线判定；\n'
+  + '  --restart-at 在指定回合前**重启应用进程**（LT-06 的进程重启连续性取证），同样不参与红线判定。'
 
 let activeChild
 
@@ -82,6 +84,7 @@ function parseArgs(argv) {
     '--report': 'report',
     '--compaction-threshold': 'compactionThreshold',
     '--compaction-keep-recent': 'compactionKeepRecent',
+    '--restart-at': 'restartAt',
   }
   for (let index = 0; index < argv.length; index += 1) {
     const name = argv[index]
@@ -96,7 +99,7 @@ function parseArgs(argv) {
   options.taskId = options.taskId.trim()
   if (!/^[1-9][0-9]*$/.test(String(options.attempt))) throw new CliError(`--attempt 必须是正整数，当前为 ${options.attempt}`)
   options.attempt = Number(options.attempt)
-  for (const [flag, key] of [['--compaction-threshold', 'compactionThreshold'], ['--compaction-keep-recent', 'compactionKeepRecent']]) {
+  for (const [flag, key] of [['--compaction-threshold', 'compactionThreshold'], ['--compaction-keep-recent', 'compactionKeepRecent'], ['--restart-at', 'restartAt']]) {
     if (options[key] === undefined) continue
     if (!/^[1-9][0-9]*$/.test(String(options[key]))) throw new CliError(`${flag} 必须是正整数，当前为 ${options[key]}`)
     options[key] = Number(options[key])
@@ -211,6 +214,7 @@ async function runLive({ options, task, plan, manifest, taskSet = 'frozen' }) {
   // runs show `no-new-range` attempts and no summarizer call. Diagnostic runs are
   // marked in the report and never count as acceptance evidence.
   const diagnostic = options.compactionThreshold !== undefined || options.compactionKeepRecent !== undefined
+    || options.restartAt !== undefined
   const config = diagnostic
     ? {
       ...manifest.FROZEN_CONFIG,
@@ -228,7 +232,7 @@ async function runLive({ options, task, plan, manifest, taskSet = 'frozen' }) {
     diagnostic,
     startedAt: new Date(startedAt).toISOString(), finishedAt: null, durationMs: 0,
     environment: { created: false, rootName: null, seededFiles: [], kept: false, removed: false, keepReason: null },
-    turns: [], sessionId: null, turnStopReason: null, error: null, cleanupProblems: [], nodes: [], nodeJudgement: null,
+    turns: [], restarts: [], sessionId: null, turnStopReason: null, error: null, cleanupProblems: [], nodes: [], nodeJudgement: null,
     session: null, auxiliary: null, all: null, unattributed: null, ledgerCoverage: null, acceptance: [],
     conclusion: { met: false, target: null, exitRule: EXIT_RULE, reasons: [] },
   }
@@ -259,6 +263,16 @@ async function runLive({ options, task, plan, manifest, taskSet = 'frozen' }) {
     await waitForDesktop(locator)
     let sessionId
     for (const entry of plan.turns) {
+      // LT-06: a process restart between two turns must not re-announce the task,
+      // replay a settled side effect or lose the task interval. Diagnostic only.
+      if (options.restartAt === entry.turn && electron) {
+        report.restarts.push({ turn: entry.turn, at: new Date().toISOString() })
+        await forceTerminate(electron)
+        electron = startElectron({ dataDir: environment.dataDir, chromiumDir: environment.chromiumDir, stdio: 'ignore' })
+        activeChild = electron
+        locator = await waitForLocator(environment.dataDir, electron.pid)
+        await waitForDesktop(locator)
+      }
       const record = await runTurn({ locator, workspace: environment.workplaceDir, prompt: entry.prompt, sessionId, turn: entry.turn })
       report.turns.push(record)
       sessionId ??= record.sessionId
@@ -525,7 +539,11 @@ function summaryLines(report, includeDataRoot) {
     `真实长任务 ${report.taskId} 第 ${report.attempt} 次尝试：${report.title}`,
     `provider=${report.provider} model=${report.model} 类别=${report.classId} 耗时=${report.durationMs}ms`,
     ...(report.diagnostic
-      ? ['⚠️ 诊断运行：压缩阈值已被命令行覆盖，只用于观察真实压缩路径，不参与红线判定。']
+      ? [`⚠️ 诊断运行：${[
+        report.frozenPlan.config.compaction.threshold !== manifest.FROZEN_CONFIG.compaction.threshold
+          ? '压缩阈值已被命令行覆盖' : '',
+        report.restarts.length > 0 ? `在第 ${report.restarts.map((entry) => entry.turn).join('/')} 回合重启了应用进程` : '',
+      ].filter(Boolean).join('；')}；只用于取证，不参与红线判定。`]
       : []),
     `冻结配置：maxModelCallsPerRun=${config.maxModelCallsPerRun} contextCompressionThresholdRatio=${config.contextCompressionThresholdRatio}`
       + ` compaction=${config.compaction.threshold}/${config.compaction.keepRecent}/background:${config.compaction.background}`,

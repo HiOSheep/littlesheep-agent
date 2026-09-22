@@ -1,0 +1,617 @@
+{
+  "check": "real-long-task-baseline",
+  "recordedAt": "2026-09-22T12:01:07.004Z",
+  "manifestVersion": 1,
+  "manifestValid": true,
+  "manifestErrors": [],
+  "frozenTasks": [
+    {
+      "id": "A1",
+      "classId": "A",
+      "title": "修复购物车优惠券计税并补测试",
+      "turns": 3,
+      "nodes": [
+        {
+          "id": "diagnosis",
+          "turn": 1,
+          "label": "调查完成：说清优惠券在税前还是税后扣减，并指出失败的用例"
+        },
+        {
+          "id": "fix",
+          "turn": 2,
+          "label": "执行完成：按规则修复且原有测试全部通过"
+        },
+        {
+          "id": "boundary",
+          "turn": 3,
+          "label": "自然完成：补上满减门槛用例并复跑通过"
+        }
+      ]
+    },
+    {
+      "id": "A2",
+      "classId": "A",
+      "title": "修复库存预留与订单取消并补测试",
+      "turns": 3,
+      "nodes": [
+        {
+          "id": "diagnosis",
+          "turn": 1,
+          "label": "调查完成：说清重复取消与释放越界两处不符合规则的地方"
+        },
+        {
+          "id": "fix",
+          "turn": 2,
+          "label": "执行完成：两个模块按规则修好且测试全部通过"
+        },
+        {
+          "id": "boundary",
+          "turn": 3,
+          "label": "自然完成：补上释放边界用例并复跑通过"
+        }
+      ]
+    },
+    {
+      "id": "B1",
+      "classId": "B",
+      "title": "汇总逾期工单并交付逾期清单",
+      "turns": 3,
+      "nodes": [
+        {
+          "id": "counts",
+          "turn": 1,
+          "label": "调查完成：说出逾期条数与数据问题条数"
+        },
+        {
+          "id": "delivery",
+          "turn": 2,
+          "label": "执行完成：report/overdue.md 落盘且清单与数字齐全"
+        },
+        {
+          "id": "reconciliation",
+          "turn": 3,
+          "label": "自然完成：报告与全部来源逐条核对一致"
+        }
+      ]
+    },
+    {
+      "id": "B2",
+      "classId": "B",
+      "title": "核对供应商发票差异并交付对账报告",
+      "turns": 3,
+      "nodes": [
+        {
+          "id": "counts",
+          "turn": 1,
+          "label": "调查完成：说出差异笔数、合计金额与数据问题"
+        },
+        {
+          "id": "delivery",
+          "turn": 2,
+          "label": "执行完成：report/reconcile.md 落盘且明细、数据问题与红字通知单齐全"
+        },
+        {
+          "id": "reconciliation",
+          "turn": 3,
+          "label": "自然完成：重复发票与孤儿发票已排除在金额之外并复述一致"
+        }
+      ]
+    },
+    {
+      "id": "C1",
+      "classId": "C",
+      "title": "结合供应商材料与口头前提完成选型评审",
+      "turns": 3,
+      "nodes": [
+        {
+          "id": "screening",
+          "turn": 1,
+          "label": "调查完成：说出三家方案的淘汰原因"
+        },
+        {
+          "id": "delivery",
+          "turn": 2,
+          "label": "执行完成：可行方案与折后总价写入报告"
+        },
+        {
+          "id": "memory-anchor",
+          "turn": 3,
+          "label": "自然完成：报告写入本轮口头给出的预算与折扣并算出剩余额度"
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "classId": "C",
+      "title": "结合故障材料与口头前提完成复盘交付",
+      "turns": 3,
+      "nodes": [
+        {
+          "id": "contradictions",
+          "turn": 1,
+          "label": "调查完成：说出矛盾条数与逐条内容"
+        },
+        {
+          "id": "timeline",
+          "turn": 2,
+          "label": "执行完成：权威时间线与矛盾写入报告"
+        },
+        {
+          "id": "disclosure",
+          "turn": 3,
+          "label": "自然完成：对外口径写入本轮口头给出的变更单编号与原话"
+        }
+      ]
+    }
+  ],
+  "runs": 1,
+  "expectedRuns": 12,
+  "usageCompleteRuns": 1,
+  "metRuns": 0,
+  "belowRedLineRuns": 1,
+  "runsWithFunctionalFailure": 1,
+  "results": [
+    {
+      "taskId": "L1",
+      "attempt": 12,
+      "classId": "L",
+      "turnsOk": 20,
+      "turns": 28,
+      "acceptanceOk": 6,
+      "acceptance": 6,
+      "failedChecks": [],
+      "requests": 169,
+      "input": 10057275,
+      "cached": 9956096,
+      "hitPercent": 98.99397202522552,
+      "requestsWithoutUsage": 0,
+      "providerInconsistencies": 0,
+      "hitPercentWithoutInconsistencies": 98.99397202522552,
+      "auxiliaryRequests": 0,
+      "hAllPercent": 98.99397202522552,
+      "nodes": [
+        {
+          "id": "survey",
+          "turn": 1,
+          "hitPercent": 63.75333530981322,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-2",
+          "turn": 2,
+          "hitPercent": 90.8053211576825,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-3",
+          "turn": 3,
+          "hitPercent": 93.4066008523786,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-4",
+          "turn": 4,
+          "hitPercent": 94.94222591567724,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-5",
+          "turn": 5,
+          "hitPercent": 95.91078303275378,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-6",
+          "turn": 6,
+          "hitPercent": 96.48153927568286,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-7",
+          "turn": 7,
+          "hitPercent": 96.81631889794456,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "ledger-basics",
+          "turn": 8,
+          "hitPercent": 92.6891543022497,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-9",
+          "turn": 9,
+          "hitPercent": 94.50342500939809,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-10",
+          "turn": 10,
+          "hitPercent": 94.99036337497468,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-11",
+          "turn": 11,
+          "hitPercent": 94.99036337497468,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "turn-12",
+          "turn": 12,
+          "hitPercent": 95.77422238771628,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-13",
+          "turn": 13,
+          "hitPercent": 95.77422238771628,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "turn-14",
+          "turn": 14,
+          "hitPercent": 95.94865650689273,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-15",
+          "turn": 15,
+          "hitPercent": 95.94865650689273,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "core-and-refactor",
+          "turn": 16,
+          "hitPercent": 96.81075372204914,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-17",
+          "turn": 17,
+          "hitPercent": 96.81075372204914,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "turn-18",
+          "turn": 18,
+          "hitPercent": 97.17243579712317,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-19",
+          "turn": 19,
+          "hitPercent": 97.17243579712317,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "turn-20",
+          "turn": 20,
+          "hitPercent": 97.37975195593482,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-21",
+          "turn": 21,
+          "hitPercent": 97.37975195593482,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "range-and-export",
+          "turn": 22,
+          "hitPercent": 97.66511244736606,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-23",
+          "turn": 23,
+          "hitPercent": 97.8531545033167,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-24",
+          "turn": 24,
+          "hitPercent": 98.18682674122195,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "docs-aligned",
+          "turn": 25,
+          "hitPercent": 98.18682674122195,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "turn-26",
+          "turn": 26,
+          "hitPercent": 98.18682674122195,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "turn-27",
+          "turn": 27,
+          "hitPercent": 98.35275917030353,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "final-verification",
+          "turn": 28,
+          "hitPercent": 98.42472950271284,
+          "withinTarget": true,
+          "availability": "complete"
+        }
+      ],
+      "conclusion": "not met",
+      "losses": {
+        "coldStart": 4275,
+        "rebuild": 53363,
+        "appendResidual": 43541,
+        "unknownUsage": 0,
+        "rebuildThresholdTokens": 1024,
+        "measuredRequests": 169,
+        "appendResidualPerRequest": 286.45394736842104,
+        "appendResidualMedian": 241,
+        "appendResidualMax": 951,
+        "rebuildEvents": [
+          {
+            "ordinal": 2,
+            "runId": "ee135d3c-7ab3-460d-83a0-5d895e85d39b",
+            "purpose": "execute_tool_loop",
+            "input": 6059,
+            "previousInput": 4531,
+            "promptGrowth": 1528,
+            "uncached": 1579,
+            "reuseWaste": 51,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 27,
+            "runId": "b4d7eab4-e5de-4588-918e-afec168a04ab",
+            "purpose": "execute_tool_loop",
+            "input": 20469,
+            "previousInput": 19163,
+            "promptGrowth": 1306,
+            "uncached": 1397,
+            "reuseWaste": 91,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 35,
+            "runId": "fd3feff7-cde9-41b7-9579-d725e2aba31e",
+            "purpose": "execute_tool_loop",
+            "input": 25038,
+            "previousInput": 24097,
+            "promptGrowth": 941,
+            "uncached": 24526,
+            "reuseWaste": 23585,
+            "changedComponents": [],
+            "invalidationReasons": [
+              "prompt_version_changed"
+            ],
+            "stablePrefixFingerprintChanged": true
+          },
+          {
+            "ordinal": 38,
+            "runId": "6aed0f9e-0e83-4660-8e97-2c07e425239d",
+            "purpose": "execute_tool_loop",
+            "input": 28302,
+            "previousInput": 26221,
+            "promptGrowth": 2081,
+            "uncached": 2190,
+            "reuseWaste": 109,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 50,
+            "runId": "dc25b57a-91b4-45b6-a955-2aadee53cec9",
+            "purpose": "execute_tool_loop",
+            "input": 35322,
+            "previousInput": 32878,
+            "promptGrowth": 2444,
+            "uncached": 2426,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 61,
+            "runId": "dc25b57a-91b4-45b6-a955-2aadee53cec9",
+            "purpose": "execute_tool_loop",
+            "input": 41503,
+            "previousInput": 40557,
+            "promptGrowth": 946,
+            "uncached": 1055,
+            "reuseWaste": 109,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 77,
+            "runId": "8d4cb985-4a15-4e81-a388-de725935d7a1",
+            "purpose": "execute_tool_loop",
+            "input": 52280,
+            "previousInput": 48326,
+            "promptGrowth": 3954,
+            "uncached": 3896,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 81,
+            "runId": "45bec442-8a4f-4aa8-b363-1d44b17db1ca",
+            "purpose": "execute_tool_loop",
+            "input": 58431,
+            "previousInput": 53079,
+            "promptGrowth": 5352,
+            "uncached": 5439,
+            "reuseWaste": 87,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 88,
+            "runId": "45bec442-8a4f-4aa8-b363-1d44b17db1ca",
+            "purpose": "execute_tool_loop",
+            "input": 63485,
+            "previousInput": 62343,
+            "promptGrowth": 1142,
+            "uncached": 1277,
+            "reuseWaste": 135,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 110,
+            "runId": "24c75838-5bec-4514-98dd-38010e3c8b49",
+            "purpose": "execute_tool_loop",
+            "input": 76741,
+            "previousInput": 75672,
+            "promptGrowth": 1069,
+            "uncached": 1093,
+            "reuseWaste": 24,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 121,
+            "runId": "e40c2125-7c39-4746-969f-02285d499860",
+            "purpose": "execute_tool_loop",
+            "input": 84578,
+            "previousInput": 83260,
+            "promptGrowth": 1318,
+            "uncached": 1378,
+            "reuseWaste": 60,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 129,
+            "runId": "e40c2125-7c39-4746-969f-02285d499860",
+            "purpose": "execute_tool_loop",
+            "input": 88864,
+            "previousInput": 87405,
+            "promptGrowth": 1459,
+            "uncached": 1440,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 136,
+            "runId": "966d2bad-6c9a-4c9d-ab1b-a9b83d1ccc66",
+            "purpose": "execute_tool_loop",
+            "input": 94504,
+            "previousInput": 93020,
+            "promptGrowth": 1484,
+            "uncached": 1448,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 145,
+            "runId": "03fca0c7-7399-4d4b-8643-6aaa34e558e9",
+            "purpose": "execute_tool_loop",
+            "input": 101727,
+            "previousInput": 100350,
+            "promptGrowth": 1377,
+            "uncached": 1375,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 147,
+            "runId": "03fca0c7-7399-4d4b-8643-6aaa34e558e9",
+            "purpose": "execute_tool_loop",
+            "input": 105252,
+            "previousInput": 103274,
+            "promptGrowth": 1978,
+            "uncached": 1316,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 168,
+            "runId": "3d660d70-e1a5-4969-82a6-e2ca5580c0ab",
+            "purpose": "execute_tool_loop",
+            "input": 118392,
+            "previousInput": 116726,
+            "promptGrowth": 1666,
+            "uncached": 1528,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          }
+        ],
+        "newContent": 166994,
+        "reuseWaste": {
+          "total": 26611,
+          "fromRebuild": 24251,
+          "fromAppend": 2360
+        },
+        "derivedBounds": {
+          "reuseWasteRecovered": {
+            "input": 10057275,
+            "cached": 9982707,
+            "hitPercent": 99.25856656002743
+          },
+          "coldStartAlsoCached": {
+            "input": 10057275,
+            "cached": 9986982,
+            "hitPercent": 99.301073103798
+          },
+          "derived": true
+        }
+      },
+      "rootName": "littlesheep-real-long-task-Ssiq8c",
+      "source": "real-long-task-L1-12.json"
+    }
+  ]
+}
