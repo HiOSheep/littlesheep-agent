@@ -10,11 +10,18 @@ import {
   type ProviderEditorDraft,
 } from './model-provider-draft'
 import { RUNTIME_REASONINGS } from '../../shared/model-capabilities'
+import { FeedbackNotice } from '../ui/feedback-notice'
 
 interface ModelProviderEditorProps {
   draft: ProviderEditorDraft
   existingIds: string[]
   saving: boolean
+  /** Content differs from the draft this editor opened with. */
+  dirty: boolean
+  /** The draft came back from an earlier visit to this page. */
+  restored: boolean
+  /** Last save failure, kept next to the actions that can retry it. */
+  saveError: string | null
   onChange: (draft: ProviderEditorDraft) => void
   onCancel: () => void
   onSave: () => void
@@ -24,12 +31,18 @@ export function ModelProviderEditor({
   draft,
   existingIds,
   saving,
+  dirty,
+  restored,
+  saveError,
   onChange,
   onCancel,
   onSave,
 }: ModelProviderEditorProps) {
   const validation = validateProviderDraft(draft, existingIds)
   const isNew = draft.originalId === null
+  const stateText = saving
+    ? '保存中…'
+    : dirty ? '已修改，尚未保存。' : restored ? '已恢复上次离开时未保存的草稿。' : null
 
   function patch(next: Partial<ProviderEditorDraft>) {
     onChange({ ...draft, ...next })
@@ -42,10 +55,10 @@ export function ModelProviderEditor({
   }
 
   return (
-    <div className="dialog provider-editor" role="dialog" aria-label={isNew ? '添加自定义提供方' : `编辑 ${draft.originalId}`}>
+    <div className="dialog provider-editor" role="dialog" aria-label={isNew ? '添加自定义供应商' : `编辑 ${draft.originalId}`}>
       <div className="dialog-header">
-        <h2>{isNew ? '添加自定义提供方' : `编辑提供方 · ${draft.originalId}`}</h2>
-        <button className="dialog-close" onClick={onCancel} aria-label="关闭">×</button>
+        <h2>{isNew ? '添加自定义供应商' : `编辑供应商 · ${draft.originalId}`}</h2>
+        <button className="dialog-close" onClick={onCancel} disabled={saving} aria-label="关闭">×</button>
       </div>
 
       <div className="provider-editor-body">
@@ -163,6 +176,16 @@ export function ModelProviderEditor({
         </div>
 
         {validation.error && <div className="dialog-error">{validation.error}</div>}
+        <FeedbackNotice
+          className="dialog-error"
+          feedback={saveError
+            ? { tone: 'error', message: '保存失败，内容仍保留在编辑器里', detail: saveError }
+            : null}
+        />
+        {stateText && <p className="provider-editor-status" role="status">{stateText}</p>}
+        <p className="provider-editor-key-note">
+          密钥只会以内存草稿的形式随本页暂时保留，保存或取消后立即丢弃；它不会写入浏览器存储或日志。
+        </p>
       </div>
 
       <div className="dialog-footer">

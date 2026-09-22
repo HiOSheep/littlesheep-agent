@@ -1,5 +1,6 @@
 // Primary navigation, project/session trees, and sidebar actions.
 import { useEffect, useRef, useState } from 'react'
+import { createImeCompositionState, resolveEnterAction } from '../ui/enter-confirm'
 import { CloseIcon, ProjectIcon } from '../ui/icons'
 import { useDismissOnOutside } from '../ui/presence'
 import { compactPath } from '../workspace/path-utils'
@@ -31,6 +32,9 @@ export function ProjectCreatorDialog({
   const [error, setError] = useState<string | null>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
   const mountedRef = useRef(true)
+  // A folder name is often typed with an IME; Enter that accepts a candidate
+  // must not create the project folder. See ui/enter-confirm.
+  const imeComposition = useRef(createImeCompositionState()).current
 
   useEffect(() => {
     mountedRef.current = true
@@ -164,11 +168,12 @@ export function ProjectCreatorDialog({
                 value={folderName}
                 disabled={busy}
                 onChange={(event) => setFolderName(event.target.value)}
+                onCompositionStart={() => imeComposition.start()}
+                onCompositionEnd={() => imeComposition.end()}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault()
-                    void run(submitCreate)
-                  }
+                  if (resolveEnterAction(event.nativeEvent, imeComposition.composing) !== 'confirm') return
+                  event.preventDefault()
+                  void run(submitCreate)
                 }}
                 placeholder="例如 LittleSheep Research"
               />

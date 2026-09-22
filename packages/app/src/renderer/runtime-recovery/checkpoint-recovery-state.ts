@@ -1,6 +1,10 @@
 // Pure labels and progress reduction for the startup recovery control surface.
 
 import type { ToolStreamEvent } from '@littlesheep/types'
+import type {
+  LocalAppRunCheckpointDiagnostics,
+  LocalAppRunCheckpointSummary,
+} from '../../shared/run-checkpoint-contracts'
 
 export interface CheckpointRecoveryProgress {
   phase: 'preparing' | 'restored' | 'executing' | 'verifying' | 'finalizing'
@@ -101,6 +105,95 @@ export function compactDuration(milliseconds: number): string {
   const minutes = Math.floor(milliseconds / 60_000)
   const seconds = Math.round((milliseconds % 60_000) / 1_000)
   return seconds > 0 ? `${minutes} 分 ${seconds} 秒` : `${minutes} 分`
+}
+
+export type CheckpointRecoveryEntryKind =
+  | 'none'
+  | 'discovery-failed'
+  | 'active'
+  | 'waiting-input'
+  | 'pending'
+  | 'damaged'
+
+export interface CheckpointRecoveryEntry {
+  kind: CheckpointRecoveryEntryKind
+  /** Quiet trigger label. Empty when there is nothing to show. */
+  label: string
+  /** Hover and accessible explanation. */
+  title: string
+  /** Counter next to the label; 0 hides it. */
+  count: number
+  /** A failed discovery is retried; a known state opens the dialog. */
+  action: 'none' | 'open' | 'retry'
+}
+
+export interface CheckpointRecoveryEntryInput {
+  checkpoints: readonly LocalAppRunCheckpointSummary[]
+  diagnostics: LocalAppRunCheckpointDiagnostics
+  /** The last discovery request failed, so the current state is unknown. */
+  discoveryFailed: boolean
+  resuming: boolean
+  stopRequested: boolean
+}
+
+/**
+ * Derives the one quiet entry the recovery surface shows. A failed discovery
+ * and unreadable records are facts the user must be able to see even when no
+ * valid checkpoint exists, and they must not be presented as "nothing pending".
+ */
+export function checkpointRecoveryEntry(input: CheckpointRecoveryEntryInput): CheckpointRecoveryEntry {
+  const total = input.checkpoints.length
+  if (input.discoveryFailed) {
+    return {
+      kind: 'discovery-failed',
+      label: '恢复检查失败',
+      title: '未能读取未完成任务；点击重试',
+      count: 0,
+      action: 'retry',
+    }
+  }
+  if (input.resuming) {
+    return {
+      kind: 'active',
+      label: input.stopRequested ? '正在停止恢复' : '任务恢复中',
+      title: input.stopRequested ? '正在停止并保存执行现场' : '查看正在恢复的任务',
+      count: total,
+      action: 'open',
+    }
+  }
+  if (total > 0) {
+    const waiting = input.checkpoints.filter((checkpoint) => checkpoint.waitingForInput && checkpoint.resumable).length
+    return {
+      kind: waiting > 0 ? 'waiting-input' : 'pending',
+      label: waiting > 0 ? '待补充信息' : '待恢复任务',
+      title: waiting > 0
+        ? `${waiting} 个未完成任务需要补充信息后才能继续`
+        : `查看 ${total} 个未完成任务`,
+      count: total,
+      action: 'open',
+    }
+  }
+  if (checkpointRecoveryDiagnosticText(input.diagnostics)) {
+    return {
+      kind: 'damaged',
+      label: '恢复记录异常',
+      title: '有恢复记录无法读取，原文件已保留；点击查看',
+      count: input.diagnostics.invalidFiles,
+      action: 'open',
+    }
+  }
+  return { kind: 'none', label: '', title: '', count: 0, action: 'none' }
+}
+
+/** Shared wording for unreadable or incomplete recovery records. */
+export function checkpointRecoveryDiagnosticText(
+  diagnostics: LocalAppRunCheckpointDiagnostics,
+): string | null {
+  const parts: string[] = []
+  if (diagnostics.invalidFiles > 0) parts.push(`${diagnostics.invalidFiles} 份恢复记录无法读取`)
+  if (diagnostics.warningCount > 0) parts.push(`${diagnostics.warningCount} 处恢复记录不完整`)
+  if (parts.length === 0) return null
+  return `另有 ${parts.join('、')}；LS 已保留原文件并停止自动处理。`
 }
 
 function bounded(value: string | undefined): string | undefined {

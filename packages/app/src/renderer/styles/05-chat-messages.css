@@ -723,5 +723,5 @@
 
 .web-source-errors {
   padding: 5px 6px;
-  color: #f2b6b6;
+  color: var(--feedback-danger-text);
 }

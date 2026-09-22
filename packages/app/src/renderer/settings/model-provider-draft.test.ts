@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest'
 import type { RuntimeProvider } from '../../shared/runtime-api-contracts'
 import {
   PROVIDER_TEMPLATES,
+  createEmptyModelRow,
   createEmptyProviderDraft,
   createProviderDraftFromTemplate,
   draftFromRuntimeProvider,
   formatTokenCount,
   isConfiguredProvider,
+  providerDraftIsDirty,
   toggleReasoningOption,
   toProviderDraft,
   validateProviderDraft,
@@ -161,5 +163,41 @@ describe('provider editor draft', () => {
     expect(isConfiguredProvider(presetWithKey)).toBe(true)
     expect(isConfiguredProvider(keylessLocal)).toBe(true)
     expect(isConfiguredProvider(customPendingKey)).toBe(true)
+  })
+
+  it('treats an untouched draft as clean and every editable field as a change', () => {
+    const baseline = draftFromRuntimeProvider(provider)
+    expect(providerDraftIsDirty(baseline, baseline)).toBe(false)
+
+    expect(providerDraftIsDirty({ ...baseline, name: 'Renamed' }, baseline)).toBe(true)
+    expect(providerDraftIsDirty({ ...baseline, baseURL: 'https://other.example/v1' }, baseline)).toBe(true)
+    expect(providerDraftIsDirty({ ...baseline, id: 'other-id' }, baseline)).toBe(true)
+    // A typed key is unsaved content and must never be dropped silently.
+    expect(providerDraftIsDirty({ ...baseline, apiKey: 'sk-typed' }, baseline)).toBe(true)
+  })
+
+  it('detects model row changes without depending on array identity', () => {
+    const baseline = draftFromRuntimeProvider(provider)
+    const cloned = draftFromRuntimeProvider(provider)
+    expect(providerDraftIsDirty(cloned, baseline)).toBe(false)
+
+    expect(providerDraftIsDirty(
+      { ...cloned, models: cloned.models.map((row, index) => (index === 0 ? { ...row, id: 'renamed' } : row)) },
+      baseline,
+    )).toBe(true)
+    expect(providerDraftIsDirty(
+      { ...cloned, models: cloned.models.map((row, index) => (index === 1 ? { ...row, contextWindow: '128000' } : row)) },
+      baseline,
+    )).toBe(true)
+    expect(providerDraftIsDirty(
+      { ...cloned, models: cloned.models.map((row, index) => (index === 0 ? { ...row, name: 'Vendor Model 2' } : row)) },
+      baseline,
+    )).toBe(true)
+    expect(providerDraftIsDirty(
+      { ...cloned, models: cloned.models.map((row, index) => (index === 0 ? { ...row, reasoningOptions: ['auto'] } : row)) },
+      baseline,
+    )).toBe(true)
+    expect(providerDraftIsDirty({ ...cloned, models: cloned.models.slice(1) }, baseline)).toBe(true)
+    expect(providerDraftIsDirty({ ...cloned, models: [...cloned.models, createEmptyModelRow()] }, baseline)).toBe(true)
   })
 })

@@ -1,9 +1,9 @@
 # Renderer 拓展工作区
-最后更新：2026-09-22 12:41:58
+最后更新：2026-09-23 00:04:00
 
 这里负责右侧拓展工作区的布局、标签、文件树、预览、终端、产物和 Git 审阅。
 
-- `panel.tsx`、`add-menu.tsx`：工作区壳和标签内容。审阅不再装配第二个“现场”子页；Runtime 的任务恢复现场仍由 `runtime-recovery/` 独立负责。
+- `panel.tsx`、`add-menu.tsx`：工作区壳和标签内容。审阅不再装配第二个“现场”子页；Runtime 的任务恢复现场仍由 `runtime-recovery/` 独立负责。标签入口里尚未接通的“侧边聊天”只声明未接入（空态写“侧边聊天尚未接入”），不承诺后续能力，也不提供无效控件。
 - `artifacts.tsx`、`file-view.tsx`、`file-close.ts`、`empty-launcher.tsx`：产物列表与筛选、单个文件标签的缓存加载/保存审批/预览交接、关闭恢复，以及空工作区的快捷启动入口。
 - `navigator-frame.tsx`、`file-navigator.tsx`、`review-tree.tsx`：普通目录树与 Git 稀疏更改树共用同一个右侧导航外壳、折叠轨、工具栏高度、筛选框、树行缩进和选中/hover 契约；两种导航的数据源、缓存和刷新请求保持隔离，Git 刷新不会触发完整目录扫描；目录树仍按已展开行全量渲染，尚未做虚拟化，这是当前的已知缺口。
 - `directory-cache.ts`、`directory-preload.ts`、`preview-pane.tsx`、`preview-actions.tsx`、`terminal.tsx`、`browser.tsx`：文件、终端和内置浏览器能力；目录快照由有界的跨挂载 stale-while-revalidate 缓存统一拥有，同一路径的并发刷新必须合并，折叠或切换后先显示旧树再后台校准。`main.tsx` 只会在已持久化的工作区面板可见、文件导航展开且当前标签确实需要普通文件导航时，预热同一个根目录 in-flight 请求；审阅页、折叠面板和折叠导航不触发普通目录扫描，组件挂载后复用该请求。普通文件标签中的 Markdown 默认使用共享 `Markdown` 组件渲染；标题栏的“查看源代码”位于“编辑”左侧并按需挂载共享 Monaco，点击“编辑”会直接进入可编辑源码。渲染预览始终使用当前草稿正文，因此未保存改动可在预览与源码之间往返且仍走原有保存审批；按钮、提示与可访问性属性由 `preview-actions.tsx` 维护，文件内容和草稿状态继续只由 `preview-pane.tsx` 持有；`terminal-input-controller.ts` 拥有交互终端的原始输入队列。

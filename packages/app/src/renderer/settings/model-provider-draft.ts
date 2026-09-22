@@ -191,6 +191,37 @@ export function toProviderDraft(draft: ProviderEditorDraft): ProviderDraft {
   return provider
 }
 
+/**
+ * True when the editable content differs from the draft the editor opened
+ * with. The plaintext key counts as content: a typed key that has not been
+ * saved yet is exactly what the user must not lose silently.
+ */
+export function providerDraftIsDirty(
+  current: ProviderEditorDraft,
+  baseline: ProviderEditorDraft,
+): boolean {
+  if (
+    current.id !== baseline.id
+    || current.name !== baseline.name
+    || current.baseURL !== baseline.baseURL
+    || current.apiKey !== baseline.apiKey
+    || current.originalId !== baseline.originalId
+    || current.models.length !== baseline.models.length
+  ) {
+    return true
+  }
+  return current.models.some((row, index) => {
+    const other = baseline.models[index]
+    return !other
+      || row.id !== other.id
+      || row.name !== other.name
+      || row.contextWindow !== other.contextWindow
+      || row.maxOutputTokens !== other.maxOutputTokens
+      || row.reasoningOptions.length !== other.reasoningOptions.length
+      || row.reasoningOptions.some((reasoning, position) => reasoning !== other.reasoningOptions[position])
+  })
+}
+
 export function toggleReasoningOption(
   options: readonly RuntimeReasoning[],
   value: RuntimeReasoning,

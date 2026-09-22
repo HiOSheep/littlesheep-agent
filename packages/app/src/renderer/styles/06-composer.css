@@ -1425,12 +1425,30 @@
 }
 
 .runtime-menu-shell .runtime-empty {
+  display: grid;
+  gap: 6px;
   padding: 6px 8px;
   color: var(--muted);
   background: transparent;
   border: 0;
   border-radius: var(--radius-ui);
   font-size: 12px;
+}
+
+.runtime-menu-shell .runtime-empty small {
+  color: var(--muted-2);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.runtime-configure-action {
+  justify-content: center;
+  color: var(--text);
+  background: var(--control-hover);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-ui);
+  font-weight: 700;
+  text-align: center;
 }
 
 .runtime-menu-shell {
@@ -2057,7 +2075,7 @@
 }
 
 .send-round.stop {
-  color: #ffd8d8;
+  color: var(--danger-control-text);
   background: var(--danger-soft);
   border-color: rgba(239, 104, 104, 0.42);
 }
@@ -2113,7 +2131,7 @@
 }
 
 .runtime-event-notice.error {
-  color: #ffd2d2;
+  color: var(--feedback-danger-text);
 }
 
 @keyframes runtime-event-notice-enter {
@@ -2125,6 +2143,6 @@
   flex: 0 0 auto;
   width: min(var(--composer-max-width), 100%);
   margin: 8px auto 0;
-  color: #ffd2d2;
+  color: var(--feedback-danger-text);
   font-size: 12px;
 }

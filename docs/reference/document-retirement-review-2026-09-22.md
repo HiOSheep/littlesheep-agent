@@ -39,7 +39,7 @@
 ### 2. LS 状态机重设计任务书 2026-09-18 — 退役
 
 - **复核结论**：P6a/P6b 已被后续决策覆盖，P6c 的审计对象（`request_task_book`、`workPolicyUpgradeProposal`、`bounded_loop_promoted`）已随第二执行体系删除，P6d 的记忆写入被压缩路径取代且派生出一个无归属缺口。
-- **执行**：退役；P1–P7 的机制事实已在项目状态与 `AGENTS.md` 中，工作策略升级通道与等待头兼容路径两条事实新增到 [`AGENTS.md`](../../AGENTS.md) 与 [Core Flow 状态契约](core-flow-state-contract.md)；派生缺口转入新建的[记忆写入专项（现合并为 Runtime 状态一致性与必要记忆任务书）](../taskbooks/runtime-state-consistency-taskbook-2026-09-22.md)。
+- **执行**：退役；P1–P7 的机制事实已在项目状态与 `AGENTS.md` 中，工作策略升级通道与等待头兼容路径两条事实新增到 `AGENTS.md`（本地未跟踪的维护说明，不进入版本库，因此不能写成可点击链接）与 [Core Flow 状态契约](core-flow-state-contract.md)；派生缺口转入新建的[记忆写入专项（现合并为 Runtime 状态一致性与必要记忆任务书）](../taskbooks/runtime-state-consistency-taskbook-2026-09-22.md)。
 
 ### 3. LS 开发反馈环提速任务书 2026-08-09 — 退役
 

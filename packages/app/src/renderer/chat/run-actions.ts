@@ -297,9 +297,12 @@ export function createRunActions(context: RunActionContext) {
     settleApprovalPrompt('deny')
     const runId = activeRunIdRef.current
     if (!runId) {
+      // No run identity yet: the local stream is the only thing to stop.
       abortRef.current?.abort()
       return
     }
+    // One interrupt per run. The composer keeps showing "正在停止" until the
+    // run settles, and a repeated click must not queue a second request.
     if (stopRequestedRunIdRef.current === runId) return
     stopRequestedRunIdRef.current = runId
     void sendRuntimeControlEvent(runId, 'interrupt_requested', 'user-requested-stop')

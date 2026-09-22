@@ -11,6 +11,12 @@ import {
   type ArchivedSessionMeta,
   type ArchivePayload,
 } from './api'
+import {
+  archivedProjectDeletionImpact,
+  archivedSessionDeletionImpact,
+  type DeletionImpact,
+} from './deletion-impact'
+import { DangerConfirmDialog } from './ui/danger-confirm'
 import { sessionBelongsToProject as sessionHasProject } from '../shared/session-scope'
 
 interface ArchiveManagerProps {
@@ -19,12 +25,21 @@ interface ArchiveManagerProps {
 
 const EMPTY_ARCHIVE: ArchivePayload = { projects: [], sessions: [] }
 
+interface PendingArchiveDeletion {
+  key: string
+  impact: DeletionImpact
+  run: () => Promise<void>
+}
+
 export function ArchiveManager({ onChanged }: ArchiveManagerProps) {
   const [archive, setArchive] = useState<ArchivePayload>(EMPTY_ARCHIVE)
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set())
   const [loading, setLoading] = useState(true)
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [pendingDeletion, setPendingDeletion] = useState<PendingArchiveDeletion | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const mountedRef = useRef(true)
   const requestRef = useRef(0)
 
@@ -85,6 +100,62 @@ export function ArchiveManager({ onChanged }: ArchiveManagerProps) {
     })
   }
 
+  // Permanent deletion is the only action that needs a confirmation; restoring
+  // an archived item stays a single lightweight click.
+  function requestProjectDeletion(project: ArchivedProjectMeta, archivedSessionCount: number) {
+    setError(null)
+    setDeleteError(null)
+    setPendingDeletion({
+      key: `project:delete:${project.id}`,
+      impact: archivedProjectDeletionImpact(project, archivedSessionCount),
+      run: () => deleteArchivedProject(project.id),
+    })
+  }
+
+  function requestSessionDeletion(session: ArchivedSessionMeta) {
+    setError(null)
+    setDeleteError(null)
+    setPendingDeletion({
+      key: `session:delete:${session.id}`,
+      impact: archivedSessionDeletionImpact(session),
+      run: () => deleteArchivedSession(session.id),
+    })
+  }
+
+  function cancelDeletion() {
+    if (deleting) return
+    setPendingDeletion(null)
+    setDeleteError(null)
+  }
+
+  async function confirmDeletion() {
+    const pending = pendingDeletion
+    // One delete per confirmation: a second click while the request is in
+    // flight must not submit another DELETE.
+    if (!pending || deleting) return
+    setDeleting(true)
+    setBusyKey(pending.key)
+    setDeleteError(null)
+    try {
+      await pending.run()
+      const next = await listArchive()
+      if (!mountedRef.current) return
+      setArchive(next)
+      await onChanged?.()
+      if (!mountedRef.current) return
+      setPendingDeletion(null)
+    } catch (err) {
+      if (!mountedRef.current) return
+      // Keep the dialog open so the failed deletion and its target stay locatable.
+      setDeleteError((err as Error).message)
+    } finally {
+      if (mountedRef.current) {
+        setDeleting(false)
+        setBusyKey(null)
+      }
+    }
+  }
+
   return (
     <div className="archive-page">
       <div className="archive-heading">
@@ -136,11 +207,13 @@ export function ArchiveManager({ onChanged }: ArchiveManagerProps) {
                       <RestoreGlyph />
                     </ArchiveActionButton>
                     <ArchiveActionButton
-                      label="永久删除项目记录"
+                      label={sessions.length > 0
+                        ? `永久删除项目记录（含 ${sessions.length} 个归档对话）`
+                        : '永久删除项目记录'}
                       tone="danger"
                       disabled={busyKey !== null}
                       active={busyKey === `project:delete:${project.id}`}
-                      onClick={() => runArchiveAction(`project:delete:${project.id}`, () => deleteArchivedProject(project.id))}
+                      onClick={() => requestProjectDeletion(project, sessions.length)}
                     >
                       <TrashGlyph />
                     </ArchiveActionButton>
@@ -159,7 +232,7 @@ export function ArchiveManager({ onChanged }: ArchiveManagerProps) {
                         busyKey={busyKey}
                         indent
                         onRestore={() => runArchiveAction(`session:restore:${session.id}`, () => restoreArchivedSession(session.id).then())}
-                        onDelete={() => runArchiveAction(`session:delete:${session.id}`, () => deleteArchivedSession(session.id))}
+                        onDelete={() => requestSessionDeletion(session)}
                       />
                     ))
                   ) : (
@@ -186,7 +259,7 @@ export function ArchiveManager({ onChanged }: ArchiveManagerProps) {
               session={session}
               busyKey={busyKey}
               onRestore={() => runArchiveAction(`session:restore:${session.id}`, () => restoreArchivedSession(session.id).then())}
-              onDelete={() => runArchiveAction(`session:delete:${session.id}`, () => deleteArchivedSession(session.id))}
+              onDelete={() => requestSessionDeletion(session)}
             />
           ))}
         </div>
@@ -197,6 +270,16 @@ export function ArchiveManager({ onChanged }: ArchiveManagerProps) {
           <strong>侧边栏已经很干净</strong>
           <span>归档项目或对话后，它们会出现在这里。</span>
         </div>
+      )}
+
+      {pendingDeletion && (
+        <DangerConfirmDialog
+          impact={pendingDeletion.impact}
+          busy={deleting}
+          error={deleteError}
+          onCancel={cancelDeletion}
+          onConfirm={() => void confirmDeletion()}
+        />
       )}
     </div>
   )

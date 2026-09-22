@@ -156,6 +156,49 @@ describe('run actions active-run updates', () => {
     expect(fixture.context.setLoading).toHaveBeenLastCalledWith(false)
   })
 
+  it('keeps one interrupt request per run', async () => {
+    apiMocks.sendRuntimeControlEvent.mockImplementation(() => new Promise(() => {}))
+    const controller = new AbortController()
+    const fixture = contextFixture('', 'run-1', { loading: true })
+    fixture.context.abortRef.current = controller
+    const actions = createRunActions(fixture.context)
+
+    actions.stop()
+    actions.stop()
+
+    expect(apiMocks.sendRuntimeControlEvent).toHaveBeenCalledOnce()
+    expect(apiMocks.sendRuntimeControlEvent).toHaveBeenCalledWith('run-1', 'interrupt_requested', 'user-requested-stop')
+    expect(controller.signal.aborted).toBe(false)
+  })
+
+  it('aborts the local stream when Runtime rejects the interrupt', async () => {
+    apiMocks.sendRuntimeControlEvent.mockResolvedValue({ kind: 'rejected', reason: 'run-not-active', message: 'gone' })
+    const controller = new AbortController()
+    const fixture = contextFixture('', 'run-1', { loading: true })
+    fixture.context.abortRef.current = controller
+
+    createRunActions(fixture.context).stop()
+    await vi.waitFor(() => expect(controller.signal.aborted).toBe(true))
+  })
+
+  it('aborts the local stream when the interrupt request itself fails', async () => {
+    apiMocks.sendRuntimeControlEvent.mockRejectedValue(new Error('bridge unavailable'))
+    const controller = new AbortController()
+    const fixture = contextFixture('', 'run-1', { loading: true })
+    fixture.context.abortRef.current = controller
+
+    createRunActions(fixture.context).stop()
+    await vi.waitFor(() => expect(controller.signal.aborted).toBe(true))
+  })
+
+  it('does not reach Runtime for a stop with no run identity', () => {
+    const fixture = contextFixture('', null, { loading: false })
+
+    createRunActions(fixture.context).stop()
+
+    expect(apiMocks.sendRuntimeControlEvent).not.toHaveBeenCalled()
+  })
+
   it('settles public reasoning when the visible stream aborts locally', async () => {
     const aborted = new Error('stopped locally')
     aborted.name = 'AbortError'

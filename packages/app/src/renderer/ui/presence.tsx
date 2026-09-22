@@ -1,5 +1,6 @@
 // Reusable renderer interaction primitives and icons.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { useEscapeScope } from './modal-surface'
 import { isTransientTriggerTarget } from './transient'
 
 
@@ -116,6 +117,10 @@ export function useDismissOnOutside(
     onDismissRef.current = onDismiss
   }, [onDismiss])
 
+  // Escape is arbitrated across layers: an open popover consumes the key before
+  // the page-level scope behind it, and a dialog above the popover keeps it.
+  useEscapeScope(() => onDismissRef.current(), active)
+
   useEffect(() => {
     if (!active) return
 
@@ -126,15 +131,8 @@ export function useDismissOnOutside(
       if (isTransientTriggerTarget(target)) return
       onDismissRef.current()
     }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onDismissRef.current()
-    }
 
     window.addEventListener(eventName, handlePointer)
-    window.addEventListener('keydown', handleKeyDown)
-    return () => {
-      window.removeEventListener(eventName, handlePointer)
-      window.removeEventListener('keydown', handleKeyDown)
-    }
+    return () => window.removeEventListener(eventName, handlePointer)
   }, [active, eventName])
 }

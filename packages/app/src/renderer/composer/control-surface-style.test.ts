@@ -173,11 +173,18 @@ describe('composer control surfaces', () => {
     expect(styles).toMatch(
       /\.runtime-menu-shell \.runtime-menu-item\.active\s*\{[^}]*background:\s*var\(--composer-picker-option-active\);/u,
     )
-    expect(composerView).toContain("const showStop = loading && !input.trim()")
-    expect(composerView).toContain("className={`send-round${showStop ? ' stop' : ''}`}")
-    expect(composerView).toContain("{showStop ? <StopRunIcon /> : <SendRunIcon />}")
-    expect(composerView).not.toContain('className="send-round stop"')
-    expect(composerView).not.toMatch(/\{loading && \(\s*<button[\s\S]*?StopRunIcon/u)
+    // Running keeps two independent entries: the stop button never depends on
+    // the draft, and the supplementary send appears once there is input.
+    expect(composerView).toContain('const hasPendingInput = input.trim().length > 0 || attachments.length > 0')
+    expect(composerView).toContain('{loading && (')
+    expect(composerView).toContain('className="send-round stop"')
+    expect(composerView).toContain('const [stopping, setStopping] = useState(false)')
+    expect(composerView).toContain('if (!loading) setStopping(false)')
+    expect(composerView).toContain('disabled={stopping}')
+    expect(composerView).toContain("const stopActionTip = stopping ? '正在停止当前任务' : stopTip")
+    expect(composerView).toContain('{(!loading || hasPendingInput) && (')
+    expect(composerView).toContain('disabled={!loading && !hasPendingInput}')
+    expect(composerView).not.toContain('showStop')
     expect(composerView).not.toMatch(/className="send-round[^"]*composer-tab-control/u)
   })
 })

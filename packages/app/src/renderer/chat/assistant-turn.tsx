@@ -24,6 +24,7 @@ import type {
   TranscriptEntry,
 } from './types'
 import { useConversationDisplayMode } from './conversation-display'
+import { activityAttentionLine, compactTranscriptEntries } from './activity-visibility'
 
 
 interface AssistantTurnMessageProps {
@@ -341,9 +342,14 @@ export function AssistantTranscript({
   compact?: boolean
 }) {
   const tools = new Map(activity.tools.map((tool) => [tool.callId, tool]))
+  // Compact mode folds the finished process away, never the facts that need a
+  // decision or a fix: failed/denied rows and the activity-level attention line
+  // stay readable (UX-16).
+  const rows = compact ? compactTranscriptEntries(transcript, activity.tools) : transcript
+  const attention = compact ? activityAttentionLine(activity) : null
   return (
     <div className="assistant-activity-flow assistant-transcript" role="group" aria-label="Agent 工作过程">
-      {!compact && transcript.map((entry) => {
+      {rows.map((entry) => {
         if (entry.kind === 'system') {
           return (
             <details key={entry.id} className="agent-transcript-reasoning system" data-transcript-entry={entry.id}>
@@ -399,6 +405,9 @@ export function AssistantTranscript({
           : null
       })}
       {!compact && <ActiveActivityStatus activity={activity} />}
+      {attention && (
+        <div className="agent-transcript-summary agent-transcript-attention" role="status">{attention}</div>
+      )}
       {transcriptSummary(activity, transcript) ? (
         <div className="agent-transcript-summary" data-transcript-summary="true">
           {transcriptSummary(activity, transcript)}
@@ -453,7 +462,7 @@ function TurnUsageFooter({ message }: { message: ChatMessage }) {
   const usage = message.usage
   if (!usage) return null
   if (usage.usageCompleteness === 'unknown') {
-    return <footer className="turn-usage-footer" aria-label="本轮用量">本轮用量 · 提供方未返回 token 统计</footer>
+    return <footer className="turn-usage-footer" aria-label="本轮用量">本轮用量 · 供应商未返回 token 统计</footer>
   }
   const providerSeconds = Math.max(0, (usage.providerDurationMs ?? 0) / 1000)
   const fullyTimed = usage.requestCount !== undefined
@@ -485,7 +494,7 @@ function TurnUsageFooter({ message }: { message: ChatMessage }) {
     message.durationMs ? `用时 ${formatDurationMs(message.durationMs)}` : '',
     speed !== undefined ? `${speed.toFixed(1)} tok/s` : '',
     '本轮用量',
-    message.modelRef ?? '提供方/模型未知',
+    message.modelRef ?? '供应商/模型未知',
     `缓存命中 ${cacheHit}`,
     mainHit === undefined ? '' : `主对话命中 ${mainHit}（${callGroups!.mainConversation.calls} 次）`,
     auxiliaryHit === undefined ? '' : `辅助阶段命中 ${auxiliaryHit}（${callGroups!.auxiliary.calls} 次）`,
@@ -548,7 +557,7 @@ function cacheCallStatusLabel(status: NonNullable<ChatMessage['cacheCalls']>[num
 
 const CACHE_REASON_LABELS: Record<string, string> = {
   model_changed: '模型变更',
-  provider_changed: '提供方变更',
+  provider_changed: '供应商变更',
   adapter_changed: '适配器变更',
   prompt_version_changed: '提示词版本变更',
   system_policy_changed: '系统策略变更',
