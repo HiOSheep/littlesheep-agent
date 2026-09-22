@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -70,6 +70,40 @@ describe('document tools', () => {
     expect(read.ok).toBe(true)
     expect(String(read.output)).toContain('PDF 已生成')
     expect(read.meta).toMatchObject({ format: 'pdf', pageCount: 1 })
+  })
+
+  // RS-03: document_create creates new files only; it never replaces a document.
+  it('refuses to replace an existing document and leaves it untouched', async () => {
+    const { dir, ctx } = fixture()
+    const filePath = join(dir, 'already-there.pdf')
+    writeTextlessPdf(filePath)
+    const before = readFileSync(filePath)
+
+    const result = await documentCreateTool.execute({
+      file_path: filePath,
+      format: 'pdf',
+      title: 'replacement',
+      blocks: [{ type: 'paragraph', text: 'this must not be written' }],
+    }, ctx)
+
+    expect(result.ok).toBe(false)
+    expect(result.meta).toMatchObject({ errorKind: 'target_exists' })
+    expect(result.error).toMatch(/only creates new files/)
+    expect(readFileSync(filePath).equals(before)).toBe(true)
+  })
+
+  it('still creates a document at a fresh path', async () => {
+    const { dir, ctx } = fixture()
+    const filePath = join(dir, 'fresh.csv')
+
+    const result = await documentCreateTool.execute({
+      file_path: filePath,
+      format: 'csv',
+      sheets: [{ name: 'Sheet1', rows: [['a', 'b'], [1, 2]] }],
+    }, ctx)
+
+    expect(result.ok).toBe(true)
+    expect(readFileSync(filePath, 'utf8')).toContain('a,b')
   })
 
   it('creates XLSX formula cells and exposes their calculated values on read', async () => {

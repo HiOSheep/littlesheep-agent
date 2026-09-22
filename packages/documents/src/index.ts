@@ -1,5 +1,5 @@
 export { extractDocument, UnsupportedDocumentFormatError } from './read.js'
-export { createDocument, verifyDocument } from './write.js'
+export { createDocument, verifyDocument, DocumentTargetExistsError } from './write.js'
 export type {
   CreateDocumentInput,
   CreatedDocument,

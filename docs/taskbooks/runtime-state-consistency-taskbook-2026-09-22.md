@@ -65,11 +65,11 @@
 
 ### RS-03｜新建与其他文件写入口收口（P0，依赖 RS-02）
 
-- [ ] 新建与覆盖明确分开。目标不存在可走 create-only，并由提交方式保证存在即拒绝；不能“检查不存在→普通覆盖写”产生竞态覆盖。新建仍按权限与既有恢复契约执行。
-- [ ] `document_create` 首版收缩为只创建新文件，目标已存在即拒绝；不为了覆盖二进制文档扩展复杂观察协议。其他已知宿主文件覆盖入口统一复核或明确拒绝，不能只保护 edit。
-- [ ] 用户直接编辑/保存文件仍是用户操作，不增加 Agent 审批；其修改使旧 observation 失效，并始终由修改前 revision 检查兜底。插件未知写入按不透明副作用处理，不擅自声称第三方已遵守 invariant。
+- [x] 新建与覆盖明确分开。目标不存在可走 create-only，并由提交方式保证存在即拒绝；不能“检查不存在→普通覆盖写”产生竞态覆盖。新建仍按权限与既有恢复契约执行。**已实现**：`write.ts` 目标不存在时用 `flag: 'wx'` 独占创建，`EEXIST` 返回 `target_exists`（RS-02 一并落地）；权限与 `beforeFileMutation` 恢复契约不变。测试用"校验后、创建前被别的写入者抢先创建"的钩子证明原内容不被覆盖。
+- [x] `document_create` 首版收缩为只创建新文件，目标已存在即拒绝；不为了覆盖二进制文档扩展复杂观察协议。其他已知宿主文件覆盖入口统一复核或明确拒绝，不能只保护 edit。**已实现**：`@littlesheep/documents` 的 `createDocument` 新增 `createOnly`（独占创建，冲突抛 `DocumentTargetExistsError`），`document_create` 固定传入该模式并在冲突时返回 `target_exists`；路径复核从 `resolve` 改为 `resolveToolPath`。绕行口用注册表守卫测试钉住：生产注册表包含 `write`/`edit`/`document_create`/`exec`，且**不含**未接观察的遗留写工具 `write_memory` 与 `record_experience`（二者仍未注册，`permissions` 名单里的死条目保持不启用）。
+- [x] 用户直接编辑/保存文件仍是用户操作，不增加 Agent 审批；其修改使旧 observation 失效，并始终由修改前 revision 检查兜底。插件未知写入按不透明副作用处理，不擅自声称第三方已遵守 invariant。**已实现并如实记录**：用户/外部改动不改审批路径，靠内容哈希在写前判 `observation_stale`（测试用"同大小改写"证明 size/mtime 不足以判定）；插件写入仍是不透明副作用——本批不声称插件已遵守该 invariant，`exec` 之外的插件写路径只能靠同一 revision 检查兜底或被拒绝。边界写进 `packages/tools/README.md`。
 
-验收：并发创建仅一个成功，既有文件/产物不被意外覆盖；合法新建正常，核心源码保护和三档权限不退化。
+验收：并发创建仅一个成功，既有文件/产物不被意外覆盖；合法新建正常，核心源码保护和三档权限不退化。**已满足**：`write.test.ts`（并发创建只得一个成功）、`document-tools.test.ts` 7 例（已存在即拒绝且逐字节不变、新路径正常创建）、`runner.test.ts` 的写入口守卫；核心源码只读与三档权限的既有用例全部保持通过。
 
 ### RS-04｜exec 与不透明修改后的保守失效（P0，依赖 RS-01/02）
 

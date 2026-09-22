@@ -2997,6 +2997,30 @@ async function seedCommittedCompactionProposal(
   return { sessionId: session.id, summaryId: summary.id };
 }
 
+// ─── RS-01/RS-03: only guarded writers may reach host files ─────────────────
+
+describe('host file write entry points', () => {
+  it('registers the guarded writers and no unguarded legacy writer', async () => {
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm(textResponse('unused')),
+    });
+    createdRunners.push(runner);
+
+    const names = runner.infra.registry.names();
+    // Every writer that can touch a host file goes through the observation
+    // guard (write/edit/document_create) or is treated as an opaque command
+    // (exec). A legacy flat-file writer registered here would bypass it.
+    for (const guarded of ['write', 'edit', 'document_create', 'exec']) {
+      expect(names).toContain(guarded);
+    }
+    expect(names).not.toContain('write_memory');
+    expect(names).not.toContain('record_experience');
+  });
+});
+
 // ─── RS-01: the run's tool context carries its session's observation table ──
 
 describe('file observation wiring', () => {

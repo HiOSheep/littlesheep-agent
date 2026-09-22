@@ -84,6 +84,12 @@ export interface CreateDocumentInput {
   subtitle?: string
   blocks?: DocumentBlock[]
   sheets?: SpreadsheetSheet[]
+  /**
+   * Refuse to replace an existing file. Agents create documents instead of
+   * overwriting them: the exclusive create flag is what makes that safe, because
+   * "check that it does not exist, then write" races with any other writer.
+   */
+  createOnly?: boolean
 }
 
 export interface CreatedDocument {

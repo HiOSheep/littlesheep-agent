@@ -1,10 +1,10 @@
-import { resolve } from 'node:path'
 import { z } from 'zod'
 import type { AgentTool } from '@littlesheep/types'
 import { authorizeToolAccess } from '@littlesheep/safety'
 import { parallelFilePolicy } from '../execution-policy.js'
-import { CORE_SOURCE_READ_ONLY_ERROR, findProtectedWriteRoot } from '../path-protection.js'
+import { CORE_SOURCE_READ_ONLY_ERROR, findProtectedWriteRoot, resolveToolPath } from '../path-protection.js'
 import { withToolTiming } from '../wrapper.js'
+import { observationFailure } from '../file-observation.js'
 
 const CellValue = z.union([z.string(), z.number(), z.boolean(), z.null()])
 const FormulaCell = z.object({
@@ -41,7 +41,7 @@ export const documentCreateTool: AgentTool = {
   execution: parallelFilePolicy('file_path', 'write'),
   execute: withToolTiming(async (input, ctx) => {
     const parsed = DocumentCreateInput.parse(input)
-    const targetPath = resolve(ctx.cwd, parsed.file_path)
+    const targetPath = resolveToolPath(parsed.file_path, ctx.cwd)
     const protectedRoot = findProtectedWriteRoot(targetPath, ctx)
     if (protectedRoot) return { ok: false, error: `${CORE_SOURCE_READ_ONLY_ERROR}: ${targetPath}` }
     const authorization = await authorizeToolAccess('document_create', { file_path: targetPath }, ctx, {
@@ -50,15 +50,31 @@ export const documentCreateTool: AgentTool = {
     if (!authorization.allowed) return { ok: false, error: 'Approval denied' }
 
     await ctx.versioning?.beforeFileMutation(targetPath)
-    const { createDocument } = await import('@littlesheep/documents')
-    const created = await createDocument({
-      filePath: targetPath,
-      format: parsed.format,
-      title: parsed.title,
-      subtitle: parsed.subtitle,
-      blocks: parsed.blocks,
-      sheets: parsed.sheets,
-    })
+    const { createDocument, DocumentTargetExistsError } = await import('@littlesheep/documents')
+    let created
+    try {
+      // v1 creates documents only. Replacing a binary document would need a
+      // revision protocol this tool does not have, so the exclusive create flag
+      // decides the race instead of a check-then-write that can be lost.
+      created = await createDocument({
+        filePath: targetPath,
+        format: parsed.format,
+        title: parsed.title,
+        subtitle: parsed.subtitle,
+        blocks: parsed.blocks,
+        sheets: parsed.sheets,
+        createOnly: true,
+      })
+    } catch (error) {
+      if (error instanceof DocumentTargetExistsError) {
+        return observationFailure({
+          ok: false,
+          errorKind: 'target_exists',
+          error: `${targetPath} already exists; document_create only creates new files, so read it or choose another path`,
+        })
+      }
+      throw error
+    }
     ctx.log?.('info', `created ${created.format} ${targetPath} (${created.bytes} bytes)`)
     return {
       output: [

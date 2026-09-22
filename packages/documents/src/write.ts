@@ -13,7 +13,14 @@ export async function createDocument(input: CreateDocumentInput): Promise<Create
   const payload = await buildPayload(input)
   await verifyPayload(payload, input.format, input)
   await mkdir(dirname(input.filePath), { recursive: true })
-  await writeFile(input.filePath, payload)
+  try {
+    await writeFile(input.filePath, payload, input.createOnly ? { flag: 'wx' } : undefined)
+  } catch (error) {
+    if (input.createOnly && (error as NodeJS.ErrnoException).code === 'EEXIST') {
+      throw new DocumentTargetExistsError(input.filePath)
+    }
+    throw error
+  }
   const verification = await verifyDocument(input.filePath, input.format)
   const fileInfo = await stat(input.filePath)
   return {
@@ -21,6 +28,14 @@ export async function createDocument(input: CreateDocumentInput): Promise<Create
     format: input.format,
     bytes: fileInfo.size,
     verification,
+  }
+}
+
+/** Thrown by `createDocument({ createOnly: true })` when the target is present. */
+export class DocumentTargetExistsError extends Error {
+  constructor(readonly filePath: string) {
+    super(`document already exists: ${filePath}`)
+    this.name = 'DocumentTargetExistsError'
   }
 }
 
