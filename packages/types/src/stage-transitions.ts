@@ -26,7 +26,11 @@ export const allowedTransitions: StageTransitionManifest = Object.freeze({
   decide: targets('execute', 'ask_user', 'finalize', 'recover', 'exit'),
   // Custom lightweight EXECUTE stages may already own a verified reply and
   // therefore use the compatibility shortcut directly to FINALIZE.
-  execute: targets('verify', 'recover', 'decide', 'finalize', 'exit'),
+  // `ask_user` is a real EXECUTE edge, not a compatibility one: the model can call
+  // `request_user_input` inside the main loop. Leaving it out made a legitimate
+  // question fail the whole run (measured on the 28-turn long task, turn 17:
+  // `invalid stage transition 'execute' -> 'ask_user'`).
+  execute: targets('verify', 'recover', 'decide', 'ask_user', 'finalize', 'exit'),
   recover: targets('classify', 'decide', 'execute', 'verify', 'reply', 'ask_user', 'finalize', 'exit'),
   // `execute` carries the live partial re-plan back into the one main loop.
   // `decide` and `capture` stay listed for older persisted records only; no

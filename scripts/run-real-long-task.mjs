@@ -34,7 +34,11 @@ const ACCEPTANCE_TIMEOUT_MS = 120_000
 const DETAIL_LIMIT = 400
 const EXIT_RULE = 'acceptance 全部通过 && 每个冻结节点 availability=complete && hitPercent>=95 && 每个回合 status=ok'
 const TIMEOUT_PATTERN = /timeout|timed out|超时/i
-const TRANSPORT_PATTERN = /fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|EPIPE|socket hang up|network|SSE|stream (ended|closed)|aborted|interrupted/i
+// A dropped connection is a transport failure, not a semantic one: a 28-turn run
+// hit `TypeError: terminated` (undici's "connection closed before the response
+// completed") and the old pattern called it semantic, so the whole long task
+// stopped after five good turns.
+const TRANSPORT_PATTERN = /fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|EPIPE|socket hang up|network|SSE|stream (ended|closed)|aborted|interrupted|terminated|other side closed|UND_ERR|premature close/i
 const API_KEY_PATTERN = /sk-[A-Za-z0-9_-]{8,}/g
 const USAGE = '用法：node scripts/run-real-long-task.mjs --task <id> [--attempt <n>] [--keep-data]'
   + ' [--json <path>] [--report <path>] [--dry-run] [--compaction-threshold <n> --compaction-keep-recent <n>]\n'
@@ -58,11 +62,11 @@ async function main() {
   installInterruptHandler()
   const options = parseArgs(process.argv.slice(2))
   const manifest = await loadManifest()
-  const task = resolveTask(manifest, options.taskId)
+  const { task, taskSet } = resolveTask(manifest, options.taskId)
   const plan = frozenPlanFor(manifest, task)
-  assertFrozenManifest(manifest, task)
+  assertFrozenManifest(manifest, task, taskSet)
   if (options.dryRun) return printDryRun(task, plan, manifest)
-  const report = await runLive({ options, task, plan, manifest })
+  const report = await runLive({ options, task, plan, manifest, taskSet })
   const paths = await writeReports(report, options)
   console.log(summaryLines(report, true).join('\n'))
   console.log(`JSON 报告：${paths.jsonPath}${paths.markdownPath ? `\nMarkdown 报告：${paths.markdownPath}` : ''}`)
@@ -111,15 +115,34 @@ async function loadManifest() {
   }
   const missing = FROZEN_EXPORTS.filter((name) => manifest[name] === undefined)
   if (missing.length > 0) throw new CliError(`冻结任务清单缺少导出：${missing.join(', ')}`)
-  return manifest
+  // The long-interval set is optional and additive: it shares the frozen provider,
+  // model and configuration, and exists because the three-turn frozen tasks never
+  // reach the session-compaction threshold.
+  let longInterval
+  try {
+    longInterval = await import('./lib/long-interval-task.mjs')
+  } catch {
+    longInterval = undefined
+  }
+  return { ...manifest, longInterval }
 }
 
 /** An unknown id is a usage error: list the frozen ids instead of a stack trace. */
 function resolveTask(manifest, taskId) {
   try {
-    return manifest.longTaskById(taskId)
+    return { task: manifest.longTaskById(taskId), taskSet: 'frozen' }
   } catch {
-    const known = manifest.REAL_LONG_TASKS?.map((task) => task?.id).filter(Boolean).join(' / ') ?? '（清单未导出 REAL_LONG_TASKS）'
+    if (manifest.longInterval?.longIntervalTaskById) {
+      try {
+        return { task: manifest.longInterval.longIntervalTaskById(taskId), taskSet: 'long-interval' }
+      } catch {
+        // fall through to the usage error below
+      }
+    }
+    const known = [
+      ...(manifest.REAL_LONG_TASKS?.map((task) => task?.id).filter(Boolean) ?? []),
+      ...(manifest.longInterval?.LONG_INTERVAL_TASKS?.map((task) => task?.id).filter(Boolean) ?? []),
+    ].join(' / ') || '（清单未导出任务集合）'
     throw new CliError(`未知的 --task id：${taskId}；已知 id：${known}`)
   }
 }
@@ -132,7 +155,14 @@ function frozenPlanFor(manifest, task) {
   }
 }
 
-function assertFrozenManifest(manifest, task) {
+function assertFrozenManifest(manifest, task, taskSet) {
+  if (taskSet === 'long-interval') {
+    const result = manifest.longInterval?.validateLongIntervalManifest?.()
+    if (!result?.ok) {
+      throw new CliError(`长区间任务清单校验失败：\n- ${(result?.errors ?? ['缺少 validateLongIntervalManifest']).join('\n- ')}`)
+    }
+    return
+  }
   const full = manifest.validateManifest()
   const single = manifest.validateManifest([task])
   const errors = [
@@ -174,7 +204,7 @@ function printDryRun(task, plan, manifest) {
   ].join('\n'))
 }
 
-async function runLive({ options, task, plan, manifest }) {
+async function runLive({ options, task, plan, manifest, taskSet = 'frozen' }) {
   const startedAt = Date.now()
   // A diagnostic override exists only to observe the real compaction path: the
   // frozen configuration (100/20) is never reached by these tasks, so the frozen
@@ -194,6 +224,7 @@ async function runLive({ options, task, plan, manifest }) {
   const report = {
     check: 'real-long-task', ok: false, taskId: task.id, classId: task.classId, title: task.title, dataRootPath: null,
     attempt: options.attempt, provider: manifest.FROZEN_PROVIDER, model: manifest.FROZEN_MODEL, frozenPlan: planView(plan, manifest),
+    taskSet,
     diagnostic,
     startedAt: new Date(startedAt).toISOString(), finishedAt: null, durationMs: 0,
     environment: { created: false, rootName: null, seededFiles: [], kept: false, removed: false, keepReason: null },
@@ -374,7 +405,15 @@ function collectLedgerEvidence(report, { plan, environment }) {
   report.nodes = (session?.nodes ?? []).map((node) => ({
     ...node, label: node.label ?? null, runId: node.runId ?? null, hitPercent: node.hitPercent ?? null, withinTarget: node.withinTarget ?? null,
   }))
-  report.nodeJudgement = judgeNodes(session?.nodes ?? [])
+  // A node whose turn never ran is not a measurement failure: the run stopped
+  // earlier. Judging it below target would report failures that were never
+  // measured, so those nodes are listed separately.
+  const executedTurns = new Set(report.turns.filter((turn) => turn.runId).map((turn) => turn.turn))
+  const judged = report.nodes.filter((node) => executedTurns.has(node.turn))
+  const notEvaluated = report.nodes
+    .filter((node) => !executedTurns.has(node.turn))
+    .map((node) => ({ id: node.id, turn: node.turn, reason: 'turn-not-run' }))
+  report.nodeJudgement = { ...judgeNodes(judged), notEvaluated }
 }
 
 function totalsView(totals) {
@@ -439,6 +478,9 @@ function conclude(report) {
       : failure.reason === 'below target' ? `：累计 ${formatPercent(failure.hitPercent)} < ${judgement.target}%`
         : `：累计 ${formatPercent(failure.hitPercent)}（usage 不完整，不参与判定）`
     reasons.push(`冻结节点 ${failure.id}（第 ${failure.turn} 回合）${failure.reason}${percent}`)
+  }
+  for (const node of judgement?.notEvaluated ?? []) {
+    reasons.push(`冻结节点 ${node.id}（第 ${node.turn} 回合）未评估：该回合没有运行`)
   }
   for (const check of report.acceptance) add(!check.ok, `验收未通过（${check.kind}）${check.label}${check.detail ? `：${check.detail}` : ''}`)
   report.ok = reasons.length === 0
