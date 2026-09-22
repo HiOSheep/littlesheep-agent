@@ -1,10 +1,21 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿// @littlesheep/tools — public API
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿// @littlesheep/tools — public API
 
 export { ToolRegistry } from './registry.js';
 export { checkApproval, interactiveApprove, DEFAULT_APPROVAL, type ApprovalConfig } from './approval.js';
 export { sanitizeOutput, truncateText, stripImages, isBinary, binaryPreview, DEFAULT_SANITIZE, type SanitizeOptions } from './sanitize.js';
 export { withToolTiming, type ToolHandler } from './wrapper.js';
 export { parallelFilePolicy } from './execution-policy.js';
+export {
+  createFileObservationTable,
+  createInMemoryFileObservationPort,
+  createPathMutexTable,
+  hashFileBytes,
+  observationKeyFor,
+  observationSnapshot,
+  type FileObservationTableOptions,
+  type ObservationKeyResult,
+  type PathMutexTable,
+} from './file-observation.js';
 export {
   ToolExecutionService,
   DEFAULT_TOOL_TIMEOUT_MS,

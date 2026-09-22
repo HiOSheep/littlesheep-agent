@@ -2996,3 +2996,86 @@ async function seedCommittedCompactionProposal(
   if (!summary) throw new Error('Expected a seeded compaction summary.');
   return { sessionId: session.id, summaryId: summary.id };
 }
+
+// ─── RS-01: the run's tool context carries its session's observation table ──
+
+describe('file observation wiring', () => {
+  it('hands each run the observation port of its own session', async () => {
+    const seen: Array<{ sessionId: string; observation: unknown }> = [];
+    const probe: AgentTool = {
+      name: 'observation_probe',
+      description: 'Records the tool context it was given.',
+      inputSchema: { parse: (input) => input, jsonSchema: { type: 'object' } },
+      async execute(_input, ctx) {
+        seen.push({ sessionId: String(ctx.sessionId), observation: ctx.observation });
+        return { callId: '', ok: true, output: 'probed' };
+      },
+    };
+    const llm = makeMockLlm([
+      {
+        content: '',
+        finishReason: 'tool_calls',
+        toolCalls: [{
+          id: 'observation-call',
+          type: 'function',
+          function: { name: 'observation_probe', arguments: '{}' },
+        }],
+      },
+      textResponse('Probed.'),
+    ]);
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+    });
+    createdRunners.push(runner);
+    const session = await runner.sessionManager.create('test/model');
+
+    await runner.run({ sessionId: session.id, runId: 'observation-run', text: 'probe', additionalTools: [probe] });
+
+    expect(seen).toHaveLength(1);
+    // The tool can only see a real port, and it is the table the registry keeps
+    // for this session — not a per-run throwaway.
+    expect(seen[0]!.observation).toBeDefined();
+    expect(seen[0]!.observation).toBe(runner.infra.fileObservations.forSession(session.id));
+  });
+
+  it('does not share one session\'s observations with another session', async () => {
+    const probes: Array<{ sessionId: string; port: unknown }> = [];
+    const probe: AgentTool = {
+      name: 'observation_probe',
+      description: 'Records the tool context it was given.',
+      inputSchema: { parse: (input) => input, jsonSchema: { type: 'object' } },
+      async execute(_input, ctx) {
+        probes.push({ sessionId: String(ctx.sessionId), port: ctx.observation });
+        return { callId: '', ok: true, output: 'probed' };
+      },
+    };
+    const toolCall = {
+      content: '',
+      finishReason: 'tool_calls' as const,
+      toolCalls: [{
+        id: 'observation-call',
+        type: 'function' as const,
+        function: { name: 'observation_probe', arguments: '{}' },
+      }],
+    };
+    const llm = makeMockLlm([toolCall, textResponse('First.'), toolCall, textResponse('Second.')]);
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+    });
+    createdRunners.push(runner);
+    const first = await runner.sessionManager.create('test/model');
+    const second = await runner.sessionManager.create('test/model');
+
+    await runner.run({ sessionId: first.id, runId: 'observation-run-a', text: 'probe', additionalTools: [probe] });
+    await runner.run({ sessionId: second.id, runId: 'observation-run-b', text: 'probe', additionalTools: [probe] });
+
+    expect(probes).toHaveLength(2);
+    expect(probes[0]!.port).not.toBe(probes[1]!.port);
+  });
+});

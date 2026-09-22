@@ -118,6 +118,8 @@ export interface BuildRunContextOptions {
   log?: ToolContext['log'];
   /** Run-scoped durable preimage checkpoint hooks handed to mutating tools. */
   versioning?: ToolContext['versioning'];
+  /** Session-scoped record of the file versions this session's model observed. */
+  observation?: ToolContext['observation'];
   /** Optional assistant text delta callback for streaming callers. */
   onAssistantDelta?: (delta: string) => void;
   /** Replace provisional streamed text with the approved final reply. */
@@ -272,6 +274,7 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     webEvidenceSink: opts.webEvidenceSink,
     log: opts.log,
     versioning: opts.versioning,
+    observation: opts.observation,
   };
 
   // 4. Assemble RunContext.

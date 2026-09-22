@@ -18,6 +18,77 @@ export interface ToolSchema<T = unknown> {
   jsonSchema?: unknown;
 }
 
+/** One file version the model actually observed through a read. */
+export interface FileObservationSnapshot {
+  /** sha256 of the raw bytes that were read; the authoritative revision. */
+  version: string;
+  /** Size of those bytes; a fast filter, never the only criterion. */
+  sizeBytes: number;
+  /** Modification time of those bytes; a fast filter, never the only criterion. */
+  mtimeMs: number;
+  /**
+   * `full` means the model saw the whole file unmodified. `partial` means it saw
+   * `visibleLineRange` only, so an edit may be checked against that range.
+   */
+  coverage: 'full' | 'partial';
+  /** 1-based inclusive line range the model saw; required when partial. */
+  visibleLineRange?: { start: number; end: number };
+  /** ISO timestamp of the read that produced this observation. */
+  observedAt: string;
+  /** Run that produced the observation; part of the audit trail only. */
+  runId: string;
+}
+
+/** Why an observation could not be used to authorize a mutation. */
+export type FileObservationFailureKind =
+  /** Nothing was observed for this path: the model must read it first. */
+  | 'observation_missing'
+  /** Something was observed, but the file changed since. */
+  | 'observation_stale'
+  /** The path cannot carry a reliable revision (link, special file, unit). */
+  | 'observation_unsupported'
+  /** An opaque mutation (a shell command) is in flight; observations are frozen. */
+  | 'observation_suspended'
+  /** A create-only write found the target already present. */
+  | 'target_exists';
+
+export type FileObservationLookup =
+  | { ok: true; snapshot: FileObservationSnapshot }
+  | { ok: false; errorKind: FileObservationFailureKind; message: string };
+
+/**
+ * Host-owned, session-scoped record of the file versions the model observed.
+ *
+ * It lives in memory only: a Runner rebuild or an application restart drops it,
+ * so the model must read again before mutating. It is deliberately separate from
+ * `versioning` (the durable rollback preimage): that one records what a file
+ * looked like *before a mutation* and is settled per run, while this one records
+ * what the model *saw*, is revisited on every read and write, and dies with the
+ * session table. A tool may never take the model's own hash on trust; only this
+ * port can testify that a specific version was delivered to the model.
+ */
+export interface FileObservationPort {
+  /** Register a successfully delivered read. Suspended ports ignore this. */
+  recordRead(input: { absPath: string; snapshot: FileObservationSnapshot }): void;
+  /** Look up the observation for a path without deciding anything. */
+  lookup(absPath: string): FileObservationLookup;
+  /** Drop the observation for one path (after a mutation or an opaque command). */
+  invalidate(absPath: string): void;
+  /** Drop every observation this port holds (conservative invalidation). */
+  invalidateAll(): void;
+  /**
+   * Freeze the port while an opaque mutation may be running: nothing new is
+   * registered and existing observations cannot authorize a write. The returned
+   * function releases one freeze.
+   */
+  suspend(): () => void;
+  /**
+   * Serialize "re-verify then write" for one canonical path across every session
+   * of the same host process. Cross-process writers remain out of scope.
+   */
+  withPathLock<T>(absPath: string, fn: () => Promise<T>): Promise<T>;
+}
+
 /** Per-call execution context handed to a tool. */
 export interface ToolContext {
   /** Calling session. */
@@ -51,6 +122,13 @@ export interface ToolContext {
     beforeFileMutation(filePath: string): Promise<void>;
     beforeWorkspaceMutation(workspacePath: string): Promise<void>;
   };
+  /**
+   * Host-owned record of the file versions this session's model observed. Read
+   * tools register into it; overwriting tools require it. When it is absent the
+   * host has not wired observation tracking, so an overwrite of an existing file
+   * is refused instead of silently skipping the check.
+   */
+  observation?: FileObservationPort;
 }
 
 export type ToolResourceAccessMode = 'read' | 'write';

@@ -47,12 +47,12 @@
 
 ### RS-01｜定义并接入最小文件 observation（P0）
 
-- [ ] 在现有工具宿主边界保存有界 observation：会话/工作区、规范目标身份、原始字节 revision、实际可见范围、产生该观察的工具调用。模型不能自行传一个 hash 就声称读过。
-- [ ] revision 基于实际读取的同一份原始字节及必要文件身份；mtime/size 仅可作快筛，不能作唯一判据。覆盖同大小改写、删除重建、路径大小写/别名及符号链接重指向；首版不能可靠处理的链接/特殊文件明确拒绝写入。
-- [ ] 只在读取成功且结果交付可追溯后登记；失败、权限拒绝、被截断/清洗内容不算完整观察。部分 read 可支持已看到范围的精确 edit；整文件 write 必须有完整有效观察。grep/glob 命中、摘要和二进制预览不等于读过全文。
-- [ ] observation 使用现有 ToolContext 的最小宿主能力，不写长期记忆、不注入全量 system。条目有数量/寿命边界，淘汰后需要重读；重启默认失效，不新增 observation 持久化系统。
+- [x] 在现有工具宿主边界保存有界 observation：会话/工作区、规范目标身份、原始字节 revision、实际可见范围、产生该观察的工具调用。模型不能自行传一个 hash 就声称读过。**已实现**：`packages/tools/src/file-observation.ts` 提供 sha256 revision、规范路径键与有界表；`packages/runner/src/session-file-observations.ts` 按 `sessionId` 取表（默认 16 张、每表 512 条、LRU 整表淘汰）并经 `runner.ts` 注入 `ToolContext.observation`（`context.ts` 透传）。观察只能由宿主端口写入，工具参数里没有 hash 入口。
+- [x] revision 基于实际读取的同一份原始字节及必要文件身份；mtime/size 仅可作快筛，不能作唯一判据。覆盖同大小改写、删除重建、路径大小写/别名及符号链接重指向；首版不能可靠处理的链接/特殊文件明确拒绝写入。**已实现**：`read.ts` 用单个文件句柄同时取字节、size 和 mtime（同一版本），revision 是这些字节的 sha256；键来自 `realpathSync.native` 并在 Windows 折叠大小写，`lstatSync` 判定符号链接与非普通文件即返回 `observation_unsupported`（RS-02 会据此拒绝写入）。同大小改写由 sha256 而非 size 判定。
+- [x] 只在读取成功且结果交付可追溯后登记；失败、权限拒绝、被截断/清洗内容不算完整观察。部分 read 可支持已看到范围的精确 edit；整文件 write 必须有完整有效观察。grep/glob 命中、摘要和二进制预览不等于读过全文。**已实现**：只有 `!sanitized && !truncated && 可见行非空` 才登记；无 `offset`/`limit` 记 `coverage: 'full'`，带窗口记 `partial` 并写入 1-based 可见行区间；二进制预览、读取失败、审批拒绝、截断与清洗一律不登记（`read.test.ts` 逐项断言）。`grep`/`glob`/`document_read` 不登记。
+- [x] observation 使用现有 ToolContext 的最小宿主能力，不写长期记忆、不注入全量 system。条目有数量/寿命边界，淘汰后需要重读；重启默认失效，不新增 observation 持久化系统。**已实现**：只新增一个可选 `ToolContext.observation` 端口，无持久化、无提示词注入、不触碰记忆；表有每会话条数上限与会话表上限，淘汰/`dispose()` 后模型必须重读；端口冻结期间既不登记新观察也不得授权写入（供 RS-04 的 `exec` 使用）。淘汰与释放只约束内存：已交给在飞 run 的端口仍持有自己的有界表。
 
-验收：观察绑定模型实际所见版本，失败或部分证据不能升级为完整观察；同会话跨 run 可受控使用，其他会话不能借用。
+验收：观察绑定模型实际所见版本，失败或部分证据不能升级为完整观察；同会话跨 run 可受控使用，其他会话不能借用。**已满足**：`file-observation.test.ts`（12 例，1 例符号链接在无权限环境跳过）、`builtin/read.test.ts`（13 例）、`session-file-observations.test.ts`（5 例）、`runner.test.ts` 的 file observation wiring（2 例，真实 Runner 断言端口按会话注入且互不共享）全绿。
 
 ### RS-02｜既有文件修改前校验与提交（P0，依赖 RS-01）
 

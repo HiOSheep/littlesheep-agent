@@ -60,6 +60,7 @@ import { RunCheckpointStore } from './run-checkpoint-store.js';
 import { RunCheckpointDispositionStore } from './run-checkpoint-disposition-store.js';
 import { CompactionOperationStore } from './compaction-operation-store.js';
 import { SessionCompactionScheduler } from './session-compaction-scheduler.js';
+import { SessionFileObservationRegistry } from './session-file-observations.js';
 import {
   buildDurableHarnessInfrastructure,
   type DurableHarnessInfrastructure,
@@ -127,6 +128,11 @@ export interface Infrastructure extends DurableHarnessInfrastructure {
   /** Process-local, bounded anonymous page cache. Quotas remain run-scoped. */
   webCache?: WebCache;
   versioning?: GitCheckpointCoordinator;
+  /**
+   * Process-held, session-scoped record of the file versions each session's
+   * model actually read; the basis for refusing an overwrite of a changed file.
+   */
+  fileObservations: SessionFileObservationRegistry;
   /** Starts tokenizer preparation only after an Agent run actually begins. */
   prepareTokenCounter?: () => Promise<void>;
   disposeTokenCounter: () => void;
@@ -211,6 +217,9 @@ export async function buildInfrastructure(
       })
     : undefined;
   await versioning?.initialize();
+  // One registry per host process; each session gets its own bounded table and
+  // they share the path mutex that serializes "re-verify then write".
+  const fileObservations = new SessionFileObservationRegistry();
   const { llm, modelName } = resolveLlm(opts.config, opts.model, opts.llm);
   opts.state.model = modelName;
 
@@ -508,6 +517,7 @@ export async function buildInfrastructure(
     webProviderSnapshots: webProviderBuild.snapshots,
     webCache,
     versioning,
+    fileObservations,
     prepareTokenCounter: lazyTokenCounter
       ? () => lazyTokenCounter.prepare()
       : undefined,

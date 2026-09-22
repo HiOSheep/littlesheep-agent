@@ -622,6 +622,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         approve: input.approve ?? opts.approve,
         log: opts.log,
         versioning: activeCheckpoint,
+        observation: infra.fileObservations.forSession(sessionId),
         onAssistantDelta: input.onAssistantDelta,
         onAssistantReplace: input.onAssistantReplace,
         onToolEvent,
@@ -2179,6 +2180,9 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       compactionScheduler.dispose('runner-shutdown');
       await compactionScheduler.drain();
       conversationTurns.clear();
+      // Observations die with the Runner: a restarted host has no basis for
+      // claiming what the model read, so the model reads again.
+      infra.fileObservations.dispose();
       activeRuns.dispose();
       infra.disposeTokenCounter();
       // Close long-lived SQLite connections before adapters replace or delete the data root.
