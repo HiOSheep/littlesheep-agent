@@ -7,11 +7,11 @@ import type {
 } from '@littlesheep/types';
 import {
   attachmentContextMessages,
-  conversationHistoryForModel,
   textOf,
   toChatMessage,
   userChatMessage,
 } from '../_shared.js';
+import { modelHistoryMessages } from '../../model-history.js';
 
 export function renderPlanGuidance(plan: PlanStep[]): string {
   const lines = plan.map((step, index) => {
@@ -118,11 +118,12 @@ export function buildBaseMessages(
   ctx: RunContext,
   systemMessage: string,
   attachments: ReturnType<typeof attachmentContextMessages>,
-  history: RunContext['history'] = conversationHistoryForModel(ctx),
+  history?: RunContext['history'],
 ): ChatMessage[] {
+  const historyMessages = history ? history.map(toChatMessage) : modelHistoryMessages(ctx);
   return [
     { role: 'system', content: systemMessage },
-    ...history.map(toChatMessage),
+    ...historyMessages,
     ...attachments.map((item) => item.message),
     userChatMessage(textOf(ctx.inbound), ctx.attachments),
   ];

@@ -1,6 +1,6 @@
 # @littlesheep/harness
 
-最后更新：2026-09-22 14:16:17
+最后更新：2026-09-22 14:39:09
 
 实现 LittleSheep 的核心 Agent Runtime：硬控制流状态机负责活动路由、单一主循环执行、验证、Runtime 恢复、澄清和收尾。
 
@@ -10,6 +10,7 @@
 - 活动路由只产出两条路径：所有会话与任务进入单一主循环（`stages/execute/tool-loop.ts` + `runners.ts`），能力/状态询问进入最小 Runtime 事实契约的 `reply`。DECIDE、验证模型调用、RECOVER 模型调用与 CAPTURE 已删除；`classify`、`decide`、`evolve`、`capture` 只作为历史 stage 名、LLM Call Contract 条目和检查点兼容字段存活，`checkpoint-resume.ts` 的 `resolveCheckpointResumeStage` 把入口为 `decide` 的检查点改派到 `execute`。ASK_USER 不可路由：它由主循环内模型发起的 `request_user_input`，或由 RECOVER 的权限拒绝/预算耗尽升级到达。
 - 已持久化的 TaskBook 是只读历史（降级策略为 `bounded_loop`）：没有第二个执行器、没有 TaskBook 步骤调度器、没有直接工具提议路径，也没有步骤级并行；多步骤工作在同一循环内串行完成。
 - 请求装配：system 消息恰好是缓存边界以上的 prompt sections（`stableText`/`stableSegments`）；边界以下的 bootstrap、Runtime facts、检索意图契约和压缩摘要由追加式尾部账本 `run-tail-ledger.ts` 各自成消息，因此循环第 N 次请求是第 N+1 次的字节前缀。可见工具目录在整个会话区间内固定（`catalogTools = explicitTools ?? ctx.tools`）；被收回的能力在**执行**时拒绝（`admittedTools` 是执行范围，不是可见性）。
+- 任务区间回放（`model-history.ts`）：把会话 transcript 里的 assistant 工具调用（含 Provider 原始参数串与 reasoning）与其 tool 结果（含模型当时看到的有界文本）配对重放，使新 run 的请求可以扩展上一 run 的前缀而不是从纯 prose 重建。**当前未启用**：上一轮的 Runtime 尾部没有进入 transcript，回放会在该位置分叉，只增加未缓存输入（实测 A1：回合边界 +528 提示词、+791 未缓存，自然完成节点 83.13%→75.41%），因此 `context.ts` 暂时不设置 `ctx.modelHistory`，启用前必须先把尾部按位置持久化。`buildRunRequestCandidates` 的 `historyChatCount` 已支持"历史占用的请求消息数 ≠ history 条目数"，否则主用户回合会被算错位置并被调用契约拒绝。
 - 观测模块：`model-observability.ts`（请求记录）、`model-request-contract.ts`（契约校验与 reasoning 偏好）、`cache-observability.ts` 与 `cache-prefix-split.ts`（可缓存头部切分）、`cache-observation-store.ts`、`cache-observation-persistence.ts`、`model-activity.ts`、`model-observability-state.ts`、`system-prompt-transcript.ts`、`runtime-awareness.ts`、`memory-known-state.ts`、`memory-context-working-set.ts`、`context-candidates.ts`、`profile-prompt.ts`；工具证据与转录在 `stages/execute/tool-result-persistence.ts`、`side-effect-ledger.ts`、`model-transcript.ts`。
 - 自动记忆演化（Atom 调和 / reparent / 子树移动 / 修订 / 纠正编排）、自动 Skill 创建与 CAPTURE 总结均已删除。持久记忆只有一个写入方——压缩路径（`runner-finalize` → `compactSessionAfterRun` → `memoryService.write`，经 `resolveMemoryWriteEpistemic`）：后置压力触发、默认 400/200/background false、以原子 predecessor + sourceHash 提交、失败保留上一版摘要；模型没有可调用的记忆写入工具（`memory_tree` 只有只读动作）。
 - `response-continuity*.ts` 依据 LS 实际发布的最终回答判断记忆是否连续，并从 `ReplyProvenance` 回查真正进入模型请求的近期历史、版本化摘要和 active/adopted Atom。保存、检索或注入成功都不是充分条件；明确追问的历史值必须在最终回答中逐项正确出现，漏答、答错、否认记得或来源未进入请求都不能判为 `supported`。判定不连续时只允许一次有界纠正（`stages/reply/continuity-repair.ts`），纠正以追加的"前缀扩展"形式发出，不重写 system 提示或工具目录。`session-summary-fidelity-text.ts` 只解析 Runtime 拥有的摘要精确字段封套，不负责会话压缩或存储。

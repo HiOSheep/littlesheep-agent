@@ -84,6 +84,13 @@ export interface ToolLoopOptions {
   insertedBeforePrimary?: InsertedContextMessage[];
   /** Exact history represented in messages; compact self-contained tasks use none. */
   history?: Message[];
+  /**
+   * How many request messages that history occupies. A replayed task interval
+   * spends one message per persisted message plus one per tool result, so the
+   * caller that assembled the request names the count instead of the assembler
+   * guessing it from `history.length`.
+   */
+  historyChatCount?: number;
   /** Branch-local cancellation; the run signal remains its parent. */
   signal?: AbortSignal;
   /** Branch-local message sink merged into the run in stable TaskBook order. */

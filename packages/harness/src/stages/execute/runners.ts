@@ -46,11 +46,14 @@ export async function executeLegacyLoop(
     systemPrompt.stableText ?? systemPrompt.text,
     attachmentMessages,
   );
+  // system + history + inserted attachments + this turn's user message.
+  const historyChatCount = Math.max(0, baseMessages.length - 2 - attachmentMessages.length);
   const result = await runToolLoop(deps, {
     ctx,
     messages: baseMessages,
     tools: catalogTools,
     admittedTools,
+    historyChatCount,
     ...(catalogTools.length === admittedTools.length
       ? {}
       : { withheldToolContract: renderRetrievalIntentContract(ctx) }),

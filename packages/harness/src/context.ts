@@ -201,16 +201,26 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
   if (clarificationResponse) {
     opts.inbound.clarificationResponse = clarificationResponse;
   }
-  // Filter tool messages: they're persisted to session JSONL for replay/audit
-  // (M3) but must not enter the LLM context — toChatMessage maps 'tool' role to
-  // 'user' and extracts empty text from tool_calls/tool_result blocks, which
-  // would pollute the conversation. EXECUTE rebuilds tool messages each run.
+  // Prose-only projection for user-facing and continuity consumers. Tool
+  // messages stay out of it; `modelHistory` below is the projection the model
+  // replays, and it keeps the tool calls and their results so a new run extends
+  // the previous run's request prefix instead of rebuilding a shorter history.
   const excludedMessageIds = new Set(opts.historyExcludeMessageIds ?? []);
   const history = authoritativeHistory.filter((m) => {
     if (excludedMessageIds.has(m.id)) return false;
     if (m.role === 'tool') return false;
     return m.content.some((c) => c.type === 'text');
   });
+  // Task-interval replay is NOT enabled yet, and the reason is measured rather
+  // than assumed. The previous run's request carried the Runtime tail between the
+  // user turn and the first tool round, and that tail is not part of the session
+  // transcript, so the Provider stops matching right there: replaying the tool
+  // pairs then only appends bytes after the divergence point. Frozen A1 with the
+  // replay on: turn boundaries grew by 528 prompt tokens and re-billed 791 more,
+  // H_ui at the completion node fell 83.13% -> 75.41%. The enabling change is to
+  // persist the tail in the transcript (see the LT-02 notes in the taskbook);
+  // until then the model history stays the prose projection above.
+  const modelHistory: Message[] | undefined = undefined;
 
   // 2. Bootstrap files (MEMORY.md is deliberately excluded; MemoryTree indexes it).
   const rawBootstrap = opts.memoryResources
@@ -252,6 +262,7 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     toolContext,
     bootstrap,
     history,
+    modelHistory,
     produced: [],
     taskBookRevision: 0,
     appliedTaskBookPatchIds: [],

@@ -64,6 +64,15 @@ export interface ToolCall {
   name: string;
   /** JSON-serializable arguments object. */
   input: unknown;
+  /**
+   * The exact argument string the Provider produced, kept only when the tool
+   * declares no input projector (its input is persisted verbatim anyway). It lets
+   * the next run replay the same assistant message byte for byte instead of
+   * re-serializing the parsed object, which is what keeps the task interval's
+   * request prefix reusable. Omitted whenever persisting it would bypass a
+   * tool-declared redaction.
+   */
+  rawArguments?: string;
 }
 
 /** The result returned by a tool execution. */
@@ -95,7 +104,17 @@ export interface ToolResult {
 export type ContentBlock =
   | { type: 'text'; text: string }
   | { type: 'tool_calls'; calls: ToolCall[] }
-  | { type: 'tool_result'; result: ToolResult }
+  | {
+      type: 'tool_result';
+      result: ToolResult;
+      /**
+       * The exact bounded text the model saw for this result. The durable
+       * `result` is the sanitized record; replaying a task interval needs the
+       * model-facing form too, or the next run's prompt would differ from the one
+       * the Provider already cached.
+       */
+      modelContent?: string;
+    }
   | { type: 'reasoning'; text: string };
 
 /** A single message record. One line in the session JSONL. */

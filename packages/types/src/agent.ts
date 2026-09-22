@@ -135,6 +135,14 @@ export interface RunContext {
   bootstrap?: Record<string, string>;
   /** Session transcript (loaded messages). */
   history: Message[];
+  /**
+   * The bounded task-interval transcript the model replays, tool calls and
+   * results included. It is a projection of the same persisted messages as
+   * `history` (which stays prose-only for user-facing and continuity consumers),
+   * and it exists so a new run can extend the previous run's request prefix
+   * instead of rebuilding a shorter history from prose alone.
+   */
+  modelHistory?: Message[];
   /** Messages produced during this run (to be persisted). */
   produced: Message[];
   /** Classification result (set by CLASSIFY). */

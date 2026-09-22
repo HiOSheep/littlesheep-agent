@@ -82,12 +82,19 @@ function explicitGlobClassification() {
 }
 
 describe('convertToolCall', () => {
-  it('bridges OpenAI format → internal {id, name, input}', () => {
+  it('bridges OpenAI format → internal {id, name, input, rawArguments}', () => {
     const tc = convertToolCall({
       id: 'call_1', type: 'function',
       function: { name: 'read', arguments: '{"file_path":"/x"}' },
     });
-    expect(tc).toEqual({ id: 'call_1', name: 'read', input: { file_path: '/x' } });
+    // The raw argument string travels with the call so a later run can replay the
+    // exact assistant message instead of re-serializing the parsed object.
+    expect(tc).toEqual({
+      id: 'call_1',
+      name: 'read',
+      input: { file_path: '/x' },
+      rawArguments: '{"file_path":"/x"}',
+    });
   });
 
   it('falls back to {} on invalid JSON args', () => {

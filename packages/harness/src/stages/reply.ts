@@ -14,10 +14,10 @@ import { assembleSystemPromptBundle, resolvePromptConfig } from '@littlesheep/pr
 import {
   attachmentContextMessages,
   conversationHistoryForModel,
-  toChatMessage,
   textOf,
   userChatMessage,
 } from './_shared.js';
+import { modelHistoryMessages } from '../model-history.js';
 import { appendSystemPromptBundleAddons, buildUserFacingVoiceAddon } from '../profile-prompt.js';
 import {
   preferDirectModelOutput,
@@ -77,7 +77,11 @@ export function createReplyStage(deps: ReplyStageDeps) {
 
     const attachmentMessages = isCapabilityReply ? [] : attachmentContextMessages(ctx.runId, ctx.attachments);
     // One session transcript for every purpose, including capability replies.
+    // Context accounting keeps the prose projection; the request itself carries
+    // the task-interval replay, so the reply extends the same prefix the tool
+    // loop already prefilled instead of rebuilding a shorter history.
     const history = conversationHistoryForModel(ctx);
+    const historyMessages = modelHistoryMessages(ctx);
     const messages: ChatMessage[] = [
       {
         role: 'system',
@@ -85,7 +89,7 @@ export function createReplyStage(deps: ReplyStageDeps) {
         // the below-boundary sections travel as their own Context messages.
         content: systemPrompt.stableText ?? systemPrompt.text,
       },
-      ...history.map(toChatMessage),
+      ...historyMessages,
       ...attachmentMessages.map((item) => item.message),
       userChatMessage(textOf(ctx.inbound), ctx.attachments),
     ];
@@ -115,6 +119,8 @@ export function createReplyStage(deps: ReplyStageDeps) {
         preferDirectModelOutput(ctx, rawRequest, { force: true }),
         buildRunRequestCandidates(ctx, 'reply', rawRequest.messages, {
           history,
+          // system + history + inserted attachments + this turn's user message.
+          historyChatCount: Math.max(0, messages.length - 2 - attachmentMessages.length),
           // The system message is exactly the sections above the cache boundary.
           // The below-boundary sections travel as their own messages, so the
           // boundary the prompt publishes is the boundary the request respects.

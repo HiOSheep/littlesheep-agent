@@ -56,14 +56,17 @@ const MAX_EVIDENCE_FINGERPRINTS = 128;
 const MAX_WEB_CITATION_REPAIRS = 2;
 const executionServices = new WeakMap<RunContext, ToolExecutionService>();
 
-export function convertToolCall(tc: LlmToolCall): { id: string; name: string; input: unknown } {
+export function convertToolCall(tc: LlmToolCall): { id: string; name: string; input: unknown; rawArguments: string } {
   let input: unknown;
   try {
     input = JSON.parse(tc.function.arguments || '{}');
   } catch {
     input = {};
   }
-  return { id: tc.id, name: tc.function.name, input };
+  // The raw string travels with the call so a later run can replay the exact
+  // assistant message the Provider produced; `persistToolCalls` keeps it only
+  // when the tool declares no input projector.
+  return { id: tc.id, name: tc.function.name, input, rawArguments: tc.function.arguments ?? '' };
 }
 
 export async function runToolLoop(
@@ -99,7 +102,13 @@ export async function runToolLoop(
   const fingerprintState = {
     saturated: ctx.loopBudget?.evidenceFingerprintSaturated === true,
   };
-  const initialHistory = history ?? conversationHistoryForModel(ctx);
+  // The history the request was assembled from: the task-interval replay when the
+  // run has one. The candidate assembler needs the same source *and* the number of
+  // chat messages it produced, because a replayed tool pair occupies more
+  // messages than the prose projection has entries.
+  const initialHistory = history ?? ctx.modelHistory ?? conversationHistoryForModel(ctx);
+  const historyChatCount = opts.historyChatCount
+    ?? (history ? history.length : initialHistory.length);
   // The runtime-owned tail is the run's append-only Runtime context.
   //
   // The initial tail (capability facts and the per-turn retrieval contract)
@@ -178,6 +187,7 @@ export async function runToolLoop(
         rawRequest,
         buildRunRequestCandidates(ctx, 'execute', messages, {
           history: initialHistory,
+          historyChatCount,
           systemSegments,
           insertedBeforePrimary,
           // The loop owns the runtime tail (the prompt sections marked
@@ -317,7 +327,7 @@ export async function runToolLoop(
           function: { name: call.function.name, arguments: call.function.arguments },
         })),
       });
-      persistToolCalls(ctx, produced, response.toolCalls.map(convertToolCall));
+      persistToolCalls(ctx, produced, response.toolCalls.map(convertToolCall), response.reasoningContent);
       await recordDurableToolCalls(ctx, response.toolCalls.map(convertToolCall), stepId);
 
       const requests = response.toolCalls.map((call) => {
@@ -532,12 +542,13 @@ function finalizeToolResult(
   }
   const durable = durableToolResult(result);
   results.push(durable);
-  persistToolResult(ctx, produced, durable);
+  const modelContent = toolResultForModel(result);
+  persistToolResult(ctx, produced, durable, modelContent);
   messages?.push({
       role: 'tool',
       tool_call_id: result.callId,
       name,
-      content: toolResultForModel(result),
+      content: modelContent,
     });
 }
 

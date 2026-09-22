@@ -62,6 +62,16 @@ export interface BuildRunRequestCandidatesOptions {
    */
   tailMessages?: ReadonlySet<ChatMessage>;
   /**
+   * How many request messages the history occupies.
+   *
+   * The task-interval replay can carry more chat messages than `history` has
+   * entries (a persisted assistant tool call and its results are separate
+   * messages), so a length-only computation put the primary user turn on the
+   * wrong message and the call contract then rejected the request for a missing
+   * `user_input`. Callers that replay a transcript name the count explicitly.
+   */
+  historyChatCount?: number;
+  /**
    * The declared Context kind of a tail message, when the caller knows it. Each
    * below-boundary prompt section already declares its own kind; without it the
    * section would be counted as a runtime event and its accounting would be
@@ -110,7 +120,8 @@ export function buildRunRequestCandidates(
   const historyPriorities = conversationContinuityPriorities(history, ctx.inbound);
   const historyEvictionGroups = conversationTurnEvictionGroups(history, stage);
   const inserted = options.insertedBeforePrimary ?? [];
-  const insertedStartIndex = 1 + history.length;
+  const historyChatCount = options.historyChatCount ?? history.length;
+  const insertedStartIndex = 1 + historyChatCount;
   const primaryUserIndex = options.primaryUserIndex
     ?? insertedStartIndex + inserted.length;
   const primaryUserKind = options.primaryUserKind ?? 'user_input';
@@ -185,21 +196,23 @@ export function buildRunRequestCandidates(
       })];
     }
 
-    const historyMessage = index > 0 && index <= history.length
+    const historyMessage = index > 0 && index <= historyChatCount
       ? history[index - 1]
       : undefined;
-    if (historyMessage) {
+    if (index > 0 && index <= historyChatCount) {
       return [candidate({
-        id: `${stage}:history:${historyMessage.id}`,
+        id: historyMessage ? `${stage}:history:${historyMessage.id}` : `${stage}:history:${index}`,
         order,
         message,
         kind: 'recent_message',
-        source: {
-          kind: 'message',
-          id: historyMessage.id,
-          sessionId: ctx.sessionId,
-          generatedAt: historyMessage.timestamp,
-        },
+        source: historyMessage
+          ? {
+              kind: 'message',
+              id: historyMessage.id,
+              sessionId: ctx.sessionId,
+              generatedAt: historyMessage.timestamp,
+            }
+          : { kind: 'message', id: `${stage}:history:${index}`, sessionId: ctx.sessionId },
         priority: historyPriorities[index - 1] ?? 75,
         required: false,
         evictionGroup: historyEvictionGroups[index - 1],

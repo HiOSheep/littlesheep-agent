@@ -1,6 +1,6 @@
 # Harness Stages
 
-最后更新：2026-09-22 13:10:04
+最后更新：2026-09-22 14:39:09
 
 每个文件实现 Core Flow 的一个状态，状态转移仍由 Harness 统一控制。
 
@@ -20,3 +20,4 @@
 - 持久记忆只有一个写入方——压缩路径；stage 不再拥有任何记忆写入端口，模型始终没有存储修改权。
 - 用户可见自然语言必须在当次 run 中实时调用当前 Provider API，由 LLM 结合 `SOUL.md` 现场构思，不从模板库或预备文案池选取；发布前通过持久化会话级回复注册表原子占用 settlement 身份，重复措辞按原样发布且不重新调用模型，没有任何改写或重新生成路径。`ReplyProvenance` 必须绑定真实 model request，`FINALIZE` 回查请求后才接受非空回复；注册表、模型或文案为空时 Runtime 返回错误状态，Renderer 不生成固定 Agent 文案。
 - 每个复杂 stage 必须有同名测试；跨阶段行为由 Harness e2e 覆盖。
+- 跨 run 的请求装配由 `cross-run-continuation.test.ts` 守住：`modelHistory` 存在时，新 run 的请求必须先在字节上重复上一 run 的请求（工具配对含原始参数串与模型看到的工具结果文本），`historyChatCount` 负责把主用户回合标在正确位置。

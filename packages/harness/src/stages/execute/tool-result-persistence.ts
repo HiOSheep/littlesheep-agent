@@ -51,18 +51,31 @@ export function persistToolCalls(
   ctx: RunContext,
   produced: RunContext['produced'],
   calls: ToolCall[],
+  reasoningContent?: string,
 ): void {
   const durableCalls = calls.map((call) => {
     const tool = ctx.tools.find((candidate) => candidate.name === call.name);
+    // `rawArguments` is kept only when the tool declares no input projector: the
+    // parsed input is then persisted verbatim anyway, so the raw string adds the
+    // exact bytes a later run needs without bypassing a redaction.
+    const projectsInput = typeof tool?.persistence?.projectInput === 'function';
+    const { rawArguments, ...rest } = call;
     return {
-      ...call,
+      ...rest,
+      ...(!projectsInput && rawArguments ? { rawArguments } : {}),
       input: tool ? projectToolInput(tool, call.input) : { redacted: true, unknownTool: true },
     };
   });
   produced.push({
     id: randomUUID(),
     role: 'assistant',
-    content: [{ type: 'tool_calls', calls: durableCalls }],
+    content: [
+      { type: 'tool_calls', calls: durableCalls },
+      // The Provider's reasoning travels with the assistant turn: the request
+      // echoes it, so replaying the task interval has to carry the same text or
+      // the replayed message would not match the cached one.
+      ...(reasoningContent ? [{ type: 'reasoning' as const, text: reasoningContent }] : []),
+    ],
     timestamp: new Date().toISOString(),
     sessionId: ctx.sessionId,
     runId: ctx.runId,
@@ -96,11 +109,17 @@ export function persistToolResult(
   ctx: RunContext,
   produced: RunContext['produced'],
   result: ToolResult,
+  modelContent?: string,
 ): void {
+  // External page bodies are allowed into one run's model context and nowhere
+  // else: durable evidence keeps only the bounded citation projection, so a web
+  // result never stores the text the model saw. Local tool results are already
+  // persisted through `output`, so replaying their model form adds no exposure.
+  const replayable = modelContent && !result.webEvidence ? modelContent : undefined;
   produced.push({
     id: randomUUID(),
     role: 'tool',
-    content: [{ type: 'tool_result', result }],
+    content: [{ type: 'tool_result', result, ...(replayable ? { modelContent: replayable } : {}) }],
     timestamp: new Date().toISOString(),
     sessionId: ctx.sessionId,
     runId: ctx.runId,
