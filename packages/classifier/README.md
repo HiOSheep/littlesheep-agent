@@ -1,10 +1,12 @@
 # @littlesheep/classifier
 
+最后更新：2026-09-22 12:47:49
+
 用确定性规则为 Harness 提供活动路由证据：命中规则的会话请求路由到 `reply`，其余请求交给单一主循环（`execute`），由模型决定直接回答还是调用工具。旧 `chat / problem / unclear` 字段只用于会话、检查点和插件兼容，不再定义新产品语义。
 
 ## 职责与边界
 
-- 公开入口是 `src/index.ts`；`rules.ts` 提供快速规则。
+- 公开入口是 `src/index.ts`；`rules.ts` 提供快速规则（`classifyByRules`、`listRules`），并导出被 Harness 复用的两个判定 helper：`extractExplicitToolInstructionNames`（`explicit-tool-instruction.ts`）和 `isMemoryRecallRequest`（`continuation-intent.ts`）。
 - 只负责活动路由证据和结果，不规划任务、不调用工具、不写记忆，也不消耗模型请求。
 - 禁止把 Workflow、权限或 UI 分支塞进分类规则。
 

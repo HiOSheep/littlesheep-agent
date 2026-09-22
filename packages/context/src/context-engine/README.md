@@ -1,13 +1,18 @@
 # Context Engine 内部边界
 
+最后更新：2026-09-22 12:40:16
+
 本目录实现 `ContextEngine` 背后的确定性上下文装配基元，外部调用方继续使用 `../engine.ts`。
 
-- `contracts.ts`：公开常量、类型和错误契约。
+- `contracts.ts`：公开常量、类型和错误契约，含 `evictionScope` 与 `ContextBudgetExceededError`。
 - `candidates.ts`：候选推导、校验、排序和来源分类。
 - `contract-policy.ts`：按单次 `LlmCallContract` 过滤候选与 Prompt segment；必需来源缺失或越权时默认拒绝组装请求。
 - `assembly.ts`：根据候选与淘汰集合装配最终请求。
-- `budget.ts`：模型窗口、输出保留量、压缩阈值和模型引用解析。
-- `eviction.ts`：按优先级与稳定顺序淘汰可选候选。
+- `budget.ts`：模型窗口、输出保留量、压缩阈值、淘汰范围和模型引用解析。
+- `append-only.ts`：`appended-only` 下"已投递单元"的账本，为调用方保护已经发出的候选。
+- `eviction.ts`：按优先级与稳定顺序淘汰可选候选，同 `evictionGroup` 的成员一起淘汰。
+- `fit.ts`：把已装配请求拟合进 token 预算；精确计数与保守估算不可互换，两者按同一顺序丢弃同一批可选单元，宁可见失败也不静默缩减调用方已发送的内容。
+- `reuse-cache.ts`：内容寻址的本地复用缓存；装配输入字节一致时复用淘汰决策、计数和估算结果。
 - `counting.ts`：精确计数器能力匹配和不可展示的保守安全估算。
 - `snapshots.ts`：Context 与模型请求的有界、脱敏、可追溯快照，并持久化本次完整调用契约。
 

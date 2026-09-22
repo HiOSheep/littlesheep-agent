@@ -2,10 +2,13 @@
 
 定义 LittleSheep 的品牌标识、默认用户数据目录名称和稳定路径布局。
 
+最后更新：2026-09-22 12:43:39
+
 ## 职责与边界
 
-- 公开入口是 `src/index.ts`；品牌配置和数据目录解析集中在此。
-- 只拥有命名与路径约定，不读取配置、会话、记忆或密钥。
+- 公开入口是 `src/index.ts`；品牌配置、数据目录解析和数据根 locator 文档形状集中在此。
+- 提供 `loadBranding`/`parseBranding`、`resolveDataDir`/`resolveDefaultDataDir`、`dataSubdirs`（sessions、memory、skills、config、quarantine、backups、experience、archive、vectors、execution-logs、channels、plugins、plugin-data、attachment-cache、workplace）和 `readDataRootLocator`/`parseDataRootLocator`。
+- 只拥有命名、路径解析和 locator 文档形状：不读取会话、记忆或密钥，也不执行迁移；真正的拷贝、校验与回滚由 App Main 负责，本包只解析它写下的状态。
 - 禁止放入 Electron 生命周期、文件迁移和用户数据写入逻辑。
 
 ## 依赖与数据

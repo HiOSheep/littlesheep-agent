@@ -2,11 +2,14 @@
 
 实现插件 manifest、发现、信任校验、生命周期宿主和受控贡献接口。
 
+最后更新：2026-09-22 12:43:39
+
 ## 职责与边界
 
-- 公开入口是 `src/index.ts`；manifest 在 `manifest.ts`，宿主在 `host.ts`，本地加载在 `local-loader.ts`。
-- 当前稳定贡献为 channel、tool 和声明式 skill；未定义完整宿主契约的能力不能只靠 manifest 枚举宣称支持。
-- 禁止插件绕过 Runner 工具执行、用户信任开关、错误隔离或 owner-scoped 清理。
+- 公开入口是 `src/index.ts`；manifest 在 `manifest.ts`，宿主在 `host.ts`，本地加载在 `local-loader.ts`，渠道运行时在 `src/channel/`。
+- 宿主按用户启用状态、本地代码信任开关和激活事件决定是否激活；注册每项贡献前校验 manifest 必须同时声明对应 capability、permission 与 contributes 条目，并为每个插件分配独立 `plugin-data` 命名空间，停用/失败时回收它注册的渠道类型与工具。
+- 当前稳定贡献为 channel、tool 和声明式 skill（skill 以 `contributes.skills` 声明的目录交给 Skills 加载器）；未定义完整宿主契约的能力不能只靠 manifest 枚举宣称支持。
+- 插件工具仍由统一 Tool Execution Service 执行，插件不因此获得任何权限豁免；禁止绕过 Runner 工具执行、用户信任开关、错误隔离或 owner-scoped 清理。
 
 ## 依赖与数据
 

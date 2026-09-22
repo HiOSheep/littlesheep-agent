@@ -58,8 +58,18 @@ function trackedFiles() {
   return trackedFilesCache
 }
 
-async function collectPackageDirectories() {
-  const packageDirs = []
+/** Commit time (seconds) of the last commit touching the given pathspecs. */
+function lastCommitSeconds(pathspecs) {
+  const result = spawnSync('git', ['log', '-1', '--format=%ct', ...pathspecs], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  })
+  if (result.status !== 0) return 0
+  const seconds = Number(result.stdout.trim())
+  return Number.isFinite(seconds) ? seconds : 0
+}
+
+async function collectPackageDirectories() {  const packageDirs = []
   const packageRoot = join(repoRoot, 'packages')
 
   for (const entry of await readdir(packageRoot, { withFileTypes: true })) {
@@ -350,6 +360,51 @@ async function checkRepositoryNavigation() {
   const missingDomainReadmes = requiredDomainReadmes
     .filter((path) => !existsSync(join(repoRoot, path, 'README.md')))
   assert(missingDomainReadmes.length === 0, '独立领域 README 完整', missingDomainReadmes.join(', '))
+
+  /**
+   * Every README under `packages/` carries a second-precision `最后更新` line.
+   * The rule is not decoration: a README states what a package owns right now, so
+   * a change that alters a package's surface has to touch its README in the same
+   * commit, and the timestamp is what makes that visible in review instead of
+   * leaving documentation to drift silently.
+   */
+  const packageReadmes = trackedFiles().filter(
+    (path) => path.startsWith('packages/') && path.endsWith('README.md'),
+  )
+  const missingStamps = []
+  for (const path of packageReadmes) {
+    const content = await readText(join(repoRoot, path))
+    if (!/^最后更新：\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/mu.test(content)) {
+      missingStamps.push(path)
+    }
+  }
+  assert(
+    missingStamps.length === 0,
+    'package README 带秒级最后更新',
+    missingStamps.join(', '),
+  )
+
+  /**
+   * And the stamp has to move with the code: if a directory's sources were
+   * committed after its README, the README was not updated in the same change.
+   * Only committed history is compared, so an in-progress working tree does not
+   * fail the gate — the check fires on the commit that skipped the README.
+   */
+  const staleReadmes = []
+  for (const path of packageReadmes) {
+    const dir = dirname(path)
+    const readmeTime = lastCommitSeconds(['--', path])
+    // Other READMEs in the same tree are documentation, not the surface this file
+    // describes, so they are excluded: updating a leaf README must not force its
+    // parent README to move.
+    const sourceTime = lastCommitSeconds(['--', dir, ':(exclude,glob)**/README.md'])
+    if (readmeTime > 0 && sourceTime > readmeTime) staleReadmes.push(path)
+  }
+  assert(
+    staleReadmes.length === 0,
+    'package README 与源码同步更新',
+    staleReadmes.join(', '),
+  )
 
   const sourceFiles = (await collectSourceFiles(join(repoRoot, 'packages')))
     .filter((file) => !/\.(test|spec)\.[^.]+$/u.test(file))

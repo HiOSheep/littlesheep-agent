@@ -1,5 +1,7 @@
 # @littlesheep/web
 
+最后更新：2026-09-22 12:43:39
+
 LittleSheep 的 provider 无关网络检索领域包。
 
 职责：

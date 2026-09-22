@@ -1,11 +1,14 @@
 # @littlesheep/vector
 
+最后更新：2026-09-22 12:47:49
+
 保留 Memory v2 本地向量数据库的兼容类型、读取与测试实现。当前 Memory v3 Runtime 不再装配或写入该存储；新的 Atom Embedding 由 `@littlesheep/memory-tree` 内的本地 Catalog 统一管理。
 
 ## 职责与边界
 
 - 公开入口是 `src/index.ts`；类型在 `types.ts`，兼容实现在 `vector-store.ts`。
-- 仅用于读取或验证既有 v2 数据，不得由 Runner、Harness、Memory Core 或 CLI 注册为写入权威。
+- 当前没有任何生产包导入它，`packages/tools` 只保留一条未被使用的 workspace 依赖声明；不得由 Runner、Harness、Memory Core 或 CLI 注册为写入权威（`check:repo` 同时禁止 CLI tsconfig 引用本包）。
+- 仅用于读取或验证既有 v2 数据。
 - v2 向量结果不能直接进入 Context，也不能创建、更新或提升 Memory v3 Atom。
 
 ## 依赖与数据

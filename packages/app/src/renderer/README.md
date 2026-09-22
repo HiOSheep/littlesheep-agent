@@ -1,4 +1,5 @@
 # Electron Renderer
+最后更新：2026-09-22 12:41:58
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。
 
@@ -9,8 +10,8 @@ Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区�
 - `app-shell/`：顶层视图、导航历史和控制器组合。
 - `ui/display-frame.ts`、`ui/display-synced-settle.ts`：合并重复失效请求，并基于 `requestAnimationFrame` 时间戳进行有界布局收敛；当前显示器 VSync 是有效 FPS 上限，稳定后不再申请帧。
 - `approval/`、`chat/`、`composer/`、`runtime/`、`settings/`、`sidebar/`、`ui/`、`workspace/`：按责任域拆分的 Renderer 实现。
-- `api.ts`：21 行 Local App API 兼容 barrel；领域客户端位于 `api/`。
-- `TraceCard.tsx`、`MemoryTreeView.tsx`、`ArchiveManager.tsx`：仍保留的独立领域视图；其中记忆页只显示六份记忆文件并仅允许编辑 `SOUL.md`，不承载 Atom 管理。
+- `api.ts`：22 行 Local App API 兼容 barrel；领域客户端位于 `api/`。
+- `TraceCard.tsx`、`MemoryTreeView.tsx`、`ArchiveManager.tsx`、`MemorySkills.tsx`、`ChannelConnections.tsx`：仍保留的独立领域视图，由 `settings/workspace.tsx` 的归档、技能和外部渠道页复用；其中记忆页只显示六份权威记忆文件并仅允许编辑 `SOUL.md`，不承载 Atom、向量或记忆写入入口。
 - `settings/models.tsx`、`settings/model-provider-editor.tsx`、`settings/model-provider-draft.ts`：模型供应商页的卡片视图、编辑对话框和纯校验；自定义提供方使用 OpenAI 兼容接口，密钥经 Main 写入系统密钥库，模型元数据（上下文窗口、最大输出、推理档位）只按用户声明使用，未声明即保持未知。
 - `chat/assistant-turn.tsx`：一轮 Agent 的思考摘要、真实执行过程、验证和最终结果渐进披露。
 - `Markdown.tsx`、`link-navigation.tsx`、`workspace/browser.tsx`：全局链接单击进入 LS 内置预览；网页由独立的有界 URL 历史驱动前进、后退和刷新，网页内部跳转不会污染全局应用导航。
@@ -18,7 +19,7 @@ Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区�
 
 Renderer 拥有临时 UI 状态和交互编排，不拥有会话、记忆、项目、密钥或工作区文件的权威数据。
 
-用户可见的 Agent 自然语言也不由 Renderer 临时拼装：回复、澄清、任务说明、步骤摘要、验证说明和交付表达必须由真实 LLM 调用结合运行时 `SOUL.md`、用户语言与已验证事实生成。Renderer 只稳定呈现已在持久化会话注册表中通过原子精确去重的文案，以及按钮、状态枚举、进度、路径、权限结果等机器事实；同一文案只能用于同一 UI 回合的更新、日志和持久化，不能再次发送为重复消息。模型不可用、注册表不可用、空回复或重复改写耗尽时，Renderer 只呈现 Runtime 错误/状态，不呈现固定人格降级文案。
+用户可见的 Agent 自然语言也不由 Renderer 拼装：回复、澄清、任务说明、步骤摘要、验证说明和交付表达必须来自真实 LLM 调用，并结合运行时 `SOUL.md`、用户语言与已验证事实。Renderer 只呈现 Runtime 下发的最终文案，以及按钮、状态枚举、进度、路径、权限结果等机器事实；发布身份、幂等和去重由 Runtime 的持久化会话注册表负责，Renderer 不因措辞与上一回合相同而合并、改写或抑制消息，也不在回复为空时套用固定人格文案，只显示 Runtime 错误/状态。
 
 ## 依赖与禁止事项
 

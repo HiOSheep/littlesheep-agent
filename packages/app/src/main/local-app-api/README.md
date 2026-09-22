@@ -1,8 +1,8 @@
 # Local App API
 
-本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
+最后更新：2026-09-22 12:57:18
 
-最后更新：2026-08-14 01:10:00
+本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 
 ## 结构
 
@@ -10,29 +10,34 @@
 | --- | --- |
 | `contracts.ts` | Server 构造参数和生命周期公共契约。 |
 | `http.ts` | JSON、SSE、请求体上限和 HTTP 错误基元；`openSse()` 统一发送响应头与 15 秒注释心跳，单连接待写数据达到 512 KiB 前主动断开慢观察者，并幂等释放 timer/listener。 |
-| `run-routes.ts` / `run-support.ts` | Agent run、流式事件、审批、中断、会话归属和产物。 |
-| `application-lifecycle-routes.ts` | 活动任务快照、`active_runs` SSE、暂停/继续/中断控制；监听器生命周期归 Main 的 `RunActivityMonitor`。 |
+| `bearer-auth.ts` | 验收与校准类接口的 bearer token 校验。 |
+| `run-routes.ts` / `run-support.ts` | Agent run、流式事件、审批、中断、会话归属和产物；内部再接入 `run-checkpoint-routes.ts` 与 `runtime-event-request.ts`。 |
+| `run-checkpoint-routes.ts` / `run-checkpoint-view.ts` | 启动检查点发现、详情、续跑流和放弃；只把内部状态投影成有界诊断。 |
+| `run-lifecycle-routes.ts` / `application-lifecycle-routes.ts` | 活动任务快照、`active_runs` SSE、暂停/继续/中断控制和 `/application/acceptance` 验收入口；监听器生命周期归 Main 的 `RunActivityMonitor`。 |
 | `project-routes.ts` | 项目注册、重绑定、归档转换和目录创建。 |
-| `session-routes.ts` | 会话列表、独立/项目会话重命名、归档、删除和执行日志重放；重命名同时更新会话 metadata 与 UI 索引，索引失败时回滚 metadata。 |
-| `runtime-routes.ts` | Runtime、Provider key、数据根和应用重启。 |
-| `memory-routes.ts` | Skills、记忆树、记忆策略和项目记忆投影。 |
+| `session-routes.ts` | 会话列表、独立/项目会话重命名、归档、删除、执行日志重放和上下文用量记录；重命名同时更新会话 metadata 与 UI 索引，索引失败时回滚 metadata。 |
+| `runtime-routes.ts` / `provider-routes.ts` / `provider-calibration-route.ts` / `runtime-payload.ts` | Runtime、Provider key、数据根、应用重启、Provider 校准和 RuntimeState 投影。 |
+| `web-provider-check.ts` | 用户主动触发、进程内保存结果的 SearchProvider 检查协调器；Web 配置变化或 Runner 重建即失效。 |
+| `memory-routes.ts` / `memory-atom-routes.ts` | Skills、记忆树、记忆策略、项目记忆投影和 Atom 证据导出。 |
 | `memory-migration-routes.ts` | Memory v3 迁移、回滚和固定本地向量模型准备。 |
-| `workspace-routes.ts` | 附件导入、文件、布局和产物路由。 |
+| `workspace-routes.ts` | 附件导入、文件、布局、产物和 Git 审阅入口。 |
 | `workspace-file-service.ts` | 安全目录列表、预览和文本保存。 |
-| `workspace-git-repository.ts` / `workspace-git-review.ts` / `workspace-git-review-cache.ts` | Git 仓库定位、过滤器安全策略、分层 staged/unstaged/untracked 审阅快照和按 revision 绑定的 Diff；状态扫描按工作区有界缓存并合并 in-flight 请求，Diff 并发受限，调用方取消不会取消其他观察者。 |
+| `workspace-git-*.ts` | 仓库/分支定位、只读命令、过滤器安全策略、porcelain/numstat/diff 解析、未跟踪扫描、分层 staged/unstaged/untracked 审阅快照和按 revision 绑定的 Diff；状态扫描按工作区有界缓存并合并 in-flight 请求，Diff 并发受限，调用方取消不会取消其他观察者。 |
 | `workspace-support.ts` | 工作区边界、scope 和资源索引同步。 |
-| `terminal-*.ts` | PTY/进程、终端会话、命令捕获、一次性命令和终端路由。 |
+| `terminal-*.ts` | PTY/进程、终端会话、命令捕获、一次性命令和终端路由；`terminal-permission.ts` 区分用户自控终端与 Agent 发起的命令。 |
+| `browser-routes.ts` | 内置浏览器分区状态与缓存/数据清理。 |
+| `development-environment-routes.ts` | 开发环境状态、版本偏好、导入和移除接口。 |
 | `extension-routes.ts` | 插件与外部渠道控制面。 |
 | `vscode-launcher.ts` | VS Code 命令发现与启动。 |
 
 ## 路由领域
 
-- Run：`/run`、`/run/stream`、`/approvals/:id`。
+- Run：`/run`、`/run/stream`、`/approvals/:id`、`/run-checkpoints`（`/:id` 详情、`/:id/resume/stream` 续跑、`/:id/abandon` 放弃）。
 - 会话：`/sessions`、`/projects`、`/archive`、`/runs/:id`。
-- Runtime：`/state`、`/runtime`、`/config/*`、`/data-root/*`、`/application/restart`、`/application/active-runs`、`/application/active-runs/stream`、`/application/active-runs/:id/control`。
-- 工作区：`/workspace/*`、`/attachments/*`、`/workspace/terminal/*`。
+- Runtime：`/state`、`/runtime`、`/runtime/web/*`、`/runtime/cache-quality`、`/runtime/provider-calibration`、`/config/*`、`/data-root/*`、`/application/restart`、`/application/acceptance`、`/application/active-runs`（含 `/stream` 与 `/:id/control`）。
+- 工作区：`/workspace/*`（含 `/workspace/review/*`、`/workspace/terminal/*`）、`/attachments/*`、`/external/open`。
 - 记忆：`/skills/*`、`/memory/*`。
-- 扩展：`/plugins/*`、`/channels/*`。
+- 扩展与其余控制面：`/plugins/*`、`/channels/*`、`/browser/*`、`/development-environments/*`。
 
 静态路由、动态前缀和 ID 编解码只以 `../../shared/local-app-api-routes.ts` 为准。
 
@@ -42,7 +47,7 @@
 - 路由返回 `true` 表示已处理；未匹配必须返回 `false`，由总入口统一生成 404。
 - 长生命周期资源必须归属一个 router/server 实例，并在 `stop()` 中释放 controller、timer、listener 和子进程。
 - SSE 路由统一调用 `openSse()`，不能复制响应头、心跳或缓冲策略；必须同时处理请求中止、响应关闭和订阅建立期间的竞态，任何退出路径只能释放一次 timer、listener 和订阅。
-- 普通 Agent run、Checkpoint 续跑和活动任务订阅的 SSE 只是观察连接；观察者断开不会取消 Main 持有的任务。显式中断必须走活动任务控制入口。终端主动命令保持独立语义，观察连接断开时仍取消对应命令。
+- 普通 Agent run、Checkpoint 续跑和活动任务订阅的 SSE 只是观察连接；观察者断开不会取消 Main 持有的任务。显式中断必须走活动任务控制入口。终端主动命令保持独立语义，观察连接断开时仍取消对应命令；用户自己输入的交互终端不读取 Agent 权限模式，只有 Agent 发起的命令才经过 `terminal-permission.ts` 的边界判定。
 - `writeSse()` 在响应已关闭时安全返回；Node 的普通背压不会立即断流，只有累计待写数据越过 512 KiB 上限才关闭该观察连接。不得通过无界排队补偿慢客户端。
 - Git 审阅必须复用同一份仓库快照：普通仓库使用一次带 `--branch --ahead-behind` 的状态查询解析分支、upstream 和 ahead/behind，staged Diff 同时兼容无首个 commit 的仓库；文件 Diff 必须携带快照 revision，陈旧 revision 返回 409，不能为旧树隐式重扫仓库。
 - 不复制 shared contracts，不改变既有 URL、SSE 事件名、状态码或持久化语义。
