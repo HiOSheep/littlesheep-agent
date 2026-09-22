@@ -1,9 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
-import { mkdtemp, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createExecTool } from './exec.js';
+import { readTool } from './read.js';
 import type { ToolContext } from '@littlesheep/types';
+import { createInMemoryFileObservationPort } from '../file-observation.js';
 
 const baseCtx: ToolContext = {
   sessionId: 's1' as never,
@@ -233,5 +235,98 @@ describe('execTool approval gate', () => {
     expect(meta.timedOut).toBe(true);
     expect(meta.processClosed).toBe(true);
     expect(Date.now() - startedAt).toBeLessThan(10_000);
+  });
+});
+
+// RS-04: an opaque command invalidates what the model believed it had read.
+describe('execTool observation invalidation', () => {
+  async function scenario(): Promise<{ dir: string; ctx: ToolContext; file: string }> {
+    const dir = await mkdtemp(join(tmpdir(), 'ls-exec-observation-'));
+    const file = join(dir, 'notes.txt');
+    await writeFile(file, 'original', 'utf8');
+    const ctx: ToolContext = {
+      ...baseCtx,
+      cwd: dir,
+      observation: createInMemoryFileObservationPort(),
+      approve: async () => true,
+    };
+    await readTool.execute({ file_path: file }, ctx);
+    return { dir, ctx, file };
+  }
+
+  it('drops the observation after a command that rewrote the file', async () => {
+    const { dir, ctx, file } = await scenario();
+    try {
+      const exec = createExecTool({ interactive: false, approvalConfig: { whitelist: [], blacklist: [], approvalMode: 'auto-approve' } });
+      const command = process.platform === 'win32'
+        ? `Set-Content -LiteralPath '${file}' -Value 'rewritten by shell'`
+        : `sh -c "printf 'rewritten by shell' > '${file}'"`;
+      expect((await exec.execute({ command }, ctx)).ok).toBe(true);
+
+      const lookup = ctx.observation!.lookup(file);
+      expect(lookup.ok).toBe(false);
+      if (!lookup.ok) expect(lookup.errorKind).toBe('observation_missing');
+      expect(await readFile(file, 'utf8')).toContain('rewritten by shell');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('drops the observation even when the command never touched the file', async () => {
+    const { dir, ctx, file } = await scenario();
+    try {
+      const exec = createExecTool({ interactive: false, approvalConfig: { whitelist: [], blacklist: [], approvalMode: 'auto-approve' } });
+      await exec.execute({ command: 'echo harmless' }, ctx);
+
+      // The scope of a shell command cannot be proven, so the safe answer is
+      // that the model has to read the file again.
+      expect(ctx.observation!.lookup(file).ok).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('drops the observation when the command exits non-zero', async () => {
+    const { dir, ctx, file } = await scenario();
+    try {
+      const exec = createExecTool({ interactive: false, approvalConfig: { whitelist: [], blacklist: [], approvalMode: 'auto-approve' } });
+      const command = process.platform === 'win32' ? 'exit 3' : 'exit 3';
+      expect((await exec.execute({ command }, ctx)).ok).toBe(false);
+
+      expect(ctx.observation!.lookup(file).ok).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps the observation when approval is denied before the process starts', async () => {
+    const { dir, ctx, file } = await scenario();
+    try {
+      const exec = createExecTool({ interactive: false });
+      const result = await exec.execute({ command: 'format C:' }, ctx);
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/blacklist/);
+      // Nothing ran, so the read the model already has is still valid.
+      expect(ctx.observation!.lookup(file).ok).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('drops the observation when the command is terminated by timeout', async () => {
+    const { dir, ctx, file } = await scenario();
+    try {
+      const exec = createExecTool({ interactive: false, approvalConfig: { whitelist: [], blacklist: [], approvalMode: 'auto-approve' } });
+      const command = process.platform === 'win32' ? 'Start-Sleep -Seconds 30' : 'sleep 30';
+      const result = await exec.execute({ command, timeout_ms: 100 }, ctx);
+
+      expect(result.ok).toBe(false);
+      // Whether the process is already closed or still being killed, the
+      // observation is unusable either way.
+      expect(ctx.observation!.lookup(file).ok).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

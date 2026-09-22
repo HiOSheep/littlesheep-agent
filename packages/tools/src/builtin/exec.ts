@@ -76,6 +76,11 @@ export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
       if (!isLikelyReadOnlyCommand(command)) {
         await ctx.versioning?.beforeWorkspaceMutation(workDir);
       }
+      // An opaque command can rewrite anything it can reach, so no observation
+      // may authorize a write while it may be running and every observation of
+      // this session is dropped afterwards. This deliberately ignores the
+      // read-only heuristic above: a command name is not proof of what it did.
+      const releaseObservations = ctx.observation?.suspend();
       ctx.log?.('info', `exec: ${command} (cwd: ${workDir})`);
 
       // Use PowerShell on Windows (per TOOLS.md convention), sh on Unix
@@ -112,10 +117,31 @@ export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
           proc.removeListener('error', onError);
           proc.removeListener('close', onClose);
         };
-        const settle = (result: Parameters<typeof resolve>[0]) => {
+        const settle = (
+          result: Parameters<typeof resolve>[0],
+          options: { commandRan?: boolean; processClosed?: boolean } = {},
+        ) => {
           if (settled) return;
           settled = true;
           cleanup();
+          if (options.commandRan === false) {
+            // The command never started, so nothing can have changed: keep the
+            // session's observations and just lift the freeze.
+            releaseObservations?.();
+          } else {
+            // Whatever the exit code was, the command may have written files.
+            // Only a process known to be closed lifts the freeze; while it may
+            // still be writing, observations stay unusable.
+            ctx.observation?.invalidateAll();
+            if (options.processClosed === true) {
+              releaseObservations?.();
+            } else {
+              proc.once('close', () => {
+                ctx.observation?.invalidateAll();
+                releaseObservations?.();
+              });
+            }
+          }
           resolve(result);
         };
         const capturedResult = (
@@ -166,10 +192,10 @@ export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
         const onStdout = (chunk: Buffer) => stdout.append(chunk);
         const onStderr = (chunk: Buffer) => stderr.append(chunk);
         const onError = (error: Error) => {
-          settle(capturedResult(proc.exitCode, proc.signalCode, false, error));
+          settle(capturedResult(proc.exitCode, proc.signalCode, false, error), { commandRan: false });
         };
         const onClose = (code: number | null, signal: NodeJS.Signals | null) => {
-          settle(capturedResult(code, signal, true));
+          settle(capturedResult(code, signal, true), { processClosed: true });
         };
 
         proc.stdout?.on('data', onStdout);
