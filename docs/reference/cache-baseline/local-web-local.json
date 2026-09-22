@@ -1,6 +1,6 @@
 {
   "probe": "local-web-local",
-  "freeze": "git 7d41504",
+  "freeze": "git 39d9f53",
   "model": "test",
   "toolNames": [
     "read",
