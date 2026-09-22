@@ -48,6 +48,14 @@ export interface ContextMessageCandidate {
   /** Optional eviction group; members are omitted together. */
   evictionGroup?: string;
   segments?: ContextMessageSegment[];
+  /**
+   * Budget eviction may not drop this candidate, but a contract that forbids its
+   * kind still does. The two are different questions: a contract decides what a call
+   * may read at all, while eviction trims an over-target prompt. The replayed task
+   * interval is pinned — dropping one of its messages rewrites every message after
+   * it and invalidates the Provider's cached prefix for the session.
+   */
+  pinned?: boolean;
 }
 
 export interface ContextMessageSegment {

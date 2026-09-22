@@ -44,6 +44,10 @@ export function optionalOmissionUnits(
   };
 
   for (const candidate of candidates) {
+    // A pinned candidate may only be dropped by the call contract (which decides
+    // what the call may read), never by budget eviction: its bytes are the prefix
+    // the next request has to extend.
+    if (candidate.pinned === true) continue;
     if (candidate.segments) {
       // Protecting a message protects every section it was delivered with: a
       // segment dropped here rewrites the message the caller already sent.

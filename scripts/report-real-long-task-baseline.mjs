@@ -28,7 +28,9 @@ const markdownPath = resolve(repoRoot, valueOf('--markdown') ?? 'docs/reference/
 function readRuns() {
   if (!existsSync(resultsDir)) return [];
   return readdirSync(resultsDir)
-    .filter((name) => /^real-long-task-[A-C][12]-\d+\.json$/u.test(name))
+    // Frozen six (`A1`..`C2`) plus the long-interval set (`L1`): same report shape, and
+  // the long task is where the red line is actually reachable.
+  .filter((name) => /^real-long-task-(?:[A-C][12]|L\d+)-\d+\.json$/u.test(name))
     .map((name) => {
       try {
         return { file: name, report: JSON.parse(readFileSync(join(resultsDir, name), 'utf8')) };

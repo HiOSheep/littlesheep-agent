@@ -1,0 +1,630 @@
+{
+  "check": "real-long-task-baseline",
+  "recordedAt": "2026-09-22T11:30:13.298Z",
+  "manifestVersion": 1,
+  "manifestValid": true,
+  "manifestErrors": [],
+  "frozenTasks": [
+    {
+      "id": "A1",
+      "classId": "A",
+      "title": "修复购物车优惠券计税并补测试",
+      "turns": 3,
+      "nodes": [
+        {
+          "id": "diagnosis",
+          "turn": 1,
+          "label": "调查完成：说清优惠券在税前还是税后扣减，并指出失败的用例"
+        },
+        {
+          "id": "fix",
+          "turn": 2,
+          "label": "执行完成：按规则修复且原有测试全部通过"
+        },
+        {
+          "id": "boundary",
+          "turn": 3,
+          "label": "自然完成：补上满减门槛用例并复跑通过"
+        }
+      ]
+    },
+    {
+      "id": "A2",
+      "classId": "A",
+      "title": "修复库存预留与订单取消并补测试",
+      "turns": 3,
+      "nodes": [
+        {
+          "id": "diagnosis",
+          "turn": 1,
+          "label": "调查完成：说清重复取消与释放越界两处不符合规则的地方"
+        },
+        {
+          "id": "fix",
+          "turn": 2,
+          "label": "执行完成：两个模块按规则修好且测试全部通过"
+        },
+        {
+          "id": "boundary",
+          "turn": 3,
+          "label": "自然完成：补上释放边界用例并复跑通过"
+        }
+      ]
+    },
+    {
+      "id": "B1",
+      "classId": "B",
+      "title": "汇总逾期工单并交付逾期清单",
+      "turns": 3,
+      "nodes": [
+        {
+          "id": "counts",
+          "turn": 1,
+          "label": "调查完成：说出逾期条数与数据问题条数"
+        },
+        {
+          "id": "delivery",
+          "turn": 2,
+          "label": "执行完成：report/overdue.md 落盘且清单与数字齐全"
+        },
+        {
+          "id": "reconciliation",
+          "turn": 3,
+          "label": "自然完成：报告与全部来源逐条核对一致"
+        }
+      ]
+    },
+    {
+      "id": "B2",
+      "classId": "B",
+      "title": "核对供应商发票差异并交付对账报告",
+      "turns": 3,
+      "nodes": [
+        {
+          "id": "counts",
+          "turn": 1,
+          "label": "调查完成：说出差异笔数、合计金额与数据问题"
+        },
+        {
+          "id": "delivery",
+          "turn": 2,
+          "label": "执行完成：report/reconcile.md 落盘且明细、数据问题与红字通知单齐全"
+        },
+        {
+          "id": "reconciliation",
+          "turn": 3,
+          "label": "自然完成：重复发票与孤儿发票已排除在金额之外并复述一致"
+        }
+      ]
+    },
+    {
+      "id": "C1",
+      "classId": "C",
+      "title": "结合供应商材料与口头前提完成选型评审",
+      "turns": 3,
+      "nodes": [
+        {
+          "id": "screening",
+          "turn": 1,
+          "label": "调查完成：说出三家方案的淘汰原因"
+        },
+        {
+          "id": "delivery",
+          "turn": 2,
+          "label": "执行完成：可行方案与折后总价写入报告"
+        },
+        {
+          "id": "memory-anchor",
+          "turn": 3,
+          "label": "自然完成：报告写入本轮口头给出的预算与折扣并算出剩余额度"
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "classId": "C",
+      "title": "结合故障材料与口头前提完成复盘交付",
+      "turns": 3,
+      "nodes": [
+        {
+          "id": "contradictions",
+          "turn": 1,
+          "label": "调查完成：说出矛盾条数与逐条内容"
+        },
+        {
+          "id": "timeline",
+          "turn": 2,
+          "label": "执行完成：权威时间线与矛盾写入报告"
+        },
+        {
+          "id": "disclosure",
+          "turn": 3,
+          "label": "自然完成：对外口径写入本轮口头给出的变更单编号与原话"
+        }
+      ]
+    }
+  ],
+  "runs": 1,
+  "expectedRuns": 12,
+  "usageCompleteRuns": 1,
+  "metRuns": 0,
+  "belowRedLineRuns": 1,
+  "runsWithFunctionalFailure": 1,
+  "results": [
+    {
+      "taskId": "L1",
+      "attempt": 10,
+      "classId": "L",
+      "turnsOk": 20,
+      "turns": 28,
+      "acceptanceOk": 6,
+      "acceptance": 6,
+      "failedChecks": [],
+      "requests": 179,
+      "input": 12096579,
+      "cached": 11991168,
+      "hitPercent": 99.12858833890144,
+      "requestsWithoutUsage": 0,
+      "providerInconsistencies": 0,
+      "hitPercentWithoutInconsistencies": 99.12858833890144,
+      "auxiliaryRequests": 0,
+      "hAllPercent": 99.12858833890144,
+      "nodes": [
+        {
+          "id": "survey",
+          "turn": 1,
+          "hitPercent": 65.12661559155507,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-2",
+          "turn": 2,
+          "hitPercent": 89.97224108557609,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-3",
+          "turn": 3,
+          "hitPercent": 94.37122746924538,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-4",
+          "turn": 4,
+          "hitPercent": 95.83536661879731,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-5",
+          "turn": 5,
+          "hitPercent": 96.3730005646139,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-6",
+          "turn": 6,
+          "hitPercent": 96.3730005646139,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "turn-7",
+          "turn": 7,
+          "hitPercent": 92.50001810715088,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "ledger-basics",
+          "turn": 8,
+          "hitPercent": 93.45323198480695,
+          "withinTarget": false,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-9",
+          "turn": 9,
+          "hitPercent": 93.45323198480695,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "turn-10",
+          "turn": 10,
+          "hitPercent": 95.23437550296899,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-11",
+          "turn": 11,
+          "hitPercent": 95.23437550296899,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "turn-12",
+          "turn": 12,
+          "hitPercent": 95.83381537247885,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-13",
+          "turn": 13,
+          "hitPercent": 95.83381537247885,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "turn-14",
+          "turn": 14,
+          "hitPercent": 96.40237123137493,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-15",
+          "turn": 15,
+          "hitPercent": 96.40237123137493,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "core-and-refactor",
+          "turn": 16,
+          "hitPercent": 96.99694057169376,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-17",
+          "turn": 17,
+          "hitPercent": 96.99694057169376,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "turn-18",
+          "turn": 18,
+          "hitPercent": 97.37918752654076,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-19",
+          "turn": 19,
+          "hitPercent": 97.37918752654076,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "turn-20",
+          "turn": 20,
+          "hitPercent": 97.85418099090816,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-21",
+          "turn": 21,
+          "hitPercent": 97.85418099090816,
+          "withinTarget": null,
+          "availability": "incomplete"
+        },
+        {
+          "id": "range-and-export",
+          "turn": 22,
+          "hitPercent": 98.29578987114449,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-23",
+          "turn": 23,
+          "hitPercent": 98.43193710122827,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-24",
+          "turn": 24,
+          "hitPercent": 98.63101242659503,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "docs-aligned",
+          "turn": 25,
+          "hitPercent": 98.81073313579441,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-26",
+          "turn": 26,
+          "hitPercent": 98.88350427554909,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "turn-27",
+          "turn": 27,
+          "hitPercent": 98.92233198115211,
+          "withinTarget": true,
+          "availability": "complete"
+        },
+        {
+          "id": "final-verification",
+          "turn": 28,
+          "hitPercent": 98.9440562102099,
+          "withinTarget": true,
+          "availability": "complete"
+        }
+      ],
+      "conclusion": "not met",
+      "losses": {
+        "coldStart": 4270,
+        "rebuild": 54651,
+        "appendResidual": 46490,
+        "unknownUsage": 0,
+        "rebuildThresholdTokens": 1024,
+        "measuredRequests": 179,
+        "appendResidualPerRequest": 288.7577639751553,
+        "appendResidualMedian": 222,
+        "appendResidualMax": 1001,
+        "rebuildEvents": [
+          {
+            "ordinal": 2,
+            "runId": "1f756fc6-4361-419b-8de1-dcdaac5baafc",
+            "purpose": "execute_tool_loop",
+            "input": 6179,
+            "previousInput": 4526,
+            "promptGrowth": 1653,
+            "uncached": 1443,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 10,
+            "runId": "f2a4f290-85a6-4593-82e6-a6bcfb3b089f",
+            "purpose": "execute_tool_loop",
+            "input": 12327,
+            "previousInput": 11217,
+            "promptGrowth": 1110,
+            "uncached": 1063,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 36,
+            "runId": "79983e66-56c1-4f11-b21b-65e897aeb570",
+            "purpose": "execute_tool_loop",
+            "input": 26771,
+            "previousInput": 26279,
+            "promptGrowth": 492,
+            "uncached": 26515,
+            "reuseWaste": 26023,
+            "changedComponents": [],
+            "invalidationReasons": [
+              "prompt_version_changed"
+            ],
+            "stablePrefixFingerprintChanged": true
+          },
+          {
+            "ordinal": 70,
+            "runId": "d5e98786-2816-4d51-8635-2e91d1f83af5",
+            "purpose": "execute_tool_loop",
+            "input": 49382,
+            "previousInput": 45745,
+            "promptGrowth": 3637,
+            "uncached": 3558,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 93,
+            "runId": "6ab52e0b-7205-4b76-ac4f-fa4805b97510",
+            "purpose": "execute_tool_loop",
+            "input": 67464,
+            "previousInput": 65408,
+            "promptGrowth": 2056,
+            "uncached": 2184,
+            "reuseWaste": 128,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 100,
+            "runId": "6ab52e0b-7205-4b76-ac4f-fa4805b97510",
+            "purpose": "execute_tool_loop",
+            "input": 74735,
+            "previousInput": 72280,
+            "promptGrowth": 2455,
+            "uncached": 2415,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 105,
+            "runId": "dba39283-8c50-4eed-8bb2-820fd2847f50",
+            "purpose": "execute_tool_loop",
+            "input": 80456,
+            "previousInput": 77891,
+            "promptGrowth": 2565,
+            "uncached": 2120,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 115,
+            "runId": "c45f5ae0-04c8-40fd-81e2-1753d2c38fc0",
+            "purpose": "execute_tool_loop",
+            "input": 87099,
+            "previousInput": 86023,
+            "promptGrowth": 1076,
+            "uncached": 1083,
+            "reuseWaste": 7,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 128,
+            "runId": "87272c91-8800-49a6-82a2-6473a4048671",
+            "purpose": "execute_tool_loop",
+            "input": 94568,
+            "previousInput": 93190,
+            "promptGrowth": 1378,
+            "uncached": 1512,
+            "reuseWaste": 134,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 130,
+            "runId": "87272c91-8800-49a6-82a2-6473a4048671",
+            "purpose": "execute_tool_loop",
+            "input": 97201,
+            "previousInput": 95996,
+            "promptGrowth": 1205,
+            "uncached": 1201,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 146,
+            "runId": "ab836235-a750-48bc-a3e8-4294054f8ff3",
+            "purpose": "execute_tool_loop",
+            "input": 109970,
+            "previousInput": 107886,
+            "promptGrowth": 2084,
+            "uncached": 2066,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 153,
+            "runId": "031683b3-036a-49b2-8b27-ba888f7681d1",
+            "purpose": "execute_tool_loop",
+            "input": 115027,
+            "previousInput": 113641,
+            "promptGrowth": 1386,
+            "uncached": 1363,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 159,
+            "runId": "ea340380-0612-4ecd-b466-2dc63b975751",
+            "purpose": "execute_tool_loop",
+            "input": 119285,
+            "previousInput": 118092,
+            "promptGrowth": 1193,
+            "uncached": 1141,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 164,
+            "runId": "7feea134-a9fc-4ee4-ac1a-96cc25926326",
+            "purpose": "execute_tool_loop",
+            "input": 124972,
+            "previousInput": 123406,
+            "promptGrowth": 1566,
+            "uncached": 1580,
+            "reuseWaste": 14,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 166,
+            "runId": "7feea134-a9fc-4ee4-ac1a-96cc25926326",
+            "purpose": "execute_tool_loop",
+            "input": 128543,
+            "previousInput": 126896,
+            "promptGrowth": 1647,
+            "uncached": 1695,
+            "reuseWaste": 48,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 177,
+            "runId": "28cd26e3-1aca-4dea-96a0-b15d0c4c040e",
+            "purpose": "execute_tool_loop",
+            "input": 135844,
+            "previousInput": 134433,
+            "promptGrowth": 1411,
+            "uncached": 1316,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          },
+          {
+            "ordinal": 178,
+            "runId": "28cd26e3-1aca-4dea-96a0-b15d0c4c040e",
+            "purpose": "execute_tool_loop",
+            "input": 138844,
+            "previousInput": 135844,
+            "promptGrowth": 3000,
+            "uncached": 2396,
+            "reuseWaste": 0,
+            "changedComponents": [],
+            "invalidationReasons": [],
+            "stablePrefixFingerprintChanged": false
+          }
+        ],
+        "newContent": 135619,
+        "reuseWaste": {
+          "total": 26738,
+          "fromRebuild": 26354,
+          "fromAppend": 384
+        },
+        "derivedBounds": {
+          "reuseWasteRecovered": {
+            "input": 12096579,
+            "cached": 12017906,
+            "hitPercent": 99.3496260388991
+          },
+          "coldStartAlsoCached": {
+            "input": 12096579,
+            "cached": 12022176,
+            "hitPercent": 99.38492527515423
+          },
+          "derived": true
+        }
+      },
+      "rootName": "littlesheep-real-long-task-lBeNe4",
+      "source": "real-long-task-L1-10.json"
+    }
+  ]
+}

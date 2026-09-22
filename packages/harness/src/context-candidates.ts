@@ -214,6 +214,19 @@ export function buildRunRequestCandidates(
             }
           : { kind: 'message', id: `${stage}:history:${index}`, sessionId: ctx.sessionId },
         priority: historyPriorities[index - 1] ?? 75,
+        // The replayed task interval IS the request's prefix. Dropping one message
+        // rewrites every message after it, so the next run's request stops extending
+        // this one and the Provider re-bills the whole session. Measured on the
+        // 28-turn long task: the tool loop's contract asks for a 24k stage target, so
+        // eviction trimmed a little history on every turn and each turn's first
+        // request came back with 256-3,328 cached tokens of a 21k-24k prompt while
+        // the iterations inside the turn hit ~99%. How much of a session a run may
+        // carry is decided by the Context budget and compaction, not by a silent
+        // per-turn trim: an over-target request goes out as it is, and only a request
+        // past the hard model window fails (visibly) instead. A contract that does
+        // not admit `recent_message` still drops it, which is why it is pinned rather
+        // than required.
+        pinned: true,
         required: false,
         evictionGroup: historyEvictionGroups[index - 1],
       })];
