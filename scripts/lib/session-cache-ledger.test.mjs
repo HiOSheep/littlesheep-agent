@@ -343,6 +343,41 @@ describe('session-cumulative cache ledger', () => {
     expect(session.sessionProjectionWithoutInconsistencies.hitPercent).toBeCloseTo(session.sessionProjection.hitPercent, 6);
   });
 
+  it('counts a cold or expired prefix, so a miss lowers the ratio instead of being dropped', () => {
+    // Two runs of one session: the first is warm, the second one's prefix the
+    // provider no longer had (a long pause, by the taskbook's reading). The session
+    // value must blend both — no run is excluded for being cold, and nothing is
+    // zero-filled to make the second look warm.
+    const root = makeDataRoot({
+      logs: [
+        runLog({
+          sessionId: 'session-a',
+          runId: 'run-warm',
+          startedAt: '2026-09-22T06:00:00.000Z',
+          requests: [request({
+            id: 'req-warm', purpose: 'execute_tool_loop', at: '2026-09-22T06:00:01.000Z', input: 10_000, cached: 9_500,
+          })],
+        }),
+        runLog({
+          sessionId: 'session-a',
+          runId: 'run-expired',
+          startedAt: '2026-09-22T08:00:00.000Z',
+          requests: [request({
+            id: 'req-expired', purpose: 'execute_tool_loop', at: '2026-09-22T08:00:01.000Z', input: 10_000, cached: 0,
+          })],
+        }),
+      ],
+    });
+    const session = projectSessions(readLedger(root)).sessions[0];
+
+    expect(session.sessionProjection.requests).toBe(2);
+    expect(session.sessionProjection.measuredRequests).toBe(2);
+    expect(session.sessionProjection.requestsWithoutUsage).toBe(0);
+    // 9,500 / 20,000, not the warm run alone.
+    expect(session.sessionProjection.hitPercent).toBeCloseTo(47.5, 6);
+    expect(session.requestCurve.at(-1).cumulativeHitPercent).toBeCloseTo(47.5, 6);
+  });
+
   it('reports a frozen turn that never ran instead of shrinking the sum', () => {
     const projection = projectSessions(readLedger(twoTurnSample()), {
       turnsBySession: {
