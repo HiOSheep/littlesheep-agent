@@ -15,7 +15,16 @@
 // This module answers the same question for one LittleSheep data root from the
 // production ledger only (execution logs + cache observations). It never invents
 // numbers: a request whose provider usage is missing stays `unavailable`, is
-// counted, and makes the affected conclusion `unavailable (incomplete usage)`.
+// counted, and keeps its reason.
+//
+// Two kinds of missing usage are not the same thing, and the report says which:
+//   - `provider_request_failed` is an attempt the Provider never answered (a
+//     dropped connection mid-run). It carries no measured prompt, so it adds no
+//     input and hides none; the retry that answered is the measured request. The
+//     gap is disclosed and the node keeps its verdict.
+//   - anything else is a request that was answered without usage being recorded.
+//     That is a hole in the measurement itself, so the affected node has no verdict
+//     and can never be reported as passing.
 //
 // Attribution rule (which calls belong to a session's own turns):
 //   - a request recorded in a run log of the session, whose purpose publishes a
@@ -321,6 +330,17 @@ export function readLedger(dataDir) {
         if (observation.sessionDigest && sessionId) digestBySession.set(observation.sessionDigest, sessionId);
       }
       const buckets = observation?.buckets ?? promptBuckets(request.cacheObservation?.providerPrompt);
+      // Why a request has no provider usage decides what the gap means: a request
+      // the provider never answered (`provider_request_failed`) has no usage by
+      // construction, while a successful request whose usage is absent is a real
+      // measurement gap. Both stay counted and uncounted-for-input; only the first
+      // is expected in a long session.
+      const prompt = request.cacheObservation?.providerPrompt;
+      const usageGapReason = buckets.input === undefined
+        ? (typeof prompt?.reason === 'string' && prompt.reason
+          ? prompt.reason
+          : (prompt?.status === 'unavailable' ? 'provider_usage_unavailable' : 'provider_usage_absent'))
+        : undefined;
       requests.push({
         source: 'run-log',
         sessionId,
@@ -331,6 +351,7 @@ export function readLedger(dataDir) {
         purpose,
         retryOf: typeof request.retryOf === 'string' ? request.retryOf : undefined,
         projection: projectionOf(purpose),
+        ...(usageGapReason ? { usageGapReason } : {}),
         ...buckets,
         ...(observation ? { diagnostics: diagnosticsOf(observation) } : {}),
       });
@@ -390,9 +411,14 @@ export function totalsOf(rows) {
   let uncached = 0;
   let measured = 0;
   let unavailable = 0;
+  let failedRequests = 0;
+  const unavailableByReason = {};
   for (const row of rows) {
     if (row.input === undefined || row.cached === undefined) {
       unavailable += 1;
+      const reason = row.usageGapReason ?? 'provider_usage_absent';
+      unavailableByReason[reason] = (unavailableByReason[reason] ?? 0) + 1;
+      if (reason === 'provider_request_failed') failedRequests += 1;
       continue;
     }
     input += row.input;
@@ -401,10 +427,19 @@ export function totalsOf(rows) {
     measured += 1;
   }
   const hitPercent = percent(cached, input);
+  const usageMissing = unavailable - failedRequests;
   return {
     requests: rows.length,
     measuredRequests: measured,
     requestsWithoutUsage: unavailable,
+    // A request the provider never answered has no usage by construction; a
+    // successful request without usage is a gap in the measurement itself. The
+    // ratio stays a ratio of the measured prompts either way, but which of the two
+    // is present decides whether a conclusion may be drawn from it.
+    failedRequests,
+    usageMissing,
+    requestsWithoutUsageByReason: unavailableByReason,
+    measurement: unavailable === 0 ? 'complete' : (usageMissing === 0 ? 'complete-except-failed-attempts' : 'incomplete'),
     input,
     cached,
     uncached,
@@ -473,9 +508,11 @@ export function evaluateTurnNodes(turnRows, turns) {
     const rows = rowsByRun.get(turn.runId) ?? [];
     consumed.push(...rows);
     const totals = totalsOf(consumed);
-    // A node with any unknown usage has no verdict at all: the measured sum
-    // alone would otherwise report a pass the ledger cannot support.
-    const complete = rows.length > 0 && totals.requestsWithoutUsage === 0;
+    // A node whose answered requests all reported usage has a verdict even if the
+    // provider failed an attempt inside the turn: a failed request carries no
+    // measured prompt, so it neither adds input nor hides a measured one. Only a
+    // successful request without usage makes the reading incomplete.
+    const complete = rows.length > 0 && totals.usageMissing === 0;
     nodes.push({
       id: turn.id ?? `turn-${turn.turn}`,
       turn: turn.turn,
@@ -489,13 +526,17 @@ export function evaluateTurnNodes(turnRows, turns) {
       hitPercent: totals.hitPercent,
       withinTarget: complete ? totals.withinTarget : undefined,
       availability: complete ? 'complete' : 'incomplete',
+      // Failed provider attempts inside the turn are reported so the reading is
+      // never silently narrower than the session.
+      failedRequests: totals.failedRequests,
+      usageMissing: totals.usageMissing,
       missingTurnRequests: rows.length === 0,
     });
   }
   return nodes;
 }
 
-/** Judge the frozen long-task nodes; unknown usage can never pass. */
+/** Judge the frozen long-task nodes; incomplete usage can never pass. */
 export function judgeNodes(nodes, target = HIT_TARGET_PERCENT) {
   const failures = nodes.filter((node) => node.availability !== 'complete'
     || node.hitPercent === undefined
@@ -509,6 +550,9 @@ export function judgeNodes(nodes, target = HIT_TARGET_PERCENT) {
       hitPercent: node.hitPercent,
       reason: node.availability !== 'complete' ? 'incomplete usage' : 'below target',
     })),
+    // A turn where the provider failed an attempt still has a verdict; the count is
+    // published so the reader knows the session was not perfectly clean.
+    failedAttempts: nodes.reduce((sum, node) => sum + (node.failedRequests ?? 0), 0),
     aboveCeiling: nodes.filter((node) => node.hitPercent !== undefined
       && node.hitPercent > HIT_TARGET_CEILING_PERCENT).map((node) => node.id),
   };

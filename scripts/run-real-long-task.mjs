@@ -419,8 +419,21 @@ function collectLedgerEvidence(report, { plan, environment }) {
 function totalsView(totals) {
   return {
     requests: totals.requests, measuredRequests: totals.measuredRequests, requestsWithoutUsage: totals.requestsWithoutUsage,
+    // Which of the two kinds of gap it is decides whether the reading may be judged:
+    // a request the provider never answered carries no measured prompt.
+    failedRequests: totals.failedRequests, usageMissing: totals.usageMissing,
+    requestsWithoutUsageByReason: totals.requestsWithoutUsageByReason, measurement: totals.measurement,
     input: totals.input, cached: totals.cached, uncached: totals.uncached, hitPercent: totals.hitPercent ?? null,
   }
+}
+
+/** One phrase for the usage coverage of a bucket group. */
+function usageCoverageText(totals) {
+  if (!totals) return 'usage 不可用'
+  if (totals.requestsWithoutUsage === 0) return 'usage 完整'
+  const reasons = Object.entries(totals.requestsWithoutUsageByReason ?? {})
+    .map(([reason, count]) => `${reason} ${count}`).join('、')
+  return `缺 usage ${totals.requestsWithoutUsage}（${reasons}）；已回答请求缺 usage ${totals.usageMissing}`
 }
 
 function evaluateAcceptance(checks, workspace) {
@@ -508,8 +521,11 @@ function summaryLines(report, includeDataRoot) {
       `  [${turn.ok ? 'ok  ' : 'FAIL'}] 回合 ${turn.turn} status=${turn.status} ${turn.durationMs}ms`
       + ` 回复=${turn.replyLength}字 run=${turn.runId ?? '-'}${turn.failureKind ? ` failureKind=${turn.failureKind}` : ''}`
     ))),
-    `会话 H_ui（session projection）：${formatPercent(report.session?.hUiPercent)}（请求 ${report.session?.requests ?? 0}，缺 usage ${report.session?.requestsWithoutUsage ?? '-'}）`
-      + `；辅助调用 ${report.auxiliary?.requests ?? 0} 次；H_all：${formatPercent(report.all?.hitPercent)}`,
+    `会话 H_ui（session projection）：${formatPercent(report.session?.hUiPercent)}（请求 ${report.session?.requests ?? 0}，${usageCoverageText(report.session)})`
+      + `；辅助调用 ${report.auxiliary?.requests ?? 0} 次（${usageCoverageText(report.auxiliary)}）；H_all：${formatPercent(report.all?.hitPercent)}`,
+    ...(report.nodeJudgement?.notEvaluated?.length
+      ? [`未评估节点 ${report.nodeJudgement.notEvaluated.length} 个（对应回合没有运行）`]
+      : []),
     `冻结节点（会话累计 H_ui 红线 ${report.conclusion.target ?? 95}%）：`,
     ...(report.nodes.length === 0 ? ['  （冻结节点未被评估）'] : report.nodes.map((node) => (
       `  [${node.withinTarget === true ? 'PASS' : 'FAIL'}] ${node.id}@回合${node.turn} 累计=${formatPercent(node.hitPercent)}`

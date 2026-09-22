@@ -181,8 +181,8 @@ describe('session-cumulative cache ledger', () => {
     expect(judgeNodes([first, second]).failures.map((failure) => failure.id))
       .toEqual(['investigation', 'delivery']);
 
-    // One request loses its usage: the node stays incomplete even though the
-    // measured sum would look perfect on its own.
+    // A failed provider attempt carries no measured prompt: it is counted and
+    // disclosed, but it does not erase the verdict of the requests that answered.
     const broken = makeDataRoot({
       logs: [
         runLog({
@@ -208,10 +208,57 @@ describe('session-cumulative cache ledger', () => {
         ],
       },
     });
-    const node = brokenProjection.sessions[0].nodes[1];
+    const failedNode = brokenProjection.sessions[0].nodes[1];
+    expect(failedNode.availability).toBe('complete');
+    expect(failedNode.failedRequests).toBe(1);
+    expect(failedNode.usageMissing).toBe(0);
+    expect(brokenProjection.sessions[0].sessionProjection).toMatchObject({
+      measurement: 'complete-except-failed-attempts',
+      failedRequests: 1,
+      usageMissing: 0,
+      requestsWithoutUsageByReason: { provider_request_failed: 1 },
+    });
+
+    // A request the Provider answered without reporting usage is a hole in the
+    // measurement itself: that node has no verdict and can never pass.
+    const unrecorded = makeDataRoot({
+      logs: [
+        runLog({
+          sessionId: 'session-c',
+          runId: 'run-1',
+          startedAt: '2026-09-22T03:00:00.000Z',
+          requests: [request({ id: 'req-1', purpose: 'execute_tool_loop', at: '2026-09-22T03:00:01.000Z', input: 4000, cached: 3900 })],
+        }),
+        runLog({
+          sessionId: 'session-c',
+          runId: 'run-2',
+          startedAt: '2026-09-22T03:01:00.000Z',
+          requests: [{
+            id: 'req-2',
+            createdAt: '2026-09-22T03:01:01.000Z',
+            callContract: { purpose: 'execute_tool_loop' },
+            cacheObservation: { providerPrompt: { status: 'unavailable', reason: 'cached_prompt_tokens_missing' } },
+          }],
+        }),
+      ],
+    });
+    const unrecordedProjection = projectSessions(readLedger(unrecorded), {
+      turnsBySession: {
+        'session-c': [
+          { turn: 1, id: 'investigation', label: '调查完成', runId: 'run-1' },
+          { turn: 2, id: 'delivery', label: '交付完成', runId: 'run-2' },
+        ],
+      },
+    });
+    const node = unrecordedProjection.sessions[0].nodes[1];
     expect(node.availability).toBe('incomplete');
     expect(node.withinTarget).toBeUndefined();
-    expect(judgeNodes(brokenProjection.sessions[0].nodes)).toMatchObject({
+    expect(unrecordedProjection.sessions[0].sessionProjection).toMatchObject({
+      measurement: 'incomplete',
+      failedRequests: 0,
+      usageMissing: 1,
+    });
+    expect(judgeNodes(unrecordedProjection.sessions[0].nodes)).toMatchObject({
       conclusion: 'not met',
       failures: [{ id: 'delivery', reason: 'incomplete usage' }],
     });
