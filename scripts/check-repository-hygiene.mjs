@@ -184,11 +184,9 @@ async function checkCanonicalFiles() {
     'docs/decision/project-status.md',
     'docs/reference/repository-guide.md',
     'docs/reference/plugin-development.md',
-    'docs/taskbooks/foundation-cognition-repository-taskbook-2026-07-15.md',
-    'docs/taskbooks/core-agent-capability-taskbook-2026-07-13.md',
-    'docs/taskbooks/agent-core-memory-taskbook-2026-07-14.md',
-    'docs/taskbooks/core-focus-maintenance-taskbook-2026-07-13.md',
-    'docs/taskbooks/extension-workspace-taskbook-2026-07-12.md',
+    // Taskbooks are execution-time working documents. A finished one is retired
+    // after its still-true facts move into the document that owns them, so only
+    // the active baselines are canonical here (see checkTaskbookBudget).
     'docs/taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md',
     'docs/taskbooks/memory-atom-vector-catalog-taskbook-2026-07-17.md',
     'scripts/build-app.ps1',
@@ -226,6 +224,24 @@ async function checkCanonicalFiles() {
     if (hardcodedRoot.test(await readText(join(repoRoot, path)))) hardcodedPaths.push(path)
   }
   assert(hardcodedPaths.length === 0, '维护脚本与仓库位置无关', hardcodedPaths.join(', '))
+}
+
+async function checkTaskbookBudget() {
+  /**
+   * Taskbooks are execution-time working documents, not permanent fact sources.
+   * A finished one is retired: consolidate what is still true into the document
+   * that owns it, then `git rm` it (the text stays in git history). The budget
+   * is what makes that retirement happen "promptly" instead of never — past the
+   * limit, a new taskbook can only be added after an old one is retired.
+   */
+  const budget = 16
+  const taskbooks = trackedFiles()
+    .filter((path) => path.startsWith('docs/taskbooks/') && path.endsWith('.md'))
+  assert(
+    taskbooks.length <= budget,
+    '任务书数量在预算内',
+    `${taskbooks.length}/${budget}`,
+  )
 }
 
 async function checkTaskbookNaming() {
@@ -699,6 +715,7 @@ async function main() {
   await checkPublishedSurface()
   await checkCanonicalFiles()
   await checkTaskbookNaming()
+  await checkTaskbookBudget()
   await checkWorkspacePackages()
   await checkRepositoryNavigation()
   await checkModuleBoundaries()
