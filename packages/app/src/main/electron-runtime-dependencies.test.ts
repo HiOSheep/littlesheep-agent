@@ -18,16 +18,22 @@ describe('Electron main-process runtime dependencies', () => {
 
     expect(configSource).toContain("'@huggingface/transformers'")
     expect(configSource).toContain("'onnxruntime-node'")
-    expect(packageJson.dependencies?.['@huggingface/transformers']).toBe('4.2.0')
+    // 4.3.0 is the version whose graph supplies the fixed adm-zip (via
+    // onnxruntime-node 1.30.0) and sharp, so neither needs an override.
+    expect(packageJson.dependencies?.['@huggingface/transformers']).toBe('4.3.0')
     expect(packageJson.dependencies?.dompurify).toBe('3.4.13')
     expect(rootPackageJson.engines?.node).toBe('>=20.9.0')
-    // Security floors, not preferences: adm-zip <0.6.1 and sharp <0.35.4 carry
-    // advisories, and mammoth's declared @xmldom/xmldom range kept resolving a
-    // vulnerable build from a stale lockfile. Raising any of them is a dependency
-    // round with its own native/runtime verification.
-    expect(workspaceSource).toMatch(/^\s+adm-zip: 0\.6\.1$/mu)
-    expect(workspaceSource).toMatch(/^\s+sharp: 0\.35\.4$/mu)
-    expect(workspaceSource).toMatch(/^\s+'@xmldom\/xmldom': 0\.8\.15$/mu)
+    // Remaining security floors, not preferences: mammoth's declared
+    // @xmldom/xmldom range kept resolving a vulnerable build from a stale
+    // lockfile. Raising it is a dependency round with its own runtime
+    // verification, and the same is true of any new override added here.
+    // adm-zip and sharp must stay UNpinned: Transformers 4.3.0 declares ranges
+    // that resolve to the fixed versions on their own (verified by the 2026-09-22
+    // offline local-embedding run), so re-adding a pin would hide upstream drift.
+    const overrides = workspaceSource.split(/^overrides:\s*$/mu)[1] ?? ''
+    expect(overrides).toMatch(/^\s+'@xmldom\/xmldom': 0\.8\.15$/mu)
+    expect(overrides).not.toMatch(/^\s+adm-zip:/mu)
+    expect(overrides).not.toMatch(/^\s+sharp:/mu)
   })
 
   it('pins Monaco DOMPurify to the reviewed security floor', async () => {

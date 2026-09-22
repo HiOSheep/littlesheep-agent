@@ -17,7 +17,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@huggingface/transformers": "4.2.0",
+    "@huggingface/transformers": "4.3.0",
     "@littlesheep/memory-tree": "workspace:*",
     "@littlesheep/safety": "workspace:*"
   }
