@@ -61,6 +61,20 @@ export function resolveExplicitToolInstructionSet(
   return { entries, names: entries.map((entry) => entry.tool.name) };
 }
 
+/**
+ * Bounded Runtime scope note for a turn the user narrowed by naming tools.
+ *
+ * It travels below the cache boundary like the retrieval contract, and it is the
+ * only place the narrowing is announced: the model catalog itself stays fixed
+ * for the session, and a call outside this scope is refused at the boundary.
+ */
+export function renderExplicitToolScopeContract(admittedNames: readonly string[]): string {
+  const list = admittedNames.slice(0, MAX_EXPLICIT_TOOLS).join(', ');
+  return list
+    ? `Runtime tool scope: the user explicitly named ${list}. Only these tools may execute for this request; every other call is refused at the execution boundary. The visible catalog is the session's fixed catalog, not a permission grant.`
+    : 'Runtime tool scope: the tools the user named are not admitted for this request. Do not call them; answer from what is already available or ask the user.';
+}
+
 /** Build a bounded JSON Schema before exposing any Runtime tool to a model. */
 export function resolveBoundedToolJsonSchema(tool: AgentTool): object | undefined {
   const explicit = tool.inputSchema.jsonSchema;

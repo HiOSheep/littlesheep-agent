@@ -189,7 +189,7 @@ export class ToolExecutionService {
           retained,
           request,
           'validation_failed',
-          `tool is registered for this run but not available in the current TaskBook step: ${request.name}`,
+          `tool is registered but not admitted for the current request: ${request.name}`,
           'step_tool_not_allowed',
         ));
         continue;

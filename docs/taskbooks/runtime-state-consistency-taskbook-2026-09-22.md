@@ -40,10 +40,10 @@
 
 ### RS-00｜冻结 kernel 与收掉已知目录缺口（P0）
 
-- [ ] 记录允许改动的三类依据和本批入口；维持现有主循环、阶段图、恢复与副作用结算，禁止顺手加第二执行器或永久新旧模式。
-- [ ] 收敛显式工具请求的可见目录与 admittedTools：目录按会话区间固定，显式约束在执行边界拒绝；覆盖普通→显式→普通及恢复路径。确需变更注册目录只发生在明确的新区间。
+- [x] 记录允许改动的三类依据和本批入口；维持现有主循环、阶段图、恢复与副作用结算，禁止顺手加第二执行器或永久新旧模式。**本批只改可见目录、拒绝文案与对应测试/README**：没有新增 stage、planner、scheduler 或 manager，`versioning`（检查点）、恢复、副作用结算与 `admittedTools` 的强制点全部保持原样。
+- [x] 收敛显式工具请求的可见目录与 admittedTools：目录按会话区间固定，显式约束在执行边界拒绝；覆盖普通→显式→普通及恢复路径。确需变更注册目录只发生在明确的新区间。**已收口**：`catalogTools = ctx.tools`（会话区间固定），显式指令只与 Runtime 检索范围**取交集**后收窄 `admittedTools`（不再替换检索范围，避免"点名的 web 工具被放宽进 local_workspace 轮"）；拒绝文案按成因选择（`renderExplicitToolScopeContract` / `renderRetrievalIntentContract`），`packages/tools` 的过期文案（"current TaskBook step"）一并订正。测试覆盖普通/显式/普通目录字节相同、误调未具名工具在执行边界被拒且文案点名显式约束、点名 web 工具不放宽检索范围、跨 run 续接（恢复的 classification 不改变目录）。
 
-验收：无新增控制流层；无越权调用；相邻回合目录稳定。此小洞独立收口，不阻塞后续文件一致性工作。
+验收：无新增控制流层；无越权调用；相邻回合目录稳定。此小洞独立收口，不阻塞后续文件一致性工作。**已满足**（`tool-catalog-stability.test.ts` 13 例、`stages/execute.test.ts` 41 例、`cross-run-continuation.test.ts` 3 例、`tool-execution-service.test.ts` 26 例全绿；`check:repo` 36/36）。
 
 ### RS-01｜定义并接入最小文件 observation（P0）
 

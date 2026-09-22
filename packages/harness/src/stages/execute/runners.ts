@@ -15,7 +15,7 @@ import { clearReplyState } from '../../reply-state.js';
 import { writeDecisionState } from '../../decision-state.js';
 import { recordFailure } from '../../failure-state.js';
 import { replaceToolResults } from '../../execution-evidence-state.js';
-import { resolveExplicitToolInstructionSet } from '../../explicit-tool-instruction.js';
+import { resolveExplicitToolInstructionSet, renderExplicitToolScopeContract } from '../../explicit-tool-instruction.js';
 import { toolsForRetrievalIntent, renderRetrievalIntentContract } from '../../retrieval-intent.js';
 
 export async function executeLegacyLoop(
@@ -27,14 +27,19 @@ export async function executeLegacyLoop(
   const attachmentMessages = attachmentContextMessages(ctx.runId, ctx.attachments);
   const explicitTools = resolveExplicitToolInstructionSet(ctx, { allowContinuation: true })
     ?.entries.map((entry) => entry.tool);
-  // The model catalog is fixed for the whole session; the Runtime-owned
-  // retrieval decision narrows what this turn may *execute*, not what the model
-  // may see. Filtering the visible catalog instead changed the tool schemas that
-  // sit inside the request prefix, so a local -> web -> local turn sequence
-  // invalidated the cached conversation each time the intent changed. The
-  // withheld capability is now refused at the execution boundary.
-  const admittedTools = explicitTools ?? toolsForRetrievalIntent(ctx);
-  const catalogTools = explicitTools ?? ctx.tools;
+  // The model catalog is fixed for the whole session and nothing a turn says may
+  // narrow it: the tool schemas sit inside the request prefix, so a catalog that
+  // followed the wording invalidated the cached conversation from the change
+  // point onward. What the user explicitly names is an execution-scope decision.
+  const catalogTools = ctx.tools;
+  const scopeTools = toolsForRetrievalIntent(ctx);
+  // The Runtime owns the retrieval scope. An explicit instruction may only
+  // narrow what this turn may *execute* inside that scope, never widen it:
+  // letting it replace the scope admitted a Web tool on a turn whose Runtime
+  // contract still said not to plan or request Web tools.
+  const admittedTools = explicitTools
+    ? scopeTools.filter((tool) => explicitTools.some((named) => named.name === tool.name))
+    : scopeTools;
   // The system message is exactly the sections above the cache boundary, and
   // every section below it travels as its own message. Handing the assembler the
   // whole section list instead made it rebuild the system message out of the
@@ -48,15 +53,21 @@ export async function executeLegacyLoop(
   );
   // system + history + inserted attachments + this turn's user message.
   const historyChatCount = Math.max(0, baseMessages.length - 2 - attachmentMessages.length);
+  // The withholding note names its cause: the Runtime retrieval scope when the
+  // scope narrowed the turn, the user's own instruction when that narrowed it
+  // further. Both travel below the cache boundary with the other tail contracts.
+  const withheldToolContract = catalogTools.length === admittedTools.length
+    ? undefined
+    : explicitTools
+      ? renderExplicitToolScopeContract(admittedTools.map((tool) => tool.name))
+      : renderRetrievalIntentContract(ctx);
   const result = await runToolLoop(deps, {
     ctx,
     messages: baseMessages,
     tools: catalogTools,
     admittedTools,
     historyChatCount,
-    ...(catalogTools.length === admittedTools.length
-      ? {}
-      : { withheldToolContract: renderRetrievalIntentContract(ctx) }),
+    ...(withheldToolContract ? { withheldToolContract } : {}),
     sanitizeOpts,
     systemSegments: systemPrompt.stableSegments ?? systemPrompt.segments,
     // The bundle's below-boundary sections are appended once, in the order the

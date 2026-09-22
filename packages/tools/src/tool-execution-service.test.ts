@@ -298,7 +298,7 @@ describe('ToolExecutionService', () => {
     expect(JSON.stringify(record)).not.toContain(privateOutput);
   });
 
-  it('records unknown and step-disallowed tools without executing them', async () => {
+  it('records unknown and non-admitted tools without executing them', async () => {
     const execute = vi.fn(async () => ({ callId: '', ok: true } satisfies ToolResult));
     const service = createService([
       registration(tool('known', execute), 'plugin:known'),
@@ -314,8 +314,8 @@ describe('ToolExecutionService', () => {
       { toolName: 'missing', toolSource: 'unknown', status: 'unknown_tool', errorKind: 'unknown_tool' },
       { toolName: 'known', toolSource: 'plugin:known', status: 'validation_failed', errorKind: 'step_tool_not_allowed' },
     ]);
-    expect(results.get(1)?.error).toContain('registered for this run');
-    expect(results.get(1)?.error).toContain('current TaskBook step');
+    expect(results.get(1)?.error).toContain('registered');
+    expect(results.get(1)?.error).toContain('not admitted for the current request');
     expect(execute).not.toHaveBeenCalled();
   });
 

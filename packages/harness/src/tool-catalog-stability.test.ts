@@ -38,15 +38,31 @@ function contextFor(text: string, tools: AgentTool[]): RunContext {
   });
 }
 
+/** A rules-classified turn where the user named the tool to use. */
+function explicitContextFor(text: string, tools: AgentTool[]): RunContext {
+  return makeCtx({
+    tools,
+    toolSources: Object.fromEntries(tools.map((tool) => [tool.name, 'builtin'])),
+    inbound: textMessage('user', text),
+    classification: {
+      activity: 'execute',
+      type: 'problem',
+      confidence: 0.96,
+      source: 'rules',
+      reason: 'explicit tool instruction',
+    },
+  });
+}
+
 /** The tool names a request advertises, in order. */
 function advertised(request: ChatRequest): string[] {
   return (request.tools ?? []).map((spec) => spec.function.name);
 }
 
-describe('the tool catalog is fixed for the session', () => {
-  /** The canonical advertised order: the provider sees a sorted, stable list. */
-  const CATALOG = ['document_read', 'read', 'web_fetch', 'web_search'];
+/** The canonical advertised order: the provider sees a sorted, stable list. */
+const CATALOG = ['document_read', 'read', 'web_fetch', 'web_search'];
 
+describe('the tool catalog is fixed for the session', () => {
   it.each([
     '搜索我的项目文件里有哪些 web_search 调用',
     '查一下今天的公开新闻',
@@ -199,5 +215,88 @@ describe('the tool catalog is fixed for the session', () => {
     for (const name of [...admittedLocal, ...admittedWeb]) {
       expect(tools.map((tool) => tool.name)).toContain(name);
     }
+  });
+});
+
+describe('an explicit tool instruction narrows execution scope, not the catalog', () => {
+  it('advertises the whole registered catalog on the turn the user named one tool', async () => {
+    const tools = webTools();
+    const requests: ChatRequest[] = [];
+    const llm = createMockLlm((request) => {
+      requests.push(request);
+      return textResponse('done');
+    });
+
+    await createExecuteStage({ ...deps, llm })(explicitContextFor('请使用 read 工具查看 notes.md', tools));
+
+    expect(advertised(requests[0]!)).toEqual(CATALOG);
+  });
+
+  it('keeps one catalog across a normal -> explicit -> normal turn sequence', async () => {
+    const tools = webTools();
+    const catalogs: string[] = [];
+    const rounds: Array<{ text: string; explicit: boolean }> = [
+      { text: '帮我写一个函数', explicit: false },
+      { text: '请使用 read 工具查看 notes.md', explicit: true },
+      { text: '谢谢，继续', explicit: false },
+    ];
+    for (const round of rounds) {
+      const requests: ChatRequest[] = [];
+      const llm = createMockLlm((request) => {
+        requests.push(request);
+        return textResponse('done');
+      });
+      const ctx = round.explicit ? explicitContextFor(round.text, tools) : contextFor(round.text, tools);
+      await createExecuteStage({ ...deps, llm })(ctx);
+      catalogs.push(JSON.stringify(requests[0]!.tools));
+    }
+
+    // Naming a tool changes what may execute, never the schemas in the prefix.
+    expect(new Set(catalogs).size).toBe(1);
+  });
+
+  it('refuses a registered tool the user did not name and names the explicit scope', async () => {
+    const tools = webTools();
+    const documentRead = tools.find((tool) => tool.name === 'document_read') as
+      AgentTool & { calls: unknown[] };
+    let turn = 0;
+    const llm = createMockLlm(() => {
+      turn += 1;
+      return turn === 1
+        ? toolCallResponse([{ id: 'c1', name: 'document_read', args: { file_path: 'a.pdf' } }])
+        : textResponse('answered without it');
+    });
+    const ctx = explicitContextFor('请使用 read 工具查看 notes.md', tools);
+
+    await createExecuteStage({ ...deps, llm })(ctx);
+
+    expect(documentRead.calls).toHaveLength(0);
+    expect(ctx.toolResults?.[0]?.ok).toBe(false);
+    // The refusal states the real cause, not the retrieval intent.
+    expect(ctx.toolResults?.[0]?.error).toMatch(/Runtime scope/);
+    expect(ctx.toolResults?.[0]?.error).toMatch(/explicitly named read/);
+  });
+
+  it('never widens the Runtime retrieval scope for a named tool', async () => {
+    const tools = webTools();
+    const webSearch = tools.find((tool) => tool.name === 'web_search') as
+      AgentTool & { calls: unknown[] };
+    let turn = 0;
+    const llm = createMockLlm(() => {
+      turn += 1;
+      return turn === 1
+        ? toolCallResponse([{ id: 'c1', name: 'web_search', args: { query: 'notes' } }])
+        : textResponse('local answer only');
+    });
+    // Naming a Web tool does not turn a local-workspace turn into a Web turn.
+    const inbound = '请使用 web_search 工具搜索我的项目文件';
+    expect(assessRetrievalIntent(inbound).intent).toBe('local_workspace');
+    const ctx = explicitContextFor(inbound, tools);
+
+    await createExecuteStage({ ...deps, llm })(ctx);
+
+    expect(webSearch.calls).toHaveLength(0);
+    expect(ctx.toolResults?.[0]?.ok).toBe(false);
+    expect(ctx.toolResults?.[0]?.error).toMatch(/not admitted for this request/);
   });
 });

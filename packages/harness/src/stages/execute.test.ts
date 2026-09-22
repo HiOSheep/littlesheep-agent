@@ -174,7 +174,9 @@ describe('executeStage', () => {
     expect(result).toMatchObject({ next: 'verify', ok: true });
     expect(llm.chat).toHaveBeenCalledTimes(2);
     for (const [request] of llm.chat.mock.calls) {
-      expect(request.tools?.map((tool) => tool.function.name)).toEqual(['glob']);
+      // The named tool narrows the *execution* scope only: the catalog the
+      // provider sees is still the session's registered set.
+      expect(request.tools?.map((tool) => tool.function.name)).toEqual(['glob', 'read']);
       expect(request.messages.some((message) => String(message.content).includes('continuity-history-anchor'))).toBe(true);
     }
     expect(glob.calls).toHaveLength(1);

@@ -114,6 +114,34 @@ describe('cross-run continuation', () => {
     ))).toBe(true);
   });
 
+  it('advertises the registered catalog when the resumed turn named a tool', async () => {
+    // A resumed run restores the checkpoint's classification, so a turn the user
+    // answered with "请使用 read 工具" arrives here again. The replay must extend
+    // the previous request without narrowing the catalog it carries.
+    const read = makeTool('read', { ok: true, output: 'unused' });
+    const glob = makeTool('glob', { ok: true, output: 'unused' });
+    const { llm, requests } = recordingLlm('已修复。');
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({
+      tools: [read, glob],
+      inbound: textMessage('user', '请使用 read 工具修好它'),
+      classification: {
+        activity: 'execute',
+        type: 'problem',
+        confidence: 0.96,
+        source: 'rules',
+        reason: 'explicit tool instruction',
+      },
+    });
+    ctx.modelHistory = priorTurnMessages();
+
+    await stage(ctx);
+
+    expect((requests[0]!.tools ?? []).map((spec) => spec.function.name)).toEqual(['glob', 'read']);
+    // The replayed pair is still there: a fixed catalog must not cost the replay.
+    expect(requests[0]!.messages.some((message) => message.role === 'tool')).toBe(true);
+  });
+
   it('does not throw when a persisted message has no replayable content', async () => {
     const { llm, requests } = recordingLlm('好的。');
     const stage = createExecuteStage({ ...deps, llm });
