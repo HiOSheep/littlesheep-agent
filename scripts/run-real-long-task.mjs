@@ -48,7 +48,8 @@ const USAGE = '用法：node scripts/run-real-long-task.mjs --task <id> [--attem
   + '  --dry-run 只校验冻结清单并打印冻结计划，不建环境、不启 Electron、不联网；\n'
   + '  --compaction-threshold/--compaction-keep-recent 是**诊断专用**覆盖：冻结清单从未达到 100/20 阈值，\n'
   + '    只有压低阈值才能观察到真实压缩路径；报告会标记 diagnostic=true，此类运行不参与红线判定；\n'
-  + '  --restart-at 在指定回合前**重启应用进程**（LT-06 的进程重启连续性取证），同样不参与红线判定。'
+  + '  --restart-at 在指定回合前**重启应用进程**（LT-06 的进程重启连续性取证），同样不参与红线判定；\n'
+  + '  --pause-at <turn> --pause-seconds <n> 在指定回合前**空闲等待**，用于测量供应商缓存是否过期（LT-06），同样不参与红线判定。'
 
 let activeChild
 
@@ -85,6 +86,8 @@ function parseArgs(argv) {
     '--compaction-threshold': 'compactionThreshold',
     '--compaction-keep-recent': 'compactionKeepRecent',
     '--restart-at': 'restartAt',
+    '--pause-at': 'pauseAt',
+    '--pause-seconds': 'pauseSeconds',
   }
   for (let index = 0; index < argv.length; index += 1) {
     const name = argv[index]
@@ -99,7 +102,7 @@ function parseArgs(argv) {
   options.taskId = options.taskId.trim()
   if (!/^[1-9][0-9]*$/.test(String(options.attempt))) throw new CliError(`--attempt 必须是正整数，当前为 ${options.attempt}`)
   options.attempt = Number(options.attempt)
-  for (const [flag, key] of [['--compaction-threshold', 'compactionThreshold'], ['--compaction-keep-recent', 'compactionKeepRecent'], ['--restart-at', 'restartAt']]) {
+  for (const [flag, key] of [['--compaction-threshold', 'compactionThreshold'], ['--compaction-keep-recent', 'compactionKeepRecent'], ['--restart-at', 'restartAt'], ['--pause-at', 'pauseAt'], ['--pause-seconds', 'pauseSeconds']]) {
     if (options[key] === undefined) continue
     if (!/^[1-9][0-9]*$/.test(String(options[key]))) throw new CliError(`${flag} 必须是正整数，当前为 ${options[key]}`)
     options[key] = Number(options[key])
@@ -214,7 +217,7 @@ async function runLive({ options, task, plan, manifest, taskSet = 'frozen' }) {
   // runs show `no-new-range` attempts and no summarizer call. Diagnostic runs are
   // marked in the report and never count as acceptance evidence.
   const diagnostic = options.compactionThreshold !== undefined || options.compactionKeepRecent !== undefined
-    || options.restartAt !== undefined
+    || options.restartAt !== undefined || options.pauseAt !== undefined
   const config = diagnostic
     ? {
       ...manifest.FROZEN_CONFIG,
@@ -232,7 +235,7 @@ async function runLive({ options, task, plan, manifest, taskSet = 'frozen' }) {
     diagnostic,
     startedAt: new Date(startedAt).toISOString(), finishedAt: null, durationMs: 0,
     environment: { created: false, rootName: null, seededFiles: [], kept: false, removed: false, keepReason: null },
-    turns: [], restarts: [], sessionId: null, turnStopReason: null, error: null, cleanupProblems: [], nodes: [], nodeJudgement: null,
+    turns: [], restarts: [], pauses: [], sessionId: null, turnStopReason: null, error: null, cleanupProblems: [], nodes: [], nodeJudgement: null,
     session: null, auxiliary: null, all: null, unattributed: null, ledgerCoverage: null, acceptance: [],
     conclusion: { met: false, target: null, exitRule: EXIT_RULE, reasons: [] },
   }
@@ -272,6 +275,13 @@ async function runLive({ options, task, plan, manifest, taskSet = 'frozen' }) {
         activeChild = electron
         locator = await waitForLocator(environment.dataDir, electron.pid)
         await waitForDesktop(locator)
+      }
+      // LT-06: a long pause is how a provider-side cache expiry is measured. The
+      // wait is reported so the reading is tied to a known idle interval.
+      if (options.pauseAt === entry.turn && options.pauseSeconds > 0) {
+        const startedPauseAt = new Date().toISOString()
+        await new Promise((resolvePause) => setTimeout(resolvePause, options.pauseSeconds * 1_000))
+        report.pauses.push({ turn: entry.turn, seconds: options.pauseSeconds, startedPauseAt, endedPauseAt: new Date().toISOString() })
       }
       const record = await runTurn({ locator, workspace: environment.workplaceDir, prompt: entry.prompt, sessionId, turn: entry.turn })
       report.turns.push(record)
@@ -543,6 +553,7 @@ function summaryLines(report, includeDataRoot) {
         report.frozenPlan.config.compaction.threshold !== manifest.FROZEN_CONFIG.compaction.threshold
           ? '压缩阈值已被命令行覆盖' : '',
         report.restarts.length > 0 ? `在第 ${report.restarts.map((entry) => entry.turn).join('/')} 回合重启了应用进程` : '',
+        report.pauses.length > 0 ? `在第 ${report.pauses.map((entry) => entry.turn).join('/')} 回合前空闲等待 ${report.pauses.map((entry) => entry.seconds).join('/')} 秒` : '',
       ].filter(Boolean).join('；')}；只用于取证，不参与红线判定。`]
       : []),
     `冻结配置：maxModelCallsPerRun=${config.maxModelCallsPerRun} contextCompressionThresholdRatio=${config.contextCompressionThresholdRatio}`
