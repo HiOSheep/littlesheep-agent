@@ -25,10 +25,29 @@
  *   node scripts/audit-cache-usage.mjs <dataDir> [<dataDir> ...]
  *   node scripts/audit-cache-usage.mjs --latest              # newest sample under TEMP
  *   node scripts/audit-cache-usage.mjs --json <dataDir> ...  # sanitized summary
+ *   node scripts/audit-cache-usage.mjs --sessions <dataDir>  # session-cumulative red line
+ *
+ * Two criteria are reported, and they are not interchangeable:
+ *   - `--sessions` gives the current real-long-task red line (2026-09-22): the
+ *     session-cumulative H_ui = ΣcacheRead / Σ(uncachedInput + cacheRead +
+ *     cacheWrite), computed exactly like the DeepSeek Harness front end, cold
+ *     start included, with detached compaction listed separately and folded into
+ *     H_all. This is the metric long tasks are accepted on.
+ *   - the default summary keeps the historical 3.1 short-load figures (overall
+ *     hit ratio and the steady-state figure that excludes each session's first
+ *     request). They remain regression evidence for the frozen short loads and
+ *     must not be presented as the long-task red line.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
+import {
+  HIT_TARGET_PERCENT as SESSION_HIT_TARGET_PERCENT,
+  judgeNodes,
+  projectSessions,
+  readLedger,
+  summarizeSessions,
+} from './lib/session-cache-ledger.mjs';
 
 const USAGE = 'usage: node scripts/audit-cache-usage.mjs [--json] <dataDir>... | --latest';
 
@@ -667,9 +686,105 @@ function printSummary(summary) {
   }
 }
 
+/**
+ * The current red line (2026-09-22): the session-cumulative ratio the DeepSeek
+ * Harness front end shows, with detached calls listed separately and H_all
+ * covering the whole ledger. Judged on exact values, never on a rounded display.
+ */
+function sessionLedgerFor(dataDir) {
+  const ledger = readLedger(dataDir);
+  const projection = projectSessions(ledger);
+  return {
+    targetPercent: SESSION_HIT_TARGET_PERCENT,
+    ...projection,
+  };
+}
+
+function printSessionLedger(section) {
+  console.log('');
+  console.log(
+    `session-cumulative red line: H_ui = sum(cacheRead)/sum(uncachedInput+cacheRead+cacheWrite), `
+    + `cold start included, target>=${section.targetPercent}% (exact value, not the rounded display)`,
+  );
+  if (section.sessions.length === 0) {
+    console.log('  sessions: none (no session-projected request in this sample)');
+  }
+  for (const session of section.sessions) {
+    const projection = session.sessionProjection;
+    const verdict = projection.requestsWithoutUsage > 0
+      ? 'unavailable (incomplete usage)'
+      : (projection.withinTarget ? 'met' : 'not met');
+    console.log(
+      `  ${session.sessionId}: requests=${projection.requests} input=${projection.input} `
+      + `cached=${projection.cached} H_ui=${fmt(projection.hitPercent, 3)}% target: ${verdict}`,
+    );
+    console.log(
+      `    detached auxiliary: requests=${session.auxiliary.requests} `
+      + `hit=${fmt(session.auxiliary.hitPercent, 3)}%; H_all(session)=${fmt(session.all.hitPercent, 3)}%`,
+    );
+    const losses = session.losses;
+    if (losses) {
+      console.log(
+        `    uncached split: coldStart=${losses.coldStart} rebuild=${losses.rebuild} `
+        + `appendResidual=${losses.appendResidual} unknownUsage=${losses.unknownUsage} `
+        + `(rebuild>=${losses.rebuildThresholdTokens}; residual/request=${fmt(losses.appendResidualPerRequest, 1)} `
+        + `median=${fmt(losses.appendResidualMedian, 1)} max=${fmt(losses.appendResidualMax, 1)})`,
+      );
+      console.log(
+        `    measured new content=${losses.newContent}; re-billed reuse waste=${losses.reuseWaste.total} `
+        + `(rebuild=${losses.reuseWaste.fromRebuild} append=${losses.reuseWaste.fromAppend})`,
+      );
+      console.log(
+        `    derived bounds: reuseWasteRecovered=${fmt(losses.derivedBounds.reuseWasteRecovered.hitPercent, 3)}% `
+        + `coldStartAlsoCached=${fmt(losses.derivedBounds.coldStartAlsoCached.hitPercent, 3)}% `
+        + `(models, not measurements)`,
+      );
+      for (const event of losses.rebuildEvents.slice(0, 8)) {
+        console.log(
+          `      rebuild@${event.ordinal} run=${event.runId ?? 'n/a'} uncached=${event.uncached} `
+          + `components=[${event.changedComponents.join(', ') || 'none'}] `
+          + `reasons=[${event.invalidationReasons.join(', ') || 'none'}] `
+          + `stablePrefixChanged=${event.stablePrefixFingerprintChanged}`,
+        );
+      }
+    }
+    for (const node of session.nodes ?? []) {
+      console.log(
+        `    node ${String(node.id).padEnd(16)} turn=${node.turn} `
+        + `H_ui=${fmt(node.hitPercent, 3)}% ${node.withinTarget === undefined
+          ? `(${node.availability})`
+          : (node.withinTarget ? 'met' : 'NOT MET')}`,
+      );
+    }
+    const judged = judgeNodes(session.nodes ?? []);
+    if (judged.failures.length > 0) {
+      console.log(`    nodes below target: ${judged.failures
+        .map((failure) => `${failure.id}(${failure.reason})`).join(', ')}`);
+    }
+  }
+  console.log(
+    `  whole-ledger H_all: requests=${section.ledger.requests} input=${section.ledger.input} `
+    + `cached=${section.ledger.cached} hit=${fmt(section.ledger.hitPercent, 3)}%`,
+  );
+  if (section.unattributed.requests > 0) {
+    console.log(
+      `  unattributed detached calls: requests=${section.unattributed.requests} `
+      + `input=${section.unattributed.input} (kept inside H_all)`,
+    );
+  }
+  const coverage = section.coverage;
+  console.log(
+    `  ledger coverage: runs=${coverage.runCount} unparsable_logs=${coverage.unparsedLogs.length} `
+    + `detached_observations=${coverage.detachedObservations} `
+    + `requests_without_usage=${coverage.requestsWithoutUsage} `
+    + `runs_with_incomplete_usage=${coverage.runsWithIncompleteUsage}`,
+  );
+}
+
 const args = process.argv.slice(2);
 const json = args.includes('--json');
-const operands = args.filter((arg) => arg !== '--json');
+const sessions = args.includes('--sessions');
+const operands = args.filter((arg) => arg !== '--json' && arg !== '--sessions');
 if (operands.length === 0) {
   console.error(USAGE);
   process.exitCode = 1;
@@ -681,8 +796,12 @@ if (operands.length === 0) {
   } else {
     const summary = audit(dir);
     if (summary) {
-      if (json) console.log(JSON.stringify(summary, null, 2));
-      else printSummary(summary);
+      const section = sessions ? sessionLedgerFor(dir) : undefined;
+      if (json) console.log(JSON.stringify({ ...summary, ...(section ? { sessionLedger: section } : {}) }, null, 2));
+      else {
+        printSummary(summary);
+        if (section) printSessionLedger(section);
+      }
     }
   }
 } else {
@@ -691,9 +810,11 @@ if (operands.length === 0) {
     const summary = audit(dir);
     if (!summary) continue;
     summaries.push(summary);
-    if (json) console.log(JSON.stringify(summary, null, 2));
+    const section = sessions ? sessionLedgerFor(dir) : undefined;
+    if (json) console.log(JSON.stringify({ ...summary, ...(section ? { sessionLedger: section } : {}) }, null, 2));
     else {
       printSummary(summary);
+      if (section) printSessionLedger(section);
       console.log('');
     }
   }

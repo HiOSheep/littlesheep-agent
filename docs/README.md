@@ -1,6 +1,6 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-09-22 10:56:22
+最后更新：2026-09-22 12:26:09
 
 本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
 
@@ -8,7 +8,7 @@
 
 **当前阶段**：活动路由只产出两条路径——所有常规会话与任务回合都进入单一主循环 `execute`，只有能力/状态询问走最小 Runtime 事实契约的 `reply`；`respond` 在路由边界归一为 `execute`，`clarify` 不是可路由活动（缺少信息时由回复本身追问，或由主循环的 `request_user_input` 与恢复升级到达 `ASK_USER`）。DECIDE、VERIFY 模型调用、RECOVER 模型调用和 CAPTURE 已删除：已持久化的 TaskBook 只作为可读历史，步骤在主循环内串行推进；本回合无权使用的工具在执行时被拒绝，而广告给模型的工具目录在整个会话区间内保持固定；`memory_tree` 只读（`root_index` / `branch_index` / `expand` / `deep_search` / `release`），模型没有记忆写入工具，持久记忆的唯一写入方是会话压缩路径。
 
-**推荐下一步**：按[极简执行与缓存 95% 实施方案任务书](taskbooks/lean-v2-cache-95-plan-taskbook-2026-09-20.md)继续收敛提示词与请求前缀。当前真实 Provider 读数（2026-09-22，公式 `hit = sum(cached)/sum(input)`）为共享会话对话 78.098%/78.182%、连续工具工作 83.690%/84.523%、开启压缩 62.827%/63.228%，**均未达到 95%**，完整记录见[缓存 95% 验收规程](reference/cache-95-acceptance.md) §7 与[缓存请求形状基线](reference/cache-baseline/latest.md)。[对话任务连续性 P0 专项](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md)另行跟踪，仍未完成。
+**推荐下一步**：执行[真实长任务缓存红线任务书](taskbooks/real-long-task-cache-taskbook-2026-09-22.md)。上一批提示词与 run 内追加修复作为基线；本轮转向真实任务样本、跨 run 续接、新增输入、压缩和恢复成本，允许能力收缩。用户最新明确对齐 DeepSeek Harness 前端的会话累计指标：真实长任务验收节点以 95% 为红线、95%～99.5% 为目标工作范围；允许初始冷启动低值，首请求仍计入累计，完整辅助成本另列；具体口径以[现行验收条款](reference/cache-95-acceptance.md#真实长任务现行红线2026-09-22)为准。当前状态与既有实测见[项目状态](decision/project-status.md#缓存命中率现状)，新真实长任务验收尚未完成。[对话任务连续性 P0 专项](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md)另行跟踪，仍未完成。
 
 **此刻需要你决定或知晓的事项**：
 
@@ -36,6 +36,9 @@
 
 ## 已决定方向后再看任务书
 
+- [真实长任务缓存红线任务书 2026-09-22](taskbooks/real-long-task-cache-taskbook-2026-09-22.md)：对齐 DeepSeek Harness 会话累计值的长任务 >=95% 红线，LT-00～LT-08 的真实样本、损失归因、跨 run 续接、输入精简、压缩、能力收缩与逐任务验收。
+- [极简执行与缓存 95% 实施方案任务书 2026-09-20](taskbooks/lean-v2-cache-95-plan-taskbook-2026-09-20.md)：上一阶段能力裁剪与旧负载的执行记录；未完成的缓存目标由新的真实长任务专项接续，历史口径不作为新红线。
+
 ### 当前主线
 
 - [Harness 全面瘦身审计与实施任务书 2026-09-12](taskbooks/harness-lean-audit-taskbook-2026-09-12.md)：全链路审计、等待分解、分批实施与质量/连续性/延迟验收门。- [Harness 瘦身第一批实施包：HL-00～HL-04](taskbooks/harness-lean-phase-a-implementation-taskbook-2026-09-12.md)：路由/验证、计时/用量与真实活动投影。
@@ -49,6 +52,7 @@
 - [Harness 发布就绪与双路径对比记录 2026-09-11](reference/harness-rollout-readiness-2026-09-11.md)：汇总当前质量门、双路径成本/延迟/质量对比能力、发布门 reason 集合、灰度/回滚契约，以及仍阻断发布决定的真实 Provider、外部服务对账和真实渠道条目。
 - [缓存 95% 冻结负载验收规程](reference/cache-95-acceptance.md)：把极简执行与缓存 95% 方案的实测步骤写成可重复规程——冻结任务集/模型/配置/轮数与会话组织、旧新两组对比流程、`hit = sum(cached)/sum(input)` 测量规则、未知 usage 处理、禁止做法与完成条件；当前实测记录见 §7。
 - [缓存请求形状基线](reference/cache-baseline/README.md)：同一探针在改前/改后两个 checkout 上跑同一冻结负载的逐请求字符数、共享前缀与工具目录摘要对比；[最新一次运行](reference/cache-baseline/latest.md)由 harness 测试自动重写，[改前冻结副本](reference/cache-baseline/pre-fix-cd6cabc.md)与[改后冻结副本](reference/cache-baseline/baseline-git-0af62a7.md)保留为对比依据（不含提示词正文、会话内容或密钥）。
+- [真实长任务缓存基线 2026-09-22](reference/cache-baseline/real-long-task-baseline-2026-09-22.md)：六个冻结真实任务各跑两次（12 次运行，真实 Provider）的会话累计 H_ui、逐节点值、未缓存三类分解与派生上界；当前 0/12 达标，另有 4/12 功能失败，[原始机器可读账本](reference/cache-baseline/real-long-task-baseline-2026-09-22.json)同步提交。
 - [实时网络检索与安全读取任务书 2026-08-28](taskbooks/web-search-and-safe-retrieval-taskbook-2026-08-28.md)：实施 `web_search`、`web_fetch`、Provider、受控本地抓取、safe read、证据引用、记忆协同、UI 与发布验收。
 - [网络检索冻结契约与威胁模型](reference/web-retrieval-security-contract.md)：固定 safe read、网络配置、Tavily 首个 Provider、SSRF/DNS/注入/外发威胁、引用和日志语义。
 - [网络检索安全合并验收 2026-08-29](reference/web-retrieval-security-acceptance-2026-08-29.md)：记录离线安全矩阵、迁移/回退、构建产物扫描和仍阻断 ready 的实际 Provider/正式渠道门。
