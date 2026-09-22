@@ -355,6 +355,9 @@ export function readLedger(dataDir) {
         // check whether a reported prompt that shrank actually came from a smaller
         // request.
         ...(typeof request.totalMessageCount === 'number' ? { requestMessages: request.totalMessageCount } : {}),
+        // Recorded so a detected contradiction can name what actually differed
+        // between the two requests instead of blaming the provider.
+        ...(typeof request.toolChoice === 'string' ? { toolChoice: request.toolChoice } : {}),
         ...(usageGapReason ? { usageGapReason } : {}),
         ...buckets,
         ...(observation ? { diagnostics: diagnosticsOf(observation) } : {}),
@@ -502,6 +505,12 @@ const PROVIDER_SHRINK_THRESHOLD_TOKENS = 500;
  * Measured on the 28-turn long task (2026-09-22): seven such requests carried
  * 66,539 of 153,022 uncached tokens (43%), and one had grown from 34 to 37
  * messages (`messagesTruncated: false`) while the report fell from 10,150 to 8,429.
+ *
+ * Cause found (2026-09-22): every flagged request in the frozen set was the Runtime
+ * flipping `tool_choice` to `none` for a forced final answer, which the provider
+ * renders *without* the tool catalog — 1.8k-2.0k fewer prompt tokens, cache lost
+ * from token zero. The samples therefore carry both `toolChoice` values; the flag
+ * stays useful as a symptom catcher for whatever differs next.
  */
 export function detectProviderUsageInconsistencies(rows) {
   const requestIds = new Set();
@@ -527,6 +536,8 @@ export function detectProviderUsageInconsistencies(rows) {
           cached: row.cached,
           requestMessages: row.requestMessages,
           previousRequestMessages: previous.requestMessages,
+          toolChoice: row.toolChoice,
+          previousToolChoice: previous.toolChoice,
         });
       }
     }

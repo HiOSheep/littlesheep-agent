@@ -7,8 +7,6 @@ import {
   type ToolCall as LlmToolCall,
 } from '@littlesheep/llm';
 import type {
-  ContextItemKind,
-  ContextSourceRef,
   RunContext,
   ToolInvocationRecord,
   ToolResult,
@@ -20,7 +18,7 @@ import {
 } from '@littlesheep/tools';
 import { buildRunRequestCandidates } from '../../context-candidates.js';
 import { modelRequestIdFor, prepareModelRequest } from '../../model-observability.js';
-import { RunTailLedger, priorTailEntries } from '../../run-tail-ledger.js';
+import { RunTailLedger, priorTailEntries, spliceTailMessages } from '../../run-tail-ledger.js';
 import {
   abortTranscriptTurn,
   closeTranscriptTurn,
@@ -31,7 +29,7 @@ import { upsertToolInvocationEvidence } from '../../execution-evidence-state.js'
 import { writeRuntimeState } from '../../runtime-state.js';
 import { conversationHistoryForModel } from '../_shared.js';
 import { toolToSpec } from '../../provider-tool-spec.js';
-import { parseUserInputRequest, USER_INPUT_REQUEST_TOOL_NAME } from '../../user-input-request.js';
+import { evaluateUserInputRequestRound } from '../../user-input-request.js';
 import { ingestMemoryKnownState } from '../../memory-known-state.js';
 import { ingestMemoryContextToolResult } from '../../memory-context-working-set.js';
 import {
@@ -56,6 +54,12 @@ import { createSideEffectLifecycle } from './side-effect-lifecycle.js';
 
 const MAX_ITERATIONS = 20;
 const MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS = 2;
+/**
+ * How many tool calls the loop refuses after a final answer was forced. The first
+ * refusal carries the instruction back; a model that keeps calling tools ends the
+ * run as before.
+ */
+const MAX_FORCED_TOOL_REFUSALS = 2;
 const MAX_EVIDENCE_FINGERPRINTS = 128;
 const MAX_WEB_CITATION_REPAIRS = 2;
 const executionServices = new WeakMap<RunContext, ToolExecutionService>();
@@ -134,26 +138,18 @@ export async function runToolLoop(
   persistRuntimeTailMessages(ctx, produced, initialTailMessages, initialTail.entries);
   // Each tail message's declared Context kind, so a bootstrap file stays project
   // knowledge and the memory index stays a memory index.
-  const tailKinds = new Map<ChatMessage, { kind: ContextItemKind; source: ContextSourceRef }>();
-  for (const [index, message] of initialTailMessages.entries()) {
-    const declared = initialTail.entries[index];
-    if (declared) tailKinds.set(message, { kind: declared.kind, source: declared.source });
-  }
-  let primaryUserIndex = -1;
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (messages[index]?.role === 'user') {
-      primaryUserIndex = index;
-      break;
-    }
-  }
-  messages.splice(
-    primaryUserIndex < 0 ? messages.length : primaryUserIndex + 1,
-    0,
-    ...initialTailMessages,
-  );
+  const tailKinds = spliceTailMessages(messages, initialTail);
   let noProgressRounds = ctx.loopBudget?.noProgressRounds ?? 0;
   let forceFinalResponse = noProgressRounds >= MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS;
   let citationRepairAttempts = 0;
+  let forcedRefusals = 0;
+  if (forceFinalResponse) {
+    // A restored latch forces the answer too, so the model has to be told. The
+    // instruction travels as a persisted Runtime control message (the request keeps
+    // its tool catalog and `auto`); without it the model would keep calling tools
+    // and only learn from the refusal.
+    persistRuntimeControlMessage(ctx, produced, messages, control.noProgressBound);
+  }
 
   for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     if (!reserveToolLoopIteration(ctx)) {
@@ -186,8 +182,16 @@ export async function runToolLoop(
         // the forced turn's prefix differ from every other turn in the run and
         // forfeited the cached prefix for that request. `tool_choice: 'none'`
         // forbids the call just as effectively while keeping the prefix intact.
+        // Forcing a final answer must not rewrite the tool list *or* the choice:
+        // the tool schema sits inside the cacheable prefix, and the provider
+        // renders the prompt without it when `tool_choice` is `none` — measured on
+        // the frozen real-long-task runs, every forced request reported 1.8k-2.0k
+        // fewer prompt tokens than its predecessor (exactly the catalog) and lost
+        // the cached prefix. The instruction not to call a tool already travels as
+        // a persisted Runtime control message, so the catalog and `auto` stay and a
+        // call that ignores the instruction is refused below instead of executed.
         tools: hasTools ? toolSpecs : undefined,
-        tool_choice: hasTools ? (forceFinalResponse ? 'none' : 'auto') : undefined,
+        tool_choice: hasTools ? 'auto' : undefined,
         temperature: 0,
         signal,
       } satisfies import('@littlesheep/llm').ChatRequest;
@@ -278,7 +282,7 @@ export async function runToolLoop(
     }
 
     if (response.finishReason === 'tool_calls' && response.toolCalls.length > 0) {
-      if (forceFinalResponse) {
+      if (forceFinalResponse && forcedRefusals >= MAX_FORCED_TOOL_REFUSALS) {
         return {
           ok: false,
           content: '',
@@ -291,36 +295,21 @@ export async function runToolLoop(
       // out of the loop, and let the caller publish it and record the single
       // waiting fact. Nothing is executed here, so a malformed request is a
       // protocol error rather than a tool failure.
-      const inputRequests = response.toolCalls.filter(
-        (call) => call.function.name === USER_INPUT_REQUEST_TOOL_NAME,
-      );
-      if (inputRequests.length > 0) {
-        if (inputRequests.length !== 1 || response.toolCalls.length !== 1) {
-          return {
-            ok: false,
-            content: '',
-            toolResults,
-            iterations: iteration,
-            error: 'a user input request must be one standalone tool call',
-          };
-        }
-        const userInputRequest = parseUserInputRequest(convertToolCall(inputRequests[0]!).input);
-        if (!userInputRequest) {
-          return {
-            ok: false,
-            content: '',
-            toolResults,
-            iterations: iteration,
-            error: 'user input request failed Runtime schema validation',
-          };
-        }
+      const round = evaluateUserInputRequestRound(response.toolCalls.map((call) => ({
+        name: call.function.name,
+        input: convertToolCall(call).input,
+      })));
+      if (round.kind === 'invalid') {
+        return { ok: false, content: '', toolResults, iterations: iteration, error: round.error };
+      }
+      if (round.kind === 'request') {
         return {
           ok: true,
           content: '',
           toolResults,
           iterations: iteration,
           usage: response.usage,
-          userInputRequest,
+          userInputRequest: round.request,
           // The question the model asked is user-facing text, so it carries the
           // request that authored it. Without this the caller would have to ask
           // the model to word the same question again just to prove it.
@@ -362,9 +351,14 @@ export async function runToolLoop(
       // reports it as an unknown tool — the two failures are different facts and
       // the model must not read one as the other.
       const registeredNames = new Set(tools.map((tool) => tool.name));
-      const withheld = requests.filter((request) => (
-        registeredNames.has(request.name) && !admittedNames.has(request.name)
-      ));
+      // While a final answer is forced, every call is withheld: the model was told
+      // tools are unavailable in this run, so a call is refused with an
+      // authoritative denial rather than executed. Refusing keeps the run alive
+      // (and its catalog in the cached prefix) where failing it outright used to.
+      if (forceFinalResponse) forcedRefusals += 1;
+      const withheld = forceFinalResponse
+        ? requests
+        : requests.filter((request) => registeredNames.has(request.name) && !admittedNames.has(request.name));
       const executable = requests.filter((request) => !withheld.includes(request));
       const executedResults = new Map(await executionService.executeBatch(
         executable,
@@ -382,9 +376,11 @@ export async function runToolLoop(
         executedResults.set(index, failureResult(
           request.callId,
           stepId,
-          withheldToolContract
-            ? `Runtime scope: ${withheldToolContract}`
-            : 'Runtime scope: this tool is not admitted for the current request.',
+          forceFinalResponse
+            ? 'Runtime control: tools are unavailable in this run; answer from the evidence already present.'
+            : withheldToolContract
+              ? `Runtime scope: ${withheldToolContract}`
+              : 'Runtime scope: this tool is not admitted for the current request.',
         ));
       }
       let addedEvidence = false;

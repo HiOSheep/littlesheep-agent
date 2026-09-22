@@ -191,6 +191,35 @@ export function renderTailEntries(
 }
 
 /**
+ * Insert one delta's tail messages right after the primary user turn and return the
+ * Context kind each message declares, so a bootstrap file stays project knowledge
+ * and the memory index stays a memory index.
+ *
+ * The position matters as much as the content: the tail belongs immediately after
+ * the user turn, and appending it at the end of the request instead put it after
+ * the first tool round for later iterations.
+ */
+export function spliceTailMessages(
+  messages: ChatMessage[],
+  delta: RunTailDelta,
+): Map<ChatMessage, { kind: ContextItemKind; source: ContextSourceRef }> {
+  const kinds = new Map<ChatMessage, { kind: ContextItemKind; source: ContextSourceRef }>();
+  for (const [index, message] of delta.messages.entries()) {
+    const declared = delta.entries[index];
+    if (declared) kinds.set(message, { kind: declared.kind, source: declared.source });
+  }
+  let primaryUserIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === 'user') {
+      primaryUserIndex = index;
+      break;
+    }
+  }
+  messages.splice(primaryUserIndex < 0 ? messages.length : primaryUserIndex + 1, 0, ...delta.messages);
+  return kinds;
+}
+
+/**
  * The tail entries an earlier run of this task interval already sent, read from
  * the replayed transcript. Seeding the ledger with them keeps an unchanged fact
  * from being appended (and billed) a second time.

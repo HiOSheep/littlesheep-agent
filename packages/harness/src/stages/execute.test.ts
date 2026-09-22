@@ -631,7 +631,12 @@ describe('executeStage', () => {
     let requestIndex = 0;
     const llm = createMockLlm((request) => {
       requestIndex += 1;
-      if (!request.tools || request.tool_choice === 'none') return textResponse('bounded final answer');
+      // A compliant model reads the Runtime control message and answers; the mock
+      // does the same instead of relying on `tool_choice: 'none'`, which made the
+      // provider render the prompt without the tool catalog and lose the cache.
+      const forced = request.messages.some((message) => typeof message.content === 'string'
+        && message.content.includes('no new evidence'));
+      if (!request.tools || forced) return textResponse('bounded final answer');
       return toolCallResponse([{
         id: `c-${requestIndex}`,
         name: 'lookup',
@@ -652,10 +657,11 @@ describe('executeStage', () => {
     expect(tool.calls).toHaveLength(3);
     expect(llm.chat).toHaveBeenCalledTimes(4);
     const finalRequest = llm.chat.mock.calls[3]?.[0] as import('@littlesheep/llm').ChatRequest;
-    // The forced turn keeps the tool list so its cacheable prefix matches every
-    // other turn; the runtime forbids the call with tool_choice instead.
+    // The forced turn keeps the tool list *and* `auto`: the provider renders the
+    // prompt without the catalog under `none`, which cost 1.8k-2.0k prompt tokens
+    // and the cached prefix on every forced request of the real-long-task runs.
     expect(finalRequest.tools).toBeDefined();
-    expect(finalRequest.tool_choice).toBe('none');
+    expect(finalRequest.tool_choice).toBe('auto');
     expect(finalRequest.messages).toEqual(expect.arrayContaining([
       expect.objectContaining({
         role: 'system',
@@ -664,10 +670,12 @@ describe('executeStage', () => {
     ]));
   });
 
-  it('restores the no-progress latch and forbids tools on the first resumed turn', async () => {
-    const llm = createMockLlm((request) => (!request.tools || request.tool_choice === 'none'
-      ? textResponse('resumed bounded final answer')
-      : toolCallResponse([{ id: 'unexpected', name: 'lookup', args: {} }])));
+  it('restores the no-progress latch and refuses tools on the first resumed turn', async () => {
+    const llm = createMockLlm((request) => (request.tools && !request.messages.some((message) => (
+      typeof message.content === 'string' && message.content.includes('no new evidence')
+    ))
+      ? toolCallResponse([{ id: 'unexpected', name: 'lookup', args: {} }])
+      : textResponse('resumed bounded final answer')));
     const tool = makeTool('lookup', { ok: true, output: 'x' });
     const stage = createExecuteStage({ ...deps, llm });
     const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', 'loop') });
@@ -690,11 +698,57 @@ describe('executeStage', () => {
     expect(tool.calls).toHaveLength(0);
     expect(llm.chat).toHaveBeenCalledTimes(1);
     const resumedRequest = llm.chat.mock.calls[0]?.[0] as import('@littlesheep/llm').ChatRequest;
-    // Same contract as the forced turn: the tool list stays (so the prefix is
-    // unchanged) and tool_choice forbids the call.
+    // Same contract as the forced turn: the tool list and `auto` stay (so the prefix
+    // is unchanged) and the model is told the tools are unavailable.
     expect(resumedRequest.tools).toBeDefined();
-    expect(resumedRequest.tool_choice).toBe('none');
+    expect(resumedRequest.tool_choice).toBe('auto');
+    expect(resumedRequest.messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        role: 'system',
+        content: expect.stringContaining('no new evidence'),
+      }),
+    ]));
     expect(ctx.loopBudget.toolLoopIterationsUsed).toBe(4);
+  });
+
+  it('refuses a tool call that ignores the forced final answer instead of failing the run', async () => {
+    const llm = createMockLlm((request) => {
+      const forced = request.messages.some((message) => typeof message.content === 'string'
+        && (message.content.includes('no new evidence')
+          || message.content.includes('tools are unavailable')));
+      if (forced && request.messages.some((message) => typeof message.content === 'string'
+        && message.content.includes('tools are unavailable'))) {
+        return textResponse('answered after refusal');
+      }
+      return toolCallResponse([{ id: 'stubborn', name: 'lookup', args: {} }]);
+    });
+    const tool = makeTool('lookup', { ok: true, output: 'x' });
+    tool.execution = {
+      concurrency: 'parallel',
+      resources: () => [{ key: 'probe:lookup', mode: 'read' }],
+    };
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', 'loop') });
+    ctx.loopBudget = {
+      attemptsUsed: 3,
+      maxAttempts: 64,
+      elapsedMs: 1_000,
+      maxElapsedMs: 0,
+      noProgressRounds: 2,
+      maxNoProgressRounds: 2,
+      toolLoopIterationsUsed: 3,
+      maxToolLoopIterations: 20,
+      evidenceFingerprints: ['a'.repeat(64)],
+      evidenceFingerprintSaturated: true,
+    };
+
+    const result = await stage(ctx);
+
+    // The call is denied, nothing runs, and the run still produces its answer.
+    expect(result).toMatchObject({ next: 'verify', ok: true });
+    expect(tool.calls).toHaveLength(0);
+    expect(ctx.reply).toBe('answered after refusal');
+   expect(ctx.toolResults?.some((entry) => entry.error?.includes('tools are unavailable'))).toBe(true);
   });
 
   it('does not reset the persisted twenty-turn budget after recovery', async () => {
