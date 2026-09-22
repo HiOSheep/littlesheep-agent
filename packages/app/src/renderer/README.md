@@ -1,5 +1,5 @@
 # Electron Renderer
-最后更新：2026-09-22 13:10:04
+最后更新：2026-09-22 20:21:00
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。
 
@@ -13,6 +13,7 @@ Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区�
 - `api.ts`：22 行 Local App API 兼容 barrel；领域客户端位于 `api/`。
 - `TraceCard.tsx`、`MemoryTreeView.tsx`、`ArchiveManager.tsx`、`MemorySkills.tsx`、`ChannelConnections.tsx`：仍保留的独立领域视图，由 `settings/workspace.tsx` 的归档、技能和外部渠道页复用；其中记忆页只显示六份权威记忆文件并仅允许编辑 `SOUL.md`，不承载 Atom、向量或记忆写入入口。
 - `settings/models.tsx`、`settings/model-provider-editor.tsx`、`settings/model-provider-draft.ts`：模型供应商页的卡片视图、编辑对话框和纯校验；自定义提供方使用 OpenAI 兼容接口，密钥经 Main 写入系统密钥库，模型元数据（上下文窗口、最大输出、推理档位）只按用户声明使用，未声明即保持未知。
+- `composer/context-usage-indicator.tsx` 除上下文窗口占用外，还显示**会话累计缓存命中率**与 `缓存读取 / 输入` 原值（含冷启动，与验收账本同源）；展示层 `toFixed(1)` 四舍五入，判定层始终用精确值。
 - `chat/assistant-turn.tsx`：一轮 Agent 的思考摘要、真实执行过程、验证和最终结果渐进披露。
 - `Markdown.tsx`、`link-navigation.tsx`、`workspace/browser.tsx`：全局链接单击进入 LS 内置预览；网页由独立的有界 URL 历史驱动前进、后退和刷新，网页内部跳转不会污染全局应用导航。
 - `workspace/preview-pane.tsx`、`workspace/code-editor.tsx` 与主进程 Office 预览服务：代码和普通文本使用共享内置编辑器；普通 Markdown 文件默认渲染，查看源码或编辑时才挂载共享 Monaco，而 Git 审阅中的 Markdown 仍显示源代码 Diff。普通文件和审阅主表面铺满拓展工作区的可用宽度与底部，不绘制外围圆角、边框或整面 hover 反馈；右侧文件导航贴边并仅保留左分隔线。普通查看和审阅统一保留舒适的行号/代码间距；审阅行号、增删计数与连续 5px 左缘使用不透明的 `#02A243` / `#DE352E`，代码行使用在 `#101010` 上合成为 `#1A2B1C` / `#371D17` 的单层 50% 透明底色；单列内联删除视图区也绘制整段连续红色左缘，字符级背景、整块 gutter 背景及会形成方块伪影的 Diff text border 均不绘制；Office/OpenDocument 以有界只读文本预览呈现，二进制正文不进入 Renderer。
