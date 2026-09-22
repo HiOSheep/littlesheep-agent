@@ -1,7 +1,7 @@
 # Web Retrieval Security Acceptance 2026-08-29
 
-状态：WB-09 的离线安全、迁移/回退、供应链、构建产物、性能、用户可见投影、稳定工作树全量回归、Electron 状态连续性、DeepSeek API 实测 V4 Flash 对合成 evidence 的最终回复门和 Webhook loopback 组合链路已通过；显式 Cloudflare DoH 下的独立真实匿名 `web_fetch` 已通过；测试 key 下的真实 Tavily search 已通过。真实 Tavily 搜索结果关联 fetch/citation、真实网页 evidence 驱动的端到端 LLM 联调、第三方正式渠道运行时和签名发布条件仍未验收，专项保持“实施中”。
-最后更新：2026-09-22 10:56:22
+状态：受控实现（`web_search`、`web_fetch`、Provider、受控抓取、safe read、citation 与渠道 projection）已落地；离线安全、迁移/回退、供应链、构建产物、性能、用户可见投影、稳定工作树全量回归、Electron 状态连续性、DeepSeek API 实测 V4 Flash 对合成 evidence 的最终回复门和 Webhook loopback 组合链路已通过；显式 Cloudflare DoH 下的独立真实匿名 `web_fetch` 已通过；测试 key 下的真实 Tavily search 已通过。真实 Tavily 搜索结果关联 fetch/citation、真实网页 evidence 驱动的端到端 LLM 联调、第三方正式渠道运行时和签名发布条件仍未验收，网络检索的发布状态保持“未就绪”，逐条见“仍然阻断 ready 的事项”。
+最后更新：2026-09-22 23:05:46
 
 ## 审查范围
 
@@ -67,3 +67,12 @@ pnpm.cmd --filter @littlesheep/web outdated --format json
 5. 真实 LLM 的合成 Runtime evidence 门已通过；真实 LLM 与真实 Tavily/公开网页 evidence 同时可用时，仍必须在隔离数据根验证 partial/timeout/rate-limit/disabled 的最终回复不会把部分资料表述为完整验证，并保留 Runtime source projection。
 
 本报告不能用于宣称 LittleSheep 已稳定实时联网。当前可准确表述为：受控网络检索的离线实现、安全边界、持久化隔离和可关闭回退、真实 Tavily Provider search、显式 Cloudflare DoH 下独立真实 public-fetch、Electron 状态连续性以及 DeepSeek API 实测 V4 Flash 对合成 evidence 的最终回复治理已经验证；搜索结果关联 fetch/citation、真实网页 evidence 驱动的端到端 LLM 联调、正式渠道上线、签名包和干净 Windows 验收尚未完成。
+
+## 已接受缺口（不阻断 ready，退役任务书时显式保留）
+
+原实施任务书（`web-search-and-safe-retrieval-taskbook-2026-08-28`，已于 2026-09-22 退役，原文见 git 历史）里有两项**只有清单、没有实现**的建议项，退役后在此如实记录，避免被误读为已具备：
+
+1. **检索运行事件未映射**：任务书建议的 `retrieval_started`、`search_started`、`search_completed`、`fetch_started`、`fetch_completed`、`source_blocked`、`evidence_truncated`、`provider_rate_limited`、`retrieval_partial`、`retrieval_completed` 在源码中不存在。当前可观测性来自 `WebEvidenceProjection`、工具调用记录与 smoke 报告，UI 不消费独立检索事件流。
+2. **检索质量指标未实现**：任务书列出的 search/fetch 成功率、Provider 延迟、缓存命中率、抽取成功率、partial/truncated 比例、SSRF 阻断计数、citation 覆盖率与校验失败数等指标没有独立实现；这些数字目前只能由 smoke 报告与验收脚本间接得出，不能当作常驻可查询指标。
+
+两项都未出现在任何完成门、Definition of Done 或发布 Runbook 中，因此不阻断既有结论；若要作为产品能力补齐，应单独立项并给出消费者与验收标准，而不是回填进本报告的通过结论。

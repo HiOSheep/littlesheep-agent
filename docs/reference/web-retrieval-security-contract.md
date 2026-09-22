@@ -1,11 +1,11 @@
 # LittleSheep 网络检索冻结契约与威胁模型
 
-状态：阶段 0 冻结，实施中
-最后更新：2026-09-22 10:56:22
+状态：阶段 0 冻结；受控实现已落地，发布门未闭合
+最后更新：2026-09-22 23:05:46
 冻结日期：2026-08-29
-执行入口：[实时网络检索与安全读取任务书](../taskbooks/web-search-and-safe-retrieval-taskbook-2026-08-28.md)
+执行入口：[网络检索安全合并验收](web-retrieval-security-acceptance-2026-08-29.md)（发布门、安全矩阵与可复核命令）与[网络检索发布清单](web-retrieval-release-checklist-2026-08-29.md)
 
-本文是任务书 WSR-000 至 WSR-006 的支持性冻结记录。任务顺序、阶段状态和 Definition of Done 仍只由任务书维护；本文只固定实现不能自行改变的权限、配置、Provider、安全和证据语义。
+本文是任务书 WSR-000 至 WSR-006 的支持性冻结记录；原实施任务书已于 2026-09-22 退役，原文可取回：`git log --follow -- docs/taskbooks/web-search-and-safe-retrieval-taskbook-2026-08-28.md`。任务顺序与阶段状态不再由任务书维护：`web_search` / `web_fetch`、Provider、受控抓取、safe read、citation 与渠道 projection 均已实现并有离线门证据，仍未闭合的是真实 Provider 关联 fetch、正式渠道、签名包与干净 Windows 验收，逐条见上述验收报告；本文只固定实现不能自行改变的权限、配置、Provider、安全和证据语义。
 
 ## 1. 不可变产品语义
 

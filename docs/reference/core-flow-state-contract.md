@@ -1,6 +1,6 @@
 # Core Flow 状态契约
 
-最后更新：2026-09-22 10:56:22
+最后更新：2026-09-22 23:05:46
 
 本页是 Harness 状态边和高频 `RunContext` 字段责任的导航入口。可执行契约位于 `packages/types/src/stage-transitions.ts` 与 `packages/types/src/run-context-contract.ts`；本页只解释如何阅读和扩展它们，不复制运行时实现。
 
@@ -35,11 +35,24 @@ manifest 另外保留以下**兼容边**，它们只服务旧检查点读取与�
 
 活动路由只产出 `execute` 与能力/状态询问 `reply` 两条路径。`ASK_USER` 不是可路由活动：它由主循环内模型发起的 `request_user_input` 到达，或由 `RECOVER` 在权限拒绝 / 恢复预算耗尽时升级到达。`clarify` 不是活动，`classify` 只是历史 stage id 与检查点兼容标签。
 
+模型提问不产生续跑停放：A 方案下问题作为正常回复发布、run 正常结束，下一条消息按新任务处理，生产代码不会因“模型提问”创建 waiting-user 检查点。`waiting_user` 状态与旧等待头解析只作为旧版本遗留的兼容路径保留；显式续跑、应用启动恢复与 `RunCheckpoint` 仍是现行能力，恢复入口不会重放已结算的副作用。
+
 `decide`、`capture` 与 `evolve` 仍出现在 `allowedTransitions` 与 `stageNames` 中，但已没有注册实现：驱动把恢复入口的 `decide` 映射到 `execute`，规划层、自动记忆演化编排与运行结束时的自动沉淀都已删除。
+
+工作策略升级通道同样已不存在：`selectWorkPolicy` 的所有 execute 出口都返回 `bounded_loop`，恢复时持久化的 `task_book` 策略被降级，`request_task_book`、`workPolicyUpgradeProposal`、`bounded_loop_promoted` 与 `memory-intent-gate` 已随第二执行体系删除；`complex_scope` / `large_request` 只决定审计用 reason code，不改变路径。`TaskBookPatch` 与嵌套 `taskBook` 字段继续作为可读历史与局部修订契约存在。
 
 每个 stage 都保留 `exit` 终止边，因为运行时暂停、中断、异常和 Provider 失败必须有明确的终态出口；默认工具循环仍然经过 `verify`。
 
 扩展 stage 时必须先为边补 manifest 和回归测试，再注册 stage。不要在模型输出、hook 或临时分支中增加未登记的 `next`；`StageResult.next` 不是自由路由字段。
+
+## 会话续接（conversation continuation）
+
+- 所有入口（普通聊天、显式恢复面板、应用启动恢复）最终都进入 Runner 的同一个 `resumeCheckpointAuthoritative`：`sessionId + requestKey` 决定稳定 runId 与稳定 inbound messageId，Renderer 只提供稳定 requestKey，不参与解析或 claim。
+- 每条用户回答最多消费一次；disposition 走文件锁加 `tmp`/`rename` 原子写，`requestId + answerMessageId + requestKey` 相同的重试只加入同一个 resume run；`deferred` 不进入自动 head，只有显式 `answer` 指令才允许再次取用。
+- 语义恢复阶段由 `packages/runner/src/continuation-stage.ts` 计算，`finalize` 只是保存位置；历史 `decide` 入口在恢复时归一化到主循环 `execute`，改目标走主循环并携带修订反馈。
+- 资源续接只保存有界 manifest（cacheId、contentHash、kind、size、contextPath）与封闭工具配方；恢复时按摘要、大小、类型与工具可用性校验，只有 `attachmentCount` 的旧检查点一律阻断并要求重新附加。受管附件缓存只在启动时按仍可恢复的检查点保护 cacheId（128 条窗口），没有在飞 lease。
+- 恢复一律使用当前权限模式、当前工作区与当前审批 broker，检查点里的 `permissionPolicyId` 只作审计；含 `in_progress` / `unknown` 副作用的检查点失败关闭，已完成步骤与副作用不重放。
+- 每轮 turn 在 execution log 记录 `ConversationContinuationEvidence`（resolution、checkpointId、requestId、answerMessageId、resumeRunId、disposition、resumeStage、resources、permissions、replayPrevention、failure），字段全部有界脱敏。
 
 ## Runner Coordinator
 

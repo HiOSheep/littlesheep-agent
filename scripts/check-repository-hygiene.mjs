@@ -198,7 +198,6 @@ async function checkCanonicalFiles() {
     // after its still-true facts move into the document that owns them, so only
     // the active baselines are canonical here (see checkTaskbookBudget).
     'docs/taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md',
-    'docs/taskbooks/memory-atom-vector-catalog-taskbook-2026-07-17.md',
     'scripts/build-app.ps1',
     'scripts/start-littlesheep.ps1',
     'scripts/prepare-littlesheep-runtime.mjs',

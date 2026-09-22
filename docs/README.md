@@ -8,7 +8,7 @@
 
 **当前阶段**：活动路由只产出两条路径——所有常规会话与任务回合都进入单一主循环 `execute`，只有能力/状态询问走最小 Runtime 事实契约的 `reply`；`respond` 在路由边界归一为 `execute`，`clarify` 不是可路由活动（缺少信息时由回复本身追问，或由主循环的 `request_user_input` 与恢复升级到达 `ASK_USER`）。DECIDE、VERIFY 模型调用、RECOVER 模型调用和 CAPTURE 已删除：已持久化的 TaskBook 只作为可读历史，步骤在主循环内串行推进；本回合无权使用的工具在执行时被拒绝，而广告给模型的工具目录在整个会话区间内保持固定；`memory_tree` 只读（`root_index` / `branch_index` / `expand` / `deep_search` / `release`），模型没有记忆写入工具，持久记忆的唯一写入方是会话压缩路径。
 
-**推荐下一步**：执行[真实长任务缓存红线任务书](taskbooks/real-long-task-cache-taskbook-2026-09-22.md)。上一批提示词与 run 内追加修复作为基线；本轮转向真实任务样本、跨 run 续接、新增输入、压缩和恢复成本，允许能力收缩。用户最新明确对齐 DeepSeek Harness 前端的会话累计指标：真实长任务验收节点以 95% 为红线、95%～99.5% 为目标工作范围；允许初始冷启动低值，首请求仍计入累计，完整辅助成本另列；具体口径以[现行验收条款](reference/cache-95-acceptance.md#真实长任务现行红线2026-09-22)为准。当前状态与既有实测见[项目状态](decision/project-status.md#缓存命中率现状)，新真实长任务验收尚未完成。[对话任务连续性 P0 专项](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md)另行跟踪，仍未完成。
+**推荐下一步**：执行[真实长任务缓存红线任务书](taskbooks/real-long-task-cache-taskbook-2026-09-22.md)。上一批提示词与 run 内追加修复作为基线；本轮转向真实任务样本、跨 run 续接、新增输入、压缩和恢复成本，允许能力收缩。用户最新明确对齐 DeepSeek Harness 前端的会话累计指标：真实长任务验收节点以 95% 为红线、95%～99.5% 为目标工作范围；允许初始冷启动低值，首请求仍计入累计，完整辅助成本另列；具体口径以[现行验收条款](reference/cache-95-acceptance.md#真实长任务现行红线2026-09-22)为准。当前状态与既有实测见[项目状态](decision/project-status.md#缓存命中率现状)，新真实长任务验收尚未完成。[对话任务连续性 P0 专项](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md)另行跟踪：2026-09-22 复核确认其实机制层（唯一 head、原子 claim、disposition、资源配方、权限重验、副作用幂等）已随状态机重设计落地，但“回答连续 + 真实 PDF 交付”的五层验收、发布指标门、迁移扫描与回滚演练仍未完成，因此该 P0 保持未关闭。
 
 **此刻需要你决定或知晓的事项**：
 
@@ -41,8 +41,8 @@
 
 ### 当前主线
 
-- [LS 状态机重设计任务书 2026-09-18](taskbooks/state-machine-redesign-taskbook-2026-09-18.md)：把"判断类决策交还模型、安全类留运行时"落成逐项清单，覆盖延续歧义、重复发布、澄清停放、恢复、验证、工具循环、压缩、检查点、策略和记忆。
-- [文档退役待审清单 2026-09-22](reference/document-retirement-review-2026-09-22.md)：不能由实现者单独决定的文档处置（对话连续性 P0 是否已关闭、状态机重设计 P6、开发反馈环阶段 5、对标记录依据失效、模块图/仓库指南待更新、Web 检索发布门、两份被门禁固定的常驻任务书），逐条给出证据、建议与不做的代价。
+- [文档退役审查记录 2026-09-22](reference/document-retirement-review-2026-09-22.md)：本轮集中审查的逐条结论与执行动作（保留并重述对话连续性 P0、退役状态机重设计/开发反馈环/网络检索/原子记忆四份任务书、对标记录改判为保留、模块图 1 条真实修正、解除一份门禁固定），并记录三处原始证据的更正。
+- [持久记忆写入路径任务书 2026-09-22](taskbooks/memory-write-path-taskbook-2026-09-22.md)：把“压缩是唯一写入方、而大窗口配置下压缩不触发 ⇒ 记忆实际不被写入”这一已记录缺口升级为有归属的待决事项；第一步是用户裁定，之后才是实现与缓存红线回归。
 - [Harness 开源底座评估 2026-09-02](reference/harness-open-source-evaluation-2026-09-02.md)：固定 DeepSeek Harness、Pi 与 nanoDeepSeekHarness 版本、许可证、供应链证据和 LS adapter 边界；当前决定保留自有 kernel、只吸收 durable event/session/stream 设计。
 - [OpenCode VS Code 对标记录 2026-08-13](reference/opencode-vscode-comparison-2026-08-13.md)：记录官方源码、许可证、LS 差异、已直接吸收的缓存/模型/审阅交互，以及待产品选择的虚拟化、评论和真正 VS Code 扩展路线。
 - [对话任务连续性 P0 专项任务书 2026-08-13](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md)：修复普通聊天未绑定 waiting-user Checkpoint、执行现场与附件/临时工具无法自然恢复、权限未按当前状态重验及最终回答断档。
@@ -56,14 +56,11 @@
 - [冻结清单复跑（任务区间不可淘汰后）2026-09-22](reference/cache-baseline/real-long-task-baseline-pinned-interval-2026-09-22.md)：12 次运行全部 usage 完整、产物验收 12/12、0 provider 矛盾，平均 H_ui 87.07%（3 回合形状的冷启动上限），重建未缓存降至 0（仅 A2 两次与 B1#1 少量），[机器可读账本](reference/cache-baseline/real-long-task-baseline-pinned-interval-2026-09-22.json)同步提交。
 - [长区间任务 L1 重启连续性 2026-09-22](reference/cache-baseline/long-interval-task-L1-restart-2026-09-22.md)：同一 28 回合任务在第 14 回合**重启应用进程**后继续——H_ui **98.99%**（169 请求、usage 完整、0 失败尝试），后段节点 96.81/97.67/98.19/98.42%，产物验收 6/6；重启本身不损失前缀（缓存属服务端），[机器可读账本](reference/cache-baseline/long-interval-task-L1-restart-2026-09-22.json)同步提交。
 - [长区间任务 L1 空闲停顿连续性 2026-09-22](reference/cache-baseline/long-interval-task-L1-idle-pause-2026-09-22.md)：第 14 回合前**空闲 45 分钟**再继续——暂停后首个请求 `in=56,372 / cached=56,192`（99.7% 命中），整会话 H_ui **99.05%**，后段节点 97.34/97.91/98.44/98.80%，产物验收 6/6；结论为**有界**陈述（至少 45 分钟内缓存有效），[机器可读账本](reference/cache-baseline/long-interval-task-L1-idle-pause-2026-09-22.json)同步提交。
-- [实时网络检索与安全读取任务书 2026-08-28](taskbooks/web-search-and-safe-retrieval-taskbook-2026-08-28.md)：实施 `web_search`、`web_fetch`、Provider、受控本地抓取、safe read、证据引用、记忆协同、UI 与发布验收。
-- [网络检索冻结契约与威胁模型](reference/web-retrieval-security-contract.md)：固定 safe read、网络配置、Tavily 首个 Provider、SSRF/DNS/注入/外发威胁、引用和日志语义。
+- [网络检索冻结契约与威胁模型](reference/web-retrieval-security-contract.md)：固定 safe read、网络配置、Tavily 首个 Provider、SSRF/DNS/注入/外发威胁、引用和日志语义；原实施任务书已于 2026-09-22 退役，实现状态与发布门改由验收报告维护。
 - [网络检索安全合并验收 2026-08-29](reference/web-retrieval-security-acceptance-2026-08-29.md)：记录离线安全矩阵、迁移/回退、构建产物扫描和仍阻断 ready 的实际 Provider/正式渠道门。
 - [网络检索供应链审查 2026-08-29](reference/web-retrieval-supply-chain-review-2026-08-29.md)：记录 Web 包依赖、许可证、漏洞快照、发布扫描边界与复核条件。
 - [网络检索发布清单 2026-08-29](reference/web-retrieval-release-checklist-2026-08-29.md)：列出离线门、发布当天实际 Provider/渠道/release 包验证和明确的禁止发布条件。
 - [生产依赖安全记录](reference/production-dependency-security.md)：记录临时间接依赖 override 的固定版本、来源、许可证、移除条件与复查日期，避免安全修复变成无所有者的永久配置。
-- [开发反馈环提速任务书 2026-08-09](taskbooks/development-feedback-loop-taskbook-2026-08-09.md)：任务级内循环、affected 选择器、重复构建消除和后续状态契约收敛；用于决定下一阶段开发效率工作。
-- [原子记忆与内置向量目录任务书 2026-07-17](taskbooks/memory-atom-vector-catalog-taskbook-2026-07-17.md)：Memory v3 原子文件、层级、本地向量目录、三层视图边界、动态注入、压缩连续性、迁移与验收。
 - [Agent Runtime 连续性任务书 2026-07-14](taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md)：Provider 校准、Context、附件、运行中重入、检查点、后台执行和有界并行。
 
 ### 任务书生命周期
