@@ -443,10 +443,10 @@ describe('executeStage', () => {
     expect(ctx.toolResults![0].output).toBe('found-it');
     const continuation = llm.chat.mock.calls[1]?.[0] as import('@littlesheep/llm').ChatRequest;
     const toolMessage = continuation.messages.find((message) => message.role === 'tool');
-    expect(JSON.parse(String(toolMessage?.content))).toMatchObject({
+    // The model-facing result carries action-able fields only: `status` and
+    // `durationMs` were framing text (20% of all tool-result characters measured).
+    expect(JSON.parse(String(toolMessage?.content))).toEqual({
       ok: true,
-      status: 'succeeded',
-      durationMs: 1,
       output: 'found-it',
     });
   });

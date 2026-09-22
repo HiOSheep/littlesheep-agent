@@ -21,21 +21,74 @@ export function safeStringify(value: unknown): string {
   }
 }
 
-/** The bounded result shape the model sees for one tool call. */
+/**
+ * The bounded result shape the model sees for one tool call.
+ *
+ * It carries only what a next turn can act on: whether the call succeeded, the
+ * output, an error, whether the output was truncated, and the step it belongs to.
+ * `status` and `durationMs` used to travel too; they were pure framing (measured
+ * on the frozen real-long-task runs: 8.7k of 43.6k tool-result characters, 20%,
+ * were wrapper text) and no decision the model makes depends on them.
+ */
 export function toolResultForModel(result: ToolResult): string {
   const output = result.modelOutput ?? result.output;
+  const stepId = typeof result.meta?.stepId === 'string' ? result.meta.stepId : undefined;
   return safeStringify({
     ok: result.ok,
-    status: result.ok ? 'succeeded' : 'failed',
-    durationMs: result.durationMs,
-    stepId: typeof result.meta?.stepId === 'string' ? result.meta.stepId : undefined,
     // A failed call keeps its output too. For a command runner the exit code alone
     // says nothing about what failed: dropping the captured stdout/stderr left the
     // model unable to diagnose a failing test, while the runtime still recorded the
     // output as evidence. The result is already bounded by the tool and sanitizer.
-    output: typeof output === 'string' && output.length > 0 ? output : undefined,
-    error: result.ok ? undefined : result.error,
-    sanitized: result.sanitized === true || undefined,
+    ...(typeof output === 'string' && output.length > 0 ? { output } : {}),
+    ...(result.ok ? {} : { error: result.error }),
+    ...(result.sanitized === true ? { sanitized: true } : {}),
+    ...(stepId ? { stepId } : {}),
+  });
+}
+
+/** Below this size a duplicate reference costs about as much as the content. */
+const REPEATED_PAYLOAD_MIN_CHARS = 400;
+
+/**
+ * The tool payloads the conversation already carries, so a repeated read can
+ * reference the earlier copy instead of sending the bytes again. Built from the
+ * replayed transcript and kept up to date as this run appends rounds.
+ */
+export function sentToolOutputs(ctx: Pick<RunContext, 'modelHistory'>): Map<string, string> {
+  const payloads = new Map<string, string>();
+  for (const message of ctx.modelHistory ?? []) {
+    if (message.role !== 'tool') continue;
+    const part = message.content.find((block) => block.type === 'tool_result');
+    if (part?.type !== 'tool_result') continue;
+    if (!part.result.ok || typeof part.result.output !== 'string') continue;
+    payloads.set(part.result.output, part.result.callId);
+  }
+  return payloads;
+}
+
+/**
+ * The model-facing content for one result: the full projected result, or a
+ * reference to an earlier identical payload the conversation still carries.
+ *
+ * Sending the bytes twice adds new input without adding information, and for a
+ * re-read of a large file the whole payload is the duplicate. Small payloads keep
+ * their plain form — a reference would cost as much as the content.
+ */
+export function modelContentForResult(result: ToolResult, sent: Map<string, string>): string {
+  const full = toolResultForModel(result);
+  if (!result.ok || typeof result.output !== 'string' || full.length < REPEATED_PAYLOAD_MIN_CHARS) {
+    return full;
+  }
+  const prior = sent.get(result.output);
+  if (!prior) {
+    sent.set(result.output, result.callId);
+    return full;
+  }
+  return safeStringify({
+    ok: true,
+    unchanged: true,
+    sameAs: prior,
+    note: 'identical to an earlier result still present in this conversation',
   });
 }
 

@@ -36,6 +36,7 @@ import { ingestMemoryKnownState } from '../../memory-known-state.js';
 import { ingestMemoryContextToolResult } from '../../memory-context-working-set.js';
 import {
   failureResult,
+  modelContentForResult,
   persistRuntimeControlMessage,
   persistRuntimeTailMessages,
   persistToolCalls,
@@ -43,7 +44,7 @@ import {
   recordDurableToolCalls,
   RUNTIME_CONTROL_MESSAGES,
   safeStringify,
-  toolResultForModel,
+  sentToolOutputs,
 } from './tool-result-persistence.js';
 import { validateWebCitations, webCitationRepairContract } from '../../web-citation-validation.js';
 import type {
@@ -101,6 +102,7 @@ export async function runToolLoop(
   const toolSpecs = tools.map(toolToSpec);
   const toolResults: ToolResult[] = [];
   const control = RUNTIME_CONTROL_MESSAGES;
+  const sentPayloads = sentToolOutputs(ctx);
   const executionService = toolExecutionService(deps, ctx, sanitizeOpts);
   const evidenceFingerprints = new Set<string>(ctx.loopBudget?.evidenceFingerprints ?? []);
   const fingerprintState = {
@@ -128,8 +130,7 @@ export async function runToolLoop(
   const initialTailMessages = initialTail.messages;
   for (const message of initialTailMessages) tailMessageSet.add(message);
   // The tail is part of the request the Provider caches, so it is persisted here:
-  // a later run replays it instead of diverging, and unchanged sections are not
-  // re-emitted because the ledger was seeded from that transcript.
+  // a later run replays it, and unchanged sections are not re-emitted.
   persistRuntimeTailMessages(ctx, produced, initialTailMessages, initialTail.entries);
   // Each tail message's declared Context kind, so a bootstrap file stays project
   // knowledge and the memory index stays a memory index.
@@ -394,7 +395,7 @@ export async function runToolLoop(
         if (registerEvidenceFingerprint(ctx, evidenceFingerprints, fingerprintState, converted.name, result)) {
           addedEvidence = true;
         }
-        finalizeToolResult(ctx, produced, messages, toolResults, converted.name, result);
+        finalizeToolResult(ctx, produced, messages, toolResults, converted.name, result, sentPayloads);
       }
 
       // A failed Runtime/tool boundary is authoritative for this step. Allow
@@ -541,6 +542,7 @@ function finalizeToolResult(
   results: ToolResult[],
   name: string,
   result: ToolResult,
+  sentPayloads: Map<string, string>,
 ): void {
   if (name === 'memory_tree' || name === 'memory_search' || name === 'memory_deep_search') {
     ingestMemoryKnownState(ctx, result.meta?.memoryKnownState, 'execute');
@@ -551,7 +553,10 @@ function finalizeToolResult(
   }
   const durable = durableToolResult(result);
   results.push(durable);
-  const modelContent = toolResultForModel(result);
+  // A payload the conversation already carries is referenced, not repeated: the
+  // earlier copy is still in the request and in the cached prefix, so sending it
+  // again only adds new input (measured: 7% of all tool-result characters).
+  const modelContent = modelContentForResult(result, sentPayloads);
   persistToolResult(ctx, produced, durable, modelContent);
   messages?.push({
       role: 'tool',
