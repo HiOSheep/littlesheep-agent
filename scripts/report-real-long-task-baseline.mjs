@@ -83,6 +83,10 @@ function rate(run) {
       hitPercent: node.hitPercent,
       withinTarget: node.withinTarget,
       availability: node.availability,
+      // Kept so a judge can tell "this turn ran but its usage is missing" (no
+      // verdict) from "this turn never ran" (the session's state so far).
+      ...(node.missingTurnRequests === true ? { missingTurnRequests: true } : {}),
+      ...(typeof node.usageMissing === 'number' ? { usageMissing: node.usageMissing } : {}),
     })),
     conclusion: run.report.conclusion?.nodeConclusion ?? run.report.nodeJudgement?.conclusion,
     losses: lossesOf(run.report)?.losses,

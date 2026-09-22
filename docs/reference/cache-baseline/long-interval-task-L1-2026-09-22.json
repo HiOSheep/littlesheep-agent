@@ -1,6 +1,6 @@
 {
   "check": "real-long-task-baseline",
-  "recordedAt": "2026-09-22T11:49:06.802Z",
+  "recordedAt": "2026-09-22T12:44:30.434Z",
   "manifestVersion": 1,
   "manifestValid": true,
   "manifestErrors": [],
@@ -175,196 +175,232 @@
           "turn": 1,
           "hitPercent": 65.12661559155507,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-2",
           "turn": 2,
           "hitPercent": 89.97224108557609,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-3",
           "turn": 3,
           "hitPercent": 94.37122746924538,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-4",
           "turn": 4,
           "hitPercent": 95.83536661879731,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-5",
           "turn": 5,
           "hitPercent": 96.3730005646139,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-6",
           "turn": 6,
           "hitPercent": 96.3730005646139,
           "withinTarget": null,
-          "availability": "incomplete"
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
         },
         {
           "id": "turn-7",
           "turn": 7,
           "hitPercent": 92.50001810715088,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "ledger-basics",
           "turn": 8,
           "hitPercent": 93.45323198480695,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-9",
           "turn": 9,
           "hitPercent": 93.45323198480695,
           "withinTarget": null,
-          "availability": "incomplete"
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
         },
         {
           "id": "turn-10",
           "turn": 10,
           "hitPercent": 95.23437550296899,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-11",
           "turn": 11,
           "hitPercent": 95.23437550296899,
           "withinTarget": null,
-          "availability": "incomplete"
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
         },
         {
           "id": "turn-12",
           "turn": 12,
           "hitPercent": 95.83381537247885,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-13",
           "turn": 13,
           "hitPercent": 95.83381537247885,
           "withinTarget": null,
-          "availability": "incomplete"
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
         },
         {
           "id": "turn-14",
           "turn": 14,
           "hitPercent": 96.40237123137493,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-15",
           "turn": 15,
           "hitPercent": 96.40237123137493,
           "withinTarget": null,
-          "availability": "incomplete"
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
         },
         {
           "id": "core-and-refactor",
           "turn": 16,
           "hitPercent": 96.99694057169376,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-17",
           "turn": 17,
           "hitPercent": 96.99694057169376,
           "withinTarget": null,
-          "availability": "incomplete"
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
         },
         {
           "id": "turn-18",
           "turn": 18,
           "hitPercent": 97.37918752654076,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-19",
           "turn": 19,
           "hitPercent": 97.37918752654076,
           "withinTarget": null,
-          "availability": "incomplete"
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
         },
         {
           "id": "turn-20",
           "turn": 20,
           "hitPercent": 97.85418099090816,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-21",
           "turn": 21,
           "hitPercent": 97.85418099090816,
           "withinTarget": null,
-          "availability": "incomplete"
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
         },
         {
           "id": "range-and-export",
           "turn": 22,
           "hitPercent": 98.29578987114449,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-23",
           "turn": 23,
           "hitPercent": 98.43193710122827,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-24",
           "turn": 24,
           "hitPercent": 98.63101242659503,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "docs-aligned",
           "turn": 25,
           "hitPercent": 98.81073313579441,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-26",
           "turn": 26,
           "hitPercent": 98.88350427554909,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-27",
           "turn": 27,
           "hitPercent": 98.92233198115211,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "final-verification",
           "turn": 28,
           "hitPercent": 98.9440562102099,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         }
       ],
       "conclusion": "not met",
@@ -650,196 +686,235 @@
           "turn": 1,
           "hitPercent": 65.05432877672625,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-2",
           "turn": 2,
           "hitPercent": 88.8538022839565,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-3",
           "turn": 3,
           "hitPercent": 88.8538022839565,
           "withinTarget": null,
-          "availability": "incomplete"
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
         },
         {
           "id": "turn-4",
           "turn": 4,
           "hitPercent": 93.80891617618568,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-5",
           "turn": 5,
           "hitPercent": 94.88129820695181,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-6",
           "turn": 6,
           "hitPercent": 94.88129820695181,
           "withinTarget": null,
-          "availability": "incomplete"
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
         },
         {
           "id": "turn-7",
           "turn": 7,
           "hitPercent": 87.70129704215219,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "ledger-basics",
           "turn": 8,
           "hitPercent": 90.79146189393383,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-9",
           "turn": 9,
           "hitPercent": 90.79146189393383,
           "withinTarget": null,
-          "availability": "incomplete"
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
         },
         {
           "id": "turn-10",
           "turn": 10,
           "hitPercent": 90.79146189393383,
           "withinTarget": null,
-          "availability": "incomplete"
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
         },
         {
           "id": "turn-11",
           "turn": 11,
           "hitPercent": 90.79146189393383,
           "withinTarget": null,
-          "availability": "incomplete"
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
         },
         {
           "id": "turn-12",
           "turn": 12,
           "hitPercent": 94.63109657505974,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-13",
           "turn": 13,
           "hitPercent": 94.63109657505974,
           "withinTarget": null,
-          "availability": "incomplete"
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
         },
         {
           "id": "turn-14",
           "turn": 14,
           "hitPercent": 95.66656338760632,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-15",
           "turn": 15,
           "hitPercent": 95.66656338760632,
           "withinTarget": null,
-          "availability": "incomplete"
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
         },
         {
           "id": "core-and-refactor",
           "turn": 16,
           "hitPercent": 96.66173884081175,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-17",
           "turn": 17,
           "hitPercent": 96.66173884081175,
           "withinTarget": null,
-          "availability": "incomplete"
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
         },
         {
           "id": "turn-18",
           "turn": 18,
           "hitPercent": 97.24577746051786,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-19",
           "turn": 19,
           "hitPercent": 97.96832883960079,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-20",
           "turn": 20,
           "hitPercent": 98.08131315527302,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-21",
           "turn": 21,
           "hitPercent": 98.08131315527302,
           "withinTarget": null,
-          "availability": "incomplete"
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
         },
         {
           "id": "range-and-export",
           "turn": 22,
           "hitPercent": 98.43337982175167,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-23",
           "turn": 23,
           "hitPercent": 98.56194658938281,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-24",
           "turn": 24,
           "hitPercent": 98.6580194562235,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "docs-aligned",
           "turn": 25,
           "hitPercent": 98.6580194562235,
           "withinTarget": null,
-          "availability": "incomplete"
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
         },
         {
           "id": "turn-26",
           "turn": 26,
           "hitPercent": 98.73853554954383,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "turn-27",
           "turn": 27,
           "hitPercent": 98.7851582068315,
           "withinTarget": true,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "final-verification",
           "turn": 28,
           "hitPercent": 98.7851582068315,
           "withinTarget": null,
-          "availability": "incomplete"
+          "availability": "incomplete",
+          "missingTurnRequests": true,
+          "usageMissing": 0
         }
       ],
       "conclusion": "not met",

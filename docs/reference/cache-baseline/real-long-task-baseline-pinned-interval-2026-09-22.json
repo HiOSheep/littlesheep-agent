@@ -1,6 +1,6 @@
 {
   "check": "real-long-task-baseline",
-  "recordedAt": "2026-09-22T11:38:27.715Z",
+  "recordedAt": "2026-09-22T12:44:31.250Z",
   "manifestVersion": 1,
   "manifestValid": true,
   "manifestErrors": [],
@@ -175,21 +175,24 @@
           "turn": 1,
           "hitPercent": 47.62192056309703,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "fix",
           "turn": 2,
           "hitPercent": 82.24551910720325,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "boundary",
           "turn": 3,
           "hitPercent": 88.95857203159862,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         }
       ],
       "conclusion": "not met",
@@ -251,21 +254,24 @@
           "turn": 1,
           "hitPercent": 63.52567496029645,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "fix",
           "turn": 2,
           "hitPercent": 84.36940271774175,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "boundary",
           "turn": 3,
           "hitPercent": 88.87264754248127,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         }
       ],
       "conclusion": "not met",
@@ -327,21 +333,24 @@
           "turn": 1,
           "hitPercent": 63.14567614625653,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "fix",
           "turn": 2,
           "hitPercent": 77.74732120608024,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "boundary",
           "turn": 3,
           "hitPercent": 88.35511597786412,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         }
       ],
       "conclusion": "not met",
@@ -417,21 +426,24 @@
           "turn": 1,
           "hitPercent": 63.04661220567035,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "fix",
           "turn": 2,
           "hitPercent": 77.93872580438406,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "boundary",
           "turn": 3,
           "hitPercent": 88.09865213650703,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         }
       ],
       "conclusion": "not met",
@@ -507,21 +519,24 @@
           "turn": 1,
           "hitPercent": 49.03720133077931,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "delivery",
           "turn": 2,
           "hitPercent": 79.8875210040808,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "reconciliation",
           "turn": 3,
           "hitPercent": 84.77145700941735,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         }
       ],
       "conclusion": "not met",
@@ -597,21 +612,24 @@
           "turn": 1,
           "hitPercent": 47.76601109430156,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "delivery",
           "turn": 2,
           "hitPercent": 80.3164643295594,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "reconciliation",
           "turn": 3,
           "hitPercent": 87.91698768913004,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         }
       ],
       "conclusion": "not met",
@@ -673,21 +691,24 @@
           "turn": 1,
           "hitPercent": 48.17749603803487,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "delivery",
           "turn": 2,
           "hitPercent": 79.83903420523139,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "reconciliation",
           "turn": 3,
           "hitPercent": 84.70588235294117,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         }
       ],
       "conclusion": "not met",
@@ -749,21 +770,24 @@
           "turn": 1,
           "hitPercent": 48.172724571654946,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "delivery",
           "turn": 2,
           "hitPercent": 80.1324942033786,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "reconciliation",
           "turn": 3,
           "hitPercent": 84.88695309593119,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         }
       ],
       "conclusion": "not met",
@@ -825,21 +849,24 @@
           "turn": 1,
           "hitPercent": 50.74595722483046,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "delivery",
           "turn": 2,
           "hitPercent": 82.0149407978268,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "memory-anchor",
           "turn": 3,
           "hitPercent": 87.66645471886638,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         }
       ],
       "conclusion": "not met",
@@ -901,21 +928,24 @@
           "turn": 1,
           "hitPercent": 64.44091149973504,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "delivery",
           "turn": 2,
           "hitPercent": 82.47562526494278,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "memory-anchor",
           "turn": 3,
           "hitPercent": 88.09527937173864,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         }
       ],
       "conclusion": "not met",
@@ -977,21 +1007,24 @@
           "turn": 1,
           "hitPercent": 48.49974398361495,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "timeline",
           "turn": 2,
           "hitPercent": 79.22877165522392,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "disclosure",
           "turn": 3,
           "hitPercent": 86.23726612281342,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         }
       ],
       "conclusion": "not met",
@@ -1053,21 +1086,24 @@
           "turn": 1,
           "hitPercent": 49.4509963399756,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "timeline",
           "turn": 2,
           "hitPercent": 73.8722932730043,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         },
         {
           "id": "disclosure",
           "turn": 3,
           "hitPercent": 86.19616300124102,
           "withinTarget": false,
-          "availability": "complete"
+          "availability": "complete",
+          "usageMissing": 0
         }
       ],
       "conclusion": "not met",
