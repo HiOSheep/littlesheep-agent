@@ -81,21 +81,23 @@
 
 ### LT-02｜把 run 内追加扩展为任务区间内持续追加（P0，依赖 LT-01）
 
-- [ ] 复用现有 session/checkpoint，保存模型实际看到的有界、已清洗消息与工具调用配对；跨 run 从正确任务游标续接，避免从纯聊天历史重建并丢掉中间工具消息。**部分完成**：配对持久化与回放投影已实现并有测试（`packages/harness/src/model-history.ts`、`model-history.test.ts`、`stages/cross-run-continuation.test.ts`；`ToolCall.rawArguments`、`tool_result.modelContent`、assistant 的 `reasoning` 随记录保存，`toChatMessage` 之外的 `projectModelHistory` 负责配对、丢弃孤儿结果并按上限裁剪）。**但默认未启用**，原因见下方实测。
-- [ ] 固定规则与必要初始状态在任务区间基线出现一次，后续只有新用户输入、模型输出、工具结果和事实变更；同一任务澄清回来不重新搬动旧尾部。**未完成**：上一轮的 Runtime 尾部（bootstrap / Runtime facts / 检索意图契约 / KnownState 规则）插在用户回合与首个工具轮之间，却没有进入会话 transcript，因此回放会在该位置与供应商已缓存前缀分叉。这是启用回放的先决条件。
-- [ ] 将 RunTailLedger 与任务续接语义对齐；去重基于同一事实的最近状态，覆盖 A→B→A、释放→重用、权限撤销/恢复。审计已记录不等于模型不必再知道变化。**未开始**。
-- [ ] 消除 12,000 字符滑窗与其他重复淘汰策略的隐式截断；统一交由正式 token 预算/压缩边界处理。不是无限增加上下文上限。**未开始**：`conversationHistoryForModel` 仍是 12,000 字符窗口（按 8 条量子移动）；回放投影已改为只受压缩边界与一个 96,000 字符安全上限约束，但未启用。
-- [ ] 明确配置/模型变化和真实压缩才允许重建的边界；私有协议字段只按供应商要求保存，不能通过 UI 投影恢复或把不可信工具内容提升为 system 指令。**部分完成**：外部网页正文明确不进入 transcript（`persistToolResult` 对带 `webEvidence` 的结果不保存 `modelContent`），工具可用 `persistence.projectInput` 阻止原始参数串落盘（此时也不保存 `rawArguments`）。
+- [x] 复用现有 session/checkpoint，保存模型实际看到的有界、已清洗消息与工具调用配对；跨 run 从正确任务游标续接，避免从纯聊天历史重建并丢掉中间工具消息。**已实现并启用**：`packages/harness/src/model-history.ts`（配对、丢孤儿、按组边界裁剪）+ 转录字段 `ToolCall.rawArguments`、`tool_result.modelContent`、assistant 的文本前言与 `reasoning`、以及带 `runtimeTail` 标记的 Runtime 尾部；`context.ts` 用 `ctx.modelHistory` 装配模型历史，`buildRunRequestCandidates` 的 `historyChatCount` 保证主用户回合标在正确位置。
+- [x] 固定规则与必要初始状态在任务区间基线出现一次，后续只有新用户输入、模型输出、工具结果和事实变更；同一任务澄清回来不重新搬动旧尾部。**已实现**：Runtime 尾部按发送位置持久化（`persistRuntimeTailMessages`），下一轮按其原位置回放；尾部不再每轮重排。另外，尾部不再占用 `keepRecent` 会话窗口（只按对话消息计数），否则每轮约 10 条尾部会把整轮挤出窗口。
+- [ ] 将 RunTailLedger 与任务续接语义对齐；去重基于同一事实的最近状态，覆盖 A→B→A、释放→重用、权限撤销/恢复。审计已记录不等于模型不必再知道变化。**未开始**：当前只保证"尾部追加、不重排"，未验证状态 A→B→A 与权限撤销/恢复。
+- [ ] 消除 12,000 字符滑窗与其他重复淘汰策略的隐式截断；统一交由正式 token 预算/压缩边界处理。**部分完成**：模型历史改由 `projectModelHistory` 装配（只受压缩边界与 96,000 字符安全上限约束），但 `conversationHistoryForModel` 的 12,000 字符窗口仍在，仍服务于 prose 投影。
+- [ ] 明确配置/模型变化和真实压缩才允许重建的边界；私有协议字段只按供应商要求保存，不能通过 UI 投影恢复或把不可信工具内容提升为 system 指令。**部分完成**：外部网页正文不进入 transcript；`runtimeTail` 消息不进入 prose/UI/连续性投影（UI 投影本来只接受 user/assistant）。
 
-**本轮实测（2026-09-22，A1 冻结任务，真实 Provider）**：把回放打开后，回放确实生效（第 2 回合请求从 5,458 增到 5,986 tokens，包含工具配对），但**净效果为负**：
+**实测（2026-09-22，A1 冻结任务，真实 Provider）**：
 
-| 指标 | 基线（回放关闭） | 回放开（未持久化尾部） |
+| 指标 | 改动前基线 | 本轮（尾部回放 + 窗口修正） |
 | --- | --- | --- |
-| 自然完成节点 H_ui | 83.13% | **75.41%** |
-| 第 2 回合首个请求 | 命中 3,456 tokens | 命中 3,456 tokens（相同） |
-| 该请求提示词 | 5,195 | 5,986（+791 未被缓存） |
+| 自然完成节点 H_ui | 83.13% | **88.47%** |
+| 未缓存拆分 | 冷启动 4,262 / 重建 3,351 / 尾部 3,559 | 冷启动 4,258 / **重建 0** / 尾部 4,331 |
+| 跨 run 首个请求 | 第 2 回合 −516、第 3 回合 −1015 tokens（前缀断裂） | 两次边界均**逐消息完全一致**（18→30、34→46 条，前 18/34 条哈希相同） |
+| 回合首个请求未缓存 | 1,739 / 1,612 | 943 / 890 |
+| 产物验收 | 3/3 | 3/3 |
 
-即：缓存命中点没有前移（仍停在尾部插入处），只是把更多内容放到了分叉点之后，因此多付 528–791 tokens/回合边界。结论：**必须先让尾部成为可回放的转录内容**，否则回放只会变差；当前实现保留在代码与测试中但不启用，`context.ts` 里写明了原因与数字。下一步（下一轮）：把 Runtime 尾部按位置持久化为带标记的转录消息（并从 prose/UI 投影中排除），然后重新启用回放并复测同一任务。
+缺口仍来自冷启动与每步新增输入（本次 8,623 未缓存 / 74,509 输入 = 11.6%），属于 LT-03/LT-04 的范围；本次会话只有 10 个请求，单次冷启动占比仍然很高。
 
 入口：`harness/src/context.ts`、`stages/_shared.ts`、`run-tail-ledger.ts`、`execute/tool-loop.ts`、`runner/session-continuity.ts` 与 session 存储。
 交付/验收：同一任务跨 run/澄清/重启的完整请求可核验；未压缩无变更时为旧序列追加；预算受控、状态新鲜，副作用不重做。

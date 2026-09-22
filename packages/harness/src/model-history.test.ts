@@ -125,6 +125,50 @@ describe('task-interval model history', () => {
     expect(JSON.stringify(history).length).toBeLessThanOrEqual(MODEL_HISTORY_MAX_CHARS);
   });
 
+  it('replays the assistant preamble that accompanied a tool call', () => {
+    const history = projectModelHistory([
+      toolCallsMessage({
+        text: '我先读一下实现。',
+        reasoning: 'think first',
+        calls: [{ id: 'c1', name: 'read', input: {}, rawArguments: '{}' }],
+      }),
+      toolResultMessage('c1'),
+    ]);
+
+    // The preamble is part of the bytes the Provider cached; dropping it made the
+    // replayed assistant message differ at its first byte.
+    expect(history[0]).toMatchObject({
+      role: 'assistant',
+      content: '我先读一下实现。',
+      reasoning_content: 'think first',
+    });
+  });
+
+  it('replays a persisted Runtime tail section in the position it was sent', () => {
+    const tail: Message = {
+      id: 'tail-1',
+      role: 'system',
+      timestamp: '2026-09-22T00:00:00.500Z',
+      content: [{ type: 'text', text: 'Runtime facts: capability_permission_decision: allow' }],
+      runtimeTail: true,
+    };
+    const history = projectModelHistory([
+      textMessage('user', '修好它'),
+      tail,
+      toolCallsMessage({ calls: [{ id: 'c1', name: 'read', input: {}, rawArguments: '{}' }] }),
+      toolResultMessage('c1'),
+    ]);
+
+    // The tail sits between the user turn and the tool round exactly as it did in
+    // the request the Provider cached; without it the prefix would diverge there
+    // and every replayed byte after it would be billed again.
+    expect(history.map((message) => message.role)).toEqual(['user', 'system', 'assistant', 'tool']);
+    expect(history[1]).toEqual({
+      role: 'system',
+      content: 'Runtime facts: capability_permission_decision: allow',
+    });
+  });
+
   it('makes the next run extend the previous run request instead of rebuilding it', () => {
     // Persisted transcript of one turn: user, one tool round, the final answer.
     const runOneRound: Message[] = [

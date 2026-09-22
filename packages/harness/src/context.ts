@@ -50,6 +50,23 @@ function messageText(message: Message): string {
     .join('\n');
 }
 
+/**
+ * Keep the last `keepRecent` conversational messages, plus every Runtime tail
+ * section that belongs to them. A tail section is part of the request, not part
+ * of the conversation, so it must not consume the compaction window.
+ */
+function trimToRecentConversation(messages: Message[], keepRecent: number): Message[] {
+  let conversational = 0;
+  let start = 0;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    start = index;
+    if (messages[index]!.runtimeTail === true) continue;
+    conversational += 1;
+    if (conversational >= keepRecent) break;
+  }
+  return start > 0 ? messages.slice(start) : messages;
+}
+
 /** A clarification is pending only when it is the latest conversational turn. */
 function latestPendingClarification(history: Message[]): ClarificationRequest | undefined {
   for (let index = history.length - 1; index >= 0; index -= 1) {
@@ -185,10 +202,16 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
 
   // 1. Recent session history (respect compaction keepRecent).
   const keepRecent = opts.config.sessions.compaction.keepRecent;
-  const [rawHistory, sessionMetadata] = await Promise.all([
-    opts.sessionManager.readRecent(opts.sessionId, keepRecent),
+  // The window is read with headroom and then trimmed by *conversational*
+  // messages: a Runtime tail section is not conversation, and with ~10 of them per
+  // turn they crowded the turn itself out of a 20-message window, so the next
+  // run's replay started mid-turn and lost the cached prefix (measured on frozen
+  // A1: turn 3 diverged at its second message and re-billed 3,571 tokens).
+  const [rawWindow, sessionMetadata] = await Promise.all([
+    opts.sessionManager.readRecent(opts.sessionId, keepRecent * 4),
     opts.sessionManager.loadMetadata(opts.sessionId),
   ]);
+  const rawHistory = trimToRecentConversation(rawWindow, keepRecent);
   const authoritativeHistory = filterAuthoritativeUserFacingMessages(rawHistory);
   const pendingClarification = latestPendingClarification(authoritativeHistory);
   const clarificationResponse: ClarificationResponse | undefined = pendingClarification
@@ -202,25 +225,21 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     opts.inbound.clarificationResponse = clarificationResponse;
   }
   // Prose-only projection for user-facing and continuity consumers. Tool
-  // messages stay out of it; `modelHistory` below is the projection the model
-  // replays, and it keeps the tool calls and their results so a new run extends
-  // the previous run's request prefix instead of rebuilding a shorter history.
+  // messages and Runtime tail sections stay out of it; `modelHistory` below is
+  // the projection the model replays, and it keeps the tool calls, their results
+  // and the tail sections the Provider already cached.
   const excludedMessageIds = new Set(opts.historyExcludeMessageIds ?? []);
   const history = authoritativeHistory.filter((m) => {
     if (excludedMessageIds.has(m.id)) return false;
-    if (m.role === 'tool') return false;
+    if (m.role === 'tool' || m.runtimeTail === true) return false;
     return m.content.some((c) => c.type === 'text');
   });
-  // Task-interval replay is NOT enabled yet, and the reason is measured rather
-  // than assumed. The previous run's request carried the Runtime tail between the
-  // user turn and the first tool round, and that tail is not part of the session
-  // transcript, so the Provider stops matching right there: replaying the tool
-  // pairs then only appends bytes after the divergence point. Frozen A1 with the
-  // replay on: turn boundaries grew by 528 prompt tokens and re-billed 791 more,
-  // H_ui at the completion node fell 83.13% -> 75.41%. The enabling change is to
-  // persist the tail in the transcript (see the LT-02 notes in the taskbook);
-  // until then the model history stays the prose projection above.
-  const modelHistory: Message[] | undefined = undefined;
+  // The task-interval replay: the same persisted messages, tail sections and tool
+  // pairs included, so a new run extends the previous run's request prefix
+  // instead of rebuilding a shorter history. Bounded by
+  // `sessions.compaction.keepRecent` (the compaction boundary is the real limit);
+  // `projectModelHistory` only guards against a pathological request.
+  const modelHistory = authoritativeHistory.filter((m) => !excludedMessageIds.has(m.id));
 
   // 2. Bootstrap files (MEMORY.md is deliberately excluded; MemoryTree indexes it).
   const rawBootstrap = opts.memoryResources

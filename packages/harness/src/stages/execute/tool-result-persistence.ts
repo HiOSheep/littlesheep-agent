@@ -52,6 +52,7 @@ export function persistToolCalls(
   produced: RunContext['produced'],
   calls: ToolCall[],
   reasoningContent?: string,
+  text?: string,
 ): void {
   const durableCalls = calls.map((call) => {
     const tool = ctx.tools.find((candidate) => candidate.name === call.name);
@@ -70,6 +71,11 @@ export function persistToolCalls(
     id: randomUUID(),
     role: 'assistant',
     content: [
+      // The preamble the model wrote before calling tools is part of the cached
+      // prefix too: dropping it made the replayed assistant message differ from the
+      // one the Provider saw at its very first byte (measured: cross-run divergence
+      // at that message, 2,653 uncached tokens on the next turn's first request).
+      ...(text ? [{ type: 'text' as const, text }] : []),
       { type: 'tool_calls', calls: durableCalls },
       // The Provider's reasoning travels with the assistant turn: the request
       // echoes it, so replaying the task interval has to carry the same text or
@@ -101,6 +107,39 @@ export async function recordDurableToolCalls(
         inputHash,
         ...(stepId ? { stepId } : {}),
       },
+    });
+  }
+}
+
+/**
+ * Persist the Runtime tail messages at the position they were sent.
+ *
+ * The tail (bootstrap facts, Runtime facts, retrieval contract, KnownState rules)
+ * travels between the user turn and the first tool round. Without it in the
+ * transcript a later run cannot replay the request, and the Provider stops
+ * matching at the first tail message: measured on frozen A1, replaying the tool
+ * pairs alone grew the turn boundary by 528 prompt tokens with *no* extra cached
+ * tokens. Marked `runtimeTail` so no prose, UI or continuity projection treats a
+ * Runtime fact as conversation.
+ */
+export function persistRuntimeTailMessages(
+  ctx: RunContext,
+  produced: RunContext['produced'],
+  messages: readonly { role: string; content: unknown }[],
+): void {
+  for (const message of messages) {
+    if (typeof message.content !== 'string') continue;
+    produced.push({
+      id: randomUUID(),
+      role: message.role === 'assistant' || message.role === 'system' || message.role === 'tool'
+        ? message.role
+        : 'system',
+      content: [{ type: 'text', text: message.content }],
+      timestamp: new Date().toISOString(),
+      sessionId: ctx.sessionId,
+      runId: ctx.runId,
+      stage: 'execute',
+      runtimeTail: true,
     });
   }
 }

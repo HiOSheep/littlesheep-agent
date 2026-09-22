@@ -97,23 +97,27 @@ export function projectModelHistory(
   };
 
   for (const message of messages) {
+    // An assistant turn that calls tools is ONE Provider message: its preamble
+    // text, its tool calls and the Provider's reasoning all belong to the same
+    // message. Emitting the text separately changed the bytes and cost the prefix.
+    const toolCallsPart = message.content.find((part) => part.type === 'tool_calls');
+    if (toolCallsPart) {
+      flush();
+      pending = {
+        text: messageText(message),
+        reasoning: message.content.find((block) => block.type === 'reasoning')?.text,
+        calls: toolCallsPart.calls.map((call) => ({
+          id: call.id,
+          name: call.name,
+          // The Provider's own argument string when it could be persisted, so
+          // the replayed bytes match the cached ones.
+          arguments: call.rawArguments ?? JSON.stringify(call.input ?? {}),
+        })),
+        results: new Map(),
+      };
+      continue;
+    }
     for (const part of message.content) {
-      if (part.type === 'tool_calls') {
-        flush();
-        pending = {
-          text: messageText(message),
-          reasoning: message.content.find((block) => block.type === 'reasoning')?.text,
-          calls: part.calls.map((call) => ({
-            id: call.id,
-            name: call.name,
-            // The Provider's own argument string when it could be persisted, so
-            // the replayed bytes match the cached ones.
-            arguments: call.rawArguments ?? JSON.stringify(call.input ?? {}),
-          })),
-          results: new Map(),
-        };
-        continue;
-      }
       if (part.type === 'tool_result') {
         const chat: ChatMessage = {
           role: 'tool',

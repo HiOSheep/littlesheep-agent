@@ -1979,14 +1979,16 @@ describe('createRunner run', () => {
 
     const result = await runner.run({ text: 'remember this request' });
     const metadata = await runner.sessionManager.loadMetadata(result.sessionId);
-    const messages = await runner.sessionManager.read(result.sessionId);
+    const allMessages = await runner.sessionManager.read(result.sessionId);
+    const messages = allMessages.filter((message) => message.runtimeTail !== true);
 
     expect(messages).toHaveLength(2);
     expect(metadata?.compaction).toMatchObject({
       version: 2,
+      // The summary collapses conversation; the Runtime tail records that travel
+      // in the transcript for replay are covered by the range but not counted.
       collapsedCount: 1,
       sourceStartMessageId: messages[0]?.id,
-      sourceEndMessageId: messages[0]?.id,
       sourceRunIds: [result.runId],
       sourceRunIdsTruncated: false,
       summary: 'summary text',
@@ -1998,9 +2000,12 @@ describe('createRunner run', () => {
       sourceRanges: [{
         messageCount: 1,
         sourceStartMessageId: messages[0]?.id,
-        sourceEndMessageId: messages[0]?.id,
       }],
     });
+    // The covered record range ends at the last record before the kept turn, which
+    // is one of this turn's Runtime tail records.
+    expect(metadata?.compaction?.sourceEndMessageId).toBe(allMessages[10]?.id);
+    expect(metadata?.compaction?.sourceRanges?.[0]?.sourceEndMessageId).toBe(allMessages[10]?.id);
     const summary = metadata!.compaction!;
     expect(await runner.infra.memoryRepository.getResource(summary.id)).toMatchObject({
       id: summary.id,
@@ -2786,7 +2791,12 @@ describe('createRunner run', () => {
     const raw = readFileSync(file, 'utf8');
     const lines = raw.split('\n').filter((l) => l.trim().length > 0);
     // Skip metadata header (first line) — verify message order.
-    const messages = lines.slice(1).map((l) => JSON.parse(l) as { role?: string });
+    const messages = lines.slice(1)
+      .map((l) => JSON.parse(l) as { role?: string; runtimeTail?: boolean })
+      // Runtime tail sections are persisted as marked records for byte-exact
+      // replay; they are not conversation, so the conversational order is asserted
+      // without them.
+      .filter((m) => m.runtimeTail !== true);
     expect(messages.map((m) => m.role)).toEqual(['user', 'assistant']);
   });
 

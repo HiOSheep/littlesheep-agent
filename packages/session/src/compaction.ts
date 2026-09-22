@@ -67,10 +67,28 @@ export async function maybeCompact(
     throw new Error('The previous session summary no longer matches the preserved transcript.');
   }
 
-  const uncompactedCount = messages.length - (previousEndIndex + 1);
-  if (!opts.force && uncompactedCount < opts.threshold) return null;
+  // Runtime tail sections travel in the transcript for byte-exact replay, but they
+  // are not conversation: counting them would make compaction fire once every
+  // couple of turns (a turn can carry ten of them) and would push the whole turn
+  // out of the keep window.
+  const uncompactedConversational = messages
+    .slice(previousEndIndex + 1)
+    .filter((message) => message.runtimeTail !== true)
+    .length;
+  if (!opts.force && uncompactedConversational < opts.threshold) return null;
 
-  const compactThroughIndex = messages.length - opts.keepRecent - 1;
+  // Keep the last `keepRecent` conversational messages together with the tail
+  // sections that follow them, so the kept range stays replayable.
+  let keepFromIndex = 0;
+  let keptConversational = 0;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    keepFromIndex = index;
+    if (messages[index]!.runtimeTail === true) continue;
+    keptConversational += 1;
+    if (keptConversational >= opts.keepRecent) break;
+  }
+  if (keptConversational < opts.keepRecent) keepFromIndex = 0;
+  const compactThroughIndex = keepFromIndex - 1;
   if (compactThroughIndex <= previousEndIndex) return null;
   const newMessages = messages.slice(previousEndIndex + 1, compactThroughIndex + 1);
   if (newMessages.length === 0) return null;
@@ -89,6 +107,10 @@ export async function maybeCompact(
 
   const first = messages[0]!;
   const last = messages[compactThroughIndex]!;
+  // Counts describe the conversation the summary collapses. Runtime tail records
+  // travel in the transcript for replay but are not collapsed content, so they are
+  // not counted here even though the covered range spans them.
+  const collapsedCount = coveredMessages.filter((message) => message.runtimeTail !== true).length;
   const sourceHash = hashCompactionMessages(coveredMessages);
   const sourceRunIds = uniqueSourceRunIds(coveredMessages);
   const sourceRunIdsTruncated = sourceRunIds.length > MAX_COMPACTION_SOURCE_RUN_IDS;
@@ -130,7 +152,7 @@ export async function maybeCompact(
   const record: CompactionSummaryV2 = Object.freeze({
     version: 2,
     id: transactionKey,
-    collapsedCount: compactThroughIndex + 1,
+    collapsedCount,
     summary,
     compactedAt,
     sourceStartMessageId: previous?.sourceStartMessageId ?? first.id,
@@ -141,7 +163,7 @@ export async function maybeCompact(
     model: output.model,
     cache,
     sourceRanges: [{
-      messageCount: compactThroughIndex + 1,
+      messageCount: collapsedCount,
       sourceStartMessageId: previous?.sourceStartMessageId ?? first.id,
       sourceEndMessageId: last.id,
       sourceStartAt: previous?.sourceStartAt ?? first.timestamp,

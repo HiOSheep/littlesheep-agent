@@ -84,7 +84,11 @@ describe('session restart continuity', () => {
       llm,
     });
     runners.push(second);
-    expect((await second.sessionManager.read(sessionId)).map((message) => message.role))
+    // Runtime tail sections are persisted for byte-exact replay but are not
+    // conversation, so the conversational order is asserted without them.
+    expect((await second.sessionManager.read(sessionId))
+      .filter((message) => message.runtimeTail !== true)
+      .map((message) => message.role))
       .toEqual(['user', 'assistant']);
     const continued = await second.run({ sessionId, text: 'LS-RESTART-SECOND-QUESTION' });
     expect(continued.status).toBe('ok');
@@ -104,7 +108,9 @@ describe('session restart continuity', () => {
 
     // The persisted transcript is unchanged by the restart, and the new turn is
     // appended to it rather than replacing it.
-    expect((await second.sessionManager.read(sessionId)).map((message) => message.role))
+    expect((await second.sessionManager.read(sessionId))
+      .filter((message) => message.runtimeTail !== true)
+      .map((message) => message.role))
       .toEqual(['user', 'assistant', 'user', 'assistant']);
   }, 60_000);
 });

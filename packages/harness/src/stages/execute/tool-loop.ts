@@ -36,6 +36,7 @@ import { ingestMemoryKnownState } from '../../memory-known-state.js';
 import { ingestMemoryContextToolResult } from '../../memory-context-working-set.js';
 import {
   failureResult,
+  persistRuntimeTailMessages,
   persistToolCalls,
   persistToolResult,
   recordDurableToolCalls,
@@ -123,6 +124,9 @@ export async function runToolLoop(
   const tailMessageSet = new Set<ChatMessage>();
   const initialTailMessages = initialTail.messages;
   for (const message of initialTailMessages) tailMessageSet.add(message);
+  // The tail is part of the request the Provider caches, so it is persisted at
+  // this position: a later run replays it instead of diverging here.
+  persistRuntimeTailMessages(ctx, produced, initialTailMessages);
   // Each tail message's declared Context kind, so a bootstrap file stays project
   // knowledge and the memory index stays a memory index.
   const tailKinds = new Map<ChatMessage, { kind: ContextItemKind; source: ContextSourceRef }>();
@@ -166,6 +170,7 @@ export async function runToolLoop(
     const tailDelta = tailLedger.update(ctx, systemSegments, tailSegments);
     for (const message of tailDelta.messages) tailMessageSet.add(message);
     messages.push(...tailDelta.messages);
+    persistRuntimeTailMessages(ctx, produced, tailDelta.messages);
     try {
       const hasTools = toolSpecs.length > 0;
       const rawRequest = {
@@ -327,7 +332,13 @@ export async function runToolLoop(
           function: { name: call.function.name, arguments: call.function.arguments },
         })),
       });
-      persistToolCalls(ctx, produced, response.toolCalls.map(convertToolCall), response.reasoningContent);
+      persistToolCalls(
+        ctx,
+        produced,
+        response.toolCalls.map(convertToolCall),
+        response.reasoningContent,
+        response.content,
+      );
       await recordDurableToolCalls(ctx, response.toolCalls.map(convertToolCall), stepId);
 
       const requests = response.toolCalls.map((call) => {

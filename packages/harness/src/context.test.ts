@@ -60,9 +60,11 @@ describe('buildRunContext', () => {
       expect(ctx.runtimeEventQueue).toBe(runtimeEventQueue);
       expect(ms.readDaily).not.toHaveBeenCalled();
       expect(ms.readLongTerm).not.toHaveBeenCalled();
+      // The window is read with headroom and then trimmed by conversational
+      // messages, so Runtime tail sections cannot crowd a turn out of it.
       expect(sm.readRecent).toHaveBeenCalledWith(
         's1',
-        DEFAULT_CONFIG.sessions.compaction.keepRecent,
+        DEFAULT_CONFIG.sessions.compaction.keepRecent * 4,
       );
     } finally {
       rmSync(dir, { recursive: true, force: true });

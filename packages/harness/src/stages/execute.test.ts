@@ -857,12 +857,17 @@ describe('executeStage', () => {
 
   // ─── M3: ctx.produced persistence ──────────────────────────────────────
 
-  it('stop → ctx.produced 为空（无 tool 消息）', async () => {
+  // Runtime tail sections are also persisted now (they sit in the request the
+  // Provider caches, and a later run replays them). They are not conversation, so
+  // these assertions look at the tool-round messages only.
+  const conversational = (produced: RunContext['produced']) => produced.filter((message) => message.runtimeTail !== true);
+
+  it('stop → ctx.produced 无 tool 消息', async () => {
     const llm = createMockLlm(textResponse('done'));
     const stage = createExecuteStage({ ...deps, llm });
     const ctx = makeCtx({ inbound: textMessage('user', 'go') });
     await stage(ctx);
-    expect(ctx.produced).toEqual([]);
+    expect(conversational(ctx.produced)).toEqual([]);
   });
 
   it('单个 tool 调用 → ctx.produced 有 1 个 assistant(tool_calls) + 1 个 tool(tool_result)', async () => {
@@ -874,11 +879,12 @@ describe('executeStage', () => {
     const stage = createExecuteStage({ ...deps, llm });
     const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', 'go') });
     await stage(ctx);
-    expect(ctx.produced).toHaveLength(2);
-    expect(ctx.produced[0]!.role).toBe('assistant');
-    expect(ctx.produced[0]!.content[0]!.type).toBe('tool_calls');
-    expect(ctx.produced[1]!.role).toBe('tool');
-    expect(ctx.produced[1]!.content[0]!.type).toBe('tool_result');
+    const produced = conversational(ctx.produced);
+    expect(produced).toHaveLength(2);
+    expect(produced[0]!.role).toBe('assistant');
+    expect(produced[0]!.content[0]!.type).toBe('tool_calls');
+    expect(produced[1]!.role).toBe('tool');
+    expect(produced[1]!.content[0]!.type).toBe('tool_result');
   });
 
   it('多个 tool 调用在一个 response → 1 个 assistant(tool_calls) + N 个 tool(tool_result)', async () => {
@@ -894,11 +900,12 @@ describe('executeStage', () => {
     const stage = createExecuteStage({ ...deps, llm });
     const ctx = makeCtx({ tools: [a, b], inbound: textMessage('user', 'go') });
     await stage(ctx);
-    expect(ctx.produced).toHaveLength(3); // 1 assistant + 2 tool
-    expect(ctx.produced[0]!.role).toBe('assistant');
-    expect(ctx.produced[0]!.content[0]!.type).toBe('tool_calls');
-    expect(ctx.produced[1]!.role).toBe('tool');
-    expect(ctx.produced[2]!.role).toBe('tool');
+    const produced = conversational(ctx.produced);
+    expect(produced).toHaveLength(3); // 1 assistant + 2 tool
+    expect(produced[0]!.role).toBe('assistant');
+    expect(produced[0]!.content[0]!.type).toBe('tool_calls');
+    expect(produced[1]!.role).toBe('tool');
+    expect(produced[2]!.role).toBe('tool');
   });
 
   it('未知工具 → ctx.produced 含 tool_result(ok=false)', async () => {
@@ -909,8 +916,9 @@ describe('executeStage', () => {
     const stage = createExecuteStage({ ...deps, llm });
     const ctx = makeCtx({ inbound: textMessage('user', 'x') });
     await stage(ctx);
-    expect(ctx.produced).toHaveLength(2);
-    const toolMsg = ctx.produced[1]!;
+    const produced = conversational(ctx.produced);
+    expect(produced).toHaveLength(2);
+    const toolMsg = produced[1]!;
     expect(toolMsg.role).toBe('tool');
     const block = toolMsg.content[0] as { type: 'tool_result'; result: { ok: boolean; error?: string } };
     expect(block.type).toBe('tool_result');

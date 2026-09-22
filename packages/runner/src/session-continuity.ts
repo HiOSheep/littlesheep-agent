@@ -82,7 +82,12 @@ async function runCompactionAttempt(options: RunSessionCompactionOptions): Promi
       force: options.force,
       signal: options.signal,
       summarize: async ({ previousSummary, coveredMessages, messages }) => {
-        const rendered = messages.map(renderMessageForCompaction);
+        // The Runtime tail is not conversation: it is the below-boundary prompt
+        // sections (capability snapshot, Runtime facts, retrieval contract) that a
+        // run replays. Summarizing them re-injected Runtime state into the
+        // summarizer, which this boundary forbids.
+        const conversational = messages.filter((message) => message.runtimeTail !== true);
+        const rendered = conversational.map(renderMessageForCompaction);
         const summaryMessages: ChatMessage[] = [
           {
             role: 'system',
@@ -126,7 +131,7 @@ async function runCompactionAttempt(options: RunSessionCompactionOptions): Promi
           maxTokens: 1_800,
           maxTokensCeiling: 2_200,
           signal: options.signal,
-          validateParsed: (value) => decodeCompaction(value, messages.map((message) => message.id), options.workspace),
+          validateParsed: (value) => decodeCompaction(value, conversational.map((message) => message.id), options.workspace),
           onRequest: (request, retry) => {
             attempts.issued += 1;
             if (retry.attempt > 1) attempts.retries += 1;

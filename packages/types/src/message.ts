@@ -140,6 +140,15 @@ export interface Message {
   replyProvenance?: ReplyProvenance;
   /** Durable identity for the final user-facing settlement, when present. */
   finalReplySettlement?: FinalReplySettlement;
+  /**
+   * Marks a Runtime-owned prompt section that travelled as its own message
+   * between the user turn and the tool rounds (the below-boundary tail).
+   *
+   * It is persisted so a later run can replay the request byte for byte; it is
+   * *not* conversation. Prose, UI and continuity projections must skip it, and
+   * only the task-interval model replay reads it.
+   */
+  runtimeTail?: boolean;
 }
 
 /** Convenience: a plain text message. */
